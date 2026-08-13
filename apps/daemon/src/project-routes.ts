@@ -3648,7 +3648,13 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
           ...(ctx.ensureBundledPluginForClone
             ? { ensureBundledPlugin: ctx.ensureBundledPluginForClone }
             : {}),
-          markTemplateClonedDeckSeeded: ({ projectId, pluginId: seededPluginId, templateTitle }) => {
+          markTemplateClonedDeckSeeded: ({
+            projectId,
+            pluginId: seededPluginId,
+            templateTitle,
+            userInstruction,
+            sourceBrief,
+          }) => {
             const existing = getProject(db, projectId);
             if (!existing) return;
             const prevMeta =
@@ -3668,6 +3674,62 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
                   : {}),
               },
             });
+
+            // Clone intentionally skips model auto-send, so persist the user's
+            // create prompt (+ short ack) into chat history. Otherwise the
+            // project opens with an empty welcome pane and the prompt is lost.
+            const prompt = (() => {
+              const fromUser = typeof userInstruction === 'string' ? userInstruction.trim() : '';
+              if (fromUser) {
+                return fromUser
+                  .replace(/^User instruction\s*[:：]\s*/i, '')
+                  .trim() || fromUser;
+              }
+              const fromBrief = typeof sourceBrief === 'string' ? sourceBrief.trim() : '';
+              if (!fromBrief) return '';
+              // Prefer a short Canvas title line over the full source dump.
+              const canvasTitle = /Canvas title\s*[:：]\s*(.+)$/im.exec(fromBrief)?.[1]?.trim();
+              return canvasTitle || fromBrief.slice(0, 500);
+            })();
+            if (!prompt) return;
+            try {
+              const convs = listConversations(db, projectId) ?? [];
+              for (const conv of convs) {
+                const msgs = listMessages(db, conv.id) ?? [];
+                if (msgs.length > 0) return;
+              }
+              const now = Date.now();
+              const conv = insertConversation(db, {
+                id: randomId(),
+                projectId,
+                title: prompt.slice(0, 60),
+                createdAt: now,
+                updatedAt: now,
+              });
+              if (!conv) return;
+              upsertMessage(db, conv.id, {
+                id: randomId(),
+                role: 'user',
+                content: prompt,
+                createdAt: now,
+              });
+              const label = (templateTitle || '선택한 템플릿').trim();
+              upsertMessage(db, conv.id, {
+                id: randomId(),
+                role: 'assistant',
+                content:
+                  `「${label}」 템플릿을 적용해 슬라이드 초안을 준비했습니다. `
+                  + '내용을 수정하거나 추가 요청을 보내 주세요.',
+                createdAt: now + 1,
+                endedAt: now + 1,
+                runStatus: 'completed',
+              });
+            } catch (chatErr) {
+              console.warn(
+                '[template-clone-deck] seed chat transcript failed',
+                chatErr,
+              );
+            }
           },
         },
         {

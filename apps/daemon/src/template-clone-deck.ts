@@ -174,6 +174,9 @@ export type SeedTemplateClonedDeckOnServerDeps = {
     projectId: string;
     pluginId: string;
     templateTitle: string;
+    /** User prompt to persist in chat (Clone skips model auto-send). */
+    userInstruction?: string | null;
+    sourceBrief?: string | null;
   }) => void | Promise<void>;
 };
 
@@ -252,13 +255,17 @@ export async function seedTemplateClonedDeckOnServer(
   const slides = resolveTemplateCloneSlidesFromBrief({
     ...(input.sourceBrief != null ? { sourceBrief: input.sourceBrief } : {}),
     ...(input.userInstruction != null ? { userInstruction: input.userInstruction } : {}),
-    deckTitle: input.deckTitle ?? input.templateTitle ?? loaded.title,
+    // Prefer the user-facing deck/project title over the plugin marketing
+    // title ("Html Ppt Zhangzara Daisy Days") when synthesizing free-form.
+    deckTitle: input.deckTitle ?? null,
   });
   const countHint = resolveTemplateCloneSlideCountHint(input.slideCountHint);
+  // Content-derived title wins over plugin/template marketing names so Clone
+  // does not stamp "Html Ppt Zhangzara Daisy Days" into the cover H1.
   const deckTitle =
-    input.deckTitle?.trim()
+    slides[0]?.title
+    || input.deckTitle?.trim()
     || input.templateTitle?.trim()
-    || slides[0]?.title
     || loaded.title;
   const cloned = buildTemplateClonedDeckHtml(loaded.html, slides, {
     title: deckTitle,
@@ -331,6 +338,8 @@ export async function seedTemplateClonedDeckOnServer(
         projectId,
         pluginId: loaded.templateId,
         templateTitle,
+        userInstruction: input.userInstruction ?? null,
+        sourceBrief: input.sourceBrief ?? null,
       });
     } catch (markErr) {
       // Deck bytes are already on disk — do not fail the clone response.

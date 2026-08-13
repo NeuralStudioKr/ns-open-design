@@ -158,13 +158,17 @@ import {
 } from '../runtime/revision-analytics';
 import {
   enrichChatSendMetaWithProjectDeckTemplate,
+  formatSelectedDeckTemplateChipLabel,
   resolveDeckTemplateSkillId,
   resolveScenarioPluginIdForLocalSkill,
   selectedDeckTemplateMetadata,
   selectedDeckTemplateTitleStub,
   wrapSelectedDeckTemplateSkillBody,
 } from '../runtime/selected-deck-template';
-import { CANVAS_CREATE_SLIDES_PLUGIN_ID } from '../teamver/canvasSlideLaunch';
+import {
+  CANVAS_CREATE_SLIDES_PLUGIN_ID,
+  isExplicitCanvasSlideVisualTemplate,
+} from '../teamver/canvasSlideLaunch';
 import {
   anonymizeArtifactId,
   artifactKindToTracking,
@@ -12708,12 +12712,36 @@ export function ProjectView({
                 </span>
               )}
               designSystemPicker={(
-                <DesignSystemPicker
-                  designSystems={designSystems}
-                  selectedId={project.designSystemId ?? null}
-                  onChange={handleChangeDesignSystemId}
-                  onRequestDesignSystems={onDesignSystemsRefresh}
-                />
+                (() => {
+                  // Explicit visual template pin (Daisy Days etc.): show that
+                  // title instead of the scenario DS chip ("Simple Deck").
+                  const pinnedTemplate = selectedDeckTemplateMetadata(project.metadata);
+                  const pinnedLabel = formatSelectedDeckTemplateChipLabel(pinnedTemplate);
+                  if (
+                    slideOnlyMvp
+                    && pinnedTemplate
+                    && isExplicitCanvasSlideVisualTemplate({ id: pinnedTemplate.id })
+                    && pinnedLabel
+                  ) {
+                    return (
+                      <span
+                        className="staged-chip staged-chip--skill"
+                        data-testid="selected-deck-template-style-chip"
+                        title={pinnedLabel}
+                      >
+                        <span className="staged-name" title={pinnedLabel}>{pinnedLabel}</span>
+                      </span>
+                    );
+                  }
+                  return (
+                    <DesignSystemPicker
+                      designSystems={designSystems}
+                      selectedId={project.designSystemId ?? null}
+                      onChange={handleChangeDesignSystemId}
+                      onRequestDesignSystems={onDesignSystemsRefresh}
+                    />
+                  );
+                })()
               )}
             />
           ) : (

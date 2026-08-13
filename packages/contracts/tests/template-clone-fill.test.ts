@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildTemplateClonedDeckHtml,
   listTemplateCloneSlideShells,
+  normalizeTemplateCssForFixedCanvas,
   resolveTemplateCloneSlideCountHint,
   resolveTemplateCloneSlidesFromBrief,
 } from '../src/template-clone-fill.js';
@@ -131,17 +132,26 @@ describe('resolveTemplateCloneSlidesFromBrief', () => {
     expect(slides.map((s) => s.title)).toEqual(['Alpha', 'Bravo', 'Charlie']);
   });
 
-  it('returns [] when only a free-form prompt is supplied (no outline)', () => {
-    // Home template-card path: user picked a template and typed a free-form
-    // prompt with no numbered outline / Visible headings marker. Returning
-    // one `{title: deckTitle}` slide collapsed the deck to a single slide
-    // and hid the template's real layout variety. Empty output lets the
-    // clone build all natural template shells (user report 2026-08-13).
+  it('synthesizes content-bearing slides from a free-form prompt (no outline)', () => {
+    // Home template-card path: free-form prompt with no numbered outline.
+    // Must NOT return [] — that left Daisy marketing copy ("Daisy Days" /
+    // "cheerful…") intact after Clone (user report 2026-08-13 follow-up).
     const slides = resolveTemplateCloneSlidesFromBrief({
       userInstruction: 'Make a deck about our Q3 team plans.',
       deckTitle: 'Team Plans',
     });
-    expect(slides).toEqual([]);
+    expect(slides.length).toBeGreaterThanOrEqual(2);
+    expect(slides[0]?.title).toMatch(/Team Plans|Q3/i);
+    expect(slides.some((s) => (s.body ?? '').length > 0)).toBe(true);
+  });
+
+  it('derives a title from Korean free-form when deckTitle is template marketing', () => {
+    const slides = resolveTemplateCloneSlidesFromBrief({
+      userInstruction: 'User instruction:\nAI 트렌드 발표자료를 만들어줘',
+      deckTitle: 'Html Ppt Zhangzara Daisy Days',
+    });
+    expect(slides[0]?.title).toMatch(/AI 트렌드/);
+    expect(slides[0]?.title).not.toMatch(/Html Ppt|Daisy Days/i);
   });
 
   it('picks up numbered outlines from user instructions', () => {
@@ -154,5 +164,48 @@ describe('resolveTemplateCloneSlidesFromBrief', () => {
       ].join('\n'),
     });
     expect(slides.map((s) => s.title)).toEqual(['Vision', 'Milestones', 'Risks']);
+  });
+
+  it('returns [] when brief is empty so natural template shells remain', () => {
+    expect(resolveTemplateCloneSlidesFromBrief({})).toEqual([]);
+  });
+});
+
+describe('normalizeTemplateCssForFixedCanvas', () => {
+  it('rewrites vw/vh to px for a 1920×1080 canvas', () => {
+    const css = '.slide{width:100vw;height:100vh}h1{font-size:clamp(2.5rem,5vw,4.5rem)}';
+    const next = normalizeTemplateCssForFixedCanvas(css);
+    expect(next).toContain('width:1920px');
+    expect(next).toContain('height:1080px');
+    expect(next).toContain('96px');
+    expect(next).not.toMatch(/\d+vw|\d+vh/);
+  });
+});
+
+describe('free-form Daisy clone content swap', () => {
+  it('replaces Daisy marketing copy when only a free-form prompt is supplied', async () => {
+    const html = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/html-ppt-zhangzara-daisy-days/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const slides = resolveTemplateCloneSlidesFromBrief({
+      userInstruction: 'AI 트렌드 발표자료를 만들어줘',
+      deckTitle: 'Html Ppt Zhangzara Daisy Days',
+    });
+    const cloned = buildTemplateClonedDeckHtml(html, slides, {
+      title: slides[0]?.title || 'AI 트렌드',
+      maxSlides: 6,
+    });
+    expect(cloned).toBeTruthy();
+    expect(cloned).toContain('#F5F0E6');
+    expect(cloned).toMatch(/AI 트렌드/);
+    expect(cloned).not.toContain('Daisy Days');
+    expect(cloned).not.toContain('cheerful presentation template');
+    expect(cloned).toMatch(/width:\s*1920px/i);
+    // vw→px so type scale matches template preview intent on fixed canvas
+    expect(cloned).not.toMatch(/font-size:\s*clamp\([^)]*vw/i);
   });
 });

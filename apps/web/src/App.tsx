@@ -2655,7 +2655,8 @@ function AppInner() {
               deckTitle:
                 pendingCanvasHandoff.title?.trim()
                 || pendingCanvasHandoff.threadTitle?.trim()
-                || templateTitle
+                || result.project.name?.trim()
+                || derivedPendingPrompt?.trim()?.slice(0, 80)
                 || null,
               slideCountHint: slideCountHintFromInputs,
             });
@@ -2737,17 +2738,13 @@ function AppInner() {
           homeDriveImportSucceeded && homeDriveSourceAsset
             ? driveCreateSlidesSourceBrief(homeDriveSourceAsset)
             : (derivedPendingPrompt ?? null);
-        // Prefer the user's own prompt (or Drive filename) over the template
-        // title for the deck's cover heading — otherwise `buildTemplateClonedDeckHtml`
-        // falls back to `deckTitle` when the brief has no numbered outline and
-        // the cover ships with the template's placeholder heading (e.g.
-        // "Html Ppt Zhangzara Daisy Days") instead of the user's topic
-        // (user report 2026-08-13: "생성 요청 했는데, 템플릿 클론만 하고 내용을
-        // 바꾸지 않은 것 같다"). Template title is the last fallback.
+        // Prefer project name / user prompt / Drive filename — never the plugin
+        // marketing title ("Html Ppt Zhangzara Daisy Days"), which used to land
+        // on the cover when free-form briefs had no numbered outline.
         const clonedDeckCoverTitle =
-          homeDriveSourceAsset?.filename?.trim()
-          || derivedPendingPrompt?.trim()
-          || templateTitle
+          result.project.name?.trim()
+          || derivedPendingPrompt?.trim()?.slice(0, 80)
+          || homeDriveSourceAsset?.filename?.trim()
           || null;
         const seeded = await seedTemplateClonedDeck({
           projectId: result.project.id,

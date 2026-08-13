@@ -185,17 +185,27 @@ function fillSlideShell(
     body = replaceFirstTagText(body, 'h3', title);
   }
 
+  // Always clear template marketing subtitle when we own this shell's title.
+  if (/<p\b[^>]*class\s*=\s*["'][^"']*subtitle/i.test(body)) {
+    const subtitle = bodyLines[0] || bodyText || '';
+    body = body.replace(
+      /(<p\b[^>]*class\s*=\s*["'][^"']*subtitle[^"']*["'][^>]*>)([\s\S]*?)(<\/p>)/i,
+      `$1${escapeHtml(subtitle)}$3`,
+    );
+  }
+
   if (bodyLines.length > 0 && /<[uo]l\b/i.test(body)) {
     body = replaceListItems(body, bodyLines);
   } else if (bodyLines[0] || bodyText) {
     const paragraph = bodyLines[0] || bodyText;
-    if (/<p\b[^>]*class\s*=\s*["'][^"']*subtitle/i.test(body)) {
-      body = body.replace(
-        /(<p\b[^>]*class\s*=\s*["'][^"']*subtitle[^"']*["'][^>]*>)([\s\S]*?)(<\/p>)/i,
-        `$1${escapeHtml(paragraph)}$3`,
-      );
-    } else if (/<p\b/i.test(body)) {
+    if (!/<p\b[^>]*class\s*=\s*["'][^"']*subtitle/i.test(shell.body) && /<p\b/i.test(body)) {
       body = replaceFirstTagText(body, 'p', paragraph);
+    }
+  } else if (/<[uo]l\b/i.test(body)) {
+    // Title-only pad shells: wipe leftover template English list copy.
+    const existingCount = [...body.matchAll(/<li\b/gi)].length;
+    if (existingCount > 0) {
+      body = replaceListItems(body, Array.from({ length: existingCount }, () => ''));
     }
   }
 
@@ -220,6 +230,23 @@ function fillSlideShell(
   // Remap ids so duplicated shells stay unique.
   attrs = attrs.replace(/\bid\s*=\s*(["'])([^"']*)\1/i, (_m, q: string) => `id=${q}slide-${index + 1}${q}`);
   return `<${shell.tag}${attrs}>${body}</${shell.tag}>`;
+}
+
+/**
+ * Templates authored for fullscreen `100vw` / `clamp(..., Nvw, ...)` preview
+ * drift when Teamver locks `.slide` to a fixed 1920×1080 canvas inside the
+ * editor chrome. Rewrite vw/vh as px assuming that canvas IS the viewport.
+ */
+export function normalizeTemplateCssForFixedCanvas(html: string): string {
+  return String(html ?? '')
+    .replace(/(\d+(?:\.\d+)?)vw\b/gi, (_m, raw: string) => {
+      const px = Math.round(parseFloat(raw) * 19.2 * 100) / 100;
+      return Number.isFinite(px) ? `${px}px` : _m;
+    })
+    .replace(/(\d+(?:\.\d+)?)vh\b/gi, (_m, raw: string) => {
+      const px = Math.round(parseFloat(raw) * 10.8 * 100) / 100;
+      return Number.isFinite(px) ? `${px}px` : _m;
+    });
 }
 
 function injectTeamverSizeStyle(html: string): string {
@@ -326,6 +353,7 @@ export function buildTemplateClonedDeckHtml(
   }
 
   out = replaceDocumentTitle(out, deckTitle);
+  out = normalizeTemplateCssForFixedCanvas(out);
   out = injectTeamverSizeStyle(out);
   return out.trim() || null;
 }
@@ -359,9 +387,104 @@ const HEADINGS_STOP_RE =
   /\s+(?:Source preview|Canvas title|Canvas sections|Drive source(?: file| MIME)?|Drive asset id|User instruction)\s*[:：]/i;
 const NUMBERED_SLIDE_RE =
   /^\s*(?:(?:\d+)[\.\)]\s*|(?:0?\d{1,2})\s+|슬라이드\s*\d+\s*[:\.\-]\s*|#{1,3}\s+)(.+)$/i;
+const USER_INSTRUCTION_RE =
+  /User instruction\s*[:：]\s*([\s\S]*?)(?=\n(?:Source |Canvas |Drive |Visible |Selected )|$)/i;
 
 function cleanCloneTitle(title: string): string {
   return title.replace(/^["'`]|["'`]$/g, '').replace(/\s+/g, ' ').trim();
+}
+
+function looksLikeTemplateMarketingTitle(title: string): boolean {
+  return /html\s*ppt|daisy days|simple deck|zhangzara|cheerful presentation|template for/i.test(
+    title,
+  );
+}
+
+function extractUserFacingBrief(text: string): string {
+  const fromMarker = USER_INSTRUCTION_RE.exec(text)?.[1]?.trim();
+  if (fromMarker) return fromMarker;
+  return text
+    .replace(
+      /^(?:Canvas title|Source preview|Drive source(?: file| MIME)?|Drive asset id|Visible headings|Canvas headings|Source headings)\s*[:：].*$/gim,
+      '',
+    )
+    .trim();
+}
+
+function deriveTitleFromBrief(brief: string, deckTitle?: string | null): string {
+  const preferred = deckTitle?.trim() ?? '';
+  if (preferred && !looksLikeTemplateMarketingTitle(preferred)) {
+    return cleanCloneTitle(preferred).slice(0, 80);
+  }
+  const first = brief.split(/\r?\n/).map((line) => line.trim()).find(Boolean) || brief;
+  let title = first
+    .replace(/^(?:please\s+)?(?:make|create|build|write)\s+(?:me\s+)?(?:a|an|the)?\s*/i, '')
+    .replace(/\s+(?:slides?|deck|presentation)\s*\.?$/i, '')
+    .replace(
+      /\s*(?:에\s*대한\s*)?(?:발표\s*자료|슬라이드|덱|프레젠테이션)?\s*(?:을|를)?\s*(?:만들어|작성|생성)(?:\s*줘|\s*주세요|\s*해(?:\s*줘|\s*주세요)?)?\s*\.?$/i,
+      '',
+    )
+    .replace(/^(?:슬라이드|발표자료|덱)\s*/i, '')
+    .trim();
+  if (!title || title.length < 2) title = first;
+  return cleanCloneTitle(title).slice(0, 60) || 'Presentation';
+}
+
+/**
+ * Free-form Home/wizard prompts have no Visible-headings outline. Still
+ * synthesize multiple content-bearing slides so Clone does not leave the
+ * template's marketing titles/subtitles ("Daisy Days", "cheerful…") intact.
+ * Slide count stays multi-page via daemon `maxSlides` padding.
+ */
+export function synthesizeTemplateCloneSlidesFromFreeFormBrief(options: {
+  brief: string;
+  deckTitle?: string | null;
+}): TemplateCloneSlideContent[] {
+  const brief = extractUserFacingBrief(options.brief);
+  if (!brief || brief.length < 2) return [];
+
+  const title = deriveTitleFromBrief(brief, options.deckTitle);
+  const lines = brief.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const bulletLines = lines.filter(
+    (line) => /^[-*•·]\s+/.test(line) || /^\d+[.)]\s+/.test(line),
+  );
+  if (bulletLines.length >= 2) {
+    const out: TemplateCloneSlideContent[] = [{ title, body: '' }];
+    for (const line of bulletLines) {
+      const item = cleanCloneTitle(
+        line.replace(/^[-*•·]\s+/, '').replace(/^\d+[.)]\s+/, ''),
+      ).slice(0, 80);
+      if (item) out.push({ title: item });
+    }
+    return out.slice(0, 20);
+  }
+
+  const paragraphs = brief
+    .split(/\n{2,}/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (paragraphs.length >= 2) {
+    const out: TemplateCloneSlideContent[] = [
+      { title, body: paragraphs[0]!.slice(0, 200) },
+    ];
+    for (let i = 1; i < paragraphs.length; i += 1) {
+      const para = paragraphs[i]!;
+      const firstLine = para.split('\n')[0]!.trim();
+      const slideTitle = firstLine.length <= 60
+        ? cleanCloneTitle(firstLine).slice(0, 80)
+        : `${title} ${i + 1}`;
+      const body = firstLine.length <= 60
+        ? para.split('\n').slice(1).join('\n').trim() || para
+        : para;
+      out.push({ title: slideTitle || `${title} ${i + 1}`, body: body.slice(0, 1200) });
+    }
+    return out.slice(0, 20);
+  }
+
+  return [
+    { title, body: brief.slice(0, 180) },
+    { title: 'Overview', body: brief.slice(0, 1200) },
+  ];
 }
 
 /**
@@ -409,11 +532,13 @@ export function resolveTemplateCloneSlidesFromBrief(options: {
   }
 
   if (out.length > 0) return out.slice(0, 20);
-  // No explicit outline in the source brief / user instruction: return an
-  // empty list so `buildTemplateClonedDeckHtml` keeps the template's natural
-  // slide count. Falling back to a single `{ title: deckTitle }` collapsed
-  // the deck to one slide on the Home template-card path (user picks a
-  // template + types a free-form prompt with no numbered outline), which
-  // masked the template's real layout variety.
-  return [];
+
+  // Free-form prompt (Home wizard / gallery): synthesize content-bearing
+  // slides so template marketing copy is replaced. Empty brief still returns
+  // [] so buildTemplateClonedDeckHtml can keep the template's natural shells.
+  if (!text) return [];
+  return synthesizeTemplateCloneSlidesFromFreeFormBrief({
+    brief: text,
+    ...(options.deckTitle !== undefined ? { deckTitle: options.deckTitle } : {}),
+  });
 }

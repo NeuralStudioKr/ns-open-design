@@ -229,8 +229,82 @@ describe('seedTemplateClonedDeckOnServer', () => {
         projectId: 'proj-3',
         pluginId: 'html-ppt-mini',
         templateTitle: 'Mini Template',
+        userInstruction: null,
+        sourceBrief: 'Visible headings: Alpha / Beta',
       },
     ]);
+  });
+
+  it('free-form prompt replaces Daisy marketing titles (not just shells)', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'od-template-clone-freeform-'));
+    const pluginDir = path.join(root, 'plugin');
+    const projectsRoot = path.join(root, 'projects');
+    const dataDir = path.join(root, '.od');
+    await mkdir(pluginDir, { recursive: true });
+    await mkdir(projectsRoot, { recursive: true });
+
+    const daisyPath = path.resolve(
+      process.cwd(),
+      '../../plugins/_official/examples/html-ppt-zhangzara-daisy-days/example.html',
+    );
+    await writeFile(path.join(pluginDir, 'example.html'), await readFile(daisyPath, 'utf8'), 'utf8');
+
+    const db = openDatabase(root, { dataDir });
+    upsertInstalledPlugin(db, {
+      id: 'html-ppt-zhangzara-daisy-days',
+      title: 'Html Ppt Zhangzara Daisy Days',
+      version: '0.0.0',
+      sourceKind: 'local',
+      source: pluginDir,
+      trust: 'bundled',
+      capabilitiesGranted: [],
+      manifest: {
+        name: 'html-ppt-zhangzara-daisy-days',
+        title: 'Html Ppt Zhangzara Daisy Days',
+        version: '0.0.0',
+        od: { preview: { entry: 'example.html' } },
+      } as any,
+      fsPath: pluginDir,
+      installedAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+
+    const written = new Map<string, string>();
+    const marked: Array<Record<string, unknown>> = [];
+    const result = await seedTemplateClonedDeckOnServer(
+      {
+        db,
+        projectsRoot,
+        projectId: 'proj-freeform',
+        ensureProject: async () => {
+          const dir = path.join(projectsRoot, 'proj-freeform');
+          await mkdir(dir, { recursive: true });
+          return dir;
+        },
+        writeProjectFile: async (_root, _id, name, body) => {
+          written.set(name, typeof body === 'string' ? body : body.toString('utf8'));
+          return { name };
+        },
+        markTemplateClonedDeckSeeded: (input) => {
+          marked.push(input as unknown as Record<string, unknown>);
+        },
+      },
+      {
+        pluginId: 'html-ppt-zhangzara-daisy-days',
+        templateTitle: 'Html Ppt Zhangzara Daisy Days',
+        userInstruction: 'AI 트렌드 발표자료를 만들어줘',
+        deckTitle: 'Html Ppt Zhangzara Daisy Days',
+        slideCountHint: 6,
+      },
+    );
+
+    expect(result.ok).toBe(true);
+    const deck = written.get('deck.html') ?? '';
+    expect(deck).toContain('#F5F0E6');
+    expect(deck).toMatch(/AI 트렌드/);
+    expect(deck).not.toContain('Daisy Days');
+    expect(deck).not.toContain('cheerful presentation template');
+    expect(marked[0]?.userInstruction).toBe('AI 트렌드 발표자료를 만들어줘');
   });
 
   it('normalizes marketplace-prefixed ids for bundled ensure', () => {

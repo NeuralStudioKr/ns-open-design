@@ -2184,7 +2184,8 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
               deckTitle:
                 handoff.title?.trim()
                 || handoff.threadTitle?.trim()
-                || selectedCanvasSlideTemplate.title,
+                || promptForRun.trim().slice(0, 80)
+                || null,
               slideCountHint: canvasSlideQuickLengthToSlideCount(
                 canvasSlideQuickSettings.length,
               ),
@@ -2349,7 +2350,8 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
             userInstruction: promptForRun,
             deckTitle:
               asset.filename?.trim()
-              || selectedCanvasSlideTemplate.title,
+              || promptForRun.trim().slice(0, 80)
+              || null,
             slideCountHint: canvasSlideQuickLengthToSlideCount(
               canvasSlideQuickSettings.length,
             ),
