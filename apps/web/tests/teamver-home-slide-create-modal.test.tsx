@@ -6,6 +6,7 @@ import { TeamverHomeSlideCreateModal } from "../src/teamver/components/TeamverHo
 import { TeamverHomeCreateHero } from "../src/teamver/components/TeamverHomeCreateHero";
 import {
   CANVAS_CREATE_SLIDES_PLUGIN_ID,
+  clearLastExplicitDeckTemplateId,
   readLastExplicitDeckTemplateId,
   rememberLastExplicitDeckTemplateId,
 } from "../src/teamver/canvasSlideLaunch";
@@ -112,6 +113,11 @@ describe("TeamverHomeSlideCreateModal", () => {
       />,
     );
     expect(screen.getByTestId("teamver-home-slide-create-content")).toBeTruthy();
+    const contentStep = screen.getByTestId("teamver-home-slide-create-step-content").closest("li");
+    expect(contentStep?.getAttribute("aria-current")).toBe("step");
+    expect(
+      screen.getByTestId("teamver-home-slide-create-step-template").closest("li")?.getAttribute("aria-current"),
+    ).toBeNull();
     // Explicit pick skips the forced "Next" gate — chip shows Hermes instead.
     expect(screen.getByTestId("teamver-home-slide-create-selected-template").textContent).toContain(
       "Hermes",
@@ -240,13 +246,15 @@ describe("TeamverHomeSlideCreateModal", () => {
     expect(screen.queryByTestId("teamver-home-slide-create-confirm")).toBeNull();
   });
 
-  it("remembers last explicit deck template id across Home surfaces", () => {
+  it("pins explicit canvas picks and clears them on demand", () => {
     const key = "od:last-explicit-deck-template-id";
     window.sessionStorage.removeItem(key);
     rememberLastExplicitDeckTemplateId(CANVAS_CREATE_SLIDES_PLUGIN_ID);
     expect(readLastExplicitDeckTemplateId()).toBeNull();
     rememberLastExplicitDeckTemplateId("example-html-ppt-zhangzara-daisy-days");
     expect(readLastExplicitDeckTemplateId()).toBe("example-html-ppt-zhangzara-daisy-days");
+    clearLastExplicitDeckTemplateId();
+    expect(readLastExplicitDeckTemplateId()).toBeNull();
     window.sessionStorage.removeItem(key);
   });
 });

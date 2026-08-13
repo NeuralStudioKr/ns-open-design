@@ -24,10 +24,10 @@
 ### 2.1 Home (slideOnly)
 
 ```
-[＋ 새 슬라이드]     → open wizard (entry=new, step=content, template=L1 default)
-닫기 / 생성 완료     → 템플릿 선택·last-explicit 핀 초기화 (다음 「새 슬라이드」에 이전 픽이 남지 않음)
+[＋ 새 슬라이드]     → open wizard (entry=new, step=content, template=L1 default, 첨부 비움)
+닫기 / 생성 완료     → 템플릿 선택·첨부·드라이브 피커·last-explicit 핀 초기화 (다음 「새 슬라이드」에 이전 픽·첨부가 남지 않음)
 Recent strip         → unchanged
-템플릿 갤러리        → 상세 → 사용 → open wizard (entry=template, step=content, template=id, step2=complete)
+템플릿 갤러리        → 상세 → 사용 → open wizard (entry=template, step=content, template=id, step2=complete, 첨부 비움)
 ```
 
 히어로 잠금은 마법사 도입 전 HomeHero와 동일: `TeamverLogo` 워드마크 + `teamver.homeHero.subtitle`. CTA는 `Icon plus` + 「새 슬라이드」. 마법사는 `createPortal` + `teamver-drive-picker-backdrop`(고정 오버레이).
@@ -42,7 +42,7 @@ Recent strip         → unchanged
 | `templateComplete` | entry=template 또는 스텝2에서 선택 확정 후 true |
 | `prompt` | textarea |
 | `quickSettings` | Canvas와 동일 스키마 재사용 |
-| `stagedFiles` / `stagedDriveAssets` | HomeView 기존 stage 로직 공유 또는 모달 로컬 후 confirm 시 전달 |
+| `stagedFiles` / `stagedDriveAssets` | HomeView stage. 닫기·생성 완료·「새 슬라이드」·갤러리 사용 시 비움 |
 | `selectedTemplateId` | canvas template options |
 
 **Stepper:** entry=template이면 내용 화면에서도 `(2) 템플릿`을 `complete`로 표시. `(2)` 클릭 시에만 템플릿 패널. 스텝·칩·다음 CTA 카피는 모두 「템플릿」.

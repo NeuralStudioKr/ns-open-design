@@ -407,17 +407,14 @@ export function HomeView({
   const [canvasSlideQuickSettings, setCanvasSlideQuickSettings] = useState<CanvasSlideQuickSettings>(
     DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS,
   );
-  // Persist last explicit visual pick across Home wizard / gallery / Canvas
-  // so create-slides does not silently reopen on "기본".
-  useEffect(() => {
-    rememberLastExplicitDeckTemplateId(homeSlideTemplateId);
-  }, [homeSlideTemplateId]);
+  // Persist Canvas→Slide picker picks only. Home wizard close/create
+  // clears the session pin so 「새 슬라이드」 does not reopen on the last card.
   useEffect(() => {
     rememberLastExplicitDeckTemplateId(canvasSlideTemplateId);
   }, [canvasSlideTemplateId]);
   // Canvas→Slide: slideOnly gallery Use never sets `active` (it opens the
-  // Home wizard instead). Seed from the wizard/gallery pin or session last
-  // pick — not only from active plugin.
+  // Home wizard instead). Seed from a live Home wizard pick or the Canvas
+  // session pin — not only from active plugin.
   useEffect(() => {
     if (!canvasSlideLaunch) return;
     const fromActive = slideOnlyMvp
@@ -1264,13 +1261,7 @@ export function HomeView({
       action: action === 'use-with-query' ? 'use_with_query' : 'use',
     });
     if (slideOnlyMvp) {
-      setHomeSlideTemplateId(record.id);
-      rememberLastExplicitDeckTemplateId(record.id);
-      setHomeSlideCreateEntry('template');
-      setHomeSlideCreateError(null);
-      setHomeSlideUserPrompt('');
-      setHomeSlideQuickSettings(DEFAULT_HOME_SLIDE_CREATE_QUICK_SETTINGS);
-      setHomeSlideCreateOpen(true);
+      openHomeSlideCreate('template', record.id);
       setDetailsRecord(null);
       return;
     }
@@ -1863,10 +1854,16 @@ export function HomeView({
     setHomeSlideUserPrompt('');
     setHomeSlideQuickSettings(DEFAULT_HOME_SLIDE_CREATE_QUICK_SETTINGS);
     setHomeSlideTemplateId(CANVAS_CREATE_SLIDES_PLUGIN_ID);
+    setStagedFiles([]);
+    setStagedDriveAssets([]);
+    setDriveImportOpen(false);
     clearLastExplicitDeckTemplateId();
   }
 
   function openHomeSlideCreate(entry: TeamverHomeSlideCreateEntry, templateId?: string) {
+    setStagedFiles([]);
+    setStagedDriveAssets([]);
+    setDriveImportOpen(false);
     setHomeSlideCreateEntry(entry);
     const explicit = templateId?.trim() || '';
     setHomeSlideTemplateId(

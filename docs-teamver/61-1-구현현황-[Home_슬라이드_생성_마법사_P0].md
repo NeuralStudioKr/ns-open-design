@@ -19,7 +19,7 @@
 
 - 2026-08-13: Home 「슬라이드 템플릿」섹션 부제(「스타일을 둘러보고…」) 제거. 제목만 유지.
 - 2026-08-13: 마법사 UI — 스텝퍼 번호 28px·현재 스텝 accent 필, 스텝↔본문 간격 확대(Home·Canvas 공유). 카피 통일: 다음 CTA·선택 칩·스텝 모두 「템플릿」(스타일 폐기).
-- 2026-08-13: 「새 슬라이드」는 last-explicit 핀을 복원하지 않음. 모달 닫기·생성 완료 시 `resetHomeSlideCreateDraft`로 기본 템플릿 + session pin 클리어. 갤러리 「사용」만 해당 템플릿을 이번 세션에 prefill.
+- 2026-08-13: 리뷰 루프 — 닫기/생성/새 슬라이드/갤러리 사용 시 첨부·드라이브 피커도 초기화. Home 마법사는 last-explicit 핀을 쓰지 않음(Canvas 피커만 유지, 닫으면 클리어). 스텝퍼 `aria-current="step"`. 드래그 `dropEffect=copy`. `homeCreate` i18n을 Dict·전 locale에 등록.
 - 2026-08-13: 템플릿 카드 썸네일 — `example.html` 크롬을 프레임에서 숨기고 iframe을 1920×1080 → `100cqw` 스케일. 그리드 minmax 240px(약 3열)로 16:9 슬라이드가 잘리지 않게.
 - 2026-08-13: 첨부 UI를 FE composer `+` 메뉴와 같이 아이콘 행(드라이브 폴더 / 파일 업로드) + 드롭존. 드래그·클립보드 파일/스크린샷 붙여넣기. 프롬프트 textarea의 텍스트 붙여넣기는 가로채지 않음.
 - 2026-08-13: 리뷰 — Drive 중첩 시 Escape가 마법사까지 닫히던 점(topmost backdrop만 dismiss). body/entry-main 스크롤 잠금·포커스 트랩. 전역 `button:hover`가 마법사 내부 confirm/스텝퍼/칩/스타일 칩 배경을 지우는 것 보정. 기획 2.1을 last-explicit 핀·워드마크·portal과 맞춤.

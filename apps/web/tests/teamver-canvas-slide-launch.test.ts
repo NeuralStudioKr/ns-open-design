@@ -460,11 +460,22 @@ describe("canvasSlideLaunch", () => {
     expect(home).toContain("readLastExplicitDeckTemplateId");
     expect(home).toContain("clearLastExplicitDeckTemplateId");
     expect(home).toContain("resetHomeSlideCreateDraft");
+    expect(home).not.toContain("rememberLastExplicitDeckTemplateId(homeSlideTemplateId)");
+    expect(home).not.toContain("rememberLastExplicitDeckTemplateId(record.id)");
+    const resetHomeSlideCreateDraftSrc = home.slice(
+      home.indexOf("function resetHomeSlideCreateDraft"),
+      home.indexOf("function openHomeSlideCreate"),
+    );
+    expect(resetHomeSlideCreateDraftSrc).toContain("setStagedFiles([])");
+    expect(resetHomeSlideCreateDraftSrc).toContain("setStagedDriveAssets([])");
+    expect(resetHomeSlideCreateDraftSrc).toContain("clearLastExplicitDeckTemplateId");
     const openHomeSlideCreateSrc = home.slice(
       home.indexOf("function openHomeSlideCreate"),
       home.indexOf("function closeHomeSlideCreate"),
     );
     expect(openHomeSlideCreateSrc).not.toContain("readLastExplicitDeckTemplateId");
+    expect(openHomeSlideCreateSrc).toContain("setStagedFiles([])");
+    expect(openHomeSlideCreateSrc).toContain("setStagedDriveAssets([])");
     expect(composer).toContain("blocking model kit fallthrough");
     const entryShell = readWebSource("src/components/EntryShell.tsx");
     expect(entryShell).toContain("payloadTemplateId");

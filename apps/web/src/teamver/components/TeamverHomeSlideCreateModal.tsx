@@ -195,7 +195,7 @@ export function TeamverHomeSlideCreateModal({
   }, [open, confirming, onClose]);
 
   useEffect(() => {
-    if (!open || confirming || step !== "content") return;
+    if (!open || confirming) return;
     const node = dialogRef.current;
     if (!node) return;
     function onPaste(event: ClipboardEvent) {
@@ -212,7 +212,7 @@ export function TeamverHomeSlideCreateModal({
     }
     node.addEventListener("paste", onPaste);
     return () => node.removeEventListener("paste", onPaste);
-  }, [open, confirming, step, onAddFiles]);
+  }, [open, confirming, onAddFiles]);
 
   const normalizedQuick = useMemo(
     () => ({ ...DEFAULT_HOME_SLIDE_CREATE_QUICK_SETTINGS, ...quickSettings }),
@@ -235,7 +235,7 @@ export function TeamverHomeSlideCreateModal({
   const hasExplicitTemplate = isExplicitCanvasSlideVisualTemplate(selectedTemplate);
   // Gallery "Use template" / explicit pick: confirm from content immediately.
   // "New slide": require visiting the template step (기본 허용) so users don't
-  // skip style entirely — but never treat mere visit as an explicit Daisy pick.
+  // skip the template step entirely — but never treat mere visit as an explicit Daisy pick.
   const canConfirmFromContent =
     hasExplicitTemplate || (entry === "new" && templateVisited);
   const templateStepComplete = hasExplicitTemplate || (entry === "template" && templateReady);
@@ -256,9 +256,14 @@ export function TeamverHomeSlideCreateModal({
     setDragActive(true);
   }
 
-  function onAttachDragOver(event: { dataTransfer?: DataTransfer | null; preventDefault: () => void }) {
-    if (!event.dataTransfer?.types.includes("Files")) return;
+  function onAttachDragOver(event: {
+    dataTransfer?: DataTransfer | null;
+    preventDefault: () => void;
+  }) {
+    const dt = event.dataTransfer;
+    if (!dt?.types.includes("Files")) return;
     event.preventDefault();
+    dt.dropEffect = "copy";
     setDragActive(true);
   }
 
@@ -288,87 +293,87 @@ export function TeamverHomeSlideCreateModal({
         <p className="teamver-home-slide-create-section-title">
           {t("teamver.homeCreate.attachTitle")}
         </p>
-      <div
-        className={[
-          "teamver-home-slide-create-attach-zone",
-          dragActive ? "is-drag-active" : "",
-        ]
-          .filter(Boolean)
-          .join(" ")}
-        data-testid="teamver-home-slide-create-attach-zone"
-        onDragEnter={onAttachDragEnter}
-        onDragOver={onAttachDragOver}
-        onDragLeave={onAttachDragLeave}
-        onDrop={onAttachDrop}
-      >
-        <div className="teamver-home-slide-create-attach-menu" role="group">
-          {onAttachFromDrive ? (
+        <div
+          className={[
+            "teamver-home-slide-create-attach-zone",
+            dragActive ? "is-drag-active" : "",
+          ]
+            .filter(Boolean)
+            .join(" ")}
+          data-testid="teamver-home-slide-create-attach-zone"
+          onDragEnter={onAttachDragEnter}
+          onDragOver={onAttachDragOver}
+          onDragLeave={onAttachDragLeave}
+          onDrop={onAttachDrop}
+        >
+          <div className="teamver-home-slide-create-attach-menu" role="group">
+            {onAttachFromDrive ? (
+              <button
+                type="button"
+                className="teamver-home-slide-create-attach-item"
+                disabled={confirming}
+                data-testid="teamver-home-slide-create-drive"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={onAttachFromDrive}
+              >
+                <Icon name="folder" size={18} className="teamver-home-slide-create-attach-item-icon" />
+                <span>{t("teamver.homeCreate.drive")}</span>
+              </button>
+            ) : null}
             <button
               type="button"
               className="teamver-home-slide-create-attach-item"
               disabled={confirming}
-              data-testid="teamver-home-slide-create-drive"
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={onAttachFromDrive}
+              data-testid="teamver-home-slide-create-upload"
+              onClick={() => fileInputRef.current?.click()}
             >
-              <Icon name="folder" size={18} className="teamver-home-slide-create-attach-item-icon" />
-              <span>{t("teamver.homeCreate.drive")}</span>
+              <Icon name="upload" size={18} className="teamver-home-slide-create-attach-item-icon" />
+              <span>{t("teamver.homeCreate.upload")}</span>
             </button>
-          ) : null}
-          <button
-            type="button"
-            className="teamver-home-slide-create-attach-item"
-            disabled={confirming}
-            data-testid="teamver-home-slide-create-upload"
-            onClick={() => fileInputRef.current?.click()}
-          >
-            <Icon name="upload" size={18} className="teamver-home-slide-create-attach-item-icon" />
-            <span>{t("teamver.homeCreate.upload")}</span>
-          </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple
-            hidden
-            onChange={(event) => {
-              const list = event.currentTarget.files;
-              if (list && list.length > 0) onAddFiles?.(Array.from(list));
-              event.currentTarget.value = "";
-            }}
-          />
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              hidden
+              onChange={(event) => {
+                const list = event.currentTarget.files;
+                if (list && list.length > 0) onAddFiles?.(Array.from(list));
+                event.currentTarget.value = "";
+              }}
+            />
+          </div>
+          <p className="teamver-home-slide-create-attach-hint">{t("teamver.homeCreate.attachHint")}</p>
+          {(stagedFiles.length > 0 || stagedDriveAssets.length > 0) && (
+            <ul className="teamver-home-slide-create-chips">
+              {stagedFiles.map((file, index) => (
+                <li key={`file-${file.name}-${index}`}>
+                  <span>{file.name}</span>
+                  <button
+                    type="button"
+                    aria-label={t("teamver.homeCreate.removeAttach")}
+                    disabled={confirming}
+                    onClick={() => onRemoveFile?.(index)}
+                  >
+                    ×
+                  </button>
+                </li>
+              ))}
+              {stagedDriveAssets.map((asset) => (
+                <li key={`drive-${asset.assetId}`}>
+                  <span>{asset.filename ?? asset.assetId}</span>
+                  <button
+                    type="button"
+                    aria-label={t("teamver.homeCreate.removeAttach")}
+                    disabled={confirming}
+                    onClick={() => onRemoveDriveAsset?.(asset.assetId)}
+                  >
+                    ×
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
-        <p className="teamver-home-slide-create-attach-hint">{t("teamver.homeCreate.attachHint")}</p>
-        {(stagedFiles.length > 0 || stagedDriveAssets.length > 0) && (
-          <ul className="teamver-home-slide-create-chips">
-            {stagedFiles.map((file, index) => (
-              <li key={`file-${file.name}-${index}`}>
-                <span>{file.name}</span>
-                <button
-                  type="button"
-                  aria-label={t("teamver.homeCreate.removeAttach")}
-                  disabled={confirming}
-                  onClick={() => onRemoveFile?.(index)}
-                >
-                  ×
-                </button>
-              </li>
-            ))}
-            {stagedDriveAssets.map((asset) => (
-              <li key={`drive-${asset.assetId}`}>
-                <span>{asset.filename ?? asset.assetId}</span>
-                <button
-                  type="button"
-                  aria-label={t("teamver.homeCreate.removeAttach")}
-                  disabled={confirming}
-                  onClick={() => onRemoveDriveAsset?.(asset.assetId)}
-                >
-                  ×
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
       </div>
 
       <div
@@ -552,6 +557,7 @@ export function TeamverHomeSlideCreateModal({
                 "teamver-canvas-slide-launch-stepper-item",
                 step === "content" ? "is-current" : "is-complete",
               ].join(" ")}
+              aria-current={step === "content" ? "step" : undefined}
             >
               <button
                 type="button"
@@ -577,6 +583,7 @@ export function TeamverHomeSlideCreateModal({
                       ? "is-complete"
                       : "is-upcoming",
               ].join(" ")}
+              aria-current={showingTemplate ? "step" : undefined}
             >
               <button
                 type="button"

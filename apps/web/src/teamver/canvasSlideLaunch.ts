@@ -53,7 +53,7 @@ export function isExplicitCanvasSlideVisualTemplate(
   return true;
 }
 
-/** Cross-surface pin so Canvas→Slide inherits the last Home wizard/gallery pick. */
+/** Canvas→Slide session pin. Home wizard close/create clears this so 「새 슬라이드」 stays on L1. */
 const LAST_EXPLICIT_DECK_TEMPLATE_KEY = "od:last-explicit-deck-template-id";
 
 export function rememberLastExplicitDeckTemplateId(templateId: string | null | undefined): void {
