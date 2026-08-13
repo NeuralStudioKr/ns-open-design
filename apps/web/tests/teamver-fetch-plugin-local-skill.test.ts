@@ -86,7 +86,8 @@ describe('fetchPluginLocalSkill', () => {
     );
   });
 
-  it('appends a compact visual kit from example.html for Daisy Days-style templates', async () => {
+  it('appends a content-swap scaffold from example.html for Daisy Days-style templates', async () => {
+    vi.spyOn(designApiBase, 'isTeamverEmbedMode').mockReturnValue(false);
     const plugin = {
       id: 'example-html-ppt-zhangzara-daisy-days',
       manifest: {
@@ -138,9 +139,10 @@ describe('fetchPluginLocalSkill', () => {
     const local = await readPluginLocalSkillFromRecord(plugin);
     expect(local).not.toBeNull();
     expect(local!.body).toContain('## Visual summary (from template frontmatter)');
-    expect(local!.body).toContain('## Template visual kit (from example.html)');
+    expect(local!.body).toContain('## Template scaffold (CONTENT-SWAP BASE)');
     expect(local!.body).toContain('#F5F0E6');
     expect(local!.body).toContain('Fredoka One');
+    expect(local!.body).toContain('slide slide-title');
   });
 
   it('returns null when the plugin has no local skill path', async () => {

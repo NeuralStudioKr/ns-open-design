@@ -13,15 +13,15 @@
  * `.deco` CSS + hard anti-emoji rules placed before any large cue.
  */
 
-// Raised from 5 200 to 6 800 so a real Zhangzara daisy sprite (~2 KB after
+// Raised from 5 200 to 7 800 so a real Zhangzara daisy sprite (~2 KB after
 // comment strip) can co-exist with the star, rainbow, tokens, decoration
-// CSS, and first-slide structure cue without truncating any of them. The
+// CSS, scaffold map, and first-slide structure cue without truncating any of them. The
 // motif sprites are the single biggest anti-emoji signal we can hand the
 // model — clipping them was the reason Daisy Days kept coming back as 🌸
 // emoji clusters despite every prompt-level ban we added.
 // BODY-FIRST hard rules below tell the model to emit slides before pasting
 // this kit into `<head>` so the larger budget does not invite shell-only cuts.
-const DEFAULT_MAX_CHARS = 6_800;
+const DEFAULT_MAX_CHARS = 7_800;
 
 function uniquePreserveOrder(values: string[]): string[] {
   const out: string[] = [];
@@ -67,6 +67,58 @@ function extractHexColors(html: string): string[] {
   return uniquePreserveOrder(
     [...html.matchAll(/#[0-9a-fA-F]{3,8}\b/g)].map((m) => m[0] ?? ''),
   ).slice(0, 16);
+}
+
+function extractCssVariables(rootCss: string | null): Record<string, string> {
+  if (!rootCss) return {};
+  const vars: Record<string, string> = {};
+  for (const match of rootCss.matchAll(/--([a-zA-Z0-9_-]+)\s*:\s*([^;}]+)/g)) {
+    const key = match[1]?.trim();
+    const value = match[2]?.trim();
+    if (key && value) vars[key] = value;
+  }
+  return vars;
+}
+
+function firstVarValue(vars: Record<string, string>, names: readonly string[]): string | null {
+  for (const name of names) {
+    const value = vars[name]?.trim();
+    if (value) return `--${name} ${value}`;
+  }
+  return null;
+}
+
+function buildTemplateAnchorSummary(options: {
+  title: string;
+  rootCss: string | null;
+  fonts: readonly string[];
+}): string[] {
+  const vars = extractCssVariables(options.rootCss);
+  const anchors: string[] = [];
+  const surface = firstVarValue(vars, ['cream', 'background', 'bg', 'surface', 'paper']);
+  const text = firstVarValue(vars, ['text-dark', 'text', 'foreground', 'ink']);
+  const accent = firstVarValue(vars, ['turquoise', 'coral', 'butter', 'mint', 'primary', 'accent']);
+  const border = firstVarValue(vars, ['border', 'border-width']);
+  const shadow = firstVarValue(vars, ['shadow', 'shadow-sm']);
+  if (surface) {
+    anchors.push(
+      `- Main surface/background: ${surface}. The cover and most slides MUST use this template surface; do not choose a dark default unless this value is dark.`,
+    );
+  }
+  if (text) anchors.push(`- Main text/ink: ${text}.`);
+  if (accent) anchors.push(`- Accent cue: ${accent}.`);
+  if (options.fonts.length > 0) {
+    anchors.push(`- Typography: ${options.fonts.slice(0, 4).join(' | ')}.`);
+  }
+  if (border || shadow) {
+    anchors.push(`- Chunky outline/card treatment: ${[border, shadow].filter(Boolean).join(' ; ')}.`);
+  }
+  if (/daisy/i.test(options.title)) {
+    anchors.push(
+      '- Daisy Days identity: cream paper, dark ink outline, butter-yellow daisy center, hand-drawn white petals, pastel star/badge accents. The cover MUST show the provided daisy SVG motif, not a generic dark flower.',
+    );
+  }
+  return anchors;
 }
 
 function extractStyleSheets(html: string): string {
@@ -339,11 +391,74 @@ function extractFirstSlideStructureCue(html: string, budget: number): string | n
   return snippet.length > budget ? `${snippet.slice(0, budget)}…` : snippet;
 }
 
+function stripHtmlText(html: string): string {
+  return html
+    .replace(/<script\b[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style\b[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function extractTemplateScaffoldMap(html: string, budget: number): string | null {
+  const sections = [...html.matchAll(/<section\b([^>]*)>([\s\S]*?)<\/section>/gi)];
+  if (sections.length === 0) return null;
+  const lines: string[] = [];
+  let used = 0;
+  for (let i = 0; i < Math.min(sections.length, 12); i += 1) {
+    const attrs = sections[i]?.[1] ?? '';
+    const body = sections[i]?.[2] ?? '';
+    const className =
+      /class\s*=\s*"([^"]+)"/i.exec(attrs)?.[1]
+      ?? /class\s*=\s*'([^']+)'/i.exec(attrs)?.[1]
+      ?? 'slide';
+    const id =
+      /id\s*=\s*"([^"]+)"/i.exec(attrs)?.[1]
+      ?? /id\s*=\s*'([^']+)'/i.exec(attrs)?.[1]
+      ?? null;
+    const heading =
+      /<h[1-4]\b[^>]*>([\s\S]*?)<\/h[1-4]>/i.exec(body)?.[1]
+      ?? /<title\b[^>]*>([\s\S]*?)<\/title>/i.exec(body)?.[1]
+      ?? '';
+    const cleanHeading = stripHtmlText(heading).slice(0, 80);
+    const decoClasses = uniquePreserveOrder(
+      [...body.matchAll(/class\s*=\s*["']([^"']*\bdeco\b[^"']*)["']/gi)]
+        .map((match) => (match[1] ?? '').trim()),
+    ).slice(0, 4);
+    const layoutRole = className
+      .split(/\s+/)
+      .find((cls) => cls.startsWith('slide-') && cls !== 'slide')
+      ?.replace(/^slide-/, '')
+      || 'body';
+    const parts = [
+      `- ${i + 1}. classes="${className}"`,
+      id ? `id="${id}"` : null,
+      `role=${layoutRole}`,
+      cleanHeading ? `sample="${cleanHeading}"` : null,
+      decoClasses.length > 0 ? `deco=${decoClasses.join(' | ')}` : null,
+    ].filter(Boolean);
+    const line = parts.join('; ');
+    if (used + line.length + 1 > budget) break;
+    lines.push(line);
+    used += line.length + 1;
+  }
+  if (lines.length === 0) return null;
+  return [
+    'Use this example.html slide order/classes as the base scaffold. Replace visible content only.',
+    ...lines,
+  ].join('\n');
+}
+
 const HARD_RULES = [
   'Hard rules (non-negotiable):',
+  '- **TEMPLATE-AS-BASE:** treat `example.html` as the base deck. Preserve its slide classes, layout roles, surface colors, decorative wrappers, border/shadow/card treatment, and SVG motif language. Replace only visible content: headings, paragraphs, bullets, chart/table labels/values, and image slots.',
   '- **BODY-FIRST:** emit `<body>` / filled `<section class="slide">` slides BEFORE a large `<head>`/`<style>` dump. Put Motif sprites + Decoration CSS in one short body `<style>` after slide 1 (or tiny inline tokens). A CSS-only truncation is a failed deliverable.',
-  '- Keep the template scheme (light pastel stays light; dark terminal stays dark).',
-  '- Motif MUST be SVG/CSS from **Motif sprites** / **Decoration CSS** below (e.g. `<div class="deco deco-daisy-tl">…svg…</div>`). Use 2–4 sprites max per slide.',
+  '- Keep the template scheme exactly (light pastel stays light; dark terminal stays dark). If the kit has a named main surface/background token, use it on the cover.',
+  '- Motif MUST be copied from **Motif sprites** / **Decoration CSS** below (e.g. `<div class="deco deco-daisy-tl">…exact svg…</div>`). Use 2–4 sprites max per slide; copy at least one complete provided SVG on the cover when sprites are present.',
   '- **Forbidden motif substitutes:** unicode/emoji ornaments as decoration — no 🌼 🌸 🌺 🌻 🌹 ⭐ ✨ 🌟 🌈 ☀️ or similar flower/star/rainbow emoji rows pretending to be the template identity.',
   '- Preserve chunky cards/borders/offset shadows when Decoration CSS shows them.',
   '- Vary slide layouts using the template vocabulary; do not emit sparse title-only Neutral Modern slides.',
@@ -382,6 +497,10 @@ export function extractTemplateVisualKitFromHtml(
   if (root) {
     lines.push('### CSS tokens', '', '```css', root, '```', '');
   }
+  const anchors = buildTemplateAnchorSummary({ title, rootCss: root, fonts });
+  if (anchors.length > 0) {
+    lines.push('### Must-match anchors (read this even if CSS variables are unfamiliar)', '', ...anchors, '');
+  }
   if (fonts.length > 0) {
     lines.push(`### Fonts: ${fonts.join(' | ')}`, '');
   }
@@ -400,7 +519,24 @@ export function extractTemplateVisualKitFromHtml(
   }
 
   let used = lines.join('\n').length;
-  const decoBudget = Math.min(1_100, Math.max(320, maxChars - used - 1_800));
+  const scaffoldBudget = Math.min(1_100, Math.max(420, maxChars - used - 3_700));
+  const scaffold = extractTemplateScaffoldMap(source, scaffoldBudget);
+  if (scaffold) {
+    lines.push(
+      '### Template scaffold map (preserve layout/classes; replace content only)',
+      '',
+      '```text',
+      scaffold,
+      '```',
+      '',
+    );
+  }
+
+  used = lines.join('\n').length;
+  // Preserve enough room for one real multi-petal motif SVG (Daisy Days is
+  // ~2 KB). Decoration CSS is useful, but without the actual sprite the model
+  // falls back to generic dark flowers / emoji-like approximations.
+  const decoBudget = Math.min(820, Math.max(240, maxChars - used - 3_000));
   const deco = extractDecorationCss(source, decoBudget);
   if (deco) {
     lines.push(
@@ -422,7 +558,7 @@ export function extractTemplateVisualKitFromHtml(
     lines.push(
       '### Motif sprites (complete SVGs — copy into corner `<div class="deco …">` wrappers)',
       '',
-      'Use 2–4 of these per slide at corners/edges via absolute `.deco` positioning. Do not invent emoji flowers. Do not paste every sprite into `<head>` before writing slides — BODY-FIRST.',
+      'Copy at least one complete SVG from this block onto the cover. Use 2–4 of these per slide at corners/edges via absolute `.deco` positioning. Do not invent emoji flowers or approximate with generic flowers. Do not paste every sprite into `<head>` before writing slides — BODY-FIRST.',
       '',
     );
     for (let i = 0; i < sprites.length; i += 1) {

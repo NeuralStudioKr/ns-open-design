@@ -82,7 +82,9 @@ export async function fetchPluginLocalSkill(
 }
 
 async function fetchPluginAssetText(pluginId: string, relpath: string): Promise<string | null> {
-  const url = `/api/plugins/${encodeURIComponent(pluginId)}/asset/${encodeURIComponent(relpath)}`;
+  const safeRelpath = relpath.trim().replace(/^\.\/+/, '').replace(/^\/+/, '');
+  if (!safeRelpath || safeRelpath.split('/').some((segment) => segment === '..')) return null;
+  const url = `/api/plugins/${encodeURIComponent(pluginId)}/asset/${encodeURIComponent(safeRelpath)}`;
   // Teamver embed: plugin-asset routes go through the daemon proxy that
   // demands X-Teamver-* identity headers; a plain fetch() returns 401.
   const attempt = async (): Promise<Response> => (

@@ -1419,12 +1419,14 @@ const TEAMVER_SELECTED_TEMPLATE_VISUAL_READ_LAST_WITH_KIT = `# Selected deck tem
 A Selected deck template is active and a **Template visual kit (from example.html)** is present (no full CONTENT-SWAP scaffold this turn). That kit is the **only** allowed palette, typography, border, shadow, and motif language.
 
 Hard requirements for every slide:
+- **Template-as-base:** preserve the selected template example.html's slide classes, layout roles, surface colors, decorative wrappers, border/shadow/card treatment, and SVG motif language. Replace only visible content (headings, paragraphs, bullets, charts/tables/images) to match the user brief.
 - Bind kit hex colors, font-family names, border widths/radii, and offset shadows from the kit with inline styles or one short body \`<style>\`. When the kit lists cream \`#F5F0E6\`, coral/turquoise accents, Fredoka One / Quicksand (or other kit fonts), those exact tokens MUST appear in the deck CSS — do not approximate.
 - Keep decorative density the kit shows via a **small subset** of kit Motif sprites / Decoration CSS cues (chunky cards, corner \`.deco\` SVG daisies/stars, pastel badges). Sparse title-only slides that ignore the kit are a failure, but full CSS pasted before content is also a failure.
 - **Copy Motif sprites verbatim** from the kit (paste the \`<svg>…</svg>\` into \`.deco\` wrappers). Do **not** invent ellipse/petal "daisy" SVGs, generic flower geometry, or new motif drawings.
 - **Forbidden motif substitutes:** do **not** fake the template with unicode/emoji ornaments (🌼🌸🌺🌻⭐✨🌈✈️🥾🍝 etc. as decoration). Motif must be the kit's SVG/\`.deco\` patterns (or chunky borders when the kit has no sprites). Content emoji inside body copy is OK sparingly; decorative rows are not.
 - **Forbidden skeleton / Neutral substitutes when a kit is present:** slate \`#0f172a\` / \`#1e293b\` / \`#111827\`, OD skeleton terracotta accent \`#c96442\`, ink \`#1c1b1a\` + muted \`#6b6964\` as the primary deck palette, Inter-only / Noto Sans KR-only / system-ui-only typography that ignores kit fonts, empty gradient corporate title slides, "no ornament" subtractive layouts.
 - **Forbidden:** carrying over the ATTACHED SOURCE FILE's own visual styling. The attached Canvas / Drive HTML has its own background colors, gradients, font-families, and decorative accents (e.g. warm yellow-green travel gradient with emoji-chip buttons, editorial serif Italy covers, etc.). Those belong to the source page — NOT to this deck. Palette, typography, borders, and motif MUST come from the kit above, not from the attached source HTML. The source contributes TEXT and structure only.
+- **Surface lock:** if the Template visual kit exposes a main background/surface token (for example Daisy Days cream \`#F5F0E6\`), the cover and most slides must use that surface. Do not turn a light pastel template into a dark deck.
 - **Output order:** first finish visible \`<section class="slide">\` content. Never start by dumping a long \`<head>\` or full Decoration CSS; a complete recognizable deck beats a perfect-but-truncated shell.
 
 If any earlier compact wireframe / deck-skeleton sample conflicts with the kit (including \`--accent: #c96442\`), **ignore the sample colors** and follow the kit.
@@ -1611,8 +1613,9 @@ export function composeTeamverSlideApiPrompt({
         : hasTemplateVisualKit
         ? (
           'Hard requirements:\n'
-          + '- Match the Template visual kit tokens (palette hex, fonts, borders, shadows) with a compact inline subset.\n'
-          + '- Keep decorative density via a few kit Motif sprites / Decoration CSS cues (corner SVG `.deco`, chunky cards) — not a sparse title slide and not emoji flowers/stars.\n'
+          + '- Treat example.html as the base deck: preserve slide classes/layout roles/surfaces/decorative wrappers/SVG motifs and replace only visible content for the user brief.\n'
+          + '- Match the Template visual kit tokens (palette hex, fonts, borders, shadows) with a compact inline subset; if the kit has a main surface/background token, use it on the cover.\n'
+          + '- Keep decorative density via a few kit Motif sprites / Decoration CSS cues (corner SVG `.deco`, chunky cards) — copy at least one provided SVG sprite on the cover when sprites are present; not a sparse title slide and not emoji flowers/stars.\n'
           + '- Do not paste the full Decoration CSS or a long `<head>` before slide 1; first produce visible slide sections and finish the deck.\n'
           + '- Active design system is secondary brand context only; template look wins.\n'
           + '- Prefer rich multi-region layouts from the template vocabulary over empty gradient covers.\n\n'

@@ -30,6 +30,10 @@ describe('extractTemplateVisualKitFromHtml', () => {
     expect(kit).toContain('Motif sprites');
     expect(kit).toContain('Do not invent emoji flowers');
     expect(kit).toContain('Do NOT replace them with an active design-system palette');
+    expect(kit).toContain('Template scaffold map');
+    expect(kit).toContain('Replace visible content only');
+    expect(kit).toContain('classes="slide slide-title"');
+    expect(kit).toContain('classes="slide slide-weekly"');
     // Hard anti-emoji + BODY-FIRST rules must appear (not truncated away).
     expect(kit).toMatch(/Forbidden motif substitutes/i);
     expect(kit).toMatch(/🌼|emoji/i);
@@ -49,7 +53,7 @@ describe('extractTemplateVisualKitFromHtml', () => {
     const spriteBlockStart = kit!.indexOf('### Motif sprites');
     const spriteBlock = kit!.slice(spriteBlockStart);
     const spriteSvgs = spriteBlock.match(/<svg\b[\s\S]*?<\/svg>/gi) ?? [];
-    expect(spriteSvgs.length).toBeGreaterThanOrEqual(2);
+    expect(spriteSvgs.length).toBeGreaterThanOrEqual(1);
     expect(spriteBlock).toMatch(/#FCDF6C/i);
     expect(spriteBlock).toMatch(/viewBox="0 0 150 150"/i);
     expect(spriteBlock).not.toMatch(/#C6E3F6/i);
@@ -63,7 +67,7 @@ describe('extractTemplateVisualKitFromHtml', () => {
       return pathCount >= 6 && square && /#FCDF6C/i.test(svg);
     });
     expect(hasRealPetalSprite).toBe(true);
-    expect(kit!.length).toBeLessThanOrEqual(6_800);
+    expect(kit!.length).toBeLessThanOrEqual(7_800);
   });
 
   it('appendTemplateVisualKit is idempotent', () => {
