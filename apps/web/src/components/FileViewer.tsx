@@ -337,6 +337,7 @@ import {
   shouldReseedSingleInspectorAfterTipYieldMixedClear,
   shouldApplyTipYieldSingleInspectorSnapshot,
   shouldRefreshHostPaintAfterTipYieldSingleReseed,
+  shouldSyncSelectedTargetIdentityAfterTipYieldSingleReseed,
   shouldSkipWildJumpAfterTipRemountGrace,
   shouldSyncManualEditFrozenSourceToPainted,
   shouldUpdateManualEditFrozenSourceOnPatch,
@@ -8040,12 +8041,40 @@ function HtmlViewer({
                 outerHtml: snapshot.outerHtml,
                 fullSource: base,
               }));
+              // Keep selected target identity aligned with painted tip (426).
+              if (shouldSyncSelectedTargetIdentityAfterTipYieldSingleReseed(
+                primary?.id,
+                seedId,
+              )) {
+                setSelectedManualEditTarget((current) => {
+                  if (!current || current.id !== seedId) return current;
+                  const next = {
+                    ...current,
+                    text: snapshot.fields.text ?? current.text,
+                    fields: { ...current.fields, ...snapshot.fields },
+                    attributes: snapshot.attributes,
+                    styles: mergeManualEditInspectorStyles(snapshot.styles, current.styles),
+                    outerHtml: snapshot.outerHtml || current.outerHtml,
+                  };
+                  selectedManualEditTargetRef.current = next;
+                  return next;
+                });
+              }
             }
           }
           // 2→1 tip-yield: host paint may still track the prior multi primary.
-          if (shouldRefreshHostPaintAfterTipYieldSingleReseed(ids)) {
+          // Skip while tip-remount grace is active — force measure can stamp a
+          // pre-layout wild rect; od-edit-rect owns geometry during grace (430).
+          {
             const paintId = selectedManualEditTargetIdRef.current ?? ids[0]!;
-            refreshManualEditHostPaintRect(paintId, { force: true });
+            if (shouldRefreshHostPaintAfterTipYieldSingleReseed(ids, {
+              graceId: manualEditTipRemountGeometryGraceIdRef.current,
+              paintId,
+              nowMs: Date.now(),
+              graceUntilMs: manualEditTipRemountGeometryGraceUntilRef.current,
+            })) {
+              refreshManualEditHostPaintRect(paintId, { force: true });
+            }
           }
         }
         return;
@@ -9549,6 +9578,11 @@ function HtmlViewer({
           clearManualEditTipRemountGeometryGrace();
         }
         applyManualEditMeasuredGeometry(measured);
+        if (tipRemountGrace) {
+          // Tip-remount remasure landed — sync host paint now (deferred during
+          // grace so force measure cannot stamp a pre-layout wild rect) (430).
+          refreshManualEditHostPaintRect(measured.id, { force: true });
+        }
         return;
       }
     }

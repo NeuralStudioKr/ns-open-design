@@ -27,7 +27,7 @@
     "build:sidecar": "tsc -p tsconfig.sidecar.json",
     "build:snapshot-capture": "node scripts/build-snapshot-capture.mjs",
     "typecheck": "tsc -b --noEmit",
-    "pretest": "pnpm -C ../../packages/contracts run build && pnpm run build:snapshot-capture",
+    "pretest": "node scripts/pretest.mjs",
     "test": "vitest run -c vitest.config.ts"
   },
   "dependencies": {

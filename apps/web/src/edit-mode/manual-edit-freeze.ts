@@ -104,11 +104,43 @@ export function shouldApplyTipYieldSingleInspectorSnapshot(
 /**
  * After tip-yield Mixed→single (2→1), refresh host paint for the remaining id
  * so overlay geometry is not stuck on the prior multi primary (59 / 51–53).
+ *
+ * Skip while tip-remount grace is active for that id — force measure can stamp
+ * a pre-layout wild rect; idle `od-edit-rect` owns geometry during grace (430).
  */
 export function shouldRefreshHostPaintAfterTipYieldSingleReseed(
   selectedIds: readonly string[],
+  options?: {
+    graceId?: string | null;
+    paintId?: string | null;
+    nowMs?: number;
+    graceUntilMs?: number;
+  },
 ): boolean {
-  return selectedIds.length === 1;
+  if (selectedIds.length !== 1) return false;
+  const paintId = options?.paintId ?? selectedIds[0] ?? null;
+  if (
+    options?.graceId
+    && paintId
+    && options.graceId === paintId
+    && options.nowMs != null
+    && options.graceUntilMs != null
+    && !tipRemountGeometryGraceExpired(options.nowMs, options.graceUntilMs)
+  ) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * When tip-yield single snapshot applies, sync selected target identity fields
+ * so panel chrome / bridge-facing target state matches painted tip (59).
+ */
+export function shouldSyncSelectedTargetIdentityAfterTipYieldSingleReseed(
+  selectedId: string | null | undefined,
+  seedId: string,
+): boolean {
+  return Boolean(selectedId && selectedId === seedId);
 }
 
 /**

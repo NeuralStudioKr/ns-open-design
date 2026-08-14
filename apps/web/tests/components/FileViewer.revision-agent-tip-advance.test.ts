@@ -136,6 +136,11 @@ describe('FileViewer revision tip advance after undo', () => {
     expect(fileViewer).toContain('Tip source may have dropped the node — do not wipe styles/fields');
     expect(fileViewer).toContain('shouldRefreshHostPaintAfterTipYieldSingleReseed');
     expect(fileViewer).toContain('2→1 tip-yield: host paint may still track the prior multi primary');
+    expect(fileViewer).toContain('Skip while tip-remount grace is active');
+    expect(fileViewer).toContain('shouldSyncSelectedTargetIdentityAfterTipYieldSingleReseed');
+    expect(fileViewer).toContain('Keep selected target identity aligned with painted tip');
+    expect(fileViewer).toContain('Tip-remount remasure landed — sync host paint now');
+    expect(fileViewer).toContain('refreshManualEditHostPaintRect(measured.id, { force: true })');
     expect(fileViewer).toContain('refreshManualEditHostPaintRect(paintId, { force: true })');
     expect(fileViewer).toContain('clearManualEditTipRemountGeometryGraceIfNeeded');
     expect(fileViewer).toContain('clearManualEditTipRemountGeometryGrace(');

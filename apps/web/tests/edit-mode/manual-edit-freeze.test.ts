@@ -9,6 +9,7 @@ import {
   shouldReseedSingleInspectorAfterTipYieldMixedClear,
   shouldApplyTipYieldSingleInspectorSnapshot,
   shouldRefreshHostPaintAfterTipYieldSingleReseed,
+  shouldSyncSelectedTargetIdentityAfterTipYieldSingleReseed,
   shouldSkipWildJumpAfterTipRemountGrace,
   shouldSyncManualEditFrozenSourceToPainted,
   shouldUpdateManualEditFrozenSourceOnPatch,
@@ -103,6 +104,35 @@ describe('manual edit freeze reset', () => {
     expect(shouldRefreshHostPaintAfterTipYieldSingleReseed(['a'])).toBe(true);
     expect(shouldRefreshHostPaintAfterTipYieldSingleReseed([])).toBe(false);
     expect(shouldRefreshHostPaintAfterTipYieldSingleReseed(['a', 'b'])).toBe(false);
+  });
+
+  it('defers host paint refresh while tip-remount grace is active for paint id', () => {
+    expect(shouldRefreshHostPaintAfterTipYieldSingleReseed(['a'], {
+      graceId: 'a',
+      paintId: 'a',
+      nowMs: 1_000,
+      graceUntilMs: 1_800,
+    })).toBe(false);
+    // Expired grace restores force host-paint refresh.
+    expect(shouldRefreshHostPaintAfterTipYieldSingleReseed(['a'], {
+      graceId: 'a',
+      paintId: 'a',
+      nowMs: 1_800,
+      graceUntilMs: 1_800,
+    })).toBe(true);
+    // Sibling grace must not block the remaining single id.
+    expect(shouldRefreshHostPaintAfterTipYieldSingleReseed(['a'], {
+      graceId: 'b',
+      paintId: 'a',
+      nowMs: 1_000,
+      graceUntilMs: 1_800,
+    })).toBe(true);
+  });
+
+  it('syncs selected target identity only when seed matches selection', () => {
+    expect(shouldSyncSelectedTargetIdentityAfterTipYieldSingleReseed('a', 'a')).toBe(true);
+    expect(shouldSyncSelectedTargetIdentityAfterTipYieldSingleReseed('a', 'b')).toBe(false);
+    expect(shouldSyncSelectedTargetIdentityAfterTipYieldSingleReseed(null, 'a')).toBe(false);
   });
 
   it('clears tip-remount grace when selection leaves the grace primary', () => {

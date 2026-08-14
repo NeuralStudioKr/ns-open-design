@@ -1668,6 +1668,16 @@ describe('manual edit source patches', () => {
     expect(namespacedMarkerColorProfile.toLowerCase()).not.toContain('javascript');
     expect(namespacedMarkerColorProfile).not.toMatch(/svg:marker-start\s*=/i);
     expect(namespacedMarkerColorProfile).not.toMatch(/svg:color-profile\s*=/i);
+    // Namespaced marker-mid / marker-end residual.
+    const namespacedMarkerMidEnd = sanitizeManualEditFullSource(
+      '<!doctype html><html><body>'
+      + '<path svg:marker-mid="url(javascript:alert(16))" data-od-id="pm" />'
+      + '<path svg:marker-end="url(javascript:alert(17))" data-od-id="pe" />'
+      + '</body></html>',
+    );
+    expect(namespacedMarkerMidEnd.toLowerCase()).not.toContain('javascript');
+    expect(namespacedMarkerMidEnd).not.toMatch(/svg:marker-mid\s*=/i);
+    expect(namespacedMarkerMidEnd).not.toMatch(/svg:marker-end\s*=/i);
     // SMIL presentation paint uses the same SSOT Set as element attrs / failClosed.
     expect(sourcePatchesSource).toContain(
       'Presentation paint via SMIL attributeName — same SSOT as failClosed',
@@ -2515,6 +2525,28 @@ describe('manual edit source patches', () => {
     expect(dirty.ok, dirty.error).toBe(true);
     const html = readManualEditOuterHtml(dirty.source, 'mark');
     expect(html).not.toContain('evil.example');
+  });
+
+  it('scrubs SMIL attributeName color-profile and marker-start remote urls', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<svg data-od-id="mark"><rect></rect></svg>',
+      '</body></html>',
+    ].join('');
+    const dirty = applyManualEditPatch(source, {
+      kind: 'set-outer-html',
+      id: 'mark',
+      html: [
+        '<svg data-od-id="mark"><rect>',
+        '<set attributeName="color-profile" to="url(https://evil.example/profile.icc)"></set>',
+        '<animate attributeName="marker-start" values="url(https://evil.example/m.svg#x);url(#ok)"></animate>',
+        '</rect></svg>',
+      ].join(''),
+    });
+    expect(dirty.ok, dirty.error).toBe(true);
+    const html = readManualEditOuterHtml(dirty.source, 'mark');
+    expect(html).not.toContain('evil.example');
+    expect(html.toLowerCase()).not.toMatch(/javascript/);
   });
 
   it('does not drop whole style blocks for .javascript:hover selectors', () => {
