@@ -222,6 +222,23 @@ export function TeamverHomeSlideCreateModal({
     return () => node.removeEventListener("paste", onPaste);
   }, [open, confirming, onAddFiles]);
 
+  useEffect(() => {
+    if (!open || confirming || typeof document === "undefined") return;
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    const frame = window.requestAnimationFrame(() => {
+      if (step === "content") {
+        dialog.querySelector<HTMLElement>("[data-teamver-drive-autofocus='true']")?.focus();
+        return;
+      }
+      (
+        dialog.querySelector<HTMLElement>("[data-testid='teamver-home-slide-create-prev']")
+        ?? dialog
+      ).focus();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [open, confirming, step]);
+
   const normalizedQuick = useMemo(
     () => ({ ...DEFAULT_HOME_SLIDE_CREATE_QUICK_SETTINGS, ...quickSettings }),
     [quickSettings],
@@ -252,6 +269,32 @@ export function TeamverHomeSlideCreateModal({
     setTemplateVisited(true);
     setStep("template");
   }
+
+  function submitFromKeyboard() {
+    if (confirming) return;
+    if (showingTemplate || canConfirmFromContent) {
+      if (templateReady) void onConfirm();
+      return;
+    }
+    goTemplateStep();
+  }
+
+  const attachCount = stagedFiles.length + stagedDriveAssets.length;
+  const summaryParts = [
+    t(
+      QUICK_SETTING_GROUPS[0].options.find(([value]) => value === normalizedQuick.audience)?.[1]
+        ?? "teamver.canvasSlideLaunch.quickAudienceAuto",
+    ),
+    t(
+      QUICK_SETTING_GROUPS[1].options.find(([value]) => value === normalizedQuick.length)?.[1]
+        ?? "teamver.canvasSlideLaunch.quickLengthAuto",
+    ),
+    t(
+      QUICK_SETTING_GROUPS[2].options.find(([value]) => value === normalizedQuick.tone)?.[1]
+        ?? "teamver.canvasSlideLaunch.quickToneAuto",
+    ),
+    attachCount > 0 ? t("teamver.homeCreate.summaryAttach", { count: attachCount }) : null,
+  ].filter((part): part is string => Boolean(part));
 
   function addDroppedFiles(files: File[]) {
     if (confirming || files.length === 0) return;
@@ -355,7 +398,7 @@ export function TeamverHomeSlideCreateModal({
             <ul className="teamver-home-slide-create-chips">
               {stagedFiles.map((file, index) => (
                 <li key={`file-${file.name}-${index}`}>
-                  <span>{file.name}</span>
+                  <span title={file.name}>{file.name}</span>
                   <button
                     type="button"
                     aria-label={t("teamver.homeCreate.removeAttach")}
@@ -368,7 +411,9 @@ export function TeamverHomeSlideCreateModal({
               ))}
               {stagedDriveAssets.map((asset) => (
                 <li key={`drive-${asset.assetId}`}>
-                  <span>{asset.filename ?? asset.assetId}</span>
+                  <span title={asset.filename ?? asset.assetId}>
+                    {asset.filename ?? asset.assetId}
+                  </span>
                   <button
                     type="button"
                     aria-label={t("teamver.homeCreate.removeAttach")}
@@ -507,7 +552,9 @@ export function TeamverHomeSlideCreateModal({
         className={[
           "teamver-drive-picker-modal",
           "teamver-canvas-slide-launch-modal",
-          "teamver-canvas-slide-launch-modal--wide",
+          showingTemplate
+            ? "teamver-canvas-slide-launch-modal--wide"
+            : "teamver-home-slide-create-modal--compact",
           "teamver-home-slide-create-modal",
         ].join(" ")}
         role="dialog"
@@ -515,6 +562,11 @@ export function TeamverHomeSlideCreateModal({
         aria-labelledby="teamver-home-slide-create-title"
         tabIndex={-1}
         data-testid="teamver-home-slide-create-modal"
+        onKeyDown={(event) => {
+          if (event.key !== "Enter" || !(event.metaKey || event.ctrlKey)) return;
+          event.preventDefault();
+          submitFromKeyboard();
+        }}
       >
         <header className="teamver-drive-picker-head teamver-home-slide-create-head">
           <div className="teamver-home-slide-create-head-row">
@@ -601,15 +653,12 @@ export function TeamverHomeSlideCreateModal({
 
         <footer className="teamver-drive-import-footer teamver-home-slide-create-footer">
           {showingTemplate ? (
-            <button
-              type="button"
-              className="teamver-drive-import-cancel"
-              disabled={confirming}
-              data-testid="teamver-home-slide-create-prev"
-              onClick={() => setStep("content")}
+            <p
+              className="teamver-home-slide-create-summary"
+              data-testid="teamver-home-slide-create-summary"
             >
-              {t("teamver.canvasSlideLaunch.back")}
-            </button>
+              {summaryParts.join(" · ")}
+            </p>
           ) : selectedTemplate ? (
             <button
               type="button"
@@ -638,29 +687,42 @@ export function TeamverHomeSlideCreateModal({
           ) : (
             <span />
           )}
-          {showingTemplate || canConfirmFromContent ? (
-            <button
-              type="button"
-              className="teamver-drive-import-attach teamver-canvas-slide-launch-confirm"
-              disabled={confirming || !templateReady}
-              data-testid="teamver-home-slide-create-confirm"
-              onClick={() => void onConfirm()}
-            >
-              {confirming
-                ? t("teamver.homeCreate.creating")
-                : t("teamver.homeCreate.confirm")}
-            </button>
-          ) : (
-            <button
-              type="button"
-              className="teamver-drive-import-attach teamver-canvas-slide-launch-footer-next"
-              disabled={confirming}
-              data-testid="teamver-home-slide-create-next"
-              onClick={goTemplateStep}
-            >
-              {t("teamver.homeCreate.nextTemplate")}
-            </button>
-          )}
+          <div className="teamver-home-slide-create-footer-actions">
+            {showingTemplate ? (
+              <button
+                type="button"
+                className="teamver-drive-import-cancel"
+                disabled={confirming}
+                data-testid="teamver-home-slide-create-prev"
+                onClick={() => setStep("content")}
+              >
+                {t("teamver.canvasSlideLaunch.back")}
+              </button>
+            ) : null}
+            {showingTemplate || canConfirmFromContent ? (
+              <button
+                type="button"
+                className="teamver-drive-import-attach teamver-canvas-slide-launch-confirm"
+                disabled={confirming || !templateReady}
+                data-testid="teamver-home-slide-create-confirm"
+                onClick={() => void onConfirm()}
+              >
+                {confirming
+                  ? t("teamver.homeCreate.creating")
+                  : t("teamver.homeCreate.confirm")}
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="teamver-drive-import-attach teamver-canvas-slide-launch-footer-next"
+                disabled={confirming}
+                data-testid="teamver-home-slide-create-next"
+                onClick={goTemplateStep}
+              >
+                {t("teamver.homeCreate.nextTemplate")}
+              </button>
+            )}
+          </div>
         </footer>
       </div>
     </div>,

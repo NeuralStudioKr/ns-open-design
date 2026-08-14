@@ -557,6 +557,8 @@ describe("canvasSlideLaunch", () => {
     expect(openHomeSlideCreateSrc).toContain("setStagedFiles([])");
     expect(openHomeSlideCreateSrc).toContain("setStagedDriveAssets([])");
     expect(openHomeSlideCreateSrc).toContain("createHomeSlideCreateQuickSettings()");
+    expect(home).toContain("asset.assetId !== assetId");
+    expect(home).toContain("item.lastModified === file.lastModified");
     // Composer Canvas/Drive handoff always has source material.
     expect(composer).toContain("hasSourceMaterial: true");
     expect(composer).toContain("sendComposedTurn(");

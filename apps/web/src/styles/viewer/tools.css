@@ -3569,6 +3569,10 @@ button.teamver-home-create-hero-cta:disabled {
 }
 .teamver-home-slide-create-modal.teamver-drive-picker-modal {
   max-height: min(88vh, 860px);
+  transition: width 160ms ease;
+}
+.teamver-home-slide-create-modal--compact {
+  width: min(600px, calc(100vw - 32px));
 }
 .teamver-home-slide-create-head {
   flex-direction: column;
@@ -3737,6 +3741,12 @@ button.teamver-home-slide-create-attach-btn:hover:not(:disabled) {
   border: 1px solid var(--border);
   font-size: 12px;
 }
+.teamver-home-slide-create-chips li span {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .teamver-home-slide-create-chips button {
   border: 0;
   background: transparent;
@@ -3775,6 +3785,20 @@ button.teamver-home-slide-create-attach-btn:hover:not(:disabled) {
 .teamver-home-slide-create-footer {
   padding: 14px 24px;
   gap: 16px;
+}
+.teamver-home-slide-create-summary {
+  margin: 0;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+.teamver-home-slide-create-footer-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-left: auto;
 }
 .teamver-home-slide-create-selected-template {
   display: inline-flex;

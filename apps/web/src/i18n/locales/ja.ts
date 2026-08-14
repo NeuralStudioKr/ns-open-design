@@ -2728,6 +2728,7 @@ export const ja: Dict = {
   'teamver.homeCreate.changeTemplate': 'Change',
   'teamver.homeCreate.confirm': 'Create slides',
   'teamver.homeCreate.creating': 'Creating…',
+  'teamver.homeCreate.summaryAttach': '{count} attached',
   'teamver.canvasSlideLaunch.title': 'キャンバスからスライドを作成',
   'teamver.canvasSlideLaunch.description': 'このドキュメントをSlideプロジェクトに取り込み、すぐにスライド生成を開始します。',
   'teamver.canvasSlideLaunch.hint': '確認すると新しいSlideプロジェクトに文書を取り込み、スライド草案の生成を開始します。',

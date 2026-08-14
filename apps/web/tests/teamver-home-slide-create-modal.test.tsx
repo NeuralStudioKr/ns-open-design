@@ -153,6 +153,79 @@ describe("TeamverHomeSlideCreateModal", () => {
     );
     fireEvent.click(screen.getByTestId("teamver-home-slide-create-step-template"));
     expect(screen.getByTestId("teamver-home-slide-create-template")).toBeTruthy();
+    expect(screen.getByTestId("teamver-home-slide-create-summary").textContent).toMatch(
+      /Internal report · Standard · Professional/,
+    );
+    expect(screen.getByTestId("teamver-home-slide-create-prev")).toBeTruthy();
+  });
+
+  it("uses a compact dialog on content and widens on the template step", () => {
+    wrap(
+      <TeamverHomeSlideCreateModal
+        open
+        entry="new"
+        templateOptions={templates}
+        selectedTemplateId="example-simple-deck"
+        onTemplateChange={() => {}}
+        userPrompt=""
+        onUserPromptChange={() => {}}
+        onConfirm={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    expect(screen.getByTestId("teamver-home-slide-create-modal").className).toContain(
+      "teamver-home-slide-create-modal--compact",
+    );
+    fireEvent.click(screen.getByTestId("teamver-home-slide-create-next"));
+    expect(screen.getByTestId("teamver-home-slide-create-modal").className).toContain(
+      "teamver-canvas-slide-launch-modal--wide",
+    );
+    expect(screen.getByTestId("teamver-home-slide-create-summary").textContent).toContain(
+      "Internal report",
+    );
+  });
+
+  it("submits with Cmd+Enter once the template step is available", () => {
+    const onConfirm = vi.fn();
+    wrap(
+      <TeamverHomeSlideCreateModal
+        open
+        entry="template"
+        templateOptions={templates}
+        selectedTemplateId="html-ppt-hermes"
+        onTemplateChange={() => {}}
+        userPrompt=""
+        onUserPromptChange={() => {}}
+        onConfirm={onConfirm}
+        onClose={() => {}}
+      />,
+    );
+    fireEvent.keyDown(screen.getByTestId("teamver-home-slide-create-modal"), {
+      key: "Enter",
+      metaKey: true,
+    });
+    expect(onConfirm).toHaveBeenCalledOnce();
+  });
+
+  it("removes a drive attachment by asset id", () => {
+    const onRemoveDriveAsset = vi.fn();
+    wrap(
+      <TeamverHomeSlideCreateModal
+        open
+        entry="new"
+        templateOptions={templates}
+        selectedTemplateId="html-ppt-hermes"
+        onTemplateChange={() => {}}
+        userPrompt=""
+        onUserPromptChange={() => {}}
+        stagedDriveAssets={[{ assetId: "drv-1", filename: "brief.pdf" }]}
+        onRemoveDriveAsset={onRemoveDriveAsset}
+        onConfirm={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    fireEvent.click(screen.getByLabelText("Remove attachment"));
+    expect(onRemoveDriveAsset).toHaveBeenCalledWith("drv-1");
   });
 
   it("uses a short placeholder and no tip chrome", () => {

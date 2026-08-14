@@ -1465,7 +1465,23 @@ export function HomeView({
 
   function stageFiles(files: File[]) {
     if (files.length === 0) return;
-    setStagedFiles((current) => [...current, ...files]);
+    setStagedFiles((current) => {
+      const next = [...current];
+      for (const file of files) {
+        if (
+          next.some(
+            (item) =>
+              item.name === file.name
+              && item.size === file.size
+              && item.lastModified === file.lastModified,
+          )
+        ) {
+          continue;
+        }
+        next.push(file);
+      }
+      return next;
+    });
     setError(null);
     focusPromptAtEnd();
   }
@@ -2591,7 +2607,11 @@ export function HomeView({
           onAddFiles={stageFiles}
           onRemoveFile={removeStagedFile}
           stagedDriveAssets={stagedDriveAssets}
-          onRemoveDriveAsset={removeStagedDriveAsset}
+          onRemoveDriveAsset={(assetId) => {
+            setStagedDriveAssets((current) =>
+              current.filter((asset) => asset.assetId !== assetId),
+            );
+          }}
           onAttachFromDrive={
             teamverDriveImportAllowed
               ? () => {

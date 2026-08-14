@@ -2728,6 +2728,7 @@ export const esES: Dict = {
   'teamver.homeCreate.changeTemplate': 'Change',
   'teamver.homeCreate.confirm': 'Create slides',
   'teamver.homeCreate.creating': 'Creating…',
+  'teamver.homeCreate.summaryAttach': '{count} attached',
   'teamver.canvasSlideLaunch.title': 'Create slides from Canvas',
   'teamver.canvasSlideLaunch.description': 'Import this document into a Slide project and start slide generation in one step.',
   'teamver.canvasSlideLaunch.hint': 'Confirm to import this document into a new Slide project and start generating slides.',
