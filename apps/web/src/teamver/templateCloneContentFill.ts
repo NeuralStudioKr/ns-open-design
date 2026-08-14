@@ -10,7 +10,9 @@ import {
   briefLooksLikeAttachedSource,
   CANVAS_CREATE_SLIDES_PROMPT,
   HOME_CREATE_SLIDES_PROMPT,
+  HOME_EMPTY_CREATE_SLIDES_PROMPT,
   HOME_FILL_SLIDES_PROMPT,
+  HOME_FILL_SLIDES_PROMPT_LEGACY,
   isSlideCreateBoilerplateLine,
 } from './slideCreateBoilerplate';
 
@@ -31,7 +33,9 @@ export function looksLikeCanvasCreateBoilerplate(text: string): boolean {
   if (isSlideCreateBoilerplateLine(t)) return true;
   if (t === CANVAS_CREATE_SLIDES_PROMPT) return true;
   if (t === HOME_CREATE_SLIDES_PROMPT) return true;
+  if (t === HOME_EMPTY_CREATE_SLIDES_PROMPT) return true;
   if (t === HOME_FILL_SLIDES_PROMPT) return true;
+  if (t === HOME_FILL_SLIDES_PROMPT_LEGACY) return true;
   if (/^(?:User instruction|Deliverable instruction|Source brief|Quick settings)\s*[:：]/i.test(t)) {
     return true;
   }
@@ -111,7 +115,7 @@ export function buildTemplateCloneContentFillSeed(options: {
     'Attached `deck.html` already has the selected template LOOK (CSS, fonts, Motif SVG, layout shells) from a daemon Clone.',
     hasAttachedSource
       ? 'Fill REAL presentation CONTENT for this request and any attached source materials.'
-      : 'Fill REAL presentation CONTENT for this user request (no separate source attachment may be present).',
+      : 'Fill REAL presentation CONTENT for this create (user prompt may be empty; invent clear topical copy — do not paste boilerplate leads into titles).',
     'Hard rules:',
     '- Do NOT paste user instructions ("만들어줘", "만들어 주세요", Canvas boilerplate) into slide titles or subtitles.',
     '- Preserve the cloned template visual kit (palette hex, font-family, deco/SVG motifs, shell class language). Neutral Modern / OD skeleton terracotta is a failed deliverable.',

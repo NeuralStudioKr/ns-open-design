@@ -17,6 +17,8 @@ import {
   briefLooksLikeAttachedSource,
   CANVAS_CREATE_SLIDES_PROMPT as SHARED_CANVAS_CREATE_SLIDES_PROMPT,
   HOME_CREATE_SLIDES_PROMPT as SHARED_HOME_CREATE_SLIDES_PROMPT,
+  HOME_EMPTY_CREATE_SLIDES_PROMPT as SHARED_HOME_EMPTY_CREATE_SLIDES_PROMPT,
+  resolveCreateSlidesLead,
 } from "./slideCreateBoilerplate";
 
 /** Canvas / Drive → create-slides one-confirm source read from the URL. */
@@ -124,8 +126,11 @@ export const CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION =
 /** User-visible first message for Canvas / Drive → create-slides (has source). */
 export const CANVAS_CREATE_SLIDES_PROMPT = SHARED_CANVAS_CREATE_SLIDES_PROMPT;
 
-/** User-visible first message for Home freeform create with no attachments. */
+/** Fallback when the user typed a request but there are no attachments. */
 export const HOME_CREATE_SLIDES_PROMPT = SHARED_HOME_CREATE_SLIDES_PROMPT;
+
+/** No user text and no attachments (template / settings only). */
+export const HOME_EMPTY_CREATE_SLIDES_PROMPT = SHARED_HOME_EMPTY_CREATE_SLIDES_PROMPT;
 
 export type CanvasSlideAudience = "auto" | "internal" | "client" | "education" | "business";
 export type CanvasSlideLength = "auto" | "short" | "standard" | "detailed";
@@ -362,12 +367,10 @@ export function canvasCreateSlidesRunPrompt(
   const brief = compactCanvasBriefBlock(sourceBrief ?? "", 900);
   const sourceHint = brief ? `\n\n[Source brief]\n${brief}` : "";
   const user = compactCanvasBriefValue(userInstruction ?? "", 600);
-  // Never say "첨부한 자료를…" when the user did not attach Canvas/Drive/files.
-  // A Home freeform brief that only echoes "User instruction:" is NOT source material.
+  // Never say "첨부한 자료를…" without attachments, and never say "요청한 내용으로…"
+  // when the user left the prompt empty.
   const hasSourceMaterial = options?.hasSourceMaterial ?? briefLooksLikeAttachedSource(brief);
-  const lead = hasSourceMaterial
-    ? CANVAS_CREATE_SLIDES_PROMPT
-    : (user || HOME_CREATE_SLIDES_PROMPT);
+  const lead = resolveCreateSlidesLead({ hasSourceMaterial, userInstruction: user });
   // When the lead line is already the user instruction, do not duplicate it.
   const userHint = hasSourceMaterial && user
     ? `\n\n[User instruction]\n${user}`

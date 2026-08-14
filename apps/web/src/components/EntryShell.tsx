@@ -672,6 +672,11 @@ export function EntryShell({
       // Never stamp template marketing titles (Daisy / Html Ppt / …) as the project name.
       pluginTitle: null,
     });
+    // Empty prompt + no topic/attachment → generated Untitled (first real chat turn may rename).
+    const nameSource: ProjectMetadata['nameSource'] =
+      name === 'Untitled' && !topicHint && !firstAttachmentName
+        ? 'generated'
+        : 'prompt';
     const payloadTemplateId =
       typeof payload.projectMetadata?.selectedDeckTemplateId === 'string'
         ? payload.projectMetadata.selectedDeckTemplateId.trim()
@@ -692,7 +697,7 @@ export function EntryShell({
       // those surfaces. Pinning the kind here removes the ambiguity before
       // the run reaches the daemon.
       kind: resolvePluginLoopProjectKind(payload),
-      nameSource: 'prompt',
+      nameSource,
       // Home wizard / gallery Use may put the visual id only on pluginInputs;
       // promote it onto metadata so App Clone always sees selectedDeckTemplateId.
       ...(payloadTemplateId

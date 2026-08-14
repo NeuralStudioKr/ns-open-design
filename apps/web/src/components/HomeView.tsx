@@ -1911,7 +1911,7 @@ export function HomeView({
         homeSlideUserPrompt.trim().split(/\n/)[0]?.slice(0, 120)
         || stagedFiles[0]?.name
         || stagedDriveAssets[0]?.filename
-        || 'new slide deck';
+        || null;
       const attachBrief = [
         ...stagedFiles.map((file) => `file:${file.name}`),
         ...stagedDriveAssets.map(

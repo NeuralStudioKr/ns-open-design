@@ -96,6 +96,24 @@ describe('deriveProjectNameForCreate', () => {
     expect(name.toLowerCase()).toMatch(/expo/);
     expect(name).not.toMatch(/만들어/);
   });
+  it('empty user prompt with no attachments yields Untitled (not template title)', () => {
+    expect(
+      deriveProjectNameForCreate({
+        prompt: '슬라이드 덱을 만들어줘.\n\n[Deliverable instruction]\nBuild…',
+        pluginTitle: 'Html Ppt Zhangzara Daisy Days',
+      }),
+    ).toBe('Untitled');
+  });
+
+  it('empty prompt still names from attachment label', () => {
+    expect(
+      deriveProjectNameForCreate({
+        prompt: '첨부한 자료를 바탕으로 슬라이드 덱을 만들어줘.',
+        attachmentLabel: 'q3-roadmap.pdf',
+        pluginTitle: 'Html Ppt Hermes',
+      }),
+    ).toMatch(/q3|roadmap/i);
+  });
 });
 
 describe('extractUserPromptForNaming', () => {

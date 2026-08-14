@@ -8,6 +8,7 @@ import {
   CANVAS_CREATE_SLIDES_PROMPT,
   DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS,
   HOME_CREATE_SLIDES_PROMPT,
+  HOME_EMPTY_CREATE_SLIDES_PROMPT,
   canvasCreateSlidesPluginInputs,
   canvasCreateSlidesRunPrompt,
   canvasSlideQuickSettingsInstruction,
@@ -227,7 +228,7 @@ describe("canvasSlideLaunch", () => {
     expect(stripUserVisibleQuestionFormProtocolText(runPrompt)).not.toMatch(/첨부한 자료/);
   });
 
-  it("Home empty request without attachments uses HOME_CREATE lead", () => {
+  it("Home empty request without attachments uses empty-create lead (not 요청한 내용)", () => {
     const runPrompt = canvasCreateSlidesRunPrompt(
       "기본 슬라이드 템플릿",
       null,
@@ -235,19 +236,35 @@ describe("canvasSlideLaunch", () => {
       null,
       { hasSourceMaterial: false },
     );
-    expect(runPrompt.startsWith(HOME_CREATE_SLIDES_PROMPT)).toBe(true);
+    expect(runPrompt.startsWith(HOME_EMPTY_CREATE_SLIDES_PROMPT)).toBe(true);
     expect(runPrompt).not.toContain(CANVAS_CREATE_SLIDES_PROMPT);
+    expect(runPrompt).not.toMatch(/요청한 내용으로/);
+    expect(runPrompt).not.toMatch(/첨부한 자료/);
+  });
+
+  it("Home typed request without attachments uses the user text as lead", () => {
+    const runPrompt = canvasCreateSlidesRunPrompt(
+      "기본 슬라이드 템플릿",
+      null,
+      "분기 실적 요약 덱",
+      null,
+      { hasSourceMaterial: false },
+    );
+    expect(runPrompt.startsWith("분기 실적 요약 덱")).toBe(true);
+    expect(runPrompt).not.toContain(HOME_EMPTY_CREATE_SLIDES_PROMPT);
   });
 
   it("Canvas/Drive with source still uses 첨부한 자료 lead", () => {
     const runPrompt = canvasCreateSlidesRunPrompt(
       "Template",
       "Canvas title: Onboarding",
-      "keep it short",
+      "",
       null,
       { hasSourceMaterial: true },
     );
     expect(runPrompt.startsWith(CANVAS_CREATE_SLIDES_PROMPT)).toBe(true);
+    // Empty user prompt must not add a dedicated User instruction block.
+    expect(runPrompt).not.toMatch(/\n\[User instruction\]\n/);
   });
 
   it("binds selected deck template into per-turn skillIds for system prompt composition", () => {
@@ -522,6 +539,8 @@ describe("canvasSlideLaunch", () => {
     const launchBoilerplate = readWebSource("src/teamver/slideCreateBoilerplate.ts");
     expect(launchBoilerplate).toContain("CANVAS_CREATE_SLIDES_PROMPT");
     expect(launchBoilerplate).toContain("HOME_CREATE_SLIDES_PROMPT");
+    expect(launchBoilerplate).toContain("HOME_EMPTY_CREATE_SLIDES_PROMPT");
+    expect(launchBoilerplate).toContain("resolveCreateSlidesLead");
     expect(launchBoilerplate).toContain("briefLooksLikeAttachedSource");
     const resetHomeSlideCreateDraftSrc = home.slice(
       home.indexOf("function resetHomeSlideCreateDraft"),
