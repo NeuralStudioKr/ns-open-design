@@ -6,6 +6,7 @@ import {
   extractUserPromptForNaming,
   isPlaceholderProjectName,
   summarizeProjectNameFromPrompt,
+  summarizeProjectNameFromUserTurn,
 } from '../../src/utils/projectName';
 
 describe('summarizeProjectNameFromPrompt', () => {
@@ -47,6 +48,46 @@ describe('deriveProjectNameForCreate', () => {
       }),
     ).toMatch(/Q4 GTM/i);
   });
+
+  it('names from [User instruction] even when lead is attachment boilerplate', () => {
+    const prompt = [
+      '첨부한 자료를 바탕으로 슬라이드 덱을 만들어줘.',
+      '',
+      '[Deliverable instruction]',
+      'Build a new presentation deck...',
+      '',
+      '[User instruction]',
+      'expo에 대해서 설명하는 피피티 만들어줘. 시니어 개발자 레벨.',
+    ].join('\n');
+    const name = deriveProjectNameForCreate({
+      prompt,
+      pluginTitle: 'Html Ppt Zhangzara Daisy Days',
+    });
+    expect(name.toLowerCase()).toMatch(/expo/);
+    expect(name).not.toMatch(/Html Ppt|Daisy|Zhangzara/i);
+  });
+
+  it('never uses deck template marketing titles as the project name', () => {
+    expect(
+      deriveProjectNameForCreate({
+        prompt: '첨부한 자료를 바탕으로 슬라이드 덱을 만들어줘.',
+        pluginTitle: 'Html Ppt Zhangzara Daisy Days',
+      }),
+    ).toBe('Untitled');
+  });
+
+  it('Home freeform lead (user typed request) becomes the project name', () => {
+    const name = deriveProjectNameForCreate({
+      prompt: [
+        'expo에 대해서 설명하는 피피티 만들어줘. 시니어 개발자 레벨.',
+        '',
+        '[Deliverable instruction]',
+        'Build a new presentation deck...',
+      ].join('\n'),
+      pluginTitle: 'Html Ppt Zhangzara Daisy Days',
+    });
+    expect(name.toLowerCase()).toMatch(/expo/);
+  });
 });
 
 describe('extractUserPromptForNaming', () => {
@@ -54,6 +95,20 @@ describe('extractUserPromptForNaming', () => {
     const userLine = '분기 실적 요약 덱';
     const full = `${userLine}\n\n[Deliverable instruction]\nBuild a deck...`;
     expect(extractUserPromptForNaming(full)).toBe(userLine);
+  });
+
+  it('prefers [User instruction] over attachment boilerplate lead', () => {
+    const full = [
+      '첨부한 자료를 바탕으로 슬라이드 덱을 만들어줘.',
+      '',
+      '[Deliverable instruction]',
+      'Build…',
+      '',
+      '[User instruction]',
+      '분기 실적 요약',
+    ].join('\n');
+    expect(extractUserPromptForNaming(full)).toBe('분기 실적 요약');
+    expect(summarizeProjectNameFromUserTurn(full)).toMatch(/분기/);
   });
 });
 
@@ -110,6 +165,16 @@ describe('canAutoRenameProjectFromPrompt', () => {
         id: projectId,
         name: projectId,
         metadata: undefined,
+      }),
+    ).toBe(true);
+  });
+
+  it('treats Daisy / Html Ppt template titles as renamable placeholders', () => {
+    expect(
+      canAutoRenameProjectFromPrompt({
+        id: 'p1',
+        name: 'Html Ppt Zhangzara Daisy Days',
+        metadata: { kind: 'deck', nameSource: 'prompt' },
       }),
     ).toBe(true);
   });

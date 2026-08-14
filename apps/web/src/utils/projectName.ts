@@ -37,14 +37,36 @@ const GENERIC_PLUGIN_TITLES = new Set([
 ]);
 
 const CANVAS_CREATE_SLIDES_USER_LINE = '첨부한 자료를 바탕으로 슬라이드 덱을 만들어줘.';
+const HOME_CREATE_SLIDES_USER_LINE = '요청한 내용으로 슬라이드 덱을 만들어줘.';
+
+/** Plugin / template marketing titles must never become the project name. */
+function isDeckTemplateMarketingTitle(title: string): boolean {
+  const normalized = title.trim();
+  if (!normalized) return false;
+  const lower = normalized.toLowerCase();
+  if (GENERIC_PLUGIN_TITLES.has(lower) || GENERIC_PLUGIN_TITLES.has(normalized)) return true;
+  // Community deck titles: "Html Ppt …", Daisy / Zhangzara / Hermes / Simple Deck, etc.
+  if (/^html\s*ppt\b/i.test(normalized)) return true;
+  if (/\b(daisy\s*days|zhangzara|hermes|simple\s*deck|cyber\s*terminal)\b/i.test(normalized)) {
+    return true;
+  }
+  if (/^example[-_]/i.test(normalized)) return true;
+  return false;
+}
 
 function isBoilerplateUserPromptLine(line: string): boolean {
   const normalized = line.trim();
   if (!normalized) return true;
   if (normalized === CANVAS_CREATE_SLIDES_USER_LINE) return true;
+  if (normalized === HOME_CREATE_SLIDES_USER_LINE) return true;
   if (/^첨부(?:한)?\s*.+\s*바탕으로\s*슬라이드\s*덱을?\s*만들어\s*줘\.?$/u.test(normalized)) {
     return true;
   }
+  if (/^요청한\s*내용으로\s*슬라이드\s*(?:덱|내용)을?\s*(?:만들어|채워)\s*줘\.?$/u.test(normalized)) {
+    return true;
+  }
+  if (/^new slide deck$/i.test(normalized)) return true;
+  if (/^the (?:attached source document|user brief)$/i.test(normalized)) return true;
   return false;
 }
 
@@ -53,6 +75,7 @@ function isGenericPluginTitle(title: string): boolean {
   if (!normalized) return true;
   if (GENERIC_PLUGIN_TITLES.has(normalized.toLowerCase())) return true;
   if (GENERIC_PLUGIN_TITLES.has(normalized)) return true;
+  if (isDeckTemplateMarketingTitle(normalized)) return true;
   return isMachineSlugLikeProjectName(normalized);
 }
 
@@ -91,6 +114,7 @@ export function isRegistryPlaceholderTitle(project: Pick<Project, 'id' | 'name'>
   if (isUuidLike(name)) return true;
   const lower = name.toLowerCase();
   if (GENERIC_PLUGIN_TITLES.has(lower) || GENERIC_PLUGIN_TITLES.has(name)) return true;
+  if (isDeckTemplateMarketingTitle(name)) return true;
   return false;
 }
 
@@ -148,9 +172,31 @@ export function summarizeProjectNameFromPrompt(prompt: string): string {
   return trimLatinTitle(firstClause);
 }
 
-/** Strip auto-send boilerplate (Canvas create-slides, deliverable blocks) before naming. */
+/**
+ * Prefer the real user topic over Canvas/Home create-slides scaffolding.
+ * Order: [User instruction] → bare "User instruction:" → lead line before deliverable.
+ */
 export function extractUserPromptForNaming(fullPrompt: string): string {
-  let text = fullPrompt.trim();
+  const full = fullPrompt.trim();
+  if (!full) return '';
+
+  const bracketUser =
+    /\[User instruction\]\s*\n([\s\S]*?)(?=\n\n\[|\n\[Selected slide template priority\]|$)/i
+      .exec(full)?.[1]
+      ?.trim();
+  if (bracketUser && !isBoilerplateUserPromptLine(bracketUser.split(/\n/)[0] ?? '')) {
+    return bracketUser;
+  }
+
+  const briefUser =
+    /(?:^|\n)User instruction\s*[:：]\s*\n?([\s\S]*?)(?=\n\n(?:Attachments:|\[)|$)/i
+      .exec(full)?.[1]
+      ?.trim();
+  if (briefUser && !isBoilerplateUserPromptLine(briefUser.split(/\n/)[0] ?? '')) {
+    return briefUser;
+  }
+
+  let text = full;
   const deliverableIdx = text.indexOf('\n\n[Deliverable instruction]');
   if (deliverableIdx > 0) {
     text = text.slice(0, deliverableIdx).trim();
@@ -181,10 +227,15 @@ function titleFromAttachmentLabel(label: string): string {
 function titleFromTopicHint(topic: string): string {
   const trimmed = topic.trim();
   if (!trimmed || isUuidLike(trimmed)) return '';
+  if (isBoilerplateUserPromptLine(trimmed)) return '';
+  if (isDeckTemplateMarketingTitle(trimmed)) return '';
   return summarizeProjectNameFromPrompt(trimmed) || trimmed.slice(0, MAX_CJK_TITLE_LENGTH);
 }
 
-/** Name for POST /api/projects — prefer user prompt / canvas topic over plugin template labels. */
+/**
+ * Name for POST /api/projects — prefer user prompt / canvas topic.
+ * Never use deck-template marketing titles (Daisy / Html Ppt / …) as the project name.
+ */
 export function deriveProjectNameForCreate(input: {
   prompt?: string;
   topicHint?: string | null;
@@ -202,16 +253,9 @@ export function deriveProjectNameForCreate(input: {
     : '';
   if (fromAttachment) return fromAttachment;
 
-  const head = (input.prompt ?? '').trim().split(/\s+/).slice(0, 8).join(' ');
-  if (head.length > 0) {
-    const fromHead = summarizeProjectNameFromPrompt(head);
-    if (fromHead) return fromHead;
-    return head.slice(0, 60);
-  }
-
-  const plugin = input.pluginTitle?.trim();
-  if (plugin && !isGenericPluginTitle(plugin)) return plugin;
-
+  // Last resort: do NOT fall back to plugin/template titles — those are system
+  // labels, not the user's request. Prefer Untitled over "Html Ppt Daisy Days".
+  void input.pluginTitle;
   return 'Untitled';
 }
 

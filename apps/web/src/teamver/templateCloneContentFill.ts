@@ -17,12 +17,19 @@ export function autoSendSeedStorageKey(projectId: string): string {
   return `od:auto-send-seed:${projectId}`;
 }
 
-/** Canvas boilerplate only — user topic lines may still contain "만들어줘". */
+/** Canvas/Home boilerplate only — user topic lines may still contain "만들어줘". */
 export function looksLikeCanvasCreateBoilerplate(text: string): boolean {
   const t = text.trim();
   if (!t) return true;
   if (t === '첨부한 자료를 바탕으로 슬라이드 덱을 만들어줘.') return true;
-  if (/^첨부(?:한)?\s*.+\s*바탕으로\s*슬라이드\s*덱을?\s*만들어\s*줘\.?$/u.test(t)) return true;
+  if (t === '요청한 내용으로 슬라이드 덱을 만들어줘.') return true;
+  if (t === '요청한 내용으로 슬라이드 내용을 채워줘.') return true;
+  if (/^첨부(?:한)?\s*.+\s*바탕으로\s*슬라이드\s*(?:덱|내용)을?\s*(?:만들어|채워)\s*줘\.?$/u.test(t)) {
+    return true;
+  }
+  if (/^요청한\s*내용으로\s*슬라이드\s*(?:덱|내용)을?\s*(?:만들어|채워)\s*줘\.?$/u.test(t)) {
+    return true;
+  }
   if (/^(?:User instruction|Deliverable instruction|Source brief|Quick settings)\s*[:：]/i.test(t)) {
     return true;
   }
@@ -74,7 +81,8 @@ export function extractTemplateCloneUserFacingRequest(input: {
     if (candidate.length > 500) continue;
     return candidate;
   }
-  return '첨부한 자료를 바탕으로 슬라이드 내용을 채워줘.';
+  // Never claim "첨부한 자료" when the user may not have attached anything.
+  return '요청한 내용으로 슬라이드 내용을 채워줘.';
 }
 
 export function buildTemplateCloneContentFillSeed(options: {
@@ -86,12 +94,17 @@ export function buildTemplateCloneContentFillSeed(options: {
   const visible = extractTemplateCloneUserFacingRequest(options);
   const templateTitle = options.templateTitle?.trim() || '';
   const brief = String(options.sourceBrief ?? '').trim().slice(0, 1400);
+  const hasAttachedSource =
+    /\b(?:Attachments?|Canvas title|Drive source|Source preview|Visible headings)\b/i.test(brief)
+    || /\brefs\//i.test(brief);
   const parts = [
     visible,
     '',
     TEMPLATE_CLONE_CONTENT_FILL_MARKER,
     'Attached `deck.html` already has the selected template LOOK (CSS, fonts, Motif SVG, layout shells) from a daemon Clone.',
-    'Fill REAL presentation CONTENT for this request and any attached source materials.',
+    hasAttachedSource
+      ? 'Fill REAL presentation CONTENT for this request and any attached source materials.'
+      : 'Fill REAL presentation CONTENT for this user request (no separate source attachment may be present).',
     'Hard rules:',
     '- Do NOT paste user instructions ("만들어줘", "만들어 주세요", Canvas boilerplate) into slide titles or subtitles.',
     '- Preserve the cloned template visual kit (palette hex, font-family, deco/SVG motifs, shell class language). Neutral Modern / OD skeleton terracotta is a failed deliverable.',

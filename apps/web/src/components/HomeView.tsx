@@ -1936,6 +1936,8 @@ export function HomeView({
               designSystems: designSystemPickerSystems,
             })
           : null;
+      const hasSourceMaterial =
+        stagedFiles.length > 0 || stagedDriveAssets.length > 0;
       const submitResult = await Promise.resolve(
         onSubmit({
           prompt: canvasCreateSlidesRunPrompt(
@@ -1943,6 +1945,7 @@ export function HomeView({
             sourceBrief,
             homeSlideUserPrompt,
             homeSlideQuickSettings,
+            { hasSourceMaterial },
           ),
           pluginId: templateBinding.pluginId,
           pluginType: 'official',
@@ -2071,6 +2074,7 @@ export function HomeView({
               sourceBrief,
               canvasSlideUserPrompt,
               canvasSlideQuickSettings,
+              { hasSourceMaterial: true },
             ),
             pluginId: templateBinding.pluginId,
             pluginType: 'official',
@@ -2134,6 +2138,7 @@ export function HomeView({
             sourceBrief,
             canvasSlideUserPrompt,
             canvasSlideQuickSettings,
+            { hasSourceMaterial: true },
           ),
           pluginId: templateBinding.pluginId,
           pluginType: 'official',

@@ -653,15 +653,24 @@ export function EntryShell({
       payload.driveAttachments?.[0]?.filename ??
       payload.driveAttachments?.[0]?.assetId ??
       '';
+    const topicFromPluginInputs =
+      typeof payload.pluginInputs?.topic === 'string'
+        ? payload.pluginInputs.topic.trim()
+        : '';
     const topicHint =
       payload.canvasHandoff?.title?.trim() ||
       payload.canvasHandoff?.threadTitle?.trim() ||
-      null;
+      (topicFromPluginInputs
+        && !/^the (?:attached source document|user brief)$/i.test(topicFromPluginInputs)
+        && !/^new slide deck$/i.test(topicFromPluginInputs)
+        ? topicFromPluginInputs
+        : null);
     const name = deriveProjectNameForCreate({
       prompt: payload.prompt,
       topicHint,
       attachmentLabel: firstAttachmentName || null,
-      pluginTitle: payload.pluginTitle,
+      // Never stamp template marketing titles (Daisy / Html Ppt / …) as the project name.
+      pluginTitle: null,
     });
     const payloadTemplateId =
       typeof payload.projectMetadata?.selectedDeckTemplateId === 'string'

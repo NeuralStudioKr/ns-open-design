@@ -116,9 +116,13 @@ export const CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION =
   "so Teamver can scale the whole slide; do not size core typography or layout with viewport units that reflow by panel size. " +
   "Do not finish with prose only and do not stop before `</artifact>`.";
 
-/** User-visible first message for Canvas / Drive → create-slides. */
+/** User-visible first message for Canvas / Drive → create-slides (has source). */
 export const CANVAS_CREATE_SLIDES_PROMPT =
   "첨부한 자료를 바탕으로 슬라이드 덱을 만들어줘.";
+
+/** User-visible first message for Home freeform create with no attachments. */
+export const HOME_CREATE_SLIDES_PROMPT =
+  "요청한 내용으로 슬라이드 덱을 만들어줘.";
 
 export type CanvasSlideAudience = "auto" | "internal" | "client" | "education" | "business";
 export type CanvasSlideLength = "auto" | "short" | "standard" | "detailed";
@@ -327,6 +331,7 @@ export function canvasCreateSlidesRunPrompt(
   sourceBrief?: string | null,
   userInstruction?: string | null,
   quickSettings?: Partial<CanvasSlideQuickSettings> | null,
+  options?: { hasSourceMaterial?: boolean },
 ): string {
   const title = templateTitle?.trim();
   const isDefaultTemplate = !title || title === "기본 슬라이드 템플릿";
@@ -354,9 +359,24 @@ export function canvasCreateSlidesRunPrompt(
   const brief = compactCanvasBriefBlock(sourceBrief ?? "", 900);
   const sourceHint = brief ? `\n\n[Source brief]\n${brief}` : "";
   const user = compactCanvasBriefValue(userInstruction ?? "", 600);
-  const userHint = user ? `\n\n[User instruction]\n${user}` : "";
+  // Never say "첨부한 자료를…" when the user did not attach Canvas/Drive/files.
+  // A Home freeform brief that only echoes "User instruction:" is NOT source material.
+  const briefLooksLikeAttachedSource = Boolean(brief) && (
+    /\b(?:Canvas title|Drive source|Attachments?|Source preview|Visible headings|Canvas sections)\b/i.test(brief)
+    || /\b(?:file:|drive:|refs\/)/i.test(brief)
+  );
+  const hasSourceMaterial = options?.hasSourceMaterial ?? briefLooksLikeAttachedSource;
+  const lead = hasSourceMaterial
+    ? CANVAS_CREATE_SLIDES_PROMPT
+    : (user || HOME_CREATE_SLIDES_PROMPT);
+  // When the lead line is already the user instruction, do not duplicate it.
+  const userHint = hasSourceMaterial && user
+    ? `\n\n[User instruction]\n${user}`
+    : (!hasSourceMaterial && user && lead !== user
+      ? `\n\n[User instruction]\n${user}`
+      : "");
   const quickHint = `\n\n[Quick settings]\n${canvasSlideQuickSettingsInstruction(quickSettings)}`;
-  return `${CANVAS_CREATE_SLIDES_PROMPT}\n\n[Deliverable instruction]\n${CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION}${templateHint}${templateBlock}${quickHint}${sourceHint}${userHint}${templatePriorityBlock}`;
+  return `${lead}\n\n[Deliverable instruction]\n${CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION}${templateHint}${templateBlock}${quickHint}${sourceHint}${userHint}${templatePriorityBlock}`;
 }
 
 /** Per-turn meta so API/daemon runs compose the selected deck template into the system prompt. */

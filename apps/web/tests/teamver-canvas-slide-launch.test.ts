@@ -7,6 +7,7 @@ import {
   CANVAS_CREATE_SLIDES_PLUGIN_ID,
   CANVAS_CREATE_SLIDES_PROMPT,
   DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS,
+  HOME_CREATE_SLIDES_PROMPT,
   canvasCreateSlidesPluginInputs,
   canvasCreateSlidesRunPrompt,
   canvasSlideQuickSettingsInstruction,
@@ -203,6 +204,43 @@ describe("canvasSlideLaunch", () => {
     expect(runPrompt).not.toContain('The user picked "기본 슬라이드 템플릿"');
   });
 
+  it("Home freeform without attachments does not say 첨부한 자료", () => {
+    const runPrompt = canvasCreateSlidesRunPrompt(
+      "Html Ppt Zhangzara Daisy Days",
+      "User instruction:\nexpo에 대해서 설명하는 피피티 만들어줘.",
+      "expo에 대해서 설명하는 피피티 만들어줘. 시니어 개발자 레벨.",
+      DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS,
+      { hasSourceMaterial: false },
+    );
+    expect(runPrompt.startsWith("expo에 대해서")).toBe(true);
+    expect(runPrompt).not.toContain(CANVAS_CREATE_SLIDES_PROMPT);
+    expect(stripUserVisibleQuestionFormProtocolText(runPrompt)).toMatch(/expo/i);
+    expect(stripUserVisibleQuestionFormProtocolText(runPrompt)).not.toMatch(/첨부한 자료/);
+  });
+
+  it("Home empty request without attachments uses HOME_CREATE lead", () => {
+    const runPrompt = canvasCreateSlidesRunPrompt(
+      "기본 슬라이드 템플릿",
+      null,
+      "",
+      null,
+      { hasSourceMaterial: false },
+    );
+    expect(runPrompt.startsWith(HOME_CREATE_SLIDES_PROMPT)).toBe(true);
+    expect(runPrompt).not.toContain(CANVAS_CREATE_SLIDES_PROMPT);
+  });
+
+  it("Canvas/Drive with source still uses 첨부한 자료 lead", () => {
+    const runPrompt = canvasCreateSlidesRunPrompt(
+      "Template",
+      "Canvas title: Onboarding",
+      "keep it short",
+      null,
+      { hasSourceMaterial: true },
+    );
+    expect(runPrompt.startsWith(CANVAS_CREATE_SLIDES_PROMPT)).toBe(true);
+  });
+
   it("binds selected deck template into per-turn skillIds for system prompt composition", () => {
     expect(canvasCreateSlidesTurnMeta("html-ppt-hermes", { designSystemId: "ds-1" })).toEqual({
       skillIds: ["html-ppt-hermes"],
@@ -341,7 +379,12 @@ describe("canvasSlideLaunch", () => {
     expect(instruction).toContain("Friendly");
     expect(instruction).toContain("that count wins over Length");
 
-    const runPrompt = canvasCreateSlidesRunPrompt("Template", "brief", "", quickSettings);
+    const runPrompt = canvasCreateSlidesRunPrompt(
+      "Template",
+      "Canvas title: Onboarding brief",
+      "",
+      quickSettings,
+    );
     expect(runPrompt).toContain("[Quick settings]");
     expect(runPrompt).toContain("Audience: Education/training audience.");
     expect(runPrompt).toContain("Length: Short deck (about 5–6 slides).");
@@ -464,6 +507,7 @@ describe("canvasSlideLaunch", () => {
     expect(home).toContain("readLastExplicitDeckTemplateId");
     expect(home).toContain("clearLastExplicitDeckTemplateId");
     expect(home).toContain("resetHomeSlideCreateDraft");
+    expect(home).toContain("hasSourceMaterial");
     expect(home).not.toContain("rememberLastExplicitDeckTemplateId(homeSlideTemplateId)");
     expect(home).not.toContain("rememberLastExplicitDeckTemplateId(record.id)");
     const resetHomeSlideCreateDraftSrc = home.slice(
@@ -482,12 +526,16 @@ describe("canvasSlideLaunch", () => {
     expect(openHomeSlideCreateSrc).toContain("setStagedFiles([])");
     expect(openHomeSlideCreateSrc).toContain("setStagedDriveAssets([])");
     expect(openHomeSlideCreateSrc).toContain("createHomeSlideCreateQuickSettings()");
-    expect(composer).toContain("continuing with selected-template AI run");
+    // Composer Canvas/Drive handoff always has source material.
+    expect(composer).toContain("hasSourceMaterial: true");
     expect(composer).toContain("sendComposedTurn(");
     expect(composer).not.toContain("blocking model kit fallthrough");
     const entryShell = readWebSource("src/components/EntryShell.tsx");
     expect(entryShell).toContain("payloadTemplateId");
     expect(entryShell).toContain("selectedDeckTemplateId: payloadTemplateId");
+    // Project titles come from user prompt / pluginInputs.topic — not template marketing names.
+    expect(entryShell).toContain("topicFromPluginInputs");
+    expect(entryShell).toContain("pluginTitle: null");
     // Drive import fail must not skip Clone for explicit templates.
     expect(app).not.toContain("pendingDriveAssets.length === 0 || homeDriveImportSucceeded");
     const launch = readWebSource("src/teamver/canvasSlideLaunch.ts");
@@ -510,11 +558,12 @@ describe("canvasSlideLaunch", () => {
     expect(projectRoutes).toContain("ensureBundledPluginForClone");
     expect(projectRoutes).toContain("markTemplateClonedDeckSeeded");
     expect(projectRoutes).toContain("templateClonedDeckSeeded: true");
-    // Chat seed runs inside registerProjectFileRoutes — must wire conversations/ids.
+    // Chat seed wiring stays available for clone routes; fake completed-ack seeding
+    // was removed so AI content-fill owns the first transcript turn.
     expect(projectRoutes).toContain("'conversations' | 'ids'");
     expect(projectRoutes).toContain("listConversationsAsync");
     expect(projectRoutes).toContain("insertConversationAsync");
-    expect(projectRoutes).toContain("seed chat transcript failed");
+    expect(projectRoutes).toContain("Template-clone chat seed lives in file routes");
     const daemonServer = readFileSync(
       resolve(__dirname, "../../daemon/src/server.ts"),
       "utf8",
