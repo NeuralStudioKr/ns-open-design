@@ -23,6 +23,9 @@ export function looksLikeCanvasCreateBoilerplate(text: string): boolean {
   if (!t) return true;
   if (t === '첨부한 자료를 바탕으로 슬라이드 덱을 만들어줘.') return true;
   if (/^첨부(?:한)?\s*.+\s*바탕으로\s*슬라이드\s*덱을?\s*만들어\s*줘\.?$/u.test(t)) return true;
+  if (/첨부(?:한)?\s*.+\s*바탕으로/.test(t) && /\[Deliverable instruction\]/i.test(t)) {
+    return true;
+  }
   if (/^(?:User instruction|Deliverable instruction|Source brief|Quick settings)\s*[:：]/i.test(t)) {
     return true;
   }
@@ -106,6 +109,34 @@ export function buildTemplateCloneContentFillSeed(options: {
     parts.push('', '[Source brief]', brief);
   }
   return parts.join('\n');
+}
+
+/**
+ * Auto-send seed after daemon Clone.
+ *
+ * ProjectView used to prefer the in-memory `pendingPrompt` from createProject
+ * (the full `canvasCreateSlidesRunPrompt` dump) over the queued fill seed.
+ * That sent a surgical existing-deck-edit turn WITHOUT the fill marker, so
+ * the model left Clone's prompt-stuffed headings intact.
+ *
+ * When a fill is queued, the fill seed ALWAYS wins — even if pendingPrompt
+ * is still the raw create prompt.
+ */
+export function resolveTemplateCloneAutoSendSeed(input: {
+  queuedFillSeed?: string | null;
+  pendingPrompt?: string | null;
+  fillQueued: boolean;
+}): string {
+  const queued = String(input.queuedFillSeed ?? '').trim();
+  const pending = String(input.pendingPrompt ?? '').trim();
+  if (input.fillQueued) {
+    if (queued.includes(TEMPLATE_CLONE_CONTENT_FILL_MARKER)) return queued;
+    if (pending.includes(TEMPLATE_CLONE_CONTENT_FILL_MARKER)) return pending;
+    if (queued) return queued;
+    return buildTemplateCloneContentFillSeed({ pendingPrompt: pending });
+  }
+  if (queued.includes(TEMPLATE_CLONE_CONTENT_FILL_MARKER)) return queued;
+  return queued || pending;
 }
 
 export function queueTemplateCloneContentFill(options: {

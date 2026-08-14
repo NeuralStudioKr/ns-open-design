@@ -419,6 +419,7 @@ describe("canvasSlideLaunch", () => {
     expect(composer).toContain("await patchProject(id, projectPatch)");
     expect(projectView).toContain("selectedDeckTemplateId: meta?.selectedDeckTemplateId ?? null");
     expect(projectView).toContain("selectedDeckTemplateTitle: meta?.selectedDeckTemplateTitle ?? null");
+    expect(projectView).toContain("resolveTemplateCloneAutoSendSeed(");
     expect(composer).toContain("const sourceBrief = canvasCreateSlidesSourceBrief(handoff)");
     expect(composer).toContain("const sourceBrief = driveCreateSlidesSourceBrief(asset)");
     expect(composer).toContain("promptForRun");
@@ -436,7 +437,11 @@ describe("canvasSlideLaunch", () => {
     expect(composer).toContain("isExplicitCanvasSlideVisualTemplate(selectedCanvasSlideTemplate)");
     expect(composer).toContain("onRequestOpenFile?.(seeded.fileName)");
     expect(app).toContain("seedTemplateClonedDeck(");
+    expect(app).toContain("sanitizeTemplateCloneDeckTitle(");
+    expect(app).toContain("queuedFillSeed");
+    expect(app).toContain("pendingPrompt: queuedFillSeed");
     expect(app).not.toContain("skipAutoSendForTemplateClone");
+    expect(app).not.toContain("derivedPendingPrompt?.trim()?.slice(0, 80)");
     expect(app).toContain("isExplicitCanvasSlideVisualTemplate({ id: selectedDeckTemplateId })");
     expect(app).toContain("driveCreateSlidesSourceBrief(homeDriveSourceAsset)");
     expect(app).toContain("slideCountHintFromInputs");
@@ -490,6 +495,7 @@ describe("canvasSlideLaunch", () => {
     // explicit fill turn; assert the new invariant instead of the removed
     // log string.
     expect(composer).toContain("buildTemplateCloneContentFillSeed(");
+    expect(composer).toContain("sanitizeTemplateCloneDeckTitle(");
     expect(composer).toContain("sendComposedTurn(");
     expect(composer).not.toContain("blocking model kit fallthrough");
     const entryShell = readWebSource("src/components/EntryShell.tsx");

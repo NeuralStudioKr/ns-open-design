@@ -6,10 +6,12 @@ import {
   classifyTemplateCloneShellRole,
   inferTemplateCloneContentRole,
   listTemplateCloneSlideShells,
+  looksLikeInstructionCopy,
   normalizeTemplateCssForFixedCanvas,
   pickTemplateShellsForContent,
   resolveTemplateCloneSlideCountHint,
   resolveTemplateCloneSlidesFromBrief,
+  sanitizeTemplateCloneDeckTitle,
 } from '../src/template-clone-fill.js';
 
 describe('buildTemplateClonedDeckHtml', () => {
@@ -191,6 +193,38 @@ describe('resolveTemplateCloneSlidesFromBrief', () => {
     expect(slides[0]?.title).toMatch(/expo/i);
     expect(slides[0]?.title).not.toMatch(/첨부한 자료|만들어줘/);
     expect(slides[0]?.body).toBe('…');
+  });
+
+  it('does not dump the Home canvas run prompt into cover title or subtitle', () => {
+    const runDump = [
+      '첨부한 자료를 바탕으로 슬라이드 덱을 만들어줘.',
+      '',
+      '[Deliverable instruction]',
+      'Create a complete closed deck.',
+      '',
+      '[User instruction]',
+      'expo에 대해서 설명하는 피피티 만들어줘. 시니어 개발자 레벨.',
+    ].join('\n');
+    expect(sanitizeTemplateCloneDeckTitle(runDump)).toBeNull();
+    expect(sanitizeTemplateCloneDeckTitle(runDump.slice(0, 80))).toBeNull();
+    expect(looksLikeInstructionCopy('첨부한 자료를 바탕으로')).toBe(true);
+
+    const html = `<!doctype html><html><body>
+<section class="slide slide-title"><h1>Daisy Days</h1><p class="subtitle">cheerful presentation template</p></section>
+<section class="slide"><h2>Body</h2></section>
+</body></html>`;
+    const slides = resolveTemplateCloneSlidesFromBrief({
+      userInstruction: runDump,
+      deckTitle: runDump.slice(0, 80),
+    });
+    const cloned = buildTemplateClonedDeckHtml(html, slides, {
+      title: sanitizeTemplateCloneDeckTitle(runDump.slice(0, 80)) || slides[0]?.title || 'Presentation',
+    });
+    expect(cloned).toBeTruthy();
+    expect(cloned).not.toContain('첨부한 자료를 바탕으로');
+    expect(cloned).not.toContain('만들어줘');
+    expect(cloned).not.toContain('[Deliverable instruction]');
+    expect(cloned).toMatch(/expo/i);
   });
 
   it('picks up numbered outlines from user instructions', () => {

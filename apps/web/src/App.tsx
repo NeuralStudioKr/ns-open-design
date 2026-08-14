@@ -14,7 +14,7 @@ import {
   projectKindToTracking,
   fidelityToTracking,
 } from '@open-design/contracts/analytics';
-import type { AmrModelsResponse, ChatSessionMode } from '@open-design/contracts';
+import { sanitizeTemplateCloneDeckTitle, type AmrModelsResponse, type ChatSessionMode } from '@open-design/contracts';
 import { EntryView } from './components/EntryView';
 import { EmbedBootstrapGate } from './components/EmbedBootstrapGate';
 import { CenteredLoader } from './components/Loading';
@@ -2604,6 +2604,7 @@ function AppInner() {
       }
       let canvasImportFailed = false;
       let seededDeckFileName: string | null = null;
+      let queuedFillSeed: string | null = null;
       if (!workingDirHandoffFailed && pendingCanvasHandoff) {
         try {
           const canvasResult = await importTeamverCanvas(result.project.id, {
@@ -2657,23 +2658,27 @@ function AppInner() {
               sourceBrief,
               userInstruction: derivedPendingPrompt ?? null,
               deckTitle:
-                pendingCanvasHandoff.title?.trim()
-                || pendingCanvasHandoff.threadTitle?.trim()
-                || result.project.name?.trim()
-                || derivedPendingPrompt?.trim()?.slice(0, 80)
+                sanitizeTemplateCloneDeckTitle(pendingCanvasHandoff.title)
+                || sanitizeTemplateCloneDeckTitle(pendingCanvasHandoff.threadTitle)
+                || sanitizeTemplateCloneDeckTitle(result.project.name)
                 || null,
               slideCountHint: slideCountHintFromInputs,
             });
             if (seeded.ok) {
               seededDeckFileName = seeded.fileName;
+              firstMessageAttachments = [
+                ...firstMessageAttachments,
+                { path: seeded.fileName, name: seeded.fileName, kind: 'file' },
+              ];
+              queuedFillSeed = buildTemplateCloneContentFillSeed({
+                userInstruction: derivedPendingPrompt ?? null,
+                sourceBrief,
+                pendingPrompt: derivedPendingPrompt ?? null,
+                templateTitle: templateTitle || selectedDeckTemplateId,
+              });
               queueTemplateCloneContentFill({
                 projectId: result.project.id,
-                seed: buildTemplateCloneContentFillSeed({
-                  userInstruction: derivedPendingPrompt ?? null,
-                  sourceBrief,
-                  pendingPrompt: derivedPendingPrompt ?? null,
-                  templateTitle: templateTitle || selectedDeckTemplateId,
-                }),
+                seed: queuedFillSeed,
                 attachments: firstMessageAttachments,
               });
             } else {
@@ -2750,13 +2755,12 @@ function AppInner() {
           homeDriveImportSucceeded && homeDriveSourceAsset
             ? driveCreateSlidesSourceBrief(homeDriveSourceAsset)
             : (derivedPendingPrompt ?? null);
-        // Prefer project name / user prompt / Drive filename — never the plugin
-        // marketing title ("Html Ppt Zhangzara Daisy Days"), which used to land
-        // on the cover when free-form briefs had no numbered outline.
+        // Prefer project name / Drive filename — never the raw user prompt
+        // or plugin marketing title. User prompts are creative briefs
+        // ("만들어줘"), not slide titles; AI fill writes the cover heading.
         const clonedDeckCoverTitle =
-          result.project.name?.trim()
-          || derivedPendingPrompt?.trim()?.slice(0, 80)
-          || homeDriveSourceAsset?.filename?.trim()
+          sanitizeTemplateCloneDeckTitle(result.project.name)
+          || sanitizeTemplateCloneDeckTitle(homeDriveSourceAsset?.filename)
           || null;
         const seeded = await seedTemplateClonedDeck({
           projectId: result.project.id,
@@ -2769,14 +2773,19 @@ function AppInner() {
         });
         if (seeded.ok) {
           seededDeckFileName = seeded.fileName;
+          firstMessageAttachments = [
+            ...firstMessageAttachments,
+            { path: seeded.fileName, name: seeded.fileName, kind: 'file' },
+          ];
+          queuedFillSeed = buildTemplateCloneContentFillSeed({
+            userInstruction: derivedPendingPrompt ?? null,
+            sourceBrief,
+            pendingPrompt: derivedPendingPrompt ?? null,
+            templateTitle: templateTitle || selectedDeckTemplateId,
+          });
           queueTemplateCloneContentFill({
             projectId: result.project.id,
-            seed: buildTemplateCloneContentFillSeed({
-              userInstruction: derivedPendingPrompt ?? null,
-              sourceBrief,
-              pendingPrompt: derivedPendingPrompt ?? null,
-              templateTitle: templateTitle || selectedDeckTemplateId,
-            }),
+            seed: queuedFillSeed,
             attachments: firstMessageAttachments,
           });
         } else {
@@ -2849,6 +2858,10 @@ function AppInner() {
       const projectForNav = seededDeckFileName
         ? {
             ...project,
+            // Replace the create-time pendingPrompt (full canvas run dump)
+            // with the fill seed so ProjectView auto-send cannot prefer the
+            // stale "만들어줘" instruction over the queued fill contract.
+            ...(queuedFillSeed ? { pendingPrompt: queuedFillSeed } : {}),
             metadata: {
               ...(project.metadata && typeof project.metadata === 'object'
                 ? project.metadata

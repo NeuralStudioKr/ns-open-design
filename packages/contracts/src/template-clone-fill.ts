@@ -291,7 +291,8 @@ function fillSlideShell(
   index: number,
 ): string {
   let body = shell.body;
-  const title = content.title.trim() || `Slide ${index + 1}`;
+  const rawTitle = content.title.trim() || `Slide ${index + 1}`;
+  const title = looksLikeInstructionCopy(rawTitle) ? '…' : rawTitle;
   const bodyText = content.body?.trim() ?? '';
   const bodyLines = bodyText
     ? bodyText.split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
@@ -306,8 +307,10 @@ function fillSlideShell(
   }
 
   // Always clear template marketing subtitle when we own this shell's title.
+  // Never dump a "만들어줘" instruction into the subtitle slot.
   if (/<p\b[^>]*class\s*=\s*["'][^"']*subtitle/i.test(body)) {
-    const subtitle = bodyLines[0] || bodyText || '';
+    const rawSubtitle = bodyLines[0] || bodyText || '';
+    const subtitle = looksLikeInstructionCopy(rawSubtitle) ? '…' : rawSubtitle;
     body = body.replace(
       /(<p\b[^>]*class\s*=\s*["'][^"']*subtitle[^"']*["'][^>]*>)([\s\S]*?)(<\/p>)/i,
       `$1${escapeHtml(subtitle)}$3`,
@@ -317,7 +320,9 @@ function fillSlideShell(
   if (bodyLines.length > 0 && /<[uo]l\b/i.test(body)) {
     body = replaceListItems(body, bodyLines);
   } else if (bodyLines[0] || bodyText) {
-    const paragraph = bodyLines[0] || bodyText;
+    const paragraph = looksLikeInstructionCopy(bodyLines[0] || bodyText)
+      ? '…'
+      : (bodyLines[0] || bodyText);
     if (!/<p\b[^>]*class\s*=\s*["'][^"']*subtitle/i.test(shell.body) && /<p\b/i.test(body)) {
       body = replaceFirstTagText(body, 'p', paragraph);
     }
@@ -522,7 +527,7 @@ const HEADINGS_STOP_RE =
 const NUMBERED_SLIDE_RE =
   /^\s*(?:(?:\d+)[\.\)]\s*|(?:0?\d{1,2})\s+|슬라이드\s*\d+\s*[:\.\-]\s*|#{1,3}\s+)(.+)$/i;
 const USER_INSTRUCTION_RE =
-  /User instruction\s*[:：]\s*([\s\S]*?)(?=\n(?:Source |Canvas |Drive |Visible |Selected )|$)/i;
+  /\[?User instruction\]?\s*[:：]?\s*([\s\S]*?)(?=\n(?:Source |Canvas |Drive |Visible |Selected |\[)|$)/i;
 
 function cleanCloneTitle(title: string): string {
   return title.replace(/^["'`]|["'`]$/g, '').replace(/\s+/g, ' ').trim();
@@ -570,14 +575,35 @@ function deriveTitleFromBrief(brief: string, deckTitle?: string | null): string 
   return cleanCloneTitle(title).slice(0, 60) || 'Presentation';
 }
 
-function looksLikeInstructionCopy(text: string): boolean {
+export function looksLikeInstructionCopy(text: string): boolean {
   const t = text.trim();
   if (!t) return true;
-  if (/첨부(?:한)?\s*.+\s*바탕으로\s*슬라이드/i.test(t)) return true;
+  if (/\[(?:Deliverable instruction|Selected slide template|Source brief|Quick settings|User instruction)\]/i.test(t)) {
+    return true;
+  }
+  // Canvas/Home create boilerplate, including the leftover after stripping
+  // "슬라이드 덱을 만들어줘" ("첨부한 자료를 바탕으로").
+  if (/첨부(?:한)?\s*.+\s*바탕으로/i.test(t)) return true;
   if (/(?:만들어|작성|생성)\s*(?:줘|주세요)|설명해?\s*(?:줘|주세요)/i.test(t)) return true;
   if (/^(?:please\s+)?(?:make|create|build|write|generate)\s+/i.test(t)) return true;
   if (/피피티|PPT|슬라이드\s*덱/i.test(t) && /(?:만들어|작성|생성|설명)/i.test(t)) return true;
   return false;
+}
+
+/**
+ * Cover / document title for daemon Clone. Returns null when the candidate is
+ * template marketing or a user "만들어줘" instruction — callers must not stuff
+ * those into slide headings (AI content-fill writes real titles next).
+ */
+export function sanitizeTemplateCloneDeckTitle(
+  raw: string | null | undefined,
+): string | null {
+  const title = cleanCloneTitle(String(raw ?? ''));
+  if (!title) return null;
+  if (looksLikeTemplateMarketingTitle(title) || looksLikeInstructionCopy(title)) {
+    return null;
+  }
+  return title.slice(0, 80);
 }
 
 /**
@@ -611,7 +637,7 @@ export function synthesizeTemplateCloneSlidesFromFreeFormBrief(options: {
   const paragraphs = brief
     .split(/\n{2,}/)
     .map((part) => part.trim())
-    .filter(Boolean);
+    .filter((part) => part && !looksLikeInstructionCopy(part));
   if (paragraphs.length >= 2) {
     const out: TemplateCloneSlideContent[] = [
       { title, body: paragraphs[0]!.slice(0, 200) },
@@ -619,13 +645,16 @@ export function synthesizeTemplateCloneSlidesFromFreeFormBrief(options: {
     for (let i = 1; i < paragraphs.length; i += 1) {
       const para = paragraphs[i]!;
       const firstLine = para.split('\n')[0]!.trim();
-      const slideTitle = firstLine.length <= 60
+      const slideTitle = firstLine.length <= 60 && !looksLikeInstructionCopy(firstLine)
         ? cleanCloneTitle(firstLine).slice(0, 80)
         : `${title} ${i + 1}`;
       const body = firstLine.length <= 60
         ? para.split('\n').slice(1).join('\n').trim() || para
         : para;
-      out.push({ title: slideTitle || `${title} ${i + 1}`, body: body.slice(0, 1200) });
+      out.push({
+        title: slideTitle || `${title} ${i + 1}`,
+        body: looksLikeInstructionCopy(body) ? '…' : body.slice(0, 1200),
+      });
     }
     return out.slice(0, 20);
   }

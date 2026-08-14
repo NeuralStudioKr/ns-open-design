@@ -171,6 +171,7 @@ import {
 } from '../teamver/canvasSlideLaunch';
 import {
   TEMPLATE_CLONE_CONTENT_FILL_MARKER,
+  resolveTemplateCloneAutoSendSeed,
   clearTemplateCloneContentFillQueue,
   isTemplateCloneContentFillQueued,
   readQueuedAutoSendSeed,
@@ -12199,8 +12200,20 @@ export function ProjectView({
       /* sessionStorage may be unavailable; treat as manual flow. */
     }
     autoSendFirstMessageRef.current = isAutoSend;
+    const fillQueuedAtMount =
+      isTemplateCloneContentFillQueued(project.id)
+      || (
+        project.metadata
+        && typeof project.metadata === 'object'
+        && (project.metadata as { templateCloneContentFillPending?: unknown })
+          .templateCloneContentFillPending === true
+      );
     autoSendSeedRef.current = isAutoSend
-      ? ((project.pendingPrompt ?? '').trim() || readQueuedAutoSendSeed(project.id))
+      ? resolveTemplateCloneAutoSendSeed({
+          queuedFillSeed: readQueuedAutoSendSeed(project.id),
+          pendingPrompt: project.pendingPrompt,
+          fillQueued: fillQueuedAtMount,
+        })
       : '';
     autoSendAttachmentsRef.current = isAutoSend ? readAutoSendAttachments(project.id) : [];
   }
@@ -12405,15 +12418,24 @@ export function ProjectView({
     if (!flag) return;
     // Prefer the seed captured at mount (autoSendSeedRef) — it survives
     // even after onClearPendingPrompt wipes project.pendingPrompt on the
-    // server. Fall back to queued Clone content-fill seed when daemon cleared
-    // pendingPrompt after template look seed.
-    const seed = (
-      autoSendSeedRef.current ||
-      readQueuedAutoSendSeed(project.id) ||
-      (initialDraft?.projectId === project.id ? initialDraft.value : '') ||
-      project.pendingPrompt ||
-      ''
-    ).trim();
+    // server. When a Clone content-fill is queued, the fill seed ALWAYS
+    // wins over the stale create-time pendingPrompt (full canvas run dump).
+    const fillQueued =
+      isTemplateCloneContentFillQueued(project.id)
+      || (
+        project.metadata
+        && typeof project.metadata === 'object'
+        && (project.metadata as { templateCloneContentFillPending?: unknown })
+          .templateCloneContentFillPending === true
+      );
+    const seed = resolveTemplateCloneAutoSendSeed({
+      queuedFillSeed:
+        autoSendSeedRef.current
+        || readQueuedAutoSendSeed(project.id)
+        || (initialDraft?.projectId === project.id ? initialDraft.value : ''),
+      pendingPrompt: project.pendingPrompt,
+      fillQueued,
+    }).trim();
     const attachments = autoSendAttachmentsRef.current ?? [];
     if (!seed && attachments.length === 0) {
       autoSentRef.current = true;
@@ -12425,14 +12447,6 @@ export function ProjectView({
     if (isDesignSystemWorkspaceMetadata(project.metadata)) {
       markDesignSystemAuditAutoRepairEligible(project.id);
     }
-    const fillQueued =
-      isTemplateCloneContentFillQueued(project.id)
-      || (
-        project.metadata
-        && typeof project.metadata === 'object'
-        && (project.metadata as { templateCloneContentFillPending?: unknown })
-          .templateCloneContentFillPending === true
-      );
     clearAutoSendSession(project.id);
     clearTemplateCloneContentFillQueue(project.id);
     autoSendAttachmentsRef.current = [];

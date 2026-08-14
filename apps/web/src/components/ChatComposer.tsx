@@ -135,6 +135,7 @@ import type {
   RunContextSelection,
   WorkspaceContextItem,
 } from '@open-design/contracts';
+import { sanitizeTemplateCloneDeckTitle } from '@open-design/contracts';
 import {
   buildVisualAnnotationAttachment,
   commentTargetDisplayName,
@@ -2184,9 +2185,8 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
               sourceBrief,
               userInstruction: promptForRun,
               deckTitle:
-                handoff.title?.trim()
-                || handoff.threadTitle?.trim()
-                || promptForRun.trim().slice(0, 80)
+                sanitizeTemplateCloneDeckTitle(handoff.title)
+                || sanitizeTemplateCloneDeckTitle(handoff.threadTitle)
                 || null,
               slideCountHint: canvasSlideQuickLengthToSlideCount(
                 canvasSlideQuickSettings.length,
@@ -2386,10 +2386,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
             templateTitle: selectedCanvasSlideTemplate.title,
             sourceBrief,
             userInstruction: promptForRun,
-            deckTitle:
-              asset.filename?.trim()
-              || promptForRun.trim().slice(0, 80)
-              || null,
+            deckTitle: sanitizeTemplateCloneDeckTitle(asset.filename) || null,
             slideCountHint: canvasSlideQuickLengthToSlideCount(
               canvasSlideQuickSettings.length,
             ),

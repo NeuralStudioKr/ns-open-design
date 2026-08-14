@@ -152,6 +152,29 @@ full `example.html`을 시스템 프롬프트에 넣지 않는다는 방침은 �
 
 제품 판단: **완성된 덱이 우선**이다. 선택 템플릿과 100% 동일한 CSS를 복사하다가 결과물이 비어버리는 것보다, 템플릿의 palette/font/motif cue가 보이는 compact static deck을 완성하는 것이 낫다. 따라서 pre-write gate는 계속 shell 저장을 막고, prompt는 shell이 생기지 않도록 body-first로 유도한다.
 
+### 0.12 2026-08-14 후속 검수 — fill 예약이 있어도 stale `pendingPrompt`가 이기고, `deckTitle`에 런 프롬프트가 stuffing됨
+
+**증상 (재발 경로):** §0.11 / staging `36a19ec70`이 Clone 후 AI fill turn을 다시 켜 두었지만, Home 마법사는 `pendingPrompt`에 `canvasCreateSlidesRunPrompt()` 전문을 넣는다. 첫 줄이 바로 `첨부한 자료를 바탕으로 슬라이드 덱을 만들어줘.` 이고 `[User instruction]` 블록에 실제 토픽이 있다.
+
+검수에서 남은 구멍 네 개:
+
+1. **ProjectView `autoSendSeedRef`가 create 응답의 stale `pendingPrompt`를 queued fill seed보다 우선.** daemon이 server `pendingPrompt`를 null로 지워도, 클라 navigate용 `result.project`에는 런 프롬프트 전문이 남아 있다. fill marker 없는 채로 existing-deck **surgical edit** 계약이 붙으면 모델이 Clone 표지(프롬프트 덤프)를 그대로 둔다.
+2. **App.tsx / ChatComposer가 `derivedPendingPrompt` / `promptForRun`을 `deckTitle`로 전달.** 런 프롬프트 앞 80자가 커버 h1 후보. `looksLikeInstructionCopy`가 막지 못하면 표지에 지시문이 박힌다.
+3. **App.tsx fill queue가 `deck.html`을 attach하지 않음.** ChatComposer 경로는 attach함. Home create 경로는 filesSnapshot race 때 existing-deck 계약이 빠질 수 있음.
+4. **`[User instruction]` (대괄호, 콜론 없음) 마커를 Clone 파서가 못 읽음.** Home 런 프롬프트 형식과 `User instruction:` 형식이 달라 expo 토픽이 추출되지 않고 `Presentation` / 지시문 leftover로 떨어짐.
+
+**수정:**
+
+- `resolveTemplateCloneAutoSendSeed` — fill queued면 fill seed가 항상 이김. seed가 없으면 pendingPrompt에서 fill seed를 재구성.
+- App.tsx `projectForNav.pendingPrompt = queuedFillSeed` — navigate 직후에도 stale create prompt가 남지 않음.
+- `sanitizeTemplateCloneDeckTitle` — 마케팅 타이틀·지시문·런 프롬프트 dump는 deckTitle로 쓰지 않음. App/ChatComposer 모두 적용.
+- Clone 성공 시 `deck.html`을 `firstMessageAttachments`에 넣어 queue + generic auto-send가 덮어써도 유지.
+- `USER_INSTRUCTION_RE`가 `[User instruction]` / `User instruction:` 둘 다 인식.
+- `looksLikeInstructionCopy`를 `첨부한 자료를 바탕으로` leftover·`[Deliverable instruction]` dump까지 확장. `fillSlideShell`은 지시문 title/subtitle을 `…`로 치환.
+- 채팅 표시: `[Deliverable instruction]` / `[Selected slide template]` / `[Source brief]` / `[Quick settings]` 를 `stripUserVisibleUserMessageText`에서 제거.
+
+**검증:** contracts `template-clone-fill` 16/16 · `templateCloneContentFill` + `teamver-canvas-slide-launch` + `comments` 포함 web 121/121 · contracts 전체 412/412.
+
 ### 0.11 2026-08-14 근본 재조명 — Clone이 **최종 결과물**이었던 것이 진짜 원인, AI content generation 자체가 죽어 있었다
 
 **증상 (사용자 신고):** "여전히 템플릿 적용을 제대로 못하고 있다. 초안을 복사해와서는 사용자 입력 프롬프트를 그대로 넣어버린다. 그것이 아니라 이전처럼 AI로 컨텐츠를 생성해야한다." 스크린샷: cover heading = 유저 프롬프트 텍스트 그대로 (`첨부한 자료를 바탕으로 슬라이드 덱을 만들어줘`), assistant 채팅은 canned 안내문 하나만 (`「Html Ppt Zhangzara Daisy Days」 템플릿을 적용해 슬라이드 초안을 준비했습니다`).
@@ -712,6 +735,7 @@ daemon 로컬 skill 워크플로 잔재다. Daisy Days에는 Teamver API 노트�
 | P0 | letterbox `transparent !important`가 deck 자체 body bg를 여전히 override하던 문제 | **완료** — `compactStackedDeckFix`에서 html/body `background` 선언 완전 제거 |
 | P0 | **정책 개정** — template = layout vocabulary, 페이지 수/순서/구성은 브리프 기반 (§0.0 개정) | **완료** — HARD_RULES 재작성, scaffold map을 catalog로 재정의, daemon Clone default `shells.length` → 6, `pickTemplateShells` role-based scoring |
 | P0 | **아키텍처 근본 재조명** — Clone이 skipAutoSend + canned chat seed + templateClonedDeckSeeded early-return의 3중 방어로 인해 **AI content generation 자체를 죽이던 문제** (§0.11) | **완료** — staging `36a19ec70`: `templateCloneContentFill.ts` 신설 + `TEMPLATE_CLONE_CONTENT_FILL_MARKER` seed + 세 계층 방어 해제. 스테일 test assertion 2건 정정. |
+| P0 | **후속 검수** — fill 예약이 있어도 stale create `pendingPrompt`(런 프롬프트 전문)가 auto-send를 이기고, `deckTitle`에 지시문이 stuffing되던 구멍 (§0.12) | **완료** — `resolveTemplateCloneAutoSendSeed` + `sanitizeTemplateCloneDeckTitle` + deck.html attach + `[User instruction]` 파서 + 채팅 scaffold strip |
 
 ### 12.1 Edit-contract gating (상세)
 
