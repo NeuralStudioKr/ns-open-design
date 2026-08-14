@@ -38,7 +38,7 @@ describe('web pretest step split', () => {
   it('labels contracts build vs snapshot-capture failures separately', () => {
     expect(packageJson).toContain('"pretest": "node scripts/pretest.mjs"');
     expect(pretestScript).toContain('[pretest] ${label} failed');
-    expect(pretestScript).toContain("'contracts build'");
+    expect(pretestScript).toContain('contracts build');
     expect(pretestScript).toContain("'build:snapshot-capture'");
   });
 
@@ -47,5 +47,12 @@ describe('web pretest step split', () => {
     expect(pretestScript).toContain('result.error.code');
     expect(pretestScript).toContain('process.execPath');
     expect(pretestScript).toContain("join(webRoot, 'scripts/build-snapshot-capture.mjs')");
+  });
+
+  it('falls back contracts build via corepack then node esbuild', () => {
+    expect(pretestScript).toContain('function runContractsBuild');
+    expect(pretestScript).toContain("['corepack', ['pnpm'");
+    expect(pretestScript).toContain("'contracts build (node esbuild)'");
+    expect(pretestScript).toContain('esbuild.config.mjs');
   });
 });

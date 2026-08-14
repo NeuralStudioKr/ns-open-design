@@ -338,6 +338,7 @@ import {
   shouldApplyTipYieldSingleInspectorSnapshot,
   shouldRefreshHostPaintAfterTipYieldSingleReseed,
   shouldRefreshHostPaintAfterTipRemountRemasure,
+  shouldConsumeTipRemountGeometryGraceOnRemasure,
   shouldSyncSelectedTargetIdentityAfterTipYieldSingleReseed,
   shouldSkipWildJumpAfterTipRemountGrace,
   shouldSyncManualEditFrozenSourceToPainted,
@@ -8059,19 +8060,27 @@ function HtmlViewer({
                     outerHtml: snapshot.outerHtml || current.outerHtml,
                   };
                   selectedManualEditTargetRef.current = next;
+                  // Avoid redundant identity reseed on the next bridge broadcast (440).
+                  manualEditSelectedIdentityFingerprintRef.current =
+                    manualEditTargetsIdentityFingerprint([next]);
                   return next;
                 });
-                setManualEditTargets((current) => current.map((item) => {
-                  if (item.id !== seedId) return item;
-                  return {
-                    ...item,
-                    text: snapshot.fields.text ?? item.text,
-                    fields: { ...item.fields, ...snapshot.fields },
-                    attributes: snapshot.attributes,
-                    styles: mergeManualEditInspectorStyles(snapshot.styles, item.styles),
-                    outerHtml: snapshot.outerHtml || item.outerHtml,
-                  };
-                }));
+                setManualEditTargets((current) => {
+                  const nextList = current.map((item) => {
+                    if (item.id !== seedId) return item;
+                    return {
+                      ...item,
+                      text: snapshot.fields.text ?? item.text,
+                      fields: { ...item.fields, ...snapshot.fields },
+                      attributes: snapshot.attributes,
+                      styles: mergeManualEditInspectorStyles(snapshot.styles, item.styles),
+                      outerHtml: snapshot.outerHtml || item.outerHtml,
+                    };
+                  });
+                  manualEditTargetsIdentityFingerprintRef.current =
+                    manualEditTargetsIdentityFingerprint(nextList);
+                  return nextList;
+                });
               }
             }
           }
@@ -9586,14 +9595,21 @@ function HtmlViewer({
         ) {
           return;
         }
-        if (tipRemountGrace) {
-          // Consume grace after first accepted remasure — clear id + until.
+        // Sibling remasure must not consume primary grace (same id gate) (436).
+        const consumeGrace = shouldConsumeTipRemountGeometryGraceOnRemasure(
+          manualEditTipRemountGeometryGraceIdRef.current,
+          measured.id,
+          selectedManualEditTargetIdRef.current,
+          nowMs,
+          manualEditTipRemountGeometryGraceUntilRef.current,
+        );
+        if (consumeGrace) {
           clearManualEditTipRemountGeometryGrace();
         }
         applyManualEditMeasuredGeometry(measured);
         // Multi tip-yield reseed and Mixed→single both arm tip-remount grace;
         // refresh host paint once remasure consumes it (431/430).
-        if (shouldRefreshHostPaintAfterTipRemountRemasure(tipRemountGrace)) {
+        if (shouldRefreshHostPaintAfterTipRemountRemasure(consumeGrace)) {
           refreshManualEditHostPaintRect(measured.id, { force: true });
         }
         return;

@@ -207,3 +207,24 @@ export function shouldSkipWildJumpAfterTipRemountGrace(
     && rectId === selectedId
   );
 }
+
+/**
+ * Consume tip-remount grace only when the remasure is for the grace primary
+ * (same gate as wild-jump skip). Sibling multi-select remasures must not
+ * clear another element's grace window (436).
+ */
+export function shouldConsumeTipRemountGeometryGraceOnRemasure(
+  graceId: string | null | undefined,
+  rectId: string,
+  selectedId: string | null | undefined,
+  nowMs: number,
+  graceUntilMs: number,
+): boolean {
+  return shouldSkipWildJumpAfterTipRemountGrace(
+    graceId,
+    rectId,
+    selectedId,
+    nowMs,
+    graceUntilMs,
+  );
+}

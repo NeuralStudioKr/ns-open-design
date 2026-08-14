@@ -10,6 +10,7 @@ import {
   shouldApplyTipYieldSingleInspectorSnapshot,
   shouldRefreshHostPaintAfterTipYieldSingleReseed,
   shouldRefreshHostPaintAfterTipRemountRemasure,
+  shouldConsumeTipRemountGeometryGraceOnRemasure,
   shouldSyncSelectedTargetIdentityAfterTipYieldSingleReseed,
   shouldSkipWildJumpAfterTipRemountGrace,
   shouldSyncManualEditFrozenSourceToPainted,
@@ -139,6 +140,22 @@ describe('manual edit freeze reset', () => {
   it('refreshes host paint after tip-remount remasure for multi and single', () => {
     expect(shouldRefreshHostPaintAfterTipRemountRemasure(true)).toBe(true);
     expect(shouldRefreshHostPaintAfterTipRemountRemasure(false)).toBe(false);
+  });
+
+  it('does not consume tip-remount grace on sibling multi-select remasure', () => {
+    expect(shouldConsumeTipRemountGeometryGraceOnRemasure(
+      'el-1', 'el-1', 'el-1', 1_000, 1_800,
+    )).toBe(true);
+    // Sibling remasure must not clear primary grace.
+    expect(shouldConsumeTipRemountGeometryGraceOnRemasure(
+      'el-1', 'el-2', 'el-1', 1_000, 1_800,
+    )).toBe(false);
+    expect(shouldConsumeTipRemountGeometryGraceOnRemasure(
+      'el-1', 'el-1', 'el-2', 1_000, 1_800,
+    )).toBe(false);
+    expect(shouldConsumeTipRemountGeometryGraceOnRemasure(
+      'el-1', 'el-1', 'el-1', 1_800, 1_800,
+    )).toBe(false);
   });
 
   it('clears tip-remount grace when selection leaves the grace primary', () => {

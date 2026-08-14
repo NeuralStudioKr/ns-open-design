@@ -1688,6 +1688,17 @@ describe('manual edit source patches', () => {
     expect(namespacedCursorStroke.toLowerCase()).not.toContain('javascript');
     expect(namespacedCursorStroke).not.toMatch(/svg:cursor\s*=/i);
     expect(namespacedCursorStroke).not.toMatch(/svg:stroke\s*=/i);
+    // DOM fragment + set-attributes path — namespaced fill/mask local-name gate.
+    const domNamespacedFillMask = sanitizeManualEditHtmlFragment(
+      '<rect foo:fill="url(javascript:alert(20))" data-od-id="rf" />'
+      + '<circle bar:mask="url(javascript:alert(21))" data-od-id="cm" />',
+    );
+    expect(domNamespacedFillMask.toLowerCase()).not.toContain('javascript');
+    expect(domNamespacedFillMask).not.toMatch(/foo:fill\s*=/i);
+    expect(domNamespacedFillMask).not.toMatch(/bar:mask\s*=/i);
+    expect(sourcePatchesSource).toContain(
+      'MANUAL_EDIT_CSS_URL_PRESENTATION_ATTRS.has(local)',
+    );
     // SMIL presentation paint uses the same SSOT Set as element attrs / failClosed.
     expect(sourcePatchesSource).toContain(
       'Presentation paint via SMIL attributeName — same SSOT as failClosed',
@@ -2578,6 +2589,48 @@ describe('manual edit source patches', () => {
     expect(dirty.ok, dirty.error).toBe(true);
     const html = readManualEditOuterHtml(dirty.source, 'mark');
     expect(html).not.toContain('evil.example');
+  });
+
+  it('scrubs SMIL attributeName cursor and stroke remote urls', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<svg data-od-id="mark"><rect></rect></svg>',
+      '</body></html>',
+    ].join('');
+    const dirty = applyManualEditPatch(source, {
+      kind: 'set-outer-html',
+      id: 'mark',
+      html: [
+        '<svg data-od-id="mark"><rect>',
+        '<set attributeName="cursor" to="url(https://evil.example/c.svg#x)"></set>',
+        '<animate attributeName="stroke" values="url(https://evil.example/s.svg#y);red"></animate>',
+        '</rect></svg>',
+      ].join(''),
+    });
+    expect(dirty.ok, dirty.error).toBe(true);
+    const html = readManualEditOuterHtml(dirty.source, 'mark');
+    expect(html).not.toContain('evil.example');
+  });
+
+  it('rejects namespaced fill/mask via set-attributes local-name gate', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<svg data-od-id="mark"><rect fill="red"></rect></svg>',
+      '</body></html>',
+    ].join('');
+    const fillDenied = applyManualEditPatch(source, {
+      kind: 'set-attributes',
+      id: 'mark',
+      attributes: { 'foo:fill': 'url(javascript:alert(1))' },
+    });
+    expect(fillDenied.ok).toBe(false);
+    const maskDenied = applyManualEditPatch(source, {
+      kind: 'set-attributes',
+      id: 'mark',
+      attributes: { 'bar:mask': 'url(javascript:alert(2))' },
+    });
+    expect(maskDenied.ok).toBe(false);
+    expect(source).toContain('fill="red"');
   });
 
   it('does not drop whole style blocks for .javascript:hover selectors', () => {
