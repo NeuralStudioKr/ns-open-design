@@ -6,7 +6,9 @@ import {
   buildTemplateCloneContentFillSeed,
   compactTemplateCloneFillSourceBrief,
   deriveTemplateCloneTopicLabel,
+  ensureTemplateCloneContentFillContinuePrompt,
   extractTemplateCloneUserFacingRequest,
+  historyHasTemplateCloneContentFill,
   isTemplateCloneContentFillPrompt,
   looksLikeInstructionNotSlideCopy,
   resolveTemplateCloneAutoSendSeed,
@@ -194,5 +196,36 @@ describe('templateCloneContentFill', () => {
     expect(seed).toContain(TEMPLATE_CLONE_CONTENT_FILL_MARKER);
     expect(seed).toMatch(/expo/i);
     expect(seed).not.toMatch(/^첨부한 자료를 바탕으로/m);
+  });
+
+  it('historyHasTemplateCloneContentFill only checks the latest user turn', () => {
+    expect(
+      historyHasTemplateCloneContentFill([
+        { role: 'user', content: `expo\n\n${TEMPLATE_CLONE_CONTENT_FILL_MARKER}` },
+        { role: 'assistant', content: '<artifact type="deck"><head>' },
+      ]),
+    ).toBe(true);
+    // Later normal edit must NOT inherit ancient fill markers.
+    expect(
+      historyHasTemplateCloneContentFill([
+        { role: 'user', content: `expo\n\n${TEMPLATE_CLONE_CONTENT_FILL_MARKER}` },
+        { role: 'assistant', content: 'done' },
+        { role: 'user', content: '제목만 바꿔줘' },
+      ]),
+    ).toBe(false);
+  });
+
+  it('ensureTemplateCloneContentFillContinuePrompt restamps create contract without Existing deck edit', () => {
+    const continued = ensureTemplateCloneContentFillContinuePrompt(
+      '이전 응답이 끊겼습니다. body-first로 이어서 완성하세요.',
+    );
+    expect(continued).toContain(TEMPLATE_CLONE_CONTENT_FILL_MARKER);
+    expect(continued).toContain(TEMPLATE_CLONE_CONTENT_FILL_TURN_MARKER);
+    expect(continued).toMatch(/NEVER "수정 반영 중"/);
+    expect(continued).toMatch(/body-first/i);
+    expect(continued).not.toContain('[Existing deck edit]');
+    expect(continued).toMatch(/이전 응답이 끊겼습니다/);
+    // Idempotent when already stamped.
+    expect(ensureTemplateCloneContentFillContinuePrompt(continued)).toBe(continued);
   });
 });

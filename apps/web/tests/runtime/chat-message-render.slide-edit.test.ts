@@ -139,6 +139,15 @@ describe('slide edit turn detection (0805-N05)', () => {
         preTurnFileNames: ['deck.html'],
       }),
     ).toBeUndefined();
+    // Clone LOOK preview on disk must not flip first content-fill to edit.
+    expect(
+      resolveSlideTurnKindForSend({
+        slideOnlyMvp: true,
+        preTurnFileNames: ['deck.html'],
+        existingDeckAttached: true,
+        templateCloneContentFill: true,
+      }),
+    ).toBe('create');
 
     expect(
       messageLooksLikeSlideEditTurn(

@@ -168,8 +168,9 @@ describe("promptWithSlideAttachmentDeliverableInstruction", () => {
     expect(prompt).toContain("[Deliverable instruction]");
     expect(prompt).toContain("[Attached image embed]");
     expect(prompt).toContain('src="refs/drive/msh5lhfh-hero.png"');
-    expect(prompt).toContain("never strip directory prefixes");
-    expect(prompt).toContain("NEVER reduce the number of `<section class=\"slide\">` blocks");
+    expect(prompt).toMatch(/NEW slide deck|This is CREATE/i);
+    expect(prompt).not.toContain("NEVER reduce the number of `<section class=\"slide\">` blocks");
+    expect(prompt).not.toContain("surgical insert into the EXISTING deck");
   });
 });
 
@@ -266,6 +267,31 @@ describe("chatAttachmentsForAutoContinueImageEmbed", () => {
       "deck.html",
       "msh9rso1-서빙하는-금붕어.webp",
     ]);
+  });
+
+  it("omits deck.html on template-clone content-fill lineage (truncated LOOK hang)", () => {
+    const kept = chatAttachmentsForAutoContinueImageEmbed({
+      content: "expo 설명해줘\n\n[Template clone content fill]\nFill REAL content",
+      attachments: [
+        { path: "uploads/photo.png", name: "photo.png", kind: "image" },
+        { path: "deck.html", name: "deck.html", kind: "file" },
+      ],
+    });
+    expect(kept.map((item) => item.path)).toEqual(["uploads/photo.png"]);
+  });
+
+  it("omits html when omitHtml option is set", () => {
+    const kept = chatAttachmentsForAutoContinueImageEmbed(
+      {
+        attachments: [
+          { path: "uploads/photo.png", name: "photo.png", kind: "image" },
+          { path: "deck.html", name: "deck.html", kind: "file" },
+        ],
+      },
+      undefined,
+      { omitHtml: true },
+    );
+    expect(kept.map((item) => item.path)).toEqual(["uploads/photo.png"]);
   });
 });
 

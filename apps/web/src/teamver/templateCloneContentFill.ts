@@ -41,6 +41,38 @@ export function isTemplateCloneContentFillPrompt(text: string | null | undefined
   );
 }
 
+/** True when the most recent user turn is still a Clone content-fill. */
+export function historyHasTemplateCloneContentFill(
+  messages: readonly { role?: string; content?: string | null }[],
+): boolean {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const message = messages[i];
+    if (message?.role === 'user') {
+      return isTemplateCloneContentFillPrompt(message.content);
+    }
+  }
+  return false;
+}
+
+/**
+ * Auto-continue prompts drop fill markers — re-stamp CREATE fill contract so
+ * handleSend keeps stripping deck.html and never flips to existing-deck edit.
+ * No-op when the prompt already carries a fill marker (first seed or prior stamp).
+ */
+export function ensureTemplateCloneContentFillContinuePrompt(prompt: string): string {
+  const trimmed = String(prompt ?? '').trim();
+  if (!trimmed) return trimmed;
+  if (isTemplateCloneContentFillPrompt(trimmed)) return trimmed;
+  return [
+    TEMPLATE_CLONE_CONTENT_FILL_MARKER,
+    TEMPLATE_CLONE_CONTENT_FILL_TURN_MARKER,
+    'This is an auto-continue of a template-clone CONTENT FILL (CREATE), not a surgical edit of the Clone LOOK seed.',
+    ...templateCloneContentFillHardRules(),
+    '',
+    trimmed,
+  ].join('\n');
+}
+
 /** Canvas/Home boilerplate only — user topic lines may still contain "만들어줘". */
 export function looksLikeCanvasCreateBoilerplate(text: string): boolean {
   const t = text.trim();

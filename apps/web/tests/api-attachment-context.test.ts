@@ -221,6 +221,27 @@ describe('historyWithApiAttachmentContext', () => {
   });
 });
 
+describe('clipAttachmentText', () => {
+  it('keeps body/slides when truncating large HTML instead of mid-CSS head only', async () => {
+    const { clipAttachmentText } = await import('../src/api-attachment-context');
+    const style = `<style>${'x'.repeat(30_000)}</style>`;
+    const html = [
+      '<!doctype html><html><head>',
+      style,
+      '</head><body>',
+      '<section class="slide" data-slide-index="0"><h1>Cover Expo</h1></section>',
+      '<section class="slide" data-slide-index="1"><h2>API</h2><p>takeaway</p></section>',
+      '</body></html>',
+    ].join('');
+    const clipped = clipAttachmentText(html, 8_000, { preferHtmlBody: true });
+    expect(clipped.length).toBeLessThanOrEqual(8_500);
+    expect(clipped).toMatch(/Cover Expo/);
+    expect(clipped).toMatch(/omitted mid kit CSS|body\/slides/i);
+    // Must not be a pure head prefix that never reaches slides.
+    expect(clipped).toMatch(/<section\b[^>]*\bslide\b/i);
+  });
+});
+
 function userMessage(
   id: string,
   content: string,

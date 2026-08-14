@@ -172,6 +172,8 @@ import {
 import {
   TEMPLATE_CLONE_CONTENT_FILL_TURN_MARKER,
   clearTemplateCloneContentFillQueue,
+  ensureTemplateCloneContentFillContinuePrompt,
+  historyHasTemplateCloneContentFill,
   isTemplateCloneContentFillPrompt,
   isTemplateCloneContentFillQueued,
   readQueuedAutoSendSeed,
@@ -554,6 +556,11 @@ type ProjectChatSendMeta = ChatSendMeta & {
    *  this send (e.g. 'resume_continue' from the resumable-failure Continue
    *  action). Behavior never depends on it; it only shapes PostHog props. */
   entryFrom?: ChatAnalyticsEntryFrom;
+  /**
+   * Clone LOOK → first AI content fill lineage (including auto-continue).
+   * Forces create tone and blocks truncated deck.html re-attach.
+   */
+  templateCloneContentFill?: boolean;
 };
 
 const DAEMON_REATTACH_MISSING_RUN_GRACE_MS = 90_000;
@@ -1262,13 +1269,14 @@ export function imageAttachmentPathsForSlideEmbed(
   return paths;
 }
 
-/** Keep image + deck.html attachments across auto-continue so embed contracts survive retries. */
+/** Keep image (+ optional deck.html) attachments across auto-continue so embed contracts survive retries. */
 export function chatAttachmentsForAutoContinueImageEmbed(
   originUser: {
     attachments?: readonly ChatAttachment[] | null;
     content?: string | null;
   } | null | undefined,
   projectFilePaths?: readonly string[],
+  options?: { omitHtml?: boolean },
 ): ChatAttachment[] {
   // Recover `@image` / `[Attached image embed]` paths when attachments_json
   // lagged — otherwise retries lose the embed contract and greenfield 8→2.
@@ -1277,6 +1285,9 @@ export function chatAttachmentsForAutoContinueImageEmbed(
     originUser?.content,
   );
   const index = projectFilePaths ?? [];
+  const omitHtml =
+    options?.omitHtml === true
+    || isTemplateCloneContentFillPrompt(originUser?.content);
   const out: ChatAttachment[] = [];
   const seen = new Set<string>();
   for (const attachment of attachments) {
@@ -1289,6 +1300,7 @@ export function chatAttachmentsForAutoContinueImageEmbed(
       : rawPath;
     if (seen.has(path)) continue;
     const isHtml = /\.html?$/i.test(path);
+    if (isHtml && omitHtml) continue;
     const isImage =
       attachment.kind === 'image'
       || SLIDE_IMAGE_PATH_RE.test(path)
@@ -1317,6 +1329,16 @@ function slideImageEmbedInstruction(imagePaths: readonly string[]): string {
   ].join('\n');
 }
 
+function slideCreateImageEmbedHint(imagePaths: readonly string[]): string {
+  return [
+    SLIDE_IMAGE_EMBED_INSTRUCTION_MARKER,
+    'The user attached image file(s) to include in this NEW slide deck.',
+    'Embed each image with its exact project-relative path (copy characters verbatim):',
+    ...imagePaths.map((path) => `- <img src="${path}" alt="" style="max-width:100%;height:auto;object-fit:contain">`),
+    'This is CREATE — do not treat the request as a surgical edit of an existing completed deck.',
+  ].join('\n');
+}
+
 function slideAttachmentDeliverableInstruction(
   attachments: ChatAttachment[],
   projectFilePaths?: readonly string[],
@@ -1335,7 +1357,7 @@ function slideAttachmentDeliverableInstruction(
     : '';
   const imagePaths = imageAttachmentPathsForSlideEmbed(attachments, projectFilePaths);
   const imageEmbed = imagePaths.length > 0
-    ? `\n${slideImageEmbedInstruction(imagePaths)}`
+    ? `\n${slideCreateImageEmbedHint(imagePaths)}`
     : '';
   return [
     SLIDE_ATTACHMENT_DELIVERABLE_INSTRUCTION_MARKER,
@@ -4052,7 +4074,10 @@ export function ProjectView({
               const autoContinueVisualFlags = visualAnnotationAutoContinueFlags(
                 autoContinueCommentAttachments,
               );
-              const autoContinuePrompt = resolveAutoContinuePrompt({
+              const autoContinueOriginIsFill = isTemplateCloneContentFillPrompt(
+                autoContinueOriginUser?.content,
+              );
+              const autoContinuePromptRaw = resolveAutoContinuePrompt({
                 commentAttachmentCount: autoContinueCommentAttachments.length,
                 visualMarkOnly: autoContinueVisualFlags.visualMarkOnly,
                 visualAnnotationEdit: autoContinueVisualFlags.visualAnnotationEdit,
@@ -4065,7 +4090,7 @@ export function ProjectView({
                   attempt,
                   referenceFiles: collectSlideReferencePathsFromMessages(mergedMessages),
                   slideCountHint: extractRequestedSlideCountHintFromMessages(mergedMessages),
-                  existingDeckPath: isTemplateCloneContentFillPrompt(autoContinueOriginUser?.content)
+                  existingDeckPath: autoContinueOriginIsFill
                     ? null
                     : resolvePrimaryDeckFilePath(
                       filesForRecovery,
@@ -4074,15 +4099,22 @@ export function ProjectView({
                   ...autoContinueCtx,
                 },
               });
+              const autoContinuePrompt = autoContinueOriginIsFill
+                ? ensureTemplateCloneContentFillContinuePrompt(autoContinuePromptRaw)
+                : autoContinuePromptRaw;
               // Comment scope + image/deck attachments must survive the retry.
               // Empty attachments here caused image-embed turns to lose their
               // exact src paths and fall through to greenfield full-deck
               // regeneration (often collapsing 8 slides → 2).
+              // Fill lineage: omit truncated Clone LOOK deck.html.
               const started = sendNow(
                 autoContinuePrompt,
                 chatAttachmentsForAutoContinueImageEmbed(autoContinueOriginUser, projectFilesRef.current.map((file) => String(file.path || file.name || "").trim()).filter(Boolean)),
                 autoContinueCommentAttachments,
-                { entryFrom: AUTO_CONTINUE_ENTRY_FROM },
+                {
+                  entryFrom: AUTO_CONTINUE_ENTRY_FROM,
+                  ...(autoContinueOriginIsFill ? { templateCloneContentFill: true } : {}),
+                },
               );
               void Promise.resolve(started).then((ok) => {
                 if (ok === false) {
@@ -8174,7 +8206,10 @@ export function ProjectView({
             const autoContinueVisualFlags = visualAnnotationAutoContinueFlags(
               autoContinueCommentAttachments,
             );
-            const autoContinuePrompt = resolveAutoContinuePrompt({
+            const autoContinueOriginIsFill = isTemplateCloneContentFillPrompt(
+              autoContinueOriginUser?.content,
+            );
+            const autoContinuePromptRaw = resolveAutoContinuePrompt({
               commentAttachmentCount: autoContinueCommentAttachments.length,
               visualMarkOnly: autoContinueVisualFlags.visualMarkOnly,
               visualAnnotationEdit: autoContinueVisualFlags.visualAnnotationEdit,
@@ -8187,7 +8222,7 @@ export function ProjectView({
                 attempt,
                 referenceFiles: collectSlideReferencePathsFromMessages(mergedMessages),
                 slideCountHint: extractRequestedSlideCountHintFromMessages(mergedMessages),
-                existingDeckPath: isTemplateCloneContentFillPrompt(autoContinueOriginUser?.content)
+                existingDeckPath: autoContinueOriginIsFill
                   ? null
                   : resolvePrimaryDeckFilePath(
                     nextFiles,
@@ -8196,13 +8231,20 @@ export function ProjectView({
                 ...autoContinueCtx,
               },
             });
+            const autoContinuePrompt = autoContinueOriginIsFill
+              ? ensureTemplateCloneContentFillContinuePrompt(autoContinuePromptRaw)
+              : autoContinuePromptRaw;
             // Preserve comment scope + image/deck attachments so image-embed
             // retries keep exact src paths and existing-deck edit contracts.
+            // Fill lineage: omit truncated Clone LOOK deck.html.
             const started = sendNow(
               autoContinuePrompt,
               chatAttachmentsForAutoContinueImageEmbed(autoContinueOriginUser, projectFilesRef.current.map((file) => String(file.path || file.name || "").trim()).filter(Boolean)),
               autoContinueCommentAttachments,
-              { entryFrom: AUTO_CONTINUE_ENTRY_FROM },
+              {
+                entryFrom: AUTO_CONTINUE_ENTRY_FROM,
+                ...(autoContinueOriginIsFill ? { templateCloneContentFill: true } : {}),
+              },
             );
             void Promise.resolve(started).then((ok) => {
               if (ok === false) {
@@ -8609,9 +8651,6 @@ export function ProjectView({
       const isAutoContinueSend =
         meta?.entryFrom === AUTO_CONTINUE_ENTRY_FROM
         || isAutoContinueIncompleteOutputPrompt(prompt);
-      const isTemplateCloneContentFill =
-        isTemplateCloneContentFillPrompt(prompt)
-        || isTemplateCloneContentFillPrompt(retryTarget?.userMsg.content);
       let filesSnapshot = projectFiles;
       if (
         commentAttachments.some(
@@ -8650,9 +8689,16 @@ export function ProjectView({
       );
       // Clone → content-fill must NOT ingest the full cloned deck.html (24KB truncated
       // mid-CSS) — that anchors the model to rewrite a huge head and hang on max_tokens.
-      const isCloneContentFillTurn = isTemplateCloneContentFillPrompt(
-        retryTarget ? retryTarget.userMsg.content || prompt : prompt,
-      );
+      // Auto-continue prompts lose fill markers — recover from meta, retry origin, or history.
+      const isCloneContentFillTurn =
+        meta?.templateCloneContentFill === true
+        || isTemplateCloneContentFillPrompt(
+          retryTarget ? retryTarget.userMsg.content || prompt : prompt,
+        )
+        || (
+          (isAutoContinueSend || Boolean(retryTarget))
+          && historyHasTemplateCloneContentFill(historyBase)
+        );
       if (isCloneContentFillTurn) {
         effectiveAttachments = effectiveAttachments.filter(
           (attachment) => !isCanonicalDeckFileName(
@@ -8664,7 +8710,8 @@ export function ProjectView({
       // Scoped comment edits (including auto-continue retries) must keep the
       // on-disk deck attached so the model can emit element-patch / deck-patch
       // against real target ids instead of guessing from stale chat prose.
-      if (slideOnlyMvp && scopedCommentAttachments.length > 0) {
+      // Skip for Clone content-fill — LOOK seed must not re-enter as edit context.
+      if (slideOnlyMvp && scopedCommentAttachments.length > 0 && !isCloneContentFillTurn) {
         const existingDeck = resolveCanonicalDeckFileForEdit(
           filesSnapshot,
           project.metadata?.entryFile ?? null,
@@ -8738,7 +8785,7 @@ export function ProjectView({
           }
         }
       }
-      if (isTemplateCloneContentFill) {
+      if (isCloneContentFillTurn) {
         effectiveAttachments = effectiveAttachments.filter((attachment) => {
           const attachPath = String(attachment.path || attachment.name || '').trim();
           return !attachPath || !isCanonicalDeckFileName(attachPath);
@@ -8787,6 +8834,10 @@ export function ProjectView({
           imagePaths: imageAttachmentPathsForSlideEmbed(effectiveAttachments),
         });
       } else if (isCloneContentFillTurn) {
+        // Auto-continue bodies drop fill markers — re-stamp CREATE fill contract.
+        if (!isTemplateCloneContentFillPrompt(modelPrompt)) {
+          modelPrompt = ensureTemplateCloneContentFillContinuePrompt(modelPrompt);
+        }
         modelPrompt = promptWithTemplateCloneContentFillInstruction(modelPrompt, {
           slideOnlyMvp,
           imagePaths: imageAttachmentPathsForSlideEmbed(effectiveAttachments),
@@ -9047,6 +9098,7 @@ export function ProjectView({
         slideOnlyMvp,
         preTurnFileNames,
         existingDeckAttached: autoAttachedDeckPath != null,
+        templateCloneContentFill: isCloneContentFillTurn,
       });
       const assistantId = randomUUID();
       const assistantMsg: ChatMessage = {
@@ -9737,7 +9789,10 @@ export function ProjectView({
                   const autoContinueVisualFlags = visualAnnotationAutoContinueFlags(
                     autoContinueCommentAttachments,
                   );
-                  const autoContinuePrompt = resolveAutoContinuePrompt({
+                  const autoContinueOriginIsFill = isTemplateCloneContentFillPrompt(
+                    originatingUserMsg?.content,
+                  );
+                  const autoContinuePromptRaw = resolveAutoContinuePrompt({
                     commentAttachmentCount: autoContinueCommentAttachments.length,
                     visualMarkOnly: autoContinueVisualFlags.visualMarkOnly,
                     visualAnnotationEdit: autoContinueVisualFlags.visualAnnotationEdit,
@@ -9750,7 +9805,7 @@ export function ProjectView({
                       truncatedByMaxTokens: runStopReason === 'max_tokens',
                       referenceFiles: collectSlideReferencePathsFromMessages(autoContinueMessages),
                       slideCountHint: extractRequestedSlideCountHintFromMessages(autoContinueMessages),
-                      existingDeckPath: isTemplateCloneContentFillPrompt(originatingUserMsg?.content)
+                      existingDeckPath: autoContinueOriginIsFill
                         ? null
                         : resolvePrimaryDeckFilePath(
                           projectFiles,
@@ -9762,14 +9817,21 @@ export function ProjectView({
                       }),
                     },
                   });
+                  const autoContinuePrompt = autoContinueOriginIsFill
+                    ? ensureTemplateCloneContentFillContinuePrompt(autoContinuePromptRaw)
+                    : autoContinuePromptRaw;
                   // Preserve comment scope + image/deck attachments on retry.
                   // Without file attachments, image-embed contracts vanish and
                   // the model regenerates a short greenfield deck (8→2).
+                  // Fill lineage: omit truncated Clone LOOK deck.html.
                   const started = sendNow(
                     autoContinuePrompt,
                     chatAttachmentsForAutoContinueImageEmbed(originatingUserMsg, projectFilesRef.current.map((file) => String(file.path || file.name || "").trim()).filter(Boolean)),
                     autoContinueCommentAttachments,
-                    { entryFrom: AUTO_CONTINUE_ENTRY_FROM },
+                    {
+                      entryFrom: AUTO_CONTINUE_ENTRY_FROM,
+                      ...(autoContinueOriginIsFill ? { templateCloneContentFill: true } : {}),
+                    },
                   );
                   void Promise.resolve(started).then((ok) => {
                     if (ok === false) {
@@ -10542,8 +10604,10 @@ export function ProjectView({
           },
           {
             includeCommentEditPatchRule: runCommentAttachments.length > 0,
+            // Clone LOOK seed is not an "existing completed deck" — image embeds on
+            // fill must not flip system prompt into EXISTING_DECK edit / 「수정 반영 중」.
             includeExistingDeckImageEditRule:
-              !isTemplateCloneContentFill
+              !isCloneContentFillTurn
               && (
                 autoAttachedDeckPath != null
                 || imageAttachmentPathsForSlideEmbed(effectiveAttachments).length > 0
@@ -10957,13 +11021,32 @@ export function ProjectView({
       // who clicks Continue after a scoped comment edit failed
       // sends the retry as an unscoped run — the deck-patch scope
       // guards go silent and the model can rewrite the whole deck.
+      const resumeOriginUser = findPrecedingUserMessage(
+        messagesRef.current,
+        assistantMessage.id,
+      );
       const resumeCommentAttachments = extractCommentAttachmentsForAutoContinue(
-        findPrecedingUserMessage(messagesRef.current, assistantMessage.id),
+        resumeOriginUser,
         runCommentAttachmentsRef.current,
       );
-      void handleSend(RESUME_CONTINUE_PROMPT, [], resumeCommentAttachments, {
-        entryFrom: 'resume_continue',
-      });
+      const resumeOriginIsFill = isTemplateCloneContentFillPrompt(resumeOriginUser?.content);
+      const resumePrompt = resumeOriginIsFill
+        ? ensureTemplateCloneContentFillContinuePrompt(RESUME_CONTINUE_PROMPT)
+        : RESUME_CONTINUE_PROMPT;
+      void handleSend(
+        resumePrompt,
+        chatAttachmentsForAutoContinueImageEmbed(
+          resumeOriginUser,
+          projectFilesRef.current
+            .map((file) => String(file.path || file.name || '').trim())
+            .filter(Boolean),
+        ),
+        resumeCommentAttachments,
+        {
+          entryFrom: 'resume_continue',
+          ...(resumeOriginIsFill ? { templateCloneContentFill: true } : {}),
+        },
+      );
     },
     [currentConversationActionDisabled, handleSend],
   );
@@ -12476,8 +12559,11 @@ export function ProjectView({
     // even after onClearPendingPrompt wipes project.pendingPrompt on the
     // server. When a Clone content-fill is queued, the fill seed ALWAYS
     // wins over the stale create-time pendingPrompt (full canvas run dump).
+    const queuedFillSeed = readQueuedAutoSendSeed(project.id);
     const fillQueued =
       isTemplateCloneContentFillQueued(project.id)
+      || isTemplateCloneContentFillPrompt(queuedFillSeed)
+      || isTemplateCloneContentFillPrompt(autoSendSeedRef.current)
       || (
         project.metadata
         && typeof project.metadata === 'object'
@@ -12487,7 +12573,7 @@ export function ProjectView({
     const seed = resolveTemplateCloneAutoSendSeed({
       queuedFillSeed:
         autoSendSeedRef.current
-        || readQueuedAutoSendSeed(project.id)
+        || queuedFillSeed
         || (initialDraft?.projectId === project.id ? initialDraft.value : ''),
       pendingPrompt: project.pendingPrompt,
       fillQueued,
@@ -12518,9 +12604,11 @@ export function ProjectView({
     // metadata, but also pass them on this-turn meta so the first BYOK
     // compose cannot lose the pick if React state is still settling.
     const selected = selectedDeckTemplateMetadata(project.metadata);
+    const isFillSeed = fillQueued || isTemplateCloneContentFillPrompt(seed);
     void handleSend(seed, attachments, [], {
       skipDiscoveryBrief:
         project.metadata?.skipDiscoveryBrief === true || Boolean(selected),
+      ...(isFillSeed ? { templateCloneContentFill: true } : {}),
       ...(selected
         ? {
             selectedDeckTemplateId: selected.id,

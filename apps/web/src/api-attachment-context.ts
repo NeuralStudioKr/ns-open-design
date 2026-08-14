@@ -152,7 +152,9 @@ async function renderApiAttachmentBlock(
       cacheBustKey: file?.mtime,
     });
     if (text) {
-      body = clipAttachmentText(text, maxContentChars);
+      body = clipAttachmentText(text, maxContentChars, {
+        preferHtmlBody: kind === 'html' || /\.html?$/i.test(path),
+      });
       language = codeFenceLanguage(path);
     }
   } else if (maxContentChars > 0 && API_ATTACHMENT_PREVIEW_KINDS.has(kind)) {
@@ -250,10 +252,38 @@ function inferProjectFileKind(name: string): ProjectFileKind {
   return 'binary';
 }
 
-function clipAttachmentText(text: string, maxChars: number): string {
+/**
+ * Truncate attachment text for API context.
+ * For large HTML decks, prefer keeping `<body>` / slide sections over a mid-CSS
+ * head clip — prefix-only truncation historically anchored models into rewriting
+ * truncated kit CSS until max_tokens with only `<head>`.
+ */
+export function clipAttachmentText(
+  text: string,
+  maxChars: number,
+  options?: { preferHtmlBody?: boolean },
+): string {
   if (text.length <= maxChars) return text;
-  const omitted = text.length - maxChars;
-  return `${text.slice(0, maxChars)}\n\n[Open Design truncated ${omitted} chars from this attachment before sending it to the API provider.]`;
+  const omittedTotal = text.length - maxChars;
+  if (options?.preferHtmlBody) {
+    const bodyIdx = text.search(/<body\b/i);
+    const sectionIdx = text.search(/<section\b[^>]*\bclass=(["'])[^"']*\bslide\b[^"']*\1/i);
+    const contentStart = bodyIdx >= 0 ? bodyIdx : sectionIdx;
+    if (contentStart >= 0) {
+      const headBudget = Math.min(2_400, Math.max(400, Math.floor(maxChars * 0.12)));
+      const head = text.slice(0, Math.min(headBudget, contentStart));
+      const marker = '\n\n<!-- …Open Design omitted mid-document kit CSS/SVG… -->\n\n';
+      const bodyBudget = Math.max(0, maxChars - head.length - marker.length - 120);
+      const body = text.slice(contentStart, contentStart + bodyBudget);
+      const omitted = Math.max(0, text.length - head.length - body.length);
+      return (
+        `${head}${marker}${body}\n\n`
+        + `[Open Design truncated ${omitted} chars from this attachment before sending it to the API provider `
+        + `(kept document head prefix + body/slides; omitted mid kit CSS).]`
+      );
+    }
+  }
+  return `${text.slice(0, maxChars)}\n\n[Open Design truncated ${omittedTotal} chars from this attachment before sending it to the API provider.]`;
 }
 
 function escapeMarkdownFence(text: string): string {

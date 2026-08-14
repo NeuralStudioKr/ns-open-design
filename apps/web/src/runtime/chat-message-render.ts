@@ -256,16 +256,19 @@ function messageHasPreTurnPrimaryDeck(message: ChatMessage): boolean {
   return (message.preTurnFileNames ?? []).some((name) => isPrimaryDeckFileName(String(name)));
 }
 
-/**
- * Resolve durable create/edit label at send time (Teamver slide-only).
+/** Resolve durable create/edit label at send time (Teamver slide-only).
  * Prefer an auto-attached canonical deck, else preTurn primary deck names.
+ * Template-clone content fill must stay "create" even when Clone already
+ * wrote a LOOK preview to deck.html (otherwise UI/system go edit-tone).
  */
 export function resolveSlideTurnKindForSend(options: {
   slideOnlyMvp: boolean;
   preTurnFileNames: readonly string[];
   existingDeckAttached?: boolean;
+  templateCloneContentFill?: boolean;
 }): "create" | "edit" | undefined {
   if (!options.slideOnlyMvp) return undefined;
+  if (options.templateCloneContentFill) return "create";
   if (options.existingDeckAttached) return "edit";
   if (options.preTurnFileNames.some((name) => isPrimaryDeckFileName(String(name)))) {
     return "edit";
