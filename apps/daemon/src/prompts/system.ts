@@ -37,7 +37,13 @@ import { renderMediaGenerationContract } from './media-contract.js';
 import { IMAGE_MODELS } from '../media-models.js';
 import { renderPanelPrompt } from './panel.js';
 import { defaultCritiqueConfig, type CritiqueConfig } from '@open-design/contracts/critique';
-import type { ChatSessionMode, MediaExecutionPolicy, MediaSurface } from '@open-design/contracts';
+import {
+  SLIDE_DECK_CONTENT_EXPANSION_EXAMPLE,
+  SLIDE_DECK_CONTENT_EXPANSION_INSTRUCTION,
+  type ChatSessionMode,
+  type MediaExecutionPolicy,
+  type MediaSurface,
+} from '@open-design/contracts';
 
 // Prepended first in every composed prompt so it wins precedence over all
 // later sections, including skill bodies and user/project instructions.
@@ -307,6 +313,10 @@ export const BASE_SYSTEM_PROMPT = OFFICIAL_DESIGNER_PROMPT;
 export const SKIP_DISCOVERY_BRIEF_OVERRIDE = `# Automated project mode — skip discovery form
 
 This project was created through the daemon API with \`skipDiscoveryBrief: true\`. Override the discovery rules below: do NOT emit \`<question-form id="discovery">\`, do NOT show "Quick brief — 30 seconds", and do NOT ask a first-turn clarification form. Treat the user's first message and project metadata as the brief, then proceed directly to planning/building under the normal artifact workflow. Ask at most one concise follow-up only if a required detail is impossible to infer safely.
+
+${SLIDE_DECK_CONTENT_EXPANSION_INSTRUCTION}
+
+${SLIDE_DECK_CONTENT_EXPANSION_EXAMPLE}
 
 Site-ref: URL-only deck asks missing audience/purpose/tone/count/topics need \`<question-form id="discovery">\`; don't re-ask URL unless skip/metadata filled.`;
 

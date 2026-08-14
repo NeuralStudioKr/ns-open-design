@@ -51,6 +51,10 @@ describe('templateCloneContentFill', () => {
     expect(seed).not.toMatch(/emit a full.*rewrites visible text/i);
     expect(seed).not.toMatch(/Prefer `<artifact type="deck-patch" identifier="deck">`/);
     expect(seed).toContain('Cover topic (use as the title — not the instruction): expo');
+    expect(seed).toMatch(/brief is a topic, not slide text/i);
+    expect(seed).toMatch(/The visible request above is a BRIEF\/TOPIC/);
+    expect(seed).toMatch(/Expo for Senior Engineers/);
+    expect(seed).toMatch(/Do NOT paste the request onto the cover/);
     expect(looksLikeInstructionNotSlideCopy('첨부한 자료를 바탕으로 슬라이드 덱을 만들어줘.')).toBe(true);
     expect(deriveTemplateCloneTopicLabel(
       'expo에 대해서 설명하는 피피티 만들어줘. 시니어 개발자 레벨.',

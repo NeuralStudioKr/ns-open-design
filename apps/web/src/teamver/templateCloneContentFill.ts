@@ -9,7 +9,11 @@
  */
 
 import type { ChatAttachment } from '../types';
-import { SLIDE_DECK_QUALITY_BAR_INSTRUCTION } from './canvasSlideLaunch';
+import {
+  SLIDE_DECK_CONTENT_EXPANSION_EXAMPLE,
+  SLIDE_DECK_CONTENT_EXPANSION_INSTRUCTION,
+  SLIDE_DECK_QUALITY_BAR_INSTRUCTION,
+} from './canvasSlideLaunch';
 import {
   briefLooksLikeAttachedSource,
   CANVAS_CREATE_SLIDES_PROMPT,
@@ -217,6 +221,8 @@ export function templateCloneContentFillHardRules(): string[] {
     '- Do NOT rewrite or reproduce the full cloned example.html / attached deck.html CSS+SVG head (that burns max_tokens and hangs with only `<head>`).',
     '- Use the Template visual kit + scaffold map from the system prompt for LOOK (palette hex, fonts, Motif sprites, layout roles). Neutral Modern / OD skeleton terracotta is a failed deliverable.',
     `- ${SLIDE_DECK_QUALITY_BAR_INSTRUCTION}`,
+    `- ${SLIDE_DECK_CONTENT_EXPANSION_INSTRUCTION}`,
+    `- ${SLIDE_DECK_CONTENT_EXPANSION_EXAMPLE}`,
     '- Strict body-first contract: start the artifact body exactly like `<!doctype html><html lang="ko"><body><section class="slide" ...>`.',
     '- `<head>` is FORBIDDEN on this fill turn. Do not emit `<head>`, `<title>`, meta tags, or a style prelude before slide 1.',
     '- The first 800 characters after `<artifact` MUST include `<body` and one complete `<section class="slide">` with real topical copy.',
@@ -278,6 +284,7 @@ export function buildTemplateCloneContentFillSeed(options: {
     hasAttachedSource
       ? 'Fill REAL presentation CONTENT for this request and any attached source materials (Canvas/Drive/files) — not the cloned demo copy.'
       : 'Fill REAL presentation CONTENT for this create (user prompt may be empty; invent clear topical copy — do not paste boilerplate leads into titles).',
+    'The visible request above is a BRIEF/TOPIC. Expand it into a real presentation with domain knowledge. Do NOT paste the request onto the cover or body slides.',
     topic ? `Cover topic (use as the title — not the instruction): ${topic}.` : '',
     ...templateCloneContentFillHardRules(),
   ].filter((line) => line !== '');

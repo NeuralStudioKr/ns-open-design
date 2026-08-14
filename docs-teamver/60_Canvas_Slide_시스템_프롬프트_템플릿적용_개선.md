@@ -165,6 +165,7 @@ full `example.html`을 시스템 프롬프트에 넣지 않는다는 방침은 �
 - queued fill seed가 create `pendingPrompt`보다 우선 (`resolveTemplateCloneAutoSendSeed`).
 - Clone `deckTitle`은 `sanitizeTemplateCloneDeckTitle` — 지시문/템플릿 마케팅 금지.
 - fill incomplete auto-continue도 fill CREATE 마커를 유지하고 `deck.html`을 다시 붙이지 않는다. 짧은 `<head>` 잘림에도 BODY-FIRST.
+- **Content expansion:** 사용자 brief는 TOPIC이지 슬라이드 텍스트가 아님. 도메인 지식으로 실제 내용을 채운다. brief/「만들어줘」를 커버에 붙이면 실패.
 
 ### 0.10 2026-08-13 후속 — Home Clone 커버 heading에 user prompt 반영 · letterbox `transparent`도 잘못 → 완전 제거
 

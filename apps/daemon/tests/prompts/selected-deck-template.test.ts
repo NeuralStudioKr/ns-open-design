@@ -31,6 +31,9 @@ describe('selected-deck-template prompt helpers', () => {
     expect(wrapped).toContain('Content quality bar');
     expect(wrapped).toContain('headline, takeaway');
     expect(wrapped).toContain('keep HTML compact');
+    expect(wrapped).toContain('Content expansion');
+    expect(wrapped).toMatch(/TOPIC to research/);
+    expect(wrapped).toMatch(/echoes the prompt/);
     expect(wrapped).toContain('Do not stream a long `<head>`');
     expect(wrapped).toContain('body');
   });

@@ -40,6 +40,10 @@ import {
   DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_SELECTED_TEMPLATE,
   COMPACT_DECK_SLIDE_COUNT_GUIDANCE,
 } from './deck-framework.js';
+import {
+  SLIDE_DECK_CONTENT_EXPANSION_EXAMPLE,
+  SLIDE_DECK_CONTENT_EXPANSION_INSTRUCTION,
+} from './deck-quality.js';
 import { MEDIA_GENERATION_CONTRACT } from './media-contract.js';
 
 export const BASE_SYSTEM_PROMPT = OFFICIAL_DESIGNER_PROMPT;
@@ -791,7 +795,11 @@ The deck framework workflow above assumes TodoWrite and filesystem copies. **In 
 /** Teamver slide-only skip-discovery: no site-ref exception (that fights DIRECT_STREAMING). */
 const SKIP_DISCOVERY_BRIEF_OVERRIDE_TEAMVER_SLIDE = `# Automated project mode — skip discovery form
 
-This project was created with \`skipDiscoveryBrief: true\` (Canvas → Slide / Drive → Slide / automated brief). Override discovery rules: do NOT emit \`<question-form id="discovery">\`, do NOT show "Quick brief — 30 seconds", and do NOT ask a first-turn clarification form. Do not emit any question form or choice card, and do not wait for user input. Treat the user's first message, Plugin inputs (including slideCount / audience / tone), Quick settings, and project metadata as the brief; choose reasonable defaults for any remaining gaps; then emit the deck artifact in this same turn.`;
+This project was created with \`skipDiscoveryBrief: true\` (Canvas → Slide / Drive → Slide / automated brief). Override discovery rules: do NOT emit \`<question-form id="discovery">\`, do NOT show "Quick brief — 30 seconds", and do NOT ask a first-turn clarification form. Do not emit any question form or choice card, and do not wait for user input. Treat the user's first message, Plugin inputs (including slideCount / audience / tone), Quick settings, and project metadata as the brief; choose reasonable defaults for any remaining gaps; then emit the deck artifact in this same turn.
+
+${SLIDE_DECK_CONTENT_EXPANSION_INSTRUCTION}
+
+${SLIDE_DECK_CONTENT_EXPANSION_EXAMPLE}`;
 
 const TEAMVER_API_SKILL_SEED_OVERRIDE = `
 
@@ -1321,7 +1329,9 @@ const TEAMVER_SLIDE_API_UNIFIED_STREAMING_RULE = `# Teamver slide-only API — u
 3. ${COMPACT_DECK_SLIDE_COUNT_GUIDANCE} Write one filled \`<section class="slide">\` per requested slide. If a Selected deck template is active, match its visual kit (palette/fonts/density) with inline styles or one short body \`<style>\` after slide 1 — design system is brand context only and must not override the template look; do not merely describe the template.
 4. Close with \`</body></html></artifact>\` (or the matching patch close) in this same turn.
 
-**Forbidden on deck turns:** outlines, plans, TodoWrite, \`[读取 template.html]\`, SLOT comments, a second artifact, stopping after \`<head>\`, announcing a brand-new draft on an edit turn, or announcing completion without the requested slide count (minimum 6 when unspecified).
+**Content expansion:** ${SLIDE_DECK_CONTENT_EXPANSION_INSTRUCTION}
+
+**Forbidden on deck turns:** outlines, plans, TodoWrite, \`[读取 template.html]\`, SLOT comments, a second artifact, stopping after \`<head>\`, announcing a brand-new draft on an edit turn, parroting the user brief as slide titles/body, or announcing completion without the requested slide count (minimum 6 when unspecified).
 
 If you already started \`<head>\` by mistake, **abandon that output** and restart the artifact with \`<body><section class="slide">\` content immediately.`;
 
@@ -1394,7 +1404,11 @@ Your successful response is optional tiny UI-locale status sentence + **exactly 
 3. ${COMPACT_DECK_SLIDE_COUNT_GUIDANCE} Write one filled \`<section class="slide">\` per requested slide. **Every slide MUST be a fixed 1920×1080 canvas** — use inline \`style="width:1920px;height:1080px;box-sizing:border-box;position:relative;overflow:hidden;..."\` on every \`<section class="slide">\`. Do NOT use \`width:100vw\`, \`height:100vh\`, \`min-height:100vh\`, or scroll-snap presenter-mode plumbing — those come from the template's \`example.html\` presenter and make the deck stretch/reflow with the browser instead of matching PPT aspect ratio (16:9). If a Selected deck template is active, match its visual kit (palette/fonts/density) with inline styles or one short body \`<style>\` — but keep width/height/positioning fixed regardless of what the template's own preview HTML shows. Design system is brand context only and must not override the template look; do not merely describe the template.
 4. Close with \`</body></html></artifact>\` in this same turn.
 
-**Forbidden:** "바로 만들어 드리겠습니다" / "I'll make it" promise-only replies, question-form, outlines, plans, TodoWrite, \`[读取 template.html]\`, SLOT comments, a second artifact, stopping after \`<head>\`, announcing completion without the requested slide count (minimum 6 when unspecified), or repeating the same layout/background/composition on every slide. Preserve the Selected deck template look (design system is secondary brand context only) and vary layouts per the compact inline layout vocabulary.`;
+**Content expansion:** ${SLIDE_DECK_CONTENT_EXPANSION_INSTRUCTION}
+
+${SLIDE_DECK_CONTENT_EXPANSION_EXAMPLE}
+
+**Forbidden:** "바로 만들어 드리겠습니다" / "I'll make it" promise-only replies, question-form, outlines, plans, TodoWrite, \`[读取 template.html]\`, SLOT comments, a second artifact, stopping after \`<head>\`, parroting the user brief as slide titles/body, announcing completion without the requested slide count (minimum 6 when unspecified), or repeating the same layout/background/composition on every slide. Preserve the Selected deck template look (design system is secondary brand context only) and vary layouts per the compact inline layout vocabulary.`;
 
 /**
  * Final visual authority when Canvas → Slide (or equivalent) pinned a template.

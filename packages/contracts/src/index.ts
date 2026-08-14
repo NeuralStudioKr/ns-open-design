@@ -41,6 +41,7 @@ export * from './sse/chat.js';
 export * from './sse/proxy.js';
 export * from './prompts/system.js';
 export * from './prompts/deck-framework.js';
+export * from './prompts/deck-quality.js';
 export * from './prompts/plugin-block.js';
 export * from './prompts/atom-block.js';
 export * from './critique.js';
