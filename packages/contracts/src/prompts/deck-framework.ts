@@ -556,7 +556,7 @@ Do not invent one identical empty box for every slide. Pick the closest layout r
 **Quote / principle** — one strong 56–72px sentence with small attribution.
 **Closing** — recap CTA on a kit accent or cream/pastel surface — not a dark slate wall.
 
-Quality bar: match the requested slide count; each slide needs a distinct layout role. The finished deck must be recognizable as the selected template (palette hex, fonts, borders, SVG/\`.deco\` motif) — not Neutral Modern and not emoji ornaments.
+Quality bar: match the requested slide count; each slide needs a distinct layout role. The finished deck must be recognizable as the selected template (palette hex, fonts, borders, SVG/\`.deco\` motif) — not Neutral Modern and not emoji ornaments. Every slide must carry real topical copy (no Clone \`…\` placeholders, no pasted "만들어줘" instructions).
 `;
 
 /** Compact API decks: honor user/plugin/brief counts; 6–8 is only the unspecified default. */
@@ -614,6 +614,7 @@ Rules:
 5. **Layout vocabulary, not shell copy.** Treat the Template scaffold map as a *catalog* of the template's available layouts (cover, welcome, weekly-grid, timeline, three-column, chart, quote, team, closing …). Pick the layouts whose role fits your user brief's actual content, reuse the same role across multiple slides when appropriate, and skip roles whose semantic doesn't fit (e.g. don't force weekly-grid onto a sales pitch, don't force timeline onto a static explainer). Slide count = user brief / Plugin \`slideCount\` / auto default 6–8 — **NOT** the template's natural shell count. Do not flatten every slide into the same cover composition.
 6. **Hard visual rule (kit-driven visual, brief-driven structure):** the kit + scaffold map provide the *visual vocabulary* (palette, fonts, borders, shadows, motif SVGs, layout roles). The *slide count, order, and per-slide composition* come from the user brief. Preserve surface colors, decorative wrappers, card treatment, and SVG motif language; but choose how many slides, which layout roles, and in what order based on the brief — NOT the template's shell sequence. **Every slide should carry 1–3 recognizable Motif sprites** from the kit's \`### Motif sprites\` block (cover uses 3–4 in corner \`.deco\` wrappers; body slides use 1–2 tucked accents; closing echoes the cover). Copy Motif sprites verbatim (at least one on the cover when provided) — never invent generic CSS flowers or emoji ornaments. Never substitute OD skeleton terracotta \`#c96442\`, Neutral \`#0f172a\`, Inter/Noto-only covers that ignore template fonts, emoji ornament rows, or invented motifs for template CSS/SVG.
 7. When the user attaches images, include \`<img src="exact-project-relative-path" …>\` using attachment paths.
+8. **Content quality:** never leave Clone placeholders (\`…\`, generic "개요"/"핵심 포인트"/"다음 단계") or paste the user instruction as a title. Write real topical sentences at the requested expertise level (e.g. 시니어 개발자 = internals/trade-offs, not a beginner intro). Each body slide needs a title plus 2–4 concrete bullets or a real paragraph.
 
 ${DECK_COMPACT_INLINE_LAYOUT_VOCABULARY_FOR_SELECTED_TEMPLATE}
 `;

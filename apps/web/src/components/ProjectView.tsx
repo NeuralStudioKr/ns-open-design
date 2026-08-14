@@ -1533,6 +1533,7 @@ function slideExistingDeckEditInstruction(
       'Emit a full `<artifact type="deck" identifier="deck">` that rewrites visible text for the topic.',
       'Keep the cloned CSS/fonts/Motif SVG/shell language — never Neutral Modern or OD skeleton.',
       'Do not paste user instructions ("만들어줘") into titles. Adjust slide count/layouts for the content; do not mirror the template demo lineup.',
+      'Replace Clone placeholders ("…", "개요", "핵심 포인트", "다음 단계", "Presentation") with real topical copy at the requested expertise level. No filler sentences.',
       'If you emit a short status sentence, use create tone ("슬라이드 초안 작성 중").',
     ];
     if (imagePaths.length > 0) {

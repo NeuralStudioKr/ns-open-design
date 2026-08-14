@@ -736,6 +736,7 @@ daemon 로컬 skill 워크플로 잔재다. Daisy Days에는 Teamver API 노트�
 | P0 | **정책 개정** — template = layout vocabulary, 페이지 수/순서/구성은 브리프 기반 (§0.0 개정) | **완료** — HARD_RULES 재작성, scaffold map을 catalog로 재정의, daemon Clone default `shells.length` → 6, `pickTemplateShells` role-based scoring |
 | P0 | **아키텍처 근본 재조명** — Clone이 skipAutoSend + canned chat seed + templateClonedDeckSeeded early-return의 3중 방어로 인해 **AI content generation 자체를 죽이던 문제** (§0.11) | **완료** — staging `36a19ec70`: `templateCloneContentFill.ts` 신설 + `TEMPLATE_CLONE_CONTENT_FILL_MARKER` seed + 세 계층 방어 해제. 스테일 test assertion 2건 정정. |
 | P0 | **후속 검수** — fill 예약이 있어도 stale create `pendingPrompt`(런 프롬프트 전문)가 auto-send를 이기고, `deckTitle`에 지시문이 stuffing되던 구멍 (§0.12) | **완료** — `resolveTemplateCloneAutoSendSeed` + `sanitizeTemplateCloneDeckTitle` + deck.html attach + `[User instruction]` 파서 + 채팅 scaffold strip |
+| P1 | **퀄리티** — fill [Source brief]에 Home 런 덤프가 섞이고, 플레이스홀더/초급 필러가 남는 문제 | **완료** — `compactTemplateCloneFillSourceBrief` + topic label + Content quality 계약 (fill seed / existing-deck / compact rule 8) + slideCountHint |
 
 ### 12.1 Edit-contract gating (상세)
 

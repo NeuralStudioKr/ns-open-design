@@ -227,6 +227,17 @@ describe('resolveTemplateCloneSlidesFromBrief', () => {
     expect(cloned).toMatch(/expo/i);
   });
 
+  it('drops instruction-like outline titles', () => {
+    const slides = resolveTemplateCloneSlidesFromBrief({
+      userInstruction: [
+        '1. 첨부한 자료를 바탕으로 슬라이드 덱을 만들어줘',
+        '2. Expo Router',
+        '3. Config plugins',
+      ].join('\n'),
+    });
+    expect(slides.map((s) => s.title)).toEqual(['Expo Router', 'Config plugins']);
+  });
+
   it('picks up numbered outlines from user instructions', () => {
     const slides = resolveTemplateCloneSlidesFromBrief({
       userInstruction: [

@@ -440,6 +440,7 @@ describe("canvasSlideLaunch", () => {
     expect(app).toContain("sanitizeTemplateCloneDeckTitle(");
     expect(app).toContain("queuedFillSeed");
     expect(app).toContain("pendingPrompt: queuedFillSeed");
+    expect(app).toContain("slideCountHint: slideCountHintFromInputs");
     expect(app).not.toContain("skipAutoSendForTemplateClone");
     expect(app).not.toContain("derivedPendingPrompt?.trim()?.slice(0, 80)");
     expect(app).toContain("isExplicitCanvasSlideVisualTemplate({ id: selectedDeckTemplateId })");
@@ -495,6 +496,7 @@ describe("canvasSlideLaunch", () => {
     // explicit fill turn; assert the new invariant instead of the removed
     // log string.
     expect(composer).toContain("buildTemplateCloneContentFillSeed(");
+    expect(composer).toContain("slideCountHint: canvasSlideQuickLengthToSlideCount(");
     expect(composer).toContain("sanitizeTemplateCloneDeckTitle(");
     expect(composer).toContain("sendComposedTurn(");
     expect(composer).not.toContain("blocking model kit fallthrough");

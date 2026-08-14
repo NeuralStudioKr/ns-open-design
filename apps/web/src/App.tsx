@@ -2675,6 +2675,7 @@ function AppInner() {
                 sourceBrief,
                 pendingPrompt: derivedPendingPrompt ?? null,
                 templateTitle: templateTitle || selectedDeckTemplateId,
+                slideCountHint: slideCountHintFromInputs,
               });
               queueTemplateCloneContentFill({
                 projectId: result.project.id,
@@ -2782,6 +2783,7 @@ function AppInner() {
             sourceBrief,
             pendingPrompt: derivedPendingPrompt ?? null,
             templateTitle: templateTitle || selectedDeckTemplateId,
+            slideCountHint: slideCountHintFromInputs,
           });
           queueTemplateCloneContentFill({
             projectId: result.project.id,

@@ -2206,6 +2206,9 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
                 userInstruction: promptForRun,
                 sourceBrief,
                 templateTitle: selectedCanvasSlideTemplate.title,
+                slideCountHint: canvasSlideQuickLengthToSlideCount(
+                  canvasSlideQuickSettings.length,
+                ),
               });
               const deckAttachment: ChatAttachment = {
                 path: seeded.fileName,
@@ -2403,6 +2406,9 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
               userInstruction: promptForRun,
               sourceBrief,
               templateTitle: selectedCanvasSlideTemplate.title,
+              slideCountHint: canvasSlideQuickLengthToSlideCount(
+                canvasSlideQuickSettings.length,
+              ),
             });
             const deckAttachment: ChatAttachment = {
               path: seeded.fileName,

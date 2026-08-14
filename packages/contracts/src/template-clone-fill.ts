@@ -629,7 +629,7 @@ export function synthesizeTemplateCloneSlidesFromFreeFormBrief(options: {
       const item = cleanCloneTitle(
         line.replace(/^[-*•·]\s+/, '').replace(/^\d+[.)]\s+/, ''),
       ).slice(0, 80);
-      if (item) out.push({ title: item });
+      if (item && !looksLikeInstructionCopy(item)) out.push({ title: item });
     }
     return out.slice(0, 20);
   }
@@ -688,7 +688,7 @@ export function resolveTemplateCloneSlidesFromBrief(options: {
 
   const push = (rawTitle: string) => {
     const title = cleanCloneTitle(rawTitle);
-    if (!title) return;
+    if (!title || looksLikeInstructionCopy(title)) return;
     const key = title.toLowerCase();
     if (seen.has(key)) return;
     seen.add(key);

@@ -43,9 +43,73 @@ export function looksLikeInstructionNotSlideCopy(text: string): boolean {
 }
 
 /**
- * Prefer the real topic line over Canvas boilerplate / full run prompts.
- * Kept user-facing (may still say "만들어줘") for chat display.
+ * Short cover-topic label from a "만들어줘" request.
+ * "expo에 대해서 설명하는 피피티 만들어줘. 시니어 개발자 레벨." → "expo"
  */
+export function deriveTemplateCloneTopicLabel(request: string): string {
+  const t = request.trim();
+  if (!t) return '';
+  const aboutKo = t.match(
+    /^(.+?)\s*(?:에\s*대해(?:서)?|에\s*관한)\s*(?:설명하는\s*)?(?:발표\s*자료|피피티|PPT|슬라이드|덱|프레젠테이션)/i,
+  )?.[1]?.trim();
+  if (aboutKo && aboutKo.length >= 2 && !looksLikeCanvasCreateBoilerplate(aboutKo)) {
+    return aboutKo.slice(0, 60);
+  }
+  const aboutEn = t.match(
+    /(?:about|on)\s+(.+?)(?:\s+(?:slides?|deck|presentation|ppt)\b|[.?!]|$)/i,
+  )?.[1]?.trim();
+  if (aboutEn && aboutEn.length >= 2 && !looksLikeInstructionNotSlideCopy(aboutEn)) {
+    return aboutEn.slice(0, 60);
+  }
+  return '';
+}
+
+/**
+ * Keep facts the model needs (headings, preview, user topic, quick settings).
+ * Drop Home/Canvas create scaffolding that used to be dumped as [Source brief]
+ * and drowned the actual topic.
+ */
+export function compactTemplateCloneFillSourceBrief(raw: string | null | undefined): string {
+  const text = String(raw ?? '').trim();
+  if (!text) return '';
+
+  const parts: string[] = [];
+  const push = (label: string, value: string | null | undefined, max = 600) => {
+    const v = String(value ?? '').trim();
+    if (!v) return;
+    parts.push(`${label}: ${v.slice(0, max)}`);
+  };
+
+  push('Canvas title', /Canvas title\s*[:：]\s*(.+)$/im.exec(text)?.[1]);
+  push('Drive source file', /Drive source file\s*[:：]\s*(.+)$/im.exec(text)?.[1]);
+  push('Drive source MIME', /Drive source MIME\s*[:：]\s*(.+)$/im.exec(text)?.[1]);
+  push(
+    'Visible headings',
+    /(?:Visible headings|Canvas headings|Source headings)\s*[:：]\s*(.+)$/im.exec(text)?.[1],
+  );
+  push(
+    'Source preview',
+    /Source preview\s*[:：]\s*([\s\S]*?)(?=\n(?:Canvas |Drive |Visible |User |Selected |\[)|$)/i
+      .exec(text)?.[1],
+    600,
+  );
+  const userInstr = /\[?User instruction\]?\s*[:：]?\s*\n?([\s\S]*?)(?=\n(?:Source |Canvas |Drive |Visible |Selected |\[)|$)/i
+    .exec(text)?.[1]?.trim();
+  if (userInstr && !looksLikeCanvasCreateBoilerplate(userInstr)) {
+    push('User instruction', userInstr, 400);
+  }
+  const quick = /\[Quick settings\]\s*\n?([\s\S]*?)(?=\n\[|$)/i.exec(text)?.[1]?.trim();
+  if (quick) parts.push(`Quick settings:\n${quick}`);
+
+  if (parts.length > 0) return parts.join('\n').slice(0, 1400);
+  if (/\[Deliverable instruction\]|\[Selected slide template/i.test(text)) return '';
+  if (looksLikeCanvasCreateBoilerplate(text) || looksLikeInstructionNotSlideCopy(text)) {
+    return '';
+  }
+  return text.slice(0, 1400);
+}
+
+/** Prefer the real topic line over Canvas boilerplate / full run prompts. */
 export function extractTemplateCloneUserFacingRequest(input: {
   userInstruction?: string | null;
   sourceBrief?: string | null;
@@ -85,25 +149,41 @@ export function buildTemplateCloneContentFillSeed(options: {
   sourceBrief?: string | null;
   pendingPrompt?: string | null;
   templateTitle?: string | null;
+  slideCountHint?: string | number | null;
 }): string {
   const visible = extractTemplateCloneUserFacingRequest(options);
+  const topic = deriveTemplateCloneTopicLabel(visible);
   const templateTitle = options.templateTitle?.trim() || '';
-  const brief = String(options.sourceBrief ?? '').trim().slice(0, 1400);
+  const brief = compactTemplateCloneFillSourceBrief(
+    [options.sourceBrief, options.pendingPrompt, options.userInstruction]
+      .filter(Boolean)
+      .join('\n\n'),
+  );
   const parts = [
     visible,
     '',
     TEMPLATE_CLONE_CONTENT_FILL_MARKER,
     'Attached `deck.html` already has the selected template LOOK (CSS, fonts, Motif SVG, layout shells) from a daemon Clone.',
     'Fill REAL presentation CONTENT for this request and any attached source materials.',
+    topic ? `Cover topic (use as the title — not the instruction): ${topic}.` : '',
     'Hard rules:',
     '- Do NOT paste user instructions ("만들어줘", "만들어 주세요", Canvas boilerplate) into slide titles or subtitles.',
     '- Preserve the cloned template visual kit (palette hex, font-family, deco/SVG motifs, shell class language). Neutral Modern / OD skeleton terracotta is a failed deliverable.',
     '- You MAY emit a full `<artifact type="deck" identifier="deck">` that rewrites visible text and adjusts slide count/layouts for the topic — keep the template look, not the template demo page lineup.',
     '- Prefer content-driven slide roles (cover / body / list / cards / quote…). Do not mirror the template example\'s page count or order.',
     '- Close `</artifact>` in this same response; do not finish with prose only.',
-  ];
+    'Content quality:',
+    '- Replace every Clone placeholder ("…", "개요", "핵심 포인트", "다음 단계", "Presentation") with real topical copy.',
+    '- Honor stated audience/level (e.g. 시니어 개발자 = architecture/internals/trade-offs, not a beginner intro).',
+    '- Each body slide needs a real title plus 2–4 concrete bullets or a real paragraph. No "핵심 메시지를 정리합니다" filler.',
+    '- Use attached source / Visible headings when present. Invent only to fill gaps — never invent a different product.',
+    '- Minimum 6 slides unless the user or Quick settings asked for a specific count.',
+  ].filter((line) => line !== '');
   if (templateTitle) {
     parts.push(`Selected template: ${templateTitle}.`);
+  }
+  if (options.slideCountHint != null && String(options.slideCountHint).trim()) {
+    parts.push(`Slide count hint: ${String(options.slideCountHint).trim()}.`);
   }
   if (brief) {
     parts.push('', '[Source brief]', brief);
