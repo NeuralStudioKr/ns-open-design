@@ -151,6 +151,7 @@ describe('isUsableDeckCoverTitle', () => {
     expect(isUsableDeckCoverTitle('Untitled')).toBe(false);
     expect(isUsableDeckCoverTitle('Html Ppt Zhangzara Daisy Days')).toBe(false);
     expect(isUsableDeckCoverTitle('슬라이드 덱을 만들어줘.')).toBe(false);
+    expect(isUsableDeckCoverTitle('expo에 대해서 설명하는 피피티 만들어줘.')).toBe(false);
     expect(isUsableDeckCoverTitle('Q3 Roadmap')).toBe(true);
   });
 });

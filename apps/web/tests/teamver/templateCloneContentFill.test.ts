@@ -11,7 +11,9 @@ import {
   historyHasTemplateCloneContentFill,
   isTemplateCloneContentFillPrompt,
   looksLikeInstructionNotSlideCopy,
+  queueTemplateCloneContentFill,
   resolveTemplateCloneAutoSendSeed,
+  withoutCanonicalDeckAttachments,
 } from '../../src/teamver/templateCloneContentFill';
 import { promptWithTemplateCloneContentFillInstruction } from '../../src/components/ProjectView';
 
@@ -41,7 +43,8 @@ describe('templateCloneContentFill', () => {
     expect(seed).toMatch(/attached source materials/i);
     expect(seed).toMatch(/Quality bar: each non-divider slide/i);
     expect(seed).toMatch(/headline, takeaway/i);
-    expect(seed).toMatch(/body-first/i);
+    expect(seed).toMatch(/first 1200 characters after `<artifact`/i);
+    expect(seed).toMatch(/FORBIDDEN: streaming `<head>`/i);
     expect(seed).toMatch(/NEVER "수정 반영 중"/);
     expect(seed).not.toMatch(/emit a full.*rewrites visible text/i);
     expect(seed).not.toMatch(/Prefer `<artifact type="deck-patch" identifier="deck">`/);
@@ -227,5 +230,46 @@ describe('templateCloneContentFill', () => {
     expect(continued).toMatch(/이전 응답이 끊겼습니다/);
     // Idempotent when already stamped.
     expect(ensureTemplateCloneContentFillContinuePrompt(continued)).toBe(continued);
+  });
+
+  it('drops cloned deck.html from fill-queue attachments', () => {
+    expect(withoutCanonicalDeckAttachments([
+      { path: 'deck.html', name: 'deck.html', kind: 'file' },
+      { path: 'deck-2.html', name: 'deck-2.html', kind: 'file' },
+      { path: 'refs/drive/notes.pdf', name: 'notes.pdf', kind: 'file' },
+    ])).toEqual([
+      { path: 'refs/drive/notes.pdf', name: 'notes.pdf', kind: 'file' },
+    ]);
+
+    const store = new Map<string, string>();
+    const prev = globalThis.window;
+    (globalThis as { window?: unknown }).window = {
+      sessionStorage: {
+        setItem: (key: string, value: string) => {
+          store.set(key, value);
+        },
+        removeItem: (key: string) => {
+          store.delete(key);
+        },
+        getItem: (key: string) => store.get(key) ?? null,
+      },
+    };
+    try {
+      queueTemplateCloneContentFill({
+        projectId: 'proj-fill',
+        seed: buildTemplateCloneContentFillSeed({
+          userInstruction: 'expo에 대해서 설명하는 피피티 만들어줘.',
+        }),
+        attachments: [
+          { path: 'deck.html', name: 'deck.html', kind: 'file' },
+          { path: 'refs/drive/notes.pdf', name: 'notes.pdf', kind: 'file' },
+        ],
+      });
+      expect(store.get('od:auto-send-attachments:proj-fill')).toContain('notes.pdf');
+      expect(store.get('od:auto-send-attachments:proj-fill')).not.toContain('deck.html');
+    } finally {
+      if (prev) (globalThis as { window?: unknown }).window = prev;
+      else delete (globalThis as { window?: unknown }).window;
+    }
   });
 });

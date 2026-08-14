@@ -291,4 +291,22 @@ describe('sanitizeTemplateCloneDeckTitle', () => {
     expect(looksLikeInstructionCopy('[Deliverable instruction] Build a deck')).toBe(true);
     expect(sanitizeTemplateCloneDeckTitle('Expo SDK 개요')).toBe('Expo SDK 개요');
   });
+
+  it('does not synthesize marketing titles when the brief is only a template name', () => {
+    const slides = resolveTemplateCloneSlidesFromBrief({
+      sourceBrief: 'Html Ppt Zhangzara Daisy Days',
+      deckTitle: 'Html Ppt Zhangzara Daisy Days',
+    });
+    expect(slides.every((slide) => !/Html Ppt|Daisy Days|Zhangzara/i.test(slide.title))).toBe(true);
+    const cloned = buildTemplateClonedDeckHtml(
+      `<!doctype html><html><body>
+        <section class="slide"><h1>Daisy Days</h1><p>Html Ppt Zhangzara Daisy Days</p></section>
+      </body></html>`,
+      slides,
+      { title: 'Html Ppt Zhangzara Daisy Days' },
+    );
+    expect(cloned).toMatch(/<h1[^>]*>Presentation<\/h1>/);
+    expect(cloned).not.toContain('Html Ppt Zhangzara Daisy Days');
+    expect(cloned).not.toContain('Daisy Days');
+  });
 });

@@ -60,6 +60,22 @@ describe("promptWithSlideAttachmentDeliverableInstruction", () => {
     expect(prompt).toContain('surgical insert into the EXISTING deck');
     expect(prompt.startsWith('이 이미지 1페이지에 넣어줘')).toBe(true);
   });
+
+  it('keeps Clone content-fill image paths without surgical existing-deck pressure', () => {
+    const prompt = promptWithSlideAttachmentDeliverableInstruction(
+      'expo에 대해서 설명하는 피피티 만들어줘.\n\n[Template clone content fill]\nFill REAL content.',
+      [
+        { path: 'deck.html', name: 'deck.html', kind: 'file' },
+        { path: 'refs/drive/m1abc-photo.png', name: 'photo.png', kind: 'image' },
+      ],
+      { slideOnlyMvp: true, templateCloneContentFill: true },
+    );
+    expect(prompt).toContain('[Attached image embed]');
+    expect(prompt).toContain('refs/drive/m1abc-photo.png');
+    expect(prompt).toContain('CREATE fill');
+    expect(prompt).not.toContain('surgical insert into the EXISTING deck');
+    expect(prompt).not.toContain('[Deliverable instruction]');
+  });
 });
 
 describe("promptWithSlideAttachmentDeliverableInstruction", () => {
@@ -256,6 +272,17 @@ describe("chatAttachmentsForAutoContinueImageEmbed", () => {
       ],
     });
     expect(kept.map((item) => item.path)).toEqual(["uploads/goldfish.webp", "deck.html"]);
+  });
+
+  it("drops cloned deck.html when the origin turn was Clone content-fill", () => {
+    const kept = chatAttachmentsForAutoContinueImageEmbed({
+      content: 'expo에 대해서 설명하는 피피티 만들어줘.\n\n[Template clone content fill]\nFill REAL content.',
+      attachments: [
+        { path: "uploads/goldfish.webp", name: "goldfish.webp", kind: "image" },
+        { path: "deck.html", name: "deck.html", kind: "file" },
+      ],
+    });
+    expect(kept.map((item) => item.path)).toEqual(["uploads/goldfish.webp"]);
   });
 
   it("recovers image attachments from @mentions when origin attachments were dropped", () => {

@@ -2,6 +2,11 @@ import type { ChatMessage } from '../types';
 import { documentContainsSlideSection } from '../artifacts/deck-html-content';
 import { salvageTruncatedHtmlDocument } from '../artifacts/recover';
 import { isIncompleteHtmlDocumentShell } from '../artifacts/validate';
+import {
+  TEMPLATE_CLONE_CONTENT_FILL_MARKER,
+  TEMPLATE_CLONE_CONTENT_FILL_TURN_MARKER,
+  templateCloneContentFillHardRules,
+} from '../teamver/templateCloneContentFill';
 import { COMPACT_DECK_SLIDE_COUNT_GUIDANCE } from './deckGuidance';
 
 // Canonical prompt sent by the "Continue the run" affordance on a resumable
@@ -135,6 +140,12 @@ export type AutoContinuePromptContext = {
   truncatedByMaxTokens?: boolean;
   /** Saved slide deck on disk from an earlier successful turn in this project. */
   existingDeckPath?: string | null;
+  /**
+   * Origin turn was Clone → AI content-fill. Keep CREATE/body-first and never
+   * re-attach cloned `deck.html` as an existing-deck edit (that restarts the
+   * `<head>` hang).
+   */
+  templateCloneContentFill?: boolean;
 };
 
 // Cap on automatic continue attempts inside a single conversation.
@@ -190,10 +201,13 @@ export function buildAutoContinueIncompleteOutputPrompt(
     && isIncompleteHtmlDocumentShell(partialRaw)
     && !partialSalvagedHasSlide,
   );
+  const headWithoutBody = Boolean(
+    /<head\b/i.test(partialRaw) && !/<body\b/i.test(partialRaw),
+  );
   const headOnlyHeavy = Boolean(
     partialShellOnly
-    && partialRaw.length >= 2048
-    && !documentContainsSlideSection(partialRaw),
+    && !documentContainsSlideSection(partialRaw)
+    && (partialRaw.length >= 2048 || headWithoutBody),
   );
   // Head-only shells burn auto-continue slots without progress — escalate
   // immediately instead of waiting for attempt 2.
@@ -202,8 +216,20 @@ export function buildAutoContinueIncompleteOutputPrompt(
       ? AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT_ESCALATED
       : AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT,
   );
-  if (headOnlyHeavy || (context.truncatedByMaxTokens && partialShellOnly)) {
+  if (
+    headOnlyHeavy
+    || context.templateCloneContentFill
+    || (context.truncatedByMaxTokens && partialShellOnly)
+  ) {
     parts.push(AUTO_CONTINUE_HEAD_ONLY_BODY_FIRST);
+  }
+  if (context.templateCloneContentFill) {
+    parts.push(
+      `\n\n${TEMPLATE_CLONE_CONTENT_FILL_MARKER}\n${TEMPLATE_CLONE_CONTENT_FILL_TURN_MARKER}`,
+      'OVERRIDE: this is still the Clone content-fill CREATE — not an existing-deck edit.',
+      'Do not attach, read, or rewrite the cloned `deck.html`. Do not use "수정 반영 중".',
+      ...templateCloneContentFillHardRules(),
+    );
   }
 
   const outline = context.planOutline?.trim();
@@ -216,7 +242,13 @@ export function buildAutoContinueIncompleteOutputPrompt(
 
   const referenceFiles = Array.from(
     new Set((context.referenceFiles ?? []).map((path) => path.trim()).filter(Boolean)),
-  ).slice(0, 12);
+  )
+    .filter((path) => {
+      if (!context.templateCloneContentFill) return true;
+      const base = path.split('/').pop() ?? path;
+      return !/^deck(?:[-_.].*)?\.html?$/i.test(base);
+    })
+    .slice(0, 12);
   if (referenceFiles.length > 0) {
     parts.push(
       '\n\n[이 대화에서 첨부된 참고 파일 — 필요하면 읽고 반영하되, 최종 산출물로 취급하지 마세요:]\n'
@@ -232,7 +264,9 @@ export function buildAutoContinueIncompleteOutputPrompt(
     );
   }
 
-  const existingDeckPath = context.existingDeckPath?.trim();
+  const existingDeckPath = context.templateCloneContentFill
+    ? ''
+    : context.existingDeckPath?.trim();
   if (existingDeckPath) {
     parts.push(
       `\n\n[이 프로젝트에 이미 저장된 슬라이드 덱: \`${existingDeckPath}\`. `

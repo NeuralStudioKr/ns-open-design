@@ -14,6 +14,7 @@ import {
   pickPluginPreviewHtmlPath,
   resolveTemplateCloneSlideCountHint,
   resolveTemplateCloneSlidesFromBrief,
+  sanitizeTemplateCloneDeckTitle,
 } from '@open-design/contracts';
 
 import { ArtifactPublicationBlockedError } from './artifact-publication-guard.js';
@@ -257,16 +258,15 @@ export async function seedTemplateClonedDeckOnServer(
     ...(input.userInstruction != null ? { userInstruction: input.userInstruction } : {}),
     // Prefer the user-facing deck/project title over the plugin marketing
     // title ("Html Ppt Zhangzara Daisy Days") when synthesizing free-form.
-    deckTitle: input.deckTitle ?? null,
+    deckTitle: sanitizeTemplateCloneDeckTitle(input.deckTitle),
   });
   const countHint = resolveTemplateCloneSlideCountHint(input.slideCountHint);
-  // Content-derived title wins over plugin/template marketing names so Clone
-  // does not stamp "Html Ppt Zhangzara Daisy Days" into the cover H1.
+  // Content-derived title wins. Never fall back to plugin/template marketing
+  // names — those used to land on the cover when the brief was empty.
   const deckTitle =
-    slides[0]?.title
-    || input.deckTitle?.trim()
-    || input.templateTitle?.trim()
-    || loaded.title;
+    sanitizeTemplateCloneDeckTitle(slides[0]?.title)
+    || sanitizeTemplateCloneDeckTitle(input.deckTitle)
+    || 'Presentation';
   // Content length wins. Only pass maxSlides when the user explicitly hinted
   // a count — never pad to the template's demo page count (discouraged).
   const cloned = buildTemplateClonedDeckHtml(loaded.html, slides, {

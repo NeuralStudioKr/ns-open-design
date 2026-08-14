@@ -179,6 +179,7 @@ import {
   readQueuedAutoSendSeed,
   resolveTemplateCloneAutoSendSeed,
   templateCloneContentFillHardRules,
+  withoutCanonicalDeckAttachments,
 } from '../teamver/templateCloneContentFill';
 import {
   anonymizeArtifactId,
@@ -1311,7 +1312,10 @@ export function chatAttachmentsForAutoContinueImageEmbed(
     out.push(path === rawPath ? attachment : { ...attachment, path, name });
     if (out.length >= 16) break;
   }
-  return out;
+  // Clone fill retries must not re-attach deck.html — that restarts the <head> hang.
+  return isTemplateCloneContentFillPrompt(originUser?.content)
+    ? withoutCanonicalDeckAttachments(out)
+    : out;
 }
 
 function slideImageEmbedInstruction(imagePaths: readonly string[]): string {
@@ -1408,9 +1412,27 @@ export function promptWithSlideAttachmentDeliverableInstruction(
     existingDeckEdit?: boolean;
     /** Current `/files` paths — upgrade basename attachments to refs/drive/… */
     projectFilePaths?: readonly string[];
+    /** Clone content-fill is CREATE — never add surgical existing-deck image rules. */
+    templateCloneContentFill?: boolean;
   },
 ): string {
   if (!options.slideOnlyMvp || attachments.length === 0) return prompt;
+  if (options.templateCloneContentFill) {
+    const imagePaths = imageAttachmentPathsForSlideEmbed(
+      attachments,
+      options.projectFilePaths,
+    );
+    if (imagePaths.length === 0) return prompt;
+    if (prompt.includes(SLIDE_IMAGE_EMBED_INSTRUCTION_MARKER)) return prompt;
+    return [
+      prompt.trim(),
+      '',
+      SLIDE_IMAGE_EMBED_INSTRUCTION_MARKER,
+      'Place attached images into the new deck using these exact project-relative paths:',
+      ...imagePaths.map((path) => `- ${path}`),
+      'This is a CREATE fill — do not treat the cloned deck as an existing edit target.',
+    ].join('\n');
+  }
   // Comment edits suppress full-deck deliverable pressure (scope block wins),
   // but attached images still need an exact <img src> contract — otherwise
   // board/memo "이 이미지 넣어줘" turns have no path to copy.
@@ -4090,13 +4112,14 @@ export function ProjectView({
                   attempt,
                   referenceFiles: collectSlideReferencePathsFromMessages(mergedMessages),
                   slideCountHint: extractRequestedSlideCountHintFromMessages(mergedMessages),
+                  ...autoContinueCtx,
                   existingDeckPath: autoContinueOriginIsFill
                     ? null
                     : resolvePrimaryDeckFilePath(
                       filesForRecovery,
                       project.metadata?.entryFile,
                     ),
-                  ...autoContinueCtx,
+                  templateCloneContentFill: autoContinueOriginIsFill,
                 },
               });
               const autoContinuePrompt = autoContinueOriginIsFill
@@ -8222,13 +8245,14 @@ export function ProjectView({
                 attempt,
                 referenceFiles: collectSlideReferencePathsFromMessages(mergedMessages),
                 slideCountHint: extractRequestedSlideCountHintFromMessages(mergedMessages),
+                ...autoContinueCtx,
                 existingDeckPath: autoContinueOriginIsFill
                   ? null
                   : resolvePrimaryDeckFilePath(
                     nextFiles,
                     project.metadata?.entryFile,
                   ),
-                ...autoContinueCtx,
+                templateCloneContentFill: autoContinueOriginIsFill,
               },
             });
             const autoContinuePrompt = autoContinueOriginIsFill
@@ -8786,10 +8810,7 @@ export function ProjectView({
         }
       }
       if (isCloneContentFillTurn) {
-        effectiveAttachments = effectiveAttachments.filter((attachment) => {
-          const attachPath = String(attachment.path || attachment.name || '').trim();
-          return !attachPath || !isCanonicalDeckFileName(attachPath);
-        });
+        effectiveAttachments = withoutCanonicalDeckAttachments(effectiveAttachments);
         autoAttachedDeckPath = null;
       }
       const instructionAttachments = retryTarget
@@ -8815,6 +8836,7 @@ export function ProjectView({
           commentAttachmentCount: scopedCommentAttachments.length,
           existingDeckEdit: autoAttachedDeckPath != null,
           projectFilePaths: projectFilePathsForEmbed,
+          templateCloneContentFill: isCloneContentFillTurn,
         },
       );
       // On Teamver slide-only comment edits, nudge the model into the
@@ -9805,16 +9827,17 @@ export function ProjectView({
                       truncatedByMaxTokens: runStopReason === 'max_tokens',
                       referenceFiles: collectSlideReferencePathsFromMessages(autoContinueMessages),
                       slideCountHint: extractRequestedSlideCountHintFromMessages(autoContinueMessages),
+                      ...extractAutoContinueContextFromAssistant(latestAssistantMsg, {
+                        partialHtml: partialHtmlForAutoContinue,
+                        planOutline: rawFinalText,
+                      }),
                       existingDeckPath: autoContinueOriginIsFill
                         ? null
                         : resolvePrimaryDeckFilePath(
                           projectFiles,
                           project.metadata?.entryFile,
                         ),
-                      ...extractAutoContinueContextFromAssistant(latestAssistantMsg, {
-                        partialHtml: partialHtmlForAutoContinue,
-                        planOutline: rawFinalText,
-                      }),
+                      templateCloneContentFill: autoContinueOriginIsFill,
                     },
                   });
                   const autoContinuePrompt = autoContinueOriginIsFill
@@ -12354,7 +12377,13 @@ export function ProjectView({
           fillQueued: fillQueuedAtMount,
         })
       : '';
-    autoSendAttachmentsRef.current = isAutoSend ? readAutoSendAttachments(project.id) : [];
+    autoSendAttachmentsRef.current = isAutoSend
+      ? (
+        fillQueuedAtMount
+          ? withoutCanonicalDeckAttachments(readAutoSendAttachments(project.id))
+          : readAutoSendAttachments(project.id)
+      )
+      : [];
   }
   const [initialDraft, setInitialDraft] = useState<
     { projectId: string; value: string } | undefined
@@ -12578,7 +12607,9 @@ export function ProjectView({
       pendingPrompt: project.pendingPrompt,
       fillQueued,
     }).trim();
-    const attachments = autoSendAttachmentsRef.current ?? [];
+    const attachments = fillQueued
+      ? withoutCanonicalDeckAttachments(autoSendAttachmentsRef.current ?? [])
+      : (autoSendAttachmentsRef.current ?? []);
     if (!seed && attachments.length === 0) {
       autoSentRef.current = true;
       clearAutoSendSession(project.id);

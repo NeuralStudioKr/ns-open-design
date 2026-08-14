@@ -3678,7 +3678,7 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
               metadata: {
                 ...prevMeta,
                 templateClonedDeckSeeded: true,
-                // FE queues a content-fill auto-send (existing-deck edit).
+                // FE queues a compact CREATE content-fill — do not attach deck.html.
                 templateCloneContentFillPending: true,
                 selectedDeckTemplateId: seededPluginId,
                 ...(templateTitle

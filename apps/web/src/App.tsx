@@ -134,6 +134,7 @@ import { seedTemplateClonedDeck } from './teamver/seedTemplateClonedDeck';
 import {
   buildTemplateCloneContentFillSeed,
   queueTemplateCloneContentFill,
+  withoutCanonicalDeckAttachments,
 } from './teamver/templateCloneContentFill';
 import {
   extractUserFacingCreateRequest,
@@ -2860,9 +2861,12 @@ function AppInner() {
             '1',
           );
           if (firstMessageAttachments.length > 0) {
+            const autoSendAttachments = queuedFillSeed
+              ? withoutCanonicalDeckAttachments(firstMessageAttachments)
+              : firstMessageAttachments;
             window.sessionStorage.setItem(
               `od:auto-send-attachments:${result.project.id}`,
-              JSON.stringify(firstMessageAttachments),
+              JSON.stringify(autoSendAttachments),
             );
           } else {
             window.sessionStorage.removeItem(

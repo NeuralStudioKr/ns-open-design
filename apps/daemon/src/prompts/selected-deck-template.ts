@@ -53,6 +53,7 @@ export function wrapSelectedDeckTemplateSkillBody(
     'When a Template visual kit (from example.html) is present below, treat its',
     'CSS tokens, fonts, Motif sprites, and scaffold map as mandatory — reproduce',
     'them with inline styles or one short body `<style>` after slide 1.',
+    'Do not stream a long `<head>` / full example.html stylesheet before the first filled slide.',
     'If complete motif SVGs are provided, copy at least one provided SVG onto the cover.',
     'Sparse title-only slides that ignore the kit are a failure.',
     '',

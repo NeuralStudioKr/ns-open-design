@@ -183,6 +183,40 @@ describe('runtime/resume shell/no-HTML recovery constants', () => {
     expect(excerpt).not.toContain('.x{color:red}'.repeat(50));
   });
 
+  it('forces body-first guidance for a short opened <head> with no body', () => {
+    const prompt = buildAutoContinueIncompleteOutputPrompt({
+      attempt: 1,
+      partialHtml: '<!doctype html><html lang="ko"><head>',
+    });
+    expect(prompt).toContain('BODY-FIRST');
+    expect(prompt).toContain('Do NOT regenerate');
+  });
+
+  it('keeps Clone content-fill CREATE contract on auto-continue', () => {
+    const prompt = buildAutoContinueIncompleteOutputPrompt({
+      attempt: 1,
+      partialHtml: '<!doctype html><html lang="ko"><head>',
+      existingDeckPath: 'deck.html',
+      templateCloneContentFill: true,
+    });
+    expect(prompt).toContain('[Template clone content fill]');
+    expect(prompt).toContain('[Template clone content fill turn]');
+    expect(prompt).toContain('BODY-FIRST');
+    expect(prompt).toContain('NEVER "수정 반영 중"');
+    expect(prompt).not.toContain('디스크의 덱을 기준으로');
+    expect(prompt).not.toContain('이미 저장된 슬라이드 덱');
+  });
+
+  it('omits cloned deck.html from fill auto-continue reference files', () => {
+    const prompt = buildAutoContinueIncompleteOutputPrompt({
+      attempt: 1,
+      templateCloneContentFill: true,
+      referenceFiles: ['deck.html', 'refs/drive/notes.pdf'],
+    });
+    expect(prompt).toContain('refs/drive/notes.pdf');
+    expect(prompt).not.toContain('- deck.html');
+  });
+
   it('forces body-first guidance for large head-only truncations', () => {
     const headOnly =
       '<!doctype html><html><head><meta charset="utf-8"/><title>Deck</title><style>'

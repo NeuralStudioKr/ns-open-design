@@ -4,7 +4,7 @@ import { useT } from '../i18n';
 import { embedUiLabel } from '../teamver/embedUiLabels';
 import { navigate, type EntryHomeView, type Route } from '../router';
 import type { Project } from '../types';
-import { stripUserVisibleQuestionFormProtocolText } from '../artifacts/question-form';
+import { stripUserVisibleUserMessageText } from '../comments';
 import { Icon, type IconName } from './Icon';
 
 type WorkspaceChromeTab =
@@ -1110,7 +1110,7 @@ function describePreviewDetail(
     if (tab.fileName) return tab.fileName;
     const project = projectById.get(tab.projectId);
     const brief =
-      stripUserVisibleQuestionFormProtocolText(project?.pendingPrompt)?.trim()
+      stripUserVisibleUserMessageText(project?.pendingPrompt)?.trim()
       || project?.customInstructions?.trim();
     if (brief) {
       return brief.length > 120 ? `${brief.slice(0, 117)}…` : brief;

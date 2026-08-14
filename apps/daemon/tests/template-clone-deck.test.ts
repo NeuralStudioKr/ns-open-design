@@ -91,6 +91,75 @@ describe('seedTemplateClonedDeckOnServer', () => {
     expect([...written.keys()]).toEqual(['deck.html']);
   });
 
+  it('never uses marketing or instruction copy as the cloned cover title', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'od-template-clone-title-'));
+    const pluginDir = path.join(root, 'plugin');
+    const projectsRoot = path.join(root, 'projects');
+    const dataDir = path.join(root, '.od');
+    await mkdir(pluginDir, { recursive: true });
+    await mkdir(projectsRoot, { recursive: true });
+
+    await writeFile(
+      path.join(pluginDir, 'example.html'),
+      `<!doctype html><html><head><style>.slide{background:#F5F0E6}</style></head>
+<body><section class="slide"><h1>Daisy Days</h1><p>Html Ppt Zhangzara Daisy Days</p></section></body></html>`,
+      'utf8',
+    );
+
+    const db = openDatabase(root, { dataDir });
+    upsertInstalledPlugin(db, {
+      id: 'html-ppt-zhangzara-daisy-days',
+      title: 'Html Ppt Zhangzara Daisy Days',
+      version: '0.0.0',
+      sourceKind: 'local',
+      source: pluginDir,
+      trust: 'bundled',
+      capabilitiesGranted: [],
+      manifest: {
+        name: 'html-ppt-zhangzara-daisy-days',
+        title: 'Html Ppt Zhangzara Daisy Days',
+        version: '0.0.0',
+        od: { preview: { entry: 'example.html' } },
+      } as any,
+      fsPath: pluginDir,
+      installedAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+
+    const written = new Map<string, string>();
+    const result = await seedTemplateClonedDeckOnServer(
+      {
+        db,
+        projectsRoot,
+        projectId: 'p1',
+        ensureProject: async () => {
+          const dir = path.join(projectsRoot, 'p1');
+          await mkdir(dir, { recursive: true });
+          return dir;
+        },
+        writeProjectFile: async (_root, _id, name, body) => {
+          written.set(name, typeof body === 'string' ? body : body.toString('utf8'));
+          return { name };
+        },
+      },
+      {
+        pluginId: 'html-ppt-zhangzara-daisy-days',
+        templateTitle: 'Html Ppt Zhangzara Daisy Days',
+        sourceBrief: '첨부한 자료를 바탕으로 슬라이드 덱을 만들어줘',
+        deckTitle: '첨부한 자료를 바탕으로 슬라이드 덱을 만들어줘',
+        slideCountHint: '5-6',
+      },
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const deck = written.get('deck.html') ?? '';
+    expect(deck).toMatch(/<h1[^>]*>Presentation<\/h1>/);
+    expect(deck).not.toContain('Html Ppt Zhangzara Daisy Days');
+    expect(deck).not.toContain('첨부한 자료를 바탕으로');
+    expect(deck).not.toContain('만들어줘');
+  });
+
   it('resolves bare skill id to example- installed plugin id', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'od-template-clone-alias-'));
     const pluginDir = path.join(root, 'plugin');

@@ -327,6 +327,9 @@ function fillSlideShell(
     if (existingCount > 0) {
       body = replaceListItems(body, Array.from({ length: existingCount }, () => ''));
     }
+  } else if (/<p\b/i.test(body)) {
+    // Title-only: wipe leftover template marketing paragraphs ("Daisy Days", …).
+    body = replaceFirstTagText(body, 'p', '');
   }
 
   // Force Teamver fixed canvas size even when template used vw/vh or had
@@ -413,7 +416,7 @@ export function buildTemplateClonedDeckHtml(
 
   const cleanedSlides: TemplateCloneSlideContent[] = [];
   for (const slide of slides) {
-    const title = slide.title.trim();
+    const title = sanitizeTemplateCloneDeckTitle(slide.title);
     if (!title) continue;
     const body = slide.body?.trim();
     cleanedSlides.push(body ? { title, body } : { title });
@@ -425,7 +428,8 @@ export function buildTemplateClonedDeckHtml(
   const hint = options.maxSlides != null
     ? Math.min(20, Math.max(1, options.maxSlides))
     : null;
-  const deckTitle = options.title?.trim()
+  const deckTitle =
+    sanitizeTemplateCloneDeckTitle(options.title)
     || cleanedSlides[0]?.title
     || 'Presentation';
 
@@ -581,8 +585,15 @@ function deriveTitleFromBrief(brief: string, deckTitle?: string | null): string 
     )
     .replace(/^(?:슬라이드|발표자료|덱)\s*/i, '')
     .trim();
-  if (!title || title.length < 2 || looksLikeInstructionCopy(title)) {
-    title = aboutTopic || 'Presentation';
+  if (
+    !title
+    || title.length < 2
+    || looksLikeInstructionCopy(title)
+    || looksLikeTemplateMarketingTitle(title)
+  ) {
+    title = aboutTopic && !looksLikeTemplateMarketingTitle(aboutTopic)
+      ? aboutTopic
+      : 'Presentation';
   }
   return cleanCloneTitle(title).slice(0, 60) || 'Presentation';
 }
@@ -638,9 +649,9 @@ export function synthesizeTemplateCloneSlidesFromFreeFormBrief(options: {
   if (bulletLines.length >= 2) {
     const out: TemplateCloneSlideContent[] = [{ title, body: '' }];
     for (const line of bulletLines) {
-      const item = cleanCloneTitle(
+      const item = sanitizeTemplateCloneDeckTitle(
         line.replace(/^[-*•·]\s+/, '').replace(/^\d+[.)]\s+/, ''),
-      ).slice(0, 80);
+      );
       if (item) out.push({ title: item });
     }
     return out.slice(0, 20);
@@ -658,7 +669,7 @@ export function synthesizeTemplateCloneSlidesFromFreeFormBrief(options: {
       const para = paragraphs[i]!;
       const firstLine = para.split('\n')[0]!.trim();
       const slideTitle = firstLine.length <= 60
-        ? cleanCloneTitle(firstLine).slice(0, 80)
+        ? (sanitizeTemplateCloneDeckTitle(firstLine) ?? `${title} ${i + 1}`)
         : `${title} ${i + 1}`;
       const body = firstLine.length <= 60
         ? para.split('\n').slice(1).join('\n').trim() || para
@@ -696,7 +707,7 @@ export function resolveTemplateCloneSlidesFromBrief(options: {
   const seen = new Set<string>();
 
   const push = (rawTitle: string) => {
-    const title = cleanCloneTitle(rawTitle);
+    const title = sanitizeTemplateCloneDeckTitle(rawTitle);
     if (!title) return;
     const key = title.toLowerCase();
     if (seen.has(key)) return;

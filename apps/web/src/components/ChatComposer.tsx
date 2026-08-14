@@ -103,7 +103,10 @@ import {
   type CanvasSlideQuickSettings,
 } from '../teamver/canvasSlideLaunch';
 import { seedTemplateClonedDeck } from '../teamver/seedTemplateClonedDeck';
-import { buildTemplateCloneContentFillSeed } from '../teamver/templateCloneContentFill';
+import {
+  buildTemplateCloneContentFillSeed,
+  withoutCanonicalDeckAttachments,
+} from '../teamver/templateCloneContentFill';
 import { useCanvasSlideLaunchTemplates } from '../teamver/hooks/useCanvasSlideLaunchTemplates';
 import {
   canvasImportedToChatAttachments,
@@ -2219,7 +2222,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
               });
               sendComposedTurn(
                 fillSeed,
-                attachments,
+                withoutCanonicalDeckAttachments(attachments),
                 [],
                 {
                   ...baseMeta,
@@ -2417,7 +2420,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
             });
             sendComposedTurn(
               fillSeed,
-              attachments,
+              withoutCanonicalDeckAttachments(attachments),
               [],
               {
                 ...baseMeta,

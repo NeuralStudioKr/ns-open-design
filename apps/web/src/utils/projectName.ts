@@ -1,3 +1,4 @@
+import { looksLikeInstructionCopy } from '@open-design/contracts';
 import type { Project } from '../types';
 import {
   isSlideCreateBoilerplateLine,
@@ -259,6 +260,7 @@ export function isUsableDeckCoverTitle(name: string | null | undefined): boolean
   if (trimmed.toLowerCase() === 'untitled') return false;
   if (isSlideCreateBoilerplateLine(trimmed)) return false;
   if (isDeckTemplateMarketingTitle(trimmed)) return false;
+  if (looksLikeInstructionCopy(trimmed)) return false;
   return true;
 }
 

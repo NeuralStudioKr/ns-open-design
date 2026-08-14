@@ -217,8 +217,8 @@ export function templateCloneContentFillHardRules(): string[] {
     '- Do NOT rewrite or reproduce the full cloned example.html / attached deck.html CSS+SVG head (that burns max_tokens and hangs with only `<head>`).',
     '- Use the Template visual kit + scaffold map from the system prompt for LOOK (palette hex, fonts, Motif sprites, layout roles). Neutral Modern / OD skeleton terracotta is a failed deliverable.',
     `- ${SLIDE_DECK_QUALITY_BAR_INSTRUCTION}`,
-    '- Emit ONE compact complete `<artifact type="deck" identifier="deck">` that starts `<!doctype html><html…><body>` and writes filled `<section class="slide">` slides EARLY (body-first).',
-    '- Keep `<style>` short (kit tokens + fonts only, ideally under ~2KB). Copy at most one Motif SVG if needed — never dump the whole template stylesheet.',
+    '- Body-first: the first 1200 characters after `<artifact` MUST include `<body` and one complete `<section class="slide">` with real topical copy. FORBIDDEN: streaming `<head>` or a long `<style>` before slide 1.',
+    '- Keep `<style>` short (kit tokens + fonts only, ideally under ~2KB) and place it after slide 1 when possible. Copy at most one Motif SVG — never dump the whole template stylesheet.',
     '- Fill REAL topical titles/body (no "…", no "만들어줘", no create-slides boilerplate). Slide count follows the brief/Quick settings — not the template demo page lineup.',
     '- Prefer finishing a closed `</artifact>` this turn over perfect motif fidelity. A complete compact Daisy-lookalike beats a truncated CSS shell.',
     '- Honor stated audience/level (e.g. 시니어 개발자 = architecture/internals/trade-offs, not a beginner intro).',
@@ -297,6 +297,23 @@ export function resolveTemplateCloneAutoSendSeed(input: {
   return queued || pending;
 }
 
+/** Cloned `deck.html` must never ride along on a content-fill turn. */
+export function isCanonicalDeckAttachment(attachment: {
+  path?: string | null;
+  name?: string | null;
+}): boolean {
+  const path = String(attachment.path || attachment.name || '').trim();
+  const base = path.split('/').pop() ?? path;
+  return /^deck(?:[-_.].*)?\.html?$/i.test(base);
+}
+
+export function withoutCanonicalDeckAttachments<T extends {
+  path?: string | null;
+  name?: string | null;
+}>(attachments: readonly T[] | null | undefined): T[] {
+  return (attachments ?? []).filter((attachment) => !isCanonicalDeckAttachment(attachment));
+}
+
 export function queueTemplateCloneContentFill(options: {
   projectId: string;
   seed: string;
@@ -308,10 +325,11 @@ export function queueTemplateCloneContentFill(options: {
     window.sessionStorage.setItem(`od:auto-send-first:${projectId}`, '1');
     window.sessionStorage.setItem(autoSendSeedStorageKey(projectId), options.seed);
     window.sessionStorage.setItem(templateCloneContentFillFlagKey(projectId), '1');
-    if (options.attachments && options.attachments.length > 0) {
+    const attachments = withoutCanonicalDeckAttachments(options.attachments);
+    if (attachments.length > 0) {
       window.sessionStorage.setItem(
         `od:auto-send-attachments:${projectId}`,
-        JSON.stringify(options.attachments),
+        JSON.stringify(attachments),
       );
     } else {
       window.sessionStorage.removeItem(`od:auto-send-attachments:${projectId}`);
