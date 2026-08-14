@@ -103,6 +103,18 @@ export function shouldClearTipRemountGeometryGraceOnSelectionChange(
   return Boolean(graceId && graceId !== nextSelectedId);
 }
 
+/**
+ * Idle remasure saw an expired grace latch — clear id AND until so a later
+ * remasure cannot skip wild-jump under a stale untilMs (overlay residual).
+ */
+export function shouldClearTipRemountGeometryGraceOnExpiry(
+  graceId: string | null | undefined,
+  nowMs: number,
+  graceUntilMs: number,
+): boolean {
+  return Boolean(graceId && tipRemountGeometryGraceExpired(nowMs, graceUntilMs));
+}
+
 /** True when tip-remount geometry grace window has elapsed. */
 export function tipRemountGeometryGraceExpired(
   nowMs: number,

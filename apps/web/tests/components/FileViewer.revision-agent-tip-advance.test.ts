@@ -131,12 +131,15 @@ describe('FileViewer revision tip advance after undo', () => {
     expect(fileViewer).toContain('2→1 / clear during deferred tip-yield — drop stale Mixed');
     expect(fileViewer).toContain('shouldReseedSingleInspectorAfterTipYieldMixedClear');
     expect(fileViewer).toContain('Mixed→single: reseed inspector from painted source');
+    expect(fileViewer).toContain('readManualEditTargetSnapshot(base, seedId');
     expect(fileViewer).toContain('clearManualEditTipRemountGeometryGraceIfNeeded');
+    expect(fileViewer).toContain('clearManualEditTipRemountGeometryGrace(');
+    expect(fileViewer).toContain('shouldClearTipRemountGeometryGraceOnExpiry');
     expect(fileViewer).toContain('shouldClearTipRemountGeometryGraceOnSelectionChange');
     expect(fileViewer).toContain('Selection left tip-remount grace primary');
     expect(fileViewer).toContain('shouldSkipWildJumpAfterTipRemountGrace');
-    expect(fileViewer).toContain('tipRemountGeometryGraceExpired');
-    expect(fileViewer).toContain('Expired grace: clear latch so wild-jump deny is restored');
+    expect(fileViewer).toContain('Expired grace: clear latch (id + until) so wild-jump deny is restored');
+    expect(fileViewer).toContain('Consume grace after first accepted remasure');
     expect(fileViewer).toContain('manualEditTipRemountGeometryGraceIdRef');
     expect(fileViewer).toContain('selectedManualEditTargetIdRef.current');
     expect(fileViewer).toContain('Accept fell back — soft-retry before edit-mode hold');

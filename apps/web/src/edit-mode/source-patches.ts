@@ -1279,11 +1279,19 @@ function sanitizeManualEditElementAttrs(el: Element): void {
       continue;
     }
     // Prefer full name for xlink:href safety gate; else local URL attr name.
+    // Explicit srcset/imagesrcset/values keep namespaced local-name parity obvious
+    // even though they also live in MANUAL_EDIT_URL_ATTRS.
     const urlAttrKey = lower === 'xlink:href'
       ? 'xlink:href'
-      : (MANUAL_EDIT_URL_ATTRS.has(lower) || lower === 'srcset' || lower === 'values')
+      : (MANUAL_EDIT_URL_ATTRS.has(lower)
+        || lower === 'srcset'
+        || lower === 'imagesrcset'
+        || lower === 'values')
         ? lower
-        : (MANUAL_EDIT_URL_ATTRS.has(local) || local === 'srcset' || local === 'values')
+        : (MANUAL_EDIT_URL_ATTRS.has(local)
+          || local === 'srcset'
+          || local === 'imagesrcset'
+          || local === 'values')
           ? local
           : null;
     if (
@@ -1514,6 +1522,26 @@ const MANUAL_EDIT_URL_ATTR_NAMES_LONGER_FIRST = [
 ] as const;
 
 /**
+ * Presentation attrs shared by DOM sanitize and failClosed.
+ * Longer names first (`marker-start` / `clip-path` / `color-profile`) so
+ * optional namespace prefix + alternation captures predictably.
+ */
+const MANUAL_EDIT_CSS_URL_PRESENTATION_ATTR_NAMES_LONGER_FIRST = [
+  'color-profile',
+  'marker-start',
+  'marker-mid',
+  'marker-end',
+  'clip-path',
+  'clippath',
+  'filter',
+  'stroke',
+  'cursor',
+  'marker',
+  'mask',
+  'fill',
+] as const;
+
+/**
  * Sanitize a full HTML document (set-full-source / undo snapshots) with the
  * same dangerous-tag / attr / SMIL rules as fragment replacements.
  */
@@ -1538,11 +1566,8 @@ function failClosedScrubHtmlWithoutParser(raw: string): string {
   const smil = 'animate|animatemotion|animatetransform|set|animatecolor';
   // Optional XML/SVG namespace prefix (`svg:animate`) — local-name only misses these.
   const smilTag = `(?:[\\w.-]+:)?(?:${smil})`;
-  // Align with MANUAL_EDIT_CSS_URL_PRESENTATION_ATTRS (DOM walk scrubs these).
-  const presentationAttrs = [
-    'filter', 'fill', 'stroke', 'clip-path', 'clippath', 'mask', 'cursor',
-    'marker', 'marker-start', 'marker-mid', 'marker-end', 'color-profile',
-  ].join('|');
+  // Same membership as MANUAL_EDIT_CSS_URL_PRESENTATION_ATTRS (longer-first).
+  const presentationAttrs = MANUAL_EDIT_CSS_URL_PRESENTATION_ATTR_NAMES_LONGER_FIRST.join('|');
   return text
     .replace(new RegExp(`<(?:${dangerous})\\b[\\s\\S]*?<\\/(?:${dangerous})\\s*>`, 'gi'), '')
     .replace(new RegExp(`<(?:${dangerous})\\b[^>]*\\/?>`, 'gi'), '')
@@ -2471,11 +2496,12 @@ function setAttributes(
       continue;
     }
     // Block dangerous URL schemes on navigable / embeddable attrs (local name too).
+    // Explicit srcset/imagesrcset keep namespaced local-name parity with the walk above.
     const urlAttrKey = lower === 'xlink:href'
       ? 'xlink:href'
-      : (MANUAL_EDIT_URL_ATTRS.has(lower) || lower === 'srcset')
+      : (MANUAL_EDIT_URL_ATTRS.has(lower) || lower === 'srcset' || lower === 'imagesrcset')
         ? lower
-        : (MANUAL_EDIT_URL_ATTRS.has(local) || local === 'srcset')
+        : (MANUAL_EDIT_URL_ATTRS.has(local) || local === 'srcset' || local === 'imagesrcset')
           ? local
           : null;
     if (
@@ -2845,20 +2871,9 @@ const MANUAL_EDIT_CSS_RESOURCE_VAR_RE = new RegExp(
 );
 
 /** Presentation attrs that accept CSS `url()` and need the same scrub as style. */
-const MANUAL_EDIT_CSS_URL_PRESENTATION_ATTRS = new Set([
-  'filter',
-  'fill',
-  'stroke',
-  'clip-path',
-  'clippath',
-  'mask',
-  'cursor',
-  'marker',
-  'marker-start',
-  'marker-mid',
-  'marker-end',
-  'color-profile',
-]);
+const MANUAL_EDIT_CSS_URL_PRESENTATION_ATTRS = new Set<string>(
+  MANUAL_EDIT_CSS_URL_PRESENTATION_ATTR_NAMES_LONGER_FIRST,
+);
 
 /** SVG paint-server / resource tags restricted to same-document `#fragment` refs. */
 const MANUAL_EDIT_SVG_FRAGMENT_ONLY_TAGS = new Set([

@@ -330,6 +330,7 @@ import { manualEditTargetsIdentityFingerprint } from '../edit-mode/manual-edit-t
 import {
   shouldClearManualEditFrozenSourceOnModeChange,
   shouldClearMixedKeysAfterTipYieldReseedSkip,
+  shouldClearTipRemountGeometryGraceOnExpiry,
   shouldClearTipRemountGeometryGraceOnSelectionChange,
   shouldEchoManualEditSelectionAfterFreezeSync,
   shouldReseedManualEditMultiInspectorAfterFreezeSync,
@@ -337,7 +338,6 @@ import {
   shouldSkipWildJumpAfterTipRemountGrace,
   shouldSyncManualEditFrozenSourceToPainted,
   shouldUpdateManualEditFrozenSourceOnPatch,
-  tipRemountGeometryGraceExpired,
 } from '../edit-mode/manual-edit-freeze';
 import { isManualEditKeyboardTextTarget, resolveManualEditDeleteKeyboardAction } from '../edit-mode/manual-edit-keyboard';
 import {
@@ -7948,6 +7948,12 @@ function HtmlViewer({
     if (effectiveDeck && boardMode) requestSlideStateFromIframe(target);
   }
 
+  /** Clear tip-remount grace latch (id + until) — expiry, consume, or leave. */
+  function clearManualEditTipRemountGeometryGrace() {
+    manualEditTipRemountGeometryGraceIdRef.current = null;
+    manualEditTipRemountGeometryGraceUntilRef.current = 0;
+  }
+
   /** Selection left tip-remount grace primary — clear so overlay remasures cleanly. */
   function clearManualEditTipRemountGeometryGraceIfNeeded(
     nextSelectedId: string | null,
@@ -7956,8 +7962,7 @@ function HtmlViewer({
       manualEditTipRemountGeometryGraceIdRef.current,
       nextSelectedId,
     )) {
-      manualEditTipRemountGeometryGraceIdRef.current = null;
-      manualEditTipRemountGeometryGraceUntilRef.current = 0;
+      clearManualEditTipRemountGeometryGrace();
     }
   }
 
@@ -8004,10 +8009,28 @@ function HtmlViewer({
           if (shouldReseedSingleInspectorAfterTipYieldMixedClear(ids, pendingOwns)) {
             const base = sourceRef.current ?? '';
             const parsedDoc = parseManualEditSource(base);
-            const seedStyles = readManualEditStyles(base, ids[0]!, {}, parsedDoc);
+            const seedId = ids[0]!;
+            const snapshot = readManualEditTargetSnapshot(base, seedId, {}, parsedDoc);
+            const primary = selectedManualEditTargetRef.current;
             setManualEditDraft((current) => ({
               ...current,
-              styles: seedStyles,
+              text: snapshot.fields.text
+                ?? (primary?.id === seedId ? primary.fields.text ?? primary.text : undefined)
+                ?? current.text,
+              href: snapshot.fields.href
+                ?? (primary?.id === seedId ? primary.fields.href : undefined)
+                ?? current.href,
+              src: snapshot.fields.src
+                ?? (primary?.id === seedId ? primary.fields.src : undefined)
+                ?? current.src,
+              alt: snapshot.fields.alt
+                ?? (primary?.id === seedId ? primary.fields.alt : undefined)
+                ?? current.alt,
+              styles: snapshot.styles,
+              attributesText: Object.keys(snapshot.attributes).length > 0
+                ? JSON.stringify(snapshot.attributes, null, 2)
+                : current.attributesText,
+              outerHtml: snapshot.outerHtml || current.outerHtml,
               fullSource: base,
             }));
           }
@@ -8201,8 +8224,7 @@ function HtmlViewer({
     manualEditSuppressTipPreferUntilRefreshRef.current = nextTipPreferSuppressState(
       'artifact-switch',
     );
-    manualEditTipRemountGeometryGraceIdRef.current = null;
-    manualEditTipRemountGeometryGraceUntilRef.current = 0;
+    clearManualEditTipRemountGeometryGrace();
     return () => {
       // Drop in-flight reconcile/refresh work so unmount cannot overwrite
       // persisted revision cursor state in sessionStorage after a tab switch.
@@ -8214,8 +8236,7 @@ function HtmlViewer({
       manualEditSuppressTipPreferUntilRefreshRef.current = nextTipPreferSuppressState(
         'artifact-switch',
       );
-      manualEditTipRemountGeometryGraceIdRef.current = null;
-      manualEditTipRemountGeometryGraceUntilRef.current = 0;
+      clearManualEditTipRemountGeometryGrace();
     };
   }, [file.name]);
 
@@ -9486,16 +9507,14 @@ function HtmlViewer({
         // Gesture/handoff never reach this guard — resize session / isHandoffRect
         // returned above; settleManualEditGeometryHandoff applies on its own path.
         // Tip-yield freeze remount: first remasure may jump layout — skip deny.
-        // Expired grace: clear latch so wild-jump deny is restored.
+        // Expired grace: clear latch (id + until) so wild-jump deny is restored.
         const nowMs = Date.now();
-        if (
-          manualEditTipRemountGeometryGraceIdRef.current
-          && tipRemountGeometryGraceExpired(
-            nowMs,
-            manualEditTipRemountGeometryGraceUntilRef.current,
-          )
-        ) {
-          manualEditTipRemountGeometryGraceIdRef.current = null;
+        if (shouldClearTipRemountGeometryGraceOnExpiry(
+          manualEditTipRemountGeometryGraceIdRef.current,
+          nowMs,
+          manualEditTipRemountGeometryGraceUntilRef.current,
+        )) {
+          clearManualEditTipRemountGeometryGrace();
         }
         const current = selectedManualEditTargetRef.current;
         const tipRemountGrace = shouldSkipWildJumpAfterTipRemountGrace(
@@ -9513,7 +9532,8 @@ function HtmlViewer({
           return;
         }
         if (tipRemountGrace) {
-          manualEditTipRemountGeometryGraceIdRef.current = null;
+          // Consume grace after first accepted remasure — clear id + until.
+          clearManualEditTipRemountGeometryGrace();
         }
         applyManualEditMeasuredGeometry(measured);
         return;

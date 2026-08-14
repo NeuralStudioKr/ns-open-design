@@ -1646,6 +1646,31 @@ describe('manual edit source patches', () => {
     expect(namespacedFill.toLowerCase()).not.toContain('javascript');
     expect(namespacedFill).not.toMatch(/svg:fill\s*=/i);
     expect(sourcePatchesSource).toContain('Optional namespace prefix (`svg:fill`)');
+    // Namespaced clip-path / mask / filter — same presentation optional-prefix gate.
+    const namespacedClipMaskFilter = sanitizeManualEditFullSource(
+      '<!doctype html><html><body>'
+      + '<rect svg:clip-path="url(javascript:alert(8))" data-od-id="c" />'
+      + '<circle svg:mask="url(javascript:alert(9))" data-od-id="m" />'
+      + '<g svg:filter="url(javascript:alert(10))" data-od-id="f" />'
+      + '</body></html>',
+    );
+    expect(namespacedClipMaskFilter.toLowerCase()).not.toContain('javascript');
+    expect(namespacedClipMaskFilter).not.toMatch(/svg:clip-path\s*=/i);
+    expect(namespacedClipMaskFilter).not.toMatch(/svg:mask\s*=/i);
+    expect(namespacedClipMaskFilter).not.toMatch(/svg:filter\s*=/i);
+    // failClosed presentation list ≡ DOM MANUAL_EDIT_CSS_URL_PRESENTATION_ATTRS.
+    expect(sourcePatchesSource).toContain('MANUAL_EDIT_CSS_URL_PRESENTATION_ATTR_NAMES_LONGER_FIRST');
+    expect(sourcePatchesSource).toContain(
+      "const presentationAttrs = MANUAL_EDIT_CSS_URL_PRESENTATION_ATTR_NAMES_LONGER_FIRST.join('|')",
+    );
+    expect(sourcePatchesSource).toContain(
+      'MANUAL_EDIT_CSS_URL_PRESENTATION_ATTR_NAMES_LONGER_FIRST,',
+    );
+    // Longer presentation names first (marker-start before marker; clip-path before clippath).
+    expect(sourcePatchesSource).toMatch(
+      /'marker-start',\s*'marker-mid',\s*'marker-end'[\s\S]*?'marker'/,
+    );
+    expect(sourcePatchesSource).toMatch(/'clip-path',\s*'clippath'/);
     // Namespaced URL attrs — failClosed optional prefix before href/src/….
     const namespacedHref = sanitizeManualEditFullSource(
       '<!doctype html><html><body><a foo:href="javascript:alert(2)">x</a>'
@@ -1679,6 +1704,14 @@ describe('manual edit source patches', () => {
     expect(namespacedImageSrcsetFormaction.toLowerCase()).not.toContain('javascript');
     expect(namespacedImageSrcsetFormaction).not.toMatch(/foo:imagesrcset\s*=/i);
     expect(namespacedImageSrcsetFormaction).not.toMatch(/bar:formaction\s*=/i);
+    // DOM walk — namespaced imagesrcset local-name gate (not failClosed-only).
+    expect(sourcePatchesSource).toContain("local === 'imagesrcset'");
+    expect(sourcePatchesSource).toContain("lower === 'imagesrcset'");
+    const domNamespacedImageSrcset = sanitizeManualEditHtmlFragment(
+      '<img foo:imagesrcset="javascript:alert(11) 1x" data-od-id="img" src="/ok.png">',
+    );
+    expect(domNamespacedImageSrcset.toLowerCase()).not.toContain('javascript');
+    expect(domNamespacedImageSrcset).not.toMatch(/foo:imagesrcset\s*=/i);
     // failClosed URL list ≡ DOM MANUAL_EDIT_URL_ATTRS (longer-first SSOT).
     expect(sourcePatchesSource).toContain('MANUAL_EDIT_URL_ATTR_NAMES_LONGER_FIRST');
     expect(sourcePatchesSource).toContain(

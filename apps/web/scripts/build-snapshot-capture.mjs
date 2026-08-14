@@ -9,16 +9,21 @@ const publicOut = join(root, 'public/od-snapshot-capture.js');
 const inlineOut = join(root, 'src/runtime/snapshot-capture-inline.ts');
 
 /**
- * Prefer apps/web's esbuild, then packages/contracts (also pins esbuild).
+ * Resolve a package from apps/web, then workspace root, then contracts.
  * Some agent/CI installs leave web's node_modules without a direct link while
- * the workspace still has esbuild under contracts — do not fail pretest.
+ * the workspace still has the package under another root — do not fail pretest
+ * on a missing symlink when the module is otherwise installed.
  */
-function loadEsbuild() {
-  const candidates = [
+function createWorkspaceRequires() {
+  return [
     createRequire(join(root, 'package.json')),
+    createRequire(join(root, '../../package.json')),
     createRequire(join(root, '../../packages/contracts/package.json')),
   ];
-  for (const require of candidates) {
+}
+
+function loadEsbuild() {
+  for (const require of createWorkspaceRequires()) {
     try {
       return require('esbuild');
     } catch {
@@ -31,7 +36,22 @@ function loadEsbuild() {
   );
 }
 
+function resolveWorkspacePackage(name) {
+  for (const require of createWorkspaceRequires()) {
+    try {
+      return require.resolve(name);
+    } catch {
+      // try next root
+    }
+  }
+  throw new Error(
+    `${name} not found for build:snapshot-capture. Run pnpm install `
+    + '(apps/web declares modern-screenshot).',
+  );
+}
+
 const { build } = loadEsbuild();
+const modernScreenshotEntry = resolveWorkspacePackage('modern-screenshot');
 
 await build({
   entryPoints: [entry],
@@ -43,6 +63,11 @@ await build({
   target: ['es2020'],
   minify: true,
   legalComments: 'none',
+  // Sparse installs may lack apps/web/node_modules/modern-screenshot — pin the
+  // resolved absolute entry so esbuild does not depend on that symlink.
+  alias: {
+    'modern-screenshot': modernScreenshotEntry,
+  },
 });
 
 const bundle = readFileSync(publicOut, 'utf8').replace(/<\/script/gi, '<\\/script');

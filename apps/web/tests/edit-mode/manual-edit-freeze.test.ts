@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   shouldClearManualEditFrozenSourceOnModeChange,
   shouldClearMixedKeysAfterTipYieldReseedSkip,
+  shouldClearTipRemountGeometryGraceOnExpiry,
   shouldClearTipRemountGeometryGraceOnSelectionChange,
   shouldEchoManualEditSelectionAfterFreezeSync,
   shouldReseedManualEditMultiInspectorAfterFreezeSync,
@@ -94,5 +95,12 @@ describe('manual edit freeze reset', () => {
     expect(shouldClearTipRemountGeometryGraceOnSelectionChange('el-1', null)).toBe(true);
     expect(shouldClearTipRemountGeometryGraceOnSelectionChange('el-1', 'el-1')).toBe(false);
     expect(shouldClearTipRemountGeometryGraceOnSelectionChange(null, 'el-2')).toBe(false);
+  });
+
+  it('clears tip-remount grace latch on expiry (id + until must both reset)', () => {
+    expect(shouldClearTipRemountGeometryGraceOnExpiry('el-1', 1_800, 1_800)).toBe(true);
+    expect(shouldClearTipRemountGeometryGraceOnExpiry('el-1', 1_801, 1_800)).toBe(true);
+    expect(shouldClearTipRemountGeometryGraceOnExpiry('el-1', 1_000, 1_800)).toBe(false);
+    expect(shouldClearTipRemountGeometryGraceOnExpiry(null, 2_000, 1_800)).toBe(false);
   });
 });
