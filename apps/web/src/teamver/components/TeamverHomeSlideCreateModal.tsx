@@ -9,6 +9,7 @@ import { useTeamverT } from "../branding/useTeamverT";
 import type { TeamverDriveImportAsset } from "../importDriveAssets";
 import {
   DEFAULT_HOME_SLIDE_CREATE_QUICK_SETTINGS,
+  createHomeSlideCreateQuickSettings,
   isExplicitCanvasSlideVisualTemplate,
   type CanvasSlideQuickSettings,
   type TeamverCanvasSlideTemplateOption,
@@ -146,17 +147,24 @@ export function TeamverHomeSlideCreateModal({
   const [step, setStep] = useState<TeamverHomeSlideCreateStep>("content");
   const [templateVisited, setTemplateVisited] = useState(entry === "template");
   const [dragActive, setDragActive] = useState(false);
+  const wasOpenRef = useRef(false);
 
   useTeamverDriveModalFocusTrap(open, dialogRef);
 
   useEffect(() => {
     if (!open) {
+      wasOpenRef.current = false;
       setDragActive(false);
       return;
     }
+    const justOpened = !wasOpenRef.current;
+    wasOpenRef.current = true;
     setStep("content");
     setTemplateVisited(entry === "template");
-  }, [open, entry]);
+    if (justOpened) {
+      onQuickSettingsChange?.(createHomeSlideCreateQuickSettings());
+    }
+  }, [open, entry, onQuickSettingsChange]);
 
   useEffect(() => {
     if (!open || typeof document === "undefined") return;

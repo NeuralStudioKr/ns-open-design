@@ -6,7 +6,9 @@ import { TeamverHomeSlideCreateModal } from "../src/teamver/components/TeamverHo
 import { TeamverHomeCreateHero } from "../src/teamver/components/TeamverHomeCreateHero";
 import {
   CANVAS_CREATE_SLIDES_PLUGIN_ID,
+  DEFAULT_HOME_SLIDE_CREATE_QUICK_SETTINGS,
   clearLastExplicitDeckTemplateId,
+  createHomeSlideCreateQuickSettings,
   readLastExplicitDeckTemplateId,
   rememberLastExplicitDeckTemplateId,
 } from "../src/teamver/canvasSlideLaunch";
@@ -244,6 +246,49 @@ describe("TeamverHomeSlideCreateModal", () => {
     expect(next.textContent).toBe("Next: Template");
     expect(next.textContent).not.toMatch(/style/i);
     expect(screen.queryByTestId("teamver-home-slide-create-confirm")).toBeNull();
+  });
+
+  it("resets quick settings to defaults when the modal opens", () => {
+    const onQuickSettingsChange = vi.fn();
+    const stale = {
+      ...DEFAULT_HOME_SLIDE_CREATE_QUICK_SETTINGS,
+      audience: "client" as const,
+      length: "detailed" as const,
+      tone: "impact" as const,
+    };
+    const view = wrap(
+      <TeamverHomeSlideCreateModal
+        open={false}
+        entry="new"
+        templateOptions={templates}
+        selectedTemplateId="example-simple-deck"
+        quickSettings={stale}
+        onQuickSettingsChange={onQuickSettingsChange}
+        userPrompt=""
+        onUserPromptChange={() => {}}
+        onConfirm={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    expect(onQuickSettingsChange).not.toHaveBeenCalled();
+    view.rerender(
+      <I18nProvider locale="en">
+        <TeamverHomeSlideCreateModal
+          open
+          entry="new"
+          templateOptions={templates}
+          selectedTemplateId="example-simple-deck"
+          quickSettings={stale}
+          onQuickSettingsChange={onQuickSettingsChange}
+          userPrompt=""
+          onUserPromptChange={() => {}}
+          onConfirm={() => {}}
+          onClose={() => {}}
+        />
+      </I18nProvider>,
+    );
+    expect(onQuickSettingsChange).toHaveBeenCalledWith(createHomeSlideCreateQuickSettings());
+    expect(onQuickSettingsChange.mock.calls[0][0]).not.toBe(DEFAULT_HOME_SLIDE_CREATE_QUICK_SETTINGS);
   });
 
   it("pins explicit canvas picks and clears them on demand", () => {

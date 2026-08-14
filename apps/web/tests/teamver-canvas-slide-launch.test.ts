@@ -472,6 +472,7 @@ describe("canvasSlideLaunch", () => {
     );
     expect(resetHomeSlideCreateDraftSrc).toContain("setStagedFiles([])");
     expect(resetHomeSlideCreateDraftSrc).toContain("setStagedDriveAssets([])");
+    expect(resetHomeSlideCreateDraftSrc).toContain("createHomeSlideCreateQuickSettings()");
     expect(resetHomeSlideCreateDraftSrc).toContain("clearLastExplicitDeckTemplateId");
     const openHomeSlideCreateSrc = home.slice(
       home.indexOf("function openHomeSlideCreate"),
@@ -480,6 +481,7 @@ describe("canvasSlideLaunch", () => {
     expect(openHomeSlideCreateSrc).not.toContain("readLastExplicitDeckTemplateId");
     expect(openHomeSlideCreateSrc).toContain("setStagedFiles([])");
     expect(openHomeSlideCreateSrc).toContain("setStagedDriveAssets([])");
+    expect(openHomeSlideCreateSrc).toContain("createHomeSlideCreateQuickSettings()");
     expect(composer).toContain("continuing with selected-template AI run");
     expect(composer).toContain("sendComposedTurn(");
     expect(composer).not.toContain("blocking model kit fallthrough");

@@ -149,7 +149,7 @@ import { consumeTeamverCanvasLaunchHandoff } from '../teamver/canvasLaunchHandof
 import {
   CANVAS_CREATE_SLIDES_PLUGIN_ID,
   DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS,
-  DEFAULT_HOME_SLIDE_CREATE_QUICK_SETTINGS,
+  createHomeSlideCreateQuickSettings,
   canvasCreateSlidesPluginInputs,
   canvasCreateSlidesRunPrompt,
   canvasCreateSlidesSourceBrief,
@@ -399,7 +399,7 @@ export function HomeView({
   const [homeSlideCreateError, setHomeSlideCreateError] = useState<string | null>(null);
   const [homeSlideUserPrompt, setHomeSlideUserPrompt] = useState('');
   const [homeSlideQuickSettings, setHomeSlideQuickSettings] = useState<CanvasSlideQuickSettings>(
-    DEFAULT_HOME_SLIDE_CREATE_QUICK_SETTINGS,
+    createHomeSlideCreateQuickSettings,
   );
   const [homeSlideTemplateId, setHomeSlideTemplateId] = useState<string>(CANVAS_CREATE_SLIDES_PLUGIN_ID);
   const [canvasSlideTemplateId, setCanvasSlideTemplateId] = useState<string>(CANVAS_CREATE_SLIDES_PLUGIN_ID);
@@ -1852,7 +1852,7 @@ export function HomeView({
     setHomeSlideCreateEntry('new');
     setHomeSlideCreateError(null);
     setHomeSlideUserPrompt('');
-    setHomeSlideQuickSettings(DEFAULT_HOME_SLIDE_CREATE_QUICK_SETTINGS);
+    setHomeSlideQuickSettings(createHomeSlideCreateQuickSettings());
     setHomeSlideTemplateId(CANVAS_CREATE_SLIDES_PLUGIN_ID);
     setStagedFiles([]);
     setStagedDriveAssets([]);
@@ -1872,7 +1872,7 @@ export function HomeView({
         : CANVAS_CREATE_SLIDES_PLUGIN_ID,
     );
     setHomeSlideUserPrompt('');
-    setHomeSlideQuickSettings(DEFAULT_HOME_SLIDE_CREATE_QUICK_SETTINGS);
+    setHomeSlideQuickSettings(createHomeSlideCreateQuickSettings());
     setHomeSlideCreateError(null);
     setHomeSlideCreateOpen(true);
   }

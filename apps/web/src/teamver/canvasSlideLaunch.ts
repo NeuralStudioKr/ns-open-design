@@ -147,6 +147,11 @@ export const DEFAULT_HOME_SLIDE_CREATE_QUICK_SETTINGS: CanvasSlideQuickSettings 
   tone: "professional",
 };
 
+/** Fresh copy so each open/reset cannot reuse a mutated or same-reference draft. */
+export function createHomeSlideCreateQuickSettings(): CanvasSlideQuickSettings {
+  return { ...DEFAULT_HOME_SLIDE_CREATE_QUICK_SETTINGS };
+}
+
 const QUICK_SETTING_PROMPT_LABELS = {
   audience: {
     auto: "Infer audience from the source",
