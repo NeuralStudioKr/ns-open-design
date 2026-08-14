@@ -217,13 +217,37 @@ export function templateCloneContentFillHardRules(): string[] {
     '- Do NOT rewrite or reproduce the full cloned example.html / attached deck.html CSS+SVG head (that burns max_tokens and hangs with only `<head>`).',
     '- Use the Template visual kit + scaffold map from the system prompt for LOOK (palette hex, fonts, Motif sprites, layout roles). Neutral Modern / OD skeleton terracotta is a failed deliverable.',
     `- ${SLIDE_DECK_QUALITY_BAR_INSTRUCTION}`,
-    '- Body-first: the first 1200 characters after `<artifact` MUST include `<body` and one complete `<section class="slide">` with real topical copy. FORBIDDEN: streaming `<head>` or a long `<style>` before slide 1.',
-    '- Keep `<style>` short (kit tokens + fonts only, ideally under ~2KB) and place it after slide 1 when possible. Copy at most one Motif SVG — never dump the whole template stylesheet.',
+    '- Strict body-first contract: start the artifact body exactly like `<!doctype html><html lang="ko"><body><section class="slide" ...>`.',
+    '- `<head>` is FORBIDDEN on this fill turn. Do not emit `<head>`, `<title>`, meta tags, or a style prelude before slide 1.',
+    '- The first 800 characters after `<artifact` MUST include `<body` and one complete `<section class="slide">` with real topical copy.',
+    '- Keep `<style>` very short (kit tokens + fonts only, ideally under ~1KB) and place it after slide 1 or omit it in favor of inline styles. Copy at most one Motif SVG — never dump the whole template stylesheet.',
     '- Fill REAL topical titles/body (no "…", no "만들어줘", no create-slides boilerplate). Slide count follows the brief/Quick settings — not the template demo page lineup.',
     '- Prefer finishing a closed `</artifact>` this turn over perfect motif fidelity. A complete compact Daisy-lookalike beats a truncated CSS shell.',
     '- Honor stated audience/level (e.g. 시니어 개발자 = architecture/internals/trade-offs, not a beginner intro).',
     '- Each body slide needs a real title plus 2–4 concrete bullets or a real paragraph. No "핵심 메시지를 정리합니다" filler.',
   ];
+}
+
+export function normalizeTemplateCloneFillSlideCountHint(input: string | number | null | undefined): string | null {
+  const raw = String(input ?? '').trim();
+  if (!raw) return null;
+  const explicit = raw.match(/(?:\bexactly\b|정확히)\s*(\d{1,2})/i)
+    ?? raw.match(/(\d{1,2})\s*(?:장|slides?|pages?)\s*(?:요청|requested|명시|explicit)/i);
+  if (explicit?.[1]) {
+    const n = Number(explicit[1]);
+    if (Number.isFinite(n) && n >= 1 && n <= 12) return String(n);
+  }
+  if (/^5\s*-\s*6$/.test(raw) || /^5\s*~\s*6$/.test(raw)) return '5-6';
+  if (/^6\s*-\s*8$/.test(raw) || /^6\s*~\s*8$/.test(raw)) return '6-8';
+  if (/^8\s*-\s*10$/.test(raw) || /^8\s*~\s*10$/.test(raw)) return '6-8 (stability cap for first template fill)';
+  if (/^12\s*-\s*15$/.test(raw) || /^12\s*~\s*15$/.test(raw)) return '8-10 (stability cap for first template fill)';
+  const single = raw.match(/^(\d{1,2})$/)?.[1];
+  if (single) {
+    const n = Number(single);
+    if (n <= 8) return String(n);
+    return n <= 12 ? '8-10 (stability cap for first template fill)' : '8-10 (stability cap for first template fill)';
+  }
+  return raw;
 }
 
 export function buildTemplateCloneContentFillSeed(options: {
@@ -260,8 +284,9 @@ export function buildTemplateCloneContentFillSeed(options: {
   if (templateTitle) {
     parts.push(`Selected template: ${templateTitle}.`);
   }
-  if (options.slideCountHint != null && String(options.slideCountHint).trim()) {
-    parts.push(`Slide count hint: ${String(options.slideCountHint).trim()}.`);
+  const slideCountHint = normalizeTemplateCloneFillSlideCountHint(options.slideCountHint);
+  if (slideCountHint) {
+    parts.push(`Slide count hint: ${slideCountHint}.`);
   }
   if (brief) {
     parts.push('', '[Source brief]', brief);

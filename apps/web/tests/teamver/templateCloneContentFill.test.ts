@@ -11,6 +11,7 @@ import {
   historyHasTemplateCloneContentFill,
   isTemplateCloneContentFillPrompt,
   looksLikeInstructionNotSlideCopy,
+  normalizeTemplateCloneFillSlideCountHint,
   queueTemplateCloneContentFill,
   resolveTemplateCloneAutoSendSeed,
   withoutCanonicalDeckAttachments,
@@ -43,8 +44,9 @@ describe('templateCloneContentFill', () => {
     expect(seed).toMatch(/attached source materials/i);
     expect(seed).toMatch(/Quality bar: each non-divider slide/i);
     expect(seed).toMatch(/headline, takeaway/i);
-    expect(seed).toMatch(/first 1200 characters after `<artifact`/i);
-    expect(seed).toMatch(/FORBIDDEN: streaming `<head>`/i);
+    expect(seed).toMatch(/Strict body-first contract/i);
+    expect(seed).toMatch(/`<head>` is FORBIDDEN/i);
+    expect(seed).toMatch(/first 800 characters after `<artifact`/i);
     expect(seed).toMatch(/NEVER "수정 반영 중"/);
     expect(seed).not.toMatch(/emit a full.*rewrites visible text/i);
     expect(seed).not.toMatch(/Prefer `<artifact type="deck-patch" identifier="deck">`/);
@@ -139,10 +141,21 @@ describe('templateCloneContentFill', () => {
       slideCountHint: '8-10',
     });
     expect(seed).toContain(TEMPLATE_CLONE_CONTENT_FILL_MARKER);
-    expect(seed).toContain('Slide count hint: 8-10');
+    expect(seed).toContain('Slide count hint: 6-8 (stability cap for first template fill)');
     expect(seed).toContain('시니어 개발자');
     expect(seed).not.toContain('[Deliverable instruction]');
     expect(seed).not.toContain('[Selected slide template priority]');
+  });
+
+  it('caps template-fill slide count hints unless the user explicitly requests an exact count', () => {
+    expect(normalizeTemplateCloneFillSlideCountHint('5-6')).toBe('5-6');
+    expect(normalizeTemplateCloneFillSlideCountHint('8-10')).toBe(
+      '6-8 (stability cap for first template fill)',
+    );
+    expect(normalizeTemplateCloneFillSlideCountHint('12-15')).toBe(
+      '8-10 (stability cap for first template fill)',
+    );
+    expect(normalizeTemplateCloneFillSlideCountHint('정확히 10')).toBe('10');
   });
 
   it('keeps Drive source labels when compacting a mixed create dump', () => {
