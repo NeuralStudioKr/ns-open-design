@@ -8,6 +8,9 @@ import {
   isDeckStatusProseOnlyBody,
   deckArtifactStartsWithMotifSvgDump,
   deckSlideHeadingsLookLikeFailedGenerate,
+  shouldAbortStreamForMotifSvgDump,
+  shouldDiscardPartialHtmlForMotifSvgDump,
+  stripAbandonedMotifSvgDumpFromStreamedText,
   meetsMinimumDeckDeliverableQuality,
   meetsTruncationSalvageQuality,
 } from "../../src/artifacts/deck-html-content";
@@ -74,6 +77,66 @@ describe("deck-html-content", () => {
       + '<section class="slide"><h1>Expo for Senior Engineers</h1><p>Managed workflow</p>'
       + '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/></svg></section></body></html>';
     expect(deckArtifactStartsWithMotifSvgDump(titled)).toBe(false);
+    expect(shouldDiscardPartialHtmlForMotifSvgDump(hung)).toBe(true);
+    expect(shouldDiscardPartialHtmlForMotifSvgDump(titled)).toBe(false);
+  });
+
+  it("aborts fill streams as soon as Motif SVG opens before a heading", () => {
+    const fillDump =
+      '<artifact type="deck"><!doctype html><html lang="ko"><body>'
+      + '<section class="slide" style="background:#F5F0E6">'
+      + '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 150 150">';
+    expect(
+      shouldAbortStreamForMotifSvgDump({
+        streamedText: fillDump,
+        templateCloneContentFill: true,
+      }),
+    ).toBe(true);
+    expect(
+      shouldAbortStreamForMotifSvgDump({
+        streamedText: fillDump,
+        templateCloneContentFill: false,
+      }),
+    ).toBe(false);
+    const committed =
+      fillDump + '<style>.cls-0{fill:#FFFFFF}</style>' + "M0 0".repeat(80);
+    expect(
+      shouldAbortStreamForMotifSvgDump({
+        streamedText: committed,
+        templateCloneContentFill: false,
+      }),
+    ).toBe(true);
+    expect(
+      shouldAbortStreamForMotifSvgDump({
+        streamedText: "planning the deck without html yet",
+        templateCloneContentFill: true,
+      }),
+    ).toBe(false);
+    expect(
+      shouldAbortStreamForMotifSvgDump({
+        streamedText:
+          '<artifact type="deck"><section class="slide"><h1>Expo for Senior Engineers</h1>'
+          + '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/></svg>',
+        templateCloneContentFill: true,
+      }),
+    ).toBe(false);
+    const stripped = stripAbandonedMotifSvgDumpFromStreamedText(
+      fillDump + '<path d="M0 0h150v150H0z"/>',
+    );
+    expect(stripped).toContain("<!-- motif svg dump abandoned -->");
+    expect(stripped).not.toContain("<path d=");
+    expect(stripped).not.toMatch(/<svg\s/);
+  });
+
+  it("does not treat Motif-SVG-only slides as deliverable copy", () => {
+    const hung =
+      '<!doctype html><html lang="ko"><body>'
+      + '<section class="slide">'
+      + '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 150 150">'
+      + '<style>.cls-0{fill:#FFFFFF}</style></svg></section></body></html>';
+    expect(hasFilledSlideSection(hung)).toBe(false);
+    expect(hasSalvageableDeckSlideContent(hung)).toBe(false);
+    expect(meetsTruncationSalvageQuality(hung)).toBe(false);
   });
 
   it("still flags instruction-copy covers that pass the soft-salvage bar", () => {

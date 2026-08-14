@@ -1,5 +1,8 @@
 import type { ChatMessage } from '../types';
-import { documentContainsSlideSection } from '../artifacts/deck-html-content';
+import {
+  documentContainsSlideSection,
+  shouldDiscardPartialHtmlForMotifSvgDump,
+} from '../artifacts/deck-html-content';
 import { salvageTruncatedHtmlDocument } from '../artifacts/recover';
 import { isIncompleteHtmlDocumentShell } from '../artifacts/validate';
 import {
@@ -102,6 +105,7 @@ const AUTO_CONTINUE_MAX_PLAN_OUTLINE_EXCERPT = 2000;
 export function excerptPartialHtmlForAutoContinue(html: string): string {
   const trimmed = html.replace(/^﻿/, '').trim();
   if (!trimmed) return '';
+  if (shouldDiscardPartialHtmlForMotifSvgDump(trimmed)) return '';
   const salvaged = salvageTruncatedHtmlDocument(trimmed);
   const source = salvaged ?? trimmed;
   const bodyIdx = source.search(/<body\b/i);
@@ -121,10 +125,16 @@ const AUTO_CONTINUE_HEAD_ONLY_BODY_FIRST =
   + 'use only tiny inline style tokens, and fill every slide with real title + 2–4 bullets NOW. '
   + 'A compact static deck beats another CSS-only truncation.';
 
+const AUTO_CONTINUE_MOTIF_SVG_DUMP_ABANDON =
+  '\n\nCRITICAL: The previous turn dumped Motif `<svg>` path data before any cover `<h1>`. '
+  + 'ABANDON that SVG. Do NOT continue path/`d=` data or fence the dump. '
+  + 'Restart BODY-FIRST with `<h1>` then lead `<p>`. ZERO `<svg>` this turn — CSS shapes in the kit palette only.';
+
 function previewDiscardedHtmlShellForAutoContinue(html: string): string {
   return html
     .replace(/<style\b[^>]*>[\s\S]*$/i, '<style>…')
     .replace(/<script\b[^>]*>[\s\S]*$/i, '<script>…')
+    .replace(/<svg\b[^>]*>[\s\S]*$/i, '<svg>…')
     .slice(0, 160);
 }
 
@@ -189,9 +199,12 @@ export function buildAutoContinueIncompleteOutputPrompt(
   }
 
   const partialRaw = context.partialHtml?.trim() ?? '';
+  const motifSvgDump = Boolean(partialRaw && shouldDiscardPartialHtmlForMotifSvgDump(partialRaw));
   const partialSalvaged = partialRaw ? salvageTruncatedHtmlDocument(partialRaw) : null;
   const partialSalvagedHasSlide = Boolean(
-    partialSalvaged && documentContainsSlideSection(partialSalvaged),
+    !motifSvgDump
+    && partialSalvaged
+    && documentContainsSlideSection(partialSalvaged),
   );
   // Only treat as empty shell when salvage cannot recover any slide copy.
   // Contentful truncations (missing </html> but real slides) must NOT jump
@@ -218,10 +231,14 @@ export function buildAutoContinueIncompleteOutputPrompt(
   );
   if (
     headOnlyHeavy
+    || motifSvgDump
     || context.templateCloneContentFill
     || (context.truncatedByMaxTokens && partialShellOnly)
   ) {
     parts.push(AUTO_CONTINUE_HEAD_ONLY_BODY_FIRST);
+  }
+  if (motifSvgDump) {
+    parts.push(AUTO_CONTINUE_MOTIF_SVG_DUMP_ABANDON);
   }
   if (context.templateCloneContentFill) {
     parts.push(
@@ -279,7 +296,15 @@ export function buildAutoContinueIncompleteOutputPrompt(
   }
 
   let partial = partialRaw;
-  if (partial && isIncompleteHtmlDocumentShell(partial)) {
+  if (motifSvgDump && partial) {
+    parts.push(
+      '\n\n[이전 HTML은 Motif `<svg>` 선두 덤프입니다 — path data를 이어 쓰지 말고 버리세요:]\n'
+        + previewDiscardedHtmlShellForAutoContinue(partial)
+        + '\n\n위 SVG dump를 복사하지 말고, `<h1>` + lead로 새 complete HTML deck artifact를 즉시 작성하세요. ('
+        + COMPACT_DECK_SLIDE_COUNT_GUIDANCE
+        + ')',
+    );
+  } else if (partial && isIncompleteHtmlDocumentShell(partial)) {
     // Truncated decks with real slide copy are still worth fencing so the
     // model can continue from the cut. Empty / SLOT-only shells must not be
     // re-fed — that anchors the next turn to the same blank deliverable.

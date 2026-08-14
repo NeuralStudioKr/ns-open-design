@@ -66,6 +66,8 @@ import {
   deckArtifactStartsWithMotifSvgDump,
   deckSlideHeadingsLookLikeFailedGenerate,
   isClosedSoftSalvageDeckHtml,
+  shouldAbortStreamForMotifSvgDump,
+  stripAbandonedMotifSvgDumpFromStreamedText,
 } from '../artifacts/deck-html-content';
 import {
   recoverBestHtmlDocumentFromText,
@@ -97,7 +99,11 @@ import {
 import { useI18n } from '../i18n';
 import { useTeamverT } from '../teamver/branding/useTeamverT';
 import { streamMessage } from '../providers/anthropic';
-import { EXPLICIT_PROXY_STOP_REASON, requestProxyAbort } from '../providers/proxyAbort';
+import {
+  EXPLICIT_PROXY_STOP_REASON,
+  FILL_MOTIF_SVG_DUMP_STOP_REASON,
+  requestProxyAbort,
+} from '../providers/proxyAbort';
 import {
   ActiveByokProxyAuthTransientError,
   BYOK_PROXY_AUTH_BACKOFF_MS,
@@ -9341,6 +9347,7 @@ export function ProjectView({
       let parsedArtifact: Artifact | null = null;
       let liveHtml = '';
       let streamedText = '';
+      let motifSvgDumpAbortArmed = false;
       // Best complete artifact seen so far in this turn. Prevents a
       // later `<artifact>` block with only a shell body (e.g. the model
       // opened a second, empty artifact after a valid one) from overwriting
@@ -10249,6 +10256,16 @@ export function ProjectView({
         onDelta: (delta: string) => {
           streamedText += delta;
           textBuffer.appendContent(delta);
+          if (
+            !motifSvgDumpAbortArmed
+            && shouldAbortStreamForMotifSvgDump({
+              streamedText,
+              templateCloneContentFill: isCloneContentFillTurn,
+            })
+          ) {
+            motifSvgDumpAbortArmed = true;
+            controller.abort(FILL_MOTIF_SVG_DUMP_STOP_REASON);
+          }
         },
         onAgentEvent: (ev: AgentEvent) => {
           if (ev.kind === 'text') textBuffer.appendTextEvent(ev.text);
@@ -10273,7 +10290,7 @@ export function ProjectView({
             },
           }));
         },
-        onDone: (fullText = '') => {
+        onDone: (incomingText = '') => {
           // The daemon delivers onDone even for a canceled run, so a run
           // superseded by a "send now" interrupt can still land here and must
           // not apply its completion side effects over the replacement. A run
@@ -10290,6 +10307,13 @@ export function ProjectView({
           }
           textBuffer.flush();
           releaseOwnTextBuffer();
+          const fullText = motifSvgDumpAbortArmed
+            ? stripAbandonedMotifSvgDumpFromStreamedText(incomingText || streamedText)
+            : incomingText;
+          if (motifSvgDumpAbortArmed && fullText !== (incomingText || streamedText)) {
+            streamedText = fullText;
+            rewriteLiveContent(fullText);
+          }
           for (const ev of parser.flush()) {
             if (ev.type === 'artifact:end') {
               parsedArtifact = parsedArtifact

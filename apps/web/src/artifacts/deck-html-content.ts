@@ -78,6 +78,62 @@ export function deckArtifactStartsWithMotifSvgDump(html: string): boolean {
   return svgAt < headingAt;
 }
 
+const DECK_STREAM_OPEN_RE =
+  /<artifact\b|<!doctype\s+html|<html\b|<body\b|<section\b[^>]*slide/i;
+
+function extractStreamedDeckHtml(text: string): string {
+  const raw = String(text ?? "");
+  const artifact = /<artifact\b[^>]*>/i.exec(raw);
+  if (artifact && artifact.index != null) return raw.slice(artifact.index);
+  const doc = /<!doctype\s+html|<html\b|<body\b|<section\b[^>]*slide/i.exec(raw);
+  if (doc && doc.index != null) return raw.slice(doc.index);
+  return raw;
+}
+
+function motifSvgDumpLooksCommitted(html: string): boolean {
+  const svgAt = html.search(/<svg\b/i);
+  if (svgAt < 0) return false;
+  const after = html.slice(svgAt);
+  if (after.length >= 400) return true;
+  if (/<style\b/i.test(after.slice(0, 240))) return true;
+  if (/\bd\s*=\s*["'][^"']{80,}/i.test(after)) return true;
+  return false;
+}
+
+/**
+ * Mid-stream abort gate. Fill turns abort as soon as Motif `<svg>` opens
+ * before a heading (ZERO-svg contract). Other deck turns wait until the
+ * dump looks committed so a tiny post-title icon is not cancelled.
+ */
+export function shouldAbortStreamForMotifSvgDump(options: {
+  streamedText: string;
+  templateCloneContentFill?: boolean;
+}): boolean {
+  const text = String(options.streamedText ?? "");
+  if (!DECK_STREAM_OPEN_RE.test(text)) return false;
+  const htmlish = extractStreamedDeckHtml(text);
+  if (!deckArtifactStartsWithMotifSvgDump(htmlish)) return false;
+  if (options.templateCloneContentFill) return /<svg\b/i.test(htmlish);
+  return motifSvgDumpLooksCommitted(htmlish);
+}
+
+/** Auto-continue must not fence Motif-SVG-first partials — the model continues the path dump. */
+export function shouldDiscardPartialHtmlForMotifSvgDump(html: string): boolean {
+  return deckArtifactStartsWithMotifSvgDump(html);
+}
+
+/**
+ * Drop an in-progress Motif `<svg>` from streamed assistant text so the next
+ * turn's history cannot continue path/`d=` data. Persist still sees an
+ * incomplete shell and auto-continues.
+ */
+export function stripAbandonedMotifSvgDumpFromStreamedText(text: string): string {
+  const raw = String(text ?? "");
+  const htmlish = extractStreamedDeckHtml(raw);
+  if (!deckArtifactStartsWithMotifSvgDump(htmlish)) return raw;
+  return raw.replace(/<svg\b[\s\S]*$/i, "<!-- motif svg dump abandoned -->");
+}
+
 export function deckSlideHeadingsLookLikeFailedGenerate(html: string): boolean {
   const headings = listSlideSectionInners(html)
     .map((inner) => firstSlideHeading(inner))
@@ -107,10 +163,18 @@ function isGenericOutlineOnlySlide(innerHtml: string): boolean {
   return GENERIC_OUTLINE_HEADING_RE.test(text) || text.length <= 8;
 }
 
+function slideInnerHasVisibleCopy(innerHtml: string): boolean {
+  return visibleTextFromHtmlFragment(innerHtml).length >= 2;
+}
+
 function slideInnerHasDeliverableCopy(innerHtml: string): boolean {
   if (slideSectionInnerLooksLikeStatusOnly(innerHtml)) return false;
   if (isGenericOutlineOnlySlide(innerHtml)) return false;
-  if (HAS_MEDIA_CONTENT_RE.test(innerHtml)) return true;
+  // Motif SVG / img without a title or lead is not deliverable copy — treating
+  // any `<svg>` as filled made SVG-first hangs look "salvageable".
+  if (HAS_MEDIA_CONTENT_RE.test(innerHtml) && slideInnerHasVisibleCopy(innerHtml)) {
+    return true;
+  }
   if (/<(?:p|li|td|th|blockquote)\b/i.test(innerHtml) && HAS_VISIBLE_TEXT_IN_SLIDE_RE.test(innerHtml)) {
     return true;
   }
@@ -182,7 +246,13 @@ export function hasSalvageableDeckSlideContent(html: string): boolean {
   if (documentContainsSlideSection(withoutComments)) {
     return meetsMinimumDeckDeliverableQuality(html);
   }
-  if (HAS_MEDIA_CONTENT_RE.test(withoutComments)) return true;
+  if (HAS_MEDIA_CONTENT_RE.test(withoutComments)) {
+    if (deckArtifactStartsWithMotifSvgDump(withoutComments)) return false;
+    const mediaText = visibleTextFromHtmlFragment(withoutComments);
+    if (!mediaText || mediaText.length < 8) return false;
+    if (DECK_STATUS_PROSE_RE.test(mediaText)) return false;
+    return true;
+  }
   const text = visibleTextFromHtmlFragment(withoutComments);
   if (!text || text.length < 8) return false;
   if (DECK_STATUS_PROSE_RE.test(text)) return false;
@@ -212,7 +282,9 @@ export function isClosedSoftSalvageDeckHtml(html: string): boolean {
  */
 function slideInnerHasTruncationSalvageCopy(innerHtml: string): boolean {
   if (slideSectionInnerLooksLikeStatusOnly(innerHtml)) return false;
-  if (HAS_MEDIA_CONTENT_RE.test(innerHtml)) return true;
+  if (HAS_MEDIA_CONTENT_RE.test(innerHtml)) {
+    return slideInnerHasVisibleCopy(innerHtml);
+  }
   const text = visibleTextFromHtmlFragment(innerHtml);
   if (text.length < 2) return false;
   if (GENERIC_OUTLINE_HEADING_RE.test(text)) return false;

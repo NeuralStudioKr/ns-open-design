@@ -5,10 +5,11 @@ import { fetchTeamverDaemon } from "../teamver/teamverDaemonHeaders";
  *
  * `streamProxyEndpoint` registers an abort listener on the incoming
  * `AbortSignal`. When that signal aborts, it inspects `signal.reason`:
- *   - `EXPLICIT_PROXY_STOP_REASON` → fires `POST /api/proxy/abort
- *     { streamId }` with `keepalive: true` so the daemon cancels the
- *     upstream LLM `fetch()`. The Stop button is the only caller that
- *     should use this reason.
+ *   - `EXPLICIT_PROXY_STOP_REASON` / `FILL_MOTIF_SVG_DUMP_STOP_REASON`
+ *     → fires `POST /api/proxy/abort { streamId }` with `keepalive: true`
+ *     so the daemon cancels the upstream LLM `fetch()`. User Stop uses
+ *     the first reason; Motif-SVG hang abort uses the second (still
+ *     incomplete — auto-continue must run).
  *   - anything else (page navigation, route swap, replay, browser tab
  *     close) → no abort POST is sent. The daemon lets the upstream
  *     stream drain naturally so background tool work (image gen, S3
@@ -23,6 +24,27 @@ import { fetchTeamverDaemon } from "../teamver/teamverDaemonHeaders";
 export const EXPLICIT_PROXY_STOP_REASON = "od:user-stop" as const;
 
 export type ExplicitProxyStopReason = typeof EXPLICIT_PROXY_STOP_REASON;
+
+/**
+ * Mid-stream fill hang: Motif `<svg>` opened before a cover heading.
+ * Cancels the upstream LLM (same as Stop) but is NOT a user stop — persist
+ * + auto-continue must still run with the SVG excerpt discarded.
+ */
+export const FILL_MOTIF_SVG_DUMP_STOP_REASON = "od:fill-motif-svg-dump" as const;
+
+export type FillMotifSvgDumpStopReason = typeof FILL_MOTIF_SVG_DUMP_STOP_REASON;
+
+export function shouldRequestUpstreamProxyAbort(reason: unknown): boolean {
+  return (
+    reason === EXPLICIT_PROXY_STOP_REASON
+    || reason === FILL_MOTIF_SVG_DUMP_STOP_REASON
+  );
+}
+
+/** Aborted streams that should finalize via onDone (incomplete) instead of silent return. */
+export function shouldFinalizeAbortedStreamAsIncomplete(reason: unknown): boolean {
+  return reason === FILL_MOTIF_SVG_DUMP_STOP_REASON;
+}
 
 /**
  * Fire-and-forget `POST /api/proxy/abort { streamId }` with `keepalive`

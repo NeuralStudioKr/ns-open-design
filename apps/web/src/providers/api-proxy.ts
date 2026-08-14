@@ -17,7 +17,11 @@ import {
   hasChatApiCredentials,
   usesServerManagedChatApiKey,
 } from '../teamver/chatApiCredentials';
-import { EXPLICIT_PROXY_STOP_REASON, requestProxyAbort } from './proxyAbort';
+import {
+  requestProxyAbort,
+  shouldFinalizeAbortedStreamAsIncomplete,
+  shouldRequestUpstreamProxyAbort,
+} from './proxyAbort';
 import { COMMENT_ONLY_USER_PLACEHOLDER } from '../comments';
 import { waitForTeamverProjectStoragePrefix } from '../teamver/teamverProjectS3PrefixResolve';
 import {
@@ -305,9 +309,8 @@ async function streamProxyEndpointOnce(
 
     // Embed BYOK cancellation policy (PR1 §3.5): the daemon hands us a
     // streamId via the `X-Stream-Id` header. When the caller signals an
-    // **explicit Stop** (handleStop / onStop pass
-    // `EXPLICIT_PROXY_STOP_REASON` to `controller.abort(reason)`), fire
-    // `POST /api/proxy/abort` with `keepalive: true` so the daemon
+    // **upstream-cancel** reason (user Stop or Motif-SVG dump abort),
+    // fire `POST /api/proxy/abort` with `keepalive: true` so the daemon
     // cancels the upstream LLM fetch. Any other abort reason (page
     // exit, route change, supersession) intentionally lets the daemon
     // drain the upstream so background sync-up commits scratch writes.
@@ -322,9 +325,9 @@ async function streamProxyEndpointOnce(
     if (proxyStreamId) {
       const onSignalAbort = () => {
         // `signal.reason` carries whatever the caller passed to
-        // `controller.abort(reason)`; equality with the explicit-stop
-        // sentinel is the only safe distinction the daemon can rely on.
-        if ((signal as AbortSignal).reason === EXPLICIT_PROXY_STOP_REASON) {
+        // `controller.abort(reason)`; only upstream-cancel sentinels
+        // (user Stop + Motif-SVG dump) POST /api/proxy/abort.
+        if (shouldRequestUpstreamProxyAbort((signal as AbortSignal).reason)) {
           requestProxyAbort(proxyStreamId);
         }
       };
@@ -520,7 +523,13 @@ async function streamProxyEndpointOnce(
     handlers.onDone(acc);
     return 'ok';
   } catch (err) {
-    if ((err as Error).name === 'AbortError') return 'aborted';
+    if ((err as Error).name === 'AbortError') {
+      if (shouldFinalizeAbortedStreamAsIncomplete((signal as AbortSignal).reason)) {
+        handlers.onDone(acc);
+        return 'ok';
+      }
+      return 'aborted';
+    }
     const error = (err instanceof Error ? err : new Error(String(err))) as Error & {
       code?: string;
       retryable?: boolean;

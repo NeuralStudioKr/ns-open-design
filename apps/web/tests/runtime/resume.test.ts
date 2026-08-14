@@ -306,6 +306,28 @@ describe('runtime/resume shell/no-HTML recovery constants', () => {
     expect(prompt).toContain('버리세요');
   });
 
+  it('discards Motif-SVG-first partials instead of fencing the path dump', () => {
+    const hung =
+      '<artifact type="deck"><!doctype html><html lang="ko"><body style="background:#F5F0E6">'
+      + '<section class="slide slide-title">'
+      + '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 150 150">'
+      + '<style>.cls-0{fill:#FFFFFF}.cls-1{fill:#FCDF6C}</style>'
+      + '<path d="M0 0h150v150H0z M12 40c20 8 40 8 60 0"/>';
+    const prompt = buildAutoContinueIncompleteOutputPrompt({
+      attempt: 1,
+      partialHtml: hung,
+      templateCloneContentFill: true,
+    });
+    expect(prompt).not.toContain('```html');
+    expect(prompt).not.toContain('<path d="M0 0h150v150H0z');
+    expect(prompt).toContain('Motif `<svg>` 선두 덤프');
+    expect(prompt).toContain('ABANDON that SVG');
+    expect(prompt).toContain('ZERO `<svg>` this turn');
+    expect(prompt).toContain('BODY-FIRST');
+    expect(prompt).toContain('[Template clone content fill]');
+    expect(excerptPartialHtmlForAutoContinue(hung)).toBe('');
+  });
+
   it('still fences truncated decks that already have real slide copy', () => {
     const truncated =
       '<!doctype html><html><head><title>Deck</title></head><body>'

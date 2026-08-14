@@ -1098,3 +1098,67 @@ describe('streamProxyEndpoint soft-retry gates', () => {
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('streamProxyEndpoint Motif-SVG dump abort', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it('calls onDone (not silent abort) and POSTs /api/proxy/abort', async () => {
+    const { FILL_MOTIF_SVG_DUMP_STOP_REASON } = await import(
+      '../../src/providers/proxyAbort'
+    );
+    const abortController = new AbortController();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo) => {
+        const url = String(input);
+        if (url.includes('/api/proxy/abort')) {
+          return { ok: true, json: async () => ({ aborted: true }) };
+        }
+        return {
+          ok: true,
+          headers: {
+            get: (name: string) =>
+              name.toLowerCase() === 'x-stream-id' ? 'stream-fill-1' : null,
+          },
+          body: new ReadableStream({
+            start(controller) {
+              controller.enqueue(
+                new TextEncoder().encode(
+                  'event: delta\ndata: {"delta":"<artifact type=\\"deck\\"><svg"}\n\n',
+                ),
+              );
+            },
+          }),
+        };
+      }),
+    );
+
+    const onDone = vi.fn();
+    const onError = vi.fn();
+    await streamProxyEndpoint(
+      '/api/proxy/anthropic/stream',
+      {
+        apiKey: 'test-api-key',
+        baseUrl: 'https://anthropic.example',
+        model: 'claude-sonnet-4-5',
+      } as any,
+      'System',
+      [{ id: 'm1', role: 'user', content: 'hi', createdAt: 1 }],
+      abortController.signal,
+      {
+        onDelta: () => {
+          abortController.abort(FILL_MOTIF_SVG_DUMP_STOP_REASON);
+        },
+        onDone,
+        onError,
+      },
+    );
+
+    expect(onDone).toHaveBeenCalled();
+    expect(String(onDone.mock.calls[0]?.[0] ?? '')).toContain('<svg');
+    expect(onError).not.toHaveBeenCalled();
+  });
+});

@@ -19,6 +19,7 @@ import { isOpenAICompatible, streamMessageOpenAI } from './openai-compatible';
 import { streamMessageSenseAudio } from './senseaudio-compatible';
 import { streamMessageAIHubMix } from './aihubmix-compatible';
 import { usesAnthropicProxy } from '../utils/apiProtocol';
+import { shouldFinalizeAbortedStreamAsIncomplete } from './proxyAbort';
 
 // Re-export for convenience
 export { isOpenAICompatible } from './openai-compatible';
@@ -148,7 +149,12 @@ export async function streamMessage(
     if (stream?.currentMessage) {
       tryEmitUsage(stream.currentMessage as { usage?: unknown; model?: unknown });
     }
-    if ((err as Error).name === 'AbortError') return;
+    if ((err as Error).name === 'AbortError') {
+      if (shouldFinalizeAbortedStreamAsIncomplete(signal.reason)) {
+        handlers.onDone(acc);
+      }
+      return;
+    }
     handlers.onError(err instanceof Error ? err : new Error(String(err)));
   }
 }
