@@ -2678,27 +2678,26 @@ function AppInner() {
                 || null,
               slideCountHint: slideCountHintFromInputs,
             });
+            queuedFillSeed = buildTemplateCloneContentFillSeed({
+              userInstruction: userFacingRequest || null,
+              sourceBrief,
+              pendingPrompt: derivedPendingPrompt ?? null,
+              templateTitle: templateTitle || selectedDeckTemplateId,
+              hasSourceMaterial: true,
+              slideCountHint: slideCountHintFromInputs,
+            });
+            queueTemplateCloneContentFill({
+              projectId: result.project.id,
+              seed: queuedFillSeed,
+              attachments: firstMessageAttachments,
+            });
             if (seeded.ok) {
               seededDeckFileName = seeded.fileName;
-              queuedFillSeed = buildTemplateCloneContentFillSeed({
-                userInstruction: userFacingRequest || null,
-                sourceBrief,
-                pendingPrompt: derivedPendingPrompt ?? null,
-                templateTitle: templateTitle || selectedDeckTemplateId,
-                hasSourceMaterial: true,
-                slideCountHint: slideCountHintFromInputs,
-              });
-              queueTemplateCloneContentFill({
-                projectId: result.project.id,
-                seed: queuedFillSeed,
-                attachments: firstMessageAttachments,
-              });
             } else {
-              // Do not block the model run. Selected-template metadata is
-              // passed on the first turn, so the run can still bind the
-              // visual kit even if the preview seed failed.
+              // Clone LOOK seed failed — still run kit-driven CREATE fill so
+              // the first turn is not a Neutral/instruction dump.
               devLog.warn(
-                'Home Canvas template clone seed failed; continuing with selected-template AI run',
+                'Home Canvas template clone seed failed; continuing with selected-template AI fill',
                 seeded,
               );
               setWorkingDirError(
@@ -2799,24 +2798,24 @@ function AppInner() {
           deckTitle: clonedDeckCoverTitle,
           slideCountHint: slideCountHintFromInputs,
         });
+        queuedFillSeed = buildTemplateCloneContentFillSeed({
+          userInstruction: userFacingRequest || null,
+          sourceBrief,
+          pendingPrompt: derivedPendingPrompt ?? null,
+          templateTitle: templateTitle || selectedDeckTemplateId,
+          hasSourceMaterial,
+          slideCountHint: slideCountHintFromInputs,
+        });
+        queueTemplateCloneContentFill({
+          projectId: result.project.id,
+          seed: queuedFillSeed,
+          attachments: firstMessageAttachments,
+        });
         if (seeded.ok) {
           seededDeckFileName = seeded.fileName;
-          queuedFillSeed = buildTemplateCloneContentFillSeed({
-            userInstruction: userFacingRequest || null,
-            sourceBrief,
-            pendingPrompt: derivedPendingPrompt ?? null,
-            templateTitle: templateTitle || selectedDeckTemplateId,
-            hasSourceMaterial,
-            slideCountHint: slideCountHintFromInputs,
-          });
-          queueTemplateCloneContentFill({
-            projectId: result.project.id,
-            seed: queuedFillSeed,
-            attachments: firstMessageAttachments,
-          });
         } else {
           devLog.warn(
-            'Home template clone seed failed; continuing with selected-template AI run',
+            'Home template clone seed failed; continuing with selected-template AI fill',
             seeded,
           );
           setWorkingDirError(
@@ -2884,18 +2883,18 @@ function AppInner() {
             appliedPluginSnapshotId: result.appliedPluginSnapshotId,
           }
         : result.project;
-      const projectForNav = seededDeckFileName
+      const projectForNav = queuedFillSeed
         ? {
             ...project,
             // Replace the create-time pendingPrompt (full canvas run dump)
             // with the fill seed so ProjectView auto-send cannot prefer the
             // stale "만들어줘" instruction over the queued fill contract.
-            ...(queuedFillSeed ? { pendingPrompt: queuedFillSeed } : {}),
+            pendingPrompt: queuedFillSeed,
             metadata: {
               ...(project.metadata && typeof project.metadata === 'object'
                 ? project.metadata
                 : {}),
-              templateClonedDeckSeeded: true,
+              templateClonedDeckSeeded: Boolean(seededDeckFileName),
               templateCloneContentFillPending: true,
               ...(selectedDeckTemplateId
                 ? { selectedDeckTemplateId }

@@ -91,6 +91,10 @@ describe('selected-deck-template prompt helpers', () => {
       'skillBody = preferred.skillBody + composedSkillBlocks;',
     );
     expect(serverSource).toContain('secondarySkillBody: scenarioSkillBody');
+    expect(serverSource).toContain('omitDesignSystemForSelectedTemplate');
+    expect(serverSource).toContain(
+      'if (effectiveDesignSystemId && !omitDesignSystemForSelectedTemplate)',
+    );
   });
 
   it('resolves project metadata through the Postgres async fallback so cold nodes see selectedDeckTemplateId', () => {

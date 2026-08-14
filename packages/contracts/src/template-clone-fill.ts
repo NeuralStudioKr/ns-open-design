@@ -532,7 +532,7 @@ function cleanCloneTitle(title: string): string {
   return title.replace(/^["'`]|["'`]$/g, '').replace(/\s+/g, ' ').trim();
 }
 
-function looksLikeTemplateMarketingTitle(title: string): boolean {
+export function looksLikeTemplateMarketingTitle(title: string): boolean {
   return /html\s*ppt|daisy days|simple deck|zhangzara|cheerful presentation|template for/i.test(
     title,
   );

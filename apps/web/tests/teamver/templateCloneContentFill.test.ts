@@ -105,7 +105,7 @@ describe('templateCloneContentFill', () => {
     const prompted = promptWithTemplateCloneContentFillInstruction(seed, {
       slideOnlyMvp: true,
     });
-    expect(prompted).toContain(TEMPLATE_CLONE_CONTENT_FILL_TURN_MARKER);
+    expect(prompted).toContain(TEMPLATE_CLONE_CONTENT_FILL_MARKER);
     expect(prompted).toMatch(/슬라이드 초안 작성 중/);
     expect(prompted).toMatch(/NEVER "수정 반영 중"/);
     expect(prompted).toMatch(/body-first/i);
@@ -247,6 +247,17 @@ describe('templateCloneContentFill', () => {
         { role: 'user', content: '제목만 바꿔줘' },
       ]),
     ).toBe(false);
+  });
+
+  it('does not re-append expansion hard rules when the fill seed is already present', () => {
+    const seed = buildTemplateCloneContentFillSeed({
+      userInstruction: 'expo에 대해서 설명하는 피피티 만들어줘. 시니어 개발자 레벨.',
+    });
+    const once = (seed.match(/brief is a topic, not slide text/gi) ?? []).length;
+    expect(once).toBe(1);
+    const stamped = promptWithTemplateCloneContentFillInstruction(seed, { slideOnlyMvp: true });
+    expect((stamped.match(/brief is a topic, not slide text/gi) ?? []).length).toBe(1);
+    expect(stamped).toBe(seed);
   });
 
   it('ensureTemplateCloneContentFillContinuePrompt restamps create contract without Existing deck edit', () => {

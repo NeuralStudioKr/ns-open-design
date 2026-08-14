@@ -152,6 +152,16 @@ full `example.html`을 시스템 프롬프트에 넣지 않는다는 방침은 �
 
 제품 판단: **완성된 덱이 우선**이다. 선택 템플릿과 100% 동일한 CSS를 복사하다가 결과물이 비어버리는 것보다, 템플릿의 palette/font/motif cue가 보이는 compact static deck을 완성하는 것이 낫다. 따라서 pre-write gate는 계속 shell 저장을 막고, prompt는 shell이 생기지 않도록 body-first로 유도한다.
 
+### 0.12 2026-08-14 — persist 지시문 제목 거부 · Clone 실패 시에도 fill · DESIGN.md omit
+
+**잔여 구멍:** 프롬프트만으로는 커버에 "만들어줘"가 남는 덱이 저장됐고, Clone HTTP 실패 시 fill 마커 없이 create dump가 나갔으며, daemon compose는 선택 템플릿과 Neutral DESIGN.md를 같이 넣었다.
+
+**계약 추가:**
+- Persist: 커버(또는 과반 heading)가 `looksLikeInstructionCopy` / `looksLikeTemplateMarketingTitle`이면 `low-substance` → 저장 skip + auto-continue.
+- Clone 실패여도 Home/Canvas/Drive는 kit-driven CREATE fill을 보낸다.
+- fill seed가 이미 있으면 hard rules를 재첨부하지 않는다.
+- daemon: `selectedDeckTemplate` + deck kind이면 DESIGN.md / token channel 생략 (web API compose와 동일).
+
 ### 0.11 2026-08-14 — Clone content-fill stall (`<head>` 재작성) 근본 차단
 
 **증상:** 명시 템플릿 Clone 후 fill이 `수정 반영 중` + 열린 `<artifact type="deck"><!doctype html>…<head>` 에서 수분 정지.

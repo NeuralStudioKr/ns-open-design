@@ -153,6 +153,26 @@ describe('validateHtmlArtifact', () => {
     expect(isLowSubstanceSlideDeckArtifact(broken)).toBe(true);
   });
 
+  it('classifies instruction-parroting covers as low-substance even with SVG chrome', () => {
+    const parrot =
+      '<!doctype html><html lang="ko"><head><meta charset="utf-8"></head><body>'
+      + '<section class="slide"><h1>expo에 대해서 설명하는 피피티 만들어줘</h1>'
+      + '<p>시니어 개발자 레벨.</p><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/></svg></section>'
+      + '<section class="slide"><h1>Expo 소개</h1><p>Expo는 모바일 앱을 만드는 도구입니다.</p></section>'
+      + '<section class="slide"><h1>다음 단계</h1><p>EAS Build로 배포하세요.</p></section>'
+      + '</body></html>';
+    expect(validateHtmlArtifact(parrot).ok).toBe(true);
+    expect(isLowSubstanceSlideDeckArtifact(parrot)).toBe(true);
+
+    const marketing =
+      '<!doctype html><html lang="ko"><body>'
+      + '<section class="slide"><h1>Html Ppt Zhangzara Daisy Days</h1><p>Cheerful presentation template.</p></section>'
+      + '<section class="slide"><h1>개요</h1><p>템플릿 소개 문장입니다.</p></section>'
+      + '<section class="slide"><h1>마무리</h1><p>감사합니다.</p></section>'
+      + '</body></html>';
+    expect(isLowSubstanceSlideDeckArtifact(marketing)).toBe(true);
+  });
+
   it('does not classify concise real decks as low-substance', () => {
     const real =
       '<!doctype html><html lang="ko"><head><meta charset="utf-8"><style>'

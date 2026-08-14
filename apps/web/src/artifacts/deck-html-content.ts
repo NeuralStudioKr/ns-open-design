@@ -1,3 +1,8 @@
+import {
+  looksLikeInstructionCopy,
+  looksLikeTemplateMarketingTitle,
+} from '@open-design/contracts';
+
 const SLIDE_SECTION_OPEN_RE =
   /<section\b[^>]*\bclass\s*=\s*(?:"[^"]*\bslide\b[^"]*"|'[^']*\bslide\b[^']*'|[^\s"'`=<>]*\bslide\b[^\s"'`=<>]*)/gi;
 
@@ -46,6 +51,29 @@ function listSlideSectionInners(html: string): string[] {
     inners.push(match[1] ?? "");
   }
   return inners;
+}
+
+function firstSlideHeading(innerHtml: string): string {
+  const heading = /<h[1-3]\b[^>]*>([\s\S]*?)<\/h[1-3]>/i.exec(innerHtml)?.[1];
+  const raw = heading ?? visibleTextFromHtmlFragment(innerHtml);
+  return visibleTextFromHtmlFragment(raw).slice(0, 120);
+}
+
+/**
+ * Persist-time anti-parroting: a deck whose cover (or most headings) is the
+ * user's "만들어줘" instruction or the template marketing name is a failed
+ * generate — even if the HTML is structurally complete.
+ */
+export function deckSlideHeadingsLookLikeFailedGenerate(html: string): boolean {
+  const headings = listSlideSectionInners(html)
+    .map((inner) => firstSlideHeading(inner))
+    .filter(Boolean);
+  if (headings.length === 0) return false;
+  const failed = (title: string) =>
+    looksLikeInstructionCopy(title) || looksLikeTemplateMarketingTitle(title);
+  if (failed(headings[0]!)) return true;
+  const bad = headings.filter(failed).length;
+  return bad >= Math.ceil(headings.length / 2);
 }
 
 export function slideSectionInnerLooksLikeStatusOnly(innerHtml: string): boolean {

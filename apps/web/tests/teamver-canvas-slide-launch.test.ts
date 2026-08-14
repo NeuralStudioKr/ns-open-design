@@ -559,8 +559,8 @@ describe("canvasSlideLaunch", () => {
     expect(app).toContain("isExplicitCanvasSlideVisualTemplate({ id: selectedDeckTemplateId })");
     expect(app).toContain("driveCreateSlidesSourceBrief(homeDriveSourceAsset)");
     expect(app).toContain("slideCountHintFromInputs");
-    expect(app).toContain("continuing with selected-template AI run");
-    expect(app).toContain("templateClonedDeckSeeded: true");
+    expect(app).toContain("continuing with selected-template AI fill");
+    expect(app).toContain("templateClonedDeckSeeded: Boolean(seededDeckFileName)");
     expect(app).toContain("selectedDeckTemplateIdFromInputs");
     expect(app).toContain("headings:");
     expect(app).toContain("Home wizard / gallery / community card");
@@ -653,6 +653,7 @@ describe("canvasSlideLaunch", () => {
     expect(composer).not.toContain("blocking model kit fallthrough");
     expect(app).toContain("queuedFillSeed");
     expect(app).toContain("pendingPrompt: queuedFillSeed");
+    expect(composer).toContain("Clone LOOK seed is optional. Fill always runs");
     expect(app).toContain("sanitizeTemplateCloneDeckTitle(");
     expect(projectView).toContain("resolveTemplateCloneAutoSendSeed(");
     expect(projectView).toContain("isCloneContentFillTurn");

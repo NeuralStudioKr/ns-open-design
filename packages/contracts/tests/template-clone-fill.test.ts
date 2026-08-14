@@ -7,6 +7,7 @@ import {
   inferTemplateCloneContentRole,
   listTemplateCloneSlideShells,
   looksLikeInstructionCopy,
+  looksLikeTemplateMarketingTitle,
   normalizeTemplateCssForFixedCanvas,
   pickTemplateShellsForContent,
   resolveTemplateCloneSlideCountHint,
@@ -289,6 +290,8 @@ describe('sanitizeTemplateCloneDeckTitle', () => {
     expect(sanitizeTemplateCloneDeckTitle('expo에 대해서 설명하는 피피티 만들어줘.')).toBeNull();
     expect(sanitizeTemplateCloneDeckTitle('Html Ppt Zhangzara Daisy Days')).toBeNull();
     expect(looksLikeInstructionCopy('[Deliverable instruction] Build a deck')).toBe(true);
+    expect(looksLikeTemplateMarketingTitle('Html Ppt Zhangzara Daisy Days')).toBe(true);
+    expect(looksLikeTemplateMarketingTitle('Expo for Senior Engineers')).toBe(false);
     expect(sanitizeTemplateCloneDeckTitle('Expo SDK 개요')).toBe('Expo SDK 개요');
   });
 

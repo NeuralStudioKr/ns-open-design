@@ -2202,71 +2202,72 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
             if (seeded.ok) {
               onProjectFilesMaybeChanged?.();
               onRequestOpenFile?.(seeded.fileName);
-              consumeTeamverCanvasLaunchHandoff();
-              setCanvasSlideLaunch(null);
-              setCanvasSlideLaunchError(null);
-              setCanvasSlideUserPrompt('');
-              setCanvasSlideQuickSettings(DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS);
-              // Clone seeded LOOK only — AI-fill as compact kit-driven CREATE.
-              // Do NOT attach deck.html (truncated mid-CSS anchors a max_tokens hang).
-              // Preview still opens via onRequestOpenFile.
-              const fillSeed = buildTemplateCloneContentFillSeed({
-                userInstruction: promptForRun,
-                sourceBrief,
-                templateTitle: selectedCanvasSlideTemplate.title,
-                hasSourceMaterial: true,
-                slideCountHint: canvasSlideQuickLengthToSlideCount(
-                  canvasSlideQuickSettings.length,
-                ),
-              });
-              const baseMeta = currentRunContextMeta();
-              const canvasMeta = canvasCreateSlidesTurnMeta(selectedCanvasSlideTemplate.id, {
-                designSystemId: designSystemIdForRun,
-                mergeContext: baseMeta?.context,
-              });
-              const fillSlideCount = canvasSlideQuickLengthToSlideCount(
-                canvasSlideQuickSettings.length,
-              );
-              sendComposedTurn(
-                fillSeed,
-                withoutCanonicalDeckAttachments(attachments),
-                [],
-                {
-                  ...baseMeta,
-                  ...canvasMeta,
-                  skipDiscoveryBrief: true,
-                  templateCloneContentFill: true,
-                  pluginInputs: withTemplateCloneFillPluginInputs(
-                    canvasCreateSlidesPluginInputs(
-                      null,
-                      selectedCanvasSlideTemplate.title,
-                      sourceBrief,
-                      promptForRun,
-                      canvasSlideQuickSettings,
-                      { hasSourceMaterial: true },
-                    ),
-                    fillSlideCount,
-                  ),
-                  ...(templateBinding.projectMetadata.selectedDeckTemplateId
-                    ? {
-                        selectedDeckTemplateId:
-                          templateBinding.projectMetadata.selectedDeckTemplateId,
-                        selectedDeckTemplateTitle:
-                          templateBinding.projectMetadata.selectedDeckTemplateTitle,
-                      }
-                    : {}),
-                },
-              );
-              void patchProject(id, {
-                metadata: {
-                  ...(projectMetadata ?? {}),
-                  ...templateBinding.projectMetadata,
-                  templateClonedDeckSeeded: true,
-                  templateCloneContentFillPending: false,
-                },
-              });
-              return;
             }
+            consumeTeamverCanvasLaunchHandoff();
+            setCanvasSlideLaunch(null);
+            setCanvasSlideLaunchError(null);
+            setCanvasSlideUserPrompt('');
+            setCanvasSlideQuickSettings(DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS);
+            // Clone LOOK seed is optional. Fill always runs as compact CREATE
+            // so a clone miss cannot fall through to Neutral / instruction dump.
+            // Do NOT attach deck.html (truncated mid-CSS anchors a max_tokens hang).
+            // Preview still opens via onRequestOpenFile when clone succeeded.
+            const fillSeed = buildTemplateCloneContentFillSeed({
+              userInstruction: promptForRun,
+              sourceBrief,
+              templateTitle: selectedCanvasSlideTemplate.title,
+              hasSourceMaterial: true,
+              slideCountHint: canvasSlideQuickLengthToSlideCount(
+                canvasSlideQuickSettings.length,
+              ),
+            });
+            const baseMeta = currentRunContextMeta();
+            const canvasMeta = canvasCreateSlidesTurnMeta(selectedCanvasSlideTemplate.id, {
+              designSystemId: designSystemIdForRun,
+              mergeContext: baseMeta?.context,
+            });
+            const fillSlideCount = canvasSlideQuickLengthToSlideCount(
+              canvasSlideQuickSettings.length,
+            );
+            sendComposedTurn(
+              fillSeed,
+              withoutCanonicalDeckAttachments(attachments),
+              [],
+              {
+                ...baseMeta,
+                ...canvasMeta,
+                skipDiscoveryBrief: true,
+                templateCloneContentFill: true,
+                pluginInputs: withTemplateCloneFillPluginInputs(
+                  canvasCreateSlidesPluginInputs(
+                    null,
+                    selectedCanvasSlideTemplate.title,
+                    sourceBrief,
+                    promptForRun,
+                    canvasSlideQuickSettings,
+                    { hasSourceMaterial: true },
+                  ),
+                  fillSlideCount,
+                ),
+                ...(templateBinding.projectMetadata.selectedDeckTemplateId
+                  ? {
+                      selectedDeckTemplateId:
+                        templateBinding.projectMetadata.selectedDeckTemplateId,
+                      selectedDeckTemplateTitle:
+                        templateBinding.projectMetadata.selectedDeckTemplateTitle,
+                    }
+                  : {}),
+              },
+            );
+            void patchProject(id, {
+              metadata: {
+                ...(projectMetadata ?? {}),
+                ...templateBinding.projectMetadata,
+                templateClonedDeckSeeded: Boolean(seeded.ok),
+                templateCloneContentFillPending: false,
+              },
+            });
+            return;
           }
           const baseMeta = currentRunContextMeta();
           const canvasMeta = canvasCreateSlidesTurnMeta(selectedCanvasSlideTemplate.id, {
@@ -2418,68 +2419,70 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
           if (seeded.ok) {
             onProjectFilesMaybeChanged?.();
             onRequestOpenFile?.(seeded.fileName);
-            consumeTeamverDriveLaunchHandoff();
-            setCanvasSlideLaunch(null);
-            setCanvasSlideLaunchError(null);
-            setCanvasSlideUserPrompt('');
-            setCanvasSlideQuickSettings(DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS);
-            const fillSeed = buildTemplateCloneContentFillSeed({
-              userInstruction: promptForRun,
-              sourceBrief,
-              templateTitle: selectedCanvasSlideTemplate.title,
-              hasSourceMaterial: true,
-              slideCountHint: canvasSlideQuickLengthToSlideCount(
-                canvasSlideQuickSettings.length,
-              ),
-            });
-            const baseMeta = currentRunContextMeta();
-            const canvasMeta = canvasCreateSlidesTurnMeta(selectedCanvasSlideTemplate.id, {
-              designSystemId: designSystemIdForRun,
-              mergeContext: baseMeta?.context,
-            });
-            const fillSlideCount = canvasSlideQuickLengthToSlideCount(
-              canvasSlideQuickSettings.length,
-            );
-            sendComposedTurn(
-              fillSeed,
-              withoutCanonicalDeckAttachments(attachments),
-              [],
-              {
-                ...baseMeta,
-                ...canvasMeta,
-                skipDiscoveryBrief: true,
-                templateCloneContentFill: true,
-                pluginInputs: withTemplateCloneFillPluginInputs(
-                  canvasCreateSlidesPluginInputs(
-                    null,
-                    selectedCanvasSlideTemplate.title,
-                    sourceBrief,
-                    promptForRun,
-                    canvasSlideQuickSettings,
-                    { hasSourceMaterial: true },
-                  ),
-                  fillSlideCount,
-                ),
-                ...(templateBinding.projectMetadata.selectedDeckTemplateId
-                  ? {
-                      selectedDeckTemplateId:
-                        templateBinding.projectMetadata.selectedDeckTemplateId,
-                      selectedDeckTemplateTitle:
-                        templateBinding.projectMetadata.selectedDeckTemplateTitle,
-                    }
-                  : {}),
-              },
-            );
-            void patchProject(id, {
-              metadata: {
-                ...(projectMetadata ?? {}),
-                ...templateBinding.projectMetadata,
-                templateClonedDeckSeeded: true,
-                templateCloneContentFillPending: false,
-              },
-            });
-            return;
           }
+          consumeTeamverDriveLaunchHandoff();
+          setCanvasSlideLaunch(null);
+          setCanvasSlideLaunchError(null);
+          setCanvasSlideUserPrompt('');
+          setCanvasSlideQuickSettings(DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS);
+          // Clone LOOK seed is optional. Fill always runs as compact CREATE
+          // so a clone miss cannot fall through to Neutral / instruction dump.
+          const fillSeed = buildTemplateCloneContentFillSeed({
+            userInstruction: promptForRun,
+            sourceBrief,
+            templateTitle: selectedCanvasSlideTemplate.title,
+            hasSourceMaterial: true,
+            slideCountHint: canvasSlideQuickLengthToSlideCount(
+              canvasSlideQuickSettings.length,
+            ),
+          });
+          const baseMeta = currentRunContextMeta();
+          const canvasMeta = canvasCreateSlidesTurnMeta(selectedCanvasSlideTemplate.id, {
+            designSystemId: designSystemIdForRun,
+            mergeContext: baseMeta?.context,
+          });
+          const fillSlideCount = canvasSlideQuickLengthToSlideCount(
+            canvasSlideQuickSettings.length,
+          );
+          sendComposedTurn(
+            fillSeed,
+            withoutCanonicalDeckAttachments(attachments),
+            [],
+            {
+              ...baseMeta,
+              ...canvasMeta,
+              skipDiscoveryBrief: true,
+              templateCloneContentFill: true,
+              pluginInputs: withTemplateCloneFillPluginInputs(
+                canvasCreateSlidesPluginInputs(
+                  null,
+                  selectedCanvasSlideTemplate.title,
+                  sourceBrief,
+                  promptForRun,
+                  canvasSlideQuickSettings,
+                  { hasSourceMaterial: true },
+                ),
+                fillSlideCount,
+              ),
+              ...(templateBinding.projectMetadata.selectedDeckTemplateId
+                ? {
+                    selectedDeckTemplateId:
+                      templateBinding.projectMetadata.selectedDeckTemplateId,
+                    selectedDeckTemplateTitle:
+                      templateBinding.projectMetadata.selectedDeckTemplateTitle,
+                  }
+                : {}),
+            },
+          );
+          void patchProject(id, {
+            metadata: {
+              ...(projectMetadata ?? {}),
+              ...templateBinding.projectMetadata,
+              templateClonedDeckSeeded: Boolean(seeded.ok),
+              templateCloneContentFillPending: false,
+            },
+          });
+          return;
         }
         {
           const baseMeta = currentRunContextMeta();

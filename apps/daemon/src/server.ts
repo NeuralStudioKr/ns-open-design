@@ -12170,7 +12170,10 @@ export async function startServer({
     let designSystemImportMode;
     let designSystemCraftApplies = [];
     let designSystemCraftExemptions = [];
-    if (effectiveDesignSystemId) {
+    const omitDesignSystemForSelectedTemplate =
+      Boolean(selectedDeckTemplate)
+      && (metadata?.kind === 'deck' || skillMode === 'deck');
+    if (effectiveDesignSystemId && !omitDesignSystemForSelectedTemplate) {
       let systems = await listAllDesignSystems();
       let summary = systems.find((s) => s.id === effectiveDesignSystemId);
       if (summary?.source === 'user') {

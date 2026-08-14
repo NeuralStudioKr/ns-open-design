@@ -6,6 +6,7 @@ import {
   hasSalvageableDeckSlideContent,
   isClosedSoftSalvageDeckHtml,
   isDeckStatusProseOnlyBody,
+  deckSlideHeadingsLookLikeFailedGenerate,
   meetsMinimumDeckDeliverableQuality,
   meetsTruncationSalvageQuality,
 } from "../../src/artifacts/deck-html-content";
@@ -41,6 +42,22 @@ describe("deck-html-content", () => {
     expect(hasSalvageableDeckSlideContent(html)).toBe(true);
     expect(isDeckStatusProseOnlyBody(html)).toBe(false);
     expect(isIncompleteHtmlDocumentShell(html)).toBe(false);
+    expect(deckSlideHeadingsLookLikeFailedGenerate(html)).toBe(false);
+  });
+
+  it("flags instruction-copy and template-marketing cover headings", () => {
+    const parrot =
+      "<!doctype html><html lang=\"ko\"><body>"
+      + "<section class=\"slide\"><h1>expo에 대해서 설명하는 피피티 만들어줘</h1><p>시니어 개발자 레벨</p></section>"
+      + "<section class=\"slide\"><h1>Expo Router</h1><p>file-based routing</p></section>"
+      + "</body></html>";
+    expect(deckSlideHeadingsLookLikeFailedGenerate(parrot)).toBe(true);
+    const real =
+      "<!doctype html><html lang=\"ko\"><body>"
+      + "<section class=\"slide\"><h1>Expo for Senior Engineers</h1><p>Managed workflow vs prebuild</p></section>"
+      + "<section class=\"slide\"><h1>EAS Build</h1><p>cloud builds and Submit</p></section>"
+      + "</body></html>";
+    expect(deckSlideHeadingsLookLikeFailedGenerate(real)).toBe(false);
   });
 
   it("rejects slide sections that only contain status prose", () => {

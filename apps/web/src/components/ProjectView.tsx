@@ -170,6 +170,7 @@ import {
   isExplicitCanvasSlideVisualTemplate,
 } from '../teamver/canvasSlideLaunch';
 import {
+  TEMPLATE_CLONE_CONTENT_FILL_MARKER,
   TEMPLATE_CLONE_CONTENT_FILL_TURN_MARKER,
   clearTemplateCloneContentFillQueue,
   ensureTemplateCloneContentFillContinuePrompt,
@@ -1649,7 +1650,22 @@ export function promptWithTemplateCloneContentFillInstruction(
 ): string {
   if (!options.slideOnlyMvp) return prompt;
   if (!isTemplateCloneContentFillPrompt(prompt)) return prompt;
-  if (prompt.includes(TEMPLATE_CLONE_CONTENT_FILL_TURN_MARKER)) return prompt;
+  // Seed already carries hard rules. Re-appending the expansion contract
+  // burns tokens and does not change behavior.
+  if (
+    prompt.includes(TEMPLATE_CLONE_CONTENT_FILL_TURN_MARKER)
+    || prompt.includes(TEMPLATE_CLONE_CONTENT_FILL_MARKER)
+  ) {
+    const imagePaths = options.imagePaths ?? [];
+    if (imagePaths.length === 0 || /exact project-relative paths/i.test(prompt)) {
+      return prompt;
+    }
+    return [
+      prompt.trim(),
+      'When placing attached images, use these exact project-relative paths:',
+      ...imagePaths.map((path) => `- ${path}`),
+    ].join('\n');
+  }
   const visiblePrompt = prompt.trim() || '슬라이드 덱을 만들어줘.';
   return `${visiblePrompt}\n\n${slideTemplateCloneContentFillInstruction(options.imagePaths ?? [])}`;
 }
