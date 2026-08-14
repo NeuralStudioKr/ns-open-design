@@ -135,12 +135,23 @@ export function shouldRefreshHostPaintAfterTipYieldSingleReseed(
 /**
  * When tip-yield single snapshot applies, sync selected target identity fields
  * so panel chrome / bridge-facing target state matches painted tip (59).
+ * Same gate updates `manualEditTargets` membership for that seed id (435).
  */
 export function shouldSyncSelectedTargetIdentityAfterTipYieldSingleReseed(
   selectedId: string | null | undefined,
   seedId: string,
 ): boolean {
   return Boolean(selectedId && selectedId === seedId);
+}
+
+/**
+ * After tip-remount grace is consumed by the first accepted remasure, refresh
+ * host paint — covers both multi tip-yield reseed and Mixed→single (431/430).
+ */
+export function shouldRefreshHostPaintAfterTipRemountRemasure(
+  tipRemountGraceConsumed: boolean,
+): boolean {
+  return tipRemountGraceConsumed;
 }
 
 /**

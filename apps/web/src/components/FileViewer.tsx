@@ -337,6 +337,7 @@ import {
   shouldReseedSingleInspectorAfterTipYieldMixedClear,
   shouldApplyTipYieldSingleInspectorSnapshot,
   shouldRefreshHostPaintAfterTipYieldSingleReseed,
+  shouldRefreshHostPaintAfterTipRemountRemasure,
   shouldSyncSelectedTargetIdentityAfterTipYieldSingleReseed,
   shouldSkipWildJumpAfterTipRemountGrace,
   shouldSyncManualEditFrozenSourceToPainted,
@@ -8042,6 +8043,7 @@ function HtmlViewer({
                 fullSource: base,
               }));
               // Keep selected target identity aligned with painted tip (426).
+              // Also refresh manualEditTargets membership for the same seed (435).
               if (shouldSyncSelectedTargetIdentityAfterTipYieldSingleReseed(
                 primary?.id,
                 seedId,
@@ -8059,6 +8061,17 @@ function HtmlViewer({
                   selectedManualEditTargetRef.current = next;
                   return next;
                 });
+                setManualEditTargets((current) => current.map((item) => {
+                  if (item.id !== seedId) return item;
+                  return {
+                    ...item,
+                    text: snapshot.fields.text ?? item.text,
+                    fields: { ...item.fields, ...snapshot.fields },
+                    attributes: snapshot.attributes,
+                    styles: mergeManualEditInspectorStyles(snapshot.styles, item.styles),
+                    outerHtml: snapshot.outerHtml || item.outerHtml,
+                  };
+                }));
               }
             }
           }
@@ -9578,9 +9591,9 @@ function HtmlViewer({
           clearManualEditTipRemountGeometryGrace();
         }
         applyManualEditMeasuredGeometry(measured);
-        if (tipRemountGrace) {
-          // Tip-remount remasure landed — sync host paint now (deferred during
-          // grace so force measure cannot stamp a pre-layout wild rect) (430).
+        // Multi tip-yield reseed and Mixed→single both arm tip-remount grace;
+        // refresh host paint once remasure consumes it (431/430).
+        if (shouldRefreshHostPaintAfterTipRemountRemasure(tipRemountGrace)) {
           refreshManualEditHostPaintRect(measured.id, { force: true });
         }
         return;

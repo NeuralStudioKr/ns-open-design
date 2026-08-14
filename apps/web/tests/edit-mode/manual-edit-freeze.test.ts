@@ -9,6 +9,7 @@ import {
   shouldReseedSingleInspectorAfterTipYieldMixedClear,
   shouldApplyTipYieldSingleInspectorSnapshot,
   shouldRefreshHostPaintAfterTipYieldSingleReseed,
+  shouldRefreshHostPaintAfterTipRemountRemasure,
   shouldSyncSelectedTargetIdentityAfterTipYieldSingleReseed,
   shouldSkipWildJumpAfterTipRemountGrace,
   shouldSyncManualEditFrozenSourceToPainted,
@@ -133,6 +134,11 @@ describe('manual edit freeze reset', () => {
     expect(shouldSyncSelectedTargetIdentityAfterTipYieldSingleReseed('a', 'a')).toBe(true);
     expect(shouldSyncSelectedTargetIdentityAfterTipYieldSingleReseed('a', 'b')).toBe(false);
     expect(shouldSyncSelectedTargetIdentityAfterTipYieldSingleReseed(null, 'a')).toBe(false);
+  });
+
+  it('refreshes host paint after tip-remount remasure for multi and single', () => {
+    expect(shouldRefreshHostPaintAfterTipRemountRemasure(true)).toBe(true);
+    expect(shouldRefreshHostPaintAfterTipRemountRemasure(false)).toBe(false);
   });
 
   it('clears tip-remount grace when selection leaves the grace primary', () => {

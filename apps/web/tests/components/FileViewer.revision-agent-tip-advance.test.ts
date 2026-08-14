@@ -139,7 +139,10 @@ describe('FileViewer revision tip advance after undo', () => {
     expect(fileViewer).toContain('Skip while tip-remount grace is active');
     expect(fileViewer).toContain('shouldSyncSelectedTargetIdentityAfterTipYieldSingleReseed');
     expect(fileViewer).toContain('Keep selected target identity aligned with painted tip');
-    expect(fileViewer).toContain('Tip-remount remasure landed — sync host paint now');
+    expect(fileViewer).toContain('Also refresh manualEditTargets membership for the same seed');
+    expect(fileViewer).toContain('setManualEditTargets((current) => current.map');
+    expect(fileViewer).toContain('shouldRefreshHostPaintAfterTipRemountRemasure');
+    expect(fileViewer).toContain('Multi tip-yield reseed and Mixed→single both arm tip-remount grace');
     expect(fileViewer).toContain('refreshManualEditHostPaintRect(measured.id, { force: true })');
     expect(fileViewer).toContain('refreshManualEditHostPaintRect(paintId, { force: true })');
     expect(fileViewer).toContain('clearManualEditTipRemountGeometryGraceIfNeeded');

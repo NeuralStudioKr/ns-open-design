@@ -41,4 +41,11 @@ describe('web pretest step split', () => {
     expect(pretestScript).toContain("'contracts build'");
     expect(pretestScript).toContain("'build:snapshot-capture'");
   });
+
+  it('prints labeled failure on spawn errors (pnpm missing) and runs snapshot via node', () => {
+    expect(pretestScript).toContain('if (result.error)');
+    expect(pretestScript).toContain('result.error.code');
+    expect(pretestScript).toContain('process.execPath');
+    expect(pretestScript).toContain("join(webRoot, 'scripts/build-snapshot-capture.mjs')");
+  });
 });
