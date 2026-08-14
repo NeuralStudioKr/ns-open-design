@@ -387,6 +387,30 @@ describe("TeamverHomeSlideCreateModal", () => {
     expect(screen.queryByTestId("teamver-home-slide-create-confirm")).toBeNull();
   });
 
+  it("new entry shows the default pick and confirm after visiting the template step", () => {
+    wrap(
+      <TeamverHomeSlideCreateModal
+        open
+        entry="new"
+        templateOptions={templates}
+        selectedTemplateId="example-simple-deck"
+        onTemplateChange={() => {}}
+        userPrompt=""
+        onUserPromptChange={() => {}}
+        onConfirm={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("teamver-home-slide-create-next"));
+    fireEvent.click(screen.getByTestId("teamver-home-slide-create-prev"));
+    expect(screen.getByTestId("teamver-home-slide-create-content")).toBeTruthy();
+    expect(screen.getByTestId("teamver-home-slide-create-confirm")).toBeTruthy();
+    expect(screen.getByTestId("teamver-home-slide-create-step-pick").textContent).toMatch(
+      /Default slide template/i,
+    );
+    expect(screen.getByTestId("teamver-home-slide-create-step-template").textContent).toContain("✓");
+  });
+
   it("resets quick settings to defaults when the modal opens", () => {
     const onQuickSettingsChange = vi.fn();
     const stale = {

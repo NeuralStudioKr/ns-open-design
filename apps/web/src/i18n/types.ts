@@ -476,9 +476,7 @@ export interface Dict {
   'teamver.homeCreate.promptPlaceholder': string;
   'teamver.homeCreate.templateLead': string;
   'teamver.homeCreate.nextTemplate': string;
-  'teamver.homeCreate.selectedTemplate': string;
   'teamver.homeCreate.defaultTemplate': string;
-  'teamver.homeCreate.changeTemplate': string;
   'teamver.homeCreate.confirm': string;
   'teamver.homeCreate.creating': string;
   'teamver.homeCreate.summaryAttach': string;

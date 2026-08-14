@@ -45,7 +45,7 @@ Recent strip         → unchanged
 | `stagedFiles` / `stagedDriveAssets` | HomeView stage. 닫기·생성 완료·「새 슬라이드」·갤러리 사용 시 비움 |
 | `selectedTemplateId` | canvas template options |
 
-**Stepper:** entry=template이면 내용 화면에서도 `(2) 템플릿`을 `complete`로 표시하고 푸터는 항상 「슬라이드 만들기」(L1 기본으로 바꿔도 동일). `(2)` 클릭 시에만 템플릿 패널. 스텝·다음 CTA 카피는 모두 「템플릿」. 내용 스텝 푸터에 변경 칩을 두지 않음(61 안 B). 갤러리 진입에서 스텝2 카드를 고르면 내용 + ✓로 복귀. 명시 픽 제목(또는 기본 라벨)은 스텝퍼에 표시.
+**Stepper:** entry=template이면 내용 화면에서도 `(2) 템플릿`을 `complete`로 표시하고 푸터는 항상 「슬라이드 만들기」(L1 기본으로 바꿔도 동일). 「새 슬라이드」는 템플릿 스텝을 다녀온 뒤에 ✓ + 기본 라벨. `(2)` 클릭 시에만 템플릿 패널. 스텝·다음 CTA 카피는 모두 「템플릿」. 내용 스텝 푸터에 변경 칩을 두지 않음(61 안 B). 갤러리 진입에서 스텝2 카드를 고르면 내용 + ✓로 복귀. 명시 픽 제목(또는 기본 라벨)은 스텝퍼에 표시.
 
 ### 2.3 Confirm
 

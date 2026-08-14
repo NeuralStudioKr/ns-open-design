@@ -264,10 +264,13 @@ export function TeamverHomeSlideCreateModal({
   // visit as an explicit Daisy pick.
   const canConfirmFromContent =
     entry === "template" || hasExplicitTemplate || (entry === "new" && templateVisited);
-  const templateStepComplete = hasExplicitTemplate || (entry === "template" && templateReady);
+  const templateStepComplete =
+    hasExplicitTemplate
+    || (entry === "template" && templateReady)
+    || (entry === "new" && templateVisited && templateReady);
   const stepperPickTitle = hasExplicitTemplate
     ? selectedTemplate?.title
-    : entry === "template" && selectedTemplate
+    : (entry === "template" || templateVisited) && selectedTemplate
       ? t("teamver.homeCreate.defaultTemplate")
       : null;
 

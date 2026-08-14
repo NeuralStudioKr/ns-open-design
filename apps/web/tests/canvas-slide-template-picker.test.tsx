@@ -220,6 +220,8 @@ describe("CanvasSlideTemplatePicker", () => {
 
     const single = screen.getByTestId("teamver-canvas-slide-launch-template");
     expect(single.getAttribute("role")).not.toBe("radiogroup");
-    expect(single.textContent).toContain("기본 슬라이드 템플릿");
+    expect(single.textContent).toContain(
+      embedUiLabel("Default slide template", "기본 슬라이드 템플릿"),
+    );
   });
 });

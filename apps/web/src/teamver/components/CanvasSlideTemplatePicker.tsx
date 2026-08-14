@@ -46,6 +46,11 @@ type Props = {
 // value, so we hide it to keep the modal chrome light.
 const AUTO_SHOW_SEARCH_THRESHOLD = 8;
 
+function defaultTemplateDisplayTitle(option: TeamverCanvasSlideTemplateOption): string {
+  if (option.id !== CANVAS_CREATE_SLIDES_PLUGIN_ID) return option.title;
+  return embedUiLabel("Default slide template", "기본 슬라이드 템플릿");
+}
+
 // Minimal `CSS.escape` polyfill sufficient for template ids (kebab-case /
 // dotted plugin ids). Only used to build attribute selectors; jsdom test
 // runs do not ship `window.CSS`, so we must never touch a missing global.
@@ -182,7 +187,9 @@ export function CanvasSlideTemplatePicker({
         data-testid="teamver-canvas-slide-launch-template"
       >
         <span className="teamver-canvas-slide-launch-template-label">{label}</span>
-        <span className="teamver-canvas-slide-launch-template-static">{options[0]!.title}</span>
+        <span className="teamver-canvas-slide-launch-template-static">
+          {defaultTemplateDisplayTitle(options[0]!)}
+        </span>
       </div>
     );
   }
@@ -430,8 +437,11 @@ function CanvasSlideTemplateCard({ option, selected, disabled, onSelect }: CardP
           </span>
         ) : null}
       </span>
-      <span className="teamver-canvas-slide-launch-template-card-title" title={option.title}>
-        {option.title}
+      <span
+        className="teamver-canvas-slide-launch-template-card-title"
+        title={defaultTemplateDisplayTitle(option)}
+      >
+        {defaultTemplateDisplayTitle(option)}
       </span>
     </button>
   );
