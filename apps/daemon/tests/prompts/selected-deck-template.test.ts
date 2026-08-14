@@ -34,8 +34,9 @@ describe('selected-deck-template prompt helpers', () => {
     expect(wrapped).toContain('Content expansion');
     expect(wrapped).toMatch(/TOPIC to research/);
     expect(wrapped).toMatch(/echoes the prompt/);
-    expect(wrapped).toContain('Do not stream a long `<head>`');
-    expect(wrapped).toContain('body');
+    expect(wrapped).toContain('Body-first output contract');
+    expect(wrapped).toContain('<body><section class="slide"');
+    expect(wrapped).toContain('Do not emit `<head>`');
   });
 
   it('prefers selected template body and does not append Simple Deck as secondary', () => {

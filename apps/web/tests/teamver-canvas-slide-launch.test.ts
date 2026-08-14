@@ -48,6 +48,10 @@ describe("canvasSlideLaunch", () => {
     expect(CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION).toMatch(/artifact type="deck"|compact deck/i);
     expect(CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION).toMatch(/slideCount|requested slide count/i);
     expect(CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION).toMatch(/1920.*1080|fixed/i);
+    expect(CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION).toMatch(/body-first/i);
+    expect(CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION).toMatch(/do not emit `<head>`/i);
+    expect(HOME_CREATE_SLIDES_INTERNAL_INSTRUCTION).toMatch(/body-first/i);
+    expect(HOME_CREATE_SLIDES_INTERNAL_INSTRUCTION).toMatch(/do not emit `<head>`/i);
     expect(CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION).toContain(SLIDE_DECK_QUALITY_BAR_INSTRUCTION);
     expect(HOME_CREATE_SLIDES_INTERNAL_INSTRUCTION).toContain(SLIDE_DECK_QUALITY_BAR_INSTRUCTION);
     expect(CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION).toContain(SLIDE_DECK_CONTENT_EXPANSION_INSTRUCTION);
