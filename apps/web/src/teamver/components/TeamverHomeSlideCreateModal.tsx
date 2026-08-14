@@ -7,6 +7,7 @@ import { createPortal } from "react-dom";
 import { Icon } from "../../components/Icon";
 import { useTeamverT } from "../branding/useTeamverT";
 import type { TeamverDriveImportAsset } from "../importDriveAssets";
+import { EMBED_SLIDE_ATTACH_ACCEPT } from "../branding/embedFileAttachPolicy";
 import {
   DEFAULT_HOME_SLIDE_CREATE_QUICK_SETTINGS,
   createHomeSlideCreateQuickSettings,
@@ -400,6 +401,7 @@ export function TeamverHomeSlideCreateModal({
               type="file"
               multiple
               hidden
+              accept={EMBED_SLIDE_ATTACH_ACCEPT}
               onChange={(event) => {
                 const list = event.currentTarget.files;
                 if (list && list.length > 0) onAddFiles?.(Array.from(list));

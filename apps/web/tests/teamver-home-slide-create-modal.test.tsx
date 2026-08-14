@@ -367,6 +367,24 @@ describe("TeamverHomeSlideCreateModal", () => {
     expect(onAddFiles).toHaveBeenCalledWith([file]);
   });
 
+  it("limits the file picker to slide-friendly types", () => {
+    wrap(
+      <TeamverHomeSlideCreateModal
+        open
+        entry="new"
+        templateOptions={templates}
+        selectedTemplateId="example-simple-deck"
+        onTemplateChange={() => {}}
+        userPrompt=""
+        onUserPromptChange={() => {}}
+        onConfirm={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    const input = document.querySelector("input[type='file']") as HTMLInputElement | null;
+    expect(input?.getAttribute("accept")).toMatch(/image\/\*|\.pdf|\.pptx/);
+  });
+
   it("new entry without explicit template requires visiting template step before confirm", () => {
     wrap(
       <TeamverHomeSlideCreateModal

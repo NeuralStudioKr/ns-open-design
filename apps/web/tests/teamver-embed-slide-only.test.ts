@@ -137,7 +137,8 @@ describe('Teamver embed slide-only MVP policy', () => {
       selectedDeckTemplateTitle: 'Html Ppt Zhangzara Daisy Days',
     });
     expect(explicit.visualTemplatePolicy).toContain('Template visual kit');
-    expect(explicit.visualTemplatePolicy).toContain('Motif sprites');
+    expect(explicit.visualTemplatePolicy).toContain('compact Decoration CSS / motif cues');
+    expect(explicit.visualTemplatePolicy).toContain('dump a head/style/SVG shell');
     expect(explicit.visualTemplatePolicy).toContain('do not fall back to a generic default look');
   });
 
@@ -319,6 +320,8 @@ describe('Teamver embed slide-only MVP policy', () => {
     expect(designTemplatesSection).toContain('fetchDesignTemplates(');
     expect(designTemplatesSection).toContain("branding.slideOnlyMvp ? { mode: 'deck', limit: 24 } : undefined");
     expect(chatComposer).toContain('embedAttachBlockReason');
+    expect(homeView).toContain('embedAttachBlockReason');
+    expect(homeView).toContain('preserveAttachments');
     expect(chatComposer).toContain('readTeamverCreateSlidesLaunchFromUrl()');
     expect(chatComposer).toContain('TeamverCanvasSlideLaunchModal');
     expect(chatComposer).toContain('setCanvasSlideLaunch(null)');

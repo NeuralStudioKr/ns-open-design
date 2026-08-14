@@ -99,6 +99,7 @@ import { examplePresetSeedPrompt } from './plugins-home/presetSeedPrompt';
 import { localizePluginDescription } from './plugins-home/localization';
 import { RecentProjectsStrip } from './RecentProjectsStrip';
 import { AnimatePresence } from 'motion/react';
+import { embedAttachBlockReason } from '../teamver/branding/embedFileAttachPolicy';
 import { embedSlideOnlyOutboundBlockReason } from '../teamver/branding/embedSlideOnlyOutboundGuard';
 import { isRenderableDesignTemplate } from '../teamver/branding/designTemplateVisibility';
 import {
@@ -504,13 +505,28 @@ export function HomeView({
       for (const asset of assets) {
         if (seen.has(asset.assetId)) continue;
         if (next.length >= HOME_DRIVE_IMPORT_MAX) break;
+        if (
+          slideOnlyMvp
+          && embedAttachBlockReason(asset.filename ?? asset.assetId, {
+            mimeType: asset.mimeType,
+            slideOnlyMvp: true,
+          })
+        ) {
+          continue;
+        }
         next.push(asset);
         seen.add(asset.assetId);
       }
       return next;
     });
+    // slideOnly: land in the Home wizard with the handoff already staged.
+    // Opening the Drive picker (OD HomeHero path) would lose chips on 「새 슬라이드」.
+    if (slideOnlyMvp) {
+      openHomeSlideCreate('new', undefined, { preserveAttachments: true });
+      return;
+    }
     setDriveImportOpen(true);
-  }, [teamverDriveImportAllowed, teamverWorkspaceId]);
+  }, [teamverDriveImportAllowed, teamverWorkspaceId, slideOnlyMvp]);
   const [workingDir, setWorkingDir] = useState<string | null>(null);
   // Token paired with `workingDir` when picked through the desktop host's
   // native dialog. Spent on the post-creation working-dir POST so the
@@ -1460,9 +1476,28 @@ export function HomeView({
 
   function stageFiles(files: File[]) {
     if (files.length === 0) return;
+    let blockReason: string | null = null;
+    const allowed = slideOnlyMvp
+      ? files.filter((file) => {
+          const reason = embedAttachBlockReason(file.name, {
+            mimeType: file.type,
+            sizeBytes: file.size,
+            slideOnlyMvp: true,
+          });
+          if (reason) {
+            blockReason ??= reason;
+            return false;
+          }
+          return true;
+        })
+      : files;
+    if (blockReason && homeSlideCreateOpen) {
+      setHomeSlideCreateError(blockReason);
+    }
+    if (allowed.length === 0) return;
     setStagedFiles((current) => {
       const next = [...current];
-      for (const file of files) {
+      for (const file of allowed) {
         if (
           next.some(
             (item) =>
@@ -1478,7 +1513,7 @@ export function HomeView({
       return next;
     });
     setError(null);
-    focusPromptAtEnd();
+    if (!homeSlideCreateOpen) focusPromptAtEnd();
   }
 
   function removeStagedFile(index: number) {
@@ -1487,9 +1522,27 @@ export function HomeView({
 
   function stageDriveAssets(assets: TeamverDriveImportAsset[]) {
     if (assets.length === 0) return;
+    let blockReason: string | null = null;
+    const allowed = slideOnlyMvp
+      ? assets.filter((asset) => {
+          const reason = embedAttachBlockReason(asset.filename ?? asset.assetId, {
+            mimeType: asset.mimeType,
+            slideOnlyMvp: true,
+          });
+          if (reason) {
+            blockReason ??= reason;
+            return false;
+          }
+          return true;
+        })
+      : assets;
+    if (blockReason && homeSlideCreateOpen) {
+      setHomeSlideCreateError(blockReason);
+    }
+    if (allowed.length === 0) return;
     setStagedDriveAssets((current) => {
       const next = [...current];
-      for (const asset of assets) {
+      for (const asset of allowed) {
         if (next.length >= HOME_DRIVE_IMPORT_MAX) break;
         if (next.some((item) => item.assetId === asset.assetId)) continue;
         next.push(asset);
@@ -1497,7 +1550,7 @@ export function HomeView({
       return next.slice(0, HOME_DRIVE_IMPORT_MAX);
     });
     setError(null);
-    focusPromptAtEnd();
+    if (!homeSlideCreateOpen) focusPromptAtEnd();
   }
 
   function removeStagedDriveAsset(index: number) {
@@ -1871,9 +1924,15 @@ export function HomeView({
     clearLastExplicitDeckTemplateId();
   }
 
-  function openHomeSlideCreate(entry: TeamverHomeSlideCreateEntry, templateId?: string) {
-    setStagedFiles([]);
-    setStagedDriveAssets([]);
+  function openHomeSlideCreate(
+    entry: TeamverHomeSlideCreateEntry,
+    templateId?: string,
+    options?: { preserveAttachments?: boolean },
+  ) {
+    if (!options?.preserveAttachments) {
+      setStagedFiles([]);
+      setStagedDriveAssets([]);
+    }
     setDriveImportOpen(false);
     setHomeSlideCreateEntry(entry);
     const explicit = templateId?.trim() || '';

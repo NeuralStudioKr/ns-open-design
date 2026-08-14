@@ -635,9 +635,13 @@ describe("canvasSlideLaunch", () => {
       home.indexOf("function closeHomeSlideCreate"),
     );
     expect(openHomeSlideCreateSrc).not.toContain("readLastExplicitDeckTemplateId");
+    expect(openHomeSlideCreateSrc).toContain("preserveAttachments");
     expect(openHomeSlideCreateSrc).toContain("setStagedFiles([])");
     expect(openHomeSlideCreateSrc).toContain("setStagedDriveAssets([])");
     expect(openHomeSlideCreateSrc).toContain("createHomeSlideCreateQuickSettings()");
+    expect(home).toContain("embedAttachBlockReason");
+    expect(home).toContain("openHomeSlideCreate('new', undefined, { preserveAttachments: true })");
+    expect(home).toContain("if (!homeSlideCreateOpen) focusPromptAtEnd()");
     expect(home).toContain("asset.assetId !== assetId");
     expect(home).toContain("item.lastModified === file.lastModified");
     // Composer Canvas/Drive handoff always has source material.
