@@ -171,6 +171,7 @@ import {
 } from '../teamver/canvasSlideLaunch';
 import {
   TEMPLATE_CLONE_CONTENT_FILL_MARKER,
+  isTemplateCloneContentFillPrompt,
   resolveTemplateCloneAutoSendSeed,
   clearTemplateCloneContentFillQueue,
   isTemplateCloneContentFillQueued,
@@ -1529,9 +1530,11 @@ function slideExistingDeckEditInstruction(
     const lines = [
       EXISTING_DECK_EDIT_INSTRUCTION_MARKER,
       `This project already has a template-cloned deck at \`${deckPath}\` (see <attached-project-files>).`,
-      'This turn fills REAL content into that cloned deck while preserving its template LOOK.',
-      'Emit a full `<artifact type="deck" identifier="deck">` that rewrites visible text for the topic.',
-      'Keep the cloned CSS/fonts/Motif SVG/shell language — never Neutral Modern or OD skeleton.',
+      'This turn is a CREATE fill, not an edit of the clone. Do NOT copy on-disk `deck.html`.',
+      'Emit a compact body-first `<artifact type="deck" identifier="deck">` with real topical slides.',
+      'FORBIDDEN: `<head>`, rewriting the cloned document, status "수정 반영 중".',
+      'First 1200 characters after `<artifact` must include `<body` and one complete slide with real copy.',
+      'Bind the Template visual kit (palette / fonts / Motif SVGs). Never Neutral Modern or OD skeleton.',
       'Do not paste user instructions ("만들어줘") into titles. Adjust slide count/layouts for the content; do not mirror the template demo lineup.',
       'Replace Clone placeholders ("…", "개요", "핵심 포인트", "다음 단계", "Presentation") with real topical copy at the requested expertise level. No filler sentences.',
       'If you emit a short status sentence, use create tone ("슬라이드 초안 작성 중").',
@@ -8585,6 +8588,11 @@ export function ProjectView({
       const isAutoContinueSend =
         meta?.entryFrom === AUTO_CONTINUE_ENTRY_FROM
         || isAutoContinueIncompleteOutputPrompt(prompt);
+      // Clone fill must NOT be treated as an existing-deck edit. Attaching
+      // the 40–50KB cloned example.html makes the model copy `<head>` and
+      // stall for minutes ("수정 반영 중 — 전체 재구성") instead of emitting
+      // compact body-first slides.
+      const isTemplateCloneContentFill = isTemplateCloneContentFillPrompt(prompt);
       let filesSnapshot = projectFiles;
       if (
         commentAttachments.some(
@@ -8647,7 +8655,13 @@ export function ProjectView({
       // Disk *canonical* deck is enough — first-turn interrupt + retry often has
       // no prior assistant in historyBase, but the project already has deck.html.
       // Do not treat leftover about.html / notes.html as an existing deck edit.
-      if (slideOnlyMvp && scopedCommentAttachments.length === 0) {
+      // Clone content-fill is a CREATE turn: skip auto-attach so the model
+      // does not rewrite the cloned document from `<head>`.
+      if (
+        slideOnlyMvp
+        && scopedCommentAttachments.length === 0
+        && !isTemplateCloneContentFill
+      ) {
         const existingDeck = resolveCanonicalDeckFileForEdit(
           filesSnapshot,
           project.metadata?.entryFile ?? null,
@@ -8697,6 +8711,13 @@ export function ProjectView({
             }
           }
         }
+      }
+      if (isTemplateCloneContentFill) {
+        effectiveAttachments = effectiveAttachments.filter((attachment) => {
+          const attachPath = String(attachment.path || attachment.name || '').trim();
+          return !attachPath || !isCanonicalDeckFileName(attachPath);
+        });
+        autoAttachedDeckPath = null;
       }
       const instructionAttachments = retryTarget
         ? mergeChatAttachments(retryTarget.userMsg.attachments ?? [], effectiveAttachments)
@@ -10491,8 +10512,11 @@ export function ProjectView({
           {
             includeCommentEditPatchRule: runCommentAttachments.length > 0,
             includeExistingDeckImageEditRule:
-              autoAttachedDeckPath != null
-              || imageAttachmentPathsForSlideEmbed(effectiveAttachments).length > 0,
+              !isTemplateCloneContentFill
+              && (
+                autoAttachedDeckPath != null
+                || imageAttachmentPathsForSlideEmbed(effectiveAttachments).length > 0
+              ),
           },
         );
         const webFetchContexts = await fetchApiWebFetchContexts(userMsg.content);

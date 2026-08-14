@@ -9,6 +9,10 @@ import type { ChatAttachment } from '../types';
 
 export const TEMPLATE_CLONE_CONTENT_FILL_MARKER = '[Template clone content fill]';
 
+export function isTemplateCloneContentFillPrompt(text: string | null | undefined): boolean {
+  return String(text ?? '').includes(TEMPLATE_CLONE_CONTENT_FILL_MARKER);
+}
+
 export function templateCloneContentFillFlagKey(projectId: string): string {
   return `od:template-clone-content-fill:${projectId}`;
 }
@@ -163,13 +167,15 @@ export function buildTemplateCloneContentFillSeed(options: {
     visible,
     '',
     TEMPLATE_CLONE_CONTENT_FILL_MARKER,
-    'Attached `deck.html` already has the selected template LOOK (CSS, fonts, Motif SVG, layout shells) from a daemon Clone.',
-    'Fill REAL presentation CONTENT for this request and any attached source materials.',
+    'A daemon Clone already wrote template LOOK into on-disk `deck.html` as a preview seed. Do NOT copy or rewrite that document.',
+    'Emit a compact body-first `<artifact type="deck" identifier="deck">` with REAL topical slides. Bind the Template visual kit (palette / fonts / Motif SVGs) from the system prompt.',
     topic ? `Cover topic (use as the title — not the instruction): ${topic}.` : '',
     'Hard rules:',
+    '- FORBIDDEN: `<head>`, copying cloned `deck.html`, dumping a long `<style>` block before slide 1, status "수정 반영 중".',
+    '- Body-first: the first 1200 characters after `<artifact` MUST include `<body` and one complete `<section class="slide">` with real topical copy (not "…").',
+    '- Status sentence if any: "슬라이드 초안 작성 중" — this is a CREATE fill, not an edit of the clone.',
     '- Do NOT paste user instructions ("만들어줘", "만들어 주세요", Canvas boilerplate) into slide titles or subtitles.',
-    '- Preserve the cloned template visual kit (palette hex, font-family, deco/SVG motifs, shell class language). Neutral Modern / OD skeleton terracotta is a failed deliverable.',
-    '- You MAY emit a full `<artifact type="deck" identifier="deck">` that rewrites visible text and adjusts slide count/layouts for the topic — keep the template look, not the template demo page lineup.',
+    '- Bind kit palette/fonts and paste Motif SVGs from the kit. Neutral Modern / OD skeleton terracotta is a failed deliverable.',
     '- Prefer content-driven slide roles (cover / body / list / cards / quote…). Do not mirror the template example\'s page count or order.',
     '- Close `</artifact>` in this same response; do not finish with prose only.',
     'Content quality:',

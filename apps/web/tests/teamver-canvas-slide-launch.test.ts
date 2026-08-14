@@ -420,6 +420,8 @@ describe("canvasSlideLaunch", () => {
     expect(projectView).toContain("selectedDeckTemplateId: meta?.selectedDeckTemplateId ?? null");
     expect(projectView).toContain("selectedDeckTemplateTitle: meta?.selectedDeckTemplateTitle ?? null");
     expect(projectView).toContain("resolveTemplateCloneAutoSendSeed(");
+    expect(projectView).toContain("isTemplateCloneContentFillPrompt(");
+    expect(projectView).toContain("!isTemplateCloneContentFill");
     expect(composer).toContain("const sourceBrief = canvasCreateSlidesSourceBrief(handoff)");
     expect(composer).toContain("const sourceBrief = driveCreateSlidesSourceBrief(asset)");
     expect(composer).toContain("promptForRun");

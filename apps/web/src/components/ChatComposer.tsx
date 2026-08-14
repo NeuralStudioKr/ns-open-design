@@ -2210,11 +2210,6 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
                   canvasSlideQuickSettings.length,
                 ),
               });
-              const deckAttachment: ChatAttachment = {
-                path: seeded.fileName,
-                name: seeded.fileName,
-                kind: 'file',
-              };
               const baseMeta = currentRunContextMeta();
               const canvasMeta = canvasCreateSlidesTurnMeta(selectedCanvasSlideTemplate.id, {
                 designSystemId: designSystemIdForRun,
@@ -2222,7 +2217,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
               });
               sendComposedTurn(
                 fillSeed,
-                [...attachments, deckAttachment],
+                attachments,
                 [],
                 {
                   ...baseMeta,
@@ -2410,11 +2405,6 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
                 canvasSlideQuickSettings.length,
               ),
             });
-            const deckAttachment: ChatAttachment = {
-              path: seeded.fileName,
-              name: seeded.fileName,
-              kind: 'file',
-            };
             const baseMeta = currentRunContextMeta();
             const canvasMeta = canvasCreateSlidesTurnMeta(selectedCanvasSlideTemplate.id, {
               designSystemId: designSystemIdForRun,
@@ -2422,7 +2412,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
             });
             sendComposedTurn(
               fillSeed,
-              [...attachments, deckAttachment],
+              attachments,
               [],
               {
                 ...baseMeta,

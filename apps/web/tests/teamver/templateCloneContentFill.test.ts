@@ -35,6 +35,10 @@ describe('templateCloneContentFill', () => {
     expect(seed).toContain('Selected template: Html Ppt Zhangzara Daisy Days');
     expect(looksLikeInstructionNotSlideCopy('첨부한 자료를 바탕으로 슬라이드 덱을 만들어줘.')).toBe(true);
     expect(seed).toContain('Content quality:');
+    expect(seed).toContain('FORBIDDEN:');
+    expect(seed).toContain('<head>');
+    expect(seed).toContain('슬라이드 초안 작성 중');
+    expect(seed).toContain('this is a CREATE fill, not an edit of the clone');
     expect(seed).toContain('Cover topic (use as the title — not the instruction): expo');
     expect(deriveTemplateCloneTopicLabel(
       'expo에 대해서 설명하는 피피티 만들어줘. 시니어 개발자 레벨.',

@@ -2666,10 +2666,6 @@ function AppInner() {
             });
             if (seeded.ok) {
               seededDeckFileName = seeded.fileName;
-              firstMessageAttachments = [
-                ...firstMessageAttachments,
-                { path: seeded.fileName, name: seeded.fileName, kind: 'file' },
-              ];
               queuedFillSeed = buildTemplateCloneContentFillSeed({
                 userInstruction: derivedPendingPrompt ?? null,
                 sourceBrief,
@@ -2774,10 +2770,6 @@ function AppInner() {
         });
         if (seeded.ok) {
           seededDeckFileName = seeded.fileName;
-          firstMessageAttachments = [
-            ...firstMessageAttachments,
-            { path: seeded.fileName, name: seeded.fileName, kind: 'file' },
-          ];
           queuedFillSeed = buildTemplateCloneContentFillSeed({
             userInstruction: derivedPendingPrompt ?? null,
             sourceBrief,
