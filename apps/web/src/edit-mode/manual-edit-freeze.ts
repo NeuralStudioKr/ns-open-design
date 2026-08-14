@@ -102,6 +102,16 @@ export function shouldApplyTipYieldSingleInspectorSnapshot(
 }
 
 /**
+ * After tip-yield Mixed→single (2→1), refresh host paint for the remaining id
+ * so overlay geometry is not stuck on the prior multi primary (59 / 51–53).
+ */
+export function shouldRefreshHostPaintAfterTipYieldSingleReseed(
+  selectedIds: readonly string[],
+): boolean {
+  return selectedIds.length === 1;
+}
+
+/**
  * Tip-remount geometry grace is bound to a primary id. When selection moves
  * away, clear grace so a later remasure for the new primary is not skipped
  * under a stale grace window (overlay residual).

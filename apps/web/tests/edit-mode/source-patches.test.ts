@@ -1658,6 +1658,32 @@ describe('manual edit source patches', () => {
     expect(namespacedClipMaskFilter).not.toMatch(/svg:clip-path\s*=/i);
     expect(namespacedClipMaskFilter).not.toMatch(/svg:mask\s*=/i);
     expect(namespacedClipMaskFilter).not.toMatch(/svg:filter\s*=/i);
+    // Namespaced marker-start / color-profile — longer presentation names.
+    const namespacedMarkerColorProfile = sanitizeManualEditFullSource(
+      '<!doctype html><html><body>'
+      + '<path svg:marker-start="url(javascript:alert(12))" data-od-id="p" />'
+      + '<rect svg:color-profile="url(javascript:alert(13))" data-od-id="r2" />'
+      + '</body></html>',
+    );
+    expect(namespacedMarkerColorProfile.toLowerCase()).not.toContain('javascript');
+    expect(namespacedMarkerColorProfile).not.toMatch(/svg:marker-start\s*=/i);
+    expect(namespacedMarkerColorProfile).not.toMatch(/svg:color-profile\s*=/i);
+    // SMIL presentation paint uses the same SSOT Set as element attrs / failClosed.
+    expect(sourcePatchesSource).toContain(
+      'Presentation paint via SMIL attributeName — same SSOT as failClosed',
+    );
+    expect(sourcePatchesSource).toContain(
+      'MANUAL_EDIT_CSS_URL_PRESENTATION_ATTRS.has(smilAttr)',
+    );
+    expect(sourcePatchesSource).toMatch(/'color-profile'/);
+    // DOM walk also scrubs namespaced color-profile / marker-start.
+    const domNamespacedPresentation = sanitizeManualEditHtmlFragment(
+      '<path foo:marker-start="url(javascript:alert(14))" data-od-id="p2" />'
+      + '<rect bar:color-profile="url(javascript:alert(15))" data-od-id="r3" />',
+    );
+    expect(domNamespacedPresentation.toLowerCase()).not.toContain('javascript');
+    expect(domNamespacedPresentation).not.toMatch(/foo:marker-start\s*=/i);
+    expect(domNamespacedPresentation).not.toMatch(/bar:color-profile\s*=/i);
     // failClosed presentation list ≡ DOM MANUAL_EDIT_CSS_URL_PRESENTATION_ATTRS.
     expect(sourcePatchesSource).toContain('MANUAL_EDIT_CSS_URL_PRESENTATION_ATTR_NAMES_LONGER_FIRST');
     expect(sourcePatchesSource).toContain(

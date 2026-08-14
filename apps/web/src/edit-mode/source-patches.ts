@@ -1360,6 +1360,8 @@ function sanitizeManualEditReplacementTree(root: Element): void {
           return;
         }
       }
+      // Presentation paint via SMIL attributeName — same SSOT as failClosed /
+      // element attrs (color-profile, marker-start, fill, …).
       if (MANUAL_EDIT_CSS_URL_PRESENTATION_ATTRS.has(smilAttr)) {
         // Same scrub-then-isSafe pipeline as presentation attrs (not boolean-only).
         for (const key of ['to', 'from', 'by', 'values'] as const) {

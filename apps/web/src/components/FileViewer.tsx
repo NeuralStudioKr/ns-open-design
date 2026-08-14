@@ -336,6 +336,7 @@ import {
   shouldReseedManualEditMultiInspectorAfterFreezeSync,
   shouldReseedSingleInspectorAfterTipYieldMixedClear,
   shouldApplyTipYieldSingleInspectorSnapshot,
+  shouldRefreshHostPaintAfterTipYieldSingleReseed,
   shouldSkipWildJumpAfterTipRemountGrace,
   shouldSyncManualEditFrozenSourceToPainted,
   shouldUpdateManualEditFrozenSourceOnPatch,
@@ -8040,6 +8041,11 @@ function HtmlViewer({
                 fullSource: base,
               }));
             }
+          }
+          // 2→1 tip-yield: host paint may still track the prior multi primary.
+          if (shouldRefreshHostPaintAfterTipYieldSingleReseed(ids)) {
+            const paintId = selectedManualEditTargetIdRef.current ?? ids[0]!;
+            refreshManualEditHostPaintRect(paintId, { force: true });
           }
         }
         return;

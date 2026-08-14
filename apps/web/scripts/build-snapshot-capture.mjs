@@ -9,17 +9,28 @@ const publicOut = join(root, 'public/od-snapshot-capture.js');
 const inlineOut = join(root, 'src/runtime/snapshot-capture-inline.ts');
 
 /**
- * Resolve a package from apps/web, then workspace root, then contracts.
- * Some agent/CI installs leave web's node_modules without a direct link while
- * the workspace still has the package under another root — do not fail pretest
- * on a missing symlink when the module is otherwise installed.
+ * Resolve roots for sparse agent/CI installs where apps/web/node_modules may
+ * lack a direct link while the workspace still has the package elsewhere.
  */
-function createWorkspaceRequires() {
+function workspaceResolveRoots() {
   return [
-    createRequire(join(root, 'package.json')),
-    createRequire(join(root, '../../package.json')),
-    createRequire(join(root, '../../packages/contracts/package.json')),
+    join(root, 'package.json'),
+    join(root, '../../package.json'),
+    join(root, '../../packages/contracts/package.json'),
   ];
+}
+
+function createWorkspaceRequires() {
+  return workspaceResolveRoots().map((pkgJson) => createRequire(pkgJson));
+}
+
+function formatResolveFailure(name, detail) {
+  const tried = workspaceResolveRoots().map((p) => `  - ${p}`).join('\n');
+  return (
+    `${name} not found for build:snapshot-capture${detail ? ` (${detail})` : ''}.\n`
+    + `Tried createRequire from:\n${tried}\n`
+    + 'Run pnpm install so apps/web (and contracts for esbuild) declare the dependency.'
+  );
 }
 
 function loadEsbuild() {
@@ -30,10 +41,7 @@ function loadEsbuild() {
       // try next root
     }
   }
-  throw new Error(
-    'esbuild not found for build:snapshot-capture. Run pnpm install '
-    + '(apps/web and packages/contracts both declare esbuild).',
-  );
+  throw new Error(formatResolveFailure('esbuild'));
 }
 
 /**
@@ -51,10 +59,7 @@ function resolveModernScreenshotEsm() {
       // try next root
     }
   }
-  throw new Error(
-    'modern-screenshot ESM (dist/index.mjs) not found for build:snapshot-capture. '
-    + 'Run pnpm install (apps/web declares modern-screenshot).',
-  );
+  throw new Error(formatResolveFailure('modern-screenshot', 'dist/index.mjs'));
 }
 
 const { build } = loadEsbuild();

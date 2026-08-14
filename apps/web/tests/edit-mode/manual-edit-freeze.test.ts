@@ -8,6 +8,7 @@ import {
   shouldReseedManualEditMultiInspectorAfterFreezeSync,
   shouldReseedSingleInspectorAfterTipYieldMixedClear,
   shouldApplyTipYieldSingleInspectorSnapshot,
+  shouldRefreshHostPaintAfterTipYieldSingleReseed,
   shouldSkipWildJumpAfterTipRemountGrace,
   shouldSyncManualEditFrozenSourceToPainted,
   shouldUpdateManualEditFrozenSourceOnPatch,
@@ -96,6 +97,12 @@ describe('manual edit freeze reset', () => {
     expect(shouldApplyTipYieldSingleInspectorSnapshot('')).toBe(false);
     expect(shouldApplyTipYieldSingleInspectorSnapshot(null)).toBe(false);
     expect(shouldApplyTipYieldSingleInspectorSnapshot(undefined)).toBe(false);
+  });
+
+  it('refreshes host paint after tip-yield Mixed→single (2→1)', () => {
+    expect(shouldRefreshHostPaintAfterTipYieldSingleReseed(['a'])).toBe(true);
+    expect(shouldRefreshHostPaintAfterTipYieldSingleReseed([])).toBe(false);
+    expect(shouldRefreshHostPaintAfterTipYieldSingleReseed(['a', 'b'])).toBe(false);
   });
 
   it('clears tip-remount grace when selection leaves the grace primary', () => {
