@@ -1686,9 +1686,7 @@ export function composeTeamverSlideApiPrompt({
           + '- Use kit + scaffold map + Layout CSS as the base look; replace only visible content.\n'
           + '- Do NOT dump/rewrite full example.html. Ignore SKILL.md "Clone example.html" in API mode.\n'
           + '- Bind kit Slide surface on html/body AND every `.slide`; use kit font names exactly.\n'
-          + (templateCloneContentFill
-            ? '- Follow scaffold map/Layout CSS roles. Do NOT paste Motif `<svg>` this fill turn — compact CSS/deco in kit hex only; no emoji ornaments.\n'
-            : '- Follow scaffold map/Layout CSS roles. Keep compact motif/deco density. If SVG exists, use at most one short snippet after title/body copy starts; skip huge SVG/style payloads. No emoji ornaments.\n')
+          + '- Follow scaffold map/Layout CSS roles. Keep compact motif/deco density via CSS shapes first. If SVG exists, use at most one short snippet AFTER title/body copy starts; never open Motif `<svg>` before cover copy; skip huge SVG/style payloads. No emoji ornaments.\n'
           + '- Do not paste a long `<head>` before slide 1; first produce visible slide sections and finish the deck.\n'
           + '- Active design system is secondary brand context only; template look wins.\n\n'
         )

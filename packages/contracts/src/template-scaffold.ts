@@ -174,7 +174,7 @@ function buildScaffoldMarkdown(options: {
     '',
     'This HTML is the **authoritative working document** for the selected template.',
     '**CONTENT-SWAP ONLY:** start from this scaffold. Replace visible text (headings, paragraphs, list items, badges, labels, chart captions) so the deck matches the user brief / source material.',
-    '**KEEP verbatim:** every `class`, the `<style>` block, Motif `<svg>` sprites, `.deco` wrappers, borders, shadows, radii, and fonts. Do NOT invent a new palette, typography, or ellipse/emoji daisy.',
+    '**KEEP verbatim:** every `class`, the `<style>` block, `.deco` wrappers, borders, shadows, radii, and fonts. Prefer Motif `<svg>` already inside this scaffold only AFTER title/lead is filled — never invent Motif dumps before cover copy. Do NOT invent a new palette, typography, or ellipse/emoji daisy.',
     '**Slide count:** duplicate or drop whole `<section class="slide">` blocks from this scaffold to hit the requested count — do not invent new layout shells.',
     '**Forbidden:** OD skeleton terracotta `#c96442`, Neutral slate `#0f172a`, Noto-only covers that ignore scaffold fonts, emoji ornament rows as motif substitutes.',
     'Emit ONE `<artifact type="deck" identifier="deck">` whose body is this scaffold with content swapped. Prefer the scaffold byte-order (first slide → `<style>` → remaining slides).',

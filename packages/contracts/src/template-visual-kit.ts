@@ -148,7 +148,7 @@ function buildTemplateAnchorSummary(options: {
   }
   if (/daisy/i.test(options.title)) {
     anchors.push(
-      '- Daisy Days identity: cream paper, dark ink outline, butter-yellow daisy center, hand-drawn white petals, pastel star/badge accents. The cover MUST show the provided daisy SVG motif, not a generic dark flower.',
+      '- Daisy Days identity: cream paper, dark ink outline, butter-yellow daisy center, hand-drawn white petals, pastel star/badge accents. Prefer kit Motif daisy sprites AFTER the cover title/lead (never open Motif `<svg>` before visible copy). CSS-shape daisy accents in kit hex are OK when SVG paste risks a hang; never invent a generic dark flower.',
     );
   }
   return anchors;
@@ -620,7 +620,7 @@ function renderMustMatchLookBlock(options: {
       : '3. **Layout/placement:** reuse the template\'s multi-region compositions (grids/flex/cards) as a vocabulary. Pick and reorder freely to match the user brief; do not flatten every slide into the same cover composition.',
   );
   lines.push(
-    '4. **Motif/density:** when Motif sprites / Decoration CSS are present, show them — sparse title-only slides are a failure.',
+    '4. **Motif/density:** when Motif sprites / Decoration CSS are present, keep decorative density via compact `.deco`/CSS shapes first — Motif SVG is optional and only AFTER title/lead. Sparse title-only slides are a failure; Motif-before-title hangs are also a failure.',
   );
   return lines.join('\n');
 }
@@ -879,7 +879,7 @@ function extractFirstSlideStructureCue(html: string, budget: number): string | n
   if (!raw) return null;
   const snippet = raw
     .replace(/<script\b[\s\S]*?<\/script>/gi, '')
-    .replace(/<svg\b[\s\S]*?<\/svg>/gi, '<!-- use Motif sprites SVG inside .deco -->')
+    .replace(/<svg\b[\s\S]*?<\/svg>/gi, '<!-- optional Motif sprite AFTER title/lead — or CSS circle in kit hex -->')
     .replace(/\s+/g, ' ')
     .trim();
   if (!snippet) return null;
@@ -980,7 +980,7 @@ function extractTemplateScaffoldMap(
   }
   if (lines.length === 0) return null;
   return [
-    'Token-safe layout contract from example.html (classes/roles only — not a full HTML dump). Replace visible content only; reuse Motif sprites below for deco slots.',
+    'Token-safe layout contract from example.html (classes/roles only — not a full HTML dump). Replace visible content only; decorate with CSS/`.deco` first — Motif sprites below are optional AFTER title/lead.',
     ...lines,
   ].join('\n');
 }
@@ -989,10 +989,10 @@ const HARD_RULES = [
   'Hard rules (non-negotiable):',
   '- **LOOK LIKE THE TEMPLATE — but restructure for the brief.** Background/surface, fonts, borders/shadows, and motif sprites MUST match this kit. Slide count, slide order, and per-slide composition MUST match the **user brief**, not the template\'s natural shell sequence. The template is a **visual and layout vocabulary** to draw from, not a slide skeleton to clone verbatim. A Neutral / "similar vibe" reinterpretation IS a failure — but so is a rigid shell-for-shell copy that keeps the template\'s Weekly Grid or Timeline when the brief has nothing to do with days-of-week or a schedule.',
   '- **LAYOUT VOCABULARY, NOT SHELL COPY:** treat `### Template scaffold map` (below) as a *catalog of available layouts* (cover / welcome / weekly-grid / timeline / chart / quote / three-column / closing / …). Pick the layout roles that fit the user brief\'s actual content. Reuse the same role across multiple content slides when appropriate; skip roles whose semantic doesn\'t fit (e.g. don\'t force `weekly-grid` on a sales pitch, don\'t force `timeline` on a static explainer). Slide count is driven by the user brief / Plugin `slideCount` / an auto default of 6–8, NOT by the template\'s shell count.',
-  '- **BODY-FIRST:** emit `<body>` / filled `<section class="slide">` (or the template\'s slide wrapper) BEFORE a large `<head>`/`<style>` dump. Put Motif sprites + Layout/Decoration CSS in one short body `<style>` after slide 1 (or tiny inline tokens). A CSS-only truncation is a failed deliverable.',
+  '- **BODY-FIRST:** emit `<body>` / filled `<section class="slide">` (or the template\'s slide wrapper) BEFORE a large `<head>`/`<style>` dump. Put compact CSS/deco tokens (and optional Motif sprites only AFTER title/lead) in one short body `<style>` after slide 1 — never Motif SVG before cover copy. A CSS-only truncation is a failed deliverable.',
   '- **Background:** bind `### Slide surface` on BOTH `html`/`body` AND every `.slide`. Dark-on-dark, light-on-light, or paper-slides-on-wrong-shell are failed deliverables. Ink/border tokens are stroke/text, not backgrounds.',
   '- **Fonts:** use kit Font import + font-family names exactly; do not substitute Inter/Noto/system-ui alone when the kit lists display/body faces.',
-  '- Motif MUST be copied from **Motif sprites** / **Decoration CSS** below when present. Paste sprites VERBATIM into the template\'s ornament wrappers. Use only sprites listed in Motif sprites — never invent SVG/emoji for a missing slot. Copy at least one complete provided SVG on the cover when sprites are present.',
+  '- Motif language comes from **Motif sprites** / **Decoration CSS** below when present. Prefer CSS shapes / `.deco` / chunky borders in kit hex first. Motif SVG paste is optional: at most one short complete sprite AFTER visible title/lead on a slide, never before cover copy, never a multi-KB `<svg><style>` dump, and skip entirely if paste risks a hang. Use only listed sprites — never invent SVG/emoji for a missing slot.',
   '- **Forbidden motif substitutes:** unicode/emoji ornaments as decoration pretending to be the template identity. Do not invent ellipse "daisy" SVGs or generic flower geometry when sprites are provided.',
   '- Preserve chunky cards/borders/offset shadows when Decoration CSS / `:root` tokens show them (`--border`, `--shadow`).',
   '- Do not substitute OD skeleton terracotta `#c96442` unless that hex is listed in this kit\'s palette cues.',
@@ -1081,9 +1081,9 @@ export function extractTemplateVisualKitFromHtml(
   const spriteBlock: string[] = [];
   if (sprites.length > 0) {
     spriteBlock.push(
-      '### Motif sprites (complete SVGs — copy into the template ornament wrappers)',
+      '### Motif sprites (optional complete SVGs — AFTER title/lead only)',
       '',
-      'Copy at least one complete SVG from this block onto the cover. Reuse these sprites in the template\'s `.deco` / ornament slots (2–4 per slide when the template is decorative). Paste sprites VERBATIM (keep fill/stroke/`<style>` classes). When Decoration CSS lists multiple matching corner slots, fill them — one lonely ornament is not the template. Do not invent emoji ornaments or generic geometry. Do not paste every sprite into `<head>` before writing slides — BODY-FIRST.',
+      'These sprites are the ONLY allowed Motif SVG vocabulary (keep fill/stroke/`<style>` classes if you paste). Prefer CSS shapes / `.deco` / chunky borders for density. If you paste SVG: at most one short complete sprite AFTER visible title/lead on a slide; never open `<svg` before cover copy; never dump multiple sprites or a multi-KB `<svg><style>` block into `<head>`; skip Motif SVG entirely when paste risks a hang. Do not invent emoji ornaments or generic geometry. BODY-FIRST always.',
       '',
     );
     for (const sprite of sprites) {
@@ -1146,9 +1146,9 @@ export function extractTemplateVisualKitFromHtml(
         // If even sprites overflow, keep as many complete sprites as fit.
         const kept = [...lines];
         kept.push(
-          '### Motif sprites (complete SVGs — copy into corner `<div class="deco …">` wrappers)',
+          '### Motif sprites (optional — AFTER title/lead only)',
           '',
-          'Copy at least one complete SVG from this block onto the cover. Paste sprites VERBATIM. BODY-FIRST.',
+          'Prefer CSS/`.deco` density. At most one short complete sprite AFTER title/lead; skip Motif SVG if hang risk. BODY-FIRST.',
           '',
         );
         for (const sprite of sprites) {
@@ -1262,7 +1262,7 @@ export function slimTemplateVisualKitForFill(skillBody: string): string {
     '',
   );
   next = next.replace(
-    /- Motif MUST be copied from[\s\S]*?(?=\n- |\n### |\n## |$)/g,
+    /- Motif (?:MUST be copied from|language comes from)[\s\S]*?(?=\n- |\n### |\n## |$)/g,
     '- Motif SVG paste is DISABLED for first content-fill. Decorate with CSS shapes in kit palette hex only.\n',
   );
   next = next.replace(
@@ -1274,6 +1274,18 @@ export function slimTemplateVisualKitForFill(skillBody: string): string {
     'Do not paste sprites on this fill turn.',
   );
   next = next.replace(
+    /These sprites are the ONLY allowed Motif SVG vocabulary[^\n]*/gi,
+    'Motif SVG vocabulary is omitted this fill turn — CSS shapes only.',
+  );
+  next = next.replace(
+    /If you paste SVG:[^\n]*/gi,
+    'Do not paste Motif SVG this fill turn.',
+  );
+  next = next.replace(
+    /Prefer kit Motif daisy sprites[^\n]*/gi,
+    'Prefer kit cream/ink + CSS-shape daisy accents — no Motif SVG this fill turn.',
+  );
+  next = next.replace(
     /Every slide should carry 1–3 recognizable Motif sprites[^\n]*/gi,
     'Every slide should use kit palette + fonts; Motif SVGs are deferred until after a closed deck.',
   );
@@ -1282,20 +1294,40 @@ export function slimTemplateVisualKitForFill(skillBody: string): string {
     '4. **Motif/density:** deferred — CSS shapes only on first fill; Motif SVGs later.',
   );
   next = next.replace(
-    /treat its\s+CSS tokens, fonts, Motif sprites[^\n]*/gi,
+    /treat its\s+CSS tokens, fonts, (?:Motif sprites|compact motif\/deco cues)[^\n]*/gi,
     'treat its CSS tokens, fonts, and scaffold map as mandatory — Motif SVG paste is disabled this fill turn.',
   );
   next = next.replace(
-    /The cover MUST show the provided daisy SVG motif[^\n]*/gi,
+    /The cover MUST (?:show the provided daisy SVG motif|use kit cream\/ink \+ CSS-shape decoration)[^\n]*/gi,
     'The cover MUST use kit cream/ink + CSS-shape decoration — no Motif SVG this fill turn.',
   );
   next = next.replace(
-    /when Motif sprites \/ Decoration CSS are present, show them[^\n]*/gi,
-    'when Decoration CSS is present, use CSS-shape density in kit hex — Motif SVG paste is disabled this fill turn.',
+    /when Motif sprites \/ Decorations CSS are present[^\n]*/gi,
+    'when Decorations CSS is present, use CSS-shape density in kit hex — Motif SVG paste is disabled this fill turn.',
   );
   next = next.replace(
-    /<!-- use Motif sprites SVG inside \.deco -->/gi,
+    /<!-- (?:use Motif sprites SVG inside \.deco|optional Motif sprite AFTER title\/lead[^>]*) -->/gi,
     '<!-- CSS circle in kit hex — no Motif SVG this fill turn -->',
+  );
+  next = next.replace(
+    /reuse Motif sprites below[^\n]*/gi,
+    'decorate with CSS/`.deco` only — Motif sprites are deferred this fill turn.',
+  );
+  next = next.replace(
+    /Motif sprites below are optional AFTER title\/lead\.?/gi,
+    'Motif sprites are deferred this fill turn.',
+  );
+  next = next.replace(
+    /If Motif sprites are present[^\n]*/gi,
+    'Motif SVG paste is DISABLED this fill turn — CSS shapes / `.deco` cues in kit palette hex only.',
+  );
+  next = next.replace(
+    /use at most one short (?:complete )?(?:sprite|snippet)[^\n]*/gi,
+    'Do not paste Motif SVG this fill turn — CSS shapes only.',
+  );
+  next = next.replace(
+    /On first Clone content-fill:[^\n]*/gi,
+    'On first Clone content-fill: ZERO Motif `<svg>` — CSS shapes / `.deco` cues in kit palette hex only.',
   );
   return next;
 }

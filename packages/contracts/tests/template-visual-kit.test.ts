@@ -44,16 +44,17 @@ describe('extractTemplateVisualKitFromHtml', () => {
     expect(kit).toContain('.deco{');
     expect(kit).toMatch(/<svg\b[\s\S]*?<\/svg>/i);
     expect(kit).not.toMatch(/<svg\b[^>]*>[^<]*…/);
-    // First-slide structure cue is optional under budget; Motif sprites cover SVG paste.
-    expect(kit).toMatch(/Motif sprites|use Motif sprites SVG inside \.deco/i);
+    // First-slide structure cue is optional under budget; Motif sprites remain available.
+    expect(kit).toMatch(/Motif sprites|optional Motif sprite AFTER title\/lead/i);
     expect(kit).toContain('### Slide surface');
     expect(kit).toMatch(/\*\*background\*\*:\s*`#F5F0E6`/i);
     expect(kit).toMatch(/\*\*color\*\*\s*\(text\):\s*`#2D2D2D`/i);
     expect(kit).toMatch(/light background \+ dark ink/i);
     expect(kit).toMatch(/html,\s*body,\s*\.slide\s*\{\s*background:\s*#F5F0E6/);
     expect(kit).toMatch(/cream-slides-on-dark-shell|preview-panel shell/i);
-    expect(kit).toMatch(/VERBATIM|Paste sprites VERBATIM/i);
-    expect(kit).toMatch(/lonely ornament|matching corner slots|TOKEN-SAFE CONTENT-SWAP/i);
+    expect(kit).toMatch(/AFTER title\/lead|at most one short|optional complete SVGs|Motif SVG paste is optional/i);
+    expect(kit).not.toMatch(/Paste sprites VERBATIM|Copy at least one complete SVG from this block onto the cover/i);
+    expect(kit).toMatch(/lonely ornament|matching corner slots|TOKEN-SAFE CONTENT-SWAP|CSS\/`?\.deco`? first|decorative density/i);
     // The classifier must ship the real Zhangzara multi-petal daisy
     // (150×150 + #FCDF6C), not a sky-blue cloud that also has `#fff` on a
     // square canvas. Cloud-as-daisy previously made models invent ellipse
@@ -235,13 +236,22 @@ html,body{background:var(--cream);color:var(--text-dark)}
     })!;
     expect(kit).toContain('<svg');
     expect(kit).toContain('Decoration CSS');
-    const stripped = slimTemplateVisualKitForFill(kit);
+    const wrapped = [
+      '# Teamver selected deck template guard',
+      'If Motif sprites are present, use at most one short snippet AFTER visible title/body copy has started.',
+      'On first Clone content-fill: skip Motif `<svg>` entirely.',
+      '',
+      kit,
+    ].join('\n');
+    const stripped = slimTemplateVisualKitForFill(wrapped);
     expect(stripped).toContain('#F5F0E6');
     expect(stripped).toContain('omitted for first content-fill stability');
     expect(stripped).not.toMatch(/<svg\s/i);
     expect(stripped).not.toMatch(/<\/svg>/i);
     expect(stripped).not.toMatch(/cover MUST show the provided daisy SVG/i);
-    expect(stripped).toMatch(/Motif SVG paste is DISABLED|Do NOT paste Motif/i);
+    expect(stripped).not.toMatch(/Motif sprites below are optional AFTER title/i);
+    expect(stripped).not.toMatch(/use at most one short snippet AFTER visible/i);
+    expect(stripped).toMatch(/Motif SVG paste is DISABLED|Do NOT paste Motif|ZERO Motif/i);
     expect(stripped).toContain('Decoration CSS (omitted for first content-fill stability)');
   });
 });

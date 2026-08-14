@@ -38,7 +38,8 @@ describe('selected-deck-template prompt helpers', () => {
     expect(wrapped).toContain('<body><section class="slide"');
     expect(wrapped).toContain('Do not emit `<head>`');
     expect(wrapped).toContain('skip huge SVG `<style>` payloads');
-    expect(wrapped).toContain('skip Motif `<svg>` entirely');
+    expect(wrapped).toContain('ZERO Motif `<svg>`');
+    expect(wrapped).toContain('never open Motif `<svg>` before cover copy');
   });
 
   it('prefers selected template body and does not append Simple Deck as secondary', () => {
