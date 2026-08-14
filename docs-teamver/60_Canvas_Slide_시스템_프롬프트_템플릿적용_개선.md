@@ -152,6 +152,46 @@ full `example.html`을 시스템 프롬프트에 넣지 않는다는 방침은 �
 
 제품 판단: **완성된 덱이 우선**이다. 선택 템플릿과 100% 동일한 CSS를 복사하다가 결과물이 비어버리는 것보다, 템플릿의 palette/font/motif cue가 보이는 compact static deck을 완성하는 것이 낫다. 따라서 pre-write gate는 계속 shell 저장을 막고, prompt는 shell이 생기지 않도록 body-first로 유도한다.
 
+### 0.11 2026-08-14 근본 재조명 — Clone이 **최종 결과물**이었던 것이 진짜 원인, AI content generation 자체가 죽어 있었다
+
+**증상 (사용자 신고):** "여전히 템플릿 적용을 제대로 못하고 있다. 초안을 복사해와서는 사용자 입력 프롬프트를 그대로 넣어버린다. 그것이 아니라 이전처럼 AI로 컨텐츠를 생성해야한다." 스크린샷: cover heading = 유저 프롬프트 텍스트 그대로 (`첨부한 자료를 바탕으로 슬라이드 덱을 만들어줘`), assistant 채팅은 canned 안내문 하나만 (`「Html Ppt Zhangzara Daisy Days」 템플릿을 적용해 슬라이드 초안을 준비했습니다`).
+
+**근본 원인 (아키텍처 결함):** §0.4~§0.10에서 반복적으로 강화된 방어 로직들이 겹치면서, **AI content generation 자체가 skip되는 상태**가 되어 있었다.
+
+- App.tsx (Canvas + Home): Clone 성공 시 `skipAutoSendForTemplateClone = true` → 모델 turn을 아예 실행하지 않음
+- ProjectView auto-send hook: `templateClonedDeckSeeded === true` 프로젝트에서는 auto-send를 조기 abort
+- Daemon `template-clone-deck` endpoint: canned assistant 메시지 삽입 (`「Template」 템플릿을 적용해 슬라이드 초안을 준비했습니다`) + `pendingPrompt: null` clear
+
+결과적으로 사용자의 실제 창의 브리프("expo 시니어 개발자용 피피티")는 완전히 무시되고, daemon Clone이 **최종 결과물**로 취급되어 template shell + user prompt 파생 stub만 남았다. 여기에 §0.10 App.tsx의 `deckTitle: derivedPendingPrompt` 순서가 겹치면서 커버 h1에 유저 프롬프트가 그대로 stuffing되는 최악의 시각적 상태로 나타났다.
+
+**핵심 통찰:** "template = layout vocabulary"(§0.0) 정책은 **모델이 실행돼야만 성립**한다. 모델 실행을 skip하면 정책이 무슨 소용이 없다. 이전 방어들(§0.4의 `blocking model kit fallthrough`)은 모두 "Clone 성공 후 모델이 재실행되면 Neutral로 덮인다"는 관찰에 대한 대응이었지만, HARD_RULES(§9)+layout-vocabulary+kit이 있는 지금은 그 위험 자체가 낮고, existing-deck-edit contract로 surgical patch가 강제된다.
+
+**수정 (staging `36a19ec70` — 병렬 작업으로 landed):**
+
+1. **`apps/web/src/teamver/templateCloneContentFill.ts` 신설** — Clone 성공 후 auto-send할 seed prompt를 구성하는 순수 함수 계층. `TEMPLATE_CLONE_CONTENT_FILL_MARKER` (`[Template clone content fill]`)를 seed에 심어 turn 성격을 명시.
+   - `buildTemplateCloneContentFillSeed({userInstruction, sourceBrief, templateTitle})`: 모델에게 명시적으로 지시:
+     - "Attached `deck.html` already has the selected template LOOK from a daemon Clone. Fill REAL presentation CONTENT."
+     - "Do NOT paste user instructions ('만들어줘', Canvas boilerplate) into slide titles."
+     - "Preserve the cloned template visual kit — Neutral Modern is a failed deliverable."
+     - "You MAY emit a full `<artifact type='deck'>` — keep the template look, not the demo page lineup."
+   - `queueTemplateCloneContentFill({projectId, seed, attachments})`: sessionStorage에 `od:auto-send-first`, `od:auto-send-seed`, `od:template-clone-content-fill` flag 세팅.
+   - `looksLikeCanvasCreateBoilerplate` / `extractTemplateCloneUserFacingRequest`: Canvas 자동 프롬프트("첨부한 자료를 바탕으로 슬라이드 덱을 만들어줘.")를 실제 사용자 topic과 구분.
+
+2. **`apps/web/src/App.tsx`** — Canvas + Home 두 경로 모두 Clone 성공 시 `skipAutoSendForTemplateClone`를 세우지 않고, 대신 `queueTemplateCloneContentFill(...)`로 fill turn을 예약. `deckTitle`은 `derivedPendingPrompt`를 넘기지 않도록 정리 (모델이 heading을 채우므로 raw prompt 필요 없음).
+
+3. **`apps/web/src/components/ChatComposer.tsx`** — 기존 프로젝트 composer의 Canvas/Drive 핸드오프에서도 Clone 성공 시 `buildTemplateCloneContentFillSeed(...)` + `sendComposedTurn(fillSeed, [...attachments, deckAttachment], [], {skipDiscoveryBrief: true, ...})`를 즉시 실행. `templateCloneContentFillPending: false`로 metadata 업데이트.
+
+4. **`apps/web/src/components/ProjectView.tsx`** — `templateClonedDeckSeeded === true` 프로젝트의 auto-send 조기 abort 제거. `templateCloneContentFillPending` 플래그 소비 로직 (turn 완료 시 metadata clear) 추가. `sendChatTurn`에 `templateCloneContentFill: true` 옵션 전달 (marker 기반 감지).
+
+5. **`apps/daemon/src/project-routes.ts`** — canned assistant 채팅 seed 완전 제거 (`messages.length > 0` 때문에 ProjectView가 auto-send를 refuse하는 부작용의 원인). `pendingPrompt: null` clear도 제거 (auto-send가 필요). metadata에 `templateCloneContentFillPending: true`만 기록해 FE fill turn 예약을 신호.
+
+**검증:**
+- `templateCloneContentFill.test.ts` (staging에 신설): `buildTemplateCloneContentFillSeed`가 boilerplate 프롬프트를 slide 텍스트로 dump하지 않고, `looksLikeCanvasCreateBoilerplate`가 자동 프롬프트/사용자 프롬프트를 정확히 분류.
+- `teamver-canvas-slide-launch.test.ts` 21/21 — App.tsx / ChatComposer / ProjectView의 새 invariant (auto-send 유지, Clone 성공 후 fill turn 예약, canned 채팅 seed 없음) 모두 assert. 이번 세션에서 스테일 assertion 두 곳 (`continuing with selected-template AI run` → `buildTemplateCloneContentFillSeed(`, `seed chat transcript failed` → `not.toContain` + `templateCloneContentFillPending: true`) 정정.
+- `contracts` 410/410 통과.
+
+**교훈:** 다층 방어 로직을 쌓다 보면 원래 의도한 흐름 자체가 꺼진 상태가 될 수 있다. "Clone은 시각 seed일 뿐, 컨텐츠는 모델이 채운다"는 아키텍처 원칙을 코드로 강제하려면 각 방어층이 "auto-send를 여전히 실행하는가?"를 서로 확인해야 한다. 이제 두 계층 모두에 명시적 marker (`TEMPLATE_CLONE_CONTENT_FILL_MARKER`, `templateCloneContentFillPending`)를 심어 이 원칙이 다시 무너지지 않도록 방어했다.
+
 ### 0.10 2026-08-13 후속 — Home Clone 커버 heading에 user prompt 반영 · letterbox `transparent`도 잘못 → 완전 제거
 
 **증상:** 스크린샷 신고 "생성 요청 했는데, 템플릿 클론만 하고 내용을 바꾸지 않은 것 같다. 게다가 레이아웃/사이즈 등이 템플릿 미리보기와 달라진 것들이 존재한다".
@@ -671,6 +711,7 @@ daemon 로컬 skill 워크플로 잔재다. Daisy Days에는 Teamver API 노트�
 | P0 | Home Clone 커버 heading이 user prompt 대신 templateTitle로 남던 문제 | **완료** — App.tsx `deckTitle` fallback을 `Drive filename → derivedPendingPrompt → templateTitle` 순으로 재정렬 |
 | P0 | letterbox `transparent !important`가 deck 자체 body bg를 여전히 override하던 문제 | **완료** — `compactStackedDeckFix`에서 html/body `background` 선언 완전 제거 |
 | P0 | **정책 개정** — template = layout vocabulary, 페이지 수/순서/구성은 브리프 기반 (§0.0 개정) | **완료** — HARD_RULES 재작성, scaffold map을 catalog로 재정의, daemon Clone default `shells.length` → 6, `pickTemplateShells` role-based scoring |
+| P0 | **아키텍처 근본 재조명** — Clone이 skipAutoSend + canned chat seed + templateClonedDeckSeeded early-return의 3중 방어로 인해 **AI content generation 자체를 죽이던 문제** (§0.11) | **완료** — staging `36a19ec70`: `templateCloneContentFill.ts` 신설 + `TEMPLATE_CLONE_CONTENT_FILL_MARKER` seed + 세 계층 방어 해제. 스테일 test assertion 2건 정정. |
 
 ### 12.1 Edit-contract gating (상세)
 

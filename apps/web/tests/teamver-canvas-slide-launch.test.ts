@@ -482,7 +482,14 @@ describe("canvasSlideLaunch", () => {
     expect(openHomeSlideCreateSrc).toContain("setStagedFiles([])");
     expect(openHomeSlideCreateSrc).toContain("setStagedDriveAssets([])");
     expect(openHomeSlideCreateSrc).toContain("createHomeSlideCreateQuickSettings()");
-    expect(composer).toContain("continuing with selected-template AI run");
+    // ChatComposer's Clone-success path was refactored (staging commit
+    // 36a19ec70) to immediately queue an AI content-fill run via
+    // `buildTemplateCloneContentFillSeed(...) + sendComposedTurn(...)` with
+    // the seeded deck.html attached. The old `devLog.warn("... continuing
+    // with selected-template AI run", ...)` line was replaced by that
+    // explicit fill turn; assert the new invariant instead of the removed
+    // log string.
+    expect(composer).toContain("buildTemplateCloneContentFillSeed(");
     expect(composer).toContain("sendComposedTurn(");
     expect(composer).not.toContain("blocking model kit fallthrough");
     const entryShell = readWebSource("src/components/EntryShell.tsx");
@@ -510,11 +517,20 @@ describe("canvasSlideLaunch", () => {
     expect(projectRoutes).toContain("ensureBundledPluginForClone");
     expect(projectRoutes).toContain("markTemplateClonedDeckSeeded");
     expect(projectRoutes).toContain("templateClonedDeckSeeded: true");
-    // Chat seed runs inside registerProjectFileRoutes — must wire conversations/ids.
+    // registerProjectFileRoutes still needs conversations/ids for other
+    // route paths (e.g. artifact write bookkeeping), so keep the deps wired
+    // through the deps type.
     expect(projectRoutes).toContain("'conversations' | 'ids'");
     expect(projectRoutes).toContain("listConversationsAsync");
     expect(projectRoutes).toContain("insertConversationAsync");
-    expect(projectRoutes).toContain("seed chat transcript failed");
+    // Daemon Clone must NOT insert a canned "template applied" assistant
+    // chat row anymore — that was the root cause of the AI content-fill
+    // auto-send being skipped (messages.length > 0 → ProjectView refused
+    // to run the fill turn). See staging commit 36a19ec70. The fill turn
+    // is instead queued by the FE (`templateCloneContentFillPending: true`
+    // + ChatComposer `sendComposedTurn(fillSeed, ...)`).
+    expect(projectRoutes).not.toContain("seed chat transcript failed");
+    expect(projectRoutes).toContain("templateCloneContentFillPending: true");
     const daemonServer = readFileSync(
       resolve(__dirname, "../../daemon/src/server.ts"),
       "utf8",
