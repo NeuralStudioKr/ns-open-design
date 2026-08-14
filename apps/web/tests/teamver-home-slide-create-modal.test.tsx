@@ -178,6 +178,30 @@ describe("TeamverHomeSlideCreateModal", () => {
     expect(onTemplateChange).toHaveBeenCalledWith("example-simple-deck");
     expect(screen.getByTestId("teamver-home-slide-create-content")).toBeTruthy();
     expect(screen.queryByTestId("teamver-home-slide-create-template")).toBeNull();
+    expect(screen.getByTestId("teamver-home-slide-create-confirm")).toBeTruthy();
+    expect(screen.queryByTestId("teamver-home-slide-create-next")).toBeNull();
+  });
+
+  it("gallery entry with the default template still confirms from content", () => {
+    wrap(
+      <TeamverHomeSlideCreateModal
+        open
+        entry="template"
+        templateOptions={templates}
+        selectedTemplateId="example-simple-deck"
+        onTemplateChange={() => {}}
+        userPrompt=""
+        onUserPromptChange={() => {}}
+        onConfirm={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    expect(screen.getByTestId("teamver-home-slide-create-content")).toBeTruthy();
+    expect(screen.getByTestId("teamver-home-slide-create-confirm")).toBeTruthy();
+    expect(screen.queryByTestId("teamver-home-slide-create-next")).toBeNull();
+    expect(screen.getByTestId("teamver-home-slide-create-step-pick").textContent).toMatch(
+      /Default slide template/i,
+    );
   });
 
   it("new entry: picking a template on step 2 stays on the grid", () => {
@@ -286,7 +310,7 @@ describe("TeamverHomeSlideCreateModal", () => {
       />,
     );
     expect(screen.getByTestId("teamver-home-slide-create-prompt").getAttribute("placeholder")).toMatch(
-      /topic and key messages/i,
+      /e\.g\. Q3 results/i,
     );
     expect(screen.queryByTestId("teamver-home-slide-create-tip-btn")).toBeNull();
     expect(screen.queryByTestId("teamver-home-slide-create-tips")).toBeNull();

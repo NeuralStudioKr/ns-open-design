@@ -258,12 +258,18 @@ export function TeamverHomeSlideCreateModal({
   const templateReady = Boolean(selectedTemplate?.id);
   const showingTemplate = step === "template";
   const hasExplicitTemplate = isExplicitCanvasSlideVisualTemplate(selectedTemplate);
-  // Gallery "Use template" / explicit pick: confirm from content immediately.
-  // "New slide": require visiting the template step (기본 허용) so users don't
-  // skip the template step entirely — but never treat mere visit as an explicit Daisy pick.
+  // Gallery "Use template": confirm from content even if the user later
+  // switches to the L1 default. Explicit pick: same. "New slide": require
+  // visiting the template step so users don't skip it — but never treat mere
+  // visit as an explicit Daisy pick.
   const canConfirmFromContent =
-    hasExplicitTemplate || (entry === "new" && templateVisited);
+    entry === "template" || hasExplicitTemplate || (entry === "new" && templateVisited);
   const templateStepComplete = hasExplicitTemplate || (entry === "template" && templateReady);
+  const stepperPickTitle = hasExplicitTemplate
+    ? selectedTemplate?.title
+    : entry === "template" && selectedTemplate
+      ? t("teamver.homeCreate.defaultTemplate")
+      : null;
 
   function goTemplateStep() {
     setTemplateVisited(true);
@@ -358,7 +364,11 @@ export function TeamverHomeSlideCreateModal({
           onDragLeave={onAttachDragLeave}
           onDrop={onAttachDrop}
         >
-          <div className="teamver-home-slide-create-attach-menu" role="group">
+          <div
+            className="teamver-home-slide-create-attach-menu"
+            role="group"
+            aria-label={t("teamver.homeCreate.attachTitle")}
+          >
             {onAttachFromDrive ? (
               <button
                 type="button"
@@ -635,12 +645,12 @@ export function TeamverHomeSlideCreateModal({
                   2
                 </span>
                 <span>{t("teamver.homeCreate.stepTemplate")}</span>
-                {hasExplicitTemplate ? (
+                {stepperPickTitle ? (
                   <span
                     className="teamver-home-slide-create-step-pick"
                     data-testid="teamver-home-slide-create-step-pick"
                   >
-                    {selectedTemplate?.title}
+                    {stepperPickTitle}
                   </span>
                 ) : null}
                 {templateStepComplete && !showingTemplate ? (

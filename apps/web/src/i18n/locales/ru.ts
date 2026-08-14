@@ -2720,7 +2720,7 @@ export const ru: Dict = {
   'teamver.homeCreate.attachHint': 'Drop files here or paste from the clipboard.',
   'teamver.homeCreate.removeAttach': 'Remove attachment',
   'teamver.homeCreate.promptLabel': 'What should we create?',
-  'teamver.homeCreate.promptPlaceholder': 'Describe the topic and key messages.',
+  'teamver.homeCreate.promptPlaceholder': 'e.g. Q3 results — 3 key metrics and the next-quarter plan',
   'teamver.homeCreate.templateLead': 'Pick a template for your deck.',
   'teamver.homeCreate.nextTemplate': 'Next: Template',
   'teamver.homeCreate.selectedTemplate': 'Template',

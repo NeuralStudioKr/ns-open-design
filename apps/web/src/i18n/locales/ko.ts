@@ -2725,7 +2725,7 @@ export const ko: Dict = {
   'teamver.homeCreate.attachHint': '파일을 끌어다 놓거나 붙여넣으세요.',
   'teamver.homeCreate.removeAttach': '첨부 제거',
   'teamver.homeCreate.promptLabel': '무엇을 만들까요?',
-  'teamver.homeCreate.promptPlaceholder': '주제나 핵심 메시지를 적어 주세요.',
+  'teamver.homeCreate.promptPlaceholder': '예: Q3 실적 — 핵심 지표 3개와 다음 분기 계획',
   'teamver.homeCreate.templateLead': '덱 템플릿을 고르세요.',
   'teamver.homeCreate.nextTemplate': '다음: 템플릿',
   'teamver.homeCreate.selectedTemplate': '템플릿',
