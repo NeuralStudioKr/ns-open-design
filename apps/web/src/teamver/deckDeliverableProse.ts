@@ -124,7 +124,7 @@ export function looksLikeDeckCreateProgressProse(text: string): boolean {
   if (DECK_EDIT_CLAIM_RE.test(trimmed)) return false;
   if (DECK_CREATE_PROGRESS_STATUS_ONLY_RE.test(trimmed)) return true;
   if (
-    /슬라이드\s*초안을\s*작성\s*중/.test(trimmed)
+    /슬라이드\s*초안(?:을)?\s*작성\s*중/.test(trimmed)
     || /Creating the slide deck now/i.test(trimmed)
     || /\bmaking your deck\b/i.test(trimmed)
   ) {
@@ -148,7 +148,7 @@ export function looksLikeDeckInFlightStatusResidue(text: string): boolean {
   if (DECK_EDIT_PROGRESS_STATUS_ONLY_RE.test(trimmed)) return true;
   // Synthetic live-lead copy (ko/en) left in message.content after stream end.
   if (
-    /^슬라이드\s*초안을\s*작성\s*중/.test(trimmed)
+    /^슬라이드\s*초안(?:을)?\s*작성\s*중/.test(trimmed)
     || /^슬라이드\s*수정을\s*반영하고\s*있/.test(trimmed)
     || /^Creating the slide deck now/i.test(trimmed)
     || /^Applying slide updates/i.test(trimmed)

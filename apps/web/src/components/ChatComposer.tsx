@@ -2200,19 +2200,14 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
               setCanvasSlideLaunchError(null);
               setCanvasSlideUserPrompt('');
               setCanvasSlideQuickSettings(DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS);
-              // Clone seeded LOOK only — immediately AI-fill content into
-              // attached deck.html (existing-deck edit), never dump the prompt.
+              // Clone seeded LOOK only — AI-fill as compact kit-driven CREATE.
+              // Do NOT attach deck.html (truncated mid-CSS anchors a max_tokens hang).
               const fillSeed = buildTemplateCloneContentFillSeed({
                 userInstruction: promptForRun,
                 sourceBrief,
                 templateTitle: selectedCanvasSlideTemplate.title,
                 hasSourceMaterial: true,
               });
-              const deckAttachment: ChatAttachment = {
-                path: seeded.fileName,
-                name: seeded.fileName,
-                kind: 'file',
-              };
               const baseMeta = currentRunContextMeta();
               const canvasMeta = canvasCreateSlidesTurnMeta(selectedCanvasSlideTemplate.id, {
                 designSystemId: designSystemIdForRun,
@@ -2220,7 +2215,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
               });
               sendComposedTurn(
                 fillSeed,
-                [...attachments, deckAttachment],
+                attachments,
                 [],
                 {
                   ...baseMeta,
@@ -2411,11 +2406,6 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
               templateTitle: selectedCanvasSlideTemplate.title,
               hasSourceMaterial: true,
             });
-            const deckAttachment: ChatAttachment = {
-              path: seeded.fileName,
-              name: seeded.fileName,
-              kind: 'file',
-            };
             const baseMeta = currentRunContextMeta();
             const canvasMeta = canvasCreateSlidesTurnMeta(selectedCanvasSlideTemplate.id, {
               designSystemId: designSystemIdForRun,
@@ -2423,7 +2413,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
             });
             sendComposedTurn(
               fillSeed,
-              [...attachments, deckAttachment],
+              attachments,
               [],
               {
                 ...baseMeta,

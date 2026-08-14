@@ -426,7 +426,7 @@ const COMMENT_EDIT_PATCH_DIRECTIVE_RE =
 const EXISTING_DECK_EDIT_DIRECTIVE_RE =
   /\n*\[Existing deck edit\][\s\S]*$/i;
 const TEMPLATE_CLONE_CONTENT_FILL_DIRECTIVE_RE =
-  /\n*\[Template clone content fill\][\s\S]*$/i;
+  /\n*\[Template clone content fill(?: turn)?\][\s\S]*$/i;
 const ATTACHED_IMAGE_EMBED_DIRECTIVE_RE =
   /\n*\[Attached image embed\][\s\S]*$/i;
 const ATTACHED_PREVIEW_COMMENTS_RE =

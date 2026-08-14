@@ -3,6 +3,9 @@
  * fills REAL content while preserving the template visual kit.
  *
  * Clone alone must never leave the user's "만들어줘" instruction as slide copy.
+ *
+ * Critical: do NOT ask the model to rewrite the full cloned example.html —
+ * that burns max_tokens in `<head>` CSS and hangs for minutes with no deck.
  */
 
 import type { ChatAttachment } from '../types';
@@ -19,12 +22,23 @@ import {
 
 export const TEMPLATE_CLONE_CONTENT_FILL_MARKER = '[Template clone content fill]';
 
+/** Appended model-only contract after Clone seed (not an existing-deck edit). */
+export const TEMPLATE_CLONE_CONTENT_FILL_TURN_MARKER = '[Template clone content fill turn]';
+
 export function templateCloneContentFillFlagKey(projectId: string): string {
   return `od:template-clone-content-fill:${projectId}`;
 }
 
 export function autoSendSeedStorageKey(projectId: string): string {
   return `od:auto-send-seed:${projectId}`;
+}
+
+export function isTemplateCloneContentFillPrompt(text: string | null | undefined): boolean {
+  const value = String(text ?? '');
+  return (
+    value.includes(TEMPLATE_CLONE_CONTENT_FILL_MARKER)
+    || value.includes(TEMPLATE_CLONE_CONTENT_FILL_TURN_MARKER)
+  );
 }
 
 /** Canvas/Home boilerplate only — user topic lines may still contain "만들어줘". */
@@ -96,6 +110,21 @@ export function extractTemplateCloneUserFacingRequest(input: {
   return HOME_FILL_SLIDES_PROMPT;
 }
 
+/** Shared hard rules for Clone → first AI content fill (seed + turn marker). */
+export function templateCloneContentFillHardRules(): string[] {
+  return [
+    'Hard rules (READ — truncation/quality):',
+    '- This is CREATE of real topical content, not a surgical edit. Status tone: "슬라이드 초안 작성 중" — NEVER "수정 반영 중" / "Applying your edits".',
+    '- Do NOT rewrite or reproduce the full cloned example.html / attached deck.html CSS+SVG head (that burns max_tokens and hangs with only `<head>`).',
+    '- Use the Template visual kit + scaffold map from the system prompt for LOOK (palette hex, fonts, Motif sprites, layout roles). Neutral Modern / OD skeleton terracotta is a failed deliverable.',
+    `- ${SLIDE_DECK_QUALITY_BAR_INSTRUCTION}`,
+    '- Emit ONE compact complete `<artifact type="deck" identifier="deck">` that starts `<!doctype html><html…><body>` and writes filled `<section class="slide">` slides EARLY (body-first).',
+    '- Keep `<style>` short (kit tokens + fonts only, ideally under ~2KB). Copy at most one Motif SVG if needed — never dump the whole template stylesheet.',
+    '- Fill REAL topical titles/body (no "…", no "만들어줘", no create-slides boilerplate). Slide count follows the brief/Quick settings — not the template demo page lineup.',
+    '- Prefer finishing a closed `</artifact>` this turn over perfect motif fidelity. A complete compact Daisy-lookalike beats a truncated CSS shell.',
+  ];
+}
+
 export function buildTemplateCloneContentFillSeed(options: {
   userInstruction?: string | null;
   sourceBrief?: string | null;
@@ -113,18 +142,11 @@ export function buildTemplateCloneContentFillSeed(options: {
     visible,
     '',
     TEMPLATE_CLONE_CONTENT_FILL_MARKER,
-    'Attached `deck.html` already has the selected template LOOK (CSS, fonts, Motif SVG, layout shells) from a daemon Clone.',
+    'Daemon Clone already seeded a LOOK preview into `deck.html`. This turn REPLACES it with a compact, content-complete deck.',
     hasAttachedSource
-      ? 'Fill REAL presentation CONTENT for this request and any attached source materials.'
+      ? 'Fill REAL presentation CONTENT for this request and any attached source materials (Canvas/Drive/files) — not the cloned demo copy.'
       : 'Fill REAL presentation CONTENT for this create (user prompt may be empty; invent clear topical copy — do not paste boilerplate leads into titles).',
-    'Hard rules:',
-    '- Do NOT paste user instructions ("만들어줘", "만들어 주세요", Canvas boilerplate) into slide titles or subtitles.',
-    '- Preserve the cloned template visual kit (palette hex, font-family, deco/SVG motifs, shell class language). Neutral Modern / OD skeleton terracotta is a failed deliverable.',
-    `- ${SLIDE_DECK_QUALITY_BAR_INSTRUCTION}`,
-    '- Prefer `<artifact type="deck-patch" identifier="deck">` with only changed `<section class="slide" data-slide-index="N">` blocks. Existing `deck.html` already has the template CSS/head/body; do not stream a full doctype/html/head document unless slide count or global CSS truly must change.',
-    '- If a full deck is unavoidable, keep CSS compact and finish the complete `<artifact type="deck" identifier="deck">...</artifact>` in one response.',
-    '- Prefer content-driven slide roles (cover / body / list / cards / quote…). Do not mirror the template example\'s page count or order.',
-    '- Close the artifact in this same response; do not finish with prose only.',
+    ...templateCloneContentFillHardRules(),
   ];
   if (templateTitle) {
     parts.push(`Selected template: ${templateTitle}.`);

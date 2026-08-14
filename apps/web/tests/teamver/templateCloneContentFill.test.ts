@@ -3,8 +3,11 @@ import { describe, expect, it } from 'vitest';
 import {
   buildTemplateCloneContentFillSeed,
   extractTemplateCloneUserFacingRequest,
+  isTemplateCloneContentFillPrompt,
   looksLikeInstructionNotSlideCopy,
+  TEMPLATE_CLONE_CONTENT_FILL_TURN_MARKER,
 } from '../../src/teamver/templateCloneContentFill';
+import { promptWithTemplateCloneContentFillInstruction } from '../../src/components/ProjectView';
 
 describe('templateCloneContentFill', () => {
   it('does not treat Canvas boilerplate as the visible request', () => {
@@ -32,8 +35,10 @@ describe('templateCloneContentFill', () => {
     expect(seed).toMatch(/attached source materials/i);
     expect(seed).toMatch(/Quality bar: each non-divider slide/i);
     expect(seed).toMatch(/headline, takeaway/i);
-    expect(seed).toContain('Prefer `<artifact type="deck-patch" identifier="deck">`');
-    expect(seed).toMatch(/do not stream a full doctype\/html\/head document/i);
+    expect(seed).toMatch(/body-first/i);
+    expect(seed).toMatch(/NEVER "수정 반영 중"/);
+    expect(seed).not.toMatch(/emit a full.*rewrites visible text/i);
+    expect(seed).not.toMatch(/Prefer `<artifact type="deck-patch" identifier="deck">`/);
     expect(looksLikeInstructionNotSlideCopy('첨부한 자료를 바탕으로 슬라이드 덱을 만들어줘.')).toBe(true);
   });
 
@@ -68,5 +73,23 @@ describe('templateCloneContentFill', () => {
     });
     expect(visible).toMatch(/expo/i);
     expect(visible).not.toMatch(/요청한 내용|첨부한 자료/);
+  });
+
+  it('promptWithTemplateCloneContentFillInstruction is create tone, not existing-deck rewrite', () => {
+    const seed = buildTemplateCloneContentFillSeed({
+      userInstruction: 'expo에 대해서 설명하는 피피티 만들어줘.',
+      hasSourceMaterial: false,
+    });
+    expect(isTemplateCloneContentFillPrompt(seed)).toBe(true);
+    const prompted = promptWithTemplateCloneContentFillInstruction(seed, {
+      slideOnlyMvp: true,
+    });
+    expect(prompted).toContain(TEMPLATE_CLONE_CONTENT_FILL_TURN_MARKER);
+    expect(prompted).toMatch(/슬라이드 초안 작성 중/);
+    expect(prompted).toMatch(/NEVER "수정 반영 중"/);
+    expect(prompted).toMatch(/body-first/i);
+    expect(prompted).not.toContain('[Existing deck edit]');
+    expect(prompted).not.toMatch(/rewrites visible text/i);
+    expect(prompted).not.toMatch(/use edit tone only/i);
   });
 });

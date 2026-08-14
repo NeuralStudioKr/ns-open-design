@@ -170,10 +170,12 @@ import {
   isExplicitCanvasSlideVisualTemplate,
 } from '../teamver/canvasSlideLaunch';
 import {
-  TEMPLATE_CLONE_CONTENT_FILL_MARKER,
+  TEMPLATE_CLONE_CONTENT_FILL_TURN_MARKER,
   clearTemplateCloneContentFillQueue,
+  isTemplateCloneContentFillPrompt,
   isTemplateCloneContentFillQueued,
   readQueuedAutoSendSeed,
+  templateCloneContentFillHardRules,
 } from '../teamver/templateCloneContentFill';
 import {
   anonymizeArtifactId,
@@ -1525,22 +1527,7 @@ function slideExistingDeckEditInstruction(
   options: { templateCloneContentFill?: boolean } = {},
 ): string {
   if (options.templateCloneContentFill) {
-    const lines = [
-      EXISTING_DECK_EDIT_INSTRUCTION_MARKER,
-      `This project already has a template-cloned deck at \`${deckPath}\` (see <attached-project-files>).`,
-      'This turn fills REAL content into that cloned deck while preserving its template LOOK.',
-      'Emit a full `<artifact type="deck" identifier="deck">` that rewrites visible text for the topic.',
-      'Keep the cloned CSS/fonts/Motif SVG/shell language — never Neutral Modern or OD skeleton.',
-      'Do not paste user instructions ("만들어줘") into titles. Adjust slide count/layouts for the content; do not mirror the template demo lineup.',
-      'If you emit a short status sentence, use create tone ("슬라이드 초안 작성 중").',
-    ];
-    if (imagePaths.length > 0) {
-      lines.push(
-        'When placing attached images, use these exact project-relative paths:',
-        ...imagePaths.map((path) => `- ${path}`),
-      );
-    }
-    return lines.join('\n');
+    return slideTemplateCloneContentFillInstruction(imagePaths);
   }
   const lines = [
     EXISTING_DECK_EDIT_INSTRUCTION_MARKER,
@@ -1564,6 +1551,25 @@ function slideExistingDeckEditInstruction(
   return lines.join('\n');
 }
 
+/** First AI turn after daemon template Clone — compact CREATE, not full HTML rewrite. */
+function slideTemplateCloneContentFillInstruction(
+  imagePaths: readonly string[] = [],
+): string {
+  const lines = [
+    TEMPLATE_CLONE_CONTENT_FILL_TURN_MARKER,
+    'Daemon Clone seeded a LOOK preview at `deck.html`. This turn REPLACES it with a compact content-complete deck.',
+    'Do NOT attach or reproduce the full cloned example.html CSS/SVG dump — use the Template visual kit + scaffold map in the system prompt.',
+    ...templateCloneContentFillHardRules(),
+  ];
+  if (imagePaths.length > 0) {
+    lines.push(
+      'When placing attached images, use these exact project-relative paths:',
+      ...imagePaths.map((path) => `- ${path}`),
+    );
+  }
+  return lines.join('\n');
+}
+
 /** Nudges follow-up text edits when the current deck file is auto-attached for API context. */
 export function promptWithExistingDeckEditInstruction(
   prompt: string,
@@ -1578,12 +1584,27 @@ export function promptWithExistingDeckEditInstruction(
   if (!deckPath) return prompt;
   if (prompt.includes(EXISTING_DECK_EDIT_INSTRUCTION_MARKER)) return prompt;
   const visiblePrompt = prompt.trim() || '슬라이드 덱을 수정해줘.';
-  const templateCloneContentFill = prompt.includes(TEMPLATE_CLONE_CONTENT_FILL_MARKER);
+  const templateCloneContentFill = isTemplateCloneContentFillPrompt(prompt);
   return `${visiblePrompt}\n\n${slideExistingDeckEditInstruction(
     deckPath,
     options.imagePaths ?? [],
     { templateCloneContentFill },
   )}`;
+}
+
+/** Clone content-fill even when deck.html is intentionally NOT attached (token budget). */
+export function promptWithTemplateCloneContentFillInstruction(
+  prompt: string,
+  options: {
+    slideOnlyMvp: boolean;
+    imagePaths?: readonly string[];
+  },
+): string {
+  if (!options.slideOnlyMvp) return prompt;
+  if (!isTemplateCloneContentFillPrompt(prompt)) return prompt;
+  if (prompt.includes(TEMPLATE_CLONE_CONTENT_FILL_TURN_MARKER)) return prompt;
+  const visiblePrompt = prompt.trim() || '슬라이드 덱을 만들어줘.';
+  return `${visiblePrompt}\n\n${slideTemplateCloneContentFillInstruction(options.imagePaths ?? [])}`;
 }
 
 async function tryApplyElementPatchesAgainstCurrentDeck(input: {
@@ -4043,10 +4064,12 @@ export function ProjectView({
                   attempt,
                   referenceFiles: collectSlideReferencePathsFromMessages(mergedMessages),
                   slideCountHint: extractRequestedSlideCountHintFromMessages(mergedMessages),
-                  existingDeckPath: resolvePrimaryDeckFilePath(
-                    filesForRecovery,
-                    project.metadata?.entryFile,
-                  ),
+                  existingDeckPath: isTemplateCloneContentFillPrompt(autoContinueOriginUser?.content)
+                    ? null
+                    : resolvePrimaryDeckFilePath(
+                      filesForRecovery,
+                      project.metadata?.entryFile,
+                    ),
                   ...autoContinueCtx,
                 },
               });
@@ -8163,10 +8186,12 @@ export function ProjectView({
                 attempt,
                 referenceFiles: collectSlideReferencePathsFromMessages(mergedMessages),
                 slideCountHint: extractRequestedSlideCountHintFromMessages(mergedMessages),
-                existingDeckPath: resolvePrimaryDeckFilePath(
-                  nextFiles,
-                  project.metadata?.entryFile,
-                ),
+                existingDeckPath: isTemplateCloneContentFillPrompt(autoContinueOriginUser?.content)
+                  ? null
+                  : resolvePrimaryDeckFilePath(
+                    nextFiles,
+                    project.metadata?.entryFile,
+                  ),
                 ...autoContinueCtx,
               },
             });
@@ -8619,6 +8644,18 @@ export function ProjectView({
         ),
         scopedCommentAttachments,
       );
+      // Clone → content-fill must NOT ingest the full cloned deck.html (24KB truncated
+      // mid-CSS) — that anchors the model to rewrite a huge head and hang on max_tokens.
+      const isCloneContentFillTurn = isTemplateCloneContentFillPrompt(
+        retryTarget ? retryTarget.userMsg.content || prompt : prompt,
+      );
+      if (isCloneContentFillTurn) {
+        effectiveAttachments = effectiveAttachments.filter(
+          (attachment) => !isCanonicalDeckFileName(
+            String(attachment.path || attachment.name || '').trim(),
+          ),
+        );
+      }
       let autoAttachedDeckPath: string | null = null;
       // Scoped comment edits (including auto-continue retries) must keep the
       // on-disk deck attached so the model can emit element-patch / deck-patch
@@ -8645,7 +8682,8 @@ export function ProjectView({
       // Disk *canonical* deck is enough — first-turn interrupt + retry often has
       // no prior assistant in historyBase, but the project already has deck.html.
       // Do not treat leftover about.html / notes.html as an existing deck edit.
-      if (slideOnlyMvp && scopedCommentAttachments.length === 0) {
+      // Skip for Clone content-fill: kit-driven compact CREATE instead of HTML rewrite.
+      if (slideOnlyMvp && scopedCommentAttachments.length === 0 && !isCloneContentFillTurn) {
         const existingDeck = resolveCanonicalDeckFileForEdit(
           filesSnapshot,
           project.metadata?.entryFile ?? null,
@@ -8735,6 +8773,11 @@ export function ProjectView({
         modelPrompt = promptWithExistingDeckEditInstruction(modelPrompt, {
           slideOnlyMvp,
           deckPath: autoAttachedDeckPath,
+          imagePaths: imageAttachmentPathsForSlideEmbed(effectiveAttachments),
+        });
+      } else if (isCloneContentFillTurn) {
+        modelPrompt = promptWithTemplateCloneContentFillInstruction(modelPrompt, {
+          slideOnlyMvp,
           imagePaths: imageAttachmentPathsForSlideEmbed(effectiveAttachments),
         });
       }
@@ -9696,10 +9739,12 @@ export function ProjectView({
                       truncatedByMaxTokens: runStopReason === 'max_tokens',
                       referenceFiles: collectSlideReferencePathsFromMessages(autoContinueMessages),
                       slideCountHint: extractRequestedSlideCountHintFromMessages(autoContinueMessages),
-                      existingDeckPath: resolvePrimaryDeckFilePath(
-                        projectFiles,
-                        project.metadata?.entryFile,
-                      ),
+                      existingDeckPath: isTemplateCloneContentFillPrompt(originatingUserMsg?.content)
+                        ? null
+                        : resolvePrimaryDeckFilePath(
+                          projectFiles,
+                          project.metadata?.entryFile,
+                        ),
                       ...extractAutoContinueContextFromAssistant(latestAssistantMsg, {
                         partialHtml: partialHtmlForAutoContinue,
                         planOutline: rawFinalText,
