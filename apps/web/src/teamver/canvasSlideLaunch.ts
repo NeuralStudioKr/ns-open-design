@@ -13,6 +13,11 @@ import {
   type TeamverCanvasLaunchHandoff,
 } from "./canvasLaunchHandoff";
 import { localizePluginTitle } from "../components/plugins-home/localization";
+import {
+  briefLooksLikeAttachedSource,
+  CANVAS_CREATE_SLIDES_PROMPT as SHARED_CANVAS_CREATE_SLIDES_PROMPT,
+  HOME_CREATE_SLIDES_PROMPT as SHARED_HOME_CREATE_SLIDES_PROMPT,
+} from "./slideCreateBoilerplate";
 
 /** Canvas / Drive → create-slides one-confirm source read from the URL. */
 export type TeamverCreateSlidesLaunchSource =
@@ -117,12 +122,10 @@ export const CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION =
   "Do not finish with prose only and do not stop before `</artifact>`.";
 
 /** User-visible first message for Canvas / Drive → create-slides (has source). */
-export const CANVAS_CREATE_SLIDES_PROMPT =
-  "첨부한 자료를 바탕으로 슬라이드 덱을 만들어줘.";
+export const CANVAS_CREATE_SLIDES_PROMPT = SHARED_CANVAS_CREATE_SLIDES_PROMPT;
 
 /** User-visible first message for Home freeform create with no attachments. */
-export const HOME_CREATE_SLIDES_PROMPT =
-  "요청한 내용으로 슬라이드 덱을 만들어줘.";
+export const HOME_CREATE_SLIDES_PROMPT = SHARED_HOME_CREATE_SLIDES_PROMPT;
 
 export type CanvasSlideAudience = "auto" | "internal" | "client" | "education" | "business";
 export type CanvasSlideLength = "auto" | "short" | "standard" | "detailed";
@@ -361,11 +364,7 @@ export function canvasCreateSlidesRunPrompt(
   const user = compactCanvasBriefValue(userInstruction ?? "", 600);
   // Never say "첨부한 자료를…" when the user did not attach Canvas/Drive/files.
   // A Home freeform brief that only echoes "User instruction:" is NOT source material.
-  const briefLooksLikeAttachedSource = Boolean(brief) && (
-    /\b(?:Canvas title|Drive source|Attachments?|Source preview|Visible headings|Canvas sections)\b/i.test(brief)
-    || /\b(?:file:|drive:|refs\/)/i.test(brief)
-  );
-  const hasSourceMaterial = options?.hasSourceMaterial ?? briefLooksLikeAttachedSource;
+  const hasSourceMaterial = options?.hasSourceMaterial ?? briefLooksLikeAttachedSource(brief);
   const lead = hasSourceMaterial
     ? CANVAS_CREATE_SLIDES_PROMPT
     : (user || HOME_CREATE_SLIDES_PROMPT);
@@ -722,7 +721,7 @@ export function canvasCreateSlidesPluginInputs(
   userInstruction?: string | null,
   quickSettings?: Partial<CanvasSlideQuickSettings> | null,
 ): Record<string, unknown> {
-  const topic = (topicHint ?? "").trim() || "the attached source document";
+  const topic = (topicHint ?? "").trim() || "the user brief";
   const brief = sourceBrief?.trim();
   const user = userInstruction?.trim();
   const normalizedQuickSettings = normalizeCanvasSlideQuickSettings(quickSettings);
@@ -738,7 +737,9 @@ export function canvasCreateSlidesPluginInputs(
     parseExplicitSlideCountFromText(user)
     ?? parseExplicitSlideCountFromText(brief);
   return {
-    deckType: "presentation from source material",
+    deckType: briefLooksLikeAttachedSource(brief)
+      ? "presentation from source material"
+      : "presentation",
     topic,
     audience: canvasSlideQuickAudienceToPluginValue(normalizedQuickSettings.audience),
     tone: canvasSlideQuickToneToPluginValue(normalizedQuickSettings.tone),

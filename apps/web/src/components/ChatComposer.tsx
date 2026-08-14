@@ -2206,6 +2206,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
                 userInstruction: promptForRun,
                 sourceBrief,
                 templateTitle: selectedCanvasSlideTemplate.title,
+                hasSourceMaterial: true,
               });
               const deckAttachment: ChatAttachment = {
                 path: seeded.fileName,
@@ -2407,6 +2408,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
               userInstruction: promptForRun,
               sourceBrief,
               templateTitle: selectedCanvasSlideTemplate.title,
+              hasSourceMaterial: true,
             });
             const deckAttachment: ChatAttachment = {
               path: seeded.fileName,

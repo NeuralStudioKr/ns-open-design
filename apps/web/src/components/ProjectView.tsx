@@ -202,8 +202,8 @@ import { agentDisplayName, agentModelDisplayName } from '../utils/agentLabels';
 import { isMacPlatform } from '../utils/platform';
 import {
   canAutoRenameProjectFromPrompt,
+  conversationTitleFromUserTurn,
   deriveProjectNameForCreate,
-  extractUserPromptForNaming,
   summarizeProjectNameFromUserTurn,
 } from '../utils/projectName';
 import {
@@ -9092,9 +9092,7 @@ export function ProjectView({
       if (!retryTarget && historyBase.length === 0) {
         const title = isDesignSystemWorkspacePrompt(prompt)
           ? DESIGN_SYSTEM_WORKSPACE_DISPLAY_TITLE
-          : summarizeProjectNameFromUserTurn(prompt)
-            || extractUserPromptForNaming(prompt).slice(0, 60).trim()
-            || prompt.slice(0, 60).trim();
+          : conversationTitleFromUserTurn(prompt);
         if (title) {
           setConversations((curr) =>
             curr.map((c) =>

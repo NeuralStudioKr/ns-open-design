@@ -135,6 +135,11 @@ import {
   buildTemplateCloneContentFillSeed,
   queueTemplateCloneContentFill,
 } from './teamver/templateCloneContentFill';
+import {
+  extractUserPromptForNaming,
+  summarizeProjectNameFromUserTurn,
+} from './utils/projectName';
+import { briefLooksLikeAttachedSource } from './teamver/slideCreateBoilerplate';
 import { clearTeamverEmbedListCaches, clearTeamverEmbedProjectCaches } from './teamver/teamverEmbedListCaches';
 import { clearProjectCoverCache } from './teamver/projectCoverLoader';
 import { resetEmbedRunTrackingRefs, seedEmbedRunTrackingFromRuns, processEmbedBackgroundRunCompletions, buildEmbedKnownProjectIds, filterRunsForEmbedKnownProjects, pruneSessionActiveRunProjectIds, buildEmbedActiveRunAllowMissingIds, noticeStatusForBackgroundRun, markEmbedUserStoppedBackgroundProject, reconcileEmbedUserStoppedBackgroundProjects, filterBackgroundRunSummariesForUserStop } from './teamver/teamverEmbedRunTracking';
@@ -2650,17 +2655,21 @@ function AppInner() {
               typeof input.metadata?.selectedDeckTemplateTitle === 'string'
                 ? input.metadata.selectedDeckTemplateTitle.trim()
                 : '';
+            const userFacingRequest =
+              summarizeProjectNameFromUserTurn(derivedPendingPrompt ?? '')
+              || extractUserPromptForNaming(derivedPendingPrompt ?? '').split('\n')[0]?.trim()
+              || '';
             const seeded = await seedTemplateClonedDeck({
               projectId: result.project.id,
               pluginId: selectedDeckTemplateId,
               templateTitle: templateTitle || selectedDeckTemplateId,
               sourceBrief,
-              userInstruction: derivedPendingPrompt ?? null,
+              userInstruction: userFacingRequest || derivedPendingPrompt || null,
               deckTitle:
                 pendingCanvasHandoff.title?.trim()
                 || pendingCanvasHandoff.threadTitle?.trim()
                 || result.project.name?.trim()
-                || derivedPendingPrompt?.trim()?.slice(0, 80)
+                || userFacingRequest.slice(0, 80)
                 || null,
               slideCountHint: slideCountHintFromInputs,
             });
@@ -2669,10 +2678,11 @@ function AppInner() {
               queueTemplateCloneContentFill({
                 projectId: result.project.id,
                 seed: buildTemplateCloneContentFillSeed({
-                  userInstruction: derivedPendingPrompt ?? null,
+                  userInstruction: userFacingRequest || derivedPendingPrompt || null,
                   sourceBrief,
                   pendingPrompt: derivedPendingPrompt ?? null,
                   templateTitle: templateTitle || selectedDeckTemplateId,
+                  hasSourceMaterial: true,
                 }),
                 attachments: firstMessageAttachments,
               });
@@ -2746,16 +2756,29 @@ function AppInner() {
           typeof input.metadata?.selectedDeckTemplateTitle === 'string'
             ? input.metadata.selectedDeckTemplateTitle.trim()
             : '';
+        const userFacingRequest =
+          summarizeProjectNameFromUserTurn(derivedPendingPrompt ?? '')
+          || extractUserPromptForNaming(derivedPendingPrompt ?? '').split('\n')[0]?.trim()
+          || '';
+        const pluginSourceBrief =
+          typeof input.pluginInputs?.sourceBrief === 'string'
+            ? input.pluginInputs.sourceBrief.trim()
+            : '';
         const sourceBrief =
           homeDriveImportSucceeded && homeDriveSourceAsset
             ? driveCreateSlidesSourceBrief(homeDriveSourceAsset)
-            : (derivedPendingPrompt ?? null);
-        // Prefer project name / user prompt / Drive filename — never the plugin
+            : (pluginSourceBrief
+              || (userFacingRequest ? `User instruction:\n${userFacingRequest}` : null));
+        const hasSourceMaterial =
+          Boolean(homeDriveImportSucceeded && homeDriveSourceAsset)
+          || firstMessageAttachments.length > 0
+          || briefLooksLikeAttachedSource(sourceBrief);
+        // Prefer project name / user topic / Drive filename — never the plugin
         // marketing title ("Html Ppt Zhangzara Daisy Days"), which used to land
         // on the cover when free-form briefs had no numbered outline.
         const clonedDeckCoverTitle =
           result.project.name?.trim()
-          || derivedPendingPrompt?.trim()?.slice(0, 80)
+          || userFacingRequest.slice(0, 80)
           || homeDriveSourceAsset?.filename?.trim()
           || null;
         const seeded = await seedTemplateClonedDeck({
@@ -2763,7 +2786,7 @@ function AppInner() {
           pluginId: selectedDeckTemplateId,
           templateTitle: templateTitle || selectedDeckTemplateId,
           sourceBrief,
-          userInstruction: derivedPendingPrompt ?? null,
+          userInstruction: userFacingRequest || derivedPendingPrompt || null,
           deckTitle: clonedDeckCoverTitle,
           slideCountHint: slideCountHintFromInputs,
         });
@@ -2772,10 +2795,11 @@ function AppInner() {
           queueTemplateCloneContentFill({
             projectId: result.project.id,
             seed: buildTemplateCloneContentFillSeed({
-              userInstruction: derivedPendingPrompt ?? null,
+              userInstruction: userFacingRequest || derivedPendingPrompt || null,
               sourceBrief,
               pendingPrompt: derivedPendingPrompt ?? null,
               templateTitle: templateTitle || selectedDeckTemplateId,
+              hasSourceMaterial,
             }),
             attachments: firstMessageAttachments,
           });

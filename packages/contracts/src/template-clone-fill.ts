@@ -522,7 +522,7 @@ const HEADINGS_STOP_RE =
 const NUMBERED_SLIDE_RE =
   /^\s*(?:(?:\d+)[\.\)]\s*|(?:0?\d{1,2})\s+|슬라이드\s*\d+\s*[:\.\-]\s*|#{1,3}\s+)(.+)$/i;
 const USER_INSTRUCTION_RE =
-  /User instruction\s*[:：]\s*([\s\S]*?)(?=\n(?:Source |Canvas |Drive |Visible |Selected )|$)/i;
+  /(?:\[User instruction\]|User instruction)\s*[:：]?\s*\n?([\s\S]*?)(?=\n\n\[|\n(?:Source |Canvas |Drive |Visible |Selected |Attachments?:)|$)/i;
 
 function cleanCloneTitle(title: string): string {
   return title.replace(/^["'`]|["'`]$/g, '').replace(/\s+/g, ' ').trim();
@@ -537,12 +537,26 @@ function looksLikeTemplateMarketingTitle(title: string): boolean {
 function extractUserFacingBrief(text: string): string {
   const fromMarker = USER_INSTRUCTION_RE.exec(text)?.[1]?.trim();
   if (fromMarker) return fromMarker;
-  return text
+  // Drop protocol blocks from full create-slides run prompts.
+  let cleaned = text
+    .replace(/\n\n\[Deliverable instruction\][\s\S]*$/i, '')
+    .replace(/\n\n\[Quick settings\][\s\S]*$/i, '')
+    .replace(/\n\n\[Selected slide template(?: priority)?\][\s\S]*$/i, '')
+    .replace(/\n\n\[Source brief\][\s\S]*$/i, '');
+  cleaned = cleaned
     .replace(
       /^(?:Canvas title|Source preview|Drive source(?: file| MIME)?|Drive asset id|Visible headings|Canvas headings|Source headings)\s*[:：].*$/gim,
       '',
     )
     .trim();
+  // Skip attachment/home boilerplate lead lines.
+  const lines = cleaned.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const firstUseful = lines.find(
+    (line) =>
+      !/^첨부(?:한)?\s*.+\s*바탕으로\s*슬라이드/i.test(line)
+      && !/^요청한\s*내용으로\s*슬라이드/i.test(line),
+  );
+  return firstUseful ? [firstUseful, ...lines.slice(lines.indexOf(firstUseful) + 1)].join('\n') : cleaned;
 }
 
 function deriveTitleFromBrief(brief: string, deckTitle?: string | null): string {
@@ -574,6 +588,7 @@ function looksLikeInstructionCopy(text: string): boolean {
   const t = text.trim();
   if (!t) return true;
   if (/첨부(?:한)?\s*.+\s*바탕으로\s*슬라이드/i.test(t)) return true;
+  if (/요청한\s*내용으로\s*슬라이드/i.test(t)) return true;
   if (/(?:만들어|작성|생성)\s*(?:줘|주세요)|설명해?\s*(?:줘|주세요)/i.test(t)) return true;
   if (/^(?:please\s+)?(?:make|create|build|write|generate)\s+/i.test(t)) return true;
   if (/피피티|PPT|슬라이드\s*덱/i.test(t) && /(?:만들어|작성|생성|설명)/i.test(t)) return true;

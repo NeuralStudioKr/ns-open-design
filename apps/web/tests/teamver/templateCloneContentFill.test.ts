@@ -43,8 +43,25 @@ describe('templateCloneContentFill', () => {
     const seed = buildTemplateCloneContentFillSeed({
       userInstruction: 'expo에 대해서 설명하는 피피티 만들어줘.',
       sourceBrief: 'User instruction:\nexpo에 대해서 설명하는 피피티 만들어줘.',
+      hasSourceMaterial: false,
     });
     expect(seed).toMatch(/no separate source attachment/i);
     expect(seed).not.toMatch(/any attached source materials/);
+  });
+
+  it('extracts topic from full run prompt with [User instruction] block', () => {
+    const visible = extractTemplateCloneUserFacingRequest({
+      pendingPrompt: [
+        '요청한 내용으로 슬라이드 덱을 만들어줘.',
+        '',
+        '[Deliverable instruction]',
+        'Build a new presentation deck...',
+        '',
+        '[User instruction]',
+        'expo에 대해서 설명하는 피피티 만들어줘.',
+      ].join('\n'),
+    });
+    expect(visible).toMatch(/expo/i);
+    expect(visible).not.toMatch(/요청한 내용|첨부한 자료/);
   });
 });

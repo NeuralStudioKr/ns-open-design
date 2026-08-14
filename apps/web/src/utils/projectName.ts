@@ -1,9 +1,15 @@
 import type { Project } from '../types';
+import {
+  isSlideCreateBoilerplateLine,
+} from '../teamver/slideCreateBoilerplate';
+
+export { isSlideCreateBoilerplateLine } from '../teamver/slideCreateBoilerplate';
 
 const MAX_CJK_TITLE_LENGTH = 18;
 const MAX_LATIN_WORDS = 6;
 
 const CJK_PATTERN = /[\u3400-\u9fff]/;
+const HANGUL_PATTERN = /[\uac00-\ud7a3]/;
 
 const LEADING_CJK_FILLER = [
   /^先?(帮我|帮忙|麻烦|请|可以|能不能|能否|给我|我想要|我要)/,
@@ -36,11 +42,8 @@ const GENERIC_PLUGIN_TITLES = new Set([
   '기본 슬라이드 템플릿',
 ]);
 
-const CANVAS_CREATE_SLIDES_USER_LINE = '첨부한 자료를 바탕으로 슬라이드 덱을 만들어줘.';
-const HOME_CREATE_SLIDES_USER_LINE = '요청한 내용으로 슬라이드 덱을 만들어줘.';
-
 /** Plugin / template marketing titles must never become the project name. */
-function isDeckTemplateMarketingTitle(title: string): boolean {
+export function isDeckTemplateMarketingTitle(title: string): boolean {
   const normalized = title.trim();
   if (!normalized) return false;
   const lower = normalized.toLowerCase();
@@ -51,22 +54,6 @@ function isDeckTemplateMarketingTitle(title: string): boolean {
     return true;
   }
   if (/^example[-_]/i.test(normalized)) return true;
-  return false;
-}
-
-function isBoilerplateUserPromptLine(line: string): boolean {
-  const normalized = line.trim();
-  if (!normalized) return true;
-  if (normalized === CANVAS_CREATE_SLIDES_USER_LINE) return true;
-  if (normalized === HOME_CREATE_SLIDES_USER_LINE) return true;
-  if (/^첨부(?:한)?\s*.+\s*바탕으로\s*슬라이드\s*덱을?\s*만들어\s*줘\.?$/u.test(normalized)) {
-    return true;
-  }
-  if (/^요청한\s*내용으로\s*슬라이드\s*(?:덱|내용)을?\s*(?:만들어|채워)\s*줘\.?$/u.test(normalized)) {
-    return true;
-  }
-  if (/^new slide deck$/i.test(normalized)) return true;
-  if (/^the (?:attached source document|user brief)$/i.test(normalized)) return true;
   return false;
 }
 
@@ -148,6 +135,25 @@ function trimCjkTitle(input: string): string {
   return title.slice(0, MAX_CJK_TITLE_LENGTH);
 }
 
+/** Korean free-form asks → short topic (never leave "만들어줘" in the title). */
+function trimHangulTitle(input: string): string {
+  const raw = input.trim();
+  if (!raw) return '';
+  const aboutTopic = raw.match(
+    /^(.+?)\s*(?:에\s*대해(?:서)?|에\s*관한)\s*(?:설명하는\s*)?(?:발표\s*자료|피피티|PPT|슬라이드|덱|프레젠테이션)?/i,
+  )?.[1]?.trim();
+  let title = aboutTopic || raw
+    .replace(
+      /\s*(?:에\s*대해(?:서)?|에\s*관한)?\s*(?:설명하는\s*)?(?:발표\s*자료|피피티|PPT|슬라이드|덱|프레젠테이션)?\s*(?:을|를)?\s*(?:만들어|작성|생성|설명해?).*$/i,
+      '',
+    )
+    .replace(/\s*(?:만들어|작성|생성)\s*(?:줘|주세요)\.?$/i, '')
+    .replace(/[.,!?;:…]+\s*$/u, '')
+    .trim();
+  if (!title || isSlideCreateBoilerplateLine(title)) return '';
+  return title.slice(0, MAX_CJK_TITLE_LENGTH);
+}
+
 function toTitleCase(word: string): string {
   if (!word) return word;
   return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
@@ -169,6 +175,7 @@ export function summarizeProjectNameFromPrompt(prompt: string): string {
   if (!cleaned) return '';
   const firstClause = cleaned.split(/[\n\r。！？!?]/)[0]?.trim() ?? cleaned;
   if (CJK_PATTERN.test(firstClause)) return trimCjkTitle(firstClause);
+  if (HANGUL_PATTERN.test(firstClause)) return trimHangulTitle(firstClause);
   return trimLatinTitle(firstClause);
 }
 
@@ -184,7 +191,7 @@ export function extractUserPromptForNaming(fullPrompt: string): string {
     /\[User instruction\]\s*\n([\s\S]*?)(?=\n\n\[|\n\[Selected slide template priority\]|$)/i
       .exec(full)?.[1]
       ?.trim();
-  if (bracketUser && !isBoilerplateUserPromptLine(bracketUser.split(/\n/)[0] ?? '')) {
+  if (bracketUser && !isSlideCreateBoilerplateLine(bracketUser.split(/\n/)[0] ?? '')) {
     return bracketUser;
   }
 
@@ -192,7 +199,7 @@ export function extractUserPromptForNaming(fullPrompt: string): string {
     /(?:^|\n)User instruction\s*[:：]\s*\n?([\s\S]*?)(?=\n\n(?:Attachments:|\[)|$)/i
       .exec(full)?.[1]
       ?.trim();
-  if (briefUser && !isBoilerplateUserPromptLine(briefUser.split(/\n/)[0] ?? '')) {
+  if (briefUser && !isSlideCreateBoilerplateLine(briefUser.split(/\n/)[0] ?? '')) {
     return briefUser;
   }
 
@@ -205,6 +212,10 @@ export function extractUserPromptForNaming(fullPrompt: string): string {
   if (sourceBriefIdx > 0) {
     text = text.slice(0, sourceBriefIdx).trim();
   }
+  const quickIdx = text.indexOf('\n\n[Quick settings]');
+  if (quickIdx > 0) {
+    text = text.slice(0, quickIdx).trim();
+  }
   return text;
 }
 
@@ -212,8 +223,21 @@ export function extractUserPromptForNaming(fullPrompt: string): string {
 export function summarizeProjectNameFromUserTurn(fullPrompt: string): string {
   const extracted = extractUserPromptForNaming(fullPrompt);
   const userLine = extracted.split('\n')[0]?.trim() ?? '';
-  if (isBoilerplateUserPromptLine(userLine)) return '';
+  if (isSlideCreateBoilerplateLine(userLine)) return '';
   return summarizeProjectNameFromPrompt(extracted);
+}
+
+/**
+ * Conversation dropdown title — never falls back to 「첨부한 자료」 / raw protocol dump.
+ */
+export function conversationTitleFromUserTurn(fullPrompt: string): string {
+  const named = summarizeProjectNameFromUserTurn(fullPrompt);
+  if (named) return named;
+  const extracted = extractUserPromptForNaming(fullPrompt).trim();
+  const line = extracted.split('\n')[0]?.trim() ?? '';
+  if (!line || isSlideCreateBoilerplateLine(line)) return '';
+  if (isDeckTemplateMarketingTitle(line)) return '';
+  return line.slice(0, 60);
 }
 
 function titleFromAttachmentLabel(label: string): string {
@@ -227,7 +251,7 @@ function titleFromAttachmentLabel(label: string): string {
 function titleFromTopicHint(topic: string): string {
   const trimmed = topic.trim();
   if (!trimmed || isUuidLike(trimmed)) return '';
-  if (isBoilerplateUserPromptLine(trimmed)) return '';
+  if (isSlideCreateBoilerplateLine(trimmed)) return '';
   if (isDeckTemplateMarketingTitle(trimmed)) return '';
   return summarizeProjectNameFromPrompt(trimmed) || trimmed.slice(0, MAX_CJK_TITLE_LENGTH);
 }

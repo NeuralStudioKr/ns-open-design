@@ -47,7 +47,7 @@ describe("canvasSlideLaunch", () => {
     expect(CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION).not.toMatch(/simple-deck|nav, and print/i);
     expect(canvasCreateSlidesPluginInputs("canvas", "Template")).toMatchObject({
       topic: "canvas",
-      deckType: "presentation from source material",
+      deckType: "presentation",
       designSystem: "Template",
       audience: "infer from source material",
       tone: "infer from source/template",
@@ -55,6 +55,15 @@ describe("canvasSlideLaunch", () => {
       quickSettings: DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS,
       quickSettingsInstruction: expect.stringContaining("Transform mode: Rebuild as a presentation"),
       sourceHandlingInstruction: CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION,
+    });
+    expect(
+      canvasCreateSlidesPluginInputs(
+        "canvas",
+        "Template",
+        "Canvas title: Onboarding\nVisible headings: A / B",
+      ),
+    ).toMatchObject({
+      deckType: "presentation from source material",
     });
   });
 
@@ -510,6 +519,10 @@ describe("canvasSlideLaunch", () => {
     expect(home).toContain("hasSourceMaterial");
     expect(home).not.toContain("rememberLastExplicitDeckTemplateId(homeSlideTemplateId)");
     expect(home).not.toContain("rememberLastExplicitDeckTemplateId(record.id)");
+    const launchBoilerplate = readWebSource("src/teamver/slideCreateBoilerplate.ts");
+    expect(launchBoilerplate).toContain("CANVAS_CREATE_SLIDES_PROMPT");
+    expect(launchBoilerplate).toContain("HOME_CREATE_SLIDES_PROMPT");
+    expect(launchBoilerplate).toContain("briefLooksLikeAttachedSource");
     const resetHomeSlideCreateDraftSrc = home.slice(
       home.indexOf("function resetHomeSlideCreateDraft"),
       home.indexOf("function openHomeSlideCreate"),
@@ -541,6 +554,8 @@ describe("canvasSlideLaunch", () => {
     const launch = readWebSource("src/teamver/canvasSlideLaunch.ts");
     expect(launch).toContain("LAST_EXPLICIT_DECK_TEMPLATE_KEY");
     expect(launch).toContain("clearLastExplicitDeckTemplateId");
+    expect(launch).toContain('from "./slideCreateBoilerplate"');
+    expect(launch).toContain("briefLooksLikeAttachedSource(brief)");
     const bundled = readFileSync(
       resolve(__dirname, "../../daemon/src/plugins/bundled.ts"),
       "utf8",

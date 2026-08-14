@@ -193,6 +193,23 @@ describe('resolveTemplateCloneSlidesFromBrief', () => {
     expect(slides[0]?.body).toBe('…');
   });
 
+  it('extracts [User instruction] from a full create-slides run prompt', () => {
+    const slides = resolveTemplateCloneSlidesFromBrief({
+      userInstruction: [
+        '요청한 내용으로 슬라이드 덱을 만들어줘.',
+        '',
+        '[Deliverable instruction]',
+        'Build a new presentation deck from the attached source material.',
+        '',
+        '[User instruction]',
+        'expo에 대해서 설명하는 피피티 만들어줘. 시니어 개발자 레벨.',
+      ].join('\n'),
+      deckTitle: 'Html Ppt Zhangzara Daisy Days',
+    });
+    expect(slides[0]?.title).toMatch(/expo/i);
+    expect(slides[0]?.title).not.toMatch(/요청한 내용|첨부한 자료|만들어줘|Deliverable/i);
+  });
+
   it('picks up numbered outlines from user instructions', () => {
     const slides = resolveTemplateCloneSlidesFromBrief({
       userInstruction: [

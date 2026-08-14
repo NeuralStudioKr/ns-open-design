@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   canAutoRenameProjectFromPrompt,
+  conversationTitleFromUserTurn,
   deriveProjectNameForCreate,
   extractUserPromptForNaming,
   isPlaceholderProjectName,
@@ -26,6 +27,12 @@ describe('summarizeProjectNameFromPrompt', () => {
     expect(
       summarizeProjectNameFromPrompt('Create a dashboard for https://example.com\n```ts\nconst x = 1\n```'),
     ).toBe('Dashboard');
+  });
+
+  it('summarizes Korean free-form asks into a short topic', () => {
+    expect(
+      summarizeProjectNameFromPrompt('expo에 대해서 설명하는 피피티 만들어줘. 시니어 개발자 레벨.'),
+    ).toMatch(/^expo$/i);
   });
 });
 
@@ -64,7 +71,7 @@ describe('deriveProjectNameForCreate', () => {
       pluginTitle: 'Html Ppt Zhangzara Daisy Days',
     });
     expect(name.toLowerCase()).toMatch(/expo/);
-    expect(name).not.toMatch(/Html Ppt|Daisy|Zhangzara/i);
+    expect(name).not.toMatch(/Html Ppt|Daisy|Zhangzara|만들어/i);
   });
 
   it('never uses deck template marketing titles as the project name', () => {
@@ -87,6 +94,7 @@ describe('deriveProjectNameForCreate', () => {
       pluginTitle: 'Html Ppt Zhangzara Daisy Days',
     });
     expect(name.toLowerCase()).toMatch(/expo/);
+    expect(name).not.toMatch(/만들어/);
   });
 });
 
@@ -109,6 +117,31 @@ describe('extractUserPromptForNaming', () => {
     ].join('\n');
     expect(extractUserPromptForNaming(full)).toBe('분기 실적 요약');
     expect(summarizeProjectNameFromUserTurn(full)).toMatch(/분기/);
+  });
+});
+
+describe('conversationTitleFromUserTurn', () => {
+  it('never uses 첨부한 자료 / raw protocol dump as the conversation title', () => {
+    const full = [
+      '첨부한 자료를 바탕으로 슬라이드 덱을 만들어줘.',
+      '',
+      '[Deliverable instruction]',
+      'Build a new presentation deck...',
+    ].join('\n');
+    expect(conversationTitleFromUserTurn(full)).toBe('');
+  });
+
+  it('uses the user topic when present after deliverable scaffolding', () => {
+    const full = [
+      '요청한 내용으로 슬라이드 덱을 만들어줘.',
+      '',
+      '[Deliverable instruction]',
+      'Build…',
+      '',
+      '[User instruction]',
+      'expo에 대해서 설명하는 피피티 만들어줘.',
+    ].join('\n');
+    expect(conversationTitleFromUserTurn(full).toLowerCase()).toMatch(/expo/);
   });
 });
 
