@@ -289,7 +289,7 @@ export function TeamverHomeSlideCreateModal({
 
   const contentPanel = (
     <div className="teamver-home-slide-create-content" data-testid="teamver-home-slide-create-content">
-      <div className="teamver-home-slide-create-attach">
+      <div className="teamver-home-slide-create-section teamver-home-slide-create-attach">
         <p className="teamver-home-slide-create-section-title">
           {t("teamver.homeCreate.attachTitle")}
         </p>
@@ -377,10 +377,10 @@ export function TeamverHomeSlideCreateModal({
       </div>
 
       <div
-        className="teamver-canvas-slide-launch-quick-settings"
+        className="teamver-home-slide-create-section teamver-canvas-slide-launch-quick-settings"
         data-testid="teamver-home-slide-create-quick-settings"
       >
-        <p className="teamver-canvas-slide-launch-quick-settings-title">
+        <p className="teamver-home-slide-create-section-title">
           {t("teamver.canvasSlideLaunch.quickSettingsTitle")}
         </p>
         {QUICK_SETTING_GROUPS.map((group) => (
@@ -423,50 +423,25 @@ export function TeamverHomeSlideCreateModal({
         ))}
       </div>
 
-      <label
-        className="teamver-home-slide-create-prompt-label"
-        htmlFor="teamver-home-slide-create-prompt"
-      >
-        {t("teamver.homeCreate.promptLabel")}
-      </label>
-      <textarea
-        id="teamver-home-slide-create-prompt"
-        className="teamver-canvas-slide-launch-prompt-input"
-        rows={6}
-        value={userPrompt}
-        disabled={confirming}
-        placeholder={t("teamver.homeCreate.promptPlaceholder")}
-        data-testid="teamver-home-slide-create-prompt"
-        data-teamver-drive-autofocus="true"
-        onChange={(event) => onUserPromptChange?.(event.currentTarget.value)}
-      />
-
-      {selectedTemplate ? (
-        <button
-          type="button"
-          className={[
-            "teamver-home-slide-create-selected-template",
-            hasExplicitTemplate ? "is-explicit" : "",
-          ]
-            .filter(Boolean)
-            .join(" ")}
-          disabled={confirming}
-          data-testid="teamver-home-slide-create-selected-template"
-          onClick={goTemplateStep}
+      <div className="teamver-home-slide-create-section">
+        <label
+          className="teamver-home-slide-create-section-title"
+          htmlFor="teamver-home-slide-create-prompt"
         >
-          <span className="teamver-home-slide-create-selected-template-label">
-            {t("teamver.homeCreate.selectedTemplate")}
-          </span>
-          <span className="teamver-home-slide-create-selected-template-title">
-            {hasExplicitTemplate
-              ? selectedTemplate.title
-              : t("teamver.homeCreate.defaultTemplate")}
-          </span>
-          <span className="teamver-home-slide-create-selected-template-action">
-            {t("teamver.homeCreate.changeTemplate")}
-          </span>
-        </button>
-      ) : null}
+          {t("teamver.homeCreate.promptLabel")}
+        </label>
+        <textarea
+          id="teamver-home-slide-create-prompt"
+          className="teamver-canvas-slide-launch-prompt-input teamver-home-slide-create-prompt"
+          rows={5}
+          value={userPrompt}
+          disabled={confirming}
+          placeholder={t("teamver.homeCreate.promptPlaceholder")}
+          data-testid="teamver-home-slide-create-prompt"
+          data-teamver-drive-autofocus="true"
+          onChange={(event) => onUserPromptChange?.(event.currentTarget.value)}
+        />
+      </div>
     </div>
   );
 
@@ -533,25 +508,25 @@ export function TeamverHomeSlideCreateModal({
         tabIndex={-1}
         data-testid="teamver-home-slide-create-modal"
       >
-        <header className="teamver-drive-picker-head">
-          <h2 id="teamver-home-slide-create-title">{t("teamver.homeCreate.modalTitle")}</h2>
-          <button
-            type="button"
-            className="teamver-drive-picker-close"
-            aria-label={t("common.close")}
-            disabled={confirming}
-            onClick={onClose}
+        <header className="teamver-drive-picker-head teamver-home-slide-create-head">
+          <div className="teamver-home-slide-create-head-row">
+            <h2 id="teamver-home-slide-create-title">{t("teamver.homeCreate.modalTitle")}</h2>
+            <button
+              type="button"
+              className="teamver-drive-picker-close"
+              aria-label={t("common.close")}
+              disabled={confirming}
+              onClick={onClose}
+            >
+              <Icon name="close" size={16} />
+            </button>
+          </div>
+          <nav
+            className="teamver-canvas-slide-launch-stepper"
+            aria-label={t("teamver.homeCreate.stepperAria")}
+            data-testid="teamver-home-slide-create-stepper"
           >
-            <Icon name="close" size={16} />
-          </button>
-        </header>
-
-        <nav
-          className="teamver-canvas-slide-launch-stepper"
-          aria-label={t("teamver.homeCreate.stepperAria")}
-          data-testid="teamver-home-slide-create-stepper"
-        >
-          <ol className="teamver-canvas-slide-launch-stepper-list">
+            <ol className="teamver-canvas-slide-launch-stepper-list">
             <li
               className={[
                 "teamver-canvas-slide-launch-stepper-item",
@@ -604,7 +579,8 @@ export function TeamverHomeSlideCreateModal({
               </button>
             </li>
           </ol>
-        </nav>
+          </nav>
+        </header>
 
         <div className="teamver-canvas-slide-launch-body teamver-home-slide-create-body">
           {showingTemplate ? templatePanel : contentPanel}
@@ -615,7 +591,7 @@ export function TeamverHomeSlideCreateModal({
           ) : null}
         </div>
 
-        <footer className="teamver-drive-import-footer">
+        <footer className="teamver-drive-import-footer teamver-home-slide-create-footer">
           {showingTemplate ? (
             <button
               type="button"
@@ -625,6 +601,31 @@ export function TeamverHomeSlideCreateModal({
               onClick={() => setStep("content")}
             >
               {t("teamver.canvasSlideLaunch.back")}
+            </button>
+          ) : selectedTemplate ? (
+            <button
+              type="button"
+              className={[
+                "teamver-home-slide-create-selected-template",
+                hasExplicitTemplate ? "is-explicit" : "",
+              ]
+                .filter(Boolean)
+                .join(" ")}
+              disabled={confirming}
+              data-testid="teamver-home-slide-create-selected-template"
+              onClick={goTemplateStep}
+            >
+              <span className="teamver-home-slide-create-selected-template-label">
+                {t("teamver.homeCreate.selectedTemplate")}
+              </span>
+              <span className="teamver-home-slide-create-selected-template-title">
+                {hasExplicitTemplate
+                  ? selectedTemplate.title
+                  : t("teamver.homeCreate.defaultTemplate")}
+              </span>
+              <span className="teamver-home-slide-create-selected-template-action">
+                {t("teamver.homeCreate.changeTemplate")}
+              </span>
             </button>
           ) : (
             <span />

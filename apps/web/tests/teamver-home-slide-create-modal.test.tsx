@@ -118,10 +118,10 @@ describe("TeamverHomeSlideCreateModal", () => {
     expect(
       screen.getByTestId("teamver-home-slide-create-step-template").closest("li")?.getAttribute("aria-current"),
     ).toBeNull();
-    // Explicit pick skips the forced "Next" gate — chip shows Hermes instead.
-    expect(screen.getByTestId("teamver-home-slide-create-selected-template").textContent).toContain(
-      "Hermes",
-    );
+    // Explicit pick skips the forced "Next" gate — footer chip shows Hermes.
+    const templateChip = screen.getByTestId("teamver-home-slide-create-selected-template");
+    expect(templateChip.textContent).toContain("Hermes");
+    expect(templateChip.closest("footer")).toBeTruthy();
     const confirm = screen.getByTestId("teamver-home-slide-create-confirm");
     expect(confirm.textContent).toContain("Create slides");
     expect(confirm.textContent).not.toContain("Hermes");
