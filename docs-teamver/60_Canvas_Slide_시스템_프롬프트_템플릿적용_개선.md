@@ -152,6 +152,10 @@ full `example.html`을 시스템 프롬프트에 넣지 않는다는 방침은 �
 
 제품 판단: **완성된 덱이 우선**이다. 선택 템플릿과 100% 동일한 CSS를 복사하다가 결과물이 비어버리는 것보다, 템플릿의 palette/font/motif cue가 보이는 compact static deck을 완성하는 것이 낫다. 따라서 pre-write gate는 계속 shell 저장을 막고, prompt는 shell이 생기지 않도록 body-first로 유도한다.
 
+### 0.15 2026-08-14 — Motif hang 재발 방지: kit VERBATIM ↔ Motif budget 충돌 제거
+
+fill ZERO-SVG / Motif budget(title-first)과 kit HARD_RULES의 `Paste sprites VERBATIM` · Daisy `cover MUST show daisy SVG` · wrap `at most one short snippet`가 충돌하면 모델이 다시 Motif `<svg><style>`를 선두에 연다. kit Motif 규칙을 **title-first optional**로 맞추고, `slimTemplateVisualKitForFill`이 wrap/scaffold/Daisy 잔여 문구까지 scrub한다.
+
 ### 0.14 2026-08-14 — fill Motif SVG 선두 hang (시스템 READ LAST가 fill 규칙을 덮음)
 
 kit에서 Motif 섹션을 빼도 compact/READ LAST가 "sprites verbatim"을 다시 강제해, 모델이 커버 제목 전에 Daisy `<svg><style>`를 덤프하고 수 분 정지한다. fill 턴은 시스템 최후단에서 ZERO `<svg>`를 선언하고, persist는 SVG-before-heading을 거부한다. 첫 완성 덱의 look은 palette/fonts/CSS shape로 충분하다.
