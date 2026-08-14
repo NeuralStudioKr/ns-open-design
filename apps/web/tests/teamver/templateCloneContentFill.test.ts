@@ -49,6 +49,8 @@ describe('templateCloneContentFill', () => {
     expect(seed).toMatch(/Strict body-first contract/i);
     expect(seed).toMatch(/`<head>` is FORBIDDEN/i);
     expect(seed).toMatch(/first 800 characters after `<artifact`/i);
+    expect(seed).toMatch(/Motif SVG OVERRIDE/i);
+    expect(seed).toMatch(/Skip Motif sprites entirely this turn/i);
     expect(seed).toMatch(/NEVER "수정 반영 중"/);
     expect(seed).not.toMatch(/emit a full.*rewrites visible text/i);
     expect(seed).not.toMatch(/Prefer `<artifact type="deck-patch" identifier="deck">`/);

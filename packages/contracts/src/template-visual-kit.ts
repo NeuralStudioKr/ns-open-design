@@ -1213,3 +1213,41 @@ export function appendTemplateVisualKit(skillBody: string, kit: string | null | 
   if (body.includes('## Template visual kit (from example.html)')) return body;
   return `${body}\n\n${visualKit}`;
 }
+
+/**
+ * First Clone content-fill turns hang when the model pastes multi-KB Motif SVGs
+ * (with nested `<style>`) before cover titles. Keep palette/fonts/scaffold, but
+ * replace Motif sprite dumps with a CSS-shape instruction for this turn only.
+ */
+export function stripTemplateVisualKitMotifSpritesForFill(skillBody: string): string {
+  const body = String(skillBody ?? '');
+  if (!body.includes('### Motif sprites')) return body;
+  let next = body.replace(
+    /### Motif sprites[\s\S]*?(?=\n### |\n## |$)/g,
+    [
+      '### Motif sprites (omitted for first content-fill stability)',
+      '',
+      'Do NOT paste Motif `<svg>` markup on this fill turn — large SVG+`<style>` dumps stall after a few lines.',
+      'Use kit palette hex + fonts + CSS circles / rounded cards / chunky borders for decoration instead.',
+      'Motif SVGs can be added later in a follow-up edit after a closed deck exists.',
+      '',
+    ].join('\n'),
+  );
+  next = next.replace(
+    /- Motif MUST be copied from[\s\S]*?(?=\n- |\n### |\n## |$)/g,
+    '- Motif SVG paste is DISABLED for first content-fill. Decorate with CSS shapes in kit palette hex only.\n',
+  );
+  next = next.replace(
+    /Copy at least one complete (?:provided )?SVG[^\n]*/gi,
+    'Do not copy Motif SVGs on this fill turn — CSS shapes only.',
+  );
+  next = next.replace(
+    /Paste sprites VERBATIM[^\n]*/gi,
+    'Do not paste sprites on this fill turn.',
+  );
+  next = next.replace(
+    /Every slide should carry 1–3 recognizable Motif sprites[^\n]*/gi,
+    'Every slide should use kit palette + fonts; Motif SVGs are deferred until after a closed deck.',
+  );
+  return next;
+}

@@ -147,6 +147,7 @@ describe('selected-deck-template runtime helpers', () => {
     expect(wrapped).toContain('Content expansion');
     expect(wrapped).toMatch(/TOPIC to research/);
     expect(wrapped).toMatch(/echoes the prompt/);
+    expect(wrapped).toContain('skip Motif `<svg>` entirely');
   });
 
   it('does not invent pluginIds when enriching a send with no context', () => {

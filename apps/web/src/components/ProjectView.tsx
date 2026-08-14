@@ -137,6 +137,7 @@ import { useCoalescedCallback } from '../hooks/useCoalescedCallback';
 import {
   composeSystemPrompt,
   renderPluginBlock,
+  stripTemplateVisualKitMotifSpritesForFill,
   type AudioVoiceOption,
   type MemorySystemPromptResponse,
   type ResearchOptions,
@@ -1606,7 +1607,7 @@ function slideTemplateCloneContentFillInstruction(
   const lines = [
     TEMPLATE_CLONE_CONTENT_FILL_TURN_MARKER,
     'Daemon Clone seeded a LOOK preview at `deck.html`. This turn REPLACES it with a compact content-complete deck.',
-    'Do NOT attach or reproduce the full cloned example.html CSS/SVG dump — use the Template visual kit + scaffold map in the system prompt.',
+    'Do NOT attach or reproduce the full cloned example.html CSS/SVG dump — use kit palette/fonts/scaffold map. Skip Motif SVG paste this turn.',
     ...templateCloneContentFillHardRules(),
   ];
   if (imagePaths.length > 0) {
@@ -5884,6 +5885,8 @@ export function ProjectView({
     slideEditContracts?: {
       includeCommentEditPatchRule?: boolean;
       includeExistingDeckImageEditRule?: boolean;
+      /** Clone LOOK → fill: strip Motif SVG dumps from the system kit. */
+      templateCloneContentFill?: boolean;
     } | null,
   ): Promise<string> => {
     let skillBody: string | undefined;
@@ -6058,6 +6061,11 @@ export function ProjectView({
         || selectedTemplate?.title
         || 'selected deck template';
       skillBody = wrapSelectedDeckTemplateSkillBody(skillBody!, title);
+    }
+    // First fill hangs when the model pastes multi-KB Motif SVGs before titles.
+    // Keep palette/fonts/scaffold; remove verbatim SVG dumps from the kit.
+    if (slideEditContracts?.templateCloneContentFill && skillBody?.trim()) {
+      skillBody = stripTemplateVisualKitMotifSpritesForFill(skillBody);
     }
     // Do NOT wrap every deck skill as "user explicitly picked this template".
     // That false framing ran for default Simple Deck / no-template paths and
@@ -10697,6 +10705,7 @@ export function ProjectView({
                   autoAttachedDeckPath != null
                   || imageAttachmentPathsForSlideEmbed(effectiveAttachments).length > 0
                 ),
+              templateCloneContentFill: isCloneContentFillTurn,
             },
           );
           const webFetchContexts = await fetchApiWebFetchContexts(userMsg.content);

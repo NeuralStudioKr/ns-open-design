@@ -220,6 +220,26 @@ html,body{background:var(--cream);color:var(--text-dark)}
     expect(twice).toBe(once);
     expect(once.match(/## Template visual kit/g)?.length).toBe(1);
   });
+
+  it('stripTemplateVisualKitMotifSpritesForFill removes SVG dumps but keeps palette', async () => {
+    const { stripTemplateVisualKitMotifSpritesForFill } = await import('../src/template-visual-kit.js');
+    const html = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/html-ppt-zhangzara-daisy-days/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const kit = extractTemplateVisualKitFromHtml(html, {
+      title: 'Html Ppt Zhangzara Daisy Days',
+    })!;
+    expect(kit).toContain('<svg');
+    const stripped = stripTemplateVisualKitMotifSpritesForFill(kit);
+    expect(stripped).toContain('#F5F0E6');
+    expect(stripped).toContain('omitted for first content-fill stability');
+    expect(stripped).not.toMatch(/```html\s*<svg\b/i);
+    expect(stripped).toMatch(/Motif SVG paste is DISABLED|Do NOT paste Motif/i);
+  });
 });
 
 describe('pickPluginPreviewHtmlPath', () => {
