@@ -352,6 +352,7 @@ export function TeamverHomeSlideCreateModal({
             .filter(Boolean)
             .join(" ")}
           data-testid="teamver-home-slide-create-attach-zone"
+          aria-label={t("teamver.homeCreate.attachHint")}
           onDragEnter={onAttachDragEnter}
           onDragOver={onAttachDragOver}
           onDragLeave={onAttachDragLeave}
@@ -503,9 +504,6 @@ export function TeamverHomeSlideCreateModal({
       className="teamver-canvas-slide-launch-template-section"
       data-testid="teamver-home-slide-create-template"
     >
-      <p className="teamver-canvas-slide-launch-template-lead">
-        {t("teamver.homeCreate.templateLead")}
-      </p>
       {templatesLoading ? (
         <div
           className="teamver-canvas-slide-launch-template-skeleton"
@@ -523,7 +521,13 @@ export function TeamverHomeSlideCreateModal({
           options={templateOptions}
           selectedTemplateId={selectedTemplate?.id ?? ""}
           disabled={confirming}
-          onSelect={(id) => onTemplateChange?.(id)}
+          label={t("teamver.homeCreate.templateLead")}
+          onSelect={(id) => {
+            onTemplateChange?.(id);
+            // Gallery entry already confirmed a look — picking again is a
+            // change, then return to content + ✓ (docs-teamver/61 안 B).
+            if (entry === "template") setStep("content");
+          }}
         />
       ) : (
         <p className="teamver-canvas-slide-launch-template-fallback">
@@ -631,6 +635,14 @@ export function TeamverHomeSlideCreateModal({
                   2
                 </span>
                 <span>{t("teamver.homeCreate.stepTemplate")}</span>
+                {hasExplicitTemplate ? (
+                  <span
+                    className="teamver-home-slide-create-step-pick"
+                    data-testid="teamver-home-slide-create-step-pick"
+                  >
+                    {selectedTemplate?.title}
+                  </span>
+                ) : null}
                 {templateStepComplete && !showingTemplate ? (
                   <span className="teamver-home-slide-create-step-check" aria-hidden>
                     ✓
@@ -659,34 +671,7 @@ export function TeamverHomeSlideCreateModal({
             >
               {summaryParts.join(" · ")}
             </p>
-          ) : selectedTemplate ? (
-            <button
-              type="button"
-              className={[
-                "teamver-home-slide-create-selected-template",
-                hasExplicitTemplate ? "is-explicit" : "",
-              ]
-                .filter(Boolean)
-                .join(" ")}
-              disabled={confirming}
-              data-testid="teamver-home-slide-create-selected-template"
-              onClick={goTemplateStep}
-            >
-              <span className="teamver-home-slide-create-selected-template-label">
-                {t("teamver.homeCreate.selectedTemplate")}
-              </span>
-              <span className="teamver-home-slide-create-selected-template-title">
-                {hasExplicitTemplate
-                  ? selectedTemplate.title
-                  : t("teamver.homeCreate.defaultTemplate")}
-              </span>
-              <span className="teamver-home-slide-create-selected-template-action">
-                {t("teamver.homeCreate.changeTemplate")}
-              </span>
-            </button>
-          ) : (
-            <span />
-          )}
+          ) : null}
           <div className="teamver-home-slide-create-footer-actions">
             {showingTemplate ? (
               <button

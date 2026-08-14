@@ -2734,6 +2734,8 @@ export const en: Dict = {
   'teamver.homeCreate.confirm': 'Create slides',
   'teamver.homeCreate.creating': 'Creating…',
   'teamver.homeCreate.summaryAttach': '{count} attached',
+  'teamver.homeCreate.errorTemplateLost': 'The selected template was lost. Pick it again on the template step.',
+  'teamver.homeCreate.errorCreateFailed': 'Could not create the project — please try again.',
   'teamver.canvasSlideLaunch.title': 'Create slides from Canvas',
   'teamver.canvasSlideLaunch.description': 'Review the document, then add instructions or pick a template if you want, and create slides.',
   'teamver.canvasSlideLaunch.hint': 'Confirm to import this document into a new Slide project and start generating slides.',

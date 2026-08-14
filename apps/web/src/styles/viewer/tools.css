@@ -3628,6 +3628,15 @@ button.teamver-home-slide-create-stepper-btn:focus-visible {
   font-size: 12px;
   color: var(--accent);
 }
+.teamver-home-slide-create-step-pick {
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 550;
+  color: var(--text-muted);
+}
 .teamver-home-slide-create-section {
   display: flex;
   flex-direction: column;
@@ -3640,11 +3649,6 @@ button.teamver-home-slide-create-stepper-btn:focus-visible {
   font-weight: 650;
   letter-spacing: 0.01em;
   color: var(--text-muted);
-}
-.teamver-home-slide-create-attach-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
 }
 .teamver-home-slide-create-attach-zone {
   display: flex;
@@ -3706,21 +3710,6 @@ button.teamver-home-slide-create-attach-item:disabled {
   font-size: 12px;
   line-height: 1.4;
   color: var(--text-muted);
-}
-.teamver-home-slide-create-attach-btn {
-  min-height: 34px;
-  padding: 0 12px;
-  border-radius: 8px;
-  border: 1px solid var(--border);
-  background: var(--bg-subtle);
-  color: var(--text);
-  font-size: 13px;
-  cursor: pointer;
-}
-button.teamver-home-slide-create-attach-btn:hover:not(:disabled) {
-  background: var(--bg-muted, var(--bg-subtle));
-  border-color: var(--border-strong);
-  color: var(--text);
 }
 .teamver-home-slide-create-chips {
   list-style: none;
@@ -3799,51 +3788,6 @@ button.teamver-home-slide-create-attach-btn:hover:not(:disabled) {
   justify-content: flex-end;
   gap: 8px;
   margin-left: auto;
-}
-.teamver-home-slide-create-selected-template {
-  display: inline-flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 6px 10px;
-  margin: 0;
-  min-width: 0;
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  color: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-.teamver-home-slide-create-selected-template.is-explicit {
-  border-color: transparent;
-  background: transparent;
-}
-button.teamver-home-slide-create-selected-template:hover:not(:disabled),
-button.teamver-home-slide-create-selected-template.is-explicit:hover:not(:disabled) {
-  background: transparent;
-  border-color: transparent;
-  color: inherit;
-}
-.teamver-home-slide-create-selected-template-label {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-muted);
-  opacity: 1;
-}
-.teamver-home-slide-create-selected-template-title {
-  font-size: 13px;
-  font-weight: 600;
-  flex: 0 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.teamver-home-slide-create-selected-template-action {
-  font-size: 12px;
-  font-weight: 650;
-  color: var(--accent);
 }
 .teamver-home-slide-create-content {
   display: flex;

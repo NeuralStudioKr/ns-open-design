@@ -532,6 +532,8 @@ describe("canvasSlideLaunch", () => {
     expect(home).toContain("resolveSlideOnlyDeckTemplateSkillId(active?.record)");
     expect(home).toContain("templateForRun");
     expect(home).toContain("confirmHomeSlideCreate");
+    expect(home).toContain("teamver.homeCreate.errorTemplateLost");
+    expect(home).toContain("teamver.homeCreate.errorCreateFailed");
     expect(home).toContain("selectedDeckTemplateId: template.id");
     expect(home).toContain("User instruction:");
     expect(home).toContain("rememberLastExplicitDeckTemplateId");

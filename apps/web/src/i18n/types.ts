@@ -482,6 +482,8 @@ export interface Dict {
   'teamver.homeCreate.confirm': string;
   'teamver.homeCreate.creating': string;
   'teamver.homeCreate.summaryAttach': string;
+  'teamver.homeCreate.errorTemplateLost': string;
+  'teamver.homeCreate.errorCreateFailed': string;
   'teamver.canvasSlideLaunch.title': string;
   'teamver.canvasSlideLaunch.description': string;
   'teamver.canvasSlideLaunch.hint': string;

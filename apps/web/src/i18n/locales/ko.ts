@@ -2734,6 +2734,8 @@ export const ko: Dict = {
   'teamver.homeCreate.confirm': '슬라이드 만들기',
   'teamver.homeCreate.creating': '만드는 중…',
   'teamver.homeCreate.summaryAttach': '첨부 {count}',
+  'teamver.homeCreate.errorTemplateLost': '선택한 템플릿 정보가 유실되었습니다. 템플릿 단계에서 다시 골라 주세요.',
+  'teamver.homeCreate.errorCreateFailed': '프로젝트를 만들지 못했습니다 — 다시 시도해 주세요.',
   'teamver.canvasSlideLaunch.title': '캔버스에서 슬라이드 만들기',
   'teamver.canvasSlideLaunch.description': '가져올 문서를 확인한 뒤, 필요하면 지시와 템플릿을 고르고 슬라이드를 만드세요.',
   'teamver.canvasSlideLaunch.hint': '확인하면 새 슬라이드 프로젝트에 문서를 넣고 슬라이드 초안 생성을 시작합니다.',

@@ -120,10 +120,9 @@ describe("TeamverHomeSlideCreateModal", () => {
     expect(
       screen.getByTestId("teamver-home-slide-create-step-template").closest("li")?.getAttribute("aria-current"),
     ).toBeNull();
-    // Explicit pick skips the forced "Next" gate — footer chip shows Hermes.
-    const templateChip = screen.getByTestId("teamver-home-slide-create-selected-template");
-    expect(templateChip.textContent).toContain("Hermes");
-    expect(templateChip.closest("footer")).toBeTruthy();
+    // 안 B: pick is shown on the stepper, not a footer "Change" chip.
+    expect(screen.queryByTestId("teamver-home-slide-create-selected-template")).toBeNull();
+    expect(screen.getByTestId("teamver-home-slide-create-step-pick").textContent).toContain("Hermes");
     const confirm = screen.getByTestId("teamver-home-slide-create-confirm");
     expect(confirm.textContent).toContain("Create slides");
     expect(confirm.textContent).not.toContain("Hermes");
@@ -148,15 +147,59 @@ describe("TeamverHomeSlideCreateModal", () => {
     expect(screen.getByTestId("teamver-home-slide-create-content")).toBeTruthy();
     expect(screen.getByTestId("teamver-home-slide-create-confirm")).toBeTruthy();
     expect(screen.queryByTestId("teamver-home-slide-create-next")).toBeNull();
-    expect(screen.getByTestId("teamver-home-slide-create-selected-template").textContent).toContain(
-      "Hermes",
-    );
+    expect(screen.queryByTestId("teamver-home-slide-create-selected-template")).toBeNull();
+    expect(screen.getByTestId("teamver-home-slide-create-step-pick").textContent).toContain("Hermes");
     fireEvent.click(screen.getByTestId("teamver-home-slide-create-step-template"));
     expect(screen.getByTestId("teamver-home-slide-create-template")).toBeTruthy();
     expect(screen.getByTestId("teamver-home-slide-create-summary").textContent).toMatch(
       /Internal report · Standard · Professional/,
     );
     expect(screen.getByTestId("teamver-home-slide-create-prev")).toBeTruthy();
+  });
+
+  it("gallery entry: picking another template on step 2 returns to content", () => {
+    const onTemplateChange = vi.fn();
+    wrap(
+      <TeamverHomeSlideCreateModal
+        open
+        entry="template"
+        templateOptions={templates}
+        selectedTemplateId="html-ppt-hermes"
+        onTemplateChange={onTemplateChange}
+        userPrompt="Q3 update"
+        onUserPromptChange={() => {}}
+        onConfirm={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("teamver-home-slide-create-step-template"));
+    expect(screen.getByTestId("teamver-home-slide-create-template")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("teamver-canvas-slide-launch-template-card-example-simple-deck"));
+    expect(onTemplateChange).toHaveBeenCalledWith("example-simple-deck");
+    expect(screen.getByTestId("teamver-home-slide-create-content")).toBeTruthy();
+    expect(screen.queryByTestId("teamver-home-slide-create-template")).toBeNull();
+  });
+
+  it("new entry: picking a template on step 2 stays on the grid", () => {
+    const onTemplateChange = vi.fn();
+    wrap(
+      <TeamverHomeSlideCreateModal
+        open
+        entry="new"
+        templateOptions={templates}
+        selectedTemplateId="example-simple-deck"
+        onTemplateChange={onTemplateChange}
+        userPrompt=""
+        onUserPromptChange={() => {}}
+        onConfirm={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("teamver-home-slide-create-next"));
+    fireEvent.click(screen.getByTestId("teamver-canvas-slide-launch-template-card-html-ppt-hermes"));
+    expect(onTemplateChange).toHaveBeenCalledWith("html-ppt-hermes");
+    expect(screen.getByTestId("teamver-home-slide-create-template")).toBeTruthy();
+    expect(screen.queryByTestId("teamver-home-slide-create-content")).toBeNull();
   });
 
   it("uses a compact dialog on content and widens on the template step", () => {
@@ -312,9 +355,8 @@ describe("TeamverHomeSlideCreateModal", () => {
     expect(screen.getByTestId("teamver-home-slide-create-step-template").textContent).toContain(
       "Template",
     );
-    expect(screen.getByTestId("teamver-home-slide-create-selected-template").textContent).toMatch(
-      /Template/,
-    );
+    expect(screen.queryByTestId("teamver-home-slide-create-selected-template")).toBeNull();
+    expect(screen.queryByTestId("teamver-home-slide-create-step-pick")).toBeNull();
     const next = screen.getByTestId("teamver-home-slide-create-next");
     expect(next.textContent).toBe("Next: Template");
     expect(next.textContent).not.toMatch(/style/i);

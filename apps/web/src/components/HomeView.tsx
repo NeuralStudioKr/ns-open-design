@@ -1918,9 +1918,7 @@ export function HomeView({
         isExplicitCanvasSlideVisualTemplate(template)
         && !templateBinding.projectMetadata.selectedDeckTemplateId
       ) {
-        setHomeSlideCreateError(
-          '선택한 템플릿 정보가 유실되었습니다. 템플릿 단계에서 다시 골라 주세요.',
-        );
+        setHomeSlideCreateError(t('teamver.homeCreate.errorTemplateLost'));
         return;
       }
       const topicHint =
@@ -2014,7 +2012,7 @@ export function HomeView({
         }),
       );
       if (submitResult === false) {
-        setHomeSlideCreateError('프로젝트를 만들지 못했습니다 — 다시 시도해 주세요.');
+        setHomeSlideCreateError(t('teamver.homeCreate.errorCreateFailed'));
         return;
       }
       setStagedFiles([]);
