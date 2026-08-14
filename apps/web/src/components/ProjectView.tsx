@@ -170,6 +170,12 @@ import {
   isExplicitCanvasSlideVisualTemplate,
 } from '../teamver/canvasSlideLaunch';
 import {
+  TEMPLATE_CLONE_CONTENT_FILL_MARKER,
+  clearTemplateCloneContentFillQueue,
+  isTemplateCloneContentFillQueued,
+  readQueuedAutoSendSeed,
+} from '../teamver/templateCloneContentFill';
+import {
   anonymizeArtifactId,
   artifactKindToTracking,
   projectKindToTracking,
@@ -1516,7 +1522,26 @@ export function promptWithSlideCommentEditPatchInstruction(
 function slideExistingDeckEditInstruction(
   deckPath: string,
   imagePaths: readonly string[] = [],
+  options: { templateCloneContentFill?: boolean } = {},
 ): string {
+  if (options.templateCloneContentFill) {
+    const lines = [
+      EXISTING_DECK_EDIT_INSTRUCTION_MARKER,
+      `This project already has a template-cloned deck at \`${deckPath}\` (see <attached-project-files>).`,
+      'This turn fills REAL content into that cloned deck while preserving its template LOOK.',
+      'Emit a full `<artifact type="deck" identifier="deck">` that rewrites visible text for the topic.',
+      'Keep the cloned CSS/fonts/Motif SVG/shell language — never Neutral Modern or OD skeleton.',
+      'Do not paste user instructions ("만들어줘") into titles. Adjust slide count/layouts for the content; do not mirror the template demo lineup.',
+      'If you emit a short status sentence, use create tone ("슬라이드 초안 작성 중").',
+    ];
+    if (imagePaths.length > 0) {
+      lines.push(
+        'When placing attached images, use these exact project-relative paths:',
+        ...imagePaths.map((path) => `- ${path}`),
+      );
+    }
+    return lines.join('\n');
+  }
   const lines = [
     EXISTING_DECK_EDIT_INSTRUCTION_MARKER,
     `This project already has a completed slide deck saved as \`${deckPath}\` (see <attached-project-files> above).`,
@@ -1553,7 +1578,12 @@ export function promptWithExistingDeckEditInstruction(
   if (!deckPath) return prompt;
   if (prompt.includes(EXISTING_DECK_EDIT_INSTRUCTION_MARKER)) return prompt;
   const visiblePrompt = prompt.trim() || '슬라이드 덱을 수정해줘.';
-  return `${visiblePrompt}\n\n${slideExistingDeckEditInstruction(deckPath, options.imagePaths ?? [])}`;
+  const templateCloneContentFill = prompt.includes(TEMPLATE_CLONE_CONTENT_FILL_MARKER);
+  return `${visiblePrompt}\n\n${slideExistingDeckEditInstruction(
+    deckPath,
+    options.imagePaths ?? [],
+    { templateCloneContentFill },
+  )}`;
 }
 
 async function tryApplyElementPatchesAgainstCurrentDeck(input: {
@@ -12169,7 +12199,9 @@ export function ProjectView({
       /* sessionStorage may be unavailable; treat as manual flow. */
     }
     autoSendFirstMessageRef.current = isAutoSend;
-    autoSendSeedRef.current = isAutoSend ? (project.pendingPrompt ?? '') : '';
+    autoSendSeedRef.current = isAutoSend
+      ? ((project.pendingPrompt ?? '').trim() || readQueuedAutoSendSeed(project.id))
+      : '';
     autoSendAttachmentsRef.current = isAutoSend ? readAutoSendAttachments(project.id) : [];
   }
   const [initialDraft, setInitialDraft] = useState<
@@ -12373,10 +12405,11 @@ export function ProjectView({
     if (!flag) return;
     // Prefer the seed captured at mount (autoSendSeedRef) — it survives
     // even after onClearPendingPrompt wipes project.pendingPrompt on the
-    // server. Fall back to the live values for any edge case where the
-    // ref was not populated (e.g. sessionStorage error path).
+    // server. Fall back to queued Clone content-fill seed when daemon cleared
+    // pendingPrompt after template look seed.
     const seed = (
       autoSendSeedRef.current ||
+      readQueuedAutoSendSeed(project.id) ||
       (initialDraft?.projectId === project.id ? initialDraft.value : '') ||
       project.pendingPrompt ||
       ''
@@ -12385,14 +12418,32 @@ export function ProjectView({
     if (!seed && attachments.length === 0) {
       autoSentRef.current = true;
       clearAutoSendSession(project.id);
+      clearTemplateCloneContentFillQueue(project.id);
       return;
     }
     autoSentRef.current = true;
     if (isDesignSystemWorkspaceMetadata(project.metadata)) {
       markDesignSystemAuditAutoRepairEligible(project.id);
     }
+    const fillQueued =
+      isTemplateCloneContentFillQueued(project.id)
+      || (
+        project.metadata
+        && typeof project.metadata === 'object'
+        && (project.metadata as { templateCloneContentFillPending?: unknown })
+          .templateCloneContentFillPending === true
+      );
     clearAutoSendSession(project.id);
+    clearTemplateCloneContentFillQueue(project.id);
     autoSendAttachmentsRef.current = [];
+    if (fillQueued) {
+      void patchProject(project.id, {
+        metadata: {
+          ...(project.metadata && typeof project.metadata === 'object' ? project.metadata : {}),
+          templateCloneContentFillPending: false,
+        },
+      });
+    }
     // Home Canvas/Drive → create pins selectedDeckTemplate* on project
     // metadata, but also pass them on this-turn meta so the first BYOK
     // compose cannot lose the pick if React state is still settling.

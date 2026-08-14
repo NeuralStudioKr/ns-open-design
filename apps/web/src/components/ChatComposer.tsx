@@ -103,6 +103,7 @@ import {
   type CanvasSlideQuickSettings,
 } from '../teamver/canvasSlideLaunch';
 import { seedTemplateClonedDeck } from '../teamver/seedTemplateClonedDeck';
+import { buildTemplateCloneContentFillSeed } from '../teamver/templateCloneContentFill';
 import { useCanvasSlideLaunchTemplates } from '../teamver/hooks/useCanvasSlideLaunchTemplates';
 import {
   canvasImportedToChatAttachments,
@@ -2194,8 +2195,55 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
             if (seeded.ok) {
               onProjectFilesMaybeChanged?.();
               onRequestOpenFile?.(seeded.fileName);
-            } else {
-              devLog.warn('Template clone seed failed; continuing with selected-template AI run', seeded);
+              consumeTeamverCanvasLaunchHandoff();
+              setCanvasSlideLaunch(null);
+              setCanvasSlideLaunchError(null);
+              setCanvasSlideUserPrompt('');
+              setCanvasSlideQuickSettings(DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS);
+              // Clone seeded LOOK only — immediately AI-fill content into
+              // attached deck.html (existing-deck edit), never dump the prompt.
+              const fillSeed = buildTemplateCloneContentFillSeed({
+                userInstruction: promptForRun,
+                sourceBrief,
+                templateTitle: selectedCanvasSlideTemplate.title,
+              });
+              const deckAttachment: ChatAttachment = {
+                path: seeded.fileName,
+                name: seeded.fileName,
+                kind: 'file',
+              };
+              const baseMeta = currentRunContextMeta();
+              const canvasMeta = canvasCreateSlidesTurnMeta(selectedCanvasSlideTemplate.id, {
+                designSystemId: designSystemIdForRun,
+                mergeContext: baseMeta?.context,
+              });
+              sendComposedTurn(
+                fillSeed,
+                [...attachments, deckAttachment],
+                [],
+                {
+                  ...baseMeta,
+                  ...canvasMeta,
+                  skipDiscoveryBrief: true,
+                  ...(templateBinding.projectMetadata.selectedDeckTemplateId
+                    ? {
+                        selectedDeckTemplateId:
+                          templateBinding.projectMetadata.selectedDeckTemplateId,
+                        selectedDeckTemplateTitle:
+                          templateBinding.projectMetadata.selectedDeckTemplateTitle,
+                      }
+                    : {}),
+                },
+              );
+              void patchProject(id, {
+                metadata: {
+                  ...(projectMetadata ?? {}),
+                  ...templateBinding.projectMetadata,
+                  templateClonedDeckSeeded: true,
+                  templateCloneContentFillPending: false,
+                },
+              });
+              return;
             }
           }
           const baseMeta = currentRunContextMeta();
@@ -2349,8 +2397,53 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
           if (seeded.ok) {
             onProjectFilesMaybeChanged?.();
             onRequestOpenFile?.(seeded.fileName);
-          } else {
-            devLog.warn('Template clone seed failed; continuing with selected-template AI run', seeded);
+            consumeTeamverDriveLaunchHandoff();
+            setCanvasSlideLaunch(null);
+            setCanvasSlideLaunchError(null);
+            setCanvasSlideUserPrompt('');
+            setCanvasSlideQuickSettings(DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS);
+            const fillSeed = buildTemplateCloneContentFillSeed({
+              userInstruction: promptForRun,
+              sourceBrief,
+              templateTitle: selectedCanvasSlideTemplate.title,
+            });
+            const deckAttachment: ChatAttachment = {
+              path: seeded.fileName,
+              name: seeded.fileName,
+              kind: 'file',
+            };
+            const baseMeta = currentRunContextMeta();
+            const canvasMeta = canvasCreateSlidesTurnMeta(selectedCanvasSlideTemplate.id, {
+              designSystemId: designSystemIdForRun,
+              mergeContext: baseMeta?.context,
+            });
+            sendComposedTurn(
+              fillSeed,
+              [...attachments, deckAttachment],
+              [],
+              {
+                ...baseMeta,
+                ...canvasMeta,
+                skipDiscoveryBrief: true,
+                ...(templateBinding.projectMetadata.selectedDeckTemplateId
+                  ? {
+                      selectedDeckTemplateId:
+                        templateBinding.projectMetadata.selectedDeckTemplateId,
+                      selectedDeckTemplateTitle:
+                        templateBinding.projectMetadata.selectedDeckTemplateTitle,
+                    }
+                  : {}),
+              },
+            );
+            void patchProject(id, {
+              metadata: {
+                ...(projectMetadata ?? {}),
+                ...templateBinding.projectMetadata,
+                templateClonedDeckSeeded: true,
+                templateCloneContentFillPending: false,
+              },
+            });
+            return;
           }
         }
         {

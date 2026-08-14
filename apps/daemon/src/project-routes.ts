@@ -3664,8 +3664,6 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
             projectId,
             pluginId: seededPluginId,
             templateTitle,
-            userInstruction,
-            sourceBrief,
           }) => {
             const existing = getProject(db, projectId);
             if (!existing) return;
@@ -3680,6 +3678,8 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
               metadata: {
                 ...prevMeta,
                 templateClonedDeckSeeded: true,
+                // FE queues a content-fill auto-send (existing-deck edit).
+                templateCloneContentFillPending: true,
                 selectedDeckTemplateId: seededPluginId,
                 ...(templateTitle
                   ? { selectedDeckTemplateTitle: templateTitle }
@@ -3687,92 +3687,10 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
               },
             });
 
-            // Clone intentionally skips model auto-send, so persist the user's
-            // create prompt (+ short ack) into chat history. Otherwise the
-            // project opens with an empty welcome pane and the prompt is lost.
-            const prompt = (() => {
-              const fromUser = typeof userInstruction === 'string' ? userInstruction.trim() : '';
-              if (fromUser) {
-                return fromUser
-                  .replace(/^User instruction\s*[:：]\s*/i, '')
-                  .trim() || fromUser;
-              }
-              const fromBrief = typeof sourceBrief === 'string' ? sourceBrief.trim() : '';
-              if (!fromBrief) return '';
-              // Prefer a short Canvas title line over the full source dump.
-              const canvasTitle = /Canvas title\s*[:：]\s*(.+)$/im.exec(fromBrief)?.[1]?.trim();
-              return canvasTitle || fromBrief.slice(0, 500);
-            })();
-            if (!prompt) return;
-            try {
-              // Prefer Async on Postgres — sync list* returns cold-cache [] and
-              // would duplicate conversations under HA / fresh volume.
-              const convs = (
-                listConversationsAsync
-                  ? await listConversationsAsync(db, projectId)
-                  : listConversations(db, projectId)
-              ) ?? [];
-              let emptyConv: { id: string } | null = null;
-              for (const conv of convs) {
-                const msgs = (
-                  listMessagesAsync
-                    ? await listMessagesAsync(db, conv.id)
-                    : listMessages(db, conv.id)
-                ) ?? [];
-                if (msgs.length > 0) return;
-                if (!emptyConv) emptyConv = conv;
-              }
-              const now = Date.now();
-              const conv = emptyConv
-                ?? (insertConversationAsync
-                  ? await insertConversationAsync(db, {
-                      id: randomId(),
-                      projectId,
-                      title: prompt.slice(0, 60),
-                      createdAt: now,
-                      updatedAt: now,
-                    })
-                  : insertConversation(db, {
-                      id: randomId(),
-                      projectId,
-                      title: prompt.slice(0, 60),
-                      createdAt: now,
-                      updatedAt: now,
-                    }));
-              if (!conv) return;
-              if (emptyConv && updateConversation) {
-                try {
-                  updateConversation(db, conv.id, {
-                    title: prompt.slice(0, 60),
-                    updatedAt: now,
-                  });
-                } catch {
-                  // title refresh is best-effort
-                }
-              }
-              upsertMessage(db, conv.id, {
-                id: randomId(),
-                role: 'user',
-                content: prompt,
-                createdAt: now,
-              });
-              const label = (templateTitle || '선택한 템플릿').trim().slice(0, 80);
-              upsertMessage(db, conv.id, {
-                id: randomId(),
-                role: 'assistant',
-                content:
-                  `「${label}」 템플릿을 적용해 슬라이드 초안을 준비했습니다. `
-                  + '내용을 수정하거나 추가 요청을 보내 주세요.',
-                createdAt: now + 1,
-                endedAt: now + 1,
-                runStatus: 'completed',
-              });
-            } catch (chatErr) {
-              console.warn(
-                '[template-clone-deck] seed chat transcript failed',
-                chatErr,
-              );
-            }
+            // Do NOT seed a completed assistant ack here. That (1) claimed
+            // content was ready when only LOOK was cloned, and (2) left
+            // messages.length > 0 so ProjectView refused the AI fill auto-send.
+            // Chat user/assistant messages come from the fill turn instead.
           },
         },
         {

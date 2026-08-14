@@ -162,15 +162,15 @@ describe('resolveTemplateCloneSlidesFromBrief', () => {
 
   it('synthesizes content-bearing slides from a free-form prompt (no outline)', () => {
     // Home template-card path: free-form prompt with no numbered outline.
-    // Must NOT return [] — that left Daisy marketing copy ("Daisy Days" /
-    // "cheerful…") intact after Clone (user report 2026-08-13 follow-up).
+    // Must NOT return [] — that left Daisy marketing copy intact. Titles must
+    // be topic-like placeholders (AI fill writes real copy next).
     const slides = resolveTemplateCloneSlidesFromBrief({
       userInstruction: 'Make a deck about our Q3 team plans.',
       deckTitle: 'Team Plans',
     });
     expect(slides.length).toBeGreaterThanOrEqual(2);
     expect(slides[0]?.title).toMatch(/Team Plans|Q3/i);
-    expect(slides.some((s) => (s.body ?? '').length > 0)).toBe(true);
+    expect(slides[0]?.title).not.toMatch(/Make a deck/i);
   });
 
   it('derives a title from Korean free-form when deckTitle is template marketing', () => {
@@ -179,7 +179,18 @@ describe('resolveTemplateCloneSlidesFromBrief', () => {
       deckTitle: 'Html Ppt Zhangzara Daisy Days',
     });
     expect(slides[0]?.title).toMatch(/AI 트렌드/);
-    expect(slides[0]?.title).not.toMatch(/Html Ppt|Daisy Days/i);
+    expect(slides[0]?.title).not.toMatch(/Html Ppt|Daisy Days|만들어/i);
+  });
+
+  it('does not dump instruction prompts into cover titles', () => {
+    const slides = resolveTemplateCloneSlidesFromBrief({
+      userInstruction:
+        '첨부한 자료를 바탕으로 슬라이드 덱을 만들어줘.\n\nUser instruction:\nexpo에 대해서 설명하는 피피티 만들어줘. 시니어 개발자 레벨.',
+      deckTitle: 'Html Ppt Zhangzara Daisy Days',
+    });
+    expect(slides[0]?.title).toMatch(/expo/i);
+    expect(slides[0]?.title).not.toMatch(/첨부한 자료|만들어줘/);
+    expect(slides[0]?.body).toBe('…');
   });
 
   it('picks up numbered outlines from user instructions', () => {

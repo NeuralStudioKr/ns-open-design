@@ -547,21 +547,37 @@ function extractUserFacingBrief(text: string): string {
 
 function deriveTitleFromBrief(brief: string, deckTitle?: string | null): string {
   const preferred = deckTitle?.trim() ?? '';
-  if (preferred && !looksLikeTemplateMarketingTitle(preferred)) {
+  if (preferred && !looksLikeTemplateMarketingTitle(preferred) && !looksLikeInstructionCopy(preferred)) {
     return cleanCloneTitle(preferred).slice(0, 80);
   }
   const first = brief.split(/\r?\n/).map((line) => line.trim()).find(Boolean) || brief;
-  let title = first
+  // "expo에 대해서 설명하는 피피티 만들어줘" → topic before 설명/피피티/만들어
+  const aboutTopic = first.match(
+    /^(.+?)\s*(?:에\s*대해(?:서)?|에\s*관한)\s*(?:설명하는\s*)?(?:발표\s*자료|피피티|PPT|슬라이드|덱|프레젠테이션)/i,
+  )?.[1]?.trim();
+  let title = aboutTopic || first
     .replace(/^(?:please\s+)?(?:make|create|build|write)\s+(?:me\s+)?(?:a|an|the)?\s*/i, '')
     .replace(/\s+(?:slides?|deck|presentation)\s*\.?$/i, '')
     .replace(
-      /\s*(?:에\s*대한\s*)?(?:발표\s*자료|슬라이드|덱|프레젠테이션)?\s*(?:을|를)?\s*(?:만들어|작성|생성)(?:\s*줘|\s*주세요|\s*해(?:\s*줘|\s*주세요)?)?\s*\.?$/i,
+      /\s*(?:에\s*대해(?:서)?|에\s*관한)?\s*(?:설명하는\s*)?(?:발표\s*자료|피피티|PPT|슬라이드|덱|프레젠테이션)?\s*(?:을|를)?\s*(?:만들어|작성|생성|설명해?).*$/i,
       '',
     )
     .replace(/^(?:슬라이드|발표자료|덱)\s*/i, '')
     .trim();
-  if (!title || title.length < 2) title = first;
+  if (!title || title.length < 2 || looksLikeInstructionCopy(title)) {
+    title = aboutTopic || 'Presentation';
+  }
   return cleanCloneTitle(title).slice(0, 60) || 'Presentation';
+}
+
+function looksLikeInstructionCopy(text: string): boolean {
+  const t = text.trim();
+  if (!t) return true;
+  if (/첨부(?:한)?\s*.+\s*바탕으로\s*슬라이드/i.test(t)) return true;
+  if (/(?:만들어|작성|생성)\s*(?:줘|주세요)|설명해?\s*(?:줘|주세요)/i.test(t)) return true;
+  if (/^(?:please\s+)?(?:make|create|build|write|generate)\s+/i.test(t)) return true;
+  if (/피피티|PPT|슬라이드\s*덱/i.test(t) && /(?:만들어|작성|생성|설명)/i.test(t)) return true;
+  return false;
 }
 
 /**
@@ -614,16 +630,13 @@ export function synthesizeTemplateCloneSlidesFromFreeFormBrief(options: {
     return out.slice(0, 20);
   }
 
-  // Short free-form ask: a few role-diverse content slides (cover / overview /
-  // points / next). Do not expand to the template's 9–10 demo pages.
+  // Short free-form ask: placeholder shells only. AI content-fill turn writes
+  // real copy next — never dump "만들어줘" instructions into titles/subtitles.
   return [
-    { title, body: brief.slice(0, 180) },
-    { title: '개요', body: brief.slice(0, 1200) },
-    {
-      title: '핵심 포인트',
-      body: ['핵심 메시지를 정리합니다', '청중에게 남길 한 줄을 고릅니다', '근거와 사례를 덧붙입니다'].join('\n'),
-    },
-    { title: '다음 단계', body: '후속 액션과 논의를 이어갑니다.' },
+    { title, body: '…' },
+    { title: '개요', body: '…' },
+    { title: '핵심 포인트', body: '…\n…\n…' },
+    { title: '다음 단계', body: '…' },
   ];
 }
 

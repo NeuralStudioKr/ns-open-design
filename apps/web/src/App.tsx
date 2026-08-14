@@ -131,6 +131,10 @@ import {
   isExplicitCanvasSlideVisualTemplate,
 } from './teamver/canvasSlideLaunch';
 import { seedTemplateClonedDeck } from './teamver/seedTemplateClonedDeck';
+import {
+  buildTemplateCloneContentFillSeed,
+  queueTemplateCloneContentFill,
+} from './teamver/templateCloneContentFill';
 import { clearTeamverEmbedListCaches, clearTeamverEmbedProjectCaches } from './teamver/teamverEmbedListCaches';
 import { clearProjectCoverCache } from './teamver/projectCoverLoader';
 import { resetEmbedRunTrackingRefs, seedEmbedRunTrackingFromRuns, processEmbedBackgroundRunCompletions, buildEmbedKnownProjectIds, filterRunsForEmbedKnownProjects, pruneSessionActiveRunProjectIds, buildEmbedActiveRunAllowMissingIds, noticeStatusForBackgroundRun, markEmbedUserStoppedBackgroundProject, reconcileEmbedUserStoppedBackgroundProjects, filterBackgroundRunSummariesForUserStop } from './teamver/teamverEmbedRunTracking';
@@ -2662,6 +2666,16 @@ function AppInner() {
             });
             if (seeded.ok) {
               seededDeckFileName = seeded.fileName;
+              queueTemplateCloneContentFill({
+                projectId: result.project.id,
+                seed: buildTemplateCloneContentFillSeed({
+                  userInstruction: derivedPendingPrompt ?? null,
+                  sourceBrief,
+                  pendingPrompt: derivedPendingPrompt ?? null,
+                  templateTitle: templateTitle || selectedDeckTemplateId,
+                }),
+                attachments: firstMessageAttachments,
+              });
             } else {
               // Do not block the model run. Selected-template metadata is
               // passed on the first turn, so the run can still bind the
@@ -2755,6 +2769,16 @@ function AppInner() {
         });
         if (seeded.ok) {
           seededDeckFileName = seeded.fileName;
+          queueTemplateCloneContentFill({
+            projectId: result.project.id,
+            seed: buildTemplateCloneContentFillSeed({
+              userInstruction: derivedPendingPrompt ?? null,
+              sourceBrief,
+              pendingPrompt: derivedPendingPrompt ?? null,
+              templateTitle: templateTitle || selectedDeckTemplateId,
+            }),
+            attachments: firstMessageAttachments,
+          });
         } else {
           devLog.warn(
             'Home template clone seed failed; continuing with selected-template AI run',
@@ -2830,6 +2854,7 @@ function AppInner() {
                 ? project.metadata
                 : {}),
               templateClonedDeckSeeded: true,
+              templateCloneContentFillPending: true,
               ...(selectedDeckTemplateId
                 ? { selectedDeckTemplateId }
                 : {}),

@@ -425,6 +425,8 @@ const COMMENT_EDIT_PATCH_DIRECTIVE_RE =
   /\n*\[Comment-edit patch contract\][\s\S]*$/i;
 const EXISTING_DECK_EDIT_DIRECTIVE_RE =
   /\n*\[Existing deck edit\][\s\S]*$/i;
+const TEMPLATE_CLONE_CONTENT_FILL_DIRECTIVE_RE =
+  /\n*\[Template clone content fill\][\s\S]*$/i;
 const ATTACHED_IMAGE_EMBED_DIRECTIVE_RE =
   /\n*\[Attached image embed\][\s\S]*$/i;
 const ATTACHED_PREVIEW_COMMENTS_RE =
@@ -675,6 +677,8 @@ export function stripUserVisibleUserMessageText(content: string | null | undefin
   text = text.replace(COMMENT_EDIT_PATCH_DIRECTIVE_RE, '');
   // Existing-deck marker is appended after image-embed; strip it first.
   text = text.replace(EXISTING_DECK_EDIT_DIRECTIVE_RE, '');
+  // Post-Clone AI fill contract (model-only) — leave the user-facing request.
+  text = text.replace(TEMPLATE_CLONE_CONTENT_FILL_DIRECTIVE_RE, '');
   text = text.replace(ATTACHED_IMAGE_EMBED_DIRECTIVE_RE, '');
   return stripUserVisibleQuestionFormProtocolText(text);
 }
