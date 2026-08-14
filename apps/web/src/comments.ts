@@ -427,6 +427,8 @@ const EXISTING_DECK_EDIT_DIRECTIVE_RE =
   /\n*\[Existing deck edit\][\s\S]*$/i;
 const TEMPLATE_CLONE_CONTENT_FILL_DIRECTIVE_RE =
   /\n*\[Template clone content fill(?: turn)?\][\s\S]*$/i;
+const CANVAS_CREATE_SCAFFOLD_DIRECTIVE_RE =
+  /\n*\[(?:Deliverable instruction|Selected slide template(?: priority)?|Source brief|Quick settings)\][\s\S]*$/i;
 const ATTACHED_IMAGE_EMBED_DIRECTIVE_RE =
   /\n*\[Attached image embed\][\s\S]*$/i;
 const ATTACHED_PREVIEW_COMMENTS_RE =
@@ -679,6 +681,8 @@ export function stripUserVisibleUserMessageText(content: string | null | undefin
   text = text.replace(EXISTING_DECK_EDIT_DIRECTIVE_RE, '');
   // Post-Clone AI fill contract (model-only) — leave the user-facing request.
   text = text.replace(TEMPLATE_CLONE_CONTENT_FILL_DIRECTIVE_RE, '');
+  // Home/Canvas create run dump — never show [Deliverable instruction] etc.
+  text = text.replace(CANVAS_CREATE_SCAFFOLD_DIRECTIVE_RE, '');
   text = text.replace(ATTACHED_IMAGE_EMBED_DIRECTIVE_RE, '');
   return stripUserVisibleQuestionFormProtocolText(text);
 }

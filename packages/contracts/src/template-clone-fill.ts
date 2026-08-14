@@ -587,9 +587,12 @@ function deriveTitleFromBrief(brief: string, deckTitle?: string | null): string 
   return cleanCloneTitle(title).slice(0, 60) || 'Presentation';
 }
 
-function looksLikeInstructionCopy(text: string): boolean {
+export function looksLikeInstructionCopy(text: string): boolean {
   const t = text.trim();
   if (!t) return true;
+  if (/\[(?:Deliverable instruction|Selected slide template|Source brief|Quick settings|User instruction)\]/i.test(t)) {
+    return true;
+  }
   if (/첨부(?:한)?\s*.+\s*바탕으로\s*슬라이드/i.test(t)) return true;
   if (/요청한\s*내용으로\s*슬라이드/i.test(t)) return true;
   if (/^슬라이드\s*(?:덱|내용)을?\s*(?:만들어|채워)\s*줘\.?$/u.test(t)) return true;
@@ -597,6 +600,22 @@ function looksLikeInstructionCopy(text: string): boolean {
   if (/^(?:please\s+)?(?:make|create|build|write|generate)\s+/i.test(t)) return true;
   if (/피피티|PPT|슬라이드\s*덱/i.test(t) && /(?:만들어|작성|생성|설명)/i.test(t)) return true;
   return false;
+}
+
+/**
+ * Cover / document title for daemon Clone. Returns null when the candidate is
+ * template marketing or a user "만들어줘" instruction — callers must not stuff
+ * those into slide headings (AI content-fill writes real titles next).
+ */
+export function sanitizeTemplateCloneDeckTitle(
+  raw: string | null | undefined,
+): string | null {
+  const title = cleanCloneTitle(String(raw ?? ''));
+  if (!title) return null;
+  if (looksLikeTemplateMarketingTitle(title) || looksLikeInstructionCopy(title)) {
+    return null;
+  }
+  return title.slice(0, 80);
 }
 
 /**

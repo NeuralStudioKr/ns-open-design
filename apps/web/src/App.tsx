@@ -14,7 +14,7 @@ import {
   projectKindToTracking,
   fidelityToTracking,
 } from '@open-design/contracts/analytics';
-import type { AmrModelsResponse, ChatSessionMode } from '@open-design/contracts';
+import { sanitizeTemplateCloneDeckTitle, type AmrModelsResponse, type ChatSessionMode } from '@open-design/contracts';
 import { EntryView } from './components/EntryView';
 import { EmbedBootstrapGate } from './components/EmbedBootstrapGate';
 import { CenteredLoader } from './components/Loading';
@@ -2610,6 +2610,7 @@ function AppInner() {
       }
       let canvasImportFailed = false;
       let seededDeckFileName: string | null = null;
+      let queuedFillSeed: string | null = null;
       if (!workingDirHandoffFailed && pendingCanvasHandoff) {
         try {
           const canvasResult = await importTeamverCanvas(result.project.id, {
@@ -2664,25 +2665,31 @@ function AppInner() {
               sourceBrief,
               userInstruction: userFacingRequest || null,
               deckTitle:
-                pendingCanvasHandoff.title?.trim()
-                || pendingCanvasHandoff.threadTitle?.trim()
-                || (isUsableDeckCoverTitle(result.project.name) ? result.project.name!.trim() : null)
-                || summarizeProjectNameFromUserTurn(derivedPendingPrompt ?? '')
-                || userFacingRequest.split('\n')[0]?.trim().slice(0, 80)
+                sanitizeTemplateCloneDeckTitle(pendingCanvasHandoff.title)
+                || sanitizeTemplateCloneDeckTitle(pendingCanvasHandoff.threadTitle)
+                || (isUsableDeckCoverTitle(result.project.name)
+                  ? sanitizeTemplateCloneDeckTitle(result.project.name)
+                  : null)
+                || sanitizeTemplateCloneDeckTitle(
+                  summarizeProjectNameFromUserTurn(derivedPendingPrompt ?? ''),
+                )
+                || sanitizeTemplateCloneDeckTitle(userFacingRequest.split('\n')[0])
                 || null,
               slideCountHint: slideCountHintFromInputs,
             });
             if (seeded.ok) {
               seededDeckFileName = seeded.fileName;
+              queuedFillSeed = buildTemplateCloneContentFillSeed({
+                userInstruction: userFacingRequest || null,
+                sourceBrief,
+                pendingPrompt: derivedPendingPrompt ?? null,
+                templateTitle: templateTitle || selectedDeckTemplateId,
+                hasSourceMaterial: true,
+                slideCountHint: slideCountHintFromInputs,
+              });
               queueTemplateCloneContentFill({
                 projectId: result.project.id,
-                seed: buildTemplateCloneContentFillSeed({
-                  userInstruction: userFacingRequest || null,
-                  sourceBrief,
-                  pendingPrompt: derivedPendingPrompt ?? null,
-                  templateTitle: templateTitle || selectedDeckTemplateId,
-                  hasSourceMaterial: true,
-                }),
+                seed: queuedFillSeed,
                 attachments: firstMessageAttachments,
               });
             } else {
@@ -2773,10 +2780,14 @@ function AppInner() {
         // marketing title ("Html Ppt Zhangzara Daisy Days"), which used to land
         // on the cover when free-form briefs had no numbered outline.
         const clonedDeckCoverTitle =
-          (isUsableDeckCoverTitle(result.project.name) ? result.project.name!.trim() : null)
-          || summarizeProjectNameFromUserTurn(derivedPendingPrompt ?? '')
-          || userFacingRequest.split('\n')[0]?.trim().slice(0, 80)
-          || homeDriveSourceAsset?.filename?.trim()
+          (isUsableDeckCoverTitle(result.project.name)
+            ? sanitizeTemplateCloneDeckTitle(result.project.name)
+            : null)
+          || sanitizeTemplateCloneDeckTitle(
+            summarizeProjectNameFromUserTurn(derivedPendingPrompt ?? ''),
+          )
+          || sanitizeTemplateCloneDeckTitle(userFacingRequest.split('\n')[0])
+          || sanitizeTemplateCloneDeckTitle(homeDriveSourceAsset?.filename)
           || null;
         const seeded = await seedTemplateClonedDeck({
           projectId: result.project.id,
@@ -2789,15 +2800,17 @@ function AppInner() {
         });
         if (seeded.ok) {
           seededDeckFileName = seeded.fileName;
+          queuedFillSeed = buildTemplateCloneContentFillSeed({
+            userInstruction: userFacingRequest || null,
+            sourceBrief,
+            pendingPrompt: derivedPendingPrompt ?? null,
+            templateTitle: templateTitle || selectedDeckTemplateId,
+            hasSourceMaterial,
+            slideCountHint: slideCountHintFromInputs,
+          });
           queueTemplateCloneContentFill({
             projectId: result.project.id,
-            seed: buildTemplateCloneContentFillSeed({
-              userInstruction: userFacingRequest || null,
-              sourceBrief,
-              pendingPrompt: derivedPendingPrompt ?? null,
-              templateTitle: templateTitle || selectedDeckTemplateId,
-              hasSourceMaterial,
-            }),
+            seed: queuedFillSeed,
             attachments: firstMessageAttachments,
           });
         } else {
@@ -2870,6 +2883,10 @@ function AppInner() {
       const projectForNav = seededDeckFileName
         ? {
             ...project,
+            // Replace the create-time pendingPrompt (full canvas run dump)
+            // with the fill seed so ProjectView auto-send cannot prefer the
+            // stale "만들어줘" instruction over the queued fill contract.
+            ...(queuedFillSeed ? { pendingPrompt: queuedFillSeed } : {}),
             metadata: {
               ...(project.metadata && typeof project.metadata === 'object'
                 ? project.metadata

@@ -152,6 +152,19 @@ full `example.html`을 시스템 프롬프트에 넣지 않는다는 방침은 �
 
 제품 판단: **완성된 덱이 우선**이다. 선택 템플릿과 100% 동일한 CSS를 복사하다가 결과물이 비어버리는 것보다, 템플릿의 palette/font/motif cue가 보이는 compact static deck을 완성하는 것이 낫다. 따라서 pre-write gate는 계속 shell 저장을 막고, prompt는 shell이 생기지 않도록 body-first로 유도한다.
 
+### 0.11 2026-08-14 — Clone content-fill stall (`<head>` 재작성) 근본 차단
+
+**증상:** 명시 템플릿 Clone 후 fill이 `수정 반영 중` + 열린 `<artifact type="deck"><!doctype html>…<head>` 에서 수분 정지.
+
+**원인:** fill 턴이 cloned `deck.html`을 첨부하면 existing-deck-edit가 켜지고, staging deck-patch 안내와 "full deck rewrite" 지시가 충돌한다. 모델은 50KB clone을 `<head>`부터 복사한다.
+
+**계약:**
+- Clone = LOOK preview seed. AI fill은 항상 실행.
+- fill 턴은 `deck.html`을 첨부하지 않는다. existing-deck-edit / image-edit rule OFF.
+- fill = kit-driven compact CREATE (body-first, 짧은 `<style>`). FORBIDDEN: clone `<head>` 스트림, "수정 반영 중".
+- queued fill seed가 create `pendingPrompt`보다 우선 (`resolveTemplateCloneAutoSendSeed`).
+- Clone `deckTitle`은 `sanitizeTemplateCloneDeckTitle` — 지시문/템플릿 마케팅 금지.
+
 ### 0.10 2026-08-13 후속 — Home Clone 커버 heading에 user prompt 반영 · letterbox `transparent`도 잘못 → 완전 제거
 
 **증상:** 스크린샷 신고 "생성 요청 했는데, 템플릿 클론만 하고 내용을 바꾸지 않은 것 같다. 게다가 레이아웃/사이즈 등이 템플릿 미리보기와 달라진 것들이 존재한다".

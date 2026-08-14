@@ -1,11 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  TEMPLATE_CLONE_CONTENT_FILL_MARKER,
+  TEMPLATE_CLONE_CONTENT_FILL_TURN_MARKER,
   buildTemplateCloneContentFillSeed,
+  compactTemplateCloneFillSourceBrief,
+  deriveTemplateCloneTopicLabel,
   extractTemplateCloneUserFacingRequest,
   isTemplateCloneContentFillPrompt,
   looksLikeInstructionNotSlideCopy,
-  TEMPLATE_CLONE_CONTENT_FILL_TURN_MARKER,
+  resolveTemplateCloneAutoSendSeed,
 } from '../../src/teamver/templateCloneContentFill';
 import { promptWithTemplateCloneContentFillInstruction } from '../../src/components/ProjectView';
 
@@ -39,7 +43,11 @@ describe('templateCloneContentFill', () => {
     expect(seed).toMatch(/NEVER "수정 반영 중"/);
     expect(seed).not.toMatch(/emit a full.*rewrites visible text/i);
     expect(seed).not.toMatch(/Prefer `<artifact type="deck-patch" identifier="deck">`/);
+    expect(seed).toContain('Cover topic (use as the title — not the instruction): expo');
     expect(looksLikeInstructionNotSlideCopy('첨부한 자료를 바탕으로 슬라이드 덱을 만들어줘.')).toBe(true);
+    expect(deriveTemplateCloneTopicLabel(
+      'expo에 대해서 설명하는 피피티 만들어줘. 시니어 개발자 레벨.',
+    )).toBe('expo');
   });
 
   it('fallback fill copy does not claim 첨부한 자료 or 요청한 내용 when topic is missing', () => {
@@ -91,5 +99,100 @@ describe('templateCloneContentFill', () => {
     expect(prompted).not.toContain('[Existing deck edit]');
     expect(prompted).not.toMatch(/rewrites visible text/i);
     expect(prompted).not.toMatch(/use edit tone only/i);
+  });
+
+  it('strips Home create run-dump scaffolding from the fill source brief', () => {
+    const runDump = [
+      '첨부한 자료를 바탕으로 슬라이드 덱을 만들어줘.',
+      '',
+      '[Deliverable instruction]',
+      'Create a complete closed deck. Bind the Template visual kit.',
+      '',
+      '[Selected slide template]',
+      'The user picked "Html Ppt Zhangzara Daisy Days".',
+      '',
+      '[Quick settings]',
+      'Audience: 시니어 개발자.',
+      'Length: 8-10.',
+      '',
+      '[User instruction]',
+      'expo에 대해서 설명하는 피피티 만들어줘. 시니어 개발자 레벨.',
+      '',
+      '[Selected slide template priority]',
+      'READ LAST. Neutral is a failed deliverable.',
+    ].join('\n');
+    const compact = compactTemplateCloneFillSourceBrief(runDump);
+    expect(compact).toMatch(/expo/i);
+    expect(compact).toContain('Quick settings:');
+    expect(compact).not.toContain('[Deliverable instruction]');
+    expect(compact).not.toContain('READ LAST');
+
+    const seed = buildTemplateCloneContentFillSeed({
+      pendingPrompt: runDump,
+      sourceBrief: runDump,
+      templateTitle: 'Html Ppt Zhangzara Daisy Days',
+      slideCountHint: '8-10',
+    });
+    expect(seed).toContain(TEMPLATE_CLONE_CONTENT_FILL_MARKER);
+    expect(seed).toContain('Slide count hint: 8-10');
+    expect(seed).toContain('시니어 개발자');
+    expect(seed).not.toContain('[Deliverable instruction]');
+    expect(seed).not.toContain('[Selected slide template priority]');
+  });
+
+  it('keeps Drive source labels when compacting a mixed create dump', () => {
+    const compact = compactTemplateCloneFillSourceBrief([
+      'Drive source file: expo-notes.pdf',
+      'Drive source MIME: application/pdf',
+      '',
+      '[Deliverable instruction]',
+      'Create a complete closed deck.',
+      '',
+      '[User instruction]',
+      'expo에 대해서 설명하는 피피티 만들어줘. 시니어 개발자 레벨.',
+    ].join('\n'));
+    expect(compact).toContain('Drive source file: expo-notes.pdf');
+    expect(compact).toMatch(/expo/i);
+    expect(compact).not.toContain('[Deliverable instruction]');
+  });
+
+  it('prefers the queued fill seed over a stale create-time pendingPrompt', () => {
+    const fillSeed = buildTemplateCloneContentFillSeed({
+      userInstruction: 'expo에 대해서 설명하는 피피티 만들어줘. 시니어 개발자 레벨.',
+      templateTitle: 'Html Ppt Zhangzara Daisy Days',
+    });
+    const staleCreatePrompt = [
+      '첨부한 자료를 바탕으로 슬라이드 덱을 만들어줘.',
+      '',
+      '[Deliverable instruction]',
+      'Create a complete closed deck.',
+      '',
+      '[User instruction]',
+      'expo에 대해서 설명하는 피피티 만들어줘. 시니어 개발자 레벨.',
+    ].join('\n');
+    const seed = resolveTemplateCloneAutoSendSeed({
+      queuedFillSeed: fillSeed,
+      pendingPrompt: staleCreatePrompt,
+      fillQueued: true,
+    });
+    expect(seed).toBe(fillSeed);
+    expect(seed).toContain(TEMPLATE_CLONE_CONTENT_FILL_MARKER);
+    expect(seed).not.toContain('[Deliverable instruction]');
+  });
+
+  it('rebuilds a fill seed when fill is queued but only the raw create prompt remains', () => {
+    const seed = resolveTemplateCloneAutoSendSeed({
+      queuedFillSeed: '',
+      pendingPrompt: [
+        '첨부한 자료를 바탕으로 슬라이드 덱을 만들어줘.',
+        '',
+        '[User instruction]',
+        'expo에 대해서 설명하는 피피티 만들어줘. 시니어 개발자 레벨.',
+      ].join('\n'),
+      fillQueued: true,
+    });
+    expect(seed).toContain(TEMPLATE_CLONE_CONTENT_FILL_MARKER);
+    expect(seed).toMatch(/expo/i);
+    expect(seed).not.toMatch(/^첨부한 자료를 바탕으로/m);
   });
 });

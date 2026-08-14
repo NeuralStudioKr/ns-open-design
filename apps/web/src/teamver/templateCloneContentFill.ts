@@ -4,7 +4,7 @@
  *
  * Clone alone must never leave the user's "만들어줘" instruction as slide copy.
  *
- * Critical: do NOT ask the model to rewrite the full cloned example.html —
+ * Critical: do NOT attach or rewrite the full cloned example.html —
  * that burns max_tokens in `<head>` CSS and hangs for minutes with no deck.
  */
 
@@ -68,6 +68,73 @@ export function looksLikeInstructionNotSlideCopy(text: string): boolean {
 }
 
 /**
+ * Short cover-topic label from a "만들어줘" request.
+ * "expo에 대해서 설명하는 피피티 만들어줘. 시니어 개발자 레벨." → "expo"
+ */
+export function deriveTemplateCloneTopicLabel(request: string): string {
+  const t = request.trim();
+  if (!t) return '';
+  const aboutKo = t.match(
+    /^(.+?)\s*(?:에\s*대해(?:서)?|에\s*관한)\s*(?:설명하는\s*)?(?:발표\s*자료|피피티|PPT|슬라이드|덱|프레젠테이션)/i,
+  )?.[1]?.trim();
+  if (aboutKo && aboutKo.length >= 2 && !looksLikeCanvasCreateBoilerplate(aboutKo)) {
+    return aboutKo.slice(0, 60);
+  }
+  const aboutEn = t.match(
+    /(?:about|on)\s+(.+?)(?:\s+(?:slides?|deck|presentation|ppt)\b|[.?!]|$)/i,
+  )?.[1]?.trim();
+  if (aboutEn && aboutEn.length >= 2 && !looksLikeInstructionNotSlideCopy(aboutEn)) {
+    return aboutEn.slice(0, 60);
+  }
+  return '';
+}
+
+/**
+ * Keep facts the model needs (headings, preview, user topic, quick settings).
+ * Drop Home/Canvas create scaffolding that used to be dumped as [Source brief]
+ * and drowned the actual topic.
+ */
+export function compactTemplateCloneFillSourceBrief(raw: string | null | undefined): string {
+  const text = String(raw ?? '').trim();
+  if (!text) return '';
+
+  const parts: string[] = [];
+  const push = (label: string, value: string | null | undefined, max = 600) => {
+    const v = String(value ?? '').trim();
+    if (!v) return;
+    parts.push(`${label}: ${v.slice(0, max)}`);
+  };
+
+  push('Canvas title', /Canvas title\s*[:：]\s*(.+)$/im.exec(text)?.[1]);
+  push('Drive source file', /Drive source file\s*[:：]\s*(.+)$/im.exec(text)?.[1]);
+  push('Drive source MIME', /Drive source MIME\s*[:：]\s*(.+)$/im.exec(text)?.[1]);
+  push(
+    'Visible headings',
+    /(?:Visible headings|Canvas headings|Source headings)\s*[:：]\s*(.+)$/im.exec(text)?.[1],
+  );
+  push(
+    'Source preview',
+    /Source preview\s*[:：]\s*([\s\S]*?)(?=\n(?:Canvas |Drive |Visible |User |Selected |\[)|$)/i
+      .exec(text)?.[1],
+    600,
+  );
+  const userInstr = /\[?User instruction\]?\s*[:：]?\s*\n?([\s\S]*?)(?=\n(?:Source |Canvas |Drive |Visible |Selected |\[)|$)/i
+    .exec(text)?.[1]?.trim();
+  if (userInstr && !looksLikeCanvasCreateBoilerplate(userInstr)) {
+    push('User instruction', userInstr, 400);
+  }
+  const quick = /\[Quick settings\]\s*\n?([\s\S]*?)(?=\n\[|$)/i.exec(text)?.[1]?.trim();
+  if (quick) parts.push(`Quick settings:\n${quick}`);
+
+  if (parts.length > 0) return parts.join('\n').slice(0, 1400);
+  if (/\[Deliverable instruction\]|\[Selected slide template/i.test(text)) return '';
+  if (looksLikeCanvasCreateBoilerplate(text) || looksLikeInstructionNotSlideCopy(text)) {
+    return '';
+  }
+  return text.slice(0, 1400);
+}
+
+/**
  * Prefer the real topic line over Canvas boilerplate / full run prompts.
  * Kept user-facing (may still say "만들어줘") for chat display.
  */
@@ -122,6 +189,8 @@ export function templateCloneContentFillHardRules(): string[] {
     '- Keep `<style>` short (kit tokens + fonts only, ideally under ~2KB). Copy at most one Motif SVG if needed — never dump the whole template stylesheet.',
     '- Fill REAL topical titles/body (no "…", no "만들어줘", no create-slides boilerplate). Slide count follows the brief/Quick settings — not the template demo page lineup.',
     '- Prefer finishing a closed `</artifact>` this turn over perfect motif fidelity. A complete compact Daisy-lookalike beats a truncated CSS shell.',
+    '- Honor stated audience/level (e.g. 시니어 개발자 = architecture/internals/trade-offs, not a beginner intro).',
+    '- Each body slide needs a real title plus 2–4 concrete bullets or a real paragraph. No "핵심 메시지를 정리합니다" filler.',
   ];
 }
 
@@ -131,30 +200,69 @@ export function buildTemplateCloneContentFillSeed(options: {
   pendingPrompt?: string | null;
   templateTitle?: string | null;
   hasSourceMaterial?: boolean;
+  slideCountHint?: string | number | null;
 }): string {
   const visible = extractTemplateCloneUserFacingRequest(options);
+  const topic = deriveTemplateCloneTopicLabel(visible);
   const templateTitle = options.templateTitle?.trim() || '';
-  const brief = String(options.sourceBrief ?? '').trim().slice(0, 1400);
+  const rawBrief = String(options.sourceBrief ?? '').trim();
+  const brief = compactTemplateCloneFillSourceBrief(
+    [options.sourceBrief, options.pendingPrompt, options.userInstruction]
+      .filter(Boolean)
+      .join('\n\n'),
+  );
   const hasAttachedSource =
     options.hasSourceMaterial
-    ?? briefLooksLikeAttachedSource(brief);
+    ?? (briefLooksLikeAttachedSource(rawBrief) || briefLooksLikeAttachedSource(brief));
   const parts = [
     visible,
     '',
     TEMPLATE_CLONE_CONTENT_FILL_MARKER,
-    'Daemon Clone already seeded a LOOK preview into `deck.html`. This turn REPLACES it with a compact, content-complete deck.',
+    'Daemon Clone already seeded a LOOK preview into `deck.html`. This turn REPLACES it with a compact, content-complete deck. Do NOT copy or rewrite that document from `<head>`.',
     hasAttachedSource
       ? 'Fill REAL presentation CONTENT for this request and any attached source materials (Canvas/Drive/files) — not the cloned demo copy.'
       : 'Fill REAL presentation CONTENT for this create (user prompt may be empty; invent clear topical copy — do not paste boilerplate leads into titles).',
+    topic ? `Cover topic (use as the title — not the instruction): ${topic}.` : '',
     ...templateCloneContentFillHardRules(),
-  ];
+  ].filter((line) => line !== '');
   if (templateTitle) {
     parts.push(`Selected template: ${templateTitle}.`);
+  }
+  if (options.slideCountHint != null && String(options.slideCountHint).trim()) {
+    parts.push(`Slide count hint: ${String(options.slideCountHint).trim()}.`);
   }
   if (brief) {
     parts.push('', '[Source brief]', brief);
   }
   return parts.join('\n');
+}
+
+/**
+ * Auto-send seed after daemon Clone.
+ *
+ * ProjectView used to prefer the in-memory `pendingPrompt` from createProject
+ * (the full `canvasCreateSlidesRunPrompt` dump) over the queued fill seed.
+ * That sent a surgical existing-deck-edit turn WITHOUT the fill marker, so
+ * the model left Clone's prompt-stuffed headings intact and stalled on `<head>`.
+ *
+ * When a fill is queued, the fill seed ALWAYS wins — even if pendingPrompt
+ * is still the raw create prompt.
+ */
+export function resolveTemplateCloneAutoSendSeed(input: {
+  queuedFillSeed?: string | null;
+  pendingPrompt?: string | null;
+  fillQueued: boolean;
+}): string {
+  const queued = String(input.queuedFillSeed ?? '').trim();
+  const pending = String(input.pendingPrompt ?? '').trim();
+  if (input.fillQueued) {
+    if (isTemplateCloneContentFillPrompt(queued)) return queued;
+    if (isTemplateCloneContentFillPrompt(pending)) return pending;
+    if (queued) return queued;
+    return buildTemplateCloneContentFillSeed({ pendingPrompt: pending });
+  }
+  if (isTemplateCloneContentFillPrompt(queued)) return queued;
+  return queued || pending;
 }
 
 export function queueTemplateCloneContentFill(options: {

@@ -122,18 +122,19 @@ import { fetchAppliedPluginSnapshot, patchProject } from "../state/projects";
 import { fetchMcpServers } from "../state/mcp";
 import type { McpServerConfig, McpTemplate } from "../state/mcp";
 import type { AppConfig, ChatAttachment, ChatCommentAttachment, Project, ProjectFile, ProjectMetadata, SkillSummary } from "../types";
-import type {
-  ContextItem,
-  AppliedPluginSnapshot,
-  ChatSessionMode,
-  ConnectorDetail,
-  InstalledPluginRecord,
-  PluginSourceKind,
-  ProjectContextConnectorRef,
-  ProjectContextMcpServerRef,
-  ResearchOptions,
-  RunContextSelection,
-  WorkspaceContextItem,
+import {
+  sanitizeTemplateCloneDeckTitle,
+  type ContextItem,
+  type AppliedPluginSnapshot,
+  type ChatSessionMode,
+  type ConnectorDetail,
+  type InstalledPluginRecord,
+  type PluginSourceKind,
+  type ProjectContextConnectorRef,
+  type ProjectContextMcpServerRef,
+  type ResearchOptions,
+  type RunContextSelection,
+  type WorkspaceContextItem,
 } from '@open-design/contracts';
 import {
   buildVisualAnnotationAttachment,
@@ -2184,9 +2185,8 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
               sourceBrief,
               userInstruction: promptForRun,
               deckTitle:
-                handoff.title?.trim()
-                || handoff.threadTitle?.trim()
-                || promptForRun.trim().slice(0, 80)
+                sanitizeTemplateCloneDeckTitle(handoff.title)
+                || sanitizeTemplateCloneDeckTitle(handoff.threadTitle)
                 || null,
               slideCountHint: canvasSlideQuickLengthToSlideCount(
                 canvasSlideQuickSettings.length,
@@ -2202,11 +2202,15 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
               setCanvasSlideQuickSettings(DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS);
               // Clone seeded LOOK only — AI-fill as compact kit-driven CREATE.
               // Do NOT attach deck.html (truncated mid-CSS anchors a max_tokens hang).
+              // Preview still opens via onRequestOpenFile.
               const fillSeed = buildTemplateCloneContentFillSeed({
                 userInstruction: promptForRun,
                 sourceBrief,
                 templateTitle: selectedCanvasSlideTemplate.title,
                 hasSourceMaterial: true,
+                slideCountHint: canvasSlideQuickLengthToSlideCount(
+                  canvasSlideQuickSettings.length,
+                ),
               });
               const baseMeta = currentRunContextMeta();
               const canvasMeta = canvasCreateSlidesTurnMeta(selectedCanvasSlideTemplate.id, {
@@ -2384,10 +2388,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
             templateTitle: selectedCanvasSlideTemplate.title,
             sourceBrief,
             userInstruction: promptForRun,
-            deckTitle:
-              asset.filename?.trim()
-              || promptForRun.trim().slice(0, 80)
-              || null,
+            deckTitle: sanitizeTemplateCloneDeckTitle(asset.filename) || null,
             slideCountHint: canvasSlideQuickLengthToSlideCount(
               canvasSlideQuickSettings.length,
             ),
@@ -2405,6 +2406,9 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
               sourceBrief,
               templateTitle: selectedCanvasSlideTemplate.title,
               hasSourceMaterial: true,
+              slideCountHint: canvasSlideQuickLengthToSlideCount(
+                canvasSlideQuickSettings.length,
+              ),
             });
             const baseMeta = currentRunContextMeta();
             const canvasMeta = canvasCreateSlidesTurnMeta(selectedCanvasSlideTemplate.id, {

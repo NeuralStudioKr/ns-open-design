@@ -891,6 +891,28 @@ describe('preview comment attachment helpers', () => {
     expect(stripUserVisibleUserMessageText(prompt)).toBe('폰트 사이즈 두배로 키워줘');
   });
 
+  it('strips Home/Canvas create scaffolding from user-visible chat text', () => {
+    const prompt = [
+      'expo에 대해서 설명하는 피피티 만들어줘. 시니어 개발자 레벨.',
+      '',
+      '[Deliverable instruction]',
+      'Create a complete closed deck.',
+      '',
+      '[Selected slide template]',
+      'The user picked "Html Ppt Zhangzara Daisy Days".',
+      '',
+      '[Source brief]',
+      'Canvas title: Expo',
+      '',
+      '[Quick settings]',
+      'Audience: 시니어 개발자.',
+    ].join('\n');
+
+    expect(stripUserVisibleUserMessageText(prompt)).toBe(
+      'expo에 대해서 설명하는 피피티 만들어줘. 시니어 개발자 레벨.',
+    );
+  });
+
   it('builds set-style templates for style-only comment requests', () => {
     const template = buildConcreteElementPatchTemplate([
       commentAttachment({

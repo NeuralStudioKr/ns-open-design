@@ -576,7 +576,16 @@ describe("canvasSlideLaunch", () => {
     // Composer Canvas/Drive handoff always has source material.
     expect(composer).toContain("hasSourceMaterial: true");
     expect(composer).toContain("sendComposedTurn(");
+    expect(composer).toContain("sanitizeTemplateCloneDeckTitle(");
+    expect(composer).toContain("slideCountHint: canvasSlideQuickLengthToSlideCount(");
+    expect(composer).not.toContain("[...attachments, deckAttachment]");
     expect(composer).not.toContain("blocking model kit fallthrough");
+    expect(app).toContain("queuedFillSeed");
+    expect(app).toContain("pendingPrompt: queuedFillSeed");
+    expect(app).toContain("sanitizeTemplateCloneDeckTitle(");
+    expect(projectView).toContain("resolveTemplateCloneAutoSendSeed(");
+    expect(projectView).toContain("isTemplateCloneContentFill");
+    expect(projectView).toContain("autoAttachedDeckPath = null");
     const entryShell = readWebSource("src/components/EntryShell.tsx");
     expect(entryShell).toContain("payloadTemplateId");
     expect(entryShell).toContain("selectedDeckTemplateId: payloadTemplateId");

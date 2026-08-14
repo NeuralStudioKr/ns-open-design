@@ -6,10 +6,12 @@ import {
   classifyTemplateCloneShellRole,
   inferTemplateCloneContentRole,
   listTemplateCloneSlideShells,
+  looksLikeInstructionCopy,
   normalizeTemplateCssForFixedCanvas,
   pickTemplateShellsForContent,
   resolveTemplateCloneSlideCountHint,
   resolveTemplateCloneSlidesFromBrief,
+  sanitizeTemplateCloneDeckTitle,
 } from '../src/template-clone-fill.js';
 
 describe('buildTemplateClonedDeckHtml', () => {
@@ -278,5 +280,15 @@ describe('free-form Daisy clone content swap', () => {
     expect(outCount).toBe(slides.length);
     expect(outCount).toBeLessThan(natural);
     expect(outCount).toBeGreaterThanOrEqual(3);
+  });
+});
+
+describe('sanitizeTemplateCloneDeckTitle', () => {
+  it('rejects instruction copy and template marketing titles', () => {
+    expect(sanitizeTemplateCloneDeckTitle('첨부한 자료를 바탕으로 슬라이드 덱을 만들어줘.')).toBeNull();
+    expect(sanitizeTemplateCloneDeckTitle('expo에 대해서 설명하는 피피티 만들어줘.')).toBeNull();
+    expect(sanitizeTemplateCloneDeckTitle('Html Ppt Zhangzara Daisy Days')).toBeNull();
+    expect(looksLikeInstructionCopy('[Deliverable instruction] Build a deck')).toBe(true);
+    expect(sanitizeTemplateCloneDeckTitle('Expo SDK 개요')).toBe('Expo SDK 개요');
   });
 });
