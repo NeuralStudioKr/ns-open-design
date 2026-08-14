@@ -628,7 +628,10 @@ describe("canvasSlideLaunch", () => {
     const fillSrc = readWebSource("src/teamver/templateCloneContentFill.ts");
     expect(fillSrc).toContain("withoutCanonicalDeckAttachments(");
     expect(fillSrc).toContain("isCanonicalDeckAttachment(");
-    expect(fillSrc).toContain("FORBIDDEN: streaming `<head>`");
+    expect(fillSrc).toContain("`<head>` is FORBIDDEN on this fill turn");
+    expect(fillSrc).toContain("first 800 characters after `<artifact`");
+    expect(fillSrc).toContain("SLIDE_DECK_CONTENT_EXPANSION_INSTRUCTION");
+    expect(fillSrc).toContain("BRIEF/TOPIC");
     const tabsBar = readWebSource("src/components/WorkspaceTabsBar.tsx");
     expect(tabsBar).toContain("stripUserVisibleUserMessageText(");
     expect(tabsBar).not.toContain("stripUserVisibleQuestionFormProtocolText(");
