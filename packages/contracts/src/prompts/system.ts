@@ -249,7 +249,7 @@ function renderTeamverVisualSignatureBlock({
   body: string;
   fileNames?: string[];
 }): string {
-  const combined = body.slice(0, 12_000);
+  const combined = body.slice(0, 8_000);
   const colors = uniqueMatches(combined, /(?:#[0-9a-fA-F]{3,8}|rgba?\([^)]+\)|hsla?\([^)]+\))/g, 10);
   const fonts = uniqueMatches(combined, /font-family\s*:\s*([^;}\n]+)/gi, 5)
     .map((font) => normalizePromptText(font).slice(0, 80));
@@ -269,17 +269,17 @@ function renderTeamverVisualSignatureBlock({
   }
   const lines = [
     `## ${heading} — ${title}`,
-    description ? normalizePromptText(description).slice(0, 240) : '',
+    description ? normalizePromptText(description).slice(0, 180) : '',
     fileNames?.length ? `files: ${fileNames.join(', ')}` : '',
     colors.length > 0 ? `palette cues: ${colors.join(', ')}` : '',
     fonts.length > 0 ? `font cues: ${fonts.join(' | ')}` : '',
     classes.length > 0 ? `class/style cues: ${classes.join(', ')}` : '',
     layoutHints.length > 0 ? `layout cues: ${layoutHints.join(', ')}` : '',
-    'Must match template palette, type, density, accents, rhythm.',
+    'Must match template palette/type/density/accent/rhythm.',
     'Style only — content brief comes from the user message / Plugin inputs / discovery answers.',
-    'Template beats samples; never fall back to navy/white.',
-    'Use inline styles or one short body `<style>` after slide 1. No `<head>` first.',
-    'Do not copy full skeleton or emit long CSS/head/script.',
+    'Template beats samples; no navy/white fallback.',
+    'Use inline styles or short body `<style>` after slide 1; no `<head>` first.',
+    'Do not copy full skeleton/CSS/head/script dumps.',
   ].filter(Boolean);
   return lines.join('\n');
 }
@@ -1429,10 +1429,10 @@ const TEAMVER_SELECTED_TEMPLATE_VISUAL_READ_LAST_WITH_SCAFFOLD = `# Selected dec
 A Selected deck template is active. **Default and preferred path is token-safe:** Template visual kit + Template scaffold map (not a full example.html dump). A full **Template scaffold (CONTENT-SWAP BASE)** HTML block is rare/opt-in only — ignore it if finishing a complete deck would be at risk.
 
 Token-aware rule:
-- Prefer finishing a complete deck via kit tokens + Motif sprites + scaffold map.
+- Prefer finishing a complete deck via kit tokens + compact motif/deco cues + scaffold map.
 - If a full scaffold HTML block is present and copying it risks truncation / max_tokens, **immediately** stay on the kit + map path (do not burn the turn on a partial CSS shell).
 - When using kit/scaffold CSS, bind slide-surface \`background\`/\`color\` on **both** \`html\`/\`body\` **and** every \`<section class="slide">\`. Do not leave \`body\` on a dark app-shell default around cream slides — that reads as a dark deck in the preview panel.
-- **Fixed 1920×1080 canvas is non-negotiable.** The template's \`example.html\` uses a full-screen presenter layout (\`width:100vw; height:100vh; scroll-snap-type\`); that only works when the deck fills the browser. Teamver renders the deck inside a scaled preview panel, so viewport-relative sizing makes the deck stretch and change aspect ratio with the browser. Use \`width:1920px; height:1080px\` on every \`<section class="slide">\` no matter what CSS the template preview shows. Do not paste \`.slides-container{scroll-snap-type:...}\`, \`.slide{width:100vw;height:100vh}\`, or \`html,body{width:100%;height:100%;overflow:hidden}\` into the deck.
+- **Fixed 1920×1080 canvas:** Teamver scales slides inside a preview panel, so every \`<section class="slide">\` must use \`width:1920px;height:1080px;box-sizing:border-box;position:relative;overflow:hidden\`. Do not paste template presenter CSS such as \`width:100vw\`, \`height:100vh\`, scroll-snap, or full-screen \`html,body\` sizing.
 
 Shared hard rules:
 - Adapt slide count by duplicating/dropping whole slide shells — do not invent a new CSS system.
@@ -1447,15 +1447,15 @@ const TEAMVER_SELECTED_TEMPLATE_VISUAL_READ_LAST_WITH_KIT = `# Selected deck tem
 A Selected deck template is active and a **Template visual kit (from example.html)** is present (no full CONTENT-SWAP scaffold this turn). That kit is the **only** allowed palette, typography, border, shadow, and motif language.
 
 Hard requirements for every slide:
-- **Kit-driven visual, brief-driven structure:** the kit + Template scaffold map provide the *visual and layout vocabulary* (palette, fonts, borders, shadows, motif SVGs, and a catalog of layout roles like cover / welcome / weekly-grid / timeline / three-column / chart / quote / closing). The *slide count, slide order, and per-slide composition* come from the **user brief**, NOT from the template's shell sequence. Preserve surface colors, decorative wrappers, card treatment, and SVG motif language. But choose which layout roles to use, in what order, and how many slides based on the brief — pick roles whose semantic fits the brief and reuse the same role across multiple slides when appropriate. Do NOT force weekly-grid onto a sales pitch or timeline onto a static explainer just because the template ships them. Do NOT dump or rewrite a full example.html.
+- **Kit-driven visual, brief-driven structure:** kit + scaffold map provide palette, fonts, borders, shadows, compact motif/deco cues, and layout roles. Slide count/order/composition come from the user brief, NOT the template shell. Preserve surface colors, wrappers, cards, and motif language; choose roles that fit the brief, reuse when useful, and do NOT dump/rewrite full example.html.
 - Bind kit palette colors and font-family names (and border/shadow tokens when listed) with inline styles or one short body \`<style>\`. Whatever the kit lists MUST appear — do not approximate with a different template's look.
-- Keep decorative density the kit shows via a **small subset** of kit Motif sprites / Decoration CSS cues. Sparse title-only slides that ignore the kit are a failure, but full CSS pasted before content is also a failure.
-- **Copy Motif sprites verbatim** from the kit when present — but only AFTER the cover \`<h1>\` and lead \`<p>\` exist. Never open \`<svg\` in the first 800 characters after \`<artifact\`. If Motif paste risks a hang / truncation, skip sprites and use CSS circles / rounded cards / chunky borders in kit palette hex. Do **not** invent ellipse/petal "daisy" SVGs, generic flower geometry, or new motif drawings.
-- **Forbidden motif substitutes:** do **not** fake the template with unicode/emoji ornaments as decoration. Motif must be the kit's SVG/\`.deco\` patterns (or chunky borders when the kit has no sprites). Content emoji inside body copy is OK sparingly; decorative rows are not.
-- **Forbidden skeleton / Neutral substitutes when a kit is present:** slate \`#0f172a\` / \`#1e293b\` / \`#111827\`, OD skeleton terracotta accent \`#c96442\` (unless that hex is listed in the kit palette), ink \`#1c1b1a\` + muted \`#6b6964\` as a substitute primary palette, Inter-only / Noto Sans KR-only / system-ui-only typography that ignores kit fonts, empty gradient corporate title slides, "no ornament" subtractive layouts.
+- Keep decorative density the kit shows via a **small subset** of compact kit motif/deco cues. Sparse title-only slides that ignore the kit are a failure, but full CSS/SVG pasted before content is also a failure.
+- **Motif budget:** never open \`<svg\` in the first 800 characters after \`<artifact\`. Use compact \`.deco\`, CSS shapes, chunky borders, or at most one short SVG snippet after visible title/body copy starts. Do **not** paste full Motif SVG/SVG \`<style>\` before slide copy, or spend >~800 chars on motif markup. Do **not** invent new motif drawings.
+- **Forbidden motif substitutes:** do **not** fake the template with unicode/emoji ornaments as decoration. Motif must be the kit's compact SVG/\`.deco\` patterns (or chunky borders when the kit has no sprites). Content emoji inside body copy is OK sparingly; decorative rows are not.
+- **Forbidden skeleton / Neutral substitutes:** slate \`#0f172a\`/\`#1e293b\`/\`#111827\`, OD terracotta \`#c96442\` unless listed in kit, Inter/Noto/system-ui-only typography that ignores kit fonts, empty corporate gradients, "no ornament" layouts.
 - **Forbidden:** carrying over the ATTACHED SOURCE FILE's own visual styling. Source contributes TEXT and structure only — palette/fonts/motif MUST come from the kit.
 - **Surface lock:** if the Template visual kit exposes a \`### Slide surface\` block, bind that exact \`background\` / \`color\` on **both** \`html\` / \`body\` **and** every \`.slide\`. Painting only \`.slide\` leaves a wrong preview-panel shell. Never substitute an ink/border token for a slide background. Dark-on-dark, light-on-light, and paper-slides-on-wrong-shell are failed deliverables.
-- **Fixed 1920×1080 canvas is non-negotiable.** The template's \`example.html\` (which the kit is extracted from) is a full-screen presenter layout that uses \`width:100vw\`, \`height:100vh\`, \`scroll-snap-type\`, and \`html,body{width:100%;height:100%;overflow:hidden}\`. Teamver renders the deck inside a **scaled preview panel**, not full-screen, so viewport-relative sizing makes the deck stretch and change aspect ratio with the browser. Every \`<section class="slide">\` MUST inline \`width:1920px;height:1080px;box-sizing:border-box;position:relative;overflow:hidden\`. Do NOT paste \`.slide{width:100vw;height:100vh;min-height:100vh}\`, \`.slides-container{scroll-snap-type:...}\`, or \`html,body{width:100%;height:100%;overflow:hidden}\` from the template preview into the deck — those declarations are stripped from the kit's Decoration/Layout CSS for a reason.
+- **Fixed 1920×1080 canvas:** Teamver scales this in a preview panel; every \`<section class="slide">\` MUST inline \`width:1920px;height:1080px;box-sizing:border-box;position:relative;overflow:hidden\`. Do NOT paste presenter CSS such as \`width:100vw\`, \`height:100vh\`, \`min-height:100vh\`, scroll-snap, or full-screen \`html,body\` sizing.
 - **Output order:** first finish visible slide content. Never start by dumping a long \`<head>\` or full Decoration CSS; a complete recognizable deck beats a perfect-but-truncated shell.
 
 If any earlier compact wireframe / deck-skeleton sample conflicts with the kit (including \`--accent: #c96442\`), **ignore the sample colors** and follow the kit.
@@ -1674,7 +1674,7 @@ export function composeTeamverSlideApiPrompt({
         : hasTemplateScaffold
         ? (
           'Hard requirements (rare full HTML scaffold present — still prefer token-safe kit+map):\n'
-          + '- Prefer finishing a complete deck via kit tokens/Motif sprites + Template scaffold map. Only copy full scaffold HTML if you can close `</html></artifact>` safely.\n'
+          + '- Prefer finishing a complete deck via kit tokens/compact motif cues + Template scaffold map. Only copy full scaffold HTML if you can close `</html></artifact>` safely.\n'
           + '- Kit tokens (when present) are the mandatory palette/font/motif checklist either way.\n'
           + '- Active design system is secondary brand context only; template look wins.\n'
           + '- Forbidden substitutes: `#c96442` skeleton terracotta, Neutral `#0f172a`, emoji motif rows, invented ellipse daisies.\n\n'
@@ -1682,13 +1682,13 @@ export function composeTeamverSlideApiPrompt({
         : hasTemplateVisualKit
         ? (
           'Hard requirements (token-safe content-swap — MUST look like the template):\n'
-          + '- Background/surface, fonts, and layout/placement MUST match the kit. A Neutral / "similar vibe" reinterpretation is a failed deliverable.\n'
-          + '- Treat the kit + Template scaffold map + Layout CSS as the base look; replace only visible content for the user brief.\n'
-          + '- Do NOT dump or rewrite a full example.html document (token/truncation risk). Ignore SKILL.md "Clone example.html" steps in API mode.\n'
-          + '- Bind kit Slide surface on html/body AND every `.slide`; use kit Font import + font-family names exactly.\n'
+          + '- Background/surface, fonts, and layout MUST match the kit; Neutral / "similar vibe" is failed.\n'
+          + '- Use kit + scaffold map + Layout CSS as the base look; replace only visible content.\n'
+          + '- Do NOT dump/rewrite full example.html. Ignore SKILL.md "Clone example.html" in API mode.\n'
+          + '- Bind kit Slide surface on html/body AND every `.slide`; use kit font names exactly.\n'
           + (templateCloneContentFill
-            ? '- Follow scaffold map roles + Layout CSS (grids/flex/regions). Do NOT paste Motif `<svg>` this fill turn — CSS shapes in kit hex only; no emoji ornament rows.\n'
-            : '- Follow scaffold map roles + Layout CSS (grids/flex/regions). Keep decorative density with CSS shapes first; Motif SVG only AFTER cover title+lead, never in the first 800 characters; no emoji ornament rows.\n')
+            ? '- Follow scaffold map/Layout CSS roles. Do NOT paste Motif `<svg>` this fill turn — compact CSS/deco in kit hex only; no emoji ornaments.\n'
+            : '- Follow scaffold map/Layout CSS roles. Keep compact motif/deco density. If SVG exists, use at most one short snippet after title/body copy starts; skip huge SVG/style payloads. No emoji ornaments.\n')
           + '- Do not paste a long `<head>` before slide 1; first produce visible slide sections and finish the deck.\n'
           + '- Active design system is secondary brand context only; template look wins.\n\n'
         )

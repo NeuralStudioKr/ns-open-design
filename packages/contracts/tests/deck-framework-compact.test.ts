@@ -16,7 +16,7 @@ describe('DECK_FRAMEWORK_DIRECTIVE_COMPACT', () => {
     expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT).toContain('do not repeat the same padding/background/composition');
     expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT).toContain('Selected deck template look');
     expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT).toContain('secondary brand context only');
-    expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT).toContain('copy these two identical white slides literally');
+    expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT).toContain('do not** copy literally');
     expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT).toContain('Do not add `<head>`');
   });
 
@@ -68,6 +68,12 @@ describe('DECK_FRAMEWORK_DIRECTIVE_COMPACT', () => {
     );
     expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_SELECTED_TEMPLATE).toContain(
       'Never start a slide with Motif `<svg>`',
+    );
+    expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_SELECTED_TEMPLATE).toContain(
+      'compact motif/deco cues',
+    );
+    expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_SELECTED_TEMPLATE).toContain(
+      'never spend >~800 chars on motif markup',
     );
     expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_SELECTED_TEMPLATE).not.toContain(
       'optional short style with kit @import',

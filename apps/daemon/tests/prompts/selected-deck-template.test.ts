@@ -37,6 +37,7 @@ describe('selected-deck-template prompt helpers', () => {
     expect(wrapped).toContain('Body-first output contract');
     expect(wrapped).toContain('<body><section class="slide"');
     expect(wrapped).toContain('Do not emit `<head>`');
+    expect(wrapped).toContain('skip huge SVG `<style>` payloads');
     expect(wrapped).toContain('skip Motif `<svg>` entirely');
   });
 

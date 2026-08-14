@@ -245,7 +245,7 @@ export function explicitSlideOnlyDeckTemplatePluginInputs(
     ...(templateId?.trim() ? { selectedDeckTemplateId: templateId.trim() } : {}),
     selectedDeckTemplateTitle: title,
     visualTemplatePolicy:
-      "The user explicitly picked this deck template. Its Template visual kit / preview HTML is the primary visual contract: preserve palette, typography, borders, and recognizable Decoration CSS / Motif sprites as compact inline cues; do not fall back to a generic default look, dump a head/style shell, or substitute emoji ornaments.",
+      "The user explicitly picked this deck template. Its Template visual kit / preview HTML is the primary visual contract: preserve palette, typography, borders, and recognizable compact Decoration CSS / motif cues; do not fall back to a generic default look, dump a head/style/SVG shell, or substitute emoji ornaments.",
   };
 }
 

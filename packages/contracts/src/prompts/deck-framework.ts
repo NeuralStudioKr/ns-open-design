@@ -541,13 +541,13 @@ Quality bar: match the requested slide count (see slide-count rule below); each 
  */
 export const DECK_COMPACT_INLINE_LAYOUT_VOCABULARY_FOR_SELECTED_TEMPLATE = `# Compact API — inline layout vocabulary with Selected deck template (structure only)
 
-Each slide is a **fixed 1920×1080** Teamver canvas. Prefer \`style="width:1920px;height:1080px;box-sizing:border-box;overflow:hidden;..."\` on every \`<section class="slide">\` (not viewport-only \`min-height:100vh\` sizing). Use large presentation typography, fill the canvas, and center content vertically with flex plus generous padding (64–96px).
+Each slide is a **fixed 1920×1080** Teamver canvas: inline \`width:1920px;height:1080px;box-sizing:border-box;overflow:hidden\` on every \`<section class="slide">\`; avoid viewport-only \`min-height:100vh\`. Use large presentation typography and fill the canvas.
 
 **Colors, fonts, borders, shadows, and decorative density MUST come from the Selected deck template / Template visual kit above.** Do not invent a slate/navy corporate palette. Forbidden fallbacks when a kit is present: \`#0f172a\`, \`#1e293b\`, \`#111827\`, \`#f8fafc\` + Inter-only sparse covers.
 
-Do not invent one identical empty box for every slide. Pick the closest layout role below and vary **composition** and **density** across slides (never 3+ identical slides in a row). Bind kit tokens into every \`style=\` / short body \`<style>\`.
+Do not invent one identical empty box for every slide. Pick the closest role below and vary **composition** and **density** (never 3+ identical slides in a row). Bind kit tokens into inline styles / short body \`<style>\`.
 
-**Cover** — big title + one lead line; kit background + kit display font; place 2–4 kit Motif sprites in corner \`.deco\` wrappers (or chunky kit cards) — never emoji flower/star rows.
+**Cover** — big title + one lead line; kit background + kit display font; use compact kit-colored \`.deco\` wrappers / CSS shapes / chunky kit cards in corners — never emoji flower/star rows, and never start with a large SVG dump.
 **Body** — eyebrow + headline + paragraph or bullets on a kit surface (not plain white Inter).
 **Big stat** — one number + caption centered; kit accent for the numeral.
 **Three-column** — headline + 3 short points (flex/grid); kit card borders/shadows when the kit uses chunky cards.
@@ -556,7 +556,7 @@ Do not invent one identical empty box for every slide. Pick the closest layout r
 **Quote / principle** — one strong 56–72px sentence with small attribution.
 **Closing** — recap CTA on a kit accent or cream/pastel surface — not a dark slate wall.
 
-Quality bar: match the requested slide count; each slide needs a distinct layout role. The finished deck must be recognizable as the selected template (palette hex, fonts, borders, SVG/\`.deco\` motif) — not Neutral Modern and not emoji ornaments.
+Quality bar: match slide count; each slide needs a distinct role. The deck must read as the selected template (palette hex, fonts, borders, compact \`.deco\` motif cues), not Neutral Modern or emoji ornaments.
 `;
 
 /** Compact API decks: honor user/plugin/brief counts; 6–8 is only the unspecified default. */
@@ -565,13 +565,13 @@ export const COMPACT_DECK_SLIDE_COUNT_GUIDANCE =
 
 export const DECK_FRAMEWORK_DIRECTIVE_COMPACT = `# Slide deck — API compact contract (overrides the long skeleton copy workflow)
 
-You are in API mode. **Do NOT paste or recreate a large framework skeleton.** Do NOT spend tokens copying \`<head>\`, \`<style>\`, scale-to-fit JS, print CSS, chrome counters, keyboard handlers, or comments first.
+You are in API mode. **Do NOT paste/recreate a large framework skeleton.** Do NOT spend tokens on \`<head>\`, big \`<style>\`, scale JS, print CSS, chrome counters, keyboard handlers, or comments first.
 
 When the brief is ready and this is a deck-delivery turn, emit ONE \`<artifact type="deck" identifier="deck">\` whose body is a complete \`<!doctype html>…</html>\` document **in this same response**. The artifact type is always \`deck\` in Teamver; do not use \`text/html\`, \`html\`, \`prototype\`, or \`live-artifact\` as the artifact type. For Teamver API stability, prefer the no-head static shape below: start \`<body>\` immediately and write the visible slides first.
 
-Required wireframe only (structural — **do not** copy these two identical white slides literally; use the layout vocabulary below for varied slides):
+Required wireframe only (structural — **do not** copy literally; use varied layouts below):
 
-\`<artifact type="deck" identifier="deck"><!doctype html><html lang="ko"><body style="margin:0;font:24px/1.5 system-ui,sans-serif"><section class="slide" style="min-height:100vh;padding:80px 88px;box-sizing:border-box;background:#0f172a;color:#f8fafc;display:flex;flex-direction:column;justify-content:center"><h1 style="margin:0 0 20px;font:700 64px/1.05 sans-serif">실제 제목</h1><p style="margin:0;font:400 26px/1.45 sans-serif;max-width:48rem">실제 본문.</p></section><section class="slide" style="min-height:100vh;padding:80px 88px;box-sizing:border-box;background:#fff;color:#111;display:flex;flex-direction:column;justify-content:center"><h1 style="margin:0 0 20px;font:700 52px/1.1 sans-serif">실제 제목</h1><ul style="margin:0;padding-left:1.35rem;font:26px/1.55 sans-serif"><li>실제 불릿</li></ul></section></body></html></artifact>\`
+\`<artifact type="deck" identifier="deck"><!doctype html><html lang="ko"><body style="margin:0"><section class="slide" style="width:1920px;height:1080px;padding:80px 88px;box-sizing:border-box;overflow:hidden"><h1>실제 제목</h1><p>실제 본문.</p></section><section class="slide" style="width:1920px;height:1080px;padding:80px 88px;box-sizing:border-box;overflow:hidden"><h1>실제 제목</h1><ul><li>실제 불릿</li></ul></section></body></html></artifact>\`
 
 Rules:
 1. On deck-delivery turns, optional: one tiny brief-specific UI-locale status sentence, then start the artifact. Artifact-only is OK for speed/tokens. No generic promise-only line. On quick-brief/question-form turns, do not emit an artifact.
@@ -580,7 +580,7 @@ Rules:
 4. The artifact MUST end with \`</html>\` and \`</artifact>\` in this turn. A short static deck is better than a beautiful truncated \`<head>\`.
 5. Vary slide layouts using the inline layout vocabulary below — do not repeat the same padding/background/composition on every slide.
 6. Preserve the Selected deck template look (design system is secondary brand context only): palette, typography mood, density, accent treatment, and slide rhythm must be recognizable even in compact inline HTML.
-7. When the user attaches images to place on slides, include \`<img src="exact-project-relative-path" alt="…" style="max-width:100%;height:auto;object-fit:contain">\` using the paths from the attachment context. Prefer a dedicated image slide or a content area; never invent remote URLs or data: URIs.
+7. For user-attached images, use exact project-relative paths in \`<img src="...">\`; never invent remote URLs or data: URIs.
 
 ${DECK_COMPACT_INLINE_LAYOUT_VOCABULARY}
 `;
@@ -595,7 +595,7 @@ export const DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_SELECTED_TEMPLATE = `# Slide d
 You are in API mode. **Do NOT paste or recreate a large OD framework skeleton.** Do NOT spend tokens on scale-to-fit JS, print CSS, chrome counters, or keyboard handlers.
 
 A **Selected deck template** is already in this prompt. Use the **token-safe layout-vocabulary** path:
-1. **Template visual kit** (+ Template scaffold map of slide roles) — bind tokens/Motif sprites for the visual look, and pick **the layouts that fit your user brief** from the scaffold map. Slide count and order come from the user brief / Plugin \`slideCount\`, NOT from the template's shell sequence.
+1. **Template visual kit** (+ Template scaffold map of slide roles) — bind palette/font/border/deco tokens for the visual look, and pick **the layouts that fit your user brief** from the scaffold map. Slide count and order come from the user brief / Plugin \`slideCount\`, NOT from the template's shell sequence.
 2. Else Visual summary / title cues.
 
 Do **not** paste a full \`example.html\` dump into the artifact (input was already summarized into the kit; rewriting the whole preview burns output tokens and truncates).
@@ -612,7 +612,7 @@ Rules:
 3. ${COMPACT_DECK_SLIDE_COUNT_GUIDANCE} Prefer a complete deck over a perfect-but-truncated shell.
 4. The artifact MUST end with \`</html>\` and \`</artifact>\` in this turn. Complete deck beats perfect motif fidelity; a shell-only document is a failure.
 5. **Layout vocabulary, not shell copy.** Treat the Template scaffold map as a *catalog* of the template's available layouts (cover, welcome, weekly-grid, timeline, three-column, chart, quote, team, closing …). Pick the layouts whose role fits your user brief's actual content, reuse the same role across multiple slides when appropriate, and skip roles whose semantic doesn't fit (e.g. don't force weekly-grid onto a sales pitch, don't force timeline onto a static explainer). Slide count = user brief / Plugin \`slideCount\` / auto default 6–8 — **NOT** the template's natural shell count. Do not flatten every slide into the same cover composition.
-6. **Hard visual rule (kit-driven visual, brief-driven structure):** the kit + scaffold map provide the *visual vocabulary* (palette, fonts, borders, shadows, layout roles). The *slide count, order, and per-slide composition* come from the user brief. Preserve surface colors, decorative wrappers, and card treatment; but choose how many slides, which layout roles, and in what order based on the brief — NOT the template's shell sequence. **Never start a slide with Motif \`<svg>\`.** Cover order is \`<h1>\` + lead, then optional CSS-shape decoration in kit hex. Motif SVG paste is optional and MUST come after title text; if it risks a 5-line hang on \`<svg><style>\`, skip sprites entirely. Never invent generic CSS flowers or emoji ornaments. Never substitute OD skeleton terracotta \`#c96442\`, Neutral \`#0f172a\`, Inter/Noto-only covers that ignore template fonts, emoji ornament rows, or invented motifs for template CSS/SVG.
+6. **Hard visual rule (kit-driven visual, brief-driven structure):** the kit + scaffold map provide the *visual vocabulary* (palette, fonts, borders, shadows, compact motif/deco cues, layout roles). Slide count/order/composition come from the user brief. Preserve surface colors, wrappers, card treatment, and motif language, but choose roles by brief — NOT the template shell. Never start a slide with Motif \`<svg>\`: first write title + lead, then compact \`.deco\`/CSS shapes/chunky borders in kit hex. Motif SVG paste is optional, at most one short snippet after visible copy, and must be skipped if it risks a 5-line \`<svg><style>\` hang; never spend >~800 chars on motif markup. Never substitute OD terracotta \`#c96442\`, Neutral \`#0f172a\`, Inter/Noto-only covers, emoji ornaments, or invented motifs.
 7. When the user attaches images, include \`<img src="exact-project-relative-path" …>\` using attachment paths.
 
 ${DECK_COMPACT_INLINE_LAYOUT_VOCABULARY_FOR_SELECTED_TEMPLATE}

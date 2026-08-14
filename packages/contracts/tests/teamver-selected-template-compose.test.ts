@@ -124,7 +124,8 @@ describe('Teamver selected deck template compose (BYOK slide-only)', () => {
     expect(prompt).toContain('Selected deck template visual — READ LAST');
     expect(prompt).toMatch(/brief is a topic, not slide text/i);
     expect(prompt).toContain('Expo for Senior Engineers');
-    expect(prompt).toMatch(/Forbidden motif substitutes|emoji flowers\/stars|Motif sprites/i);
+    expect(prompt).toMatch(/Forbidden motif substitutes|emoji flowers\/stars|compact motif/i);
+    expect(prompt).toMatch(/skip huge SVG\/style payloads/i);
     expect(prompt).toContain('Template visual kit (from example.html)');
     expect(prompt).toContain('**only** allowed palette');
     expect(prompt).toContain('API compact contract with Selected deck template');

@@ -149,7 +149,7 @@ export const CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION =
   "and the source's INFORMATION structure (which headings become which slide sections). " +
   "**Do NOT preserve the source's visual styling.** The attached Canvas / Drive HTML has its own background colors, gradients, " +
   "font-families, decorative gradients, and section chrome — those belong to the source page, not to the deliverable deck. " +
-  "**Token-safe template apply:** use the Selected deck template visual kit + scaffold map in the system prompt (palette/fonts/Motif sprites/slide roles). " +
+  "**Token-safe template apply:** use the Selected deck template visual kit + scaffold map in the system prompt (palette/fonts/compact motif cues/slide roles). " +
   "Content-swap the user brief into that look — do NOT paste or regenerate a full example.html dump (input/output token risk). " +
   "Never carry over the source HTML's colors, fonts, or decorative elements. " +
   "If the source uses one palette and the selected template uses another, the template kit WINS. " +
@@ -181,7 +181,7 @@ export const HOME_CREATE_SLIDES_INTERNAL_INSTRUCTION =
   "never Write `index.html`, `canvas.html`, or other root HTML basenames. " +
   "The only HTML deliverable must be a rebuilt slide deck saved as `deck.html` " +
   "via exactly one `<artifact type=\"deck\" identifier=\"deck\">` (identifier MUST be `deck`). " +
-  "**Token-safe template apply:** use the Selected deck template visual kit + scaffold map in the system prompt (palette/fonts/Motif sprites/slide roles). " +
+  "**Token-safe template apply:** use the Selected deck template visual kit + scaffold map in the system prompt (palette/fonts/compact motif cues/slide roles). " +
   "Content-swap the topic into that look — do NOT paste or regenerate a full example.html dump (input/output token risk). " +
   SLIDE_DECK_QUALITY_BAR_INSTRUCTION + " " +
   SLIDE_DECK_CONTENT_EXPANSION_INSTRUCTION + " " +
@@ -406,9 +406,9 @@ function selectedSlideTemplatePriorityInstruction(title: string): string {
   return [
     "**Selected template visual contract — READ LAST.**",
     `The user explicitly selected "${title}" as the deck template. This selected template is the visual source of truth and outranks the Canvas / Drive source styling, quick settings, default design systems, scenario examples, and any generic slide examples.`,
-    "Use the Template visual kit as the token-safe content-swap contract. The finished deck MUST look like this template: bind kit background/surface + fonts + Layout CSS/scaffold map roles + Motif sprites. Replace visible content for the user brief — do not dump or rewrite a full example.html document (token/truncation risk).",
+    "Use the Template visual kit as the token-safe content-swap contract. The finished deck MUST look like this template: bind kit background/surface + fonts + Layout CSS/scaffold map roles + compact motif/deco cues. Replace visible content for the user brief — do not dump or rewrite a full example.html document (token/truncation risk).",
     "A Neutral / \"similar vibe\" reinterpretation is a failed deliverable. Whatever surface hex and font-family names the kit lists MUST appear — do not approximate with Neutral slate `#0f172a`, OD skeleton terracotta `#c96442` (unless that hex is in the kit palette), ink `#1c1b1a`, or Noto Sans KR-only typography that ignores kit fonts.",
-    "Follow scaffold map layout roles (do not flatten every slide into the same cover). Do not paste Motif SVG before the cover title and lead exist — CSS shapes in kit hex first. Do not invent ellipse daisy SVGs or emoji ornaments.",
+    "Follow scaffold map layout roles (do not flatten every slide into the same cover). Use compact CSS/deco cues first; if SVG sprites are provided, use at most one short snippet after title/body copy starts. Skip huge SVG/style payloads; do not invent ellipse daisy SVGs or emoji ornaments.",
     "Meet the deck quality bar: each filled slide should carry real message density and specific content, not a template demo caption, the raw user prompt, or sparse placeholder text.",
     SLIDE_DECK_CONTENT_EXPANSION_INSTRUCTION,
     "A complete closed deck beats perfect motif fidelity; never fall back to Neutral Modern, Simple Deck skeleton accent, generic pastel circles, or source-page decorations.",
@@ -445,7 +445,7 @@ export function canvasCreateSlidesRunPrompt(
     : "";
   const templateSourceRule = hasSourceMaterial
     ? [
-      "**Template kit WIN over the attached source's own visual styling.** The Canvas / Drive source HTML may have its own background gradients, fonts, and decorative accents (e.g. warm yellow-green travel styling); those are content references only. Do NOT carry over the source's colors, gradients, fonts, or decorative gradients into the deck. Use kit Motif sprites / scaffold-map slide roles — never substitute emoji flowers/stars. Only the source's TEXT (headings, body copy, section names) crosses over.",
+      "**Template kit WIN over the attached source's own visual styling.** The Canvas / Drive source HTML may have its own background gradients, fonts, and decorative accents (e.g. warm yellow-green travel styling); those are content references only. Do NOT carry over the source's colors, gradients, fonts, or decorative gradients into the deck. Use kit compact motif/deco cues / scaffold-map slide roles — never substitute emoji flowers/stars. Only the source's TEXT (headings, body copy, section names) crosses over.",
       "If the source material's topic doesn't fit the template's theme (e.g. business content picked with a terminal template), put the source TEXT into this template's look anyway. Do NOT return an empty deck because of the mismatch; an imperfect visual match is better than no deck.",
     ]
     : [
