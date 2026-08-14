@@ -3587,6 +3587,18 @@ button.teamver-home-create-hero-cta:disabled {
   justify-content: space-between;
   gap: 12px;
 }
+.teamver-home-slide-create-head-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.teamver-home-slide-create-lead {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--text-muted);
+}
 .teamver-home-slide-create-modal .teamver-canvas-slide-launch-stepper {
   padding: 0 0 16px;
   margin: 0;

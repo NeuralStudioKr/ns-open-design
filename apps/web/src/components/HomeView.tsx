@@ -1965,7 +1965,7 @@ export function HomeView({
           pluginType: 'official',
           skillId: null,
           appliedPluginSnapshotId: null,
-          pluginTitle: template.title,
+          pluginTitle: null,
           taskKind: null,
           pluginInputs: {
             ...canvasCreateSlidesPluginInputs(
@@ -2120,7 +2120,7 @@ export function HomeView({
           }),
         );
         if (submitResult === false) {
-          setCanvasSlideLaunchError('프로젝트를 만들지 못했습니다 — 다시 시도해 주세요.');
+          setCanvasSlideLaunchError(t('teamver.homeCreate.errorCreateFailed'));
           return;
         }
         consumeTeamverCanvasLaunchHandoff();

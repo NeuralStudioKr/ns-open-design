@@ -17,6 +17,7 @@
 
 ## 진행 메모
 
+- 2026-08-14: Home confirm `pluginTitle: null` (템플릿 마케팅 제목 차단). 모달 헤더에 `homeCreate.lead`. Canvas 생성 실패도 `errorCreateFailed`.
 - 2026-08-14: L1 판별 — 생성 프롬프트가 카탈로그 제목이 아니라 `templateId`로 기본/명시를 가름. 영문 기본 제목도 sentinel.
 - 2026-08-14: L1 표시 — 「새 슬라이드」가 템플릿 스텝을 다녀오면 스텝퍼에 기본 라벨 + ✓. 피커 기본 카드 제목은 embed 로케일. 안 C 잔여 키 `selectedTemplate`/`changeTemplate` 제거.
 - 2026-08-14: 리뷰 — 갤러리 진입은 L1 기본을 골라도 내용 스텝에서 「슬라이드 만들기」유지. 스텝퍼에 기본 템플릿 라벨 표시. placeholder를 예시 문장으로. 피커 검색/빈 결과/기본 뱃지는 `embedUiLabel`.

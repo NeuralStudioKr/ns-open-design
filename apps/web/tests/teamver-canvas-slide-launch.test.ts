@@ -559,6 +559,12 @@ describe("canvasSlideLaunch", () => {
     expect(home).toContain("confirmHomeSlideCreate");
     expect(home).toContain("teamver.homeCreate.errorTemplateLost");
     expect(home).toContain("teamver.homeCreate.errorCreateFailed");
+    const confirmHomeSlideCreateSrc = home.slice(
+      home.indexOf("async function confirmHomeSlideCreate"),
+      home.indexOf("async function confirmCanvasSlideLaunch"),
+    );
+    expect(confirmHomeSlideCreateSrc).toContain("pluginTitle: null");
+    expect(confirmHomeSlideCreateSrc).not.toContain("pluginTitle: template.title");
     expect(home).toContain("templateId: template.id");
     expect(home).toContain("templateId: templateForRun.id");
     expect(home).toContain("selectedDeckTemplateId: template.id");

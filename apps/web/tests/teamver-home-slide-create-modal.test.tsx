@@ -115,6 +115,9 @@ describe("TeamverHomeSlideCreateModal", () => {
       />,
     );
     expect(screen.getByTestId("teamver-home-slide-create-content")).toBeTruthy();
+    expect(screen.getByTestId("teamver-home-slide-create-lead").textContent).toMatch(
+      /brief and a template/i,
+    );
     const contentStep = screen.getByTestId("teamver-home-slide-create-step-content").closest("li");
     expect(contentStep?.getAttribute("aria-current")).toBe("step");
     expect(

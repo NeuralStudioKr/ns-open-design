@@ -587,7 +587,15 @@ export function TeamverHomeSlideCreateModal({
       >
         <header className="teamver-drive-picker-head teamver-home-slide-create-head">
           <div className="teamver-home-slide-create-head-row">
-            <h2 id="teamver-home-slide-create-title">{t("teamver.homeCreate.modalTitle")}</h2>
+            <div className="teamver-home-slide-create-head-copy">
+              <h2 id="teamver-home-slide-create-title">{t("teamver.homeCreate.modalTitle")}</h2>
+              <p
+                className="teamver-home-slide-create-lead"
+                data-testid="teamver-home-slide-create-lead"
+              >
+                {t("teamver.homeCreate.lead")}
+              </p>
+            </div>
             <button
               type="button"
               className="teamver-drive-picker-close"
