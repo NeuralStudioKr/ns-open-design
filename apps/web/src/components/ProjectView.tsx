@@ -62,7 +62,10 @@ import {
   peekLatestPendingArtifactWrite,
   stashPendingArtifactWrite,
 } from '../artifacts/pendingWriteRecovery';
-import { isClosedSoftSalvageDeckHtml } from '../artifacts/deck-html-content';
+import {
+  deckSlideHeadingsLookLikeFailedGenerate,
+  isClosedSoftSalvageDeckHtml,
+} from '../artifacts/deck-html-content';
 import {
   recoverBestHtmlDocumentFromText,
   recoverHtmlArtifactFromPrecedingDocument,
@@ -5100,10 +5103,18 @@ export function ProjectView({
           artifactToPersist.artifactType,
           slideOnlyMvp,
         );
+        // Soft salvage may keep a previewable truncated deck, but never a
+        // "만들어줘" / template-marketing cover — that is a failed generate.
+        const failedGenerateHeadings =
+          normalizedArtifactType === 'deck'
+          && deckSlideHeadingsLookLikeFailedGenerate(artifactToPersist.html);
         if (
-          !trustSoftTruncationSalvage
-          && normalizedArtifactType === 'deck'
-          && isLowSubstanceSlideDeckArtifact(artifactToPersist.html)
+          failedGenerateHeadings
+          || (
+            !trustSoftTruncationSalvage
+            && normalizedArtifactType === 'deck'
+            && isLowSubstanceSlideDeckArtifact(artifactToPersist.html)
+          )
         ) {
           return {
             kind: 'skipped-incomplete',

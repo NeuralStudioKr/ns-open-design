@@ -1005,6 +1005,8 @@ describe("ProjectView message loading", () => {
   it("skips low-substance deck artifacts before marking slide generation complete", () => {
     const source = readSource("src/components/ProjectView.tsx");
     expect(source).toContain("isLowSubstanceSlideDeckArtifact");
+    expect(source).toContain("deckSlideHeadingsLookLikeFailedGenerate");
+    expect(source).toContain("failedGenerateHeadings");
     expect(source).toContain("normalizedArtifactType === 'deck'");
     expect(source).toContain("reason: 'low-substance deck artifact'");
     expect(source).toContain("kind: 'skipped-incomplete'");

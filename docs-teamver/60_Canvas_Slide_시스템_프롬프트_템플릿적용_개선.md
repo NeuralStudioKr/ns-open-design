@@ -152,6 +152,10 @@ full `example.html`을 시스템 프롬프트에 넣지 않는다는 방침은 �
 
 제품 판단: **완성된 덱이 우선**이다. 선택 템플릿과 100% 동일한 CSS를 복사하다가 결과물이 비어버리는 것보다, 템플릿의 palette/font/motif cue가 보이는 compact static deck을 완성하는 것이 낫다. 따라서 pre-write gate는 계속 shell 저장을 막고, prompt는 shell이 생기지 않도록 body-first로 유도한다.
 
+### 0.13 2026-08-14 — salvage여도 지시문 커버는 persist 거부
+
+Soft truncation salvage는 previewable 잘림을 살리지만, 커버가 `looksLikeInstructionCopy` / `looksLikeTemplateMarketingTitle`이면 실패한 generate다. `trustSoftTruncationSalvage`가 low-substance 게이트를 우회하지 못하게 `deckSlideHeadingsLookLikeFailedGenerate`를 persist에서 항상 적용한다.
+
 ### 0.12 2026-08-14 — persist 지시문 제목 거부 · Clone 실패 시에도 fill · DESIGN.md omit
 
 **잔여 구멍:** 프롬프트만으로는 커버에 "만들어줘"가 남는 덱이 저장됐고, Clone HTTP 실패 시 fill 마커 없이 create dump가 나갔으며, daemon compose는 선택 템플릿과 Neutral DESIGN.md를 같이 넣었다.

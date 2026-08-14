@@ -60,6 +60,17 @@ describe("deck-html-content", () => {
     expect(deckSlideHeadingsLookLikeFailedGenerate(real)).toBe(false);
   });
 
+  it("still flags instruction-copy covers that pass the soft-salvage bar", () => {
+    const parrot =
+      "<!doctype html><html lang=\"ko\"><body>"
+      + "<section class=\"slide\"><h1>첨부한 자료를 바탕으로 슬라이드 덱을 만들어줘</h1>"
+      + "<p>시니어 개발자 레벨</p><svg viewBox=\"0 0 24 24\"><circle cx=\"12\" cy=\"12\" r=\"8\"/></svg></section>"
+      + "<section class=\"slide\"><h1>Expo 소개</h1><p>Expo는 도구입니다.</p></section>"
+      + "</body></html>";
+    expect(isClosedSoftSalvageDeckHtml(parrot)).toBe(true);
+    expect(deckSlideHeadingsLookLikeFailedGenerate(parrot)).toBe(true);
+  });
+
   it("rejects slide sections that only contain status prose", () => {
     const html =
       "<!doctype html><html lang=\"ko\"><body>"
