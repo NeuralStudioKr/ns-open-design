@@ -3579,10 +3579,11 @@ export function buildRunErrorDiagnosticText(input: RunErrorDiagnosticInput): str
   // Branding-neutral header — the diagnostic gets copied into support tickets
   // by the "copy diagnostic" button. Ops needs the internal ids below; the
   // header name is not user-facing surface.
+  const resolvedRunId = input.runId ?? input.traceId ?? null;
   const lines = [
     'teamver Slide run error diagnostics',
     `trace_id: ${input.traceId ?? 'n/a'}`,
-    `run_id: ${input.runId ?? input.traceId ?? 'n/a'}`,
+    `run_id: ${resolvedRunId ?? 'n/a'}`,
     `error_code: ${input.errorCode ?? 'n/a'}`,
     `project_id: ${input.projectId ?? 'n/a'}`,
     `conversation_id: ${input.conversationId ?? 'n/a'}`,
@@ -3596,6 +3597,16 @@ export function buildRunErrorDiagnosticText(input: RunErrorDiagnosticInput): str
   const raw = input.rawMessage?.trim();
   if (raw && raw !== input.message.trim()) {
     lines.push('', 'raw_error:', raw);
+  }
+
+  // BYOK / direct API agents never mint a daemon run id — `n/a` is expected,
+  // not a missing telemetry bug. Call that out so support tickets don't chase it.
+  const agentId = String(input.agentId ?? '').trim().toLowerCase();
+  if (!resolvedRunId && (agentId.endsWith('-api') || agentId.includes('byok'))) {
+    lines.push(
+      '',
+      'note: run_id/trace_id n/a is expected for BYOK/API agents (no daemon run).',
+    );
   }
 
   return lines.join('\n');

@@ -180,22 +180,34 @@ describe("project conversation error messages", () => {
       extractProjectRunErrorCode(new Error("proxy 502: PROJECT_STORAGE_UNAVAILABLE sync-down failed")),
     ).toBe("PROJECT_STORAGE_UNAVAILABLE");
     expect(extractProjectRunErrorCode(new Error("Upstream error: 529"))).toBe(
-      "UPSTREAM_UNAVAILABLE",
+      "OVERLOADED_ERROR",
     );
     expect(extractProjectRunErrorCode(new Error("prompt is too long: 210000 tokens"))).toBe(
-      "BAD_REQUEST",
+      "CONTEXT_LENGTH_EXCEEDED",
     );
+    const anthropicContext = Object.assign(
+      new Error("prompt is too long: 220000 tokens > 200000 maximum"),
+      { status: 400, error: { type: "invalid_request_error" } },
+    );
+    expect(extractProjectRunErrorCode(anthropicContext)).toBe("CONTEXT_LENGTH_EXCEEDED");
+    expect(formatProjectRunErrorForUser(anthropicContext)).toMatch(/모델 한도를 초과/);
+    const anthropicOverloaded = Object.assign(new Error("Overloaded"), {
+      status: 529,
+      error: { type: "overloaded_error" },
+    });
+    expect(extractProjectRunErrorCode(anthropicOverloaded)).toBe("OVERLOADED_ERROR");
     const networkErr = new Error("teamver_browser_network_unavailable") as Error & {
       code?: string;
     };
     networkErr.code = "TEAMVER_BROWSER_NETWORK_UNAVAILABLE";
     expect(extractProjectRunErrorCode(networkErr)).toBe("UPSTREAM_UNAVAILABLE");
     const persisted = formatPersistedProjectRunError(new Error("Upstream error: 529"));
-    expect(persisted.code).toBe("UPSTREAM_UNAVAILABLE");
+    expect(persisted.code).toBe("OVERLOADED_ERROR");
     expect(persisted.userMessage).toContain("AI 서비스에 연결");
     expect(userFacingRunErrorDetail(persisted.detail)).toBe(persisted.userMessage);
     expect(extractPersistedRunErrorDiagnostic(persisted.detail)).toContain("stream-error");
     expect(extractPersistedRunErrorDiagnostic(persisted.detail)).toContain("Upstream error: 529");
+    expect(extractPersistedRunErrorDiagnostic(persisted.detail)).toContain("code=OVERLOADED_ERROR");
     const opaque = formatPersistedProjectRunError(new Error("some unclassified boom"));
     expect(opaque.code).toBe("AGENT_EXECUTION_FAILED");
     expect(userFacingRunErrorDetail(opaque.detail)).toContain("슬라이드 실행 중 오류");

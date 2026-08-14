@@ -530,6 +530,21 @@ describe('ChatPane streaming state', () => {
     expect(diagnostic).toContain('run_id: legacy-run-id');
   });
 
+  it('notes that BYOK/API agents intentionally lack daemon run ids', () => {
+    const out = buildRunErrorDiagnosticText({
+      message: '슬라이드 실행 중 오류가 발생했습니다. 다시 시도하세요.',
+      rawMessage: 'code=BAD_REQUEST raw=proxy 400: BAD_REQUEST prompt is too long',
+      errorCode: 'BAD_REQUEST',
+      agentId: 'anthropic-api',
+      projectId: 'project-1',
+      conversationId: 'conv-1',
+      assistantMessageId: 'assistant-1',
+    });
+    expect(out).toContain('run_id: n/a');
+    expect(out).toContain('agent_id: anthropic-api');
+    expect(out).toMatch(/run_id\/trace_id n\/a is expected for BYOK\/API/);
+  });
+
   it('formats run error diagnostics with a raw error when guidance copy differs', () => {
     expect(buildRunErrorDiagnosticText({
       message: 'Service unavailable. Try again.',
@@ -981,12 +996,12 @@ describe('ChatPane streaming state', () => {
       />,
     );
 
-    // vitest's jsdom runs on localhost with `import.meta.env.DEV === true`, so
-    // `isTeamverEmbedMode()` auto-detects embed mode and `commentTargetDisplayName`
-    // returns the Korean fallback (`주석`) instead of the English default
-    // (`Annotation`). Accept either — the assertion here is that the internal
+    // History chips prefer the comment body as the visible label; the
+    // Annotation/주석 fallback stays in the title tooltip. Accept either
+    // locale in the title — the assertion here is that the internal
     // `path-…` id is not surfaced as visible text.
-    expect(screen.getByText(/^(?:Annotation|주석)$/)).toBeTruthy();
+    const chip = screen.getByTestId('visual-comment-attachment-chip');
+    expect(chip.getAttribute('title') || '').toMatch(/(?:Annotation|주석)/);
     expect(screen.getByText('222')).toBeTruthy();
     expect(screen.queryByText('path-0-0-0-0-1')).toBeNull();
   });

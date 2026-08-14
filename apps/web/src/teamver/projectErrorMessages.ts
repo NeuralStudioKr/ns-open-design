@@ -208,11 +208,21 @@ function sanitizeRunErrorDiagFragment(value: string): string {
 /** Persist user copy + hidden diagnostic tail for the copy-diagnostics button. */
 export function encodePersistedRunErrorDetail(
   userMessage: string,
-  diagnostic?: { kind?: string | null; reason?: string | null },
+  diagnostic?: {
+    kind?: string | null;
+    reason?: string | null;
+    code?: string | null;
+  },
 ): string {
-  const diag = formatProjectRunDeliverablePersistDiagnostic(diagnostic);
-  if (!diag) return userMessage;
-  return `${userMessage}${RUN_ERROR_DIAG_MARKER_START}${diag}${RUN_ERROR_DIAG_MARKER_END}`;
+  const parts: string[] = [];
+  const fromLegacy = formatProjectRunDeliverablePersistDiagnostic(diagnostic);
+  if (fromLegacy) parts.push(fromLegacy);
+  const code = sanitizeRunErrorDiagFragment(String(diagnostic?.code ?? ""));
+  if (code && !parts.some((part) => part.includes(`code=${code}`))) {
+    parts.push(`code=${code.slice(0, 80)}`);
+  }
+  if (parts.length === 0) return userMessage;
+  return `${userMessage}${RUN_ERROR_DIAG_MARKER_START}${parts.join(" ")}${RUN_ERROR_DIAG_MARKER_END}`;
 }
 
 /**
@@ -234,6 +244,7 @@ export function formatPersistedProjectRunError(err: unknown): {
   const detail = encodePersistedRunErrorDetail(userMessage, {
     kind: "stream-error",
     reason: reason || code,
+    code,
   });
   return { detail, code, userMessage };
 }
@@ -321,18 +332,48 @@ function mapHttpStatusToProjectRunErrorCode(status: number): string {
   if (status === 403) return "FORBIDDEN";
   if (status === 404) return "NOT_FOUND";
   if (status === 429) return "RATE_LIMITED";
+  if (status === 529) return "OVERLOADED_ERROR";
   if (status === 400 || status === 422) return "BAD_REQUEST";
   if (status === 408 || status >= 500) return "UPSTREAM_UNAVAILABLE";
   if (status >= 400 && status < 500) return "BAD_REQUEST";
   return "UPSTREAM_UNAVAILABLE";
 }
 
-/** Resolve structured proxy/daemon error codes when `err.code` was not set. */
+function anthropicLikeErrorType(err: unknown): string {
+  if (!err || typeof err !== "object") return "";
+  const record = err as {
+    error?: { type?: unknown; error?: { type?: unknown } };
+    type?: unknown;
+  };
+  const nested =
+    (typeof record.error?.error?.type === "string" && record.error.error.type)
+    || (typeof record.error?.type === "string" && record.error.type)
+    || (typeof record.type === "string" && record.type)
+    || "";
+  return nested.trim();
+}
+
+function anthropicLikeErrorStatus(err: unknown): number | undefined {
+  if (!err || typeof err !== "object") return undefined;
+  const status = (err as { status?: unknown }).status;
+  return typeof status === "number" && Number.isFinite(status) ? status : undefined;
+}
+
+function messageImpliesContextLengthExceeded(message: string): boolean {
+  return /prompt.{0,16}too.?long|context[_ ]?length|too many tokens|maximum context|max_tokens/i.test(
+    message,
+  );
+}
+
+/** Resolve structured proxy/daemon/provider error codes when `err.code` was not set. */
 export function extractProjectRunErrorCode(err: unknown): string | undefined {
   const direct = err instanceof Error ? (err as Error & { code?: string }).code?.trim() : "";
   if (direct === "TEAMVER_BROWSER_NETWORK_UNAVAILABLE") return "UPSTREAM_UNAVAILABLE";
   if (direct) return direct;
   const message = err instanceof Error ? err.message : String(err);
+  if (messageImpliesContextLengthExceeded(message)) {
+    return "CONTEXT_LENGTH_EXCEEDED";
+  }
   const proxyMatch = /^(?:proxy|daemon) \d+: (\S+)/.exec(message);
   if (proxyMatch?.[1]?.trim() && /^[A-Z][A-Z0-9_]+$/.test(proxyMatch[1].trim())) {
     return proxyMatch[1].trim();
@@ -343,15 +384,28 @@ export function extractProjectRunErrorCode(err: unknown): string | undefined {
     const status = Number(upstreamStatus[1]);
     if (Number.isFinite(status)) return mapHttpStatusToProjectRunErrorCode(status);
   }
-  if (/prompt.{0,16}too.?long|context.?length|too many tokens/i.test(message)) {
-    return "BAD_REQUEST";
-  }
   if (/overloaded/i.test(message)) return "OVERLOADED_ERROR";
   const known =
-    /\b(UPSTREAM_UNAVAILABLE|RATE_LIMITED|UNAUTHORIZED|FORBIDDEN|BAD_REQUEST|INTERNAL_ERROR|OVERLOADED_ERROR|PROJECT_STORAGE_UNAVAILABLE|PROJECT_STORAGE_SYNC_FAILED|MANAGED_API_KEY_MISSING|API_KEY_REQUIRED|MANAGED_KEY_UNAVAILABLE|AGENT_EXECUTION_FAILED|AGENT_EXECUTION_STALLED)\b/.exec(
+    /\b(UPSTREAM_UNAVAILABLE|RATE_LIMITED|UNAUTHORIZED|FORBIDDEN|BAD_REQUEST|INTERNAL_ERROR|OVERLOADED_ERROR|PROJECT_STORAGE_UNAVAILABLE|PROJECT_STORAGE_SYNC_FAILED|MANAGED_API_KEY_MISSING|API_KEY_REQUIRED|MANAGED_KEY_UNAVAILABLE|CONTEXT_LENGTH_EXCEEDED|AGENT_EXECUTION_FAILED|AGENT_EXECUTION_STALLED)\b/.exec(
       message,
     );
-  return known?.[1];
+  if (known?.[1]) return known[1];
+
+  const type = anthropicLikeErrorType(err).toLowerCase();
+  const status = anthropicLikeErrorStatus(err);
+  if (type === "overloaded_error" || status === 529) return "OVERLOADED_ERROR";
+  if (type === "rate_limit_error" || status === 429) return "RATE_LIMITED";
+  if (type === "authentication_error" || status === 401) return "UNAUTHORIZED";
+  if (type === "permission_error" || status === 403) return "FORBIDDEN";
+  if (type === "invalid_request_error") {
+    return messageImpliesContextLengthExceeded(message)
+      ? "CONTEXT_LENGTH_EXCEEDED"
+      : "BAD_REQUEST";
+  }
+  if (status === 502 || status === 503 || status === 504) return "UPSTREAM_UNAVAILABLE";
+  if (status === 500) return "INTERNAL_ERROR";
+  if (status != null) return mapHttpStatusToProjectRunErrorCode(status);
+  return undefined;
 }
 
 /** User-facing run/stream failure — embed avoids raw daemon/SSE English (banner + chat status). */
@@ -379,6 +433,9 @@ export function formatProjectRunErrorForUser(err: unknown): string {
   }
   if (code === "RATE_LIMITED") {
     return "요청이 너무 많습니다. 잠시 후 다시 시도하세요.";
+  }
+  if (code === "CONTEXT_LENGTH_EXCEEDED") {
+    return "입력/참고 자료가 너무 길어 모델 한도를 초과했습니다. 첨부를 줄이거나 슬라이드 장수를 줄인 뒤 다시 시도하세요.";
   }
   if (code === "UPSTREAM_UNAVAILABLE") {
     return "AI 서비스에 연결하지 못했습니다. 잠시 후 다시 시도하세요.";

@@ -10597,56 +10597,69 @@ export function ProjectView({
           meta,
           appliedSnapshotPluginId,
         );
-        const systemPrompt = await composedSystemPrompt(
-          runSessionMode,
-          effectiveDesignSystemId,
-          effectiveSkillId,
-          pluginIdForLocalSkill,
-          pluginBlock ?? null,
-          {
-            ...(meta?.selectedDeckTemplateId || selectedDeckTemplateForTurn
-              ? {
-                  selectedDeckTemplateId:
-                    meta?.selectedDeckTemplateId || selectedDeckTemplateForTurn?.id,
-                  selectedDeckTemplateTitle:
-                    meta?.selectedDeckTemplateTitle || selectedDeckTemplateForTurn?.title,
-                }
-              : {}),
-            ...(resolveSlideOnlySkipDiscoveryBrief({
-              projectSkipDiscoveryBrief: project.metadata?.skipDiscoveryBrief === true,
-              projectKind: project.metadata?.kind ?? null,
-              selectedDeckTemplateId: selectedDeckTemplateForTurn?.id ?? null,
-              runSkipDiscoveryBrief: meta?.skipDiscoveryBrief === true,
-            })
-              ? { skipDiscoveryBrief: true }
-              : {}),
-          },
-          {
-            includeCommentEditPatchRule: runCommentAttachments.length > 0,
-            // Clone LOOK seed is not an "existing completed deck" — image embeds on
-            // fill must not flip system prompt into EXISTING_DECK edit / 「수정 반영 중」.
-            includeExistingDeckImageEditRule:
-              !isCloneContentFillTurn
-              && (
-                autoAttachedDeckPath != null
-                || imageAttachmentPathsForSlideEmbed(effectiveAttachments).length > 0
+        let systemPrompt: string;
+        let apiHistory: ChatMessage[];
+        try {
+          systemPrompt = await composedSystemPrompt(
+            runSessionMode,
+            effectiveDesignSystemId,
+            effectiveSkillId,
+            pluginIdForLocalSkill,
+            pluginBlock ?? null,
+            {
+              ...(meta?.selectedDeckTemplateId || selectedDeckTemplateForTurn
+                ? {
+                    selectedDeckTemplateId:
+                      meta?.selectedDeckTemplateId || selectedDeckTemplateForTurn?.id,
+                    selectedDeckTemplateTitle:
+                      meta?.selectedDeckTemplateTitle || selectedDeckTemplateForTurn?.title,
+                  }
+                : {}),
+              ...(resolveSlideOnlySkipDiscoveryBrief({
+                projectSkipDiscoveryBrief: project.metadata?.skipDiscoveryBrief === true,
+                projectKind: project.metadata?.kind ?? null,
+                selectedDeckTemplateId: selectedDeckTemplateForTurn?.id ?? null,
+                runSkipDiscoveryBrief: meta?.skipDiscoveryBrief === true,
+              })
+                ? { skipDiscoveryBrief: true }
+                : {}),
+            },
+            {
+              includeCommentEditPatchRule: runCommentAttachments.length > 0,
+              // Clone LOOK seed is not an "existing completed deck" — image embeds on
+              // fill must not flip system prompt into EXISTING_DECK edit / 「수정 반영 중」.
+              includeExistingDeckImageEditRule:
+                !isCloneContentFillTurn
+                && (
+                  autoAttachedDeckPath != null
+                  || imageAttachmentPathsForSlideEmbed(effectiveAttachments).length > 0
+                ),
+            },
+          );
+          const webFetchContexts = await fetchApiWebFetchContexts(userMsg.content);
+          apiHistory = await historyWithApiAttachmentContext(
+            historyWithApiWebFetchContext(
+              historyWithCommentAttachmentContext(
+                historyWithWorkspaceContext(nextHistory, userMsg.id, runContext),
               ),
-          },
-        );
-        const webFetchContexts = await fetchApiWebFetchContexts(userMsg.content);
-        const apiHistory = await historyWithApiAttachmentContext(
-          historyWithApiWebFetchContext(
-            historyWithCommentAttachmentContext(
-              historyWithWorkspaceContext(nextHistory, userMsg.id, runContext),
+              userMsg.id,
+              webFetchContexts,
             ),
             userMsg.id,
-            webFetchContexts,
-          ),
-          userMsg.id,
-          project.id,
-          projectFiles,
-          { omitNativeImageAttachments: usesAnthropicProxy(config) },
-        );
+            project.id,
+            projectFiles,
+            { omitNativeImageAttachments: usesAnthropicProxy(config) },
+          );
+        } catch (err) {
+          const composeErr = err instanceof Error
+            ? err
+            : new Error(String(err ?? 'compose_failed'));
+          if (!(composeErr as Error & { code?: string }).code) {
+            (composeErr as Error & { code?: string }).code = 'AGENT_EXECUTION_FAILED';
+          }
+          handlers.onError(composeErr);
+          return true;
+        }
         pushEvent({ kind: 'status', label: 'requesting', detail: config.model });
         let accumulatedAssistantText = '';
         const streamStartedAt = Date.now();
