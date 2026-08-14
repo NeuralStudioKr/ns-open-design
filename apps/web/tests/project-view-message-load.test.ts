@@ -1043,7 +1043,7 @@ describe("ProjectView message loading", () => {
       /runStatus === 'failed'[\s\S]{0,200}window\.setTimeout\(\(\) => \{[\s\S]{0,120}scheduleConversationMessageRefresh/,
     );
     expect(source).toContain("applyTerminalRunStatusToAssistant");
-    expect(source).toContain("attachPersistedChatError(prev, detail, errorCode)");
-    expect(source).toContain("attachPersistedChatError(prev, msg, errorCode)");
+    expect(source).toContain("formatPersistedProjectRunError(err)");
+    expect(source).toContain("attachPersistedChatError(prev, persisted.detail, persisted.code)");
   });
 });

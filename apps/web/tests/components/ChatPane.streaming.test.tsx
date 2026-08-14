@@ -328,6 +328,64 @@ describe('ChatPane streaming state', () => {
     expect(copied).toContain('json-rpc id 4: Connection reset by server');
   });
 
+  it('copies API-mode diagnostics with raw stream error when run_id is missing', async () => {
+    const detail = encodePersistedRunErrorDetail(
+      '슬라이드 실행 중 오류가 발생했습니다. 다시 시도하세요.',
+      { kind: 'stream-error', reason: 'Upstream error: 529' },
+    );
+    const messages: ChatMessage[] = [
+      { id: 'user-1', role: 'user', content: 'expo 설명해줘', createdAt: 0 },
+      {
+        id: 'assistant-1',
+        role: 'assistant',
+        content: '',
+        agentId: 'anthropic-api',
+        createdAt: 1,
+        runStatus: 'failed',
+        events: [
+          {
+            kind: 'status',
+            label: 'error',
+            detail,
+            code: 'UPSTREAM_UNAVAILABLE',
+          },
+        ],
+      },
+    ];
+
+    render(
+      <ChatPane
+        projectKindForTracking="prototype"
+        messages={messages}
+        streaming={false}
+        error={null}
+        projectId="project-1"
+        projectFiles={[]}
+        onEnsureProject={async () => 'project-1'}
+        onSend={vi.fn()}
+        onStop={vi.fn()}
+        conversations={conversations}
+        activeConversationId="conv-1"
+        onSelectConversation={vi.fn()}
+        onDeleteConversation={vi.fn()}
+        projectMetadata={projectMetadata}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Copy error diagnostics' }));
+
+    await waitFor(() => expect(clipboardMocks.copyToClipboard).toHaveBeenCalledTimes(1));
+    const copied = clipboardMocks.copyToClipboard.mock.calls[0]?.[0] ?? '';
+    expect(copied).toContain('run_id: n/a');
+    expect(copied).toContain('trace_id: n/a');
+    expect(copied).toContain('error_code: UPSTREAM_UNAVAILABLE');
+    expect(copied).toContain('agent_id: anthropic-api');
+    expect(copied).toContain('슬라이드 실행 중 오류가 발생했습니다. 다시 시도하세요.');
+    expect(copied).toContain('raw_error:');
+    expect(copied).toContain('Upstream error: 529');
+    expect(copied).not.toContain('<!--od-run-error-diag');
+  });
+
   it('renders a persisted failed-run error at the owning assistant turn', () => {
     const messages: ChatMessage[] = [
       { id: 'user-1', role: 'user', content: 'Create a login page', createdAt: 0 },

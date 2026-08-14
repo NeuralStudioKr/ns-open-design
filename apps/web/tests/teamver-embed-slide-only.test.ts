@@ -360,13 +360,11 @@ describe('Teamver embed slide-only MVP policy', () => {
   it("routes run failure chat status events through Korean formatter in embed", () => {
     const projectView = readSource("src/components/ProjectView.tsx");
     // Durable persist: attachPersistedChatError (status:error + failed) after
-    // formatProjectRunErrorForUser — not a bare appendErrorStatusEvent.
-    expect(projectView).toContain("attachPersistedChatError(prev, detail, errorCode)");
-    expect(projectView).toContain("attachPersistedChatError(prev, msg, errorCode)");
-    expect(projectView).toContain("formatProjectRunErrorForUser(err)");
-    expect(projectView).toMatch(
-      /const detail = formatProjectRunErrorForUser\(err\);[\s\S]{0,500}attachPersistedChatError\(prev, detail, errorCode\)/,
-    );
+    // formatPersistedProjectRunError — user copy + hidden raw stream error.
+    expect(projectView).toContain("formatPersistedProjectRunError(err)");
+    expect(projectView).toContain("attachPersistedChatError(prev, persisted.detail, persisted.code)");
+    expect(projectView).not.toContain("attachPersistedChatError(prev, detail, errorCode)");
+    expect(projectView).not.toContain("attachPersistedChatError(prev, msg, errorCode)");
   });
 
   it("minimizes supporting file streams and collapses design-file scaffolds in slide-only embed", () => {

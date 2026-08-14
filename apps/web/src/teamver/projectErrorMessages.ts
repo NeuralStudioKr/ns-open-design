@@ -201,6 +201,10 @@ export function formatProjectRunDeliverablePersistDiagnostic(detail?: {
   return parts.length > 0 ? parts.join(' ') : null;
 }
 
+function sanitizeRunErrorDiagFragment(value: string): string {
+  return value.replace(/-->/g, "—>").replace(/\s+/g, " ").trim().slice(0, 500);
+}
+
 /** Persist user copy + hidden diagnostic tail for the copy-diagnostics button. */
 export function encodePersistedRunErrorDetail(
   userMessage: string,
@@ -209,6 +213,29 @@ export function encodePersistedRunErrorDetail(
   const diag = formatProjectRunDeliverablePersistDiagnostic(diagnostic);
   if (!diag) return userMessage;
   return `${userMessage}${RUN_ERROR_DIAG_MARKER_START}${diag}${RUN_ERROR_DIAG_MARKER_END}`;
+}
+
+/**
+ * Persist the user-facing Korean/English banner AND the raw proxy/daemon
+ * message. API/BYOK (`anthropic-api`) rows have no daemon `run_id`, so the
+ * copy-diagnostics dump used to show only
+ * `error_code: AGENT_EXECUTION_FAILED` + the generic retry sentence — the
+ * actual "Upstream error: 529" / prompt-too-long text was discarded.
+ */
+export function formatPersistedProjectRunError(err: unknown): {
+  detail: string;
+  code: string;
+  userMessage: string;
+} {
+  const code = extractProjectRunErrorCode(err) || "AGENT_EXECUTION_FAILED";
+  const userMessage = formatProjectRunErrorForUser(err);
+  const raw = (err instanceof Error ? err.message : String(err ?? "")).trim();
+  const reason = raw && raw !== userMessage ? sanitizeRunErrorDiagFragment(raw) : "";
+  const detail = encodePersistedRunErrorDetail(userMessage, {
+    kind: "stream-error",
+    reason: reason || code,
+  });
+  return { detail, code, userMessage };
 }
 
 /** Strip hidden diagnostic markers (and legacy inline suffixes) for UI display. */
@@ -289,15 +316,39 @@ export function formatOutlineDeckFallbackNotice(): string {
     : "The generation didn't complete — saved a placeholder deck built from the source outline. Use the retry button to regenerate the full deck.";
 }
 
+function mapHttpStatusToProjectRunErrorCode(status: number): string {
+  if (status === 401) return "UNAUTHORIZED";
+  if (status === 403) return "FORBIDDEN";
+  if (status === 404) return "NOT_FOUND";
+  if (status === 429) return "RATE_LIMITED";
+  if (status === 400 || status === 422) return "BAD_REQUEST";
+  if (status === 408 || status >= 500) return "UPSTREAM_UNAVAILABLE";
+  if (status >= 400 && status < 500) return "BAD_REQUEST";
+  return "UPSTREAM_UNAVAILABLE";
+}
+
 /** Resolve structured proxy/daemon error codes when `err.code` was not set. */
 export function extractProjectRunErrorCode(err: unknown): string | undefined {
   const direct = err instanceof Error ? (err as Error & { code?: string }).code?.trim() : "";
+  if (direct === "TEAMVER_BROWSER_NETWORK_UNAVAILABLE") return "UPSTREAM_UNAVAILABLE";
   if (direct) return direct;
   const message = err instanceof Error ? err.message : String(err);
   const proxyMatch = /^(?:proxy|daemon) \d+: (\S+)/.exec(message);
-  if (proxyMatch?.[1]?.trim()) return proxyMatch[1].trim();
+  if (proxyMatch?.[1]?.trim() && /^[A-Z][A-Z0-9_]+$/.test(proxyMatch[1].trim())) {
+    return proxyMatch[1].trim();
+  }
+  const upstreamStatus =
+    /(?:Upstream error:|proxy|daemon)\s+(\d{3})\b/i.exec(message);
+  if (upstreamStatus?.[1]) {
+    const status = Number(upstreamStatus[1]);
+    if (Number.isFinite(status)) return mapHttpStatusToProjectRunErrorCode(status);
+  }
+  if (/prompt.{0,16}too.?long|context.?length|too many tokens/i.test(message)) {
+    return "BAD_REQUEST";
+  }
+  if (/overloaded/i.test(message)) return "OVERLOADED_ERROR";
   const known =
-    /\b(UPSTREAM_UNAVAILABLE|RATE_LIMITED|UNAUTHORIZED|FORBIDDEN|BAD_REQUEST|INTERNAL_ERROR|OVERLOADED_ERROR|PROJECT_STORAGE_UNAVAILABLE|PROJECT_STORAGE_SYNC_FAILED|MANAGED_API_KEY_MISSING|API_KEY_REQUIRED|MANAGED_KEY_UNAVAILABLE)\b/.exec(
+    /\b(UPSTREAM_UNAVAILABLE|RATE_LIMITED|UNAUTHORIZED|FORBIDDEN|BAD_REQUEST|INTERNAL_ERROR|OVERLOADED_ERROR|PROJECT_STORAGE_UNAVAILABLE|PROJECT_STORAGE_SYNC_FAILED|MANAGED_API_KEY_MISSING|API_KEY_REQUIRED|MANAGED_KEY_UNAVAILABLE|AGENT_EXECUTION_FAILED|AGENT_EXECUTION_STALLED)\b/.exec(
       message,
     );
   return known?.[1];

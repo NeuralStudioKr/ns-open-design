@@ -415,8 +415,7 @@ import {
   formatAutoContinueIncompleteOutputNotice,
   formatEmergencyDeckFallbackNotice,
   formatOutlineDeckFallbackNotice,
-  extractProjectRunErrorCode,
-  formatProjectRunErrorForUser,
+  formatPersistedProjectRunError,
   formatProjectRunStalledErrorForUser,
   formatProjectForkConversationError,
 } from '../teamver/projectErrorMessages';
@@ -6772,11 +6771,11 @@ export function ProjectView({
                   ...prev,
                   endedAt: prev.endedAt ?? Date.now(),
                 },
-                formatProjectRunErrorForUser(
-                  Object.assign(new Error('AGENT_EXECUTION_FAILED'), {
+                formatPersistedProjectRunError(
+                  Object.assign(new Error('stale daemon run: status poll exhausted'), {
                     code: 'AGENT_EXECUTION_FAILED',
                   }),
-                ),
+                ).detail,
                 'AGENT_EXECUTION_FAILED',
               ),
             true,
@@ -7022,11 +7021,11 @@ export function ProjectView({
                   ...prev,
                   endedAt: prev.endedAt ?? Date.now(),
                 },
-                formatProjectRunErrorForUser(
-                  Object.assign(new Error('AGENT_EXECUTION_FAILED'), {
+                formatPersistedProjectRunError(
+                  Object.assign(new Error('phantom running row: no daemon runId after reattach grace'), {
                     code: 'AGENT_EXECUTION_FAILED',
                   }),
-                ),
+                ).detail,
                 'AGENT_EXECUTION_FAILED',
               ),
             true,
@@ -7086,11 +7085,11 @@ export function ProjectView({
                   ...prev,
                   endedAt: prev.endedAt ?? Date.now(),
                 },
-                formatProjectRunErrorForUser(
-                  Object.assign(new Error('AGENT_EXECUTION_FAILED'), {
+                formatPersistedProjectRunError(
+                  Object.assign(new Error('daemon run status missing after reattach'), {
                     code: 'AGENT_EXECUTION_FAILED',
                   }),
-                ),
+                ).detail,
                 'AGENT_EXECUTION_FAILED',
               ),
             true,
@@ -7596,7 +7595,7 @@ export function ProjectView({
               onProjectsRefresh();
             },
             onError: (err) => {
-              const errorCode = extractProjectRunErrorCode(err);
+              const persisted = formatPersistedProjectRunError(err);
               const resumable = (err as Error & { resumable?: boolean }).resumable === true;
               // A superseded reattached run must not paint a global failure
               // banner or re-finalize its message over the replacement run.
@@ -7606,15 +7605,14 @@ export function ProjectView({
               textBuffer.cancel();
               unregisterTextBuffer();
               if (runMayFinalize) {
-                const detail = formatProjectRunErrorForUser(err);
-                setError(detail);
+                setError(persisted.userMessage);
                 // Single persist: durable status:error + failed (+ resumable).
                 // Do not call persistNow afterward — that can race a second
                 // PUT from a pre-error snapshot before messagesRef syncs.
                 updateMessageById(
                   message.id,
                   (prev) => ({
-                    ...attachPersistedChatError(prev, detail, errorCode),
+                    ...attachPersistedChatError(prev, persisted.detail, persisted.code),
                     resumable,
                   }),
                   true,
@@ -7688,14 +7686,13 @@ export function ProjectView({
             const runMayFinalize =
               !supersededRunsRef.current.has(controller);
             if ((err as Error).name !== 'AbortError' && runMayFinalize) {
-              const errorCode = extractProjectRunErrorCode(err);
+              const persisted = formatPersistedProjectRunError(err);
               const resumable = (err as Error & { resumable?: boolean }).resumable === true;
-              const msg = formatProjectRunErrorForUser(err);
-              setError(msg);
+              setError(persisted.userMessage);
               updateMessageById(
                 message.id,
                 (prev) => ({
-                  ...attachPersistedChatError(prev, msg, errorCode),
+                  ...attachPersistedChatError(prev, persisted.detail, persisted.code),
                   resumable,
                 }),
                 true,
@@ -10323,7 +10320,7 @@ export function ProjectView({
         },
         onError: (err: Error) => {
           const endedAt = Date.now();
-          const errorCode = extractProjectRunErrorCode(err);
+          const persisted = formatPersistedProjectRunError(err);
           const resumable = (err as Error & { resumable?: boolean }).resumable === true;
           // A run superseded by a "send now" interrupt can still surface a
           // late disconnect error (e.g. a canceled stream that lost its
@@ -10336,10 +10333,9 @@ export function ProjectView({
           releaseOwnTextBuffer();
           let finalizedAssistant = latestAssistantMsg;
           if (runMayFinalize) {
-            const detail = formatProjectRunErrorForUser(err);
-            if (runIsVisible()) setError(detail);
+            if (runIsVisible()) setError(persisted.userMessage);
             updateAssistant((prev) => {
-              const withError = attachPersistedChatError(prev, detail, errorCode);
+              const withError = attachPersistedChatError(prev, persisted.detail, persisted.code);
               finalizedAssistant = {
                 ...withError,
                 endedAt: withError.endedAt ?? endedAt,
