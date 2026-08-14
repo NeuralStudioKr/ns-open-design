@@ -335,6 +335,7 @@ import {
   shouldEchoManualEditSelectionAfterFreezeSync,
   shouldReseedManualEditMultiInspectorAfterFreezeSync,
   shouldReseedSingleInspectorAfterTipYieldMixedClear,
+  shouldApplyTipYieldSingleInspectorSnapshot,
   shouldSkipWildJumpAfterTipRemountGrace,
   shouldSyncManualEditFrozenSourceToPainted,
   shouldUpdateManualEditFrozenSourceOnPatch,
@@ -8011,28 +8012,34 @@ function HtmlViewer({
             const parsedDoc = parseManualEditSource(base);
             const seedId = ids[0]!;
             const snapshot = readManualEditTargetSnapshot(base, seedId, {}, parsedDoc);
-            const primary = selectedManualEditTargetRef.current;
-            setManualEditDraft((current) => ({
-              ...current,
-              text: snapshot.fields.text
-                ?? (primary?.id === seedId ? primary.fields.text ?? primary.text : undefined)
-                ?? current.text,
-              href: snapshot.fields.href
-                ?? (primary?.id === seedId ? primary.fields.href : undefined)
-                ?? current.href,
-              src: snapshot.fields.src
-                ?? (primary?.id === seedId ? primary.fields.src : undefined)
-                ?? current.src,
-              alt: snapshot.fields.alt
-                ?? (primary?.id === seedId ? primary.fields.alt : undefined)
-                ?? current.alt,
-              styles: snapshot.styles,
-              attributesText: Object.keys(snapshot.attributes).length > 0
-                ? JSON.stringify(snapshot.attributes, null, 2)
-                : current.attributesText,
-              outerHtml: snapshot.outerHtml || current.outerHtml,
-              fullSource: base,
-            }));
+            // Tip source may have dropped the node — do not wipe styles/fields
+            // with an empty snapshot shell (416 side effect).
+            if (!shouldApplyTipYieldSingleInspectorSnapshot(snapshot.outerHtml)) {
+              setManualEditDraft((current) => (
+                current.fullSource === base ? current : { ...current, fullSource: base }
+              ));
+            } else {
+              const primary = selectedManualEditTargetRef.current;
+              setManualEditDraft((current) => ({
+                ...current,
+                text: snapshot.fields.text
+                  ?? (primary?.id === seedId ? primary.fields.text ?? primary.text : undefined)
+                  ?? current.text,
+                href: snapshot.fields.href
+                  ?? (primary?.id === seedId ? primary.fields.href : undefined)
+                  ?? current.href,
+                src: snapshot.fields.src
+                  ?? (primary?.id === seedId ? primary.fields.src : undefined)
+                  ?? current.src,
+                alt: snapshot.fields.alt
+                  ?? (primary?.id === seedId ? primary.fields.alt : undefined)
+                  ?? current.alt,
+                styles: snapshot.styles,
+                attributesText: JSON.stringify(snapshot.attributes, null, 2),
+                outerHtml: snapshot.outerHtml,
+                fullSource: base,
+              }));
+            }
           }
         }
         return;

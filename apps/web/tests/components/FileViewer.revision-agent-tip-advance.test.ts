@@ -132,6 +132,8 @@ describe('FileViewer revision tip advance after undo', () => {
     expect(fileViewer).toContain('shouldReseedSingleInspectorAfterTipYieldMixedClear');
     expect(fileViewer).toContain('Mixed→single: reseed inspector from painted source');
     expect(fileViewer).toContain('readManualEditTargetSnapshot(base, seedId');
+    expect(fileViewer).toContain('shouldApplyTipYieldSingleInspectorSnapshot');
+    expect(fileViewer).toContain('Tip source may have dropped the node — do not wipe styles/fields');
     expect(fileViewer).toContain('clearManualEditTipRemountGeometryGraceIfNeeded');
     expect(fileViewer).toContain('clearManualEditTipRemountGeometryGrace(');
     expect(fileViewer).toContain('shouldClearTipRemountGeometryGraceOnExpiry');

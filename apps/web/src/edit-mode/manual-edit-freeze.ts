@@ -92,6 +92,16 @@ export function shouldReseedSingleInspectorAfterTipYieldMixedClear(
 }
 
 /**
+ * Tip-yield single reseed must not apply an empty snapshot shell when the
+ * painted tip source dropped the node (would wipe styles/fields).
+ */
+export function shouldApplyTipYieldSingleInspectorSnapshot(
+  snapshotOuterHtml: string | null | undefined,
+): boolean {
+  return Boolean(snapshotOuterHtml);
+}
+
+/**
  * Tip-remount geometry grace is bound to a primary id. When selection moves
  * away, clear grace so a later remasure for the new primary is not skipped
  * under a stale grace window (overlay residual).

@@ -7,6 +7,7 @@ import {
   shouldEchoManualEditSelectionAfterFreezeSync,
   shouldReseedManualEditMultiInspectorAfterFreezeSync,
   shouldReseedSingleInspectorAfterTipYieldMixedClear,
+  shouldApplyTipYieldSingleInspectorSnapshot,
   shouldSkipWildJumpAfterTipRemountGrace,
   shouldSyncManualEditFrozenSourceToPainted,
   shouldUpdateManualEditFrozenSourceOnPatch,
@@ -88,6 +89,13 @@ describe('manual edit freeze reset', () => {
     expect(shouldReseedSingleInspectorAfterTipYieldMixedClear(['a'], true)).toBe(false);
     expect(shouldReseedSingleInspectorAfterTipYieldMixedClear([], false)).toBe(false);
     expect(shouldReseedSingleInspectorAfterTipYieldMixedClear(['a', 'b'], false)).toBe(false);
+  });
+
+  it('skips tip-yield single snapshot apply when painted tip dropped the node', () => {
+    expect(shouldApplyTipYieldSingleInspectorSnapshot('<div data-od-id="a">x</div>')).toBe(true);
+    expect(shouldApplyTipYieldSingleInspectorSnapshot('')).toBe(false);
+    expect(shouldApplyTipYieldSingleInspectorSnapshot(null)).toBe(false);
+    expect(shouldApplyTipYieldSingleInspectorSnapshot(undefined)).toBe(false);
   });
 
   it('clears tip-remount grace when selection leaves the grace primary', () => {

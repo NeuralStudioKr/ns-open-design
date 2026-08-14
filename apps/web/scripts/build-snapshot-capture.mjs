@@ -1,5 +1,5 @@
 import { createRequire } from 'node:module';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -36,22 +36,29 @@ function loadEsbuild() {
   );
 }
 
-function resolveWorkspacePackage(name) {
+/**
+ * Prefer modern-screenshot ESM (`dist/index.mjs`).
+ * `require.resolve('modern-screenshot')` follows exports.require → `.cjs`,
+ * which inflates the browser IIFE with CJS interop wrappers (417 side effect).
+ */
+function resolveModernScreenshotEsm() {
   for (const require of createWorkspaceRequires()) {
     try {
-      return require.resolve(name);
+      const pkgJson = require.resolve('modern-screenshot/package.json');
+      const esm = join(dirname(pkgJson), 'dist', 'index.mjs');
+      if (existsSync(esm)) return esm;
     } catch {
       // try next root
     }
   }
   throw new Error(
-    `${name} not found for build:snapshot-capture. Run pnpm install `
-    + '(apps/web declares modern-screenshot).',
+    'modern-screenshot ESM (dist/index.mjs) not found for build:snapshot-capture. '
+    + 'Run pnpm install (apps/web declares modern-screenshot).',
   );
 }
 
 const { build } = loadEsbuild();
-const modernScreenshotEntry = resolveWorkspacePackage('modern-screenshot');
+const modernScreenshotEntry = resolveModernScreenshotEsm();
 
 await build({
   entryPoints: [entry],
@@ -64,7 +71,7 @@ await build({
   minify: true,
   legalComments: 'none',
   // Sparse installs may lack apps/web/node_modules/modern-screenshot — pin the
-  // resolved absolute entry so esbuild does not depend on that symlink.
+  // resolved ESM absolute entry so esbuild does not depend on that symlink.
   alias: {
     'modern-screenshot': modernScreenshotEntry,
   },
