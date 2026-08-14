@@ -60,6 +60,14 @@ export function isExplicitCanvasSlideVisualTemplate(
   return true;
 }
 
+export const SLIDE_DECK_QUALITY_BAR_INSTRUCTION =
+  "Quality bar: produce a substantive, presentation-ready deck — not a thin placeholder. " +
+  "Every non-divider slide needs a clear headline, an insight or takeaway, and concrete supporting content (specific bullets, metrics, examples, risks, actions, timeline steps, comparison rows, or decision criteria). " +
+  "Do not ship slides that are only a title/subtitle, only the user's prompt, or generic filler like \"내용을 입력하세요\". " +
+  "Vary slide roles and compositions across the deck (cover, summary, problem, evidence/KPI, framework, roadmap, risks, recommendation/next step as appropriate) instead of repeating one centered title layout. " +
+  "Use the whole 1920×1080 canvas intentionally with balanced margins, hierarchy, and visual density; avoid huge blank areas unless the selected template explicitly uses white space and the slide still carries enough information. " +
+  "Prefer source-grounded specifics when source material exists; when source is sparse, infer plausible business/education context rather than leaving empty placeholders.";
+
 /** Canvas→Slide session pin. Home wizard close/create clears this so 「새 슬라이드」 stays on L1. */
 const LAST_EXPLICIT_DECK_TEMPLATE_KEY = "od:last-explicit-deck-template-id";
 
@@ -115,6 +123,7 @@ export const CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION =
   "Never carry over the source HTML's colors, fonts, or decorative elements. " +
   "If the source uses one palette and the selected template uses another, the template kit WINS. " +
   "Prefer clear slide sectioning over literal page layout. " +
+  SLIDE_DECK_QUALITY_BAR_INSTRUCTION + " " +
   "Emit ONE complete Teamver deck in this same response: " +
   "`<artifact type=\"deck\" identifier=\"deck\">` with one filled `<section class=\"slide\">` per requested slide count " +
   `(see Plugin inputs slideCount / user brief; ${COMPACT_DECK_SLIDE_COUNT_GUIDANCE}), ` +
@@ -138,6 +147,7 @@ export const HOME_CREATE_SLIDES_INTERNAL_INSTRUCTION =
   "via exactly one `<artifact type=\"deck\" identifier=\"deck\">` (identifier MUST be `deck`). " +
   "**Token-safe template apply:** use the Selected deck template visual kit + scaffold map in the system prompt (palette/fonts/Motif sprites/slide roles). " +
   "Content-swap the topic into that look — do NOT paste or regenerate a full example.html dump (input/output token risk). " +
+  SLIDE_DECK_QUALITY_BAR_INSTRUCTION + " " +
   "Emit ONE complete Teamver deck in this same response: " +
   "`<artifact type=\"deck\" identifier=\"deck\">` with one filled `<section class=\"slide\">` per requested slide count " +
   `(see Plugin inputs slideCount / user brief; ${COMPACT_DECK_SLIDE_COUNT_GUIDANCE}), ` +
@@ -359,6 +369,7 @@ function selectedSlideTemplatePriorityInstruction(title: string): string {
     "Use the Template visual kit as the token-safe content-swap contract. The finished deck MUST look like this template: bind kit background/surface + fonts + Layout CSS/scaffold map roles + Motif sprites. Replace visible content for the user brief — do not dump or rewrite a full example.html document (token/truncation risk).",
     "A Neutral / \"similar vibe\" reinterpretation is a failed deliverable. Whatever surface hex and font-family names the kit lists MUST appear — do not approximate with Neutral slate `#0f172a`, OD skeleton terracotta `#c96442` (unless that hex is in the kit palette), ink `#1c1b1a`, or Noto Sans KR-only typography that ignores kit fonts.",
     "Follow scaffold map layout roles (do not flatten every slide into the same cover). If complete motif SVGs are provided, copy at least one provided SVG onto the cover — do not invent ellipse daisy SVGs or emoji ornaments.",
+    "Meet the deck quality bar: each filled slide should carry real message density and specific content, not a template demo caption, the raw user prompt, or sparse placeholder text.",
     "A complete closed deck beats perfect motif fidelity; never fall back to Neutral Modern, Simple Deck skeleton accent, generic pastel circles, or source-page decorations.",
   ].join("\n");
 }

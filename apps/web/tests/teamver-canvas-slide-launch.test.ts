@@ -9,6 +9,7 @@ import {
   DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS,
   HOME_CREATE_SLIDES_INTERNAL_INSTRUCTION,
   HOME_EMPTY_CREATE_SLIDES_PROMPT,
+  SLIDE_DECK_QUALITY_BAR_INSTRUCTION,
   canvasCreateSlidesPluginInputs,
   canvasCreateSlidesRunPrompt,
   canvasSlideQuickSettingsInstruction,
@@ -45,6 +46,8 @@ describe("canvasSlideLaunch", () => {
     expect(CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION).toMatch(/artifact type="deck"|compact deck/i);
     expect(CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION).toMatch(/slideCount|requested slide count/i);
     expect(CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION).toMatch(/1920.*1080|fixed/i);
+    expect(CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION).toContain(SLIDE_DECK_QUALITY_BAR_INSTRUCTION);
+    expect(HOME_CREATE_SLIDES_INTERNAL_INSTRUCTION).toContain(SLIDE_DECK_QUALITY_BAR_INSTRUCTION);
     expect(CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION).not.toMatch(/simple-deck|nav, and print/i);
     expect(canvasCreateSlidesPluginInputs("canvas", "Template")).toMatchObject({
       topic: "canvas",
@@ -161,6 +164,8 @@ describe("canvasSlideLaunch", () => {
     expect(runPrompt).toContain("[Selected slide template priority]");
     expect(runPrompt).toContain("Selected template visual contract — READ LAST");
     expect(runPrompt).toContain("token-safe content-swap");
+    expect(runPrompt).toContain("deck quality bar");
+    expect(runPrompt).toContain("real message density");
     expect(runPrompt).toContain("#c96442");
     expect(runPrompt.lastIndexOf("[Selected slide template priority]")).toBeGreaterThan(
       runPrompt.indexOf("[User instruction]"),
@@ -194,6 +199,7 @@ describe("canvasSlideLaunch", () => {
     expect(priorityBlock).toMatch(/READ LAST/i);
     expect(priorityBlock).toMatch(/token-safe content-swap/i);
     expect(priorityBlock).toMatch(/scaffold map/i);
+    expect(priorityBlock).toMatch(/real message density/i);
     expect(priorityBlock).toMatch(/#c96442/);
     expect(priorityBlock).toMatch(/never fall back to Neutral Modern, Simple Deck/i);
     expect(runPrompt.lastIndexOf("[Selected slide template priority]")).toBeGreaterThan(

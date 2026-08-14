@@ -6,6 +6,7 @@
  */
 
 import type { ChatAttachment } from '../types';
+import { SLIDE_DECK_QUALITY_BAR_INSTRUCTION } from './canvasSlideLaunch';
 import {
   briefLooksLikeAttachedSource,
   CANVAS_CREATE_SLIDES_PROMPT,
@@ -119,6 +120,7 @@ export function buildTemplateCloneContentFillSeed(options: {
     'Hard rules:',
     '- Do NOT paste user instructions ("만들어줘", "만들어 주세요", Canvas boilerplate) into slide titles or subtitles.',
     '- Preserve the cloned template visual kit (palette hex, font-family, deco/SVG motifs, shell class language). Neutral Modern / OD skeleton terracotta is a failed deliverable.',
+    `- ${SLIDE_DECK_QUALITY_BAR_INSTRUCTION}`,
     '- You MAY emit a full `<artifact type="deck" identifier="deck">` that rewrites visible text and adjusts slide count/layouts for the topic — keep the template look, not the template demo page lineup.',
     '- Prefer content-driven slide roles (cover / body / list / cards / quote…). Do not mirror the template example\'s page count or order.',
     '- Close `</artifact>` in this same response; do not finish with prose only.',
