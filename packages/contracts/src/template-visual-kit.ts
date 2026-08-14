@@ -1222,19 +1222,23 @@ export function appendTemplateVisualKit(skillBody: string, kit: string | null | 
  */
 export function slimTemplateVisualKitForFill(skillBody: string): string {
   const body = String(skillBody ?? '');
-  if (!body.includes('## Template visual kit (from example.html)')) return body;
   let next = body;
-  next = next.replace(
-    /### Motif sprites[\s\S]*?(?=\n### |\n## |$)/g,
-    [
-      '### Motif sprites (omitted for first content-fill stability)',
-      '',
-      'Do NOT paste Motif `<svg>` markup on this fill turn — large SVG+`<style>` dumps stall after a few lines.',
-      'Use kit palette hex + fonts + CSS circles / rounded cards / chunky borders for decoration instead.',
-      'Motif SVGs can be added later in a follow-up edit after a closed deck exists.',
-      '',
-    ].join('\n'),
-  );
+  if (next.includes('### Motif sprites')) {
+    next = next.replace(
+      /### Motif sprites[\s\S]*?(?=\n### |\n## |$)/g,
+      [
+        '### Motif sprites (omitted for first content-fill stability)',
+        '',
+        'Do NOT paste Motif `<svg>` markup on this fill turn — large SVG+`<style>` dumps stall after a few lines.',
+        'Use kit palette hex + fonts + CSS circles / rounded cards / chunky borders for decoration instead.',
+        'Motif SVGs can be added later in a follow-up edit after a closed deck exists.',
+        '',
+      ].join('\n'),
+    );
+  }
+  // Leftover sprites outside the Motif section still get pasted and hang.
+  next = next.replace(/<svg\b[\s\S]*?<\/svg>/gi, '');
+  next = next.replace(/```html\s*```/g, '');
   next = next.replace(
     /### Decoration CSS[\s\S]*?(?=\n### |\n## |$)/g,
     [
@@ -1262,7 +1266,7 @@ export function slimTemplateVisualKitForFill(skillBody: string): string {
     '- Motif SVG paste is DISABLED for first content-fill. Decorate with CSS shapes in kit palette hex only.\n',
   );
   next = next.replace(
-    /Copy at least one complete (?:provided )?SVG[^\n]*/gi,
+    /(?:If complete motif SVGs are provided,\s*)?copy at least one (?:complete )?(?:provided )?SVG[^\n]*/gi,
     'Do not copy Motif SVGs on this fill turn — CSS shapes only.',
   );
   next = next.replace(
@@ -1276,6 +1280,22 @@ export function slimTemplateVisualKitForFill(skillBody: string): string {
   next = next.replace(
     /4\.\s*\*\*Motif\/density:\*\*[^\n]*/gi,
     '4. **Motif/density:** deferred — CSS shapes only on first fill; Motif SVGs later.',
+  );
+  next = next.replace(
+    /treat its\s+CSS tokens, fonts, Motif sprites[^\n]*/gi,
+    'treat its CSS tokens, fonts, and scaffold map as mandatory — Motif SVG paste is disabled this fill turn.',
+  );
+  next = next.replace(
+    /The cover MUST show the provided daisy SVG motif[^\n]*/gi,
+    'The cover MUST use kit cream/ink + CSS-shape decoration — no Motif SVG this fill turn.',
+  );
+  next = next.replace(
+    /when Motif sprites \/ Decoration CSS are present, show them[^\n]*/gi,
+    'when Decoration CSS is present, use CSS-shape density in kit hex — Motif SVG paste is disabled this fill turn.',
+  );
+  next = next.replace(
+    /<!-- use Motif sprites SVG inside \.deco -->/gi,
+    '<!-- CSS circle in kit hex — no Motif SVG this fill turn -->',
   );
   return next;
 }

@@ -64,6 +64,20 @@ function firstSlideHeading(innerHtml: string): string {
  * user's "만들어줘" instruction or the template marketing name is a failed
  * generate — even if the HTML is structurally complete.
  */
+/**
+ * Fill hang detector: the model opened Motif `<svg>` (often with nested
+ * `<style>`) before any cover heading. Those streams stall at ~5 visible
+ * lines while path data is generated.
+ */
+export function deckArtifactStartsWithMotifSvgDump(html: string): boolean {
+  const window = String(html ?? "").replace(/^﻿/, "").slice(0, 1200);
+  const svgAt = window.search(/<svg\b/i);
+  if (svgAt < 0) return false;
+  const headingAt = window.search(/<h[1-3]\b[^>]*>\s*[^<\s]/i);
+  if (headingAt < 0) return true;
+  return svgAt < headingAt;
+}
+
 export function deckSlideHeadingsLookLikeFailedGenerate(html: string): boolean {
   const headings = listSlideSectionInners(html)
     .map((inner) => firstSlideHeading(inner))

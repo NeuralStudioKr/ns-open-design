@@ -67,7 +67,7 @@ describe('DECK_FRAMEWORK_DIRECTIVE_COMPACT', () => {
       'Complete deck beats perfect motif fidelity',
     );
     expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_SELECTED_TEMPLATE).toContain(
-      '1–3 recognizable Motif sprites',
+      'Never start a slide with Motif `<svg>`',
     );
     expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_SELECTED_TEMPLATE).not.toContain(
       'optional short style with kit @import',

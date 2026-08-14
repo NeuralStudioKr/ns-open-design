@@ -152,6 +152,10 @@ full `example.html`을 시스템 프롬프트에 넣지 않는다는 방침은 �
 
 제품 판단: **완성된 덱이 우선**이다. 선택 템플릿과 100% 동일한 CSS를 복사하다가 결과물이 비어버리는 것보다, 템플릿의 palette/font/motif cue가 보이는 compact static deck을 완성하는 것이 낫다. 따라서 pre-write gate는 계속 shell 저장을 막고, prompt는 shell이 생기지 않도록 body-first로 유도한다.
 
+### 0.14 2026-08-14 — fill Motif SVG 선두 hang (시스템 READ LAST가 fill 규칙을 덮음)
+
+kit에서 Motif 섹션을 빼도 compact/READ LAST가 "sprites verbatim"을 다시 강제해, 모델이 커버 제목 전에 Daisy `<svg><style>`를 덤프하고 수 분 정지한다. fill 턴은 시스템 최후단에서 ZERO `<svg>`를 선언하고, persist는 SVG-before-heading을 거부한다. 첫 완성 덱의 look은 palette/fonts/CSS shape로 충분하다.
+
 ### 0.13 2026-08-14 — salvage여도 지시문 커버는 persist 거부
 
 Soft truncation salvage는 previewable 잘림을 살리지만, 커버가 `looksLikeInstructionCopy` / `looksLikeTemplateMarketingTitle`이면 실패한 generate다. `trustSoftTruncationSalvage`가 low-substance 게이트를 우회하지 못하게 `deckSlideHeadingsLookLikeFailedGenerate`를 persist에서 항상 적용한다.

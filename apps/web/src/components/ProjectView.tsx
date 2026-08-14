@@ -63,6 +63,7 @@ import {
   stashPendingArtifactWrite,
 } from '../artifacts/pendingWriteRecovery';
 import {
+  deckArtifactStartsWithMotifSvgDump,
   deckSlideHeadingsLookLikeFailedGenerate,
   isClosedSoftSalvageDeckHtml,
 } from '../artifacts/deck-html-content';
@@ -5107,7 +5108,10 @@ export function ProjectView({
         // "만들어줘" / template-marketing cover — that is a failed generate.
         const failedGenerateHeadings =
           normalizedArtifactType === 'deck'
-          && deckSlideHeadingsLookLikeFailedGenerate(artifactToPersist.html);
+          && (
+            deckSlideHeadingsLookLikeFailedGenerate(artifactToPersist.html)
+            || deckArtifactStartsWithMotifSvgDump(artifactToPersist.html)
+          );
         if (
           failedGenerateHeadings
           || (

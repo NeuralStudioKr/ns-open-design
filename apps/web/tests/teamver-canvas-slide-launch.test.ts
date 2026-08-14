@@ -668,6 +668,7 @@ describe("canvasSlideLaunch", () => {
     expect(projectView).toContain("templateCloneFillSlideCountOverrideNotice(");
     expect(projectView).toContain("slimTemplateVisualKitForFill(");
     expect(projectView).toContain("templateCloneContentFill: isCloneContentFillTurn");
+    expect(projectView).toContain("deckArtifactStartsWithMotifSvgDump");
     expect(projectView).toContain("templateCloneContentFill: true");
     expect(projectView).toMatch(/includeExistingDeckImageEditRule:\s*\n\s*!isCloneContentFillTurn/);
     expect(projectView).toContain("templateCloneContentFill: autoContinueOriginIsFill");

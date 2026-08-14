@@ -46,6 +46,7 @@ import {
   SLIDE_DECK_CONTENT_EXPANSION_INSTRUCTION,
 } from './deck-quality.js';
 import { MEDIA_GENERATION_CONTRACT } from './media-contract.js';
+import { stripTemplateVisualKitMotifSpritesForFill } from '../template-visual-kit.js';
 
 export const BASE_SYSTEM_PROMPT = OFFICIAL_DESIGNER_PROMPT;
 const ELEVENLABS_VOICE_PROMPT_OPTION_LIMIT = 100;
@@ -468,7 +469,7 @@ export interface ComposeInput {
   /**
    * Teamver Clone LOOK → first AI content-fill. Mutes Motif-verbatim READ LAST
    * mandates and expects a slim kit (palette/fonts only) so the model can
-   * close a compact deck instead of hanging on SVG dumps.
+   * close a compact deck instead of hanging on Daisy `<svg><style>` dumps.
    */
   templateCloneContentFill?: boolean | undefined;
 }
@@ -1449,7 +1450,7 @@ Hard requirements for every slide:
 - **Kit-driven visual, brief-driven structure:** the kit + Template scaffold map provide the *visual and layout vocabulary* (palette, fonts, borders, shadows, motif SVGs, and a catalog of layout roles like cover / welcome / weekly-grid / timeline / three-column / chart / quote / closing). The *slide count, slide order, and per-slide composition* come from the **user brief**, NOT from the template's shell sequence. Preserve surface colors, decorative wrappers, card treatment, and SVG motif language. But choose which layout roles to use, in what order, and how many slides based on the brief — pick roles whose semantic fits the brief and reuse the same role across multiple slides when appropriate. Do NOT force weekly-grid onto a sales pitch or timeline onto a static explainer just because the template ships them. Do NOT dump or rewrite a full example.html.
 - Bind kit palette colors and font-family names (and border/shadow tokens when listed) with inline styles or one short body \`<style>\`. Whatever the kit lists MUST appear — do not approximate with a different template's look.
 - Keep decorative density the kit shows via a **small subset** of kit Motif sprites / Decoration CSS cues. Sparse title-only slides that ignore the kit are a failure, but full CSS pasted before content is also a failure.
-- **Copy Motif sprites verbatim** from the kit when present (paste the \`<svg>…</svg>\` into the template's ornament wrappers). Do **not** invent ellipse/petal "daisy" SVGs, generic flower geometry, or new motif drawings.
+- **Copy Motif sprites verbatim** from the kit when present — but only AFTER the cover \`<h1>\` and lead \`<p>\` exist. Never open \`<svg\` in the first 800 characters after \`<artifact\`. If Motif paste risks a hang / truncation, skip sprites and use CSS circles / rounded cards / chunky borders in kit palette hex. Do **not** invent ellipse/petal "daisy" SVGs, generic flower geometry, or new motif drawings.
 - **Forbidden motif substitutes:** do **not** fake the template with unicode/emoji ornaments as decoration. Motif must be the kit's SVG/\`.deco\` patterns (or chunky borders when the kit has no sprites). Content emoji inside body copy is OK sparingly; decorative rows are not.
 - **Forbidden skeleton / Neutral substitutes when a kit is present:** slate \`#0f172a\` / \`#1e293b\` / \`#111827\`, OD skeleton terracotta accent \`#c96442\` (unless that hex is listed in the kit palette), ink \`#1c1b1a\` + muted \`#6b6964\` as a substitute primary palette, Inter-only / Noto Sans KR-only / system-ui-only typography that ignores kit fonts, empty gradient corporate title slides, "no ornament" subtractive layouts.
 - **Forbidden:** carrying over the ATTACHED SOURCE FILE's own visual styling. Source contributes TEXT and structure only — palette/fonts/motif MUST come from the kit.
@@ -1487,6 +1488,15 @@ Hard requirements for every slide:
 - Do **not** fake floral/playful templates with emoji flowers/stars (🌼🌸⭐🌈). Prefer simple CSS shapes / chunky borders in the template palette over emoji ornament rows.
 - Do **not** carry over the attached source file's own visual styling either — the source HTML's palette / fonts / gradients belong to the source page, not to this deck. Even without a concrete kit, prefer the template name/summary mood over the source's colors.
 - Prefer recognizable template mood over a generic corporate title slide.`;
+
+const TEAMVER_TEMPLATE_CLONE_FILL_NO_SVG_READ_LAST = `# Template clone fill — Motif SVG deferred (READ LAST — beats Motif-copy rules above)
+
+This is the first content-fill after a Clone LOOK seed. Motif \`<svg>\` paste is **FORBIDDEN** this turn.
+
+- ZERO \`<svg>\` tags. Do not open \`<svg\`, do not paste nested \`<style>\` inside SVG, do not dump Motif sprites.
+- Cover order is mandatory: \`<section class="slide">\` → \`<h1>real topical title</h1>\` → lead \`<p>\` → optional CSS circles/rounded cards/chunky borders in kit palette hex.
+- If any earlier rule mandates Motif sprite paste or 1–3 sprites per slide, **IGNORE it for this turn**.
+- A hang after a few lines on Motif \`<svg><style>\` is a failed deliverable. Finish a closed \`</artifact>\` with real topical slides.`;
 
 /**
  * Lean system prompt for Teamver embed slide-only + anthropic-api / BYOK proxy.
@@ -1528,6 +1538,9 @@ export function composeTeamverSlideApiPrompt({
   | 'templateCloneContentFill'
 >): string {
   const parts: string[] = [];
+  if (templateCloneContentFill === true && skillBody?.trim()) {
+    skillBody = stripTemplateVisualKitMotifSpritesForFill(skillBody);
+  }
   const activeDesignSystemBody = designSystemBody?.trim();
   const directDeckGeneration =
     metadata?.skipDiscoveryBrief === true || metadata?.examplePrompt === true;
@@ -1673,7 +1686,9 @@ export function composeTeamverSlideApiPrompt({
           + '- Treat the kit + Template scaffold map + Layout CSS as the base look; replace only visible content for the user brief.\n'
           + '- Do NOT dump or rewrite a full example.html document (token/truncation risk). Ignore SKILL.md "Clone example.html" steps in API mode.\n'
           + '- Bind kit Slide surface on html/body AND every `.slide`; use kit Font import + font-family names exactly.\n'
-          + '- Follow scaffold map roles + Layout CSS (grids/flex/regions). Keep Motif sprites / Decoration CSS density — copy at least one provided SVG on the cover when sprites are present; no emoji ornament rows.\n'
+          + (templateCloneContentFill
+            ? '- Follow scaffold map roles + Layout CSS (grids/flex/regions). Do NOT paste Motif `<svg>` this fill turn — CSS shapes in kit hex only; no emoji ornament rows.\n'
+            : '- Follow scaffold map roles + Layout CSS (grids/flex/regions). Keep decorative density with CSS shapes first; Motif SVG only AFTER cover title+lead, never in the first 800 characters; no emoji ornament rows.\n')
           + '- Do not paste a long `<head>` before slide 1; first produce visible slide sections and finish the deck.\n'
           + '- Active design system is secondary brand context only; template look wins.\n\n'
         )
@@ -1736,6 +1751,9 @@ export function composeTeamverSlideApiPrompt({
         ? TEAMVER_SELECTED_TEMPLATE_VISUAL_READ_LAST_WITH_KIT
         : TEAMVER_SELECTED_TEMPLATE_VISUAL_READ_LAST_WITHOUT_KIT,
     );
+  }
+  if (templateCloneContentFill === true) {
+    parts.push(TEAMVER_TEMPLATE_CLONE_FILL_NO_SVG_READ_LAST);
   }
 
   return parts.join('\n\n---\n\n');

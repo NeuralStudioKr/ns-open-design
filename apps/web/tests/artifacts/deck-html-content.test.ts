@@ -6,6 +6,7 @@ import {
   hasSalvageableDeckSlideContent,
   isClosedSoftSalvageDeckHtml,
   isDeckStatusProseOnlyBody,
+  deckArtifactStartsWithMotifSvgDump,
   deckSlideHeadingsLookLikeFailedGenerate,
   meetsMinimumDeckDeliverableQuality,
   meetsTruncationSalvageQuality,
@@ -58,6 +59,21 @@ describe("deck-html-content", () => {
       + "<section class=\"slide\"><h1>EAS Build</h1><p>cloud builds and Submit</p></section>"
       + "</body></html>";
     expect(deckSlideHeadingsLookLikeFailedGenerate(real)).toBe(false);
+  });
+
+  it("flags Motif SVG dumps that start before the cover heading", () => {
+    const hung =
+      '<!doctype html><html lang="ko"><body style="margin:0;background:#F5F0E6">'
+      + '<section class="slide slide-title" style="width:1920px;height:1080px">'
+      + '<div style="position:absolute;top:-30px;left:-30px;width:220px;height:220px">'
+      + '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 150 150">'
+      + '<style>.cls-0{fill:#FFFFFF}.cls-1{fill:#FCDF6C}</style>';
+    expect(deckArtifactStartsWithMotifSvgDump(hung)).toBe(true);
+    const titled =
+      '<!doctype html><html lang="ko"><body>'
+      + '<section class="slide"><h1>Expo for Senior Engineers</h1><p>Managed workflow</p>'
+      + '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/></svg></section></body></html>';
+    expect(deckArtifactStartsWithMotifSvgDump(titled)).toBe(false);
   });
 
   it("still flags instruction-copy covers that pass the soft-salvage bar", () => {

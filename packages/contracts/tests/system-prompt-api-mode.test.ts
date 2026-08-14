@@ -548,6 +548,30 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt.length).toBeLessThan(27_000);
     });
 
+    it('appends Motif-SVG-deferred READ LAST on template clone fill turns', () => {
+      const prompt = composeTeamverSlideApiPrompt({
+        skillBody:
+          '## Template visual kit (from example.html)\n\n'
+          + '### Slide surface\n\n**background**: `#F5F0E6`\n\n'
+          + '### Motif sprites\n\n```html\n<svg viewBox="0 0 10 10"></svg>\n```\n',
+        skillName: 'Html Ppt Zhangzara Daisy Days',
+        metadata: {
+          kind: 'deck',
+          skipDiscoveryBrief: true,
+          selectedDeckTemplateId: 'example-html-ppt-zhangzara-daisy-days',
+        },
+        templateCloneContentFill: true,
+      });
+      expect(prompt).toContain('Template clone fill — Motif SVG deferred');
+      expect(prompt).toContain('ZERO `<svg>` tags');
+      expect(prompt.indexOf('Template clone fill — Motif SVG deferred')).toBeGreaterThan(
+        prompt.indexOf('Selected deck template visual — READ LAST'),
+      );
+      expect(prompt).toContain('Do NOT paste Motif `<svg>` or Decoration CSS dumps');
+      expect(prompt).not.toMatch(/<svg\s/i);
+      expect(prompt).not.toMatch(/<\/svg>/i);
+    });
+
     it('omits comment-edit / existing-deck contracts on greenfield turns', () => {
       const prompt = composeTeamverSlideApiPrompt({
         skillBody: simpleDeckSkill,

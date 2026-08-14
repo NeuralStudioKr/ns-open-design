@@ -68,15 +68,22 @@ export function historyHasTemplateCloneContentFill(
  * handleSend keeps stripping deck.html and never flips to existing-deck edit.
  * No-op when the prompt already carries a fill marker (first seed or prior stamp).
  */
+const TEMPLATE_CLONE_FILL_SVG_ABANDON =
+  'ABANDON any Motif `<svg>` already started. Restart body-first with `<h1>` then lead `<p>`. ZERO `<svg>` this turn — CSS shapes only.';
+
 export function ensureTemplateCloneContentFillContinuePrompt(prompt: string): string {
   const trimmed = String(prompt ?? '').trim();
   if (!trimmed) return trimmed;
-  if (isTemplateCloneContentFillPrompt(trimmed)) return trimmed;
+  if (isTemplateCloneContentFillPrompt(trimmed)) {
+    if (trimmed.includes('ZERO `<svg>` this turn')) return trimmed;
+    return `${trimmed}\n\n${TEMPLATE_CLONE_FILL_SVG_ABANDON}`;
+  }
   return [
     TEMPLATE_CLONE_CONTENT_FILL_MARKER,
     TEMPLATE_CLONE_CONTENT_FILL_TURN_MARKER,
     'This is an auto-continue of a template-clone CONTENT FILL (CREATE), not a surgical edit of the Clone LOOK seed.',
     ...templateCloneContentFillHardRules(),
+    TEMPLATE_CLONE_FILL_SVG_ABANDON,
     '',
     trimmed,
   ].join('\n');
@@ -231,7 +238,7 @@ export function templateCloneContentFillHardRules(): string[] {
     '- Strict body-first contract: start the artifact body exactly like `<!doctype html><html lang="ko"><body><section class="slide" ...>`.',
     '- `<head>` is FORBIDDEN on this fill turn. Do not emit `<head>`, `<title>`, meta tags, or a style prelude before slide 1.',
     '- The first 800 characters after `<artifact` MUST include `<body` and one complete `<section class="slide">` with real topical copy (cover title + lead).',
-    '- Motif SVG OVERRIDE (wins over any system Motif-copy mandate): Do NOT paste Motif `<svg>` (especially SVGs with nested `<style>`) before the cover title and lead text exist. First fill decoration = kit palette hex + CSS circles/rounded cards/chunky borders ONLY. Skip Motif sprites entirely this turn — add them later after a closed `</artifact>`.',
+    '- Motif SVG OVERRIDE (wins over any system Motif-copy mandate): ZERO `<svg>` tags this turn. Do NOT open `<svg` or paste nested `<style>` inside SVG. First fill decoration = kit palette hex + CSS circles/rounded cards/chunky borders ONLY. If you already started a Motif SVG, abandon it and restart with `<h1>` then lead `<p>`.',
     '- Keep `<style>` very short (kit tokens + fonts only, ideally under ~1KB) and place it after slide 1 or omit it in favor of inline styles. Never dump the whole template stylesheet.',
     '- Fill REAL topical titles/body (no "…", no "만들어줘", no create-slides boilerplate). Slide count follows the brief/Quick settings — not the template demo page lineup.',
     '- Prefer finishing a closed `</artifact>` this turn over perfect motif fidelity. A complete compact Daisy-lookalike beats a truncated SVG/CSS shell.',

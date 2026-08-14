@@ -40,6 +40,7 @@
  */
 
 import {
+  deckArtifactStartsWithMotifSvgDump,
   deckSlideHeadingsLookLikeFailedGenerate,
   documentContainsSlideSection,
   hasSalvageableDeckSlideContent,
@@ -155,6 +156,9 @@ export function isLowSubstanceSlideDeckArtifact(content: string): boolean {
   const bodyText = visibleHtmlBodyText(trimmed);
   const withoutNoise = stripHtmlNoise(trimmed);
   if (deckSlideHeadingsLookLikeFailedGenerate(trimmed)) {
+    return true;
+  }
+  if (deckArtifactStartsWithMotifSvgDump(trimmed)) {
     return true;
   }
   if (MEDIA_OR_REPLACED_CONTENT_RE.test(withoutNoise)) return false;
