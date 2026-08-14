@@ -436,19 +436,23 @@ describe("canvasSlideLaunch", () => {
     expect(composer).toContain("isExplicitCanvasSlideVisualTemplate(selectedCanvasSlideTemplate)");
     expect(composer).toContain("onRequestOpenFile?.(seeded.fileName)");
     expect(app).toContain("seedTemplateClonedDeck(");
-    expect(app).toContain("skipAutoSendForTemplateClone");
+    expect(app).not.toContain("skipAutoSendForTemplateClone");
     expect(app).toContain("isExplicitCanvasSlideVisualTemplate({ id: selectedDeckTemplateId })");
     expect(app).toContain("driveCreateSlidesSourceBrief(homeDriveSourceAsset)");
-    expect(app).toContain("pendingPrompt: null");
-    expect(app).toContain("pendingPrompt: undefined");
     expect(app).toContain("slideCountHintFromInputs");
-    expect(app).toContain("blocking model kit auto-send");
+    expect(app).toContain("continuing with selected-template AI run");
     expect(app).toContain("templateClonedDeckSeeded: true");
     expect(app).toContain("selectedDeckTemplateIdFromInputs");
     expect(app).toContain("headings:");
     expect(app).toContain("Home wizard / gallery / community card");
     expect(app).toContain("Drive import failure must NOT skip Clone");
     expect(app).toContain("od:auto-send-first:");
+    const appCloneSeedBlock = app.slice(
+      app.indexOf("Home wizard / gallery / community card"),
+      app.indexOf("try {", app.indexOf("od:auto-send-first:")),
+    );
+    expect(appCloneSeedBlock).not.toContain("pendingPrompt: null");
+    expect(appCloneSeedBlock).not.toContain("pendingPrompt: undefined");
     expect(seeder).toContain("recoverExistingTemplateClonedDeck");
     expect(seeder).toContain("templateClonedDeckSeeded");
     expect(home).toContain("resolveSlideOnlyDeckTemplateSkillId(active?.record)");
@@ -476,7 +480,9 @@ describe("canvasSlideLaunch", () => {
     expect(openHomeSlideCreateSrc).not.toContain("readLastExplicitDeckTemplateId");
     expect(openHomeSlideCreateSrc).toContain("setStagedFiles([])");
     expect(openHomeSlideCreateSrc).toContain("setStagedDriveAssets([])");
-    expect(composer).toContain("blocking model kit fallthrough");
+    expect(composer).toContain("continuing with selected-template AI run");
+    expect(composer).toContain("sendComposedTurn(");
+    expect(composer).not.toContain("blocking model kit fallthrough");
     const entryShell = readWebSource("src/components/EntryShell.tsx");
     expect(entryShell).toContain("payloadTemplateId");
     expect(entryShell).toContain("selectedDeckTemplateId: payloadTemplateId");
@@ -523,7 +529,8 @@ describe("canvasSlideLaunch", () => {
     );
     expect(cloneSrc).toContain("skipArtifactStubGuard: true");
     expect(cloneSrc).toContain("skipArtifactPublicationGuard: true");
-    expect(projectView).toContain("templateClonedDeckSeeded");
+    expect(projectView).not.toContain("Clone already wrote deck.html");
+    expect(projectView).not.toContain("templateClonedDeckSeeded === true");
   });
 
   it("rebinds create-slides from URL after workspace bootstrap instead of dropping the modal", () => {

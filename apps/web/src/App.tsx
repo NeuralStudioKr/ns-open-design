@@ -2599,7 +2599,6 @@ function AppInner() {
         }
       }
       let canvasImportFailed = false;
-      let skipAutoSendForTemplateClone = false;
       let seededDeckFileName: string | null = null;
       if (!workingDirHandoffFailed && pendingCanvasHandoff) {
         try {
@@ -2635,8 +2634,9 @@ function AppInner() {
             );
           }
           // Explicit visual template only (not default scenario id): daemon
-          // Clones example.html + content-swap. Skip auto-send so Neutral
-          // cannot overwrite the seeded deck.html.
+          // Clones example.html + content-swap as an initial preview seed.
+          // The actual user request must still auto-send so the AI reads the
+          // attachment/source and generates real content from the prompt.
           if (
             slideOnlyMvp
             && isExplicitCanvasSlideVisualTemplate({ id: selectedDeckTemplateId })
@@ -2661,18 +2661,17 @@ function AppInner() {
               slideCountHint: slideCountHintFromInputs,
             });
             if (seeded.ok) {
-              skipAutoSendForTemplateClone = true;
               seededDeckFileName = seeded.fileName;
             } else {
-              // Explicit visual template: NEVER fall through to Neutral kit
-              // auto-send — that path is what made Daisy look "unused".
-              skipAutoSendForTemplateClone = true;
+              // Do not block the model run. Selected-template metadata is
+              // passed on the first turn, so the run can still bind the
+              // visual kit even if the preview seed failed.
               devLog.warn(
-                'Home Canvas template clone seed failed; blocking model kit auto-send',
+                'Home Canvas template clone seed failed; continuing with selected-template AI run',
                 seeded,
               );
               setWorkingDirError(
-                '선택한 템플릿을 적용하지 못했습니다. 프로젝트는 열렸으니 슬라이드 생성을 다시 시도해 주세요.',
+                '템플릿 미리보기 준비에 실패했습니다. 선택한 템플릿 컨텍스트로 슬라이드 생성을 계속합니다.',
               );
             }
           }
@@ -2725,7 +2724,6 @@ function AppInner() {
       if (
         !workingDirHandoffFailed
         && !canvasImportFailed
-        && !skipAutoSendForTemplateClone
         && !pendingCanvasHandoff
         && slideOnlyMvp
         && isExplicitCanvasSlideVisualTemplate({ id: selectedDeckTemplateId })
@@ -2756,16 +2754,14 @@ function AppInner() {
           slideCountHint: slideCountHintFromInputs,
         });
         if (seeded.ok) {
-          skipAutoSendForTemplateClone = true;
           seededDeckFileName = seeded.fileName;
         } else {
-          skipAutoSendForTemplateClone = true;
           devLog.warn(
-            'Home template clone seed failed; blocking model kit auto-send',
+            'Home template clone seed failed; continuing with selected-template AI run',
             seeded,
           );
           setWorkingDirError(
-            '선택한 템플릿을 적용하지 못했습니다. 프로젝트는 열렸으니 슬라이드 생성을 다시 시도해 주세요.',
+            '템플릿 미리보기 준비에 실패했습니다. 선택한 템플릿 컨텍스트로 슬라이드 생성을 계속합니다.',
           );
         }
       }
@@ -2796,7 +2792,6 @@ function AppInner() {
       if (
         !workingDirHandoffFailed &&
         !canvasImportFailed &&
-        !skipAutoSendForTemplateClone &&
         !suppressAutoSendForFailedDriveImport &&
         input.autoSendFirstMessage &&
         (derivedPendingPrompt !== undefined || firstMessageAttachments.length > 0)
@@ -2820,17 +2815,6 @@ function AppInner() {
           /* sessionStorage may be unavailable (e.g. SSR / private mode); fall
              back to manual send. */
         }
-      } else if (skipAutoSendForTemplateClone) {
-        // Defensive: a successful Clone must not leave a stale auto-send latch.
-        try {
-          window.sessionStorage.removeItem(`od:auto-send-first:${result.project.id}`);
-          window.sessionStorage.removeItem(`od:auto-send-attachments:${result.project.id}`);
-        } catch {
-          /* ignore */
-        }
-        // Daemon also clears pendingPrompt on clone success; keep FE in sync so
-        // ProjectView does not seed the composer with a structure-gen draft.
-        void patchProject(result.project.id, { pendingPrompt: null });
       }
       const project = result.appliedPluginSnapshotId
         ? {
@@ -2841,7 +2825,6 @@ function AppInner() {
       const projectForNav = seededDeckFileName
         ? {
             ...project,
-            pendingPrompt: undefined,
             metadata: {
               ...(project.metadata && typeof project.metadata === 'object'
                 ? project.metadata
@@ -2852,9 +2835,7 @@ function AppInner() {
                 : {}),
             },
           }
-        : skipAutoSendForTemplateClone
-          ? { ...project, pendingPrompt: undefined }
-          : project;
+        : project;
       rememberLocalProject(projectForNav.id);
       flushSync(() => {
         setProjects((curr) => [

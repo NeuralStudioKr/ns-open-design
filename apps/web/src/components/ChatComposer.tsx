@@ -2168,8 +2168,9 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
           }
           const sourceBrief = canvasCreateSlidesSourceBrief(handoff);
           // Explicit visual templates: daemon Clones example.html from plugin
-          // FS and content-swaps Source headings into deck.html (BYOK has no
-          // Clone tool). Skip model structure gen so Neutral cannot overwrite.
+          // FS and content-swaps Source headings into deck.html as an initial
+          // preview seed. Continue into the model run so the AI generates
+          // real content from the source + user prompt.
           if (
             slideOnlyMvp
             && isExplicitCanvasSlideVisualTemplate(selectedCanvasSlideTemplate)
@@ -2193,20 +2194,9 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
             if (seeded.ok) {
               onProjectFilesMaybeChanged?.();
               onRequestOpenFile?.(seeded.fileName);
-              consumeTeamverCanvasLaunchHandoff();
-              setCanvasSlideLaunch(null);
-              setCanvasSlideLaunchError(null);
-              setCanvasSlideUserPrompt('');
-              setCanvasSlideQuickSettings(DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS);
-              return;
+            } else {
+              devLog.warn('Template clone seed failed; continuing with selected-template AI run', seeded);
             }
-            // Explicit visual template: do NOT fall through to Neutral kit.
-            // Keep the modal/URL handoff so the user can retry Clone.
-            devLog.warn('Template clone seed failed; blocking model kit fallthrough', seeded);
-            setCanvasSlideLaunchError(
-              '선택한 템플릿을 적용하지 못했습니다. 다시 시도해 주세요.',
-            );
-            return;
           }
           const baseMeta = currentRunContextMeta();
           const canvasMeta = canvasCreateSlidesTurnMeta(selectedCanvasSlideTemplate.id, {
@@ -2359,20 +2349,9 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
           if (seeded.ok) {
             onProjectFilesMaybeChanged?.();
             onRequestOpenFile?.(seeded.fileName);
-            consumeTeamverDriveLaunchHandoff();
-            setCanvasSlideLaunch(null);
-            setCanvasSlideLaunchError(null);
-            setCanvasSlideUserPrompt('');
-            setCanvasSlideQuickSettings(DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS);
-            return;
+          } else {
+            devLog.warn('Template clone seed failed; continuing with selected-template AI run', seeded);
           }
-          // Explicit visual template: do NOT fall through to Neutral kit.
-          // Keep the modal/URL handoff so the user can retry Clone.
-          devLog.warn('Template clone seed failed; blocking model kit fallthrough', seeded);
-          setCanvasSlideLaunchError(
-            '선택한 템플릿을 적용하지 못했습니다. 다시 시도해 주세요.',
-          );
-          return;
         }
         {
           const baseMeta = currentRunContextMeta();
