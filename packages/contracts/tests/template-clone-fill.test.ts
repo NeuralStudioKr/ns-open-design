@@ -210,6 +210,16 @@ describe('resolveTemplateCloneSlidesFromBrief', () => {
     expect(slides[0]?.title).not.toMatch(/요청한 내용|첨부한 자료|만들어줘|Deliverable/i);
   });
 
+  it('returns empty free-form synthesis when only empty-create boilerplate is present', () => {
+    const slides = resolveTemplateCloneSlidesFromBrief({
+      userInstruction: '슬라이드 덱을 만들어줘.',
+      deckTitle: 'Untitled',
+    });
+    // Boilerplate-only brief → no instruction dump; empty outline so Clone
+    // uses role-diverse starter shells instead of "슬라이드 덱을 만들어줘".
+    expect(slides).toEqual([]);
+  });
+
   it('picks up numbered outlines from user instructions', () => {
     const slides = resolveTemplateCloneSlidesFromBrief({
       userInstruction: [

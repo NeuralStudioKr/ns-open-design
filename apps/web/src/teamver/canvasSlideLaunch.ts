@@ -123,6 +123,35 @@ export const CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION =
   "so Teamver can scale the whole slide; do not size core typography or layout with viewport units that reflow by panel size. " +
   "Do not finish with prose only and do not stop before `</artifact>`.";
 
+/**
+ * Home freeform / empty-prompt create — no Canvas/Drive/file attachment assumed.
+ * Must not tell the model to "preserve the attached source".
+ */
+export const HOME_CREATE_SLIDES_INTERNAL_INSTRUCTION =
+  "Build a new presentation deck. " +
+  "There may be no attached source document — invent clear topical slide content from the user instruction (if any), Quick settings, and the selected template look. " +
+  "If the user left the prompt empty, still produce a coherent deck that fits the selected template and Quick settings (audience/length/tone); " +
+  "do NOT paste lead boilerplate (\"슬라이드 덱을 만들어줘\", \"요청한 내용으로…\", \"첨부한 자료를…\") into slide titles or body copy. " +
+  "If you use the Write/Edit tool, the ONLY root HTML file you may create or overwrite is `deck.html` — " +
+  "never Write `index.html`, `canvas.html`, or other root HTML basenames. " +
+  "The only HTML deliverable must be a rebuilt slide deck saved as `deck.html` " +
+  "via exactly one `<artifact type=\"deck\" identifier=\"deck\">` (identifier MUST be `deck`). " +
+  "**Token-safe template apply:** use the Selected deck template visual kit + scaffold map in the system prompt (palette/fonts/Motif sprites/slide roles). " +
+  "Content-swap the topic into that look — do NOT paste or regenerate a full example.html dump (input/output token risk). " +
+  "Emit ONE complete Teamver deck in this same response: " +
+  "`<artifact type=\"deck\" identifier=\"deck\">` with one filled `<section class=\"slide\">` per requested slide count " +
+  `(see Plugin inputs slideCount / user brief; ${COMPACT_DECK_SLIDE_COUNT_GUIDANCE}), ` +
+  "and no OD framework chrome/nav/print scaffolding. " +
+  "Each slide must be a fixed 1920×1080 canvas (`width:1920px;height:1080px;box-sizing:border-box;position:relative;overflow:hidden`) " +
+  "so Teamver can scale the whole slide; do not size core typography or layout with viewport units that reflow by panel size. " +
+  "Do not finish with prose only and do not stop before `</artifact>`.";
+
+export function resolveCreateSlidesInternalInstruction(hasSourceMaterial: boolean): string {
+  return hasSourceMaterial
+    ? CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION
+    : HOME_CREATE_SLIDES_INTERNAL_INSTRUCTION;
+}
+
 /** User-visible first message for Canvas / Drive → create-slides (has source). */
 export const CANVAS_CREATE_SLIDES_PROMPT = SHARED_CANVAS_CREATE_SLIDES_PROMPT;
 
@@ -343,6 +372,12 @@ export function canvasCreateSlidesRunPrompt(
 ): string {
   const title = templateTitle?.trim();
   const isDefaultTemplate = !title || title === "기본 슬라이드 템플릿";
+  const brief = compactCanvasBriefBlock(sourceBrief ?? "", 900);
+  const user = compactCanvasBriefValue(userInstruction ?? "", 600);
+  // Never say "첨부한 자료를…" without attachments, and never say "요청한 내용으로…"
+  // when the user left the prompt empty.
+  const hasSourceMaterial = options?.hasSourceMaterial ?? briefLooksLikeAttachedSource(brief);
+  const deliverable = resolveCreateSlidesInternalInstruction(hasSourceMaterial);
   // Weak inline hint for the default template (there is no explicit visual
   // spec to preserve). For a user-picked template we surface a dedicated
   // `[Selected slide template]` block so the model cannot bury it under the
@@ -352,24 +387,27 @@ export function canvasCreateSlidesRunPrompt(
   const templateHint = isDefaultTemplate
     ? (title ? `\nSelected slide template/style: ${title}.` : "")
     : "";
+  const templateSourceRule = hasSourceMaterial
+    ? [
+      "**Template kit WIN over the attached source's own visual styling.** The Canvas / Drive source HTML may have its own background gradients, fonts, and decorative accents (e.g. warm yellow-green travel styling); those are content references only. Do NOT carry over the source's colors, gradients, fonts, or decorative gradients into the deck. Use kit Motif sprites / scaffold-map slide roles — never substitute emoji flowers/stars. Only the source's TEXT (headings, body copy, section names) crosses over.",
+      "If the source material's topic doesn't fit the template's theme (e.g. business content picked with a terminal template), put the source TEXT into this template's look anyway. Do NOT return an empty deck because of the mismatch; an imperfect visual match is better than no deck.",
+    ]
+    : [
+      "There may be no attached source — invent clear topical content that fits this template kit. Do not invent Neutral Modern / OD skeleton chrome.",
+      "If the user prompt is empty, still fill slides with coherent placeholder topical copy that matches Quick settings; never paste create-slides lead boilerplate into titles.",
+    ];
   const templateBlock = !isDefaultTemplate && title
     ? [
       "\n\n[Selected slide template]",
       `The user picked "${title}" as the deck template. Bind the Template visual kit + scaffold map from the system prompt (token-safe content-swap). Do not reinvent a similar vibe from scratch, and do not dump a full example.html.`,
-      "**Template kit WIN over the attached source's own visual styling.** The Canvas / Drive source HTML may have its own background gradients, fonts, and decorative accents (e.g. warm yellow-green travel styling); those are content references only. Do NOT carry over the source's colors, gradients, fonts, or decorative gradients into the deck. Use kit Motif sprites / scaffold-map slide roles — never substitute emoji flowers/stars. Only the source's TEXT (headings, body copy, section names) crosses over.",
+      ...templateSourceRule,
       "A complete closed deck beats perfect motif fidelity; do not return a head/style shell.",
-      "If the source material's topic doesn't fit the template's theme (e.g. business content picked with a terminal template), put the source TEXT into this template's look anyway. Do NOT return an empty deck because of the mismatch; an imperfect visual match is better than no deck.",
     ].join("\n")
     : "";
   const templatePriorityBlock = !isDefaultTemplate && title
     ? `\n\n[Selected slide template priority]\n${selectedSlideTemplatePriorityInstruction(title)}`
     : "";
-  const brief = compactCanvasBriefBlock(sourceBrief ?? "", 900);
   const sourceHint = brief ? `\n\n[Source brief]\n${brief}` : "";
-  const user = compactCanvasBriefValue(userInstruction ?? "", 600);
-  // Never say "첨부한 자료를…" without attachments, and never say "요청한 내용으로…"
-  // when the user left the prompt empty.
-  const hasSourceMaterial = options?.hasSourceMaterial ?? briefLooksLikeAttachedSource(brief);
   const lead = resolveCreateSlidesLead({ hasSourceMaterial, userInstruction: user });
   // When the lead line is already the user instruction, do not duplicate it.
   const userHint = hasSourceMaterial && user
@@ -378,7 +416,7 @@ export function canvasCreateSlidesRunPrompt(
       ? `\n\n[User instruction]\n${user}`
       : "");
   const quickHint = `\n\n[Quick settings]\n${canvasSlideQuickSettingsInstruction(quickSettings)}`;
-  return `${lead}\n\n[Deliverable instruction]\n${CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION}${templateHint}${templateBlock}${quickHint}${sourceHint}${userHint}${templatePriorityBlock}`;
+  return `${lead}\n\n[Deliverable instruction]\n${deliverable}${templateHint}${templateBlock}${quickHint}${sourceHint}${userHint}${templatePriorityBlock}`;
 }
 
 /** Per-turn meta so API/daemon runs compose the selected deck template into the system prompt. */
@@ -723,6 +761,7 @@ export function canvasCreateSlidesPluginInputs(
   sourceBrief?: string | null,
   userInstruction?: string | null,
   quickSettings?: Partial<CanvasSlideQuickSettings> | null,
+  options?: { hasSourceMaterial?: boolean },
 ): Record<string, unknown> {
   const topic = (topicHint ?? "").trim() || "the user brief";
   const brief = sourceBrief?.trim();
@@ -730,6 +769,8 @@ export function canvasCreateSlidesPluginInputs(
   const normalizedQuickSettings = normalizeCanvasSlideQuickSettings(quickSettings);
   const visualTemplate =
     (templateTitle ?? "").trim() || "기본 슬라이드 템플릿";
+  const hasSourceMaterial =
+    options?.hasSourceMaterial ?? briefLooksLikeAttachedSource(brief);
   // slideCount / audience / tone must be authoritative Plugin inputs so the
   // system compact contract and plugin-block "treat inputs as hard constraints"
   // language agree with the Canvas modal Quick settings (not a stale
@@ -740,7 +781,7 @@ export function canvasCreateSlidesPluginInputs(
     parseExplicitSlideCountFromText(user)
     ?? parseExplicitSlideCountFromText(brief);
   return {
-    deckType: briefLooksLikeAttachedSource(brief)
+    deckType: hasSourceMaterial
       ? "presentation from source material"
       : "presentation",
     topic,
@@ -758,6 +799,6 @@ export function canvasCreateSlidesPluginInputs(
     ...(user ? { userInstruction: user } : {}),
     quickSettings: normalizedQuickSettings,
     quickSettingsInstruction: canvasSlideQuickSettingsInstruction(normalizedQuickSettings),
-    sourceHandlingInstruction: CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION,
+    sourceHandlingInstruction: resolveCreateSlidesInternalInstruction(hasSourceMaterial),
   };
 }

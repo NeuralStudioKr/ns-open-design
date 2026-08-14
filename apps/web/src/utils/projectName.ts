@@ -228,16 +228,37 @@ export function summarizeProjectNameFromUserTurn(fullPrompt: string): string {
 }
 
 /**
+ * Full user request text for Clone/fill — never returns create-slides lead boilerplate.
+ * Empty string means the user did not type a real request (empty prompt OK).
+ */
+export function extractUserFacingCreateRequest(fullPrompt: string | null | undefined): string {
+  const extracted = extractUserPromptForNaming(fullPrompt ?? '').trim();
+  if (!extracted) return '';
+  const firstLine = extracted.split('\n')[0]?.trim() ?? '';
+  if (isSlideCreateBoilerplateLine(firstLine)) return '';
+  if (isDeckTemplateMarketingTitle(firstLine)) return '';
+  return extracted;
+}
+
+/**
  * Conversation dropdown title — never falls back to 「첨부한 자료」 / raw protocol dump.
  */
 export function conversationTitleFromUserTurn(fullPrompt: string): string {
   const named = summarizeProjectNameFromUserTurn(fullPrompt);
   if (named) return named;
-  const extracted = extractUserPromptForNaming(fullPrompt).trim();
-  const line = extracted.split('\n')[0]?.trim() ?? '';
-  if (!line || isSlideCreateBoilerplateLine(line)) return '';
-  if (isDeckTemplateMarketingTitle(line)) return '';
-  return line.slice(0, 60);
+  const request = extractUserFacingCreateRequest(fullPrompt);
+  if (!request) return '';
+  return request.split('\n')[0]!.trim().slice(0, 60);
+}
+
+/** True when a project display name is safe to reuse as a Clone cover title. */
+export function isUsableDeckCoverTitle(name: string | null | undefined): boolean {
+  const trimmed = name?.trim() ?? '';
+  if (!trimmed) return false;
+  if (trimmed.toLowerCase() === 'untitled') return false;
+  if (isSlideCreateBoilerplateLine(trimmed)) return false;
+  if (isDeckTemplateMarketingTitle(trimmed)) return false;
+  return true;
 }
 
 function titleFromAttachmentLabel(label: string): string {

@@ -4,8 +4,10 @@ import {
   canAutoRenameProjectFromPrompt,
   conversationTitleFromUserTurn,
   deriveProjectNameForCreate,
+  extractUserFacingCreateRequest,
   extractUserPromptForNaming,
   isPlaceholderProjectName,
+  isUsableDeckCoverTitle,
   summarizeProjectNameFromPrompt,
   summarizeProjectNameFromUserTurn,
 } from '../../src/utils/projectName';
@@ -113,6 +115,43 @@ describe('deriveProjectNameForCreate', () => {
         pluginTitle: 'Html Ppt Hermes',
       }),
     ).toMatch(/q3|roadmap/i);
+  });
+});
+
+describe('extractUserFacingCreateRequest', () => {
+  it('returns empty for empty-create / attachment boilerplate leads', () => {
+    expect(
+      extractUserFacingCreateRequest(
+        '슬라이드 덱을 만들어줘.\n\n[Deliverable instruction]\nBuild…',
+      ),
+    ).toBe('');
+    expect(
+      extractUserFacingCreateRequest(
+        '첨부한 자료를 바탕으로 슬라이드 덱을 만들어줘.\n\n[Deliverable instruction]\nBuild…',
+      ),
+    ).toBe('');
+  });
+
+  it('returns the real user instruction block', () => {
+    const full = [
+      '첨부한 자료를 바탕으로 슬라이드 덱을 만들어줘.',
+      '',
+      '[Deliverable instruction]',
+      'Build…',
+      '',
+      '[User instruction]',
+      'expo에 대해서 설명하는 피피티 만들어줘.',
+    ].join('\n');
+    expect(extractUserFacingCreateRequest(full)).toMatch(/expo/i);
+  });
+});
+
+describe('isUsableDeckCoverTitle', () => {
+  it('rejects Untitled / template marketing / boilerplate', () => {
+    expect(isUsableDeckCoverTitle('Untitled')).toBe(false);
+    expect(isUsableDeckCoverTitle('Html Ppt Zhangzara Daisy Days')).toBe(false);
+    expect(isUsableDeckCoverTitle('슬라이드 덱을 만들어줘.')).toBe(false);
+    expect(isUsableDeckCoverTitle('Q3 Roadmap')).toBe(true);
   });
 });
 

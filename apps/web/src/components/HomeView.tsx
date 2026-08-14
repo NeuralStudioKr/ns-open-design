@@ -1976,6 +1976,7 @@ export function HomeView({
               sourceBrief,
               homeSlideUserPrompt,
               homeSlideQuickSettings,
+              { hasSourceMaterial },
             ),
             ...templateBinding.pluginInputsPatch,
             // Belt-and-suspenders: App Clone also reads pluginInputs when
@@ -2105,6 +2106,7 @@ export function HomeView({
                 sourceBrief,
                 canvasSlideUserPrompt,
                 canvasSlideQuickSettings,
+                { hasSourceMaterial: true },
               ),
               ...templateBinding.pluginInputsPatch,
             },
@@ -2169,6 +2171,7 @@ export function HomeView({
               sourceBrief,
               canvasSlideUserPrompt,
               canvasSlideQuickSettings,
+              { hasSourceMaterial: true },
             ),
             ...templateBinding.pluginInputsPatch,
           },

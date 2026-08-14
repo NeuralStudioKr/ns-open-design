@@ -7,6 +7,7 @@ import {
   CANVAS_CREATE_SLIDES_PLUGIN_ID,
   CANVAS_CREATE_SLIDES_PROMPT,
   DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS,
+  HOME_CREATE_SLIDES_INTERNAL_INSTRUCTION,
   HOME_EMPTY_CREATE_SLIDES_PROMPT,
   canvasCreateSlidesPluginInputs,
   canvasCreateSlidesRunPrompt,
@@ -54,7 +55,7 @@ describe("canvasSlideLaunch", () => {
       slideCount: "6-8",
       quickSettings: DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS,
       quickSettingsInstruction: expect.stringContaining("Transform mode: Rebuild as a presentation"),
-      sourceHandlingInstruction: CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION,
+      sourceHandlingInstruction: HOME_CREATE_SLIDES_INTERNAL_INSTRUCTION,
     });
     expect(
       canvasCreateSlidesPluginInputs(
@@ -64,6 +65,7 @@ describe("canvasSlideLaunch", () => {
       ),
     ).toMatchObject({
       deckType: "presentation from source material",
+      sourceHandlingInstruction: CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION,
     });
   });
 
@@ -223,6 +225,9 @@ describe("canvasSlideLaunch", () => {
     );
     expect(runPrompt.startsWith("expo에 대해서")).toBe(true);
     expect(runPrompt).not.toContain(CANVAS_CREATE_SLIDES_PROMPT);
+    expect(runPrompt).toContain(HOME_CREATE_SLIDES_INTERNAL_INSTRUCTION);
+    expect(runPrompt).not.toContain(CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION);
+    expect(runPrompt).toMatch(/There may be no attached source/i);
     expect(stripUserVisibleQuestionFormProtocolText(runPrompt)).toMatch(/expo/i);
     expect(stripUserVisibleQuestionFormProtocolText(runPrompt)).not.toMatch(/첨부한 자료/);
   });
@@ -237,8 +242,9 @@ describe("canvasSlideLaunch", () => {
     );
     expect(runPrompt.startsWith(HOME_EMPTY_CREATE_SLIDES_PROMPT)).toBe(true);
     expect(runPrompt).not.toContain(CANVAS_CREATE_SLIDES_PROMPT);
-    expect(runPrompt).not.toMatch(/요청한 내용으로/);
-    expect(runPrompt).not.toMatch(/첨부한 자료/);
+    expect(stripUserVisibleQuestionFormProtocolText(runPrompt)).not.toMatch(/요청한 내용으로|첨부한 자료/);
+    expect(runPrompt).toContain(HOME_CREATE_SLIDES_INTERNAL_INSTRUCTION);
+    expect(runPrompt).not.toMatch(/from the attached source material/);
   });
 
   it("Home typed request without attachments uses the user text as lead", () => {

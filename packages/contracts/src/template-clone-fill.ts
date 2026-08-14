@@ -554,9 +554,12 @@ function extractUserFacingBrief(text: string): string {
   const firstUseful = lines.find(
     (line) =>
       !/^첨부(?:한)?\s*.+\s*바탕으로\s*슬라이드/i.test(line)
-      && !/^요청한\s*내용으로\s*슬라이드/i.test(line),
+      && !/^요청한\s*내용으로\s*슬라이드/i.test(line)
+      && !/^슬라이드\s*(?:덱|내용)을?\s*(?:만들어|채워)\s*줘\.?$/u.test(line),
   );
-  return firstUseful ? [firstUseful, ...lines.slice(lines.indexOf(firstUseful) + 1)].join('\n') : cleaned;
+  return firstUseful
+    ? [firstUseful, ...lines.slice(lines.indexOf(firstUseful) + 1)].join('\n')
+    : '';
 }
 
 function deriveTitleFromBrief(brief: string, deckTitle?: string | null): string {
@@ -589,6 +592,7 @@ function looksLikeInstructionCopy(text: string): boolean {
   if (!t) return true;
   if (/첨부(?:한)?\s*.+\s*바탕으로\s*슬라이드/i.test(t)) return true;
   if (/요청한\s*내용으로\s*슬라이드/i.test(t)) return true;
+  if (/^슬라이드\s*(?:덱|내용)을?\s*(?:만들어|채워)\s*줘\.?$/u.test(t)) return true;
   if (/(?:만들어|작성|생성)\s*(?:줘|주세요)|설명해?\s*(?:줘|주세요)/i.test(t)) return true;
   if (/^(?:please\s+)?(?:make|create|build|write|generate)\s+/i.test(t)) return true;
   if (/피피티|PPT|슬라이드\s*덱/i.test(t) && /(?:만들어|작성|생성|설명)/i.test(t)) return true;

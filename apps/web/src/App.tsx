@@ -136,7 +136,8 @@ import {
   queueTemplateCloneContentFill,
 } from './teamver/templateCloneContentFill';
 import {
-  extractUserPromptForNaming,
+  extractUserFacingCreateRequest,
+  isUsableDeckCoverTitle,
   summarizeProjectNameFromUserTurn,
 } from './utils/projectName';
 import { briefLooksLikeAttachedSource } from './teamver/slideCreateBoilerplate';
@@ -2655,21 +2656,19 @@ function AppInner() {
               typeof input.metadata?.selectedDeckTemplateTitle === 'string'
                 ? input.metadata.selectedDeckTemplateTitle.trim()
                 : '';
-            const userFacingRequest =
-              summarizeProjectNameFromUserTurn(derivedPendingPrompt ?? '')
-              || extractUserPromptForNaming(derivedPendingPrompt ?? '').split('\n')[0]?.trim()
-              || '';
+            const userFacingRequest = extractUserFacingCreateRequest(derivedPendingPrompt);
             const seeded = await seedTemplateClonedDeck({
               projectId: result.project.id,
               pluginId: selectedDeckTemplateId,
               templateTitle: templateTitle || selectedDeckTemplateId,
               sourceBrief,
-              userInstruction: userFacingRequest || derivedPendingPrompt || null,
+              userInstruction: userFacingRequest || null,
               deckTitle:
                 pendingCanvasHandoff.title?.trim()
                 || pendingCanvasHandoff.threadTitle?.trim()
-                || result.project.name?.trim()
-                || userFacingRequest.slice(0, 80)
+                || (isUsableDeckCoverTitle(result.project.name) ? result.project.name!.trim() : null)
+                || summarizeProjectNameFromUserTurn(derivedPendingPrompt ?? '')
+                || userFacingRequest.split('\n')[0]?.trim().slice(0, 80)
                 || null,
               slideCountHint: slideCountHintFromInputs,
             });
@@ -2678,7 +2677,7 @@ function AppInner() {
               queueTemplateCloneContentFill({
                 projectId: result.project.id,
                 seed: buildTemplateCloneContentFillSeed({
-                  userInstruction: userFacingRequest || derivedPendingPrompt || null,
+                  userInstruction: userFacingRequest || null,
                   sourceBrief,
                   pendingPrompt: derivedPendingPrompt ?? null,
                   templateTitle: templateTitle || selectedDeckTemplateId,
@@ -2756,10 +2755,7 @@ function AppInner() {
           typeof input.metadata?.selectedDeckTemplateTitle === 'string'
             ? input.metadata.selectedDeckTemplateTitle.trim()
             : '';
-        const userFacingRequest =
-          summarizeProjectNameFromUserTurn(derivedPendingPrompt ?? '')
-          || extractUserPromptForNaming(derivedPendingPrompt ?? '').split('\n')[0]?.trim()
-          || '';
+        const userFacingRequest = extractUserFacingCreateRequest(derivedPendingPrompt);
         const pluginSourceBrief =
           typeof input.pluginInputs?.sourceBrief === 'string'
             ? input.pluginInputs.sourceBrief.trim()
@@ -2777,8 +2773,9 @@ function AppInner() {
         // marketing title ("Html Ppt Zhangzara Daisy Days"), which used to land
         // on the cover when free-form briefs had no numbered outline.
         const clonedDeckCoverTitle =
-          result.project.name?.trim()
-          || userFacingRequest.slice(0, 80)
+          (isUsableDeckCoverTitle(result.project.name) ? result.project.name!.trim() : null)
+          || summarizeProjectNameFromUserTurn(derivedPendingPrompt ?? '')
+          || userFacingRequest.split('\n')[0]?.trim().slice(0, 80)
           || homeDriveSourceAsset?.filename?.trim()
           || null;
         const seeded = await seedTemplateClonedDeck({
@@ -2786,7 +2783,7 @@ function AppInner() {
           pluginId: selectedDeckTemplateId,
           templateTitle: templateTitle || selectedDeckTemplateId,
           sourceBrief,
-          userInstruction: userFacingRequest || derivedPendingPrompt || null,
+          userInstruction: userFacingRequest || null,
           deckTitle: clonedDeckCoverTitle,
           slideCountHint: slideCountHintFromInputs,
         });
@@ -2795,7 +2792,7 @@ function AppInner() {
           queueTemplateCloneContentFill({
             projectId: result.project.id,
             seed: buildTemplateCloneContentFillSeed({
-              userInstruction: userFacingRequest || derivedPendingPrompt || null,
+              userInstruction: userFacingRequest || null,
               sourceBrief,
               pendingPrompt: derivedPendingPrompt ?? null,
               templateTitle: templateTitle || selectedDeckTemplateId,
