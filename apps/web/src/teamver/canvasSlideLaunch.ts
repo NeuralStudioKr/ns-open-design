@@ -61,12 +61,9 @@ export function isExplicitCanvasSlideVisualTemplate(
 }
 
 export const SLIDE_DECK_QUALITY_BAR_INSTRUCTION =
-  "Quality bar: produce a substantive, presentation-ready deck — not a thin placeholder. " +
-  "Every non-divider slide needs a clear headline, an insight or takeaway, and concrete supporting content (specific bullets, metrics, examples, risks, actions, timeline steps, comparison rows, or decision criteria). " +
-  "Do not ship slides that are only a title/subtitle, only the user's prompt, or generic filler like \"내용을 입력하세요\". " +
-  "Vary slide roles and compositions across the deck (cover, summary, problem, evidence/KPI, framework, roadmap, risks, recommendation/next step as appropriate) instead of repeating one centered title layout. " +
-  "Use the whole 1920×1080 canvas intentionally with balanced margins, hierarchy, and visual density; avoid huge blank areas unless the selected template explicitly uses white space and the slide still carries enough information. " +
-  "Prefer source-grounded specifics when source material exists; when source is sparse, infer plausible business/education context rather than leaving empty placeholders.";
+  "Quality bar: each non-divider slide needs a headline, takeaway, and concrete support (specific bullets, metrics, examples, risks, actions, timeline, comparison, or decision criteria). " +
+  "Reject title-only slides, raw user-prompt copy, template demo captions, and generic placeholders. " +
+  "Vary slide roles/layouts and use the 1920×1080 canvas intentionally; keep content dense enough without bloating the HTML.";
 
 /** Canvas→Slide session pin. Home wizard close/create clears this so 「새 슬라이드」 stays on L1. */
 const LAST_EXPLICIT_DECK_TEMPLATE_KEY = "od:last-explicit-deck-template-id";

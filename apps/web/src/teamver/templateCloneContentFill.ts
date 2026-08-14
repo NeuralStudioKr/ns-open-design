@@ -121,9 +121,10 @@ export function buildTemplateCloneContentFillSeed(options: {
     '- Do NOT paste user instructions ("만들어줘", "만들어 주세요", Canvas boilerplate) into slide titles or subtitles.',
     '- Preserve the cloned template visual kit (palette hex, font-family, deco/SVG motifs, shell class language). Neutral Modern / OD skeleton terracotta is a failed deliverable.',
     `- ${SLIDE_DECK_QUALITY_BAR_INSTRUCTION}`,
-    '- You MAY emit a full `<artifact type="deck" identifier="deck">` that rewrites visible text and adjusts slide count/layouts for the topic — keep the template look, not the template demo page lineup.',
+    '- Prefer `<artifact type="deck-patch" identifier="deck">` with only changed `<section class="slide" data-slide-index="N">` blocks. Existing `deck.html` already has the template CSS/head/body; do not stream a full doctype/html/head document unless slide count or global CSS truly must change.',
+    '- If a full deck is unavoidable, keep CSS compact and finish the complete `<artifact type="deck" identifier="deck">...</artifact>` in one response.',
     '- Prefer content-driven slide roles (cover / body / list / cards / quote…). Do not mirror the template example\'s page count or order.',
-    '- Close `</artifact>` in this same response; do not finish with prose only.',
+    '- Close the artifact in this same response; do not finish with prose only.',
   ];
   if (templateTitle) {
     parts.push(`Selected template: ${templateTitle}.`);

@@ -29,7 +29,8 @@ describe('selected-deck-template prompt helpers', () => {
     expect(wrapped).toContain('# Teamver selected deck template guard');
     expect(wrapped).toContain('Template: Hermes');
     expect(wrapped).toContain('Content quality bar');
-    expect(wrapped).toContain('headline, a takeaway');
+    expect(wrapped).toContain('headline, takeaway');
+    expect(wrapped).toContain('keep HTML compact');
     expect(wrapped).toContain('body');
   });
 

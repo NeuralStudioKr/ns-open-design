@@ -30,8 +30,10 @@ describe('templateCloneContentFill', () => {
     expect(seed).toMatch(/expo/i);
     expect(seed).toContain('Selected template: Html Ppt Zhangzara Daisy Days');
     expect(seed).toMatch(/attached source materials/i);
-    expect(seed).toMatch(/Quality bar: produce a substantive/i);
-    expect(seed).toMatch(/headline, an insight or takeaway/i);
+    expect(seed).toMatch(/Quality bar: each non-divider slide/i);
+    expect(seed).toMatch(/headline, takeaway/i);
+    expect(seed).toContain('Prefer `<artifact type="deck-patch" identifier="deck">`');
+    expect(seed).toMatch(/do not stream a full doctype\/html\/head document/i);
     expect(looksLikeInstructionNotSlideCopy('첨부한 자료를 바탕으로 슬라이드 덱을 만들어줘.')).toBe(true);
   });
 
