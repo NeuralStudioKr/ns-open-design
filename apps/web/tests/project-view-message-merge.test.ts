@@ -377,6 +377,25 @@ describe("findClientSlideCountRegression", () => {
     ).toMatchObject({ priorCount: 8, newCount: 6 });
   });
 
+  it("allows intentional slide-count reduction on Template Clone fill turns", () => {
+    const priorHtml = Array.from(
+      { length: 10 },
+      (_, i) => `<section class="slide" data-slide-index="${i}">look seed ${i + 1}</section>`,
+    ).join("\n");
+    const filled = Array.from(
+      { length: 6 },
+      (_, i) => `<section class="slide" data-slide-index="${i}">filled ${i + 1}</section>`,
+    ).join("\n");
+    expect(
+      findClientSlideCountRegression({
+        fileName: "deck.html",
+        htmlBody: filled,
+        priorHtml,
+        allowSlideCountReduction: true,
+      }),
+    ).toBeNull();
+  });
+
   it("counts slides even when open-tags contain quoted '>' in style attrs", () => {
     const priorHtml = Array.from({ length: 8 }, (_, i) =>
       i === 0

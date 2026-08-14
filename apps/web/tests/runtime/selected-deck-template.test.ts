@@ -141,6 +141,12 @@ describe('selected-deck-template runtime helpers', () => {
     expect(wrapped).toContain('Template: Hermes');
     expect(wrapped).toContain('body');
     expect(wrapped).toContain('Do not substitute drawn template motifs with emoji');
+    expect(wrapped).toContain('Body-first output contract');
+    expect(wrapped).toContain('<body><section class="slide"');
+    expect(wrapped).toContain('Do not emit `<head>`');
+    expect(wrapped).toContain('Content expansion');
+    expect(wrapped).toMatch(/TOPIC to research/);
+    expect(wrapped).toMatch(/echoes the prompt/);
   });
 
   it('does not invent pluginIds when enriching a send with no context', () => {

@@ -9,6 +9,7 @@ import {
   DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS,
   HOME_CREATE_SLIDES_INTERNAL_INSTRUCTION,
   HOME_EMPTY_CREATE_SLIDES_PROMPT,
+  SLIDE_DECK_CONTENT_EXPANSION_EXAMPLE,
   SLIDE_DECK_CONTENT_EXPANSION_INSTRUCTION,
   SLIDE_DECK_QUALITY_BAR_INSTRUCTION,
   canvasCreateSlidesPluginInputs,
@@ -56,8 +57,10 @@ describe("canvasSlideLaunch", () => {
     expect(HOME_CREATE_SLIDES_INTERNAL_INSTRUCTION).toContain(SLIDE_DECK_QUALITY_BAR_INSTRUCTION);
     expect(CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION).toContain(SLIDE_DECK_CONTENT_EXPANSION_INSTRUCTION);
     expect(HOME_CREATE_SLIDES_INTERNAL_INSTRUCTION).toContain(SLIDE_DECK_CONTENT_EXPANSION_INSTRUCTION);
+    expect(CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION).toContain(SLIDE_DECK_CONTENT_EXPANSION_EXAMPLE);
     expect(HOME_CREATE_SLIDES_INTERNAL_INSTRUCTION).toMatch(/brief is a topic, not slide text/i);
     expect(HOME_CREATE_SLIDES_INTERNAL_INSTRUCTION).toMatch(/Expo for Senior Engineers/);
+    expect(CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION).toMatch(/Expo for Senior Engineers/);
     expect(CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION).not.toMatch(/simple-deck|nav, and print/i);
     expect(sanitizeSlideCreateTopicHint("Html Ppt Hermes")).toBeNull();
     expect(sanitizeSlideCreateTopicHint("Daisy Days.png")).toBeNull();
@@ -541,7 +544,7 @@ describe("canvasSlideLaunch", () => {
     expect(home).toContain("const sourceBrief = canvasCreateSlidesSourceBrief(canvasSlideLaunch.handoff)");
     expect(home).toContain("const sourceBrief = driveCreateSlidesSourceBrief(asset)");
     expect(home).toContain("canvasSlideUserPrompt");
-    expect(projectView).toContain("pluginInputs: meta?.pluginInputs");
+    expect(projectView).toContain("pluginInputs: fillPluginInputs");
     expect(daemon).toContain("pluginInputs?: Record<string, unknown>;");
     expect(daemon).toContain("{ pluginInputs }");
     // Daemon owns Clone (plugin FS → deck.html); FE only POSTs the endpoint.
@@ -645,6 +648,8 @@ describe("canvasSlideLaunch", () => {
     expect(composer).toContain("slideCountHint: canvasSlideQuickLengthToSlideCount(");
     expect(composer).not.toContain("[...attachments, deckAttachment]");
     expect(composer).toContain("withoutCanonicalDeckAttachments(attachments)");
+    expect(composer).toContain("templateCloneContentFill: true");
+    expect(composer).toContain("withTemplateCloneFillPluginInputs(");
     expect(composer).not.toContain("blocking model kit fallthrough");
     expect(app).toContain("queuedFillSeed");
     expect(app).toContain("pendingPrompt: queuedFillSeed");
@@ -653,6 +658,9 @@ describe("canvasSlideLaunch", () => {
     expect(projectView).toContain("isCloneContentFillTurn");
     expect(projectView).toContain("withoutCanonicalDeckAttachments(");
     expect(projectView).toContain("autoAttachedDeckPath = null");
+    expect(projectView).toContain("allowCompactReplacement: runTemplateCloneContentFillRef.current");
+    expect(projectView).toContain("allowSlideCountReduction: runTemplateCloneContentFillRef.current");
+    expect(projectView).toContain("templateCloneFillSlideCountOverrideNotice(");
     expect(projectView).toMatch(/includeExistingDeckImageEditRule:\s*\n\s*!isCloneContentFillTurn/);
     expect(projectView).toContain("templateCloneContentFill: autoContinueOriginIsFill");
     expect(projectView).toContain("ensureTemplateCloneContentFillContinuePrompt(");
@@ -660,6 +668,7 @@ describe("canvasSlideLaunch", () => {
     const fillSrc = readWebSource("src/teamver/templateCloneContentFill.ts");
     expect(fillSrc).toContain("withoutCanonicalDeckAttachments(");
     expect(fillSrc).toContain("isCanonicalDeckAttachment(");
+    expect(fillSrc).toContain("withTemplateCloneFillPluginInputs(");
     expect(fillSrc).toContain("`<head>` is FORBIDDEN on this fill turn");
     expect(fillSrc).toContain("first 800 characters after `<artifact`");
     expect(fillSrc).toContain("SLIDE_DECK_CONTENT_EXPANSION_INSTRUCTION");

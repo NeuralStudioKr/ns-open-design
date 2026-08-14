@@ -12,8 +12,7 @@ import type { ChatAttachment } from '../types';
 import {
   SLIDE_DECK_CONTENT_EXPANSION_EXAMPLE,
   SLIDE_DECK_CONTENT_EXPANSION_INSTRUCTION,
-  SLIDE_DECK_QUALITY_BAR_INSTRUCTION,
-} from './canvasSlideLaunch';
+} from '@open-design/contracts';
 import {
   briefLooksLikeAttachedSource,
   CANVAS_CREATE_SLIDES_PROMPT,
@@ -23,6 +22,12 @@ import {
   HOME_FILL_SLIDES_PROMPT_LEGACY,
   isSlideCreateBoilerplateLine,
 } from './slideCreateBoilerplate';
+
+/** Keep local — importing canvasSlideLaunch here caused circular init of expansion consts. */
+const SLIDE_DECK_QUALITY_BAR_INSTRUCTION =
+  'Quality bar: each non-divider slide needs a headline, takeaway, and concrete support (specific bullets, metrics, examples, risks, actions, timeline, comparison, or decision criteria). '
+  + 'Reject title-only slides, raw user-prompt copy, template demo captions, and generic placeholders. '
+  + 'Vary slide roles/layouts and use the 1920×1080 canvas intentionally; keep content dense enough without bloating the HTML.';
 
 export const TEMPLATE_CLONE_CONTENT_FILL_MARKER = '[Template clone content fill]';
 
@@ -254,6 +259,46 @@ export function normalizeTemplateCloneFillSlideCountHint(input: string | number 
     return n <= 12 ? '8-10 (stability cap for first template fill)' : '8-10 (stability cap for first template fill)';
   }
   return raw;
+}
+
+/** Cap Plugin-input slideCount for Clone fill so Quick settings cannot fight the seed hint. */
+export function withTemplateCloneFillPluginInputs(
+  pluginInputs: Record<string, unknown> | null | undefined,
+  slideCountHint?: string | number | null,
+): Record<string, unknown> {
+  const next: Record<string, unknown> = { ...(pluginInputs ?? {}) };
+  const capped =
+    normalizeTemplateCloneFillSlideCountHint(slideCountHint)
+    ?? normalizeTemplateCloneFillSlideCountHint(
+      typeof next.slideCount === 'string' || typeof next.slideCount === 'number'
+        ? next.slideCount
+        : null,
+    );
+  if (capped) next.slideCount = capped;
+  return next;
+}
+
+/**
+ * Appended after the rendered plugin block on fill turns so snapshot Plugin
+ * inputs (often still 8-10 / 12-15) cannot override the stability-capped hint.
+ */
+export function templateCloneFillSlideCountOverrideNotice(
+  slideCountHint?: string | number | null,
+): string | null {
+  const capped = normalizeTemplateCloneFillSlideCountHint(slideCountHint);
+  if (!capped) return null;
+  return [
+    '# Template clone fill slideCount override',
+    `For THIS first content-fill turn only, treat Plugin input slideCount as "${capped}".`,
+    'Ignore any larger slideCount in the plugin block above (first-fill stability cap).',
+  ].join('\n');
+}
+
+export function extractTemplateCloneFillSlideCountHintFromPrompt(
+  prompt: string | null | undefined,
+): string | null {
+  const match = /Slide count hint:\s*([^\n.]+)/i.exec(String(prompt ?? ''));
+  return normalizeTemplateCloneFillSlideCountHint(match?.[1]?.trim() ?? null);
 }
 
 export function buildTemplateCloneContentFillSeed(options: {

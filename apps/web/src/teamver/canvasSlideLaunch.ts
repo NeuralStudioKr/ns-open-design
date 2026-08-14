@@ -156,6 +156,7 @@ export const CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION =
   "Prefer clear slide sectioning over literal page layout. " +
   SLIDE_DECK_QUALITY_BAR_INSTRUCTION + " " +
   SLIDE_DECK_CONTENT_EXPANSION_INSTRUCTION + " " +
+  SLIDE_DECK_CONTENT_EXPANSION_EXAMPLE + " " +
   "When source material is attached, expand its headings into presentation-ready copy — do not paste the user instruction or a heading list as the only body text. " +
   "Emit ONE complete Teamver deck in this same response: " +
   "`<artifact type=\"deck\" identifier=\"deck\">` with one filled `<section class=\"slide\">` per requested slide count " +

@@ -173,12 +173,15 @@ import {
   TEMPLATE_CLONE_CONTENT_FILL_TURN_MARKER,
   clearTemplateCloneContentFillQueue,
   ensureTemplateCloneContentFillContinuePrompt,
+  extractTemplateCloneFillSlideCountHintFromPrompt,
   historyHasTemplateCloneContentFill,
   isTemplateCloneContentFillPrompt,
   isTemplateCloneContentFillQueued,
   readQueuedAutoSendSeed,
   resolveTemplateCloneAutoSendSeed,
   templateCloneContentFillHardRules,
+  templateCloneFillSlideCountOverrideNotice,
+  withTemplateCloneFillPluginInputs,
   withoutCanonicalDeckAttachments,
 } from '../teamver/templateCloneContentFill';
 import {
@@ -2754,7 +2757,10 @@ function findClientArtifactRegression(input: {
   fileName: string;
   htmlBody: string;
   projectFiles: readonly ProjectFile[];
+  /** Clone LOOK → fill intentionally replaces a large CSS/SVG seed with a compact deck. */
+  allowCompactReplacement?: boolean;
 }): { fileName: string; priorSize: number; newSize: number; reason: string } | null {
+  if (input.allowCompactReplacement) return null;
   const fileName = input.fileName.trim();
   if (!fileName.toLowerCase().endsWith('.html')) return null;
   const newSize = new Blob([input.htmlBody]).size;
@@ -2788,7 +2794,10 @@ export function findClientSlideCountRegression(input: {
    * threshold so intentional shorter drafts are not over-blocked.
    */
   strict?: boolean;
+  /** Clone fill replaces a multi-slide LOOK seed with a capped content deck. */
+  allowSlideCountReduction?: boolean;
 }): { fileName: string; priorCount: number; newCount: number; reason: string } | null {
+  if (input.allowSlideCountReduction) return null;
   const fileName = input.fileName.trim();
   if (!fileName.toLowerCase().endsWith('.html')) return null;
   const priorHtml = input.priorHtml?.trim();
@@ -3194,6 +3203,12 @@ export function ProjectView({
   const htmlAutoOpenFinalizeInProgressRef = useRef<Set<string>>(new Set());
   /** Preview-comment edits must update the annotated deck file, not mint siblings. */
   const runPersistTargetFileRef = useRef<string | null>(null);
+  /**
+   * Active send is a Template Clone content-fill (LOOK seed → compact CREATE).
+   * Persist must not treat a smaller filled deck as a stub regression over the
+   * large cloned CSS/SVG shell, and must not block intentional slide-count caps.
+   */
+  const runTemplateCloneContentFillRef = useRef(false);
   /**
    * Per-run skip-discovery pin from turn meta / Canvas template pick.
    * Persist must not wait on React `project.metadata` settling — a stale false
@@ -5217,6 +5232,7 @@ export function ProjectView({
         fileName,
         htmlBody,
         projectFiles: currentProjectFiles,
+        allowCompactReplacement: runTemplateCloneContentFillRef.current,
       });
       if (regression) {
         devLog.warn('[teamver] blocked placeholder artifact regression before save', {
@@ -5264,6 +5280,7 @@ export function ProjectView({
             htmlBody,
             priorHtml,
             strict: strictSlideCount,
+            allowSlideCountReduction: runTemplateCloneContentFillRef.current,
           });
           if (slideRegression) {
             devLog.warn('[teamver] blocked slide-count collapse before save', {
@@ -8720,6 +8737,20 @@ export function ProjectView({
           (isAutoContinueSend || Boolean(retryTarget))
           && historyHasTemplateCloneContentFill(historyBase)
         );
+      runTemplateCloneContentFillRef.current = isCloneContentFillTurn;
+      const fillSlideCountHint =
+        extractTemplateCloneFillSlideCountHintFromPrompt(
+          retryTarget ? retryTarget.userMsg.content || prompt : prompt,
+        )
+        ?? (
+          typeof meta?.pluginInputs?.slideCount === 'string'
+          || typeof meta?.pluginInputs?.slideCount === 'number'
+            ? String(meta.pluginInputs.slideCount)
+            : null
+        );
+      const fillPluginInputs = isCloneContentFillTurn
+        ? withTemplateCloneFillPluginInputs(meta?.pluginInputs, fillSlideCountHint)
+        : meta?.pluginInputs;
       if (isCloneContentFillTurn) {
         effectiveAttachments = effectiveAttachments.filter(
           (attachment) => !isCanonicalDeckFileName(
@@ -10430,7 +10461,7 @@ export function ProjectView({
           skillId: project.skillId ?? null,
           skillIds: Array.isArray(meta?.skillIds) ? meta.skillIds : [],
           context: runContext,
-          pluginInputs: meta?.pluginInputs,
+          pluginInputs: fillPluginInputs,
           designSystemId: meta?.designSystemId ?? project.designSystemId ?? null,
           selectedDeckTemplateId: meta?.selectedDeckTemplateId ?? null,
           selectedDeckTemplateTitle: meta?.selectedDeckTemplateTitle ?? null,
@@ -10591,6 +10622,22 @@ export function ProjectView({
           const snap = await fetchAppliedPluginSnapshot(project.appliedPluginSnapshotId);
           appliedSnapshotPluginId = snap?.pluginId ?? null;
           if (snap) pluginBlock = renderPluginBlock(snap, { role: pluginBlockRole });
+        }
+        if (isCloneContentFillTurn) {
+          const override = templateCloneFillSlideCountOverrideNotice(
+            fillSlideCountHint
+            ?? (
+              typeof fillPluginInputs?.slideCount === 'string'
+              || typeof fillPluginInputs?.slideCount === 'number'
+                ? fillPluginInputs.slideCount
+                : null
+            ),
+          );
+          if (override) {
+            pluginBlock = pluginBlock
+              ? `${pluginBlock.trimEnd()}\n\n${override}`
+              : override;
+          }
         }
         const pluginIdForLocalSkill = resolveScenarioPluginIdForLocalSkill(
           project.metadata,
@@ -12645,10 +12692,19 @@ export function ProjectView({
     // compose cannot lose the pick if React state is still settling.
     const selected = selectedDeckTemplateMetadata(project.metadata);
     const isFillSeed = fillQueued || isTemplateCloneContentFillPrompt(seed);
+    const fillSlideCountHint = extractTemplateCloneFillSlideCountHintFromPrompt(seed);
     void handleSend(seed, attachments, [], {
       skipDiscoveryBrief:
         project.metadata?.skipDiscoveryBrief === true || Boolean(selected),
-      ...(isFillSeed ? { templateCloneContentFill: true } : {}),
+      ...(isFillSeed
+        ? {
+            templateCloneContentFill: true,
+            pluginInputs: withTemplateCloneFillPluginInputs(
+              undefined,
+              fillSlideCountHint,
+            ),
+          }
+        : {}),
       ...(selected
         ? {
             selectedDeckTemplateId: selected.id,

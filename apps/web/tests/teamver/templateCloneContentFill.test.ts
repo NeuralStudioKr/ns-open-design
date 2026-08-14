@@ -14,6 +14,8 @@ import {
   normalizeTemplateCloneFillSlideCountHint,
   queueTemplateCloneContentFill,
   resolveTemplateCloneAutoSendSeed,
+  templateCloneFillSlideCountOverrideNotice,
+  withTemplateCloneFillPluginInputs,
   withoutCanonicalDeckAttachments,
 } from '../../src/teamver/templateCloneContentFill';
 import { promptWithTemplateCloneContentFillInstruction } from '../../src/components/ProjectView';
@@ -160,6 +162,18 @@ describe('templateCloneContentFill', () => {
       '8-10 (stability cap for first template fill)',
     );
     expect(normalizeTemplateCloneFillSlideCountHint('정확히 10')).toBe('10');
+  });
+
+  it('caps Plugin-input slideCount for fill turns and emits an override notice', () => {
+    expect(
+      withTemplateCloneFillPluginInputs({ slideCount: '12-15', topic: 'expo' }, '12-15'),
+    ).toMatchObject({
+      topic: 'expo',
+      slideCount: '8-10 (stability cap for first template fill)',
+    });
+    expect(templateCloneFillSlideCountOverrideNotice('8-10')).toContain(
+      '6-8 (stability cap for first template fill)',
+    );
   });
 
   it('keeps Drive source labels when compacting a mixed create dump', () => {

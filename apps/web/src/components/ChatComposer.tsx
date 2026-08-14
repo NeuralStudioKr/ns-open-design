@@ -105,6 +105,7 @@ import {
 import { seedTemplateClonedDeck } from '../teamver/seedTemplateClonedDeck';
 import {
   buildTemplateCloneContentFillSeed,
+  withTemplateCloneFillPluginInputs,
   withoutCanonicalDeckAttachments,
 } from '../teamver/templateCloneContentFill';
 import { useCanvasSlideLaunchTemplates } from '../teamver/hooks/useCanvasSlideLaunchTemplates';
@@ -430,6 +431,11 @@ export interface ChatSendMeta {
   selectedDeckTemplateId?: string;
   selectedDeckTemplateTitle?: string;
   skipDiscoveryBrief?: boolean;
+  /**
+   * Clone LOOK seed → first AI content-fill turn. Forces create tone and
+   * keeps deck.html off the attachment list through ProjectView handleSend.
+   */
+  templateCloneContentFill?: boolean;
 }
 
 /**
@@ -2218,6 +2224,9 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
                 designSystemId: designSystemIdForRun,
                 mergeContext: baseMeta?.context,
               });
+              const fillSlideCount = canvasSlideQuickLengthToSlideCount(
+                canvasSlideQuickSettings.length,
+              );
               sendComposedTurn(
                 fillSeed,
                 withoutCanonicalDeckAttachments(attachments),
@@ -2226,6 +2235,18 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
                   ...baseMeta,
                   ...canvasMeta,
                   skipDiscoveryBrief: true,
+                  templateCloneContentFill: true,
+                  pluginInputs: withTemplateCloneFillPluginInputs(
+                    canvasCreateSlidesPluginInputs(
+                      null,
+                      selectedCanvasSlideTemplate.title,
+                      sourceBrief,
+                      promptForRun,
+                      canvasSlideQuickSettings,
+                      { hasSourceMaterial: true },
+                    ),
+                    fillSlideCount,
+                  ),
                   ...(templateBinding.projectMetadata.selectedDeckTemplateId
                     ? {
                         selectedDeckTemplateId:
@@ -2416,6 +2437,9 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
               designSystemId: designSystemIdForRun,
               mergeContext: baseMeta?.context,
             });
+            const fillSlideCount = canvasSlideQuickLengthToSlideCount(
+              canvasSlideQuickSettings.length,
+            );
             sendComposedTurn(
               fillSeed,
               withoutCanonicalDeckAttachments(attachments),
@@ -2424,6 +2448,18 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
                 ...baseMeta,
                 ...canvasMeta,
                 skipDiscoveryBrief: true,
+                templateCloneContentFill: true,
+                pluginInputs: withTemplateCloneFillPluginInputs(
+                  canvasCreateSlidesPluginInputs(
+                    null,
+                    selectedCanvasSlideTemplate.title,
+                    sourceBrief,
+                    promptForRun,
+                    canvasSlideQuickSettings,
+                    { hasSourceMaterial: true },
+                  ),
+                  fillSlideCount,
+                ),
                 ...(templateBinding.projectMetadata.selectedDeckTemplateId
                   ? {
                       selectedDeckTemplateId:
