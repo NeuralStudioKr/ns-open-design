@@ -250,14 +250,14 @@ export function normalizeTemplateCloneFillSlideCountHint(input: string | number 
     if (Number.isFinite(n) && n >= 1 && n <= 12) return String(n);
   }
   if (/^5\s*-\s*6$/.test(raw) || /^5\s*~\s*6$/.test(raw)) return '5-6';
-  if (/^6\s*-\s*8$/.test(raw) || /^6\s*~\s*8$/.test(raw)) return '6-8';
-  if (/^8\s*-\s*10$/.test(raw) || /^8\s*~\s*10$/.test(raw)) return '6-8 (stability cap for first template fill)';
-  if (/^12\s*-\s*15$/.test(raw) || /^12\s*~\s*15$/.test(raw)) return '8-10 (stability cap for first template fill)';
+  if (/^6\s*-\s*8$/.test(raw) || /^6\s*~\s*8$/.test(raw)) return '5-6 (stability cap for first template fill)';
+  if (/^8\s*-\s*10$/.test(raw) || /^8\s*~\s*10$/.test(raw)) return '5-6 (stability cap for first template fill)';
+  if (/^12\s*-\s*15$/.test(raw) || /^12\s*~\s*15$/.test(raw)) return '6-8 (stability cap for first template fill)';
   const single = raw.match(/^(\d{1,2})$/)?.[1];
   if (single) {
     const n = Number(single);
-    if (n <= 8) return String(n);
-    return n <= 12 ? '8-10 (stability cap for first template fill)' : '8-10 (stability cap for first template fill)';
+    if (n <= 6) return String(n);
+    return n <= 10 ? '5-6 (stability cap for first template fill)' : '6-8 (stability cap for first template fill)';
   }
   return raw;
 }

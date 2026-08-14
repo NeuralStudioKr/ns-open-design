@@ -617,3 +617,26 @@ Rules:
 
 ${DECK_COMPACT_INLINE_LAYOUT_VOCABULARY_FOR_SELECTED_TEMPLATE}
 `;
+
+/**
+ * First Clone content-fill: OD-style create. Motif SVG paste is deferred so the
+ * model can close a compact deck instead of hanging on multi-KB ornament dumps.
+ */
+export const DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_TEMPLATE_FILL = `# Slide deck — API compact contract for Template Clone content-fill (OD-style CREATE)
+
+You are in API mode after a LOOK seed. **Finish a closed compact deck THIS TURN.**
+
+OD succeeds by editing cloned HTML text. Teamver BYOK cannot — so regenerate content with kit **palette + fonts only**. Motif SVG polish is a follow-up edit.
+
+**Body / title-first (non-negotiable):**
+1. Status sentence → open \`<artifact type="deck" identifier="deck">\`.
+2. First bytes: \`<!doctype html><html lang="ko"><body>…<section class="slide" style="width:1920px;height:1080px;…">\` with a real \`h1\`/\`h2\` title + lead **before any decoration**.
+3. Prefer **5–6** filled slides unless the user asked for an exact count.
+4. Close \`</body></html></artifact>\` in this same response.
+
+**FORBIDDEN this turn:** Motif \`<svg>\` (esp. nested \`<style>\`), Decoration/Layout CSS dumps, long \`<head>\`, Neutral \`#0f172a\`, terracotta \`#c96442\`, emoji ornament rows, parroting the user brief as slide titles.
+
+**Allowed look:** kit palette hex + fonts + CSS circles/rounded cards/chunky borders. Use scaffold map only as layout role names — do not paste Motif sprites.
+
+${DECK_COMPACT_INLINE_LAYOUT_VOCABULARY_FOR_SELECTED_TEMPLATE}
+`;

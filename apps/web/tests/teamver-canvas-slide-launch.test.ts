@@ -666,8 +666,9 @@ describe("canvasSlideLaunch", () => {
     expect(projectView).toContain("allowCompactReplacement: runTemplateCloneContentFillRef.current");
     expect(projectView).toContain("allowSlideCountReduction: runTemplateCloneContentFillRef.current");
     expect(projectView).toContain("templateCloneFillSlideCountOverrideNotice(");
-    expect(projectView).toContain("stripTemplateVisualKitMotifSpritesForFill(");
+    expect(projectView).toContain("slimTemplateVisualKitForFill(");
     expect(projectView).toContain("templateCloneContentFill: isCloneContentFillTurn");
+    expect(projectView).toContain("templateCloneContentFill: true");
     expect(projectView).toMatch(/includeExistingDeckImageEditRule:\s*\n\s*!isCloneContentFillTurn/);
     expect(projectView).toContain("templateCloneContentFill: autoContinueOriginIsFill");
     expect(projectView).toContain("ensureTemplateCloneContentFillContinuePrompt(");

@@ -140,7 +140,7 @@ import { useCoalescedCallback } from '../hooks/useCoalescedCallback';
 import {
   composeSystemPrompt,
   renderPluginBlock,
-  stripTemplateVisualKitMotifSpritesForFill,
+  slimTemplateVisualKitForFill,
   type AudioVoiceOption,
   type MemorySystemPromptResponse,
   type ResearchOptions,
@@ -6076,7 +6076,7 @@ export function ProjectView({
     // First fill hangs when the model pastes multi-KB Motif SVGs before titles.
     // Keep palette/fonts/scaffold; remove verbatim SVG dumps from the kit.
     if (slideEditContracts?.templateCloneContentFill && skillBody?.trim()) {
-      skillBody = stripTemplateVisualKitMotifSpritesForFill(skillBody);
+      skillBody = slimTemplateVisualKitForFill(skillBody);
     }
     // Do NOT wrap every deck skill as "user explicitly picked this template".
     // That false framing ran for default Simple Deck / no-template paths and
@@ -6224,6 +6224,9 @@ export function ProjectView({
         : {}),
       ...(slideEditContracts?.includeExistingDeckImageEditRule === true
         ? { includeExistingDeckImageEditRule: true }
+        : {}),
+      ...(slideEditContracts?.templateCloneContentFill === true
+        ? { templateCloneContentFill: true }
         : {}),
     });
   }, [

@@ -38,6 +38,7 @@ import {
   DECK_FRAMEWORK_DIRECTIVE,
   DECK_FRAMEWORK_DIRECTIVE_COMPACT,
   DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_SELECTED_TEMPLATE,
+  DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_TEMPLATE_FILL,
   COMPACT_DECK_SLIDE_COUNT_GUIDANCE,
 } from './deck-framework.js';
 import {
@@ -464,6 +465,12 @@ export interface ComposeInput {
    * turn embeds images onto an existing deck. Default false for greenfield.
    */
   includeExistingDeckImageEditRule?: boolean | undefined;
+  /**
+   * Teamver Clone LOOK → first AI content-fill. Mutes Motif-verbatim READ LAST
+   * mandates and expects a slim kit (palette/fonts only) so the model can
+   * close a compact deck instead of hanging on SVG dumps.
+   */
+  templateCloneContentFill?: boolean | undefined;
 }
 
 export function composeSystemPrompt({
@@ -488,6 +495,7 @@ export function composeSystemPrompt({
   projectInstructions,
   includeCommentEditPatchRule,
   includeExistingDeckImageEditRule,
+  templateCloneContentFill,
 }: ComposeInput): string {
   // Discovery + philosophy goes FIRST so its hard rules ("emit a form on
   // turn 1", "branch on brand on turn 2", "TodoWrite on turn 3", run
@@ -533,6 +541,7 @@ export function composeSystemPrompt({
       projectInstructions,
       includeCommentEditPatchRule,
       includeExistingDeckImageEditRule,
+      templateCloneContentFill,
     });
   }
 
@@ -1451,6 +1460,20 @@ Hard requirements for every slide:
 If any earlier compact wireframe / deck-skeleton sample conflicts with the kit (including \`--accent: #c96442\`), **ignore the sample colors** and follow the kit.
 If the attached source's palette conflicts with the kit, **ignore the source's palette** and follow the kit.`;
 
+const TEAMVER_SELECTED_TEMPLATE_VISUAL_READ_LAST_FOR_FILL = `# Selected deck template visual — READ LAST (first content-fill)
+
+This is the first content fill after a LOOK seed (OD-style create, not Motif rewrite).
+
+**Close a compact deck THIS TURN.** Motif SVG polish is a follow-up edit, not this turn.
+
+- Bind kit palette hex + fonts + Slide surface on \`html\`/\`body\` AND every \`.slide\`.
+- Title-first: cover must have a real \`h1\`/\`h2\` title + lead BEFORE any decoration.
+- Decoration = CSS circles / rounded cards / chunky borders in kit palette only.
+- **FORBIDDEN this turn:** Motif \`<svg>\` (especially with nested \`<style>\`), Decoration/Layout CSS dumps, long \`<head>\`/\`<style>\` before slide 1, emoji ornament rows, Neutral \`#0f172a\`, terracotta \`#c96442\`.
+- Prefer 5–6 filled 1920×1080 slides unless the user asked for an exact count.
+- Stream: status → \`<artifact type="deck">\` → body-first sections with real topical copy → close \`</body></html></artifact>\` in this same response.
+`;
+
 const TEAMVER_SELECTED_TEMPLATE_VISUAL_READ_LAST_WITHOUT_KIT = `# Selected deck template visual — READ LAST (highest visual priority)
 
 A Selected deck template is active, but a concrete Template visual kit may be incomplete this turn.
@@ -1485,6 +1508,7 @@ export function composeTeamverSlideApiPrompt({
   projectInstructions,
   includeCommentEditPatchRule,
   includeExistingDeckImageEditRule,
+  templateCloneContentFill,
 }: Pick<
   ComposeInput,
   | 'skillBody'
@@ -1501,6 +1525,7 @@ export function composeTeamverSlideApiPrompt({
   | 'projectInstructions'
   | 'includeCommentEditPatchRule'
   | 'includeExistingDeckImageEditRule'
+  | 'templateCloneContentFill'
 >): string {
   const parts: string[] = [];
   const activeDesignSystemBody = designSystemBody?.trim();
@@ -1624,7 +1649,16 @@ export function composeTeamverSlideApiPrompt({
     // confirm can `patchProject` then send on the same tick while React
     // `project.metadata` is still stale.
     if (hasSelectedTemplate) {
-      const hardRequirements = hasTemplateScaffold
+      const hardRequirements = templateCloneContentFill === true
+        ? (
+          'Hard requirements (first content-fill — OD-style CREATE, Motif deferred):\n'
+          + '- Bind kit palette hex + fonts + Slide surface on html/body AND every `.slide`.\n'
+          + '- Title-first body: cover title + lead BEFORE any decoration. Close `</artifact>` this turn.\n'
+          + '- Decoration = CSS shapes/borders in kit palette ONLY. Do NOT paste Motif `<svg>` or Decoration CSS dumps.\n'
+          + '- Prefer 5–6 slides unless the user asked for an exact count. No Neutral `#0f172a` / terracotta `#c96442`.\n'
+          + '- Do not dump or rewrite a full example.html. Ignore "Clone example.html" / Motif-verbatim mandates for this turn.\n\n'
+        )
+        : hasTemplateScaffold
         ? (
           'Hard requirements (rare full HTML scaffold present — still prefer token-safe kit+map):\n'
           + '- Prefer finishing a complete deck via kit tokens/Motif sprites + Template scaffold map. Only copy full scaffold HTML if you can close `</html></artifact>` safely.\n'
@@ -1668,7 +1702,9 @@ export function composeTeamverSlideApiPrompt({
   // compact wireframe (`#0f172a` / Inter). Models overweight the last concrete
   // HTML samples and rewrite Daisy Days / Zhangzara kits into sparse corporate.
   parts.push(
-    hasSelectedTemplate
+    templateCloneContentFill === true
+      ? DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_TEMPLATE_FILL
+      : hasSelectedTemplate
       ? DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_SELECTED_TEMPLATE
       : DECK_FRAMEWORK_DIRECTIVE_COMPACT,
   );
@@ -1692,7 +1728,9 @@ export function composeTeamverSlideApiPrompt({
   }
   if (hasSelectedTemplate) {
     parts.push(
-      hasTemplateScaffold
+      templateCloneContentFill === true
+        ? TEAMVER_SELECTED_TEMPLATE_VISUAL_READ_LAST_FOR_FILL
+        : hasTemplateScaffold
         ? TEAMVER_SELECTED_TEMPLATE_VISUAL_READ_LAST_WITH_SCAFFOLD
         : hasTemplateVisualKit
         ? TEAMVER_SELECTED_TEMPLATE_VISUAL_READ_LAST_WITH_KIT

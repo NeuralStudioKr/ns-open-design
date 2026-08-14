@@ -1216,13 +1216,15 @@ export function appendTemplateVisualKit(skillBody: string, kit: string | null | 
 
 /**
  * First Clone content-fill turns hang when the model pastes multi-KB Motif SVGs
- * (with nested `<style>`) before cover titles. Keep palette/fonts/scaffold, but
- * replace Motif sprite dumps with a CSS-shape instruction for this turn only.
+ * / Decoration / Layout CSS before cover titles (OD succeeds because it edits a
+ * cloned file in place — Teamver BYOK regenerates). Slim the kit to
+ * palette/fonts/surface (+ short scaffold map) for fill stability.
  */
-export function stripTemplateVisualKitMotifSpritesForFill(skillBody: string): string {
+export function slimTemplateVisualKitForFill(skillBody: string): string {
   const body = String(skillBody ?? '');
-  if (!body.includes('### Motif sprites')) return body;
-  let next = body.replace(
+  if (!body.includes('## Template visual kit (from example.html)')) return body;
+  let next = body;
+  next = next.replace(
     /### Motif sprites[\s\S]*?(?=\n### |\n## |$)/g,
     [
       '### Motif sprites (omitted for first content-fill stability)',
@@ -1232,6 +1234,28 @@ export function stripTemplateVisualKitMotifSpritesForFill(skillBody: string): st
       'Motif SVGs can be added later in a follow-up edit after a closed deck exists.',
       '',
     ].join('\n'),
+  );
+  next = next.replace(
+    /### Decoration CSS[\s\S]*?(?=\n### |\n## |$)/g,
+    [
+      '### Decoration CSS (omitted for first content-fill stability)',
+      '',
+      'Use simple CSS shapes / chunky borders in kit palette hex. Do not paste Decoration CSS blocks this turn.',
+      '',
+    ].join('\n'),
+  );
+  next = next.replace(
+    /### Layout CSS[\s\S]*?(?=\n### |\n## |$)/g,
+    [
+      '### Layout CSS (omitted for first content-fill stability)',
+      '',
+      'Use simple flex/grid inline styles. Do not paste Layout CSS blocks this turn.',
+      '',
+    ].join('\n'),
+  );
+  next = next.replace(
+    /### First-slide structure cue[\s\S]*?(?=\n### |\n## |$)/g,
+    '',
   );
   next = next.replace(
     /- Motif MUST be copied from[\s\S]*?(?=\n- |\n### |\n## |$)/g,
@@ -1249,5 +1273,14 @@ export function stripTemplateVisualKitMotifSpritesForFill(skillBody: string): st
     /Every slide should carry 1–3 recognizable Motif sprites[^\n]*/gi,
     'Every slide should use kit palette + fonts; Motif SVGs are deferred until after a closed deck.',
   );
+  next = next.replace(
+    /4\.\s*\*\*Motif\/density:\*\*[^\n]*/gi,
+    '4. **Motif/density:** deferred — CSS shapes only on first fill; Motif SVGs later.',
+  );
   return next;
+}
+
+/** @deprecated Use slimTemplateVisualKitForFill — kept for older call sites. */
+export function stripTemplateVisualKitMotifSpritesForFill(skillBody: string): string {
+  return slimTemplateVisualKitForFill(skillBody);
 }

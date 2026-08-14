@@ -221,8 +221,8 @@ html,body{background:var(--cream);color:var(--text-dark)}
     expect(once.match(/## Template visual kit/g)?.length).toBe(1);
   });
 
-  it('stripTemplateVisualKitMotifSpritesForFill removes SVG dumps but keeps palette', async () => {
-    const { stripTemplateVisualKitMotifSpritesForFill } = await import('../src/template-visual-kit.js');
+  it('slimTemplateVisualKitForFill removes Motif/Deco/Layout dumps but keeps palette', async () => {
+    const { slimTemplateVisualKitForFill } = await import('../src/template-visual-kit.js');
     const html = await readFile(
       new URL(
         '../../../plugins/_official/examples/html-ppt-zhangzara-daisy-days/example.html',
@@ -234,11 +234,13 @@ html,body{background:var(--cream);color:var(--text-dark)}
       title: 'Html Ppt Zhangzara Daisy Days',
     })!;
     expect(kit).toContain('<svg');
-    const stripped = stripTemplateVisualKitMotifSpritesForFill(kit);
+    expect(kit).toContain('Decoration CSS');
+    const stripped = slimTemplateVisualKitForFill(kit);
     expect(stripped).toContain('#F5F0E6');
     expect(stripped).toContain('omitted for first content-fill stability');
     expect(stripped).not.toMatch(/```html\s*<svg\b/i);
     expect(stripped).toMatch(/Motif SVG paste is DISABLED|Do NOT paste Motif/i);
+    expect(stripped).toContain('Decoration CSS (omitted for first content-fill stability)');
   });
 });
 

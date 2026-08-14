@@ -161,7 +161,7 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).not.toContain('Copy the canonical skeleton below as index.html');
       // Ceiling grew again for existing-deck image/surgical-edit rules so
       // "put this image on page N" does not greenfield a 2-slide rewrite.
-      expect(prompt.length).toBeLessThan(26_000);
+      expect(prompt.length).toBeLessThan(27_000);
     });
 
     it('keeps compact deck for skill-seed projects without raw template copy workflow', () => {
@@ -454,7 +454,7 @@ describe('composeSystemPrompt — API mode (#313)', () => {
         prompt.indexOf('Slide deck — API compact contract'),
       );
       expect(prompt).not.toContain('Do not paste this exact headline');
-      // Ceiling grew for content-expansion + existing-deck image/surgical-edit rules.
+      // Ceiling grew for content-expansion + existing-deck image/surgical-edit rules + fill.
       expect(prompt.length).toBeLessThan(27_000);
     });
 
@@ -515,7 +515,7 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt.indexOf('Visual style reference — Html Ppt Hermes Cyber Terminal')).toBeLessThan(
         prompt.indexOf('Slide deck — API compact contract'),
       );
-      // Ceiling grew for content-expansion + existing-deck image/surgical-edit rules.
+      // Ceiling grew for content-expansion + existing-deck image/surgical-edit rules + fill.
       expect(prompt.length).toBeLessThan(27_000);
     });
 
@@ -545,7 +545,7 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).not.toContain('Read assets/template.html and copy the skeleton');
       expect(prompt).not.toContain('Use references/layouts.md for exact slots');
       // Ceiling grew for existing-deck image/surgical-edit rules.
-      expect(prompt.length).toBeLessThan(26_000);
+      expect(prompt.length).toBeLessThan(27_000);
     });
 
     it('omits comment-edit / existing-deck contracts on greenfield turns', () => {
@@ -715,6 +715,44 @@ describe('composeSystemPrompt — API mode (#313)', () => {
         expect(prompt).toContain('[Attached image embed]');
         expect(prompt).toContain('[Existing deck edit]');
       }
+    });
+
+    it('mutes Motif-verbatim READ LAST on Clone content-fill turns', () => {
+      const kitBody = [
+        '# Teamver selected deck template guard',
+        '',
+        '## Template visual kit (from example.html) — Daisy',
+        '',
+        '### Motif sprites (omitted for first content-fill stability)',
+        '',
+        'Do NOT paste Motif SVG.',
+        '',
+        '### Palette cues: #F5F0E6',
+      ].join('\n');
+      const fill = composeTeamverSlideApiPrompt({
+        skillName: 'Daisy Days',
+        skillBody: kitBody,
+        metadata: {
+          kind: 'deck',
+          skipDiscoveryBrief: true,
+          selectedDeckTemplateId: 'example-html-ppt-zhangzara-daisy-days',
+        },
+        templateCloneContentFill: true,
+      });
+      const normal = composeTeamverSlideApiPrompt({
+        skillName: 'Daisy Days',
+        skillBody: kitBody,
+        metadata: {
+          kind: 'deck',
+          skipDiscoveryBrief: true,
+          selectedDeckTemplateId: 'example-html-ppt-zhangzara-daisy-days',
+        },
+      });
+      expect(fill).toContain('READ LAST (first content-fill)');
+      expect(fill).toContain('Motif SVG polish is a follow-up edit');
+      expect(fill).toContain('OD-style CREATE, Motif deferred');
+      expect(fill).not.toContain('Copy Motif sprites verbatim');
+      expect(normal).toContain('Copy Motif sprites verbatim');
     });
   });
 });

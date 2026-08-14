@@ -149,7 +149,7 @@ describe('templateCloneContentFill', () => {
       slideCountHint: '8-10',
     });
     expect(seed).toContain(TEMPLATE_CLONE_CONTENT_FILL_MARKER);
-    expect(seed).toContain('Slide count hint: 6-8 (stability cap for first template fill)');
+    expect(seed).toContain('Slide count hint: 5-6 (stability cap for first template fill)');
     expect(seed).toContain('시니어 개발자');
     expect(seed).not.toContain('[Deliverable instruction]');
     expect(seed).not.toContain('[Selected slide template priority]');
@@ -158,10 +158,10 @@ describe('templateCloneContentFill', () => {
   it('caps template-fill slide count hints unless the user explicitly requests an exact count', () => {
     expect(normalizeTemplateCloneFillSlideCountHint('5-6')).toBe('5-6');
     expect(normalizeTemplateCloneFillSlideCountHint('8-10')).toBe(
-      '6-8 (stability cap for first template fill)',
+      '5-6 (stability cap for first template fill)',
     );
     expect(normalizeTemplateCloneFillSlideCountHint('12-15')).toBe(
-      '8-10 (stability cap for first template fill)',
+      '6-8 (stability cap for first template fill)',
     );
     expect(normalizeTemplateCloneFillSlideCountHint('정확히 10')).toBe('10');
   });
@@ -171,10 +171,10 @@ describe('templateCloneContentFill', () => {
       withTemplateCloneFillPluginInputs({ slideCount: '12-15', topic: 'expo' }, '12-15'),
     ).toMatchObject({
       topic: 'expo',
-      slideCount: '8-10 (stability cap for first template fill)',
+      slideCount: '6-8 (stability cap for first template fill)',
     });
     expect(templateCloneFillSlideCountOverrideNotice('8-10')).toContain(
-      '6-8 (stability cap for first template fill)',
+      '5-6 (stability cap for first template fill)',
     );
   });
 
