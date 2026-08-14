@@ -49,7 +49,7 @@ Recent strip         → unchanged
 
 ### 2.3 Confirm
 
-- `canvasCreateSlidesRunPrompt(title, null, prompt, quickSettings)` (+ 첨부가 있으면 source brief에 파일명 요약 가능)
+- `canvasCreateSlidesRunPrompt(title, sourceBrief, prompt, quickSettings, { hasSourceMaterial, templateId })` — L1 여부는 id로 판별 (카탈로그 제목 오인 방지)
 - `buildSlideOnlyDeckTemplateCreateBinding(selected, { slideOnlyMvp: true })`
 - `onSubmit({ prompt, pluginId, pluginInputs, projectKind:'deck', projectMetadata, attachments, driveAttachments, conversationMode:'design', skipDiscovery via metadata })`
 - 빈 prompt + 첨부 없음 + 퀵만: **허용** (placeholder 강조). L1 템플릿 프리셀렉트.

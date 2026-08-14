@@ -221,6 +221,25 @@ describe("canvasSlideLaunch", () => {
     expect(runPrompt).not.toContain('The user picked "기본 슬라이드 템플릿"');
   });
 
+  it("treats the L1 plugin id as default even when the catalog title is not Korean", () => {
+    const runPrompt = canvasCreateSlidesRunPrompt(
+      "Simple Deck",
+      null,
+      "분기 실적",
+      null,
+      { hasSourceMaterial: false, templateId: CANVAS_CREATE_SLIDES_PLUGIN_ID },
+    );
+    expect(runPrompt).not.toContain("[Selected slide template]");
+    expect(runPrompt).not.toContain("[Selected slide template priority]");
+    expect(runPrompt).not.toContain('The user picked "Simple Deck"');
+  });
+
+  it("treats the English default title as the L1 template", () => {
+    const runPrompt = canvasCreateSlidesRunPrompt("Default slide template", null, null);
+    expect(runPrompt).not.toContain("[Selected slide template]");
+    expect(runPrompt).not.toContain('The user picked "Default slide template"');
+  });
+
   it("Home freeform without attachments does not say 첨부한 자료", () => {
     const runPrompt = canvasCreateSlidesRunPrompt(
       "Html Ppt Zhangzara Daisy Days",
@@ -540,6 +559,8 @@ describe("canvasSlideLaunch", () => {
     expect(home).toContain("confirmHomeSlideCreate");
     expect(home).toContain("teamver.homeCreate.errorTemplateLost");
     expect(home).toContain("teamver.homeCreate.errorCreateFailed");
+    expect(home).toContain("templateId: template.id");
+    expect(home).toContain("templateId: templateForRun.id");
     expect(home).toContain("selectedDeckTemplateId: template.id");
     expect(home).toContain("User instruction:");
     expect(home).toContain("rememberLastExplicitDeckTemplateId");
@@ -575,6 +596,7 @@ describe("canvasSlideLaunch", () => {
     expect(home).toContain("item.lastModified === file.lastModified");
     // Composer Canvas/Drive handoff always has source material.
     expect(composer).toContain("hasSourceMaterial: true");
+    expect(composer).toContain("templateId: selectedCanvasSlideTemplate.id");
     expect(composer).toContain("sendComposedTurn(");
     expect(composer).toContain("sanitizeTemplateCloneDeckTitle(");
     expect(composer).toContain("slideCountHint: canvasSlideQuickLengthToSlideCount(");

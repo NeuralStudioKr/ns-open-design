@@ -40,6 +40,7 @@ const GENERIC_PLUGIN_TITLES = new Set([
   'new-project',
   'new project',
   '기본 슬라이드 템플릿',
+  'default slide template',
 ]);
 
 /** Plugin / template marketing titles must never become the project name. */

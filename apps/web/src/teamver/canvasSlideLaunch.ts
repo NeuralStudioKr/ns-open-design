@@ -60,6 +60,19 @@ export function isExplicitCanvasSlideVisualTemplate(
   return true;
 }
 
+/** Canonical L1 fallback title stored on the option (prompt/naming sentinel). */
+export const DEFAULT_CANVAS_SLIDE_TEMPLATE_TITLE = "기본 슬라이드 템플릿";
+export const DEFAULT_CANVAS_SLIDE_TEMPLATE_TITLE_EN = "Default slide template";
+
+export function isDefaultCanvasSlideTemplateTitle(title: string | null | undefined): boolean {
+  const value = title?.trim() ?? "";
+  if (!value) return true;
+  return (
+    value === DEFAULT_CANVAS_SLIDE_TEMPLATE_TITLE
+    || value.toLowerCase() === DEFAULT_CANVAS_SLIDE_TEMPLATE_TITLE_EN.toLowerCase()
+  );
+}
+
 export const SLIDE_DECK_QUALITY_BAR_INSTRUCTION =
   "Quality bar: each non-divider slide needs a headline, takeaway, and concrete support (specific bullets, metrics, examples, risks, actions, timeline, comparison, or decision criteria). " +
   "Reject title-only slides, raw user-prompt copy, template demo captions, and generic placeholders. " +
@@ -376,10 +389,14 @@ export function canvasCreateSlidesRunPrompt(
   sourceBrief?: string | null,
   userInstruction?: string | null,
   quickSettings?: Partial<CanvasSlideQuickSettings> | null,
-  options?: { hasSourceMaterial?: boolean },
+  options?: { hasSourceMaterial?: boolean; templateId?: string },
 ): string {
   const title = templateTitle?.trim();
-  const isDefaultTemplate = !title || title === "기본 슬라이드 템플릿";
+  // Prefer id: the catalog may localize example-simple-deck as "Simple Deck"
+  // (or similar) which must not be treated as an explicit Daisy/Hermes pick.
+  const isDefaultTemplate = options?.templateId
+    ? !isExplicitCanvasSlideVisualTemplate({ id: options.templateId })
+    : isDefaultCanvasSlideTemplateTitle(title);
   const brief = compactCanvasBriefBlock(sourceBrief ?? "", 900);
   const user = compactCanvasBriefValue(userInstruction ?? "", 600);
   // Never say "첨부한 자료를…" without attachments, and never say "요청한 내용으로…"
@@ -673,7 +690,7 @@ export function resolveCanvasSlideTemplate(
   }
   const first = options[0];
   if (first) return first;
-  return { id: CANVAS_CREATE_SLIDES_PLUGIN_ID, title: "기본 슬라이드 템플릿", record: null };
+  return { id: CANVAS_CREATE_SLIDES_PLUGIN_ID, title: DEFAULT_CANVAS_SLIDE_TEMPLATE_TITLE, record: null };
 }
 
 export function canvasSlideTemplateOptions(
@@ -696,7 +713,11 @@ export function canvasSlideTemplateOptions(
     // Default option never guarantees a preview — it renders a static "기본"
     // tile in the picker. If the deck plugin list happens to include the
     // simple-deck default we prefer that (with its preview) above.
-    options.unshift({ id: CANVAS_CREATE_SLIDES_PLUGIN_ID, title: "기본 슬라이드 템플릿", record: null });
+    options.unshift({
+      id: CANVAS_CREATE_SLIDES_PLUGIN_ID,
+      title: DEFAULT_CANVAS_SLIDE_TEMPLATE_TITLE,
+      record: null,
+    });
   }
   return options;
 }
@@ -776,7 +797,7 @@ export function canvasCreateSlidesPluginInputs(
   const user = userInstruction?.trim();
   const normalizedQuickSettings = normalizeCanvasSlideQuickSettings(quickSettings);
   const visualTemplate =
-    (templateTitle ?? "").trim() || "기본 슬라이드 템플릿";
+    (templateTitle ?? "").trim() || DEFAULT_CANVAS_SLIDE_TEMPLATE_TITLE;
   const hasSourceMaterial =
     options?.hasSourceMaterial ?? briefLooksLikeAttachedSource(brief);
   // slideCount / audience / tone must be authoritative Plugin inputs so the

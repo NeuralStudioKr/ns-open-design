@@ -642,6 +642,11 @@ export function TeamverHomeSlideCreateModal({
                 className="teamver-home-slide-create-stepper-btn"
                 disabled={confirming}
                 data-testid="teamver-home-slide-create-step-template"
+                aria-label={
+                  stepperPickTitle
+                    ? `${t("teamver.homeCreate.stepTemplate")} ${stepperPickTitle}`
+                    : t("teamver.homeCreate.stepTemplate")
+                }
                 onClick={goTemplateStep}
               >
                 <span className="teamver-canvas-slide-launch-stepper-index" aria-hidden>

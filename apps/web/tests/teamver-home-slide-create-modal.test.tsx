@@ -409,6 +409,9 @@ describe("TeamverHomeSlideCreateModal", () => {
       /Default slide template/i,
     );
     expect(screen.getByTestId("teamver-home-slide-create-step-template").textContent).toContain("✓");
+    expect(screen.getByTestId("teamver-home-slide-create-step-template").getAttribute("aria-label")).toMatch(
+      /Template .*Default slide template/i,
+    );
   });
 
   it("resets quick settings to defaults when the modal opens", () => {
