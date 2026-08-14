@@ -26,6 +26,7 @@ import {
   HOME_EMPTY_CREATE_SLIDES_PROMPT as SHARED_HOME_EMPTY_CREATE_SLIDES_PROMPT,
   resolveCreateSlidesLead,
 } from "./slideCreateBoilerplate";
+import { isDeckTemplateMarketingTitle } from "../utils/projectName";
 
 /** Canvas / Drive → create-slides one-confirm source read from the URL. */
 export type TeamverCreateSlidesLaunchSource =
@@ -77,6 +78,18 @@ export function isDefaultCanvasSlideTemplateTitle(title: string | null | undefin
     value === DEFAULT_CANVAS_SLIDE_TEMPLATE_TITLE
     || value.toLowerCase() === DEFAULT_CANVAS_SLIDE_TEMPLATE_TITLE_EN.toLowerCase()
   );
+}
+
+/** Drop empty / template-marketing strings so they never become pluginInputs.topic. */
+export function sanitizeSlideCreateTopicHint(
+  hint: string | null | undefined,
+): string | null {
+  const trimmed = (hint ?? "").trim();
+  if (!trimmed) return null;
+  if (isDeckTemplateMarketingTitle(trimmed)) return null;
+  const withoutExt = trimmed.replace(/\.[a-z0-9]{1,8}$/i, "").trim();
+  if (withoutExt && isDeckTemplateMarketingTitle(withoutExt)) return null;
+  return trimmed;
 }
 
 export const SLIDE_DECK_QUALITY_BAR_INSTRUCTION =
@@ -805,7 +818,7 @@ export function canvasCreateSlidesPluginInputs(
   quickSettings?: Partial<CanvasSlideQuickSettings> | null,
   options?: { hasSourceMaterial?: boolean },
 ): Record<string, unknown> {
-  const topic = (topicHint ?? "").trim() || "the user brief";
+  const topic = sanitizeSlideCreateTopicHint(topicHint) || "the user brief";
   const brief = sourceBrief?.trim();
   const user = userInstruction?.trim();
   const normalizedQuickSettings = normalizeCanvasSlideQuickSettings(quickSettings);

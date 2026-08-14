@@ -13,6 +13,7 @@ import {
   SLIDE_DECK_QUALITY_BAR_INSTRUCTION,
   canvasCreateSlidesPluginInputs,
   canvasCreateSlidesRunPrompt,
+  sanitizeSlideCreateTopicHint,
   canvasSlideQuickSettingsInstruction,
   canvasCreateSlidesSourceBrief,
   canvasCreateSlidesTurnMeta,
@@ -54,6 +55,13 @@ describe("canvasSlideLaunch", () => {
     expect(HOME_CREATE_SLIDES_INTERNAL_INSTRUCTION).toMatch(/brief is a topic, not slide text/i);
     expect(HOME_CREATE_SLIDES_INTERNAL_INSTRUCTION).toMatch(/Expo for Senior Engineers/);
     expect(CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION).not.toMatch(/simple-deck|nav, and print/i);
+    expect(sanitizeSlideCreateTopicHint("Html Ppt Hermes")).toBeNull();
+    expect(sanitizeSlideCreateTopicHint("Daisy Days.png")).toBeNull();
+    expect(sanitizeSlideCreateTopicHint("기본 슬라이드 템플릿")).toBeNull();
+    expect(sanitizeSlideCreateTopicHint("Q3 results review")).toBe("Q3 results review");
+    expect(canvasCreateSlidesPluginInputs("Html Ppt Hermes.png", "Template")).toMatchObject({
+      topic: "the user brief",
+    });
     expect(canvasCreateSlidesPluginInputs("canvas", "Template")).toMatchObject({
       topic: "canvas",
       deckType: "presentation",
@@ -570,6 +578,26 @@ describe("canvasSlideLaunch", () => {
     );
     expect(confirmHomeSlideCreateSrc).toContain("pluginTitle: null");
     expect(confirmHomeSlideCreateSrc).not.toContain("pluginTitle: template.title");
+    expect(confirmHomeSlideCreateSrc).toContain("sanitizeSlideCreateTopicHint");
+    expect(confirmHomeSlideCreateSrc).toContain("teamver.homeCreate.errorCreateFailed");
+    expect(confirmHomeSlideCreateSrc).not.toContain("err instanceof Error ? err.message");
+    const confirmCanvasSlideLaunchSrc = home.slice(
+      home.indexOf("async function confirmCanvasSlideLaunch"),
+      home.indexOf("async function submit()"),
+    );
+    expect(confirmCanvasSlideLaunchSrc).toContain("pluginTitle: null");
+    expect(confirmCanvasSlideLaunchSrc).not.toContain("pluginTitle: templateForRun.title");
+    expect(confirmCanvasSlideLaunchSrc).toContain("sanitizeSlideCreateTopicHint");
+    expect(confirmCanvasSlideLaunchSrc).toContain(
+      "formatDriveImportErrorForUser('teamver_workspace_required')",
+    );
+    expect(confirmCanvasSlideLaunchSrc).not.toContain("작업공간을 먼저");
+    expect(home).not.toContain("fromHomeWizard");
+    expect(home).toContain("pluginTitle: slideOnlyMvp ? null");
+    expect(composer).toContain(
+      'formatDriveImportErrorForUser("teamver_workspace_required")',
+    );
+    expect(composer).not.toContain("작업공간을 먼저");
     expect(home).toContain("templateId: template.id");
     expect(home).toContain("templateId: templateForRun.id");
     expect(home).toContain("selectedDeckTemplateId: template.id");

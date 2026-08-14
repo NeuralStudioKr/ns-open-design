@@ -152,6 +152,7 @@ import {
   createHomeSlideCreateQuickSettings,
   canvasCreateSlidesPluginInputs,
   canvasCreateSlidesRunPrompt,
+  sanitizeSlideCreateTopicHint,
   canvasCreateSlidesSourceBrief,
   buildSlideOnlyDeckTemplateCreateBinding,
   isExplicitCanvasSlideVisualTemplate,
@@ -412,21 +413,16 @@ export function HomeView({
   useEffect(() => {
     rememberLastExplicitDeckTemplateId(canvasSlideTemplateId);
   }, [canvasSlideTemplateId]);
-  // Canvas→Slide: slideOnly gallery Use never sets `active` (it opens the
-  // Home wizard instead). Seed from a live Home wizard pick or the Canvas
-  // session pin — not only from active plugin.
+  // Canvas→Slide: slideOnly gallery Use opens the Home wizard and never
+  // sets `active`. Seed only from the Canvas session pin / active plugin —
+  // never from a live Home wizard pick (the two surfaces stay independent).
   useEffect(() => {
     if (!canvasSlideLaunch) return;
     const fromActive = slideOnlyMvp
       ? resolveSlideOnlyDeckTemplateSkillId(active?.record)
       : null;
-    const fromHomeWizard = isExplicitCanvasSlideVisualTemplate({
-      id: homeSlideTemplateId,
-    })
-      ? homeSlideTemplateId.trim()
-      : null;
     const fromSession = readLastExplicitDeckTemplateId();
-    const preferred = fromActive || fromHomeWizard || fromSession;
+    const preferred = fromActive || fromSession;
     if (!preferred) return;
     setCanvasSlideTemplateId((current) =>
       current === CANVAS_CREATE_SLIDES_PLUGIN_ID || !current.trim()
@@ -437,7 +433,6 @@ export function HomeView({
     canvasSlideLaunch,
     active?.record,
     slideOnlyMvp,
-    homeSlideTemplateId,
   ]);
   const [communityExternalPreviewError, setCommunityExternalPreviewError] = useState<string | null>(
     null,
@@ -1921,11 +1916,12 @@ export function HomeView({
         setHomeSlideCreateError(t('teamver.homeCreate.errorTemplateLost'));
         return;
       }
-      const topicHint =
+      const topicHint = sanitizeSlideCreateTopicHint(
         homeSlideUserPrompt.trim().split(/\n/)[0]?.slice(0, 120)
         || stagedFiles[0]?.name
         || stagedDriveAssets[0]?.filename
-        || null;
+        || null,
+      );
       const attachBrief = [
         ...stagedFiles.map((file) => `file:${file.name}`),
         ...stagedDriveAssets.map(
@@ -2024,9 +2020,7 @@ export function HomeView({
         void beginMainSsoMismatchRecovery();
         setHomeSlideCreateError(null);
       } else {
-        setHomeSlideCreateError(
-          err instanceof Error ? err.message : String(err),
-        );
+        setHomeSlideCreateError(t('teamver.homeCreate.errorCreateFailed'));
       }
     } finally {
       setHomeSlideCreateBusy(false);
@@ -2037,9 +2031,7 @@ export function HomeView({
     if (!canvasSlideLaunch || canvasSlideLaunchBusy || submitPending) return;
     if (!teamverDriveImportAllowed) {
       setCanvasSlideLaunchError(
-        canvasSlideLaunch.kind === 'canvas'
-          ? 'Teamver 작업공간을 먼저 선택한 뒤 다시 시도하세요.'
-          : formatDriveImportErrorForUser('teamver_workspace_required'),
+        formatDriveImportErrorForUser('teamver_workspace_required'),
       );
       return;
     }
@@ -2073,10 +2065,11 @@ export function HomeView({
                 designSystems: designSystemPickerSystems,
               })
             : null;
-        const topicHint =
+        const topicHint = sanitizeSlideCreateTopicHint(
           canvasSlideLaunch.handoff.title?.trim() ||
           canvasSlideLaunch.handoff.threadTitle?.trim() ||
-          null;
+          null,
+        );
         const sourceBrief = canvasCreateSlidesSourceBrief(canvasSlideLaunch.handoff);
         const templateBinding = buildSlideOnlyDeckTemplateCreateBinding(
           templateForRun,
@@ -2095,7 +2088,7 @@ export function HomeView({
             pluginType: 'official',
             skillId: null,
             appliedPluginSnapshotId: null,
-            pluginTitle: templateForRun.title,
+            pluginTitle: null,
             taskKind: null,
             pluginInputs: {
               ...canvasCreateSlidesPluginInputs(
@@ -2160,7 +2153,7 @@ export function HomeView({
           pluginType: 'official',
           skillId: null,
           appliedPluginSnapshotId: null,
-          pluginTitle: templateForRun.title,
+          pluginTitle: null,
           taskKind: null,
           pluginInputs: {
             ...canvasCreateSlidesPluginInputs(
@@ -2438,7 +2431,7 @@ export function HomeView({
         pluginType: submittedActive?.record.marketplaceTrust ?? (routedPluginId ? 'official' : null),
         skillId: resolvedSkillId,
         appliedPluginSnapshotId: submittedActive?.result?.appliedPlugin?.snapshotId ?? null,
-        pluginTitle: submittedActive?.record.title ?? null,
+        pluginTitle: slideOnlyMvp ? null : (submittedActive?.record.title ?? null),
         taskKind: submittedActive?.result?.appliedPlugin?.taskKind ?? null,
         pluginInputs: submittedPluginInputsForCreate,
         projectKind: submittedProjectKind,

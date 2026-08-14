@@ -115,6 +115,8 @@ describe("TeamverHomeSlideCreateModal", () => {
       />,
     );
     expect(screen.getByTestId("teamver-home-slide-create-content")).toBeTruthy();
+    const dialog = screen.getByTestId("teamver-home-slide-create-modal");
+    expect(dialog.getAttribute("aria-describedby")).toBe("teamver-home-slide-create-lead");
     expect(screen.getByTestId("teamver-home-slide-create-lead").textContent).toMatch(
       /brief and a template/i,
     );
@@ -458,6 +460,25 @@ describe("TeamverHomeSlideCreateModal", () => {
     );
     expect(onQuickSettingsChange).toHaveBeenCalledWith(createHomeSlideCreateQuickSettings());
     expect(onQuickSettingsChange.mock.calls[0][0]).not.toBe(DEFAULT_HOME_SLIDE_CREATE_QUICK_SETTINGS);
+  });
+
+  it("surfaces confirm errors in an alert region", () => {
+    wrap(
+      <TeamverHomeSlideCreateModal
+        open
+        entry="new"
+        errorMessage="Template unavailable"
+        templateOptions={[{ id: "html-ppt-hermes", title: "Hermes", record: null }]}
+        selectedTemplateId="html-ppt-hermes"
+        userPrompt=""
+        onUserPromptChange={() => {}}
+        onConfirm={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    const alert = screen.getByTestId("teamver-home-slide-create-error");
+    expect(alert.getAttribute("role")).toBe("alert");
+    expect(alert.textContent).toBe("Template unavailable");
   });
 
   it("pins explicit canvas picks and clears them on demand", () => {

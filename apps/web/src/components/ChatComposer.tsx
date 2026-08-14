@@ -2098,9 +2098,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       if (!canvasSlideLaunch || canvasSlideLaunchBusy || streaming) return;
       if (!teamverDriveImportAllowed) {
         setCanvasSlideLaunchError(
-          canvasSlideLaunch.kind === "canvas"
-            ? "Teamver 작업공간을 먼저 선택한 뒤 다시 시도하세요."
-            : formatDriveImportErrorForUser("teamver_workspace_required"),
+          formatDriveImportErrorForUser("teamver_workspace_required"),
         );
         return;
       }

@@ -577,6 +577,7 @@ export function TeamverHomeSlideCreateModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby="teamver-home-slide-create-title"
+        aria-describedby="teamver-home-slide-create-lead"
         tabIndex={-1}
         data-testid="teamver-home-slide-create-modal"
         onKeyDown={(event) => {
@@ -590,6 +591,7 @@ export function TeamverHomeSlideCreateModal({
             <div className="teamver-home-slide-create-head-copy">
               <h2 id="teamver-home-slide-create-title">{t("teamver.homeCreate.modalTitle")}</h2>
               <p
+                id="teamver-home-slide-create-lead"
                 className="teamver-home-slide-create-lead"
                 data-testid="teamver-home-slide-create-lead"
               >
@@ -683,7 +685,11 @@ export function TeamverHomeSlideCreateModal({
         <div className="teamver-canvas-slide-launch-body teamver-home-slide-create-body">
           {showingTemplate ? templatePanel : contentPanel}
           {errorMessage ? (
-            <p className="teamver-canvas-slide-launch-error" role="alert">
+            <p
+              className="teamver-canvas-slide-launch-error"
+              role="alert"
+              data-testid="teamver-home-slide-create-error"
+            >
               {errorMessage}
             </p>
           ) : null}

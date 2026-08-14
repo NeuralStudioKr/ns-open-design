@@ -17,6 +17,7 @@
 
 ## 진행 메모
 
+- 2026-08-14: 관련 경로 전수 — Canvas/Drive confirm·slideOnly 자유입력도 `pluginTitle: null`. topicHint는 마케팅 제목/파일명을 버림. Home 마법사 픽이 Canvas 피커를 시드하지 않음. 워크스페이스 오류는 Drive 포맷터 공유. 모달 `aria-describedby` + 오류 alert.
 - 2026-08-14: Home confirm `pluginTitle: null` (템플릿 마케팅 제목 차단). 모달 헤더에 `homeCreate.lead`. Canvas 생성 실패도 `errorCreateFailed`.
 - 2026-08-14: L1 판별 — 생성 프롬프트가 카탈로그 제목이 아니라 `templateId`로 기본/명시를 가름. 영문 기본 제목도 sentinel.
 - 2026-08-14: L1 표시 — 「새 슬라이드」가 템플릿 스텝을 다녀오면 스텝퍼에 기본 라벨 + ✓. 피커 기본 카드 제목은 embed 로케일. 안 C 잔여 키 `selectedTemplate`/`changeTemplate` 제거.
