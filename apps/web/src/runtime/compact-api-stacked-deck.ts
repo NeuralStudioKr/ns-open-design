@@ -234,16 +234,23 @@ function compactStackedDeckExportCss(): string {
     body > .slide,
     body > * > .slide,
     body > * > * > .slide {
+      position: relative !important;
+      inset: auto !important;
+      top: auto !important;
+      left: auto !important;
+      right: auto !important;
+      bottom: auto !important;
       width: 1920px !important;
       height: 1080px !important;
       min-height: 1080px !important;
       max-height: 1080px !important;
       box-sizing: border-box !important;
-      margin: 0 !important;
+      margin: 0 auto !important;
       overflow: hidden !important;
       page-break-after: always !important;
       break-after: page !important;
       flex: none !important;
+      transform: none !important;
     }
     body > .slide:last-child,
     body > * > .slide:last-child,

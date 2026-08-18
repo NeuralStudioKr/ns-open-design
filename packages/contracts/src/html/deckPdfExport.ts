@@ -8,6 +8,10 @@ import {
   relaxPersistedDeckSlideSurfaceBleed,
   repairArtifactStyleSheets,
 } from './repairArtifactStyleSheets.js';
+import {
+  ensureOfficialLookStackedCanvasNeutralize,
+  lockDeckDesignViewportMeta,
+} from './deck-template-look-css.js';
 
 export const DECK_SLIDE_SELECTOR =
   '.slide, [data-slide], [data-screen-label], section.slide, .deck-slide, .ppt-slide';
@@ -84,12 +88,17 @@ function deckSlideSelectorList(): string[] {
 /**
  * Heal Motif-killing stylesheet remnants + truncated head before standalone
  * HTML/PDF export (daemon disk path and FE snapshot share this SSOT).
- * Also relax persisted `.slide !important` surface bleed so Motif washes win.
+ * Also relax persisted `.slide !important` surface bleed so Motif washes win,
+ * upgrade official-look stacked-canvas neutralize, and lock viewport to 1920.
  */
 export function healDeckHtmlForStandaloneExport(html: string): string {
-  return repairArtifactStyleSheets(
-    repairArtifactDocumentHead(
-      relaxPersistedDeckSlideSurfaceBleed(String(html ?? '')),
+  return lockDeckDesignViewportMeta(
+    ensureOfficialLookStackedCanvasNeutralize(
+      repairArtifactStyleSheets(
+        repairArtifactDocumentHead(
+          relaxPersistedDeckSlideSurfaceBleed(String(html ?? '')),
+        ),
+      ),
     ),
   );
 }

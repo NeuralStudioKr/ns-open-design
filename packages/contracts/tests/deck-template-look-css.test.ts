@@ -155,7 +155,34 @@ describe('official deck look CSS merge', () => {
     expect(merged).toContain('.pill-coral { background: var(--coral); }');
     expect(merged).toContain('fonts.googleapis.com/css2');
     expect(merged).toContain('opacity: 1 !important');
+    expect(merged).toContain('position: relative !important');
+    expect(merged).toContain('width: 1920px !important');
     expect(merged).toContain('shadcn/ui');
+  });
+
+  it('upgrades legacy opacity-only neutralize so absolute 100% slides stop clipping', async () => {
+    const {
+      ensureOfficialLookStackedCanvasNeutralize,
+      lockDeckDesignViewportMeta,
+      OFFICIAL_LOOK_STACKED_NEUTRALIZE_MARKER,
+    } = await import('../src/html/deck-template-look-css.js');
+    const legacy = `<!doctype html><html><head>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style data-od-official-look-css>
+.slide { position:absolute; inset:0; width:100%; height:100%; opacity:0; }
+/* stacked preview/export: keep Motif paint, do not hide non-active slides */
+html, body { overflow: visible !important; height: auto !important; }
+.slide, .slide.active, .slide.is-active {
+  opacity: 1 !important;
+  pointer-events: auto !important;
+}
+</style></head><body><section class="slide slide-1"><div class="deco-pill"></div></section></body></html>`;
+    const upgraded = lockDeckDesignViewportMeta(ensureOfficialLookStackedCanvasNeutralize(legacy));
+    expect(upgraded).toContain(OFFICIAL_LOOK_STACKED_NEUTRALIZE_MARKER);
+    expect(upgraded).toContain('position: relative !important');
+    expect(upgraded).toContain('width: 1920px !important');
+    expect(upgraded).toContain('content="width=1920, initial-scale=1, maximum-scale=1"');
+    expect(upgraded).not.toContain('width=device-width');
   });
 
   it('is idempotent when Motif rules or the look marker already exist', () => {

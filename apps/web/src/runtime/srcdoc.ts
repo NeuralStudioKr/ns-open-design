@@ -22,7 +22,7 @@ import {
   MANUAL_EDIT_DISCOVERY_SELECTOR,
   MANUAL_EDIT_SOURCE_PATH_ATTR,
 } from '../edit-mode/bridge';
-import { buildArtifactPreviewDomLeakGuardScript, repairArtifactDocumentHead, repairArtifactStyleSheets } from '@open-design/contracts';
+import { buildArtifactPreviewDomLeakGuardScript, repairArtifactDocumentHead, repairArtifactStyleSheets, ensureOfficialLookStackedCanvasNeutralize, lockDeckDesignViewportMeta } from '@open-design/contracts';
 import { stripConflictingSrcDocCspBaseUri } from './authenticatedHtmlSrcDoc';
 import {
   injectStackedDeckViewport,
@@ -132,7 +132,12 @@ export function buildSrcdoc(
       repairArtifactDocumentHeadIfNeeded(html),
     ),
   );
-  const repaired = stripConflictingSrcDocCspBaseUri(repairedHead);
+  // Deck preview/export: upgrade opacity-only official-look neutralize and lock
+  // viewport to 1920 so presentation-absolute 100% slides do not clip Motif.
+  const deckCanvasReady = options.deck
+    ? lockDeckDesignViewportMeta(ensureOfficialLookStackedCanvasNeutralize(repairedHead))
+    : repairedHead;
+  const repaired = stripConflictingSrcDocCspBaseUri(deckCanvasReady);
   // alreadyRepaired: avoid wrapPreviewHtmlShell re-running repair on full docs.
   const wrapped = wrapPreviewHtmlShell(repaired, { alreadyRepaired: true });
   // Export docs skip od-id / source-path annotation (no selection/edit bridges).

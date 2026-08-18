@@ -299,6 +299,26 @@ describe('buildStandaloneDeckHtmlDocument', () => {
     expect(healed).not.toMatch(/html,\s*body,\s*\.slide,\s*section\.slide/i);
     expect(healed).toMatch(/\.deco-pill\{/);
   });
+
+  it('locks viewport to 1920 and upgrades official-look stacked canvas on heal', () => {
+    const html = `<!doctype html><html><head>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style data-od-official-look-css>
+.slide { position:absolute; inset:0; width:100%; height:100%; opacity:0; }
+/* stacked preview/export: keep Motif paint, do not hide non-active slides */
+html, body { overflow: visible !important; height: auto !important; }
+.slide, .slide.active, .slide.is-active {
+  opacity: 1 !important;
+  pointer-events: auto !important;
+}
+</style></head><body><section class="slide"><div class="deco-pill" style="top:12%;left:8%"></div></section></body></html>`;
+    const healed = healDeckHtmlForStandaloneExport(html);
+    expect(healed).toContain('content="width=1920, initial-scale=1, maximum-scale=1"');
+    expect(healed).not.toContain('width=device-width');
+    expect(healed).toContain('position: relative !important');
+    expect(healed).toContain('width: 1920px !important');
+    expect(healed).toContain('height: 1080px !important');
+  });
 });
 
 describe('buildDeckHtmlExportViewportScript', () => {

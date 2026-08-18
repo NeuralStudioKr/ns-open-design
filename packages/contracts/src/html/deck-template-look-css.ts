@@ -7,8 +7,9 @@
  * Merge the official look CSS (tokens + Motif/Layout rules + font links)
  * and reusable Motif HTML (hidden SVG symbol sheets, grain/crt hosts)
  * into the artifact when those pieces are missing. Presentation chrome
- * (`.slide { opacity:0 }`, `overflow:hidden`) is neutralized so stacked
- * preview/export still shows every slide.
+ * (`.slide { opacity:0; position:absolute; width/height:100% }`) is
+ * neutralized so stacked preview/export keeps a fixed 1920×1080 canvas
+ * instead of clipping Motif pills to the browser viewport.
  *
  * Catalog-wide: proof that look CSS is already present must be unique
  * Motif/Layout class *rules*, not generic `.slide-1` / `.slide-title`
@@ -18,6 +19,10 @@
 
 export const OFFICIAL_DECK_LOOK_STYLE_ATTR = 'data-od-official-look-css';
 export const OFFICIAL_DECK_MOTIF_HTML_ATTR = 'data-od-official-motif-html';
+
+/** Marker comment inside official look CSS — heal upgrades older weak neutralize. */
+export const OFFICIAL_LOOK_STACKED_NEUTRALIZE_MARKER =
+  'stacked preview/export: Motif paint + fixed 1920';
 
 export type OfficialDeckLookAssets = {
   css: string;
@@ -40,14 +45,54 @@ const MOTIF_HOST_CLASS_RE = /\b(?:grain-overlay|crt-overlay)\b/i;
 const GENERIC_LOOK_PROOF_CLASS_RE =
   /^(?:slide(?:-inner|-title|-hero|-weekly|-red|-\d+)?|active|is-active|is-prev|deck(?:-shell|-stage|-slide)?|stage|ppt-slide|nav(?:-hint|-dots?|-dot)?|slide-counter|progress)$/i;
 
-const LOOK_NEUTRALIZE_CSS = `
-/* stacked preview/export: keep Motif paint, do not hide non-active slides */
-html, body { overflow: visible !important; height: auto !important; }
-.slide, .slide.active, .slide.is-active {
+/**
+ * Official Capsule/etc. CSS is authored for one-slide presentation mode
+ * (`.slide { position:absolute; inset:0; width/height:100% }`). Stacked
+ * preview/PDF/HTML need a fixed 1920×1080 flow canvas or Motif pills and
+ * title blocks clip to the browser viewport.
+ */
+export const LOOK_NEUTRALIZE_CSS = `
+/* ${OFFICIAL_LOOK_STACKED_NEUTRALIZE_MARKER}×1080 canvas (not presentation absolute 100%) */
+html, body {
+  overflow: visible !important;
+  height: auto !important;
+  min-height: 0 !important;
+}
+.presentation, .deck, .deck-shell, .deck-stage, #deck-stage, .stage, .slides-container {
+  position: static !important;
+  inset: auto !important;
+  width: auto !important;
+  height: auto !important;
+  min-height: 0 !important;
+  transform: none !important;
+  overflow: visible !important;
+}
+.slide, .slide.active, .slide.is-active, .slide.current,
+[data-slide], [data-screen-label], section.slide, .deck-slide, .ppt-slide {
   opacity: 1 !important;
   pointer-events: auto !important;
+  position: relative !important;
+  inset: auto !important;
+  top: auto !important;
+  right: auto !important;
+  bottom: auto !important;
+  left: auto !important;
+  width: 1920px !important;
+  height: 1080px !important;
+  min-width: 1920px !important;
+  min-height: 1080px !important;
+  max-width: 1920px !important;
+  max-height: 1080px !important;
+  transform: none !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+  box-sizing: border-box !important;
 }
 `;
+
+/** Legacy neutralize that only forced opacity — leaves absolute 100% clipping. */
+const LEGACY_LOOK_NEUTRALIZE_RE =
+  /\/\*\s*stacked preview\/export:[^*]*\*\/\s*html,\s*body\s*\{[^}]*\}\s*\.slide[^\{]*\{[^}]*opacity:\s*1\s*!important;[^}]*\}/gi;
 
 function hrefFromLinkTag(tag: string): string {
   const match = /\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|(\S+))/i.exec(tag);
@@ -430,5 +475,55 @@ export function mergeOfficialDeckLookCss(
     out = insertBeforeCloseHeadOrOpenBody(out, snippet);
   }
 
-  return mergeOfficialDeckMotifHtml(out, assets);
+  return ensureOfficialLookStackedCanvasNeutralize(mergeOfficialDeckMotifHtml(out, assets));
+}
+
+/**
+ * Upgrade legacy opacity-only neutralize (or inject missing stacked-canvas
+ * rules) so persisted Capsule look CSS no longer clips Motif at device-width.
+ */
+export function ensureOfficialLookStackedCanvasNeutralize(html: string): string {
+  const dest = String(html ?? '');
+  if (!dest) return dest;
+  if (dest.includes(OFFICIAL_LOOK_STACKED_NEUTRALIZE_MARKER)) return dest;
+
+  const styleAttr = OFFICIAL_DECK_LOOK_STYLE_ATTR;
+  if (new RegExp(`<style\\b[^>]*\\b${styleAttr}\\b`, 'i').test(dest)) {
+    LEGACY_LOOK_NEUTRALIZE_RE.lastIndex = 0;
+    if (LEGACY_LOOK_NEUTRALIZE_RE.test(dest)) {
+      LEGACY_LOOK_NEUTRALIZE_RE.lastIndex = 0;
+      return dest.replace(LEGACY_LOOK_NEUTRALIZE_RE, LOOK_NEUTRALIZE_CSS.trim());
+    }
+    return dest.replace(
+      new RegExp(`(<style\\b[^>]*\\b${styleAttr}\\b[^>]*>)([\\s\\S]*?)(<\\/style>)`, 'i'),
+      (_m, open: string, css: string, close: string) =>
+        `${open}${css}\n${LOOK_NEUTRALIZE_CSS}\n${close}`,
+    );
+  }
+
+  // Presentation-absolute slides without official look attr (hand-authored).
+  if (
+    /\.slide\s*\{[^}]*position\s*:\s*absolute/i.test(dest)
+    && /\.slide\s*\{[^}]*(?:width|height)\s*:\s*100%/i.test(dest)
+  ) {
+    const tag = `<style data-od-stacked-canvas-neutralize>\n${LOOK_NEUTRALIZE_CSS}\n</style>`;
+    if (/<\/head\s*>/i.test(dest)) return dest.replace(/<\/head\s*>/i, `${tag}</head>`);
+    if (/<body\b/i.test(dest)) return dest.replace(/<body\b[^>]*>/i, (open) => `${open}\n${tag}`);
+    return `${tag}\n${dest}`;
+  }
+  return dest;
+}
+
+/** Lock deck vw/% math to the 1920 design canvas (not browser device-width). */
+export function lockDeckDesignViewportMeta(html: string): string {
+  const dest = String(html ?? '');
+  if (!dest) return dest;
+  const tag = '<meta name="viewport" content="width=1920, initial-scale=1, maximum-scale=1" />';
+  if (/<meta[^>]+name=["']viewport["']/i.test(dest)) {
+    return dest.replace(/<meta[^>]+name=["']viewport["'][^>]*>/i, tag);
+  }
+  if (/<head\b/i.test(dest)) {
+    return dest.replace(/<head\b[^>]*>/i, (open) => `${open}\n  ${tag}`);
+  }
+  return dest;
 }
