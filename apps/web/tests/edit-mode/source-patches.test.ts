@@ -491,7 +491,41 @@ describe('manual edit source patches', () => {
     expect(readManualEditOuterHtml(result.source, 'hero-title')).toContain('Original title');
   });
 
-  it('strips @import from salvaged style siblings before head inject', () => {
+  it('keeps Capsule Google Fonts @import whose css2 URL contains semicolons', () => {
+    const fontImport =
+      "@import url('https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@0,6..96,400..900;1,6..96,400..900&family=Space+Grotesk:wght@300;400;500;600;700&display=swap');";
+    const html = [
+      '<!doctype html><html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/></head>',
+      `<body><section class="slide"><style>${fontImport}`,
+      ':root{--coral:#E85D4E;--outline:#1E1E1E}',
+      '.pill{display:inline-flex;border-radius:9999px;border:2px solid var(--outline)}',
+      '.pill-coral{background:var(--coral);color:#fff}</style>',
+      '<span class="pill pill-coral">shadcn/ui</span></section></body></html>',
+    ].join('');
+    const out = sanitizeManualEditFullSource(html);
+    expect(out).toContain("fonts.googleapis.com/css2?family=Bodoni+Moda");
+    expect(out).toContain('1,6..96,400..900');
+    expect(out).toContain('.pill{display:inline-flex');
+    expect(out).toContain('.pill-coral{background:var(--coral)');
+    expect(out).not.toMatch(/<style>\s*1,6\.\.96/i);
+  });
+
+  it('strips leftover css2 @import debris and keeps Capsule pill rules', () => {
+    const html = [
+      '<!doctype html><html><body><section class="slide"><style>',
+      "1,6..96,400..900&family=Space+Grotesk:wght@300;400;500;600;700&display=swap');",
+      ':root{--coral:#E85D4E}',
+      '.pill{border-radius:9999px}',
+      '</style><span class="pill">x</span></section></body></html>',
+    ].join('');
+    const out = sanitizeManualEditFullSource(html);
+    expect(out).not.toMatch(/1,6\.\.96/i);
+    expect(out).not.toContain("display=swap')");
+    expect(out).toContain(':root{--coral:#E85D4E}');
+    expect(out).toContain('.pill{border-radius:9999px}');
+  });
+
+  it('still strips non-font @import from salvaged style siblings before head inject', () => {
     const result = applyManualEditPatch(baseSource, {
       kind: 'set-outer-html',
       id: 'hero-title',

@@ -6,11 +6,17 @@
  * shows white bands above/below the cream rectangle — users read that as a
  * "background color bug" even when palette tokens are otherwise correct.
  *
- * Promote the inferred paper surface onto `html`, `body`, and every `.slide`
- * so letterbox + canvas edges match the template paper.
+ * Promote the inferred paper surface onto `html`/`body` (and `.slide` only when
+ * the slide itself is still white). Do not `!important`-flatten per-slide
+ * radial washes — Capsule / html-ppt fills paint gradients on `.slide`.
  */
 
 const SURFACE_STYLE_ATTR = 'data-od-slide-surface-bleed';
+
+const SURFACE_STYLE_RE = new RegExp(
+  `<style\\b[^>]*\\b${SURFACE_STYLE_ATTR}\\b[^>]*>[\\s\\S]*?<\\/style>`,
+  'i',
+);
 
 const WHITE_OR_EMPTY_RE =
   /^(?:#fff(?:fff)?|white|transparent|inherit|initial|unset|rgb\(\s*255\s*,\s*255\s*,\s*255\s*\)|rgba\(\s*255\s*,\s*255\s*,\s*255\s*,\s*1(?:\.0+)?\s*\))?$/i;
@@ -22,6 +28,59 @@ function isWhiteOrEmptyBackground(value: string | null | undefined): boolean {
   const trimmed = String(value ?? '').trim();
   if (!trimmed) return true;
   return WHITE_OR_EMPTY_RE.test(trimmed);
+}
+
+/** Radial washes / images must not be flattened by paper-token !important. */
+function isDecorativeBackground(value: string | null | undefined): boolean {
+  return /gradient\s*\(|\burl\s*\(|image-set\s*\(/i.test(String(value ?? ''));
+}
+
+function extractSlideBackground(html: string): string | null {
+  return (
+    extractInlineSlideBackground(html)
+    ?? extractRuleBackground(html, /^(?:[a-z][a-z0-9]*)?\.slide$/i)
+  );
+}
+
+/**
+ * Persist sanitize used to cut Google Fonts `@import` at the first `;` inside
+ * the css2 URL, leaving `1,6..96…swap');` at the start of `<style>`.
+ */
+function stripOrphanGoogleFontImportDebris(css: string): string {
+  return String(css || '')
+    .replace(
+      /^\s*(?:[\d,.]+(?:\.\.[\d,.]+)?,)*[\d,.]+(?:\.\.[\d,.]+)?&family=[\s\S]*?display=swap['"]\s*\)\s*;?/i,
+      '',
+    )
+    .replace(
+      /^\s*family=[A-Za-z0-9_+:;,.%&=@\- ]*?display=swap['"]\s*\)\s*;?/i,
+      '',
+    );
+}
+
+function repairOrphanFontImportDebrisInStyles(html: string): string {
+  return String(html ?? '').replace(
+    /<style\b([^>]*)>([\s\S]*?)<\/style>/gi,
+    (_full, attrs: string, css: string) => `<style${attrs}>${stripOrphanGoogleFontImportDebris(css)}</style>`,
+  );
+}
+
+function surfaceBleedSelectors(preserveSlidePaint: boolean): string {
+  return preserveSlidePaint
+    ? 'html, body'
+    : 'html, body, .slide, section.slide';
+}
+
+function renderSurfaceBleedStyle(paper: DeckSlidePaperSurface, preserveSlidePaint: boolean): string {
+  return [
+    `<style ${SURFACE_STYLE_ATTR}>`,
+    `${surfaceBleedSelectors(preserveSlidePaint)} { background: ${paper.background} !important; color: ${paper.color} !important; }`,
+    '</style>',
+  ].join('');
+}
+
+function bleedStyleTargetsSlides(html: string): boolean {
+  return /\.slide\b/i.test(html.match(SURFACE_STYLE_RE)?.[0] ?? '');
 }
 
 function readBackgroundFromStyleDecl(style: string | null | undefined): string | null {
@@ -173,19 +232,24 @@ function extractRuleBackgroundColor(html: string): string | null {
 function bodyOrSlideNeedsSurfacePromotion(
   html: string,
   paper: DeckSlidePaperSurface,
+  preserveSlidePaint: boolean,
 ): boolean {
   const bodyBg = extractBodyBackground(html);
-  const slideBg =
-    extractInlineSlideBackground(html)
-    ?? extractRuleBackground(html, /^(?:[a-z][a-z0-9]*)?\.slide$/i);
+  const slideBg = extractSlideBackground(html);
+  const norm = (value: string) => value.replace(/\s+/g, '').toLowerCase();
+  const paperNorm = norm(paper.background);
 
   const bodyMissing = isWhiteOrEmptyBackground(bodyBg);
+  if (preserveSlidePaint) {
+    // Letterbox only — do not treat a gradient slide as "disagreeing" with --bg.
+    if (bodyMissing) return true;
+    return Boolean(bodyBg && norm(bodyBg) !== paperNorm && !isDecorativeBackground(bodyBg));
+  }
+
   const slideMissing = isWhiteOrEmptyBackground(slideBg);
   if (bodyMissing || slideMissing) return true;
 
   // Body/slide disagree with inferred paper (e.g. white body + cream slide).
-  const norm = (value: string) => value.replace(/\s+/g, '').toLowerCase();
-  const paperNorm = norm(paper.background);
   if (bodyBg && norm(bodyBg) !== paperNorm) return true;
   if (slideBg && norm(slideBg) !== paperNorm) return true;
   return false;
@@ -197,22 +261,27 @@ function bodyOrSlideNeedsSurfacePromotion(
  * white letterbox bands in the Teamver preview.
  */
 export function repairDeckSlideSurfaceBleed(html: string): string {
-  const source = String(html ?? '');
+  const source = repairOrphanFontImportDebrisInStyles(String(html ?? ''));
   if (!source.trim()) return source;
-  if (new RegExp(`\\b${SURFACE_STYLE_ATTR}\\b`, 'i').test(source)) return source;
   if (!/\bclass\s*=\s*(?:"[^"]*\bslide\b[^"]*"|'[^']*\bslide\b[^']*'|[^\s"'=<>]*\bslide\b)/i.test(source)) {
     return source;
   }
 
   const paper = inferDeckSlidePaperSurface(source);
-  if (!paper) return source;
-  if (!bodyOrSlideNeedsSurfacePromotion(source, paper)) return source;
+  const preserveSlidePaint = isDecorativeBackground(extractSlideBackground(source));
+  const hasBleed = new RegExp(`\\b${SURFACE_STYLE_ATTR}\\b`, 'i').test(source);
 
-  const style = [
-    `<style ${SURFACE_STYLE_ATTR}>`,
-    `html, body, .slide, section.slide { background: ${paper.background} !important; color: ${paper.color} !important; }`,
-    '</style>',
-  ].join('');
+  if (hasBleed) {
+    if (paper && preserveSlidePaint && bleedStyleTargetsSlides(source)) {
+      return source.replace(SURFACE_STYLE_RE, renderSurfaceBleedStyle(paper, true));
+    }
+    return source;
+  }
+
+  if (!paper) return source;
+  if (!bodyOrSlideNeedsSurfacePromotion(source, paper, preserveSlidePaint)) return source;
+
+  const style = renderSurfaceBleedStyle(paper, preserveSlidePaint);
 
   if (/<\/body>/i.test(source)) {
     return source.replace(/<\/body>/i, `${style}</body>`);

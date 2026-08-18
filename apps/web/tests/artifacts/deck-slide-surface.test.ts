@@ -51,4 +51,49 @@ html, body, .slide { background:#F5F0E6; color:#2D2D2D; }
 </body></html>`;
     expect(repairDeckSlideSurfaceBleed(html)).toBe(html);
   });
+
+  it('does not flatten Capsule radial-gradient slides with a --bg paper token', () => {
+    const html = `<!doctype html><html><head><style>
+:root{--bg:#F5F5F0;--fg:#1A1A1A}
+</style></head>
+<body style="margin:0;background:#F5F5F0;color:#1A1A1A">
+<section class="slide" style="width:1920px;height:1080px;background:radial-gradient(ellipse at 20% 80%, rgba(200,217,78,0.18) 0%,transparent 50%), #F5F5F0">
+<span class="pill pill-coral">shadcn/ui</span>
+</section>
+</body></html>`;
+    const repaired = repairDeckSlideSurfaceBleed(html);
+    expect(repaired).not.toMatch(
+      /html,\s*body,\s*\.slide,\s*section\.slide\s*\{[^}]*background:\s*#F5F5F0\s*!important/i,
+    );
+    expect(repaired).toContain('radial-gradient');
+  });
+
+  it('relaxes a persisted bleed that flattened decorative slide washes', () => {
+    const html = `<!doctype html><html><body style="background:#F5F5F0;color:#1A1A1A">
+<section class="slide" style="width:1920px;height:1080px;background:radial-gradient(ellipse at 80% 20%, rgba(139,180,247,0.15) 0%,transparent 50%), #F5F5F0">
+<h1>Title</h1>
+</section>
+<style data-od-slide-surface-bleed="">html, body, .slide, section.slide { background: #F5F5F0 !important; color: #1A1A1A !important; }</style>
+</body></html>`;
+    const repaired = repairDeckSlideSurfaceBleed(html);
+    expect(repaired).toContain('data-od-slide-surface-bleed');
+    expect(repaired).toMatch(/html,\s*body\s*\{[^}]*background:\s*#F5F5F0/i);
+    expect(repaired).not.toMatch(/html,\s*body,\s*\.slide,\s*section\.slide/i);
+  });
+
+  it('strips leftover Google Fonts css2 debris so :root tokens stay a real rule', () => {
+    const html = `<!doctype html><html><body>
+<section class="slide" style="width:1920px;height:1080px;background:#F5F0E6">
+<style>1,6..96,400..900&family=Space+Grotesk:wght@300;400;500;600;700&display=swap');
+:root{--coral:#E85D4E}
+.pill{border-radius:9999px}</style>
+<h1>Title</h1>
+</section>
+</body></html>`;
+    const repaired = repairDeckSlideSurfaceBleed(html);
+    expect(repaired).not.toMatch(/1,6\.\.96/i);
+    expect(repaired).not.toContain("display=swap')");
+    expect(repaired).toContain(':root{--coral:#E85D4E}');
+    expect(repaired).toContain('.pill{border-radius:9999px}');
+  });
 });

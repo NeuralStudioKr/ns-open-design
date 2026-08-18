@@ -2861,11 +2861,129 @@ function stripCssAtRule(css: string, ruleName: string): string {
   return out;
 }
 
+/**
+ * Google Fonts css2 URLs embed `;` between axes (`wght@400;700`). A
+ * `[^;]*` @import strip cuts mid-URL and leaves `1,6..96…swap');` debris
+ * that merges into the next selector — Capsule `:root` tokens / `.pill`
+ * then fail to apply after persist.
+ */
+const ALLOWLISTED_FONT_IMPORT_HOSTS = new Set([
+  'fonts.googleapis.com',
+  'fonts.gstatic.com',
+  'fonts.bunny.net',
+  'api.fontshare.com',
+  'use.typekit.net',
+]);
+
+function cssAtRuleStatements(css: string, ruleName: string): string[] {
+  const lower = css.toLowerCase();
+  const needle = `@${ruleName.toLowerCase()}`;
+  const out: string[] = [];
+  let cursor = 0;
+  while (cursor < css.length) {
+    const idx = lower.indexOf(needle, cursor);
+    if (idx < 0) break;
+    const afterName = idx + needle.length;
+    if (afterName < css.length && /[\w-]/.test(css[afterName]!)) {
+      cursor = afterName;
+      continue;
+    }
+    let i = afterName;
+    while (i < css.length && /[\s\r\n\f]/.test(css[i]!)) i += 1;
+    let quote: '"' | "'" | null = null;
+    while (i < css.length) {
+      const ch = css[i]!;
+      if (quote) {
+        if (ch === '\\') {
+          i += 2;
+          continue;
+        }
+        if (ch === quote) quote = null;
+        i += 1;
+        continue;
+      }
+      if (ch === '"' || ch === "'") {
+        quote = ch;
+        i += 1;
+        continue;
+      }
+      if (ch === ';') {
+        i += 1;
+        break;
+      }
+      if (ch === '{') {
+        let depth = 1;
+        i += 1;
+        while (i < css.length && depth > 0) {
+          const inner = css[i]!;
+          if (quote) {
+            if (inner === '\\') {
+              i += 2;
+              continue;
+            }
+            if (inner === quote) quote = null;
+            i += 1;
+            continue;
+          }
+          if (inner === '"' || inner === "'") {
+            quote = inner;
+            i += 1;
+            continue;
+          }
+          if (inner === '{') depth += 1;
+          else if (inner === '}') depth -= 1;
+          i += 1;
+        }
+        break;
+      }
+      i += 1;
+    }
+    out.push(css.slice(idx, i).trim());
+    cursor = i;
+  }
+  return out;
+}
+
+function fontImportUrlHost(statement: string): string | null {
+  const urlFn = /url\(\s*(['"]?)([^'")]+)\1\s*\)/i.exec(statement);
+  const quoted = /@import\s+(['"])([^'"]+)\1/i.exec(statement);
+  const raw = (urlFn?.[2] ?? quoted?.[2] ?? '').trim();
+  if (!raw) return null;
+  try {
+    return new URL(raw).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+function extractAllowlistedFontImportRules(css: string): string[] {
+  return cssAtRuleStatements(css, 'import').filter((statement) => {
+    const host = fontImportUrlHost(statement);
+    return host != null && ALLOWLISTED_FONT_IMPORT_HOSTS.has(host);
+  });
+}
+
+/** Leftover after a `;`-truncated Google Fonts @import (preview + old persists). */
+function stripOrphanGoogleFontImportDebris(css: string): string {
+  return String(css || '')
+    .replace(
+      /^\s*(?:[\d,.]+(?:\.\.[\d,.]+)?,)*[\d,.]+(?:\.\.[\d,.]+)?&family=[\s\S]*?display=swap['"]\s*\)\s*;?/i,
+      '',
+    )
+    .replace(
+      /^\s*family=[A-Za-z0-9_+:;,.%&=@\- ]*?display=swap['"]\s*\)\s*;?/i,
+      '',
+    );
+}
+
 /** Strip @import / @namespace / @font-face / @counter-style / @page from salvaged style text. */
 function stripDangerousCssAtRules(css: string): string {
-  let text = normalizeCssForSafetyScan(css)
-    .replace(/@import\b[^;]*;?/gi, '')
-    .replace(/@namespace\b[^;]*;?/gi, '');
+  let text = normalizeCssForSafetyScan(css);
+  const keptImports = extractAllowlistedFontImportRules(text);
+  // Quote-aware — Google Fonts css2 URLs contain `;` inside the quoted URL.
+  text = stripCssAtRule(text, 'import');
+  text = stripCssAtRule(text, 'namespace');
+  text = stripOrphanGoogleFontImportDebris(text);
   // Remote symbols / page backgrounds — same fetch class as @font-face.
   for (const rule of ['font-face', 'counter-style', 'page'] as const) {
     text = stripCssAtRule(text, rule);
@@ -2873,7 +2991,8 @@ function stripDangerousCssAtRules(css: string): string {
   text = text.trim();
   // Fail closed if a dangerous at-rule survived a truncated strip.
   if (/@(?:font-face|counter-style|page)\b/i.test(text)) return '';
-  return text;
+  const kept = keptImports.join('\n');
+  return [kept, text].filter(Boolean).join('\n');
 }
 
 /**

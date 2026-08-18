@@ -154,6 +154,17 @@ full `example.html`을 시스템 프롬프트에 넣지 않는다는 방침은 �
 
 제품 판단: **완성된 덱이 우선**이다. 선택 템플릿과 100% 동일한 CSS를 복사하다가 결과물이 비어버리는 것보다, 템플릿의 palette/font/motif cue가 보이는 compact static deck을 완성하는 것이 낫다. 따라서 pre-write gate는 계속 shell 저장을 막고, prompt는 shell이 생기지 않도록 body-first로 유도한다.
 
+### 0.23 2026-08-18 — Capsule fill은 맞는데 persist/preview가 look을 지움
+
+모델이 Capsule kit을 따라 `.pill` / `.deco-pill` / 코랄·라임 radial wash를 냈는데도 결과물이 납작한 회색 슬라이드 + 작은 검정 라벨로 보였다.
+
+원인은 kit/prompt가 아니라 **저장·미리보기 후처리**다.
+
+1. `sanitizeManualEditFullSource`가 `@import[^;]*`로 Google Fonts css2 URL을 첫 `;`(축 구분자)에서 잘라 `1,6..96…swap');` debris를 `<style>` 앞에 남긴다. CSS 파서가 debris+`:root`를 한 규칙으로 먹어 `--coral` 등이 안 먹고, preview scale에서 pill이 무스타일 텍스트처럼 보인다.
+2. `repairDeckSlideSurfaceBleed`가 `:root --bg`를 종이색으로 추론한 뒤 `html, body, .slide { background:#F5F5F0 !important }`를 넣어 Capsule 슬라이드 inline radial-gradient를 덮는다.
+
+수정: @import는 quote-aware strip + fonts.googleapis.com 등 allowlist 유지. 이미 잘린 debris는 style에서 제거. surface-bleed는 그라데이션/이미지 슬라이드에 `.slide !important`를 쓰지 않고 letterbox(`html, body`)만 고친다. 이미 저장된 flatten bleed도 preview에서 완화한다.
+
 ### 0.22 2026-08-18 — Motif/Layout fill 강화 (밀도 + composition)
 
 Motif lexicon만으로는 부족했다. fill이 Layout CSS를 통째로 omit하고 Motif HTML snippet 없이 클래스명만 주어서 generic flex title로 붕괴했다. 이제 fill은 **capped Layout CSS를 유지**하고, example.html에서 뽑은 **Motif HTML snippets** + scaffold `deco=` 밀도(≥2)를 요구하며, Capsule 예시는 진짜 Capsule Motif에만 주입한다.
@@ -779,4 +790,5 @@ User-message 쪽 `[Existing deck edit]` / `<attached-preview-comments>` 주입�
 | 2026-08-13 | **§0.0 정책 개정** — template = layout vocabulary + visual look, 페이지 수/순서/구성은 브리프 기반. content-swap → pick-and-choose layout roles. daemon Clone default count = 6 (shells.length 아님), `pickTemplateShells` role-based scoring 도입. `template-visual-kit.ts` HARD_RULES 재작성, `DEFAULT_MAX_CHARS` 12000 → 14000. |
 | 2026-08-18 | Clone content-fill motif 보정 — 8/13 SVG hang 방지 패치가 first fill에서 `Motif sprites`/`Decoration CSS`/`Layout CSS`를 통째로 생략해 Daisy/Capsule 템플릿 정체성이 약해졌다. `slimTemplateVisualKitForFill`이 큰 SVG sprite sheet와 전체 stylesheet dump는 계속 제거하되, Daisy star/rainbow·Capsule pill/capsule·Terminal scanline 같은 compact motif recipe와 짧은 Decoration/Layout CSS cue를 보존하도록 변경했다. |
 | 2026-08-18 | §0.20 — html-ppt identity scope. 공유 `:root --bg:#ffffff` 대신 `.tpl-*` host 토큰/슬라이드 surface/폰트를 kit 계약으로 쓰고, SKILL `copy index.html` filesystem 지시를 neutralize. |
+| 2026-08-18 | §0.23 — Capsule persist/preview 후처리. Google Fonts css2 `@import` `;` 절단 debris + surface-bleed `.slide !important`가 fill look을 지움. quote-aware allowlist import + 그라데이션 슬라이드는 letterbox만 promote. |
 | 2026-08-18 | §0.21 — 전체 템플릿 Motif cue 보존 강화. 템플릿명 cue + 실제 motif class/token 목록을 `### Motif vocabulary`로 유지하고, 공식 deck 전체에서 slim 결과까지 motif가 살아남는지 테스트한다. |
