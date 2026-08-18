@@ -120,6 +120,16 @@ export function shouldRetryTipRemountSyncHostMeasureAfterSrcDocLoad(
 }
 
 /**
+ * Cancel a pending tip-remount sync rAF when grace clears or a newer tip-yield
+ * arms — avoid measuring a dying remount session (463).
+ */
+export function shouldCancelTipRemountSyncHostMeasureRetry(
+  pendingRaf: boolean,
+): boolean {
+  return pendingRaf;
+}
+
+/**
  * Sync primary measure succeeded — drop chrome inert immediately while tip
  * remount grace remains for wild-jump skip until async remasure (459).
  */

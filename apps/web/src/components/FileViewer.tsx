@@ -336,6 +336,7 @@ import {
   shouldRequestTipRemountRemasureAfterSrcDocLoad,
   shouldApplyTipRemountSyncHostMeasureOnSrcDocLoad,
   shouldRetryTipRemountSyncHostMeasureAfterSrcDocLoad,
+  shouldCancelTipRemountSyncHostMeasureRetry,
   shouldReleaseTipRemountChromeAfterSyncHostMeasure,
   shouldArmTipRemountFitSettleForDeckHostFit,
   shouldRemeasureTipRemountAfterDeckHostFitSettle,
@@ -5500,6 +5501,8 @@ function HtmlViewer({
   /** Deck host-fit settle — remasure after scale nudges (460). */
   const manualEditTipRemountFitSettleUntilRef = useRef(0);
   const manualEditTipRemountFitSettleCancelRef = useRef<(() => void) | null>(null);
+  /** Pending onLoad sync measure rAF retry — cancel on grace clear (463). */
+  const manualEditTipRemountSyncRetryRafRef = useRef<number | null>(null);
   /** Inert resize/multi chrome until tip remasure applies tip geometry (455/458). */
   const [manualEditTipRemountChromeSuppressed, setManualEditTipRemountChromeSuppressed] = useState(false);
   const manualEditTipRemountChromeSuppressedRef = useRef(false);
@@ -7958,8 +7961,16 @@ function HtmlViewer({
     )) {
       return applied;
     }
+    // Cancel any prior retry before arming a new one (463).
+    if (shouldCancelTipRemountSyncHostMeasureRetry(
+      manualEditTipRemountSyncRetryRafRef.current != null,
+    )) {
+      window.cancelAnimationFrame(manualEditTipRemountSyncRetryRafRef.current!);
+      manualEditTipRemountSyncRetryRafRef.current = null;
+    }
     // First load tick often measures before fonts/deck-fit layout — retry once.
-    requestAnimationFrame(() => {
+    manualEditTipRemountSyncRetryRafRef.current = requestAnimationFrame(() => {
+      manualEditTipRemountSyncRetryRafRef.current = null;
       if (!shouldApplyTipRemountSyncHostMeasureOnSrcDocLoad(
         manualEditModeRef.current,
         selectedManualEditTargetIdsRef.current,
@@ -8218,6 +8229,12 @@ function HtmlViewer({
     manualEditTipRemountFitSettleUntilRef.current = 0;
     manualEditTipRemountFitSettleCancelRef.current?.();
     manualEditTipRemountFitSettleCancelRef.current = null;
+    if (shouldCancelTipRemountSyncHostMeasureRetry(
+      manualEditTipRemountSyncRetryRafRef.current != null,
+    )) {
+      window.cancelAnimationFrame(manualEditTipRemountSyncRetryRafRef.current!);
+      manualEditTipRemountSyncRetryRafRef.current = null;
+    }
     manualEditTipRemountChromeSuppressedRef.current = false;
     setManualEditTipRemountChromeSuppressed(false);
     if (manualEditTipRemountChromeSafetyTimeoutRef.current != null) {
@@ -8273,6 +8290,13 @@ function HtmlViewer({
     if (graceId) {
       const nowMs = Date.now();
       const graceUntil = nowMs + 800;
+      // Drop stale onLoad sync retry from a prior tip-yield (463).
+      if (shouldCancelTipRemountSyncHostMeasureRetry(
+        manualEditTipRemountSyncRetryRafRef.current != null,
+      )) {
+        window.cancelAnimationFrame(manualEditTipRemountSyncRetryRafRef.current!);
+        manualEditTipRemountSyncRetryRafRef.current = null;
+      }
       manualEditTipRemountGeometryGraceIdRef.current = graceId;
       manualEditTipRemountGeometryGraceUntilRef.current = graceUntil;
       // Deck host-fit may rescale after onLoad — keep settle latch past grace (460).

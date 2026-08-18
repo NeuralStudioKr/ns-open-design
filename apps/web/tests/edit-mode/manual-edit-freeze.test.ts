@@ -9,6 +9,7 @@ import {
   shouldRequestTipRemountRemasureAfterSrcDocLoad,
   shouldApplyTipRemountSyncHostMeasureOnSrcDocLoad,
   shouldRetryTipRemountSyncHostMeasureAfterSrcDocLoad,
+  shouldCancelTipRemountSyncHostMeasureRetry,
   shouldReleaseTipRemountChromeAfterSyncHostMeasure,
   shouldArmTipRemountFitSettleForDeckHostFit,
   shouldRemeasureTipRemountAfterDeckHostFitSettle,
@@ -148,6 +149,11 @@ describe('manual edit freeze reset', () => {
     expect(shouldRetryTipRemountSyncHostMeasureAfterSrcDocLoad(
       false, false, ['a'], 'a',
     )).toBe(false);
+  });
+
+  it('cancels pending tip remount sync rAF when grace clears', () => {
+    expect(shouldCancelTipRemountSyncHostMeasureRetry(true)).toBe(true);
+    expect(shouldCancelTipRemountSyncHostMeasureRetry(false)).toBe(false);
   });
 
   it('skips deck srcDoc transport remount for edit-mode freeze tip sync', () => {
