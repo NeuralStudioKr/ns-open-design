@@ -1139,9 +1139,10 @@ export function updateProject(db: SqliteDb, id: string, patch: DbRow) {
 }
 
 /**
- * Empty patch (`{}`) is an intentional activity bump (message PUT, comments).
- * pendingPrompt-only patches never bump — composer seed clear/set is not a
- * content edit (read-only open must not show 「방금 전」).
+ * Empty patch (`{}`) is not activity — read-only open / identical message
+ * re-PUT must not show 「방금 전」. Callers that mean "user worked"
+ * (new/changed message, comments, live-artifact delete) pass an explicit
+ * `updatedAt`. pendingPrompt-only patches never bump.
  * No-op field patches preserve existing.updatedAt.
  */
 export function resolveProjectPatchUpdatedAt(
@@ -1160,7 +1161,7 @@ export function resolveProjectPatchUpdatedAt(
     return patch.updatedAt;
   }
   const keys = Object.keys(patch).filter((key) => key !== 'updatedAt');
-  if (keys.length === 0) return Date.now();
+  if (keys.length === 0) return existing.updatedAt;
 
   // Composer seed is ephemeral — never treat pendingPrompt-only as activity.
   const contentKeys = keys.filter((key) => key !== 'pendingPrompt');
@@ -1191,6 +1192,40 @@ export function resolveProjectPatchUpdatedAt(
     changed = true;
   }
   return changed ? Date.now() : existing.updatedAt;
+}
+
+/** True when a message upsert is real chat/edit work, not an identical re-save. */
+export function messageUpsertIsProjectActivity(
+  existing: {
+    content?: unknown;
+    runStatus?: unknown;
+    endedAt?: unknown;
+    producedFiles?: unknown;
+  } | null | undefined,
+  incoming: {
+    content?: unknown;
+    runStatus?: unknown;
+    endedAt?: unknown;
+    producedFiles?: unknown;
+  },
+): boolean {
+  if (!existing) return true;
+  const sameJson = (a: unknown, b: unknown) => {
+    try {
+      return stableJsonStringify(a ?? null) === stableJsonStringify(b ?? null);
+    } catch {
+      return a === b;
+    }
+  };
+  if ((existing.content ?? '') !== (incoming.content ?? existing.content ?? '')) return true;
+  if ((existing.runStatus ?? null) !== (incoming.runStatus ?? existing.runStatus ?? null)) {
+    return true;
+  }
+  if ((existing.endedAt ?? null) !== (incoming.endedAt ?? existing.endedAt ?? null)) return true;
+  if ('producedFiles' in incoming && !sameJson(existing.producedFiles, incoming.producedFiles)) {
+    return true;
+  }
+  return false;
 }
 
 function stableJsonStringify(value: unknown): string {

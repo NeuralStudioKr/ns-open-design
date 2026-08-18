@@ -261,6 +261,29 @@ describe("embedRegistryProjectList", () => {
     expect(merged[0]?.status?.value).toBe("running");
   });
 
+  it("does not let a newer registry timestamp beat daemon last-edit time", () => {
+    const registry = [
+      mapRegistryRowToProject({
+        odProjectId: "opened",
+        title: "Opened Deck",
+        updatedAt: 9_000,
+      }),
+    ];
+    const daemon = [
+      {
+        id: "opened",
+        name: "Opened Deck",
+        skillId: null,
+        designSystemId: null,
+        createdAt: 1,
+        updatedAt: 1_200,
+      },
+    ];
+
+    const merged = mergeDaemonFieldsOntoRegistryProjects(registry, daemon);
+    expect(merged[0]?.updatedAt).toBe(1_200);
+  });
+
   it("does not let daemon artifact slugs replace registry names in lists", () => {
     const registry = [
       mapRegistryRowToProject({

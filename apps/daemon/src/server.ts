@@ -10401,7 +10401,7 @@ export async function startServer({
         projectId,
         artifactId: req.params.artifactId,
       });
-      updateProject(db, projectId, {});
+      updateProject(db, projectId, { updatedAt: Date.now() });
       emitLiveArtifactEvent({ projectId }, 'deleted', existing.artifact);
       res.json({ ok: true });
     } catch (err) {

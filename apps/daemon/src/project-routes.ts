@@ -27,6 +27,7 @@ import { isSafeId } from './projects.js';
 import {
   listProjectsAsync,
   listProjectsPageAsync,
+  messageUpsertIsProjectActivity,
   parseProjectListCursor,
 } from './db.js';
 import {
@@ -2135,12 +2136,15 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
     if (m.id && m.id !== req.params.mid) {
       return res.status(400).json({ error: 'id mismatch' });
     }
+    const prior = listMessages(db, req.params.cid).find((row) => row.id === req.params.mid) ?? null;
     const saved = upsertMessage(db, req.params.cid, {
       ...m,
       id: req.params.mid,
     });
-    // Bump the parent project's updatedAt so the project list re-orders.
-    updateProject(db, req.params.id, {});
+    // Identical re-PUT (open / hydrate) must not move Home 「방금 전」.
+    if (messageUpsertIsProjectActivity(prior, m)) {
+      updateProject(db, req.params.id, { updatedAt: Date.now() });
+    }
     if (isTeamverDesignManaged() && ctx.projectStorageHooks) {
       scheduleTeamverProjectDaemonStateExport(
         db,
@@ -2223,7 +2227,7 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
         req.params.cid,
         req.body || {},
       );
-      updateProject(db, req.params.id, {});
+      updateProject(db, req.params.id, { updatedAt: Date.now() });
       res.json({ comment });
     } catch (err: any) {
       res.status(400).json({ error: String(err?.message || err) });
@@ -2247,7 +2251,7 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
         );
         if (!comment)
           return res.status(404).json({ error: 'comment not found' });
-        updateProject(db, req.params.id, {});
+        updateProject(db, req.params.id, { updatedAt: Date.now() });
         res.json({ comment });
       } catch (err: any) {
         res.status(400).json({ error: String(err?.message || err) });
@@ -2269,7 +2273,7 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
         req.params.commentId,
       );
       if (!ok) return res.status(404).json({ error: 'comment not found' });
-      updateProject(db, req.params.id, {});
+      updateProject(db, req.params.id, { updatedAt: Date.now() });
       res.json({ ok: true });
     },
   );

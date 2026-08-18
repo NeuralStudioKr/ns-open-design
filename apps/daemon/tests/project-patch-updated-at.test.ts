@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import { resolveProjectPatchUpdatedAt } from '../src/db.js';
+import {
+  messageUpsertIsProjectActivity,
+  resolveProjectPatchUpdatedAt,
+} from '../src/db.js';
 
 const existing = {
   updatedAt: 1_700_000_000_000,
@@ -13,10 +16,8 @@ const existing = {
 };
 
 describe('resolveProjectPatchUpdatedAt', () => {
-  it('bumps on empty activity patch (message PUT / comments)', () => {
-    const before = Date.now();
-    const next = resolveProjectPatchUpdatedAt(existing, {});
-    expect(next).toBeGreaterThanOrEqual(before);
+  it('preserves timestamp on empty patch (open / identical re-PUT)', () => {
+    expect(resolveProjectPatchUpdatedAt(existing, {})).toBe(existing.updatedAt);
   });
 
   it('preserves timestamp for pendingPrompt-only clear (no-op)', () => {
@@ -64,5 +65,37 @@ describe('resolveProjectPatchUpdatedAt', () => {
       metadata: { kind: 'deck', entryFile: 'deck.html' },
     });
     expect(next).toBeGreaterThanOrEqual(before);
+  });
+});
+
+describe('messageUpsertIsProjectActivity', () => {
+  it('treats a new message as activity', () => {
+    expect(
+      messageUpsertIsProjectActivity(null, { content: 'hello', runStatus: 'succeeded' }),
+    ).toBe(true);
+  });
+
+  it('ignores an identical re-PUT', () => {
+    expect(
+      messageUpsertIsProjectActivity(
+        { content: 'hello', runStatus: 'succeeded', endedAt: 10, producedFiles: [] },
+        { content: 'hello', runStatus: 'succeeded', endedAt: 10, producedFiles: [] },
+      ),
+    ).toBe(false);
+  });
+
+  it('treats content or status changes as activity', () => {
+    expect(
+      messageUpsertIsProjectActivity(
+        { content: 'hello', runStatus: 'running' },
+        { content: 'hello world', runStatus: 'running' },
+      ),
+    ).toBe(true);
+    expect(
+      messageUpsertIsProjectActivity(
+        { content: 'hello', runStatus: 'running' },
+        { content: 'hello', runStatus: 'succeeded' },
+      ),
+    ).toBe(true);
   });
 });

@@ -136,8 +136,9 @@ export function mergeDaemonFieldsOntoRegistryProjects(
       status: mergeProjectDisplayStatus(registry.status, daemon.status),
       metadata: daemon.metadata ?? registry.metadata,
       createdAt: registry.createdAt || daemon.createdAt,
-      // Prefer the fresher of registry vs daemon; ignore zero placeholders.
-      updatedAt: Math.max(registry.updatedAt || 0, daemon.updatedAt || 0),
+      // Daemon clock is last content edit. Registry can move on access /
+      // idempotent re-register and must not win (Home 「방금 전」 on open).
+      updatedAt: daemon.updatedAt || registry.updatedAt || 0,
     });
   });
 }

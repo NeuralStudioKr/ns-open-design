@@ -273,7 +273,7 @@ export function registerLiveArtifactRoutes(app: Express, ctx: RegisterLiveArtifa
         projectId,
         artifactId: req.params.artifactId,
       });
-      updateProject(db, projectId, {});
+      updateProject(db, projectId, { updatedAt: Date.now() });
       emitLiveArtifactEvent({ projectId }, 'deleted', existing.artifact);
       scheduleProjectStoragePersistAfterResponse(projectStorageHooks, req, res, projectId);
       res.json({ ok: true });
