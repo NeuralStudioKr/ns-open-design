@@ -126,6 +126,12 @@ describe('FileViewer revision tip advance after undo', () => {
     expect(fileViewer).toContain('remeasureTipRemountAfterDeckHostFitSettle');
     expect(fileViewer).toContain('shouldDeferTipRemountGraceConsumeForDeckHostFitSettle');
     expect(fileViewer).toContain('shouldSkipWildJumpDuringTipRemountFitSettle');
+    expect(fileViewer).toContain('shouldSkipWildJumpForTipRemountSelectedMember');
+    expect(fileViewer).toContain('shouldSkipWildJumpDuringTipRemountFitSettleForSelectedMember');
+    expect(fileViewer).toContain('shouldRefreshHostMetricsAfterTipRemountMultiRemasure');
+    expect(fileViewer).toContain('refreshManualEditHostMetricsAfterTipRemountMulti');
+    expect(fileViewer).toContain('Multi: force host metrics so union chrome');
+    expect(fileViewer).toContain('Multi tip-yield: sibling members share the tip-remount session');
     expect(fileViewer).toContain('Tip-yield: remasure after host-fit scale settle');
     expect(fileViewer).toContain('Selection echo / remasure: srcDoc onLoad');
     expect(fileViewer).toContain('Tip-yield: sync tip rect, then async remasure on the live tip document');

@@ -441,3 +441,53 @@ export function shouldSkipWildJumpDuringTipRemountFitSettle(
     && rectId === selectedId
   );
 }
+
+/**
+ * Multi tip-yield: sibling remasures are in the same tip-remount session.
+ * Skip wild-jump for any selected member while geometry grace is live (461).
+ * Consume stays primary-only via shouldConsumeTipRemountGeometryGraceOnRemasure.
+ */
+export function shouldSkipWildJumpForTipRemountSelectedMember(
+  graceId: string | null | undefined,
+  rectId: string,
+  selectedIds: readonly string[],
+  nowMs: number,
+  graceUntilMs: number,
+): boolean {
+  if (tipRemountGeometryGraceExpired(nowMs, graceUntilMs)) return false;
+  return Boolean(
+    graceId
+    && selectedIds.includes(graceId)
+    && selectedIds.includes(rectId),
+  );
+}
+
+/**
+ * Multi tip-yield during deck host-fit settle — same selected-set wild-jump
+ * skip as geometry grace, bound to fit-settle until (461).
+ */
+export function shouldSkipWildJumpDuringTipRemountFitSettleForSelectedMember(
+  graceId: string | null | undefined,
+  rectId: string,
+  selectedIds: readonly string[],
+  nowMs: number,
+  fitSettleUntilMs: number,
+): boolean {
+  if (tipRemountFitSettleExpired(nowMs, fitSettleUntilMs)) return false;
+  return Boolean(
+    graceId
+    && selectedIds.includes(graceId)
+    && selectedIds.includes(rectId),
+  );
+}
+
+/**
+ * After multi tip remasure, refresh host scale/offset + geom epoch so union
+ * chrome compose and live measureHostRect stay aligned (461).
+ */
+export function shouldRefreshHostMetricsAfterTipRemountMultiRemasure(
+  selectedCount: number,
+  appliedAny: boolean,
+): boolean {
+  return appliedAny && selectedCount >= 2;
+}

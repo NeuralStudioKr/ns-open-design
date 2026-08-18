@@ -13,6 +13,9 @@ import {
   shouldRemeasureTipRemountAfterDeckHostFitSettle,
   shouldDeferTipRemountGraceConsumeForDeckHostFitSettle,
   shouldSkipWildJumpDuringTipRemountFitSettle,
+  shouldSkipWildJumpForTipRemountSelectedMember,
+  shouldSkipWildJumpDuringTipRemountFitSettleForSelectedMember,
+  shouldRefreshHostMetricsAfterTipRemountMultiRemasure,
   tipRemountFitSettleExpired,
   shouldSkipSrcDocTransportRemountForManualEditFreezeTipSync,
   shouldSuppressManualEditChromeUntilTipRemasure,
@@ -297,5 +300,30 @@ describe('manual edit freeze reset', () => {
     expect(shouldSkipWildJumpDuringTipRemountFitSettle(
       'el-1', 'el-1', 'el-1', 2_000, 2_000,
     )).toBe(false);
+  });
+
+  it('skips wild-jump for multi tip-remount selected members', () => {
+    expect(shouldSkipWildJumpForTipRemountSelectedMember(
+      'el-1', 'el-2', ['el-1', 'el-2'], 1_000, 1_800,
+    )).toBe(true);
+    expect(shouldSkipWildJumpForTipRemountSelectedMember(
+      'el-1', 'el-3', ['el-1', 'el-2'], 1_000, 1_800,
+    )).toBe(false);
+    expect(shouldSkipWildJumpForTipRemountSelectedMember(
+      'el-1', 'el-2', ['el-1', 'el-2'], 1_800, 1_800,
+    )).toBe(false);
+    expect(shouldSkipWildJumpDuringTipRemountFitSettleForSelectedMember(
+      'el-1', 'el-2', ['el-1', 'el-2'], 1_000, 2_000,
+    )).toBe(true);
+    expect(shouldSkipWildJumpDuringTipRemountFitSettleForSelectedMember(
+      'el-1', 'el-2', ['el-1', 'el-2'], 2_000, 2_000,
+    )).toBe(false);
+  });
+
+  it('refreshes host metrics after multi tip-remount remasure', () => {
+    expect(shouldRefreshHostMetricsAfterTipRemountMultiRemasure(2, true)).toBe(true);
+    expect(shouldRefreshHostMetricsAfterTipRemountMultiRemasure(3, true)).toBe(true);
+    expect(shouldRefreshHostMetricsAfterTipRemountMultiRemasure(1, true)).toBe(false);
+    expect(shouldRefreshHostMetricsAfterTipRemountMultiRemasure(2, false)).toBe(false);
   });
 });

@@ -340,6 +340,9 @@ import {
   shouldRemeasureTipRemountAfterDeckHostFitSettle,
   shouldDeferTipRemountGraceConsumeForDeckHostFitSettle,
   shouldSkipWildJumpDuringTipRemountFitSettle,
+  shouldSkipWildJumpForTipRemountSelectedMember,
+  shouldSkipWildJumpDuringTipRemountFitSettleForSelectedMember,
+  shouldRefreshHostMetricsAfterTipRemountMultiRemasure,
   shouldSkipSrcDocTransportRemountForManualEditFreezeTipSync,
   shouldDisableManualEditChromeUntilTipRemasure,
   shouldAbortManualEditGestureForTipYieldFreezeSync,
@@ -7899,6 +7902,7 @@ function HtmlViewer({
       ? [primaryId, ...ids.filter((id) => id !== primaryId)]
       : ids;
     let primaryMeasured = false;
+    let appliedAny = false;
     for (const id of ordered) {
       const content = measureManualEditTargetContentRect(frame, id);
       if (!content) continue;
@@ -7921,6 +7925,7 @@ function HtmlViewer({
           layoutHeight: content.layoutHeight,
         } as ManualEditTarget);
       }
+      appliedAny = true;
       if (id === primaryId) primaryMeasured = true;
     }
     if (!shouldReleaseTipRemountChromeAfterSyncHostMeasure(primaryMeasured)) {
@@ -7932,7 +7937,30 @@ function HtmlViewer({
     if (shouldRefreshHostPaintAfterTipRemountRemasure(true) && primaryId) {
       refreshManualEditHostPaintRect(primaryId, { force: true });
     }
+    // Multi: force host metrics so union chrome does not keep pre-tip compose (461).
+    refreshManualEditHostMetricsAfterTipRemountMulti(frame, appliedAny);
     return true;
+  }
+
+  /**
+   * Multi tip-remount: refresh host scale/offset + geom epoch so union chrome
+   * and live measureHostRect do not keep pre-tip/pre-fit compose (461).
+   */
+  function refreshManualEditHostMetricsAfterTipRemountMulti(
+    frame: HTMLIFrameElement | null,
+    appliedAny: boolean,
+  ) {
+    if (!shouldRefreshHostMetricsAfterTipRemountMultiRemasure(
+      selectedManualEditTargetIdsRef.current.length,
+      appliedAny,
+    )) {
+      return;
+    }
+    const workspace = manualEditWorkspaceRef.current;
+    if (!frame || !workspace) return;
+    setManualEditHostScale(measureIframeHostScale(frame));
+    setManualEditHostOffset(measureIframeOffsetInHost(frame, workspace));
+    setManualEditGeomEpoch((n) => n + 1);
   }
 
   /**
@@ -7959,6 +7987,7 @@ function HtmlViewer({
       ? [primaryId, ...ids.filter((id) => id !== primaryId)]
       : ids;
     let primaryMeasured = false;
+    let appliedAny = false;
     for (const id of ordered) {
       const content = measureManualEditTargetContentRect(frame, id);
       if (!content) continue;
@@ -7980,11 +8009,14 @@ function HtmlViewer({
           layoutHeight: content.layoutHeight,
         } as ManualEditTarget);
       }
+      appliedAny = true;
       if (id === primaryId) primaryMeasured = true;
     }
     if (primaryMeasured && primaryId && shouldRefreshHostPaintAfterTipRemountRemasure(true)) {
       refreshManualEditHostPaintRect(primaryId, { force: true });
     }
+    // Multi: refresh scale/offset after fit nudges so union tracks post-fit tip (461).
+    refreshManualEditHostMetricsAfterTipRemountMulti(frame, appliedAny);
     for (const id of ordered) {
       requestManualEditTargetRemeasure(id, frame);
     }
@@ -9981,6 +10013,7 @@ function HtmlViewer({
           clearManualEditTipRemountGeometryGrace();
         }
         const current = selectedManualEditTargetRef.current;
+        const selectedIds = selectedManualEditTargetIdsRef.current;
         const tipRemountGrace = shouldSkipWildJumpAfterTipRemountGrace(
           manualEditTipRemountGeometryGraceIdRef.current,
           measured.id,
@@ -9991,6 +10024,20 @@ function HtmlViewer({
           manualEditTipRemountGeometryGraceIdRef.current,
           measured.id,
           selectedManualEditTargetIdRef.current,
+          nowMs,
+          manualEditTipRemountFitSettleUntilRef.current,
+        );
+        // Multi tip-yield: sibling members share the tip-remount session (461).
+        const tipRemountSelectedMember = shouldSkipWildJumpForTipRemountSelectedMember(
+          manualEditTipRemountGeometryGraceIdRef.current,
+          measured.id,
+          selectedIds,
+          nowMs,
+          manualEditTipRemountGeometryGraceUntilRef.current,
+        ) || shouldSkipWildJumpDuringTipRemountFitSettleForSelectedMember(
+          manualEditTipRemountGeometryGraceIdRef.current,
+          measured.id,
+          selectedIds,
           nowMs,
           manualEditTipRemountFitSettleUntilRef.current,
         );
@@ -10022,15 +10069,22 @@ function HtmlViewer({
           if (shouldRefreshHostPaintAfterTipRemountRemasure(true)) {
             refreshManualEditHostPaintRect(measured.id, { force: true });
           }
+          refreshManualEditHostMetricsAfterTipRemountMulti(
+            iframeRef.current,
+            true,
+          );
           return;
         }
         applyManualEditMeasuredGeometry(measured);
-        // Fit-settle window: keep grace, but refresh host paint on tip geometry (460).
-        if (
-          tipRemountGrace
-          && shouldRefreshHostPaintAfterTipRemountRemasure(true)
-        ) {
-          refreshManualEditHostPaintRect(measured.id, { force: true });
+        // Fit-settle / multi tip-remount: refresh host paint + multi metrics (460/461).
+        if (tipRemountGrace || tipRemountSelectedMember) {
+          if (shouldRefreshHostPaintAfterTipRemountRemasure(true)) {
+            refreshManualEditHostPaintRect(measured.id, { force: true });
+          }
+          refreshManualEditHostMetricsAfterTipRemountMulti(
+            iframeRef.current,
+            true,
+          );
         }
         return;
       }
