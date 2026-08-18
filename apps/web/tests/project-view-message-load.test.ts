@@ -166,7 +166,7 @@ describe("ProjectView message loading", () => {
     const source = readSource("src/components/ProjectView.tsx");
     const signature = source.indexOf("skillIdOverride?: string | null");
     expect(signature).toBeGreaterThan(0);
-    const composeBlock = source.slice(signature, signature + 12000);
+    const composeBlock = source.slice(signature, signature + 16000);
 
     expect(composeBlock).toContain("const effectiveSkillId = skillIdOverride ?? project.skillId");
     expect(composeBlock).toContain("skills.find((s) => s.id === effectiveSkillId)");
@@ -184,7 +184,7 @@ describe("ProjectView message loading", () => {
 
     const callStart = source.indexOf("const effectiveSkillId = resolveDeckTemplateSkillId(project.metadata, meta)");
     expect(callStart).toBeGreaterThan(0);
-    const callBlock = source.slice(callStart, callStart + 2400);
+    const callBlock = source.slice(callStart, callStart + 4000);
     expect(callBlock).toContain("resolveDeckTemplateSkillId(project.metadata, meta)");
     expect(callBlock).toContain("resolveScenarioPluginIdForLocalSkill(");
     expect(callBlock).toContain("composedSystemPrompt(");
@@ -428,6 +428,7 @@ describe("ProjectView message loading", () => {
     expect(source).toContain("beforeSlides: persistCommentSections");
     expect(source).toContain("currentSlides: persistCommentSections");
     expect(source).toContain("patchedSlides: scopeResult.afterSlides");
+    expect(source).toContain("repairDeckSlideSurfaceBleed(");
     expect(source).toContain("repairArtifactDocumentHeadIfNeeded(artifactToPersist.html)");
     expect(source).toContain("stabilizeVisualMarkDeckHtml(");
     expect(source).toMatch(

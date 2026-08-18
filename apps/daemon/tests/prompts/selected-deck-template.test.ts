@@ -35,7 +35,8 @@ describe('selected-deck-template prompt helpers', () => {
     expect(wrapped).toMatch(/TOPIC to research/);
     expect(wrapped).toMatch(/echoes the prompt/);
     expect(wrapped).toContain('Body-first output contract');
-    expect(wrapped).toContain('<body><section class="slide"');
+    expect(wrapped).toContain('background:<kit surface>');
+    expect(wrapped).toContain('Full-bleed surface');
     expect(wrapped).toContain('Do not emit `<head>`');
     expect(wrapped).toContain('skip huge SVG `<style>` payloads');
     expect(wrapped).toContain('ZERO Motif `<svg>`');

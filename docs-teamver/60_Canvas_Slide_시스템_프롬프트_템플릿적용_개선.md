@@ -152,11 +152,11 @@ full `example.html`을 시스템 프롬프트에 넣지 않는다는 방침은 �
 
 제품 판단: **완성된 덱이 우선**이다. 선택 템플릿과 100% 동일한 CSS를 복사하다가 결과물이 비어버리는 것보다, 템플릿의 palette/font/motif cue가 보이는 compact static deck을 완성하는 것이 낫다. 따라서 pre-write gate는 계속 shell 저장을 막고, prompt는 shell이 생기지 않도록 body-first로 유도한다.
 
+### 0.17 2026-08-18 — cream 배경 위아래 흰 띠 (full-bleed surface)
+
+템플릿 palette는 맞는데 preview에서 cream 사각형 위아래에 흰 띠가 남는 경우: `html`/`body` letterbox 또는 outer `.slide`가 white이고 cream이 안쪽 패널에만 칠해진 것. fill 계약에 **edge-to-edge full-bleed**를 명시하고, persist/srcdoc에서 `repairDeckSlideSurfaceBleed`로 paper hex를 `html, body, .slide`에 promote한다.
+
 ### 0.16 2026-08-14 — Motif SVG hang: 스트림 중 abort + auto-continue dump 재주입 차단
-
-persist 거부와 ZERO-svg READ LAST만으로는 모델이 path data를 스트리밍하는 동안 UI가 5줄에서 멈춘다. fill은 heading 전 `<svg>`에서 `od:fill-motif-svg-dump`로 upstream을 끊고 `onDone`으로 incomplete auto-continue를 탄다. auto-continue는 SVG-first partial을 fence하지 않는다.
-
-### 0.15 2026-08-14 — Motif hang 재발 방지: kit VERBATIM ↔ Motif budget 충돌 제거
 
 fill ZERO-SVG / Motif budget(title-first)과 kit HARD_RULES의 `Paste sprites VERBATIM` · Daisy `cover MUST show daisy SVG` · wrap `at most one short snippet`가 충돌하면 모델이 다시 Motif `<svg><style>`를 선두에 연다. kit Motif 규칙을 **title-first optional**로 맞추고, `slimTemplateVisualKitForFill`이 wrap/scaffold/Daisy 잔여 문구까지 scrub한다.
 

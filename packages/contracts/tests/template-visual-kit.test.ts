@@ -51,7 +51,7 @@ describe('extractTemplateVisualKitFromHtml', () => {
     expect(kit).toMatch(/\*\*color\*\*\s*\(text\):\s*`#2D2D2D`/i);
     expect(kit).toMatch(/light background \+ dark ink/i);
     expect(kit).toMatch(/html,\s*body,\s*\.slide\s*\{\s*background:\s*#F5F0E6/);
-    expect(kit).toMatch(/cream-slides-on-dark-shell|preview-panel shell/i);
+    expect(kit).toMatch(/cream-slides-on-dark-shell|preview-panel|letterbox|edge-to-edge|white top\/bottom bands/i);
     expect(kit).toMatch(/AFTER title\/lead|at most one short|optional complete SVGs|Motif SVG paste is optional/i);
     expect(kit).not.toMatch(/Paste sprites VERBATIM|Copy at least one complete SVG from this block onto the cover/i);
     expect(kit).toMatch(/lonely ornament|matching corner slots|TOKEN-SAFE CONTENT-SWAP|CSS\/`?\.deco`? first|decorative density/i);

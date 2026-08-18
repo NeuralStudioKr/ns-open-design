@@ -553,6 +553,7 @@ describe('buildSrcdoc', () => {
     expect(srcdocSource).toContain('annotatePreviewEditTargets');
     expect(srcdocSource).toContain('artifactDocumentHeadLooksIntact');
     expect(srcdocSource).toContain('repairArtifactDocumentHeadIfNeeded');
+    expect(srcdocSource).toContain('repairDeckSlideSurfaceBleed');
     expect(srcdocSource).toContain('shouldAnnotatePreviewEditTargets');
     expect(srcdocSource).toContain('annotateMissingOdIdsOnDocument');
     expect(srcdocSource).toContain('annotateManualEditSourcePathsOnDocument');

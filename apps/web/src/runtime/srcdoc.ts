@@ -121,12 +121,15 @@ export {
   repairArtifactDocumentHeadIfNeeded,
 } from './artifact-document-head';
 import { repairArtifactDocumentHeadIfNeeded } from './artifact-document-head';
+import { repairDeckSlideSurfaceBleed } from '../artifacts/deck-slide-surface';
 
 export function buildSrcdoc(
   html: string,
   options: SrcdocOptions = {}
 ): string {
-  const repairedHead = repairArtifactDocumentHeadIfNeeded(html);
+  const repairedHead = repairDeckSlideSurfaceBleed(
+    repairArtifactDocumentHeadIfNeeded(html),
+  );
   const repaired = stripConflictingSrcDocCspBaseUri(repairedHead);
   // alreadyRepaired: avoid wrapPreviewHtmlShell re-running repair on full docs.
   const wrapped = wrapPreviewHtmlShell(repaired, { alreadyRepaired: true });
