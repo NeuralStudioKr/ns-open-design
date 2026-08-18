@@ -77,6 +77,14 @@ const QUICK_SETTING_GROUPS = [
       ["impact", "teamver.canvasSlideLaunch.quickToneImpact"],
     ],
   },
+  {
+    key: "language",
+    labelKey: "teamver.homeCreate.quickLanguage",
+    options: [
+      ["ko", "teamver.homeCreate.quickLanguageKo"],
+      ["en", "teamver.homeCreate.quickLanguageEn"],
+    ],
+  },
 ] as const;
 
 function collectTransferFiles(data: DataTransfer | null | undefined): File[] {
@@ -302,6 +310,10 @@ export function TeamverHomeSlideCreateModal({
     t(
       QUICK_SETTING_GROUPS[2].options.find(([value]) => value === normalizedQuick.tone)?.[1]
         ?? "teamver.canvasSlideLaunch.quickToneAuto",
+    ),
+    t(
+      QUICK_SETTING_GROUPS[3].options.find(([value]) => value === normalizedQuick.language)?.[1]
+        ?? "teamver.homeCreate.quickLanguageKo",
     ),
     attachCount > 0 ? t("teamver.homeCreate.summaryAttach", { count: attachCount }) : null,
   ].filter((part): part is string => Boolean(part));

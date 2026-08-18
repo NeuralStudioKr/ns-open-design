@@ -7,6 +7,7 @@ import {
   CANVAS_CREATE_SLIDES_PLUGIN_ID,
   CANVAS_CREATE_SLIDES_PROMPT,
   DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS,
+  createHomeSlideCreateQuickSettings,
   HOME_CREATE_SLIDES_INTERNAL_INSTRUCTION,
   HOME_EMPTY_CREATE_SLIDES_PROMPT,
   SLIDE_DECK_CONTENT_EXPANSION_EXAMPLE,
@@ -470,12 +471,20 @@ describe("canvasSlideLaunch", () => {
     expect(
       canvasCreateSlidesPluginInputs("Topic", "Template", "brief", "", quickSettings),
     ).toMatchObject({
-      quickSettings,
+      quickSettings: { ...quickSettings, language: "auto" },
       quickSettingsInstruction: instruction,
       audience: "education / training audience",
       tone: "friendly",
       slideCount: "5-6",
     });
+    const homeKo = createHomeSlideCreateQuickSettings();
+    expect(homeKo.language).toBe("ko");
+    expect(canvasSlideQuickSettingsInstruction(homeKo)).toMatch(/Korean|한글/);
+    expect(canvasCreateSlidesPluginInputs("Topic", "Template", null, "", homeKo)).toMatchObject({
+      language: "Korean (한글)",
+      outputLanguage: "ko",
+    });
+    expect(canvasCreateSlidesPluginInputs("Topic", "Template", "brief")).not.toHaveProperty("outputLanguage");
   });
 
   it("lets free-text slide counts override quick Length in Plugin inputs", () => {
@@ -642,6 +651,10 @@ describe("canvasSlideLaunch", () => {
     expect(home).toContain("embedAttachBlockReason");
     expect(home).toContain("openHomeSlideCreate('new', undefined, { preserveAttachments: true })");
     expect(home).toContain("if (!homeSlideCreateOpen) focusPromptAtEnd()");
+    const homeModal = readWebSource("src/teamver/components/TeamverHomeSlideCreateModal.tsx");
+    const canvasModal = readWebSource("src/teamver/components/TeamverCanvasSlideLaunchModal.tsx");
+    expect(homeModal).toContain("teamver.homeCreate.quickLanguage");
+    expect(canvasModal).not.toContain("teamver.homeCreate.quickLanguage");
     expect(home).toContain("asset.assetId !== assetId");
     expect(home).toContain("item.lastModified === file.lastModified");
     // Composer Canvas/Drive handoff always has source material.

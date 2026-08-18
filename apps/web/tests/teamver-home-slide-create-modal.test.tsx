@@ -480,6 +480,32 @@ describe("TeamverHomeSlideCreateModal", () => {
     expect(onQuickSettingsChange.mock.calls[0][0]).not.toBe(DEFAULT_HOME_SLIDE_CREATE_QUICK_SETTINGS);
   });
 
+  it("defaults Home language to Korean and lets the user switch to English", () => {
+    const onQuickSettingsChange = vi.fn();
+    wrap(
+      <TeamverHomeSlideCreateModal
+        open
+        entry="new"
+        templateOptions={[{ id: "html-ppt-hermes", title: "Hermes", record: null }]}
+        selectedTemplateId="html-ppt-hermes"
+        userPrompt=""
+        onUserPromptChange={() => {}}
+        onQuickSettingsChange={onQuickSettingsChange}
+        onConfirm={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    const ko = screen.getByTestId("teamver-home-slide-create-quick-language-ko");
+    const en = screen.getByTestId("teamver-home-slide-create-quick-language-en");
+    expect(ko.getAttribute("aria-pressed")).toBe("true");
+    expect(en.getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(en);
+    expect(onQuickSettingsChange).toHaveBeenCalledWith({
+      ...DEFAULT_HOME_SLIDE_CREATE_QUICK_SETTINGS,
+      language: "en",
+    });
+  });
+
   it("surfaces confirm errors in an alert region", () => {
     wrap(
       <TeamverHomeSlideCreateModal

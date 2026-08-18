@@ -215,12 +215,14 @@ export type CanvasSlideAudience = "auto" | "internal" | "client" | "education" |
 export type CanvasSlideLength = "auto" | "short" | "standard" | "detailed";
 export type CanvasSlideTransformMode = "presentation" | "faithful" | "summary";
 export type CanvasSlideTone = "auto" | "professional" | "modern" | "friendly" | "impact";
+export type CanvasSlideLanguage = "auto" | "ko" | "en";
 
 export type CanvasSlideQuickSettings = {
   audience: CanvasSlideAudience;
   length: CanvasSlideLength;
   transformMode: CanvasSlideTransformMode;
   tone: CanvasSlideTone;
+  language: CanvasSlideLanguage;
 };
 
 export const DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS: CanvasSlideQuickSettings = {
@@ -228,6 +230,7 @@ export const DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS: CanvasSlideQuickSettings = {
   length: "auto",
   transformMode: "presentation",
   tone: "auto",
+  language: "auto",
 };
 
 /** Home empty-create defaults — no source doc, so avoid vague "auto". */
@@ -236,6 +239,7 @@ export const DEFAULT_HOME_SLIDE_CREATE_QUICK_SETTINGS: CanvasSlideQuickSettings 
   length: "standard",
   transformMode: "presentation",
   tone: "professional",
+  language: "ko",
 };
 
 /** Fresh copy so each open/reset cannot reuse a mutated or same-reference draft. */
@@ -268,6 +272,11 @@ const QUICK_SETTING_PROMPT_LABELS = {
     modern: "Modern",
     friendly: "Friendly",
     impact: "Impact-focused",
+  },
+  language: {
+    auto: "Infer language from the user brief and source",
+    ko: "Write every slide title and body in Korean (한글). Keep English only for proper nouns, product names, and code",
+    en: "Write every slide title and body in English",
   },
 } as const;
 
@@ -322,6 +331,20 @@ function canvasSlideQuickToneToPluginValue(tone: CanvasSlideTone): string {
   }
 }
 
+function canvasSlideQuickLanguageToPluginValue(
+  language: CanvasSlideLanguage,
+): string | null {
+  switch (language) {
+    case "ko":
+      return "Korean (한글)";
+    case "en":
+      return "English";
+    case "auto":
+    default:
+      return null;
+  }
+}
+
 function normalizeQuickSettingValue<T extends string>(
   value: T | undefined,
   allowed: readonly T[],
@@ -355,6 +378,11 @@ export function normalizeCanvasSlideQuickSettings(
       ["auto", "professional", "modern", "friendly", "impact"],
       DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS.tone,
     ),
+    language: normalizeQuickSettingValue(
+      raw.language,
+      ["auto", "ko", "en"],
+      DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS.language,
+    ),
   };
 }
 
@@ -367,6 +395,9 @@ export function canvasSlideQuickSettingsInstruction(
     `Length: ${QUICK_SETTING_PROMPT_LABELS.length[normalized.length]}.`,
     `Transform mode: ${QUICK_SETTING_PROMPT_LABELS.transformMode[normalized.transformMode]}.`,
     `Tone: ${QUICK_SETTING_PROMPT_LABELS.tone[normalized.tone]}.`,
+    ...(normalized.language === "auto"
+      ? []
+      : [`Language: ${QUICK_SETTING_PROMPT_LABELS.language[normalized.language]}.`]),
     "If [User instruction] specifies an exact slide count (e.g. \"15 slides\", \"10장\"), that count wins over Length.",
   ].join("\n");
 }
@@ -840,6 +871,7 @@ export function canvasCreateSlidesPluginInputs(
   const slideCountFromUser =
     parseExplicitSlideCountFromText(user)
     ?? parseExplicitSlideCountFromText(brief);
+  const language = canvasSlideQuickLanguageToPluginValue(normalizedQuickSettings.language);
   return {
     deckType: hasSourceMaterial
       ? "presentation from source material"
@@ -847,6 +879,12 @@ export function canvasCreateSlidesPluginInputs(
     topic,
     audience: canvasSlideQuickAudienceToPluginValue(normalizedQuickSettings.audience),
     tone: canvasSlideQuickToneToPluginValue(normalizedQuickSettings.tone),
+    ...(language
+      ? {
+          language,
+          outputLanguage: normalizedQuickSettings.language,
+        }
+      : {}),
     slideCount:
       slideCountFromUser
       ?? canvasSlideQuickLengthToSlideCount(normalizedQuickSettings.length),
