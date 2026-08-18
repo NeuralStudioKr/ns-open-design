@@ -93,12 +93,78 @@ html, body {
 }
 `;
 
-/** Legacy neutralize that only forced opacity — leaves absolute 100% clipping. */
-const LEGACY_LOOK_NEUTRALIZE_RE =
-  /\/\*\s*stacked preview\/export:[^*]*\*\/\s*html,\s*body\s*\{[^}]*\}\s*\.slide[^\{]*\{[^}]*opacity:\s*1\s*!important;[^}]*\}/gi;
-
 const LOOK_NEUTRALIZE_TAIL_RE =
   /\n?\/\*\s*stacked preview\/export:[\s\S]*$/i;
+
+const OFFICIAL_LOOK_MAX_VIEWPORT_MEDIA_RE = /@media\b[^{]*\bmax-(?:width|height)\s*:/i;
+
+/**
+ * Official example `@media (max-width: …)` is for a full-window presenter.
+ * Stacked preview/export scale a 1920×1080 canvas inside a smaller iframe,
+ * so those queries match and collapse 16:9 grids/timelines into a column
+ * that `overflow:hidden` then clips. Drop only max-width/max-height blocks
+ * from official look CSS — author styles outside that sheet stay intact.
+ */
+export function stripOfficialLookViewportMediaQueries(css: string): string {
+  const source = String(css ?? '');
+  if (!OFFICIAL_LOOK_MAX_VIEWPORT_MEDIA_RE.test(source)) return source;
+  let out = '';
+  let i = 0;
+  const lower = source.toLowerCase();
+  while (i < source.length) {
+    const at = lower.indexOf('@media', i);
+    if (at < 0) {
+      out += source.slice(i);
+      break;
+    }
+    out += source.slice(i, at);
+    const brace = source.indexOf('{', at);
+    if (brace < 0) {
+      out += source.slice(at);
+      break;
+    }
+    const query = source.slice(at + 6, brace);
+    const end = matchingCssBraceEnd(source, brace);
+    if (end < 0) {
+      out += source.slice(at);
+      break;
+    }
+    if (!/\bmax-(?:width|height)\s*:/i.test(query)) {
+      out += source.slice(at, end);
+    }
+    i = end;
+  }
+  return out.replace(/\n{3,}/g, '\n\n');
+}
+
+function matchingCssBraceEnd(source: string, openBrace: number): number {
+  let depth = 0;
+  for (let j = openBrace; j < source.length; j += 1) {
+    const ch = source[j];
+    if (ch === '{') depth += 1;
+    else if (ch === '}') {
+      depth -= 1;
+      if (depth === 0) return j + 1;
+    }
+  }
+  return -1;
+}
+
+function officialLookCssBodies(html: string): string[] {
+  const out: string[] = [];
+  const re = /<style\b[^>]*\bdata-od-official-look-css\b[^>]*>([\s\S]*?)<\/style>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(html))) out.push(match[1] ?? '');
+  return out;
+}
+
+function officialLookCssLooksCurrent(css: string): boolean {
+  return (
+    css.includes(OFFICIAL_LOOK_STACKED_NEUTRALIZE_MARKER)
+    && /flex-direction:\s*unset/.test(css)
+    && !OFFICIAL_LOOK_MAX_VIEWPORT_MEDIA_RE.test(css)
+  );
+}
 
 function hrefFromLinkTag(tag: string): string {
   const match = /\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|(\S+))/i.exec(tag);
@@ -475,7 +541,7 @@ export function mergeOfficialDeckLookCss(
       return href ? !out.includes(href) : !out.includes(tag);
     });
     const style = assets.css
-      ? `<style ${OFFICIAL_DECK_LOOK_STYLE_ATTR}>\n${assets.css}\n${LOOK_NEUTRALIZE_CSS}\n</style>`
+      ? `<style ${OFFICIAL_DECK_LOOK_STYLE_ATTR}>\n${stripOfficialLookViewportMediaQueries(assets.css)}\n${LOOK_NEUTRALIZE_CSS}\n</style>`
       : '';
     const snippet = `${missingFonts.join('\n')}${missingFonts.length && style ? '\n' : ''}${style}`;
     out = insertBeforeCloseHeadOrOpenBody(out, snippet);
@@ -485,6 +551,8 @@ export function mergeOfficialDeckLookCss(
 }
 
 function officialLookHasCurrentNeutralize(html: string): boolean {
+  const bodies = officialLookCssBodies(html);
+  if (bodies.length > 0) return bodies.every((css) => officialLookCssLooksCurrent(css));
   return (
     html.includes(OFFICIAL_LOOK_STACKED_NEUTRALIZE_MARKER)
     && /flex-direction:\s*unset/.test(html)
@@ -493,10 +561,12 @@ function officialLookHasCurrentNeutralize(html: string): boolean {
 
 function replaceOfficialLookNeutralizeBlock(html: string): string {
   return html.replace(
-    /(<style\b[^>]*\bdata-od-official-look-css\b[^>]*>)([\s\S]*?)(<\/style>)/i,
+    /(<style\b[^>]*\bdata-od-official-look-css\b[^>]*>)([\s\S]*?)(<\/style>)/gi,
     (_m, open: string, css: string, close: string) => {
-      const stripped = String(css).replace(LOOK_NEUTRALIZE_TAIL_RE, '').trimEnd();
-      return `${open}${stripped}\n${LOOK_NEUTRALIZE_CSS}\n${close}`;
+      const prepared = stripOfficialLookViewportMediaQueries(
+        String(css).replace(LOOK_NEUTRALIZE_TAIL_RE, ''),
+      ).trimEnd();
+      return `${open}${prepared}\n${LOOK_NEUTRALIZE_CSS}\n${close}`;
     },
   );
 }
@@ -513,11 +583,6 @@ export function ensureOfficialLookStackedCanvasNeutralize(html: string): string 
 
   const styleAttr = OFFICIAL_DECK_LOOK_STYLE_ATTR;
   if (new RegExp(`<style\\b[^>]*\\b${styleAttr}\\b`, 'i').test(dest)) {
-    LEGACY_LOOK_NEUTRALIZE_RE.lastIndex = 0;
-    if (LEGACY_LOOK_NEUTRALIZE_RE.test(dest)) {
-      LEGACY_LOOK_NEUTRALIZE_RE.lastIndex = 0;
-      return dest.replace(LEGACY_LOOK_NEUTRALIZE_RE, LOOK_NEUTRALIZE_CSS.trim());
-    }
     return replaceOfficialLookNeutralizeBlock(dest);
   }
 

@@ -558,6 +558,44 @@ cur=n;
     expect(String(win.getComputedStyle(slideEls[1]!).flexDirection || '').toLowerCase()).toBe('column');
   });
 
+  it('keeps authored grid slides on grid and strips official max-width collapse CSS', async () => {
+    const html = [
+      '<!doctype html><html lang="ko"><head>',
+      '<style data-od-official-look-css>',
+      '.slide { position:absolute; inset:0; width:100%; height:100%; display:flex; flex-direction:column; }',
+      '.cards-grid { display:grid; grid-template-columns:repeat(3,1fr); }',
+      '@media (max-width: 900px) { .cards-grid { grid-template-columns: 1fr; } .slide { padding: 2rem; } }',
+      '/* stacked preview/export: Motif paint + fixed 1920 */',
+      'html, body { overflow: visible !important; height: auto !important; }',
+      '.slide { opacity: 1 !important; flex-direction: unset; }',
+      '</style></head><body>',
+      '<section class="slide" style="display:grid;grid-template-columns:1fr 1fr;width:1920px;height:1080px;padding:0">',
+      '<div>left</div><div>right</div>',
+      '</section>',
+      '</body></html>',
+    ].join('');
+    const srcdoc = buildSrcdoc(html, { deck: true });
+    const look = srcdoc.match(/<style[^>]*data-od-official-look-css[^>]*>([\s\S]*?)<\/style>/i)?.[1] ?? '';
+    expect(look).toContain('.cards-grid { display:grid; grid-template-columns:repeat(3,1fr); }');
+    expect(look).not.toMatch(/@media\s*\(\s*max-width/i);
+
+    const match = srcdoc.match(/<script data-od-deck-bridge>([\s\S]*?)<\/script>/);
+    const { JSDOM } = await import('jsdom');
+    const dom = new JSDOM(srcdoc.replace(/<script\b[\s\S]*?<\/script>/gi, ''), {
+      runScripts: 'outside-only',
+      pretendToBeVisual: true,
+    });
+    const win = dom.window;
+    Object.defineProperty(win, 'parent', { configurable: true, value: { postMessage: () => {} } });
+    new win.Function(match![1]!).call(win);
+    win.dispatchEvent(new win.MessageEvent('message', {
+      data: { type: 'od:deck-host-viewport', width: 800, height: 450, scale: 1 },
+    }));
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 100));
+    const slide = win.document.querySelector('#od-stacked-deck-stage > .slide') as HTMLElement | null;
+    expect(slide?.style.display).toBe('grid');
+  });
+
   it('normalizes compact stacked decks for standalone export without hiding slides', () => {
     const html = [
       '<!doctype html><html><head><meta name="viewport" content="width=device-width"></head><body>',

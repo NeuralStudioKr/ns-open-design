@@ -3470,8 +3470,17 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     }
     if (visible) {
       if (stacked) {
-        // Stacked stage owns layout — force a flex box onto the active slide.
-        el.style.setProperty('display', 'flex', 'important');
+        // Reveal without rewriting authored axis. Inline grid stays grid;
+        // everything else is flex so official look + neutralize can keep
+        // row splits (flex-direction:unset) and column slides (inline column).
+        var authoredStyle = String(el.getAttribute('style') || '');
+        var authoredDisplayMatch = /(?:^|;)\s*display\s*:\s*([^;!]+)/i.exec(authoredStyle);
+        var authoredDisplay = authoredDisplayMatch ? String(authoredDisplayMatch[1] || '').trim().toLowerCase() : '';
+        el.style.setProperty(
+          'display',
+          authoredDisplay === 'grid' || authoredDisplay === 'inline-grid' ? authoredDisplay : 'flex',
+          'important',
+        );
       } else {
         // Framework / class-toggle decks: clear any previous hide so author
         // .active / variant classes (flex/grid/block) control layout.

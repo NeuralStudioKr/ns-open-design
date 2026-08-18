@@ -160,6 +160,41 @@ describe('official deck look CSS merge', () => {
     expect(merged).toContain('shadcn/ui');
   });
 
+  it('strips official presenter max-width media queries so scaled 16:9 preview does not reflow', () => {
+    const official = loadOfficialLookSource(join(EXAMPLES_DIR, 'html-ppt-zhangzara-capsule/example.html'));
+    const assets = extractOfficialDeckLookAssets(official)!;
+    expect(assets.css).toMatch(/@media\s*\(\s*max-width:\s*900px\s*\)/);
+    const merged = mergeOfficialDeckLookCss(COMPACT_FILL, assets);
+    const look = merged.match(/<style[^>]*data-od-official-look-css[^>]*>([\s\S]*?)<\/style>/i)?.[1] ?? '';
+    expect(look).toContain('.pill-coral');
+    expect(look).not.toMatch(/@media\s*\(\s*max-width/i);
+    expect(look).toMatch(/flex-direction:\s*unset/);
+    expect(merged).toContain('shadcn/ui');
+  });
+
+  it('heals a v18 official look sheet that still has max-width collapse rules', async () => {
+    const { ensureOfficialLookStackedCanvasNeutralize } = await import('../src/html/deck-template-look-css.js');
+    const stale = `<!doctype html><html><head>
+<style data-od-official-look-css>
+.slide { position:absolute; display:flex; flex-direction:column; }
+.cards-grid { grid-template-columns:repeat(3,1fr); }
+@media (max-width: 900px) {
+  .slide { padding: 2rem; }
+  .cards-grid { grid-template-columns: 1fr; }
+  .timeline { flex-direction: column; }
+}
+/* stacked preview/export: Motif paint + fixed 1920×1080 canvas (not presentation absolute 100%) */
+html, body { overflow: visible !important; height: auto !important; }
+.slide { opacity: 1 !important; position: relative !important; width: 1920px !important; height: 1080px !important; flex-direction: unset; }
+</style></head><body><section class="slide">cards</section></body></html>`;
+    const healed = ensureOfficialLookStackedCanvasNeutralize(stale);
+    const look = healed.match(/<style[^>]*data-od-official-look-css[^>]*>([\s\S]*?)<\/style>/i)?.[1] ?? '';
+    expect(look).toContain('.cards-grid { grid-template-columns:repeat(3,1fr); }');
+    expect(look).not.toMatch(/@media\s*\(\s*max-width/i);
+    expect(look).toMatch(/flex-direction:\s*unset/);
+    expect(healed).toContain('cards');
+  });
+
   it('upgrades legacy opacity-only neutralize so absolute 100% slides stop clipping', async () => {
     const {
       ensureOfficialLookStackedCanvasNeutralize,
@@ -256,6 +291,10 @@ html, body { overflow: visible !important; height: auto !important; }
       );
       if (expected && !new RegExp(`\\.${expected.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(standalone)) {
         failures.push(`${folder}: standalone wrap dropped .${expected}`);
+      }
+      const lookCss = merged.match(/<style[^>]*data-od-official-look-css[^>]*>([\s\S]*?)<\/style>/i)?.[1] ?? '';
+      if (/@media\s*\(\s*max-width/i.test(lookCss)) {
+        failures.push(`${folder}: official look kept max-width media that reflows 16:9 preview`);
       }
       const symbolIds = listOfficialMotifSymbolIds(assets.motifHtml.join('\n'));
       for (const symbolId of symbolIds) {
