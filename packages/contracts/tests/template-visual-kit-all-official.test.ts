@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   extractTemplateVisualKitFromHtml,
+  inferMotifGeometryKind,
   neutralizeFilesystemCloneWorkflow,
   slimTemplateVisualKitForFill,
 } from '../src/template-visual-kit.js';
@@ -181,11 +182,23 @@ describe('official deck template visual kits (all mode:deck example.html)', () =
       if (/Layout CSS \(omitted for first content-fill/i.test(slim)) {
         failures.push(`${folder}: Layout CSS still fully omitted on fill`);
       }
-      // Must not force Capsule-only guidance when kit has no true Capsule Motif.
+      // Must not force Capsule oblong example when kit has no Capsule Motif.
       const hasCapsule =
         /\.deco-pill\b|deco-pills|floating-pills|\.pill-(?:coral|lime|lavender|sky|violet|yellow|peach|mint)/i.test(kit);
-      if (!hasCapsule && /Example capsule \(AFTER title\)/i.test(slim)) {
-        failures.push(`${folder}: slim injected Capsule example without Capsule Motif`);
+      if (!hasCapsule && /Example capsule \(AFTER title\)|Example Motif \(AFTER title\): `<div class="deco-pill/i.test(slim)) {
+        failures.push(`${folder}: slim injected Capsule Motif example without Capsule Motif`);
+      }
+      if (!hasCapsule && /\*\*oblong capsules\*\*/i.test(slim)) {
+        failures.push(`${folder}: slim forced oblong-capsule geometry without Capsule Motif`);
+      }
+      // Oblong/disc kits must keep explicit Motif geometry; svg/chrome rely on HARD_RULES.
+      const geometryKind = inferMotifGeometryKind(html);
+      if (
+        (geometryKind === 'oblong-capsule' || geometryKind === 'disc-organic' || geometryKind === 'mixed')
+        && /Motif vocabulary \(required compact cue\)/i.test(slim)
+        && !/Motif geometry:/i.test(slim)
+      ) {
+        failures.push(`${folder}: Motif vocabulary present without Motif geometry guidance (${geometryKind})`);
       }
     }
     expect(ornamentHeavy, 'expected several ornament-heavy templates').toBeGreaterThan(8);

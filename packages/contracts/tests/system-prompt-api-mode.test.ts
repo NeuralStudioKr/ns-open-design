@@ -565,7 +565,7 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       });
       expect(prompt).toContain('Template clone fill — Motif AFTER title');
       expect(prompt).toMatch(/Motif CSS|kit Motif vocabulary|deco-pill|Decorations CSS/i);
-      expect(prompt).toMatch(/Never invent generic CSS circles/i);
+      expect(prompt).toMatch(/Never invent Motif geometry from another template family|no invented generic circles/i);
       expect(prompt.indexOf('Template clone fill — Motif AFTER title')).toBeGreaterThan(
         prompt.indexOf('Selected deck template visual — READ LAST'),
       );
@@ -779,7 +779,7 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(fill).toContain('READ LAST (first content-fill)');
       expect(fill).toMatch(/Motif vocabulary \(required\)|kit Motif vocabulary/i);
       expect(fill).toContain('OD-style CREATE, kit Motif AFTER title');
-      expect(fill).toMatch(/Never invent generic CSS circles|FORBIDDEN substitutes/i);
+      expect(fill).toMatch(/Never invent Motif geometry from another template family|FORBIDDEN substitutes|no invented generic circles/i);
       expect(fill).not.toContain('Copy Motif sprites verbatim');
       expect(normal).not.toContain('Copy Motif sprites verbatim');
       expect(normal).toContain('Motif budget');

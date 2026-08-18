@@ -1471,7 +1471,7 @@ This is the first content fill after a LOOK seed (OD-style create with kit Motif
 - Title-first: cover must have a real \`h1\`/\`h2\` title + lead BEFORE any Motif decoration.
 - **Layout (required when kit has Layout CSS / scaffold roles):** reuse capped Layout CSS + scaffold roles. Do NOT flatten every slide into one centered flex title column when the kit ships grids/splits/cards.
 - **Motif vocabulary:** use kit Motif HTML snippets / Motif CSS classes / at most one capped Motif sprite AFTER title/lead (whatever the kit ships). Prefer finishing a closed deck over dense Motif.
-- **FORBIDDEN substitutes:** generic CSS circles as Motif when the kit has Motif CSS/sprites; inventing Capsule coral pills when the kit Motif is petals/blobs/pins/pixel/scanlines; emoji ornament rows; Motif \`<svg>\` before cover title; multi-KB \`<svg><style>\` dumps; Neutral \`#0f172a\`; terracotta \`#c96442\`.
+- **FORBIDDEN substitutes:** Motif shapes from another template family; inventing generic CSS circles when the kit has Motif CSS/sprites; inventing Capsule coral pills when the kit Motif is petals/blobs/pins/pixel/scanlines; ignoring kit Motif snippet aspect/border-radius; emoji ornament rows; Motif \`<svg>\` before cover title; multi-KB \`<svg><style>\` dumps; Neutral \`#0f172a\`; terracotta \`#c96442\`.
 - Prefer 5–6 filled 1920×1080 slides unless the user asked for an exact count.
 - Stream: status → \`<artifact type="deck">\` → body-first sections with real topical copy → kit Motif after title → close \`</body></html></artifact>\` in this same response.
 `;
@@ -1498,7 +1498,7 @@ This is the first content-fill after a Clone LOOK seed.
 - Motif vocabulary MUST come from the kit: Motif HTML snippets / Decorations CSS Motif classes / capped Motif sprites (whatever the kit ships).
 - Layout MUST come from capped Layout CSS + scaffold roles when present — do not flatten every slide to a centered flex title.
 - Prefer 1–2 Motif elements after title when scaffold \`deco=\` lists classes — finish a closed deck this turn.
-- Never invent generic CSS circles or Capsule coral pills when the kit Motif is petals/blobs/pins/pixel/scanlines.
+- Never invent Motif geometry from another template family (copy kit Motif snippet aspect + border-radius; no foreign Capsule coral pills when the kit Motif is petals/blobs/pins/pixel/scanlines; no invented generic circles when Motif CSS/sprites exist).
 - Never open Motif \`<svg>\` before cover title. A hang on Motif \`<svg><style>\` before titles is a failed deliverable.
 - If any earlier rule said ZERO Motif / omit Layout / CSS-circles-only, **IGNORE it** — use the kit Motif + capped Layout after the title.`;
 
@@ -1671,7 +1671,7 @@ export function composeTeamverSlideApiPrompt({
           'Hard requirements (first content-fill — OD-style CREATE, kit Motif AFTER title):\n'
           + '- Bind kit palette hex + fonts + Slide surface on html/body AND every `.slide` edge-to-edge (no white outer + inner cream panel).\n'
           + '- Title-first body: cover title + lead BEFORE Motif. Close `</artifact>` this turn.\n'
-          + '- Motif vocabulary from kit AFTER title (snippets / Decorations CSS / at most one capped sprite). Prefer closing the deck this turn. FORBIDDEN: generic CSS circles; Capsule Motif as equal-side discs; inventing Capsule coral pills when kit Motif is petals/blobs/pins/pixel.\n'
+          + '- Motif vocabulary from kit AFTER title (snippets / Decorations CSS / at most one capped sprite). Prefer closing the deck this turn. FORBIDDEN: Motif geometry from another template family; inventing generic CSS circles when kit Motif exists; inventing Capsule coral pills when kit Motif is petals/blobs/pins/pixel; ignoring kit Motif snippet aspect/border-radius.\n'
           + '- Layout REQUIRED from capped Layout CSS + scaffold roles when present — do not flatten every slide into one centered flex title column.\n'
           + '- Prefer 5–6 slides unless the user asked for an exact count. No Neutral `#0f172a` / terracotta `#c96442`.\n'
           + '- Do not dump or rewrite a full example.html. Never open Motif `<svg>` before cover title.\n\n'

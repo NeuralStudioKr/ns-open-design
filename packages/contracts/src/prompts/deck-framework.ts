@@ -638,7 +638,7 @@ OD succeeds by editing cloned HTML text. Teamver BYOK cannot — so regenerate c
 
 **Layout (required when kit has Layout CSS / scaffold roles):** reuse capped Layout CSS grid/flex/region rules and scaffold map roles. FORBIDDEN: flattening every slide into one centered flex title column when the kit ships multi-region layouts (cards-grid / weekly-grid / split / matrix / terminal grids).
 
-**Motif (after title):** prefer kit Motif HTML snippets / Motif CSS / at most one capped sprite. Finish a closed deck this turn — light Motif beats a truncated Motif dump. FORBIDDEN: Motif \`<svg>\` before cover title; multi-KB \`<svg><style>\` dumps; inventing Capsule coral pills when the kit Motif is petals/blobs/pins/pixel/scanlines.
+**Motif (after title):** prefer kit Motif HTML snippets / Motif CSS / at most one capped sprite. Finish a closed deck this turn — light Motif beats a truncated Motif dump. FORBIDDEN: Motif \`<svg>\` before cover title; multi-KB \`<svg><style>\` dumps; Motif geometry from another template family; inventing Capsule coral pills when the kit Motif is petals/blobs/pins/pixel/scanlines; ignoring kit Motif snippet aspect/border-radius.
 
 **FORBIDDEN this turn:** Motif \`<svg>\` before cover title, multi-KB Motif/Layout dumps, long \`<head>\`, Neutral \`#0f172a\`, terracotta \`#c96442\`, emoji ornament rows, generic CSS circles when the kit has Motif CSS/sprites, parroting the user brief as slide titles.
 

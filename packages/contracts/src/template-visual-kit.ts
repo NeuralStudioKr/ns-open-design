@@ -676,6 +676,163 @@ function hasCapsuleMotifSignal(text: string): boolean {
   );
 }
 
+/** Catalog-wide Motif geometry language inferred from kit HTML/CSS (not template slug). */
+export type MotifGeometryKind =
+  | 'oblong-capsule'
+  | 'disc-organic'
+  | 'svg-sprite'
+  | 'chrome-atmosphere'
+  | 'mixed'
+  | 'unknown';
+
+function readInlineBoxPx(tag: string): { w: number; h: number } | null {
+  const widthPx = /width\s*:\s*([\d.]+)px/i.exec(tag)?.[1];
+  const heightPx = /height\s*:\s*([\d.]+)px/i.exec(tag)?.[1];
+  const w = widthPx ? Number(widthPx) : NaN;
+  const h = heightPx ? Number(heightPx) : NaN;
+  if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return null;
+  return { w, h };
+}
+
+function isEqualSideDiscGeometry(tag: string, box: { w: number; h: number } | null): boolean {
+  if (/border-radius\s*:\s*50%/i.test(tag)) return true;
+  if (!box) return false;
+  return Math.abs(box.w - box.h) <= Math.max(4, box.w * 0.08);
+}
+
+function isOblongGeometry(box: { w: number; h: number } | null): boolean {
+  if (!box) return false;
+  return box.w / box.h >= 1.45 || box.h / box.w >= 1.45;
+}
+
+function isPillFamilyMotifTag(tag: string): boolean {
+  return /\bdeco-pill\b|[cf]-pill\b|orbit-pill\b|pill-(?:coral|lime|lavender|sky|violet|yellow|peach|mint|white|filled|outline)\b/i.test(
+    tag,
+  );
+}
+
+function isOrganicDiscMotifTag(tag: string): boolean {
+  return /\bpetal\b|\bblob(?:-fill|-frame)?\b|\bxp-blob\b|\bgd-orb\b|\borb\b/i.test(tag);
+}
+
+/**
+ * Infer the kit's dominant Motif geometry so snippet ranking + guidance stay
+ * catalog-wide (Capsule oblong, Sakura discs, Daisy SVG, Hermes chrome, …).
+ */
+export function inferMotifGeometryKind(source: string): MotifGeometryKind {
+  const text = String(source ?? '');
+  if (!text.trim()) return 'unknown';
+
+  let oblongHits = 0;
+  let discHits = 0;
+  let organicClass = 0;
+  let capsuleClass = 0;
+  let svgCue = 0;
+  let chromeCue = 0;
+
+  if (hasCapsuleMotifSignal(text)) capsuleClass += 2;
+  if (/\.petal\b|\.blob\b|\.xp-blob|\.gd-orb|\.blob-frame|\.blob-fill/i.test(text)) organicClass += 3;
+  if (/border-radius\s*:\s*50%/i.test(text) && /\.petal|\.blob|\.orb|\.xp-blob|\.gd-orb/i.test(text)) {
+    organicClass += 2;
+  }
+  if (/border-radius\s*:\s*9999?px/i.test(text) && hasCapsuleMotifSignal(text)) capsuleClass += 2;
+  if (/```html[\s\S]*?<svg\b|<svg\b[^>]*>[\s\S]{80,}<\/svg>/i.test(text)) svgCue += 2;
+  if (/(?:deco-daisy|#fcdf6c|\.pin-|bg-cork|\.stamp\b)/i.test(text) && /<svg\b/i.test(text)) {
+    svgCue += 2;
+  }
+  if (
+    /\.hc-scanline|\.hc-grid|\.scanlines?\b|\.grain\b/i.test(text)
+    && !hasCapsuleMotifSignal(text)
+    && organicClass === 0
+  ) {
+    chromeCue += 2;
+  }
+
+  for (const match of text.matchAll(/<(?:div|span)\b[^>]*>/gi)) {
+    const tag = match[0] ?? '';
+    if (
+      !MOTIF_CLASS_TOKEN_RE.test(tag)
+      && !/\b(?:xp-blob|gd-orb|deco-pill|petal|doodle|post-it)\b/i.test(tag)
+    ) {
+      continue;
+    }
+    if (/\bdeco-pills\b|\bfloating-pills\b/i.test(tag) && !/\bdeco-pill\b/i.test(tag)) continue;
+    const box = readInlineBoxPx(tag);
+    if (isPillFamilyMotifTag(tag)) {
+      if (isEqualSideDiscGeometry(tag, box)) discHits += 1;
+      else if (isOblongGeometry(box) || /border-radius\s*:\s*9999?px/i.test(tag)) oblongHits += 1;
+    }
+    if (isOrganicDiscMotifTag(tag)) {
+      organicClass += 1;
+      if (isEqualSideDiscGeometry(tag, box)) discHits += 1;
+    }
+  }
+
+  if (organicClass >= 3 && organicClass >= capsuleClass && discHits + organicClass >= oblongHits) {
+    return 'disc-organic';
+  }
+  if (capsuleClass >= 2 && oblongHits >= discHits) return 'oblong-capsule';
+  if (capsuleClass >= 2 && oblongHits > 0 && oblongHits >= Math.max(1, discHits - 1)) {
+    return 'oblong-capsule';
+  }
+  if (svgCue >= 3 && organicClass < 3 && capsuleClass < 2) return 'svg-sprite';
+  if (chromeCue >= 2 && capsuleClass < 2 && organicClass < 2) return 'chrome-atmosphere';
+  if ((oblongHits > 0 && discHits > 0) || (capsuleClass > 0 && organicClass > 0)) return 'mixed';
+  if (oblongHits > discHits && capsuleClass > 0) return 'oblong-capsule';
+  if (discHits > oblongHits && organicClass > 0) return 'disc-organic';
+  return 'unknown';
+}
+
+function formatMotifGeometryGuidance(kind: MotifGeometryKind): string {
+  switch (kind) {
+    case 'oblong-capsule':
+      return 'Motif geometry: **oblong capsules** — copy snippet aspect (`width` ≳ 1.6× `height`, `border-radius:9999px`). Equal-side discs are accent-only.';
+    case 'disc-organic':
+      return 'Motif geometry: **soft discs / petals / blobs** — `border-radius:50%` is correct. Do NOT invent oblong Capsule coral pills.';
+    case 'svg-sprite':
+      return 'Motif geometry: prefer capped Motif SVG / Motif CSS from this kit — no generic circles, emoji, or foreign Motif families.';
+    case 'chrome-atmosphere':
+      return 'Motif geometry: atmosphere/chrome (scanlines/grids/grain) — not floating discs or Capsule pills.';
+    case 'mixed':
+    case 'unknown':
+    default:
+      return 'Motif geometry: copy kit Motif snippet aspect + border-radius exactly — never another template family\'s shapes.';
+  }
+}
+
+/** Attach detailed Motif-geometry lines only where shape mistakes are common. */
+function shouldAttachMotifGeometryGuidance(kind: MotifGeometryKind): boolean {
+  return kind === 'oblong-capsule' || kind === 'disc-organic' || kind === 'mixed';
+}
+
+function scoreMotifSnippetGeometry(
+  tag: string,
+  kind: MotifGeometryKind,
+): number {
+  const box = readInlineBoxPx(tag);
+  const pillLike = isPillFamilyMotifTag(tag);
+  const organicLike = isOrganicDiscMotifTag(tag);
+  const equalDisc = isEqualSideDiscGeometry(tag, box);
+  const oblong = isOblongGeometry(box);
+  let delta = 0;
+  if (kind === 'oblong-capsule' && pillLike) {
+    if (equalDisc) delta += 12;
+    else if (oblong) delta -= 2;
+  } else if (kind === 'disc-organic') {
+    if (organicLike && equalDisc) delta -= 2;
+    // Foreign Capsule oblong pills into petal/blob kits.
+    if (pillLike && oblong && !organicLike) delta += 8;
+  } else if (kind === 'svg-sprite' || kind === 'chrome-atmosphere') {
+    // Prefer classed Motif / avoid inventing floating discs as the primary cue.
+    if (equalDisc && !organicLike && !/deco-daisy|pixel-|scanline|pin-/i.test(tag)) delta += 3;
+  } else if (kind === 'mixed' || kind === 'unknown') {
+    // Soft preference: keep family-native geometry when measurable.
+    if (pillLike && equalDisc && hasCapsuleMotifSignal(tag)) delta += 6;
+    if (organicLike && oblong && !equalDisc) delta += 4;
+  }
+  return delta;
+}
+
 function listMotifVocabularyHints(text: string): string[] {
   const hints: string[] = [];
   if (hasCapsuleMotifSignal(text)) hints.push('`.deco-pill` / pill-* capsules');
@@ -751,6 +908,7 @@ function listConcreteMotifClassHints(
  * concrete density examples (not class names alone).
  */
 function extractMotifHtmlSnippets(html: string, budget: number): string[] {
+  const geometryKind = inferMotifGeometryKind(html);
   const opens = [...html.matchAll(/<(?:div|span)\b[^>]*>/gi)].map((m) => m[0] ?? '');
   const scored: Array<{ score: number; tag: string; inner?: string }> = [];
   for (const tag of opens) {
@@ -782,24 +940,8 @@ function extractMotifHtmlSnippets(html: string, budget: number): string[] {
     } else if (/style\s*=/i.test(tag)) score = 3;
     // Boost tags that already carry placement styles.
     if (/style\s*=/i.test(tag)) score -= 1;
-    // Capsule Motif must read as oblong pills — demote year-dot circles
-    // (equal width/height or border-radius:50%) so fill doesn't copy discs.
-    if (/\bdeco-pill\b|[cf]-pill\b/i.test(tag)) {
-      const widthPx = /width\s*:\s*([\d.]+)px/i.exec(tag)?.[1];
-      const heightPx = /height\s*:\s*([\d.]+)px/i.exec(tag)?.[1];
-      const w = widthPx ? Number(widthPx) : NaN;
-      const h = heightPx ? Number(heightPx) : NaN;
-      const isCircle =
-        /border-radius\s*:\s*50%/i.test(tag)
-        || (Number.isFinite(w) && Number.isFinite(h) && w > 0 && Math.abs(w - h) <= Math.max(4, w * 0.08));
-      const isOblong =
-        Number.isFinite(w)
-        && Number.isFinite(h)
-        && h > 0
-        && (w / h >= 1.45 || h / w >= 1.45);
-      if (isCircle) score += 12;
-      else if (isOblong) score -= 2;
-    }
+    // Catalog-wide: prefer the kit's dominant Motif geometry (oblong vs disc vs …).
+    score += scoreMotifSnippetGeometry(tag, geometryKind);
     scored.push({ score, tag });
   }
   scored.sort((a, b) => a.score - b.score || b.tag.length - a.tag.length);
@@ -850,15 +992,14 @@ function renderMotifVocabularyBlock(
 ): string | null {
   const guidance = formatMotifVocabularyGuidance(text, availableSpriteKinds);
   if (/^kit Motif CSS \/ sprites listed below/i.test(guidance)) return null;
+  const geometryKind = inferMotifGeometryKind(text);
   return [
     '### Motif vocabulary (required compact cue)',
     '',
     `Required recognizable motif/style vocabulary from this selected template: ${guidance}.`,
     'Use these exact class/token families when they exist in Decorations CSS or scaffold map. If capped Motif SVGs are listed, place at most one AFTER title/lead; otherwise implement the same motif with the listed CSS classes and palette. Do not replace with plain generic circles, emoji, or another template family.',
-    ...(hasCapsuleMotifSignal(text)
-      ? [
-          'Capsule Motif geometry: `.deco-pill` / pill-* decorations must be **oblong capsules** (width ≳ 1.6× height, `border-radius:9999px`). Equal width/height or `border-radius:50%` discs are failed Capsule Motif (year-dot circles are at most one accent, never the main Motif language).',
-        ]
+    ...(shouldAttachMotifGeometryGuidance(geometryKind)
+      ? [formatMotifGeometryGuidance(geometryKind)]
       : []),
     '',
   ].join('\n');
@@ -1432,7 +1573,7 @@ const HARD_RULES = [
   '- **Background:** bind `### Slide surface` on BOTH `html`/`body` AND every `.slide` edge-to-edge (full 1920×1080). Dark-on-dark, light-on-light, paper-slides-on-wrong-shell, or white outer + inner cream panel (white top/bottom bands) are failed deliverables. Ink/border tokens are stroke/text, not backgrounds.',
   '- **Fonts:** use kit Font import + font-family names exactly; do not substitute Inter/Noto/system-ui alone when the kit lists display/body faces.',
   '- Motif language comes from **Motif sprites** / **Decorations CSS** below when present. Prefer the kit Motif vocabulary (pills/petals/blobs/pins/geometric `.deco-*`/sprites) in kit hex first. Motif SVG paste is optional: at most one short complete sprite AFTER visible title/lead on a slide, never before cover copy, never a multi-KB `<svg><style>` dump, and skip entirely if paste risks a hang. Use only listed sprites — never invent SVG/emoji for a missing slot.',
-  '- **Forbidden motif substitutes:** unicode/emoji ornaments as decoration pretending to be the template identity. Do not invent ellipse "daisy" SVGs, generic flower geometry, or plain CSS circles when the kit lists Motif CSS/sprites. Capsule `.deco-pill` Motif must stay oblong (not equal-side discs).',
+  '- **Forbidden motif substitutes:** unicode/emoji ornaments as decoration pretending to be the template identity. Do not invent ellipse "daisy" SVGs, generic flower geometry, or plain CSS circles when the kit lists Motif CSS/sprites. Match Motif geometry from kit snippets (aspect + border-radius); never substitute another template family\'s Motif shapes.',
   '- Preserve chunky cards/borders/offset shadows when Decorations CSS / `:root` tokens show them (`--border`, `--shadow`).',
   '- Do not substitute OD skeleton terracotta `#c96442` unless that hex is listed in this kit\'s palette cues.',
 ];
@@ -1846,15 +1987,14 @@ function capDecorationsCssSectionForFill(section: string): string {
     .slice(0, 2);
   const vocabSource = `${section}\n${pickedCss}\n${htmlSnippets.join('\n')}`;
   const vocab = formatMotifVocabularyGuidance(vocabSource);
+  const geometryKind = inferMotifGeometryKind(`${section}\n${pickedCss}\n${vocabSource}`);
   const lines = [
     '### Decorations CSS (capped for first content-fill — paste AFTER slide 1)',
     '',
     `REQUIRED Motif vocabulary from this kit: ${vocab}. Do NOT invent generic CSS circles / emoji ornaments as substitutes.`,
     'Motif density: after title/lead, prefer 1–2 Motif elements from kit snippets/classes when scaffold lists `deco=…`. Finish a closed compact deck this turn — Motif polish can be light.',
-    ...(hasCapsuleMotifSignal(vocabSource) || hasCapsuleMotifSignal(pickedCss)
-      ? [
-          'If this kit uses Capsule pills: copy oblong snippet geometry (`width` substantially larger than `height`, `border-radius:9999px`). Never paint Motif as equal-side circles.',
-        ]
+    ...(shouldAttachMotifGeometryGuidance(geometryKind)
+      ? [formatMotifGeometryGuidance(geometryKind)]
       : []),
   ];
   if (htmlSnippets.length > 0) {
@@ -1866,17 +2006,17 @@ function capDecorationsCssSectionForFill(section: string): string {
       ...htmlSnippets,
       '```',
     );
-  } else if (hasCapsuleMotifSignal(pickedCss) || hasCapsuleMotifSignal(section)) {
+  } else if (geometryKind === 'oblong-capsule' || hasCapsuleMotifSignal(pickedCss) || hasCapsuleMotifSignal(section)) {
     lines.push(
-      'Example capsule (AFTER title): `<div class="deco-pill pill-coral" style="position:absolute;top:48px;left:64px;width:180px;height:72px;border-radius:9999px;border:2px solid #1A1A1A;background:#E85D4E"></div>`. Oblong only — never square/circle Motif.',
+      'Example Motif (AFTER title): `<div class="deco-pill pill-coral" style="position:absolute;top:48px;left:64px;width:180px;height:72px;border-radius:9999px;border:2px solid #1A1A1A;background:#E85D4E"></div>` — oblong kit geometry only.',
+    );
+  } else if (geometryKind === 'disc-organic' || /\.petal|\.blob|\.xp-blob/i.test(pickedCss)) {
+    lines.push(
+      'Example Motif (AFTER title): reuse kit `.petal` / `.blob` / organic disc classes with absolute positioning — kit `border-radius:50%` discs are correct; do not invent Capsule oblong pills.',
     );
   } else if (/\.doodle|\.scribble/i.test(pickedCss)) {
     lines.push(
       'Example Motif (AFTER title): reuse kit `.doodle` / scribble classes with absolute positioning — do not invent capsules or plain circles.',
-    );
-  } else if (/\.petal|\.blob/i.test(pickedCss)) {
-    lines.push(
-      'Example Motif (AFTER title): reuse kit `.petal` / `.blob` classes with absolute positioning — do not invent capsules or plain circles.',
     );
   } else if (/\.stamp|\.tape|\.pin|\.post-it/i.test(pickedCss)) {
     lines.push(
