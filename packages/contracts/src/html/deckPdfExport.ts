@@ -16,7 +16,9 @@ export const DECK_WRAPPER_SELECTOR =
   '.deck, .deck-shell, .deck-stage, #deck-stage, #deck, .stage';
 
 export const DECK_CHROME_HIDE_SELECTOR =
-  '.deck-counter, .deck-hint, .deck-nav, .nav-hint, .nav-dots, .nav-dot, .slide-counter, .grain-overlay, #deck-prev, #deck-next, #deck-cur, #deck-total, #nav, #hint, canvas.bg, #overview, [aria-label="Previous slide"], [aria-label="Next slide"]';
+  '.deck-counter, .deck-hint, .deck-nav, .nav-hint, .nav-dots, .nav-dot, .slide-counter, #deck-prev, #deck-next, #deck-cur, #deck-total, #nav, #hint, canvas.bg, #overview, [aria-label="Previous slide"], [aria-label="Next slide"]';
+// Note: do NOT hide `.grain-overlay` / `.crt-overlay` — those are Motif hosts
+// injected by mergeOfficialDeckMotifHtml and must survive PDF/HTML export.
 
 export const DECK_EXPORT_WIDTH = 1920;
 export const DECK_EXPORT_HEIGHT = 1080;
@@ -52,6 +54,27 @@ export function buildDeckPdfPagePdfOptions(): {
     height: `${DECK_PDF_PAGE_HEIGHT_IN}in`,
     scale: deckPdfPrintScale(),
   };
+}
+
+/** Shared `@page` rule — never emit `1920px` (Chromium → ~20″ MediaBox). */
+export function buildDeckPdfPageAtRule(): string {
+  return `@page { size: ${DECK_PDF_PAGE_WIDTH_IN}in ${DECK_PDF_PAGE_HEIGHT_IN}in; margin: 0; }`;
+}
+
+/**
+ * Browser `window.print()` has no Chromium `scale` API — apply CSS zoom so
+ * 1920×1080 layout fits PPT `@page`. Do NOT add this to headless/desktop
+ * print CSS when those paths already pass `scale` to printToPDF/page.pdf
+ * (would double-shrink).
+ */
+export function buildDeckBrowserPrintScaleCss(): string {
+  const scale = deckPdfPrintScale();
+  return `
+@media print {
+  html {
+    zoom: ${scale} !important;
+  }
+}`;
 }
 
 function deckSlideSelectorList(): string[] {
@@ -414,7 +437,7 @@ export function buildDeckGuizangPrintFallbackCss(): string {
 export function buildDeckPrintCss(): string {
   return `
 @media print {
-  @page { size: ${DECK_PDF_PAGE_WIDTH_IN}in ${DECK_PDF_PAGE_HEIGHT_IN}in; margin: 0; }
+  ${buildDeckPdfPageAtRule()}
   ${buildDeckFlattenCssRules()}${buildDeckGuizangPrintFallbackCss()}
 }`;
 }
@@ -472,6 +495,16 @@ export function patchArtifactDeckPrintCss(doc: string): string {
   out = out.replace(
     /background\s*:\s*var\(\s*--shell\s*,\s*var\(\s*--bg/gi,
     'background: var(--bg, var(--paper, var(--shell',
+  );
+  // Skeleton/compact export used to emit `@page { size: 1920px 1080px }` which
+  // becomes ~20″ MediaBox under preferCSSPageSize / browser print.
+  out = out.replace(
+    /@page\s*\{\s*size\s*:\s*1920px\s+1080px\s*;\s*margin\s*:\s*0\s*;\s*\}/gi,
+    buildDeckPdfPageAtRule(),
+  );
+  out = out.replace(
+    /size\s*:\s*1920px\s+1080px/gi,
+    `size: ${DECK_PDF_PAGE_WIDTH_IN}in ${DECK_PDF_PAGE_HEIGHT_IN}in`,
   );
   return out;
 }

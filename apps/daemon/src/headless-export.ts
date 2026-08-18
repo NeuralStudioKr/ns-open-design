@@ -18,6 +18,9 @@ import {
   buildDeckHtmlExportStaticRevealScript as buildSharedDeckHtmlExportStaticRevealScript,
   buildDeckPrintCss as buildSharedDeckPrintCss,
   buildDeckPdfPagePdfOptions,
+  DECK_CHROME_HIDE_SELECTOR,
+  DECK_WRAPPER_SELECTOR,
+  DECK_SLIDE_SELECTOR as CONTRACTS_DECK_SLIDE_SELECTOR,
 } from '@open-design/contracts';
 
 import {
@@ -97,30 +100,10 @@ const DECK_HEIGHT = 1080;
 // Image downloads are user-facing deliverables, not thumbnail previews. Capture
 // at 2x device scale so text antialiasing survives PNG/JPEG/WebP encoding.
 const IMAGE_DEVICE_SCALE_FACTOR = 2;
-// Single source of truth for the deck-slide selector used by both the print
-// CSS (apply{Pdf,Screenshot}Styles) and the in-page JS that drives
-// scrollIntoView + per-slide screenshot clipping. Decks shipped from different
-// generators use different conventions:
-//   - `.slide`               — the classic open-design / handwritten convention.
-//   - `[data-slide]`         — legacy attribute marker (older agents).
-//   - `[data-screen-label]`  — current ProjectView / deck-framework marker.
-//   - `section.slide`        — narrowed `section` to avoid grabbing
-//                              `<section>` wrappers that aren't slides.
-//   - `.deck-slide` / `.ppt-slide` — agent-emitted variants used by some deck
-//                                    prompts.
-// All five must produce the same slide list whether the deck is being styled
-// for print or being measured for a per-slide PNG, otherwise PDF and image
-// exports drift apart on the same deck.
-const DECK_SLIDE_SELECTOR =
-  '.slide, [data-slide], [data-screen-label], section.slide, .deck-slide, .ppt-slide';
+// Slide / wrapper / chrome selectors: contracts SSOT (re-exported below).
+const DECK_SLIDE_SELECTOR = CONTRACTS_DECK_SLIDE_SELECTOR;
 
-/** Horizontal carousel / stage wrappers that must not generate a print box. */
-export const DECK_WRAPPER_SELECTOR =
-  '.deck, .deck-shell, .deck-stage, #deck-stage, #deck, .stage';
-
-/** Navigation, hints, and non-slide chrome hidden during deck PDF export. */
-export const DECK_CHROME_HIDE_SELECTOR =
-  '.deck-counter, .deck-hint, .deck-nav, .nav-hint, .nav-dots, .nav-dot, .slide-counter, .grain-overlay, #deck-prev, #deck-next, #deck-cur, #deck-total, #nav, #hint, canvas.bg, #overview, [aria-label="Previous slide"], [aria-label="Next slide"]';
+export { DECK_WRAPPER_SELECTOR, DECK_CHROME_HIDE_SELECTOR };
 
 function deckSlideSelectorList(): string[] {
   return DECK_SLIDE_SELECTOR.split(',').map((sel) => sel.trim());
@@ -1170,29 +1153,19 @@ async function pageLooksLikeDeckExport(page: Page): Promise<boolean> {
 /**
  * HTML export reveal — show every slide without PDF flatten.
  * Keeps .stage / ::before so cream paper + graph grid survive in the download.
+ * Reuses static HTML flex-preserve reveal so Capsule covers match FE downloads.
  */
 async function revealDeckSlidesForHtmlExport(page: Page): Promise<number> {
-  return evaluateInPage<number>(
-    page,
-    `
-      const slides = Array.from(document.querySelectorAll(args.selector));
-      const set = (el, prop, value) => el.style.setProperty(prop, value, 'important');
-      slides.forEach((el) => {
-        el.classList.add('active');
-        el.removeAttribute('hidden');
-        el.removeAttribute('aria-hidden');
-        set(el, 'opacity', '1');
-        set(el, 'visibility', 'visible');
-        set(el, 'pointer-events', 'auto');
-      });
-      document.querySelectorAll(args.chromeHideSelector).forEach((el) => set(el, 'display', 'none'));
-      return slides.length;
-    `,
-    {
-      selector: DECK_SLIDE_SELECTOR,
-      chromeHideSelector: DECK_CHROME_HIDE_SELECTOR,
-    },
-  ).catch(() => 0);
+  try {
+    await page.evaluate(buildSharedDeckHtmlExportStaticRevealScript());
+    return await page.evaluate(
+      `(function () {
+        return document.querySelectorAll(${JSON.stringify(DECK_SLIDE_SELECTOR)}).length;
+      })()`,
+    );
+  } catch {
+    return 0;
+  }
 }
 
 async function showAllDeckSlidesForEditablePptx(page: Page): Promise<number> {

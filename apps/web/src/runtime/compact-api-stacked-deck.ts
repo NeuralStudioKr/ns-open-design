@@ -219,7 +219,8 @@ const COMPACT_STACKED_EXPORT_FIX_MARKER = 'data-od-compact-deck-export-fix';
 function compactStackedDeckExportCss(): string {
   return `
   <style ${COMPACT_STACKED_EXPORT_FIX_MARKER}>
-    @page { size: 1920px 1080px; margin: 0; }
+    /* PPT inches — never 1920px (@page px → ~20″ MediaBox at 96dpi). */
+    @page { size: 13.333333in 7.5in; margin: 0; }
     html, body {
       margin: 0 !important;
       padding: 0 !important;

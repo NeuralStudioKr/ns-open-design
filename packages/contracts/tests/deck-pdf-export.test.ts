@@ -15,10 +15,13 @@ import {
   patchArtifactDeckPrintCss,
   stripStaleDeckExportArtifacts,
   buildDeckPdfPagePdfOptions,
+  buildDeckBrowserPrintScaleCss,
+  buildDeckPdfPageAtRule,
   deckPdfPrintScale,
   DECK_PDF_PAGE_WIDTH_IN,
   DECK_PDF_PAGE_HEIGHT_IN,
   DECK_HTML_EXPORT_FIT_PAD_PX,
+  DECK_CHROME_HIDE_SELECTOR,
 } from '../src/html/deckPdfExport.js';
 
 describe('stripStaleDeckExportArtifacts', () => {
@@ -86,6 +89,13 @@ describe('patchArtifactDeckPrintCss', () => {
     const out = patchArtifactDeckPrintCss(input);
     expect(out).toContain('background: var(--bg, var(--paper, var(--shell)) !important');
     expect(out).not.toContain('var(--shell, var(--bg)');
+  });
+
+  it('rewrites @page 1920px to PPT inches so MediaBox is not ~20″', () => {
+    const html = `<style>@media print { @page { size: 1920px 1080px; margin: 0; } }</style>`;
+    const out = patchArtifactDeckPrintCss(html);
+    expect(out).toContain(`size: ${DECK_PDF_PAGE_WIDTH_IN}in ${DECK_PDF_PAGE_HEIGHT_IN}in`);
+    expect(out).not.toMatch(/size:\s*1920px\s+1080px/);
   });
 
   it('cleans exported deck HTML polluted by prior headless snapshots', () => {
@@ -190,6 +200,24 @@ describe('buildDeckPdfPagePdfOptions', () => {
     expect(opts.scale).toBeCloseTo(2 / 3, 5);
     expect(deckPdfPrintScale()).toBe(opts.scale);
     expect(opts.width).not.toContain('px');
+  });
+
+  it('exposes shared @page inches and browser-only print zoom', () => {
+    expect(buildDeckPdfPageAtRule()).toBe(
+      `@page { size: ${DECK_PDF_PAGE_WIDTH_IN}in ${DECK_PDF_PAGE_HEIGHT_IN}in; margin: 0; }`,
+    );
+    const zoomCss = buildDeckBrowserPrintScaleCss();
+    expect(zoomCss).toContain('@media print');
+    expect(zoomCss).toMatch(/zoom:\s*0\.666/);
+  });
+});
+
+describe('DECK_CHROME_HIDE_SELECTOR', () => {
+  it('hides nav chrome but keeps Motif grain/crt overlays for export', () => {
+    expect(DECK_CHROME_HIDE_SELECTOR).toContain('#nav');
+    expect(DECK_CHROME_HIDE_SELECTOR).toContain('canvas.bg');
+    expect(DECK_CHROME_HIDE_SELECTOR).not.toContain('grain-overlay');
+    expect(DECK_CHROME_HIDE_SELECTOR).not.toContain('crt-overlay');
   });
 });
 

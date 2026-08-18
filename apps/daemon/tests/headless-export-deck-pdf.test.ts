@@ -453,6 +453,17 @@ describe('buildDeckPrintCss', () => {
     expect(DECK_WRAPPER_SELECTOR).toContain('#deck');
     expect(DECK_CHROME_HIDE_SELECTOR).toContain('#nav');
     expect(DECK_CHROME_HIDE_SELECTOR).toContain('canvas.bg');
+    expect(DECK_CHROME_HIDE_SELECTOR).not.toContain('grain-overlay');
+  });
+
+  it('revealDeckSlidesForHtmlExport reuses static flex-preserve reveal', () => {
+    const source = fs.readFileSync(
+      path.join(__dirname, '..', 'src', 'headless-export.ts'),
+      'utf8',
+    );
+    expect(source).toMatch(
+      /revealDeckSlidesForHtmlExport[\s\S]{0,400}buildSharedDeckHtmlExportStaticRevealScript/,
+    );
   });
 
   it('strengthens guizang ::before overlays for print', () => {

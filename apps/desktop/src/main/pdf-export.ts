@@ -1,12 +1,21 @@
 import { writeFile } from "node:fs/promises";
 
-import { repairArtifactDocumentHead, patchArtifactDeckPrintCss, injectDeckFlattenScript, buildDeckFlattenInvokeJs, buildDeckPrintCss } from "@open-design/contracts";
+import {
+  healDeckHtmlForStandaloneExport,
+  patchArtifactDeckPrintCss,
+  injectDeckFlattenScript,
+  buildDeckFlattenInvokeJs,
+  buildDeckPrintCss,
+  buildDeckPdfPagePdfOptions,
+  DECK_PDF_PAGE_WIDTH_IN,
+  DECK_PDF_PAGE_HEIGHT_IN,
+} from "@open-design/contracts";
 import { BrowserWindow, dialog } from "electron";
 import type { DesktopExportPdfInput, DesktopExportPdfResult } from "@open-design/sidecar-proto";
 
 type PageSize = { height: number; width: number };
 
-const DECK_PAGE_SIZE: PageSize = { width: 13.333333, height: 7.5 };
+const DECK_PAGE_SIZE: PageSize = { width: DECK_PDF_PAGE_WIDTH_IN, height: DECK_PDF_PAGE_HEIGHT_IN };
 const MAX_PAGE_INCHES = 200;
 
 export type PrintReadyPdfOptions = {
@@ -18,6 +27,7 @@ type PrintToPdfOptions = {
   pageSize: PageSize;
   preferCSSPageSize: boolean;
   printBackground: boolean;
+  scale?: number;
 };
 
 export async function exportPdfFromHtml(input: DesktopExportPdfInput): Promise<DesktopExportPdfResult> {
@@ -49,7 +59,7 @@ export async function exportPdfFromHtml(input: DesktopExportPdfInput): Promise<D
       await flattenDeckForPrintInWindow(window);
     }
     const pageSize = input.deck ? DECK_PAGE_SIZE : await inferPageSize(window);
-    const pdf = await window.webContents.printToPDF(printToPdfOptions(pageSize));
+    const pdf = await window.webContents.printToPDF(printToPdfOptions(pageSize, input.deck === true));
     await writeFile(save.filePath, pdf);
     return { ok: true, path: save.filePath };
   } catch (error) {
@@ -136,7 +146,7 @@ export async function savePrintReadyDocumentAsPdf(
       await target.prepareDeckPrint();
     }
     const pageSize = options.deck ? DECK_PAGE_SIZE : await target.measurePageSize();
-    const pdf = await target.printToPdf(printToPdfOptions(pageSize));
+    const pdf = await target.printToPdf(printToPdfOptions(pageSize, options.deck === true));
     await target.write(savePath, pdf);
     return { ok: true, path: savePath };
   } catch (error) {
@@ -210,7 +220,18 @@ export function createElectronPdfTarget(): PrintReadyPdfTarget {
   };
 }
 
-function printToPdfOptions(pageSize: PageSize): PrintToPdfOptions {
+function printToPdfOptions(pageSize: PageSize, deck = false): PrintToPdfOptions {
+  if (deck) {
+    const paper = buildDeckPdfPagePdfOptions();
+    return {
+      margins: { bottom: 0, left: 0, right: 0, top: 0 },
+      pageSize: DECK_PAGE_SIZE,
+      // Match headless: ignore leftover @page 1920px; scale 1920 CSS → PPT paper.
+      preferCSSPageSize: false,
+      printBackground: true,
+      scale: paper.scale,
+    };
+  }
   return {
     margins: { bottom: 0, left: 0, right: 0, top: 0 },
     pageSize,
@@ -221,7 +242,7 @@ function printToPdfOptions(pageSize: PageSize): PrintToPdfOptions {
 
 function buildPrintableDocument(input: DesktopExportPdfInput): string {
   let source = patchArtifactDeckPrintCss(
-    repairArtifactDocumentHead(injectBaseHref(input.html, input.baseHref)),
+    healDeckHtmlForStandaloneExport(injectBaseHref(input.html, input.baseHref)),
   );
   const withTitle = injectTitle(source, input.title);
   if (!input.deck) return withTitle;

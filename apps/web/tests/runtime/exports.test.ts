@@ -51,13 +51,13 @@ describe('exportAsHtml / exportAsZip lean srcdoc', () => {
     );
   });
 
-  it('avoids double repairArtifactDocumentHead on PDF export srcdoc path', () => {
+  it('heals Motif/bleed before browser/desktop PDF export srcdoc path', () => {
+    expect(exportsSource).toContain('healDeckHtmlForStandaloneExport(html)');
     expect(exportsSource).toContain(
-      'Single repair via buildSrcdoc intact-head / repair gate',
+      'buildBlobSafeSrcdoc(patchArtifactDeckPrintCss(healed)',
     );
-    expect(exportsSource).toContain(
-      'buildBlobSafeSrcdoc(patchArtifactDeckPrintCss(html)',
-    );
+    expect(exportsSource).toContain('buildDeckBrowserPrintScaleCss');
+    expect(exportsSource).toContain('includeBrowserPrintScale');
     expect(exportsSource).not.toMatch(
       /buildBlobSafeSrcdoc\(\s*repairArtifactDocumentHead\(\s*patchArtifactDeckPrintCss/,
     );

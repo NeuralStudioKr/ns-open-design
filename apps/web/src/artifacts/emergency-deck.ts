@@ -279,7 +279,7 @@ export function buildEmergencySlideDeckFromOutline(
   <meta name="viewport" content="width=1920, initial-scale=1, maximum-scale=1" />
   <title>${escapeHtml(deckTitle)}</title>
   <style>
-    @page { size: 1920px 1080px; margin: 0; }
+    @page { size: 13.333333in 7.5in; margin: 0; }
     html, body { margin: 0; width: 1920px; background: #0b0c10; color: #1c1b1a; font: 18px/1.5 system-ui, sans-serif; }
     .slide { width: 1920px; height: 1080px; padding: 96px 112px; box-sizing: border-box; background: #fff; overflow: hidden; page-break-after: always; break-after: page; }
     .slide:last-child { page-break-after: auto; break-after: auto; }

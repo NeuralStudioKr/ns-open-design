@@ -36,6 +36,7 @@ import {
   injectDeckFlattenScript,
   patchArtifactDeckPrintCss,
   buildDeckPrintCss,
+  buildDeckBrowserPrintScaleCss,
   buildStandaloneDeckHtmlDocument,
   healDeckHtmlForStandaloneExport,
 } from '@open-design/contracts';
@@ -1951,14 +1952,19 @@ export async function exportAsPdf(
   // Generate a per-export nonce so the print-ready handshake is resistant to
   // spoofing by untrusted scripts inside the exported artifact.
   const nonce = randomUUID();
-  // Single repair via buildSrcdoc intact-head / repair gate (was repair then rebuild).
-  let doc = buildBlobSafeSrcdoc(patchArtifactDeckPrintCss(html), {
+  // Heal Motif remnant CSS / bleed / truncated head before print — matches
+  // daemon/desktop SSOT so browser fallback PDF keeps Capsule look.
+  const healed = healDeckHtmlForStandaloneExport(html);
+  let doc = buildBlobSafeSrcdoc(patchArtifactDeckPrintCss(healed), {
     ...opts,
     exportDocument: true,
     deck: false,
   });
+  // Desktop/host printToPDF applies Chromium `scale`; browser window.print()
+  // needs CSS zoom instead (do not combine — double-shrink).
+  const useHostPdf = isOpenDesignHostAvailable();
   if (opts?.deck) {
-    doc = injectDeckPrintStylesheet(doc);
+    doc = injectDeckPrintStylesheet(doc, { includeBrowserPrintScale: !useHostPdf });
     doc = injectDeckFlattenScript(doc);
   }
   doc = injectPrintReadyHandshake(doc, nonce);
@@ -1970,7 +1976,7 @@ export async function exportAsPdf(
   // omits allow-modals here because the native flow never calls
   // window.print(); granting it would let untrusted artifact code call
   // alert()/confirm() and stall the hidden Electron window indefinitely.
-  if (isOpenDesignHostAvailable()) {
+  if (useHostPdf) {
     if (sandboxedPreview) {
       doc = buildSandboxedPreviewDocument(doc, title);
     }
@@ -2183,8 +2189,16 @@ function injectParentPrintReadyCache(doc: string, nonce: string): string {
 }
 
 // Deck print CSS lives in @open-design/contracts `buildDeckPrintCss`.
-function injectDeckPrintStylesheet(doc: string): string {
-  const tag = `<style data-deck-print="injected">${buildDeckPrintCss()}</style>`;
+// Browser window.print() has no Chromium `scale` API — optional CSS zoom so
+// 1920 CSS layout fits PPT @page (headless/desktop pass scale separately).
+function injectDeckPrintStylesheet(
+  doc: string,
+  opts?: { includeBrowserPrintScale?: boolean },
+): string {
+  const css = opts?.includeBrowserPrintScale
+    ? `${buildDeckPrintCss()}${buildDeckBrowserPrintScaleCss()}`
+    : buildDeckPrintCss();
+  const tag = `<style data-deck-print="injected">${css}</style>`;
   if (/<\/head>/i.test(doc)) return doc.replace(/<\/head>/i, `${tag}</head>`);
   if (/<head[^>]*>/i.test(doc)) return doc.replace(/<head[^>]*>/i, (m) => `${m}${tag}`);
   return tag + doc;
