@@ -93,7 +93,11 @@ export type ChatAnalyticsEntryFrom =
   // an artifact block). Distinct from `resume_continue` (manual button) so the
   // demo dashboard can measure how often the AUTOMATIC recovery fires and
   // whether it actually salvages the deliverable.
-  | 'auto_continue_incomplete_output';
+  | 'auto_continue_incomplete_output'
+  // After a closed short deck lands, append remaining slides up to the
+  // user-requested count (Home 1–15). Distinct from incomplete-output recovery
+  // so dashboards can tell "retry truncated turn" from "fill remaining slides".
+  | 'slide_count_top_up';
 
 export type ChatAnalyticsLengthBucket =
   | '0'

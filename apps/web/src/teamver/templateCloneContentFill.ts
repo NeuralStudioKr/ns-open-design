@@ -238,7 +238,10 @@ export function templateCloneContentFillHardRules(): string[] {
     '- Strict body-first contract: start the artifact body exactly like `<!doctype html><html lang="ko"><body><section class="slide" ...>`.',
     '- `<head>` is FORBIDDEN on this fill turn. Do not emit `<head>`, `<title>`, meta tags, or a style prelude before slide 1.',
     '- The first 800 characters after `<artifact` MUST include `<body` and one complete `<section class="slide">` with real topical copy (cover title + lead).',
+    '- Slide count is input-driven: honor an explicit small count (1–4) if the user asked for it. Otherwise produce 5–6 complete slides by default; a one-slide cover-only output is incomplete.',
+    '- If the brief is only a topic, use this default outline: cover, why it matters, key concepts/current state, architecture/workflow, trade-offs/risks, next steps/checklist. Adapt labels to the topic and audience.',
     '- Motif vocabulary OVERRIDE: title-first always. AFTER cover `<h1>`/`<h2>` + lead, use kit Motif HTML snippets / Decorations CSS Motif classes / capped Motif sprites (whatever the kit ships). Prefer 1–2 Motif elements after title when scaffold lists `deco=` — finish a closed deck this turn. FORBIDDEN: inventing generic CSS circles or Capsule coral pills when the kit Motif is petals/blobs/pins/pixel/scanlines. Never open Motif `<svg>` before title copy; if you already started an SVG-before-title dump, abandon it and restart with `<h1>`.',
+    '- Named motif cue must be visibly honored: if the selected template/title vocabulary names flowers, daisies, capsule cards, pins, pixels, scanlines, terminal chrome, etc., include that same motif family on the cover and at least one body slide. Generic circles/stars are not substitutes for a named motif family.',
     '- Layout OVERRIDE: reuse capped Layout CSS + scaffold roles when present. FORBIDDEN: flattening every slide into one centered flex title column when the kit ships grids/splits/cards.',
     '- Full-bleed surface: bind kit Slide surface hex on `html`/`body` AND every `<section class="slide" style="…background:<kit surface>…">` edge-to-edge for the full 1920×1080 canvas. FORBIDDEN: white/default outer slide with an inner cream "paper" panel that leaves white bands at top/bottom. White title cards ON cream paper are OK.',
     '- Keep `<style>` very short (kit tokens + fonts only, ideally under ~1KB) and place it after slide 1 or omit it in favor of inline styles. Never dump the whole template stylesheet.',
@@ -301,7 +304,17 @@ export function templateCloneFillSlideCountOverrideNotice(
     '# Template clone fill slideCount override',
     `For THIS first content-fill turn only, treat Plugin input slideCount as "${capped}".`,
     'Ignore any larger slideCount in the plugin block above (first-fill stability cap).',
+    'Finish a closed compact deck this turn. A later turn may append remaining slides if the user requested more.',
   ].join('\n');
+}
+
+/** Persist the uncapped user request so top-up can ignore the first-fill cap. */
+export function formatUserRequestedSlideCountLine(
+  slideCountHint?: string | number | null,
+): string | null {
+  const raw = String(slideCountHint ?? '').trim();
+  if (!raw || /stability cap/i.test(raw)) return null;
+  return `User requested slide count: ${raw}.`;
 }
 
 export function extractTemplateCloneFillSlideCountHintFromPrompt(
@@ -346,9 +359,15 @@ export function buildTemplateCloneContentFillSeed(options: {
   if (templateTitle) {
     parts.push(`Selected template: ${templateTitle}.`);
   }
+  const requestedLine = formatUserRequestedSlideCountLine(options.slideCountHint);
+  if (requestedLine) {
+    parts.push(requestedLine);
+  }
   const slideCountHint = normalizeTemplateCloneFillSlideCountHint(options.slideCountHint);
   if (slideCountHint) {
     parts.push(`Slide count hint: ${slideCountHint}.`);
+  } else {
+    parts.push('Slide count hint: 5-6 (default for first template fill; do not stop at 1 slide unless the user explicitly requested exactly 1).');
   }
   if (brief) {
     parts.push('', '[Source brief]', brief);

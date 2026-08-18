@@ -479,6 +479,15 @@ import {
 import { subscribeTeamverEmbedSessionChanged } from '../teamver/teamverEmbedSession';
 import { consumeTeamverPublishMenuArm, maybeArmTeamverPublishMenuAfterRunSuccess } from '../teamver/teamverPostRunNavigation';
 import {
+  SLIDE_COUNT_TOP_UP_ENTRY_FROM,
+  buildSlideCountTopUpPrompt,
+  extractRequestedSlideCountTargetFromMessages,
+  isSlideCountTopUpPrompt,
+  rollbackSlideCountTopUpCount,
+  shouldQueueSlideCountTopUp,
+  syncSlideCountTopUpCountFromMessages,
+} from '../teamver/slideCountTopUp';
+import {
   looksLikeDeckDeliverablePromiseProse,
   looksLikeDeckIntentProse,
 } from '../teamver/deckDeliverableProse';
@@ -2850,6 +2859,33 @@ export function findClientSlideCountRegression(input: {
   };
 }
 
+export function findTemplateCloneFillSlideCountIncomplete(input: {
+  fileName: string;
+  htmlBody: string;
+  requestedSlideCount: number | null;
+}): { fileName: string; producedCount: number; expectedCount: number; reason: string } | null {
+  const fileName = input.fileName.trim();
+  if (!fileName.toLowerCase().endsWith('.html')) return null;
+  const producedCount = countDeckSlideSections(input.htmlBody);
+  if (producedCount <= 0) return null;
+
+  const requested = input.requestedSlideCount;
+  const expectedCount =
+    requested != null && requested >= 1 && requested <= 4
+      ? requested
+      : 3;
+  if (producedCount >= expectedCount) return null;
+
+  return {
+    fileName,
+    producedCount,
+    expectedCount,
+    reason:
+      `Template fill produced ${producedCount} slide(s), but expected at least ${expectedCount}. ` +
+      'This looks like an unfinished template fill and was not saved as complete.',
+  };
+}
+
 export function ProjectView({
   project,
   routeFileName,
@@ -3281,6 +3317,11 @@ export function ProjectView({
   const pendingAutoContinueConversationIdRef = useRef<string | null>(null);
   /** True while the 600ms auto-continue timer is armed — ChatPane hides Retry. */
   const [autoContinuePending, setAutoContinuePending] = useState(false);
+  /** Closed-deck append loop (remaining slides after a short first fill). */
+  const conversationSlideCountTopUpCountRef = useRef<Map<string, number>>(new Map());
+  const slideCountTopUpTimerRef = useRef<number | null>(null);
+  const pendingSlideCountTopUpConversationIdRef = useRef<string | null>(null);
+  const requestSlideCountTopUpRef = useRef<(htmlPath: string | null) => void>(() => {});
   /**
    * Live streaming buffer mutator for the in-flight assistant row. `surfaceChatVisibleError`
    * updates React `messages` + saves, but the stream scheduler persists from a separate
@@ -3291,6 +3332,20 @@ export function ProjectView({
     assistantId: string;
     apply: (updater: (prev: ChatMessage) => ChatMessage) => void;
   } | null>(null);
+
+  const clearPendingSlideCountTopUpTimer = useCallback((options?: { rollback?: boolean }) => {
+    if (slideCountTopUpTimerRef.current === null) {
+      pendingSlideCountTopUpConversationIdRef.current = null;
+      return;
+    }
+    window.clearTimeout(slideCountTopUpTimerRef.current);
+    slideCountTopUpTimerRef.current = null;
+    const scheduledId = pendingSlideCountTopUpConversationIdRef.current;
+    pendingSlideCountTopUpConversationIdRef.current = null;
+    if (options?.rollback && scheduledId) {
+      rollbackSlideCountTopUpCount(conversationSlideCountTopUpCountRef.current, scheduledId);
+    }
+  }, []);
 
   const clearPendingAutoContinueTimer = useCallback((options?: { rollback?: boolean }) => {
     if (autoContinueTimerRef.current === null) {
@@ -3317,19 +3372,22 @@ export function ProjectView({
     runSkipDiscoveryBriefRef.current = false;
     conversationRecoveryAttemptedRef.current.clear();
     conversationAutoContinueCountRef.current.clear();
+    conversationSlideCountTopUpCountRef.current.clear();
     if (htmlAutoOpenTimerRef.current !== null) {
       window.clearTimeout(htmlAutoOpenTimerRef.current);
       htmlAutoOpenTimerRef.current = null;
     }
     clearPendingAutoContinueTimer();
+    clearPendingSlideCountTopUpTimer();
     return () => {
       if (htmlAutoOpenTimerRef.current !== null) {
         window.clearTimeout(htmlAutoOpenTimerRef.current);
         htmlAutoOpenTimerRef.current = null;
       }
       clearPendingAutoContinueTimer();
+      clearPendingSlideCountTopUpTimer();
     };
-  }, [project.id, clearPendingAutoContinueTimer]);
+  }, [project.id, clearPendingAutoContinueTimer, clearPendingSlideCountTopUpTimer]);
 
   // Abort a pending automatic-continue when the user switches chats inside
   // the same project — otherwise a late timer can inject into the new chat.
@@ -3337,10 +3395,12 @@ export function ProjectView({
   // recover if the user switches back.
   useEffect(() => {
     clearPendingAutoContinueTimer({ rollback: true });
+    clearPendingSlideCountTopUpTimer({ rollback: true });
     return () => {
       clearPendingAutoContinueTimer({ rollback: true });
+      clearPendingSlideCountTopUpTimer({ rollback: true });
     };
-  }, [activeConversationId, clearPendingAutoContinueTimer]);
+  }, [activeConversationId, clearPendingAutoContinueTimer, clearPendingSlideCountTopUpTimer]);
 
   // Pending Write tool invocations: tool_use_id -> destination basename.
   // When the matching tool_result lands we refresh the file list and open
@@ -3963,6 +4023,11 @@ export function ProjectView({
             if (pendingAutoContinueConversationIdRef.current === activeConversationId) return;
             const autoContinueCount = syncAutoContinueCountFromMessages(
               conversationAutoContinueCountRef.current,
+              activeConversationId,
+              mergedMessages,
+            );
+            syncSlideCountTopUpCountFromMessages(
+              conversationSlideCountTopUpCountRef.current,
               activeConversationId,
               mergedMessages,
             );
@@ -5181,6 +5246,25 @@ export function ProjectView({
         htmlBody = sanitizeManualEditFullSource(htmlBody);
       }
       if (ext === '.html') {
+        if (runTemplateCloneContentFillRef.current) {
+          const slideCountIncomplete = findTemplateCloneFillSlideCountIncomplete({
+            fileName,
+            htmlBody,
+            requestedSlideCount: extractRequestedSlideCountTargetFromMessages(messagesRef.current),
+          });
+          if (slideCountIncomplete) {
+            devLog.warn('[teamver] blocked incomplete template fill before save', {
+              fileName: slideCountIncomplete.fileName,
+              producedCount: slideCountIncomplete.producedCount,
+              expectedCount: slideCountIncomplete.expectedCount,
+            });
+            return {
+              kind: 'skipped-incomplete',
+              fileName: slideCountIncomplete.fileName,
+              reason: slideCountIncomplete.reason,
+            };
+          }
+        }
         // Heal model-emitted <img src> that used a human/original filename
         // (or sanitized basename without the upload timestamp prefix) instead
         // of the real on-disk path from /upload. Union turn attachments so
@@ -8139,6 +8223,11 @@ export function ProjectView({
           recoveryConversationId,
           mergedMessages,
         );
+        syncSlideCountTopUpCountFromMessages(
+          conversationSlideCountTopUpCountRef.current,
+          recoveryConversationId,
+          mergedMessages,
+        );
         const incompleteAssistant = findIncompleteSlideAssistantForRecovery(
           mergedMessages,
           { restrictToMessageIds: trackedAssistantIds },
@@ -8692,7 +8781,11 @@ export function ProjectView({
       meta?: ProjectChatSendMeta,
       baseMessages?: ChatMessage[],
     ) => {
-      if (embedSubmitDisabled && meta?.entryFrom !== AUTO_CONTINUE_ENTRY_FROM) {
+      if (
+        embedSubmitDisabled
+        && meta?.entryFrom !== AUTO_CONTINUE_ENTRY_FROM
+        && meta?.entryFrom !== SLIDE_COUNT_TOP_UP_ENTRY_FROM
+      ) {
         onEmbedSubmitBlocked?.();
         return false;
       }
@@ -8754,6 +8847,9 @@ export function ProjectView({
       const isAutoContinueSend =
         meta?.entryFrom === AUTO_CONTINUE_ENTRY_FROM
         || isAutoContinueIncompleteOutputPrompt(prompt);
+      const isSlideCountTopUpSend =
+        meta?.entryFrom === SLIDE_COUNT_TOP_UP_ENTRY_FROM
+        || isSlideCountTopUpPrompt(prompt);
       let filesSnapshot = projectFiles;
       if (
         commentAttachments.some(
@@ -8973,7 +9069,10 @@ export function ProjectView({
       // Without this, the setTimeout(600ms) that fires the auto-continue burns
       // its slot on a false-positive busy signal and the user is stuck with an
       // incomplete assistant row despite the "이어쓰기 시도 중" notice.
-      const bypassBusyForAutoContinue = meta?.entryFrom === AUTO_CONTINUE_ENTRY_FROM && !abortRef.current;
+      const bypassBusyForAutoContinue =
+        (meta?.entryFrom === AUTO_CONTINUE_ENTRY_FROM
+          || meta?.entryFrom === SLIDE_COUNT_TOP_UP_ENTRY_FROM)
+        && !abortRef.current;
       const bypassBusyForQueuedDrain = meta?.drainQueuedSend === true;
       if (currentConversationBusy && !bypassBusyForAutoContinue && !bypassBusyForQueuedDrain) {
         queueChatSendForCurrentConversation({
@@ -8990,8 +9089,9 @@ export function ProjectView({
       // Manual retries and fresh user turns get a full auto-continue budget.
       // Without this reset, a conversation that exhausted the cap on earlier
       // incomplete_output rows would never auto-recover on the next real send.
-      if (!isAutoContinueSend) {
+      if (!isAutoContinueSend && !isSlideCountTopUpSend) {
         conversationAutoContinueCountRef.current.set(runConversationId, 0);
+        conversationSlideCountTopUpCountRef.current.set(runConversationId, 0);
       }
       clearRunRecoveryBannerState(runConversationId);
       setError(null);
@@ -9597,6 +9697,11 @@ export function ProjectView({
                 : 'incomplete_output';
               const autoContinueCount = syncAutoContinueCountFromMessages(
                 conversationAutoContinueCountRef.current,
+                runConversationId,
+                messagesRef.current,
+              );
+              syncSlideCountTopUpCountFromMessages(
+                conversationSlideCountTopUpCountRef.current,
                 runConversationId,
                 messagesRef.current,
               );

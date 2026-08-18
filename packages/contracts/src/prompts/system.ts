@@ -1471,8 +1471,9 @@ This is the first content fill after a LOOK seed (OD-style create with kit Motif
 - Title-first: cover must have a real \`h1\`/\`h2\` title + lead BEFORE any Motif decoration.
 - **Layout (required when kit has Layout CSS / scaffold roles):** reuse capped Layout CSS + scaffold roles. Do NOT flatten every slide into one centered flex title column when the kit ships grids/splits/cards.
 - **Motif vocabulary:** use kit Motif HTML snippets / Motif CSS classes / at most one capped Motif sprite AFTER title/lead (whatever the kit ships). Prefer finishing a closed deck over dense Motif.
+- **Named Motif fidelity:** if the selected template/title vocabulary names flowers, daisies, capsule cards, pins, pixels, scanlines, terminal chrome, etc., that same motif family must visibly appear on the cover and at least one body slide. Generic circles/stars are not substitutes.
 - **FORBIDDEN substitutes:** generic CSS circles as Motif when the kit has Motif CSS/sprites; inventing Capsule coral pills when the kit Motif is petals/blobs/pins/pixel/scanlines; emoji ornament rows; Motif \`<svg>\` before cover title; multi-KB \`<svg><style>\` dumps; Neutral \`#0f172a\`; terracotta \`#c96442\`.
-- Prefer 5–6 filled 1920×1080 slides unless the user asked for an exact count.
+- Slide count is input-driven: honor an explicit small count (1–4) if the user asked for it. Otherwise produce 5–6 filled 1920×1080 slides by default. A one-slide cover-only deck is incomplete.
 - Stream: status → \`<artifact type="deck">\` → body-first sections with real topical copy → kit Motif after title → close \`</body></html></artifact>\` in this same response.
 `;
 
@@ -1496,6 +1497,7 @@ This is the first content-fill after a Clone LOOK seed.
 
 - Cover order is mandatory: \`<section class="slide">\` → \`<h1>real topical title</h1>\` → lead \`<p>\` → kit Motif vocabulary.
 - Motif vocabulary MUST come from the kit: Motif HTML snippets / Decorations CSS Motif classes / capped Motif sprites (whatever the kit ships).
+- Named Motif fidelity: if the template/title vocabulary names flowers, daisies, capsule cards, pins, pixels, scanlines, terminal chrome, etc., include that same motif family on the cover and at least one body slide. Generic circles/stars are not substitutes.
 - Layout MUST come from capped Layout CSS + scaffold roles when present — do not flatten every slide to a centered flex title.
 - Prefer 1–2 Motif elements after title when scaffold \`deco=\` lists classes — finish a closed deck this turn.
 - Never invent generic CSS circles or Capsule coral pills when the kit Motif is petals/blobs/pins/pixel/scanlines.

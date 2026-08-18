@@ -6,6 +6,7 @@ import {
   type InstalledPluginRecord,
 } from "@open-design/contracts";
 import { COMPACT_DECK_SLIDE_COUNT_GUIDANCE } from "../runtime/deckGuidance";
+import { SLIDE_COUNT_REQUEST_MAX } from "./slideCountTopUp";
 import { listPluginsPage } from "../state/projects";
 import { resolveSlideOnlyCreatePluginId } from "./branding/slideOnlyMvpPolicy";
 import type { TeamverDriveImportAsset } from "./importDriveAssets";
@@ -221,7 +222,7 @@ export type CanvasSlideQuickSettings = {
   length: CanvasSlideLength;
   transformMode: CanvasSlideTransformMode;
   tone: CanvasSlideTone;
-  /** Home wizard: exact 1–40 slides. When set, overrides Length chips. */
+  /** Home wizard: exact 1–15 slides. When set, overrides Length chips. */
   customSlideCount?: number | null;
 };
 
@@ -288,9 +289,9 @@ const QUICK_SETTING_PROMPT_LABELS = {
 } as const;
 
 const CUSTOM_SLIDE_COUNT_MIN = 1;
-const CUSTOM_SLIDE_COUNT_MAX = 40;
+export const CUSTOM_SLIDE_COUNT_MAX = SLIDE_COUNT_REQUEST_MAX;
 
-/** Parse a Home wizard custom slide-count field (1–40). Empty → null. */
+/** Parse a Home wizard custom slide-count field (1–15). Empty → null. */
 export function parseCustomSlideCountInput(raw: string): number | null {
   const trimmed = raw.trim();
   if (!trimmed) return null;
@@ -444,19 +445,19 @@ export function parseExplicitSlideCountFromText(
   if (range?.[1] && range[2]) {
     const a = Number(range[1]);
     const b = Number(range[2]);
-    if (a >= 1 && b >= a && b <= 40) return `${a}-${b}`;
+    if (a >= 1 && b >= a && b <= CUSTOM_SLIDE_COUNT_MAX) return `${a}-${b}`;
   }
   // Korean "10장" / "슬라이드 10장으로" — avoid \\b after Hangul (no word boundary).
   const korean = raw.match(/(\d{1,2})\s*장/);
   if (korean?.[1]) {
     const n = Number(korean[1]);
-    if (Number.isFinite(n) && n >= 1 && n <= 40) return String(n);
+    if (Number.isFinite(n) && n >= 1 && n <= CUSTOM_SLIDE_COUNT_MAX) return String(n);
   }
   const english = raw.match(
     /(?:^|[^\d])(\d{1,2})\s*(?:slides?|pages?)\b|\b(?:slides?|pages?)\s*[:：]?\s*(\d{1,2})\b/i,
   );
   const n = Number(english?.[1] || english?.[2] || NaN);
-  if (Number.isFinite(n) && n >= 1 && n <= 40) return String(n);
+  if (Number.isFinite(n) && n >= 1 && n <= CUSTOM_SLIDE_COUNT_MAX) return String(n);
   return null;
 }
 

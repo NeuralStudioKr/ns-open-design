@@ -50,6 +50,9 @@ describe('templateCloneContentFill', () => {
     expect(seed).toMatch(/`<head>` is FORBIDDEN/i);
     expect(seed).toMatch(/first 800 characters after `<artifact`/i);
     expect(seed).toMatch(/Motif vocabulary OVERRIDE/i);
+    expect(seed).toMatch(/Slide count is input-driven/i);
+    expect(seed).toMatch(/default outline/i);
+    expect(seed).toMatch(/Named motif cue/i);
     expect(seed).toMatch(/Motif CSS|kit Motif|deco-pill|Decorations CSS/i);
     expect(seed).toMatch(/generic CSS circles/i);
     expect(seed).toMatch(/Full-bleed surface/i);
@@ -66,6 +69,16 @@ describe('templateCloneContentFill', () => {
     expect(deriveTemplateCloneTopicLabel(
       'expo에 대해서 설명하는 피피티 만들어줘. 시니어 개발자 레벨.',
     )).toBe('expo');
+  });
+
+  it('adds a default 5-6 slide hint when no explicit count is provided', () => {
+    const seed = buildTemplateCloneContentFillSeed({
+      userInstruction: 'monorepo에 대해서 설명하는 피피티 만들어줘. 시니어 개발자 레벨.',
+      templateTitle: 'Html Ppt Zhangzara Daisy Days',
+    });
+    expect(seed).toContain(
+      'Slide count hint: 5-6 (default for first template fill; do not stop at 1 slide unless the user explicitly requested exactly 1).',
+    );
   });
 
   it('fallback fill copy does not claim 첨부한 자료 or 요청한 내용 when topic is missing', () => {
@@ -167,6 +180,7 @@ describe('templateCloneContentFill', () => {
       '6-8 (stability cap for first template fill)',
     );
     expect(normalizeTemplateCloneFillSlideCountHint('정확히 10')).toBe('10');
+    expect(normalizeTemplateCloneFillSlideCountHint('정확히 1')).toBe('1');
   });
 
   it('caps Plugin-input slideCount for fill turns and emits an override notice', () => {

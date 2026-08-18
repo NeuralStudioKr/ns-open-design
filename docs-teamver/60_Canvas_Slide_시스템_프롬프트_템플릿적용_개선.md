@@ -30,6 +30,7 @@
 | full skeleton API 복귀? | **금지** ([47](./47_body-first_compact_deck_아키텍처_검토_및_0716이후_변경판단.md)) — truncation 재발 |
 | full example.html을 프롬프트에? | **기본 금지.** 입·출력 토큰 위험. kit(~2k) + scaffold map으로 계약 |
 | scaffold로 갑자기 바꾸면? | **안 됨.** kit hard cutover 금지. full HTML scaffold도 기본 inject 하지 않음 |
+| 1장짜리 템플릿 결과가 저장되는가? | **사용자가 1장을 명시한 경우만 허용.** 미지정/다장 요청의 Template Clone fill이 1–2장으로 끝나면 미완성으로 보고 저장 전 차단 |
 
 ### 0.0 2026-08-13 정책 (개정) — **template = layout vocabulary + visual look, 페이지 수/순서/구성은 브리프 기반**
 
@@ -51,6 +52,20 @@
 - daemon Clone `pickTemplateShells`: 순서-기반 evenly-spaced → **role-based scoring** (generic body 선호, weekly/timeline/chart 등 특수 role은 후순위, closing role은 tail로)
 
 full `example.html`을 시스템 프롬프트에 넣지 않는다는 방침은 유지 (kit + scaffold map으로 압축). daemon Clone은 여전히 `deck.html` seed를 담당하지만, seed된 deck의 shell 개수는 이제 브리프 기반이지 template 기반이 아니다.
+
+### 0.0a 2026-08-18 추가 보강 — 1장 cover-only 저장 방지 + 대표 motif 입력값 기반 검증
+
+**증상:** `Html Ppt Zhangzara Daisy Days` 등 템플릿을 선택해도 결과가 1/1 커버만 저장되고, Daisy/꽃 같은 대표 요소가 빠지는 사례가 발생했다. 이 경우 모델 응답 자체는 closed artifact처럼 보이므로 기존 persist 단계가 “완료된 deck”으로 저장해 버렸다.
+
+**원인:** 8/13 이후 token-safe fill 정책에서 `Prefer 5–6`은 있었지만 hard requirement가 아니었고, 템플릿 fill은 대형 LOOK seed를 compact deck으로 줄이는 정상 경로 때문에 slide-count reduction guard가 풀려 있었다. 그래서 “사용자가 1장을 요청하지 않았는데도 1장만 만든 산출물”이 저장 전 검증을 통과했다.
+
+**수정 원칙:**
+- 사용자 입력값 우선: `정확히 1장`처럼 사용자가 1장을 명시하면 1장은 정상 산출물이다.
+- 사용자가 2–4장을 명시하면 그 수 미만은 저장하지 않는다.
+- 미지정/기본/다장 요청의 Template Clone content-fill은 최소 3장 미만이면 미완성으로 보고 `skipped-incomplete` 경로로 보낸다.
+- seed/system prompt에는 기본 5–6장, topic-only 기본 outline, named motif fidelity를 명시한다. Daisy/Capsule/Terminal 등 제목·kit vocabulary에 있는 대표 motif는 cover와 body slide에 실제로 보여야 하며, generic circles/stars는 대체물이 아니다.
+
+이 보강은 템플릿별 one-off가 아니라 전체 Template Clone fill 공통 guard다. 1장 명시 요청은 막지 않으면서, 사용자가 다장 발표자료를 기대하는 기본 흐름에서 1장짜리 placeholder가 “완료”로 저장되는 회귀를 막는다.
 
 ### 0.0-legacy 2026-08-13 (이전) — token-safe content-swap + daemon Clone
 
@@ -819,6 +834,7 @@ daemon 로컬 skill 워크플로 잔재다. Daisy Days에는 Teamver API 노트�
 | P0 | Clone content-fill에서 motif/deco가 과도하게 제거되어 썸네일과 실제 결과가 달라지는 문제 | **완료** — full SVG/CSS dump 금지는 유지하되 compact Motif recipe + Decoration/Layout CSS cues 보존 |
 | P0 | html-ppt shared white `:root`가 `.tpl-*` identity look을 덮는 문제 | **완료** — identity host tokens/surface/fonts + `copy index.html` SKILL neutralize (§0.20) |
 | P0 | 신고 템플릿별 one-off가 아니라 전체 템플릿의 대표 motif cue가 fill까지 살아남는지 보장 | **완료** — title cue + concrete motif class 목록을 `Motif vocabulary` 섹션으로 유지하고, official deck `example.html` 전수 slim survival 테스트 강화 (§0.21) |
+| P0 | 미지정/다장 Template Clone fill이 1장 cover-only로 저장되는 문제 | **완료** — 사용자 입력값 기반 최소 slide count guard + 기본 5–6장 seed + named motif fidelity |
 
 ### 12.1 Edit-contract gating (상세)
 
@@ -856,3 +872,4 @@ User-message 쪽 `[Existing deck edit]` / `<attached-preview-comments>` 주입�
 | 2026-08-18 | §0.24 — 잔여 `@import[^;]` (plugin preview·snapshot) + preview/srcDoc CSP font CDN + persist가 Capsule `<link>` 폰트를 지우던 문제. contracts `cssImportSanitize` SSOT. |
 | 2026-08-18 | §0.23 — Capsule persist/preview 후처리. Google Fonts css2 `@import` `;` 절단 debris + surface-bleed `.slide !important`가 fill look을 지움. quote-aware allowlist import + 그라데이션 슬라이드는 letterbox만 promote. |
 | 2026-08-18 | §0.21 — 전체 템플릿 Motif cue 보존 강화. 템플릿명 cue + 실제 motif class/token 목록을 `### Motif vocabulary`로 유지하고, 공식 deck 전체에서 slim 결과까지 motif가 살아남는지 테스트한다. |
+| 2026-08-18 | §0.0a — Template Clone fill 1장 cover-only 저장 방지. 사용자 1장 명시는 허용하되, 미지정/다장 요청에서 1–2장 결과는 미완성으로 저장 전 차단하고 기본 5–6장 outline + named motif fidelity를 seed/system prompt에 고정했다. |

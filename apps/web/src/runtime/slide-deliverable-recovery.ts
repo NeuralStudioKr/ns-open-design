@@ -14,6 +14,10 @@ import {
   AUTO_CONTINUE_STATUS_CODE,
   isAutoContinueIncompleteOutputPrompt,
 } from './resume';
+import {
+  SLIDE_COUNT_REQUEST_MAX,
+  isSlideCountTopUpPrompt,
+} from '../teamver/slideCountTopUp';
 
 /**
  * Status-event code for the "auto-continue cap exhausted and we synthesized a
@@ -114,7 +118,7 @@ export function parseSlideCountPhrase(text: string): string | null {
   if (rangeMatch) {
     const lower = Number.parseInt(rangeMatch[1]!, 10);
     const upper = Number.parseInt(rangeMatch[2]!, 10);
-    if (Number.isFinite(lower) && Number.isFinite(upper) && lower >= 1 && upper <= 50) {
+    if (Number.isFinite(lower) && Number.isFinite(upper) && lower >= 1 && upper <= SLIDE_COUNT_REQUEST_MAX) {
       const target = Math.max(lower, upper);
       return `정확히 ${target}장의 슬라이드를 출력하세요 (사용자 요청 범위 ${lower}–${upper}, 상한 적용).`;
     }
@@ -123,7 +127,7 @@ export function parseSlideCountPhrase(text: string): string | null {
   const singleMatch = normalized.match(/(\d{1,2})\s*(?:장|pages?|slides?|페이지)/i);
   if (singleMatch) {
     const count = Number.parseInt(singleMatch[1]!, 10);
-    if (Number.isFinite(count) && count >= 1 && count <= 50) {
+    if (Number.isFinite(count) && count >= 1 && count <= SLIDE_COUNT_REQUEST_MAX) {
       return `정확히 ${count}장의 슬라이드를 출력하세요.`;
     }
   }
@@ -143,6 +147,7 @@ export function extractRequestedSlideCountHintFromMessages(
     if (message.role !== 'user') continue;
     const content = message.content ?? '';
     if (isAutoContinueIncompleteOutputPrompt(content)) continue;
+    if (isSlideCountTopUpPrompt(content)) continue;
 
     const pluginMatch = content.match(SLIDE_COUNT_PLUGIN_INPUT_RE);
     if (pluginMatch?.[1]) {
@@ -158,7 +163,8 @@ export function extractRequestedSlideCountHintFromMessages(
       }
     }
 
-    const visibleUserText = content.split(/\n\n\[Deliverable instruction\]/i)[0] ?? content;
+    const visibleUserText = (content.split(/\n\n\[Deliverable instruction\]/i)[0] ?? content)
+      .replace(/^User requested slide count:.*$/gmi, "");
     const parsed = parseSlideCountPhrase(visibleUserText);
     if (parsed) return parsed;
   }

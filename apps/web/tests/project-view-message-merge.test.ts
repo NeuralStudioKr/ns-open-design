@@ -7,6 +7,7 @@ import {
   imageAttachmentPathsForSlideEmbed,
   chatAttachmentsForAutoContinueImageEmbed,
   findClientSlideCountRegression,
+  findTemplateCloneFillSlideCountIncomplete,
   promptWithExistingDeckEditInstruction,
   resolveCanonicalDeckFileForEdit,
   promptWithSlideAttachmentDeliverableInstruction,
@@ -415,6 +416,41 @@ describe("findClientSlideCountRegression", () => {
         strict: true,
       }),
     ).toMatchObject({ priorCount: 8, newCount: 6 });
+  });
+});
+
+describe("findTemplateCloneFillSlideCountIncomplete", () => {
+  it("allows an explicit one-slide template fill request", () => {
+    expect(
+      findTemplateCloneFillSlideCountIncomplete({
+        fileName: "deck.html",
+        htmlBody: '<section class="slide"><h1>One-page brief</h1></section>',
+        requestedSlideCount: 1,
+      }),
+    ).toBeNull();
+  });
+
+  it("blocks one-slide template fills when the user did not ask for one slide", () => {
+    const regression = findTemplateCloneFillSlideCountIncomplete({
+      fileName: "deck.html",
+      htmlBody: '<section class="slide"><h1>Cover only</h1></section>',
+      requestedSlideCount: null,
+    });
+    expect(regression).toMatchObject({
+      fileName: "deck.html",
+      producedCount: 1,
+      expectedCount: 3,
+    });
+  });
+
+  it("uses explicit small slide counts as the minimum expectation", () => {
+    expect(
+      findTemplateCloneFillSlideCountIncomplete({
+        fileName: "deck.html",
+        htmlBody: '<section class="slide"><h1>Cover only</h1></section>',
+        requestedSlideCount: 2,
+      }),
+    ).toMatchObject({ producedCount: 1, expectedCount: 2 });
   });
 });
 

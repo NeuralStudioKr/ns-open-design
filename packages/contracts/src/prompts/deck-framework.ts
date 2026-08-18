@@ -631,14 +631,14 @@ OD succeeds by editing cloned HTML text. Teamver BYOK cannot — so regenerate c
 **Body / title-first (non-negotiable):**
 1. Status sentence → open \`<artifact type="deck" identifier="deck">\`.
 2. First bytes: \`<!doctype html><html lang="ko"><body style="margin:0;background:<kit surface hex>;color:<kit ink hex>"><section class="slide" style="width:1920px;height:1080px;box-sizing:border-box;overflow:hidden;background:<kit surface hex>;color:<kit ink hex>;…">\` with a real \`h1\`/\`h2\` title + lead **before any decoration**.
-3. Prefer **5–6** filled slides unless the user asked for an exact count.
+3. Slide count is input-driven: honor an explicit small count (1–4) if the user asked for it. Otherwise produce **5–6** filled slides by default. A one-slide cover-only deck is incomplete.
 4. Close \`</body></html></artifact>\` in this same response.
 
 **Full-bleed surface:** kit Slide surface must paint \`html\`/\`body\` AND every \`.slide\` edge-to-edge. FORBIDDEN: white outer canvas with an inner cream paper panel (white top/bottom bands). White title cards on cream paper are OK.
 
 **Layout (required when kit has Layout CSS / scaffold roles):** reuse capped Layout CSS grid/flex/region rules and scaffold map roles. FORBIDDEN: flattening every slide into one centered flex title column when the kit ships multi-region layouts (cards-grid / weekly-grid / split / matrix / terminal grids).
 
-**Motif (after title):** prefer kit Motif HTML snippets / Motif CSS / at most one capped sprite. Finish a closed deck this turn — light Motif beats a truncated Motif dump. FORBIDDEN: Motif \`<svg>\` before cover title; multi-KB \`<svg><style>\` dumps; inventing Capsule coral pills when the kit Motif is petals/blobs/pins/pixel/scanlines.
+**Motif (after title):** use kit Motif HTML snippets / Motif CSS / at most one capped sprite. A named motif family from the title/vocabulary (flowers/daisies/capsule/pins/pixels/scanlines/terminal chrome/etc.) must visibly appear on the cover and at least one body slide. Finish a closed deck this turn — light Motif beats a truncated Motif dump. FORBIDDEN: Motif \`<svg>\` before cover title; multi-KB \`<svg><style>\` dumps; generic circles/stars as substitutes; inventing Capsule coral pills when the kit Motif is petals/blobs/pins/pixel/scanlines.
 
 **FORBIDDEN this turn:** Motif \`<svg>\` before cover title, multi-KB Motif/Layout dumps, long \`<head>\`, Neutral \`#0f172a\`, terracotta \`#c96442\`, emoji ornament rows, generic CSS circles when the kit has Motif CSS/sprites, parroting the user brief as slide titles.
 
