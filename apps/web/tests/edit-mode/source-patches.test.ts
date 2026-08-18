@@ -225,10 +225,11 @@ describe('manual edit source patches', () => {
       id: 'cta',
       attributes: { href: 'javascript:alert(1)', 'aria-label': 'ok' },
     });
-    expect(attrDenied.ok).toBe(true);
+    // Value-safety reject fails closed — safe siblings must not apply either (441).
+    expect(attrDenied.ok).toBe(false);
     const attrs = readManualEditAttributes(attrDenied.source, 'cta');
     expect(attrs.href).toBe('/start');
-    expect(attrs['aria-label']).toBe('ok');
+    expect(attrs['aria-label']).toBeUndefined();
   });
 
   it('coerces numeric set-style JSON instead of silently clearing properties', () => {
@@ -2631,6 +2632,29 @@ describe('manual edit source patches', () => {
     });
     expect(maskDenied.ok).toBe(false);
     expect(source).toContain('fill="red"');
+  });
+
+  it('rejects mixed set-attributes when any value-safety check fails (all-or-nothing)', () => {
+    // Safe title must not land when a sibling presentation/URL value is evil (441).
+    const source = [
+      '<!doctype html><html><body>',
+      '<svg data-od-id="mark" title="keep"><rect fill="red"></rect></svg>',
+      '</body></html>',
+    ].join('');
+    const mixed = applyManualEditPatch(source, {
+      kind: 'set-attributes',
+      id: 'mark',
+      attributes: {
+        title: 'applied-if-partial',
+        'foo:fill': 'url(javascript:alert(1))',
+      },
+    });
+    expect(mixed.ok).toBe(false);
+    expect(mixed.error).toMatch(/none of the requested attributes/i);
+    const attrs = readManualEditAttributes(mixed.source, 'mark');
+    expect(attrs.title).toBe('keep');
+    expect(mixed.source).not.toContain('applied-if-partial');
+    expect(mixed.source.toLowerCase()).not.toContain('javascript');
   });
 
   it('does not drop whole style blocks for .javascript:hover selectors', () => {

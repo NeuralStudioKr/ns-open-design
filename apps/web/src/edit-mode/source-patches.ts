@@ -280,7 +280,11 @@ function mutateManualEditPatch(
     setInlineStyles(el as HTMLElement, patch.styles);
   } else if (patch.kind === 'set-attributes') {
     const attrResult = setAttributes(el, patch.attributes);
-    if (attrResult.attempted > 0 && attrResult.applied === 0) {
+    // Value-safety reject (rejected > 0) fails closed with zero mutation (441).
+    if (
+      attrResult.rejected > 0
+      || (attrResult.attempted > 0 && attrResult.applied === 0)
+    ) {
       return {
         ok: false,
         error: 'None of the requested attributes could be applied.',
@@ -2442,7 +2446,7 @@ function setInlineStyles(el: HTMLElement, styles: Partial<ManualEditStyles>): vo
 function setAttributes(
   el: Element,
   attributes: Record<string, string>,
-): { attempted: number; applied: number } {
+): { attempted: number; applied: number; rejected: number } {
   // Keep identity / slide-scope attrs aligned with set-outer-html preservation.
   const protectedAttrs = new Set([
     'data-od-id',
@@ -2459,19 +2463,29 @@ function setAttributes(
   // Deny all attr mutation on executable / chrome hosts — including empty
   // values that would remove `type` from an inert <script type="application/json">.
   if (isManualEditLockedHostTag(tag)) {
-    return { attempted: entries.length, applied: 0 };
+    return { attempted: entries.length, applied: 0, rejected: entries.length };
   }
-  let applied = 0;
+  // Two-pass: any value-safety reject aborts the whole op so mixed batches
+  // never report ok while silently dropping javascript: fill/href (441).
+  // Unsafe names (on*/style) and protected identity attrs stay soft-skips so
+  // inspector dumps can still apply the remaining safe keys.
+  type AttrDecision =
+    | { kind: 'skip' }
+    | { kind: 'reject' }
+    | { kind: 'remove'; name: string }
+    | { kind: 'set'; name: string; value: string };
+  const decisions: AttrDecision[] = [];
+  let rejected = 0;
   for (const [name, value] of entries) {
     // Attribute names are case-insensitive in HTML; protect via lowercase.
     const lower = name.toLowerCase();
     const local = manualEditLocalAttrName(name);
     if (!isSafeAttributeName(name) || protectedAttrs.has(lower) || protectedAttrs.has(local)) {
+      decisions.push({ kind: 'skip' });
       continue;
     }
     if (value.trim() === '') {
-      el.removeAttribute(name);
-      applied += 1;
+      decisions.push({ kind: 'remove', name });
       continue;
     }
     if (
@@ -2483,10 +2497,11 @@ function setAttributes(
         !scrubbed
         || !isSafeManualEditPresentationCssValue(scrubbed, { alreadyNormalized: true })
       ) {
+        rejected += 1;
+        decisions.push({ kind: 'reject' });
         continue;
       }
-      el.setAttribute(name, scrubbed);
-      applied += 1;
+      decisions.push({ kind: 'set', name, value: scrubbed });
       continue;
     }
     if (
@@ -2495,6 +2510,8 @@ function setAttributes(
       && (local === 'href' || lower === 'xlink:href')
       && !isSafeManualEditSvgResourceRef(value)
     ) {
+      rejected += 1;
+      decisions.push({ kind: 'reject' });
       continue;
     }
     // Block dangerous URL schemes on navigable / embeddable attrs (local name too).
@@ -2510,12 +2527,26 @@ function setAttributes(
       urlAttrKey != null
       && !isSafeManualEditUrlAttrValue(urlAttrKey, value)
     ) {
+      rejected += 1;
+      decisions.push({ kind: 'reject' });
       continue;
     }
-    el.setAttribute(name, value);
-    applied += 1;
+    decisions.push({ kind: 'set', name, value });
   }
-  return { attempted: entries.length, applied };
+  if (rejected > 0) {
+    return { attempted: entries.length, applied: 0, rejected };
+  }
+  let applied = 0;
+  for (const decision of decisions) {
+    if (decision.kind === 'remove') {
+      el.removeAttribute(decision.name);
+      applied += 1;
+    } else if (decision.kind === 'set') {
+      el.setAttribute(decision.name, decision.value);
+      applied += 1;
+    }
+  }
+  return { attempted: entries.length, applied, rejected: 0 };
 }
 
 function replaceOuterHtml(doc: Document, el: Element, html: string): { ok: true } | { ok: false; error: string } {

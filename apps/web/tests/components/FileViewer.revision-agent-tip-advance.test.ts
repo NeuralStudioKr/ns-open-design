@@ -145,10 +145,15 @@ describe('FileViewer revision tip advance after undo', () => {
     expect(fileViewer).toContain('shouldRefreshHostPaintAfterTipRemountRemasure');
     expect(fileViewer).toContain('shouldConsumeTipRemountGeometryGraceOnRemasure');
     expect(fileViewer).toContain('Sibling remasure must not consume primary grace');
+    expect(fileViewer).toContain('const consumeGrace = shouldConsumeTipRemountGeometryGraceOnRemasure');
+    expect(fileViewer).toContain('if (consumeGrace)');
+    expect(fileViewer).toContain('shouldRefreshHostPaintAfterTipRemountRemasure(consumeGrace)');
     expect(fileViewer).toContain('Multi tip-yield reseed and Mixed→single both arm tip-remount grace');
     expect(fileViewer).toContain('manualEditSelectedIdentityFingerprintRef.current =');
     expect(fileViewer).toContain('manualEditTargetsIdentityFingerprintRef.current =');
     expect(fileViewer).toContain('Avoid redundant identity reseed on the next bridge broadcast');
+    expect(fileViewer).toContain('Selection commit owns selected-set identity');
+    expect(fileViewer).toContain('Keep selected-set fingerprint aligned after membership shrink');
     expect(fileViewer).toContain('refreshManualEditHostPaintRect(measured.id, { force: true })');
     expect(fileViewer).toContain('refreshManualEditHostPaintRect(paintId, { force: true })');
     expect(fileViewer).toContain('clearManualEditTipRemountGeometryGraceIfNeeded');
@@ -158,7 +163,6 @@ describe('FileViewer revision tip advance after undo', () => {
     expect(fileViewer).toContain('Selection left tip-remount grace primary');
     expect(fileViewer).toContain('shouldSkipWildJumpAfterTipRemountGrace');
     expect(fileViewer).toContain('Expired grace: clear latch (id + until) so wild-jump deny is restored');
-    expect(fileViewer).toContain('if (consumeGrace)');
     expect(fileViewer).toContain('manualEditTipRemountGeometryGraceIdRef');
     expect(fileViewer).toContain('selectedManualEditTargetIdRef.current');
     expect(fileViewer).toContain('Accept fell back — soft-retry before edit-mode hold');

@@ -54,5 +54,8 @@ describe('web pretest step split', () => {
     expect(pretestScript).toContain("['corepack', ['pnpm'");
     expect(pretestScript).toContain("'contracts build (node esbuild)'");
     expect(pretestScript).toContain('esbuild.config.mjs');
+    // Node-only fallback skips tsc d.ts emit — keep the caveat in the contract (444).
+    expect(pretestScript).toContain('no d.ts emit');
+    expect(pretestScript).toContain('skips `tsc --emitDeclarationOnly`');
   });
 });

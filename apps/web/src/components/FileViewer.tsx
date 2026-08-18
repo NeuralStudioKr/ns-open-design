@@ -10910,6 +10910,10 @@ function HtmlViewer({
     selectedManualEditTargetIdRef.current = primary.id;
     selectedManualEditTargetRef.current = primary;
     selectedManualEditTargetIdsRef.current = nextIds;
+    // Selection commit owns selected-set identity — avoid redundant reseed on
+    // the next od-edit-targets broadcast (442 / same latch as tip-yield 440).
+    manualEditSelectedIdentityFingerprintRef.current =
+      manualEditTargetsIdentityFingerprint(nextTargets);
     setSelectedManualEditTargetIds(nextIds);
     setSelectedManualEditTarget(primary);
     setManualEditHostPaintRect(null);
@@ -11164,9 +11168,32 @@ function HtmlViewer({
         current.fullSource === contentToSave ? current : { ...current, fullSource: contentToSave }
       ));
       if (patch.kind === 'set-text') {
-        setSelectedManualEditTarget((current) => current?.id === patch.id
-          ? { ...current, text: patch.value, fields: { ...current.fields, text: patch.value } }
-          : current);
+        setSelectedManualEditTarget((current) => {
+          if (current?.id !== patch.id) return current;
+          const next = {
+            ...current,
+            text: patch.value,
+            fields: { ...current.fields, text: patch.value },
+          };
+          selectedManualEditTargetRef.current = next;
+          return next;
+        });
+        setManualEditTargets((current) => {
+          const nextList = current.map((item) => (
+            item.id === patch.id
+              ? { ...item, text: patch.value, fields: { ...item.fields, text: patch.value } }
+              : item
+          ));
+          manualEditTargetsIdentityFingerprintRef.current =
+            manualEditTargetsIdentityFingerprint(nextList);
+          const selectedIds = selectedManualEditTargetIdsRef.current;
+          const selectedForFp = selectedIds.length > 0
+            ? resolveManualEditTargetsByIds(selectedIds, nextList)
+            : (selectedManualEditTargetRef.current ? [selectedManualEditTargetRef.current] : []);
+          manualEditSelectedIdentityFingerprintRef.current =
+            manualEditTargetsIdentityFingerprint(selectedForFp);
+          return nextList;
+        });
       } else if (patch.kind === 'remove-element') {
         const pendingIds = manualEditPendingStyleRef.current?.targetIds
           ?? (manualEditPendingStyleRef.current?.id
@@ -11177,12 +11204,18 @@ function HtmlViewer({
           clearManualEditStyleTimer();
         }
         const remainingIds = selectedManualEditTargetIdsRef.current.filter((id) => id !== patch.id);
-        setManualEditTargets((current) => current.filter((target) => target.id !== patch.id));
+        setManualEditTargets((current) => {
+          const nextList = current.filter((target) => target.id !== patch.id);
+          manualEditTargetsIdentityFingerprintRef.current =
+            manualEditTargetsIdentityFingerprint(nextList);
+          return nextList;
+        });
         if (remainingIds.length === 0) {
           clearManualEditTipRemountGeometryGraceIfNeeded(null);
           selectedManualEditTargetIdRef.current = null;
           selectedManualEditTargetRef.current = null;
           selectedManualEditTargetIdsRef.current = [];
+          manualEditSelectedIdentityFingerprintRef.current = '';
           setSelectedManualEditTargetIds([]);
           setSelectedManualEditTarget(null);
           setManualEditMixedStyleKeys(new Set());
@@ -11199,6 +11232,9 @@ function HtmlViewer({
           selectedManualEditTargetIdRef.current = primary.id;
           selectedManualEditTargetRef.current = primary;
           selectedManualEditTargetIdsRef.current = nextIds;
+          // Keep selected-set fingerprint aligned after membership shrink (442).
+          manualEditSelectedIdentityFingerprintRef.current =
+            manualEditTargetsIdentityFingerprint(refreshed);
           setSelectedManualEditTargetIds(nextIds);
           setSelectedManualEditTarget(primary);
           if (nextIds.length > 1) {
