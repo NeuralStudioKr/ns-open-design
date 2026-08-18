@@ -151,6 +151,7 @@ import {
   CANVAS_CREATE_SLIDES_PLUGIN_ID,
   DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS,
   createHomeSlideCreateQuickSettings,
+  hasHomeSlideCreateContent,
   canvasCreateSlidesPluginInputs,
   canvasCreateSlidesRunPrompt,
   sanitizeSlideCreateTopicHint,
@@ -1955,6 +1956,11 @@ export function HomeView({
 
   async function confirmHomeSlideCreate() {
     if (!homeSlideCreateOpen || homeSlideCreateBusy || submitPending) return;
+    if (!hasHomeSlideCreateContent({
+      prompt: homeSlideUserPrompt,
+      files: stagedFiles,
+      driveAssets: stagedDriveAssets,
+    })) return;
     setHomeSlideCreateBusy(true);
     setHomeSlideCreateError(null);
     setError(null);
@@ -2279,7 +2285,11 @@ export function HomeView({
     }
     if (submitPending) return;
     const trimmed = prompt.trim();
-    if (!trimmed && stagedFiles.length === 0 && stagedDriveAssets.length === 0) return;
+    if (!hasHomeSlideCreateContent({
+      prompt: trimmed,
+      files: stagedFiles,
+      driveAssets: stagedDriveAssets,
+    })) return;
     const slideOnlyBlock = embedSlideOnlyOutboundBlockReason(trimmed, { slideOnlyMvp });
     if (slideOnlyBlock) {
       setError(slideOnlyBlock);

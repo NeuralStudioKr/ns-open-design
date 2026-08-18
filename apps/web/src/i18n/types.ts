@@ -479,6 +479,7 @@ export interface Dict {
   'teamver.homeCreate.nextTemplate': string;
   'teamver.homeCreate.defaultTemplate': string;
   'teamver.homeCreate.confirm': string;
+  'teamver.homeCreate.needBriefOrAttach': string;
   'teamver.homeCreate.creating': string;
   'teamver.homeCreate.summaryAttach': string;
   'teamver.homeCreate.errorTemplateLost': string;

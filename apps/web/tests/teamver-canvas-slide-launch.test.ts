@@ -8,6 +8,7 @@ import {
   CANVAS_CREATE_SLIDES_PROMPT,
   DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS,
   createHomeSlideCreateQuickSettings,
+  hasHomeSlideCreateContent,
   HOME_CREATE_SLIDES_INTERNAL_INSTRUCTION,
   HOME_EMPTY_CREATE_SLIDES_PROMPT,
   SLIDE_DECK_CONTENT_EXPANSION_EXAMPLE,
@@ -478,6 +479,19 @@ describe("canvasSlideLaunch", () => {
       slideCount: "5-6",
     });
     expect(createHomeSlideCreateQuickSettings()).not.toHaveProperty("language");
+    expect(hasHomeSlideCreateContent({ prompt: "", files: [], driveAssets: [] })).toBe(false);
+    expect(hasHomeSlideCreateContent({ prompt: "   ", files: [], driveAssets: [] })).toBe(false);
+    expect(hasHomeSlideCreateContent({ prompt: "Q3", files: [], driveAssets: [] })).toBe(true);
+    expect(hasHomeSlideCreateContent({
+      prompt: "",
+      files: [new File(["x"], "brief.pdf")],
+      driveAssets: [],
+    })).toBe(true);
+    expect(hasHomeSlideCreateContent({
+      prompt: "",
+      files: [],
+      driveAssets: [{ assetId: "drv-1" }],
+    })).toBe(true);
     expect(canvasCreateSlidesPluginInputs("Topic", "Template", "brief")).not.toHaveProperty("outputLanguage");
     expect(canvasCreateSlidesPluginInputs("Topic", "Template", "brief")).not.toHaveProperty("language");
   });
@@ -587,6 +601,7 @@ describe("canvasSlideLaunch", () => {
       home.indexOf("async function confirmHomeSlideCreate"),
       home.indexOf("async function confirmCanvasSlideLaunch"),
     );
+    expect(confirmHomeSlideCreateSrc).toContain("hasHomeSlideCreateContent");
     expect(confirmHomeSlideCreateSrc).toContain("pluginTitle: null");
     expect(confirmHomeSlideCreateSrc).not.toContain("pluginTitle: template.title");
     expect(confirmHomeSlideCreateSrc).toContain("sanitizeSlideCreateTopicHint");
@@ -654,6 +669,8 @@ describe("canvasSlideLaunch", () => {
     expect(exampleDetail).toContain("Start with this design");
     const homeModal = readWebSource("src/teamver/components/TeamverHomeSlideCreateModal.tsx");
     const canvasModal = readWebSource("src/teamver/components/TeamverCanvasSlideLaunchModal.tsx");
+    expect(homeModal).toContain("hasHomeSlideCreateContent");
+    expect(homeModal).toContain("teamver.homeCreate.needBriefOrAttach");
     expect(homeModal).toContain("teamver.homeCreate.driveUnavailable");
     expect(homeModal).not.toContain("teamver.homeCreate.quickLanguage");
     expect(canvasModal).not.toContain("teamver.homeCreate.quickLanguage");

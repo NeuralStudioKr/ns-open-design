@@ -340,7 +340,7 @@ Canvas→Slide (Home 밖)
 | — | **비권장 1차:** 이미지 on/off, 발표자 노트, 용도 칩 추가 — 칩 과다 |
 | transformMode | Canvas 소스 변환용. Home **넣지 않음** |
 
-**최소 진행 조건 (제안):** textarea 비어 있어도 퀵설정만으로 Next 가능. placeholder는 예시로 유도.
+**최소 진행 조건:** textarea가 비어 있고 첨부(업로드·Drive)도 없으면 **Next·템플릿 스텝·Confirm 모두 불가**. 퀵설정만으로는 다음 단계로 가지 않는다. placeholder는 예시로 유도.
 
 ### 5.4 템플릿 강제 수위
 
@@ -488,7 +488,7 @@ Embed `/`
 
 | 질문 | 권고 |
 |------|------|
-| 1 | **빈 Next 허용** + placeholder 강하게. 품질은 칩 기본값으로 받침 |
+| 1 | **빈 Next/Confirm 불가** — 프롬프트 또는 첨부 중 하나. 퀵설정만으로는 부족 |
 | 2 | P0: **L1** (프리셀렉트 + stepper/카드 표시). CTA는 「슬라이드 만들기」고정. P1: L2 |
 | 3 | P0: **대상·길이·톤** 3종. Home 기본값은 구체값(팀/보통/professional). 언어 칩은 철회. transform·이미지 칩은 보류 |
 

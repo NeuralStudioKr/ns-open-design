@@ -2726,6 +2726,7 @@ export const esES: Dict = {
   'teamver.homeCreate.nextTemplate': 'Next: Template',
   'teamver.homeCreate.defaultTemplate': 'Default slide template',
   'teamver.homeCreate.confirm': 'Create slides',
+  'teamver.homeCreate.needBriefOrAttach': 'Add a brief or attach a file first.',
   'teamver.homeCreate.creating': 'Creating…',
   'teamver.homeCreate.summaryAttach': '{count} attached',
   'teamver.homeCreate.errorTemplateLost': 'The selected template was lost. Pick it again on the template step.',

@@ -11,6 +11,7 @@ import { EMBED_SLIDE_ATTACH_ACCEPT } from "../branding/embedFileAttachPolicy";
 import {
   DEFAULT_HOME_SLIDE_CREATE_QUICK_SETTINGS,
   createHomeSlideCreateQuickSettings,
+  hasHomeSlideCreateContent,
   isExplicitCanvasSlideVisualTemplate,
   type CanvasSlideQuickSettings,
   type TeamverCanvasSlideTemplateOption,
@@ -258,6 +259,12 @@ export function TeamverHomeSlideCreateModal({
 
   const templateReady = Boolean(selectedTemplate?.id);
   const showingTemplate = step === "template";
+  const hasContent = hasHomeSlideCreateContent({
+    prompt: userPrompt,
+    files: stagedFiles,
+    driveAssets: stagedDriveAssets,
+  });
+  const emptyHint = hasContent ? undefined : t("teamver.homeCreate.needBriefOrAttach");
   const hasExplicitTemplate = isExplicitCanvasSlideVisualTemplate(selectedTemplate);
   // Gallery "Use template": confirm from content even if the user later
   // switches to the L1 default. Explicit pick: same. "New slide": require
@@ -276,12 +283,13 @@ export function TeamverHomeSlideCreateModal({
       : null;
 
   function goTemplateStep() {
+    if (!hasContent) return;
     setTemplateVisited(true);
     setStep("template");
   }
 
   function submitFromKeyboard() {
-    if (confirming) return;
+    if (confirming || !hasContent) return;
     if (showingTemplate || canConfirmFromContent) {
       if (templateReady) void onConfirm();
       return;
@@ -659,7 +667,8 @@ export function TeamverHomeSlideCreateModal({
               <button
                 type="button"
                 className="teamver-home-slide-create-stepper-btn"
-                disabled={confirming}
+                disabled={confirming || !hasContent}
+                title={emptyHint}
                 data-testid="teamver-home-slide-create-step-template"
                 aria-label={
                   stepperPickTitle
@@ -729,9 +738,13 @@ export function TeamverHomeSlideCreateModal({
               <button
                 type="button"
                 className="teamver-drive-import-attach teamver-canvas-slide-launch-confirm"
-                disabled={confirming || !templateReady}
+                disabled={confirming || !templateReady || !hasContent}
+                title={emptyHint}
                 data-testid="teamver-home-slide-create-confirm"
-                onClick={() => void onConfirm()}
+                onClick={() => {
+                  if (!hasContent || !templateReady || confirming) return;
+                  void onConfirm();
+                }}
               >
                 {confirming
                   ? t("teamver.homeCreate.creating")
@@ -741,7 +754,8 @@ export function TeamverHomeSlideCreateModal({
               <button
                 type="button"
                 className="teamver-drive-import-attach teamver-canvas-slide-launch-footer-next"
-                disabled={confirming}
+                disabled={confirming || !hasContent}
+                title={emptyHint}
                 data-testid="teamver-home-slide-create-next"
                 onClick={goTemplateStep}
               >

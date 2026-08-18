@@ -2731,6 +2731,7 @@ export const ko: Dict = {
   'teamver.homeCreate.nextTemplate': '다음: 템플릿',
   'teamver.homeCreate.defaultTemplate': '기본 슬라이드 템플릿',
   'teamver.homeCreate.confirm': '슬라이드 만들기',
+  'teamver.homeCreate.needBriefOrAttach': '주제나 첨부 파일을 먼저 넣어 주세요.',
   'teamver.homeCreate.creating': '만드는 중…',
   'teamver.homeCreate.summaryAttach': '첨부 {count}',
   'teamver.homeCreate.errorTemplateLost': '선택한 템플릿 정보가 유실되었습니다. 템플릿 단계에서 다시 골라 주세요.',

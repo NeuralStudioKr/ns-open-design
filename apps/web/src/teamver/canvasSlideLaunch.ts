@@ -243,6 +243,18 @@ export function createHomeSlideCreateQuickSettings(): CanvasSlideQuickSettings {
   return { ...DEFAULT_HOME_SLIDE_CREATE_QUICK_SETTINGS };
 }
 
+/** Home wizard: prompt or attachment required before Next / Confirm. Quick chips alone do not count. */
+export function hasHomeSlideCreateContent(input: {
+  prompt?: string | null;
+  files?: readonly unknown[] | null;
+  driveAssets?: readonly unknown[] | null;
+}): boolean {
+  if (typeof input.prompt === "string" && input.prompt.trim().length > 0) return true;
+  if ((input.files?.length ?? 0) > 0) return true;
+  if ((input.driveAssets?.length ?? 0) > 0) return true;
+  return false;
+}
+
 const QUICK_SETTING_PROMPT_LABELS = {
   audience: {
     auto: "Infer audience from the source",

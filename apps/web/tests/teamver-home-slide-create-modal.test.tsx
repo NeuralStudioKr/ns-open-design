@@ -108,7 +108,7 @@ describe("TeamverHomeSlideCreateModal", () => {
         templateOptions={templates}
         selectedTemplateId="html-ppt-hermes"
         onTemplateChange={() => {}}
-        userPrompt=""
+        userPrompt="Q3 update"
         onUserPromptChange={() => {}}
         onConfirm={onConfirm}
         onClose={() => {}}
@@ -202,7 +202,9 @@ describe("TeamverHomeSlideCreateModal", () => {
       />,
     );
     expect(screen.getByTestId("teamver-home-slide-create-content")).toBeTruthy();
-    expect(screen.getByTestId("teamver-home-slide-create-confirm")).toBeTruthy();
+    const confirm = screen.getByTestId("teamver-home-slide-create-confirm") as HTMLButtonElement;
+    expect(confirm.disabled).toBe(true);
+    expect(confirm.getAttribute("title")).toMatch(/brief or attach/i);
     expect(screen.queryByTestId("teamver-home-slide-create-next")).toBeNull();
     expect(screen.getByTestId("teamver-home-slide-create-step-pick").textContent).toMatch(
       /Default slide template/i,
@@ -218,7 +220,7 @@ describe("TeamverHomeSlideCreateModal", () => {
         templateOptions={templates}
         selectedTemplateId="example-simple-deck"
         onTemplateChange={onTemplateChange}
-        userPrompt=""
+        userPrompt="Q3 update"
         onUserPromptChange={() => {}}
         onConfirm={() => {}}
         onClose={() => {}}
@@ -239,7 +241,7 @@ describe("TeamverHomeSlideCreateModal", () => {
         templateOptions={templates}
         selectedTemplateId="example-simple-deck"
         onTemplateChange={() => {}}
-        userPrompt=""
+        userPrompt="Q3 update"
         onUserPromptChange={() => {}}
         onConfirm={() => {}}
         onClose={() => {}}
@@ -266,7 +268,7 @@ describe("TeamverHomeSlideCreateModal", () => {
         templateOptions={templates}
         selectedTemplateId="html-ppt-hermes"
         onTemplateChange={() => {}}
-        userPrompt=""
+        userPrompt="Q3 update"
         onUserPromptChange={() => {}}
         onConfirm={onConfirm}
         onClose={() => {}}
@@ -446,10 +448,63 @@ describe("TeamverHomeSlideCreateModal", () => {
     );
     expect(screen.queryByTestId("teamver-home-slide-create-selected-template")).toBeNull();
     expect(screen.queryByTestId("teamver-home-slide-create-step-pick")).toBeNull();
-    const next = screen.getByTestId("teamver-home-slide-create-next");
+    const next = screen.getByTestId("teamver-home-slide-create-next") as HTMLButtonElement;
     expect(next.textContent).toBe("Next: Template");
     expect(next.textContent).not.toMatch(/style/i);
+    expect(next.disabled).toBe(true);
+    expect(next.getAttribute("title")).toMatch(/brief or attach/i);
+    expect(
+      (screen.getByTestId("teamver-home-slide-create-step-template") as HTMLButtonElement).disabled,
+    ).toBe(true);
     expect(screen.queryByTestId("teamver-home-slide-create-confirm")).toBeNull();
+  });
+
+  it("blocks next, template step, and confirm when prompt and attachments are empty", () => {
+    const onConfirm = vi.fn();
+    wrap(
+      <TeamverHomeSlideCreateModal
+        open
+        entry="new"
+        templateOptions={templates}
+        selectedTemplateId="html-ppt-hermes"
+        onTemplateChange={() => {}}
+        userPrompt="   "
+        onUserPromptChange={() => {}}
+        onConfirm={onConfirm}
+        onClose={() => {}}
+      />,
+    );
+    const confirm = screen.getByTestId("teamver-home-slide-create-confirm") as HTMLButtonElement;
+    expect(confirm.disabled).toBe(true);
+    fireEvent.click(confirm);
+    fireEvent.click(screen.getByTestId("teamver-home-slide-create-step-template"));
+    fireEvent.keyDown(screen.getByTestId("teamver-home-slide-create-modal"), {
+      key: "Enter",
+      metaKey: true,
+    });
+    expect(onConfirm).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("teamver-home-slide-create-template")).toBeNull();
+  });
+
+  it("lets an attachment-only draft go to the template step", () => {
+    wrap(
+      <TeamverHomeSlideCreateModal
+        open
+        entry="new"
+        templateOptions={templates}
+        selectedTemplateId="example-simple-deck"
+        onTemplateChange={() => {}}
+        userPrompt=""
+        onUserPromptChange={() => {}}
+        stagedFiles={[new File(["brief"], "brief.pdf", { type: "application/pdf" })]}
+        onConfirm={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    const next = screen.getByTestId("teamver-home-slide-create-next") as HTMLButtonElement;
+    expect(next.disabled).toBe(false);
+    fireEvent.click(next);
+    expect(screen.getByTestId("teamver-home-slide-create-template")).toBeTruthy();
   });
 
   it("new entry shows the default pick and confirm after visiting the template step", () => {
@@ -460,7 +515,7 @@ describe("TeamverHomeSlideCreateModal", () => {
         templateOptions={templates}
         selectedTemplateId="example-simple-deck"
         onTemplateChange={() => {}}
-        userPrompt=""
+        userPrompt="Q3 update"
         onUserPromptChange={() => {}}
         onConfirm={() => {}}
         onClose={() => {}}
