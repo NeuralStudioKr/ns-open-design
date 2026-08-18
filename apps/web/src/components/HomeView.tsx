@@ -2273,6 +2273,10 @@ export function HomeView({
   }
 
   async function submit() {
+    if (slideOnlyMvp) {
+      if (!homeSlideCreateOpen) openHomeSlideCreate('new');
+      return;
+    }
     if (submitPending) return;
     const trimmed = prompt.trim();
     if (!trimmed && stagedFiles.length === 0 && stagedDriveAssets.length === 0) return;

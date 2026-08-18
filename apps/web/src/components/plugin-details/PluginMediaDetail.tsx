@@ -33,6 +33,7 @@ interface Props {
   onUse: (record: InstalledPluginRecord, action: PluginUseAction) => void;
   isApplying?: boolean;
   hideUseAction?: boolean;
+  hideComposerSeedActions?: boolean;
   // Analytics — forwarded to PreviewModal's share popover. Does NOT cover
   // the headerExtras PluginShareMenu (copy install command), which is a
   // separate menu.
@@ -88,6 +89,7 @@ export function PluginMediaDetail({
   onUse,
   isApplying,
   hideUseAction,
+  hideComposerSeedActions,
   onSharePopoverItemClick,
 }: Props) {
   const t = useT();
@@ -243,7 +245,9 @@ export function PluginMediaDetail({
             busy: !!isApplying,
             busyLabel: 'Applying…',
             testId: `plugin-details-use-${record.id}`,
-            menu: buildPluginUseMenu(record, onUse, t),
+            menu: buildPluginUseMenu(record, onUse, t, {
+              hideComposerSeed: hideComposerSeedActions,
+            }),
           }}
       headerExtras={<PluginShareMenu record={record} variant="inline" />}
       onSharePopoverItemClick={onSharePopoverItemClick}

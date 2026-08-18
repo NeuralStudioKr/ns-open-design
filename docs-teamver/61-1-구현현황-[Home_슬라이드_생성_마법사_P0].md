@@ -17,6 +17,7 @@
 
 ## 진행 메모
 
+- 2026-08-18: P1 히어로 freeform 잔여 — slideOnly는 이미 CreateHero만 마운트. 상세 「이 디자인으로 시작」(예시 문구→채팅) caret 제거. HomeHero `submit()`은 마법사만 연다.
 - 2026-08-18: 한/영 칩 철회 — 칩 과다. 프롬프트·UI 로케일로 충분. pluginInputs `language`/`outputLanguage`도 제거.
 - 2026-08-18: Drive 버튼은 워크스페이스가 없어도 항상 표시. 콜백 없으면 disabled + `driveUnavailable` 툴팁/aria.
 - 2026-08-14: P1 Drive 첨부 — 마법사 업로드/핸드오프에 embed 첨부 정책 적용. Drive URL 핸드오프(create-slides 아님)는 첨부를 유지한 채 마법사를 연다(피커만 열고 「새 슬라이드」가 칩을 지우던 구멍). 파일 input `accept`.

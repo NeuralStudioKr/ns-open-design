@@ -646,6 +646,12 @@ describe("canvasSlideLaunch", () => {
     expect(home).toContain("embedAttachBlockReason");
     expect(home).toContain("openHomeSlideCreate('new', undefined, { preserveAttachments: true })");
     expect(home).toContain("if (!homeSlideCreateOpen) focusPromptAtEnd()");
+    expect(home).toContain("{slideOnlyMvp ? (");
+    expect(home).toContain("<TeamverHomeCreateHero");
+    expect(home).toContain("if (slideOnlyMvp) {\n      if (!homeSlideCreateOpen) openHomeSlideCreate('new');\n      return;");
+    const exampleDetail = readWebSource("src/components/plugin-details/PluginExampleDetail.tsx");
+    expect(exampleDetail).toContain("hideComposerSeed: hideComposerSeedActions");
+    expect(exampleDetail).toContain("Start with this design");
     const homeModal = readWebSource("src/teamver/components/TeamverHomeSlideCreateModal.tsx");
     const canvasModal = readWebSource("src/teamver/components/TeamverCanvasSlideLaunchModal.tsx");
     expect(homeModal).toContain("teamver.homeCreate.driveUnavailable");

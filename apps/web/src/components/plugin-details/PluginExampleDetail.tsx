@@ -29,6 +29,7 @@ interface Props {
   onUse: (record: InstalledPluginRecord, action: PluginUseAction) => void;
   isApplying?: boolean;
   hideUseAction?: boolean;
+  hideComposerSeedActions?: boolean;
   // Analytics — forwarded to PreviewModal's share popover.
   onSharePopoverItemClick?: (item: PreviewSharePopoverItem) => void;
 }
@@ -40,6 +41,7 @@ export function PluginExampleDetail({
   onUse,
   isApplying,
   hideUseAction,
+  hideComposerSeedActions,
   onSharePopoverItemClick,
 }: Props) {
   const { t, locale } = useI18n();
@@ -111,7 +113,9 @@ export function PluginExampleDetail({
     : embedUiLabel('Plugin info', '플러그인 정보');
   const primary = pluginUsePrimaryAction(record, t);
   const primaryLabel = isDeck ? t('automations.useTemplate') : primary.label;
-  const useMenu = buildPluginUseMenu(record, onUse, t);
+  const useMenu = buildPluginUseMenu(record, onUse, t, {
+    hideComposerSeed: hideComposerSeedActions,
+  });
   // Primary CTA already runs `use`. Drop the duplicate structure-only row from
   // the caret so templates only offer the distinct "use with query" path.
   const templateUseMenu = isDeck && useMenu

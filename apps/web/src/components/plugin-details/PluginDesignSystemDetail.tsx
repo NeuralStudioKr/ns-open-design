@@ -39,6 +39,7 @@ interface Props {
   onUse: (record: InstalledPluginRecord, action: PluginUseAction) => void;
   isApplying?: boolean;
   hideUseAction?: boolean;
+  hideComposerSeedActions?: boolean;
   // Analytics — forwarded to PreviewModal's share popover.
   onSharePopoverItemClick?: (item: PreviewSharePopoverItem) => void;
 }
@@ -76,6 +77,7 @@ export function PluginDesignSystemDetail({
   onUse,
   isApplying,
   hideUseAction,
+  hideComposerSeedActions,
   onSharePopoverItemClick,
 }: Props) {
   const { t, locale } = useI18n();
@@ -288,7 +290,9 @@ export function PluginDesignSystemDetail({
             busy: !!isApplying,
             busyLabel: 'Applying…',
             testId: `plugin-details-use-${record.id}`,
-            menu: buildPluginUseMenu(record, onUse, t),
+            menu: buildPluginUseMenu(record, onUse, t, {
+              hideComposerSeed: hideComposerSeedActions,
+            }),
           }}
       headerExtras={<PluginShareMenu record={record} variant="inline" />}
       onSharePopoverItemClick={onSharePopoverItemClick}
