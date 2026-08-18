@@ -7,6 +7,8 @@ import {
   buildDeckHtmlExportScreenCss,
   buildDeckHtmlExportStaticRevealScript,
   buildDeckHtmlExportViewportScript,
+  buildStandaloneDeckHtmlDocument,
+  healDeckHtmlForStandaloneExport,
   injectDeckHtmlExportViewportScript,
   buildDeckHtmlExportFinalizeLayoutJs,
   injectDeckFlattenScript,
@@ -194,11 +196,42 @@ describe('buildDeckHtmlExportScreenCss', () => {
 });
 
 describe('buildDeckHtmlExportStaticRevealScript', () => {
-  it('reveals inactive slides and hides deck chrome', () => {
+  it('reveals inactive slides and hides deck chrome without forcing flex-column', () => {
     const script = buildDeckHtmlExportStaticRevealScript();
     expect(script).toContain("classList.add('active')");
     expect(script).toContain('.deck-counter');
+    expect(script).toContain('.nav-dots');
     expect(script).toContain("display', 'none', 'important'");
+    expect(script).toContain("display', 'block', 'important'");
+    expect(script).not.toContain("flex-direction', 'column'");
+  });
+});
+
+describe('buildStandaloneDeckHtmlDocument', () => {
+  it('heals Motif CSS and stacks all slides with paper-first screen CSS', () => {
+    const remnant =
+      "1,6..96,400..900&family=Space+Grotesk:wght@300;400;500;600;700&display=swap');";
+    const html = `<!doctype html><html><head><style>${remnant}
+:root{--bg:#F5F5F0;--coral:#E85D4E;--outline:#1E1E1E}
+.deco-pill{position:absolute;border-radius:9999px;border:2px solid var(--outline)}
+.slide{position:absolute;opacity:0}.slide.active{opacity:1}
+.nav-dots{position:fixed;bottom:12px}
+</style></head><body>
+<section class="slide active" style="width:1920px;height:1080px;background:radial-gradient(circle,#F5F5F0,#eee)"><div class="deco-pill" style="width:160px;height:60px;background:var(--coral)">Hi</div></section>
+<section class="slide" style="width:1920px;height:1080px;background:#F5F5F0"><h1>Two</h1></section>
+<div class="nav-dots">dots</div>
+</body></html>`;
+    const healed = healDeckHtmlForStandaloneExport(html);
+    expect(healed).toMatch(/\.deco-pill\{/);
+    expect(healed).not.toMatch(/display=swap/i);
+    const out = buildStandaloneDeckHtmlDocument(html);
+    expect(out).toContain('data-teamver-static-html-export-fallback');
+    expect(out).toContain('data-od-html-export-reveal');
+    expect(out).toContain('data-od-html-export-viewport');
+    expect(out).toMatch(/var\(--bg,\s*var\(--paper/);
+    expect(out).not.toContain('background: var(--shell, #0a0c10)');
+    expect(out).toContain('.nav-dots');
+    expect(out).not.toContain("flex-direction', 'column'");
   });
 });
 

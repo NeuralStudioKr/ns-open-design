@@ -14,7 +14,6 @@
 // an explicit daemon opt-out for fidelity investigations only.
 
 import { buildSrcdoc, type SrcdocOptions } from './srcdoc';
-import { repairArtifactDocumentHeadIfNeeded } from './artifact-document-head';
 import { devLog } from '../lib/devLog';
 import { buildReactComponentSrcdoc } from './react-component';
 import { buildZip } from './zip';
@@ -37,7 +36,8 @@ import {
   injectDeckFlattenScript,
   patchArtifactDeckPrintCss,
   buildDeckPrintCss,
-  repairArtifactStyleSheets,
+  buildStandaloneDeckHtmlDocument,
+  healDeckHtmlForStandaloneExport,
 } from '@open-design/contracts';
 import { repairDeckSlideSurfaceBleed } from '../artifacts/deck-slide-surface';
 import { normalizeCompactStackedDeckForExport } from './compact-api-stacked-deck';
@@ -268,8 +268,15 @@ export function exportAsHtml(
   options?: { deck?: boolean },
 ): void {
   // Lean export — skip preview annotate / redirect-guard DOM tax.
-  const exportHtml = normalizeCompactStackedDeckForExport(html, options?.deck === true);
-  const doc = buildSrcdoc(exportHtml, { exportDocument: true });
+  const normalized = normalizeCompactStackedDeckForExport(html, options?.deck === true);
+  // Deck downloads must reveal every slide + paper-first screen CSS (same as
+  // daemon static fallback). Plain buildSrcdoc leaves opacity:0 overlays.
+  const doc =
+    options?.deck === true
+      ? buildStandaloneDeckHtmlDocument(
+          repairDeckSlideSurfaceBleed(healDeckHtmlForStandaloneExport(normalized)),
+        )
+      : buildSrcdoc(healDeckHtmlForStandaloneExport(normalized), { exportDocument: true });
   const blob = new Blob([doc], { type: 'text/html;charset=utf-8' });
   triggerDownload(blob, `${safeFilename(title, 'artifact')}.html`);
 }
@@ -1107,9 +1114,7 @@ function inlineExportHtmlPayload(
   // dark --shell letterbox the iframe srcdoc would have repaired.
   const html = normalizeCompactStackedDeckForExport(
     repairDeckSlideSurfaceBleed(
-      repairArtifactStyleSheets(
-        repairArtifactDocumentHeadIfNeeded(htmlSnapshot),
-      ),
+      healDeckHtmlForStandaloneExport(htmlSnapshot),
     ),
     deck === true,
   );

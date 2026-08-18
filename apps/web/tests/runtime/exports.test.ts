@@ -44,7 +44,7 @@ describe('exportAsHtml / exportAsZip lean srcdoc', () => {
     expect(exportsSource).toContain('export function exportAsHtml');
     expect(exportsSource).toContain('export function exportAsZip');
     expect(exportsSource).toMatch(
-      /exportAsHtml[\s\S]*?normalizeCompactStackedDeckForExport\(html,\s*options\?\.deck === true\)[\s\S]*?buildSrcdoc\(exportHtml,\s*\{\s*exportDocument:\s*true\s*\}\)/,
+      /exportAsHtml[\s\S]*?normalizeCompactStackedDeckForExport\(html,\s*options\?\.deck === true\)[\s\S]*?buildStandaloneDeckHtmlDocument/,
     );
     expect(exportsSource).toMatch(
       /exportAsZip[\s\S]*?normalizeCompactStackedDeckForExport\(html,\s*options\?\.deck === true\)[\s\S]*?buildSrcdoc\(exportHtml,\s*\{\s*exportDocument:\s*true\s*\}\)/,
@@ -64,10 +64,9 @@ describe('exportAsHtml / exportAsZip lean srcdoc', () => {
   });
 
   it('heals stylesheets and slide surfaces on the daemon HTML/PDF payload', () => {
-    expect(exportsSource).toContain('repairArtifactDocumentHeadIfNeeded');
-    expect(exportsSource).toContain('repairArtifactStyleSheets');
+    expect(exportsSource).toContain('healDeckHtmlForStandaloneExport');
     expect(exportsSource).toContain('repairDeckSlideSurfaceBleed');
-    expect(exportsSource).toContain('repairArtifactDocumentHeadIfNeeded(htmlSnapshot)');
+    expect(exportsSource).toContain('buildStandaloneDeckHtmlDocument');
     expect(exportsSource).toContain('normalizeCompactStackedDeckForExport');
   });
 });
