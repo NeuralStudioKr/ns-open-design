@@ -8915,8 +8915,11 @@ export async function startServer({
       /<style\b([^>]*)>([\s\S]*?)<\/style>/gi,
       (match, attrs, css) => {
         let stripped = false;
+        // Quote-aware: Google Fonts css2 URLs embed `;` in wght/opsz axes.
+        // Naive `[^"')\s;]+` truncates mid-URL and poisons Motif CSS for every
+        // official deck template that uses css2 (not Capsule-only).
         const nextCss = String(css).replace(
-          /@import\s+(?:url\(\s*)?(["']?)https?:\/\/[^"')\s;]+(?:\1\s*\))?[^;]*;?/gi,
+          /@import\s+(?:url\s*\(\s*(?:"[^"]*"|'[^']*'|[^'")\s]+)\s*\)|(?:"[^"]*"|'[^']*'))[^;]*;?/gi,
           () => {
             stripped = true;
             return '/* od stripped external css import */';

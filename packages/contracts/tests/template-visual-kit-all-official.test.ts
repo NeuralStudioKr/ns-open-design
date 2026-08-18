@@ -162,6 +162,18 @@ describe('official deck template visual kits (all mode:deck example.html)', () =
       if (/daisy/i.test(folder) && !/daisy|flower|#fcdf6c/i.test(slim)) {
         failures.push(`${folder}: Daisy template title cue missing from slim`);
       }
+      if (/pin-and-paper|pin.?paper/i.test(folder) && !/pin|cork|post-it|tape/i.test(slim)) {
+        failures.push(`${folder}: Pin-and-Paper Motif vocabulary missing from slim`);
+      }
+      // Catalog-wide: never recommend body @import for fonts (css2 `;` remnant risk).
+      if (/### Font import/i.test(kit) || /### Font import/i.test(slim)) {
+        if (/```css\s*@import url\(/i.test(slim) || /```css\s*@import url\(/i.test(kit)) {
+          failures.push(`${folder}: kit still recommends body @import for fonts`);
+        }
+        if (/fonts\.googleapis\.com/i.test(html) && !/<link rel="stylesheet" href="https:\/\/fonts\.googleapis\.com/i.test(kit)) {
+          failures.push(`${folder}: Google Fonts present but kit missing head <link>`);
+        }
+      }
       // Layout must be capped on fill when the full kit had Layout CSS.
       if (/### Layout CSS(?! \(omitted)/i.test(kit) && !/### Layout CSS \(capped/i.test(slim)) {
         failures.push(`${folder}: Layout CSS omitted by slim (should be capped)`);

@@ -68,6 +68,26 @@ html, body, .slide { background:#F5F0E6; color:#2D2D2D; }
     expect(repaired).toContain('radial-gradient');
   });
 
+  it('does not flatten non-Capsule decorative washes (Sakura/Hermes-style)', () => {
+    const html = `<!doctype html><html><head><style>
+:root{--bg:#FFF5F7;--fg:#2D2D2D}
+.petal{position:absolute;width:80px;height:80px}
+.hc-scanline{opacity:0.35}
+</style></head>
+<body style="margin:0;background:#FFF5F7;color:#2D2D2D">
+<section class="slide" style="width:1920px;height:1080px;background:linear-gradient(135deg, rgba(255,182,193,0.25), transparent 55%), #FFF5F7">
+<div class="petal"></div>
+<div class="hc-scanline"></div>
+</section>
+</body></html>`;
+    const repaired = repairDeckSlideSurfaceBleed(html);
+    expect(repaired).not.toMatch(
+      /html,\s*body,\s*\.slide,\s*section\.slide\s*\{[^}]*background:\s*#FFF5F7\s*!important/i,
+    );
+    expect(repaired).toContain('linear-gradient');
+    expect(repaired).toContain('.petal{position:absolute');
+  });
+
   it('relaxes a persisted bleed that flattened decorative slide washes', () => {
     const html = `<!doctype html><html><body style="background:#F5F5F0;color:#1A1A1A">
 <section class="slide" style="width:1920px;height:1080px;background:radial-gradient(ellipse at 80% 20%, rgba(139,180,247,0.15) 0%,transparent 50%), #F5F5F0">
@@ -81,12 +101,15 @@ html, body, .slide { background:#F5F0E6; color:#2D2D2D; }
     expect(repaired).not.toMatch(/html,\s*body,\s*\.slide,\s*section\.slide/i);
   });
 
-  it('strips leftover Google Fonts css2 debris so :root tokens stay a real rule', () => {
+  it('strips leftover Google Fonts css2 debris so Motif rules stay parseable (any template)', () => {
     const html = `<!doctype html><html><body>
 <section class="slide" style="width:1920px;height:1080px;background:#F5F0E6">
 <style>1,6..96,400..900&family=Space+Grotesk:wght@300;400;500;600;700&display=swap');
 :root{--coral:#E85D4E}
-.pill{border-radius:9999px}</style>
+.pill{border-radius:9999px}
+.petal{position:absolute}
+.pin-1{width:40px}
+.hc-scanline{opacity:0.4}</style>
 <h1>Title</h1>
 </section>
 </body></html>`;
@@ -95,5 +118,8 @@ html, body, .slide { background:#F5F0E6; color:#2D2D2D; }
     expect(repaired).not.toContain("display=swap')");
     expect(repaired).toContain(':root{--coral:#E85D4E}');
     expect(repaired).toContain('.pill{border-radius:9999px}');
+    expect(repaired).toContain('.petal{position:absolute}');
+    expect(repaired).toContain('.pin-1{width:40px}');
+    expect(repaired).toContain('.hc-scanline{opacity:0.4}');
   });
 });

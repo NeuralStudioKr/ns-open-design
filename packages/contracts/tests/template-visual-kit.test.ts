@@ -345,6 +345,46 @@ html,body{background:var(--cream);color:var(--text-dark)}
       }
     }
   });
+
+  it('emits head <link> fonts for every official Motif family (including @import examples)', async () => {
+    for (const folder of [
+      'html-ppt-hermes-cyber-terminal', // example.html uses @import
+      'html-ppt-xhs-pastel-card', // example.html uses @import
+      'html-ppt-zhangzara-capsule', // example.html uses <link>
+      'html-ppt-zhangzara-daisy-days',
+      'html-ppt-zhangzara-sakura-chroma',
+      'html-ppt-zhangzara-pin-and-paper',
+    ]) {
+      const html = await readFile(
+        new URL(`../../../plugins/_official/examples/${folder}/example.html`, import.meta.url),
+        'utf8',
+      );
+      const kit = extractTemplateVisualKitFromHtml(html, { title: folder });
+      if (!kit) continue;
+      if (!/fonts\.googleapis\.com/i.test(html) && !/Font import/i.test(kit)) continue;
+      expect(kit, folder).toMatch(/### Font import \(put in `<head>`/i);
+      expect(kit, folder).toMatch(/<link rel="stylesheet" href="https:\/\/fonts\.googleapis\.com/i);
+      expect(kit, folder).not.toMatch(/```css\s*@import url\(/i);
+    }
+  });
+
+  it('keeps Pin-and-Paper Motif vocabulary on fill slim', async () => {
+    const { slimTemplateVisualKitForFill } = await import('../src/template-visual-kit.js');
+    const html = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/html-ppt-zhangzara-pin-and-paper/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const kit = extractTemplateVisualKitFromHtml(html, {
+      title: 'Html Ppt Zhangzara Pin And Paper',
+    })!;
+    const slim = slimTemplateVisualKitForFill(kit);
+    expect(slim).toMatch(/Motif vocabulary \(required compact cue\)|pin|cork|post-it|tape/i);
+    expect(slim).toMatch(/title cue: pin \/ paper \/ cork|stamp\/tape\/pin|pin-/i);
+    expect(slim).not.toMatch(/Example capsule \(AFTER title\)/i);
+  });
 });
 describe('pickPluginPreviewHtmlPath', () => {
   it('prefers od.preview.entry then context.assets', () => {

@@ -1,3 +1,5 @@
+import { repairArtifactStyleSheets } from '@open-design/contracts';
+
 /**
  * Preview letterbox / inner-paper bleed repair.
  *
@@ -44,25 +46,12 @@ function extractSlideBackground(html: string): string | null {
 
 /**
  * Persist sanitize used to cut Google Fonts `@import` at the first `;` inside
- * the css2 URL, leaving `1,6..96…swap');` at the start of `<style>`.
+ * the css2 URL, leaving `1,6..96…swap');` at the start of `<style>` — Motif
+ * class rules then fail for Capsule, Daisy, Hermes, Sakura, etc.
+ * Use the shared catalog-wide style repair (not a Capsule-only remnant regex).
  */
-function stripOrphanGoogleFontImportDebris(css: string): string {
-  return String(css || '')
-    .replace(
-      /^\s*(?:[\d,.]+(?:\.\.[\d,.]+)?,)*[\d,.]+(?:\.\.[\d,.]+)?&family=[\s\S]*?display=swap['"]\s*\)\s*;?/i,
-      '',
-    )
-    .replace(
-      /^\s*family=[A-Za-z0-9_+:;,.%&=@\- ]*?display=swap['"]\s*\)\s*;?/i,
-      '',
-    );
-}
-
 function repairOrphanFontImportDebrisInStyles(html: string): string {
-  return String(html ?? '').replace(
-    /<style\b([^>]*)>([\s\S]*?)<\/style>/gi,
-    (_full, attrs: string, css: string) => `<style${attrs}>${stripOrphanGoogleFontImportDebris(css)}</style>`,
-  );
+  return repairArtifactStyleSheets(html);
 }
 
 function surfaceBleedSelectors(preserveSlidePaint: boolean): string {

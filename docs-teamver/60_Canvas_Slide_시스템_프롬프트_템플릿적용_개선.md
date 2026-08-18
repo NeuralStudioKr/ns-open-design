@@ -71,6 +71,7 @@ full `example.html`을 시스템 프롬프트에 넣지 않는다는 방침은 �
 - Clone write는 `skipArtifactStubGuard` (trusted reseed)
 - Clone **content-fill** persist도 `skipArtifactStubGuard` (LOOK 대형 seed → compact fill; FE `allowCompactReplacement`와 대칭) — 미전달 시 `ARTIFACT_REGRESSION`
 - Capsule Motif: Google Fonts `@import` 잔여물·surface-bleed `!important`가 `.pill`/gradient를 깨지 않도록 `repairArtifactStyleSheets` + bleed를 html/body만으로 제한
+- **전 템플릿:** kit Font는 example이 `@import`여도 `<link>`로 통일; `pin-*`/sakura/pastel title cue; daemon preview `@import` strip도 quote-aware
 - `fetchPluginLocalSkill` / daemon `local-skill` — kit+map fallback only
 - `neutralizeFilesystemCloneWorkflow` — prompt의 filesystem Clone 문구 무력화 (daemon 시드가 대체)
 - 완전한 closed deck > 잘린 shell

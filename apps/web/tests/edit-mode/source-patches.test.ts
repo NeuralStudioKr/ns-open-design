@@ -491,7 +491,7 @@ describe('manual edit source patches', () => {
     expect(readManualEditOuterHtml(result.source, 'hero-title')).toContain('Original title');
   });
 
-  it('keeps Capsule Google Fonts @import whose css2 URL contains semicolons', () => {
+  it('keeps Google Fonts @import whose css2 URL contains semicolons (any Motif template)', () => {
     const fontImport =
       "@import url('https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@0,6..96,400..900;1,6..96,400..900&family=Space+Grotesk:wght@300;400;500;600;700&display=swap');";
     const html = [
@@ -499,23 +499,29 @@ describe('manual edit source patches', () => {
       `<body><section class="slide"><style>${fontImport}`,
       ':root{--coral:#E85D4E;--outline:#1E1E1E}',
       '.pill{display:inline-flex;border-radius:9999px;border:2px solid var(--outline)}',
-      '.pill-coral{background:var(--coral);color:#fff}</style>',
-      '<span class="pill pill-coral">shadcn/ui</span></section></body></html>',
+      '.pill-coral{background:var(--coral);color:#fff}',
+      '.pin-1{position:absolute;width:40px;height:40px}',
+      '.hc-scanline{opacity:0.4}</style>',
+      '<span class="pill pill-coral">label</span><div class="pin-1"></div></section></body></html>',
     ].join('');
     const out = sanitizeManualEditFullSource(html);
     expect(out).toContain("fonts.googleapis.com/css2?family=Bodoni+Moda");
     expect(out).toContain('1,6..96,400..900');
     expect(out).toContain('.pill{display:inline-flex');
     expect(out).toContain('.pill-coral{background:var(--coral)');
+    expect(out).toContain('.pin-1{position:absolute');
+    expect(out).toContain('.hc-scanline{opacity:0.4}');
     expect(out).not.toMatch(/<style>\s*1,6\.\.96/i);
   });
 
-  it('strips leftover css2 @import debris and keeps Capsule pill rules', () => {
+  it('strips leftover css2 @import debris and keeps Motif class rules (catalog-wide)', () => {
     const html = [
       '<!doctype html><html><body><section class="slide"><style>',
       "1,6..96,400..900&family=Space+Grotesk:wght@300;400;500;600;700&display=swap');",
       ':root{--coral:#E85D4E}',
       '.pill{border-radius:9999px}',
+      '.petal{position:absolute}',
+      '.pin-big{width:48px}',
       '</style><span class="pill">x</span></section></body></html>',
     ].join('');
     const out = sanitizeManualEditFullSource(html);
@@ -523,6 +529,8 @@ describe('manual edit source patches', () => {
     expect(out).not.toContain("display=swap')");
     expect(out).toContain(':root{--coral:#E85D4E}');
     expect(out).toContain('.pill{border-radius:9999px}');
+    expect(out).toContain('.petal{position:absolute}');
+    expect(out).toContain('.pin-big{width:48px}');
   });
 
   it('still strips non-font @import from salvaged style siblings before head inject', () => {

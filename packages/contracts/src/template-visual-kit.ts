@@ -664,10 +664,10 @@ function sanitizeCssRuleForFixedCanvas(rule: string): string | null {
 
 /** Catalog-wide Motif class lexicon — not Capsule/Daisy-only. */
 const MOTIF_CLASS_TOKEN_RE =
-  /\b(?:deco(?:-[a-z0-9_-]+)?|pill(?:-[a-z0-9_-]+)?|deco-pills|floating-pills|[cf]-pill|blob(?:-[a-z0-9_-]+)?|petal(?:s)?|stamp|tape|pin|doodle|scribble(?:-[a-z0-9_-]+)?|shape|sticker|dot-grid|ornament|floater|spark|confetti|grain|pixel(?:-[a-z0-9_-]+)?|ribbon|glow|hairlines?|stripes?|bracket|corner-bracket|post-it(?:-[a-z0-9_-]+)?|cork|scanlines?|orb(?:-[a-z0-9_-]+)?|ambient|starfield|cross|cassette|jis|bg-cork|(?:tpl|theme)-[a-z0-9_-]+|(?:hc|gd|win)-[a-z0-9_-]+)\b/i;
+  /\b(?:deco(?:-[a-z0-9_-]+)?|pill(?:-[a-z0-9_-]+)?|deco-pills|floating-pills|[cf]-pill|blob(?:-[a-z0-9_-]+)?|petal(?:s)?|stamp|tape|pin(?:-[a-z0-9_-]+)?|doodle|scribble(?:-[a-z0-9_-]+)?|shape|sticker|dot-grid|ornament|floater|spark|confetti|grain|pixel(?:-[a-z0-9_-]+)?|ribbon|glow|hairlines?|stripes?|bracket|corner-bracket|post-it(?:-[a-z0-9_-]+)?|cork|scanlines?|orb(?:-[a-z0-9_-]+)?|ambient|starfield|cross|cassette|jis|bg-cork|(?:tpl|theme)-[a-z0-9_-]+|(?:hc|gd|win)-[a-z0-9_-]+)\b/i;
 
 const MOTIF_CSS_SELECTOR_RE =
-  /\.(?:deco(?:-[a-z0-9_-]+)?|pill(?:-[a-z0-9_-]+)?|deco-pills|floating-pills|[cf]-pill|blob(?:-[a-z0-9_-]+)?|petal(?:s)?|stamp|tape|pin|doodle|scribble(?:-[a-z0-9_-]+)?|shape|sticker|dot-grid|ornament|floater|spark|confetti|grain|pixel(?:-[a-z0-9_-]+)?|ribbon|glow|hairlines?|stripes?|bracket|corner-bracket|post-it(?:-[a-z0-9_-]+)?|cork|scanlines?|orb(?:-[a-z0-9_-]+)?|ambient|starfield|cross|cassette|jis|(?:tpl|theme)-[a-z0-9_-]+|(?:hc|gd|win)-[a-z0-9_-]+)\b/i;
+  /\.(?:deco(?:-[a-z0-9_-]+)?|pill(?:-[a-z0-9_-]+)?|deco-pills|floating-pills|[cf]-pill|blob(?:-[a-z0-9_-]+)?|petal(?:s)?|stamp|tape|pin(?:-[a-z0-9_-]+)?|doodle|scribble(?:-[a-z0-9_-]+)?|shape|sticker|dot-grid|ornament|floater|spark|confetti|grain|pixel(?:-[a-z0-9_-]+)?|ribbon|glow|hairlines?|stripes?|bracket|corner-bracket|post-it(?:-[a-z0-9_-]+)?|cork|scanlines?|orb(?:-[a-z0-9_-]+)?|ambient|starfield|cross|cassette|jis|(?:tpl|theme)-[a-z0-9_-]+|(?:hc|gd|win)-[a-z0-9_-]+)\b/i;
 
 /** True Capsule Motif — not shared OD `.pill` chrome tags. */
 function hasCapsuleMotifSignal(text: string): boolean {
@@ -683,8 +683,8 @@ function listMotifVocabularyHints(text: string): string[] {
   if (/\.petal|\.blob(?!-frame)/i.test(text) || /\.blob-frame|\.blob-fill/i.test(text)) {
     hints.push('`.petal` / `.blob` ornaments');
   }
-  if (/\.stamp|\.tape|\.pin\b|\.post-it|\.bg-cork/i.test(text)) {
-    hints.push('stamp/tape/pin/post-it ornaments');
+  if (/\.stamp|\.tape|\.pin(?:-[a-z0-9_-]+)?\b|\.post-it|\.bg-cork|\.cork\b/i.test(text)) {
+    hints.push('stamp/tape/pin/post-it/cork ornaments');
   }
   if (/\.pixel-|\.starfield|\.scanline|\.hc-scanline|\.hc-grid/i.test(text)) {
     hints.push('pixel/arcade/terminal ornaments');
@@ -717,6 +717,11 @@ function listTemplateTitleMotifHints(text: string): string[] {
   const hints: string[] = [];
   if (/\bcapsules?\b/.test(lower)) hints.push('title cue: capsule / pill objects');
   if (/\bdaisy|flower|floral\b/.test(lower)) hints.push('title cue: daisy / flower objects');
+  if (/\bsakura|petal|chroma\b/.test(lower)) hints.push('title cue: sakura / petal ornaments');
+  if (/\bpin|paper|cork|bulletin\b/.test(lower)) hints.push('title cue: pin / paper / cork ornaments');
+  if (/\bpastel|card\b/.test(lower)) hints.push('title cue: pastel card composition');
+  if (/\blong\s*table|seating|place\s*card\b/.test(lower)) hints.push('title cue: long-table / seating layout');
+  if (/\bscatter|brain|doodle\b/.test(lower)) hints.push('title cue: scatter / doodle ornaments');
   if (/\bgrid\b/.test(lower)) hints.push('title cue: grid geometry');
   if (/\bterminal|cyber|crt\b/.test(lower)) hints.push('title cue: terminal / CRT chrome');
   if (/\bgraph|chart|dashboard\b/.test(lower)) hints.push('title cue: graph / chart language');
@@ -751,7 +756,7 @@ function extractMotifHtmlSnippets(html: string, budget: number): string[] {
   for (const tag of opens) {
     if (
       !MOTIF_CLASS_TOKEN_RE.test(tag)
-      && !/\b(?:xp-blob|gd-orb|hc-scanline|post-it|deco-pill|petal|doodle|pixel-)\b/i.test(tag)
+      && !/\b(?:xp-blob|gd-orb|hc-scanline|post-it|deco-pill|petal|doodle|pixel-|pin-|pin\b)\b/i.test(tag)
     ) {
       continue;
     }
@@ -763,7 +768,8 @@ function extractMotifHtmlSnippets(html: string, budget: number): string[] {
     let score = 5;
     if (/\bdeco-pill\b|pill-coral|pill-sky|pill-lavender/i.test(tag)) score = 0;
     else if (/petal|blob-fill|blob-frame|xp-blob/i.test(tag)) score = 1;
-    else if (/doodle|scribble|post-it|stamp|tape/i.test(tag)) score = 1;
+    else if (/\bpin(?:-[a-z0-9_-]+)?\b|post-it|stamp|tape|bg-cork|\bcork\b/i.test(tag)) score = 1;
+    else if (/doodle|scribble/i.test(tag)) score = 1;
     else if (/pixel-|starfield|scanline|corner-bracket|dot-grid/i.test(tag)) score = 2;
     else if (/style\s*=/i.test(tag) && /(?:position\s*:\s*absolute|top\s*:|left\s*:|width\s*:)/i.test(tag)) {
       score = 2;
@@ -856,7 +862,7 @@ function extractDecorationCss(html: string, budget: number, identity: IdentitySc
       return 1;
     }
     // Identity color / named Motif tokens (pill-coral, petal, blob, stamp…).
-    if (/\.pill-[a-z0-9_-]+|\.petal|\.blob|\.stamp|\.tape|\.pin|\.pixel-|\.shape\b|\.post-it|\.doodle|\.ribbon|\.orb/i.test(rule)) {
+    if (/\.pill-[a-z0-9_-]+|\.petal|\.blob|\.stamp|\.tape|\.pin(?:-[a-z0-9_-]+)?|\.pixel-|\.shape\b|\.post-it|\.doodle|\.ribbon|\.orb|\.cork\b/i.test(rule)) {
       return 2;
     }
     if (MOTIF_CSS_SELECTOR_RE.test(rule)) return 3;
@@ -1223,39 +1229,38 @@ function simplifyGoogleFontsCss2Url(url: string): string {
 }
 
 function extractFontImportHint(html: string, fonts: string[]): string | null {
+  const toLink = (url: string) =>
+    `<link rel="stylesheet" href="${simplifyGoogleFontsCss2Url(url)}" />`;
+
   const preferred = fonts[0];
   if (preferred) {
     const escaped = preferred
       .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
       .replace(/ /g, '(?:\\+|%20| )');
+    // Prefer converting @import → <link> for EVERY template (Hermes/XHS still
+    // ship @import in example.html). Body @import + Motif CSS is fragile when
+    // css2 URLs contain `;` and get truncated.
     const importRe = new RegExp(
       `@import url\\(('|")([^'"]*fonts\\.googleapis\\.com[^'"]*${escaped}[^'"]*)\\1\\)`,
       'i',
     );
     const fromImport = importRe.exec(html);
-    if (fromImport?.[2]) {
-      const url = simplifyGoogleFontsCss2Url(fromImport[2]);
-      return `@import url('${url}');`;
-    }
+    if (fromImport?.[2]) return toLink(fromImport[2]);
     const linkRe = new RegExp(
       `href=("|')([^"']*fonts\\.googleapis\\.com[^"']*${escaped}[^"']*)\\1`,
       'i',
     );
     const fromLink = linkRe.exec(html);
-    if (fromLink?.[2]) {
-      const url = simplifyGoogleFontsCss2Url(fromLink[2]);
-      // Prefer a head <link> so Motif CSS in body <style> cannot be poisoned
-      // by a truncated @import remnant (unclosed quote swallows .pill rules).
-      return `<link rel="stylesheet" href="${url}" />`;
-    }
+    if (fromLink?.[2]) return toLink(fromLink[2]);
   }
+  const importAny =
+    /@import url\((['"])([^'"]*fonts\.googleapis\.com\/css2\?[^'"]+)\1\)/i.exec(html)
+    ?? /@import url\((['"])([^'"]*fonts\.googleapis\.com\/css\?[^'"]+)\1\)/i.exec(html);
+  if (importAny?.[2]) return toLink(importAny[2]);
   const linkMatch =
     /href=("|\')([^"']*fonts\.googleapis\.com\/css2\?[^"']+)\1/i.exec(html)
     ?? /href=("|\')([^"']*fonts\.googleapis\.com\/css\?[^"']+)\1/i.exec(html);
-  if (linkMatch?.[2]) {
-    const url = simplifyGoogleFontsCss2Url(linkMatch[2]);
-    return `<link rel="stylesheet" href="${url}" />`;
-  }
+  if (linkMatch?.[2]) return toLink(linkMatch[2]);
   if (fonts.length === 0) return null;
   const families = fonts
     .map((font) => font.replace(/['"]/g, '').split(',')[0]?.trim())
@@ -1265,7 +1270,7 @@ function extractFontImportHint(html: string, fonts: string[]): string | null {
   const familyParam = families
     .map((name) => `family=${encodeURIComponent(name!).replace(/%20/g, '+')}:wght@400;700`)
     .join('&');
-  return `<link rel="stylesheet" href="https://fonts.googleapis.com/css2?${familyParam}&display=swap" />`;
+  return toLink(`https://fonts.googleapis.com/css2?${familyParam}&display=swap`);
 }
 
 /** Structure cue without embedding huge/truncated SVG markup. */
@@ -1456,19 +1461,14 @@ export function extractTemplateVisualKitFromHtml(
     lines.push(`### Fonts: ${fonts.join(' | ')}`, '');
   }
   if (fontImport) {
-    const isLink = /<link\b/i.test(fontImport);
     lines.push(
-      isLink
-        ? '### Font import (put in `<head>` — keeps Motif CSS safe)'
-        : '### Font import (first line of the short body `<style>`, before Motif rules)',
+      '### Font import (put in `<head>` — keeps Motif CSS safe for every template)',
       '',
-      isLink ? '```html' : '```css',
+      '```html',
       fontImport,
       '```',
       '',
-      isLink
-        ? 'Do NOT paste this as `@import` inside Motif `<style>` — a truncated Google Fonts `@import` leaves an unclosed quote that swallows `.pill` / `.deco-pill` rules.'
-        : 'If you also emit Motif CSS, keep `@import` as the first statement; never leave a truncated font URL remnant before `:root` / `.pill`.',
+      'Do NOT paste fonts as `@import` inside Motif `<style>`. Google Fonts css2 URLs contain `;` — a truncated `@import` leaves an unclosed quote that swallows Motif class rules (`.pill` / `.deco-pill` / `.pin-*` / `.petal` / `.hc-*`).',
       '',
     );
   }
@@ -1742,7 +1742,7 @@ function capDecorationsCssSectionForFill(section: string): string {
     if (/\.deco-pill\b|deco-pills|floating-pills|border-radius\s*:\s*999/i.test(rule) && MOTIF_CSS_SELECTOR_RE.test(rule)) {
       return 1;
     }
-    if (/\.pill-[a-z0-9_-]+|\.petal|\.blob|\.stamp|\.tape|\.pin|\.pixel-|\.shape\b|\.post-it|\.doodle|\.ribbon|\.orb/i.test(rule)) {
+    if (/\.pill-[a-z0-9_-]+|\.petal|\.blob|\.stamp|\.tape|\.pin(?:-[a-z0-9_-]+)?|\.pixel-|\.shape\b|\.post-it|\.doodle|\.ribbon|\.orb|\.cork\b/i.test(rule)) {
       return 2;
     }
     if (MOTIF_CSS_SELECTOR_RE.test(rule)) return 3;
