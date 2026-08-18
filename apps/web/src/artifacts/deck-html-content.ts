@@ -3,11 +3,112 @@ import {
   looksLikeTemplateMarketingTitle,
 } from '@open-design/contracts';
 
-const SLIDE_SECTION_OPEN_RE =
-  /<section\b[^>]*\bclass\s*=\s*(?:"[^"]*\bslide\b[^"]*"|'[^']*\bslide\b[^']*'|[^\s"'`=<>]*\bslide\b[^\s"'`=<>]*)/gi;
+const SLIDE_HOST_OPEN_RE = /<(section|div)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
 
-const SLIDE_SECTION_BLOCK_RE =
-  /<section\b[^>]*\bclass\s*=\s*(?:"[^"]*\bslide\b[^"]*"|'[^']*\bslide\b[^']*'|[^\s"'`=<>]*\bslide\b[^\s"'`=<>]*)[^>]*>([\s\S]*?)<\/section>/gi;
+function classAttrHasExactSlideToken(attrs: string): boolean {
+  const match = /\bclass\s*=\s*(?:"([^"]*)"|'([^']*)'|(\S+))/i.exec(attrs);
+  if (!match) return false;
+  const value = match[1] ?? match[2] ?? match[3] ?? "";
+  return /(^|\s)slide(\s|$)/i.test(value);
+}
+
+/** Official catalog hosts plus cover dialects (`data-slide` / `data-slide-index`). */
+function attrsLookLikeSlideHost(attrs: string): boolean {
+  return classAttrHasExactSlideToken(attrs) || /\bdata-slide(?:-index)?\b/i.test(attrs);
+}
+
+type SlideHostBlock = {
+  tag: string;
+  inner: string;
+  start: number;
+  end: number;
+};
+
+/**
+ * Official catalog hosts are `<section class="slide">` *or* `<div class="slide">`
+ * (Bold Poster, retro-windows, many html-ppt decks). Chrome like `.slide-inner`
+ * is not a host — require an exact `slide` class token.
+ */
+function extractSlideHostBlocks(html: string): SlideHostBlock[] {
+  const raw: SlideHostBlock[] = [];
+  const openRe = new RegExp(SLIDE_HOST_OPEN_RE.source, "gi");
+  let searchFrom = 0;
+  while (searchFrom < html.length) {
+    openRe.lastIndex = searchFrom;
+    const openMatch = openRe.exec(html);
+    if (!openMatch) break;
+    const tag = (openMatch[1] ?? "section").toLowerCase();
+    const attrs = openMatch[2] ?? "";
+    const openStart = openMatch.index;
+    const openEnd = openStart + openMatch[0].length;
+    if (!attrsLookLikeSlideHost(attrs)) {
+      searchFrom = openEnd;
+      continue;
+    }
+    const closeRe = new RegExp(`<\\/${tag}\\s*>`, "gi");
+    const nestedOpenRe = new RegExp(`<${tag}\\b(?:[^>"']|"[^"]*"|'[^']*')*>`, "gi");
+    let depth = 1;
+    let cursor = openEnd;
+    let matchedCloseStart = -1;
+    let matchedCloseEnd = -1;
+    while (cursor < html.length && depth > 0) {
+      nestedOpenRe.lastIndex = cursor;
+      closeRe.lastIndex = cursor;
+      const nextOpen = nestedOpenRe.exec(html);
+      const nextClose = closeRe.exec(html);
+      if (!nextClose) break;
+      if (nextOpen && nextOpen.index < nextClose.index) {
+        depth += 1;
+        cursor = nextOpen.index + nextOpen[0].length;
+      } else {
+        depth -= 1;
+        cursor = nextClose.index + nextClose[0].length;
+        if (depth === 0) {
+          matchedCloseStart = nextClose.index;
+          matchedCloseEnd = cursor;
+        }
+      }
+    }
+    if (matchedCloseEnd === -1 || matchedCloseStart === -1) {
+      raw.push({
+        tag,
+        inner: html.slice(openEnd),
+        start: openStart,
+        end: html.length,
+      });
+      break;
+    }
+    raw.push({
+      tag,
+      inner: html.slice(openEnd, matchedCloseStart),
+      start: openStart,
+      end: matchedCloseEnd,
+    });
+    searchFrom = matchedCloseEnd;
+  }
+  return raw.filter(
+    (slide, index) =>
+      !raw.some(
+        (other, otherIndex) =>
+          otherIndex !== index && other.start < slide.start && other.end >= slide.end,
+      ),
+  );
+}
+
+export function startsWithSlideHost(html: string): boolean {
+  const match = /^<(section|div)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/i.exec(String(html ?? "").trim());
+  return Boolean(match && attrsLookLikeSlideHost(match[2] ?? ""));
+}
+
+export function eachSlideHostOpenIndex(html: string): number[] {
+  const indexes: number[] = [];
+  const openRe = new RegExp(SLIDE_HOST_OPEN_RE.source, "gi");
+  let match: RegExpExecArray | null;
+  while ((match = openRe.exec(html)) !== null) {
+    if (attrsLookLikeSlideHost(match[2] ?? "")) indexes.push(match.index);
+  }
+  return indexes;
+}
 
 const HAS_MEDIA_CONTENT_RE = /<(?:img|video|audio|canvas|svg|iframe|picture|object|embed)\b/i;
 
@@ -38,19 +139,12 @@ function visibleTextFromHtmlFragment(html: string): string {
 }
 
 export function documentContainsSlideSection(html: string): boolean {
-  SLIDE_SECTION_OPEN_RE.lastIndex = 0;
-  return SLIDE_SECTION_OPEN_RE.test(html);
+  return eachSlideHostOpenIndex(html).length > 0;
 }
 
 function listSlideSectionInners(html: string): string[] {
   const withoutComments = html.replace(/<!--[\s\S]*?-->/g, "");
-  const inners: string[] = [];
-  SLIDE_SECTION_BLOCK_RE.lastIndex = 0;
-  let match: RegExpExecArray | null;
-  while ((match = SLIDE_SECTION_BLOCK_RE.exec(withoutComments)) !== null) {
-    inners.push(match[1] ?? "");
-  }
-  return inners;
+  return extractSlideHostBlocks(withoutComments).map((block) => block.inner);
 }
 
 function firstSlideHeading(innerHtml: string): string {
@@ -82,13 +176,13 @@ export function deckArtifactStartsWithMotifSvgDump(html: string): boolean {
 }
 
 const DECK_STREAM_OPEN_RE =
-  /<artifact\b|<!doctype\s+html|<html\b|<body\b|<section\b[^>]*slide/i;
+  /<artifact\b|<!doctype\s+html|<html\b|<body\b|<(?:section|div)\b[^>]*(?:\bslide\b|data-slide)/i;
 
 function extractStreamedDeckHtml(text: string): string {
   const raw = String(text ?? "");
   const artifact = /<artifact\b[^>]*>/i.exec(raw);
   if (artifact && artifact.index != null) return raw.slice(artifact.index);
-  const doc = /<!doctype\s+html|<html\b|<body\b|<section\b[^>]*slide/i.exec(raw);
+  const doc = /<!doctype\s+html|<html\b|<body\b|<(?:section|div)\b[^>]*(?:\bslide\b|data-slide)/i.exec(raw);
   if (doc && doc.index != null) return raw.slice(doc.index);
   return raw;
 }
@@ -321,31 +415,36 @@ export function meetsTruncationSalvageQuality(html: string): boolean {
 }
 
 /**
- * Close unmatched `<section class="slide">` openers so a max_tokens cut in the
+ * Close unmatched slide hosts (`section|div.slide`) so a max_tokens cut in the
  * middle of the first (or last) slide can still be content-scored and persisted.
- * Nested non-slide `<section>` tags inside a slide are depth-counted.
+ * Nested same-tag hosts inside a slide are depth-counted.
  */
 export function closeUnclosedSlideSectionsForSalvage(html: string): string {
   if (!html) return html;
-  const openRe =
-    /<section\b[^>]*\bclass\s*=\s*(?:"[^"]*\bslide\b[^"]*"|'[^']*\bslide\b[^']*'|[^\s"'`=<>]*\bslide\b[^\s"'`=<>]*)[^>]*>/gi;
-  const opens: { openStart: number; contentStart: number }[] = [];
+  const openRe = new RegExp(SLIDE_HOST_OPEN_RE.source, "gi");
+  const opens: { tag: string; openStart: number; contentStart: number }[] = [];
   let match: RegExpExecArray | null;
   while ((match = openRe.exec(html)) !== null) {
-    opens.push({ openStart: match.index, contentStart: match.index + match[0].length });
+    if (!attrsLookLikeSlideHost(match[2] ?? "")) continue;
+    opens.push({
+      tag: (match[1] ?? "section").toLowerCase(),
+      openStart: match.index,
+      contentStart: match.index + match[0].length,
+    });
   }
   if (opens.length === 0) return html;
 
   const insertions: { at: number; text: string }[] = [];
   for (let i = 0; i < opens.length; i += 1) {
+    const tag = opens[i]!.tag;
     const contentStart = opens[i]!.contentStart;
     const contentEnd = i + 1 < opens.length ? opens[i + 1]!.openStart : html.length;
     const chunk = html.slice(contentStart, contentEnd);
     let depth = 1;
-    const tagRe = /<\/?section\b[^>]*>/gi;
+    const tagRe = new RegExp(`<\\/?${tag}\\b[^>]*>`, "gi");
     let tagMatch: RegExpExecArray | null;
     while ((tagMatch = tagRe.exec(chunk)) !== null) {
-      if (/^<\/section/i.test(tagMatch[0])) {
+      if (new RegExp(`^<\\/${tag}`, "i").test(tagMatch[0])) {
         depth -= 1;
         if (depth === 0) break;
       } else if (!/^<\//.test(tagMatch[0])) {
@@ -353,7 +452,7 @@ export function closeUnclosedSlideSectionsForSalvage(html: string): string {
       }
     }
     if (depth > 0) {
-      insertions.push({ at: contentEnd, text: "</section>".repeat(depth) });
+      insertions.push({ at: contentEnd, text: `</${tag}>`.repeat(depth) });
     }
   }
   if (insertions.length === 0) return html;

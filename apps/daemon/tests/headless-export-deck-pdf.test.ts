@@ -387,6 +387,9 @@ describe('buildDeckPrintCss', () => {
     expect(css).toContain('width: 100% !important');
     expect(css).not.toContain('display: contents !important');
     expect(css).not.toContain('break-after: page !important');
+    expect(css).toMatch(/background:\s*var\(--bg,[^)]*var\(--paper/);
+    expect(css).not.toContain('background: var(--shell, #0a0c10)');
+    expect(css).not.toContain('box-shadow: 0 12px 48px');
   });
 
   it('applyPdfStyles uses paper-first background chain for deck exports', () => {

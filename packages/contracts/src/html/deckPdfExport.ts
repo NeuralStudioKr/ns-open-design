@@ -3,6 +3,9 @@
  * logic in one place so print layout fixes ship together.
  */
 
+import { repairArtifactDocumentHead } from './repairArtifactDocumentHead.js';
+import { repairArtifactStyleSheets } from './repairArtifactStyleSheets.js';
+
 export const DECK_SLIDE_SELECTOR =
   '.slide, [data-slide], [data-screen-label], section.slide, .deck-slide, .ppt-slide';
 
@@ -10,13 +13,60 @@ export const DECK_WRAPPER_SELECTOR =
   '.deck, .deck-shell, .deck-stage, #deck-stage, #deck, .stage';
 
 export const DECK_CHROME_HIDE_SELECTOR =
-  '.deck-counter, .deck-hint, .deck-nav, .nav-hint, #deck-prev, #deck-next, #deck-cur, #deck-total, #nav, #hint, canvas.bg, #overview, [aria-label="Previous slide"], [aria-label="Next slide"]';
+  '.deck-counter, .deck-hint, .deck-nav, .nav-hint, .nav-dots, .nav-dot, .slide-counter, .grain-overlay, #deck-prev, #deck-next, #deck-cur, #deck-total, #nav, #hint, canvas.bg, #overview, [aria-label="Previous slide"], [aria-label="Next slide"]';
 
 export const DECK_EXPORT_WIDTH = 1920;
 export const DECK_EXPORT_HEIGHT = 1080;
 
 function deckSlideSelectorList(): string[] {
   return DECK_SLIDE_SELECTOR.split(',').map((sel) => sel.trim());
+}
+
+/**
+ * Heal Motif-killing stylesheet remnants + truncated head before standalone
+ * HTML/PDF export (daemon disk path and FE snapshot share this SSOT).
+ */
+export function healDeckHtmlForStandaloneExport(html: string): string {
+  return repairArtifactStyleSheets(repairArtifactDocumentHead(String(html ?? '')));
+}
+
+function injectExportSnippetIntoHead(html: string, snippet: string): string {
+  if (/<\/head\s*>/i.test(html)) {
+    return html.replace(/<\/head\s*>/i, `${snippet}</head>`);
+  }
+  if (/<html\b[^>]*>/i.test(html)) {
+    return html.replace(/<html\b[^>]*>/i, (open) => `${open}<head>${snippet}</head>`);
+  }
+  return `<!doctype html><html><head>${snippet}</head><body>${html}</body></html>`;
+}
+
+function injectExportSnippetBeforeBodyClose(html: string, snippet: string): string {
+  if (/<\/body\s*>/i.test(html)) {
+    return html.replace(/<\/body\s*>/i, `${snippet}</body>`);
+  }
+  return `${html}${snippet}`;
+}
+
+/**
+ * Build a browser-openable standalone deck HTML (screen CSS + reveal all
+ * slides + viewport fit). Used by daemon static fallback and FE blob export.
+ */
+export function buildStandaloneDeckHtmlDocument(html: string): string {
+  const cleaned = patchArtifactDeckPrintCss(healDeckHtmlForStandaloneExport(html));
+  const style = `<style data-teamver-static-html-export-fallback>
+html, body {
+  margin: 0 !important;
+  scrollbar-width: none !important;
+  -webkit-print-color-adjust: exact !important;
+  print-color-adjust: exact !important;
+}
+*::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }
+${buildDeckHtmlExportScreenCss()}
+</style>`;
+  const revealScript = `<script data-od-html-export-reveal>${buildDeckHtmlExportStaticRevealScript()}</script>`;
+  const withHead = injectExportSnippetIntoHead(cleaned, style);
+  const withReveal = injectExportSnippetBeforeBodyClose(withHead, revealScript);
+  return injectDeckHtmlExportViewportScript(withReveal);
 }
 
 /** Print flatten CSS shared by daemon, web, and desktop deck PDF export. */
@@ -103,7 +153,10 @@ export function buildDeckHtmlExportScreenCss(): string {
     overflow-y: auto !important;
     margin: 0 !important;
     padding: 0 !important;
-    background: var(--shell, #0a0c10) !important;
+    /* Paper first — --shell is frame chrome (#0a0c10). Forcing it here
+       painted a dark letterbox + card shadow around cream slides so
+       standalone HTML/PDF looked like "template not applied". */
+    background: var(--bg, var(--paper, var(--shell, #ffffff))) !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
@@ -134,8 +187,8 @@ export function buildDeckHtmlExportScreenCss(): string {
   }
   ${slidesNotActive},
   ${slides} {
-    display: flex !important;
-    flex-direction: column !important;
+    /* Do not force flex-direction:column — absolute/split covers collapse. */
+    display: block !important;
     flex: 0 0 auto !important;
     position: relative !important;
     inset: auto !important;
@@ -153,7 +206,7 @@ export function buildDeckHtmlExportScreenCss(): string {
     scroll-snap-align: none !important;
     zoom: var(--od-html-export-scale, 1) !important;
     margin: 0 auto !important;
-    box-shadow: 0 12px 48px rgba(0, 0, 0, 0.35) !important;
+    box-shadow: none !important;
   }
   ${DECK_CHROME_HIDE_SELECTOR} {
     display: none !important;
@@ -171,12 +224,14 @@ export function buildDeckHtmlExportStaticRevealScript(): string {
   var chrome = ${JSON.stringify(DECK_CHROME_HIDE_SELECTOR)};
   document.querySelectorAll(slides).forEach(function (el) {
     el.classList.add('active');
-    el.style.setProperty('display', 'flex', 'important');
-    el.style.setProperty('flex-direction', 'column', 'important');
+    // Match screen CSS: do NOT force flex-direction:column — absolute Motif
+    // overlays / split covers (Capsule, Cobalt) collapse into a single column.
+    el.style.setProperty('display', 'block', 'important');
     el.style.setProperty('position', 'relative', 'important');
     el.style.setProperty('inset', 'auto', 'important');
     el.style.setProperty('visibility', 'visible', 'important');
     el.style.setProperty('opacity', '1', 'important');
+    el.style.removeProperty('flex-direction');
   });
   document.querySelectorAll(chrome).forEach(function (el) {
     el.style.setProperty('display', 'none', 'important');
@@ -186,10 +241,11 @@ export function buildDeckHtmlExportStaticRevealScript(): string {
     el.style.setProperty('inset', 'auto', 'important');
     el.style.setProperty('overflow', 'visible', 'important');
   });
-  document.querySelectorAll('.deck-stage, #deck-stage').forEach(function (el) {
+  document.querySelectorAll('.deck-stage, #deck-stage, .presentation, .slides-container').forEach(function (el) {
     el.style.setProperty('transform', 'none', 'important');
     el.style.setProperty('width', 'auto', 'important');
     el.style.setProperty('height', 'auto', 'important');
+    el.style.setProperty('overflow', 'visible', 'important');
   });
 })();`;
 }

@@ -225,7 +225,9 @@ function compactStackedDeckExportCss(): string {
       padding: 0 !important;
       width: 1920px !important;
       min-width: 1920px !important;
-      background: #0b0c10;
+      /* Do not paint #0b0c10 — preview already learned that a forced dark
+         letterbox reads as "template not applied". Keep the deck's own
+         body/paper background (cream, dark terminal, or unset). */
     }
     body { overflow-x: hidden !important; }
     body > .slide,
@@ -252,7 +254,6 @@ function compactStackedDeckExportCss(): string {
       html, body {
         width: 1920px !important;
         min-width: 1920px !important;
-        background: transparent !important;
       }
       body > .slide,
       body > * > .slide,

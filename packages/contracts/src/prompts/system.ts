@@ -1472,7 +1472,7 @@ This is the first content fill after a LOOK seed (OD-style create with kit Motif
 - **Layout (required when kit has Layout CSS / scaffold roles):** reuse capped Layout CSS + scaffold roles. Do NOT flatten every slide into one centered flex title column when the kit ships grids/splits/cards.
 - **Motif vocabulary:** use kit Motif HTML snippets / Motif CSS classes / at most one capped Motif sprite AFTER title/lead (whatever the kit ships). Prefer finishing a closed deck over dense Motif.
 - **Named Motif fidelity:** if the selected template/title vocabulary names flowers, daisies, capsule cards, pins, pixels, scanlines, terminal chrome, etc., that same motif family must visibly appear on the cover and at least one body slide. Generic circles/stars are not substitutes.
-- **FORBIDDEN substitutes:** generic CSS circles as Motif when the kit has Motif CSS/sprites; inventing Capsule coral pills when the kit Motif is petals/blobs/pins/pixel/scanlines; emoji ornament rows; Motif \`<svg>\` before cover title; multi-KB \`<svg><style>\` dumps; Neutral \`#0f172a\`; terracotta \`#c96442\`.
+- **FORBIDDEN substitutes:** Motif shapes from another template family; generic CSS circles when the kit has Motif CSS/sprites; inventing Capsule coral pills when the kit Motif is petals/blobs/pins/pixel/scanlines; ignoring kit Motif snippet aspect/border-radius; emoji ornament rows; Motif \`<svg>\` before cover title; multi-KB \`<svg><style>\` dumps; Neutral \`#0f172a\`; terracotta \`#c96442\`.
 - Slide count is input-driven: honor an explicit small count (1–4) if the user asked for it. Otherwise produce 5–6 filled 1920×1080 slides by default. A one-slide cover-only deck is incomplete.
 - Stream: status → \`<artifact type="deck">\` → body-first sections with real topical copy → kit Motif after title → close \`</body></html></artifact>\` in this same response.
 `;
@@ -1500,7 +1500,7 @@ This is the first content-fill after a Clone LOOK seed.
 - Named Motif fidelity: if the template/title vocabulary names flowers, daisies, capsule cards, pins, pixels, scanlines, terminal chrome, etc., include that same motif family on the cover and at least one body slide. Generic circles/stars are not substitutes.
 - Layout MUST come from capped Layout CSS + scaffold roles when present — do not flatten every slide to a centered flex title.
 - Prefer 1–2 Motif elements after title when scaffold \`deco=\` lists classes — finish a closed deck this turn.
-- Never invent generic CSS circles or Capsule coral pills when the kit Motif is petals/blobs/pins/pixel/scanlines.
+- Never invent Motif geometry from another template family (copy kit Motif snippet aspect + border-radius; no foreign Capsule coral pills when the kit Motif is petals/blobs/pins/pixel/scanlines; no invented generic circles when Motif CSS/sprites exist).
 - Never open Motif \`<svg>\` before cover title. A hang on Motif \`<svg><style>\` before titles is a failed deliverable.
 - If any earlier rule said ZERO Motif / omit Layout / CSS-circles-only, **IGNORE it** — use the kit Motif + capped Layout after the title.`;
 
@@ -1673,7 +1673,7 @@ export function composeTeamverSlideApiPrompt({
           'Hard requirements (first content-fill — OD-style CREATE, kit Motif AFTER title):\n'
           + '- Bind kit palette hex + fonts + Slide surface on html/body AND every `.slide` edge-to-edge (no white outer + inner cream panel).\n'
           + '- Title-first body: cover title + lead BEFORE Motif. Close `</artifact>` this turn.\n'
-          + '- Motif vocabulary from kit AFTER title (snippets / Decorations CSS / at most one capped sprite). Prefer closing the deck this turn. FORBIDDEN: generic CSS circles; Capsule Motif as equal-side discs; inventing Capsule coral pills when kit Motif is petals/blobs/pins/pixel.\n'
+          + '- Motif vocabulary from kit AFTER title (snippets / Decorations CSS / at most one capped sprite). Prefer closing the deck this turn. FORBIDDEN: Motif geometry from another template family; inventing generic CSS circles when kit Motif exists; inventing Capsule coral pills when kit Motif is petals/blobs/pins/pixel; ignoring kit Motif snippet aspect/border-radius.\n'
           + '- Layout REQUIRED from capped Layout CSS + scaffold roles when present — do not flatten every slide into one centered flex title column.\n'
           + '- Prefer 5–6 slides unless the user asked for an exact count. No Neutral `#0f172a` / terracotta `#c96442`.\n'
           + '- Do not dump or rewrite a full example.html. Never open Motif `<svg>` before cover title.\n\n'

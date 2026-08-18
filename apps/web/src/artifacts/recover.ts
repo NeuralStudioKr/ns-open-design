@@ -5,9 +5,11 @@ import {
 import { validateHtmlArtifact, isIncompleteHtmlDocumentShell } from './validate';
 import {
   closeUnclosedSlideSectionsForSalvage,
+  eachSlideHostOpenIndex,
   hasSalvageableDeckSlideContent,
   isClosedSoftSalvageDeckHtml,
   meetsTruncationSalvageQuality,
+  startsWithSlideHost,
 } from './deck-html-content';
 
 type RecoverHtmlArtifactInput = {
@@ -24,9 +26,7 @@ const DOCTYPE_HTML_BLOCK_RE = /<!doctype\s+html[\s\S]*?<\/html\s*>/gi;
 const HTML_DOCUMENT_BLOCK_RE = /<html\b[\s\S]*?<\/html\s*>/gi;
 const STARTS_WITH_DOCUMENT_RE = /^(?:<!doctype\s+html\b|<html\b)/i;
 const STARTS_WITH_BODY_RE = /^<body\b/i;
-const STARTS_WITH_SLIDE_SECTION_RE = /^<section\b[^>]*\bclass\s*=\s*(?:"[^"]*\bslide\b[^"]*"|'[^']*\bslide\b[^']*'|[^\s"'`=<>]*\bslide\b[^\s"'`=<>]*)/i;
 const BODY_TAG_RE = /<body\b/gi;
-const SLIDE_SECTION_TAG_RE = /<section\b[^>]*\bclass\s*=\s*(?:"[^"]*\bslide\b[^"]*"|'[^']*\bslide\b[^']*'|[^\s"'`=<>]*\bslide\b[^\s"'`=<>]*)/gi;
 const HAS_HTML_CLOSE_RE = /<\/html\s*>/i;
 const HAS_BODY_CLOSE_RE = /<\/body\s*>/i;
 
@@ -227,10 +227,8 @@ function recoverBodyFirstHtmlDocumentsFromText(sourceText: string): string[] {
     addTail(bodyMatch.index);
   }
 
-  SLIDE_SECTION_TAG_RE.lastIndex = 0;
-  let sectionMatch: RegExpExecArray | null;
-  while ((sectionMatch = SLIDE_SECTION_TAG_RE.exec(sourceText)) !== null) {
-    addTail(sectionMatch.index);
+  for (const index of eachSlideHostOpenIndex(sourceText)) {
+    addTail(index);
   }
 
   return out;
@@ -239,7 +237,8 @@ function recoverBodyFirstHtmlDocumentsFromText(sourceText: string): string[] {
 /**
  * Teamver API deck prompts intentionally say "body-first" to avoid a huge
  * head/CSS prelude. Some models interpret that literally and emit an artifact
- * body that starts with `<body>` or the first `<section class="slide">`,
+ * body that starts with `<body>` or the first slide host
+ * (`section|div.slide`, not chrome like `.slide-inner`),
  * without the outer `<!doctype html><html>`. Wrap only slide-looking content
  * with real text/media so prose or empty SLOT skeletons still fail.
  */
@@ -248,7 +247,7 @@ export function normalizeBodyFirstHtmlDocument(content: string | null | undefine
   if (trimmed.length < 64) return null;
   if (STARTS_WITH_DOCUMENT_RE.test(trimmed)) return null;
   const startsWithBody = STARTS_WITH_BODY_RE.test(trimmed);
-  const startsWithSlide = STARTS_WITH_SLIDE_SECTION_RE.test(trimmed);
+  const startsWithSlide = startsWithSlideHost(trimmed);
   if (!startsWithBody && !startsWithSlide) return null;
 
   // Close unclosed slide sections first — mid-first-slide truncation otherwise

@@ -1,8 +1,8 @@
 import type { Express, Request } from 'express';
 import {
   PROJECT_EXPORT_MANIFEST_SCHEMA,
-  injectDeckHtmlExportViewportScript,
-  patchArtifactDeckPrintCss,
+  buildStandaloneDeckHtmlDocument,
+  healDeckHtmlForStandaloneExport,
 } from '@open-design/contracts';
 import fs from 'node:fs';
 import nodePath from 'node:path';
@@ -21,8 +21,6 @@ import { parseOrchestratorWorkspace } from './workspace-contract.js';
 import type { ProjectStorageAccessHooks } from './storage/lazy-project-materialization.js';
 import { isTeamverDesignManaged } from './teamver-project-access.js';
 import {
-  buildDeckHtmlExportScreenCss,
-  buildDeckHtmlExportStaticRevealScript,
   isHeadlessChromiumUnavailableExportError,
   renderHeadlessHtmlSnapshot,
   renderHeadlessDeckImages,
@@ -424,22 +422,8 @@ function injectExportSnippetBeforeBodyClose(html: string, snippet: string): stri
 }
 
 export function buildStaticHtmlExportFallback(input: { html: string; deck?: boolean }): string {
-  if (input.deck !== true) return input.html;
-  const cleaned = patchArtifactDeckPrintCss(input.html);
-  const style = `<style data-teamver-static-html-export-fallback>
-html, body {
-  margin: 0 !important;
-  scrollbar-width: none !important;
-  -webkit-print-color-adjust: exact !important;
-  print-color-adjust: exact !important;
-}
-*::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }
-${buildDeckHtmlExportScreenCss()}
-</style>`;
-  const revealScript = `<script data-od-html-export-reveal>${buildDeckHtmlExportStaticRevealScript()}</script>`;
-  const withHead = injectExportSnippetIntoHead(cleaned, style);
-  const withReveal = injectExportSnippetBeforeBodyClose(withHead, revealScript);
-  return injectDeckHtmlExportViewportScript(withReveal);
+  if (input.deck !== true) return healDeckHtmlForStandaloneExport(input.html);
+  return buildStandaloneDeckHtmlDocument(input.html);
 }
 
 export { isHeadlessChromiumUnavailableExportError } from './headless-export.js';

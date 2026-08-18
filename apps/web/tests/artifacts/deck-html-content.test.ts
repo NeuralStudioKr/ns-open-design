@@ -214,6 +214,48 @@ describe("deck-html-content", () => {
     expect(isIncompleteHtmlDocumentShell(html)).toBe(true);
   });
 
+  it("treats catalog <div class=\"slide\"> hosts as first-class persist content", () => {
+    const html =
+      "<!doctype html><html lang=\"ko\"><body>"
+      + "<div class=\"slide\"><h1>Neural Studio</h1><p>회사 소개 슬라이드입니다.</p></div>"
+      + "<div class=\"slide\"><h2>서비스</h2><p>AI 디자인 자동화 플랫폼</p></div>"
+      + "</body></html>";
+    expect(hasFilledSlideSection(html)).toBe(true);
+    expect(hasSalvageableDeckSlideContent(html)).toBe(true);
+    expect(meetsMinimumDeckDeliverableQuality(html)).toBe(true);
+    expect(isIncompleteHtmlDocumentShell(html)).toBe(false);
+    expect(isClosedSoftSalvageDeckHtml(html)).toBe(true);
+  });
+
+  it("does not treat .slide-inner chrome as a slide host", () => {
+    const chromeOnly =
+      "<!doctype html><html lang=\"ko\"><body>"
+      + "<div class=\"slide-inner\"><h1>Neural Studio</h1><p>회사 소개 슬라이드입니다.</p></div>"
+      + "<div class=\"slide-title\"><h2>서비스</h2><p>AI 디자인 자동화 플랫폼</p></div>"
+      + "</body></html>";
+    expect(hasFilledSlideSection(chromeOnly)).toBe(false);
+    expect(meetsMinimumDeckDeliverableQuality(chromeOnly)).toBe(false);
+    const nested =
+      "<div class=\"slide\"><div class=\"slide-inner\"><h1>커버 전략</h1>"
+      + "<p>첫날 목표와 팀 문화를 설명합니다.</p></div>";
+    const closed = closeUnclosedSlideSectionsForSalvage(nested);
+    expect(closed).toMatch(/<\/div>\s*$/);
+    expect(closed).toContain("slide-inner");
+    expect(meetsTruncationSalvageQuality(
+      `<!doctype html><html><body>${closed}</body></html>`,
+    )).toBe(true);
+  });
+
+  it("closes an unclosed trailing <div class=\"slide\"> for salvage scoring", () => {
+    const open =
+      "<div class=\"slide\"><h1>커버</h1><p>첫날 목표를 설명합니다.";
+    const closed = closeUnclosedSlideSectionsForSalvage(open);
+    expect(closed).toMatch(/<\/div>\s*$/);
+    expect(meetsTruncationSalvageQuality(`<!doctype html><html><body>${closed}</body></html>`)).toBe(
+      true,
+    );
+  });
+
   it("accepts multi-slide decks with enough filled slides and copy", () => {
     const html =
       "<!doctype html><html lang=\"ko\"><body>"

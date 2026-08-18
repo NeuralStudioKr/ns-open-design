@@ -513,6 +513,7 @@ cur=n;
     expect(out).toContain('width: 1920px !important');
     expect(out).toContain('height: 1080px !important');
     expect(out).not.toContain('data-od-deck-bridge');
+    expect(out).not.toMatch(/html,\s*body\s*\{[^}]*background:\s*#0b0c10/);
   });
 
   it('does not normalize framework or horizontal decks for standalone export', () => {

@@ -315,10 +315,10 @@ html,body{background:var(--cream);color:var(--text-dark)}
     expect(capsuleSlim).toMatch(/pill-coral|pill-lavender|pill-sky|pill-peach|pill-violet/i);
     expect(capsuleSlim).toMatch(/Motif HTML snippets|border-radius:\s*9999px/i);
     expect(capsuleSlim).toMatch(/REQUIRED Motif vocabulary|Do NOT invent generic CSS circles/i);
-    expect(capsuleSlim).toMatch(/oblong|width.*larger than.*height|never paint Motif as equal-side circles/i);
+    expect(capsuleSlim).toMatch(/Motif geometry:\s*\*\*oblong capsules\*\*/i);
     // Prefer real capsule geometry in Motif snippets — not year-dot discs.
     const motifSnippets = /Motif HTML snippets[\s\S]*?```html\n([\s\S]*?)```/i.exec(capsuleSlim)?.[1] ?? '';
-    expect(motifSnippets).toMatch(/deco-pill/i);
+    expect(motifSnippets).toMatch(/deco-pill|c-pill|f-pill/i);
     expect(motifSnippets).toMatch(/width:\s*\d+px;height:\s*\d+px/i);
     expect(motifSnippets).not.toMatch(/border-radius:\s*50%/i);
     expect(motifSnippets).not.toMatch(/width:\s*(\d+)px;height:\s*\1px/i);
@@ -333,7 +333,9 @@ html,body{background:var(--cream);color:var(--text-dark)}
   });
 
   it('does not inject Capsule examples into non-Capsule Motif templates', async () => {
-    const { slimTemplateVisualKitForFill } = await import('../src/template-visual-kit.js');
+    const { slimTemplateVisualKitForFill, inferMotifGeometryKind } = await import(
+      '../src/template-visual-kit.js'
+    );
     for (const folder of [
       'html-ppt-hermes-cyber-terminal',
       'html-ppt-xhs-pastel-card',
@@ -347,9 +349,36 @@ html,body{background:var(--cream);color:var(--text-dark)}
       const kit = extractTemplateVisualKitFromHtml(html, { title: folder })!;
       const slim = slimTemplateVisualKitForFill(kit);
       expect(slim, folder).not.toMatch(/Example capsule \(AFTER title\)/i);
+      if (/Motif vocabulary \(required compact cue\)/i.test(slim)) {
+        const kind = inferMotifGeometryKind(html);
+        if (kind === 'oblong-capsule' || kind === 'disc-organic' || kind === 'mixed') {
+          expect(slim, folder).toMatch(/Motif geometry:/i);
+        }
+      }
       if (/display\s*:\s*(?:flex|grid)/i.test(html)) {
         expect(slim, folder).toMatch(/Layout CSS \(capped for first content-fill/i);
       }
+      if (folder.includes('sakura')) {
+        expect(inferMotifGeometryKind(html), folder).toBe('disc-organic');
+        expect(slim, folder).toMatch(/soft discs \/ petals \/ blobs/i);
+        expect(slim, folder).not.toMatch(/\*\*oblong capsules\*\*/i);
+      }
+    }
+  });
+
+  it('infers Motif geometry kind catalog-wide from kit HTML (not template slug)', async () => {
+    const { inferMotifGeometryKind } = await import('../src/template-visual-kit.js');
+    const cases: Array<{ folder: string; kind: string }> = [
+      { folder: 'html-ppt-zhangzara-capsule', kind: 'oblong-capsule' },
+      { folder: 'html-ppt-zhangzara-sakura-chroma', kind: 'disc-organic' },
+      { folder: 'html-ppt-zhangzara-daisy-days', kind: 'svg-sprite' },
+    ];
+    for (const { folder, kind } of cases) {
+      const html = await readFile(
+        new URL(`../../../plugins/_official/examples/${folder}/example.html`, import.meta.url),
+        'utf8',
+      );
+      expect(inferMotifGeometryKind(html), folder).toBe(kind);
     }
   });
 
