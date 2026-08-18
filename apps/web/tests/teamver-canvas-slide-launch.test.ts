@@ -697,6 +697,8 @@ describe("canvasSlideLaunch", () => {
     expect(projectView).toContain("autoAttachedDeckPath = null");
     expect(projectView).toContain("allowCompactReplacement: runTemplateCloneContentFillRef.current");
     expect(projectView).toContain("allowSlideCountReduction: runTemplateCloneContentFillRef.current");
+    expect(projectView).toContain("skipArtifactStubGuard: true");
+    expect(projectView).toMatch(/runTemplateCloneContentFillRef\.current[\s\S]{0,120}skipArtifactStubGuard:\s*true/);
     expect(projectView).toContain("templateCloneFillSlideCountOverrideNotice(");
     expect(projectView).toContain("slimTemplateVisualKitForFill(");
     expect(projectView).toContain("templateCloneContentFill: isCloneContentFillTurn");

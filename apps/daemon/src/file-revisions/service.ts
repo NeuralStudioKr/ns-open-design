@@ -51,7 +51,11 @@ type WriteProjectFile = (
   projectId: string,
   name: string,
   body: string | Buffer,
-  options?: { overwrite?: boolean; artifactManifest?: ArtifactManifest | null },
+  options?: {
+    overwrite?: boolean;
+    artifactManifest?: ArtifactManifest | null;
+    skipArtifactStubGuard?: boolean;
+  },
   metadata?: unknown,
 ) => Promise<ProjectFile>;
 
@@ -240,6 +244,7 @@ export function createFileRevisionService(deps: FileRevisionServiceDeps) {
         conversationId,
         assistantMessageId,
         truncateAfterSequence,
+        skipArtifactStubGuard = false,
         metadata,
       } = input;
       // Normalize ONCE here so the bytes we hand to `writeProjectFile` and the
@@ -323,7 +328,11 @@ export function createFileRevisionService(deps: FileRevisionServiceDeps) {
             projectId,
             fileName,
             content,
-            { overwrite: true, artifactManifest },
+            {
+              overwrite: true,
+              artifactManifest,
+              ...(skipArtifactStubGuard ? { skipArtifactStubGuard: true } : {}),
+            },
             metadata,
           );
           const createdAt = Date.now();
@@ -363,7 +372,11 @@ export function createFileRevisionService(deps: FileRevisionServiceDeps) {
           projectId,
           fileName,
           content,
-          { overwrite: true, artifactManifest },
+          {
+            overwrite: true,
+            artifactManifest,
+            ...(skipArtifactStubGuard ? { skipArtifactStubGuard: true } : {}),
+          },
           metadata,
         );
 

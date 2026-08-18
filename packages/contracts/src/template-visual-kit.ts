@@ -790,7 +790,7 @@ function extractMotifHtmlSnippets(html: string, budget: number): string[] {
     if (used + snippet.length + 1 > budget) continue;
     out.push(snippet);
     used += snippet.length + 1;
-    if (out.length >= 4) break;
+    if (out.length >= 2) break;
   }
   return out;
 }
@@ -962,7 +962,7 @@ function renderMustMatchLookBlock(options: {
       : '3. **Layout/placement:** reuse the template\'s multi-region compositions (grids/flex/cards) as a vocabulary. Pick and reorder freely to match the user brief; do not flatten every slide into the same cover composition.',
   );
   lines.push(
-    '4. **Motif/density:** when Motif sprites / Decorations CSS / Motif HTML snippets are present, use that kit Motif vocabulary AFTER title/lead (at least 2 Motif elements on slides whose scaffold lists `deco=`). Motif SVG only AFTER title/lead. Sparse title-only slides are a failure; Motif-before-title hangs are also a failure.',
+    '4. **Motif/density:** when Motif sprites / Decorations CSS / Motif HTML snippets are present, use that kit Motif vocabulary AFTER title/lead (prefer 1–2 Motif elements when scaffold lists `deco=`). Finish a closed deck this turn — light Motif beats a truncated Motif dump. Motif SVG only AFTER title/lead. Sparse title-only slides are a failure; Motif-before-title hangs are also a failure.',
   );
   return lines.join('\n');
 }
@@ -1453,7 +1453,7 @@ export function extractTemplateVisualKitFromHtml(
   const spriteKinds = new Set(sprites.map((sprite) => sprite.kind));
   const scaffold = extractTemplateScaffoldMap(source, 1_000, spriteKinds);
   const deco = extractDecorationCss(source, 1_800, identity);
-  const motifSnippets = extractMotifHtmlSnippets(source, 700);
+  const motifSnippets = extractMotifHtmlSnippets(source, 420);
   // Reserve Layout room even when Decorations are heavy (composition > chrome).
   const layout = extractLayoutCss(source, deco ? 1_100 : 1_300);
   const slideCue = extractFirstSlideStructureCue(source, 320);
@@ -1676,8 +1676,8 @@ function capMotifSpritesSectionForFill(section: string): string {
   const kept: string[] = [];
   let used = 0;
   for (const svg of ranked) {
-    if (kept.length >= 2) break;
-    if (used + svg.length > 3_000) continue;
+    if (kept.length >= 1) break;
+    if (used + svg.length > 2_200) continue;
     kept.push(svg);
     used += svg.length;
   }
@@ -1687,7 +1687,7 @@ function capMotifSpritesSectionForFill(section: string): string {
   ];
   if (kept.length > 0) {
     lines.push(
-      'Paste ONLY these sprites, and ONLY AFTER a real cover `<h1>`/`<h2>` + lead. At most one short sprite per slide. Never open `<svg` before title copy. Do not invent ellipse flowers / emoji / generic circles.',
+      'Paste at most ONE of these sprites, and ONLY AFTER a real cover `<h1>`/`<h2>` + lead. Prefer Motif CSS/snippets when present. Never open `<svg` before title copy. Do not invent ellipse flowers / emoji / generic circles.',
       '',
     );
     for (const svg of kept) {
@@ -1741,14 +1741,14 @@ function capDecorationsCssSectionForFill(section: string): string {
     .filter(Boolean)
     .flatMap((block) => block.split('\n').map((l) => l.trim()).filter(Boolean))
     .filter((line) => /^<(?:div|span)\b/i.test(line) && line.length <= 320)
-    .slice(0, 3);
+    .slice(0, 2);
   const vocabSource = `${section}\n${pickedCss}\n${htmlSnippets.join('\n')}`;
   const vocab = formatMotifVocabularyGuidance(vocabSource);
   const lines = [
     '### Decorations CSS (capped for first content-fill — paste AFTER slide 1)',
     '',
     `REQUIRED Motif vocabulary from this kit: ${vocab}. Do NOT invent generic CSS circles / emoji ornaments as substitutes.`,
-    'Motif density: when the scaffold map lists `deco=…` for a slide, emit at least 2 Motif elements AFTER title/lead using those classes or the snippets below.',
+    'Motif density: after title/lead, prefer 1–2 Motif elements from kit snippets/classes when scaffold lists `deco=…`. Finish a closed compact deck this turn — Motif polish can be light.',
   ];
   if (htmlSnippets.length > 0) {
     lines.push(

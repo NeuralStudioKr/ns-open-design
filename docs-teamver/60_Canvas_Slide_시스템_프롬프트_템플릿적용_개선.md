@@ -69,9 +69,11 @@ full `example.html`을 시스템 프롬프트에 넣지 않는다는 방침은 �
 - Clone 성공 시 daemon이 `pendingPrompt` clear + metadata `templateClonedDeckSeeded`
 - Clone 성공 시 사용자 프롬프트를 chat transcript로 시드 (`registerProjectFileRoutes` + `conversations`/`ids` deps, PG는 Async list/insert)
 - Clone write는 `skipArtifactStubGuard` (trusted reseed)
+- Clone **content-fill** persist도 `skipArtifactStubGuard` (LOOK 대형 seed → compact fill; FE `allowCompactReplacement`와 대칭) — 미전달 시 `ARTIFACT_REGRESSION`
 - `fetchPluginLocalSkill` / daemon `local-skill` — kit+map fallback only
 - `neutralizeFilesystemCloneWorkflow` — prompt의 filesystem Clone 문구 무력화 (daemon 시드가 대체)
 - 완전한 closed deck > 잘린 shell
+- fill Motif: title-first + light Motif (1–2) + capped Layout — Motif-before-title hang 금지
 
 ### 0.0b (이력) CONTENT-SWAP full HTML scaffold additive dual-path — superseded
 

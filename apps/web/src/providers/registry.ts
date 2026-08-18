@@ -2026,13 +2026,21 @@ export async function writeProjectTextFileDetailed(
   projectId: string,
   name: string,
   content: string,
-  options?: { artifactManifest?: ArtifactManifest },
+  options?: {
+    artifactManifest?: ArtifactManifest;
+    skipArtifactStubGuard?: boolean;
+  },
 ): Promise<WriteProjectTextFileResult> {
   try {
     const resp = await fetchTeamverDaemon(`/api/projects/${encodeURIComponent(projectId)}/files`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, content, artifactManifest: options?.artifactManifest }),
+      body: JSON.stringify({
+        name,
+        content,
+        artifactManifest: options?.artifactManifest,
+        ...(options?.skipArtifactStubGuard ? { skipArtifactStubGuard: true } : {}),
+      }),
     });
     if (!resp.ok) {
       notifyDaemonMutatingUnauthorized(resp);

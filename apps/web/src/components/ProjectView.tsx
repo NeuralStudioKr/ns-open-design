@@ -5363,13 +5363,24 @@ export function ProjectView({
             ...(typeof truncateAfterSequence === 'number'
               ? { truncateAfterSequence }
               : {}),
+            // Clone LOOK seeds a large template; fill replaces it with a
+            // compact content deck. Client already skips the local regression
+            // check — daemon stub-guard must match or ARTIFACT_REGRESSION fires.
+            ...(runTemplateCloneContentFillRef.current
+              ? { skipArtifactStubGuard: true }
+              : {}),
           },
         )
         : await writeProjectTextFileDetailed(
           project.id,
           fileName,
           htmlBody,
-          { artifactManifest: manifest ?? undefined },
+          {
+            artifactManifest: manifest ?? undefined,
+            ...(runTemplateCloneContentFillRef.current
+              ? { skipArtifactStubGuard: true }
+              : {}),
+          },
         );
       if (result.ok) {
         const file = result.file;
