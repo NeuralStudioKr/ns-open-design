@@ -204,7 +204,10 @@ describe("TeamverHomeSlideCreateModal", () => {
     expect(screen.getByTestId("teamver-home-slide-create-content")).toBeTruthy();
     const confirm = screen.getByTestId("teamver-home-slide-create-confirm") as HTMLButtonElement;
     expect(confirm.disabled).toBe(true);
-    expect(confirm.getAttribute("title")).toMatch(/brief or attach/i);
+    expect(screen.getByTestId("teamver-home-slide-create-empty-hint").textContent).toMatch(
+      /write what to create|attach a reference file/i,
+    );
+    expect(confirm.getAttribute("aria-describedby")).toBe("teamver-home-slide-create-empty-hint");
     expect(screen.queryByTestId("teamver-home-slide-create-next")).toBeNull();
     expect(screen.getByTestId("teamver-home-slide-create-step-pick").textContent).toMatch(
       /Default slide template/i,
@@ -452,7 +455,10 @@ describe("TeamverHomeSlideCreateModal", () => {
     expect(next.textContent).toBe("Next: Template");
     expect(next.textContent).not.toMatch(/style/i);
     expect(next.disabled).toBe(true);
-    expect(next.getAttribute("title")).toMatch(/brief or attach/i);
+    expect(screen.getByTestId("teamver-home-slide-create-empty-hint").textContent).toMatch(
+      /write what to create|attach a reference file/i,
+    );
+    expect(next.getAttribute("aria-describedby")).toBe("teamver-home-slide-create-empty-hint");
     expect(
       (screen.getByTestId("teamver-home-slide-create-step-template") as HTMLButtonElement).disabled,
     ).toBe(true);
@@ -476,6 +482,7 @@ describe("TeamverHomeSlideCreateModal", () => {
     );
     const confirm = screen.getByTestId("teamver-home-slide-create-confirm") as HTMLButtonElement;
     expect(confirm.disabled).toBe(true);
+    expect(screen.getByTestId("teamver-home-slide-create-empty-hint")).toBeTruthy();
     fireEvent.click(confirm);
     fireEvent.click(screen.getByTestId("teamver-home-slide-create-step-template"));
     fireEvent.keyDown(screen.getByTestId("teamver-home-slide-create-modal"), {
@@ -503,6 +510,7 @@ describe("TeamverHomeSlideCreateModal", () => {
     );
     const next = screen.getByTestId("teamver-home-slide-create-next") as HTMLButtonElement;
     expect(next.disabled).toBe(false);
+    expect(screen.queryByTestId("teamver-home-slide-create-empty-hint")).toBeNull();
     fireEvent.click(next);
     expect(screen.getByTestId("teamver-home-slide-create-template")).toBeTruthy();
   });

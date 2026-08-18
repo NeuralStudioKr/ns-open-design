@@ -714,7 +714,15 @@ export function TeamverHomeSlideCreateModal({
         </div>
 
         <footer className="teamver-drive-import-footer teamver-home-slide-create-footer">
-          {showingTemplate ? (
+          {!hasContent ? (
+            <p
+              id="teamver-home-slide-create-empty-hint"
+              className="teamver-home-slide-create-summary"
+              data-testid="teamver-home-slide-create-empty-hint"
+            >
+              {t("teamver.homeCreate.needBriefOrAttach")}
+            </p>
+          ) : showingTemplate ? (
             <p
               className="teamver-home-slide-create-summary"
               data-testid="teamver-home-slide-create-summary"
@@ -740,6 +748,7 @@ export function TeamverHomeSlideCreateModal({
                 className="teamver-drive-import-attach teamver-canvas-slide-launch-confirm"
                 disabled={confirming || !templateReady || !hasContent}
                 title={emptyHint}
+                aria-describedby={!hasContent ? "teamver-home-slide-create-empty-hint" : undefined}
                 data-testid="teamver-home-slide-create-confirm"
                 onClick={() => {
                   if (!hasContent || !templateReady || confirming) return;
@@ -756,6 +765,7 @@ export function TeamverHomeSlideCreateModal({
                 className="teamver-drive-import-attach teamver-canvas-slide-launch-footer-next"
                 disabled={confirming || !hasContent}
                 title={emptyHint}
+                aria-describedby={!hasContent ? "teamver-home-slide-create-empty-hint" : undefined}
                 data-testid="teamver-home-slide-create-next"
                 onClick={goTemplateStep}
               >
