@@ -40,6 +40,27 @@ describe('extractTemplateScaffoldFromHtml', () => {
     const sharedStyle = fence.indexOf('\n<style>');
     expect(firstSection).toBeGreaterThan(0);
     expect(sharedStyle).toBeGreaterThan(firstSection);
+    // Fonts as <link> outside Motif <style>.
+    expect(fence).toMatch(/<link rel="stylesheet" href="https:\/\/fonts\.googleapis\.com/i);
+    expect(fence).not.toMatch(/<style>[\s\S]*@import url\(/i);
+  });
+
+  it('converts Hermes @import fonts to <link> outside Motif style', async () => {
+    const html = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/html-ppt-hermes-cyber-terminal/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    expect(html).toMatch(/@import url\(['"]https:\/\/fonts\.googleapis\.com/i);
+    const scaffold = extractTemplateScaffoldFromHtml(html, {
+      title: 'Html Ppt Hermes Cyber Terminal',
+    });
+    expect(scaffold).toBeTruthy();
+    const fence = scaffold!.slice(scaffold!.indexOf('```html'));
+    expect(fence).toMatch(/<link rel="stylesheet" href="https:\/\/fonts\.googleapis\.com/i);
+    expect(fence).not.toMatch(/<style>[\s\S]*@import url\(/i);
   });
 
   it('appendTemplateScaffold is idempotent', () => {

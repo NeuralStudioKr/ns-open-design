@@ -155,8 +155,9 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).toContain('Teamver API — deck framework emission override');
       expect(prompt).toContain('API compact contract');
       expect(prompt).toContain('<artifact type="deck" identifier="deck">');
-      // Allow short kit <style>/@import; still forbid empty/long head chrome.
+      // Allow short kit <style>/<link>; still forbid empty/long head chrome.
       expect(prompt).toMatch(/never an empty shell or long `<head>` chrome|Do not add `<head>`/);
+      expect(prompt).toContain('never font `@import`');
       expect(prompt).toContain('<body><section class="slide"');
       expect(prompt).not.toContain('Copy the canonical skeleton below as index.html');
       // Ceiling grew again for existing-deck image/surgical-edit rules so

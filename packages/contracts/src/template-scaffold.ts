@@ -13,6 +13,7 @@
  * body-first document the model can copy.
  */
 
+import { stripCssAtImportsBalanced } from './html/repairArtifactStyleSheets.js';
 import { extractTemplateVisualKitFromHtml } from './template-visual-kit.js';
 
 export const TEMPLATE_SCAFFOLD_MARKER = '## Template scaffold (CONTENT-SWAP BASE)';
@@ -27,14 +28,32 @@ function compressCss(css: string): string {
     .trim();
 }
 
+/** Prefer `<link>` fonts — never leave Google Fonts as `@import` inside Motif `<style>`. */
 function extractFontImport(html: string): string | null {
-  const linkMatch =
-    /href=("|\')([^"']*fonts\.googleapis\.com\/css2\?[^"']+)\1/i.exec(html)
-    ?? /href=("|\')([^"']*fonts\.googleapis\.com\/css\?[^"']+)\1/i.exec(html);
-  if (linkMatch?.[2]) {
-    return `@import url('${linkMatch[2]}');`;
+  const hrefs: string[] = [];
+  const pushHref = (href: string | undefined) => {
+    const next = String(href ?? '').trim();
+    if (!next || !/fonts\.googleapis\.com\/css/i.test(next)) return;
+    if (!hrefs.includes(next)) hrefs.push(next);
+  };
+
+  for (const match of String(html ?? '').matchAll(
+    /href\s*=\s*("|')([^"']*fonts\.googleapis\.com\/css2?\?[^"']+)\1/gi,
+  )) {
+    pushHref(match[2]);
   }
-  return null;
+  for (const match of String(html ?? '').matchAll(
+    /@import\s+url\(\s*(['"])([^'"]*fonts\.googleapis\.com\/css2?\?[^'"]+)\1\s*\)/gi,
+  )) {
+    pushHref(match[2]);
+  }
+
+  if (hrefs.length === 0) return null;
+  // Cap links so scaffold stays body-first / token-safe (Hermes ships many faces).
+  return hrefs
+    .slice(0, 3)
+    .map((href) => `<link rel="stylesheet" href="${href}" />`)
+    .join('\n');
 }
 
 function extractStyleSheets(html: string): string {
@@ -73,9 +92,9 @@ function pickScaffoldSlides(slides: string[], maxSlides: number): string[] {
 function extractMotifSpritePool(html: string): string[] {
   // Reuse the hardened kit classifier via a temporary kit extract so daisy
   // (not cloud) wins — then pull complete SVG fences from that kit.
-  // Use the same default budget as the hot-path kit so daisy+star+rainbow
-  // survive (8.8KB historically dropped the petal daisy under star/rainbow).
-  const kit = extractTemplateVisualKitFromHtml(html, { maxChars: 11_000, title: 'scaffold' });
+  // Need enough budget for Motif sprites fences: Font-import guidance + Layout
+  // packing at ~11KB drops the ```html <svg>``` blocks (header only survives).
+  const kit = extractTemplateVisualKitFromHtml(html, { maxChars: 16_000, title: 'scaffold' });
   if (!kit) return [];
   const sprites: string[] = [];
   for (const match of kit.matchAll(/```html\s*([\s\S]*?)```/gi)) {
@@ -120,6 +139,8 @@ function teamverSlideCssOverrides(): string {
 function prepareSharedCss(html: string, budget: number): string {
   const raw = extractStyleSheets(html);
   let css = compressCss(raw);
+  // Fonts are emitted as <link> outside Motif <style> — drop leftover @import.
+  css = stripCssAtImportsBalanced(css);
   // Drop interactive chrome that Teamver decks do not use.
   css = css
     .replace(/\.nav-dots[^{]*\{[^}]*\}/gi, '')
@@ -157,11 +178,17 @@ function buildScaffoldMarkdown(options: {
 }): string {
   const [first, ...rest] = options.slides;
   if (!first) return '';
-  const styleBlock = `<style>\n${options.fontImport ? `${options.fontImport}\n` : ''}${options.css}\n</style>`;
+  const fontLink = options.fontImport && /<link\b/i.test(options.fontImport)
+    ? options.fontImport
+    : null;
+  // Never re-inject font @import into Motif <style> (css2 `;` remnant risk).
+  const styleBlock = `<style>\n${options.css}\n</style>`;
   const scaffoldHtml = [
     '<!doctype html>',
     '<html lang="ko">',
     '<body style="margin:0">',
+    // Fonts as <link> outside Motif <style> — never @import inside style (css2 `;` risk).
+    ...(fontLink ? [fontLink] : []),
     first,
     styleBlock,
     ...rest,

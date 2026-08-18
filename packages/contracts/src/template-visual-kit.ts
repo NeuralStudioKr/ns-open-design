@@ -765,8 +765,14 @@ function extractMotifHtmlSnippets(html: string, budget: number): string[] {
       continue;
     }
     if (tag.length < 24 || tag.length > 320) continue;
+    // Bare `.pill` chrome (Long Table / shared OD) is not Motif unless Capsule.
+    if (/\bpill\b/i.test(tag) && !hasCapsuleMotifSignal(tag) && !/\bdeco-pill\b|pill-(?:coral|lime|lavender|sky|violet|yellow|peach|mint)/i.test(tag)) {
+      if (!/\bpin(?:-|\\b)|petal|blob|doodle|post-it|pixel-|hc-|stamp|tape/i.test(tag)) {
+        continue;
+      }
+    }
     let score = 5;
-    if (/\bdeco-pill\b|pill-coral|pill-sky|pill-lavender/i.test(tag)) score = 0;
+    if (hasCapsuleMotifSignal(tag) && /\bdeco-pill\b|pill-coral|pill-sky|pill-lavender/i.test(tag)) score = 0;
     else if (/petal|blob-fill|blob-frame|xp-blob/i.test(tag)) score = 1;
     else if (/\bpin(?:-[a-z0-9_-]+)?\b|post-it|stamp|tape|bg-cork|\bcork\b/i.test(tag)) score = 1;
     else if (/doodle|scribble/i.test(tag)) score = 1;
@@ -1412,12 +1418,51 @@ const HARD_RULES = [
  * Build a markdown block describing the template's concrete visual system.
  * Returns null when the HTML has no usable `:root` / color cues.
  */
+export function listLocalStylesheetHrefs(html: string): string[] {
+  const out: string[] = [];
+  for (const match of String(html ?? '').matchAll(
+    /<link\b[^>]*\brel\s*=\s*(?:"[^"]*\bstylesheet\b[^"]*"|'[^']*\bstylesheet\b[^']*'|stylesheet)[^>]*>/gi,
+  )) {
+    const tag = match[0] ?? '';
+    const href =
+      /href\s*=\s*"([^"]+)"/i.exec(tag)?.[1]
+      ?? /href\s*=\s*'([^']+)'/i.exec(tag)?.[1]
+      ?? '';
+    if (!href) continue;
+    if (/^https?:\/\//i.test(href) || href.startsWith('//') || href.startsWith('data:')) continue;
+    if (href.includes('..')) continue;
+    out.push(href.replace(/^\.\//, ''));
+  }
+  return [...new Set(out)];
+}
+
+/**
+ * Resolve a local stylesheet href relative to the preview HTML path inside a
+ * plugin (e.g. `example.html` + `assets/styles.css` → `assets/styles.css`,
+ * `preview/index.html` + `theme.css` → `preview/theme.css`).
+ */
+export function resolveSiblingAssetPath(previewRelPath: string, href: string): string {
+  const cleanHref = String(href ?? '').replace(/\\/g, '/').replace(/^\.\//, '').trim();
+  if (!cleanHref || cleanHref.includes('..')) return '';
+  const normalizedPreview = String(previewRelPath ?? '').replace(/\\/g, '/').replace(/^\.\//, '');
+  const slash = normalizedPreview.lastIndexOf('/');
+  const base = slash >= 0 ? normalizedPreview.slice(0, slash) : '';
+  if (!base) return cleanHref;
+  return `${base}/${cleanHref}`.replace(/\/{2,}/g, '/');
+}
+
 export function extractTemplateVisualKitFromHtml(
   html: string,
-  options: { maxChars?: number; title?: string } = {},
+  options: { maxChars?: number; title?: string; supplementalCss?: string } = {},
 ): string | null {
-  const source = html?.trim() ?? '';
-  if (!source) return null;
+  const rawHtml = html?.trim() ?? '';
+  if (!rawHtml) return null;
+  // Pin-and-Paper (and similar) keep Motif/Layout in assets/styles.css — merge
+  // that sibling CSS into a synthetic <style> so extract sees Motif classes.
+  const supplemental = String(options.supplementalCss ?? '').trim();
+  const source = supplemental
+    ? `${rawHtml}\n<style data-od-kit-supplemental>\n${supplemental}\n</style>`
+    : rawHtml;
   const maxChars = options.maxChars ?? DEFAULT_MAX_CHARS;
   const identity = extractIdentityScope(source);
   const root = extractRootCssBlock(source, identity);
@@ -1462,13 +1507,13 @@ export function extractTemplateVisualKitFromHtml(
   }
   if (fontImport) {
     lines.push(
-      '### Font import (put in `<head>` — keeps Motif CSS safe for every template)',
+      '### Font import (emit after `<body>` or after slide 1 — keeps Motif CSS safe)',
       '',
       '```html',
       fontImport,
       '```',
       '',
-      'Do NOT paste fonts as `@import` inside Motif `<style>`. Google Fonts css2 URLs contain `;` — a truncated `@import` leaves an unclosed quote that swallows Motif class rules (`.pill` / `.deco-pill` / `.pin-*` / `.petal` / `.hc-*`).',
+      'Body-first: do not dump a long `<head>`. Put this kit `<link rel="stylesheet">` after `<body>` (or after slide 1). Never paste fonts as `@import` inside Motif `<style>` — Google Fonts css2 URLs contain `;` and a truncated `@import` swallows Motif class rules (`.pill` / `.deco-pill` / `.pin-*` / `.petal` / `.hc-*`).',
       '',
     );
   }
@@ -1689,10 +1734,15 @@ function capMotifSpritesSectionForFill(section: string): string {
   const svgs = [...section.matchAll(/```html\s*([\s\S]*?)```/gi)]
     .map((match) => (match[1] ?? '').trim())
     .filter((svg) => /^<svg\b/i.test(svg) && svg.length >= 80 && svg.length <= 2_400);
-  const looksLikeDaisy = /deco-daisy|#F5F0E6/i.test(section);
+  const looksLikeDaisy =
+    /deco-daisy|#F5F0E6|#fcdf6c|daisy days|flower/i.test(section)
+    || /#fcdf6c/i.test(svgs.join('\n'));
   const identityScore = (svg: string) => {
-    if (looksLikeDaisy && /#fcdf6c/i.test(svg)) return 0; // Daisy butter-center only for Daisy kits
-    if (/#f8635f|#fde366|#8de3b7|#85c5fe|rainbow/i.test(svg)) return 1;
+    // Prefer real daisy (butter center) over rainbow/star when kit has daisy cues.
+    if (/#fcdf6c/i.test(svg) && (looksLikeDaisy || /path/i.test(svg))) return 0;
+    if (looksLikeDaisy && /#fcdf6c/i.test(svg)) return 0;
+    if (/width\s*=\s*["']0["']|height\s*=\s*["']0["']/i.test(svg)) return 9; // defs/symbol sheets
+    if (/#f8635f|#fde366|#8de3b7|#85c5fe|rainbow/i.test(svg)) return looksLikeDaisy ? 5 : 1;
     if (/viewbox="0 0 100 98/i.test(svg) || /\bstar\b/i.test(svg)) return 2;
     if (/\bpin\b|#pin|doodle|stamp/i.test(svg)) return 3;
     return 4;

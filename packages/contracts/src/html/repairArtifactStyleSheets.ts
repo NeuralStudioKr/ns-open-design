@@ -5,9 +5,15 @@
  * axes). Naive `@import[^;]+;` strippers leave a truncated remnant such as:
  *   `1,6..96,400..900&family=Space+Grotesk:…&display=swap');`
  * The leftover quote opens an unclosed CSS string that swallows every rule
- * after it — `.pill` / `.deco-pill` / `.card` never apply. Capsule fills
- * then look like bare text labels on a flat page.
+ * after it — `.pill` / `.deco-pill` / `.card` / `.pin-*` never apply.
+ *
+ * Important: remnant cleanup must NOT run inside an intact quoted
+ * `@import url('…css2?…;…')` — the same `;` pattern appears mid-URL and a
+ * false-positive strip leaves an unclosed quote that kills Motif CSS for
+ * every official template (Capsule, Hermes, Daisy, Sakura, …).
  */
+
+const IMPORT_PLACEHOLDER = (i: number) => `/*__OD_KEEP_IMPORT_${i}__*/`;
 
 /**
  * Remnant left after a semicolon-terminated `@import` strip on a Google Fonts
@@ -24,6 +30,10 @@ const GOOGLE_FONTS_IMPORT_REMNANT_RE = new RegExp(
 const VALID_CSS_START_RE =
   /@(?:import|charset|layer|font-face|media|keyframes|supports)\b|:root\b|html\b|body\b|\.[A-Za-z_]|#[A-Za-z_]|\/\*|\*|\[/i;
 
+/** Intact `@import url("…")` / `url('…')` / `"…"` / `'…'` (balanced quotes). */
+const BALANCED_CSS_IMPORT_RE =
+  /@import\s+(?:url\s*\(\s*(?:"[^"]*"|'[^']*'|[^'")\s]+)\s*\)|(?:"[^"]*"|'[^']*'))[^;]*;?/gi;
+
 /**
  * Strip `@import` / `@namespace` with balanced `url("…")` / `url('…')` /
  * `url(…)`, so Google Fonts CSS2 query semicolons are not treated as
@@ -31,38 +41,58 @@ const VALID_CSS_START_RE =
  */
 export function stripCssAtImportsBalanced(css: string): string {
   let text = String(css ?? '');
-  text = text.replace(
-    /@import\s+(?:url\s*\(\s*(?:"[^"]*"|'[^']*'|[^'")\s]+)\s*\)|(?:"[^"]*"|'[^']*'))[^;]*;?/gi,
-    '',
-  );
+  text = text.replace(BALANCED_CSS_IMPORT_RE, '');
   text = text.replace(/@namespace\b[^;]*;?/gi, '');
   return text;
 }
 
 /**
+ * Temporarily replace intact balanced `@import` statements so remnant cleanup
+ * cannot match css2 axis `;` inside their URLs.
+ */
+function withProtectedCssImports(css: string, mutate: (exposed: string) => string): string {
+  const kept: string[] = [];
+  const exposed = String(css ?? '').replace(BALANCED_CSS_IMPORT_RE, (match) => {
+    const idx = kept.length;
+    kept.push(match);
+    return IMPORT_PLACEHOLDER(idx);
+  });
+  let next = mutate(exposed);
+  for (let i = 0; i < kept.length; i += 1) {
+    next = next.replace(IMPORT_PLACEHOLDER(i), kept[i]!);
+  }
+  return next;
+}
+
+/**
  * Repair one stylesheet body so Motif class rules remain parseable.
+ * Idempotent on clean sheets; never corrupts intact Google Fonts `@import`.
  */
 export function repairStyleSheetText(css: string): string {
-  let text = String(css ?? '');
-  if (!text.trim()) return text;
+  const source = String(css ?? '');
+  if (!source.trim()) return source;
 
-  // Drop truncated Google Fonts remnants (start or after a prior rule).
-  text = text.replace(GOOGLE_FONTS_IMPORT_REMNANT_RE, '$1');
+  return withProtectedCssImports(source, (exposed) => {
+    let text = exposed;
 
-  // If the sheet still opens with font-URL garbage / an unclosed quote before
-  // the first real rule, cut to the first valid CSS start.
-  const validStart = text.search(VALID_CSS_START_RE);
-  if (validStart > 0) {
-    const head = text.slice(0, validStart);
-    if (
-      /family=|display=swap|fonts\.googleapis|[\d,]+\.\.[\d,]+/i.test(head)
-      || /['"]/.test(head)
-    ) {
-      text = text.slice(validStart);
+    // Drop truncated Google Fonts remnants (start or after a prior rule).
+    text = text.replace(GOOGLE_FONTS_IMPORT_REMNANT_RE, '$1');
+
+    // If the sheet still opens with font-URL garbage / an unclosed quote before
+    // the first real rule, cut to the first valid CSS start.
+    const validStart = text.search(VALID_CSS_START_RE);
+    if (validStart > 0) {
+      const head = text.slice(0, validStart);
+      if (
+        /family=|display=swap|fonts\.googleapis|[\d,]+\.\.[\d,]+/i.test(head)
+        || /['"]/.test(head)
+      ) {
+        text = text.slice(validStart);
+      }
     }
-  }
 
-  return text;
+    return text;
+  });
 }
 
 /**

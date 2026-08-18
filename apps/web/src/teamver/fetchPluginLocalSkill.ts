@@ -2,9 +2,11 @@ import type { InstalledPluginRecord, PluginManifest } from '@open-design/contrac
 import {
   appendTemplateVisualKit,
   extractTemplateVisualKitFromHtml,
+  listLocalStylesheetHrefs,
   neutralizeFilesystemCloneWorkflow,
   pickPluginPreviewHtmlPath,
   readSkillFrontmatterDescription,
+  resolveSiblingAssetPath,
 } from '@open-design/contracts';
 
 import { getInstalledPlugin } from '../state/projects';
@@ -168,9 +170,25 @@ export async function readPluginLocalSkillFromRecord(
       try {
         const previewHtml = await fetchPluginAssetText(plugin.id, previewPath);
         if (previewHtml) {
+          const supplementalParts: string[] = [];
+          for (const href of listLocalStylesheetHrefs(previewHtml).slice(0, 3)) {
+            try {
+              const assetPath = resolveSiblingAssetPath(previewPath, href);
+              if (!assetPath) continue;
+              const css = await fetchPluginAssetText(plugin.id, assetPath);
+              if (css) supplementalParts.push(css);
+            } catch {
+              // Best-effort sibling CSS (Pin-and-Paper assets/styles.css, etc.).
+            }
+          }
           body = appendTemplateVisualKit(
             body,
-            extractTemplateVisualKitFromHtml(previewHtml, { title: name }),
+            extractTemplateVisualKitFromHtml(previewHtml, {
+              title: name,
+              ...(supplementalParts.length > 0
+                ? { supplementalCss: supplementalParts.join('\n') }
+                : {}),
+            }),
           );
         }
       } catch {

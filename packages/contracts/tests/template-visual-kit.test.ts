@@ -362,28 +362,40 @@ html,body{background:var(--cream);color:var(--text-dark)}
       const kit = extractTemplateVisualKitFromHtml(html, { title: folder });
       if (!kit) continue;
       if (!/fonts\.googleapis\.com/i.test(html) && !/Font import/i.test(kit)) continue;
-      expect(kit, folder).toMatch(/### Font import \(put in `<head>`/i);
+      expect(kit, folder).toMatch(/### Font import \(emit after `<body>` or after slide 1/i);
       expect(kit, folder).toMatch(/<link rel="stylesheet" href="https:\/\/fonts\.googleapis\.com/i);
       expect(kit, folder).not.toMatch(/```css\s*@import url\(/i);
     }
   });
 
   it('keeps Pin-and-Paper Motif vocabulary on fill slim', async () => {
-    const { slimTemplateVisualKitForFill } = await import('../src/template-visual-kit.js');
-    const html = await readFile(
-      new URL(
-        '../../../plugins/_official/examples/html-ppt-zhangzara-pin-and-paper/example.html',
-        import.meta.url,
-      ),
-      'utf8',
+    const { slimTemplateVisualKitForFill, listLocalStylesheetHrefs } = await import(
+      '../src/template-visual-kit.js'
     );
+    const root = new URL(
+      '../../../plugins/_official/examples/html-ppt-zhangzara-pin-and-paper/',
+      import.meta.url,
+    );
+    const html = await readFile(new URL('example.html', root), 'utf8');
+    const hrefs = listLocalStylesheetHrefs(html);
+    expect(hrefs).toContain('assets/styles.css');
+    const supplementalCss = await readFile(new URL('assets/styles.css', root), 'utf8');
     const kit = extractTemplateVisualKitFromHtml(html, {
       title: 'Html Ppt Zhangzara Pin And Paper',
+      supplementalCss,
     })!;
     const slim = slimTemplateVisualKitForFill(kit);
     expect(slim).toMatch(/Motif vocabulary \(required compact cue\)|pin|cork|post-it|tape/i);
     expect(slim).toMatch(/title cue: pin \/ paper \/ cork|stamp\/tape\/pin|pin-/i);
+    expect(slim).toMatch(/Decorations CSS|pin-|cork|post-it|\.tape/i);
     expect(slim).not.toMatch(/Example capsule \(AFTER title\)/i);
+  });
+
+  it('resolveSiblingAssetPath joins preview-relative local CSS hrefs', async () => {
+    const { resolveSiblingAssetPath } = await import('../src/template-visual-kit.js');
+    expect(resolveSiblingAssetPath('example.html', 'assets/styles.css')).toBe('assets/styles.css');
+    expect(resolveSiblingAssetPath('preview/index.html', 'theme.css')).toBe('preview/theme.css');
+    expect(resolveSiblingAssetPath('preview/index.html', '../escape.css')).toBe('');
   });
 });
 describe('pickPluginPreviewHtmlPath', () => {

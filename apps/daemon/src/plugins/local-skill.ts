@@ -20,6 +20,7 @@ import type { InstalledPluginRecord } from '@open-design/contracts';
 import {
   appendTemplateVisualKit,
   extractTemplateVisualKitFromHtml,
+  listLocalStylesheetHrefs,
   neutralizeFilesystemCloneWorkflow,
   pickPluginPreviewHtmlPath,
   readSkillFrontmatterDescription,
@@ -81,9 +82,27 @@ export async function loadPluginLocalSkill(
     try {
       const previewAbs = path.join(plugin.fsPath, previewRel);
       const previewHtml = await fsp.readFile(previewAbs, 'utf8');
+      const previewDir = path.dirname(previewAbs);
+      const pluginRoot = path.resolve(plugin.fsPath);
+      const supplementalParts: string[] = [];
+      for (const href of listLocalStylesheetHrefs(previewHtml).slice(0, 3)) {
+        try {
+          const cssAbs = path.resolve(previewDir, href);
+          // Stay inside the plugin folder (path-boundary safe).
+          if (cssAbs !== pluginRoot && !cssAbs.startsWith(`${pluginRoot}${path.sep}`)) continue;
+          supplementalParts.push(await fsp.readFile(cssAbs, 'utf8'));
+        } catch {
+          // Best-effort sibling CSS (Pin-and-Paper assets/styles.css, etc.).
+        }
+      }
       body = appendTemplateVisualKit(
         body,
-        extractTemplateVisualKitFromHtml(previewHtml, { title: name }),
+        extractTemplateVisualKitFromHtml(previewHtml, {
+          title: name,
+          ...(supplementalParts.length > 0
+            ? { supplementalCss: supplementalParts.join('\n') }
+            : {}),
+        }),
       );
     } catch {
       // Best-effort — SKILL.md visual summary still applies.
