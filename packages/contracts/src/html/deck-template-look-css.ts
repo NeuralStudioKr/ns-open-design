@@ -5,20 +5,24 @@
  * read that as "template CSS not applied".
  *
  * Merge the official look CSS (tokens + Motif/Layout rules + font links)
- * into the artifact when those rules are missing. Presentation chrome
+ * and reusable Motif HTML (hidden SVG symbol sheets, grain/crt hosts)
+ * into the artifact when those pieces are missing. Presentation chrome
  * (`.slide { opacity:0 }`, `overflow:hidden`) is neutralized so stacked
  * preview/export still shows every slide.
  *
  * Catalog-wide: proof that look CSS is already present must be unique
  * Motif/Layout class *rules*, not generic `.slide-1` / `.slide-title`
- * chrome that compact fill often copies from the kit.
+ * chrome that compact fill often copies from the kit. Motif HTML is a
+ * separate proof — CSS already merged must not skip `#pin` symbols.
  */
 
 export const OFFICIAL_DECK_LOOK_STYLE_ATTR = 'data-od-official-look-css';
+export const OFFICIAL_DECK_MOTIF_HTML_ATTR = 'data-od-official-motif-html';
 
 export type OfficialDeckLookAssets = {
   css: string;
   fontLinks: string[];
+  motifHtml: string[];
 };
 
 const FONT_LINK_RE = /<link\b[^>]*>/gi;
@@ -26,6 +30,11 @@ const STYLE_BODY_RE = /<style\b[^>]*>([\s\S]*?)<\/style>/gi;
 const FONT_IMPORT_URL_RE =
   /@import\s+(?:url\(\s*)?['"]?(https?:\/\/(?:fonts\.googleapis\.com|fonts\.gstatic\.com|db\.onlinewebfonts\.com)[^'")\s]+)['"]?\s*\)?[^;]*;/gi;
 const CLASS_SELECTOR_RE = /\.([a-zA-Z_][\w-]*)/g;
+const SVG_BLOCK_RE = /<svg\b[^>]*>[\s\S]*?<\/svg>/gi;
+const SYMBOL_ID_RE = /<symbol\b[^>]*\bid\s*=\s*(?:"([^"]+)"|'([^']+)')/gi;
+const MOTIF_HOST_RE =
+  /<(div|span)\b[^>]*\bclass\s*=\s*(?:"[^"]*"|'[^']*')[^>]*>\s*<\/\1>/gi;
+const MOTIF_HOST_CLASS_RE = /\b(?:grain-overlay|crt-overlay)\b/i;
 
 /** Layout/chrome classes compact fill routinely emits — not proof of official look. */
 const GENERIC_LOOK_PROOF_CLASS_RE =
@@ -63,6 +72,142 @@ function pushUniqueFontLink(out: string[], seenHref: Set<string>, href: string, 
   if (!clean || seenHref.has(clean)) return;
   seenHref.add(clean);
   out.push(tag && hrefFromLinkTag(tag) === clean ? tag : fontLinkTag(clean));
+}
+
+export function looksLikeOfficialDeckTemplateId(id: string | null | undefined): boolean {
+  const trimmed = String(id ?? '').trim();
+  if (!trimmed) return false;
+  return (
+    trimmed.startsWith('example-')
+    || trimmed.startsWith('html-ppt-')
+    || /(?:^|-)ppt(?:-|$)/i.test(trimmed)
+  );
+}
+
+export function firstOfficialDeckTemplateId(
+  ...candidates: Array<string | null | undefined | readonly unknown[]>
+): string | null {
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) {
+      for (const item of candidate) {
+        if (typeof item !== 'string') continue;
+        if (looksLikeOfficialDeckTemplateId(item)) return item.trim();
+      }
+      continue;
+    }
+    if (typeof candidate === 'string' && looksLikeOfficialDeckTemplateId(candidate)) {
+      return candidate.trim();
+    }
+  }
+  return null;
+}
+
+function classAttrValue(tag: string): string {
+  return /\bclass\s*=\s*(?:"([^"]*)"|'([^']*)')/i.exec(tag)?.[1]
+    ?? /\bclass\s*=\s*(?:"([^"]*)"|'([^']*)')/i.exec(tag)?.[2]
+    ?? '';
+}
+
+function firstSlideMarkupIndex(html: string): number {
+  const re = /<(?:div|section)\b[^>]*>/gi;
+  let next: RegExpExecArray | null;
+  while ((next = re.exec(html)) !== null) {
+    if (/(?:^|\s)slide(?:-\d+)?(?:\s|$)/i.test(classAttrValue(next[0] ?? ''))) {
+      return next.index;
+    }
+  }
+  return html.length;
+}
+
+export function listOfficialMotifSymbolIds(html: string): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  SYMBOL_ID_RE.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = SYMBOL_ID_RE.exec(html)) !== null) {
+    const id = (match[1] ?? match[2] ?? '').trim();
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    out.push(id);
+  }
+  return out;
+}
+
+function destHasSymbolId(dest: string, id: string): boolean {
+  const escaped = id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`<symbol\\b[^>]*\\bid\\s*=\\s*(?:"${escaped}"|'${escaped}')`, 'i').test(dest);
+}
+
+function isHiddenSpriteOpenTag(open: string): boolean {
+  return (
+    /width\s*=\s*(?:"0"|'0'|0)/i.test(open)
+    || /height\s*=\s*(?:"0"|'0'|0)/i.test(open)
+    || /aria-hidden/i.test(open)
+    || /hidden/i.test(open)
+    || /position\s*:\s*absolute/i.test(open)
+  );
+}
+
+function isReusableSpriteSheet(svg: string): boolean {
+  if (!/<symbol\b/i.test(svg)) return false;
+  const open = /^<svg\b[^>]*>/i.exec(svg)?.[0] ?? '';
+  if (isHiddenSpriteOpenTag(open)) return true;
+  const withoutDefs = svg
+    .replace(/<defs\b[\s\S]*?<\/defs>/gi, '')
+    .replace(/<symbol\b[\s\S]*?<\/symbol>/gi, '')
+    .replace(/<title\b[\s\S]*?<\/title>/gi, '')
+    .replace(/<!--[\s\S]*?-->/g, '');
+  return !/<(path|g|circle|ellipse|rect|polygon|polyline|use|text|image)\b/i.test(withoutDefs);
+}
+
+function markOfficialMotifHtml(markup: string): string {
+  const trimmed = markup.trim();
+  if (!trimmed) return '';
+  if (new RegExp(`\\b${OFFICIAL_DECK_MOTIF_HTML_ATTR}\\b`, 'i').test(trimmed)) return trimmed;
+  return trimmed.replace(/^(<(?:svg|div|span)\b)/i, `$1 ${OFFICIAL_DECK_MOTIF_HTML_ATTR}`);
+}
+
+function hostClassName(tag: string): string {
+  const match = MOTIF_HOST_CLASS_RE.exec(classAttrValue(tag));
+  return (match?.[0] ?? '').toLowerCase();
+}
+
+function destHasMotifHost(dest: string, className: string): boolean {
+  const escaped = className.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`\\bclass\\s*=\\s*(?:"[^"]*\\b${escaped}\\b[^"]*"|'[^']*\\b${escaped}\\b[^']*')`, 'i').test(dest);
+}
+
+export function extractOfficialDeckMotifHtml(exampleHtml: string): string[] {
+  const html = String(exampleHtml ?? '');
+  if (!html.trim()) return [];
+  const out: string[] = [];
+  const seen = new Set<string>();
+
+  SVG_BLOCK_RE.lastIndex = 0;
+  let svgMatch: RegExpExecArray | null;
+  while ((svgMatch = SVG_BLOCK_RE.exec(html)) !== null) {
+    const svg = svgMatch[0] ?? '';
+    if (!isReusableSpriteSheet(svg)) continue;
+    const marked = markOfficialMotifHtml(svg);
+    if (!marked || seen.has(marked)) continue;
+    seen.add(marked);
+    out.push(marked);
+  }
+
+  const prefix = html.slice(0, firstSlideMarkupIndex(html));
+  MOTIF_HOST_RE.lastIndex = 0;
+  let hostMatch: RegExpExecArray | null;
+  while ((hostMatch = MOTIF_HOST_RE.exec(prefix)) !== null) {
+    const tag = hostMatch[0] ?? '';
+    const className = hostClassName(tag);
+    if (!className) continue;
+    const marked = markOfficialMotifHtml(tag);
+    if (!marked || seen.has(marked)) continue;
+    seen.add(marked);
+    out.push(marked);
+  }
+
+  return out;
 }
 
 export function listOfficialLookProofClasses(css: string): string[] {
@@ -119,8 +264,9 @@ export function extractOfficialDeckLookAssets(
     pushUniqueFontLink(fontLinks, seenHref, importMatch[1] ?? '');
   }
 
-  if (!css && fontLinks.length === 0) return null;
-  return { css, fontLinks };
+  const motifHtml = extractOfficialDeckMotifHtml(html);
+  if (!css && fontLinks.length === 0 && motifHtml.length === 0) return null;
+  return { css, fontLinks, motifHtml };
 }
 
 function compactOfficialCss(css: string): string {
@@ -172,45 +318,29 @@ export function deckHtmlHasOfficialLookCss(
   assets: OfficialDeckLookAssets,
 ): boolean {
   const dest = String(html ?? '');
+  // Our merge writes this marker with the official sheet. Compact mid-sheet
+  // windows do not survive pretty-printed sibling CSS (Pin assets/styles.css),
+  // so a second pass would duplicate the sheet if we still required window hits.
+  if (dest.includes(OFFICIAL_DECK_LOOK_STYLE_ATTR)) return true;
+
   const windows = officialLookCssWindows(assets.css);
   const windowHits = countOfficialLookWindows(dest, assets);
-  const hasMarker = dest.includes(OFFICIAL_DECK_LOOK_STYLE_ATTR);
 
   if (windows.length >= 3) {
-    if (hasMarker) return windowHits >= 1;
     return windowHits >= 3;
   }
   if (windows.length > 0) {
-    if (hasMarker) return windowHits >= 1;
     return windowHits >= windows.length;
   }
 
   const classes = listOfficialLookProofClasses(assets.css);
   const ruleHits = countOfficialLookProofRules(dest, assets);
-  if (hasMarker) return classes.length === 0 ? assets.css.length > 0 && dest.includes(assets.css.slice(0, 32)) : ruleHits >= 1;
   if (classes.length === 0) return false;
   return ruleHits >= Math.min(4, classes.length);
 }
 
-export function mergeOfficialDeckLookCss(
-  html: string,
-  assets: OfficialDeckLookAssets | null | undefined,
-): string {
-  const dest = String(html ?? '');
-  if (!dest || !assets) return dest;
-  if (!assets.css && assets.fontLinks.length === 0) return dest;
-  if (deckHtmlHasOfficialLookCss(dest, assets)) return dest;
-
-  const missingFonts = assets.fontLinks.filter((tag) => {
-    const href = hrefFromLinkTag(tag);
-    return href ? !dest.includes(href) : !dest.includes(tag);
-  });
-  const style = assets.css
-    ? `<style ${OFFICIAL_DECK_LOOK_STYLE_ATTR}>\n${assets.css}\n${LOOK_NEUTRALIZE_CSS}\n</style>`
-    : '';
-  const snippet = `${missingFonts.join('\n')}${missingFonts.length && style ? '\n' : ''}${style}`;
+function insertBeforeCloseHeadOrOpenBody(dest: string, snippet: string): string {
   if (!snippet.trim()) return dest;
-
   if (/<\/head\s*>/i.test(dest)) {
     return dest.replace(/<\/head\s*>/i, `${snippet}\n</head>`);
   }
@@ -221,4 +351,84 @@ export function mergeOfficialDeckLookCss(
     return dest.replace(/<body\b[^>]*>/i, (open) => `${open}\n${snippet}`);
   }
   return `${snippet}\n${dest}`;
+}
+
+function insertAfterOpenBody(dest: string, snippet: string): string {
+  if (!snippet.trim()) return dest;
+  if (/<body\b/i.test(dest)) {
+    return dest.replace(/<body\b[^>]*>/i, (open) => `${open}\n${snippet}`);
+  }
+  if (/<\/head\s*>/i.test(dest)) {
+    return dest.replace(/<\/head\s*>/i, `</head>\n<body>\n${snippet}\n`);
+  }
+  return `${snippet}\n${dest}`;
+}
+
+export function deckHtmlHasOfficialMotifHtml(
+  html: string,
+  assets: OfficialDeckLookAssets,
+): boolean {
+  const dest = String(html ?? '');
+  if (!dest || !(assets.motifHtml?.length)) return !(assets.motifHtml?.length);
+  if (dest.includes(OFFICIAL_DECK_MOTIF_HTML_ATTR)) return true;
+  const symbolIds = listOfficialMotifSymbolIds(assets.motifHtml.join('\n'));
+  const missingSymbols = symbolIds.filter((id) => !destHasSymbolId(dest, id));
+  const missingHosts = assets.motifHtml.filter((block) => {
+    if (/^<svg\b/i.test(block)) return false;
+    const className = hostClassName(block);
+    return Boolean(className) && !destHasMotifHost(dest, className);
+  });
+  return missingSymbols.length === 0 && missingHosts.length === 0;
+}
+
+export function mergeOfficialDeckMotifHtml(
+  html: string,
+  assets: OfficialDeckLookAssets | null | undefined,
+): string {
+  const dest = String(html ?? '');
+  if (!dest || !(assets?.motifHtml?.length)) return dest;
+  if (deckHtmlHasOfficialMotifHtml(dest, assets)) return dest;
+
+  const sprites: string[] = [];
+  const hosts: string[] = [];
+  for (const block of assets.motifHtml) {
+    if (/^<svg\b/i.test(block)) {
+      const ids = listOfficialMotifSymbolIds(block);
+      if (ids.length > 0 && ids.every((id) => destHasSymbolId(dest, id))) continue;
+      sprites.push(block);
+      continue;
+    }
+    const className = hostClassName(block);
+    if (className && destHasMotifHost(dest, className)) continue;
+    hosts.push(block);
+  }
+  let out = dest;
+  // Inject after <body> — HTML parsers relocate <svg> out of <head> on persist sanitize.
+  if (sprites.length > 0) out = insertAfterOpenBody(out, sprites.join('\n'));
+  if (hosts.length > 0) out = insertAfterOpenBody(out, hosts.join('\n'));
+  return out;
+}
+
+export function mergeOfficialDeckLookCss(
+  html: string,
+  assets: OfficialDeckLookAssets | null | undefined,
+): string {
+  const dest = String(html ?? '');
+  if (!dest || !assets) return dest;
+  if (!assets.css && assets.fontLinks.length === 0 && !(assets.motifHtml?.length)) return dest;
+
+  let out = dest;
+  if (!deckHtmlHasOfficialLookCss(out, assets) && (assets.css || assets.fontLinks.length > 0)) {
+    const missingFonts = assets.fontLinks.filter((tag) => {
+      const href = hrefFromLinkTag(tag);
+      return href ? !out.includes(href) : !out.includes(tag);
+    });
+    const style = assets.css
+      ? `<style ${OFFICIAL_DECK_LOOK_STYLE_ATTR}>\n${assets.css}\n${LOOK_NEUTRALIZE_CSS}\n</style>`
+      : '';
+    const snippet = `${missingFonts.join('\n')}${missingFonts.length && style ? '\n' : ''}${style}`;
+    out = insertBeforeCloseHeadOrOpenBody(out, snippet);
+  }
+
+  return mergeOfficialDeckMotifHtml(out, assets);
 }

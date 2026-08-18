@@ -266,11 +266,28 @@ async function mergeOfficialLookOnHtmlExportFallback(
   html: string,
   projectId: string,
 ): Promise<string> {
+  const dest = String(html ?? '');
+  if (
+    dest.includes('data-od-official-look-css')
+    && (
+      dest.includes('data-od-official-motif-html')
+      || !/<use\b[^>]*(?:href|xlink:href)\s*=\s*["']#/i.test(dest)
+    )
+  ) {
+    return dest;
+  }
   try {
     const resp = await fetchTeamverDaemon(`/api/projects/${encodeURIComponent(projectId)}`);
     if (!resp.ok) return html;
-    const json = await resp.json() as { metadata?: { selectedDeckTemplateId?: string } };
-    const templateId = json.metadata?.selectedDeckTemplateId?.trim();
+    const json = await resp.json() as {
+      metadata?: { selectedDeckTemplateId?: string; skillIds?: unknown; context?: { skillIds?: unknown } };
+    };
+    const { firstOfficialDeckTemplateId } = await import('@open-design/contracts');
+    const templateId = firstOfficialDeckTemplateId(
+      json.metadata?.selectedDeckTemplateId,
+      json.metadata?.skillIds,
+      json.metadata?.context?.skillIds,
+    );
     if (!templateId) return html;
     const { mergeOfficialLookCssForTemplate } = await import('../teamver/fetchPluginLocalSkill');
     return mergeOfficialLookCssForTemplate(html, templateId);
@@ -1343,7 +1360,10 @@ export async function exportProjectAsPdf(opts: {
       if (!resp.ok) throw new Error(`inline PDF fallback export unavailable (${resp.status})`);
       renderedHtml = await resp.text();
     }
-    await exportAsPdf(renderedHtml, opts.title, {
+    await exportAsPdf(
+      await mergeOfficialLookOnHtmlExportFallback(renderedHtml, opts.projectId),
+      opts.title,
+      {
       deck: opts.deck,
       // Resolve relative Drive/composer imgs against the project /raw/ root
       // instead of window.location.origin (which cannot see refs/drive/…).
@@ -1669,7 +1689,11 @@ export async function exportProjectAsZip(opts: {
     triggerDownload(blob, archiveFilenameFrom(resp, opts.fallbackTitle, root));
   } catch (err) {
     devLog.warn('[exportProjectAsZip] falling back to single-file ZIP:', err);
-    exportAsZip(opts.fallbackHtml, opts.fallbackTitle, { deck: opts.deck === true });
+    exportAsZip(
+      await mergeOfficialLookOnHtmlExportFallback(opts.fallbackHtml, opts.projectId),
+      opts.fallbackTitle,
+      { deck: opts.deck === true },
+    );
   }
 }
 

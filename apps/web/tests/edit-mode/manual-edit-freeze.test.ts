@@ -8,11 +8,17 @@ import {
   shouldRequestTipRemountRemasureAfterFreezeSync,
   shouldRequestTipRemountRemasureAfterSrcDocLoad,
   shouldApplyTipRemountSyncHostMeasureOnSrcDocLoad,
+  shouldRetryTipRemountSyncHostMeasureAfterSrcDocLoad,
+  shouldCancelTipRemountSyncHostMeasureRetry,
   shouldReleaseTipRemountChromeAfterSyncHostMeasure,
   shouldArmTipRemountFitSettleForDeckHostFit,
   shouldRemeasureTipRemountAfterDeckHostFitSettle,
+  shouldScheduleTipRemountFitSettleRemasureOnLoad,
   shouldDeferTipRemountGraceConsumeForDeckHostFitSettle,
   shouldSkipWildJumpDuringTipRemountFitSettle,
+  shouldSkipWildJumpForTipRemountSelectedMember,
+  shouldSkipWildJumpDuringTipRemountFitSettleForSelectedMember,
+  shouldRefreshHostMetricsAfterTipRemountMultiRemasure,
   tipRemountFitSettleExpired,
   shouldSkipSrcDocTransportRemountForManualEditFreezeTipSync,
   shouldSuppressManualEditChromeUntilTipRemasure,
@@ -129,6 +135,26 @@ describe('manual edit freeze reset', () => {
   it('releases tip-remount chrome inert after sync primary measure', () => {
     expect(shouldReleaseTipRemountChromeAfterSyncHostMeasure(true)).toBe(true);
     expect(shouldReleaseTipRemountChromeAfterSyncHostMeasure(false)).toBe(false);
+  });
+
+  it('retries tip remount sync host measure once when first load tick misses', () => {
+    expect(shouldRetryTipRemountSyncHostMeasureAfterSrcDocLoad(
+      false, true, ['a'], 'a',
+    )).toBe(true);
+    expect(shouldRetryTipRemountSyncHostMeasureAfterSrcDocLoad(
+      true, true, ['a'], 'a',
+    )).toBe(false);
+    expect(shouldRetryTipRemountSyncHostMeasureAfterSrcDocLoad(
+      false, true, ['a'], null,
+    )).toBe(false);
+    expect(shouldRetryTipRemountSyncHostMeasureAfterSrcDocLoad(
+      false, false, ['a'], 'a',
+    )).toBe(false);
+  });
+
+  it('cancels pending tip remount sync rAF when grace clears', () => {
+    expect(shouldCancelTipRemountSyncHostMeasureRetry(true)).toBe(true);
+    expect(shouldCancelTipRemountSyncHostMeasureRetry(false)).toBe(false);
   });
 
   it('skips deck srcDoc transport remount for edit-mode freeze tip sync', () => {
@@ -279,6 +305,12 @@ describe('manual edit freeze reset', () => {
     expect(shouldRemeasureTipRemountAfterDeckHostFitSettle(true, ['a'], 0, 1_000)).toBe(false);
   });
 
+  it('schedules fit-settle remasure on load when settle latch is armed', () => {
+    expect(shouldScheduleTipRemountFitSettleRemasureOnLoad(2_000, 1_000)).toBe(true);
+    expect(shouldScheduleTipRemountFitSettleRemasureOnLoad(1_000, 1_000)).toBe(false);
+    expect(shouldScheduleTipRemountFitSettleRemasureOnLoad(0, 1_000)).toBe(false);
+  });
+
   it('defers tip-remount grace consume while deck host-fit settle is open', () => {
     expect(shouldDeferTipRemountGraceConsumeForDeckHostFitSettle(2_000, 1_000)).toBe(true);
     expect(shouldDeferTipRemountGraceConsumeForDeckHostFitSettle(1_000, 1_000)).toBe(false);
@@ -297,5 +329,30 @@ describe('manual edit freeze reset', () => {
     expect(shouldSkipWildJumpDuringTipRemountFitSettle(
       'el-1', 'el-1', 'el-1', 2_000, 2_000,
     )).toBe(false);
+  });
+
+  it('skips wild-jump for multi tip-remount selected members', () => {
+    expect(shouldSkipWildJumpForTipRemountSelectedMember(
+      'el-1', 'el-2', ['el-1', 'el-2'], 1_000, 1_800,
+    )).toBe(true);
+    expect(shouldSkipWildJumpForTipRemountSelectedMember(
+      'el-1', 'el-3', ['el-1', 'el-2'], 1_000, 1_800,
+    )).toBe(false);
+    expect(shouldSkipWildJumpForTipRemountSelectedMember(
+      'el-1', 'el-2', ['el-1', 'el-2'], 1_800, 1_800,
+    )).toBe(false);
+    expect(shouldSkipWildJumpDuringTipRemountFitSettleForSelectedMember(
+      'el-1', 'el-2', ['el-1', 'el-2'], 1_000, 2_000,
+    )).toBe(true);
+    expect(shouldSkipWildJumpDuringTipRemountFitSettleForSelectedMember(
+      'el-1', 'el-2', ['el-1', 'el-2'], 2_000, 2_000,
+    )).toBe(false);
+  });
+
+  it('refreshes host metrics after multi tip-remount remasure', () => {
+    expect(shouldRefreshHostMetricsAfterTipRemountMultiRemasure(2, true)).toBe(true);
+    expect(shouldRefreshHostMetricsAfterTipRemountMultiRemasure(3, true)).toBe(true);
+    expect(shouldRefreshHostMetricsAfterTipRemountMultiRemasure(1, true)).toBe(false);
+    expect(shouldRefreshHostMetricsAfterTipRemountMultiRemasure(2, false)).toBe(false);
   });
 });

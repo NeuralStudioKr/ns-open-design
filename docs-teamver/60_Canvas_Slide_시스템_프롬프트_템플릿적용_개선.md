@@ -200,6 +200,25 @@ full `example.html`을 시스템 프롬프트에 넣지 않는다는 방침은 �
 - [x] 인라인 장별 색도 per-slide paint
 - [x] daemon cover-batch가 persisted flatten bleed를 `html, body`로 완화 (cache v6)
 
+### 0.34 2026-08-18 — 공식 Motif HTML(스프라이트·호스트) persist/export 병합
+
+look CSS만 합치면 Pin-and-Paper compact fill의 `<use href="#pin">`가 빈 SVG로 남는다. Capsule/Retro-zine grain, Retro-windows CRT도 호스트 div가 없으면 CSS만 떠 있다.
+
+- 공식 example에서 재사용 `<symbol>` 시트 + 슬라이드 앞 `grain-overlay`/`crt-overlay` 호스트를 `data-od-official-motif-html`로 주입
+- look CSS가 이미 있어도 Motif HTML은 따로 판정 (early-return 금지)
+- persist sanitize가 Motif 시트를 지우지 않음
+- export는 metadata `skillIds`로 템플릿 id 추론. FE PDF/ZIP 폴백도 동일 병합
+- export cache `v14`
+
+구현 현황:
+
+- [x] Pin `#pin` / `#pin-open` 심볼을 compact fill `<use>`에 합침
+- [x] Capsule/Retro grain · Retro-windows CRT 호스트 주입
+- [x] 전 `mode:deck` official example Motif HTML 카탈로그 회귀
+- [x] CSS-already-present여도 Motif 주입
+- [x] sanitize Motif SVG 보존
+- [x] export cache `v14`
+
 ### 0.33 2026-08-18 — look CSS 병합 잔여 경로 닫기
 
 kit Motif 2규칙·Write-tool disk 경로·stale metadata·FE HTML 폴백이 공식 스타일을 다시 빠뜨렸다.
@@ -960,8 +979,10 @@ User-message 쪽 `[Existing deck edit]` / `<attached-preview-comments>` 주입�
 | 2026-08-13 | **§0.0 정책 개정** — template = layout vocabulary + visual look, 페이지 수/순서/구성은 브리프 기반. content-swap → pick-and-choose layout roles. daemon Clone default count = 6 (shells.length 아님), `pickTemplateShells` role-based scoring 도입. `template-visual-kit.ts` HARD_RULES 재작성, `DEFAULT_MAX_CHARS` 12000 → 14000. |
 | 2026-08-18 | Clone content-fill motif 보정 — 8/13 SVG hang 방지 패치가 first fill에서 `Motif sprites`/`Decoration CSS`/`Layout CSS`를 통째로 생략해 Daisy/Capsule 템플릿 정체성이 약해졌다. `slimTemplateVisualKitForFill`이 큰 SVG sprite sheet와 전체 stylesheet dump는 계속 제거하되, Daisy star/rainbow·Capsule pill/capsule·Terminal scanline 같은 compact motif recipe와 짧은 Decoration/Layout CSS cue를 보존하도록 변경했다. |
 | 2026-08-18 | §0.20 — html-ppt identity scope. 공유 `:root --bg:#ffffff` 대신 `.tpl-*` host 토큰/슬라이드 surface/폰트를 kit 계약으로 쓰고, SKILL `copy index.html` filesystem 지시를 neutralize. |
+| 2026-08-18 | §0.34 — 공식 Motif HTML(`#pin` symbol · grain/crt host) persist/export 병합. cache v14. |
 | 2026-08-18 | §0.33 — kit Motif 스니펫/Write 경로/턴 핀/FE 폴백/heal skip. cache v13. |
-| 2026-08-18 | §0.32 — Pin Motif slim `#pin` 우선 · body Google Fonts `<link>` persist · heal+bleed · cache v12. || 2026-08-18 | §0.31 — 전 official `mode:deck` 템플릿 look CSS 병합. generic `.slide-title` chrome 오인 skip 금지. `@import` 폰트·`example-` 별칭·cache v11. |
+| 2026-08-18 | §0.32 — Pin Motif slim `#pin` 우선 · body Google Fonts `<link>` persist · heal+bleed · cache v12. |
+| 2026-08-18 | §0.31 — 전 official `mode:deck` 템플릿 look CSS 병합. generic `.slide-title` chrome 오인 skip 금지. `@import` 폰트·`example-` 별칭·cache v11. |
 | 2026-08-18 | §0.30 — compact fill에 빠진 공식 Capsule/템플릿 look CSS를 persist·독립 HTML/PDF에 합침. `.pill-*` / 폰트 `<link>` / Motif 규칙. |
 | 2026-08-18 | §0.29 — 독립 HTML/PDF가 `--shell` 레터박스·카드 shadow로 look을 지우지 않음. compact export `#0b0c10` 제거. daemon payload가 persist heal을 탐. |
 | 2026-08-18 | §0.28 — persist/salvage가 `<div class="slide">`를 1급 호스트로 봄. `.slide-inner`는 제외. 잘린 BYOK 덱이 `incomplete-html-document-shell`로 skip 되지 않음. |

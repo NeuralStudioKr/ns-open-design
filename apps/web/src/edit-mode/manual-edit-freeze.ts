@@ -103,6 +103,33 @@ export function shouldApplyTipRemountSyncHostMeasureOnSrcDocLoad(
 }
 
 /**
+ * Sync primary measure missed on the load tick (layout/fonts not ready) —
+ * schedule one rAF retry while tip-remount grace is still armed (462).
+ */
+export function shouldRetryTipRemountSyncHostMeasureAfterSrcDocLoad(
+  syncApplied: boolean,
+  manualEditMode: boolean,
+  selectedIds: readonly string[],
+  graceId: string | null | undefined,
+): boolean {
+  return !syncApplied && shouldApplyTipRemountSyncHostMeasureOnSrcDocLoad(
+    manualEditMode,
+    selectedIds,
+    graceId,
+  );
+}
+
+/**
+ * Cancel a pending tip-remount sync rAF when grace clears or a newer tip-yield
+ * arms — avoid measuring a dying remount session (463).
+ */
+export function shouldCancelTipRemountSyncHostMeasureRetry(
+  pendingRaf: boolean,
+): boolean {
+  return pendingRaf;
+}
+
+/**
  * Sync primary measure succeeded — drop chrome inert immediately while tip
  * remount grace remains for wild-jump skip until async remasure (459).
  */
@@ -412,6 +439,18 @@ export function shouldRemeasureTipRemountAfterDeckHostFitSettle(
 }
 
 /**
+ * onLoad may see needsDeckHostViewportFit=false while sticky fit-settle was
+ * armed from deckHostViewportFitActive — still schedule; helper no-ops when
+ * settle latch is unset (464).
+ */
+export function shouldScheduleTipRemountFitSettleRemasureOnLoad(
+  fitSettleUntilMs: number,
+  nowMs: number,
+): boolean {
+  return !tipRemountFitSettleExpired(nowMs, fitSettleUntilMs);
+}
+
+/**
  * Fit-settle window still open — do not consume tip-remount grace yet so a
  * later host-fit remasure can still skip wild-jump (460).
  */
@@ -440,4 +479,54 @@ export function shouldSkipWildJumpDuringTipRemountFitSettle(
     && rectId === graceId
     && rectId === selectedId
   );
+}
+
+/**
+ * Multi tip-yield: sibling remasures are in the same tip-remount session.
+ * Skip wild-jump for any selected member while geometry grace is live (461).
+ * Consume stays primary-only via shouldConsumeTipRemountGeometryGraceOnRemasure.
+ */
+export function shouldSkipWildJumpForTipRemountSelectedMember(
+  graceId: string | null | undefined,
+  rectId: string,
+  selectedIds: readonly string[],
+  nowMs: number,
+  graceUntilMs: number,
+): boolean {
+  if (tipRemountGeometryGraceExpired(nowMs, graceUntilMs)) return false;
+  return Boolean(
+    graceId
+    && selectedIds.includes(graceId)
+    && selectedIds.includes(rectId),
+  );
+}
+
+/**
+ * Multi tip-yield during deck host-fit settle — same selected-set wild-jump
+ * skip as geometry grace, bound to fit-settle until (461).
+ */
+export function shouldSkipWildJumpDuringTipRemountFitSettleForSelectedMember(
+  graceId: string | null | undefined,
+  rectId: string,
+  selectedIds: readonly string[],
+  nowMs: number,
+  fitSettleUntilMs: number,
+): boolean {
+  if (tipRemountFitSettleExpired(nowMs, fitSettleUntilMs)) return false;
+  return Boolean(
+    graceId
+    && selectedIds.includes(graceId)
+    && selectedIds.includes(rectId),
+  );
+}
+
+/**
+ * After multi tip remasure, refresh host scale/offset + geom epoch so union
+ * chrome compose and live measureHostRect stay aligned (461).
+ */
+export function shouldRefreshHostMetricsAfterTipRemountMultiRemasure(
+  selectedCount: number,
+  appliedAny: boolean,
+): boolean {
+  return appliedAny && selectedCount >= 2;
 }

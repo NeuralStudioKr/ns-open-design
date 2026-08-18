@@ -114,7 +114,7 @@ export async function fetchPluginPreviewLookSource(
   return `${html}\n<style data-od-kit-supplemental>\n${supplementalParts.join('\n')}\n</style>`;
 }
 
-/** Persist / FE export fallback — inject official Motif CSS when the template is known. */
+/** Persist / FE export fallback — inject official Motif CSS + symbol/host HTML. */
 export async function mergeOfficialLookCssForTemplate(
   html: string,
   templateId: string | null | undefined,

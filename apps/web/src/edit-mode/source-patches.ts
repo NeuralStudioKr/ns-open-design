@@ -1,6 +1,7 @@
 import {
   isAllowlistedFontStylesheetHref,
   OFFICIAL_DECK_LOOK_STYLE_ATTR,
+  OFFICIAL_DECK_MOTIF_HTML_ATTR,
   rewriteCssImportsForPersist,
 } from '@open-design/contracts';
 import { emptyManualEditStyles, MANUAL_EDIT_STYLE_PROPS, type ManualEditFields, type ManualEditPatch, type ManualEditStyles } from './types';
@@ -1846,6 +1847,9 @@ export function sanitizeManualEditDocumentInPlace(doc: Document): void {
       if (tag === 'style') {
         if (child.hasAttribute(OFFICIAL_DECK_LOOK_STYLE_ATTR)) continue;
         if (!scrubManualEditStyleElement(child)) child.remove();
+        continue;
+      }
+      if (child.hasAttribute(OFFICIAL_DECK_MOTIF_HTML_ATTR) && (tag === 'svg' || tag === 'div' || tag === 'span')) {
         continue;
       }
       if (

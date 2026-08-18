@@ -3,6 +3,7 @@ import path from 'node:path';
 import type Database from 'better-sqlite3';
 import {
   extractOfficialDeckLookAssets,
+  firstOfficialDeckTemplateId,
   listLocalStylesheetHrefs,
   mergeOfficialDeckLookCss,
   pickPluginPreviewHtmlPath,
@@ -59,13 +60,18 @@ export async function mergeOfficialTemplateLookForExport(input: {
 }): Promise<string> {
   const html = String(input.html ?? '');
   if (!html.trim()) return html;
-  const fromBody = String(input.templateId ?? '').trim();
-  const fromMeta = readSelectedDeckTemplateFromMetadata(
+  const metadata =
     input.metadata && typeof input.metadata === 'object'
       ? (input.metadata as Record<string, unknown>)
-      : null,
-  )?.id;
-  const pluginId = fromBody || fromMeta || '';
+      : null;
+  const fromBody = String(input.templateId ?? '').trim();
+  const fromMeta = readSelectedDeckTemplateFromMetadata(metadata)?.id;
+  const skillIds = Array.isArray(metadata?.skillIds) ? metadata.skillIds : [];
+  const context = metadata?.context && typeof metadata.context === 'object'
+    ? (metadata.context as Record<string, unknown>)
+    : null;
+  const contextSkillIds = Array.isArray(context?.skillIds) ? context.skillIds : [];
+  const pluginId = firstOfficialDeckTemplateId(fromBody, fromMeta, skillIds, contextSkillIds) ?? '';
   if (!pluginId) return html;
   const official = await loadOfficialDeckLookSource(input.db, pluginId);
   if (!official) return html;

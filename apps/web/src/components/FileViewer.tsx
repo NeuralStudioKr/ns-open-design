@@ -335,11 +335,17 @@ import {
   shouldEchoManualEditSelectionAfterFreezeSync,
   shouldRequestTipRemountRemasureAfterSrcDocLoad,
   shouldApplyTipRemountSyncHostMeasureOnSrcDocLoad,
+  shouldRetryTipRemountSyncHostMeasureAfterSrcDocLoad,
+  shouldCancelTipRemountSyncHostMeasureRetry,
   shouldReleaseTipRemountChromeAfterSyncHostMeasure,
   shouldArmTipRemountFitSettleForDeckHostFit,
   shouldRemeasureTipRemountAfterDeckHostFitSettle,
+  shouldScheduleTipRemountFitSettleRemasureOnLoad,
   shouldDeferTipRemountGraceConsumeForDeckHostFitSettle,
   shouldSkipWildJumpDuringTipRemountFitSettle,
+  shouldSkipWildJumpForTipRemountSelectedMember,
+  shouldSkipWildJumpDuringTipRemountFitSettleForSelectedMember,
+  shouldRefreshHostMetricsAfterTipRemountMultiRemasure,
   shouldSkipSrcDocTransportRemountForManualEditFreezeTipSync,
   shouldDisableManualEditChromeUntilTipRemasure,
   shouldAbortManualEditGestureForTipYieldFreezeSync,
@@ -5496,6 +5502,8 @@ function HtmlViewer({
   /** Deck host-fit settle — remasure after scale nudges (460). */
   const manualEditTipRemountFitSettleUntilRef = useRef(0);
   const manualEditTipRemountFitSettleCancelRef = useRef<(() => void) | null>(null);
+  /** Pending onLoad sync measure rAF retry — cancel on grace clear (463). */
+  const manualEditTipRemountSyncRetryRafRef = useRef<number | null>(null);
   /** Inert resize/multi chrome until tip remasure applies tip geometry (455/458). */
   const [manualEditTipRemountChromeSuppressed, setManualEditTipRemountChromeSuppressed] = useState(false);
   const manualEditTipRemountChromeSuppressedRef = useRef(false);
@@ -7899,6 +7907,7 @@ function HtmlViewer({
       ? [primaryId, ...ids.filter((id) => id !== primaryId)]
       : ids;
     let primaryMeasured = false;
+    let appliedAny = false;
     for (const id of ordered) {
       const content = measureManualEditTargetContentRect(frame, id);
       if (!content) continue;
@@ -7921,6 +7930,7 @@ function HtmlViewer({
           layoutHeight: content.layoutHeight,
         } as ManualEditTarget);
       }
+      appliedAny = true;
       if (id === primaryId) primaryMeasured = true;
     }
     if (!shouldReleaseTipRemountChromeAfterSyncHostMeasure(primaryMeasured)) {
@@ -7932,7 +7942,69 @@ function HtmlViewer({
     if (shouldRefreshHostPaintAfterTipRemountRemasure(true) && primaryId) {
       refreshManualEditHostPaintRect(primaryId, { force: true });
     }
+    // Multi: force host metrics so union chrome does not keep pre-tip compose (461).
+    refreshManualEditHostMetricsAfterTipRemountMulti(frame, appliedAny);
     return true;
+  }
+
+  /**
+   * Tip srcDoc onLoad — sync measure, then one rAF retry if layout was not ready (462).
+   */
+  function applyTipRemountSyncHostMeasureAfterSrcDocLoadWithRetry(
+    target: HTMLIFrameElement | null = iframeRef.current,
+  ) {
+    const applied = applyTipRemountSyncHostMeasureAfterSrcDocLoad(target);
+    if (!shouldRetryTipRemountSyncHostMeasureAfterSrcDocLoad(
+      applied,
+      manualEditModeRef.current,
+      selectedManualEditTargetIdsRef.current,
+      manualEditTipRemountGeometryGraceIdRef.current,
+    )) {
+      return applied;
+    }
+    // Cancel any prior retry before arming a new one (463).
+    if (shouldCancelTipRemountSyncHostMeasureRetry(
+      manualEditTipRemountSyncRetryRafRef.current != null,
+    )) {
+      window.cancelAnimationFrame(manualEditTipRemountSyncRetryRafRef.current!);
+      manualEditTipRemountSyncRetryRafRef.current = null;
+    }
+    // First load tick often measures before fonts/deck-fit layout — retry once.
+    manualEditTipRemountSyncRetryRafRef.current = requestAnimationFrame(() => {
+      manualEditTipRemountSyncRetryRafRef.current = null;
+      if (!shouldApplyTipRemountSyncHostMeasureOnSrcDocLoad(
+        manualEditModeRef.current,
+        selectedManualEditTargetIdsRef.current,
+        manualEditTipRemountGeometryGraceIdRef.current,
+      )) {
+        return;
+      }
+      applyTipRemountSyncHostMeasureAfterSrcDocLoad(
+        target ?? iframeRef.current,
+      );
+    });
+    return false;
+  }
+
+  /**
+   * Multi tip-remount: refresh host scale/offset + geom epoch so union chrome
+   * and live measureHostRect do not keep pre-tip/pre-fit compose (461).
+   */
+  function refreshManualEditHostMetricsAfterTipRemountMulti(
+    frame: HTMLIFrameElement | null,
+    appliedAny: boolean,
+  ) {
+    if (!shouldRefreshHostMetricsAfterTipRemountMultiRemasure(
+      selectedManualEditTargetIdsRef.current.length,
+      appliedAny,
+    )) {
+      return;
+    }
+    const workspace = manualEditWorkspaceRef.current;
+    if (!frame || !workspace) return;
+    setManualEditHostScale(measureIframeHostScale(frame));
+    setManualEditHostOffset(measureIframeOffsetInHost(frame, workspace));
+    setManualEditGeomEpoch((n) => n + 1);
   }
 
   /**
@@ -7959,6 +8031,7 @@ function HtmlViewer({
       ? [primaryId, ...ids.filter((id) => id !== primaryId)]
       : ids;
     let primaryMeasured = false;
+    let appliedAny = false;
     for (const id of ordered) {
       const content = measureManualEditTargetContentRect(frame, id);
       if (!content) continue;
@@ -7980,11 +8053,14 @@ function HtmlViewer({
           layoutHeight: content.layoutHeight,
         } as ManualEditTarget);
       }
+      appliedAny = true;
       if (id === primaryId) primaryMeasured = true;
     }
     if (primaryMeasured && primaryId && shouldRefreshHostPaintAfterTipRemountRemasure(true)) {
       refreshManualEditHostPaintRect(primaryId, { force: true });
     }
+    // Multi: refresh scale/offset after fit nudges so union tracks post-fit tip (461).
+    refreshManualEditHostMetricsAfterTipRemountMulti(frame, appliedAny);
     for (const id of ordered) {
       requestManualEditTargetRemeasure(id, frame);
     }
@@ -7996,6 +8072,12 @@ function HtmlViewer({
   ) {
     manualEditTipRemountFitSettleCancelRef.current?.();
     manualEditTipRemountFitSettleCancelRef.current = null;
+    if (!shouldScheduleTipRemountFitSettleRemasureOnLoad(
+      manualEditTipRemountFitSettleUntilRef.current,
+      Date.now(),
+    )) {
+      return;
+    }
     if (!shouldRemeasureTipRemountAfterDeckHostFitSettle(
       manualEditModeRef.current,
       selectedManualEditTargetIdsRef.current,
@@ -8154,6 +8236,12 @@ function HtmlViewer({
     manualEditTipRemountFitSettleUntilRef.current = 0;
     manualEditTipRemountFitSettleCancelRef.current?.();
     manualEditTipRemountFitSettleCancelRef.current = null;
+    if (shouldCancelTipRemountSyncHostMeasureRetry(
+      manualEditTipRemountSyncRetryRafRef.current != null,
+    )) {
+      window.cancelAnimationFrame(manualEditTipRemountSyncRetryRafRef.current!);
+      manualEditTipRemountSyncRetryRafRef.current = null;
+    }
     manualEditTipRemountChromeSuppressedRef.current = false;
     setManualEditTipRemountChromeSuppressed(false);
     if (manualEditTipRemountChromeSafetyTimeoutRef.current != null) {
@@ -8209,6 +8297,13 @@ function HtmlViewer({
     if (graceId) {
       const nowMs = Date.now();
       const graceUntil = nowMs + 800;
+      // Drop stale onLoad sync retry from a prior tip-yield (463).
+      if (shouldCancelTipRemountSyncHostMeasureRetry(
+        manualEditTipRemountSyncRetryRafRef.current != null,
+      )) {
+        window.cancelAnimationFrame(manualEditTipRemountSyncRetryRafRef.current!);
+        manualEditTipRemountSyncRetryRafRef.current = null;
+      }
       manualEditTipRemountGeometryGraceIdRef.current = graceId;
       manualEditTipRemountGeometryGraceUntilRef.current = graceUntil;
       // Deck host-fit may rescale after onLoad — keep settle latch past grace (460).
@@ -9981,6 +10076,7 @@ function HtmlViewer({
           clearManualEditTipRemountGeometryGrace();
         }
         const current = selectedManualEditTargetRef.current;
+        const selectedIds = selectedManualEditTargetIdsRef.current;
         const tipRemountGrace = shouldSkipWildJumpAfterTipRemountGrace(
           manualEditTipRemountGeometryGraceIdRef.current,
           measured.id,
@@ -9991,6 +10087,20 @@ function HtmlViewer({
           manualEditTipRemountGeometryGraceIdRef.current,
           measured.id,
           selectedManualEditTargetIdRef.current,
+          nowMs,
+          manualEditTipRemountFitSettleUntilRef.current,
+        );
+        // Multi tip-yield: sibling members share the tip-remount session (461).
+        const tipRemountSelectedMember = shouldSkipWildJumpForTipRemountSelectedMember(
+          manualEditTipRemountGeometryGraceIdRef.current,
+          measured.id,
+          selectedIds,
+          nowMs,
+          manualEditTipRemountGeometryGraceUntilRef.current,
+        ) || shouldSkipWildJumpDuringTipRemountFitSettleForSelectedMember(
+          manualEditTipRemountGeometryGraceIdRef.current,
+          measured.id,
+          selectedIds,
           nowMs,
           manualEditTipRemountFitSettleUntilRef.current,
         );
@@ -10022,15 +10132,22 @@ function HtmlViewer({
           if (shouldRefreshHostPaintAfterTipRemountRemasure(true)) {
             refreshManualEditHostPaintRect(measured.id, { force: true });
           }
+          refreshManualEditHostMetricsAfterTipRemountMulti(
+            iframeRef.current,
+            true,
+          );
           return;
         }
         applyManualEditMeasuredGeometry(measured);
-        // Fit-settle window: keep grace, but refresh host paint on tip geometry (460).
-        if (
-          tipRemountGrace
-          && shouldRefreshHostPaintAfterTipRemountRemasure(true)
-        ) {
-          refreshManualEditHostPaintRect(measured.id, { force: true });
+        // Fit-settle / multi tip-remount: refresh host paint + multi metrics (460/461).
+        if (tipRemountGrace || tipRemountSelectedMember) {
+          if (shouldRefreshHostPaintAfterTipRemountRemasure(true)) {
+            refreshManualEditHostPaintRect(measured.id, { force: true });
+          }
+          refreshManualEditHostMetricsAfterTipRemountMulti(
+            iframeRef.current,
+            true,
+          );
         }
         return;
       }
@@ -15329,8 +15446,12 @@ function HtmlViewer({
                             frame?.contentWindow?.postMessage({ type: 'od:url-selection-bridge-probe' }, '*');
                             syncBridgeModes(frame);
                             // Tip-yield: sync tip rect before async remasure (459).
-                            applyTipRemountSyncHostMeasureAfterSrcDocLoad(frame);
+                            applyTipRemountSyncHostMeasureAfterSrcDocLoadWithRetry(frame);
                             requestTipRemountRemasureAfterSrcDocLoad(frame);
+                            // Sticky deck fit may arm settle while needsFit is false (464).
+                            scheduleTipRemountRemasureAfterDeckHostFitSettle(
+                              () => frame ?? urlPreviewIframeRef.current,
+                            );
                             replayManualEditStylesToIframe(frame);
                             if (useUrlLoadPreview) restorePreviewScrollPosition();
                             if (needsDeckHostViewportFit) {
@@ -15343,10 +15464,6 @@ function HtmlViewer({
                                 () => frame ?? urlPreviewIframeRef.current,
                                 deckPreviewFitScale,
                                 deckPreviewFitOptions,
-                              );
-                              // Tip-yield: remasure after host-fit scale settle (460).
-                              scheduleTipRemountRemasureAfterDeckHostFitSettle(
-                                () => frame ?? urlPreviewIframeRef.current,
                               );
                             }
                           }}
@@ -15375,8 +15492,12 @@ function HtmlViewer({
                             frame?.contentWindow?.postMessage({ type: 'od:url-selection-bridge-probe' }, '*');
                             syncBridgeModes(frame);
                             // Tip-yield: sync tip rect before async remasure (459).
-                            applyTipRemountSyncHostMeasureAfterSrcDocLoad(frame);
+                            applyTipRemountSyncHostMeasureAfterSrcDocLoadWithRetry(frame);
                             requestTipRemountRemasureAfterSrcDocLoad(frame);
+                            // Sticky deck fit may arm settle while needsFit is false (464).
+                            scheduleTipRemountRemasureAfterDeckHostFitSettle(
+                              () => frame ?? urlPreviewIframeRef.current,
+                            );
                             replayManualEditStylesToIframe(frame);
                             if (useUrlLoadPreview) restorePreviewScrollPosition();
                             if (needsDeckHostViewportFit) {
@@ -15389,10 +15510,6 @@ function HtmlViewer({
                                 () => frame ?? urlPreviewIframeRef.current,
                                 deckPreviewFitScale,
                                 deckPreviewFitOptions,
-                              );
-                              // Tip-yield: remasure after host-fit scale settle (460).
-                              scheduleTipRemountRemasureAfterDeckHostFitSettle(
-                                () => frame ?? urlPreviewIframeRef.current,
                               );
                             }
                           }}
@@ -15457,8 +15574,12 @@ function HtmlViewer({
                           replayInspectOverridesToIframe(frame);
                           syncBridgeModes(frame);
                           // Tip-yield: sync tip rect, then async remasure on the live tip document (452/459).
-                          applyTipRemountSyncHostMeasureAfterSrcDocLoad(frame);
+                          applyTipRemountSyncHostMeasureAfterSrcDocLoadWithRetry(frame);
                           requestTipRemountRemasureAfterSrcDocLoad(frame);
+                          // Sticky deck fit may arm settle while needsFit is false (464).
+                          scheduleTipRemountRemasureAfterDeckHostFitSettle(
+                            () => frame ?? srcDocPreviewIframeRef.current,
+                          );
                           replayManualEditStylesToIframe(frame);
                           syncCachedSlideStateToIframe(frame);
                           if (effectiveDeck) {
@@ -15467,10 +15588,6 @@ function HtmlViewer({
                                 () => frame ?? srcDocPreviewIframeRef.current,
                                 deckPreviewFitScale,
                                 deckPreviewFitOptions,
-                              );
-                              // Tip-yield: remasure after host-fit scale settle (460).
-                              scheduleTipRemountRemasureAfterDeckHostFitSettle(
-                                () => frame ?? srcDocPreviewIframeRef.current,
                               );
                             }
                             scheduleDeckPreviewFitNudges(
