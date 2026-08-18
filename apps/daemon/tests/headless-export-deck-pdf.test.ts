@@ -390,6 +390,26 @@ describe('buildDeckPrintCss', () => {
     expect(css).toMatch(/background:\s*var\(--bg,[^)]*var\(--paper/);
     expect(css).not.toContain('background: var(--shell, #0a0c10)');
     expect(css).not.toContain('box-shadow: 0 12px 48px');
+    // Preserve flex Motif covers — do not force slide display:block.
+    expect(css).not.toMatch(/\.slide[^{]*\{[^}]*display:\s*block\s*!important/);
+  });
+
+  it('deck PDF page options use PPT inches + scale (not 1920px MediaBox)', async () => {
+    const { resolveDeckPdfPagePdfOptions } = await import('../src/headless-export.js');
+    const opts = resolveDeckPdfPagePdfOptions();
+    expect(opts.width).toBe('13.333333in');
+    expect(opts.height).toBe('7.5in');
+    expect(opts.preferCSSPageSize).toBe(false);
+    expect(opts.scale).toBeCloseTo(2 / 3, 5);
+    expect(opts.width).not.toContain('px');
+    const source = fs.readFileSync(
+      path.join(__dirname, '..', 'src', 'headless-export.ts'),
+      'utf8',
+    );
+    expect(source).toContain('buildDeckPdfPagePdfOptions');
+    expect(source).not.toMatch(
+      /deckPdfOptions[\s\S]{0,400}width:\s*`\$\{DECK_WIDTH\}px`/,
+    );
   });
 
   it('applyPdfStyles uses paper-first background chain for deck exports', () => {

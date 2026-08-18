@@ -17,6 +17,7 @@ import {
   injectDeckHtmlExportViewportScript as injectSharedDeckHtmlExportViewportScript,
   buildDeckHtmlExportStaticRevealScript as buildSharedDeckHtmlExportStaticRevealScript,
   buildDeckPrintCss as buildSharedDeckPrintCss,
+  buildDeckPdfPagePdfOptions,
 } from '@open-design/contracts';
 
 import {
@@ -458,15 +459,18 @@ function deckPdfOptions(deck: boolean, _slideCount: number) {
       width: '1440px',
     };
   }
-  // Pin 1920×1080 per page once every slide is a block-flow segment.
-  // preferCSSPageSize alone fell back to A4 in headless Chromium; explicit
-  // width/height matches OD desktop printToPDF sizing.
+  // PPT MediaBox (13.333″×7.5″) + scale so 1920×1080 CSS layout fits.
+  // Passing width/height as `1920px` made Chromium emit ~20″×11.25″ pages
+  // (96 CSS-px/in), so viewer 100% looked ~1.5× too large vs PowerPoint.
   return {
     ...base,
-    preferCSSPageSize: false,
-    width: `${DECK_WIDTH}px`,
-    height: `${DECK_HEIGHT}px`,
+    ...buildDeckPdfPagePdfOptions(),
   };
+}
+
+/** Test/SSOT surface for deck PDF paper options (see contracts). */
+export function resolveDeckPdfPagePdfOptions() {
+  return buildDeckPdfPagePdfOptions();
 }
 
 export async function renderHeadlessImage(

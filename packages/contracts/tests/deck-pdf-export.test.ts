@@ -14,6 +14,11 @@ import {
   injectDeckFlattenScript,
   patchArtifactDeckPrintCss,
   stripStaleDeckExportArtifacts,
+  buildDeckPdfPagePdfOptions,
+  deckPdfPrintScale,
+  DECK_PDF_PAGE_WIDTH_IN,
+  DECK_PDF_PAGE_HEIGHT_IN,
+  DECK_HTML_EXPORT_FIT_PAD_PX,
 } from '../src/html/deckPdfExport.js';
 
 describe('stripStaleDeckExportArtifacts', () => {
@@ -170,6 +175,21 @@ describe('buildDeckPrintCss', () => {
     expect(css).toContain('.slide.hero.dark::before');
     expect(css).toContain('display: block !important');
     expect(css).not.toMatch(/\n\s*flex-direction:\s*column\s*!important/);
+    // PPT inches — not 1920px (@page px → ~20″ MediaBox at 96dpi).
+    expect(css).toContain(`@page { size: ${DECK_PDF_PAGE_WIDTH_IN}in ${DECK_PDF_PAGE_HEIGHT_IN}in; margin: 0; }`);
+    expect(css).not.toMatch(/@page\s*\{\s*size:\s*1920px/);
+  });
+});
+
+describe('buildDeckPdfPagePdfOptions', () => {
+  it('uses PPT inch paper + scale so 1920 CSS px fits viewer 100%', () => {
+    const opts = buildDeckPdfPagePdfOptions();
+    expect(opts.preferCSSPageSize).toBe(false);
+    expect(opts.width).toBe(`${DECK_PDF_PAGE_WIDTH_IN}in`);
+    expect(opts.height).toBe(`${DECK_PDF_PAGE_HEIGHT_IN}in`);
+    expect(opts.scale).toBeCloseTo(2 / 3, 5);
+    expect(deckPdfPrintScale()).toBe(opts.scale);
+    expect(opts.width).not.toContain('px');
   });
 });
 
@@ -184,6 +204,10 @@ describe('buildDeckHtmlExportScreenCss', () => {
     expect(css).not.toContain('display: contents !important');
     expect(css).not.toContain('break-after: page !important');
     expect(css).not.toContain('@media print');
+    // Do not force display:block on slides — preserves Capsule flex centering.
+    expect(css).not.toMatch(
+      /\.slide[^{]*\{[^}]*display:\s*block\s*!important/,
+    );
     // Stage must keep template paper/::before grid (not forced transparent).
     expect(css).not.toMatch(
       /\.deck,\s*\.deck-stage[\s\S]{0,500}background:\s*transparent\s*!important/,
@@ -196,14 +220,15 @@ describe('buildDeckHtmlExportScreenCss', () => {
 });
 
 describe('buildDeckHtmlExportStaticRevealScript', () => {
-  it('reveals inactive slides and hides deck chrome without forcing flex-column', () => {
+  it('reveals inactive slides and preserves flex without forcing block', () => {
     const script = buildDeckHtmlExportStaticRevealScript();
     expect(script).toContain("classList.add('active')");
     expect(script).toContain('.deck-counter');
     expect(script).toContain('.nav-dots');
     expect(script).toContain("display', 'none', 'important'");
-    expect(script).toContain("display', 'block', 'important'");
-    expect(script).not.toContain("flex-direction', 'column'");
+    expect(script).toContain("removeProperty('display')");
+    expect(script).toContain("display === 'flex'");
+    expect(script).not.toContain("display', 'block', 'important'");
   });
 });
 
@@ -228,10 +253,11 @@ describe('buildStandaloneDeckHtmlDocument', () => {
     expect(out).toContain('data-teamver-static-html-export-fallback');
     expect(out).toContain('data-od-html-export-reveal');
     expect(out).toContain('data-od-html-export-viewport');
+    expect(out).toContain(`content="width=1920"`);
     expect(out).toMatch(/var\(--bg,\s*var\(--paper/);
     expect(out).not.toContain('background: var(--shell, #0a0c10)');
     expect(out).toContain('.nav-dots');
-    expect(out).not.toContain("flex-direction', 'column'");
+    expect(out).not.toContain("display', 'block', 'important'");
   });
 
   it('relaxes persisted .slide surface bleed before Motif stylesheet heal', () => {
@@ -248,12 +274,15 @@ describe('buildStandaloneDeckHtmlDocument', () => {
 });
 
 describe('buildDeckHtmlExportViewportScript', () => {
-  it('sets --od-html-export-scale on load and resize', () => {
+  it('letterboxes W+H like preview with pad 32', () => {
     const script = buildDeckHtmlExportViewportScript();
     expect(script).toContain('--od-html-export-scale');
     expect(script).toContain('window.addEventListener(\'resize\'');
     expect(script).toContain('visualViewport');
     expect(script).toContain('1920');
+    expect(script).toContain('1080');
+    expect(script).toContain(String(DECK_HTML_EXPORT_FIT_PAD_PX));
+    expect(script).toContain('(vp.h - PAD) / SLIDE_H');
   });
 });
 
@@ -268,12 +297,14 @@ describe('injectDeckHtmlExportViewportScript', () => {
 });
 
 describe('buildDeckHtmlExportFinalizeLayoutJs', () => {
-  it('clears print-flatten inline sizing from html/body and slides', () => {
+  it('clears print-flatten inline sizing and locks viewport to 1920', () => {
     const script = buildDeckHtmlExportFinalizeLayoutJs();
     expect(script).toContain('removeProperty');
     expect(script).toContain('break-after');
     expect(script).toContain('meta[name="viewport"]');
     expect(script).toContain('--od-html-export-scale');
+    expect(script).toContain("content', 'width=1920'");
+    expect(script).not.toMatch(/setAttribute\('content',\s*'width=device-width/);
   });
 });
 

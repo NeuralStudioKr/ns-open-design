@@ -21,6 +21,39 @@ export const DECK_CHROME_HIDE_SELECTOR =
 export const DECK_EXPORT_WIDTH = 1920;
 export const DECK_EXPORT_HEIGHT = 1080;
 
+/**
+ * Widescreen PPT page size (inches). Headless used to pass `1920px`/`1080px`
+ * into Playwright `page.pdf`, which Chromium treats as CSS-px → inches at 96dpi
+ * (~20″×11.25″). Viewer 100% then looked ~1.5× larger than PowerPoint.
+ * Keep design layout at 1920×1080 CSS px and scale onto this MediaBox.
+ */
+export const DECK_PDF_PAGE_WIDTH_IN = 13.333333;
+export const DECK_PDF_PAGE_HEIGHT_IN = 7.5;
+export const DECK_PDF_CSS_DPI = 96;
+
+/** Match preview compact letterbox pad (`srcdoc` stacked-deck fit). */
+export const DECK_HTML_EXPORT_FIT_PAD_PX = 32;
+
+/** Scale 1920×1080 CSS layout onto PPT-sized paper. */
+export function deckPdfPrintScale(): number {
+  return (DECK_PDF_PAGE_WIDTH_IN * DECK_PDF_CSS_DPI) / DECK_EXPORT_WIDTH;
+}
+
+/** Playwright / Chromium `page.pdf` paper options for deck exports. */
+export function buildDeckPdfPagePdfOptions(): {
+  preferCSSPageSize: false;
+  width: string;
+  height: string;
+  scale: number;
+} {
+  return {
+    preferCSSPageSize: false,
+    width: `${DECK_PDF_PAGE_WIDTH_IN}in`,
+    height: `${DECK_PDF_PAGE_HEIGHT_IN}in`,
+    scale: deckPdfPrintScale(),
+  };
+}
+
 function deckSlideSelectorList(): string[] {
   return DECK_SLIDE_SELECTOR.split(',').map((sel) => sel.trim());
 }
@@ -61,6 +94,9 @@ function injectExportSnippetBeforeBodyClose(html: string, snippet: string): stri
  */
 export function buildStandaloneDeckHtmlDocument(html: string): string {
   const cleaned = patchArtifactDeckPrintCss(healDeckHtmlForStandaloneExport(html));
+  // Lock vw/vh to the design canvas (same as preview compact meta) so Motif %
+  // and title clamp(…vw…) stay aligned after zoom fit.
+  const viewportMeta = `<meta name="viewport" content="width=${DECK_EXPORT_WIDTH}">`;
   const style = `<style data-teamver-static-html-export-fallback>
 html, body {
   margin: 0 !important;
@@ -72,7 +108,7 @@ html, body {
 ${buildDeckHtmlExportScreenCss()}
 </style>`;
   const revealScript = `<script data-od-html-export-reveal>${buildDeckHtmlExportStaticRevealScript()}</script>`;
-  const withHead = injectExportSnippetIntoHead(cleaned, style);
+  const withHead = injectExportSnippetIntoHead(cleaned, `${viewportMeta}${style}`);
   const withReveal = injectExportSnippetBeforeBodyClose(withHead, revealScript);
   return injectDeckHtmlExportViewportScript(withReveal);
 }
@@ -195,8 +231,9 @@ export function buildDeckHtmlExportScreenCss(): string {
   }
   ${slidesNotActive},
   ${slides} {
-    /* Do not force flex-direction:column — absolute/split covers collapse. */
-    display: block !important;
+    /* Do NOT force display:block — Capsule/flex covers use display:flex +
+       justify-content; block drops titles relative to absolute Motif pills.
+       Reveal script adds .active so template :not(.active){display:none} lifts. */
     flex: 0 0 auto !important;
     position: relative !important;
     inset: auto !important;
@@ -232,14 +269,30 @@ export function buildDeckHtmlExportStaticRevealScript(): string {
   var chrome = ${JSON.stringify(DECK_CHROME_HIDE_SELECTOR)};
   document.querySelectorAll(slides).forEach(function (el) {
     el.classList.add('active');
-    // Match screen CSS: do NOT force flex-direction:column — absolute Motif
-    // overlays / split covers (Capsule, Cobalt) collapse into a single column.
-    el.style.setProperty('display', 'block', 'important');
+    el.removeAttribute('hidden');
+    el.removeAttribute('aria-hidden');
+    // Clear prior inline display so template flex/grid can win after .active.
+    el.style.removeProperty('display');
+    el.style.removeProperty('flex-direction');
     el.style.setProperty('position', 'relative', 'important');
     el.style.setProperty('inset', 'auto', 'important');
     el.style.setProperty('visibility', 'visible', 'important');
     el.style.setProperty('opacity', '1', 'important');
-    el.style.removeProperty('flex-direction');
+    var computed = window.getComputedStyle(el);
+    if (computed.display === 'none') {
+      // Still hidden (template used display:none without :not(.active)).
+      el.style.setProperty('display', 'flex', 'important');
+      el.style.setProperty('flex-direction', 'column', 'important');
+    } else if (computed.display === 'flex' || computed.display === 'inline-flex') {
+      el.style.setProperty('display', 'flex', 'important');
+      el.style.setProperty('flex-direction', computed.flexDirection || 'column', 'important');
+      if (computed.justifyContent && computed.justifyContent !== 'normal') {
+        el.style.setProperty('justify-content', computed.justifyContent, 'important');
+      }
+      if (computed.alignItems && computed.alignItems !== 'normal') {
+        el.style.setProperty('align-items', computed.alignItems, 'important');
+      }
+    }
   });
   document.querySelectorAll(chrome).forEach(function (el) {
     el.style.setProperty('display', 'none', 'important');
@@ -258,20 +311,25 @@ export function buildDeckHtmlExportStaticRevealScript(): string {
 })();`;
 }
 
-/** Keeps downloaded deck HTML scaled to the browser viewport width. */
+/** Letterbox downloaded deck HTML like preview (W+H, pad 32). */
 export function buildDeckHtmlExportViewportScript(): string {
   return `
 (function () {
   var SLIDE_W = ${DECK_EXPORT_WIDTH};
-  var PAD = 48;
-  function viewportWidth() {
-    if (window.visualViewport && window.visualViewport.width > 0) {
-      return window.visualViewport.width;
+  var SLIDE_H = ${DECK_EXPORT_HEIGHT};
+  var PAD = ${DECK_HTML_EXPORT_FIT_PAD_PX};
+  function viewportSize() {
+    var w = window.innerWidth || document.documentElement.clientWidth || SLIDE_W;
+    var h = window.innerHeight || document.documentElement.clientHeight || SLIDE_H;
+    if (window.visualViewport) {
+      if (window.visualViewport.width > 0) w = window.visualViewport.width;
+      if (window.visualViewport.height > 0) h = window.visualViewport.height;
     }
-    return window.innerWidth || document.documentElement.clientWidth || SLIDE_W;
+    return { w: w, h: h };
   }
   function fit() {
-    var scale = Math.min(1, (viewportWidth() - PAD) / SLIDE_W);
+    var vp = viewportSize();
+    var scale = Math.min(1, (vp.w - PAD) / SLIDE_W, (vp.h - PAD) / SLIDE_H);
     if (!isFinite(scale) || scale <= 0) scale = 1;
     document.documentElement.style.setProperty('--od-html-export-scale', String(scale));
   }
@@ -321,9 +379,11 @@ export function buildDeckHtmlExportFinalizeLayoutJs(): string {
   if (!viewport) {
     viewport = document.createElement('meta');
     viewport.setAttribute('name', 'viewport');
-    viewport.setAttribute('content', 'width=device-width, initial-scale=1');
     document.head.appendChild(viewport);
   }
+  // Design-canvas lock (same as preview compact meta). Avoid locking to the
+  // browser device width or Motif % and title vw drift apart under zoom fit.
+  viewport.setAttribute('content', 'width=${DECK_EXPORT_WIDTH}');
 })();`;
 }
 
@@ -354,7 +414,7 @@ export function buildDeckGuizangPrintFallbackCss(): string {
 export function buildDeckPrintCss(): string {
   return `
 @media print {
-  @page { size: ${DECK_EXPORT_WIDTH}px ${DECK_EXPORT_HEIGHT}px; margin: 0; }
+  @page { size: ${DECK_PDF_PAGE_WIDTH_IN}in ${DECK_PDF_PAGE_HEIGHT_IN}in; margin: 0; }
   ${buildDeckFlattenCssRules()}${buildDeckGuizangPrintFallbackCss()}
 }`;
 }
