@@ -181,6 +181,7 @@ html, body { overflow: visible !important; height: auto !important; }
     expect(upgraded).toContain(OFFICIAL_LOOK_STACKED_NEUTRALIZE_MARKER);
     expect(upgraded).toContain('position: relative !important');
     expect(upgraded).toContain('width: 1920px !important');
+    expect(upgraded).toMatch(/flex-direction:\s*unset/);
     expect(upgraded).toContain('content="width=1920, initial-scale=1, maximum-scale=1"');
     expect(upgraded).not.toContain('width=device-width');
   });
@@ -317,6 +318,59 @@ html, body { overflow: visible !important; height: auto !important; }
     const merged = mergeOfficialDeckLookCss(COMPACT_FILL, assets);
     expect(merged).toMatch(/<div[^>]*grain-overlay/);
     expect(merged).toContain('shadcn/ui');
+  });
+
+  it('neutralizes official presenter layout so compact 16:9 split slides keep their row flex', () => {
+    const official = loadOfficialLookSource(join(EXAMPLES_DIR, 'html-ppt-zhangzara-capsule/example.html'));
+    const assets = extractOfficialDeckLookAssets(official)!;
+    expect(assets.css).toMatch(/flex-direction\s*:\s*column/);
+    expect(assets.css).toMatch(/position\s*:\s*absolute/);
+
+    const splitFill = `<!doctype html><html lang="ko"><head><meta charset="utf-8"></head><body>
+<section class="slide" style="display:flex;gap:0;padding:0;width:1920px;height:1080px">
+  <div class="split-left"><h2>마이그레이션 전략</h2></div>
+  <div class="split-right" style="width:620px;flex-shrink:0">마이그레이션 단계</div>
+</section>
+</body></html>`;
+    const merged = mergeOfficialDeckLookCss(splitFill, assets);
+    expect(merged).toContain(OFFICIAL_DECK_LOOK_STYLE_ATTR);
+    expect(merged).toContain('stacked preview/export: Motif paint + fixed 1920');
+    expect(merged).toMatch(/flex-direction:\s*unset/);
+    expect(merged).toMatch(/position:\s*relative\s*!important/);
+    expect(merged).toMatch(/inset:\s*auto\s*!important/);
+    expect(merged).toMatch(/width:\s*1920px\s*!important/);
+    expect(merged).toMatch(/height:\s*1080px\s*!important/);
+    expect(merged).toContain('.pill-coral');
+    expect(merged).toContain('마이그레이션 전략');
+    expect(merged).not.toMatch(/flex-direction:\s*unset\s*!important/);
+
+    const twice = mergeOfficialDeckLookCss(merged, assets);
+    expect(twice).toBe(merged);
+  });
+
+  it('refreshes stale opacity-only neutralize on an already-merged official look sheet', () => {
+    const stale = `<!doctype html><html><head>
+<style data-od-official-look-css>
+.slide { position:absolute; inset:0; width:100%; height:100%; display:flex; flex-direction:column; opacity:0; }
+.pill-coral { background:#E85D4E; }
+/* stacked preview/export: keep Motif paint, do not hide non-active slides */
+html, body { overflow: visible !important; height: auto !important; }
+.slide, .slide.active, .slide.is-active {
+  opacity: 1 !important;
+  pointer-events: auto !important;
+}
+</style></head><body>
+<section class="slide" style="display:flex;padding:0">split</section>
+</body></html>`;
+    const refreshed = mergeOfficialDeckLookCss(stale, {
+      css: '.slide{opacity:0}.pill-coral{background:#E85D4E}',
+      fontLinks: [],
+      motifHtml: [],
+    });
+    expect(refreshed).toContain('stacked preview/export: Motif paint + fixed 1920');
+    expect(refreshed).toMatch(/flex-direction:\s*unset/);
+    expect(refreshed).toContain('.pill-coral { background:#E85D4E; }');
+    expect(refreshed).toContain('split');
   });
 
   it('resolves official deck template ids from metadata or skillIds', () => {

@@ -87,11 +87,27 @@ describe('repairArtifactStyleSheets', () => {
     expect(repaired).toMatch(/\.deco-pill\{/);
   });
 
-  it('does not rewrite host-injected official look CSS', () => {
+  it('does not rewrite host-injected official look Motif paint', () => {
     const grain =
       '.grain-overlay{background-image:url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\'%3E%3C/svg%3E")}';
     const html = `<!doctype html><html><head><style data-od-official-look-css>${grain}</style></head><body></body></html>`;
     expect(repairArtifactStyleSheets(html)).toContain(grain);
     expect(repairArtifactStyleSheets(html)).toContain('data-od-official-look-css');
+  });
+
+  it('refreshes stale official look neutralize so split slides are not forced into a column', () => {
+    const html = `<!doctype html><html><head>
+<style data-od-official-look-css>
+.slide { position:absolute; inset:0; width:100%; height:100%; display:flex; flex-direction:column; }
+.grain-overlay{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3C/svg%3E")}
+/* stacked preview/export: keep Motif paint, do not hide non-active slides */
+html, body { overflow: visible !important; height: auto !important; }
+.slide { opacity: 1 !important; }
+</style></head><body><section class="slide" style="display:flex;padding:0">row</section></body></html>`;
+    const repaired = repairArtifactStyleSheets(html);
+    expect(repaired).toContain('stacked preview/export: Motif paint + fixed 1920');
+    expect(repaired).toMatch(/flex-direction:\s*unset/);
+    expect(repaired).toContain('data:image/svg+xml');
+    expect(repaired).toContain('row');
   });
 });

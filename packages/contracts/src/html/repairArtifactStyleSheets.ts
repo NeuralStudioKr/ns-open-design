@@ -1,3 +1,5 @@
+import { ensureOfficialLookStackedCanvasNeutralize } from './deck-template-look-css.js';
+
 /**
  * Repair deck `<style>` sheets that Motif/class chrome depends on.
  *
@@ -107,14 +109,16 @@ export function repairStyleSheetText(css: string): string {
 export function repairArtifactStyleSheets(html: string): string {
   const source = String(html ?? '');
   if (!source || !/<style\b/i.test(source)) return source;
-  return source.replace(/<style\b([^>]*)>([\s\S]*?)<\/style>/gi, (full, attrs: string, css: string) => {
-    // Host-injected official look CSS is already trusted; remnant heal must
+  const repairedSheets = source.replace(/<style\b([^>]*)>([\s\S]*?)<\/style>/gi, (full, attrs: string, css: string) => {
+    // Host-injected official look Motif paint is trusted; remnant heal must
     // not rewrite grain `data:image/svg+xml` or mid-sheet Motif rules.
+    // Presenter-chrome neutralize is refreshed separately.
     if (/\bdata-od-official-look-css\b/i.test(String(attrs ?? ''))) return full;
     const repaired = repairStyleSheetText(css);
     if (repaired === css) return full;
     return `<style${attrs}>${repaired}</style>`;
   });
+  return ensureOfficialLookStackedCanvasNeutralize(repairedSheets);
 }
 
 const SURFACE_BLEED_ATTR = 'data-od-slide-surface-bleed';

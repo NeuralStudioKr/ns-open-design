@@ -500,6 +500,64 @@ cur=n;
     expect(buildSrcdoc(html, { deck: true })).toContain('data-od-deck-stacked-fix');
   });
 
+  it('does not force stacked slides into a centered column that clips 16:9 split layouts', async () => {
+    const html = [
+      '<!doctype html><html lang="ko"><head>',
+      '<style data-od-official-look-css>',
+      '.slide { position:absolute; inset:0; width:100%; height:100%; display:flex; flex-direction:column; padding:3rem 4rem; overflow:hidden; }',
+      '.pill-coral { background:#E85D4E; }',
+      '/* stacked preview/export: keep Motif paint, do not hide non-active slides */',
+      'html, body { overflow: visible !important; height: auto !important; }',
+      '.slide, .slide.active { opacity: 1 !important; pointer-events: auto !important; }',
+      '</style></head><body>',
+      '<section class="slide" style="display:flex;gap:0;padding:0;width:1920px;height:1080px">',
+      '<div class="split-left"><h2>마이그레이션 전략</h2></div>',
+      '<div class="split-right" style="width:620px;flex-shrink:0">마이그레이션 단계</div>',
+      '</section>',
+      '<section class="slide" style="display:flex;flex-direction:column;padding:90px 140px;width:1920px;height:1080px">',
+      '<h2>체크리스트</h2>',
+      '</section>',
+      '</body></html>',
+    ].join('');
+
+    const srcdoc = buildSrcdoc(html, { deck: true });
+    expect(srcdoc).toContain('data-od-deck-stacked-fix');
+    expect(srcdoc).toContain('stacked preview/export: Motif paint + fixed 1920');
+    const hostSlideCss = srcdoc.match(/#od-stacked-deck-stage\s*>\s*\.slide\s*\{[\s\S]*?\}/)?.[0] ?? '';
+    expect(hostSlideCss).toContain('width: 1920px');
+    expect(hostSlideCss).toContain('height: 1080px');
+    expect(hostSlideCss).not.toMatch(/flex-direction\s*:\s*column/);
+    expect(hostSlideCss).not.toMatch(/justify-content\s*:\s*center/);
+
+    const match = srcdoc.match(/<script data-od-deck-bridge>([\s\S]*?)<\/script>/);
+    expect(match?.[1]).toBeTruthy();
+    const { JSDOM } = await import('jsdom');
+    const dom = new JSDOM(srcdoc.replace(/<script\b[\s\S]*?<\/script>/gi, ''), {
+      runScripts: 'outside-only',
+      pretendToBeVisual: true,
+    });
+    const win = dom.window;
+    Object.defineProperty(win, 'parent', { configurable: true, value: { postMessage: () => {} } });
+    new win.Function(match![1]!).call(win);
+    win.dispatchEvent(new win.MessageEvent('message', {
+      data: { type: 'od:deck-host-viewport', width: 960, height: 540, scale: 1 },
+    }));
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 100));
+
+    const slideEls = Array.from(win.document.querySelectorAll('#od-stacked-deck-stage > .slide')) as HTMLElement[];
+    expect(slideEls).toHaveLength(2);
+    expect(slideEls[0]?.style.display).toBe('flex');
+    const splitDir = String(win.getComputedStyle(slideEls[0]!).flexDirection || '').toLowerCase();
+    expect(splitDir).not.toBe('column');
+    expect(['row', 'unset', 'initial', '']).toContain(splitDir);
+    expect(String(win.getComputedStyle(slideEls[0]!).justifyContent || '').toLowerCase()).not.toBe('center');
+
+    win.dispatchEvent(new win.MessageEvent('message', { data: { type: 'od:slide', action: 'next' } }));
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 50));
+    expect(slideEls[1]?.style.display).toBe('flex');
+    expect(String(win.getComputedStyle(slideEls[1]!).flexDirection || '').toLowerCase()).toBe('column');
+  });
+
   it('normalizes compact stacked decks for standalone export without hiding slides', () => {
     const html = [
       '<!doctype html><html><head><meta name="viewport" content="width=device-width"></head><body>',

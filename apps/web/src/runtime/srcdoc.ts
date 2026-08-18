@@ -2588,9 +2588,6 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
   left: 0 !important;
   overflow: hidden !important;
   display: none !important;
-  flex-direction: column;
-  justify-content: center;
-  align-items: stretch;
 }
 </style>`
     : '';

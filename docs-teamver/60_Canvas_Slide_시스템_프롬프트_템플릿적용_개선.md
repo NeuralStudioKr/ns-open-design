@@ -200,6 +200,23 @@ full `example.html`을 시스템 프롬프트에 넣지 않는다는 방침은 �
 - [x] 인라인 장별 색도 per-slide paint
 - [x] daemon cover-batch가 persisted flatten bleed를 `html, body`로 완화 (cache v6)
 
+### 0.40 2026-08-18 — 16:9 분할 슬라이드 column 강제 잘림
+
+§0.39가 absolute 100%는 풀었지만, 공식 `.slide { flex-direction:column }`과 preview host `flex-direction:column; justify-content:center`가 남았다. 좌우 split(`display:flex`만, flex-direction 없음)이 세로로 쌓이며 제목/우측 카드가 `overflow:hidden`에 잘림.
+
+- neutralize에 `flex-direction:unset` (인라인 column은 유지)
+- v17 고정캔버스 neutralize도 heal에서 업그레이드
+- stacked host는 1920×1080 lock만
+- export cache `v18`
+
+구현 현황:
+
+- [x] flex-direction unset (not !important)
+- [x] stale v17 neutralize refresh
+- [x] stacked host column/center 제거
+- [x] split-slide red spec
+- [x] export cache v18
+
 ### 0.39 2026-08-18 — official look absolute 100% 잘림 방지
 
 - stacked neutralize = `position:relative` + 1920×1080 (프레젠테이션 absolute 100% 해제)
@@ -1055,6 +1072,7 @@ User-message 쪽 `[Existing deck edit]` / `<attached-preview-comments>` 주입�
 | 2026-08-13 | **§0.0 정책 개정** — template = layout vocabulary + visual look, 페이지 수/순서/구성은 브리프 기반. content-swap → pick-and-choose layout roles. daemon Clone default count = 6 (shells.length 아님), `pickTemplateShells` role-based scoring 도입. `template-visual-kit.ts` HARD_RULES 재작성, `DEFAULT_MAX_CHARS` 12000 → 14000. |
 | 2026-08-18 | Clone content-fill motif 보정 — 8/13 SVG hang 방지 패치가 first fill에서 `Motif sprites`/`Decoration CSS`/`Layout CSS`를 통째로 생략해 Daisy/Capsule 템플릿 정체성이 약해졌다. `slimTemplateVisualKitForFill`이 큰 SVG sprite sheet와 전체 stylesheet dump는 계속 제거하되, Daisy star/rainbow·Capsule pill/capsule·Terminal scanline 같은 compact motif recipe와 짧은 Decoration/Layout CSS cue를 보존하도록 변경했다. |
 | 2026-08-18 | §0.20 — html-ppt identity scope. 공유 `:root --bg:#ffffff` 대신 `.tpl-*` host 토큰/슬라이드 surface/폰트를 kit 계약으로 쓰고, SKILL `copy index.html` filesystem 지시를 neutralize. |
+| 2026-08-18 | §0.40 — 16:9 split이 host/official `flex-direction:column`에 잘림. unset + host lock-only · cache v18. |
 | 2026-08-18 | §0.39 — official look absolute 100% 잘림 방지. stacked 1920×1080 neutralize · viewport 1920 · cache v17. |
 | 2026-08-18 | §0.38 — Preview/PDF/HTML 잔여 드리프트. desktop scale · @page inches · grain 보존 · HTML reveal 패리티 · cache v16. |
 | 2026-08-18 | §0.37 — Write-tool `deck-2` persist skip 금지 · sibling→`deck.html` 승격 · `preservedFilled` · revision cover bust. |

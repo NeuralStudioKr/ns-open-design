@@ -47,9 +47,11 @@ const GENERIC_LOOK_PROOF_CLASS_RE =
 
 /**
  * Official Capsule/etc. CSS is authored for one-slide presentation mode
- * (`.slide { position:absolute; inset:0; width/height:100% }`). Stacked
- * preview/PDF/HTML need a fixed 1920×1080 flow canvas or Motif pills and
- * title blocks clip to the browser viewport.
+ * (`.slide { position:absolute; inset:0; width/height:100%; flex-direction:column }`).
+ * Stacked preview/PDF/HTML need a fixed 1920×1080 flow canvas or Motif
+ * pills and title blocks clip to the browser viewport. `flex-direction`
+ * is unset (not `!important`) so inline column slides keep their axis and
+ * split slides that only set `display:flex` stay `row`.
  */
 export const LOOK_NEUTRALIZE_CSS = `
 /* ${OFFICIAL_LOOK_STACKED_NEUTRALIZE_MARKER}×1080 canvas (not presentation absolute 100%) */
@@ -87,12 +89,16 @@ html, body {
   margin-left: auto !important;
   margin-right: auto !important;
   box-sizing: border-box !important;
+  flex-direction: unset;
 }
 `;
 
 /** Legacy neutralize that only forced opacity — leaves absolute 100% clipping. */
 const LEGACY_LOOK_NEUTRALIZE_RE =
   /\/\*\s*stacked preview\/export:[^*]*\*\/\s*html,\s*body\s*\{[^}]*\}\s*\.slide[^\{]*\{[^}]*opacity:\s*1\s*!important;[^}]*\}/gi;
+
+const LOOK_NEUTRALIZE_TAIL_RE =
+  /\n?\/\*\s*stacked preview\/export:[\s\S]*$/i;
 
 function hrefFromLinkTag(tag: string): string {
   const match = /\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|(\S+))/i.exec(tag);
@@ -478,14 +484,32 @@ export function mergeOfficialDeckLookCss(
   return ensureOfficialLookStackedCanvasNeutralize(mergeOfficialDeckMotifHtml(out, assets));
 }
 
+function officialLookHasCurrentNeutralize(html: string): boolean {
+  return (
+    html.includes(OFFICIAL_LOOK_STACKED_NEUTRALIZE_MARKER)
+    && /flex-direction:\s*unset/.test(html)
+  );
+}
+
+function replaceOfficialLookNeutralizeBlock(html: string): string {
+  return html.replace(
+    /(<style\b[^>]*\bdata-od-official-look-css\b[^>]*>)([\s\S]*?)(<\/style>)/i,
+    (_m, open: string, css: string, close: string) => {
+      const stripped = String(css).replace(LOOK_NEUTRALIZE_TAIL_RE, '').trimEnd();
+      return `${open}${stripped}\n${LOOK_NEUTRALIZE_CSS}\n${close}`;
+    },
+  );
+}
+
 /**
  * Upgrade legacy opacity-only neutralize (or inject missing stacked-canvas
- * rules) so persisted Capsule look CSS no longer clips Motif at device-width.
+ * rules) so persisted Capsule look CSS no longer clips Motif at device-width
+ * or forces split slides into a column.
  */
 export function ensureOfficialLookStackedCanvasNeutralize(html: string): string {
   const dest = String(html ?? '');
   if (!dest) return dest;
-  if (dest.includes(OFFICIAL_LOOK_STACKED_NEUTRALIZE_MARKER)) return dest;
+  if (officialLookHasCurrentNeutralize(dest)) return dest;
 
   const styleAttr = OFFICIAL_DECK_LOOK_STYLE_ATTR;
   if (new RegExp(`<style\\b[^>]*\\b${styleAttr}\\b`, 'i').test(dest)) {
@@ -494,11 +518,7 @@ export function ensureOfficialLookStackedCanvasNeutralize(html: string): string 
       LEGACY_LOOK_NEUTRALIZE_RE.lastIndex = 0;
       return dest.replace(LEGACY_LOOK_NEUTRALIZE_RE, LOOK_NEUTRALIZE_CSS.trim());
     }
-    return dest.replace(
-      new RegExp(`(<style\\b[^>]*\\b${styleAttr}\\b[^>]*>)([\\s\\S]*?)(<\\/style>)`, 'i'),
-      (_m, open: string, css: string, close: string) =>
-        `${open}${css}\n${LOOK_NEUTRALIZE_CSS}\n${close}`,
-    );
+    return replaceOfficialLookNeutralizeBlock(dest);
   }
 
   // Presentation-absolute slides without official look attr (hand-authored).
