@@ -340,6 +340,7 @@ import {
   shouldReleaseTipRemountChromeAfterSyncHostMeasure,
   shouldArmTipRemountFitSettleForDeckHostFit,
   shouldRemeasureTipRemountAfterDeckHostFitSettle,
+  shouldScheduleTipRemountFitSettleRemasureOnLoad,
   shouldDeferTipRemountGraceConsumeForDeckHostFitSettle,
   shouldSkipWildJumpDuringTipRemountFitSettle,
   shouldSkipWildJumpForTipRemountSelectedMember,
@@ -8071,6 +8072,12 @@ function HtmlViewer({
   ) {
     manualEditTipRemountFitSettleCancelRef.current?.();
     manualEditTipRemountFitSettleCancelRef.current = null;
+    if (!shouldScheduleTipRemountFitSettleRemasureOnLoad(
+      manualEditTipRemountFitSettleUntilRef.current,
+      Date.now(),
+    )) {
+      return;
+    }
     if (!shouldRemeasureTipRemountAfterDeckHostFitSettle(
       manualEditModeRef.current,
       selectedManualEditTargetIdsRef.current,
@@ -15441,6 +15448,10 @@ function HtmlViewer({
                             // Tip-yield: sync tip rect before async remasure (459).
                             applyTipRemountSyncHostMeasureAfterSrcDocLoadWithRetry(frame);
                             requestTipRemountRemasureAfterSrcDocLoad(frame);
+                            // Sticky deck fit may arm settle while needsFit is false (464).
+                            scheduleTipRemountRemasureAfterDeckHostFitSettle(
+                              () => frame ?? urlPreviewIframeRef.current,
+                            );
                             replayManualEditStylesToIframe(frame);
                             if (useUrlLoadPreview) restorePreviewScrollPosition();
                             if (needsDeckHostViewportFit) {
@@ -15453,10 +15464,6 @@ function HtmlViewer({
                                 () => frame ?? urlPreviewIframeRef.current,
                                 deckPreviewFitScale,
                                 deckPreviewFitOptions,
-                              );
-                              // Tip-yield: remasure after host-fit scale settle (460).
-                              scheduleTipRemountRemasureAfterDeckHostFitSettle(
-                                () => frame ?? urlPreviewIframeRef.current,
                               );
                             }
                           }}
@@ -15487,6 +15494,10 @@ function HtmlViewer({
                             // Tip-yield: sync tip rect before async remasure (459).
                             applyTipRemountSyncHostMeasureAfterSrcDocLoadWithRetry(frame);
                             requestTipRemountRemasureAfterSrcDocLoad(frame);
+                            // Sticky deck fit may arm settle while needsFit is false (464).
+                            scheduleTipRemountRemasureAfterDeckHostFitSettle(
+                              () => frame ?? urlPreviewIframeRef.current,
+                            );
                             replayManualEditStylesToIframe(frame);
                             if (useUrlLoadPreview) restorePreviewScrollPosition();
                             if (needsDeckHostViewportFit) {
@@ -15499,10 +15510,6 @@ function HtmlViewer({
                                 () => frame ?? urlPreviewIframeRef.current,
                                 deckPreviewFitScale,
                                 deckPreviewFitOptions,
-                              );
-                              // Tip-yield: remasure after host-fit scale settle (460).
-                              scheduleTipRemountRemasureAfterDeckHostFitSettle(
-                                () => frame ?? urlPreviewIframeRef.current,
                               );
                             }
                           }}
@@ -15569,6 +15576,10 @@ function HtmlViewer({
                           // Tip-yield: sync tip rect, then async remasure on the live tip document (452/459).
                           applyTipRemountSyncHostMeasureAfterSrcDocLoadWithRetry(frame);
                           requestTipRemountRemasureAfterSrcDocLoad(frame);
+                          // Sticky deck fit may arm settle while needsFit is false (464).
+                          scheduleTipRemountRemasureAfterDeckHostFitSettle(
+                            () => frame ?? srcDocPreviewIframeRef.current,
+                          );
                           replayManualEditStylesToIframe(frame);
                           syncCachedSlideStateToIframe(frame);
                           if (effectiveDeck) {
@@ -15577,10 +15588,6 @@ function HtmlViewer({
                                 () => frame ?? srcDocPreviewIframeRef.current,
                                 deckPreviewFitScale,
                                 deckPreviewFitOptions,
-                              );
-                              // Tip-yield: remasure after host-fit scale settle (460).
-                              scheduleTipRemountRemasureAfterDeckHostFitSettle(
-                                () => frame ?? srcDocPreviewIframeRef.current,
                               );
                             }
                             scheduleDeckPreviewFitNudges(

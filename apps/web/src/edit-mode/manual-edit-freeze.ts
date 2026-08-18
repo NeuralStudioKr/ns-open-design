@@ -439,6 +439,18 @@ export function shouldRemeasureTipRemountAfterDeckHostFitSettle(
 }
 
 /**
+ * onLoad may see needsDeckHostViewportFit=false while sticky fit-settle was
+ * armed from deckHostViewportFitActive — still schedule; helper no-ops when
+ * settle latch is unset (464).
+ */
+export function shouldScheduleTipRemountFitSettleRemasureOnLoad(
+  fitSettleUntilMs: number,
+  nowMs: number,
+): boolean {
+  return !tipRemountFitSettleExpired(nowMs, fitSettleUntilMs);
+}
+
+/**
  * Fit-settle window still open — do not consume tip-remount grace yet so a
  * later host-fit remasure can still skip wild-jump (460).
  */

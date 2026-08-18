@@ -129,6 +129,8 @@ describe('FileViewer revision tip advance after undo', () => {
     expect(fileViewer).toContain('shouldArmTipRemountFitSettleForDeckHostFit');
     expect(fileViewer).toContain('shouldRemeasureTipRemountAfterDeckHostFitSettle');
     expect(fileViewer).toContain('scheduleTipRemountRemasureAfterDeckHostFitSettle');
+    expect(fileViewer).toContain('shouldScheduleTipRemountFitSettleRemasureOnLoad');
+    expect(fileViewer).toContain('Sticky deck fit may arm settle while needsFit is false');
     expect(fileViewer).toContain('remeasureTipRemountAfterDeckHostFitSettle');
     expect(fileViewer).toContain('shouldDeferTipRemountGraceConsumeForDeckHostFitSettle');
     expect(fileViewer).toContain('shouldSkipWildJumpDuringTipRemountFitSettle');
@@ -138,7 +140,6 @@ describe('FileViewer revision tip advance after undo', () => {
     expect(fileViewer).toContain('refreshManualEditHostMetricsAfterTipRemountMulti');
     expect(fileViewer).toContain('Multi: force host metrics so union chrome');
     expect(fileViewer).toContain('Multi tip-yield: sibling members share the tip-remount session');
-    expect(fileViewer).toContain('Tip-yield: remasure after host-fit scale settle');
     expect(fileViewer).toContain('Selection echo / remasure: srcDoc onLoad');
     expect(fileViewer).toContain('Tip-yield: sync tip rect, then async remasure on the live tip document');
     expect(fileViewer).toContain('do NOT depend on manualEditFrozenSource');

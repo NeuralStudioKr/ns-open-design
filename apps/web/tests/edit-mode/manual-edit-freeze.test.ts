@@ -13,6 +13,7 @@ import {
   shouldReleaseTipRemountChromeAfterSyncHostMeasure,
   shouldArmTipRemountFitSettleForDeckHostFit,
   shouldRemeasureTipRemountAfterDeckHostFitSettle,
+  shouldScheduleTipRemountFitSettleRemasureOnLoad,
   shouldDeferTipRemountGraceConsumeForDeckHostFitSettle,
   shouldSkipWildJumpDuringTipRemountFitSettle,
   shouldSkipWildJumpForTipRemountSelectedMember,
@@ -302,6 +303,12 @@ describe('manual edit freeze reset', () => {
     expect(shouldRemeasureTipRemountAfterDeckHostFitSettle(false, ['a'], 2_000, 1_000)).toBe(false);
     expect(shouldRemeasureTipRemountAfterDeckHostFitSettle(true, ['a'], 1_000, 1_000)).toBe(false);
     expect(shouldRemeasureTipRemountAfterDeckHostFitSettle(true, ['a'], 0, 1_000)).toBe(false);
+  });
+
+  it('schedules fit-settle remasure on load when settle latch is armed', () => {
+    expect(shouldScheduleTipRemountFitSettleRemasureOnLoad(2_000, 1_000)).toBe(true);
+    expect(shouldScheduleTipRemountFitSettleRemasureOnLoad(1_000, 1_000)).toBe(false);
+    expect(shouldScheduleTipRemountFitSettleRemasureOnLoad(0, 1_000)).toBe(false);
   });
 
   it('defers tip-remount grace consume while deck host-fit settle is open', () => {
