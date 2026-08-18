@@ -85,6 +85,25 @@ describe("ProjectCardHtmlCover srcDoc builders", () => {
     expect(srcDoc).not.toContain('.slide:not(:first-of-type)');
   });
 
+  it("heals cover HTML with stacked-canvas neutralize and design viewport lock", () => {
+    const html = `<!doctype html><html><head>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style data-od-official-look-css>
+.slide { position:absolute; inset:0; width:100%; height:100%; opacity:0; }
+/* stacked preview/export: Motif paint + fixed 1920 — poisoned marker without relative rules */
+</style>
+</head><body>
+<section class="slide"><div class="pill-coral">Cover</div></section>
+<section class="slide">Later</section>
+</body></html>`;
+    const srcDoc = buildHtmlCoverSrcDoc(html, "/api/projects/p1/raw/deck.html", { preferDeck: true });
+    expect(srcDoc).toContain('content="width=1920, initial-scale=1, maximum-scale=1"');
+    expect(srcDoc).not.toContain("width=device-width");
+    expect(srcDoc).toContain("position: relative !important");
+    expect(srcDoc).toContain("Cover");
+    expect(srcDoc).not.toContain(">Later<");
+  });
+
   it("removes later slides from the cover DOM so absolute/manual-edit chrome cannot bleed", () => {
     const html = `<html><head></head><body>
 <section class="slide"><h1>NeuralStudio</h1></section>

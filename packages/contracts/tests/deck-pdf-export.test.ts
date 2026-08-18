@@ -281,11 +281,23 @@ describe('buildStandaloneDeckHtmlDocument', () => {
     expect(out).toContain('data-teamver-static-html-export-fallback');
     expect(out).toContain('data-od-html-export-reveal');
     expect(out).toContain('data-od-html-export-viewport');
-    expect(out).toContain(`content="width=1920"`);
+    expect(out).toContain('width=1920');
+    expect((out.match(/<meta[^>]+name=["']viewport["']/gi) ?? []).length).toBe(1);
     expect(out).toMatch(/var\(--bg,\s*var\(--paper/);
     expect(out).not.toContain('background: var(--shell, #0a0c10)');
     expect(out).toContain('.nav-dots');
     expect(out).not.toContain("display', 'block', 'important'");
+  });
+
+  it('emits a single design viewport meta (no duplicate width=1920 after heal)', () => {
+    const html = `<!doctype html><html><head>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+</head><body><section class="slide">One</section></body></html>`;
+    const out = buildStandaloneDeckHtmlDocument(html);
+    const metas = out.match(/<meta[^>]+name=["']viewport["'][^>]*>/gi) ?? [];
+    expect(metas).toHaveLength(1);
+    expect(metas[0]).toContain('width=1920');
+    expect(out).not.toContain('width=device-width');
   });
 
   it('relaxes persisted .slide surface bleed before Motif stylesheet heal', () => {

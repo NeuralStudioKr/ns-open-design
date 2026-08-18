@@ -4,6 +4,8 @@
  */
 
 import {
+  ensureOfficialLookStackedCanvasNeutralize,
+  lockDeckDesignViewportMeta,
   relaxPersistedDeckSlideSurfaceBleed,
   repairArtifactStyleSheets,
 } from "@open-design/contracts";
@@ -12,8 +14,12 @@ import { injectHtmlBaseHref } from "../runtime/authenticatedHtmlSrcDoc";
 
 /** Heal already-persisted css2 debris + flatten bleed before isolation. */
 function healCoverHtml(html: string): string {
-  return repairDeckSlideSurfaceBleed(
-    relaxPersistedDeckSlideSurfaceBleed(repairArtifactStyleSheets(html)),
+  return lockDeckDesignViewportMeta(
+    ensureOfficialLookStackedCanvasNeutralize(
+      repairDeckSlideSurfaceBleed(
+        relaxPersistedDeckSlideSurfaceBleed(repairArtifactStyleSheets(html)),
+      ),
+    ),
   );
 }
 

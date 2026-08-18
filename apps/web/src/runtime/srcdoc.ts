@@ -139,7 +139,11 @@ export function buildSrcdoc(
     : repairedHead;
   const repaired = stripConflictingSrcDocCspBaseUri(deckCanvasReady);
   // alreadyRepaired: avoid wrapPreviewHtmlShell re-running repair on full docs.
-  const wrapped = wrapPreviewHtmlShell(repaired, { alreadyRepaired: true });
+  // Fragment wraps inject a fresh device-width shell — re-lock after wrap for decks.
+  const wrappedRaw = wrapPreviewHtmlShell(repaired, { alreadyRepaired: true });
+  const wrapped = options.deck
+    ? lockDeckDesignViewportMeta(ensureOfficialLookStackedCanvasNeutralize(wrappedRaw))
+    : wrappedRaw;
   // Export docs skip od-id / source-path annotation (no selection/edit bridges).
   // OD-authored decks that already carry annotations skip the DOMParser walk.
   const sourcePaths = Boolean(options.editBridge);

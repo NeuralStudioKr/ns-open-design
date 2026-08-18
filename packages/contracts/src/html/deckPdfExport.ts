@@ -126,9 +126,8 @@ function injectExportSnippetBeforeBodyClose(html: string, snippet: string): stri
  */
 export function buildStandaloneDeckHtmlDocument(html: string): string {
   const cleaned = patchArtifactDeckPrintCss(healDeckHtmlForStandaloneExport(html));
-  // Lock vw/vh to the design canvas (same as preview compact meta) so Motif %
-  // and title clamp(…vw…) stay aligned after zoom fit.
-  const viewportMeta = `<meta name="viewport" content="width=${DECK_EXPORT_WIDTH}">`;
+  // heal already locks viewport to design 1920 — do not inject a second meta
+  // (duplicate device-width / width=1920 pairs fight Motif vw/% math).
   const style = `<style data-teamver-static-html-export-fallback>
 html, body {
   margin: 0 !important;
@@ -140,7 +139,7 @@ html, body {
 ${buildDeckHtmlExportScreenCss()}
 </style>`;
   const revealScript = `<script data-od-html-export-reveal>${buildDeckHtmlExportStaticRevealScript()}</script>`;
-  const withHead = injectExportSnippetIntoHead(cleaned, `${viewportMeta}${style}`);
+  const withHead = injectExportSnippetIntoHead(cleaned, style);
   const withReveal = injectExportSnippetBeforeBodyClose(withHead, revealScript);
   return injectDeckHtmlExportViewportScript(withReveal);
 }

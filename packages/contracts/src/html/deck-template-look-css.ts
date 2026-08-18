@@ -69,6 +69,8 @@ html, body {
   transform: none !important;
   overflow: visible !important;
 }
+/* Include .presentation > .slide so we beat catalog presentation specificity. */
+.presentation > .slide, .presentation .slide,
 .slide, .slide.active, .slide.is-active, .slide.current,
 [data-slide], [data-screen-label], section.slide, .deck-slide, .ppt-slide {
   opacity: 1 !important;
@@ -162,7 +164,25 @@ function officialLookCssLooksCurrent(css: string): boolean {
   return (
     css.includes(OFFICIAL_LOOK_STACKED_NEUTRALIZE_MARKER)
     && /flex-direction:\s*unset/.test(css)
+    && /position\s*:\s*relative\s*!important/i.test(css)
+    && /width\s*:\s*1920px\s*!important/i.test(css)
+    && /height\s*:\s*1080px\s*!important/i.test(css)
     && !OFFICIAL_LOOK_MAX_VIEWPORT_MEDIA_RE.test(css)
+  );
+}
+
+/**
+ * True when stacked-canvas neutralize is fully present — not merely a marker
+ * comment substring (truncated/poisoned comments must not skip upgrade).
+ */
+export function hasOfficialLookStackedCanvasNeutralizeProof(html: string): boolean {
+  const dest = String(html ?? '');
+  if (!dest.includes(OFFICIAL_LOOK_STACKED_NEUTRALIZE_MARKER)) return false;
+  return (
+    /position\s*:\s*relative\s*!important/i.test(dest)
+    && /width\s*:\s*1920px\s*!important/i.test(dest)
+    && /height\s*:\s*1080px\s*!important/i.test(dest)
+    && /flex-direction:\s*unset/.test(dest)
   );
 }
 
@@ -547,7 +567,9 @@ export function mergeOfficialDeckLookCss(
     out = insertBeforeCloseHeadOrOpenBody(out, snippet);
   }
 
-  return ensureOfficialLookStackedCanvasNeutralize(mergeOfficialDeckMotifHtml(out, assets));
+  return lockDeckDesignViewportMeta(
+    ensureOfficialLookStackedCanvasNeutralize(mergeOfficialDeckMotifHtml(out, assets)),
+  );
 }
 
 function officialLookHasCurrentNeutralize(html: string): boolean {
@@ -575,21 +597,35 @@ function replaceOfficialLookNeutralizeBlock(html: string): string {
  * Upgrade legacy opacity-only neutralize (or inject missing stacked-canvas
  * rules) so persisted Capsule look CSS no longer clips Motif at device-width
  * or forces split slides into a column.
+ * Early-return only when the fixed 1920×1080 proof is present — a marker
+ * comment alone must not skip upgrade (poison/truncated neutralize).
  */
 export function ensureOfficialLookStackedCanvasNeutralize(html: string): string {
-  const dest = String(html ?? '');
+  let dest = String(html ?? '');
   if (!dest) return dest;
-  if (officialLookHasCurrentNeutralize(dest)) return dest;
+  if (
+    officialLookHasCurrentNeutralize(dest)
+    && hasOfficialLookStackedCanvasNeutralizeProof(dest)
+  ) {
+    return dest;
+  }
 
   const styleAttr = OFFICIAL_DECK_LOOK_STYLE_ATTR;
   if (new RegExp(`<style\\b[^>]*\\b${styleAttr}\\b`, 'i').test(dest)) {
     return replaceOfficialLookNeutralizeBlock(dest);
   }
 
-  // Presentation-absolute slides without official look attr (hand-authored).
-  if (
+  // Presentation-absolute slides without official look attr (hand-authored),
+  // or a poisoned marker comment without the fixed-canvas declarations.
+  const hasPresentationAbsolute =
     /\.slide\s*\{[^}]*position\s*:\s*absolute/i.test(dest)
-    && /\.slide\s*\{[^}]*(?:width|height)\s*:\s*100%/i.test(dest)
+    && /\.slide\s*\{[^}]*(?:width|height)\s*:\s*100%/i.test(dest);
+  if (
+    hasPresentationAbsolute
+    || (
+      dest.includes(OFFICIAL_LOOK_STACKED_NEUTRALIZE_MARKER)
+      && !hasOfficialLookStackedCanvasNeutralizeProof(dest)
+    )
   ) {
     const tag = `<style data-od-stacked-canvas-neutralize>\n${LOOK_NEUTRALIZE_CSS}\n</style>`;
     if (/<\/head\s*>/i.test(dest)) return dest.replace(/<\/head\s*>/i, `${tag}</head>`);

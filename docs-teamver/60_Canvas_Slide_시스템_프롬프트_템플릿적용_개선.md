@@ -200,6 +200,18 @@ full `example.html`을 시스템 프롬프트에 넣지 않는다는 방침은 �
 - [x] 인라인 장별 색도 per-slide paint
 - [x] daemon cover-batch가 persisted flatten bleed를 `html, body`로 완화 (cache v6)
 
+### 0.42 2026-08-18 — stacked neutralize/viewport 잔여 구멍 전수 닫기
+
+- neutralize early-return = marker + relative + 1920/1080 + flex unset proof (poison 주석만으로 skip 금지)
+- merge / cover / `/raw` serve / standalone / deck srcdoc wrap 후 viewport·canvas 정렬
+- export cache `v20`
+
+구현 현황:
+
+- [x] proof-based ensure + poison upgrade
+- [x] merge/cover/raw/standalone/srcdoc 패리티
+- [x] export cache `v20`
+
 ### 0.41 2026-08-18 — official look max-width MQ · stacked grid reveal
 
 §0.40 이후에도 공식 Capsule/다수 example의 `@media (max-width: …)`가 **iframe 레이아웃 폭**에 반응한다. preview는 1920×1080을 transform으로 줄이므로 패널이 900px면 3열 카드·timeline이 모바일 column으로 접혀 `overflow:hidden`에 잘린다. stacked reveal은 인라인 `display:grid`까지 flex로 덮었다.
@@ -1088,6 +1100,7 @@ User-message 쪽 `[Existing deck edit]` / `<attached-preview-comments>` 주입�
 | 2026-08-13 | **§0.0 정책 개정** — template = layout vocabulary + visual look, 페이지 수/순서/구성은 브리프 기반. content-swap → pick-and-choose layout roles. daemon Clone default count = 6 (shells.length 아님), `pickTemplateShells` role-based scoring 도입. `template-visual-kit.ts` HARD_RULES 재작성, `DEFAULT_MAX_CHARS` 12000 → 14000. |
 | 2026-08-18 | Clone content-fill motif 보정 — 8/13 SVG hang 방지 패치가 first fill에서 `Motif sprites`/`Decoration CSS`/`Layout CSS`를 통째로 생략해 Daisy/Capsule 템플릿 정체성이 약해졌다. `slimTemplateVisualKitForFill`이 큰 SVG sprite sheet와 전체 stylesheet dump는 계속 제거하되, Daisy star/rainbow·Capsule pill/capsule·Terminal scanline 같은 compact motif recipe와 짧은 Decoration/Layout CSS cue를 보존하도록 변경했다. |
 | 2026-08-18 | §0.20 — html-ppt identity scope. 공유 `:root --bg:#ffffff` 대신 `.tpl-*` host 토큰/슬라이드 surface/폰트를 kit 계약으로 쓰고, SKILL `copy index.html` filesystem 지시를 neutralize. |
+| 2026-08-18 | §0.42 — stacked neutralize/viewport 잔여 구멍. proof-based ensure · merge/cover/raw/standalone/srcdoc · cache v20. |
 | 2026-08-18 | §0.41 — official look max-width MQ가 좁은 iframe에서 16:9를 접음. MQ strip + grid reveal · cache v19. |
 | 2026-08-18 | §0.40 — 16:9 split이 host/official `flex-direction:column`에 잘림. unset + host lock-only · cache v18. |
 | 2026-08-18 | §0.39 — official look absolute 100% 잘림 방지. stacked 1920×1080 neutralize · viewport 1920 · cache v17. |

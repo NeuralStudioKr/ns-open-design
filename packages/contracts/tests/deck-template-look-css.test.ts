@@ -221,6 +221,37 @@ html, body { overflow: visible !important; height: auto !important; }
     expect(upgraded).not.toContain('width=device-width');
   });
 
+  it('does not skip upgrade when only a poisoned neutralize marker comment exists', async () => {
+    const {
+      ensureOfficialLookStackedCanvasNeutralize,
+      hasOfficialLookStackedCanvasNeutralizeProof,
+      OFFICIAL_LOOK_STACKED_NEUTRALIZE_MARKER,
+    } = await import('../src/html/deck-template-look-css.js');
+    const poisoned = `<!doctype html><html><head>
+<style data-od-official-look-css>
+.presentation > .slide { position:absolute; width:100%; height:100%; opacity:0; }
+/* ${OFFICIAL_LOOK_STACKED_NEUTRALIZE_MARKER} — truncated, missing relative/1920 rules */
+</style></head><body><section class="slide"><div class="pill"></div></section></body></html>`;
+    expect(hasOfficialLookStackedCanvasNeutralizeProof(poisoned)).toBe(false);
+    const upgraded = ensureOfficialLookStackedCanvasNeutralize(poisoned);
+    expect(hasOfficialLookStackedCanvasNeutralizeProof(upgraded)).toBe(true);
+    expect(upgraded).toContain('position: relative !important');
+    expect(upgraded).toContain('width: 1920px !important');
+    expect(upgraded).toMatch(/flex-direction:\s*unset/);
+    expect(upgraded).toContain('.presentation > .slide');
+  });
+
+  it('locks design viewport when merging official look CSS for persist', () => {
+    const assets = extractOfficialDeckLookAssets(CAPSULE_EXAMPLE)!;
+    const withDevice = `<!doctype html><html><head>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+</head><body><div class="slide"><h1>Topic</h1></div></body></html>`;
+    const merged = mergeOfficialDeckLookCss(withDevice, assets);
+    expect(merged).toContain('content="width=1920, initial-scale=1, maximum-scale=1"');
+    expect(merged).not.toContain('width=device-width');
+    expect(merged).toContain('position: relative !important');
+  });
+
   it('is idempotent when Motif rules or the look marker already exist', () => {
     const assets = extractOfficialDeckLookAssets(CAPSULE_EXAMPLE)!;
     const once = mergeOfficialDeckLookCss(COMPACT_FILL, assets);
