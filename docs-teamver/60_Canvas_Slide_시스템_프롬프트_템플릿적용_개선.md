@@ -152,6 +152,10 @@ full `example.html`을 시스템 프롬프트에 넣지 않는다는 방침은 �
 
 제품 판단: **완성된 덱이 우선**이다. 선택 템플릿과 100% 동일한 CSS를 복사하다가 결과물이 비어버리는 것보다, 템플릿의 palette/font/motif cue가 보이는 compact static deck을 완성하는 것이 낫다. 따라서 pre-write gate는 계속 shell 저장을 막고, prompt는 shell이 생기지 않도록 body-first로 유도한다.
 
+### 0.20 2026-08-18 — html-ppt identity scope (shared white `:root` ≠ 템플릿 look)
+
+html-ppt full-deck은 공유 `base.css` `:root`가 `--bg:#ffffff` / Inter 이고, 실제 look은 `.tpl-* { --hc-bg:#0a0c10; … }` + `.tpl-* .slide { background: var(--hc-bg) }` 에 있다. kit이 첫 `:root`만 보면 Hermes/Graphify가 Neutral 흰 슬라이드로 나온다. **identity host** (`.tpl-*` / `.theme-*`) 토큰·슬라이드 surface·폰트가 prompt `:root` / Slide surface / Must-match anchors를 이긴다. SKILL.md의 `copy index.html` / `skills/html-ppt/templates/` filesystem 지시도 Clone `example.html`과 같이 neutralize.
+
 ### 0.19 2026-08-18 — Motif 카탈로그 일반화 (전 템플릿)
 
 Capsule/Daisy one-off로는 부족하다. Motif 파이프라인을 **kit lexicon 기반**으로 바꿨다: extract/slim이 pills·petals·blobs·pins·geometric `.deco-*`·pixel 등 공통 Motif class를 보존하고, fill 프롬프트는 kit에 실제로 실린 Motif vocabulary만 요구한다 (없는 Capsule 예시 주입 금지). official deck `example.html` 전수 Motif survival 회귀 테스트로 고정.
@@ -721,6 +725,7 @@ daemon 로컬 skill 워크플로 잔재다. Daisy Days에는 Teamver API 노트�
 | P0 | letterbox `transparent !important`가 deck 자체 body bg를 여전히 override하던 문제 | **완료** — `compactStackedDeckFix`에서 html/body `background` 선언 완전 제거 |
 | P0 | **정책 개정** — template = layout vocabulary, 페이지 수/순서/구성은 브리프 기반 (§0.0 개정) | **완료** — HARD_RULES 재작성, scaffold map을 catalog로 재정의, daemon Clone default `shells.length` → 6, `pickTemplateShells` role-based scoring |
 | P0 | Clone content-fill에서 motif/deco가 과도하게 제거되어 썸네일과 실제 결과가 달라지는 문제 | **완료** — full SVG/CSS dump 금지는 유지하되 compact Motif recipe + Decoration/Layout CSS cues 보존 |
+| P0 | html-ppt shared white `:root`가 `.tpl-*` identity look을 덮는 문제 | **완료** — identity host tokens/surface/fonts + `copy index.html` SKILL neutralize (§0.20) |
 
 ### 12.1 Edit-contract gating (상세)
 
@@ -751,3 +756,4 @@ User-message 쪽 `[Existing deck edit]` / `<attached-preview-comments>` 주입�
 | 2026-08-13 | §0.10 후속 — Home Clone 커버 heading에 user prompt 반영 (`derivedPendingPrompt`로 fallback) · letterbox `transparent !important`도 역효과였음이 확인되어 `background` 선언 자체 제거로 재조정 |
 | 2026-08-13 | **§0.0 정책 개정** — template = layout vocabulary + visual look, 페이지 수/순서/구성은 브리프 기반. content-swap → pick-and-choose layout roles. daemon Clone default count = 6 (shells.length 아님), `pickTemplateShells` role-based scoring 도입. `template-visual-kit.ts` HARD_RULES 재작성, `DEFAULT_MAX_CHARS` 12000 → 14000. |
 | 2026-08-18 | Clone content-fill motif 보정 — 8/13 SVG hang 방지 패치가 first fill에서 `Motif sprites`/`Decoration CSS`/`Layout CSS`를 통째로 생략해 Daisy/Capsule 템플릿 정체성이 약해졌다. `slimTemplateVisualKitForFill`이 큰 SVG sprite sheet와 전체 stylesheet dump는 계속 제거하되, Daisy star/rainbow·Capsule pill/capsule·Terminal scanline 같은 compact motif recipe와 짧은 Decoration/Layout CSS cue를 보존하도록 변경했다. |
+| 2026-08-18 | §0.20 — html-ppt identity scope. 공유 `:root --bg:#ffffff` 대신 `.tpl-*` host 토큰/슬라이드 surface/폰트를 kit 계약으로 쓰고, SKILL `copy index.html` filesystem 지시를 neutralize. |

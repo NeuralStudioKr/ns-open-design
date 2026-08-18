@@ -111,6 +111,56 @@ describe('extractTemplateVisualKitFromHtml', () => {
     expect(out).toContain('Replace placeholder content');
   });
 
+  it('neutralizeFilesystemCloneWorkflow rewrites html-ppt copy index.html / template-folder steps', async () => {
+    const { neutralizeFilesystemCloneWorkflow } = await import('../src/template-visual-kit.js');
+    const skill = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/html-ppt-hermes-cyber-terminal/SKILL.md',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const out = neutralizeFilesystemCloneWorkflow(skill);
+    expect(out).toContain('API / Teamver mode — do not clone files');
+    expect(out).not.toMatch(/copy\s+`index\.html`/i);
+    expect(out).not.toMatch(/skills\/html-ppt\/templates\//i);
+    expect(out).not.toMatch(/\*\*Start from the matching template folder:\*\*/i);
+    expect(out).toContain('Replace demo content, not classes');
+  });
+
+  it('binds html-ppt Hermes identity surface instead of shared white :root', async () => {
+    const html = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/html-ppt-hermes-cyber-terminal/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const kit = extractTemplateVisualKitFromHtml(html, {
+      title: 'Html Ppt Hermes Cyber Terminal',
+    });
+    expect(kit).toBeTruthy();
+    expect(kit).toContain('#0a0c10');
+    expect(kit).toContain('Identity host class: `.tpl-hermes-cyber-terminal`');
+    expect(kit).toMatch(/\*\*background\*\*:\s*`#0a0c10`/i);
+    expect(kit).not.toMatch(/\*\*background\*\*:\s*`#ffffff`/i);
+    const tokenStart = kit!.indexOf('### CSS tokens');
+    const fenceStart = kit!.indexOf('```css', tokenStart);
+    const fenceEnd = kit!.indexOf('```', fenceStart + 6);
+    const tokens = tokenStart >= 0 && fenceStart >= 0 && fenceEnd > fenceStart
+      ? kit!.slice(fenceStart, fenceEnd)
+      : '';
+    expect(tokens).toMatch(/--hc-bg:\s*#0a0c10/i);
+    expect(tokens).not.toMatch(/--bg:\s*#ffffff/i);
+    expect(tokens).not.toMatch(/--surface:\s*#ffffff/i);
+    expect(kit).toMatch(/JetBrains Mono/);
+    const fontLine = kit!.match(/### Fonts:([^\n]+)/)?.[1] ?? '';
+    const jb = fontLine.indexOf('JetBrains Mono');
+    const inter = fontLine.indexOf('Inter');
+    expect(jb).toBeGreaterThanOrEqual(0);
+    if (inter >= 0) expect(jb).toBeLessThan(inter);
+  });
+
   it('prefers slide paper over dark body chrome (Coral-style)', () => {
     const html = `
 <style>

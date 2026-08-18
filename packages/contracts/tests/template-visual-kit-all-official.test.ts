@@ -167,15 +167,65 @@ describe('official deck template visual kits (all mode:deck example.html)', () =
     for (const { folder, skillPath } of files) {
       if (!skillPath) continue;
       const skill = await readFile(skillPath, 'utf8');
-      if (!/Clone\s+`?example\.html`?/i.test(skill)) continue;
+      const hasFilesystemClone =
+        /Clone\s+`?example\.html`?/i.test(skill)
+        || /copy\s+`?index\.html`?/i.test(skill)
+        || /Start from the matching template folder/i.test(skill)
+        || /skills\/html-ppt\/templates\//i.test(skill);
+      if (!hasFilesystemClone) continue;
       const neutralized = neutralizeFilesystemCloneWorkflow(skill);
       if (/\*\*Clone `example\.html`\*\*/i.test(neutralized)) {
         stillCloning.push(folder);
+      }
+      if (/copy\s+`index\.html`/i.test(neutralized)) {
+        stillCloning.push(`${folder}: still instructs copy index.html`);
+      }
+      if (/skills\/html-ppt\/templates\//i.test(neutralized)) {
+        stillCloning.push(`${folder}: still points at html-ppt templates path`);
       }
       if (!/do not clone files/i.test(neutralized)) {
         stillCloning.push(`${folder}: missing API-mode rewrite`);
       }
     }
     expect(stillCloning, stillCloning.join('\n')).toEqual([]);
+  }, 60_000);
+
+  it('binds .tpl-* identity surface instead of shared white :root', async () => {
+    const files = await listOfficialDeckExamples();
+    const failures: string[] = [];
+    let identityDecks = 0;
+    for (const { folder, examplePath } of files) {
+      const html = await readFile(examplePath, 'utf8');
+      const bodyClass = /<body\b[^>]*class\s*=\s*["']([^"']+)["']/i.exec(html)?.[1] ?? '';
+      const tpl = bodyClass.split(/\s+/).find((cls) => /^(?:tpl|theme)-/i.test(cls));
+      if (!tpl) continue;
+      identityDecks += 1;
+      const kit = extractTemplateVisualKitFromHtml(html, { title: folder });
+      if (!kit) {
+        failures.push(`${folder}: kit null despite .${tpl}`);
+        continue;
+      }
+      if (!kit.includes(`Identity host class: \`.${tpl}\``)) {
+        failures.push(`${folder}: missing Identity host class .${tpl}`);
+      }
+      const sharedWhite = /:root\s*\{[^}]*--(?:bg|surface)\s*:\s*#ffffff/i.test(html);
+      const identityHost = new RegExp(
+        `\\.${tpl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\{([^}]+)\\}`,
+        'i',
+      ).exec(html)?.[1] ?? '';
+      const identitySlide = new RegExp(
+        `\\.${tpl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[^{]*\\.slide[^{]*\\{([^}]+)\\}`,
+        'i',
+      ).exec(html)?.[1] ?? '';
+      const identitySurface = `${identityHost} ${identitySlide}`;
+      const identityDark = /(?:^|[;{])\s*(?:background(?:-color)?|--(?:[a-z0-9_-]+-)?(?:bg|background|surface))\s*:\s*(?:#0[0-9a-f]{5}|#06060c)/i.test(
+        identitySurface,
+      );
+      if (sharedWhite && identityDark && /\*\*background\*\*:\s*`#ffffff`/i.test(kit)) {
+        failures.push(`${folder}: surface bound shared white instead of identity`);
+      }
+    }
+    expect(identityDecks, 'expected html-ppt identity decks').toBeGreaterThan(8);
+    expect(failures, failures.join('\n')).toEqual([]);
   }, 60_000);
 });

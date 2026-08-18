@@ -44,12 +44,97 @@ function compressCss(css: string): string {
     .trim();
 }
 
-function extractRootCssBlock(html: string): string | null {
-  const rootMatch = /:root\s*\{([\s\S]*?)\}/i.exec(html);
-  if (!rootMatch?.[1]) return null;
-  const inner = compressCss(rootMatch[1]);
-  if (!inner) return null;
+type IdentityScope = {
+  className: string | null;
+  tokenCss: string | null;
+  background: string | null;
+  color: string | null;
+  fonts: string[];
+};
+
+/**
+ * html-ppt full-decks ship a shared light `:root` plus the real look on
+ * `.tpl-*` / `.theme-*` (Hermes `--hc-bg:#0a0c10`, Graphify dark gradient).
+ * Identity scope wins over the shared white/Inter defaults.
+ */
+function extractIdentityScope(html: string): IdentityScope {
+  const empty: IdentityScope = {
+    className: null,
+    tokenCss: null,
+    background: null,
+    color: null,
+    fonts: [],
+  };
+  const bodyClass = /<body\b[^>]*class\s*=\s*["']([^"']+)["']/i.exec(html)?.[1] ?? '';
+  const fromBody = bodyClass.split(/\s+/).find((cls) => /^(?:tpl|theme)-/i.test(cls)) ?? null;
+  // Comment-stripped sheets only — raw HTML comments can poison `.tpl-x {`.
+  const sheet = extractStyleSheets(html);
+  const hosts = [...sheet.matchAll(/\.((?:tpl|theme)-[a-z0-9_-]+)\s*\{([^}]+)\}/gi)];
+  let bestClass = fromBody;
+  let bestBody = '';
+  let bestScore = -1;
+  for (const rule of hosts) {
+    const cls = (rule[1] ?? '').toLowerCase();
+    const body = rule[2] ?? '';
+    const varCount = (body.match(/--[a-zA-Z0-9_-]+\s*:/g) ?? []).length;
+    const hasSurface = /background(?:-color)?\s*:/i.test(body);
+    if (varCount === 0 && !hasSurface) continue;
+    const score = (fromBody && cls === fromBody.toLowerCase() ? 100 : 0)
+      + varCount
+      + (hasSurface ? 5 : 0);
+    if (score > bestScore) {
+      bestScore = score;
+      bestClass = fromBody && cls === fromBody.toLowerCase() ? fromBody : cls;
+      bestBody = body;
+    }
+  }
+  if (!bestBody && !bestClass) return empty;
+  const identityRoot = bestBody ? `:root{ ${compressCss(bestBody)} }` : null;
+  const pair = readBackgroundColorPair(bestBody, identityRoot);
+  const fonts: string[] = [];
+  if (bestClass) {
+    const escaped = bestClass.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const scoped = new RegExp(`\\.${escaped}[^{]*\\{([^}]+)\\}`, 'gi');
+    for (const rule of sheet.matchAll(scoped)) {
+      for (const match of (rule[1] ?? '').matchAll(/font-family\s*:\s*([^;!}{]+)/gi)) {
+        const name = firstFontFamilyName(match[1] ?? '');
+        if (name) fonts.push(name);
+      }
+    }
+  }
+  return {
+    className: bestClass,
+    tokenCss: bestBody ? compressCss(bestBody) : null,
+    background: pair.background,
+    color: pair.color,
+    fonts: uniquePreserveOrder(fonts),
+  };
+}
+
+function mergeCssVariableMaps(
+  ...blocks: Array<string | null | undefined>
+): Record<string, string> {
+  const vars: Record<string, string> = {};
+  for (const block of blocks) {
+    if (!block) continue;
+    Object.assign(vars, extractCssVariables(`:root{ ${block} }`));
+  }
+  return vars;
+}
+
+function formatRootCssFromVars(vars: Record<string, string>): string | null {
+  const keys = Object.keys(vars);
+  if (keys.length === 0) return null;
+  const inner = keys.map((key) => `--${key}: ${vars[key]}`).join('; ');
   return `:root{ ${inner} }`;
+}
+
+function extractRootCssBlock(html: string, identity: IdentityScope | null = null): string | null {
+  const rootInners = [...html.matchAll(/:root\s*\{([\s\S]*?)\}/gi)]
+    .map((match) => match[1] ?? '')
+    .filter(Boolean);
+  const vars = mergeCssVariableMaps(...rootInners, identity?.tokenCss);
+  return formatRootCssFromVars(vars);
 }
 
 function firstFontFamilyName(value: string): string | null {
@@ -67,7 +152,7 @@ function firstFontFamilyName(value: string): string | null {
   return first;
 }
 
-function extractFontFamilies(html: string): string[] {
+function extractFontFamilies(html: string, identityFonts: readonly string[] = []): string[] {
   const fromLinks: string[] = [];
   for (const match of html.matchAll(/family=([^&"']+)/gi)) {
     const raw = decodeURIComponent(match[1] ?? '');
@@ -84,7 +169,12 @@ function extractFontFamilies(html: string): string[] {
   const fromFontFamily = [...html.matchAll(/font-family\s*:\s*([^;!}{]+)/gi)]
     .map((m) => firstFontFamilyName(m[1] ?? ''))
     .filter((name): name is string => Boolean(name));
-  return uniquePreserveOrder([...fromLinks, ...fromCssVars, ...fromFontFamily]).slice(0, 8);
+  return uniquePreserveOrder([
+    ...identityFonts,
+    ...fromCssVars,
+    ...fromFontFamily,
+    ...fromLinks,
+  ]).slice(0, 8);
 }
 
 function extractHexColors(html: string): string[] {
@@ -121,6 +211,36 @@ function firstVarValue(vars: Record<string, string>, names: readonly string[]): 
   return null;
 }
 
+/**
+ * Rank surface tokens so html-ppt identity (`--hc-bg`, `--gd-bg`) wins over
+ * the shared light `--surface` / `--bg` that every full-deck ships.
+ */
+function pickSurfaceTokenName(vars: Record<string, string>): string | null {
+  if (vars.cream?.trim()) return 'cream';
+  if (vars.paper?.trim()) return 'paper';
+  const namedBg = Object.keys(vars)
+    .sort()
+    .find((name) => /-(?:bg|background)$/.test(name) && name !== 'bg' && name !== 'background' && vars[name]?.trim());
+  if (namedBg) return namedBg;
+  if (vars.surface?.trim()) return 'surface';
+  if (vars.bg?.trim()) return 'bg';
+  if (vars.background?.trim()) return 'background';
+  return null;
+}
+
+function pickInkTokenName(vars: Record<string, string>): string | null {
+  const namedInk = Object.keys(vars)
+    .sort()
+    .find((name) => /-(?:ink|fg|text)$/.test(name) && !['ink', 'text', 'fg'].includes(name) && vars[name]?.trim());
+  if (namedInk) return namedInk;
+  if (vars['text-dark']?.trim()) return 'text-dark';
+  if (vars.ink?.trim()) return 'ink';
+  if (vars.foreground?.trim()) return 'foreground';
+  if (vars.text?.trim()) return 'text';
+  if (vars.fg?.trim()) return 'fg';
+  return null;
+}
+
 function buildTemplateAnchorSummary(options: {
   title: string;
   rootCss: string | null;
@@ -128,8 +248,10 @@ function buildTemplateAnchorSummary(options: {
 }): string[] {
   const vars = extractCssVariables(options.rootCss);
   const anchors: string[] = [];
-  const surface = firstVarValue(vars, ['cream', 'background', 'bg', 'surface', 'paper']);
-  const text = firstVarValue(vars, ['text-dark', 'text', 'foreground', 'ink']);
+  const surfaceName = pickSurfaceTokenName(vars);
+  const inkName = pickInkTokenName(vars);
+  const surface = surfaceName && vars[surfaceName] ? `--${surfaceName} ${vars[surfaceName]}` : firstVarValue(vars, ['cream', 'paper', 'surface', 'bg', 'background']);
+  const text = inkName && vars[inkName] ? `--${inkName} ${vars[inkName]}` : firstVarValue(vars, ['text-dark', 'text', 'foreground', 'ink']);
   const accent = firstVarValue(vars, ['turquoise', 'coral', 'butter', 'mint', 'primary', 'accent']);
   const border = firstVarValue(vars, ['border', 'border-width']);
   const shadow = firstVarValue(vars, ['shadow', 'shadow-sm']);
@@ -146,26 +268,32 @@ function buildTemplateAnchorSummary(options: {
   if (border || shadow) {
     anchors.push(`- Chunky outline/card treatment: ${[border, shadow].filter(Boolean).join(' ; ')}.`);
   }
-  if (/daisy/i.test(options.title)) {
-    anchors.push(
-      '- Daisy Days identity: cream paper, dark ink outline, butter-yellow daisy center, hand-drawn white petals, pastel star/badge accents. Prefer kit Motif daisy sprites AFTER the cover title/lead (never open Motif `<svg>` before visible copy). CSS-shape daisy accents in kit hex are OK when SVG paste risks a hang; never invent a generic dark flower.',
-    );
-  }
+  anchors.push(
+    '- Identity lock: bind THIS kit\'s Slide surface + Fonts + Palette cues. Decorative density must use THIS kit\'s Motif/Decoration classes (or capped sprites AFTER title) — never another template\'s ornaments.',
+  );
   return anchors;
 }
 
 function extractStyleSheets(html: string): string {
   return [...html.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style>/gi)]
     .map((match) => match[1] ?? '')
-    .join('\n');
+    .join('\n')
+    .replace(/\/\*[\s\S]*?\*\//g, ' ');
 }
 
 function resolveCssTokenValue(rootBlock: string | null, expr: string): string | null {
   const trimmed = expr.trim();
   if (!trimmed) return null;
+  if (/^(?:linear|radial|conic)-gradient\(/i.test(trimmed)) {
+    return trimmed.length > 220 ? trimmed.slice(0, 220) : trimmed;
+  }
   const literal = trimmed.match(
     /#[0-9a-fA-F]{3,8}\b|rgba?\([^)]+\)|hsla?\([^)]+\)|oklch\([^)]+\)|oklab\([^)]+\)|color-mix\([^)]+\)/i,
   )?.[0];
+  if (literal && !/^var\(/i.test(trimmed) && !/gradient\(/i.test(trimmed)) return literal;
+  if (/gradient\(/i.test(trimmed) && !/^var\(/i.test(trimmed)) {
+    return trimmed.length > 220 ? trimmed.slice(0, 220) : trimmed;
+  }
   if (literal && !/^var\(/i.test(trimmed)) return literal;
   const varMatch = /var\(\s*(--[a-zA-Z0-9_-]+)\s*(?:,\s*([^)]+))?\)/i.exec(trimmed);
   if (!varMatch?.[1]) return null;
@@ -274,22 +402,20 @@ function paperTokenFromRoot(
 ): { background: string | null; color: string | null; source: string | null } {
   if (!rootBlock) return { background: null, color: null, source: null };
   const vars = extractCssVariables(rootBlock);
+  const surfaceName = pickSurfaceTokenName(vars);
+  const inkName = pickInkTokenName(vars);
   let background: string | null = null;
   let source: string | null = null;
-  for (const name of ['cream', 'paper', 'surface', 'bg', 'background'] as const) {
-    if (!vars[name]) continue;
-    const resolved = resolveCssTokenValue(rootBlock, `var(--${name})`);
-    if (!resolved) continue;
-    background = resolved;
-    source = `--${name}`;
-    break;
+  if (surfaceName && vars[surfaceName]) {
+    const resolved = resolveCssTokenValue(rootBlock, `var(--${surfaceName})`);
+    if (resolved) {
+      background = resolved;
+      source = `--${surfaceName}`;
+    }
   }
-  let color: string | null = null;
-  for (const name of ['text-dark', 'text', 'foreground', 'ink', 'black'] as const) {
-    if (!vars[name]) continue;
-    color = resolveCssTokenValue(rootBlock, `var(--${name})`);
-    if (color) break;
-  }
+  const color = inkName
+    ? resolveCssTokenValue(rootBlock, `var(--${inkName})`)
+    : null;
   return { background, color, source };
 }
 
@@ -298,9 +424,16 @@ function paperTokenFromRoot(
  * Prefer real slide paper (`.slide-N` / `.slide` / `--cream|--paper`) over
  * `html,body` stage chrome when they differ (Coral dark body + cream slides).
  */
+function isIdentitySlideSurfaceSelector(part: string, identity: IdentityScope | null): boolean {
+  if (!identity?.className) return false;
+  const host = identity.className.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`\\.${host}\\b`, 'i').test(part) && /\.slide\b/i.test(part);
+}
+
 function extractSlideSurfaceBinding(
   html: string,
   rootBlock: string | null,
+  identity: IdentityScope | null = null,
 ): { background: string | null; color: string | null; source: string | null } {
   const sheet = extractStyleSheets(html);
   const rules = [...sheet.matchAll(/([^{}@][^{]*)\{([^}]+)\}/g)];
@@ -322,6 +455,7 @@ function extractSlideSurfaceBinding(
 
   const body = readPair(isDocumentSurfaceSelector);
   const slide = readPair(isSlideSurfaceSelector);
+  const identitySlide = readPair((part) => isIdentitySlideSurfaceSelector(part, identity));
   const variantPaper = majoritySlidePaper(rules, rootBlock);
   const tokenPaper = paperTokenFromRoot(rootBlock);
 
@@ -345,6 +479,22 @@ function extractSlideSurfaceBinding(
     }
     return null;
   };
+
+  // 0) html-ppt identity `.tpl-* .slide` / host background beats shared white :root.
+  if (identitySlide.background) {
+    return {
+      background: identitySlide.background,
+      color: identitySlide.color ?? identity?.color ?? tokenPaper.color ?? slide.color ?? body.color,
+      source: identity?.className ? `.${identity.className} .slide` : '.slide',
+    };
+  }
+  if (identity?.background) {
+    return {
+      background: identity.background,
+      color: identity.color ?? tokenPaper.color ?? body.color,
+      source: identity.className ? `.${identity.className}` : tokenPaper.source,
+    };
+  }
 
   // 1) Bare `.slide` surface when present (Daisy Days `.slide{background:var(--cream)}`).
   if (slide.background) {
@@ -514,10 +664,10 @@ function sanitizeCssRuleForFixedCanvas(rule: string): string | null {
 
 /** Catalog-wide Motif class lexicon — not Capsule/Daisy-only. */
 const MOTIF_CLASS_TOKEN_RE =
-  /\b(?:deco(?:-[a-z0-9_-]+)?|pill(?:-[a-z0-9_-]+)?|deco-pills|floating-pills|[cf]-pill|blob(?:-[a-z0-9_-]+)?|petal(?:s)?|stamp|tape|pin|doodle|scribble(?:-[a-z0-9_-]+)?|shape|sticker|dot-grid|ornament|floater|spark|confetti|grain|pixel(?:-[a-z0-9_-]+)?|ribbon|glow|hairlines?|stripes?|bracket|corner-bracket|post-it(?:-[a-z0-9_-]+)?|cork|scanlines?|orb(?:-[a-z0-9_-]+)?|ambient|starfield|cross|cassette|jis|bg-cork)\b/i;
+  /\b(?:deco(?:-[a-z0-9_-]+)?|pill(?:-[a-z0-9_-]+)?|deco-pills|floating-pills|[cf]-pill|blob(?:-[a-z0-9_-]+)?|petal(?:s)?|stamp|tape|pin|doodle|scribble(?:-[a-z0-9_-]+)?|shape|sticker|dot-grid|ornament|floater|spark|confetti|grain|pixel(?:-[a-z0-9_-]+)?|ribbon|glow|hairlines?|stripes?|bracket|corner-bracket|post-it(?:-[a-z0-9_-]+)?|cork|scanlines?|orb(?:-[a-z0-9_-]+)?|ambient|starfield|cross|cassette|jis|bg-cork|(?:tpl|theme)-[a-z0-9_-]+|(?:hc|gd|win)-[a-z0-9_-]+)\b/i;
 
 const MOTIF_CSS_SELECTOR_RE =
-  /\.(?:deco(?:-[a-z0-9_-]+)?|pill(?:-[a-z0-9_-]+)?|deco-pills|floating-pills|[cf]-pill|blob(?:-[a-z0-9_-]+)?|petal(?:s)?|stamp|tape|pin|doodle|scribble(?:-[a-z0-9_-]+)?|shape|sticker|dot-grid|ornament|floater|spark|confetti|grain|pixel(?:-[a-z0-9_-]+)?|ribbon|glow|hairlines?|stripes?|bracket|corner-bracket|post-it(?:-[a-z0-9_-]+)?|cork|scanlines?|orb(?:-[a-z0-9_-]+)?|ambient|starfield|cross|cassette|jis)\b/i;
+  /\.(?:deco(?:-[a-z0-9_-]+)?|pill(?:-[a-z0-9_-]+)?|deco-pills|floating-pills|[cf]-pill|blob(?:-[a-z0-9_-]+)?|petal(?:s)?|stamp|tape|pin|doodle|scribble(?:-[a-z0-9_-]+)?|shape|sticker|dot-grid|ornament|floater|spark|confetti|grain|pixel(?:-[a-z0-9_-]+)?|ribbon|glow|hairlines?|stripes?|bracket|corner-bracket|post-it(?:-[a-z0-9_-]+)?|cork|scanlines?|orb(?:-[a-z0-9_-]+)?|ambient|starfield|cross|cassette|jis|(?:tpl|theme)-[a-z0-9_-]+|(?:hc|gd|win)-[a-z0-9_-]+)\b/i;
 
 function listMotifVocabularyHints(text: string): string[] {
   const hints: string[] = [];
@@ -529,6 +679,10 @@ function listMotifVocabularyHints(text: string): string[] {
     hints.push('stamp/tape/pin/post-it/doodle ornaments');
   }
   if (/\.pixel-|\.starfield|\.scanline/i.test(text)) hints.push('pixel/arcade ornaments');
+  if (/\.tpl-[a-z0-9_-]+|\.theme-[a-z0-9_-]+/i.test(text)) hints.push('identity `.tpl-*` / `.theme-*` host');
+  if (/\.hc-[a-z0-9_-]+/i.test(text)) hints.push('`.hc-*` terminal chrome');
+  if (/\.gd-[a-z0-9_-]+/i.test(text)) hints.push('`.gd-*` graph ornaments');
+  if (/\.win-[a-z0-9_-]+/i.test(text)) hints.push('`.win-*` window chrome');
   if (/\.deco-(?:circle|dots|star|stripes|square)|\.dot-grid|\.corner-bracket/i.test(text)) {
     hints.push('geometric `.deco-*` / dot-grid shapes');
   }
@@ -546,20 +700,27 @@ function formatMotifVocabularyGuidance(text: string): string {
   return hints.join(' + ');
 }
 
-function extractDecorationCss(html: string, budget: number): string | null {
+function extractDecorationCss(html: string, budget: number, identity: IdentityScope | null = null): string | null {
   const sheet = extractStyleSheets(html);
   if (!sheet.trim()) return null;
+  const identityHost = identity?.className
+    ? new RegExp(`\\.${identity.className.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i')
+    : null;
   const rules = [...sheet.matchAll(/[^{}@][^{]*\{[^}]+\}/g)]
     .map((match) => compressCss(match[0] ?? ''))
     .map((rule) => sanitizeCssRuleForFixedCanvas(rule))
     .filter((rule): rule is string => Boolean(rule));
   const prioritized = rules.filter((rule) =>
     MOTIF_CSS_SELECTOR_RE.test(rule)
+    || Boolean(identityHost?.test(rule))
     || /\.deco\b|\.card\b|\.badge\b|\.slide\b|--border|--shadow|--radius|font-display|font-body|border-radius\s*:\s*999/i.test(
       rule,
     ),
   );
   const score = (rule: string) => {
+    if (identityHost?.test(rule) && /background(?:-color)?\s*:|--(?:[a-z0-9_-]+-)?(?:bg|ink|surface)/i.test(rule)) {
+      return -1;
+    }
     // Positioned Motif shells (pills/petals/blobs/pins/…) beat chrome.
     if (MOTIF_CSS_SELECTOR_RE.test(rule) && /position\s*:/i.test(rule)) return 0;
     if (/\.deco-pill\b|deco-pills|floating-pills|border-radius\s*:\s*999/i.test(rule) && MOTIF_CSS_SELECTOR_RE.test(rule)) {
@@ -896,6 +1057,24 @@ function decoClassMatchesAvailableSprites(
 }
 
 function extractFontImportHint(html: string, fonts: string[]): string | null {
+  const preferred = fonts[0];
+  if (preferred) {
+    const escaped = preferred
+      .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      .replace(/ /g, '(?:\\+|%20| )');
+    const importRe = new RegExp(
+      `@import url\\(('|")([^'"]*fonts\\.googleapis\\.com[^'"]*${escaped}[^'"]*)\\1\\)`,
+      'i',
+    );
+    const fromImport = importRe.exec(html);
+    if (fromImport?.[2]) return `@import url('${fromImport[2]}');`;
+    const linkRe = new RegExp(
+      `href=("|')([^"']*fonts\\.googleapis\\.com[^"']*${escaped}[^"']*)\\1`,
+      'i',
+    );
+    const fromLink = linkRe.exec(html);
+    if (fromLink?.[2]) return `@import url('${fromLink[2]}');`;
+  }
   const linkMatch =
     /href=("|\')([^"']*fonts\.googleapis\.com\/css2\?[^"']+)\1/i.exec(html)
     ?? /href=("|\')([^"']*fonts\.googleapis\.com\/css\?[^"']+)\1/i.exec(html);
@@ -1060,10 +1239,14 @@ export function extractTemplateVisualKitFromHtml(
   const source = html?.trim() ?? '';
   if (!source) return null;
   const maxChars = options.maxChars ?? DEFAULT_MAX_CHARS;
-  const root = extractRootCssBlock(source);
-  const fonts = extractFontFamilies(source);
+  const identity = extractIdentityScope(source);
+  const root = extractRootCssBlock(source, identity);
+  const rootForPrompt = identity.tokenCss
+    ? formatRootCssFromVars(mergeCssVariableMaps(identity.tokenCss))
+    : root;
+  const fonts = extractFontFamilies(source, identity.fonts);
   const colors = extractPaletteCues(source);
-  if (!root && colors.length === 0 && fonts.length === 0) return null;
+  if (!root && !rootForPrompt && colors.length === 0 && fonts.length === 0) return null;
 
   const title = options.title?.trim() || 'selected deck template';
   const fontImport = extractFontImportHint(source, fonts);
@@ -1079,15 +1262,18 @@ export function extractTemplateVisualKitFromHtml(
     ...HARD_RULES,
     '',
   ];
-  if (root) {
-    lines.push('### CSS tokens', '', '```css', root, '```', '');
+  if (rootForPrompt) {
+    lines.push('### CSS tokens', '', '```css', rootForPrompt, '```', '');
   }
-  const surfaceBinding = extractSlideSurfaceBinding(source, root);
+  const surfaceBinding = extractSlideSurfaceBinding(source, root, identity);
   const surfaceBlock = renderSlideSurfaceBlock(surfaceBinding, colors);
   if (surfaceBlock) {
     lines.push(surfaceBlock, '');
   }
-  const anchors = buildTemplateAnchorSummary({ title, rootCss: root, fonts });
+  const anchors = buildTemplateAnchorSummary({ title, rootCss: rootForPrompt, fonts });
+  if (identity.className && !anchors.some((line) => line.includes(identity.className!))) {
+    anchors.unshift(`- Identity host class: \`.${identity.className}\``);
+  }
   if (anchors.length > 0) {
     lines.push('### Must-match anchors (read this even if CSS variables are unfamiliar)', '', ...anchors, '');
   }
@@ -1115,7 +1301,7 @@ export function extractTemplateVisualKitFromHtml(
   const scaffold = extractTemplateScaffoldMap(source, 1_000, spriteKinds);
   // Keep Decorations CSS in the kit when the template is ornament-heavy.
   // Layout CSS is important too, but a missing Motif block regresses look more.
-  const deco = extractDecorationCss(source, 1_800);
+  const deco = extractDecorationCss(source, 1_800, identity);
   const layout = extractLayoutCss(source, deco ? 900 : 1_200);
   const slideCue = extractFirstSlideStructureCue(source, 320);
 
@@ -1237,9 +1423,14 @@ export function extractTemplateVisualKitFromHtml(
  */
 export function neutralizeFilesystemCloneWorkflow(skillBody: string): string {
   const body = skillBody ?? '';
-  if (!/Clone\s+`?example\.html`?/i.test(body)) return body;
+  const needsRewrite =
+    /Clone\s+`?example\.html`?/i.test(body)
+    || /copy\s+`?index\.html`?/i.test(body)
+    || /Start from the matching template folder/i.test(body)
+    || /skills\/html-ppt\/templates\//i.test(body);
+  if (!needsRewrite) return body;
   const apiStep =
-    '**API / Teamver mode — do not clone files.** Bind the Template visual kit + scaffold map; content-swap Source text into those layouts. Never dump or rewrite a full example.html.';
+    '**API / Teamver mode — do not clone files.** Bind the Template visual kit + scaffold map; content-swap Source text into those layouts. Never dump or rewrite a full example.html / index.html.';
   return body
     .replace(
       /^(\d+\.\s+)\*\*Clone `example\.html`(?:\s+AND the `assets\/` folder)?\*\*[^\n]*/gim,
@@ -1248,6 +1439,22 @@ export function neutralizeFilesystemCloneWorkflow(skillBody: string): string {
     .replace(
       /^(?!\d+\.\s).*Clone\s+`?example\.html`?[^\n]*/gim,
       apiStep,
+    )
+    .replace(
+      /^(\d+\.\s+)\*\*Start from the matching template folder:\*\*[^\n]*/gim,
+      `$1${apiStep}`,
+    )
+    .replace(
+      /^(\d+\.\s+)\*\*Bring the shared runtime with the template\.\*\*[^\n]*/gim,
+      `$1${apiStep}`,
+    )
+    .replace(
+      /copy\s+`index\.html`[^\n]*/gi,
+      apiStep,
+    )
+    .replace(
+      /skills\/html-ppt\/templates\/[^\s`]+/gi,
+      'the selected template visual kit',
     )
     .replace(
       /^\s*\(daemon\s*\/\s*local skill runs with tools\)\.\s*In Teamver API mode,\s*skip clone\s*[—\-]\s*bind the visual kit tokens instead\.\s*$/gim,
@@ -1275,8 +1482,9 @@ function capMotifSpritesSectionForFill(section: string): string {
   const svgs = [...section.matchAll(/```html\s*([\s\S]*?)```/gi)]
     .map((match) => (match[1] ?? '').trim())
     .filter((svg) => /^<svg\b/i.test(svg) && svg.length >= 80 && svg.length <= 2_400);
+  const looksLikeDaisy = /deco-daisy|#F5F0E6/i.test(section);
   const identityScore = (svg: string) => {
-    if (/#fcdf6c/i.test(svg)) return 0; // Daisy butter-center identity
+    if (looksLikeDaisy && /#fcdf6c/i.test(svg)) return 0; // Daisy butter-center only for Daisy kits
     if (/#f8635f|#fde366|#8de3b7|#85c5fe|rainbow/i.test(svg)) return 1;
     if (/viewbox="0 0 100 98/i.test(svg) || /\bstar\b/i.test(svg)) return 2;
     if (/\bpin\b|#pin|doodle|stamp/i.test(svg)) return 3;
