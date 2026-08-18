@@ -73,6 +73,7 @@ full `example.html`을 시스템 프롬프트에 넣지 않는다는 방침은 �
 - Capsule Motif: Google Fonts `@import` 잔여물·surface-bleed `!important`가 `.pill`/gradient를 깨지 않도록 `repairArtifactStyleSheets` + bleed를 html/body만으로 제한
 - **전 템플릿:** kit Font는 example이 `@import`여도 `<link>`로 통일; `pin-*`/sakura/pastel title cue; daemon preview `@import` strip도 quote-aware
 - **루프 보강:** intact css2 `@import`를 remnant 정화에서 보호; Pin-and-Paper 등 sibling `assets/*.css`를 kit `supplementalCss`로 병합; streaming/scaffold는 Motif `<style>` 안 font `@import` 금지
+- **Capsule 원형 회귀:** Motif snippet이 year-dot 원을 고르지 않도록 oblong deco-pill 우선; 채팅 `:root{--token:#hex}` 덤프 scrub
 - `fetchPluginLocalSkill` / daemon `local-skill` — kit+map fallback only (+ sibling CSS 병합)
 - `neutralizeFilesystemCloneWorkflow` — prompt의 filesystem Clone 문구 무력화 (daemon 시드가 대체)
 - 완전한 closed deck > 잘린 shell

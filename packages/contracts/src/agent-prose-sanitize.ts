@@ -1647,6 +1647,9 @@ export function sanitizeAssistantProseForDisplay(
   if (stripDeckCssTail) {
     text = stripTrailingDeckFrameworkCssLeak(text);
   }
+  // Kit `:root{--bg:#…}` dumps can appear mid-message (not only trailing).
+  // Never scrub inside preserved artifact bodies (live style tokens stay intact).
+  text = stripLeakedCssCustomPropertyBlocksRespectingArtifacts(text, preservingArtifacts);
   text = stripTrailingDeckHtmlMarkupLeakRespectingArtifacts(text, preservingArtifacts);
   // Absolute last pass: classic/minified click-nav and keydown advance must
   // never survive a dialect miss or partial open-form match.
@@ -1657,15 +1660,94 @@ export function sanitizeAssistantProseForDisplay(
 /** Drop truncated deck stylesheet/CSS leaked into chat prose (mid-artifact abort). */
 export function stripTrailingDeckFrameworkCssLeak(input: string): string {
   if (!input) return input;
-  const match = /(?:^|\n\n|\n)((?:\.slide|(?:\.[A-Za-z_-][\w-]*|#[A-Za-z_-][\w-]*|h[1-6]|p|ul|li|body|section(?:\.[\w-]+)?)\s*\{)[\s\S]*)$/.exec(input);
+  const match = /(?:^|\n\n|\n)((?::root\s*\{|(?:\.slide|(?:\.[A-Za-z_-][\w-]*|#[A-Za-z_-][\w-]*|h[1-6]|p|ul|li|body|section(?:\.[\w-]+)?)\s*\{))[\s\S]*)$/i.exec(input);
   if (!match || match.index === undefined) return input;
   const tail = match[1] ?? "";
   const looksLikeDeckFramework =
     /width:\s*1920px|height:\s*1080px|box-sizing:\s*border-box|\.grain::after/i.test(tail)
     || /<\/style>|<section\b[^>]*\bclass\s*=\s*["'][^"']*\bslide\b|<!--\s*SLIDE\b/i.test(tail)
-    || /^\.slide\s*\{[\s\S]*/.test(tail.trim());
+    || /^\.slide\s*\{[\s\S]*/.test(tail.trim())
+    || looksLikeLeakedCssCustomPropertyBlock(tail);
   if (!looksLikeDeckFramework) return input;
   return input.slice(0, match.index).trimEnd();
+}
+
+/**
+ * True for `:root{--bg:#…;--coral:#…}` (and multiline hex splits) that must
+ * never appear as chat copy — models often emit kit tokens before/without the
+ * deck artifact.
+ */
+function looksLikeLeakedCssCustomPropertyBlock(text: string): boolean {
+  const sample = String(text ?? "").trim();
+  if (!sample) return false;
+  if (!/^:root\b/i.test(sample) && !/--[a-zA-Z_][\w-]*\s*:/.test(sample)) return false;
+  const customProps = sample.match(/--[a-zA-Z_][\w-]*\s*:/g) ?? [];
+  if (customProps.length < 2) return false;
+  // Palette / surface dumps always carry hex (optionally split across lines).
+  const hexHits = sample.match(/#[0-9A-Fa-f]{3,8}\b/g) ?? [];
+  if (hexHits.length < 2 && !/--(?:bg|fg|ink|paper|surface|outline|coral|lime|sky)\b/i.test(sample)) {
+    return false;
+  }
+  // Reject if it still looks like normal prose with an incidental mention.
+  if (/[가-힣A-Za-z]{12,}/.test(sample.replace(/:root|var\(--[\w-]+\)|--[\w-]+/gi, " "))) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Strip standalone kit `:root { --token: #hex }` dumps anywhere in chat prose
+ * (not only trailing). Keeps real sentences; drops pure token blocks.
+ */
+export function stripLeakedCssCustomPropertyBlocks(input: string): string {
+  if (!input) return input;
+  let text = String(input);
+  // Compact or pretty `:root{--a:#…;--b:#…}` blocks (hex may wrap after `:`).
+  text = text.replace(
+    /(?:^|\n)\s*:root\s*\{[\s\S]*?\}/gi,
+    (block, offset) => (looksLikeLeakedCssCustomPropertyBlock(block) ? (offset > 0 ? "\n" : "") : block),
+  );
+  // Entire-message dump without a closing `}` yet (streaming / aborted style).
+  if (looksLikeLeakedCssCustomPropertyBlock(text) && !/<[a-z]|[가-힣]{4,}/i.test(text.replace(/:root|--[\w-]+|#[0-9A-Fa-f]+/gi, " "))) {
+    return "";
+  }
+  text = text.replace(/\n{3,}/g, "\n\n");
+  // Do not trim — preserving a trailing `\n` before `<artifact` matters for
+  // streaming/history equality and monotonic chat growth.
+  if (!text.trim()) return "";
+  return text;
+}
+
+function stripLeakedCssCustomPropertyBlocksRespectingArtifacts(
+  input: string,
+  preserveArtifactBodies: boolean,
+): string {
+  if (!preserveArtifactBodies) return stripLeakedCssCustomPropertyBlocks(input);
+  let result = "";
+  let cursor = 0;
+  while (cursor < input.length) {
+    const open = input.indexOf("<artifact", cursor);
+    if (open === -1) {
+      result += stripLeakedCssCustomPropertyBlocks(input.slice(cursor));
+      break;
+    }
+    result += stripLeakedCssCustomPropertyBlocks(input.slice(cursor, open));
+    const gt = input.indexOf(">", open);
+    if (gt === -1) {
+      result += input.slice(open);
+      break;
+    }
+    const close = input.toLowerCase().indexOf("</artifact>", gt);
+    if (close === -1) {
+      // Open artifact: scrub prose before it, keep the open body untouched.
+      result += input.slice(open);
+      break;
+    }
+    const end = close + "</artifact>".length;
+    result += input.slice(open, end);
+    cursor = end;
+  }
+  return result;
 }
 
 /**

@@ -1671,7 +1671,7 @@ export function composeTeamverSlideApiPrompt({
           'Hard requirements (first content-fill — OD-style CREATE, kit Motif AFTER title):\n'
           + '- Bind kit palette hex + fonts + Slide surface on html/body AND every `.slide` edge-to-edge (no white outer + inner cream panel).\n'
           + '- Title-first body: cover title + lead BEFORE Motif. Close `</artifact>` this turn.\n'
-          + '- Motif vocabulary from kit AFTER title (snippets / Decorations CSS / at most one capped sprite). Prefer closing the deck this turn. FORBIDDEN: generic CSS circles; inventing Capsule coral pills when kit Motif is petals/blobs/pins/pixel.\n'
+          + '- Motif vocabulary from kit AFTER title (snippets / Decorations CSS / at most one capped sprite). Prefer closing the deck this turn. FORBIDDEN: generic CSS circles; Capsule Motif as equal-side discs; inventing Capsule coral pills when kit Motif is petals/blobs/pins/pixel.\n'
           + '- Layout REQUIRED from capped Layout CSS + scaffold roles when present — do not flatten every slide into one centered flex title column.\n'
           + '- Prefer 5–6 slides unless the user asked for an exact count. No Neutral `#0f172a` / terracotta `#c96442`.\n'
           + '- Do not dump or rewrite a full example.html. Never open Motif `<svg>` before cover title.\n\n'

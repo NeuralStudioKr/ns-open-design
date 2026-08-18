@@ -1077,6 +1077,42 @@ describe("agent-prose-sanitize SSOT", () => {
     ).toBe(openArtifact);
   });
 
+  it("strips Capsule kit :root custom-property dumps leaked into chat", () => {
+    const compact =
+      ":root{--bg:#F5F5F0;--fg:#1A1A1A;--coral:#E85D4E;--lime:#C4D94E;--lavender:#C5B5E0;--sky:#8BB4F7;--violet:#A06CE8;--yellow:#F2D160;--peach:#F5B895;--mint:#A8E6CF;--outline:#1E1E1E}";
+    expect(sanitizeAssistantProseForDisplay(compact)).toBe("");
+    expect(
+      sanitizeAssistantProseForDisplay(`덱을 구성합니다.\n\n${compact}`),
+    ).toBe("덱을 구성합니다.");
+    const multiline = [
+      ":root{--bg:",
+      "#F5F5F0;--fg:",
+      "#1A1A1A;--coral:",
+      "#E85D4E;--lime:",
+      "#C4D94E;--lavender:",
+      "#C5B5E0;--sky:",
+      "#8BB4F7;--violet:",
+      "#A06CE8;--yellow:",
+      "#F2D160;--peach:",
+      "#F5B895;--mint:",
+      "#A8E6CF;--outline:",
+      "#1E1E1E}",
+    ].join("\n");
+    expect(sanitizeAssistantProseForDisplay(multiline)).toBe("");
+    expect(sanitizeAssistantProseForDisplay(`진행합니다.\n${multiline}`)).toBe(
+      "진행합니다.",
+    );
+    // Style tokens inside a preserved closed artifact must survive.
+    const withArtifact =
+      `Intro\n<artifact type="deck" identifier="deck"><style>${compact}</style><section class="slide">A</section></artifact>\nDone`;
+    const kept = sanitizeAssistantProseForDisplay(withArtifact, {
+      preserveClosedArtifact: true,
+    });
+    expect(kept).toContain(compact);
+    expect(kept).toContain("Intro");
+    expect(kept).toContain("Done");
+  });
+
   it("strips code fences when stripCodeFences is enabled", () => {
     const input = "Intro\n```html\n<!doctype html><html></html>\n```\nOutro";
     expect(

@@ -782,6 +782,24 @@ function extractMotifHtmlSnippets(html: string, budget: number): string[] {
     } else if (/style\s*=/i.test(tag)) score = 3;
     // Boost tags that already carry placement styles.
     if (/style\s*=/i.test(tag)) score -= 1;
+    // Capsule Motif must read as oblong pills — demote year-dot circles
+    // (equal width/height or border-radius:50%) so fill doesn't copy discs.
+    if (/\bdeco-pill\b|[cf]-pill\b/i.test(tag)) {
+      const widthPx = /width\s*:\s*([\d.]+)px/i.exec(tag)?.[1];
+      const heightPx = /height\s*:\s*([\d.]+)px/i.exec(tag)?.[1];
+      const w = widthPx ? Number(widthPx) : NaN;
+      const h = heightPx ? Number(heightPx) : NaN;
+      const isCircle =
+        /border-radius\s*:\s*50%/i.test(tag)
+        || (Number.isFinite(w) && Number.isFinite(h) && w > 0 && Math.abs(w - h) <= Math.max(4, w * 0.08));
+      const isOblong =
+        Number.isFinite(w)
+        && Number.isFinite(h)
+        && h > 0
+        && (w / h >= 1.45 || h / w >= 1.45);
+      if (isCircle) score += 12;
+      else if (isOblong) score -= 2;
+    }
     scored.push({ score, tag });
   }
   scored.sort((a, b) => a.score - b.score || b.tag.length - a.tag.length);
@@ -837,6 +855,11 @@ function renderMotifVocabularyBlock(
     '',
     `Required recognizable motif/style vocabulary from this selected template: ${guidance}.`,
     'Use these exact class/token families when they exist in Decorations CSS or scaffold map. If capped Motif SVGs are listed, place at most one AFTER title/lead; otherwise implement the same motif with the listed CSS classes and palette. Do not replace with plain generic circles, emoji, or another template family.',
+    ...(hasCapsuleMotifSignal(text)
+      ? [
+          'Capsule Motif geometry: `.deco-pill` / pill-* decorations must be **oblong capsules** (width ≳ 1.6× height, `border-radius:9999px`). Equal width/height or `border-radius:50%` discs are failed Capsule Motif (year-dot circles are at most one accent, never the main Motif language).',
+        ]
+      : []),
     '',
   ].join('\n');
 }
@@ -1409,7 +1432,7 @@ const HARD_RULES = [
   '- **Background:** bind `### Slide surface` on BOTH `html`/`body` AND every `.slide` edge-to-edge (full 1920×1080). Dark-on-dark, light-on-light, paper-slides-on-wrong-shell, or white outer + inner cream panel (white top/bottom bands) are failed deliverables. Ink/border tokens are stroke/text, not backgrounds.',
   '- **Fonts:** use kit Font import + font-family names exactly; do not substitute Inter/Noto/system-ui alone when the kit lists display/body faces.',
   '- Motif language comes from **Motif sprites** / **Decorations CSS** below when present. Prefer the kit Motif vocabulary (pills/petals/blobs/pins/geometric `.deco-*`/sprites) in kit hex first. Motif SVG paste is optional: at most one short complete sprite AFTER visible title/lead on a slide, never before cover copy, never a multi-KB `<svg><style>` dump, and skip entirely if paste risks a hang. Use only listed sprites — never invent SVG/emoji for a missing slot.',
-  '- **Forbidden motif substitutes:** unicode/emoji ornaments as decoration pretending to be the template identity. Do not invent ellipse "daisy" SVGs, generic flower geometry, or plain CSS circles when the kit lists Motif CSS/sprites.',
+  '- **Forbidden motif substitutes:** unicode/emoji ornaments as decoration pretending to be the template identity. Do not invent ellipse "daisy" SVGs, generic flower geometry, or plain CSS circles when the kit lists Motif CSS/sprites. Capsule `.deco-pill` Motif must stay oblong (not equal-side discs).',
   '- Preserve chunky cards/borders/offset shadows when Decorations CSS / `:root` tokens show them (`--border`, `--shadow`).',
   '- Do not substitute OD skeleton terracotta `#c96442` unless that hex is listed in this kit\'s palette cues.',
 ];
@@ -1828,6 +1851,11 @@ function capDecorationsCssSectionForFill(section: string): string {
     '',
     `REQUIRED Motif vocabulary from this kit: ${vocab}. Do NOT invent generic CSS circles / emoji ornaments as substitutes.`,
     'Motif density: after title/lead, prefer 1–2 Motif elements from kit snippets/classes when scaffold lists `deco=…`. Finish a closed compact deck this turn — Motif polish can be light.',
+    ...(hasCapsuleMotifSignal(vocabSource) || hasCapsuleMotifSignal(pickedCss)
+      ? [
+          'If this kit uses Capsule pills: copy oblong snippet geometry (`width` substantially larger than `height`, `border-radius:9999px`). Never paint Motif as equal-side circles.',
+        ]
+      : []),
   ];
   if (htmlSnippets.length > 0) {
     lines.push(
@@ -1840,7 +1868,7 @@ function capDecorationsCssSectionForFill(section: string): string {
     );
   } else if (hasCapsuleMotifSignal(pickedCss) || hasCapsuleMotifSignal(section)) {
     lines.push(
-      'Example capsule (AFTER title): `<div class="deco-pill pill-coral" style="position:absolute;top:48px;left:64px;width:180px;height:72px;border-radius:9999px;border:2px solid #1A1A1A;background:#E85D4E"></div>`.',
+      'Example capsule (AFTER title): `<div class="deco-pill pill-coral" style="position:absolute;top:48px;left:64px;width:180px;height:72px;border-radius:9999px;border:2px solid #1A1A1A;background:#E85D4E"></div>`. Oblong only — never square/circle Motif.',
     );
   } else if (/\.doodle|\.scribble/i.test(pickedCss)) {
     lines.push(

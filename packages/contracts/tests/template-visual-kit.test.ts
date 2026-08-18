@@ -315,6 +315,13 @@ html,body{background:var(--cream);color:var(--text-dark)}
     expect(capsuleSlim).toMatch(/pill-coral|pill-lavender|pill-sky|pill-peach|pill-violet/i);
     expect(capsuleSlim).toMatch(/Motif HTML snippets|border-radius:\s*9999px/i);
     expect(capsuleSlim).toMatch(/REQUIRED Motif vocabulary|Do NOT invent generic CSS circles/i);
+    expect(capsuleSlim).toMatch(/oblong|width.*larger than.*height|never paint Motif as equal-side circles/i);
+    // Prefer real capsule geometry in Motif snippets — not year-dot discs.
+    const motifSnippets = /Motif HTML snippets[\s\S]*?```html\n([\s\S]*?)```/i.exec(capsuleSlim)?.[1] ?? '';
+    expect(motifSnippets).toMatch(/deco-pill/i);
+    expect(motifSnippets).toMatch(/width:\s*\d+px;height:\s*\d+px/i);
+    expect(motifSnippets).not.toMatch(/border-radius:\s*50%/i);
+    expect(motifSnippets).not.toMatch(/width:\s*(\d+)px;height:\s*\1px/i);
     expect(capsuleSlim).toMatch(/Layout CSS \(capped for first content-fill/i);
     expect(capsuleSlim).toMatch(/Do NOT flatten|cards-grid|grid-template/i);
     expect(capsuleSlim).not.toMatch(/Decorations CSS \(omitted for first content-fill/i);
