@@ -157,7 +157,7 @@ describe("TeamverHomeSlideCreateModal", () => {
     fireEvent.click(screen.getByTestId("teamver-home-slide-create-step-template"));
     expect(screen.getByTestId("teamver-home-slide-create-template")).toBeTruthy();
     expect(screen.getByTestId("teamver-home-slide-create-summary").textContent).toMatch(
-      /Internal report · Standard · Professional/,
+      /Internal report · Standard · 8–10 · Professional/,
     );
     expect(screen.getByTestId("teamver-home-slide-create-prev")).toBeTruthy();
   });
@@ -258,7 +258,7 @@ describe("TeamverHomeSlideCreateModal", () => {
       "teamver-canvas-slide-launch-modal--wide",
     );
     expect(screen.getByTestId("teamver-home-slide-create-summary").textContent).toContain(
-      "Internal report",
+      "Standard · 8–10",
     );
   });
 
@@ -539,6 +539,67 @@ describe("TeamverHomeSlideCreateModal", () => {
     expect(screen.getByTestId("teamver-home-slide-create-step-template").textContent).toContain("✓");
     expect(screen.getByTestId("teamver-home-slide-create-step-template").getAttribute("aria-label")).toMatch(
       /Template .*Default slide template/i,
+    );
+  });
+
+  it("shows slide-count ranges and accepts a custom count", () => {
+    const onQuickSettingsChange = vi.fn();
+    wrap(
+      <TeamverHomeSlideCreateModal
+        open
+        entry="new"
+        templateOptions={templates}
+        selectedTemplateId="example-simple-deck"
+        quickSettings={createHomeSlideCreateQuickSettings()}
+        onQuickSettingsChange={onQuickSettingsChange}
+        userPrompt="Q3 update"
+        onUserPromptChange={() => {}}
+        onConfirm={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    expect(screen.getByTestId("teamver-home-slide-create-quick-length-short").textContent).toMatch(
+      /5–6/,
+    );
+    expect(screen.getByTestId("teamver-home-slide-create-quick-length-standard").textContent).toMatch(
+      /8–10/,
+    );
+    expect(screen.getByTestId("teamver-home-slide-create-quick-length-detailed").textContent).toMatch(
+      /12–15/,
+    );
+    fireEvent.change(screen.getByTestId("teamver-home-slide-create-slide-count"), {
+      target: { value: "12" },
+    });
+    expect(onQuickSettingsChange).toHaveBeenCalledWith(
+      expect.objectContaining({ customSlideCount: 12 }),
+    );
+  });
+
+  it("clears a custom slide count when a length chip is picked", () => {
+    const onQuickSettingsChange = vi.fn();
+    wrap(
+      <TeamverHomeSlideCreateModal
+        open
+        entry="new"
+        templateOptions={templates}
+        selectedTemplateId="example-simple-deck"
+        quickSettings={{
+          ...createHomeSlideCreateQuickSettings(),
+          customSlideCount: 12,
+        }}
+        onQuickSettingsChange={onQuickSettingsChange}
+        userPrompt="Q3 update"
+        onUserPromptChange={() => {}}
+        onConfirm={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    expect(
+      (screen.getByTestId("teamver-home-slide-create-slide-count") as HTMLInputElement).value,
+    ).toBe("12");
+    fireEvent.click(screen.getByTestId("teamver-home-slide-create-quick-length-short"));
+    expect(onQuickSettingsChange).toHaveBeenCalledWith(
+      expect.objectContaining({ length: "short", customSlideCount: null }),
     );
   });
 

@@ -3776,6 +3776,41 @@ button.teamver-home-slide-create-attach-item:disabled {
   padding-top: 0;
   font-size: 12px;
 }
+.teamver-home-slide-create-slide-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 26px;
+  padding: 3px 9px 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1;
+}
+.teamver-home-slide-create-slide-count.is-selected {
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
+  background: color-mix(in srgb, var(--accent) 14%, var(--bg));
+  color: var(--text-strong);
+  font-weight: 650;
+}
+.teamver-home-slide-create-slide-count input {
+  width: 2.1em;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: center;
+}
+.teamver-home-slide-create-slide-count input:focus {
+  outline: none;
+}
+.teamver-home-slide-create-slide-count input:disabled {
+  cursor: not-allowed;
+}
 .teamver-home-slide-create-prompt {
   min-height: 132px;
   padding: 12px 14px;

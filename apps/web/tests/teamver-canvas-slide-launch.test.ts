@@ -9,6 +9,8 @@ import {
   DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS,
   createHomeSlideCreateQuickSettings,
   hasHomeSlideCreateContent,
+  parseCustomSlideCountInput,
+  resolveCanvasSlideQuickSlideCount,
   HOME_CREATE_SLIDES_INTERNAL_INSTRUCTION,
   HOME_EMPTY_CREATE_SLIDES_PROMPT,
   SLIDE_DECK_CONTENT_EXPANSION_EXAMPLE,
@@ -479,6 +481,19 @@ describe("canvasSlideLaunch", () => {
       slideCount: "5-6",
     });
     expect(createHomeSlideCreateQuickSettings()).not.toHaveProperty("language");
+    expect(createHomeSlideCreateQuickSettings().customSlideCount).toBeNull();
+    expect(parseCustomSlideCountInput("")).toBeNull();
+    expect(parseCustomSlideCountInput("12")).toBe(12);
+    expect(parseCustomSlideCountInput("41")).toBeNull();
+    expect(resolveCanvasSlideQuickSlideCount({
+      length: "short",
+      customSlideCount: 12,
+    })).toBe("12");
+    expect(resolveCanvasSlideQuickSlideCount(
+      { length: "short", customSlideCount: 12 },
+      "15 slides",
+    )).toBe("15");
+    expect(resolveCanvasSlideQuickSlideCount({ length: "detailed" })).toBe("12-15");
     expect(hasHomeSlideCreateContent({ prompt: "", files: [], driveAssets: [] })).toBe(false);
     expect(hasHomeSlideCreateContent({ prompt: "   ", files: [], driveAssets: [] })).toBe(false);
     expect(hasHomeSlideCreateContent({ prompt: "Q3", files: [], driveAssets: [] })).toBe(true);
@@ -521,6 +536,24 @@ describe("canvasSlideLaunch", () => {
         quickSettings,
       ),
     ).toMatchObject({ slideCount: "10" });
+    expect(
+      canvasCreateSlidesPluginInputs(
+        "Topic",
+        "Template",
+        "brief",
+        "",
+        { ...quickSettings, customSlideCount: 12 },
+      ),
+    ).toMatchObject({ slideCount: "12" });
+    expect(
+      canvasCreateSlidesPluginInputs(
+        "Topic",
+        "Template",
+        "brief",
+        "15 slides",
+        { ...quickSettings, customSlideCount: 12 },
+      ),
+    ).toMatchObject({ slideCount: "15" });
   });
 
   it("normalizes invalid quick settings before composing hidden model instructions", () => {
@@ -670,6 +703,8 @@ describe("canvasSlideLaunch", () => {
     const homeModal = readWebSource("src/teamver/components/TeamverHomeSlideCreateModal.tsx");
     const canvasModal = readWebSource("src/teamver/components/TeamverCanvasSlideLaunchModal.tsx");
     expect(homeModal).toContain("hasHomeSlideCreateContent");
+    expect(homeModal).toContain("customSlideCount");
+    expect(homeModal).toContain("teamver-home-slide-create-slide-count");
     expect(homeModal).toContain("teamver.homeCreate.needBriefOrAttach");
     expect(homeModal).toContain("teamver.homeCreate.driveUnavailable");
     expect(homeModal).not.toContain("teamver.homeCreate.quickLanguage");

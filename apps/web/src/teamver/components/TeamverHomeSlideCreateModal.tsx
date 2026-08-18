@@ -13,6 +13,7 @@ import {
   createHomeSlideCreateQuickSettings,
   hasHomeSlideCreateContent,
   isExplicitCanvasSlideVisualTemplate,
+  parseCustomSlideCountInput,
   type CanvasSlideQuickSettings,
   type TeamverCanvasSlideTemplateOption,
 } from "../canvasSlideLaunch";
@@ -303,10 +304,14 @@ export function TeamverHomeSlideCreateModal({
       QUICK_SETTING_GROUPS[0].options.find(([value]) => value === normalizedQuick.audience)?.[1]
         ?? "teamver.canvasSlideLaunch.quickAudienceAuto",
     ),
-    t(
-      QUICK_SETTING_GROUPS[1].options.find(([value]) => value === normalizedQuick.length)?.[1]
-        ?? "teamver.canvasSlideLaunch.quickLengthAuto",
-    ),
+    normalizedQuick.customSlideCount != null
+      ? t("teamver.homeCreate.summarySlideCount", {
+          count: normalizedQuick.customSlideCount,
+        })
+      : t(
+          QUICK_SETTING_GROUPS[1].options.find(([value]) => value === normalizedQuick.length)?.[1]
+            ?? "teamver.canvasSlideLaunch.quickLengthAuto",
+        ),
     t(
       QUICK_SETTING_GROUPS[2].options.find(([value]) => value === normalizedQuick.tone)?.[1]
         ?? "teamver.canvasSlideLaunch.quickToneAuto",
@@ -353,7 +358,25 @@ export function TeamverHomeSlideCreateModal({
     key: K,
     value: CanvasSlideQuickSettings[K],
   ) {
+    if (key === "length") {
+      onQuickSettingsChange?.({
+        ...normalizedQuick,
+        length: value as CanvasSlideQuickSettings["length"],
+        customSlideCount: null,
+      });
+      return;
+    }
     onQuickSettingsChange?.({ ...normalizedQuick, [key]: value });
+  }
+
+  function updateCustomSlideCount(raw: string) {
+    if (raw.trim() === "") {
+      onQuickSettingsChange?.({ ...normalizedQuick, customSlideCount: null });
+      return;
+    }
+    const parsed = parseCustomSlideCountInput(raw);
+    if (parsed == null) return;
+    onQuickSettingsChange?.({ ...normalizedQuick, customSlideCount: parsed });
   }
 
   const driveUnavailable = !onAttachFromDrive;
@@ -477,7 +500,10 @@ export function TeamverHomeSlideCreateModal({
             </span>
             <div className="teamver-canvas-slide-launch-quick-options">
               {group.options.map(([value, labelKey]) => {
-                const selected = normalizedQuick[group.key] === value;
+                const selected =
+                  group.key === "length" && normalizedQuick.customSlideCount != null
+                    ? false
+                    : normalizedQuick[group.key] === value;
                 return (
                   <button
                     key={value}
@@ -502,6 +528,34 @@ export function TeamverHomeSlideCreateModal({
                   </button>
                 );
               })}
+              {group.key === "length" ? (
+                <label
+                  className={[
+                    "teamver-home-slide-create-slide-count",
+                    normalizedQuick.customSlideCount != null ? "is-selected" : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
+                >
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    maxLength={2}
+                    disabled={confirming}
+                    value={
+                      normalizedQuick.customSlideCount != null
+                        ? String(normalizedQuick.customSlideCount)
+                        : ""
+                    }
+                    placeholder={t("teamver.homeCreate.slideCountPlaceholder")}
+                    aria-label={t("teamver.homeCreate.slideCountAria")}
+                    data-testid="teamver-home-slide-create-slide-count"
+                    onChange={(event) => updateCustomSlideCount(event.currentTarget.value)}
+                  />
+                  <span>{t("teamver.homeCreate.slideCountUnit")}</span>
+                </label>
+              ) : null}
             </div>
           </div>
         ))}

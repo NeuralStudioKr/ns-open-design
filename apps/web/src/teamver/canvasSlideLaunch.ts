@@ -221,6 +221,8 @@ export type CanvasSlideQuickSettings = {
   length: CanvasSlideLength;
   transformMode: CanvasSlideTransformMode;
   tone: CanvasSlideTone;
+  /** Home wizard: exact 1–40 slides. When set, overrides Length chips. */
+  customSlideCount?: number | null;
 };
 
 export const DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS: CanvasSlideQuickSettings = {
@@ -228,6 +230,7 @@ export const DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS: CanvasSlideQuickSettings = {
   length: "auto",
   transformMode: "presentation",
   tone: "auto",
+  customSlideCount: null,
 };
 
 /** Home empty-create defaults — no source doc, so avoid vague "auto". */
@@ -236,6 +239,7 @@ export const DEFAULT_HOME_SLIDE_CREATE_QUICK_SETTINGS: CanvasSlideQuickSettings 
   length: "standard",
   transformMode: "presentation",
   tone: "professional",
+  customSlideCount: null,
 };
 
 /** Fresh copy so each open/reset cannot reuse a mutated or same-reference draft. */
@@ -282,6 +286,29 @@ const QUICK_SETTING_PROMPT_LABELS = {
     impact: "Impact-focused",
   },
 } as const;
+
+const CUSTOM_SLIDE_COUNT_MIN = 1;
+const CUSTOM_SLIDE_COUNT_MAX = 40;
+
+/** Parse a Home wizard custom slide-count field (1–40). Empty → null. */
+export function parseCustomSlideCountInput(raw: string): number | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  if (!/^\d{1,2}$/.test(trimmed)) return null;
+  const n = Number(trimmed);
+  if (!Number.isInteger(n) || n < CUSTOM_SLIDE_COUNT_MIN || n > CUSTOM_SLIDE_COUNT_MAX) {
+    return null;
+  }
+  return n;
+}
+
+function normalizeCustomSlideCount(value: unknown): number | null {
+  if (typeof value === "number") {
+    return parseCustomSlideCountInput(String(value));
+  }
+  if (typeof value === "string") return parseCustomSlideCountInput(value);
+  return null;
+}
 
 /** Authoritative Plugin-input slideCount from Canvas quick length. */
 export function canvasSlideQuickLengthToSlideCount(
@@ -367,6 +394,7 @@ export function normalizeCanvasSlideQuickSettings(
       ["auto", "professional", "modern", "friendly", "impact"],
       DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS.tone,
     ),
+    customSlideCount: normalizeCustomSlideCount(raw.customSlideCount),
   };
 }
 
@@ -374,13 +402,31 @@ export function canvasSlideQuickSettingsInstruction(
   settings?: Partial<CanvasSlideQuickSettings> | null,
 ): string {
   const normalized = normalizeCanvasSlideQuickSettings(settings);
+  const lengthLine = normalized.customSlideCount != null
+    ? `Length: Exact ${normalized.customSlideCount} slides (custom).`
+    : `Length: ${QUICK_SETTING_PROMPT_LABELS.length[normalized.length]}.`;
   return [
     `Audience: ${QUICK_SETTING_PROMPT_LABELS.audience[normalized.audience]}.`,
-    `Length: ${QUICK_SETTING_PROMPT_LABELS.length[normalized.length]}.`,
+    lengthLine,
     `Transform mode: ${QUICK_SETTING_PROMPT_LABELS.transformMode[normalized.transformMode]}.`,
     `Tone: ${QUICK_SETTING_PROMPT_LABELS.tone[normalized.tone]}.`,
     "If [User instruction] specifies an exact slide count (e.g. \"15 slides\", \"10장\"), that count wins over Length.",
   ].join("\n");
+}
+
+/** Prompt text > custom count field > Length chip. */
+export function resolveCanvasSlideQuickSlideCount(
+  settings?: Partial<CanvasSlideQuickSettings> | null,
+  userInstruction?: string | null,
+  brief?: string | null,
+): string {
+  const fromText =
+    parseExplicitSlideCountFromText(userInstruction)
+    ?? parseExplicitSlideCountFromText(brief);
+  if (fromText) return fromText;
+  const normalized = normalizeCanvasSlideQuickSettings(settings);
+  if (normalized.customSlideCount != null) return String(normalized.customSlideCount);
+  return canvasSlideQuickLengthToSlideCount(normalized.length);
 }
 
 /**
@@ -849,9 +895,6 @@ export function canvasCreateSlidesPluginInputs(
   // "stakeholders" default fighting "Client/education" prose).
   // Free-text counts in userInstruction win over quick Length (e.g. short +
   // "15 slides" must not pin slideCount to 5-6).
-  const slideCountFromUser =
-    parseExplicitSlideCountFromText(user)
-    ?? parseExplicitSlideCountFromText(brief);
   return {
     deckType: hasSourceMaterial
       ? "presentation from source material"
@@ -859,9 +902,11 @@ export function canvasCreateSlidesPluginInputs(
     topic,
     audience: canvasSlideQuickAudienceToPluginValue(normalizedQuickSettings.audience),
     tone: canvasSlideQuickToneToPluginValue(normalizedQuickSettings.tone),
-    slideCount:
-      slideCountFromUser
-      ?? canvasSlideQuickLengthToSlideCount(normalizedQuickSettings.length),
+    slideCount: resolveCanvasSlideQuickSlideCount(
+      normalizedQuickSettings,
+      user,
+      brief,
+    ),
     speakerNotes: "no speaker notes",
     // Keep designSystem for scenario schema compatibility, but point it at the
     // visual template title so Neutral Modern / Simple Deck cannot reclaim look.
