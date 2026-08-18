@@ -425,6 +425,9 @@ html,body{background:var(--cream);color:var(--text-dark)}
     expect(slim).toMatch(/title cue: pin \/ paper \/ cork|stamp\/tape\/pin|pin-/i);
     expect(slim).toMatch(/Decorations CSS|pin-|cork|post-it|\.tape/i);
     expect(slim).not.toMatch(/Example capsule \(AFTER title\)/i);
+    // Fill cap must keep the #pin <symbol> defs sheet — not chart polylines.
+    expect(slim).toMatch(/<symbol[^>]*\bid=["']pin["']/i);
+    expect(slim).not.toMatch(/<polyline\b/i);
   });
 
   it('resolveSiblingAssetPath joins preview-relative local CSS hrefs', async () => {

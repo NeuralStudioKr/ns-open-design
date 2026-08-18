@@ -233,6 +233,18 @@ describe('buildStandaloneDeckHtmlDocument', () => {
     expect(out).toContain('.nav-dots');
     expect(out).not.toContain("flex-direction', 'column'");
   });
+
+  it('relaxes persisted .slide surface bleed before Motif stylesheet heal', () => {
+    const html = `<!doctype html><html><head></head><body>
+<section class="slide slide-1">Cover</section>
+<style data-od-slide-surface-bleed="">html, body, .slide, section.slide { background: #F5F5F0 !important; color: #1A1A1A !important; }</style>
+<style>.deco-pill{position:absolute;border-radius:9999px}</style>
+</body></html>`;
+    const healed = healDeckHtmlForStandaloneExport(html);
+    expect(healed).toMatch(/html,\s*body\s*\{[^}]*background:\s*#F5F5F0/i);
+    expect(healed).not.toMatch(/html,\s*body,\s*\.slide,\s*section\.slide/i);
+    expect(healed).toMatch(/\.deco-pill\{/);
+  });
 });
 
 describe('buildDeckHtmlExportViewportScript', () => {
