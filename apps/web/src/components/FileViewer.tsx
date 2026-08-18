@@ -333,7 +333,8 @@ import {
   shouldClearTipRemountGeometryGraceOnExpiry,
   shouldClearTipRemountGeometryGraceOnSelectionChange,
   shouldEchoManualEditSelectionAfterFreezeSync,
-  shouldRequestTipRemountRemasureAfterFreezeSync,
+  shouldRequestTipRemountRemasureAfterSrcDocLoad,
+  shouldSkipSrcDocTransportRemountForManualEditFreezeTipSync,
   shouldPatchSelectedGeometryFromTargetsBroadcast,
   shouldReseedManualEditMultiInspectorAfterFreezeSync,
   shouldReseedSingleInspectorAfterTipYieldMixedClear,
@@ -5482,6 +5483,8 @@ function HtmlViewer({
   /** Tip-yield freeze remount — skip idle wild-jump deny until first remasure. */
   const manualEditTipRemountGeometryGraceIdRef = useRef<string | null>(null);
   const manualEditTipRemountGeometryGraceUntilRef = useRef(0);
+  /** Deferred Mixed/single reseed after freeze — cancelled when a newer tip-yield schedules. */
+  const manualEditFreezeEchoTimeoutRef = useRef<number | null>(null);
   /** Confirm refuse → suppress disk tip prefer until refresh commits. */
   const manualEditSuppressTipPreferUntilRefreshRef = useRef(false);
   const manualEditRemeasureAwaiterRef = useRef(createManualEditRemeasureAwaiter());
@@ -7150,6 +7153,14 @@ function HtmlViewer({
     wasStreamingDeckPreviewRef.current = false;
     lastDeckPreviewSourceRef.current = previewSource;
     if (leftStreaming || (prev != null && prev !== previewSource)) {
+      // Tip-yield freeze already reloads via srcDoc — skip a second shell remount (453).
+      if (shouldSkipSrcDocTransportRemountForManualEditFreezeTipSync(
+        leftStreaming,
+        manualEditMode,
+        manualEditFrozenSource != null,
+      )) {
+        return;
+      }
       activatedSrcDocTransportHtmlRef.current = null;
       setSrcDocTransportResetKey((key) => key + 1);
     }
@@ -7161,6 +7172,8 @@ function HtmlViewer({
     useUrlLoadPreview,
     projectId,
     file.name,
+    manualEditMode,
+    manualEditFrozenSource,
   ]);
   // Reset the shell-ready latch whenever the srcDoc iframe re-mounts. The
   // next shell will post `od:srcdoc-transport-ready` (or fire onLoad) and
@@ -7735,13 +7748,14 @@ function HtmlViewer({
       manualEditMode ? selectedManualEditTarget?.id ?? null : null,
     );
     // hostChrome tracks overlay mount: also re-post when draw / inline-text hide it.
-    // Freeze tip-yield remounts srcDoc; keep frozenSource too for lazy-transport races.
+    // Tip-yield freeze remount: do NOT depend on manualEditFrozenSource — posting
+    // selection onto a dying frame causes outline clear→paint→clear; onLoad owns
+    // restore via syncBridgeModes (452).
   }, [
     manualEditMode,
     selectedManualEditTarget?.id,
     selectedManualEditTargetIds,
     srcDoc,
-    manualEditFrozenSource,
     useUrlLoadPreview,
     manualEditInlineTextEditing,
     drawOverlayOpen,
@@ -7816,6 +7830,27 @@ function HtmlViewer({
     const win = target?.contentWindow;
     if (!win || !id) return;
     win.postMessage({ type: 'od-edit-remeasure', id }, '*');
+  }
+
+  /** After tip-yield srcDoc onLoad — remasure selected ids while grace is armed (450/452). */
+  function requestTipRemountRemasureAfterSrcDocLoad(
+    target: HTMLIFrameElement | null = iframeRef.current,
+  ) {
+    const ids = selectedManualEditTargetIdsRef.current;
+    if (!shouldRequestTipRemountRemasureAfterSrcDocLoad(
+      manualEditModeRef.current,
+      ids,
+      manualEditTipRemountGeometryGraceIdRef.current,
+    )) {
+      return;
+    }
+    const primaryId = selectedManualEditTargetIdRef.current;
+    const ordered = primaryId && ids.includes(primaryId)
+      ? [primaryId, ...ids.filter((id) => id !== primaryId)]
+      : ids;
+    for (const id of ordered) {
+      requestManualEditTargetRemeasure(id, target);
+    }
   }
 
   function waitForManualEditTargetRemeasure(id: string, timeoutMs = 500) {
@@ -7969,7 +8004,8 @@ function HtmlViewer({
     }
   }
 
-  /** Tip-yield freeze remount — deferred selection echo + multi Mixed reseed (59). */
+  /** Tip-yield freeze remount — deferred Mixed/single reseed (59). Selection
+   *  restore + remasure run from srcDoc onLoad so we do not paint a dying frame (452). */
   function scheduleManualEditSelectionEchoAfterFreezeSync() {
     const selectedIds = selectedManualEditTargetIdsRef.current;
     const echo = shouldEchoManualEditSelectionAfterFreezeSync(
@@ -7987,29 +8023,14 @@ function HtmlViewer({
       manualEditTipRemountGeometryGraceIdRef.current = graceId;
       manualEditTipRemountGeometryGraceUntilRef.current = Date.now() + 800;
     }
-    window.setTimeout(() => {
-      if (shouldEchoManualEditSelectionAfterFreezeSync(
-        manualEditModeRef.current,
-        selectedManualEditTargetIdsRef.current,
-      )) {
-        syncBridgeModes(iframeRef.current);
-      }
+    if (manualEditFreezeEchoTimeoutRef.current != null) {
+      window.clearTimeout(manualEditFreezeEchoTimeoutRef.current);
+      manualEditFreezeEchoTimeoutRef.current = null;
+    }
+    manualEditFreezeEchoTimeoutRef.current = window.setTimeout(() => {
+      manualEditFreezeEchoTimeoutRef.current = null;
       const ids = selectedManualEditTargetIdsRef.current;
-      // Grace is armed above but echo only syncs modes — request remasure so
-      // od-edit-rect consumes grace and multi/single overlay tracks tip (450).
-      // Run before multi/single reseed branches (single path returns early).
-      if (shouldRequestTipRemountRemasureAfterFreezeSync(
-        manualEditModeRef.current,
-        ids,
-      )) {
-        const primaryId = selectedManualEditTargetIdRef.current;
-        const ordered = primaryId && ids.includes(primaryId)
-          ? [primaryId, ...ids.filter((id) => id !== primaryId)]
-          : ids;
-        for (const id of ordered) {
-          requestManualEditTargetRemeasure(id);
-        }
-      }
+      // Selection echo / remasure: srcDoc onLoad → syncBridgeModes + remasure (452).
       if (!shouldReseedManualEditMultiInspectorAfterFreezeSync(
         manualEditModeRef.current,
         ids,
@@ -15047,6 +15068,7 @@ function HtmlViewer({
                             }, '*');
                             frame?.contentWindow?.postMessage({ type: 'od:url-selection-bridge-probe' }, '*');
                             syncBridgeModes(frame);
+                            requestTipRemountRemasureAfterSrcDocLoad(frame);
                             replayManualEditStylesToIframe(frame);
                             if (useUrlLoadPreview) restorePreviewScrollPosition();
                             if (needsDeckHostViewportFit) {
@@ -15086,6 +15108,7 @@ function HtmlViewer({
                             }, '*');
                             frame?.contentWindow?.postMessage({ type: 'od:url-selection-bridge-probe' }, '*');
                             syncBridgeModes(frame);
+                            requestTipRemountRemasureAfterSrcDocLoad(frame);
                             replayManualEditStylesToIframe(frame);
                             if (useUrlLoadPreview) restorePreviewScrollPosition();
                             if (needsDeckHostViewportFit) {
@@ -15161,6 +15184,8 @@ function HtmlViewer({
                           }, '*');
                           replayInspectOverridesToIframe(frame);
                           syncBridgeModes(frame);
+                          // Tip-yield: remasure after modes on the live tip document (452).
+                          requestTipRemountRemasureAfterSrcDocLoad(frame);
                           replayManualEditStylesToIframe(frame);
                           syncCachedSlideStateToIframe(frame);
                           if (effectiveDeck) {

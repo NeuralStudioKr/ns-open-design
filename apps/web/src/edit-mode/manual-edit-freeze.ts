@@ -60,15 +60,43 @@ export function shouldEchoManualEditSelectionAfterFreezeSync(
 }
 
 /**
- * Tip-yield arms tip-remount grace but selection echo only syncs bridge modes
- * (od-edit-targets). Request od-edit-remeasure so grace can be consumed and
- * host/multi overlay geometry tracks the remounted tip (450).
+ * Tip-yield arms tip-remount grace but selection echo must not post modes onto
+ * a dying frame. Request od-edit-remeasure from srcDoc onLoad after
+ * syncBridgeModes so grace/overlay track the remounted tip (450/452).
  */
 export function shouldRequestTipRemountRemasureAfterFreezeSync(
   manualEditMode: boolean,
   selectedIds: readonly string[],
 ): boolean {
   return Boolean(manualEditMode && selectedIds.length > 0);
+}
+
+/**
+ * Same gate as freeze remasure — used from iframe onLoad once the tip document
+ * is ready (452). Requires grace still armed so unrelated loads do not spam.
+ */
+export function shouldRequestTipRemountRemasureAfterSrcDocLoad(
+  manualEditMode: boolean,
+  selectedIds: readonly string[],
+  graceId: string | null | undefined,
+): boolean {
+  return Boolean(
+    graceId
+    && shouldRequestTipRemountRemasureAfterFreezeSync(manualEditMode, selectedIds),
+  );
+}
+
+/**
+ * Deck host-fit remounts the srcDoc shell on every previewSource change.
+ * Tip-yield freeze sync already reloads via the srcDoc attribute — bumping
+ * transportResetKey causes a second full remount (preview blink) (453).
+ */
+export function shouldSkipSrcDocTransportRemountForManualEditFreezeTipSync(
+  leftStreaming: boolean,
+  manualEditMode: boolean,
+  hasFrozenSource: boolean,
+): boolean {
+  return !leftStreaming && manualEditMode && hasFrozenSource;
 }
 
 /**

@@ -6,6 +6,8 @@ import {
   shouldClearTipRemountGeometryGraceOnSelectionChange,
   shouldEchoManualEditSelectionAfterFreezeSync,
   shouldRequestTipRemountRemasureAfterFreezeSync,
+  shouldRequestTipRemountRemasureAfterSrcDocLoad,
+  shouldSkipSrcDocTransportRemountForManualEditFreezeTipSync,
   shouldPatchSelectedGeometryFromTargetsBroadcast,
   shouldReseedManualEditMultiInspectorAfterFreezeSync,
   shouldReseedSingleInspectorAfterTipYieldMixedClear,
@@ -96,6 +98,20 @@ describe('manual edit freeze reset', () => {
     expect(shouldRequestTipRemountRemasureAfterFreezeSync(true, ['a', 'b'])).toBe(true);
     expect(shouldRequestTipRemountRemasureAfterFreezeSync(true, [])).toBe(false);
     expect(shouldRequestTipRemountRemasureAfterFreezeSync(false, ['a'])).toBe(false);
+  });
+
+  it('requests tip-remount remasure from srcDoc onLoad while grace is armed', () => {
+    expect(shouldRequestTipRemountRemasureAfterSrcDocLoad(true, ['a'], 'a')).toBe(true);
+    expect(shouldRequestTipRemountRemasureAfterSrcDocLoad(true, ['a', 'b'], 'a')).toBe(true);
+    expect(shouldRequestTipRemountRemasureAfterSrcDocLoad(true, ['a'], null)).toBe(false);
+    expect(shouldRequestTipRemountRemasureAfterSrcDocLoad(false, ['a'], 'a')).toBe(false);
+  });
+
+  it('skips deck srcDoc transport remount for edit-mode freeze tip sync', () => {
+    expect(shouldSkipSrcDocTransportRemountForManualEditFreezeTipSync(false, true, true)).toBe(true);
+    expect(shouldSkipSrcDocTransportRemountForManualEditFreezeTipSync(true, true, true)).toBe(false);
+    expect(shouldSkipSrcDocTransportRemountForManualEditFreezeTipSync(false, false, true)).toBe(false);
+    expect(shouldSkipSrcDocTransportRemountForManualEditFreezeTipSync(false, true, false)).toBe(false);
   });
 
   it('patches selected geometry when targets identity fingerprint is unchanged', () => {
