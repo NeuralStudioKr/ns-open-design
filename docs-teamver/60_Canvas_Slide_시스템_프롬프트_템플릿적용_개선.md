@@ -716,6 +716,7 @@ daemon 로컬 skill 워크플로 잔재다. Daisy Days에는 Teamver API 노트�
 | P0 | Home Clone 커버 heading이 user prompt 대신 templateTitle로 남던 문제 | **완료** — App.tsx `deckTitle` fallback을 `Drive filename → derivedPendingPrompt → templateTitle` 순으로 재정렬 |
 | P0 | letterbox `transparent !important`가 deck 자체 body bg를 여전히 override하던 문제 | **완료** — `compactStackedDeckFix`에서 html/body `background` 선언 완전 제거 |
 | P0 | **정책 개정** — template = layout vocabulary, 페이지 수/순서/구성은 브리프 기반 (§0.0 개정) | **완료** — HARD_RULES 재작성, scaffold map을 catalog로 재정의, daemon Clone default `shells.length` → 6, `pickTemplateShells` role-based scoring |
+| P0 | Clone content-fill에서 motif/deco가 과도하게 제거되어 썸네일과 실제 결과가 달라지는 문제 | **완료** — full SVG/CSS dump 금지는 유지하되 compact Motif recipe + Decoration/Layout CSS cues 보존 |
 
 ### 12.1 Edit-contract gating (상세)
 
@@ -745,3 +746,4 @@ User-message 쪽 `[Existing deck edit]` / `<attached-preview-comments>` 주입�
 | 2026-08-13 | §0.9 추가 (최종) — preview panel `compactStackedDeckFix` letterbox의 `#0b0c10` 하드코딩이 daemon Clone 결과 template look을 시각적으로 지우고 있었다 · `transparent`로 교체 · compact contract에 body-first + 1–3 sprites 규칙 · red-spec 405/405 첫 클린 상태 |
 | 2026-08-13 | §0.10 후속 — Home Clone 커버 heading에 user prompt 반영 (`derivedPendingPrompt`로 fallback) · letterbox `transparent !important`도 역효과였음이 확인되어 `background` 선언 자체 제거로 재조정 |
 | 2026-08-13 | **§0.0 정책 개정** — template = layout vocabulary + visual look, 페이지 수/순서/구성은 브리프 기반. content-swap → pick-and-choose layout roles. daemon Clone default count = 6 (shells.length 아님), `pickTemplateShells` role-based scoring 도입. `template-visual-kit.ts` HARD_RULES 재작성, `DEFAULT_MAX_CHARS` 12000 → 14000. |
+| 2026-08-18 | Clone content-fill motif 보정 — 8/13 SVG hang 방지 패치가 first fill에서 `Motif sprites`/`Decoration CSS`/`Layout CSS`를 통째로 생략해 Daisy/Capsule 템플릿 정체성이 약해졌다. `slimTemplateVisualKitForFill`이 큰 SVG sprite sheet와 전체 stylesheet dump는 계속 제거하되, Daisy star/rainbow·Capsule pill/capsule·Terminal scanline 같은 compact motif recipe와 짧은 Decoration/Layout CSS cue를 보존하도록 변경했다. |
