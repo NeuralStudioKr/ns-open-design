@@ -10,7 +10,7 @@ import { repairArtifactStyleSheets } from '@open-design/contracts';
  *
  * Promote the inferred paper surface onto `html`/`body` (and `.slide` only when
  * the slide itself is still white). Do not `!important`-flatten per-slide
- * radial washes — Capsule / html-ppt fills paint gradients on `.slide`.
+ * radial washes — Capsule paints those on `.slide-N`, html-ppt on `.slide`.
  */
 
 const SURFACE_STYLE_ATTR = 'data-od-slide-surface-bleed';
@@ -23,8 +23,14 @@ const SURFACE_STYLE_RE = new RegExp(
 const WHITE_OR_EMPTY_RE =
   /^(?:#fff(?:fff)?|white|transparent|inherit|initial|unset|rgb\(\s*255\s*,\s*255\s*,\s*255\s*\)|rgba\(\s*255\s*,\s*255\s*,\s*255\s*,\s*1(?:\.0+)?\s*\))?$/i;
 
-const SLIDE_OPEN_RE =
-  /<(section|div)\b([^>]*\bclass\s*=\s*(?:"[^"]*\bslide\b[^"]*"|'[^']*\bslide\b[^']*'|[^\s"'=<>]*\bslide\b[^\s"'=<>]*)[^>]*)>/gi;
+const TAG_OPEN_RE = /<(section|div)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
+
+function elementHasExactSlideClass(attrs: string): boolean {
+  const match = /\bclass\s*=\s*(?:"([^"]*)"|'([^']*)'|(\S+))/i.exec(attrs);
+  if (!match) return false;
+  const value = match[1] ?? match[2] ?? match[3] ?? '';
+  return /(^|\s)slide(\s|$)/i.test(value);
+}
 
 function isWhiteOrEmptyBackground(value: string | null | undefined): boolean {
   const trimmed = String(value ?? '').trim();
@@ -40,7 +46,7 @@ function isDecorativeBackground(value: string | null | undefined): boolean {
 function extractSlideBackground(html: string): string | null {
   return (
     extractInlineSlideBackground(html)
-    ?? extractRuleBackground(html, /^(?:[a-z][a-z0-9]*)?\.slide$/i)
+    ?? extractRuleBackground(html, isDeckSlideSurfaceSelector)
   );
 }
 
@@ -50,8 +56,17 @@ function extractSlideBackground(html: string): string | null {
  * class rules then fail for Capsule, Daisy, Hermes, Sakura, etc.
  * Use the shared catalog-wide style repair (not a Capsule-only remnant regex).
  */
-function repairOrphanFontImportDebrisInStyles(html: string): string {
-  return repairArtifactStyleSheets(html);
+function healDeckStyleSheets(html: string): string {
+  return repairArtifactStyleSheets(String(html ?? ''));
+}
+
+/**
+ * Capsule Motif paints radial washes on `.slide-1` (not generic `.slide`).
+ * `.slide-inner` / `.slide-header` / `.slide-counter` are chrome, not surfaces.
+ */
+export function isDeckSlideSurfaceSelector(selector: string): boolean {
+  const leaf = String(selector ?? '').trim().split(/[\s>+~]/).pop()?.trim() ?? '';
+  return /^(?:[a-z][\w-]*)?\.slide(?:-\d+)?(?:\.[a-z][\w-]*)*$/i.test(leaf);
 }
 
 function surfaceBleedSelectors(preserveSlidePaint: boolean): string {
@@ -74,9 +89,12 @@ function bleedStyleTargetsSlides(html: string): boolean {
 
 function readBackgroundFromStyleDecl(style: string | null | undefined): string | null {
   const raw = String(style ?? '');
-  const match = /(?:^|;)\s*background(?:-color)?\s*:\s*([^;]+)/i.exec(raw);
-  const value = match?.[1]?.trim() ?? '';
-  return value || null;
+  const shorthand = /(?:^|;)\s*background\s*:\s*([^;]+)/i.exec(raw)?.[1]?.trim();
+  if (shorthand) return shorthand;
+  const image = /(?:^|;)\s*background-image\s*:\s*([^;]+)/i.exec(raw)?.[1]?.trim();
+  if (image) return image;
+  const color = /(?:^|;)\s*background-color\s*:\s*([^;]+)/i.exec(raw)?.[1]?.trim();
+  return color || null;
 }
 
 function readColorFromStyleDecl(style: string | null | undefined): string | null {
@@ -100,25 +118,35 @@ function extractCssVarLiteral(html: string, names: readonly string[]): string | 
   return null;
 }
 
-function extractRuleBackground(html: string, selectorHint: RegExp): string | null {
+function extractRuleBackground(
+  html: string,
+  selectorHint: RegExp | ((selector: string) => boolean),
+): string | null {
   const sheets = [...html.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style>/gi)]
     .map((match) => match[1] ?? '')
     .join('\n');
   if (!sheets.trim()) return null;
+  const matchesHint = (selector: string): boolean => (
+    typeof selectorHint === 'function' ? selectorHint(selector) : selectorHint.test(selector)
+  );
+  let solid: string | null = null;
   for (const rule of sheets.matchAll(/([^{}@][^{]*)\{([^}]+)\}/g)) {
     const selectors = (rule[1] ?? '').split(',').map((part) => part.trim());
-    if (!selectors.some((selector) => selectorHint.test(selector))) continue;
+    if (!selectors.some((selector) => matchesHint(selector))) continue;
     const background = readBackgroundFromStyleDecl(rule[2] ?? '');
-    if (background && !isWhiteOrEmptyBackground(background)) return background;
+    if (!background || isWhiteOrEmptyBackground(background)) continue;
+    if (isDecorativeBackground(background)) return background;
+    if (!solid) solid = background;
   }
-  return null;
+  return solid;
 }
 
 function extractInlineSlideBackground(html: string): string | null {
-  SLIDE_OPEN_RE.lastIndex = 0;
+  TAG_OPEN_RE.lastIndex = 0;
   let match: RegExpExecArray | null;
-  while ((match = SLIDE_OPEN_RE.exec(html)) !== null) {
+  while ((match = TAG_OPEN_RE.exec(html)) !== null) {
     const attrs = match[2] ?? '';
+    if (!elementHasExactSlideClass(attrs)) continue;
     const style =
       /style\s*=\s*"([^"]*)"/i.exec(attrs)?.[1]
       ?? /style\s*=\s*'([^']*)'/i.exec(attrs)?.[1]
@@ -148,7 +176,7 @@ function extractInnerPaperBackground(html: string): string | null {
     /<(?:div|section|article|main)\b([^>]*style\s*=\s*(?:"[^"]*"|'[^']*')[^>]*)>/gi,
   )) {
     const attrs = match[1] ?? '';
-    if (/\bclass\s*=\s*(?:"[^"]*\bslide\b[^"]*"|'[^']*\bslide\b[^']*')/i.test(attrs)) {
+    if (elementHasExactSlideClass(attrs)) {
       continue;
     }
     const style =
@@ -250,11 +278,18 @@ function bodyOrSlideNeedsSurfacePromotion(
  * white letterbox bands in the Teamver preview.
  */
 export function repairDeckSlideSurfaceBleed(html: string): string {
-  const source = repairOrphanFontImportDebrisInStyles(String(html ?? ''));
+  const source = healDeckStyleSheets(String(html ?? ''));
   if (!source.trim()) return source;
-  if (!/\bclass\s*=\s*(?:"[^"]*\bslide\b[^"]*"|'[^']*\bslide\b[^']*'|[^\s"'=<>]*\bslide\b)/i.test(source)) {
-    return source;
+  TAG_OPEN_RE.lastIndex = 0;
+  let hasSlide = false;
+  let openMatch: RegExpExecArray | null;
+  while ((openMatch = TAG_OPEN_RE.exec(source)) !== null) {
+    if (elementHasExactSlideClass(openMatch[2] ?? '')) {
+      hasSlide = true;
+      break;
+    }
   }
+  if (!hasSlide) return source;
 
   const paper = inferDeckSlidePaperSurface(source);
   const preserveSlidePaint = isDecorativeBackground(extractSlideBackground(source));

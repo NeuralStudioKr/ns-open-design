@@ -35,6 +35,11 @@ export const ARTIFACT_FONT_STYLESHEET_HOSTS = [
   "use.typekit.net",
 ] as const;
 
+/** `https://host` origins for preview / srcDoc `style-src` + `font-src`. */
+export function artifactFontStylesheetHttpsOrigins(): readonly string[] {
+  return ARTIFACT_FONT_STYLESHEET_HOSTS.map((host) => `https://${host}`);
+}
+
 /** Hosts commonly used as `<script src>` CDNs (must be ⊆ ARTIFACT_CDN_HOSTS). */
 export const ARTIFACT_CDN_SCRIPT_SRC_HOSTS = [
   "cdn.jsdelivr.net",

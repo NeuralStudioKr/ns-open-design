@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   inferDeckSlidePaperSurface,
+  isDeckSlideSurfaceSelector,
   repairDeckSlideSurfaceBleed,
 } from '../../src/artifacts/deck-slide-surface';
 
@@ -99,6 +100,60 @@ html, body, .slide { background:#F5F0E6; color:#2D2D2D; }
     expect(repaired).toContain('data-od-slide-surface-bleed');
     expect(repaired).toMatch(/html,\s*body\s*\{[^}]*background:\s*#F5F5F0/i);
     expect(repaired).not.toMatch(/html,\s*body,\s*\.slide,\s*section\.slide/i);
+  });
+
+  it('does not flatten Capsule .slide-1 Motif washes with a --bg paper token', () => {
+    const html = `<!doctype html><html><head><style>
+:root{--bg:#F5F5F0;--fg:#1A1A1A}
+html, body { background: var(--bg); color: var(--fg); }
+.slide { position:absolute; inset:0; opacity:0; }
+.slide-1 {
+  background:
+    radial-gradient(ellipse at 20% 80%, rgba(200,217,78,0.15) 0%, transparent 50%),
+    var(--bg);
+}
+.slide-inner { background:#fff; }
+</style></head>
+<body>
+<section class="slide slide-1 active"><div class="slide-inner"><span class="pill">shadcn/ui</span></div></section>
+</body></html>`;
+    const repaired = repairDeckSlideSurfaceBleed(html);
+    expect(repaired).toContain('radial-gradient');
+    expect(repaired).not.toMatch(
+      /html,\s*body,\s*\.slide,\s*section\.slide\s*\{[^}]*background:\s*#F5F5F0\s*!important/i,
+    );
+    if (repaired.includes('data-od-slide-surface-bleed')) {
+      expect(repaired).toMatch(/html,\s*body\s*\{[^}]*background:\s*#F5F5F0/i);
+    }
+  });
+
+  it('treats numbered .slide-N as surfaces and ignores .slide-inner chrome', () => {
+    expect(isDeckSlideSurfaceSelector('.slide')).toBe(true);
+    expect(isDeckSlideSurfaceSelector('section.slide')).toBe(true);
+    expect(isDeckSlideSurfaceSelector('.slide-1')).toBe(true);
+    expect(isDeckSlideSurfaceSelector('.slide-10.active')).toBe(true);
+    expect(isDeckSlideSurfaceSelector('.slide-inner')).toBe(false);
+    expect(isDeckSlideSurfaceSelector('.slide-header')).toBe(false);
+    expect(isDeckSlideSurfaceSelector('.slide-counter')).toBe(false);
+  });
+
+  it('does not treat slide-inner chrome as the deck slide surface', () => {
+    const html = `<!doctype html><html><head><style>
+:root{--bg:#F5F5F0}
+.slide-1{background:radial-gradient(circle at 20% 20%, rgba(232,93,78,0.2), transparent 50%), #F5F5F0}
+</style></head>
+<body>
+<section class="slide slide-1">
+<div class="slide-inner" style="width:1800px;height:1000px;background:#ffffff">
+<span class="pill">label</span>
+</div>
+</section>
+</body></html>`;
+    const repaired = repairDeckSlideSurfaceBleed(html);
+    expect(repaired).not.toMatch(
+      /html,\s*body,\s*\.slide,\s*section\.slide\s*\{[^}]*background:\s*#F5F5F0\s*!important/i,
+    );
+    expect(repaired).toContain('radial-gradient');
   });
 
   it('strips leftover Google Fonts css2 debris so Motif rules stay parseable (any template)', () => {

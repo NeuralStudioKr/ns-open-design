@@ -42,6 +42,8 @@ describe('authenticatedHtmlSrcDoc helpers', () => {
     expect(html).not.toMatch(/base-uri\s+'none'/i);
     expect(html).toContain('https://fonts.googleapis.com');
     expect(html).toContain('https://fonts.gstatic.com');
+    expect(html).toContain('https://fonts.bunny.net');
+    expect(html).toContain('https://use.typekit.net');
   });
 
   it('removes none from script-src when it appears alongside other script sources', () => {
@@ -83,6 +85,8 @@ describe('authenticatedHtmlSrcDoc helpers', () => {
     expect(relaxed).toMatch(/script-src\s+'unsafe-inline'/i);
     expect(relaxed).not.toMatch(/script-src[^;]*'none'/i);
     expect(relaxed).not.toMatch(/script-src-elem[^;]*'none'/i);
+    expect(relaxed).toMatch(/style-src[^;]*https:\/\/fonts\.googleapis\.com/i);
+    expect(relaxed).toMatch(/font-src[^;]*https:\/\/fonts\.gstatic\.com/i);
   });
 
   it('never emits invalid script-src values for known canvas export shapes', () => {

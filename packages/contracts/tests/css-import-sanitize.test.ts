@@ -26,6 +26,10 @@ describe("cssImportSanitize", () => {
     const out = stripOrphanGoogleFontImportDebris(debris);
     expect(out).not.toMatch(/1,6\.\.96/);
     expect(out).toContain(":root{--coral:#E85D4E}");
+
+    const persist = rewriteCssImportsForPersist(debris);
+    expect(persist).not.toMatch(/1,6\.\.96/);
+    expect(persist).toContain(":root{--coral:#E85D4E}");
   });
 
   it("strips remote non-font @import quote-aware without eating later rules", () => {

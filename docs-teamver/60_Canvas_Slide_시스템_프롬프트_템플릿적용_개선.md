@@ -156,6 +156,18 @@ full `example.html`을 시스템 프롬프트에 넣지 않는다는 방침은 �
 
 제품 판단: **완성된 덱이 우선**이다. 선택 템플릿과 100% 동일한 CSS를 복사하다가 결과물이 비어버리는 것보다, 템플릿의 palette/font/motif cue가 보이는 compact static deck을 완성하는 것이 낫다. 따라서 pre-write gate는 계속 shell 저장을 막고, prompt는 shell이 생기지 않도록 body-first로 유도한다.
 
+### 0.25 2026-08-18 — Capsule `.slide-1` wash + 깨진 파일 cover heal
+
+0.23은 **inline** `.slide { background: radial-gradient }`만 decorative로 봤다. Capsule `example.html`은 워시를 `.slide-1 { background: radial-gradient…, var(--bg) }`에 두고 generic `.slide`는 layout/`opacity:0`만 갖는다.
+
+결과: `--bg:#F5F5F0` 추론 → `.slide { background:#F5F5F0 !important }`가 `.slide-1`보다 이긴다 (동일 specificity + important). 홈 카드는 그 깨진 HTML을 isolation만 해서 썸네일도 납작하다.
+
+- surface selector: `.slide` / `.slide-N` / `.slide.active` — `.slide-inner`·`.slide-header`·`.slide-counter` 제외
+- `extractRuleBackground`는 gradient/`url(`/`image-set`를 solid보다 우선
+- debris heal은 `repairStyleSheetText` SSOT (persist·plugin preview·bleed가 약한 복사본을 쓰지 않음)
+- `buildHtmlCoverSrcDoc` / daemon cover-batch가 isolation 전에 stylesheet(+bleed) heal
+- preview CSP font origin은 `artifactFontStylesheetHttpsOrigins()`
+
 ### 0.24 2026-08-18 — persist 밖 `@import[^;]` · preview CSP · font `<link>` 잔여
 
 0.23 persist sanitize만 고치면 같은 `;` 절단이 plugin preview · snapshot clone · srcDoc CSP에 남는다.
@@ -802,6 +814,7 @@ User-message 쪽 `[Existing deck edit]` / `<attached-preview-comments>` 주입�
 | 2026-08-13 | **§0.0 정책 개정** — template = layout vocabulary + visual look, 페이지 수/순서/구성은 브리프 기반. content-swap → pick-and-choose layout roles. daemon Clone default count = 6 (shells.length 아님), `pickTemplateShells` role-based scoring 도입. `template-visual-kit.ts` HARD_RULES 재작성, `DEFAULT_MAX_CHARS` 12000 → 14000. |
 | 2026-08-18 | Clone content-fill motif 보정 — 8/13 SVG hang 방지 패치가 first fill에서 `Motif sprites`/`Decoration CSS`/`Layout CSS`를 통째로 생략해 Daisy/Capsule 템플릿 정체성이 약해졌다. `slimTemplateVisualKitForFill`이 큰 SVG sprite sheet와 전체 stylesheet dump는 계속 제거하되, Daisy star/rainbow·Capsule pill/capsule·Terminal scanline 같은 compact motif recipe와 짧은 Decoration/Layout CSS cue를 보존하도록 변경했다. |
 | 2026-08-18 | §0.20 — html-ppt identity scope. 공유 `:root --bg:#ffffff` 대신 `.tpl-*` host 토큰/슬라이드 surface/폰트를 kit 계약으로 쓰고, SKILL `copy index.html` filesystem 지시를 neutralize. |
+| 2026-08-18 | §0.25 — Capsule `.slide-1` Motif wash를 surface로 보고 flatten 금지. 깨진 persist HTML은 cover isolation 전에 `repairArtifactStyleSheets`+bleed heal. debris SSOT = `repairStyleSheetText`. CSP font host를 `ARTIFACT_FONT_STYLESHEET_HOSTS`에서 파생. |
 | 2026-08-18 | §0.24 — 잔여 `@import[^;]` (plugin preview·snapshot) + preview/srcDoc CSP font CDN + persist가 Capsule `<link>` 폰트를 지우던 문제. contracts `cssImportSanitize` SSOT. |
 | 2026-08-18 | §0.23 — Capsule persist/preview 후처리. Google Fonts css2 `@import` `;` 절단 debris + surface-bleed `.slide !important`가 fill look을 지움. quote-aware allowlist import + 그라데이션 슬라이드는 letterbox만 promote. |
 | 2026-08-18 | §0.21 — 전체 템플릿 Motif cue 보존 강화. 템플릿명 cue + 실제 motif class/token 목록을 `### Motif vocabulary`로 유지하고, 공식 deck 전체에서 slim 결과까지 motif가 살아남는지 테스트한다. |

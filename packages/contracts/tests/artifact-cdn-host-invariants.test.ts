@@ -11,6 +11,7 @@ import {
   artifactCdnHrefTokenAlternation,
   artifactCdnImportUrlTokenAlternation,
   artifactCdnScriptSrcHostAlternation,
+  artifactFontStylesheetHttpsOrigins,
   artifactHeadCdnHostSource,
 } from "../src/html/artifactCdnHosts.js";
 import {
@@ -100,6 +101,11 @@ describe("artifact CDN host SSOT invariants", () => {
         (ARTIFACT_CDN_HOSTS as readonly string[]).includes(host),
         `font stylesheet host ${host} missing from ARTIFACT_CDN_HOSTS`,
       ).toBe(true);
+    }
+    const origins = artifactFontStylesheetHttpsOrigins();
+    expect(origins).toHaveLength(ARTIFACT_FONT_STYLESHEET_HOSTS.length);
+    for (const host of ARTIFACT_FONT_STYLESHEET_HOSTS) {
+      expect(origins).toContain(`https://${host}`);
     }
   });
 

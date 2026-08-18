@@ -3,6 +3,8 @@
  * `apps/web/src/teamver/htmlCoverSrcDoc.ts` isolate helpers (no React / base href).
  */
 
+import { repairArtifactStyleSheets } from '@open-design/contracts';
+
 /** Opening-tag attrs that may contain `>` inside quotes (style/content). */
 const TAG_OPEN_ATTRS_RE = String.raw`(?:[^>"']|"[^"]*"|'[^']*')*`;
 const COVER_SLIDE_OPEN_RE = new RegExp(
@@ -105,7 +107,7 @@ export function stripHtmlScripts(html: string): string {
 
 /** Prepare HTML for card cover batch — isolate first slide + drop scripts. */
 export function prepareCoverHtmlBatchBody(html: string): string {
-  return stripHtmlScripts(isolateFirstDeckSlideHtml(html));
+  return stripHtmlScripts(isolateFirstDeckSlideHtml(repairArtifactStyleSheets(html)));
 }
 
 function isCoverSlideOpen(tag: string, attrs: string): boolean {

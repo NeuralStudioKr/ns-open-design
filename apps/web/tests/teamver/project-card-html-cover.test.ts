@@ -145,6 +145,26 @@ describe("ProjectCardHtmlCover srcDoc builders", () => {
     expect(srcDoc).toContain('id="od-deck-card-preview"');
   });
 
+  it("heals persisted css2 debris and flatten bleed before minting a deck cover", () => {
+    const html = `<html><head><style>
+1,6..96,400..900&family=Space+Grotesk:wght@300;400;500;600;700&display=swap');
+:root{--bg:#F5F5F0;--coral:#E85D4E}
+.slide-1{background:radial-gradient(ellipse at 20% 80%, rgba(200,217,78,0.15) 0%, transparent 50%), #F5F5F0}
+.pill{border-radius:9999px}
+</style></head><body>
+<section class="slide slide-1"><span class="pill">shadcn/ui</span></section>
+<style data-od-slide-surface-bleed="">html, body, .slide, section.slide { background: #F5F5F0 !important; color: #1A1A1A !important; }</style>
+</body></html>`;
+    const srcDoc = deckPreviewSrcDoc(html, "/api/projects/p1/raw/deck.html");
+    expect(srcDoc).not.toMatch(/1,6\.\.96/i);
+    expect(srcDoc).toContain(":root{--bg:#F5F5F0;--coral:#E85D4E}");
+    expect(srcDoc).toContain(".pill{border-radius:9999px}");
+    expect(srcDoc).toContain("radial-gradient");
+    expect(srcDoc).not.toMatch(
+      /html,\s*body,\s*\.slide,\s*section\.slide\s*\{[^}]*background:\s*#F5F5F0\s*!important/i,
+    );
+  });
+
   it("forces the isolated html-ppt cover slide visible despite presenter opacity:0", () => {
     const html = `<html><head><style>
 .slide{opacity:0;pointer-events:none;transform:translateX(30px)}

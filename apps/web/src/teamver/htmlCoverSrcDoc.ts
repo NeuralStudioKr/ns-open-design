@@ -3,7 +3,14 @@
  * Kept free of React so auth loaders can import without cycles.
  */
 
+import { repairArtifactStyleSheets } from "@open-design/contracts";
+import { repairDeckSlideSurfaceBleed } from "../artifacts/deck-slide-surface";
 import { injectHtmlBaseHref } from "../runtime/authenticatedHtmlSrcDoc";
+
+/** Heal already-persisted css2 debris + flatten bleed before isolation. */
+function healCoverHtml(html: string): string {
+  return repairDeckSlideSurfaceBleed(repairArtifactStyleSheets(html));
+}
 
 export const HTML_COVER_CANVAS_WIDTH = 1920;
 export const HTML_COVER_CANVAS_HEIGHT = 1080;
@@ -32,11 +39,12 @@ export function buildHtmlCoverSrcDoc(
   sourceUrl: string,
   options?: { preferDeck?: boolean },
 ): string {
+  const healed = healCoverHtml(html);
   const preferDeck = options?.preferDeck === true;
-  if (preferDeck || htmlLooksLikeMultiSlideDeck(html)) {
-    return deckPreviewSrcDoc(html, sourceUrl);
+  if (preferDeck || htmlLooksLikeMultiSlideDeck(healed)) {
+    return deckPreviewSrcDoc(healed, sourceUrl, { alreadyHealed: true });
   }
-  return pagePreviewSrcDoc(html, sourceUrl);
+  return pagePreviewSrcDoc(healed, sourceUrl, { alreadyHealed: true });
 }
 
 /** True when HTML has 2+ top-level slide-like blocks (section/div.slide, data-slide, …). */
@@ -44,8 +52,13 @@ export function htmlLooksLikeMultiSlideDeck(html: string): boolean {
   return extractCoverSlideSections(html).length >= 2;
 }
 
-export function pagePreviewSrcDoc(html: string, sourceUrl: string): string {
-  const withoutScripts = stripHtmlScripts(html);
+export function pagePreviewSrcDoc(
+  html: string,
+  sourceUrl: string,
+  options?: { alreadyHealed?: boolean },
+): string {
+  const source = options?.alreadyHealed ? html : healCoverHtml(html);
+  const withoutScripts = stripHtmlScripts(source);
   const style = `<style id="od-page-card-preview">
     html,
     body {
@@ -58,12 +71,17 @@ export function pagePreviewSrcDoc(html: string, sourceUrl: string): string {
   return injectPreviewHead(withoutScripts, sourceUrl, style);
 }
 
-export function deckPreviewSrcDoc(html: string, sourceUrl: string): string {
+export function deckPreviewSrcDoc(
+  html: string,
+  sourceUrl: string,
+  options?: { alreadyHealed?: boolean },
+): string {
   // Prefer DOM isolation over CSS hide: agent rules like
   // `.slide.s-xxx { display:flex !important }` after </head> can re-show later
   // slides. Absolute-stacked + manually moved children then bleed into the
   // first-slide thumb (home/designs card covers).
-  const withoutScripts = stripHtmlScripts(isolateFirstDeckSlideHtml(html));
+  const source = options?.alreadyHealed ? html : healCoverHtml(html);
+  const withoutScripts = stripHtmlScripts(isolateFirstDeckSlideHtml(source));
   const style = `<style id="od-deck-card-preview">
     html,
     body {

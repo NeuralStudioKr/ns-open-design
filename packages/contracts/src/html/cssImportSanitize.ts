@@ -7,23 +7,13 @@
  */
 
 import { ARTIFACT_FONT_STYLESHEET_HOSTS } from "./artifactCdnHosts.js";
+import { repairStyleSheetText } from "./repairArtifactStyleSheets.js";
 
 const FONT_HOSTS = new Set<string>(ARTIFACT_FONT_STYLESHEET_HOSTS);
 
-/** Snapshot-clone JS: quote-aware `@import` strip (URLs may contain `;`). */
-export const SNAPSHOT_QUOTE_AWARE_IMPORT_STRIP_SNIPPET =
-  '.replace(/@import\\s+(?:url\\(\\s*)?(["\']).*?\\1(?:\\s*\\))?[^;]*;/gi, \'\')';
-
+/** Heal truncated Google Fonts css2 remnants — SSOT is `repairStyleSheetText`. */
 export function stripOrphanGoogleFontImportDebris(css: string): string {
-  return String(css || "")
-    .replace(
-      /^\s*(?:[\d,.]+(?:\.\.[\d,.]+)?,)*[\d,.]+(?:\.\.[\d,.]+)?&family=[\s\S]*?display=swap['"]\s*\)\s*;?/i,
-      "",
-    )
-    .replace(
-      /^\s*family=[A-Za-z0-9_+:;,.%&=@\- ]*?display=swap['"]\s*\)\s*;?/i,
-      "",
-    );
+  return repairStyleSheetText(css);
 }
 
 function cssAtRuleStatements(css: string, ruleName: string): string[] {
@@ -143,7 +133,7 @@ export function extractAllowlistedFontImportRules(css: string): string[] {
 export function rewriteCssImportsForPersist(css: string): string {
   const source = String(css ?? "");
   const kept = extractAllowlistedFontImportRules(source);
-  const stripped = stripOrphanGoogleFontImportDebris(
+  const stripped = repairStyleSheetText(
     stripCssAtRuleQuoteAware(source, "import"),
   ).trim();
   return [...kept, stripped].filter(Boolean).join("\n");
@@ -163,13 +153,13 @@ export function stripRemoteCssImportsQuoteAware(css: string): {
     return Boolean(url && /^https?:\/\//i.test(url));
   });
   if (remotes.length === 0) {
-    const cleaned = stripOrphanGoogleFontImportDebris(source);
+    const cleaned = repairStyleSheetText(source);
     return { css: cleaned, stripped: cleaned !== source };
   }
   let next = source;
   for (const statement of remotes) {
     next = next.replace(statement, "/* od stripped external css import */");
   }
-  next = stripOrphanGoogleFontImportDebris(next);
+  next = repairStyleSheetText(next);
   return { css: next, stripped: true };
 }

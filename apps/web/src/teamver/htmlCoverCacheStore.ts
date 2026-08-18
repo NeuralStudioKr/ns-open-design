@@ -12,7 +12,7 @@ const htmlCoverInflight = new Map<string, Promise<string>>();
  */
 export function htmlCoverCacheKey(mode: "deck" | "page", src: string): string {
   const withoutHash = (src.split(/#/u, 1)[0] ?? src).trim();
-  return `v4:${mode}:${withoutHash}`;
+  return `v5:${mode}:${withoutHash}`;
 }
 
 /**

@@ -2,6 +2,7 @@ import { rm } from 'node:fs/promises';
 import path from 'node:path';
 import type { Express, Request, Response } from 'express';
 import {
+  artifactFontStylesheetHttpsOrigins,
   defaultScenarioPluginIdForProjectMetadata,
   type ChatSessionMode,
   type PluginManifest,
@@ -2521,8 +2522,8 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
     "default-src 'self' data: blob:",
     "img-src 'self' data: blob:",
     "media-src 'self' data: blob:",
-    "font-src 'self' data: https://fonts.gstatic.com https://fonts.googleapis.com",
-    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    `font-src 'self' data: ${artifactFontStylesheetHttpsOrigins().join(' ')}`,
+    `style-src 'self' 'unsafe-inline' ${artifactFontStylesheetHttpsOrigins().join(' ')}`,
     "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
     "connect-src 'none'",
     "form-action 'none'",

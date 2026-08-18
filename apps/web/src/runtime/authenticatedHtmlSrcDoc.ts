@@ -7,6 +7,7 @@
  * Always parent-fetch (credentials / fetchTeamverDaemon) and mount srcDoc.
  */
 
+import { artifactFontStylesheetHttpsOrigins } from '@open-design/contracts';
 import { fetchTeamverDaemon } from '../teamver/teamverDaemonHeaders';
 
 export function isUnauthorizedHtmlBody(
@@ -160,8 +161,9 @@ function isScriptExecutionDirective(name: string): boolean {
   return name === 'script-src' || name === 'script-src-elem' || name === 'script-src-attr';
 }
 
-const SRCDOC_STYLE_FONT_HOSTS = ['https://fonts.googleapis.com'];
-const SRCDOC_FONT_FILE_HOSTS = ['https://fonts.gstatic.com', 'https://fonts.googleapis.com'];
+const SRCDOC_FONT_ORIGINS = artifactFontStylesheetHttpsOrigins();
+const SRCDOC_STYLE_FONT_HOSTS = SRCDOC_FONT_ORIGINS;
+const SRCDOC_FONT_FILE_HOSTS = SRCDOC_FONT_ORIGINS;
 
 function appendCspSources(sourceList: string, extras: readonly string[]): string {
   return dedupeCspSourceTokens([
@@ -217,6 +219,21 @@ export function relaxCanvasMetaCspForSrcDocPreview(content: string): string {
       }
       return directive;
     });
+  const names = new Set(directives.map((directive) => directive.name));
+  // `default-src 'none'` with no font-src/style-src blocks Google Fonts even
+  // after we keep the @import / <link>. Add the allowlisted hosts.
+  if (names.has('default-src') && !names.has('style-src')) {
+    directives.push({
+      name: 'style-src',
+      value: appendCspSources("'unsafe-inline'", SRCDOC_STYLE_FONT_HOSTS),
+    });
+  }
+  if (names.has('default-src') && !names.has('font-src')) {
+    directives.push({
+      name: 'font-src',
+      value: appendCspSources("'self' data:", SRCDOC_FONT_FILE_HOSTS),
+    });
+  }
   return serializeCspDirectives(directives);
 }
 
