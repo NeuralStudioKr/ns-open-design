@@ -115,8 +115,13 @@ describe('FileViewer revision tip advance after undo', () => {
     expect(fileViewer).toContain('shouldEchoManualEditSelectionAfterFreezeSync');
     expect(fileViewer).toContain('shouldRequestTipRemountRemasureAfterSrcDocLoad');
     expect(fileViewer).toContain('requestTipRemountRemasureAfterSrcDocLoad');
+    expect(fileViewer).toContain('shouldApplyTipRemountSyncHostMeasureOnSrcDocLoad');
+    expect(fileViewer).toContain('applyTipRemountSyncHostMeasureAfterSrcDocLoad');
+    expect(fileViewer).toContain('shouldReleaseTipRemountChromeAfterSyncHostMeasure');
+    expect(fileViewer).toContain('Tip-yield: sync tip rect');
+    expect(fileViewer).toContain('drop inert; keep grace for wild-jump until async remasure');
     expect(fileViewer).toContain('Selection echo / remasure: srcDoc onLoad');
-    expect(fileViewer).toContain('Tip-yield: remasure after modes on the live tip document');
+    expect(fileViewer).toContain('Tip-yield: sync tip rect, then async remasure on the live tip document');
     expect(fileViewer).toContain('do NOT depend on manualEditFrozenSource');
     expect(fileViewer).toContain('shouldSkipSrcDocTransportRemountForManualEditFreezeTipSync');
     expect(fileViewer).toContain('Tip-yield freeze already reloads via srcDoc');

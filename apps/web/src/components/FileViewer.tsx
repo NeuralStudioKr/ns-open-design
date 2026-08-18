@@ -334,6 +334,8 @@ import {
   shouldClearTipRemountGeometryGraceOnSelectionChange,
   shouldEchoManualEditSelectionAfterFreezeSync,
   shouldRequestTipRemountRemasureAfterSrcDocLoad,
+  shouldApplyTipRemountSyncHostMeasureOnSrcDocLoad,
+  shouldReleaseTipRemountChromeAfterSyncHostMeasure,
   shouldSkipSrcDocTransportRemountForManualEditFreezeTipSync,
   shouldDisableManualEditChromeUntilTipRemasure,
   shouldAbortManualEditGestureForTipYieldFreezeSync,
@@ -7867,6 +7869,65 @@ function HtmlViewer({
     }
   }
 
+  /**
+   * Tip srcDoc onLoad — sync content/host measure so inert chrome tracks tip
+   * rect immediately; async od-edit-remeasure still confirms + consumes grace (459).
+   */
+  function applyTipRemountSyncHostMeasureAfterSrcDocLoad(
+    target: HTMLIFrameElement | null = iframeRef.current,
+  ): boolean {
+    const ids = selectedManualEditTargetIdsRef.current;
+    if (!shouldApplyTipRemountSyncHostMeasureOnSrcDocLoad(
+      manualEditModeRef.current,
+      ids,
+      manualEditTipRemountGeometryGraceIdRef.current,
+    )) {
+      return false;
+    }
+    const frame = target ?? iframeRef.current;
+    const workspace = manualEditWorkspaceRef.current;
+    if (!frame || !workspace) return false;
+    const primaryId = selectedManualEditTargetIdRef.current;
+    const ordered = primaryId && ids.includes(primaryId)
+      ? [primaryId, ...ids.filter((id) => id !== primaryId)]
+      : ids;
+    let primaryMeasured = false;
+    for (const id of ordered) {
+      const content = measureManualEditTargetContentRect(frame, id);
+      if (!content) continue;
+      const base = selectedManualEditTargetRef.current?.id === id
+        ? selectedManualEditTargetRef.current
+        : null;
+      if (base) {
+        applyManualEditMeasuredGeometry({
+          ...base,
+          rect: content.rect,
+          layoutWidth: content.layoutWidth,
+          layoutHeight: content.layoutHeight,
+        });
+      } else {
+        // Multi siblings: geometry-only — apply helper merges onto list membership.
+        applyManualEditMeasuredGeometry({
+          id,
+          rect: content.rect,
+          layoutWidth: content.layoutWidth,
+          layoutHeight: content.layoutHeight,
+        } as ManualEditTarget);
+      }
+      if (id === primaryId) primaryMeasured = true;
+    }
+    if (!shouldReleaseTipRemountChromeAfterSyncHostMeasure(primaryMeasured)) {
+      return false;
+    }
+    // Tip rect is live — drop inert; keep grace for wild-jump until async remasure.
+    manualEditTipRemountChromeSuppressedRef.current = false;
+    setManualEditTipRemountChromeSuppressed(false);
+    if (shouldRefreshHostPaintAfterTipRemountRemasure(true) && primaryId) {
+      refreshManualEditHostPaintRect(primaryId, { force: true });
+    }
+    return true;
+  }
+
   function waitForManualEditTargetRemeasure(id: string, timeoutMs = 500) {
     return manualEditRemeasureAwaiterRef.current.waitFor(id, timeoutMs);
   }
@@ -15150,6 +15211,8 @@ function HtmlViewer({
                             }, '*');
                             frame?.contentWindow?.postMessage({ type: 'od:url-selection-bridge-probe' }, '*');
                             syncBridgeModes(frame);
+                            // Tip-yield: sync tip rect before async remasure (459).
+                            applyTipRemountSyncHostMeasureAfterSrcDocLoad(frame);
                             requestTipRemountRemasureAfterSrcDocLoad(frame);
                             replayManualEditStylesToIframe(frame);
                             if (useUrlLoadPreview) restorePreviewScrollPosition();
@@ -15190,6 +15253,8 @@ function HtmlViewer({
                             }, '*');
                             frame?.contentWindow?.postMessage({ type: 'od:url-selection-bridge-probe' }, '*');
                             syncBridgeModes(frame);
+                            // Tip-yield: sync tip rect before async remasure (459).
+                            applyTipRemountSyncHostMeasureAfterSrcDocLoad(frame);
                             requestTipRemountRemasureAfterSrcDocLoad(frame);
                             replayManualEditStylesToIframe(frame);
                             if (useUrlLoadPreview) restorePreviewScrollPosition();
@@ -15266,7 +15331,8 @@ function HtmlViewer({
                           }, '*');
                           replayInspectOverridesToIframe(frame);
                           syncBridgeModes(frame);
-                          // Tip-yield: remasure after modes on the live tip document (452).
+                          // Tip-yield: sync tip rect, then async remasure on the live tip document (452/459).
+                          applyTipRemountSyncHostMeasureAfterSrcDocLoad(frame);
                           requestTipRemountRemasureAfterSrcDocLoad(frame);
                           replayManualEditStylesToIframe(frame);
                           syncCachedSlideStateToIframe(frame);

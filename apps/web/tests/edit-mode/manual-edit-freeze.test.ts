@@ -7,6 +7,8 @@ import {
   shouldEchoManualEditSelectionAfterFreezeSync,
   shouldRequestTipRemountRemasureAfterFreezeSync,
   shouldRequestTipRemountRemasureAfterSrcDocLoad,
+  shouldApplyTipRemountSyncHostMeasureOnSrcDocLoad,
+  shouldReleaseTipRemountChromeAfterSyncHostMeasure,
   shouldSkipSrcDocTransportRemountForManualEditFreezeTipSync,
   shouldSuppressManualEditChromeUntilTipRemasure,
   shouldDisableManualEditChromeUntilTipRemasure,
@@ -110,6 +112,18 @@ describe('manual edit freeze reset', () => {
     expect(shouldRequestTipRemountRemasureAfterSrcDocLoad(true, ['a', 'b'], 'a')).toBe(true);
     expect(shouldRequestTipRemountRemasureAfterSrcDocLoad(true, ['a'], null)).toBe(false);
     expect(shouldRequestTipRemountRemasureAfterSrcDocLoad(false, ['a'], 'a')).toBe(false);
+  });
+
+  it('applies sync host measure on tip srcDoc onLoad while grace is armed', () => {
+    expect(shouldApplyTipRemountSyncHostMeasureOnSrcDocLoad(true, ['a'], 'a')).toBe(true);
+    expect(shouldApplyTipRemountSyncHostMeasureOnSrcDocLoad(true, ['a', 'b'], 'a')).toBe(true);
+    expect(shouldApplyTipRemountSyncHostMeasureOnSrcDocLoad(true, ['a'], null)).toBe(false);
+    expect(shouldApplyTipRemountSyncHostMeasureOnSrcDocLoad(false, ['a'], 'a')).toBe(false);
+  });
+
+  it('releases tip-remount chrome inert after sync primary measure', () => {
+    expect(shouldReleaseTipRemountChromeAfterSyncHostMeasure(true)).toBe(true);
+    expect(shouldReleaseTipRemountChromeAfterSyncHostMeasure(false)).toBe(false);
   });
 
   it('skips deck srcDoc transport remount for edit-mode freeze tip sync', () => {

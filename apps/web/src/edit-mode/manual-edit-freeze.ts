@@ -87,6 +87,32 @@ export function shouldRequestTipRemountRemasureAfterSrcDocLoad(
 }
 
 /**
+ * Prefer a same-tick host/content measure on tip srcDoc onLoad so chrome can
+ * track tip geometry before async od-edit-remeasure returns (459).
+ */
+export function shouldApplyTipRemountSyncHostMeasureOnSrcDocLoad(
+  manualEditMode: boolean,
+  selectedIds: readonly string[],
+  graceId: string | null | undefined,
+): boolean {
+  return shouldRequestTipRemountRemasureAfterSrcDocLoad(
+    manualEditMode,
+    selectedIds,
+    graceId,
+  );
+}
+
+/**
+ * Sync primary measure succeeded — drop chrome inert immediately while tip
+ * remount grace remains for wild-jump skip until async remasure (459).
+ */
+export function shouldReleaseTipRemountChromeAfterSyncHostMeasure(
+  syncPrimaryMeasured: boolean,
+): boolean {
+  return syncPrimaryMeasured;
+}
+
+/**
  * Deck host-fit remounts the srcDoc shell on every previewSource change.
  * Tip-yield freeze sync already reloads via the srcDoc attribute — bumping
  * transportResetKey causes a second full remount (preview blink) (453).
