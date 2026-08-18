@@ -111,6 +111,99 @@ function countSlides(html: string): number {
   return (html.match(/<div\b[^>]*\bclass\s*=\s*["'][^"']*\bslide\b/gi) ?? []).length || 1;
 }
 
+function asMetadataRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object') return null;
+  return value as Record<string, unknown>;
+}
+
+function manifestMetadata(artifactManifest: unknown): Record<string, unknown> | null {
+  const manifest = asMetadataRecord(artifactManifest);
+  return asMetadataRecord(manifest?.metadata) ?? manifest;
+}
+
+function readMetaFlag(
+  ...sources: Array<unknown>
+): { filled: boolean } {
+  let filled = false;
+  for (const source of sources) {
+    const rec = asMetadataRecord(source);
+    const nested = manifestMetadata(source);
+    for (const candidate of [rec, nested]) {
+      if (candidate?.templateCloneContentFilled === true) filled = true;
+    }
+  }
+  return { filled };
+}
+
+/** Empty project stub / Neutral placeholder — Clone must still replace these. */
+export function isNeutralDeckStubHtml(html: string): boolean {
+  const trimmed = html.trim();
+  if (!trimmed || trimmed.length > 4000) return false;
+  if (trimmed.includes('data-od-official-look-css') || trimmed.includes('od-official-deck-look')) {
+    return false;
+  }
+  const slideOpens = trimmed.match(/<(?:section|div)\b[^>]*\b(?:class|id)\s*=\s*["'][^"']*\bslide\b/gi) ?? [];
+  const hasPlaceholderKo =
+    trimmed.includes('슬라이드 제목') && trimmed.includes('내용을 입력하세요');
+  const hasNeutralPalette =
+    /#0f172a|#1e293b|#111827|#c96442/i.test(trimmed)
+    && !/#f5f0e6|#fff8f0|#0d1b2a/i.test(trimmed);
+  return hasPlaceholderKo || (slideOpens.length <= 1 && (hasNeutralPalette || trimmed.length < 1200));
+}
+
+function extractDeckComparableText(html: string): string {
+  return html
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<svg[\s\S]*?<\/svg>/gi, ' ')
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+function deckComparableTextLooksLikeSameClone(existing: string, incoming: string): boolean {
+  const a = extractDeckComparableText(existing);
+  const b = extractDeckComparableText(incoming);
+  if (!a || !b) return false;
+  if (a === b) return true;
+  const wordsA = new Set(a.split(' ').filter((word) => word.length > 2));
+  const wordsB = new Set(b.split(' ').filter((word) => word.length > 2));
+  if (wordsA.size === 0 || wordsB.size === 0) return false;
+  let shared = 0;
+  for (const word of wordsA) {
+    if (wordsB.has(word)) shared += 1;
+  }
+  const union = wordsA.size + wordsB.size - shared;
+  return union > 0 && shared / union >= 0.62;
+}
+
+/**
+ * A successful content-fill already occupies deck.html. A late or retry Clone
+ * must not replace that filled deck with the official example.html LOOK seed —
+ * that is the "generated deck reverted to the template default" bug.
+ *
+ * Neutral stubs and missing files still get cloned. Identical bytes are a no-op
+ * (caller may rewrite). A leftover `templateClonedDeckSeeded` stamp is not
+ * enough to overwrite: compare visible text so a stale seed flag cannot clobber fill.
+ */
+export function shouldPreserveFilledDeckOverCloneReseed(
+  existingHtml: string,
+  incomingClonedHtml: string,
+  metadata?: unknown,
+  artifactManifest?: unknown,
+): boolean {
+  const existing = existingHtml.trim();
+  const incoming = incomingClonedHtml.trim();
+  if (!existing || existing === incoming) return false;
+  if (isNeutralDeckStubHtml(existing)) return false;
+
+  const flags = readMetaFlag(metadata, artifactManifest);
+  if (flags.filled) return true;
+  if (deckComparableTextLooksLikeSameClone(existing, incoming)) return false;
+  return true;
+}
+
 function buildDeckArtifactManifest(input: {
   pluginId: string;
   templateTitle: string;
@@ -282,13 +375,36 @@ export async function seedTemplateClonedDeckOnServer(
     };
   }
 
-  await deps.ensureProject(deps.projectsRoot, projectId, deps.metadata);
+  const projectDir = await deps.ensureProject(deps.projectsRoot, projectId, deps.metadata);
 
   // Do NOT copy the template into project refs/ — users see Design Files.
   // The daemon already reads preview HTML from the plugin install path;
   // only the filled deliverable (deck.html) belongs in the project.
 
   const templateTitle = input.templateTitle?.trim() || loaded.title;
+  try {
+    const existing = await fsp.readFile(path.join(projectDir, 'deck.html'), 'utf8');
+    let artifactManifest: unknown;
+    try {
+      artifactManifest = JSON.parse(
+        await fsp.readFile(path.join(projectDir, 'deck.html.artifact.json'), 'utf8'),
+      );
+    } catch {
+      artifactManifest = undefined;
+    }
+    if (shouldPreserveFilledDeckOverCloneReseed(existing, cloned, deps.metadata, artifactManifest)) {
+      return {
+        ok: true,
+        fileName: 'deck.html',
+        slideCount: countSlides(existing),
+        templateId: loaded.templateId,
+        previewPath: loaded.previewPath,
+      };
+    }
+  } catch {
+    // No existing deck — write the LOOK seed.
+  }
+
   try {
     await deps.writeProjectFile(
       deps.projectsRoot,

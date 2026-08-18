@@ -2810,6 +2810,8 @@ function findClientArtifactRegression(input: {
     const name = (file.path ?? file.name).trim();
     return name === fileName || file.name.trim() === fileName;
   });
+  // Compact fill must replace the same-turn Clone LOOK seed.
+  if (isTemplateCloneLookSeedFile(prior)) return null;
   const priorSize = typeof prior?.size === 'number' && Number.isFinite(prior.size)
     ? prior.size
     : 0;
@@ -5348,6 +5350,12 @@ export function ProjectView({
         identifier: art.identifier,
         artifactType: contractArtifactType,
         inferred: false,
+        ...(slideOnlyMvp && ext === '.html'
+          ? {
+              templateCloneContentFilled: true,
+              templateClonedDeckSeeded: false,
+            }
+          : {}),
       };
       const manifest =
         ext === '.html'
@@ -7646,18 +7654,31 @@ export function ProjectView({
                   const producedBeforeFallback = computeProducedFiles(beforeFileNames, nextFiles) ?? [];
                   const runStartedAt = status.createdAt || message.startedAt || message.createdAt;
                   const reattachScopedComments = (message.commentAttachments?.length ?? 0) > 0;
-                  recoveredExistingArtifact = findExistingArtifactProjectFile(
-                    artifactToPersist,
-                    nextFiles,
-                    { minMtime: runStartedAt },
-                  ) ?? (reattachScopedComments
+                  recoveredExistingArtifact = reattachScopedComments
                     ? null
                     : await findSameTurnHtmlWriteForRecoveredArtifact({
                       artifactHtml: artifactToPersist.html,
                       producedFiles: producedBeforeFallback,
                       readProjectHtml,
                       allowAnyHtmlWrite: message.agentId === 'claude',
-                    }));
+                    });
+                  if (!recoveredExistingArtifact) {
+                    const namedExisting = findExistingArtifactProjectFile(
+                      artifactToPersist,
+                      nextFiles,
+                      { minMtime: runStartedAt },
+                    );
+                    if (namedExisting) {
+                      const diskHtml = await readProjectHtml(namedExisting.name);
+                      if (
+                        !isTemplateCloneLookSeedFile(namedExisting)
+                        && normalizeHtmlForRecoveredArtifactComparison(diskHtml)
+                          === normalizeHtmlForRecoveredArtifactComparison(artifactToPersist.html)
+                      ) {
+                        recoveredExistingArtifact = namedExisting;
+                      }
+                    }
+                  }
                   if (recoveredExistingArtifact) {
                     savedArtifactRef.current = recoveredExistingArtifact.name;
                     try {
@@ -13481,18 +13502,30 @@ export function findExistingArtifactProjectFile(
     const pointerFile = pointerTarget
       ? currentRunFiles.find((file) => file.name === pointerTarget || file.path === pointerTarget)
       : null;
-    if (pointerFile) return pointerFile;
+    if (pointerFile && !isTemplateCloneLookSeedFile(pointerFile)) return pointerFile;
   }
 
   const identifier = art.identifier || '';
   if (identifier) {
     const manifestMatches = currentRunFiles
       .filter((file) => file.artifactManifest?.metadata?.identifier === identifier)
+      .filter((file) => !isTemplateCloneLookSeedFile(file))
       .sort((a, b) => b.mtime - a.mtime);
     if (manifestMatches[0]) return manifestMatches[0];
   }
 
-  return currentRunFiles.find((file) => file.name === candidateFileName) ?? null;
+  const named = currentRunFiles.find((file) => file.name === candidateFileName) ?? null;
+  if (named && isTemplateCloneLookSeedFile(named)) return null;
+  return named;
+}
+
+/** Clone LOOK seed writes deck.html in the same turn as content-fill. */
+const TEMPLATE_CLONE_LOOK_SEED_META = 'templateClonedDeckSeeded';
+
+export function isTemplateCloneLookSeedFile(file: ProjectFile | null | undefined): boolean {
+  const meta = file?.artifactManifest?.metadata;
+  if (!meta || typeof meta !== 'object') return false;
+  return (meta as Record<string, unknown>)[TEMPLATE_CLONE_LOOK_SEED_META] === true;
 }
 
 export function selectPrimaryProjectFile(files: ProjectFile[]): ProjectFile | null {

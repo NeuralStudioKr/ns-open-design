@@ -9,7 +9,10 @@ import {
   normalizeBundledPluginLookupId,
 } from '../src/plugins/bundled.js';
 import { upsertInstalledPlugin } from '../src/plugins/registry.js';
-import { seedTemplateClonedDeckOnServer } from '../src/template-clone-deck.js';
+import {
+  seedTemplateClonedDeckOnServer,
+  shouldPreserveFilledDeckOverCloneReseed,
+} from '../src/template-clone-deck.js';
 
 afterEach(() => {
   closeDatabase();
@@ -477,5 +480,192 @@ describe('seedTemplateClonedDeckOnServer', () => {
     );
     expect(result.ok).toBe(true);
     expect(written.get('deck.html')).toContain('Cover');
+  });
+});
+
+describe('shouldPreserveFilledDeckOverCloneReseed', () => {
+  const incomingClone = `<!doctype html><html><body>
+    <section class="slide"><h1>Daisy Days</h1><p>cheerful presentation template</p></section>
+    <section class="slide"><h1>Weekly Grid</h1><p>Kept things that matter</p></section>
+  </body></html>`;
+  const filledDeck = `<!doctype html><html><body>
+    <section class="slide"><h1>Q3 온보딩</h1><p>신입 주간 일정과 멘토 매칭</p></section>
+    <section class="slide"><h1>KPI</h1><p>첫 달 완료율과 피드백 루프</p></section>
+    <section class="slide"><h1>다음 단계</h1><p>팀 배정과 30일 체크인</p></section>
+  </body></html>`;
+  const neutralStub = `<!DOCTYPE html>
+<html lang="ko"><head><title>슬라이드 제목</title></head>
+<body><h1>슬라이드 제목</h1><p>내용을 입력하세요.</p></body></html>`;
+
+  it('preserves a content-filled deck over a late Clone reseed', () => {
+    expect(shouldPreserveFilledDeckOverCloneReseed(filledDeck, incomingClone)).toBe(true);
+    expect(
+      shouldPreserveFilledDeckOverCloneReseed(filledDeck, incomingClone, {
+        templateCloneContentFilled: true,
+      }),
+    ).toBe(true);
+  });
+
+  it('still clones Neutral stubs and identical LOOK seeds', () => {
+    expect(shouldPreserveFilledDeckOverCloneReseed(neutralStub, incomingClone)).toBe(false);
+    expect(shouldPreserveFilledDeckOverCloneReseed(incomingClone, incomingClone)).toBe(false);
+    expect(shouldPreserveFilledDeckOverCloneReseed('', incomingClone)).toBe(false);
+  });
+
+  it('does not let a stale Clone seed stamp overwrite filled HTML', () => {
+    expect(
+      shouldPreserveFilledDeckOverCloneReseed(
+        filledDeck,
+        incomingClone,
+        { templateClonedDeckSeeded: true },
+        { metadata: { templateClonedDeckSeeded: true, identifier: 'deck' } },
+      ),
+    ).toBe(true);
+  });
+});
+
+describe('seedTemplateClonedDeckOnServer filled-deck preserve', () => {
+  it('does not overwrite an already filled deck.html', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'od-template-clone-preserve-'));
+    const pluginDir = path.join(root, 'plugin');
+    const projectsRoot = path.join(root, 'projects');
+    const dataDir = path.join(root, '.od');
+    const projectDir = path.join(projectsRoot, 'proj-filled');
+    await mkdir(pluginDir, { recursive: true });
+    await mkdir(projectDir, { recursive: true });
+
+    await writeFile(
+      path.join(pluginDir, 'example.html'),
+      `<!doctype html><html><body>
+        <section class="slide"><h1>Daisy Days</h1><p>cheerful presentation template</p></section>
+        <section class="slide"><h1>Weekly Grid</h1><p>Kept things that matter</p></section>
+      </body></html>`,
+      'utf8',
+    );
+    const filled = `<!doctype html><html><body>
+      <section class="slide"><h1>Q3 온보딩</h1><p>신입 주간 일정</p></section>
+      <section class="slide"><h1>KPI</h1><p>완료율</p></section>
+    </body></html>`;
+    await writeFile(path.join(projectDir, 'deck.html'), filled, 'utf8');
+    await writeFile(
+      path.join(projectDir, 'deck.html.artifact.json'),
+      JSON.stringify({
+        metadata: { identifier: 'deck', templateCloneContentFilled: true },
+      }),
+      'utf8',
+    );
+
+    const db = openDatabase(root, { dataDir });
+    upsertInstalledPlugin(db, {
+      id: 'html-ppt-mini',
+      title: 'Mini',
+      version: '0.0.0',
+      sourceKind: 'local',
+      source: pluginDir,
+      trust: 'bundled',
+      capabilitiesGranted: [],
+      manifest: {
+        name: 'html-ppt-mini',
+        title: 'Mini',
+        version: '0.0.0',
+        od: { preview: { entry: 'example.html' } },
+      } as any,
+      fsPath: pluginDir,
+      installedAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+
+    const written = new Map<string, string>();
+    const result = await seedTemplateClonedDeckOnServer(
+      {
+        db,
+        projectsRoot,
+        projectId: 'proj-filled',
+        metadata: { templateCloneContentFilled: true },
+        ensureProject: async () => projectDir,
+        writeProjectFile: async (_root, _id, name, body) => {
+          written.set(name, typeof body === 'string' ? body : body.toString('utf8'));
+          return { name };
+        },
+      },
+      {
+        pluginId: 'html-ppt-mini',
+        templateTitle: 'Mini',
+        sourceBrief: 'Visible headings: Daisy Days / Weekly Grid',
+        deckTitle: 'Daisy Days',
+      },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(written.size).toBe(0);
+    expect(await readFile(path.join(projectDir, 'deck.html'), 'utf8')).toBe(filled);
+  });
+
+  it('still clones over a Neutral stub', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'od-template-clone-neutral-'));
+    const pluginDir = path.join(root, 'plugin');
+    const projectsRoot = path.join(root, 'projects');
+    const dataDir = path.join(root, '.od');
+    const projectDir = path.join(projectsRoot, 'proj-neutral');
+    await mkdir(pluginDir, { recursive: true });
+    await mkdir(projectDir, { recursive: true });
+
+    await writeFile(
+      path.join(pluginDir, 'example.html'),
+      `<!doctype html><html><body>
+        <section class="slide"><h1>One</h1></section>
+        <section class="slide"><h1>Two</h1></section>
+      </body></html>`,
+      'utf8',
+    );
+    await writeFile(
+      path.join(projectDir, 'deck.html'),
+      `<!DOCTYPE html><html lang="ko"><head><title>슬라이드 제목</title></head>
+<body><h1>슬라이드 제목</h1><p>내용을 입력하세요.</p></body></html>`,
+      'utf8',
+    );
+
+    const db = openDatabase(root, { dataDir });
+    upsertInstalledPlugin(db, {
+      id: 'html-ppt-mini',
+      title: 'Mini',
+      version: '0.0.0',
+      sourceKind: 'local',
+      source: pluginDir,
+      trust: 'bundled',
+      capabilitiesGranted: [],
+      manifest: {
+        name: 'html-ppt-mini',
+        title: 'Mini',
+        version: '0.0.0',
+        od: { preview: { entry: 'example.html' } },
+      } as any,
+      fsPath: pluginDir,
+      installedAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+
+    const written = new Map<string, string>();
+    const result = await seedTemplateClonedDeckOnServer(
+      {
+        db,
+        projectsRoot,
+        projectId: 'proj-neutral',
+        ensureProject: async () => projectDir,
+        writeProjectFile: async (_root, _id, name, body) => {
+          written.set(name, typeof body === 'string' ? body : body.toString('utf8'));
+          return { name };
+        },
+      },
+      {
+        pluginId: 'html-ppt-mini',
+        sourceBrief: 'Visible headings: Alpha / Beta',
+        deckTitle: 'Alpha',
+      },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(written.get('deck.html')).toContain('Alpha');
+    expect(written.get('deck.html')).not.toContain('내용을 입력하세요');
   });
 });

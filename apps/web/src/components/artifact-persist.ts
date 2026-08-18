@@ -81,6 +81,17 @@ export function resolveArtifactPersistFileName(
   const existing = new Set(projectFiles.map((file) => file.name));
 
   const preferredRaw = options?.preferredFileName?.trim().replace(/\\/g, '/').replace(/^\.\//, '');
+  if (slideOnlyForceDeck && !preferredRaw) {
+    // Clone LOOK seed already occupies deck.html in the same turn. Minting
+    // deck-2.html leaves the template default as entryFile/cover — after
+    // reload the generated deck looks like it "reverted" to the template.
+    const existingDeck = projectFiles.find((file) => {
+      const rel = String(file.path || file.name || '').replace(/\\/g, '/').replace(/^\.\//, '');
+      return rel.toLowerCase() === 'deck.html';
+    });
+    if (existingDeck) return existingDeck.path?.trim() || existingDeck.name;
+    return 'deck.html';
+  }
   if (preferredRaw) {
     const preferredBase = preferredRaw.split('/').filter(Boolean).pop() ?? preferredRaw;
     const hasDirectory = preferredRaw.includes('/');

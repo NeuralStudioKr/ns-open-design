@@ -90,6 +90,28 @@ describe('resolveArtifactPersistFileName', () => {
     expect(fileName).toBe('deck.html');
   });
 
+  it('overwrites the Clone LOOK seed on slide-only fill instead of minting deck-2', () => {
+    const cloneSeed = {
+      name: 'deck.html',
+      path: 'deck.html',
+      mtime: 100,
+      artifactManifest: {
+        metadata: { identifier: 'deck', templateClonedDeckSeeded: true },
+      },
+    } as const;
+    const fileName = resolveArtifactPersistFileName(
+      {
+        identifier: '',
+        title: 'Q3 온보딩',
+        artifactType: 'deck',
+      },
+      [cloneSeed],
+      null,
+      { slideOnlyMvp: true },
+    );
+    expect(fileName).toBe('deck.html');
+  });
+
   it('increments numbered siblings only when no reuse target exists', () => {
     const fileName = resolveArtifactPersistFileName(
       {

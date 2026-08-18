@@ -200,6 +200,21 @@ full `example.html`을 시스템 프롬프트에 넣지 않는다는 방침은 �
 - [x] 인라인 장별 색도 per-slide paint
 - [x] daemon cover-batch가 persisted flatten bleed를 `html, body`로 완화 (cache v6)
 
+### 0.36 2026-08-18 — 생성된 덱이 템플릿 기본 `deck.html`로 되돌아가지 않음
+
+제대로 채워진 덱이 새로고침/재진입 후 공식 example LOOK(Daisy 마케팅 헤드라인 등)으로 돌아간다. 썸네일 캐시가 아니라 **deliverable 파일 자체**가 Clone seed로 되돌아가는 버그.
+
+- Clone은 같은 턴에 `deck.html` LOOK seed를 쓴다. fill persist가 identifier가 비면 `deck-2.html`을 민트하고, Home/`entryFile`은 root `deck.html`을 본다
+- reattach가 identifier/`deck.html`만 보고 Clone seed를 “이미 저장된 산출물”로 복구하면 fill persist를 건너뛴다
+- 늦은 `POST /template-clone-deck`(재시도·더블 런치)가 `overwrite: true`로 fill을 다시 example.html로 덮는다
+
+구현 현황:
+
+- [x] slide-only persist는 `preferredFileName`이 없을 때 항상 기존 `deck.html`을 덮어씀 (`deck-2` 금지)
+- [x] `findExistingArtifactProjectFile` / reattach / regression은 Clone LOOK seed(`templateClonedDeckSeeded`)를 fill 타겟으로 쓰지 않음
+- [x] fill persist는 `templateCloneContentFilled` 스탬프. Clone reseed는 Neutral stub만 교체하고 채워진 덱은 보존
+- [x] 보이는 본문이 다른데 stale seed 플래그만 있으면 overwrite 금지
+
 ### 0.35 2026-08-18 — Preview / PDF / HTML 스케일·위치 정렬
 
 - PDF MediaBox = PPT `13.333in×7.5in` + print scale (더 이상 1920px→20″ 아님)
@@ -992,6 +1007,7 @@ User-message 쪽 `[Existing deck edit]` / `<attached-preview-comments>` 주입�
 | 2026-08-13 | **§0.0 정책 개정** — template = layout vocabulary + visual look, 페이지 수/순서/구성은 브리프 기반. content-swap → pick-and-choose layout roles. daemon Clone default count = 6 (shells.length 아님), `pickTemplateShells` role-based scoring 도입. `template-visual-kit.ts` HARD_RULES 재작성, `DEFAULT_MAX_CHARS` 12000 → 14000. |
 | 2026-08-18 | Clone content-fill motif 보정 — 8/13 SVG hang 방지 패치가 first fill에서 `Motif sprites`/`Decoration CSS`/`Layout CSS`를 통째로 생략해 Daisy/Capsule 템플릿 정체성이 약해졌다. `slimTemplateVisualKitForFill`이 큰 SVG sprite sheet와 전체 stylesheet dump는 계속 제거하되, Daisy star/rainbow·Capsule pill/capsule·Terminal scanline 같은 compact motif recipe와 짧은 Decoration/Layout CSS cue를 보존하도록 변경했다. |
 | 2026-08-18 | §0.20 — html-ppt identity scope. 공유 `:root --bg:#ffffff` 대신 `.tpl-*` host 토큰/슬라이드 surface/폰트를 kit 계약으로 쓰고, SKILL `copy index.html` filesystem 지시를 neutralize. |
+| 2026-08-18 | §0.36 — 생성된 덱이 Clone LOOK `deck.html`로 되돌아가지 않음. persist는 `deck.html` 덮어쓰기, reattach는 seed skip, late clone은 fill 보존. |
 | 2026-08-18 | §0.35 — Preview/PDF/HTML 스케일 정렬. PDF PPT inches+scale · HTML viewport 1920·flex · cache v15. |
 | 2026-08-18 | §0.34 — 공식 Motif HTML(`#pin` symbol · grain/crt host) persist/export 병합. cache v14. |
 | 2026-08-18 | §0.33 — kit Motif 스니펫/Write 경로/턴 핀/FE 폴백/heal skip. cache v13. |

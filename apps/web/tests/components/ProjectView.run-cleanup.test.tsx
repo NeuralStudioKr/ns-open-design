@@ -200,6 +200,41 @@ describe('terminal replay artifact recovery', () => {
     expect(findExistingArtifactProjectFile(replayArtifact, [stale, current], { minMtime: runCreatedAt }))
       .toBe(current);
   });
+
+  it('does not treat the same-turn Clone LOOK seed as the filled persist target', () => {
+    const runCreatedAt = 1_000;
+    const cloneSeed: ProjectFile = {
+      name: 'deck.html',
+      path: 'deck.html',
+      kind: 'html',
+      mime: 'text/html',
+      mtime: runCreatedAt + 1,
+      size: 80_000,
+      artifactManifest: {
+        entry: 'deck.html',
+        exports: ['html'],
+        kind: 'deck',
+        metadata: {
+          artifactType: 'deck',
+          identifier: 'deck',
+          inferred: false,
+          templateClonedDeckSeeded: true,
+        },
+        renderer: 'deck-html',
+        title: 'deck',
+        version: 1,
+      },
+    };
+    const fillArtifact: Artifact = {
+      identifier: 'deck',
+      artifactType: 'deck',
+      title: 'Q3 온보딩',
+      html: '<!doctype html><html><body><section class="slide"><h1>Q3 온보딩</h1></section></body></html>',
+    };
+
+    expect(findExistingArtifactProjectFile(fillArtifact, [cloneSeed], { minMtime: runCreatedAt }))
+      .toBeNull();
+  });
 });
 
 describe('selectPrimaryProjectFile', () => {
