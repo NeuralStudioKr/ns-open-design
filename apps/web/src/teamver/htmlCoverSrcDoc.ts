@@ -86,6 +86,12 @@ export function deckPreviewSrcDoc(html: string, sourceUrl: string): string {
       height: ${HTML_COVER_CANVAS_HEIGHT}px !important;
       flex: none !important;
       scroll-snap-align: none !important;
+      /* html-ppt / presenter CSS hides non-active slides with opacity:0.
+         Isolation already dropped later slides — the remaining cover must paint. */
+      opacity: 1 !important;
+      visibility: visible !important;
+      pointer-events: none !important;
+      transform: none !important;
     }
     /* Backup if isolation missed a dialect — sibling combinator: :first-of-type
        hides the real first .slide when a preceding <section> steals it. */

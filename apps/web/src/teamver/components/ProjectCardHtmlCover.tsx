@@ -21,6 +21,7 @@ import {
   projectScopedPreviewUrl,
   resolveTeamverProjectPreviewPrefix,
 } from "../teamverProjectPreviewScope";
+import { subscribeProjectCoverClear } from "../projectCoverLoader";
 
 export {
   buildHtmlCoverSrcDoc,
@@ -118,6 +119,16 @@ function AuthenticatedHtmlCover({
   });
   const [srcDoc, setSrcDoc] = useState<string | null>(() => peekHtmlCoverCache(cacheKey));
   const [scale, setScale] = useState(1);
+  const [bustNonce, setBustNonce] = useState(0);
+  const coverProjectId = parseProjectRawUrl(src)?.projectId ?? null;
+
+  useEffect(() => {
+    return subscribeProjectCoverClear((clearedId) => {
+      if (clearedId !== null && coverProjectId && clearedId !== coverProjectId) return;
+      setSrcDoc(null);
+      setBustNonce((value) => value + 1);
+    });
+  }, [coverProjectId]);
 
   useEffect(() => {
     if (!deferUntilVisible) {
@@ -190,7 +201,7 @@ function AuthenticatedHtmlCover({
     return () => {
       cancelled = true;
     };
-  }, [cacheKey, mode, visible]);
+  }, [bustNonce, cacheKey, mode, visible]);
 
   useEffect(() => {
     const node = frameRef.current;

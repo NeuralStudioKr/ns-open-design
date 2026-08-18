@@ -144,4 +144,20 @@ describe("ProjectCardHtmlCover srcDoc builders", () => {
     expect(srcDoc).not.toContain("TrackRecord");
     expect(srcDoc).toContain('id="od-deck-card-preview"');
   });
+
+  it("forces the isolated html-ppt cover slide visible despite presenter opacity:0", () => {
+    const html = `<html><head><style>
+.slide{opacity:0;pointer-events:none;transform:translateX(30px)}
+.slide.is-active{opacity:1}
+</style></head><body>
+<section class="slide"><h1>Filled brief title</h1></section>
+<section class="slide is-active"><h1>Later slide</h1></section>
+</body></html>`;
+    const srcDoc = deckPreviewSrcDoc(html, "/api/projects/p1/raw/deck.html");
+    expect(srcDoc).toContain("Filled brief title");
+    expect(srcDoc).not.toContain("Later slide");
+    expect(srcDoc).toMatch(/opacity:\s*1\s*!important/);
+    expect(srcDoc).toMatch(/visibility:\s*visible\s*!important/);
+    expect(srcDoc).toMatch(/transform:\s*none\s*!important/);
+  });
 });

@@ -2047,6 +2047,17 @@ export async function writeProjectTextFileDetailed(
       };
     }
     const json = (await resp.json()) as { file: ProjectFile };
+    // Clone seeds deck.html LOOK; fill/edits overwrite it. Bust card thumbs so
+    // Home/Designs do not keep the template-clone first-slide srcDoc.
+    if (/\.html?$/i.test(name)) {
+      void import('../teamver/projectCoverLoader')
+        .then((mod) => {
+          mod.clearProjectCoverCache(projectId);
+        })
+        .catch(() => {
+          /* cover bust is best-effort */
+        });
+    }
     return { ok: true, file: json.file };
   } catch {
     return { ok: false, message: 'Network error while saving the file' };

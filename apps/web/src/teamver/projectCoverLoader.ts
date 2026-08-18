@@ -5,6 +5,7 @@ import { isTeamverEmbedMode } from "./designApiBase";
 import { fetchProjectCoverHints, projectCoverFileFromHint } from "./projectCoverHints";
 import { PROJECT_LIST_VIEWPORT_BATCH } from "./projectListLimits";
 import { pickProjectCoverFile, type ProjectCoverFile } from "./projectPreviewFile";
+import { clearHtmlCoverCacheForProject } from "./htmlCoverCacheStore";
 import { isTeamverEmbedDesignSurfaceEnabled } from "./teamverDesignAccess";
 
 const COVER_FETCH_CACHE_MS = 60_000;
@@ -126,6 +127,7 @@ export function clearProjectCoverCache(projectId?: string): void {
     inflight.delete(id);
     pendingHintIds.delete(id);
     hintCheckedAt.delete(id);
+    clearHtmlCoverCacheForProject(id);
     notifyProjectCoverClear(id);
     return;
   }
@@ -134,6 +136,7 @@ export function clearProjectCoverCache(projectId?: string): void {
   pendingHintIds.clear();
   hintCheckedAt.clear();
   activeHintBatch = null;
+  clearHtmlCoverCacheForProject();
   notifyProjectCoverClear(null);
 }
 

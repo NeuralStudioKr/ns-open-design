@@ -12,7 +12,28 @@ const htmlCoverInflight = new Map<string, Promise<string>>();
  */
 export function htmlCoverCacheKey(mode: "deck" | "page", src: string): string {
   const withoutHash = (src.split(/#/u, 1)[0] ?? src).trim();
-  return `v3:${mode}:${withoutHash}`;
+  return `v4:${mode}:${withoutHash}`;
+}
+
+/**
+ * Drop first-slide srcDocs for one project (or every project).
+ * Template Clone seeds `deck.html` LOOK; fill/edits overwrite that file.
+ * Path-only cache keys must not keep the clone snapshot after the write.
+ */
+export function clearHtmlCoverCacheForProject(projectId?: string): void {
+  const id = projectId?.trim() ?? "";
+  if (!id) {
+    htmlCoverCache.clear();
+    htmlCoverInflight.clear();
+    return;
+  }
+  const needle = `/api/projects/${id}/raw/`;
+  for (const key of [...htmlCoverCache.keys()]) {
+    if (key.includes(needle)) htmlCoverCache.delete(key);
+  }
+  for (const key of [...htmlCoverInflight.keys()]) {
+    if (key.includes(needle)) htmlCoverInflight.delete(key);
+  }
 }
 
 export function peekHtmlCoverCache(cacheKey: string): string | null {

@@ -20,6 +20,7 @@ vi.mock("../src/teamver/teamverDesignAccess", () => ({
 }));
 
 import {
+  clearProjectCoverCache,
   embedProjectCoverHintsOnly,
   prefetchProjectCoverHintsForProjects,
   projectNeedsCoverFileFetch,
@@ -30,6 +31,11 @@ import {
   resolveProjectCoverOptionsForListSurface,
   seedProjectCoverHints,
 } from "../src/teamver/projectCoverLoader";
+import {
+  htmlCoverCacheKey,
+  peekHtmlCoverCache,
+  seedHtmlCoverCache,
+} from "../src/teamver/htmlCoverCacheStore";
 import { isTeamverEmbedMode } from "../src/teamver/designApiBase";
 import { isTeamverEmbedDesignSurfaceEnabled } from "../src/teamver/teamverDesignAccess";
 import type { Project } from "../src/types";
@@ -377,5 +383,18 @@ describe("projectCoverLoader", () => {
     expect(fetchProjectFilesMock).not.toHaveBeenCalled();
 
     vi.useRealTimers();
+  });
+
+  it("clears cloned first-slide html cover srcDoc so fill can refetch deck.html", () => {
+    const cloneKey = htmlCoverCacheKey("deck", "/api/projects/p1/raw/deck.html");
+    const otherKey = htmlCoverCacheKey("deck", "/api/projects/p2/raw/deck.html");
+    seedHtmlCoverCache(cloneKey, "<html>TEMPLATE CLONE COVER</html>");
+    seedHtmlCoverCache(otherKey, "<html>other project</html>");
+    expect(peekHtmlCoverCache(cloneKey)).toContain("TEMPLATE CLONE COVER");
+
+    clearProjectCoverCache("p1");
+
+    expect(peekHtmlCoverCache(cloneKey)).toBeNull();
+    expect(peekHtmlCoverCache(otherKey)).toContain("other project");
   });
 });
