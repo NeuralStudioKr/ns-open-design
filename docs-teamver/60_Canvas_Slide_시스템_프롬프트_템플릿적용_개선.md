@@ -152,6 +152,22 @@ full `example.html`을 시스템 프롬프트에 넣지 않는다는 방침은 �
 
 제품 판단: **완성된 덱이 우선**이다. 선택 템플릿과 100% 동일한 CSS를 복사하다가 결과물이 비어버리는 것보다, 템플릿의 palette/font/motif cue가 보이는 compact static deck을 완성하는 것이 낫다. 따라서 pre-write gate는 계속 shell 저장을 막고, prompt는 shell이 생기지 않도록 body-first로 유도한다.
 
+### 0.19 2026-08-18 — 카탈로그 공통 Motif 어휘 (Daisy/Capsule 하드코드 금지)
+
+`0.18`이 Capsule을 살리려고 **모든** fill 슬림 킷에 `.deco-pill`을 넣었다. Hermes, 8-bit, retro-windows 등 다른 템플릿은 Capsule 알약을 그리거나 Daisy 꽃을 강제받았다. 템플릿을 하나하나 패치하지 않는다.
+
+**카탈로그 공통 계약 (`packages/contracts/src/template-visual-kit.ts`):**
+
+- `extractMotifVocabularyClasses` — 이 템플릿 HTML/킷에서 `.deco-*`, `.pill-*`, `.tpl-*`, scoped BEM 등 **이 파일에 있는 클래스만** 추출.
+- `extractIdentityScope` — html-ppt 공유 흰 `:root` 대신 `.tpl-*` / `.theme-*` host tokens·`.tpl .slide` surface·identity fonts가 우선.
+- `formatMotifVocabularyContract` — fill 킷 상단에 `This template's Motif classes: …` 삽입.
+- Fill 슬림 Motif SVG 캡: 이 어휘 클래스를 가진 compact SVG를 우선. **Daisy/Capsule 예제 HTML을 다른 킷에 주입하지 않음.**
+- Fill 장식/레이아웃 CSS 캡: 이 어휘·identity 셀렉터를 우선. Capsule이 아니면 `.deco-pill`을 넣지 않음.
+- `neutralizeFilesystemCloneWorkflow` — `Clone example.html`뿐 아니라 `copy index.html` / matching template folder도 킷-bind.
+- Fill READ LAST / wrap / compact: `.deco-pill` 하드코드 및 "palette + fonts only" 제거. "use ONLY this kit's Motif vocabulary".
+
+**회귀 방지:** `packages/contracts/tests/template-visual-kit-all-official.test.ts`가 모든 official `mode:deck` `example.html` fill-slim·`.tpl-*` identity surface·SKILL 파일시스템 클론 문구를 검사한다.
+
 ### 0.18 2026-08-18 — 템플릿 Motif 복원 (Capsule pills ≠ generic circles)
 
 썸네일(Clone LOOK)은 Daisy flower / Capsule pills가 보이는데 fill 결과는 pastel circle만 남는 회귀: hang 방지용 ZERO-SVG가 Motif vocabulary까지 지웠고, Capsule은 SVG가 아니라 `.deco-pill` / `.pill-*` CSS가 정체성이다. fill은 **title-first + capped Motif** (sprites AFTER title, Decorations CSS pills)로 되돌리고, kit에 pills/sprites가 있으면 generic CSS circles 대체를 금지한다. SVG-before-heading mid-stream abort는 유지.

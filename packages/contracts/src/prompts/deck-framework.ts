@@ -626,7 +626,7 @@ export const DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_TEMPLATE_FILL = `# Slide deck 
 
 You are in API mode after a LOOK seed. **Finish a closed compact deck THIS TURN.**
 
-OD succeeds by editing cloned HTML text. Teamver BYOK cannot — so regenerate content with kit **palette + fonts only**. Motif SVG polish is a follow-up edit.
+Teamver BYOK cannot edit cloned HTML — regenerate a compact deck that binds **THIS kit**: palette + fonts + THIS kit's Motif vocabulary AFTER title. Do not flatten to palette/fonts-only Neutral.
 
 **Body / title-first (non-negotiable):**
 1. Status sentence → open \`<artifact type="deck" identifier="deck">\`.
@@ -636,9 +636,9 @@ OD succeeds by editing cloned HTML text. Teamver BYOK cannot — so regenerate c
 
 **Full-bleed surface:** kit Slide surface must paint \`html\`/\`body\` AND every \`.slide\` edge-to-edge. FORBIDDEN: white outer canvas with an inner cream paper panel (white top/bottom bands). White title cards on cream paper are OK.
 
-**FORBIDDEN this turn:** Motif \`<svg>\` before cover title, multi-KB \`<svg><style>\` dumps, Layout CSS dumps, long \`<head>\`, Neutral \`#0f172a\`, terracotta \`#c96442\`, emoji ornament rows, generic CSS circles when the kit has \`.deco-pill\`/sprites, parroting the user brief as slide titles.
+**FORBIDDEN this turn:** Motif \`<svg>\` before cover title, multi-KB \`<svg><style>\` dumps, Layout CSS dumps, long \`<head>\`, Neutral \`#0f172a\`, terracotta \`#c96442\`, emoji ornament rows, generic CSS circles or another template's ornaments when THIS kit lists sprites/deco classes, parroting the user brief as slide titles.
 
-**Allowed look:** kit palette hex + fonts + kit Motif vocabulary AFTER title (capped Motif sprites and/or \`.deco-pill\` / pill-* / capsule / \`.deco\` from Decorations CSS). Use scaffold map as layout role names.
+**Allowed look:** kit palette hex + fonts + THIS kit's Motif vocabulary AFTER title (capped Motif sprites and/or the kit's named deco CSS classes). Use scaffold map as layout role names.
 
 ${DECK_COMPACT_INLINE_LAYOUT_VOCABULARY_FOR_SELECTED_TEMPLATE}
 `;

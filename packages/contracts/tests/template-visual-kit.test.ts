@@ -5,6 +5,7 @@ import { pickPluginPreviewHtmlPath } from '../src/plugin-preview-path.js';
 import {
   appendTemplateVisualKit,
   extractTemplateVisualKitFromHtml,
+  slimTemplateVisualKitForFill,
 } from '../src/template-visual-kit.js';
 
 describe('extractTemplateVisualKitFromHtml', () => {
@@ -109,6 +110,55 @@ describe('extractTemplateVisualKitFromHtml', () => {
     expect(out).toContain('API / Teamver mode — do not clone files');
     expect(out).not.toMatch(/\*\*Clone `example\.html`\*\*/);
     expect(out).toContain('Replace placeholder content');
+  });
+
+  it('neutralizeFilesystemCloneWorkflow rewrites html-ppt copy index.html authoring', async () => {
+    const { neutralizeFilesystemCloneWorkflow } = await import('../src/template-visual-kit.js');
+    const raw = [
+      '# HTML PPT · dark terminal',
+      '',
+      '## How to author the deck',
+      '',
+      '1. **Read the master skill first.** All authoring rules live in skills/html-ppt/SKILL.md.',
+      '2. **Start from the matching template folder:**',
+      '   `skills/html-ppt/templates/full-decks/hermes-cyber-terminal/` — copy `index.html` and',
+      '   `style.css` into the project, keep the `.tpl-hermes-cyber-terminal` body class.',
+      '3. **Bring the shared runtime with the template.** Recipe A — copy + rewrite.',
+      '4. **Replace demo content, not classes.**',
+      '',
+      '## Attribution',
+      '',
+      'Upstream MIT.',
+    ].join('\n');
+    const out = neutralizeFilesystemCloneWorkflow(raw);
+    expect(out).toContain('API / Teamver mode — do not clone files');
+    expect(out).toContain('## Attribution');
+    expect(out).not.toMatch(/copy\s+`index\.html`/i);
+    expect(out).not.toContain('skills/html-ppt/templates/');
+    expect(out).not.toContain('Start from the matching template folder');
+  });
+
+  it('extracts html-ppt tpl identity surface instead of shared white :root', async () => {
+    const hermesHtml = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/html-ppt-hermes-cyber-terminal/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const kit = extractTemplateVisualKitFromHtml(hermesHtml, {
+      title: 'Html Ppt Hermes Cyber Terminal',
+    })!;
+    expect(kit).toMatch(/Identity host class: `\.tpl-hermes-cyber-terminal`/);
+    expect(kit).toMatch(/#0a0c10/i);
+    expect(kit).toMatch(/JetBrains Mono/i);
+    expect(kit).toMatch(/hc-scanlines|hc-chrome|hc-prompt/i);
+    const surface = kit.match(/### Slide surface \(bind[\s\S]{0,700}/)?.[0] ?? '';
+    expect(surface).toMatch(/#0a0c10/i);
+    expect(surface).not.toMatch(/\*\*background\*\*: `#ffffff` \(from `--(?:bg|surface)`\)/);
+    const slim = slimTemplateVisualKitForFill(kit);
+    expect(slim).toMatch(/This template's Motif classes:.*\.tpl-hermes-cyber-terminal/i);
+    expect(slim).not.toMatch(/Example capsule|\.deco-pill pill-coral/i);
   });
 
   it('prefers slide paper over dark body chrome (Coral-style)', () => {
@@ -258,8 +308,9 @@ html,body{background:var(--cream);color:var(--text-dark)}
     expect(capsuleSlim).toMatch(/\.deco-pill/i);
     expect(capsuleSlim).toMatch(/pill-coral|pill-lavender|pill-sky/i);
     expect(capsuleSlim).toMatch(/border-radius:\s*9999px/i);
-    expect(capsuleSlim).toMatch(/REQUIRED Motif vocabulary|Do NOT substitute plain CSS circles/i);
+    expect(capsuleSlim).toMatch(/This template's Motif classes:.*\.deco-pill/i);
     expect(capsuleSlim).not.toMatch(/Decorations CSS \(omitted for first content-fill/i);
+    expect(daisySlim).not.toMatch(/Example capsule|\.deco-pill pill-coral/i);
   });
 });
 

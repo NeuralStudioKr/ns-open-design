@@ -128,7 +128,7 @@ const AUTO_CONTINUE_HEAD_ONLY_BODY_FIRST =
 const AUTO_CONTINUE_MOTIF_SVG_DUMP_ABANDON =
   '\n\nCRITICAL: The previous turn dumped Motif `<svg>` path data before any cover `<h1>`. '
   + 'ABANDON that SVG. Do NOT continue path/`d=` data or fence the dump. '
-  + 'Restart BODY-FIRST with `<h1>` then lead `<p>`, THEN kit Motif vocabulary (capped sprites AFTER title and/or `.deco-pill` capsules). Never invent generic CSS circles when the kit has pills/sprites.';
+  + 'Restart BODY-FIRST with `<h1>` then lead `<p>`, THEN THIS kit\'s Motif vocabulary (capped sprites AFTER title and/or this kit\'s named deco CSS classes). Never invent generic CSS circles or import another template\'s ornaments.';
 
 function previewDiscardedHtmlShellForAutoContinue(html: string): string {
   return html
