@@ -67,6 +67,31 @@ function withFrontmatterDescriptionHeader(
   return `## Visual summary (from template frontmatter)\n\n${description}\n\n${bodyOnly}`;
 }
 
+/** Official example.html (+ sibling CSS) for persist/export look merge. */
+export async function fetchPluginPreviewLookSource(
+  pluginId: string,
+): Promise<string | null> {
+  const id = pluginId.trim();
+  if (!id) return null;
+  const plugin = await getInstalledPlugin(id, {
+    includeHidden: true,
+    bypassSlideOnlyCatalogFilter: true,
+  });
+  if (!plugin) return null;
+  const previewPath = pickPluginPreviewHtmlPath(plugin.manifest) ?? 'example.html';
+  const html = await fetchPluginAssetText(plugin.id, previewPath);
+  if (!html?.trim()) return null;
+  const supplementalParts: string[] = [];
+  for (const href of listLocalStylesheetHrefs(html).slice(0, 3)) {
+    const assetPath = resolveSiblingAssetPath(previewPath, href);
+    if (!assetPath) continue;
+    const css = await fetchPluginAssetText(plugin.id, assetPath);
+    if (css?.trim()) supplementalParts.push(css);
+  }
+  if (supplementalParts.length === 0) return html;
+  return `${html}\n<style data-od-kit-supplemental>\n${supplementalParts.join('\n')}\n</style>`;
+}
+
 export async function fetchPluginLocalSkill(
   pluginId: string,
 ): Promise<PluginLocalSkillSummary | null> {

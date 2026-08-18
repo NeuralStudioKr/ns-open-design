@@ -349,6 +349,8 @@ describe("ProjectView message loading", () => {
     const persistBlock = source.slice(persistStart, persistStart + 22000);
     // Terminal scrub after salvage/repair/stabilize — not 2–4× early passes.
     expect(persistBlock).toContain("htmlBody = sanitizeManualEditFullSource(htmlBody)");
+    expect(persistBlock).toContain("mergeOfficialDeckLookCss");
+    expect(persistBlock).toContain("fetchPluginPreviewLookSource");
     expect(persistBlock).toContain("Single terminal scrub after salvage/repair/stabilize");
     // Must not reintroduce early full-source scrubs on recovered/scoped decks.
     expect(persistBlock).not.toContain(
@@ -518,8 +520,9 @@ describe("ProjectView message loading", () => {
     // 16000 for the client-side artifact-regression pre-write guard, then
     // 18000 when the empty-element-patch → auto-continue routing
     // (without client-side fast-path salvage) landed, then 24000 for
-    // readDiskHtml cache + visualMarksAlreadyStabilized + skipped-noop.
-    const persistBlock = source.slice(persistStart, persistStart + 24000);
+    // readDiskHtml cache + visualMarksAlreadyStabilized + skipped-noop,
+    // then 28000 for official template look CSS merge on persist.
+    const persistBlock = source.slice(persistStart, persistStart + 28000);
 
     expect(persistBlock).toContain("Promise<ArtifactPersistResult>");
     expect(persistBlock).toContain("preferDeck: slideOnlyMvp");
