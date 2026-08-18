@@ -49,7 +49,7 @@ beforeEach(async () => {
           <link href="https://cdn.example.com/href-first.css" rel="stylesheet">
           <link href=https://cdn.example.com/unquoted.css rel=stylesheet>
           <link href="https://cdn.example.com/preload.css" rel="preload" as="style">
-          <style>@import url("https://cdn.example.com/imported.css"); body { color: #111; }</style>
+          <style>@import url("https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@0,6..96,400..900;1,6..96,400..900&family=Space+Grotesk:wght@300;400;500;600;700&display=swap"); @import url("https://cdn.example.com/imported.css"); :root{--coral:#E85D4E} body { color: #111; }</style>
           <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
           <script src="https://unpkg.com/lucide@latest"></script>
         </head>
@@ -180,6 +180,8 @@ describe('GET /api/plugins/:id/preview', () => {
     expect(body).not.toContain('https://cdn.example.com/unquoted.css');
     expect(body).not.toContain('https://cdn.example.com/preload.css');
     expect(body).not.toContain('https://cdn.example.com/imported.css');
+    expect(body).not.toMatch(/1,6\.\.96/);
+    expect(body).toContain(':root{--coral:#E85D4E}');
     expect(body).toContain('od stripped external css import');
     expect(body).not.toContain('https://cdn.jsdelivr.net/npm/chart.js');
     expect(body).not.toContain('https://unpkg.com/lucide@latest');

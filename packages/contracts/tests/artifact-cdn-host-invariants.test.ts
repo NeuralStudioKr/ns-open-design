@@ -4,6 +4,7 @@ import {
   ARTIFACT_CDN_HOSTS,
   ARTIFACT_CDN_HOST_STEMS,
   ARTIFACT_CDN_SCRIPT_SRC_HOSTS,
+  ARTIFACT_FONT_STYLESHEET_HOSTS,
   artifactBareCdnHostLineSource,
   artifactCdnHostAlternation,
   artifactCdnHostWithOptionalPathAlternation,
@@ -90,6 +91,15 @@ describe("artifact CDN host SSOT invariants", () => {
     }
     for (const token of ["jsdelivr", "unpkg", "cdnjs", "esm\\.sh"]) {
       expect(script.includes(token), `script missing ${token}`).toBe(true);
+    }
+  });
+
+  it("FONT stylesheet hosts are a subset of ARTIFACT_CDN_HOSTS", () => {
+    for (const host of ARTIFACT_FONT_STYLESHEET_HOSTS) {
+      expect(
+        (ARTIFACT_CDN_HOSTS as readonly string[]).includes(host),
+        `font stylesheet host ${host} missing from ARTIFACT_CDN_HOSTS`,
+      ).toBe(true);
     }
   });
 

@@ -40,6 +40,8 @@ describe('authenticatedHtmlSrcDoc helpers', () => {
     expect(html).toContain("script-src 'unsafe-inline'");
     expect(html).not.toMatch(/script-src[^;]*'none'/i);
     expect(html).not.toMatch(/base-uri\s+'none'/i);
+    expect(html).toContain('https://fonts.googleapis.com');
+    expect(html).toContain('https://fonts.gstatic.com');
   });
 
   it('removes none from script-src when it appears alongside other script sources', () => {

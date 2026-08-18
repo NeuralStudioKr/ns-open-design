@@ -160,6 +160,16 @@ function isScriptExecutionDirective(name: string): boolean {
   return name === 'script-src' || name === 'script-src-elem' || name === 'script-src-attr';
 }
 
+const SRCDOC_STYLE_FONT_HOSTS = ['https://fonts.googleapis.com'];
+const SRCDOC_FONT_FILE_HOSTS = ['https://fonts.gstatic.com', 'https://fonts.googleapis.com'];
+
+function appendCspSources(sourceList: string, extras: readonly string[]): string {
+  return dedupeCspSourceTokens([
+    ...sourceList.trim().split(/\s+/).filter((token) => token.length > 0),
+    ...extras,
+  ]).join(' ');
+}
+
 function normalizeScriptSrcDirective(sourceList: string): string {
   const tokens = dedupeCspSourceTokens(
     sourceList
@@ -187,11 +197,25 @@ export function relaxCanvasMetaCspForSrcDocPreview(content: string): string {
   const directives = parseCspToDirectives(content)
     .filter((directive) => !isBaseUriNoneDirective(directive))
     .map((directive) => {
-      if (!isScriptExecutionDirective(directive.name)) return directive;
-      return {
-        ...directive,
-        value: normalizeScriptSrcDirective(directive.value),
-      };
+      if (isScriptExecutionDirective(directive.name)) {
+        return {
+          ...directive,
+          value: normalizeScriptSrcDirective(directive.value),
+        };
+      }
+      if (directive.name === 'style-src') {
+        return {
+          ...directive,
+          value: appendCspSources(directive.value, SRCDOC_STYLE_FONT_HOSTS),
+        };
+      }
+      if (directive.name === 'font-src') {
+        return {
+          ...directive,
+          value: appendCspSources(directive.value, SRCDOC_FONT_FILE_HOSTS),
+        };
+      }
+      return directive;
     });
   return serializeCspDirectives(directives);
 }

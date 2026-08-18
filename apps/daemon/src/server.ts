@@ -16,6 +16,7 @@ import net from 'node:net';
 import {
   defaultScenarioPluginIdForProjectMetadata,
   sanitizeAssistantProseForDisplay,
+  stripRemoteCssImportsQuoteAware,
   type OpenDesignDiscordPresenceResponse,
   type OpenDesignGithubLatestReleaseResponse,
   type OpenDesignGithubRepoResponse,
@@ -8914,18 +8915,8 @@ export async function startServer({
     return html.replace(
       /<style\b([^>]*)>([\s\S]*?)<\/style>/gi,
       (match, attrs, css) => {
-        let stripped = false;
-        // Quote-aware: Google Fonts css2 URLs embed `;` in wght/opsz axes.
-        // Naive `[^"')\s;]+` truncates mid-URL and poisons Motif CSS for every
-        // official deck template that uses css2 (not Capsule-only).
-        const nextCss = String(css).replace(
-          /@import\s+(?:url\s*\(\s*(?:"[^"]*"|'[^']*'|[^'")\s]+)\s*\)|(?:"[^"]*"|'[^']*'))[^;]*;?/gi,
-          () => {
-            stripped = true;
-            return '/* od stripped external css import */';
-          },
-        );
-        return stripped ? `<style${attrs}>${nextCss}</style>` : match;
+        const next = stripRemoteCssImportsQuoteAware(String(css));
+        return next.stripped ? `<style${attrs}>${next.css}</style>` : match;
       },
     );
   }

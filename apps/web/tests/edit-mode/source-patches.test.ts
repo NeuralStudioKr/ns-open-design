@@ -491,6 +491,21 @@ describe('manual edit source patches', () => {
     expect(readManualEditOuterHtml(result.source, 'hero-title')).toContain('Original title');
   });
 
+  it('keeps Google Fonts <link> in head and strips other stylesheets', () => {
+    const html = [
+      '<!doctype html><html><head>',
+      '<link rel="preconnect" href="https://fonts.googleapis.com">',
+      '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>',
+      '<link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@0,6..96,400..900;1,6..96,400..900&family=Space+Grotesk:wght@400;700&display=swap" rel="stylesheet">',
+      '<link rel="stylesheet" href="https://evil.example/x.css">',
+      '</head><body><section class="slide"><span class="pill">x</span></section></body></html>',
+    ].join('');
+    const out = sanitizeManualEditFullSource(html);
+    expect(out).toContain('fonts.googleapis.com/css2?family=Bodoni+Moda');
+    expect(out).toContain('fonts.gstatic.com');
+    expect(out).not.toContain('evil.example');
+  });
+
   it('keeps Google Fonts @import whose css2 URL contains semicolons (any Motif template)', () => {
     const fontImport =
       "@import url('https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@0,6..96,400..900;1,6..96,400..900&family=Space+Grotesk:wght@300;400;500;600;700&display=swap');";
