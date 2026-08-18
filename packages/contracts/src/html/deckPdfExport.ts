@@ -103,7 +103,10 @@ export function buildDeckHtmlExportScreenCss(): string {
     overflow-y: auto !important;
     margin: 0 !important;
     padding: 0 !important;
-    background: var(--shell, #0a0c10) !important;
+    /* Paper first — --shell is frame chrome (#0a0c10). Forcing it here
+       painted a dark letterbox + card shadow around cream slides so
+       standalone HTML/PDF looked like "template not applied". */
+    background: var(--bg, var(--paper, var(--shell, #ffffff))) !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
@@ -134,8 +137,8 @@ export function buildDeckHtmlExportScreenCss(): string {
   }
   ${slidesNotActive},
   ${slides} {
-    display: flex !important;
-    flex-direction: column !important;
+    /* Do not force flex-direction:column — absolute/split covers collapse. */
+    display: block !important;
     flex: 0 0 auto !important;
     position: relative !important;
     inset: auto !important;
@@ -153,7 +156,7 @@ export function buildDeckHtmlExportScreenCss(): string {
     scroll-snap-align: none !important;
     zoom: var(--od-html-export-scale, 1) !important;
     margin: 0 auto !important;
-    box-shadow: 0 12px 48px rgba(0, 0, 0, 0.35) !important;
+    box-shadow: none !important;
   }
   ${DECK_CHROME_HIDE_SELECTOR} {
     display: none !important;

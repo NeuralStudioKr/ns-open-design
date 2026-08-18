@@ -63,11 +63,10 @@ describe('exportAsHtml / exportAsZip lean srcdoc', () => {
     );
   });
 
-  it('skips repair in inlineExportHtmlPayload when head looks intact', () => {
+  it('heals stylesheets and slide surfaces on the daemon HTML/PDF payload', () => {
     expect(exportsSource).toContain('repairArtifactDocumentHeadIfNeeded');
-    expect(exportsSource).toContain(
-      'Skip repair when head already looks intact (srcdoc buildSrcdoc parity).',
-    );
+    expect(exportsSource).toContain('repairArtifactStyleSheets');
+    expect(exportsSource).toContain('repairDeckSlideSurfaceBleed');
     expect(exportsSource).toContain('repairArtifactDocumentHeadIfNeeded(htmlSnapshot)');
     expect(exportsSource).toContain('normalizeCompactStackedDeckForExport');
   });

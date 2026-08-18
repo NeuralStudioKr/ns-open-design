@@ -186,6 +186,10 @@ describe('buildDeckHtmlExportScreenCss', () => {
     expect(css).not.toMatch(
       /\.deck,\s*\.deck-stage[\s\S]{0,500}background:\s*transparent\s*!important/,
     );
+    expect(css).toMatch(/background:\s*var\(--bg,[^)]*var\(--paper/);
+    expect(css).not.toContain('background: var(--shell, #0a0c10)');
+    expect(css).not.toContain('box-shadow: 0 12px 48px');
+    expect(css).not.toMatch(/\.slide[^{]*\{[^}]*flex-direction:\s*column\s*!important/);
   });
 });
 

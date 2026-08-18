@@ -37,7 +37,9 @@ import {
   injectDeckFlattenScript,
   patchArtifactDeckPrintCss,
   buildDeckPrintCss,
+  repairArtifactStyleSheets,
 } from '@open-design/contracts';
+import { repairDeckSlideSurfaceBleed } from '../artifacts/deck-slide-surface';
 import { normalizeCompactStackedDeckForExport } from './compact-api-stacked-deck';
 
 const DESIGN_HANDOFF_FILENAME = 'DESIGN-HANDOFF.md';
@@ -1100,9 +1102,15 @@ function inlineExportHtmlPayload(
   if (typeof htmlSnapshot !== 'string') return {};
   const trimmed = htmlSnapshot.trim();
   if (trimmed.length === 0) return {};
-  // Skip repair when head already looks intact (srcdoc buildSrcdoc parity).
+  // Same persist/preview heal chain (head → stylesheets → surface bleed)
+  // so standalone HTML/PDF do not ship broken @import remnants or a
+  // dark --shell letterbox the iframe srcdoc would have repaired.
   const html = normalizeCompactStackedDeckForExport(
-    repairArtifactDocumentHeadIfNeeded(htmlSnapshot),
+    repairDeckSlideSurfaceBleed(
+      repairArtifactStyleSheets(
+        repairArtifactDocumentHeadIfNeeded(htmlSnapshot),
+      ),
+    ),
     deck === true,
   );
   return { html: patchArtifactDeckPrintCss(html) };
