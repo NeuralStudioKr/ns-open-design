@@ -311,14 +311,41 @@ html,body{background:var(--cream);color:var(--text-dark)}
     expect(capsuleSlim).toMatch(/Motif vocabulary \(required compact cue\)/i);
     expect(capsuleSlim).toMatch(/title cue: capsule \/ pill objects/i);
     expect(capsuleSlim).toMatch(/Decorations CSS \(capped for first content-fill/i);
-    expect(capsuleSlim).toMatch(/\.deco-pill/i);
-    expect(capsuleSlim).toMatch(/pill-coral|pill-lavender|pill-sky/i);
-    expect(capsuleSlim).toMatch(/border-radius:\s*9999px/i);
-    expect(capsuleSlim).toMatch(/REQUIRED Motif vocabulary|Do NOT substitute plain CSS circles/i);
+    expect(capsuleSlim).toMatch(/\.deco-pill|deco-pill/i);
+    expect(capsuleSlim).toMatch(/pill-coral|pill-lavender|pill-sky|pill-peach|pill-violet/i);
+    expect(capsuleSlim).toMatch(/Motif HTML snippets|border-radius:\s*9999px/i);
+    expect(capsuleSlim).toMatch(/REQUIRED Motif vocabulary|Do NOT invent generic CSS circles/i);
+    expect(capsuleSlim).toMatch(/Layout CSS \(capped for first content-fill/i);
+    expect(capsuleSlim).toMatch(/Do NOT flatten|cards-grid|grid-template/i);
     expect(capsuleSlim).not.toMatch(/Decorations CSS \(omitted for first content-fill/i);
+    expect(capsuleSlim).not.toMatch(/Layout CSS \(omitted for first content-fill/i);
+
+    // Daisy must keep Layout on fill (not omit) so compositions don't collapse.
+    expect(daisySlim).toMatch(/Layout CSS \(capped for first content-fill/i);
+    expect(daisySlim).not.toMatch(/Layout CSS \(omitted for first content-fill/i);
+  });
+
+  it('does not inject Capsule examples into non-Capsule Motif templates', async () => {
+    const { slimTemplateVisualKitForFill } = await import('../src/template-visual-kit.js');
+    for (const folder of [
+      'html-ppt-hermes-cyber-terminal',
+      'html-ppt-xhs-pastel-card',
+      'html-ppt-zhangzara-long-table',
+      'html-ppt-zhangzara-sakura-chroma',
+    ]) {
+      const html = await readFile(
+        new URL(`../../../plugins/_official/examples/${folder}/example.html`, import.meta.url),
+        'utf8',
+      );
+      const kit = extractTemplateVisualKitFromHtml(html, { title: folder })!;
+      const slim = slimTemplateVisualKitForFill(kit);
+      expect(slim, folder).not.toMatch(/Example capsule \(AFTER title\)/i);
+      if (/display\s*:\s*(?:flex|grid)/i.test(html)) {
+        expect(slim, folder).toMatch(/Layout CSS \(capped for first content-fill/i);
+      }
+    }
   });
 });
-
 describe('pickPluginPreviewHtmlPath', () => {
   it('prefers od.preview.entry then context.assets', () => {
     expect(

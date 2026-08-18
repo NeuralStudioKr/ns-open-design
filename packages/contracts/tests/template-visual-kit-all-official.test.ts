@@ -162,9 +162,18 @@ describe('official deck template visual kits (all mode:deck example.html)', () =
       if (/daisy/i.test(folder) && !/daisy|flower|#fcdf6c/i.test(slim)) {
         failures.push(`${folder}: Daisy template title cue missing from slim`);
       }
-      // Must not force Capsule-only guidance when kit has no pills.
-      if (!/\.deco-pill|pill-/i.test(kit) && /Example capsule \(AFTER title\)/i.test(slim)) {
-        failures.push(`${folder}: slim injected Capsule example without pill Motif`);
+      // Layout must be capped on fill when the full kit had Layout CSS.
+      if (/### Layout CSS(?! \(omitted)/i.test(kit) && !/### Layout CSS \(capped/i.test(slim)) {
+        failures.push(`${folder}: Layout CSS omitted by slim (should be capped)`);
+      }
+      if (/Layout CSS \(omitted for first content-fill/i.test(slim)) {
+        failures.push(`${folder}: Layout CSS still fully omitted on fill`);
+      }
+      // Must not force Capsule-only guidance when kit has no true Capsule Motif.
+      const hasCapsule =
+        /\.deco-pill\b|deco-pills|floating-pills|\.pill-(?:coral|lime|lavender|sky|violet|yellow|peach|mint)/i.test(kit);
+      if (!hasCapsule && /Example capsule \(AFTER title\)/i.test(slim)) {
+        failures.push(`${folder}: slim injected Capsule example without Capsule Motif`);
       }
     }
     expect(ornamentHeavy, 'expected several ornament-heavy templates').toBeGreaterThan(8);

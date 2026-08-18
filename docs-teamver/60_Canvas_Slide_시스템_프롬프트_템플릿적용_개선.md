@@ -152,6 +152,10 @@ full `example.html`을 시스템 프롬프트에 넣지 않는다는 방침은 �
 
 제품 판단: **완성된 덱이 우선**이다. 선택 템플릿과 100% 동일한 CSS를 복사하다가 결과물이 비어버리는 것보다, 템플릿의 palette/font/motif cue가 보이는 compact static deck을 완성하는 것이 낫다. 따라서 pre-write gate는 계속 shell 저장을 막고, prompt는 shell이 생기지 않도록 body-first로 유도한다.
 
+### 0.22 2026-08-18 — Motif/Layout fill 강화 (밀도 + composition)
+
+Motif lexicon만으로는 부족했다. fill이 Layout CSS를 통째로 omit하고 Motif HTML snippet 없이 클래스명만 주어서 generic flex title로 붕괴했다. 이제 fill은 **capped Layout CSS를 유지**하고, example.html에서 뽑은 **Motif HTML snippets** + scaffold `deco=` 밀도(≥2)를 요구하며, Capsule 예시는 진짜 Capsule Motif에만 주입한다.
+
 ### 0.21 2026-08-18 — 전체 템플릿 Motif cue 보존 강화 (현재 시점 판단)
 
 현재 시점(2026-08-18 KST) 판단: Daisy/Capsule처럼 신고된 템플릿을 개별 패치하는 방식은 재발을 막지 못한다. 모든 `mode:deck` 공식 `example.html`에서 대표 시각 언어가 `extractTemplateVisualKitFromHtml` → `slimTemplateVisualKitForFill` → model fill prompt까지 살아남아야 한다.

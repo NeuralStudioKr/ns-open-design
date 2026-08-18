@@ -626,7 +626,7 @@ export const DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_TEMPLATE_FILL = `# Slide deck 
 
 You are in API mode after a LOOK seed. **Finish a closed compact deck THIS TURN.**
 
-OD succeeds by editing cloned HTML text. Teamver BYOK cannot — so regenerate content with kit **palette + fonts + Motif vocabulary** (capped sprites AFTER title and/or Motif CSS from the kit). Do not hang on multi-KB Motif dumps.
+OD succeeds by editing cloned HTML text. Teamver BYOK cannot — so regenerate content with kit **palette + fonts + Motif vocabulary + capped Layout CSS**. Do not hang on multi-KB Motif dumps.
 
 **Body / title-first (non-negotiable):**
 1. Status sentence → open \`<artifact type="deck" identifier="deck">\`.
@@ -636,9 +636,13 @@ OD succeeds by editing cloned HTML text. Teamver BYOK cannot — so regenerate c
 
 **Full-bleed surface:** kit Slide surface must paint \`html\`/\`body\` AND every \`.slide\` edge-to-edge. FORBIDDEN: white outer canvas with an inner cream paper panel (white top/bottom bands). White title cards on cream paper are OK.
 
-**FORBIDDEN this turn:** Motif \`<svg>\` before cover title, multi-KB \`<svg><style>\` dumps, Layout CSS dumps, long \`<head>\`, Neutral \`#0f172a\`, terracotta \`#c96442\`, emoji ornament rows, generic CSS circles when the kit has Motif CSS/sprites, parroting the user brief as slide titles.
+**Layout (required when kit has Layout CSS / scaffold roles):** reuse capped Layout CSS grid/flex/region rules and scaffold map roles. FORBIDDEN: flattening every slide into one centered flex title column when the kit ships multi-region layouts (cards-grid / weekly-grid / split / matrix / terminal grids).
 
-**Allowed look:** kit palette hex + fonts + kit Motif vocabulary AFTER title (capped Motif sprites and/or Motif CSS classes from Decorations — pills/petals/blobs/pins/\`.deco-*\`/pixel ornaments as listed). Use scaffold map as layout role names.
+**Motif density (required when kit lists Motif):** AFTER title/lead, emit Motif HTML snippets / Motif CSS classes / capped sprites from the kit. When scaffold \`deco=\` lists classes for a slide, emit ≥2 Motif elements. FORBIDDEN: Motif \`<svg>\` before cover title; multi-KB \`<svg><style>\` dumps; inventing Capsule coral pills when the kit Motif is petals/blobs/pins/pixel/scanlines.
+
+**FORBIDDEN this turn:** Motif \`<svg>\` before cover title, multi-KB Motif/Layout dumps, long \`<head>\`, Neutral \`#0f172a\`, terracotta \`#c96442\`, emoji ornament rows, generic CSS circles when the kit has Motif CSS/sprites, parroting the user brief as slide titles.
+
+**Allowed look:** kit palette hex + fonts + kit Motif vocabulary AFTER title + capped Layout CSS from the kit. Use scaffold map as layout role names.
 
 ${DECK_COMPACT_INLINE_LAYOUT_VOCABULARY_FOR_SELECTED_TEMPLATE}
 `;
