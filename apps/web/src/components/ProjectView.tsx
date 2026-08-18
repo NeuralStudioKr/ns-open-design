@@ -146,6 +146,8 @@ import { useProjectFileEvents, type ProjectEvent } from '../providers/project-ev
 import { useCoalescedCallback } from '../hooks/useCoalescedCallback';
 import {
   composeSystemPrompt,
+  extractOfficialDeckLookAssets,
+  mergeOfficialDeckLookCss,
   renderPluginBlock,
   repairArtifactStyleSheets,
   slimTemplateVisualKitForFill,
@@ -483,7 +485,7 @@ import {
   looksLikeDeckIntentProse,
 } from '../teamver/deckDeliverableProse';
 import { resolveEmbedSlideDesignSystemId } from '../teamver/embedSlideDesignSystem';
-import { fetchPluginLocalSkill } from '../teamver/fetchPluginLocalSkill';
+import { fetchPluginLocalSkill, fetchPluginPreviewLookSource } from '../teamver/fetchPluginLocalSkill';
 import { throwIfProjectCommentUploadIncomplete } from '../teamver/projectUploadErrors';
 import { stripLeakedPseudoToolXml } from '../utils/stripLeakedPseudoToolXml';
 import {
@@ -5197,6 +5199,19 @@ export function ProjectView({
         htmlBody = rewriteAttachmentImageSrcs(htmlBody, projectPaths, {
           preferredPaths: attachmentPaths,
         });
+        const persistTemplateId =
+          selectedDeckTemplateMetadata(project.metadata)?.id
+          ?? project.metadata?.selectedDeckTemplateId
+          ?? null;
+        if (persistTemplateId) {
+          const officialLook = await fetchPluginPreviewLookSource(String(persistTemplateId));
+          if (officialLook) {
+            htmlBody = mergeOfficialDeckLookCss(
+              htmlBody,
+              extractOfficialDeckLookAssets(officialLook),
+            );
+          }
+        }
       }
       if (ext === '.html' && persistCommentAttachments.length > 0) {
         const currentScopedHtml = await readDiskHtml(fileName);

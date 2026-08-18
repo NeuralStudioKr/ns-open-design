@@ -4,6 +4,7 @@ import {
   buildStandaloneDeckHtmlDocument,
   healDeckHtmlForStandaloneExport,
 } from '@open-design/contracts';
+import { mergeOfficialTemplateLookForExport } from './official-deck-look-export.js';
 import fs from 'node:fs';
 import nodePath from 'node:path';
 import os from 'node:os';
@@ -866,6 +867,22 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
     sanitizeArchiveFilename,
   } = ctx.exports;
   const projectStorageHooks = ctx.projectStorageHooks;
+
+  async function applyOfficialTemplateLookToBuilt(
+    projectId: string,
+    built: Awaited<ReturnType<typeof buildDesktopPdfExportInput>>,
+    body: Record<string, unknown> | undefined,
+  ) {
+    const project = getProject(db, projectId);
+    const templateId = typeof body?.templateId === 'string' ? body.templateId : null;
+    built.input.html = await mergeOfficialTemplateLookForExport({
+      db,
+      html: built.input.html,
+      metadata: project?.metadata,
+      templateId,
+    });
+    return built;
+  }
   // Streams a ZIP of the project's on-disk tree so the "Download as .zip"
   // share menu can hand the user the actual files they uploaded — e.g. the
   // imported `ui-design/` folder — instead of a one-file snapshot of the
@@ -1062,6 +1079,7 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
         title: typeof title === 'string' ? title : undefined,
         ...(inlineHtml ? { inlineHtml } : {}),
       });
+      await applyOfficialTemplateLookToBuilt(req.params.id, built, req.body);
       await warmInlineExportAssets(
         req,
         req.params.id,
@@ -1132,6 +1150,7 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
         title: typeof title === 'string' ? title : undefined,
         ...(inlineHtml ? { inlineHtml } : {}),
       });
+      await applyOfficialTemplateLookToBuilt(req.params.id, built, req.body);
       await warmInlineExportAssets(
         req,
         req.params.id,
@@ -1204,6 +1223,7 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
         title: typeof title === 'string' ? title : undefined,
         ...(inlineHtml ? { inlineHtml } : {}),
       });
+      await applyOfficialTemplateLookToBuilt(req.params.id, built, req.body);
       await warmInlineExportAssets(
         req,
         req.params.id,
@@ -1277,6 +1297,7 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
         title: typeof title === 'string' ? title : undefined,
         ...(inlineHtml ? { inlineHtml } : {}),
       });
+      await applyOfficialTemplateLookToBuilt(req.params.id, built, req.body);
       await warmInlineExportAssets(
         req,
         req.params.id,
@@ -1346,6 +1367,7 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
         title: typeof title === 'string' ? title : undefined,
         ...(inlineHtml ? { inlineHtml } : {}),
       });
+      await applyOfficialTemplateLookToBuilt(req.params.id, built, req.body);
       await warmInlineExportAssets(
         req,
         req.params.id,

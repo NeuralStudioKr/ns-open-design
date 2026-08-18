@@ -506,6 +506,20 @@ describe('manual edit source patches', () => {
     expect(out).not.toContain('evil.example');
   });
 
+  it('keeps official template look CSS (Capsule grain data-svg) through persist sanitize', () => {
+    const html = [
+      '<!doctype html><html><head>',
+      '<style data-od-official-look-css>',
+      '.pill-coral{background:#E85D4E}',
+      '.grain-overlay{background-image:url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\'%3E%3C/svg%3E")}',
+      '</style></head><body><section class="slide"><span class="pill-coral">x</span></section></body></html>',
+    ].join('');
+    const out = sanitizeManualEditFullSource(html);
+    expect(out).toContain('data-od-official-look-css');
+    expect(out).toContain('.pill-coral{background:#E85D4E}');
+    expect(out).toContain('data:image/svg+xml');
+  });
+
   it('keeps Google Fonts @import whose css2 URL contains semicolons (any Motif template)', () => {
     const fontImport =
       "@import url('https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@0,6..96,400..900;1,6..96,400..900&family=Space+Grotesk:wght@300;400;500;600;700&display=swap');";

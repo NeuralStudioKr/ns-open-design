@@ -107,8 +107,8 @@ describe('export cache key', () => {
     expect(shortCacheKeyPrefix(key)).toHaveLength(12);
   });
 
-  it('defaults codeVersion to "v9" when env is absent', () => {
+  it('defaults codeVersion to "v10" when env is absent', () => {
     delete process.env.OD_EXPORT_CACHE_VERSION;
-    expect(currentExportCodeVersion()).toBe('v9');
+    expect(currentExportCodeVersion()).toBe('v10');
   });
 });

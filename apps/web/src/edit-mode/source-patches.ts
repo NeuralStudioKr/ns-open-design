@@ -1,5 +1,6 @@
 import {
   isAllowlistedFontStylesheetHref,
+  OFFICIAL_DECK_LOOK_STYLE_ATTR,
   rewriteCssImportsForPersist,
 } from '@open-design/contracts';
 import { emptyManualEditStyles, MANUAL_EDIT_STYLE_PROPS, type ManualEditFields, type ManualEditPatch, type ManualEditStyles } from './types';
@@ -1843,6 +1844,7 @@ export function sanitizeManualEditDocumentInPlace(doc: Document): void {
     for (const child of Array.from(host.children)) {
       const tag = child.tagName.toLowerCase();
       if (tag === 'style') {
+        if (child.hasAttribute(OFFICIAL_DECK_LOOK_STYLE_ATTR)) continue;
         if (!scrubManualEditStyleElement(child)) child.remove();
         continue;
       }

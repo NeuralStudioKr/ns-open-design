@@ -17,6 +17,8 @@ describe('export relative asset warm wiring', () => {
     const warms = routes.match(/await warmInlineExportAssets\(/g) ?? [];
     expect(builds.length).toBeGreaterThanOrEqual(5);
     expect(warms.length).toBe(builds.length);
+    expect(routes).toContain('applyOfficialTemplateLookToBuilt');
+    expect(routes).toContain('mergeOfficialTemplateLookForExport');
   });
 
   it('passes projectStorageHooks into registerProjectExportRoutes', () => {
