@@ -2136,7 +2136,9 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
     if (m.id && m.id !== req.params.mid) {
       return res.status(400).json({ error: 'id mismatch' });
     }
-    const prior = listMessages(db, req.params.cid).find((row) => row.id === req.params.mid) ?? null;
+    const prior = listMessages(db, req.params.cid).find(
+      (row: { id?: string }) => row.id === req.params.mid,
+    ) ?? null;
     const saved = upsertMessage(db, req.params.cid, {
       ...m,
       id: req.params.mid,
