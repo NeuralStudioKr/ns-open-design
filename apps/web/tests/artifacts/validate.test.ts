@@ -134,6 +134,13 @@ describe('validateHtmlArtifact', () => {
       + '<section class="slide"><h1>Cover</h1><p>Real copy for the deck.</p></section>'
       + '</body></html>';
     expect(isIncompleteHtmlDocumentShell(filled)).toBe(false);
+
+    const filledDiv =
+      '<!doctype html><html><head><meta charset="utf-8"></head><body>'
+      + '<div class="slide"><h1>Cover</h1><p>Real copy for the deck.</p></div>'
+      + '<div class="slide"><h2>Agenda</h2><p>First-day goals and team culture.</p></div>'
+      + '</body></html>';
+    expect(isIncompleteHtmlDocumentShell(filledDiv)).toBe(false);
   });
 
   it('classifies progress placeholder decks as low-substance deck artifacts', () => {

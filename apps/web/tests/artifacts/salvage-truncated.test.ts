@@ -6,6 +6,7 @@ import {
   salvageTruncatedHtmlDocument,
 } from "../../src/artifacts/recover";
 import { isIncompleteHtmlDocumentShell } from "../../src/artifacts/validate";
+import { isClosedSoftSalvageDeckHtml } from "../../src/artifacts/deck-html-content";
 
 describe("salvageTruncatedHtmlDocument", () => {
   it("closes a truncated deck that already has real slide sections", () => {
@@ -217,6 +218,54 @@ describe("salvageTruncatedHtmlDocument", () => {
     expect(salvaged).not.toMatch(/<script\b/i);
     expect(salvaged).toMatch(/<\/body>\s*<\/html>\s*$/i);
     expect(isIncompleteHtmlDocumentShell(salvaged!)).toBe(false);
+  });
+
+  it("salvages a truncated catalog <div class=\"slide\"> deck instead of skipped-incomplete", () => {
+    const truncated = `<!doctype html>
+<html lang="ko">
+<head><meta charset="utf-8" /><title>온보딩</title></head>
+<body>
+<div class="slide"><h1>신입사원 온보딩</h1><p>첫날 목표와 팀 문화를 설명하는 커버 슬라이드입니다.`;
+    expect(isIncompleteHtmlDocumentShell(truncated)).toBe(true);
+    const salvaged = salvageTruncatedHtmlDocument(truncated);
+    expect(salvaged).toBeTruthy();
+    expect(salvaged).toContain("신입사원 온보딩");
+    expect(salvaged).toMatch(/<\/div>\s*<\/body>\s*<\/html>\s*$/i);
+    expect(isIncompleteHtmlDocumentShell(salvaged!)).toBe(false);
+  });
+
+  it("wraps body-first <div class=\"slide\"> compact decks into a complete document", () => {
+    const divFirst =
+      '<div class="slide" style="min-height:100vh"><h1>온보딩</h1><p>첫날 체크리스트입니다.</p></div>'
+      + '<div class="slide"><h2>협업 방식</h2><p>팀 문화와 커뮤니케이션 규칙을 소개합니다.</p></div>';
+    const normalized = normalizeBodyFirstHtmlDocument(divFirst);
+    expect(normalized).toMatch(/^<!doctype html><html lang="ko"><body><div class="slide"/i);
+    expect(normalized).toMatch(/<\/body><\/html>$/);
+    expect(isIncompleteHtmlDocumentShell(normalized!)).toBe(false);
+    expect(
+      normalizeBodyFirstHtmlDocument(
+        '<div class="slide-inner"><h1>온보딩</h1><p>첫날 체크리스트입니다.</p></div>',
+      ),
+    ).toBeNull();
+  });
+
+  it("recovers truncated <div class=\"slide\"> decks from assistant prose via recoverBest", () => {
+    const text =
+      "덱 HTML을 작성 중입니다.\n"
+      + '<!doctype html>\n<html lang="ko"><head><meta charset="utf-8" /><title>NS</title></head><body>'
+      + '<div class="slide"><h1>NeuralStudio</h1><p>회사 소개 개요입니다.</p></div>'
+      + '<div class="slide"><h2>제품</h2><p>핵심 제품 라인업을 소개합니다.';
+    const recovered = recoverBestHtmlDocumentFromText(text);
+    expect(recovered).toBeTruthy();
+    expect(recovered).toContain("<h1>NeuralStudio</h1>");
+    expect(recovered).toMatch(/<\/body>\s*<\/html>\s*$/i);
+    expect(isIncompleteHtmlDocumentShell(recovered!)).toBe(false);
+    const trustSoftTruncationSalvage =
+      Boolean(recovered) || isClosedSoftSalvageDeckHtml(recovered!);
+    expect(trustSoftTruncationSalvage).toBe(true);
+    expect(
+      !trustSoftTruncationSalvage && isIncompleteHtmlDocumentShell(recovered!),
+    ).toBe(false);
   });
 
   it("keeps slides when head style is truncated before body", () => {
