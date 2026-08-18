@@ -4,7 +4,10 @@
  */
 
 import { repairArtifactDocumentHead } from './repairArtifactDocumentHead.js';
-import { repairArtifactStyleSheets } from './repairArtifactStyleSheets.js';
+import {
+  relaxPersistedDeckSlideSurfaceBleed,
+  repairArtifactStyleSheets,
+} from './repairArtifactStyleSheets.js';
 
 export const DECK_SLIDE_SELECTOR =
   '.slide, [data-slide], [data-screen-label], section.slide, .deck-slide, .ppt-slide';
@@ -25,9 +28,14 @@ function deckSlideSelectorList(): string[] {
 /**
  * Heal Motif-killing stylesheet remnants + truncated head before standalone
  * HTML/PDF export (daemon disk path and FE snapshot share this SSOT).
+ * Also relax persisted `.slide !important` surface bleed so Motif washes win.
  */
 export function healDeckHtmlForStandaloneExport(html: string): string {
-  return repairArtifactStyleSheets(repairArtifactDocumentHead(String(html ?? '')));
+  return repairArtifactStyleSheets(
+    repairArtifactDocumentHead(
+      relaxPersistedDeckSlideSurfaceBleed(String(html ?? '')),
+    ),
+  );
 }
 
 function injectExportSnippetIntoHead(html: string, snippet: string): string {

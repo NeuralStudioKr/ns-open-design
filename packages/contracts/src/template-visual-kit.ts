@@ -1905,7 +1905,18 @@ function capMotifSpritesSectionForFill(section: string): string {
     // Prefer real daisy (butter center) over rainbow/star when kit has daisy cues.
     if (/#fcdf6c/i.test(svg) && (looksLikeDaisy || /path/i.test(svg))) return 0;
     if (looksLikeDaisy && /#fcdf6c/i.test(svg)) return 0;
-    if (/width\s*=\s*["']0["']|height\s*=\s*["']0["']/i.test(svg)) return 9; // defs/symbol sheets
+    // Pin-and-Paper / symbol Motif: keep defs sheets that define #pin (not chart polylines).
+    if (/#pin\b|<symbol\b[^>]*\bid\s*=\s*["']pin|bg-cork|\.pin-/i.test(svg)) return 0;
+    if (/<symbol\b/i.test(svg) && /<(?:use|path)\b/i.test(svg)) return 1;
+    if (/width\s*=\s*["']0["']|height\s*=\s*["']0["']/i.test(svg)) {
+      // Hidden defs sheets are Motif identity when they declare symbols; otherwise demote.
+      if (/<defs\b|<symbol\b|#pin\b/i.test(svg)) return 1;
+      return 9;
+    }
+    // Chart/noise SVGs are not Motif for pin/cork kits.
+    if (/<polyline\b|<filter\b[^>]*\bid\s*=\s*["']n["']/i.test(svg) && !/#pin\b|<symbol\b/i.test(svg)) {
+      return 8;
+    }
     if (/#f8635f|#fde366|#8de3b7|#85c5fe|rainbow/i.test(svg)) return looksLikeDaisy ? 5 : 1;
     if (/viewbox="0 0 100 98/i.test(svg) || /\bstar\b/i.test(svg)) return 2;
     if (/\bpin\b|#pin|doodle|stamp/i.test(svg)) return 3;

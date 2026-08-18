@@ -506,6 +506,21 @@ describe('manual edit source patches', () => {
     expect(out).not.toContain('evil.example');
   });
 
+  it('keeps body-first Google Fonts <link> (kit emits after <body>) and strips evil body links', () => {
+    const html = [
+      '<!doctype html><html><head><meta charset="utf-8"/></head><body>',
+      '<link rel="preconnect" href="https://fonts.googleapis.com">',
+      '<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;700&display=swap" rel="stylesheet">',
+      '<link rel="stylesheet" href="https://evil.example/body.css">',
+      '<section class="slide"><h1>Cover</h1></section>',
+      '</body></html>',
+    ].join('');
+    const out = sanitizeManualEditFullSource(html);
+    expect(out).toContain('fonts.googleapis.com/css2?family=Space+Grotesk');
+    expect(out).toContain('fonts.googleapis.com');
+    expect(out).not.toContain('evil.example');
+  });
+
   it('keeps official template look CSS (Capsule grain data-svg) through persist sanitize', () => {
     const html = [
       '<!doctype html><html><head>',

@@ -1850,9 +1850,9 @@ export function sanitizeManualEditDocumentInPlace(doc: Document): void {
       }
       if (
         tag === 'link'
-        && host === doc.head
         && isAllowlistedFontHeadLink(child)
       ) {
+        // Body-first kits emit Google Fonts after `<body>` — keep those too.
         sanitizeManualEditElementAttrs(child);
         continue;
       }
