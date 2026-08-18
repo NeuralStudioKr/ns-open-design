@@ -143,6 +143,9 @@ describe('FileViewer revision tip advance after undo', () => {
     expect(fileViewer).toContain('setManualEditTargets((current) => {');
     expect(fileViewer).toContain('const nextList = current.map((item) => {');
     expect(fileViewer).toContain('shouldRefreshHostPaintAfterTipRemountRemasure');
+    expect(fileViewer).toContain('applyManualEditMeasuredGeometry(measured)');
+    expect(fileViewer).toContain('Full-merge was unused and would clobber styles/text');
+    expect(fileViewer).toContain('identity refreshes flow through od-edit-targets');
     expect(fileViewer).toContain('shouldConsumeTipRemountGeometryGraceOnRemasure');
     expect(fileViewer).toContain('Sibling remasure must not consume primary grace');
     expect(fileViewer).toContain('const consumeGrace = shouldConsumeTipRemountGeometryGraceOnRemasure');

@@ -7820,15 +7820,10 @@ function HtmlViewer({
   }
 
   function applyManualEditMeasuredTarget(measured: ManualEditTarget) {
-    setSelectedManualEditTarget((current) => {
-      if (current?.id !== measured.id) return current;
-      const next = { ...current, ...measured };
-      selectedManualEditTargetRef.current = next;
-      return next;
-    });
-    setManualEditTargets((current) =>
-      current.map((item) => (item.id === measured.id ? { ...item, ...measured } : item)),
-    );
+    // Full-merge was unused and would clobber styles/text without fingerprint
+    // latch updates. Keep the name for call-site clarity but geometry-only —
+    // identity refreshes flow through od-edit-targets (446).
+    applyManualEditMeasuredGeometry(measured);
   }
 
   /** Handoff settle — geometry only; never clobber flushed styles from bridge scan. */

@@ -2613,6 +2613,32 @@ describe('manual edit source patches', () => {
     expect(html).not.toContain('evil.example');
   });
 
+  it('scrubs SMIL attributeName poster/ping/usemap/formaction remote urls', () => {
+    // Nav URL SSOT is MANUAL_EDIT_SMIL_NAV_ATTR_NAMES — lock residual attrs (447).
+    const source = [
+      '<!doctype html><html><body>',
+      '<div data-od-id="host"><span>ok</span></div>',
+      '</body></html>',
+    ].join('');
+    const dirty = applyManualEditPatch(source, {
+      kind: 'set-outer-html',
+      id: 'host',
+      html: [
+        '<div data-od-id="host">',
+        '<video><set attributeName="poster" to="https://evil.example/p.png"></set></video>',
+        '<a><animate attributeName="ping" values="https://evil.example/p; /ok"></animate></a>',
+        '<img><set attributeName="usemap" to="https://evil.example/map"></set></img>',
+        '<button><animate attributeName="formaction" values="https://evil.example/phish;/ok"></animate></button>',
+        '<span>ok</span>',
+        '</div>',
+      ].join(''),
+    });
+    expect(dirty.ok, dirty.error).toBe(true);
+    const html = readManualEditOuterHtml(dirty.source, 'host');
+    expect(html).not.toContain('evil.example');
+    expect(html).toContain('<span>ok</span>');
+  });
+
   it('rejects namespaced fill/mask via set-attributes local-name gate', () => {
     const source = [
       '<!doctype html><html><body>',
@@ -2655,6 +2681,45 @@ describe('manual edit source patches', () => {
     expect(attrs.title).toBe('keep');
     expect(mixed.source).not.toContain('applied-if-partial');
     expect(mixed.source.toLowerCase()).not.toContain('javascript');
+  });
+
+  it('rejects namespaced URL attrs via set-attributes local-name gate', () => {
+    // Sanitize/failClosed cover foo:href; set-attributes must fail closed too (445).
+    const source = [
+      '<!doctype html><html><body>',
+      '<a data-od-id="cta" href="/start" title="keep">Start</a>',
+      '<img data-od-id="img" src="/ok.png" alt="x">',
+      '<form data-od-id="form" action="/submit">',
+      '<button data-od-id="btn" formaction="/ok">Go</button>',
+      '</form>',
+      '</body></html>',
+    ].join('');
+    const cases: Array<{ id: string; attributes: Record<string, string> }> = [
+      { id: 'cta', attributes: { 'foo:href': 'javascript:alert(1)' } },
+      { id: 'img', attributes: { 'foo:src': 'javascript:alert(2)' } },
+      { id: 'img', attributes: { 'bar:srcset': 'javascript:alert(3) 1x' } },
+      { id: 'img', attributes: { 'foo:imagesrcset': 'javascript:alert(4) 1x' } },
+      { id: 'btn', attributes: { 'bar:formaction': 'javascript:alert(5)' } },
+      { id: 'cta', attributes: { 'foo:ping': 'javascript:alert(6)' } },
+      { id: 'form', attributes: { 'foo:action': 'javascript:alert(7)' } },
+    ];
+    for (const c of cases) {
+      const denied = applyManualEditPatch(source, {
+        kind: 'set-attributes',
+        id: c.id,
+        attributes: c.attributes,
+      });
+      expect(denied.ok, JSON.stringify(c.attributes)).toBe(false);
+      expect(denied.source.toLowerCase()).not.toContain('javascript');
+    }
+    const mixed = applyManualEditPatch(source, {
+      kind: 'set-attributes',
+      id: 'cta',
+      attributes: { 'foo:href': 'javascript:alert(8)', title: 'partial' },
+    });
+    expect(mixed.ok).toBe(false);
+    expect(readManualEditAttributes(mixed.source, 'cta').title).toBe('keep');
+    expect(mixed.source).not.toContain('partial');
   });
 
   it('does not drop whole style blocks for .javascript:hover selectors', () => {
