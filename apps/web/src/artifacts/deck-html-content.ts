@@ -73,7 +73,10 @@ export function deckArtifactStartsWithMotifSvgDump(html: string): boolean {
   const window = String(html ?? "").replace(/^﻿/, "").slice(0, 1200);
   const svgAt = window.search(/<svg\b/i);
   if (svgAt < 0) return false;
-  const headingAt = window.search(/<h[1-3]\b[^>]*>\s*[^<\s]/i);
+  // Title-first: any cover heading open before Motif SVG counts (allows
+  // `<h1><span>…` nesting). Requiring immediate text after `>` false-aborted
+  // valid title-first streams and left Motif dumps to continue.
+  const headingAt = window.search(/<h[1-3]\b/i);
   if (headingAt < 0) return true;
   return svgAt < headingAt;
 }

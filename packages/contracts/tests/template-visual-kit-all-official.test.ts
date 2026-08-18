@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import {
   extractTemplateVisualKitFromHtml,
   neutralizeFilesystemCloneWorkflow,
+  slimTemplateVisualKitForFill,
 } from '../src/template-visual-kit.js';
 
 const EXAMPLES_DIR = fileURLToPath(
@@ -82,8 +83,8 @@ describe('official deck template visual kits (all mode:deck example.html)', () =
         failures.push(`${folder}: kit null`);
         continue;
       }
-      if (kit.length > 14_000) failures.push(`${folder}: kit ${kit.length} > 14000`);
-      if (/…\s*$/.test(kit) && kit.length >= 14_000) {
+      if (kit.length > 16_000) failures.push(`${folder}: kit ${kit.length} > 16000`);
+      if (/…\s*$/.test(kit) && kit.length >= 16_000) {
         failures.push(`${folder}: truncated at budget`);
       }
       if (!kit.includes('### Slide surface')) {
@@ -111,6 +112,54 @@ describe('official deck template visual kits (all mode:deck example.html)', () =
 
     expect(failures, failures.join('\n')).toEqual([]);
   }, 60_000);
+
+
+  it('preserves Motif vocabulary through extract + fill slim for ornament-heavy templates', async () => {
+    const files = await listOfficialDeckExamples();
+    const MOTIF_HINT =
+      /\b(?:deco(?:-[a-z0-9_-]+)?|pill(?:-[a-z0-9_-]+)?|blob(?:-[a-z0-9_-]+)?|petal(?:s)?|stamp|tape|pin|doodle|scribble|shape|sticker|dot-grid|pixel(?:-[a-z0-9_-]+)?|ribbon|post-it|orb(?:-[a-z0-9_-]+)?|starfield|scanlines?)\b/i;
+    const failures: string[] = [];
+    let ornamentHeavy = 0;
+    for (const { folder, examplePath } of files) {
+      const html = await readFile(examplePath, 'utf8');
+      const htmlMotifTokens = [...html.matchAll(
+        /\b(?:deco(?:-[a-z0-9_-]+)?|pill(?:-[a-z0-9_-]+)?|blob(?:-[a-z0-9_-]+)?|petal(?:s)?|stamp|tape|\bpin\b|doodle|scribble|shape|sticker|dot-grid|pixel(?:-[a-z0-9_-]+)?|ribbon|post-it|orb(?:-[a-z0-9_-]+)?|starfield|scanlines?)\b/gi,
+      )].map((m) => m[0]!.toLowerCase());
+      const unique = [...new Set(htmlMotifTokens)].filter((tok) => tok !== 'pin' || /class=["'][^"']*\bpin\b/i.test(html));
+      // Require Motif CSS presence (not just a random word match in prose).
+      const hasMotifCss = MOTIF_HINT.test(html) && (
+        /class=["'][^"']*\b(?:deco|pill-|blob|petal|stamp|tape|doodle|pixel-|post-it|dot-grid|shape|ribbon|orb)/i.test(html)
+        || /\.(?:deco|pill-|blob|petal|stamp|tape|doodle|pixel-|post-it|dot-grid|shape|ribbon|orb)/i.test(html)
+      );
+      if (!hasMotifCss) continue;
+      ornamentHeavy += 1;
+      const kit = extractTemplateVisualKitFromHtml(html, { title: folder });
+      if (!kit) {
+        failures.push(`${folder}: kit null despite Motif HTML`);
+        continue;
+      }
+      const slim = slimTemplateVisualKitForFill(kit);
+      // At least one Motif token from HTML should survive extract.
+      const kitHit = unique.some((tok) => kit.toLowerCase().includes(tok));
+      if (!kitHit && !kit.includes('### Motif sprites') && !/### Decorations? CSS/i.test(kit)) {
+        failures.push(`${folder}: Motif HTML present but kit has neither Motif sprites nor Decorations CSS`);
+        continue;
+      }
+      // Fill slim must keep Motif section(s) when extract had them.
+      if (/### Motif sprites/i.test(kit) && !/### Motif sprites/i.test(slim)) {
+        failures.push(`${folder}: Motif sprites dropped by slim`);
+      }
+      if (/### Decorations? CSS/i.test(kit) && !/### Decorations CSS \(capped/i.test(slim) && !/### Decorations CSS/i.test(slim)) {
+        failures.push(`${folder}: Decorations CSS dropped by slim`);
+      }
+      // Must not force Capsule-only guidance when kit has no pills.
+      if (!/\.deco-pill|pill-/i.test(kit) && /Example capsule \(AFTER title\)/i.test(slim)) {
+        failures.push(`${folder}: slim injected Capsule example without pill Motif`);
+      }
+    }
+    expect(ornamentHeavy, 'expected several ornament-heavy templates').toBeGreaterThan(8);
+    expect(failures, failures.join('\n')).toEqual([]);
+  }, 90_000);
 
   it('neutralizes Clone example.html for every official deck SKILL.md that has it', async () => {
     const files = await listOfficialDeckExamples();

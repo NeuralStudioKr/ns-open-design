@@ -69,7 +69,7 @@ export function historyHasTemplateCloneContentFill(
  * No-op when the prompt already carries a fill marker (first seed or prior stamp).
  */
 const TEMPLATE_CLONE_FILL_SVG_ABANDON =
-  'ABANDON any Motif `<svg>` started BEFORE the cover title. Restart body-first with `<h1>` then lead `<p>`, THEN kit Motif vocabulary (capped sprites AFTER title and/or `.deco-pill` capsules). Never invent generic CSS circles when the kit has pills/sprites.';
+  'ABANDON any Motif `<svg>` started BEFORE the cover title. Restart body-first with `<h1>` then lead `<p>`, THEN kit Motif vocabulary (capped sprites AFTER title and/or Motif CSS from the kit). Never invent generic CSS circles when the kit has Motif vocabulary.';
 
 export function ensureTemplateCloneContentFillContinuePrompt(prompt: string): string {
   const trimmed = String(prompt ?? '').trim();
@@ -238,7 +238,7 @@ export function templateCloneContentFillHardRules(): string[] {
     '- Strict body-first contract: start the artifact body exactly like `<!doctype html><html lang="ko"><body><section class="slide" ...>`.',
     '- `<head>` is FORBIDDEN on this fill turn. Do not emit `<head>`, `<title>`, meta tags, or a style prelude before slide 1.',
     '- The first 800 characters after `<artifact` MUST include `<body` and one complete `<section class="slide">` with real topical copy (cover title + lead).',
-    '- Motif vocabulary OVERRIDE: title-first always. AFTER cover `<h1>`/`<h2>` + lead, use the kit Motif language — capped Motif sprites when listed, and/or Decorations CSS `.deco-pill` / pill-* / capsule shapes / `.deco`. FORBIDDEN: inventing generic CSS circles (or emoji flowers) when the kit ships capsules/pills/daisy sprites. Never open Motif `<svg>` before title copy; if you already started an SVG-before-title dump, abandon it and restart with `<h1>`.',
+    '- Motif vocabulary OVERRIDE: title-first always. AFTER cover `<h1>`/`<h2>` + lead, use the kit Motif language — capped Motif sprites when listed, and/or Decorations CSS Motif classes listed in the kit (pills/petals/blobs/pins/`.deco-*`/pixel ornaments — whatever the kit ships). FORBIDDEN: inventing generic CSS circles (or emoji flowers) when the kit ships Motif CSS/sprites. Never open Motif `<svg>` before title copy; if you already started an SVG-before-title dump, abandon it and restart with `<h1>`.',
     '- Full-bleed surface: bind kit Slide surface hex on `html`/`body` AND every `<section class="slide" style="…background:<kit surface>…">` edge-to-edge for the full 1920×1080 canvas. FORBIDDEN: white/default outer slide with an inner cream "paper" panel that leaves white bands at top/bottom. White title cards ON cream paper are OK.',
     '- Keep `<style>` very short (kit tokens + fonts only, ideally under ~1KB) and place it after slide 1 or omit it in favor of inline styles. Never dump the whole template stylesheet.',
     '- Fill REAL topical titles/body (no "…", no "만들어줘", no create-slides boilerplate). Slide count follows the brief/Quick settings — not the template demo page lineup.',

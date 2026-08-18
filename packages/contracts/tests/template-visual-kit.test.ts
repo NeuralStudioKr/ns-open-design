@@ -25,7 +25,7 @@ describe('extractTemplateVisualKitFromHtml', () => {
     expect(kit).toContain('#7ECDC0');
     expect(kit).toContain('Fredoka One');
     expect(kit).toContain('Quicksand');
-    expect(kit).toContain('Decoration CSS');
+    expect(kit).toContain('Decorations CSS');
     expect(kit).toContain('--shadow');
     expect(kit).toContain('Motif sprites');
     expect(kit).toMatch(/Do not invent emoji ornaments|Forbidden motif substitutes/i);
@@ -40,7 +40,7 @@ describe('extractTemplateVisualKitFromHtml', () => {
     expect(kit).toMatch(/BODY-FIRST/i);
     // Usable motif implementation, not a mid-cut first-slide SVG dump.
     expect(kit).toContain('### Motif sprites');
-    expect(kit).toContain('### Decoration CSS');
+    expect(kit).toContain('### Decorations CSS');
     expect(kit).toContain('.deco{');
     expect(kit).toMatch(/<svg\b[\s\S]*?<\/svg>/i);
     expect(kit).not.toMatch(/<svg\b[^>]*>[^<]*…/);
@@ -80,7 +80,7 @@ describe('extractTemplateVisualKitFromHtml', () => {
     // Budget must fit daisy + star + rainbow so the scaffold map does not
     // demand deco kinds the Motif sprites block never shipped.
     expect(spriteSvgs.length).toBeGreaterThanOrEqual(3);
-    expect(kit!.length).toBeLessThanOrEqual(14_000);
+    expect(kit!.length).toBeLessThanOrEqual(16_000);
     expect(kit!).not.toMatch(/…\s*$/);
     expect(kit!).toMatch(/LOOK LIKE THE TEMPLATE|TOKEN-SAFE CONTENT-SWAP/i);
     expect(kit!).toContain('### Must-match look');
@@ -89,8 +89,8 @@ describe('extractTemplateVisualKitFromHtml', () => {
     // were not included in Motif sprites.
     const mapBlock = kit!.slice(
       kit!.indexOf('### Template scaffold map'),
-      kit!.indexOf('### Decoration CSS') >= 0
-        ? kit!.indexOf('### Decoration CSS')
+      kit!.indexOf('### Decorations CSS') >= 0
+        ? kit!.indexOf('### Decorations CSS')
         : kit!.indexOf('### Motif sprites'),
     );
     expect(mapBlock).toMatch(/deco-daisy/i);
@@ -189,7 +189,7 @@ html,body{background:var(--cream);color:var(--text-dark)}
     const kit = extractTemplateVisualKitFromHtml(html, { title: 'Daisy Days' })!;
     // Scope to the Decoration + Layout CSS blocks (skip prose that intentionally
     // spells out the anti-pattern for the model).
-    const decoStart = kit.indexOf('### Decoration CSS');
+    const decoStart = kit.indexOf('### Decorations CSS');
     const layoutStart = kit.indexOf('### Layout CSS');
     const spriteStart = kit.indexOf('### Motif sprites');
     const decoEnd = layoutStart > decoStart
@@ -239,6 +239,10 @@ html,body{background:var(--cream);color:var(--text-dark)}
     expect(daisySlim).toContain('#F5F0E6');
     expect(daisySlim).toMatch(/Motif sprites \(capped for first content-fill/i);
     expect(daisySlim).toMatch(/<svg\b/i);
+    // Identity daisy (butter center) should survive the fill cap when present in kit.
+    if (/#fcdf6c/i.test(daisyKit)) {
+      expect(daisySlim).toMatch(/#fcdf6c/i);
+    }
     expect(daisySlim).not.toMatch(/Motif sprites \(omitted for first content-fill/i);
     expect(daisySlim).not.toMatch(/ZERO Motif|Motif SVG paste is DISABLED/i);
 

@@ -77,6 +77,11 @@ describe("deck-html-content", () => {
       + '<section class="slide"><h1>Expo for Senior Engineers</h1><p>Managed workflow</p>'
       + '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/></svg></section></body></html>';
     expect(deckArtifactStartsWithMotifSvgDump(titled)).toBe(false);
+    const titledNested =
+      '<!doctype html><html lang="ko"><body>'
+      + '<section class="slide"><h1><span>Expo Deep Dive</span></h1><p>Lead</p>'
+      + '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/></svg></section></body></html>';
+    expect(deckArtifactStartsWithMotifSvgDump(titledNested)).toBe(false);
     expect(shouldDiscardPartialHtmlForMotifSvgDump(hung)).toBe(true);
     expect(shouldDiscardPartialHtmlForMotifSvgDump(titled)).toBe(false);
   });

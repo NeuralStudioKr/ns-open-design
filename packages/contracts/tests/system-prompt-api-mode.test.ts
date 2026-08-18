@@ -563,7 +563,7 @@ describe('composeSystemPrompt — API mode (#313)', () => {
         templateCloneContentFill: true,
       });
       expect(prompt).toContain('Template clone fill — Motif AFTER title');
-      expect(prompt).toMatch(/deco-pill|kit Motif vocabulary/i);
+      expect(prompt).toMatch(/Motif CSS|kit Motif vocabulary|deco-pill|Decorations CSS/i);
       expect(prompt).toMatch(/Never invent generic CSS circles/i);
       expect(prompt.indexOf('Template clone fill — Motif AFTER title')).toBeGreaterThan(
         prompt.indexOf('Selected deck template visual — READ LAST'),

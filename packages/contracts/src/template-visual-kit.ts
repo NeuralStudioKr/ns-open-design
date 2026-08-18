@@ -25,7 +25,7 @@
 // (~87KB) or the retired CONTENT-SWAP HTML scaffold dump.
 // BODY-FIRST hard rules tell the model to emit slides before pasting this
 // kit into `<head>` so the larger budget does not invite shell-only cuts.
-const DEFAULT_MAX_CHARS = 14_000;
+const DEFAULT_MAX_CHARS = 16_000;
 
 function uniquePreserveOrder(values: string[]): string[] {
   const out: string[] = [];
@@ -512,6 +512,40 @@ function sanitizeCssRuleForFixedCanvas(rule: string): string | null {
   return `${selector}{${kept.join(';')}}`;
 }
 
+/** Catalog-wide Motif class lexicon — not Capsule/Daisy-only. */
+const MOTIF_CLASS_TOKEN_RE =
+  /\b(?:deco(?:-[a-z0-9_-]+)?|pill(?:-[a-z0-9_-]+)?|deco-pills|floating-pills|[cf]-pill|blob(?:-[a-z0-9_-]+)?|petal(?:s)?|stamp|tape|pin|doodle|scribble(?:-[a-z0-9_-]+)?|shape|sticker|dot-grid|ornament|floater|spark|confetti|grain|pixel(?:-[a-z0-9_-]+)?|ribbon|glow|hairlines?|stripes?|bracket|corner-bracket|post-it(?:-[a-z0-9_-]+)?|cork|scanlines?|orb(?:-[a-z0-9_-]+)?|ambient|starfield|cross|cassette|jis|bg-cork)\b/i;
+
+const MOTIF_CSS_SELECTOR_RE =
+  /\.(?:deco(?:-[a-z0-9_-]+)?|pill(?:-[a-z0-9_-]+)?|deco-pills|floating-pills|[cf]-pill|blob(?:-[a-z0-9_-]+)?|petal(?:s)?|stamp|tape|pin|doodle|scribble(?:-[a-z0-9_-]+)?|shape|sticker|dot-grid|ornament|floater|spark|confetti|grain|pixel(?:-[a-z0-9_-]+)?|ribbon|glow|hairlines?|stripes?|bracket|corner-bracket|post-it(?:-[a-z0-9_-]+)?|cork|scanlines?|orb(?:-[a-z0-9_-]+)?|ambient|starfield|cross|cassette|jis)\b/i;
+
+function listMotifVocabularyHints(text: string): string[] {
+  const hints: string[] = [];
+  if (/\.deco-pill\b|deco-pills|\.pill-[a-z0-9_-]+|\.c-pill\b|\.f-pill\b|\.orbit-pill\b/i.test(text)) {
+    hints.push('`.deco-pill` / pill-* capsules');
+  }
+  if (/\.petal|\.blob/i.test(text)) hints.push('`.petal` / `.blob`');
+  if (/\.stamp|\.tape|\.pin|\.post-it|\.doodle|\.scribble|\.bg-cork/i.test(text)) {
+    hints.push('stamp/tape/pin/post-it/doodle ornaments');
+  }
+  if (/\.pixel-|\.starfield|\.scanline/i.test(text)) hints.push('pixel/arcade ornaments');
+  if (/\.deco-(?:circle|dots|star|stripes|square)|\.dot-grid|\.corner-bracket/i.test(text)) {
+    hints.push('geometric `.deco-*` / dot-grid shapes');
+  }
+  if (/\.shape\b|\.ribbon|\.glow|\.orb/i.test(text)) hints.push('shape/ribbon/glow/orb accents');
+  if (/\.deco\b/i.test(text) && hints.length === 0) hints.push('kit `.deco` ornaments');
+  if (/```html[\s\S]*?<svg\b|<svg\b/i.test(text)) hints.push('capped Motif SVG sprites (AFTER title)');
+  return uniquePreserveOrder(hints);
+}
+
+function formatMotifVocabularyGuidance(text: string): string {
+  const hints = listMotifVocabularyHints(text);
+  if (hints.length === 0) {
+    return 'kit Motif CSS / sprites listed below (never invent generic circles or emoji when Motif cues exist)';
+  }
+  return hints.join(' + ');
+}
+
 function extractDecorationCss(html: string, budget: number): string | null {
   const sheet = extractStyleSheets(html);
   if (!sheet.trim()) return null;
@@ -520,21 +554,23 @@ function extractDecorationCss(html: string, budget: number): string | null {
     .map((rule) => sanitizeCssRuleForFixedCanvas(rule))
     .filter((rule): rule is string => Boolean(rule));
   const prioritized = rules.filter((rule) =>
-    /\.deco\b|\.pill-[a-z0-9_-]+|deco-pills|floating-pills|\.card\b|\.badge\b|\.slide\b|--border|--shadow|--radius|font-display|font-body|border-radius\s*:\s*999/i.test(
+    MOTIF_CSS_SELECTOR_RE.test(rule)
+    || /\.deco\b|\.card\b|\.badge\b|\.slide\b|--border|--shadow|--radius|font-display|font-body|border-radius\s*:\s*999/i.test(
       rule,
     ),
   );
   const score = (rule: string) => {
-    // Positioned capsule/pill shells beat color-only `.pill-coral` variants.
-    if (/\.deco-pill\b|deco-pills|floating-pills|\.c-pill\b|\.f-pill\b/i.test(rule) && /position\s*:/i.test(rule)) {
-      return 0;
+    // Positioned Motif shells (pills/petals/blobs/pins/…) beat chrome.
+    if (MOTIF_CSS_SELECTOR_RE.test(rule) && /position\s*:/i.test(rule)) return 0;
+    if (/\.deco-pill\b|deco-pills|floating-pills|border-radius\s*:\s*999/i.test(rule) && MOTIF_CSS_SELECTOR_RE.test(rule)) {
+      return 1;
     }
-    if (/\.deco-pill\b|deco-pills|floating-pills|border-radius\s*:\s*999/i.test(rule)) return 1;
-    // Capsule Motif identity is mostly `.pill-coral` / `.pill-sky` color tokens —
-    // keep them ahead of generic .card/.slide chrome so budget cannot drop them.
-    if (/\.pill-[a-z0-9_-]+/i.test(rule)) return 2;
-    if (/\.pill\b/i.test(rule)) return 3;
-    if (/\.deco\b/i.test(rule)) return 4;
+    // Identity color / named Motif tokens (pill-coral, petal, blob, stamp…).
+    if (/\.pill-[a-z0-9_-]+|\.petal|\.blob|\.stamp|\.tape|\.pin|\.pixel-|\.shape\b|\.post-it|\.doodle|\.ribbon|\.orb/i.test(rule)) {
+      return 2;
+    }
+    if (MOTIF_CSS_SELECTOR_RE.test(rule)) return 3;
+    if (/\.deco\b|\.pill\b/i.test(rule)) return 4;
     if (/\.card\b|\.badge\b/i.test(rule)) return 5;
     if (/--border|--shadow|--radius/i.test(rule)) return 6;
     return 7;
@@ -544,12 +580,12 @@ function extractDecorationCss(html: string, budget: number): string | null {
   let used = 0;
   const tryPick = (rule: string) => {
     if (picked.includes(rule)) return;
-    if (picked.length >= 24) return;
+    if (picked.length >= 28) return;
     if (used + rule.length + 1 > budget) return;
     picked.push(rule);
     used += rule.length + 1;
   };
-  // Phase 1: Motif vocabulary (shells + pill-* colors) before generic chrome.
+  // Phase 1: Motif vocabulary (shells + identity tokens) before generic chrome.
   for (const rule of prioritized) {
     if (score(rule) <= 2) tryPick(rule);
   }
@@ -633,7 +669,7 @@ function renderMustMatchLookBlock(options: {
       : '3. **Layout/placement:** reuse the template\'s multi-region compositions (grids/flex/cards) as a vocabulary. Pick and reorder freely to match the user brief; do not flatten every slide into the same cover composition.',
   );
   lines.push(
-    '4. **Motif/density:** when Motif sprites / Decoration CSS are present, keep decorative density via compact `.deco`/CSS shapes first — Motif SVG is optional and only AFTER title/lead. Sparse title-only slides are a failure; Motif-before-title hangs are also a failure.',
+    '4. **Motif/density:** when Motif sprites / Decorations CSS are present, use the kit Motif vocabulary listed there (pills, petals, blobs, pins, geometric `.deco-*`, sprites, …) — Motif SVG only AFTER title/lead. Sparse title-only slides are a failure; Motif-before-title hangs are also a failure.',
   );
   return lines.join('\n');
 }
@@ -892,7 +928,7 @@ function extractFirstSlideStructureCue(html: string, budget: number): string | n
   if (!raw) return null;
   const snippet = raw
     .replace(/<script\b[\s\S]*?<\/script>/gi, '')
-    .replace(/<svg\b[\s\S]*?<\/svg>/gi, '<!-- optional Motif sprite AFTER title/lead — or CSS circle in kit hex -->')
+    .replace(/<svg\b[\s\S]*?<\/svg>/gi, '<!-- kit Motif AFTER title/lead — Motif CSS or capped sprite -->')
     .replace(/\s+/g, ' ')
     .trim();
   if (!snippet) return null;
@@ -967,10 +1003,12 @@ function extractTemplateScaffoldMap(
       ?? '';
     const cleanHeading = stripHtmlText(heading).slice(0, 80);
     const decoClasses = uniquePreserveOrder(
-      [...body.matchAll(/class\s*=\s*["']([^"']*\bdeco\b[^"']*)["']/gi)]
-        .map((match) => (match[1] ?? '').trim())
+      [...body.matchAll(/class\s*=\s*["']([^"']+)["']/gi)]
+        .flatMap((match) => (match[1] ?? '').split(/\s+/))
+        .map((cls) => cls.trim())
+        .filter((cls) => MOTIF_CLASS_TOKEN_RE.test(cls))
         .filter((cls) => decoClassMatchesAvailableSprites(cls, availableSpriteKinds)),
-    ).slice(0, 4);
+    ).slice(0, 6);
     const layoutRole = className
       .split(/\s+/)
       .find((cls) =>
@@ -993,7 +1031,7 @@ function extractTemplateScaffoldMap(
   }
   if (lines.length === 0) return null;
   return [
-    'Token-safe layout contract from example.html (classes/roles only — not a full HTML dump). Replace visible content only; decorate with CSS/`.deco` first — Motif sprites below are optional AFTER title/lead.',
+    'Token-safe layout contract from example.html (classes/roles only — not a full HTML dump). Replace visible content only; decorate with kit Motif CSS/`.deco` first — Motif sprites are capped and only AFTER title/lead.',
     ...lines,
   ].join('\n');
 }
@@ -1005,9 +1043,9 @@ const HARD_RULES = [
   '- **BODY-FIRST:** emit `<body>` / filled `<section class="slide">` (or the template\'s slide wrapper) BEFORE a large `<head>`/`<style>` dump. Put compact CSS/deco tokens (and optional Motif sprites only AFTER title/lead) in one short body `<style>` after slide 1 — never Motif SVG before cover copy. A CSS-only truncation is a failed deliverable.',
   '- **Background:** bind `### Slide surface` on BOTH `html`/`body` AND every `.slide` edge-to-edge (full 1920×1080). Dark-on-dark, light-on-light, paper-slides-on-wrong-shell, or white outer + inner cream panel (white top/bottom bands) are failed deliverables. Ink/border tokens are stroke/text, not backgrounds.',
   '- **Fonts:** use kit Font import + font-family names exactly; do not substitute Inter/Noto/system-ui alone when the kit lists display/body faces.',
-  '- Motif language comes from **Motif sprites** / **Decoration CSS** below when present. Prefer CSS shapes / `.deco` / chunky borders in kit hex first. Motif SVG paste is optional: at most one short complete sprite AFTER visible title/lead on a slide, never before cover copy, never a multi-KB `<svg><style>` dump, and skip entirely if paste risks a hang. Use only listed sprites — never invent SVG/emoji for a missing slot.',
-  '- **Forbidden motif substitutes:** unicode/emoji ornaments as decoration pretending to be the template identity. Do not invent ellipse "daisy" SVGs or generic flower geometry when sprites are provided.',
-  '- Preserve chunky cards/borders/offset shadows when Decoration CSS / `:root` tokens show them (`--border`, `--shadow`).',
+  '- Motif language comes from **Motif sprites** / **Decorations CSS** below when present. Prefer the kit Motif vocabulary (pills/petals/blobs/pins/geometric `.deco-*`/sprites) in kit hex first. Motif SVG paste is optional: at most one short complete sprite AFTER visible title/lead on a slide, never before cover copy, never a multi-KB `<svg><style>` dump, and skip entirely if paste risks a hang. Use only listed sprites — never invent SVG/emoji for a missing slot.',
+  '- **Forbidden motif substitutes:** unicode/emoji ornaments as decoration pretending to be the template identity. Do not invent ellipse "daisy" SVGs, generic flower geometry, or plain CSS circles when the kit lists Motif CSS/sprites.',
+  '- Preserve chunky cards/borders/offset shadows when Decorations CSS / `:root` tokens show them (`--border`, `--shadow`).',
   '- Do not substitute OD skeleton terracotta `#c96442` unless that hex is listed in this kit\'s palette cues.',
 ];
 
@@ -1075,9 +1113,9 @@ export function extractTemplateVisualKitFromHtml(
   const sprites = extractMotifSprites(source, 3_400);
   const spriteKinds = new Set(sprites.map((sprite) => sprite.kind));
   const scaffold = extractTemplateScaffoldMap(source, 1_000, spriteKinds);
-  // Keep Decoration CSS in the kit when the template is ornament-heavy (Daisy).
-  // Layout CSS is important too, but a missing `.deco` block regresses look more.
-  const deco = extractDecorationCss(source, 1_600);
+  // Keep Decorations CSS in the kit when the template is ornament-heavy.
+  // Layout CSS is important too, but a missing Motif block regresses look more.
+  const deco = extractDecorationCss(source, 1_800);
   const layout = extractLayoutCss(source, deco ? 900 : 1_200);
   const slideCue = extractFirstSlideStructureCue(source, 320);
 
@@ -1120,7 +1158,7 @@ export function extractTemplateVisualKitFromHtml(
   }
   if (deco) {
     optionalBlocks.push([
-      '### Decoration CSS (paste into the short body `<style>` AFTER slide 1)',
+      '### Decorations CSS (paste into the short body `<style>` AFTER slide 1)',
       '',
       '```css',
       deco,
@@ -1229,19 +1267,31 @@ export function appendTemplateVisualKit(skillBody: string, kit: string | null | 
 
 /**
  * First Clone content-fill turns hang when the model pastes multi-KB Motif SVGs
- * / full Decoration dumps BEFORE cover titles. Cap Motif/Deco for fill stability
- * while keeping the template Motif vocabulary (Daisy sprites, Capsule `.deco-pill`).
+ * / full Decorations dumps BEFORE cover titles. Cap Motif/Deco for fill stability
+ * while keeping each template's Motif vocabulary (sprites + Motif CSS lexicon).
  * Layout CSS + first-slide cues stay omitted.
  */
 function capMotifSpritesSectionForFill(section: string): string {
   const svgs = [...section.matchAll(/```html\s*([\s\S]*?)```/gi)]
     .map((match) => (match[1] ?? '').trim())
-    .filter((svg) => /^<svg\b/i.test(svg) && svg.length >= 80 && svg.length <= 900);
+    .filter((svg) => /^<svg\b/i.test(svg) && svg.length >= 80 && svg.length <= 2_400);
+  const identityScore = (svg: string) => {
+    if (/#fcdf6c/i.test(svg)) return 0; // Daisy butter-center identity
+    if (/#f8635f|#fde366|#8de3b7|#85c5fe|rainbow/i.test(svg)) return 1;
+    if (/viewbox="0 0 100 98/i.test(svg) || /\bstar\b/i.test(svg)) return 2;
+    if (/\bpin\b|#pin|doodle|stamp/i.test(svg)) return 3;
+    return 4;
+  };
+  const ranked = [...svgs].sort((a, b) => {
+    const delta = identityScore(a) - identityScore(b);
+    if (delta !== 0) return delta;
+    return b.length - a.length;
+  });
   const kept: string[] = [];
   let used = 0;
-  for (const svg of svgs) {
+  for (const svg of ranked) {
     if (kept.length >= 2) break;
-    if (used + svg.length > 1_400) continue;
+    if (used + svg.length > 3_000) continue;
     kept.push(svg);
     used += svg.length;
   }
@@ -1259,7 +1309,7 @@ function capMotifSpritesSectionForFill(section: string): string {
     }
   } else {
     lines.push(
-      'No compact Motif SVG survived the fill cap. Use **Decorations CSS** Motif vocabulary below (`.deco-pill` / pill-* / `.deco`). Do NOT invent generic CSS circles as Motif substitutes.',
+      `No compact Motif SVG survived the fill cap. Use **Decorations CSS** Motif vocabulary below (${formatMotifVocabularyGuidance(section)}). Do NOT invent generic CSS circles as Motif substitutes.`,
       '',
     );
   }
@@ -1273,13 +1323,15 @@ function capDecorationsCssSectionForFill(section: string): string {
     .map((line) => line.trim())
     .filter(Boolean);
   const score = (rule: string) => {
-    if (/\.deco-pill\b|deco-pills|floating-pills|\.c-pill\b|\.f-pill\b/i.test(rule) && /position\s*:/i.test(rule)) {
-      return 0;
+    if (MOTIF_CSS_SELECTOR_RE.test(rule) && /position\s*:/i.test(rule)) return 0;
+    if (/\.deco-pill\b|deco-pills|floating-pills|border-radius\s*:\s*999/i.test(rule) && MOTIF_CSS_SELECTOR_RE.test(rule)) {
+      return 1;
     }
-    if (/\.deco-pill\b|deco-pills|floating-pills|border-radius\s*:\s*999/i.test(rule)) return 1;
-    if (/\.pill-[a-z0-9_-]+/i.test(rule)) return 2;
-    if (/\.pill\b/i.test(rule)) return 3;
-    if (/\.deco\b/i.test(rule)) return 4;
+    if (/\.pill-[a-z0-9_-]+|\.petal|\.blob|\.stamp|\.tape|\.pin|\.pixel-|\.shape\b|\.post-it|\.doodle|\.ribbon|\.orb/i.test(rule)) {
+      return 2;
+    }
+    if (MOTIF_CSS_SELECTOR_RE.test(rule)) return 3;
+    if (/\.deco\b|\.pill\b/i.test(rule)) return 4;
     if (/\.card\b|\.badge\b/i.test(rule)) return 5;
     return 6;
   };
@@ -1288,8 +1340,8 @@ function capDecorationsCssSectionForFill(section: string): string {
   let used = 0;
   const tryPick = (rule: string) => {
     if (picked.includes(rule)) return;
-    if (picked.length >= 18) return;
-    if (used + rule.length + 1 > 1_350) return;
+    if (picked.length >= 20) return;
+    if (used + rule.length + 1 > 1_500) return;
     picked.push(rule);
     used += rule.length + 1;
   };
@@ -1297,17 +1349,40 @@ function capDecorationsCssSectionForFill(section: string): string {
     if (score(rule) <= 2) tryPick(rule);
   }
   for (const rule of rules) tryPick(rule);
-  return [
+  const pickedCss = picked.join('\n');
+  const vocab = formatMotifVocabularyGuidance(`${section}\n${pickedCss}`);
+  const lines = [
     '### Decorations CSS (capped for first content-fill — paste AFTER slide 1)',
     '',
-    'REQUIRED Motif vocabulary when present: `.deco-pill` / pill-* / capsule shapes / kit `.deco`. Do NOT substitute plain CSS circles when the kit ships pills/capsules.',
-    'Example capsule (AFTER title): `<div class="deco-pill pill-coral" style="position:absolute;top:48px;left:64px;width:180px;height:72px;border-radius:9999px;border:2px solid #1A1A1A;background:#E85D4E"></div>`.',
+    `REQUIRED Motif vocabulary from this kit: ${vocab}. Do NOT invent generic CSS circles / emoji ornaments as substitutes.`,
+  ];
+  if (/\.deco-pill\b|\.pill-[a-z0-9_-]+/i.test(pickedCss)) {
+    lines.push(
+      'Example capsule (AFTER title): `<div class="deco-pill pill-coral" style="position:absolute;top:48px;left:64px;width:180px;height:72px;border-radius:9999px;border:2px solid #1A1A1A;background:#E85D4E"></div>`.',
+    );
+  } else if (/\.petal|\.blob/i.test(pickedCss)) {
+    lines.push(
+      'Example Motif (AFTER title): reuse kit `.petal` / `.blob` classes with absolute positioning — do not invent capsules or plain circles.',
+    );
+  } else if (/\.stamp|\.tape|\.pin|\.post-it|\.doodle/i.test(pickedCss)) {
+    lines.push(
+      'Example Motif (AFTER title): reuse kit stamp/tape/pin/post-it/doodle classes — do not invent capsules or plain circles.',
+    );
+  } else if (/\.deco-|pixel-|dot-grid|shape|ribbon|glow|orb/i.test(pickedCss)) {
+    lines.push(
+      'Example Motif (AFTER title): reuse the kit Motif classes above with absolute positioning in kit palette hex.',
+    );
+  }
+  lines.push(
     '',
     '```css',
-    ...(picked.length > 0 ? picked : ['/* kit deco rules unavailable — use pill-shaped (border-radius:9999px) accents in kit palette hex */']),
+    ...(picked.length > 0
+      ? picked
+      : ['/* kit Motif rules unavailable — reuse Motif class names from scaffold/deco cues in kit palette hex */']),
     '```',
     '',
-  ].join('\n');
+  );
+  return lines.join('\n');
 }
 
 export function slimTemplateVisualKitForFill(skillBody: string): string {
@@ -1342,35 +1417,35 @@ export function slimTemplateVisualKitForFill(skillBody: string): string {
   );
   next = next.replace(
     /- Motif (?:MUST be copied from|language comes from)[\s\S]*?(?=\n- |\n### |\n## |$)/g,
-    '- Motif vocabulary is REQUIRED from kit Motif sprites (AFTER title/lead) and/or Decorations CSS (`.deco-pill` / pill-* / `.deco`). Never invent generic CSS circles or emoji ornaments when the kit provides capsules/pills/sprites.\n',
+    '- Motif vocabulary is REQUIRED from kit Motif sprites (AFTER title/lead) and/or Decorations CSS Motif classes listed in this kit. Never invent generic CSS circles or emoji ornaments when the kit provides Motif CSS/sprites.\n',
   );
   next = next.replace(
     /4\.\s*\*\*Motif\/density:\*\*[^\n]*/gi,
-    '4. **Motif/density:** use capped kit Motif sprites AFTER title/lead and/or kit `.deco-pill`/`.deco` CSS — never generic circles when the kit has pills/sprites.',
+    '4. **Motif/density:** use capped kit Motif sprites AFTER title/lead and/or kit Motif CSS from Decorations — never generic circles when the kit has Motif vocabulary.',
   );
   next = next.replace(
     /treat its\s+CSS tokens, fonts, (?:Motif sprites|compact motif\/deco cues)[^\n]*/gi,
-    'treat its CSS tokens, fonts, capped Motif sprites / `.deco-pill` Decorations CSS, and scaffold map as mandatory this fill turn.',
+    'treat its CSS tokens, fonts, capped Motif sprites / Decorations CSS Motif vocabulary, and scaffold map as mandatory this fill turn.',
   );
   next = next.replace(
     /The cover MUST (?:show the provided daisy SVG motif|use kit cream\/ink \+ CSS-shape decoration)[^\n]*/gi,
-    'The cover MUST use kit surface + kit Motif vocabulary (daisy sprite AFTER title, or `.deco-pill` capsules) — not generic circles.',
+    'The cover MUST use kit surface + kit Motif vocabulary (sprites AFTER title and/or Motif CSS classes) — not generic circles.',
   );
   next = next.replace(
     /when Motif sprites \/ Decorations CSS are present[^\n]*/gi,
-    'when Motif sprites / Decorations CSS are present, use that Motif vocabulary (sprites AFTER title; `.deco-pill` capsules) — never plain circle substitutes.',
+    'when Motif sprites / Decorations CSS are present, use that Motif vocabulary (sprites AFTER title; Motif CSS classes from the kit) — never plain circle substitutes.',
   );
   next = next.replace(
     /<!-- (?:use Motif sprites SVG inside \.deco|optional Motif sprite AFTER title\/lead[^>]*) -->/gi,
-    '<!-- kit Motif: sprite AFTER title or .deco-pill — not a generic circle -->',
+    '<!-- kit Motif: sprite AFTER title or Motif CSS class — not a generic circle -->',
   );
   next = next.replace(
     /On first Clone content-fill:[^\n]*/gi,
-    'On first Clone content-fill: title-first, then kit Motif vocabulary (capped sprites and/or `.deco-pill` CSS). Never open Motif `<svg>` before cover title; never invent generic circles when the kit has pills/sprites.',
+    'On first Clone content-fill: title-first, then kit Motif vocabulary (capped sprites and/or Motif CSS). Never open Motif `<svg>` before cover title; never invent generic circles when the kit has Motif vocabulary.',
   );
   next = next.replace(
     /If Motif sprites are present[^\n]*/gi,
-    'If Motif sprites are present, paste at most one short sprite AFTER visible title/body copy; if Decorations CSS has `.deco-pill`, use capsules — not generic circles.',
+    'If Motif sprites are present, paste at most one short sprite AFTER visible title/body copy; otherwise use kit Motif CSS classes — not generic circles.',
   );
   next = next.replace(
     /Motif SVG paste is DISABLED[^\n]*/gi,
@@ -1378,7 +1453,7 @@ export function slimTemplateVisualKitForFill(skillBody: string): string {
   );
   next = next.replace(
     /Do not (?:copy|paste) Motif SVGs on this fill turn[^\n]*/gi,
-    'Paste capped kit Motif sprites only AFTER title/lead; otherwise use kit `.deco-pill`/`.deco` CSS.',
+    'Paste capped kit Motif sprites only AFTER title/lead; otherwise use kit Motif CSS from Decorations.',
   );
   next = next.replace(
     /Do not paste sprites on this fill turn\.?/gi,
@@ -1386,15 +1461,15 @@ export function slimTemplateVisualKitForFill(skillBody: string): string {
   );
   next = next.replace(
     /Motif SVG vocabulary is omitted this fill turn[^\n]*/gi,
-    'Use capped Motif sprites AFTER title/lead and/or kit `.deco-pill` CSS — not generic circles.',
+    'Use capped Motif sprites AFTER title/lead and/or kit Motif CSS — not generic circles.',
   );
   next = next.replace(
     /Prefer kit cream\/ink \+ CSS-shape daisy accents[^\n]*/gi,
-    'Prefer kit Motif daisy sprites AFTER title/lead (or kit `.deco` cues) — not generic circles.',
+    'Prefer kit Motif sprites AFTER title/lead (or kit Motif CSS cues) — not generic circles.',
   );
   next = next.replace(
     /Every slide should use kit palette \+ fonts; Motif SVGs are deferred[^\n]*/gi,
-    'Every slide should use kit palette + fonts + kit Motif vocabulary (sprites AFTER title and/or `.deco-pill`).',
+    'Every slide should use kit palette + fonts + kit Motif vocabulary (sprites AFTER title and/or Motif CSS).',
   );
   next = next.replace(
     /Motif sprites (?:are deferred this fill turn|below are optional AFTER title\/lead)\.?/gi,
@@ -1402,11 +1477,11 @@ export function slimTemplateVisualKitForFill(skillBody: string): string {
   );
   next = next.replace(
     /decorate with CSS\/`\.deco` only — Motif sprites are deferred this fill turn\.?/gi,
-    'decorate with kit Motif sprites AFTER title/lead and/or kit `.deco-pill`/`.deco` CSS.',
+    'decorate with kit Motif sprites AFTER title/lead and/or kit Motif CSS.',
   );
   next = next.replace(
     /use at most one short (?:complete )?(?:sprite|snippet)[^\n]*/gi,
-    'use at most one short kit Motif sprite AFTER title/lead (or kit `.deco-pill` capsules).',
+    'use at most one short kit Motif sprite AFTER title/lead (or kit Motif CSS classes).',
   );
   return next;
 }

@@ -173,11 +173,10 @@ describe('Teamver selected deck template compose (BYOK slide-only)', () => {
     expect(readLastSection).toMatch(/preview panel|scaled preview|stretch/i);
     // Any Decoration/Layout CSS emitted must not tell the model to bind
     // viewport sizing — sanitizer strips 100vw/100vh from kit CSS blocks.
-    const decoStart = prompt.indexOf('### Decoration CSS');
+    const decoStart = prompt.indexOf('### Decorations CSS');
     if (decoStart >= 0) {
-      const layoutStart = prompt.indexOf('### Layout CSS');
-      const spriteStart = prompt.indexOf('### Motif sprites');
-      const stop = [layoutStart, spriteStart].filter((i) => i > decoStart).sort((a,b)=>a-b)[0] ?? prompt.length;
+      const nextHeading = prompt.slice(decoStart + 3).search(/\n### /);
+      const stop = nextHeading >= 0 ? decoStart + 3 + nextHeading : prompt.length;
       const decoBody = prompt.slice(decoStart, stop);
       expect(decoBody).not.toMatch(/100v[wh]/i);
       expect(decoBody).not.toMatch(/scroll-snap-(?:type|align|stop)/i);
