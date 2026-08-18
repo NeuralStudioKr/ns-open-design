@@ -156,6 +156,27 @@ full `example.html`을 시스템 프롬프트에 넣지 않는다는 방침은 �
 
 제품 판단: **완성된 덱이 우선**이다. 선택 템플릿과 100% 동일한 CSS를 복사하다가 결과물이 비어버리는 것보다, 템플릿의 palette/font/motif cue가 보이는 compact static deck을 완성하는 것이 낫다. 따라서 pre-write gate는 계속 shell 저장을 막고, prompt는 shell이 생기지 않도록 body-first로 유도한다.
 
+### 0.26 2026-08-18 — 전 템플릿 per-slide surface (Daisy/Cartesian/Poster/Biennale)
+
+0.25의 `.slide-N`만으로는 부족하다. 공식 카탈로그는 슬라이드 바탕을 이렇게 칠한다.
+
+- Daisy / Cartesian: `class="slide slide-title|weekly|quote"` + `.slide-weekly { background: var(--turquoise) }`
+- Bold Poster: `.slide-red { background: var(--red) }`
+- Biennale / Neo Grid: `class="slide s-cover"`
+- Scatterbrain: `class="slide bg-cork"`
+- 다수: `.slide::before` grain
+
+`--cream/--bg`로 `.slide { background: paper !important }`를 넣으면 **모든** 슬라이드가 한 색이 된다. surface selector와 “per-slide paint가 있으면 letterbox만” 규칙을 카탈로그 공통으로 두고, 공식 example.html 전부에 persist+bleed 회귀를 건다.
+
+재진입 시 주입된 `[data-od-slide-surface-bleed]` 시트는 author paint로 보지 않는다 (`html, body, .slide`를 per-slide로 오인하면 `!important`가 중첩된다). 카탈로그 회귀는 generic `.slide` letterbox는 허용하고, 슬라이드별 칠이 있는 덱만 flatten을 실패로 본다. css2 remnant는 `<style>` 선두 debris만 잡는다 (Capsule 등 정상 `<link href>`의 `1,6..96`는 허용).
+
+구현 현황:
+
+- [x] surface selector 카탈로그 공통 (`.slide-N` / `.slide-weekly|red|title` / `.s-cover` / 호스트 extra, chrome 제외)
+- [x] per-slide paint면 bleed는 `html, body`만
+- [x] letterbox paper는 solid token (wash의 마지막 색), 주입 시트 재진입 idempotent
+- [x] 공식 `mode:deck` example.html persist+bleed 카탈로그 회귀
+
 ### 0.25 2026-08-18 — Capsule `.slide-1` wash + 깨진 파일 cover heal
 
 0.23은 **inline** `.slide { background: radial-gradient }`만 decorative로 봤다. Capsule `example.html`은 워시를 `.slide-1 { background: radial-gradient…, var(--bg) }`에 두고 generic `.slide`는 layout/`opacity:0`만 갖는다.
@@ -814,6 +835,7 @@ User-message 쪽 `[Existing deck edit]` / `<attached-preview-comments>` 주입�
 | 2026-08-13 | **§0.0 정책 개정** — template = layout vocabulary + visual look, 페이지 수/순서/구성은 브리프 기반. content-swap → pick-and-choose layout roles. daemon Clone default count = 6 (shells.length 아님), `pickTemplateShells` role-based scoring 도입. `template-visual-kit.ts` HARD_RULES 재작성, `DEFAULT_MAX_CHARS` 12000 → 14000. |
 | 2026-08-18 | Clone content-fill motif 보정 — 8/13 SVG hang 방지 패치가 first fill에서 `Motif sprites`/`Decoration CSS`/`Layout CSS`를 통째로 생략해 Daisy/Capsule 템플릿 정체성이 약해졌다. `slimTemplateVisualKitForFill`이 큰 SVG sprite sheet와 전체 stylesheet dump는 계속 제거하되, Daisy star/rainbow·Capsule pill/capsule·Terminal scanline 같은 compact motif recipe와 짧은 Decoration/Layout CSS cue를 보존하도록 변경했다. |
 | 2026-08-18 | §0.20 — html-ppt identity scope. 공유 `:root --bg:#ffffff` 대신 `.tpl-*` host 토큰/슬라이드 surface/폰트를 kit 계약으로 쓰고, SKILL `copy index.html` filesystem 지시를 neutralize. |
+| 2026-08-18 | §0.26 — 전 템플릿 per-slide surface. Daisy `.slide-weekly` / Poster `.slide-red` / Biennale `.s-cover`를 `--bg !important`로 덮지 않음. 공식 example.html persist+bleed 카탈로그 회귀. |
 | 2026-08-18 | §0.25 — Capsule `.slide-1` Motif wash를 surface로 보고 flatten 금지. 깨진 persist HTML은 cover isolation 전에 `repairArtifactStyleSheets`+bleed heal. debris SSOT = `repairStyleSheetText`. CSP font host를 `ARTIFACT_FONT_STYLESHEET_HOSTS`에서 파생. |
 | 2026-08-18 | §0.24 — 잔여 `@import[^;]` (plugin preview·snapshot) + preview/srcDoc CSP font CDN + persist가 Capsule `<link>` 폰트를 지우던 문제. contracts `cssImportSanitize` SSOT. |
 | 2026-08-18 | §0.23 — Capsule persist/preview 후처리. Google Fonts css2 `@import` `;` 절단 debris + surface-bleed `.slide !important`가 fill look을 지움. quote-aware allowlist import + 그라데이션 슬라이드는 letterbox만 promote. |

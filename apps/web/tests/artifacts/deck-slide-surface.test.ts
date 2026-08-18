@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  deckHasPerSlideSurfacePaint,
   inferDeckSlidePaperSurface,
   isDeckSlideSurfaceSelector,
   repairDeckSlideSurfaceBleed,
@@ -127,14 +128,61 @@ html, body { background: var(--bg); color: var(--fg); }
     }
   });
 
-  it('treats numbered .slide-N as surfaces and ignores .slide-inner chrome', () => {
+  it('treats catalog slide-role surfaces and ignores chrome hosts', () => {
     expect(isDeckSlideSurfaceSelector('.slide')).toBe(true);
     expect(isDeckSlideSurfaceSelector('section.slide')).toBe(true);
     expect(isDeckSlideSurfaceSelector('.slide-1')).toBe(true);
     expect(isDeckSlideSurfaceSelector('.slide-10.active')).toBe(true);
+    expect(isDeckSlideSurfaceSelector('.slide-title')).toBe(true);
+    expect(isDeckSlideSurfaceSelector('.slide-weekly')).toBe(true);
+    expect(isDeckSlideSurfaceSelector('.slide-red')).toBe(true);
+    expect(isDeckSlideSurfaceSelector('.s-cover')).toBe(true);
+    expect(isDeckSlideSurfaceSelector('.bg-cork', new Set(['bg-cork']))).toBe(true);
     expect(isDeckSlideSurfaceSelector('.slide-inner')).toBe(false);
     expect(isDeckSlideSurfaceSelector('.slide-header')).toBe(false);
     expect(isDeckSlideSurfaceSelector('.slide-counter')).toBe(false);
+    expect(isDeckSlideSurfaceSelector('.slide-number')).toBe(false);
+    expect(isDeckSlideSurfaceSelector('.slide-content')).toBe(false);
+  });
+
+  it('does not flatten Daisy per-slide role colors with a --cream paper token', () => {
+    const html = `<!doctype html><html><head><style>
+:root{--cream:#F5F0E6;--turquoise:#3EC8C0;--text-dark:#2D2D2D}
+html, body { background: var(--cream); color: var(--text-dark); }
+.slide { width:100vw; height:100vh; }
+.slide-title { background: var(--cream); }
+.slide-weekly { background: var(--turquoise); }
+</style></head>
+<body>
+<section class="slide slide-title"><h1>Cover</h1></section>
+<section class="slide slide-weekly"><h2>Week</h2></section>
+</body></html>`;
+    expect(deckHasPerSlideSurfacePaint(html)).toBe(true);
+    const repaired = repairDeckSlideSurfaceBleed(html);
+    expect(repaired).toContain('.slide-weekly { background: var(--turquoise); }');
+    expect(repaired).not.toMatch(
+      /html,\s*body,\s*\.slide,\s*section\.slide\s*\{[^}]*background:\s*#F5F0E6\s*!important/i,
+    );
+    expect(repairDeckSlideSurfaceBleed(repaired)).toBe(repaired);
+  });
+
+  it('does not flatten Bold Poster .slide-red against --bg paper', () => {
+    const html = `<!doctype html><html><head><style>
+:root{--bg:#F4EFE6;--red:#E10600;--dark:#111}
+html, body { background: var(--bg); }
+.slide { position:absolute; inset:0; }
+.slide-hero { background: var(--bg); }
+.slide-red { background: var(--red); color: var(--bg); }
+</style></head>
+<body>
+<div class="slide slide-hero active"><h1>Hero</h1></div>
+<div class="slide slide-red"><p>Statement</p></div>
+</body></html>`;
+    const repaired = repairDeckSlideSurfaceBleed(html);
+    expect(repaired).toContain('.slide-red { background: var(--red); color: var(--bg); }');
+    expect(repaired).not.toMatch(
+      /html,\s*body,\s*\.slide,\s*section\.slide\s*\{[^}]*!important/i,
+    );
   });
 
   it('does not treat slide-inner chrome as the deck slide surface', () => {

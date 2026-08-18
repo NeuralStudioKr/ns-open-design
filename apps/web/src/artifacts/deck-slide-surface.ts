@@ -10,7 +10,9 @@ import { repairArtifactStyleSheets } from '@open-design/contracts';
  *
  * Promote the inferred paper surface onto `html`/`body` (and `.slide` only when
  * the slide itself is still white). Do not `!important`-flatten per-slide
- * radial washes — Capsule paints those on `.slide-N`, html-ppt on `.slide`.
+ * paint — official decks use `.slide-N` washes, Daisy/Cartesian role classes
+ * (`.slide-weekly`, `.slide-title`), Bold Poster `.slide-red`, Biennale
+ * `.s-cover`, and `.slide::before` grain.
  */
 
 const SURFACE_STYLE_ATTR = 'data-od-slide-surface-bleed';
@@ -43,10 +45,25 @@ function isDecorativeBackground(value: string | null | undefined): boolean {
   return /gradient\s*\(|\burl\s*\(|image-set\s*\(/i.test(String(value ?? ''));
 }
 
+/**
+ * Letterbox paper must be a solid token, not the slide wash itself.
+ * `radial-gradient(..., #F5F5F0)` → `#F5F5F0`.
+ */
+function solidPaperFromBackground(value: string | null | undefined): string | null {
+  const raw = stripImportantFlag(String(value ?? '').trim());
+  if (!raw || isWhiteOrEmptyBackground(raw)) return null;
+  if (!isDecorativeBackground(raw)) return raw;
+  const tail = /(?:,\s*)(#[0-9a-fA-F]{3,8}|rgb[a]?\([^)]+\)|hsl[a]?\([^)]+\)|oklch\([^)]+\)|oklab\([^)]+\)|var\([^)]+\)|[a-zA-Z]+)\s*$/.exec(raw);
+  const last = tail?.[1]?.trim() ?? '';
+  if (!last || isDecorativeBackground(last) || isWhiteOrEmptyBackground(last)) return null;
+  return last;
+}
+
 function extractSlideBackground(html: string): string | null {
+  const extras = collectSlideHostExtraClasses(html);
   return (
     extractInlineSlideBackground(html)
-    ?? extractRuleBackground(html, isDeckSlideSurfaceSelector)
+    ?? extractRuleBackground(html, (selector) => isDeckSlideSurfaceSelector(selector, extras))
   );
 }
 
@@ -61,12 +78,92 @@ function healDeckStyleSheets(html: string): string {
 }
 
 /**
- * Capsule Motif paints radial washes on `.slide-1` (not generic `.slide`).
- * `.slide-inner` / `.slide-header` / `.slide-counter` are chrome, not surfaces.
+ * Nested chrome / chrome-only hosts — not the 1920×1080 slide surface.
+ * Daisy `.slide-title` and Cartesian `.slide-hero` are surfaces; Capsule
+ * `.slide-inner` is not.
  */
-export function isDeckSlideSurfaceSelector(selector: string): boolean {
-  const leaf = String(selector ?? '').trim().split(/[\s>+~]/).pop()?.trim() ?? '';
-  return /^(?:[a-z][\w-]*)?\.slide(?:-\d+)?(?:\.[a-z][\w-]*)*$/i.test(leaf);
+const SLIDE_CHROME_SUFFIX_RE =
+  /^(?:inner|header|headers|counter|number|content|body|chrome|foot|frame|meta|sidebar|deck|controls|nav|pager|progress|hint)$/i;
+
+function stripCssSelectorComments(selector: string): string {
+  return String(selector ?? '').replace(/\/\*[\s\S]*?\*\//g, ' ').trim();
+}
+
+function cssLeafSelector(selector: string): string {
+  return stripCssSelectorComments(selector).split(/[\s>+~]/).pop()?.trim() ?? '';
+}
+
+function cssLeafClassNames(leaf: string): string[] {
+  return [...leaf.matchAll(/\.(-?[_A-Za-z]+[\w-]*)/g)].map((match) => match[1] ?? '');
+}
+
+function isSlideChromeClassName(className: string): boolean {
+  const suffix = /^slide-(.+)$/i.exec(className)?.[1];
+  return Boolean(suffix && SLIDE_CHROME_SUFFIX_RE.test(suffix));
+}
+
+function isGenericSlideOnlyLeaf(leaf: string): boolean {
+  return /^(?:[a-z][\w-]*)?\.slide(?:\.(?:active|is-active|current))?(?:::?(?:before|after))?$/i.test(leaf);
+}
+
+/**
+ * Catalog-wide slide surface: generic `.slide`, numbered `.slide-N`, role
+ * classes (`.slide-title`, `.slide-red`), Biennale/Neo `.s-cover`, plus extra
+ * classes actually present on a `class="slide …"` host (`.bg-cork`).
+ */
+export function isDeckSlideSurfaceSelector(
+  selector: string,
+  hostExtraClasses: ReadonlySet<string> = new Set(),
+): boolean {
+  const leaf = cssLeafSelector(selector);
+  if (!leaf) return false;
+  const classes = cssLeafClassNames(leaf);
+  if (classes.some((name) => name.toLowerCase() === 'slide')) return true;
+  if (classes.some((name) => /^slide-\d+$/i.test(name))) return true;
+  if (classes.some((name) => /^slide-/i.test(name) && !isSlideChromeClassName(name))) {
+    return true;
+  }
+  if (classes.some((name) => /^s-[a-z][\w-]*$/i.test(name))) return true;
+  return classes.some((name) => hostExtraClasses.has(name));
+}
+
+function collectSlideHostExtraClasses(html: string): Set<string> {
+  const extras = new Set<string>();
+  TAG_OPEN_RE.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = TAG_OPEN_RE.exec(html)) !== null) {
+    const attrs = match[2] ?? '';
+    if (!elementHasExactSlideClass(attrs)) continue;
+    const classMatch = /\bclass\s*=\s*(?:"([^"]*)"|'([^']*)'|(\S+))/i.exec(attrs);
+    const raw = classMatch?.[1] ?? classMatch?.[2] ?? classMatch?.[3] ?? '';
+    for (const name of raw.split(/\s+/).filter(Boolean)) {
+      const cls = name.trim();
+      if (!cls) continue;
+      if (/^(?:slide|active|is-active|current)$/i.test(cls)) continue;
+      if (isSlideChromeClassName(cls)) continue;
+      extras.add(cls);
+    }
+  }
+  return extras;
+}
+
+/** True when any non-generic slide role/variant paints its own background. */
+export function deckHasPerSlideSurfacePaint(html: string): boolean {
+  const extras = collectSlideHostExtraClasses(html);
+  const sheets = collectAuthorStyleSheetTexts(html);
+  if (!sheets.trim()) return false;
+  for (const rule of sheets.matchAll(/([^{}@][^{]*)\{([^}]+)\}/g)) {
+    const selectors = (rule[1] ?? '').split(',').map((part) => cssLeafSelector(part)).filter(Boolean);
+    const surfaceSelectors = selectors.filter((selector) => isDeckSlideSurfaceSelector(selector, extras));
+    if (surfaceSelectors.length === 0) continue;
+    if (surfaceSelectors.every((selector) => isGenericSlideOnlyLeaf(selector))) continue;
+    const background = readBackgroundFromStyleDecl(rule[2] ?? '');
+    if (background && !isWhiteOrEmptyBackground(background)) return true;
+  }
+  if (/\.slide\b[^ {]*::(?:before|after)\s*\{[^}]*\bbackground(?:-image|-color)?\s*:/i.test(sheets)) {
+    return true;
+  }
+  return false;
 }
 
 function surfaceBleedSelectors(preserveSlidePaint: boolean): string {
@@ -87,21 +184,33 @@ function bleedStyleTargetsSlides(html: string): boolean {
   return /\.slide\b/i.test(html.match(SURFACE_STYLE_RE)?.[0] ?? '');
 }
 
+function stripImportantFlag(value: string): string {
+  return value.replace(/\s*!important\s*$/i, '').trim();
+}
+
 function readBackgroundFromStyleDecl(style: string | null | undefined): string | null {
   const raw = String(style ?? '');
   const shorthand = /(?:^|;)\s*background\s*:\s*([^;]+)/i.exec(raw)?.[1]?.trim();
-  if (shorthand) return shorthand;
+  if (shorthand) return stripImportantFlag(shorthand) || null;
   const image = /(?:^|;)\s*background-image\s*:\s*([^;]+)/i.exec(raw)?.[1]?.trim();
-  if (image) return image;
+  if (image) return stripImportantFlag(image) || null;
   const color = /(?:^|;)\s*background-color\s*:\s*([^;]+)/i.exec(raw)?.[1]?.trim();
-  return color || null;
+  return color ? stripImportantFlag(color) || null : null;
 }
 
 function readColorFromStyleDecl(style: string | null | undefined): string | null {
   const raw = String(style ?? '');
   const match = /(?:^|;)\s*color\s*:\s*([^;]+)/i.exec(raw);
-  const value = match?.[1]?.trim() ?? '';
+  const value = stripImportantFlag(match?.[1]?.trim() ?? '');
   return value || null;
+}
+
+/** Author sheets only — skip our own letterbox inject so re-entry stays idempotent. */
+function collectAuthorStyleSheetTexts(html: string): string {
+  return [...String(html ?? '').matchAll(/<style\b([^>]*)>([\s\S]*?)<\/style>/gi)]
+    .filter((match) => !new RegExp(`\\b${SURFACE_STYLE_ATTR}\\b`, 'i').test(match[1] ?? ''))
+    .map((match) => match[2] ?? '')
+    .join('\n');
 }
 
 function extractCssVarLiteral(html: string, names: readonly string[]): string | null {
@@ -122,9 +231,7 @@ function extractRuleBackground(
   html: string,
   selectorHint: RegExp | ((selector: string) => boolean),
 ): string | null {
-  const sheets = [...html.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style>/gi)]
-    .map((match) => match[1] ?? '')
-    .join('\n');
+  const sheets = collectAuthorStyleSheetTexts(html);
   if (!sheets.trim()) return null;
   const matchesHint = (selector: string): boolean => (
     typeof selectorHint === 'function' ? selectorHint(selector) : selectorHint.test(selector)
@@ -218,9 +325,10 @@ export function inferDeckSlidePaperSurface(html: string): DeckSlidePaperSurface 
 
   const background =
     extractCssVarLiteral(source, ['cream', 'paper', 'surface', 'bg', 'background'])
-    ?? extractRuleBackground(source, /^(?:[a-z][a-z0-9]*)?\.slide$/i)
-    ?? extractInlineSlideBackground(source)
-    ?? extractInnerPaperBackground(source);
+    ?? solidPaperFromBackground(extractRuleBackground(source, /^(?:[a-z][a-z0-9]*)?\.slide$/i))
+    ?? solidPaperFromBackground(extractInlineSlideBackground(source))
+    ?? extractInnerPaperBackground(source)
+    ?? solidPaperFromBackground(extractBodyBackground(source));
   if (!background || isWhiteOrEmptyBackground(background)) return null;
 
   const color =
@@ -232,9 +340,7 @@ export function inferDeckSlidePaperSurface(html: string): DeckSlidePaperSurface 
 }
 
 function extractRuleBackgroundColor(html: string): string | null {
-  const sheets = [...html.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style>/gi)]
-    .map((match) => match[1] ?? '')
-    .join('\n');
+  const sheets = collectAuthorStyleSheetTexts(html);
   for (const rule of sheets.matchAll(/([^{}@][^{]*)\{([^}]+)\}/g)) {
     const selectors = (rule[1] ?? '').split(',').map((part) => part.trim());
     if (!selectors.some((selector) => /^(?:html|body|[a-z]*\.slide)$/i.test(selector))) {
@@ -292,7 +398,9 @@ export function repairDeckSlideSurfaceBleed(html: string): string {
   if (!hasSlide) return source;
 
   const paper = inferDeckSlidePaperSurface(source);
-  const preserveSlidePaint = isDecorativeBackground(extractSlideBackground(source));
+  const preserveSlidePaint =
+    isDecorativeBackground(extractSlideBackground(source))
+    || deckHasPerSlideSurfacePaint(source);
   const hasBleed = new RegExp(`\\b${SURFACE_STYLE_ATTR}\\b`, 'i').test(source);
 
   if (hasBleed) {
