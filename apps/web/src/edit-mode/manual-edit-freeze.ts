@@ -100,13 +100,24 @@ export function shouldSkipSrcDocTransportRemountForManualEditFreezeTipSync(
 }
 
 /**
- * Hide selection chrome while tip-remount wait for first remasure so overlays
- * do not flash at pre-tip composed rects (455).
+ * Tip-remount remasure wait: keep selection chrome mounted but inert
+ * (disabled gestures) at the last known rect so the selection does not feel
+ * dead. Interaction resumes after tip geometry lands (455 → 458).
  */
 export function shouldSuppressManualEditChromeUntilTipRemasure(
   chromeSuppressed: boolean,
 ): boolean {
   return chromeSuppressed;
+}
+
+/**
+ * Gate overlay `disabled` while tip-remount chrome is inert (458).
+ * Prefer this over unmounting — handles stay visible, gestures stay off.
+ */
+export function shouldDisableManualEditChromeUntilTipRemasure(
+  chromeSuppressed: boolean,
+): boolean {
+  return shouldSuppressManualEditChromeUntilTipRemasure(chromeSuppressed);
 }
 
 /**
@@ -130,14 +141,15 @@ export function shouldReleaseTipRemountChromeOnFailedRemasure(
 }
 
 /**
- * While host resize chrome is suppressed, do not ask the iframe for hostChrome
- * (pointer-events:none + no handles) — keep the selection ring clickable (457).
+ * Tip-remount inert chrome stays mounted, so hostChrome still follows the
+ * normal overlay-ownership signal. Suppress must not clear hostChrome or the
+ * iframe paints a second ring under the inert host box (457 → 458).
  */
 export function shouldPostHostChromeDuringTipRemountSuppress(
   wouldHostChrome: boolean,
-  chromeSuppressed: boolean,
+  _chromeSuppressed: boolean,
 ): boolean {
-  return wouldHostChrome && !chromeSuppressed;
+  return wouldHostChrome;
 }
 
 /**

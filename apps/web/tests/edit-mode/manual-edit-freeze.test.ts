@@ -9,6 +9,7 @@ import {
   shouldRequestTipRemountRemasureAfterSrcDocLoad,
   shouldSkipSrcDocTransportRemountForManualEditFreezeTipSync,
   shouldSuppressManualEditChromeUntilTipRemasure,
+  shouldDisableManualEditChromeUntilTipRemasure,
   shouldAbortManualEditGestureForTipYieldFreezeSync,
   shouldReleaseTipRemountChromeOnFailedRemasure,
   shouldPostHostChromeDuringTipRemountSuppress,
@@ -123,13 +124,18 @@ describe('manual edit freeze reset', () => {
     expect(shouldSuppressManualEditChromeUntilTipRemasure(false)).toBe(false);
   });
 
+  it('disables (inert) selection chrome until tip remasure — does not unmount', () => {
+    expect(shouldDisableManualEditChromeUntilTipRemasure(true)).toBe(true);
+    expect(shouldDisableManualEditChromeUntilTipRemasure(false)).toBe(false);
+  });
+
   it('aborts in-flight gestures before tip-yield freeze sync', () => {
     expect(shouldAbortManualEditGestureForTipYieldFreezeSync(true)).toBe(true);
     expect(shouldAbortManualEditGestureForTipYieldFreezeSync(false)).toBe(false);
   });
 
-  it('keeps hostChrome off while tip-remount chrome is suppressed', () => {
-    expect(shouldPostHostChromeDuringTipRemountSuppress(true, true)).toBe(false);
+  it('keeps hostChrome on while tip-remount chrome is inert (still mounted)', () => {
+    expect(shouldPostHostChromeDuringTipRemountSuppress(true, true)).toBe(true);
     expect(shouldPostHostChromeDuringTipRemountSuppress(true, false)).toBe(true);
     expect(shouldPostHostChromeDuringTipRemountSuppress(false, true)).toBe(false);
   });

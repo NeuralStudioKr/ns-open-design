@@ -335,7 +335,7 @@ import {
   shouldEchoManualEditSelectionAfterFreezeSync,
   shouldRequestTipRemountRemasureAfterSrcDocLoad,
   shouldSkipSrcDocTransportRemountForManualEditFreezeTipSync,
-  shouldSuppressManualEditChromeUntilTipRemasure,
+  shouldDisableManualEditChromeUntilTipRemasure,
   shouldAbortManualEditGestureForTipYieldFreezeSync,
   shouldReleaseTipRemountChromeOnFailedRemasure,
   shouldPostHostChromeDuringTipRemountSuppress,
@@ -5487,7 +5487,7 @@ function HtmlViewer({
   /** Tip-yield freeze remount — skip idle wild-jump deny until first remasure. */
   const manualEditTipRemountGeometryGraceIdRef = useRef<string | null>(null);
   const manualEditTipRemountGeometryGraceUntilRef = useRef(0);
-  /** Hide resize/multi chrome until tip remasure applies tip geometry (455). */
+  /** Inert resize/multi chrome until tip remasure applies tip geometry (455/458). */
   const [manualEditTipRemountChromeSuppressed, setManualEditTipRemountChromeSuppressed] = useState(false);
   const manualEditTipRemountChromeSuppressedRef = useRef(false);
   /** Deferred Mixed/single reseed after freeze — cancelled when a newer tip-yield schedules. */
@@ -8060,7 +8060,7 @@ function HtmlViewer({
       const graceUntil = Date.now() + 800;
       manualEditTipRemountGeometryGraceIdRef.current = graceId;
       manualEditTipRemountGeometryGraceUntilRef.current = graceUntil;
-      // Suppress chrome until remasure — avoid pre-tip overlay flash (455).
+      // Inert chrome until remasure — keep last rect visible, block gestures (458).
       manualEditTipRemountChromeSuppressedRef.current = true;
       setManualEditTipRemountChromeSuppressed(true);
       if (manualEditTipRemountChromeSafetyTimeoutRef.current != null) {
@@ -14163,12 +14163,14 @@ function HtmlViewer({
         <Icon name="sliders" size={15} />
       </button>
     ) : null;
+  const manualEditTipRemountChromeInert = shouldDisableManualEditChromeUntilTipRemasure(
+    manualEditTipRemountChromeSuppressed,
+  );
   const manualEditResizeOverlay =
     manualEditMode
     && !hideManualEditBoxDrag
     && !drawOverlayOpen
     && !manualEditMultiSelectActive
-    && !shouldSuppressManualEditChromeUntilTipRemasure(manualEditTipRemountChromeSuppressed)
     && selectedManualEditTarget
     && canResizeTarget(selectedManualEditTarget, {
       inlineTextEditing: manualEditInlineTextEditing,
@@ -14184,7 +14186,8 @@ function HtmlViewer({
         draftTopPx={manualEditMoveDraftPos?.y ?? null}
         // Do not disable handles while saving — HTML disabled buttons drop
         // pointer events through to the movable body, so resize becomes move.
-        disabled={manualEditInlineTextEditing}
+        // Tip-remount: keep chrome mounted inert at last rect (458).
+        disabled={manualEditInlineTextEditing || manualEditTipRemountChromeInert}
         onResizeSessionChange={handleManualEditResizeSessionChange}
         onResolveResizeStart={() => {
           const id = selectedManualEditTargetIdRef.current;
@@ -14237,8 +14240,7 @@ function HtmlViewer({
   const manualEditMultiSelectOverlay =
     manualEditMode
     && !drawOverlayOpen
-    && manualEditMultiSelectActive
-    && !shouldSuppressManualEditChromeUntilTipRemasure(manualEditTipRemountChromeSuppressed) ? (
+    && manualEditMultiSelectActive ? (
       <ManualEditMultiSelectOverlay
         targets={manualEditMultiSelectOverlayTargets}
         previewScale={manualEditHostScale}
@@ -14251,7 +14253,8 @@ function HtmlViewer({
         }}
         movable={manualEditGroupMoveEnabled}
         resizable={manualEditGroupResizeEnabled}
-        disabled={manualEditInlineTextEditing}
+        // Tip-remount: keep multi chrome mounted inert at last union rect (458).
+        disabled={manualEditInlineTextEditing || manualEditTipRemountChromeInert}
         draftMemberRects={manualEditGroupDraftRects}
         onGroupMovePreview={handleManualEditGroupMovePreview}
         onGroupMoveCommit={(updates, stylesBefore) => {

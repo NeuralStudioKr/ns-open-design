@@ -120,9 +120,15 @@ describe('FileViewer revision tip advance after undo', () => {
     expect(fileViewer).toContain('do NOT depend on manualEditFrozenSource');
     expect(fileViewer).toContain('shouldSkipSrcDocTransportRemountForManualEditFreezeTipSync');
     expect(fileViewer).toContain('Tip-yield freeze already reloads via srcDoc');
-    expect(fileViewer).toContain('shouldSuppressManualEditChromeUntilTipRemasure');
-    expect(fileViewer).toContain('Suppress chrome until remasure');
+    expect(fileViewer).toContain('shouldDisableManualEditChromeUntilTipRemasure');
+    expect(fileViewer).toContain('Inert chrome until remasure');
+    expect(fileViewer).toContain('Tip-remount: keep chrome mounted inert at last rect');
+    expect(fileViewer).toContain('Tip-remount: keep multi chrome mounted inert at last union rect');
+    expect(fileViewer).toContain('disabled={manualEditInlineTextEditing || manualEditTipRemountChromeInert}');
     expect(fileViewer).toContain('Apply tip geometry before releasing chrome suppress');
+    expect(fileViewer).not.toContain(
+      '&& !shouldSuppressManualEditChromeUntilTipRemasure(manualEditTipRemountChromeSuppressed)',
+    );
     expect(fileViewer).toContain('abortManualEditGestureForTipYieldFreezeSync');
     expect(fileViewer).toContain('shouldAbortManualEditGestureForTipYieldFreezeSync');
     expect(fileViewer).toContain('Tip remount would drop host overlays mid-drag');
