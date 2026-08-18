@@ -177,6 +177,19 @@ full `example.html`을 시스템 프롬프트에 넣지 않는다는 방침은 �
 - [x] per-slide paint면 bleed는 `html, body`만
 - [x] letterbox paper는 solid token (wash의 마지막 색), 주입 시트 재진입 idempotent
 - [x] 공식 `mode:deck` example.html persist+bleed 카탈로그 회귀
+- [x] remnant heal이 유효 css2 `@import`를 자르지 않음
+- [x] 인라인 장별 색도 per-slide paint
+- [x] daemon cover-batch가 persisted flatten bleed를 `html, body`로 완화 (cache v6)
+
+### 0.27 2026-08-18 — persist/preview/cover 잔여 경로 (전 템플릿)
+
+0.26 이후 전체 경로 재검토에서 남은 구멍:
+
+1. `repairStyleSheetText` remnant prefix가 `;`를 허용 → Hermes/XHS 등 **유효** `@import url('…opsz,wght@0,6..96…;1,6..96…&family=')` 가 잘리고, 따옴표가 열려 Motif 규칙이 다시 삼켜짐. Cover/srcdoc/bleed heal이 이 경로를 탄다.
+2. 모델이 CSS role class 없이 장마다 inline `background`만 칠하면 flatten.
+3. Web cover는 bleed heal을 하지만 daemon `cover-hints`/`cover-html-batch`는 stylesheet heal만 해서, 디스크에 남은 `.slide { paper !important }`가 홈 카드를 납작하게 둠.
+
+커버는 첫 장만 보여도 `.slide !important` flatten을 적용하면 안 된다.
 
 ### 0.25 2026-08-18 — Capsule `.slide-1` wash + 깨진 파일 cover heal
 
@@ -836,6 +849,7 @@ User-message 쪽 `[Existing deck edit]` / `<attached-preview-comments>` 주입�
 | 2026-08-13 | **§0.0 정책 개정** — template = layout vocabulary + visual look, 페이지 수/순서/구성은 브리프 기반. content-swap → pick-and-choose layout roles. daemon Clone default count = 6 (shells.length 아님), `pickTemplateShells` role-based scoring 도입. `template-visual-kit.ts` HARD_RULES 재작성, `DEFAULT_MAX_CHARS` 12000 → 14000. |
 | 2026-08-18 | Clone content-fill motif 보정 — 8/13 SVG hang 방지 패치가 first fill에서 `Motif sprites`/`Decoration CSS`/`Layout CSS`를 통째로 생략해 Daisy/Capsule 템플릿 정체성이 약해졌다. `slimTemplateVisualKitForFill`이 큰 SVG sprite sheet와 전체 stylesheet dump는 계속 제거하되, Daisy star/rainbow·Capsule pill/capsule·Terminal scanline 같은 compact motif recipe와 짧은 Decoration/Layout CSS cue를 보존하도록 변경했다. |
 | 2026-08-18 | §0.20 — html-ppt identity scope. 공유 `:root --bg:#ffffff` 대신 `.tpl-*` host 토큰/슬라이드 surface/폰트를 kit 계약으로 쓰고, SKILL `copy index.html` filesystem 지시를 neutralize. |
+| 2026-08-18 | §0.27 — persist/preview/cover 잔여. remnant heal이 유효 css2 `@import`를 자르지 않음. 인라인 장별 색 flatten 금지. daemon cover-batch가 persisted `.slide !important`를 완화. cache v6. |
 | 2026-08-18 | §0.26 — 전 템플릿 per-slide surface. Daisy `.slide-weekly` / Poster `.slide-red` / Biennale `.s-cover`를 `--bg !important`로 덮지 않음. 공식 example.html persist+bleed 카탈로그 회귀. |
 | 2026-08-18 | §0.25 — Capsule `.slide-1` Motif wash를 surface로 보고 flatten 금지. 깨진 persist HTML은 cover isolation 전에 `repairArtifactStyleSheets`+bleed heal. debris SSOT = `repairStyleSheetText`. CSP font host를 `ARTIFACT_FONT_STYLESHEET_HOSTS`에서 파생. |
 | 2026-08-18 | §0.24 — 잔여 `@import[^;]` (plugin preview·snapshot) + preview/srcDoc CSP font CDN + persist가 Capsule `<link>` 폰트를 지우던 문제. contracts `cssImportSanitize` SSOT. |

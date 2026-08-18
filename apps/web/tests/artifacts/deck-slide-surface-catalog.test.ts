@@ -9,6 +9,7 @@ import {
   repairDeckSlideSurfaceBleed,
 } from '../../src/artifacts/deck-slide-surface';
 import { sanitizeManualEditFullSource } from '../../src/edit-mode/source-patches';
+import { repairArtifactStyleSheets } from '@open-design/contracts';
 
 const EXAMPLES_DIR = fileURLToPath(
   new URL('../../../../plugins/_official/examples/', import.meta.url),
@@ -81,6 +82,15 @@ describe('official deck persist/preview catalog', () => {
       const html = await readFile(examplePath, 'utf8');
       if (/<iframe\b/i.test(html) && !/<style\b[^>]*>[\s\S]*:root/i.test(html)) {
         continue;
+      }
+
+      const healedSheets = repairArtifactStyleSheets(html);
+      const importUrls = [...html.matchAll(/@import\s+url\((['"])(https:\/\/fonts\.googleapis\.com\/css2[^'"]+)\1\)/gi)]
+        .map((match) => match[2] ?? '');
+      for (const url of importUrls) {
+        if (url && !healedSheets.includes(url)) {
+          failures.push(`${folder}: style heal cut a valid css2 @import`);
+        }
       }
 
       const bled = repairDeckSlideSurfaceBleed(html);

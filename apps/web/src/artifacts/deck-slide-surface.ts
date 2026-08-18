@@ -147,8 +147,29 @@ function collectSlideHostExtraClasses(html: string): Set<string> {
   return extras;
 }
 
+function collectInlineSlideBackgrounds(html: string): string[] {
+  const out: string[] = [];
+  TAG_OPEN_RE.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = TAG_OPEN_RE.exec(html)) !== null) {
+    const attrs = match[2] ?? '';
+    if (!elementHasExactSlideClass(attrs)) continue;
+    const style =
+      /style\s*=\s*"([^"]*)"/i.exec(attrs)?.[1]
+      ?? /style\s*=\s*'([^']*)'/i.exec(attrs)?.[1]
+      ?? '';
+    const background = readBackgroundFromStyleDecl(style);
+    if (!background || isWhiteOrEmptyBackground(background)) continue;
+    out.push(background.replace(/\s+/g, '').toLowerCase());
+  }
+  return out;
+}
+
 /** True when any non-generic slide role/variant paints its own background. */
 export function deckHasPerSlideSurfacePaint(html: string): boolean {
+  const inlines = collectInlineSlideBackgrounds(html);
+  if (inlines.some((background) => isDecorativeBackground(background))) return true;
+  if (new Set(inlines).size >= 2) return true;
   const extras = collectSlideHostExtraClasses(html);
   const sheets = collectAuthorStyleSheetTexts(html);
   if (!sheets.trim()) return false;

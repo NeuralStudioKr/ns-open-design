@@ -3,13 +3,18 @@
  * Kept free of React so auth loaders can import without cycles.
  */
 
-import { repairArtifactStyleSheets } from "@open-design/contracts";
+import {
+  relaxPersistedDeckSlideSurfaceBleed,
+  repairArtifactStyleSheets,
+} from "@open-design/contracts";
 import { repairDeckSlideSurfaceBleed } from "../artifacts/deck-slide-surface";
 import { injectHtmlBaseHref } from "../runtime/authenticatedHtmlSrcDoc";
 
 /** Heal already-persisted css2 debris + flatten bleed before isolation. */
 function healCoverHtml(html: string): string {
-  return repairDeckSlideSurfaceBleed(repairArtifactStyleSheets(html));
+  return repairDeckSlideSurfaceBleed(
+    relaxPersistedDeckSlideSurfaceBleed(repairArtifactStyleSheets(html)),
+  );
 }
 
 export const HTML_COVER_CANVAS_WIDTH = 1920;

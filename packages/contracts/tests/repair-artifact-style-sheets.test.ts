@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  relaxPersistedDeckSlideSurfaceBleed,
   repairArtifactStyleSheets,
   repairStyleSheetText,
   stripCssAtImportsBalanced,
@@ -56,6 +57,16 @@ describe('repairArtifactStyleSheets', () => {
     const repaired = repairStyleSheetText(`${remnant}\n.pill-coral{background:red}`);
     expect(repaired).not.toMatch(/family=|display=swap/i);
     expect(repaired).toMatch(/\.pill-coral\{/);
+  });
+
+  it('relaxes persisted flatten bleed so .slide washes can paint', () => {
+    const html = `<html><body>
+<section class="slide slide-1">Cover</section>
+<style data-od-slide-surface-bleed="">html, body, .slide, section.slide { background: #F5F5F0 !important; color: #1A1A1A !important; }</style>
+</body></html>`;
+    const relaxed = relaxPersistedDeckSlideSurfaceBleed(html);
+    expect(relaxed).toMatch(/html,\s*body\s*\{[^}]*background:\s*#F5F5F0/i);
+    expect(relaxed).not.toMatch(/html,\s*body,\s*\.slide,\s*section\.slide/i);
   });
 
   it('repairs style blocks inside a Capsule-like deck document', () => {

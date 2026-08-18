@@ -22,8 +22,13 @@ const IMPORT_PLACEHOLDER = (i: number) => `/*__OD_KEEP_IMPORT_${i}__*/`;
 const GOOGLE_FONTS_IMPORT_REMNANT_CORE =
   '(?:[\\d,.@]+(?:\\.\\.[\\d,.@]+)?(?:,[\\d@.]+)*(?:;[\\d,.@]+)*)?&?family=[A-Za-z0-9_+:;,=%&.@\\-]+(?:(?:&amp;|&)[A-Za-z0-9_+:;,=%&.@\\-]*)*[\'"]?\\s*\\)\\s*;?';
 
+/**
+ * Only treat leftovers at the start of a sheet or after a rule `}`.
+ * Do NOT use `;` as a prefix — css2 `@import` URLs embed `;1,6..96…&family=`
+ * inside a still-valid quoted url().
+ */
 const GOOGLE_FONTS_IMPORT_REMNANT_RE = new RegExp(
-  `(^|[\\s;}])(${GOOGLE_FONTS_IMPORT_REMNANT_CORE})`,
+  `(^|[}\\n])\\s*(${GOOGLE_FONTS_IMPORT_REMNANT_CORE})`,
   'gi',
 );
 
@@ -107,4 +112,30 @@ export function repairArtifactStyleSheets(html: string): string {
     if (repaired === css) return full;
     return `<style${attrs}>${repaired}</style>`;
   });
+}
+
+const SURFACE_BLEED_ATTR = 'data-od-slide-surface-bleed';
+
+/**
+ * Cover / export paths must never honor a persisted flatten of `.slide`.
+ * Letterbox `html, body` stays; per-slide washes / role colors keep winning.
+ */
+export function relaxPersistedDeckSlideSurfaceBleed(html: string): string {
+  const source = String(html ?? '');
+  if (!source || !new RegExp(`\\b${SURFACE_BLEED_ATTR}\\b`, 'i').test(source)) {
+    return source;
+  }
+  return source.replace(
+    new RegExp(
+      `(<style\\b[^>]*\\b${SURFACE_BLEED_ATTR}\\b[^>]*>)([\\s\\S]*?)(<\\/style>)`,
+      'gi',
+    ),
+    (_full, open: string, css: string, close: string) => {
+      const next = String(css).replace(
+        /html\s*,\s*body\s*,\s*\.slide\s*,\s*section\.slide/gi,
+        'html, body',
+      );
+      return `${open}${next}${close}`;
+    },
+  );
 }

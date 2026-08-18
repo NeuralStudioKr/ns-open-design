@@ -32,6 +32,24 @@ describe('cover-html-isolate (0806-N07)', () => {
     expect(prepared).toContain('.pill{border-radius:9999px}');
   });
 
+  it('relaxes persisted flatten bleed before isolating the cover', () => {
+    const html = `<html><head><style>
+.slide-1{background:radial-gradient(circle at 20% 20%, rgba(232,93,78,0.2), transparent 50%), #F5F5F0}
+</style></head><body>
+<section class="slide slide-1">CoverWash</section>
+<section class="slide">Later</section>
+<style data-od-slide-surface-bleed="">html, body, .slide, section.slide { background: #F5F5F0 !important; color: #1A1A1A !important; }</style>
+</body></html>`;
+    const prepared = prepareCoverHtmlBatchBody(html);
+    expect(prepared).toContain('CoverWash');
+    expect(prepared).not.toContain('Later');
+    expect(prepared).toContain('radial-gradient');
+    expect(prepared).not.toMatch(
+      /html,\s*body,\s*\.slide,\s*section\.slide\s*\{[^}]*background:\s*#F5F5F0\s*!important/i,
+    );
+    expect(prepared).toMatch(/html,\s*body\s*\{[^}]*background:\s*#F5F5F0/i);
+  });
+
   it('strips scripts after isolation', () => {
     const html = `<html><body>
 <section class="slide">A</section>

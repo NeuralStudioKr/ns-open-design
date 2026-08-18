@@ -166,6 +166,23 @@ html, body { background: var(--cream); color: var(--text-dark); }
     expect(repairDeckSlideSurfaceBleed(repaired)).toBe(repaired);
   });
 
+  it('does not flatten inline per-slide colors when CSS has only generic .slide', () => {
+    const html = `<!doctype html><html><head><style>
+:root{--cream:#F5F0E6;--red:#E10600}
+.slide { width:100vw; height:100vh; }
+</style></head>
+<body>
+<section class="slide" style="background:#F5F0E6;color:#2D2D2D"><h1>Cover</h1></section>
+<section class="slide" style="background:#E10600;color:#F5F0E6"><h2>Statement</h2></section>
+</body></html>`;
+    expect(deckHasPerSlideSurfacePaint(html)).toBe(true);
+    const repaired = repairDeckSlideSurfaceBleed(html);
+    expect(repaired).not.toMatch(
+      /html,\s*body,\s*\.slide,\s*section\.slide\s*\{[^}]*background:\s*#F5F0E6\s*!important/i,
+    );
+    expect(repaired).toContain('background:#E10600');
+  });
+
   it('does not flatten Bold Poster .slide-red against --bg paper', () => {
     const html = `<!doctype html><html><head><style>
 :root{--bg:#F4EFE6;--red:#E10600;--dark:#111}
