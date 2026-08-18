@@ -336,6 +336,9 @@ import {
   shouldRequestTipRemountRemasureAfterSrcDocLoad,
   shouldSkipSrcDocTransportRemountForManualEditFreezeTipSync,
   shouldSuppressManualEditChromeUntilTipRemasure,
+  shouldAbortManualEditGestureForTipYieldFreezeSync,
+  shouldReleaseTipRemountChromeOnFailedRemasure,
+  shouldPostHostChromeDuringTipRemountSuppress,
   shouldPatchSelectedGeometryFromTargetsBroadcast,
   shouldReseedManualEditMultiInspectorAfterFreezeSync,
   shouldReseedSingleInspectorAfterTipYieldMixedClear,
@@ -5486,8 +5489,11 @@ function HtmlViewer({
   const manualEditTipRemountGeometryGraceUntilRef = useRef(0);
   /** Hide resize/multi chrome until tip remasure applies tip geometry (455). */
   const [manualEditTipRemountChromeSuppressed, setManualEditTipRemountChromeSuppressed] = useState(false);
+  const manualEditTipRemountChromeSuppressedRef = useRef(false);
   /** Deferred Mixed/single reseed after freeze — cancelled when a newer tip-yield schedules. */
   const manualEditFreezeEchoTimeoutRef = useRef<number | null>(null);
+  /** Safety clear for tip chrome suppress if remasure never arrives (457). */
+  const manualEditTipRemountChromeSafetyTimeoutRef = useRef<number | null>(null);
   /** Confirm refuse → suppress disk tip prefer until refresh commits. */
   const manualEditSuppressTipPreferUntilRefreshRef = useRef(false);
   const manualEditRemeasureAwaiterRef = useRef(createManualEditRemeasureAwaiter());
@@ -7753,7 +7759,8 @@ function HtmlViewer({
     // hostChrome tracks overlay mount: also re-post when draw / inline-text hide it.
     // Tip-yield freeze remount: do NOT depend on manualEditFrozenSource — posting
     // selection onto a dying frame causes outline clear→paint→clear; onLoad owns
-    // restore via syncBridgeModes (452).
+    // restore via syncBridgeModes (452). Re-post when tip chrome suppress toggles
+    // so hostChrome/pointer-events stay aligned (457).
   }, [
     manualEditMode,
     selectedManualEditTarget?.id,
@@ -7762,6 +7769,7 @@ function HtmlViewer({
     useUrlLoadPreview,
     manualEditInlineTextEditing,
     drawOverlayOpen,
+    manualEditTipRemountChromeSuppressed,
   ]);
 
   const previewStyleToIframe = useCallback((id: string, styles: Partial<ManualEditStyles>, version: number) => {
@@ -7798,12 +7806,15 @@ function HtmlViewer({
       : (primaryId && selectedManualEditTargetRef.current?.id === primaryId
         ? selectedManualEditTargetRef.current
         : null);
-    const hostChrome = Boolean(
-      ids.length === 1
-      && primary
-      && !drawOverlayOpen
-      && !hideManualEditBoxDrag
-      && canResizeTarget(primary, { inlineTextEditing: manualEditInlineTextEditing }),
+    const hostChrome = shouldPostHostChromeDuringTipRemountSuppress(
+      Boolean(
+        ids.length === 1
+        && primary
+        && !drawOverlayOpen
+        && !hideManualEditBoxDrag
+        && canResizeTarget(primary, { inlineTextEditing: manualEditInlineTextEditing }),
+      ),
+      manualEditTipRemountChromeSuppressedRef.current,
     );
     win.postMessage({
       type: 'od-edit-selected-target',
@@ -7993,7 +8004,27 @@ function HtmlViewer({
   function clearManualEditTipRemountGeometryGrace() {
     manualEditTipRemountGeometryGraceIdRef.current = null;
     manualEditTipRemountGeometryGraceUntilRef.current = 0;
+    manualEditTipRemountChromeSuppressedRef.current = false;
     setManualEditTipRemountChromeSuppressed(false);
+    if (manualEditTipRemountChromeSafetyTimeoutRef.current != null) {
+      window.clearTimeout(manualEditTipRemountChromeSafetyTimeoutRef.current);
+      manualEditTipRemountChromeSafetyTimeoutRef.current = null;
+    }
+  }
+
+  /** Tip remount unmounts overlays — abort in-flight gesture + live preview (457). */
+  function abortManualEditGestureForTipYieldFreezeSync() {
+    if (!shouldAbortManualEditGestureForTipYieldFreezeSync(
+      manualEditResizeSessionActiveRef.current,
+    )) {
+      return;
+    }
+    cancelManualEditStyleDraft();
+    manualEditResizeSessionActiveRef.current = false;
+    manualEditResizePausedRef.current = false;
+    setManualEditResizeDraftSize(null);
+    setManualEditMoveDraftPos(null);
+    setManualEditGroupDraftRects(null);
   }
 
   /** Selection left tip-remount grace primary — clear so overlay remasures cleanly. */
@@ -8021,13 +8052,27 @@ function HtmlViewer({
       selectedIds,
     );
     if (!echo && !reseedMulti) return;
+    // Tip remount would drop host overlays mid-drag — revert live preview first (457).
+    abortManualEditGestureForTipYieldFreezeSync();
     // Idle remasure after tip remount may jump layout — skip wild-jump once.
     const graceId = selectedManualEditTargetIdRef.current;
     if (graceId) {
+      const graceUntil = Date.now() + 800;
       manualEditTipRemountGeometryGraceIdRef.current = graceId;
-      manualEditTipRemountGeometryGraceUntilRef.current = Date.now() + 800;
+      manualEditTipRemountGeometryGraceUntilRef.current = graceUntil;
       // Suppress chrome until remasure — avoid pre-tip overlay flash (455).
+      manualEditTipRemountChromeSuppressedRef.current = true;
       setManualEditTipRemountChromeSuppressed(true);
+      if (manualEditTipRemountChromeSafetyTimeoutRef.current != null) {
+        window.clearTimeout(manualEditTipRemountChromeSafetyTimeoutRef.current);
+      }
+      // Escape hatch: remasure never arrives — do not leave chrome stuck (457).
+      manualEditTipRemountChromeSafetyTimeoutRef.current = window.setTimeout(() => {
+        manualEditTipRemountChromeSafetyTimeoutRef.current = null;
+        if (manualEditTipRemountGeometryGraceUntilRef.current === graceUntil) {
+          clearManualEditTipRemountGeometryGrace();
+        }
+      }, 820);
     }
     if (manualEditFreezeEchoTimeoutRef.current != null) {
       window.clearTimeout(manualEditFreezeEchoTimeoutRef.current);
@@ -9735,8 +9780,31 @@ function HtmlViewer({
           manualEditRemeasureAwaiterRef.current.complete(rectId, measured);
         }
         // Gesture session: awaiter done; never idle remasure / wild-jump (51–53).
-        if (manualEditResizeSessionActiveRef.current && !isHandoffRect) return;
-        if (!measured || isHandoffRect) return;
+        // Still expire tip grace so chrome suppress cannot stick behind a drag (457).
+        if (manualEditResizeSessionActiveRef.current && !isHandoffRect) {
+          const nowMs = Date.now();
+          if (shouldClearTipRemountGeometryGraceOnExpiry(
+            manualEditTipRemountGeometryGraceIdRef.current,
+            nowMs,
+            manualEditTipRemountGeometryGraceUntilRef.current,
+          )) {
+            clearManualEditTipRemountGeometryGrace();
+          }
+          return;
+        }
+        if (!measured || isHandoffRect) {
+          // Failed tip remasure — release suppress so handles are not stuck (457).
+          if (
+            !isHandoffRect
+            && shouldReleaseTipRemountChromeOnFailedRemasure(
+              manualEditTipRemountChromeSuppressedRef.current,
+              Boolean(measured),
+            )
+          ) {
+            clearManualEditTipRemountGeometryGrace();
+          }
+          return;
+        }
 
         // Idle remasure only: reject wild jumps; equal geometry skips inside apply.
         // Gesture/handoff never reach this guard — resize session / isHandoffRect

@@ -110,6 +110,37 @@ export function shouldSuppressManualEditChromeUntilTipRemasure(
 }
 
 /**
+ * Tip-yield freeze remount unmounts host overlays — abort an in-flight
+ * resize/move session first so half-applied preview styles do not stick (457).
+ */
+export function shouldAbortManualEditGestureForTipYieldFreezeSync(
+  resizeSessionActive: boolean,
+): boolean {
+  return resizeSessionActive;
+}
+
+/**
+ * Failed tip remasure must not leave chrome suppressed forever (457).
+ */
+export function shouldReleaseTipRemountChromeOnFailedRemasure(
+  chromeSuppressed: boolean,
+  measuredOk: boolean,
+): boolean {
+  return chromeSuppressed && !measuredOk;
+}
+
+/**
+ * While host resize chrome is suppressed, do not ask the iframe for hostChrome
+ * (pointer-events:none + no handles) — keep the selection ring clickable (457).
+ */
+export function shouldPostHostChromeDuringTipRemountSuppress(
+  wouldHostChrome: boolean,
+  chromeSuppressed: boolean,
+): boolean {
+  return wouldHostChrome && !chromeSuppressed;
+}
+
+/**
  * When od-edit-targets identity fingerprint is unchanged, still patch geometry
  * for the selected set so multi overlay / chrome do not stay on pre-tip rects
  * (450 / 기획 59 + 51–53).

@@ -9,6 +9,9 @@ import {
   shouldRequestTipRemountRemasureAfterSrcDocLoad,
   shouldSkipSrcDocTransportRemountForManualEditFreezeTipSync,
   shouldSuppressManualEditChromeUntilTipRemasure,
+  shouldAbortManualEditGestureForTipYieldFreezeSync,
+  shouldReleaseTipRemountChromeOnFailedRemasure,
+  shouldPostHostChromeDuringTipRemountSuppress,
   shouldPatchSelectedGeometryFromTargetsBroadcast,
   shouldReseedManualEditMultiInspectorAfterFreezeSync,
   shouldReseedSingleInspectorAfterTipYieldMixedClear,
@@ -118,6 +121,23 @@ describe('manual edit freeze reset', () => {
   it('suppresses selection chrome until tip remasure releases latch', () => {
     expect(shouldSuppressManualEditChromeUntilTipRemasure(true)).toBe(true);
     expect(shouldSuppressManualEditChromeUntilTipRemasure(false)).toBe(false);
+  });
+
+  it('aborts in-flight gestures before tip-yield freeze sync', () => {
+    expect(shouldAbortManualEditGestureForTipYieldFreezeSync(true)).toBe(true);
+    expect(shouldAbortManualEditGestureForTipYieldFreezeSync(false)).toBe(false);
+  });
+
+  it('keeps hostChrome off while tip-remount chrome is suppressed', () => {
+    expect(shouldPostHostChromeDuringTipRemountSuppress(true, true)).toBe(false);
+    expect(shouldPostHostChromeDuringTipRemountSuppress(true, false)).toBe(true);
+    expect(shouldPostHostChromeDuringTipRemountSuppress(false, true)).toBe(false);
+  });
+
+  it('releases tip-remount chrome suppress when remasure fails', () => {
+    expect(shouldReleaseTipRemountChromeOnFailedRemasure(true, false)).toBe(true);
+    expect(shouldReleaseTipRemountChromeOnFailedRemasure(true, true)).toBe(false);
+    expect(shouldReleaseTipRemountChromeOnFailedRemasure(false, false)).toBe(false);
   });
 
   it('patches selected geometry when targets identity fingerprint is unchanged', () => {
