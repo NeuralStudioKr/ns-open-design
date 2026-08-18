@@ -2731,7 +2731,7 @@ export const tr: Dict = {
   'teamver.homeCreate.summaryAttach': '{count} attached',
   'teamver.homeCreate.slideCountPlaceholder': 'Custom',
   'teamver.homeCreate.slideCountUnit': 'slides',
-  'teamver.homeCreate.slideCountAria': 'Custom slide count (1–40)',
+  'teamver.homeCreate.slideCountAria': 'Custom slide count (1–15)',
   'teamver.homeCreate.summarySlideCount': '{count} slides',
   'teamver.homeCreate.errorTemplateLost': 'The selected template was lost. Pick it again on the template step.',
   'teamver.homeCreate.errorCreateFailed': 'Could not create the project — please try again.',

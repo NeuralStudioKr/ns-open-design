@@ -367,7 +367,7 @@ async function resolveRenderableHtmlSource(options: {
   if (!isViteDevHtmlEntry(options.html) || !options.allowVersionedDistLookup) {
     return {
       fileName: options.fileName,
-      html: repairArtifactDocumentHead(options.html),
+      html: healDeckHtmlForStandaloneExport(options.html),
       mtimeMs: options.fileMtimeMs,
     };
   }
@@ -377,13 +377,15 @@ async function resolveRenderableHtmlSource(options: {
     const dist = await readProjectFile(options.projectsRoot, options.projectId, distFileName);
     return {
       fileName: distFileName,
-      html: repairArtifactDocumentHead(rewriteViteDistRootAssetUrls(dist.buffer.toString('utf8'))),
+      html: healDeckHtmlForStandaloneExport(
+        rewriteViteDistRootAssetUrls(dist.buffer.toString('utf8')),
+      ),
       mtimeMs: dist.mtime,
     };
   } catch {
     return {
       fileName: options.fileName,
-      html: repairArtifactDocumentHead(options.html),
+      html: healDeckHtmlForStandaloneExport(options.html),
       mtimeMs: options.fileMtimeMs,
     };
   }

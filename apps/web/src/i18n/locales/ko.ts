@@ -2736,7 +2736,7 @@ export const ko: Dict = {
   'teamver.homeCreate.summaryAttach': '첨부 {count}',
   'teamver.homeCreate.slideCountPlaceholder': '직접',
   'teamver.homeCreate.slideCountUnit': '장',
-  'teamver.homeCreate.slideCountAria': '슬라이드 장수 직접 지정 (1–40)',
+  'teamver.homeCreate.slideCountAria': '슬라이드 장수 직접 지정 (1–15)',
   'teamver.homeCreate.summarySlideCount': '{count}장',
   'teamver.homeCreate.errorTemplateLost': '선택한 템플릿 정보가 유실되었습니다. 템플릿 단계에서 다시 골라 주세요.',
   'teamver.homeCreate.errorCreateFailed': '프로젝트를 만들지 못했습니다 — 다시 시도해 주세요.',

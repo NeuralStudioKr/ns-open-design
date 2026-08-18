@@ -63,6 +63,8 @@ full `example.html`을 시스템 프롬프트에 넣지 않는다는 방침은 �
 - 사용자 입력값 우선: `정확히 1장`처럼 사용자가 1장을 명시하면 1장은 정상 산출물이다.
 - 사용자가 2–4장을 명시하면 그 수 미만은 저장하지 않는다.
 - 미지정/기본/다장 요청의 Template Clone content-fill은 최소 3장 미만이면 미완성으로 보고 `skipped-incomplete` 경로로 보낸다.
+- UI quick setting이 비어 있어도 사용자 자연어 본문(`1장`, `2페이지`, `8장 발표자료`)에서 명시 장수를 추출한다. first fill은 안정성을 위해 5–6장으로 cap할 수 있지만, `User requested slide count`는 원래 목표로 남겨 후속 top-up/guard가 사용자 의도를 잃지 않게 한다.
+- first fill이 안정성 cap 때문에 사용자 요청 장수보다 짧게 끝나면 slide-count top-up 턴을 자동 예약할 수 있다. 이 내부 프롬프트는 auto-continue와 같은 숨김 사용자 턴으로 렌더링되어야 하며, 댓글 편집/미완성 복구와 동시에 실행하지 않는다.
 - seed/system prompt에는 기본 5–6장, topic-only 기본 outline, named motif fidelity를 명시한다. Daisy/Capsule/Terminal 등 제목·kit vocabulary에 있는 대표 motif는 cover와 body slide에 실제로 보여야 하며, generic circles/stars는 대체물이 아니다.
 
 이 보강은 템플릿별 one-off가 아니라 전체 Template Clone fill 공통 guard다. 1장 명시 요청은 막지 않으면서, 사용자가 다장 발표자료를 기대하는 기본 흐름에서 1장짜리 placeholder가 “완료”로 저장되는 회귀를 막는다.
@@ -970,3 +972,5 @@ User-message 쪽 `[Existing deck edit]` / `<attached-preview-comments>` 주입�
 | 2026-08-18 | §0.23 — Capsule persist/preview 후처리. Google Fonts css2 `@import` `;` 절단 debris + surface-bleed `.slide !important`가 fill look을 지움. quote-aware allowlist import + 그라데이션 슬라이드는 letterbox만 promote. |
 | 2026-08-18 | §0.21 — 전체 템플릿 Motif cue 보존 강화. 템플릿명 cue + 실제 motif class/token 목록을 `### Motif vocabulary`로 유지하고, 공식 deck 전체에서 slim 결과까지 motif가 살아남는지 테스트한다. |
 | 2026-08-18 | §0.0a — Template Clone fill 1장 cover-only 저장 방지. 사용자 1장 명시는 허용하되, 미지정/다장 요청에서 1–2장 결과는 미완성으로 저장 전 차단하고 기본 5–6장 outline + named motif fidelity를 seed/system prompt에 고정했다. |
+| 2026-08-18 | §0.0a 보강 — UI slideCountHint가 없어도 자연어 본문에서 `1장/2페이지/8장`을 추출한다. 명시 1장은 허용, 큰 장수는 first-fill cap과 원래 목표를 분리 기록해 1장 cover-only 회귀와 사용자 입력 무시를 동시에 방지한다. |
+| 2026-08-18 | §0.0a 보강 — first-fill 안정성 cap 이후 부족한 장수는 slide-count top-up 자동 턴으로 이어갈 수 있게 하고, 해당 내부 프롬프트는 채팅창에서 숨김 처리하도록 회귀 테스트를 추가했다. |
