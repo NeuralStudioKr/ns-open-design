@@ -1467,7 +1467,7 @@ This is the first content fill after a LOOK seed (OD-style create, not Motif rew
 
 **Close a compact deck THIS TURN.** Motif SVG polish is a follow-up edit, not this turn.
 
-- Bind kit palette hex + fonts + Slide surface on \`html\`/\`body\` AND every \`.slide\`.
+- Bind kit palette hex + fonts + Slide surface on \`html\`/\`body\` AND every \`.slide\` **edge-to-edge** (full 1920×1080). FORBIDDEN: white outer slide + inner cream paper panel that leaves white top/bottom bands. White title cards on cream paper are OK.
 - Title-first: cover must have a real \`h1\`/\`h2\` title + lead BEFORE any decoration.
 - Decoration = CSS circles / rounded cards / chunky borders in kit palette only.
 - **FORBIDDEN this turn:** Motif \`<svg>\` (especially with nested \`<style>\`), Decoration/Layout CSS dumps, long \`<head>\`/\`<style>\` before slide 1, emoji ornament rows, Neutral \`#0f172a\`, terracotta \`#c96442\`.
@@ -1665,7 +1665,7 @@ export function composeTeamverSlideApiPrompt({
       const hardRequirements = templateCloneContentFill === true
         ? (
           'Hard requirements (first content-fill — OD-style CREATE, Motif deferred):\n'
-          + '- Bind kit palette hex + fonts + Slide surface on html/body AND every `.slide`.\n'
+          + '- Bind kit palette hex + fonts + Slide surface on html/body AND every `.slide` edge-to-edge (no white outer + inner cream panel).\n'
           + '- Title-first body: cover title + lead BEFORE any decoration. Close `</artifact>` this turn.\n'
           + '- Decoration = CSS shapes/borders in kit palette ONLY. Do NOT paste Motif `<svg>` or Decoration CSS dumps.\n'
           + '- Prefer 5–6 slides unless the user asked for an exact count. No Neutral `#0f172a` / terracotta `#c96442`.\n'

@@ -153,6 +153,7 @@ import {
   type ResearchOptions,
 } from '@open-design/contracts';
 import { repairArtifactDocumentHeadIfNeeded } from '../runtime/artifact-document-head';
+import { repairDeckSlideSurfaceBleed } from '../artifacts/deck-slide-surface';
 import { embedUiLabel } from '../teamver/embedUiLabels';
 import {
   deriveAgentRevisionLabel,
@@ -5147,7 +5148,9 @@ export function ProjectView({
       const title = art.title || art.identifier || fileName;
       let htmlBody =
         ext === '.html'
-          ? repairArtifactDocumentHeadIfNeeded(artifactToPersist.html)
+          ? repairDeckSlideSurfaceBleed(
+            repairArtifactDocumentHeadIfNeeded(artifactToPersist.html),
+          )
           : artifactToPersist.html;
       if (
         ext === '.html'

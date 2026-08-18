@@ -630,9 +630,11 @@ OD succeeds by editing cloned HTML text. Teamver BYOK cannot — so regenerate c
 
 **Body / title-first (non-negotiable):**
 1. Status sentence → open \`<artifact type="deck" identifier="deck">\`.
-2. First bytes: \`<!doctype html><html lang="ko"><body>…<section class="slide" style="width:1920px;height:1080px;…">\` with a real \`h1\`/\`h2\` title + lead **before any decoration**.
+2. First bytes: \`<!doctype html><html lang="ko"><body style="margin:0;background:<kit surface hex>;color:<kit ink hex>"><section class="slide" style="width:1920px;height:1080px;box-sizing:border-box;overflow:hidden;background:<kit surface hex>;color:<kit ink hex>;…">\` with a real \`h1\`/\`h2\` title + lead **before any decoration**.
 3. Prefer **5–6** filled slides unless the user asked for an exact count.
 4. Close \`</body></html></artifact>\` in this same response.
+
+**Full-bleed surface:** kit Slide surface must paint \`html\`/\`body\` AND every \`.slide\` edge-to-edge. FORBIDDEN: white outer canvas with an inner cream paper panel (white top/bottom bands). White title cards on cream paper are OK.
 
 **FORBIDDEN this turn:** Motif \`<svg>\` (esp. nested \`<style>\`), Decoration/Layout CSS dumps, long \`<head>\`, Neutral \`#0f172a\`, terracotta \`#c96442\`, emoji ornament rows, parroting the user brief as slide titles.
 

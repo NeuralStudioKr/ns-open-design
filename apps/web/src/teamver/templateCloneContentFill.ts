@@ -239,6 +239,7 @@ export function templateCloneContentFillHardRules(): string[] {
     '- `<head>` is FORBIDDEN on this fill turn. Do not emit `<head>`, `<title>`, meta tags, or a style prelude before slide 1.',
     '- The first 800 characters after `<artifact` MUST include `<body` and one complete `<section class="slide">` with real topical copy (cover title + lead).',
     '- Motif SVG OVERRIDE (wins over any system Motif-copy mandate): ZERO `<svg>` tags this turn. Do NOT open `<svg` or paste nested `<style>` inside SVG. First fill decoration = kit palette hex + CSS circles/rounded cards/chunky borders ONLY. If you already started a Motif SVG, abandon it and restart with `<h1>` then lead `<p>`.',
+    '- Full-bleed surface: bind kit Slide surface hex on `html`/`body` AND every `<section class="slide" style="…background:<kit surface>…">` edge-to-edge for the full 1920×1080 canvas. FORBIDDEN: white/default outer slide with an inner cream "paper" panel that leaves white bands at top/bottom. White title cards ON cream paper are OK.',
     '- Keep `<style>` very short (kit tokens + fonts only, ideally under ~1KB) and place it after slide 1 or omit it in favor of inline styles. Never dump the whole template stylesheet.',
     '- Fill REAL topical titles/body (no "…", no "만들어줘", no create-slides boilerplate). Slide count follows the brief/Quick settings — not the template demo page lineup.',
     '- Prefer finishing a closed `</artifact>` this turn over perfect motif fidelity. A complete compact Daisy-lookalike beats a truncated SVG/CSS shell.',
