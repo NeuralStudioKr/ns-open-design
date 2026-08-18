@@ -120,6 +120,9 @@ describe('FileViewer revision tip advance after undo', () => {
     expect(fileViewer).toContain('do NOT depend on manualEditFrozenSource');
     expect(fileViewer).toContain('shouldSkipSrcDocTransportRemountForManualEditFreezeTipSync');
     expect(fileViewer).toContain('Tip-yield freeze already reloads via srcDoc');
+    expect(fileViewer).toContain('shouldSuppressManualEditChromeUntilTipRemasure');
+    expect(fileViewer).toContain('Suppress chrome until remasure');
+    expect(fileViewer).toContain('Apply tip geometry before releasing chrome suppress');
     expect(fileViewer).toContain('shouldPatchSelectedGeometryFromTargetsBroadcast');
     expect(fileViewer).toContain('Identity unchanged — still patch selected rects');
     expect(fileViewer).toContain('Source-only Mixed — same plan helper as tip-yield / remove');
@@ -160,7 +163,8 @@ describe('FileViewer revision tip advance after undo', () => {
     expect(fileViewer).toContain('Sibling remasure must not consume primary grace');
     expect(fileViewer).toContain('const consumeGrace = shouldConsumeTipRemountGeometryGraceOnRemasure');
     expect(fileViewer).toContain('if (consumeGrace)');
-    expect(fileViewer).toContain('shouldRefreshHostPaintAfterTipRemountRemasure(consumeGrace)');
+    expect(fileViewer).toContain('shouldRefreshHostPaintAfterTipRemountRemasure(true)');
+    expect(fileViewer).toContain('Apply tip geometry before releasing chrome suppress');
     expect(fileViewer).toContain('Multi tip-yield reseed and Mixed→single both arm tip-remount grace');
     expect(fileViewer).toContain('manualEditSelectedIdentityFingerprintRef.current =');
     expect(fileViewer).toContain('manualEditTargetsIdentityFingerprintRef.current =');

@@ -100,6 +100,16 @@ export function shouldSkipSrcDocTransportRemountForManualEditFreezeTipSync(
 }
 
 /**
+ * Hide selection chrome while tip-remount wait for first remasure so overlays
+ * do not flash at pre-tip composed rects (455).
+ */
+export function shouldSuppressManualEditChromeUntilTipRemasure(
+  chromeSuppressed: boolean,
+): boolean {
+  return chromeSuppressed;
+}
+
+/**
  * When od-edit-targets identity fingerprint is unchanged, still patch geometry
  * for the selected set so multi overlay / chrome do not stay on pre-tip rects
  * (450 / 기획 59 + 51–53).

@@ -8,6 +8,7 @@ import {
   shouldRequestTipRemountRemasureAfterFreezeSync,
   shouldRequestTipRemountRemasureAfterSrcDocLoad,
   shouldSkipSrcDocTransportRemountForManualEditFreezeTipSync,
+  shouldSuppressManualEditChromeUntilTipRemasure,
   shouldPatchSelectedGeometryFromTargetsBroadcast,
   shouldReseedManualEditMultiInspectorAfterFreezeSync,
   shouldReseedSingleInspectorAfterTipYieldMixedClear,
@@ -112,6 +113,11 @@ describe('manual edit freeze reset', () => {
     expect(shouldSkipSrcDocTransportRemountForManualEditFreezeTipSync(true, true, true)).toBe(false);
     expect(shouldSkipSrcDocTransportRemountForManualEditFreezeTipSync(false, false, true)).toBe(false);
     expect(shouldSkipSrcDocTransportRemountForManualEditFreezeTipSync(false, true, false)).toBe(false);
+  });
+
+  it('suppresses selection chrome until tip remasure releases latch', () => {
+    expect(shouldSuppressManualEditChromeUntilTipRemasure(true)).toBe(true);
+    expect(shouldSuppressManualEditChromeUntilTipRemasure(false)).toBe(false);
   });
 
   it('patches selected geometry when targets identity fingerprint is unchanged', () => {

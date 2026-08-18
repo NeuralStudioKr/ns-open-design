@@ -2665,6 +2665,34 @@ describe('manual edit source patches', () => {
     expect(html).toContain('<span>ok</span>');
   });
 
+  it('scrubs SMIL attributeName dynsrc/lowsrc/manifest/codebase/classid/data remote urls', () => {
+    // Last MANUAL_EDIT_SMIL_NAV_ATTR_NAMES residuals (456).
+    const source = [
+      '<!doctype html><html><body>',
+      '<div data-od-id="host"><span>ok</span></div>',
+      '</body></html>',
+    ].join('');
+    const dirty = applyManualEditPatch(source, {
+      kind: 'set-outer-html',
+      id: 'host',
+      html: [
+        '<div data-od-id="host">',
+        '<img><set attributeName="dynsrc" to="https://evil.example/d.mp4"></set></img>',
+        '<img><animate attributeName="lowsrc" values="https://evil.example/lo.png;/ok"></animate></img>',
+        '<html><set attributeName="manifest" to="https://evil.example/app.cache"></set></html>',
+        '<object><animate attributeName="codebase" values="https://evil.example/cb;/ok"></animate></object>',
+        '<object><set attributeName="classid" to="https://evil.example/cl"></set></object>',
+        '<object><animate attributeName="data" values="https://evil.example/data.bin;/ok"></animate></object>',
+        '<span>ok</span>',
+        '</div>',
+      ].join(''),
+    });
+    expect(dirty.ok, dirty.error).toBe(true);
+    const html = readManualEditOuterHtml(dirty.source, 'host');
+    expect(html).not.toContain('evil.example');
+    expect(html).toContain('<span>ok</span>');
+  });
+
   it('rejects namespaced fill/mask via set-attributes local-name gate', () => {
     const source = [
       '<!doctype html><html><body>',

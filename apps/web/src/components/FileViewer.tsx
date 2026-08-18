@@ -335,6 +335,7 @@ import {
   shouldEchoManualEditSelectionAfterFreezeSync,
   shouldRequestTipRemountRemasureAfterSrcDocLoad,
   shouldSkipSrcDocTransportRemountForManualEditFreezeTipSync,
+  shouldSuppressManualEditChromeUntilTipRemasure,
   shouldPatchSelectedGeometryFromTargetsBroadcast,
   shouldReseedManualEditMultiInspectorAfterFreezeSync,
   shouldReseedSingleInspectorAfterTipYieldMixedClear,
@@ -5483,6 +5484,8 @@ function HtmlViewer({
   /** Tip-yield freeze remount — skip idle wild-jump deny until first remasure. */
   const manualEditTipRemountGeometryGraceIdRef = useRef<string | null>(null);
   const manualEditTipRemountGeometryGraceUntilRef = useRef(0);
+  /** Hide resize/multi chrome until tip remasure applies tip geometry (455). */
+  const [manualEditTipRemountChromeSuppressed, setManualEditTipRemountChromeSuppressed] = useState(false);
   /** Deferred Mixed/single reseed after freeze — cancelled when a newer tip-yield schedules. */
   const manualEditFreezeEchoTimeoutRef = useRef<number | null>(null);
   /** Confirm refuse → suppress disk tip prefer until refresh commits. */
@@ -7990,6 +7993,7 @@ function HtmlViewer({
   function clearManualEditTipRemountGeometryGrace() {
     manualEditTipRemountGeometryGraceIdRef.current = null;
     manualEditTipRemountGeometryGraceUntilRef.current = 0;
+    setManualEditTipRemountChromeSuppressed(false);
   }
 
   /** Selection left tip-remount grace primary — clear so overlay remasures cleanly. */
@@ -8022,6 +8026,8 @@ function HtmlViewer({
     if (graceId) {
       manualEditTipRemountGeometryGraceIdRef.current = graceId;
       manualEditTipRemountGeometryGraceUntilRef.current = Date.now() + 800;
+      // Suppress chrome until remasure — avoid pre-tip overlay flash (455).
+      setManualEditTipRemountChromeSuppressed(true);
     }
     if (manualEditFreezeEchoTimeoutRef.current != null) {
       window.clearTimeout(manualEditFreezeEchoTimeoutRef.current);
@@ -9769,14 +9775,17 @@ function HtmlViewer({
           manualEditTipRemountGeometryGraceUntilRef.current,
         );
         if (consumeGrace) {
+          // Apply tip geometry before releasing chrome suppress (same tick batch) (455).
+          applyManualEditMeasuredGeometry(measured);
           clearManualEditTipRemountGeometryGrace();
+          // Multi tip-yield reseed and Mixed→single both arm tip-remount grace;
+          // refresh host paint once remasure consumes it (431/430).
+          if (shouldRefreshHostPaintAfterTipRemountRemasure(true)) {
+            refreshManualEditHostPaintRect(measured.id, { force: true });
+          }
+          return;
         }
         applyManualEditMeasuredGeometry(measured);
-        // Multi tip-yield reseed and Mixed→single both arm tip-remount grace;
-        // refresh host paint once remasure consumes it (431/430).
-        if (shouldRefreshHostPaintAfterTipRemountRemasure(consumeGrace)) {
-          refreshManualEditHostPaintRect(measured.id, { force: true });
-        }
         return;
       }
     }
@@ -14091,6 +14100,7 @@ function HtmlViewer({
     && !hideManualEditBoxDrag
     && !drawOverlayOpen
     && !manualEditMultiSelectActive
+    && !shouldSuppressManualEditChromeUntilTipRemasure(manualEditTipRemountChromeSuppressed)
     && selectedManualEditTarget
     && canResizeTarget(selectedManualEditTarget, {
       inlineTextEditing: manualEditInlineTextEditing,
@@ -14159,7 +14169,8 @@ function HtmlViewer({
   const manualEditMultiSelectOverlay =
     manualEditMode
     && !drawOverlayOpen
-    && manualEditMultiSelectActive ? (
+    && manualEditMultiSelectActive
+    && !shouldSuppressManualEditChromeUntilTipRemasure(manualEditTipRemountChromeSuppressed) ? (
       <ManualEditMultiSelectOverlay
         targets={manualEditMultiSelectOverlayTargets}
         previewScale={manualEditHostScale}
