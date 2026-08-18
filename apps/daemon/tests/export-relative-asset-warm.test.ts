@@ -27,6 +27,11 @@ describe('export relative asset warm wiring', () => {
     );
   });
 
+  it('resolves bare html-ppt folder ids to example- install ids on plugin GET', () => {
+    expect(server).toContain("aliasBase.startsWith('example-')");
+    expect(server).toContain('`example-${aliasBase}`');
+  });
+
   it('retries failed Chromium image fetches once during inlining', () => {
     expect(headless).toContain("cache: 'reload'");
     expect(headless).toContain('setTimeout(r, 400)');
