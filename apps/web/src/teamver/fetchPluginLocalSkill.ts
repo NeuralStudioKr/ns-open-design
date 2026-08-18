@@ -67,16 +67,36 @@ function withFrontmatterDescriptionHeader(
   return `## Visual summary (from template frontmatter)\n\n${description}\n\n${bodyOnly}`;
 }
 
+function withDeckPluginLookup(options: {
+  includeHidden?: boolean;
+  bypassSlideOnlyCatalogFilter?: boolean;
+  allowAuthRecovery?: boolean;
+} = {}) {
+  return {
+    includeHidden: true,
+    bypassSlideOnlyCatalogFilter: true,
+    ...options,
+  };
+}
+
+async function resolveDeckPluginRecord(
+  pluginId: string,
+): Promise<InstalledPluginRecord | null> {
+  const id = pluginId.trim();
+  if (!id) return null;
+  const opts = withDeckPluginLookup();
+  const direct = await getInstalledPlugin(id, opts);
+  if (direct) return direct;
+  const alias = id.startsWith('example-') ? id.slice('example-'.length) : `example-${id}`;
+  if (!alias || alias === id) return null;
+  return getInstalledPlugin(alias, opts);
+}
+
 /** Official example.html (+ sibling CSS) for persist/export look merge. */
 export async function fetchPluginPreviewLookSource(
   pluginId: string,
 ): Promise<string | null> {
-  const id = pluginId.trim();
-  if (!id) return null;
-  const plugin = await getInstalledPlugin(id, {
-    includeHidden: true,
-    bypassSlideOnlyCatalogFilter: true,
-  });
+  const plugin = await resolveDeckPluginRecord(pluginId);
   if (!plugin) return null;
   const previewPath = pickPluginPreviewHtmlPath(plugin.manifest) ?? 'example.html';
   const html = await fetchPluginAssetText(plugin.id, previewPath);
@@ -95,14 +115,7 @@ export async function fetchPluginPreviewLookSource(
 export async function fetchPluginLocalSkill(
   pluginId: string,
 ): Promise<PluginLocalSkillSummary | null> {
-  const id = pluginId.trim();
-  if (!id) return null;
-  const plugin = await getInstalledPlugin(id, {
-    includeHidden: true,
-    // Selected-template compose must still load a denylisted-from-picker id
-    // if metadata already pins it (or tests / deep links pass one).
-    bypassSlideOnlyCatalogFilter: true,
-  });
+  const plugin = await resolveDeckPluginRecord(pluginId);
   if (!plugin) return null;
   return readPluginLocalSkillFromRecord(plugin);
 }

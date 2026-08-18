@@ -183,6 +183,21 @@ full `example.html`을 시스템 프롬프트에 넣지 않는다는 방침은 �
 - [x] 인라인 장별 색도 per-slide paint
 - [x] daemon cover-batch가 persisted flatten bleed를 `html, body`로 완화 (cache v6)
 
+### 0.31 2026-08-18 — 공식 덱 템플릿 전부 look CSS 병합 (catalog-wide)
+
+Capsule-only 휴리스틱은 Daisy/Hermes/Pin-and-Paper/Cobalt 등에서 실패한다. compact fill이 `.slide-1` / `.slide-title` 규칙을 복사하면 “이미 look CSS 있음”으로 skip 된다.
+
+- 증명 클래스는 generic slide/deck chrome 제외
+- `@import` 웹폰트를 `<link>`로 승격
+- persist·plugin GET이 `html-ppt-*` ↔ `example-html-ppt-*` 별칭
+- export cache `v11`
+
+구현 현황:
+
+- [x] 전 `mode:deck` official example.html compact fill 병합 회귀
+- [x] pin-and-paper sibling CSS 포함
+- [x] generic `.slide-title` chrome은 skip 금지
+
 ### 0.30 2026-08-18 — 독립 HTML/PDF에 공식 템플릿 look CSS 합치기
 
 compact fill은 “전체 example.html stylesheet 금지”. 그 결과 persist/다운로드 HTML에 Capsule `.pill-*` / grain / 폰트 `<link>`가 없고 크림 타이포만 남는다. preview kit은 프롬프트용이지 파일에 주입되지 않았다.
@@ -896,6 +911,7 @@ User-message 쪽 `[Existing deck edit]` / `<attached-preview-comments>` 주입�
 | 2026-08-13 | **§0.0 정책 개정** — template = layout vocabulary + visual look, 페이지 수/순서/구성은 브리프 기반. content-swap → pick-and-choose layout roles. daemon Clone default count = 6 (shells.length 아님), `pickTemplateShells` role-based scoring 도입. `template-visual-kit.ts` HARD_RULES 재작성, `DEFAULT_MAX_CHARS` 12000 → 14000. |
 | 2026-08-18 | Clone content-fill motif 보정 — 8/13 SVG hang 방지 패치가 first fill에서 `Motif sprites`/`Decoration CSS`/`Layout CSS`를 통째로 생략해 Daisy/Capsule 템플릿 정체성이 약해졌다. `slimTemplateVisualKitForFill`이 큰 SVG sprite sheet와 전체 stylesheet dump는 계속 제거하되, Daisy star/rainbow·Capsule pill/capsule·Terminal scanline 같은 compact motif recipe와 짧은 Decoration/Layout CSS cue를 보존하도록 변경했다. |
 | 2026-08-18 | §0.20 — html-ppt identity scope. 공유 `:root --bg:#ffffff` 대신 `.tpl-*` host 토큰/슬라이드 surface/폰트를 kit 계약으로 쓰고, SKILL `copy index.html` filesystem 지시를 neutralize. |
+| 2026-08-18 | §0.31 — 전 official `mode:deck` 템플릿 look CSS 병합. generic `.slide-title` chrome 오인 skip 금지. `@import` 폰트·`example-` 별칭·cache v11. |
 | 2026-08-18 | §0.30 — compact fill에 빠진 공식 Capsule/템플릿 look CSS를 persist·독립 HTML/PDF에 합침. `.pill-*` / 폰트 `<link>` / Motif 규칙. |
 | 2026-08-18 | §0.29 — 독립 HTML/PDF가 `--shell` 레터박스·카드 shadow로 look을 지우지 않음. compact export `#0b0c10` 제거. daemon payload가 persist heal을 탐. |
 | 2026-08-18 | §0.28 — persist/salvage가 `<div class="slide">`를 1급 호스트로 봄. `.slide-inner`는 제외. 잘린 BYOK 덱이 `incomplete-html-document-shell`로 skip 되지 않음. |

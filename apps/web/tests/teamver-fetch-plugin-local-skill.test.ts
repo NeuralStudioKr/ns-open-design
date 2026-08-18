@@ -1,4 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import type { InstalledPluginRecord } from '@open-design/contracts';
 
@@ -245,5 +248,16 @@ describe('fetchPluginLocalSkill', () => {
       '/api/plugins/example-html-ppt-zhangzara-daisy-days/asset/SKILL.md',
     );
     expect(local?.body).toContain('Daisy Days — use pasted motif sprites, not emoji.');
+  });
+
+  it('resolves bare folder ids and example- install ids for look-source merge', () => {
+    const source = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), '../src/teamver/fetchPluginLocalSkill.ts'),
+      'utf8',
+    );
+    expect(source).toContain('resolveDeckPluginRecord');
+    expect(source).toContain("id.startsWith('example-')");
+    expect(source).toContain('`example-${id}`');
+    expect(source).toContain('fetchPluginPreviewLookSource');
   });
 });

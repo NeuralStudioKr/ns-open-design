@@ -8836,6 +8836,19 @@ export async function startServer({
       if (byNormalizedId) return byNormalizedId;
     }
 
+    // Bare folder id ↔ bundled `example-<folder>` install id
+    // (Daisy Days: html-ppt-zhangzara-daisy-days ↔ example-html-ppt-zhangzara-daisy-days).
+    const aliasBase = normalized || id;
+    if (aliasBase) {
+      const alias = aliasBase.startsWith('example-')
+        ? aliasBase.slice('example-'.length)
+        : `example-${aliasBase}`;
+      if (alias && alias !== id && alias !== normalized) {
+        const byAlias = getInstalledPlugin(db, alias);
+        if (byAlias) return byAlias;
+      }
+    }
+
     try {
       const byEntry = db.prepare(
         `SELECT id FROM installed_plugins WHERE source_marketplace_entry_name = ?`,

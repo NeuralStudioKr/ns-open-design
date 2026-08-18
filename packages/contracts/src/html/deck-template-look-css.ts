@@ -1,13 +1,17 @@
 /**
  * Compact BYOK fill is forbidden from dumping the official example.html
  * stylesheet (token budget / Motif-SVG hang). Standalone HTML/PDF then
- * ship cream typography without Capsule `.pill-*` / Daisy motif / sibling
- * Layout CSS — users read that as "template CSS not applied".
+ * ship cream typography without that template's Motif/Layout CSS — users
+ * read that as "template CSS not applied".
  *
  * Merge the official look CSS (tokens + Motif/Layout rules + font links)
  * into the artifact when those rules are missing. Presentation chrome
  * (`.slide { opacity:0 }`, `overflow:hidden`) is neutralized so stacked
  * preview/export still shows every slide.
+ *
+ * Catalog-wide: proof that look CSS is already present must be unique
+ * Motif/Layout class *rules*, not generic `.slide-1` / `.slide-title`
+ * chrome that compact fill often copies from the kit.
  */
 
 export const OFFICIAL_DECK_LOOK_STYLE_ATTR = 'data-od-official-look-css';
@@ -19,13 +23,18 @@ export type OfficialDeckLookAssets = {
 
 const FONT_LINK_RE = /<link\b[^>]*>/gi;
 const STYLE_BODY_RE = /<style\b[^>]*>([\s\S]*?)<\/style>/gi;
-const DISTINCTIVE_LOOK_CLASS_RE =
-  /\.((?:deco-)?pill(?:-[a-z0-9_-]+)?|slide-\d+|slide-(?:title|weekly|red|hero|inner)|grain-overlay|petal(?:-[a-z0-9_-]+)?|blob(?:-[a-z0-9_-]+)?|pin-[a-z0-9_-]+|hc-[a-z0-9_-]+|tpl-[a-z0-9_-]+|s-cover|deco-[a-z0-9_-]+)/gi;
+const FONT_IMPORT_URL_RE =
+  /@import\s+(?:url\(\s*)?['"]?(https?:\/\/(?:fonts\.googleapis\.com|fonts\.gstatic\.com|db\.onlinewebfonts\.com)[^'")\s]+)['"]?\s*\)?[^;]*;/gi;
+const CLASS_SELECTOR_RE = /\.([a-zA-Z_][\w-]*)/g;
+
+/** Layout/chrome classes compact fill routinely emits — not proof of official look. */
+const GENERIC_LOOK_PROOF_CLASS_RE =
+  /^(?:slide(?:-inner|-title|-hero|-weekly|-red|-\d+)?|active|is-active|is-prev|deck(?:-shell|-stage|-slide)?|stage|ppt-slide|nav(?:-hint|-dots?|-dot)?|slide-counter|progress)$/i;
 
 const LOOK_NEUTRALIZE_CSS = `
 /* stacked preview/export: keep Motif paint, do not hide non-active slides */
 html, body { overflow: visible !important; height: auto !important; }
-.slide, .slide.active {
+.slide, .slide.active, .slide.is-active {
   opacity: 1 !important;
   pointer-events: auto !important;
 }
@@ -36,23 +45,44 @@ function hrefFromLinkTag(tag: string): string {
   return match?.[1] ?? match?.[2] ?? match?.[3] ?? '';
 }
 
-function isFontStylesheetLink(tag: string): boolean {
-  return /fonts\.googleapis\.com|fonts\.gstatic\.com/i.test(tag);
+function isFontStylesheetHref(href: string): boolean {
+  return /fonts\.googleapis\.com|fonts\.gstatic\.com|db\.onlinewebfonts\.com/i.test(href);
 }
 
-export function listDistinctiveOfficialLookClasses(css: string): string[] {
+function isFontStylesheetLink(tag: string): boolean {
+  const href = hrefFromLinkTag(tag);
+  return href ? isFontStylesheetHref(href) : /fonts\.googleapis\.com|fonts\.gstatic\.com|db\.onlinewebfonts\.com/i.test(tag);
+}
+
+function fontLinkTag(href: string): string {
+  return `<link href="${href}" rel="stylesheet">`;
+}
+
+function pushUniqueFontLink(out: string[], seenHref: Set<string>, href: string, tag?: string): void {
+  const clean = href.trim();
+  if (!clean || seenHref.has(clean)) return;
+  seenHref.add(clean);
+  out.push(tag && hrefFromLinkTag(tag) === clean ? tag : fontLinkTag(clean));
+}
+
+export function listOfficialLookProofClasses(css: string): string[] {
   const seen = new Set<string>();
   const out: string[] = [];
-  const re = new RegExp(DISTINCTIVE_LOOK_CLASS_RE.source, 'gi');
+  const re = new RegExp(CLASS_SELECTOR_RE.source, 'g');
   let match: RegExpExecArray | null;
   while ((match = re.exec(css)) !== null) {
     const name = (match[1] ?? '').toLowerCase();
-    if (!name || seen.has(name)) continue;
+    if (!name || GENERIC_LOOK_PROOF_CLASS_RE.test(name) || seen.has(name)) continue;
     seen.add(name);
     out.push(name);
-    if (out.length >= 12) break;
+    if (out.length >= 16) break;
   }
   return out;
+}
+
+/** @deprecated Use listOfficialLookProofClasses — kept for existing call sites. */
+export function listDistinctiveOfficialLookClasses(css: string): string[] {
+  return listOfficialLookProofClasses(css);
 }
 
 export function extractOfficialDeckLookAssets(
@@ -69,10 +99,7 @@ export function extractOfficialDeckLookAssets(
   while ((linkMatch = FONT_LINK_RE.exec(html)) !== null) {
     const tag = linkMatch[0] ?? '';
     if (!isFontStylesheetLink(tag)) continue;
-    const href = hrefFromLinkTag(tag);
-    if (href && seenHref.has(href)) continue;
-    if (href) seenHref.add(href);
-    fontLinks.push(tag);
+    pushUniqueFontLink(fontLinks, seenHref, hrefFromLinkTag(tag), tag);
   }
 
   const cssParts: string[] = [];
@@ -86,24 +113,46 @@ export function extractOfficialDeckLookAssets(
   if (supplemental.length >= 40) cssParts.push(supplemental);
 
   const css = cssParts.join('\n\n').trim();
+  FONT_IMPORT_URL_RE.lastIndex = 0;
+  let importMatch: RegExpExecArray | null;
+  while ((importMatch = FONT_IMPORT_URL_RE.exec(css)) !== null) {
+    pushUniqueFontLink(fontLinks, seenHref, importMatch[1] ?? '');
+  }
+
   if (!css && fontLinks.length === 0) return null;
   return { css, fontLinks };
 }
 
+function uniqueOfficialCssSnippet(css: string): string {
+  const stripped = String(css ?? '')
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/@import[^;]+;/gi, ' ')
+    .replace(/:root\s*\{[\s\S]*?\}/g, ' ')
+    .replace(/(?:html|body|\*)(?:\s*,\s*(?:html|body|\*))*\s*\{[\s\S]*?\}/g, ' ')
+    .replace(/\.slide(?:\.active|\.is-active)?\s*\{[\s\S]*?\}/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (stripped.length >= 32) return stripped.slice(0, 48);
+  const prop = /(--(?!bg\b)[a-z0-9-]+\s*:\s*[^;]{2,48})/i.exec(css);
+  return (prop?.[1] ?? '').trim();
+}
+
 /**
  * True when the artifact already contains official Motif/look *rules*
- * (not just class names on elements or `:root` tokens).
+ * (not just class names on elements, `:root` tokens, or generic `.slide-N`
+ * layout chrome).
  */
 export function deckHtmlHasOfficialLookCss(
   html: string,
   assets: OfficialDeckLookAssets,
 ): boolean {
   const dest = String(html ?? '');
-  const classes = listDistinctiveOfficialLookClasses(assets.css);
+  const classes = listOfficialLookProofClasses(assets.css);
   if (classes.length === 0) {
-    return assets.css.length > 0 && dest.includes(assets.css.slice(0, 80));
+    const snippet = uniqueOfficialCssSnippet(assets.css);
+    return snippet.length >= 24 && dest.includes(snippet);
   }
-  const needed = Math.min(3, classes.length);
+  const needed = Math.min(2, classes.length);
   let hits = 0;
   for (const name of classes) {
     const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
