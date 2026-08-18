@@ -189,7 +189,9 @@ describe('buildSrcdoc', () => {
     const srcdoc = buildSrcdoc('<link rel="stylesheet" href="https://fonts.example/app.css"><style>@import "https://fonts.example/css"; @font-face { font-family: Remote; src: url(remote.woff2); } main { color: red; }</style><main>Hero</main>');
 
     expect(srcdoc).toContain('link[rel~="stylesheet"], link[rel~="preload"], link[rel~="preconnect"]');
-    expect(srcdoc).toContain('.replace(/@import[^;]+;/gi,');
+    // Must not use naive @import[^;]+; — Google Fonts CSS2 URLs embed `;`.
+    expect(srcdoc).not.toContain('.replace(/@import[^;]+;/gi,');
+    expect(srcdoc).toMatch(/\.replace\(\/@import\\s\+/);
     expect(srcdoc).toContain('.replace(/@font-face\\s*\\{[^}]*\\}/gi,');
   });
 
@@ -554,6 +556,7 @@ describe('buildSrcdoc', () => {
     expect(srcdocSource).toContain('artifactDocumentHeadLooksIntact');
     expect(srcdocSource).toContain('repairArtifactDocumentHeadIfNeeded');
     expect(srcdocSource).toContain('repairDeckSlideSurfaceBleed');
+    expect(srcdocSource).toContain('repairArtifactStyleSheets');
     expect(srcdocSource).toContain('shouldAnnotatePreviewEditTargets');
     expect(srcdocSource).toContain('annotateMissingOdIdsOnDocument');
     expect(srcdocSource).toContain('annotateManualEditSourcePathsOnDocument');

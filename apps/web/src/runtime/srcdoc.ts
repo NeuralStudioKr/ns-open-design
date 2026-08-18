@@ -22,7 +22,7 @@ import {
   MANUAL_EDIT_DISCOVERY_SELECTOR,
   MANUAL_EDIT_SOURCE_PATH_ATTR,
 } from '../edit-mode/bridge';
-import { buildArtifactPreviewDomLeakGuardScript, repairArtifactDocumentHead } from '@open-design/contracts';
+import { buildArtifactPreviewDomLeakGuardScript, repairArtifactDocumentHead, repairArtifactStyleSheets } from '@open-design/contracts';
 import { stripConflictingSrcDocCspBaseUri } from './authenticatedHtmlSrcDoc';
 import {
   injectStackedDeckViewport,
@@ -128,7 +128,9 @@ export function buildSrcdoc(
   options: SrcdocOptions = {}
 ): string {
   const repairedHead = repairDeckSlideSurfaceBleed(
-    repairArtifactDocumentHeadIfNeeded(html),
+    repairArtifactStyleSheets(
+      repairArtifactDocumentHeadIfNeeded(html),
+    ),
   );
   const repaired = stripConflictingSrcDocCspBaseUri(repairedHead);
   // alreadyRepaired: avoid wrapPreviewHtmlShell re-running repair on full docs.
@@ -330,7 +332,7 @@ function injectSnapshotBridge(doc: string): string {
     var styles = cloneRoot.querySelectorAll('style');
     for (var st = 0; st < styles.length; st++) {
       styles[st].textContent = (styles[st].textContent || '')
-        .replace(/@import[^;]+;/gi, '')
+        .replace(/@import\\s+(?:url\\s*\\(\\s*(?:\"[^\"]*\"|'[^']*'|[^'\")\\s]+)\\s*\\)|(?:\"[^\"]*\"|'[^']*'))[^;]*;?/gi, '')
         .replace(/@font-face\\s*\\{[^}]*\\}/gi, '');
     }
   }

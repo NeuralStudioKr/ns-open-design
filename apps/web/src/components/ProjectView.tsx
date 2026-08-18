@@ -147,6 +147,7 @@ import { useCoalescedCallback } from '../hooks/useCoalescedCallback';
 import {
   composeSystemPrompt,
   renderPluginBlock,
+  repairArtifactStyleSheets,
   slimTemplateVisualKitForFill,
   type AudioVoiceOption,
   type MemorySystemPromptResponse,
@@ -5149,7 +5150,9 @@ export function ProjectView({
       let htmlBody =
         ext === '.html'
           ? repairDeckSlideSurfaceBleed(
-            repairArtifactDocumentHeadIfNeeded(artifactToPersist.html),
+            repairArtifactStyleSheets(
+              repairArtifactDocumentHeadIfNeeded(artifactToPersist.html),
+            ),
           )
           : artifactToPersist.html;
       if (

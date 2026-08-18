@@ -1209,6 +1209,19 @@ function decoClassMatchesAvailableSprites(
   return mentioned.some((kind) => kinds.has(kind));
 }
 
+function simplifyGoogleFontsCss2Url(url: string): string {
+  // Capsule/Daisy links use opsz axes with many `;` separators. Prefer a
+  // compact wght-only form so agents (and naive `;`-terminated strippers)
+  // are less likely to truncate mid-URL and leave Motif CSS unparseable.
+  return String(url ?? '')
+    .replace(/:ital,opsz,wght@[^&"']+/gi, ':ital,wght@400;700')
+    .replace(/:opsz,wght@[^&"']+/gi, ':wght@400;700')
+    .replace(/:ital,wght@[^&"']+/gi, (axis) => {
+      if (/400/.test(axis) && /700/.test(axis)) return ':ital,wght@400;700';
+      return axis;
+    });
+}
+
 function extractFontImportHint(html: string, fonts: string[]): string | null {
   const preferred = fonts[0];
   if (preferred) {
@@ -1220,19 +1233,28 @@ function extractFontImportHint(html: string, fonts: string[]): string | null {
       'i',
     );
     const fromImport = importRe.exec(html);
-    if (fromImport?.[2]) return `@import url('${fromImport[2]}');`;
+    if (fromImport?.[2]) {
+      const url = simplifyGoogleFontsCss2Url(fromImport[2]);
+      return `@import url('${url}');`;
+    }
     const linkRe = new RegExp(
       `href=("|')([^"']*fonts\\.googleapis\\.com[^"']*${escaped}[^"']*)\\1`,
       'i',
     );
     const fromLink = linkRe.exec(html);
-    if (fromLink?.[2]) return `@import url('${fromLink[2]}');`;
+    if (fromLink?.[2]) {
+      const url = simplifyGoogleFontsCss2Url(fromLink[2]);
+      // Prefer a head <link> so Motif CSS in body <style> cannot be poisoned
+      // by a truncated @import remnant (unclosed quote swallows .pill rules).
+      return `<link rel="stylesheet" href="${url}" />`;
+    }
   }
   const linkMatch =
     /href=("|\')([^"']*fonts\.googleapis\.com\/css2\?[^"']+)\1/i.exec(html)
     ?? /href=("|\')([^"']*fonts\.googleapis\.com\/css\?[^"']+)\1/i.exec(html);
   if (linkMatch?.[2]) {
-    return `@import url('${linkMatch[2]}');`;
+    const url = simplifyGoogleFontsCss2Url(linkMatch[2]);
+    return `<link rel="stylesheet" href="${url}" />`;
   }
   if (fonts.length === 0) return null;
   const families = fonts
@@ -1243,7 +1265,7 @@ function extractFontImportHint(html: string, fonts: string[]): string | null {
   const familyParam = families
     .map((name) => `family=${encodeURIComponent(name!).replace(/%20/g, '+')}:wght@400;700`)
     .join('&');
-  return `@import url('https://fonts.googleapis.com/css2?${familyParam}&display=swap');`;
+  return `<link rel="stylesheet" href="https://fonts.googleapis.com/css2?${familyParam}&display=swap" />`;
 }
 
 /** Structure cue without embedding huge/truncated SVG markup. */
@@ -1434,12 +1456,19 @@ export function extractTemplateVisualKitFromHtml(
     lines.push(`### Fonts: ${fonts.join(' | ')}`, '');
   }
   if (fontImport) {
+    const isLink = /<link\b/i.test(fontImport);
     lines.push(
-      '### Font import (put inside the short body `<style>`)',
+      isLink
+        ? '### Font import (put in `<head>` — keeps Motif CSS safe)'
+        : '### Font import (first line of the short body `<style>`, before Motif rules)',
       '',
-      '```css',
+      isLink ? '```html' : '```css',
       fontImport,
       '```',
+      '',
+      isLink
+        ? 'Do NOT paste this as `@import` inside Motif `<style>` — a truncated Google Fonts `@import` leaves an unclosed quote that swallows `.pill` / `.deco-pill` rules.'
+        : 'If you also emit Motif CSS, keep `@import` as the first statement; never leave a truncated font URL remnant before `:root` / `.pill`.',
       '',
     );
   }

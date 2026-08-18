@@ -429,6 +429,7 @@ describe("ProjectView message loading", () => {
     expect(source).toContain("currentSlides: persistCommentSections");
     expect(source).toContain("patchedSlides: scopeResult.afterSlides");
     expect(source).toContain("repairDeckSlideSurfaceBleed(");
+    expect(source).toContain("repairArtifactStyleSheets(");
     expect(source).toContain("repairArtifactDocumentHeadIfNeeded(artifactToPersist.html)");
     expect(source).toContain("stabilizeVisualMarkDeckHtml(");
     expect(source).toMatch(
