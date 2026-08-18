@@ -30,6 +30,8 @@ export type TemplateCloneDeckResult =
       slideCount: number;
       templateId: string;
       previewPath: string;
+      /** Existing filled deck.html was kept; FE must not re-stamp LOOK seed. */
+      preservedFilled?: boolean;
     }
   | {
       ok: false;
@@ -399,6 +401,7 @@ export async function seedTemplateClonedDeckOnServer(
         slideCount: countSlides(existing),
         templateId: loaded.templateId,
         previewPath: loaded.previewPath,
+        preservedFilled: true,
       };
     }
   } catch {

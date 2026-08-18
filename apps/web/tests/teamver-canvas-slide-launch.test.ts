@@ -611,7 +611,7 @@ describe("canvasSlideLaunch", () => {
     expect(app).toContain("driveCreateSlidesSourceBrief(homeDriveSourceAsset)");
     expect(app).toContain("slideCountHintFromInputs");
     expect(app).toContain("continuing with selected-template AI fill");
-    expect(app).toContain("templateClonedDeckSeeded: Boolean(seededDeckFileName)");
+    expect(app).toContain("templateClonedDeckSeeded: Boolean(seededDeckFileName) && !preservedFilledDeck");
     expect(app).toContain("selectedDeckTemplateIdFromInputs");
     expect(app).toContain("headings:");
     expect(app).toContain("Home wizard / gallery / community card");

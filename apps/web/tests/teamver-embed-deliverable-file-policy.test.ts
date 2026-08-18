@@ -10,6 +10,8 @@ import {
   partitionEmbedDesignFileSections,
   projectHasCanonicalDeckDeliverable,
   resolveCanonicalDeckEntryPath,
+  resolveFilledDeckPromotion,
+  isTemplateCloneLookSeedFile,
   shouldDeclineEmbedAutoOpen,
   shouldMinimizeEmbedLiveToolCode,
 } from "../src/teamver/branding/embedDeliverableFilePolicy";
@@ -231,6 +233,41 @@ describe("embedDeliverableFilePolicy", () => {
         { name: "deck.html" },
       ]),
     ).toBe("deck.html");
+  });
+
+  it("prefers a filled deck sibling over Clone LOOK seed deck.html", () => {
+    expect(
+      resolveCanonicalDeckEntryPath([
+        {
+          name: "deck.html",
+          artifactManifest: { metadata: { templateClonedDeckSeeded: true } },
+        },
+        {
+          name: "deck-2.html",
+          mtime: 2,
+          artifactManifest: { metadata: { templateCloneContentFilled: true } },
+        },
+      ]),
+    ).toBe("deck-2.html");
+    expect(
+      resolveFilledDeckPromotion({
+        files: [
+          {
+            name: "deck.html",
+            artifactManifest: { metadata: { templateClonedDeckSeeded: true } },
+          },
+          { name: "deck-2.html", mtime: 2 },
+        ],
+        preferredPath: "deck-2.html",
+      }),
+    ).toEqual({ entryPath: "deck.html", copyFrom: "deck-2.html" });
+    expect(
+      isTemplateCloneLookSeedFile({
+        artifactManifest: {
+          metadata: { templateClonedDeckSeeded: true, templateCloneContentFilled: true },
+        },
+      }),
+    ).toBe(false);
   });
 
   it("treats Canvas-shaped root HTML as leak cleanup targets but keeps user notes", () => {

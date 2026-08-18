@@ -2263,7 +2263,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
               metadata: {
                 ...(projectMetadata ?? {}),
                 ...templateBinding.projectMetadata,
-                templateClonedDeckSeeded: Boolean(seeded.ok),
+                templateClonedDeckSeeded: Boolean(seeded.ok) && !seeded.preservedFilled,
                 templateCloneContentFillPending: false,
               },
             });
@@ -2478,7 +2478,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
             metadata: {
               ...(projectMetadata ?? {}),
               ...templateBinding.projectMetadata,
-              templateClonedDeckSeeded: Boolean(seeded.ok),
+              templateClonedDeckSeeded: Boolean(seeded.ok) && !seeded.preservedFilled,
               templateCloneContentFillPending: false,
             },
           });

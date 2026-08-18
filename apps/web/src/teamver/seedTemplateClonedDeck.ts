@@ -19,6 +19,8 @@ export type SeedTemplateClonedDeckResult =
       templateId: string;
       /** True when HTTP failed/ambiguous but an already-seeded deck was kept. */
       recoveredExisting?: boolean;
+      /** True when daemon kept a filled deck instead of reseeding LOOK. */
+      preservedFilled?: boolean;
     }
   | {
       ok: false;
@@ -44,7 +46,9 @@ function asSeededTemplateId(...candidates: unknown[]): string {
  *
  * Authority (any one is enough, when deck.html also exists):
  * 1. `deck.html.artifact.json` metadata.templateClonedDeckSeeded
+ *    (ignored when templateCloneContentFilled is already true)
  * 2. project metadata.templateClonedDeckSeeded
+ *    (ignored when templateCloneContentFilled is already true)
  */
 export async function recoverExistingTemplateClonedDeck(
   projectId: string,
@@ -68,8 +72,15 @@ export async function recoverExistingTemplateClonedDeck(
     if (text?.trim()) {
       const json = JSON.parse(text) as {
         sourceSkillId?: unknown;
-        metadata?: { templateClonedDeckSeeded?: unknown; selectedDeckTemplateId?: unknown };
+        metadata?: {
+          templateClonedDeckSeeded?: unknown;
+          templateCloneContentFilled?: unknown;
+          selectedDeckTemplateId?: unknown;
+        };
       };
+      if (json?.metadata?.templateCloneContentFilled === true) {
+        return null;
+      }
       if (json?.metadata?.templateClonedDeckSeeded === true) {
         return {
           ok: true,
@@ -92,9 +103,13 @@ export async function recoverExistingTemplateClonedDeck(
     const meta = project?.metadata as
       | {
           templateClonedDeckSeeded?: unknown;
+          templateCloneContentFilled?: unknown;
           selectedDeckTemplateId?: unknown;
         }
       | undefined;
+    if (meta?.templateCloneContentFilled === true) {
+      return null;
+    }
     if (meta?.templateClonedDeckSeeded === true) {
       return {
         ok: true,
@@ -174,6 +189,7 @@ export async function seedTemplateClonedDeck(options: {
       fileName?: string;
       slideCount?: number;
       templateId?: string;
+      preservedFilled?: boolean;
     };
     if (!json?.ok || json.fileName !== 'deck.html') {
       return {
@@ -187,6 +203,7 @@ export async function seedTemplateClonedDeck(options: {
       fileName: 'deck.html',
       slideCount: typeof json.slideCount === 'number' ? json.slideCount : 1,
       templateId: typeof json.templateId === 'string' ? json.templateId : pluginId,
+      ...(json.preservedFilled === true ? { preservedFilled: true } : {}),
     };
   };
 

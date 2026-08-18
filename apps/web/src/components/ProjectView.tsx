@@ -533,7 +533,10 @@ import {
 import {
   isCanonicalDeckProjectPath,
   isEmbedSupportingProjectFile,
+  isRootCanonicalDeckHtmlPath,
+  isTemplateCloneLookSeedFile,
   resolveCanonicalDeckEntryPath,
+  resolveFilledDeckPromotion,
 } from '../teamver/branding/embedDeliverableFilePolicy';
 import { clearProjectCoverCache } from '../teamver/projectCoverLoader';
 import {
@@ -544,6 +547,7 @@ import {
   resolveArtifactPersistFileName,
   resolveSlideOnlySkipDiscoveryBrief,
   shouldDeferSlideOnlyDiscoveryArtifactPersist,
+  shouldReuseSameTurnHtmlWriteAsPersist,
 } from './artifact-persist';
 import { buildRepoImportPrompt, designSystemNeedsRepoConnect } from './design-system-github-evidence';
 import { collectReferencedJsxNames } from '../runtime/jsx-module-refs';
@@ -4623,9 +4627,44 @@ export function ProjectView({
       const candidate = (deckFileName ?? '').trim();
       const fromCandidate =
         candidate && isCanonicalDeckProjectPath(candidate) ? candidate.replace(/\\/g, '/') : null;
-      const entryPath =
-        fromCandidate
-        ?? resolveCanonicalDeckEntryPath(filesSnapshot);
+      const promotion = resolveFilledDeckPromotion({
+        files: filesSnapshot,
+        preferredPath: fromCandidate,
+      });
+      let filesForPin = filesSnapshot;
+      let entryPath = promotion.entryPath;
+      if (promotion.copyFrom && entryPath && isRootCanonicalDeckHtmlPath(entryPath)) {
+        try {
+          const siblingHtml = await fetchProjectFileText(project.id, promotion.copyFrom, {
+            cache: 'no-store',
+          });
+          if (siblingHtml?.trim()) {
+            await writeProjectTextFileDetailed(project.id, 'deck.html', siblingHtml, {
+              skipArtifactStubGuard: true,
+              artifactManifest: createArtifactManifest({
+                entry: 'deck.html',
+                title: project.name || 'deck',
+                artifactType: 'deck',
+                preferDeck: true,
+                sourceSkillId: project.skillId ?? undefined,
+                designSystemId: project.designSystemId,
+                metadata: {
+                  identifier: 'deck',
+                  artifactType: 'deck',
+                  inferred: false,
+                  templateCloneContentFilled: true,
+                  templateClonedDeckSeeded: false,
+                },
+              }),
+            });
+            clearProjectCoverCache(project.id);
+            filesForPin = await refreshProjectFiles();
+            entryPath = 'deck.html';
+          }
+        } catch {
+          // Keep the resolved sibling path if promote fails.
+        }
+      }
       if (entryPath) {
         const currentEntry = project.metadata?.entryFile?.trim() ?? '';
         if (currentEntry !== entryPath) {
@@ -4648,15 +4687,17 @@ export function ProjectView({
           } catch {
             // Local state already pinned the deck entry.
           }
+        } else if (promotion.copyFrom) {
+          clearProjectCoverCache(project.id);
         }
       }
       const deleted = await cleanupRootHtmlReferenceLeaks({
         projectId: project.id,
-        files: filesSnapshot,
+        files: filesForPin,
         slideOnlyMvp: true,
         deleteFile: deleteProjectFile,
       });
-      if (deleted.length === 0) return filesSnapshot;
+      if (deleted.length === 0) return filesForPin;
       removeProjectFilesLocally(deleted);
       return refreshProjectFiles();
     },
@@ -6533,7 +6574,8 @@ export function ProjectView({
           }
         }
         if (!htmlToOpen) continue;
-        await finalizeSlideOnlyDeckArtifacts([...filesSnapshot], htmlToOpen);
+        const finalized = await finalizeSlideOnlyDeckArtifacts([...filesSnapshot], htmlToOpen);
+        htmlToOpen = resolveCanonicalDeckEntryPath(finalized) ?? htmlToOpen;
       } else if (!htmlToOpen) {
         continue;
       }
@@ -7679,6 +7721,14 @@ export function ProjectView({
                       }
                     }
                   }
+                  if (
+                    recoveredExistingArtifact
+                    && !shouldReuseSameTurnHtmlWriteAsPersist(recoveredExistingArtifact, {
+                      slideOnlyMvp,
+                    })
+                  ) {
+                    recoveredExistingArtifact = null;
+                  }
                   if (recoveredExistingArtifact) {
                     savedArtifactRef.current = recoveredExistingArtifact.name;
                     try {
@@ -7704,11 +7754,33 @@ export function ProjectView({
                           projectFilePaths: projectPaths,
                           preferredAttachmentPaths: attachmentPaths,
                         });
-                        if (changed || withLook !== diskHtml) {
+                        if (
+                          changed
+                          || withLook !== diskHtml
+                          || isTemplateCloneLookSeedFile(recoveredExistingArtifact)
+                        ) {
                           await writeProjectTextFileDetailed(
                             project.id,
                             recoveredExistingArtifact.name,
                             healed,
+                            {
+                              skipArtifactStubGuard: true,
+                              artifactManifest: createArtifactManifest({
+                                entry: recoveredExistingArtifact.name,
+                                title: project.name || 'deck',
+                                artifactType: 'deck',
+                                preferDeck: slideOnlyMvp,
+                                sourceSkillId: project.skillId ?? undefined,
+                                designSystemId: project.designSystemId,
+                                metadata: {
+                                  identifier: 'deck',
+                                  artifactType: 'deck',
+                                  inferred: false,
+                                  templateCloneContentFilled: true,
+                                  templateClonedDeckSeeded: false,
+                                },
+                              }),
+                            },
                           );
                           nextFiles = await refreshProjectFiles();
                         }
@@ -7777,6 +7849,8 @@ export function ProjectView({
                     nextFiles,
                     producedHtmlToOpen,
                   );
+                  producedHtmlToOpen =
+                    resolveCanonicalDeckEntryPath(nextFiles) ?? producedHtmlToOpen;
                 }
                 produced = mergeRecoveredArtifact(
                   produced,
@@ -9590,7 +9664,10 @@ export function ProjectView({
                   readProjectHtml,
                   allowAnyHtmlWrite: assistantAgentId === 'claude',
                 });
-              if (sameTurnHtmlWrite) {
+              if (
+                sameTurnHtmlWrite
+                && shouldReuseSameTurnHtmlWriteAsPersist(sameTurnHtmlWrite, { slideOnlyMvp })
+              ) {
                 savedArtifactRef.current = sameTurnHtmlWrite.name;
                 // Write-tool short-circuit skips persistArtifact's img-src heal.
                 // Heal on disk now so reload/export do not keep alt-only paths.
@@ -9617,11 +9694,33 @@ export function ProjectView({
                       projectFilePaths: projectPaths,
                       preferredAttachmentPaths: attachmentPaths,
                     });
-                    if (changed || withLook !== diskHtml) {
+                    if (
+                      changed
+                      || withLook !== diskHtml
+                      || isTemplateCloneLookSeedFile(sameTurnHtmlWrite)
+                    ) {
                       await writeProjectTextFileDetailed(
                         project.id,
                         sameTurnHtmlWrite.name,
                         healed,
+                        {
+                          skipArtifactStubGuard: true,
+                          artifactManifest: createArtifactManifest({
+                            entry: sameTurnHtmlWrite.name,
+                            title: project.name || 'deck',
+                            artifactType: 'deck',
+                            preferDeck: slideOnlyMvp,
+                            sourceSkillId: project.skillId ?? undefined,
+                            designSystemId: project.designSystemId,
+                            metadata: {
+                              identifier: 'deck',
+                              artifactType: 'deck',
+                              inferred: false,
+                              templateCloneContentFilled: true,
+                              templateClonedDeckSeeded: false,
+                            },
+                          }),
+                        },
                       );
                       nextFiles = await refreshProjectFiles();
                     }
@@ -9667,6 +9766,8 @@ export function ProjectView({
                 nextFiles,
                 producedHtmlToOpen,
               );
+              producedHtmlToOpen =
+                resolveCanonicalDeckEntryPath(nextFiles) ?? producedHtmlToOpen;
             }
             produced = mergeRecoveredArtifact(
               produced,
@@ -13519,14 +13620,7 @@ export function findExistingArtifactProjectFile(
   return named;
 }
 
-/** Clone LOOK seed writes deck.html in the same turn as content-fill. */
-const TEMPLATE_CLONE_LOOK_SEED_META = 'templateClonedDeckSeeded';
-
-export function isTemplateCloneLookSeedFile(file: ProjectFile | null | undefined): boolean {
-  const meta = file?.artifactManifest?.metadata;
-  if (!meta || typeof meta !== 'object') return false;
-  return (meta as Record<string, unknown>)[TEMPLATE_CLONE_LOOK_SEED_META] === true;
-}
+export { isTemplateCloneLookSeedFile };
 
 export function selectPrimaryProjectFile(files: ProjectFile[]): ProjectFile | null {
   const candidates = files

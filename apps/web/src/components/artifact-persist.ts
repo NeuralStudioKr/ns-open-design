@@ -140,6 +140,20 @@ export function resolveArtifactPersistFileName(
   return fileName;
 }
 
+/**
+ * Write-tool same-turn recover may bind `deck-2.html`. Slide-only must still
+ * persist onto root `deck.html` so entry/cover cannot keep the Clone seed.
+ */
+export function shouldReuseSameTurnHtmlWriteAsPersist(
+  file: { name: string; path?: string } | null | undefined,
+  options?: { slideOnlyMvp?: boolean },
+): boolean {
+  if (!file) return false;
+  if (options?.slideOnlyMvp !== true) return true;
+  const rel = (file.path || file.name).replace(/\\/g, '/').replace(/^\.\//, '').trim();
+  return rel.toLowerCase() === 'deck.html';
+}
+
 /** Open tabs that are older numbered siblings of the file being focused. */
 export function artifactVersionTabsToClose(
   fileName: string,

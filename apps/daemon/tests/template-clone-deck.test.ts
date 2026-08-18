@@ -597,6 +597,7 @@ describe('seedTemplateClonedDeckOnServer filled-deck preserve', () => {
     );
 
     expect(result.ok).toBe(true);
+    if (result.ok) expect(result.preservedFilled).toBe(true);
     expect(written.size).toBe(0);
     expect(await readFile(path.join(projectDir, 'deck.html'), 'utf8')).toBe(filled);
   });

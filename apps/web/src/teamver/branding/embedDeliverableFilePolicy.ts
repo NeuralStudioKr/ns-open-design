@@ -166,27 +166,100 @@ export function projectHasCanonicalDeckDeliverable(
   });
 }
 
+/** Root `deck.html` — the only slide-only deliverable entry. */
+export function isRootCanonicalDeckHtmlPath(path: string): boolean {
+  const rel = path.replace(/\\/g, "/").replace(/^\.\//, "").trim();
+  return Boolean(rel) && !rel.includes("/") && rel.toLowerCase() === "deck.html";
+}
+
+const TEMPLATE_CLONE_LOOK_SEED_META = "templateClonedDeckSeeded";
+const TEMPLATE_CLONE_CONTENT_FILLED_META = "templateCloneContentFilled";
+
 /**
- * Best on-disk deck path for entryFile pinning / cover. Prefers root
- * `deck.html`, then other root `deck*.html`, then nested decks.
+ * Clone LOOK seed occupying deck.html in the same turn as content-fill.
+ * A filled stamp always wins — stale seed flags must not hide a real deck.
+ */
+export function isTemplateCloneLookSeedFile(
+  file: {
+    artifactManifest?: { metadata?: Record<string, unknown> | null } | null;
+  } | null | undefined,
+): boolean {
+  const meta = file?.artifactManifest?.metadata;
+  if (!meta || typeof meta !== "object") return false;
+  const rec = meta as Record<string, unknown>;
+  if (rec[TEMPLATE_CLONE_CONTENT_FILLED_META] === true) return false;
+  return rec[TEMPLATE_CLONE_LOOK_SEED_META] === true;
+}
+
+export type CanonicalDeckEntryFile = {
+  name: string;
+  path?: string;
+  mtime?: number;
+  artifactManifest?: { metadata?: Record<string, unknown> | null } | null;
+};
+
+/**
+ * Best on-disk deck path for entryFile pinning / cover.
+ * Prefers a filled root `deck.html`, then a filled `deck-*.html` sibling
+ * (so Clone LOOK seed cannot win over content-fill), then any root deck.
  */
 export function resolveCanonicalDeckEntryPath(
-  projectFiles: readonly { name: string; path?: string }[],
+  projectFiles: readonly CanonicalDeckEntryFile[],
 ): string | null {
-  const decks: string[] = [];
+  const decks: Array<{ rel: string; file: CanonicalDeckEntryFile }> = [];
   for (const file of projectFiles) {
     if (isEmbedReferenceSourceFile(file)) continue;
     if (isRootHtmlMatchingReferenceSource(file, projectFiles)) continue;
     const rel = projectRelativePath(file).replace(/\\/g, "/").replace(/^\.\/+/, "");
     if (!rel || !isCanonicalDeckProjectPath(rel)) continue;
-    decks.push(rel);
+    decks.push({ rel, file });
   }
   if (decks.length === 0) return null;
-  const rootExact = decks.find((p) => !p.includes("/") && p.toLowerCase() === "deck.html");
-  if (rootExact) return rootExact;
-  const rootAny = decks.find((p) => !p.includes("/"));
-  if (rootAny) return rootAny;
-  return decks.sort((a, b) => a.localeCompare(b))[0] ?? null;
+  const nonSeed = decks.filter((entry) => !isTemplateCloneLookSeedFile(entry.file));
+  const pickRootExact = (list: typeof decks): string | null =>
+    list.find((entry) => !entry.rel.includes("/") && entry.rel.toLowerCase() === "deck.html")?.rel
+    ?? null;
+  const pickRootAny = (list: typeof decks): string | null => {
+    const roots = list.filter((entry) => !entry.rel.includes("/"));
+    if (roots.length === 0) return null;
+    roots.sort((a, b) => (b.file.mtime ?? 0) - (a.file.mtime ?? 0));
+    return roots[0]?.rel ?? null;
+  };
+  return (
+    pickRootExact(nonSeed)
+    ?? pickRootAny(nonSeed)
+    ?? pickRootExact(decks)
+    ?? pickRootAny(decks)
+    ?? decks.slice().sort((a, b) => a.rel.localeCompare(b.rel))[0]?.rel
+    ?? null
+  );
+}
+
+/**
+ * When fill landed on `deck-2.html` and root `deck.html` is still the Clone
+ * LOOK seed, copy the filled sibling onto the canonical name.
+ */
+export function resolveFilledDeckPromotion(input: {
+  files: readonly CanonicalDeckEntryFile[];
+  preferredPath?: string | null;
+}): { entryPath: string | null; copyFrom: string | null } {
+  const preferred = (input.preferredPath ?? "").trim().replace(/\\/g, "/").replace(/^\.\//, "");
+  const preferredIsDeck = Boolean(preferred) && isCanonicalDeckProjectPath(preferred);
+  const rootDeck = input.files.find((file) =>
+    isRootCanonicalDeckHtmlPath(projectRelativePath(file)),
+  );
+  const rootIsSeed = Boolean(rootDeck && isTemplateCloneLookSeedFile(rootDeck));
+  const canonical = resolveCanonicalDeckEntryPath(input.files);
+  const siblingSource =
+    (preferredIsDeck && !isRootCanonicalDeckHtmlPath(preferred) ? preferred : null)
+    ?? (canonical && !isRootCanonicalDeckHtmlPath(canonical) ? canonical : null);
+  if (siblingSource && (rootIsSeed || !rootDeck)) {
+    return { entryPath: "deck.html", copyFrom: siblingSource };
+  }
+  return {
+    entryPath: canonical ?? (preferredIsDeck ? preferred : null),
+    copyFrom: null,
+  };
 }
 
 export type EmbedSupportingFileOptions = {

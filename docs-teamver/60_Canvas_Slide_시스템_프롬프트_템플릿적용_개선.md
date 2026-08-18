@@ -200,6 +200,24 @@ full `example.html`을 시스템 프롬프트에 넣지 않는다는 방침은 �
 - [x] 인라인 장별 색도 per-slide paint
 - [x] daemon cover-batch가 persisted flatten bleed를 `html, body`로 완화 (cache v6)
 
+### 0.37 2026-08-18 — Write-tool `deck-2` / entry heal / preservedFilled
+
+§0.36 persist 고정 이후에도 Write-tool이 fill을 `deck-2.html`에 쓰면 same-turn recover가 persist를 건너뛰고, entry/cover는 Clone seed `deck.html`을 유지한다.
+
+- slide-only same-turn recover는 root `deck.html`만 재사용
+- finalize: seed `deck.html` + filled sibling → sibling을 canonical로 복사
+- `resolveCanonicalDeckEntryPath`는 filled sibling을 seed보다 우선
+- clone 응답 `preservedFilled` — recover/FE가 LOOK seed로 재스탬프하지 않음
+- HTML revision persist도 cover cache bust
+
+구현 현황:
+
+- [x] Write-tool `deck-2` persist skip 금지
+- [x] sibling → `deck.html` 승격
+- [x] entry 해석 seed skip
+- [x] `preservedFilled` + recover filled skip
+- [x] revision cover bust
+
 ### 0.36 2026-08-18 — 생성된 덱이 템플릿 기본 `deck.html`로 되돌아가지 않음
 
 제대로 채워진 덱이 새로고침/재진입 후 공식 example LOOK(Daisy 마케팅 헤드라인 등)으로 돌아간다. 썸네일 캐시가 아니라 **deliverable 파일 자체**가 Clone seed로 되돌아가는 버그.
@@ -1007,6 +1025,7 @@ User-message 쪽 `[Existing deck edit]` / `<attached-preview-comments>` 주입�
 | 2026-08-13 | **§0.0 정책 개정** — template = layout vocabulary + visual look, 페이지 수/순서/구성은 브리프 기반. content-swap → pick-and-choose layout roles. daemon Clone default count = 6 (shells.length 아님), `pickTemplateShells` role-based scoring 도입. `template-visual-kit.ts` HARD_RULES 재작성, `DEFAULT_MAX_CHARS` 12000 → 14000. |
 | 2026-08-18 | Clone content-fill motif 보정 — 8/13 SVG hang 방지 패치가 first fill에서 `Motif sprites`/`Decoration CSS`/`Layout CSS`를 통째로 생략해 Daisy/Capsule 템플릿 정체성이 약해졌다. `slimTemplateVisualKitForFill`이 큰 SVG sprite sheet와 전체 stylesheet dump는 계속 제거하되, Daisy star/rainbow·Capsule pill/capsule·Terminal scanline 같은 compact motif recipe와 짧은 Decoration/Layout CSS cue를 보존하도록 변경했다. |
 | 2026-08-18 | §0.20 — html-ppt identity scope. 공유 `:root --bg:#ffffff` 대신 `.tpl-*` host 토큰/슬라이드 surface/폰트를 kit 계약으로 쓰고, SKILL `copy index.html` filesystem 지시를 neutralize. |
+| 2026-08-18 | §0.37 — Write-tool `deck-2` persist skip 금지 · sibling→`deck.html` 승격 · `preservedFilled` · revision cover bust. |
 | 2026-08-18 | §0.36 — 생성된 덱이 Clone LOOK `deck.html`로 되돌아가지 않음. persist는 `deck.html` 덮어쓰기, reattach는 seed skip, late clone은 fill 보존. |
 | 2026-08-18 | §0.35 — Preview/PDF/HTML 스케일 정렬. PDF PPT inches+scale · HTML viewport 1920·flex · cache v15. |
 | 2026-08-18 | §0.34 — 공식 Motif HTML(`#pin` symbol · grain/crt host) persist/export 병합. cache v14. |

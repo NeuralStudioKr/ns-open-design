@@ -2611,6 +2611,7 @@ function AppInner() {
       }
       let canvasImportFailed = false;
       let seededDeckFileName: string | null = null;
+      let preservedFilledDeck = false;
       let queuedFillSeed: string | null = null;
       if (!workingDirHandoffFailed && pendingCanvasHandoff) {
         try {
@@ -2693,6 +2694,7 @@ function AppInner() {
             });
             if (seeded.ok) {
               seededDeckFileName = seeded.fileName;
+              preservedFilledDeck = seeded.preservedFilled === true;
             } else {
               // Clone LOOK seed failed — still run kit-driven CREATE fill so
               // the first turn is not a Neutral/instruction dump.
@@ -2813,6 +2815,7 @@ function AppInner() {
         });
         if (seeded.ok) {
           seededDeckFileName = seeded.fileName;
+          preservedFilledDeck = seeded.preservedFilled === true;
         } else {
           devLog.warn(
             'Home template clone seed failed; continuing with selected-template AI fill',
@@ -2894,7 +2897,7 @@ function AppInner() {
               ...(project.metadata && typeof project.metadata === 'object'
                 ? project.metadata
                 : {}),
-              templateClonedDeckSeeded: Boolean(seededDeckFileName),
+              templateClonedDeckSeeded: Boolean(seededDeckFileName) && !preservedFilledDeck,
               templateCloneContentFillPending: true,
               ...(selectedDeckTemplateId
                 ? { selectedDeckTemplateId }

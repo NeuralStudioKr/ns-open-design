@@ -9,6 +9,7 @@ import {
   resolveArtifactPersistFileName,
   resolveSlideOnlySkipDiscoveryBrief,
   shouldDeferSlideOnlyDiscoveryArtifactPersist,
+  shouldReuseSameTurnHtmlWriteAsPersist,
 } from '../../src/components/artifact-persist';
 
 describe('normalizeSlideOnlyArtifactContractType', () => {
@@ -110,6 +111,18 @@ describe('resolveArtifactPersistFileName', () => {
       { slideOnlyMvp: true },
     );
     expect(fileName).toBe('deck.html');
+  });
+
+  it('does not reuse a Write-tool deck-2 sibling as the slide-only persist target', () => {
+    expect(
+      shouldReuseSameTurnHtmlWriteAsPersist({ name: 'deck-2.html' }, { slideOnlyMvp: true }),
+    ).toBe(false);
+    expect(
+      shouldReuseSameTurnHtmlWriteAsPersist({ name: 'deck.html' }, { slideOnlyMvp: true }),
+    ).toBe(true);
+    expect(
+      shouldReuseSameTurnHtmlWriteAsPersist({ name: 'deck-2.html' }, { slideOnlyMvp: false }),
+    ).toBe(true);
   });
 
   it('increments numbered siblings only when no reuse target exists', () => {

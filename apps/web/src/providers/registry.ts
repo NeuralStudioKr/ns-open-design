@@ -2135,6 +2135,15 @@ export async function pushProjectFileRevision(
       };
     }
     const json = (await resp.json()) as FileRevisionPushResponse;
+    if (/\.html?$/i.test(fileName)) {
+      void import('../teamver/projectCoverLoader')
+        .then((mod) => {
+          mod.clearProjectCoverCache(projectId);
+        })
+        .catch(() => {
+          /* cover bust is best-effort */
+        });
+    }
     return { ok: true, revision: json.revision, file: json.file };
   } catch {
     return { ok: false, message: 'Network error while saving the revision' };
