@@ -145,12 +145,22 @@ describe('official deck template visual kits (all mode:deck example.html)', () =
         failures.push(`${folder}: Motif HTML present but kit has neither Motif sprites nor Decorations CSS`);
         continue;
       }
+      const slimHit = unique.some((tok) => slim.toLowerCase().includes(tok));
+      if (!slimHit && !/### Motif vocabulary \(required compact cue\)/i.test(slim) && !/### Motif sprites/i.test(slim)) {
+        failures.push(`${folder}: Motif HTML present but slim dropped concrete Motif vocabulary`);
+      }
       // Fill slim must keep Motif section(s) when extract had them.
       if (/### Motif sprites/i.test(kit) && !/### Motif sprites/i.test(slim)) {
         failures.push(`${folder}: Motif sprites dropped by slim`);
       }
       if (/### Decorations? CSS/i.test(kit) && !/### Decorations CSS \(capped/i.test(slim) && !/### Decorations CSS/i.test(slim)) {
         failures.push(`${folder}: Decorations CSS dropped by slim`);
+      }
+      if (/capsules?/i.test(folder) && !/capsule|pill/i.test(slim)) {
+        failures.push(`${folder}: Capsule template title cue missing from slim`);
+      }
+      if (/daisy/i.test(folder) && !/daisy|flower|#fcdf6c/i.test(slim)) {
+        failures.push(`${folder}: Daisy template title cue missing from slim`);
       }
       // Must not force Capsule-only guidance when kit has no pills.
       if (!/\.deco-pill|pill-/i.test(kit) && /Example capsule \(AFTER title\)/i.test(slim)) {

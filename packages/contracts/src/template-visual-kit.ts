@@ -692,12 +692,71 @@ function listMotifVocabularyHints(text: string): string[] {
   return uniquePreserveOrder(hints);
 }
 
-function formatMotifVocabularyGuidance(text: string): string {
-  const hints = listMotifVocabularyHints(text);
-  if (hints.length === 0) {
+function extractTemplateVisualKitTitle(text: string): string | null {
+  return /^## Template visual kit \(from example\.html\)\s*(?:—|-)\s*([^\n]+)/im.exec(text)?.[1]?.trim() || null;
+}
+
+function listTemplateTitleMotifHints(text: string): string[] {
+  const title = extractTemplateVisualKitTitle(text) ?? '';
+  const lower = title.toLowerCase();
+  const hints: string[] = [];
+  if (/\bcapsules?\b/.test(lower)) hints.push('title cue: capsule / pill objects');
+  if (/\bdaisy|flower|floral\b/.test(lower)) hints.push('title cue: daisy / flower objects');
+  if (/\bgrid\b/.test(lower)) hints.push('title cue: grid geometry');
+  if (/\bterminal|cyber|crt\b/.test(lower)) hints.push('title cue: terminal / CRT chrome');
+  if (/\bgraph|chart|dashboard\b/.test(lower)) hints.push('title cue: graph / chart language');
+  if (/\bretro|8\s*bit|pixel|orbit\b/.test(lower)) hints.push('title cue: retro / pixel / orbit accents');
+  if (/\bcreative|studio|editorial|magazine\b/.test(lower)) hints.push('title cue: expressive editorial composition');
+  if (/\bblue|cobalt\b/.test(lower)) hints.push('title cue: blue / cobalt palette');
+  if (/\bcoral\b/.test(lower)) hints.push('title cue: coral palette accents');
+  if (/\bobsidian|dark|black\b/.test(lower)) hints.push('title cue: dark / obsidian surface');
+  return uniquePreserveOrder(hints);
+}
+
+function listConcreteMotifClassHints(
+  text: string,
+  availableSpriteKinds: ReadonlySet<string> = new Set(),
+): string[] {
+  return uniquePreserveOrder(
+    [...text.matchAll(/\.([a-zA-Z0-9_-]+)/g)]
+      .map((match) => match[1] ?? '')
+      .filter((cls) => MOTIF_CLASS_TOKEN_RE.test(cls))
+      .filter((cls) => decoClassMatchesAvailableSprites(cls, availableSpriteKinds))
+      .map((cls) => `.${cls}`),
+  ).slice(0, 18);
+}
+
+function formatMotifVocabularyGuidance(
+  text: string,
+  availableSpriteKinds: ReadonlySet<string> = new Set(),
+): string {
+  const hints = uniquePreserveOrder([
+    ...listTemplateTitleMotifHints(text),
+    ...listMotifVocabularyHints(text),
+  ]);
+  const concrete = listConcreteMotifClassHints(text, availableSpriteKinds);
+  if (hints.length === 0 && concrete.length === 0) {
     return 'kit Motif CSS / sprites listed below (never invent generic circles or emoji when Motif cues exist)';
   }
-  return hints.join(' + ');
+  return [
+    hints.join(' + '),
+    concrete.length > 0 ? `concrete classes: ${concrete.join(', ')}` : '',
+  ].filter(Boolean).join(' + ');
+}
+
+function renderMotifVocabularyBlock(
+  text: string,
+  availableSpriteKinds: ReadonlySet<string> = new Set(),
+): string | null {
+  const guidance = formatMotifVocabularyGuidance(text, availableSpriteKinds);
+  if (/^kit Motif CSS \/ sprites listed below/i.test(guidance)) return null;
+  return [
+    '### Motif vocabulary (required compact cue)',
+    '',
+    `Required recognizable motif/style vocabulary from this selected template: ${guidance}.`,
+    'Use these exact class/token families when they exist in Decorations CSS or scaffold map. If capped Motif SVGs are listed, place at most one AFTER title/lead; otherwise implement the same motif with the listed CSS classes and palette. Do not replace with plain generic circles, emoji, or another template family.',
+    '',
+  ].join('\n');
 }
 
 function extractDecorationCss(html: string, budget: number, identity: IdentityScope | null = null): string | null {
@@ -1304,6 +1363,12 @@ export function extractTemplateVisualKitFromHtml(
   const deco = extractDecorationCss(source, 1_800, identity);
   const layout = extractLayoutCss(source, deco ? 900 : 1_200);
   const slideCue = extractFirstSlideStructureCue(source, 320);
+  const motifVocabulary = renderMotifVocabularyBlock([
+    `## Template visual kit (from example.html) — ${title}`,
+    source,
+    scaffold ?? '',
+    deco ?? '',
+  ].join('\n'), spriteKinds);
 
   lines.push(
     renderMustMatchLookBlock({
@@ -1330,6 +1395,9 @@ export function extractTemplateVisualKitFromHtml(
 
   // Pack Motif + map + deco first (look fidelity), then layout CSS, cue last.
   const optionalBlocks: string[][] = [spriteBlock];
+  if (motifVocabulary) {
+    optionalBlocks.push([motifVocabulary]);
+  }
   if (scaffold) {
     optionalBlocks.push([
       '### Template scaffold map (layout vocabulary — pick appropriate roles for the user brief)',

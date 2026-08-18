@@ -152,6 +152,21 @@ full `example.html`을 시스템 프롬프트에 넣지 않는다는 방침은 �
 
 제품 판단: **완성된 덱이 우선**이다. 선택 템플릿과 100% 동일한 CSS를 복사하다가 결과물이 비어버리는 것보다, 템플릿의 palette/font/motif cue가 보이는 compact static deck을 완성하는 것이 낫다. 따라서 pre-write gate는 계속 shell 저장을 막고, prompt는 shell이 생기지 않도록 body-first로 유도한다.
 
+### 0.21 2026-08-18 — 전체 템플릿 Motif cue 보존 강화 (현재 시점 판단)
+
+현재 시점(2026-08-18 KST) 판단: Daisy/Capsule처럼 신고된 템플릿을 개별 패치하는 방식은 재발을 막지 못한다. 모든 `mode:deck` 공식 `example.html`에서 대표 시각 언어가 `extractTemplateVisualKitFromHtml` → `slimTemplateVisualKitForFill` → model fill prompt까지 살아남아야 한다.
+
+보강:
+- 템플릿명 자체를 compact motif cue로 해석한다. 예: `Capsule`은 capsule/pill object, `Daisy`는 flower/daisy object, `Terminal`은 CRT chrome, `Cobalt Grid`는 grid/cobalt palette.
+- source CSS/HTML에서 검출된 실제 `.deco-*`, `.pill-*`, `.blob`, `.stamp`, `.pixel-*`, `.orb` 등 concrete class/token 목록을 별도 `### Motif vocabulary (required compact cue)`로 유지한다.
+- 사용 가능한 sprite 종류와 맞지 않는 장식 슬롯(`deco-sun`/`deco-cloud` 등)은 concrete cue에서 제외해 모델이 없는 장식을 새로 발명하지 않게 했다.
+- full `example.html`, long `<head>`, multi-KB SVG 선출력 금지는 유지한다. 대신 capped SVG는 title/lead 뒤 1개 이하, 또는 실제 Decorations CSS class로 같은 motif를 구현하도록 유도한다.
+
+검증:
+- `packages/contracts/tests/template-visual-kit-all-official.test.ts`가 공식 deck example 전체를 순회한다.
+- ornament-heavy template은 kit에만 motif가 남는 것이 아니라, first-fill slim 결과에도 concrete motif vocabulary가 남아야 한다.
+- Capsule/Daisy title cue가 slim에서 사라지면 실패한다.
+
 ### 0.20 2026-08-18 — html-ppt identity scope (shared white `:root` ≠ 템플릿 look)
 
 html-ppt full-deck은 공유 `base.css` `:root`가 `--bg:#ffffff` / Inter 이고, 실제 look은 `.tpl-* { --hc-bg:#0a0c10; … }` + `.tpl-* .slide { background: var(--hc-bg) }` 에 있다. kit이 첫 `:root`만 보면 Hermes/Graphify가 Neutral 흰 슬라이드로 나온다. **identity host** (`.tpl-*` / `.theme-*`) 토큰·슬라이드 surface·폰트가 prompt `:root` / Slide surface / Must-match anchors를 이긴다. SKILL.md의 `copy index.html` / `skills/html-ppt/templates/` filesystem 지시도 Clone `example.html`과 같이 neutralize.
@@ -726,6 +741,7 @@ daemon 로컬 skill 워크플로 잔재다. Daisy Days에는 Teamver API 노트�
 | P0 | **정책 개정** — template = layout vocabulary, 페이지 수/순서/구성은 브리프 기반 (§0.0 개정) | **완료** — HARD_RULES 재작성, scaffold map을 catalog로 재정의, daemon Clone default `shells.length` → 6, `pickTemplateShells` role-based scoring |
 | P0 | Clone content-fill에서 motif/deco가 과도하게 제거되어 썸네일과 실제 결과가 달라지는 문제 | **완료** — full SVG/CSS dump 금지는 유지하되 compact Motif recipe + Decoration/Layout CSS cues 보존 |
 | P0 | html-ppt shared white `:root`가 `.tpl-*` identity look을 덮는 문제 | **완료** — identity host tokens/surface/fonts + `copy index.html` SKILL neutralize (§0.20) |
+| P0 | 신고 템플릿별 one-off가 아니라 전체 템플릿의 대표 motif cue가 fill까지 살아남는지 보장 | **완료** — title cue + concrete motif class 목록을 `Motif vocabulary` 섹션으로 유지하고, official deck `example.html` 전수 slim survival 테스트 강화 (§0.21) |
 
 ### 12.1 Edit-contract gating (상세)
 
@@ -757,3 +773,4 @@ User-message 쪽 `[Existing deck edit]` / `<attached-preview-comments>` 주입�
 | 2026-08-13 | **§0.0 정책 개정** — template = layout vocabulary + visual look, 페이지 수/순서/구성은 브리프 기반. content-swap → pick-and-choose layout roles. daemon Clone default count = 6 (shells.length 아님), `pickTemplateShells` role-based scoring 도입. `template-visual-kit.ts` HARD_RULES 재작성, `DEFAULT_MAX_CHARS` 12000 → 14000. |
 | 2026-08-18 | Clone content-fill motif 보정 — 8/13 SVG hang 방지 패치가 first fill에서 `Motif sprites`/`Decoration CSS`/`Layout CSS`를 통째로 생략해 Daisy/Capsule 템플릿 정체성이 약해졌다. `slimTemplateVisualKitForFill`이 큰 SVG sprite sheet와 전체 stylesheet dump는 계속 제거하되, Daisy star/rainbow·Capsule pill/capsule·Terminal scanline 같은 compact motif recipe와 짧은 Decoration/Layout CSS cue를 보존하도록 변경했다. |
 | 2026-08-18 | §0.20 — html-ppt identity scope. 공유 `:root --bg:#ffffff` 대신 `.tpl-*` host 토큰/슬라이드 surface/폰트를 kit 계약으로 쓰고, SKILL `copy index.html` filesystem 지시를 neutralize. |
+| 2026-08-18 | §0.21 — 전체 템플릿 Motif cue 보존 강화. 템플릿명 cue + 실제 motif class/token 목록을 `### Motif vocabulary`로 유지하고, 공식 deck 전체에서 slim 결과까지 motif가 살아남는지 테스트한다. |

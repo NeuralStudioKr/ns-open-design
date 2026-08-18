@@ -308,6 +308,8 @@ html,body{background:var(--cream);color:var(--text-dark)}
     })!;
     expect(capsuleKit).toMatch(/deco-pill|\.pill-/i);
     const capsuleSlim = slimTemplateVisualKitForFill(capsuleKit);
+    expect(capsuleSlim).toMatch(/Motif vocabulary \(required compact cue\)/i);
+    expect(capsuleSlim).toMatch(/title cue: capsule \/ pill objects/i);
     expect(capsuleSlim).toMatch(/Decorations CSS \(capped for first content-fill/i);
     expect(capsuleSlim).toMatch(/\.deco-pill/i);
     expect(capsuleSlim).toMatch(/pill-coral|pill-lavender|pill-sky/i);
