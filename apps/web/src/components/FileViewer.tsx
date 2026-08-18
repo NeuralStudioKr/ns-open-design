@@ -335,6 +335,7 @@ import {
   shouldEchoManualEditSelectionAfterFreezeSync,
   shouldRequestTipRemountRemasureAfterSrcDocLoad,
   shouldApplyTipRemountSyncHostMeasureOnSrcDocLoad,
+  shouldRetryTipRemountSyncHostMeasureAfterSrcDocLoad,
   shouldReleaseTipRemountChromeAfterSyncHostMeasure,
   shouldArmTipRemountFitSettleForDeckHostFit,
   shouldRemeasureTipRemountAfterDeckHostFitSettle,
@@ -7943,6 +7944,37 @@ function HtmlViewer({
   }
 
   /**
+   * Tip srcDoc onLoad — sync measure, then one rAF retry if layout was not ready (462).
+   */
+  function applyTipRemountSyncHostMeasureAfterSrcDocLoadWithRetry(
+    target: HTMLIFrameElement | null = iframeRef.current,
+  ) {
+    const applied = applyTipRemountSyncHostMeasureAfterSrcDocLoad(target);
+    if (!shouldRetryTipRemountSyncHostMeasureAfterSrcDocLoad(
+      applied,
+      manualEditModeRef.current,
+      selectedManualEditTargetIdsRef.current,
+      manualEditTipRemountGeometryGraceIdRef.current,
+    )) {
+      return applied;
+    }
+    // First load tick often measures before fonts/deck-fit layout — retry once.
+    requestAnimationFrame(() => {
+      if (!shouldApplyTipRemountSyncHostMeasureOnSrcDocLoad(
+        manualEditModeRef.current,
+        selectedManualEditTargetIdsRef.current,
+        manualEditTipRemountGeometryGraceIdRef.current,
+      )) {
+        return;
+      }
+      applyTipRemountSyncHostMeasureAfterSrcDocLoad(
+        target ?? iframeRef.current,
+      );
+    });
+    return false;
+  }
+
+  /**
    * Multi tip-remount: refresh host scale/offset + geom epoch so union chrome
    * and live measureHostRect do not keep pre-tip/pre-fit compose (461).
    */
@@ -15383,7 +15415,7 @@ function HtmlViewer({
                             frame?.contentWindow?.postMessage({ type: 'od:url-selection-bridge-probe' }, '*');
                             syncBridgeModes(frame);
                             // Tip-yield: sync tip rect before async remasure (459).
-                            applyTipRemountSyncHostMeasureAfterSrcDocLoad(frame);
+                            applyTipRemountSyncHostMeasureAfterSrcDocLoadWithRetry(frame);
                             requestTipRemountRemasureAfterSrcDocLoad(frame);
                             replayManualEditStylesToIframe(frame);
                             if (useUrlLoadPreview) restorePreviewScrollPosition();
@@ -15429,7 +15461,7 @@ function HtmlViewer({
                             frame?.contentWindow?.postMessage({ type: 'od:url-selection-bridge-probe' }, '*');
                             syncBridgeModes(frame);
                             // Tip-yield: sync tip rect before async remasure (459).
-                            applyTipRemountSyncHostMeasureAfterSrcDocLoad(frame);
+                            applyTipRemountSyncHostMeasureAfterSrcDocLoadWithRetry(frame);
                             requestTipRemountRemasureAfterSrcDocLoad(frame);
                             replayManualEditStylesToIframe(frame);
                             if (useUrlLoadPreview) restorePreviewScrollPosition();
@@ -15511,7 +15543,7 @@ function HtmlViewer({
                           replayInspectOverridesToIframe(frame);
                           syncBridgeModes(frame);
                           // Tip-yield: sync tip rect, then async remasure on the live tip document (452/459).
-                          applyTipRemountSyncHostMeasureAfterSrcDocLoad(frame);
+                          applyTipRemountSyncHostMeasureAfterSrcDocLoadWithRetry(frame);
                           requestTipRemountRemasureAfterSrcDocLoad(frame);
                           replayManualEditStylesToIframe(frame);
                           syncCachedSlideStateToIframe(frame);

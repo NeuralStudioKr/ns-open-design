@@ -103,6 +103,23 @@ export function shouldApplyTipRemountSyncHostMeasureOnSrcDocLoad(
 }
 
 /**
+ * Sync primary measure missed on the load tick (layout/fonts not ready) —
+ * schedule one rAF retry while tip-remount grace is still armed (462).
+ */
+export function shouldRetryTipRemountSyncHostMeasureAfterSrcDocLoad(
+  syncApplied: boolean,
+  manualEditMode: boolean,
+  selectedIds: readonly string[],
+  graceId: string | null | undefined,
+): boolean {
+  return !syncApplied && shouldApplyTipRemountSyncHostMeasureOnSrcDocLoad(
+    manualEditMode,
+    selectedIds,
+    graceId,
+  );
+}
+
+/**
  * Sync primary measure succeeded — drop chrome inert immediately while tip
  * remount grace remains for wild-jump skip until async remasure (459).
  */

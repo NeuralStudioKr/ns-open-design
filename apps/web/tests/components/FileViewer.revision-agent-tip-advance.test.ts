@@ -117,7 +117,10 @@ describe('FileViewer revision tip advance after undo', () => {
     expect(fileViewer).toContain('requestTipRemountRemasureAfterSrcDocLoad');
     expect(fileViewer).toContain('shouldApplyTipRemountSyncHostMeasureOnSrcDocLoad');
     expect(fileViewer).toContain('applyTipRemountSyncHostMeasureAfterSrcDocLoad');
+    expect(fileViewer).toContain('applyTipRemountSyncHostMeasureAfterSrcDocLoadWithRetry');
+    expect(fileViewer).toContain('shouldRetryTipRemountSyncHostMeasureAfterSrcDocLoad');
     expect(fileViewer).toContain('shouldReleaseTipRemountChromeAfterSyncHostMeasure');
+    expect(fileViewer).toContain('First load tick often measures before fonts/deck-fit layout');
     expect(fileViewer).toContain('Tip-yield: sync tip rect');
     expect(fileViewer).toContain('drop inert; keep grace for wild-jump until async remasure');
     expect(fileViewer).toContain('shouldArmTipRemountFitSettleForDeckHostFit');

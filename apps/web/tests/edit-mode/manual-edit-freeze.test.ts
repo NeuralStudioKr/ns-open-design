@@ -8,6 +8,7 @@ import {
   shouldRequestTipRemountRemasureAfterFreezeSync,
   shouldRequestTipRemountRemasureAfterSrcDocLoad,
   shouldApplyTipRemountSyncHostMeasureOnSrcDocLoad,
+  shouldRetryTipRemountSyncHostMeasureAfterSrcDocLoad,
   shouldReleaseTipRemountChromeAfterSyncHostMeasure,
   shouldArmTipRemountFitSettleForDeckHostFit,
   shouldRemeasureTipRemountAfterDeckHostFitSettle,
@@ -132,6 +133,21 @@ describe('manual edit freeze reset', () => {
   it('releases tip-remount chrome inert after sync primary measure', () => {
     expect(shouldReleaseTipRemountChromeAfterSyncHostMeasure(true)).toBe(true);
     expect(shouldReleaseTipRemountChromeAfterSyncHostMeasure(false)).toBe(false);
+  });
+
+  it('retries tip remount sync host measure once when first load tick misses', () => {
+    expect(shouldRetryTipRemountSyncHostMeasureAfterSrcDocLoad(
+      false, true, ['a'], 'a',
+    )).toBe(true);
+    expect(shouldRetryTipRemountSyncHostMeasureAfterSrcDocLoad(
+      true, true, ['a'], 'a',
+    )).toBe(false);
+    expect(shouldRetryTipRemountSyncHostMeasureAfterSrcDocLoad(
+      false, true, ['a'], null,
+    )).toBe(false);
+    expect(shouldRetryTipRemountSyncHostMeasureAfterSrcDocLoad(
+      false, false, ['a'], 'a',
+    )).toBe(false);
   });
 
   it('skips deck srcDoc transport remount for edit-mode freeze tip sync', () => {
