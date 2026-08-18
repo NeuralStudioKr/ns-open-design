@@ -12,6 +12,7 @@ import {
   shouldRefreshHostPaintAfterTipRemountRemasure,
   shouldConsumeTipRemountGeometryGraceOnRemasure,
   shouldSyncSelectedTargetIdentityAfterTipYieldSingleReseed,
+  shouldSyncSelectedTargetsIdentityAfterTipYieldMultiReseed,
   shouldSkipWildJumpAfterTipRemountGrace,
   shouldSyncManualEditFrozenSourceToPainted,
   shouldUpdateManualEditFrozenSourceOnPatch,
@@ -135,6 +136,12 @@ describe('manual edit freeze reset', () => {
     expect(shouldSyncSelectedTargetIdentityAfterTipYieldSingleReseed('a', 'a')).toBe(true);
     expect(shouldSyncSelectedTargetIdentityAfterTipYieldSingleReseed('a', 'b')).toBe(false);
     expect(shouldSyncSelectedTargetIdentityAfterTipYieldSingleReseed(null, 'a')).toBe(false);
+  });
+
+  it('syncs selected-set identity after multi tip-yield reseed', () => {
+    expect(shouldSyncSelectedTargetsIdentityAfterTipYieldMultiReseed(['a', 'b'])).toBe(true);
+    expect(shouldSyncSelectedTargetsIdentityAfterTipYieldMultiReseed(['a'])).toBe(false);
+    expect(shouldSyncSelectedTargetsIdentityAfterTipYieldMultiReseed([])).toBe(false);
   });
 
   it('refreshes host paint after tip-remount remasure for multi and single', () => {

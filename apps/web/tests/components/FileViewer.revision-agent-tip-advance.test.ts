@@ -180,6 +180,10 @@ describe('FileViewer revision tip advance after undo', () => {
     expect(fileViewer).toContain('no false "external change"');
     expect(fileViewer).toContain('Tip/external refresh — adopt disk into source + freeze together');
     expect(fileViewer).toContain('Source-only reseed (same plan helper as batch flush / cancel)');
+    expect(fileViewer).toContain('shouldSyncSelectedTargetsIdentityAfterTipYieldMultiReseed');
+    expect(fileViewer).toContain('Multi tip-yield: sync identity for every selected id from painted tip');
+    expect(fileViewer).toContain('Always refresh primary fields from tip when snapshot is usable');
+    expect(fileViewer).toContain('Pending owns styles — still align primary text fields with tip');
     expect(fileViewer).toContain('planManualEditMultiInspectorReseed');
     expect(fileViewer).toContain('styleDraftPending');
     expect(fileViewer).toContain('Pending style draft owns the inspector');

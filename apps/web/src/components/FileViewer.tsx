@@ -340,6 +340,7 @@ import {
   shouldRefreshHostPaintAfterTipRemountRemasure,
   shouldConsumeTipRemountGeometryGraceOnRemasure,
   shouldSyncSelectedTargetIdentityAfterTipYieldSingleReseed,
+  shouldSyncSelectedTargetsIdentityAfterTipYieldMultiReseed,
   shouldSkipWildJumpAfterTipRemountGrace,
   shouldSyncManualEditFrozenSourceToPainted,
   shouldUpdateManualEditFrozenSourceOnPatch,
@@ -8110,20 +8111,99 @@ function HtmlViewer({
         concurrentPending,
       });
       setManualEditMixedStyleKeys(reseed.mixedKeys);
+      const pendingOwns = concurrentPendingOwnsTipYieldReseedStyles(concurrentPending);
+      const primaryId = selectedManualEditTargetIdRef.current ?? ids[ids.length - 1]!;
+      const primarySnapshot = readManualEditTargetSnapshot(base, primaryId, {}, parsedDoc);
+      // Multi tip-yield: sync identity for every selected id from painted tip (449).
+      if (shouldSyncSelectedTargetsIdentityAfterTipYieldMultiReseed(ids)) {
+        const snapshotsById = new Map(
+          ids.map((id) => [id, readManualEditTargetSnapshot(base, id, {}, parsedDoc)] as const),
+        );
+        setManualEditTargets((current) => {
+          const nextList = current.map((item) => {
+            const snapshot = snapshotsById.get(item.id);
+            if (!snapshot || !shouldApplyTipYieldSingleInspectorSnapshot(snapshot.outerHtml)) {
+              return item;
+            }
+            return {
+              ...item,
+              text: snapshot.fields.text ?? item.text,
+              fields: { ...item.fields, ...snapshot.fields },
+              attributes: snapshot.attributes,
+              styles: mergeManualEditInspectorStyles(snapshot.styles, item.styles),
+              outerHtml: snapshot.outerHtml || item.outerHtml,
+            };
+          });
+          manualEditTargetsIdentityFingerprintRef.current =
+            manualEditTargetsIdentityFingerprint(nextList);
+          const selectedForFp = resolveManualEditTargetsByIds(ids, nextList);
+          manualEditSelectedIdentityFingerprintRef.current =
+            manualEditTargetsIdentityFingerprint(selectedForFp);
+          return nextList;
+        });
+        setSelectedManualEditTarget((current) => {
+          if (!current) return current;
+          const snapshot = snapshotsById.get(current.id);
+          if (!snapshot || !shouldApplyTipYieldSingleInspectorSnapshot(snapshot.outerHtml)) {
+            return current;
+          }
+          const next = {
+            ...current,
+            text: snapshot.fields.text ?? current.text,
+            fields: { ...current.fields, ...snapshot.fields },
+            attributes: snapshot.attributes,
+            styles: mergeManualEditInspectorStyles(snapshot.styles, current.styles),
+            outerHtml: snapshot.outerHtml || current.outerHtml,
+          };
+          selectedManualEditTargetRef.current = next;
+          return next;
+        });
+      }
       // Never clobber in-flight draft styles while pending owns the panel.
-      if (
-        reseed.styles != null
-        && !concurrentPendingOwnsTipYieldReseedStyles(concurrentPending)
-      ) {
+      // Always refresh primary fields from tip when snapshot is usable (449).
+      const primaryFieldsUsable = shouldApplyTipYieldSingleInspectorSnapshot(
+        primarySnapshot.outerHtml,
+      );
+      if (reseed.styles != null && !pendingOwns) {
         setManualEditDraft((current) => ({
           ...current,
+          text: primaryFieldsUsable
+            ? (primarySnapshot.fields.text ?? current.text)
+            : current.text,
+          href: primaryFieldsUsable
+            ? (primarySnapshot.fields.href ?? current.href)
+            : current.href,
+          src: primaryFieldsUsable
+            ? (primarySnapshot.fields.src ?? current.src)
+            : current.src,
+          alt: primaryFieldsUsable
+            ? (primarySnapshot.fields.alt ?? current.alt)
+            : current.alt,
           styles: reseed.styles!,
           fullSource: base,
         }));
       } else if (reseed.styles == null) {
-        setManualEditDraft((current) => (
-          current.fullSource === base ? current : { ...current, fullSource: base }
-        ));
+        setManualEditDraft((current) => {
+          const next = current.fullSource === base ? current : { ...current, fullSource: base };
+          if (!primaryFieldsUsable) return next;
+          return {
+            ...next,
+            text: primarySnapshot.fields.text ?? next.text,
+            href: primarySnapshot.fields.href ?? next.href,
+            src: primarySnapshot.fields.src ?? next.src,
+            alt: primarySnapshot.fields.alt ?? next.alt,
+          };
+        });
+      } else if (primaryFieldsUsable) {
+        // Pending owns styles — still align primary text fields with tip.
+        setManualEditDraft((current) => ({
+          ...current,
+          text: primarySnapshot.fields.text ?? current.text,
+          href: primarySnapshot.fields.href ?? current.href,
+          src: primarySnapshot.fields.src ?? current.src,
+          alt: primarySnapshot.fields.alt ?? current.alt,
+          fullSource: base,
+        }));
       }
     }, 0);
   }

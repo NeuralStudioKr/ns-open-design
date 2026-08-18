@@ -2639,6 +2639,32 @@ describe('manual edit source patches', () => {
     expect(html).toContain('<span>ok</span>');
   });
 
+  it('scrubs SMIL attributeName cite/longdesc/archive/background remote urls', () => {
+    // Remaining MANUAL_EDIT_SMIL_NAV_ATTR_NAMES residuals (448).
+    const source = [
+      '<!doctype html><html><body>',
+      '<div data-od-id="host"><span>ok</span></div>',
+      '</body></html>',
+    ].join('');
+    const dirty = applyManualEditPatch(source, {
+      kind: 'set-outer-html',
+      id: 'host',
+      html: [
+        '<div data-od-id="host">',
+        '<blockquote><set attributeName="cite" to="https://evil.example/c"></set></blockquote>',
+        '<img><animate attributeName="longdesc" values="https://evil.example/l;/ok"></animate></img>',
+        '<object><set attributeName="archive" to="https://evil.example/a.jar /ok"></set></object>',
+        '<body><animate attributeName="background" values="https://evil.example/b.png;/ok"></animate></body>',
+        '<span>ok</span>',
+        '</div>',
+      ].join(''),
+    });
+    expect(dirty.ok, dirty.error).toBe(true);
+    const html = readManualEditOuterHtml(dirty.source, 'host');
+    expect(html).not.toContain('evil.example');
+    expect(html).toContain('<span>ok</span>');
+  });
+
   it('rejects namespaced fill/mask via set-attributes local-name gate', () => {
     const source = [
       '<!doctype html><html><body>',

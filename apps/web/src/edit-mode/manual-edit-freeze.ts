@@ -145,6 +145,17 @@ export function shouldSyncSelectedTargetIdentityAfterTipYieldSingleReseed(
 }
 
 /**
+ * Multi tip-yield must refresh identity for every selected id from painted tip
+ * (not styles-only). Otherwise text/fields/outerHtml stay pre-tip until the
+ * next od-edit-targets broadcast (449 / parity with single 426–440).
+ */
+export function shouldSyncSelectedTargetsIdentityAfterTipYieldMultiReseed(
+  selectedIds: readonly string[],
+): boolean {
+  return selectedIds.length > 1;
+}
+
+/**
  * After tip-remount grace is consumed by the first accepted remasure, refresh
  * host paint — covers both multi tip-yield reseed and Mixed→single (431/430).
  */
