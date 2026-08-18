@@ -63,7 +63,11 @@ export function parseSlideCountTarget(
   text: string | null | undefined,
   options?: { allowBareNumber?: boolean },
 ): number | null {
-  const normalized = String(text ?? "").replace(/\s+/g, " ").trim();
+  const normalized = String(text ?? "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/[.。．]+$/u, "")
+    .trim();
   if (!normalized || /stability cap/i.test(normalized)) return null;
 
   const range = normalized.match(/(\d{1,2})\s*[~\-–—]\s*(\d{1,2})/);

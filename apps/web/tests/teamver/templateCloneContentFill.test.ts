@@ -81,6 +81,32 @@ describe('templateCloneContentFill', () => {
     );
   });
 
+  it('derives explicit slide counts from the visible user request when no UI hint is present', () => {
+    const oneSlide = buildTemplateCloneContentFillSeed({
+      userInstruction: '캡슐 템플릿으로 정확히 1장짜리 요약 슬라이드 만들어줘.',
+      templateTitle: 'Html Ppt Zhangzara Capsule',
+    });
+    expect(oneSlide).toContain('User requested slide count: 1.');
+    expect(oneSlide).toContain('Slide count hint: 1.');
+    expect(oneSlide).not.toContain('default for first template fill');
+
+    const twoSlides = buildTemplateCloneContentFillSeed({
+      userInstruction: '개발자 포트폴리오 예시로 2장짜리 ppt 만들어줘.',
+      templateTitle: 'Html Ppt Zhangzara Creative Mode',
+    });
+    expect(twoSlides).toContain('User requested slide count: 2.');
+    expect(twoSlides).toContain('Slide count hint: 2.');
+  });
+
+  it('keeps large natural-language slide requests capped for first fill but records the real target', () => {
+    const seed = buildTemplateCloneContentFillSeed({
+      userInstruction: 'Expo 아키텍처를 설명하는 8장 발표자료 만들어줘.',
+      templateTitle: 'Html Ppt Zhangzara Daisy Days',
+    });
+    expect(seed).toContain('User requested slide count: 8.');
+    expect(seed).toContain('Slide count hint: 5-6 (stability cap for first template fill).');
+  });
+
   it('fallback fill copy does not claim 첨부한 자료 or 요청한 내용 when topic is missing', () => {
     const visible = extractTemplateCloneUserFacingRequest({
       pendingPrompt: '첨부한 자료를 바탕으로 슬라이드 덱을 만들어줘.',

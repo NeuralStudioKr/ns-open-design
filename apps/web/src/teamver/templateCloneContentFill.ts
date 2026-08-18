@@ -22,6 +22,7 @@ import {
   HOME_FILL_SLIDES_PROMPT_LEGACY,
   isSlideCreateBoilerplateLine,
 } from './slideCreateBoilerplate';
+import { parseSlideCountTarget } from './slideCountTopUp';
 
 /** Keep local — importing canvasSlideLaunch here caused circular init of expansion consts. */
 const SLIDE_DECK_QUALITY_BAR_INSTRUCTION =
@@ -359,11 +360,14 @@ export function buildTemplateCloneContentFillSeed(options: {
   if (templateTitle) {
     parts.push(`Selected template: ${templateTitle}.`);
   }
-  const requestedLine = formatUserRequestedSlideCountLine(options.slideCountHint);
+  const slideCountHintSource =
+    options.slideCountHint
+    ?? parseSlideCountTarget(visible);
+  const requestedLine = formatUserRequestedSlideCountLine(slideCountHintSource);
   if (requestedLine) {
     parts.push(requestedLine);
   }
-  const slideCountHint = normalizeTemplateCloneFillSlideCountHint(options.slideCountHint);
+  const slideCountHint = normalizeTemplateCloneFillSlideCountHint(slideCountHintSource);
   if (slideCountHint) {
     parts.push(`Slide count hint: ${slideCountHint}.`);
   } else {

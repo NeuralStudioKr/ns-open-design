@@ -974,3 +974,4 @@ User-message 쪽 `[Existing deck edit]` / `<attached-preview-comments>` 주입�
 | 2026-08-18 | §0.0a — Template Clone fill 1장 cover-only 저장 방지. 사용자 1장 명시는 허용하되, 미지정/다장 요청에서 1–2장 결과는 미완성으로 저장 전 차단하고 기본 5–6장 outline + named motif fidelity를 seed/system prompt에 고정했다. |
 | 2026-08-18 | §0.0a 보강 — UI slideCountHint가 없어도 자연어 본문에서 `1장/2페이지/8장`을 추출한다. 명시 1장은 허용, 큰 장수는 first-fill cap과 원래 목표를 분리 기록해 1장 cover-only 회귀와 사용자 입력 무시를 동시에 방지한다. |
 | 2026-08-18 | §0.0a 보강 — first-fill 안정성 cap 이후 부족한 장수는 slide-count top-up 자동 턴으로 이어갈 수 있게 하고, 해당 내부 프롬프트는 채팅창에서 숨김 처리하도록 회귀 테스트를 추가했다. |
+| 2026-08-18 | §0.0a 테스트 보강 — `User requested slide count: 15.`처럼 seed에 마침표가 붙은 값도 원래 장수로 복원하고, 자연어 장수 추출/first-fill cap/top-up 예약 조건을 단위 테스트로 고정했다. |
