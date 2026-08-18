@@ -222,37 +222,44 @@ html,body{background:var(--cream);color:var(--text-dark)}
     expect(once.match(/## Template visual kit/g)?.length).toBe(1);
   });
 
-  it('slimTemplateVisualKitForFill removes Motif/Deco/Layout dumps but keeps palette', async () => {
+  it('slimTemplateVisualKitForFill keeps capped Motif/Deco vocabulary (not circles-only)', async () => {
     const { slimTemplateVisualKitForFill } = await import('../src/template-visual-kit.js');
-    const html = await readFile(
+    const daisyHtml = await readFile(
       new URL(
         '../../../plugins/_official/examples/html-ppt-zhangzara-daisy-days/example.html',
         import.meta.url,
       ),
       'utf8',
     );
-    const kit = extractTemplateVisualKitFromHtml(html, {
+    const daisyKit = extractTemplateVisualKitFromHtml(daisyHtml, {
       title: 'Html Ppt Zhangzara Daisy Days',
     })!;
-    expect(kit).toContain('<svg');
-    expect(kit).toContain('Decoration CSS');
-    const wrapped = [
-      '# Teamver selected deck template guard',
-      'If Motif sprites are present, use at most one short snippet AFTER visible title/body copy has started.',
-      'On first Clone content-fill: skip Motif `<svg>` entirely.',
-      '',
-      kit,
-    ].join('\n');
-    const stripped = slimTemplateVisualKitForFill(wrapped);
-    expect(stripped).toContain('#F5F0E6');
-    expect(stripped).toContain('omitted for first content-fill stability');
-    expect(stripped).not.toMatch(/<svg\s/i);
-    expect(stripped).not.toMatch(/<\/svg>/i);
-    expect(stripped).not.toMatch(/cover MUST show the provided daisy SVG/i);
-    expect(stripped).not.toMatch(/Motif sprites below are optional AFTER title/i);
-    expect(stripped).not.toMatch(/use at most one short snippet AFTER visible/i);
-    expect(stripped).toMatch(/Motif SVG paste is DISABLED|Do NOT paste Motif|ZERO Motif/i);
-    expect(stripped).toContain('Decoration CSS (omitted for first content-fill stability)');
+    expect(daisyKit).toContain('<svg');
+    const daisySlim = slimTemplateVisualKitForFill(daisyKit);
+    expect(daisySlim).toContain('#F5F0E6');
+    expect(daisySlim).toMatch(/Motif sprites \(capped for first content-fill/i);
+    expect(daisySlim).toMatch(/<svg\b/i);
+    expect(daisySlim).not.toMatch(/Motif sprites \(omitted for first content-fill/i);
+    expect(daisySlim).not.toMatch(/ZERO Motif|Motif SVG paste is DISABLED/i);
+
+    const capsuleHtml = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/html-ppt-zhangzara-capsule/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const capsuleKit = extractTemplateVisualKitFromHtml(capsuleHtml, {
+      title: 'Html Ppt Zhangzara Capsule',
+    })!;
+    expect(capsuleKit).toMatch(/deco-pill|\.pill-/i);
+    const capsuleSlim = slimTemplateVisualKitForFill(capsuleKit);
+    expect(capsuleSlim).toMatch(/Decorations CSS \(capped for first content-fill/i);
+    expect(capsuleSlim).toMatch(/\.deco-pill/i);
+    expect(capsuleSlim).toMatch(/pill-coral|pill-lavender|pill-sky/i);
+    expect(capsuleSlim).toMatch(/border-radius:\s*9999px/i);
+    expect(capsuleSlim).toMatch(/REQUIRED Motif vocabulary|Do NOT substitute plain CSS circles/i);
+    expect(capsuleSlim).not.toMatch(/Decorations CSS \(omitted for first content-fill/i);
   });
 });
 

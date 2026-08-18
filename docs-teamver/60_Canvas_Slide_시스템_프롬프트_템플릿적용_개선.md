@@ -152,6 +152,10 @@ full `example.html`을 시스템 프롬프트에 넣지 않는다는 방침은 �
 
 제품 판단: **완성된 덱이 우선**이다. 선택 템플릿과 100% 동일한 CSS를 복사하다가 결과물이 비어버리는 것보다, 템플릿의 palette/font/motif cue가 보이는 compact static deck을 완성하는 것이 낫다. 따라서 pre-write gate는 계속 shell 저장을 막고, prompt는 shell이 생기지 않도록 body-first로 유도한다.
 
+### 0.18 2026-08-18 — 템플릿 Motif 복원 (Capsule pills ≠ generic circles)
+
+썸네일(Clone LOOK)은 Daisy flower / Capsule pills가 보이는데 fill 결과는 pastel circle만 남는 회귀: hang 방지용 ZERO-SVG가 Motif vocabulary까지 지웠고, Capsule은 SVG가 아니라 `.deco-pill` / `.pill-*` CSS가 정체성이다. fill은 **title-first + capped Motif** (sprites AFTER title, Decorations CSS pills)로 되돌리고, kit에 pills/sprites가 있으면 generic CSS circles 대체를 금지한다. SVG-before-heading mid-stream abort는 유지.
+
 ### 0.17 2026-08-18 — cream 배경 위아래 흰 띠 (full-bleed surface)
 
 템플릿 palette는 맞는데 preview에서 cream 사각형 위아래에 흰 띠가 남는 경우: `html`/`body` letterbox 또는 outer `.slide`가 white이고 cream이 안쪽 패널에만 칠해진 것. fill 계약에 **edge-to-edge full-bleed**를 명시하고, persist/srcdoc에서 `repairDeckSlideSurfaceBleed`로 paper hex를 `html, body, .slide`에 promote한다.

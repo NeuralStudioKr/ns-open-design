@@ -548,7 +548,7 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt.length).toBeLessThan(27_000);
     });
 
-    it('appends Motif-SVG-deferred READ LAST on template clone fill turns', () => {
+    it('appends Motif-AFTER-title READ LAST on template clone fill turns', () => {
       const prompt = composeTeamverSlideApiPrompt({
         skillBody:
           '## Template visual kit (from example.html)\n\n'
@@ -562,14 +562,15 @@ describe('composeSystemPrompt — API mode (#313)', () => {
         },
         templateCloneContentFill: true,
       });
-      expect(prompt).toContain('Template clone fill — Motif SVG deferred');
-      expect(prompt).toContain('ZERO `<svg>` tags');
-      expect(prompt.indexOf('Template clone fill — Motif SVG deferred')).toBeGreaterThan(
+      expect(prompt).toContain('Template clone fill — Motif AFTER title');
+      expect(prompt).toMatch(/deco-pill|kit Motif vocabulary/i);
+      expect(prompt).toMatch(/Never invent generic CSS circles/i);
+      expect(prompt.indexOf('Template clone fill — Motif AFTER title')).toBeGreaterThan(
         prompt.indexOf('Selected deck template visual — READ LAST'),
       );
-      expect(prompt).toContain('Do NOT paste Motif `<svg>` or Decoration CSS dumps');
-      expect(prompt).not.toMatch(/<svg\s/i);
-      expect(prompt).not.toMatch(/<\/svg>/i);
+      expect(prompt).toMatch(/Motif vocabulary REQUIRED|kit Motif AFTER title/i);
+      expect(prompt).toMatch(/Motif sprites \(capped for first content-fill/i);
+      expect(prompt).toMatch(/<svg\b/i);
     });
 
     it('omits comment-edit / existing-deck contracts on greenfield turns', () => {
@@ -741,15 +742,17 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       }
     });
 
-    it('mutes Motif-verbatim READ LAST on Clone content-fill turns', () => {
+    it('requires kit Motif vocabulary AFTER title on Clone content-fill turns', () => {
       const kitBody = [
         '# Teamver selected deck template guard',
         '',
         '## Template visual kit (from example.html) — Daisy',
         '',
-        '### Motif sprites (omitted for first content-fill stability)',
+        '### Motif sprites (capped for first content-fill — AFTER title/lead only)',
         '',
-        'Do NOT paste Motif SVG.',
+        '```html',
+        '<svg viewBox="0 0 10 10"><circle cx="5" cy="5" r="4"/></svg>',
+        '```',
         '',
         '### Palette cues: #F5F0E6',
       ].join('\n');
@@ -773,8 +776,9 @@ describe('composeSystemPrompt — API mode (#313)', () => {
         },
       });
       expect(fill).toContain('READ LAST (first content-fill)');
-      expect(fill).toContain('Motif SVG polish is a follow-up edit');
-      expect(fill).toContain('OD-style CREATE, Motif deferred');
+      expect(fill).toMatch(/Motif vocabulary \(required\)|kit Motif vocabulary/i);
+      expect(fill).toContain('OD-style CREATE, kit Motif AFTER title');
+      expect(fill).toMatch(/Never invent generic CSS circles|FORBIDDEN substitutes/i);
       expect(fill).not.toContain('Copy Motif sprites verbatim');
       expect(normal).not.toContain('Copy Motif sprites verbatim');
       expect(normal).toContain('Motif budget');

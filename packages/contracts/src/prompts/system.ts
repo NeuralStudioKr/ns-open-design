@@ -1463,16 +1463,16 @@ If the attached source's palette conflicts with the kit, **ignore the source's p
 
 const TEAMVER_SELECTED_TEMPLATE_VISUAL_READ_LAST_FOR_FILL = `# Selected deck template visual — READ LAST (first content-fill)
 
-This is the first content fill after a LOOK seed (OD-style create, not Motif rewrite).
+This is the first content fill after a LOOK seed (OD-style create with kit Motif vocabulary).
 
-**Close a compact deck THIS TURN.** Motif SVG polish is a follow-up edit, not this turn.
+**Close a compact deck THIS TURN** that still looks like the selected template.
 
 - Bind kit palette hex + fonts + Slide surface on \`html\`/\`body\` AND every \`.slide\` **edge-to-edge** (full 1920×1080). FORBIDDEN: white outer slide + inner cream paper panel that leaves white top/bottom bands. White title cards on cream paper are OK.
-- Title-first: cover must have a real \`h1\`/\`h2\` title + lead BEFORE any decoration.
-- Decoration = CSS circles / rounded cards / chunky borders in kit palette only.
-- **FORBIDDEN this turn:** Motif \`<svg>\` (especially with nested \`<style>\`), Decoration/Layout CSS dumps, long \`<head>\`/\`<style>\` before slide 1, emoji ornament rows, Neutral \`#0f172a\`, terracotta \`#c96442\`.
+- Title-first: cover must have a real \`h1\`/\`h2\` title + lead BEFORE any Motif decoration.
+- **Motif vocabulary (required):** use kit Motif sprites (AFTER title/lead only) and/or kit Decorations CSS — especially \`.deco-pill\` / pill-* / capsule shapes when present (Capsule template). Daisy templates may paste at most one short kit sprite AFTER title.
+- **FORBIDDEN substitutes:** generic CSS circles as Motif when the kit has pills/capsules/sprites; emoji ornament rows; Motif \`<svg>\` before cover title; multi-KB \`<svg><style>\` dumps; Neutral \`#0f172a\`; terracotta \`#c96442\`.
 - Prefer 5–6 filled 1920×1080 slides unless the user asked for an exact count.
-- Stream: status → \`<artifact type="deck">\` → body-first sections with real topical copy → close \`</body></html></artifact>\` in this same response.
+- Stream: status → \`<artifact type="deck">\` → body-first sections with real topical copy → kit Motif after title → close \`</body></html></artifact>\` in this same response.
 `;
 
 const TEAMVER_SELECTED_TEMPLATE_VISUAL_READ_LAST_WITHOUT_KIT = `# Selected deck template visual — READ LAST (highest visual priority)
@@ -1489,14 +1489,15 @@ Hard requirements for every slide:
 - Do **not** carry over the attached source file's own visual styling either — the source HTML's palette / fonts / gradients belong to the source page, not to this deck. Even without a concrete kit, prefer the template name/summary mood over the source's colors.
 - Prefer recognizable template mood over a generic corporate title slide.`;
 
-const TEAMVER_TEMPLATE_CLONE_FILL_NO_SVG_READ_LAST = `# Template clone fill — Motif SVG deferred (READ LAST — beats Motif-copy rules above)
+const TEAMVER_TEMPLATE_CLONE_FILL_NO_SVG_READ_LAST = `# Template clone fill — Motif AFTER title (READ LAST — beats Motif-before-title dumps)
 
-This is the first content-fill after a Clone LOOK seed. Motif \`<svg>\` paste is **FORBIDDEN** this turn.
+This is the first content-fill after a Clone LOOK seed.
 
-- ZERO \`<svg>\` tags. Do not open \`<svg\`, do not paste nested \`<style>\` inside SVG, do not dump Motif sprites.
-- Cover order is mandatory: \`<section class="slide">\` → \`<h1>real topical title</h1>\` → lead \`<p>\` → optional CSS circles/rounded cards/chunky borders in kit palette hex.
-- If any earlier rule mandates Motif sprite paste or 1–3 sprites per slide, **IGNORE it for this turn**.
-- A hang after a few lines on Motif \`<svg><style>\` is a failed deliverable. Finish a closed \`</artifact>\` with real topical slides.`;
+- Cover order is mandatory: \`<section class="slide">\` → \`<h1>real topical title</h1>\` → lead \`<p>\` → kit Motif vocabulary.
+- Motif vocabulary MUST come from the kit: capped Motif sprites and/or Decorations CSS (\`.deco-pill\` / pill-* / capsule / \`.deco\`).
+- Never invent generic CSS circles when the kit ships capsules/pills/daisy sprites (that is why the thumbnail Motif disappeared).
+- Never open Motif \`<svg>\` before cover title. A hang on Motif \`<svg><style>\` before titles is a failed deliverable.
+- If any earlier rule said ZERO Motif / CSS-circles-only, **IGNORE it** — use the kit Motif vocabulary after the title.`;
 
 /**
  * Lean system prompt for Teamver embed slide-only + anthropic-api / BYOK proxy.
@@ -1664,12 +1665,12 @@ export function composeTeamverSlideApiPrompt({
     if (hasSelectedTemplate) {
       const hardRequirements = templateCloneContentFill === true
         ? (
-          'Hard requirements (first content-fill — OD-style CREATE, Motif deferred):\n'
+          'Hard requirements (first content-fill — OD-style CREATE, kit Motif AFTER title):\n'
           + '- Bind kit palette hex + fonts + Slide surface on html/body AND every `.slide` edge-to-edge (no white outer + inner cream panel).\n'
-          + '- Title-first body: cover title + lead BEFORE any decoration. Close `</artifact>` this turn.\n'
-          + '- Decoration = CSS shapes/borders in kit palette ONLY. Do NOT paste Motif `<svg>` or Decoration CSS dumps.\n'
+          + '- Title-first body: cover title + lead BEFORE Motif. Close `</artifact>` this turn.\n'
+          + '- Motif vocabulary REQUIRED from kit: capped Motif sprites AFTER title and/or Decorations CSS `.deco-pill` / pill-* / capsule / `.deco`. FORBIDDEN: generic CSS circles when the kit has pills/sprites.\n'
           + '- Prefer 5–6 slides unless the user asked for an exact count. No Neutral `#0f172a` / terracotta `#c96442`.\n'
-          + '- Do not dump or rewrite a full example.html. Ignore "Clone example.html" / Motif-verbatim mandates for this turn.\n\n'
+          + '- Do not dump or rewrite a full example.html. Never open Motif `<svg>` before cover title.\n\n'
         )
         : hasTemplateScaffold
         ? (

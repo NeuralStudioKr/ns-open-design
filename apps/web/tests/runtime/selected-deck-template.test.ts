@@ -148,8 +148,9 @@ describe('selected-deck-template runtime helpers', () => {
     expect(wrapped).toContain('Content expansion');
     expect(wrapped).toMatch(/TOPIC to research/);
     expect(wrapped).toMatch(/echoes the prompt/);
-    expect(wrapped).toContain('ZERO Motif `<svg>`');
-    expect(wrapped).toContain('never open Motif `<svg>` before cover copy');
+    expect(wrapped).toContain('kit Motif vocabulary');
+    expect(wrapped).toMatch(/never invent generic(?: CSS)? circles/i);
+    expect(wrapped).toMatch(/never open Motif `<svg>` before cover (?:copy|title)/i);
   });
 
   it('does not invent pluginIds when enriching a send with no context', () => {

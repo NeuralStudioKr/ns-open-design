@@ -636,9 +636,9 @@ OD succeeds by editing cloned HTML text. Teamver BYOK cannot — so regenerate c
 
 **Full-bleed surface:** kit Slide surface must paint \`html\`/\`body\` AND every \`.slide\` edge-to-edge. FORBIDDEN: white outer canvas with an inner cream paper panel (white top/bottom bands). White title cards on cream paper are OK.
 
-**FORBIDDEN this turn:** Motif \`<svg>\` (esp. nested \`<style>\`), Decoration/Layout CSS dumps, long \`<head>\`, Neutral \`#0f172a\`, terracotta \`#c96442\`, emoji ornament rows, parroting the user brief as slide titles.
+**FORBIDDEN this turn:** Motif \`<svg>\` before cover title, multi-KB \`<svg><style>\` dumps, Layout CSS dumps, long \`<head>\`, Neutral \`#0f172a\`, terracotta \`#c96442\`, emoji ornament rows, generic CSS circles when the kit has \`.deco-pill\`/sprites, parroting the user brief as slide titles.
 
-**Allowed look:** kit palette hex + fonts + CSS circles/rounded cards/chunky borders. Use scaffold map only as layout role names — do not paste Motif sprites.
+**Allowed look:** kit palette hex + fonts + kit Motif vocabulary AFTER title (capped Motif sprites and/or \`.deco-pill\` / pill-* / capsule / \`.deco\` from Decorations CSS). Use scaffold map as layout role names.
 
 ${DECK_COMPACT_INLINE_LAYOUT_VOCABULARY_FOR_SELECTED_TEMPLATE}
 `;

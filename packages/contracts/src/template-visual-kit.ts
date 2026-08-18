@@ -520,28 +520,41 @@ function extractDecorationCss(html: string, budget: number): string | null {
     .map((rule) => sanitizeCssRuleForFixedCanvas(rule))
     .filter((rule): rule is string => Boolean(rule));
   const prioritized = rules.filter((rule) =>
-    /\.deco\b|\.card\b|\.badge\b|\.slide\b|--border|--shadow|--radius|font-display|font-body/i.test(
+    /\.deco\b|\.pill-[a-z0-9_-]+|deco-pills|floating-pills|\.card\b|\.badge\b|\.slide\b|--border|--shadow|--radius|font-display|font-body|border-radius\s*:\s*999/i.test(
       rule,
     ),
   );
-  // Prefer .deco* and .card/.badge before generic .slide sizing rules.
-  prioritized.sort((a, b) => {
-    const score = (rule: string) => {
-      if (/\.deco\b/i.test(rule)) return 0;
-      if (/\.card\b|\.badge\b/i.test(rule)) return 1;
-      if (/--border|--shadow|--radius/i.test(rule)) return 2;
-      return 3;
-    };
-    return score(a) - score(b);
-  });
+  const score = (rule: string) => {
+    // Positioned capsule/pill shells beat color-only `.pill-coral` variants.
+    if (/\.deco-pill\b|deco-pills|floating-pills|\.c-pill\b|\.f-pill\b/i.test(rule) && /position\s*:/i.test(rule)) {
+      return 0;
+    }
+    if (/\.deco-pill\b|deco-pills|floating-pills|border-radius\s*:\s*999/i.test(rule)) return 1;
+    // Capsule Motif identity is mostly `.pill-coral` / `.pill-sky` color tokens —
+    // keep them ahead of generic .card/.slide chrome so budget cannot drop them.
+    if (/\.pill-[a-z0-9_-]+/i.test(rule)) return 2;
+    if (/\.pill\b/i.test(rule)) return 3;
+    if (/\.deco\b/i.test(rule)) return 4;
+    if (/\.card\b|\.badge\b/i.test(rule)) return 5;
+    if (/--border|--shadow|--radius/i.test(rule)) return 6;
+    return 7;
+  };
+  prioritized.sort((a, b) => score(a) - score(b));
   const picked: string[] = [];
   let used = 0;
-  for (const rule of prioritized) {
-    if (picked.length >= 18) break;
-    if (used + rule.length + 1 > budget) continue;
+  const tryPick = (rule: string) => {
+    if (picked.includes(rule)) return;
+    if (picked.length >= 24) return;
+    if (used + rule.length + 1 > budget) return;
     picked.push(rule);
     used += rule.length + 1;
+  };
+  // Phase 1: Motif vocabulary (shells + pill-* colors) before generic chrome.
+  for (const rule of prioritized) {
+    if (score(rule) <= 2) tryPick(rule);
   }
+  // Phase 2: remaining deco/card/slide chrome.
+  for (const rule of prioritized) tryPick(rule);
   if (picked.length === 0) return null;
   return picked.join('\n');
 }
@@ -1064,7 +1077,7 @@ export function extractTemplateVisualKitFromHtml(
   const scaffold = extractTemplateScaffoldMap(source, 1_000, spriteKinds);
   // Keep Decoration CSS in the kit when the template is ornament-heavy (Daisy).
   // Layout CSS is important too, but a missing `.deco` block regresses look more.
-  const deco = extractDecorationCss(source, 820);
+  const deco = extractDecorationCss(source, 1_600);
   const layout = extractLayoutCss(source, deco ? 900 : 1_200);
   const slideCue = extractFirstSlideStructureCue(source, 320);
 
@@ -1216,38 +1229,108 @@ export function appendTemplateVisualKit(skillBody: string, kit: string | null | 
 
 /**
  * First Clone content-fill turns hang when the model pastes multi-KB Motif SVGs
- * / Decoration / Layout CSS before cover titles (OD succeeds because it edits a
- * cloned file in place — Teamver BYOK regenerates). Slim the kit to
- * palette/fonts/surface (+ short scaffold map) for fill stability.
+ * / full Decoration dumps BEFORE cover titles. Cap Motif/Deco for fill stability
+ * while keeping the template Motif vocabulary (Daisy sprites, Capsule `.deco-pill`).
+ * Layout CSS + first-slide cues stay omitted.
  */
+function capMotifSpritesSectionForFill(section: string): string {
+  const svgs = [...section.matchAll(/```html\s*([\s\S]*?)```/gi)]
+    .map((match) => (match[1] ?? '').trim())
+    .filter((svg) => /^<svg\b/i.test(svg) && svg.length >= 80 && svg.length <= 900);
+  const kept: string[] = [];
+  let used = 0;
+  for (const svg of svgs) {
+    if (kept.length >= 2) break;
+    if (used + svg.length > 1_400) continue;
+    kept.push(svg);
+    used += svg.length;
+  }
+  const lines = [
+    '### Motif sprites (capped for first content-fill — AFTER title/lead only)',
+    '',
+  ];
+  if (kept.length > 0) {
+    lines.push(
+      'Paste ONLY these sprites, and ONLY AFTER a real cover `<h1>`/`<h2>` + lead. At most one short sprite per slide. Never open `<svg` before title copy. Do not invent ellipse flowers / emoji / generic circles.',
+      '',
+    );
+    for (const svg of kept) {
+      lines.push('```html', svg, '```', '');
+    }
+  } else {
+    lines.push(
+      'No compact Motif SVG survived the fill cap. Use **Decorations CSS** Motif vocabulary below (`.deco-pill` / pill-* / `.deco`). Do NOT invent generic CSS circles as Motif substitutes.',
+      '',
+    );
+  }
+  return lines.join('\n');
+}
+
+function capDecorationsCssSectionForFill(section: string): string {
+  const css = /```css\s*([\s\S]*?)```/i.exec(section)?.[1] ?? '';
+  const rules = css
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const score = (rule: string) => {
+    if (/\.deco-pill\b|deco-pills|floating-pills|\.c-pill\b|\.f-pill\b/i.test(rule) && /position\s*:/i.test(rule)) {
+      return 0;
+    }
+    if (/\.deco-pill\b|deco-pills|floating-pills|border-radius\s*:\s*999/i.test(rule)) return 1;
+    if (/\.pill-[a-z0-9_-]+/i.test(rule)) return 2;
+    if (/\.pill\b/i.test(rule)) return 3;
+    if (/\.deco\b/i.test(rule)) return 4;
+    if (/\.card\b|\.badge\b/i.test(rule)) return 5;
+    return 6;
+  };
+  rules.sort((a, b) => score(a) - score(b));
+  const picked: string[] = [];
+  let used = 0;
+  const tryPick = (rule: string) => {
+    if (picked.includes(rule)) return;
+    if (picked.length >= 18) return;
+    if (used + rule.length + 1 > 1_350) return;
+    picked.push(rule);
+    used += rule.length + 1;
+  };
+  for (const rule of rules) {
+    if (score(rule) <= 2) tryPick(rule);
+  }
+  for (const rule of rules) tryPick(rule);
+  return [
+    '### Decorations CSS (capped for first content-fill — paste AFTER slide 1)',
+    '',
+    'REQUIRED Motif vocabulary when present: `.deco-pill` / pill-* / capsule shapes / kit `.deco`. Do NOT substitute plain CSS circles when the kit ships pills/capsules.',
+    'Example capsule (AFTER title): `<div class="deco-pill pill-coral" style="position:absolute;top:48px;left:64px;width:180px;height:72px;border-radius:9999px;border:2px solid #1A1A1A;background:#E85D4E"></div>`.',
+    '',
+    '```css',
+    ...(picked.length > 0 ? picked : ['/* kit deco rules unavailable — use pill-shaped (border-radius:9999px) accents in kit palette hex */']),
+    '```',
+    '',
+  ].join('\n');
+}
+
 export function slimTemplateVisualKitForFill(skillBody: string): string {
   const body = String(skillBody ?? '');
   let next = body;
   if (next.includes('### Motif sprites')) {
     next = next.replace(
       /### Motif sprites[\s\S]*?(?=\n### |\n## |$)/g,
-      [
-        '### Motif sprites (omitted for first content-fill stability)',
-        '',
-        'Do NOT paste Motif `<svg>` markup on this fill turn — large SVG+`<style>` dumps stall after a few lines.',
-        'Use kit palette hex + fonts + CSS circles / rounded cards / chunky borders for decoration instead.',
-        'Motif SVGs can be added later in a follow-up edit after a closed deck exists.',
-        '',
-      ].join('\n'),
+      (section) => capMotifSpritesSectionForFill(section),
     );
   }
-  // Leftover sprites outside the Motif section still get pasted and hang.
-  next = next.replace(/<svg\b[\s\S]*?<\/svg>/gi, '');
-  next = next.replace(/```html\s*```/g, '');
+  // Drop Motif SVGs that leaked outside the Motif section (structure cues etc.).
+  // Keep the capped Motif fences we just wrote.
   next = next.replace(
-    /### Decoration CSS[\s\S]*?(?=\n### |\n## |$)/g,
-    [
-      '### Decoration CSS (omitted for first content-fill stability)',
-      '',
-      'Use simple CSS shapes / chunky borders in kit palette hex. Do not paste Decoration CSS blocks this turn.',
-      '',
-    ].join('\n'),
+    /### First-slide structure cue[\s\S]*?(?=\n### |\n## |$)/g,
+    '',
   );
+  if (/### Decorations? CSS/i.test(next)) {
+    next = next.replace(
+      /### Decorations? CSS[\s\S]*?(?=\n### |\n## |$)/gi,
+      (section) => capDecorationsCssSectionForFill(section),
+    );
+  }
   next = next.replace(
     /### Layout CSS[\s\S]*?(?=\n### |\n## |$)/g,
     [
@@ -1258,76 +1341,72 @@ export function slimTemplateVisualKitForFill(skillBody: string): string {
     ].join('\n'),
   );
   next = next.replace(
-    /### First-slide structure cue[\s\S]*?(?=\n### |\n## |$)/g,
-    '',
-  );
-  next = next.replace(
     /- Motif (?:MUST be copied from|language comes from)[\s\S]*?(?=\n- |\n### |\n## |$)/g,
-    '- Motif SVG paste is DISABLED for first content-fill. Decorate with CSS shapes in kit palette hex only.\n',
-  );
-  next = next.replace(
-    /(?:If complete motif SVGs are provided,\s*)?copy at least one (?:complete )?(?:provided )?SVG[^\n]*/gi,
-    'Do not copy Motif SVGs on this fill turn — CSS shapes only.',
-  );
-  next = next.replace(
-    /Paste sprites VERBATIM[^\n]*/gi,
-    'Do not paste sprites on this fill turn.',
-  );
-  next = next.replace(
-    /These sprites are the ONLY allowed Motif SVG vocabulary[^\n]*/gi,
-    'Motif SVG vocabulary is omitted this fill turn — CSS shapes only.',
-  );
-  next = next.replace(
-    /If you paste SVG:[^\n]*/gi,
-    'Do not paste Motif SVG this fill turn.',
-  );
-  next = next.replace(
-    /Prefer kit Motif daisy sprites[^\n]*/gi,
-    'Prefer kit cream/ink + CSS-shape daisy accents — no Motif SVG this fill turn.',
-  );
-  next = next.replace(
-    /Every slide should carry 1–3 recognizable Motif sprites[^\n]*/gi,
-    'Every slide should use kit palette + fonts; Motif SVGs are deferred until after a closed deck.',
+    '- Motif vocabulary is REQUIRED from kit Motif sprites (AFTER title/lead) and/or Decorations CSS (`.deco-pill` / pill-* / `.deco`). Never invent generic CSS circles or emoji ornaments when the kit provides capsules/pills/sprites.\n',
   );
   next = next.replace(
     /4\.\s*\*\*Motif\/density:\*\*[^\n]*/gi,
-    '4. **Motif/density:** deferred — CSS shapes only on first fill; Motif SVGs later.',
+    '4. **Motif/density:** use capped kit Motif sprites AFTER title/lead and/or kit `.deco-pill`/`.deco` CSS — never generic circles when the kit has pills/sprites.',
   );
   next = next.replace(
     /treat its\s+CSS tokens, fonts, (?:Motif sprites|compact motif\/deco cues)[^\n]*/gi,
-    'treat its CSS tokens, fonts, and scaffold map as mandatory — Motif SVG paste is disabled this fill turn.',
+    'treat its CSS tokens, fonts, capped Motif sprites / `.deco-pill` Decorations CSS, and scaffold map as mandatory this fill turn.',
   );
   next = next.replace(
     /The cover MUST (?:show the provided daisy SVG motif|use kit cream\/ink \+ CSS-shape decoration)[^\n]*/gi,
-    'The cover MUST use kit cream/ink + CSS-shape decoration — no Motif SVG this fill turn.',
+    'The cover MUST use kit surface + kit Motif vocabulary (daisy sprite AFTER title, or `.deco-pill` capsules) — not generic circles.',
   );
   next = next.replace(
     /when Motif sprites \/ Decorations CSS are present[^\n]*/gi,
-    'when Decorations CSS is present, use CSS-shape density in kit hex — Motif SVG paste is disabled this fill turn.',
+    'when Motif sprites / Decorations CSS are present, use that Motif vocabulary (sprites AFTER title; `.deco-pill` capsules) — never plain circle substitutes.',
   );
   next = next.replace(
     /<!-- (?:use Motif sprites SVG inside \.deco|optional Motif sprite AFTER title\/lead[^>]*) -->/gi,
-    '<!-- CSS circle in kit hex — no Motif SVG this fill turn -->',
-  );
-  next = next.replace(
-    /reuse Motif sprites below[^\n]*/gi,
-    'decorate with CSS/`.deco` only — Motif sprites are deferred this fill turn.',
-  );
-  next = next.replace(
-    /Motif sprites below are optional AFTER title\/lead\.?/gi,
-    'Motif sprites are deferred this fill turn.',
-  );
-  next = next.replace(
-    /If Motif sprites are present[^\n]*/gi,
-    'Motif SVG paste is DISABLED this fill turn — CSS shapes / `.deco` cues in kit palette hex only.',
-  );
-  next = next.replace(
-    /use at most one short (?:complete )?(?:sprite|snippet)[^\n]*/gi,
-    'Do not paste Motif SVG this fill turn — CSS shapes only.',
+    '<!-- kit Motif: sprite AFTER title or .deco-pill — not a generic circle -->',
   );
   next = next.replace(
     /On first Clone content-fill:[^\n]*/gi,
-    'On first Clone content-fill: ZERO Motif `<svg>` — CSS shapes / `.deco` cues in kit palette hex only.',
+    'On first Clone content-fill: title-first, then kit Motif vocabulary (capped sprites and/or `.deco-pill` CSS). Never open Motif `<svg>` before cover title; never invent generic circles when the kit has pills/sprites.',
+  );
+  next = next.replace(
+    /If Motif sprites are present[^\n]*/gi,
+    'If Motif sprites are present, paste at most one short sprite AFTER visible title/body copy; if Decorations CSS has `.deco-pill`, use capsules — not generic circles.',
+  );
+  next = next.replace(
+    /Motif SVG paste is DISABLED[^\n]*/gi,
+    'Motif vocabulary is REQUIRED from the capped kit Motif/Deco sections — title-first; no generic circles.',
+  );
+  next = next.replace(
+    /Do not (?:copy|paste) Motif SVGs on this fill turn[^\n]*/gi,
+    'Paste capped kit Motif sprites only AFTER title/lead; otherwise use kit `.deco-pill`/`.deco` CSS.',
+  );
+  next = next.replace(
+    /Do not paste sprites on this fill turn\.?/gi,
+    'Paste capped kit sprites only AFTER title/lead.',
+  );
+  next = next.replace(
+    /Motif SVG vocabulary is omitted this fill turn[^\n]*/gi,
+    'Use capped Motif sprites AFTER title/lead and/or kit `.deco-pill` CSS — not generic circles.',
+  );
+  next = next.replace(
+    /Prefer kit cream\/ink \+ CSS-shape daisy accents[^\n]*/gi,
+    'Prefer kit Motif daisy sprites AFTER title/lead (or kit `.deco` cues) — not generic circles.',
+  );
+  next = next.replace(
+    /Every slide should use kit palette \+ fonts; Motif SVGs are deferred[^\n]*/gi,
+    'Every slide should use kit palette + fonts + kit Motif vocabulary (sprites AFTER title and/or `.deco-pill`).',
+  );
+  next = next.replace(
+    /Motif sprites (?:are deferred this fill turn|below are optional AFTER title\/lead)\.?/gi,
+    'Motif sprites are capped and only AFTER title/lead.',
+  );
+  next = next.replace(
+    /decorate with CSS\/`\.deco` only — Motif sprites are deferred this fill turn\.?/gi,
+    'decorate with kit Motif sprites AFTER title/lead and/or kit `.deco-pill`/`.deco` CSS.',
+  );
+  next = next.replace(
+    /use at most one short (?:complete )?(?:sprite|snippet)[^\n]*/gi,
+    'use at most one short kit Motif sprite AFTER title/lead (or kit `.deco-pill` capsules).',
   );
   return next;
 }

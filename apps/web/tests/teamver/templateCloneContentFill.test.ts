@@ -49,8 +49,9 @@ describe('templateCloneContentFill', () => {
     expect(seed).toMatch(/Strict body-first contract/i);
     expect(seed).toMatch(/`<head>` is FORBIDDEN/i);
     expect(seed).toMatch(/first 800 characters after `<artifact`/i);
-    expect(seed).toMatch(/Motif SVG OVERRIDE/i);
-    expect(seed).toMatch(/ZERO `<svg>` tags this turn/i);
+    expect(seed).toMatch(/Motif vocabulary OVERRIDE/i);
+    expect(seed).toMatch(/deco-pill|kit Motif/i);
+    expect(seed).toMatch(/generic CSS circles/i);
     expect(seed).toMatch(/Full-bleed surface/i);
     expect(seed).toMatch(/white bands at top\/bottom|white top\/bottom bands/i);
     expect(seed).toMatch(/NEVER "수정 반영 중"/);
@@ -271,7 +272,7 @@ describe('templateCloneContentFill', () => {
     expect(continued).toContain(TEMPLATE_CLONE_CONTENT_FILL_MARKER);
     expect(continued).toContain(TEMPLATE_CLONE_CONTENT_FILL_TURN_MARKER);
     expect(continued).toMatch(/NEVER "수정 반영 중"/);
-    expect(continued).toMatch(/ZERO `<svg>` tags this turn/);
+    expect(continued).toMatch(/kit Motif vocabulary|deco-pill|ABANDON any Motif/);
     expect(continued).toMatch(/body-first/i);
     expect(continued).not.toContain('[Existing deck edit]');
     expect(continued).toMatch(/이전 응답이 끊겼습니다/);

@@ -38,9 +38,10 @@ describe('selected-deck-template prompt helpers', () => {
     expect(wrapped).toContain('background:<kit surface>');
     expect(wrapped).toContain('Full-bleed surface');
     expect(wrapped).toContain('Do not emit `<head>`');
-    expect(wrapped).toContain('skip huge SVG `<style>` payloads');
-    expect(wrapped).toContain('ZERO Motif `<svg>`');
-    expect(wrapped).toContain('never open Motif `<svg>` before cover copy');
+    expect(wrapped).toMatch(/skip huge SVG|kit Motif vocabulary/i);
+    expect(wrapped).toContain('kit Motif vocabulary');
+    expect(wrapped).toMatch(/never invent generic(?: CSS)? circles/i);
+    expect(wrapped).toMatch(/never open Motif `<svg>` before cover (?:copy|title)/i);
   });
 
   it('prefers selected template body and does not append Simple Deck as secondary', () => {
