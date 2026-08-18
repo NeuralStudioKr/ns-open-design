@@ -21,6 +21,13 @@ describe('export relative asset warm wiring', () => {
     expect(routes).toContain('mergeOfficialTemplateLookForExport');
   });
 
+  it('resolves official look template id from body, metadata, or skillIds', () => {
+    const look = readFileSync(join(here, '../src/official-deck-look-export.ts'), 'utf8');
+    expect(look).toContain('firstOfficialDeckTemplateId');
+    expect(look).toContain('skillIds');
+    expect(look).toContain('mergeOfficialDeckLookCss');
+  });
+
   it('passes projectStorageHooks into registerProjectExportRoutes', () => {
     expect(server).toMatch(
       /registerProjectExportRoutes\(app, \{[\s\S]*?projectStorageHooks,/,

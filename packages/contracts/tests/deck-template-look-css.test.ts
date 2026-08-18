@@ -9,9 +9,12 @@ import {
 } from '../src/html/deckPdfExport';
 import {
   OFFICIAL_DECK_LOOK_STYLE_ATTR,
+  OFFICIAL_DECK_MOTIF_HTML_ATTR,
   deckHtmlHasOfficialLookCss,
   extractOfficialDeckLookAssets,
+  firstOfficialDeckTemplateId,
   listOfficialLookProofClasses,
+  listOfficialMotifSymbolIds,
   mergeOfficialDeckLookCss,
 } from '../src/html/deck-template-look-css';
 import {
@@ -226,8 +229,79 @@ describe('official deck look CSS merge', () => {
       if (expected && !new RegExp(`\\.${expected.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(standalone)) {
         failures.push(`${folder}: standalone wrap dropped .${expected}`);
       }
+      const symbolIds = listOfficialMotifSymbolIds(assets.motifHtml.join('\n'));
+      for (const symbolId of symbolIds) {
+        if (!new RegExp(`<symbol\\b[^>]*\\bid="${symbolId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"`, 'i').test(merged)) {
+          failures.push(`${folder}: missing Motif symbol #${symbolId}`);
+        }
+      }
+      if (assets.motifHtml.some((block) => /\bgrain-overlay\b/i.test(block)) && !/\bgrain-overlay\b/i.test(merged)) {
+        failures.push(`${folder}: missing grain-overlay Motif host`);
+      }
+      if (assets.motifHtml.some((block) => /\bcrt-overlay\b/i.test(block)) && !/\bcrt-overlay\b/i.test(merged)) {
+        failures.push(`${folder}: missing crt-overlay Motif host`);
+      }
     }
 
     expect(failures, failures.join('\n')).toEqual([]);
   }, 60_000);
+
+  it('injects Pin #pin symbols into compact fill that only has <use href="#pin">', () => {
+    const official = loadOfficialLookSource(join(EXAMPLES_DIR, 'html-ppt-zhangzara-pin-and-paper/example.html'));
+    const assets = extractOfficialDeckLookAssets(official)!;
+    expect(listOfficialMotifSymbolIds(assets.motifHtml.join('\n'))).toEqual(
+      expect.arrayContaining(['pin', 'pin-open', 'arr', 'mark']),
+    );
+    const pinFill = `<!doctype html><html lang="ko"><head><meta charset="utf-8">
+<style>:root{--paper:#F4EFE4}</style></head><body>
+<div class="slide s-cover"><h1>Kept things</h1>
+<svg class="pin-1" viewBox="0 0 360 110"><use href="#pin"/></svg>
+</div></body></html>`;
+    expect(pinFill).not.toContain('<symbol id="pin"');
+    const merged = mergeOfficialDeckLookCss(pinFill, assets);
+    expect(merged).toContain(`<symbol id="pin"`);
+    expect(merged).toContain(`<symbol id="pin-open"`);
+    expect(merged).toContain(OFFICIAL_DECK_MOTIF_HTML_ATTR);
+    expect(merged).toContain('<use href="#pin"/>');
+    expect(merged).toContain('Kept things');
+    const twice = mergeOfficialDeckLookCss(merged, assets);
+    expect(twice).toBe(merged);
+  });
+
+  it('still injects Motif HTML when look CSS is already present', () => {
+    const official = loadOfficialLookSource(join(EXAMPLES_DIR, 'html-ppt-zhangzara-pin-and-paper/example.html'));
+    const assets = extractOfficialDeckLookAssets(official)!;
+    const cssOnly = mergeOfficialDeckLookCss(
+      `<!doctype html><html><head><meta charset="utf-8"></head><body>
+<div class="slide"><h1>Topic</h1><svg><use href="#pin"/></svg></div></body></html>`,
+      { ...assets, motifHtml: [] },
+    );
+    expect(cssOnly).toContain(OFFICIAL_DECK_LOOK_STYLE_ATTR);
+    expect(cssOnly).not.toContain('<symbol id="pin"');
+    const withMotif = mergeOfficialDeckLookCss(cssOnly, assets);
+    expect(withMotif).toContain('<symbol id="pin"');
+    expect(deckHtmlHasOfficialLookCss(cssOnly, assets)).toBe(true);
+  });
+
+  it('injects Capsule grain-overlay host from official example.html', () => {
+    const official = loadOfficialLookSource(join(EXAMPLES_DIR, 'html-ppt-zhangzara-capsule/example.html'));
+    const assets = extractOfficialDeckLookAssets(official)!;
+    expect(assets.motifHtml.join('')).toContain('grain-overlay');
+    const merged = mergeOfficialDeckLookCss(COMPACT_FILL, assets);
+    expect(merged).toMatch(/<div[^>]*grain-overlay/);
+    expect(merged).toContain('shadcn/ui');
+  });
+
+  it('resolves official deck template ids from metadata or skillIds', () => {
+    expect(firstOfficialDeckTemplateId(
+      null,
+      '',
+      ['other-skill', 'html-ppt-zhangzara-pin-and-paper'],
+    )).toBe('html-ppt-zhangzara-pin-and-paper');
+    expect(firstOfficialDeckTemplateId(
+      'example-html-ppt-zhangzara-capsule',
+      ['html-ppt-zhangzara-pin-and-paper'],
+    )).toBe('example-html-ppt-zhangzara-capsule');
+    expect(firstOfficialDeckTemplateId(['research-brief', 'web-fetch'])).toBeNull();
+  });
 });

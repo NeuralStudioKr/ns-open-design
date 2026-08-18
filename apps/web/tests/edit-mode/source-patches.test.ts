@@ -521,6 +521,22 @@ describe('manual edit source patches', () => {
     expect(out).not.toContain('evil.example');
   });
 
+  it('keeps official Motif sprite SVG (Pin #pin symbols) through persist sanitize', () => {
+    const html = [
+      '<!doctype html><html><head>',
+      '<svg data-od-official-motif-html width="0" height="0" aria-hidden="true">',
+      '<defs><symbol id="pin" viewBox="0 0 360 110"><path d="M1 1"/></symbol></defs>',
+      '</svg></head><body>',
+      '<section class="slide"><svg class="pin"><use href="#pin"/></svg></section>',
+      '</body></html>',
+    ].join('');
+    const out = sanitizeManualEditFullSource(html);
+    expect(out).toContain('data-od-official-motif-html');
+    expect(out).toContain('<symbol id="pin"');
+    expect(out).toContain('viewBox="0 0 360 110"');
+    expect(out).toMatch(/<use href="#pin"/);
+  });
+
   it('keeps official template look CSS (Capsule grain data-svg) through persist sanitize', () => {
     const html = [
       '<!doctype html><html><head>',

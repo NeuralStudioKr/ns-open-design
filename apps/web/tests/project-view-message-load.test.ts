@@ -350,6 +350,7 @@ describe("ProjectView message loading", () => {
     // Terminal scrub after salvage/repair/stabilize — not 2–4× early passes.
     expect(persistBlock).toContain("htmlBody = sanitizeManualEditFullSource(htmlBody)");
     expect(persistBlock).toContain("mergeOfficialLookCssForTemplate");
+    expect(persistBlock).toContain("firstOfficialDeckTemplateId");
     expect(persistBlock).toContain("runSelectedDeckTemplateIdRef.current");
     expect(persistBlock).toContain("Single terminal scrub after salvage/repair/stabilize");
     // Must not reintroduce early full-source scrubs on recovered/scoped decks.

@@ -73,6 +73,13 @@ describe('exportAsHtml / exportAsZip lean srcdoc', () => {
   it('merges official template look CSS on standalone HTML fallback', () => {
     expect(exportsSource).toContain('mergeOfficialLookOnHtmlExportFallback');
     expect(exportsSource).toContain('mergeOfficialLookCssForTemplate');
+    expect(exportsSource).toMatch(
+      /exportAsPdf\(\s*await mergeOfficialLookOnHtmlExportFallback\(renderedHtml/,
+    );
+    expect(exportsSource).toMatch(
+      /exportAsZip\(\s*await mergeOfficialLookOnHtmlExportFallback\(opts\.fallbackHtml/,
+    );
+    expect(exportsSource).toContain('firstOfficialDeckTemplateId');
   });
 });
 
@@ -822,8 +829,12 @@ describe('exportProjectAsPdf', () => {
     const elapsed = Date.now() - started;
 
     expect(result).toBe('fallback');
-    // Single daemon POST — no retry sleeps consume the 2.4s budget.
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    // Single daemon export POST — no retry sleeps consume the 2.4s budget.
+    // A project GET for official Motif/look merge is not an export retry.
+    const exportPosts = fetchMock.mock.calls.filter((call) =>
+      String(call[0] ?? '').includes('/export/pdf'),
+    );
+    expect(exportPosts).toHaveLength(1);
     expect(elapsed).toBeLessThan(500);
     // Browser-print fallback drove from the snapshot, not from a fresh fetch.
     expect(capturedBlob).toBeDefined();
@@ -857,6 +868,12 @@ describe('exportProjectAsPdf', () => {
           JSON.stringify({ error: { code: 'UPSTREAM_UNAVAILABLE', message: 'boom' } }),
           { status: 502, headers: { 'content-type': 'application/json' } },
         );
+      }
+      if (url.includes('/api/projects/proj-1') && !url.includes('/export/')) {
+        return new Response(JSON.stringify({ metadata: {} }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
       }
       throw new Error(`unexpected fetch to ${url}`);
     });

@@ -146,6 +146,7 @@ import { useProjectFileEvents, type ProjectEvent } from '../providers/project-ev
 import { useCoalescedCallback } from '../hooks/useCoalescedCallback';
 import {
   composeSystemPrompt,
+  firstOfficialDeckTemplateId,
   renderPluginBlock,
   repairArtifactStyleSheets,
   slimTemplateVisualKitForFill,
@@ -5287,11 +5288,11 @@ export function ProjectView({
         htmlBody = rewriteAttachmentImageSrcs(htmlBody, projectPaths, {
           preferredPaths: attachmentPaths,
         });
-        const persistTemplateId =
-          runSelectedDeckTemplateIdRef.current
-          ?? selectedDeckTemplateMetadata(project.metadata)?.id
-          ?? project.metadata?.selectedDeckTemplateId
-          ?? null;
+        const persistTemplateId = firstOfficialDeckTemplateId(
+          runSelectedDeckTemplateIdRef.current,
+          selectedDeckTemplateMetadata(project.metadata)?.id,
+          project.metadata?.selectedDeckTemplateId,
+        );
         htmlBody = await mergeOfficialLookCssForTemplate(htmlBody, persistTemplateId);
       }
       if (ext === '.html' && persistCommentAttachments.length > 0) {
@@ -7664,10 +7665,11 @@ export function ProjectView({
                       if (diskHtml) {
                         const withLook = await mergeOfficialLookCssForTemplate(
                           diskHtml,
-                          runSelectedDeckTemplateIdRef.current
-                            ?? selectedDeckTemplateMetadata(project.metadata)?.id
-                            ?? project.metadata?.selectedDeckTemplateId
-                            ?? null,
+                          firstOfficialDeckTemplateId(
+                            runSelectedDeckTemplateIdRef.current,
+                            selectedDeckTemplateMetadata(project.metadata)?.id,
+                            project.metadata?.selectedDeckTemplateId,
+                          ),
                         );
                         const attachmentPaths = runAttachmentsRef.current
                           .map((attachment) => attachment.path.trim())
@@ -9576,10 +9578,11 @@ export function ProjectView({
                   if (diskHtml) {
                     const withLook = await mergeOfficialLookCssForTemplate(
                       diskHtml,
-                      runSelectedDeckTemplateIdRef.current
-                        ?? selectedDeckTemplateMetadata(project.metadata)?.id
-                        ?? project.metadata?.selectedDeckTemplateId
-                        ?? null,
+                      firstOfficialDeckTemplateId(
+                        runSelectedDeckTemplateIdRef.current,
+                        selectedDeckTemplateMetadata(project.metadata)?.id,
+                        project.metadata?.selectedDeckTemplateId,
+                      ),
                     );
                     const attachmentPaths = runAttachmentsRef.current
                       .map((attachment) => attachment.path.trim())
