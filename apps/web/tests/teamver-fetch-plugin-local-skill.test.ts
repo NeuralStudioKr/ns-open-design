@@ -259,5 +259,6 @@ describe('fetchPluginLocalSkill', () => {
     expect(source).toContain("id.startsWith('example-')");
     expect(source).toContain('`example-${id}`');
     expect(source).toContain('fetchPluginPreviewLookSource');
+    expect(source).toContain('mergeOfficialLookCssForTemplate');
   });
 });

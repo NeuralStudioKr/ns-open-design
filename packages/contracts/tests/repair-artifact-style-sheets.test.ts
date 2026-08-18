@@ -86,4 +86,12 @@ describe('repairArtifactStyleSheets', () => {
     expect(repaired).toMatch(/\.pill\{/);
     expect(repaired).toMatch(/\.deco-pill\{/);
   });
+
+  it('does not rewrite host-injected official look CSS', () => {
+    const grain =
+      '.grain-overlay{background-image:url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\'%3E%3C/svg%3E")}';
+    const html = `<!doctype html><html><head><style data-od-official-look-css>${grain}</style></head><body></body></html>`;
+    expect(repairArtifactStyleSheets(html)).toContain(grain);
+    expect(repairArtifactStyleSheets(html)).toContain('data-od-official-look-css');
+  });
 });

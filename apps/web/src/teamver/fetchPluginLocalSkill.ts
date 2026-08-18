@@ -1,8 +1,10 @@
 import type { InstalledPluginRecord, PluginManifest } from '@open-design/contracts';
 import {
   appendTemplateVisualKit,
+  extractOfficialDeckLookAssets,
   extractTemplateVisualKitFromHtml,
   listLocalStylesheetHrefs,
+  mergeOfficialDeckLookCss,
   neutralizeFilesystemCloneWorkflow,
   pickPluginPreviewHtmlPath,
   readSkillFrontmatterDescription,
@@ -110,6 +112,19 @@ export async function fetchPluginPreviewLookSource(
   }
   if (supplementalParts.length === 0) return html;
   return `${html}\n<style data-od-kit-supplemental>\n${supplementalParts.join('\n')}\n</style>`;
+}
+
+/** Persist / FE export fallback — inject official Motif CSS when the template is known. */
+export async function mergeOfficialLookCssForTemplate(
+  html: string,
+  templateId: string | null | undefined,
+): Promise<string> {
+  const dest = String(html ?? '');
+  const id = String(templateId ?? '').trim();
+  if (!dest.trim() || !id) return dest;
+  const officialLook = await fetchPluginPreviewLookSource(id);
+  if (!officialLook) return dest;
+  return mergeOfficialDeckLookCss(dest, extractOfficialDeckLookAssets(officialLook));
 }
 
 export async function fetchPluginLocalSkill(

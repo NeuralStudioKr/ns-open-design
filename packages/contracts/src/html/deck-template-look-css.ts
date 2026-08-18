@@ -123,43 +123,73 @@ export function extractOfficialDeckLookAssets(
   return { css, fontLinks };
 }
 
-function uniqueOfficialCssSnippet(css: string): string {
-  const stripped = String(css ?? '')
+function compactOfficialCss(css: string): string {
+  return String(css ?? '')
     .replace(/\/\*[\s\S]*?\*\//g, ' ')
-    .replace(/@import[^;]+;/gi, ' ')
-    .replace(/:root\s*\{[\s\S]*?\}/g, ' ')
-    .replace(/(?:html|body|\*)(?:\s*,\s*(?:html|body|\*))*\s*\{[\s\S]*?\}/g, ' ')
-    .replace(/\.slide(?:\.active|\.is-active)?\s*\{[\s\S]*?\}/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
-  if (stripped.length >= 32) return stripped.slice(0, 48);
-  const prop = /(--(?!bg\b)[a-z0-9-]+\s*:\s*[^;]{2,48})/i.exec(css);
-  return (prop?.[1] ?? '').trim();
 }
 
 /**
- * True when the artifact already contains official Motif/look *rules*
- * (not just class names on elements, `:root` tokens, or generic `.slide-N`
- * layout chrome).
+ * Sample mid-sheet windows so kit decoration snippets (usually the first
+ * Motif rule) cannot count as "the official stylesheet is already here".
+ */
+export function officialLookCssWindows(css: string): string[] {
+  const compact = compactOfficialCss(css);
+  if (compact.length < 80) return compact.length >= 40 ? [compact.slice(0, 48)] : [];
+  if (compact.length < 400) return [compact.slice(0, 48), compact.slice(-48)];
+  return [0.24, 0.48, 0.68, 0.86]
+    .map((ratio) => {
+      const start = Math.min(
+        Math.max(0, Math.floor(compact.length * ratio) - 24),
+        Math.max(0, compact.length - 48),
+      );
+      return compact.slice(start, start + 48);
+    })
+    .filter((window, index, all) => window.length >= 40 && all.indexOf(window) === index);
+}
+
+function countOfficialLookWindows(dest: string, assets: OfficialDeckLookAssets): number {
+  return officialLookCssWindows(assets.css).filter((window) => dest.includes(window)).length;
+}
+
+function countOfficialLookProofRules(dest: string, assets: OfficialDeckLookAssets): number {
+  let hits = 0;
+  for (const name of listOfficialLookProofClasses(assets.css)) {
+    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    if (new RegExp(`\\.${escaped}\\b[^{]*\\{`, 'i').test(dest)) hits += 1;
+  }
+  return hits;
+}
+
+/**
+ * True when the artifact already contains the official Motif/look *stylesheet*
+ * (not class names, `:root` tokens, generic `.slide-N` chrome, or a kit
+ * decoration snippet of two Motif rules).
  */
 export function deckHtmlHasOfficialLookCss(
   html: string,
   assets: OfficialDeckLookAssets,
 ): boolean {
   const dest = String(html ?? '');
+  const windows = officialLookCssWindows(assets.css);
+  const windowHits = countOfficialLookWindows(dest, assets);
+  const hasMarker = dest.includes(OFFICIAL_DECK_LOOK_STYLE_ATTR);
+
+  if (windows.length >= 3) {
+    if (hasMarker) return windowHits >= 1;
+    return windowHits >= 3;
+  }
+  if (windows.length > 0) {
+    if (hasMarker) return windowHits >= 1;
+    return windowHits >= windows.length;
+  }
+
   const classes = listOfficialLookProofClasses(assets.css);
-  if (classes.length === 0) {
-    const snippet = uniqueOfficialCssSnippet(assets.css);
-    return snippet.length >= 24 && dest.includes(snippet);
-  }
-  const needed = Math.min(2, classes.length);
-  let hits = 0;
-  for (const name of classes) {
-    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    if (new RegExp(`\\.${escaped}\\b[^{]*\\{`, 'i').test(dest)) hits += 1;
-    if (hits >= needed) return true;
-  }
-  return false;
+  const ruleHits = countOfficialLookProofRules(dest, assets);
+  if (hasMarker) return classes.length === 0 ? assets.css.length > 0 && dest.includes(assets.css.slice(0, 32)) : ruleHits >= 1;
+  if (classes.length === 0) return false;
+  return ruleHits >= Math.min(4, classes.length);
 }
 
 export function mergeOfficialDeckLookCss(

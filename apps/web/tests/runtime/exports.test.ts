@@ -69,6 +69,11 @@ describe('exportAsHtml / exportAsZip lean srcdoc', () => {
     expect(exportsSource).toContain('buildStandaloneDeckHtmlDocument');
     expect(exportsSource).toContain('normalizeCompactStackedDeckForExport');
   });
+
+  it('merges official template look CSS on standalone HTML fallback', () => {
+    expect(exportsSource).toContain('mergeOfficialLookOnHtmlExportFallback');
+    expect(exportsSource).toContain('mergeOfficialLookCssForTemplate');
+  });
 });
 
 describe('resolveExportDownloadTitle', () => {

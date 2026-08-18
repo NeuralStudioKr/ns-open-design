@@ -132,6 +132,19 @@ describe('official deck look CSS merge', () => {
     expect(deckHtmlHasOfficialLookCss(GENERIC_LAYOUT_COMPACT, assets)).toBe(false);
   });
 
+  it('does not treat a kit Motif snippet as the full official stylesheet', () => {
+    const official = loadOfficialLookSource(join(EXAMPLES_DIR, 'html-ppt-zhangzara-capsule/example.html'));
+    const assets = extractOfficialDeckLookAssets(official)!;
+    const kitSnippet = `<!doctype html><html><head><style>
+.pill { border-radius:9999px; border:2px solid #1E1E1E; }
+.pill-coral { background: var(--coral); }
+</style></head><body><div class="slide"><div class="pill pill-coral"></div></div></body></html>`;
+    expect(deckHtmlHasOfficialLookCss(kitSnippet, assets)).toBe(false);
+    const merged = mergeOfficialDeckLookCss(kitSnippet, assets);
+    expect(merged).toContain(OFFICIAL_DECK_LOOK_STYLE_ATTR);
+    expect(merged).toContain('.grain-overlay');
+  });
+
   it('injects Capsule Motif CSS and fonts into a compact fill deck', () => {
     const assets = extractOfficialDeckLookAssets(CAPSULE_EXAMPLE)!;
     const merged = mergeOfficialDeckLookCss(COMPACT_FILL, assets);

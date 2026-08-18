@@ -346,11 +346,11 @@ describe("ProjectView message loading", () => {
     const source = readSource("src/components/ProjectView.tsx");
     const persistStart = source.indexOf("const persistArtifact = useCallback");
     expect(persistStart).toBeGreaterThan(0);
-    const persistBlock = source.slice(persistStart, persistStart + 22000);
+    const persistBlock = source.slice(persistStart, persistStart + 40000);
     // Terminal scrub after salvage/repair/stabilize — not 2–4× early passes.
     expect(persistBlock).toContain("htmlBody = sanitizeManualEditFullSource(htmlBody)");
-    expect(persistBlock).toContain("mergeOfficialDeckLookCss");
-    expect(persistBlock).toContain("fetchPluginPreviewLookSource");
+    expect(persistBlock).toContain("mergeOfficialLookCssForTemplate");
+    expect(persistBlock).toContain("runSelectedDeckTemplateIdRef.current");
     expect(persistBlock).toContain("Single terminal scrub after salvage/repair/stabilize");
     // Must not reintroduce early full-source scrubs on recovered/scoped decks.
     expect(persistBlock).not.toContain(
@@ -361,6 +361,17 @@ describe("ProjectView message loading", () => {
     );
     expect(persistBlock).not.toMatch(
       /artifactType\s*===\s*['"]deck['"][\s\S]{0,240}sanitizeManualEditFullSource/,
+    );
+  });
+
+  it("merges official look CSS on Write-tool and recovered disk HTML paths", () => {
+    const source = readSource("src/components/ProjectView.tsx");
+    expect(source).toContain("findSameTurnHtmlWriteForRecoveredArtifact");
+    expect(source).toMatch(
+      /sameTurnHtmlWrite[\s\S]{0,800}mergeOfficialLookCssForTemplate/,
+    );
+    expect(source).toMatch(
+      /recoveredExistingArtifact[\s\S]{0,800}mergeOfficialLookCssForTemplate/,
     );
   });
 

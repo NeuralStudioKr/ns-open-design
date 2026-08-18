@@ -146,8 +146,6 @@ import { useProjectFileEvents, type ProjectEvent } from '../providers/project-ev
 import { useCoalescedCallback } from '../hooks/useCoalescedCallback';
 import {
   composeSystemPrompt,
-  extractOfficialDeckLookAssets,
-  mergeOfficialDeckLookCss,
   renderPluginBlock,
   repairArtifactStyleSheets,
   slimTemplateVisualKitForFill,
@@ -494,7 +492,10 @@ import {
   looksLikeDeckIntentProse,
 } from '../teamver/deckDeliverableProse';
 import { resolveEmbedSlideDesignSystemId } from '../teamver/embedSlideDesignSystem';
-import { fetchPluginLocalSkill, fetchPluginPreviewLookSource } from '../teamver/fetchPluginLocalSkill';
+import {
+  fetchPluginLocalSkill,
+  mergeOfficialLookCssForTemplate,
+} from '../teamver/fetchPluginLocalSkill';
 import { throwIfProjectCommentUploadIncomplete } from '../teamver/projectUploadErrors';
 import { stripLeakedPseudoToolXml } from '../utils/stripLeakedPseudoToolXml';
 import {
@@ -3282,6 +3283,8 @@ export function ProjectView({
    * here turns truncated turn-1 HTML into `skipped-discovery-turn`.
    */
   const runSkipDiscoveryBriefRef = useRef(false);
+  /** Per-run visual template pin — persist must not wait on stale project.metadata. */
+  const runSelectedDeckTemplateIdRef = useRef<string | null>(null);
   /** Deck-patch from comment edits may only touch slides named by these attachments. */
   const runCommentAttachmentsRef = useRef<ChatCommentAttachment[]>([]);
   /** Image/file attachments for the active run — used to heal <img src> when /files lags. */
@@ -3372,6 +3375,7 @@ export function ProjectView({
     runVisiblePromptRef.current = '';
     runPersistTargetFileRef.current = null;
     runSkipDiscoveryBriefRef.current = false;
+    runSelectedDeckTemplateIdRef.current = null;
     conversationRecoveryAttemptedRef.current.clear();
     conversationAutoContinueCountRef.current.clear();
     conversationSlideCountTopUpCountRef.current.clear();
@@ -5284,18 +5288,11 @@ export function ProjectView({
           preferredPaths: attachmentPaths,
         });
         const persistTemplateId =
-          selectedDeckTemplateMetadata(project.metadata)?.id
+          runSelectedDeckTemplateIdRef.current
+          ?? selectedDeckTemplateMetadata(project.metadata)?.id
           ?? project.metadata?.selectedDeckTemplateId
           ?? null;
-        if (persistTemplateId) {
-          const officialLook = await fetchPluginPreviewLookSource(String(persistTemplateId));
-          if (officialLook) {
-            htmlBody = mergeOfficialDeckLookCss(
-              htmlBody,
-              extractOfficialDeckLookAssets(officialLook),
-            );
-          }
-        }
+        htmlBody = await mergeOfficialLookCssForTemplate(htmlBody, persistTemplateId);
       }
       if (ext === '.html' && persistCommentAttachments.length > 0) {
         const currentScopedHtml = await readDiskHtml(fileName);
@@ -7665,6 +7662,13 @@ export function ProjectView({
                     try {
                       const diskHtml = await readProjectHtml(recoveredExistingArtifact.name);
                       if (diskHtml) {
+                        const withLook = await mergeOfficialLookCssForTemplate(
+                          diskHtml,
+                          runSelectedDeckTemplateIdRef.current
+                            ?? selectedDeckTemplateMetadata(project.metadata)?.id
+                            ?? project.metadata?.selectedDeckTemplateId
+                            ?? null,
+                        );
                         const attachmentPaths = runAttachmentsRef.current
                           .map((attachment) => attachment.path.trim())
                           .filter(Boolean);
@@ -7673,11 +7677,11 @@ export function ProjectView({
                           ...attachmentPaths,
                         ].filter(Boolean);
                         const { html: healed, changed } = await healDiskHtmlAttachmentImageSrcs({
-                          html: diskHtml,
+                          html: withLook,
                           projectFilePaths: projectPaths,
                           preferredAttachmentPaths: attachmentPaths,
                         });
-                        if (changed) {
+                        if (changed || withLook !== diskHtml) {
                           await writeProjectTextFileDetailed(
                             project.id,
                             recoveredExistingArtifact.name,
@@ -9178,6 +9182,11 @@ export function ProjectView({
           ?? null,
         runSkipDiscoveryBrief: meta?.skipDiscoveryBrief === true,
       });
+      runSelectedDeckTemplateIdRef.current =
+        selectedDeckTemplateMetadata(project.metadata, meta)?.id
+        ?? meta?.selectedDeckTemplateId
+        ?? project.metadata?.selectedDeckTemplateId
+        ?? null;
       const commentPersistTarget = resolveCommentEditPersistTargetFileName(
         runCommentAttachments,
       );
@@ -9565,6 +9574,13 @@ export function ProjectView({
                 try {
                   const diskHtml = await readProjectHtml(sameTurnHtmlWrite.name);
                   if (diskHtml) {
+                    const withLook = await mergeOfficialLookCssForTemplate(
+                      diskHtml,
+                      runSelectedDeckTemplateIdRef.current
+                        ?? selectedDeckTemplateMetadata(project.metadata)?.id
+                        ?? project.metadata?.selectedDeckTemplateId
+                        ?? null,
+                    );
                     const attachmentPaths = runAttachmentsRef.current
                       .map((attachment) => attachment.path.trim())
                       .filter(Boolean);
@@ -9573,11 +9589,11 @@ export function ProjectView({
                       ...attachmentPaths,
                     ].filter(Boolean);
                     const { html: healed, changed } = await healDiskHtmlAttachmentImageSrcs({
-                      html: diskHtml,
+                      html: withLook,
                       projectFilePaths: projectPaths,
                       preferredAttachmentPaths: attachmentPaths,
                     });
-                    if (changed) {
+                    if (changed || withLook !== diskHtml) {
                       await writeProjectTextFileDetailed(
                         project.id,
                         sameTurnHtmlWrite.name,
@@ -10111,6 +10127,7 @@ export function ProjectView({
               }
               runPersistTargetFileRef.current = null;
               runSkipDiscoveryBriefRef.current = false;
+              runSelectedDeckTemplateIdRef.current = null;
               runCommentAttachmentsRef.current = [];
               clearStreamingMarker(runConversationId);
               if (apiBackgroundRecoveryRef.current) {
@@ -10522,6 +10539,7 @@ export function ProjectView({
             if (ownsCurrentRun) updateConversationLatestRun('failed', endedAt);
             runPersistTargetFileRef.current = null;
             runSkipDiscoveryBriefRef.current = false;
+            runSelectedDeckTemplateIdRef.current = null;
             runCommentAttachmentsRef.current = [];
             void refreshProjectFiles();
             onProjectsRefresh();
@@ -10592,6 +10610,7 @@ export function ProjectView({
           if (ownsCurrentRun) updateConversationLatestRun('failed', endedAt);
           runPersistTargetFileRef.current = null;
           runSkipDiscoveryBriefRef.current = false;
+          runSelectedDeckTemplateIdRef.current = null;
           runCommentAttachmentsRef.current = [];
           void saveMessage(project.id, runConversationId, finalizedAssistant, {
             telemetryFinalized: true,

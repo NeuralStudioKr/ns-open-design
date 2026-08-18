@@ -108,6 +108,9 @@ export function repairArtifactStyleSheets(html: string): string {
   const source = String(html ?? '');
   if (!source || !/<style\b/i.test(source)) return source;
   return source.replace(/<style\b([^>]*)>([\s\S]*?)<\/style>/gi, (full, attrs: string, css: string) => {
+    // Host-injected official look CSS is already trusted; remnant heal must
+    // not rewrite grain `data:image/svg+xml` or mid-sheet Motif rules.
+    if (/\bdata-od-official-look-css\b/i.test(String(attrs ?? ''))) return full;
     const repaired = repairStyleSheetText(css);
     if (repaired === css) return full;
     return `<style${attrs}>${repaired}</style>`;

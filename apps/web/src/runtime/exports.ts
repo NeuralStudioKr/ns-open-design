@@ -262,6 +262,23 @@ function projectExportInlineUrl(projectId: string, filePath: string): string {
   return `/api/projects/${encodeURIComponent(projectId)}/export/${segments}?inline=1`;
 }
 
+async function mergeOfficialLookOnHtmlExportFallback(
+  html: string,
+  projectId: string,
+): Promise<string> {
+  try {
+    const resp = await fetchTeamverDaemon(`/api/projects/${encodeURIComponent(projectId)}`);
+    if (!resp.ok) return html;
+    const json = await resp.json() as { metadata?: { selectedDeckTemplateId?: string } };
+    const templateId = json.metadata?.selectedDeckTemplateId?.trim();
+    if (!templateId) return html;
+    const { mergeOfficialLookCssForTemplate } = await import('../teamver/fetchPluginLocalSkill');
+    return mergeOfficialLookCssForTemplate(html, templateId);
+  } catch {
+    return html;
+  }
+}
+
 export function exportAsHtml(
   html: string,
   title: string,
@@ -325,9 +342,17 @@ export async function exportProjectAsHtml(opts: {
       const resp = await fetchTeamverDaemon(projectExportInlineUrl(opts.projectId, opts.filePath));
       if (!resp.ok) throw new Error(`inline HTML export unavailable (${resp.status})`);
       const html = await resp.text();
-      exportAsHtml(html, opts.fallbackTitle, { deck: opts.deck === true });
+      exportAsHtml(
+        await mergeOfficialLookOnHtmlExportFallback(html, opts.projectId),
+        opts.fallbackTitle,
+        { deck: opts.deck === true },
+      );
     } catch {
-      exportAsHtml(opts.fallbackHtml, opts.fallbackTitle, { deck: opts.deck === true });
+      exportAsHtml(
+        await mergeOfficialLookOnHtmlExportFallback(opts.fallbackHtml, opts.projectId),
+        opts.fallbackTitle,
+        { deck: opts.deck === true },
+      );
     }
   }
 }
