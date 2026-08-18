@@ -9,6 +9,11 @@ import {
   shouldRequestTipRemountRemasureAfterSrcDocLoad,
   shouldApplyTipRemountSyncHostMeasureOnSrcDocLoad,
   shouldReleaseTipRemountChromeAfterSyncHostMeasure,
+  shouldArmTipRemountFitSettleForDeckHostFit,
+  shouldRemeasureTipRemountAfterDeckHostFitSettle,
+  shouldDeferTipRemountGraceConsumeForDeckHostFitSettle,
+  shouldSkipWildJumpDuringTipRemountFitSettle,
+  tipRemountFitSettleExpired,
   shouldSkipSrcDocTransportRemountForManualEditFreezeTipSync,
   shouldSuppressManualEditChromeUntilTipRemasure,
   shouldDisableManualEditChromeUntilTipRemasure,
@@ -255,5 +260,42 @@ describe('manual edit freeze reset', () => {
     expect(shouldClearTipRemountGeometryGraceOnExpiry('el-1', 1_801, 1_800)).toBe(true);
     expect(shouldClearTipRemountGeometryGraceOnExpiry('el-1', 1_000, 1_800)).toBe(false);
     expect(shouldClearTipRemountGeometryGraceOnExpiry(null, 2_000, 1_800)).toBe(false);
+    // Deck host-fit settle still open — keep latch (460).
+    expect(shouldClearTipRemountGeometryGraceOnExpiry('el-1', 1_800, 1_800, 2_000)).toBe(false);
+    expect(shouldClearTipRemountGeometryGraceOnExpiry('el-1', 2_000, 1_800, 2_000)).toBe(true);
+  });
+
+  it('arms tip-remount fit settle only for deck host-fit', () => {
+    expect(shouldArmTipRemountFitSettleForDeckHostFit(true)).toBe(true);
+    expect(shouldArmTipRemountFitSettleForDeckHostFit(false)).toBe(false);
+  });
+
+  it('remeasures tip chrome while deck host-fit settle latch is live', () => {
+    expect(shouldRemeasureTipRemountAfterDeckHostFitSettle(true, ['a'], 2_000, 1_000)).toBe(true);
+    expect(shouldRemeasureTipRemountAfterDeckHostFitSettle(true, ['a', 'b'], 2_000, 1_000)).toBe(true);
+    expect(shouldRemeasureTipRemountAfterDeckHostFitSettle(true, [], 2_000, 1_000)).toBe(false);
+    expect(shouldRemeasureTipRemountAfterDeckHostFitSettle(false, ['a'], 2_000, 1_000)).toBe(false);
+    expect(shouldRemeasureTipRemountAfterDeckHostFitSettle(true, ['a'], 1_000, 1_000)).toBe(false);
+    expect(shouldRemeasureTipRemountAfterDeckHostFitSettle(true, ['a'], 0, 1_000)).toBe(false);
+  });
+
+  it('defers tip-remount grace consume while deck host-fit settle is open', () => {
+    expect(shouldDeferTipRemountGraceConsumeForDeckHostFitSettle(2_000, 1_000)).toBe(true);
+    expect(shouldDeferTipRemountGraceConsumeForDeckHostFitSettle(1_000, 1_000)).toBe(false);
+    expect(shouldDeferTipRemountGraceConsumeForDeckHostFitSettle(0, 1_000)).toBe(false);
+    expect(tipRemountFitSettleExpired(1_000, 0)).toBe(true);
+    expect(tipRemountFitSettleExpired(1_000, 2_000)).toBe(false);
+  });
+
+  it('skips wild-jump during tip-remount deck host-fit settle', () => {
+    expect(shouldSkipWildJumpDuringTipRemountFitSettle(
+      'el-1', 'el-1', 'el-1', 1_000, 2_000,
+    )).toBe(true);
+    expect(shouldSkipWildJumpDuringTipRemountFitSettle(
+      'el-1', 'el-2', 'el-1', 1_000, 2_000,
+    )).toBe(false);
+    expect(shouldSkipWildJumpDuringTipRemountFitSettle(
+      'el-1', 'el-1', 'el-1', 2_000, 2_000,
+    )).toBe(false);
   });
 });

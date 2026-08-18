@@ -336,6 +336,10 @@ import {
   shouldRequestTipRemountRemasureAfterSrcDocLoad,
   shouldApplyTipRemountSyncHostMeasureOnSrcDocLoad,
   shouldReleaseTipRemountChromeAfterSyncHostMeasure,
+  shouldArmTipRemountFitSettleForDeckHostFit,
+  shouldRemeasureTipRemountAfterDeckHostFitSettle,
+  shouldDeferTipRemountGraceConsumeForDeckHostFitSettle,
+  shouldSkipWildJumpDuringTipRemountFitSettle,
   shouldSkipSrcDocTransportRemountForManualEditFreezeTipSync,
   shouldDisableManualEditChromeUntilTipRemasure,
   shouldAbortManualEditGestureForTipYieldFreezeSync,
@@ -5489,6 +5493,9 @@ function HtmlViewer({
   /** Tip-yield freeze remount — skip idle wild-jump deny until first remasure. */
   const manualEditTipRemountGeometryGraceIdRef = useRef<string | null>(null);
   const manualEditTipRemountGeometryGraceUntilRef = useRef(0);
+  /** Deck host-fit settle — remasure after scale nudges (460). */
+  const manualEditTipRemountFitSettleUntilRef = useRef(0);
+  const manualEditTipRemountFitSettleCancelRef = useRef<(() => void) | null>(null);
   /** Inert resize/multi chrome until tip remasure applies tip geometry (455/458). */
   const [manualEditTipRemountChromeSuppressed, setManualEditTipRemountChromeSuppressed] = useState(false);
   const manualEditTipRemountChromeSuppressedRef = useRef(false);
@@ -7928,6 +7935,85 @@ function HtmlViewer({
     return true;
   }
 
+  /**
+   * Deck host-fit nudges change stage scale after onLoad sync measure — remasure
+   * while fit-settle latch is live so chrome tracks post-fit tip geometry (460).
+   */
+  function remeasureTipRemountAfterDeckHostFitSettle(
+    target: HTMLIFrameElement | null = iframeRef.current,
+  ) {
+    const ids = selectedManualEditTargetIdsRef.current;
+    if (!shouldRemeasureTipRemountAfterDeckHostFitSettle(
+      manualEditModeRef.current,
+      ids,
+      manualEditTipRemountFitSettleUntilRef.current,
+      Date.now(),
+    )) {
+      return;
+    }
+    const frame = target ?? iframeRef.current;
+    const workspace = manualEditWorkspaceRef.current;
+    if (!frame || !workspace) return;
+    const primaryId = selectedManualEditTargetIdRef.current;
+    const ordered = primaryId && ids.includes(primaryId)
+      ? [primaryId, ...ids.filter((id) => id !== primaryId)]
+      : ids;
+    let primaryMeasured = false;
+    for (const id of ordered) {
+      const content = measureManualEditTargetContentRect(frame, id);
+      if (!content) continue;
+      const base = selectedManualEditTargetRef.current?.id === id
+        ? selectedManualEditTargetRef.current
+        : null;
+      if (base) {
+        applyManualEditMeasuredGeometry({
+          ...base,
+          rect: content.rect,
+          layoutWidth: content.layoutWidth,
+          layoutHeight: content.layoutHeight,
+        });
+      } else {
+        applyManualEditMeasuredGeometry({
+          id,
+          rect: content.rect,
+          layoutWidth: content.layoutWidth,
+          layoutHeight: content.layoutHeight,
+        } as ManualEditTarget);
+      }
+      if (id === primaryId) primaryMeasured = true;
+    }
+    if (primaryMeasured && primaryId && shouldRefreshHostPaintAfterTipRemountRemasure(true)) {
+      refreshManualEditHostPaintRect(primaryId, { force: true });
+    }
+    for (const id of ordered) {
+      requestManualEditTargetRemeasure(id, frame);
+    }
+  }
+
+  /** Schedule fit-settle remasures aligned with early deck fit nudge delays (460). */
+  function scheduleTipRemountRemasureAfterDeckHostFitSettle(
+    getFrame: () => HTMLIFrameElement | null,
+  ) {
+    manualEditTipRemountFitSettleCancelRef.current?.();
+    manualEditTipRemountFitSettleCancelRef.current = null;
+    if (!shouldRemeasureTipRemountAfterDeckHostFitSettle(
+      manualEditModeRef.current,
+      selectedManualEditTargetIdsRef.current,
+      manualEditTipRemountFitSettleUntilRef.current,
+      Date.now(),
+    )) {
+      return;
+    }
+    // Mirror early DEFAULT_FIT_NUDGE_DELAYS_MS — scale usually settles here.
+    const delaysMs = [50, 150, 400];
+    const timers = delaysMs.map((delay) => window.setTimeout(() => {
+      remeasureTipRemountAfterDeckHostFitSettle(getFrame());
+    }, delay));
+    manualEditTipRemountFitSettleCancelRef.current = () => {
+      for (const id of timers) window.clearTimeout(id);
+    };
+  }
+
   function waitForManualEditTargetRemeasure(id: string, timeoutMs = 500) {
     return manualEditRemeasureAwaiterRef.current.waitFor(id, timeoutMs);
   }
@@ -8065,6 +8151,9 @@ function HtmlViewer({
   function clearManualEditTipRemountGeometryGrace() {
     manualEditTipRemountGeometryGraceIdRef.current = null;
     manualEditTipRemountGeometryGraceUntilRef.current = 0;
+    manualEditTipRemountFitSettleUntilRef.current = 0;
+    manualEditTipRemountFitSettleCancelRef.current?.();
+    manualEditTipRemountFitSettleCancelRef.current = null;
     manualEditTipRemountChromeSuppressedRef.current = false;
     setManualEditTipRemountChromeSuppressed(false);
     if (manualEditTipRemountChromeSafetyTimeoutRef.current != null) {
@@ -8118,22 +8207,31 @@ function HtmlViewer({
     // Idle remasure after tip remount may jump layout — skip wild-jump once.
     const graceId = selectedManualEditTargetIdRef.current;
     if (graceId) {
-      const graceUntil = Date.now() + 800;
+      const nowMs = Date.now();
+      const graceUntil = nowMs + 800;
       manualEditTipRemountGeometryGraceIdRef.current = graceId;
       manualEditTipRemountGeometryGraceUntilRef.current = graceUntil;
+      // Deck host-fit may rescale after onLoad — keep settle latch past grace (460).
+      const fitSettleUntil = shouldArmTipRemountFitSettleForDeckHostFit(
+        deckHostViewportFitActive,
+      )
+        ? nowMs + 1_200
+        : 0;
+      manualEditTipRemountFitSettleUntilRef.current = fitSettleUntil;
       // Inert chrome until remasure — keep last rect visible, block gestures (458).
       manualEditTipRemountChromeSuppressedRef.current = true;
       setManualEditTipRemountChromeSuppressed(true);
       if (manualEditTipRemountChromeSafetyTimeoutRef.current != null) {
         window.clearTimeout(manualEditTipRemountChromeSafetyTimeoutRef.current);
       }
-      // Escape hatch: remasure never arrives — do not leave chrome stuck (457).
+      // Escape hatch: remasure never arrives — do not leave chrome stuck (457/460).
+      const safetyClearAt = Math.max(graceUntil, fitSettleUntil || graceUntil) + 20;
       manualEditTipRemountChromeSafetyTimeoutRef.current = window.setTimeout(() => {
         manualEditTipRemountChromeSafetyTimeoutRef.current = null;
         if (manualEditTipRemountGeometryGraceUntilRef.current === graceUntil) {
           clearManualEditTipRemountGeometryGrace();
         }
-      }, 820);
+      }, Math.max(0, safetyClearAt - Date.now()));
     }
     if (manualEditFreezeEchoTimeoutRef.current != null) {
       window.clearTimeout(manualEditFreezeEchoTimeoutRef.current);
@@ -9848,6 +9946,7 @@ function HtmlViewer({
             manualEditTipRemountGeometryGraceIdRef.current,
             nowMs,
             manualEditTipRemountGeometryGraceUntilRef.current,
+            manualEditTipRemountFitSettleUntilRef.current,
           )) {
             clearManualEditTipRemountGeometryGrace();
           }
@@ -9877,6 +9976,7 @@ function HtmlViewer({
           manualEditTipRemountGeometryGraceIdRef.current,
           nowMs,
           manualEditTipRemountGeometryGraceUntilRef.current,
+          manualEditTipRemountFitSettleUntilRef.current,
         )) {
           clearManualEditTipRemountGeometryGrace();
         }
@@ -9887,6 +9987,12 @@ function HtmlViewer({
           selectedManualEditTargetIdRef.current,
           nowMs,
           manualEditTipRemountGeometryGraceUntilRef.current,
+        ) || shouldSkipWildJumpDuringTipRemountFitSettle(
+          manualEditTipRemountGeometryGraceIdRef.current,
+          measured.id,
+          selectedManualEditTargetIdRef.current,
+          nowMs,
+          manualEditTipRemountFitSettleUntilRef.current,
         );
         if (
           current?.id === measured.id
@@ -9896,12 +10002,16 @@ function HtmlViewer({
           return;
         }
         // Sibling remasure must not consume primary grace (same id gate) (436).
+        // Deck host-fit settle: defer consume so post-fit remasure can still skip wild-jump (460).
         const consumeGrace = shouldConsumeTipRemountGeometryGraceOnRemasure(
           manualEditTipRemountGeometryGraceIdRef.current,
           measured.id,
           selectedManualEditTargetIdRef.current,
           nowMs,
           manualEditTipRemountGeometryGraceUntilRef.current,
+        ) && !shouldDeferTipRemountGraceConsumeForDeckHostFitSettle(
+          manualEditTipRemountFitSettleUntilRef.current,
+          nowMs,
         );
         if (consumeGrace) {
           // Apply tip geometry before releasing chrome suppress (same tick batch) (455).
@@ -9915,6 +10025,13 @@ function HtmlViewer({
           return;
         }
         applyManualEditMeasuredGeometry(measured);
+        // Fit-settle window: keep grace, but refresh host paint on tip geometry (460).
+        if (
+          tipRemountGrace
+          && shouldRefreshHostPaintAfterTipRemountRemasure(true)
+        ) {
+          refreshManualEditHostPaintRect(measured.id, { force: true });
+        }
         return;
       }
     }
@@ -15227,6 +15344,10 @@ function HtmlViewer({
                                 deckPreviewFitScale,
                                 deckPreviewFitOptions,
                               );
+                              // Tip-yield: remasure after host-fit scale settle (460).
+                              scheduleTipRemountRemasureAfterDeckHostFitSettle(
+                                () => frame ?? urlPreviewIframeRef.current,
+                              );
                             }
                           }}
                         />
@@ -15268,6 +15389,10 @@ function HtmlViewer({
                                 () => frame ?? urlPreviewIframeRef.current,
                                 deckPreviewFitScale,
                                 deckPreviewFitOptions,
+                              );
+                              // Tip-yield: remasure after host-fit scale settle (460).
+                              scheduleTipRemountRemasureAfterDeckHostFitSettle(
+                                () => frame ?? urlPreviewIframeRef.current,
                               );
                             }
                           }}
@@ -15342,6 +15467,10 @@ function HtmlViewer({
                                 () => frame ?? srcDocPreviewIframeRef.current,
                                 deckPreviewFitScale,
                                 deckPreviewFitOptions,
+                              );
+                              // Tip-yield: remasure after host-fit scale settle (460).
+                              scheduleTipRemountRemasureAfterDeckHostFitSettle(
+                                () => frame ?? srcDocPreviewIframeRef.current,
                               );
                             }
                             scheduleDeckPreviewFitNudges(

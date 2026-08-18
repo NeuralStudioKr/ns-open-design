@@ -311,13 +311,19 @@ export function shouldClearTipRemountGeometryGraceOnSelectionChange(
 /**
  * Idle remasure saw an expired grace latch — clear id AND until so a later
  * remasure cannot skip wild-jump under a stale untilMs (overlay residual).
+ * When deck host-fit settle is armed, wait until that window elapses too (460).
  */
 export function shouldClearTipRemountGeometryGraceOnExpiry(
   graceId: string | null | undefined,
   nowMs: number,
   graceUntilMs: number,
+  fitSettleUntilMs = 0,
 ): boolean {
-  return Boolean(graceId && tipRemountGeometryGraceExpired(nowMs, graceUntilMs));
+  return Boolean(
+    graceId
+    && tipRemountGeometryGraceExpired(nowMs, graceUntilMs)
+    && tipRemountFitSettleExpired(nowMs, fitSettleUntilMs),
+  );
 }
 
 /** True when tip-remount geometry grace window has elapsed. */
@@ -368,5 +374,70 @@ export function shouldConsumeTipRemountGeometryGraceOnRemasure(
     selectedId,
     nowMs,
     graceUntilMs,
+  );
+}
+
+/** True when deck host-fit settle window has elapsed (0 = not armed). */
+export function tipRemountFitSettleExpired(
+  nowMs: number,
+  fitSettleUntilMs: number,
+): boolean {
+  return fitSettleUntilMs <= 0 || nowMs >= fitSettleUntilMs;
+}
+
+/**
+ * Deck host-fit often changes stage scale after onLoad sync measure (459).
+ * Arm a short settle latch so chrome can remasure once fit nudges land (460).
+ */
+export function shouldArmTipRemountFitSettleForDeckHostFit(
+  deckHostViewportFitActive: boolean,
+): boolean {
+  return deckHostViewportFitActive;
+}
+
+/**
+ * Remasure selected targets while tip-remount fit-settle latch is live (460).
+ */
+export function shouldRemeasureTipRemountAfterDeckHostFitSettle(
+  manualEditMode: boolean,
+  selectedIds: readonly string[],
+  fitSettleUntilMs: number,
+  nowMs: number,
+): boolean {
+  return Boolean(
+    manualEditMode
+    && selectedIds.length > 0
+    && !tipRemountFitSettleExpired(nowMs, fitSettleUntilMs),
+  );
+}
+
+/**
+ * Fit-settle window still open — do not consume tip-remount grace yet so a
+ * later host-fit remasure can still skip wild-jump (460).
+ */
+export function shouldDeferTipRemountGraceConsumeForDeckHostFitSettle(
+  fitSettleUntilMs: number,
+  nowMs: number,
+): boolean {
+  return !tipRemountFitSettleExpired(nowMs, fitSettleUntilMs);
+}
+
+/**
+ * Skip wild-jump while deck host-fit settle is armed for the grace primary,
+ * even after the shorter geometry grace until has elapsed (460).
+ */
+export function shouldSkipWildJumpDuringTipRemountFitSettle(
+  graceId: string | null | undefined,
+  rectId: string,
+  selectedId: string | null | undefined,
+  nowMs: number,
+  fitSettleUntilMs: number,
+): boolean {
+  if (tipRemountFitSettleExpired(nowMs, fitSettleUntilMs)) return false;
+  return Boolean(
+    graceId
+    && selectedId
+    && rectId === graceId
+    && rectId === selectedId
   );
 }
