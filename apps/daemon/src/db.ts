@@ -1210,21 +1210,13 @@ export function messageUpsertIsProjectActivity(
   },
 ): boolean {
   if (!existing) return true;
-  const sameJson = (a: unknown, b: unknown) => {
-    try {
-      return stableJsonStringify(a ?? null) === stableJsonStringify(b ?? null);
-    } catch {
-      return a === b;
-    }
-  };
   if ((existing.content ?? '') !== (incoming.content ?? existing.content ?? '')) return true;
   if ((existing.runStatus ?? null) !== (incoming.runStatus ?? existing.runStatus ?? null)) {
     return true;
   }
   if ((existing.endedAt ?? null) !== (incoming.endedAt ?? existing.endedAt ?? null)) return true;
-  if ('producedFiles' in incoming && !sameJson(existing.producedFiles, incoming.producedFiles)) {
-    return true;
-  }
+  // producedFiles is often filled on open via HTML recovery — that is not a
+  // user edit and must not bump Home 「방금 전」.
   return false;
 }
 

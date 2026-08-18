@@ -971,7 +971,7 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
   const {
     insertConversation,
     insertConversationAsync,
-    getConversation, listConversations, listConversationsAsync, updateConversation, deleteConversation, listMessages, upsertMessage, listPreviewComments, upsertPreviewComment, updatePreviewCommentStatus, deletePreviewComment } = ctx.conversations;
+    getConversation, listConversations, listConversationsAsync, updateConversation, deleteConversation, listMessages, listMessagesAsync, upsertMessage, listPreviewComments, upsertPreviewComment, updatePreviewCommentStatus, deletePreviewComment } = ctx.conversations;
   const { getTemplate, listTemplates, deleteTemplate, insertTemplate, findTemplateByNameAndProject, updateTemplate } = ctx.templates;
   const {
     listLatestProjectRunStatusesAsync,
@@ -2122,7 +2122,13 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
     if (!conv || conv.projectId !== req.params.id) {
       return res.status(404).json({ error: 'conversation not found' });
     }
-    res.json({ messages: listMessages(db, req.params.cid) });
+    // Postgres cold cache: sync listMessages returns [] and would make the
+    // client look empty / re-PUT everything. Prefer Async so open hydrates
+    // from the durable row set.
+    const messages = listMessagesAsync
+      ? await listMessagesAsync(db, req.params.cid)
+      : listMessages(db, req.params.cid);
+    res.json({ messages });
   });
 
   app.put('/api/projects/:id/conversations/:cid/messages/:mid', async (req, res) => {
@@ -2137,7 +2143,12 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
     if (m.id && m.id !== req.params.mid) {
       return res.status(400).json({ error: 'id mismatch' });
     }
-    const prior = listMessages(db, req.params.cid).find(
+    // Async prior lookup — sync listMessages is cache-only on Postgres and
+    // treats every open hydrate PUT as a brand-new message (Home 「방금 전」).
+    const priorMessages = listMessagesAsync
+      ? await listMessagesAsync(db, req.params.cid)
+      : listMessages(db, req.params.cid);
+    const prior = priorMessages.find(
       (row: { id?: string }) => row.id === req.params.mid,
     ) ?? null;
     const saved = upsertMessage(db, req.params.cid, {

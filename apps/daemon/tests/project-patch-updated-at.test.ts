@@ -98,4 +98,18 @@ describe('messageUpsertIsProjectActivity', () => {
       ),
     ).toBe(true);
   });
+
+  it('ignores producedFiles-only fills (open HTML recovery)', () => {
+    expect(
+      messageUpsertIsProjectActivity(
+        { content: 'hello', runStatus: 'succeeded', endedAt: 10, producedFiles: [] },
+        {
+          content: 'hello',
+          runStatus: 'succeeded',
+          endedAt: 10,
+          producedFiles: [{ name: 'deck.html' }],
+        },
+      ),
+    ).toBe(false);
+  });
 });
