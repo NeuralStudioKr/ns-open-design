@@ -113,6 +113,12 @@ describe('FileViewer revision tip advance after undo', () => {
     expect(fileViewer).toContain('Tip yield only — do NOT remount freeze on ordinary liveHtml');
     expect(fileViewer).toContain('Tip yield while editing must remount freeze');
     expect(fileViewer).toContain('shouldEchoManualEditSelectionAfterFreezeSync');
+    expect(fileViewer).toContain('shouldRequestTipRemountRemasureAfterFreezeSync');
+    expect(fileViewer).toContain('Grace is armed above but echo only syncs modes');
+    expect(fileViewer).toContain('requestManualEditTargetRemeasure(id)');
+    expect(fileViewer).toContain('shouldPatchSelectedGeometryFromTargetsBroadcast');
+    expect(fileViewer).toContain('Identity unchanged — still patch selected rects');
+    expect(fileViewer).toContain('Source-only Mixed — same plan helper as tip-yield / remove');
     expect(fileViewer).toContain('scheduleManualEditSelectionEchoAfterFreezeSync');
     expect(fileViewer).toContain('Keep warm stack until refreshRevisionStack lands');
     expect(fileViewer).toContain('shouldClearTipContentCacheAfterConfirmRefuse');

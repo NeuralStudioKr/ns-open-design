@@ -5,6 +5,8 @@ import {
   shouldClearTipRemountGeometryGraceOnExpiry,
   shouldClearTipRemountGeometryGraceOnSelectionChange,
   shouldEchoManualEditSelectionAfterFreezeSync,
+  shouldRequestTipRemountRemasureAfterFreezeSync,
+  shouldPatchSelectedGeometryFromTargetsBroadcast,
   shouldReseedManualEditMultiInspectorAfterFreezeSync,
   shouldReseedSingleInspectorAfterTipYieldMixedClear,
   shouldApplyTipYieldSingleInspectorSnapshot,
@@ -87,6 +89,20 @@ describe('manual edit freeze reset', () => {
     expect(shouldClearMixedKeysAfterTipYieldReseedSkip([])).toBe(true);
     expect(shouldClearMixedKeysAfterTipYieldReseedSkip(['a', 'b'])).toBe(false);
     expect(shouldReseedManualEditMultiInspectorAfterFreezeSync(true, ['a'])).toBe(false);
+  });
+
+  it('requests tip-remount remasure after freeze selection echo', () => {
+    expect(shouldRequestTipRemountRemasureAfterFreezeSync(true, ['a'])).toBe(true);
+    expect(shouldRequestTipRemountRemasureAfterFreezeSync(true, ['a', 'b'])).toBe(true);
+    expect(shouldRequestTipRemountRemasureAfterFreezeSync(true, [])).toBe(false);
+    expect(shouldRequestTipRemountRemasureAfterFreezeSync(false, ['a'])).toBe(false);
+  });
+
+  it('patches selected geometry when targets identity fingerprint is unchanged', () => {
+    expect(shouldPatchSelectedGeometryFromTargetsBroadcast(false, ['a'])).toBe(true);
+    expect(shouldPatchSelectedGeometryFromTargetsBroadcast(false, ['a', 'b'])).toBe(true);
+    expect(shouldPatchSelectedGeometryFromTargetsBroadcast(true, ['a'])).toBe(false);
+    expect(shouldPatchSelectedGeometryFromTargetsBroadcast(false, [])).toBe(false);
   });
 
   it('reseeds single inspector after tip-yield Mixed clear when no pending owns styles', () => {

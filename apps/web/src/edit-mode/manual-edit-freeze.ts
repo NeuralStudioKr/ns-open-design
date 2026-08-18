@@ -60,6 +60,30 @@ export function shouldEchoManualEditSelectionAfterFreezeSync(
 }
 
 /**
+ * Tip-yield arms tip-remount grace but selection echo only syncs bridge modes
+ * (od-edit-targets). Request od-edit-remeasure so grace can be consumed and
+ * host/multi overlay geometry tracks the remounted tip (450).
+ */
+export function shouldRequestTipRemountRemasureAfterFreezeSync(
+  manualEditMode: boolean,
+  selectedIds: readonly string[],
+): boolean {
+  return Boolean(manualEditMode && selectedIds.length > 0);
+}
+
+/**
+ * When od-edit-targets identity fingerprint is unchanged, still patch geometry
+ * for the selected set so multi overlay / chrome do not stay on pre-tip rects
+ * (450 / 기획 59 + 51–53).
+ */
+export function shouldPatchSelectedGeometryFromTargetsBroadcast(
+  targetsIdentityChanged: boolean,
+  selectedIds: readonly string[],
+): boolean {
+  return !targetsIdentityChanged && selectedIds.length > 0;
+}
+
+/**
  * Multi-select Mixed keys must reseed from painted tip source after freeze
  * remount — selection membership alone does not refresh inspector Mixed (59).
  */

@@ -333,6 +333,8 @@ import {
   shouldClearTipRemountGeometryGraceOnExpiry,
   shouldClearTipRemountGeometryGraceOnSelectionChange,
   shouldEchoManualEditSelectionAfterFreezeSync,
+  shouldRequestTipRemountRemasureAfterFreezeSync,
+  shouldPatchSelectedGeometryFromTargetsBroadcast,
   shouldReseedManualEditMultiInspectorAfterFreezeSync,
   shouldReseedSingleInspectorAfterTipYieldMixedClear,
   shouldApplyTipYieldSingleInspectorSnapshot,
@@ -7993,6 +7995,21 @@ function HtmlViewer({
         syncBridgeModes(iframeRef.current);
       }
       const ids = selectedManualEditTargetIdsRef.current;
+      // Grace is armed above but echo only syncs modes — request remasure so
+      // od-edit-rect consumes grace and multi/single overlay tracks tip (450).
+      // Run before multi/single reseed branches (single path returns early).
+      if (shouldRequestTipRemountRemasureAfterFreezeSync(
+        manualEditModeRef.current,
+        ids,
+      )) {
+        const primaryId = selectedManualEditTargetIdRef.current;
+        const ordered = primaryId && ids.includes(primaryId)
+          ? [primaryId, ...ids.filter((id) => id !== primaryId)]
+          : ids;
+        for (const id of ordered) {
+          requestManualEditTargetRemeasure(id);
+        }
+      }
       if (!shouldReseedManualEditMultiInspectorAfterFreezeSync(
         manualEditModeRef.current,
         ids,
@@ -9386,6 +9403,43 @@ function HtmlViewer({
         if (targetsIdentityChanged) {
           manualEditTargetsIdentityFingerprintRef.current = targetsFingerprint;
           setManualEditTargets(data.targets);
+        } else if (shouldPatchSelectedGeometryFromTargetsBroadcast(
+          targetsIdentityChanged,
+          selectedManualEditTargetIdsRef.current,
+        )) {
+          // Identity unchanged — still patch selected rects so multi overlay
+          // does not stay on pre-tip geometry (450).
+          const selectedIds = selectedManualEditTargetIdsRef.current;
+          const byId = new Map(
+            data.targets
+              .filter((target) => selectedIds.includes(target.id))
+              .map((target) => [target.id, target] as const),
+          );
+          if (byId.size > 0) {
+            setManualEditTargets((current) => current.map((item) => {
+              const next = byId.get(item.id);
+              if (!next) return item;
+              if (
+                manualEditGeometryRoughlyMatches(item, next)
+                && item.layoutWidth === next.layoutWidth
+                && item.layoutHeight === next.layoutHeight
+                && item.offsetLeft === next.offsetLeft
+                && item.offsetTop === next.offsetTop
+              ) {
+                return item;
+              }
+              return {
+                ...item,
+                rect: next.rect,
+                layoutWidth: next.layoutWidth,
+                layoutHeight: next.layoutHeight,
+                offsetLeft: next.offsetLeft ?? item.offsetLeft,
+                offsetTop: next.offsetTop ?? item.offsetTop,
+                cssPosition: next.cssPosition ?? item.cssPosition,
+                stickyScrollportId: next.stickyScrollportId ?? item.stickyScrollportId,
+              };
+            }));
+          }
         }
         // Geometry gestures own selection rect/paint — a mid-drag or post-commit
         // targets scan must not clobber optimistic viewport (box flash).
@@ -9398,14 +9452,27 @@ function HtmlViewer({
           ? data.targets.find((target) => target.id === selectedIdBefore) ?? null
           : null;
         if (selectedNext) {
+          const prevSelected = selectedManualEditTargetRef.current;
           const selectedIdentityChanged = manualEditTargetsIdentityFingerprint([selectedNext])
             !== manualEditTargetsIdentityFingerprint(
-              selectedManualEditTargetRef.current ? [selectedManualEditTargetRef.current] : [],
+              prevSelected ? [prevSelected] : [],
             );
           selectedManualEditTargetRef.current = selectedNext;
           selectedManualEditTargetIdRef.current = selectedNext.id;
-          // Geometry-only: update ref for overlay consumers; skip React churn.
+          // Geometry-only: update React state when rect moved so single chrome
+          // tracks tip (multi catalog patch above; 450).
           if (selectedIdentityChanged || targetsIdentityChanged) {
+            setSelectedManualEditTarget(selectedNext);
+          } else if (
+            prevSelected
+            && (
+              !manualEditGeometryRoughlyMatches(prevSelected, selectedNext)
+              || prevSelected.layoutWidth !== selectedNext.layoutWidth
+              || prevSelected.layoutHeight !== selectedNext.layoutHeight
+              || prevSelected.offsetLeft !== selectedNext.offsetLeft
+              || prevSelected.offsetTop !== selectedNext.offsetTop
+            )
+          ) {
             setSelectedManualEditTarget(selectedNext);
           }
         }
@@ -9442,16 +9509,22 @@ function HtmlViewer({
           ) {
             const base = sourceRef.current ?? '';
             const parsedDoc = parseManualEditSource(base);
-            const { styles: mergedStyles, mixedKeys } = mergeInspectorStylesForTargets(
-              refreshed,
-              (id) => inspectorManualEditStyles(
-                refreshed.find((item) => item.id === id) ?? refreshed[refreshed.length - 1]!,
-                base,
-                parsedDoc,
-              ),
-            );
-            setManualEditMixedStyleKeys(mixedKeys);
-            setManualEditDraft((current) => ({ ...current, styles: mergedStyles }));
+            // Source-only Mixed — same plan helper as tip-yield / remove (451).
+            // inspectorManualEditStyles can keep pre-tip preview pollution.
+            const reseed = planManualEditMultiInspectorReseed({
+              selectedIds: nextIds,
+              readStyles: (id) => readManualEditStyles(base, id, {}, parsedDoc),
+              concurrentPending: manualEditPendingStyleRef.current
+                ? {
+                  styles: manualEditPendingStyleRef.current.styles,
+                  perTargetStyles: manualEditPendingStyleRef.current.perTargetStyles,
+                }
+                : null,
+            });
+            setManualEditMixedStyleKeys(reseed.mixedKeys);
+            if (reseed.styles != null) {
+              setManualEditDraft((current) => ({ ...current, styles: reseed.styles! }));
+            }
           } else if (
             nextIds.length > 1
             && !selectionIdsChanged
@@ -9470,11 +9543,7 @@ function HtmlViewer({
             );
             setManualEditMixedStyleKeys(mixedKeysForPendingStyleDraft(
               refreshed,
-              (id) => inspectorManualEditStyles(
-                refreshed.find((item) => item.id === id) ?? refreshed[refreshed.length - 1]!,
-                base,
-                parsedDoc,
-              ),
+              (id) => readManualEditStyles(base, id, {}, parsedDoc),
               // Suppress Mixed on keys the user is actively drafting (59).
               manualEditPendingStyleRef.current?.styles,
               { perTargetStyles: manualEditPendingStyleRef.current?.perTargetStyles },
