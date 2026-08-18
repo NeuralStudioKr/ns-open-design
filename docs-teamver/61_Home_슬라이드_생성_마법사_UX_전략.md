@@ -336,7 +336,7 @@ Canvas→Slide (Home 밖)
 |------|------|
 | 대상·길이·톤 (+ Canvas용 transform은 Home에서 제외됨) | P0 유지 |
 | 기본값 `auto` 다수 | Home 빈 생성엔 **구체 기본**이 나음: 대상=팀(internal), 길이=보통(standard), 톤=담백/professional |
-| — | **P1 후보:** 언어(한/영). Teamver KR-first에 유효 |
+| — | **철회:** 언어(한/영) 칩. 칩 과다. 프롬프트·UI 로케일로 충분 |
 | — | **비권장 1차:** 이미지 on/off, 발표자 노트, 용도 칩 추가 — 칩 과다 |
 | transformMode | Canvas 소스 변환용. Home **넣지 않음** |
 
@@ -490,7 +490,7 @@ Embed `/`
 |------|------|
 | 1 | **빈 Next 허용** + placeholder 강하게. 품질은 칩 기본값으로 받침 |
 | 2 | P0: **L1** (프리셀렉트 + stepper/카드 표시). CTA는 「슬라이드 만들기」고정. P1: L2 |
-| 3 | P0: **대상·길이·톤** 3종. Home 기본값은 구체값(팀/보통/professional). P1: 언어(한/영). transform·이미지 칩은 보류 |
+| 3 | P0: **대상·길이·톤** 3종. Home 기본값은 구체값(팀/보통/professional). 언어 칩은 철회. transform·이미지 칩은 보류 |
 
 
 **한 줄 제품 카피 (Home CTA):**  

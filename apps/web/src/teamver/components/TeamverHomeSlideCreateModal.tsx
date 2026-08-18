@@ -77,14 +77,6 @@ const QUICK_SETTING_GROUPS = [
       ["impact", "teamver.canvasSlideLaunch.quickToneImpact"],
     ],
   },
-  {
-    key: "language",
-    labelKey: "teamver.homeCreate.quickLanguage",
-    options: [
-      ["ko", "teamver.homeCreate.quickLanguageKo"],
-      ["en", "teamver.homeCreate.quickLanguageEn"],
-    ],
-  },
 ] as const;
 
 function collectTransferFiles(data: DataTransfer | null | undefined): File[] {
@@ -311,10 +303,6 @@ export function TeamverHomeSlideCreateModal({
       QUICK_SETTING_GROUPS[2].options.find(([value]) => value === normalizedQuick.tone)?.[1]
         ?? "teamver.canvasSlideLaunch.quickToneAuto",
     ),
-    t(
-      QUICK_SETTING_GROUPS[3].options.find(([value]) => value === normalizedQuick.language)?.[1]
-        ?? "teamver.homeCreate.quickLanguageKo",
-    ),
     attachCount > 0 ? t("teamver.homeCreate.summaryAttach", { count: attachCount }) : null,
   ].filter((part): part is string => Boolean(part));
 
@@ -360,6 +348,9 @@ export function TeamverHomeSlideCreateModal({
     onQuickSettingsChange?.({ ...normalizedQuick, [key]: value });
   }
 
+  const driveUnavailable = !onAttachFromDrive;
+  const driveHint = driveUnavailable ? t("teamver.homeCreate.driveUnavailable") : undefined;
+
   const contentPanel = (
     <div className="teamver-home-slide-create-content" data-testid="teamver-home-slide-create-content">
       <div className="teamver-home-slide-create-section teamver-home-slide-create-attach">
@@ -385,19 +376,23 @@ export function TeamverHomeSlideCreateModal({
             role="group"
             aria-label={t("teamver.homeCreate.attachTitle")}
           >
-            {onAttachFromDrive ? (
-              <button
-                type="button"
-                className="teamver-home-slide-create-attach-item"
-                disabled={confirming}
-                data-testid="teamver-home-slide-create-drive"
-                onMouseDown={(event) => event.preventDefault()}
-                onClick={onAttachFromDrive}
-              >
-                <Icon name="folder" size={18} className="teamver-home-slide-create-attach-item-icon" />
-                <span>{t("teamver.homeCreate.drive")}</span>
-              </button>
-            ) : null}
+            <button
+              type="button"
+              className="teamver-home-slide-create-attach-item"
+              disabled={confirming || driveUnavailable}
+              title={driveHint}
+              aria-label={
+                driveUnavailable
+                  ? `${t("teamver.homeCreate.drive")}. ${driveHint}`
+                  : undefined
+              }
+              data-testid="teamver-home-slide-create-drive"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={onAttachFromDrive}
+            >
+              <Icon name="folder" size={18} className="teamver-home-slide-create-attach-item-icon" />
+              <span>{t("teamver.homeCreate.drive")}</span>
+            </button>
             <button
               type="button"
               className="teamver-home-slide-create-attach-item"

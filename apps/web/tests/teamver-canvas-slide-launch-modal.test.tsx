@@ -198,7 +198,6 @@ describe("TeamverCanvasSlideLaunchModal", () => {
       length: "auto",
       transformMode: "presentation",
       tone: "auto",
-      language: "auto",
     });
 
     fireEvent.click(screen.getByTestId("teamver-canvas-slide-launch-footer-back"));

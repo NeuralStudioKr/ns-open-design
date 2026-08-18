@@ -17,7 +17,8 @@
 
 ## 진행 메모
 
-- 2026-08-18: P1 언어 칩 — Home 퀵설정에 한/영. 기본 한국어. Canvas 모달에는 넣지 않음. pluginInputs `language`/`outputLanguage` + Quick settings 지시.
+- 2026-08-18: 한/영 칩 철회 — 칩 과다. 프롬프트·UI 로케일로 충분. pluginInputs `language`/`outputLanguage`도 제거.
+- 2026-08-18: Drive 버튼은 워크스페이스가 없어도 항상 표시. 콜백 없으면 disabled + `driveUnavailable` 툴팁/aria.
 - 2026-08-14: P1 Drive 첨부 — 마법사 업로드/핸드오프에 embed 첨부 정책 적용. Drive URL 핸드오프(create-slides 아님)는 첨부를 유지한 채 마법사를 연다(피커만 열고 「새 슬라이드」가 칩을 지우던 구멍). 파일 input `accept`.
 - 2026-08-14: 관련 경로 전수 — Canvas/Drive confirm·slideOnly 자유입력도 `pluginTitle: null`. topicHint는 마케팅 제목/파일명을 버림. Home 마법사 픽이 Canvas 피커를 시드하지 않음. 워크스페이스 오류는 Drive 포맷터 공유. 모달 `aria-describedby` + 오류 alert.
 - 2026-08-14: Home confirm `pluginTitle: null` (템플릿 마케팅 제목 차단). 모달 헤더에 `homeCreate.lead`. Canvas 생성 실패도 `errorCreateFailed`.

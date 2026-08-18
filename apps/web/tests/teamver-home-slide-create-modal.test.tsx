@@ -300,6 +300,48 @@ describe("TeamverHomeSlideCreateModal", () => {
     expect(onRemoveDriveAsset).toHaveBeenCalledWith("drv-1");
   });
 
+  it("keeps Drive visible but disabled when workspace import is unavailable", () => {
+    wrap(
+      <TeamverHomeSlideCreateModal
+        open
+        entry="new"
+        templateOptions={templates}
+        selectedTemplateId="html-ppt-hermes"
+        onTemplateChange={() => {}}
+        userPrompt=""
+        onUserPromptChange={() => {}}
+        onConfirm={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    const drive = screen.getByTestId("teamver-home-slide-create-drive");
+    expect((drive as HTMLButtonElement).disabled).toBe(true);
+    expect(drive.getAttribute("title")).toMatch(/workspace/i);
+    expect(drive.getAttribute("aria-label")).toMatch(/workspace/i);
+  });
+
+  it("enables Drive when an attach callback is provided", () => {
+    const onAttachFromDrive = vi.fn();
+    wrap(
+      <TeamverHomeSlideCreateModal
+        open
+        entry="new"
+        templateOptions={templates}
+        selectedTemplateId="html-ppt-hermes"
+        onTemplateChange={() => {}}
+        userPrompt=""
+        onUserPromptChange={() => {}}
+        onAttachFromDrive={onAttachFromDrive}
+        onConfirm={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    const drive = screen.getByTestId("teamver-home-slide-create-drive");
+    expect((drive as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(drive);
+    expect(onAttachFromDrive).toHaveBeenCalledOnce();
+  });
+
   it("uses a short placeholder and no tip chrome", () => {
     wrap(
       <TeamverHomeSlideCreateModal
@@ -478,32 +520,6 @@ describe("TeamverHomeSlideCreateModal", () => {
     );
     expect(onQuickSettingsChange).toHaveBeenCalledWith(createHomeSlideCreateQuickSettings());
     expect(onQuickSettingsChange.mock.calls[0][0]).not.toBe(DEFAULT_HOME_SLIDE_CREATE_QUICK_SETTINGS);
-  });
-
-  it("defaults Home language to Korean and lets the user switch to English", () => {
-    const onQuickSettingsChange = vi.fn();
-    wrap(
-      <TeamverHomeSlideCreateModal
-        open
-        entry="new"
-        templateOptions={[{ id: "html-ppt-hermes", title: "Hermes", record: null }]}
-        selectedTemplateId="html-ppt-hermes"
-        userPrompt=""
-        onUserPromptChange={() => {}}
-        onQuickSettingsChange={onQuickSettingsChange}
-        onConfirm={() => {}}
-        onClose={() => {}}
-      />,
-    );
-    const ko = screen.getByTestId("teamver-home-slide-create-quick-language-ko");
-    const en = screen.getByTestId("teamver-home-slide-create-quick-language-en");
-    expect(ko.getAttribute("aria-pressed")).toBe("true");
-    expect(en.getAttribute("aria-pressed")).toBe("false");
-    fireEvent.click(en);
-    expect(onQuickSettingsChange).toHaveBeenCalledWith({
-      ...DEFAULT_HOME_SLIDE_CREATE_QUICK_SETTINGS,
-      language: "en",
-    });
   });
 
   it("surfaces confirm errors in an alert region", () => {

@@ -471,20 +471,15 @@ describe("canvasSlideLaunch", () => {
     expect(
       canvasCreateSlidesPluginInputs("Topic", "Template", "brief", "", quickSettings),
     ).toMatchObject({
-      quickSettings: { ...quickSettings, language: "auto" },
+      quickSettings,
       quickSettingsInstruction: instruction,
       audience: "education / training audience",
       tone: "friendly",
       slideCount: "5-6",
     });
-    const homeKo = createHomeSlideCreateQuickSettings();
-    expect(homeKo.language).toBe("ko");
-    expect(canvasSlideQuickSettingsInstruction(homeKo)).toMatch(/Korean|한글/);
-    expect(canvasCreateSlidesPluginInputs("Topic", "Template", null, "", homeKo)).toMatchObject({
-      language: "Korean (한글)",
-      outputLanguage: "ko",
-    });
+    expect(createHomeSlideCreateQuickSettings()).not.toHaveProperty("language");
     expect(canvasCreateSlidesPluginInputs("Topic", "Template", "brief")).not.toHaveProperty("outputLanguage");
+    expect(canvasCreateSlidesPluginInputs("Topic", "Template", "brief")).not.toHaveProperty("language");
   });
 
   it("lets free-text slide counts override quick Length in Plugin inputs", () => {
@@ -653,7 +648,8 @@ describe("canvasSlideLaunch", () => {
     expect(home).toContain("if (!homeSlideCreateOpen) focusPromptAtEnd()");
     const homeModal = readWebSource("src/teamver/components/TeamverHomeSlideCreateModal.tsx");
     const canvasModal = readWebSource("src/teamver/components/TeamverCanvasSlideLaunchModal.tsx");
-    expect(homeModal).toContain("teamver.homeCreate.quickLanguage");
+    expect(homeModal).toContain("teamver.homeCreate.driveUnavailable");
+    expect(homeModal).not.toContain("teamver.homeCreate.quickLanguage");
     expect(canvasModal).not.toContain("teamver.homeCreate.quickLanguage");
     expect(home).toContain("asset.assetId !== assetId");
     expect(home).toContain("item.lastModified === file.lastModified");

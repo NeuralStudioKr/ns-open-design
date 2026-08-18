@@ -470,6 +470,7 @@ export interface Dict {
   'teamver.homeCreate.attachTitle': string;
   'teamver.homeCreate.upload': string;
   'teamver.homeCreate.drive': string;
+  'teamver.homeCreate.driveUnavailable': string;
   'teamver.homeCreate.attachHint': string;
   'teamver.homeCreate.removeAttach': string;
   'teamver.homeCreate.promptLabel': string;
@@ -482,9 +483,6 @@ export interface Dict {
   'teamver.homeCreate.summaryAttach': string;
   'teamver.homeCreate.errorTemplateLost': string;
   'teamver.homeCreate.errorCreateFailed': string;
-  'teamver.homeCreate.quickLanguage': string;
-  'teamver.homeCreate.quickLanguageKo': string;
-  'teamver.homeCreate.quickLanguageEn': string;
   'teamver.canvasSlideLaunch.title': string;
   'teamver.canvasSlideLaunch.description': string;
   'teamver.canvasSlideLaunch.hint': string;
