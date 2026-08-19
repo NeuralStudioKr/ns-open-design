@@ -371,28 +371,48 @@ html, body { overflow: visible !important; height: auto !important; }
         failures.push(`${folder}: missing Daisy Motif flower SVG (not just CSS / deco class)`);
       }
       if (
-        assets.motifHtml.some((block) => /\bdeco-pill\b/i.test(block))
-        && !/\bdeco-pill\b/i.test(merged)
+        assets.motifHtml.some((block) => /<(?:div|span)[^>]*\bdeco-pill\b/i.test(block))
+        && !/<(?:div|span)[^>]*\bdeco-pill\b/i.test(merged)
       ) {
         failures.push(`${folder}: missing Capsule Motif deco-pill seed`);
       }
       if (
         assets.motifHtml.some((block) => /\bpetals?\b/i.test(block) && !/<svg\b/i.test(block))
-        && !/\bpetals?\b/i.test(merged)
+        && !/<(?:div|span)[^>]*\bpetals?\b/i.test(merged)
       ) {
         failures.push(`${folder}: missing Sakura Motif petals seed`);
       }
       if (
         assets.motifHtml.some((block) => /\bhc-scanlines\b/i.test(block))
-        && !/\bhc-scanlines\b/i.test(merged)
+        && !/<(?:div|span)[^>]*\bhc-scanlines\b/i.test(merged)
       ) {
         failures.push(`${folder}: missing Hermes Motif hc-scanlines seed`);
       }
       if (
-        assets.motifHtml.some((block) => /\bxp-blob\b/i.test(block))
-        && !/\bxp-blob\b/i.test(merged)
+        assets.motifHtml.some((block) => /<(?:div|span)[^>]*\bxp-blob\b/i.test(block))
+        && !/<(?:div|span)[^>]*\bxp-blob\b/i.test(merged)
       ) {
         failures.push(`${folder}: missing Pastel Motif xp-blob seed`);
+      }
+      const painted = assets.motifHtml.find((block) => (
+        /<(?:div|span|svg)\b/i.test(block)
+        && /data-od-official-motif-html/i.test(block)
+        && !/grain-overlay|crt-overlay/i.test(block)
+        && !/<symbol\b/i.test(block)
+      ));
+      if (painted) {
+        const classAttr = /\bclass\s*=\s*(?:"([^"]+)"|'([^']+)')/i.exec(painted)?.[1]
+          ?? /\bclass\s*=\s*(?:"([^"]+)"|'([^']+)')/i.exec(painted)?.[2]
+          ?? '';
+        const primary = classAttr.split(/\s+/).find((token) => (
+          /^(?:deco-[a-z0-9_-]+|deco-pill|[cf]-pill|petals?|blob|pin-\d|doodle|post-it|gd-orb|gd-ambient|xp-blob)$/i.test(token)
+        ));
+        if (
+          primary
+          && !new RegExp(`<(?:div|span|svg)\\b[^>]*\\b${primary.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(merged)
+        ) {
+          failures.push(`${folder}: extracted Motif instance .${primary} not painted onto compact fill`);
+        }
       }
     }
 
@@ -434,6 +454,61 @@ html, body { overflow: visible !important; height: auto !important; }
     const withMotif = mergeOfficialDeckLookCss(cssOnly, assets);
     expect(withMotif).toContain('<symbol id="pin"');
     expect(deckHtmlHasOfficialLookCss(cssOnly, assets)).toBe(true);
+  });
+
+  const LINUX_SPARSE_COVER = `<!doctype html><html lang="ko"><body>
+<section class="slide" style="background:#F5F0E6;width:1920px;height:1080px;position:relative">
+  <h1>Linux Internals for Senior Engineers</h1>
+  <p>커널 아키텍처 · 스케줄러 · 메모리</p>
+  <span style="border:3px solid #111;background:#7ECDC0">Kernel 6.x</span>
+  <svg width="12" height="12"><circle cx="6" cy="6" r="5" fill="none" stroke="#7ECDC0"/></svg>
+</section>
+<section class="slide" style="width:1920px;height:1080px;position:relative">
+  <h2>Scheduler</h2>
+</section>
+</body></html>`;
+
+  it('injects catalog Motif paint nodes — not Daisy-only wrappers or CSS selectors', () => {
+    const cases: Array<[string, RegExp]> = [
+      ['html-ppt-zhangzara-capsule', /<(?:div|span)[^>]*\bdeco-pill\b/i],
+      ['html-ppt-zhangzara-sakura-chroma', /<(?:div|span)[^>]*\bpetal\b/i],
+      ['html-ppt-zhangzara-pin-and-paper', /<(?:svg|div)[^>]*\bpin-1\b|<use href="#pin"/i],
+      ['html-ppt-zhangzara-playful', /<(?:div|span|svg)[^>]*\bdoodle-/i],
+      ['html-ppt-graphify-dark-graph', /<(?:div|span)[^>]*\bgd-orb\b/i],
+      ['html-ppt-xhs-pastel-card', /<(?:div|span)[^>]*\bxp-blob\b/i],
+      ['html-ppt-zhangzara-block-frame', /<(?:div|span)[^>]*\bdeco-dots\b/i],
+      ['html-ppt-zhangzara-scatterbrain', /<(?:div|span)[^>]*\bpost-it\b/i],
+      ['html-ppt-hermes-cyber-terminal', /<(?:div|span)[^>]*\bhc-scanlines\b/i],
+    ];
+    for (const [folder, paint] of cases) {
+      const official = loadOfficialLookSource(join(EXAMPLES_DIR, folder, 'example.html'));
+      const assets = extractOfficialDeckLookAssets(official)!;
+      expect(LINUX_SPARSE_COVER, folder).not.toMatch(paint);
+      const merged = mergeOfficialDeckLookCss(LINUX_SPARSE_COVER, assets);
+      expect(merged, folder).toMatch(paint);
+      expect(merged, folder).toContain('Linux Internals for Senior Engineers');
+      const twice = mergeOfficialDeckLookCss(merged, assets);
+      expect(twice, folder).toBe(merged);
+    }
+  });
+
+  it('does not treat deco-pills-closing or an empty deco-pills shell as Capsule paint', () => {
+    const official = loadOfficialLookSource(join(EXAMPLES_DIR, 'html-ppt-zhangzara-capsule', 'example.html'));
+    const assets = extractOfficialDeckLookAssets(official)!;
+    const closingOnly = LINUX_SPARSE_COVER.replace(
+      '</section>',
+      '<div class="deco-pills-closing"></div></section>',
+    );
+    const emptyCluster = LINUX_SPARSE_COVER.replace(
+      '</section>',
+      '<div class="deco-pills"></div></section>',
+    );
+    for (const dest of [closingOnly, emptyCluster]) {
+      expect(dest).not.toMatch(/<(?:div|span)[^>]*\bdeco-pill\b/i);
+      const merged = mergeOfficialDeckLookCss(dest, assets);
+      expect(merged).toMatch(/<(?:div|span)[^>]*\bdeco-pill\b/i);
+      expect(merged).toContain('Linux Internals for Senior Engineers');
+    }
   });
 
   it('still injects Daisy flower SVG when the fill already has tiny decorative <svg> dots', () => {
