@@ -17,8 +17,10 @@ import {
   firstOfficialDeckTemplateId,
   listOfficialLookProofClasses,
   listOfficialMotifSymbolIds,
+  lockStackedDeckCanvasForPreview,
   looksLikeOfficialFullscreenPresenterDeck,
   mergeOfficialDeckLookCss,
+  needsStackedDesignViewportLock,
 } from '../src/html/deck-template-look-css';
 import {
   listLocalStylesheetHrefs,
@@ -274,14 +276,24 @@ html, body { overflow: visible !important; height: auto !important; }
     expect(merged).toContain('shadcn/ui');
   });
 
-  it('keeps official Capsule example.html as a presenter after standalone export heal', () => {
+  it('keeps official Capsule example.html presenter Motif after standalone export heal', () => {
     const official = readFileSync(join(EXAMPLES_DIR, 'html-ppt-zhangzara-capsule/example.html'), 'utf8');
     const healed = healDeckHtmlForStandaloneExport(official);
     expect(looksLikeOfficialFullscreenPresenterDeck(healed)).toBe(true);
+    // Export always pins design viewport for Motif vw/% + letterbox fit.
+    expect(healed).toContain('content="width=1920, initial-scale=1, maximum-scale=1"');
+    // Presenter CSS must not get stacked-canvas neutralize (opacity stack stays authored).
     expect(healed).not.toContain('data-od-stacked-canvas-neutralize');
-    expect(healed).not.toContain('content="width=1920, initial-scale=1, maximum-scale=1"');
-    expect(healed).toContain('width=device-width');
+    expect(healed).not.toMatch(/flex-direction:\s*unset\s*;/);
     expect(healed).toContain('CAPSULE');
+  });
+
+  it('preview lock keeps Capsule on device-width (unlike standalone export heal)', () => {
+    const official = readFileSync(join(EXAMPLES_DIR, 'html-ppt-zhangzara-capsule/example.html'), 'utf8');
+    const preview = lockStackedDeckCanvasForPreview(official);
+    expect(preview).not.toContain('content="width=1920, initial-scale=1, maximum-scale=1"');
+    expect(preview).not.toContain('data-od-stacked-canvas-neutralize');
+    expect(preview).toContain('CAPSULE');
   });
 
   it('keeps Capsule Motif CSS after standalone export heal + document wrap', () => {
@@ -465,6 +477,38 @@ html, body { overflow: visible !important; height: auto !important; }
     expect(healed).toContain('position: absolute');
     expect(healed).toContain('width: 100%');
     expect(healed).toContain('CAPSULE');
+  });
+
+  it('opt-in locks viewport only for look/stage fills — not every html-ppt catalog example', () => {
+    const examples = listOfficialDeckExamplePaths();
+    expect(examples.length).toBeGreaterThan(40);
+    const locked: string[] = [];
+    let presenterHits = 0;
+    for (const examplePath of examples) {
+      const folder = examplePath.slice(EXAMPLES_DIR.length + 1).split('/')[0] ?? examplePath;
+      const html = readFileSync(examplePath, 'utf8');
+      if (looksLikeOfficialFullscreenPresenterDeck(html)) presenterHits += 1;
+      expect(needsStackedDesignViewportLock(html)).toBe(false);
+      const out = lockStackedDeckCanvasForPreview(html);
+      if (/content="width=1920/.test(out) || /data-od-stacked-canvas-neutralize/.test(out)) {
+        locked.push(folder);
+      }
+    }
+    expect(presenterHits).toBeGreaterThan(30);
+    expect(locked).toEqual([]);
+  });
+
+  it('still locks compact fills that carry official look CSS to the 1920 canvas', () => {
+    const compact = `<!doctype html><html><head>
+<style data-od-official-look-css>
+.slide{position:absolute;inset:0;width:100%;height:100%}
+${LOOK_NEUTRALIZE_CSS}
+</style></head><body>
+<section class="slide">A</section><section class="slide">B</section>
+</body></html>`;
+    const out = lockStackedDeckCanvasForPreview(compact);
+    expect(out).toContain('content="width=1920, initial-scale=1, maximum-scale=1"');
+    expect(out).toContain('position: relative !important');
   });
 
   it('strips a wrongly injected 1920 neutralize from an official presenter', () => {

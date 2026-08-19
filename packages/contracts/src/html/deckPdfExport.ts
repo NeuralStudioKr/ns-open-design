@@ -8,7 +8,10 @@ import {
   relaxPersistedDeckSlideSurfaceBleed,
   repairArtifactStyleSheets,
 } from './repairArtifactStyleSheets.js';
-import { lockStackedDeckCanvasForPreview } from './deck-template-look-css.js';
+import {
+  ensureOfficialLookStackedCanvasNeutralize,
+  lockDeckDesignViewportMeta,
+} from './deck-template-look-css.js';
 
 export const DECK_SLIDE_SELECTOR =
   '.slide, [data-slide], [data-screen-label], section.slide, .deck-slide, .ppt-slide';
@@ -86,17 +89,19 @@ function deckSlideSelectorList(): string[] {
  * Heal Motif-killing stylesheet remnants + truncated head before standalone
  * HTML/PDF export (daemon disk path and FE snapshot share this SSOT).
  * Also relax persisted `.slide !important` surface bleed so Motif washes win,
- * upgrade official-look stacked-canvas neutralize, and lock viewport to 1920
- * for compact fills. Official catalog presenters keep device-width fill.
+ * upgrade official-look stacked-canvas neutralize for fills, and always lock
+ * viewport to 1920 for export Motif vw/% + letterbox fit.
+ *
+ * Preview/cover/`/raw` use {@link lockStackedDeckCanvasForPreview} (opt-in)
+ * so catalog presenters keep device-width iframe fill.
  */
 export function healDeckHtmlForStandaloneExport(html: string): string {
-  return lockStackedDeckCanvasForPreview(
-    repairArtifactStyleSheets(
-      repairArtifactDocumentHead(
-        relaxPersistedDeckSlideSurfaceBleed(String(html ?? '')),
-      ),
+  const repaired = repairArtifactStyleSheets(
+    repairArtifactDocumentHead(
+      relaxPersistedDeckSlideSurfaceBleed(String(html ?? '')),
     ),
   );
+  return lockDeckDesignViewportMeta(ensureOfficialLookStackedCanvasNeutralize(repaired));
 }
 
 function injectExportSnippetIntoHead(html: string, snippet: string): string {

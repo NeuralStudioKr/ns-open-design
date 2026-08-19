@@ -588,34 +588,69 @@ function hasOfficialLookStyleAttr(html: string): boolean {
 function hasOfficialPresenterShell(html: string): boolean {
   return (
     /\bclass\s*=\s*(["'])[^"'<>]*\bpresentation\b/i.test(html)
+    || /\bclass\s*=\s*(["'])[^"'<>]*\b(?:deck|slides-container|stage)\b/i.test(html)
     || (/\bnav-dots\b/i.test(html) && /\bnav-dot\b/i.test(html))
     || /\bclass\s*=\s*(["'])[^"'<>]*\bslide-counter\b/i.test(html)
     || /\bclass\s*=\s*(["'])[^"'<>]*\bslide-number\b/i.test(html)
+    // Opacity-stack presenters (one slide visible) even without a named shell.
+    || (
+      /\.slide\b[^{]*\{[^}]*opacity\s*:\s*0\b/i.test(html)
+      && /\.slide\.(?:active|is-active|current)\b[^{]*\{[^}]*opacity\s*:\s*1\b/i.test(html)
+    )
   );
 }
 
-function hasAuthorAbsolute100Slide(html: string): boolean {
-  return (
-    /\.slide\s*\{[^}]*position\s*:\s*absolute/i.test(html)
-    && /\.slide\s*\{[^}]*(?:width|height)\s*:\s*100%/i.test(html)
-  );
+/** Absolute fullscreen slide fill — % / vw·vh / inset:0 dialects. */
+function hasAuthorAbsoluteFullscreenSlide(html: string): boolean {
+  const css = String(html ?? '');
+  if (!/\.slide\s*\{[^}]*position\s*:\s*(?:absolute|fixed)/i.test(css)) return false;
+  if (/\.slide\s*\{[^}]*(?:width|height)\s*:\s*100%/i.test(css)) return true;
+  if (/\.slide\s*\{[^}]*(?:width|height)\s*:\s*100(?:vw|vh|dvh|svh|lvh)\b/i.test(css)) return true;
+  if (/\.slide\s*\{[^}]*inset\s*:\s*0\b/i.test(css)) return true;
+  return false;
 }
 
 /**
- * Official catalog `example.html` is a fullscreen presenter
- * (`.slide { position:absolute; width/height:100% }` filling its iframe).
- * Stacked 1920×1080 neutralize is for compact fills that already carry
- * `data-od-official-look-css` or `#od-stacked-deck-stage`. Applying it to
- * a presenter clips template preview/thumbs that size the iframe and let
- * 100% fill.
+ * Official catalog `example.html` is a fullscreen presenter filling its
+ * iframe (absolute/fixed slides at 100% / 100vw·vh / inset:0, or a named
+ * presentation/deck shell). Stacked 1920×1080 neutralize is for compact
+ * fills that already carry `data-od-official-look-css` or
+ * `#od-stacked-deck-stage`.
  */
 export function looksLikeOfficialFullscreenPresenterDeck(html: string): boolean {
   const dest = String(html ?? '');
   if (!dest) return false;
   if (hasOfficialLookStyleAttr(dest)) return false;
   if (/\bid\s*=\s*["']od-stacked-deck-stage["']/i.test(dest)) return false;
-  if (!hasOfficialPresenterShell(dest)) return false;
-  return hasAuthorAbsolute100Slide(dest);
+  // Strongest catalog signal: absolute/fixed fullscreen slide geometry.
+  if (hasAuthorAbsoluteFullscreenSlide(dest)) return true;
+  // Named shell / opacity stack + authored multi-slide CSS (relative snap decks).
+  if (hasOfficialPresenterShell(dest) && looksLikeAuthoredMultiSlideCss(dest)) return true;
+  return false;
+}
+
+function looksLikeAuthoredMultiSlideCss(html: string): boolean {
+  const slideOpens = html.match(
+    /<(?:section|div|main|article)\b[^>]*\bclass\s*=\s*['"][^'"]*\bslide\b/gi,
+  );
+  if (!slideOpens || slideOpens.length < 2) return false;
+  return /\.slide\b[^{]*\{/i.test(html);
+}
+
+/**
+ * True when preview/export should pin vw/% math to the 1920 design canvas.
+ * Opt-in only: look sheets, stacked stage, or proven/injected neutralize —
+ * never "everything that failed the Capsule presenter regex".
+ */
+export function needsStackedDesignViewportLock(html: string): boolean {
+  const dest = String(html ?? '');
+  if (!dest) return false;
+  if (looksLikeOfficialFullscreenPresenterDeck(dest)) return false;
+  if (hasOfficialLookStyleAttr(dest)) return true;
+  if (/\bid\s*=\s*["']od-stacked-deck-stage["']/i.test(dest)) return true;
+  if (hasOfficialLookStackedCanvasNeutralizeProof(dest)) return true;
+  if (/data-od-stacked-canvas-neutralize/i.test(dest)) return true;
+  return false;
 }
 
 function stripOfficialPresenterStackedCanvasLock(html: string): string {
@@ -673,7 +708,7 @@ export function ensureOfficialLookStackedCanvasNeutralize(html: string): string 
   // catalog presenters are handled above and must not receive a 1920 lock
   // just because they use presentation-absolute 100%.
   const needsStandaloneNeutralize =
-    (/\bid\s*=\s*["']od-stacked-deck-stage["']/i.test(dest) && hasAuthorAbsolute100Slide(dest))
+    (/\bid\s*=\s*["']od-stacked-deck-stage["']/i.test(dest) && hasAuthorAbsoluteFullscreenSlide(dest))
     || (
       dest.includes(OFFICIAL_LOOK_STACKED_NEUTRALIZE_MARKER)
       && !hasOfficialLookStackedCanvasNeutralizeProof(dest)
@@ -705,8 +740,13 @@ export function lockDeckDesignViewportMeta(html: string): string {
  * Compact-fill preview/export lock. Official catalog presenters keep
  * device-width + iframe-relative 100% fill.
  */
+/**
+ * Preview/export helper: upgrade stacked neutralize when needed, but only
+ * pin viewport to 1920 for compact fills / look sheets / stacked hosts.
+ * Catalog presenters keep device-width iframe fill.
+ */
 export function lockStackedDeckCanvasForPreview(html: string): string {
   const neutralized = ensureOfficialLookStackedCanvasNeutralize(String(html ?? ''));
-  if (looksLikeOfficialFullscreenPresenterDeck(neutralized)) return neutralized;
+  if (!needsStackedDesignViewportLock(neutralized)) return neutralized;
   return lockDeckDesignViewportMeta(neutralized);
 }
