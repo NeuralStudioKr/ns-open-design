@@ -218,6 +218,25 @@ full `example.html`을 시스템 프롬프트에 넣지 않는다는 방침은 �
 - [x] AC template-fill min-3 (shell 및 1장 partial)
 - [x] persist 1장 차단 테스트 유지
 
+### 0.49 2026-08-19 — 대표 Motif wrapper/snippet 누락 (Daisy 등)
+
+현재 시점(2026-08-19 KST) 판단: Daisy/Capsule 같은 템플릿에서 대표 SVG/CSS/도형이 빠지는 잔여 원인은 선택 전달 실패가 아니라 **fill prompt의 concrete Motif 예시 부족**이었다.
+
+발견한 구멍:
+1. Daisy `example.html`에는 실제 대표 요소가 `<div class="deco deco-daisy-tl"><svg ...>` wrapper 안에 있지만, `extractMotifHtmlSnippets`가 opening tag만 뽑으면서 star/rainbow 같은 짧은 보조 장식을 우선했다.
+2. slim 결과에는 daisy SVG 자체가 있어도 wrapper snippet이 빈 `<div class="deco deco-daisy-tl"></div>`로 남아, 모델이 그대로 복사하면 화면에 아무 motif가 보이지 않는다.
+3. `rainbow` 분류가 차트 SVG를 더 크게 선호해, scaffold/deco가 rainbow를 요구하면서 정작 pasteable rainbow sprite는 Motif block에 빠질 수 있었다.
+
+수정:
+- primary Motif wrapper(`deco-daisy*`, petal/blob, pin/post-it/stamp/tape, capsule pill)를 star/rainbow 보조 장식보다 우선한다.
+- SVG를 포함한 wrapper snippet은 `<!-- paste capped Motif sprite here -->` placeholder를 넣어, capped sprite를 실제 배치 wrapper에 넣도록 유도한다.
+- Daisy fill cap에는 `Daisy placement recipe`를 추가해 star/rainbow/circle만으로는 Daisy identity를 만족하지 않는다고 명시한다.
+- chart SVG는 rainbow로 분류하지 않고, rainbow는 큰 chart가 아니라 compact ornament를 우선한다.
+
+검증:
+- `template-visual-kit.test.ts`: Daisy slim에 `deco-daisy` wrapper + capped sprite placeholder + placement recipe가 남는지 고정.
+- `template-visual-kit-all-official.test.ts`: 전체 official deck motif/deco/layout survival 및 Capsule 예시 오주입 회귀 확인.
+
 ### 0.47 2026-08-19 — `.presentation` compact fill 16:9 중심 고정
 
 §0.46이 body-first Motif fill을 compact 1920으로 되돌린 뒤에도, 모델이 Capsule `<div class="presentation">`를 베끼고 `data-od-official-look-css`를 붙인 `deck.html`은 stacked letterbox를 못 탔다.
@@ -1212,6 +1231,7 @@ User-message 쪽 `[Existing deck edit]` / `<attached-preview-comments>` 주입�
 | 2026-08-19 | §0.45 — Motif fill이 presenter로 오인되어 1920 letterbox 이탈. shell 필수 · body-first compact · cache v23. |
 | 2026-08-19 | §0.44 — html-ppt catalog 1920 lock opt-in. presenter 감지 확대 · look/stage만 lock · cache v22. |
 | 2026-08-19 | §0.43 — 공식 example 프레젠터에 stacked 1920 neutralize가 들어가 템플릿 preview/썸네일이 잘림. presenter 제외 · cache v21. |
+| 2026-08-19 | §0.49 추가 — Daisy 등 대표 Motif wrapper/snippet 누락 RCA. primary wrapper 우선순위, capped sprite placeholder, Daisy placement recipe, chart/rainbow 오분류 방지 및 official 회귀 테스트 고정. |
 | 2026-08-18 | §0.42 — stacked neutralize/viewport 잔여 구멍. proof-based ensure · merge/cover/raw/standalone/srcdoc · cache v20. |
 | 2026-08-18 | §0.41 — official look max-width MQ가 좁은 iframe에서 16:9를 접음. MQ strip + grid reveal · cache v19. |
 | 2026-08-18 | §0.40 — 16:9 split이 host/official `flex-direction:column`에 잘림. unset + host lock-only · cache v18. |

@@ -930,9 +930,10 @@ function extractMotifHtmlSnippets(html: string, budget: number): string[] {
       }
     }
     let score = 5;
-    if (hasCapsuleMotifSignal(tag) && /\bdeco-pill\b|pill-coral|pill-sky|pill-lavender/i.test(tag)) score = 0;
-    else if (/petal|blob-fill|blob-frame|xp-blob/i.test(tag)) score = 1;
-    else if (/\bpin(?:-[a-z0-9_-]+)?\b|post-it|stamp|tape|bg-cork|\bcork\b/i.test(tag)) score = 1;
+    if (/\bdeco-daisy(?:-[a-z0-9_-]+)?\b|\bflower(?:-[a-z0-9_-]+)?\b/i.test(tag)) score = 0;
+    else if (/\bpetals?\b|\bblob(?:-[a-z0-9_-]+)?\b|blob-fill|blob-frame|xp-blob/i.test(tag)) score = 0;
+    else if (/\bpin(?:-[a-z0-9_-]+)?\b|post-it|stamp|tape|bg-cork|\bcork\b/i.test(tag)) score = 0;
+    else if (hasCapsuleMotifSignal(tag) && /\bdeco-pill\b|pill-coral|pill-sky|pill-lavender/i.test(tag)) score = 0;
     else if (/doodle|scribble/i.test(tag)) score = 1;
     else if (/pixel-|starfield|scanline|corner-bracket|dot-grid/i.test(tag)) score = 2;
     else if (/style\s*=/i.test(tag) && /(?:position\s*:\s*absolute|top\s*:|left\s*:|width\s*:)/i.test(tag)) {
@@ -953,8 +954,11 @@ function extractMotifHtmlSnippets(html: string, budget: number): string[] {
     let inner = '';
     if (idx >= 0) {
       const after = html.slice(idx + tag.length, idx + tag.length + 48);
+      if (/^\s*<svg\b/i.test(after)) {
+        inner = '<!-- paste capped Motif sprite here -->';
+      }
       const text = /^([^<]{1,24})/.exec(after)?.[1]?.trim() ?? '';
-      if (text && !/[{};]/.test(text)) inner = text.slice(0, 18);
+      if (!inner && text && !/[{};]/.test(text)) inner = text.slice(0, 18);
     }
     const close = /^<div\b/i.test(tag) ? '</div>' : '</span>';
     const snippet = `${tag}${inner}${close}`;
@@ -1169,6 +1173,9 @@ function classifySvg(svg: string): 'daisy' | 'star' | 'rainbow' | 'sun' | 'cloud
     /#c6e3f6/i.test(svg)
     || (/\bcloud\b/i.test(svg) && /#(?:fff|ffffff|c6e3f6)/i.test(svg));
   if (looksLikeCloud) return 'cloud';
+  if (/\bchart-svg\b|<(?:rect|line)\b[\s\S]*<(?:rect|line)\b/i.test(svg) && !/\bdeco-rainbow\b/i.test(svg)) {
+    return 'other';
+  }
   // Multi-petal daisy: butter-yellow center is the Zhangzara signature.
   // Also accept ~150 square white-petal flowers with 8+ paths (no sky blue).
   const hasButterCenter = /#fcdf6c/i.test(svg);
@@ -1315,9 +1322,9 @@ function extractMotifSprites(html: string, budget: number): MotifSprite[] {
     const kind = classifySvg(svg);
     if (kind === 'other') continue;
     const prev = byKind[kind];
-    // Daisy/rainbow: prefer the LARGEST complete sprite (real petal daisy ~2KB
-    // beats a false-positive cloud). Other kinds still prefer the compact one.
-    const preferLarger = kind === 'daisy' || kind === 'rainbow';
+    // Daisy: prefer the LARGEST complete sprite (real petal daisy ~2KB beats
+    // a false-positive cloud). Other kinds prefer the compact reusable motif.
+    const preferLarger = kind === 'daisy';
     if (
       !prev
       || (preferLarger ? svg.length > prev.length : svg.length < prev.length)
@@ -1687,7 +1694,7 @@ export function extractTemplateVisualKitFromHtml(
 
   // Extract optional sections first, then pack by priority so scaffold +
   // Decorations + Layout cannot be starved by large Motif sprite dumps.
-  const sprites = extractMotifSprites(source, 3_400);
+  const sprites = extractMotifSprites(source, 4_200);
   const spriteKinds = new Set(sprites.map((sprite) => sprite.kind));
   const scaffold = extractTemplateScaffoldMap(source, 1_000, spriteKinds);
   const deco = extractDecorationCss(source, 1_800, identity);
@@ -1717,7 +1724,7 @@ export function extractTemplateVisualKitFromHtml(
     spriteBlock.push(
       '### Motif sprites (optional complete SVGs — AFTER title/lead only)',
       '',
-      'These sprites are the ONLY allowed Motif SVG vocabulary (keep fill/stroke/`<style>` classes if you paste). Prefer CSS shapes / `.deco` / chunky borders for density. If you paste SVG: at most one short complete sprite AFTER visible title/lead on a slide; never open `<svg` before cover copy; never dump multiple sprites or a multi-KB `<svg><style>` block into `<head>`; skip Motif SVG entirely when paste risks a hang. Do not invent emoji ornaments or generic geometry. BODY-FIRST always.',
+      'Only use these Motif SVGs. Prefer kit `.deco`/CSS shapes; paste at most one complete sprite AFTER visible title/lead. Never open `<svg` before cover copy or dump sprites into `<head>`. No emoji/generic substitutes. BODY-FIRST.',
       '',
     );
     for (const sprite of sprites) {
@@ -1734,7 +1741,7 @@ export function extractTemplateVisualKitFromHtml(
     optionalBlocks.push([
       '### Template scaffold map (layout vocabulary — pick appropriate roles for the user brief)',
       '',
-      'This is a **catalog of the template\'s available slide layouts and roles**, NOT a slide order to clone verbatim. Pick the layouts that fit the user brief\'s actual content — do NOT force a Weekly Grid, Timeline, or Chart layout just because the template ships one, if the brief is not about time / progression / data. Reuse the same layout role across multiple content slides when appropriate. Slide count is driven by the user brief / Plugin `slideCount` / an auto default of 6–8 — NOT by the template\'s natural shell count.',
+      'Catalog of available layout roles, not a fixed slide order. Pick roles that fit the user brief; do not force timeline/chart/weekly layouts when irrelevant. Slide count follows user brief / Plugin `slideCount` / auto 6–8, not template shell count.',
       '',
       '```text',
       scaffold,
@@ -1944,6 +1951,12 @@ function capMotifSpritesSectionForFill(section: string): string {
       'Paste at most ONE of these sprites, and ONLY AFTER a real cover `<h1>`/`<h2>` + lead. Prefer Motif CSS/snippets when present. Never open `<svg` before title copy. Do not invent ellipse flowers / emoji / generic circles.',
       '',
     );
+    if (looksLikeDaisy) {
+      lines.push(
+        'Daisy placement recipe: wrap the kept sprite in a kit wrapper such as `<div class="deco deco-daisy-tl">...sprite...</div>` or `<div class="deco deco-daisy-br">...sprite...</div>` after title/lead. Star/rainbow/circle accents are secondary and do not satisfy Daisy identity by themselves.',
+        '',
+      );
+    }
     for (const svg of kept) {
       lines.push('```html', svg, '```', '');
     }
