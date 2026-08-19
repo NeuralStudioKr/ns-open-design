@@ -1184,7 +1184,13 @@ export function resolveProjectPatchUpdatedAt(
   if ('designSystemId' in patch && !sameNullable(patch.designSystemId, existing.designSystemId)) {
     changed = true;
   }
-  if ('metadata' in patch && !sameMetadata(patch.metadata, existing.metadata)) changed = true;
+  if ('metadata' in patch && !sameMetadata(patch.metadata, existing.metadata)) {
+    // Open/hydrate often pins metadata.entryFile (+ kind:deck) without a user
+    // edit. That must not move Home 「방금 전」.
+    if (!isOpenHydrationMetadataOnly(existing.metadata, patch.metadata)) {
+      changed = true;
+    }
+  }
   if (
     'customInstructions' in patch
     && !sameNullable(patch.customInstructions, existing.customInstructions)
@@ -1192,6 +1198,32 @@ export function resolveProjectPatchUpdatedAt(
     changed = true;
   }
   return changed ? Date.now() : existing.updatedAt;
+}
+
+/** True when metadata only pins entryFile / kind (open finalize), not real edits. */
+function isOpenHydrationMetadataOnly(existing: unknown, incoming: unknown): boolean {
+  if (!incoming || typeof incoming !== 'object' || Array.isArray(incoming)) return false;
+  const prev =
+    existing && typeof existing === 'object' && !Array.isArray(existing)
+      ? (existing as Record<string, unknown>)
+      : {};
+  const next = incoming as Record<string, unknown>;
+  const stripHydrationKeys = (meta: Record<string, unknown>) => {
+    const { entryFile: _entryFile, kind: _kind, ...rest } = meta;
+    return rest;
+  };
+  try {
+    if (stableJsonStringify(stripHydrationKeys(prev)) !== stableJsonStringify(stripHydrationKeys(next))) {
+      return false;
+    }
+  } catch {
+    return false;
+  }
+  const prevEntry = typeof prev.entryFile === 'string' ? prev.entryFile.trim() : '';
+  const nextEntry = typeof next.entryFile === 'string' ? next.entryFile.trim() : '';
+  if (nextEntry && nextEntry !== prevEntry) return true;
+  if ((prev.kind ?? null) !== (next.kind ?? null) && next.kind === 'deck') return true;
+  return false;
 }
 
 /** True when a message upsert is real chat/edit work, not an identical re-save. */

@@ -822,6 +822,7 @@ describe("canvasSlideLaunch", () => {
       projectView.indexOf("finalizeSlideOnlyDeckArtifactsRef.current = finalizeSlideOnlyDeckArtifacts"),
     );
     expect(finalizeSrc).toContain("Do not optimistic-bump updatedAt");
+    expect(finalizeSrc).toContain("updatedAt: project.updatedAt");
     expect(finalizeSrc).toContain("if (patched) onProjectChange(patched)");
     expect(finalizeSrc).not.toContain("updatedAt: Date.now()");
   });

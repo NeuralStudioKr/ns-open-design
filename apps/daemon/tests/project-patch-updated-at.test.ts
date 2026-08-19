@@ -62,9 +62,18 @@ describe('resolveProjectPatchUpdatedAt', () => {
   it('bumps when metadata content changes', () => {
     const before = Date.now();
     const next = resolveProjectPatchUpdatedAt(existing, {
-      metadata: { kind: 'deck', entryFile: 'deck.html' },
+      metadata: { kind: 'deck', selectedDeckTemplateId: 'html-ppt-hermes' },
     });
     expect(next).toBeGreaterThanOrEqual(before);
+  });
+
+  it('preserves timestamp when open hydrate only pins entryFile', () => {
+    expect(
+      resolveProjectPatchUpdatedAt(
+        { ...existing, metadata: { kind: 'deck' } },
+        { metadata: { kind: 'deck', entryFile: 'deck.html' } },
+      ),
+    ).toBe(existing.updatedAt);
   });
 });
 

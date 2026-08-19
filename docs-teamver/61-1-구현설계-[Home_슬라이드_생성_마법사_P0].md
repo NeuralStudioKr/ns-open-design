@@ -41,7 +41,7 @@ Recent strip         → unchanged
 | `step` | `content` \| `template` |
 | `templateComplete` | entry=template 또는 스텝2에서 선택 확정 후 true |
 | `prompt` | textarea |
-| `quickSettings` | Canvas 스키마 + Home `customSlideCount`(1–40, 선택). 칩을 고르면 직접 지정 해제 |
+| `quickSettings` | Canvas 스키마 + Home `customSlideCount`(1–15, 선택). 칩을 고르면 직접 지정 해제 |
 | `stagedFiles` / `stagedDriveAssets` | HomeView stage. 닫기·생성 완료·「새 슬라이드」·갤러리 사용 시 비움 |
 | `selectedTemplateId` | canvas template options |
 

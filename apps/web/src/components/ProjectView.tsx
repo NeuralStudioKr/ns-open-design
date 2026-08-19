@@ -4106,6 +4106,7 @@ export function ProjectView({
                   emergency.htmlToOpen,
                 );
                 maybeArmTeamverPublishMenuAfterRunSuccess(project.id, emergency.htmlToOpen);
+                requestSlideCountTopUpRef.current(emergency.htmlToOpen);
                 requestOpenFile(emergency.htmlToOpen);
                 return;
               }
@@ -4680,7 +4681,11 @@ export function ProjectView({
           try {
             // Await so DesignsTab / cover-hints see entryFile before the user
             // lands back on the project list (fire-and-forget left Canvas pins).
-            const patched = await patchProject(project.id, { metadata });
+            // Preserve updatedAt — entry pin is open hydration, not an edit.
+            const patched = await patchProject(project.id, {
+              metadata,
+              updatedAt: project.updatedAt,
+            });
             if (patched) onProjectChange(patched);
           } catch {
             // Local state already pinned the deck entry.
@@ -6579,6 +6584,7 @@ export function ProjectView({
       }
       htmlAutoOpenClaimedRef.current.add(assistantMessageId);
       maybeArmTeamverPublishMenuAfterRunSuccess(project.id, htmlToOpen);
+      requestSlideCountTopUpRef.current(htmlToOpen);
       requestOpenFile(htmlToOpen);
       if (!message.producedFiles?.length && produced.length > 0) {
         updateMessageById(
@@ -7860,6 +7866,7 @@ export function ProjectView({
                 );
                 if (producedHtmlToOpen && claimHtmlAutoOpenForMessage()) {
                   maybeArmTeamverPublishMenuAfterRunSuccess(project.id, producedHtmlToOpen);
+                  requestSlideCountTopUpRef.current(producedHtmlToOpen);
                   requestOpenFile(producedHtmlToOpen);
                 }
                 if (produced.length > 0) {
@@ -8406,6 +8413,7 @@ export function ProjectView({
               emergency.htmlToOpen,
             );
             maybeArmTeamverPublishMenuAfterRunSuccess(project.id, emergency.htmlToOpen);
+            requestSlideCountTopUpRef.current(emergency.htmlToOpen);
             requestOpenFile(emergency.htmlToOpen);
             finishRecovery();
             return;
@@ -9795,6 +9803,7 @@ export function ProjectView({
 
             if (producedHtmlToOpen && runIsVisible()) {
               maybeArmTeamverPublishMenuAfterRunSuccess(project.id, producedHtmlToOpen);
+              requestSlideCountTopUpRef.current(producedHtmlToOpen);
               requestOpenFile(producedHtmlToOpen);
               const navTarget = queuedSlideNavTarget(runCommentAttachmentsRef.current, {
                 fallbackDeckFilePath: producedHtmlToOpen,
@@ -9927,6 +9936,7 @@ export function ProjectView({
                   );
                   if (runIsVisible()) {
                     maybeArmTeamverPublishMenuAfterRunSuccess(project.id, emergency.htmlToOpen);
+                    requestSlideCountTopUpRef.current(emergency.htmlToOpen);
                     requestOpenFile(emergency.htmlToOpen);
                   }
                 }
@@ -11194,7 +11204,87 @@ export function ProjectView({
   const handleSendRef = useRef(handleSend);
   useLayoutEffect(() => {
     handleSendRef.current = handleSend;
-  }, [handleSend]);
+    requestSlideCountTopUpRef.current = (htmlPath) => {
+      void (async () => {
+        if (!htmlPath || !activeConversationId || !slideOnlyMvp) return;
+        if (runCommentAttachmentsRef.current.length > 0) return;
+        if (autoContinueTimerRef.current !== null || pendingAutoContinueConversationIdRef.current) {
+          return;
+        }
+        if (slideCountTopUpTimerRef.current !== null) return;
+        const html = await readProjectHtml(htmlPath);
+        if (!html) return;
+        const produced = countDeckSlideSections(html);
+        const conversationMessages = messagesRef.current;
+        if (findIncompleteSlideAssistantForRecovery(conversationMessages)) return;
+        const requested = extractRequestedSlideCountTargetFromMessages(conversationMessages);
+        const already = syncSlideCountTopUpCountFromMessages(
+          conversationSlideCountTopUpCountRef.current,
+          activeConversationId,
+          conversationMessages,
+        );
+        if (!shouldQueueSlideCountTopUp({
+          produced,
+          requested,
+          topUpCount: already,
+          commentAttachmentCount: runCommentAttachmentsRef.current.length,
+        })) {
+          return;
+        }
+        conversationSlideCountTopUpCountRef.current.set(activeConversationId, already + 1);
+        const scheduledProjectId = project.id;
+        const scheduledConversationId = activeConversationId;
+        pendingSlideCountTopUpConversationIdRef.current = scheduledConversationId;
+        slideCountTopUpTimerRef.current = window.setTimeout(() => {
+          slideCountTopUpTimerRef.current = null;
+          pendingSlideCountTopUpConversationIdRef.current = null;
+          if (project.id !== scheduledProjectId) {
+            rollbackSlideCountTopUpCount(
+              conversationSlideCountTopUpCountRef.current,
+              scheduledConversationId,
+            );
+            return;
+          }
+          if (messagesConversationIdRef.current !== scheduledConversationId) {
+            rollbackSlideCountTopUpCount(
+              conversationSlideCountTopUpCountRef.current,
+              scheduledConversationId,
+            );
+            return;
+          }
+          if (autoContinueTimerRef.current !== null) {
+            rollbackSlideCountTopUpCount(
+              conversationSlideCountTopUpCountRef.current,
+              scheduledConversationId,
+            );
+            return;
+          }
+          const sendNow = handleSendRef.current;
+          if (!sendNow || requested == null) {
+            rollbackSlideCountTopUpCount(
+              conversationSlideCountTopUpCountRef.current,
+              scheduledConversationId,
+            );
+            return;
+          }
+          const started = sendNow(
+            buildSlideCountTopUpPrompt({ produced, requested }),
+            [],
+            [],
+            { entryFrom: SLIDE_COUNT_TOP_UP_ENTRY_FROM as ChatAnalyticsEntryFrom },
+          );
+          void Promise.resolve(started).then((ok) => {
+            if (ok === false) {
+              rollbackSlideCountTopUpCount(
+                conversationSlideCountTopUpCountRef.current,
+                scheduledConversationId,
+              );
+            }
+          });
+        }, 700);
+      })();
+    };
+  }, [handleSend, activeConversationId, project.id, readProjectHtml, slideOnlyMvp]);
 
   // Cancel every in-flight run for the current conversation (the user's own
   // streaming turn plus any reattached runs), mark their assistant messages
