@@ -517,6 +517,68 @@ cur=n;
     expect(srcdoc).toContain('height: 1080px !important');
   });
 
+  it('still letterboxes compact official-look fills that copied a .presentation host', async () => {
+    const html = [
+      '<!doctype html><html lang="ko"><head>',
+      '<style data-od-official-look-css>',
+      '.slide { position:absolute; inset:0; width:100%; height:100%; display:flex; flex-direction:column; }',
+      '.slide-6 { justify-content:center; }',
+      '/* stacked preview/export: Motif paint + fixed 1920 */',
+      'html, body { overflow: visible !important; height: auto !important; }',
+      '.slide { opacity: 1 !important; position: relative !important; width: 1920px !important; height: 1080px !important; flex-direction: unset; }',
+      '</style></head><body>',
+      '<div class="presentation">',
+      '<section class="slide"><h2>도입 로드맵</h2><p>Phase 1-4</p></section>',
+      '<section class="slide" style="display:flex;gap:0;padding:0;width:1920px;height:1080px">',
+      '<div class="split-left">Turborepo</div><div class="split-right">Nx</div>',
+      '</section>',
+      '<section class="slide slide-6"><h2>체크리스트</h2></section>',
+      '</div></body></html>',
+    ].join('');
+
+    expect(looksLikeCompactApiStackedDeck(html)).toBe(true);
+    expect(looksLikeCompactApiStackedDeckForPreview(html)).toBe(true);
+
+    const srcdoc = buildSrcdoc(html, { deck: true });
+    expect(srcdoc).toContain('data-od-deck-stacked-fix');
+    expect(srcdoc).toContain('content="width=1920, initial-scale=1, maximum-scale=1"');
+
+    const match = srcdoc.match(/<script data-od-deck-bridge>([\s\S]*?)<\/script>/);
+    expect(match?.[1]).toBeTruthy();
+    const { JSDOM } = await import('jsdom');
+    const dom = new JSDOM(srcdoc.replace(/<script\b[\s\S]*?<\/script>/gi, ''), {
+      runScripts: 'outside-only',
+      pretendToBeVisual: true,
+    });
+    const win = dom.window;
+    Object.defineProperty(win, 'parent', { configurable: true, value: { postMessage: () => {} } });
+    new win.Function(match![1]!).call(win);
+    win.dispatchEvent(new win.MessageEvent('message', {
+      data: { type: 'od:deck-host-viewport', width: 960, height: 540, scale: 1 },
+    }));
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 100));
+
+    const stage = win.document.getElementById('od-stacked-deck-stage') as HTMLElement | null;
+    expect(stage).toBeTruthy();
+    const slideEls = Array.from(win.document.querySelectorAll('#od-stacked-deck-stage > .slide')) as HTMLElement[];
+    expect(slideEls).toHaveLength(3);
+    expect(slideEls[0]?.style.flexDirection).toBe('column');
+    expect(slideEls[0]?.style.justifyContent).toBe('center');
+    expect(slideEls[1]?.style.flexDirection).toBe('row');
+    expect(slideEls[2]?.classList.contains('slide-6')).toBe(true);
+    expect(slideEls[2]?.style.justifyContent).not.toBe('center');
+
+    const firstTransform = String(stage?.style.transform || '');
+    expect(firstTransform).toMatch(/translate\(calc\(-50%/);
+    expect(firstTransform).toMatch(/scale\(/);
+
+    win.dispatchEvent(new win.MessageEvent('message', { data: { type: 'od:slide', action: 'next' } }));
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 40));
+    win.dispatchEvent(new win.MessageEvent('message', { data: { type: 'od:slide', action: 'next' } }));
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 40));
+    expect(String(stage?.style.transform || '')).toBe(firstTransform);
+  });
+
   it('keeps official catalog presenters on native 100% fill instead of stacked 1920', () => {
     const official = readFileSync(
       resolve(repoRoot, 'plugins/_official/examples/html-ppt-zhangzara-capsule/example.html'),

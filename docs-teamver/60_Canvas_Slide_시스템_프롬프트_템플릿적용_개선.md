@@ -200,6 +200,26 @@ full `example.html`을 시스템 프롬프트에 넣지 않는다는 방침은 �
 - [x] 인라인 장별 색도 per-slide paint
 - [x] daemon cover-batch가 persisted flatten bleed를 `html, body`로 완화 (cache v6)
 
+### 0.47 2026-08-19 — `.presentation` compact fill 16:9 중심 고정
+
+§0.46이 body-first Motif fill을 compact 1920으로 되돌린 뒤에도, 모델이 Capsule `<div class="presentation">`를 베끼고 `data-od-official-look-css`를 붙인 `deck.html`은 stacked letterbox를 못 탔다.
+
+사이즈/중심이 장마다 달랐던 잔여 구멍:
+1. `.presentation`이면 compact stacked **무조건 제외** → 페이지가 콘텐츠 높이로 줄거나 host scale이 갈라짐
+2. neutralize `flex-direction:unset` + reveal `display:flex`가 Motif-only 장을 **row + top**으로 떨어뜨림. `slide-N`만 look CSS `justify-content:center`
+
+수정 (preview JS + detector only, persist HTML/`v23` 불변):
+- official look fill은 `.presentation` / `.deck` wrapper여도 stacked letterbox
+- 카탈로그 presenter(look 마커 없음)는 계속 native 100% fill
+- 작성자 style 스냅샷 후: Motif-only → column+center, 인라인 `display:flex` split → row
+
+구현 현황:
+
+- [x] presentation+look CSS compact stacked red spec
+- [x] 같은 stage transform으로 next/next
+- [x] catalog Capsule presenter는 여전히 stacked 제외
+- [x] 16:9 split column clip 회귀 유지
+
 ### 0.46 2026-08-19 — filled Motif 덱 페이지별 중심/사이즈 불일치
 
 §0.44 absolute-only presenter 판정이 body-first Motif fill을 catalog로 오인해 compact 1920 letterbox에서 빠뜨림. 콘텐츠는 device-width로 짜이고 호스트는 1920을 가정 → 좌상단 쏠림·페이지별 중심 불일치.

@@ -3492,6 +3492,44 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
       }
     }
   }
+  function lockStackedSlideAxis(el) {
+    if (!el || !el.style) return;
+    // Neutralize sets flex-direction:unset so 16:9 splits that only set
+    // display:flex stay row; Motif-only slides then fall to row+top and
+    // each page looks like a different canvas. Snapshot the authored
+    // style once — later reveal writes display:flex and must not be
+    // re-read as an implicit row split.
+    if (!el.hasAttribute('data-od-authored-style')) {
+      el.setAttribute('data-od-authored-style', el.getAttribute('style') || '');
+    }
+    var authoredStyle = String(el.getAttribute('data-od-authored-style') || '');
+    var authoredDisplayMatch = /(?:^|;)\s*display\s*:\s*([^;!]+)/i.exec(authoredStyle);
+    var authoredDisplay = authoredDisplayMatch ? String(authoredDisplayMatch[1] || '').trim().toLowerCase() : '';
+    var authoredDirMatch = /(?:^|;)\s*flex-direction\s*:\s*([^;!]+)/i.exec(authoredStyle);
+    var authoredDir = authoredDirMatch ? String(authoredDirMatch[1] || '').trim().toLowerCase() : '';
+    var className = String(el.className || '');
+    el.style.setProperty(
+      'display',
+      authoredDisplay === 'grid' || authoredDisplay === 'inline-grid' ? authoredDisplay : 'flex',
+      'important',
+    );
+    if (authoredDisplay === 'grid' || authoredDisplay === 'inline-grid') return;
+    if (authoredDir) {
+      el.style.flexDirection = authoredDir;
+      return;
+    }
+    if (authoredDisplay === 'flex' || authoredDisplay === 'inline-flex') {
+      el.style.flexDirection = 'row';
+      return;
+    }
+    el.style.flexDirection = 'column';
+    if (
+      !/(?:^|;)\s*justify-content\s*:/i.test(authoredStyle)
+      && !/(?:^|\\s)slide-\\d+(?:\\s|$)/.test(className)
+    ) {
+      el.style.justifyContent = 'center';
+    }
+  }
   function setSlideDisplayed(el, visible) {
     if (!el || !el.style) return;
     var parent = el.parentElement;
@@ -3503,20 +3541,9 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
       clearInlineSlideHide(el);
       return;
     }
+    if (stacked) lockStackedSlideAxis(el);
     if (visible) {
-      if (stacked) {
-        // Reveal without rewriting authored axis. Inline grid stays grid;
-        // everything else is flex so official look + neutralize can keep
-        // row splits (flex-direction:unset) and column slides (inline column).
-        var authoredStyle = String(el.getAttribute('style') || '');
-        var authoredDisplayMatch = /(?:^|;)\s*display\s*:\s*([^;!]+)/i.exec(authoredStyle);
-        var authoredDisplay = authoredDisplayMatch ? String(authoredDisplayMatch[1] || '').trim().toLowerCase() : '';
-        el.style.setProperty(
-          'display',
-          authoredDisplay === 'grid' || authoredDisplay === 'inline-grid' ? authoredDisplay : 'flex',
-          'important',
-        );
-      } else {
+      if (!stacked) {
         // Framework / class-toggle decks: clear any previous hide so author
         // .active / variant classes (flex/grid/block) control layout.
         el.style.removeProperty('display');

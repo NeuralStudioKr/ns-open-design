@@ -1,5 +1,12 @@
-import { looksLikeOfficialFullscreenPresenterDeck } from '@open-design/contracts';
+import {
+  OFFICIAL_DECK_LOOK_STYLE_ATTR,
+  looksLikeOfficialFullscreenPresenterDeck,
+} from '@open-design/contracts';
 import { repairArtifactDocumentHeadIfNeeded } from './artifact-document-head';
+
+function hasOfficialLookStyleAttr(html: string): boolean {
+  return new RegExp(`<style\\b[^>]*\\b${OFFICIAL_DECK_LOOK_STYLE_ATTR}\\b`, 'i').test(html);
+}
 
 export type WrapPreviewHtmlShellOptions = {
   /** Caller already ran repair (or verified intact head) — skip the first repair pass. */
@@ -178,12 +185,14 @@ export function looksLikeCompactApiStackedDeck(html: string): boolean {
   if (looksLikeOfficialFullscreenPresenterDeck(html)) return false;
   if (looksLikeFrameworkDeckMarkup(html)) return false;
   if (looksLikeAuthoredHorizontalSwipeDeck(html)) return false;
-  // Official html-ppt Capsule/Daisy/etc. use a `.presentation` host with
-  // absolute opacity slides. That is NOT a body-first compact fill — stacking
-  // neutralize (flex-direction:unset, relative 1920) breaks Motif geometry in
-  // template preview/thumbs.
+  // Official catalog presenters (no look-css marker) keep native 100% fill.
+  // Compact fills that copied a `.presentation` / `.deck` host after official
+  // look merge must still letterbox to one 1920×1080 stage — otherwise each
+  // page sizes to its Motif content and the visual center jumps.
+  const officialLookFill = hasOfficialLookStyleAttr(html);
   if (
-    /<(?:div|section|main)\b[^>]*\bclass\s*=\s*['"][^'"]*\bpresentation\b/i.test(html)
+    !officialLookFill
+    && /<(?:div|section|main)\b[^>]*\bclass\s*=\s*['"][^'"]*\bpresentation\b/i.test(html)
   ) {
     return false;
   }
@@ -193,7 +202,8 @@ export function looksLikeCompactApiStackedDeck(html: string): boolean {
   const compactBodyFirst = bodyFirst && (viewportSized || legacyBodyFirst);
   if (looksLikeAuthoredScrollNavigateDeck(html) && !compactBodyFirst) return false;
   if (
-    /<body\b[^>]*>[\s\S]*<(?:div|section)\b[^>]*\bclass\s*=\s*['"][^'"]*(?:^|\s)deck(?:\s|["']|$)/i.test(
+    !officialLookFill
+    && /<body\b[^>]*>[\s\S]*<(?:div|section)\b[^>]*\bclass\s*=\s*['"][^'"]*(?:^|\s)deck(?:\s|["']|$)/i.test(
       html,
     )
   ) {
