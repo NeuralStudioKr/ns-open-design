@@ -200,6 +200,23 @@ full `example.html`을 시스템 프롬프트에 넣지 않는다는 방침은 �
 - [x] 인라인 장별 색도 per-slide paint
 - [x] daemon cover-batch가 persisted flatten bleed를 `html, body`로 완화 (cache v6)
 
+### 0.49 2026-08-19 — Daisy svg-sprite Motif fill/merge
+
+Capsule은 empty `.deco-pill` + look CSS로 살아나지만 Daisy 정체성은 ~2KB flower SVG. fill의 `>~800 chars` Motif budget·empty deco 셸·symbol-only Motif HTML merge가 꽃을 빠뜨림.
+
+- capped kit Motif sprite는 ~800자 예산 면제 + cover 필수 paste (title-first 유지)
+- `svg-sprite` Motif geometry guidance 부착; empty `.deco-*`는 child SVG 필요 명시
+- `extractOfficialDeckMotifHtml`이 visible Motif instances(deco+svg) 추출 → 슬라이드 주입 / empty shell fill
+- kit maxChars 17k (daisy+star+rainbow 유지)
+- export cache `v24`
+
+구현 현황:
+
+- [x] prompt/kit Motif budget exemption for capped kit sprite
+- [x] Daisy Motif instance merge heal
+- [x] empty deco shell SVG fill
+- [x] export cache v24
+
 ### 0.48 2026-08-19 — 연속 `incomplete_output` (shell → 1장 fill)
 
 사용자 재현: 같은 대화에서

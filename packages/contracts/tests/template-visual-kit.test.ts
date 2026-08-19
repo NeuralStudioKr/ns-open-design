@@ -80,7 +80,7 @@ describe('extractTemplateVisualKitFromHtml', () => {
     // Budget must fit daisy + star + rainbow so the scaffold map does not
     // demand deco kinds the Motif sprites block never shipped.
     expect(spriteSvgs.length).toBeGreaterThanOrEqual(3);
-    expect(kit!.length).toBeLessThanOrEqual(16_000);
+    expect(kit!.length).toBeLessThanOrEqual(17_500);
     expect(kit!).not.toMatch(/…\s*$/);
     expect(kit!).toMatch(/LOOK LIKE THE TEMPLATE|TOKEN-SAFE CONTENT-SWAP/i);
     expect(kit!).toContain('### Must-match look');
@@ -293,6 +293,8 @@ html,body{background:var(--cream);color:var(--text-dark)}
     if (/#fcdf6c/i.test(daisyKit)) {
       expect(daisySlim).toMatch(/#fcdf6c/i);
     }
+    expect(daisySlim).toMatch(/REQUIRED after cover|~2KB|800-char Motif-budget does not apply/i);
+    expect(daisySlim).toMatch(/Motif geometry:\s*\*\*kit Motif SVG sprites\*\*/i);
     expect(daisySlim).not.toMatch(/Motif sprites \(omitted for first content-fill/i);
     expect(daisySlim).not.toMatch(/ZERO Motif|Motif SVG paste is DISABLED/i);
     expect(daisySlim).toMatch(/Daisy placement recipe/i);

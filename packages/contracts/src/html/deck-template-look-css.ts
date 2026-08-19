@@ -5,7 +5,8 @@
  * read that as "template CSS not applied".
  *
  * Merge the official look CSS (tokens + Motif/Layout rules + font links)
- * and reusable Motif HTML (hidden SVG symbol sheets, grain/crt hosts)
+ * and reusable Motif HTML (hidden SVG symbol sheets, grain/crt hosts,
+ * and visible svg-sprite Motif instances like Daisy flower wrappers)
  * into the artifact when those pieces are missing. Presentation chrome
  * (`.slide { opacity:0; position:absolute; width/height:100% }`) is
  * neutralized on compact fills so stacked preview/export keeps a fixed
@@ -297,6 +298,189 @@ function isReusableSpriteSheet(svg: string): boolean {
   return !/<(path|g|circle|ellipse|rect|polygon|polyline|use|text|image)\b/i.test(withoutDefs);
 }
 
+/** Daisy-style Motif wrappers that need a child `<svg>` to paint (CSS sizes `.deco svg`). */
+const VISIBLE_MOTIF_WRAPPER_RE =
+  /<(div|span)\b([^>]*\bclass\s*=\s*(?:"[^"]*\bdeco-(?:daisy|star|rainbow|sun|cloud|flower)[^"]*"|'[^']*\bdeco-(?:daisy|star|rainbow|sun|cloud|flower)[^']*')[^>]*)>([\s\S]*?)<\/\1>/gi;
+
+function motifSvgIdentityScore(svg: string): number {
+  if (/#fcdf6c/i.test(svg) && /<path\b/i.test(svg)) return 0; // Daisy butter center
+  if (/deco-daisy|#fcdf6c/i.test(svg)) return 1;
+  if (/viewbox="0 0 100 98|#fbb0c7|#fde366/i.test(svg)) return 3; // star accents
+  if (/rainbow|#f8635f|#8de3b7/i.test(svg)) return 4;
+  return 5;
+}
+
+function placementStyleForMotifClass(classAttr: string): string {
+  if (/deco-daisy-tl/i.test(classAttr)) {
+    return 'position:absolute;top:-20px;left:-20px;width:200px;height:200px;pointer-events:none;z-index:1';
+  }
+  if (/deco-daisy-tr/i.test(classAttr)) {
+    return 'position:absolute;top:16px;right:-16px;width:170px;height:170px;pointer-events:none;z-index:1';
+  }
+  if (/deco-daisy-bl/i.test(classAttr)) {
+    return 'position:absolute;bottom:-24px;left:16px;width:180px;height:180px;pointer-events:none;z-index:1';
+  }
+  if (/deco-daisy-br/i.test(classAttr) || /deco-daisy\b/i.test(classAttr)) {
+    return 'position:absolute;bottom:-10px;right:-20px;width:180px;height:180px;pointer-events:none;z-index:1';
+  }
+  if (/deco-star/i.test(classAttr)) {
+    return 'position:absolute;top:12%;right:7%;width:72px;height:72px;pointer-events:none;z-index:1';
+  }
+  return 'position:absolute;top:24px;left:24px;width:160px;height:160px;pointer-events:none;z-index:1';
+}
+
+function ensureInlineStyle(attrs: string, style: string): string {
+  if (/\bstyle\s*=/i.test(attrs)) {
+    return attrs.replace(
+      /\bstyle\s*=\s*(["'])([\s\S]*?)\1/i,
+      (_m, q: string, prev: string) => `style=${q}${prev}${/;?\s*$/.test(prev) ? '' : ';'}${style}${q}`,
+    );
+  }
+  return `${attrs} style="${style}"`;
+}
+
+/**
+ * Visible Motif instances (wrapper + SVG) for svg-sprite kits like Daisy.
+ * Compact fill often ships empty `.deco` shells or tiny CSS dots; look CSS
+ * alone cannot paint flowers without the child SVG.
+ */
+function extractVisibleMotifInstances(html: string): string[] {
+  const scored: Array<{ score: number; block: string; key: string }> = [];
+  VISIBLE_MOTIF_WRAPPER_RE.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = VISIBLE_MOTIF_WRAPPER_RE.exec(html)) !== null) {
+    const tag = match[1] ?? 'div';
+    const attrs = match[2] ?? '';
+    const inner = (match[3] ?? '').trim();
+    const svgMatch = /<svg\b[\s\S]*?<\/svg>/i.exec(inner);
+    if (!svgMatch) continue;
+    const svg = svgMatch[0];
+    if (svg.length < 80 || svg.length > 2_600) continue;
+    if (/<symbol\b/i.test(svg)) continue;
+    const className = classAttrValue(attrs);
+    const key = /deco-daisy/i.test(className)
+      ? 'daisy'
+      : /deco-star/i.test(className)
+      ? 'star'
+      : /deco-rainbow/i.test(className)
+      ? 'rainbow'
+      : className.slice(0, 48);
+    const style = placementStyleForMotifClass(className);
+    const open = markOfficialMotifHtml(`<${tag}${ensureInlineStyle(attrs, style)}>`);
+    const block = `${open}${svg}</${tag}>`;
+    scored.push({ score: motifSvgIdentityScore(svg) + (/deco-daisy/i.test(className) ? 0 : 2), block, key });
+  }
+  scored.sort((a, b) => a.score - b.score || a.block.length - b.block.length);
+  const out: string[] = [];
+  const seenKeys = new Set<string>();
+  for (const row of scored) {
+    const placementKey = /deco-daisy-tl/i.test(row.block)
+      ? 'daisy-tl'
+      : /deco-daisy-tr/i.test(row.block)
+      ? 'daisy-tr'
+      : /deco-daisy-bl/i.test(row.block)
+      ? 'daisy-bl'
+      : /deco-daisy-br|deco-daisy\b/i.test(row.block)
+      ? 'daisy-br'
+      : row.key;
+    if (seenKeys.has(placementKey) || out.includes(row.block)) continue;
+    seenKeys.add(placementKey);
+    out.push(row.block);
+    if (out.length >= 2) break;
+  }
+  return out;
+}
+
+function isVisibleMotifInstanceBlock(block: string): boolean {
+  return (
+    /^<(?:div|span)\b/i.test(block)
+    && /<svg\b/i.test(block)
+    && !/<symbol\b/i.test(block)
+    && (new RegExp(`\\b${OFFICIAL_DECK_MOTIF_HTML_ATTR}\\b`, 'i').test(block) || /\bdeco-/i.test(block))
+  );
+}
+
+function destHasVisibleMotifIdentity(dest: string, instances: string[]): boolean {
+  if (!dest || instances.length === 0) return instances.length === 0;
+  if (new RegExp(`\\b${OFFICIAL_DECK_MOTIF_HTML_ATTR}\\b[^>]*>\\s*<svg\\b`, 'i').test(dest)) return true;
+  // Daisy butter center / flower paths already pasted by the model.
+  if (/#fcdf6c/i.test(dest) && /<svg\b[\s\S]{80,2600}?#fcdf6c/i.test(dest)) return true;
+  if (/#fcdf6c/i.test(dest) && /<path\b[^>]*#fcdf6c|<path\b[\s\S]{0,200}#fcdf6c/i.test(dest)) return true;
+  if (/#fcdf6c/i.test(dest) && (dest.match(/<svg\b/gi) ?? []).length >= 1) return true;
+  // Empty deco shells do not count.
+  if (/deco-daisy[\s\S]{0,120}<svg\b/i.test(dest)) return true;
+  return false;
+}
+
+function fillEmptyMotifShells(dest: string, svg: string): string {
+  if (!dest || !svg) return dest;
+  return dest.replace(
+    /<(div|span)\b([^>]*\bclass\s*=\s*(?:"[^"]*\bdeco-(?:daisy|star|rainbow|sun|cloud|flower)[^"]*"|'[^']*\bdeco-(?:daisy|star|rainbow|sun|cloud|flower)[^']*')[^>]*)>\s*<\/\1>/gi,
+    (_m, tag: string, attrs: string) => {
+      const marked = markOfficialMotifHtml(`<${tag}${attrs}>`);
+      return `${marked}${svg}</${tag}>`;
+    },
+  );
+}
+
+function insertMotifIntoSlide(slideHtml: string, motif: string): string {
+  // Prefer after opening slide tag so Motif sits behind title (z-index) but paints.
+  return slideHtml.replace(
+    /^(<(?:section|div|main|article)\b[^>]*>)/i,
+    `$1\n${motif}\n`,
+  );
+}
+
+function listSlideBlocks(html: string): Array<{ start: number; end: number; html: string }> {
+  const blocks: Array<{ start: number; end: number; html: string }> = [];
+  const re =
+    /<(section|div|main|article)\b[^>]*\bclass\s*=\s*(?:"[^"]*\bslide\b[^"]*"|'[^']*\bslide\b[^']*')[^>]*>[\s\S]*?<\/\1>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(html)) !== null) {
+    blocks.push({
+      start: match.index,
+      end: match.index + match[0].length,
+      html: match[0],
+    });
+    if (blocks.length >= 12) break;
+  }
+  return blocks;
+}
+
+function mergeVisibleMotifInstances(dest: string, instances: string[]): string {
+  if (!dest || instances.length === 0) return dest;
+  if (destHasVisibleMotifIdentity(dest, instances)) {
+    // Still heal empty Motif shells when identity SVG exists elsewhere.
+    const svg = /<svg\b[\s\S]*?<\/svg>/i.exec(instances[0] ?? '')?.[0] ?? '';
+    return svg ? fillEmptyMotifShells(dest, svg) : dest;
+  }
+
+  let out = dest;
+  const primarySvg = /<svg\b[\s\S]*?<\/svg>/i.exec(instances[0] ?? '')?.[0] ?? '';
+  if (primarySvg) out = fillEmptyMotifShells(out, primarySvg);
+  if (destHasVisibleMotifIdentity(out, instances)) return out;
+
+  const slides = listSlideBlocks(out);
+  if (slides.length === 0) {
+    return insertAfterOpenBody(out, instances.slice(0, 2).join('\n'));
+  }
+
+  const coverMotif = instances[0]!;
+  const bodyMotif = instances[1] ?? instances[0]!;
+  const nextSlides = slides.map((slide, index) => {
+    if (index === 0) return insertMotifIntoSlide(slide.html, coverMotif);
+    if (slides.length > 1 && index === 1) return insertMotifIntoSlide(slide.html, bodyMotif);
+    return slide.html;
+  });
+
+  // Rebuild from the end so indices stay valid.
+  for (let i = slides.length - 1; i >= 0; i -= 1) {
+    const slide = slides[i]!;
+    out = `${out.slice(0, slide.start)}${nextSlides[i]}${out.slice(slide.end)}`;
+  }
+  return out;
+}
+
 function markOfficialMotifHtml(markup: string): string {
   const trimmed = markup.trim();
   if (!trimmed) return '';
@@ -342,6 +526,13 @@ export function extractOfficialDeckMotifHtml(exampleHtml: string): string[] {
     if (!marked || seen.has(marked)) continue;
     seen.add(marked);
     out.push(marked);
+  }
+
+  // Daisy / svg-sprite kits: visible Motif wrappers+SVG (not symbol sheets).
+  for (const instance of extractVisibleMotifInstances(html)) {
+    if (seen.has(instance)) continue;
+    seen.add(instance);
+    out.push(instance);
   }
 
   return out;
@@ -507,10 +698,21 @@ export function deckHtmlHasOfficialMotifHtml(
 ): boolean {
   const dest = String(html ?? '');
   if (!dest || !(assets.motifHtml?.length)) return !(assets.motifHtml?.length);
-  if (dest.includes(OFFICIAL_DECK_MOTIF_HTML_ATTR)) return true;
-  const symbolIds = listOfficialMotifSymbolIds(assets.motifHtml.join('\n'));
+
+  const visible = assets.motifHtml.filter(isVisibleMotifInstanceBlock);
+  const sheetsAndHosts = assets.motifHtml.filter((block) => !isVisibleMotifInstanceBlock(block));
+
+  if (visible.length > 0 && !destHasVisibleMotifIdentity(dest, visible)) return false;
+
+  if (sheetsAndHosts.length === 0) return true;
+
+  // Marker alone is not enough when visible Motif instances are still missing
+  // (handled above). For symbol/host kits, marker or concrete ids/hosts prove.
+  if (dest.includes(OFFICIAL_DECK_MOTIF_HTML_ATTR) && visible.length === 0) return true;
+
+  const symbolIds = listOfficialMotifSymbolIds(sheetsAndHosts.join('\n'));
   const missingSymbols = symbolIds.filter((id) => !destHasSymbolId(dest, id));
-  const missingHosts = assets.motifHtml.filter((block) => {
+  const missingHosts = sheetsAndHosts.filter((block) => {
     if (/^<svg\b/i.test(block)) return false;
     const className = hostClassName(block);
     return Boolean(className) && !destHasMotifHost(dest, className);
@@ -524,22 +726,31 @@ export function mergeOfficialDeckMotifHtml(
 ): string {
   const dest = String(html ?? '');
   if (!dest || !(assets?.motifHtml?.length)) return dest;
-  if (deckHtmlHasOfficialMotifHtml(dest, assets)) return dest;
+
+  const visible = assets.motifHtml.filter(isVisibleMotifInstanceBlock);
+  const sheetsAndHosts = assets.motifHtml.filter((block) => !isVisibleMotifInstanceBlock(block));
+
+  let out = dest;
+  if (visible.length > 0) {
+    out = mergeVisibleMotifInstances(out, visible);
+  }
+
+  if (sheetsAndHosts.length === 0) return out;
+  if (deckHtmlHasOfficialMotifHtml(out, { ...assets, motifHtml: sheetsAndHosts })) return out;
 
   const sprites: string[] = [];
   const hosts: string[] = [];
-  for (const block of assets.motifHtml) {
+  for (const block of sheetsAndHosts) {
     if (/^<svg\b/i.test(block)) {
       const ids = listOfficialMotifSymbolIds(block);
-      if (ids.length > 0 && ids.every((id) => destHasSymbolId(dest, id))) continue;
+      if (ids.length > 0 && ids.every((id) => destHasSymbolId(out, id))) continue;
       sprites.push(block);
       continue;
     }
     const className = hostClassName(block);
-    if (className && destHasMotifHost(dest, className)) continue;
+    if (className && destHasMotifHost(out, className)) continue;
     hosts.push(block);
   }
-  let out = dest;
   // Inject after <body> — HTML parsers relocate <svg> out of <head> on persist sanitize.
   if (sprites.length > 0) out = insertAfterOpenBody(out, sprites.join('\n'));
   if (hosts.length > 0) out = insertAfterOpenBody(out, hosts.join('\n'));

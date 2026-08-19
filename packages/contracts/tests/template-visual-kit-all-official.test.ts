@@ -84,8 +84,8 @@ describe('official deck template visual kits (all mode:deck example.html)', () =
         failures.push(`${folder}: kit null`);
         continue;
       }
-      if (kit.length > 16_000) failures.push(`${folder}: kit ${kit.length} > 16000`);
-      if (/…\s*$/.test(kit) && kit.length >= 16_000) {
+      if (kit.length > 17_500) failures.push(`${folder}: kit ${kit.length} > 17500`);
+      if (/…\s*$/.test(kit) && kit.length >= 17_500) {
         failures.push(`${folder}: truncated at budget`);
       }
       if (!kit.includes('### Slide surface')) {

@@ -364,6 +364,12 @@ html, body { overflow: visible !important; height: auto !important; }
       if (assets.motifHtml.some((block) => /\bcrt-overlay\b/i.test(block)) && !/\bcrt-overlay\b/i.test(merged)) {
         failures.push(`${folder}: missing crt-overlay Motif host`);
       }
+      if (
+        assets.motifHtml.some((block) => /deco-daisy[\s\S]*?<svg\b|#fcdf6c/i.test(block))
+        && !/#fcdf6c/i.test(merged)
+      ) {
+        failures.push(`${folder}: missing Daisy Motif SVG identity (#fcdf6c)`);
+      }
     }
 
     expect(failures, failures.join('\n')).toEqual([]);
@@ -404,6 +410,57 @@ html, body { overflow: visible !important; height: auto !important; }
     const withMotif = mergeOfficialDeckLookCss(cssOnly, assets);
     expect(withMotif).toContain('<symbol id="pin"');
     expect(deckHtmlHasOfficialLookCss(cssOnly, assets)).toBe(true);
+  });
+
+  it('injects Daisy Motif SVG instances into sparse compact fills (CSS alone cannot paint flowers)', () => {
+    const official = loadOfficialLookSource(join(EXAMPLES_DIR, 'html-ppt-zhangzara-daisy-days/example.html'));
+    const assets = extractOfficialDeckLookAssets(official)!;
+    expect(assets.motifHtml.some((block) => /deco-daisy[\s\S]*?<svg\b|#fcdf6c/i.test(block))).toBe(true);
+
+    const sparseFill = `<!doctype html><html lang="ko"><body>
+<section class="slide" style="background:#F5F0E6;width:1920px;height:1080px;position:relative">
+  <h1>Linux Internals for Senior Engineers</h1>
+  <p>커널 아키텍처 · 스케줄러 · 메모리</p>
+  <span style="border-radius:9999px;background:#A8D5C5">Kernel 6.x</span>
+  <div style="position:absolute;bottom:24px;right:24px;display:flex;gap:8px">
+    <i style="width:10px;height:10px;border-radius:50%;background:#A8D5C5"></i>
+    <i style="width:10px;height:10px;border-radius:50%;background:#FDE366"></i>
+    <i style="width:10px;height:10px;border-radius:50%;background:#FBB0C7"></i>
+  </div>
+</section>
+<section class="slide" style="background:#F5F0E6;width:1920px;height:1080px;position:relative">
+  <h2>Scheduler</h2>
+  <p>CFS · runqueue · latency</p>
+</section>
+</body></html>`;
+    expect(sparseFill).not.toMatch(/#fcdf6c/i);
+
+    const merged = mergeOfficialDeckLookCss(sparseFill, assets);
+    expect(merged).toMatch(/#fcdf6c/i);
+    expect(merged).toMatch(/deco-daisy/i);
+    expect(merged).toContain(OFFICIAL_DECK_MOTIF_HTML_ATTR);
+    expect(merged).toContain('Linux Internals for Senior Engineers');
+    expect(merged).toContain('Scheduler');
+    // Cover + one body slide should carry Motif.
+    expect((merged.match(/#fcdf6c/gi) ?? []).length).toBeGreaterThanOrEqual(2);
+
+    const twice = mergeOfficialDeckLookCss(merged, assets);
+    expect(twice).toBe(merged);
+  });
+
+  it('fills empty Daisy deco shells with Motif SVG on merge', () => {
+    const official = loadOfficialLookSource(join(EXAMPLES_DIR, 'html-ppt-zhangzara-daisy-days/example.html'));
+    const assets = extractOfficialDeckLookAssets(official)!;
+    const emptyShells = `<!doctype html><html lang="ko"><body>
+<section class="slide" style="position:relative;background:#F5F0E6">
+  <div class="deco deco-daisy-tl"></div>
+  <div class="deco deco-daisy-br"></div>
+  <h1>Topic</h1>
+</section>
+</body></html>`;
+    const merged = mergeOfficialDeckLookCss(emptyShells, assets);
+    expect(merged).toMatch(/deco-daisy-tl[\s\S]*?<svg\b[\s\S]*?#fcdf6c/i);
+    expect(merged).toMatch(/deco-daisy-br[\s\S]*?<svg\b/i);
   });
 
   it('injects Capsule grain-overlay host from official example.html', () => {

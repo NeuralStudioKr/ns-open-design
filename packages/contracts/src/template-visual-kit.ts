@@ -25,7 +25,7 @@
 // (~87KB) or the retired CONTENT-SWAP HTML scaffold dump.
 // BODY-FIRST hard rules tell the model to emit slides before pasting this
 // kit into `<head>` so the larger budget does not invite shell-only cuts.
-const DEFAULT_MAX_CHARS = 16_000;
+const DEFAULT_MAX_CHARS = 17_000;
 
 function uniquePreserveOrder(values: string[]): string[] {
   const out: string[] = [];
@@ -790,7 +790,7 @@ function formatMotifGeometryGuidance(kind: MotifGeometryKind): string {
     case 'disc-organic':
       return 'Motif geometry: **soft discs / petals / blobs** — `border-radius:50%` is correct. Do NOT invent oblong Capsule coral pills.';
     case 'svg-sprite':
-      return 'Motif geometry: prefer capped Motif SVG / Motif CSS from this kit — no generic circles, emoji, or foreign Motif families.';
+      return 'Motif geometry: **kit Motif SVG sprites** — AFTER title, paste the ONE capped Motif sprite (~2KB kit sprites OK; ~800-char Motif-budget does not apply). Empty `.deco-*` shells without child `<svg>` paint nothing; tiny CSS dots are not substitutes.';
     case 'chrome-atmosphere':
       return 'Motif geometry: atmosphere/chrome (scanlines/grids/grain) — not floating discs or Capsule pills.';
     case 'mixed':
@@ -802,7 +802,15 @@ function formatMotifGeometryGuidance(kind: MotifGeometryKind): string {
 
 /** Attach detailed Motif-geometry lines only where shape mistakes are common. */
 function shouldAttachMotifGeometryGuidance(kind: MotifGeometryKind): boolean {
-  return kind === 'oblong-capsule' || kind === 'disc-organic' || kind === 'mixed';
+  // svg-sprite (Daisy flowers) and chrome-atmosphere skip empty-shell mistakes
+  // as often as Capsule oblong vs disc — always attach.
+  return (
+    kind === 'oblong-capsule'
+    || kind === 'disc-organic'
+    || kind === 'mixed'
+    || kind === 'svg-sprite'
+    || kind === 'chrome-atmosphere'
+  );
 }
 
 function scoreMotifSnippetGeometry(
@@ -822,7 +830,12 @@ function scoreMotifSnippetGeometry(
     if (organicLike && equalDisc) delta -= 2;
     // Foreign Capsule oblong pills into petal/blob kits.
     if (pillLike && oblong && !organicLike) delta += 8;
-  } else if (kind === 'svg-sprite' || kind === 'chrome-atmosphere') {
+  } else if (kind === 'svg-sprite') {
+    // Daisy identity wrappers beat empty stars / floating discs.
+    if (/deco-daisy/i.test(tag)) delta -= 4;
+    else if (/deco-star|deco-rainbow|deco-sun|deco-cloud/i.test(tag)) delta -= 1;
+    if (equalDisc && !organicLike && !/deco-daisy|pixel-|scanline|pin-/i.test(tag)) delta += 3;
+  } else if (kind === 'chrome-atmosphere') {
     // Prefer classed Motif / avoid inventing floating discs as the primary cue.
     if (equalDisc && !organicLike && !/deco-daisy|pixel-|scanline|pin-/i.test(tag)) delta += 3;
   } else if (kind === 'mixed' || kind === 'unknown') {
@@ -1948,7 +1961,7 @@ function capMotifSpritesSectionForFill(section: string): string {
   ];
   if (kept.length > 0) {
     lines.push(
-      'Paste at most ONE of these sprites, and ONLY AFTER a real cover `<h1>`/`<h2>` + lead. Prefer Motif CSS/snippets when present. Never open `<svg` before title copy. Do not invent ellipse flowers / emoji / generic circles.',
+      'REQUIRED after cover title/lead: paste exactly ONE kit Motif sprite (nest in `.deco` / `.deco-daisy-*` when listed). ~2KB kit sprites OK — ~800-char Motif-budget does not apply to this one capped sprite. Never open `<svg` before title. Empty deco shells / tiny dots / emoji / generic circles are not substitutes.',
       '',
     );
     if (looksLikeDaisy) {
@@ -2016,7 +2029,7 @@ function capDecorationsCssSectionForFill(section: string): string {
     '### Decorations CSS (capped for first content-fill — paste AFTER slide 1)',
     '',
     `REQUIRED Motif vocabulary from this kit: ${vocab}. Do NOT invent generic CSS circles / emoji ornaments as substitutes.`,
-    'Motif density: after title/lead, prefer 1–2 Motif elements from kit snippets/classes when scaffold lists `deco=…`. Finish a closed compact deck this turn — Motif polish can be light.',
+    'Motif density: after title/lead, prefer 1–2 Motif elements from kit snippets/classes when scaffold lists `deco=…`. Finish a closed compact deck this turn — Motif polish can be light, but named SVG Motif kits (Daisy flowers, etc.) must still show the capped kit sprite.',
     ...(shouldAttachMotifGeometryGuidance(geometryKind)
       ? [formatMotifGeometryGuidance(geometryKind)]
       : []),
@@ -2029,6 +2042,15 @@ function capDecorationsCssSectionForFill(section: string): string {
       '```html',
       ...htmlSnippets,
       '```',
+    );
+    if (geometryKind === 'svg-sprite') {
+      lines.push(
+        'These wrappers are empty shells — nest the capped Motif sprite `<svg>` from Motif sprites inside them (CSS sizes `.deco svg`; without a child SVG nothing paints).',
+      );
+    }
+  } else if (geometryKind === 'svg-sprite') {
+    lines.push(
+      'Example Motif (AFTER title): `<div class="deco deco-daisy-tl" style="position:absolute;top:-20px;left:-20px;width:180px;height:180px;pointer-events:none;z-index:1">` + the capped Motif sprite SVG + `</div>`. Repeat one corner on a body slide. Tiny CSS dots are not Daisy Motif.',
     );
   } else if (geometryKind === 'oblong-capsule' || hasCapsuleMotifSignal(pickedCss) || hasCapsuleMotifSignal(section)) {
     lines.push(
