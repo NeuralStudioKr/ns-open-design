@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { Dialog, DialogDescription, DialogFooter, DialogTitle } from "@open-design/components";
-import { projectKindToTracking } from "@open-design/contracts/analytics";
 import { useAnalytics } from "../analytics/provider";
 import {
   trackPageView,
@@ -25,7 +24,7 @@ import { LiveArtifactBadges } from "./LiveArtifactBadges";
 import { Toast } from "./Toast";
 import { isTeamverEmbedMode } from "../teamver/designApiBase";
 import { useTeamverBranding } from "../teamver/branding/TeamverBrandingProvider";
-import { projectListCardCategory } from "../teamver/projectListCardCategory";
+import { projectListCardCategory, projectListTrackingKind } from "../teamver/projectListCardCategory";
 import { DesignsTabProjectThumb } from "../teamver/components/DesignsTabProjectThumb";
 import { TeamverLatestPublishChip } from "../teamver/components/TeamverLatestPublishChip";
 import {
@@ -654,7 +653,7 @@ export function DesignsTab({
 										toggleSelected(p.id);
 									} else {
 										// P0 ui_click area=list element=project_card.
-										const projectKind = projectKindToTracking(p.metadata?.kind, p.metadata?.videoModel);
+										const projectKind = projectListTrackingKind(p, { slideOnly: slideOnlyMvp });
 										trackProjectsListClick(analytics.track, {
 											page_name: "projects",
 											area: "list",
@@ -699,7 +698,7 @@ export function DesignsTab({
 													const nextId = cur === p.id ? null : p.id;
 													if (nextId === p.id) {
 														setMenuOpenUp(openUp);
-														const projectKind = projectKindToTracking(p.metadata?.kind, p.metadata?.videoModel);
+														const projectKind = projectListTrackingKind(p, { slideOnly: slideOnlyMvp });
 														trackProjectsListClick(analytics.track, {
 															page_name: "projects",
 															area: "list",
@@ -726,7 +725,7 @@ export function DesignsTab({
 												type="button"
 												role="menuitem"
 												onClick={() => {
-													const projectKind = projectKindToTracking(p.metadata?.kind, p.metadata?.videoModel);
+													const projectKind = projectListTrackingKind(p, { slideOnly: slideOnlyMvp });
 													trackProjectsMorePopoverClick(analytics.track, {
 														page_name: "projects",
 														area: "projects_more_popover",
@@ -746,7 +745,7 @@ export function DesignsTab({
 												role="menuitem"
 												className="danger"
 												onClick={() => {
-													const projectKind = projectKindToTracking(p.metadata?.kind, p.metadata?.videoModel);
+													const projectKind = projectListTrackingKind(p, { slideOnly: slideOnlyMvp });
 													trackProjectsMorePopoverClick(analytics.track, {
 														page_name: "projects",
 														area: "projects_more_popover",

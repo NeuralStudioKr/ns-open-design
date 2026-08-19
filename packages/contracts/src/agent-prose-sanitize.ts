@@ -346,6 +346,12 @@ export function stripTrailingDeckHtmlMarkupLeak(input: string): string {
   return input;
 }
 
+function findArtifactOpenIndex(input: string, from: number): number {
+  const slice = from > 0 ? input.slice(from) : input;
+  const match = /<artifact(?=[\s>/])/i.exec(slice);
+  return match?.index == null ? -1 : (from > 0 ? from : 0) + match.index;
+}
+
 function stripTrailingDeckHtmlMarkupLeakRespectingArtifacts(
   input: string,
   preserveArtifactBodies: boolean,
@@ -354,7 +360,7 @@ function stripTrailingDeckHtmlMarkupLeakRespectingArtifacts(
   let result = "";
   let cursor = 0;
   while (cursor < input.length) {
-    const open = input.indexOf("<artifact", cursor);
+    const open = findArtifactOpenIndex(input, cursor);
     if (open === -1) {
       result += stripTrailingDeckHtmlMarkupLeak(input.slice(cursor));
       break;

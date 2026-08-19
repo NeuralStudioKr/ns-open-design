@@ -7,7 +7,7 @@
 
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Dialog, DialogDescription, DialogFooter, DialogTitle } from '@open-design/components';
-import { projectKindToTracking } from '@open-design/contracts/analytics';
+import { projectListCardCategory, projectListTrackingKind } from '../teamver/projectListCardCategory';
 import { useAnalytics } from '../analytics/provider';
 import { trackRecentProjectsClick } from '../analytics/events';
 import { useT } from '../i18n';
@@ -17,7 +17,6 @@ import { STATUS_LABEL_KEYS } from './DesignsTab';
 import { isDesignSystemProject, isPublishedDesignSystemProject } from './design-system-project';
 import { isTeamverEmbedMode } from '../teamver/designApiBase';
 import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
-import { projectListCardCategory } from '../teamver/projectListCardCategory';
 import { TeamverLatestPublishChip } from '../teamver/components/TeamverLatestPublishChip';
 import { ProjectCardHtmlCover } from '../teamver/components/ProjectCardHtmlCover';
 import {
@@ -201,10 +200,7 @@ export function RecentProjectsStrip({
     project: Project,
     element: 'more' | 'rename' | 'delete',
   ) => {
-    const projectKind = projectKindToTracking(
-      project.metadata?.kind,
-      project.metadata?.videoModel,
-    );
+    const projectKind = projectListTrackingKind(project, { slideOnly: slideOnlyMvp });
     trackRecentProjectsClick(analytics.track, {
       page_name: 'home',
       area: 'recent_projects',
@@ -378,7 +374,7 @@ export function RecentProjectsStrip({
                     homeCoversReady ? (
                       <ProjectCardHtmlCover
                         src={cover.src}
-                        deckCoverOnly={project.metadata?.kind === 'deck'}
+                        deckCoverOnly={slideOnlyMvp || project.metadata?.kind === 'deck'}
                         iframeClassName="recent-projects__thumb-iframe"
                         deckFrameClassName="recent-projects__deck-frame"
                         deckIframeClassName="recent-projects__deck-iframe"

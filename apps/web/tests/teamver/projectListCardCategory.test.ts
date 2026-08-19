@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   projectListCardCategory,
+  projectListTrackingKind,
   withTeamverSlideListKind,
 } from "../../src/teamver/projectListCardCategory";
 import type { Project } from "../../src/types";
@@ -43,11 +44,30 @@ describe("projectListCardCategory", () => {
 });
 
 describe("withTeamverSlideListKind", () => {
-  it("seeds deck and keeps other metadata", () => {
+  it("seeds deck only when kind is missing", () => {
     expect(withTeamverSlideListKind(undefined)).toEqual({ kind: "deck" });
-    expect(withTeamverSlideListKind({ kind: "prototype", entryFile: "index.html" })).toEqual({
+    expect(withTeamverSlideListKind({ entryFile: "deck.html" })).toEqual({
       kind: "deck",
+      entryFile: "deck.html",
+    });
+  });
+
+  it("does not overwrite daemon prototype + Canvas index.html", () => {
+    expect(withTeamverSlideListKind({ kind: "prototype", entryFile: "index.html" })).toEqual({
+      kind: "prototype",
       entryFile: "index.html",
     });
+  });
+});
+
+describe("projectListTrackingKind", () => {
+  it("maps stale prototype/other to slide_deck in slide-only lists", () => {
+    expect(projectListTrackingKind(project(), { slideOnly: true })).toBe("slide_deck");
+    expect(
+      projectListTrackingKind(project({ metadata: { kind: "prototype" } }), { slideOnly: true }),
+    ).toBe("slide_deck");
+    expect(
+      projectListTrackingKind(project({ metadata: { kind: "deck" } }), { slideOnly: true }),
+    ).toBe("slide_deck");
   });
 });

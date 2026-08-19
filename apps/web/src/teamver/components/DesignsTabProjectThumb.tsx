@@ -1,5 +1,6 @@
 import type { Project } from "../../types";
 import { useEffect } from "react";
+import { useTeamverBranding } from "../branding/TeamverBrandingProvider";
 import { useLazyProjectCover } from "../useLazyProjectCover";
 import type { ProjectCoverFile } from "../projectPreviewFile";
 import { ProjectCardHtmlCover } from "./ProjectCardHtmlCover";
@@ -21,6 +22,7 @@ export function DesignsTabProjectThumb({
   className,
   onCoverOverride,
 }: Props) {
+  const { slideOnlyMvp } = useTeamverBranding();
   const { anchorRef, cover, override } = useLazyProjectCover(project, {
     deferUntilVisible: true,
     allowFilesFallback: true,
@@ -62,7 +64,7 @@ export function DesignsTabProjectThumb({
       ) : cover.kind === "html" && cover.src ? (
         <ProjectCardHtmlCover
           src={cover.src}
-          deckCoverOnly={project.metadata?.kind === "deck"}
+          deckCoverOnly={slideOnlyMvp || project.metadata?.kind === "deck"}
           // Parent useLazyProjectCover already defers until the card is near
           // the viewport — a second IntersectionObserver only delayed /raw.
           deferUntilVisible={false}

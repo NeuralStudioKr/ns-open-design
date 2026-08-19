@@ -80,6 +80,17 @@ describe("agent-prose-sanitize SSOT", () => {
     ).toBe("진행.");
   });
 
+  it("keeps motif HTML inside an uppercase streaming ARTIFACT tag", () => {
+    const input = [
+      "초안.",
+      '<ARTIFACT identifier="deck.html">',
+      '<div style="position:absolute;border-radius:9999px">Nx</div>',
+    ].join("\n");
+    const out = sanitizeAssistantProseForDisplay(input, { streaming: true });
+    expect(out).toContain("<ARTIFACT");
+    expect(out).toContain("position:absolute");
+  });
+
   it("strips assistant replies that expose missing internal slideIndex", () => {
     const input = [
       "댓글에 `slideIndex` 정보가 없어서 어느 슬라이드인지 확인이 안 돼요. 슬라이드 번호를 알려주시면 바로 패치할게요!",

@@ -286,7 +286,7 @@ describe("embedRegistryProjectList", () => {
     expect(merged[0]?.updatedAt).toBe(1_200);
   });
 
-  it("coerces daemon prototype stubs to deck so list cards stay slides", () => {
+  it("keeps daemon prototype + index.html so Canvas cover fallback stays intact", () => {
     const registry = [
       mapRegistryRowToProject({
         odProjectId: "legacy",
@@ -307,7 +307,7 @@ describe("embedRegistryProjectList", () => {
     ];
 
     const merged = mergeDaemonFieldsOntoRegistryProjects(registry, daemon);
-    expect(merged[0]?.metadata).toEqual({ kind: "deck", entryFile: "index.html" });
+    expect(merged[0]?.metadata).toEqual({ kind: "prototype", entryFile: "index.html" });
   });
 
   it("does not let daemon artifact slugs replace registry names in lists", () => {

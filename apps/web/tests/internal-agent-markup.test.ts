@@ -40,6 +40,17 @@ describe("internalAgentMarkup", () => {
     expect(out).toContain("position:absolute");
   });
 
+  it("keeps motif HTML inside an uppercase streaming ARTIFACT tag", () => {
+    const input = [
+      "초안.",
+      '<ARTIFACT identifier="deck.html">',
+      '<div style="position:absolute;border-radius:9999px">Nx</div>',
+    ].join("\n");
+    const out = sanitizeAssistantProseForDisplay(input, { streaming: true });
+    expect(out).toContain("<ARTIFACT");
+    expect(out).toContain("position:absolute");
+  });
+
   it("hard-strips classic keydown/click deck-nav JS via web display path", () => {
     const leaked = [
       "(function(){",
