@@ -3114,12 +3114,12 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
       var w = Math.max(1, window.innerWidth);
       return Math.max(0, Math.min(list.length - 1, Math.round(maxScrollLeft() / w)));
     }
-    var byPagination = activeIndexFromPagination(list);
-    if (byPagination >= 0) return byPagination;
     var byTransform = activeIndexFromTransform(list);
     if (byTransform >= 0) return byTransform;
     var byClass = findActiveByClass(list);
     if (byClass >= 0) return byClass;
+    var byPagination = activeIndexFromPagination(list);
+    if (byPagination >= 0) return byPagination;
     var byVis = findActiveByVisibility(list);
     if (byVis >= 0) return byVis;
     return 0;
@@ -3288,6 +3288,24 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
       return false;
     }
   }
+  function paginationDataSlideIsOneBased(count){
+    var nodes;
+    try {
+      nodes = document.querySelectorAll('.nav-dot, .nav-dots [data-slide], .dots [data-slide]');
+    } catch (_) {
+      return false;
+    }
+    var values = [];
+    for (var i = 0; i < nodes.length; i++) {
+      if (!nodes[i] || (nodes[i].classList && nodes[i].classList.contains('slide'))) continue;
+      var n = parseInt(nodes[i].getAttribute && nodes[i].getAttribute('data-slide'), 10);
+      if (Number.isFinite(n)) values.push(n);
+    }
+    if (values.length < 2) return false;
+    var min = Math.min.apply(null, values);
+    var max = Math.max.apply(null, values);
+    return min === 1 && max === count;
+  }
   function controlIndex(node, count){
     var attrs = ['data-slide-index', 'data-slide', 'data-index', 'aria-posinset'];
     for (var i=0; i<attrs.length; i++) {
@@ -3296,6 +3314,7 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
       var n = parseInt(raw, 10);
       if (!Number.isFinite(n)) continue;
       var index = attrs[i] === 'aria-posinset' ? n - 1 : n;
+      if (attrs[i] === 'data-slide' && paginationDataSlideIsOneBased(count)) index = n - 1;
       if (index >= 0 && index < count) return index;
     }
     return -1;
@@ -3461,6 +3480,17 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     if (total) total.textContent = pad2(count);
     if (prev) prev.toggleAttribute('disabled', i <= 0);
     if (next) next.toggleAttribute('disabled', i >= count - 1);
+    var page = document.getElementById('current');
+    if (page) page.textContent = pad2(i + 1);
+    var dots = document.querySelectorAll('.nav-dot');
+    if (dots.length === count) {
+      for (var d = 0; d < dots.length; d++) {
+        if (!dots[d].classList) continue;
+        var on = d === i;
+        dots[d].classList.toggle('active', on);
+        dots[d].classList.toggle('is-active', on);
+      }
+    }
   }
   function setSlideDisplayed(el, visible) {
     if (!el || !el.style) return;

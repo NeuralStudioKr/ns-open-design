@@ -200,6 +200,26 @@ full `example.html`을 시스템 프롬프트에 넣지 않는다는 방침은 �
 - [x] 인라인 장별 색도 per-slide paint
 - [x] daemon cover-batch가 persisted flatten bleed를 `html, body`로 완화 (cache v6)
 
+### 0.45 2026-08-19 — 공식 템플릿 미리보기 방향키/`< >` 페이지 고정
+
+카탈로그 PreviewModal은 iframe keydown을 capture로 가로채고 `postMessage({ type: 'od:slide' })`로 deck-bridge `go()`를 돌린다. 공식 Capsule chrome은 **1-based** (`data-slide="1"` = 첫 장, `#current` = `01`).
+
+잔여 구멍:
+1. `activeIndex`가 slide `.active`보다 pagination을 먼저 읽어, 첫 장인데도 host chrome이 `2 / 10`으로 시작
+2. `controlIndex`가 `data-slide="1"`을 index `1`(둘째 장)로 해석 → Next가 셋째 장으로 점프
+3. `updateDeckChrome`이 `#deck-cur`만 갱신해 `#current` / `.nav-dot`이 1장에 남음 → 이후 Next가 계속 같은 타깃
+
+수정 (iframe bridge JS only, persist/heal HTML 불변 → **cache bump 없음**):
+- `activeIndex` 순서: transform → slide `.active` → pagination → visibility
+- nav-dot `data-slide`가 `1..count`이면 1-based로 해석 (`n - 1`)
+- `updateDeckChrome`이 `#current`와 `.nav-dot`도 동기화
+
+구현 현황:
+
+- [x] 1-based pagination + chrome sync
+- [x] Capsule presenter red spec (load `active:0` → next → next)
+- [ ] 인접: `srcdoc-deck-bridge-nested-slides` stacked hoist 2건은 staging 기존 실패 — 별도 후속
+
 ### 0.44 2026-08-19 — 카탈로그 템플릿 1920 lock opt-in (전수)
 
 §0.43이 Capsule만 막은 뒤에도 `lockStackedDeckCanvasForPreview`가 “presenter가 아니면 전부 1920”이라 Daisy/Hermes/Sakura 등 대다수 html-ppt example이 viewport=1920을 받았다.
