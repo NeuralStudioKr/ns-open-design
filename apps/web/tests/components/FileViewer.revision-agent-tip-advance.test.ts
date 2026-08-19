@@ -179,6 +179,10 @@ describe('FileViewer revision tip advance after undo', () => {
     expect(fileViewer).toContain('Generation mismatch: keep tip-prefer suppress latch');
     expect(fileViewer).toContain('shouldReseedManualEditMultiInspectorAfterFreezeSync');
     expect(fileViewer).toContain('Source-only reseed (same plan helper as batch flush / cancel) — 기획 59');
+    expect(fileViewer).toContain('Tip Mixed must not merge preview target.styles');
+    expect(fileViewer).toContain("shouldReadMultiInspectorStylesFromSourceOnly('tip-yield')");
+    expect(fileViewer).toContain('resolveTipYieldIdentityStyles');
+    expect(fileViewer).toContain('Tip source wins — do not merge pre-tip preview styles');
     expect(fileViewer).toContain('concurrentPendingOwnsTipYieldReseedStyles');
     expect(fileViewer).toContain('Never clobber in-flight draft styles while pending owns the panel');
     expect(fileViewer).toContain('shouldClearMixedKeysAfterTipYieldReseedSkip');
@@ -240,6 +244,9 @@ describe('FileViewer revision tip advance after undo', () => {
     expect(fileViewer).toContain('Always refresh primary fields from tip when snapshot is usable');
     expect(fileViewer).toContain('Pending owns styles — still align primary text fields with tip');
     expect(fileViewer).toContain('planManualEditMultiInspectorReseed');
+    expect(fileViewer).toContain("shouldReadMultiInspectorStylesFromSourceOnly(\n              'od-edit-targets'");
+    expect(fileViewer).toContain("shouldReadMultiInspectorStylesFromSourceOnly('cancel')");
+    expect(fileViewer).toContain("shouldReadMultiInspectorStylesFromSourceOnly('noop-flush')");
     expect(fileViewer).toContain('styleDraftPending');
     expect(fileViewer).toContain('Pending style draft owns the inspector');
     expect(fileViewer).toContain('Pending styles own the panel — refresh field identity only');

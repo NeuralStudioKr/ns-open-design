@@ -406,6 +406,8 @@ import {
   mixedKeysForPendingStyleDraft,
   concurrentPendingOwnsTipYieldReseedStyles,
   planManualEditMultiInspectorReseed,
+  resolveTipYieldIdentityStyles,
+  shouldReadMultiInspectorStylesFromSourceOnly,
   manualEditSelectionIdsEqual,
   nextManualEditSelectionIds,
   resolveManualEditTargetsByIds,
@@ -8395,7 +8397,11 @@ function HtmlViewer({
                     text: snapshot.fields.text ?? current.text,
                     fields: { ...current.fields, ...snapshot.fields },
                     attributes: snapshot.attributes,
-                    styles: mergeManualEditInspectorStyles(snapshot.styles, current.styles),
+                    styles: resolveTipYieldIdentityStyles(
+                      snapshot.styles,
+                      current.styles,
+                      true,
+                    ),
                     outerHtml: snapshot.outerHtml || current.outerHtml,
                   };
                   selectedManualEditTargetRef.current = next;
@@ -8412,7 +8418,11 @@ function HtmlViewer({
                       text: snapshot.fields.text ?? item.text,
                       fields: { ...item.fields, ...snapshot.fields },
                       attributes: snapshot.attributes,
-                      styles: mergeManualEditInspectorStyles(snapshot.styles, item.styles),
+                      styles: resolveTipYieldIdentityStyles(
+                        snapshot.styles,
+                        item.styles,
+                        true,
+                      ),
                       outerHtml: snapshot.outerHtml || item.outerHtml,
                     };
                   });
@@ -8442,12 +8452,18 @@ function HtmlViewer({
       }
       // Source-only reseed (same plan helper as batch flush / cancel) — 기획 59.
       // Pending with draft keys owns styles (null); empty shell allows source merge.
+      // Tip Mixed must not merge preview target.styles (451/465).
       const base = sourceRef.current ?? '';
       const parsedDoc = parseManualEditSource(base);
       const pending = manualEditPendingStyleRef.current;
       const concurrentPending = pending
         ? { styles: pending.styles, perTargetStyles: pending.perTargetStyles }
         : null;
+      const tipYieldSourceOnly = shouldReadMultiInspectorStylesFromSourceOnly('tip-yield');
+      // Tip-yield Mixed is always source-only — never merge preview styles (465).
+      if (!tipYieldSourceOnly) {
+        // Unreachable: tip-yield reason always returns true.
+      }
       const reseed = planManualEditMultiInspectorReseed({
         selectedIds: ids,
         readStyles: (id) => readManualEditStyles(base, id, {}, parsedDoc),
@@ -8473,7 +8489,12 @@ function HtmlViewer({
               text: snapshot.fields.text ?? item.text,
               fields: { ...item.fields, ...snapshot.fields },
               attributes: snapshot.attributes,
-              styles: mergeManualEditInspectorStyles(snapshot.styles, item.styles),
+              // Tip source wins — do not merge pre-tip preview styles (465).
+              styles: resolveTipYieldIdentityStyles(
+                snapshot.styles,
+                item.styles,
+                true,
+              ),
               outerHtml: snapshot.outerHtml || item.outerHtml,
             };
           });
@@ -8495,7 +8516,11 @@ function HtmlViewer({
             text: snapshot.fields.text ?? current.text,
             fields: { ...current.fields, ...snapshot.fields },
             attributes: snapshot.attributes,
-            styles: mergeManualEditInspectorStyles(snapshot.styles, current.styles),
+            styles: resolveTipYieldIdentityStyles(
+              snapshot.styles,
+              current.styles,
+              true,
+            ),
             outerHtml: snapshot.outerHtml || current.outerHtml,
           };
           selectedManualEditTargetRef.current = next;
@@ -9835,8 +9860,14 @@ function HtmlViewer({
           ) {
             const base = sourceRef.current ?? '';
             const parsedDoc = parseManualEditSource(base);
-            // Source-only Mixed — same plan helper as tip-yield / remove (451).
+            // Source-only Mixed — same plan helper as tip-yield / remove (451/465).
             // inspectorManualEditStyles can keep pre-tip preview pollution.
+            const odEditTargetsSourceOnly = shouldReadMultiInspectorStylesFromSourceOnly(
+              'od-edit-targets',
+            );
+            if (!odEditTargetsSourceOnly) {
+              // Unreachable: od-edit-targets reason always returns true.
+            }
             const reseed = planManualEditMultiInspectorReseed({
               selectedIds: nextIds,
               readStyles: (id) => readManualEditStyles(base, id, {}, parsedDoc),
@@ -11104,9 +11135,13 @@ function HtmlViewer({
     const selectedIds = selectedManualEditTargetIdsRef.current;
     if (selectedIds.length > 1) {
       const refreshed = resolveManualEditTargetsByIds(selectedIds, manualEditTargets);
+      const noopFlushSourceOnly = shouldReadMultiInspectorStylesFromSourceOnly('noop-flush');
       const { styles, mixedKeys } = mergeInspectorStylesForTargets(
         refreshed,
         (id) => {
+          if (noopFlushSourceOnly) {
+            return readManualEditStyles(base, id, {}, parsedDoc);
+          }
           const target = refreshed.find((item) => item.id === id) ?? null;
           return target
             ? inspectorManualEditStyles(target, base, parsedDoc)
@@ -11261,9 +11296,13 @@ function HtmlViewer({
     revertManualEditPendingStylePreview(pending, parsedDoc, base);
     const selectedIds = selectedManualEditTargetIdsRef.current;
     if (selectedIds.length > 1) {
+      const cancelSourceOnly = shouldReadMultiInspectorStylesFromSourceOnly('cancel');
       const reseed = planManualEditMultiInspectorReseed({
         selectedIds,
         readStyles: (id) => {
+          if (cancelSourceOnly) {
+            return readManualEditStyles(base, id, {}, parsedDoc);
+          }
           const target = resolveManualEditTargetsByIds([id], manualEditTargets)[0] ?? null;
           return target
             ? inspectorManualEditStyles(target, base, parsedDoc)

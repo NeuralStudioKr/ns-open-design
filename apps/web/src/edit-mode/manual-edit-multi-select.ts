@@ -146,6 +146,29 @@ export function concurrentPendingOwnsTipYieldReseedStyles(
 }
 
 /**
+ * Tip-yield / cancel / od-edit-targets Mixed must read painted source styles only.
+ * Merging `target.styles` (preview) reintroduces pre-tip Mixed flicker (451/465).
+ */
+export function shouldReadMultiInspectorStylesFromSourceOnly(
+  reason: 'tip-yield' | 'od-edit-targets' | 'cancel' | 'noop-flush' | 'selection',
+): boolean {
+  return reason !== 'selection';
+}
+
+/**
+ * Tip-yield identity sync: when the tip snapshot is usable, replace styles with
+ * tip source. `mergeManualEditInspectorStyles(source, preview)` keeps preview
+ * when tip left a key empty — that restores pre-tip Mixed pollution (465).
+ */
+export function resolveTipYieldIdentityStyles(
+  tipSnapshotStyles: ManualEditStyles,
+  previousStyles: ManualEditStyles,
+  tipSnapshotUsable: boolean,
+): ManualEditStyles {
+  return tipSnapshotUsable ? tipSnapshotStyles : previousStyles;
+}
+
+/**
  * Plan multi-select inspector reseed after save/cancel from source styles.
  * Concurrent pending keeps draft styles and only refreshes Mixed (excluding draft keys).
  */

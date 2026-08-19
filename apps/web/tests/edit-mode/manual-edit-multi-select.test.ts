@@ -11,6 +11,8 @@ import {
   mixedKeysForPendingStyleDraft,
   nextManualEditSelectionIds,
   planManualEditMultiInspectorReseed,
+  resolveTipYieldIdentityStyles,
+  shouldReadMultiInspectorStylesFromSourceOnly,
   shouldFlushManualEditStylesOnSelectionBoundary,
 } from '../../src/edit-mode/manual-edit-multi-select';
 import { emptyManualEditStyles, type ManualEditTarget } from '../../src/edit-mode/types';
@@ -164,6 +166,21 @@ describe('manual-edit-multi-select', () => {
     })).toBe(false);
     expect(concurrent.styles).toBeNull();
     expect(perTargetOnly.styles).toBeNull();
+  });
+
+  it('reads multi inspector styles from source only except selection commit', () => {
+    expect(shouldReadMultiInspectorStylesFromSourceOnly('tip-yield')).toBe(true);
+    expect(shouldReadMultiInspectorStylesFromSourceOnly('od-edit-targets')).toBe(true);
+    expect(shouldReadMultiInspectorStylesFromSourceOnly('cancel')).toBe(true);
+    expect(shouldReadMultiInspectorStylesFromSourceOnly('noop-flush')).toBe(true);
+    expect(shouldReadMultiInspectorStylesFromSourceOnly('selection')).toBe(false);
+  });
+
+  it('resolves tip-yield identity styles from tip source when snapshot is usable', () => {
+    const tip = { ...emptyManualEditStyles(), color: '#111111', fontSize: '' };
+    const previous = { ...emptyManualEditStyles(), color: '#ff0000', fontSize: '24px' };
+    expect(resolveTipYieldIdentityStyles(tip, previous, true)).toEqual(tip);
+    expect(resolveTipYieldIdentityStyles(tip, previous, false)).toEqual(previous);
   });
 
   it('builds one set-style patch per changed target', () => {
