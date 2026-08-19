@@ -8,8 +8,8 @@
  * and reusable Motif HTML (hidden SVG symbol sheets, grain/crt hosts)
  * into the artifact when those pieces are missing. Presentation chrome
  * (`.slide { opacity:0; position:absolute; width/height:100% }`) is
- * neutralized so stacked preview/export keeps a fixed 1920×1080 canvas
- * instead of clipping Motif pills to the browser viewport.
+ * neutralized on compact fills so stacked preview/export keeps a fixed
+ * 1920×1080 canvas. Official catalog presenters keep iframe-relative 100% fill.
  *
  * Catalog-wide: proof that look CSS is already present must be unique
  * Motif/Layout class *rules*, not generic `.slide-1` / `.slide-title`
@@ -581,6 +581,57 @@ function officialLookHasCurrentNeutralize(html: string): boolean {
   );
 }
 
+function hasOfficialLookStyleAttr(html: string): boolean {
+  return new RegExp(`<style\\b[^>]*\\b${OFFICIAL_DECK_LOOK_STYLE_ATTR}\\b`, 'i').test(html);
+}
+
+function hasOfficialPresenterShell(html: string): boolean {
+  return (
+    /\bclass\s*=\s*(["'])[^"'<>]*\bpresentation\b/i.test(html)
+    || (/\bnav-dots\b/i.test(html) && /\bnav-dot\b/i.test(html))
+    || /\bclass\s*=\s*(["'])[^"'<>]*\bslide-counter\b/i.test(html)
+    || /\bclass\s*=\s*(["'])[^"'<>]*\bslide-number\b/i.test(html)
+  );
+}
+
+function hasAuthorAbsolute100Slide(html: string): boolean {
+  return (
+    /\.slide\s*\{[^}]*position\s*:\s*absolute/i.test(html)
+    && /\.slide\s*\{[^}]*(?:width|height)\s*:\s*100%/i.test(html)
+  );
+}
+
+/**
+ * Official catalog `example.html` is a fullscreen presenter
+ * (`.slide { position:absolute; width/height:100% }` filling its iframe).
+ * Stacked 1920×1080 neutralize is for compact fills that already carry
+ * `data-od-official-look-css` or `#od-stacked-deck-stage`. Applying it to
+ * a presenter clips template preview/thumbs that size the iframe and let
+ * 100% fill.
+ */
+export function looksLikeOfficialFullscreenPresenterDeck(html: string): boolean {
+  const dest = String(html ?? '');
+  if (!dest) return false;
+  if (hasOfficialLookStyleAttr(dest)) return false;
+  if (/\bid\s*=\s*["']od-stacked-deck-stage["']/i.test(dest)) return false;
+  if (!hasOfficialPresenterShell(dest)) return false;
+  return hasAuthorAbsolute100Slide(dest);
+}
+
+function stripOfficialPresenterStackedCanvasLock(html: string): string {
+  let out = String(html ?? '').replace(
+    /<style\b[^>]*\bdata-od-stacked-canvas-neutralize\b[^>]*>[\s\S]*?<\/style>/gi,
+    '',
+  );
+  if (/<meta[^>]+name=["']viewport["'][^>]*width\s*=\s*1920/i.test(out)) {
+    out = out.replace(
+      /<meta[^>]+name=["']viewport["'][^>]*>/i,
+      '<meta name="viewport" content="width=device-width, initial-scale=1.0" />',
+    );
+  }
+  return out;
+}
+
 function replaceOfficialLookNeutralizeBlock(html: string): string {
   return html.replace(
     /(<style\b[^>]*\bdata-od-official-look-css\b[^>]*>)([\s\S]*?)(<\/style>)/gi,
@@ -601,8 +652,11 @@ function replaceOfficialLookNeutralizeBlock(html: string): string {
  * comment alone must not skip upgrade (poison/truncated neutralize).
  */
 export function ensureOfficialLookStackedCanvasNeutralize(html: string): string {
-  let dest = String(html ?? '');
+  const dest = String(html ?? '');
   if (!dest) return dest;
+  if (looksLikeOfficialFullscreenPresenterDeck(dest)) {
+    return stripOfficialPresenterStackedCanvasLock(dest);
+  }
   if (
     officialLookHasCurrentNeutralize(dest)
     && hasOfficialLookStackedCanvasNeutralizeProof(dest)
@@ -610,23 +664,21 @@ export function ensureOfficialLookStackedCanvasNeutralize(html: string): string 
     return dest;
   }
 
-  const styleAttr = OFFICIAL_DECK_LOOK_STYLE_ATTR;
-  if (new RegExp(`<style\\b[^>]*\\b${styleAttr}\\b`, 'i').test(dest)) {
+  if (hasOfficialLookStyleAttr(dest)) {
     return replaceOfficialLookNeutralizeBlock(dest);
   }
 
-  // Presentation-absolute slides without official look attr (hand-authored),
-  // or a poisoned marker comment without the fixed-canvas declarations.
-  const hasPresentationAbsolute =
-    /\.slide\s*\{[^}]*position\s*:\s*absolute/i.test(dest)
-    && /\.slide\s*\{[^}]*(?:width|height)\s*:\s*100%/i.test(dest);
-  if (
-    hasPresentationAbsolute
+  // Persist-stripped compact fills may still host slides in the stacked
+  // stage. A poisoned marker without proof also needs the lock. Official
+  // catalog presenters are handled above and must not receive a 1920 lock
+  // just because they use presentation-absolute 100%.
+  const needsStandaloneNeutralize =
+    (/\bid\s*=\s*["']od-stacked-deck-stage["']/i.test(dest) && hasAuthorAbsolute100Slide(dest))
     || (
       dest.includes(OFFICIAL_LOOK_STACKED_NEUTRALIZE_MARKER)
       && !hasOfficialLookStackedCanvasNeutralizeProof(dest)
-    )
-  ) {
+    );
+  if (needsStandaloneNeutralize) {
     const tag = `<style data-od-stacked-canvas-neutralize>\n${LOOK_NEUTRALIZE_CSS}\n</style>`;
     if (/<\/head\s*>/i.test(dest)) return dest.replace(/<\/head\s*>/i, `${tag}</head>`);
     if (/<body\b/i.test(dest)) return dest.replace(/<body\b[^>]*>/i, (open) => `${open}\n${tag}`);
@@ -647,4 +699,14 @@ export function lockDeckDesignViewportMeta(html: string): string {
     return dest.replace(/<head\b[^>]*>/i, (open) => `${open}\n  ${tag}`);
   }
   return dest;
+}
+
+/**
+ * Compact-fill preview/export lock. Official catalog presenters keep
+ * device-width + iframe-relative 100% fill.
+ */
+export function lockStackedDeckCanvasForPreview(html: string): string {
+  const neutralized = ensureOfficialLookStackedCanvasNeutralize(String(html ?? ''));
+  if (looksLikeOfficialFullscreenPresenterDeck(neutralized)) return neutralized;
+  return lockDeckDesignViewportMeta(neutralized);
 }

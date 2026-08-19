@@ -8,13 +8,16 @@ import {
   healDeckHtmlForStandaloneExport,
 } from '../src/html/deckPdfExport';
 import {
+  LOOK_NEUTRALIZE_CSS,
   OFFICIAL_DECK_LOOK_STYLE_ATTR,
   OFFICIAL_DECK_MOTIF_HTML_ATTR,
   deckHtmlHasOfficialLookCss,
+  ensureOfficialLookStackedCanvasNeutralize,
   extractOfficialDeckLookAssets,
   firstOfficialDeckTemplateId,
   listOfficialLookProofClasses,
   listOfficialMotifSymbolIds,
+  looksLikeOfficialFullscreenPresenterDeck,
   mergeOfficialDeckLookCss,
 } from '../src/html/deck-template-look-css';
 import {
@@ -271,6 +274,16 @@ html, body { overflow: visible !important; height: auto !important; }
     expect(merged).toContain('shadcn/ui');
   });
 
+  it('keeps official Capsule example.html as a presenter after standalone export heal', () => {
+    const official = readFileSync(join(EXAMPLES_DIR, 'html-ppt-zhangzara-capsule/example.html'), 'utf8');
+    const healed = healDeckHtmlForStandaloneExport(official);
+    expect(looksLikeOfficialFullscreenPresenterDeck(healed)).toBe(true);
+    expect(healed).not.toContain('data-od-stacked-canvas-neutralize');
+    expect(healed).not.toContain('content="width=1920, initial-scale=1, maximum-scale=1"');
+    expect(healed).toContain('width=device-width');
+    expect(healed).toContain('CAPSULE');
+  });
+
   it('keeps Capsule Motif CSS after standalone export heal + document wrap', () => {
     const official = loadOfficialLookSource(join(EXAMPLES_DIR, 'html-ppt-zhangzara-capsule/example.html'));
     const assets = extractOfficialDeckLookAssets(official)!;
@@ -441,6 +454,50 @@ html, body { overflow: visible !important; height: auto !important; }
     expect(refreshed).toMatch(/flex-direction:\s*unset/);
     expect(refreshed).toContain('.pill-coral { background:#E85D4E; }');
     expect(refreshed).toContain('split');
+  });
+
+  it('does not lock official Capsule example.html to a stacked 1920 canvas', () => {
+    const official = readFileSync(join(EXAMPLES_DIR, 'html-ppt-zhangzara-capsule/example.html'), 'utf8');
+    expect(looksLikeOfficialFullscreenPresenterDeck(official)).toBe(true);
+    const healed = ensureOfficialLookStackedCanvasNeutralize(official);
+    expect(healed).not.toContain('data-od-stacked-canvas-neutralize');
+    expect(healed).not.toContain('stacked preview/export: Motif paint + fixed 1920');
+    expect(healed).toContain('position: absolute');
+    expect(healed).toContain('width: 100%');
+    expect(healed).toContain('CAPSULE');
+  });
+
+  it('strips a wrongly injected 1920 neutralize from an official presenter', () => {
+    const poisoned = `<!doctype html><html><head>
+<meta name="viewport" content="width=1920, initial-scale=1, maximum-scale=1" />
+<style>
+  .slide { position:absolute; inset:0; width:100%; height:100%; }
+</style>
+<style data-od-stacked-canvas-neutralize>${LOOK_NEUTRALIZE_CSS}</style>
+</head><body>
+<div class="presentation"><div class="slide slide-1 active">Cover</div></div>
+<div class="nav-dots"><div class="nav-dot active"></div></div>
+</body></html>`;
+    expect(looksLikeOfficialFullscreenPresenterDeck(poisoned)).toBe(true);
+    const healed = ensureOfficialLookStackedCanvasNeutralize(poisoned);
+    expect(healed).not.toContain('data-od-stacked-canvas-neutralize');
+    expect(healed).not.toContain('width: 1920px !important');
+    expect(healed).toContain('width=device-width');
+    expect(healed).toContain('Cover');
+  });
+
+  it('still locks persist-stripped compact fills that already have the stacked host', () => {
+    const compact = `<!doctype html><html><head>
+<style>.slide { position:absolute; inset:0; width:100%; height:100%; }</style>
+</head><body>
+<div id="od-stacked-deck-stage">
+<section class="slide">Topic</section>
+</div>
+</body></html>`;
+    const healed = ensureOfficialLookStackedCanvasNeutralize(compact);
+    expect(healed).toContain('data-od-stacked-canvas-neutralize');
+    expect(healed).toContain('width: 1920px !important');
+    expect(healed).toContain('Topic');
   });
 
   it('resolves official deck template ids from metadata or skillIds', () => {

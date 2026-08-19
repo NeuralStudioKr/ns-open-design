@@ -184,6 +184,31 @@ describe("ProjectCardHtmlCover srcDoc builders", () => {
     );
   });
 
+  it("does not inject stacked 1920 neutralize into official presenter thumbs", () => {
+    const html = `<!doctype html><html><head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<style>
+  html, body { width:100%; height:100%; overflow:hidden; }
+  .slide { position:absolute; inset:0; width:100%; height:100%; opacity:0; }
+  .slide.active { opacity:1; }
+</style>
+</head><body>
+<div class="presentation">
+  <div class="slide slide-1 active"><h1>CAPSULE</h1></div>
+  <div class="slide slide-2"><h1>Thought</h1></div>
+</div>
+<div class="nav-dots"><div class="nav-dot active"></div></div>
+</body></html>`;
+    const srcDoc = buildHtmlCoverSrcDoc(html, "/api/plugins/html-ppt-zhangzara-capsule/example");
+    expect(srcDoc).toContain("CAPSULE");
+    expect(srcDoc).not.toContain("Thought");
+    expect(srcDoc).not.toContain("data-od-stacked-canvas-neutralize");
+    expect(srcDoc).not.toContain("stacked preview/export: Motif paint + fixed 1920");
+    expect(srcDoc).not.toContain('content="width=1920, initial-scale=1, maximum-scale=1"');
+    expect(srcDoc).toContain("width=device-width");
+    expect(srcDoc).toContain('id="od-deck-card-preview"');
+  });
+
   it("forces the isolated html-ppt cover slide visible despite presenter opacity:0", () => {
     const html = `<html><head><style>
 .slide{opacity:0;pointer-events:none;transform:translateX(30px)}

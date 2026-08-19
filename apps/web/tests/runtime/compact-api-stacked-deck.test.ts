@@ -500,6 +500,22 @@ cur=n;
     expect(buildSrcdoc(html, { deck: true })).toContain('data-od-deck-stacked-fix');
   });
 
+  it('keeps official catalog presenters on native 100% fill instead of stacked 1920', () => {
+    const official = readFileSync(
+      resolve(repoRoot, 'plugins/_official/examples/html-ppt-zhangzara-capsule/example.html'),
+      'utf8',
+    );
+    expect(looksLikeCompactApiStackedDeck(official)).toBe(false);
+    expect(looksLikeCompactApiStackedDeckForPreview(official)).toBe(false);
+    const srcdoc = buildSrcdoc(official, { deck: true });
+    expect(srcdoc).not.toContain('data-od-stacked-canvas-neutralize');
+    expect(srcdoc).not.toContain('data-od-deck-stacked-fix');
+    expect(srcdoc).not.toContain('content="width=1920, initial-scale=1, maximum-scale=1"');
+    expect(srcdoc).toContain('width=device-width');
+    expect(srcdoc).toContain('CAPSULE');
+    expect(srcdoc).toMatch(/\.slide\s*\{[^}]*position:\s*absolute/i);
+  });
+
   it('does not force stacked slides into a centered column that clips 16:9 split layouts', async () => {
     const html = [
       '<!doctype html><html lang="ko"><head>',

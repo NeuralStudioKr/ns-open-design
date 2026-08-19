@@ -22,7 +22,7 @@ import {
   MANUAL_EDIT_DISCOVERY_SELECTOR,
   MANUAL_EDIT_SOURCE_PATH_ATTR,
 } from '../edit-mode/bridge';
-import { buildArtifactPreviewDomLeakGuardScript, repairArtifactDocumentHead, repairArtifactStyleSheets, ensureOfficialLookStackedCanvasNeutralize, lockDeckDesignViewportMeta } from '@open-design/contracts';
+import { buildArtifactPreviewDomLeakGuardScript, repairArtifactDocumentHead, repairArtifactStyleSheets, lockStackedDeckCanvasForPreview } from '@open-design/contracts';
 import { stripConflictingSrcDocCspBaseUri } from './authenticatedHtmlSrcDoc';
 import {
   injectStackedDeckViewport,
@@ -132,17 +132,18 @@ export function buildSrcdoc(
       repairArtifactDocumentHeadIfNeeded(html),
     ),
   );
-  // Deck preview/export: upgrade opacity-only official-look neutralize and lock
-  // viewport to 1920 so presentation-absolute 100% slides do not clip Motif.
+  // Deck preview/export: compact fills lock to a 1920×1080 canvas.
+  // Official catalog presenters keep iframe-relative 100% fill.
   const deckCanvasReady = options.deck
-    ? lockDeckDesignViewportMeta(ensureOfficialLookStackedCanvasNeutralize(repairedHead))
+    ? lockStackedDeckCanvasForPreview(repairedHead)
     : repairedHead;
   const repaired = stripConflictingSrcDocCspBaseUri(deckCanvasReady);
   // alreadyRepaired: avoid wrapPreviewHtmlShell re-running repair on full docs.
-  // Fragment wraps inject a fresh device-width shell — re-lock after wrap for decks.
+  // Fragment wraps inject a fresh device-width shell — re-lock after wrap for
+  // compact fills only (official presenters stay device-width).
   const wrappedRaw = wrapPreviewHtmlShell(repaired, { alreadyRepaired: true });
   const wrapped = options.deck
-    ? lockDeckDesignViewportMeta(ensureOfficialLookStackedCanvasNeutralize(wrappedRaw))
+    ? lockStackedDeckCanvasForPreview(wrappedRaw)
     : wrappedRaw;
   // Export docs skip od-id / source-path annotation (no selection/edit bridges).
   // OD-authored decks that already carry annotations skip the DOMParser walk.

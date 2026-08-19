@@ -4,8 +4,7 @@ import type { Express, Request, Response } from 'express';
 import {
   artifactFontStylesheetHttpsOrigins,
   defaultScenarioPluginIdForProjectMetadata,
-  ensureOfficialLookStackedCanvasNeutralize,
-  lockDeckDesignViewportMeta,
+  lockStackedDeckCanvasForPreview,
   type ChatSessionMode,
   type PluginManifest,
   repairArtifactDocumentHead,
@@ -2718,9 +2717,7 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
     if (!/^text\/html(?:;|$)/i.test(file.mime)) return html;
     // /raw HTML must not reintroduce device-width clipping after head repair —
     // lock stacked 1920×1080 canvas + design viewport for Motif/title parity.
-    return lockDeckDesignViewportMeta(
-      ensureOfficialLookStackedCanvasNeutralize(repairArtifactDocumentHead(html)),
-    );
+    return lockStackedDeckCanvasForPreview(repairArtifactDocumentHead(html));
   }
 
   /**

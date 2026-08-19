@@ -110,4 +110,25 @@ html, body { overflow: visible !important; height: auto !important; }
     expect(repaired).toContain('data:image/svg+xml');
     expect(repaired).toContain('row');
   });
+
+  it('does not inject stacked 1920 neutralize into official presenter example HTML', () => {
+    const html = `<!doctype html><html><head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<style>
+  .slide { position:absolute; inset:0; width:100%; height:100%; opacity:0; }
+  .slide.active { opacity:1; }
+</style>
+</head><body>
+<div class="presentation">
+  <div class="slide slide-1 active">CAPSULE</div>
+  <div class="slide slide-2">Thought</div>
+</div>
+<div class="nav-dots"><div class="nav-dot active"></div></div>
+</body></html>`;
+    const repaired = repairArtifactStyleSheets(html);
+    expect(repaired).not.toContain('data-od-stacked-canvas-neutralize');
+    expect(repaired).not.toContain('width: 1920px !important');
+    expect(repaired).toContain('CAPSULE');
+    expect(repaired).toContain('position:absolute');
+  });
 });

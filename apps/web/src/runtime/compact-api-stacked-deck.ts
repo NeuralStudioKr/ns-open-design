@@ -1,3 +1,4 @@
+import { looksLikeOfficialFullscreenPresenterDeck } from '@open-design/contracts';
 import { repairArtifactDocumentHeadIfNeeded } from './artifact-document-head';
 
 export type WrapPreviewHtmlShellOptions = {
@@ -174,6 +175,7 @@ function looksLikeFrameworkDeckMarkup(html: string): boolean {
  */
 export function looksLikeCompactApiStackedDeck(html: string): boolean {
   if (!html) return false;
+  if (looksLikeOfficialFullscreenPresenterDeck(html)) return false;
   if (looksLikeFrameworkDeckMarkup(html)) return false;
   if (looksLikeAuthoredHorizontalSwipeDeck(html)) return false;
   const bodyFirst = hasBodyFirstSlide(html);
