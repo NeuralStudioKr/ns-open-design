@@ -5,6 +5,11 @@ import { assistantMessageTextBody, messageHasVisibleProse } from "./chat-events"
 import { isEmptyAssistantShell } from "./conversation-message-dedupe";
 import { deriveFileOps } from "./file-ops";
 import { isAutoContinueIncompleteOutputPrompt } from "./resume";
+import { isSlideCountTopUpPrompt } from "../teamver/slideCountTopUp";
+
+function isHiddenAutomationUserPrompt(content: string | null | undefined): boolean {
+  return isAutoContinueIncompleteOutputPrompt(content) || isSlideCountTopUpPrompt(content);
+}
 
 export type ChatMessageRenderContext = {
   streaming: boolean;
@@ -117,7 +122,7 @@ function findVisibleUserTurnStart(
     const previous = messages[index - 1];
     if (
       previous?.role === "user"
-      && !isAutoContinueIncompleteOutputPrompt(previous.content)
+      && !isHiddenAutomationUserPrompt(previous.content)
     ) {
       return index - 1;
     }
@@ -135,7 +140,7 @@ function findVisibleUserTurnEnd(
     const message = messages[index];
     if (
       message?.role === "user"
-      && !isAutoContinueIncompleteOutputPrompt(message.content)
+      && !isHiddenAutomationUserPrompt(message.content)
     ) {
       return index;
     }
@@ -389,7 +394,7 @@ export function shouldOmitMessageFromChatRender(
     return true;
   }
   if (message.role === "user") {
-    return isAutoContinueIncompleteOutputPrompt(message.content);
+    return isHiddenAutomationUserPrompt(message.content);
   }
   if (message.role !== "assistant") return false;
   if (isLiveStreamingAssistantTarget(message, ctx)) return false;

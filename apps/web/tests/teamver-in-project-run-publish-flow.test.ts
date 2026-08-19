@@ -14,6 +14,7 @@ describe("embed in-project run success publish flow (loop 403)", () => {
     const fileViewer = readSource("src/components/FileViewer.tsx");
 
     expect(projectView).toContain("maybeArmTeamverPublishMenuAfterRunSuccess");
+    expect(projectView).toContain("requestSlideCountTopUpRef.current(producedHtmlToOpen)");
     expect(projectView).toMatch(
       /maybeArmTeamverPublishMenuAfterRunSuccess[\s\S]*?requestOpenFile\(producedHtmlToOpen\)/,
     );

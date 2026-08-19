@@ -133,6 +133,7 @@ describe('parseSlideCountPhrase', () => {
     expect(parseSlideCountPhrase('10장 슬라이드')).toContain('정확히 10장');
     expect(parseSlideCountPhrase('8~10장')).toContain('정확히 10장');
     expect(parseSlideCountPhrase('10-15 pages')).toContain('정확히 15장');
+    expect(parseSlideCountPhrase('20장')).toBeNull();
   });
 });
 

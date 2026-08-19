@@ -280,10 +280,11 @@ describe("ProjectView message loading", () => {
     // preservation block. Keep just enough head-room; the block
     // still asserts the same ordering contract, only over slightly
     // more source.
-    const block = source.slice(start, start + 11000);
+    const block = source.slice(start, start + 14000);
 
     expect(block).toContain("attachAutoContinueIncompleteOutputNotice(");
     expect(block).toContain("syncAutoContinueCountFromMessages(");
+    expect(block).toContain("syncSlideCountTopUpCountFromMessages(");
     expect(block).toContain("findIncompleteSlideAssistantForRecovery(");
     expect(block).toContain("pendingAutoContinueConversationIdRef.current === activeConversationId");
     expect(block).toContain("attemptEmergencySlideDeckRecovery(");
@@ -630,7 +631,9 @@ describe("ProjectView message loading", () => {
     expect(autoOpenBlock).toContain("messagesConversationIdRef.current === scheduledConversationId");
     expect(autoOpenBlock).toContain("clearStreamingMarker(scheduledConversationId)");
     expect(autoOpenBlock).toContain("targetConversationId: scheduledConversationId");
-    expect(source).toContain("meta?.entryFrom === AUTO_CONTINUE_ENTRY_FROM && !abortRef.current");
+    expect(source).toContain("meta?.entryFrom === AUTO_CONTINUE_ENTRY_FROM");
+    expect(source).toContain("meta?.entryFrom === SLIDE_COUNT_TOP_UP_ENTRY_FROM");
+    expect(source).toContain("!abortRef.current");
     // Keep this path quiet in production DevTools. The user-facing assistant
     // status event is the observable signal; console noise made previous demo
     // failures look scarier than they were.

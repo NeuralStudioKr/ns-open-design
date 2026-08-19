@@ -6,6 +6,7 @@ import {
   OUTLINE_DECK_FALLBACK_STATUS_CODE,
 } from "./deliverable-lifecycle-codes";
 import { isAutoContinueIncompleteOutputPrompt } from "./resume";
+import { isSlideCountTopUpPrompt } from "../teamver/slideCountTopUp";
 
 function isTerminalRunStatus(status: ChatMessage["runStatus"]): boolean {
   return status === "succeeded" || status === "failed" || status === "canceled";
@@ -161,7 +162,8 @@ function isVisibleUserTurnBoundary(message: ChatMessage): boolean {
   if (message.role !== "user") return false;
   // Auto-continue prompts are hidden in ChatPane; they must not split a turn
   // for empty-shell collapse or the incomplete first assistant survives.
-  return !isAutoContinueIncompleteOutputPrompt(message.content);
+  return !isAutoContinueIncompleteOutputPrompt(message.content)
+    && !isSlideCountTopUpPrompt(message.content);
 }
 
 /** Drop duplicate assistant rows that share the same daemon run id. */

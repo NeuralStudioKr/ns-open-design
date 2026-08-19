@@ -78,6 +78,7 @@ import {
   extractPersistedRunErrorDiagnostic,
 } from '../teamver/projectErrorMessages';
 import { AUTO_CONTINUE_STATUS_CODE, RESUME_CONTINUE_PROMPT, isAutoContinueIncompleteOutputPrompt } from '../runtime/resume';
+import { isSlideCountTopUpPrompt } from '../teamver/slideCountTopUp';
 import {
   looksLikeDeckTemplateSkillId,
   resolveSelectedDeckTemplateChipLabel,
@@ -1192,7 +1193,10 @@ export function ChatPane({
   const firstUserMessageId = useMemo(
     () =>
       messages.find(
-        (m) => m.role === 'user' && !isAutoContinueIncompleteOutputPrompt(m.content),
+        (m) =>
+          m.role === 'user'
+          && !isAutoContinueIncompleteOutputPrompt(m.content)
+          && !isSlideCountTopUpPrompt(m.content),
       )?.id,
     [messages],
   );
@@ -2727,7 +2731,7 @@ function ChatRows({
       // Automatic-continue recovery prompts are model-facing only. Showing
       // the long directive as a user bubble made brand-new projects look
       // like they were continuing another project's deck.
-      if (isAutoContinueIncompleteOutputPrompt(m.content)) {
+      if (isAutoContinueIncompleteOutputPrompt(m.content) || isSlideCountTopUpPrompt(m.content)) {
         return null;
       }
       return (
