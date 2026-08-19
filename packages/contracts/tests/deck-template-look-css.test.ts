@@ -370,6 +370,30 @@ html, body { overflow: visible !important; height: auto !important; }
       ) {
         failures.push(`${folder}: missing Daisy Motif flower SVG (not just CSS / deco class)`);
       }
+      if (
+        assets.motifHtml.some((block) => /\bdeco-pill\b/i.test(block))
+        && !/\bdeco-pill\b/i.test(merged)
+      ) {
+        failures.push(`${folder}: missing Capsule Motif deco-pill seed`);
+      }
+      if (
+        assets.motifHtml.some((block) => /\bpetals?\b/i.test(block) && !/<svg\b/i.test(block))
+        && !/\bpetals?\b/i.test(merged)
+      ) {
+        failures.push(`${folder}: missing Sakura Motif petals seed`);
+      }
+      if (
+        assets.motifHtml.some((block) => /\bhc-scanlines\b/i.test(block))
+        && !/\bhc-scanlines\b/i.test(merged)
+      ) {
+        failures.push(`${folder}: missing Hermes Motif hc-scanlines seed`);
+      }
+      if (
+        assets.motifHtml.some((block) => /\bxp-blob\b/i.test(block))
+        && !/\bxp-blob\b/i.test(merged)
+      ) {
+        failures.push(`${folder}: missing Pastel Motif xp-blob seed`);
+      }
     }
 
     expect(failures, failures.join('\n')).toEqual([]);
@@ -499,6 +523,82 @@ html, body { overflow: visible !important; height: auto !important; }
     const merged = mergeOfficialDeckLookCss(emptyShells, assets);
     expect(merged).toMatch(/deco-daisy-tl[\s\S]*?<svg\b[\s\S]*?#fcdf6c/i);
     expect(merged).toMatch(/deco-daisy-br[\s\S]*?<svg\b/i);
+  });
+
+  it('injects Capsule deco-pill Motif seed into sparse compact fills', () => {
+    const official = loadOfficialLookSource(join(EXAMPLES_DIR, 'html-ppt-zhangzara-capsule/example.html'));
+    const assets = extractOfficialDeckLookAssets(official)!;
+    expect(assets.motifHtml.some((block) => /\bdeco-pill\b/i.test(block))).toBe(true);
+    expect(assets.motifHtml.some((block) => /\bdeco-pill\b[\s\S]*?style=/i.test(block) || /style=[\s\S]*?deco-pill/i.test(block))).toBe(true);
+
+    const sparseFill = `<!doctype html><html lang="ko"><body>
+<section class="slide" style="background:#F5F5F0;width:1920px;height:1080px;position:relative">
+  <h1>shadcn/ui</h1>
+  <p>Copy, Don't Install</p>
+</section>
+<section class="slide" style="background:#F5F5F0;width:1920px;height:1080px;position:relative">
+  <h2>Radix</h2>
+</section>
+</body></html>`;
+    expect(sparseFill).not.toMatch(/\bdeco-pill\b/i);
+    const merged = mergeOfficialDeckLookCss(sparseFill, assets);
+    expect(merged).toMatch(/\bdeco-pill\b/i);
+    expect(merged).toContain(OFFICIAL_DECK_MOTIF_HTML_ATTR);
+    expect(merged).toContain('shadcn/ui');
+    expect((merged.match(/\bdeco-pill\b/gi) ?? []).length).toBeGreaterThanOrEqual(2);
+    const twice = mergeOfficialDeckLookCss(merged, assets);
+    expect(twice).toBe(merged);
+  });
+
+  it('injects Sakura petals Motif seed and s-cover on sparse fills', () => {
+    const official = loadOfficialLookSource(join(EXAMPLES_DIR, 'html-ppt-zhangzara-sakura-chroma/example.html'));
+    const assets = extractOfficialDeckLookAssets(official)!;
+    expect(assets.motifHtml.some((block) => /\bpetals\b/i.test(block))).toBe(true);
+
+    const sparseFill = `<!doctype html><html lang="ko"><body>
+<section class="slide" style="background:#FAF7F2;width:1920px;height:1080px;position:relative">
+  <h1>Tape Garden</h1>
+  <p>Catalogue No. 7</p>
+</section>
+<section class="slide" style="background:#FAF7F2;width:1920px;height:1080px;position:relative">
+  <h2>Palette</h2>
+</section>
+</body></html>`;
+    expect(sparseFill).not.toMatch(/\bpetals\b/i);
+    expect(sparseFill).not.toMatch(/\bs-cover\b/i);
+    const merged = mergeOfficialDeckLookCss(sparseFill, assets);
+    expect(merged).toMatch(/\bpetals\b/i);
+    expect(merged).toMatch(/\bs-cover\b/i);
+    expect(merged).toContain(OFFICIAL_DECK_MOTIF_HTML_ATTR);
+    expect(merged).toContain('Tape Garden');
+    const twice = mergeOfficialDeckLookCss(merged, assets);
+    expect(twice).toBe(merged);
+  });
+
+  it('injects Hermes hc-scanlines Motif seed and identity host class', () => {
+    const official = loadOfficialLookSource(join(EXAMPLES_DIR, 'html-ppt-hermes-cyber-terminal/example.html'));
+    const assets = extractOfficialDeckLookAssets(official)!;
+    expect(assets.motifHtml.some((block) => /\bhc-scanlines\b/i.test(block))).toBe(true);
+    expect(assets.identityHostClass).toMatch(/tpl-hermes-cyber-terminal/i);
+
+    const sparseFill = `<!doctype html><html lang="ko"><body>
+<section class="slide" style="background:#0b0f0c;width:1920px;height:1080px;position:relative">
+  <h1>Terminal</h1>
+  <p>Cyber ops</p>
+</section>
+<section class="slide" style="background:#0b0f0c;width:1920px;height:1080px;position:relative">
+  <h2>Grid</h2>
+</section>
+</body></html>`;
+    expect(sparseFill).not.toMatch(/\bhc-scanlines\b/i);
+    expect(sparseFill).not.toMatch(/tpl-hermes-cyber-terminal/i);
+    const merged = mergeOfficialDeckLookCss(sparseFill, assets);
+    expect(merged).toMatch(/\bhc-scanlines\b/i);
+    expect(merged).toMatch(/tpl-hermes-cyber-terminal/i);
+    expect(merged).toContain(OFFICIAL_DECK_MOTIF_HTML_ATTR);
+    expect(merged).toContain('Terminal');
+    const twice = mergeOfficialDeckLookCss(merged, assets);
+    expect(twice).toBe(merged);
   });
 
   it('injects Capsule grain-overlay host from official example.html', () => {

@@ -6,11 +6,12 @@
  *
  * Merge the official look CSS (tokens + Motif/Layout rules + font links)
  * and reusable Motif HTML (hidden SVG symbol sheets, grain/crt hosts,
- * and visible svg-sprite Motif instances like Daisy flower wrappers)
- * into the artifact when those pieces are missing. Page look CSS must
- * not ingest `<style>` blocks nested inside Motif SVGs — those leak
- * `#FCDF6C` into the stylesheet and make generic circle SVGs look like
- * Daisy paint already landed. Presentation chrome
+ * visible svg-sprite Motif instances like Daisy flower wrappers, and
+ * CSS Motif identity seeds — Capsule pills / Sakura petals / Hermes
+ * scanlines / Pastel blobs) into the artifact when those pieces are
+ * missing. Page look CSS must not ingest `<style>` blocks nested inside
+ * Motif SVGs — those leak `#FCDF6C` into the stylesheet and make generic
+ * circle SVGs look like Daisy paint already landed. Presentation chrome
  * (`.slide { opacity:0; position:absolute; width/height:100% }`) is
  * neutralized on compact fills so stacked preview/export keeps a fixed
  * 1920×1080 canvas. Official catalog presenters keep iframe-relative 100% fill.
@@ -18,7 +19,8 @@
  * Catalog-wide: proof that look CSS is already present must be unique
  * Motif/Layout class *rules*, not generic `.slide-1` / `.slide-title`
  * chrome that compact fill often copies from the kit. Motif HTML is a
- * separate proof — CSS already merged must not skip `#pin` symbols.
+ * separate proof — CSS already merged must not skip `#pin` symbols or
+ * CSS Motif identity seeds.
  */
 
 export const OFFICIAL_DECK_LOOK_STYLE_ATTR = 'data-od-official-look-css';
@@ -32,6 +34,8 @@ export type OfficialDeckLookAssets = {
   css: string;
   fontLinks: string[];
   motifHtml: string[];
+  /** Body/html host class (`tpl-*` / `theme-*`) required for scoped Motif CSS. */
+  identityHostClass?: string | null;
 };
 
 const FONT_LINK_RE = /<link\b[^>]*>/gi;
@@ -43,7 +47,10 @@ const SVG_BLOCK_RE = /<svg\b[^>]*>[\s\S]*?<\/svg>/gi;
 const SYMBOL_ID_RE = /<symbol\b[^>]*\bid\s*=\s*(?:"([^"]+)"|'([^']+)')/gi;
 const MOTIF_HOST_RE =
   /<(div|span)\b[^>]*\bclass\s*=\s*(?:"[^"]*"|'[^']*')[^>]*>\s*<\/\1>/gi;
-const MOTIF_HOST_CLASS_RE = /\b(?:grain-overlay|crt-overlay)\b/i;
+const MOTIF_HOST_CLASS_RE = /\b(?:grain-overlay|crt-overlay|hc-scanlines)\b/i;
+/** Capsule/Sakura/Hermes/Pastel CSS Motif identity seeds (not grain/crt alone). */
+const CSS_MOTIF_SEED_CLASS_RE =
+  /\b(?:deco-pill|pill-[a-z0-9_-]+|petals?|blob|xp-blob|hc-scanlines|hc-grid|post-it|pixel-[a-z0-9_-]+|doodle|scribble)\b/i;
 
 /** Layout/chrome classes compact fill routinely emits — not proof of official look. */
 const GENERIC_LOOK_PROOF_CLASS_RE =
@@ -255,17 +262,6 @@ function classAttrValue(tag: string): string {
   return /\bclass\s*=\s*(?:"([^"]*)"|'([^']*)')/i.exec(tag)?.[1]
     ?? /\bclass\s*=\s*(?:"([^"]*)"|'([^']*)')/i.exec(tag)?.[2]
     ?? '';
-}
-
-function firstSlideMarkupIndex(html: string): number {
-  const re = /<(?:div|section)\b[^>]*>/gi;
-  let next: RegExpExecArray | null;
-  while ((next = re.exec(html)) !== null) {
-    if (/(?:^|\s)slide(?:-\d+)?(?:\s|$)/i.test(classAttrValue(next[0] ?? ''))) {
-      return next.index;
-    }
-  }
-  return html.length;
 }
 
 export function listOfficialMotifSymbolIds(html: string): string[] {
@@ -552,6 +548,270 @@ function mergeVisibleMotifInstances(dest: string, instances: string[]): string {
   return out;
 }
 
+function isCssMotifSeedBlock(block: string): boolean {
+  if (!block || isVisibleMotifInstanceBlock(block)) return false;
+  return CSS_MOTIF_SEED_CLASS_RE.test(block);
+}
+
+/** Visible SVG Motif instance OR marked CSS Motif identity seed. */
+function isMotifIdentitySeedBlock(block: string): boolean {
+  if (isVisibleMotifInstanceBlock(block)) return true;
+  return isCssMotifSeedBlock(block);
+}
+
+function motifSeedFamily(block: string): string {
+  if (isVisibleMotifInstanceBlock(block) || /deco-daisy|#fcdf6c/i.test(block)) return 'daisy';
+  if (/\bpetals?\b/i.test(block)) return 'sakura';
+  if (/\bdeco-pill\b|\bpill-(?:coral|lime|lavender|sky|violet|yellow|peach|mint|white)\b/i.test(block)) {
+    return 'capsule';
+  }
+  if (/\bhc-scanlines\b|\bhc-grid\b/i.test(block)) return 'hermes';
+  if (/\bxp-blob\b|\bblob\b/i.test(block)) return 'pastel';
+  if (/\bpost-it\b/i.test(block)) return 'post-it';
+  if (/\bpixel-/i.test(block)) return 'pixel';
+  if (/\bdoodle|\bscribble\b/i.test(block)) return 'doodle';
+  return 'css-motif';
+}
+
+function cssMotifSeedProofClass(block: string): string | null {
+  const classAttr = classAttrValue(block);
+  const hay = classAttr || block;
+  const match = CSS_MOTIF_SEED_CLASS_RE.exec(hay);
+  return match?.[0]?.toLowerCase() ?? null;
+}
+
+/**
+ * True when dest already shows Motif identity for the given seeds.
+ * Daisy uses flower-SVG proof; Capsule/Sakura/Hermes/Pastel use class presence.
+ */
+function destHasMotifIdentityProof(dest: string, seeds: string[]): boolean {
+  if (!dest || seeds.length === 0) return seeds.length === 0;
+  const visible = seeds.filter(isVisibleMotifInstanceBlock);
+  const cssSeeds = seeds.filter(isCssMotifSeedBlock);
+  if (visible.length > 0 && !destHasVisibleMotifIdentity(dest, visible)) return false;
+  for (const seed of cssSeeds) {
+    const proofClass = cssMotifSeedProofClass(seed);
+    if (!proofClass) continue;
+    if (proofClass === 'petals' || proofClass === 'petal') {
+      if (!/\b(?:petals?)\b/i.test(dest)) return false;
+      continue;
+    }
+    if (!destHasMotifHost(dest, proofClass) && !new RegExp(`\\b${proofClass.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(dest)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function pillOblongScore(tag: string): number {
+  const widthPx = /width\s*:\s*([\d.]+)px/i.exec(tag)?.[1];
+  const heightPx = /height\s*:\s*([\d.]+)px/i.exec(tag)?.[1];
+  const w = widthPx ? Number(widthPx) : NaN;
+  const h = heightPx ? Number(heightPx) : NaN;
+  if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return 5;
+  if (/border-radius\s*:\s*50%/i.test(tag) || Math.abs(w - h) <= Math.max(4, w * 0.08)) return 8;
+  if (w / h >= 1.45 || h / w >= 1.45) return 0;
+  return 3;
+}
+
+/**
+ * Extract up to 2 CSS Motif identity seeds from official example.html.
+ * Prefer Sakura petals group, Capsule oblong deco-pill, Hermes scanlines, Pastel xp-blob.
+ */
+function extractCssMotifSeeds(html: string): string[] {
+  const source = String(html ?? '');
+  if (!source.trim()) return [];
+  const scored: Array<{ score: number; block: string; key: string }> = [];
+
+  const petalsOpenRe =
+    /<(div|span)\b[^>]*\bclass\s*=\s*(?:"[^"]*\bpetals\b[^"]*"|'[^']*\bpetals\b[^']*')[^>]*>/gi;
+  let petalsMatch: RegExpExecArray | null;
+  while ((petalsMatch = petalsOpenRe.exec(source)) !== null) {
+    const block = extractBalancedElement(source, petalsMatch.index);
+    if (!block || block.length < 24 || block.length > 2_400) continue;
+    const marked = markOfficialMotifHtml(block);
+    if (!marked) continue;
+    scored.push({ score: 0, block: marked, key: 'sakura-petals' });
+  }
+
+  const pillOpenRe =
+    /<(div|span)\b[^>]*\bclass\s*=\s*(?:"[^"]*\bdeco-pill\b[^"]*"|'[^']*\bdeco-pill\b[^']*')[^>]*>/gi;
+  let pillMatch: RegExpExecArray | null;
+  while ((pillMatch = pillOpenRe.exec(source)) !== null) {
+    const open = pillMatch[0] ?? '';
+    if (!/\bstyle\s*=/i.test(open)) continue;
+    const block = extractBalancedElement(source, pillMatch.index) ?? open.replace(/>$/, '/>');
+    if (!block || block.length > 800) continue;
+    const marked = markOfficialMotifHtml(block);
+    if (!marked) continue;
+    scored.push({
+      score: 1 + pillOblongScore(open),
+      block: marked,
+      key: `capsule-${classAttrValue(open).slice(0, 40)}`,
+    });
+  }
+
+  const scanOpenRe =
+    /<(div|span)\b[^>]*\bclass\s*=\s*(?:"[^"]*\bhc-scanlines\b[^"]*"|'[^']*\bhc-scanlines\b[^']*')[^>]*>/gi;
+  let scanMatch: RegExpExecArray | null;
+  while ((scanMatch = scanOpenRe.exec(source)) !== null) {
+    const block = extractBalancedElement(source, scanMatch.index) ?? scanMatch[0];
+    if (!block) continue;
+    const marked = markOfficialMotifHtml(block);
+    if (!marked) continue;
+    scored.push({ score: 0, block: marked, key: 'hermes-scanlines' });
+  }
+
+  const blobOpenRe =
+    /<(div|span)\b[^>]*\bclass\s*=\s*(?:"[^"]*\bxp-blob\b[^"]*"|'[^']*\bxp-blob\b[^']*')[^>]*>/gi;
+  let blobMatch: RegExpExecArray | null;
+  while ((blobMatch = blobOpenRe.exec(source)) !== null) {
+    const block = extractBalancedElement(source, blobMatch.index) ?? blobMatch[0];
+    if (!block || block.length > 600) continue;
+    const marked = markOfficialMotifHtml(block);
+    if (!marked) continue;
+    scored.push({ score: 1, block: marked, key: `pastel-${classAttrValue(block).slice(0, 40)}` });
+  }
+
+  // Generic CSS Motif seeds (post-it / pixel / doodle / hc-grid) when family-specific misses.
+  const genericOpenRe =
+    /<(div|span)\b[^>]*\bclass\s*=\s*(?:"[^"]*"|'[^']*')[^>]*>/gi;
+  let genericMatch: RegExpExecArray | null;
+  while ((genericMatch = genericOpenRe.exec(source)) !== null) {
+    const open = genericMatch[0] ?? '';
+    const cls = classAttrValue(open);
+    if (!CSS_MOTIF_SEED_CLASS_RE.test(cls)) continue;
+    if (/\b(?:petals?|deco-pill|hc-scanlines|xp-blob)\b/i.test(cls)) continue;
+    const block = extractBalancedElement(source, genericMatch.index) ?? open;
+    if (!block || block.length < 12 || block.length > 800) continue;
+    const marked = markOfficialMotifHtml(block);
+    if (!marked) continue;
+    const proof = cssMotifSeedProofClass(marked) ?? cls.slice(0, 32);
+    scored.push({ score: 4, block: marked, key: `generic-${proof}` });
+    if (scored.length > 48) break;
+  }
+
+  scored.sort((a, b) => a.score - b.score || a.block.length - b.block.length);
+  const out: string[] = [];
+  const seenKeys = new Set<string>();
+  const seenFamilies = new Set<string>();
+  for (const row of scored) {
+    const family = motifSeedFamily(row.block);
+    if (seenKeys.has(row.key) || out.includes(row.block)) continue;
+    if (seenFamilies.has(family) && out.length >= 1) continue;
+    seenKeys.add(row.key);
+    seenFamilies.add(family);
+    out.push(row.block);
+    if (out.length >= 2) break;
+  }
+  return out;
+}
+
+function extractIdentityHostClass(html: string, css: string): string | null {
+  const open =
+    /<(?:body|html)\b[^>]*\bclass\s*=\s*(?:"([^"]*)"|'([^']*)')/i.exec(html);
+  const fromHost = (open?.[1] ?? open?.[2] ?? '')
+    .split(/\s+/)
+    .map((c) => c.trim())
+    .find((c) => /^(?:tpl|theme)-[a-z0-9_-]+$/i.test(c));
+  if (fromHost) return fromHost.toLowerCase();
+
+  const counts = new Map<string, number>();
+  const re = /\.(tpl-[a-z0-9_-]+|theme-[a-z0-9_-]+)\b/gi;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(css)) !== null) {
+    const name = (match[1] ?? '').toLowerCase();
+    if (!name) continue;
+    counts.set(name, (counts.get(name) ?? 0) + 1);
+  }
+  let best: string | null = null;
+  let bestCount = 0;
+  for (const [name, count] of counts) {
+    if (count > bestCount) {
+      best = name;
+      bestCount = count;
+    }
+  }
+  return best;
+}
+
+function ensureIdentityHostClass(dest: string, hostClass: string | null | undefined): string {
+  const cls = String(hostClass ?? '').trim();
+  if (!dest || !cls) return dest;
+  const escaped = cls.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const hostHasClass = new RegExp(
+    `<(?:body|html)\\b[^>]*\\bclass\\s*=\\s*(?:"[^"]*\\b${escaped}\\b[^"]*"|'[^']*\\b${escaped}\\b[^']*')`,
+    'i',
+  ).test(dest);
+  if (hostHasClass) return dest;
+
+  if (/<body\b/i.test(dest)) {
+    return dest.replace(/<body\b([^>]*)>/i, (_m, attrs: string) => {
+      if (/\bclass\s*=/i.test(attrs)) {
+        return `<body${attrs.replace(
+          /\bclass\s*=\s*(["'])([^"']*)\1/i,
+          (_cm, q: string, prev: string) => `class=${q}${prev}${prev ? ' ' : ''}${cls}${q}`,
+        )}>`;
+      }
+      return `<body class="${cls}"${attrs}>`;
+    });
+  }
+  if (/<html\b/i.test(dest)) {
+    return dest.replace(/<html\b([^>]*)>/i, (_m, attrs: string) => {
+      if (/\bclass\s*=/i.test(attrs)) {
+        return `<html${attrs.replace(
+          /\bclass\s*=\s*(["'])([^"']*)\1/i,
+          (_cm, q: string, prev: string) => `class=${q}${prev}${prev ? ' ' : ''}${cls}${q}`,
+        )}>`;
+      }
+      return `<html class="${cls}"${attrs}>`;
+    });
+  }
+  return dest;
+}
+
+function ensureSlideMotifRoleClass(dest: string, seeds: string[]): string {
+  if (!dest || !seeds.some((seed) => motifSeedFamily(seed) === 'sakura')) return dest;
+  const slides = listSlideBlocks(dest);
+  if (slides.length === 0) return dest;
+  const first = slides[0]!;
+  if (/\bs-cover\b/i.test(first.html)) return dest;
+  const nextFirst = first.html.replace(
+    /^(<(?:section|div|main|article)\b[^>]*\bclass\s*=\s*)(["'])([^"']*)\2/i,
+    (_m, prefix: string, q: string, prev: string) =>
+      `${prefix}${q}${prev}${prev ? ' ' : ''}s-cover${q}`,
+  );
+  if (nextFirst === first.html) return dest;
+  return `${dest.slice(0, first.start)}${nextFirst}${dest.slice(first.end)}`;
+}
+
+function mergeCssMotifSeeds(dest: string, seeds: string[]): string {
+  if (!dest || seeds.length === 0) return dest;
+  let out = dest;
+  if (destHasMotifIdentityProof(out, seeds)) {
+    return ensureSlideMotifRoleClass(out, seeds);
+  }
+
+  const pack = seeds.slice(0, 2).join('\n');
+  const slides = listSlideBlocks(out);
+  if (slides.length === 0) {
+    out = insertAfterOpenBody(out, pack);
+    return ensureSlideMotifRoleClass(out, seeds);
+  }
+
+  const nextSlides = slides.map((slide, index) => {
+    if (index > 1) return slide.html;
+    if (destHasMotifIdentityProof(slide.html, seeds)) return slide.html;
+    return insertMotifIntoSlide(slide.html, pack);
+  });
+
+  for (let i = slides.length - 1; i >= 0; i -= 1) {
+    const slide = slides[i]!;
+    out = `${out.slice(0, slide.start)}${nextSlides[i]}${out.slice(slide.end)}`;
+  }
+  return ensureSlideMotifRoleClass(out, seeds);
+}
+
 function markOfficialMotifHtml(markup: string): string {
   const trimmed = markup.trim();
   if (!trimmed) return '';
@@ -586,10 +846,11 @@ export function extractOfficialDeckMotifHtml(exampleHtml: string): string[] {
     out.push(marked);
   }
 
-  const prefix = html.slice(0, firstSlideMarkupIndex(html));
+  // Grain / CRT / Hermes scanlines hosts — whole document, cap 2.
   MOTIF_HOST_RE.lastIndex = 0;
   let hostMatch: RegExpExecArray | null;
-  while ((hostMatch = MOTIF_HOST_RE.exec(prefix)) !== null) {
+  let hostCount = 0;
+  while ((hostMatch = MOTIF_HOST_RE.exec(html)) !== null) {
     const tag = hostMatch[0] ?? '';
     const className = hostClassName(tag);
     if (!className) continue;
@@ -597,6 +858,8 @@ export function extractOfficialDeckMotifHtml(exampleHtml: string): string[] {
     if (!marked || seen.has(marked)) continue;
     seen.add(marked);
     out.push(marked);
+    hostCount += 1;
+    if (hostCount >= 2) break;
   }
 
   // Daisy / svg-sprite kits: visible Motif wrappers+SVG (not symbol sheets).
@@ -604,6 +867,13 @@ export function extractOfficialDeckMotifHtml(exampleHtml: string): string[] {
     if (seen.has(instance)) continue;
     seen.add(instance);
     out.push(instance);
+  }
+
+  // Capsule / Sakura / Hermes / Pastel CSS Motif identity seeds.
+  for (const seed of extractCssMotifSeeds(html)) {
+    if (seen.has(seed)) continue;
+    seen.add(seed);
+    out.push(seed);
   }
 
   return out;
@@ -665,8 +935,9 @@ export function extractOfficialDeckLookAssets(
   }
 
   const motifHtml = extractOfficialDeckMotifHtml(html);
+  const identityHostClass = extractIdentityHostClass(html, css);
   if (!css && fontLinks.length === 0 && motifHtml.length === 0) return null;
-  return { css, fontLinks, motifHtml };
+  return { css, fontLinks, motifHtml, identityHostClass };
 }
 
 function compactOfficialCss(css: string): string {
@@ -772,15 +1043,13 @@ export function deckHtmlHasOfficialMotifHtml(
   if (!dest || !(assets.motifHtml?.length)) return !(assets.motifHtml?.length);
 
   const visible = assets.motifHtml.filter(isVisibleMotifInstanceBlock);
-  const sheetsAndHosts = assets.motifHtml.filter((block) => !isVisibleMotifInstanceBlock(block));
+  const cssSeeds = assets.motifHtml.filter(isCssMotifSeedBlock);
+  const sheetsAndHosts = assets.motifHtml.filter((block) => !isMotifIdentitySeedBlock(block));
 
   if (visible.length > 0 && !destHasVisibleMotifIdentity(dest, visible)) return false;
+  if (cssSeeds.length > 0 && !destHasMotifIdentityProof(dest, cssSeeds)) return false;
 
   if (sheetsAndHosts.length === 0) return true;
-
-  // Marker alone is not enough when visible Motif instances are still missing
-  // (handled above). For symbol/host kits, marker or concrete ids/hosts prove.
-  if (dest.includes(OFFICIAL_DECK_MOTIF_HTML_ATTR) && visible.length === 0) return true;
 
   const symbolIds = listOfficialMotifSymbolIds(sheetsAndHosts.join('\n'));
   const missingSymbols = symbolIds.filter((id) => !destHasSymbolId(dest, id));
@@ -800,11 +1069,15 @@ export function mergeOfficialDeckMotifHtml(
   if (!dest || !(assets?.motifHtml?.length)) return dest;
 
   const visible = assets.motifHtml.filter(isVisibleMotifInstanceBlock);
-  const sheetsAndHosts = assets.motifHtml.filter((block) => !isVisibleMotifInstanceBlock(block));
+  const cssSeeds = assets.motifHtml.filter(isCssMotifSeedBlock);
+  const sheetsAndHosts = assets.motifHtml.filter((block) => !isMotifIdentitySeedBlock(block));
 
   let out = dest;
   if (visible.length > 0) {
     out = mergeVisibleMotifInstances(out, visible);
+  }
+  if (cssSeeds.length > 0) {
+    out = mergeCssMotifSeeds(out, cssSeeds);
   }
 
   if (sheetsAndHosts.length === 0) return out;
@@ -837,7 +1110,7 @@ export function mergeOfficialDeckLookCss(
   if (!dest || !assets) return dest;
   if (!assets.css && assets.fontLinks.length === 0 && !(assets.motifHtml?.length)) return dest;
 
-  let out = dest;
+  let out = ensureIdentityHostClass(dest, assets.identityHostClass);
   if (!deckHtmlHasOfficialLookCss(out, assets) && (assets.css || assets.fontLinks.length > 0)) {
     const missingFonts = assets.fontLinks.filter((tag) => {
       const href = hrefFromLinkTag(tag);

@@ -240,6 +240,26 @@ Capsule은 empty `.deco-pill` + look CSS로 살아나지만 Daisy 정체성은 ~
 - [x] catalog sweep이 flower SVG instance를 요구
 - [x] export cache v25
 
+### 0.51 2026-08-19 — 카탈로그 CSS Motif identity seed (Capsule/Sakura/Hermes/Pastel)
+
+§0.50 Daisy SVG heal 위에 **CSS Motif 템플릿** identity seed를 얹는다. Capsule oblong `.deco-pill`, Sakura `<div class="petals">`, Hermes `.hc-scanlines`(+ `tpl-*` host), Pastel `.xp-blob`이 sparse fill에서 빠지면 look CSS만으로는 정체성이 안 보인다.
+
+수정:
+- `extractCssMotifSeeds` / `mergeCssMotifSeeds` — seed 최대 2개, slide 0·1 주입
+- `extractIdentityHostClass` + `ensureIdentityHostClass` — Hermes 등 scoped Motif CSS
+- Sakura seed 시 첫 슬라이드에 `s-cover`
+- Motif floor 필수 (cover에 kit Motif seed 1개) — optional polish 아님
+- snippet scoring: `hc-scanlines` 우선, `var(--hc-` false positive 스킵
+- Daisy v25 로직(`svgBlocksContainDaisyIdentity` / `mergeVisibleMotifInstances` / SVG-internal style 제외) 유지
+- export cache `v26`
+
+구현 현황:
+
+- [x] Capsule/Sakura/Hermes sparse → Motif seed inject red specs
+- [x] catalog sweep Capsule/Sakura/Hermes/Pastel seeds
+- [x] Motif floor prompt
+- [x] export cache v26
+
 ### 0.48 2026-08-19 — 연속 `incomplete_output` (shell → 1장 fill)
 
 사용자 재현: 같은 대화에서
