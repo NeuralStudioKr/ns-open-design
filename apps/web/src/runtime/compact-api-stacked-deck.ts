@@ -178,6 +178,15 @@ export function looksLikeCompactApiStackedDeck(html: string): boolean {
   if (looksLikeOfficialFullscreenPresenterDeck(html)) return false;
   if (looksLikeFrameworkDeckMarkup(html)) return false;
   if (looksLikeAuthoredHorizontalSwipeDeck(html)) return false;
+  // Official html-ppt Capsule/Daisy/etc. use a `.presentation` host with
+  // absolute opacity slides. That is NOT a body-first compact fill — stacking
+  // neutralize (flex-direction:unset, relative 1920) breaks Motif geometry in
+  // template preview/thumbs.
+  if (
+    /<(?:div|section|main)\b[^>]*\bclass\s*=\s*['"][^'"]*\bpresentation\b/i.test(html)
+  ) {
+    return false;
+  }
   const bodyFirst = hasBodyFirstSlide(html);
   const viewportSized = looksLikeSlideViewportSized(html);
   const legacyBodyFirst = looksLikeLegacyStyledBodyFirstDeck(html);

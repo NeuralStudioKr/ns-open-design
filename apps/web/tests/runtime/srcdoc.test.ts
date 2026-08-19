@@ -19,6 +19,38 @@ const deckHtml = `<!doctype html>
 </html>`;
 
 describe('buildSrcdoc', () => {
+  it('does not stacked-neutralize official Capsule presenter Motif in template preview', () => {
+    const capsule = `<!doctype html><html><head><style>
+.presentation{position:relative;width:100vw;height:100vh;overflow:hidden}
+.slide{position:absolute;inset:0;width:100%;height:100%;display:flex;flex-direction:column;opacity:0}
+.slide.active{opacity:1}
+.slide-1{justify-content:center;align-items:center}
+.deco-pill{position:absolute;border-radius:9999px}
+.title-pill{position:relative;z-index:2}
+.main-title{position:relative;z-index:2;font-size:clamp(3rem,8vw,7rem)}
+</style></head><body>
+<div class="presentation">
+  <div class="slide slide-1 active" data-slide="1">
+    <div class="deco-pill" style="width:120px;height:55px;top:12%;left:8%">Concept</div>
+    <div class="title-pill">Presentation Template</div>
+    <h1 class="main-title">CAPSULE</h1>
+  </div>
+  <div class="slide" data-slide="2">Two</div>
+</div>
+</body></html>`;
+    const doc = buildSrcdoc(capsule, { deck: true });
+    expect(doc).not.toContain('data-od-stacked-canvas-neutralize');
+    expect(doc).not.toContain('data-od-compact-stacked');
+    expect(doc).not.toContain('data-od-deck-stacked-fix');
+    // Deck-bridge JS comments mention flex-direction:unset — assert CSS rule only.
+    expect(doc).not.toMatch(/flex-direction:\s*unset\s*;/);
+    expect(doc).not.toContain('content="width=1920, initial-scale=1, maximum-scale=1"');
+    expect(doc).toContain('width=device-width');
+    expect(doc).toContain('flex-direction:column');
+    expect(doc).toContain('CAPSULE');
+    expect(doc).toContain('Concept');
+  });
+
   it('repairs viewport leaks in HTML fragments before wrapping', () => {
     const fragment = `viewport=width=device-width, initial-scale=1" />
 <section class="slide active">A</section>`;
@@ -50,14 +82,15 @@ describe('buildSrcdoc', () => {
     const corrupt = `<!doctype html><html><head>device-width, initial-scale=1" /><title>T</title></head><body><div class="slide">A</div></body></html>`;
     const doc = buildSrcdoc(corrupt, { deck: true });
     expect(doc).not.toMatch(/<head>\s*device-width/i);
-    expect(doc).toContain('content="width=device-width, initial-scale=1"');
+    // Deck preview may lock compact-like slides to 1920; presenter decks keep device-width.
+    expect(doc).toMatch(/<meta[^>]+name=["']viewport["'][^>]*content="width=(?:device-width|1920)/i);
   });
 
   it('repairs the shorter -width viewport suffix leak in preview srcdoc', () => {
     const corrupt = `<!doctype html><html><head><title>T</title></head><body>-width, initial-scale=1" /><div class="slide">A</div></body></html>`;
     const doc = buildSrcdoc(corrupt, { deck: true, previewFocusGuard: true });
     expect(doc).not.toMatch(/<body[^>]*>[\s\S]*?>\s*-width\s*,\s*initial-scale/i);
-    expect(doc).toContain('content="width=device-width, initial-scale=1"');
+    expect(doc).toMatch(/<meta[^>]+name=["']viewport["'][^>]*content="width=(?:device-width|1920)/i);
   });
 
   it('preserves deck fit() scripts through buildSrcdoc repair and restores mangled bodies', () => {
