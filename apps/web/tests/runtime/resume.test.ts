@@ -203,8 +203,23 @@ describe('runtime/resume shell/no-HTML recovery constants', () => {
     expect(prompt).toContain('[Template clone content fill turn]');
     expect(prompt).toContain('BODY-FIRST');
     expect(prompt).toContain('NEVER "수정 반영 중"');
+    expect(prompt).toContain('expected at least 3');
+    expect(prompt).toContain('Do not close');
+    expect(prompt).toContain('Official look/Motif CSS is merged after save');
     expect(prompt).not.toContain('디스크의 덱을 기준으로');
     expect(prompt).not.toContain('이미 저장된 슬라이드 덱');
+  });
+
+  it('does not treat a one-slide closed cover as a finished template fill', () => {
+    const prompt = buildAutoContinueIncompleteOutputPrompt({
+      attempt: 1,
+      templateCloneContentFill: true,
+      partialHtml:
+        '<!doctype html><html><body><section class="slide"><h1>Cover only</h1><p>Lead.</p></section></body></html>',
+    });
+    expect(prompt).toContain('expected at least 3');
+    expect(prompt).toContain('Do not close');
+    expect(prompt).toContain('<h1>Cover only</h1>');
   });
 
   it('omits cloned deck.html from fill auto-continue reference files', () => {

@@ -200,6 +200,24 @@ full `example.html`을 시스템 프롬프트에 넣지 않는다는 방침은 �
 - [x] 인라인 장별 색도 per-slide paint
 - [x] daemon cover-batch가 persisted flatten bleed를 `html, body`로 완화 (cache v6)
 
+### 0.48 2026-08-19 — 연속 `incomplete_output` (shell → 1장 fill)
+
+사용자 재현: 같은 대화에서
+1. `skipped-incomplete reason=incomplete-html-document-shell`
+2. `Template fill produced 1 slide(s), but expected at least 3`
+
+원인: persist의 1장 차단은 정책대로 맞다. 그런데 선택 템플릿 compact **fallback 샘플이 1장짜리 완결 `</html></artifact>`** 라, `<head>` 트런케이션 후 auto-continue가 BODY-FIRST로 재시작할 때 모델이 그 샘플을 복사하고 표지만 닫는다. persist가 다시 skip.
+
+수정 (프롬프트/AC only, persist min-3 게이트 유지, cache bump 없음):
+- fallback wireframe을 cover+body+closing **3장**으로 교체
+- “1장 닫기 금지 / persist가 official look CSS를 합침 → `<head>` 금지”를 fill hard rules + auto-continue에 명시
+
+구현 현황:
+
+- [x] 3-slide fallback red spec
+- [x] AC template-fill min-3 (shell 및 1장 partial)
+- [x] persist 1장 차단 테스트 유지
+
 ### 0.47 2026-08-19 — `.presentation` compact fill 16:9 중심 고정
 
 §0.46이 body-first Motif fill을 compact 1920으로 되돌린 뒤에도, 모델이 Capsule `<div class="presentation">`를 베끼고 `data-od-official-look-css`를 붙인 `deck.html`은 stacked letterbox를 못 탔다.

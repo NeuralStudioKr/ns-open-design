@@ -1473,7 +1473,7 @@ This is the first content fill after a LOOK seed (OD-style create with kit Motif
 - **Motif vocabulary:** use kit Motif HTML snippets / Motif CSS classes / at most one capped Motif sprite AFTER title/lead (whatever the kit ships). Prefer finishing a closed deck over dense Motif.
 - **Named Motif fidelity:** if the selected template/title vocabulary names flowers, daisies, capsule cards, pins, pixels, scanlines, terminal chrome, etc., that same motif family must visibly appear on the cover and at least one body slide. Generic circles/stars are not substitutes.
 - **FORBIDDEN substitutes:** Motif shapes from another template family; generic CSS circles when the kit has Motif CSS/sprites; inventing Capsule coral pills when the kit Motif is petals/blobs/pins/pixel/scanlines; ignoring kit Motif snippet aspect/border-radius; emoji ornament rows; Motif \`<svg>\` before cover title; multi-KB \`<svg><style>\` dumps; Neutral \`#0f172a\`; terracotta \`#c96442\`.
-- Slide count is input-driven: honor an explicit small count (1–4) if the user asked for it. Otherwise produce 5–6 filled 1920×1080 slides by default. A one-slide cover-only deck is incomplete.
+- Slide count is input-driven: honor an explicit small count (1–4) if the user asked for it. Otherwise produce 5–6 filled 1920×1080 slides by default. A one-slide cover-only deck is incomplete — persist rejects 1–2 slides unless that small count was explicit. Never close \`</html></artifact>\` after a single cover.
 - Stream: status → \`<artifact type="deck">\` → body-first sections with real topical copy → kit Motif after title → close \`</body></html></artifact>\` in this same response.
 `;
 

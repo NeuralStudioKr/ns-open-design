@@ -601,11 +601,11 @@ A **Selected deck template** is already in this prompt. Use the **token-safe lay
 
 Do **not** paste a full \`example.html\` dump into the artifact (input was already summarized into the kit; rewriting the whole preview burns output tokens and truncates).
 
-**Body-first output order:** the first 1200 characters after \`<artifact\` must include \`<body\` and the first complete \`<section class="slide">...</section>\` with real copy. Place any shared \`<style>\` after slide 1. Do not open a \`<head>\` block or long \`<head>\` chrome dump. Complete deck beats perfect motif fidelity — a shell whose first 1200 chars are all \`<head>\`/\`<style>\` before any visible slide is a failed deliverable.
+**Body-first output order:** the first 1200 characters after \`<artifact\` must include \`<body\` and the first complete \`<section class="slide">...</section>\` with real copy. Place any shared \`<style>\` after slide 1. Do not open a \`<head>\` block or long \`<head>\` chrome dump. Official look/Motif CSS is merged after save — do not stream \`example.html\` styles. Complete deck beats perfect motif fidelity — a shell whose first 1200 chars are all \`<head>\`/\`<style>\` before any visible slide is a failed deliverable.
 
-Fallback wireframe ONLY when neither kit nor scaffold map is usable (structure only — still use Selected template tokens):
+Fallback wireframe ONLY when neither kit nor scaffold map is usable (structure only — still use Selected template tokens). This sample is **three slides on purpose**: persist rejects a one-slide closed cover unless the user asked for 1 page. Never close \`</html></artifact>\` after a single section:
 
-\`<artifact type="deck" identifier="deck"><!doctype html><html lang="ko"><body style="margin:0"><section class="slide" style="width:1920px;height:1080px;padding:80px 88px;box-sizing:border-box;overflow:hidden;display:flex;flex-direction:column;justify-content:center"><h1 style="margin:0 0 20px">실제 제목</h1><p style="margin:0;max-width:48rem">실제 본문.</p></section></body></html></artifact>\`
+\`<artifact type="deck" identifier="deck"><!doctype html><html lang="ko"><body style="margin:0"><section class="slide" style="width:1920px;height:1080px;padding:80px 88px;box-sizing:border-box;overflow:hidden;display:flex;flex-direction:column;justify-content:center"><h1 style="margin:0 0 20px">실제 제목</h1><p style="margin:0;max-width:48rem">실제 본문.</p></section><section class="slide" style="width:1920px;height:1080px;padding:80px 88px;box-sizing:border-box;overflow:hidden;display:flex;flex-direction:column;justify-content:center"><h2 style="margin:0 0 16px">실제 제목</h2><ul style="margin:0"><li>실제 불릿</li></ul></section><section class="slide" style="width:1920px;height:1080px;padding:80px 88px;box-sizing:border-box;overflow:hidden;display:flex;flex-direction:column;justify-content:center"><h2 style="margin:0 0 16px">실제 제목</h2><p style="margin:0">실제 마무리.</p></section></body></html></artifact>\`
 
 Rules:
 1. On deck-delivery turns, optional: one tiny brief-specific UI-locale status sentence, then start the artifact. Artifact-only is OK for speed/tokens.
@@ -632,7 +632,7 @@ OD succeeds by editing cloned HTML text. Teamver BYOK cannot — so regenerate c
 **Body / title-first (non-negotiable):**
 1. Status sentence → open \`<artifact type="deck" identifier="deck">\`.
 2. First bytes: \`<!doctype html><html lang="ko"><body style="margin:0;background:<kit surface hex>;color:<kit ink hex>"><section class="slide" style="width:1920px;height:1080px;box-sizing:border-box;overflow:hidden;background:<kit surface hex>;color:<kit ink hex>;…">\` with a real \`h1\`/\`h2\` title + lead **before any decoration**.
-3. Slide count is input-driven: honor an explicit small count (1–4) if the user asked for it. Otherwise produce **5–6** filled slides by default. A one-slide cover-only deck is incomplete.
+3. Slide count is input-driven: honor an explicit small count (1–4) if the user asked for it. Otherwise produce **5–6** filled slides by default. A one-slide cover-only deck is incomplete — persist rejects 1–2 slides unless that small count was explicit. Never close \`</html></artifact>\` after a single cover.
 4. Close \`</body></html></artifact>\` in this same response.
 
 **Full-bleed surface:** kit Slide surface must paint \`html\`/\`body\` AND every \`.slide\` edge-to-edge. FORBIDDEN: white outer canvas with an inner cream paper panel (white top/bottom bands). White title cards on cream paper are OK.

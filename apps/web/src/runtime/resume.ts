@@ -1,6 +1,7 @@
 import type { ChatMessage } from '../types';
 import {
   documentContainsSlideSection,
+  eachSlideHostOpenIndex,
   shouldDiscardPartialHtmlForMotifSvgDump,
 } from '../artifacts/deck-html-content';
 import { salvageTruncatedHtmlDocument } from '../artifacts/recover';
@@ -123,7 +124,14 @@ const AUTO_CONTINUE_HEAD_ONLY_BODY_FIRST =
   + 'Do NOT regenerate Daisy Days / Zhangzara / Neutral chrome or large `<style>` blocks. '
   + 'Emit BODY-FIRST: start the artifact with `<body>` (or the first `<section class="slide">`), '
   + 'use only tiny inline style tokens, and fill every slide with real title + 2–4 bullets NOW. '
+  + 'Official look/Motif CSS is merged after save — do not stream `<head>` or example.html styles. '
   + 'A compact static deck beats another CSS-only truncation.';
+
+const AUTO_CONTINUE_TEMPLATE_FILL_MIN_SLIDES =
+  '\n\nCRITICAL: Do not close `</html></artifact>` after a single cover. '
+  + 'Persist rejects 1–2 slide template fills unless the user asked for 1–4 slides '
+  + '(expected at least 3). Write cover + at least two more complete '
+  + '`<section class="slide">` (or `<div class="slide">`) bodies THIS TURN.';
 
 const AUTO_CONTINUE_MOTIF_SVG_DUMP_ABANDON =
   '\n\nCRITICAL: The previous turn dumped Motif `<svg>` path data before any cover `<h1>`. '
@@ -239,6 +247,13 @@ export function buildAutoContinueIncompleteOutputPrompt(
   }
   if (motifSvgDump) {
     parts.push(AUTO_CONTINUE_MOTIF_SVG_DUMP_ABANDON);
+  }
+  const partialSlideCount = eachSlideHostOpenIndex(partialRaw).length;
+  if (
+    context.templateCloneContentFill
+    || (partialSlideCount > 0 && partialSlideCount < 3)
+  ) {
+    parts.push(AUTO_CONTINUE_TEMPLATE_FILL_MIN_SLIDES);
   }
   if (context.templateCloneContentFill) {
     parts.push(

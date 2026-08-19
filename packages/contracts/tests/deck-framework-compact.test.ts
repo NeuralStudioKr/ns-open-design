@@ -78,5 +78,16 @@ describe('DECK_FRAMEWORK_DIRECTIVE_COMPACT', () => {
     expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_SELECTED_TEMPLATE).not.toContain(
       'optional short style with kit @import',
     );
+    expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_SELECTED_TEMPLATE).toContain(
+      'three slides on purpose',
+    );
+    expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_SELECTED_TEMPLATE).toContain(
+      'Never close `</html></artifact>` after a single section',
+    );
+    expect(
+      DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_SELECTED_TEMPLATE.match(
+        /<section class="slide"/g,
+      )?.length,
+    ).toBeGreaterThanOrEqual(3);
   });
 });
