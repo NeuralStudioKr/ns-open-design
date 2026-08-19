@@ -52,7 +52,7 @@ const MOTIF_HOST_RE =
 const MOTIF_HOST_CLASS_RE = /\b(?:grain-overlay|crt-overlay|hc-scanlines)\b/i;
 /** Capsule/Sakura/Hermes/Pastel CSS Motif identity seeds (not grain/crt alone). */
 const CSS_MOTIF_SEED_CLASS_RE =
-  /\b(?:deco-pill|pill-[a-z0-9_-]+|petals?|blob|xp-blob|hc-scanlines|hc-grid|post-it|pixel-[a-z0-9_-]+|doodle|scribble)\b/i;
+  /\b(?:deco-pill|pill-[a-z0-9_-]+|petals?|blob|xp-blob|hc-scanlines|hc-grid|post-it|pixel-[a-z0-9_-]+|doodle|scribble|win-titlebar|cover-blob|cover-decoration|geo-decoration|zigzag-deco|sunglow|ts-stripe(?:-b)?|corner-bracket|deco-green-circle)\b/i;
 
 /** Layout/chrome classes compact fill routinely emits — not proof of official look. */
 const GENERIC_LOOK_PROOF_CLASS_RE =
@@ -313,7 +313,7 @@ function isReusableSpriteSheet(svg: string): boolean {
  * nodes; Daisy `deco-daisy-*` is only one family.
  */
 const MOTIF_PAINT_CLASS_RE =
-  /\b(?:deco-[a-z0-9_-]+|deco-pill|[cf]-pill|petals?|blob(?:-[a-z0-9_-]+)?|stamp|tape|pin(?:-[a-z0-9_-]+)?|doodle(?:-[a-z0-9_-]+)?|scribble(?:-[a-z0-9_-]+)?|post-it(?:-[a-z0-9_-]+)?|xp-blob|gd-(?:orb|ambient)(?:-[a-z0-9_-]+)?|pixel-(?:particles|corners|face)|hc-scanline)\b/i;
+  /\b(?:deco-[a-z0-9_-]+|deco-pill|[cf]-pill|petals?|(?:cover-)?blob(?:-[a-z0-9_-]+)?|stamp|tape|pin(?:-[a-z0-9_-]+)?|doodle(?:-[a-z0-9_-]+)?|scribble(?:-[a-z0-9_-]+)?|post-it(?:-[a-z0-9_-]+)?|xp-blob|gd-(?:orb|ambient)(?:-[a-z0-9_-]+)?|pixel-[a-z0-9_-]+|hc-scanlines?|win-(?:titlebar|window|btn)|corner-bracket|cover-decoration|geo-decoration|zigzag-deco|sunglow|ts-stripe(?:-b)?)\b/i;
 
 function classTokens(classAttr: string): string[] {
   return String(classAttr ?? '').trim().split(/\s+/).filter(Boolean);
@@ -358,7 +358,7 @@ function visiblePaintTokensFromBlock(block: string): string[] {
 
 function isMotifClusterClass(className: string): boolean {
   return classTokens(className).some((token) => (
-    /^(?:petals|deco-pills|deco-pills-closing|gd-ambient|floating-pills)$/i.test(token)
+    /^(?:petals|deco-pills|deco-pills-closing|gd-ambient|floating-pills|pixel-glitch)$/i.test(token)
   ));
 }
 
@@ -367,6 +367,7 @@ const CLUSTER_PACK_PRIORITY = [
   'deco-pills',
   'petals',
   'gd-ambient',
+  'pixel-glitch',
   'floating-pills',
   'deco-pills-closing',
 ] as const;
@@ -400,7 +401,12 @@ function motifInstanceScore(block: string, className: string): number {
   if (isMotifClusterClass(className)) return 0;
   if (/deco-daisy|#fcdf6c/i.test(block) && /<svg\b/i.test(block)) return 0;
   if (/<svg\b/i.test(block) && /<path\b|<use\b/i.test(block)) return 1;
-  if (/deco-pill|petal|blob|pin-|doodle|post-it|gd-orb|xp-blob/i.test(className)) return 1;
+  if (
+    /^(?:deco-dots|deco-green-circle)$/i.test(className)
+    || /deco-pill|petal|blob|pin-|doodle|post-it|gd-orb|xp-blob|corner-bracket|pixel-|win-titlebar|cover-blob|cover-decoration|geo-decoration|zigzag-deco|sunglow|ts-stripe/i.test(className)
+  ) {
+    return 1;
+  }
   if (/deco-star|deco-rainbow|stamp|tape/i.test(className)) return 2;
   return 3;
 }
@@ -430,6 +436,18 @@ function placementStyleForMotifClass(classAttr: string): string {
   if (/\bpin-/i.test(classAttr)) {
     return 'position:absolute;top:8%;right:8%;width:180px;height:56px;pointer-events:none;z-index:2;color:#1E1E1E';
   }
+  if (/pixel-glitch/i.test(classAttr)) {
+    return 'position:absolute;top:0;right:0;width:28%;height:100%;pointer-events:none;z-index:1';
+  }
+  if (/win-titlebar/i.test(classAttr)) {
+    return 'position:absolute;top:8%;left:10%;width:72%;height:36px;pointer-events:none;z-index:2';
+  }
+  if (/ts-stripe/i.test(classAttr)) {
+    return 'position:absolute;top:0;left:0;width:100%;height:12px;pointer-events:none;z-index:1';
+  }
+  if (/sunglow|cover-blob|cover-decoration|geo-decoration/i.test(classAttr)) {
+    return 'position:absolute;top:-8%;right:-6%;width:42%;height:42%;pointer-events:none;z-index:0';
+  }
   return 'position:absolute;top:10%;right:8%;width:140px;height:140px;pointer-events:none;z-index:1';
 }
 
@@ -453,8 +471,9 @@ function stripMotifSampleText(html: string): string {
 }
 
 function isChartLikeSvg(svg: string): boolean {
+  if (/deco-|doodle|pin-|pixel-|zigzag/i.test(svg)) return false;
   const rects = (svg.match(/<rect\b/gi) ?? []).length;
-  return rects >= 4 && /<polyline\b|<line\b/i.test(svg) && !/deco-|doodle|pin-/i.test(svg);
+  return rects >= 4 && /<polyline\b|<line\b/i.test(svg);
 }
 
 /**
@@ -471,6 +490,8 @@ function extractVisibleMotifInstances(html: string): string[] {
     const className = classAttrValue(open);
     const primary = motifPrimaryClass(className);
     if (!primary) continue;
+    if (/^pixel-(?:btn|label|hero-text|chart|bar|hbar|avatar|landscape)/i.test(primary)) continue;
+    if (/^win-(?:body|btn|buttons|icon|title-left)$/i.test(primary)) continue;
     if (/\bpill\b/i.test(className) && !/\bdeco-pill\b|pill-(?:coral|lime|lavender|sky|violet|yellow|peach|mint|white)/i.test(className)) {
       if (!/\bpin-|petal|blob|doodle|post-it|deco-/i.test(className)) continue;
     }
@@ -485,7 +506,15 @@ function extractVisibleMotifInstances(html: string): string[] {
     if (!raw || raw.length > 8_000) continue;
     if (/<symbol\b/i.test(raw) && /width\s*=\s*(?:"0"|'0'|0)/i.test(raw)) continue;
     const svgMatch = /<svg\b[\s\S]*?<\/svg>/i.exec(raw);
-    if (svgMatch && (svgMatch[0].length < 40 || isChartLikeSvg(svgMatch[0]))) continue;
+    if (svgMatch && svgMatch[0].length < 40) continue;
+    if (
+      svgMatch
+      && isChartLikeSvg(svgMatch[0])
+      && !/pixel-|zigzag|deco-|doodle|pin-/i.test(className)
+    ) {
+      continue;
+    }
+    if (primary === 'win-window' && raw.length > 800) continue;
     if (!svgMatch && !isMotifClusterClass(primary) && raw.length > 1_200) continue;
     const cleaned = stripMotifSampleText(raw);
     const openMatch = /^<([a-zA-Z][\w-]*)\b([^>]*)>/.exec(cleaned);
@@ -652,6 +681,13 @@ function motifPackForSlide(instances: string[], index: number): string {
   if (daisies.length > 0 && stars.length > 0) {
     return `${daisies[index % daisies.length]}\n${stars[index % stars.length]}`;
   }
+  const dots = instances.filter((block) => hasExactClassToken(classAttrValue(block), 'deco-dots'));
+  const circles = instances.filter((block) => /deco-(?:green-)?circle/i.test(classAttrValue(block)));
+  if (dots.length > 0 && circles.length > 0) {
+    return `${dots[0]}\n${circles[0]}`;
+  }
+  const titlebar = instances.find((block) => hasExactClassToken(classAttrValue(block), 'win-titlebar'));
+  if (titlebar) return titlebar;
   if (instances.length === 1) return instances[0]!;
   const first = instances[index % instances.length]!;
   const second = instances[(index + 1) % instances.length]!;

@@ -477,8 +477,17 @@ html, body { overflow: visible !important; height: auto !important; }
       ['html-ppt-graphify-dark-graph', /<(?:div|span)[^>]*\bgd-orb\b/i],
       ['html-ppt-xhs-pastel-card', /<(?:div|span)[^>]*\bxp-blob\b/i],
       ['html-ppt-zhangzara-block-frame', /<(?:div|span)[^>]*\bdeco-dots\b/i],
+      ['html-ppt-zhangzara-block-frame', /<(?:div|span)[^>]*\bdeco-green-circle\b/i],
       ['html-ppt-zhangzara-scatterbrain', /<(?:div|span)[^>]*\bpost-it\b/i],
       ['html-ppt-hermes-cyber-terminal', /<(?:div|span)[^>]*\bhc-scanlines\b/i],
+      ['html-ppt-zhangzara-cobalt-grid', /<(?:div|span)[^>]*\bpixel-glitch\b/i],
+      ['html-ppt-zhangzara-retro-windows', /<(?:div|span)[^>]*\bwin-titlebar\b/i],
+      ['html-ppt-pitch-deck', /<(?:div|span)[^>]*\bcover-blob\b/i],
+      ['html-ppt-testing-safety-alert', /<(?:div|span)[^>]*\bts-stripe\b/i],
+      ['html-ppt-zhangzara-coral', /<(?:div|span|svg)[^>]*\bzigzag-deco\b/i],
+      ['html-ppt-zhangzara-cartesian', /<(?:div|span)[^>]*\bgeo-decoration\b/i],
+      ['html-ppt-zhangzara-blue-professional', /<(?:div|span)[^>]*\bcover-decoration\b/i],
+      ['html-ppt-zhangzara-biennale-yellow', /<(?:div|span)[^>]*\bsunglow\b/i],
     ];
     for (const [folder, paint] of cases) {
       const official = loadOfficialLookSource(join(EXAMPLES_DIR, folder, 'example.html'));
@@ -491,6 +500,61 @@ html, body { overflow: visible !important; height: auto !important; }
       expect(twice, folder).toBe(merged);
     }
   });
+
+  it('loops every mode:deck example and paints official body Motif onto sparse fill', () => {
+    const families: Array<{ id: string; official: RegExp; merged: RegExp }> = [
+      { id: 'daisy-flower', official: /deco-daisy[\s\S]{0,240}<svg\b[\s\S]{80,}?#fcdf6c/i, merged: /deco-daisy[\s\S]{0,240}<svg\b[\s\S]{80,}?#fcdf6c/i },
+      { id: 'deco-pill', official: /<(?:div|span)[^>]*\bdeco-pill\b/i, merged: /<(?:div|span)[^>]*\bdeco-pill\b/i },
+      { id: 'petal', official: /<(?:div|span)[^>]*\bpetal\b/i, merged: /<(?:div|span)[^>]*\b(?:petals|petal)\b/i },
+      { id: 'pin-use', official: /<use[^>]+href=["']#pin/i, merged: /<symbol[^>]+id=["']pin["']|<(?:svg|div)[^>]*\bpin-1\b/i },
+      { id: 'doodle', official: /<(?:div|span|svg)[^>]*\bdoodle-/i, merged: /<(?:div|span|svg)[^>]*\bdoodle-/i },
+      { id: 'gd-orb', official: /<(?:div|span)[^>]*\bgd-orb\b/i, merged: /<(?:div|span)[^>]*\bgd-orb\b/i },
+      { id: 'xp-blob', official: /<(?:div|span)[^>]*\bxp-blob\b/i, merged: /<(?:div|span)[^>]*\bxp-blob\b/i },
+      { id: 'deco-dots', official: /<(?:div|span)[^>]*\bdeco-dots\b/i, merged: /<(?:div|span)[^>]*\bdeco-dots\b/i },
+      { id: 'deco-green-circle', official: /<(?:div|span)[^>]*\bdeco-green-circle\b/i, merged: /<(?:div|span)[^>]*\bdeco-green-circle\b/i },
+      { id: 'post-it', official: /<(?:div|span)[^>]*\bpost-it\b/i, merged: /<(?:div|span)[^>]*\bpost-it\b/i },
+      { id: 'hc-scanlines', official: /<(?:div|span)[^>]*\bhc-scanlines\b/i, merged: /<(?:div|span)[^>]*\bhc-scanlines\b/i },
+      { id: 'pixel-glitch', official: /<(?:div|span)[^>]*\bpixel-glitch\b/i, merged: /<(?:div|span)[^>]*\bpixel-glitch\b/i },
+      { id: 'win-titlebar', official: /<(?:div|span)[^>]*\bwin-titlebar\b/i, merged: /<(?:div|span)[^>]*\bwin-titlebar\b/i },
+      { id: 'cover-blob', official: /<(?:div|span)[^>]*\bcover-blob\b/i, merged: /<(?:div|span)[^>]*\bcover-blob\b/i },
+      { id: 'ts-stripe', official: /<(?:div|span)[^>]*\bts-stripe\b/i, merged: /<(?:div|span)[^>]*\bts-stripe\b/i },
+      { id: 'zigzag-deco', official: /<(?:div|span|svg)[^>]*\bzigzag-deco\b/i, merged: /<(?:div|span|svg)[^>]*\bzigzag-deco\b/i },
+      { id: 'geo-decoration', official: /<(?:div|span)[^>]*\bgeo-decoration\b/i, merged: /<(?:div|span)[^>]*\bgeo-decoration\b/i },
+      { id: 'cover-decoration', official: /<(?:div|span)[^>]*\bcover-decoration\b/i, merged: /<(?:div|span)[^>]*\bcover-decoration\b/i },
+      { id: 'sunglow', official: /<(?:div|span)[^>]*\bsunglow\b/i, merged: /<(?:div|span)[^>]*\bsunglow\b/i },
+    ];
+    const failures: string[] = [];
+    const examples = listOfficialDeckExamplePaths();
+    expect(examples.length).toBeGreaterThan(40);
+    for (const examplePath of examples) {
+      const folder = examplePath.slice(EXAMPLES_DIR.length + 1).split('/')[0] ?? examplePath;
+      const official = loadOfficialLookSource(examplePath);
+      const body = official
+        .replace(/<style\b[\s\S]*?<\/style>/gi, '')
+        .replace(/<script\b[\s\S]*?<\/script>/gi, '');
+      const assets = extractOfficialDeckLookAssets(official);
+      if (!assets?.css || assets.css.length < 80) {
+        failures.push(`${folder}: no extractable look CSS`);
+        continue;
+      }
+      const merged = mergeOfficialDeckLookCss(LINUX_SPARSE_COVER, assets);
+      if (!merged.includes(OFFICIAL_DECK_LOOK_STYLE_ATTR)) {
+        failures.push(`${folder}: missing official look style marker`);
+      }
+      if (!merged.includes('Linux Internals for Senior Engineers')) {
+        failures.push(`${folder}: compact fill title dropped`);
+      }
+      for (const family of families) {
+        if (!family.official.test(body) && !(family.id === 'daisy-flower' && family.official.test(official))) {
+          continue;
+        }
+        if (!family.merged.test(merged)) {
+          failures.push(`${folder}: official body has ${family.id} but sparse merge does not`);
+        }
+      }
+    }
+    expect(failures, failures.join('\n')).toEqual([]);
+  }, 60_000);
 
   it('does not treat deco-pills-closing or an empty deco-pills shell as Capsule paint', () => {
     const official = loadOfficialLookSource(join(EXAMPLES_DIR, 'html-ppt-zhangzara-capsule', 'example.html'));
