@@ -479,23 +479,34 @@ html, body { overflow: visible !important; height: auto !important; }
     expect(healed).toContain('CAPSULE');
   });
 
-  it('opt-in locks viewport only for look/stage fills — not every html-ppt catalog example', () => {
+  it('opt-in locks viewport for fills — catalog presenters stay device-width', () => {
     const examples = listOfficialDeckExamplePaths();
     expect(examples.length).toBeGreaterThan(40);
-    const locked: string[] = [];
+    const presenterLocked: string[] = [];
+    const neutralizedCatalog: string[] = [];
     let presenterHits = 0;
     for (const examplePath of examples) {
       const folder = examplePath.slice(EXAMPLES_DIR.length + 1).split('/')[0] ?? examplePath;
       const html = readFileSync(examplePath, 'utf8');
-      if (looksLikeOfficialFullscreenPresenterDeck(html)) presenterHits += 1;
-      expect(needsStackedDesignViewportLock(html)).toBe(false);
+      const isPresenter = looksLikeOfficialFullscreenPresenterDeck(html);
+      if (isPresenter) presenterHits += 1;
       const out = lockStackedDeckCanvasForPreview(html);
-      if (/content="width=1920/.test(out) || /data-od-stacked-canvas-neutralize/.test(out)) {
-        locked.push(folder);
+      if (isPresenter) {
+        if (needsStackedDesignViewportLock(html)) presenterLocked.push(`${folder}:needsLock`);
+        if (/content="width=1920/.test(out)) presenterLocked.push(`${folder}:meta1920`);
+      }
+      // Catalog examples must not gain stacked neutralize unless they already
+      // carry official look CSS (fills only).
+      if (
+        !html.includes('data-od-official-look-css')
+        && /data-od-stacked-canvas-neutralize/.test(out)
+      ) {
+        neutralizedCatalog.push(folder);
       }
     }
-    expect(presenterHits).toBeGreaterThan(30);
-    expect(locked).toEqual([]);
+    expect(presenterHits).toBeGreaterThan(25);
+    expect(presenterLocked).toEqual([]);
+    expect(neutralizedCatalog).toEqual([]);
   });
 
   it('still locks compact fills that carry official look CSS to the 1920 canvas', () => {
@@ -509,6 +520,24 @@ ${LOOK_NEUTRALIZE_CSS}
     const out = lockStackedDeckCanvasForPreview(compact);
     expect(out).toContain('content="width=1920, initial-scale=1, maximum-scale=1"');
     expect(out).toContain('position: relative !important');
+  });
+
+  it('does not treat body-first Motif absolute fills as catalog presenters', () => {
+    // Filled compact decks often copy Capsule absolute Motif geometry into a
+    // plain <style> without data-od-official-look-css. Those must stay on the
+    // 1920 letterbox path — otherwise content lays out at device-width and
+    // looks top-left / differently centered per slide.
+    const motifFill = `<!doctype html><html><head><style>
+.slide{position:absolute;inset:0;width:100%;height:100%;display:flex;flex-direction:column}
+.pill{border-radius:9999px}
+</style></head><body>
+<section class="slide"><div class="pill">TOOLING</div><h1>Compare</h1></section>
+<section class="slide"><h1>Roadmap</h1></section>
+</body></html>`;
+    expect(looksLikeOfficialFullscreenPresenterDeck(motifFill)).toBe(false);
+    expect(needsStackedDesignViewportLock(motifFill)).toBe(true);
+    const locked = lockStackedDeckCanvasForPreview(motifFill);
+    expect(locked).toContain('content="width=1920, initial-scale=1, maximum-scale=1"');
   });
 
   it('strips a wrongly injected 1920 neutralize from an official presenter', () => {

@@ -200,6 +200,21 @@ full `example.html`을 시스템 프롬프트에 넣지 않는다는 방침은 �
 - [x] 인라인 장별 색도 per-slide paint
 - [x] daemon cover-batch가 persisted flatten bleed를 `html, body`로 완화 (cache v6)
 
+### 0.46 2026-08-19 — filled Motif 덱 페이지별 중심/사이즈 불일치
+
+§0.44 absolute-only presenter 판정이 body-first Motif fill을 catalog로 오인해 compact 1920 letterbox에서 빠뜨림. 콘텐츠는 device-width로 짜이고 호스트는 1920을 가정 → 좌상단 쏠림·페이지별 중심 불일치.
+
+- presenter = shell/opacity-stack 필수 (bare absolute 금지)
+- body-first slide deck은 presenter 제외 + viewport lock 대상
+- export cache `v23`
+
+구현 현황:
+
+- [x] narrowed `looksLikeOfficialFullscreenPresenterDeck`
+- [x] body-first `needsStackedDesignViewportLock`
+- [x] Motif absolute fill → compact 1920 red spec
+- [x] export cache v23
+
 ### 0.45 2026-08-19 — 공식 템플릿 미리보기 방향키/`< >` 페이지 고정
 
 카탈로그 PreviewModal은 iframe keydown을 capture로 가로채고 `postMessage({ type: 'od:slide' })`로 deck-bridge `go()`를 돌린다. 공식 Capsule chrome은 **1-based** (`data-slide="1"` = 첫 장, `#current` = `01`).
@@ -1156,6 +1171,7 @@ User-message 쪽 `[Existing deck edit]` / `<attached-preview-comments>` 주입�
 | 2026-08-13 | **§0.0 정책 개정** — template = layout vocabulary + visual look, 페이지 수/순서/구성은 브리프 기반. content-swap → pick-and-choose layout roles. daemon Clone default count = 6 (shells.length 아님), `pickTemplateShells` role-based scoring 도입. `template-visual-kit.ts` HARD_RULES 재작성, `DEFAULT_MAX_CHARS` 12000 → 14000. |
 | 2026-08-18 | Clone content-fill motif 보정 — 8/13 SVG hang 방지 패치가 first fill에서 `Motif sprites`/`Decoration CSS`/`Layout CSS`를 통째로 생략해 Daisy/Capsule 템플릿 정체성이 약해졌다. `slimTemplateVisualKitForFill`이 큰 SVG sprite sheet와 전체 stylesheet dump는 계속 제거하되, Daisy star/rainbow·Capsule pill/capsule·Terminal scanline 같은 compact motif recipe와 짧은 Decoration/Layout CSS cue를 보존하도록 변경했다. |
 | 2026-08-18 | §0.20 — html-ppt identity scope. 공유 `:root --bg:#ffffff` 대신 `.tpl-*` host 토큰/슬라이드 surface/폰트를 kit 계약으로 쓰고, SKILL `copy index.html` filesystem 지시를 neutralize. |
+| 2026-08-19 | §0.45 — Motif fill이 presenter로 오인되어 1920 letterbox 이탈. shell 필수 · body-first compact · cache v23. |
 | 2026-08-19 | §0.44 — html-ppt catalog 1920 lock opt-in. presenter 감지 확대 · look/stage만 lock · cache v22. |
 | 2026-08-19 | §0.43 — 공식 example 프레젠터에 stacked 1920 neutralize가 들어가 템플릿 preview/썸네일이 잘림. presenter 제외 · cache v21. |
 | 2026-08-18 | §0.42 — stacked neutralize/viewport 잔여 구멍. proof-based ensure · merge/cover/raw/standalone/srcdoc · cache v20. |

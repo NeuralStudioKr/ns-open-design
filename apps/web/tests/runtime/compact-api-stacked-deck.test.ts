@@ -500,6 +500,23 @@ cur=n;
     expect(buildSrcdoc(html, { deck: true })).toContain('data-od-deck-stacked-fix');
   });
 
+  it('keeps body-first Motif absolute fills on the compact 1920 letterbox path', () => {
+    const motifFill = `<!doctype html><html><head><style>
+.slide{position:absolute;inset:0;width:100%;height:100%;display:flex;flex-direction:column;padding:64px}
+.pill{border-radius:9999px;display:inline-flex}
+</style></head><body>
+<section class="slide"><span class="pill">TOOLING COMPARISON</span><h1>Turborepo vs Nx</h1></section>
+<section class="slide"><h1>Roadmap</h1></section>
+</body></html>`;
+    expect(looksLikeCompactApiStackedDeck(motifFill)).toBe(true);
+    const srcdoc = buildSrcdoc(motifFill, { deck: true });
+    expect(srcdoc).toContain('data-od-deck-stacked-fix');
+    expect(srcdoc).toContain('content="width=1920, initial-scale=1, maximum-scale=1"');
+    expect(srcdoc).toContain('#od-stacked-deck-stage');
+    expect(srcdoc).toContain('width: 1920px !important');
+    expect(srcdoc).toContain('height: 1080px !important');
+  });
+
   it('keeps official catalog presenters on native 100% fill instead of stacked 1920', () => {
     const official = readFileSync(
       resolve(repoRoot, 'plugins/_official/examples/html-ppt-zhangzara-capsule/example.html'),

@@ -612,21 +612,32 @@ function hasAuthorAbsoluteFullscreenSlide(html: string): boolean {
 
 /**
  * Official catalog `example.html` is a fullscreen presenter filling its
- * iframe (absolute/fixed slides at 100% / 100vw·vh / inset:0, or a named
- * presentation/deck shell). Stacked 1920×1080 neutralize is for compact
- * fills that already carry `data-od-official-look-css` or
- * `#od-stacked-deck-stage`.
+ * iframe. Require a real presenter shell (or opacity-stack chrome) — do NOT
+ * treat bare `.slide { position:absolute; width/height:100% }` as catalog.
+ * Body-first Motif fills copy that geometry without `data-od-official-look-css`
+ * and must stay on the compact 1920×1080 letterbox path; otherwise content
+ * lays out at iframe device-width inside a host that assumes 1920 and looks
+ * top-left / differently centered per slide.
  */
 export function looksLikeOfficialFullscreenPresenterDeck(html: string): boolean {
   const dest = String(html ?? '');
   if (!dest) return false;
   if (hasOfficialLookStyleAttr(dest)) return false;
   if (/\bid\s*=\s*["']od-stacked-deck-stage["']/i.test(dest)) return false;
-  // Strongest catalog signal: absolute/fixed fullscreen slide geometry.
+  // Body-first compact fills are never catalog presenters.
+  if (looksLikeBodyFirstSlideDeck(dest)) return false;
+  const shell = hasOfficialPresenterShell(dest);
+  if (!shell) return false;
   if (hasAuthorAbsoluteFullscreenSlide(dest)) return true;
-  // Named shell / opacity stack + authored multi-slide CSS (relative snap decks).
-  if (hasOfficialPresenterShell(dest) && looksLikeAuthoredMultiSlideCss(dest)) return true;
-  return false;
+  // Relative snap / opacity-stack shells with authored multi-slide CSS.
+  return looksLikeAuthoredMultiSlideCss(dest);
+}
+
+/** Body > .slide markup used by compact API fills (not `.presentation` hosts). */
+function looksLikeBodyFirstSlideDeck(html: string): boolean {
+  return /<body\b[^>]*>(?:\s|<!--[\s\S]*?-->|<(?:header|nav)\b[^>]*>[\s\S]*?<\/(?:header|nav)>|<style\b[^>]*>[\s\S]*?<\/style>|<script\b[^>]*>[\s\S]*?<\/script>)*<(?:section|div|main|article)\b[^>]*\bclass\s*=\s*['"][^'"]*\bslide\b/i.test(
+    html,
+  );
 }
 
 function looksLikeAuthoredMultiSlideCss(html: string): boolean {
@@ -639,8 +650,8 @@ function looksLikeAuthoredMultiSlideCss(html: string): boolean {
 
 /**
  * True when preview/export should pin vw/% math to the 1920 design canvas.
- * Opt-in only: look sheets, stacked stage, or proven/injected neutralize —
- * never "everything that failed the Capsule presenter regex".
+ * Opt-in: look sheets, stacked stage, neutralize proof, or body-first compact
+ * fills — never bare catalog presenters.
  */
 export function needsStackedDesignViewportLock(html: string): boolean {
   const dest = String(html ?? '');
@@ -650,6 +661,8 @@ export function needsStackedDesignViewportLock(html: string): boolean {
   if (/\bid\s*=\s*["']od-stacked-deck-stage["']/i.test(dest)) return true;
   if (hasOfficialLookStackedCanvasNeutralizeProof(dest)) return true;
   if (/data-od-stacked-canvas-neutralize/i.test(dest)) return true;
+  // Classic compact fills (body > .slide) even before look CSS is merged.
+  if (looksLikeBodyFirstSlideDeck(dest)) return true;
   return false;
 }
 
