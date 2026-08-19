@@ -925,9 +925,24 @@ function extractMotifHtmlSnippets(html: string, budget: number): string[] {
   const opens = [...html.matchAll(/<(?:div|span)\b[^>]*>/gi)].map((m) => m[0] ?? '');
   const scored: Array<{ score: number; tag: string; inner?: string }> = [];
   for (const tag of opens) {
+    // Skip `var(--hc-…)` false positives unless a real Hermes Motif host class is present.
+    if (
+      /var\(--hc-/i.test(tag)
+      && !/\b(?:hc-scanlines|hc-grid|hc-chrome)\b/i.test(tag)
+    ) {
+      const withoutHcVars = tag.replace(/var\(--hc-[^)]*\)/gi, '');
+      if (
+        !MOTIF_CLASS_TOKEN_RE.test(withoutHcVars)
+        && !/\b(?:xp-blob|gd-orb|hc-scanlines?|post-it|deco-pill|petal|doodle|pixel-|pin-|pin\b)\b/i.test(
+          withoutHcVars,
+        )
+      ) {
+        continue;
+      }
+    }
     if (
       !MOTIF_CLASS_TOKEN_RE.test(tag)
-      && !/\b(?:xp-blob|gd-orb|hc-scanline|post-it|deco-pill|petal|doodle|pixel-|pin-|pin\b)\b/i.test(tag)
+      && !/\b(?:xp-blob|gd-orb|hc-scanlines?|post-it|deco-pill|petal|doodle|pixel-|pin-|pin\b)\b/i.test(tag)
     ) {
       continue;
     }
@@ -945,10 +960,11 @@ function extractMotifHtmlSnippets(html: string, budget: number): string[] {
     let score = 5;
     if (/\bdeco-daisy(?:-[a-z0-9_-]+)?\b|\bflower(?:-[a-z0-9_-]+)?\b/i.test(tag)) score = 0;
     else if (/\bpetals?\b|\bblob(?:-[a-z0-9_-]+)?\b|blob-fill|blob-frame|xp-blob/i.test(tag)) score = 0;
+    else if (/\bhc-scanlines\b/i.test(tag)) score = 0;
     else if (/\bpin(?:-[a-z0-9_-]+)?\b|post-it|stamp|tape|bg-cork|\bcork\b/i.test(tag)) score = 0;
     else if (hasCapsuleMotifSignal(tag) && /\bdeco-pill\b|pill-coral|pill-sky|pill-lavender/i.test(tag)) score = 0;
     else if (/doodle|scribble/i.test(tag)) score = 1;
-    else if (/pixel-|starfield|scanline|corner-bracket|dot-grid/i.test(tag)) score = 2;
+    else if (/pixel-|starfield|scanline|hc-grid|corner-bracket|dot-grid/i.test(tag)) score = 2;
     else if (/style\s*=/i.test(tag) && /(?:position\s*:\s*absolute|top\s*:|left\s*:|width\s*:)/i.test(tag)) {
       score = 2;
     } else if (/style\s*=/i.test(tag)) score = 3;
