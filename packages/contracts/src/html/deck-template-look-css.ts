@@ -7,7 +7,10 @@
  * Merge the official look CSS (tokens + Motif/Layout rules + font links)
  * and reusable Motif HTML (hidden SVG symbol sheets, grain/crt hosts,
  * and visible svg-sprite Motif instances like Daisy flower wrappers)
- * into the artifact when those pieces are missing. Presentation chrome
+ * into the artifact when those pieces are missing. Page look CSS must
+ * not ingest `<style>` blocks nested inside Motif SVGs — those leak
+ * `#FCDF6C` into the stylesheet and make generic circle SVGs look like
+ * Daisy paint already landed. Presentation chrome
  * (`.slide { opacity:0; position:absolute; width/height:100% }`) is
  * neutralized on compact fills so stacked preview/export keeps a fixed
  * 1920×1080 canvas. Official catalog presenters keep iframe-relative 100% fill.
@@ -240,6 +243,14 @@ export function firstOfficialDeckTemplateId(
   return null;
 }
 
+function isStyleTagInsideSvg(html: string, styleIndex: number): boolean {
+  const before = html.slice(0, Math.max(0, styleIndex));
+  const lastOpen = before.toLowerCase().lastIndexOf('<svg');
+  if (lastOpen === -1) return false;
+  const close = html.toLowerCase().indexOf('</svg>', lastOpen);
+  return close === -1 || close > styleIndex;
+}
+
 function classAttrValue(tag: string): string {
   return /\bclass\s*=\s*(?:"([^"]*)"|'([^']*)')/i.exec(tag)?.[1]
     ?? /\bclass\s*=\s*(?:"([^"]*)"|'([^']*)')/i.exec(tag)?.[2]
@@ -355,7 +366,7 @@ function extractVisibleMotifInstances(html: string): string[] {
     const svgMatch = /<svg\b[\s\S]*?<\/svg>/i.exec(inner);
     if (!svgMatch) continue;
     const svg = svgMatch[0];
-    if (svg.length < 80 || svg.length > 2_600) continue;
+    if (svg.length < 80 || svg.length > 8_000) continue;
     if (/<symbol\b/i.test(svg)) continue;
     const className = classAttrValue(attrs);
     const key = /deco-daisy/i.test(className)
@@ -373,6 +384,9 @@ function extractVisibleMotifInstances(html: string): string[] {
   scored.sort((a, b) => a.score - b.score || a.block.length - b.block.length);
   const out: string[] = [];
   const seenKeys = new Set<string>();
+  let daisyCount = 0;
+  let starCount = 0;
+  let extraCount = 0;
   for (const row of scored) {
     const placementKey = /deco-daisy-tl/i.test(row.block)
       ? 'daisy-tl'
@@ -382,11 +396,24 @@ function extractVisibleMotifInstances(html: string): string[] {
       ? 'daisy-bl'
       : /deco-daisy-br|deco-daisy\b/i.test(row.block)
       ? 'daisy-br'
+      : /deco-star-2/i.test(row.block)
+      ? 'star-2'
+      : /deco-star/i.test(row.block)
+      ? 'star-1'
       : row.key;
     if (seenKeys.has(placementKey) || out.includes(row.block)) continue;
+    const isDaisy = placementKey.startsWith('daisy');
+    const isStar = placementKey.startsWith('star');
+    // Keep a mixed pack: flowers + stars. Four daisy corners crowd out shapes.
+    if (isDaisy && daisyCount >= 2) continue;
+    if (isStar && starCount >= 2) continue;
+    if (!isDaisy && !isStar && extraCount >= 1) continue;
     seenKeys.add(placementKey);
     out.push(row.block);
-    if (out.length >= 2) break;
+    if (isDaisy) daisyCount += 1;
+    else if (isStar) starCount += 1;
+    else extraCount += 1;
+    if (out.length >= 4) break;
   }
   return out;
 }
@@ -400,16 +427,28 @@ function isVisibleMotifInstanceBlock(block: string): boolean {
   );
 }
 
+function svgBlocksContainDaisyIdentity(html: string): boolean {
+  SVG_BLOCK_RE.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = SVG_BLOCK_RE.exec(html)) !== null) {
+    const svg = match[0] ?? '';
+    if (svg.length < 80 || /<symbol\b/i.test(svg)) continue;
+    if (/#fcdf6c/i.test(svg) && /<path\b/i.test(svg)) return true;
+  }
+  return false;
+}
+
 function destHasVisibleMotifIdentity(dest: string, instances: string[]): boolean {
   if (!dest || instances.length === 0) return instances.length === 0;
-  if (new RegExp(`\\b${OFFICIAL_DECK_MOTIF_HTML_ATTR}\\b[^>]*>\\s*<svg\\b`, 'i').test(dest)) return true;
-  // Daisy butter center / flower paths already pasted by the model.
-  if (/#fcdf6c/i.test(dest) && /<svg\b[\s\S]{80,2600}?#fcdf6c/i.test(dest)) return true;
-  if (/#fcdf6c/i.test(dest) && /<path\b[^>]*#fcdf6c|<path\b[\s\S]{0,200}#fcdf6c/i.test(dest)) return true;
-  if (/#fcdf6c/i.test(dest) && (dest.match(/<svg\b/gi) ?? []).length >= 1) return true;
-  // Empty deco shells do not count.
-  if (/deco-daisy[\s\S]{0,120}<svg\b/i.test(dest)) return true;
+  // Official wrapper that actually nests Motif SVG paint (empty deco is not enough).
+  if (/deco-daisy[\s\S]{0,240}<svg\b/i.test(dest) && svgBlocksContainDaisyIdentity(dest)) return true;
+  // Model pasted the official flower SVG itself.
+  if (svgBlocksContainDaisyIdentity(dest)) return true;
   return false;
+}
+
+function slideHasOfficialMotifPaint(slideHtml: string): boolean {
+  return /deco-daisy[\s\S]{0,240}<svg\b/i.test(slideHtml) || svgBlocksContainDaisyIdentity(slideHtml);
 }
 
 function fillEmptyMotifShells(dest: string, svg: string): string {
@@ -431,49 +470,81 @@ function insertMotifIntoSlide(slideHtml: string, motif: string): string {
   );
 }
 
+function extractBalancedElement(html: string, start: number): string | null {
+  const openMatch = /^<([a-zA-Z][\w-]*)\b[^>]*>/.exec(html.slice(start));
+  if (!openMatch) return null;
+  const tag = openMatch[1];
+  if (/\/\s*>$/.test(openMatch[0])) return openMatch[0];
+  let i = start + openMatch[0].length;
+  let depth = 1;
+  const openPat = new RegExp(`<${tag}\\b[^>]*>`, 'gi');
+  const closePat = new RegExp(`</${tag}\\s*>`, 'gi');
+  while (depth > 0 && i < html.length) {
+    openPat.lastIndex = i;
+    closePat.lastIndex = i;
+    const om = openPat.exec(html);
+    const cm = closePat.exec(html);
+    if (!cm) return null;
+    if (om && om.index < cm.index) {
+      if (!/\/\s*>$/.test(om[0])) depth += 1;
+      i = om.index + om[0].length;
+    } else {
+      depth -= 1;
+      i = cm.index + cm[0].length;
+      if (depth === 0) return html.slice(start, i);
+    }
+  }
+  return null;
+}
+
 function listSlideBlocks(html: string): Array<{ start: number; end: number; html: string }> {
   const blocks: Array<{ start: number; end: number; html: string }> = [];
   const re =
-    /<(section|div|main|article)\b[^>]*\bclass\s*=\s*(?:"[^"]*\bslide\b[^"]*"|'[^']*\bslide\b[^']*')[^>]*>[\s\S]*?<\/\1>/gi;
+    /<(section|div|main|article)\b[^>]*\bclass\s*=\s*(?:"[^"]*\bslide\b[^"]*"|'[^']*\bslide\b[^']*')[^>]*>/gi;
   let match: RegExpExecArray | null;
   while ((match = re.exec(html)) !== null) {
+    const markup = extractBalancedElement(html, match.index);
+    if (!markup) continue;
     blocks.push({
       start: match.index,
-      end: match.index + match[0].length,
-      html: match[0],
+      end: match.index + markup.length,
+      html: markup,
     });
     if (blocks.length >= 12) break;
   }
   return blocks;
 }
 
+function motifPackForSlide(instances: string[], index: number): string {
+  const daisies = instances.filter((block) => /deco-daisy/i.test(block));
+  const stars = instances.filter((block) => /deco-star/i.test(block));
+  const extras = instances.filter((block) => !/deco-daisy|deco-star/i.test(block));
+  const daisy = daisies.length > 0
+    ? daisies[index % daisies.length]
+    : instances[index % instances.length];
+  const star = stars.length > 0 ? stars[index % stars.length] : '';
+  const extra = index === 0 ? (extras[0] ?? '') : '';
+  return [daisy, star, extra].filter(Boolean).join('\n');
+}
+
 function mergeVisibleMotifInstances(dest: string, instances: string[]): string {
   if (!dest || instances.length === 0) return dest;
-  if (destHasVisibleMotifIdentity(dest, instances)) {
-    // Still heal empty Motif shells when identity SVG exists elsewhere.
-    const svg = /<svg\b[\s\S]*?<\/svg>/i.exec(instances[0] ?? '')?.[0] ?? '';
-    return svg ? fillEmptyMotifShells(dest, svg) : dest;
-  }
 
   let out = dest;
   const primarySvg = /<svg\b[\s\S]*?<\/svg>/i.exec(instances[0] ?? '')?.[0] ?? '';
   if (primarySvg) out = fillEmptyMotifShells(out, primarySvg);
-  if (destHasVisibleMotifIdentity(out, instances)) return out;
 
   const slides = listSlideBlocks(out);
   if (slides.length === 0) {
-    return insertAfterOpenBody(out, instances.slice(0, 2).join('\n'));
+    if (destHasVisibleMotifIdentity(out, instances)) return out;
+    return insertAfterOpenBody(out, motifPackForSlide(instances, 0));
   }
 
-  const coverMotif = instances[0]!;
-  const bodyMotif = instances[1] ?? instances[0]!;
   const nextSlides = slides.map((slide, index) => {
-    if (index === 0) return insertMotifIntoSlide(slide.html, coverMotif);
-    if (slides.length > 1 && index === 1) return insertMotifIntoSlide(slide.html, bodyMotif);
-    return slide.html;
+    if (slideHasOfficialMotifPaint(slide.html)) return slide.html;
+    return insertMotifIntoSlide(slide.html, motifPackForSlide(instances, index));
   });
 
-  // Rebuild from the end so indices stay valid.
   for (let i = slides.length - 1; i >= 0; i -= 1) {
     const slide = slides[i]!;
     out = `${out.slice(0, slide.start)}${nextSlides[i]}${out.slice(slide.end)}`;
@@ -579,6 +650,7 @@ export function extractOfficialDeckLookAssets(
   STYLE_BODY_RE.lastIndex = 0;
   let styleMatch: RegExpExecArray | null;
   while ((styleMatch = STYLE_BODY_RE.exec(html)) !== null) {
+    if (isStyleTagInsideSvg(html, styleMatch.index)) continue;
     const body = (styleMatch[1] ?? '').trim();
     if (body.length >= 40) cssParts.push(body);
   }

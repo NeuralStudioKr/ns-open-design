@@ -366,9 +366,9 @@ html, body { overflow: visible !important; height: auto !important; }
       }
       if (
         assets.motifHtml.some((block) => /deco-daisy[\s\S]*?<svg\b|#fcdf6c/i.test(block))
-        && !/#fcdf6c/i.test(merged)
+        && !/deco-daisy[\s\S]{0,240}<svg\b[\s\S]{80,}?#fcdf6c/i.test(merged)
       ) {
-        failures.push(`${folder}: missing Daisy Motif SVG identity (#fcdf6c)`);
+        failures.push(`${folder}: missing Daisy Motif flower SVG (not just CSS / deco class)`);
       }
     }
 
@@ -410,6 +410,44 @@ html, body { overflow: visible !important; height: auto !important; }
     const withMotif = mergeOfficialDeckLookCss(cssOnly, assets);
     expect(withMotif).toContain('<symbol id="pin"');
     expect(deckHtmlHasOfficialLookCss(cssOnly, assets)).toBe(true);
+  });
+
+  it('still injects Daisy flower SVG when the fill already has tiny decorative <svg> dots', () => {
+    const official = loadOfficialLookSource(join(EXAMPLES_DIR, 'html-ppt-zhangzara-daisy-days/example.html'));
+    const assets = extractOfficialDeckLookAssets(official)!;
+    expect(assets.css).not.toMatch(/\.cls-1\s*\{[^}]*#fcdf6c/i);
+    expect(assets.motifHtml.some((block) => /deco-daisy[\s\S]*?<svg\b/i.test(block))).toBe(true);
+
+    const linuxCover = `<!doctype html><html lang="ko"><body>
+<section class="slide" style="background:#F5F0E6;width:1920px;height:1080px;position:relative">
+  <h1>Linux Internals for Senior Engineers</h1>
+  <p>커널 아키텍처 · 스케줄러 · 메모리 서브시스템 · 시스템콜 경계 · 성능 튜닝까지 — 실무 딥다이브</p>
+  <span style="border:3px solid #111;border-radius:14px;background:#7ECDC0;box-shadow:4px 4px 0 #111">Kernel 6.x</span>
+  <span style="border:3px solid #111;border-radius:14px;background:#FDE366;box-shadow:4px 4px 0 #111">시니어 개발자 대상</span>
+  <span style="border:3px solid #111;border-radius:14px;background:#F7C8D4;box-shadow:4px 4px 0 #111">Professional</span>
+  <div style="position:absolute;bottom:24px;right:24px;display:flex;gap:8px">
+    <svg width="12" height="12"><circle cx="6" cy="6" r="5" fill="none" stroke="#7ECDC0"/></svg>
+    <svg width="12" height="12"><circle cx="6" cy="6" r="5" fill="none" stroke="#FDE366"/></svg>
+    <svg width="12" height="12"><circle cx="6" cy="6" r="5" fill="none" stroke="#F7C8D4"/></svg>
+  </div>
+</section>
+<section class="slide" style="background:#F5F0E6;width:1920px;height:1080px;position:relative">
+  <h2>Scheduler</h2>
+  <p>CFS · runqueue · latency</p>
+</section>
+<section class="slide" style="background:#7ECDC0;width:1920px;height:1080px;position:relative">
+  <h2>Memory</h2>
+</section>
+</body></html>`;
+
+    const merged = mergeOfficialDeckLookCss(linuxCover, assets);
+    expect(merged).toMatch(/deco-daisy[\s\S]{0,240}<svg\b[\s\S]{80,}?#fcdf6c/i);
+    expect(merged).toMatch(/deco-star[\s\S]{0,400}<svg\b/i);
+    expect(merged).toContain('Linux Internals for Senior Engineers');
+    expect(merged).toContain('Kernel 6.x');
+    expect((merged.match(/deco-daisy[\s\S]{0,240}<svg\b/gi) ?? []).length).toBeGreaterThanOrEqual(2);
+    const twice = mergeOfficialDeckLookCss(merged, assets);
+    expect(twice).toBe(merged);
   });
 
   it('injects Daisy Motif SVG instances into sparse compact fills (CSS alone cannot paint flowers)', () => {

@@ -217,6 +217,29 @@ Capsule은 empty `.deco-pill` + look CSS로 살아나지만 Daisy 정체성은 ~
 - [x] empty deco shell SVG fill
 - [x] export cache v24
 
+### 0.50 2026-08-19 — Daisy 대표 SVG가 CSS hex + 점 SVG에 가려 persist 주입 스킵
+
+§0.49가 Daisy flower instance를 persist에 넣었지만, Linux Internals 커버처럼 **크림 + 네오브루탈 태그 + 작은 원**만 남는 결과가 계속 나왔다.
+
+잔여 구멍:
+1. `extractOfficialDeckLookAssets`가 Motif SVG 안의 `<style>.cls-1{fill:#FCDF6C}</style>`까지 page look CSS로 흡입
+2. `destHasVisibleMotifIdentity`가 “문서 어딘가에 `#fcdf6c` + `<svg>` 하나”면 이미 Daisy paint로 판정
+3. 모델이 찍은 12px circle SVG가 그 조건을 충족 → **꽃/별 instance 주입 스킵**
+4. look CSS 셀렉터 `.deco-daisy-tl`만 있으면 화면에 아무 도형도 안 그려짐
+
+수정 (persist HTML, full `example.html` 프롬프트 금지 유지):
+- SVG 내부 `<style>`은 look CSS에서 제외
+- identity는 **실제 flower SVG** (`deco-daisy` + path + `#fcdf6c` in `<svg>`)만 인정
+- cover/body 전 장에 daisy + star pack 주입 (empty deco shell은 계속 heal)
+- export cache `v25`
+
+구현 현황:
+
+- [x] Linux Internals + SVG dots red spec
+- [x] look CSS가 SVG `.cls-1` hex를 흡입하지 않음
+- [x] catalog sweep이 flower SVG instance를 요구
+- [x] export cache v25
+
 ### 0.48 2026-08-19 — 연속 `incomplete_output` (shell → 1장 fill)
 
 사용자 재현: 같은 대화에서
@@ -1245,6 +1268,7 @@ User-message 쪽 `[Existing deck edit]` / `<attached-preview-comments>` 주입�
 | 2026-08-13 | **§0.0 정책 개정** — template = layout vocabulary + visual look, 페이지 수/순서/구성은 브리프 기반. content-swap → pick-and-choose layout roles. daemon Clone default count = 6 (shells.length 아님), `pickTemplateShells` role-based scoring 도입. `template-visual-kit.ts` HARD_RULES 재작성, `DEFAULT_MAX_CHARS` 12000 → 14000. |
 | 2026-08-18 | Clone content-fill motif 보정 — 8/13 SVG hang 방지 패치가 first fill에서 `Motif sprites`/`Decoration CSS`/`Layout CSS`를 통째로 생략해 Daisy/Capsule 템플릿 정체성이 약해졌다. `slimTemplateVisualKitForFill`이 큰 SVG sprite sheet와 전체 stylesheet dump는 계속 제거하되, Daisy star/rainbow·Capsule pill/capsule·Terminal scanline 같은 compact motif recipe와 짧은 Decoration/Layout CSS cue를 보존하도록 변경했다. |
 | 2026-08-18 | §0.20 — html-ppt identity scope. 공유 `:root --bg:#ffffff` 대신 `.tpl-*` host 토큰/슬라이드 surface/폰트를 kit 계약으로 쓰고, SKILL `copy index.html` filesystem 지시를 neutralize. |
+| 2026-08-19 | §0.50 — Daisy flower persist가 CSS `#FCDF6C` + 점 SVG에 스킵됨. SVG-internal style 제외 · flower SVG identity · cache v25. |
 | 2026-08-19 | §0.45 — Motif fill이 presenter로 오인되어 1920 letterbox 이탈. shell 필수 · body-first compact · cache v23. |
 | 2026-08-19 | §0.44 — html-ppt catalog 1920 lock opt-in. presenter 감지 확대 · look/stage만 lock · cache v22. |
 | 2026-08-19 | §0.43 — 공식 example 프레젠터에 stacked 1920 neutralize가 들어가 템플릿 preview/썸네일이 잘림. presenter 제외 · cache v21. |
