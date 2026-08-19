@@ -18,20 +18,89 @@ import {
   type SanitizeAssistantProseOptions,
 } from "@open-design/contracts";
 
+const DECK_MOTIF_ABSOLUTE_DIV_TAIL_RE =
+  /<(?:div|span)\b[^>]*\bstyle\s*=\s*["'][\s\S]*?position\s*:\s*absolute[\s\S]*$/i;
+const DECK_MOTIF_PILL_RADIUS_TAIL_RE =
+  /<(?:div|span)\b[^>]*\bstyle\s*=\s*["'][\s\S]*?border-radius\s*:\s*9999px[\s\S]*$/i;
+const DECK_CARD_STYLE_DIV_TAIL_RE =
+  /<(?:div|article)\b[^>]*\bclass\s*=\s*["'][^"']*\b(?:card|pill|chip|deco)[^"']*["'][^>]*\bstyle\s*=[\s\S]*$/i;
+const DECK_BROKEN_SECTION_CSS_DEBRIS_TAIL_RE =
+  /<\/(?:section|div)>\s*[-a-z]*weight\s*:[\s\S]*$/i;
+
 /**
- * Display sanitizer with a web-local last pass for classic deck-nav JS.
+ * Display-only last pass for Capsule motif pills / truncated slide HTML that
+ * leaked outside `<artifact>`. Contracts SSOT already chops these; this copy
+ * stays in the web bundle so a stale `@open-design/contracts` dist cannot
+ * re-paint `position:absolute` pills or `</section>-weight:` debris in chat.
+ */
+function stripLeakedDeckMotifHtmlTail(input: string): string {
+  if (!input) return input;
+  for (const re of [
+    DECK_MOTIF_ABSOLUTE_DIV_TAIL_RE,
+    DECK_MOTIF_PILL_RADIUS_TAIL_RE,
+    DECK_CARD_STYLE_DIV_TAIL_RE,
+    DECK_BROKEN_SECTION_CSS_DEBRIS_TAIL_RE,
+  ]) {
+    const match = re.exec(input);
+    if (!match || match.index === undefined) continue;
+    return input.slice(0, match.index).trimEnd();
+  }
+  return input;
+}
+
+function stripLeakedDeckMotifHtmlForDisplay(
+  input: string,
+  preserveArtifactBodies: boolean,
+): string {
+  if (!input) return input;
+  if (!preserveArtifactBodies) return stripLeakedDeckMotifHtmlTail(input);
+  let result = "";
+  let cursor = 0;
+  while (cursor < input.length) {
+    const open = input.indexOf("<artifact", cursor);
+    if (open === -1) {
+      result += stripLeakedDeckMotifHtmlTail(input.slice(cursor));
+      break;
+    }
+    result += stripLeakedDeckMotifHtmlTail(input.slice(cursor, open));
+    const gt = input.indexOf(">", open);
+    if (gt === -1) {
+      result += input.slice(open);
+      break;
+    }
+    const close = input.toLowerCase().indexOf("</artifact>", gt);
+    if (close === -1) {
+      result += input.slice(open);
+      break;
+    }
+    const end = close + "</artifact>".length;
+    result += input.slice(open, end);
+    cursor = end;
+  }
+  return result;
+}
+
+/**
+ * Display sanitizer with a web-local last pass for classic deck-nav JS and
+ * leaked Capsule motif HTML.
  *
  * Contracts SSOT already strips these dialects; this wrapper keeps a hard
  * fingerprint chop in the web bundle so a stale `@open-design/contracts` dist
  * (or Next compile cache) cannot re-paint
- * `(function(){ document.addEventListener('keydown',function(e){ …` in chat.
+ * `(function(){ document.addEventListener('keydown',function(e){ …` or
+ * `<div style="position:absolute;border-radius:9999px">Nx</div>` in chat.
  */
 export function sanitizeAssistantProseForDisplay(
   input: string,
   options: SanitizeAssistantProseOptions = {},
 ): string {
   const fromContracts = sanitizeAssistantProseForDisplayContracts(input, options);
-  return stripHardDeckNavJsFingerprints(fromContracts);
+  const preservingArtifacts =
+    options.streaming === true || options.preserveClosedArtifact === true;
+  return stripLeakedDeckMotifHtmlForDisplay(
+    stripHardDeckNavJsFingerprints(fromContracts),
+    preservingArtifacts,
+  );
 }
 
 /**

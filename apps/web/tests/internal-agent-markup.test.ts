@@ -10,6 +10,36 @@ import { stripLeakedPseudoToolXml } from "../src/utils/stripLeakedPseudoToolXml"
 import { sanitizeChatMessageLeakedPseudoTool } from "../src/utils/sanitizeChatMessageLeakedPseudoTool";
 
 describe("internalAgentMarkup", () => {
+  it("hard-strips Capsule motif pills and broken section CSS via web display path", () => {
+    const leaked = [
+      '<div style="position:absolute;border-radius:9999px;border:2px solid ',
+      "#1E1E1E;display:flex;align-items:center;justify-content:center;",
+      "font-family:'Space Grotesk',sans-serif;font-weight:700;",
+      'background:#C5B5E0;width:140px;height:60px;top:22%;right:10%">Nx</div>',
+      '<div style="position:absolute;border-radius:9999px;background:#8BB4F7">PNPM WS</div>',
+      "</div>",
+      "</section>-weight:700;margin-bottom:6px\">🔴 Git 성능 저하</div>",
+      '<div class="card" style="padding:24px 파이프라인 복잡도</div>',
+    ].join("\n");
+    for (const streaming of [true, false]) {
+      expect(sanitizeAssistantProseForDisplay(`초안을 다듬는 중입니다.\n\n${leaked}`, { streaming })).toBe(
+        "초안을 다듬는 중입니다.",
+      );
+      expect(sanitizeAssistantProseForDisplay(leaked, { streaming }).trim()).toBe("");
+    }
+  });
+
+  it("keeps motif HTML inside an open streaming artifact", () => {
+    const input = [
+      "초안.",
+      '<artifact identifier="deck.html">',
+      '<div style="position:absolute;border-radius:9999px">Nx</div>',
+    ].join("\n");
+    const out = sanitizeAssistantProseForDisplay(input, { streaming: true });
+    expect(out).toContain("<artifact");
+    expect(out).toContain("position:absolute");
+  });
+
   it("hard-strips classic keydown/click deck-nav JS via web display path", () => {
     const leaked = [
       "(function(){",

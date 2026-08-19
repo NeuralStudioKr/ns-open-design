@@ -57,6 +57,29 @@ describe("agent-prose-sanitize SSOT", () => {
     expect(out).not.toContain("<section");
   });
 
+  it("strips Capsule motif pills and broken section CSS leaked into chat", () => {
+    const input = [
+      '<div style="position:absolute;border-radius:9999px;border:2px solid ',
+      "#1E1E1E;display:flex;align-items:center;justify-content:center;",
+      "font-family:'Space Grotesk',sans-serif;font-weight:700;",
+      'background:#C5B5E0;width:140px;height:60px;top:22%;right:10%">Nx</div>',
+      '<div style="position:absolute;border-radius:9999px;background:#8BB4F7">PNPM WS</div>',
+      "</div>",
+      "</section>-weight:700;margin-bottom:6px\">🔴 Git 성능 저하</div>",
+      '<div class="card" style="padding:24px 파이프라인 복잡도</div>',
+    ].join("\n");
+
+    expect(sanitizeAssistantProseForDisplay(input)).toBe("");
+    expect(
+      sanitizeAssistantProseForDisplay(`초안을 다듬는 중입니다.\n\n${input}`),
+    ).toBe("초안을 다듬는 중입니다.");
+    expect(
+      sanitizeAssistantProseForDisplay(
+        '진행.\n</section>-weight:700;margin-bottom:6px">🔴 Git 성능 저하</div>',
+      ),
+    ).toBe("진행.");
+  });
+
   it("strips assistant replies that expose missing internal slideIndex", () => {
     const input = [
       "댓글에 `slideIndex` 정보가 없어서 어느 슬라이드인지 확인이 안 돼요. 슬라이드 번호를 알려주시면 바로 패치할게요!",
