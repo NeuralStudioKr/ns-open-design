@@ -582,7 +582,8 @@ function cssMotifSeedProofClass(block: string): string | null {
 
 /**
  * True when dest already shows Motif identity for the given seeds.
- * Daisy uses flower-SVG proof; Capsule/Sakura/Hermes/Pastel use class presence.
+ * Daisy uses flower-SVG proof; Capsule/Sakura/Hermes/Pastel use HTML class
+ * presence (not Motif class names that only appear inside look CSS rules).
  */
 function destHasMotifIdentityProof(dest: string, seeds: string[]): boolean {
   if (!dest || seeds.length === 0) return seeds.length === 0;
@@ -592,13 +593,7 @@ function destHasMotifIdentityProof(dest: string, seeds: string[]): boolean {
   for (const seed of cssSeeds) {
     const proofClass = cssMotifSeedProofClass(seed);
     if (!proofClass) continue;
-    if (proofClass === 'petals' || proofClass === 'petal') {
-      if (!/\b(?:petals?)\b/i.test(dest)) return false;
-      continue;
-    }
-    if (!destHasMotifHost(dest, proofClass) && !new RegExp(`\\b${proofClass.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(dest)) {
-      return false;
-    }
+    if (!destHasMotifHost(dest, proofClass)) return false;
   }
   return true;
 }
