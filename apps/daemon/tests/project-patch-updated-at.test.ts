@@ -112,4 +112,19 @@ describe('messageUpsertIsProjectActivity', () => {
       ),
     ).toBe(false);
   });
+
+  it('ignores endedAt number/string aliases and success status synonyms', () => {
+    expect(
+      messageUpsertIsProjectActivity(
+        { content: 'hello', runStatus: 'succeeded', endedAt: 1_700_000_000_000 },
+        { content: 'hello', runStatus: 'completed', endedAt: '1700000000000' },
+      ),
+    ).toBe(false);
+    expect(
+      messageUpsertIsProjectActivity(
+        { content: 'hello', runStatus: 'succeeded', endedAt: 10 },
+        { content: 'hello', runStatus: 'success', endedAt: '1970-01-01T00:00:00.010Z' },
+      ),
+    ).toBe(false);
+  });
 });

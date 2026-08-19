@@ -4673,17 +4673,15 @@ export function ProjectView({
             kind: 'deck' as const,
             entryFile: entryPath,
           };
-          const updated: Project = {
-            ...project,
-            metadata,
-            updatedAt: Date.now(),
-          };
-          onProjectChange(updated);
+          // Do not optimistic-bump updatedAt — open/hydrate entry pinning is
+          // not a user edit. Prefer the daemon's preserved timestamp.
+          onProjectChange({ ...project, metadata });
           clearProjectCoverCache(project.id);
           try {
             // Await so DesignsTab / cover-hints see entryFile before the user
             // lands back on the project list (fire-and-forget left Canvas pins).
-            await patchProject(project.id, { metadata });
+            const patched = await patchProject(project.id, { metadata });
+            if (patched) onProjectChange(patched);
           } catch {
             // Local state already pinned the deck entry.
           }

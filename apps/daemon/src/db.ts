@@ -1211,12 +1211,42 @@ export function messageUpsertIsProjectActivity(
 ): boolean {
   if (!existing) return true;
   if ((existing.content ?? '') !== (incoming.content ?? existing.content ?? '')) return true;
-  if ((existing.runStatus ?? null) !== (incoming.runStatus ?? existing.runStatus ?? null)) {
-    return true;
-  }
-  if ((existing.endedAt ?? null) !== (incoming.endedAt ?? existing.endedAt ?? null)) return true;
-  // producedFiles is often filled on open via HTML recovery — that is not a
-  // user edit and must not bump Home 「방금 전」.
+
+  const normalizeStatus = (value: unknown): string | null => {
+    if (value == null || value === '') return null;
+    const raw = String(value).trim().toLowerCase();
+    if (raw === 'success' || raw === 'completed' || raw === 'complete' || raw === 'done') {
+      return 'succeeded';
+    }
+    if (raw === 'failure' || raw === 'error') return 'failed';
+    if (raw === 'cancelled') return 'canceled';
+    return raw;
+  };
+  const existingStatus = normalizeStatus(existing.runStatus);
+  const incomingStatus = normalizeStatus(
+    incoming.runStatus !== undefined ? incoming.runStatus : existing.runStatus,
+  );
+  if (existingStatus !== incomingStatus) return true;
+
+  const normalizeEndedAt = (value: unknown): number | null => {
+    if (value == null || value === '') return null;
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+    if (typeof value === 'string' && value.trim()) {
+      const asNum = Number(value);
+      if (Number.isFinite(asNum)) return asNum;
+      const asDate = Date.parse(value);
+      if (Number.isFinite(asDate)) return asDate;
+    }
+    return null;
+  };
+  const existingEnded = normalizeEndedAt(existing.endedAt);
+  const incomingEnded = normalizeEndedAt(
+    incoming.endedAt !== undefined ? incoming.endedAt : existing.endedAt,
+  );
+  if (existingEnded !== incomingEnded) return true;
+
+  // producedFiles / events / telemetry flags are often filled on open via HTML
+  // recovery — that is not a user edit and must not bump Home 「방금 전」.
   return false;
 }
 

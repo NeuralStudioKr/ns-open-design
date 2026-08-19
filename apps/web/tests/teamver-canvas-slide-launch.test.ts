@@ -484,6 +484,8 @@ describe("canvasSlideLaunch", () => {
     expect(createHomeSlideCreateQuickSettings().customSlideCount).toBeNull();
     expect(parseCustomSlideCountInput("")).toBeNull();
     expect(parseCustomSlideCountInput("12")).toBe(12);
+    expect(parseCustomSlideCountInput("15")).toBe(15);
+    expect(parseCustomSlideCountInput("16")).toBeNull();
     expect(parseCustomSlideCountInput("41")).toBeNull();
     expect(resolveCanvasSlideQuickSlideCount({
       length: "short",
@@ -811,6 +813,17 @@ describe("canvasSlideLaunch", () => {
     expect(cloneSrc).toContain("skipArtifactPublicationGuard: true");
     expect(projectView).not.toContain("Clone already wrote deck.html");
     expect(projectView).not.toContain("templateClonedDeckSeeded === true");
+  });
+
+  it("does not optimistic-bump project updatedAt when pinning entryFile on open", () => {
+    const projectView = readWebSource("src/components/ProjectView.tsx");
+    const finalizeSrc = projectView.slice(
+      projectView.indexOf("const finalizeSlideOnlyDeckArtifacts = useCallback"),
+      projectView.indexOf("finalizeSlideOnlyDeckArtifactsRef.current = finalizeSlideOnlyDeckArtifacts"),
+    );
+    expect(finalizeSrc).toContain("Do not optimistic-bump updatedAt");
+    expect(finalizeSrc).toContain("if (patched) onProjectChange(patched)");
+    expect(finalizeSrc).not.toContain("updatedAt: Date.now()");
   });
 
   it("rebinds create-slides from URL after workspace bootstrap instead of dropping the modal", () => {
