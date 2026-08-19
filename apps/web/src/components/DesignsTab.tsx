@@ -25,6 +25,7 @@ import { LiveArtifactBadges } from "./LiveArtifactBadges";
 import { Toast } from "./Toast";
 import { isTeamverEmbedMode } from "../teamver/designApiBase";
 import { useTeamverBranding } from "../teamver/branding/TeamverBrandingProvider";
+import { projectListCardCategory } from "../teamver/projectListCardCategory";
 import { DesignsTabProjectThumb } from "../teamver/components/DesignsTabProjectThumb";
 import { TeamverLatestPublishChip } from "../teamver/components/TeamverLatestPublishChip";
 import {
@@ -775,7 +776,7 @@ export function DesignsTab({
 										{designSystemProject ? (
 											<DesignSystemProjectTag />
 										) : (
-											<ProjectTag category={projectCategory(p)} />
+											<ProjectTag category={projectListCardCategory(p, { slideOnly: slideOnlyMvp })} />
 										)}
 									</div>
 									<div className="design-card-name" title={p.name}>
@@ -964,21 +965,7 @@ function isOrbitProject(project: Project): boolean {
 }
 
 
-type ProjectCategory = "prototype" | "live-artifact" | "slide" | "media";
-
-function projectCategory(project: Project): ProjectCategory {
-	const meta = project.metadata;
-	if (meta?.intent === "live-artifact" || project.skillId === "live-artifact") {
-		return "live-artifact";
-	}
-	if (meta?.kind === "deck") return "slide";
-	if (meta?.kind === "image" || meta?.kind === "video" || meta?.kind === "audio") {
-		return "media";
-	}
-	return "prototype";
-}
-
-function ProjectTag({ category }: { category: ProjectCategory }) {
+function ProjectTag({ category }: { category: ReturnType<typeof projectListCardCategory> }) {
 	const t = useT();
 	const label =
 		category === "live-artifact"

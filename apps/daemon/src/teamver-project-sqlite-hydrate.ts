@@ -102,7 +102,7 @@ export function hydrateTeamverProjectInSqlite(
       skillId: null,
       designSystemId: null,
       pendingPrompt: null,
-      metadata: { kind: 'prototype' },
+      metadata: { kind: 'deck' },
       customInstructions: null,
       createdAt,
       updatedAt,

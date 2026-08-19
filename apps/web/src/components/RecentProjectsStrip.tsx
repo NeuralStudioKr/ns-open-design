@@ -16,6 +16,8 @@ import { Icon } from './Icon';
 import { STATUS_LABEL_KEYS } from './DesignsTab';
 import { isDesignSystemProject, isPublishedDesignSystemProject } from './design-system-project';
 import { isTeamverEmbedMode } from '../teamver/designApiBase';
+import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
+import { projectListCardCategory } from '../teamver/projectListCardCategory';
 import { TeamverLatestPublishChip } from '../teamver/components/TeamverLatestPublishChip';
 import { ProjectCardHtmlCover } from '../teamver/components/ProjectCardHtmlCover';
 import {
@@ -68,6 +70,7 @@ export function RecentProjectsStrip({
   workspaceScopeKey,
 }: Props) {
   const t = useT();
+  const { slideOnlyMvp } = useTeamverBranding();
   const analytics = useAnalytics();
   const renameTitleId = useId();
   const confirmTitleId = useId();
@@ -396,7 +399,7 @@ export function RecentProjectsStrip({
                     {designSystemProject ? (
                       <DesignSystemProjectTag />
                     ) : (
-                      <ProjectTag category={projectCategory(project)} />
+                      <ProjectTag category={projectListCardCategory(project, { slideOnly: slideOnlyMvp })} />
                     )}
                   </div>
                   <div className="recent-projects__card-name">{project.name}</div>
@@ -532,21 +535,7 @@ function relativeTime(ts: number, t: ReturnType<typeof useT>): string {
   return new Date(ts).toLocaleDateString();
 }
 
-type ProjectCategory = 'prototype' | 'live-artifact' | 'slide' | 'media';
-
-function projectCategory(project: Project): ProjectCategory {
-  const meta = project.metadata;
-  if (meta?.intent === 'live-artifact' || project.skillId === 'live-artifact') {
-    return 'live-artifact';
-  }
-  if (meta?.kind === 'deck') return 'slide';
-  if (meta?.kind === 'image' || meta?.kind === 'video' || meta?.kind === 'audio') {
-    return 'media';
-  }
-  return 'prototype';
-}
-
-function ProjectTag({ category }: { category: ProjectCategory }) {
+function ProjectTag({ category }: { category: ReturnType<typeof projectListCardCategory> }) {
   const t = useT();
   const label =
     category === 'live-artifact'
