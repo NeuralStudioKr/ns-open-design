@@ -339,10 +339,13 @@ import {
   shouldCancelTipRemountSyncHostMeasureRetry,
   shouldReleaseTipRemountChromeAfterSyncHostMeasure,
   shouldReleaseTipRemountChromeAfterFitSettleRemasure,
+  TIP_REMOUNT_FIT_SETTLE_CHROME_RELEASE_MS,
   TIP_REMOUNT_FIT_SETTLE_LAST_REMEASURE_MS,
+  TIP_REMOUNT_FIT_SETTLE_REMEASURE_DELAYS_MS,
   shouldIgnoreOdEditTargetsMembershipNoiseDuringTipProtect,
   shouldClearManualEditSelectionOnEmptyOdEditTargets,
   shouldClearTipSyncedIdentityStickyRetainOnFullCatalog,
+  shouldDeferTipSyncedIdentityStickyClearUntilAfterPreserve,
   shouldArmTipRemountFitSettleForDeckHostFit,
   shouldRemeasureTipRemountAfterDeckHostFitSettle,
   shouldScheduleTipRemountFitSettleRemasureOnLoad,
@@ -8097,12 +8100,13 @@ function HtmlViewer({
     }
     // Multi: refresh scale/offset after fit nudges so union tracks post-fit tip (461).
     refreshManualEditHostMetricsAfterTipRemountMulti(frame, appliedAny);
-    // Last scheduled fit nudge remasure — release inert; latch stays for wild-jump (476).
+    // Last chrome-release fit nudge remasure — release inert; later 900ms
+    // remasure only updates geometry (476/478). Latch stays for wild-jump.
     if (shouldReleaseTipRemountChromeAfterFitSettleRemasure(
       manualEditTipRemountChromeSuppressedRef.current,
       appliedAny,
       remasureDelayMs,
-      TIP_REMOUNT_FIT_SETTLE_LAST_REMEASURE_MS,
+      TIP_REMOUNT_FIT_SETTLE_CHROME_RELEASE_MS,
     )) {
       manualEditTipRemountChromeSuppressedRef.current = false;
       setManualEditTipRemountChromeSuppressed(false);
@@ -8112,7 +8116,7 @@ function HtmlViewer({
     }
   }
 
-  /** Schedule fit-settle remasures aligned with early deck fit nudge delays (460). */
+  /** Schedule fit-settle remasures aligned with early deck fit nudge delays (460/478). */
   function scheduleTipRemountRemasureAfterDeckHostFitSettle(
     getFrame: () => HTMLIFrameElement | null,
   ) {
@@ -8132,8 +8136,9 @@ function HtmlViewer({
     )) {
       return;
     }
-    // Mirror early DEFAULT_FIT_NUDGE_DELAYS_MS — scale usually settles here.
-    const delaysMs = [50, 150, TIP_REMOUNT_FIT_SETTLE_LAST_REMEASURE_MS];
+    // Early DEFAULT_FIT_NUDGE_DELAYS_MS inside tip latch — include 900ms so
+    // chrome released at 400ms does not jump on the next fit nudge (478).
+    const delaysMs = [...TIP_REMOUNT_FIT_SETTLE_REMEASURE_DELAYS_MS];
     const timers = delaysMs.map((delay) => window.setTimeout(() => {
       remeasureTipRemountAfterDeckHostFitSettle(getFrame(), delay);
     }, delay));
@@ -9845,17 +9850,17 @@ function HtmlViewer({
           data.targets.length,
         );
         const selectionIdsChangedEarly = selectionIdsChangedEarlyRaw && !ignoreMembershipNoise;
-        if (selectionIdsChangedEarly) {
-          manualEditTipRemountIdentityHoldUntilRef.current = 0;
-          manualEditTipSyncedIdentityRetainRef.current = false;
-        } else if (shouldClearTipSyncedIdentityStickyRetainOnFullCatalog(
+        // Drop sticky for *later* catalogs after session ends — this tick still
+        // tip-preserves so Mixed does not one-shot on the transition (479).
+        const clearStickyAfterPreserve = shouldClearTipSyncedIdentityStickyRetainOnFullCatalog(
           manualEditTipSyncedIdentityRetainRef.current,
           tipRemountSession,
           selectedIdsForPreserve.length,
           refreshedProbe.length,
           data.targets.length,
-        )) {
-          // Session/hold over + complete catalog — resume live identity (477).
+        );
+        if (selectionIdsChangedEarly) {
+          manualEditTipRemountIdentityHoldUntilRef.current = 0;
           manualEditTipSyncedIdentityRetainRef.current = false;
         }
         const tipRemountActive = shouldRetainTipSyncedIdentityAfterHold(
@@ -9863,6 +9868,12 @@ function HtmlViewer({
           manualEditTipSyncedIdentityRetainRef.current,
           selectionIdsChangedEarly,
         );
+        if (
+          !selectionIdsChangedEarly
+          && shouldDeferTipSyncedIdentityStickyClearUntilAfterPreserve(clearStickyAfterPreserve)
+        ) {
+          manualEditTipSyncedIdentityRetainRef.current = false;
+        }
         // Tip-remount: fingerprint the catalog we will store (preserved tip
         // identity), not raw bridge — latch must match React state (468/470).
         const priorCatalogForPreserve = manualEditTargetsRef.current;

@@ -144,24 +144,36 @@ export function shouldReleaseTipRemountChromeAfterSyncHostMeasure(
   return true;
 }
 
+/** Chrome becomes interactive after this fit-nudge remasure (476). */
+export const TIP_REMOUNT_FIT_SETTLE_CHROME_RELEASE_MS = 400;
+
 /**
- * After a fit-settle remasure pass, release inert on the last scheduled nudge
- * remasure (50/150/400) once geometry applied — do not wait for the full
- * ~1.2s wild-jump latch (476). Latch stays for wild-jump skip separately.
+ * @deprecated Use TIP_REMOUNT_FIT_SETTLE_CHROME_RELEASE_MS — kept for call-site clarity.
+ */
+export const TIP_REMOUNT_FIT_SETTLE_LAST_REMEASURE_MS = TIP_REMOUNT_FIT_SETTLE_CHROME_RELEASE_MS;
+
+/**
+ * Tip remasure delays inside the ~1.2s fit-settle latch. Mirrors early
+ * DEFAULT_FIT_NUDGE_DELAYS_MS including 900ms so chrome does not jump after
+ * the 400ms release (478). Do not include 1600+ (outside tip latch).
+ */
+export const TIP_REMOUNT_FIT_SETTLE_REMEASURE_DELAYS_MS = [50, 150, 400, 900] as const;
+
+/**
+ * After a fit-settle remasure pass, release inert once the chrome-release
+ * delay remasure applied geometry — do not wait for the full ~1.2s wild-jump
+ * latch (476). Later in-latch remasures (900ms) only update geometry (478).
  */
 export function shouldReleaseTipRemountChromeAfterFitSettleRemasure(
   chromeSuppressed: boolean,
   appliedAny: boolean,
   remasureDelayMs: number,
-  lastScheduledDelayMs = 400,
+  chromeReleaseDelayMs: number = TIP_REMOUNT_FIT_SETTLE_CHROME_RELEASE_MS,
 ): boolean {
   return chromeSuppressed
     && appliedAny
-    && remasureDelayMs >= lastScheduledDelayMs;
+    && remasureDelayMs >= chromeReleaseDelayMs;
 }
-
-/** Final deck-fit nudge delay used for tip-remount remasure schedule (460/476). */
-export const TIP_REMOUNT_FIT_SETTLE_LAST_REMEASURE_MS = 400;
 
 /**
  * Empty/partial od-edit-targets during tip protect is settle noise — do not
@@ -649,8 +661,9 @@ export function shouldClearTipSyncedIdentityStickyRetainOnGraceClear(
 
 /**
  * After tip remount session/hold ends, the first complete non-noise catalog can
- * drop sticky retain so inspector/Mixed track live source again (477).
- * Keeps sticky during session and during empty/partial catalog noise (473).
+ * drop sticky retain so later catalogs track live identity (477).
+ * The clear applies to *subsequent* broadcasts — the transition catalog should
+ * still tip-preserve this tick to avoid Mixed one-shot (479).
  */
 export function shouldClearTipSyncedIdentityStickyRetainOnFullCatalog(
   stickyArmed: boolean,
@@ -662,6 +675,16 @@ export function shouldClearTipSyncedIdentityStickyRetainOnFullCatalog(
   if (!stickyArmed || tipRemountSessionActive) return false;
   if (selectedCount <= 0 || catalogLength <= 0) return false;
   return resolvedCount >= selectedCount;
+}
+
+/**
+ * Compute tip protect for this od-edit-targets tick before dropping sticky so
+ * the transition catalog still preserves tip identity (479).
+ */
+export function shouldDeferTipSyncedIdentityStickyClearUntilAfterPreserve(
+  clearStickyForLaterCatalogs: boolean,
+): boolean {
+  return clearStickyForLaterCatalogs;
 }
 
 /**

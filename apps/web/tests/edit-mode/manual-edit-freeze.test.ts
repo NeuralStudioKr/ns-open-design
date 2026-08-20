@@ -12,10 +12,13 @@ import {
   shouldCancelTipRemountSyncHostMeasureRetry,
   shouldReleaseTipRemountChromeAfterSyncHostMeasure,
   shouldReleaseTipRemountChromeAfterFitSettleRemasure,
+  TIP_REMOUNT_FIT_SETTLE_CHROME_RELEASE_MS,
   TIP_REMOUNT_FIT_SETTLE_LAST_REMEASURE_MS,
+  TIP_REMOUNT_FIT_SETTLE_REMEASURE_DELAYS_MS,
   shouldIgnoreOdEditTargetsMembershipNoiseDuringTipProtect,
   shouldClearManualEditSelectionOnEmptyOdEditTargets,
   shouldClearTipSyncedIdentityStickyRetainOnFullCatalog,
+  shouldDeferTipSyncedIdentityStickyClearUntilAfterPreserve,
   shouldArmTipRemountFitSettleForDeckHostFit,
   shouldRemeasureTipRemountAfterDeckHostFitSettle,
   shouldScheduleTipRemountFitSettleRemasureOnLoad,
@@ -36,6 +39,8 @@ import {
   shouldPreserveTipSyncedStylesOnOdEditTargets,
   shouldRetainTipSyncedIdentityAfterHold,
   shouldClearTipSyncedIdentityStickyRetainOnGraceClear,
+  shouldClearTipSyncedIdentityStickyRetainOnFullCatalog,
+  shouldDeferTipSyncedIdentityStickyClearUntilAfterPreserve,
   shouldReadSingleInspectorStylesFromSourceOnlyForOdEditTargets,
   tipRemountFitSettleExpired,
   shouldSkipSrcDocTransportRemountForManualEditFreezeTipSync,
@@ -156,11 +161,18 @@ describe('manual edit freeze reset', () => {
     expect(shouldReleaseTipRemountChromeAfterSyncHostMeasure(true, 2_000, 1_000)).toBe(false);
     expect(shouldReleaseTipRemountChromeAfterSyncHostMeasure(true, 2_000, 2_000)).toBe(true);
     expect(shouldReleaseTipRemountChromeAfterFitSettleRemasure(
-      true, true, TIP_REMOUNT_FIT_SETTLE_LAST_REMEASURE_MS,
+      true, true, TIP_REMOUNT_FIT_SETTLE_CHROME_RELEASE_MS,
     )).toBe(true);
     expect(shouldReleaseTipRemountChromeAfterFitSettleRemasure(true, true, 150)).toBe(false);
     expect(shouldReleaseTipRemountChromeAfterFitSettleRemasure(true, false, 400)).toBe(false);
     expect(shouldReleaseTipRemountChromeAfterFitSettleRemasure(false, true, 400)).toBe(false);
+    // 900ms remasure updates geometry but must not re-gate chrome release (478).
+    expect(shouldReleaseTipRemountChromeAfterFitSettleRemasure(
+      false, true, 900, TIP_REMOUNT_FIT_SETTLE_CHROME_RELEASE_MS,
+    )).toBe(false);
+    expect(TIP_REMOUNT_FIT_SETTLE_REMEASURE_DELAYS_MS).toEqual([50, 150, 400, 900]);
+    expect(TIP_REMOUNT_FIT_SETTLE_REMEASURE_DELAYS_MS).toContain(900);
+    expect(Math.max(...TIP_REMOUNT_FIT_SETTLE_REMEASURE_DELAYS_MS)).toBeLessThanOrEqual(1_200);
     expect(shouldIgnoreOdEditTargetsMembershipNoiseDuringTipProtect(true, 2, 0, 0)).toBe(true);
     expect(shouldIgnoreOdEditTargetsMembershipNoiseDuringTipProtect(true, 2, 1, 5)).toBe(true);
     expect(shouldIgnoreOdEditTargetsMembershipNoiseDuringTipProtect(true, 2, 2, 5)).toBe(false);
@@ -429,6 +441,8 @@ describe('manual edit freeze reset', () => {
     expect(shouldClearTipSyncedIdentityStickyRetainOnGraceClear('consume')).toBe(false);
     expect(shouldClearTipSyncedIdentityStickyRetainOnGraceClear('expiry')).toBe(false);
     expect(shouldClearTipSyncedIdentityStickyRetainOnGraceClear('safety')).toBe(false);
+    expect(shouldDeferTipSyncedIdentityStickyClearUntilAfterPreserve(true)).toBe(true);
+    expect(shouldDeferTipSyncedIdentityStickyClearUntilAfterPreserve(false)).toBe(false);
   });
 
   it('skips identity-only Mixed reseed during tip remount (466)', () => {
