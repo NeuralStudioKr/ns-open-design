@@ -39,6 +39,7 @@ import { shouldFetchRecentLinkedDirs } from '../teamver/embedDaemonFetchPolicy';
 import { uploadProjectFiles, openFolderDialog, fetchRecentLinkedDirs, pushRecentLinkedDir, dirExists } from "../providers/registry";
 import { WorkingDirPicker } from './WorkingDirPicker';
 import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
+import { resolveTeamverBranding } from '../teamver/branding/config';
 import { embedAttachBlockReason } from '../teamver/branding/embedFileAttachPolicy';
 import { resolveProjectUploadBatchErrorMessage } from '../teamver/projectUploadErrors';
 import { getDesignBffClient } from '../teamver/designBffClient';
@@ -122,7 +123,7 @@ import { beginMainSsoMismatchRecovery } from '../teamver/mainSsoMismatchRecovery
 import { mayMutateProjectLinkedDirs } from '../teamver/embedLocalWorkspacePolicy';
 import { visibleDesignToolboxActions, pluginsForSlideOnlyMvp, skillsForSlideOnlyMvp } from '../teamver/branding/slideOnlyMvpPolicy';
 import { embedBlockedComposerSlashReason, embedSlideOnlyOutboundBlockReason } from '../teamver/branding/embedSlideOnlyOutboundGuard';
-import { fetchAppliedPluginSnapshot, patchProject } from "../state/projects";
+import { fetchAppliedPluginSnapshot, listPluginsPage, patchProject } from "../state/projects";
 import { fetchMcpServers } from "../state/mcp";
 import type { McpServerConfig, McpTemplate } from "../state/mcp";
 import type { AppConfig, ChatAttachment, ChatCommentAttachment, Project, ProjectFile, ProjectMetadata, SkillSummary } from "../types";
@@ -4735,6 +4736,10 @@ function ToolsPluginsPanel({
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [source, setSource] = useState<'community' | 'mine'>('community');
   const [query, setQuery] = useState('');
+  const [serverPlugins, setServerPlugins] = useState<InstalledPluginRecord[] | null>(null);
+  const [serverNextOffset, setServerNextOffset] = useState<number | null>(null);
+  const [serverLoading, setServerLoading] = useState(false);
+  const [serverLoadingMore, setServerLoadingMore] = useState(false);
   const communityPlugins = useMemo(
     () => plugins.filter((p) => p.sourceKind === 'bundled'),
     [plugins],
@@ -4743,11 +4748,87 @@ function ToolsPluginsPanel({
     () => plugins.filter((p) => USER_PLUGIN_SOURCE_KINDS.has(p.sourceKind)),
     [plugins],
   );
+  const slideOnlyMvp = isTeamverEmbedMode() && resolveTeamverBranding().slideOnlyMvp;
+
+  useEffect(() => {
+    if (source !== 'community') {
+      setServerPlugins(null);
+      setServerNextOffset(null);
+      setServerLoading(false);
+      return;
+    }
+    const trimmed = query.trim();
+    if (!trimmed) {
+      setServerPlugins(null);
+      setServerNextOffset(null);
+      setServerLoading(false);
+      return;
+    }
+    let cancelled = false;
+    const debounce = window.setTimeout(() => {
+      setServerLoading(true);
+      void listPluginsPage({
+        ...(slideOnlyMvp ? { mode: 'deck' as const } : {}),
+        limit: 24,
+        query: trimmed,
+      })
+        .then((page) => {
+          if (cancelled) return;
+          setServerPlugins(page.plugins);
+          setServerNextOffset(page.nextOffset);
+          setServerLoading(false);
+        })
+        .catch(() => {
+          if (cancelled) return;
+          setServerPlugins([]);
+          setServerNextOffset(null);
+          setServerLoading(false);
+        });
+    }, 180);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(debounce);
+    };
+  }, [query, slideOnlyMvp, source]);
+
+  const loadMoreServerPlugins = useCallback(() => {
+    if (source !== 'community' || serverNextOffset === null || serverLoadingMore) return;
+    const trimmed = query.trim();
+    if (!trimmed) return;
+    setServerLoadingMore(true);
+    void listPluginsPage({
+      ...(slideOnlyMvp ? { mode: 'deck' as const } : {}),
+      limit: 24,
+      offset: serverNextOffset,
+      query: trimmed,
+    })
+      .then((page) => {
+        setServerPlugins((current) => {
+          const base = current ?? [];
+          const seen = new Set(base.map((plugin) => plugin.id));
+          const next = [...base];
+          for (const plugin of page.plugins) {
+            if (seen.has(plugin.id)) continue;
+            seen.add(plugin.id);
+            next.push(plugin);
+          }
+          return next;
+        });
+        setServerNextOffset(page.nextOffset);
+        setServerLoadingMore(false);
+      })
+      .catch(() => {
+        setServerLoadingMore(false);
+      });
+  }, [query, serverLoadingMore, serverNextOffset, slideOnlyMvp, source]);
+
   const scopedPlugins = source === 'community' ? communityPlugins : userPlugins;
-  const visiblePlugins = useMemo(
-    () => scopedPlugins.filter((p) => pluginMatchesQuery(p, query)),
-    [scopedPlugins, query],
-  );
+  const visiblePlugins = useMemo(() => {
+    if (source === 'community' && query.trim() && serverPlugins !== null) {
+      return serverPlugins;
+    }
+    return scopedPlugins.filter((p) => pluginMatchesQuery(p, query));
+  }, [query, scopedPlugins, serverPlugins, source]);
 
   return (
     <>
@@ -4793,6 +4874,8 @@ function ToolsPluginsPanel({
               <code>od plugin install &lt;source&gt;</code>
               {embedUiLabel('.', ' 로 추가하세요.')}
             </>
+          ) : serverLoading ? (
+            <>{t('common.loading')}</>
           ) : query ? (
             <>
               {embedUiLabel(
@@ -4865,6 +4948,21 @@ function ToolsPluginsPanel({
             </div>
             );
           })}
+          {source === 'community' && query.trim() && serverNextOffset !== null ? (
+            <button
+              type="button"
+              className="composer-tools-row composer-tools-row-action"
+              data-testid="composer-tools-plugins-load-more"
+              disabled={serverLoadingMore}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => loadMoreServerPlugins()}
+            >
+              <Icon name="plus" size={12} />
+              <span>
+                {serverLoadingMore ? t('common.loading') : t('teamver.driveImport.loadMore')}
+              </span>
+            </button>
+          ) : null}
         </div>
       )}
     </>
@@ -5016,20 +5114,52 @@ function DesignToolboxPanel({
 }) {
   const { locale, t } = useI18n();
   const [query, setQuery] = useState('');
+  const [serverPlugins, setServerPlugins] = useState<InstalledPluginRecord[] | null>(null);
   // Fire once when the toolbox panel mounts (i.e. the user opened it).
   useEffect(() => {
     onOpened?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  // L-484: toolbox search hits the server catalog for plugins so results are
+  // not capped to the preloaded prop page.
+  useEffect(() => {
+    const trimmed = query.trim();
+    if (!trimmed) {
+      setServerPlugins(null);
+      return;
+    }
+    let cancelled = false;
+    const slideOnly = isTeamverEmbedMode() && resolveTeamverBranding().slideOnlyMvp;
+    const debounce = window.setTimeout(() => {
+      void listPluginsPage({
+        ...(slideOnly ? { mode: 'deck' as const } : {}),
+        limit: 24,
+        query: trimmed,
+      })
+        .then((page) => {
+          if (cancelled) return;
+          setServerPlugins(page.plugins);
+        })
+        .catch(() => {
+          if (cancelled) return;
+          setServerPlugins([]);
+        });
+    }, 180);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(debounce);
+    };
+  }, [query]);
   const activeSkillSet = useMemo(() => new Set(activeSkillIds), [activeSkillIds]);
   const activeMcpServerSet = useMemo(() => new Set(activeMcpServerIds), [activeMcpServerIds]);
   const activeConnectorSet = useMemo(() => new Set(activeConnectorIds), [activeConnectorIds]);
   const activeFileSet = useMemo(() => new Set(activeFilePaths), [activeFilePaths]);
+  const pluginsForResources = serverPlugins ?? plugins;
   const resources = useMemo(
     () =>
       buildDesignToolboxResources({
         skills,
-        plugins,
+        plugins: pluginsForResources,
         mcpServers,
         mcpTemplates,
         connectors,
@@ -5038,7 +5168,17 @@ function DesignToolboxPanel({
         t,
         teamverBranded,
       }),
-    [connectors, locale, mcpServers, mcpTemplates, plugins, projectFiles, skills, t, teamverBranded],
+    [
+      connectors,
+      locale,
+      mcpServers,
+      mcpTemplates,
+      pluginsForResources,
+      projectFiles,
+      skills,
+      t,
+      teamverBranded,
+    ],
   );
   const visibleActions = useMemo(
     () =>
@@ -5056,12 +5196,18 @@ function DesignToolboxPanel({
   );
   const visibleResources = useMemo(
     () => {
+      // When server plugin results arrived, plugin rows are already scoped by
+      // `q` — still client-filter non-plugin kinds against the same query.
       const source = query
-        ? resources.filter((resource) => designToolboxResourceMatchesQuery(resource, query))
+        ? resources.filter((resource) =>
+            resource.kind === 'plugin' && serverPlugins !== null
+              ? true
+              : designToolboxResourceMatchesQuery(resource, query),
+          )
         : designToolboxDefaultResources(actions, resources);
       return source.slice(0, query ? 14 : 8);
     },
-    [actions, query, resources],
+    [actions, query, resources, serverPlugins],
   );
 
   // One shared hover-detail panel for the whole list — swapping a single

@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -19,8 +20,13 @@ import { ComposerPluginPreview } from './ComposerPluginPreview';
 import { localizePluginTitle } from './plugins-home/localization';
 import { resolveFlyoutSide } from './composer-flyout-placement';
 import { Icon, type IconName } from './Icon';
+import { listPluginsPage } from '../state/projects';
+import { isTeamverEmbedMode } from '../teamver/designApiBase';
+import { resolveTeamverBranding } from '../teamver/branding/config';
 
 const PLUS_MENU_MARGIN = 12;
+const COMPOSER_PLUGIN_SEARCH_PAGE_SIZE = 24;
+const COMPOSER_PLUGIN_SEARCH_DEBOUNCE_MS = 180;
 const PLUS_MENU_GAP = 8;
 const PLUS_MENU_WIDTH = 190;
 const PLUS_MENU_FLYOUT_WIDTH = 360;
@@ -205,6 +211,12 @@ export function ComposerPlusMenu({
     'connectors' | 'plugins' | 'mcp' | 'toolbox' | null
   >(null);
   const [query, setQuery] = useState('');
+  // Server-backed plugin search (L-484) — when the Plugins flyout has a query,
+  // page `/api/plugins?q=` instead of filtering only the preloaded prop list.
+  const [serverPlugins, setServerPlugins] = useState<InstalledPluginRecord[] | null>(null);
+  const [serverPluginsNextOffset, setServerPluginsNextOffset] = useState<number | null>(null);
+  const [serverPluginsLoading, setServerPluginsLoading] = useState(false);
+  const [serverPluginsLoadingMore, setServerPluginsLoadingMore] = useState(false);
   // Id of the plugin row the preview column is mirroring. Defaults to the
   // first filtered row (see `hoveredPlugin`) so the panel is never blank
   // while the menu is open.
@@ -225,7 +237,80 @@ export function ComposerPlusMenu({
   useEffect(() => {
     setQuery('');
     setHoveredPluginId(null);
+    setServerPlugins(null);
+    setServerPluginsNextOffset(null);
+    setServerPluginsLoading(false);
+    setServerPluginsLoadingMore(false);
   }, [submenu]);
+
+  useEffect(() => {
+    if (submenu !== 'plugins') return;
+    const trimmed = query.trim();
+    if (!trimmed) {
+      setServerPlugins(null);
+      setServerPluginsNextOffset(null);
+      setServerPluginsLoading(false);
+      return;
+    }
+    let cancelled = false;
+    let requestId = 0;
+    const slideOnly = isTeamverEmbedMode() && resolveTeamverBranding().slideOnlyMvp;
+    const debounce = window.setTimeout(() => {
+      const currentRequest = ++requestId;
+      setServerPluginsLoading(true);
+      void listPluginsPage({
+        ...(slideOnly ? { mode: 'deck' as const } : {}),
+        limit: COMPOSER_PLUGIN_SEARCH_PAGE_SIZE,
+        query: trimmed,
+      })
+        .then((page) => {
+          if (cancelled || currentRequest !== requestId) return;
+          setServerPlugins(page.plugins);
+          setServerPluginsNextOffset(page.nextOffset);
+          setServerPluginsLoading(false);
+        })
+        .catch(() => {
+          if (cancelled || currentRequest !== requestId) return;
+          setServerPlugins([]);
+          setServerPluginsNextOffset(null);
+          setServerPluginsLoading(false);
+        });
+    }, COMPOSER_PLUGIN_SEARCH_DEBOUNCE_MS);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(debounce);
+    };
+  }, [query, submenu]);
+
+  const loadMoreServerPlugins = useCallback(() => {
+    if (submenu !== 'plugins') return;
+    const trimmed = query.trim();
+    if (!trimmed || serverPluginsNextOffset === null || serverPluginsLoadingMore) return;
+    const slideOnly = isTeamverEmbedMode() && resolveTeamverBranding().slideOnlyMvp;
+    setServerPluginsLoadingMore(true);
+    void listPluginsPage({
+      ...(slideOnly ? { mode: 'deck' as const } : {}),
+      limit: COMPOSER_PLUGIN_SEARCH_PAGE_SIZE,
+      offset: serverPluginsNextOffset,
+      query: trimmed,
+    }).then((page) => {
+      setServerPlugins((current) => {
+        const base = current ?? [];
+        const seen = new Set(base.map((plugin) => plugin.id));
+        const next = [...base];
+        for (const plugin of page.plugins) {
+          if (seen.has(plugin.id)) continue;
+          seen.add(plugin.id);
+          next.push(plugin);
+        }
+        return next;
+      });
+      setServerPluginsNextOffset(page.nextOffset);
+      setServerPluginsLoadingMore(false);
+    }).catch(() => {
+      setServerPluginsLoadingMore(false);
+    });
+  }, [query, serverPluginsLoadingMore, serverPluginsNextOffset, submenu]);
 
   useEffect(() => () => {
     if (submenuCloseTimer.current) clearTimeout(submenuCloseTimer.current);
@@ -346,9 +431,13 @@ export function ComposerPlusMenu({
   }, [open, submenu]);
 
   const needle = query.trim().toLowerCase();
-  const filteredPlugins = needle
-    ? plugins.filter((p) => pluginMatches(p, needle, localizePluginTitle(locale, p)))
-    : plugins;
+  // Empty query → preloaded prop list. Non-empty → server page (with client
+  // fallback while the first response is in flight so the flyout is never blank).
+  const filteredPlugins = (() => {
+    if (!needle) return plugins;
+    if (serverPlugins !== null) return serverPlugins;
+    return plugins.filter((p) => pluginMatches(p, needle, localizePluginTitle(locale, p)));
+  })();
   const filteredMcp = needle
     ? mcpServers.filter((s) => mcpMatches(s, needle))
     : mcpServers;
@@ -509,7 +598,11 @@ export function ComposerPlusMenu({
                 </div>
                 <div className="plus-menu__list">
                   {filteredPlugins.length === 0 ? (
-                    <div className="plus-menu__empty">{t('homeHero.noPlugins')}</div>
+                    <div className="plus-menu__empty">
+                      {serverPluginsLoading
+                        ? t('common.loading')
+                        : t('homeHero.noPlugins')}
+                    </div>
                   ) : (
                     filteredPlugins.map((plugin) => (
                       <button
@@ -533,6 +626,24 @@ export function ComposerPlusMenu({
                       </button>
                     ))
                   )}
+                  {needle && serverPluginsNextOffset !== null ? (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="plus-menu__item"
+                      data-testid="composer-plus-plugins-load-more"
+                      disabled={serverPluginsLoadingMore}
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => loadMoreServerPlugins()}
+                    >
+                      <Icon name="plus" size={15} className="plus-menu__item-icon" />
+                      <span>
+                        {serverPluginsLoadingMore
+                          ? t('common.loading')
+                          : t('teamver.driveImport.loadMore')}
+                      </span>
+                    </button>
+                  ) : null}
                 </div>
                 {onAddPlugin ? (
                   <>
