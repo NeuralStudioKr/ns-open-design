@@ -140,6 +140,29 @@ describe("agent-prose-sanitize SSOT", () => {
     ).toBe("진행.");
   });
 
+  it("strips Barlow hero typography + mid-word CSS join after reload", () => {
+    // User report 2026-08-20: eyebrow spans (font-family Barlow, no border-radius)
+    // + flex layout shells + `중ospace;font-size:…">` mid-word CSS survive re-entry.
+    const frag = [
+      `<span style="font-family:'Barlow','Noto Sans SC',sans-serif;font-size:14px;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;color:rgba(245,210,0,0.58)">Engineering Deep Dive</span>`,
+      `<span style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:rgba(245,210,0,0.4)">2024</span>`,
+      `</div> <div style="flex:1;display:flex;flex-direction:column;justify-content:center;gap:32px;">`,
+      `<div style="font-family:'Barlow','Noto Sans SC',sans-serif;font-size:131 style="font-family:'Barlow','Noto Sans SC',sans-serif;font-size:108px;font-weight:900;line-height:0.95;margin:0;text-transform:uppercase;letter-spacing:-2px">CLOUD<br>NATIVE<br>ENGINEERING</h1>`,
+    ].join("\n");
+    expect(sanitizeAssistantProseForDisplay(frag).trim()).toBe("");
+    expect(
+      sanitizeAssistantProseForDisplay(`초안을 다듬는 중입니다.\n\n${frag}`),
+    ).toBe("초안을 다듬는 중입니다.");
+
+    const midWord = [
+      "슬라이드 추가 중ospace;font-size:13px;letter-spacing:0.14em;text-transform:uppercase;opacity:0.5;margin-bottom:18px\">Observability in Depth</div>",
+    ].join("\n");
+    expect(sanitizeAssistantProseForDisplay(midWord)).toBe("슬라이드 추가 중");
+    expect(
+      sanitizeAssistantProseForDisplay(`진행 중.\n${midWord}`),
+    ).toBe("진행 중.\n슬라이드 추가 중");
+  });
+
   it("strips Daisy SVG / deco-class shells leaked into chat", () => {
     const svgLeak = [
       '<svg class="deco-daisy" viewBox="0 0 180 180" style="position:absolute;top:8%;right:6%">',

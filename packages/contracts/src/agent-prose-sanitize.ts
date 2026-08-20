@@ -295,7 +295,7 @@ const DECK_SLIDE_ORPHAN_ATTR_TAIL_RE =
 const DECK_ORPHAN_STYLE_CLOSE_TAIL_RE =
   /\s+[\d.]+(?:px|em|rem|%|vh|vw)(?:\/[\d.]+)?">[\s\S]*$/i;
 const DECK_TRAILING_INLINE_MARKUP_RE =
-  /(?:\n|^)\s*<p\b[^>]*style\s*=\s*["'][^"']*(?:font|letter-spacing|margin)[^"']*["'][^>]*>[\s\S]*$/i;
+  /(?:\n|^)\s*<(?:p|span|div)\b[^>]*style\s*=\s*["'][^"']*(?:font|letter-spacing|margin|text-transform)[^"']*["'][^>]*>[\s\S]*$/i;
 const DECK_TRAILING_HEADING_MARKUP_RE =
   /(?:\n|^)\s*<h[1-6]\b[^>]*(?:style\s*=)?[^>]*>[\s\S]*$/i;
 const DECK_MOTIF_ABSOLUTE_DIV_TAIL_RE =
@@ -308,6 +308,16 @@ const DECK_MOTIF_PILL_RADIUS_TAIL_RE =
  */
 const DECK_MOTIF_STYLED_BADGE_TAIL_RE =
   /<(?:div|span)\b[^>]*\bstyle\s*=\s*["'][\s\S]*?border-radius\s*:\s*\d+px[\s\S]*?(?:box-shadow|font-family|font-weight|padding)\s*:[\s\S]*$/i;
+/**
+ * Deck eyebrow / hero typography chrome (`font-family` + letter-spacing /
+ * text-transform / large display size) without border-radius — user report
+ * 2026-08-20 reload leak (`Barlow` + `Engineering Deep Dive`).
+ */
+const DECK_MOTIF_STYLED_TYPOGRAPHY_TAIL_RE =
+  /<(?:div|span)\b[^>]*\bstyle\s*=\s*["'][\s\S]*?font-family\s*:[\s\S]*?(?:letter-spacing|text-transform|font-size\s*:\s*\d{2,}px|font-weight\s*:\s*(?:[5-9]00|bold))[\s\S]*$/i;
+/** Orphan `</div><div style="flex:…">` layout shells after the opener was cut. */
+const DECK_ORPHAN_FLEX_LAYOUT_DIV_TAIL_RE =
+  /<\/div>\s*<div\b[^>]*\bstyle\s*=\s*["'][\s\S]*?(?:display\s*:\s*flex|flex\s*:|flex-direction|justify-content|gap\s*:)[\s\S]*$/i;
 const DECK_CARD_STYLE_DIV_TAIL_RE =
   /<(?:div|article)\b[^>]*\bclass\s*=\s*["'][^"']*\b(?:card|pill|chip|deco)[^"']*["'][^>]*\bstyle\s*=[\s\S]*$/i;
 const DECK_DECO_CLASS_TAIL_RE =
@@ -362,6 +372,27 @@ function findTrailingSameLineDeckHtmlCut(line: string): number | null {
     /^(.*?)(<(?:section|div)\b[^>]*(?:data-slide-index|\bclass\s*=\s*["'][^"']*\bslide\b)[^>]*)$/i,
   );
   if (open?.[1] !== undefined) return open[1].length;
+  // Mid-word CSS join after Hangul/Latin: `슬라이드 추가 중ospace;font-size:…">Label</div>`
+  // (`ospace` = truncated `monospace`). Keep the human prefix.
+  const midCss = line.match(
+    /^(.*?)((?:[a-z]{2,14};)?(?:[a-zA-Z-]+\s*:\s*[^;]*;){2,}[\s\S]*?["']\s*>[\s\S]*)$/i,
+  );
+  if (midCss?.[1] !== undefined && midCss[2]) {
+    const prefix = midCss[1];
+    const css = midCss[2];
+    if (
+      /(?:font-size|letter-spacing|text-transform|opacity|margin|font-family|line-height)\s*:/i.test(css)
+      && /(?:<\/(?:div|span|p|h[1-6])>|<br\b)/i.test(css)
+      && /[\p{L}\p{N}]/u.test(prefix.slice(-8))
+    ) {
+      return prefix.length;
+    }
+  }
+  // Broken attribute splice: `font-size:131 style="font-family:…`
+  const brokenAttr = line.match(
+    /^(.*?)((?:font-size|width|height|padding|margin)\s*:\s*[\d.]+)\s+style\s*=\s*["'][\s\S]*$/i,
+  );
+  if (brokenAttr?.[1] !== undefined) return brokenAttr[1].length;
   return null;
 }
 
@@ -378,6 +409,8 @@ export function stripTrailingDeckHtmlMarkupLeak(input: string): string {
     DECK_MOTIF_ABSOLUTE_DIV_TAIL_RE,
     DECK_MOTIF_PILL_RADIUS_TAIL_RE,
     DECK_MOTIF_STYLED_BADGE_TAIL_RE,
+    DECK_MOTIF_STYLED_TYPOGRAPHY_TAIL_RE,
+    DECK_ORPHAN_FLEX_LAYOUT_DIV_TAIL_RE,
     DECK_CARD_STYLE_DIV_TAIL_RE,
     DECK_DECO_CLASS_TAIL_RE,
     DECK_MOTIF_SVG_TAIL_RE,
@@ -392,6 +425,19 @@ export function stripTrailingDeckHtmlMarkupLeak(input: string): string {
     const match = re.exec(input);
     if (match?.index === undefined) continue;
     if (cut == null || match.index < cut) cut = match.index;
+  }
+  // Same-line mid-word CSS / broken attr cuts — scan every line so reload
+  // debris glued to Hangul status text (`중ospace;font-size:…`) is chopped.
+  let offset = 0;
+  const lines = input.split("\n");
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i] ?? "";
+    const lineCut = findTrailingSameLineDeckHtmlCut(line);
+    if (lineCut != null) {
+      const abs = offset + lineCut;
+      if (cut == null || abs < cut) cut = abs;
+    }
+    offset += line.length + (i < lines.length - 1 ? 1 : 0);
   }
   if (cut == null) return input;
   return input.slice(0, cut).trimEnd();

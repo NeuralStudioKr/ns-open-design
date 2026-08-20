@@ -25,6 +25,11 @@ const DECK_MOTIF_PILL_RADIUS_TAIL_RE =
 /** Daisy badge pills (`border-radius:20px` + box-shadow / font-family). */
 const DECK_MOTIF_STYLED_BADGE_TAIL_RE =
   /<(?:div|span)\b[^>]*\bstyle\s*=\s*["'][\s\S]*?border-radius\s*:\s*\d+px[\s\S]*?(?:box-shadow|font-family|font-weight|padding)\s*:[\s\S]*$/i;
+/** Eyebrow / hero typography chrome without border-radius (Barlow reload leak). */
+const DECK_MOTIF_STYLED_TYPOGRAPHY_TAIL_RE =
+  /<(?:div|span)\b[^>]*\bstyle\s*=\s*["'][\s\S]*?font-family\s*:[\s\S]*?(?:letter-spacing|text-transform|font-size\s*:\s*\d{2,}px|font-weight\s*:\s*(?:[5-9]00|bold))[\s\S]*$/i;
+const DECK_ORPHAN_FLEX_LAYOUT_DIV_TAIL_RE =
+  /<\/div>\s*<div\b[^>]*\bstyle\s*=\s*["'][\s\S]*?(?:display\s*:\s*flex|flex\s*:|flex-direction|justify-content|gap\s*:)[\s\S]*$/i;
 const DECK_CARD_STYLE_DIV_TAIL_RE =
   /<(?:div|article)\b[^>]*\bclass\s*=\s*["'][^"']*\b(?:card|pill|chip|deco)[^"']*["'][^>]*\bstyle\s*=[\s\S]*$/i;
 const DECK_DECO_CLASS_TAIL_RE =
@@ -68,6 +73,28 @@ function looksLikeLeakedDeckFrameworkCss(tail: string): boolean {
   );
 }
 
+function findTrailingSameLineDeckHtmlCut(line: string): number | null {
+  const midCss = line.match(
+    /^(.*?)((?:[a-z]{2,14};)?(?:[a-zA-Z-]+\s*:\s*[^;]*;){2,}[\s\S]*?["']\s*>[\s\S]*)$/i,
+  );
+  if (midCss?.[1] !== undefined && midCss[2]) {
+    const prefix = midCss[1];
+    const css = midCss[2];
+    if (
+      /(?:font-size|letter-spacing|text-transform|opacity|margin|font-family|line-height)\s*:/i.test(css)
+      && /(?:<\/(?:div|span|p|h[1-6])>|<br\b)/i.test(css)
+      && /[\p{L}\p{N}]/u.test(prefix.slice(-8))
+    ) {
+      return prefix.length;
+    }
+  }
+  const brokenAttr = line.match(
+    /^(.*?)((?:font-size|width|height|padding|margin)\s*:\s*[\d.]+)\s+style\s*=\s*["'][\s\S]*$/i,
+  );
+  if (brokenAttr?.[1] !== undefined) return brokenAttr[1].length;
+  return null;
+}
+
 function stripLeakedDeckMotifHtmlTail(input: string): string {
   if (!input) return input;
   let cut: number | null = null;
@@ -75,6 +102,8 @@ function stripLeakedDeckMotifHtmlTail(input: string): string {
     DECK_MOTIF_ABSOLUTE_DIV_TAIL_RE,
     DECK_MOTIF_PILL_RADIUS_TAIL_RE,
     DECK_MOTIF_STYLED_BADGE_TAIL_RE,
+    DECK_MOTIF_STYLED_TYPOGRAPHY_TAIL_RE,
+    DECK_ORPHAN_FLEX_LAYOUT_DIV_TAIL_RE,
     DECK_CARD_STYLE_DIV_TAIL_RE,
     DECK_DECO_CLASS_TAIL_RE,
     DECK_MOTIF_SVG_TAIL_RE,
@@ -89,6 +118,17 @@ function stripLeakedDeckMotifHtmlTail(input: string): string {
     const match = re.exec(input);
     if (match?.index === undefined) continue;
     if (cut == null || match.index < cut) cut = match.index;
+  }
+  let offset = 0;
+  const lines = input.split("\n");
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i] ?? "";
+    const lineCut = findTrailingSameLineDeckHtmlCut(line);
+    if (lineCut != null) {
+      const abs = offset + lineCut;
+      if (cut == null || abs < cut) cut = abs;
+    }
+    offset += line.length + (i < lines.length - 1 ? 1 : 0);
   }
   if (cut != null) return input.slice(0, cut).trimEnd();
   const css = DECK_FRAMEWORK_CSS_TAIL_RE.exec(input);

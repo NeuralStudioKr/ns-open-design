@@ -85,6 +85,23 @@ describe("internalAgentMarkup", () => {
     }
   });
 
+  it("hard-strips Barlow typography chrome + mid-word CSS join after reload", () => {
+    const frag = [
+      `<span style="font-family:'Barlow','Noto Sans SC',sans-serif;font-size:14px;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;color:rgba(245,210,0,0.58)">Engineering Deep Dive</span>`,
+      `</div> <div style="flex:1;display:flex;flex-direction:column;gap:32px;">`,
+      `<div style="font-family:'Barlow';font-size:108px;font-weight:900;text-transform:uppercase">CLOUD</div>`,
+    ].join("\n");
+    const midWord =
+      '슬라이드 추가 중ospace;font-size:13px;letter-spacing:0.14em;text-transform:uppercase;opacity:0.5;margin-bottom:18px">Observability in Depth</div>';
+    for (const streaming of [true, false]) {
+      expect(
+        sanitizeAssistantProseForDisplay(`초안을 다듬는 중입니다.\n\n${frag}`, { streaming }),
+      ).toBe("초안을 다듬는 중입니다.");
+      expect(sanitizeAssistantProseForDisplay(frag, { streaming }).trim()).toBe("");
+      expect(sanitizeAssistantProseForDisplay(midWord, { streaming })).toBe("슬라이드 추가 중");
+    }
+  });
+
   it("hard-strips leftover Daisy SVG primitives via web display last-pass", () => {
     const leaked = [
       '<circle cx="90" cy="90" r="40" fill="#7ECDC0"/>',
