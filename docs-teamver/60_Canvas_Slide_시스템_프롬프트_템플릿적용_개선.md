@@ -325,6 +325,23 @@ salvage/1장 persist는 최후 안전망으로 유지한다.
 - [x] top-up은 deck attach / 「수정 반영 중」 없음
 - [x] top-up head-kit abort
 
+### 0.62 2026-08-20 — fill/top-up Stop이 CANCELED_BY_USER로 초안을 버림
+
+**증상:** BYOK `anthropic-api`에서 다음 장 생성이 멈추면 사용자가 Stop을 누르고 `error_code: CANCELED_BY_USER` / `Stopped by user` 진단이 붙는다. `run_id`/`trace_id` n/a는 BYOK에서 정상. 스트리밍된 슬라이드는 persist되지 않고 top-up도 안 돈다.
+
+**원인:** `handleStop`은 Stop 버튼과 send-now 인터럽트만 `CANCELED_BY_USER`를 찍는다. 이 경로는 `EXPLICIT_PROXY_STOP_REASON`으로 abort하고 `shouldFinalizeAbortedStreamAsIncomplete`가 false라 `onDone`(persist + top-up)이 스킵된다. 사용자는 멈춘 턴을 끊은 것이지 덱을 버린 것이 아니다.
+
+**수정:**
+- fill / slide-count top-up의 **첫 Stop**은 `od:slide-user-stop-salvage`로 abort → 업스트림 취소 + `onDone` persist
+- `CANCELED_BY_USER` 스탬프 없음. 짧은 덱이면 기존 append top-up이 이어감
+- send-now supersede, 두 번째 Stop, 일반 수정 턴은 기존 hard cancel 유지 (42-1 재진입 재개 방지)
+
+구현 현황:
+
+- [x] `SLIDE_USER_STOP_SALVAGE_STOP_REASON` + `shouldFinalizeAbortedStreamAsIncomplete`
+- [x] `shouldSalvageSlideUserStop`
+- [x] `handleStop` fill/top-up salvage vs supersede hard cancel
+
 ### 0.56a 2026-08-20 — compact 3장 wireframe · Daisy slide-title · kit tiny-flower 금지
 
 §0.56 Motif/persist heal에 더해 모델 측 계약 + cover role class:
@@ -1505,6 +1522,7 @@ User-message 쪽 `[Existing deck edit]` / `<attached-preview-comments>` 주입�
 | 2026-08-18 | Clone content-fill motif 보정 — 8/13 SVG hang 방지 패치가 first fill에서 `Motif sprites`/`Decoration CSS`/`Layout CSS`를 통째로 생략해 Daisy/Capsule 템플릿 정체성이 약해졌다. `slimTemplateVisualKitForFill`이 큰 SVG sprite sheet와 전체 stylesheet dump는 계속 제거하되, Daisy star/rainbow·Capsule pill/capsule·Terminal scanline 같은 compact motif recipe와 짧은 Decoration/Layout CSS cue를 보존하도록 변경했다. |
 | 2026-08-18 | §0.20 — html-ppt identity scope. 공유 `:root --bg:#ffffff` 대신 `.tpl-*` host 토큰/슬라이드 surface/폰트를 kit 계약으로 쓰고, SKILL `copy index.html` filesystem 지시를 neutralize. |
 | 2026-08-20 | §0.61 — Motif merge harden after Motif-defer. slide cap 16 · Capsule pill geometry · no-head viewport · Daisy ≥100px · top-up edit skip · fill kit Motif SVG deferred · cache v33. |
+| 2026-08-20 | §0.62 — fill/top-up Stop이 `CANCELED_BY_USER`로 persist를 건너뛰던 문제. 첫 Stop은 salvage `onDone`, send-now/두 번째 Stop은 hard cancel. |
 | 2026-08-20 | §0.60 — 1장 이후 top-up/다음-장이 공식 Daisy `deck.html`을 다시 써서 멈추던 문제. append-only + persist merge + top-up abort. |
 | 2026-08-20 | §0.59 — 첫 fill을 3장·body-first로 cap · Motif SVG 이번 턴 금지 · head-kit dump mid-stream abort · persist `초안` 제목 제거. |
 | 2026-08-20 | §0.58 — 짧은 1장 초안 persist · Daisy chrome+브리프 fallback · auto-continue 3장 reject 문구 삭제 · same-turn shell은 persist salvage. |

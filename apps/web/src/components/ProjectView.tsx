@@ -108,6 +108,7 @@ import {
   EXPLICIT_PROXY_STOP_REASON,
   FILL_HEAD_KIT_DUMP_STOP_REASON,
   FILL_MOTIF_SVG_DUMP_STOP_REASON,
+  SLIDE_USER_STOP_SALVAGE_STOP_REASON,
   requestProxyAbort,
 } from '../providers/proxyAbort';
 import {
@@ -207,6 +208,7 @@ import {
   withTemplateCloneFillPluginInputs,
   withoutCanonicalDeckAttachments,
 } from '../teamver/templateCloneContentFill';
+import { shouldSalvageSlideUserStop } from '../teamver/slideUserStopSalvage';
 import {
   anonymizeArtifactId,
   artifactKindToTracking,
@@ -11373,13 +11375,26 @@ export function ProjectView({
 
   // Cancel every in-flight run for the current conversation (the user's own
   // streaming turn plus any reattached runs), mark their assistant messages
-  // canceled, and drop the streaming state. Defined here — ahead of the
-  // queued-send handlers — because "send now" interrupts the active run to
-  // make room for the prioritized send.
-  const handleStop = useCallback(() => {
+  // canceled, and drop the streaming state. Fill / top-up first Stop is the
+  // exception: abort upstream with salvage reason and let onDone persist.
+  // Defined here — ahead of the queued-send handlers — because "send now"
+  // interrupts the active run to make room for the prioritized send.
+  const handleStop = useCallback((options?: { superseded?: boolean }) => {
+    const salvage = shouldSalvageSlideUserStop({
+      slideOnlyMvp,
+      superseded: options?.superseded === true,
+      templateCloneContentFill: runTemplateCloneContentFillRef.current,
+      slideCountTopUp: runSlideCountTopUpRef.current,
+      abortControllerAlive: abortRef.current != null || reattachControllersRef.current.size > 0,
+    });
+    const abortReason = salvage
+      ? SLIDE_USER_STOP_SALVAGE_STOP_REASON
+      : EXPLICIT_PROXY_STOP_REASON;
     const stoppedAt = Date.now();
-    cancelSendTextBuffer(true);
-    cancelReattachTextBuffers(true);
+    if (!salvage) {
+      cancelSendTextBuffer(true);
+      cancelReattachTextBuffers(true);
+    }
     if (config.mode === 'api' && (apiBackgroundRecoveryRef.current || !abortRef.current)) {
       // Only abort BYOK proxy streams that belong to the currently active
       // conversation. The daemon already tenant-scopes by workspace, but
@@ -11414,18 +11429,24 @@ export function ProjectView({
     // class of cancellation only. Page-exit / supersede paths abort
     // without a reason so the daemon lets the stream drain naturally
     // (background scratch sync-up still runs at run-end).
-    cancelRef.current?.abort(EXPLICIT_PROXY_STOP_REASON);
+    cancelRef.current?.abort(abortReason);
     cancelRef.current = null;
     for (const controller of reattachCancelControllersRef.current.values()) {
-      controller.abort(EXPLICIT_PROXY_STOP_REASON);
+      controller.abort(abortReason);
     }
     reattachCancelControllersRef.current.clear();
-    abortRef.current?.abort(EXPLICIT_PROXY_STOP_REASON);
+    abortRef.current?.abort(abortReason);
     abortRef.current = null;
     for (const controller of reattachControllersRef.current.values()) {
-      controller.abort(EXPLICIT_PROXY_STOP_REASON);
+      controller.abort(abortReason);
     }
     reattachControllersRef.current.clear();
+    if (salvage) {
+      // Leave the assistant row streaming. onDone persist + top-up run
+      // with the same incomplete path as Motif/head-kit abort. A second
+      // Stop finds abortRef cleared and stamps CANCELED_BY_USER.
+      return;
+    }
     clearApiBackgroundRecoveryBanner();
     apiBackgroundRecoveryRef.current = false;
     const stopConversationId = activeConversationId ?? streamingConversationIdRef.current;
@@ -11537,7 +11558,7 @@ export function ProjectView({
         ).catch(() => {});
       }
       prioritizeQueuedChatSend(id);
-      handleStop();
+      handleStop({ superseded: true });
       return;
     }
     void (async () => {

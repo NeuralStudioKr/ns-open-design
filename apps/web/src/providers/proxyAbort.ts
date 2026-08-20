@@ -6,11 +6,12 @@ import { fetchTeamverDaemon } from "../teamver/teamverDaemonHeaders";
  * `streamProxyEndpoint` registers an abort listener on the incoming
  * `AbortSignal`. When that signal aborts, it inspects `signal.reason`:
  *   - `EXPLICIT_PROXY_STOP_REASON` / `FILL_MOTIF_SVG_DUMP_STOP_REASON`
- *     / `FILL_HEAD_KIT_DUMP_STOP_REASON`
+ *     / `FILL_HEAD_KIT_DUMP_STOP_REASON` / `SLIDE_USER_STOP_SALVAGE_STOP_REASON`
  *     → fires `POST /api/proxy/abort { streamId }` with `keepalive: true`
  *     so the daemon cancels the upstream LLM `fetch()`. User Stop uses
- *     the first reason; Motif-SVG / head-kit hang aborts use the others
- *     (still incomplete — persist salvage + auto-continue must run).
+ *     the first reason; Motif-SVG / head-kit hang aborts and fill/top-up
+ *     Stop-to-salvage use the others (still incomplete — persist salvage
+ *     + auto-continue / top-up must run).
  *   - anything else (page navigation, route swap, replay, browser tab
  *     close) → no abort POST is sent. The daemon lets the upstream
  *     stream drain naturally so background tool work (image gen, S3
@@ -44,11 +45,23 @@ export const FILL_HEAD_KIT_DUMP_STOP_REASON = "od:fill-head-kit-dump" as const;
 
 export type FillHeadKitDumpStopReason = typeof FILL_HEAD_KIT_DUMP_STOP_REASON;
 
+/**
+ * User hit Stop on a Template Clone fill or slide-count top-up.
+ * Cancels upstream like explicit Stop, but finalizes via onDone so
+ * persist can keep streamed slides and top-up can append. Must not
+ * stamp `CANCELED_BY_USER` — that dump is what users paste after
+ * stopping a hung next-page turn.
+ */
+export const SLIDE_USER_STOP_SALVAGE_STOP_REASON = "od:slide-user-stop-salvage" as const;
+
+export type SlideUserStopSalvageStopReason = typeof SLIDE_USER_STOP_SALVAGE_STOP_REASON;
+
 export function shouldRequestUpstreamProxyAbort(reason: unknown): boolean {
   return (
     reason === EXPLICIT_PROXY_STOP_REASON
     || reason === FILL_MOTIF_SVG_DUMP_STOP_REASON
     || reason === FILL_HEAD_KIT_DUMP_STOP_REASON
+    || reason === SLIDE_USER_STOP_SALVAGE_STOP_REASON
   );
 }
 
@@ -57,6 +70,7 @@ export function shouldFinalizeAbortedStreamAsIncomplete(reason: unknown): boolea
   return (
     reason === FILL_MOTIF_SVG_DUMP_STOP_REASON
     || reason === FILL_HEAD_KIT_DUMP_STOP_REASON
+    || reason === SLIDE_USER_STOP_SALVAGE_STOP_REASON
   );
 }
 

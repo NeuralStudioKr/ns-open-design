@@ -5,6 +5,7 @@ import {
   EXPLICIT_PROXY_STOP_REASON,
   FILL_HEAD_KIT_DUMP_STOP_REASON,
   FILL_MOTIF_SVG_DUMP_STOP_REASON,
+  SLIDE_USER_STOP_SALVAGE_STOP_REASON,
   requestProxyAbort,
   shouldFinalizeAbortedStreamAsIncomplete,
   shouldRequestUpstreamProxyAbort,
@@ -59,6 +60,7 @@ describe("proxy abort reason policy", () => {
     expect(shouldRequestUpstreamProxyAbort(EXPLICIT_PROXY_STOP_REASON)).toBe(true);
     expect(shouldRequestUpstreamProxyAbort(FILL_MOTIF_SVG_DUMP_STOP_REASON)).toBe(true);
     expect(shouldRequestUpstreamProxyAbort(FILL_HEAD_KIT_DUMP_STOP_REASON)).toBe(true);
+    expect(shouldRequestUpstreamProxyAbort(SLIDE_USER_STOP_SALVAGE_STOP_REASON)).toBe(true);
     expect(shouldRequestUpstreamProxyAbort(undefined)).toBe(false);
     expect(shouldRequestUpstreamProxyAbort("od:navigation")).toBe(false);
   });
@@ -66,6 +68,7 @@ describe("proxy abort reason policy", () => {
   it("finalizes Motif-SVG dump aborts as incomplete, not user Stop", () => {
     expect(shouldFinalizeAbortedStreamAsIncomplete(FILL_MOTIF_SVG_DUMP_STOP_REASON)).toBe(true);
     expect(shouldFinalizeAbortedStreamAsIncomplete(FILL_HEAD_KIT_DUMP_STOP_REASON)).toBe(true);
+    expect(shouldFinalizeAbortedStreamAsIncomplete(SLIDE_USER_STOP_SALVAGE_STOP_REASON)).toBe(true);
     expect(shouldFinalizeAbortedStreamAsIncomplete(EXPLICIT_PROXY_STOP_REASON)).toBe(false);
     expect(shouldFinalizeAbortedStreamAsIncomplete(undefined)).toBe(false);
   });
