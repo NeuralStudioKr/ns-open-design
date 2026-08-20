@@ -1,5 +1,30 @@
-import { describe, expect, it } from 'vitest';
-import { deckHtmlNeedsOfficialMotifRemerge } from '../../src/teamver/deckPreviewOfficialLookHeal';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  deckHtmlNeedsOfficialLookPreviewHeal,
+  deckHtmlNeedsOfficialMotifRemerge,
+  healOfficialLookForDeckPreview,
+} from '../../src/teamver/deckPreviewOfficialLookHeal';
+
+vi.mock('../../src/teamver/teamverDaemonHeaders', () => ({
+  fetchTeamverDaemon: vi.fn(),
+}));
+vi.mock('../../src/teamver/fetchPluginLocalSkill', () => ({
+  mergeOfficialLookCssForTemplate: vi.fn(async (html: string) => (
+    /<style\b[^>]*\bdata-od-official-look-css\b/i.test(html)
+      ? html
+      : `${html}<style data-od-official-look-css>.pill-coral{background:#E85D4E}</style>`
+  )),
+}));
+
+const COMPACT_CAPSULE_FILL = [
+  '<!doctype html><html><body>',
+  '<div class="presentation">',
+  '<div class="slide slide-1"><h1>Cover</h1></div>',
+  '<div class="slide slide-2"><h2>Agenda</h2></div>',
+  '</div></body></html>',
+].join('');
 
 describe('deckHtmlNeedsOfficialMotifRemerge', () => {
   it('detects pre-v34 percent overscale Daisy stamps', () => {
@@ -45,5 +70,67 @@ describe('deckHtmlNeedsOfficialMotifRemerge', () => {
       '</style>',
     ].join('');
     expect(deckHtmlNeedsOfficialMotifRemerge(html)).toBe(true);
+  });
+});
+
+describe('deckHtmlNeedsOfficialLookPreviewHeal', () => {
+  it('heals compact fills that never received the persist look sheet', () => {
+    expect(deckHtmlNeedsOfficialMotifRemerge(COMPACT_CAPSULE_FILL)).toBe(false);
+    expect(deckHtmlNeedsOfficialLookPreviewHeal(COMPACT_CAPSULE_FILL)).toBe(true);
+  });
+
+  it('skips decks that already have the official look style marker', () => {
+    const persisted = `${COMPACT_CAPSULE_FILL}<style data-od-official-look-css>.pill-coral{}</style>`;
+    expect(deckHtmlNeedsOfficialLookPreviewHeal(persisted)).toBe(false);
+  });
+
+  it('still heals persisted Daisy hang sheets', () => {
+    const html = [
+      '<style data-od-official-look-css>',
+      '.deco-daisy-tl{top:-30px;left:-30px;width:220px;height:220px}',
+      '</style>',
+      '<div class="deco-daisy-tl" style="width:12%"></div>',
+    ].join('');
+    expect(deckHtmlNeedsOfficialLookPreviewHeal(html)).toBe(true);
+  });
+});
+
+describe('healOfficialLookForDeckPreview', () => {
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('merges official look onto a compact fill when the project has a template', async () => {
+    const { fetchTeamverDaemon } = await import('../../src/teamver/teamverDaemonHeaders');
+    const { mergeOfficialLookCssForTemplate } = await import('../../src/teamver/fetchPluginLocalSkill');
+    vi.mocked(fetchTeamverDaemon).mockResolvedValue({
+      ok: true,
+      json: async () => ({ metadata: { selectedDeckTemplateId: 'html-ppt-zhangzara-capsule' } }),
+    } as Response);
+
+    const healed = await healOfficialLookForDeckPreview(COMPACT_CAPSULE_FILL, 'proj-1');
+    expect(mergeOfficialLookCssForTemplate).toHaveBeenCalledWith(
+      COMPACT_CAPSULE_FILL,
+      'html-ppt-zhangzara-capsule',
+    );
+    expect(healed).toContain('data-od-official-look-css');
+    expect(healed).toContain('.pill-coral');
+  });
+
+  it('does not fetch when the persist look sheet is already present', async () => {
+    const { fetchTeamverDaemon } = await import('../../src/teamver/teamverDaemonHeaders');
+    const persisted = `${COMPACT_CAPSULE_FILL}<style data-od-official-look-css>.pill-coral{}</style>`;
+    const healed = await healOfficialLookForDeckPreview(persisted, 'proj-1');
+    expect(fetchTeamverDaemon).not.toHaveBeenCalled();
+    expect(healed).toBe(persisted);
+  });
+});
+
+describe('FileViewer preview heal gate', () => {
+  it('wires live preview through official-look heal, not Motif-only remmerge', () => {
+    const source = readFileSync(resolve(import.meta.dirname, '../../src/components/FileViewer.tsx'), 'utf8');
+    expect(source).toContain('deckHtmlNeedsOfficialLookPreviewHeal');
+    expect(source).toContain('healOfficialLookForDeckPreview');
+    expect(source).not.toMatch(/deckHtmlNeedsOfficialMotifRemerge\(livePreviewSource\)/);
   });
 });

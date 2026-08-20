@@ -1,11 +1,14 @@
-import { firstOfficialDeckTemplateId } from '@open-design/contracts';
+import {
+  firstOfficialDeckTemplateId,
+  OFFICIAL_DECK_LOOK_STYLE_ATTR,
+} from '@open-design/contracts';
 import { fetchTeamverDaemon } from './teamverDaemonHeaders';
 import { mergeOfficialLookCssForTemplate } from './fetchPluginLocalSkill';
 
 /**
  * True when preview HTML still has pre-§0.62 / pre-v34 Daisy Motif stamps
  * that only remmerge (official example pack) can restamp — stacking neutralize
- * alone is not enough.
+ * alone is not enough. Also catches Graphify/XHS Motif hang CSS (§0.75).
  */
 export function deckHtmlNeedsOfficialMotifRemerge(html: string): boolean {
   const dest = String(html ?? '');
@@ -29,17 +32,35 @@ export function deckHtmlNeedsOfficialMotifRemerge(html: string): boolean {
   return false;
 }
 
+const OFFICIAL_LOOK_STYLE_RE = new RegExp(
+  `<style\\b[^>]*\\b${OFFICIAL_DECK_LOOK_STYLE_ATTR}\\b`,
+  'i',
+);
+
 /**
- * Preview-only Motif remmerge (same template resolve as HTML export fallback).
- * Does not write disk — callers keep the healed string in display state.
+ * Compact fills stream without official look CSS (persist merges after save).
+ * Preview used to stay Neutral until disk write — heal display-only when the
+ * look sheet is missing, or when Motif still needs remmerge.
  */
-export async function healOfficialMotifForDeckPreview(
+export function deckHtmlNeedsOfficialLookPreviewHeal(html: string): boolean {
+  const dest = String(html ?? '');
+  if (deckHtmlNeedsOfficialMotifRemerge(dest)) return true;
+  if (!/\bclass\s*=\s*['"][^'"]*\bslide\b|<deck-stage\b/i.test(dest)) return false;
+  return !OFFICIAL_LOOK_STYLE_RE.test(dest);
+}
+
+/**
+ * Preview-only official look / Motif remmerge (same template resolve as
+ * HTML export fallback). Does not write disk — callers keep the healed
+ * string in display state.
+ */
+export async function healOfficialLookForDeckPreview(
   html: string,
   projectId: string,
 ): Promise<string> {
   const dest = String(html ?? '');
   const id = String(projectId ?? '').trim();
-  if (!dest.trim() || !id || !deckHtmlNeedsOfficialMotifRemerge(dest)) return dest;
+  if (!dest.trim() || !id || !deckHtmlNeedsOfficialLookPreviewHeal(dest)) return dest;
   try {
     const resp = await fetchTeamverDaemon(`/api/projects/${encodeURIComponent(id)}`);
     if (!resp.ok) return dest;
@@ -61,3 +82,6 @@ export async function healOfficialMotifForDeckPreview(
     return dest;
   }
 }
+
+/** Same display-only merge — keep the Motif-era name for export callers. */
+export const healOfficialMotifForDeckPreview = healOfficialLookForDeckPreview;

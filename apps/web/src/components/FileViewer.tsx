@@ -45,8 +45,8 @@ import {
 import { isTeamverPptxExportEnabled } from '../teamver/pptxExportEnable';
 import { isTeamverSourceHtmlCopyEnabled } from '../teamver/sourceHtmlCopyEnable';
 import {
-  deckHtmlNeedsOfficialMotifRemerge,
-  healOfficialMotifForDeckPreview,
+  deckHtmlNeedsOfficialLookPreviewHeal,
+  healOfficialLookForDeckPreview,
 } from '../teamver/deckPreviewOfficialLookHeal';
 import { beginTeamverEmbedActiveWork, endTeamverEmbedActiveWork } from '../teamver/teamverEmbedActiveWork';
 import { fetchTeamverDaemon } from '../teamver/teamverDaemonHeaders';
@@ -6794,15 +6794,16 @@ function HtmlViewer({
       preferredPaths: preferredAttachmentPaths,
     });
   }, [preferredAttachmentPaths, projectFilePaths, rawLivePreviewSource]);
-  // Display-only Motif remmerge for pre-v34 overscale Daisy (export already heals;
-  // preview used to show 22% flowers until the next persist remmerge).
+  // Display-only official look merge + Motif remmerge. Compact fills stream
+  // without look CSS; persist merges after save. Preview used to stay Neutral
+  // until disk write.
   const [officialLookHealedPreview, setOfficialLookHealedPreview] = useState<string | null>(null);
   useEffect(() => {
     setOfficialLookHealedPreview(null);
     if (streaming || manualEditMode || !effectiveDeck || !projectId) return;
-    if (!livePreviewSource || !deckHtmlNeedsOfficialMotifRemerge(livePreviewSource)) return;
+    if (!livePreviewSource || !deckHtmlNeedsOfficialLookPreviewHeal(livePreviewSource)) return;
     let cancelled = false;
-    void healOfficialMotifForDeckPreview(livePreviewSource, projectId).then((healed) => {
+    void healOfficialLookForDeckPreview(livePreviewSource, projectId).then((healed) => {
       if (cancelled) return;
       if (healed && healed !== livePreviewSource) setOfficialLookHealedPreview(healed);
     });

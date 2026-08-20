@@ -32,6 +32,18 @@
 | scaffold로 갑자기 바꾸면? | **안 됨.** kit hard cutover 금지. full HTML scaffold도 기본 inject 하지 않음 |
 | 1장짜리 템플릿 결과가 저장되는가? | **제품 경로는 첫 fill 3장.** 잘리면 제목 있는 1장은 저장하고 top-up이 덧붙인다. 제목 없는 빈 셸만 미완성으로 차단. 사용자가 1장을 명시한 경우도 허용 |
 
+### 0.76 2026-08-20 — 생성 중 미리보기 Neutral 룩
+
+compact fill은 룩 CSS를 스트리밍하지 않는다. persist가 끝난 뒤에야 템플릿이 붙어서, 생성 직후 미리보기는 Neutral/와이어프레임으로 보인다.
+
+**수정:** FileViewer는 `data-od-official-look-css`가 없거나 Motif remmerge가 필요하면 display-only로 persist와 같은 `mergeOfficialLookCssForTemplate`를 돌린다. 디스크는 쓰지 않는다. 스트리밍 중에는 부분 HTML에 룩을 넣지 않는다.
+
+구현 현황:
+
+- [x] compact fill(look sheet 없음) preview heal red spec
+- [x] persist 마커가 있으면 fetch skip
+- [x] FileViewer 게이트 source-lock
+
 ### 0.74 2026-08-20 — Capsule 장수 · presentation 안 append · split 축 hoist
 
 Capsule `div.slide` 초안이 저장된 뒤 top-up이 안 돌거나, 새 장이 `.presentation` 밖에 붙어 미리보기가 비고, official-look split 16:9가 첫 장 다음부터 column으로 무너진다.
@@ -1599,6 +1611,7 @@ User-message 쪽 `[Existing deck edit]` / `<attached-preview-comments>` 주입�
 | 2026-08-13 | **§0.0 정책 개정** — template = layout vocabulary + visual look, 페이지 수/순서/구성은 브리프 기반. content-swap → pick-and-choose layout roles. daemon Clone default count = 6 (shells.length 아님), `pickTemplateShells` role-based scoring 도입. `template-visual-kit.ts` HARD_RULES 재작성, `DEFAULT_MAX_CHARS` 12000 → 14000. |
 | 2026-08-18 | Clone content-fill motif 보정 — 8/13 SVG hang 방지 패치가 first fill에서 `Motif sprites`/`Decoration CSS`/`Layout CSS`를 통째로 생략해 Daisy/Capsule 템플릿 정체성이 약해졌다. `slimTemplateVisualKitForFill`이 큰 SVG sprite sheet와 전체 stylesheet dump는 계속 제거하되, Daisy star/rainbow·Capsule pill/capsule·Terminal scanline 같은 compact motif recipe와 짧은 Decoration/Layout CSS cue를 보존하도록 변경했다. |
 | 2026-08-18 | §0.20 — html-ppt identity scope. 공유 `:root --bg:#ffffff` 대신 `.tpl-*` host 토큰/슬라이드 surface/폰트를 kit 계약으로 쓰고, SKILL `copy index.html` filesystem 지시를 neutralize. |
+| 2026-08-20 | §0.76 — compact-fill preview stayed Neutral until persist. Display-only official look merge when look sheet is missing. |
 | 2026-08-20 | §0.75 — Motif hang sanitize beyond Daisy (gd-orb/xp-blob) · remmerge/deco early sanitize · cache v42. |
 | 2026-08-20 | §0.74 — Capsule `div.slide` count = append hosts · splice inside open `.presentation`/`.deck`/`<deck-stage>` after last slide · hoist locks every stacked flex axis. |
 | 2026-08-20 | §0.73 — compact samples still taught overflow:hidden; pin left it on already-sized slides; absolute footers overlapped subtitles. Strip clip · flow footers · cache v41. |
