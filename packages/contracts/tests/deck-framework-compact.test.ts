@@ -5,6 +5,7 @@ import {
   DECK_COMPACT_INLINE_LAYOUT_VOCABULARY_FOR_SELECTED_TEMPLATE,
   DECK_FRAMEWORK_DIRECTIVE_COMPACT,
   DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_SELECTED_TEMPLATE,
+  DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_TEMPLATE_FILL,
 } from '../src/prompts/deck-framework.js';
 
 describe('DECK_FRAMEWORK_DIRECTIVE_COMPACT', () => {
@@ -100,5 +101,20 @@ describe('DECK_FRAMEWORK_DIRECTIVE_COMPACT', () => {
         /<section class="slide"/g,
       )?.length,
     ).toBeGreaterThanOrEqual(3);
+  });
+
+  it('template-fill compact contract asks for 3 slides and defers Motif SVG', () => {
+    expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_TEMPLATE_FILL).toContain(
+      'produce **3** filled slides',
+    );
+    expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_TEMPLATE_FILL).toMatch(
+      /Motif `<svg>` is NOT required this turn/i,
+    );
+    expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_TEMPLATE_FILL).not.toContain(
+      'persist rejects 1–2',
+    );
+    expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_TEMPLATE_FILL).not.toContain(
+      'produce **5–6**',
+    );
   });
 });

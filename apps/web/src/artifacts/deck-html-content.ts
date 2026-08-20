@@ -214,6 +214,56 @@ export function shouldAbortStreamForMotifSvgDump(options: {
   return motifSvgDumpLooksCommitted(htmlish);
 }
 
+const FILL_HEAD_KIT_DUMP_MIN_CHARS = 800;
+
+function htmlishHasSlideWithHeading(html: string): boolean {
+  return /<(?:section|div)\b[^>]*(?:\bslide\b|data-slide)[\s\S]{0,8000}<h[1-3]\b/i.test(html);
+}
+
+function firstHeadOrStyleIndex(html: string): number {
+  const headAt = html.search(/<head\b/i);
+  const styleAt = html.search(/<style\b/i);
+  if (headAt < 0) return styleAt;
+  if (styleAt < 0) return headAt;
+  return Math.min(headAt, styleAt);
+}
+
+/**
+ * Fill-turn abort: the model is dumping `<head>` / prelude `<style>`
+ * without a titled slide. Those streams burn max_tokens on Daisy CSS
+ * and never reach body copy.
+ */
+export function shouldAbortStreamForHeadOnlyKitDump(options: {
+  streamedText: string;
+  templateCloneContentFill?: boolean;
+}): boolean {
+  if (!options.templateCloneContentFill) return false;
+  const text = String(options.streamedText ?? "");
+  if (!DECK_STREAM_OPEN_RE.test(text)) return false;
+  const htmlish = extractStreamedDeckHtml(text);
+  const kitAt = firstHeadOrStyleIndex(htmlish);
+  if (kitAt < 0) return false;
+  if (htmlishHasSlideWithHeading(htmlish)) return false;
+  return htmlish.slice(kitAt).length >= FILL_HEAD_KIT_DUMP_MIN_CHARS;
+}
+
+/** Drop an in-progress head/style kit dump so auto-continue cannot resume CSS. */
+export function stripAbandonedHeadKitDumpFromStreamedText(text: string): string {
+  const raw = String(text ?? "");
+  const htmlish = extractStreamedDeckHtml(raw);
+  if (htmlishHasSlideWithHeading(htmlish)) return raw;
+  const kitAt = firstHeadOrStyleIndex(htmlish);
+  if (kitAt < 0) return raw;
+  const prefix = htmlish.slice(0, kitAt);
+  const cut = prefix.length === 0
+    ? raw.search(/<head\b|<style\b/i)
+    : raw.indexOf(prefix) >= 0
+      ? raw.indexOf(prefix) + prefix.length
+      : raw.search(/<head\b|<style\b/i);
+  if (cut < 0) return raw;
+  return `${raw.slice(0, cut)}<!-- head kit dump abandoned -->`;
+}
+
 /** Auto-continue must not fence Motif-SVG-first partials — the model continues the path dump. */
 export function shouldDiscardPartialHtmlForMotifSvgDump(html: string): boolean {
   return deckArtifactStartsWithMotifSvgDump(html);

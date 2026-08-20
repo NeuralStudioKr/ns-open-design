@@ -239,20 +239,23 @@ export function templateCloneContentFillHardRules(): string[] {
     '- Strict body-first contract: start the artifact body exactly like `<!doctype html><html lang="ko"><body><section class="slide" ...>`.',
     '- `<head>` is FORBIDDEN on this fill turn. Do not emit `<head>`, `<title>`, meta tags, or a style prelude before slide 1.',
     '- The first 800 characters after `<artifact` MUST include `<body` and one complete `<section class="slide">` with real topical copy (cover title + lead).',
-    '- Slide count is input-driven: honor an explicit small count (1–4) if the user asked for it. Otherwise produce 5–6 complete slides by default; a one-slide cover-only output is incomplete. Persist rejects 1–2 slides unless that small count was explicit — never close `</html></artifact>` after a single cover.',
-    '- Official look/Motif CSS is merged after save. Do not stream `<head>` or a full example.html stylesheet.',
-    '- If the brief is only a topic, use this default outline: cover, why it matters, key concepts/current state, architecture/workflow, trade-offs/risks, next steps/checklist. Adapt labels to the topic and audience.',
-    '- Motif vocabulary OVERRIDE: Motif floor is REQUIRED (not optional polish). Title-first always: AFTER cover `<h1>`/`<h2>` + lead, place at least ONE kit Motif seed on the cover — kit Motif HTML snippets / Decorations CSS Motif classes / capped Motif sprites (whatever the kit ships). When Motif sprites lists a kit SVG (Daisy flowers etc.), that ONE capped sprite MUST appear on the cover (nest inside `.deco` / `.deco-daisy-*` when listed) — kit sprites may be ~2KB and are exempt from the ~800-char Motif-budget. Prefer 1–2 Motif elements after title when scaffold lists `deco=` — finish a closed deck this turn. Place Daisy Motif inset-safe (`top/left/bottom/right` ≥ 24px inside the canvas) — never negative offsets that clip under `overflow:hidden`. FORBIDDEN: inventing generic CSS circles, tiny corner dots, invented 12–48px flower SVGs / emoji daisies, or Capsule coral pills when the kit Motif is petals/flowers/blobs/pins/pixel/scanlines; empty `.deco` shells without child SVG; Motif `<svg>` before title copy. Official Motif CSS/SVG is also merged after save — do not invent a tiny Daisy lookalike as a substitute. If you already started an SVG-before-title dump, abandon it and restart with `<h1>`.',
-    '- Named motif cue must be visibly honored: if the selected template/title vocabulary names flowers, daisies, capsule cards, pins, pixels, scanlines, terminal chrome, etc., include that same motif family on the cover and at least one body slide. Generic circles/stars/dots are not substitutes for a named motif family.',
+    '- Slide count THIS TURN: honor an explicit small count (1–2) if the user asked for it. Otherwise close exactly 3 complete body-first slides and `</html></artifact>`. Hidden top-up appends the rest of the user request (5–6 / 8 / 12…). Never spend this turn on `<head>` or Motif SVG. Do not stop after a single cover.',
+    '- Official look/Motif CSS/SVG is merged after save. Do not stream `<head>`, a full example.html stylesheet, or Motif `<svg>` this turn.',
+    '- If the brief is only a topic, use this default 3-slide outline: cover, why it matters / key concepts, next steps. Adapt labels to the topic and audience.',
+    '- Motif vocabulary OVERRIDE: Motif SVG is NOT required this turn (official Motif CSS/SVG is merged after save). Title-first always. Optional kit Motif CSS classes AFTER cover `<h1>`/`<h2>` + lead are OK if they stay tiny. FORBIDDEN this turn: Motif `<svg>`, multi-KB sprite dumps, inventing generic CSS circles / tiny corner dots / 12–48px flower SVGs / emoji daisies, Capsule coral pills when the kit Motif is petals/flowers/blobs/pins/pixel/scanlines, empty `.deco` shells, Motif `<svg>` before title copy. If you already started an SVG-before-title dump, abandon it and restart with `<h1>`.',
+    '- Named motif cue: do not invent a different motif family. Prefer finishing 3 titled slides over drawing Daisy/Capsule/Terminal ornaments this turn — persist paints official Motif after save.',
     '- Layout OVERRIDE: reuse capped Layout CSS + scaffold roles when present. FORBIDDEN: flattening every slide into one centered flex title column when the kit ships grids/splits/cards.',
     '- Full-bleed surface: bind kit Slide surface hex on `html`/`body` AND every `<section class="slide" style="…background:<kit surface>…">` edge-to-edge for the full 1920×1080 canvas. FORBIDDEN: white/default outer slide with an inner cream "paper" panel that leaves white bands at top/bottom. White title cards ON cream paper are OK.',
     '- Keep `<style>` very short (kit tokens + fonts only, ideally under ~1KB) and place it after slide 1 or omit it in favor of inline styles. Never dump the whole template stylesheet.',
-    '- Fill REAL topical titles/body (no "…", no "만들어줘", no create-slides boilerplate). Slide count follows the brief/Quick settings — not the template demo page lineup.',
-    '- Prefer finishing a closed `</artifact>` this turn over perfect motif fidelity, but Motif floor is still required: at least one kit Motif seed on the cover. A complete compact Daisy-lookalike beats a truncated SVG/CSS shell.',
+    '- Fill REAL topical titles/body (no "…", no "만들어줘", no create-slides boilerplate). Brief/Quick settings are the eventual target — this turn still closes 3. Hidden top-up appends the rest. Never copy the template demo page lineup.',
+    '- Prefer finishing a closed 3-slide `</artifact>` this turn over any Motif fidelity. A complete compact 3-slide deck beats a truncated SVG/CSS shell.',
     '- Honor stated audience/level (e.g. 시니어 개발자 = architecture/internals/trade-offs, not a beginner intro).',
     '- Each body slide needs a real title plus 2–4 concrete bullets or a real paragraph. No "핵심 메시지를 정리합니다" filler.',
   ];
 }
+
+const FIRST_FILL_SLIDE_COUNT_STABILITY_CAP =
+  '3 (stability cap for first template fill)';
 
 export function normalizeTemplateCloneFillSlideCountHint(input: string | number | null | undefined): string | null {
   const raw = String(input ?? '').trim();
@@ -263,15 +266,19 @@ export function normalizeTemplateCloneFillSlideCountHint(input: string | number 
     const n = Number(explicit[1]);
     if (Number.isFinite(n) && n >= 1 && n <= 12) return String(n);
   }
-  if (/^5\s*-\s*6$/.test(raw) || /^5\s*~\s*6$/.test(raw)) return '5-6';
-  if (/^6\s*-\s*8$/.test(raw) || /^6\s*~\s*8$/.test(raw)) return '5-6 (stability cap for first template fill)';
-  if (/^8\s*-\s*10$/.test(raw) || /^8\s*~\s*10$/.test(raw)) return '5-6 (stability cap for first template fill)';
-  if (/^12\s*-\s*15$/.test(raw) || /^12\s*~\s*15$/.test(raw)) return '6-8 (stability cap for first template fill)';
+  if (
+    /^5\s*-\s*6$/.test(raw) || /^5\s*~\s*6$/.test(raw)
+    || /^6\s*-\s*8$/.test(raw) || /^6\s*~\s*8$/.test(raw)
+    || /^8\s*-\s*10$/.test(raw) || /^8\s*~\s*10$/.test(raw)
+    || /^12\s*-\s*15$/.test(raw) || /^12\s*~\s*15$/.test(raw)
+  ) {
+    return FIRST_FILL_SLIDE_COUNT_STABILITY_CAP;
+  }
   const single = raw.match(/^(\d{1,2})$/)?.[1];
   if (single) {
     const n = Number(single);
-    if (n <= 6) return String(n);
-    return n <= 10 ? '5-6 (stability cap for first template fill)' : '6-8 (stability cap for first template fill)';
+    if (n <= 3) return String(n);
+    return FIRST_FILL_SLIDE_COUNT_STABILITY_CAP;
   }
   return raw;
 }
@@ -372,7 +379,7 @@ export function buildTemplateCloneContentFillSeed(options: {
   if (slideCountHint) {
     parts.push(`Slide count hint: ${slideCountHint}.`);
   } else {
-    parts.push('Slide count hint: 5-6 (default for first template fill; do not stop at 1 slide unless the user explicitly requested exactly 1).');
+    parts.push('Slide count hint: 3 (default for first template fill; close 3 complete slides this turn. Hidden top-up appends more.)');
   }
   if (brief) {
     parts.push('', '[Source brief]', brief);

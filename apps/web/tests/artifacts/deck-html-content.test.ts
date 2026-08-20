@@ -9,8 +9,10 @@ import {
   isPersistableShortDeckDraft,
   deckArtifactStartsWithMotifSvgDump,
   deckSlideHeadingsLookLikeFailedGenerate,
+  shouldAbortStreamForHeadOnlyKitDump,
   shouldAbortStreamForMotifSvgDump,
   shouldDiscardPartialHtmlForMotifSvgDump,
+  stripAbandonedHeadKitDumpFromStreamedText,
   stripAbandonedMotifSvgDumpFromStreamedText,
   meetsMinimumDeckDeliverableQuality,
   meetsTruncationSalvageQuality,
@@ -168,6 +170,43 @@ describe("deck-html-content", () => {
     expect(stripped).toContain("<!-- motif svg dump abandoned -->");
     expect(stripped).not.toContain("<path d=");
     expect(stripped).not.toMatch(/<svg\s/);
+  });
+
+  it("aborts fill streams that dump a long head/style kit with no titled slide", () => {
+    const kit = "<style>".padEnd(820, ".") + "</style>";
+    const headDump =
+      '<artifact type="deck"><!doctype html><html lang="ko"><head><title>Daisy Days</title>'
+      + kit;
+    expect(
+      shouldAbortStreamForHeadOnlyKitDump({
+        streamedText: headDump,
+        templateCloneContentFill: true,
+      }),
+    ).toBe(true);
+    expect(
+      shouldAbortStreamForHeadOnlyKitDump({
+        streamedText: headDump,
+        templateCloneContentFill: false,
+      }),
+    ).toBe(false);
+    expect(
+      shouldAbortStreamForHeadOnlyKitDump({
+        streamedText:
+          '<artifact type="deck"><!doctype html><html lang="ko"><head><title>x</title></head>',
+        templateCloneContentFill: true,
+      }),
+    ).toBe(false);
+    expect(
+      shouldAbortStreamForHeadOnlyKitDump({
+        streamedText:
+          '<artifact type="deck"><body><section class="slide"><h1>Expo</h1></section>'
+          + kit,
+        templateCloneContentFill: true,
+      }),
+    ).toBe(false);
+    const stripped = stripAbandonedHeadKitDumpFromStreamedText(headDump);
+    expect(stripped).toContain("<!-- head kit dump abandoned -->");
+    expect(stripped).not.toContain("<title>Daisy Days</title>");
   });
 
   it("does not treat Motif-SVG-only slides as deliverable copy", () => {

@@ -137,7 +137,7 @@ const AUTO_CONTINUE_TEMPLATE_FILL_MIN_SLIDES =
 const AUTO_CONTINUE_MOTIF_SVG_DUMP_ABANDON =
   '\n\nCRITICAL: The previous turn dumped Motif `<svg>` path data before any cover `<h1>`. '
   + 'ABANDON that SVG. Do NOT continue path/`d=` data or fence the dump. '
-  + 'Restart BODY-FIRST with `<h1>` then lead `<p>`, THEN kit Motif vocabulary (capped sprites AFTER title and/or Motif CSS from the kit). Never invent generic CSS circles when the kit has Motif vocabulary.';
+  + 'Restart BODY-FIRST with `<h1>` then lead `<p>`. Motif `<svg>` is NOT required this turn — official Motif is merged after save. Never invent generic CSS circles.';
 
 function previewDiscardedHtmlShellForAutoContinue(html: string): string {
   return html

@@ -1498,11 +1498,11 @@ This is the first content fill after a LOOK seed (OD-style create with kit Motif
 - Bind kit palette hex + fonts + Slide surface on \`html\`/\`body\` AND every \`.slide\` **edge-to-edge** (full 1920×1080). FORBIDDEN: white outer slide + inner cream paper panel that leaves white top/bottom bands. White title cards on cream paper are OK.
 - Title-first: cover must have a real \`h1\`/\`h2\` title + lead BEFORE any Motif decoration.
 - **Layout (required when kit has Layout CSS / scaffold roles):** reuse capped Layout CSS + scaffold roles. Do NOT flatten every slide into one centered flex title column when the kit ships grids/splits/cards.
-- **Motif vocabulary:** use kit Motif HTML snippets / Motif CSS classes / at most one capped Motif sprite AFTER title/lead (whatever the kit ships). When Motif sprites lists a kit SVG (Daisy flowers, etc.), that sprite MUST appear on the cover — empty deco shells and tiny CSS dots are not enough. Prefer finishing a closed deck over dense Motif.
-- **Named Motif fidelity:** if the selected template/title vocabulary names flowers, daisies, capsule cards, pins, pixels, scanlines, terminal chrome, etc., that same motif family must visibly appear on the cover and at least one body slide. Generic circles/stars are not substitutes.
-- **FORBIDDEN substitutes:** Motif shapes from another template family; generic CSS circles when the kit has Motif CSS/sprites; inventing Capsule coral pills when the kit Motif is petals/blobs/pins/pixel/scanlines; ignoring kit Motif snippet aspect/border-radius; emoji ornament rows; Motif \`<svg>\` before cover title; multi-KB \`<svg><style>\` dumps; Neutral \`#0f172a\`; terracotta \`#c96442\`.
-- Slide count is input-driven: honor an explicit small count (1–4) if the user asked for it. Otherwise produce 5–6 filled 1920×1080 slides by default. A one-slide cover-only deck is incomplete — persist rejects 1–2 slides unless that small count was explicit. Never close \`</html></artifact>\` after a single cover.
-- Stream: status → \`<artifact type="deck">\` → body-first sections with real topical copy → kit Motif after title → close \`</body></html></artifact>\` in this same response.
+- **Motif vocabulary:** Motif \`<svg>\` is NOT required this turn (official Motif is merged after save). Optional tiny kit Motif CSS classes AFTER title/lead are OK. Prefer finishing 3 closed slides over any ornament.
+- **Named Motif fidelity:** do not invent a different motif family. Persist paints official Daisy/Capsule/Terminal Motif after save — do not draw lookalikes this turn.
+- **FORBIDDEN substitutes:** Motif \`<svg>\` this turn; Motif shapes from another template family; generic CSS circles; inventing Capsule coral pills when the kit Motif is petals/blobs/pins/pixel/scanlines; emoji ornament rows; Motif \`<svg>\` before cover title; multi-KB \`<svg><style>\` dumps; Neutral \`#0f172a\`; terracotta \`#c96442\`.
+- Slide count THIS TURN: honor an explicit small count (1–2) if the user asked for it. Otherwise produce 3 filled 1920×1080 slides and close the artifact. Hidden top-up appends more. Never close \`</html></artifact>\` after a single cover.
+- Stream: status → \`<artifact type="deck">\` → body-first sections with real topical copy → close \`</body></html></artifact>\` in this same response.
 `;
 
 const TEAMVER_SELECTED_TEMPLATE_VISUAL_READ_LAST_WITHOUT_KIT = `# Selected deck template visual — READ LAST (highest visual priority)
@@ -1523,15 +1523,14 @@ const TEAMVER_TEMPLATE_CLONE_FILL_NO_SVG_READ_LAST = `# Template clone fill — 
 
 This is the first content-fill after a Clone LOOK seed.
 
-- Cover order is mandatory: \`<section class="slide">\` → \`<h1>real topical title</h1>\` → lead \`<p>\` → kit Motif vocabulary.
-- Motif vocabulary MUST come from the kit: Motif HTML snippets / Decorations CSS Motif classes / capped Motif sprites (whatever the kit ships).
-- When Motif sprites lists a kit SVG (Daisy flowers etc.), paste that ONE capped sprite AFTER title/lead on the cover (nest in \`.deco\` wrappers when listed). Kit sprites may be ~2KB — allowed. Empty deco shells / tiny CSS dots are not Motif.
-- Named Motif fidelity: if the template/title vocabulary names flowers, daisies, capsule cards, pins, pixels, scanlines, terminal chrome, etc., include that same motif family on the cover and at least one body slide. Generic circles/stars are not substitutes.
+- Cover order is mandatory: \`<section class="slide">\` → \`<h1>real topical title</h1>\` → lead \`<p>\`. kit Motif AFTER title is optional CSS only.
+- Motif \`<svg>\` is NOT required this turn. Official Motif CSS/SVG is merged after save. Do not paste Motif sprites.
+- Close **3** body-first slides this turn (unless the user asked for 1–2). Hidden top-up appends more.
+- Named Motif fidelity: do not invent a different motif family or tiny Daisy lookalikes. Persist paints official Motif after save.
 - Layout MUST come from capped Layout CSS + scaffold roles when present — do not flatten every slide to a centered flex title.
-- Prefer 1–2 Motif elements after title when scaffold \`deco=\` lists classes — finish a closed deck this turn.
-- Never invent Motif geometry from another template family (copy kit Motif snippet aspect + border-radius; no foreign Capsule coral pills when the kit Motif is petals/blobs/pins/pixel/scanlines; no invented generic circles when Motif CSS/sprites exist).
-- Never open Motif \`<svg>\` before cover title. A hang on Motif \`<svg><style>\` before titles is a failed deliverable.
-- If any earlier rule said ZERO Motif / omit Layout / CSS-circles-only, **IGNORE it** — use the kit Motif + capped Layout after the title.`;
+- Never invent Motif geometry from another template family (no foreign Capsule coral pills when the kit Motif is petals/blobs/pins/pixel/scanlines; no invented generic circles).
+- Never open Motif \`<svg>\` this turn — before or after the cover title. A hang on Motif \`<svg><style>\` or a long \`<head>\` is a failed deliverable.
+- If any earlier rule said paste Motif sprites / Motif floor REQUIRED this turn, **IGNORE it** — finish 3 titled slides. Official Motif is merged after save.`;
 
 /**
  * Lean system prompt for Teamver embed slide-only + anthropic-api / BYOK proxy.
@@ -1701,11 +1700,11 @@ export function composeTeamverSlideApiPrompt({
         ? (
           'Hard requirements (first content-fill — OD-style CREATE, kit Motif AFTER title):\n'
           + '- Bind kit palette hex + fonts + Slide surface on html/body AND every `.slide` edge-to-edge (no white outer + inner cream panel).\n'
-          + '- Title-first body: cover title + lead BEFORE Motif. Close `</artifact>` this turn.\n'
-          + '- Motif vocabulary from kit AFTER title (snippets / Decorations CSS / at most one capped sprite). Prefer closing the deck this turn. FORBIDDEN: Motif geometry from another template family; inventing generic CSS circles when kit Motif exists; inventing Capsule coral pills when kit Motif is petals/blobs/pins/pixel; ignoring kit Motif snippet aspect/border-radius.\n'
+          + '- Title-first body: cover title + lead BEFORE any decoration. Close `</artifact>` this turn with 3 slides.\n'
+          + '- Motif `<svg>` is NOT required this turn (official Motif is merged after save). Optional tiny kit Motif CSS AFTER title is OK. FORBIDDEN: Motif `<svg>` this turn; Motif geometry from another template family; inventing generic CSS circles; inventing Capsule coral pills when kit Motif is petals/blobs/pins/pixel.\n'
           + '- Layout REQUIRED from capped Layout CSS + scaffold roles when present — do not flatten every slide into one centered flex title column.\n'
-          + '- Prefer 5–6 slides unless the user asked for an exact count. No Neutral `#0f172a` / terracotta `#c96442`.\n'
-          + '- Do not dump or rewrite a full example.html. Never open Motif `<svg>` before cover title.\n\n'
+          + '- Prefer 3 slides this turn unless the user asked for an exact small count. Hidden top-up appends more. No Neutral `#0f172a` / terracotta `#c96442`.\n'
+          + '- Do not dump or rewrite a full example.html. Never open Motif `<svg>` or a long `<head>` this turn.\n\n'
         )
         : hasTemplateScaffold
         ? (

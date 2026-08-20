@@ -6,10 +6,11 @@ import { fetchTeamverDaemon } from "../teamver/teamverDaemonHeaders";
  * `streamProxyEndpoint` registers an abort listener on the incoming
  * `AbortSignal`. When that signal aborts, it inspects `signal.reason`:
  *   - `EXPLICIT_PROXY_STOP_REASON` / `FILL_MOTIF_SVG_DUMP_STOP_REASON`
+ *     / `FILL_HEAD_KIT_DUMP_STOP_REASON`
  *     → fires `POST /api/proxy/abort { streamId }` with `keepalive: true`
  *     so the daemon cancels the upstream LLM `fetch()`. User Stop uses
- *     the first reason; Motif-SVG hang abort uses the second (still
- *     incomplete — auto-continue must run).
+ *     the first reason; Motif-SVG / head-kit hang aborts use the others
+ *     (still incomplete — persist salvage + auto-continue must run).
  *   - anything else (page navigation, route swap, replay, browser tab
  *     close) → no abort POST is sent. The daemon lets the upstream
  *     stream drain naturally so background tool work (image gen, S3
@@ -34,16 +35,29 @@ export const FILL_MOTIF_SVG_DUMP_STOP_REASON = "od:fill-motif-svg-dump" as const
 
 export type FillMotifSvgDumpStopReason = typeof FILL_MOTIF_SVG_DUMP_STOP_REASON;
 
+/**
+ * Mid-stream fill hang: `<head>` / prelude `<style>` grew past ~800
+ * characters with no titled slide. Cancels upstream like Motif-SVG
+ * abort so persist can salvage a brief cover instead of burning the turn.
+ */
+export const FILL_HEAD_KIT_DUMP_STOP_REASON = "od:fill-head-kit-dump" as const;
+
+export type FillHeadKitDumpStopReason = typeof FILL_HEAD_KIT_DUMP_STOP_REASON;
+
 export function shouldRequestUpstreamProxyAbort(reason: unknown): boolean {
   return (
     reason === EXPLICIT_PROXY_STOP_REASON
     || reason === FILL_MOTIF_SVG_DUMP_STOP_REASON
+    || reason === FILL_HEAD_KIT_DUMP_STOP_REASON
   );
 }
 
 /** Aborted streams that should finalize via onDone (incomplete) instead of silent return. */
 export function shouldFinalizeAbortedStreamAsIncomplete(reason: unknown): boolean {
-  return reason === FILL_MOTIF_SVG_DUMP_STOP_REASON;
+  return (
+    reason === FILL_MOTIF_SVG_DUMP_STOP_REASON
+    || reason === FILL_HEAD_KIT_DUMP_STOP_REASON
+  );
 }
 
 /**

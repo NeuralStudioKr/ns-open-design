@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   EXPLICIT_PROXY_STOP_REASON,
+  FILL_HEAD_KIT_DUMP_STOP_REASON,
   FILL_MOTIF_SVG_DUMP_STOP_REASON,
   requestProxyAbort,
   shouldFinalizeAbortedStreamAsIncomplete,
@@ -57,12 +58,14 @@ describe("proxy abort reason policy", () => {
   it("cancels upstream for user Stop and Motif-SVG dump, not page-exit", () => {
     expect(shouldRequestUpstreamProxyAbort(EXPLICIT_PROXY_STOP_REASON)).toBe(true);
     expect(shouldRequestUpstreamProxyAbort(FILL_MOTIF_SVG_DUMP_STOP_REASON)).toBe(true);
+    expect(shouldRequestUpstreamProxyAbort(FILL_HEAD_KIT_DUMP_STOP_REASON)).toBe(true);
     expect(shouldRequestUpstreamProxyAbort(undefined)).toBe(false);
     expect(shouldRequestUpstreamProxyAbort("od:navigation")).toBe(false);
   });
 
   it("finalizes Motif-SVG dump aborts as incomplete, not user Stop", () => {
     expect(shouldFinalizeAbortedStreamAsIncomplete(FILL_MOTIF_SVG_DUMP_STOP_REASON)).toBe(true);
+    expect(shouldFinalizeAbortedStreamAsIncomplete(FILL_HEAD_KIT_DUMP_STOP_REASON)).toBe(true);
     expect(shouldFinalizeAbortedStreamAsIncomplete(EXPLICIT_PROXY_STOP_REASON)).toBe(false);
     expect(shouldFinalizeAbortedStreamAsIncomplete(undefined)).toBe(false);
   });

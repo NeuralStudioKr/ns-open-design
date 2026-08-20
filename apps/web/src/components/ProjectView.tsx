@@ -67,7 +67,9 @@ import {
   deckSlideHeadingsLookLikeFailedGenerate,
   isClosedSoftSalvageDeckHtml,
   isPersistableShortDeckDraft,
+  shouldAbortStreamForHeadOnlyKitDump,
   shouldAbortStreamForMotifSvgDump,
+  stripAbandonedHeadKitDumpFromStreamedText,
   stripAbandonedMotifSvgDumpFromStreamedText,
 } from '../artifacts/deck-html-content';
 import {
@@ -103,6 +105,7 @@ import { useTeamverT } from '../teamver/branding/useTeamverT';
 import { streamMessage } from '../providers/anthropic';
 import {
   EXPLICIT_PROXY_STOP_REASON,
+  FILL_HEAD_KIT_DUMP_STOP_REASON,
   FILL_MOTIF_SVG_DUMP_STOP_REASON,
   requestProxyAbort,
 } from '../providers/proxyAbort';
@@ -5198,10 +5201,6 @@ export function ProjectView({
         const salvaged = salvageTruncatedHtmlDocument(artifactToPersist.html)
           ?? salvageTemplateFillShellAsCoverDraft(artifactToPersist.html, {
             fallbackTitle: coverFallbackTitle,
-            lastResortTitle:
-              runTemplateCloneContentFillRef.current || slideOnlyMvp
-                ? '초안'
-                : null,
           });
         if (salvaged) {
           artifactToPersist = { ...artifactToPersist, html: salvaged };
@@ -9605,6 +9604,7 @@ export function ProjectView({
       let liveHtml = '';
       let streamedText = '';
       let motifSvgDumpAbortArmed = false;
+      let headKitDumpAbortArmed = false;
       // Best complete artifact seen so far in this turn. Prevents a
       // later `<artifact>` block with only a shell body (e.g. the model
       // opened a second, empty artifact after a valid one) from overwriting
@@ -10563,6 +10563,7 @@ export function ProjectView({
           textBuffer.appendContent(delta);
           if (
             !motifSvgDumpAbortArmed
+            && !headKitDumpAbortArmed
             && shouldAbortStreamForMotifSvgDump({
               streamedText,
               templateCloneContentFill: isCloneContentFillTurn,
@@ -10570,6 +10571,16 @@ export function ProjectView({
           ) {
             motifSvgDumpAbortArmed = true;
             controller.abort(FILL_MOTIF_SVG_DUMP_STOP_REASON);
+          } else if (
+            !motifSvgDumpAbortArmed
+            && !headKitDumpAbortArmed
+            && shouldAbortStreamForHeadOnlyKitDump({
+              streamedText,
+              templateCloneContentFill: isCloneContentFillTurn,
+            })
+          ) {
+            headKitDumpAbortArmed = true;
+            controller.abort(FILL_HEAD_KIT_DUMP_STOP_REASON);
           }
         },
         onAgentEvent: (ev: AgentEvent) => {
@@ -10614,8 +10625,13 @@ export function ProjectView({
           releaseOwnTextBuffer();
           const fullText = motifSvgDumpAbortArmed
             ? stripAbandonedMotifSvgDumpFromStreamedText(incomingText || streamedText)
-            : incomingText;
-          if (motifSvgDumpAbortArmed && fullText !== (incomingText || streamedText)) {
+            : headKitDumpAbortArmed
+              ? stripAbandonedHeadKitDumpFromStreamedText(incomingText || streamedText)
+              : incomingText;
+          if (
+            (motifSvgDumpAbortArmed || headKitDumpAbortArmed)
+            && fullText !== (incomingText || streamedText)
+          ) {
             streamedText = fullText;
             rewriteLiveContent(fullText);
           }

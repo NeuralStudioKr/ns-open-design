@@ -741,8 +741,11 @@ describe("canvasSlideLaunch", () => {
     expect(projectView).toContain("templateCloneContentFill: isCloneContentFillTurn");
     expect(projectView).toContain("deckArtifactStartsWithMotifSvgDump");
     expect(projectView).toContain("shouldAbortStreamForMotifSvgDump");
+    expect(projectView).toContain("shouldAbortStreamForHeadOnlyKitDump");
     expect(projectView).toContain("FILL_MOTIF_SVG_DUMP_STOP_REASON");
+    expect(projectView).toContain("FILL_HEAD_KIT_DUMP_STOP_REASON");
     expect(projectView).toContain("stripAbandonedMotifSvgDumpFromStreamedText");
+    expect(projectView).toContain("stripAbandonedHeadKitDumpFromStreamedText");
     expect(projectView).toContain("templateCloneContentFill: true");
     expect(projectView).toMatch(/includeExistingDeckImageEditRule:\s*\n\s*!isCloneContentFillTurn/);
     expect(projectView).toContain("templateCloneContentFill: autoContinueOriginIsFill");
@@ -754,6 +757,9 @@ describe("canvasSlideLaunch", () => {
     expect(fillSrc).toContain("withTemplateCloneFillPluginInputs(");
     expect(fillSrc).toContain("`<head>` is FORBIDDEN on this fill turn");
     expect(fillSrc).toContain("first 800 characters after `<artifact`");
+    expect(fillSrc).toContain("close exactly 3 complete body-first slides");
+    expect(fillSrc).toContain("Motif SVG is NOT required this turn");
+    expect(projectView).not.toMatch(/lastResortTitle:\s*[\s\S]{0,120}'초안'/);
     expect(fillSrc).toContain("SLIDE_DECK_CONTENT_EXPANSION_INSTRUCTION");
     expect(fillSrc).toContain("BRIEF/TOPIC");
     const tabsBar = readWebSource("src/components/WorkspaceTabsBar.tsx");

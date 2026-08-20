@@ -783,7 +783,9 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(fill).not.toContain('Copy Motif sprites verbatim');
       expect(normal).not.toContain('Copy Motif sprites verbatim');
       expect(normal).toContain('Motif budget');
-      expect(normal).toContain('at most one short SVG snippet after visible title/body copy starts');
+      expect(normal).toContain('paste at most ONE capped kit Motif sprite');
+      expect(fill).toMatch(/Motif `<svg>` is NOT required this turn/i);
+      expect(fill).toMatch(/produce 3 filled 1920×1080 slides/i);
     });
   });
 });
