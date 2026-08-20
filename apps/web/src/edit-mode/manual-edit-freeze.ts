@@ -872,6 +872,55 @@ export function shouldKeepMultiInspectorSourceOnlyDuringTipExitLatch(
 }
 
 /**
+ * Single-select od-edit-targets identity reseed must also skip during post-exit
+ * absorb — same latch as Mixed, so draft styles do not flicker (496).
+ */
+export function shouldSkipOdEditTargetsSingleInspectorReseedDuringPostExitAbsorb(
+  selectionIdsChanged: boolean,
+  absorbArmed: boolean,
+  styleDraftPending = false,
+): boolean {
+  return shouldSkipOdEditTargetsIdentityMixedReseedDuringPostExitAbsorb(
+    selectionIdsChanged,
+    absorbArmed,
+    styleDraftPending,
+  );
+}
+
+/**
+ * Absorb counts as tip-protect for membership noise / empty catalog (498).
+ */
+export function shouldTreatPostExitAbsorbAsTipProtect(
+  absorbArmed: boolean,
+): boolean {
+  return absorbArmed;
+}
+
+/**
+ * Selection primary changed or cleared after grace is already gone — still drop
+ * sticky/soft-land/absorb/follow so a new target is not painted with tip protect (499).
+ */
+export function shouldClearTipPostProtectOnSelectionChange(
+  currentPrimaryId: string | null | undefined,
+  nextSelectedId: string | null | undefined,
+): boolean {
+  if (currentPrimaryId == null && nextSelectedId == null) return false;
+  return currentPrimaryId !== nextSelectedId;
+}
+
+/**
+ * Follow-end chrome release must not race an in-flight tip remount safety
+ * clear — wait until safety timeout is gone (499).
+ */
+export function shouldReleaseTipRemountChromeWhenDeckNudgeFollowEnds(
+  chromeSuppressed: boolean,
+  followWindowEnded: boolean,
+  tipRemountSafetyTimeoutPending = false,
+): boolean {
+  return chromeSuppressed && followWindowEnded && !tipRemountSafetyTimeoutPending;
+}
+
+/**
  * How long tip remount follows late deck fit nudges (covers DEFAULT 6500ms) (487).
  */
 export const TIP_REMOUNT_DECK_NUDGE_FOLLOW_MS = 7_000;
@@ -944,16 +993,6 @@ export function shouldReleaseTipRemountChromeAfterResizeGestureEnds(
   resizeSessionActive: boolean,
 ): boolean {
   return chromeSuppressed && chromeReleasePending && !resizeSessionActive;
-}
-
-/**
- * Deck-nudge follow window ended while chrome still inert — force release (494).
- */
-export function shouldReleaseTipRemountChromeWhenDeckNudgeFollowEnds(
-  chromeSuppressed: boolean,
-  followWindowEnded: boolean,
-): boolean {
-  return chromeSuppressed && followWindowEnded;
 }
 
 /**

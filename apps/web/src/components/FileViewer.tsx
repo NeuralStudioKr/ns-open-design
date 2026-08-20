@@ -363,6 +363,9 @@ import {
   shouldAbsorbLiveIdentityFingerprintOnPostExitLatch,
   shouldSyncSelectedIdentityFingerprintOnSoftLandEarlyExit,
   shouldKeepMultiInspectorSourceOnlyDuringTipExitLatch,
+  shouldSkipOdEditTargetsSingleInspectorReseedDuringPostExitAbsorb,
+  shouldTreatPostExitAbsorbAsTipProtect,
+  shouldClearTipPostProtectOnSelectionChange,
   nextTipRemountDeckNudgeFollowUntilMs,
   shouldRemeasureTipRemountOnDeckHostFitNudge,
   shouldThrottleTipRemountDeckNudgeRemasure,
@@ -5576,6 +5579,8 @@ function HtmlViewer({
   const manualEditTipDeckNudgeRemasureAtRef = useRef(0);
   /** Safety: release chrome when deck-nudge follow ends (494). */
   const manualEditTipDeckNudgeFollowChromeTimeoutRef = useRef<number | null>(null);
+  /** rAF coalesce for follow-only deck-nudge remasures (497). */
+  const manualEditTipDeckNudgeRemasureRafRef = useRef<number | null>(null);
   /** Chrome release deferred because fit remasure hit an active resize (489). */
   const manualEditTipChromeReleaseAfterResizeRef = useRef(false);
   /** One-shot wild-jump skip after tip fit-settle remasure (485). */
@@ -8111,7 +8116,7 @@ function HtmlViewer({
   function remeasureTipRemountAfterDeckHostFitSettle(
     target: HTMLIFrameElement | null = iframeRef.current,
     remasureDelayMs = TIP_REMOUNT_FIT_SETTLE_LAST_REMEASURE_MS,
-  ) {
+  ): boolean {
     const ids = selectedManualEditTargetIdsRef.current;
     const nowMs = Date.now();
     const inFitSettleLatch = shouldRemeasureTipRemountAfterDeckHostFitSettle(
@@ -8127,7 +8132,7 @@ function HtmlViewer({
       nowMs,
     );
     if (!inFitSettleLatch && !inDeckNudgeFollow) {
-      return;
+      return false;
     }
     // Mid-gesture remasure fights resize/move draft — skip apply (482).
     if (shouldSkipTipRemountFitSettleRemasureDuringResizeGesture(
@@ -8142,11 +8147,11 @@ function HtmlViewer({
       )) {
         manualEditTipChromeReleaseAfterResizeRef.current = true;
       }
-      return;
+      return false;
     }
     const frame = target ?? iframeRef.current;
     const workspace = manualEditWorkspaceRef.current;
-    if (!frame || !workspace) return;
+    if (!frame || !workspace) return false;
     const primaryId = selectedManualEditTargetIdRef.current;
     const ordered = primaryId && ids.includes(primaryId)
       ? [primaryId, ...ids.filter((id) => id !== primaryId)]
@@ -8201,37 +8206,43 @@ function HtmlViewer({
     for (const id of ordered) {
       requestManualEditTargetRemeasure(id, frame);
     }
+    return appliedAny;
   }
 
   // Keep ref current for deck fit onAfterNudge without thrashing fit options (487).
+  // rAF coalesce storms; stamp throttle only after a remasure that applied (492/497).
   tipRemasureOnDeckNudgeRef.current = () => {
-    const nowMs = Date.now();
-    const followUntil = manualEditTipDeckNudgeFollowUntilRef.current;
-    const inFollow = shouldRemeasureTipRemountOnDeckHostFitNudge(
-      manualEditModeRef.current,
-      selectedManualEditTargetIdsRef.current,
-      followUntil,
-      nowMs,
-    );
-    // Follow-only path: throttle ResizeObserver nudge storms (492).
-    if (
-      inFollow
-      && tipRemountFitSettleExpired(nowMs, manualEditTipRemountFitSettleUntilRef.current)
-      && shouldThrottleTipRemountDeckNudgeRemasure(
-        manualEditTipDeckNudgeRemasureAtRef.current,
+    if (manualEditTipDeckNudgeRemasureRafRef.current != null) return;
+    manualEditTipDeckNudgeRemasureRafRef.current = requestAnimationFrame(() => {
+      manualEditTipDeckNudgeRemasureRafRef.current = null;
+      const nowMs = Date.now();
+      const followUntil = manualEditTipDeckNudgeFollowUntilRef.current;
+      const inFollow = shouldRemeasureTipRemountOnDeckHostFitNudge(
+        manualEditModeRef.current,
+        selectedManualEditTargetIdsRef.current,
+        followUntil,
         nowMs,
-        TIP_REMOUNT_DECK_NUDGE_REMEASURE_THROTTLE_MS,
-      )
-    ) {
-      return;
-    }
-    if (inFollow) {
-      manualEditTipDeckNudgeRemasureAtRef.current = nowMs;
-    }
-    remeasureTipRemountAfterDeckHostFitSettle(
-      iframeRef.current,
-      TIP_REMOUNT_FIT_SETTLE_CHROME_RELEASE_MS,
-    );
+      );
+      // Follow-only path: throttle after coalesce (492).
+      if (
+        inFollow
+        && tipRemountFitSettleExpired(nowMs, manualEditTipRemountFitSettleUntilRef.current)
+        && shouldThrottleTipRemountDeckNudgeRemasure(
+          manualEditTipDeckNudgeRemasureAtRef.current,
+          nowMs,
+          TIP_REMOUNT_DECK_NUDGE_REMEASURE_THROTTLE_MS,
+        )
+      ) {
+        return;
+      }
+      const applied = remeasureTipRemountAfterDeckHostFitSettle(
+        iframeRef.current,
+        TIP_REMOUNT_FIT_SETTLE_CHROME_RELEASE_MS,
+      );
+      if (inFollow && applied) {
+        manualEditTipDeckNudgeRemasureAtRef.current = nowMs;
+      }
+    });
   };
 
   /** Schedule fit-settle remasures aligned with early deck fit nudge delays (460/478/481). */
@@ -8430,6 +8441,10 @@ function HtmlViewer({
         window.clearTimeout(manualEditTipDeckNudgeFollowChromeTimeoutRef.current);
         manualEditTipDeckNudgeFollowChromeTimeoutRef.current = null;
       }
+      if (manualEditTipDeckNudgeRemasureRafRef.current != null) {
+        window.cancelAnimationFrame(manualEditTipDeckNudgeRemasureRafRef.current);
+        manualEditTipDeckNudgeRemasureRafRef.current = null;
+      }
     }
     manualEditTipRemountGeometryGraceIdRef.current = null;
     manualEditTipRemountGeometryGraceUntilRef.current = 0;
@@ -8471,6 +8486,14 @@ function HtmlViewer({
   ) {
     if (shouldClearTipRemountGeometryGraceOnSelectionChange(
       manualEditTipRemountGeometryGraceIdRef.current,
+      nextSelectedId,
+    )) {
+      clearManualEditTipRemountGeometryGrace('selection');
+      return;
+    }
+    // Grace already gone — still drop sticky/soft-land/absorb/follow on leave (499).
+    if (shouldClearTipPostProtectOnSelectionChange(
+      selectedManualEditTargetIdRef.current,
       nextSelectedId,
     )) {
       clearManualEditTipRemountGeometryGrace('selection');
@@ -8537,6 +8560,8 @@ function HtmlViewer({
         if (shouldReleaseTipRemountChromeWhenDeckNudgeFollowEnds(
           manualEditTipRemountChromeSuppressedRef.current,
           ended,
+          // Do not race tip remount safety clear still in flight (499).
+          manualEditTipRemountChromeSafetyTimeoutRef.current != null,
         )) {
           manualEditTipRemountChromeSuppressedRef.current = false;
           setManualEditTipRemountChromeSuppressed(false);
@@ -9946,6 +9971,8 @@ function HtmlViewer({
 
   useEffect(() => {
     if (!manualEditMode) {
+      // Drop tip remount soft-land/absorb/follow timers on mode-exit (499/review).
+      clearManualEditTipRemountGeometryGrace('mode-exit');
       setManualEditTargets([]);
       manualEditTargetsIdentityFingerprintRef.current = '';
       manualEditSelectedIdentityFingerprintRef.current = '';
@@ -9998,10 +10025,13 @@ function HtmlViewer({
         const selectedIdsForPreserve = selectedManualEditTargetIdsRef.current;
         const softLandAtEntry = manualEditTipPostStickySoftLandRef.current;
         const exitLatchAtEntry = manualEditTipPostSoftLandExitLatchRef.current;
+        const postExitAbsorbAtEntry = manualEditTipPostExitMixedAbsorbRef.current;
         const tipProtectSource = tipRemountSession
           || manualEditTipSyncedIdentityRetainRef.current
           || softLandAtEntry > 0
-          || exitLatchAtEntry;
+          || exitLatchAtEntry
+          // Absorb is tip-protect for membership noise / empty catalog (498).
+          || shouldTreatPostExitAbsorbAsTipProtect(postExitAbsorbAtEntry);
         const refreshedProbe = selectedIdsForPreserve.length > 0
           ? resolveManualEditTargetsByIds(selectedIdsForPreserve, data.targets)
           : [];
@@ -10042,12 +10072,14 @@ function HtmlViewer({
           exitLatchAtEntry,
           selectionIdsChangedEarly,
         );
-        const postExitAbsorbAtEntry = manualEditTipPostExitMixedAbsorbRef.current;
         const tipRemountActive = shouldRetainTipSyncedIdentityAfterHold(
           tipRemountSession,
           manualEditTipSyncedIdentityRetainRef.current,
           selectionIdsChangedEarly,
         ) || softLandActive || exitLatchActive;
+        // Absorb tick is not tip-preserve, but still tip-protect for wipe/noise (498).
+        const tipProtectActive = tipRemountActive
+          || shouldTreatPostExitAbsorbAsTipProtect(postExitAbsorbAtEntry);
         if (
           !selectionIdsChangedEarly
           && shouldDeferTipSyncedIdentityStickyClearUntilAfterPreserve(clearStickyAfterPreserve)
@@ -10242,8 +10274,8 @@ function HtmlViewer({
             : refreshedRaw;
           const nextIds = refreshed.map((item) => item.id);
           if (nextIds.length === 0) {
-            // Tip protect: empty catalog is settle noise — keep selection (473).
-            if (!shouldClearManualEditSelectionOnEmptyOdEditTargets(tipRemountActive)) {
+            // Tip protect (incl. absorb): empty catalog is settle noise — keep selection (473/498).
+            if (!shouldClearManualEditSelectionOnEmptyOdEditTargets(tipProtectActive)) {
               return;
             }
             void clearManualEditTargetSelection();
@@ -10300,17 +10332,24 @@ function HtmlViewer({
             postExitAbsorbAtEntry,
             styleDraftPending,
           );
+          // Single absorb skip shares the Mixed absorb latch (496).
+          const skipIdentitySingleReseed = shouldSkipOdEditTargetsSingleInspectorReseedDuringPostExitAbsorb(
+            selectionIdsChanged,
+            postExitAbsorbAtEntry,
+            styleDraftPending,
+          );
+          const skipIdentityInspectorReseed = skipIdentityMixedReseed || skipIdentitySingleReseed;
           const allowPendingReseed = shouldAllowOdEditTargetsPendingReseedDuringTipProtect(
             styleDraftPending,
             selectionIdsChanged,
             selectedTargetsIdentityChanged,
-            tipRemountActive,
+            tipProtectActive,
           );
           // Multi-select inspector: reparse on id-set OR selected identity change
           // (59 mixed styles). Geometry-only broadcasts keep fingerprint equal.
           if (
             nextIds.length > 1
-            && !skipIdentityMixedReseed
+            && !skipIdentityInspectorReseed
             && (selectionIdsChanged || (selectedTargetsIdentityChanged && !styleDraftPending))
           ) {
             const base = sourceRef.current ?? '';
@@ -10339,7 +10378,7 @@ function HtmlViewer({
             }
           } else if (
             nextIds.length > 1
-            && !skipIdentityMixedReseed
+            && !skipIdentityInspectorReseed
             && allowPendingReseed
             && selectedNext
           ) {
@@ -10369,7 +10408,7 @@ function HtmlViewer({
             }));
           } else if (
             nextIds.length === 1
-            && !skipIdentityMixedReseed
+            && !skipIdentityInspectorReseed
             && !selectionIdsChanged
             && selectedTargetsIdentityChanged
             && !styleDraftPending
@@ -10399,7 +10438,7 @@ function HtmlViewer({
             }));
           } else if (
             nextIds.length === 1
-            && !skipIdentityMixedReseed
+            && !skipIdentityInspectorReseed
             && allowPendingReseed
             && selectedNext
           ) {

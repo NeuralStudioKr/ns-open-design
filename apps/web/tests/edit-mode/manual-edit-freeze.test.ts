@@ -36,6 +36,9 @@ import {
   shouldAbsorbLiveIdentityFingerprintOnPostExitLatch,
   shouldSyncSelectedIdentityFingerprintOnSoftLandEarlyExit,
   shouldKeepMultiInspectorSourceOnlyDuringTipExitLatch,
+  shouldSkipOdEditTargetsSingleInspectorReseedDuringPostExitAbsorb,
+  shouldTreatPostExitAbsorbAsTipProtect,
+  shouldClearTipPostProtectOnSelectionChange,
   nextTipRemountDeckNudgeFollowUntilMs,
   shouldRemeasureTipRemountOnDeckHostFitNudge,
   shouldThrottleTipRemountDeckNudgeRemasure,
@@ -237,11 +240,20 @@ describe('manual edit freeze reset', () => {
     expect(shouldSyncSelectedIdentityFingerprintOnSoftLandEarlyExit(true, false)).toBe(true);
     expect(shouldKeepMultiInspectorSourceOnlyDuringTipExitLatch(true, 2)).toBe(true);
     expect(shouldKeepMultiInspectorSourceOnlyDuringTipExitLatch(true, 1)).toBe(false);
+    expect(shouldSkipOdEditTargetsSingleInspectorReseedDuringPostExitAbsorb(false, true)).toBe(true);
+    expect(shouldSkipOdEditTargetsSingleInspectorReseedDuringPostExitAbsorb(false, true, true)).toBe(false);
+    expect(shouldTreatPostExitAbsorbAsTipProtect(true)).toBe(true);
+    expect(shouldTreatPostExitAbsorbAsTipProtect(false)).toBe(false);
+    expect(shouldClearTipPostProtectOnSelectionChange('a', 'b')).toBe(true);
+    expect(shouldClearTipPostProtectOnSelectionChange('a', null)).toBe(true);
+    expect(shouldClearTipPostProtectOnSelectionChange('a', 'a')).toBe(false);
+    expect(shouldClearTipPostProtectOnSelectionChange(null, null)).toBe(false);
     expect(shouldThrottleTipRemountDeckNudgeRemasure(1_000, 1_050)).toBe(true);
     expect(shouldThrottleTipRemountDeckNudgeRemasure(1_000, 1_200)).toBe(false);
     expect(shouldThrottleTipRemountDeckNudgeRemasure(0, 1_050)).toBe(false);
     expect(TIP_REMOUNT_DECK_NUDGE_REMEASURE_THROTTLE_MS).toBe(100);
     expect(shouldReleaseTipRemountChromeWhenDeckNudgeFollowEnds(true, true)).toBe(true);
+    expect(shouldReleaseTipRemountChromeWhenDeckNudgeFollowEnds(true, true, true)).toBe(false);
     expect(shouldReleaseTipRemountChromeWhenDeckNudgeFollowEnds(true, false)).toBe(false);
     expect(shouldReleaseTipRemountChromeWhenDeckNudgeFollowEnds(false, true)).toBe(false);
     expect(nextTipRemountDeckNudgeFollowUntilMs(1_000, true)).toBe(

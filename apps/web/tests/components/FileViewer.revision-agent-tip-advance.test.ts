@@ -288,10 +288,17 @@ describe('FileViewer revision tip advance after undo', () => {
     expect(fileViewer).toContain('manualEditTipPostExitMixedAbsorbRef');
     expect(fileViewer).toContain('shouldSyncSelectedIdentityFingerprintOnSoftLandEarlyExit');
     expect(fileViewer).toContain('shouldKeepMultiInspectorSourceOnlyDuringTipExitLatch');
+    expect(fileViewer).toContain('shouldSkipOdEditTargetsSingleInspectorReseedDuringPostExitAbsorb');
+    expect(fileViewer).toContain('shouldTreatPostExitAbsorbAsTipProtect');
+    expect(fileViewer).toContain('shouldClearTipPostProtectOnSelectionChange');
+    expect(fileViewer).toContain('skipIdentityInspectorReseed');
+    expect(fileViewer).toContain('tipProtectActive');
+    expect(fileViewer).toContain('manualEditTipDeckNudgeRemasureRafRef');
     expect(fileViewer).toContain('shouldThrottleTipRemountDeckNudgeRemasure');
     expect(fileViewer).toContain('TIP_REMOUNT_DECK_NUDGE_REMEASURE_THROTTLE_MS');
     expect(fileViewer).toContain('shouldReleaseTipRemountChromeWhenDeckNudgeFollowEnds');
     expect(fileViewer).toContain('manualEditTipDeckNudgeFollowChromeTimeoutRef');
+    expect(fileViewer).toContain("clearManualEditTipRemountGeometryGrace('mode-exit')");
     expect(fileViewer).toContain('TIP_REMOUNT_DECK_NUDGE_FOLLOW_MS');
     expect(fileViewer).toContain('shouldRemeasureTipRemountOnDeckHostFitNudge');
     expect(fileViewer).toContain('tipRemasureOnDeckNudgeRef');
