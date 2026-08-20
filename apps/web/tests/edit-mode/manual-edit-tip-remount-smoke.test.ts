@@ -1,7 +1,8 @@
 /**
- * Tip remount user-perception smoke pins (loop 500/501).
+ * Tip remount user-perception smoke pins (loop 500/501/506).
  * Encodes the Manual Edit tip-yield → soft-land → absorb checklist as
  * falsifiable helper/constant + FileViewer wiring assertions.
+ * CI fail-fast: `pnpm --filter @open-design/web test:tip-remount-smoke`.
  */
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -29,8 +30,25 @@ const fileViewer = readFileSync(
   resolve(import.meta.dirname, '../../src/components/FileViewer.tsx'),
   'utf8',
 );
+const webPackageJson = readFileSync(
+  resolve(import.meta.dirname, '../../package.json'),
+  'utf8',
+);
+const freezeSource = readFileSync(
+  resolve(import.meta.dirname, '../../src/edit-mode/manual-edit-freeze.ts'),
+  'utf8',
+);
 
-describe('manual-edit tip remount smoke (500/501)', () => {
+describe('manual-edit tip remount smoke (500/501/506)', () => {
+  it('pins tip remount smoke script for CI fail-fast (506)', () => {
+    expect(webPackageJson).toContain('"test:tip-remount-smoke"');
+    expect(webPackageJson).toContain('manual-edit-tip-remount-smoke.test.ts');
+    expect(webPackageJson).toContain('manual-edit-tip-soft-land-absorb-sequence.test.ts');
+    expect(freezeSource).not.toContain('spendTipPostSoftLandExitLatch');
+    expect(fileViewer).toContain('clearTipPostSoftLandExitLatch');
+    expect(fileViewer).not.toContain('spendTipPostSoftLandExitLatch');
+  });
+
   it('keeps chrome release at 400ms and latch covering 1600 remasure', () => {
     expect(TIP_REMOUNT_FIT_SETTLE_CHROME_RELEASE_MS).toBe(400);
     expect(TIP_REMOUNT_FIT_SETTLE_REMEASURE_DELAYS_MS).toEqual([50, 150, 400, 900, 1600]);

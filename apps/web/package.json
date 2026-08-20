@@ -28,7 +28,8 @@
     "build:snapshot-capture": "node scripts/build-snapshot-capture.mjs",
     "typecheck": "tsc -b --noEmit",
     "pretest": "node scripts/pretest.mjs",
-    "test": "vitest run -c vitest.config.ts"
+    "test": "vitest run -c vitest.config.ts",
+    "test:tip-remount-smoke": "vitest run -c vitest.config.ts tests/edit-mode/manual-edit-tip-remount-smoke.test.ts tests/edit-mode/manual-edit-tip-soft-land-absorb-sequence.test.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "0.32.1",

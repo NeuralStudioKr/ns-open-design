@@ -784,20 +784,11 @@ export function shouldRetainTipSyncedIdentityDuringPostSoftLandExitLatch(
 }
 
 /**
- * Exit-latch tick spends the latch — later catalogs go live (486/502).
+ * Exit-latch tick spends the latch — later catalogs go live (486/502/505).
  * No arguments: the call site only runs when the latch was armed at entry.
  */
 export function clearTipPostSoftLandExitLatch(): false {
   return false;
-}
-
-/**
- * @deprecated Use clearTipPostSoftLandExitLatch — argument was unused (502).
- */
-export function spendTipPostSoftLandExitLatch(
-  _exitLatchAtEntry?: boolean,
-): false {
-  return clearTipPostSoftLandExitLatch();
 }
 
 /**

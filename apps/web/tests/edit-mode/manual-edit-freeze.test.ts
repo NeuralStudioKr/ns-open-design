@@ -29,7 +29,6 @@ import {
   shouldArmTipPostSoftLandExitLatch,
   shouldRetainTipSyncedIdentityDuringPostSoftLandExitLatch,
   clearTipPostSoftLandExitLatch,
-  spendTipPostSoftLandExitLatch,
   shouldLatchSelectedIdentityFingerprintDuringTipSoftLand,
   shouldArmTipPostExitLatchMixedAbsorb,
   shouldArmTipPostExitLatchMixedAbsorbOnSoftLandEarlyExit,
@@ -232,8 +231,6 @@ describe('manual edit freeze reset', () => {
     expect(shouldRetainTipSyncedIdentityDuringPostSoftLandExitLatch(true, false)).toBe(true);
     expect(shouldRetainTipSyncedIdentityDuringPostSoftLandExitLatch(true, true)).toBe(false);
     expect(clearTipPostSoftLandExitLatch()).toBe(false);
-    expect(spendTipPostSoftLandExitLatch()).toBe(false);
-    expect(spendTipPostSoftLandExitLatch(true)).toBe(false);
     expect(shouldLatchSelectedIdentityFingerprintDuringTipSoftLand(true, false)).toBe(true);
     expect(shouldLatchSelectedIdentityFingerprintDuringTipSoftLand(true, true)).toBe(false);
     expect(shouldArmTipPostExitLatchMixedAbsorb(true, false)).toBe(true);
