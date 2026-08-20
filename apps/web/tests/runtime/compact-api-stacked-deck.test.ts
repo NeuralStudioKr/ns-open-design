@@ -214,6 +214,15 @@ describe('looksLikeCompactApiStackedDeck', () => {
     expect(injectStackedDeckViewport(html)).not.toContain('width=device-width');
   });
 
+  it('injects viewport=1920 when body-first fill has no <head> (§0.55)', () => {
+    const html = '<!doctype html><html lang="ko"><body>'
+      + '<section class="slide" style="width:1920px;height:1080px;min-height:100vh">A</section>'
+      + '</body></html>';
+    const next = injectStackedDeckViewport(html);
+    expect(next).toMatch(/<head>[\s\S]*width=1920/);
+    expect(next).toContain('<body');
+  });
+
   it('rejects decks wrapped in a .deck container under body', () => {
     const html = [
       '<!doctype html><html><body>',

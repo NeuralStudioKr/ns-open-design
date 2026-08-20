@@ -131,7 +131,10 @@ const AUTO_CONTINUE_TEMPLATE_FILL_MIN_SLIDES =
   '\n\nCRITICAL: Do not close `</html></artifact>` after a single cover. '
   + 'Persist rejects 1–2 slide template fills unless the user asked for 1–4 slides '
   + '(expected at least 3). Write cover + at least two more complete '
-  + '`<section class="slide">` (or `<div class="slide">`) bodies THIS TURN.';
+  + '`<section class="slide">` (or `<div class="slide">`) bodies THIS TURN. '
+  + 'If Daisy/Motif SVG risks truncation, finish ≥3 slides with empty '
+  + '`.deco-daisy-tl` / `.deco-daisy-br` shells — persist injects Motif after save. '
+  + 'Never emit only a cream cover with tiny 24–40px sticker flowers.';
 
 const AUTO_CONTINUE_MOTIF_SVG_DUMP_ABANDON =
   '\n\nCRITICAL: The previous turn dumped Motif `<svg>` path data before any cover `<h1>`. '

@@ -232,6 +232,11 @@ export function injectStackedDeckViewport(html: string): string {
   if (/<head\b/i.test(html)) {
     return html.replace(/<head\b[^>]*>/i, (head) => `${head}\n    ${tag}`);
   }
+  // Body-first fills have no <head> — still inject so device-width vw cannot
+  // skew Daisy typography vs the 1920 letterbox (§0.55).
+  if (/<body\b/i.test(html)) {
+    return html.replace(/<body\b/i, `<head>\n    ${tag}\n  </head>\n  <body`);
+  }
   return html;
 }
 

@@ -466,6 +466,83 @@ function ensureInlineStyle(attrs: string, style: string): string {
   return `${attrs} style="${style}"`;
 }
 
+/** Compact fill often pastes real Daisy flowers at ~24–32px — too small to read as Motif. */
+export const DAISY_MOTIF_MIN_PAINT_PX = 120;
+
+/** Largest explicit width/height px from style attrs or SVG width/height attributes. */
+export function motifDeclaredSizePx(markup: string): number {
+  const text = String(markup ?? '');
+  let max = 0;
+  for (const match of text.matchAll(/(?:^|[;\s"'])(?:width|height)\s*:\s*([0-9]+(?:\.[0-9]+)?)px/gi)) {
+    const n = Number(match[1]);
+    if (Number.isFinite(n)) max = Math.max(max, n);
+  }
+  for (const match of text.matchAll(/\b(?:width|height)\s*=\s*["']([0-9]+(?:\.[0-9]+)?)(?:px)?["']/gi)) {
+    const n = Number(match[1]);
+    if (Number.isFinite(n)) max = Math.max(max, n);
+  }
+  return max;
+}
+
+function daisyHostHasAdequatePaint(dest: string): boolean {
+  if (!svgBlocksContainDaisyIdentity(dest)) return false;
+  const openRe =
+    /<(div|span)\b([^>]*\bclass\s*=\s*(?:"[^"]*\bdeco-daisy[^"]*"|'[^']*\bdeco-daisy[^']*')[^>]*)>/gi;
+  let match: RegExpExecArray | null;
+  let found = false;
+  while ((match = openRe.exec(dest)) !== null) {
+    found = true;
+    const block = extractBalancedElement(dest, match.index) ?? match[0];
+    if (motifDeclaredSizePx(block) >= DAISY_MOTIF_MIN_PAINT_PX) return true;
+  }
+  // Flower SVG without deco-daisy wrapper — still require a readable size.
+  if (!found) {
+    SVG_BLOCK_RE.lastIndex = 0;
+    let svgMatch: RegExpExecArray | null;
+    while ((svgMatch = SVG_BLOCK_RE.exec(dest)) !== null) {
+      const svg = svgMatch[0] ?? '';
+      if (!/#fcdf6c/i.test(svg) || !/<path\b/i.test(svg)) continue;
+      if (motifDeclaredSizePx(svg) >= DAISY_MOTIF_MIN_PAINT_PX) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Upsize undersized Daisy Motif hosts so cream covers with tiny kit flowers
+ * get official corner placement instead of skipping inject (§0.55).
+ */
+export function upsizeUndersizedDaisyMotifs(dest: string): string {
+  if (!dest || !/deco-daisy/i.test(dest)) return dest;
+  return dest.replace(
+    /<(div|span)\b([^>]*\bclass\s*=\s*(?:"[^"]*\bdeco-daisy[^"]*"|'[^']*\bdeco-daisy[^']*')[^>]*)>/gi,
+    (open, _tag: string, attrs: string) => {
+      const size = motifDeclaredSizePx(open);
+      if (size >= DAISY_MOTIF_MIN_PAINT_PX) return open;
+      const cls = classAttrValue(attrs);
+      const placement = placementStyleForMotifClass(cls);
+      // Replace tiny width/height so placement wins; keep other style bits.
+      let nextAttrs = attrs;
+      if (/\bstyle\s*=/i.test(nextAttrs)) {
+        nextAttrs = nextAttrs.replace(
+          /\bstyle\s*=\s*(["'])([\s\S]*?)\1/i,
+          (_m, q: string, prev: string) => {
+            const cleaned = String(prev)
+              .replace(/(?:^|;)\s*(?:width|height|top|left|right|bottom|position|z-index|pointer-events)\s*:[^;]*/gi, '')
+              .replace(/^;+|;+$/g, '')
+              .trim();
+            const merged = cleaned ? `${cleaned};${placement}` : placement;
+            return `style=${q}${merged}${q}`;
+          },
+        );
+      } else {
+        nextAttrs = ensureInlineStyle(nextAttrs, placement);
+      }
+      return markOfficialMotifHtml(`<${_tag}${nextAttrs}>`);
+    },
+  );
+}
+
 function stripMotifSampleText(html: string): string {
   if (/<svg\b/i.test(html)) return html;
   return html.replace(/>([^<]{3,80})</g, (all, text: string) => {
@@ -640,7 +717,7 @@ function destHasInstancePaint(dest: string, block: string): boolean {
   if (primary.includes('daisy')) {
     return (
       /deco-daisy[\s\S]{0,240}<svg\b/i.test(dest)
-      && svgBlocksContainDaisyIdentity(dest)
+      && daisyHostHasAdequatePaint(dest)
     );
   }
   if (primary.includes('pixel-glitch')) {
@@ -706,7 +783,9 @@ function fillEmptyMotifShells(dest: string, instances: string[]): string {
       else if (/pixel-glitch/i.test(cls)) svg = glitchSvg;
       // Never fill a star/petal shell with an unrelated Motif SVG.
       if (!svg) return _m;
-      const marked = markOfficialMotifHtml(`<${tag}${attrs}>`);
+      const placement = placementStyleForMotifClass(cls);
+      const withPlacement = ensureInlineStyle(attrs, placement);
+      const marked = markOfficialMotifHtml(`<${tag}${withPlacement}>`);
       return `${marked}${svg}</${tag}>`;
     },
   );
@@ -849,6 +928,9 @@ function mergeVisibleMotifInstances(
 
   let out = mergeMotifFallbackCss(dest, officialCss, instances);
   out = fillEmptyMotifShells(out, instances);
+  // Tiny kit flowers still count as identity without a size floor — upsize first
+  // so slideHasOfficialMotifPaint can accept them, else inject large Motifs (§0.55).
+  out = upsizeUndersizedDaisyMotifs(out);
 
   const slides = listSlideBlocks(out);
   if (slides.length === 0) {
@@ -1657,7 +1739,12 @@ export function lockDeckDesignViewportMeta(html: string): string {
   if (/<head\b/i.test(dest)) {
     return dest.replace(/<head\b[^>]*>/i, (open) => `${open}\n  ${tag}`);
   }
-  return dest;
+  // Body-first compact fills omit <head> — still pin 1920 so vw typography
+  // matches the letterbox canvas (§0.55).
+  if (/<body\b/i.test(dest)) {
+    return dest.replace(/<body\b/i, `<head>\n  ${tag}\n</head>\n<body`);
+  }
+  return `<head>\n  ${tag}\n</head>\n${dest}`;
 }
 
 /**

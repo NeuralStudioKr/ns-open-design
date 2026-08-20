@@ -50,6 +50,8 @@ describe('templateCloneContentFill', () => {
     expect(seed).toMatch(/`<head>` is FORBIDDEN/i);
     expect(seed).toMatch(/first 800 characters after `<artifact`/i);
     expect(seed).toMatch(/Motif vocabulary OVERRIDE/i);
+    expect(seed).toMatch(/≥150px|150px|deco-daisy-tl/i);
+    expect(seed).toMatch(/EMPTY[\s\S]{0,40}deco-daisy-tl/i);
     expect(seed).toMatch(/Slide count is input-driven/i);
     expect(seed).toMatch(/default outline/i);
     expect(seed).toMatch(/Named motif cue/i);

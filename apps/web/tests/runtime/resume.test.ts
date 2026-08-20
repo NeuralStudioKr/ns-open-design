@@ -205,6 +205,8 @@ describe('runtime/resume shell/no-HTML recovery constants', () => {
     expect(prompt).toContain('NEVER "수정 반영 중"');
     expect(prompt).toContain('expected at least 3');
     expect(prompt).toContain('Do not close');
+    expect(prompt).toContain('empty');
+    expect(prompt).toContain('.deco-daisy-tl');
     expect(prompt).toContain('Official look/Motif CSS is merged after save');
     expect(prompt).not.toContain('디스크의 덱을 기준으로');
     expect(prompt).not.toContain('이미 저장된 슬라이드 덱');

@@ -11,15 +11,18 @@ import {
   LOOK_NEUTRALIZE_CSS,
   OFFICIAL_DECK_LOOK_STYLE_ATTR,
   OFFICIAL_DECK_MOTIF_HTML_ATTR,
+  DAISY_MOTIF_MIN_PAINT_PX,
   deckHtmlHasOfficialLookCss,
   ensureOfficialLookStackedCanvasNeutralize,
   extractOfficialDeckLookAssets,
   firstOfficialDeckTemplateId,
   listOfficialLookProofClasses,
   listOfficialMotifSymbolIds,
+  lockDeckDesignViewportMeta,
   lockStackedDeckCanvasForPreview,
   looksLikeOfficialFullscreenPresenterDeck,
   mergeOfficialDeckLookCss,
+  motifDeclaredSizePx,
   needsStackedDesignViewportLock,
 } from '../src/html/deck-template-look-css';
 import {
@@ -737,6 +740,49 @@ html, body { overflow: visible !important; height: auto !important; }
     const merged = mergeOfficialDeckLookCss(emptyShells, assets);
     expect(merged).toMatch(/deco-daisy-tl[\s\S]*?<svg\b[\s\S]*?#fcdf6c/i);
     expect(merged).toMatch(/deco-daisy-br[\s\S]*?<svg\b/i);
+    // Empty shells get official placement sizes, not bare hosts.
+    expect(merged).toMatch(/deco-daisy-tl[^>]*width:\s*200px/i);
+    expect(merged).toMatch(/deco-daisy-br[^>]*width:\s*180px/i);
+  });
+
+  it('upsizes tiny Daisy kit flowers so cream covers are not Motif-skipped (§0.55)', () => {
+    const official = loadOfficialLookSource(join(EXAMPLES_DIR, 'html-ppt-zhangzara-daisy-days/example.html'));
+    const assets = extractOfficialDeckLookAssets(official)!;
+    const flower =
+      '<svg viewBox="0 0 100 100" width="28" height="28">'
+      + '<path fill="#fcdf6c" d="M50 40h10v10H50z"/>'
+      + '<path fill="#fff" d="M40 50h10v10H40z"/>'
+      + '<path fill="#fff" d="M60 50h10v10H60z"/>'
+      + '<path fill="#111" d="M45 55h10v5H45z"/>'
+      + '</svg>';
+    const tinyStickers = `<!doctype html><html lang="ko"><body>
+<section class="slide" style="position:relative;background:#F5F0E6;width:1920px;height:1080px">
+  <p>SENIOR ENGINEER SERIES</p>
+  <h1>Linux Internals &amp; Production Mastery</h1>
+  <div class="deco deco-daisy-br" style="position:absolute;bottom:24px;right:48px;width:28px;height:28px">${flower}</div>
+  <div class="deco deco-daisy-br" style="position:absolute;bottom:24px;right:12px;width:28px;height:28px">${flower}</div>
+</section>
+</body></html>`;
+    expect(motifDeclaredSizePx(
+      tinyStickers.match(/deco-daisy-br[^>]*>[\s\S]*?<\/div>/i)?.[0] ?? '',
+    )).toBeLessThan(DAISY_MOTIF_MIN_PAINT_PX);
+    const merged = mergeOfficialDeckLookCss(tinyStickers, assets);
+    expect(merged).toMatch(/deco-daisy[\s\S]{0,200}width:\s*(?:1[7-9]0|200)px/i);
+    expect(motifDeclaredSizePx(merged.match(/deco-daisy-br[^>]*>/i)?.[0] ?? '')).toBeGreaterThanOrEqual(
+      DAISY_MOTIF_MIN_PAINT_PX,
+    );
+    expect(merged).toMatch(/#fcdf6c/i);
+  });
+
+  it('pins viewport=1920 for body-first fills without <head> (§0.55)', () => {
+    const bodyFirst = `<!doctype html><html lang="ko"><body>
+<section class="slide" style="width:1920px;height:1080px;background:#F5F0E6" data-od-official-look-css>
+  <h1>Cover</h1>
+</section>
+</body></html>`;
+    const locked = lockDeckDesignViewportMeta(bodyFirst);
+    expect(locked).toMatch(/<head>[\s\S]*name="viewport"[\s\S]*width=1920/);
+    expect(locked).toMatch(/<body>/i);
   });
 
   it('injects Capsule deco-pill Motif seed into sparse compact fills', () => {
