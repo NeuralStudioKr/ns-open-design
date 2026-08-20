@@ -130,13 +130,52 @@ export function shouldCancelTipRemountSyncHostMeasureRetry(
 }
 
 /**
- * Sync primary measure succeeded — drop chrome inert immediately while tip
- * remount grace remains for wild-jump skip until async remasure (459).
+ * Sync primary measure succeeded — drop chrome inert once deck host-fit
+ * settle is not still nudging stage scale (459/475).
  */
 export function shouldReleaseTipRemountChromeAfterSyncHostMeasure(
   syncPrimaryMeasured: boolean,
+  fitSettleUntilMs = 0,
+  nowMs = 0,
 ): boolean {
-  return syncPrimaryMeasured;
+  if (!syncPrimaryMeasured) return false;
+  // Fit-settle remasures still move geometry — keep handles inert (475).
+  if (fitSettleUntilMs > 0 && nowMs < fitSettleUntilMs) return false;
+  return true;
+}
+
+/**
+ * After a fit-settle remasure pass, release inert once the latch has expired (475).
+ */
+export function shouldReleaseTipRemountChromeAfterFitSettleRemasure(
+  chromeSuppressed: boolean,
+  fitSettleUntilMs: number,
+  nowMs: number,
+): boolean {
+  return chromeSuppressed && (fitSettleUntilMs <= 0 || nowMs >= fitSettleUntilMs);
+}
+
+/**
+ * Empty/partial od-edit-targets during tip protect is settle noise — do not
+ * treat missing selected ids as a real membership leave (473).
+ */
+export function shouldIgnoreOdEditTargetsMembershipNoiseDuringTipProtect(
+  tipProtectSource: boolean,
+  selectedCount: number,
+  resolvedCount: number,
+  catalogLength: number,
+): boolean {
+  if (!tipProtectSource || selectedCount <= 0) return false;
+  return catalogLength === 0 || resolvedCount < selectedCount;
+}
+
+/**
+ * Empty catalog must not wipe inspector selection while tip protect is armed (473).
+ */
+export function shouldClearManualEditSelectionOnEmptyOdEditTargets(
+  tipProtectActive: boolean,
+): boolean {
+  return !tipProtectActive;
 }
 
 /**

@@ -11,6 +11,9 @@ import {
   shouldRetryTipRemountSyncHostMeasureAfterSrcDocLoad,
   shouldCancelTipRemountSyncHostMeasureRetry,
   shouldReleaseTipRemountChromeAfterSyncHostMeasure,
+  shouldReleaseTipRemountChromeAfterFitSettleRemasure,
+  shouldIgnoreOdEditTargetsMembershipNoiseDuringTipProtect,
+  shouldClearManualEditSelectionOnEmptyOdEditTargets,
   shouldArmTipRemountFitSettleForDeckHostFit,
   shouldRemeasureTipRemountAfterDeckHostFitSettle,
   shouldScheduleTipRemountFitSettleRemasureOnLoad,
@@ -148,6 +151,17 @@ describe('manual edit freeze reset', () => {
   it('releases tip-remount chrome inert after sync primary measure', () => {
     expect(shouldReleaseTipRemountChromeAfterSyncHostMeasure(true)).toBe(true);
     expect(shouldReleaseTipRemountChromeAfterSyncHostMeasure(false)).toBe(false);
+    expect(shouldReleaseTipRemountChromeAfterSyncHostMeasure(true, 2_000, 1_000)).toBe(false);
+    expect(shouldReleaseTipRemountChromeAfterSyncHostMeasure(true, 2_000, 2_000)).toBe(true);
+    expect(shouldReleaseTipRemountChromeAfterFitSettleRemasure(true, 2_000, 1_000)).toBe(false);
+    expect(shouldReleaseTipRemountChromeAfterFitSettleRemasure(true, 2_000, 2_000)).toBe(true);
+    expect(shouldReleaseTipRemountChromeAfterFitSettleRemasure(false, 0, 1_000)).toBe(false);
+    expect(shouldIgnoreOdEditTargetsMembershipNoiseDuringTipProtect(true, 2, 0, 0)).toBe(true);
+    expect(shouldIgnoreOdEditTargetsMembershipNoiseDuringTipProtect(true, 2, 1, 5)).toBe(true);
+    expect(shouldIgnoreOdEditTargetsMembershipNoiseDuringTipProtect(true, 2, 2, 5)).toBe(false);
+    expect(shouldIgnoreOdEditTargetsMembershipNoiseDuringTipProtect(false, 2, 0, 0)).toBe(false);
+    expect(shouldClearManualEditSelectionOnEmptyOdEditTargets(true)).toBe(false);
+    expect(shouldClearManualEditSelectionOnEmptyOdEditTargets(false)).toBe(true);
   });
 
   it('retries tip remount sync host measure once when first load tick misses', () => {

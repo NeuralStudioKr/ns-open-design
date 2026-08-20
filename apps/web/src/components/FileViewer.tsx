@@ -338,6 +338,9 @@ import {
   shouldRetryTipRemountSyncHostMeasureAfterSrcDocLoad,
   shouldCancelTipRemountSyncHostMeasureRetry,
   shouldReleaseTipRemountChromeAfterSyncHostMeasure,
+  shouldReleaseTipRemountChromeAfterFitSettleRemasure,
+  shouldIgnoreOdEditTargetsMembershipNoiseDuringTipProtect,
+  shouldClearManualEditSelectionOnEmptyOdEditTargets,
   shouldArmTipRemountFitSettleForDeckHostFit,
   shouldRemeasureTipRemountAfterDeckHostFitSettle,
   shouldScheduleTipRemountFitSettleRemasureOnLoad,
@@ -7959,7 +7962,11 @@ function HtmlViewer({
       appliedAny = true;
       if (id === primaryId) primaryMeasured = true;
     }
-    if (!shouldReleaseTipRemountChromeAfterSyncHostMeasure(primaryMeasured)) {
+    if (!shouldReleaseTipRemountChromeAfterSyncHostMeasure(
+      primaryMeasured,
+      manualEditTipRemountFitSettleUntilRef.current,
+      Date.now(),
+    )) {
       return false;
     }
     // Tip rect is live — drop inert; keep grace for wild-jump until async remasure.
@@ -8087,6 +8094,15 @@ function HtmlViewer({
     }
     // Multi: refresh scale/offset after fit nudges so union tracks post-fit tip (461).
     refreshManualEditHostMetricsAfterTipRemountMulti(frame, appliedAny);
+    // Fit-settle latch done — release inert chrome so handles match live geometry (475).
+    if (shouldReleaseTipRemountChromeAfterFitSettleRemasure(
+      manualEditTipRemountChromeSuppressedRef.current,
+      manualEditTipRemountFitSettleUntilRef.current,
+      Date.now(),
+    )) {
+      manualEditTipRemountChromeSuppressedRef.current = false;
+      setManualEditTipRemountChromeSuppressed(false);
+    }
     for (const id of ordered) {
       requestManualEditTargetRemeasure(id, frame);
     }
@@ -9806,15 +9822,25 @@ function HtmlViewer({
         );
         // Membership change during hold must not paint the new set with the
         // previous tip's styles — drop hold + skip preserve (469).
+        // Empty/partial catalogs during tip protect are settle noise — ignore (473).
         const selectedIdsForPreserve = selectedManualEditTargetIdsRef.current;
+        const tipProtectSource = tipRemountSession
+          || manualEditTipSyncedIdentityRetainRef.current;
         const refreshedProbe = selectedIdsForPreserve.length > 0
           ? resolveManualEditTargetsByIds(selectedIdsForPreserve, data.targets)
           : [];
-        const selectionIdsChangedEarly = selectedIdsForPreserve.length > 0
+        const selectionIdsChangedEarlyRaw = selectedIdsForPreserve.length > 0
           && !manualEditSelectionIdsEqual(
             selectedIdsForPreserve,
             refreshedProbe.map((item) => item.id),
           );
+        const ignoreMembershipNoise = shouldIgnoreOdEditTargetsMembershipNoiseDuringTipProtect(
+          tipProtectSource,
+          selectedIdsForPreserve.length,
+          refreshedProbe.length,
+          data.targets.length,
+        );
+        const selectionIdsChangedEarly = selectionIdsChangedEarlyRaw && !ignoreMembershipNoise;
         if (selectionIdsChangedEarly) {
           manualEditTipRemountIdentityHoldUntilRef.current = 0;
           manualEditTipSyncedIdentityRetainRef.current = false;
@@ -9945,6 +9971,10 @@ function HtmlViewer({
             : refreshedRaw;
           const nextIds = refreshed.map((item) => item.id);
           if (nextIds.length === 0) {
+            // Tip protect: empty catalog is settle noise — keep selection (473).
+            if (!shouldClearManualEditSelectionOnEmptyOdEditTargets(tipRemountActive)) {
+              return;
+            }
             void clearManualEditTargetSelection();
             return;
           }

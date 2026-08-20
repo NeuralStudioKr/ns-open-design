@@ -52,4 +52,11 @@ describe('manualEditTargetsIdentityFingerprint', () => {
     expect(manualEditTargetsIdentityFingerprint([a]))
       .not.toBe(manualEditTargetsIdentityFingerprint([aEdited]));
   });
+
+  it('ignores empty vs tip outerHtml length (bridge catalogs send "") (474)', () => {
+    const withMarkup = target({ outerHtml: '<div data-od-id="card">Hello</div>' });
+    const blankCatalog = target({ outerHtml: '' });
+    expect(manualEditTargetsIdentityFingerprint([withMarkup]))
+      .toBe(manualEditTargetsIdentityFingerprint([blankCatalog]));
+  });
 });

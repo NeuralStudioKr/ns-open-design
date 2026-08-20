@@ -22,7 +22,9 @@ export function manualEditTargetsIdentityFingerprint(targets: ManualEditTarget[]
     target.fields?.href ?? '',
     target.fields?.src ?? '',
     target.fields?.alt ?? '',
-    target.outerHtml?.length ?? 0,
+    // Bridge catalogs always send outerHtml: '' — including length flipped tip
+    // identity fingerprints and Mixed after sticky clear (474). Markup identity
+    // is covered by text/fields/className instead.
     target.isHidden ? '1' : '0',
     // Style identity without box geometry so idle remasure / move / resize
     // do not force mixed-inspector reseed (기획 59 + 51–53).
