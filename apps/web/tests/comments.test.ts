@@ -892,6 +892,19 @@ describe('preview comment attachment helpers', () => {
     expect(stripUserVisibleUserMessageText(prompt)).toBe('3번 슬라이드 제목만 짧게');
   });
 
+  it('strips web-fetch-context blocks from user-visible chat text', () => {
+    const prompt = [
+      '이 사이트 보고 3장만 만들어줘',
+      '',
+      '<web-fetch-context>',
+      'The public URL(s) mentioned in this user turn were already fetched.',
+      '### URL 1: https://teamver.com/',
+      '</web-fetch-context>',
+    ].join('\n');
+
+    expect(stripUserVisibleUserMessageText(prompt)).toBe('이 사이트 보고 3장만 만들어줘');
+  });
+
   it('strips attached-project-files blocks from user-visible chat text', () => {
     const prompt = [
       '이 파일 참고해서 3장만 다듬어줘',

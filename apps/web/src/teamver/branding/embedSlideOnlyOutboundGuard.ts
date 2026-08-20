@@ -30,7 +30,7 @@ export function embedBlockedComposerSlashReason(
   const trimmed = prompt.trim();
   if (!trimmed) return null;
   if (!EMBED_BLOCKED_COMPOSER_SLASH.test(trimmed)) return null;
-  return "teamver Slide embed에서는 Codex 펫(/pet, /hatch) 명령을 사용할 수 없습니다. 슬라이드 덱 작업만 지원합니다.";
+  return "이 워크스페이스에서는 Codex 펫(/pet, /hatch) 명령을 사용할 수 없습니다. 슬라이드 덱 작업만 지원합니다.";
 }
 
 function promptHasSlideDeckIntent(prompt: string): boolean {
@@ -52,10 +52,10 @@ export function embedSlideOnlyOutboundBlockReason(
   // image" are not blocked before send.
   if (promptHasSlideDeckIntent(trimmed)) return null;
   if (MEDIA_INTENT_PATTERNS.some((pattern) => pattern.test(trimmed))) {
-    return "teamver Slide 1차 출시는 슬라이드(덱)만 지원합니다. 이미지·동영상·오디오·HyperFrames 생성 요청은 아직 처리할 수 없습니다. 슬라이드 덱으로 다시 요청해 주세요.";
+    return "지금은 슬라이드(덱)만 지원합니다. 이미지·동영상·오디오·HyperFrames 생성 요청은 아직 처리할 수 없습니다. 슬라이드 덱으로 다시 요청해 주세요.";
   }
   if (NON_DECK_ARTIFACT_PATTERNS.some((pattern) => pattern.test(trimmed))) {
-    return "teamver Slide 1차 출시는 슬라이드(덱)만 지원합니다. 웹 프로토타입·랜딩·대시보드·앱 UI 요청은 처리할 수 없습니다. 슬라이드 덱으로 다시 요청해 주세요.";
+    return "지금은 슬라이드(덱)만 지원합니다. 웹 프로토타입·랜딩·대시보드·앱 UI 요청은 처리할 수 없습니다. 슬라이드 덱으로 다시 요청해 주세요.";
   }
   return null;
 }

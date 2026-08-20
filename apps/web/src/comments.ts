@@ -435,6 +435,8 @@ const ACTIVE_WORKSPACE_CONTEXT_RE =
   /\n*<active-workspace-context>[\s\S]*?(?:<\/active-workspace-context>\s*|$)/gi;
 const ATTACHED_PROJECT_FILES_RE =
   /\n*<attached-project-files>[\s\S]*?(?:<\/attached-project-files>\s*|$)/gi;
+const WEB_FETCH_CONTEXT_RE =
+  /\n*<web-fetch-context>[\s\S]*?(?:<\/web-fetch-context>\s*|$)/gi;
 const ATTACHED_PREVIEW_COMMENTS_RE =
   /\n*<attached-preview-comments>[\s\S]*?<\/attached-preview-comments>\s*/gi;
 const ATTACHED_PREVIEW_COMMENTS_BLOCK_RE =
@@ -690,6 +692,7 @@ export function stripUserVisibleUserMessageText(content: string | null | undefin
   text = text.replace(ATTACHED_IMAGE_EMBED_DIRECTIVE_RE, '');
   text = text.replace(ACTIVE_WORKSPACE_CONTEXT_RE, '');
   text = text.replace(ATTACHED_PROJECT_FILES_RE, '');
+  text = text.replace(WEB_FETCH_CONTEXT_RE, '');
   return stripUserVisibleQuestionFormProtocolText(text);
 }
 

@@ -177,6 +177,13 @@ describe("agent-prose-sanitize SSOT", () => {
       "from{transform:rotate(0)}to{transform:rotate(360deg)}}",
     ].join("\n");
     expect(sanitizeAssistantProseForDisplay(orphanKeyframe)).toBe("모션을 넣는 중입니다.");
+
+    const supportsLayer = [
+      "레이아웃을 맞추는 중입니다.",
+      "",
+      "@supports (display:grid){.slide{display:grid}}@layer deco{.deco-daisy{opacity:.4}}",
+    ].join("\n");
+    expect(sanitizeAssistantProseForDisplay(supportsLayer)).toBe("레이아웃을 맞추는 중입니다.");
   });
 
   it("strips .deco-* CSS dumps leaked after prose", () => {

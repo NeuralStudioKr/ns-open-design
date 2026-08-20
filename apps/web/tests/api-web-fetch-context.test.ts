@@ -51,7 +51,9 @@ describe('api web fetch context', () => {
     ]);
 
     expect(context).toContain('<web-fetch-context>');
-    expect(context).toContain('teamver Slide already fetched');
+    expect(context).toContain('The public URL(s) mentioned in this user turn were already fetched');
+    expect(context).not.toContain('teamver Slide');
+    expect(context).not.toContain('Open Design');
     expect(context).toContain('Do not say the URL is inaccessible unless its status is failed.');
     expect(context).toContain('Professional team profile builder');
     expect(context).toContain('</web-fetch-context>');

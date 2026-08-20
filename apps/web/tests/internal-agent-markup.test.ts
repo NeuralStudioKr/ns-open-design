@@ -56,6 +56,20 @@ describe("internalAgentMarkup", () => {
     }
   });
 
+  it("hard-strips kit CSS at-rules via web display last-pass", () => {
+    const leaked = [
+      "@keyframes deco-spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}",
+      "@font-face{font-family:'Space Grotesk';src:url(https://fonts.gstatic.com/x.woff2)}",
+      "@supports (display:grid){.slide{display:grid}}",
+    ].join("\n");
+    for (const streaming of [true, false]) {
+      expect(
+        sanitizeAssistantProseForDisplay(`덱을 구성합니다.\n\n${leaked}`, { streaming }),
+      ).toBe("덱을 구성합니다.");
+      expect(sanitizeAssistantProseForDisplay(leaked, { streaming }).trim()).toBe("");
+    }
+  });
+
   it("hard-strips Daisy SVG / deco-class shells via web display path", () => {
     const leaked = [
       '<div class="deco-daisy">',

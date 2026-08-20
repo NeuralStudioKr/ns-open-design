@@ -35,6 +35,9 @@ const DECK_BROKEN_SECTION_CSS_DEBRIS_TAIL_RE =
 /** Mid-attribute style debris, including quoted font-family / flex props. */
 const DECK_ORPHAN_MID_STYLE_ATTR_TAIL_RE =
   /(?:^|\n)(?:(?:px|em|rem|%|vh|vw)\s*;\s*)?(?:[a-zA-Z-]+\s*:\s*[^;]*;?\s*){2,}[\s\S]*?["']\s*>[\s\S]*$/i;
+/** Stale-dist last pass for kit CSS at-rules contracts already strip. */
+const DECK_FRAMEWORK_CSS_TAIL_RE =
+  /(?:^|\n\n|\n)((?::root\s*\{|@(?:-webkit-)?(?:keyframes\s+[\w-]+|font-face)\s*\{|@(?:media|page|supports|layer)\b[^{]*\{|@import\s+(?:url\(|["'])|<style\b[^>]*>|(?:from|to|\d+%)\s*\{|(?:\.slide|(?:\.[A-Za-z_-][\w-]*|#[A-Za-z_-][\w-]*|h[1-6]|p|ul|li|body|section(?:\.[\w-]+)?)\s*\{))[\s\S]*)$/i;
 
 /**
  * Display-only last pass for Capsule motif pills / truncated slide HTML that
@@ -42,6 +45,17 @@ const DECK_ORPHAN_MID_STYLE_ATTR_TAIL_RE =
  * stays in the web bundle so a stale `@open-design/contracts` dist cannot
  * re-paint `position:absolute` pills or `</section>-weight:` debris in chat.
  */
+function looksLikeLeakedDeckFrameworkCss(tail: string): boolean {
+  return (
+    /width:\s*1920px|height:\s*1080px|box-sizing:\s*border-box|\.grain::after/i.test(tail)
+    || /<\/style>|<style\b|<section\b[^>]*\bclass\s*=\s*["'][^"']*\bslide\b|<!--\s*SLIDE\b/i.test(tail)
+    || /^\.slide\s*\{[\s\S]*/.test(tail.trim())
+    || /\.deco-[\w-]+\s*\{/i.test(tail)
+    || /@(?:keyframes|font-face|media|import|page|supports|layer)\b/i.test(tail)
+    || /(?:^|\n)(?:from|to|\d+%)\s*\{[\s\S]*(?:transform|opacity|translate|rotate)/i.test(tail)
+  );
+}
+
 function stripLeakedDeckMotifHtmlTail(input: string): string {
   if (!input) return input;
   for (const re of [
@@ -57,6 +71,10 @@ function stripLeakedDeckMotifHtmlTail(input: string): string {
     const match = re.exec(input);
     if (!match || match.index === undefined) continue;
     return input.slice(0, match.index).trimEnd();
+  }
+  const css = DECK_FRAMEWORK_CSS_TAIL_RE.exec(input);
+  if (css?.index !== undefined && looksLikeLeakedDeckFrameworkCss(css[1] ?? "")) {
+    return input.slice(0, css.index).trimEnd();
   }
   return input;
 }

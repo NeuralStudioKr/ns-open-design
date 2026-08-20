@@ -4288,7 +4288,7 @@ function designSystemSectionRunningNotice(
   activity: DesignSystemSectionActivity,
 ): string {
   if (activity.phase === 'reading') {
-    return `Open Design is reading ${section.title} context for this section.`;
+    return `Reading ${section.title} context for this section.`;
   }
   return `${designSystemSectionPhaseLabel(section, activity)} now.`;
 }

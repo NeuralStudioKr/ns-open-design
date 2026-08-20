@@ -235,7 +235,7 @@ function isLikelyInternalMarkupLine(line: string): boolean {
   if (/^#deck-(?:stage|prev|next|idx)\b/i.test(trimmed)) return true;
   if (/^<h[1-6]\b/i.test(trimmed) && /\bstyle\s*=/i.test(trimmed)) return true;
   if (/^[\d.]+(?:px|em|rem)(?:\/[\d.]+)?">/i.test(trimmed)) return true;
-  if (/^@(?:page|media|keyframes|import|font-face)\b/.test(trimmed)) return true;
+  if (/^@(?:page|media|keyframes|import|font-face|supports|layer)\b/.test(trimmed)) return true;
   if (/^(?:from|to|\d+%)\s*\{/.test(trimmed) && /transform|opacity|translate|rotate/i.test(trimmed)) {
     return true;
   }
@@ -1702,7 +1702,7 @@ export function sanitizeAssistantProseForDisplay(
 /** Drop truncated deck stylesheet/CSS leaked into chat prose (mid-artifact abort). */
 export function stripTrailingDeckFrameworkCssLeak(input: string): string {
   if (!input) return input;
-  const match = /(?:^|\n\n|\n)((?::root\s*\{|@(?:-webkit-)?(?:keyframes\s+[\w-]+|font-face)\s*\{|@media\b[^{]*\{|@page\b[^{]*\{|@import\s+(?:url\(|["'])|<style\b[^>]*>|(?:from|to|\d+%)\s*\{|(?:\.slide|(?:\.[A-Za-z_-][\w-]*|#[A-Za-z_-][\w-]*|h[1-6]|p|ul|li|body|section(?:\.[\w-]+)?)\s*\{))[\s\S]*)$/i.exec(input);
+  const match = /(?:^|\n\n|\n)((?::root\s*\{|@(?:-webkit-)?(?:keyframes\s+[\w-]+|font-face)\s*\{|@(?:media|page|supports|layer)\b[^{]*\{|@import\s+(?:url\(|["'])|<style\b[^>]*>|(?:from|to|\d+%)\s*\{|(?:\.slide|(?:\.[A-Za-z_-][\w-]*|#[A-Za-z_-][\w-]*|h[1-6]|p|ul|li|body|section(?:\.[\w-]+)?)\s*\{))[\s\S]*)$/i.exec(input);
   if (!match || match.index === undefined) return input;
   const tail = match[1] ?? "";
   const looksLikeDeckFramework =
@@ -1715,6 +1715,8 @@ export function stripTrailingDeckFrameworkCssLeak(input: string): string {
     || /@media\b/i.test(tail)
     || /@import\s+(?:url\(|["'])/i.test(tail)
     || /@page\b/i.test(tail)
+    || /@supports\b/i.test(tail)
+    || /@layer\b/i.test(tail)
     || /(?:^|\n)(?:from|to|\d+%)\s*\{[\s\S]*(?:transform|opacity|translate|rotate)/i.test(tail)
     || looksLikeLeakedCssCustomPropertyBlock(tail);
   if (!looksLikeDeckFramework) return input;

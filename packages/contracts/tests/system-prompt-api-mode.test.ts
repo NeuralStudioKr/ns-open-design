@@ -133,6 +133,9 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       });
 
       expect(prompt).toContain('Teamver embed — slide deck scope only');
+      expect(prompt).toContain('this workspace currently supports slides only');
+      expect(prompt).not.toContain('teamver Slide currently supports');
+      expect(prompt).not.toContain('teamver Slide embed');
       expect(prompt).toContain('turn-1 quick brief');
       expect(prompt).toContain('UI-locale line');
       expect(prompt).toContain('Localize title');
