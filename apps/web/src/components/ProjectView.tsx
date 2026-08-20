@@ -202,8 +202,8 @@ import {
 import {
   anonymizeArtifactId,
   artifactKindToTracking,
-  projectKindToTracking,
 } from '@open-design/contracts/analytics';
+import { projectListTrackingKind } from '../teamver/projectListCardCategory';
 import type {
   TrackingArtifactKind,
   TrackingDesignSystemApplyTargetKind,
@@ -5568,7 +5568,7 @@ export function ProjectView({
           emitRevisionPush(
             analytics.track,
             project.id,
-            projectKindToTracking(project.metadata?.kind, project.metadata?.videoModel),
+            projectListTrackingKind(project, { slideOnly: slideOnlyMvp }),
             file.name,
             pushedRevision,
             'agent_persist',
@@ -5594,7 +5594,7 @@ export function ProjectView({
                   emitRevisionUndo(
                     analytics.track,
                     project.id,
-                    projectKindToTracking(project.metadata?.kind, project.metadata?.videoModel),
+                    projectListTrackingKind(project, { slideOnly: slideOnlyMvp }),
                     restoredFileName,
                     cursorRevision,
                     'agent_toast',
@@ -9397,7 +9397,7 @@ export function ProjectView({
           emitRevisionPush(
             analytics.track,
             project.id,
-            projectKindToTracking(project.metadata?.kind, project.metadata?.videoModel),
+            projectListTrackingKind(project, { slideOnly: slideOnlyMvp }),
             clientVisual.fileName,
             clientVisual.revision,
             'manual_edit',
@@ -12469,7 +12469,7 @@ export function ProjectView({
       // surfaces. `target_project_kind` derives from
       // `project.metadata.kind`.
       const target =
-        (projectKindToTracking(project.metadata?.kind ?? null, project.metadata?.videoModel) ?? 'unknown') as TrackingDesignSystemApplyTargetKind;
+        (projectListTrackingKind(project, { slideOnly: slideOnlyMvp }) ?? 'unknown') as TrackingDesignSystemApplyTargetKind;
       const picked = nextId
         ? designSystems.find((d) => d.id === nextId)
         : null;
@@ -13272,7 +13272,7 @@ export function ProjectView({
               projectId={project.id}
               sessionMode={activeSessionMode}
               onSessionModeChange={handleActiveConversationSessionModeChange}
-              projectKindForTracking={projectKindToTracking(project.metadata?.kind, project.metadata?.videoModel)}
+              projectKindForTracking={projectListTrackingKind(project, { slideOnly: slideOnlyMvp })}
               projectFiles={projectFiles}
               activeProjectFileName={activeProjectFileName}
               hasActiveDesignSystem={!!project.designSystemId}
@@ -13501,7 +13501,7 @@ export function ProjectView({
         ) : null}
         <FileWorkspace
           projectId={project.id}
-          projectKind={projectKindToTracking(project.metadata?.kind, project.metadata?.videoModel) ?? 'prototype'}
+          projectKind={projectListTrackingKind(project, { slideOnly: slideOnlyMvp }) ?? 'prototype'}
           projectDisplayName={project.name}
           rootDirName={designFilesRootLabel}
           reloading={false}

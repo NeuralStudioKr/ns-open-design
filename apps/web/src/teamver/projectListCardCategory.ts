@@ -48,9 +48,6 @@ export function projectListTrackingKind(
   project: Project,
   options?: { slideOnly?: boolean },
 ): TrackingProjectKind | null {
-  const tracked = projectKindToTracking(project.metadata?.kind, project.metadata?.videoModel);
-  if (options?.slideOnly && (!tracked || tracked === "prototype" || tracked === "other")) {
-    return "slide_deck";
-  }
-  return tracked;
+  if (options?.slideOnly) return "slide_deck";
+  return projectKindToTracking(project.metadata?.kind, project.metadata?.videoModel);
 }

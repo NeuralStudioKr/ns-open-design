@@ -617,7 +617,7 @@ export function composeSystemPrompt({
   craftBody,
   craftSections,
   memoryBody,
-  metadata,
+  metadata: inputMetadata,
   template,
   audioVoiceOptions,
   audioVoiceOptionsError,
@@ -634,6 +634,18 @@ export function composeSystemPrompt({
   projectInstructions,
   mediaExecution,
 }: ComposeInput): string {
+  // Teamver slide-only (media disabled): stale sqlite rows still store
+  // kind=prototype from pre-slide-only hydrate. Do not persist-rewrite those
+  // rows (Canvas index.html thumbs), but the prompt must see a deck so we
+  // inject the framework + slideCount contract instead of iOS/fidelity asks.
+  const storedKind = inputMetadata?.kind;
+  const isStoredMediaSurface =
+    storedKind === 'image' || storedKind === 'video' || storedKind === 'audio';
+  const metadata =
+    (mediaExecution?.mode ?? 'enabled') === 'disabled' && !isStoredMediaSurface
+      ? { ...(inputMetadata ?? {}), kind: 'deck' }
+      : inputMetadata;
+
   // Injection resistance goes FIRST — before everything else — so no later
   // section (skill body, user instructions, project instructions, tool result)
   // can instruct the model to disregard it.

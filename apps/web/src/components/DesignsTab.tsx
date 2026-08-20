@@ -24,7 +24,8 @@ import { LiveArtifactBadges } from "./LiveArtifactBadges";
 import { Toast } from "./Toast";
 import { isTeamverEmbedMode } from "../teamver/designApiBase";
 import { useTeamverBranding } from "../teamver/branding/TeamverBrandingProvider";
-import { projectListCardCategory, projectListTrackingKind } from "../teamver/projectListCardCategory";
+import { projectListTrackingKind } from "../teamver/projectListCardCategory";
+import { DesignSystemProjectTag, ProjectListCardTag } from "../teamver/components/ProjectListCardTag";
 import { DesignsTabProjectThumb } from "../teamver/components/DesignsTabProjectThumb";
 import { TeamverLatestPublishChip } from "../teamver/components/TeamverLatestPublishChip";
 import {
@@ -608,7 +609,7 @@ export function DesignsTab({
 										/>
 									</div>
 									<div className="design-card-meta-block">
-										<ProjectTag category="live-artifact" />
+										<ProjectListCardTag category="live-artifact" />
 										<LiveArtifactBadges
 											className="design-card-badges"
 											status={artifact.status}
@@ -775,7 +776,7 @@ export function DesignsTab({
 										{designSystemProject ? (
 											<DesignSystemProjectTag />
 										) : (
-											<ProjectTag category={projectListCardCategory(p, { slideOnly: slideOnlyMvp })} />
+											<ProjectListCardTag project={p} />
 										)}
 									</div>
 									<div className="design-card-name" title={p.name}>
@@ -964,23 +965,3 @@ function isOrbitProject(project: Project): boolean {
 }
 
 
-function ProjectTag({ category }: { category: ReturnType<typeof projectListCardCategory> }) {
-	const t = useT();
-	const label =
-		category === "live-artifact"
-			? t("designs.tagLiveArtifact")
-			: category === "slide"
-				? t("designs.tagSlide")
-				: category === "media"
-					? t("designs.tagMedia")
-					: t("designs.tagPrototype");
-	return (
-		<span className={`design-card-tag tag-${category}`}>{label}</span>
-	);
-}
-
-function DesignSystemProjectTag() {
-	return (
-		<span className="design-card-tag tag-design-system">Design System</span>
-	);
-}

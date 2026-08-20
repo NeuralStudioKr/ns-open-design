@@ -61,13 +61,13 @@ describe("withTeamverSlideListKind", () => {
 });
 
 describe("projectListTrackingKind", () => {
-  it("maps stale prototype/other to slide_deck in slide-only lists", () => {
+  it("reports slide_deck for every Teamver slide-only card", () => {
     expect(projectListTrackingKind(project(), { slideOnly: true })).toBe("slide_deck");
     expect(
       projectListTrackingKind(project({ metadata: { kind: "prototype" } }), { slideOnly: true }),
     ).toBe("slide_deck");
     expect(
-      projectListTrackingKind(project({ metadata: { kind: "deck" } }), { slideOnly: true }),
+      projectListTrackingKind(project({ metadata: { kind: "image" } }), { slideOnly: true }),
     ).toBe("slide_deck");
   });
 });

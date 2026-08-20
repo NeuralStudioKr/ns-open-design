@@ -478,6 +478,19 @@ describe('composeSystemPrompt', () => {
       expect(prompt).not.toContain('- `github` (github)');
     });
 
+    it('treats stale prototype metadata as a deck when media execution is disabled', () => {
+      const prompt = composeSystemPrompt({
+        metadata: { kind: 'prototype' } as any,
+        mediaExecution: { mode: 'disabled' },
+      });
+
+      expect(prompt).toContain('- **kind**: deck');
+      expect(prompt).toContain('- **slideCount**:');
+      expect(prompt).toContain('Teamver embed — slide deck scope only');
+      expect(prompt).not.toContain('screen-file-first rule');
+      expect(prompt).not.toContain('- **fidelity**:');
+    });
+
     it('injects slide-only scope for deck runs when media execution is disabled', () => {
       const prompt = composeSystemPrompt({
         metadata: { kind: 'deck' },

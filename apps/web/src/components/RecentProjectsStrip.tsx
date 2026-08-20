@@ -7,7 +7,8 @@
 
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Dialog, DialogDescription, DialogFooter, DialogTitle } from '@open-design/components';
-import { projectListCardCategory, projectListTrackingKind } from '../teamver/projectListCardCategory';
+import { projectListTrackingKind } from '../teamver/projectListCardCategory';
+import { DesignSystemProjectTag, ProjectListCardTag } from '../teamver/components/ProjectListCardTag';
 import { useAnalytics } from '../analytics/provider';
 import { trackRecentProjectsClick } from '../analytics/events';
 import { useT } from '../i18n';
@@ -395,7 +396,7 @@ export function RecentProjectsStrip({
                     {designSystemProject ? (
                       <DesignSystemProjectTag />
                     ) : (
-                      <ProjectTag category={projectListCardCategory(project, { slideOnly: slideOnlyMvp })} />
+                      <ProjectListCardTag project={project} />
                     )}
                   </div>
                   <div className="recent-projects__card-name">{project.name}</div>
@@ -529,21 +530,4 @@ function relativeTime(ts: number, t: ReturnType<typeof useT>): string {
   if (diff < day) return t('common.hoursAgo', { n: Math.floor(diff / hr) });
   if (diff < 7 * day) return t('common.daysAgo', { n: Math.floor(diff / day) });
   return new Date(ts).toLocaleDateString();
-}
-
-function ProjectTag({ category }: { category: ReturnType<typeof projectListCardCategory> }) {
-  const t = useT();
-  const label =
-    category === 'live-artifact'
-      ? t('designs.tagLiveArtifact')
-      : category === 'slide'
-        ? t('designs.tagSlide')
-        : category === 'media'
-          ? t('designs.tagMedia')
-          : t('designs.tagPrototype');
-  return <span className={`design-card-tag tag-${category}`}>{label}</span>;
-}
-
-function DesignSystemProjectTag() {
-  return <span className="design-card-tag tag-design-system">Design System</span>;
 }
