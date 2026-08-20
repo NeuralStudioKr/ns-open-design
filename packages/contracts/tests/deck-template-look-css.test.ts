@@ -523,7 +523,7 @@ html, body { overflow: visible !important; height: auto !important; }
     expect(merged).toMatch(/flex-direction:\s*column/);
     expect(merged).toMatch(/justify-content:\s*center/);
     // Compact cover titles must stack above Motif corners.
-    expect(merged).toMatch(/\.slide\s*>\s*:is\(h1[\s\S]*z-index:\s*2/i);
+    expect(merged).toMatch(/\.slide\s*>\s*:is\(h1[\s\S]*z-index:\s*2\s*!important/i);
     expect(cover).toMatch(/padding:\s*56px\s+72px/i);
     const twice = mergeOfficialDeckLookCss(merged, assets);
     expect(twice).toBe(merged);
@@ -568,10 +568,54 @@ html, body { overflow: visible !important; height: auto !important; }
     expect(cover).toMatch(/padding:\s*56px\s+72px/i);
     expect(cover).toMatch(/width:\s*12%/i);
     expect(cover).not.toMatch(/width:\s*22%/i);
-    expect(merged).toMatch(/z-index:\s*2/);
+    expect(merged).toMatch(/z-index:\s*2\s*!important/);
     // Motif stays under content.
     expect(cover).toMatch(/deco-daisy[\s\S]*z-index:\s*1/i);
     expect(cover).toContain('Linux Internals');
+  });
+
+  it('restamps pre-v34 overscale Daisy (22%) and upgrades content stacking', () => {
+    const official = loadOfficialLookSource(join(EXAMPLES_DIR, 'html-ppt-zhangzara-daisy-days/example.html'));
+    const assets = extractOfficialDeckLookAssets(official)!;
+    const daisySvg = assets.motifHtml.find((block) => /deco-daisy[\s\S]*?<svg\b/i.test(block));
+    const svg = /<svg\b[\s\S]*?<\/svg>/i.exec(daisySvg ?? '')?.[0] ?? '<svg viewBox="0 0 10 10"><circle fill="#fcdf6c" cx="5" cy="5" r="4"/><path d="M1 2"/><path d="M3 4"/></svg>';
+    const legacy = `<!doctype html><html lang="ko"><head>
+<style data-od-official-look-css>
+/* stacked preview/export: 1920×1080 canvas (not presentation absolute 100%) */
+.slide { position:relative !important; width:1920px !important; height:1080px !important; display:flex; flex-direction:column; }
+.slide:has(.split-left) { flex-direction:unset; }
+</style>
+</head><body>
+<section class="slide slide-title" style="background:#F5F0E6;width:1920px;height:1080px">
+  <div data-od-official-motif-html class="deco deco-daisy-tl" style="position:absolute;top:-4%;left:-3%;width:22%;height:39%;z-index:1">${svg}</div>
+  <div data-od-official-motif-html class="deco deco-daisy-br" style="position:absolute;bottom:-2%;right:-3%;width:20%;height:36%;z-index:1">${svg}</div>
+  <h1>Legacy Overscale</h1>
+</section>
+<section class="slide"><h2>Body</h2></section>
+</body></html>`;
+    const merged = mergeOfficialDeckLookCss(legacy, assets);
+    const cover = merged.match(/<section\b[^>]*\bclass\s*=\s*"[^"]*\bslide\b[^"]*"[\s\S]*?<\/section>/i)?.[0] ?? '';
+    expect(cover).not.toMatch(/width:\s*22%/i);
+    expect(cover).toMatch(/width:\s*12%/i);
+    expect(cover).toMatch(/deco-daisy-tl/i);
+    expect(merged).toMatch(/z-index:\s*2\s*!important/);
+    expect(cover).toContain('Legacy Overscale');
+  });
+
+  it('injects Motif-safe gutter on split slides with padding:0', () => {
+    const official = loadOfficialLookSource(join(EXAMPLES_DIR, 'html-ppt-zhangzara-daisy-days/example.html'));
+    const assets = extractOfficialDeckLookAssets(official)!;
+    const split = `<!doctype html><html lang="ko"><body>
+<section class="slide" style="padding:0;width:1920px;height:1080px">
+  <div class="split-left"><h2>Left</h2></div>
+  <div class="split-right"><p>Right copy</p></div>
+</section>
+<section class="slide"><h2>Body</h2></section>
+</body></html>`;
+    const merged = mergeOfficialDeckLookCss(split, assets);
+    const cover = merged.match(/<section\b[^>]*\bclass\s*=\s*"[^"]*\bslide\b[^"]*"[\s\S]*?<\/section>/i)?.[0] ?? '';
+    expect(cover).toMatch(/padding:\s*40px\s+56px/i);
+    expect(cover).not.toMatch(/padding:\s*0(?:px|em|rem|%)?(?:;|"|\s)/i);
   });
 
   it('does not raise Capsule Motif pills above compact title stacking', () => {
@@ -590,7 +634,7 @@ html, body { overflow: visible !important; height: auto !important; }
       expect(style).not.toMatch(/z-index:\s*2/i);
       if (/z-index\s*:/i.test(style)) expect(style).toMatch(/z-index:\s*1/i);
     }
-    expect(merged).toMatch(/z-index:\s*2/);
+    expect(merged).toMatch(/z-index:\s*2\s*!important/);
   });
 
   it('keeps official-scale 120px Daisy paint and rejects only tiny invented icons', () => {

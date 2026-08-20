@@ -268,14 +268,17 @@ async function mergeOfficialLookOnHtmlExportFallback(
   projectId: string,
 ): Promise<string> {
   const dest = String(html ?? '');
-  if (
-    dest.includes('data-od-official-look-css')
-    && (
-      dest.includes('data-od-official-motif-html')
-      || !/<use\b[^>]*(?:href|xlink:href)\s*=\s*["']#/i.test(dest)
-    )
-  ) {
-    return dest;
+  // Always re-merge when Motif/look markers exist but §0.62+ stacking or
+  // Motif-scale heal may still be missing (pre-v34 decks).
+  const hasLook = dest.includes('data-od-official-look-css');
+  const hasMotif = dest.includes('data-od-official-motif-html');
+  const hasStacking =
+    /\.slide\s*>\s*:is\(h1/i.test(dest) && /z-index\s*:\s*2\s*!important/i.test(dest);
+  const hasOverscaleDaisy = /deco-daisy[^>]*width\s*:\s*(?:1[5-9]|[2-9]\d+)\s*%/i.test(dest);
+  if (hasLook && hasMotif && hasStacking && !hasOverscaleDaisy) {
+    if (!/<use\b[^>]*(?:href|xlink:href)\s*=\s*["']#/i.test(dest)) {
+      return dest;
+    }
   }
   try {
     const resp = await fetchTeamverDaemon(`/api/projects/${encodeURIComponent(projectId)}`);

@@ -70,7 +70,7 @@ export function historyHasTemplateCloneContentFill(
  * No-op when the prompt already carries a fill marker (first seed or prior stamp).
  */
 const TEMPLATE_CLONE_FILL_SVG_ABANDON =
-  'ABANDON any Motif `<svg>` started BEFORE the cover title. Restart body-first with `<h1>` then lead `<p>`, THEN kit Motif vocabulary (capped sprites AFTER title and/or Motif CSS from the kit). Never invent generic CSS circles when the kit has Motif vocabulary.';
+  'ABANDON any Motif `<svg>` started BEFORE the cover title (or any Motif SVG this turn). Restart body-first with `<h1>` then lead `<p>`. Motif SVG is NOT required — official Motif is merged after save. Optional tiny kit Motif CSS classes AFTER title are OK. Keep ~56–80px slide padding. Never invent generic CSS circles / tiny corner flowers.';
 
 export function ensureTemplateCloneContentFillContinuePrompt(prompt: string): string {
   const trimmed = String(prompt ?? '').trim();

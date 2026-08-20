@@ -631,7 +631,7 @@ OD succeeds by editing cloned HTML text. Teamver BYOK cannot — so regenerate c
 
 **Body / title-first (non-negotiable):**
 1. Status sentence → open \`<artifact type="deck" identifier="deck">\`.
-2. First bytes: \`<!doctype html><html lang="ko"><body style="margin:0;background:<kit surface hex>;color:<kit ink hex>"><section class="slide" style="width:1920px;height:1080px;box-sizing:border-box;overflow:hidden;background:<kit surface hex>;color:<kit ink hex>;…">\` with a real \`h1\`/\`h2\` title + lead **before any decoration**.
+2. First bytes: \`<!doctype html><html lang="ko"><body style="margin:0;background:<kit surface hex>;color:<kit ink hex>"><section class="slide" style="width:1920px;height:1080px;box-sizing:border-box;overflow:hidden;padding:56px 72px;background:<kit surface hex>;color:<kit ink hex>;…">\` with a real \`h1\`/\`h2\` title + lead **before any decoration**.
 3. Slide count THIS TURN: honor an explicit small count (1–2) if the user asked for it. Otherwise produce **3** filled slides and close the artifact. Hidden top-up appends more. Never close after a single cover. Motif \`<svg>\` is NOT required this turn (official Motif is merged after save).
 4. Close \`</body></html></artifact>\` in this same response.
 

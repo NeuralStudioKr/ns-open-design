@@ -133,13 +133,13 @@ html, body {
 .slide > .title-box, .slide > .main-title, .slide > .title-pill,
 .slide > .content, .slide > .slide-inner, .slide > .slide-body,
 .slide > .copy, .slide > .text, .slide > .lead, .slide > .welcome-frame,
-.slide > .card {
-  position: relative;
-  z-index: 2;
+.slide > .card, .slide > .badge, .slide > span {
+  position: relative !important;
+  z-index: 2 !important;
 }
 .slide > div:not([data-od-official-motif-html]):not(.deco):not([class*="deco-"]):not(.floating-pills):not(.petals):not(.gd-ambient):not(.pixel-glitch):not(.scanlines):not(.grain):not(.hc-scanlines):not(.hc-grid) {
-  position: relative;
-  z-index: 2;
+  position: relative !important;
+  z-index: 2 !important;
 }
 `;
 
@@ -216,6 +216,9 @@ function officialLookCssLooksCurrent(css: string): boolean {
     && /position\s*:\s*relative\s*!important/i.test(css)
     && /width\s*:\s*1920px\s*!important/i.test(css)
     && /height\s*:\s*1080px\s*!important/i.test(css)
+    // §0.62+ content-above-Motif stacking (v33 sheets lack this).
+    && /\.slide\s*>\s*:is\(h1/i.test(css)
+    && /z-index\s*:\s*2\s*!important/i.test(css)
     && !OFFICIAL_LOOK_MAX_VIEWPORT_MEDIA_RE.test(css)
   );
 }
@@ -233,6 +236,8 @@ export function hasOfficialLookStackedCanvasNeutralizeProof(html: string): boole
     && /height\s*:\s*1080px\s*!important/i.test(dest)
     && /flex-direction:\s*column/.test(dest)
     && /flex-direction:\s*unset/.test(dest)
+    && /\.slide\s*>\s*:is\(h1/i.test(dest)
+    && /z-index\s*:\s*2\s*!important/i.test(dest)
   );
 }
 
@@ -476,7 +481,7 @@ function placementStyleForMotifClass(classAttr: string): string {
     return 'position:absolute;pointer-events:none;z-index:1';
   }
   if (/\bpetals?\b|\bblob\b|\bgd-orb|\bxp-blob/i.test(classAttr)) {
-    return 'position:absolute;top:6%;left:4%;width:16%;height:22%;pointer-events:none;z-index:1';
+    return 'position:absolute;top:4%;left:3%;width:12%;height:18%;pointer-events:none;z-index:1';
   }
   if (/\bpin-/i.test(classAttr)) {
     return 'position:absolute;top:8%;right:8%;width:180px;height:56px;pointer-events:none;z-index:1;color:#1E1E1E';
@@ -493,7 +498,7 @@ function placementStyleForMotifClass(classAttr: string): string {
   if (/sunglow|cover-blob|cover-decoration|geo-decoration/i.test(classAttr)) {
     return 'position:absolute;top:-8%;right:-6%;width:36%;height:36%;pointer-events:none;z-index:0';
   }
-  return 'position:absolute;top:10%;right:8%;width:140px;height:140px;pointer-events:none;z-index:1';
+  return 'position:absolute;top:8%;right:6%;width:9%;height:14%;pointer-events:none;z-index:1';
 }
 
 function ensureInlineStyle(attrs: string, style: string): string {
@@ -693,13 +698,15 @@ function daisyOpenTags(html: string): string[] {
 
 function daisyPaintIsOfficialScale(html: string): boolean {
   return daisyOpenTags(html).some((open) => {
-    if (/data-od-official-motif-html/i.test(open)) return true;
+    // Mark alone is not scale-proof — pre-v34 stamped Motif can be 22%/39%.
     const width = /width\s*:\s*([\d.]+)\s*(px|%)/i.exec(open);
     if (!width) return false;
     const n = Number(width[1]);
-    // Official Daisy timeline uses 120px; invented corner icons are ~12–48px.
-    // Accept ≥100px or ≥12% of the 1920 canvas.
-    return width[2] === '%' ? n >= 12 : n >= 100;
+    if (!Number.isFinite(n)) return false;
+    // Official Daisy corners ≈ 180–220px (~9.5–12% of 1920). Reject invented
+    // 12–48px icons AND pre-§0.62 overscale stamps (22%+).
+    if (width[2] === '%') return n >= 9.5 && n <= 14;
+    return n >= 100 && n <= 240;
   });
 }
 
@@ -723,7 +730,8 @@ function destHasDaisyOfficialPaint(dest: string, pack: string): boolean {
   return true;
 }
 
-function stripUnderScaleDaisyInstances(slideHtml: string): string {
+/** Strip invented tiny icons AND pre-§0.62 overscale (22%/39%) Daisy stamps. */
+function stripMisScaledDaisyInstances(slideHtml: string): string {
   let out = slideHtml;
   const opens = daisyOpenTags(out);
   for (let i = opens.length - 1; i >= 0; i -= 1) {
@@ -826,7 +834,8 @@ function fillEmptyMotifShells(dest: string, instances: string[]): string {
       else if (/pixel-glitch/i.test(cls)) svg = glitchSvg;
       // Never fill a star/petal shell with an unrelated Motif SVG.
       if (!svg) return _m;
-      const marked = markOfficialMotifHtml(`<${tag}${attrs}>`);
+      const stampedAttrs = ensureInlineStyle(attrs, placementStyleForMotifClass(cls));
+      const marked = markOfficialMotifHtml(`<${tag}${stampedAttrs}>`);
       return `${marked}${svg}</${tag}>`;
     },
   );
@@ -843,30 +852,34 @@ function insertMotifIntoSlide(slideHtml: string, motif: string): string {
 /**
  * Compact Motif-deferred fills often omit slide padding. Corner Motifs then
  * sit on the title band. Inject Daisy/Capsule-like insets when no padding is
- * declared — leave explicit padding (incl. split `padding:0`) alone.
+ * declared. Split slides keep row layout but still need a Motif-safe gutter
+ * unless they already declare padding.
  */
 function ensureMotifSafeSlideInsets(slideHtml: string): string {
   if (!slideHtml) return slideHtml;
-  if (/split-(?:left|right)|class\s*=\s*["'][^"']*\bsplit-/i.test(slideHtml)) {
-    return slideHtml;
-  }
+  const isSplit = /split-(?:left|right)|class\s*=\s*["'][^"']*\bsplit-/i.test(slideHtml);
   const open = /^(<(?:section|div|main|article)\b)([^>]*)(>)/i.exec(slideHtml);
   if (!open) return slideHtml;
   const [, tag, attrs, close] = open;
   const styleMatch = /\bstyle\s*=\s*(["'])([\s\S]*?)\1/i.exec(attrs ?? '');
+  const inset = isSplit ? 'padding:40px 56px' : 'padding:56px 72px';
   if (styleMatch) {
     const style = styleMatch[2] ?? '';
-    if (/padding(?:-(?:top|right|bottom|left))?\s*:/i.test(style)) return slideHtml;
+    // Explicit positive padding — leave alone. Replace only missing or padding:0.
+    if (/padding(?:-(?:top|right|bottom|left))?\s*:\s*(?!0(?:px|em|rem|%)?\b)/i.test(style)) {
+      return slideHtml;
+    }
     const q = styleMatch[1];
-    const trimmed = style.trimEnd();
-    const sep = !trimmed || /;\s*$/.test(trimmed) ? '' : ';';
+    let nextStyle = style.replace(/padding(?:-(?:top|right|bottom|left))?\s*:\s*[^;]+;?/gi, '').trimEnd();
+    const sep = !nextStyle || /;\s*$/.test(nextStyle) ? '' : ';';
+    nextStyle = `${nextStyle}${sep}${inset}`;
     const nextAttrs = (attrs ?? '').replace(
       /\bstyle\s*=\s*(["'])([\s\S]*?)\1/i,
-      `style=${q}${trimmed}${sep}padding:56px 72px${q}`,
+      `style=${q}${nextStyle}${q}`,
     );
     return `${tag}${nextAttrs}${close}${slideHtml.slice(open[0].length)}`;
   }
-  const nextAttrs = `${attrs ?? ''} style="padding:56px 72px"`;
+  const nextAttrs = `${attrs ?? ''} style="${inset}"`;
   return `${tag}${nextAttrs}${close}${slideHtml.slice(open[0].length)}`;
 }
 
@@ -1051,18 +1064,32 @@ function motifFallbackCss(officialCss: string, instances: string[]): string {
     '.slide > :is(h1,h2,h3,p,ul,ol,blockquote,figure,table),',
     '.slide > .title-box,.slide > .main-title,.slide > .title-pill,',
     '.slide > .content,.slide > .slide-inner,.slide > .slide-body,',
-    '.slide > .copy,.slide > .text,.slide > .lead,.slide > .welcome-frame,.slide > .card{',
-    'position:relative;z-index:2;',
+    '.slide > .copy,.slide > .text,.slide > .lead,.slide > .welcome-frame,.slide > .card,.slide > .badge,.slide > span{',
+    'position:relative !important;z-index:2 !important;',
     '}',
   ].join('');
   rules.push(stacking);
   return rules.join('\n');
 }
 
+function motifDecoCssHasContentStacking(css: string): boolean {
+  return /\.slide\s*>\s*:is\(h1/i.test(css) && /z-index\s*:\s*2\s*!important/i.test(css);
+}
+
 function mergeMotifFallbackCss(dest: string, officialCss: string, instances: string[]): string {
-  if (!dest || dest.includes(OFFICIAL_DECK_MOTIF_DECO_CSS_ATTR)) return dest;
+  if (!dest || instances.length === 0) return dest;
   const css = motifFallbackCss(officialCss, instances);
   if (!css.trim()) return dest;
+  const existing = /<style\b([^>]*\bdata-od-official-motif-deco-css\b[^>]*)>([\s\S]*?)<\/style>/i.exec(dest);
+  if (existing) {
+    const body = existing[2] ?? '';
+    if (motifDecoCssHasContentStacking(body)) return dest;
+    // Upgrade pre-§0.62 deco sheets that lack content-above-Motif stacking.
+    return dest.replace(
+      /<style\b[^>]*\bdata-od-official-motif-deco-css\b[^>]*>[\s\S]*?<\/style>/i,
+      `<style ${OFFICIAL_DECK_MOTIF_DECO_CSS_ATTR}>\n${css}\n</style>`,
+    );
+  }
   return insertBeforeCloseHeadOrOpenBody(
     dest,
     `<style ${OFFICIAL_DECK_MOTIF_DECO_CSS_ATTR}>\n${css}\n</style>`,
@@ -1088,7 +1115,7 @@ function mergeVisibleMotifInstances(
   const nextSlides = slides.map((slide, index) => {
     const pack = motifPackForSlide(instances, index, slides.length);
     let html = /deco-daisy/i.test(slide.html) || /deco-daisy/i.test(pack)
-      ? stripUnderScaleDaisyInstances(slide.html)
+      ? stripMisScaledDaisyInstances(slide.html)
       : slide.html;
     if (slideHasOfficialMotifPaint(html, instances, index, slides.length)) {
       return ensureMotifSafeSlideInsets(html);

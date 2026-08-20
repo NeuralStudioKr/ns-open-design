@@ -73,6 +73,8 @@ describe('exportAsHtml / exportAsZip lean srcdoc', () => {
   it('merges official template look CSS on standalone HTML fallback', () => {
     expect(exportsSource).toContain('mergeOfficialLookOnHtmlExportFallback');
     expect(exportsSource).toContain('mergeOfficialLookCssForTemplate');
+    expect(exportsSource).toContain('hasOverscaleDaisy');
+    expect(exportsSource).toContain('hasStacking');
     expect(exportsSource).toMatch(
       /exportAsPdf\(\s*await mergeOfficialLookOnHtmlExportFallback\(renderedHtml/,
     );
