@@ -443,6 +443,29 @@ describe('appendIncomingSlidesOntoExistingDeck', () => {
     expect(merged).toContain('<div class="slide"');
   });
 
+  it('appends salvage-wrapped body-first slides even when the count matches the saved deck', () => {
+    const prior = [
+      '<!doctype html><html><head><style>.kit{}</style></head><body>',
+      '<section class="slide"><h1>Linux Internals</h1></section>',
+      '<section class="slide"><h2>Why kernels</h2></section>',
+      '<section class="slide"><h2>Syscalls</h2></section>',
+      '</body></html>',
+    ].join('');
+    const incoming = [
+      '<!doctype html><html lang="ko"><body>',
+      '<section class="slide"><h2>Why it matters</h2><p>ABI contracts.</p></section>',
+      '<section class="slide"><h2>Next steps</h2><p>Trace syscalls.</p></section>',
+      '<section class="slide"><h2>Close</h2><p>Ship the review.</p></section>',
+      '</body></html>',
+    ].join('');
+    const merged = appendIncomingSlidesOntoExistingDeck(prior, incoming);
+    expect(merged).toContain('<style>.kit{}</style>');
+    expect(merged).toContain('<h1>Linux Internals</h1>');
+    expect(merged).toContain('<h2>Why it matters</h2>');
+    expect(merged).toContain('<h2>Close</h2>');
+    expect(extractTopLevelSlideSections(merged ?? '').length).toBe(6);
+  });
+
   it('does not clobber the saved deck with a shorter head rewrite', () => {
     const prior =
       '<!doctype html><html><head><style>.kit{}</style></head><body>'

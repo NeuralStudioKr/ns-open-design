@@ -32,6 +32,20 @@
 | scaffold로 갑자기 바꾸면? | **안 됨.** kit hard cutover 금지. full HTML scaffold도 기본 inject 하지 않음 |
 | 1장짜리 템플릿 결과가 저장되는가? | **제품 경로는 첫 fill 3장.** 잘리면 제목 있는 1장은 저장하고 top-up이 덧붙인다. 제목 없는 빈 셸만 미완성으로 차단. 사용자가 1장을 명시한 경우도 허용 |
 
+### 0.67 2026-08-20 — salvage wrap 3≤3이면 top-up 장이 안 붙음
+
+§0.66은 append 실패를 `skipped-noop`으로 바꿔 incomplete_output 배너는 없앴다. 그러나 모델이 새 장 3개를 제대로 내도 persist가 못 붙이면 사용자는 첫 fill 3장만 본다.
+
+**원인:** `normalizeBodyFirstHtmlDocument`가 body-only top-up을 `<!doctype html><html lang="ko"><body>…`로 감싼다. append의 `incomingLooksLikeFullDocument`가 doctype/html을 rewrite로 보고 장수 3≤3이면 null.
+
+**수정:** rewrite는 `<head>` 또는 첫 장 heading이 기존 커버와 같을 때만. salvage wrap(head 없음, 새 제목)은 전부 append. persist는 salvage 전 raw incoming부터 시도하고, top-up에는 cover-draft salvage를 쓰지 않음.
+
+구현 현황:
+
+- [x] salvage-wrapped 3+3 append red spec
+- [x] headed short rewrite는 계속 거부
+- [x] incomingBeforeSalvage + top-up cover-draft skip
+
 ### 0.65 2026-08-20 — 미리보기 dark / 결과 cream · 폰트·요소 불일치
 
 §0.64는 Hermes `--hc-bg` / cream bleed 순서를 고쳤지만, Pink Script 같은 **dark stage + `--paper` ink** 템플릿은 여전히 썸네일만 어둡고 결과물은 밝았다.
@@ -1529,6 +1543,7 @@ User-message 쪽 `[Existing deck edit]` / `<attached-preview-comments>` 주입�
 | 2026-08-13 | **§0.0 정책 개정** — template = layout vocabulary + visual look, 페이지 수/순서/구성은 브리프 기반. content-swap → pick-and-choose layout roles. daemon Clone default count = 6 (shells.length 아님), `pickTemplateShells` role-based scoring 도입. `template-visual-kit.ts` HARD_RULES 재작성, `DEFAULT_MAX_CHARS` 12000 → 14000. |
 | 2026-08-18 | Clone content-fill motif 보정 — 8/13 SVG hang 방지 패치가 first fill에서 `Motif sprites`/`Decoration CSS`/`Layout CSS`를 통째로 생략해 Daisy/Capsule 템플릿 정체성이 약해졌다. `slimTemplateVisualKitForFill`이 큰 SVG sprite sheet와 전체 stylesheet dump는 계속 제거하되, Daisy star/rainbow·Capsule pill/capsule·Terminal scanline 같은 compact motif recipe와 짧은 Decoration/Layout CSS cue를 보존하도록 변경했다. |
 | 2026-08-18 | §0.20 — html-ppt identity scope. 공유 `:root --bg:#ffffff` 대신 `.tpl-*` host 토큰/슬라이드 surface/폰트를 kit 계약으로 쓰고, SKILL `copy index.html` filesystem 지시를 neutralize. |
+| 2026-08-20 | §0.67 — salvage wrap of body-only top-up was treated as a short rewrite (3≤3). head/same-cover rewrite only. |
 | 2026-08-20 | §0.66 — top-up append miss → skipped-noop (not incomplete_output). close truncated hosts · div.slide · closed-section prompt. |
 | 2026-08-20 | §0.65 — Pink Script surface lock. kit dark stage not `--paper` · host>slide rewrite · body-trail look · compact type lock · cache v37. |
 | 2026-08-20 | §0.64 — template look drift. look→bleed order · preview relax · identity `--*-bg` · tpl `.slide` preserve · cache v36. |

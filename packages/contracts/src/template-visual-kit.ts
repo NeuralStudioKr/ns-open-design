@@ -533,10 +533,11 @@ function extractSlideSurfaceBinding(
 
   // 3) :root --cream/--paper when body chrome disagrees.
   // `--paper` on dark editorial stages (Pink Script) is ink/type, not the canvas.
+  const bodyBackground = body.background;
   const paperIsInkOnDarkStage =
     tokenPaper.source === '--paper'
-    && Boolean(body.background)
-    && contrastLabel(body.background) === 'dark';
+    && bodyBackground != null
+    && contrastLabel(bodyBackground) === 'dark';
   const fromToken = paperIsInkOnDarkStage ? null : preferPaperOverBodyChrome(tokenPaper);
   if (fromToken) return fromToken;
 

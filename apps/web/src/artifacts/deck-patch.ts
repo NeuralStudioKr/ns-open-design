@@ -596,8 +596,29 @@ function pickInterSlideSeparator(
   return /^\s+$/.test(between) ? between : '\n';
 }
 
-function incomingLooksLikeFullDocument(html: string): boolean {
-  return /<!doctype\s+html|<html\b|<head\b/i.test(html);
+function incomingLooksLikeHeadedDocument(html: string): boolean {
+  return /<head\b/i.test(html);
+}
+
+function firstSlideHeading(slideHtml: string): string {
+  const inner = /<h[1-3]\b[^>]*>([\s\S]*?)<\/h[1-3]>/i.exec(slideHtml)?.[1] ?? '';
+  return inner.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
+/**
+ * A real rewrite copies the saved deck (usually with `<head>`).
+ * Persist salvage wraps body-only top-up slides as
+ * `<!doctype html><html lang="ko"><body>…` — that is NOT a rewrite.
+ */
+function incomingLooksLikeFullDeckRewrite(
+  existingSlides: readonly TopLevelSlideSection[],
+  incomingSlides: readonly TopLevelSlideSection[],
+  incomingHtml: string,
+): boolean {
+  if (incomingLooksLikeHeadedDocument(incomingHtml)) return true;
+  const existingTitle = existingSlides[0] ? firstSlideHeading(existingSlides[0].outerHtml) : '';
+  const incomingTitle = incomingSlides[0] ? firstSlideHeading(incomingSlides[0].outerHtml) : '';
+  return Boolean(existingTitle && incomingTitle && incomingTitle === existingTitle);
 }
 
 /**
@@ -627,7 +648,7 @@ export function appendIncomingSlidesOntoExistingDeck(
   const existingCount = existingSlides.length;
 
   let toAppend = incomingSlides;
-  if (existingCount > 0 && incomingLooksLikeFullDocument(incoming)) {
+  if (existingCount > 0 && incomingLooksLikeFullDeckRewrite(existingSlides, incomingSlides, incoming)) {
     if (incomingSlides.length <= existingCount) return null;
     toAppend = incomingSlides.slice(existingCount);
   }

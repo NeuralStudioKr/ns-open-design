@@ -740,6 +740,7 @@ describe("canvasSlideLaunch", () => {
     expect(projectView).toContain("slimTemplateVisualKitForFill(");
     expect(projectView).toContain("templateCloneContentFill: isCloneContentFillTurn");
     expect(projectView).toContain("appendIncomingSlidesOntoExistingDeck(");
+    expect(projectView).toContain("incomingBeforeSalvage");
     expect(projectView).toContain("top-up-did-not-append-slides");
     expect(projectView).toContain("kind: 'skipped-noop'");
     expect(projectView).toMatch(

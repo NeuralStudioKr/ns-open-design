@@ -5231,20 +5231,27 @@ export function ProjectView({
           runVisiblePromptRef.current || '',
           project.name,
         );
+        const incomingBeforeSalvage = artifactToPersist.html;
         const salvaged = salvageTruncatedHtmlDocument(artifactToPersist.html)
-          ?? salvageTemplateFillShellAsCoverDraft(artifactToPersist.html, {
-            fallbackTitle: coverFallbackTitle,
-          });
+          ?? (
+            runSlideCountTopUpRef.current
+              ? null
+              : salvageTemplateFillShellAsCoverDraft(artifactToPersist.html, {
+                fallbackTitle: coverFallbackTitle,
+              })
+          );
         if (salvaged) {
           artifactToPersist = { ...artifactToPersist, html: salvaged };
         }
         if (runSlideCountTopUpRef.current) {
           const priorHtml = await readDiskHtml(fileName);
           if (priorHtml) {
-            const merged = appendIncomingSlidesOntoExistingDeck(
-              priorHtml,
-              artifactToPersist.html,
-            );
+            const merged =
+              appendIncomingSlidesOntoExistingDeck(priorHtml, incomingBeforeSalvage)
+              ?? appendIncomingSlidesOntoExistingDeck(
+                priorHtml,
+                artifactToPersist.html,
+              );
             if (merged) {
               artifactToPersist = { ...artifactToPersist, html: merged };
             } else if (
