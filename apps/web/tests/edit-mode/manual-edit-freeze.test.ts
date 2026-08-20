@@ -21,6 +21,7 @@ import {
   shouldRefreshHostMetricsAfterTipRemountMultiRemasure,
   tipRemountSessionActive,
   shouldSkipOdEditTargetsIdentityMixedReseedDuringTipRemount,
+  shouldAllowOdEditTargetsPendingReseedDuringTipProtect,
   withPreservedTipSyncedStylesOnBridgeTarget,
   resolveTipSyncedStylesForOdEditTargetsPreserve,
   withPreservedTipSyncedIdentityOnBridgeTarget,
@@ -397,6 +398,15 @@ describe('manual edit freeze reset', () => {
     expect(shouldSkipOdEditTargetsIdentityMixedReseedDuringTipRemount(false, true)).toBe(true);
     expect(shouldSkipOdEditTargetsIdentityMixedReseedDuringTipRemount(true, true)).toBe(false);
     expect(shouldSkipOdEditTargetsIdentityMixedReseedDuringTipRemount(false, false)).toBe(false);
+  });
+
+  it('does not skip / allows pending reseed during tip protect (471)', () => {
+    expect(shouldSkipOdEditTargetsIdentityMixedReseedDuringTipRemount(false, true, true)).toBe(false);
+    expect(shouldSkipOdEditTargetsIdentityMixedReseedDuringTipRemount(false, true, false)).toBe(true);
+    expect(shouldAllowOdEditTargetsPendingReseedDuringTipProtect(true, false, false, true)).toBe(true);
+    expect(shouldAllowOdEditTargetsPendingReseedDuringTipProtect(true, false, true, false)).toBe(true);
+    expect(shouldAllowOdEditTargetsPendingReseedDuringTipProtect(true, true, false, true)).toBe(false);
+    expect(shouldAllowOdEditTargetsPendingReseedDuringTipProtect(false, false, false, true)).toBe(false);
   });
 
   it('preserves tip-synced styles on bridge targets (467)', () => {

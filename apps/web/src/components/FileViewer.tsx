@@ -347,6 +347,7 @@ import {
   shouldSkipWildJumpDuringTipRemountFitSettleForSelectedMember,
   tipRemountSessionActive,
   shouldSkipOdEditTargetsIdentityMixedReseedDuringTipRemount,
+  shouldAllowOdEditTargetsPendingReseedDuringTipProtect,
   withPreservedTipSyncedStylesOnBridgeTarget,
   resolveTipSyncedStylesForOdEditTargetsPreserve,
   withPreservedTipSyncedIdentityOnBridgeTarget,
@@ -9952,8 +9953,16 @@ function HtmlViewer({
           }
           // Tip-remount: bridge target.styles can flip identity fingerprint and
           // re-fire Mixed/draft reseed — skip identity-only churn (466).
+          // Pending drafts stay reachable during tip protect (471).
           const skipIdentityMixedReseed = shouldSkipOdEditTargetsIdentityMixedReseedDuringTipRemount(
             selectionIdsChanged,
+            tipRemountActive,
+            styleDraftPending,
+          );
+          const allowPendingReseed = shouldAllowOdEditTargetsPendingReseedDuringTipProtect(
+            styleDraftPending,
+            selectionIdsChanged,
+            selectedTargetsIdentityChanged,
             tipRemountActive,
           );
           // Multi-select inspector: reparse on id-set OR selected identity change
@@ -9990,12 +9999,11 @@ function HtmlViewer({
           } else if (
             nextIds.length > 1
             && !skipIdentityMixedReseed
-            && !selectionIdsChanged
-            && selectedTargetsIdentityChanged
-            && styleDraftPending
+            && allowPendingReseed
             && selectedNext
           ) {
             // Multi + pending: keep draft styles; refresh fields + mixedKeys only.
+            // Tip protect may freeze identity fingerprint — still refresh (471).
             const base = sourceRef.current ?? '';
             const parsedDoc = parseManualEditSource(base);
             const snapshot = readManualEditTargetSnapshot(
@@ -10051,12 +10059,10 @@ function HtmlViewer({
           } else if (
             nextIds.length === 1
             && !skipIdentityMixedReseed
-            && !selectionIdsChanged
-            && selectedTargetsIdentityChanged
-            && styleDraftPending
+            && allowPendingReseed
             && selectedNext
           ) {
-            // Pending styles own the panel — refresh field identity only (기획 59).
+            // Pending styles own the panel — refresh field identity only (기획 59/471).
             const base = sourceRef.current ?? '';
             const parsedDoc = parseManualEditSource(base);
             const snapshot = readManualEditTargetSnapshot(

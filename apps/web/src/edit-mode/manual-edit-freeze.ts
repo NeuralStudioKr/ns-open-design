@@ -588,12 +588,31 @@ export function shouldReadSingleInspectorStylesFromSourceOnlyForOdEditTargets():
  * `target.styles` (live preview) and re-fire Mixed reseed — flicker even when
  * Mixed is source-only. Skip identity-only Mixed/draft reseed while tip
  * remount is settling; membership changes still reseed (466).
+ * Pending style drafts must NOT be blank-skipped — tip-yield already respects
+ * concurrent pending ownership (471).
  */
 export function shouldSkipOdEditTargetsIdentityMixedReseedDuringTipRemount(
   selectionIdsChanged: boolean,
   tipRemountActive: boolean,
+  styleDraftPending = false,
 ): boolean {
+  if (styleDraftPending) return false;
   return tipRemountActive && !selectionIdsChanged;
+}
+
+/**
+ * Pending Mixed/field refresh during tip protect: tip identity preserve can
+ * freeze the selected fingerprint so the usual identity-changed gate never
+ * fires — still allow the pending-aware path (471).
+ */
+export function shouldAllowOdEditTargetsPendingReseedDuringTipProtect(
+  styleDraftPending: boolean,
+  selectionIdsChanged: boolean,
+  selectedTargetsIdentityChanged: boolean,
+  tipRemountProtectActive: boolean,
+): boolean {
+  if (!styleDraftPending || selectionIdsChanged) return false;
+  return selectedTargetsIdentityChanged || tipRemountProtectActive;
 }
 
 /**

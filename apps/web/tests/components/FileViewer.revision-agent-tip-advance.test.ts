@@ -247,6 +247,9 @@ describe('FileViewer revision tip advance after undo', () => {
     expect(fileViewer).toContain("shouldReadMultiInspectorStylesFromSourceOnly(\n              'od-edit-targets'");
     expect(fileViewer).toContain('tipRemountSessionActive');
     expect(fileViewer).toContain('shouldSkipOdEditTargetsIdentityMixedReseedDuringTipRemount');
+    expect(fileViewer).toContain('shouldAllowOdEditTargetsPendingReseedDuringTipProtect');
+    expect(fileViewer).toContain('allowPendingReseed');
+    expect(fileViewer).toContain('Pending drafts stay reachable during tip protect');
     expect(fileViewer).toContain('withPreservedTipSyncedStylesOnBridgeTarget');
     expect(fileViewer).toContain('resolveTipSyncedStylesForOdEditTargetsPreserve');
     expect(fileViewer).toContain('withPreservedTipSyncedIdentityOnBridgeTarget');
