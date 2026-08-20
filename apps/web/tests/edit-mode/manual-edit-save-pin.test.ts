@@ -7,6 +7,7 @@ import {
   manualEditHistoryConfirmCanSkipDiskFetch,
   manualEditHistoryConfirmTipIsWarmerThanSession,
   manualEditHistoryConfirmTrustsLocal,
+  resolveManualEditHistoryConfirmAuthoredSource,
   resolveManualEditHistoryConfirmTipContext,
   shouldAdoptManualEditHistoryConfirmPersisted,
   shouldDropManualEditSavePinForFilesRefresh,
@@ -222,6 +223,23 @@ describe('manual edit save pin', () => {
       4,
       5,
     )).toBe(true);
+    // lastStable/canvas already drifted to stale cache bytes — still not warmer.
+    expect(manualEditHistoryConfirmTipIsWarmerThanSession({
+      tipContent: stale,
+      expectedSource: saved,
+      authoredSource: stale,
+      tipRevisionSequence: 5,
+      activeRevisionSequence: 5,
+    })).toBe(false);
+    expect(manualEditHistoryConfirmCanSkipDiskFetch(
+      saved,
+      pinned,
+      1_000 + 50,
+      stale,
+      stale,
+      5,
+      5,
+    )).toBe(true);
   });
 
   it('yields warm tip over pin even when live/disk candidate is still stale', () => {
@@ -364,6 +382,32 @@ describe('manual edit save pin', () => {
       tipCached: '<html><body><h1>Agent tip</h1></body></html>',
       paintedSource: '<html><body><h1>Agent tip</h1></body></html>',
     })).toBe(true);
+    // Same-revision stale paint matching stale cache must not drop the pin.
+    expect(shouldDropManualEditSavePinForFilesRefresh({
+      pinnedSource: saved,
+      tipCached: stale,
+      paintedSource: stale,
+      tipRevisionSequence: 5,
+      activeRevisionSequence: 5,
+    })).toBe(false);
+  });
+
+  it('prefers pin then live session over a stale lastStable frame for confirm authored', () => {
+    expect(resolveManualEditHistoryConfirmAuthoredSource({
+      pinnedSource: saved,
+      liveSource: stale,
+      lastStableSource: stale,
+    })).toBe(saved);
+    expect(resolveManualEditHistoryConfirmAuthoredSource({
+      pinnedSource: null,
+      liveSource: saved,
+      lastStableSource: stale,
+    })).toBe(saved);
+    expect(resolveManualEditHistoryConfirmAuthoredSource({
+      pinnedSource: null,
+      liveSource: null,
+      lastStableSource: stale,
+    })).toBe(stale);
   });
 
   it('does not adopt a null disk frame after history-confirm refuse', () => {

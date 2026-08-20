@@ -102,6 +102,13 @@ describe('manual edit session', () => {
       tipRevisionSequence: 5,
       activeRevisionSequence: 5,
     })).toBe(true);
+    expect(shouldSkipManualEditHistoryConfirm(true, {
+      expectedSource: saved,
+      tipContent: stale,
+      authoredSource: stale,
+      tipRevisionSequence: 5,
+      activeRevisionSequence: 5,
+    })).toBe(true);
   });
 
   it('holds disk preview refresh while the freeze is active', () => {

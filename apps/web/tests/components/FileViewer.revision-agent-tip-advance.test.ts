@@ -237,7 +237,9 @@ describe('FileViewer revision tip advance after undo', () => {
     expect(fileViewer).toContain('shouldAdoptManualEditHistoryConfirmPersisted(');
     expect(fileViewer).toContain('shouldDropManualEditSavePinForFilesRefresh(');
     expect(fileViewer).toContain('readManualEditPatchBaseSource(');
+    expect(fileViewer).toContain('readManualEditHistoryConfirmAuthoredSource(');
     expect(fileViewer).toContain('resolveManualEditHistoryConfirmTipContext(');
+    expect(fileViewer).toContain('resolveManualEditHistoryConfirmAuthoredSource(');
     expect(fileViewer).toContain('Tip≠expected forces GET');
     expect(fileViewer).toContain('Tip≠expected forces confirm even in edit mode');
     expect(fileViewer).toContain('no false "external change"');

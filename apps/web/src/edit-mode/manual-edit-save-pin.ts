@@ -355,10 +355,12 @@ export function manualEditHistoryConfirmTipIsWarmerThanSession(
     activeRevisionSequence,
   } = input;
   if (tipContent == null || tipContent === expectedSource) return false;
-  if (authoredSource != null && authoredSource === tipContent) return true;
+  // Same/older revision: cache or lastStable paint drift is not agent tip
+  // advance — even when authored already drifted to those stale bytes.
   if (tipRevisionSequence != null && activeRevisionSequence != null) {
     return tipRevisionSequence > activeRevisionSequence;
   }
+  if (authoredSource != null && authoredSource === tipContent) return true;
   return true;
 }
 
@@ -400,9 +402,33 @@ export function shouldDropManualEditSavePinForFilesRefresh(input: {
   pinnedSource: string;
   tipCached: string | null | undefined;
   paintedSource: string | null | undefined;
+  tipRevisionSequence?: number | null;
+  activeRevisionSequence?: number | null;
 }): boolean {
   if (input.tipCached == null || input.tipCached === input.pinnedSource) return false;
-  return input.paintedSource === input.tipCached;
+  if (input.paintedSource !== input.tipCached) return false;
+  // Canvas matching a diverging cache is only a tip adopt when that cache
+  // is a newer revision — not the same-revision stale paint of a move save.
+  return manualEditHistoryConfirmTipIsWarmerThanSession({
+    tipContent: input.tipCached,
+    expectedSource: input.pinnedSource,
+    authoredSource: input.paintedSource,
+    tipRevisionSequence: input.tipRevisionSequence,
+    activeRevisionSequence: input.activeRevisionSequence,
+  });
+}
+
+/**
+ * Session bytes for history-confirm. Prefer the last save pin (even after
+ * hard cap) then the live session buffer — lastStable can be a stale
+ * accepted preview frame and must not win over sourceRef.
+ */
+export function resolveManualEditHistoryConfirmAuthoredSource(input: {
+  pinnedSource?: string | null;
+  liveSource?: string | null;
+  lastStableSource?: string | null;
+}): string | null {
+  return input.pinnedSource ?? input.liveSource ?? input.lastStableSource ?? null;
 }
 
 /** Confirm refuse must not adopt a missing disk frame over the session buffer. */

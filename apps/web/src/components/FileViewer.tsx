@@ -326,6 +326,7 @@ import {
   isManualEditSourcePinActive,
   acceptedKeepsEarlyPaintTipOrPin,
   nextTipPreferSuppressState,
+  resolveManualEditHistoryConfirmAuthoredSource,
   resolveManualEditHistoryConfirmTipContext,
   resolveManualEditSavePinTipRevision,
   resolveManualEditSourceAgainstPinAndTip,
@@ -5796,6 +5797,8 @@ function HtmlViewer({
           pinnedSource: pinned.source,
           tipCached,
           paintedSource: sourceRef.current,
+          tipRevisionSequence: tipCtx.tipRevisionSequence,
+          activeRevisionSequence: tipCtx.activeRevisionSequence,
         })) {
           // Canvas already paints the diverging tip — drop pin and remount.
           manualEditPinnedSourceRef.current = null;
@@ -5806,17 +5809,17 @@ function HtmlViewer({
           rememberStablePreviewSource(projectId, file.name, pinned.source);
           // Active pin owns the painted frame — adopt pin if paint drifted;
           // never tear srcdoc / bust reloadKey while the pin is live.
+          if (lastStablePreviewSourceRef.current !== pinned.source) {
+            lastStablePreviewSourceRef.current = pinned.source;
+            exportHtmlSnapshotGateRef.current = pinned.source;
+          }
           if (sourceRef.current !== pinned.source) {
             setSource(pinned.source);
             sourceRef.current = pinned.source;
-            lastStablePreviewSourceRef.current = pinned.source;
-            exportHtmlSnapshotGateRef.current = pinned.source;
           }
           return;
         }
       }
-    } else {
-      manualEditPinnedSourceRef.current = null;
     }
     activatedSrcDocTransportHtmlRef.current = null;
     setLiveHtmlPaintsPreview(false);
@@ -12817,9 +12820,7 @@ function HtmlViewer({
           tipRevisionSequence,
           activeRevisionSequence,
         } = readManualEditHistoryConfirmTipContext();
-        const authoredForConfirm = manualEditPinnedSourceRef.current?.source
-          ?? lastStablePreviewSourceRef.current
-          ?? sourceRef.current;
+        const authoredForConfirm = readManualEditHistoryConfirmAuthoredSource();
         if (
           !shouldSkipManualEditHistoryConfirm(manualEditMode, {
             expectedSource: baseSource,
@@ -13071,9 +13072,7 @@ function HtmlViewer({
           tipRevisionSequence,
           activeRevisionSequence,
         } = readManualEditHistoryConfirmTipContext();
-        const authoredForConfirm = manualEditPinnedSourceRef.current?.source
-          ?? lastStablePreviewSourceRef.current
-          ?? sourceRef.current;
+        const authoredForConfirm = readManualEditHistoryConfirmAuthoredSource();
         if (
           !shouldSkipManualEditHistoryConfirm(manualEditMode, {
             expectedSource: baseSource,
@@ -13205,6 +13204,14 @@ function HtmlViewer({
     });
   }
 
+  function readManualEditHistoryConfirmAuthoredSource(): string | null {
+    return resolveManualEditHistoryConfirmAuthoredSource({
+      pinnedSource: manualEditPinnedSourceRef.current?.source,
+      liveSource: sourceRef.current,
+      lastStableSource: lastStablePreviewSourceRef.current,
+    });
+  }
+
   function readManualEditPatchBaseSource(): string | null {
     const pinned = manualEditPinnedSourceRef.current;
     return manualEditPatchBaseSource({
@@ -13216,9 +13223,7 @@ function HtmlViewer({
   }
 
   async function confirmManualEditHistorySource(expectedSource: string, message: string): Promise<boolean> {
-    const authored = manualEditPinnedSourceRef.current?.source
-      ?? lastStablePreviewSourceRef.current
-      ?? sourceRef.current;
+    const authored = readManualEditHistoryConfirmAuthoredSource();
     const now = Date.now();
     // Tip + pin/authored gates share one tipContent (no false "external change"
     // after tip yield when expected already matches tip — 기획 50).

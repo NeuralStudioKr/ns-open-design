@@ -39,6 +39,7 @@ describe("FileViewer streaming slide preview", () => {
     expect(block).toContain('do NOT clear last-stable');
     expect(block).toContain('shouldDropManualEditSavePinForFilesRefresh');
     expect(block).toContain('Canvas already paints the diverging tip');
+    expect(block).toContain('if (lastStablePreviewSourceRef.current !== pinned.source)');
   });
 
   it('holds srcDoc until preview prefix settles (no early no-base paint)', () => {
