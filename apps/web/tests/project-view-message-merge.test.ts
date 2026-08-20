@@ -430,10 +430,20 @@ describe("findTemplateCloneFillSlideCountIncomplete", () => {
     ).toBeNull();
   });
 
-  it("blocks one-slide template fills when the user did not ask for one slide", () => {
+  it("allows a titled one-slide cover draft so top-up can append the rest", () => {
+    expect(
+      findTemplateCloneFillSlideCountIncomplete({
+        fileName: "deck.html",
+        htmlBody: '<section class="slide"><h1>Cover only</h1></section>',
+        requestedSlideCount: null,
+      }),
+    ).toBeNull();
+  });
+
+  it("blocks untitled one-slide template fills", () => {
     const regression = findTemplateCloneFillSlideCountIncomplete({
       fileName: "deck.html",
-      htmlBody: '<section class="slide"><h1>Cover only</h1></section>',
+      htmlBody: '<section class="slide"><p>placeholder</p></section>',
       requestedSlideCount: null,
     });
     expect(regression).toMatchObject({
@@ -443,11 +453,11 @@ describe("findTemplateCloneFillSlideCountIncomplete", () => {
     });
   });
 
-  it("uses explicit small slide counts as the minimum expectation", () => {
+  it("uses explicit small slide counts as the minimum expectation for untitled shells", () => {
     expect(
       findTemplateCloneFillSlideCountIncomplete({
         fileName: "deck.html",
-        htmlBody: '<section class="slide"><h1>Cover only</h1></section>',
+        htmlBody: '<section class="slide"><p>placeholder</p></section>',
         requestedSlideCount: 2,
       }),
     ).toMatchObject({ producedCount: 1, expectedCount: 2 });

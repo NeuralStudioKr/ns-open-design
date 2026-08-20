@@ -151,13 +151,17 @@ export function shouldQueueSlideCountTopUp(input: {
   topUpCount: number;
   commentAttachmentCount?: number;
   hasIncompleteAssistant?: boolean;
+  /** Template-clone first fill: allow 1–2 titled slides and default to 6. */
+  defaultRequested?: number;
 }): boolean {
   if (input.hasIncompleteAssistant) return false;
   if ((input.commentAttachmentCount ?? 0) > 0) return false;
-  if (input.requested == null) return false;
-  if (!Number.isFinite(input.produced) || input.produced < 3) return false;
+  const target = input.requested ?? input.defaultRequested ?? null;
+  if (target == null) return false;
+  const minProduced = input.defaultRequested != null ? 1 : 3;
+  if (!Number.isFinite(input.produced) || input.produced < minProduced) return false;
   if (input.topUpCount >= SLIDE_COUNT_TOP_UP_MAX_PER_CONVERSATION) return false;
-  return input.requested > input.produced;
+  return target > input.produced;
 }
 
 export function buildSlideCountTopUpPrompt(input: {
