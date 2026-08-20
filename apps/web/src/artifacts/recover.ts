@@ -310,3 +310,51 @@ export function salvageTruncatedHtmlDocument(content: string | null | undefined)
   if (!hasTruncationSalvageableContent(out)) return null;
   return out;
 }
+
+const GENERIC_TEMPLATE_FILL_TITLE_RE =
+  /^(?:x|ok|deck|untitled|slide|presentation(?:\s+template)?|daisy days|html ppt|zhangzara|template)\b/i;
+
+function visibleHeadingCandidate(html: string): string {
+  const withoutChrome = html
+    .replace(/<style\b[\s\S]*?<\/style>/gi, '')
+    .replace(/<script\b[\s\S]*?<\/script>/gi, '')
+    .replace(/<!--[\s\S]*?-->/g, '');
+  const heading =
+    /<h[1-3]\b[^>]*>([\s\S]*?)(?:<\/h[1-3]>|$)/i.exec(withoutChrome)?.[1]
+    ?? /<title\b[^>]*>([\s\S]*?)<\/title>/i.exec(withoutChrome)?.[1]
+    ?? '';
+  return heading.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Template Clone fill sometimes burns the turn on `<head>` / kit CSS and
+ * never reaches a slide. Persist used to skip that as
+ * `incomplete-html-document-shell` → `incomplete_output`. When the shell
+ * still carries a real brief title (not Daisy/template chrome), keep a
+ * 1920×1080 cover draft so slide-count top-up can append the rest.
+ */
+export function salvageTemplateFillShellAsCoverDraft(
+  content: string | null | undefined,
+): string | null {
+  const trimmed = String(content ?? '').replace(/^﻿/, '').trim();
+  if (!trimmed || trimmed.length < 24) return null;
+  if (hasTruncationSalvageableContent(trimmed) || hasSalvageableSlideContent(trimmed)) {
+    return null;
+  }
+  const heading = visibleHeadingCandidate(trimmed);
+  if (heading.length < 4 || GENERIC_TEMPLATE_FILL_TITLE_RE.test(heading)) return null;
+
+  const escaped = heading
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+  const html = [
+    '<!doctype html><html lang="ko"><body style="margin:0">',
+    '<section class="slide" style="width:1920px;height:1080px;box-sizing:border-box;',
+    'overflow:hidden;display:flex;flex-direction:column;justify-content:center;',
+    'padding:80px 88px">',
+    `<h1>${escaped}</h1>`,
+    '</section></body></html>',
+  ].join('');
+  return validateHtmlArtifact(html).ok ? html : null;
+}

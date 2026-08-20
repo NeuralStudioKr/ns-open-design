@@ -343,14 +343,18 @@ export function hasSalvageableDeckSlideContent(html: string): boolean {
   if (documentContainsSlideSection(withoutComments)) {
     return meetsMinimumDeckDeliverableQuality(html);
   }
-  if (HAS_MEDIA_CONTENT_RE.test(withoutComments)) {
+  const bodyInner = /<body\b[^>]*>([\s\S]*?)(?:<\/body>|$)/i.exec(withoutComments)?.[1]
+    ?? '';
+  if (HAS_MEDIA_CONTENT_RE.test(bodyInner)) {
     if (deckArtifactStartsWithMotifSvgDump(withoutComments)) return false;
-    const mediaText = visibleTextFromHtmlFragment(withoutComments);
+    const mediaText = visibleTextFromHtmlFragment(bodyInner);
     if (!mediaText || mediaText.length < 8) return false;
     if (DECK_STATUS_PROSE_RE.test(mediaText)) return false;
     return true;
   }
-  const text = visibleTextFromHtmlFragment(withoutComments);
+  // Head / <title> chrome is not slide copy — a kit CSS shell with a
+  // brief title used to look "salvageable" and persist as a blank body.
+  const text = visibleTextFromHtmlFragment(bodyInner);
   if (!text || text.length < 8) return false;
   if (DECK_STATUS_PROSE_RE.test(text)) return false;
   if (/^을\s+만들/.test(text) && text.length < 48) return false;

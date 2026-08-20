@@ -440,27 +440,24 @@ describe("findTemplateCloneFillSlideCountIncomplete", () => {
     ).toBeNull();
   });
 
-  it("blocks untitled one-slide template fills", () => {
-    const regression = findTemplateCloneFillSlideCountIncomplete({
-      fileName: "deck.html",
-      htmlBody: '<section class="slide"><p>placeholder</p></section>',
-      requestedSlideCount: null,
-    });
-    expect(regression).toMatchObject({
-      fileName: "deck.html",
-      producedCount: 1,
-      expectedCount: 3,
-    });
+  it("allows untitled one-slide drafts so top-up can append instead of incomplete_output", () => {
+    expect(
+      findTemplateCloneFillSlideCountIncomplete({
+        fileName: "deck.html",
+        htmlBody: '<section class="slide"><p>placeholder</p></section>',
+        requestedSlideCount: null,
+      }),
+    ).toBeNull();
   });
 
-  it("uses explicit small slide counts as the minimum expectation for untitled shells", () => {
+  it("does not block short fills against an explicit small slide count", () => {
     expect(
       findTemplateCloneFillSlideCountIncomplete({
         fileName: "deck.html",
         htmlBody: '<section class="slide"><p>placeholder</p></section>',
         requestedSlideCount: 2,
       }),
-    ).toMatchObject({ producedCount: 1, expectedCount: 2 });
+    ).toBeNull();
   });
 });
 

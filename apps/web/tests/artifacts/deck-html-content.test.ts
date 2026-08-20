@@ -29,6 +29,21 @@ describe("deck-html-content", () => {
     expect(isIncompleteHtmlDocumentShell(html)).toBe(true);
   });
 
+  it("does not treat a head-only brief title as salvageable slide copy", () => {
+    const html = `<!doctype html><html lang="ko"><head>
+<title>Linux Internals &amp; Production Mastery</title>
+<style>.deco-daisy{color:#fcdf6c}</style></head>`;
+    expect(hasSalvageableDeckSlideContent(html)).toBe(false);
+  });
+
+  it("does not treat a head SVG plus title as salvageable slide copy", () => {
+    const html = `<!doctype html><html lang="ko"><head>
+<title>Linux Internals</title>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><circle cx="5" cy="5" r="4"/></svg>
+</head>`;
+    expect(hasSalvageableDeckSlideContent(html)).toBe(false);
+  });
+
   it("rejects leaked streaming tail fragments", () => {
     const html =
       "<!doctype html><html lang=\"ko\"><body><p>을 만들고 있어요</p><h2>발표 개요</h2></body></html>";

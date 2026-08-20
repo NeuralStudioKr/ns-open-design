@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   normalizeBodyFirstHtmlDocument,
   recoverBestHtmlDocumentFromText,
+  salvageTemplateFillShellAsCoverDraft,
   salvageTruncatedHtmlDocument,
 } from "../../src/artifacts/recover";
 import { isIncompleteHtmlDocumentShell } from "../../src/artifacts/validate";
@@ -279,5 +280,32 @@ describe("salvageTruncatedHtmlDocument", () => {
     expect(salvaged).toContain('기업 AI 도입 효과');
     expect(salvaged).toContain('</style>');
     expect(salvaged).toMatch(/<\/body>\s*<\/html>\s*$/i);
+  });
+});
+
+describe("salvageTemplateFillShellAsCoverDraft", () => {
+  it("turns a brief-titled head-only shell into a 1920 cover draft", () => {
+    const shell = `<!doctype html><html lang="ko"><head>
+<meta charset="utf-8"/>
+<title>Linux Internals &amp; Production Mastery</title>
+<style>.slide{width:100vw;height:100vh}.deco-daisy{color:#fcdf6c`;
+    expect(salvageTruncatedHtmlDocument(shell)).toBeNull();
+    const draft = salvageTemplateFillShellAsCoverDraft(shell);
+    expect(draft).toBeTruthy();
+    expect(draft).toContain("Linux Internals");
+    expect(draft).toContain("width:1920px");
+    expect(draft).toMatch(/<h1>Linux Internals/);
+  });
+
+  it("does not invent a cover from Daisy/template chrome titles", () => {
+    const shell = `<!doctype html><html><head><title>Daisy Days — Presentation Template</title>
+<style>.deco{position:absolute}</style></head><body>`;
+    expect(salvageTemplateFillShellAsCoverDraft(shell)).toBeNull();
+  });
+
+  it("does not replace a truncation that already has slide copy", () => {
+    const truncated = `<!doctype html><html><body>
+<section class="slide"><h1>기업 AI 도입 효과</h1><p>개요 설명입니다.</p></section>`;
+    expect(salvageTemplateFillShellAsCoverDraft(truncated)).toBeNull();
   });
 });

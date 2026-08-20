@@ -72,6 +72,7 @@ import {
 import {
   recoverBestHtmlDocumentFromText,
   recoverHtmlArtifactFromPrecedingDocument,
+  salvageTemplateFillShellAsCoverDraft,
   salvageTruncatedHtmlDocument,
 } from '../artifacts/recover';
 import {
@@ -2879,24 +2880,11 @@ export function findTemplateCloneFillSlideCountIncomplete(input: {
   const producedCount = countDeckSlideSections(input.htmlBody);
   if (producedCount <= 0) return null;
 
-  const requested = input.requestedSlideCount;
-  const expectedCount =
-    requested != null && requested >= 1 && requested <= 4
-      ? requested
-      : 3;
-  if (producedCount >= expectedCount) return null;
-  // Titled cover drafts persist; slide-count top-up appends the rest.
-  // Untitled/empty shells stay incomplete so auto-continue can recover.
-  if (producedCount >= 1 && /<h[1-3]\b/i.test(input.htmlBody)) return null;
-
-  return {
-    fileName,
-    producedCount,
-    expectedCount,
-    reason:
-      `Template fill produced ${producedCount} slide(s), but expected at least ${expectedCount}. ` +
-      'This looks like an unfinished template fill and was not saved as complete.',
-  };
+  // Any 1+ slide draft persists. Blocking short fills caused
+  // incomplete_output, then auto-continue rewrote from `<head>` and
+  // failed as incomplete-html-document-shell. Slide-count top-up appends.
+  void input.requestedSlideCount;
+  return null;
 }
 
 export function ProjectView({
@@ -5200,7 +5188,12 @@ export function ProjectView({
         // quality is applied inside salvage — do NOT re-reject with the
         // stricter incomplete/low-substance gates or previewable salvage is
         // thrown away and the user only sees incomplete_output.
-        const salvaged = salvageTruncatedHtmlDocument(artifactToPersist.html);
+        const salvaged = salvageTruncatedHtmlDocument(artifactToPersist.html)
+          ?? (
+            runTemplateCloneContentFillRef.current
+              ? salvageTemplateFillShellAsCoverDraft(artifactToPersist.html)
+              : null
+          );
         if (salvaged) {
           artifactToPersist = { ...artifactToPersist, html: salvaged };
         }
