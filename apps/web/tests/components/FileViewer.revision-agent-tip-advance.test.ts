@@ -421,6 +421,8 @@ describe('FileViewer revision tip advance after undo', () => {
     expect(fileViewer).toContain('Re-key soft-cache to the cursor/tip seq');
     expect(fileViewer).toContain('Already on empty page-styles — skip clear/draft wipe churn');
     expect(fileViewer).toContain('Manual-edit is srcdoc — URL-load only needs reloadKey bust');
+    expect(fileViewer).toContain('clearProjectCoverCache(projectId)');
+    expect(fileViewer).toContain('Bust list thumbs immediately');
   });
 });
 
@@ -432,6 +434,13 @@ describe('ProjectView agent toast undo', () => {
     const block = projectView.slice(start, start + 1_800);
     expect(block).toContain('setActiveRevisionSequence');
     expect(block).toContain('setArtifact(null)');
+    expect(block).toContain('clearProjectCoverCache(project.id)');
     expect(block).not.toContain('persistCommentAttachments.length > 0');
+  });
+
+  it('busts list cover cache when HTML files change on disk', () => {
+    expect(projectView).toContain('Deck HTML restores/edits must bust list-card cover cache');
+    expect(projectView).toContain('clearProjectCoverCache(project.id)');
+    expect(projectView).toMatch(/if \(\/\\.html\?\$\/i\.test\(evt\.path\)\)/);
   });
 });

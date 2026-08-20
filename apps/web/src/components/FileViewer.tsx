@@ -56,6 +56,7 @@ import {
 import { TEAMVER_DRIVE_ASSET_LINK_LABEL } from '../teamver/teamverDriveDeepLink';
 import { embedUiLabel } from '../teamver/embedUiLabels';
 import { formatTeamverDesignErrorMessage } from '../teamver/publishToDrive';
+import { clearProjectCoverCache } from '../teamver/projectCoverLoader';
 import {
   formatTeamverEmbedOperationFailureMessage,
   notifyTeamverEmbedAuthFailureIfNeeded,
@@ -12912,6 +12913,9 @@ function HtmlViewer({
       if (ok) {
         revisionDiskSyncFailedTargetRef.current = null;
         setRevisionDiskSyncToast(null);
+        // Disk now matches restored revision — re-bust so cover-hints get the
+        // post-restore mtime (first clear may have raced ahead of this write).
+        clearProjectCoverCache(projectId);
         await onFileSaved?.();
       } else {
         revisionDiskSyncFailedTargetRef.current = target;
@@ -12943,6 +12947,9 @@ function HtmlViewer({
 
       if (canApplyRevisionFromClientCache(sourceToApply)) {
         applyRestoredSourceToViewer(sourceToApply, target);
+        // Bust list thumbs immediately — disk sync is background and list
+        // cover cache otherwise keeps pre-undo coverVersion/srcDoc for 60s.
+        clearProjectCoverCache(projectId);
         void scheduleBackgroundRevisionDiskSync(target);
         return true;
       }
@@ -12973,6 +12980,7 @@ function HtmlViewer({
       }
       setRevisionContentCache(projectId, file.name, target.id, diskSource);
       applyRestoredSourceToViewer(diskSource, target);
+      clearProjectCoverCache(projectId);
       await onFileSaved?.();
       return true;
     } finally {

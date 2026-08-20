@@ -85,11 +85,16 @@ describe("projectCoverLoader", () => {
     });
   });
 
-  it("skips fetch when metadata entryFile is present", async () => {
-    const deck = project({ metadata: { kind: "deck", entryFile: "index.html" } });
-    expect(projectNeedsCoverFileFetch(deck)).toBe(false);
-    await expect(resolveProjectCoverFile(deck)).resolves.toBeNull();
+  it("skips fetch when non-deck metadata entryFile is present", async () => {
+    const page = project({ metadata: { kind: "prototype", entryFile: "index.html" } });
+    expect(projectNeedsCoverFileFetch(page)).toBe(false);
+    await expect(resolveProjectCoverFile(page)).resolves.toBeNull();
     expect(fetchProjectFilesMock).not.toHaveBeenCalled();
+  });
+
+  it("still fetches cover-hints for deck entryFile (coverVersion cache-bust)", async () => {
+    const deck = project({ metadata: { kind: "deck", entryFile: "deck.html" } });
+    expect(projectNeedsCoverFileFetch(deck)).toBe(true);
   });
 
   it("fetches cover once and reuses cache", async () => {
@@ -396,5 +401,18 @@ describe("projectCoverLoader", () => {
 
     expect(peekHtmlCoverCache(cloneKey)).toBeNull();
     expect(peekHtmlCoverCache(otherKey)).toContain("other project");
+  });
+
+  it("notifies subscribers when cover cache is cleared (undo/list refresh)", async () => {
+    const { subscribeProjectCoverClear } = await import("../src/teamver/projectCoverLoader");
+    const seen: Array<string | null> = [];
+    const unsubscribe = subscribeProjectCoverClear((id) => {
+      seen.push(id);
+    });
+    clearProjectCoverCache("p1");
+    clearProjectCoverCache();
+    unsubscribe();
+    clearProjectCoverCache("p1");
+    expect(seen).toEqual(["p1", null]);
   });
 });

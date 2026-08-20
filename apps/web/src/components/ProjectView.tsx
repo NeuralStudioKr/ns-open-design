@@ -5622,6 +5622,7 @@ export function ProjectView({
                   );
                   if (!restored.ok) return;
                   const cursorRevision = restored.revision;
+                  clearProjectCoverCache(project.id);
                   emitRevisionUndo(
                     analytics.track,
                     project.id,
@@ -5926,6 +5927,12 @@ export function ProjectView({
   const handleProjectEvent = useCallback((evt: ProjectEvent) => {
     if (evt.type === 'file-changed') {
       iframeKeepAlivePool.evictProject(project.id);
+      // Deck HTML restores/edits must bust list-card cover cache — otherwise
+      // cover-hints/`?v=` + htmlCover srcDoc stay on the pre-undo snapshot for
+      // COVER_FETCH_CACHE_MS even after disk content rolls back.
+      if (/\.html?$/i.test(evt.path)) {
+        clearProjectCoverCache(project.id);
+      }
       coalescedFileChangedRefresh();
       return;
     }

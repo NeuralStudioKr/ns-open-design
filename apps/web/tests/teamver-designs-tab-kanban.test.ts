@@ -23,7 +23,14 @@ describe("DesignsTab view modes", () => {
 
   it("lazy cover loader allows bounded /files fallback for visible cards", () => {
     const lazyCover = readSource("src/teamver/useLazyProjectCover.ts");
-    expect(lazyCover).toContain("allowFilesFallbackOption ?? true");
-    expect(lazyCover).toContain("resolveProjectCoverFile(project, { allowFilesFallback })");
+    expect(lazyCover).toContain("allowFilesFallback = true");
+    expect(lazyCover).toContain("resolveProjectCoverFile(current, { allowFilesFallback })");
+    expect(lazyCover).toContain("subscribeProjectCoverClear");
+  });
+
+  it("drops coverOverrides when project cover cache is cleared", () => {
+    const designsTab = readSource("src/components/DesignsTab.tsx");
+    expect(designsTab).toContain("subscribeProjectCoverClear");
+    expect(designsTab).toContain("delete next[clearedId]");
   });
 });

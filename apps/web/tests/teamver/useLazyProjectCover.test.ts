@@ -13,10 +13,16 @@ describe("useLazyProjectCover fetch deps", () => {
   it("does not depend on the full project object identity for cover resolve", () => {
     expect(source).toContain("projectRef");
     expect(source).toContain("Intentionally omit full `project`");
-    // Effect deps must use stable identity keys, not `project`.
+    // Effect deps must use stable identity keys + cover-cache clear nonce, not `project`.
     expect(source).toMatch(
-      /\[allowFilesFallback,\s*projectId,\s*entryFile,\s*visible,\s*fetched\]/,
+      /\[allowFilesFallback,\s*projectId,\s*entryFile,\s*visible,\s*fetched,\s*clearNonce\]/,
     );
     expect(source).not.toMatch(/\}, \[allowFilesFallback, project, visible, fetched\]/);
+  });
+
+  it("resets override when project cover cache is cleared (undo/restore)", () => {
+    expect(source).toContain("subscribeProjectCoverClear");
+    expect(source).toContain("setClearNonce");
+    expect(source).toMatch(/\[projectId,\s*entryFile,\s*clearNonce\]/);
   });
 });

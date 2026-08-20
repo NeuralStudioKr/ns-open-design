@@ -33,6 +33,7 @@ import {
   projectCoverFilesEqual,
   type ProjectCoverFile,
 } from "../teamver/projectPreviewFile";
+import { subscribeProjectCoverClear } from "../teamver/projectCoverLoader";
 import { prefetchDesignsTabViewport } from "../teamver/prefetchDesignsTabViewport";
 import { PROJECT_LIST_VIEWPORT_BATCH } from "../teamver/projectListLimits";
 import {
@@ -149,6 +150,19 @@ export function DesignsTab({
 	>({});
 	const [coverOverrides, setCoverOverrides] = useState<Record<string, ProjectCoverFile | null>>({});
 	const projectEntryFileSnapshotRef = useRef<Map<string, string | undefined>>(new Map());
+
+	useEffect(() => {
+		return subscribeProjectCoverClear((clearedId) => {
+			setCoverOverrides((prev) => {
+				if (Object.keys(prev).length === 0) return prev;
+				if (clearedId === null) return {};
+				if (!(clearedId in prev)) return prev;
+				const next = { ...prev };
+				delete next[clearedId];
+				return next;
+			});
+		});
+	}, []);
 
 	useEffect(() => {
 		setCoverOverrides((prev) => {
