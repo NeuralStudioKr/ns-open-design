@@ -2672,7 +2672,7 @@ export const ko: Dict = {
   'settings.skillsHint': '에이전트가 작업 중 호출할 수 있는 기능 스킬',
   'settings.designTemplates': '템플릿',
   'settings.designTemplatesHint': '슬라이드·프로토타입·미디어 프로젝트용 렌더링 템플릿',
-  'settings.designTemplatesLockedDeck': 'Teamver embed에서는 슬라이드 덱 템플릿이 항상 켜집니다',
+  'settings.designTemplatesLockedDeck': '이 워크스페이스에서는 슬라이드 덱 템플릿이 항상 켜집니다',
   'teamver.embed.designHome': '슬라이드 홈',
   'teamver.embed.designHomeTitle': '슬라이드 홈으로 — 프로젝트 목록·새 슬라이드',
   'teamver.embed.teamverApp': 'Teamver 앱',

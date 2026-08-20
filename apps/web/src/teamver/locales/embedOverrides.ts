@@ -56,6 +56,8 @@ export function teamverEmbedOverrides(
   overrides["fileViewer.previewUnavailable"] =
     "슬라이드 미리보기를 불러올 수 없습니다. 잠시 후 다시 시도하거나 채팅에서 생성 상태를 확인해 주세요.";
   overrides["chat.attachAria"] = "파일 첨부";
+  overrides["settings.designTemplatesLockedDeck"] =
+    "이 워크스페이스에서는 슬라이드 덱 템플릿이 항상 켜집니다";
   overrides["teamver.driveImport.attachFromMenu"] = "드라이브에서 가져오기";
   overrides["teamver.driveImport.pickHint"] = "클릭해 선택 · 더블클릭 또는 첨부 버튼으로 적용";
   return overrides;

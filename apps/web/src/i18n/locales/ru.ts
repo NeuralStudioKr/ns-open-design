@@ -2667,7 +2667,7 @@ export const ru: Dict = {
   'settings.skillsHint': 'Функциональные навыки, которые агент может вызывать во время задачи',
   'settings.designTemplates': 'Templates',
   'settings.designTemplatesHint': 'Rendering templates for decks, prototypes, and media projects',
-  'settings.designTemplatesLockedDeck': 'Slide decks stay enabled in Teamver embed',
+  'settings.designTemplatesLockedDeck': 'Slide decks stay enabled in this workspace',
   'teamver.embed.designHome': 'Slide home',
   'teamver.embed.designHomeTitle': 'Back to Slide — projects and new decks',
   'teamver.embed.teamverApp': 'Teamver app',

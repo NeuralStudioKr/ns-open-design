@@ -38,6 +38,9 @@ describe("teamver embed locale", () => {
     expect(overrides["chat.amrCard.switchBody"]).toContain("공식 AMR");
     expect(overrides["chat.amrCard.switchBody"]).not.toContain("Open Design");
     expect(overrides["chat.amrCard.switchBody"]).not.toContain("teamver Slide");
+    expect(overrides["settings.designTemplatesLockedDeck"]).toContain("이 워크스페이스");
+    expect(overrides["settings.designTemplatesLockedDeck"]).not.toContain("Teamver embed");
+    expect(overrides["settings.designTemplatesLockedDeck"]).not.toContain("Open Design");
     expect(overrides["fileViewer.loading"]).toBe("슬라이드 미리보기 불러오는 중…");
     expect(overrides["fileViewer.updatingPreview"]).toBe("슬라이드 업데이트 반영 중…");
     expect(overrides["common.loading"]).toBe("불러오는 중…");
