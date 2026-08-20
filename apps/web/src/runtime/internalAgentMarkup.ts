@@ -32,9 +32,9 @@ const DECK_MOTIF_PATH_TAIL_RE =
   /<path\b[^>]*\bd\s*=\s*["'][\s\S]*$/i;
 const DECK_BROKEN_SECTION_CSS_DEBRIS_TAIL_RE =
   /<\/(?:section|div)>\s*[-a-z]*weight\s*:[\s\S]*$/i;
-/** Mid-attribute style debris: `px;left:60px;…uppercase">Label</div>` */
+/** Mid-attribute style debris, including quoted font-family / flex props. */
 const DECK_ORPHAN_MID_STYLE_ATTR_TAIL_RE =
-  /(?:^|\n)(?:(?:px|em|rem|%|vh|vw)\s*;\s*)?(?:(?:left|top|right|bottom|width|height|font-size|font-weight|letter-spacing|line-height|color|background(?:-color)?|text-transform|opacity|margin(?:-\w+)?|padding(?:-\w+)?|border(?:-\w+)?|display|position|z-index)\s*:[^;\n"'<>]*;?\s*){1,}[\s\S]*?["']\s*>[\s\S]*$/i;
+  /(?:^|\n)(?:(?:px|em|rem|%|vh|vw)\s*;\s*)?(?:[a-zA-Z-]+\s*:\s*[^;]*;?\s*){2,}[\s\S]*?["']\s*>[\s\S]*$/i;
 
 /**
  * Display-only last pass for Capsule motif pills / truncated slide HTML that

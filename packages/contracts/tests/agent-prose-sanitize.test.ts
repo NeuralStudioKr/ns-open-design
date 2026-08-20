@@ -80,6 +80,21 @@ describe("agent-prose-sanitize SSOT", () => {
     ).toBe("진행.");
   });
 
+  it("strips mid-style debris that starts with quoted font-family or flex props", () => {
+    const fontFamily = [
+      "align-items:center;justify-content:center;",
+      "font-family:'Space Grotesk',sans-serif;font-weight:700;",
+      'background:#C5B5E0;width:140px;height:60px;top:22%;right:10%">Nx</div>',
+    ].join("");
+    expect(sanitizeAssistantProseForDisplay(fontFamily)).toBe("");
+    expect(
+      sanitizeAssistantProseForDisplay(`초안을 다듬는 중입니다.\n\n${fontFamily}`),
+    ).toBe("초안을 다듬는 중입니다.");
+
+    const transform = 'transform:rotate(-8deg);border-radius:9999px;opacity:.8">PNPM WS</div>';
+    expect(sanitizeAssistantProseForDisplay(`진행.\n${transform}`)).toBe("진행.");
+  });
+
   it("strips mid-style attribute debris that appears after reload", () => {
     // Leading `<div style="…` was already stripped; history still has the
     // truncated attribute body + label + closer (user report 2026-08-20).
