@@ -1654,6 +1654,95 @@ function insertBeforeCloseHeadOrOpenBody(dest: string, snippet: string): string 
   return `${snippet}\n${dest}`;
 }
 
+function insertBeforeCloseBody(dest: string, snippet: string): string {
+  if (!snippet.trim()) return dest;
+  if (/<\/body\s*>/i.test(dest)) {
+    return dest.replace(/<\/body\s*>/i, `${snippet}\n</body>`);
+  }
+  return insertBeforeCloseHeadOrOpenBody(dest, snippet);
+}
+
+/**
+ * Compact fills are body-first `.slide` nodes — official catalog CSS often
+ * paints the canvas only on `deck-stage > section.slide`. Rewrite the host
+ * so persist/preview match the template thumbnail.
+ */
+export function rewriteOfficialLookHostSlideSelectors(css: string): string {
+  return String(css ?? '').replace(
+    /(^|[,}\s])(?:deck-stage|#deck-stage|\.deck-stage|\.deck-shell|\.presentation|\.slides-container|\.deck)\s*>\s*(section\.slide|\.slide)\b/gi,
+    '$1$2',
+  );
+}
+
+const COMPACT_TYPE_LOCK_MARK = 'od-compact-type-lock';
+
+function splitLookSelectors(text: string): string[] {
+  return text.split(',').map((part) => part.trim()).filter(Boolean);
+}
+
+function officialSlideRuleHasFontFamily(css: string): boolean {
+  const rules = [...String(css ?? '').matchAll(/([^{}@][^{]*)\{([^}]+)\}/g)];
+  for (const rule of rules) {
+    const slideSel = splitLookSelectors(rule[1] ?? '').some((part) =>
+      /^(?:(?:[a-z][a-z0-9]*)?\.slide|section\.slide)$/i.test(part),
+    );
+    if (!slideSel) continue;
+    if (/(?:^|;)\s*font-family\s*:/i.test(rule[2] ?? '')) return true;
+  }
+  return false;
+}
+
+function extractOfficialTypeFaces(css: string): { body: string | null; display: string | null } {
+  const rules = [...String(css ?? '').matchAll(/([^{}@][^{]*)\{([^}]+)\}/g)];
+  const read = (test: (part: string) => boolean): string | null => {
+    for (const rule of rules) {
+      if (!splitLookSelectors(rule[1] ?? '').some(test)) continue;
+      const ff = /(?:^|;)\s*font-family\s*:\s*([^;]+)/i.exec(rule[2] ?? '')?.[1]?.trim();
+      if (ff) return ff.length > 180 ? ff.slice(0, 180) : ff;
+    }
+    return null;
+  };
+  const body = read((part) => /^(?:html|body)$/i.test(part) || /^html\s+body$/i.test(part));
+  const display =
+    read((part) => /^\.script$/i.test(part))
+    ?? read((part) => /^h1$/i.test(part))
+    ?? read((part) => /^\.title$/i.test(part));
+  const norm = (value: string | null) => value?.replace(/\s+/g, ' ').trim() ?? '';
+  return {
+    body,
+    display: display && norm(display) !== norm(body) ? display : null,
+  };
+}
+
+/**
+ * Compact fills set `.slide { font-family: Quicksand }` (or similar) which
+ * beats official `html,body` fonts. Official display faces stay on `.script`
+ * / `.s-cover .title`. Copy body + display faces onto compact `.slide`.
+ */
+export function appendCompactOfficialTypeLock(css: string): string {
+  const src = String(css ?? '');
+  if (src.includes(COMPACT_TYPE_LOCK_MARK)) return src;
+  if (officialSlideRuleHasFontFamily(src)) return src;
+  const faces = extractOfficialTypeFaces(src);
+  if (!faces.body && !faces.display) return src;
+  const rules: string[] = [`/* ${COMPACT_TYPE_LOCK_MARK} */`];
+  if (faces.body) {
+    rules.push(`html, body, section.slide, .slide { font-family: ${faces.body}; }`);
+  }
+  if (faces.display) {
+    rules.push(`.slide :is(h1, h2, h3, .title) { font-family: ${faces.display}; }`);
+  }
+  return `${src.trimEnd()}\n${rules.join('\n')}\n`;
+}
+
+function prepareOfficialLookCss(css: string): string {
+  return appendCompactOfficialTypeLock(
+    rewriteOfficialLookHostSlideSelectors(
+      stripOfficialLookViewportMediaQueries(css),
+    ),
+  );
+}
+
 function insertAfterOpenBody(dest: string, snippet: string): string {
   if (!snippet.trim()) return dest;
   if (/<body\b/i.test(dest)) {
@@ -1747,11 +1836,24 @@ export function mergeOfficialDeckLookCss(
       const href = hrefFromLinkTag(tag);
       return href ? !out.includes(href) : !out.includes(tag);
     });
-    const style = assets.css
-      ? `<style ${OFFICIAL_DECK_LOOK_STYLE_ATTR}>\n${stripOfficialLookViewportMediaQueries(assets.css)}\n${LOOK_NEUTRALIZE_CSS}\n</style>`
+    const rewritten = prepareOfficialLookCss(assets.css);
+    const style = rewritten
+      ? `<style ${OFFICIAL_DECK_LOOK_STYLE_ATTR}>\n${rewritten}\n${LOOK_NEUTRALIZE_CSS}\n</style>`
       : '';
-    const snippet = `${missingFonts.join('\n')}${missingFonts.length && style ? '\n' : ''}${style}`;
-    out = insertBeforeCloseHeadOrOpenBody(out, snippet);
+    if (missingFonts.length) {
+      out = insertBeforeCloseHeadOrOpenBody(out, missingFonts.join('\n'));
+    }
+    if (style) {
+      out = looksLikeBodyFirstSlideDeck(out)
+        ? insertBeforeCloseBody(out, style)
+        : insertBeforeCloseHeadOrOpenBody(out, style);
+    }
+  } else if (hasOfficialLookStyleAttr(out)) {
+    out = out.replace(
+      /(<style\b[^>]*\bdata-od-official-look-css\b[^>]*>)([\s\S]*?)(<\/style>)/gi,
+      (_m, open: string, css: string, close: string) =>
+        `${open}${appendCompactOfficialTypeLock(rewriteOfficialLookHostSlideSelectors(css))}${close}`,
+    );
   }
 
   return lockDeckDesignViewportMeta(
@@ -1872,7 +1974,7 @@ function replaceOfficialLookNeutralizeBlock(html: string): string {
   return html.replace(
     /(<style\b[^>]*\bdata-od-official-look-css\b[^>]*>)([\s\S]*?)(<\/style>)/gi,
     (_m, open: string, css: string, close: string) => {
-      const prepared = stripOfficialLookViewportMediaQueries(
+      const prepared = prepareOfficialLookCss(
         String(css).replace(LOOK_NEUTRALIZE_TAIL_RE, ''),
       ).trimEnd();
       return `${open}${prepared}\n${LOOK_NEUTRALIZE_CSS}\n${close}`;

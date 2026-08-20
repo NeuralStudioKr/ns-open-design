@@ -501,6 +501,36 @@ html, body { overflow: visible !important; height: auto !important; }
     }
   });
 
+  it('applies Pink Script dark stage + fonts onto a cream compact fill', () => {
+    const official = loadOfficialLookSource(join(EXAMPLES_DIR, 'html-ppt-zhangzara-pink-script/example.html'));
+    const assets = extractOfficialDeckLookAssets(official)!;
+    expect(assets.css).toMatch(/deck-stage\s*>\s*section\.slide/i);
+    expect(assets.fontLinks.join('\n')).toMatch(/Instrument\+Serif|Instrument Serif/i);
+    const creamFill = `<!doctype html><html lang="ko"><head><meta charset="utf-8"></head><body>
+<style>:root{--bg:#F5F0E6}.slide{background:#F5F0E6;color:#2D2D2D;font-family:Quicksand,sans-serif}</style>
+<section class="slide"><h1>After Hours</h1></section>
+<section class="slide"><h2>The Index</h2></section>
+</body></html>`;
+    const merged = mergeOfficialDeckLookCss(creamFill, assets);
+    expect(merged).toContain(OFFICIAL_DECK_LOOK_STYLE_ATTR);
+    expect(merged).toMatch(/fonts\.googleapis\.com/i);
+    expect(merged).toMatch(/Instrument/i);
+    const lookCss = [...merged.matchAll(/<style\b[^>]*data-od-official-look-css[^>]*>([\s\S]*?)<\/style>/gi)]
+      .map((m) => m[1] ?? '')
+      .join('\n');
+    expect(lookCss).toMatch(/(?:^|[,\s{])(?:section)?\.slide\s*\{[^}]*background\s*:/i);
+    expect(lookCss).toMatch(/#0[Aa]0709|radial-gradient/i);
+    expect(lookCss).not.toMatch(/deck-stage\s*>\s*section\.slide/i);
+    expect(lookCss).toMatch(/od-compact-type-lock/);
+    expect(lookCss).toMatch(/Instrument Serif/i);
+    expect(lookCss).toMatch(/html,\s*body,\s*section\.slide,\s*\.slide\s*\{[^}]*font-family:[^}]*Inter/i);
+    const officialIdx = merged.lastIndexOf(OFFICIAL_DECK_LOOK_STYLE_ATTR);
+    const creamRuleIdx = merged.lastIndexOf('.slide{background:#F5F0E6');
+    expect(officialIdx).toBeGreaterThan(creamRuleIdx);
+    const twice = mergeOfficialDeckLookCss(merged, assets);
+    expect(twice).toBe(merged);
+  });
+
   it('stamps official Daisy cover corners, not a single tiny bottom-right flower', () => {
     const official = loadOfficialLookSource(join(EXAMPLES_DIR, 'html-ppt-zhangzara-daisy-days/example.html'));
     const assets = extractOfficialDeckLookAssets(official)!;
