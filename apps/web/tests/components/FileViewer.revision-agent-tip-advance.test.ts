@@ -291,6 +291,9 @@ describe('FileViewer revision tip advance after undo', () => {
     expect(fileViewer).toContain('shouldSkipOdEditTargetsSingleInspectorReseedDuringPostExitAbsorb');
     expect(fileViewer).toContain('shouldTreatPostExitAbsorbAsTipProtect');
     expect(fileViewer).toContain('shouldClearTipPostProtectOnSelectionChange');
+    expect(fileViewer).toContain('shouldClearTipRemountOnManualEditModeExit');
+    expect(fileViewer).toContain('tipRemountPostProtectArmed');
+    expect(fileViewer).toContain('clearTipPostSoftLandExitLatch');
     expect(fileViewer).toContain('skipIdentityInspectorReseed');
     expect(fileViewer).toContain('tipProtectActive');
     expect(fileViewer).toContain('manualEditTipDeckNudgeRemasureRafRef');

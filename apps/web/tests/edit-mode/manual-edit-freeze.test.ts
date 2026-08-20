@@ -28,6 +28,7 @@ import {
   shouldEarlyExitTipPostStickySoftLand,
   shouldArmTipPostSoftLandExitLatch,
   shouldRetainTipSyncedIdentityDuringPostSoftLandExitLatch,
+  clearTipPostSoftLandExitLatch,
   spendTipPostSoftLandExitLatch,
   shouldLatchSelectedIdentityFingerprintDuringTipSoftLand,
   shouldArmTipPostExitLatchMixedAbsorb,
@@ -39,6 +40,8 @@ import {
   shouldSkipOdEditTargetsSingleInspectorReseedDuringPostExitAbsorb,
   shouldTreatPostExitAbsorbAsTipProtect,
   shouldClearTipPostProtectOnSelectionChange,
+  shouldClearTipRemountOnManualEditModeExit,
+  tipRemountPostProtectArmed,
   nextTipRemountDeckNudgeFollowUntilMs,
   shouldRemeasureTipRemountOnDeckHostFitNudge,
   shouldThrottleTipRemountDeckNudgeRemasure,
@@ -228,6 +231,8 @@ describe('manual edit freeze reset', () => {
     expect(shouldArmTipPostSoftLandExitLatch(2, 1, false, false)).toBe(false);
     expect(shouldRetainTipSyncedIdentityDuringPostSoftLandExitLatch(true, false)).toBe(true);
     expect(shouldRetainTipSyncedIdentityDuringPostSoftLandExitLatch(true, true)).toBe(false);
+    expect(clearTipPostSoftLandExitLatch()).toBe(false);
+    expect(spendTipPostSoftLandExitLatch()).toBe(false);
     expect(spendTipPostSoftLandExitLatch(true)).toBe(false);
     expect(shouldLatchSelectedIdentityFingerprintDuringTipSoftLand(true, false)).toBe(true);
     expect(shouldLatchSelectedIdentityFingerprintDuringTipSoftLand(true, true)).toBe(false);
@@ -248,6 +253,12 @@ describe('manual edit freeze reset', () => {
     expect(shouldClearTipPostProtectOnSelectionChange('a', null)).toBe(true);
     expect(shouldClearTipPostProtectOnSelectionChange('a', 'a')).toBe(false);
     expect(shouldClearTipPostProtectOnSelectionChange(null, null)).toBe(false);
+    expect(shouldClearTipRemountOnManualEditModeExit(false, false)).toBe(false);
+    expect(shouldClearTipRemountOnManualEditModeExit(false, true)).toBe(true);
+    expect(shouldClearTipRemountOnManualEditModeExit(true, true)).toBe(false);
+    expect(tipRemountPostProtectArmed({})).toBe(false);
+    expect(tipRemountPostProtectArmed({ absorb: true, softLandRemaining: 0 })).toBe(true);
+    expect(tipRemountPostProtectArmed({ followUntilMs: 1 })).toBe(true);
     expect(shouldThrottleTipRemountDeckNudgeRemasure(1_000, 1_050)).toBe(true);
     expect(shouldThrottleTipRemountDeckNudgeRemasure(1_000, 1_200)).toBe(false);
     expect(shouldThrottleTipRemountDeckNudgeRemasure(0, 1_050)).toBe(false);

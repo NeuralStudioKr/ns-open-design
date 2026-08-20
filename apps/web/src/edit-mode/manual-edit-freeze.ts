@@ -784,12 +784,20 @@ export function shouldRetainTipSyncedIdentityDuringPostSoftLandExitLatch(
 }
 
 /**
- * Exit-latch tick spends the latch — later catalogs go live (486).
+ * Exit-latch tick spends the latch — later catalogs go live (486/502).
+ * No arguments: the call site only runs when the latch was armed at entry.
+ */
+export function clearTipPostSoftLandExitLatch(): false {
+  return false;
+}
+
+/**
+ * @deprecated Use clearTipPostSoftLandExitLatch — argument was unused (502).
  */
 export function spendTipPostSoftLandExitLatch(
-  exitLatchAtEntry: boolean,
-): boolean {
-  return false;
+  _exitLatchAtEntry?: boolean,
+): false {
+  return clearTipPostSoftLandExitLatch();
 }
 
 /**
@@ -906,6 +914,45 @@ export function shouldClearTipPostProtectOnSelectionChange(
 ): boolean {
   if (currentPrimaryId == null && nextSelectedId == null) return false;
   return currentPrimaryId !== nextSelectedId;
+}
+
+/**
+ * Mode-exit clearGrace only when tip remount post-protect state is armed —
+ * skip the initial mount when everything is already idle (503).
+ */
+export function shouldClearTipRemountOnManualEditModeExit(
+  manualEditMode: boolean,
+  tipRemountPostProtectArmed: boolean,
+): boolean {
+  return !manualEditMode && tipRemountPostProtectArmed;
+}
+
+/**
+ * True when any tip remount soft-land / absorb / follow / chrome latch is live
+ * (503) — used to gate mode-exit clearGrace.
+ */
+export function tipRemountPostProtectArmed(input: {
+  graceId?: string | null;
+  stickyRetain?: boolean;
+  softLandRemaining?: number;
+  exitLatch?: boolean;
+  absorb?: boolean;
+  followUntilMs?: number;
+  chromeSuppressed?: boolean;
+  followChromeTimeoutPending?: boolean;
+  remountSafetyTimeoutPending?: boolean;
+}): boolean {
+  return Boolean(
+    input.graceId
+    || input.stickyRetain
+    || (input.softLandRemaining != null && input.softLandRemaining > 0)
+    || input.exitLatch
+    || input.absorb
+    || (input.followUntilMs != null && input.followUntilMs > 0)
+    || input.chromeSuppressed
+    || input.followChromeTimeoutPending
+    || input.remountSafetyTimeoutPending
+  );
 }
 
 /**

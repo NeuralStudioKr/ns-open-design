@@ -355,7 +355,7 @@ import {
   shouldEarlyExitTipPostStickySoftLand,
   shouldArmTipPostSoftLandExitLatch,
   shouldRetainTipSyncedIdentityDuringPostSoftLandExitLatch,
-  spendTipPostSoftLandExitLatch,
+  clearTipPostSoftLandExitLatch,
   shouldLatchSelectedIdentityFingerprintDuringTipSoftLand,
   shouldArmTipPostExitLatchMixedAbsorb,
   shouldArmTipPostExitLatchMixedAbsorbOnSoftLandEarlyExit,
@@ -366,6 +366,8 @@ import {
   shouldSkipOdEditTargetsSingleInspectorReseedDuringPostExitAbsorb,
   shouldTreatPostExitAbsorbAsTipProtect,
   shouldClearTipPostProtectOnSelectionChange,
+  shouldClearTipRemountOnManualEditModeExit,
+  tipRemountPostProtectArmed,
   nextTipRemountDeckNudgeFollowUntilMs,
   shouldRemeasureTipRemountOnDeckHostFitNudge,
   shouldThrottleTipRemountDeckNudgeRemasure,
@@ -9971,8 +9973,26 @@ function HtmlViewer({
 
   useEffect(() => {
     if (!manualEditMode) {
-      // Drop tip remount soft-land/absorb/follow timers on mode-exit (499/review).
-      clearManualEditTipRemountGeometryGrace('mode-exit');
+      // Drop tip remount soft-land/absorb/follow timers on mode-exit (499/503).
+      // Skip idle initial mount when nothing tip-related is armed.
+      if (shouldClearTipRemountOnManualEditModeExit(
+        false,
+        tipRemountPostProtectArmed({
+          graceId: manualEditTipRemountGeometryGraceIdRef.current,
+          stickyRetain: manualEditTipSyncedIdentityRetainRef.current,
+          softLandRemaining: manualEditTipPostStickySoftLandRef.current,
+          exitLatch: manualEditTipPostSoftLandExitLatchRef.current,
+          absorb: manualEditTipPostExitMixedAbsorbRef.current,
+          followUntilMs: manualEditTipDeckNudgeFollowUntilRef.current,
+          chromeSuppressed: manualEditTipRemountChromeSuppressedRef.current,
+          followChromeTimeoutPending:
+            manualEditTipDeckNudgeFollowChromeTimeoutRef.current != null,
+          remountSafetyTimeoutPending:
+            manualEditTipRemountChromeSafetyTimeoutRef.current != null,
+        }),
+      )) {
+        clearManualEditTipRemountGeometryGrace('mode-exit');
+      }
       setManualEditTargets([]);
       manualEditTargetsIdentityFingerprintRef.current = '';
       manualEditSelectedIdentityFingerprintRef.current = '';
@@ -10140,11 +10160,9 @@ function HtmlViewer({
             }
           }
         }
-        // Exit-latch tick spends the latch after this preserve (486).
+        // Exit-latch tick spends the latch after this preserve (486/502).
         if (exitLatchAtEntry) {
-          manualEditTipPostSoftLandExitLatchRef.current = spendTipPostSoftLandExitLatch(
-            exitLatchAtEntry,
-          );
+          manualEditTipPostSoftLandExitLatchRef.current = clearTipPostSoftLandExitLatch();
           // Next catalog absorbs live FP without Mixed reseed (491).
           if (shouldArmTipPostExitLatchMixedAbsorb(
             exitLatchAtEntry,
