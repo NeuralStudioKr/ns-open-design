@@ -220,6 +220,19 @@ function officialLookCssLooksCurrent(css: string): boolean {
     && /\.slide\s*>\s*:is\(h1/i.test(css)
     && /z-index\s*:\s*2\s*!important/i.test(css)
     && !OFFICIAL_LOOK_MAX_VIEWPORT_MEDIA_RE.test(css)
+    // §0.72 — official Daisy hang offsets must not count as "current".
+    && !/\.(?:deco-daisy|deco-star|sunglow|cover-blob|cover-decoration|geo-decoration)[^{]*\{[^}]*(?:top|left|right|bottom)\s*:\s*-\d/i.test(css)
+  );
+}
+
+/** Strip Motif outside-canvas offsets from already-injected look style bodies. */
+function sanitizeOfficialLookStyleBodies(html: string): string {
+  return html.replace(
+    /(<style\b[^>]*\bdata-od-official-look-css\b[^>]*>)([\s\S]*?)(<\/style>)/gi,
+    (_m, open: string, css: string, close: string) => {
+      const next = sanitizeMotifOutsideCanvasOffsets(css);
+      return `${open}${next}${close}`;
+    },
   );
 }
 
@@ -502,10 +515,33 @@ function placementStyleForMotifClass(classAttr: string): string {
   return 'position:absolute;top:8%;right:6%;width:9%;height:14%;pointer-events:none;z-index:1';
 }
 
+/** Apply Motif placement by replacing conflicting props (not blind append). */
+function applyMotifPlacementStyle(attrs: string, placement: string): string {
+  const props = [
+    ...placement.matchAll(/(?:^|;)\s*([a-z-]+)\s*:/gi),
+  ].map((m) => String(m[1] ?? '').toLowerCase()).filter(Boolean);
+  if (/\bstyle\s*=/i.test(attrs)) {
+    return attrs.replace(
+      /\bstyle\s*=\s*(['"])([\s\S]*?)\1/i,
+      (_m, q: string, prev: string) => {
+        let next = String(prev);
+        for (const prop of props) {
+          next = next.replace(new RegExp(`(?:^|;)\\s*${prop}\\s*:[^;]*`, 'gi'), '');
+        }
+        next = next.replace(/(?:^|;)\s*inset\s*:[^;]*/gi, '');
+        next = next.replace(/;;+/g, ';').replace(/^;|;$/g, '').trim();
+        const sep = next && !/;\s*$/.test(next) ? ';' : '';
+        return `style=${q}${next}${sep}${placement}${q}`;
+      },
+    );
+  }
+  return `${attrs} style="${placement}"`;
+}
+
 function ensureInlineStyle(attrs: string, style: string): string {
   if (/\bstyle\s*=/i.test(attrs)) {
     return attrs.replace(
-      /\bstyle\s*=\s*(["'])([\s\S]*?)\1/i,
+      /\bstyle\s*=\s*(['"])([\s\S]*?)\1/i,
       (_m, q: string, prev: string) => {
         const trimmed = String(prev).trimEnd();
         const sep = !trimmed || /;\s*$/.test(trimmed) ? '' : ';';
@@ -594,7 +630,7 @@ function extractVisibleMotifInstances(html: string): string[] {
     const openMatch = /^<([a-zA-Z][\w-]*)\b([^>]*)>/.exec(cleaned);
     if (!openMatch) continue;
     const style = placementStyleForMotifClass(className);
-    const markedOpen = markOfficialMotifHtml(`<${openMatch[1]}${ensureInlineStyle(openMatch[2] ?? '', style)}>`);
+    const markedOpen = markOfficialMotifHtml(`<${openMatch[1]}${applyMotifPlacementStyle(openMatch[2] ?? '', style)}>`);
     const block = `${markedOpen}${cleaned.slice(openMatch[0].length)}`;
     scored.push({
       score: motifInstanceScore(block, primary),
@@ -697,20 +733,66 @@ function daisyOpenTags(html: string): string[] {
   ) ?? [];
 }
 
+function daisyOpenIsOfficialScale(open: string): boolean {
+  // Outside-canvas hangs clip under overflow:hidden letterbox (§0.71/§0.72).
+  if (/(?:top|left|right|bottom)\s*:\s*-\d/i.test(open)) return false;
+  // Mark alone is not scale-proof — pre-v34 stamped Motif can be 22%/39%.
+  const width = /width\s*:\s*([\d.]+)\s*(px|%)/i.exec(open);
+  if (!width) return false;
+  const n = Number(width[1]);
+  if (!Number.isFinite(n)) return false;
+  // Official Daisy corners ≈ 180–220px (~9.5–12% of 1920). Reject invented
+  // 12–48px icons AND pre-§0.62 overscale stamps (22%+).
+  if (width[2] === '%') return n >= 9.5 && n <= 14;
+  return n >= 100 && n <= 240;
+}
+
+function daisyOpenHasOfficialWidth(open: string): boolean {
+  const width = /width\s*:\s*([\d.]+)\s*(px|%)/i.exec(open);
+  if (!width) return false;
+  const n = Number(width[1]);
+  if (!Number.isFinite(n)) return false;
+  if (width[2] === '%') return n >= 9.5 && n <= 14;
+  return n >= 100 && n <= 240;
+}
+
+function daisyOpenHasOutsideCanvasHang(open: string): boolean {
+  return /(?:top|left|right|bottom)\s*:\s*-\d/i.test(open);
+}
+
+/**
+ * Rewrite Daisy Motif inline hangs (top:-3% etc.) to inside-canvas placement
+ * without stripping the host — preserves body TL+BR instead of remmerging the
+ * index-rotated TR+BL pack (§0.72).
+ */
+function healDaisyOutsideCanvasOffsets(slideHtml: string): string {
+  let out = slideHtml;
+  const opens = daisyOpenTags(out);
+  for (let i = opens.length - 1; i >= 0; i -= 1) {
+    const open = opens[i]!;
+    if (!daisyOpenHasOutsideCanvasHang(open)) continue;
+    if (!daisyOpenHasOfficialWidth(open) && !/width\s*:/i.test(open)) {
+      // Unknown size — leave for strip/remmerge.
+      continue;
+    }
+    const index = out.lastIndexOf(open);
+    if (index < 0) continue;
+    const tagMatch = /^<(div|span)\b/i.exec(open);
+    if (!tagMatch) continue;
+    const tag = tagMatch[1] ?? 'div';
+    const attrs = open.replace(new RegExp(`^<${tag}\\b`, 'i'), '').replace(/>$/, '');
+    const placement = placementStyleForMotifClass(classAttrValue(open));
+    const nextOpen = `<${tag}${applyMotifPlacementStyle(attrs, placement)}>`;
+    out = `${out.slice(0, index)}${nextOpen}${out.slice(index + open.length)}`;
+  }
+  return out;
+}
+
 function daisyPaintIsOfficialScale(html: string): boolean {
-  return daisyOpenTags(html).some((open) => {
-    // Outside-canvas hangs (top:-3% etc.) clip under overflow:hidden letterbox.
-    if (/(?:top|left|right|bottom)\s*:\s*-\d/i.test(open)) return false;
-    // Mark alone is not scale-proof — pre-v34 stamped Motif can be 22%/39%.
-    const width = /width\s*:\s*([\d.]+)\s*(px|%)/i.exec(open);
-    if (!width) return false;
-    const n = Number(width[1]);
-    if (!Number.isFinite(n)) return false;
-    // Official Daisy corners ≈ 180–220px (~9.5–12% of 1920). Reject invented
-    // 12–48px icons AND pre-§0.62 overscale stamps (22%+).
-    if (width[2] === '%') return n >= 9.5 && n <= 14;
-    return n >= 100 && n <= 240;
-  });
+  const opens = daisyOpenTags(html);
+  if (opens.length === 0) return false;
+  // Every daisy host must be in-band — one good sibling must not hide a hang.
+  return opens.every((open) => daisyOpenIsOfficialScale(open));
 }
 
 function daisyCornerTokens(html: string): string[] {
@@ -729,8 +811,16 @@ function destHasDaisyOfficialPaint(dest: string, pack: string): boolean {
   if (!svgBlocksContainDaisyIdentity(dest)) return false;
   if (!daisyPaintIsOfficialScale(dest)) return false;
   const packCorners = daisyCornerTokens(pack);
-  if (packCorners.length >= 3 && daisyCornerTokens(dest).length < 3) return false;
-  return true;
+  const destCorners = daisyCornerTokens(dest);
+  if (packCorners.length === 0) return true;
+  // Exact pack match is ideal. Otherwise accept an equal-or-greater count of
+  // official-scale corners so body [tl,br] is not remmerged into the
+  // index-rotated [tr,bl] pair after a hang heal (§0.72).
+  if (packCorners.every((c) => destCorners.includes(c))) return true;
+  const needed = Math.min(packCorners.length, 4);
+  if (destCorners.length < needed) return false;
+  // Cover packs need full corner coverage (or 4+); body pairs need ≥2.
+  return needed <= 2 ? destCorners.length >= 2 : destCorners.length >= needed;
 }
 
 /** Strip invented tiny icons, pre-§0.62 overscale (22%/39%), and outside-canvas hangs. */
@@ -739,7 +829,7 @@ function stripMisScaledDaisyInstances(slideHtml: string): string {
   const opens = daisyOpenTags(out);
   for (let i = opens.length - 1; i >= 0; i -= 1) {
     const open = opens[i]!;
-    if (daisyPaintIsOfficialScale(open)) continue;
+    if (daisyOpenIsOfficialScale(open)) continue;
     const index = out.lastIndexOf(open);
     if (index < 0) continue;
     const block = extractBalancedElement(out, index);
@@ -837,7 +927,7 @@ function fillEmptyMotifShells(dest: string, instances: string[]): string {
       else if (/pixel-glitch/i.test(cls)) svg = glitchSvg;
       // Never fill a star/petal shell with an unrelated Motif SVG.
       if (!svg) return _m;
-      const stampedAttrs = ensureInlineStyle(attrs, placementStyleForMotifClass(cls));
+      const stampedAttrs = applyMotifPlacementStyle(attrs, placementStyleForMotifClass(cls));
       const marked = markOfficialMotifHtml(`<${tag}${stampedAttrs}>`);
       return `${marked}${svg}</${tag}>`;
     },
@@ -1054,8 +1144,12 @@ function motifFallbackCss(officialCss: string, instances: string[]): string {
     let kept = 0;
     while ((match = re.exec(officialCss)) !== null && kept < 4) {
       const trailing = trailingMotifSelector(match[1] ?? '');
-      const body = (match[2] ?? '').trim();
+      let body = (match[2] ?? '').trim();
       if (!trailing || !body) continue;
+      // Motif fallback copies official rule bodies — neutralize hangs here too.
+      // Must sanitize declarations directly: wrapping as `.x{…}` skips the
+      // Motif-selector gate inside sanitizeMotifOutsideCanvasOffsets (§0.72).
+      body = sanitizeMotifOffsetDeclarations(body);
       const rule = `.slide ${trailing}{${body}}`;
       if (!rules.includes(rule)) rules.push(rule);
       kept += 1;
@@ -1072,7 +1166,7 @@ function motifFallbackCss(officialCss: string, instances: string[]): string {
     '}',
   ].join('');
   rules.push(stacking);
-  return rules.join('\n');
+  return sanitizeMotifOutsideCanvasOffsets(rules.join('\n'));
 }
 
 function motifDecoCssHasContentStacking(css: string): boolean {
@@ -1086,8 +1180,10 @@ function mergeMotifFallbackCss(dest: string, officialCss: string, instances: str
   const existing = /<style\b([^>]*\bdata-od-official-motif-deco-css\b[^>]*)>([\s\S]*?)<\/style>/i.exec(dest);
   if (existing) {
     const body = existing[2] ?? '';
-    if (motifDecoCssHasContentStacking(body)) return dest;
-    // Upgrade pre-§0.62 deco sheets that lack content-above-Motif stacking.
+    const hasHang =
+      /(?:top|left|right|bottom)\s*:\s*-\d/i.test(body);
+    if (motifDecoCssHasContentStacking(body) && !hasHang) return dest;
+    // Upgrade pre-§0.62 deco sheets (missing stacking) or hang offsets (§0.72).
     return dest.replace(
       /<style\b[^>]*\bdata-od-official-motif-deco-css\b[^>]*>[\s\S]*?<\/style>/i,
       `<style ${OFFICIAL_DECK_MOTIF_DECO_CSS_ATTR}>\n${css}\n</style>`,
@@ -1117,9 +1213,12 @@ function mergeVisibleMotifInstances(
 
   const nextSlides = slides.map((slide, index) => {
     const pack = motifPackForSlide(instances, index, slides.length);
-    let html = /deco-daisy/i.test(slide.html) || /deco-daisy/i.test(pack)
-      ? stripMisScaledDaisyInstances(slide.html)
-      : slide.html;
+    let html = slide.html;
+    if (/deco-daisy/i.test(html) || /deco-daisy/i.test(pack)) {
+      // Heal hangs in place first — preserve TL+BR body packs (§0.72).
+      html = healDaisyOutsideCanvasOffsets(html);
+      html = stripMisScaledDaisyInstances(html);
+    }
     if (slideHasOfficialMotifPaint(html, instances, index, slides.length)) {
       return ensureMotifSafeSlideInsets(html);
     }
@@ -1738,10 +1837,34 @@ export function appendCompactOfficialTypeLock(css: string): string {
   return `${src.trimEnd()}\n${rules.join('\n')}\n`;
 }
 
+/** Neutralize negative Motif position declarations inside a CSS rule body. */
+function sanitizeMotifOffsetDeclarations(body: string): string {
+  return String(body ?? '').replace(
+    /(^|[;\s])(top|left|right|bottom)\s*:\s*-\d+(?:\.\d+)?(?:px|%|em|rem)?/gi,
+    '$1$2:0',
+  );
+}
+
+/**
+ * Official Daisy example.css uses negative top/left (e.g. top:-30px) so flowers
+ * bleed past the slide in the fullscreen presenter. Stacked letterbox clips
+ * those hangs. Rewrite Motif position offsets to 0 while keeping width/height.
+ */
+export function sanitizeMotifOutsideCanvasOffsets(css: string): string {
+  const source = String(css ?? '');
+  if (!source.trim()) return source;
+  return source.replace(
+    /([^{}]*\.(?:deco-daisy|deco-star|sunglow|cover-blob|cover-decoration|geo-decoration)[^{]*)\{([^}]*)\}/gi,
+    (_m, sel: string, body: string) => `${sel}{${sanitizeMotifOffsetDeclarations(body)}}`,
+  );
+}
+
 function prepareOfficialLookCss(css: string): string {
   return appendCompactOfficialTypeLock(
     rewriteOfficialLookHostSlideSelectors(
-      stripOfficialLookViewportMediaQueries(css),
+      sanitizeMotifOutsideCanvasOffsets(
+        stripOfficialLookViewportMediaQueries(css),
+      ),
     ),
   );
 }
@@ -2012,7 +2135,9 @@ export function ensureOfficialLookStackedCanvasNeutralize(html: string): string 
     officialLookHasCurrentNeutralize(dest)
     && hasOfficialLookStackedCanvasNeutralizeProof(dest)
   ) {
-    return dest;
+    // Even "current" neutralize sheets may still carry official Daisy hangs
+    // from pre-§0.72 merges — strip those without a full rewrite (§0.72).
+    return sanitizeOfficialLookStyleBodies(dest);
   }
 
   if (hasOfficialLookStyleAttr(dest)) {

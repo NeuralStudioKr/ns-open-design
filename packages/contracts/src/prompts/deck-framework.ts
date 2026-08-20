@@ -502,7 +502,7 @@ When the brief is "make me a deck", your output is this skeleton with theme toke
  */
 export const DECK_COMPACT_INLINE_LAYOUT_VOCABULARY = `# Compact API — inline layout vocabulary (no <head>, no shared CSS)
 
-Each slide is a **fixed 1920×1080** canvas (16:9). Inline \`width:1920px;height:1080px;box-sizing:border-box;overflow:hidden\` on every \`<section class="slide">\`. Never use \`min-height:100vh\`, \`height:100vh\`, \`width:100vw\`, or scroll-snap presenter sizing — those stretch into the tall preview panel and break PPT aspect ratio. Use large presentation typography, fill the canvas, and center content vertically with flex plus generous padding (64–96px).
+Each slide is a **fixed 1920×1080** canvas (16:9). Inline \`width:1920px;height:1080px;box-sizing:border-box;overflow:hidden\` on every \`<section class="slide">\`. Never use \`min-height:100vh\`, \`height:100vh\`, \`width:100vw\`, or scroll-snap presenter sizing — those stretch into the tall preview panel and break PPT aspect ratio. Motif/decoration corners must stay **inside** the canvas (\`top/left/right/bottom: 0\` or positive inset) — never negative offsets that get clipped. Use large presentation typography, fill the canvas, and center content vertically with flex plus generous padding (64–96px).
 
 Do not invent one identical white box for every slide. Pick the closest layout below and vary **background color**, **padding**, **composition**, and **density** across slides (alternate light/dark surfaces — never 3+ identical slides in a row). A good deck should look like a designed presentation, not a web article split into full-screen rows.
 
@@ -542,7 +542,7 @@ Quality bar: match the requested slide count (see slide-count rule below); each 
  */
 export const DECK_COMPACT_INLINE_LAYOUT_VOCABULARY_FOR_SELECTED_TEMPLATE = `# Compact API — inline layout vocabulary with Selected deck template (structure only)
 
-Each slide is a **fixed 1920×1080** canvas: inline \`width:1920px;height:1080px;box-sizing:border-box;overflow:hidden\` on every \`<section class="slide">\`; avoid viewport-only \`min-height:100vh\`. Use large presentation typography and fill the canvas.
+Each slide is a **fixed 1920×1080** canvas: inline \`width:1920px;height:1080px;box-sizing:border-box;overflow:hidden\` on every \`<section class="slide">\`; avoid viewport-only \`min-height:100vh\`. Motif corners must stay inside the canvas (no negative top/left/right/bottom). Use large presentation typography and fill the canvas.
 
 **Colors, fonts, borders, shadows, and decorative density MUST come from the Selected deck template / Template visual kit above.** Do not invent a slate/navy corporate palette. Forbidden fallbacks when a kit is present: \`#0f172a\`, \`#1e293b\`, \`#111827\`, \`#f8fafc\` + Inter-only sparse covers.
 

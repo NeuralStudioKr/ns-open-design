@@ -23,6 +23,16 @@ describe('deckHtmlNeedsOfficialMotifRemerge', () => {
     expect(deckHtmlNeedsOfficialMotifRemerge(html)).toBe(true);
   });
 
+  it('detects official Daisy hang CSS still present in look sheets', () => {
+    const html = [
+      '<style data-od-official-look-css>',
+      '.slide-title .deco-daisy-tl{top:-30px;left:-30px;width:220px;height:220px}',
+      '</style>',
+      '<div class="deco-daisy-tl" style="width:12%"></div>',
+    ].join('');
+    expect(deckHtmlNeedsOfficialMotifRemerge(html)).toBe(true);
+  });
+
   it('skips non-Daisy decks', () => {
     expect(deckHtmlNeedsOfficialMotifRemerge('<section class="slide">Hi</section>')).toBe(false);
   });

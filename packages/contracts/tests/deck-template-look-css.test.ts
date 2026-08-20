@@ -663,6 +663,80 @@ html, body { overflow: visible !important; height: auto !important; }
     expect(cover).toContain('도메인 체계 설계');
   });
 
+  it('remmerges a hanging body-pack sibling even when one daisy is already good', () => {
+    const official = loadOfficialLookSource(join(EXAMPLES_DIR, 'html-ppt-zhangzara-daisy-days/example.html'));
+    const assets = extractOfficialDeckLookAssets(official)!;
+    const daisySvg = assets.motifHtml.find((block) => /deco-daisy[\s\S]*?<svg\b/i.test(block));
+    const svg = /<svg\b[\s\S]*?<\/svg>/i.exec(daisySvg ?? '')?.[0]
+      ?? '<svg viewBox="0 0 10 10"><circle fill="#fcdf6c" cx="5" cy="5" r="4"/><path d="M1 2"/><path d="M3 4"/></svg>';
+    // Middle slide = body role (index 1 of 3) so Motif pack is tl+br, not cover.
+    const mixed = `<!doctype html><html lang="ko"><head>
+<style data-od-official-look-css>
+.slide { position:relative !important; width:1920px !important; height:1080px !important; }
+.slide > :is(h1, h2, h3, p) { position:relative !important; z-index:2 !important; }
+</style>
+</head><body>
+<section class="slide" style="background:#F5F0E6;width:1920px;height:1080px;padding:56px 72px">
+  <h1>Cover</h1>
+</section>
+<section class="slide" style="background:#F5F0E6;width:1920px;height:1080px;padding:56px 72px">
+  <div data-od-official-motif-html class="deco deco-daisy-tl" style="position:absolute;top:0;left:0;width:12%;height:20%;z-index:1">${svg}</div>
+  <div data-od-official-motif-html class="deco deco-daisy-br" style="position:absolute;bottom:-4%;right:-3%;width:11%;height:19%;z-index:1">${svg}</div>
+  <h2>Body pack</h2>
+</section>
+<section class="slide"><h2>Next</h2></section>
+</body></html>`;
+    const merged = mergeOfficialDeckLookCss(mixed, assets);
+    const body = merged.match(
+      /<section\b[^>]*\bclass\s*=\s*"[^"]*\bslide\b[^"]*"[^>]*>[\s\S]*?Body pack[\s\S]*?<\/section>/i,
+    )?.[0] ?? '';
+    // Isolate the body slide — previous slides may also contain daisy Motifs.
+    expect(body).toMatch(/<h2>Body pack<\/h2>/i);
+    expect(body).toMatch(/deco-daisy-tl/i);
+    expect(body).toMatch(/deco-daisy-br/i);
+    expect(body).not.toMatch(/deco-daisy[^>]*(?:top|left|right|bottom)\s*:\s*-\d/i);
+  });
+
+  it('sanitizes official Daisy hang CSS (top:-30px) during look merge', () => {
+    const official = loadOfficialLookSource(join(EXAMPLES_DIR, 'html-ppt-zhangzara-daisy-days/example.html'));
+    const assets = extractOfficialDeckLookAssets(official)!;
+    const sparse = `<!doctype html><html lang="ko"><body>
+<section class="slide" style="background:#F5F0E6;width:1920px;height:1080px">
+  <h1>Hang CSS</h1>
+</section>
+</body></html>`;
+    const merged = mergeOfficialDeckLookCss(sparse, assets);
+    expect(merged).toMatch(/data-od-official-look-css/i);
+    // Official example hangs must not survive into stacked look CSS.
+    expect(merged).not.toMatch(/deco-daisy[^\{]*\{[^}]*(?:top|left|right|bottom)\s*:\s*-\d/i);
+    expect(merged).toMatch(/deco-daisy-tl/i);
+  });
+
+  it('strips hang offsets from already-current look CSS sheets', () => {
+    const official = loadOfficialLookSource(join(EXAMPLES_DIR, 'html-ppt-zhangzara-daisy-days/example.html'));
+    const assets = extractOfficialDeckLookAssets(official)!;
+    // Full neutralize proof present, but look body still carries official hangs
+    // (pre-§0.72 persisted decks). Early-return must still sanitize.
+    const currentWithHang = `<!doctype html><html lang="ko"><head>
+<style data-od-official-look-css>
+/* stacked preview/export: Motif paint + fixed 1920 */
+.presentation, .deck, [id="od-stacked-deck-stage"] { display:flex !important; flex-direction:column !important; }
+.presentation > .slide, .deck > .slide { flex-direction:unset !important; }
+.slide { position:relative !important; width:1920px !important; height:1080px !important; }
+.slide > :is(h1, h2, h3, p) { position:relative !important; z-index:2 !important; }
+.slide-title .deco-daisy-tl{top:-30px;left:-30px;width:220px;height:220px}
+.slide-title .deco-daisy-br{bottom:10px;right:-30px;width:210px;height:210px}
+</style>
+</head><body>
+<section class="slide slide-title" style="background:#F5F0E6;width:1920px;height:1080px">
+  <h1>Current+Hang</h1>
+</section>
+</body></html>`;
+    const merged = mergeOfficialDeckLookCss(currentWithHang, assets);
+    expect(merged).not.toMatch(/deco-daisy[^\{]*\{[^}]*(?:top|left|right|bottom)\s*:\s*-\d/i);
+    expect(merged).toMatch(/deco-daisy-tl\{[^}]*top:\s*0/i);
+  });
+
   it('injects Motif-safe gutter on split slides with padding:0', () => {
     const official = loadOfficialLookSource(join(EXAMPLES_DIR, 'html-ppt-zhangzara-daisy-days/example.html'));
     const assets = extractOfficialDeckLookAssets(official)!;

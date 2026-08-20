@@ -1578,6 +1578,7 @@ User-message 쪽 `[Existing deck edit]` / `<attached-preview-comments>` 주입�
 | 2026-08-13 | **§0.0 정책 개정** — template = layout vocabulary + visual look, 페이지 수/순서/구성은 브리프 기반. content-swap → pick-and-choose layout roles. daemon Clone default count = 6 (shells.length 아님), `pickTemplateShells` role-based scoring 도입. `template-visual-kit.ts` HARD_RULES 재작성, `DEFAULT_MAX_CHARS` 12000 → 14000. |
 | 2026-08-18 | Clone content-fill motif 보정 — 8/13 SVG hang 방지 패치가 first fill에서 `Motif sprites`/`Decoration CSS`/`Layout CSS`를 통째로 생략해 Daisy/Capsule 템플릿 정체성이 약해졌다. `slimTemplateVisualKitForFill`이 큰 SVG sprite sheet와 전체 stylesheet dump는 계속 제거하되, Daisy star/rainbow·Capsule pill/capsule·Terminal scanline 같은 compact motif recipe와 짧은 Decoration/Layout CSS cue를 보존하도록 변경했다. |
 | 2026-08-18 | §0.20 — html-ppt identity scope. 공유 `:root --bg:#ffffff` 대신 `.tpl-*` host 토큰/슬라이드 surface/폰트를 kit 계약으로 쓰고, SKILL `copy index.html` filesystem 지시를 neutralize. |
+| 2026-08-20 | §0.72 — Daisy Motif hang full audit. sanitize official -30px CSS · paint every+corners · export remmerge hang · placement replace · cache v40. |
 | 2026-08-20 | §0.71 — Daisy Motif hang clip after §0.70 letterbox. Motif inside-canvas · remmerge negative offsets · pin size-only · cache v39. |
 | 2026-08-20 | §0.70 — slide ratio collapse. Neutral vocab drop 100vh · `.deck`/`.presentation` compact letterbox · `pinDeckSlidesToFixedCanvas` persist/preview/export · cache v38. |
 | 2026-08-20 | §0.69 — 5-page first fill no longer queues hidden top-up. Range satisfied at min · brief 5페이지 beats 6-8 auto. |
