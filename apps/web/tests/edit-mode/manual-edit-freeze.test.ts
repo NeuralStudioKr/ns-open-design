@@ -48,6 +48,9 @@ import {
   nextTipRemountDeckNudgeFollowUntilMs,
   shouldRemeasureTipRemountOnDeckHostFitNudge,
   shouldThrottleTipRemountDeckNudgeRemasure,
+  shouldCatchUpHostMetricsWhenDeckNudgeRemasureThrottled,
+  shouldDeferTipRemountPostReleaseGeometryApply,
+  shouldRetryTipRemountSiblingMeasure,
   TIP_REMOUNT_DECK_NUDGE_REMEASURE_THROTTLE_MS,
   shouldMarkTipRemountChromeReleasePendingAfterResizeSkip,
   shouldReleaseTipRemountChromeAfterResizeGestureEnds,
@@ -296,6 +299,17 @@ describe('manual edit freeze reset', () => {
     expect(shouldThrottleTipRemountDeckNudgeRemasure(1_000, 1_200)).toBe(false);
     expect(shouldThrottleTipRemountDeckNudgeRemasure(0, 1_050)).toBe(false);
     expect(TIP_REMOUNT_DECK_NUDGE_REMEASURE_THROTTLE_MS).toBe(100);
+    expect(shouldCatchUpHostMetricsWhenDeckNudgeRemasureThrottled(true, true, true, false)).toBe(true);
+    expect(shouldCatchUpHostMetricsWhenDeckNudgeRemasureThrottled(true, true, true, true)).toBe(false);
+    expect(shouldCatchUpHostMetricsWhenDeckNudgeRemasureThrottled(true, false, true, false)).toBe(false);
+    expect(shouldDeferTipRemountPostReleaseGeometryApply(false, 900, true)).toBe(true);
+    expect(shouldDeferTipRemountPostReleaseGeometryApply(false, 900, false)).toBe(false);
+    expect(shouldDeferTipRemountPostReleaseGeometryApply(true, 900, true)).toBe(false);
+    expect(shouldDeferTipRemountPostReleaseGeometryApply(false, 150, true)).toBe(false);
+    expect(shouldRetryTipRemountSiblingMeasure(2, 2, 1)).toBe(true);
+    expect(shouldRetryTipRemountSiblingMeasure(2, 2, 2)).toBe(false);
+    expect(shouldRetryTipRemountSiblingMeasure(1, 1, 0)).toBe(false);
+    expect(shouldRetryTipRemountSiblingMeasure(2, 2, 0)).toBe(false);
     expect(shouldReleaseTipRemountChromeWhenDeckNudgeFollowEnds(true, true)).toBe(true);
     expect(shouldReleaseTipRemountChromeWhenDeckNudgeFollowEnds(true, true, true)).toBe(false);
     expect(shouldReleaseTipRemountChromeWhenDeckNudgeFollowEnds(true, false)).toBe(false);

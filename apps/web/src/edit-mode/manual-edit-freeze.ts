@@ -1143,6 +1143,53 @@ export function shouldThrottleTipRemountDeckNudgeRemasure(
 }
 
 /**
+ * Follow remasure was throttled but chrome is interactive — still refresh host
+ * scale/offset so late deck nudges do not leave the box misaligned (517).
+ */
+export function shouldCatchUpHostMetricsWhenDeckNudgeRemasureThrottled(
+  inFollowWindow: boolean,
+  fitSettleExpired: boolean,
+  remasureThrottled: boolean,
+  chromeSuppressed: boolean,
+): boolean {
+  return inFollowWindow
+    && fitSettleExpired
+    && remasureThrottled
+    && !chromeSuppressed;
+}
+
+/**
+ * After chrome is interactive, defer late fit remasure geometry one tick while
+ * the pointer is over selection chrome so handles do not jump under the cursor
+ * (516). Metrics may still refresh immediately.
+ */
+export function shouldDeferTipRemountPostReleaseGeometryApply(
+  chromeSuppressed: boolean,
+  remasureDelayMs: number,
+  pointerOverChrome: boolean,
+  chromeReleaseDelayMs: number = TIP_REMOUNT_FIT_SETTLE_CHROME_RELEASE_MS,
+): boolean {
+  return !chromeSuppressed
+    && remasureDelayMs >= chromeReleaseDelayMs
+    && pointerOverChrome;
+}
+
+/**
+ * Multi tip remasure measured only some selected members — retry once so union
+ * chrome does not keep a one-sided box (518).
+ */
+export function shouldRetryTipRemountSiblingMeasure(
+  selectedCount: number,
+  orderedCount: number,
+  measuredCount: number,
+): boolean {
+  return selectedCount >= 2
+    && orderedCount >= 2
+    && measuredCount > 0
+    && measuredCount < orderedCount;
+}
+
+/**
  * Fit remasure skipped mid-resize after chrome-release delay — remember to
  * release chrome when the gesture ends (489).
  */

@@ -25,6 +25,9 @@ import {
   shouldBumpGeomEpochAfterTipRemountMultiRemasure,
   shouldPreferPendingDraftOverAbsorbInspectorSettle,
   shouldSettleInspectorStylesOnPostExitAbsorb,
+  shouldDeferTipRemountPostReleaseGeometryApply,
+  shouldCatchUpHostMetricsWhenDeckNudgeRemasureThrottled,
+  shouldRetryTipRemountSiblingMeasure,
   shouldSkipOdEditTargetsIdentityMixedReseedDuringPostExitAbsorb,
   shouldSkipOdEditTargetsSingleInspectorReseedDuringPostExitAbsorb,
   shouldSkipTipRemountFitSettleRemasureDuringResizeGesture,
@@ -95,6 +98,28 @@ describe('manual-edit tip remount smoke (500/501/506)', () => {
     expect(shouldBumpGeomEpochAfterTipRemountMultiRemasure(2, true)).toBe(true);
     expect(shouldBumpGeomEpochAfterTipRemountMultiRemasure(1, true)).toBe(false);
     expect(fileViewer).toContain('shouldBumpGeomEpochAfterTipRemountMultiRemasure');
+  });
+
+  it('defers late geometry while pointer is over chrome (516)', () => {
+    expect(shouldDeferTipRemountPostReleaseGeometryApply(false, 900, true)).toBe(true);
+    expect(shouldDeferTipRemountPostReleaseGeometryApply(false, 900, false)).toBe(false);
+    expect(fileViewer).toContain('shouldDeferTipRemountPostReleaseGeometryApply');
+    expect(fileViewer).toContain('onChromePointerHoverChange');
+    expect(fileViewer).toContain('manualEditTipChromePointerHoverRef');
+  });
+
+  it('catch-up host metrics when follow remasure is throttled (517)', () => {
+    expect(shouldCatchUpHostMetricsWhenDeckNudgeRemasureThrottled(true, true, true, false))
+      .toBe(true);
+    expect(fileViewer).toContain('shouldCatchUpHostMetricsWhenDeckNudgeRemasureThrottled');
+    expect(fileViewer).toContain('Still catch up scale/offset');
+  });
+
+  it('retries partial multi sibling measure once (518)', () => {
+    expect(shouldRetryTipRemountSiblingMeasure(3, 3, 1)).toBe(true);
+    expect(shouldRetryTipRemountSiblingMeasure(3, 3, 3)).toBe(false);
+    expect(fileViewer).toContain('shouldRetryTipRemountSiblingMeasure');
+    expect(fileViewer).toContain('allowSiblingRetry');
   });
 
   it('releases chrome at 400ms even when fit remasure applied nothing (512)', () => {

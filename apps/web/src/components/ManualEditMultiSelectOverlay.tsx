@@ -51,6 +51,8 @@ export type ManualEditMultiSelectOverlayProps = {
   movable?: boolean;
   resizable?: boolean;
   disabled?: boolean;
+  /** Tip remount: track pointer over chrome so late geometry apply can defer (516). */
+  onChromePointerHoverChange?: (hovering: boolean) => void;
   draftMemberRects?: Record<string, ManualEditRect> | null;
   onGroupMovePreview?: (updates: GroupMovePreviewUpdate[]) => void;
   onGroupMoveCommit?: (
@@ -212,6 +214,7 @@ export function ManualEditMultiSelectOverlay({
   movable = false,
   resizable = false,
   disabled = false,
+  onChromePointerHoverChange,
   draftMemberRects = null,
   onGroupMovePreview,
   onGroupMoveCommit,
@@ -574,6 +577,12 @@ export function ManualEditMultiSelectOverlay({
         pointerEvents: interactive ? undefined : 'none',
         background: 'transparent',
       }}
+      onPointerEnter={onChromePointerHoverChange
+        ? () => onChromePointerHoverChange(true)
+        : undefined}
+      onPointerLeave={onChromePointerHoverChange
+        ? () => onChromePointerHoverChange(false)
+        : undefined}
       onPointerDown={interactive ? onOverlayPointerDown : undefined}
       onPointerMove={interactive ? onOverlayPointerMove : undefined}
     >

@@ -74,6 +74,8 @@ export type ManualEditResizeOverlayProps = {
   draftLeftPx?: number | null;
   draftTopPx?: number | null;
   disabled?: boolean;
+  /** Tip remount: track pointer over chrome so late geometry apply can defer (516). */
+  onChromePointerHoverChange?: (hovering: boolean) => void;
   onResizePreview: (next: Partial<ManualEditStyles>) => void;
   /** Commit passes `stylesBefore` so a failed flush can keyed-rollback the live preview. */
   onResizeCommit: (
@@ -221,6 +223,7 @@ export function ManualEditResizeOverlay({
   draftLeftPx = null,
   draftTopPx = null,
   disabled = false,
+  onChromePointerHoverChange,
   onResizePreview,
   onResizeCommit,
   onResizeCancel,
@@ -748,6 +751,12 @@ export function ManualEditResizeOverlay({
       data-movable={movable ? 'true' : 'false'}
       style={boxStyle}
       aria-hidden={disabled || undefined}
+      onPointerEnter={onChromePointerHoverChange
+        ? () => onChromePointerHoverChange(true)
+        : undefined}
+      onPointerLeave={onChromePointerHoverChange
+        ? () => onChromePointerHoverChange(false)
+        : undefined}
       onPointerDown={disabled ? undefined : onOverlayPointerDown}
       onPointerMove={disabled ? undefined : onOverlayPointerMove}
       onDoubleClick={disabled || (target.kind !== 'text' && target.kind !== 'link')
