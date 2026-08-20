@@ -2394,7 +2394,7 @@ function historyWithWorkspaceContext(
     '',
     '',
     '<active-workspace-context>',
-    'Open Design selected the currently focused workspace tab as the default context for this turn.',
+    'The currently focused workspace tab is the default context for this turn.',
     ...items.map((item, index) => {
       const details = [
         item.path ? `path: ${item.path}` : null,

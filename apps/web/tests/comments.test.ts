@@ -879,6 +879,19 @@ describe('preview comment attachment helpers', () => {
     expect(stripUserVisibleUserMessageText(prompt)).toBe("이 텍스트를 '안녕'으로 바꿔줘");
   });
 
+  it('strips active-workspace-context blocks from user-visible chat text', () => {
+    const prompt = [
+      '3번 슬라이드 제목만 짧게',
+      '',
+      '<active-workspace-context>',
+      'The currently focused workspace tab is the default context for this turn.',
+      '1. file: deck.html | path: deck.html',
+      '</active-workspace-context>',
+    ].join('\n');
+
+    expect(stripUserVisibleUserMessageText(prompt)).toBe('3번 슬라이드 제목만 짧게');
+  });
+
   it('strips hidden existing-deck edit directives from user-visible chat text', () => {
     const prompt = [
       '폰트 사이즈 두배로 키워줘',

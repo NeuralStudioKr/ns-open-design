@@ -1699,14 +1699,15 @@ export function sanitizeAssistantProseForDisplay(
 /** Drop truncated deck stylesheet/CSS leaked into chat prose (mid-artifact abort). */
 export function stripTrailingDeckFrameworkCssLeak(input: string): string {
   if (!input) return input;
-  const match = /(?:^|\n\n|\n)((?::root\s*\{|(?:\.slide|(?:\.[A-Za-z_-][\w-]*|#[A-Za-z_-][\w-]*|h[1-6]|p|ul|li|body|section(?:\.[\w-]+)?)\s*\{))[\s\S]*)$/i.exec(input);
+  const match = /(?:^|\n\n|\n)((?::root\s*\{|@(?:-webkit-)?keyframes\s+[\w-]+\s*\{|<style\b[^>]*>|(?:\.slide|(?:\.[A-Za-z_-][\w-]*|#[A-Za-z_-][\w-]*|h[1-6]|p|ul|li|body|section(?:\.[\w-]+)?)\s*\{))[\s\S]*)$/i.exec(input);
   if (!match || match.index === undefined) return input;
   const tail = match[1] ?? "";
   const looksLikeDeckFramework =
     /width:\s*1920px|height:\s*1080px|box-sizing:\s*border-box|\.grain::after/i.test(tail)
-    || /<\/style>|<section\b[^>]*\bclass\s*=\s*["'][^"']*\bslide\b|<!--\s*SLIDE\b/i.test(tail)
+    || /<\/style>|<style\b|<section\b[^>]*\bclass\s*=\s*["'][^"']*\bslide\b|<!--\s*SLIDE\b/i.test(tail)
     || /^\.slide\s*\{[\s\S]*/.test(tail.trim())
     || /\.deco-[\w-]+\s*\{/i.test(tail)
+    || /@keyframes\s+[\w-]+\s*\{/i.test(tail)
     || looksLikeLeakedCssCustomPropertyBlock(tail);
   if (!looksLikeDeckFramework) return input;
   return input.slice(0, match.index).trimEnd();

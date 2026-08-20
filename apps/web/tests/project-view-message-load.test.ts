@@ -132,6 +132,17 @@ describe("ProjectView message loading", () => {
     expect(source.slice(streamStart, streamStart + 3200)).toContain("projectId: project.id");
   });
 
+  it("does not inject Open Design branding into workspace-context prompt blocks", () => {
+    const source = readSource("src/components/ProjectView.tsx");
+    const start = source.indexOf("function historyWithWorkspaceContext(");
+    expect(start).toBeGreaterThan(0);
+    const block = source.slice(start, start + 1200);
+
+    expect(block).toContain("<active-workspace-context>");
+    expect(block).toContain("The currently focused workspace tab is the default context for this turn.");
+    expect(block).not.toContain("Open Design selected the currently focused workspace tab");
+  });
+
   it("passes Teamver slide-only media policy into API-mode system prompts", () => {
     const source = readSource("src/components/ProjectView.tsx");
     const start = source.indexOf("const composeMetadata: ProjectMetadata = metadataForTeamverSlideOnlyPrompt({");

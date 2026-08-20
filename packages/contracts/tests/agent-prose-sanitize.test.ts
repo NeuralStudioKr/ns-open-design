@@ -126,6 +126,26 @@ describe("agent-prose-sanitize SSOT", () => {
     expect(sanitizeAssistantProseForDisplay(`장식 넣는 중.\n${pathOnly}`)).toBe("장식 넣는 중.");
   });
 
+  it("strips @keyframes / <style> motif dumps leaked after prose", () => {
+    const keyframes = [
+      "덱을 구성합니다.",
+      "",
+      "@keyframes deco-spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}",
+      "@keyframes floating-pills{0%{transform:translateY(0)}100%{transform:translateY(-8px)}}",
+    ].join("\n");
+    expect(sanitizeAssistantProseForDisplay(keyframes)).toBe("덱을 구성합니다.");
+
+    const styleBlock = [
+      "초안을 다듬는 중입니다.",
+      "",
+      "<style>.floating-pills{position:absolute;animation:deco-spin 12s linear infinite}</style>",
+    ].join("\n");
+    const styleOut = sanitizeAssistantProseForDisplay(styleBlock);
+    expect(styleOut.trim()).toBe("초안을 다듬는 중입니다.");
+    expect(styleOut).not.toContain("<style");
+    expect(styleOut).not.toContain("floating-pills");
+  });
+
   it("strips .deco-* CSS dumps leaked after prose", () => {
     const input = [
       "덱을 구성합니다.",
