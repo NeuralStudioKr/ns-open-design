@@ -17,6 +17,7 @@ import {
   TIP_REMOUNT_FIT_SETTLE_LATCH_MS,
   TIP_REMOUNT_FIT_SETTLE_REMEASURE_DELAYS_MS,
   TIP_POST_STICKY_SOFT_LAND_CATALOGS,
+  TIP_REMOUNT_DECK_NUDGE_FOLLOW_MS,
   shouldIgnoreOdEditTargetsMembershipNoiseDuringTipProtect,
   shouldClearManualEditSelectionOnEmptyOdEditTargets,
   shouldClearTipSyncedIdentityStickyRetainOnFullCatalog,
@@ -24,6 +25,15 @@ import {
   shouldArmTipPostStickySoftLand,
   shouldRetainTipSyncedIdentityDuringPostStickySoftLand,
   consumeTipPostStickySoftLandCatalog,
+  shouldEarlyExitTipPostStickySoftLand,
+  shouldArmTipPostSoftLandExitLatch,
+  shouldRetainTipSyncedIdentityDuringPostSoftLandExitLatch,
+  spendTipPostSoftLandExitLatch,
+  shouldLatchSelectedIdentityFingerprintDuringTipSoftLand,
+  nextTipRemountDeckNudgeFollowUntilMs,
+  shouldRemeasureTipRemountOnDeckHostFitNudge,
+  shouldMarkTipRemountChromeReleasePendingAfterResizeSkip,
+  shouldReleaseTipRemountChromeAfterResizeGestureEnds,
   shouldSkipTipRemountFitSettleRemasureDuringResizeGesture,
   shouldArmPostTipFitSettleWildJumpSkip,
   shouldSkipWildJumpOnceAfterTipFitSettle,
@@ -198,6 +208,30 @@ describe('manual edit freeze reset', () => {
     expect(consumeTipPostStickySoftLandCatalog(2, false)).toBe(1);
     expect(consumeTipPostStickySoftLandCatalog(1, false)).toBe(0);
     expect(consumeTipPostStickySoftLandCatalog(2, true)).toBe(0);
+    expect(shouldEarlyExitTipPostStickySoftLand(2, false, 'same', 'same')).toBe(true);
+    expect(shouldEarlyExitTipPostStickySoftLand(2, false, 'a', 'b')).toBe(false);
+    expect(shouldEarlyExitTipPostStickySoftLand(0, false, 'same', 'same')).toBe(false);
+    expect(shouldArmTipPostSoftLandExitLatch(1, 0, false, false)).toBe(true);
+    expect(shouldArmTipPostSoftLandExitLatch(1, 0, false, true)).toBe(false);
+    expect(shouldArmTipPostSoftLandExitLatch(2, 1, false, false)).toBe(false);
+    expect(shouldRetainTipSyncedIdentityDuringPostSoftLandExitLatch(true, false)).toBe(true);
+    expect(shouldRetainTipSyncedIdentityDuringPostSoftLandExitLatch(true, true)).toBe(false);
+    expect(spendTipPostSoftLandExitLatch(true)).toBe(false);
+    expect(shouldLatchSelectedIdentityFingerprintDuringTipSoftLand(true, false)).toBe(true);
+    expect(shouldLatchSelectedIdentityFingerprintDuringTipSoftLand(true, true)).toBe(false);
+    expect(nextTipRemountDeckNudgeFollowUntilMs(1_000, true)).toBe(
+      1_000 + TIP_REMOUNT_DECK_NUDGE_FOLLOW_MS,
+    );
+    expect(nextTipRemountDeckNudgeFollowUntilMs(1_000, false)).toBe(0);
+    expect(shouldRemeasureTipRemountOnDeckHostFitNudge(true, ['a'], 2_000, 1_500)).toBe(true);
+    expect(shouldRemeasureTipRemountOnDeckHostFitNudge(true, ['a'], 2_000, 2_000)).toBe(false);
+    expect(shouldRemeasureTipRemountOnDeckHostFitNudge(false, ['a'], 2_000, 1_500)).toBe(false);
+    expect(shouldMarkTipRemountChromeReleasePendingAfterResizeSkip(true, true, 400)).toBe(true);
+    expect(shouldMarkTipRemountChromeReleasePendingAfterResizeSkip(true, true, 150)).toBe(false);
+    expect(shouldMarkTipRemountChromeReleasePendingAfterResizeSkip(false, true, 400)).toBe(false);
+    expect(shouldReleaseTipRemountChromeAfterResizeGestureEnds(true, true, false)).toBe(true);
+    expect(shouldReleaseTipRemountChromeAfterResizeGestureEnds(true, true, true)).toBe(false);
+    expect(shouldReleaseTipRemountChromeAfterResizeGestureEnds(true, false, false)).toBe(false);
     expect(shouldArmPostTipFitSettleWildJumpSkip(true, 1)).toBe(true);
     expect(shouldArmPostTipFitSettleWildJumpSkip(false, 1)).toBe(false);
     expect(shouldArmPostTipFitSettleWildJumpSkip(true, 0)).toBe(false);

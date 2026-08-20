@@ -344,6 +344,7 @@ import {
   TIP_REMOUNT_FIT_SETTLE_LATCH_MS,
   TIP_REMOUNT_FIT_SETTLE_REMEASURE_DELAYS_MS,
   TIP_POST_STICKY_SOFT_LAND_CATALOGS,
+  TIP_REMOUNT_DECK_NUDGE_FOLLOW_MS,
   shouldIgnoreOdEditTargetsMembershipNoiseDuringTipProtect,
   shouldClearManualEditSelectionOnEmptyOdEditTargets,
   shouldClearTipSyncedIdentityStickyRetainOnFullCatalog,
@@ -351,6 +352,15 @@ import {
   shouldArmTipPostStickySoftLand,
   shouldRetainTipSyncedIdentityDuringPostStickySoftLand,
   consumeTipPostStickySoftLandCatalog,
+  shouldEarlyExitTipPostStickySoftLand,
+  shouldArmTipPostSoftLandExitLatch,
+  shouldRetainTipSyncedIdentityDuringPostSoftLandExitLatch,
+  spendTipPostSoftLandExitLatch,
+  shouldLatchSelectedIdentityFingerprintDuringTipSoftLand,
+  nextTipRemountDeckNudgeFollowUntilMs,
+  shouldRemeasureTipRemountOnDeckHostFitNudge,
+  shouldMarkTipRemountChromeReleasePendingAfterResizeSkip,
+  shouldReleaseTipRemountChromeAfterResizeGestureEnds,
   shouldSkipTipRemountFitSettleRemasureDuringResizeGesture,
   shouldArmPostTipFitSettleWildJumpSkip,
   shouldSkipWildJumpOnceAfterTipFitSettle,
@@ -5547,9 +5557,17 @@ function HtmlViewer({
    * sticky clear so Mixed does not one-shot on the first live broadcast (480/483).
    */
   const manualEditTipPostStickySoftLandRef = useRef(0);
+  /** One more preserve catalog after soft-land ends (486). */
+  const manualEditTipPostSoftLandExitLatchRef = useRef(false);
+  /** Follow late deck fit nudges without extending wild-jump latch (487). */
+  const manualEditTipDeckNudgeFollowUntilRef = useRef(0);
+  /** Chrome release deferred because fit remasure hit an active resize (489). */
+  const manualEditTipChromeReleaseAfterResizeRef = useRef(false);
   /** One-shot wild-jump skip after tip fit-settle remasure (485). */
   const manualEditTipPostFitSettleWildJumpSkipRef = useRef(false);
   const manualEditTipRemountFitSettleCancelRef = useRef<(() => void) | null>(null);
+  /** Stable tip remasure hook for deck fit onAfterNudge (487). */
+  const tipRemasureOnDeckNudgeRef = useRef<() => void>(() => {});
   /** Pending onLoad sync measure rAF retry — cancel on grace clear (463). */
   const manualEditTipRemountSyncRetryRafRef = useRef<number | null>(null);
   /** Inert resize/multi chrome until tip remasure applies tip geometry (455/458). */
@@ -6781,9 +6799,17 @@ function HtmlViewer({
     && !manualEditMode
     && !inspectMode
     && !slideOnlyMvp;
-  const deckPreviewFitOptions = deckHostViewportFitActive
-    ? FIXED_STAGE_DECK_FIT_OPTIONS
-    : undefined;
+  const deckPreviewFitOptions = useMemo(
+    () => (deckHostViewportFitActive
+      ? {
+        ...FIXED_STAGE_DECK_FIT_OPTIONS,
+        onAfterNudge: () => {
+          tipRemasureOnDeckNudgeRef.current();
+        },
+      }
+      : undefined),
+    [deckHostViewportFitActive],
+  );
   const onDeckPreviewWheel = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
     if (!deckPreviewPanActive) return;
     const frame = iframeRef.current;
@@ -8072,18 +8098,35 @@ function HtmlViewer({
     remasureDelayMs = TIP_REMOUNT_FIT_SETTLE_LAST_REMEASURE_MS,
   ) {
     const ids = selectedManualEditTargetIdsRef.current;
-    if (!shouldRemeasureTipRemountAfterDeckHostFitSettle(
+    const nowMs = Date.now();
+    const inFitSettleLatch = shouldRemeasureTipRemountAfterDeckHostFitSettle(
       manualEditModeRef.current,
       ids,
       manualEditTipRemountFitSettleUntilRef.current,
-      Date.now(),
-    )) {
+      nowMs,
+    );
+    const inDeckNudgeFollow = shouldRemeasureTipRemountOnDeckHostFitNudge(
+      manualEditModeRef.current,
+      ids,
+      manualEditTipDeckNudgeFollowUntilRef.current,
+      nowMs,
+    );
+    if (!inFitSettleLatch && !inDeckNudgeFollow) {
       return;
     }
     // Mid-gesture remasure fights resize/move draft — skip apply (482).
     if (shouldSkipTipRemountFitSettleRemasureDuringResizeGesture(
       manualEditResizeSessionActiveRef.current,
     )) {
+      // Remember chrome release was due so gesture-end can drop inert (489).
+      if (shouldMarkTipRemountChromeReleasePendingAfterResizeSkip(
+        manualEditResizeSessionActiveRef.current,
+        manualEditTipRemountChromeSuppressedRef.current,
+        remasureDelayMs,
+        TIP_REMOUNT_FIT_SETTLE_CHROME_RELEASE_MS,
+      )) {
+        manualEditTipChromeReleaseAfterResizeRef.current = true;
+      }
       return;
     }
     const frame = target ?? iframeRef.current;
@@ -8138,11 +8181,20 @@ function HtmlViewer({
     )) {
       manualEditTipRemountChromeSuppressedRef.current = false;
       setManualEditTipRemountChromeSuppressed(false);
+      manualEditTipChromeReleaseAfterResizeRef.current = false;
     }
     for (const id of ordered) {
       requestManualEditTargetRemeasure(id, frame);
     }
   }
+
+  // Keep ref current for deck fit onAfterNudge without thrashing fit options (487).
+  tipRemasureOnDeckNudgeRef.current = () => {
+    remeasureTipRemountAfterDeckHostFitSettle(
+      iframeRef.current,
+      TIP_REMOUNT_FIT_SETTLE_CHROME_RELEASE_MS,
+    );
+  };
 
   /** Schedule fit-settle remasures aligned with early deck fit nudge delays (460/478/481). */
   function scheduleTipRemountRemasureAfterDeckHostFitSettle(
@@ -8330,6 +8382,9 @@ function HtmlViewer({
     if (shouldClearTipSyncedIdentityStickyRetainOnGraceClear(reason)) {
       manualEditTipSyncedIdentityRetainRef.current = false;
       manualEditTipPostStickySoftLandRef.current = 0;
+      manualEditTipPostSoftLandExitLatchRef.current = false;
+      manualEditTipDeckNudgeFollowUntilRef.current = 0;
+      manualEditTipChromeReleaseAfterResizeRef.current = false;
       manualEditTipPostFitSettleWildJumpSkipRef.current = false;
     }
     manualEditTipRemountGeometryGraceIdRef.current = null;
@@ -8413,7 +8468,15 @@ function HtmlViewer({
       manualEditTipSyncedIdentityRetainRef.current = true;
       // New tip session replaces any post-sticky soft-land / wild-jump one-shot.
       manualEditTipPostStickySoftLandRef.current = 0;
+      manualEditTipPostSoftLandExitLatchRef.current = false;
+      manualEditTipChromeReleaseAfterResizeRef.current = false;
       manualEditTipPostFitSettleWildJumpSkipRef.current = false;
+      // Follow late deck nudges (2500+) without extending wild-jump latch (487).
+      manualEditTipDeckNudgeFollowUntilRef.current = nextTipRemountDeckNudgeFollowUntilMs(
+        nowMs,
+        true,
+        TIP_REMOUNT_DECK_NUDGE_FOLLOW_MS,
+      );
       // Deck host-fit may rescale after onLoad — keep settle latch past grace (460/481).
       const fitSettleUntil = shouldArmTipRemountFitSettleForDeckHostFit(
         deckHostViewportFitActive,
@@ -9868,9 +9931,11 @@ function HtmlViewer({
         // Post-sticky soft-land also ignores membership noise (483).
         const selectedIdsForPreserve = selectedManualEditTargetIdsRef.current;
         const softLandAtEntry = manualEditTipPostStickySoftLandRef.current;
+        const exitLatchAtEntry = manualEditTipPostSoftLandExitLatchRef.current;
         const tipProtectSource = tipRemountSession
           || manualEditTipSyncedIdentityRetainRef.current
-          || softLandAtEntry > 0;
+          || softLandAtEntry > 0
+          || exitLatchAtEntry;
         const refreshedProbe = selectedIdsForPreserve.length > 0
           ? resolveManualEditTargetsByIds(selectedIdsForPreserve, data.targets)
           : [];
@@ -9899,17 +9964,22 @@ function HtmlViewer({
           manualEditTipRemountIdentityHoldUntilRef.current = 0;
           manualEditTipSyncedIdentityRetainRef.current = false;
           manualEditTipPostStickySoftLandRef.current = 0;
+          manualEditTipPostSoftLandExitLatchRef.current = false;
           manualEditTipPostFitSettleWildJumpSkipRef.current = false;
         }
         const softLandActive = shouldRetainTipSyncedIdentityDuringPostStickySoftLand(
           softLandAtEntry,
           selectionIdsChangedEarly,
         );
+        const exitLatchActive = shouldRetainTipSyncedIdentityDuringPostSoftLandExitLatch(
+          exitLatchAtEntry,
+          selectionIdsChangedEarly,
+        );
         const tipRemountActive = shouldRetainTipSyncedIdentityAfterHold(
           tipRemountSession,
           manualEditTipSyncedIdentityRetainRef.current,
           selectionIdsChangedEarly,
-        ) || softLandActive;
+        ) || softLandActive || exitLatchActive;
         if (
           !selectionIdsChangedEarly
           && shouldDeferTipSyncedIdentityStickyClearUntilAfterPreserve(clearStickyAfterPreserve)
@@ -9920,9 +9990,47 @@ function HtmlViewer({
             manualEditTipPostStickySoftLandRef.current = TIP_POST_STICKY_SOFT_LAND_CATALOGS;
           }
         } else if (softLandAtEntry > 0 && !selectionIdsChangedEarly) {
-          manualEditTipPostStickySoftLandRef.current = consumeTipPostStickySoftLandCatalog(
+          // Early exit when live bridge identity already matches preserved tip (488).
+          const liveProbeFp = manualEditTargetsIdentityFingerprint(refreshedProbe);
+          const preservedProbeFp = manualEditTargetsIdentityFingerprint(
+            refreshedProbe.map((item) => withPreservedTipSyncedIdentityOnBridgeTarget(
+              item,
+              resolveTipSyncedTargetForOdEditTargetsPreserve(
+                item.id,
+                selectedManualEditTargetRef.current,
+                manualEditTargetsRef.current,
+              ),
+            )),
+          );
+          const earlyExit = shouldEarlyExitTipPostStickySoftLand(
             softLandAtEntry,
             selectionIdsChangedEarly,
+            preservedProbeFp,
+            liveProbeFp,
+          );
+          if (earlyExit) {
+            manualEditTipPostStickySoftLandRef.current = 0;
+          } else {
+            const remaining = consumeTipPostStickySoftLandCatalog(
+              softLandAtEntry,
+              selectionIdsChangedEarly,
+            );
+            manualEditTipPostStickySoftLandRef.current = remaining;
+            // Soft-land last catalog → one exit latch preserve for first live (486).
+            if (shouldArmTipPostSoftLandExitLatch(
+              softLandAtEntry,
+              remaining,
+              selectionIdsChangedEarly,
+              false,
+            )) {
+              manualEditTipPostSoftLandExitLatchRef.current = true;
+            }
+          }
+        }
+        // Exit-latch tick spends the latch after this preserve (486).
+        if (exitLatchAtEntry) {
+          manualEditTipPostSoftLandExitLatchRef.current = spendTipPostSoftLandExitLatch(
+            exitLatchAtEntry,
           );
         }
         // Tip-remount: fingerprint the catalog we will store (preserved tip
@@ -10068,6 +10176,14 @@ function HtmlViewer({
           const selectedTargetsIdentityChanged =
             selectedIdentityFingerprint !== manualEditSelectedIdentityFingerprintRef.current;
           if (selectionIdsChanged || selectedTargetsIdentityChanged) {
+            manualEditSelectedIdentityFingerprintRef.current = selectedIdentityFingerprint;
+          }
+          // Soft-land / exit latch: pin selected FP to preserved so exit absorb
+          // does not look like identity churn (490).
+          if (shouldLatchSelectedIdentityFingerprintDuringTipSoftLand(
+            softLandActive || exitLatchActive,
+            selectionIdsChanged,
+          )) {
             manualEditSelectedIdentityFingerprintRef.current = selectedIdentityFingerprint;
           }
           // Tip-remount: bridge target.styles can flip identity fingerprint and
@@ -10615,10 +10731,31 @@ function HtmlViewer({
   }
 
   function handleManualEditResizeSessionChange(active: boolean) {
+    const wasActive = manualEditResizeSessionActiveRef.current;
     manualEditResizeSessionActiveRef.current = active;
     manualEditResizePausedRef.current = active;
     if (active) {
       clearManualEditStyleTimer();
+    }
+    // Gesture ended after a skipped chrome-release remasure — drop inert + catch up (489).
+    if (
+      wasActive
+      && !active
+      && shouldReleaseTipRemountChromeAfterResizeGestureEnds(
+        manualEditTipRemountChromeSuppressedRef.current,
+        manualEditTipChromeReleaseAfterResizeRef.current,
+        false,
+      )
+    ) {
+      manualEditTipChromeReleaseAfterResizeRef.current = false;
+      remeasureTipRemountAfterDeckHostFitSettle(
+        iframeRef.current,
+        TIP_REMOUNT_FIT_SETTLE_CHROME_RELEASE_MS,
+      );
+      if (manualEditTipRemountChromeSuppressedRef.current) {
+        manualEditTipRemountChromeSuppressedRef.current = false;
+        setManualEditTipRemountChromeSuppressed(false);
+      }
     }
     // Do not clear resize/move drafts here. endDrag clears liveViewport before
     // the async flush finishes; wiping drafts in the same turn snaps the host

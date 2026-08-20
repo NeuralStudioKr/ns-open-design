@@ -746,6 +746,124 @@ export function consumeTipPostStickySoftLandCatalog(
 }
 
 /**
+ * Soft-land early exit when live bridge selected identity already matches the
+ * tip-preserved fingerprint — no need to keep protecting (488).
+ */
+export function shouldEarlyExitTipPostStickySoftLand(
+  softLandRemainingAtEntry: number,
+  selectionIdsChanged: boolean,
+  preservedSelectedFingerprint: string,
+  liveBridgeSelectedFingerprint: string,
+): boolean {
+  if (selectionIdsChanged || softLandRemainingAtEntry <= 0) return false;
+  return preservedSelectedFingerprint === liveBridgeSelectedFingerprint;
+}
+
+/**
+ * After soft-land's last catalog, arm one exit latch catalog so the first live
+ * bridge broadcast cannot one-shot Mixed via fingerprint absorb (486).
+ */
+export function shouldArmTipPostSoftLandExitLatch(
+  softLandAtEntry: number,
+  softLandRemainingAfter: number,
+  selectionIdsChanged: boolean,
+  earlyExited: boolean,
+): boolean {
+  if (selectionIdsChanged || earlyExited) return false;
+  return softLandAtEntry > 0 && softLandRemainingAfter === 0;
+}
+
+/**
+ * Exit latch keeps tip identity preserve / Mixed skip for one catalog (486).
+ */
+export function shouldRetainTipSyncedIdentityDuringPostSoftLandExitLatch(
+  exitLatchArmed: boolean,
+  selectionIdsChanged: boolean,
+): boolean {
+  return exitLatchArmed && !selectionIdsChanged;
+}
+
+/**
+ * Exit-latch tick spends the latch — later catalogs go live (486).
+ */
+export function spendTipPostSoftLandExitLatch(
+  exitLatchAtEntry: boolean,
+): boolean {
+  return false;
+}
+
+/**
+ * During soft-land / exit latch, pin selected identity fingerprint to the
+ * preserved catalog so exit does not see a stale→live flip as membership (490).
+ */
+export function shouldLatchSelectedIdentityFingerprintDuringTipSoftLand(
+  tipSoftLandProtectActive: boolean,
+  selectionIdsChanged: boolean,
+): boolean {
+  return tipSoftLandProtectActive && !selectionIdsChanged;
+}
+
+/**
+ * How long tip remount follows late deck fit nudges (covers DEFAULT 6500ms) (487).
+ */
+export const TIP_REMOUNT_DECK_NUDGE_FOLLOW_MS = 7_000;
+
+/**
+ * Arm deck-nudge follow window when tip-yield remount starts (487).
+ */
+export function nextTipRemountDeckNudgeFollowUntilMs(
+  nowMs: number,
+  arm: boolean,
+  followMs: number = TIP_REMOUNT_DECK_NUDGE_FOLLOW_MS,
+): number {
+  return arm ? nowMs + followMs : 0;
+}
+
+/**
+ * Remasure tip chrome on a host deck fit nudge while follow window is live (487).
+ * Does not extend the wild-jump fit-settle latch.
+ */
+export function shouldRemeasureTipRemountOnDeckHostFitNudge(
+  manualEditMode: boolean,
+  selectedIds: readonly string[],
+  followUntilMs: number,
+  nowMs: number,
+): boolean {
+  return Boolean(
+    manualEditMode
+    && selectedIds.length > 0
+    && followUntilMs > 0
+    && nowMs < followUntilMs,
+  );
+}
+
+/**
+ * Fit remasure skipped mid-resize after chrome-release delay — remember to
+ * release chrome when the gesture ends (489).
+ */
+export function shouldMarkTipRemountChromeReleasePendingAfterResizeSkip(
+  resizeSessionActive: boolean,
+  chromeSuppressed: boolean,
+  remasureDelayMs: number,
+  chromeReleaseDelayMs: number = TIP_REMOUNT_FIT_SETTLE_CHROME_RELEASE_MS,
+): boolean {
+  return resizeSessionActive
+    && chromeSuppressed
+    && remasureDelayMs >= chromeReleaseDelayMs;
+}
+
+/**
+ * Gesture ended after a skipped chrome-release remasure — drop inert (489).
+ */
+export function shouldReleaseTipRemountChromeAfterResizeGestureEnds(
+  chromeSuppressed: boolean,
+  chromeReleasePending: boolean,
+  resizeSessionActive: boolean,
+): boolean {
+  return chromeSuppressed && chromeReleasePending && !resizeSessionActive;
+}
+
+/**
  * Arm a one-shot wild-jump skip after a tip fit-settle remasure so a late
  * deck nudge that lands past the latch (or races expiry) is not dropped (485).
  */

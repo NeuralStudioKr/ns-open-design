@@ -18,8 +18,10 @@ describe("FileViewer streaming slide preview", () => {
       /const deckPreviewFitScale = deckHostViewportFitActive \? 1 : overlayPreviewScale/,
     );
     expect(source).toMatch(
-      /const deckPreviewFitOptions = deckHostViewportFitActive[\s\S]*FIXED_STAGE_DECK_FIT_OPTIONS/,
+      /const deckPreviewFitOptions = useMemo\(\s*\(\) => \(deckHostViewportFitActive[\s\S]*FIXED_STAGE_DECK_FIT_OPTIONS/,
     );
+    expect(source).toContain('onAfterNudge');
+    expect(source).toContain('tipRemasureOnDeckNudgeRef');
   });
 
   it('does not remount or clear last-stable on filesRefreshKey churn', () => {

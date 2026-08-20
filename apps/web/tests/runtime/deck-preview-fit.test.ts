@@ -32,6 +32,18 @@ describe('deckPreviewFit', () => {
     expect(postMessage).toHaveBeenNthCalledWith(2, { type: 'od:deck-nudge-fit' }, '*');
   });
 
+  it('invokes onAfterNudge after od:deck-nudge-fit (487)', () => {
+    const postMessage = vi.fn();
+    const onAfterNudge = vi.fn();
+    const target = {
+      contentWindow: { postMessage } as unknown as Window,
+      getBoundingClientRect: () => ({ width: 640, height: 480 } as DOMRect),
+    };
+    nudgeDeckPreviewFit(target, 1, { onAfterNudge });
+    expect(postMessage).toHaveBeenCalledWith({ type: 'od:deck-nudge-fit' }, '*');
+    expect(onAfterNudge).toHaveBeenCalledTimes(1);
+  });
+
   it('skips host viewport post when the iframe has no measurable box', () => {
     const postMessage = vi.fn();
     expect(

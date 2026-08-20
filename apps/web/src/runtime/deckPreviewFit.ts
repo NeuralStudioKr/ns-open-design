@@ -15,6 +15,11 @@ export type DeckPreviewFitOptions = {
    * host zoom does not reflow slide content or double-apply scale.
    */
   useLayoutBox?: boolean;
+  /**
+   * Called after posting `od:deck-nudge-fit` — tip remount remasure hook (487).
+   * Must stay side-effect light; deck fit itself does not depend on the result.
+   */
+  onAfterNudge?: () => void;
 };
 
 const DEFAULT_FIT_NUDGE_DELAYS_MS = [0, 50, 150, 400, 900, 1600, 2500, 4000, 6500] as const;
@@ -149,6 +154,7 @@ export function nudgeDeckPreviewFit(
   const target = resolveDeckPreviewFitTarget(targetOrGet);
   postDeckHostViewportToIframe(target, hostScale, options);
   target?.contentWindow?.postMessage({ type: 'od:deck-nudge-fit' }, '*');
+  options?.onAfterNudge?.();
 }
 
 /** Deck fit() often runs while the iframe is still 0×0; re-nudge through layout settles. */

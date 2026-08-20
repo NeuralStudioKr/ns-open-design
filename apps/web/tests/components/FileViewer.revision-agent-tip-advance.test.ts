@@ -278,6 +278,17 @@ describe('FileViewer revision tip advance after undo', () => {
     expect(fileViewer).toContain('clearStickyAfterPreserve');
     expect(fileViewer).toContain('Drop sticky for *later* catalogs');
     expect(fileViewer).toContain('Arm soft-land for subsequent catalogs');
+    expect(fileViewer).toContain('shouldEarlyExitTipPostStickySoftLand');
+    expect(fileViewer).toContain('shouldArmTipPostSoftLandExitLatch');
+    expect(fileViewer).toContain('manualEditTipPostSoftLandExitLatchRef');
+    expect(fileViewer).toContain('shouldLatchSelectedIdentityFingerprintDuringTipSoftLand');
+    expect(fileViewer).toContain('TIP_REMOUNT_DECK_NUDGE_FOLLOW_MS');
+    expect(fileViewer).toContain('shouldRemeasureTipRemountOnDeckHostFitNudge');
+    expect(fileViewer).toContain('tipRemasureOnDeckNudgeRef');
+    expect(fileViewer).toContain('onAfterNudge');
+    expect(fileViewer).toContain('shouldMarkTipRemountChromeReleasePendingAfterResizeSkip');
+    expect(fileViewer).toContain('shouldReleaseTipRemountChromeAfterResizeGestureEnds');
+    expect(fileViewer).toContain('manualEditTipChromeReleaseAfterResizeRef');
     expect(fileViewer).toContain('withPreservedTipSyncedStylesOnBridgeTarget');
     expect(fileViewer).toContain('resolveTipSyncedStylesForOdEditTargetsPreserve');
     expect(fileViewer).toContain('withPreservedTipSyncedIdentityOnBridgeTarget');
