@@ -943,7 +943,7 @@ export function composeSystemPrompt({
 
   if (agentId === 'gemini') {
     parts.push(
-      "\n\n---\n\n## Gemini todo tool mapping\n\nWhen an Open Design instruction says to call `TodoWrite`, use Gemini CLI's native `write_todos` tool only if it is present in the current tool list. Pass the full task list as `todos`, with each item using `description` for the task text and `status` set to `pending`, `in_progress`, `completed`, `cancelled`, or `blocked`.\n\nIf `write_todos` is not present, do not simulate it with markdown, plan-mode files, JSON files, TODO files, or shell commands. Continue the work normally without a todo tool.",
+      "\n\n---\n\n## Gemini todo tool mapping\n\nWhen an instruction says to call `TodoWrite`, use Gemini CLI's native `write_todos` tool only if it is present in the current tool list. Pass the full task list as `todos`, with each item using `description` for the task text and `status` set to `pending`, `in_progress`, `completed`, `cancelled`, or `blocked`.\n\nIf `write_todos` is not present, do not simulate it with markdown, plan-mode files, JSON files, TODO files, or shell commands. Continue the work normally without a todo tool.",
     );
   }
 
@@ -1014,7 +1014,7 @@ const BYOK_TOOLS_OVERRIDE = (toolNames: readonly string[]): string => {
   const formatted = toolNames.map((n) => `\`${n}\``).join(', ');
   return `# API mode — BYOK tools available (read first — overrides every rule below)
 
-You are running through the Open Design BYOK proxy. The following tools ARE wired through to you: ${formatted}. Call them like any other tool — the daemon routes the call, runs the executor, and feeds the result back as a \`tool\` role message.
+You are running through the BYOK proxy. The following tools ARE wired through to you: ${formatted}. Call them like any other tool — the daemon routes the call, runs the executor, and feeds the result back as a \`tool\` role message.
 
 \`TodoWrite\`, \`Read\`, \`Write\`, \`Edit\`, \`Bash\`, and \`WebFetch\` are NOT available in this run — those are CLI-agent tools. If a later instruction tells you to call them, do not attempt it; use the BYOK tools listed above instead. Specifically: to read a URL the user gave you, call \`web_fetch\` with the absolute URL — do not claim you fetched it, do not narrate the fetch in prose, and do not produce pseudo-tool markup.
 
@@ -1035,11 +1035,11 @@ For slide deck / presentation / PPT requests in API mode, the plan is not the de
 
 const CHAT_MODE_OVERRIDE = `# Chat mode — standard conversation (read first — overrides every rule below)
 
-This conversation is in Open Design Chat mode. Open Design is the open-source Claude Design alternative and a native Figma counterpart. Official links: GitHub https://github.com/nexu-io/open-design, website https://open-design.ai/, Discord https://discord.com/invite/9ptkbbqRu.
+This conversation is in chat mode. Answer like a fast, direct, multi-turn desktop chat assistant. Prefer concise prose, explanations, comparisons, debugging help, and follow-up questions only when needed.
 
-Use the same available context, files, attachments, connectors, MCP servers, project memory, and model capabilities as Design mode. The difference is behavior: answer like a fast, direct, multi-turn desktop chat assistant. Prefer concise prose, explanations, comparisons, debugging help, and follow-up questions only when needed.
+Use the same available context, files, attachments, connectors, MCP servers, project memory, and model capabilities as Design mode.
 
-Override artifact-first discovery rules below: do not emit a default discovery \`<question-form>\`, do not call TodoWrite just to plan a chat answer, and do not create or edit project files, HTML, PPT, slide decks, images, video, or audio unless the user explicitly asks you to generate/build/design/export/modify something. When the user does ask for a design artifact or file change, you may use the normal Open Design agent workflow and the same tools/capabilities available in Design mode.`;
+Override artifact-first discovery rules below: do not emit a default discovery \`<question-form>\`, do not call TodoWrite just to plan a chat answer, and do not create or edit project files, HTML, PPT, slide decks, images, video, or audio unless the user explicitly asks you to generate/build/design/export/modify something. When the user does ask for a design artifact or file change, you may use the normal agent workflow and the same tools/capabilities available in Design mode.`;
 
 // Defense-in-depth against Claude Code's synthetic OAuth tools.
 //
@@ -1540,7 +1540,7 @@ function renderMediaMetadataAction(
   const article = surface === 'audio' ? 'an' : 'a';
   const mode = mediaExecution?.mode ?? 'enabled';
   if (mode === 'disabled') {
-    return `This is ${article} **${surface}** project, but Open Design-owned media execution is disabled for this run. Plan the creative brief only unless an external MCP media tool is explicitly configured. Do NOT call OD media generation tools and do NOT emit \`<artifact>\` HTML for media surfaces.`;
+    return `This is ${article} **${surface}** project, but built-in media execution is disabled for this run. Plan the creative brief only unless an external MCP media tool is explicitly configured. Do NOT call built-in media generation tools and do NOT emit \`<artifact>\` HTML for media surfaces.`;
   }
   return `This is ${article} **${surface}** project. Plan the creative brief carefully, then dispatch via the **media generation contract** using ${command}. Do NOT emit \`<artifact>\` HTML for media surfaces.`;
 }

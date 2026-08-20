@@ -318,7 +318,8 @@ const DECK_MOTIF_PATH_TAIL_RE =
   /<path\b[^>]*\bd\s*=\s*["'][\s\S]*$/i;
 /** Leftover Daisy SVG children after `<svg` was already consumed. */
 const DECK_MOTIF_SVG_PRIMITIVE_TAIL_RE =
-  /<(?:circle|rect|ellipse|polygon|polyline|line|g|defs|linearGradient|radialGradient|stop|use)\b/i;
+  /<(?:circle|rect|ellipse|polygon|polyline|line|g|defs|linearGradient|radialGradient|stop|use|text|tspan)\b/i;
+const DECK_MOTIF_SVG_CLOSE_TAIL_RE = /<\/svg\b/i;
 /** `<!-- Daisy motif TL -->` (and siblings) plus any CSS that follows. */
 const DECK_MOTIF_HTML_COMMENT_TAIL_RE =
   /<!--\s*(?:Daisy|motif|deco|SLIDE)\b[\s\S]*$/i;
@@ -381,6 +382,7 @@ export function stripTrailingDeckHtmlMarkupLeak(input: string): string {
     DECK_MOTIF_SVG_TAIL_RE,
     DECK_MOTIF_PATH_TAIL_RE,
     DECK_MOTIF_SVG_PRIMITIVE_TAIL_RE,
+    DECK_MOTIF_SVG_CLOSE_TAIL_RE,
     DECK_MOTIF_HTML_COMMENT_TAIL_RE,
     DECK_BROKEN_SECTION_CSS_DEBRIS_TAIL_RE,
     DECK_ORPHAN_MID_STYLE_ATTR_TAIL_RE,

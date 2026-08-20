@@ -513,9 +513,10 @@ describe('ChatPane streaming state', () => {
       agentId: 'amr',
     });
     expect(out).toContain('run_id: run-real-123');
-    // Support-ticket header — never leaks unrelated product brand.
-    expect(out.startsWith('teamver Slide run error diagnostics')).toBe(true);
-    expect(out).not.toContain('Open Design run error diagnostics');
+    // Support-ticket header — never leaks product brand.
+    expect(out.startsWith('Run error diagnostics')).toBe(true);
+    expect(out).not.toContain('Open Design');
+    expect(out).not.toContain('teamver Slide');
   });
 
   it('falls back to trace id for legacy diagnostics without a run id', () => {

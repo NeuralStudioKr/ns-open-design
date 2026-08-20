@@ -239,6 +239,8 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       const prompt = composeSystemPrompt({ streamFormat: 'plain', byokToolNames: byokTools });
       expect(prompt).toMatch(/API mode — BYOK tools available/i);
       expect(prompt).not.toMatch(/API mode — no tools available/i);
+      expect(prompt).toContain('You are running through the BYOK proxy.');
+      expect(prompt).not.toContain('Open Design BYOK');
     });
 
     it('lists wired BYOK tool names including web_fetch', () => {

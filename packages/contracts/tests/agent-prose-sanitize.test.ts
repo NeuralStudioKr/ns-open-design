@@ -160,6 +160,13 @@ describe("agent-prose-sanitize SSOT", () => {
       '<g class="deco-dots"><ellipse cx="20" cy="20" rx="6" ry="6"/></g>',
     ].join("\n");
     expect(sanitizeAssistantProseForDisplay(`도형 넣는 중.\n${primitives}`)).toBe("도형 넣는 중.");
+
+    const svgText = [
+      '<text x="24" y="48" font-size="28">Nx</text>',
+      '<tspan dx="4">WS</tspan>',
+      '</svg>',
+    ].join("\n");
+    expect(sanitizeAssistantProseForDisplay(`라벨 넣는 중.\n${svgText}`)).toBe("라벨 넣는 중.");
   });
 
   it("strips @keyframes / <style> motif dumps leaked after prose", () => {

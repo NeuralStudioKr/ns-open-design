@@ -34,7 +34,8 @@ const DECK_MOTIF_SVG_TAIL_RE =
 const DECK_MOTIF_PATH_TAIL_RE =
   /<path\b[^>]*\bd\s*=\s*["'][\s\S]*$/i;
 const DECK_MOTIF_SVG_PRIMITIVE_TAIL_RE =
-  /<(?:circle|rect|ellipse|polygon|polyline|line|g|defs|linearGradient|radialGradient|stop|use)\b/i;
+  /<(?:circle|rect|ellipse|polygon|polyline|line|g|defs|linearGradient|radialGradient|stop|use|text|tspan)\b/i;
+const DECK_MOTIF_SVG_CLOSE_TAIL_RE = /<\/svg\b/i;
 const DECK_MOTIF_HTML_COMMENT_TAIL_RE =
   /<!--\s*(?:Daisy|motif|deco|SLIDE)\b[\s\S]*$/i;
 const DECK_BROKEN_SECTION_CSS_DEBRIS_TAIL_RE =
@@ -79,6 +80,7 @@ function stripLeakedDeckMotifHtmlTail(input: string): string {
     DECK_MOTIF_SVG_TAIL_RE,
     DECK_MOTIF_PATH_TAIL_RE,
     DECK_MOTIF_SVG_PRIMITIVE_TAIL_RE,
+    DECK_MOTIF_SVG_CLOSE_TAIL_RE,
     DECK_MOTIF_HTML_COMMENT_TAIL_RE,
     DECK_BROKEN_SECTION_CSS_DEBRIS_TAIL_RE,
     DECK_ORPHAN_MID_STYLE_ATTR_TAIL_RE,

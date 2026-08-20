@@ -3585,7 +3585,7 @@ export function buildRunErrorDiagnosticText(input: RunErrorDiagnosticInput): str
   // header name is not user-facing surface.
   const resolvedRunId = input.runId ?? input.traceId ?? null;
   const lines = [
-    'teamver Slide run error diagnostics',
+    'Run error diagnostics',
     `trace_id: ${input.traceId ?? 'n/a'}`,
     `run_id: ${resolvedRunId ?? 'n/a'}`,
     `error_code: ${input.errorCode ?? 'n/a'}`,

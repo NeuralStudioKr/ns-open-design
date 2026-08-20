@@ -339,7 +339,8 @@ describe('composeSystemPrompt — metadata.promptTemplate', () => {
     });
 
     expect(out).toContain('## Media generation policy');
-    expect(out).toContain('Open Design-owned media execution is **disabled for this run**');
+    expect(out).toContain('Built-in media execution is **disabled for this run**');
+    expect(out).not.toContain('Open Design-owned');
     expect(out).toContain('External MCP media tools, when explicitly configured for this run, are outside');
     expect(out).toMatch(/Do not call\s+`"\$OD_NODE_BIN" "\$OD_BIN" media generate`/);
     expect(out).not.toContain('## Media generation contract');
@@ -387,7 +388,8 @@ describe('composeSystemPrompt — metadata.promptTemplate', () => {
     expect(out).toContain('Allowed surfaces for this run: `image`.');
     expect(out).toContain('Allowed models for this run: `gpt-image-2`.');
     expect(out).toContain('### Allowed model IDs (per surface)');
-    expect(out).not.toContain('Open Design-owned media execution is **disabled for this run**');
+    expect(out).not.toContain('Built-in media execution is **disabled for this run**');
+    expect(out).not.toContain('Open Design-owned');
   });
 
   it('keeps unrestricted enabled media contract unchanged', () => {

@@ -32,13 +32,21 @@ describe('DISCOVERY_AND_PHILOSOPHY (contracts copy) — TodoWrite plan item coun
     expect(prompt).not.toMatch(/5[–\-]10\s+short\s+imperative/);
   });
 
+  it('keeps official designer color guidance product-neutral', () => {
+    const prompt = composeSystemPrompt({});
+    expect(prompt).toContain('Do not inherit host app chrome colors');
+    expect(prompt).not.toContain('Open Design app chrome');
+  });
+
   it('uses a top-level Chat mode override for conversational sessions', () => {
     const prompt = composeSystemPrompt({ sessionMode: 'chat' });
 
     expect(prompt).toContain('# Chat mode — standard conversation');
-    expect(prompt).toContain('https://github.com/nexu-io/open-design');
-    expect(prompt).toContain('https://open-design.ai/');
-    expect(prompt).toContain('https://discord.com/invite/9ptkbbqRu');
+    expect(prompt).toContain('This conversation is in chat mode.');
+    expect(prompt).not.toContain('Open Design Chat mode');
+    expect(prompt).not.toContain('https://github.com/nexu-io/open-design');
+    expect(prompt).not.toContain('https://open-design.ai/');
+    expect(prompt).not.toContain('https://discord.com/invite/9ptkbbqRu');
     expect(prompt).toContain('do not emit a default discovery `<question-form>`');
     expect(prompt.indexOf('# Chat mode — standard conversation')).toBeLessThan(
       prompt.indexOf(DISCOVERY_AND_PHILOSOPHY),
@@ -49,6 +57,8 @@ describe('DISCOVERY_AND_PHILOSOPHY (contracts copy) — TodoWrite plan item coun
 describe('DISCOVERY_AND_PHILOSOPHY (contracts copy) — prompt routing parity', () => {
   it('uses the single-shot task-type form shape from the daemon prompt', () => {
     expect(DISCOVERY_AND_PHILOSOPHY).toContain('<question-form id="task-type"');
+    expect(DISCOVERY_AND_PHILOSOPHY).toContain('the right workflow');
+    expect(DISCOVERY_AND_PHILOSOPHY).not.toContain('Open Design workflow');
     for (const id of ['taskType', 'audience', 'brand', 'scale', 'constraints']) {
       expect(DISCOVERY_AND_PHILOSOPHY).toContain(`"id": "${id}"`);
     }

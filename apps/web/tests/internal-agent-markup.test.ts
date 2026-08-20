@@ -81,6 +81,7 @@ describe("internalAgentMarkup", () => {
       '<circle cx="90" cy="90" r="40" fill="#7ECDC0"/>',
       '<rect x="8" y="12" width="160" height="40" rx="20"/>',
       '<defs><linearGradient id="g1"><stop offset="0"/></linearGradient></defs>',
+      '<text x="24" y="48">Nx</text></svg>',
     ].join("\n");
     for (const streaming of [true, false]) {
       expect(
