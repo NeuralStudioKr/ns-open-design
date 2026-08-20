@@ -804,9 +804,80 @@ export function shouldLatchSelectedIdentityFingerprintDuringTipSoftLand(
 }
 
 /**
+ * After exit-latch preserve spends, arm one Mixed-absorb tick — live FP is
+ * accepted into refs without tip preserve / Mixed reseed (491).
+ */
+export function shouldArmTipPostExitLatchMixedAbsorb(
+  exitLatchAtEntry: boolean,
+  selectionIdsChanged: boolean,
+): boolean {
+  return exitLatchAtEntry && !selectionIdsChanged;
+}
+
+/**
+ * Soft-land early-exit also arms Mixed-absorb so the next live catalog can
+ * sync FP without a preserve latch (493 + 491).
+ */
+export function shouldArmTipPostExitLatchMixedAbsorbOnSoftLandEarlyExit(
+  earlyExited: boolean,
+  selectionIdsChanged: boolean,
+): boolean {
+  return earlyExited && !selectionIdsChanged;
+}
+
+/**
+ * Skip identity-only Mixed reseed while post-exit absorb is armed (491).
+ * Pending drafts stay reachable (same carve-out as tip remount).
+ */
+export function shouldSkipOdEditTargetsIdentityMixedReseedDuringPostExitAbsorb(
+  selectionIdsChanged: boolean,
+  absorbArmed: boolean,
+  styleDraftPending = false,
+): boolean {
+  if (styleDraftPending) return false;
+  return absorbArmed && !selectionIdsChanged;
+}
+
+/**
+ * Absorb live catalog/selected fingerprints into refs on the post-exit tick,
+ * then clear the absorb latch (491).
+ */
+export function shouldAbsorbLiveIdentityFingerprintOnPostExitLatch(
+  absorbArmed: boolean,
+  selectionIdsChanged: boolean,
+): boolean {
+  return absorbArmed && !selectionIdsChanged;
+}
+
+/**
+ * Early-exit: sync selected identity FP ref to the live bridge fingerprint so
+ * the next catalog does not false-churn against a stale preserved latch (493).
+ */
+export function shouldSyncSelectedIdentityFingerprintOnSoftLandEarlyExit(
+  earlyExited: boolean,
+  selectionIdsChanged: boolean,
+): boolean {
+  return earlyExited && !selectionIdsChanged;
+}
+
+/**
+ * Multi exit-latch: keep Mixed/inspector on source styles only — geometry may
+ * still track the bridge via tip identity preserve (495).
+ */
+export function shouldKeepMultiInspectorSourceOnlyDuringTipExitLatch(
+  exitLatchActive: boolean,
+  selectedCount: number,
+): boolean {
+  return exitLatchActive && selectedCount > 1;
+}
+
+/**
  * How long tip remount follows late deck fit nudges (covers DEFAULT 6500ms) (487).
  */
 export const TIP_REMOUNT_DECK_NUDGE_FOLLOW_MS = 7_000;
+
+/** Throttle ResizeObserver-driven tip remasures during deck-nudge follow (492). */
+export const TIP_REMOUNT_DECK_NUDGE_REMEASURE_THROTTLE_MS = 100;
 
 /**
  * Arm deck-nudge follow window when tip-yield remount starts (487).
@@ -838,6 +909,18 @@ export function shouldRemeasureTipRemountOnDeckHostFitNudge(
 }
 
 /**
+ * Throttle follow-only deck-nudge remasures (fit-settle latch remasures stay
+ * on their scheduled delays) (492).
+ */
+export function shouldThrottleTipRemountDeckNudgeRemasure(
+  lastRemasureAtMs: number,
+  nowMs: number,
+  throttleMs: number = TIP_REMOUNT_DECK_NUDGE_REMEASURE_THROTTLE_MS,
+): boolean {
+  return lastRemasureAtMs > 0 && (nowMs - lastRemasureAtMs) < throttleMs;
+}
+
+/**
  * Fit remasure skipped mid-resize after chrome-release delay — remember to
  * release chrome when the gesture ends (489).
  */
@@ -861,6 +944,16 @@ export function shouldReleaseTipRemountChromeAfterResizeGestureEnds(
   resizeSessionActive: boolean,
 ): boolean {
   return chromeSuppressed && chromeReleasePending && !resizeSessionActive;
+}
+
+/**
+ * Deck-nudge follow window ended while chrome still inert — force release (494).
+ */
+export function shouldReleaseTipRemountChromeWhenDeckNudgeFollowEnds(
+  chromeSuppressed: boolean,
+  followWindowEnded: boolean,
+): boolean {
+  return chromeSuppressed && followWindowEnded;
 }
 
 /**

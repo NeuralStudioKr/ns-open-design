@@ -30,10 +30,19 @@ import {
   shouldRetainTipSyncedIdentityDuringPostSoftLandExitLatch,
   spendTipPostSoftLandExitLatch,
   shouldLatchSelectedIdentityFingerprintDuringTipSoftLand,
+  shouldArmTipPostExitLatchMixedAbsorb,
+  shouldArmTipPostExitLatchMixedAbsorbOnSoftLandEarlyExit,
+  shouldSkipOdEditTargetsIdentityMixedReseedDuringPostExitAbsorb,
+  shouldAbsorbLiveIdentityFingerprintOnPostExitLatch,
+  shouldSyncSelectedIdentityFingerprintOnSoftLandEarlyExit,
+  shouldKeepMultiInspectorSourceOnlyDuringTipExitLatch,
   nextTipRemountDeckNudgeFollowUntilMs,
   shouldRemeasureTipRemountOnDeckHostFitNudge,
+  shouldThrottleTipRemountDeckNudgeRemasure,
+  TIP_REMOUNT_DECK_NUDGE_REMEASURE_THROTTLE_MS,
   shouldMarkTipRemountChromeReleasePendingAfterResizeSkip,
   shouldReleaseTipRemountChromeAfterResizeGestureEnds,
+  shouldReleaseTipRemountChromeWhenDeckNudgeFollowEnds,
   shouldSkipTipRemountFitSettleRemasureDuringResizeGesture,
   shouldArmPostTipFitSettleWildJumpSkip,
   shouldSkipWildJumpOnceAfterTipFitSettle,
@@ -219,6 +228,22 @@ describe('manual edit freeze reset', () => {
     expect(spendTipPostSoftLandExitLatch(true)).toBe(false);
     expect(shouldLatchSelectedIdentityFingerprintDuringTipSoftLand(true, false)).toBe(true);
     expect(shouldLatchSelectedIdentityFingerprintDuringTipSoftLand(true, true)).toBe(false);
+    expect(shouldArmTipPostExitLatchMixedAbsorb(true, false)).toBe(true);
+    expect(shouldArmTipPostExitLatchMixedAbsorb(true, true)).toBe(false);
+    expect(shouldArmTipPostExitLatchMixedAbsorbOnSoftLandEarlyExit(true, false)).toBe(true);
+    expect(shouldSkipOdEditTargetsIdentityMixedReseedDuringPostExitAbsorb(false, true)).toBe(true);
+    expect(shouldSkipOdEditTargetsIdentityMixedReseedDuringPostExitAbsorb(false, true, true)).toBe(false);
+    expect(shouldAbsorbLiveIdentityFingerprintOnPostExitLatch(true, false)).toBe(true);
+    expect(shouldSyncSelectedIdentityFingerprintOnSoftLandEarlyExit(true, false)).toBe(true);
+    expect(shouldKeepMultiInspectorSourceOnlyDuringTipExitLatch(true, 2)).toBe(true);
+    expect(shouldKeepMultiInspectorSourceOnlyDuringTipExitLatch(true, 1)).toBe(false);
+    expect(shouldThrottleTipRemountDeckNudgeRemasure(1_000, 1_050)).toBe(true);
+    expect(shouldThrottleTipRemountDeckNudgeRemasure(1_000, 1_200)).toBe(false);
+    expect(shouldThrottleTipRemountDeckNudgeRemasure(0, 1_050)).toBe(false);
+    expect(TIP_REMOUNT_DECK_NUDGE_REMEASURE_THROTTLE_MS).toBe(100);
+    expect(shouldReleaseTipRemountChromeWhenDeckNudgeFollowEnds(true, true)).toBe(true);
+    expect(shouldReleaseTipRemountChromeWhenDeckNudgeFollowEnds(true, false)).toBe(false);
+    expect(shouldReleaseTipRemountChromeWhenDeckNudgeFollowEnds(false, true)).toBe(false);
     expect(nextTipRemountDeckNudgeFollowUntilMs(1_000, true)).toBe(
       1_000 + TIP_REMOUNT_DECK_NUDGE_FOLLOW_MS,
     );
