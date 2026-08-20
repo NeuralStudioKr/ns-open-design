@@ -9,18 +9,42 @@
  */
 import type { AppliedPluginSnapshot } from '../plugins/apply.js';
 
-export function renderPluginBlock(snapshot: AppliedPluginSnapshot): string {
+export type RenderPluginBlockOptions = {
+  /**
+   * Canvas → Slide pins a separate visual template while create still binds
+   * the deck scenario plugin (example-simple-deck) for structure/inputs.
+   * When set, the block must NOT claim Simple Deck owns the look — that
+   * competed with `## Selected deck template` and made decks look default.
+   */
+  role?: 'primary' | 'scenario-only';
+};
+
+export function renderPluginBlock(
+  snapshot: AppliedPluginSnapshot,
+  options: RenderPluginBlockOptions = {},
+): string {
+  const scenarioOnly = options.role === 'scenario-only';
   const lines: string[] = [];
-  lines.push('\n\n## Active plugin');
+  lines.push(scenarioOnly ? '\n\n## Active scenario plugin (structure only)' : '\n\n## Active plugin');
   lines.push('');
-  lines.push(
-    `The user applied plugin **${snapshot.pluginTitle ?? snapshot.pluginId}** (\`${snapshot.pluginId}@${snapshot.pluginVersion}\`).`,
-  );
-  if (snapshot.pluginDescription) {
+  if (scenarioOnly) {
+    lines.push(
+      `The project is bound to scenario plugin **${snapshot.pluginTitle ?? snapshot.pluginId}** (\`${snapshot.pluginId}@${snapshot.pluginVersion}\`) for brief/structure inputs only.`,
+    );
+    lines.push('');
+    lines.push(
+      'A separate deck visual template was explicitly selected. Do NOT use this scenario plugin\'s palette, typography, seed template, or layout look. Match the Selected deck template visual contract instead.',
+    );
+  } else {
+    lines.push(
+      `The user applied plugin **${snapshot.pluginTitle ?? snapshot.pluginId}** (\`${snapshot.pluginId}@${snapshot.pluginVersion}\`).`,
+    );
+  }
+  if (!scenarioOnly && snapshot.pluginDescription) {
     lines.push('');
     lines.push(snapshot.pluginDescription.trim());
   }
-  if (snapshot.query) {
+  if (!scenarioOnly && snapshot.query) {
     lines.push('');
     lines.push(`The plugin's example brief is: _${snapshot.query.trim()}_`);
   }
@@ -32,7 +56,9 @@ export function renderPluginBlock(snapshot: AppliedPluginSnapshot): string {
     lines.push('## Plugin inputs');
     lines.push('');
     lines.push(
-      'Treat these as authoritative answers to questions the plugin author baked into the brief — do not re-ask the user about them.',
+      scenarioOnly
+        ? 'Treat these as authoritative brief answers (topic, audience, slide count) unless the user message / [User instruction] explicitly requests a different slide count — then the user count wins. They are NOT a visual template.'
+        : 'Treat these as authoritative answers to questions the plugin author baked into the brief — do not re-ask the user about them. If the user message explicitly requests a different slide count, the user count wins.',
     );
     lines.push('');
     for (const key of inputKeys) {
@@ -41,7 +67,7 @@ export function renderPluginBlock(snapshot: AppliedPluginSnapshot): string {
   }
 
   const atomIds = snapshot.resolvedContext?.atoms ?? [];
-  if (atomIds.length > 0) {
+  if (atomIds.length > 0 && !scenarioOnly) {
     lines.push('');
     lines.push('## Plugin atoms');
     lines.push('');

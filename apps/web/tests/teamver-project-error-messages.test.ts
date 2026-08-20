@@ -65,6 +65,7 @@ describe("project conversation error messages", () => {
       extractPersistedRunErrorDiagnostic,
       formatAutoContinueIncompleteOutputNotice,
       extractProjectRunErrorCode,
+      formatPersistedProjectRunError,
       formatProjectRunErrorForUser,
       formatProjectConversationErrorForUser,
       formatProjectForkConversationError,
@@ -145,9 +146,14 @@ describe("project conversation error messages", () => {
       message:
         'New artifact body for identifier "deck" is 1279 bytes, but the largest prior sibling "deck.html" is 21918 bytes.',
     });
-    expect(regression).toContain("플레이스홀더");
+    expect(regression).toContain("짧은 초안");
     expect(regression).toContain("기존 슬라이드는 그대로");
-    expect(regression).toContain("OD_ARTIFACT_STUB_GUARD=warn");
+    // User-facing copy must NEVER mention internal env vars / ops toggles.
+    expect(regression).not.toContain("OD_ARTIFACT_STUB_GUARD");
+    expect(regression).not.toContain("daemon");
+    // Filename does not have to appear — the reassurance is about the current
+    // deck; leaking bare "deck.html" adds noise without user value.
+    expect(regression).not.toContain("플레이스홀더");
     // The bare generic "저장에 실패" copy must not fire when we can
     // recognise the ARTIFACT_REGRESSION code — otherwise the improved
     // reassurance-banner regresses to the mystery banner.
@@ -173,6 +179,39 @@ describe("project conversation error messages", () => {
     expect(
       extractProjectRunErrorCode(new Error("proxy 502: PROJECT_STORAGE_UNAVAILABLE sync-down failed")),
     ).toBe("PROJECT_STORAGE_UNAVAILABLE");
+    expect(extractProjectRunErrorCode(new Error("Upstream error: 529"))).toBe(
+      "OVERLOADED_ERROR",
+    );
+    expect(extractProjectRunErrorCode(new Error("prompt is too long: 210000 tokens"))).toBe(
+      "CONTEXT_LENGTH_EXCEEDED",
+    );
+    const anthropicContext = Object.assign(
+      new Error("prompt is too long: 220000 tokens > 200000 maximum"),
+      { status: 400, error: { type: "invalid_request_error" } },
+    );
+    expect(extractProjectRunErrorCode(anthropicContext)).toBe("CONTEXT_LENGTH_EXCEEDED");
+    expect(formatProjectRunErrorForUser(anthropicContext)).toMatch(/모델 한도를 초과/);
+    const anthropicOverloaded = Object.assign(new Error("Overloaded"), {
+      status: 529,
+      error: { type: "overloaded_error" },
+    });
+    expect(extractProjectRunErrorCode(anthropicOverloaded)).toBe("OVERLOADED_ERROR");
+    const networkErr = new Error("teamver_browser_network_unavailable") as Error & {
+      code?: string;
+    };
+    networkErr.code = "TEAMVER_BROWSER_NETWORK_UNAVAILABLE";
+    expect(extractProjectRunErrorCode(networkErr)).toBe("UPSTREAM_UNAVAILABLE");
+    const persisted = formatPersistedProjectRunError(new Error("Upstream error: 529"));
+    expect(persisted.code).toBe("OVERLOADED_ERROR");
+    expect(persisted.userMessage).toContain("AI 서비스에 연결");
+    expect(userFacingRunErrorDetail(persisted.detail)).toBe(persisted.userMessage);
+    expect(extractPersistedRunErrorDiagnostic(persisted.detail)).toContain("stream-error");
+    expect(extractPersistedRunErrorDiagnostic(persisted.detail)).toContain("Upstream error: 529");
+    expect(extractPersistedRunErrorDiagnostic(persisted.detail)).toContain("code=OVERLOADED_ERROR");
+    const opaque = formatPersistedProjectRunError(new Error("some unclassified boom"));
+    expect(opaque.code).toBe("AGENT_EXECUTION_FAILED");
+    expect(userFacingRunErrorDetail(opaque.detail)).toContain("슬라이드 실행 중 오류");
+    expect(extractPersistedRunErrorDiagnostic(opaque.detail)).toContain("some unclassified boom");
     expect(formatProjectRunErrorForUser(new Error("daemon exploded"))).toContain(
       "슬라이드 실행",
     );
@@ -204,6 +243,12 @@ describe("project conversation error messages", () => {
     internalErr.code = "INTERNAL_ERROR";
     expect(formatProjectRunErrorForUser(internalErr)).toContain("내부 오류");
     expect(formatProjectRunErrorForUser(internalErr)).not.toContain("AI 서비스");
+    const missingProjectErr = new Error("daemon 404: PROJECT_NOT_FOUND project not found") as Error & {
+      code?: string;
+    };
+    missingProjectErr.code = "PROJECT_NOT_FOUND";
+    expect(formatProjectRunErrorForUser(missingProjectErr)).toContain("프로젝트를 찾을 수 없");
+    expect(formatProjectRunErrorForUser(missingProjectErr)).not.toContain("슬라이드 실행 중 오류");
     expect(
       formatProjectRunErrorForUser(
         new Error("Your authentication token has expired. Please sign in again."),

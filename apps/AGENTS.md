@@ -57,3 +57,5 @@ pnpm --filter @open-design/desktop build
 pnpm --filter @open-design/packaged typecheck
 pnpm --filter @open-design/packaged build
 ```
+
+Web Vitest: use `pnpm --filter @open-design/web test` (runs `pretest` → contracts build). Avoid `pnpm --filter @open-design/web exec vitest` unless contracts `dist` is already fresh; see root `AGENTS.md` and `apps/web/tests/contracts-dist-freshness.test.ts`.

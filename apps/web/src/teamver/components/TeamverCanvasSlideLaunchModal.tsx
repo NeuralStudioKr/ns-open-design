@@ -9,6 +9,7 @@ import {
 import { fetchTeamverCanvasPreview } from "../fetchCanvasPreview";
 import { driveImportAssetIconName } from "../driveFileVisual";
 import {
+  CANVAS_CREATE_SLIDES_PLUGIN_ID,
   DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS,
   type CanvasSlideQuickSettings,
   type TeamverCanvasSlideTemplateOption,
@@ -19,6 +20,7 @@ import {
   type CanvasSlideLaunchWizardStep,
   type CanvasSlideLaunchWizardStepId,
 } from "./CanvasSlideLaunchStepWizard";
+import { formatTeamverTimestampKst } from "../teamverTimestamp";
 
 export type TeamverCanvasSlideLaunchSource =
   | { kind: "drive"; asset: TeamverDriveImportAsset }
@@ -32,6 +34,12 @@ type Props = {
   /** When set with an error, show Main re-login CTA (Main SSO gate). */
   onRelogin?: (() => void) | null;
   templateOptions?: TeamverCanvasSlideTemplateOption[];
+  /**
+   * True while the deck-template catalog is still loading. Reserves the
+   * optional template wizard step (and wide modal chrome) so the stepper
+   * does not jump 2→3 when the fetch settles.
+   */
+  templatesLoading?: boolean;
   selectedTemplateId?: string;
   onTemplateChange?: (templateId: string) => void;
   /** Optional user instruction merged into the first Design turn prompt. */
@@ -87,18 +95,9 @@ const QUICK_SETTING_GROUPS = [
   },
 ] as const;
 
-function formatUpdatedAt(raw: string | undefined, locale: string): string | null {
-  if (!raw?.trim()) return null;
-  const ms = Date.parse(raw);
-  if (!Number.isFinite(ms)) return raw.trim();
-  try {
-    return new Intl.DateTimeFormat(locale || "ko", {
-      dateStyle: "medium",
-      timeStyle: "short",
-    }).format(new Date(ms));
-  } catch {
-    return raw.trim();
-  }
+function formatUpdatedAt(raw: string | undefined): string | null {
+  // Never fall back to revision ids — Date.parse fails and used to echo raw UUID/rev.
+  return formatTeamverTimestampKst(raw, "ko");
 }
 
 function sourceHeadline(
@@ -130,6 +129,7 @@ export function TeamverCanvasSlideLaunchModal({
   errorMessage = null,
   onRelogin = null,
   templateOptions = [],
+  templatesLoading = false,
   selectedTemplateId,
   onTemplateChange,
   userPrompt = "",
@@ -145,14 +145,28 @@ export function TeamverCanvasSlideLaunchModal({
   );
   const [enriching, setEnriching] = useState(false);
   const [activeStepId, setActiveStepId] = useState<CanvasSlideLaunchWizardStepId>("document");
+  // Once the template step has been shown for this open cycle, keep it so a
+  // late empty settle cannot collapse 3→2 after the user already saw step 3.
+  const [latchedTemplateStep, setLatchedTemplateStep] = useState(false);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
   const promptInputRef = useRef<HTMLTextAreaElement | null>(null);
 
-  const includeTemplateStep = templateOptions.length > 1;
+  const includeTemplateStep =
+    templatesLoading || templateOptions.length > 1 || latchedTemplateStep;
   const wizardStepOrder = useMemo(
     () => buildWizardStepOrder(includeTemplateStep),
     [includeTemplateStep],
   );
+
+  useEffect(() => {
+    if (!open) {
+      setLatchedTemplateStep(false);
+      return;
+    }
+    if (templatesLoading || templateOptions.length > 1) {
+      setLatchedTemplateStep(true);
+    }
+  }, [open, templatesLoading, templateOptions.length]);
 
   const resolvedActiveStepId: CanvasSlideLaunchWizardStepId = wizardStepOrder.includes(
     activeStepId,
@@ -225,7 +239,8 @@ export function TeamverCanvasSlideLaunchModal({
   const sectionCount = isCanvas ? handoff?.sectionCount : undefined;
   const headings = isCanvas ? handoff?.headings ?? [] : [];
   const updatedLabel = isCanvas
-    ? formatUpdatedAt(handoff?.updatedAt || handoff?.revision, "ko")
+    ? formatUpdatedAt(handoff?.updatedAt)
+      ?? (formatTeamverTimestampKst(handoff?.revision) ? formatUpdatedAt(handoff?.revision) : null)
     : null;
   const iconName =
     source.kind === "drive"
@@ -247,7 +262,26 @@ export function TeamverCanvasSlideLaunchModal({
   const showTitleSkeleton = isCanvas && enriching && !handoff?.title?.trim();
   const showPreviewSkeleton = isCanvas && enriching && !preview;
   const selectedTemplate =
-    templateOptions.find((option) => option.id === selectedTemplateId) ?? templateOptions[0] ?? null;
+    templateOptions.find((option) => option.id === selectedTemplateId)
+    ?? (selectedTemplateId?.trim()
+      ? { id: selectedTemplateId, title: selectedTemplateId, record: null }
+      : templateOptions[0] ?? null);
+  // Block confirm ONLY when the pick is a title===id stub (catalog miss /
+  // still loading). Persisting the raw plugin id as selectedDeckTemplateTitle
+  // poisons designSystem / visualTemplate inputs.
+  //
+  // Callers that omit templateOptions/selectedTemplateId (Drive flow with no
+  // picker, embed tests) leave selectedTemplate null — there is nothing to
+  // block in that case; confirm must proceed with the parent's fallback
+  // create-slides binding.
+  const selectedTemplateReady =
+    !templatesLoading
+    && (
+      !selectedTemplate
+      || selectedTemplate.id === CANVAS_CREATE_SLIDES_PLUGIN_ID
+      || Boolean(selectedTemplate.record)
+      || selectedTemplate.title.trim() !== selectedTemplate.id.trim()
+    );
   const showTemplateGrid = includeTemplateStep;
   const stepDocumentTitle = t("teamver.canvasSlideLaunch.stepDocument");
   const stepPromptTitle = t("teamver.canvasSlideLaunch.stepPrompt");
@@ -406,19 +440,32 @@ export function TeamverCanvasSlideLaunchModal({
     </div>
   );
 
-  const templatePanelInner =
-    templateOptions.length > 0 ? (
-      <CanvasSlideTemplatePicker
-        options={templateOptions}
-        selectedTemplateId={selectedTemplate?.id ?? ""}
-        disabled={confirming}
-        onSelect={(id) => onTemplateChange?.(id)}
-      />
-    ) : (
-      <p className="teamver-canvas-slide-launch-template-fallback">
-        {t("teamver.canvasSlideLaunch.templateFallback")}
-      </p>
-    );
+  const templatePanelInner = templatesLoading ? (
+    <div
+      className="teamver-canvas-slide-launch-template-skeleton"
+      data-testid="teamver-canvas-slide-launch-template-skeleton"
+      aria-busy="true"
+      aria-label={t("teamver.canvasSlideLaunch.stepTemplate")}
+    >
+      {Array.from({ length: 4 }, (_, index) => (
+        <span
+          key={index}
+          className="teamver-canvas-slide-launch-skeleton teamver-canvas-slide-launch-template-skeleton-card"
+        />
+      ))}
+    </div>
+  ) : templateOptions.length > 0 ? (
+    <CanvasSlideTemplatePicker
+      options={templateOptions}
+      selectedTemplateId={selectedTemplate?.id ?? ""}
+      disabled={confirming}
+      onSelect={(id) => onTemplateChange?.(id)}
+    />
+  ) : (
+    <p className="teamver-canvas-slide-launch-template-fallback">
+      {t("teamver.canvasSlideLaunch.templateFallback")}
+    </p>
+  );
 
   const templatePanel = (
     <div className="teamver-canvas-slide-launch-template-section">
@@ -617,15 +664,17 @@ export function TeamverCanvasSlideLaunchModal({
               <button
                 type="button"
                 className="teamver-drive-import-attach teamver-canvas-slide-launch-confirm"
-                disabled={confirming}
+                disabled={confirming || !selectedTemplateReady}
                 data-testid="teamver-canvas-slide-launch-confirm"
                 onClick={() => void onConfirm()}
               >
                 {confirming
                   ? t("teamver.canvasSlideLaunch.working")
-                  : errorMessage
-                    ? t("teamver.canvasSlideLaunch.retry")
-                    : t("teamver.canvasSlideLaunch.confirm")}
+                  : !selectedTemplateReady
+                    ? t("teamver.canvasSlideLaunch.working")
+                    : errorMessage
+                      ? t("teamver.canvasSlideLaunch.retry")
+                      : t("teamver.canvasSlideLaunch.confirm")}
               </button>
             ) : (
               <button

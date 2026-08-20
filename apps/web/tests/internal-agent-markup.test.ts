@@ -10,6 +10,147 @@ import { stripLeakedPseudoToolXml } from "../src/utils/stripLeakedPseudoToolXml"
 import { sanitizeChatMessageLeakedPseudoTool } from "../src/utils/sanitizeChatMessageLeakedPseudoTool";
 
 describe("internalAgentMarkup", () => {
+  it("hard-strips Capsule motif pills and broken section CSS via web display path", () => {
+    const leaked = [
+      '<div style="position:absolute;border-radius:9999px;border:2px solid ',
+      "#1E1E1E;display:flex;align-items:center;justify-content:center;",
+      "font-family:'Space Grotesk',sans-serif;font-weight:700;",
+      'background:#C5B5E0;width:140px;height:60px;top:22%;right:10%">Nx</div>',
+      '<div style="position:absolute;border-radius:9999px;background:#8BB4F7">PNPM WS</div>',
+      "</div>",
+      "</section>-weight:700;margin-bottom:6px\">🔴 Git 성능 저하</div>",
+      '<div class="card" style="padding:24px 파이프라인 복잡도</div>',
+    ].join("\n");
+    for (const streaming of [true, false]) {
+      expect(sanitizeAssistantProseForDisplay(`초안을 다듬는 중입니다.\n\n${leaked}`, { streaming })).toBe(
+        "초안을 다듬는 중입니다.",
+      );
+      expect(sanitizeAssistantProseForDisplay(leaked, { streaming }).trim()).toBe("");
+    }
+  });
+
+  it("hard-strips quoted font-family / flex mid-style debris via web display path", () => {
+    const leaked = [
+      "align-items:center;justify-content:center;",
+      "font-family:'Space Grotesk',sans-serif;font-weight:700;",
+      'background:#C5B5E0;width:140px;height:60px;top:22%;right:10%">Nx</div>',
+    ].join("");
+    for (const streaming of [true, false]) {
+      expect(
+        sanitizeAssistantProseForDisplay(`초안을 다듬는 중입니다.\n\n${leaked}`, { streaming }),
+      ).toBe("초안을 다듬는 중입니다.");
+      expect(sanitizeAssistantProseForDisplay(leaked, { streaming }).trim()).toBe("");
+    }
+  });
+
+  it("hard-strips mid-style attribute debris that appears after reload", () => {
+    const frag = [
+      "px;left:60px;font-size:28px;font-weight:700;color:",
+      '#7ECDC0;letter-spacing:3px;text-transform:uppercase">Senior Engineer Series</div>',
+    ].join("\n");
+    for (const streaming of [true, false]) {
+      expect(
+        sanitizeAssistantProseForDisplay(`슬라이드 초안을 준비했습니다.\n\n${frag}`, { streaming }),
+      ).toBe("슬라이드 초안을 준비했습니다.");
+      expect(sanitizeAssistantProseForDisplay(frag, { streaming }).trim()).toBe("");
+    }
+  });
+
+  it("hard-strips mid-SVG CSS even when </style> was truncated on reload", () => {
+    const cssOnlyNoClose = ["none;stroke:", "#232323;stroke-width:2.0"].join("\n");
+    for (const streaming of [true, false]) {
+      expect(
+        sanitizeAssistantProseForDisplay(`진행.\n${cssOnlyNoClose}`, { streaming }),
+      ).toBe("진행.");
+    }
+  });
+
+  it("hard-strips Daisy badge span + motif comment + mid SVG CSS after reload", () => {
+    const frag = [
+      '<span style="background:',
+      "#FDE68A;border:3px solid ",
+      "#2D2D2D;border-radius:20px;padding:10px 28px;font-size:24px;font-family:'Quicksand',sans-serif;font-weight:700;box-shadow:4px 4px 0 ",
+      '#2D2D2D">Internal Team</span>',
+      "</div>",
+      "<!-- Daisy motif TL -->none;stroke:",
+      "#232323;stroke-width:2.0745;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:10;}.cls-3{fill:",
+      "#FFFFFF;stroke:",
+      "#232323;stroke-width:2.0745;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:10;}</style>",
+    ].join("\n");
+    for (const streaming of [true, false]) {
+      expect(
+        sanitizeAssistantProseForDisplay(`슬라이드 초안을 준비했습니다.\n\n${frag}`, { streaming }),
+      ).toBe("슬라이드 초안을 준비했습니다.");
+      expect(sanitizeAssistantProseForDisplay(frag, { streaming }).trim()).toBe("");
+    }
+  });
+
+  it("hard-strips leftover Daisy SVG primitives via web display last-pass", () => {
+    const leaked = [
+      '<circle cx="90" cy="90" r="40" fill="#7ECDC0"/>',
+      '<rect x="8" y="12" width="160" height="40" rx="20"/>',
+      '<defs><linearGradient id="g1"><stop offset="0"/></linearGradient></defs>',
+      '<text x="24" y="48">Nx</text></svg>',
+    ].join("\n");
+    for (const streaming of [true, false]) {
+      expect(
+        sanitizeAssistantProseForDisplay(`도형 넣는 중.\n${leaked}`, { streaming }),
+      ).toBe("도형 넣는 중.");
+      expect(sanitizeAssistantProseForDisplay(leaked, { streaming }).trim()).toBe("");
+    }
+  });
+
+  it("hard-strips kit CSS at-rules via web display last-pass", () => {
+    const leaked = [
+      "@keyframes deco-spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}",
+      "@font-face{font-family:'Space Grotesk';src:url(https://fonts.gstatic.com/x.woff2)}",
+      "@supports (display:grid){.slide{display:grid}}",
+    ].join("\n");
+    for (const streaming of [true, false]) {
+      expect(
+        sanitizeAssistantProseForDisplay(`덱을 구성합니다.\n\n${leaked}`, { streaming }),
+      ).toBe("덱을 구성합니다.");
+      expect(sanitizeAssistantProseForDisplay(leaked, { streaming }).trim()).toBe("");
+    }
+  });
+
+  it("hard-strips Daisy SVG / deco-class shells via web display path", () => {
+    const leaked = [
+      '<div class="deco-daisy">',
+      '<svg class="deco-daisy" viewBox="0 0 180 180" style="position:absolute;top:8%;right:6%">',
+      '<path d="M90 20 C110 40 110 60 90 80 C70 60 70 40 90 20 Z"></path>',
+      "</svg>",
+    ].join("\n");
+    for (const streaming of [true, false]) {
+      expect(
+        sanitizeAssistantProseForDisplay(`초안을 다듬는 중입니다.\n\n${leaked}`, { streaming }),
+      ).toBe("초안을 다듬는 중입니다.");
+      expect(sanitizeAssistantProseForDisplay(leaked, { streaming }).trim()).toBe("");
+    }
+  });
+
+  it("keeps motif HTML inside an open streaming artifact", () => {
+    const input = [
+      "초안.",
+      '<artifact identifier="deck.html">',
+      '<div style="position:absolute;border-radius:9999px">Nx</div>',
+    ].join("\n");
+    const out = sanitizeAssistantProseForDisplay(input, { streaming: true });
+    expect(out).toContain("<artifact");
+    expect(out).toContain("position:absolute");
+  });
+
+  it("keeps motif HTML inside an uppercase streaming ARTIFACT tag", () => {
+    const input = [
+      "초안.",
+      '<ARTIFACT identifier="deck.html">',
+      '<div style="position:absolute;border-radius:9999px">Nx</div>',
+    ].join("\n");
+    const out = sanitizeAssistantProseForDisplay(input, { streaming: true });
+    expect(out).toContain("<ARTIFACT");
+    expect(out).toContain("position:absolute");
+  });
+
   it("hard-strips classic keydown/click deck-nav JS via web display path", () => {
     const leaked = [
       "(function(){",
@@ -226,5 +367,28 @@ describe("sanitizeChatMessageLeakedPseudoTool (expanded)", () => {
     const sanitized = sanitizeChatMessageLeakedPseudoTool(message);
     expect(sanitized.content).toBe("");
     expect(sanitized.events?.[0]).toEqual({ kind: "text", text: "Plan\n" });
+  });
+
+  it("strips Daisy badge + mid-SVG CSS without </style> on persist write path", () => {
+    const debris = [
+      '<span style="background:',
+      "#FDE68A;border:3px solid ",
+      "#2D2D2D;border-radius:20px;padding:10px 28px;font-family:'Quicksand',sans-serif;box-shadow:4px 4px 0 ",
+      '#2D2D2D">Internal Team</span>',
+      "</div>",
+      "<!-- Daisy motif TL -->none;stroke:",
+      "#232323;stroke-width:2.0",
+    ].join("\n");
+    const sanitized = sanitizeChatMessageLeakedPseudoTool({
+      id: "m2",
+      role: "assistant",
+      content: `슬라이드 초안을 준비했습니다.\n\n${debris}`,
+      events: [{ kind: "text", text: `슬라이드 초안을 준비했습니다.\n\n${debris}` }],
+    });
+    expect(sanitized.content).toBe("슬라이드 초안을 준비했습니다.");
+    expect(sanitized.events?.[0]).toMatchObject({
+      kind: "text",
+      text: "슬라이드 초안을 준비했습니다.",
+    });
   });
 });

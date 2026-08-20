@@ -208,6 +208,9 @@ async def test_create_project_is_idempotent_for_existing_active_row(
 ) -> None:
     row = _project_row()
     db = AsyncMock()
+    db.commit = AsyncMock()
+    db.flush = AsyncMock()
+    db.refresh = AsyncMock(side_effect=lambda _row: None)
     create = AsyncMock()
     sync = AsyncMock()
 
@@ -227,7 +230,10 @@ async def test_create_project_is_idempotent_for_existing_active_row(
 
     assert response.od_project_id == "od1"
     create.assert_not_awaited()
+    # Idempotent re-register must not rewrite updated_at (read-only open /
+    # access race POST must not make Home show 「방금 전」).
     db.commit.assert_not_awaited()
+    db.flush.assert_not_awaited()
     await _drain_background_sync_tasks()
     sync.assert_awaited_once()
 

@@ -90,6 +90,54 @@ describe("fetchTeamverDaemon embed auth recovery", () => {
     expect(passiveUnauthorizedMock).toHaveBeenCalled();
   });
 
+  it("does not trip passive-auth when skipEmbedUnauthorizedNotify is set", async () => {
+    vi.useRealTimers();
+    const fetchMock = vi.fn().mockResolvedValue(new Response("unauthorized", { status: 401 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const resp = await fetchTeamverDaemon("/api/plugins/example-html-ppt/preview", {
+      skipEmbedAuthRecovery: true,
+      skipEmbedUnauthorizedNotify: true,
+      skipTeamverWorkspaceHeaders: true,
+    });
+
+    expect(resp.status).toBe(401);
+    expect(refreshMock).not.toHaveBeenCalled();
+    expect(passiveUnauthorizedMock).not.toHaveBeenCalled();
+  });
+
+  it("does not share in-flight GETs across auth-recovery policies", async () => {
+    vi.useRealTimers();
+    let resolveThumb!: (value: Response) => void;
+    const fetchMock = vi.fn()
+      .mockImplementationOnce(
+        () => new Promise<Response>((resolve) => {
+          resolveThumb = resolve;
+        }),
+      )
+      .mockResolvedValue(new Response("<!doctype html><html></html>", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const thumb = fetchTeamverDaemon("/api/plugins/deck-a/preview", {
+      skipEmbedAuthRecovery: true,
+      skipEmbedUnauthorizedNotify: true,
+      skipTeamverWorkspaceHeaders: true,
+    });
+    // Same URL, different auth policy — must not await the thumb's 401 promise.
+    const detail = fetchTeamverDaemon("/api/plugins/deck-a/preview");
+
+    for (let i = 0; i < 20 && fetchMock.mock.calls.length < 2; i += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    expect(fetchMock.mock.calls.length).toBeGreaterThanOrEqual(2);
+
+    resolveThumb(new Response(JSON.stringify({ detail: "session_expired" }), { status: 401 }));
+    const [thumbResp, detailResp] = await Promise.all([thumb, detail]);
+    expect(thumbResp.status).toBe(401);
+    expect(detailResp.status).toBe(200);
+    expect(passiveUnauthorizedMock).not.toHaveBeenCalled();
+  });
+
   it("retries artifact save once after refresh recovers an expired session", async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(new Response("unauthorized", { status: 401 }))
@@ -246,7 +294,7 @@ describe("fetchTeamverDaemon embed auth recovery", () => {
     expect(passiveUnauthorizedMock).not.toHaveBeenCalled();
   });
 
-  it("fail-fasts sticky GET/HEAD without hitting nginx", async () => {
+  it("fail-fasts sticky GET/HEAD without hitting nginx when recovery is skipped", async () => {
     declinedMock.mockReturnValue(true);
     hardDeclineMock.mockReturnValue(false);
     const fetchMock = vi.fn(async () => new Response("unauthorized", { status: 401 }));
@@ -254,6 +302,7 @@ describe("fetchTeamverDaemon embed auth recovery", () => {
 
     const resp = await fetchTeamverDaemon("/api/projects/project-1/files?name=deck.html", {
       method: "GET",
+      skipEmbedAuthRecovery: true,
     });
 
     expect(resp.status).toBe(401);
@@ -263,6 +312,23 @@ describe("fetchTeamverDaemon embed auth recovery", () => {
     expect(probeSessionMock).not.toHaveBeenCalled();
     expect(ensureSessionMock).not.toHaveBeenCalled();
     expect(passiveUnauthorizedMock).not.toHaveBeenCalled();
+  });
+
+  it("does not fail-fast sticky GET when auth recovery is allowed (Home chip)", async () => {
+    declinedMock.mockReturnValue(false);
+    hardDeclineMock.mockReturnValue(false);
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ id: "example-simple-deck" }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const resp = await fetchTeamverDaemon("/api/plugins/example-simple-deck", {
+      method: "GET",
+    });
+
+    expect(resp.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalled();
   });
 
   it("skips recovery ladder when hard sticky already declined", async () => {

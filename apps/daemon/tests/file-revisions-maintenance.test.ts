@@ -44,7 +44,7 @@ describe('file-revisions maintenance', () => {
     const revisionsDir = path.join(projectDir, '.od', 'revisions', 'deck.html');
     await mkdir(revisionsDir, { recursive: true });
 
-    for (let sequence = 1; sequence <= 4; sequence += 1) {
+    for (let sequence = 1; sequence <= 10; sequence += 1) {
       const id = `rev-${sequence}`;
       insertFileRevision(db, {
         id,
@@ -70,10 +70,10 @@ describe('file-revisions maintenance', () => {
       vacuumSqlite: false,
     });
 
-    expect(result.retentionRevisionsPruned).toBe(2);
+    expect(result.retentionRevisionsPruned).toBe(5);
     expect(result.orphanFilesRemoved).toBe(1);
     const stats = await collectFileRevisionStorageStats(db);
-    expect(stats.snapshotRowCount).toBe(2);
+    expect(stats.snapshotRowCount).toBe(5);
   });
 
   it('global byte budget pruning removes oldest revisions first', async () => {

@@ -100,7 +100,7 @@ async function buildApiAttachmentContext(
     }
     if (remaining <= 0) {
       blocks.push(
-        '[Open Design omitted remaining attached files because the attachment context budget was exhausted.]',
+        '[Attachment context omitted remaining attached files because the attachment context budget was exhausted.]',
       );
       break;
     }
@@ -129,8 +129,9 @@ async function renderApiAttachmentBlock(
   budget: number,
   order: number,
 ): Promise<{ text: string; charsUsed: number } | null> {
-  const path = file?.path ?? file?.name ?? attachment.path;
-  const name = file?.name ?? attachment.name;
+  const path = (file?.path ?? file?.name ?? attachment.path).trim();
+  // Heading identity must be the on-disk path — never a friendlier display name.
+  const basename = path.split('/').pop() || path || attachment.name;
   const kind = file?.kind ?? inferProjectFileKind(path);
   const size = file?.size ?? attachment.size;
   const meta = [
@@ -151,7 +152,9 @@ async function renderApiAttachmentBlock(
       cacheBustKey: file?.mtime,
     });
     if (text) {
-      body = clipAttachmentText(text, maxContentChars);
+      body = clipAttachmentText(text, maxContentChars, {
+        preferHtmlBody: kind === 'html' || /\.html?$/i.test(path),
+      });
       language = codeFenceLanguage(path);
     }
   } else if (maxContentChars > 0 && API_ATTACHMENT_PREVIEW_KINDS.has(kind)) {
@@ -164,7 +167,15 @@ async function renderApiAttachmentBlock(
     if (previewText) body = clipAttachmentText(previewText, maxContentChars);
   }
 
-  const lines = ['', `### Attachment ${order}: ${name}`, meta];
+  const lines = ['', `### Attachment ${order}: ${basename}`, meta];
+  if (
+    (attachment.kind === 'image' || kind === 'image' || isAnthropicSupportedImagePath(path))
+    && /\.(png|jpe?g|gif|webp|avif|svg)$/i.test(path)
+  ) {
+    lines.push(
+      `When embedding this image in a slide deck, use the exact project-relative path: <img src="${path}" alt="">.`,
+    );
+  }
   if (body) {
     lines.push('```' + language);
     lines.push(escapeMarkdownFence(body));
@@ -190,8 +201,12 @@ function renderNativeImagePathBlock(
   order: number,
 ): { text: string; charsUsed: number } | null {
   const path = (file?.path ?? file?.name ?? attachment.path).trim();
-  const name = (file?.name ?? attachment.name).trim() || path;
   if (!path) return null;
+  // Identity for model prompts MUST be the on-disk path, not a human display
+  // name. Local uploads store `<timestamp>-<sanitized>` while ChatAttachment.name
+  // historically carried originalName — advertising that as heading/alt caused
+  // models to emit broken <img src>.
+  const basename = path.split('/').pop() || path;
   const size = file?.size ?? attachment.size;
   const meta = [
     `path: ${path}`,
@@ -200,9 +215,9 @@ function renderNativeImagePathBlock(
   ].join(' | ');
   const text = [
     '',
-    `### Attachment ${order}: ${name}`,
+    `### Attachment ${order}: ${basename}`,
     meta,
-    `Vision pixels for this file are sent as a native image block. When embedding it in a slide deck, use the exact project-relative path in HTML: <img src="${path}" alt="${name}">. Do not invent URLs or data: URIs.`,
+    `Vision pixels for this file are sent as a native image block. When embedding it in a slide deck, use the exact project-relative path in HTML: <img src="${path}" alt="">. Do not invent URLs, data: URIs, or friendlier filenames.`,
   ].join('\n');
   return { text, charsUsed: text.length };
 }
@@ -237,10 +252,38 @@ function inferProjectFileKind(name: string): ProjectFileKind {
   return 'binary';
 }
 
-function clipAttachmentText(text: string, maxChars: number): string {
+/**
+ * Truncate attachment text for API context.
+ * For large HTML decks, prefer keeping `<body>` / slide sections over a mid-CSS
+ * head clip — prefix-only truncation historically anchored models into rewriting
+ * truncated kit CSS until max_tokens with only `<head>`.
+ */
+export function clipAttachmentText(
+  text: string,
+  maxChars: number,
+  options?: { preferHtmlBody?: boolean },
+): string {
   if (text.length <= maxChars) return text;
-  const omitted = text.length - maxChars;
-  return `${text.slice(0, maxChars)}\n\n[Open Design truncated ${omitted} chars from this attachment before sending it to the API provider.]`;
+  const omittedTotal = text.length - maxChars;
+  if (options?.preferHtmlBody) {
+    const bodyIdx = text.search(/<body\b/i);
+    const sectionIdx = text.search(/<section\b[^>]*\bclass=(["'])[^"']*\bslide\b[^"']*\1/i);
+    const contentStart = bodyIdx >= 0 ? bodyIdx : sectionIdx;
+    if (contentStart >= 0) {
+      const headBudget = Math.min(2_400, Math.max(400, Math.floor(maxChars * 0.12)));
+      const head = text.slice(0, Math.min(headBudget, contentStart));
+      const marker = '\n\n<!-- …omitted mid-document kit CSS/SVG… -->\n\n';
+      const bodyBudget = Math.max(0, maxChars - head.length - marker.length - 120);
+      const body = text.slice(contentStart, contentStart + bodyBudget);
+      const omitted = Math.max(0, text.length - head.length - body.length);
+      return (
+        `${head}${marker}${body}\n\n`
+        + `[Attachment context truncated ${omitted} chars from this attachment before sending it to the API provider `
+        + `(kept document head prefix + body/slides; omitted mid kit CSS).]`
+      );
+    }
+  }
+  return `${text.slice(0, maxChars)}\n\n[Attachment context truncated ${omittedTotal} chars from this attachment before sending it to the API provider.]`;
 }
 
 function escapeMarkdownFence(text: string): string {

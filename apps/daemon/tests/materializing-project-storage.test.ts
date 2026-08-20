@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile, mkdir } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile, mkdir, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -13,6 +13,7 @@ import { resolveProjectStorageLayout } from '../src/storage/project-storage-layo
 import { createProjectMaterializationRuntime } from '../src/storage/project-materialization-runtime.js';
 import { TenantScopedProjectStorage } from '../src/storage/tenant-scoped-project-storage.js';
 import { fetchTeamverProjectS3Prefix } from '../src/storage/teamver-project-storage-meta.js';
+import { PROJECT_DELETED_RELPATHS_MANIFEST } from '../src/project-deleted-relpaths.js';
 
 async function waitForRemoteFile(
   storage: LocalProjectStorage,
@@ -104,6 +105,38 @@ describe('MaterializingProjectStorage', () => {
     expect(down.files).toBe(1);
     const local = await storage.readFile('p1', 'index.html');
     expect(local.toString('utf8')).toBe('<h1>remote</h1>');
+  });
+
+  it('sync-up with runStart=0 skips unchanged remote files to preserve S3 mtimes', async () => {
+    scratchRoot = await mkdtemp(path.join(tmpdir(), 'od-scratch-skip-unchanged-'));
+    remoteRoot = await mkdtemp(path.join(tmpdir(), 'od-remote-skip-unchanged-'));
+    const remoteDir = path.join(remoteRoot, 'p1');
+    await mkdir(remoteDir, { recursive: true });
+    const oldFile = path.join(remoteDir, 'old.png');
+    const newFile = path.join(remoteDir, 'new.png');
+    await writeFile(oldFile, Buffer.alloc(100, 1));
+    await writeFile(newFile, Buffer.alloc(50, 2));
+    const oldMtimeMs = Date.now() - 3_600_000;
+    const { utimes } = await import('node:fs/promises');
+    await utimes(oldFile, oldMtimeMs / 1000, oldMtimeMs / 1000);
+    await utimes(newFile, oldMtimeMs / 1000, oldMtimeMs / 1000);
+
+    const storage = new MaterializingProjectStorage(
+      new LocalProjectStorage(scratchRoot),
+      new LocalProjectStorage(remoteRoot),
+    );
+    const remote = storage.flatRemote();
+    await storage.syncDown('p1', remote);
+
+    const freshPng = Buffer.alloc(80, 3);
+    await storage.writeFile('p1', 'fresh.png', freshPng);
+
+    const up = await storage.syncUp('p1', remote, 0);
+    expect(up.uploaded).toBe(1);
+    expect(up.skipped).toBe(2);
+
+    const oldStat = await stat(oldFile);
+    expect(oldStat.mtimeMs).toBeLessThan(Date.now() - 3_000_000);
   });
 
   it('sync-down preserves remote mtime so unchanged files skip run-end sync-up', async () => {
@@ -371,6 +404,32 @@ describe('MaterializingProjectStorage', () => {
       if (previousPurge === undefined) delete process.env.OD_S3_PURGE_ON_DELETE;
       else process.env.OD_S3_PURGE_ON_DELETE = previousPurge;
     }
+  });
+
+  it('sync-down skips tombstoned remote files so deleted files do not reappear', async () => {
+    scratchRoot = await mkdtemp(path.join(tmpdir(), 'od-scratch-'));
+    remoteRoot = await mkdtemp(path.join(tmpdir(), 'od-remote-'));
+
+    const storage = new MaterializingProjectStorage(
+      new LocalProjectStorage(scratchRoot),
+      new LocalProjectStorage(remoteRoot),
+    );
+    const remote = storage.flatRemote();
+    const remoteStore = new LocalProjectStorage(remoteRoot);
+
+    await remoteStore.writeFile('p1', 'deleted.png', Buffer.from('png'));
+    await remoteStore.writeFile('p1', 'keep.html', Buffer.from('<html></html>'));
+    await mkdir(path.join(scratchRoot, 'p1', '.od'), { recursive: true });
+    await writeFile(
+      path.join(scratchRoot, 'p1', PROJECT_DELETED_RELPATHS_MANIFEST),
+      JSON.stringify({ version: 1, paths: ['deleted.png'] }),
+      'utf8',
+    );
+
+    const down = await storage.syncDown('p1', remote);
+    expect(down.files).toBe(1);
+    await expect(storage.statFile('p1', 'keep.html')).resolves.not.toBeNull();
+    await expect(storage.statFile('p1', 'deleted.png')).resolves.toBeNull();
   });
 });
 

@@ -1,20 +1,26 @@
 import { useMemo } from 'react';
 
 interface Props {
+  // undefined = not requested / in flight; null = failed or empty; string = body.
   source: string | null | undefined;
   loading?: boolean;
   loadingLabel: string;
+  /** Shown when source is null (fetch failed / empty). Defaults to loadingLabel. */
+  emptyLabel?: string;
 }
 
 // Render a DESIGN.md as a lightly syntax-coloured monospace source view —
 // the right-hand panel of the preview modal, mirroring the layout used by
 // styles.refero.design where the rendered showcase sits next to the spec
 // text. Highlights are CSS-class only; no innerHTML for untrusted text.
-export function DesignSpecView({ source, loading, loadingLabel }: Props) {
+export function DesignSpecView({ source, loading, loadingLabel, emptyLabel }: Props) {
   const lines = useMemo(() => (source ? source.split(/\r?\n/) : []), [source]);
 
-  if (loading || source === undefined || source === null) {
+  if (loading || source === undefined) {
     return <div className="design-spec-empty">{loadingLabel}</div>;
+  }
+  if (source === null) {
+    return <div className="design-spec-empty">{emptyLabel ?? loadingLabel}</div>;
   }
 
   return (

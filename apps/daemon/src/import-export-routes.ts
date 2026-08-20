@@ -1,9 +1,10 @@
 import type { Express, Request } from 'express';
 import {
   PROJECT_EXPORT_MANIFEST_SCHEMA,
-  injectDeckHtmlExportViewportScript,
-  patchArtifactDeckPrintCss,
+  buildStandaloneDeckHtmlDocument,
+  healDeckHtmlForStandaloneExport,
 } from '@open-design/contracts';
+import { mergeOfficialTemplateLookForExport } from './official-deck-look-export.js';
 import fs from 'node:fs';
 import nodePath from 'node:path';
 import os from 'node:os';
@@ -21,8 +22,6 @@ import { parseOrchestratorWorkspace } from './workspace-contract.js';
 import type { ProjectStorageAccessHooks } from './storage/lazy-project-materialization.js';
 import { isTeamverDesignManaged } from './teamver-project-access.js';
 import {
-  buildDeckHtmlExportScreenCss,
-  buildDeckHtmlExportStaticRevealScript,
   isHeadlessChromiumUnavailableExportError,
   renderHeadlessHtmlSnapshot,
   renderHeadlessDeckImages,
@@ -56,6 +55,7 @@ import {
   putExportOffloadObject,
 } from './export-offload-store.js';
 import { readTeamverIdentityFromRequest } from './teamver-project-access.js';
+import { warmExportRelativeAssets } from './pdf-export.js';
 
 export interface RegisterImportRoutesDeps extends RouteDeps<'db' | 'http' | 'uploads' | 'node' | 'ids' | 'paths' | 'imports' | 'auth' | 'projectStore' | 'conversations' | 'projectFiles' | 'validation'> {
   projectStorageHooks?: ProjectStorageAccessHooks | null;
@@ -139,6 +139,26 @@ export function readInlineHtmlFromBody(
   const raw = (body as Record<string, unknown>)['html'];
   if (typeof raw !== 'string') return null;
   return raw.trim().length > 0 ? raw : null;
+}
+
+/**
+ * Inline-HTML export skips full S3 sync-down so a transient `/access` deny
+ * cannot gate downloads. Still point-get relative imgs (refs/drive/, root
+ * uploads) into scratch with the caller's identity before Chromium fetches
+ * `/raw/…` without Teamver JWT headers.
+ */
+async function warmInlineExportAssets(
+  req: Request,
+  projectId: string,
+  html: string | undefined,
+  hooks: ProjectStorageAccessHooks | null | undefined,
+): Promise<void> {
+  if (!hooks || !html || !html.trim()) return;
+  await warmExportRelativeAssets({
+    html,
+    projectId,
+    ensureFileAvailable: (id, relpath) => hooks.ensureFileAvailable(req, id, relpath),
+  });
 }
 
 function wantsFreshExport(req: {
@@ -403,22 +423,8 @@ function injectExportSnippetBeforeBodyClose(html: string, snippet: string): stri
 }
 
 export function buildStaticHtmlExportFallback(input: { html: string; deck?: boolean }): string {
-  if (input.deck !== true) return input.html;
-  const cleaned = patchArtifactDeckPrintCss(input.html);
-  const style = `<style data-teamver-static-html-export-fallback>
-html, body {
-  margin: 0 !important;
-  scrollbar-width: none !important;
-  -webkit-print-color-adjust: exact !important;
-  print-color-adjust: exact !important;
-}
-*::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }
-${buildDeckHtmlExportScreenCss()}
-</style>`;
-  const revealScript = `<script data-od-html-export-reveal>${buildDeckHtmlExportStaticRevealScript()}</script>`;
-  const withHead = injectExportSnippetIntoHead(cleaned, style);
-  const withReveal = injectExportSnippetBeforeBodyClose(withHead, revealScript);
-  return injectDeckHtmlExportViewportScript(withReveal);
+  if (input.deck !== true) return healDeckHtmlForStandaloneExport(input.html);
+  return buildStandaloneDeckHtmlDocument(input.html);
 }
 
 export { isHeadlessChromiumUnavailableExportError } from './headless-export.js';
@@ -841,7 +847,9 @@ export function registerImportRoutes(app: Express, ctx: RegisterImportRoutesDeps
 
 }
 
-export interface RegisterProjectExportRoutesDeps extends RouteDeps<'db' | 'http' | 'paths' | 'projectStore' | 'exports' | 'projectFiles' | 'validation'> {}
+export interface RegisterProjectExportRoutesDeps extends RouteDeps<'db' | 'http' | 'paths' | 'projectStore' | 'exports' | 'projectFiles' | 'validation'> {
+  projectStorageHooks?: ProjectStorageAccessHooks | null;
+}
 
 export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectExportRoutesDeps) {
   const { db } = ctx;
@@ -858,6 +866,23 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
     daemonUrlRef,
     sanitizeArchiveFilename,
   } = ctx.exports;
+  const projectStorageHooks = ctx.projectStorageHooks;
+
+  async function applyOfficialTemplateLookToBuilt(
+    projectId: string,
+    built: Awaited<ReturnType<typeof buildDesktopPdfExportInput>>,
+    body: Record<string, unknown> | undefined,
+  ) {
+    const project = getProject(db, projectId);
+    const templateId = typeof body?.templateId === 'string' ? body.templateId : null;
+    built.input.html = await mergeOfficialTemplateLookForExport({
+      db,
+      html: built.input.html,
+      metadata: project?.metadata,
+      templateId,
+    });
+    return built;
+  }
   // Streams a ZIP of the project's on-disk tree so the "Download as .zip"
   // share menu can hand the user the actual files they uploaded — e.g. the
   // imported `ui-design/` folder — instead of a one-file snapshot of the
@@ -1054,6 +1079,13 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
         title: typeof title === 'string' ? title : undefined,
         ...(inlineHtml ? { inlineHtml } : {}),
       });
+      await applyOfficialTemplateLookToBuilt(req.params.id, built, req.body);
+      await warmInlineExportAssets(
+        req,
+        req.params.id,
+        built.input.html,
+        projectStorageHooks,
+      );
       if (typeof desktopPdfExporter === 'function') {
         const result = await desktopPdfExporter(built.input);
         res.json(result);
@@ -1118,6 +1150,13 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
         title: typeof title === 'string' ? title : undefined,
         ...(inlineHtml ? { inlineHtml } : {}),
       });
+      await applyOfficialTemplateLookToBuilt(req.params.id, built, req.body);
+      await warmInlineExportAssets(
+        req,
+        req.params.id,
+        built.input.html,
+        projectStorageHooks,
+      );
       const extension =
         imageFormat === 'jpeg' ? 'jpg' : imageFormat === 'webp' ? 'webp' : 'png';
       const base = built.input.defaultFilename.replace(/\.pdf$/i, '') || 'artifact';
@@ -1184,6 +1223,13 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
         title: typeof title === 'string' ? title : undefined,
         ...(inlineHtml ? { inlineHtml } : {}),
       });
+      await applyOfficialTemplateLookToBuilt(req.params.id, built, req.body);
+      await warmInlineExportAssets(
+        req,
+        req.params.id,
+        built.input.html,
+        projectStorageHooks,
+      );
       const base = built.input.defaultFilename.replace(/\.pdf$/i, '') || 'artifact';
       const filename = `${base}.pptx`;
       const mime = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
@@ -1251,6 +1297,13 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
         title: typeof title === 'string' ? title : undefined,
         ...(inlineHtml ? { inlineHtml } : {}),
       });
+      await applyOfficialTemplateLookToBuilt(req.params.id, built, req.body);
+      await warmInlineExportAssets(
+        req,
+        req.params.id,
+        built.input.html,
+        projectStorageHooks,
+      );
       const base = built.input.defaultFilename.replace(/\.pdf$/i, '') || 'artifact';
       const outcome = await runCachedExport(
         { format: 'html', deck: deck === true, projectId: req.params.id },
@@ -1314,6 +1367,13 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
         title: typeof title === 'string' ? title : undefined,
         ...(inlineHtml ? { inlineHtml } : {}),
       });
+      await applyOfficialTemplateLookToBuilt(req.params.id, built, req.body);
+      await warmInlineExportAssets(
+        req,
+        req.params.id,
+        built.input.html,
+        projectStorageHooks,
+      );
       const base = built.input.defaultFilename.replace(/\.pdf$/i, '') || 'artifact';
       const outcome = await runCachedExport(
         { format: 'zip', deck: deck === true, projectId: req.params.id },

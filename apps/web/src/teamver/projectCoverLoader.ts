@@ -5,26 +5,55 @@ import { isTeamverEmbedMode } from "./designApiBase";
 import { fetchProjectCoverHints, projectCoverFileFromHint } from "./projectCoverHints";
 import { PROJECT_LIST_VIEWPORT_BATCH } from "./projectListLimits";
 import { pickProjectCoverFile, type ProjectCoverFile } from "./projectPreviewFile";
+import { clearHtmlCoverCacheForProject } from "./htmlCoverCacheStore";
 import { isTeamverEmbedDesignSurfaceEnabled } from "./teamverDesignAccess";
 
 const COVER_FETCH_CACHE_MS = 60_000;
 const DEFAULT_COVER_FETCH_CONCURRENCY = 4;
+/** Cap concurrent `/files` fallbacks so visible-card resolve cannot stampede. */
+const FILES_FALLBACK_CONCURRENCY = 3;
+let filesFallbackActive = 0;
+const filesFallbackWaiters: Array<() => void> = [];
+
+async function withFilesFallbackSlot<T>(run: () => Promise<T>): Promise<T> {
+  if (filesFallbackActive >= FILES_FALLBACK_CONCURRENCY) {
+    await new Promise<void>((resolve) => {
+      filesFallbackWaiters.push(resolve);
+    });
+  }
+  filesFallbackActive += 1;
+  try {
+    return await run();
+  } finally {
+    filesFallbackActive -= 1;
+    const next = filesFallbackWaiters.shift();
+    if (next) next();
+  }
+}
 
 export type ResolveProjectCoverOptions = {
   /** When false, stop after cover-hints/metadata — skip full `/files` listing. */
   allowFilesFallback?: boolean;
 };
 
-/** Embed project list cards — cover-hints + metadata only; no per-card `/files` listing. */
+/** Embed warm/prefetch may stay hints-only; visible cards still use `/files` fallback. */
 export function embedProjectCoverHintsOnly(): boolean {
   return isTeamverEmbedMode() && isTeamverEmbedDesignSurfaceEnabled();
 }
 
+/**
+ * Warm / first-viewport cover-hints batch — no `/files` fan-out.
+ * Visible DesignsTab thumbs must NOT use this (see `useLazyProjectCover`).
+ */
 export function resolveProjectCoverOptionsForListSurface(): ResolveProjectCoverOptions {
   return embedProjectCoverHintsOnly() ? { allowFilesFallback: false } : {};
 }
 
-/** Home recent rail — bounded at HOME_RECENT_LIST_LIMIT; may use /files when hints miss. */
+/**
+ * Home recent rail — bounded at HOME_RECENT_LIST_LIMIT.
+ * Always allow `/files` after hints miss so thumbs stay painted when cover-hints
+ * are empty/fail. Concurrency is capped by HOME_COVER_FETCH_CONCURRENCY.
+ */
 export function resolveProjectCoverOptionsForHomeSurface(): ResolveProjectCoverOptions {
   return { allowFilesFallback: true };
 }
@@ -55,7 +84,40 @@ function markHintsChecked(ids: string[]): void {
 /** True when project card cover cannot be resolved from metadata alone. */
 export function projectNeedsCoverFileFetch(project: Project): boolean {
   if (isDesignSystemProject(project)) return true;
-  return !project.metadata?.entryFile;
+  const entry = project.metadata?.entryFile?.trim();
+  if (!entry) return true;
+  const isDeckProject =
+    project.metadata?.kind === "deck" || project.metadata?.skipDiscoveryBrief === true;
+  // Deck HTML covers always fetch cover-hints for `coverVersion` cache-busting
+  // (trusted entryFile alone yields a stale path-stable thumb after edits).
+  // Bad Canvas entry pins also re-resolve so deck*.html can win.
+  if (isDeckProject && /\.html?$/i.test(entry)) {
+    return true;
+  }
+  return false;
+}
+
+type ProjectCoverClearListener = (projectId: string | null) => void;
+const projectCoverClearListeners = new Set<ProjectCoverClearListener>();
+
+/** Subscribe to cover-cache clears so list cards can drop stale overrides. */
+export function subscribeProjectCoverClear(
+  listener: ProjectCoverClearListener,
+): () => void {
+  projectCoverClearListeners.add(listener);
+  return () => {
+    projectCoverClearListeners.delete(listener);
+  };
+}
+
+function notifyProjectCoverClear(projectId: string | null): void {
+  for (const listener of projectCoverClearListeners) {
+    try {
+      listener(projectId);
+    } catch {
+      // Listener failures must not break cache maintenance.
+    }
+  }
 }
 
 export function clearProjectCoverCache(projectId?: string): void {
@@ -65,6 +127,8 @@ export function clearProjectCoverCache(projectId?: string): void {
     inflight.delete(id);
     pendingHintIds.delete(id);
     hintCheckedAt.delete(id);
+    clearHtmlCoverCacheForProject(id);
+    notifyProjectCoverClear(id);
     return;
   }
   coverCache.clear();
@@ -72,6 +136,8 @@ export function clearProjectCoverCache(projectId?: string): void {
   pendingHintIds.clear();
   hintCheckedAt.clear();
   activeHintBatch = null;
+  clearHtmlCoverCacheForProject();
+  notifyProjectCoverClear(null);
 }
 
 /** Apply batch cover-hints (metadata / shallow scan) without listing all files. */
@@ -97,6 +163,13 @@ export function seedProjectCoverHints(covers: Record<string, ProjectCoverFile | 
  * (max PROJECT_LIST_VIEWPORT_BATCH per HTTP). Prefetch + lazy resolve share
  * the same queue so warmEmbed cannot double-hit /cover-hints.
  */
+function coverHintCacheFresh(cached: CoverCacheEntry | undefined): boolean {
+  if (!cached) return false;
+  if (Date.now() - cached.at >= COVER_FETCH_CACHE_MS) return false;
+  // Positive cover or an explicit hints-only miss both count as "already hinted".
+  return Boolean(cached.cover) || Boolean(cached.hintsOnlyMiss);
+}
+
 export async function prefetchProjectCoverHintsForProjects(
   projects: Project[],
 ): Promise<void> {
@@ -104,22 +177,17 @@ export async function prefetchProjectCoverHintsForProjects(
     if (!projectNeedsCoverFileFetch(project)) continue;
     const id = project.id.trim();
     if (!id || hintsCheckedRecently(id)) continue;
-    const cached = coverCache.get(id);
-    if (cached?.cover && Date.now() - cached.at < COVER_FETCH_CACHE_MS) continue;
+    if (coverHintCacheFresh(coverCache.get(id))) continue;
     pendingHintIds.add(id);
   }
   if (pendingHintIds.size === 0) return;
   await ensureCoverHintBatch();
 }
 
-function seedPositiveCoverHints(hints: Record<string, ProjectCoverFile | null>): void {
-  const positive: Record<string, ProjectCoverFile | null> = {};
-  for (const [projectId, cover] of Object.entries(hints)) {
-    if (cover) positive[projectId] = cover;
-  }
-  if (Object.keys(positive).length > 0) {
-    seedProjectCoverHints(positive);
-  }
+/** Seed batch results including null → hintsOnlyMiss (avoids ambiguous cache gaps). */
+function seedCoverHintResults(hints: Record<string, ProjectCoverFile | null>): void {
+  if (Object.keys(hints).length === 0) return;
+  seedProjectCoverHints(hints);
 }
 
 async function drainCoverHintBatch(): Promise<void> {
@@ -127,8 +195,7 @@ async function drainCoverHintBatch(): Promise<void> {
     const missing = [...pendingHintIds]
       .filter((id) => {
         if (hintsCheckedRecently(id)) return false;
-        const cached = coverCache.get(id);
-        return !cached?.cover || Date.now() - cached.at >= COVER_FETCH_CACHE_MS;
+        return !coverHintCacheFresh(coverCache.get(id));
       })
       .slice(0, PROJECT_LIST_VIEWPORT_BATCH);
     for (const id of missing) {
@@ -141,7 +208,7 @@ async function drainCoverHintBatch(): Promise<void> {
 
     const hints = await fetchProjectCoverHints(missing);
     markHintsChecked(missing);
-    seedPositiveCoverHints(
+    seedCoverHintResults(
       Object.fromEntries(
         missing.map((id) => [id, hints[id] ? projectCoverFileFromHint(hints[id]!) : null] as const),
       ),
@@ -175,6 +242,8 @@ function projectCoverFileEqual(
 /** @internal vitest only */
 export function resetProjectCoverLoaderStateForTests(): void {
   clearProjectCoverCache();
+  filesFallbackActive = 0;
+  filesFallbackWaiters.length = 0;
 }
 
 export async function resolveProjectCoverFile(
@@ -215,10 +284,12 @@ export async function resolveProjectCoverFile(
         return null;
       }
 
-      const files = await fetchProjectFiles(id);
-      const cover = pickProjectCoverFile(project, files);
-      coverCache.set(id, { cover, at: Date.now(), hintsOnlyMiss: false });
-      return cover;
+      return withFilesFallbackSlot(async () => {
+        const files = await fetchProjectFiles(id);
+        const cover = pickProjectCoverFile(project, files);
+        coverCache.set(id, { cover, at: Date.now(), hintsOnlyMiss: false });
+        return cover;
+      });
     } catch {
       coverCache.set(id, { cover: null, at: Date.now(), hintsOnlyMiss: false });
       return null;

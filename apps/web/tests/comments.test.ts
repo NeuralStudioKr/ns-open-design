@@ -13,6 +13,9 @@ import {
   commentsToAttachments,
   dedupeCommentAttachments,
   historyWithCommentAttachmentContext,
+  hasUserTypedVisualAnnotationRequest,
+  shouldClientGraftVisualMarkWithoutAi,
+  isVisualMarkPlacementOnlyCommentAttachments,
   hydrateQueryContextCommentAttachments,
   elementPatchCoerceHintsFromCommentAttachments,
   isScreenshotOnlyVisualCommentTarget,
@@ -559,6 +562,38 @@ describe('preview comment attachment helpers', () => {
     expect(template).toContain('od-visual-mark-target');
   });
 
+  it('enforces a visible minimum width/height for tiny visual mark bounds', () => {
+    // A drawn box smaller than the min-touch target should still render at
+    // >=32px so users see the mark on-slide instead of a 1×1 invisible dot.
+    const style = formatVisualMarkPlacementStyle({ x: 5, y: 5, width: 4, height: 4 });
+    expect(style).toContain('width:32px');
+    expect(style).toContain('height:32px');
+    const normal = formatVisualMarkPlacementStyle({ x: 5, y: 5, width: 200, height: 120 });
+    expect(normal).toContain('width:200px');
+    expect(normal).toContain('height:120px');
+  });
+
+  it.each([
+    ['별 넣어줘', '<path d="M12 2'],
+    ['⭐ here', '<path d="M12 2'],
+    ['체크 표시', 'polyline points="4,12'],
+    ['빨간 동그라미', '<circle'],
+    ['화살표 이렇게', '<polyline points="14,6'],
+    ['x표 해줘', '<line x1="5" y1="5"'],
+  ])('renders a shape SVG for keyword "%s"', (note, fragment) => {
+    const template = buildConcreteDeckPatchTemplateForVisualMarks([
+      buildVisualAnnotationAttachment({
+        order: 1,
+        screenshotPath: 'uploads/drawing.png',
+        markKind: 'stroke',
+        note,
+        bounds: { x: 10, y: 20, width: 80, height: 80 },
+        slideIndex: 0,
+      }),
+    ]);
+    expect(template).toContain(fragment);
+  });
+
   it('keeps large queued board-note batches ordered in one send payload', () => {
     const notes = Array.from({ length: 8 }, (_, index) => `Note ${index + 1}`);
     const attachments = buildBoardCommentAttachments({
@@ -844,6 +879,59 @@ describe('preview comment attachment helpers', () => {
     expect(stripUserVisibleUserMessageText(prompt)).toBe("이 텍스트를 '안녕'으로 바꿔줘");
   });
 
+  it('strips active-workspace-context blocks from user-visible chat text', () => {
+    const prompt = [
+      '3번 슬라이드 제목만 짧게',
+      '',
+      '<active-workspace-context>',
+      'The currently focused workspace tab is the default context for this turn.',
+      '1. file: deck.html | path: deck.html',
+      '</active-workspace-context>',
+    ].join('\n');
+
+    expect(stripUserVisibleUserMessageText(prompt)).toBe('3번 슬라이드 제목만 짧게');
+  });
+
+  it('strips form-answers protocol headers and [value:] tokens from user-visible chat text', () => {
+    const prompt = [
+      '[form answers — discovery]',
+      '- 누가 이 발표를 보나요?: 신입사원',
+      '- 원하는 톤은 무엇인가요?: 전문적이고 깔끔하게 [value: professional]',
+    ].join('\n');
+
+    expect(stripUserVisibleUserMessageText(prompt)).toBe([
+      '- 누가 이 발표를 보나요?: 신입사원',
+      '- 원하는 톤은 무엇인가요?: 전문적이고 깔끔하게',
+    ].join('\n'));
+  });
+
+  it('strips web-fetch-context blocks from user-visible chat text', () => {
+    const prompt = [
+      '이 사이트 보고 3장만 만들어줘',
+      '',
+      '<web-fetch-context>',
+      'The public URL(s) mentioned in this user turn were already fetched.',
+      '### URL 1: https://teamver.com/',
+      '</web-fetch-context>',
+    ].join('\n');
+
+    expect(stripUserVisibleUserMessageText(prompt)).toBe('이 사이트 보고 3장만 만들어줘');
+  });
+
+  it('strips attached-project-files blocks from user-visible chat text', () => {
+    const prompt = [
+      '이 파일 참고해서 3장만 다듬어줘',
+      '',
+      '<attached-project-files>',
+      'These are user-attached project files in user-visible order.',
+      '[Attachment context omitted remaining attached files because the attachment context budget was exhausted.]',
+      '### Attachment 1: deck.html',
+      '</attached-project-files>',
+    ].join('\n');
+
+    expect(stripUserVisibleUserMessageText(prompt)).toBe('이 파일 참고해서 3장만 다듬어줘');
+  });
+
   it('strips hidden existing-deck edit directives from user-visible chat text', () => {
     const prompt = [
       '폰트 사이즈 두배로 키워줘',
@@ -854,6 +942,28 @@ describe('preview comment attachment helpers', () => {
     ].join('\n');
 
     expect(stripUserVisibleUserMessageText(prompt)).toBe('폰트 사이즈 두배로 키워줘');
+  });
+
+  it('strips Home/Canvas create scaffolding from user-visible chat text', () => {
+    const prompt = [
+      'expo에 대해서 설명하는 피피티 만들어줘. 시니어 개발자 레벨.',
+      '',
+      '[Deliverable instruction]',
+      'Create a complete closed deck.',
+      '',
+      '[Selected slide template]',
+      'The user picked "Html Ppt Zhangzara Daisy Days".',
+      '',
+      '[Source brief]',
+      'Canvas title: Expo',
+      '',
+      '[Quick settings]',
+      'Audience: 시니어 개발자.',
+    ].join('\n');
+
+    expect(stripUserVisibleUserMessageText(prompt)).toBe(
+      'expo에 대해서 설명하는 피피티 만들어줘. 시니어 개발자 레벨.',
+    );
   });
 
   it('builds set-style templates for style-only comment requests', () => {
@@ -945,10 +1055,8 @@ describe('preview comment attachment helpers', () => {
 
     expect(buildConcreteElementPatchTemplate([visualOnly])).toBeNull();
     expect(elementPatchCoerceHintsFromCommentAttachments([visualOnly])).toEqual([]);
-    expect(buildConcreteDeckPatchTemplateForVisualMarks([visualOnly])).toContain('type="deck-patch"');
-    expect(buildConcreteDeckPatchTemplateForVisualMarks([visualOnly])).toContain('data-slide-index="1"');
-    expect(buildConcreteDeckPatchTemplateForVisualMarks([visualOnly])).toContain('left:10px;top:20px;width:100px;height:40px');
-    expect(buildConcretePatchTemplatesForCommentAttachments([visualOnly])).toContain('type="deck-patch"');
+    expect(buildConcreteDeckPatchTemplateForVisualMarks([visualOnly])).toBeNull();
+    expect(buildConcretePatchTemplatesForCommentAttachments([visualOnly])).toBeNull();
 
     const visualWithRealTarget = buildVisualAnnotationAttachment({
       order: 1,
@@ -1091,7 +1199,7 @@ describe('preview comment attachment helpers', () => {
     expect(parsed[0]?.htmlHint).toBe('');
     expect(parsed[0]?.currentText).toBe('');
     expect(isScreenshotOnlyVisualCommentTarget(parsed[0]!)).toBe(true);
-    expect(buildConcreteDeckPatchTemplateForVisualMarks(parsed)).toContain('type="deck-patch"');
+    expect(buildConcreteDeckPatchTemplateForVisualMarks(parsed)).toBeNull();
   });
 
   it('does not render preview-comment context when target location data is missing', () => {
@@ -1156,6 +1264,100 @@ describe('queuedSlideNavTarget', () => {
     expect(
       queuedSlideNavTarget([commentAttachment({ slideIndex: 2.9 })]),
     ).toEqual({ filePath: 'deck.html', slideIndex: 2 });
+  });
+
+  it('builds box mark intent for memo-style annotations', () => {
+    const attachment = buildVisualAnnotationAttachment({
+      order: 1,
+      idSeed: 'box-1',
+      screenshotPath: '',
+      markKind: 'box',
+      note: 'Shrink this title',
+      bounds: { x: 40, y: 30, width: 200, height: 80 },
+      target: {
+        filePath: 'deck.html',
+        position: { x: 40, y: 30, width: 200, height: 80 },
+        slideIndex: 1,
+      },
+    });
+
+    expect(attachment.markKind).toBe('box');
+    expect(attachment.intent).toContain('red selection box');
+    expect(attachment.comment).toBe('Shrink this title');
+    expect(attachment.pagePosition).toEqual({ x: 40, y: 30, width: 200, height: 80 });
+    expect(attachment.slideIndex).toBe(1);
+    expect(hasUserTypedVisualAnnotationRequest(attachment)).toBe(true);
+  });
+
+  it('routes graft eligibility through shouldClientGraftVisualMarkWithoutAi', () => {
+    const placement = buildVisualAnnotationAttachment({
+      order: 1,
+      screenshotPath: 'uploads/drawing.png',
+      markKind: 'stroke',
+      note: '하트 넣어줘',
+      bounds: { x: 1, y: 2, width: 40, height: 40 },
+      slideIndex: 0,
+    });
+    const boxEdit = buildVisualAnnotationAttachment({
+      order: 2,
+      screenshotPath: 'drawing-1.png',
+      markKind: 'box',
+      note: '슬라이드 2 이 글씨들 더 크게',
+      bounds: { x: 40, y: 30, width: 200, height: 80 },
+      slideIndex: 1,
+    });
+    expect(shouldClientGraftVisualMarkWithoutAi(placement)).toBe(true);
+    expect(shouldClientGraftVisualMarkWithoutAi(boxEdit)).toBe(false);
+  });
+
+  it('detects placement-only batches for auto-continue routing', () => {
+    const placement = buildVisualAnnotationAttachment({
+      order: 1,
+      screenshotPath: 'uploads/drawing.png',
+      markKind: 'stroke',
+      note: '하트 넣어줘',
+      bounds: { x: 1, y: 2, width: 40, height: 40 },
+      slideIndex: 0,
+    });
+    const boxEdit = buildVisualAnnotationAttachment({
+      order: 2,
+      screenshotPath: 'drawing-1.png',
+      markKind: 'box',
+      note: '슬라이드 2 이 글씨들 더 크게',
+      bounds: { x: 40, y: 30, width: 200, height: 80 },
+      slideIndex: 1,
+    });
+    expect(isVisualMarkPlacementOnlyCommentAttachments([placement])).toBe(true);
+    expect(isVisualMarkPlacementOnlyCommentAttachments([boxEdit])).toBe(false);
+    expect(isVisualMarkPlacementOnlyCommentAttachments([placement, boxEdit])).toBe(false);
+  });
+
+  it('detects typed overlay notes even when intent field is missing', () => {
+    expect(
+      hasUserTypedVisualAnnotationRequest({
+        markKind: 'stroke',
+        comment: '슬라이드 2 이 글씨들 더 크게',
+      }),
+    ).toBe(true);
+    expect(
+      hasUserTypedVisualAnnotationRequest({
+        markKind: 'stroke',
+        comment:
+          'The screenshot has red strokes that identify the visual region the user wants changed. Treat the drawn ink as the intended shape or placement guide—not decoration. ADD the requested shape/icon inside that region; do NOT delete or clear the rest of the slide.',
+      }),
+    ).toBe(false);
+    expect(
+      hasUserTypedVisualAnnotationRequest({
+        markKind: 'stroke',
+        comment: '하트 넣어줘',
+      }),
+    ).toBe(false);
+    expect(
+      hasUserTypedVisualAnnotationRequest({
+        markKind: 'stroke',
+        comment: '이거 좀 봐줘',
+      }),
+    ).toBe(false);
   });
 
   it('returns null when nothing is slide-scoped', () => {

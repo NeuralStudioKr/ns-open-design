@@ -57,6 +57,202 @@ describe("agent-prose-sanitize SSOT", () => {
     expect(out).not.toContain("<section");
   });
 
+  it("strips Capsule motif pills and broken section CSS leaked into chat", () => {
+    const input = [
+      '<div style="position:absolute;border-radius:9999px;border:2px solid ',
+      "#1E1E1E;display:flex;align-items:center;justify-content:center;",
+      "font-family:'Space Grotesk',sans-serif;font-weight:700;",
+      'background:#C5B5E0;width:140px;height:60px;top:22%;right:10%">Nx</div>',
+      '<div style="position:absolute;border-radius:9999px;background:#8BB4F7">PNPM WS</div>',
+      "</div>",
+      "</section>-weight:700;margin-bottom:6px\">🔴 Git 성능 저하</div>",
+      '<div class="card" style="padding:24px 파이프라인 복잡도</div>',
+    ].join("\n");
+
+    expect(sanitizeAssistantProseForDisplay(input)).toBe("");
+    expect(
+      sanitizeAssistantProseForDisplay(`초안을 다듬는 중입니다.\n\n${input}`),
+    ).toBe("초안을 다듬는 중입니다.");
+    expect(
+      sanitizeAssistantProseForDisplay(
+        '진행.\n</section>-weight:700;margin-bottom:6px">🔴 Git 성능 저하</div>',
+      ),
+    ).toBe("진행.");
+  });
+
+  it("strips mid-style debris that starts with quoted font-family or flex props", () => {
+    const fontFamily = [
+      "align-items:center;justify-content:center;",
+      "font-family:'Space Grotesk',sans-serif;font-weight:700;",
+      'background:#C5B5E0;width:140px;height:60px;top:22%;right:10%">Nx</div>',
+    ].join("");
+    expect(sanitizeAssistantProseForDisplay(fontFamily)).toBe("");
+    expect(
+      sanitizeAssistantProseForDisplay(`초안을 다듬는 중입니다.\n\n${fontFamily}`),
+    ).toBe("초안을 다듬는 중입니다.");
+
+    const transform = 'transform:rotate(-8deg);border-radius:9999px;opacity:.8">PNPM WS</div>';
+    expect(sanitizeAssistantProseForDisplay(`진행.\n${transform}`)).toBe("진행.");
+  });
+
+  it("strips mid-style attribute debris that appears after reload", () => {
+    // Leading `<div style="…` was already stripped; history still has the
+    // truncated attribute body + label + closer (user report 2026-08-20).
+    const frag = [
+      "px;left:60px;font-size:28px;font-weight:700;color:",
+      '#7ECDC0;letter-spacing:3px;text-transform:uppercase">Senior Engineer Series</div>',
+    ].join("\n");
+    expect(sanitizeAssistantProseForDisplay(frag)).toBe("");
+    expect(
+      sanitizeAssistantProseForDisplay(`슬라이드 초안을 준비했습니다.\n\n${frag}`),
+    ).toBe("슬라이드 초안을 준비했습니다.");
+  });
+
+  it("strips Daisy badge span + motif comment + mid SVG CSS after reload", () => {
+    // User report 2026-08-20: Quicksand badge (border-radius:20px) +
+    // `<!-- Daisy motif TL -->` + truncated `.cls-3{…}</style>` survive reload.
+    const frag = [
+      '<span style="background:',
+      "#FDE68A;border:3px solid ",
+      "#2D2D2D;border-radius:20px;padding:10px 28px;font-size:24px;font-family:'Quicksand',sans-serif;font-weight:700;box-shadow:4px 4px 0 ",
+      '#2D2D2D">Internal Team</span>',
+      "</div>",
+      "<!-- Daisy motif TL -->none;stroke:",
+      "#232323;stroke-width:2.0745;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:10;}.cls-3{fill:",
+      "#FFFFFF;stroke:",
+      "#232323;stroke-width:2.0745;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:10;}</style>",
+    ].join("\n");
+    expect(sanitizeAssistantProseForDisplay(frag)).toBe("");
+    expect(
+      sanitizeAssistantProseForDisplay(`슬라이드 초안을 준비했습니다.\n\n${frag}`),
+    ).toBe("슬라이드 초안을 준비했습니다.");
+
+    const cssOnly = [
+      "none;stroke:",
+      "#232323;stroke-width:2.0745;stroke-linecap:round;}.cls-3{fill:#FFFFFF;}</style>",
+    ].join("\n");
+    expect(sanitizeAssistantProseForDisplay(`진행.\n${cssOnly}`)).toBe("진행.");
+    // Reload can cut before `</style>` (user report fragment ending at stroke-width).
+    const cssOnlyNoClose = ["none;stroke:", "#232323;stroke-width:2.0"].join("\n");
+    expect(sanitizeAssistantProseForDisplay(`진행.\n${cssOnlyNoClose}`)).toBe("진행.");
+    expect(
+      sanitizeAssistantProseForDisplay("진행.\n<!-- Daisy motif TL -->\n<style>.cls-1{}</style>"),
+    ).toBe("진행.");
+  });
+
+  it("strips Daisy SVG / deco-class shells leaked into chat", () => {
+    const svgLeak = [
+      '<svg class="deco-daisy" viewBox="0 0 180 180" style="position:absolute;top:8%;right:6%">',
+      '<path d="M90 20 C110 40 110 60 90 80 C70 60 70 40 90 20 Z"></path>',
+      "</svg>",
+    ].join("\n");
+    expect(sanitizeAssistantProseForDisplay(svgLeak)).toBe("");
+    expect(sanitizeAssistantProseForDisplay(`초안을 다듬는 중입니다.\n\n${svgLeak}`)).toBe(
+      "초안을 다듬는 중입니다.",
+    );
+
+    const decoShell = '<div class="deco-daisy">\n<svg viewBox="0 0 100 100">';
+    expect(sanitizeAssistantProseForDisplay(`진행.\n${decoShell}`)).toBe("진행.");
+
+    const pathOnly = '<path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/>';
+    expect(sanitizeAssistantProseForDisplay(`장식 넣는 중.\n${pathOnly}`)).toBe("장식 넣는 중.");
+
+    const primitives = [
+      '<circle cx="90" cy="90" r="40" fill="#7ECDC0"/>',
+      '<rect x="8" y="12" width="160" height="40" rx="20"/>',
+      '<g class="deco-dots"><ellipse cx="20" cy="20" rx="6" ry="6"/></g>',
+    ].join("\n");
+    expect(sanitizeAssistantProseForDisplay(`도형 넣는 중.\n${primitives}`)).toBe("도형 넣는 중.");
+
+    const svgText = [
+      '<text x="24" y="48" font-size="28">Nx</text>',
+      '<tspan dx="4">WS</tspan>',
+      '</svg>',
+    ].join("\n");
+    expect(sanitizeAssistantProseForDisplay(`라벨 넣는 중.\n${svgText}`)).toBe("라벨 넣는 중.");
+  });
+
+  it("strips @keyframes / <style> motif dumps leaked after prose", () => {
+    const keyframes = [
+      "덱을 구성합니다.",
+      "",
+      "@keyframes deco-spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}",
+      "@keyframes floating-pills{0%{transform:translateY(0)}100%{transform:translateY(-8px)}}",
+    ].join("\n");
+    expect(sanitizeAssistantProseForDisplay(keyframes)).toBe("덱을 구성합니다.");
+
+    const styleBlock = [
+      "초안을 다듬는 중입니다.",
+      "",
+      "<style>.floating-pills{position:absolute;animation:deco-spin 12s linear infinite}</style>",
+    ].join("\n");
+    const styleOut = sanitizeAssistantProseForDisplay(styleBlock);
+    expect(styleOut.trim()).toBe("초안을 다듬는 중입니다.");
+    expect(styleOut).not.toContain("<style");
+    expect(styleOut).not.toContain("floating-pills");
+  });
+
+  it("strips @font-face / @media / @import / orphan keyframe bodies leaked after prose", () => {
+    const fontFace = [
+      "덱을 구성합니다.",
+      "",
+      "@font-face{font-family:'Space Grotesk';src:url(https://fonts.gstatic.com/s/spacegrotesk.woff2)}",
+    ].join("\n");
+    expect(sanitizeAssistantProseForDisplay(fontFace)).toBe("덱을 구성합니다.");
+
+    const media = [
+      "초안을 다듬는 중입니다.",
+      "",
+      "@media (max-width:768px){.slide{transform:scale(.5)}.deco-daisy{display:none}}",
+    ].join("\n");
+    expect(sanitizeAssistantProseForDisplay(media)).toBe("초안을 다듬는 중입니다.");
+
+    const fontImport = [
+      "타이포를 맞추는 중입니다.",
+      "",
+      "@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&display=swap');",
+    ].join("\n");
+    const importOut = sanitizeAssistantProseForDisplay(fontImport);
+    expect(importOut.trim()).toBe("타이포를 맞추는 중입니다.");
+    expect(importOut).not.toContain("@import");
+    expect(importOut).not.toContain("fonts.googleapis.com");
+
+    const orphanKeyframe = [
+      "모션을 넣는 중입니다.",
+      "",
+      "from{transform:rotate(0)}to{transform:rotate(360deg)}}",
+    ].join("\n");
+    expect(sanitizeAssistantProseForDisplay(orphanKeyframe)).toBe("모션을 넣는 중입니다.");
+
+    const supportsLayer = [
+      "레이아웃을 맞추는 중입니다.",
+      "",
+      "@supports (display:grid){.slide{display:grid}}@layer deco{.deco-daisy{opacity:.4}}",
+    ].join("\n");
+    expect(sanitizeAssistantProseForDisplay(supportsLayer)).toBe("레이아웃을 맞추는 중입니다.");
+  });
+
+  it("strips .deco-* CSS dumps leaked after prose", () => {
+    const input = [
+      "덱을 구성합니다.",
+      "",
+      ".deco-daisy{position:absolute;width:180px;height:180px;top:8%;left:6%}",
+      ".deco-daisy svg{width:100%;height:100%}",
+    ].join("\n");
+    expect(sanitizeAssistantProseForDisplay(input)).toBe("덱을 구성합니다.");
+  });
+
+  it("keeps motif HTML inside an uppercase streaming ARTIFACT tag", () => {
+    const input = [
+      "초안.",
+      '<ARTIFACT identifier="deck.html">',
+      '<div style="position:absolute;border-radius:9999px">Nx</div>',
+    ].join("\n");
+    const out = sanitizeAssistantProseForDisplay(input, { streaming: true });
+    expect(out).toContain("<ARTIFACT");
+    expect(out).toContain("position:absolute");
+  });
+
   it("strips assistant replies that expose missing internal slideIndex", () => {
     const input = [
       "댓글에 `slideIndex` 정보가 없어서 어느 슬라이드인지 확인이 안 돼요. 슬라이드 번호를 알려주시면 바로 패치할게요!",
@@ -811,6 +1007,28 @@ describe("agent-prose-sanitize SSOT", () => {
     expect(sanitizeAssistantProseForDisplay(historyArtifact)).toBe("Done.");
   });
 
+  it("does not promote truncated deck slide text into settled chat prose", () => {
+    // Regression: max_tokens cut mid-slide left
+    // `Andiamo! (안디아모 =` as a bare text line inside an unclosed
+    // `<artifact type="deck">`. Settled sanitize used to treat that as
+    // user-facing prose and paint it under "작성 중" in the chat bubble.
+    const input = [
+      "작성 중 ✈️",
+      "",
+      '<artifact type="deck" identifier="deck">',
+      "<!doctype html>",
+      "<html lang=\"ko\"><body>",
+      '<section class="slide">',
+      "<h1>이탈리아</h1>",
+      "Andiamo! (안디아모 =",
+    ].join("\n");
+    const out = sanitizeAssistantProseForDisplay(input);
+    expect(out).not.toContain("Andiamo");
+    expect(out).not.toContain("안디아모");
+    expect(out).not.toContain("<artifact");
+    expect(out).toMatch(/작성 중/);
+  });
+
   it("preserves closed artifacts while streaming so live HTML parsers receive the final body", () => {
     const closed =
       'Intro\n<artifact identifier="deck" type="text/html">\n<section class="slide">A</section>\n</artifact>\nDone';
@@ -1053,6 +1271,42 @@ describe("agent-prose-sanitize SSOT", () => {
     expect(
       sanitizeAssistantProseForDisplay(openArtifact, { streaming: true }),
     ).toBe(openArtifact);
+  });
+
+  it("strips Capsule kit :root custom-property dumps leaked into chat", () => {
+    const compact =
+      ":root{--bg:#F5F5F0;--fg:#1A1A1A;--coral:#E85D4E;--lime:#C4D94E;--lavender:#C5B5E0;--sky:#8BB4F7;--violet:#A06CE8;--yellow:#F2D160;--peach:#F5B895;--mint:#A8E6CF;--outline:#1E1E1E}";
+    expect(sanitizeAssistantProseForDisplay(compact)).toBe("");
+    expect(
+      sanitizeAssistantProseForDisplay(`덱을 구성합니다.\n\n${compact}`),
+    ).toBe("덱을 구성합니다.");
+    const multiline = [
+      ":root{--bg:",
+      "#F5F5F0;--fg:",
+      "#1A1A1A;--coral:",
+      "#E85D4E;--lime:",
+      "#C4D94E;--lavender:",
+      "#C5B5E0;--sky:",
+      "#8BB4F7;--violet:",
+      "#A06CE8;--yellow:",
+      "#F2D160;--peach:",
+      "#F5B895;--mint:",
+      "#A8E6CF;--outline:",
+      "#1E1E1E}",
+    ].join("\n");
+    expect(sanitizeAssistantProseForDisplay(multiline)).toBe("");
+    expect(sanitizeAssistantProseForDisplay(`진행합니다.\n${multiline}`)).toBe(
+      "진행합니다.",
+    );
+    // Style tokens inside a preserved closed artifact must survive.
+    const withArtifact =
+      `Intro\n<artifact type="deck" identifier="deck"><style>${compact}</style><section class="slide">A</section></artifact>\nDone`;
+    const kept = sanitizeAssistantProseForDisplay(withArtifact, {
+      preserveClosedArtifact: true,
+    });
+    expect(kept).toContain(compact);
+    expect(kept).toContain("Intro");
+    expect(kept).toContain("Done");
   });
 
   it("strips code fences when stripCodeFences is enabled", () => {

@@ -257,6 +257,36 @@ describe('DesignFilesPanel preview', () => {
     expect(stats).toContain('PNG');
   });
 
+  it('opens image preview without a transparent overlay button that blanks the img on hover', () => {
+    const { container, onOpenFile } = renderPanel([
+      file({ name: 'chart.png', kind: 'image', size: 4096 }),
+    ]);
+    fireEvent.click(container.querySelector('.df-file-row .df-row-icon')!);
+
+    const thumb = container.querySelector('.df-preview-thumb.is-openable');
+    expect(thumb).toBeTruthy();
+    expect(container.querySelector('.df-preview-thumb-open')).toBeNull();
+    expect(thumb?.getAttribute('role')).toBe('button');
+
+    fireEvent.click(thumb!);
+    expect(onOpenFile).toHaveBeenCalledWith('chart.png');
+  });
+
+  it('renders deck.html preview with a scaled HTML cover frame (not a stretched black clip)', () => {
+    const { container } = renderPanel([
+      file({ name: 'deck.html', kind: 'html', size: 26_600 }),
+    ]);
+    fireEvent.click(container.querySelector('.df-file-row .df-row-name-btn')!);
+
+    const frame = container.querySelector('.df-preview-html-frame');
+    expect(frame).toBeTruthy();
+    // Loading shimmer or scaled iframe — never a bare 100%-stretched iframe alone.
+    expect(
+      container.querySelector('.df-preview-html-loading, .df-preview-html-iframe'),
+    ).toBeTruthy();
+    expect(container.querySelector('.df-preview-thumb > iframe')).toBeNull();
+  });
+
   it('renders sketch files with the static sketch preview instead of a broken image', async () => {
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({
       version: 1,
@@ -291,7 +321,10 @@ describe('DesignFilesPanel preview', () => {
       expect(container.querySelector('[data-testid="sketch-preview-svg"]')).toBeTruthy();
     });
     expect(container.querySelector('.df-preview-thumb img')).toBeNull();
-    expect(fetchMock).toHaveBeenCalledWith('/api/projects/test-project/raw/board.sketch.json', { cache: 'no-store' });
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/projects/test-project/raw/board.sketch.json',
+      expect.objectContaining({ cache: 'no-store' }),
+    );
   });
 });
 

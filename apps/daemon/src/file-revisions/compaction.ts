@@ -8,9 +8,6 @@ import {
 } from './limits.js';
 import { getFileRevisionSnapshotStorageStatsDurable } from './snapshot-storage.js';
 
-let compactionDb: Database.Database | null = null;
-let compactionInFlight: Promise<void> | null = null;
-
 export interface DeferredCompactionOptions {
   /** Caps rows deleted in one pass. Push-triggered compaction uses PUSH_PRUNE_MAX; GC omits this. */
   maxDeletes?: number;
@@ -18,29 +15,14 @@ export interface DeferredCompactionOptions {
   rescheduleOnOverflow?: boolean;
 }
 
-export function registerRevisionCompactionDb(db: Database.Database): void {
-  compactionDb = db;
-}
-
 /**
  * Background compaction for snapshot byte overflow. Push no longer blocks on
  * DELETE — this runs after successful pushes and from the periodic GC worker.
  */
 export function scheduleRevisionSnapshotCompaction(): void {
-  if (!compactionDb || compactionInFlight) return;
-  compactionInFlight = runDeferredRevisionSnapshotCompaction(compactionDb, {
-    maxDeletes: FILE_REVISION_PUSH_PRUNE_MAX,
-    rescheduleOnOverflow: true,
-  })
-    .then(() => undefined)
-    .catch((err) => {
-      console.warn(
-        `[file-revisions] deferred compaction failed: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    })
-    .finally(() => {
-      compactionInFlight = null;
-    });
+  void import('./deferred-sweep.js').then(({ scheduleRevisionDeferredSweep }) => {
+    scheduleRevisionDeferredSweep();
+  });
 }
 
 export async function runDeferredRevisionSnapshotCompaction(

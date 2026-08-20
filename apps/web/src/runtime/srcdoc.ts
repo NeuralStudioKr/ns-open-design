@@ -22,7 +22,7 @@ import {
   MANUAL_EDIT_DISCOVERY_SELECTOR,
   MANUAL_EDIT_SOURCE_PATH_ATTR,
 } from '../edit-mode/bridge';
-import { buildArtifactPreviewDomLeakGuardScript, repairArtifactDocumentHead } from '@open-design/contracts';
+import { buildArtifactPreviewDomLeakGuardScript, repairArtifactDocumentHead, repairArtifactStyleSheets, lockStackedDeckCanvasForPreview } from '@open-design/contracts';
 import { stripConflictingSrcDocCspBaseUri } from './authenticatedHtmlSrcDoc';
 import {
   injectStackedDeckViewport,
@@ -100,16 +100,66 @@ export function buildRedirectLoopBlockedDoc(): string {
 </html>`;
 }
 
+/**
+ * Cheap gate: skip od-id / source-path annotation when OD-authored HTML already
+ * carries them on structural opens. Imported HTML without annotations still
+ * pays the DOMParser walk. Conservative — any bare section/main open forces annotate.
+ */
+function shouldAnnotatePreviewEditTargets(html: string, sourcePaths: boolean): boolean {
+  if (!/data-od-id=/i.test(html)) return true;
+  if (sourcePaths && !/data-od-source-path=/i.test(html)) return true;
+  const structuralOpens = html.match(/<(?:section|main)\b[^>]*>/gi) ?? [];
+  if (structuralOpens.length === 0) return true;
+  for (const tag of structuralOpens) {
+    if (!/data-od-id=/i.test(tag) && !/data-screen-label=/i.test(tag)) return true;
+  }
+  return false;
+}
+
+export {
+  artifactDocumentHeadLooksIntact,
+  repairArtifactDocumentHeadIfNeeded,
+} from './artifact-document-head';
+import { repairArtifactDocumentHeadIfNeeded } from './artifact-document-head';
+import { repairDeckSlideSurfaceBleed } from '../artifacts/deck-slide-surface';
+import { relaxPersistedDeckSlideSurfaceBleed } from '@open-design/contracts';
+
 export function buildSrcdoc(
   html: string,
   options: SrcdocOptions = {}
 ): string {
-  const repaired = stripConflictingSrcDocCspBaseUri(repairArtifactDocumentHead(html));
-  const wrapped = wrapPreviewHtmlShell(repaired);
-  const withOdIds = annotateMissingOdIds(wrapped);
-  const withSourcePaths = options.editBridge ? annotateManualEditSourcePaths(withOdIds) : withOdIds;
-  const withBase = options.baseHref ? injectBaseHref(withSourcePaths, options.baseHref) : withSourcePaths;
-  const withShim = injectSandboxShim(withBase);
+  // Match cover thumbs: relax flattened `.slide` bleed so official Motif /
+  // identity dark washes can paint, then re-letterbox html/body only.
+  const repairedHead = repairDeckSlideSurfaceBleed(
+    relaxPersistedDeckSlideSurfaceBleed(
+      repairArtifactStyleSheets(
+        repairArtifactDocumentHeadIfNeeded(html),
+      ),
+    ),
+  );
+  // Deck preview/export: compact fills lock to a 1920×1080 canvas.
+  // Official catalog presenters keep iframe-relative 100% fill.
+  const deckCanvasReady = options.deck
+    ? lockStackedDeckCanvasForPreview(repairedHead)
+    : repairedHead;
+  const repaired = stripConflictingSrcDocCspBaseUri(deckCanvasReady);
+  // alreadyRepaired: avoid wrapPreviewHtmlShell re-running repair on full docs.
+  // Fragment wraps inject a fresh device-width shell — re-lock after wrap for
+  // compact fills only (official presenters stay device-width).
+  const wrappedRaw = wrapPreviewHtmlShell(repaired, { alreadyRepaired: true });
+  const wrapped = options.deck
+    ? lockStackedDeckCanvasForPreview(wrappedRaw)
+    : wrappedRaw;
+  // Export docs skip od-id / source-path annotation (no selection/edit bridges).
+  // OD-authored decks that already carry annotations skip the DOMParser walk.
+  const sourcePaths = Boolean(options.editBridge);
+  const withAnnotations = options.exportDocument
+    || !shouldAnnotatePreviewEditTargets(wrapped, sourcePaths)
+    ? wrapped
+    : annotatePreviewEditTargets(wrapped, { sourcePaths });
+  const withBase = options.baseHref ? injectBaseHref(withAnnotations, options.baseHref) : withAnnotations;
+  const withImageRetry = injectPreviewImageRetryBridge(withBase);
+  const withShim = injectSandboxShim(withImageRetry);
   const withRedirectGuard = options.exportDocument
     ? withShim
     : injectPreviewRedirectGuard(withShim, {
@@ -297,7 +347,7 @@ function injectSnapshotBridge(doc: string): string {
     var styles = cloneRoot.querySelectorAll('style');
     for (var st = 0; st < styles.length; st++) {
       styles[st].textContent = (styles[st].textContent || '')
-        .replace(/@import[^;]+;/gi, '')
+        .replace(/@import\\s+(?:url\\s*\\(\\s*(?:\"[^\"]*\"|'[^']*'|[^'\")\\s]+)\\s*\\)|(?:\"[^\"]*\"|'[^']*'))[^;]*;?/gi, '')
         .replace(/@font-face\\s*\\{[^}]*\\}/gi, '');
     }
   }
@@ -898,15 +948,19 @@ function injectPaletteBridge(
   return injectBeforeBodyEnd(doc, script);
 }
 
+function annotateManualEditSourcePathsOnDocument(parsed: Document): void {
+  parsed.body.querySelectorAll(MANUAL_EDIT_DISCOVERY_SELECTOR).forEach((el) => {
+    if (el.hasAttribute(MANUAL_EDIT_SOURCE_PATH_ATTR)) return;
+    const path = sourcePathForElement(el);
+    if (path) el.setAttribute(MANUAL_EDIT_SOURCE_PATH_ATTR, path);
+  });
+}
+
 function annotateManualEditSourcePaths(doc: string): string {
   if (typeof DOMParser === 'undefined') return doc;
   try {
     const parsed = new DOMParser().parseFromString(doc, 'text/html');
-    parsed.body.querySelectorAll(MANUAL_EDIT_DISCOVERY_SELECTOR).forEach((el) => {
-      if (el.hasAttribute(MANUAL_EDIT_SOURCE_PATH_ATTR)) return;
-      const path = sourcePathForElement(el);
-      if (path) el.setAttribute(MANUAL_EDIT_SOURCE_PATH_ATTR, path);
-    });
+    annotateManualEditSourcePathsOnDocument(parsed);
     return serializeHtmlDocument(parsed);
   } catch {
     return doc;
@@ -937,45 +991,68 @@ function serializeHtmlDocument(doc: Document): string {
  * generated outside of Open Design and therefore carries no OD-specific
  * annotations.
  */
+function annotateMissingOdIdsOnDocument(parsed: Document): void {
+  // Only target divs that are direct children of semantic containers or body;
+  // deeply nested layout divs (e.g. flex/grid wrappers) create noise in the
+  // selection bridge without adding meaningful pickable targets.
+  const selector = [
+    'section', 'article', 'header', 'footer', 'nav', 'main', 'aside',
+    'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+    'button', 'a', 'img', 'svg', '[id]',
+    'body > div[class]', 'body > div[id]',
+    'section > div[class]', 'section > div[id]',
+    'article > div[class]', 'article > div[id]',
+    'main > div[class]', 'main > div[id]',
+    'header > div[class]', 'header > div[id]',
+    'footer > div[class]', 'footer > div[id]',
+    'nav > div[class]', 'nav > div[id]',
+    'aside > div[class]', 'aside > div[id]',
+    '[id] > div[class]', '[id] > div[id]',
+    // Deck slide icons / positioned chrome often ship as bare <div style="...">.
+    'section.slide > div[style]', 'section[class~="slide"] > div[style]',
+  ].join(', ');
+  const skipTags = new Set(['script', 'style', 'template', 'noscript', 'iframe', 'object', 'embed']);
+  const skipDeckChrome = (el: Element): boolean => {
+    const id = el.id;
+    if (id === 'deck-stage' || id === 'od-stacked-deck-stage' || id === 'deck' || id === 'deck-track') {
+      return true;
+    }
+    return el.classList.contains('deck-shell') || el.classList.contains('deck-stage');
+  };
+  let fallbackIndex = 0;
+  parsed.body.querySelectorAll(selector).forEach((el) => {
+    if (el.hasAttribute('data-od-id') || el.hasAttribute('data-screen-label')) return;
+    const tag = el.tagName.toLowerCase();
+    if (skipTags.has(tag)) return;
+    if (skipDeckChrome(el)) return;
+    const path = sourcePathForElement(el);
+    el.setAttribute('data-od-id', path || `od-${tag}-${fallbackIndex++}`);
+  });
+}
+
 function annotateMissingOdIds(doc: string): string {
   if (typeof DOMParser === 'undefined') return doc;
   try {
     const parsed = new DOMParser().parseFromString(doc, 'text/html');
-    // Only target divs that are direct children of semantic containers or body;
-    // deeply nested layout divs (e.g. flex/grid wrappers) create noise in the
-    // selection bridge without adding meaningful pickable targets.
-    const selector = [
-      'section', 'article', 'header', 'footer', 'nav', 'main', 'aside',
-      'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-      'button', 'a', 'img', 'svg', '[id]',
-      'body > div[class]', 'body > div[id]',
-      'section > div[class]', 'section > div[id]',
-      'article > div[class]', 'article > div[id]',
-      'main > div[class]', 'main > div[id]',
-      'header > div[class]', 'header > div[id]',
-      'footer > div[class]', 'footer > div[id]',
-      'nav > div[class]', 'nav > div[id]',
-      'aside > div[class]', 'aside > div[id]',
-      '[id] > div[class]', '[id] > div[id]',
-    ].join(', ');
-    const skipTags = new Set(['script', 'style', 'template', 'noscript', 'iframe', 'object', 'embed']);
-    const skipDeckChrome = (el: Element): boolean => {
-      const tag = el.tagName.toLowerCase();
-      const id = el.id;
-      if (id === 'deck-stage' || id === 'od-stacked-deck-stage' || id === 'deck' || id === 'deck-track') {
-        return true;
-      }
-      return el.classList.contains('deck-shell') || el.classList.contains('deck-stage');
-    };
-    let fallbackIndex = 0;
-    parsed.body.querySelectorAll(selector).forEach((el) => {
-      if (el.hasAttribute('data-od-id') || el.hasAttribute('data-screen-label')) return;
-      const tag = el.tagName.toLowerCase();
-      if (skipTags.has(tag)) return;
-      if (skipDeckChrome(el)) return;
-      const path = sourcePathForElement(el);
-      el.setAttribute('data-od-id', path || `od-${tag}-${fallbackIndex++}`);
-    });
+    annotateMissingOdIdsOnDocument(parsed);
+    return serializeHtmlDocument(parsed);
+  } catch {
+    return doc;
+  }
+}
+
+/** Fold od-id + optional source-path annotation into one DOMParser pass. */
+function annotatePreviewEditTargets(
+  doc: string,
+  options: { sourcePaths: boolean },
+): string {
+  if (typeof DOMParser === 'undefined') return doc;
+  try {
+    const parsed = new DOMParser().parseFromString(doc, 'text/html');
+    annotateMissingOdIdsOnDocument(parsed);
+    if (options.sourcePaths) {
+      annotateManualEditSourcePathsOnDocument(parsed);
+    }
     return serializeHtmlDocument(parsed);
   } catch {
     return doc;
@@ -1127,6 +1204,143 @@ function injectSandboxShim(doc: string): string {
   if (/<body[^>]*>/i.test(doc))
     return doc.replace(/<body[^>]*>/i, (m) => `${m}${shim}`);
   return shim + doc;
+}
+
+/**
+ * Retry failed project-relative image loads inside the deck iframe.
+ *
+ * Composer / Drive-imported images the model embeds as
+ * `<img src="refs/drive/…">` can race against:
+ *   - S3 sync-down on the serving pod (file uploaded on a different pod).
+ *   - Teamver preview-scope prefix minting (fail-open first paint has no
+ *     `<base href>`, so the first fetch resolves against the parent doc URL
+ *     and 404s until the deck srcdoc rebuilds with a real base).
+ *
+ * Without retry the user sees the browser's broken-image placeholder + alt
+ * text (visually "the slide only has the image title") even after the file
+ * becomes reachable a moment later. This helper listens for `error` on any
+ * `<img>` with a same-origin / relative src and retries with a cache-bust up
+ * to a few times, spaced to cover S3 lag and prefix retry cadence.
+ */
+function injectPreviewImageRetryBridge(doc: string): string {
+  const script = `<script data-od-preview-image-retry>(function(){
+  var MAX_RETRIES = 3;
+  var RETRY_DELAYS_MS = [400, 1200, 3000];
+  var STATE = new WeakMap();
+  function hasScopedBase(){
+    try {
+      var base = document.querySelector('base[href]');
+      if (!base) return false;
+      var href = base.getAttribute('href') || '';
+      if (!href || href === 'about:blank') return false;
+      // Relative project assets need a project-scoped /raw/ or /preview/ base.
+      return /\\/(?:raw|preview)\\//.test(href) || href.indexOf('/api/projects/') === 0;
+    } catch (_) { return false; }
+  }
+  function shouldRetry(img){
+    // Without <base href> relative src resolves against about:srcdoc — burn
+    // the retry budget only after a scoped base is present (S3 lag case).
+    if (!hasScopedBase()) return false;
+    var raw = img.getAttribute('src');
+    if (!raw) return false;
+    var trimmed = String(raw).trim();
+    if (!trimmed) return false;
+    if (/^(?:data:|blob:|about:|javascript:)/i.test(trimmed)) return false;
+    if (/^https?:/i.test(trimmed)) {
+      try {
+        var abs = new URL(trimmed, location.href);
+        return abs.origin === location.origin;
+      } catch (_) { return false; }
+    }
+    return true;
+  }
+  function bump(url, nonce){
+    var sep = url.indexOf('?') >= 0 ? '&' : '?';
+    return url + sep + '_odr=' + nonce;
+  }
+  function unicodeVariants(url){
+    // Try alternate NFC / NFD forms after byte-exact same-URL retries fail.
+    // Hangul filenames uploaded from macOS often persist in one Unicode form
+    // while the HTML references the other — swapping fixes preview 404s
+    // without a page reload.
+    var out = [];
+    if (!url) return out;
+    try { var nfc = url.normalize('NFC'); if (nfc !== url) out.push(nfc); } catch (_) {}
+    try { var nfd = url.normalize('NFD'); if (nfd !== url && out.indexOf(nfd) < 0) out.push(nfd); } catch (_) {}
+    return out;
+  }
+  function retry(img){
+    if (!img || !img.isConnected) return;
+    if (!shouldRetry(img)) return;
+    var state = STATE.get(img);
+    if (!state) {
+      var original = img.getAttribute('src') || '';
+      // Strip prior _odr cache-bust so we retry from the clean project path.
+      original = original.replace(/([?&])_odr=[^&]*/g, '$1').replace(/[?&]$/, '');
+      state = { original: original, attempts: 0, variants: null, variantIndex: -1 };
+      STATE.set(img, state);
+    }
+    if (state.attempts >= MAX_RETRIES) {
+      // After same-URL budget is spent, try one Unicode variant (NFC↔NFD) as
+      // a last-ditch swap for Hangul filename mismatches.
+      if (state.variants === null) state.variants = unicodeVariants(state.original);
+      state.variantIndex += 1;
+      if (state.variantIndex >= state.variants.length) return;
+      var swap = state.variants[state.variantIndex];
+      setTimeout(function(){
+        if (!img.isConnected) return;
+        if (!hasScopedBase()) return;
+        try {
+          img.src = bump(swap, 'u' + state.variantIndex + '-' + Date.now());
+        } catch (_) {}
+      }, 400);
+      return;
+    }
+    var delay = RETRY_DELAYS_MS[state.attempts] || 3000;
+    state.attempts += 1;
+    setTimeout(function(){
+      if (!img.isConnected) return;
+      if (!hasScopedBase()) return;
+      var complete = img.complete && img.naturalWidth > 0;
+      if (complete) return;
+      try {
+        img.src = bump(state.original, 'r' + state.attempts + '-' + Date.now());
+      } catch (_) {}
+    }, delay);
+  }
+  function onError(event){
+    var img = event && event.target;
+    if (!img || img.tagName !== 'IMG') return;
+    retry(img);
+  }
+  document.addEventListener('error', onError, true);
+  try {
+    var mo = new MutationObserver(function(mutations){
+      for (var i = 0; i < mutations.length; i++) {
+        var added = mutations[i].addedNodes;
+        for (var j = 0; j < added.length; j++) {
+          var node = added[j];
+          if (!node || node.nodeType !== 1) continue;
+          if (node.tagName === 'IMG') {
+            if (node.complete && node.naturalWidth === 0) retry(node);
+          } else if (node.querySelectorAll) {
+            var imgs = node.querySelectorAll('img');
+            for (var k = 0; k < imgs.length; k++) {
+              var img = imgs[k];
+              if (img.complete && img.naturalWidth === 0) retry(img);
+            }
+          }
+        }
+      }
+    });
+    mo.observe(document.documentElement, { childList: true, subtree: true });
+  } catch (_) {}
+})();</script>`;
+  if (/<head[^>]*>/i.test(doc))
+    return doc.replace(/<head[^>]*>/i, (m) => `${m}${script}`);
+  if (/<body[^>]*>/i.test(doc))
+    return doc.replace(/<body[^>]*>/i, (m) => `${m}${script}`);
+  return script + doc;
 }
 
 function injectPreviewFocusGuard(doc: string): string {
@@ -1435,7 +1649,25 @@ function injectSelectionBridge(
   // Reject any value that could break out of a 'prop: value' declaration:
   // semicolons (extra declarations), braces (close the rule), angle
   // brackets (close the <style> tag), and newlines (defense in depth).
-  var UNSAFE_VALUE = /[;{}<>\\n\\r]/;
+  // Mirror HOST_UNSAFE_INSPECT_VALUE — block url()/expression()/javascript:/….
+  var UNSAFE_VALUE = /[;{}<>\\n\\r]|url\\s*\\(|expression\\s*\\(|image-set\\s*\\(|element\\s*\\(|-moz-binding|javascript\\s*:|vbscript\\s*:|data\\s*:/i;
+  function normalizeInspectCssValue(css){
+    var text = String(css || '');
+    text = text.replace(/\\/\\*[\\s\\S]*?\\*\\//g, '');
+    text = text.replace(/\\\\(?:\\r\\n|[\\n\\r\\f])/g, '');
+    text = text.replace(/\\\\([0-9a-fA-F]{1,6})(\\r\\n|[ \\t\\r\\n\\f])?/g, function(_m, hex){
+      var code = parseInt(hex, 16);
+      if (!isFinite(code) || code < 0 || code > 0x10ffff) return '';
+      try { return String.fromCodePoint(code); } catch (_e) { return ''; }
+    });
+    text = text.replace(/\\\\(.)/g, '$1');
+    return text;
+  }
+  function inspectValueUnsafe(v){
+    var trimmed = String(v || '').trim();
+    if (!trimmed) return false;
+    return UNSAFE_VALUE.test(normalizeInspectCssValue(trimmed));
+  }
   function active(){ return commentEnabled || inspectEnabled; }
   function deckSlideIndexForPayload(anchorEl){
     // Prefer the slide that actually contains the clicked element. The
@@ -1536,7 +1768,7 @@ function injectSelectionBridge(
         var name = raw.slice(0, colon).trim().toLowerCase();
         if (!Object.prototype.hasOwnProperty.call(ALLOWED_PROPS, name)) continue;
         var value = raw.slice(colon + 1).replace(/!important/i, '').trim();
-        if (!value || UNSAFE_VALUE.test(value)) continue;
+        if (!value || inspectValueUnsafe(value)) continue;
         props[name] = value;
       }
       if (Object.keys(props).length) {
@@ -1953,7 +2185,7 @@ function meaningfulDomFallbackTarget(el) {
     var safeSelector = safeSelectorFor(elementId, selector);
     if (!safeSelector) return;
     var v = (value == null) ? '' : String(value).trim();
-    if (v && UNSAFE_VALUE.test(v)) return;
+    if (v && inspectValueUnsafe(v)) return;
     var entry = overrides[elementId];
     if (!entry) {
       entry = { selector: safeSelector, props: Object.create(null) };
@@ -2058,7 +2290,7 @@ function meaningfulDomFallbackTarget(el) {
           var rawValue = entry.props[pkeys[p]];
           if (rawValue == null) continue;
           var v = String(rawValue).trim();
-          if (!v || UNSAFE_VALUE.test(v)) continue;
+          if (!v || inspectValueUnsafe(v)) continue;
           clean[name] = v;
         }
         if (Object.keys(clean).length) overrides[id] = { selector: safeSelector, props: clean };
@@ -2319,11 +2551,21 @@ body > .slide:not(.active):not(.is-active):not(.current) {
     : '';
   const compactStackedDeckFix = isCompactStackedDeck
     ? `<style data-od-deck-stacked-fix>
+/* Do not declare a \`background\` for html/body here — the compact-stacked
+   stage runs for BOTH model-authored compact decks AND daemon Clone decks
+   whose template ships \`body { background: var(--cream) }\` (Daisy Days)
+   or another pastel surface. Forcing \`background: #0b0c10 !important\`
+   painted every scaled cream slide with a near-black letterbox and users
+   read that as "template not applied". Forcing \`background: transparent
+   !important\` was equally wrong — it overrode the deck's own cream body
+   background and left the iframe default (white) in its place. Silence
+   here keeps the deck's own \`body { background: … }\` in effect: cream
+   for Daisy Days, dark for terminal templates, transparent for compact
+   model decks with no body background (which then read as neutral). */
 html[data-od-compact-stacked],
 html[data-od-compact-stacked] body {
   width: 100% !important;
   height: 100% !important;
-  background: #0b0c10 !important;
   margin: 0 !important;
   overflow: hidden !important;
   overscroll-behavior: none !important;
@@ -2356,9 +2598,6 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
   left: 0 !important;
   overflow: hidden !important;
   display: none !important;
-  flex-direction: column;
-  justify-content: center;
-  align-items: stretch;
 }
 </style>`
     : '';
@@ -2880,12 +3119,12 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
       var w = Math.max(1, window.innerWidth);
       return Math.max(0, Math.min(list.length - 1, Math.round(maxScrollLeft() / w)));
     }
-    var byPagination = activeIndexFromPagination(list);
-    if (byPagination >= 0) return byPagination;
     var byTransform = activeIndexFromTransform(list);
     if (byTransform >= 0) return byTransform;
     var byClass = findActiveByClass(list);
     if (byClass >= 0) return byClass;
+    var byPagination = activeIndexFromPagination(list);
+    if (byPagination >= 0) return byPagination;
     var byVis = findActiveByVisibility(list);
     if (byVis >= 0) return byVis;
     return 0;
@@ -3054,6 +3293,24 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
       return false;
     }
   }
+  function paginationDataSlideIsOneBased(count){
+    var nodes;
+    try {
+      nodes = document.querySelectorAll('.nav-dot, .nav-dots [data-slide], .dots [data-slide]');
+    } catch (_) {
+      return false;
+    }
+    var values = [];
+    for (var i = 0; i < nodes.length; i++) {
+      if (!nodes[i] || (nodes[i].classList && nodes[i].classList.contains('slide'))) continue;
+      var n = parseInt(nodes[i].getAttribute && nodes[i].getAttribute('data-slide'), 10);
+      if (Number.isFinite(n)) values.push(n);
+    }
+    if (values.length < 2) return false;
+    var min = Math.min.apply(null, values);
+    var max = Math.max.apply(null, values);
+    return min === 1 && max === count;
+  }
   function controlIndex(node, count){
     var attrs = ['data-slide-index', 'data-slide', 'data-index', 'aria-posinset'];
     for (var i=0; i<attrs.length; i++) {
@@ -3062,6 +3319,7 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
       var n = parseInt(raw, 10);
       if (!Number.isFinite(n)) continue;
       var index = attrs[i] === 'aria-posinset' ? n - 1 : n;
+      if (attrs[i] === 'data-slide' && paginationDataSlideIsOneBased(count)) index = n - 1;
       if (index >= 0 && index < count) return index;
     }
     return -1;
@@ -3093,6 +3351,52 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     }
     return -1;
   }
+  function clearInlineSlideHide(el){
+    if (!el || !el.style) return;
+    el.style.removeProperty('display');
+    el.style.removeProperty('pointer-events');
+    el.style.removeProperty('visibility');
+  }
+  function syncPaginationControls(target, count){
+    try {
+      var groups = [
+        document.querySelectorAll('#nav-dots > *'),
+        document.querySelectorAll('.nav-dots > *'),
+        document.querySelectorAll('.dots > *'),
+        document.querySelectorAll('[data-deck-dots] > *'),
+        document.querySelectorAll('.pagination > *')
+      ];
+      for (var g=0; g<groups.length; g++) {
+        var nodes = groups[g];
+        if (!nodes || nodes.length < count) continue;
+        for (var i=0; i<count; i++) {
+          var node = nodes[i];
+          if (!node || !node.classList) continue;
+          var on = i === target;
+          node.classList.toggle('is-active', on);
+          node.classList.toggle('active', on);
+          node.classList.toggle('current', on);
+          if (on) node.setAttribute('aria-current', 'true');
+          else node.removeAttribute('aria-current');
+        }
+      }
+    } catch (_) {}
+  }
+  function syncTransformStripActive(list, target){
+    if (!list || !list.length) return;
+    var activeClass = activeClassName(list);
+    for (var k=0; k<list.length; k++) {
+      // Prior forceReveal/setActive may have collapsed the strip with
+      // display:none !important — clear so translateX(-N00vw) still lands
+      // on a real slide (Grove / horizontal #deck).
+      clearInlineSlideHide(list[k]);
+      if (list[k].classList) {
+        list[k].classList.remove('active', 'is-active', 'current');
+        if (k === target) list[k].classList.add(activeClass);
+      }
+    }
+    syncPaginationControls(target, list.length);
+  }
   function transformGo(i){
     var list = slides();
     var track = transformTrack(list);
@@ -3100,8 +3404,10 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     var target = Math.max(0, Math.min(list.length - 1, i));
     var unit = /translateX\\(\\s*-?[0-9.]+\\s*%\\s*\\)/i.test(track.style.transform || '') ? '%' : 'vw';
     track.style.transform = 'translateX(' + (-target * 100) + unit + ')';
+    syncTransformStripActive(list, target);
     updateDeckChrome(target, list.length);
     report();
+    nudgeDeckFit();
     return true;
   }
   var hostNativeClickInFlight = false;
@@ -3179,15 +3485,71 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     if (total) total.textContent = pad2(count);
     if (prev) prev.toggleAttribute('disabled', i <= 0);
     if (next) next.toggleAttribute('disabled', i >= count - 1);
+    var page = document.getElementById('current');
+    if (page) page.textContent = pad2(i + 1);
+    var dots = document.querySelectorAll('.nav-dot');
+    if (dots.length === count) {
+      for (var d = 0; d < dots.length; d++) {
+        if (!dots[d].classList) continue;
+        var on = d === i;
+        dots[d].classList.toggle('active', on);
+        dots[d].classList.toggle('is-active', on);
+      }
+    }
+  }
+  function lockStackedSlideAxis(el) {
+    if (!el || !el.style) return;
+    // Neutralize sets flex-direction:unset so 16:9 splits that only set
+    // display:flex stay row; Motif-only slides then fall to row+top and
+    // each page looks like a different canvas. Snapshot the authored
+    // style once — later reveal writes display:flex and must not be
+    // re-read as an implicit row split.
+    if (!el.hasAttribute('data-od-authored-style')) {
+      el.setAttribute('data-od-authored-style', el.getAttribute('style') || '');
+    }
+    var authoredStyle = String(el.getAttribute('data-od-authored-style') || '');
+    var authoredDisplayMatch = /(?:^|;)\s*display\s*:\s*([^;!]+)/i.exec(authoredStyle);
+    var authoredDisplay = authoredDisplayMatch ? String(authoredDisplayMatch[1] || '').trim().toLowerCase() : '';
+    var authoredDirMatch = /(?:^|;)\s*flex-direction\s*:\s*([^;!]+)/i.exec(authoredStyle);
+    var authoredDir = authoredDirMatch ? String(authoredDirMatch[1] || '').trim().toLowerCase() : '';
+    var className = String(el.className || '');
+    el.style.setProperty(
+      'display',
+      authoredDisplay === 'grid' || authoredDisplay === 'inline-grid' ? authoredDisplay : 'flex',
+      'important',
+    );
+    if (authoredDisplay === 'grid' || authoredDisplay === 'inline-grid') return;
+    if (authoredDir) {
+      el.style.flexDirection = authoredDir;
+      return;
+    }
+    if (authoredDisplay === 'flex' || authoredDisplay === 'inline-flex') {
+      el.style.flexDirection = 'row';
+      return;
+    }
+    el.style.flexDirection = 'column';
+    if (
+      !/(?:^|;)\s*justify-content\s*:/i.test(authoredStyle)
+      && !/(?:^|\\s)slide-\\d+(?:\\s|$)/.test(className)
+    ) {
+      el.style.justifyContent = 'center';
+    }
   }
   function setSlideDisplayed(el, visible) {
     if (!el || !el.style) return;
     var parent = el.parentElement;
     var stacked = !!(parent && (parent.id === 'od-stacked-deck-stage' || parent.getAttribute('data-od-stacked-deck-stage') !== null));
+    // Horizontal translate strips keep every slide in document flow.
+    // Collapsing siblings with display:none shortens the track so
+    // translateX(-N00vw) paints empty canvas (community Grove templates).
+    if (!stacked && transformTrack(slides())) {
+      clearInlineSlideHide(el);
+      return;
+    }
     if (visible) {
       if (stacked) {
-        // Stacked stage owns layout — force a flex box onto the active slide.
-        el.style.setProperty('display', 'flex', 'important');
+        // Must re-apply flex after display:none !important on the previous turn.
+        lockStackedSlideAxis(el);
       } else {
         // Framework / class-toggle decks: clear any previous hide so author
         // .active / variant classes (flex/grid/block) control layout.
@@ -3270,6 +3632,10 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
   function repairOverlappingSlides(preferredIndex) {
     var list = slides();
     if (list.length < 2) return false;
+    // Translate-strip decks intentionally keep all slides painted in a
+    // row; "many visible" is not overlap. forceReveal would collapse the
+    // strip and break host/native page turns.
+    if (transformTrack(list)) return false;
     if (countVisibleSlides(list) <= 1) return false;
     var target = typeof preferredIndex === 'number'
       ? Math.max(0, Math.min(list.length - 1, preferredIndex))

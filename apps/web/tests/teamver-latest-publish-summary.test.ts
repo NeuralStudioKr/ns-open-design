@@ -106,6 +106,48 @@ describe('fetchLatestPublishSummary', () => {
     expect(batchPostMock).not.toHaveBeenCalled();
   });
 
+  it('coalesces same-tick chip fetch + prefetch into one batch HTTP call', async () => {
+    batchPostMock.mockResolvedValue({
+      summaries: [
+        {
+          odProjectId: 'p1',
+          version: 1,
+          kind: 'html',
+          driveAssetId: 'AST-1',
+          filename: 'a.html',
+        },
+        {
+          odProjectId: 'p2',
+          version: 2,
+          kind: 'pdf',
+          driveAssetId: 'AST-2',
+          filename: 'b.pdf',
+        },
+        {
+          odProjectId: 'p3',
+          version: 3,
+          kind: 'zip',
+          driveAssetId: 'AST-3',
+          filename: 'c.zip',
+        },
+      ],
+    });
+
+    const [chip, prefetch] = await Promise.all([
+      fetchLatestPublishSummary('p1'),
+      prefetchLatestPublishSummaries(['p1', 'p2', 'p3']),
+    ]);
+
+    expect(chip?.filename).toBe('a.html');
+    expect(prefetch).toBeUndefined();
+    expect(batchPostMock).toHaveBeenCalledTimes(1);
+    expect(batchPostMock.mock.calls[0]?.[1]).toEqual({
+      odProjectIds: expect.arrayContaining(['p1', 'p2', 'p3']),
+    });
+    expect(await fetchLatestPublishSummary('p3')).toMatchObject({ filename: 'c.zip' });
+    expect(batchPostMock).toHaveBeenCalledTimes(1);
+  });
+
   it('falls back to per-project outputs when batch HTTP fails', async () => {
     batchPostMock.mockRejectedValue(new Error('502'));
     listOutputsMock.mockResolvedValue({

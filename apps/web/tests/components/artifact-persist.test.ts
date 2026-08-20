@@ -7,7 +7,9 @@ import {
   normalizeSlideOnlyArtifactContractType,
   preferredArtifactVersionTab,
   resolveArtifactPersistFileName,
+  resolveSlideOnlySkipDiscoveryBrief,
   shouldDeferSlideOnlyDiscoveryArtifactPersist,
+  shouldReuseSameTurnHtmlWriteAsPersist,
 } from '../../src/components/artifact-persist';
 
 describe('normalizeSlideOnlyArtifactContractType', () => {
@@ -73,6 +75,54 @@ describe('resolveArtifactPersistFileName', () => {
       'ai-adoption-deck.html',
     );
     expect(fileName).toBe('other-deck.html');
+  });
+
+  it('forces slide-only persists to deck.html instead of a Canvas identifier', () => {
+    const fileName = resolveArtifactPersistFileName(
+      {
+        identifier: 'canvas',
+        title: 'Canvas Export',
+        artifactType: 'deck',
+      },
+      [],
+      null,
+      { slideOnlyMvp: true },
+    );
+    expect(fileName).toBe('deck.html');
+  });
+
+  it('overwrites the Clone LOOK seed on slide-only fill instead of minting deck-2', () => {
+    const cloneSeed = {
+      name: 'deck.html',
+      path: 'deck.html',
+      mtime: 100,
+      artifactManifest: {
+        metadata: { identifier: 'deck', templateClonedDeckSeeded: true },
+      },
+    } as const;
+    const fileName = resolveArtifactPersistFileName(
+      {
+        identifier: '',
+        title: 'Q3 온보딩',
+        artifactType: 'deck',
+      },
+      [cloneSeed],
+      null,
+      { slideOnlyMvp: true },
+    );
+    expect(fileName).toBe('deck.html');
+  });
+
+  it('does not reuse a Write-tool deck-2 sibling as the slide-only persist target', () => {
+    expect(
+      shouldReuseSameTurnHtmlWriteAsPersist({ name: 'deck-2.html' }, { slideOnlyMvp: true }),
+    ).toBe(false);
+    expect(
+      shouldReuseSameTurnHtmlWriteAsPersist({ name: 'deck.html' }, { slideOnlyMvp: true }),
+    ).toBe(true);
+    expect(
+      shouldReuseSameTurnHtmlWriteAsPersist({ name: 'deck-2.html' }, { slideOnlyMvp: false }),
+    ).toBe(true);
   });
 
   it('increments numbered siblings only when no reuse target exists', () => {
@@ -244,5 +294,58 @@ describe('shouldDeferSlideOnlyDiscoveryArtifactPersist', () => {
         hasCompleteHtmlArtifact: true,
       }),
     ).toBe(false);
+    expect(completeDeck.length).toBeGreaterThan(64);
+  });
+
+  it('does not defer turn-1 persist when truncated HTML was streamed', () => {
+    // Truncation must reach salvage / skipped-incomplete → auto-continue,
+    // not fail as skipped-discovery-turn → incomplete_output.
+    const truncated =
+      '<!doctype html><html lang="ko"><head><meta charset="utf-8"></head><body>'
+      + '<section class="slide"><h1>Cover</h1><p>Intro copy that is long enough</p></section>'
+      + '<section class="slide"><h2>Agenda</h2>';
+    const messages = [
+      { id: 'u1', role: 'user' as const, content: '온보딩 덱 만들어줘' },
+    ];
+    expect(
+      shouldDeferSlideOnlyDiscoveryArtifactPersist(messages, {
+        slideOnlyMvp: true,
+        hasArtifactHtml: truncated.trim().length > 0,
+        hasCompleteHtmlArtifact: false,
+      }),
+    ).toBe(false);
+  });
+});
+
+describe('resolveSlideOnlySkipDiscoveryBrief', () => {
+  it('is false when no deck/template/skip signals are present', () => {
+    expect(resolveSlideOnlySkipDiscoveryBrief({})).toBe(false);
+  });
+
+  it('honors project skipDiscoveryBrief, template id, and run pin', () => {
+    expect(
+      resolveSlideOnlySkipDiscoveryBrief({ projectSkipDiscoveryBrief: true }),
+    ).toBe(true);
+    expect(
+      resolveSlideOnlySkipDiscoveryBrief({
+        selectedDeckTemplateId: 'html-ppt-zhangzara-daisy-days',
+      }),
+    ).toBe(true);
+    expect(
+      resolveSlideOnlySkipDiscoveryBrief({ runSkipDiscoveryBrief: true }),
+    ).toBe(true);
+  });
+
+  it('does NOT treat bare kind:deck as skip (home Quick brief must still run)', () => {
+    expect(resolveSlideOnlySkipDiscoveryBrief({ projectKind: 'deck' })).toBe(false);
+    expect(
+      shouldDeferSlideOnlyDiscoveryArtifactPersist(
+        [{ id: 'u1', role: 'user', content: '온보딩 ppt 만들어줘' }],
+        {
+          slideOnlyMvp: true,
+          skipDiscoveryBrief: resolveSlideOnlySkipDiscoveryBrief({ projectKind: 'deck' }),
+        },
+      ),
+    ).toBe(true);
   });
 });

@@ -75,6 +75,7 @@ import {
 } from '@open-design/host';
 import { mayMutateProjectLinkedDirs } from '../teamver/embedLocalWorkspacePolicy';
 import { isRenderableImagePath } from '../utils/projectFilePaths';
+import { devLog } from '../lib/devLog';
 import { clearProjectRawFileMissing } from '../utils/projectFileFetchCache';
 import {
   fetchTeamverDaemon,
@@ -87,6 +88,7 @@ import { waitForTeamverProjectStoragePrefix } from '../teamver/teamverProjectS3P
 import { resolveTeamverBranding } from '../teamver/branding/config';
 import { skillsForSlideOnlyMvp } from '../teamver/branding/slideOnlyMvpPolicy';
 import { normalizePluginApiId } from '../plugins/pluginIds';
+import { isUnauthorizedHtmlBody } from '../runtime/authenticatedHtmlSrcDoc';
 
 export const DEFAULT_DEPLOY_PROVIDER_ID = 'vercel-self';
 export const CLOUDFLARE_PAGES_PROVIDER_ID = 'cloudflare-pages';
@@ -587,7 +589,11 @@ export async function fetchDesignSystemsResult(): Promise<DesignSystemsResult> {
 
 export async function fetchDesignSystem(id: string): Promise<DesignSystemDetail | null> {
   try {
-    const resp = await fetch(`/api/design-systems/${encodeURIComponent(id)}`);
+    // Teamver embed proxies /api/* through daemon auth — plain fetch() 401s
+    // there and left DesignSystemPreviewModal stuck on "Loading DESIGN.md…".
+    const resp = await fetchTeamverDaemon(
+      `/api/design-systems/${encodeURIComponent(id)}`,
+    );
     if (!resp.ok) return null;
     return parseDesignSystemDetail(await resp.json());
   } catch {
@@ -1530,15 +1536,66 @@ export async function createSocialSharePayload(
 
 // Project files — all paths are scoped under .od/projects/<id>/ on disk.
 
+const projectFilesInflight = new Map<string, Promise<ProjectFile[]>>();
+
+/** @internal vitest */
+export function resetFetchProjectFilesInflightForTests(): void {
+  projectFilesInflight.clear();
+}
+
+/** Last-known `/files` payload per project — used to survive daemon 502 without
+ *  wiping the FE state to `[]` (which turns image-attach turns into greenfield
+ *  generate and collapses 8-slide decks to 2). Populated only on 2xx. */
+const projectFilesLastKnown = new Map<string, ProjectFile[]>();
+
+const PROJECT_FILES_RETRY_5XX_DELAYS_MS = [250, 1000] as const;
+
 export async function fetchProjectFiles(projectId: string): Promise<ProjectFile[]> {
-  try {
-    const resp = await fetchTeamverDaemon(`/api/projects/${encodeURIComponent(projectId)}/files`);
-    if (!resp.ok) return [];
-    const json = (await resp.json()) as { files: ProjectFile[] };
-    return json.files ?? [];
-  } catch {
-    return [];
-  }
+  const key = projectId.trim();
+  if (!key) return [];
+  const pending = projectFilesInflight.get(key);
+  if (pending) return pending;
+
+  const run = (async (): Promise<ProjectFile[]> => {
+    try {
+      let resp: Response | null = null;
+      // Retry transient 5xx once — sibling-pod lazy sync-down denies can
+      // recover within a few hundred ms and the FE keeps working. Only after
+      // the retry ladder is exhausted do we fall back to the last-known list
+      // instead of wiping FE state to [].
+      for (let attempt = 0; attempt <= PROJECT_FILES_RETRY_5XX_DELAYS_MS.length; attempt += 1) {
+        if (attempt > 0) {
+          const delay = PROJECT_FILES_RETRY_5XX_DELAYS_MS[attempt - 1] ?? 0;
+          if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
+        }
+        try {
+          resp = await fetchTeamverDaemon(`/api/projects/${encodeURIComponent(key)}/files`);
+        } catch (err) {
+          resp = null;
+        }
+        if (resp && resp.ok) break;
+        if (resp && resp.status < 500) break;
+      }
+      if (resp && resp.ok) {
+        const json = (await resp.json()) as { files: ProjectFile[] };
+        const files = json.files ?? [];
+        projectFilesLastKnown.set(key, files);
+        return files;
+      }
+      // 5xx / network exhaustion: prefer the last-known non-empty snapshot
+      // so callers that rely on the file list (existing-deck edit detection,
+      // preview heal, refs/drive/basename upgrade) do not fall back to
+      // greenfield behaviour on a transient daemon flap.
+      const cached = projectFilesLastKnown.get(key);
+      if (cached && cached.length > 0) return cached;
+      return [];
+    } finally {
+      projectFilesInflight.delete(key);
+    }
+  })();
+
+  projectFilesInflight.set(key, run);
+  return run;
 }
 
 export async function fetchProjectFolders(projectId: string): Promise<ProjectFolder[]> {
@@ -1823,16 +1880,30 @@ export async function fetchProjectFilePreview(
 export async function fetchProjectFileText(
   projectId: string,
   name: string,
-  options?: { cache?: RequestCache; cacheBustKey?: string | number; signal?: AbortSignal },
+  options?: {
+    cache?: RequestCache;
+    cacheBustKey?: string | number;
+    signal?: AbortSignal;
+    /**
+     * Ask the daemon to rewrite `<img src>` / CSS `url(...)` refs in HTML
+     * responses into inline `data:` URIs before serving. Use ONLY for preview
+     * rendering — model context / retry payloads / manual raw editor must see
+     * the original bytes so token budgets, saved bytes-on-disk, and
+     * element-patch diffs stay correct.
+     */
+    inlineAssetsForPreview?: boolean;
+  },
 ): Promise<string | null> {
   if (isRenderableImagePath(name)) return null;
 
   const url = projectFileUrl(projectId, name);
   const cacheBustKey = options?.cacheBustKey;
-  const requestUrl =
-    cacheBustKey == null
-      ? url
-      : `${url}${url.includes('?') ? '&' : '?'}cacheBust=${encodeURIComponent(String(cacheBustKey))}`;
+  const params: string[] = [];
+  if (cacheBustKey != null) params.push(`cacheBust=${encodeURIComponent(String(cacheBustKey))}`);
+  if (options?.inlineAssetsForPreview) params.push('inlineAssets=1');
+  const requestUrl = params.length === 0
+    ? url
+    : `${url}${url.includes('?') ? '&' : '?'}${params.join('&')}`;
   const init: RequestInit = {};
   if (options?.cache) init.cache = options.cache;
   if (options?.signal) init.signal = options.signal;
@@ -1840,23 +1911,19 @@ export async function fetchProjectFileText(
   try {
     const resp = await fetchTeamverDaemon(requestUrl, init);
     if (!resp.ok) {
-      console.warn('[fetchProjectFileText] failed:', {
-        name,
+      devLog.warn('[fetchProjectFileText] failed:', {
         projectId,
         status: resp.status,
         statusText: resp.statusText,
-        url: requestUrl,
       });
       return null;
     }
     return await resp.text();
   } catch (err) {
     if (options?.signal?.aborted) return null;
-    console.warn('[fetchProjectFileText] failed:', {
-      error: err,
-      name,
+    devLog.warn('[fetchProjectFileText] failed:', {
       projectId,
-      url: requestUrl,
+      error: err instanceof Error ? err.message : String(err),
     });
     return null;
   }
@@ -1959,13 +2026,21 @@ export async function writeProjectTextFileDetailed(
   projectId: string,
   name: string,
   content: string,
-  options?: { artifactManifest?: ArtifactManifest },
+  options?: {
+    artifactManifest?: ArtifactManifest;
+    skipArtifactStubGuard?: boolean;
+  },
 ): Promise<WriteProjectTextFileResult> {
   try {
     const resp = await fetchTeamverDaemon(`/api/projects/${encodeURIComponent(projectId)}/files`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, content, artifactManifest: options?.artifactManifest }),
+      body: JSON.stringify({
+        name,
+        content,
+        artifactManifest: options?.artifactManifest,
+        ...(options?.skipArtifactStubGuard ? { skipArtifactStubGuard: true } : {}),
+      }),
     });
     if (!resp.ok) {
       notifyDaemonMutatingUnauthorized(resp);
@@ -1980,6 +2055,17 @@ export async function writeProjectTextFileDetailed(
       };
     }
     const json = (await resp.json()) as { file: ProjectFile };
+    // Clone seeds deck.html LOOK; fill/edits overwrite it. Bust card thumbs so
+    // Home/Designs do not keep the template-clone first-slide srcDoc.
+    if (/\.html?$/i.test(name)) {
+      void import('../teamver/projectCoverLoader')
+        .then((mod) => {
+          mod.clearProjectCoverCache(projectId);
+        })
+        .catch(() => {
+          /* cover bust is best-effort */
+        });
+    }
     return { ok: true, file: json.file };
   } catch {
     return { ok: false, message: 'Network error while saving the file' };
@@ -2049,6 +2135,15 @@ export async function pushProjectFileRevision(
       };
     }
     const json = (await resp.json()) as FileRevisionPushResponse;
+    if (/\.html?$/i.test(fileName)) {
+      void import('../teamver/projectCoverLoader')
+        .then((mod) => {
+          mod.clearProjectCoverCache(projectId);
+        })
+        .catch(() => {
+          /* cover bust is best-effort */
+        });
+    }
     return { ok: true, revision: json.revision, file: json.file };
   } catch {
     return { ok: false, message: 'Network error while saving the revision' };
@@ -2083,6 +2178,16 @@ export async function restoreProjectFileRevision(
       };
     }
     const json = (await resp.json()) as FileRevisionRestoreResponse;
+    // Same as write/push: undo/redo/history restore must bust list-card HTML covers.
+    if (/\.html?$/i.test(fileName)) {
+      void import('../teamver/projectCoverLoader')
+        .then((mod) => {
+          mod.clearProjectCoverCache(projectId);
+        })
+        .catch(() => {
+          /* cover bust is best-effort */
+        });
+    }
     return { ok: true, revision: json.revision, file: json.file };
   } catch {
     return { ok: false, message: 'Network error while restoring the revision' };
@@ -2270,12 +2375,20 @@ export async function uploadProjectFiles(
         };
         const responseFiles = json.files ?? [];
         uploaded.push(
-          ...responseFiles.map((f) => ({
-            path: f.path,
-            name: f.originalName ?? f.name,
-            kind: looksLikeImage(f.name) ? ('image' as const) : ('file' as const),
-            size: f.size,
-          })),
+          ...responseFiles.map((f) => {
+            // Prefer the on-disk basename (`f.name` / path) over `originalName`.
+            // Local uploads store `<timestamp>-<sanitizedOriginal>` while keeping
+            // the human filename in `originalName`. Using originalName as `name`
+            // previously taught the model to emit `<img src="놀란 고양이.jpeg">`
+            // which 404s; only the timestamped path exists.
+            const storedName = String(f.name || f.path.split('/').pop() || '').trim();
+            return {
+              path: f.path,
+              name: storedName || (f.originalName ?? f.name),
+              kind: looksLikeImage(f.name || f.path) ? ('image' as const) : ('file' as const),
+              size: f.size,
+            };
+          }),
         );
         for (const f of responseFiles) {
           clearProjectRawFileMissing(projectId, f.path);
@@ -2540,25 +2653,42 @@ export async function fetchDesignSystemPreview(id: string): Promise<string | nul
   return result.ok ? result.html : null;
 }
 
-export async function fetchDesignSystemShowcase(id: string): Promise<string | null> {
+export type DesignSystemShowcaseResult =
+  | { ok: true; html: string }
+  | { ok: false; reason: 'not_found' | 'unauthorized' | 'error' };
+
+export async function fetchDesignSystemShowcaseResult(
+  id: string,
+): Promise<DesignSystemShowcaseResult> {
   try {
     const resp = await fetchTeamverDaemon(
       `/api/design-systems/${encodeURIComponent(id)}/showcase`,
     );
-    if (!resp.ok) return null;
+    if (resp.status === 404) return { ok: false, reason: 'not_found' };
+    if (resp.status === 401 || resp.status === 403) {
+      return { ok: false, reason: 'unauthorized' };
+    }
+    if (!resp.ok) return { ok: false, reason: 'error' };
     const text = await resp.text();
     const contentType = resp.headers.get('content-type');
     // Reject auth JSON envelopes so callers never mount session_expired as srcDoc.
     if (
-      (contentType || '').toLowerCase().includes('application/json')
+      isUnauthorizedHtmlBody(text, contentType)
+      || (contentType || '').toLowerCase().includes('application/json')
       || (text.trim().startsWith('{') && /"detail"\s*:/.test(text.slice(0, 200)))
     ) {
-      return null;
+      return { ok: false, reason: 'unauthorized' };
     }
-    return text;
+    if (!text.trim()) return { ok: false, reason: 'not_found' };
+    return { ok: true, html: text };
   } catch {
-    return null;
+    return { ok: false, reason: 'error' };
   }
+}
+
+export async function fetchDesignSystemShowcase(id: string): Promise<string | null> {
+  const result = await fetchDesignSystemShowcaseResult(id);
+  return result.ok ? result.html : null;
 }
 
 // Fetch the sandboxed HTML preview the daemon serves for a plugin.
@@ -2577,6 +2707,8 @@ export async function fetchPluginPreviewHtml(
 ): Promise<SkillExampleResult> {
   const apiId = normalizePluginApiId(id);
   try {
+    // Detail / ↗ opens must run the full embed auth recovery ladder — do not
+    // share gallery thumb policy (skipEmbedAuthRecovery).
     const resp = await fetchTeamverDaemon(
       `/api/plugins/${encodeURIComponent(apiId)}/preview`,
     );
@@ -2586,10 +2718,7 @@ export async function fetchPluginPreviewHtml(
     }
     const html = await resp.text();
     const contentType = resp.headers.get('content-type');
-    if (
-      (contentType || '').toLowerCase().includes('application/json')
-      || (html.trim().startsWith('{') && /"detail"\s*:/.test(html.slice(0, 200)))
-    ) {
+    if (isUnauthorizedHtmlBody(html, contentType)) {
       return { error: 'HTTP 401' };
     }
     return { html };
@@ -2617,10 +2746,7 @@ export async function fetchPluginExampleHtml(
     }
     const html = await resp.text();
     const contentType = resp.headers.get('content-type');
-    if (
-      (contentType || '').toLowerCase().includes('application/json')
-      || (html.trim().startsWith('{') && /"detail"\s*:/.test(html.slice(0, 200)))
-    ) {
+    if (isUnauthorizedHtmlBody(html, contentType)) {
       return { error: 'HTTP 401' };
     }
     return { html };
@@ -2638,11 +2764,20 @@ export async function fetchPluginExampleHtml(
 export async function fetchPluginAssetText(
   pluginId: string,
   relpath: string,
+  opts?: { skipEmbedAuthRecovery?: boolean },
 ): Promise<string | null> {
   try {
-    const resp = await fetch(
-      `/api/plugins/${encodeURIComponent(pluginId)}/asset/${encodePluginAssetPath(relpath)}`,
-    );
+    const url = `/api/plugins/${encodeURIComponent(pluginId)}/asset/${encodePluginAssetPath(relpath)}`;
+    // Teamver embed proxies plugin routes through a daemon that requires
+    // X-Teamver-* identity headers; plain fetch() returns 401 there and
+    // callers silently fall back to a placeholder (which is how the Canvas →
+    // Slide template picker used to look "selected but not applied").
+    // Detail modals must run auth recovery — gallery thumbs may opt out.
+    const resp = isTeamverEmbedMode()
+      ? await fetchTeamverDaemon(url, {
+          skipEmbedAuthRecovery: opts?.skipEmbedAuthRecovery === true,
+        })
+      : await fetch(url);
     if (!resp.ok) return null;
     return await resp.text();
   } catch {

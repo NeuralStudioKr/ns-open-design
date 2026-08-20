@@ -18,6 +18,7 @@ import { ChatComposer, type ChatComposerHandle } from '../../src/components/Chat
 import { I18nProvider } from '../../src/i18n';
 import type { Locale } from '../../src/i18n/types';
 import type { AppliedPluginSnapshot } from '@open-design/contracts';
+import * as projectsState from '../../src/state/projects';
 import { composerText, pressEnter, typeAndSettle } from '../helpers/lexical-composer';
 
 const COMMUNITY_PLUGIN = {
@@ -147,15 +148,21 @@ function composerElement(
   );
 }
 
+function wrapComposer(
+  overrides: Partial<ComponentProps<typeof ChatComposer>> = {},
+  locale: Locale = 'en',
+) {
+  return (
+    <I18nProvider initial={locale}>{composerElement(overrides)}</I18nProvider>
+  );
+}
+
 function renderComposer(
   overrides: Partial<ComponentProps<typeof ChatComposer>> = {},
   options: { locale?: Locale } = {},
 ) {
-  const tree = composerElement(overrides);
-
-  return options.locale
-    ? render(<I18nProvider initial={options.locale}>{tree}</I18nProvider>)
-    : render(tree);
+  // Default to en so English string assertions stay stable on KO/ZH hosts.
+  return render(wrapComposer(overrides, options.locale ?? 'en'));
 }
 
 // Flush the composer's lazy mount fetches (MCP servers, installed plugins,
@@ -253,7 +260,7 @@ describe('ChatComposer context pickers', () => {
     fireEvent.click(screen.getByLabelText('Remove index.html'));
     await waitFor(() => expect(screen.queryByText('index.html')).toBeNull());
 
-    view.rerender(composerElement({ activeWorkspaceContext: browserContext, onSend }));
+    view.rerender(wrapComposer({ activeWorkspaceContext: browserContext, onSend }));
     await waitFor(() => expect(screen.getByTestId('staged-contexts').textContent).toContain('CurrentDribbble'));
 
     await typeAndSettle('Use the current tab.');
@@ -276,7 +283,7 @@ describe('ChatComposer context pickers', () => {
     await waitFor(() => expect(screen.getByTestId('mention-popover')).toBeTruthy());
     expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
       'All',
-      'Design files',
+      'Files',
       'Tabs',
       'Plugins',
       'Skills',
@@ -287,9 +294,9 @@ describe('ChatComposer context pickers', () => {
     expect(screen.getByRole('tab', { name: 'Skills' })).toBeTruthy();
     expect(screen.getByRole('tab', { name: 'MCP' })).toBeTruthy();
     expect(screen.getByRole('tab', { name: 'Connectors' })).toBeTruthy();
-    expect(screen.getByRole('tab', { name: 'Design files' })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: 'Files' })).toBeTruthy();
     expect(screen.getByRole('tab', { name: 'Tabs' })).toBeTruthy();
-    expect(screen.getByText('Search Design Files, tabs, plugins, skills, MCP servers, and connectors.')).toBeTruthy();
+    expect(screen.getByText('Search files, tabs, plugins, skills, MCP servers, and connectors.')).toBeTruthy();
   });
 
   it('localizes @ panel tabs and empty states in Chinese mode', async () => {
@@ -304,7 +311,7 @@ describe('ChatComposer context pickers', () => {
     await waitFor(() => expect(screen.getByRole('tab', { name: '全部' })).toBeTruthy());
     expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
       '全部',
-      '设计文件',
+      '文件',
       '标签页',
       '插件',
       '技能',
@@ -315,9 +322,9 @@ describe('ChatComposer context pickers', () => {
     expect(screen.getByRole('tab', { name: '技能' })).toBeTruthy();
     expect(screen.getByRole('tab', { name: 'MCP' })).toBeTruthy();
     expect(screen.getByRole('tab', { name: '连接器' })).toBeTruthy();
-    expect(screen.getByRole('tab', { name: '设计文件' })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: '文件' })).toBeTruthy();
     expect(screen.getByRole('tab', { name: '标签页' })).toBeTruthy();
-    expect(screen.getByText('搜索设计文件、标签页、插件、技能、MCP 服务器和连接器。')).toBeTruthy();
+    expect(screen.getByText('搜索文件、标签页、插件、技能、MCP 服务器和连接器。')).toBeTruthy();
 
     await typeAndSettle('@missing');
 
@@ -325,7 +332,7 @@ describe('ChatComposer context pickers', () => {
     expect(screen.queryByText('No results for “missing”.')).toBeNull();
   });
 
-  it('lists Design Files first in All and picks the first file with Enter', async () => {
+  it('lists project files first in All and picks the first file with Enter', async () => {
     renderComposer({
       projectFiles: [
         {
@@ -357,7 +364,7 @@ describe('ChatComposer context pickers', () => {
       screen.getByTestId('mention-popover').querySelectorAll('.mention-section-label'),
       (node) => node.textContent,
     );
-    expect(labels[0]).toBe('Design files');
+    expect(labels[0]).toBe('Files');
     expect(labels[1]).toBe('Tabs');
 
     pressEnter();
@@ -880,5 +887,141 @@ describe('ChatComposer context pickers', () => {
 
     expect(screen.queryByRole('button', { name: 'Pets — wake, tuck, or pick one' })).toBeNull();
     expect(screen.queryByText('Buddy')).toBeNull();
+  });
+
+  it('hydrates Home-pinned MCP chips from project metadata on remount', async () => {
+    renderComposer({
+      projectMetadata: {
+        kind: 'deck',
+        contextMcpServers: [{ id: 'slack', label: 'Slack MCP', transport: 'stdio', command: 'slack-mcp' }],
+      },
+    });
+
+    await waitFor(() =>
+      expect(screen.getByTestId('staged-contexts').textContent).toContain('@Slack MCP'),
+    );
+  });
+
+  it('clears the applied-plugin chip when the project pin is removed', async () => {
+    const snapshot = {
+      ...APPLY_RESULT.appliedPlugin,
+      pluginTitle: 'My Export',
+    } as AppliedPluginSnapshot;
+    const fetchSnap = vi
+      .spyOn(projectsState, 'fetchAppliedPluginSnapshot')
+      .mockResolvedValue(snapshot);
+
+    const view = renderComposer({ pinnedAppliedPluginSnapshotId: 'snap-1' });
+    await waitFor(() =>
+      expect(screen.getByTestId('staged-contexts').textContent).toContain('My Export'),
+    );
+
+    view.rerender(wrapComposer({ pinnedAppliedPluginSnapshotId: null }));
+    await waitFor(() => expect(screen.queryByTestId('staged-contexts')).toBeNull());
+    fetchSnap.mockRestore();
+  });
+
+  it('patches project metadata when a Home-pinned MCP chip is removed', async () => {
+    const onProjectMetadataChange = vi.fn();
+    renderComposer({
+      projectMetadata: {
+        kind: 'deck',
+        contextMcpServers: [{ id: 'slack', label: 'Slack MCP', transport: 'stdio' }],
+      },
+      onProjectMetadataChange,
+    });
+
+    await waitFor(() =>
+      expect(screen.getByTestId('staged-contexts').textContent).toContain('@Slack MCP'),
+    );
+    fireEvent.click(screen.getByLabelText('Remove Slack MCP'));
+
+    await waitFor(() => expect(onProjectMetadataChange).toHaveBeenCalled());
+    const patched = onProjectMetadataChange.mock.calls.at(-1)?.[0];
+    expect(patched?.contextMcpServers).toEqual([]);
+  });
+
+  it('prunes a Home-pinned MCP chip when metadata pins shrink', async () => {
+    const view = renderComposer({
+      projectMetadata: {
+        kind: 'deck',
+        contextMcpServers: [
+          { id: 'slack', label: 'Slack MCP', transport: 'stdio', command: 'slack-mcp' },
+          { id: 'github', label: 'GitHub MCP', transport: 'stdio', command: 'gh-mcp' },
+        ],
+      },
+    });
+
+    await waitFor(() => {
+      const text = screen.getByTestId('staged-contexts').textContent ?? '';
+      expect(text).toContain('@Slack MCP');
+      expect(text).toContain('@GitHub MCP');
+    });
+
+    view.rerender(
+      wrapComposer({
+        projectMetadata: {
+          kind: 'deck',
+          contextMcpServers: [
+            { id: 'slack', label: 'Slack MCP', transport: 'stdio', command: 'slack-mcp' },
+          ],
+        },
+      }),
+    );
+
+    await waitFor(() => {
+      const text = screen.getByTestId('staged-contexts').textContent ?? '';
+      expect(text).toContain('@Slack MCP');
+      expect(text).not.toContain('@GitHub MCP');
+    });
+  });
+
+  it('does not call onProjectMetadataChange when pin-clear PATCH fails', async () => {
+    const onProjectMetadataChange = vi.fn();
+    fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === '/api/projects/project-1' && init?.method === 'PATCH') {
+        return new Response(JSON.stringify({ error: 'fail' }), { status: 500 });
+      }
+      if (url === '/api/mcp/servers') {
+        return new Response(JSON.stringify({ servers, templates: [] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url === '/api/plugins') {
+        return new Response(JSON.stringify({ plugins }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url === '/api/skills') {
+        return new Response(JSON.stringify({ skills }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response('[]', {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    renderComposer({
+      projectMetadata: {
+        kind: 'deck',
+        contextMcpServers: [{ id: 'slack', label: 'Slack MCP', transport: 'stdio' }],
+      },
+      onProjectMetadataChange,
+    });
+
+    await waitFor(() =>
+      expect(screen.getByTestId('staged-contexts').textContent).toContain('@Slack MCP'),
+    );
+    fireEvent.click(screen.getByLabelText('Remove Slack MCP'));
+
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    expect(onProjectMetadataChange).not.toHaveBeenCalled();
   });
 });

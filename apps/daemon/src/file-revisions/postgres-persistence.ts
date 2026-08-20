@@ -185,6 +185,39 @@ export async function pgPruneOldestFileRevisionsWithSnapshots(
   return pgPruneOldestFileRevisions(pool, projectId, fileName, keep);
 }
 
+export async function pgPruneOldestFileRevisionsCapped(
+  pool: Pool,
+  projectId: string,
+  fileName: string,
+  keep: number,
+  maxDeletes: number,
+): Promise<{ ids: string[]; remainingExcess: number }> {
+  const countRow = await queryPostgresRow<{ c: string }>(
+    pool,
+    `SELECT count(*)::text AS c FROM file_revisions WHERE project_id = $1 AND file_name = $2`,
+    [projectId, fileName],
+  );
+  const excess = Math.max(0, Number(countRow?.c ?? 0) - keep);
+  if (excess === 0 || maxDeletes <= 0) {
+    return { ids: [], remainingExcess: excess };
+  }
+
+  const deleteCount = Math.min(excess, maxDeletes);
+  const rows = await queryPostgresRows<{ id: string }>(
+    pool,
+    `SELECT id FROM file_revisions
+     WHERE project_id = $1 AND file_name = $2
+     ORDER BY sequence ASC
+     LIMIT $3`,
+    [projectId, fileName, deleteCount],
+  );
+  const ids = rows.map((row) => row.id);
+  if (ids.length > 0) {
+    await pgDeleteFileRevisionsByIdsWithSnapshots(pool, ids);
+  }
+  return { ids, remainingExcess: Math.max(0, excess - ids.length) };
+}
+
 export async function pgCommitRevisionWithSnapshot(
   pool: Pool,
   input: PgFileRevisionRow,
@@ -361,13 +394,14 @@ export async function pgListOldestRevisionsForPrune(
   pool: Pool,
   excludeRevisionIds: ReadonlySet<string>,
   limit: number,
-): Promise<Array<{ id: string; storageBytes: number }>> {
+): Promise<Array<{ id: string; projectId: string; fileName: string; storageBytes: number }>> {
   if (limit <= 0) return [];
   const exclude = [...excludeRevisionIds];
   if (exclude.length === 0) {
-    return await queryPostgresRows<{ id: string; storageBytes: number }>(
+    return await queryPostgresRows<{ id: string; projectId: string; fileName: string; storageBytes: number }>(
       pool,
-      `SELECT r.id AS id, coalesce(s.storage_bytes, 0)::bigint AS "storageBytes"
+      `SELECT r.id AS id, r.project_id AS "projectId", r.file_name AS "fileName",
+              coalesce(s.storage_bytes, 0)::bigint AS "storageBytes"
        FROM file_revisions r
        LEFT JOIN file_revision_snapshots s ON s.revision_id = r.id
        ORDER BY r.created_at ASC, r.sequence ASC
@@ -375,9 +409,10 @@ export async function pgListOldestRevisionsForPrune(
       [limit],
     );
   }
-  return await queryPostgresRows<{ id: string; storageBytes: number }>(
+  return await queryPostgresRows<{ id: string; projectId: string; fileName: string; storageBytes: number }>(
     pool,
-    `SELECT r.id AS id, coalesce(s.storage_bytes, 0)::bigint AS "storageBytes"
+    `SELECT r.id AS id, r.project_id AS "projectId", r.file_name AS "fileName",
+            coalesce(s.storage_bytes, 0)::bigint AS "storageBytes"
      FROM file_revisions r
      LEFT JOIN file_revision_snapshots s ON s.revision_id = r.id
      WHERE NOT (r.id = ANY($1::text[]))

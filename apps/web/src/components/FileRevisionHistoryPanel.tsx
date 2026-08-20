@@ -10,6 +10,7 @@ type FileRevisionHistoryPanelProps = {
   revisions: FileRevision[];
   cursorRevisionId: string | null;
   retentionLimit: number;
+  retentionPending?: boolean;
   busy?: boolean;
   onRestore: (revision: FileRevision) => void;
   onClose: () => void;
@@ -32,6 +33,7 @@ export function FileRevisionHistoryPanel({
   revisions,
   cursorRevisionId,
   retentionLimit,
+  retentionPending = false,
   busy = false,
   onRestore,
   onClose,
@@ -61,7 +63,9 @@ export function FileRevisionHistoryPanel({
       </header>
       {ordered.length > 0 ? (
         <p className={styles.retentionHint} data-testid="file-revision-history-retention-hint">
-          {t('fileRevision.history.retentionHint', { count: retentionLimit })}
+          {retentionPending
+            ? t('fileRevision.history.retentionPending')
+            : t('fileRevision.history.retentionHint', { count: retentionLimit })}
         </p>
       ) : null}
       {ordered.length === 0 ? (

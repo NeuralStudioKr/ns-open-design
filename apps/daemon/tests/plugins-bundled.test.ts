@@ -6,9 +6,9 @@ import os from 'node:os';
 import path from 'node:path';
 import Database from 'better-sqlite3';
 import { migratePlugins } from '../src/plugins/persistence.js';
-import { listInstalledPlugins, upsertInstalledPlugin } from '../src/plugins/registry.js';
+import { registerBundledPlugins, ensureBundledPluginRegistered } from '../src/plugins/bundled.js';
+import { listInstalledPlugins, upsertInstalledPlugin, getInstalledPlugin } from '../src/plugins/registry.js';
 import type { InstalledPluginRecord } from '@open-design/contracts';
-import { registerBundledPlugins } from '../src/plugins/bundled.js';
 
 let db: Database.Database;
 let tmpRoot: string;
@@ -188,5 +188,67 @@ describe('registerBundledPlugins', () => {
     });
     expect(result.pruned).toEqual([]);
     expect(listInstalledPlugins(db).map((r) => r.id)).toEqual(['sample']);
+  });
+});
+
+describe('ensureBundledPluginRegistered', () => {
+  it('re-registers a missing bundled row from disk (example- id ↔ folder basename)', async () => {
+    const folder = path.join(tmpRoot, 'examples', 'simple-deck');
+    await mkdir(folder, { recursive: true });
+    await writeFile(path.join(folder, 'open-design.json'), SAMPLE_MANIFEST('example-simple-deck'));
+    await writeFile(path.join(folder, 'SKILL.md'), SAMPLE_SKILL('example-simple-deck'));
+
+    expect(getInstalledPlugin(db, 'example-simple-deck')).toBeNull();
+
+    const restored = await ensureBundledPluginRegistered({
+      db,
+      bundledRoot: tmpRoot,
+      pluginId: 'example-simple-deck',
+    });
+
+    expect(restored?.id).toBe('example-simple-deck');
+    expect(getInstalledPlugin(db, 'example-simple-deck')?.sourceKind).toBe('bundled');
+  });
+
+  it('is a no-op when the plugin is already installed', async () => {
+    const folder = path.join(tmpRoot, 'examples', 'simple-deck');
+    await mkdir(folder, { recursive: true });
+    await writeFile(path.join(folder, 'open-design.json'), SAMPLE_MANIFEST('example-simple-deck'));
+    await writeFile(path.join(folder, 'SKILL.md'), SAMPLE_SKILL('example-simple-deck'));
+    await registerBundledPlugins({ db, bundledRoot: tmpRoot });
+    const before = getInstalledPlugin(db, 'example-simple-deck');
+    expect(before).not.toBeNull();
+
+    const again = await ensureBundledPluginRegistered({
+      db,
+      bundledRoot: tmpRoot,
+      pluginId: 'example-simple-deck',
+    });
+    expect(again?.id).toBe(before?.id);
+    expect(listInstalledPlugins(db).filter((p) => p.id === 'example-simple-deck')).toHaveLength(1);
+  });
+
+  it('does not register from a loose suffix folder (deck ≠ example-simple-deck)', async () => {
+    const folder = path.join(tmpRoot, 'examples', 'deck');
+    await mkdir(folder, { recursive: true });
+    await writeFile(path.join(folder, 'open-design.json'), SAMPLE_MANIFEST('example-deck-other'));
+    await writeFile(path.join(folder, 'SKILL.md'), SAMPLE_SKILL('example-deck-other'));
+
+    const restored = await ensureBundledPluginRegistered({
+      db,
+      bundledRoot: tmpRoot,
+      pluginId: 'example-simple-deck',
+    });
+    expect(restored).toBeNull();
+    expect(getInstalledPlugin(db, 'example-simple-deck')).toBeNull();
+  });
+
+  it('returns null for unknown ids', async () => {
+    const restored = await ensureBundledPluginRegistered({
+      db,
+      bundledRoot: tmpRoot,
+      pluginId: 'does-not-exist',
+    });
+    expect(restored).toBeNull();
   });
 });

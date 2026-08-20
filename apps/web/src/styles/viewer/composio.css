@@ -1052,15 +1052,19 @@
 /* Answered: a quiet "done" marker. No hover/click affordance, muted surface,
    and a green check in place of the question icon. */
 .questions-banner-answered,
-.questions-banner-answered:hover {
+.questions-banner-answered:hover,
+.questions-banner-answered:disabled {
   cursor: default;
   border-color: var(--border);
   background: var(--bg-panel);
   box-shadow: none;
   color: var(--text-muted);
+  /* Defeat global button:disabled { opacity: 0.5 } so the quiet "done"
+     surface is not double-muted. */
+  opacity: 1;
 }
 .questions-banner-answered .questions-banner-icon {
-  background: var(--success, #16a34a);
+  background: var(--green);
 }
 .questions-banner-answered .questions-banner-label {
   font-weight: 500;
@@ -1324,14 +1328,12 @@
   border-bottom: 1px solid var(--border);
   background: var(--bg-panel);
 }
-/* One row: title + description stacked on the left, action buttons and
-   close on the right. Vertically centering the right cluster against the
-   two-line title block drops the buttons down so they sit balanced with
-   the description instead of hugging the top edge. */
+/* Row 1: title (+ optional subtitle) + close. Row 2 (toolbar): tabs +
+   actions so deck-nav / CTA no longer compete with a long title on one line. */
 .ds-modal-header-top {
   display: flex;
-  align-items: center;
-  gap: 20px;
+  align-items: flex-start;
+  gap: 16px;
 }
 .ds-modal-title-block {
   flex: 1 1 auto;
@@ -1345,6 +1347,18 @@
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
+}
+.ds-modal-header-toolbar .ds-modal-actions {
+  margin-left: auto;
+}
+.ds-modal-header-toolbar .ds-modal-actions .ghost.icon-only {
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  color: var(--text);
 }
 .ds-modal-title {
   font-size: 16px;
@@ -1405,6 +1419,42 @@
   justify-content: flex-end;
   flex-wrap: wrap;
   margin-left: auto;
+}
+/* Host deck chrome for community/template PreviewModal (FileViewer .deck-nav reused). */
+.ds-modal-actions .ds-modal-deck-nav {
+  border-left: none;
+  margin-left: 0;
+  margin-right: 2px;
+  padding-left: 0;
+  padding-right: 8px;
+  border-right: 1px solid var(--border);
+  height: 36px;
+  gap: 2px;
+}
+.ds-modal-actions .ds-modal-deck-nav .deck-nav-counter {
+  min-width: 4.5ch;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.ds-modal-actions .ds-modal-deck-nav .icon-only {
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.ds-modal-actions .ds-modal-deck-nav .icon-only:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--bg-subtle);
+}
+.ds-modal-actions .ds-modal-deck-nav .icon-only:disabled {
+  opacity: 0.35;
+  cursor: default;
 }
 /* Keep individual action labels (Use plugin / DESIGN.md / Fullscreen /
    Share / etc.) on a single line; the toolbar row itself can wrap to a
@@ -1532,12 +1582,15 @@
   .ds-modal-sidebar {
     animation: none;
   }
+  .ds-modal-sidebar .plugin-info-pane {
+    animation: none;
+  }
 }
 .ds-modal-stage-handle {
   position: absolute;
   top: 50%;
-  width: 18px;
-  height: 56px;
+  width: 28px;
+  height: 64px;
   transform: translateY(-50%);
   background: var(--bg-panel);
   border: 1px solid var(--border);
@@ -1941,11 +1994,27 @@
 .ds-modal-sidebar-toggle--compact-only {
   display: none;
 }
+/* Sizing only — do not set display here or it overrides --compact-only's
+   desktop hide (same specificity, later source order). */
+.ds-modal-sidebar-toggle--icon {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  align-items: center;
+  justify-content: center;
+}
+.ds-modal-sidebar-toggle--compact-only.ds-modal-sidebar-toggle--icon {
+  display: none;
+}
 
 @media (max-width: 760px) {
   .ds-modal-backdrop { padding: 0; }
   .ds-modal { border-radius: 0; }
   .ds-modal-header { gap: 10px; padding: 12px 14px; }
+  .ds-modal-header-toolbar .ds-modal-actions {
+    margin-left: 0;
+    justify-content: flex-start;
+  }
   .ds-modal-actions { justify-content: flex-start; }
   .ds-modal-stage { flex-direction: column; }
   .ds-modal-stage.has-sidebar .ds-modal-stage-iframe { flex: 1 1 50%; }
@@ -1959,7 +2028,10 @@
   /* On stacked layout the side handles (which assume horizontal split)
      would float over content awkwardly — fall back to the header toggle. */
   .ds-modal-stage-handle { display: none; }
-  .ds-modal-sidebar-toggle--compact-only { display: inline-flex; }
+  .ds-modal-sidebar-toggle--compact-only,
+  .ds-modal-sidebar-toggle--compact-only.ds-modal-sidebar-toggle--icon {
+    display: inline-flex;
+  }
 }
 
 /* Examples gallery toolbar — filter pills + richer card metadata */
@@ -2440,6 +2512,13 @@ body.entry-resizing { cursor: col-resize; user-select: none; }
   border-color: color-mix(in srgb, var(--text-faint) 28%, var(--border));
   color: var(--text);
 }
+.chat-history-new:active:not(:disabled) {
+  background: var(--bg-fill-secondary);
+}
+.chat-history-new:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 .chat-history-new:disabled {
   cursor: default;
   opacity: 0.55;
@@ -2498,6 +2577,9 @@ body.entry-resizing { cursor: col-resize; user-select: none; }
 .chat-conv-item:hover {
   background: color-mix(in srgb, var(--bg-subtle) 72%, transparent);
 }
+.chat-conv-item:active {
+  background: var(--bg-muted);
+}
 .chat-conv-item.active {
   background: color-mix(in srgb, var(--accent-tint) 76%, transparent);
   border-color: color-mix(in srgb, var(--accent) 18%, transparent);
@@ -2506,6 +2588,10 @@ body.entry-resizing { cursor: col-resize; user-select: none; }
 .chat-conv-item:focus-within {
   border-color: color-mix(in srgb, var(--accent) 28%, transparent);
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 14%, transparent);
+}
+.chat-conv-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 .chat-conv-item-name {
   flex: 1;
@@ -2558,8 +2644,12 @@ body.entry-resizing { cursor: col-resize; user-select: none; }
 .chat-conv-item:focus-within .chat-conv-item-del,
 .chat-conv-item-del:focus-visible { opacity: 1; }
 .chat-conv-item-del:hover { background: var(--red-bg); color: var(--red); }
+.chat-conv-item-del:active {
+  background: color-mix(in srgb, var(--red) 22%, var(--red-bg));
+  color: var(--red);
+}
 .chat-conv-item-del:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  outline: 2px solid var(--accent);
   outline-offset: 1px;
   background: var(--bg-subtle);
   color: var(--text);
@@ -2623,6 +2713,10 @@ body.entry-resizing { cursor: col-resize; user-select: none; }
     visibility 0s linear 0s;
 }
 .chat-jump-btn:hover { background: var(--bg-subtle); border-color: var(--border-strong); }
+.chat-jump-btn:active {
+  background: var(--bg-muted);
+  border-color: var(--border-strong);
+}
 .chat-jump-btn:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;

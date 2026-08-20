@@ -14,6 +14,7 @@
 // an explicit daemon opt-out for fidelity investigations only.
 
 import { buildSrcdoc, type SrcdocOptions } from './srcdoc';
+import { devLog } from '../lib/devLog';
 import { buildReactComponentSrcdoc } from './react-component';
 import { buildZip } from './zip';
 import { randomUUID } from '../utils/uuid';
@@ -24,6 +25,7 @@ import {
 } from '@open-design/host';
 import { fetchTeamverDaemon } from '../teamver/teamverDaemonHeaders';
 import { isTeamverEmbedMode } from '../teamver/designApiBase';
+import { projectRawUrl } from '../providers/registry';
 import { refreshTeamverEmbedAuthBeforeMutating } from '../teamver/designBffClient';
 import { formatTeamverEmbedAuthRequiredMessage, formatTeamverEmbedOperationFailureMessage } from '../teamver/teamverBffAuthError';
 import { TeamverDaemonUnauthorizedError } from '../teamver/teamverDaemonHeaders';
@@ -33,9 +35,14 @@ import {
 import {
   injectDeckFlattenScript,
   patchArtifactDeckPrintCss,
-  repairArtifactDocumentHead,
   buildDeckPrintCss,
+  buildDeckBrowserPrintScaleCss,
+  buildStandaloneDeckHtmlDocument,
+  healDeckHtmlForStandaloneExport,
+  relaxPersistedDeckSlideSurfaceBleed,
 } from '@open-design/contracts';
+import { repairDeckSlideSurfaceBleed } from '../artifacts/deck-slide-surface';
+import { normalizeCompactStackedDeckForExport } from './compact-api-stacked-deck';
 
 const DESIGN_HANDOFF_FILENAME = 'DESIGN-HANDOFF.md';
 const DESIGN_MANIFEST_FILENAME = 'DESIGN-MANIFEST.json';
@@ -257,8 +264,58 @@ function projectExportInlineUrl(projectId: string, filePath: string): string {
   return `/api/projects/${encodeURIComponent(projectId)}/export/${segments}?inline=1`;
 }
 
-export function exportAsHtml(html: string, title: string): void {
-  const doc = buildSrcdoc(html);
+async function mergeOfficialLookOnHtmlExportFallback(
+  html: string,
+  projectId: string,
+): Promise<string> {
+  const dest = String(html ?? '');
+  // Always re-merge when Motif/look markers exist but §0.62+ stacking or
+  // Motif-scale heal may still be missing (pre-v34 decks).
+  const hasLook = dest.includes('data-od-official-look-css');
+  const hasMotif = dest.includes('data-od-official-motif-html');
+  const hasStacking =
+    /\.slide\s*>\s*:is\(h1/i.test(dest) && /z-index\s*:\s*2\s*!important/i.test(dest);
+  const hasOverscaleDaisy = /deco-daisy[^>]*width\s*:\s*(?:1[5-9]|[2-9]\d+)\s*%/i.test(dest);
+  if (hasLook && hasMotif && hasStacking && !hasOverscaleDaisy) {
+    if (!/<use\b[^>]*(?:href|xlink:href)\s*=\s*["']#/i.test(dest)) {
+      return dest;
+    }
+  }
+  try {
+    const resp = await fetchTeamverDaemon(`/api/projects/${encodeURIComponent(projectId)}`);
+    if (!resp.ok) return html;
+    const json = await resp.json() as {
+      metadata?: { selectedDeckTemplateId?: string; skillIds?: unknown; context?: { skillIds?: unknown } };
+    };
+    const { firstOfficialDeckTemplateId } = await import('@open-design/contracts');
+    const templateId = firstOfficialDeckTemplateId(
+      json.metadata?.selectedDeckTemplateId,
+      json.metadata?.skillIds,
+      json.metadata?.context?.skillIds,
+    );
+    if (!templateId) return html;
+    const { mergeOfficialLookCssForTemplate } = await import('../teamver/fetchPluginLocalSkill');
+    return mergeOfficialLookCssForTemplate(html, templateId);
+  } catch {
+    return html;
+  }
+}
+
+export function exportAsHtml(
+  html: string,
+  title: string,
+  options?: { deck?: boolean },
+): void {
+  // Lean export — skip preview annotate / redirect-guard DOM tax.
+  const normalized = normalizeCompactStackedDeckForExport(html, options?.deck === true);
+  // Deck downloads must reveal every slide + paper-first screen CSS (same as
+  // daemon static fallback). Plain buildSrcdoc leaves opacity:0 overlays.
+  const doc =
+    options?.deck === true
+      ? buildStandaloneDeckHtmlDocument(
+          repairDeckSlideSurfaceBleed(healDeckHtmlForStandaloneExport(normalized)),
+        )
+      : buildSrcdoc(healDeckHtmlForStandaloneExport(normalized), { exportDocument: true });
   const blob = new Blob([doc], { type: 'text/html;charset=utf-8' });
   triggerDownload(blob, `${safeFilename(title, 'artifact')}.html`);
 }
@@ -287,7 +344,7 @@ export async function exportProjectAsHtml(opts: {
           delivery: 'ticket',
           fileName: opts.filePath,
           title: opts.fallbackTitle,
-          ...inlineExportHtmlPayload(opts.htmlSnapshot),
+          ...inlineExportHtmlPayload(opts.htmlSnapshot, opts.deck === true),
         }),
         headers: { 'content-type': 'application/json' },
         method: 'POST',
@@ -299,16 +356,25 @@ export async function exportProjectAsHtml(opts: {
     });
   } catch (err) {
     if (opts.requireRenderedExport) {
-      console.warn('[exportProjectAsHtml] rendered HTML export failed:', err);
+      devLog.warn('[exportProjectAsHtml] rendered HTML export failed:', err);
       throw new Error('렌더링된 HTML 다운로드를 만들지 못했습니다. 잠시 후 다시 시도하세요.');
     }
-    console.warn('[exportProjectAsHtml] falling back to inline/source HTML export:', err);
+    devLog.warn('[exportProjectAsHtml] falling back to inline/source HTML export:', err);
     try {
       const resp = await fetchTeamverDaemon(projectExportInlineUrl(opts.projectId, opts.filePath));
       if (!resp.ok) throw new Error(`inline HTML export unavailable (${resp.status})`);
-      triggerDownload(await resp.blob(), `${safeFilename(opts.fallbackTitle, 'artifact')}.html`);
+      const html = await resp.text();
+      exportAsHtml(
+        await mergeOfficialLookOnHtmlExportFallback(html, opts.projectId),
+        opts.fallbackTitle,
+        { deck: opts.deck === true },
+      );
     } catch {
-      exportAsHtml(opts.fallbackHtml, opts.fallbackTitle);
+      exportAsHtml(
+        await mergeOfficialLookOnHtmlExportFallback(opts.fallbackHtml, opts.projectId),
+        opts.fallbackTitle,
+        { deck: opts.deck === true },
+      );
     }
   }
 }
@@ -353,7 +419,7 @@ export function buildDesignManifestContent(opts: {
   files?: string[];
   kind?: 'html' | 'react';
 }): string {
-  const title = opts.title || 'Open Design artifact';
+  const title = opts.title || 'Design artifact';
   const requestedEntryFile = opts.entryFile || 'index.html';
   const { files, htmlFiles, screenHtmlFiles, cssFiles, jsFiles, assetFiles, entryFile } = designFileMap(requestedEntryFile, opts.files);
   const screenFiles = screenHtmlFiles.length > 0 ? screenHtmlFiles : [entryFile];
@@ -444,7 +510,7 @@ export function buildDesignHandoffContent(opts: {
   files?: string[];
   kind?: 'html' | 'react';
 }): string {
-  const title = opts.title || 'Open Design artifact';
+  const title = opts.title || 'Design artifact';
   const requestedEntryFile = opts.entryFile || 'index.html';
   const { files, htmlFiles, cssFiles, jsFiles, assetFiles, entryFile } = designFileMap(requestedEntryFile, opts.files);
   const accentLikelyBrandLed =
@@ -467,7 +533,7 @@ This archive is the source of truth for turning the design into production code.
 - Build production UI from the exported design, not a loose reinterpretation.
 - Preserve typography scale, spacing rhythm, color tokens, border radii, shadows, motion timing, and component states.
 - Replace static placeholders only when the target app has real data or functional equivalents.
-- Keep generated product UI free of Open Design chrome, preview labels, or design-process annotations.
+- Keep generated product UI free of host app chrome, preview labels, or design-process annotations.
 - Treat this handoff as a visual contract: if implementation choices conflict, match the exported pixels and behavior first, then refactor internals.
 
 ## Source map
@@ -498,7 +564,7 @@ For responsive web exports, treat these as a modern breakpoint system for one ad
 - Preserve real copy, labels, and data shown in the export. Do not replace specific text with generic marketing filler.
 - Preserve interactive affordances: hover, focus, pressed, disabled, loading, validation, copy/share, tab/accordion, modal/sheet, and keyboard states where present.
 - Preserve accessibility semantics when converting: headings stay hierarchical, controls remain buttons/links/inputs, focus states stay visible.
-- Do not keep prototype-only annotations, frame labels, or Open Design chrome in the production UI.
+- Do not keep prototype-only annotations, frame labels, or host app chrome in the production UI.
 
 ## CJX-ready UX contract
 - Use \`${DESIGN_MANIFEST_FILENAME}\` as the machine-readable map for screens, app modules, OS widgets, landing pages, tokens, interactions, and viewport checks.
@@ -549,8 +615,14 @@ ${list(assetFiles)}
 `;
 }
 
-export function exportAsZip(html: string, title: string): void {
-  const doc = buildSrcdoc(html);
+export function exportAsZip(
+  html: string,
+  title: string,
+  options?: { deck?: boolean },
+): void {
+  // Lean export — skip preview annotate / redirect-guard DOM tax.
+  const exportHtml = normalizeCompactStackedDeckForExport(html, options?.deck === true);
+  const doc = buildSrcdoc(exportHtml, { exportDocument: true });
   exportRenderedHtmlAsZip(doc, title, 'index.html');
 }
 
@@ -959,7 +1031,7 @@ export function exportAsImage(dataUrl: string, title: string): void {
     const blob = dataUrlToBlob(dataUrl);
     triggerDownload(blob, `${safeFilename(title, 'artifact')}.png`);
   } catch (err) {
-    console.warn('[exportAsImage] failed to convert snapshot:', err);
+    devLog.warn('[exportAsImage] failed to convert snapshot:', err);
     // Re-throw the error to allow the caller to handle UI feedback
     throw err;
   }
@@ -1047,7 +1119,7 @@ async function withTransientExportRetry<T>(
         attempt < TEAMVER_DAEMON_EXPORT_RETRY_DELAYS_MS.length - 1
         && isRetryableRenderedExportError(err)
       ) {
-        console.info(`[${label}] retrying transient export failure (attempt %d)`, attempt + 1);
+        devLog.info(`[${label}] retrying transient export failure (attempt %d)`, attempt + 1);
         continue;
       }
       throw err;
@@ -1077,11 +1149,25 @@ function isRetryableRenderedExportError(err: unknown): boolean {
  * callers that do not have a live snapshot ready still hit the file-based
  * path exactly as before.
  */
-function inlineExportHtmlPayload(htmlSnapshot?: string | null): Record<string, string> {
+function inlineExportHtmlPayload(
+  htmlSnapshot?: string | null,
+  deck?: boolean,
+): Record<string, string> {
   if (typeof htmlSnapshot !== 'string') return {};
   const trimmed = htmlSnapshot.trim();
   if (trimmed.length === 0) return {};
-  return { html: patchArtifactDeckPrintCss(repairArtifactDocumentHead(htmlSnapshot)) };
+  // Same persist/preview heal chain (head → stylesheets → surface bleed)
+  // so standalone HTML/PDF do not ship broken @import remnants or a
+  // dark --shell letterbox the iframe srcdoc would have repaired.
+  const html = normalizeCompactStackedDeckForExport(
+    repairDeckSlideSurfaceBleed(
+      relaxPersistedDeckSlideSurfaceBleed(
+        healDeckHtmlForStandaloneExport(htmlSnapshot),
+      ),
+    ),
+    deck === true,
+  );
+  return { html: patchArtifactDeckPrintCss(html) };
 }
 
 async function performPdfExportRequest(opts: {
@@ -1103,7 +1189,7 @@ async function performPdfExportRequest(opts: {
       fileName: opts.filePath,
       title: opts.title,
       ...(opts.fresh ? { fresh: true } : {}),
-      ...inlineExportHtmlPayload(opts.htmlSnapshot),
+      ...inlineExportHtmlPayload(opts.htmlSnapshot, opts.deck),
     }),
     headers: { 'content-type': 'application/json' },
     method: 'POST',
@@ -1143,7 +1229,7 @@ async function performPptxExportRequest(opts: {
       editable: true,
       fileName: opts.filePath,
       title: opts.title,
-      ...inlineExportHtmlPayload(opts.htmlSnapshot),
+      ...inlineExportHtmlPayload(opts.htmlSnapshot, true),
     }),
     headers: { 'content-type': 'application/json' },
     method: 'POST',
@@ -1235,7 +1321,7 @@ export async function exportProjectAsPdf(opts: {
           && isTeamverProjectStoragePrefixRequiredError(err)
           && attempt < TEAMVER_PDF_EXPORT_RETRY_DELAYS_MS.length - 1
         ) {
-          console.info(
+          devLog.info(
             '[exportProjectAsPdf] retrying after teamver_project_s3_prefix_required (attempt %d)',
             attempt + 1,
           );
@@ -1249,7 +1335,7 @@ export async function exportProjectAsPdf(opts: {
   } catch (err) {
     if (isExportQueueFullError(err)) throw err;
     daemonErr = err;
-    console.warn('[exportProjectAsPdf] falling back to browser print:', err);
+    devLog.warn('[exportProjectAsPdf] falling back to browser print:', err);
   }
 
   if (opts.requireRenderedExport) {
@@ -1259,7 +1345,7 @@ export async function exportProjectAsPdf(opts: {
         ? daemonErr
         : new Error('렌더링된 PDF 다운로드를 만들지 못했습니다. 잠시 후 다시 시도하세요.');
     }
-    console.warn(
+    devLog.warn(
       '[exportProjectAsPdf] daemon Chromium unavailable — using browser print fallback in embed',
       daemonErr,
     );
@@ -1281,8 +1367,14 @@ export async function exportProjectAsPdf(opts: {
       if (!resp.ok) throw new Error(`inline PDF fallback export unavailable (${resp.status})`);
       renderedHtml = await resp.text();
     }
-    await exportAsPdf(renderedHtml, opts.title, {
+    await exportAsPdf(
+      await mergeOfficialLookOnHtmlExportFallback(renderedHtml, opts.projectId),
+      opts.title,
+      {
       deck: opts.deck,
+      // Resolve relative Drive/composer imgs against the project /raw/ root
+      // instead of window.location.origin (which cannot see refs/drive/…).
+      baseHref: projectRawUrl(opts.projectId, ''),
       // Browser print measures the top-level document, not the sandboxed
       // iframe content. Printing deck exports through the wrapper produces
       // scrollbars, browser headers, and often a blank second page. The daemon
@@ -1291,7 +1383,7 @@ export async function exportProjectAsPdf(opts: {
       sandboxedPreview: !opts.deck,
     });
   } catch (fallbackErr) {
-    console.warn('[exportProjectAsPdf] inline browser print fallback unavailable:', fallbackErr);
+    devLog.warn('[exportProjectAsPdf] inline browser print fallback unavailable:', fallbackErr);
     opts.fallbackPdf();
   }
   return 'fallback';
@@ -1330,7 +1422,7 @@ export async function exportProjectAsPptx(opts: {
           attempt < TEAMVER_PPTX_EXPORT_RETRY_DELAYS_MS.length - 1
           && isRetryableRenderedExportError(err)
         ) {
-          console.info('[exportProjectAsPptx] retrying transient export failure (attempt %d)', attempt + 1);
+          devLog.info('[exportProjectAsPptx] retrying transient export failure (attempt %d)', attempt + 1);
           continue;
         }
         throw err;
@@ -1340,7 +1432,7 @@ export async function exportProjectAsPptx(opts: {
   } catch (err) {
     if (isExportQueueFullError(err)) throw err;
     if (opts.requireRenderedExport) {
-      console.warn('[exportProjectAsPptx] rendered PPTX export failed:', err);
+      devLog.warn('[exportProjectAsPptx] rendered PPTX export failed:', err);
       throw new Error('PPTX 다운로드를 만들지 못했습니다. 잠시 후 다시 시도하세요.');
     }
     throw err;
@@ -1431,7 +1523,7 @@ export async function exportProjectImageBlob(opts: {
         title: opts.title,
         ...(typeof opts.width === 'number' ? { width: opts.width } : {}),
         ...(typeof opts.height === 'number' ? { height: opts.height } : {}),
-        ...inlineExportHtmlPayload(opts.htmlSnapshot),
+        ...inlineExportHtmlPayload(opts.htmlSnapshot, opts.deck),
       }),
       headers: { 'content-type': 'application/json' },
       method: 'POST',
@@ -1491,7 +1583,7 @@ export async function exportProjectImageBlob(opts: {
     };
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
-    console.warn('[exportProjectImageBlob] falling back to preview snapshot:', reason);
+    devLog.warn('[exportProjectImageBlob] falling back to preview snapshot:', reason);
     return { ok: false, reason };
   }
 }
@@ -1574,7 +1666,7 @@ export async function exportProjectAsZip(opts: {
           delivery: 'ticket',
           fileName: opts.filePath,
           title: opts.fallbackTitle,
-          ...inlineExportHtmlPayload(opts.htmlSnapshot),
+          ...inlineExportHtmlPayload(opts.htmlSnapshot, opts.deck === true),
         }),
         headers: { 'content-type': 'application/json' },
         method: 'POST',
@@ -1587,10 +1679,10 @@ export async function exportProjectAsZip(opts: {
     return;
   } catch (err) {
     if (opts.requireRenderedExport) {
-      console.warn('[exportProjectAsZip] rendered ZIP export failed:', err);
+      devLog.warn('[exportProjectAsZip] rendered ZIP export failed:', err);
       throw new Error('렌더링된 ZIP 다운로드를 만들지 못했습니다. 잠시 후 다시 시도하세요.');
     }
-    console.warn('[exportProjectAsZip] falling back to project archive:', err);
+    devLog.warn('[exportProjectAsZip] falling back to project archive:', err);
   }
 
   const root = archiveRootFromFilePath(opts.filePath);
@@ -1603,8 +1695,12 @@ export async function exportProjectAsZip(opts: {
     const blob = await resp.blob();
     triggerDownload(blob, archiveFilenameFrom(resp, opts.fallbackTitle, root));
   } catch (err) {
-    console.warn('[exportProjectAsZip] falling back to single-file ZIP:', err);
-    exportAsZip(opts.fallbackHtml, opts.fallbackTitle);
+    devLog.warn('[exportProjectAsZip] falling back to single-file ZIP:', err);
+    exportAsZip(
+      await mergeOfficialLookOnHtmlExportFallback(opts.fallbackHtml, opts.projectId),
+      opts.fallbackTitle,
+      { deck: opts.deck === true },
+    );
   }
 }
 
@@ -1862,13 +1958,19 @@ export async function exportAsPdf(
   // Generate a per-export nonce so the print-ready handshake is resistant to
   // spoofing by untrusted scripts inside the exported artifact.
   const nonce = randomUUID();
-  let doc = buildBlobSafeSrcdoc(repairArtifactDocumentHead(patchArtifactDeckPrintCss(html)), {
+  // Heal Motif remnant CSS / bleed / truncated head before print — matches
+  // daemon/desktop SSOT so browser fallback PDF keeps Capsule look.
+  const healed = healDeckHtmlForStandaloneExport(html);
+  let doc = buildBlobSafeSrcdoc(patchArtifactDeckPrintCss(healed), {
     ...opts,
     exportDocument: true,
     deck: false,
   });
+  // Desktop/host printToPDF applies Chromium `scale`; browser window.print()
+  // needs CSS zoom instead (do not combine — double-shrink).
+  const useHostPdf = isOpenDesignHostAvailable();
   if (opts?.deck) {
-    doc = injectDeckPrintStylesheet(doc);
+    doc = injectDeckPrintStylesheet(doc, { includeBrowserPrintScale: !useHostPdf });
     doc = injectDeckFlattenScript(doc);
   }
   doc = injectPrintReadyHandshake(doc, nonce);
@@ -1880,7 +1982,7 @@ export async function exportAsPdf(
   // omits allow-modals here because the native flow never calls
   // window.print(); granting it would let untrusted artifact code call
   // alert()/confirm() and stall the hidden Electron window indefinitely.
-  if (isOpenDesignHostAvailable()) {
+  if (useHostPdf) {
     if (sandboxedPreview) {
       doc = buildSandboxedPreviewDocument(doc, title);
     }
@@ -2093,8 +2195,16 @@ function injectParentPrintReadyCache(doc: string, nonce: string): string {
 }
 
 // Deck print CSS lives in @open-design/contracts `buildDeckPrintCss`.
-function injectDeckPrintStylesheet(doc: string): string {
-  const tag = `<style data-deck-print="injected">${buildDeckPrintCss()}</style>`;
+// Browser window.print() has no Chromium `scale` API — optional CSS zoom so
+// 1920 CSS layout fits PPT @page (headless/desktop pass scale separately).
+function injectDeckPrintStylesheet(
+  doc: string,
+  opts?: { includeBrowserPrintScale?: boolean },
+): string {
+  const css = opts?.includeBrowserPrintScale
+    ? `${buildDeckPrintCss()}${buildDeckBrowserPrintScaleCss()}`
+    : buildDeckPrintCss();
+  const tag = `<style data-deck-print="injected">${css}</style>`;
   if (/<\/head>/i.test(doc)) return doc.replace(/<\/head>/i, `${tag}</head>`);
   if (/<head[^>]*>/i.test(doc)) return doc.replace(/<head[^>]*>/i, (m) => `${m}${tag}`);
   return tag + doc;

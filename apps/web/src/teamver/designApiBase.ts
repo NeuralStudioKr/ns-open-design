@@ -22,6 +22,11 @@ export function isTeamverEmbedMode(): boolean {
   );
 }
 
+/** Teamver daemon raw GET needs auth headers — not only hosted embed shell. */
+export function shouldUseTeamverAuthenticatedProjectRawFetch(): boolean {
+  return isTeamverEmbedMode() || isTeamverViteDev();
+}
+
 /** Main FE sign-in path — must match `ns-teamver-fe-v2` `AUTH_SIGNIN_PATH`. */
 export const TEAMVER_AUTH_SIGNIN_PATH = "/auth/signin";
 

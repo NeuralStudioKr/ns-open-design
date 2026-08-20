@@ -13,6 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { PreviewDrawOverlay } from '../../src/components/PreviewDrawOverlay';
 import { requestPreviewSnapshot } from '../../src/runtime/exports';
+import * as annotationSnapshotQuality from '../../src/utils/annotationSnapshotQuality';
 
 vi.mock('../../src/runtime/exports', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../src/runtime/exports')>();
@@ -61,6 +62,16 @@ beforeEach(() => {
     setLineDash: vi.fn(),
     stroke: vi.fn(),
     strokeRect: vi.fn(),
+    getImageData: vi.fn((_x: number, _y: number, w: number, h: number) => {
+      const data = new Uint8ClampedArray(Math.max(1, w * h * 4));
+      for (let i = 0; i < data.length; i += 4) {
+        data[i] = 80;
+        data[i + 1] = 110;
+        data[i + 2] = 150;
+        data[i + 3] = 255;
+      }
+      return { data, width: w, height: h };
+    }),
     fillStyle: '',
     font: '',
     strokeStyle: '',
@@ -81,6 +92,13 @@ afterEach(() => {
   restoreRect = null;
   vi.mocked(requestPreviewSnapshot).mockClear();
 });
+
+function selectBoxTool(container: HTMLElement) {
+  fireEvent.click(
+    container.querySelector<HTMLButtonElement>('button[data-tooltip="Box select"]') ??
+      container.querySelector<HTMLButtonElement>('button[title="Box select"]')!,
+  );
+}
 
 function drawSelectionBox(canvas: HTMLCanvasElement) {
   fireEvent.pointerDown(canvas, { clientX: 40, clientY: 30, pointerId: 1 });
@@ -103,6 +121,7 @@ describe('PreviewDrawOverlay capture fallback (issue #4064)', () => {
         </PreviewDrawOverlay>,
       );
 
+      selectBoxTool(container);
       const canvas = container.querySelector<HTMLCanvasElement>('canvas');
       expect(canvas).toBeTruthy();
       drawSelectionBox(canvas!);
@@ -118,9 +137,18 @@ describe('PreviewDrawOverlay capture fallback (issue #4064)', () => {
         detail: expect.objectContaining({
           action: 'send',
           note: 'This section is missing its bar chart.',
-          file: expect.any(File),
+          file: null,
+          bounds: expect.objectContaining({
+            width: expect.any(Number),
+            height: expect.any(Number),
+          }),
         }),
       });
+      await waitFor(() =>
+        expect(
+          getByText('Could not capture preview — only your note was sent. Try Comment mode for element-specific edits.'),
+        ).toBeTruthy(),
+      );
     } finally {
       window.removeEventListener('opendesign:annotation', annotation);
     }
@@ -161,7 +189,7 @@ describe('PreviewDrawOverlay capture fallback (issue #4064)', () => {
     }
   });
 
-  it('sends a box-only mark as a marks-only image when the snapshot fails', async () => {
+  it('blocks box-only send when capture fails instead of marks-only on white', async () => {
     const annotation = vi.fn((event: Event) => {
       const detail = (event as CustomEvent<{ ack?: (result: { ok: boolean }) => void }>).detail;
       detail.ack?.({ ok: true });
@@ -180,25 +208,25 @@ describe('PreviewDrawOverlay capture fallback (issue #4064)', () => {
         bottom: 200,
         toJSON: () => ({}),
       } as DOMRect;
-      const { container, getByRole } = render(
+      const { container, getByRole, getByText } = render(
         <PreviewDrawOverlay active captureFrameRect={() => frameRect}>
           <iframe title="srcdoc" data-od-render-mode="srcdoc" />
         </PreviewDrawOverlay>,
       );
 
+      selectBoxTool(container);
       const canvas = container.querySelector<HTMLCanvasElement>('canvas');
       expect(canvas).toBeTruthy();
       drawSelectionBox(canvas!);
 
       fireEvent.click(getByRole('button', { name: 'Send' }));
 
-      await waitFor(() => expect(annotation).toHaveBeenCalledTimes(1));
-      expect(annotation.mock.calls[0]?.[0]).toMatchObject({
-        detail: expect.objectContaining({
-          action: 'send',
-          file: expect.any(File),
-        }),
-      });
+      await waitFor(() =>
+        expect(
+          getByText('Could not capture the preview. Add a note describing the change, or use Comment mode.'),
+        ).toBeTruthy(),
+      );
+      expect(annotation).not.toHaveBeenCalled();
     } finally {
       window.removeEventListener('opendesign:annotation', annotation);
     }
@@ -231,7 +259,7 @@ describe('PreviewDrawOverlay capture fallback (issue #4064)', () => {
     );
   });
 
-  it('does not block send on a slow captureSnapshot when marks-only is available', async () => {
+  it('falls back to marks-only quickly for pen-only ink when captureSnapshot is slow', { timeout: 12_000 }, async () => {
     const slowCapture = vi.fn(
       () =>
         new Promise<{ dataUrl: string; w: number; h: number } | null>((resolve) => {
@@ -256,27 +284,291 @@ describe('PreviewDrawOverlay capture fallback (issue #4064)', () => {
         bottom: 200,
         toJSON: () => ({}),
       } as DOMRect;
-      const { container, getByRole } = render(
+      const { container, getByRole, getByText } = render(
         <PreviewDrawOverlay active captureSnapshot={slowCapture} captureFrameRect={() => frameRect}>
           <iframe title="srcdoc" data-od-render-mode="srcdoc" />
         </PreviewDrawOverlay>,
       );
 
       const canvas = container.querySelector<HTMLCanvasElement>('canvas');
-      drawSelectionBox(canvas!);
+      // Pen stroke — fast marks-only fallback is allowed (no box / typed note).
+      fireEvent.pointerDown(canvas!, { clientX: 40, clientY: 30, pointerId: 1 });
+      fireEvent.pointerMove(canvas!, { clientX: 120, clientY: 90, pointerId: 1 });
+      fireEvent.pointerUp(canvas!, { clientX: 120, clientY: 90, pointerId: 1 });
 
       const started = performance.now();
       fireEvent.click(getByRole('button', { name: 'Send' }));
 
-      await waitFor(() => expect(annotation).toHaveBeenCalledTimes(1), { timeout: 5_000 });
-      expect(performance.now() - started).toBeLessThan(4_000);
+      await waitFor(() => expect(annotation).toHaveBeenCalledTimes(1), { timeout: 9_000 });
+      expect(performance.now() - started).toBeLessThan(8_500);
       expect(annotation.mock.calls[0]?.[0]).toMatchObject({
         detail: expect.objectContaining({
           action: 'send',
           file: expect.any(File),
         }),
       });
+      await waitFor(() =>
+        expect(
+          getByText('Preview capture was slow, so only your marks were sent on a blank background.'),
+        ).toBeTruthy(),
+      );
     } finally {
+      window.removeEventListener('opendesign:annotation', annotation);
+    }
+  });
+
+  it('waits for a full slide composite for box marks before marks-only fallback', { timeout: 14_000 }, async () => {
+    class ImmediateImage {
+      onload: ((ev?: Event) => void) | null = null;
+      onerror: ((ev?: Event) => void) | null = null;
+      width = 320;
+      height = 200;
+      set src(_value: string) {
+        queueMicrotask(() => this.onload?.(new Event('load')));
+      }
+    }
+    const imageSpy = vi.spyOn(globalThis, 'Image' as any).mockImplementation(function ImageMock() {
+      return new ImmediateImage();
+    } as any);
+
+    const slowCapture = vi.fn(
+      () =>
+        new Promise<{ dataUrl: string; w: number; h: number } | null>((resolve) => {
+          window.setTimeout(
+            () => resolve({ dataUrl: 'data:image/png;base64,iVBORw0KGgo=', w: 320, h: 200 }),
+            10_000,
+          );
+        }),
+    );
+    const annotation = vi.fn((event: Event) => {
+      const detail = (event as CustomEvent<{ ack?: (result: { ok: boolean }) => void }>).detail;
+      detail.ack?.({ ok: true });
+    });
+    window.addEventListener('opendesign:annotation', annotation);
+
+    try {
+      const frameRect = {
+        x: 0,
+        y: 0,
+        left: 0,
+        top: 0,
+        width: 320,
+        height: 200,
+        right: 320,
+        bottom: 200,
+        toJSON: () => ({}),
+      } as DOMRect;
+      const { container, getByRole, queryByText } = render(
+        <PreviewDrawOverlay active captureSnapshot={slowCapture} captureFrameRect={() => frameRect}>
+          <iframe title="srcdoc" data-od-render-mode="srcdoc" />
+        </PreviewDrawOverlay>,
+      );
+
+      selectBoxTool(container);
+      const canvas = container.querySelector<HTMLCanvasElement>('canvas');
+      drawSelectionBox(canvas!);
+
+      const started = performance.now();
+      fireEvent.click(getByRole('button', { name: 'Send' }));
+
+      await waitFor(() => expect(annotation).toHaveBeenCalledTimes(1), { timeout: 12_000 });
+      expect(performance.now() - started).toBeGreaterThan(9_500);
+      expect(slowCapture).toHaveBeenCalled();
+      expect(annotation.mock.calls[0]?.[0]).toMatchObject({
+        detail: expect.objectContaining({
+          action: 'send',
+          file: expect.any(File),
+        }),
+      });
+      expect(
+        queryByText('Preview capture was slow, so only your marks were sent on a blank background.'),
+      ).toBeNull();
+    } finally {
+      imageSpy.mockRestore();
+      window.removeEventListener('opendesign:annotation', annotation);
+    }
+  });
+
+  it('sends a box+note without a misleading marks-only PNG when capture never resolves', { timeout: 16_000 }, async () => {
+    const annotation = vi.fn((event: Event) => {
+      const detail = (event as CustomEvent<{ ack?: (result: { ok: boolean }) => void }>).detail;
+      detail.ack?.({ ok: true });
+    });
+    window.addEventListener('opendesign:annotation', annotation);
+
+    try {
+      const neverCapture = vi.fn(
+        () => new Promise<{ dataUrl: string; w: number; h: number } | null>(() => {}),
+      );
+      const frameRect = {
+        x: 0,
+        y: 0,
+        left: 0,
+        top: 0,
+        width: 320,
+        height: 200,
+        right: 320,
+        bottom: 200,
+        toJSON: () => ({}),
+      } as DOMRect;
+      const { container, getByRole, getByText } = render(
+        <PreviewDrawOverlay
+          active
+          captureSnapshot={neverCapture}
+          captureFrameRect={() => frameRect}
+        >
+          <iframe title="srcdoc" data-od-render-mode="srcdoc" />
+        </PreviewDrawOverlay>,
+      );
+
+      selectBoxTool(container);
+      const canvas = container.querySelector<HTMLCanvasElement>('canvas');
+      drawSelectionBox(canvas!);
+      const input = container.querySelector<HTMLInputElement>('.preview-draw-note-input');
+      fireEvent.change(input!, { target: { value: 'Shrink this title' } });
+
+      fireEvent.click(getByRole('button', { name: 'Send' }));
+
+      await waitFor(() => expect(annotation).toHaveBeenCalledTimes(1), { timeout: 15_500 });
+      expect(annotation.mock.calls[0]?.[0]).toMatchObject({
+        detail: expect.objectContaining({
+          action: 'send',
+          note: 'Shrink this title',
+          file: null,
+          bounds: expect.objectContaining({
+            width: expect.any(Number),
+            height: expect.any(Number),
+          }),
+        }),
+      });
+      await waitFor(() =>
+        expect(
+          getByText('Could not capture preview — only your note was sent. Try Comment mode for element-specific edits.'),
+        ).toBeTruthy(),
+      );
+    } finally {
+      window.removeEventListener('opendesign:annotation', annotation);
+    }
+  });
+
+  it('prefers a full slide composite when captureSnapshot resolves within the fast budget', { timeout: 10_000 }, async () => {
+    class ImmediateImage {
+      onload: ((ev?: Event) => void) | null = null;
+      onerror: ((ev?: Event) => void) | null = null;
+      width = 320;
+      height = 200;
+      set src(_value: string) {
+        queueMicrotask(() => this.onload?.(new Event('load')));
+      }
+    }
+    const imageSpy = vi.spyOn(globalThis, 'Image' as any).mockImplementation(function ImageMock() {
+      return new ImmediateImage();
+    } as any);
+
+    const lateButUsableCapture = vi.fn(
+      () =>
+        new Promise<{ dataUrl: string; w: number; h: number } | null>((resolve) => {
+          window.setTimeout(
+            () => resolve({ dataUrl: 'data:image/png;base64,iVBORw0KGgo=', w: 320, h: 200 }),
+            5_200,
+          );
+        }),
+    );
+    const annotation = vi.fn((event: Event) => {
+      const detail = (event as CustomEvent<{ ack?: (result: { ok: boolean }) => void }>).detail;
+      detail.ack?.({ ok: true });
+    });
+    window.addEventListener('opendesign:annotation', annotation);
+
+    try {
+      const frameRect = {
+        x: 0,
+        y: 0,
+        left: 0,
+        top: 0,
+        width: 320,
+        height: 200,
+        right: 320,
+        bottom: 200,
+        toJSON: () => ({}),
+      } as DOMRect;
+      const { container, getByRole, queryByText } = render(
+        <PreviewDrawOverlay
+          active
+          captureSnapshot={lateButUsableCapture}
+          captureFrameRect={() => frameRect}
+        >
+          <iframe title="srcdoc" data-od-render-mode="srcdoc" />
+        </PreviewDrawOverlay>,
+      );
+
+      selectBoxTool(container);
+      const canvas = container.querySelector<HTMLCanvasElement>('canvas');
+      drawSelectionBox(canvas!);
+      fireEvent.click(getByRole('button', { name: 'Send' }));
+
+      await waitFor(() => expect(annotation).toHaveBeenCalledTimes(1), { timeout: 8_000 });
+      expect(lateButUsableCapture).toHaveBeenCalled();
+      expect(annotation.mock.calls[0]?.[0]).toMatchObject({
+        detail: expect.objectContaining({
+          action: 'send',
+          file: expect.any(File),
+        }),
+      });
+      expect(
+        queryByText('Preview capture was slow, so only your marks were sent on a blank background.'),
+      ).toBeNull();
+    } finally {
+      imageSpy.mockRestore();
+      window.removeEventListener('opendesign:annotation', annotation);
+    }
+  });
+
+  it('treats blank snapshot as failed capture for box+note annotations', async () => {
+    const blankSpy = vi.spyOn(annotationSnapshotQuality, 'isPreviewSnapshotMostlyBlank').mockResolvedValue(true);
+    const whiteDataUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+    const blankCapture = vi.fn(async () => ({ dataUrl: whiteDataUrl, w: 320, h: 200 }));
+    const annotation = vi.fn((event: Event) => {
+      const detail = (event as CustomEvent<{ ack?: (result: { ok: boolean }) => void }>).detail;
+      detail.ack?.({ ok: true });
+    });
+    window.addEventListener('opendesign:annotation', annotation);
+
+    try {
+      const frameRect = {
+        x: 0,
+        y: 0,
+        left: 0,
+        top: 0,
+        width: 320,
+        height: 200,
+        right: 320,
+        bottom: 200,
+        toJSON: () => ({}),
+      } as DOMRect;
+      const { container, getByRole } = render(
+        <PreviewDrawOverlay active captureSnapshot={blankCapture} captureFrameRect={() => frameRect}>
+          <iframe title="srcdoc" data-od-render-mode="srcdoc" />
+        </PreviewDrawOverlay>,
+      );
+
+      selectBoxTool(container);
+      const canvas = container.querySelector<HTMLCanvasElement>('canvas');
+      drawSelectionBox(canvas!);
+      const input = container.querySelector<HTMLInputElement>('.preview-draw-note-input');
+      fireEvent.change(input!, { target: { value: 'Shrink this title' } });
+      fireEvent.click(getByRole('button', { name: 'Send' }));
+
+      await waitFor(() => expect(annotation).toHaveBeenCalledTimes(1), { timeout: 5_000 });
+      expect(annotation.mock.calls[0]?.[0]).toMatchObject({
+        detail: expect.objectContaining({
+          file: null,
+          note: 'Shrink this title',
+          markKind: 'box',
+        }),
+      });
+    } finally {
+      blankSpy.mockRestore();
       window.removeEventListener('opendesign:annotation', annotation);
     }
   });

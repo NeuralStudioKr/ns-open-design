@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { forwardRef, useImperativeHandle } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -248,6 +250,12 @@ describe('ChatPane streaming state', () => {
     expect(css).toContain('z-index: 80;');
   });
 
+  it('does not aria-hide the focused jump button (Chrome a11y console warning)', () => {
+    const source = readFileSync(resolve(process.cwd(), 'src/components/ChatPane.tsx'), 'utf8');
+    expect(source).toContain('chatJumpBtnRef.current?.blur()');
+    expect(source).not.toMatch(/className=\{`chat-jump-btn[\s\S]*?aria-hidden=\{!scrolledFromBottom\}/);
+  });
+
   it('exposes retry only for the last failed assistant when the pane is idle', () => {
     const failed: ChatMessage = {
       id: 'assistant-1',
@@ -318,6 +326,64 @@ describe('ChatPane streaming state', () => {
     expect(copied).toContain('project_id: project-1');
     expect(copied).toContain('conversation_id: conv-1');
     expect(copied).toContain('json-rpc id 4: Connection reset by server');
+  });
+
+  it('copies API-mode diagnostics with raw stream error when run_id is missing', async () => {
+    const detail = encodePersistedRunErrorDetail(
+      '슬라이드 실행 중 오류가 발생했습니다. 다시 시도하세요.',
+      { kind: 'stream-error', reason: 'Upstream error: 529' },
+    );
+    const messages: ChatMessage[] = [
+      { id: 'user-1', role: 'user', content: 'expo 설명해줘', createdAt: 0 },
+      {
+        id: 'assistant-1',
+        role: 'assistant',
+        content: '',
+        agentId: 'anthropic-api',
+        createdAt: 1,
+        runStatus: 'failed',
+        events: [
+          {
+            kind: 'status',
+            label: 'error',
+            detail,
+            code: 'UPSTREAM_UNAVAILABLE',
+          },
+        ],
+      },
+    ];
+
+    render(
+      <ChatPane
+        projectKindForTracking="prototype"
+        messages={messages}
+        streaming={false}
+        error={null}
+        projectId="project-1"
+        projectFiles={[]}
+        onEnsureProject={async () => 'project-1'}
+        onSend={vi.fn()}
+        onStop={vi.fn()}
+        conversations={conversations}
+        activeConversationId="conv-1"
+        onSelectConversation={vi.fn()}
+        onDeleteConversation={vi.fn()}
+        projectMetadata={projectMetadata}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Copy error diagnostics' }));
+
+    await waitFor(() => expect(clipboardMocks.copyToClipboard).toHaveBeenCalledTimes(1));
+    const copied = clipboardMocks.copyToClipboard.mock.calls[0]?.[0] ?? '';
+    expect(copied).toContain('run_id: n/a');
+    expect(copied).toContain('trace_id: n/a');
+    expect(copied).toContain('error_code: UPSTREAM_UNAVAILABLE');
+    expect(copied).toContain('agent_id: anthropic-api');
+    expect(copied).toContain('슬라이드 실행 중 오류가 발생했습니다. 다시 시도하세요.');
+    expect(copied).toContain('raw_error:');
+    expect(copied).toContain('Upstream error: 529');
+    expect(copied).not.toContain('<!--od-run-error-diag');
   });
 
   it('renders a persisted failed-run error at the owning assistant turn', () => {
@@ -435,7 +501,7 @@ describe('ChatPane streaming state', () => {
   });
 
   it('formats run error diagnostics with a distinct run id when present', () => {
-    expect(buildRunErrorDiagnosticText({
+    const out = buildRunErrorDiagnosticText({
       message: 'Service unavailable. Try again.',
       rawMessage: 'json-rpc id 4: Connection reset by server',
       errorCode: 'UPSTREAM_UNAVAILABLE',
@@ -445,7 +511,12 @@ describe('ChatPane streaming state', () => {
       conversationId: 'conv-1',
       assistantMessageId: 'assistant-1',
       agentId: 'amr',
-    })).toContain('run_id: run-real-123');
+    });
+    expect(out).toContain('run_id: run-real-123');
+    // Support-ticket header — never leaks product brand.
+    expect(out.startsWith('Run error diagnostics')).toBe(true);
+    expect(out).not.toContain('Open Design');
+    expect(out).not.toContain('teamver Slide');
   });
 
   it('falls back to trace id for legacy diagnostics without a run id', () => {
@@ -458,6 +529,21 @@ describe('ChatPane streaming state', () => {
 
     expect(diagnostic).toContain('trace_id: legacy-run-id');
     expect(diagnostic).toContain('run_id: legacy-run-id');
+  });
+
+  it('notes that BYOK/API agents intentionally lack daemon run ids', () => {
+    const out = buildRunErrorDiagnosticText({
+      message: '슬라이드 실행 중 오류가 발생했습니다. 다시 시도하세요.',
+      rawMessage: 'code=BAD_REQUEST raw=proxy 400: BAD_REQUEST prompt is too long',
+      errorCode: 'BAD_REQUEST',
+      agentId: 'anthropic-api',
+      projectId: 'project-1',
+      conversationId: 'conv-1',
+      assistantMessageId: 'assistant-1',
+    });
+    expect(out).toContain('run_id: n/a');
+    expect(out).toContain('agent_id: anthropic-api');
+    expect(out).toMatch(/run_id\/trace_id n\/a is expected for BYOK\/API/);
   });
 
   it('formats run error diagnostics with a raw error when guidance copy differs', () => {
@@ -705,6 +791,169 @@ describe('ChatPane streaming state', () => {
     expect(screen.queryByText('template.json')).toBeNull();
   });
 
+  it('keeps the selected deck template chip after re-entry when title is missing', () => {
+    const messages: ChatMessage[] = [
+      {
+        id: 'user-1',
+        role: 'user',
+        content: 'Make slides from this canvas',
+        createdAt: 1,
+        sessionMode: 'design',
+        runContext: {
+          selectedDeckTemplateId: 'example-html-ppt-zhangzara-daisy-days',
+          selectedDeckTemplateTitle: 'Daisy Days',
+          skillIds: ['example-html-ppt-zhangzara-daisy-days'],
+        },
+      },
+    ];
+
+    render(
+      <ChatPane
+        projectKindForTracking="deck"
+        messages={messages}
+        streaming={false}
+        error={null}
+        projectId="project-1"
+        projectFiles={[]}
+        onEnsureProject={async () => 'project-1'}
+        onSend={vi.fn()}
+        onStop={vi.fn()}
+        conversations={conversations}
+        activeConversationId="conv-1"
+        onSelectConversation={vi.fn()}
+        onDeleteConversation={vi.fn()}
+        projectMetadata={{
+          kind: 'deck',
+          // Simulate cold re-entry: id survives, title briefly empty.
+          selectedDeckTemplateId: 'example-html-ppt-zhangzara-daisy-days',
+        }}
+      />,
+    );
+
+    expect(screen.getByTestId('msg-template-chip').textContent).toContain('Daisy Days');
+  });
+
+  it('shows template chip on follow-up turns and does not hide it behind project skillId', () => {
+    const messages: ChatMessage[] = [
+      {
+        id: 'user-1',
+        role: 'user',
+        content: 'First turn',
+        createdAt: 1,
+        sessionMode: 'design',
+        runContext: {
+          selectedDeckTemplateId: 'example-html-ppt-hermes',
+          selectedDeckTemplateTitle: 'Hermes',
+          skillIds: ['example-html-ppt-hermes', 'web-search'],
+          designSystemId: 'default',
+          designSystemTitle: 'Neutral Modern',
+        },
+      },
+      {
+        id: 'assistant-1',
+        role: 'assistant',
+        content: 'Done',
+        createdAt: 2,
+      },
+      {
+        id: 'user-2',
+        role: 'user',
+        content: 'Revise slide 2',
+        createdAt: 3,
+        sessionMode: 'design',
+        runContext: {
+          selectedDeckTemplateId: 'example-html-ppt-hermes',
+          selectedDeckTemplateTitle: 'Hermes',
+          skillIds: ['example-html-ppt-hermes'],
+          designSystemId: 'default',
+          designSystemTitle: 'Neutral Modern',
+        },
+      },
+    ];
+
+    render(
+      <ChatPane
+        projectKindForTracking="deck"
+        messages={messages}
+        streaming={false}
+        error={null}
+        projectId="project-1"
+        projectFiles={[]}
+        skills={[
+          {
+            id: 'web-search',
+            name: 'Web Search',
+            description: 'Search',
+            triggers: [],
+            mode: 'prototype',
+            previewType: 'html',
+            designSystemRequired: false,
+            defaultFor: [],
+            upstream: null,
+          },
+        ]}
+        currentSkillId="web-search"
+        onEnsureProject={async () => 'project-1'}
+        onSend={vi.fn()}
+        onStop={vi.fn()}
+        conversations={conversations}
+        activeConversationId="conv-1"
+        onSelectConversation={vi.fn()}
+        onDeleteConversation={vi.fn()}
+        projectMetadata={{
+          kind: 'deck',
+          selectedDeckTemplateId: 'example-html-ppt-hermes',
+          selectedDeckTemplateTitle: 'Hermes',
+        }}
+      />,
+    );
+
+    const templateChips = screen.getAllByTestId('msg-template-chip');
+    expect(templateChips).toHaveLength(2);
+    expect(templateChips[0]?.textContent).toContain('Hermes');
+    expect(templateChips[1]?.textContent).toContain('Hermes');
+    expect(screen.getByText('Web Search')).toBeTruthy();
+    const dsChips = screen.getAllByTestId('msg-design-system-chip');
+    expect(dsChips.length).toBeGreaterThanOrEqual(1);
+    expect(dsChips[0]?.textContent).toContain('Neutral Modern');
+  });
+
+  it('shows a stub skill chip when the catalog has not loaded the skill id yet', () => {
+    const messages: ChatMessage[] = [
+      {
+        id: 'user-1',
+        role: 'user',
+        content: 'Use my skill',
+        createdAt: 1,
+        sessionMode: 'design',
+        runContext: {
+          skillIds: ['my-custom-research'],
+        },
+      },
+    ];
+
+    render(
+      <ChatPane
+        projectKindForTracking="deck"
+        messages={messages}
+        streaming={false}
+        error={null}
+        projectId="project-1"
+        projectFiles={[]}
+        skills={[]}
+        onEnsureProject={async () => 'project-1'}
+        onSend={vi.fn()}
+        onStop={vi.fn()}
+        conversations={conversations}
+        activeConversationId="conv-1"
+        onSelectConversation={vi.fn()}
+        onDeleteConversation={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId('msg-skill-chip').textContent).toMatch(/my custom research/i);
+  });
+
   it('hides internal path ids from comment attachment chips', () => {
     const messages: ChatMessage[] = [
       {
@@ -748,12 +997,12 @@ describe('ChatPane streaming state', () => {
       />,
     );
 
-    // vitest's jsdom runs on localhost with `import.meta.env.DEV === true`, so
-    // `isTeamverEmbedMode()` auto-detects embed mode and `commentTargetDisplayName`
-    // returns the Korean fallback (`주석`) instead of the English default
-    // (`Annotation`). Accept either — the assertion here is that the internal
+    // History chips prefer the comment body as the visible label; the
+    // Annotation/주석 fallback stays in the title tooltip. Accept either
+    // locale in the title — the assertion here is that the internal
     // `path-…` id is not surfaced as visible text.
-    expect(screen.getByText(/^(?:Annotation|주석)$/)).toBeTruthy();
+    const chip = screen.getByTestId('visual-comment-attachment-chip');
+    expect(chip.getAttribute('title') || '').toMatch(/(?:Annotation|주석)/);
     expect(screen.getByText('222')).toBeTruthy();
     expect(screen.queryByText('path-0-0-0-0-1')).toBeNull();
   });

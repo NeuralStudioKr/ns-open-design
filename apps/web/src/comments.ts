@@ -20,7 +20,6 @@ import {
   looksLikeStyleOnlyCommentRequest,
 } from './edit-mode/comment-edit-intent';
 import { isSyntheticVisualMarkTargetId } from './edit-mode/source-patches';
-import { isVisualCommentAttachment } from './edit-mode/scoped-deck-patch';
 import { isTeamverEmbedMode } from './teamver/designApiBase';
 import { isRenderableImagePath, projectFilePathBasename } from './utils/projectFilePaths';
 
@@ -426,8 +425,18 @@ const COMMENT_EDIT_PATCH_DIRECTIVE_RE =
   /\n*\[Comment-edit patch contract\][\s\S]*$/i;
 const EXISTING_DECK_EDIT_DIRECTIVE_RE =
   /\n*\[Existing deck edit\][\s\S]*$/i;
+const TEMPLATE_CLONE_CONTENT_FILL_DIRECTIVE_RE =
+  /\n*\[Template clone content fill(?: turn)?\][\s\S]*$/i;
+const CANVAS_CREATE_SCAFFOLD_DIRECTIVE_RE =
+  /\n*\[(?:Deliverable instruction|Selected slide template(?: priority)?|Source brief|Quick settings)\][\s\S]*$/i;
 const ATTACHED_IMAGE_EMBED_DIRECTIVE_RE =
   /\n*\[Attached image embed\][\s\S]*$/i;
+const ACTIVE_WORKSPACE_CONTEXT_RE =
+  /\n*<active-workspace-context>[\s\S]*?(?:<\/active-workspace-context>\s*|$)/gi;
+const ATTACHED_PROJECT_FILES_RE =
+  /\n*<attached-project-files>[\s\S]*?(?:<\/attached-project-files>\s*|$)/gi;
+const WEB_FETCH_CONTEXT_RE =
+  /\n*<web-fetch-context>[\s\S]*?(?:<\/web-fetch-context>\s*|$)/gi;
 const ATTACHED_PREVIEW_COMMENTS_RE =
   /\n*<attached-preview-comments>[\s\S]*?<\/attached-preview-comments>\s*/gi;
 const ATTACHED_PREVIEW_COMMENTS_BLOCK_RE =
@@ -515,13 +524,20 @@ function parseAttachedPreviewComputedStyle(
 /** Rebuild `image.N: path | name` lines written by renderCommentAttachmentContext. */
 function parseAttachedPreviewImageAttachments(section: string): PreviewCommentAttachment[] {
   const byIndex = new Map<number, PreviewCommentAttachment>();
-  const re = /^image\.(\d+):\s*([^|]+)\|\s*(.*)$/gm;
+  // Accept `path | name` (preferred) and path-only legacy/hardened lines.
+  const re = /^image\.(\d+):\s*(.+)$/gm;
   for (const match of section.matchAll(re)) {
     const index = Number(match[1]);
     if (!Number.isFinite(index) || index < 1) continue;
-    const path = String(match[2] || '').trim();
+    const raw = String(match[2] || '').trim();
+    if (!raw) continue;
+    const pipe = raw.indexOf('|');
+    const path = (pipe >= 0 ? raw.slice(0, pipe) : raw).trim();
     if (!path) continue;
-    const name = String(match[3] || '').trim() || path.split('/').pop() || path;
+    const nameToken = pipe >= 0 ? raw.slice(pipe + 1).trim() : '';
+    const basename = path.split('/').pop() || path;
+    // Prefer on-disk basename over a drifted display name when they differ.
+    const name = nameToken && nameToken === basename ? nameToken : basename;
     byIndex.set(index, { path, name });
   }
   return [...byIndex.entries()]
@@ -669,7 +685,14 @@ export function stripUserVisibleUserMessageText(content: string | null | undefin
   text = text.replace(COMMENT_EDIT_PATCH_DIRECTIVE_RE, '');
   // Existing-deck marker is appended after image-embed; strip it first.
   text = text.replace(EXISTING_DECK_EDIT_DIRECTIVE_RE, '');
+  // Post-Clone AI fill contract (model-only) — leave the user-facing request.
+  text = text.replace(TEMPLATE_CLONE_CONTENT_FILL_DIRECTIVE_RE, '');
+  // Home/Canvas create run dump — never show [Deliverable instruction] etc.
+  text = text.replace(CANVAS_CREATE_SCAFFOLD_DIRECTIVE_RE, '');
   text = text.replace(ATTACHED_IMAGE_EMBED_DIRECTIVE_RE, '');
+  text = text.replace(ACTIVE_WORKSPACE_CONTEXT_RE, '');
+  text = text.replace(ATTACHED_PROJECT_FILES_RE, '');
+  text = text.replace(WEB_FETCH_CONTEXT_RE, '');
   return stripUserVisibleQuestionFormProtocolText(text);
 }
 
@@ -890,7 +913,12 @@ export function formatVisualMarkPlacementStyle(
   position: PreviewComment['position'],
 ): string {
   const pos = normalizePosition(position);
-  return `position:absolute;left:${pos.x}px;top:${pos.y}px;width:${Math.max(1, pos.width)}px;height:${Math.max(1, pos.height)}px`;
+  // Enforce a minimum visible mark size so tiny/degenerate bounds still render
+  // an obvious icon on the slide. Teamver decks are 1920×1080 — 32px is a
+  // reasonable minimum touch target without dwarfing the drawn area.
+  const width = Math.max(32, pos.width);
+  const height = Math.max(32, pos.height);
+  return `position:absolute;left:${pos.x}px;top:${pos.y}px;width:${width}px;height:${height}px`;
 }
 
 /** Model-facing placement rules for screenshot/drawing scoped edits. */
@@ -900,7 +928,7 @@ export function visualMarkPlacementGuidance(
   const pos = normalizePosition(position);
   return [
     'Preserve the current slide HTML from disk; do not redesign unrelated layout.',
-    `Place the requested icon/shape inside the marked box at x=${pos.x} y=${pos.y} ${pos.width}x${pos.height} (slide canvas pixels; Teamver decks are 1920×1080).`,
+    `Place the requested icon/shape inside the marked box at x=${pos.x} y=${pos.y} ${pos.width}x${pos.height} (slide canvas pixels; decks are 1920×1080).`,
     `Wrap the new markup in a container with style="${formatVisualMarkPlacementStyle(position)}" inside a position:relative slide root.`,
     'Size the icon/SVG to fill that box (width/height 100% or matching px).',
   ].join(' ');
@@ -989,7 +1017,10 @@ export function renderCommentAttachmentContext(
     if (imageAttachments.length > 0) {
       lines.push(`imageAttachments: ${imageAttachments.length}`);
       imageAttachments.forEach((attachment, attachmentIndex) => {
-        lines.push(`image.${attachmentIndex + 1}: ${attachment.path} | ${attachment.name}`);
+        // Second token must stay parseable (`path | name`) but must equal the
+        // on-disk basename — never a friendlier display name models copy into src.
+        const basename = String(attachment.path || '').split('/').pop() || attachment.path;
+        lines.push(`image.${attachmentIndex + 1}: ${attachment.path} | ${basename}`);
       });
     }
   });
@@ -1093,7 +1124,57 @@ export function buildVisualMarkDeckPatchInnerMarkup(comment: string): string {
       '      </svg>',
     ].join('\n');
   }
+  if (/별|star|⭐|★/iu.test(normalized)) {
+    return [
+      '      <svg viewBox="0 0 24 24" width="100%" height="100%" fill="#f59e0b" aria-hidden="true">',
+      '        <path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 22 12 18.56 5.82 22 7 14.14 2 9.27l6.91-1.01L12 2z"/>',
+      '      </svg>',
+    ].join('\n');
+  }
+  if (/체크|check|✔|✓/iu.test(normalized)) {
+    return [
+      '      <svg viewBox="0 0 24 24" width="100%" height="100%" fill="none" stroke="#16a34a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">',
+      '        <polyline points="4,12 10,18 20,6"/>',
+      '      </svg>',
+    ].join('\n');
+  }
+  if (/원|동그라미|circle|⭕|○/iu.test(normalized)) {
+    return [
+      '      <svg viewBox="0 0 24 24" width="100%" height="100%" fill="none" stroke="#ef4444" stroke-width="3" aria-hidden="true">',
+      '        <circle cx="12" cy="12" r="9"/>',
+      '      </svg>',
+    ].join('\n');
+  }
+  if (/화살표|arrow|→|➡|↗|↘/iu.test(normalized)) {
+    return [
+      '      <svg viewBox="0 0 24 24" width="100%" height="100%" fill="none" stroke="#2563eb" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">',
+      '        <line x1="4" y1="12" x2="20" y2="12"/>',
+      '        <polyline points="14,6 20,12 14,18"/>',
+      '      </svg>',
+    ].join('\n');
+  }
+  if (/x표|엑스|cross|✕|✖|❌/iu.test(normalized)) {
+    return [
+      '      <svg viewBox="0 0 24 24" width="100%" height="100%" fill="none" stroke="#dc2626" stroke-width="3" stroke-linecap="round" aria-hidden="true">',
+      '        <line x1="5" y1="5" x2="19" y2="19"/>',
+      '        <line x1="19" y1="5" x2="5" y2="19"/>',
+      '      </svg>',
+    ].join('\n');
+  }
   return '      <!-- robot/icon/SVG sized to fill this box (100% width/height) -->';
+}
+
+/**
+ * Visible fallback marker used by the client visual-mark graft when the user
+ * did not include a recognizable shape keyword. Without this, the mark div
+ * renders as an empty box (invisible) and the send looks like it did nothing.
+ */
+export function buildClientVisualMarkFallbackInnerMarkup(): string {
+  return [
+    '      <svg viewBox="0 0 24 24" width="100%" height="100%" fill="none" stroke="#ff3b30" stroke-width="2" stroke-dasharray="4 3" aria-hidden="true">',
+    '        <rect x="2" y="2" width="20" height="20" rx="3"/>',
+    '      </svg>',
+  ].join('\n');
 }
 
 export function buildConcreteDeckPatchTemplateForVisualMarks(
@@ -1102,6 +1183,7 @@ export function buildConcreteDeckPatchTemplateForVisualMarks(
   const blocks: string[] = [];
   for (const item of commentAttachments) {
     if (!isScreenshotOnlyVisualCommentTarget(item)) continue;
+    if (hasUserTypedVisualAnnotationRequest(item)) continue;
     if (
       typeof item.slideIndex !== 'number'
       || !Number.isFinite(item.slideIndex)
@@ -1232,6 +1314,111 @@ function imageOnlyCommentFallback(count: number): string {
     : 'Use the attached image as the comment reference.';
 }
 
+export const VISUAL_ANNOTATION_USER_REQUEST_INTENT_PREFIX =
+  'User request from the annotation note:';
+
+function normalizeVisualMarkKindForIntent(
+  markKind: string | undefined | null,
+): PreviewVisualMarkKind {
+  const kind = String(markKind || 'stroke').trim();
+  if (
+    kind === 'click' || kind === 'click+stroke' || kind === 'stroke'
+    || kind === 'box' || kind === 'click+box'
+  ) {
+    return kind;
+  }
+  return 'stroke';
+}
+
+/**
+ * True when the user typed an overlay note or used the box tool — the request
+ * is "edit this region" (font size, copy, …), not "graft a decorative mark".
+ */
+export function hasUserTypedVisualAnnotationRequest(
+  attachment: Pick<ChatCommentAttachment, 'markKind' | 'comment' | 'intent'>,
+): boolean {
+  const markKind = normalizeVisualMarkKindForIntent(attachment.markKind);
+  if (markKind === 'box' || markKind === 'click+box') return true;
+  const comment = String(attachment.comment || '').trim();
+  if (!comment) return false;
+  if (looksLikePlacementOnlyVisualMarkRequest(comment)) return false;
+  return looksLikeVisualMarkEditRequest(comment);
+}
+
+/** Draw/memo screenshot attachments — not plain element picks without ink. */
+export function isVisualCommentAttachment(attachment: ChatCommentAttachment): boolean {
+  if (attachment.selectionKind === 'visual') return true;
+  if (attachment.markKind) return true;
+  if (String(attachment.screenshotPath || '').trim()) return true;
+  const elementId = String(attachment.elementId || '').trim();
+  if (elementId.startsWith('visual-mark-')) return true;
+  return false;
+}
+
+/**
+ * True for draw-annotation attachments: ink strokes or selection boxes on the
+ * screenshot. Reconciler may later bind bounds to a real DOM id — intent is still
+ * region/mark scoped, not "modify that element id" by default.
+ */
+export function isDrawnVisualMarkAttachment(attachment: ChatCommentAttachment): boolean {
+  if (!isVisualCommentAttachment(attachment)) return false;
+  if (
+    attachment.markKind === 'stroke' || attachment.markKind === 'click+stroke'
+    || attachment.markKind === 'box' || attachment.markKind === 'click+box'
+  ) {
+    return true;
+  }
+  if (attachment.selectionKind === 'visual' && Boolean(String(attachment.screenshotPath || '').trim())) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Client graft adds a decorative overlay without an AI turn. Only placement-only
+ * marks (pen + heart keyword, empty overlay note). Box marks and typed edit notes
+ * route to the model.
+ */
+export function shouldClientGraftVisualMarkWithoutAi(
+  attachment: ChatCommentAttachment,
+): boolean {
+  if (!isDrawnVisualMarkAttachment(attachment) && !isScreenshotOnlyVisualCommentTarget(attachment)) {
+    return false;
+  }
+  if (hasUserTypedVisualAnnotationRequest(attachment)) return false;
+  return true;
+}
+
+/** True when every usable attachment is a placement-only visual mark (client graft / deck-patch icon). */
+export function isVisualMarkPlacementOnlyCommentAttachments(
+  commentAttachments: readonly ChatCommentAttachment[],
+): boolean {
+  const usable = filterUsableCommentAttachments(commentAttachments);
+  if (usable.length === 0) return false;
+  return usable.every((attachment) => shouldClientGraftVisualMarkWithoutAi(attachment));
+}
+
+export function visualAnnotationIntentForMarkKind(
+  markKind: PreviewVisualMarkKind | string | undefined,
+  userNote?: string,
+): string {
+  return visualAnnotationIntent(normalizeVisualMarkKindForIntent(markKind), userNote);
+}
+
+/** Shape/icon placement requests can still use the client graft fast path. */
+function looksLikePlacementOnlyVisualMarkRequest(comment: string): boolean {
+  return /하트|heart|♥|❤|별|star|⭐|★|체크|check|✔|✓|원|동그라미|circle|⭕|○|화살표|arrow|→|➡|↗|↘|x표|엑스|cross|✕|✖|❌/iu.test(
+    comment,
+  );
+}
+
+/** Resize / style / copy edits must reach the model — never client graft overlays. */
+function looksLikeVisualMarkEditRequest(comment: string): boolean {
+  return /크게|더\s*크|키워|늘려|작게|줄여|작아|커게|폰트|font|size|색|color|bold|굵게|얇게|align|정렬|텍스트|text|글씨|문구|제목|title|heading|바꿔|수정|변경/iu.test(
+    comment,
+  );
+}
+
 function visualAnnotationIntent(
   markKind: PreviewVisualMarkKind,
   userNote?: string,
@@ -1240,8 +1427,14 @@ function visualAnnotationIntent(
   let base: string;
   if (markKind === 'click') {
     base = 'The screenshot has a blue focus box around the picked element; modify that picked part first.';
+  } else if (markKind === 'click+box') {
+    base =
+      'The screenshot has a blue focus box around the picked element and a red selection box; the red box outlines the region the user wants changed.';
   } else if (markKind === 'click+stroke') {
     base = 'The screenshot has a blue focus box and red strokes; together they identify the part the user wants changed.';
+  } else if (markKind === 'box') {
+    base =
+      'The screenshot has a red selection box that outlines the region the user wants changed. Treat the box as the intended target area—not decoration.';
   } else {
     base = 'The screenshot has red strokes that identify the visual region the user wants changed. Treat the drawn ink as the intended shape or placement guide—not decoration. ADD the requested shape/icon inside that region; do NOT delete or clear the rest of the slide.';
   }

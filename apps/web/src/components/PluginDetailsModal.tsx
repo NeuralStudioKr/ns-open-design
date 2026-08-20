@@ -27,6 +27,7 @@ import { PluginDesignSystemDetail } from './plugin-details/PluginDesignSystemDet
 import { PluginMediaDetail } from './plugin-details/PluginMediaDetail';
 import type { PluginUseAction } from './plugins-home/useActions';
 import type { PreviewSharePopoverItem } from './PreviewModal';
+import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
 
 interface Props {
   record: InstalledPluginRecord;
@@ -34,6 +35,8 @@ interface Props {
   onUse: (record: InstalledPluginRecord, action: PluginUseAction) => void;
   isApplying?: boolean;
   hideUseAction?: boolean;
+  /** Hide "Start with this design" / use-with-query (no Home composer). */
+  hideComposerSeedActions?: boolean;
   // Analytics — fires when the user picks an item inside the PreviewModal
   // share popover (media / html / design variants only; the scenario
   // fallback has no share popover).
@@ -46,8 +49,11 @@ export function PluginDetailsModal({
   onUse,
   isApplying,
   hideUseAction,
+  hideComposerSeedActions,
   onSharePopoverItemClick,
 }: Props) {
+  const { slideOnlyMvp } = useTeamverBranding();
+  const hideComposerSeed = hideComposerSeedActions ?? slideOnlyMvp;
   const preview = inferPluginPreview(record);
   let detail: JSX.Element;
 
@@ -59,6 +65,7 @@ export function PluginDetailsModal({
         onUse={onUse}
         isApplying={isApplying}
         hideUseAction={hideUseAction}
+        hideComposerSeedActions={hideComposerSeed}
         onSharePopoverItemClick={onSharePopoverItemClick}
       />
     );
@@ -73,6 +80,7 @@ export function PluginDetailsModal({
         onUse={onUse}
         isApplying={isApplying}
         hideUseAction={hideUseAction}
+        hideComposerSeedActions={hideComposerSeed}
         onSharePopoverItemClick={onSharePopoverItemClick}
       />
     );
@@ -84,6 +92,7 @@ export function PluginDetailsModal({
         onUse={onUse}
         isApplying={isApplying}
         hideUseAction={hideUseAction}
+        hideComposerSeedActions={hideComposerSeed}
         onSharePopoverItemClick={onSharePopoverItemClick}
       />
     );
@@ -95,6 +104,7 @@ export function PluginDetailsModal({
         onUse={onUse}
         isApplying={isApplying}
         hideUseAction={hideUseAction}
+        hideComposerSeedActions={hideComposerSeed}
       />
     );
   }

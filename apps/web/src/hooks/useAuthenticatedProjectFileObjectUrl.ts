@@ -10,11 +10,22 @@ import {
   isProjectRawFileKnownMissing,
   markProjectRawFileMissing,
 } from '../utils/projectFileFetchCache';
-import { normalizeFetchedImageBlob, blobToImageDataUrl } from '../utils/imageBlobNormalize';
-import { isEphemeralDrawingScreenshotPath, projectFilePathBasename } from '../utils/projectFilePaths';
+import { normalizeFetchedImageBlob } from '../utils/imageBlobNormalize';
+import {
+  normalizeProjectFilePath,
+  projectFilePathBasename,
+  projectFilePathToNfd,
+} from '../utils/projectFilePaths';
 
 export const AUTHENTICATED_PROJECT_FILE_FETCH_DELAYS_MS = [0, 250, 800, 1500] as const;
 const TRUSTED_BACKGROUND_RETRY_DELAYS_MS = [2000, 5000, 10000] as const;
+
+const inflightProjectFileBlobLoads = new Map<string, Promise<Blob | null>>();
+
+/** @internal vitest only */
+export function resetInflightProjectFileBlobLoadsForTests(): void {
+  inflightProjectFileBlobLoads.clear();
+}
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -32,17 +43,53 @@ async function readResponseImageBlob(resp: Response): Promise<Blob> {
   throw new Error('response body unavailable');
 }
 
-function alternateAuthenticatedRawPaths(path: string): string[] {
-  const trimmed = String(path || '').trim().replace(/\\/g, '/');
-  if (!trimmed) return [];
-  const baseName = projectFilePathBasename(trimmed);
+const IMAGE_EXT_RE = /\.(png|jpe?g|gif|webp|avif|bmp|svg|ico|heic|heif)$/i;
+
+/** @internal exported for tests */
+export function alternateAuthenticatedRawPaths(path: string): string[] {
+  const raw = String(path || '').trim().replace(/\\/g, '/');
+  const nfc = normalizeProjectFilePath(path);
+  const nfd = projectFilePathToNfd(path);
+  if (!nfc && !raw) return [];
+  const primary = nfc || raw;
+  const baseName = projectFilePathBasename(primary);
+  const baseNameNfd = projectFilePathToNfd(baseName);
   const alternates: string[] = [];
-  if (baseName && baseName !== trimmed) alternates.push(baseName);
-  if (baseName && !trimmed.includes('/')) {
-    alternates.push(`uploads/${baseName}`);
-    alternates.push(`assets/${baseName}`);
+  // Hangul: probe both NFC and NFD forms of the full relative path so a disk
+  // stored in one Unicode form matches even when the chat/deck path uses the
+  // other. The daemon does byte-exact lookup on /raw/.
+  if (raw && nfc && raw !== nfc) alternates.push(nfc);
+  if (nfd && nfd !== primary && nfd !== raw) alternates.push(nfd);
+  if (baseName && baseName !== primary) alternates.push(baseName);
+  if (baseNameNfd && baseNameNfd !== baseName) alternates.push(baseNameNfd);
+  // Drive / uploads / assets alternates were designed for IMAGE mention
+  // recovery only — a basename-only `@goldfish.webp` might live under
+  // `refs/drive/`. Probing them for arbitrary files (deck.html, README.md,
+  // etc.) produces 404 spam and, worse, could accidentally match an unrelated
+  // asset with the same basename.
+  const isImagePath = IMAGE_EXT_RE.test(baseName || primary);
+  if (!isImagePath) return [...new Set(alternates.filter(Boolean))];
+  const pushDrivePrefix = (prefix: string) => {
+    if (baseName) alternates.push(`${prefix}${baseName}`);
+    if (baseNameNfd && baseNameNfd !== baseName) alternates.push(`${prefix}${baseNameNfd}`);
+  };
+  if (baseName && !primary.includes('/')) {
+    // Recovered mention-only history often stores basename while the file
+    // lives under Drive / uploads / assets after refresh.
+    pushDrivePrefix('refs/drive/');
+    pushDrivePrefix('refs/');
+    pushDrivePrefix('uploads/');
+    pushDrivePrefix('assets/');
+  } else if (baseName && primary.startsWith('uploads/')) {
+    pushDrivePrefix('refs/drive/');
+    alternates.push(baseName);
+    if (baseNameNfd && baseNameNfd !== baseName) alternates.push(baseNameNfd);
+  } else if (baseName && primary.startsWith('refs/drive/')) {
+    alternates.push(baseName);
+    if (baseNameNfd && baseNameNfd !== baseName) alternates.push(baseNameNfd);
+    pushDrivePrefix('uploads/');
   }
-  return alternates;
+  return [...new Set(alternates.filter(Boolean))];
 }
 
 async function fetchAuthenticatedImageBlobAtPath(
@@ -51,7 +98,6 @@ async function fetchAuthenticatedImageBlobAtPath(
   options: {
     fetchDaemon: typeof fetchTeamverDaemon;
     waitForPrefix: typeof waitForTeamverProjectStoragePrefix;
-    trustExists: boolean;
     attempt: number;
   },
 ): Promise<Blob | null> {
@@ -65,14 +111,126 @@ async function fetchAuthenticatedImageBlobAtPath(
     typeof window !== 'undefined' && rawUrl.startsWith('/')
       ? new URL(rawUrl, window.location.origin).href
       : rawUrl;
-  const resp = await options.fetchDaemon(fetchUrl, {
-    cache: 'no-store',
-    teamverProjectId: id,
-  });
-  if (resp.status === 404) return null;
-  if (!resp.ok) return null;
+  const resp = await fetchAuthenticatedRawImageResponse(fetchUrl, id, options.fetchDaemon);
+  if (!resp) return null;
   const rawBlob = await readResponseImageBlob(resp);
   return await normalizeFetchedImageBlob(rawBlob);
+}
+
+async function fetchAuthenticatedRawImageResponse(
+  fetchUrl: string,
+  projectId: string,
+  fetchDaemon: typeof fetchTeamverDaemon,
+): Promise<Response | null> {
+  let resp = await fetchDaemon(fetchUrl, {
+    cache: 'no-store',
+    teamverProjectId: projectId,
+  });
+  if (resp.status === 404) return null;
+  // Conditional GET can return 304 with an empty body — fetch treats that as
+  // !ok, which left indexed previews blank even when opening /raw in a tab
+  // returned 200 image/png. Force a full reload once.
+  if (resp.status === 304) {
+    resp = await fetchDaemon(fetchUrl, {
+      cache: 'reload',
+      teamverProjectId: projectId,
+    });
+  }
+  if (resp.status === 404) return null;
+  if (!resp.ok) return null;
+  return resp;
+}
+
+async function loadAuthenticatedProjectFileBlobInner(
+  projectId: string,
+  filePath: string,
+  options?: {
+    delaysMs?: readonly number[];
+    fetchDaemon?: typeof fetchTeamverDaemon;
+    waitForPrefix?: typeof waitForTeamverProjectStoragePrefix;
+    /** File is listed in the project index — try basename/uploads/assets alternates. */
+    trustExists?: boolean;
+    /** Retry briefly after the first pass (design panel / staged upload only). */
+    allowBackgroundRetry?: boolean;
+  },
+): Promise<Blob | null> {
+  const id = projectId.trim();
+  const rawPath = String(filePath || '').trim().replace(/\\/g, '/');
+  const nfcPath = normalizeProjectFilePath(filePath);
+  const nfdPath = projectFilePathToNfd(filePath);
+  // Probe the caller's exact byte form first so daemon disk lookup (byte-exact
+  // on Linux) matches macOS NFD uploads without an unnecessary 404 round-trip.
+  const primary = rawPath || nfcPath;
+  if (!id || !primary) return null;
+  const trustExists = Boolean(options?.trustExists);
+  const allowBackgroundRetry = Boolean(options?.allowBackgroundRetry);
+  const alreadyMissing = isProjectRawFileKnownMissing(id, primary)
+    || (nfcPath && nfcPath !== primary && isProjectRawFileKnownMissing(id, nfcPath))
+    || (nfdPath && nfdPath !== primary && isProjectRawFileKnownMissing(id, nfdPath));
+  // Honor missing cache. Scratch-race callers (trustExists + allowBackgroundRetry)
+  // may proceed once — AuthenticatedProjectFileImage blocks remounts via
+  // startedKnownMissing so this does not re-spam `/raw/` for deleted files.
+  if (alreadyMissing && !(trustExists && allowBackgroundRetry)) {
+    return null;
+  }
+
+  const waitForPrefix = options?.waitForPrefix ?? waitForTeamverProjectStoragePrefix;
+  const fetchDaemon = options?.fetchDaemon ?? fetchTeamverDaemon;
+  // Already-missing scratch race: one shot only (no delay ladder spam).
+  const delays = alreadyMissing
+    ? [0]
+    : (options?.delaysMs ?? AUTHENTICATED_PROJECT_FILE_FETCH_DELAYS_MS);
+  // Always try raw + NFC + NFD (in that order) — Hangul filenames may be
+  // stored on disk in either Unicode form depending on the upload client's OS.
+  // When trustExists also probe Drive/uploads/assets basename alternates.
+  const pathCandidates = [
+    ...new Set([
+      primary,
+      ...(nfcPath && nfcPath !== primary ? [nfcPath] : []),
+      ...(nfdPath && nfdPath !== primary && nfdPath !== nfcPath ? [nfdPath] : []),
+      ...(trustExists ? alternateAuthenticatedRawPaths(primary) : []),
+    ]),
+  ];
+
+  for (let attempt = 0; attempt < delays.length; attempt += 1) {
+    const delay = delays[attempt] ?? 0;
+    if (delay > 0) await sleep(delay);
+
+    // Alternate paths are probed once — retries only hit the primary path so a
+    // deleted drawing screenshot cannot spam uploads/ + assets/ on every delay.
+    const candidatesThisAttempt = attempt === 0 ? pathCandidates : [primary];
+
+    for (let candidateIndex = 0; candidateIndex < candidatesThisAttempt.length; candidateIndex += 1) {
+      const candidatePath = candidatesThisAttempt[candidateIndex]!;
+      const isLastCandidate = candidateIndex >= candidatesThisAttempt.length - 1;
+      const blob = await fetchAuthenticatedImageBlobAtPath(id, candidatePath, {
+        fetchDaemon,
+        waitForPrefix,
+        attempt,
+      });
+      if (!blob) {
+        if (!isLastCandidate) continue;
+        const isLastAttempt = attempt >= delays.length - 1;
+        if (!isLastAttempt) continue;
+        // Mark EVERY probed alternate missing so remounts short-circuit —
+        // otherwise a re-render fires the full 5-alternate 404 storm again.
+        for (const probed of pathCandidates) {
+          markProjectRawFileMissing(id, probed);
+        }
+        return null;
+      }
+      clearProjectRawFileMissing(id, primary);
+      if (nfcPath && nfcPath !== primary) clearProjectRawFileMissing(id, nfcPath);
+      if (nfdPath && nfdPath !== primary && nfdPath !== nfcPath) clearProjectRawFileMissing(id, nfdPath);
+      clearProjectRawFileMissing(id, candidatePath);
+      return blob;
+    }
+  }
+
+  for (const probed of pathCandidates) {
+    markProjectRawFileMissing(id, probed);
+  }
+  return null;
 }
 
 /**
@@ -89,56 +247,50 @@ export async function loadAuthenticatedProjectFileBlob(
     delaysMs?: readonly number[];
     fetchDaemon?: typeof fetchTeamverDaemon;
     waitForPrefix?: typeof waitForTeamverProjectStoragePrefix;
-    /** Skip session 404 cache — use when the file is listed in the project index. */
     trustExists?: boolean;
+    allowBackgroundRetry?: boolean;
   },
 ): Promise<Blob | null> {
   const id = projectId.trim();
   const path = filePath.trim();
   if (!id || !path) return null;
-  if (!options?.trustExists && isProjectRawFileKnownMissing(id, path)) {
-    // Legacy session marks for user draw screenshots are ignored — they used
-    // to poison thumbnails after a single 404 during S3 materialization.
-    if (!isEphemeralDrawingScreenshotPath(path)) return null;
-  }
-  if (options?.trustExists) clearProjectRawFileMissing(id, path);
 
-  const waitForPrefix = options?.waitForPrefix ?? waitForTeamverProjectStoragePrefix;
-  const fetchDaemon = options?.fetchDaemon ?? fetchTeamverDaemon;
-  const delays = options?.delaysMs ?? AUTHENTICATED_PROJECT_FILE_FETCH_DELAYS_MS;
-  const trustExists = Boolean(options?.trustExists);
-  const pathCandidates = trustExists
-    ? [path, ...alternateAuthenticatedRawPaths(path)]
-    : [path];
+  const inflightKey = `${id}::${path}::${options?.trustExists ? '1' : '0'}`;
+  const inflight = inflightProjectFileBlobLoads.get(inflightKey);
+  if (inflight) return inflight;
 
-  for (let attempt = 0; attempt < delays.length; attempt += 1) {
-    const delay = delays[attempt] ?? 0;
-    if (delay > 0) await sleep(delay);
-
-    for (let candidateIndex = 0; candidateIndex < pathCandidates.length; candidateIndex += 1) {
-      const candidatePath = pathCandidates[candidateIndex]!;
-      const isLastCandidate = candidateIndex >= pathCandidates.length - 1;
-      const blob = await fetchAuthenticatedImageBlobAtPath(id, candidatePath, {
-        fetchDaemon,
-        waitForPrefix,
-        trustExists,
-        attempt,
-      });
-      if (!blob) {
-        if (trustExists || !isLastCandidate) continue;
-        const isLastAttempt = attempt >= delays.length - 1;
-        if (!isLastAttempt) continue;
-        if (!trustExists && !isEphemeralDrawingScreenshotPath(path)) {
-          markProjectRawFileMissing(id, path);
-        }
-        return null;
-      }
-      clearProjectRawFileMissing(id, path);
-      clearProjectRawFileMissing(id, candidatePath);
+  const task = (async () => {
+    let blob = await loadAuthenticatedProjectFileBlobInner(id, path, options);
+    if (
+      blob
+      || !options?.allowBackgroundRetry
+      || !options?.trustExists
+      || isProjectRawFileKnownMissing(id, path)
+    ) {
       return blob;
     }
+
+    for (const waitMs of TRUSTED_BACKGROUND_RETRY_DELAYS_MS) {
+      await sleep(waitMs);
+      if (isProjectRawFileKnownMissing(id, path)) return null;
+      // Brief S3 lag after a failed first pass — clear only for this opted-in
+      // background retry window, then re-check.
+      clearProjectRawFileMissing(id, path);
+      blob = await loadAuthenticatedProjectFileBlobInner(id, path, {
+        ...options,
+        // Inner no longer clears missing; we cleared above for this retry only.
+      });
+      if (blob) return blob;
+    }
+    return null;
+  })();
+
+  inflightProjectFileBlobLoads.set(inflightKey, task);
+  try {
+    return await task;
+  } finally {
+    inflightProjectFileBlobLoads.delete(inflightKey);
   }
-  return null;
 }
 
 export type AuthenticatedProjectFileObjectUrlState = {
@@ -149,10 +301,7 @@ export type AuthenticatedProjectFileObjectUrlState = {
 
 /**
  * Teamver embed project files must be fetched with daemon auth headers.
- * Bare `/api/projects/.../raw/...` on `<img src>` can fail when cookies or
- * workspace headers are required for the request to succeed.
- *
- * Returns a data URL so `<img>` does not depend on revocable blob URLs.
+ * Returns a blob object URL for `<img src>` (revoked on unmount / path change).
  */
 export function useAuthenticatedProjectFileObjectUrl(
   projectId: string | null | undefined,
@@ -160,6 +309,7 @@ export function useAuthenticatedProjectFileObjectUrl(
   /** Bust in-memory blob cache when the backing file changes (e.g. mtime). */
   rev?: string | number | null,
   trustExists?: boolean,
+  allowBackgroundRetry?: boolean,
 ): AuthenticatedProjectFileObjectUrlState {
   const [imageSrc, setImageSrc] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -196,37 +346,38 @@ export function useAuthenticatedProjectFileObjectUrl(
       return;
     }
 
+    if (!trustExists && isProjectRawFileKnownMissing(projectId, path)) {
+      setImageSrc(null);
+      setLoading(false);
+      setFailed(true);
+      return;
+    }
+
     let cancelled = false;
+    let activeBlobUrl: string | null = null;
     setImageSrc(null);
     setLoading(true);
     setFailed(false);
 
-    void (async () => {
-      const tryLoad = async (): Promise<Blob | null> => {
-        return await loadAuthenticatedProjectFileBlob(projectId, path, { trustExists });
-      };
-
-      let blob = await tryLoad();
-      if (cancelled) return;
-
-      if (!blob && trustExists) {
-        for (const waitMs of TRUSTED_BACKGROUND_RETRY_DELAYS_MS) {
-          await sleep(waitMs);
-          if (cancelled) return;
-          blob = await tryLoad();
-          if (blob) break;
-        }
+    const revokeActiveBlobUrl = () => {
+      if (activeBlobUrl) {
+        URL.revokeObjectURL(activeBlobUrl);
+        activeBlobUrl = null;
       }
+    };
 
+    void (async () => {
+      const blob = await loadAuthenticatedProjectFileBlob(projectId, path, {
+        trustExists,
+        allowBackgroundRetry,
+      });
       if (cancelled) return;
+
       if (blob) {
-        const dataUrl = await blobToImageDataUrl(blob);
-        if (cancelled || !dataUrl) {
-          if (!cancelled) setFailed(true);
-          setLoading(false);
-          return;
-        }
-        setImageSrc(dataUrl);
+        revokeActiveBlobUrl();
+        const blobUrl = URL.createObjectURL(blob);
+        activeBlobUrl = blobUrl;
+        setImageSrc(blobUrl);
         setFailed(false);
       } else {
         setFailed(true);
@@ -236,11 +387,12 @@ export function useAuthenticatedProjectFileObjectUrl(
 
     return () => {
       cancelled = true;
+      revokeActiveBlobUrl();
       setImageSrc(null);
       setLoading(false);
       setFailed(false);
     };
-  }, [filePath, projectId, rev, trustExists, prefixNonce]);
+  }, [allowBackgroundRetry, filePath, projectId, rev, trustExists, prefixNonce]);
 
   return { src: imageSrc, loading, failed };
 }

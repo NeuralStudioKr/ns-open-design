@@ -11,6 +11,7 @@ import { Icon } from './Icon';
 import { AuthenticatedProjectFileImage } from './AuthenticatedProjectFileImage';
 import { projectRawUrl } from '../providers/registry';
 import { embedUiLabel } from '../teamver/embedUiLabels';
+import { isEphemeralDrawingScreenshotPath } from '../utils/projectFilePaths';
 
 type TranslateFn = (key: keyof Dict, vars?: Record<string, string | number>) => string;
 
@@ -459,7 +460,11 @@ export function BoardComposerPopover({
                         projectId={projectId}
                         path={item.path}
                         alt=""
-                        trustExists
+                        // User-attached memo images are durable uploads — show
+                        // thumbs (with S3-lag retry). Ephemeral drawing PNGs
+                        // stay missing-cache-only to avoid /raw/ spam.
+                        trustExists={!isEphemeralDrawingScreenshotPath(item.path)}
+                        allowBackgroundRetry={!isEphemeralDrawingScreenshotPath(item.path)}
                       />
                     ) : null}
                   </a>

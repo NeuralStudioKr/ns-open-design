@@ -2,6 +2,7 @@
 
 import { describe, expect, it } from 'vitest';
 import type { FileRevision } from '@open-design/contracts';
+import { repairArtifactDocumentHead } from '@open-design/contracts';
 import {
   classifyRevisionDiskReconcile,
   isExternalRevisionDiskConflict,
@@ -146,7 +147,7 @@ describe('revision-reconcile', () => {
       })).toBe('adopt_matching_disk');
     });
 
-    it('flags true external conflict when disk is unknown and preview diverged', () => {
+    it('preserves cursor when preview matches despite unknown disk bytes', () => {
       expect(classifyRevisionDiskReconcile({
         cursor: head,
         headRevision: head,
@@ -155,7 +156,7 @@ describe('revision-reconcile', () => {
         cursorSnapshotContent: '<html>head</html>',
         previewSource: '<html>head</html>',
         matchingRevision: null,
-      })).toBe('external_conflict');
+      })).toBe('preserve_history_cursor');
       expect(isExternalRevisionDiskConflict({
         cursor: head,
         headRevision: head,
@@ -163,6 +164,27 @@ describe('revision-reconcile', () => {
         diskContent: '<html>external-edit</html>',
         cursorSnapshotContent: '<html>head</html>',
         previewSource: '<html>head</html>',
+        matchingRevision: null,
+      })).toBe(false);
+    });
+
+    it('flags true external conflict when disk is unknown and preview diverged', () => {
+      expect(classifyRevisionDiskReconcile({
+        cursor: head,
+        headRevision: head,
+        activeSequence: 3,
+        diskContent: '<html>external-edit</html>',
+        cursorSnapshotContent: '<html>head</html>',
+        previewSource: '<html>also-external</html>',
+        matchingRevision: null,
+      })).toBe('external_conflict');
+      expect(isExternalRevisionDiskConflict({
+        cursor: head,
+        headRevision: head,
+        activeSequence: 3,
+        diskContent: '<html>external-edit</html>',
+        cursorSnapshotContent: '<html>head</html>',
+        previewSource: '<html>also-external</html>',
         matchingRevision: null,
       })).toBe(true);
     });
@@ -216,6 +238,20 @@ describe('revision-reconcile', () => {
         previewSource: '<html>head</html>',
         matchingRevision: cursor,
       })).toBe(false);
+    });
+
+    it('treats repaired disk bytes as matching the cursor snapshot', () => {
+      const corrupt = '<html><head>viewport=width=device-width, initial-scale=1" /><title>Deck</title></head><body>Hi</body></html>';
+      const canonical = repairArtifactDocumentHead(corrupt);
+      expect(classifyRevisionDiskReconcile({
+        cursor: head,
+        headRevision: head,
+        activeSequence: 3,
+        diskContent: corrupt,
+        cursorSnapshotContent: canonical,
+        previewSource: canonical,
+        matchingRevision: null,
+      })).toBe('cursor_matches_disk');
     });
   });
 });

@@ -1,8 +1,24 @@
-import { repairArtifactDocumentHead } from '@open-design/contracts';
+import {
+  OFFICIAL_DECK_LOOK_STYLE_ATTR,
+  looksLikeOfficialFullscreenPresenterDeck,
+} from '@open-design/contracts';
+import { repairArtifactDocumentHeadIfNeeded } from './artifact-document-head';
+
+function hasOfficialLookStyleAttr(html: string): boolean {
+  return new RegExp(`<style\\b[^>]*\\b${OFFICIAL_DECK_LOOK_STYLE_ATTR}\\b`, 'i').test(html);
+}
+
+export type WrapPreviewHtmlShellOptions = {
+  /** Caller already ran repair (or verified intact head) — skip the first repair pass. */
+  alreadyRepaired?: boolean;
+};
 
 /** Mirror buildSrcdoc's fragment wrap so preview detection matches iframe input. */
-export function wrapPreviewHtmlShell(html: string): string {
-  const repaired = repairArtifactDocumentHead(html);
+export function wrapPreviewHtmlShell(
+  html: string,
+  options?: WrapPreviewHtmlShellOptions,
+): string {
+  const repaired = options?.alreadyRepaired ? html : repairArtifactDocumentHeadIfNeeded(html);
   const head = repaired.trimStart().slice(0, 64).toLowerCase();
   const isFullDoc = head.startsWith('<!doctype') || head.startsWith('<html');
   if (isFullDoc) return repaired;
@@ -14,12 +30,15 @@ export function wrapPreviewHtmlShell(html: string): string {
   </head>
   <body>${repaired}</body>
 </html>`;
-  return repairArtifactDocumentHead(wrapped);
+  // Fragment wrap builds a fresh shell — intact-gated (charset+viewport already set).
+  return repairArtifactDocumentHeadIfNeeded(wrapped);
 }
 
 /** Same repaired + wrapped HTML buildSrcdoc and the host preview use for detection. */
 export function prepareCompactStackedDeckPreviewHtml(html: string): string {
-  return wrapPreviewHtmlShell(repairArtifactDocumentHead(html));
+  // Intact full docs skip the first repair (hot preview-detection path).
+  const repaired = repairArtifactDocumentHeadIfNeeded(html);
+  return wrapPreviewHtmlShell(repaired, { alreadyRepaired: true });
 }
 
 function extractCssBlocks(html: string): string {
@@ -163,23 +182,40 @@ function looksLikeFrameworkDeckMarkup(html: string): boolean {
  */
 export function looksLikeCompactApiStackedDeck(html: string): boolean {
   if (!html) return false;
+  if (looksLikeOfficialFullscreenPresenterDeck(html)) return false;
   if (looksLikeFrameworkDeckMarkup(html)) return false;
   if (looksLikeAuthoredHorizontalSwipeDeck(html)) return false;
-  if (looksLikeAuthoredScrollNavigateDeck(html)) return false;
+  // Official catalog presenters (no look-css marker) keep native 100% fill.
+  // Compact fills that copied a `.presentation` / `.deck` host after official
+  // look merge must still letterbox to one 1920×1080 stage — otherwise each
+  // page sizes to its Motif content and the visual center jumps.
+  const officialLookFill = hasOfficialLookStyleAttr(html);
   if (
-    /<body\b[^>]*>[\s\S]*<(?:div|section)\b[^>]*\bclass\s*=\s*['"][^'"]*(?:^|\s)deck(?:\s|["']|$)/i.test(
+    !officialLookFill
+    && /<(?:div|section|main)\b[^>]*\bclass\s*=\s*['"][^'"]*\bpresentation\b/i.test(html)
+  ) {
+    return false;
+  }
+  const bodyFirst = hasBodyFirstSlide(html);
+  const viewportSized = looksLikeSlideViewportSized(html);
+  const legacyBodyFirst = looksLikeLegacyStyledBodyFirstDeck(html);
+  const compactBodyFirst = bodyFirst && (viewportSized || legacyBodyFirst);
+  if (looksLikeAuthoredScrollNavigateDeck(html) && !compactBodyFirst) return false;
+  if (
+    !officialLookFill
+    && /<body\b[^>]*>[\s\S]*<(?:div|section)\b[^>]*\bclass\s*=\s*['"][^'"]*(?:^|\s)deck(?:\s|["']|$)/i.test(
       html,
     )
   ) {
     return false;
   }
-  if (!hasBodyFirstSlide(html)) return false;
-  if (looksLikeSlideViewportSized(html)) return true;
+  if (!bodyFirst) return false;
+  if (viewportSized) return true;
   // Legacy Canvas/Drive → Slide decks can be body-first multi-slide HTML
   // without explicit 100vh or 1920×1080 sizing. Keep existing deliverables
   // recoverable in the host fixed-stage viewer instead of reflowing them as
   // generic HTML.
-  return looksLikeLegacyStyledBodyFirstDeck(html);
+  return legacyBodyFirst;
 }
 
 /** Host-side detection that matches buildSrcdoc's wrapped preview HTML. */
@@ -199,6 +235,88 @@ export function injectStackedDeckViewport(html: string): string {
   return html;
 }
 
+const COMPACT_STACKED_EXPORT_FIX_MARKER = 'data-od-compact-deck-export-fix';
+
+function compactStackedDeckExportCss(): string {
+  return `
+  <style ${COMPACT_STACKED_EXPORT_FIX_MARKER}>
+    /* PPT inches — never 1920px (@page px → ~20″ MediaBox at 96dpi). */
+    @page { size: 13.333333in 7.5in; margin: 0; }
+    html, body {
+      margin: 0 !important;
+      padding: 0 !important;
+      width: 1920px !important;
+      min-width: 1920px !important;
+      /* Do not paint #0b0c10 — preview already learned that a forced dark
+         letterbox reads as "template not applied". Keep the deck's own
+         body/paper background (cream, dark terminal, or unset). */
+    }
+    body { overflow-x: hidden !important; }
+    body > .slide,
+    body > * > .slide,
+    body > * > * > .slide {
+      position: relative !important;
+      inset: auto !important;
+      top: auto !important;
+      left: auto !important;
+      right: auto !important;
+      bottom: auto !important;
+      width: 1920px !important;
+      height: 1080px !important;
+      min-height: 1080px !important;
+      max-height: 1080px !important;
+      box-sizing: border-box !important;
+      margin: 0 auto !important;
+      overflow: hidden !important;
+      page-break-after: always !important;
+      break-after: page !important;
+      flex: none !important;
+      transform: none !important;
+    }
+    body > .slide:last-child,
+    body > * > .slide:last-child,
+    body > * > * > .slide:last-child {
+      page-break-after: auto !important;
+      break-after: auto !important;
+    }
+    @media print {
+      html, body {
+        width: 1920px !important;
+        min-width: 1920px !important;
+      }
+      body > .slide,
+      body > * > .slide,
+      body > * > * > .slide {
+        width: 1920px !important;
+        height: 1080px !important;
+        min-height: 1080px !important;
+        max-height: 1080px !important;
+        overflow: hidden !important;
+      }
+    }
+  </style>`;
+}
+
+/**
+ * Standalone downloads and daemon inline-render payloads do not go through
+ * the live preview bridge. Normalize compact body-first decks there too so
+ * `100vh`/document-flow fallback HTML exports as real 16:9 pages.
+ */
+export function normalizeCompactStackedDeckForExport(html: string, deck?: boolean): string {
+  if (!deck || !html || html.includes(COMPACT_STACKED_EXPORT_FIX_MARKER)) return html;
+  const prepared = prepareCompactStackedDeckPreviewHtml(html);
+  if (!looksLikeCompactApiStackedDeck(prepared)) return html;
+  const withViewport = injectStackedDeckViewport(html);
+  const css = compactStackedDeckExportCss();
+  if (/<\/head>/i.test(withViewport)) {
+    return withViewport.replace(/<\/head>/i, `${css}\n</head>`);
+  }
+  if (/<html\b/i.test(withViewport)) {
+    return withViewport.replace(/<body\b/i, `<head>${css}</head>\n<body`);
+  }
+  return `${css}\n${withViewport}`;
+}
+
 /** @internal test helper */
 export const compactStackedDeckTestHelpers = {
   SLIDE_VIEWPORT_RE,
@@ -209,4 +327,5 @@ export const compactStackedDeckTestHelpers = {
   hasFixedCanvasSizing,
   looksLikeSlideViewportSized,
   hasBodyFirstSlide,
+  compactStackedDeckExportCss,
 };

@@ -7,11 +7,21 @@ import {
   HTML_COVER_CANVAS_HEIGHT,
   HTML_COVER_CANVAS_WIDTH,
 } from "../htmlCoverSrcDoc";
+import {
+  clearHtmlCoverCacheStoreForTests,
+  deleteHtmlCoverInflight,
+  getHtmlCoverInflight,
+  htmlCoverCacheKey,
+  peekHtmlCoverCache,
+  seedHtmlCoverCache,
+  setHtmlCoverInflight,
+} from "../htmlCoverCacheStore";
 import { fetchTeamverDaemon } from "../teamverDaemonHeaders";
 import {
   projectScopedPreviewUrl,
   resolveTeamverProjectPreviewPrefix,
 } from "../teamverProjectPreviewScope";
+import { subscribeProjectCoverClear } from "../projectCoverLoader";
 
 export {
   buildHtmlCoverSrcDoc,
@@ -23,13 +33,32 @@ export {
   type CoverSlideSection,
 } from "../htmlCoverSrcDoc";
 
-const htmlCoverCache = new Map<string, string>();
-const htmlCoverInflight = new Map<string, Promise<string>>();
+export {
+  htmlCoverCacheKey,
+  peekHtmlCoverCache,
+  seedHtmlCoverCache,
+} from "../htmlCoverCacheStore";
+
+const VIEWPORT_ROOT_MARGIN_PX = 160;
+
+function isNearViewport(node: Element): boolean {
+  const rect = node.getBoundingClientRect();
+  return (
+    rect.bottom >= -VIEWPORT_ROOT_MARGIN_PX &&
+    rect.top <= window.innerHeight + VIEWPORT_ROOT_MARGIN_PX
+  );
+}
 
 export type ProjectCardHtmlCoverProps = {
   src: string;
   /** Deck projects — first-slide layout CSS; prototypes use a simpler clip. */
   deckCoverOnly?: boolean;
+  /**
+   * When true (default in Teamver embed), wait until the card is near the
+   * viewport before fetching `/raw` + minting `preview-url`. Standalone OD
+   * still loads immediately so existing thumbnails keep painting.
+   */
+  deferUntilVisible?: boolean;
   iframeClassName?: string;
   deckFrameClassName?: string;
   deckIframeClassName?: string;
@@ -47,6 +76,7 @@ export type ProjectCardHtmlCoverProps = {
 export function ProjectCardHtmlCover({
   src,
   deckCoverOnly = false,
+  deferUntilVisible = isTeamverEmbedMode(),
   iframeClassName = "thumb-iframe",
   deckFrameClassName = "project-thumb-deck-frame",
   deckIframeClassName = "project-thumb-deck-iframe",
@@ -56,6 +86,7 @@ export function ProjectCardHtmlCover({
     <AuthenticatedHtmlCover
       src={src}
       mode={deckCoverOnly ? "deck" : "page"}
+      deferUntilVisible={deferUntilVisible}
       deckFrameClassName={deckFrameClassName}
       deckIframeClassName={deckIframeClassName || iframeClassName}
       deckLoadingClassName={deckLoadingClassName}
@@ -66,34 +97,101 @@ export function ProjectCardHtmlCover({
 function AuthenticatedHtmlCover({
   src,
   mode,
+  deferUntilVisible,
   deckFrameClassName,
   deckIframeClassName,
   deckLoadingClassName,
 }: {
   src: string;
   mode: "deck" | "page";
+  deferUntilVisible: boolean;
   deckFrameClassName: string;
   deckIframeClassName: string;
   deckLoadingClassName: string;
 }) {
   const frameRef = useRef<HTMLDivElement | null>(null);
-  // Cache by path without ?v= so mtime bumps / remounts reuse HTML; still fetch
-  // the busted URL when the cache misses. Prefixed with builder version so
-  // logic bumps do not serve stale full-deck thumbs from the in-memory Map.
-  const cacheKey = `v2:${mode}:${src.split(/[?#]/u, 1)[0] ?? src}`;
-  const [srcDoc, setSrcDoc] = useState<string | null>(() => htmlCoverCache.get(cacheKey) ?? null);
+  // Cache key keeps ?v=/coverVersion so deck edits bust stale first-slide
+  // srcDoc. Prefixed with builder version so logic bumps do not serve old thumbs.
+  const cacheKey = htmlCoverCacheKey(mode, src);
+  const [visible, setVisible] = useState(() => {
+    if (!deferUntilVisible) return true;
+    return peekHtmlCoverCache(cacheKey) != null;
+  });
+  const [srcDoc, setSrcDoc] = useState<string | null>(() => peekHtmlCoverCache(cacheKey));
   const [scale, setScale] = useState(1);
+  const [bustNonce, setBustNonce] = useState(0);
+  const coverProjectId = parseProjectRawUrl(src)?.projectId ?? null;
 
   useEffect(() => {
+    return subscribeProjectCoverClear((clearedId) => {
+      if (clearedId !== null && coverProjectId && clearedId !== coverProjectId) return;
+      setSrcDoc(null);
+      setBustNonce((value) => value + 1);
+    });
+  }, [coverProjectId]);
+
+  useEffect(() => {
+    if (!deferUntilVisible) {
+      setVisible(true);
+      return;
+    }
+    if (peekHtmlCoverCache(cacheKey)) {
+      setVisible(true);
+      return;
+    }
     let cancelled = false;
-    const cached = htmlCoverCache.get(cacheKey);
+    let observer: IntersectionObserver | null = null;
+    let raf = 0;
+    let attempts = 0;
+    const attach = () => {
+      if (cancelled) return;
+      const node = frameRef.current;
+      if (!node) {
+        // First paint can run the effect before the frame ref is committed.
+        // Retry a few frames instead of leaving visible=false forever.
+        attempts += 1;
+        if (attempts > 8) {
+          setVisible(true);
+          return;
+        }
+        raf = requestAnimationFrame(attach);
+        return;
+      }
+      if (typeof IntersectionObserver === "undefined" || isNearViewport(node)) {
+        setVisible(true);
+        return;
+      }
+      observer = new IntersectionObserver(
+        ([entry]) => {
+          if (!entry?.isIntersecting) return;
+          setVisible(true);
+          observer?.disconnect();
+        },
+        { rootMargin: `${VIEWPORT_ROOT_MARGIN_PX}px` },
+      );
+      observer.observe(node);
+    };
+    attach();
+    return () => {
+      cancelled = true;
+      if (raf) cancelAnimationFrame(raf);
+      observer?.disconnect();
+    };
+  }, [cacheKey, deferUntilVisible]);
+
+  useEffect(() => {
+    if (!visible) return;
+    let cancelled = false;
+    const cached = peekHtmlCoverCache(cacheKey);
     if (cached) {
       setSrcDoc(cached);
       return;
     }
-    // Keep prior frame while reloading — avoids flash on remount/status churn.
-    const abort = new AbortController();
-    loadHtmlCover(src, mode, abort.signal, cacheKey)
+    // Fetch by stable path (cacheKey). Do not depend on `src` query (`?v=` /
+    // updatedAt) — that aborted in-flight cover GETs on every project poll.
+    // loadHtmlCover shares inflight by cacheKey; unmount only skips setState.
+    const fetchSrc = src.split(/[?#]/u, 1)[0] ?? src;
+    loadHtmlCover(fetchSrc, mode, cacheKey)
       .then((next) => {
         if (!cancelled) setSrcDoc(next);
       })
@@ -102,9 +200,8 @@ function AuthenticatedHtmlCover({
       });
     return () => {
       cancelled = true;
-      abort.abort();
     };
-  }, [cacheKey, mode, src]);
+  }, [bustNonce, cacheKey, mode, visible]);
 
   useEffect(() => {
     const node = frameRef.current;
@@ -226,41 +323,51 @@ async function resolveCoverBaseHref(
 async function loadHtmlCover(
   src: string,
   mode: "deck" | "page",
-  signal?: AbortSignal,
   cacheKeyOverride?: string,
 ): Promise<string> {
-  const cacheKey = cacheKeyOverride ?? `v2:${mode}:${src.split(/[?#]/u, 1)[0] ?? src}`;
-  const cached = htmlCoverCache.get(cacheKey);
+  // Always strip ?v= / cacheBust so remounts and project.updatedAt churn share
+  // one GET + one in-memory srcDoc. Callers pass path-only when possible.
+  const pathOnly = src.split(/[?#]/u, 1)[0] ?? src;
+  const cacheKey = cacheKeyOverride ?? htmlCoverCacheKey(mode, pathOnly);
+  const cached = peekHtmlCoverCache(cacheKey);
   if (cached) return cached;
 
-  // Do not share in-flight promises across cards: aborting one unmount must
-  // not cancel another card's cover fetch for the same URL.
-  const existing = !signal ? htmlCoverInflight.get(cacheKey) : undefined;
+  const existing = getHtmlCoverInflight(cacheKey);
   if (existing) return existing;
 
   const run = (async () => {
-    const res = await fetchTeamverDaemon(src, {
-      // Unique AbortSignal skips GET dedupe in fetchTeamverDaemon.
-      signal: signal ?? new AbortController().signal,
-    });
+    // No AbortSignal — allows fetchTeamverDaemon GET dedupe and lets sibling
+    // cards reuse the same in-flight response. Unmount only skips setState.
+    //
+    // `?inlineAssets=1` asks the daemon to rewrite `<img src>` / CSS `url(...)`
+    // relative refs into inline `data:` URIs before responding, so the sandbox
+    // iframe never has to make a subresource GET. Without this a Hangul NFC/NFD
+    // mismatch or a basename-only `<img src>` collapses the card thumb to
+    // alt-only text ("파일명만 보임"). Cache key stays path-only above so the
+    // cover cache still dedupes across cards.
+    const inlineUrl = appendInlineAssetsQuery(pathOnly);
+    const res = await fetchTeamverDaemon(inlineUrl);
     if (!res.ok) throw new Error(`Failed to load project cover: ${res.status}`);
     const html = await res.text();
-    const { href: baseHref } = await resolveCoverBaseHref(src, signal);
+    const { href: baseHref } = await resolveCoverBaseHref(pathOnly);
     const parsed = buildHtmlCoverSrcDoc(html, baseHref, { preferDeck: mode === "deck" });
-    // Always cache thumb HTML. Skipping cache on unscoped embed fallback caused
-    // remount loops (e.g. former status-column churn) to refetch /raw forever.
-    htmlCoverCache.set(cacheKey, parsed);
+    seedHtmlCoverCache(cacheKey, parsed);
     return parsed;
   })().finally(() => {
-    htmlCoverInflight.delete(cacheKey);
+    deleteHtmlCoverInflight(cacheKey);
   });
 
-  if (!signal) htmlCoverInflight.set(cacheKey, run);
+  setHtmlCoverInflight(cacheKey, run);
   return run;
+}
+
+function appendInlineAssetsQuery(rawUrl: string): string {
+  const trimmed = String(rawUrl || "").trim();
+  if (!trimmed) return trimmed;
+  return `${trimmed}${trimmed.includes("?") ? "&" : "?"}inlineAssets=1`;
 }
 
 /** @internal vitest */
 export function clearProjectDeckCoverCacheForTests(): void {
-  htmlCoverCache.clear();
-  htmlCoverInflight.clear();
+  clearHtmlCoverCacheStoreForTests();
 }

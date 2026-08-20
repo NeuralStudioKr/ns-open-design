@@ -169,6 +169,7 @@ function FileOpRow({
           className="file-ops-row-open"
           onClick={() => onRequestOpenFile?.(entry.path)}
           title={t('tool.openInTab', { name: entry.path })}
+          aria-label={t('tool.openInTab', { name: entry.path })}
           data-testid={`file-ops-row-open-${entry.path}`}
         >
           {t('assistant.openFile')}

@@ -31,7 +31,7 @@ describe("Teamver site metadata", () => {
     process.env.VITE_TEAMVER_EMBED = "1";
     process.env.VITE_TEAMVER_SITE_URL = "https://stg-design.teamver.com";
     process.env.VITE_TEAMVER_OG_IMAGE_URL =
-      "https://stg-design.teamver.com/teamver/teamver-design-opengraph.png";
+      "https://stg-design.teamver.com/teamver/teamver-slide-opengraph.png";
 
     const metadata = buildTeamverRootMetadata();
     expect(metadata.title).toBe(TEAMVER_DEFAULT_OG_TITLE);
@@ -39,7 +39,7 @@ describe("Teamver site metadata", () => {
     expect(metadata.openGraph?.title).toBe(TEAMVER_DEFAULT_OG_TITLE);
     expect(metadata.openGraph?.url).toBe("https://stg-design.teamver.com");
     expect(firstOgImage(metadata.openGraph?.images)).toMatchObject({
-      url: "https://stg-design.teamver.com/teamver/teamver-design-opengraph.png",
+      url: "https://stg-design.teamver.com/teamver/teamver-slide-opengraph.png",
     });
     expect(metadata.icons).toMatchObject({
       icon: "/teamver/Logo-icon.svg",
@@ -66,21 +66,21 @@ describe("Teamver site metadata", () => {
   });
 
   it("exposes document title separate from OG title", () => {
-    process.env.VITE_TEAMVER_BRAND_TITLE = "teamver Design";
-    process.env.VITE_TEAMVER_OG_TITLE = "teamver | Design";
+    process.env.VITE_TEAMVER_BRAND_TITLE = "teamver Slide";
+    process.env.VITE_TEAMVER_OG_TITLE = "teamver | Slide";
     const values = resolveTeamverSiteMetadataValues();
-    expect(values.title).toBe("teamver Design");
-    expect(values.ogTitle).toBe("teamver | Design");
+    expect(values.title).toBe("teamver Slide");
+    expect(values.ogTitle).toBe("teamver | Slide");
   });
 
-  it("resolves Design OG image from siteUrl when env override is unset", () => {
+  it("resolves Slide OG image from siteUrl when env override is unset", () => {
     process.env.VITE_TEAMVER_EMBED = "1";
     process.env.VITE_TEAMVER_SITE_URL = "https://stg-design.teamver.com";
     delete process.env.VITE_TEAMVER_OG_IMAGE_URL;
 
     const values = resolveTeamverSiteMetadataValues();
     expect(values.ogImageUrl).toBe(
-      "https://stg-design.teamver.com/teamver/teamver-design-opengraph.png",
+      "https://stg-design.teamver.com/teamver/teamver-slide-opengraph.png",
     );
   });
 });

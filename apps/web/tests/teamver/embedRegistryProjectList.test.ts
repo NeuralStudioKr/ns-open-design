@@ -82,6 +82,7 @@ describe("embedRegistryProjectList", () => {
       id: "p-1",
       name: "Deck A",
       updatedAt: Date.parse("2026-01-02T00:00:00.000Z"),
+      metadata: { kind: "deck" },
     });
   });
 
@@ -196,6 +197,7 @@ describe("embedRegistryProjectList", () => {
 
     const merged = mergeDaemonFieldsOntoRegistryProjects(registry, daemon);
     expect(merged.map((p) => p.id)).toEqual(["ws-only", "shared"]);
+    expect(merged[0]?.metadata?.kind).toBe("deck");
     expect(merged[0]?.status?.value).toBe("not_started");
     expect(merged[1]).toMatchObject({
       id: "shared",
@@ -259,6 +261,53 @@ describe("embedRegistryProjectList", () => {
 
     const merged = mergeDaemonFieldsOntoRegistryProjects(registry, daemon);
     expect(merged[0]?.status?.value).toBe("running");
+  });
+
+  it("does not let a newer registry timestamp beat daemon last-edit time", () => {
+    const registry = [
+      mapRegistryRowToProject({
+        odProjectId: "opened",
+        title: "Opened Deck",
+        updatedAt: 9_000,
+      }),
+    ];
+    const daemon = [
+      {
+        id: "opened",
+        name: "Opened Deck",
+        skillId: null,
+        designSystemId: null,
+        createdAt: 1,
+        updatedAt: 1_200,
+      },
+    ];
+
+    const merged = mergeDaemonFieldsOntoRegistryProjects(registry, daemon);
+    expect(merged[0]?.updatedAt).toBe(1_200);
+  });
+
+  it("keeps daemon prototype + index.html so Canvas cover fallback stays intact", () => {
+    const registry = [
+      mapRegistryRowToProject({
+        odProjectId: "legacy",
+        title: "Legacy Deck",
+        updatedAt: 20,
+      }),
+    ];
+    const daemon = [
+      {
+        id: "legacy",
+        name: "Legacy Deck",
+        skillId: null,
+        designSystemId: null,
+        createdAt: 1,
+        updatedAt: 25,
+        metadata: { kind: "prototype" as const, entryFile: "index.html" },
+      },
+    ];
+
+    const merged = mergeDaemonFieldsOntoRegistryProjects(registry, daemon);
+    expect(merged[0]?.metadata).toEqual({ kind: "prototype", entryFile: "index.html" });
   });
 
   it("does not let daemon artifact slugs replace registry names in lists", () => {

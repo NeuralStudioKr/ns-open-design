@@ -62,14 +62,40 @@ describe('FileViewer revision conflict', () => {
     await waitFor(() => expect(getPersistedSource()).toContain('rgb(239, 68, 68)'));
 
     setPersistedSource(initialSource.replace('#111111', '#0000ff'));
+    const externalDiskSource = getPersistedSource();
 
-    view.rerender(
+    view.unmount();
+
+    // First reconcile after a fresh mount is silent by policy — a page-entry
+    // toast would always read as spurious to the user (they cannot have
+    // observed any mid-session mutation). Undo/redo must still be disabled
+    // though, which is what the assertion below verifies.
+    const remount = render(
       <FileViewer
         projectId="project-1"
         projectKind="prototype"
         file={htmlPreviewFile()}
-        liveHtml={initialSource}
+        liveHtml={externalDiskSource}
         filesRefreshKey={1}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('file-viewer-undo').hasAttribute('disabled')).toBe(true);
+    });
+    // Entry-time toast MUST NOT appear even though disk diverged from history.
+    expect(screen.queryByRole('alert')).toBeNull();
+
+    // A subsequent reconcile (external files-refresh signal, e.g. a chokidar
+    // notify / poll bump) is where the toast surfaces — this is the mid-
+    // session external-change path the guard is designed for.
+    remount.rerender(
+      <FileViewer
+        projectId="project-1"
+        projectKind="prototype"
+        file={htmlPreviewFile()}
+        liveHtml={externalDiskSource}
+        filesRefreshKey={2}
       />,
     );
 
@@ -87,6 +113,95 @@ describe('FileViewer revision conflict', () => {
       await new Promise((resolve) => setTimeout(resolve, 50));
     });
     expect(getPersistedSource()).toBe(persistedBeforeKeyboardUndo);
+  });
+
+  it('keeps the conflict toast dismissed after the user closes it', async () => {
+    const initialSource = heroSource();
+    const { fetchMock, getPersistedSource, setPersistedSource } = createProjectFileRevisionFetchMock({
+      projectId: 'project-1',
+      fileName: 'preview.html',
+      initialSource,
+    });
+    vi.stubGlobal('fetch', vi.fn(fetchMock));
+
+    const view = render(
+      <FileViewer
+        projectId="project-1"
+        projectKind="prototype"
+        file={htmlPreviewFile()}
+        liveHtml={initialSource}
+        filesRefreshKey={0}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId('manual-edit-mode-toggle'));
+    await selectManualEditTarget();
+
+    act(() => {
+      panelState.props?.onApplyPatch(
+        { kind: 'set-style', id: 'hero', styles: { color: '#ef4444' } },
+        'Style: Hero',
+      );
+    });
+    await waitFor(() => expect(getPersistedSource()).toContain('rgb(239, 68, 68)'));
+
+    setPersistedSource(initialSource.replace('#111111', '#0000ff'));
+    const externalDiskSource = getPersistedSource();
+
+    view.unmount();
+
+    // Fresh mount reconcile is silent (page-entry policy) even with the disk
+    // diverged, so we bump filesRefreshKey again to trigger the second
+    // reconcile — that is where the toast surfaces and the dismiss guard
+    // this test protects can be exercised.
+    const remounted = render(
+      <FileViewer
+        projectId="project-1"
+        projectKind="prototype"
+        file={htmlPreviewFile()}
+        liveHtml={externalDiskSource}
+        filesRefreshKey={1}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('file-viewer-undo').hasAttribute('disabled')).toBe(true);
+    });
+    expect(screen.queryByRole('alert')).toBeNull();
+
+    remounted.rerender(
+      <FileViewer
+        projectId="project-1"
+        projectKind="prototype"
+        file={htmlPreviewFile()}
+        liveHtml={externalDiskSource}
+        filesRefreshKey={2}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert').textContent).toMatch(/Undo and Redo are unavailable|실행 취소와 다시 실행을 사용할 수 없/);
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /Close/i }));
+    await waitFor(() => {
+      expect(screen.queryByRole('alert')).toBeNull();
+    });
+
+    remounted.rerender(
+      <FileViewer
+        projectId="project-1"
+        projectKind="prototype"
+        file={htmlPreviewFile()}
+        liveHtml={externalDiskSource}
+        filesRefreshKey={3}
+      />,
+    );
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    });
+    expect(screen.queryByRole('alert')).toBeNull();
   });
 });
 

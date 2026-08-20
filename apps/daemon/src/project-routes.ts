@@ -2,11 +2,14 @@ import { rm } from 'node:fs/promises';
 import path from 'node:path';
 import type { Express, Request, Response } from 'express';
 import {
+  artifactFontStylesheetHttpsOrigins,
   defaultScenarioPluginIdForProjectMetadata,
+  lockStackedDeckCanvasForPreview,
   type ChatSessionMode,
   type PluginManifest,
   repairArtifactDocumentHead,
 } from '@open-design/contracts';
+import { seedTemplateClonedDeckOnServer } from './template-clone-deck.js';
 import { createProjectArtifactFile } from './artifact-create.js';
 import { ArtifactPublicationBlockedError } from './artifact-publication-guard.js';
 import { ArtifactRegressionError } from './artifact-stub-guard.js';
@@ -26,6 +29,7 @@ import { isSafeId } from './projects.js';
 import {
   listProjectsAsync,
   listProjectsPageAsync,
+  messageUpsertIsProjectActivity,
   parseProjectListCursor,
 } from './db.js';
 import {
@@ -39,6 +43,7 @@ import {
 import { auditDesignSystemPackage } from './tools-connectors-cli.js';
 import { createFileRevisionService, isFileRevisionSource } from './file-revisions/service.js';
 import { FileRevisionPayloadTooLargeError } from './file-revisions/errors.js';
+import { deleteProjectRevisionSnapshotTree } from './file-revisions/maintenance.js';
 import {
   FileRevisionLockError,
   isFileRevisionSequenceConflict,
@@ -49,6 +54,11 @@ import {
   verifyTeamverProjectAccess,
 } from './teamver-project-access.js';
 import {
+  mintProjectFilePresignedGetFromRequest,
+  normalizeProjectFilePresignRelpath,
+} from './project-file-presign.js';
+import {
+  markRequestExplicitDeletedPaths,
   scheduleProjectStoragePersistAfterResponse,
   type ProjectStorageAccessHooks,
 } from './storage/lazy-project-materialization.js';
@@ -59,10 +69,18 @@ import {
   reportByokTeamverUsageAndBillingFromDaemon,
 } from './teamver-byok-usage-bridge.js';
 import { resolveProjectCoverHint } from './project-cover-hints.js';
+import { prepareCoverHtmlBatchBody } from './cover-html-isolate.js';
+import { inlineProjectImagesFromScratch } from './pdf-export.js';
 
 const PROJECT_COVER_HINTS_BATCH_MAX = 12;
 /** Status/metadata enrichment for registry-backed lists (home + projects tab). */
 const PROJECT_STATUS_HINTS_BATCH_MAX = 48;
+/** Home Recent HTML covers warm preview scopes in one POST. */
+const PROJECT_PREVIEW_URL_BATCH_MAX = 12;
+/** Home Recent HTML cover bodies in one POST (first-slide isolated). */
+const PROJECT_COVER_HTML_BATCH_MAX = 12;
+/** Soft cap — oversized decks fall back to per-card /raw. */
+const PROJECT_COVER_HTML_BATCH_MAX_BYTES = 900_000;
 
 export interface RegisterProjectRoutesDeps extends RouteDeps<'db' | 'design' | 'http' | 'paths' | 'projectStore' | 'projectFiles' | 'conversations' | 'templates' | 'status' | 'events' | 'ids' | 'telemetry' | 'appConfig' | 'validation'> {
   projectStorageHooks?: ProjectStorageAccessHooks | null;
@@ -633,7 +651,7 @@ const URL_PREVIEW_SNAPSHOT_BRIDGE = `<script data-od-url-snapshot-bridge>
     var styles = cloneRoot.querySelectorAll('style');
     for (var st = 0; st < styles.length; st++) {
       styles[st].textContent = (styles[st].textContent || '')
-        .replace(/@import[^;]+;/gi, '')
+        .replace(/@import\\s+(?:url\\s*\\(\\s*(?:\"[^\"]*\"|'[^']*'|[^'\")\\s]+)\\s*\\)|(?:\"[^\"]*\"|'[^']*'))[^;]*;?/gi, '')
         .replace(/@font-face\\s*\\{[^}]*\\}/gi, '');
     }
   }
@@ -954,7 +972,7 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
   const {
     insertConversation,
     insertConversationAsync,
-    getConversation, listConversations, listConversationsAsync, updateConversation, deleteConversation, listMessages, upsertMessage, listPreviewComments, upsertPreviewComment, updatePreviewCommentStatus, deletePreviewComment } = ctx.conversations;
+    getConversation, listConversations, listConversationsAsync, updateConversation, deleteConversation, listMessages, listMessagesAsync, upsertMessage, listPreviewComments, upsertPreviewComment, updatePreviewCommentStatus, deletePreviewComment } = ctx.conversations;
   const { getTemplate, listTemplates, deleteTemplate, insertTemplate, findTemplateByNameAndProject, updateTemplate } = ctx.templates;
   const {
     listLatestProjectRunStatusesAsync,
@@ -1360,15 +1378,19 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
       /** @type {import('@open-design/contracts').ProjectCoverHint[]} */
       const hints = [];
       for (const projectId of projectIds) {
-        const project = getProject(db, projectId);
+        // PG project-row warm only (no ensureMaterialized / full warmProjectFromPostgres).
+        // Cold nodes often lack sqlite cache; metadata.entryFile is enough for a hint.
+        const project = getProjectAsync
+          ? await getProjectAsync(db, projectId)
+          : getProject(db, projectId);
         if (project && !projectVisibleForLocations(project, locations)) continue;
         if (!project && teamverManaged) {
           if (!teamverIdentity) continue;
           const access = await verifyTeamverProjectAccess(projectId, teamverIdentity);
           if (!access.ok) continue;
         }
-        // Registry-first embed lists may reference ids not yet materialized in
-        // local sqlite — still resolve from on-disk project dir when present.
+        // Registry-first embed lists may reference ids not yet on disk —
+        // metadata.entryFile resolves disk-free; otherwise shallow scan when present.
         const resolved = await resolveProjectCoverHint(
           PROJECTS_DIR,
           projectId,
@@ -1900,6 +1922,7 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
         dbDeleteProject(db, projectId);
       }
       await removeProjectDir(PROJECTS_DIR, projectId).catch(() => {});
+      await deleteProjectRevisionSnapshotTree(PROJECTS_DIR, projectId).catch(() => {});
       if (ctx.projectStorageHooks) {
         await ctx.projectStorageHooks.onProjectRemoved(req, projectId);
       }
@@ -1972,8 +1995,11 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
     res.json({ conversations: list });
   });
 
-  app.post('/api/projects/:id/conversations', (req, res) => {
-    if (!getProject(db, req.params.id)) {
+  app.post('/api/projects/:id/conversations', async (req, res) => {
+    const conversationProject = getProjectAsync
+      ? await getProjectAsync(db, req.params.id)
+      : getProject(db, req.params.id);
+    if (!conversationProject) {
       return res.status(404).json({ error: 'project not found' });
     }
     const { title, seedFromConversationId, forkAfterMessageId } = req.body || {};
@@ -2097,7 +2123,13 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
     if (!conv || conv.projectId !== req.params.id) {
       return res.status(404).json({ error: 'conversation not found' });
     }
-    res.json({ messages: listMessages(db, req.params.cid) });
+    // Postgres cold cache: sync listMessages returns [] and would make the
+    // client look empty / re-PUT everything. Prefer Async so open hydrates
+    // from the durable row set.
+    const messages = listMessagesAsync
+      ? await listMessagesAsync(db, req.params.cid)
+      : listMessages(db, req.params.cid);
+    res.json({ messages });
   });
 
   app.put('/api/projects/:id/conversations/:cid/messages/:mid', async (req, res) => {
@@ -2112,12 +2144,22 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
     if (m.id && m.id !== req.params.mid) {
       return res.status(400).json({ error: 'id mismatch' });
     }
+    // Async prior lookup — sync listMessages is cache-only on Postgres and
+    // treats every open hydrate PUT as a brand-new message (Home 「방금 전」).
+    const priorMessages = listMessagesAsync
+      ? await listMessagesAsync(db, req.params.cid)
+      : listMessages(db, req.params.cid);
+    const prior = priorMessages.find(
+      (row: { id?: string }) => row.id === req.params.mid,
+    ) ?? null;
     const saved = upsertMessage(db, req.params.cid, {
       ...m,
       id: req.params.mid,
     });
-    // Bump the parent project's updatedAt so the project list re-orders.
-    updateProject(db, req.params.id, {});
+    // Identical re-PUT (open / hydrate) must not move Home 「방금 전」.
+    if (messageUpsertIsProjectActivity(prior, m)) {
+      updateProject(db, req.params.id, { updatedAt: Date.now() });
+    }
     if (isTeamverDesignManaged() && ctx.projectStorageHooks) {
       scheduleTeamverProjectDaemonStateExport(
         db,
@@ -2200,7 +2242,7 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
         req.params.cid,
         req.body || {},
       );
-      updateProject(db, req.params.id, {});
+      updateProject(db, req.params.id, { updatedAt: Date.now() });
       res.json({ comment });
     } catch (err: any) {
       res.status(400).json({ error: String(err?.message || err) });
@@ -2224,7 +2266,7 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
         );
         if (!comment)
           return res.status(404).json({ error: 'comment not found' });
-        updateProject(db, req.params.id, {});
+        updateProject(db, req.params.id, { updatedAt: Date.now() });
         res.json({ comment });
       } catch (err: any) {
         res.status(400).json({ error: String(err?.message || err) });
@@ -2246,7 +2288,7 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
         req.params.commentId,
       );
       if (!ok) return res.status(404).json({ error: 'comment not found' });
-      updateProject(db, req.params.id, {});
+      updateProject(db, req.params.id, { updatedAt: Date.now() });
       res.json({ ok: true });
     },
   );
@@ -2436,8 +2478,10 @@ export function registerProjectArtifactRoutes(app: Express, ctx: RegisterProject
 
 }
 
-export interface RegisterProjectFileRoutesDeps extends RouteDeps<'db' | 'http' | 'paths' | 'uploads' | 'node' | 'projectStore' | 'projectFiles' | 'documents' | 'artifacts' | 'projectPreviewScopes'> {
+export interface RegisterProjectFileRoutesDeps extends RouteDeps<'db' | 'http' | 'paths' | 'uploads' | 'node' | 'projectStore' | 'projectFiles' | 'documents' | 'artifacts' | 'projectPreviewScopes' | 'conversations' | 'ids'> {
   projectStorageHooks?: ProjectStorageAccessHooks | null;
+  /** Optional lazy bundled-plugin rehydrate for template clone (HA / fresh volume). */
+  ensureBundledPluginForClone?: (pluginId: string) => Promise<{ id: string } | null>;
 }
 
 export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFileRoutesDeps) {
@@ -2446,11 +2490,23 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
   const { PROJECTS_DIR } = ctx.paths;
   const { upload } = ctx.uploads;
   const { fs } = ctx.node;
-  const { getProject, getProjectAsync } = ctx.projectStore;
+  const { getProject, getProjectAsync, updateProject } = ctx.projectStore;
   const { listFiles, listProjectFolders, createProjectFolder, deleteProjectFolder, searchProjectFiles, readProjectFile, resolveProjectDir, resolveProjectFilePath, parseByteRange, renameProjectFile, deleteProjectFile, writeProjectFile, sanitizeName, ensureProject } = ctx.projectFiles;
   const { buildDocumentPreview } = ctx.documents;
   const { validateArtifactManifestInput } = ctx.artifacts;
   const { projectPreviewScopes } = ctx;
+  // Template-clone chat seed lives in file routes (not registerProjectRoutes).
+  const {
+    listConversations,
+    listConversationsAsync,
+    listMessages,
+    listMessagesAsync,
+    insertConversation,
+    insertConversationAsync,
+    updateConversation,
+    upsertMessage,
+  } = ctx.conversations;
+  const { randomId } = ctx.ids;
   const fileRevisionService = createFileRevisionService({
     db,
     projectsRoot: PROJECTS_DIR,
@@ -2458,6 +2514,12 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
     readProjectFile,
     resolveProjectDir,
   });
+  /** Cold node / projectId-hash peer: cache miss must read shared Postgres. */
+  async function resolveProjectRow(projectId: string) {
+    return getProjectAsync
+      ? await getProjectAsync(db, projectId)
+      : getProject(db, projectId);
+  }
   async function ensureRevisionTargetFileMaterialized(
     req: Request,
     projectId: string,
@@ -2472,8 +2534,8 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
     "default-src 'self' data: blob:",
     "img-src 'self' data: blob:",
     "media-src 'self' data: blob:",
-    "font-src 'self' data:",
-    "style-src 'self' 'unsafe-inline'",
+    `font-src 'self' data: ${artifactFontStylesheetHttpsOrigins().join(' ')}`,
+    `style-src 'self' 'unsafe-inline' ${artifactFontStylesheetHttpsOrigins().join(' ')}`,
     "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
     "connect-src 'none'",
     "form-action 'none'",
@@ -2518,6 +2580,44 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
     return false;
   }
 
+  async function resolveProjectFilePathWithPointGet(
+    req: any,
+    projectId: string,
+    relPath: string,
+    metadata?: unknown,
+  ) {
+    try {
+      return await resolveProjectFilePath(
+        PROJECTS_DIR,
+        projectId,
+        relPath,
+        metadata,
+      );
+    } catch (err: any) {
+      // Sibling-node uploads / Drive import can land in S3 while this node's
+      // lazy sync-down TTL still skips a full refresh. Deck iframes load via
+      // /preview/:scope/* (not chat thumbs), so without a point-get heal the
+      // relative <img src="refs/drive/..."> stays 404 forever. Deleted /
+      // never-uploaded paths still return false and rethrow ENOENT.
+      if (err && err.code === 'ENOENT' && ctx.projectStorageHooks) {
+        const filled = await ctx.projectStorageHooks.ensureFileAvailable(
+          req,
+          projectId,
+          relPath,
+        );
+        if (filled) {
+          return await resolveProjectFilePath(
+            PROJECTS_DIR,
+            projectId,
+            relPath,
+            metadata,
+          );
+        }
+      }
+      throw err;
+    }
+  }
+
   async function sendProjectFile(
     req: any,
     res: Response,
@@ -2527,8 +2627,8 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
     beforeSend?: (mime: string) => void,
     transformFile?: (file: { mime: string; buffer: Buffer }) => Buffer | string | Promise<Buffer | string>,
   ) {
-    const meta = await resolveProjectFilePath(
-      PROJECTS_DIR,
+    const meta = await resolveProjectFilePathWithPointGet(
+      req,
       projectId,
       relPath,
       metadata,
@@ -2584,11 +2684,26 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
     res.type(file.mime).send(transformFile ? await transformFile(file) : file.buffer);
   }
 
+  function isWorkspaceSentinelPreviewFile(filePath: string): boolean {
+    const cleaned = filePath.trim();
+    if (!cleaned) return false;
+    // Match FE sanitizePreviewEntryFile — Design Files / Design System /
+    // Questions tab ids are not project files.
+    return (
+      cleaned === '__design_files__'
+      || cleaned === '__design_system__'
+      || cleaned === '__questions__'
+      || /^__[^/]+__$/u.test(cleaned)
+    );
+  }
+
   function previewFilePathForProject(project: any, queryFile: unknown): string {
     if (typeof queryFile === 'string' && queryFile.trim().length > 0) {
       // FE cover URLs append `?v=mtime`; never treat that as part of the path.
       const cleaned = queryFile.trim().split(/[?#]/u, 1)[0]?.trim() ?? '';
-      if (cleaned.length > 0) return cleaned;
+      if (cleaned.length > 0 && !isWorkspaceSentinelPreviewFile(cleaned)) {
+        return cleaned;
+      }
     }
     const entryFile = project?.metadata?.entryFile;
     return typeof entryFile === 'string' && entryFile.length > 0 ? entryFile : 'index.html';
@@ -2600,7 +2715,52 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
 
   function maybeRepairServedHtml(file: { mime: string; buffer: Buffer }, html: string): string {
     if (!/^text\/html(?:;|$)/i.test(file.mime)) return html;
-    return repairArtifactDocumentHead(html);
+    // /raw HTML must not reintroduce device-width clipping after head repair —
+    // lock stacked 1920×1080 canvas + design viewport for Motif/title parity.
+    return lockStackedDeckCanvasForPreview(repairArtifactDocumentHead(html));
+  }
+
+  /**
+   * Opt-in flag on `/raw/*.html` that asks the daemon to rewrite subresource
+   * `<img src>` / CSS `url(...)` refs into inline `data:` URIs before responding.
+   * Turned on by the FE preview `source` fetch only — all other consumers must
+   * see the original bytes (see `maybeInlineImagesForServedHtml` comment).
+   */
+  function wantsInlineAssets(value: unknown): boolean {
+    if (value == null) return false;
+    if (Array.isArray(value)) return value.some(wantsInlineAssets);
+    const str = String(value).trim().toLowerCase();
+    return str === '1' || str === 'true' || str === 'yes' || str === 'on';
+  }
+
+  /**
+   * Rewrite `<img src>` / CSS `url(...)` refs in served HTML into `data:` URIs
+   * by reading the referenced files directly from local scratch. This makes the
+   * FE live-preview / `/raw/*.html` route immune to subresource fetch failures
+   * inside the srcdoc iframe (Hangul NFC/NFD mismatches, transient /raw 404s,
+   * missing `X-Teamver-*` headers on secondary requests, etc.). Only applied
+   * to `text/html`; other MIME types pass through unchanged.
+   *
+   * Failures are swallowed — the original HTML is returned so the browser can
+   * still attempt a live subresource fetch as a last resort.
+   */
+  async function maybeInlineImagesForServedHtml(
+    file: { mime: string; buffer: Buffer },
+    html: string,
+    projectId: string,
+    metadata?: unknown,
+  ): Promise<string> {
+    if (!/^text\/html(?:;|$)/i.test(file.mime)) return html;
+    try {
+      return await inlineProjectImagesFromScratch({
+        html,
+        projectId,
+        projectsRoot: PROJECTS_DIR,
+        metadata,
+      });
+    } catch {
+      return html;
+    }
   }
 
   async function maybeResolveVitePreviewHtml({
@@ -2686,7 +2846,7 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
 
   app.get('/api/projects/:id/folders', async (req, res) => {
     try {
-      const project = getProject(db, req.params.id);
+      const project = await resolveProjectRow(req.params.id);
       if (!project) {
         return sendApiError(res, 404, 'PROJECT_NOT_FOUND', 'project not found');
       }
@@ -2707,7 +2867,7 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
       if (typeof name !== 'string' || !name.trim()) {
         return sendApiError(res, 400, 'BAD_REQUEST', 'name required');
       }
-      const project = getProject(db, req.params.id);
+      const project = await resolveProjectRow(req.params.id);
       if (!project) {
         return sendApiError(res, 404, 'PROJECT_NOT_FOUND', 'project not found');
       }
@@ -2731,7 +2891,7 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
       if (typeof folderPath !== 'string' || !folderPath.trim()) {
         return sendApiError(res, 400, 'BAD_REQUEST', 'path required');
       }
-      const project = getProject(db, req.params.id);
+      const project = await resolveProjectRow(req.params.id);
       if (!project) {
         return sendApiError(res, 404, 'PROJECT_NOT_FOUND', 'project not found');
       }
@@ -2751,7 +2911,7 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
 
   app.get('/api/projects/:id/design-system-package-audit', async (req, res) => {
     try {
-      const project = getProject(db, req.params.id);
+      const project = await resolveProjectRow(req.params.id);
       if (!project) {
         sendApiError(res, 404, 'PROJECT_NOT_FOUND', 'project not found');
         return;
@@ -2800,6 +2960,268 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
         status === 404 ? 'FILE_NOT_FOUND' : 'BAD_REQUEST',
         String(err),
       );
+    }
+  });
+
+  async function teamverBatchProjectAccessOk(
+    req: Request,
+    projectId: string,
+  ): Promise<boolean> {
+    if (!isTeamverDesignManaged()) return true;
+    const identity = readTeamverIdentityFromRequest(req);
+    if (!identity) return false;
+    const access = await verifyTeamverProjectAccess(projectId, identity);
+    return access.ok;
+  }
+
+  /**
+   * Home / list HTML covers: mint many project preview scopes in one POST
+   * so visible cards do not each GET /preview-url.
+   */
+  app.post('/api/projects/preview-url-batch', async (req, res) => {
+    try {
+      const rawItems = Array.isArray(req.body?.items) ? req.body.items : [];
+      const seen = new Set<string>();
+      /** @type {{ projectId: string; file?: string }[]} */
+      const items = [];
+      for (const raw of rawItems) {
+        if (!raw || typeof raw !== 'object') continue;
+        const projectId =
+          typeof (raw as { projectId?: unknown }).projectId === 'string'
+            ? (raw as { projectId: string }).projectId.trim()
+            : '';
+        if (!isSafeId(projectId) || seen.has(projectId)) continue;
+        seen.add(projectId);
+        const fileRaw = (raw as { file?: unknown }).file;
+        const file =
+          typeof fileRaw === 'string' && fileRaw.trim().length > 0
+            ? fileRaw.trim().split(/[?#]/u, 1)[0]?.trim()
+            : undefined;
+        items.push(file ? { projectId, file } : { projectId });
+        if (items.length >= PROJECT_PREVIEW_URL_BATCH_MAX) break;
+      }
+
+      /** @type {import('@open-design/contracts').ProjectPreviewUrlBatchResult[]} */
+      const results = [];
+      for (const item of items) {
+        try {
+          if (!(await teamverBatchProjectAccessOk(req, item.projectId))) {
+            results.push({ projectId: item.projectId, ok: false });
+            continue;
+          }
+          if (ctx.projectStorageHooks?.ensureMaterialized) {
+            await ctx.projectStorageHooks.ensureMaterialized(req, item.projectId);
+          }
+          const project = getProjectAsync
+            ? await getProjectAsync(db, item.projectId)
+            : getProject(db, item.projectId);
+          if (!project) {
+            results.push({ projectId: item.projectId, ok: false });
+            continue;
+          }
+          const requestedPath = previewFilePathForProject(project, item.file);
+          const meta = await resolveProjectFilePath(
+            PROJECTS_DIR,
+            project.id,
+            requestedPath,
+            project.metadata,
+          );
+          const scope = projectPreviewScopes.mint(project.id);
+          results.push({
+            projectId: project.id,
+            ok: true,
+            url: `/api/projects/${encodeURIComponent(project.id)}/preview/${scope}/${encodeProjectPathForUrl(meta.name)}`,
+            file: meta.name,
+          });
+        } catch {
+          results.push({ projectId: item.projectId, ok: false });
+        }
+      }
+
+      /** @type {import('@open-design/contracts').ProjectPreviewUrlBatchResponse} */
+      const body = { results };
+      res.setHeader('Cache-Control', 'no-store');
+      res.json(body);
+    } catch (err: any) {
+      sendApiError(res, 500, 'INTERNAL_ERROR', String(err));
+    }
+  });
+
+  /**
+   * Home / list HTML covers: return first-slide HTML for many projects in one
+   * POST so visible cards do not each GET /raw/deck.html.
+   */
+  app.post('/api/projects/cover-html-batch', async (req, res) => {
+    try {
+      const rawItems = Array.isArray(req.body?.items) ? req.body.items : [];
+      const seen = new Set<string>();
+      /** @type {{ projectId: string; file?: string }[]} */
+      const items = [];
+      for (const raw of rawItems) {
+        if (!raw || typeof raw !== 'object') continue;
+        const projectId =
+          typeof (raw as { projectId?: unknown }).projectId === 'string'
+            ? (raw as { projectId: string }).projectId.trim()
+            : '';
+        if (!isSafeId(projectId) || seen.has(projectId)) continue;
+        seen.add(projectId);
+        const fileRaw = (raw as { file?: unknown }).file;
+        const file =
+          typeof fileRaw === 'string' && fileRaw.trim().length > 0
+            ? fileRaw.trim().split(/[?#]/u, 1)[0]?.trim()
+            : undefined;
+        items.push(file ? { projectId, file } : { projectId });
+        if (items.length >= PROJECT_COVER_HTML_BATCH_MAX) break;
+      }
+
+      /** @type {import('@open-design/contracts').ProjectCoverHtmlBatchResult[]} */
+      const results = [];
+      for (const item of items) {
+        try {
+          if (!(await teamverBatchProjectAccessOk(req, item.projectId))) {
+            results.push({ projectId: item.projectId, ok: false });
+            continue;
+          }
+          if (ctx.projectStorageHooks?.ensureMaterialized) {
+            await ctx.projectStorageHooks.ensureMaterialized(req, item.projectId);
+          }
+          const project = getProjectAsync
+            ? await getProjectAsync(db, item.projectId)
+            : getProject(db, item.projectId);
+          if (!project) {
+            results.push({ projectId: item.projectId, ok: false });
+            continue;
+          }
+          const requestedPath = previewFilePathForProject(project, item.file);
+          // Size/mime before full buffer read (N08).
+          const meta = await resolveProjectFilePath(
+            PROJECTS_DIR,
+            project.id,
+            requestedPath,
+            project.metadata,
+          );
+          if (!/^text\/html(?:;|$)/i.test(String(meta.mime ?? ''))) {
+            results.push({ projectId: item.projectId, ok: false });
+            continue;
+          }
+          if (
+            typeof meta.size === 'number'
+            && meta.size > PROJECT_COVER_HTML_BATCH_MAX_BYTES
+          ) {
+            results.push({ projectId: item.projectId, ok: false });
+            continue;
+          }
+          const file = await readProjectFile(
+            PROJECTS_DIR,
+            project.id,
+            meta.name,
+            project.metadata,
+          );
+          const rawHtml = file.buffer.toString('utf8');
+          const isolatedHtml = prepareCoverHtmlBatchBody(rawHtml);
+          // Inline first-slide images so batch-fed cards render without a
+          // subresource GET storm. Falls back to per-card `/raw?inlineAssets=1`
+          // when the inlined body exceeds the batch cap (per-card path also
+          // inlines via the same daemon transform, so the visual result is
+          // identical — just one more round trip per oversized cover).
+          const html = await (async () => {
+            try {
+              return await inlineProjectImagesFromScratch({
+                html: isolatedHtml,
+                projectId: project.id,
+                projectsRoot: PROJECTS_DIR,
+                metadata: project.metadata,
+              });
+            } catch {
+              return isolatedHtml;
+            }
+          })();
+          if (
+            !html.trim()
+            || Buffer.byteLength(html, 'utf8') > PROJECT_COVER_HTML_BATCH_MAX_BYTES
+          ) {
+            results.push({ projectId: item.projectId, ok: false });
+            continue;
+          }
+          results.push({
+            projectId: project.id,
+            ok: true,
+            html,
+            file: typeof file.name === 'string' && file.name ? file.name : meta.name,
+          });
+        } catch {
+          results.push({ projectId: item.projectId, ok: false });
+        }
+      }
+
+      /** @type {import('@open-design/contracts').ProjectCoverHtmlBatchResponse} */
+      const body = { results };
+      res.setHeader('Cache-Control', 'no-store');
+      res.json(body);
+    } catch (err: any) {
+      sendApiError(res, 500, 'INTERNAL_ERROR', String(err));
+    }
+  });
+
+  /**
+   * Session-gated S3 GET mint for a project file (chat thumbs / image open).
+   * Does not sync-down to scratch — HEAD + SigV4 query auth only.
+   * Materialization middleware does not match `/presign-get`.
+   */
+  app.post('/api/projects/:id/presign-get', async (req, res) => {
+    try {
+      const projectId = String(req.params.id ?? '').trim();
+      if (!projectId) {
+        return sendApiError(res, 400, 'BAD_REQUEST', 'project id required');
+      }
+      const project = getProjectAsync
+        ? await getProjectAsync(db, projectId)
+        : getProject(db, projectId);
+      if (!project) {
+        return sendApiError(res, 404, 'PROJECT_NOT_FOUND', 'project not found');
+      }
+      const relpath = normalizeProjectFilePresignRelpath(
+        typeof req.body?.path === 'string' ? req.body.path : '',
+      );
+      if (!relpath) {
+        return sendApiError(res, 400, 'BAD_REQUEST', 'path required');
+      }
+      const minted = await mintProjectFilePresignedGetFromRequest(req, projectId, relpath);
+      res.setHeader('Cache-Control', 'no-store');
+      if (minted.status === 'not_found') {
+        return sendApiError(res, 404, 'FILE_NOT_FOUND', `file not found: ${relpath}`);
+      }
+      if (minted.status === 'failed') {
+        const status = minted.reason.includes('identity') ? 401 : 502;
+        return sendApiError(
+          res,
+          status,
+          status === 401 ? 'UNAUTHORIZED' : 'UPSTREAM_UNAVAILABLE',
+          minted.reason,
+        );
+      }
+      if (minted.status === 'disabled') {
+        /** @type {import('@open-design/contracts').ProjectFilePresignedGetResponse} */
+        const body = {
+          status: 'disabled' as const,
+          path: minted.path,
+          rawUrl: minted.rawUrl,
+          reason: minted.reason,
+        };
+        return res.json(body);
+      }
+      /** @type {import('@open-design/contracts').ProjectFilePresignedGetResponse} */
+      const body = {
+        status: 'ready' as const,
+        path: minted.path,
+        url: minted.url,
+        expiresInSec: minted.expiresInSec,
+        expiresAt: minted.expiresAt,
+        rawUrl: minted.rawUrl,
+      };
+      return res.json(body);
+    } catch (err: any) {
+      sendApiError(res, 500, 'INTERNAL', err?.message || String(err));
     }
   });
 
@@ -2864,7 +3286,8 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
             transformed = html;
           }
           const servedHtml = Buffer.isBuffer(transformed) ? transformed.toString('utf8') : transformed;
-          return maybeRepairServedHtml(file, servedHtml);
+          const repaired = maybeRepairServedHtml(file, servedHtml);
+          return maybeInlineImagesForServedHtml(file, repaired, project.id, project.metadata);
         },
       );
     } catch (err: any) {
@@ -2942,7 +3365,14 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
             transformed = html;
           }
           const servedHtml = Buffer.isBuffer(transformed) ? transformed.toString('utf8') : transformed;
-          return maybeRepairServedHtml(file, servedHtml);
+          const repaired = maybeRepairServedHtml(file, servedHtml);
+          // Only inline images when caller explicitly opts in (`?inlineAssets=1`).
+          // Other /raw consumers — model context, retry / auto-continue payloads,
+          // manual raw editor, plain-file downloads — must receive the original
+          // bytes; data-URI bloat there would blow token budgets, poison saves,
+          // and break element-patch structural diffs.
+          if (!wantsInlineAssets(req.query.inlineAssets)) return repaired;
+          return maybeInlineImagesForServedHtml(file, repaired, projectId, project?.metadata);
         },
       );
     } catch (err: any) {
@@ -3009,7 +3439,7 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
       const params = req.params as unknown as { 0?: string; 1?: string };
       const projectId = String(params[0] ?? '');
       const fileName = String(params[1] ?? '');
-      const project = getProject(db, projectId);
+      const project = await resolveProjectRow(projectId);
       if (!project) {
         return sendApiError(res, 404, 'PROJECT_NOT_FOUND', 'project not found');
       }
@@ -3026,7 +3456,7 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
       const projectId = String(params[0] ?? '');
       const fileName = String(params[1] ?? '');
       const revisionId = String(params[2] ?? '');
-      const project = getProject(db, projectId);
+      const project = await resolveProjectRow(projectId);
       if (!project) {
         return sendApiError(res, 404, 'PROJECT_NOT_FOUND', 'project not found');
       }
@@ -3057,7 +3487,7 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
       const projectId = String(params[0] ?? '');
       const fileName = String(params[1] ?? '');
       const revisionId = String(params[2] ?? '');
-      const project = getProject(db, projectId);
+      const project = await resolveProjectRow(projectId);
       if (!project) {
         return sendApiError(res, 404, 'PROJECT_NOT_FOUND', 'project not found');
       }
@@ -3090,7 +3520,7 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
       const params = req.params as unknown as { 0?: string; 1?: string };
       const projectId = String(params[0] ?? '');
       const fileName = String(params[1] ?? '');
-      const project = getProject(db, projectId);
+      const project = await resolveProjectRow(projectId);
       if (!project) {
         return sendApiError(res, 404, 'PROJECT_NOT_FOUND', 'project not found');
       }
@@ -3102,6 +3532,7 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
         conversationId,
         assistantMessageId,
         truncateAfterSequence,
+        skipArtifactStubGuard,
       } = req.body || {};
       if (typeof content !== 'string') {
         return sendApiError(res, 400, 'BAD_REQUEST', 'content required');
@@ -3143,6 +3574,7 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
         ...(typeof truncate === 'number' && Number.isFinite(truncate)
           ? { truncateAfterSequence: truncate }
           : {}),
+        ...(skipArtifactStubGuard === true ? { skipArtifactStubGuard: true } : {}),
         metadata: project.metadata,
       });
       // Await S3 sync-up before 200 so a page refresh / sibling-node sync-down
@@ -3180,12 +3612,38 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
       const projectId = String(params[0] ?? '');
       const fileSplat = String(params[1] ?? '');
       const project = getProject(db, projectId);
-      const file = await readProjectFile(
-        PROJECTS_DIR,
-        projectId,
-        fileSplat,
-        project?.metadata,
-      );
+      // Mirror /raw/: on ENOENT try S3 point-get before failing. Direct
+      // file GET on a cold sibling pod otherwise 404s even when the object
+      // exists on S3.
+      let file;
+      try {
+        file = await readProjectFile(
+          PROJECTS_DIR,
+          projectId,
+          fileSplat,
+          project?.metadata,
+        );
+      } catch (err: any) {
+        if (err && err.code === 'ENOENT' && ctx.projectStorageHooks) {
+          const filled = await ctx.projectStorageHooks.ensureFileAvailable(
+            req,
+            projectId,
+            fileSplat,
+          );
+          if (filled) {
+            file = await readProjectFile(
+              PROJECTS_DIR,
+              projectId,
+              fileSplat,
+              project?.metadata,
+            );
+          } else {
+            throw err;
+          }
+        } else {
+          throw err;
+        }
+      }
       res.type(file.mime).send(file.buffer);
     } catch (err: any) {
       const status = err && err.code === 'ENOENT' ? 404 : 400;
@@ -3194,6 +3652,127 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
         status,
         status === 404 ? 'FILE_NOT_FOUND' : 'BAD_REQUEST',
         String(err),
+      );
+    }
+  });
+
+  /**
+   * Server-side template Clone for Canvas→Slide (BYOK has no Clone tool).
+   * Reads plugin preview HTML from disk, content-swaps Source headings, writes
+   * deck.html. FE must call this instead of cloning in the browser.
+   */
+  app.post('/api/projects/:id/template-clone-deck', async (req, res) => {
+    try {
+      const project = await resolveProjectRow(req.params.id);
+      if (!project) {
+        return sendApiError(res, 404, 'NOT_FOUND', 'project not found');
+      }
+      const body = req.body || {};
+      const pluginId = typeof body.pluginId === 'string' ? body.pluginId.trim() : '';
+      if (!pluginId) {
+        return sendApiError(res, 400, 'BAD_REQUEST', 'pluginId required');
+      }
+      const result = await seedTemplateClonedDeckOnServer(
+        {
+          db,
+          projectsRoot: PROJECTS_DIR,
+          projectId: req.params.id,
+          metadata: project.metadata,
+          ensureProject,
+          writeProjectFile,
+          ...(ctx.ensureBundledPluginForClone
+            ? { ensureBundledPlugin: ctx.ensureBundledPluginForClone }
+            : {}),
+          markTemplateClonedDeckSeeded: async ({
+            projectId,
+            pluginId: seededPluginId,
+            templateTitle,
+          }) => {
+            const existing = getProject(db, projectId);
+            if (!existing) return;
+            const prevMeta =
+              existing.metadata && typeof existing.metadata === 'object'
+                ? (existing.metadata as Record<string, unknown>)
+                : {};
+            updateProject(db, projectId, {
+              // Successful Clone must not leave a composer seed that auto-sends
+              // a model structure turn and overwrites deck.html with Neutral.
+              pendingPrompt: null,
+              metadata: {
+                ...prevMeta,
+                templateClonedDeckSeeded: true,
+                // FE queues a compact CREATE content-fill — do not attach deck.html.
+                templateCloneContentFillPending: true,
+                selectedDeckTemplateId: seededPluginId,
+                ...(templateTitle
+                  ? { selectedDeckTemplateTitle: templateTitle }
+                  : {}),
+              },
+            });
+
+            // Do NOT seed a completed assistant ack here. That (1) claimed
+            // content was ready when only LOOK was cloned, and (2) left
+            // messages.length > 0 so ProjectView refused the AI fill auto-send.
+            // Chat user/assistant messages come from the fill turn instead.
+          },
+        },
+        {
+          pluginId,
+          templateTitle: typeof body.templateTitle === 'string' ? body.templateTitle : null,
+          sourceBrief: typeof body.sourceBrief === 'string' ? body.sourceBrief : null,
+          userInstruction: typeof body.userInstruction === 'string' ? body.userInstruction : null,
+          deckTitle: typeof body.deckTitle === 'string' ? body.deckTitle : (
+            typeof body.title === 'string' ? body.title : null
+          ),
+          slideCountHint:
+            typeof body.slideCountHint === 'string' || typeof body.slideCountHint === 'number'
+              ? body.slideCountHint
+              : null,
+        },
+      );
+      if (!result.ok) {
+        return sendApiError(
+          res,
+          result.status,
+          result.reason.toUpperCase(),
+          result.message,
+        );
+      }
+      // Prefer awaiting sync, but NEVER fail the clone if persist flakes —
+      // a non-2xx after a successful write used to make FE treat seed as
+      // failed. FE now blocks Neutral model fallthrough, but we still return
+      // 200 so clients open the seeded deck.html without a false error.
+      if (ctx.projectStorageHooks) {
+        try {
+          await ctx.projectStorageHooks.persistAfterMutation(req, req.params.id, {
+            strict: true,
+          });
+        } catch (persistErr) {
+          console.warn(
+            '[template-clone-deck] persistAfterMutation failed; scheduling async sync',
+            persistErr,
+          );
+          scheduleProjectStoragePersistAfterResponse(
+            ctx.projectStorageHooks,
+            req,
+            res,
+            req.params.id,
+          );
+        }
+      }
+      return res.json(result);
+    } catch (err) {
+      if (err instanceof ArtifactRegressionError) {
+        return sendApiError(res, 422, 'ARTIFACT_REGRESSION', err.message);
+      }
+      if (err instanceof ArtifactPublicationBlockedError) {
+        return sendApiError(res, 422, 'ARTIFACT_PUBLICATION_BLOCKED', err.message);
+      }
+      return sendApiError(
+        res,
+        500,
+        'INTERNAL_ERROR',
+        err instanceof Error ? err.message : 'template clone failed',
       );
     }
   });
@@ -3211,7 +3790,7 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
     },
     async (req, res) => {
       try {
-        const uploadProject = getProject(db, req.params.id);
+        const uploadProject = await resolveProjectRow(req.params.id);
         await ensureProject(PROJECTS_DIR, req.params.id, uploadProject?.metadata);
         if (req.file) {
           const buf = await fs.promises.readFile(req.file.path);
@@ -3231,7 +3810,7 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
           const body = { file: meta };
           return res.json(body);
         }
-        const { name, content, encoding, artifactManifest, artifact, overwrite } = req.body || {};
+        const { name, content, encoding, artifactManifest, artifact, overwrite, skipArtifactStubGuard } = req.body || {};
         if (typeof name !== 'string' || typeof content !== 'string') {
           return sendApiError(
             res,
@@ -3274,6 +3853,7 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
               {
                 artifactManifest,
                 ...(overwrite === false ? { overwrite: false } : {}),
+                ...(skipArtifactStubGuard === true ? { skipArtifactStubGuard: true } : {}),
               },
               uploadProject?.metadata,
             );
@@ -3324,6 +3904,17 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
         to,
         project?.metadata,
       );
+      // Enqueue explicit remote deletion for BOTH Unicode forms of the source
+      // path so a legacy NFD S3 object is purged after rename — otherwise the
+      // orphan sits on S3 until the next full sync purge (or never, when
+      // OD_S3_PURGE_ON_DELETE=0).
+      if (result.oldName && result.newName !== result.oldName) {
+        const oldPaths = new Set<string>();
+        oldPaths.add(result.oldName);
+        try { oldPaths.add(result.oldName.normalize('NFC')); } catch { /* ignore */ }
+        try { oldPaths.add(result.oldName.normalize('NFD')); } catch { /* ignore */ }
+        markRequestExplicitDeletedPaths(req, [...oldPaths]);
+      }
       /** @type {import('@open-design/contracts').RenameProjectFileResponse} */
       const body = result;
       res.json(body);

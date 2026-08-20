@@ -19,6 +19,7 @@ import { buildPluginShareUrl } from './PluginShareMenu';
 import { PluginMetaSections } from './PluginMetaSections';
 import { buildPluginUseMenu, pluginUsePrimaryAction } from './pluginUseMenu';
 import type { PluginUseAction } from '../plugins-home/useActions';
+import { embedUiLabel } from '../../teamver/embedUiLabels';
 
 interface Props {
   record: InstalledPluginRecord;
@@ -28,6 +29,7 @@ interface Props {
   onUse: (record: InstalledPluginRecord, action: PluginUseAction) => void;
   isApplying?: boolean;
   hideUseAction?: boolean;
+  hideComposerSeedActions?: boolean;
   // Analytics — forwarded to PreviewModal's share popover.
   onSharePopoverItemClick?: (item: PreviewSharePopoverItem) => void;
 }
@@ -39,6 +41,7 @@ export function PluginExampleDetail({
   onUse,
   isApplying,
   hideUseAction,
+  hideComposerSeedActions,
   onSharePopoverItemClick,
 }: Props) {
   const { t, locale } = useI18n();
@@ -46,18 +49,20 @@ export function PluginExampleDetail({
   const [html, setHtml] = useState<string | null | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
   const [unavailableKind, setUnavailableKind] = useState<string | null>(null);
-  const inFlightRef = useRef(false);
+  // Generation token so Retry during an in-flight fetch is not a silent
+  // no-op — the latest request wins and stale responses are discarded.
+  const loadGenRef = useRef(0);
 
   const load = useCallback(async () => {
-    if (inFlightRef.current) return;
-    inFlightRef.current = true;
+    const gen = ++loadGenRef.current;
+    setHtml(null);
+    setError(null);
+    setUnavailableKind(null);
     try {
-      setHtml(null);
-      setError(null);
-      setUnavailableKind(null);
       const result: SkillExampleResult = exampleStem
         ? await fetchPluginExampleHtml(record.id, exampleStem)
         : await fetchPluginPreviewHtml(record.id);
+      if (gen !== loadGenRef.current) return;
       if ('html' in result) {
         setHtml(result.html);
       } else if ('error' in result) {
@@ -76,10 +81,12 @@ export function PluginExampleDetail({
         setUnavailableKind(result.kind);
         setHtml(undefined);
       }
-    } finally {
-      inFlightRef.current = false;
+    } catch {
+      if (gen !== loadGenRef.current) return;
+      setError(t('preview.errorBody'));
+      setHtml(undefined);
     }
-  }, [record.id, exampleStem]);
+  }, [record.id, exampleStem, t]);
 
   useEffect(() => {
     void load();
@@ -92,12 +99,41 @@ export function PluginExampleDetail({
   }, [load]);
 
   const description = localizePluginDescription(locale, record);
-  const isDeck = record.manifest?.od?.mode === 'deck';
+  // Community gallery templates are almost always decks; also treat `template`
+  // mode and html preview entries as deck so host slide chrome appears even
+  // when the shipped page has no in-document prev/next buttons.
+  const odMode = record.manifest?.od?.mode;
+  const previewBlock = record.manifest?.od?.preview as { type?: unknown } | undefined;
+  const isDeck =
+    odMode === 'deck' ||
+    odMode === 'template' ||
+    previewBlock?.type === 'html';
+  const infoLabel = isDeck
+    ? embedUiLabel('Template info', '템플릿 정보')
+    : embedUiLabel('Plugin info', '플러그인 정보');
+  const primary = pluginUsePrimaryAction(record, t);
+  const primaryLabel = isDeck ? t('automations.useTemplate') : primary.label;
+  const useMenu = buildPluginUseMenu(record, onUse, t, {
+    hideComposerSeed: hideComposerSeedActions,
+  });
+  // Primary CTA already runs `use`. Drop the duplicate structure-only row from
+  // the caret so templates only offer the distinct "use with query" path.
+  const templateUseMenu = isDeck && useMenu
+    ? useMenu
+        .filter((item) => item.testId?.includes('use-with-query'))
+        .map((item) => ({
+          ...item,
+          label: embedUiLabel('Start with this design', '이 디자인으로 시작'),
+          description: embedUiLabel(
+            'Apply the template and load the example prompt into chat',
+            '템플릿을 적용하고 예시 프롬프트를 채팅에 불러옵니다',
+          ),
+        }))
+    : useMenu;
 
   return (
     <PreviewModal
       title={localizedTitle}
-      subtitle={description || undefined}
       views={[
         {
           id: 'preview',
@@ -127,21 +163,20 @@ export function PluginExampleDetail({
         // the rendered HTML preview. Designers are the primary audience
         // here, so the sidebar starts COLLAPSED — the preview is the
         // hero and gets the full stage by default — and when opened it
-        // shows a designer-first slice (author + example query) with the
-        // developer manifest detail tucked behind a "Developer details"
-        // disclosure (variant="minimal"). Fullscreen still gives an
-        // immersive view when needed.
-        label: 'Plugin info',
+        // shows a designer-first slice (description + author + example
+        // query) with the developer manifest detail tucked behind a
+        // "Developer details" disclosure (variant="minimal").
+        label: infoLabel,
         defaultOpen: false,
         contentKey: record.id,
         content: (
           <div className="plugin-info-pane">
             <PluginMetaSections
               record={record}
-              omit={{ description: true }}
               compact
-              heading="Plugin info"
+              heading={infoLabel}
               variant="minimal"
+              surfaceNoun={isDeck ? 'template' : 'plugin'}
             />
           </div>
         ),
@@ -149,14 +184,20 @@ export function PluginExampleDetail({
       primaryAction={hideUseAction
         ? undefined
         : {
-            label: pluginUsePrimaryAction(record, t).label,
-            onClick: () => onUse(record, pluginUsePrimaryAction(record, t).action),
+            label: primaryLabel,
+            onClick: () => onUse(record, primary.action),
             busy: !!isApplying,
-            busyLabel: 'Applying…',
+            busyLabel: t('homeHero.applying'),
             testId: `plugin-details-use-${record.id}`,
-            menu: buildPluginUseMenu(record, onUse, t),
+            // Empty caret menu → plain primary button (no split).
+            menu:
+              templateUseMenu && templateUseMenu.length > 0
+                ? templateUseMenu
+                : undefined,
           }}
       hideSidebarToggle
+      // Temporarily hide Share until the template export/share menu is redesigned.
+      hideShareMenu
       onSharePopoverItemClick={onSharePopoverItemClick}
     />
   );

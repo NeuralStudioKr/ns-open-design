@@ -138,6 +138,35 @@ describe('detectEntryFile', () => {
     expect(await detectEntryFile(dir)).toBe('index.html');
   });
 
+  it('prefers deck.html over index.html for Teamver slide covers', async () => {
+    await writeFile(path.join(dir, 'index.html'), '<!doctype html>');
+    await writeFile(path.join(dir, 'deck.html'), '<!doctype html>');
+    await writeFile(path.join(dir, 'canvas.html'), '<!doctype html>');
+    expect(await detectEntryFile(dir)).toBe('deck.html');
+  });
+
+  it('ignores root HTML that duplicates a refs/ source basename', async () => {
+    await mkdir(path.join(dir, 'refs', 'drive'), { recursive: true });
+    await writeFile(path.join(dir, 'refs', 'drive', 'canvas.html'), '<!doctype html>');
+    await writeFile(path.join(dir, 'canvas.html'), '<!doctype html>');
+    await writeFile(path.join(dir, 'index.html'), '<!doctype html>');
+    // index.html is not a refs leak here, so it remains a valid fallback.
+    expect(await detectEntryFile(dir)).toBe('index.html');
+
+    await writeFile(path.join(dir, 'refs', 'drive', 'index.html'), '<!doctype html>');
+    // Both root HTML files now match refs basenames — return null rather than Canvas.
+    expect(await detectEntryFile(dir)).toBeNull();
+  });
+
+  it('finds a shallow nested deck.html when root only has Canvas leaks', async () => {
+    await mkdir(path.join(dir, 'refs', 'drive'), { recursive: true });
+    await mkdir(path.join(dir, 'slides'), { recursive: true });
+    await writeFile(path.join(dir, 'refs', 'drive', 'index.html'), '<!doctype html>');
+    await writeFile(path.join(dir, 'index.html'), '<!doctype html>');
+    await writeFile(path.join(dir, 'slides', 'deck.html'), '<!doctype html>');
+    expect(await detectEntryFile(dir)).toBe('slides/deck.html');
+  });
+
   it('returns the first .html file when no index.html is present', async () => {
     await writeFile(path.join(dir, 'about.html'), '<!doctype html>');
     const result = await detectEntryFile(dir);

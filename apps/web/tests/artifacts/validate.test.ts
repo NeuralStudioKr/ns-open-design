@@ -134,6 +134,13 @@ describe('validateHtmlArtifact', () => {
       + '<section class="slide"><h1>Cover</h1><p>Real copy for the deck.</p></section>'
       + '</body></html>';
     expect(isIncompleteHtmlDocumentShell(filled)).toBe(false);
+
+    const filledDiv =
+      '<!doctype html><html><head><meta charset="utf-8"></head><body>'
+      + '<div class="slide"><h1>Cover</h1><p>Real copy for the deck.</p></div>'
+      + '<div class="slide"><h2>Agenda</h2><p>First-day goals and team culture.</p></div>'
+      + '</body></html>';
+    expect(isIncompleteHtmlDocumentShell(filledDiv)).toBe(false);
   });
 
   it('classifies progress placeholder decks as low-substance deck artifacts', () => {
@@ -151,6 +158,37 @@ describe('validateHtmlArtifact', () => {
     expect(validateHtmlArtifact(broken).ok).toBe(true);
     expect(isIncompleteHtmlDocumentShell(broken)).toBe(true);
     expect(isLowSubstanceSlideDeckArtifact(broken)).toBe(true);
+  });
+
+  it('classifies instruction-parroting covers as low-substance even with SVG chrome', () => {
+    const parrot =
+      '<!doctype html><html lang="ko"><head><meta charset="utf-8"></head><body>'
+      + '<section class="slide"><h1>expo에 대해서 설명하는 피피티 만들어줘</h1>'
+      + '<p>시니어 개발자 레벨.</p><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/></svg></section>'
+      + '<section class="slide"><h1>Expo 소개</h1><p>Expo는 모바일 앱을 만드는 도구입니다.</p></section>'
+      + '<section class="slide"><h1>다음 단계</h1><p>EAS Build로 배포하세요.</p></section>'
+      + '</body></html>';
+    expect(validateHtmlArtifact(parrot).ok).toBe(true);
+    expect(isLowSubstanceSlideDeckArtifact(parrot)).toBe(true);
+
+    const marketing =
+      '<!doctype html><html lang="ko"><body>'
+      + '<section class="slide"><h1>Html Ppt Zhangzara Daisy Days</h1><p>Cheerful presentation template.</p></section>'
+      + '<section class="slide"><h1>개요</h1><p>템플릿 소개 문장입니다.</p></section>'
+      + '<section class="slide"><h1>마무리</h1><p>감사합니다.</p></section>'
+      + '</body></html>';
+    expect(isLowSubstanceSlideDeckArtifact(marketing)).toBe(true);
+  });
+
+  it('classifies Motif-SVG-before-title hangs as low-substance', () => {
+    const hung =
+      '<!doctype html><html lang="ko"><body style="margin:0;background:#F5F0E6">'
+      + '<section class="slide slide-title" style="width:1920px;height:1080px">'
+      + '<div><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 150 150">'
+      + '<style>.cls-0{fill:#FFFFFF}</style></svg></div></section>'
+      + '<section class="slide"><h1>개요</h1><p>내용을 작성하세요</p></section>'
+      + '</body></html>';
+    expect(isLowSubstanceSlideDeckArtifact(hung)).toBe(true);
   });
 
   it('does not classify concise real decks as low-substance', () => {

@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { installMockOpenDesignHost } from '@open-design/host/testing';
 import {
@@ -30,6 +33,57 @@ import {
 function mockResponse(headers: Record<string, string>): Response {
   return { headers: new Headers(headers) } as Response;
 }
+
+const exportsSource = readFileSync(
+  join(dirname(fileURLToPath(import.meta.url)), '../../src/runtime/exports.ts'),
+  'utf8',
+);
+
+describe('exportAsHtml / exportAsZip lean srcdoc', () => {
+  it('builds HTML/ZIP exports with exportDocument to skip preview annotate tax', () => {
+    expect(exportsSource).toContain('export function exportAsHtml');
+    expect(exportsSource).toContain('export function exportAsZip');
+    expect(exportsSource).toMatch(
+      /exportAsHtml[\s\S]*?normalizeCompactStackedDeckForExport\(html,\s*options\?\.deck === true\)[\s\S]*?buildStandaloneDeckHtmlDocument/,
+    );
+    expect(exportsSource).toMatch(
+      /exportAsZip[\s\S]*?normalizeCompactStackedDeckForExport\(html,\s*options\?\.deck === true\)[\s\S]*?buildSrcdoc\(exportHtml,\s*\{\s*exportDocument:\s*true\s*\}\)/,
+    );
+  });
+
+  it('heals Motif/bleed before browser/desktop PDF export srcdoc path', () => {
+    expect(exportsSource).toContain('healDeckHtmlForStandaloneExport(html)');
+    expect(exportsSource).toContain(
+      'buildBlobSafeSrcdoc(patchArtifactDeckPrintCss(healed)',
+    );
+    expect(exportsSource).toContain('buildDeckBrowserPrintScaleCss');
+    expect(exportsSource).toContain('includeBrowserPrintScale');
+    expect(exportsSource).not.toMatch(
+      /buildBlobSafeSrcdoc\(\s*repairArtifactDocumentHead\(\s*patchArtifactDeckPrintCss/,
+    );
+  });
+
+  it('heals stylesheets and slide surfaces on the daemon HTML/PDF payload', () => {
+    expect(exportsSource).toContain('healDeckHtmlForStandaloneExport');
+    expect(exportsSource).toContain('repairDeckSlideSurfaceBleed');
+    expect(exportsSource).toContain('buildStandaloneDeckHtmlDocument');
+    expect(exportsSource).toContain('normalizeCompactStackedDeckForExport');
+  });
+
+  it('merges official template look CSS on standalone HTML fallback', () => {
+    expect(exportsSource).toContain('mergeOfficialLookOnHtmlExportFallback');
+    expect(exportsSource).toContain('mergeOfficialLookCssForTemplate');
+    expect(exportsSource).toContain('hasOverscaleDaisy');
+    expect(exportsSource).toContain('hasStacking');
+    expect(exportsSource).toMatch(
+      /exportAsPdf\(\s*await mergeOfficialLookOnHtmlExportFallback\(renderedHtml/,
+    );
+    expect(exportsSource).toMatch(
+      /exportAsZip\(\s*await mergeOfficialLookOnHtmlExportFallback\(opts\.fallbackHtml/,
+    );
+    expect(exportsSource).toContain('firstOfficialDeckTemplateId');
+  });
+});
 
 describe('resolveExportDownloadTitle', () => {
   it('prefers the project display name over the artifact slug', () => {
@@ -368,6 +422,11 @@ describe('buildDesignHandoffContent', () => {
 });
 
 describe('exportProjectAsPdf', () => {
+  it('scopes browser-print fallback baseHref to project /raw/ for relative Drive imgs', () => {
+    expect(exportsSource).toContain("baseHref: projectRawUrl(opts.projectId, '')");
+    expect(exportsSource).toContain("import { projectRawUrl } from '../providers/registry'");
+  });
+
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
@@ -694,6 +753,39 @@ describe('exportProjectAsPdf', () => {
     }
   });
 
+  it('normalizes compact deck htmlSnapshot before sending daemon rendered exports', async () => {
+    const restoreHost = installMockOpenDesignHost();
+    try {
+      const fallback = vi.fn();
+      const fetchMock = vi.fn(async () =>
+        new Response(JSON.stringify({ ok: true }), { status: 200 }),
+      );
+      vi.stubGlobal('fetch', fetchMock);
+
+      await exportProjectAsPdf({
+        deck: true,
+        fallbackPdf: fallback,
+        filePath: 'deck/index.html',
+        htmlSnapshot: [
+          '<!doctype html><html><head><meta name="viewport" content="width=device-width"></head><body>',
+          '<section class="slide" style="min-height:100vh">One</section>',
+          '<section class="slide" style="min-height:100vh">Two</section>',
+          '</body></html>',
+        ].join(''),
+        projectId: 'proj-1',
+        title: 'Seed Deck',
+      });
+
+      const call = fetchMock.mock.calls[0] as unknown as [string, { body: string }];
+      const body = JSON.parse(call[1].body);
+      expect(body.html).toContain('data-od-compact-deck-export-fix');
+      expect(body.html).toContain('width=1920, initial-scale=1, maximum-scale=1');
+      expect(body.html).toContain('height: 1080px !important');
+    } finally {
+      restoreHost();
+    }
+  });
+
   it('does not retry on teamver_project_s3_prefix_required when htmlSnapshot is present', async () => {
     const fallback = vi.fn();
     let capturedBlob: Blob | undefined;
@@ -739,8 +831,12 @@ describe('exportProjectAsPdf', () => {
     const elapsed = Date.now() - started;
 
     expect(result).toBe('fallback');
-    // Single daemon POST — no retry sleeps consume the 2.4s budget.
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    // Single daemon export POST — no retry sleeps consume the 2.4s budget.
+    // A project GET for official Motif/look merge is not an export retry.
+    const exportPosts = fetchMock.mock.calls.filter((call) =>
+      String(call[0] ?? '').includes('/export/pdf'),
+    );
+    expect(exportPosts).toHaveLength(1);
     expect(elapsed).toBeLessThan(500);
     // Browser-print fallback drove from the snapshot, not from a fresh fetch.
     expect(capturedBlob).toBeDefined();
@@ -774,6 +870,12 @@ describe('exportProjectAsPdf', () => {
           JSON.stringify({ error: { code: 'UPSTREAM_UNAVAILABLE', message: 'boom' } }),
           { status: 502, headers: { 'content-type': 'application/json' } },
         );
+      }
+      if (url.includes('/api/projects/proj-1') && !url.includes('/export/')) {
+        return new Response(JSON.stringify({ metadata: {} }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
       }
       throw new Error(`unexpected fetch to ${url}`);
     });

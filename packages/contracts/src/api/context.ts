@@ -4,6 +4,16 @@ export interface RunContextSelection {
   mcpServerIds?: string[];
   connectorIds?: string[];
   workspaceItems?: WorkspaceContextItem[];
+  /**
+   * Visual deck template pinned for this user turn (Canvas → Slide / Home
+   * picker). Survives project re-entry via message `runContextJson` even when
+   * live `project.metadata.selectedDeckTemplate*` is briefly empty.
+   */
+  selectedDeckTemplateId?: string;
+  selectedDeckTemplateTitle?: string;
+  /** Design system pin for this turn — chip restore after reload. */
+  designSystemId?: string;
+  designSystemTitle?: string;
 }
 
 export type WorkspaceContextKind =

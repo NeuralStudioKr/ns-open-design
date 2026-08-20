@@ -33,6 +33,14 @@ describe('sanitizeName', () => {
     const out = sanitizeName('');
     expect(out).toMatch(/^file-\d+$/);
   });
+
+  it('NFC-normalizes Hangul filenames so disk/URL/S3 stay byte-consistent', () => {
+    const nfd = '서빙하는-금붕어.webp'.normalize('NFD');
+    const nfc = '서빙하는-금붕어.webp'.normalize('NFC');
+    expect(nfd).not.toBe(nfc);
+    expect(sanitizeName(nfd)).toBe(nfc);
+    expect(sanitizeName(nfc)).toBe(nfc);
+  });
 });
 
 describe('decodeMultipartFilename', () => {

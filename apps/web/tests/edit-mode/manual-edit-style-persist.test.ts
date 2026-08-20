@@ -3,6 +3,8 @@ import { PROMOTE_MOVE_STYLE_KEYS } from '../../src/edit-mode/move-math';
 import {
   keyedManualEditStyleRollback,
   manualEditGestureRollbackKeys,
+  manualEditPendingAffectedIds,
+  manualEditPendingStyleEntries,
   restoreManualEditPendingStyleAfterFailedFlush,
   shouldFlushManualEditStylesOnTargetBoundary,
   shouldResetManualEditPanelPinOnSelect,
@@ -121,5 +123,21 @@ describe('manual edit style persist boundary', () => {
       top: '',
       position: '',
     });
+  });
+
+  it('expands per-target pending style entries for cancel/reconcile', () => {
+    const pending = {
+      id: 'b',
+      perTargetStyles: {
+        a: { zIndex: '2', position: 'relative' },
+        b: { zIndex: '3' },
+      },
+      styles: {},
+    };
+    expect(manualEditPendingStyleEntries(pending)).toEqual([
+      { id: 'a', styles: { zIndex: '2', position: 'relative' } },
+      { id: 'b', styles: { zIndex: '3' } },
+    ]);
+    expect(manualEditPendingAffectedIds(pending)).toEqual(['a', 'b']);
   });
 });

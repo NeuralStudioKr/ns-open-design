@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { devLog } from '../lib/devLog';
 import { useAnalytics } from '../analytics/provider';
 import { trackFileManagerClick } from '../analytics/events';
 import { useTeamverT } from '../teamver/branding/useTeamverT';
@@ -7,7 +8,7 @@ import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider'
 import { partitionEmbedDesignFileSections } from '../teamver/branding/embedDeliverableFilePolicy';
 import { projectFileUrl, projectRawUrl } from '../providers/registry';
 import { fetchTeamverDaemon } from '../teamver/teamverDaemonHeaders';
-import { buildHtmlCoverSrcDoc } from '../teamver/htmlCoverSrcDoc';
+import { ProjectCardHtmlCover } from '../teamver/components/ProjectCardHtmlCover';
 import type { LiveArtifactWorkspaceEntry, ProjectFile, ProjectFileKind, ProjectFolder } from '../types';
 import {
   createFileSystemReadError,
@@ -15,6 +16,7 @@ import {
   isFileSystemReadError,
 } from '../utils/fileSystemErrors';
 import { isVisualStabilityMode } from '../utils/visualStability';
+import { projectFileResolvedPath } from '../utils/projectFilePaths';
 import { selectInitialDesignPreviewFile } from './design-files/designArtifacts';
 import type { PluginFolderAgentAction } from './design-files/pluginFolderActions';
 import { getPluginFolderCandidates } from './design-files/pluginFolders';
@@ -306,7 +308,9 @@ export function DesignFilesPanel({
   const t = useTeamverT();
   const analytics = useAnalytics();
   const { hideUsefulTips, slideOnlyMvp } = useTeamverBranding();
-  const [supportingExpanded, setSupportingExpanded] = useState(false);
+  // refs/Drive imports land in the supporting bucket under slide-only MVP;
+  // default open so users don't have to click '지원 파일' after drilling into refs/Drive.
+  const [supportingExpanded, setSupportingExpanded] = useState(true);
   const [draggingFiles, setDraggingFiles] = useState(false);
   const [dropReadError, setDropReadError] = useState<string | null>(null);
   const dragDepthRef = useRef(0);
@@ -772,7 +776,7 @@ export function DesignFilesPanel({
       document.body.removeChild(a);
       setTimeout(() => URL.revokeObjectURL(url), 60_000);
     } catch (err) {
-      console.warn('[batchDownload] failed:', err);
+      devLog.warn('[batchDownload] failed:', err);
     }
   }
 
@@ -1273,16 +1277,37 @@ function DfPreview({
       >
         <Icon name="close" size={13} />
       </button>
-      <div className={`df-preview-thumb${thumbCanOpen ? ' is-openable' : ''}`}>
+      {/*
+        Do not stack a transparent absolute <button> over the thumb. In
+        Chromium/Electron that overlay blanks <img> (and used to flash iframe
+        white) on hover — Design Files right-rail preview looked like a black
+        box with only the accent border. Open via the thumb container instead;
+        iframe/img keep pointer-events: none so clicks hit this host.
+      */}
+      <div
+        className={`df-preview-thumb${thumbCanOpen ? ' is-openable' : ''}`}
+        onClick={thumbCanOpen ? onOpen : undefined}
+        onKeyDown={thumbCanOpen ? (event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            onOpen();
+          }
+        } : undefined}
+        role={thumbCanOpen ? 'button' : undefined}
+        tabIndex={thumbCanOpen ? 0 : undefined}
+        title={thumbCanOpen ? openPreviewLabel : undefined}
+        aria-label={thumbCanOpen ? openPreviewLabel : undefined}
+      >
         {rendersSketchJson ? (
           <SketchPreview projectId={projectId} file={file} />
         ) : file.kind === 'image' || file.kind === 'sketch' ? (
           <AuthenticatedProjectFileImage
             projectId={projectId}
-            path={file.name}
-            alt={file.name}
+            path={projectFileResolvedPath(file)}
+            alt=""
             rev={Math.round(file.mtime)}
             trustExists
+            allowBackgroundRetry
           />
         ) : file.kind === 'html' ? (
           <HtmlPreviewThumbnail projectId={projectId} file={file} />
@@ -1310,15 +1335,6 @@ function DfPreview({
             {categoryGlyph(fileCategory(file))}
           </div>
         )}
-        {thumbCanOpen ? (
-          <button
-            type="button"
-            className="df-preview-thumb-open"
-            onClick={onOpen}
-            title={openPreviewLabel}
-            aria-label={openPreviewLabel}
-          />
-        ) : null}
       </div>
       <div className="df-preview-meta" data-testid="design-file-preview">
         <button type="button" className="df-preview-open-cta" onClick={onOpen}>
@@ -1350,38 +1366,22 @@ function HtmlPreviewThumbnail({
   projectId: string;
   file: ProjectFile;
 }) {
-  const url = projectFileUrl(projectId, file.name);
-  const [srcDoc, setSrcDoc] = useState<string | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    void fetch(`${url}?v=${Math.round(file.mtime)}`)
-      .then((response) => (response.ok ? response.text() : null))
-      .then((html) => {
-        if (cancelled || html === null) return;
-        setSrcDoc(
-          buildHtmlCoverSrcDoc(html, projectRawUrl(projectId, baseDirForFile(file.name))),
-        );
-      })
-      .catch(() => {
-        if (!cancelled) setSrcDoc(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [file.mtime, file.name, projectId, url]);
-
+  // Reuse ProjectCardHtmlCover: authenticated fetch + scoped preview base +
+  // 1920×1080 → thumb scale. The previous bare iframe stretched to the thumb
+  // box clipped the top-left of a dark cover slide (looked like a black void).
+  const path = projectFileResolvedPath(file) || file.name;
+  const src = `${projectRawUrl(projectId, path)}?v=${Math.round(file.mtime)}`;
+  const deckCoverOnly = /(^|\/)deck[^/]*\.html?$/i.test(path);
   return (
-    <iframe
-      title={file.name}
-      srcDoc={srcDoc ?? undefined}
-      sandbox="allow-scripts allow-downloads"
+    <ProjectCardHtmlCover
+      src={src}
+      deckCoverOnly={deckCoverOnly}
+      deferUntilVisible={false}
+      deckFrameClassName="df-preview-html-frame"
+      deckIframeClassName="df-preview-html-iframe"
+      deckLoadingClassName="df-preview-html-loading"
     />
   );
-}
-
-function baseDirForFile(name: string): string {
-  const index = name.lastIndexOf('/');
-  return index >= 0 ? name.slice(0, index + 1) : '';
 }
 
 function fileExtensionLabel(name: string): string {

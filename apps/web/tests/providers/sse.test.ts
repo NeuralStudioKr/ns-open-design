@@ -352,7 +352,8 @@ describe('streamViaDaemon', () => {
     ]);
 
     expect(transcript).toContain('## user');
-    expect(transcript).toContain('[Open Design truncated 1000 chars from this prior message');
+    expect(transcript).toContain('[Prior message truncated 1000 chars before sending it to the agent');
+    expect(transcript).not.toContain('Open Design truncated');
     expect(transcript).not.toContain('x'.repeat(13_000));
     expect(transcript).toContain('small answer');
   });
@@ -381,7 +382,7 @@ describe('streamViaDaemon', () => {
     expect(sanitized).not.toContain('<question-form');
     expect(sanitized).not.toContain('</question-form>');
     expect(sanitized).not.toContain('"questions": [');
-    expect(sanitized).toContain('question-form was emitted here on a prior turn');
+    expect(sanitized).toContain('A question form was emitted on a prior turn');
   });
 
   it('strips odTodoWrite internal markup from prior assistant turns', () => {
@@ -649,7 +650,7 @@ describe('streamViaDaemon', () => {
     // User's <question-form> mention survives.
     expect(transcript).toContain('Why does <question-form id="discovery"> render');
     // Assistant's emission is replaced with the placeholder.
-    expect(transcript).toContain('question-form was emitted here on a prior turn');
+    expect(transcript).toContain('A question form was emitted on a prior turn');
     expect(transcript).not.toContain('<question-form id="discovery" title="Brief">');
   });
 
@@ -671,7 +672,7 @@ describe('streamViaDaemon', () => {
       { id: '2', role: 'user', content: 'react native' },
     ]);
 
-    expect(transcript).toContain('question-form was emitted here on a prior turn');
+    expect(transcript).toContain('A question form was emitted on a prior turn');
     expect(transcript).not.toContain('<ask-question id="discovery" title="Brief">');
   });
 

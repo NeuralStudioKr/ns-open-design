@@ -7,6 +7,7 @@ import {
   canPromoteTarget,
   cascadeRollbackStyle,
   computeMove,
+  isFlowImagePromoteTarget,
   moveHistoryLabel,
   moveResultToStyles,
   promoteMoveStyles,
@@ -14,6 +15,14 @@ import {
   promoteViewportDraft,
   startPositionFromTarget,
   viewportRectAfterMoveCommit,
+  hostPaintRectAfterVisualMove,
+  visualRectFromMoveViewportDraft,
+  hostPaintRectFromVisualContent,
+  MANUAL_EDIT_IDLE_REMEASURE_WILD_JUMP_PX,
+  manualEditGeometryIsWildJump,
+  manualEditGeometryRoughlyMatches,
+  manualEditHostPaintRectStale,
+  manualEditIdleRemeasureWildJumpThresholdPx,
 } from '../../src/edit-mode/move-math';
 import { emptyManualEditStyles, type ManualEditTarget } from '../../src/edit-mode/types';
 
@@ -56,25 +65,30 @@ describe('canMoveTarget', () => {
 });
 
 describe('canPromoteTarget', () => {
-  it('allows static / relative / sticky and not anchored', () => {
+  it('allows static / relative and not anchored or sticky', () => {
     expect(canPromoteTarget(target({ cssPosition: 'static' }))).toBe(true);
     expect(canPromoteTarget(target({ cssPosition: 'relative' }))).toBe(true);
-    expect(canPromoteTarget(target({ cssPosition: 'sticky' }))).toBe(true);
+    expect(canPromoteTarget(target({ cssPosition: 'sticky' }))).toBe(false);
     expect(canPromoteTarget(target({ cssPosition: 'absolute' }))).toBe(false);
     expect(canMoveOrPromoteTarget(target({ cssPosition: 'static' }))).toBe(true);
   });
 
-  it('does not promote flow images/SVGs (resize-in-place; absolute images still move)', () => {
+  it('promotes flow inline images and SVG for body-drag move', () => {
     expect(canPromoteTarget(target({
       kind: 'image',
       tagName: 'svg',
       cssPosition: 'static',
-    }))).toBe(false);
+    }))).toBe(true);
     expect(canPromoteTarget(target({
       kind: 'image',
       tagName: 'img',
       cssPosition: 'relative',
-    }))).toBe(false);
+    }))).toBe(true);
+    expect(isFlowImagePromoteTarget(target({
+      kind: 'image',
+      tagName: 'img',
+      cssPosition: 'static',
+    }))).toBe(true);
     expect(canMoveTarget(target({
       kind: 'image',
       tagName: 'svg',
@@ -82,9 +96,9 @@ describe('canPromoteTarget', () => {
     }))).toBe(true);
     expect(canMoveOrPromoteTarget(target({
       kind: 'image',
-      tagName: 'svg',
+      tagName: 'img',
       cssPosition: 'static',
-    }))).toBe(false);
+    }))).toBe(true);
   });
 
   it('promotes flow text or links on body drag (resize stays on edge/handles)', () => {
@@ -135,7 +149,7 @@ describe('promoteMoveStyles', () => {
     expect(out.height).toBeUndefined();
   });
 
-  it('sticky promote uses absolute + layout size lock against scrollport CB', () => {
+  it('keeps sticky absolute promotion available only for explicit low-level callers', () => {
     const out = promoteMoveStyles(
       { x: 10, y: 10, width: 100, height: 40 },
       { leftPx: 0, topPx: 150, moved: true },
@@ -150,6 +164,27 @@ describe('promoteMoveStyles', () => {
       margin: '0px',
       right: '',
       bottom: '',
+    });
+  });
+
+  it('size-locks flow images on absolute promote', () => {
+    expect(isFlowImagePromoteTarget(target({
+      kind: 'image',
+      tagName: 'img',
+      cssPosition: 'static',
+    }))).toBe(true);
+    const out = promoteMoveStyles(
+      { x: 40, y: 60, width: 120, height: 120 },
+      { leftPx: 20, topPx: 30, moved: true },
+      { layoutWidthPx: 420, layoutHeightPx: 420, imagePromote: true },
+    );
+    expect(out).toMatchObject({
+      position: 'absolute',
+      left: '20px',
+      top: '30px',
+      width: '420px',
+      height: '420px',
+      margin: '0px',
     });
   });
 });
@@ -175,7 +210,7 @@ describe('promote start / rollback helpers', () => {
     }))).toEqual({ startLeftPx: 0, startTopPx: 0 });
   });
 
-  it('starts sticky promote from scrollport offset* (not sticky inset styles)', () => {
+  it('starts sticky low-level promote from scrollport offset* (not sticky inset styles)', () => {
     expect(startPositionFromTarget(target({
       cssPosition: 'sticky',
       offsetLeft: 0,
@@ -214,6 +249,30 @@ describe('promote start / rollback helpers', () => {
       100,
       60,
     )).toEqual({ x: 160, y: 180, width: 100, height: 60 });
+  });
+
+  it('scales layout move delta into visual rect under deck fit-scale', () => {
+    // visual 100×50, layout 200×100 (scale 0.5). Gesture viewport mixes
+    // visualStart + layoutΔ (+40,+20) → hybrid 80,80. Idle must use visual 60,70.
+    const start = { x: 40, y: 60, width: 100, height: 50 };
+    const hybridViewport = { x: 80, y: 80 };
+    expect(visualRectFromMoveViewportDraft(start, hybridViewport, 200, 100, 100, 50)).toEqual({
+      x: 60,
+      y: 70,
+      width: 100,
+      height: 50,
+    });
+    expect(hostPaintRectFromVisualContent(
+      { x: 60, y: 70, width: 100, height: 50 },
+      1,
+      { x: 0, y: 0 },
+    )).toEqual({ x: 60, y: 70, width: 100, height: 50 });
+    // Letterboxed start paint (+12,+8) must keep offset after visual move.
+    expect(hostPaintRectAfterVisualMove(
+      { x: 52, y: 68, width: 100, height: 50 },
+      start,
+      { x: 60, y: 70, width: 100, height: 50 },
+    )).toEqual({ x: 72, y: 78, width: 100, height: 50 });
   });
 });
 
@@ -288,5 +347,90 @@ describe('computeMove', () => {
       offsetTop: 16,
       rect: { x: 100, y: 200, width: 80, height: 40 },
     }))).toEqual({ startLeftPx: 8, startTopPx: 16 });
+  });
+
+  it('detects stale host paint that kept pre-gesture size at the same origin', () => {
+    const composed = { x: 40, y: 60, width: 80, height: 40 };
+    const stale = { x: 40, y: 60, width: 200, height: 100 };
+    expect(manualEditHostPaintRectStale(stale, composed)).toBe(true);
+    const letterboxed = { x: 120, y: 80, width: 90, height: 45 };
+    const composedLarge = { x: 40, y: 60, width: 200, height: 100 };
+    expect(manualEditHostPaintRectStale(letterboxed, composedLarge)).toBe(false);
+  });
+
+  it('detects stale host paint that is larger than resized composed chrome even when position also shifted', () => {
+    const composed = { x: 100, y: 88, width: 120, height: 60 };
+    const staleLarge = { x: 96, y: 84, width: 260, height: 130 };
+    expect(manualEditHostPaintRectStale(staleLarge, composed)).toBe(true);
+  });
+
+  it('detects stale host paint that kept pre-gesture position at the same size', () => {
+    const composed = { x: 140, y: 110, width: 80, height: 40 };
+    const stale = { x: 40, y: 60, width: 80, height: 40 };
+    expect(manualEditHostPaintRectStale(stale, composed)).toBe(true);
+  });
+
+  it('matches optimistic and measured geometry within tolerance', () => {
+    const optimistic = target({
+      rect: { x: 40, y: 60, width: 80, height: 40 },
+      layoutWidth: 160,
+      layoutHeight: 80,
+    });
+    const measured = {
+      ...optimistic,
+      rect: { x: 41, y: 61, width: 81, height: 41 },
+      layoutWidth: 161,
+      layoutHeight: 81,
+    };
+    expect(manualEditGeometryRoughlyMatches(optimistic, measured)).toBe(true);
+    expect(manualEditGeometryRoughlyMatches(optimistic, {
+      ...optimistic,
+      rect: { x: 40, y: 60, width: 200, height: 100 },
+      layoutWidth: 400,
+      layoutHeight: 200,
+    })).toBe(false);
+  });
+
+  it('flags idle remasure wild jumps beyond the teleport threshold', () => {
+    const base = { rect: { x: 40, y: 60, width: 80, height: 40 } };
+    expect(manualEditIdleRemeasureWildJumpThresholdPx(base)).toBe(MANUAL_EDIT_IDLE_REMEASURE_WILD_JUMP_PX);
+    expect(manualEditGeometryIsWildJump(base, {
+      rect: { x: 45, y: 65, width: 82, height: 42 },
+    })).toBe(false);
+    expect(manualEditGeometryIsWildJump(base, {
+      rect: {
+        x: 40 + MANUAL_EDIT_IDLE_REMEASURE_WILD_JUMP_PX + 1,
+        y: 60,
+        width: 80,
+        height: 40,
+      },
+    })).toBe(true);
+  });
+
+  it('scales idle wild-jump threshold with large target span', () => {
+    const large = { rect: { x: 0, y: 0, width: 400, height: 400 } };
+    const threshold = manualEditIdleRemeasureWildJumpThresholdPx(large);
+    expect(threshold).toBe(600);
+    expect(manualEditGeometryIsWildJump(large, {
+      rect: { x: 500, y: 0, width: 400, height: 400 },
+    })).toBe(false);
+    expect(manualEditGeometryIsWildJump(large, {
+      rect: { x: 601, y: 0, width: 400, height: 400 },
+    })).toBe(true);
+  });
+
+  it('keeps wild-jump threshold in content-space (no previewScale multiply)', () => {
+    const base = { rect: { x: 0, y: 0, width: 80, height: 40 } };
+    // previewScale is host chrome only — threshold must stay content px.
+    expect(manualEditIdleRemeasureWildJumpThresholdPx(base)).toBe(MANUAL_EDIT_IDLE_REMEASURE_WILD_JUMP_PX);
+    expect(manualEditGeometryIsWildJump(base, {
+      rect: { x: MANUAL_EDIT_IDLE_REMEASURE_WILD_JUMP_PX + 1, y: 0, width: 80, height: 40 },
+    })).toBe(true);
+    // A host scale of 0.5 must not change content-space deny (would under-deny if multiplied).
+    expect(manualEditGeometryIsWildJump(
+      base,
+      { rect: { x: 241, y: 0, width: 80, height: 40 } },
+      manualEditIdleRemeasureWildJumpThresholdPx(base),
+    )).toBe(false);
   });
 });

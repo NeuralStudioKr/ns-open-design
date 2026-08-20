@@ -23,7 +23,7 @@ const target: ManualEditTarget = {
 };
 
 type OnDraftChange = (draft: ManualEditDraft) => void;
-type OnStyleChange = (id: string, styles: Partial<ManualEditStyles>, label: string) => void;
+type OnStyleChange = (ids: string[], styles: Partial<ManualEditStyles>, label: string) => void;
 type OnInvalidStyle = (id: string, keys: Array<keyof ManualEditStyles>) => void;
 type OnApplyPatch = (patch: ManualEditPatch, label: string) => void;
 type OnError = (message: string) => void;
@@ -285,9 +285,9 @@ describe('ManualEditPanel', () => {
     expect(onDraftChange).toHaveBeenCalledWith(expect.objectContaining({
       styles: expect.objectContaining({ fontFamily: 'Georgia, serif' }),
     }));
-    expect(onStyleChange).toHaveBeenCalledWith('hero-title', { fontFamily: 'Georgia, serif' }, 'Style: Hero Title');
+    expect(onStyleChange).toHaveBeenCalledWith(['hero-title'], { fontFamily: 'Georgia, serif' }, 'Style: Hero Title');
     expect(onStyleChange).not.toHaveBeenCalledWith(
-      'hero-title',
+      ['hero-title'],
       expect.objectContaining({ fontSize: '32px', color: '#111111', paddingTop: '8px' }),
       'Style: Hero Title',
     );
@@ -332,9 +332,9 @@ describe('ManualEditPanel', () => {
       trackingDecrease.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
     });
 
-    expect(onStyleChange).toHaveBeenCalledWith('hero-title', { fontSize: '33px' }, 'Style: Hero Title');
-    expect(onStyleChange).toHaveBeenCalledWith('hero-title', { lineHeight: '1.5' }, 'Style: Hero Title');
-    expect(onStyleChange).toHaveBeenCalledWith('hero-title', { letterSpacing: '0px' }, 'Style: Hero Title');
+    expect(onStyleChange).toHaveBeenCalledWith(['hero-title'], { fontSize: '33px' }, 'Style: Hero Title');
+    expect(onStyleChange).toHaveBeenCalledWith(['hero-title'], { lineHeight: '1.5' }, 'Style: Hero Title');
+    expect(onStyleChange).toHaveBeenCalledWith(['hero-title'], { letterSpacing: '0px' }, 'Style: Hero Title');
     expect(host.textContent).not.toContain('Opacity');
     expect(host.textContent).not.toContain('Padding');
   });
@@ -392,6 +392,10 @@ describe('ManualEditPanel', () => {
       ok: true,
       styles: { fontSize: '', color: '' },
     });
+    expect(normalizeManualEditStyles({ zIndex: 'auto' }, { layoutEnabled: true })).toEqual({
+      ok: true,
+      styles: { zIndex: '' },
+    });
   });
 
   it('does not validate unchanged computed line-height values on blur', () => {
@@ -442,7 +446,7 @@ describe('ManualEditPanel', () => {
     });
 
     expect(onError).toHaveBeenCalledWith('');
-    expect(onStyleChange).toHaveBeenCalledWith('hero-title', { lineHeight: '49px' }, 'Style: Hero Title');
+    expect(onStyleChange).toHaveBeenCalledWith(['hero-title'], { lineHeight: '49px' }, 'Style: Hero Title');
   });
 
   it('does not persist unchanged page styles when no target is selected', () => {
@@ -477,14 +481,14 @@ describe('ManualEditPanel', () => {
       colorTile.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
     });
 
-    expect(onStyleChange).toHaveBeenCalledWith('__body__', { backgroundColor: '#3b82f6' }, 'Page styles');
+    expect(onStyleChange).toHaveBeenCalledWith(['__body__'], { backgroundColor: '#3b82f6' }, 'Page styles');
     expect(onStyleChange).not.toHaveBeenCalledWith(
-      '__body__',
+      ['__body__'],
       expect.objectContaining({ fontFamily: expect.any(String) }),
       'Page styles',
     );
     expect(onStyleChange).not.toHaveBeenCalledWith(
-      '__body__',
+      ['__body__'],
       expect.objectContaining({ fontSize: expect.any(String) }),
       'Page styles',
     );
@@ -502,14 +506,14 @@ describe('ManualEditPanel', () => {
       fontSelect.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
     });
 
-    expect(onStyleChange).toHaveBeenCalledWith('__body__', { fontFamily: 'Georgia, serif' }, 'Page styles');
+    expect(onStyleChange).toHaveBeenCalledWith(['__body__'], { fontFamily: 'Georgia, serif' }, 'Page styles');
     expect(onStyleChange).not.toHaveBeenCalledWith(
-      '__body__',
+      ['__body__'],
       expect.objectContaining({ backgroundColor: expect.any(String) }),
       'Page styles',
     );
     expect(onStyleChange).not.toHaveBeenCalledWith(
-      '__body__',
+      ['__body__'],
       expect.objectContaining({ fontSize: expect.any(String) }),
       'Page styles',
     );
@@ -538,9 +542,9 @@ describe('ManualEditPanel', () => {
       fontSelect.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
     });
 
-    expect(onStyleChange).toHaveBeenCalledWith('__body__', { fontFamily: '' }, 'Page styles');
+    expect(onStyleChange).toHaveBeenCalledWith(['__body__'], { fontFamily: '' }, 'Page styles');
     expect(onStyleChange).not.toHaveBeenCalledWith(
-      '__body__',
+      ['__body__'],
       expect.objectContaining({ backgroundColor: expect.any(String), fontFamily: expect.any(String) }),
       'Page styles',
     );
@@ -596,8 +600,8 @@ describe('ManualEditPanel', () => {
       directionSelect.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
     });
 
-    expect(onStyleChange).toHaveBeenCalledWith('hero-title', { gap: '9px' }, 'Style: Hero Title');
-    expect(onStyleChange).toHaveBeenCalledWith('hero-title', { flexDirection: 'column' }, 'Style: Hero Title');
+    expect(onStyleChange).toHaveBeenCalledWith(['hero-title'], { gap: '9px' }, 'Style: Hero Title');
+    expect(onStyleChange).toHaveBeenCalledWith(['hero-title'], { flexDirection: 'column' }, 'Style: Hero Title');
   });
 
   it('summarizes full-source history entries without rendering the full file', () => {

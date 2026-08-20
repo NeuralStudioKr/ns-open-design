@@ -10,6 +10,7 @@ import {
   RESUME_CONTINUE_PROMPT,
   buildAutoContinueIncompleteOutputPrompt,
   buildAutoContinueScopedCommentEditPrompt,
+  excerptPartialHtmlForAutoContinue,
   extractAutoContinueContextFromAssistant,
   isAutoContinueIncompleteOutputPrompt,
   isLiveLocalStreamBlockingAutoContinue,
@@ -26,8 +27,12 @@ describe('runtime/resume shell/no-HTML recovery constants', () => {
     expect(AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT.length).toBeGreaterThan(0);
   });
 
-  it('scopes the auto-continue cap to three retries per conversation', () => {
-    expect(AUTO_CONTINUE_MAX_PER_CONVERSATION).toBe(3);
+  it('scopes the auto-continue cap to five retries per conversation', () => {
+    // Bumped from three to five: Canvas → Slide launches on Teamver embed
+    // consistently landed on `incomplete_output` after the model produced a
+    // truncated deck the first pass and the retry budget ran out before
+    // salvage / stream-close could converge.
+    expect(AUTO_CONTINUE_MAX_PER_CONVERSATION).toBe(5);
     expect(Number.isInteger(AUTO_CONTINUE_MAX_PER_CONVERSATION)).toBe(true);
     expect(AUTO_CONTINUE_MAX_PER_CONVERSATION).toBeGreaterThanOrEqual(1);
   });
@@ -123,6 +128,22 @@ describe('runtime/resume shell/no-HTML recovery constants', () => {
     expect(visual).toContain('no <section class="slide"> blocks in deck-patch body');
   });
 
+  it('uses element-patch guidance for box/edit visual annotation retries', () => {
+    const edit = resolveAutoContinuePrompt({
+      commentAttachmentCount: 1,
+      visualMarkOnly: false,
+      visualAnnotationEdit: true,
+      incompleteOutput: { attempt: 2 },
+      scopedCommentEditFailureReason: 'No matching targets found to merge.',
+      scopedUserInstruction: '슬라이드 2 이 글씨들 더 크게',
+    });
+    expect(edit).toContain('element-patch');
+    expect(edit).toContain('박스/메모 시각 주석');
+    expect(edit).toContain('od-visual-mark-target');
+    expect(edit).not.toContain('하트·도형은 inline SVG');
+    expect(edit).toContain('슬라이드 2 이 글씨들 더 크게');
+  });
+
   it('keeps the generic full-deck auto-continue prompt when no comment attachments exist', () => {
     const generic = resolveAutoContinuePrompt({
       commentAttachmentCount: 0,
@@ -146,8 +167,102 @@ describe('runtime/resume shell/no-HTML recovery constants', () => {
       planOutline: '슬라이드 구성:\n01 표지',
     });
     expect(prompt).toContain('```html');
-    expect(prompt).toContain('<!doctype html>');
+    // Fence prefers <body>/slides over a CSS-heavy doctype head prefix.
+    expect(prompt).toContain('<h1>Partial</h1>');
     expect(prompt).toContain('슬라이드 구성');
+  });
+
+  it('excerpts body/slides instead of a CSS-heavy head prefix for auto-continue', () => {
+    const css = '<style>' + '.x{color:red}'.repeat(400) + '</style>';
+    const html =
+      `<!doctype html><html><head><meta charset="utf-8"/>${css}</head><body>`
+      + '<section class="slide"><h1>Cover</h1><p>Body copy that must survive the excerpt.</p></section>';
+    const excerpt = excerptPartialHtmlForAutoContinue(html);
+    expect(excerpt).toContain('<body');
+    expect(excerpt).toContain('Body copy that must survive');
+    expect(excerpt).not.toContain('.x{color:red}'.repeat(50));
+  });
+
+  it('forces body-first guidance for a short opened <head> with no body', () => {
+    const prompt = buildAutoContinueIncompleteOutputPrompt({
+      attempt: 1,
+      partialHtml: '<!doctype html><html lang="ko"><head>',
+    });
+    expect(prompt).toContain('BODY-FIRST');
+    expect(prompt).toContain('Do NOT regenerate');
+  });
+
+  it('keeps Clone content-fill CREATE contract on auto-continue', () => {
+    const prompt = buildAutoContinueIncompleteOutputPrompt({
+      attempt: 1,
+      partialHtml: '<!doctype html><html lang="ko"><head>',
+      existingDeckPath: 'deck.html',
+      templateCloneContentFill: true,
+    });
+    expect(prompt).toContain('[Template clone content fill]');
+    expect(prompt).toContain('[Template clone content fill turn]');
+    expect(prompt).toContain('BODY-FIRST');
+    expect(prompt).toContain('NEVER "수정 반영 중"');
+    expect(prompt).toContain('Do not restart from `<head>`');
+    expect(prompt).toContain('1–2 slide cover draft');
+    expect(prompt).toContain('Official look/Motif CSS is merged after save');
+    expect(prompt).not.toContain('디스크의 덱을 기준으로');
+    expect(prompt).not.toContain('이미 저장된 슬라이드 덱');
+  });
+
+  it('does not treat a one-slide closed cover as a finished template fill', () => {
+    const prompt = buildAutoContinueIncompleteOutputPrompt({
+      attempt: 1,
+      templateCloneContentFill: true,
+      partialHtml:
+        '<!doctype html><html><body><section class="slide"><h1>Cover only</h1><p>Lead.</p></section></body></html>',
+    });
+    expect(prompt).toContain('Do not restart from `<head>`');
+    expect(prompt).toContain('1–2 slide cover draft');
+    expect(prompt).toContain('<h1>Cover only</h1>');
+  });
+
+  it('omits cloned deck.html from fill auto-continue reference files', () => {
+    const prompt = buildAutoContinueIncompleteOutputPrompt({
+      attempt: 1,
+      templateCloneContentFill: true,
+      referenceFiles: ['deck.html', 'refs/drive/notes.pdf'],
+    });
+    expect(prompt).toContain('refs/drive/notes.pdf');
+    expect(prompt).not.toContain('- deck.html');
+  });
+
+  it('forces body-first guidance for large head-only truncations', () => {
+    const headOnly =
+      '<!doctype html><html><head><meta charset="utf-8"/><title>Deck</title><style>'
+      + '.slide{padding:40px}'.repeat(120)
+      + '</style></head>';
+    const prompt = buildAutoContinueIncompleteOutputPrompt({
+      attempt: 1,
+      truncatedByMaxTokens: true,
+      partialHtml: headOnly,
+    });
+    expect(prompt).toContain('BODY-FIRST');
+    expect(prompt).toContain('Do NOT regenerate');
+    expect(prompt).not.toContain('```html');
+  });
+
+  it('treats selected-template css shells as a restart with slide content first', () => {
+    const shell =
+      '<!doctype html><html><head><meta charset="utf-8"/><title>Daisy Days</title><style>'
+      + '.deco-daisy{position:absolute;background:#F5F0E6;border:3px solid #222}'.repeat(80)
+      + '</style>';
+    const prompt = buildAutoContinueIncompleteOutputPrompt({
+      attempt: 1,
+      partialHtml: shell,
+      planOutline: '슬라이드 구성:\n01 표지\n02 핵심 요약',
+    });
+    expect(prompt).toContain('FINAL RETRY');
+    expect(prompt).toContain('빈 document shell');
+    expect(prompt).toContain('위 shell을 복사하지 말고');
+    expect(prompt).toContain('새 complete HTML deck artifact');
+    expect(prompt).not.toContain('```html');
+    expect(prompt).not.toContain('.deco-daisy{position:absolute');
   });
 
   it('threads original reference files into the auto-continue prompt', () => {
@@ -206,6 +321,28 @@ describe('runtime/resume shell/no-HTML recovery constants', () => {
     expect(prompt).toContain('버리세요');
   });
 
+  it('discards Motif-SVG-first partials instead of fencing the path dump', () => {
+    const hung =
+      '<artifact type="deck"><!doctype html><html lang="ko"><body style="background:#F5F0E6">'
+      + '<section class="slide slide-title">'
+      + '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 150 150">'
+      + '<style>.cls-0{fill:#FFFFFF}.cls-1{fill:#FCDF6C}</style>'
+      + '<path d="M0 0h150v150H0z M12 40c20 8 40 8 60 0"/>';
+    const prompt = buildAutoContinueIncompleteOutputPrompt({
+      attempt: 1,
+      partialHtml: hung,
+      templateCloneContentFill: true,
+    });
+    expect(prompt).not.toContain('```html');
+    expect(prompt).not.toContain('<path d="M0 0h150v150H0z');
+    expect(prompt).toContain('Motif `<svg>` 선두 덤프');
+    expect(prompt).toContain('ABANDON that SVG');
+    expect(prompt).toMatch(/kit Motif vocabulary|Motif CSS|deco-pill/);
+    expect(prompt).toContain('BODY-FIRST');
+    expect(prompt).toContain('[Template clone content fill]');
+    expect(excerptPartialHtmlForAutoContinue(hung)).toBe('');
+  });
+
   it('still fences truncated decks that already have real slide copy', () => {
     const truncated =
       '<!doctype html><html><head><title>Deck</title></head><body>'
@@ -254,6 +391,9 @@ describe('runtime/resume shell/no-HTML recovery constants', () => {
     });
     expect(prompt).toContain('deck.html');
     expect(prompt).toContain('완성된 덱이 없다');
+    expect(prompt).toContain('deck-patch');
+    expect(prompt).toContain('전체 덱을 2~3장으로 새로 만들지 말고');
+    expect(prompt).toContain('슬라이드 장수를 줄이는 것은 금지입니다');
   });
 });
 
@@ -278,6 +418,16 @@ describe('shouldAutoContinueForIncompleteOutput', () => {
     shouldFailMissingSlideHtml: false,
   };
 
+  it('does NOT fire for skipped-noop (top-up no-op / calm edits)', () => {
+    expect(
+      shouldAutoContinueForIncompleteOutput({
+        ...base,
+        terminalPersistResultKind: 'skipped-noop',
+        terminalPersistResultReason: 'top-up-did-not-append-slides',
+      }),
+    ).toBe(false);
+  });
+
   it('fires for skipped-incomplete shells', () => {
     expect(
       shouldAutoContinueForIncompleteOutput({
@@ -297,13 +447,30 @@ describe('shouldAutoContinueForIncompleteOutput', () => {
     ).toBe(true);
   });
 
-  it('does NOT fire for validation rejected artifacts', () => {
+  it('does NOT fire for validation rejected artifacts without incompleteness signals', () => {
     expect(
       shouldAutoContinueForIncompleteOutput({
         ...base,
         terminalPersistResultKind: 'rejected',
       }),
     ).toBe(false);
+  });
+
+  it('fires for rejected / skipped-discovery-turn when incomplete or missing-slide signals are set', () => {
+    expect(
+      shouldAutoContinueForIncompleteOutput({
+        ...base,
+        terminalPersistResultKind: 'rejected',
+        hadIncompleteParsedArtifact: true,
+      }),
+    ).toBe(true);
+    expect(
+      shouldAutoContinueForIncompleteOutput({
+        ...base,
+        terminalPersistResultKind: 'skipped-discovery-turn',
+        shouldFailMissingSlideHtml: true,
+      }),
+    ).toBe(true);
   });
 
   it('fires when no persist ran but slide-missing / incomplete signals are set', () => {
@@ -369,12 +536,22 @@ describe('shouldAutoContinueForIncompleteOutput', () => {
     ).toBe(false);
   });
 
-  it('does NOT fire when the run is not visible', () => {
+  it('still fires content-incomplete continues when the run is not visible', () => {
+    // Leaving the tab mid-finalize must not strand skipped-incomplete as a
+    // hard incomplete_output with zero automatic recovery.
     expect(
       shouldAutoContinueForIncompleteOutput({
         ...base,
         runIsVisible: false,
         terminalPersistResultKind: 'skipped-incomplete',
+      }),
+    ).toBe(true);
+    expect(
+      shouldAutoContinueForIncompleteOutput({
+        ...base,
+        runIsVisible: false,
+        terminalPersistResultKind: 'save-failed',
+        hadIncompleteParsedArtifact: true,
       }),
     ).toBe(false);
   });
@@ -396,7 +573,7 @@ describe('shouldAutoContinueForIncompleteOutput', () => {
     ).toBe(true);
   });
 
-  it('caps scoped preview-comment edits at two auto-continues', () => {
+  it('caps scoped preview-comment edits at the scoped comment-edit budget', () => {
     expect(
       shouldAutoContinueForIncompleteOutput({
         ...base,

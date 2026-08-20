@@ -13,7 +13,9 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
   HtmlSurface,
+  __clearHtmlSurfaceMemoryCacheForTests,
   __htmlSurfaceProbeCacheSizeForTests,
+  __pluginPreviewFetchConcurrencyForTests,
   __resetHtmlSurfaceProbeCacheForTests,
   isPluginPreviewUnauthorizedBody,
   looksLikePluginPreviewHtml,
@@ -125,11 +127,140 @@ describe('HtmlSurface authenticated srcDoc', () => {
       'utf8',
     );
     const fetchBlock = source.slice(
-      source.indexOf('await fetchTeamverDaemon(url, {'),
+      source.indexOf('await fetchTeamverDaemon(cacheKey, {'),
       source.indexOf('if (!res.ok)'),
     );
     expect(fetchBlock).toContain('skipEmbedAuthRecovery: true');
+    expect(fetchBlock).toContain('skipEmbedUnauthorizedNotify: true');
     expect(fetchBlock).toContain('skipTeamverWorkspaceHeaders: true');
+    // Shared inflight / no per-card AbortSignal (N07 cover pattern).
+    expect(source).toContain('pluginPreviewCacheKey');
+    expect(source).not.toMatch(/loadPluginPreviewHtml\([^)]*abort\.signal/);
+  });
+
+  it('fetches plugin preview on inView in Teamver embed (linger, not hover-only)', async () => {
+    const designApiBase = await import('../../src/teamver/designApiBase');
+    const embedSpy = vi.spyOn(designApiBase, 'isTeamverEmbedMode').mockReturnValue(true);
+    const fetchMock = vi.fn().mockResolvedValue(htmlResponse());
+    vi.stubGlobal('fetch', fetchMock);
+    const { container } = render(
+      <HtmlSurface
+        preview={PREVIEW}
+        pluginId="example-html-ppt"
+        pluginTitle="Html Ppt"
+        inView
+      />,
+    );
+    await waitFor(
+      () => {
+        expect(fetchMock).toHaveBeenCalled();
+      },
+      { timeout: 2000 },
+    );
+    await waitFor(
+      () => {
+        expect(container.querySelector('iframe')).toBeTruthy();
+      },
+      { timeout: 2000 },
+    );
+    embedSpy.mockRestore();
+  });
+
+  it('keeps community preview eager off in embed policy (tight rootMargin)', async () => {
+    const source = await readFile(
+      join(process.cwd(), 'src/teamver/embedDaemonFetchPolicy.ts'),
+      'utf8',
+    );
+    expect(source).toContain('shouldEagerLoadCommunityPluginPreviews');
+    expect(source).toMatch(
+      /function shouldEagerLoadCommunityPluginPreviews\(\)[\s\S]*?return !isTeamverEmbedMode\(\);/,
+    );
+  });
+
+  it('caps concurrent plugin preview GETs to avoid daemon stampede', async () => {
+    const limit = __pluginPreviewFetchConcurrencyForTests();
+    expect(limit).toBe(3);
+    let inFlight = 0;
+    let peak = 0;
+    const releasers: Array<() => void> = [];
+    const fetchMock = vi.fn().mockImplementation(
+      () =>
+        new Promise<Response>((resolve) => {
+          inFlight += 1;
+          peak = Math.max(peak, inFlight);
+          releasers.push(() => {
+            inFlight -= 1;
+            resolve(htmlResponse());
+          });
+        }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const cards = Array.from({ length: 5 }, (_, i) => ({
+      ...PREVIEW,
+      src: `/api/plugins/example-html-ppt-${i}/preview`,
+    }));
+    for (const preview of cards) {
+      render(
+        <HtmlSurface
+          preview={preview}
+          pluginId={preview.src}
+          pluginTitle="Html Ppt"
+          inView
+          eager
+        />,
+      );
+    }
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(limit);
+    });
+    expect(peak).toBeLessThanOrEqual(limit);
+
+    // Release first wave so queued cards can proceed.
+    for (const release of releasers.splice(0, limit)) release();
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(cards.length);
+    });
+    for (const release of releasers) release();
+    await waitFor(() => {
+      expect(peak).toBeLessThanOrEqual(limit);
+    });
+  });
+
+  it('reuses sessionStorage preview HTML without a second network GET', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(htmlResponse());
+    vi.stubGlobal('fetch', fetchMock);
+    const { unmount } = render(
+      <HtmlSurface
+        preview={PREVIEW}
+        pluginId="example-html-ppt"
+        pluginTitle="Html Ppt"
+        inView
+        eager
+      />,
+    );
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    unmount();
+    __clearHtmlSurfaceMemoryCacheForTests();
+    expect(
+      sessionStorage.getItem('od:plugin-preview:v1:/api/plugins/example-html-ppt/preview'),
+    ).toBeTruthy();
+    render(
+      <HtmlSurface
+        preview={PREVIEW}
+        pluginId="example-html-ppt"
+        pluginTitle="Html Ppt"
+        inView
+        eager
+      />,
+    );
+    await waitFor(() => {
+      const iframe = document.querySelector('iframe.plugins-home__html-iframe');
+      expect(iframe).toBeTruthy();
+      expect(iframe?.getAttribute('title')).toMatch(/Html Ppt (preview|미리보기)/);
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it('renders an iframe with srcDoc once HTML loads (not bare src)', async () => {
@@ -185,6 +316,48 @@ describe('HtmlSurface authenticated srcDoc', () => {
     expect(
       container.querySelector('.plugins-home__html-fallback-glyph')?.textContent,
     ).toBe('H');
+    // Touch/click path — hover-only retry left mobile thumbs stuck.
+    expect(
+      container.querySelector('[data-testid="plugins-home-html-fallback-retry"]'),
+    ).toBeTruthy();
+  });
+
+  it('force-retries sticky 404 cache when Retry is clicked', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(notFoundResponse())
+      .mockResolvedValueOnce(htmlResponse());
+    vi.stubGlobal('fetch', fetchMock);
+    const { container } = render(
+      <HtmlSurface
+        preview={PREVIEW}
+        pluginId="example-html-ppt"
+        pluginTitle="Html Ppt"
+        inView
+        eager
+      />,
+    );
+    await waitFor(
+      () => {
+        expect(
+          container.querySelector('[data-testid="plugins-home-html-fallback-retry"]'),
+        ).toBeTruthy();
+      },
+      { timeout: 2000 },
+    );
+    const callsAfter404 = fetchMock.mock.calls.length;
+    (
+      container.querySelector(
+        '[data-testid="plugins-home-html-fallback-retry"]',
+      ) as HTMLButtonElement
+    ).click();
+    await waitFor(
+      () => {
+        expect(fetchMock.mock.calls.length).toBeGreaterThan(callsAfter404);
+        expect(container.querySelector('iframe')).toBeTruthy();
+      },
+      { timeout: 2000 },
+    );
   });
 
   it('renders the typographic fallback for session_expired JSON (never paints JSON thumb)', async () => {
@@ -209,6 +382,31 @@ describe('HtmlSurface authenticated srcDoc', () => {
     );
     expect(container.querySelector('iframe')).toBeNull();
     expect(container.textContent).not.toContain('session_expired');
+  });
+
+  it('retries preview GET after embed passive-auth recovered', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonUnauthorizedResponse())
+      .mockResolvedValueOnce(htmlResponse());
+    vi.stubGlobal('fetch', fetchMock);
+    const { container } = render(
+      <HtmlSurface
+        preview={PREVIEW}
+        pluginId="example-html-ppt"
+        pluginTitle="Html Ppt"
+        inView
+        eager
+      />,
+    );
+    await waitFor(() => {
+      expect(container.querySelector('[data-testid="plugins-home-html-fallback"]')).toBeTruthy();
+    });
+    window.dispatchEvent(new Event('teamver:embed-passive-auth-recovered'));
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(container.querySelector('iframe')).toBeTruthy();
+    });
   });
 
   it('caps the preview HTML cache and evicts the oldest preview URL', async () => {

@@ -2012,7 +2012,7 @@ describe('DesignSystemDetailView', () => {
       />,
     );
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Design Files' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Project files' }));
 
     await waitFor(() => expect(mocks.ensureDesignSystemWorkspace).toHaveBeenCalledWith(system.id));
     await waitFor(() => expect(screen.getByTestId('design-system-files')).toBeTruthy());
@@ -2084,7 +2084,7 @@ describe('DesignSystemDetailView', () => {
       />,
     );
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Design Files' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Project files' }));
 
     await waitFor(() => expect(mocks.ensureDesignSystemWorkspace).toHaveBeenCalledWith(system.id));
     await waitFor(() => expect(mocks.getProject).toHaveBeenCalledWith(project.id));
@@ -2137,7 +2137,7 @@ describe('DesignSystemDetailView', () => {
       />,
     );
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Design Files' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Project files' }));
 
     await waitFor(() => expect(mocks.ensureDesignSystemWorkspace).toHaveBeenCalledWith(system.id));
     await waitFor(() => expect(mocks.getProject).toHaveBeenCalledWith(system.projectId));

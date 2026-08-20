@@ -74,11 +74,67 @@ describe('Toast', () => {
     expect(onDismiss).toHaveBeenCalledTimes(1);
   });
 
+  it('uses a warning glyph for error tone and only one close control', () => {
+    const { container } = render(
+      <Toast message="Something failed" tone="error" onDismiss={() => {}} />,
+    );
+    expect(container.querySelector('.od-toast-icon svg')).not.toBeNull();
+    expect(screen.getAllByRole('button', { name: /Close/i })).toHaveLength(1);
+  });
+
+  it('does not reset the auto-dismiss timer when the parent passes a new onDismiss identity', () => {
+    vi.useFakeTimers();
+    const onDismiss = vi.fn();
+    const { rerender } = render(
+      <Toast message="Saved" ttlMs={2000} onDismiss={onDismiss} />,
+    );
+    rerender(<Toast message="Saved" ttlMs={2000} onDismiss={() => onDismiss()} />);
+    act(() => {
+      vi.advanceTimersByTime(2000);
+    });
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+
   it('keeps the dismiss control on the same row as the message (no stacked chip)', () => {
     const { container } = render(
       <Toast message="Saved" tone="success" onDismiss={() => {}} />,
     );
     expect(container.querySelector('.od-toast-row .od-toast-dismiss')).not.toBeNull();
     expect(container.querySelector('.od-toast-dismiss-text')).toBeNull();
+  });
+
+  it('pins loading toasts open (no auto-dismiss) and marks aria-busy', () => {
+    vi.useFakeTimers();
+    const onDismiss = vi.fn();
+    const { container } = render(
+      <Toast message="Exporting…" tone="loading" ttlMs={100} onDismiss={onDismiss} />,
+    );
+    expect(container.querySelector('.od-toast.tone-loading')?.getAttribute('aria-busy')).toBe('true');
+    act(() => {
+      vi.advanceTimersByTime(10_000);
+    });
+    expect(onDismiss).not.toHaveBeenCalled();
+  });
+
+  it('centers via od-toast-anchor so Motion transform cannot steal translateX', () => {
+    const { container } = render(<Toast message="Saved" tone="success" />);
+    expect(container.querySelector('.od-toast-anchor .od-toast.tone-success')).not.toBeNull();
+  });
+
+  it('invokes action then dismiss when the action button is clicked', () => {
+    const onAction = vi.fn();
+    const onDismiss = vi.fn();
+    render(
+      <Toast
+        message="Saved"
+        tone="success"
+        actionLabel="Undo"
+        onAction={onAction}
+        onDismiss={onDismiss}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(onAction).toHaveBeenCalledTimes(1);
+    expect(onDismiss).toHaveBeenCalledTimes(1);
   });
 });

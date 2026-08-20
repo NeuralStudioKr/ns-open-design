@@ -10,6 +10,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { devLog } from '../lib/devLog';
 import { createPortal } from 'react-dom';
 import { Button } from '@open-design/components';
 import { useI18n } from '../i18n';
@@ -46,6 +47,7 @@ import { isTeamverEmbedMode, resolveTeamverDriveAssetUrl } from '../teamver/desi
 import { embedUiLabel } from '../teamver/embedUiLabels';
 import { AuthenticatedProjectFileImage } from './AuthenticatedProjectFileImage';
 import { excludeAttachmentsBackedByVisualScreenshots, isEphemeralDrawingScreenshotPath, isRenderableImagePath, projectFilePathExists, projectFilePathsInclude, visualCommentScreenshotPaths } from '../utils/projectFilePaths';
+import { mergeImageMentionAttachments } from '../utils/recoverChatAttachmentsFromMentions';
 import {
   attachmentsHavePendingAnnotationPaths,
   commentAttachmentsHavePendingScreenshotPaths,
@@ -90,13 +92,22 @@ import {
   canvasCreateSlidesPluginInputs,
   canvasCreateSlidesRunPrompt,
   canvasCreateSlidesSourceBrief,
+  canvasSlideQuickLengthToSlideCount,
   buildSlideOnlyDeckTemplateCreateBinding,
   canvasCreateSlidesTurnMeta,
   driveCreateSlidesSourceBrief,
+  fetchCanvasSlideTemplatePlugins,
+  isExplicitCanvasSlideVisualTemplate,
   readTeamverCreateSlidesLaunchFromUrl,
   resolveCanvasSlideTemplate,
   type CanvasSlideQuickSettings,
 } from '../teamver/canvasSlideLaunch';
+import { seedTemplateClonedDeck } from '../teamver/seedTemplateClonedDeck';
+import {
+  buildTemplateCloneContentFillSeed,
+  withTemplateCloneFillPluginInputs,
+  withoutCanonicalDeckAttachments,
+} from '../teamver/templateCloneContentFill';
 import { useCanvasSlideLaunchTemplates } from '../teamver/hooks/useCanvasSlideLaunchTemplates';
 import {
   canvasImportedToChatAttachments,
@@ -111,21 +122,23 @@ import { beginMainSsoMismatchRecovery } from '../teamver/mainSsoMismatchRecovery
 import { mayMutateProjectLinkedDirs } from '../teamver/embedLocalWorkspacePolicy';
 import { visibleDesignToolboxActions, pluginsForSlideOnlyMvp, skillsForSlideOnlyMvp } from '../teamver/branding/slideOnlyMvpPolicy';
 import { embedBlockedComposerSlashReason, embedSlideOnlyOutboundBlockReason } from '../teamver/branding/embedSlideOnlyOutboundGuard';
-import { patchProject } from "../state/projects";
+import { fetchAppliedPluginSnapshot, patchProject } from "../state/projects";
 import { fetchMcpServers } from "../state/mcp";
 import type { McpServerConfig, McpTemplate } from "../state/mcp";
-import { listPlugins } from "../state/projects";
 import type { AppConfig, ChatAttachment, ChatCommentAttachment, Project, ProjectFile, ProjectMetadata, SkillSummary } from "../types";
-import type {
-  ContextItem,
-  AppliedPluginSnapshot,
-  ChatSessionMode,
-  ConnectorDetail,
-  InstalledPluginRecord,
-  PluginSourceKind,
-  ResearchOptions,
-  RunContextSelection,
-  WorkspaceContextItem,
+import {
+  sanitizeTemplateCloneDeckTitle,
+  type ContextItem,
+  type AppliedPluginSnapshot,
+  type ChatSessionMode,
+  type ConnectorDetail,
+  type InstalledPluginRecord,
+  type PluginSourceKind,
+  type ProjectContextConnectorRef,
+  type ProjectContextMcpServerRef,
+  type ResearchOptions,
+  type RunContextSelection,
+  type WorkspaceContextItem,
 } from '@open-design/contracts';
 import {
   buildVisualAnnotationAttachment,
@@ -136,6 +149,7 @@ import {
 import { isVisualCommentAttachment } from '../edit-mode/scoped-deck-patch';
 import { Icon, type IconName } from "./Icon";
 import { SessionModeToggle } from './SessionModeToggle';
+import { VisualCommentAttachmentChip } from './VisualCommentAttachmentChip';
 import { ComposerPlusMenu } from './ComposerPlusMenu';
 import {
   DESIGN_TOOLBOX_ACTIONS,
@@ -166,38 +180,16 @@ import {
 } from './composer/LexicalComposerInput';
 import { CaretFloatingLayer } from './composer/CaretFloatingLayer';
 import { ANNOTATION_EVENT, type AnnotationEventDetail } from "./PreviewDrawOverlay";
-import { loadAuthenticatedProjectFileBlob } from '../hooks/useAuthenticatedProjectFileObjectUrl';
-import { sniffImageMime } from '../utils/imageBlobNormalize';
+import { clearProjectRawFileMissing } from '../utils/projectFileFetchCache';
+import {
+  stageReadableUploadedAttachments,
+  uploadedImagesReadableOnDisk,
+} from '../utils/uploadedImagesReadable';
 import { DesignSystemSwitchPicker } from "./DesignSystemSwitchPicker";
 import { listenForConnectorsChanged } from './connectors-events';
 import { fetchConnectorCatalogSnapshot } from './connectors-state';
 
 type TranslateFn = (key: keyof Dict, vars?: Record<string, string | number>) => string;
-
-const ANNOTATION_UPLOAD_READ_DELAYS_MS = [0, 250, 800, 1500, 2500] as const;
-
-async function uploadedImagesReadableOnDisk(
-  projectId: string,
-  uploaded: ChatAttachment[],
-): Promise<ChatAttachment[]> {
-  const ready: ChatAttachment[] = [];
-  for (const item of uploaded) {
-    if (item.kind !== 'image') {
-      ready.push(item);
-      continue;
-    }
-    const blob = await loadAuthenticatedProjectFileBlob(projectId, item.path, {
-      delaysMs: ANNOTATION_UPLOAD_READ_DELAYS_MS,
-      trustExists: true,
-    });
-    if (!blob) continue;
-    const bytes = new Uint8Array(await blob.arrayBuffer());
-    if (!sniffImageMime(bytes)) continue;
-    clearProjectRawFileMissing(projectId, item.path);
-    ready.push(item);
-  }
-  return ready;
-}
 
 type ToolsTab = 'plugins' | 'skills' | 'mcp' | 'import';
 
@@ -279,6 +271,10 @@ interface Props {
   // project folder exists on disk before files land in it. Returns the
   // project id when ready.
   onEnsureProject: () => Promise<string | null>;
+  /** Refresh project `/files` after a composer upload so preview heal sees new images. */
+  onProjectFilesMaybeChanged?: () => void;
+  /** Open a project file in the workspace (e.g. seeded deck.html after template clone). */
+  onRequestOpenFile?: (name: string) => void;
   commentAttachments?: ChatCommentAttachment[];
   onRemoveCommentAttachment?: (id: string) => void;
   // Available skills the user can compose into a turn via @<skill>. The
@@ -342,6 +338,8 @@ interface Props {
   // ActivePluginChip on each user message (see UserMessage in
   // ChatPane). Pass `null` (or omit) to render the full rail.
   pinnedPluginId?: string | null;
+  /** Project-pinned applied-plugin snapshot — hydrate composer chip on remount. */
+  pinnedAppliedPluginSnapshotId?: string | null;
   footerAccessory?: ReactNode;
   // Slot rendered in the composer's bottom toolbar, immediately right of the
   // "+" menu. Hosts the working-directory pill so the folder selector sits by
@@ -425,6 +423,19 @@ export interface ChatSendMeta {
   skillIds?: string[];
   /** Per-turn design system override (embed slide defaults, canvas one-confirm). */
   designSystemId?: string | null;
+  /**
+   * Canvas/Drive → Slide one-confirm pins. Surfaced on the turn meta so the
+   * first send can compose against the picked template even when React
+   * `project.metadata` has not yet refreshed after `patchProject`.
+   */
+  selectedDeckTemplateId?: string;
+  selectedDeckTemplateTitle?: string;
+  skipDiscoveryBrief?: boolean;
+  /**
+   * Clone LOOK seed → first AI content-fill turn. Forces create tone and
+   * keeps deck.html off the attachment list through ProjectView handleSend.
+   */
+  templateCloneContentFill?: boolean;
 }
 
 /**
@@ -449,6 +460,8 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       initialDraft,
       draftStorageKey,
       onEnsureProject,
+      onProjectFilesMaybeChanged,
+      onRequestOpenFile,
       commentAttachments = [],
       onRemoveCommentAttachment,
       skills = [],
@@ -478,6 +491,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       currentSkillId = null,
       onProjectSkillChange,
       pinnedPluginId = null,
+      pinnedAppliedPluginSnapshotId = null,
       footerAccessory,
       leadingAccessory,
       designSystemPicker,
@@ -503,7 +517,15 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
         ? activeProjectFileName
         : null;
     const activeFileDisplayName = activeFileContext ? lastPathSegment(activeFileContext) : null;
-    const [draft, setDraft] = useState(() => initialDraft ?? loadComposerDraft(draftStorageKey) ?? "");
+    const persistedComposerDraft = useMemo(
+      () => loadComposerDraftState(draftStorageKey),
+      // Only seed from storage on mount / storage-key change — not every render.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      [draftStorageKey],
+    );
+    const [draft, setDraft] = useState(
+      () => initialDraft ?? persistedComposerDraft.text,
+    );
     const composerRootRef = useRef<HTMLDivElement | null>(null);
     // Synchronous mirror of `draft`. Event handlers that mutate the draft off
     // a captured render closure (notably the annotation listener, where two
@@ -517,12 +539,16 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
     // conversation switches) so the event measures real chat-panel
     // entries rather than ChatComposer remounts. See PR #2285 review
     // 2026-05-20 04:08 for the rationale.
-    const [staged, setStaged] = useState<ChatAttachment[]>([]);
+    const [staged, setStaged] = useState<ChatAttachment[]>(
+      () => persistedComposerDraft.attachments,
+    );
     const attachedDriveAssetIds = useMemo(
       () => teamverDriveAssetIdsFromChatAttachments(staged),
       [staged],
     );
-    const nextAttachmentOrderRef = useRef(0);
+    const nextAttachmentOrderRef = useRef(
+      nextChatAttachmentOrder(persistedComposerDraft.attachments),
+    );
     const pendingAnnotationFilesRef = useRef<Map<string, File>>(new Map());
     const [pendingAnnotationPreviewUrls, setPendingAnnotationPreviewUrls] = useState<Record<string, string>>({});
     const [stagedVisualComments, setStagedVisualComments] = useState<ChatCommentAttachment[]>([]);
@@ -571,7 +597,19 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
     const [canvasSlideLaunchBusy, setCanvasSlideLaunchBusy] = useState(false);
     const [canvasSlideLaunchError, setCanvasSlideLaunchError] = useState<string | null>(null);
     const [canvasSlideLaunchAuthRelogin, setCanvasSlideLaunchAuthRelogin] = useState(false);
-    const [canvasSlideTemplateId, setCanvasSlideTemplateId] = useState<string>(CANVAS_CREATE_SLIDES_PLUGIN_ID);
+    const [canvasSlideTemplateId, setCanvasSlideTemplateId] = useState<string>(() => {
+      const pinned = projectMetadata?.selectedDeckTemplateId?.trim();
+      return pinned || CANVAS_CREATE_SLIDES_PLUGIN_ID;
+    });
+    // Re-entering a project remounts the composer; restore the pinned visual
+    // template so the picker/chip does not snap back to the default scenario.
+    useEffect(() => {
+      const pinned = projectMetadata?.selectedDeckTemplateId?.trim();
+      if (!pinned) return;
+      setCanvasSlideTemplateId((current) =>
+        current === CANVAS_CREATE_SLIDES_PLUGIN_ID || !current ? pinned : current,
+      );
+    }, [projectMetadata?.selectedDeckTemplateId]);
     const [canvasSlideUserPrompt, setCanvasSlideUserPrompt] = useState('');
     const [canvasSlideQuickSettings, setCanvasSlideQuickSettings] = useState<CanvasSlideQuickSettings>(
       DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS,
@@ -591,11 +629,12 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
     // deck-plugin cache — so even if the Canvas handoff lands before the
     // composer's own fetch settles, the picker still surfaces every deck
     // template instead of only the fallback tile.
-    const canvasSlideTemplates = useCanvasSlideLaunchTemplates({
-      active: canvasSlideLaunch !== null,
-      callerPlugins: installedPlugins,
-      locale,
-    });
+    const { options: canvasSlideTemplates, loading: canvasSlideTemplatesLoading } =
+      useCanvasSlideLaunchTemplates({
+        active: canvasSlideLaunch !== null,
+        callerPlugins: installedPlugins,
+        locale,
+      });
     const selectedCanvasSlideTemplate = useMemo(
       () => resolveCanvasSlideTemplate(canvasSlideTemplates, canvasSlideTemplateId),
       [canvasSlideTemplates, canvasSlideTemplateId],
@@ -605,6 +644,60 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
     const [detailsRecord, setDetailsRecord] = useState<InstalledPluginRecord | null>(null);
     const [activeAppliedPlugin, setActiveAppliedPlugin] =
       useState<AppliedPluginSnapshot | null>(null);
+    // Project remount clears React state — restore the pinned applied plugin
+    // so the composer chip / next-send snapshot survive page re-entry.
+    // Clearing the pin must also clear the local chip (ProjectView does this;
+    // keep the composer symmetric so stale snaps cannot re-attach after clear).
+    useEffect(() => {
+      const snapshotId = pinnedAppliedPluginSnapshotId?.trim();
+      if (!snapshotId) {
+        setActiveAppliedPlugin(null);
+        return;
+      }
+      let cancelled = false;
+      void fetchAppliedPluginSnapshot(snapshotId).then((snap) => {
+        if (cancelled || !snap) return;
+        setActiveAppliedPlugin((current) =>
+          current?.snapshotId === snapshotId ? current : snap,
+        );
+      });
+      return () => {
+        cancelled = true;
+      };
+    }, [pinnedAppliedPluginSnapshotId]);
+    // Latest metadata for pin clear — avoid wholesale PATCH from a stale React
+    // closure when the user removes chips quickly after other metadata updates.
+    const projectMetadataRef = useRef(projectMetadata);
+    projectMetadataRef.current = projectMetadata;
+    // Ids last hydrated from durable Home pins — used to prune chips when pins
+    // shrink without wiping mid-chat staged MCP/connectors.
+    const pinnedMcpIdsRef = useRef<Set<string>>(new Set());
+    const pinnedConnectorIdsRef = useRef<Set<string>>(new Set());
+    // Home create persists MCP/connector pins on project.metadata. Remount the
+    // composer chips from those refs so re-entry matches what the daemon still
+    // injects via projectMetadataContextSelection.
+    useEffect(() => {
+      const mcpRefs = projectMetadata?.contextMcpServers ?? [];
+      const connectorRefs = projectMetadata?.contextConnectors ?? [];
+      const nextMcpPins = new Set(
+        mcpRefs.map((ref) => ref.id?.trim()).filter((id): id is string => Boolean(id)),
+      );
+      const nextConnectorPins = new Set(
+        connectorRefs.map((ref) => ref.id?.trim()).filter((id): id is string => Boolean(id)),
+      );
+      setStagedMcpServers((current) =>
+        reconcileStagedMcpFromProjectContext(current, mcpRefs, pinnedMcpIdsRef.current),
+      );
+      setStagedConnectors((current) =>
+        reconcileStagedConnectorsFromProjectContext(
+          current,
+          connectorRefs,
+          pinnedConnectorIdsRef.current,
+        ),
+      );
+      pinnedMcpIdsRef.current = nextMcpPins;
+      pinnedConnectorIdsRef.current = nextConnectorPins;
+    }, [projectId, projectMetadata?.contextMcpServers, projectMetadata?.contextConnectors]);
     const pluginsSectionRef = useRef<PluginsSectionHandle | null>(null);
     const inlineBackedPluginRef = useRef<{ id: string; label: string } | null>(null);
     // Consolidated "tools" popover — a single dropdown anchored to the
@@ -798,8 +891,8 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
     }, [initialDraft, draft]);
 
     useEffect(() => {
-      saveComposerDraft(draftStorageKey, draft);
-    }, [draftStorageKey, draft]);
+      saveComposerDraftState(draftStorageKey, draft, staged);
+    }, [draftStorageKey, draft, staged]);
 
     useEffect(() => {
       if (previousWorkspaceContextIdRef.current === activeWorkspaceContextId) return;
@@ -842,13 +935,15 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
     // here to avoid showing skills the user has disabled via Settings.
 
     // Lazy-fetch installed plugins once on mount; the tools-menu Plugins
-    // tab and the @-mention picker both consume this list.
+    // tab and the @-mention picker both consume this list. Page through the
+    // same deck catalog the Canvas→Slide modal uses so the picker is not
+    // capped at the first Community page of 24.
     useEffect(() => {
       if (!projectId || !composerEngaged) return;
       let cancelled = false;
-      void listPlugins({ mode: 'deck', limit: 24 }).then((rows) => {
+      void fetchCanvasSlideTemplatePlugins().then((rows) => {
         if (cancelled) return;
-        setInstalledPlugins(rows);
+        setInstalledPlugins([...rows]);
       });
       return () => {
         cancelled = true;
@@ -1077,7 +1172,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
           query.replace(/```/g, '`\u200b`\u200b`'),
           '```',
           'If the OD command fails because Tavily is not configured or unavailable, report that error, then use your own search capability as fallback and label the fallback clearly.',
-          'After the command returns JSON or fallback search results, write a reusable Markdown report into Design Files at `research/<safe-query-slug>.md` or another fresh project-relative path.',
+          'After the command returns JSON or fallback search results, write a reusable Markdown report into Project files at `research/<safe-query-slug>.md` or another fresh project-relative path.',
           'The report must include the query, fetched time, short summary, key findings, source list with [1], [2] citations, and a note that source content is external untrusted evidence.',
           'Then summarize the findings with citations by source index and mention the Markdown report path.',
         ].join('\n'),
@@ -1127,7 +1222,20 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       () => ({
         setDraft: (text: string) => {
           setDraft(text);
-          editorRef.current?.setText(text);
+          // Keep `@file.webp` / skill pills when an external surface reseeds
+          // the composer — plain setText demotes file mentions to TextNodes.
+          editorRef.current?.setText(
+            text,
+            buildComposerMentionEntities({
+              connectors,
+              files: projectFiles,
+              mcpServers: enabledMcpServers,
+              plugins: pluginsForComposer,
+              skills: skillsForComposer,
+              staged,
+              workspaceContexts,
+            }),
+          );
           editorRef.current?.focus();
           seededRef.current = true;
         },
@@ -1144,28 +1252,26 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
           // since queueing) are skipped rather than crashing. The applied
           // plugin is restored from its full snapshot, so it needs no lookup.
           const ctx = meta?.context;
-          setStagedSkills(
-            ctx?.skillIds
-              ? ctx.skillIds
-                  .map((id) => skills.find((s) => s.id === id))
-                  .filter((s): s is SkillSummary => Boolean(s))
-              : [],
-          );
-          setStagedMcpServers(
-            ctx?.mcpServerIds
-              ? ctx.mcpServerIds
-                  .map((id) => mcpServers.find((s) => s.id === id))
-                  .filter((s): s is McpServerConfig => Boolean(s))
-              : [],
-          );
-          setStagedConnectors(
-            ctx?.connectorIds
-              ? ctx.connectorIds
-                  .map((id) => connectors.find((c) => c.id === id))
-                  .filter((c): c is ConnectorDetail => Boolean(c))
-              : [],
-          );
-          setStagedWorkspaceContexts(ctx?.workspaceItems ?? []);
+          const restoredSkills = ctx?.skillIds
+            ? ctx.skillIds
+                .map((id) => skills.find((s) => s.id === id))
+                .filter((s): s is SkillSummary => Boolean(s))
+            : [];
+          const restoredMcpServers = ctx?.mcpServerIds
+            ? ctx.mcpServerIds
+                .map((id) => mcpServers.find((s) => s.id === id))
+                .filter((s): s is McpServerConfig => Boolean(s))
+            : [];
+          const restoredConnectors = ctx?.connectorIds
+            ? ctx.connectorIds
+                .map((id) => connectors.find((c) => c.id === id))
+                .filter((c): c is ConnectorDetail => Boolean(c))
+            : [];
+          const restoredWorkspace = ctx?.workspaceItems ?? [];
+          setStagedSkills(restoredSkills);
+          setStagedMcpServers(restoredMcpServers);
+          setStagedConnectors(restoredConnectors);
+          setStagedWorkspaceContexts(restoredWorkspace);
           const restoredAppliedPlugin = meta?.appliedPluginSnapshot ?? null;
           setActiveAppliedPlugin(restoredAppliedPlugin);
           inlineBackedPluginRef.current = inlineBackedPluginFromRestoredDraft(
@@ -1176,7 +1282,21 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
           setUploadError(null);
           setMention(null);
           setSlash(null);
-          editorRef.current?.setText(text);
+          // Seed with attachment/file entities in the same tick — otherwise
+          // setText runs before React applies `staged` and `@file.webp` stays
+          // plain text instead of a chip.
+          editorRef.current?.setText(
+            text,
+            buildComposerMentionEntities({
+              connectors: restoredConnectors.length > 0 ? restoredConnectors : connectors,
+              files: projectFiles,
+              mcpServers: restoredMcpServers.length > 0 ? restoredMcpServers : enabledMcpServers,
+              plugins: pluginsForComposer,
+              skills: restoredSkills.length > 0 ? restoredSkills : skillsForComposer,
+              staged: orderedAttachments,
+              workspaceContexts: restoredWorkspace,
+            }),
+          );
           editorRef.current?.focus();
           seededRef.current = true;
         },
@@ -1196,7 +1316,17 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
           setDesignToolboxOpen(true);
         },
       }),
-      [connectors, mcpServers, pluginsForComposer, skills]
+      [
+        connectors,
+        enabledMcpServers,
+        mcpServers,
+        pluginsForComposer,
+        projectFiles,
+        skills,
+        skillsForComposer,
+        staged,
+        workspaceContexts,
+      ]
     );
 
     function reset() {
@@ -1227,9 +1357,9 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       return sortChatCommentAttachmentsByOrder([...commentAttachments, ...stagedVisualComments, ...extra]);
     }
 
-    /** Visual marks ride as staged image files; show only non-visual comment chips. */
+    /** Show all comment chips, including visual marks with screenshot thumbnails. */
     function stagedVisibleCommentAttachments(extra: ChatCommentAttachment[] = []): ChatCommentAttachment[] {
-      return currentCommentAttachments(extra).filter((item) => !isVisualCommentAttachment(item));
+      return currentCommentAttachments(extra);
     }
 
     function currentRunContextMeta(): ChatSendMeta | undefined {
@@ -1397,17 +1527,21 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
         }
       }
 
+      // After refresh, draft may still have `@image.webp` pills while `staged`
+      // was empty (legacy text-only localStorage). Rehydrate before send so
+      // vision + `[Attached image embed]` contracts are not dropped.
+      const hydratedFromMentions = mergeImageMentionAttachments(flushedAttachments, prompt);
       const nextAttachments = excludeAttachmentsBackedByVisualScreenshots(
-        activeFileContext && !flushedAttachments.some((attachment) => attachment.path === activeFileContext)
+        activeFileContext && !hydratedFromMentions.some((attachment) => attachment.path === activeFileContext)
           ? [
               {
                 path: activeFileContext,
                 name: activeFileDisplayName ?? activeFileContext,
                 kind: 'file' as const,
               },
-              ...flushedAttachments,
+              ...hydratedFromMentions,
             ]
-          : flushedAttachments,
+          : hydratedFromMentions,
         flushedComments,
       );
       onSend(prompt, nextAttachments, dedupeCommentAttachments(flushedComments), meta);
@@ -1426,17 +1560,35 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
 
     function appendOrderedStagedAttachments(attachments: ChatAttachment[]) {
       if (attachments.length === 0) return;
+      const knownPaths = new Set(staged.map((attachment) => attachment.path));
+      const nextAttachments = attachments.filter((attachment) => !knownPaths.has(attachment.path));
       setStaged((current) => {
-        const knownPaths = new Set(current.map((attachment) => attachment.path));
-        const nextAttachments = attachments.filter((attachment) => !knownPaths.has(attachment.path));
-        if (nextAttachments.length === 0) return current;
-        const next = sortChatAttachmentsByOrder([...current, ...nextAttachments]);
+        const currentPaths = new Set(current.map((attachment) => attachment.path));
+        const additions = attachments.filter((attachment) => !currentPaths.has(attachment.path));
+        if (additions.length === 0) return current;
+        const next = sortChatAttachmentsByOrder([...current, ...additions]);
         nextAttachmentOrderRef.current = Math.max(
           nextAttachmentOrderRef.current,
           nextChatAttachmentOrder(next),
         );
         return next;
       });
+      // Keep durable `@path` mentions alongside chips (paperclip / Drive /
+      // annotation uploads). Refresh recovery scans content when
+      // attachments_json is empty.
+      const insertedTokens = new Set<string>();
+      for (const item of nextAttachments) {
+        if (item.kind !== 'image' && !looksLikeImage(item.path)) continue;
+        const path = item.path.trim();
+        if (!path) continue;
+        const token = inlineMentionToken(path);
+        if (draftRef.current.includes(token) || insertedTokens.has(token)) continue;
+        insertedTokens.add(token);
+        editorRef.current?.insertMention({
+          token,
+          entity: { id: path, kind: 'file', label: path, title: `File: ${path}` },
+        });
+      }
     }
 
     function appendContextAttachment(filePath: string) {
@@ -1459,7 +1611,18 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
     function replaceEditorDraft(text: string) {
       draftRef.current = text;
       setDraft(text);
-      editorRef.current?.setText(text);
+      editorRef.current?.setText(
+        text,
+        buildComposerMentionEntities({
+          connectors,
+          files: projectFiles,
+          mcpServers: enabledMcpServers,
+          plugins: pluginsForComposer,
+          skills: skillsForComposer,
+          staged,
+          workspaceContexts,
+        }),
+      );
     }
 
     async function insertSkillMention(skill: SkillSummary) {
@@ -1580,6 +1743,17 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
         return;
       }
 
+      if (resource.kind === 'file') {
+        const path = resource.file.path ?? resource.file.name;
+        // Stage as a composer attachment chip + short @mention only.
+        // Do NOT dump the global resource index / workflow boilerplate into
+        // the visible draft — that text is noisy for uploaded images and
+        // unnecessary because the attachment already rides with the turn.
+        insertMention(path);
+        editorRef.current?.focus();
+        return;
+      }
+
       const prompt = designToolboxResourcePrompt({
         resource,
         workspaceItem: visibleWorkspaceContext,
@@ -1621,13 +1795,6 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
         return;
       }
 
-      if (resource.kind === 'file') {
-        const path = resource.file.path ?? resource.file.name;
-        appendContextAttachment(path);
-        applyDesignToolboxDraft(`${inlineMentionToken(path)}\n${prompt}`);
-        return;
-      }
-
       applyDesignToolboxDraft(prompt);
     }
 
@@ -1647,6 +1814,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
         id,
         server?.label ?? '',
       ]));
+      void clearPinnedProjectContextRef('contextMcpServers', id);
     }
 
     function removeStagedConnector(id: string) {
@@ -1657,6 +1825,29 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
         id,
         connector?.name ?? '',
       ]));
+      void clearPinnedProjectContextRef('contextConnectors', id);
+    }
+
+    async function clearPinnedProjectContextRef(
+      field: 'contextMcpServers' | 'contextConnectors',
+      id: string,
+    ): Promise<void> {
+      if (!projectId) return;
+      const base = projectMetadataRef.current;
+      if (!base) return;
+      const pinned = base[field];
+      if (!Array.isArray(pinned) || !pinned.some((entry) => entry.id === id)) return;
+      const nextList = pinned.filter((entry) => entry.id !== id);
+      const metadata: ProjectMetadata = {
+        ...base,
+        ...(nextList.length > 0 ? { [field]: nextList } : { [field]: [] }),
+      };
+      const patched = await patchProject(projectId, { metadata });
+      // Failed PATCH must not overwrite newer local/parent state with a stale
+      // optimistic snapshot. On success, prefer server metadata; if the daemon
+      // omits it, keep the payload we just acknowledged.
+      if (!patched) return;
+      onProjectMetadataChange?.(patched.metadata ?? metadata);
     }
 
     function removeWorkspaceContext(id: string) {
@@ -1724,8 +1915,55 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       try {
         const result = await uploadProjectFiles(id, allowedFiles);
         if (result.uploaded.length > 0) {
-          const orderedUploaded = assignChatAttachmentOrders(result.uploaded, orderStart);
-          appendOrderedStagedAttachments(orderedUploaded);
+          for (const item of result.uploaded) {
+            clearProjectRawFileMissing(id, item.path);
+          }
+          const ready = await uploadedImagesReadableOnDisk(id, result.uploaded);
+          const { staged, coldImageCount } = stageReadableUploadedAttachments(
+            result.uploaded,
+            ready,
+          );
+          if (staged.length > 0) {
+            const orderedUploaded = assignChatAttachmentOrders(staged, orderStart);
+            appendOrderedStagedAttachments(orderedUploaded);
+          }
+          // Keep Design Files / preview heal index in sync with on-disk uploads
+          // before the next send refreshes `/files`.
+          onProjectFilesMaybeChanged?.();
+          if (coldImageCount > 0) {
+            // Chips are staged optimistically; send-time / preview fetch retries
+            // with NFC/NFD + Drive alternates. Show an info banner so the user
+            // knows to wait a moment before sending if S3 sync is still catching up.
+            const banner = slideOnlyMvp
+              ? `이미지 ${coldImageCount}개가 아직 준비 중입니다. 잠시 후 전송해 주세요.`
+              : `${coldImageCount} image(s) are still syncing — wait a moment before sending.`;
+            setUploadError(banner);
+            // Background poll — once every cold image becomes readable, clear
+            // the banner so the user is not left with a stale warning after
+            // sync-down catches up. Bounded to ~15s (5 retries × 3s) so a
+            // truly stuck upload eventually stops re-checking.
+            const coldItems = result.uploaded.filter(
+              (item) => item.kind === 'image' && !ready.some((r) => r.path === item.path),
+            );
+            if (coldItems.length > 0) {
+              void (async () => {
+                for (let attempt = 0; attempt < 5; attempt += 1) {
+                  await new Promise((resolve) => setTimeout(resolve, 3000));
+                  const stillCold = await uploadedImagesReadableOnDisk(
+                    id,
+                    coldItems,
+                    [0],
+                  );
+                  if (stillCold.length === coldItems.length) {
+                    // All previously-cold images now readable — clear only if
+                    // the banner we set is still the current error.
+                    setUploadError((current) => (current === banner ? null : current));
+                    return;
+                  }
+                }
+              })();
+            }
+          }
         }
         const partial = result.failed.length > 0;
         if (partial) {
@@ -1737,7 +1975,11 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
               slideOnlyMvp,
             }),
           );
-          console.warn('Some attachments failed to upload', result.failed);
+          devLog.warn('Some attachments failed to upload', {
+            failedCount: result.failed.length,
+            uploadedCount: result.uploaded.length,
+            error: result.error,
+          });
         }
         trackFileUploadResult(analytics.track, {
           page_name: 'chat_panel',
@@ -1802,8 +2044,26 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       try {
         const result = await importTeamverDriveAssets(id, allowedAssets);
         if (result.imported.length > 0) {
+          for (const item of result.imported) {
+            clearProjectRawFileMissing(id, item.path);
+          }
           const attachments = driveImportedToChatAttachments(result.imported);
-          appendOrderedStagedAttachments(assignChatAttachmentOrders(attachments, orderStart));
+          // Wait for S3/scratch materialization before staging so preview +
+          // vision blocks do not race a cold refs/drive path.
+          const ready = await uploadedImagesReadableOnDisk(id, attachments);
+          const { staged: stagedAttachments, coldImageCount } =
+            stageReadableUploadedAttachments(attachments, ready);
+          if (stagedAttachments.length > 0) {
+            appendOrderedStagedAttachments(
+              assignChatAttachmentOrders(stagedAttachments, orderStart),
+            );
+          }
+          onProjectFilesMaybeChanged?.();
+          if (coldImageCount > 0) {
+            setUploadError(
+              `Drive 이미지 ${coldImageCount}개가 아직 준비 중입니다. 잠시 후 전송해 주세요.`,
+            );
+          }
         }
         if (result.partial) {
           const failedById = new Map(result.failed.map((item) => [item.assetId, item.errorCode]));
@@ -1844,9 +2104,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       if (!canvasSlideLaunch || canvasSlideLaunchBusy || streaming) return;
       if (!teamverDriveImportAllowed) {
         setCanvasSlideLaunchError(
-          canvasSlideLaunch.kind === "canvas"
-            ? "Teamver 작업공간을 먼저 선택한 뒤 다시 시도하세요."
-            : formatDriveImportErrorForUser("teamver_workspace_required"),
+          formatDriveImportErrorForUser("teamver_workspace_required"),
         );
         return;
       }
@@ -1863,53 +2121,182 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
           const handoff = canvasSlideLaunch.handoff;
           const promptForRun = canvasSlideUserPrompt;
           const result = await importTeamverCanvas(id, handoff);
+          for (const item of result.imported) {
+            clearProjectRawFileMissing(id, item.path);
+          }
+          const importedAttachments = canvasImportedToChatAttachments(result.imported);
+          const readyCanvas = await uploadedImagesReadableOnDisk(id, importedAttachments);
+          const { staged: readableCanvas, coldImageCount: coldCanvasImages } =
+            stageReadableUploadedAttachments(importedAttachments, readyCanvas);
+          if (importedAttachments.some((item) => item.kind === 'image') && readableCanvas.every((item) => item.kind !== 'image')) {
+            setCanvasSlideLaunchError(
+              'Canvas에서 가져온 이미지를 아직 읽을 수 없습니다. 잠시 후 다시 시도해 주세요.',
+            );
+            return;
+          }
+          if (coldCanvasImages > 0) {
+            setCanvasSlideLaunchError(
+              `Canvas 이미지 ${coldCanvasImages}개를 아직 읽을 수 없어 제외하고 계속합니다.`,
+            );
+          }
           const attachments = assignChatAttachmentOrders(
-            canvasImportedToChatAttachments(result.imported),
+            readableCanvas,
             Math.max(nextAttachmentOrderRef.current, nextChatAttachmentOrder(staged)),
           );
+          onProjectFilesMaybeChanged?.();
+          // Explicit visual templates (Daisy Days, etc.) own the look via the
+          // example.html kit. Do not auto-bind Neutral Modern here — HomeView
+          // already skips it; ChatComposer used to re-patch designSystemId=default
+          // and reintroduce skeleton terracotta / slate priors.
           const designSystemIdForRun =
-            currentDesignSystemId ?? embedSlideDesignSystemFallbackId ?? null;
+            slideOnlyMvp && isExplicitCanvasSlideVisualTemplate(selectedCanvasSlideTemplate)
+              ? (currentDesignSystemId ?? null)
+              : (currentDesignSystemId ?? embedSlideDesignSystemFallbackId ?? null);
           const templateBinding = buildSlideOnlyDeckTemplateCreateBinding(
             selectedCanvasSlideTemplate,
             { slideOnlyMvp },
           );
           const projectPatch: Parameters<typeof patchProject>[1] = {};
-          if (designSystemIdForRun && !currentDesignSystemId) {
+          if (
+            designSystemIdForRun
+            && !currentDesignSystemId
+            && !(slideOnlyMvp && isExplicitCanvasSlideVisualTemplate(selectedCanvasSlideTemplate))
+          ) {
             projectPatch.designSystemId = designSystemIdForRun;
           }
-          if (templateBinding.projectMetadata.selectedDeckTemplateId) {
-            projectPatch.metadata = {
-              ...(projectMetadata ?? {}),
-              ...templateBinding.projectMetadata,
-            };
-          }
+          // Always persist Canvas→Slide skipDiscovery / kind / template pins.
+          // Default template launches have no selectedDeckTemplateId but still
+          // must keep skipDiscoveryBrief after reload/reattach.
+          projectPatch.metadata = {
+            ...(projectMetadata ?? {}),
+            ...templateBinding.projectMetadata,
+          };
           if (Object.keys(projectPatch).length > 0) {
             const patched = await patchProject(id, projectPatch);
             if (patched) onActiveDesignSystemChange?.(patched);
           }
           const sourceBrief = canvasCreateSlidesSourceBrief(handoff);
-          consumeTeamverCanvasLaunchHandoff();
-          setCanvasSlideLaunch(null);
-          setCanvasSlideLaunchError(null);
-          setCanvasSlideUserPrompt('');
-          setCanvasSlideQuickSettings(DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS);
+          // Explicit visual templates: daemon Clones example.html from plugin
+          // FS and content-swaps Source headings into deck.html as an initial
+          // preview seed. Continue into the model run so the AI generates
+          // real content from the source + user prompt.
+          if (
+            slideOnlyMvp
+            && isExplicitCanvasSlideVisualTemplate(selectedCanvasSlideTemplate)
+            && templateBinding.projectMetadata.selectedDeckTemplateId
+          ) {
+            const seeded = await seedTemplateClonedDeck({
+              projectId: id,
+              pluginId: templateBinding.projectMetadata.selectedDeckTemplateId,
+              templateTitle: selectedCanvasSlideTemplate.title,
+              sourceBrief,
+              userInstruction: promptForRun,
+              deckTitle:
+                sanitizeTemplateCloneDeckTitle(handoff.title)
+                || sanitizeTemplateCloneDeckTitle(handoff.threadTitle)
+                || null,
+              slideCountHint: canvasSlideQuickLengthToSlideCount(
+                canvasSlideQuickSettings.length,
+              ),
+            });
+            if (seeded.ok) {
+              onProjectFilesMaybeChanged?.();
+              onRequestOpenFile?.(seeded.fileName);
+            }
+            consumeTeamverCanvasLaunchHandoff();
+            setCanvasSlideLaunch(null);
+            setCanvasSlideLaunchError(null);
+            setCanvasSlideUserPrompt('');
+            setCanvasSlideQuickSettings(DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS);
+            // Clone LOOK seed is optional. Fill always runs as compact CREATE
+            // so a clone miss cannot fall through to Neutral / instruction dump.
+            // Do NOT attach deck.html (truncated mid-CSS anchors a max_tokens hang).
+            // Preview still opens via onRequestOpenFile when clone succeeded.
+            const fillSeed = buildTemplateCloneContentFillSeed({
+              userInstruction: promptForRun,
+              sourceBrief,
+              templateTitle: selectedCanvasSlideTemplate.title,
+              hasSourceMaterial: true,
+              slideCountHint: canvasSlideQuickLengthToSlideCount(
+                canvasSlideQuickSettings.length,
+              ),
+            });
+            const baseMeta = currentRunContextMeta();
+            const canvasMeta = canvasCreateSlidesTurnMeta(selectedCanvasSlideTemplate.id, {
+              designSystemId: designSystemIdForRun,
+              mergeContext: baseMeta?.context,
+            });
+            const fillSlideCount = canvasSlideQuickLengthToSlideCount(
+              canvasSlideQuickSettings.length,
+            );
+            sendComposedTurn(
+              fillSeed,
+              withoutCanonicalDeckAttachments(attachments),
+              [],
+              {
+                ...baseMeta,
+                ...canvasMeta,
+                skipDiscoveryBrief: true,
+                templateCloneContentFill: true,
+                pluginInputs: withTemplateCloneFillPluginInputs(
+                  canvasCreateSlidesPluginInputs(
+                    null,
+                    selectedCanvasSlideTemplate.title,
+                    sourceBrief,
+                    promptForRun,
+                    canvasSlideQuickSettings,
+                    { hasSourceMaterial: true },
+                  ),
+                  fillSlideCount,
+                ),
+                ...(templateBinding.projectMetadata.selectedDeckTemplateId
+                  ? {
+                      selectedDeckTemplateId:
+                        templateBinding.projectMetadata.selectedDeckTemplateId,
+                      selectedDeckTemplateTitle:
+                        templateBinding.projectMetadata.selectedDeckTemplateTitle,
+                    }
+                  : {}),
+              },
+            );
+            void patchProject(id, {
+              metadata: {
+                ...(projectMetadata ?? {}),
+                ...templateBinding.projectMetadata,
+                templateClonedDeckSeeded: Boolean(seeded.ok) && !seeded.preservedFilled,
+                templateCloneContentFillPending: false,
+              },
+            });
+            return;
+          }
           const baseMeta = currentRunContextMeta();
           const canvasMeta = canvasCreateSlidesTurnMeta(selectedCanvasSlideTemplate.id, {
             designSystemId: designSystemIdForRun,
             mergeContext: baseMeta?.context,
           });
-          sendComposedTurn(
+          const sent = sendComposedTurn(
             canvasCreateSlidesRunPrompt(
               selectedCanvasSlideTemplate.title,
               sourceBrief,
               promptForRun,
               canvasSlideQuickSettings,
+              { hasSourceMaterial: true, templateId: selectedCanvasSlideTemplate.id },
             ),
             attachments,
             [],
             {
               ...baseMeta,
               ...canvasMeta,
+              // Race-safe: patchProject metadata may not be in React state yet.
+              skipDiscoveryBrief: true,
+              ...(templateBinding.projectMetadata.selectedDeckTemplateId
+                ? {
+                    selectedDeckTemplateId:
+                      templateBinding.projectMetadata.selectedDeckTemplateId,
+                    selectedDeckTemplateTitle:
+                      templateBinding.projectMetadata.selectedDeckTemplateTitle,
+                  }
+                : {}),
               pluginInputs: {
                 ...canvasCreateSlidesPluginInputs(
                   handoff.title?.trim()
@@ -1921,6 +2308,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
                   sourceBrief,
                   promptForRun,
                   canvasSlideQuickSettings,
+                  { hasSourceMaterial: true },
                 ),
                 ...templateBinding.pluginInputsPatch,
               },
@@ -1930,6 +2318,15 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
               },
             },
           );
+          // Consume handoff only after send is accepted so a failed compose
+          // keeps the modal/URL token for retry (aligned with HomeView).
+          if (sent) {
+            consumeTeamverCanvasLaunchHandoff();
+            setCanvasSlideLaunch(null);
+            setCanvasSlideLaunchError(null);
+            setCanvasSlideUserPrompt('');
+            setCanvasSlideQuickSettings(DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS);
+          }
           return;
         }
 
@@ -1950,54 +2347,172 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
           setCanvasSlideLaunchError(formatDriveImportErrorForUser(errorCode));
           return;
         }
+        for (const item of result.imported) {
+          clearProjectRawFileMissing(id, item.path);
+        }
+        const importedAttachments = driveImportedToChatAttachments(result.imported);
+        const readyImported = await uploadedImagesReadableOnDisk(id, importedAttachments);
+        const { staged: readableImported, coldImageCount: coldDriveImages } =
+          stageReadableUploadedAttachments(importedAttachments, readyImported);
+        if (
+          importedAttachments.some((item) => item.kind === 'image')
+          && readableImported.every((item) => item.kind !== 'image')
+        ) {
+          setCanvasSlideLaunchError(
+            'Drive에서 가져온 이미지를 아직 읽을 수 없습니다. 잠시 후 다시 시도해 주세요.',
+          );
+          return;
+        }
         const attachments = assignChatAttachmentOrders(
-          driveImportedToChatAttachments(result.imported),
+          readableImported,
           Math.max(nextAttachmentOrderRef.current, nextChatAttachmentOrder(staged)),
         );
+        onProjectFilesMaybeChanged?.();
+        if (coldDriveImages > 0) {
+          setCanvasSlideLaunchError(
+            `Drive 이미지 ${coldDriveImages}개를 아직 읽을 수 없어 제외하고 계속합니다.`,
+          );
+        }
         const designSystemIdForRun =
-          currentDesignSystemId ?? embedSlideDesignSystemFallbackId ?? null;
+          slideOnlyMvp && isExplicitCanvasSlideVisualTemplate(selectedCanvasSlideTemplate)
+            ? (currentDesignSystemId ?? null)
+            : (currentDesignSystemId ?? embedSlideDesignSystemFallbackId ?? null);
         const templateBinding = buildSlideOnlyDeckTemplateCreateBinding(
           selectedCanvasSlideTemplate,
           { slideOnlyMvp },
         );
         const projectPatch: Parameters<typeof patchProject>[1] = {};
-        if (designSystemIdForRun && !currentDesignSystemId) {
+        if (
+          designSystemIdForRun
+          && !currentDesignSystemId
+          && !(slideOnlyMvp && isExplicitCanvasSlideVisualTemplate(selectedCanvasSlideTemplate))
+        ) {
           projectPatch.designSystemId = designSystemIdForRun;
         }
-        if (templateBinding.projectMetadata.selectedDeckTemplateId) {
-          projectPatch.metadata = {
-            ...(projectMetadata ?? {}),
-            ...templateBinding.projectMetadata,
-          };
-        }
+        // Always persist Canvas→Slide skipDiscovery / kind / template pins
+        // (including default template launches without selectedDeckTemplateId).
+        projectPatch.metadata = {
+          ...(projectMetadata ?? {}),
+          ...templateBinding.projectMetadata,
+        };
         if (Object.keys(projectPatch).length > 0) {
           const patched = await patchProject(id, projectPatch);
           if (patched) onActiveDesignSystemChange?.(patched);
         }
         const sourceBrief = driveCreateSlidesSourceBrief(asset);
-        consumeTeamverDriveLaunchHandoff();
-        setCanvasSlideLaunch(null);
-        setCanvasSlideLaunchError(null);
-        setCanvasSlideUserPrompt('');
-        setCanvasSlideQuickSettings(DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS);
+        if (
+          slideOnlyMvp
+          && isExplicitCanvasSlideVisualTemplate(selectedCanvasSlideTemplate)
+          && templateBinding.projectMetadata.selectedDeckTemplateId
+        ) {
+          const seeded = await seedTemplateClonedDeck({
+            projectId: id,
+            pluginId: templateBinding.projectMetadata.selectedDeckTemplateId,
+            templateTitle: selectedCanvasSlideTemplate.title,
+            sourceBrief,
+            userInstruction: promptForRun,
+            deckTitle: sanitizeTemplateCloneDeckTitle(asset.filename) || null,
+            slideCountHint: canvasSlideQuickLengthToSlideCount(
+              canvasSlideQuickSettings.length,
+            ),
+          });
+          if (seeded.ok) {
+            onProjectFilesMaybeChanged?.();
+            onRequestOpenFile?.(seeded.fileName);
+          }
+          consumeTeamverDriveLaunchHandoff();
+          setCanvasSlideLaunch(null);
+          setCanvasSlideLaunchError(null);
+          setCanvasSlideUserPrompt('');
+          setCanvasSlideQuickSettings(DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS);
+          // Clone LOOK seed is optional. Fill always runs as compact CREATE
+          // so a clone miss cannot fall through to Neutral / instruction dump.
+          const fillSeed = buildTemplateCloneContentFillSeed({
+            userInstruction: promptForRun,
+            sourceBrief,
+            templateTitle: selectedCanvasSlideTemplate.title,
+            hasSourceMaterial: true,
+            slideCountHint: canvasSlideQuickLengthToSlideCount(
+              canvasSlideQuickSettings.length,
+            ),
+          });
+          const baseMeta = currentRunContextMeta();
+          const canvasMeta = canvasCreateSlidesTurnMeta(selectedCanvasSlideTemplate.id, {
+            designSystemId: designSystemIdForRun,
+            mergeContext: baseMeta?.context,
+          });
+          const fillSlideCount = canvasSlideQuickLengthToSlideCount(
+            canvasSlideQuickSettings.length,
+          );
+          sendComposedTurn(
+            fillSeed,
+            withoutCanonicalDeckAttachments(attachments),
+            [],
+            {
+              ...baseMeta,
+              ...canvasMeta,
+              skipDiscoveryBrief: true,
+              templateCloneContentFill: true,
+              pluginInputs: withTemplateCloneFillPluginInputs(
+                canvasCreateSlidesPluginInputs(
+                  null,
+                  selectedCanvasSlideTemplate.title,
+                  sourceBrief,
+                  promptForRun,
+                  canvasSlideQuickSettings,
+                  { hasSourceMaterial: true },
+                ),
+                fillSlideCount,
+              ),
+              ...(templateBinding.projectMetadata.selectedDeckTemplateId
+                ? {
+                    selectedDeckTemplateId:
+                      templateBinding.projectMetadata.selectedDeckTemplateId,
+                    selectedDeckTemplateTitle:
+                      templateBinding.projectMetadata.selectedDeckTemplateTitle,
+                  }
+                : {}),
+            },
+          );
+          void patchProject(id, {
+            metadata: {
+              ...(projectMetadata ?? {}),
+              ...templateBinding.projectMetadata,
+              templateClonedDeckSeeded: Boolean(seeded.ok) && !seeded.preservedFilled,
+              templateCloneContentFillPending: false,
+            },
+          });
+          return;
+        }
         {
           const baseMeta = currentRunContextMeta();
           const canvasMeta = canvasCreateSlidesTurnMeta(selectedCanvasSlideTemplate.id, {
             designSystemId: designSystemIdForRun,
             mergeContext: baseMeta?.context,
           });
-          sendComposedTurn(
+          const sent = sendComposedTurn(
             canvasCreateSlidesRunPrompt(
               selectedCanvasSlideTemplate.title,
               sourceBrief,
               promptForRun,
               canvasSlideQuickSettings,
+              { hasSourceMaterial: true, templateId: selectedCanvasSlideTemplate.id },
             ),
             attachments,
             [],
             {
               ...baseMeta,
               ...canvasMeta,
+              // Race-safe: patchProject metadata may not be in React state yet.
+              skipDiscoveryBrief: true,
+              ...(templateBinding.projectMetadata.selectedDeckTemplateId
+                ? {
+                    selectedDeckTemplateId:
+                      templateBinding.projectMetadata.selectedDeckTemplateId,
+                    selectedDeckTemplateTitle:
+                      templateBinding.projectMetadata.selectedDeckTemplateTitle,
+                  }
+                : {}),
               pluginInputs: {
                 ...canvasCreateSlidesPluginInputs(
                   asset.filename ?? asset.assetId,
@@ -2005,6 +2520,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
                   sourceBrief,
                   promptForRun,
                   canvasSlideQuickSettings,
+                  { hasSourceMaterial: true },
                 ),
                 ...templateBinding.pluginInputsPatch,
               },
@@ -2014,6 +2530,13 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
               },
             },
           );
+          if (sent) {
+            consumeTeamverDriveLaunchHandoff();
+            setCanvasSlideLaunch(null);
+            setCanvasSlideLaunchError(null);
+            setCanvasSlideUserPrompt('');
+            setCanvasSlideQuickSettings(DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS);
+          }
         }
       } catch (err) {
         if (isMainSsoUserMismatchError(err)) {
@@ -2050,7 +2573,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
         await uploadFiles(files);
         return true;
       } catch (err) {
-        console.warn('Could not read image from clipboard', err);
+        devLog.warn('Could not read image from clipboard', err);
         return false;
       }
     }
@@ -2070,6 +2593,51 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
           let visualAttachmentInput: Parameters<typeof buildVisualAnnotationAttachment>[0] | null = null;
           let visualAttachment: ChatCommentAttachment | null = null;
           try {
+            const buildVisualAttachmentInputFromAnnotationDetail = (
+              order: number,
+              idSeed: string,
+              screenshotPath: string,
+            ): Parameters<typeof buildVisualAnnotationAttachment>[0] => {
+              const bounds = detail.bounds ?? { x: 0, y: 0, width: 0, height: 0 };
+              const inferredMarkKind =
+                detail.markKind
+                ?? (detail.bounds ? 'stroke' : detail.target ? 'click' : 'stroke');
+              return {
+                order,
+                idSeed,
+                screenshotPath,
+                markKind: inferredMarkKind,
+                note: detail.note,
+                bounds,
+                ...(typeof detail.slideIndex === 'number' && Number.isFinite(detail.slideIndex)
+                  ? { slideIndex: Math.max(0, Math.floor(detail.slideIndex)) }
+                  : {}),
+                target: detail.target
+                  ? {
+                      filePath: detail.target.filePath || detail.filePath || screenshotPath,
+                      elementId: detail.target.elementId,
+                      selector: detail.target.selector,
+                      label: detail.target.label,
+                      text: detail.target.text,
+                      position: detail.target.position,
+                      htmlHint: detail.target.htmlHint,
+                      ...(typeof detail.slideIndex === 'number' && Number.isFinite(detail.slideIndex)
+                        ? { slideIndex: Math.max(0, Math.floor(detail.slideIndex)) }
+                        : {}),
+                    }
+                  : {
+                      filePath:
+                        detail.filePath && !isRenderableImagePath(detail.filePath)
+                          ? detail.filePath
+                          : screenshotPath,
+                      position: detail.bounds ?? bounds,
+                      ...(typeof detail.slideIndex === 'number' && Number.isFinite(detail.slideIndex)
+                        ? { slideIndex: Math.max(0, Math.floor(detail.slideIndex)) }
+                        : {}),
+                    },
+              };
+            };
+
             // Upload the annotation screenshot together with any images the
             // user attached in the markup composer. The screenshot (when
             // present) is first so it keeps backing the structured visual
@@ -2081,46 +2649,12 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
               const orderStart = reserveAttachmentOrders(annotationFiles.length);
               const buildVisualAttachmentInputFromScreenshot = (
                 screenshot: ChatAttachment,
-              ): Parameters<typeof buildVisualAnnotationAttachment>[0] => {
-                const bounds = detail.bounds ?? { x: 0, y: 0, width: 0, height: 0 };
-                const inferredMarkKind =
-                  detail.markKind
-                  ?? (detail.bounds ? 'stroke' : detail.target ? 'click' : 'stroke');
-                return {
-                  order: isFiniteAttachmentOrder(screenshot.order) ? screenshot.order : orderStart,
-                  idSeed: screenshot.path,
-                  screenshotPath: screenshot.path,
-                  markKind: inferredMarkKind,
-                  note: detail.note,
-                  bounds,
-                  ...(typeof detail.slideIndex === 'number' && Number.isFinite(detail.slideIndex)
-                    ? { slideIndex: Math.max(0, Math.floor(detail.slideIndex)) }
-                    : {}),
-                  target: detail.target
-                    ? {
-                        filePath: detail.target.filePath || detail.filePath || screenshot.path,
-                        elementId: detail.target.elementId,
-                        selector: detail.target.selector,
-                        label: detail.target.label,
-                        text: detail.target.text,
-                        position: detail.target.position,
-                        htmlHint: detail.target.htmlHint,
-                        ...(typeof detail.slideIndex === 'number' && Number.isFinite(detail.slideIndex)
-                          ? { slideIndex: Math.max(0, Math.floor(detail.slideIndex)) }
-                          : {}),
-                      }
-                    : {
-                        filePath:
-                          detail.filePath && !isRenderableImagePath(detail.filePath)
-                            ? detail.filePath
-                            : screenshot.path,
-                        position: detail.bounds,
-                        ...(typeof detail.slideIndex === 'number' && Number.isFinite(detail.slideIndex)
-                          ? { slideIndex: Math.max(0, Math.floor(detail.slideIndex)) }
-                          : {}),
-                      },
-                };
-              };
+              ): Parameters<typeof buildVisualAnnotationAttachment>[0] =>
+                buildVisualAttachmentInputFromAnnotationDetail(
+                  isFiniteAttachmentOrder(screenshot.order) ? screenshot.order : orderStart,
+                  screenshot.path,
+                  screenshot.path,
+                );
 
               if (detail.action === 'draft') {
                 uploaded = annotationFiles.map((file, index) => {
@@ -2151,14 +2685,20 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
                 const readableUploaded = result.uploaded.length > 0
                   ? await uploadedImagesReadableOnDisk(id, result.uploaded)
                   : [];
-                const resolvedUploaded = readableUploaded.length > 0
-                  ? readableUploaded
-                  : result.uploaded;
+                const { staged: resolvedUploaded, coldImageCount: coldAnnotationImages } =
+                  stageReadableUploadedAttachments(result.uploaded, readableUploaded);
                 if (resolvedUploaded.length > 0) {
                   uploaded = assignChatAttachmentOrders(
                     resolvedUploaded,
                     orderStart,
                   );
+                  onProjectFilesMaybeChanged?.();
+                  if (coldAnnotationImages > 0) {
+                    // Chips are staged optimistically; do not block the ack.
+                    // Send-time / preview fetch retries via NFC/NFD ladder.
+                  }
+                }
+                if (resolvedUploaded.length > 0) {
                   const screenshot = detail.file ? uploaded[0] : null;
                   if (screenshot) {
                     visualAttachmentInput = buildVisualAttachmentInputFromScreenshot(screenshot);
@@ -2168,41 +2708,11 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
                     && detail.note.trim()
                     && (detail.bounds || detail.target)
                   ) {
-                    const bounds = detail.bounds ?? detail.target?.position ?? { x: 0, y: 0, width: 0, height: 0 };
-                    visualAttachmentInput = {
-                      order: orderStart,
-                      idSeed: `${detail.markKind}-${orderStart}`,
-                      screenshotPath: '',
-                      markKind: detail.markKind,
-                      note: detail.note,
-                      bounds,
-                      ...(typeof detail.slideIndex === 'number' && Number.isFinite(detail.slideIndex)
-                        ? { slideIndex: Math.max(0, Math.floor(detail.slideIndex)) }
-                        : {}),
-                      target: detail.target
-                        ? {
-                            filePath: detail.target.filePath || detail.filePath || '',
-                            elementId: detail.target.elementId,
-                            selector: detail.target.selector,
-                            label: detail.target.label,
-                            text: detail.target.text,
-                            position: detail.target.position,
-                            htmlHint: detail.target.htmlHint,
-                            ...(typeof detail.slideIndex === 'number' && Number.isFinite(detail.slideIndex)
-                              ? { slideIndex: Math.max(0, Math.floor(detail.slideIndex)) }
-                              : {}),
-                          }
-                        : {
-                            filePath:
-                              detail.filePath && !isRenderableImagePath(detail.filePath)
-                                ? detail.filePath
-                                : '',
-                            position: bounds,
-                            ...(typeof detail.slideIndex === 'number' && Number.isFinite(detail.slideIndex)
-                              ? { slideIndex: Math.max(0, Math.floor(detail.slideIndex)) }
-                              : {}),
-                          },
-                    };
+                    visualAttachmentInput = buildVisualAttachmentInputFromAnnotationDetail(
+                      orderStart,
+                      `${detail.markKind}-${orderStart}`,
+                      '',
+                    );
                   }
                 }
                 if (
@@ -2227,6 +2737,23 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
                 }
               }
             }
+
+            // Capture degraded to bounds + note (no screenshot bytes): still stage
+            // structured visual comment so graft / fast-path get pagePosition.
+            if (
+              !visualAttachmentInput
+              && !detail.file
+              && detail.markKind
+              && (detail.bounds || detail.target)
+            ) {
+              const orderStart = reserveAttachmentOrders(1);
+              visualAttachmentInput = buildVisualAttachmentInputFromAnnotationDetail(
+                orderStart,
+                `${detail.markKind}-${orderStart}`,
+                '',
+              );
+            }
+
             setUploading(false);
 
             const appendAnnotationToComposer = () => {
@@ -2247,13 +2774,33 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
                 // of both starting from the same stale closure. Mirror the
                 // result into the editor with setText so the now-non-empty
                 // editor does not fire an onChange('') that would clobber the
-                // accumulated draft back to empty.
+                // accumulated draft back to empty. Pass staged entities so
+                // concurrent `@image` pills are not demoted to plain text.
                 const nextDraft = draftRef.current
                   ? `${draftRef.current}\n${detail.note}`
                   : detail.note;
                 draftRef.current = nextDraft;
                 setDraft(nextDraft);
-                editorRef.current?.setText(nextDraft);
+                const stagedForSeed = (() => {
+                  if (uploaded.length === 0) return staged;
+                  const known = new Set(staged.map((item) => item.path));
+                  return sortChatAttachmentsByOrder([
+                    ...staged,
+                    ...uploaded.filter((item) => !known.has(item.path)),
+                  ]);
+                })();
+                editorRef.current?.setText(
+                  nextDraft,
+                  buildComposerMentionEntities({
+                    connectors,
+                    files: projectFiles,
+                    mcpServers: enabledMcpServers,
+                    plugins: pluginsForComposer,
+                    skills: skillsForComposer,
+                    staged: stagedForSeed,
+                    workspaceContexts,
+                  }),
+                );
               }
               editorRef.current?.focus();
             };
@@ -2330,7 +2877,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
 
             ack({ ok: false, message: t('chat.annotationFailed') });
           } catch (err) {
-            console.warn('Could not send annotation', err);
+            devLog.warn('Could not send annotation', err);
             setUploadError(slideOnlyMvp ? t('chat.annotationFailed') : (err instanceof Error ? err.message : t('chat.annotationFailed')));
             ack({ ok: false, message: t('chat.annotationFailed') });
           } finally {
@@ -2474,6 +3021,15 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       setStagedWorkspaceContexts((prev) =>
         prev.filter((item) => set.has(`workspace:${item.id}`)),
       );
+      // Typed/pasted `@goldfish.webp` (or restored pills) should rehydrate the
+      // staged attachment chips so send/vision do not depend on paperclip alone.
+      const mentionedImages = mergeImageMentionAttachments([], text);
+      if (mentionedImages.length > 0) {
+        setStaged((current) => {
+          const merged = mergeImageMentionAttachments(current, text);
+          return merged.length === current.length ? current : sortChatAttachmentsByOrder(merged);
+        });
+      }
     }
 
     // Lexical reports the active @/slash trigger derived from the caret. The
@@ -2937,7 +3493,10 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
               skills={stagedSkills}
               mcpServers={stagedMcpServers}
               connectors={stagedConnectors}
-              attachments={staged}
+              attachments={excludeAttachmentsBackedByVisualScreenshots(
+                staged,
+                currentCommentAttachments(),
+              )}
               pluginChip={
                 activeAppliedPlugin
                   ? {
@@ -2978,6 +3537,9 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
           {stagedVisibleCommentAttachments().length > 0 ? (
             <StagedCommentAttachments
               attachments={stagedVisibleCommentAttachments()}
+              projectId={projectId}
+              projectFileNames={projectFiles.map((file) => file.name)}
+              attachmentPreviewUrl={(path) => pendingAnnotationPreviewUrls[path] ?? null}
               onRemove={removeCommentAttachment}
               t={t}
             />
@@ -3349,6 +3911,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
             confirming={canvasSlideLaunchBusy}
             errorMessage={canvasSlideLaunchError}
             templateOptions={canvasSlideTemplates}
+            templatesLoading={canvasSlideTemplatesLoading}
             selectedTemplateId={selectedCanvasSlideTemplate.id}
             onTemplateChange={setCanvasSlideTemplateId}
             userPrompt={canvasSlideUserPrompt}
@@ -3693,6 +4256,111 @@ function workspaceContextKindLabel(kind: WorkspaceContextItem['kind']): string {
   }
 }
 
+function mcpServerFromProjectContextRef(ref: ProjectContextMcpServerRef): McpServerConfig {
+  const transport =
+    ref.transport === 'sse' || ref.transport === 'http' || ref.transport === 'stdio'
+      ? ref.transport
+      : 'stdio';
+  return {
+    id: ref.id,
+    enabled: true,
+    transport,
+    ...(ref.label ? { label: ref.label } : {}),
+    ...(ref.url ? { url: ref.url } : {}),
+    ...(ref.command ? { command: ref.command } : {}),
+  };
+}
+
+function connectorFromProjectContextRef(ref: ProjectContextConnectorRef): ConnectorDetail {
+  const status =
+    ref.status === 'connected'
+    || ref.status === 'available'
+    || ref.status === 'error'
+    || ref.status === 'disabled'
+      ? ref.status
+      : 'connected';
+  return {
+    id: ref.id,
+    name: ref.name,
+    provider: ref.provider ?? 'unknown',
+    category: ref.category ?? 'other',
+    status,
+    tools: [],
+    ...(ref.description ? { description: ref.description } : {}),
+    ...(ref.accountLabel ? { accountLabel: ref.accountLabel } : {}),
+  };
+}
+
+function mergeStagedMcpFromProjectContext(
+  current: McpServerConfig[],
+  refs: ProjectContextMcpServerRef[],
+): McpServerConfig[] {
+  if (refs.length === 0) return current;
+  const byId = new Map(current.map((server) => [server.id, server]));
+  let changed = false;
+  for (const ref of refs) {
+    const id = ref.id?.trim();
+    if (!id || byId.has(id)) continue;
+    byId.set(id, mcpServerFromProjectContextRef({ ...ref, id }));
+    changed = true;
+  }
+  return changed ? [...byId.values()] : current;
+}
+
+function reconcileStagedMcpFromProjectContext(
+  current: McpServerConfig[],
+  refs: ProjectContextMcpServerRef[],
+  previouslyPinnedIds: ReadonlySet<string>,
+): McpServerConfig[] {
+  const merged = mergeStagedMcpFromProjectContext(current, refs);
+  const pinnedIds = new Set(
+    refs.map((ref) => ref.id?.trim()).filter((id): id is string => Boolean(id)),
+  );
+  const next = merged.filter((server) => {
+    if (pinnedIds.has(server.id)) return true;
+    if (previouslyPinnedIds.has(server.id)) return false;
+    return true;
+  });
+  return next.length === merged.length && next.every((s, i) => s === merged[i])
+    ? merged
+    : next;
+}
+
+function mergeStagedConnectorsFromProjectContext(
+  current: ConnectorDetail[],
+  refs: ProjectContextConnectorRef[],
+): ConnectorDetail[] {
+  if (refs.length === 0) return current;
+  const byId = new Map(current.map((connector) => [connector.id, connector]));
+  let changed = false;
+  for (const ref of refs) {
+    const id = ref.id?.trim();
+    if (!id || byId.has(id)) continue;
+    byId.set(id, connectorFromProjectContextRef({ ...ref, id }));
+    changed = true;
+  }
+  return changed ? [...byId.values()] : current;
+}
+
+function reconcileStagedConnectorsFromProjectContext(
+  current: ConnectorDetail[],
+  refs: ProjectContextConnectorRef[],
+  previouslyPinnedIds: ReadonlySet<string>,
+): ConnectorDetail[] {
+  const merged = mergeStagedConnectorsFromProjectContext(current, refs);
+  const pinnedIds = new Set(
+    refs.map((ref) => ref.id?.trim()).filter((id): id is string => Boolean(id)),
+  );
+  const next = merged.filter((connector) => {
+    if (pinnedIds.has(connector.id)) return true;
+    if (previouslyPinnedIds.has(connector.id)) return false;
+    return true;
+  });
+  return next.length === merged.length && next.every((c, i) => c === merged[i])
+    ? merged
+    : next;
+}
+
 function StagedRunContexts({
   designSystemPicker,
   workspaceItems,
@@ -3923,7 +4591,15 @@ function StagedRunContexts({
                     alt=""
                     className=""
                     fetchEnabled
-                    trustExists
+                    // Fresh staged uploads may race `/files`; non-drawing
+                    // attachments can trustExists. Ephemeral drawings rely on
+                    // localPreview above or a single missing-cached probe.
+                    trustExists={!isEphemeralDrawingScreenshotPath(a.path)}
+                    // HA pod S3 sync-up→sync-down race for freshly-uploaded
+                    // images: opt into the brief background retry ladder so
+                    // the chip does not settle on the failed glyph before
+                    // scratch fills. Chat history chips already do this.
+                    allowBackgroundRetry={!isEphemeralDrawingScreenshotPath(a.path)}
                   />
                 )}
                 <span className="staged-name">{a.name}</span>
@@ -4010,10 +4686,16 @@ function StagedRunContexts({
 
 function StagedCommentAttachments({
   attachments,
+  projectId,
+  projectFileNames,
+  attachmentPreviewUrl,
   onRemove,
   t,
 }: {
   attachments: ChatCommentAttachment[];
+  projectId: string | null;
+  projectFileNames?: readonly string[];
+  attachmentPreviewUrl?: (path: string) => string | null;
   onRemove: (id: string) => void;
   t: TranslateFn;
 }) {
@@ -4021,25 +4703,18 @@ function StagedCommentAttachments({
   return (
     <div className="staged-row comment-staged-row" data-testid="staged-comment-attachments">
       {attachments.map((a) => (
-        <div key={a.id} className="staged-chip staged-comment">
-          <span
-            className="staged-name"
-            title={`${a.screenshotPath ? `${a.screenshotPath}: ` : ''}${commentTargetDisplayName(a)}${a.comment ? `: ${a.comment}` : ''}`}
-          >
-            <strong>{commentTargetDisplayName(a)}</strong>
-            {a.comment ? <span>{a.comment}</span> : null}
-          </span>
-          <button
-            type="button"
-            className="staged-remove od-tooltip"
-            onClick={() => onRemove(a.id)}
-            title={t('chat.comments.removeAttachment')}
-            data-tooltip={t('chat.comments.removeAttachment')}
-            aria-label={t('chat.comments.removeAttachmentAria', { name: a.elementId })}
-          >
-            <Icon name="close" size={11} />
-          </button>
-        </div>
+        <VisualCommentAttachmentChip
+          key={a.id}
+          attachment={a}
+          projectId={projectId}
+          projectFileNames={projectFileNames}
+          localPreviewUrl={
+            a.screenshotPath ? attachmentPreviewUrl?.(a.screenshotPath) ?? null : null
+          }
+          onRemove={onRemove}
+          showRemove
+          t={t}
+        />
       ))}
     </div>
   );
@@ -5239,8 +5914,15 @@ function designToolboxResourcePrompt({
         t('chat.designToolbox.prompt.connectorResource'),
       ].join('\n');
     case 'file':
+      // Kept for callers/tests that still build a file resource prompt, but
+      // the composer UX stages the file as an attachment instead of pasting
+      // this block into the draft (see applyDesignToolboxResource).
       return [
-        ...base,
+        t('chat.designToolbox.prompt.selectedResource', {
+          kind: designToolboxResourceKindLabel(resource.kind, t),
+          title: resource.title,
+          id: resource.id,
+        }),
         t('chat.designToolbox.prompt.fileResource'),
       ].join('\n');
   }
@@ -5807,23 +6489,66 @@ function stripInlineMentionLabels(text: string, labels: string[]): string {
   );
 }
 
-function loadComposerDraft(key?: string): string | null {
-  if (!key || typeof window === 'undefined') return null;
+type PersistedComposerDraftV1 = {
+  v: 1;
+  text: string;
+  attachments: ChatAttachment[];
+};
+
+function isStoredComposerAttachment(value: unknown): value is ChatAttachment {
+  if (!value || typeof value !== 'object') return false;
+  const row = value as Partial<ChatAttachment>;
+  return typeof row.path === 'string'
+    && row.path.trim().length > 0
+    && typeof row.name === 'string'
+    && (row.kind === 'image' || row.kind === 'file');
+}
+
+function loadComposerDraftState(key?: string): { text: string; attachments: ChatAttachment[] } {
+  if (!key || typeof window === 'undefined') return { text: '', attachments: [] };
   try {
-    return window.localStorage.getItem(key);
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return { text: '', attachments: [] };
+    try {
+      const parsed = JSON.parse(raw) as Partial<PersistedComposerDraftV1>;
+      if (parsed && parsed.v === 1 && typeof parsed.text === 'string') {
+        const attachments = Array.isArray(parsed.attachments)
+          ? normalizeChatAttachmentOrders(parsed.attachments.filter(isStoredComposerAttachment))
+          : [];
+        return { text: parsed.text, attachments };
+      }
+    } catch {
+      // Legacy plain-text drafts remain supported.
+    }
+    return { text: raw, attachments: [] };
   } catch {
-    return null;
+    return { text: '', attachments: [] };
   }
 }
 
-function saveComposerDraft(key: string | undefined, draft: string) {
+function saveComposerDraftState(
+  key: string | undefined,
+  draft: string,
+  attachments: readonly ChatAttachment[],
+) {
   if (!key || typeof window === 'undefined') return;
   try {
-    if (draft) {
-      window.localStorage.setItem(key, draft);
-    } else {
+    if (!draft && attachments.length === 0) {
       window.localStorage.removeItem(key);
+      return;
     }
+    const payload: PersistedComposerDraftV1 = {
+      v: 1,
+      text: draft,
+      attachments: normalizeChatAttachmentOrders(
+        attachments
+          .filter((item) => item.path.trim().length > 0)
+          // Pending annotation blobs are session-only — do not revive after refresh.
+          .filter((item) => !isPendingAnnotationPath(item.path))
+          .slice(0, 16),
+      ),
+    };
+    window.localStorage.setItem(key, JSON.stringify(payload));
   } catch {
     // Storage can be unavailable in privacy modes; the composer should still work.
   }

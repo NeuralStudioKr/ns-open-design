@@ -53,8 +53,10 @@
 ### 2.3 알려진 후속 (이 Runbook 범위 밖)
 
 - `OD_DAEMON_DB=postgres` + `OD_FILE_REVISION_SNAPSHOT_STORAGE=files` 조합의 메타 dual-write
-- Prometheus `od_file_revision_snapshot_bytes` 메트릭
+- Postgres `pruneOldestFileRevisionsDurableLimited` chain-aware **integration** test (unit만 존재)
 - 초대형 deck 전용 S3 blob 백엔드
+
+**메트릭·stuck excess:** [50-3 §6](./50-3_revision_스냅샷_저장소_RDS_용량관리.md#6-모니터링) — Prometheus 7 gauge + 알람 권장값.
 
 ---
 
@@ -105,9 +107,11 @@ OD_PG_PASSWORD=<POSTGRES_PASSWD 와 동일>
 OD_PG_SSL_MODE=require
 
 # --- revision 용량·동시성 (권장 staging 값) ---
-OD_FILE_REVISION_RETENTION_LIMIT=15
+OD_FILE_REVISION_RETENTION_LIMIT=20
+OD_FILE_REVISION_PUSH_PRUNE_MAX=8
 OD_FILE_REVISION_GC_INTERVAL_MS=21600000
 OD_FILE_REVISION_LOCK_TIMEOUT_MS=15000
+# OD_FILE_REVISION_FULL_SNAPSHOT_INTERVAL=5
 # OD_FILE_REVISION_SNAPSHOT_STORAGE=postgres  # 미설정 시 OD_DAEMON_DB=postgres 이면 자동 postgres
 ```
 
@@ -249,7 +253,7 @@ docker compose --env-file .env.staging exec open-design-daemon \
 |------|--------|
 | `OD_DAEMON_DB` | `postgres` |
 | `OD_PG_DATABASE` | `teamver_design_daemon_staging` |
-| `OD_FILE_REVISION_RETENTION_LIMIT` | `15` (또는 팀이 정한 값) |
+| `OD_FILE_REVISION_RETENTION_LIMIT` | `20` (권장; 하한 15 · 기본 30) |
 | `OD_FILE_REVISION_SNAPSHOT_STORAGE` | 비어 있거나 `postgres` |
 
 ### 6.3 2노드 네트워크 sanity
@@ -394,6 +398,7 @@ od project revisions restore "$PROJECT_ID" deck.html "<revision-id>" --json | jq
 - [ ] 툴바 Undo / Redo 버튼 활성·비활성 tooltip
 - [ ] ⌘Z / Ctrl+Z, ⇧⌘Z / Ctrl+Y
 - [ ] History 패널 — retention hint (`서버 보관 N개` 등)
+- [ ] burst push(30+) 후 History `retentionPending` → sweep 완료 시 목록 자동 갱신
 - [ ] Agent 편집 후 toast “실행 취소”
 - [ ] disk ≠ head 충돌 시에만 conflict toast (재진입 오탐 없음)
 
@@ -433,6 +438,30 @@ postgres 모드에서 **신규** revision은 `.od/revisions/`에 쌓이지 않�
 # scratch materialized 프로젝트 경로 예시
 find /opt/teamver-design/od-data/scratch/projects/<PROJECT_ID>/.od/revisions -type f 2>/dev/null | wc -l
 # 기대: 0 (신규 push만 한 경우) 또는 legacy 잔여만
+```
+
+### 9.4 Prometheus — file revision gauges
+
+배포 직후·burst push QA 후 daemon pod에서:
+
+```bash
+curl -sS "http://127.0.0.1:7456/api/metrics" | grep od_file_revision
+```
+
+| Gauge | Pass 기준 (QA 직후) |
+|-------|---------------------|
+| `od_file_revision_gc_last_success_unix` | `time() - gauge < 900` (부팅 sweep 직후) 또는 interval 내 갱신 |
+| `od_file_revision_deferred_sweep_queue_depth` | `0` (sweep idle) |
+| `od_file_revision_retention_deferred_excess` | burst push 후 **수 분 내** `0`으로 수렴 (checkpoint stuck은 §50-3 §5.1.2) |
+| `od_file_revision_orphan_snapshot_rows` | `0` |
+
+상세·알람 권장값: [50-3 §6](./50-3_revision_스냅샷_저장소_RDS_용량관리.md#6-모니터링).
+
+**스크립트 (metrics + optional burst):**
+
+```bash
+bash deploy/teamver/scripts/verify_file_revision_retention.sh
+VERIFY_REVISION_BURST=1 VERIFY_REVISION_PROJECT_ID=<id> bash deploy/teamver/scripts/verify_file_revision_retention.sh
 ```
 
 ---

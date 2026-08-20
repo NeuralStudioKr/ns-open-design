@@ -5,9 +5,14 @@ import {
   mergeServerMessagesIntoConversation,
   orderConversationMessages,
   imageAttachmentPathsForSlideEmbed,
+  chatAttachmentsForAutoContinueImageEmbed,
+  findClientSlideCountRegression,
+  findTemplateCloneFillSlideCountIncomplete,
   promptWithExistingDeckEditInstruction,
+  resolveCanonicalDeckFileForEdit,
   promptWithSlideAttachmentDeliverableInstruction,
   promptWithSlideCommentEditPatchInstruction,
+  stripGreenfieldDeliverableInstruction,
 } from "../src/components/ProjectView";
 import {
   messageContentWithCommentAttachments,
@@ -16,6 +21,63 @@ import {
 } from "../src/comments";
 import { stripUserVisibleQuestionFormProtocolText } from "../src/artifacts/question-form";
 import type { ChatMessage } from "../src/types";
+
+describe("stripGreenfieldDeliverableInstruction", () => {
+  it("removes a trailing [Deliverable instruction] block", () => {
+    const stale =
+      '이미지 넣어줘\n\n[Deliverable instruction]\nSLIDE ATTACHMENT DELIVERABLE INSTRUCTION\nEmit ONE complete Teamver compact deck...';
+    expect(stripGreenfieldDeliverableInstruction(stale)).toBe('이미지 넣어줘');
+  });
+
+  it("leaves prompts without the marker unchanged", () => {
+    expect(stripGreenfieldDeliverableInstruction('이미지 넣어줘')).toBe('이미지 넣어줘');
+  });
+
+  it("does not remove other markers or user text", () => {
+    const prompt = '이미지 넣어줘\n\n[Attached image embed]\n- <img src="a.png" alt="">';
+    expect(stripGreenfieldDeliverableInstruction(prompt)).toBe(prompt);
+  });
+});
+
+describe("promptWithSlideAttachmentDeliverableInstruction", () => {
+  it("strips a stale [Deliverable instruction] on existing-deck edit retries", () => {
+    // First-turn failure baked in [Deliverable instruction] before we knew
+    // this was actually an existing-deck edit. On retry with existingDeckEdit
+    // now true, the persisted greenfield block must be removed so the model
+    // does not see conflicting "emit ONE complete deck" + "edit existing" —
+    // that combo was the infinite-loop cause of stub-guard rejects.
+    const stale =
+      '이 이미지 1페이지에 넣어줘\n\n[Deliverable instruction]\nEmit ONE complete Teamver compact deck.';
+    const prompt = promptWithSlideAttachmentDeliverableInstruction(
+      stale,
+      [
+        { path: 'deck.html', name: 'deck.html', kind: 'file' },
+        { path: 'refs/drive/m1abc-photo.png', name: 'photo.png', kind: 'image' },
+      ],
+      { slideOnlyMvp: true, existingDeckEdit: true },
+    );
+    expect(prompt).not.toContain('[Deliverable instruction]');
+    expect(prompt).toContain('[Attached image embed]');
+    expect(prompt).toContain('surgical insert into the EXISTING deck');
+    expect(prompt.startsWith('이 이미지 1페이지에 넣어줘')).toBe(true);
+  });
+
+  it('keeps Clone content-fill image paths without surgical existing-deck pressure', () => {
+    const prompt = promptWithSlideAttachmentDeliverableInstruction(
+      'expo에 대해서 설명하는 피피티 만들어줘.\n\n[Template clone content fill]\nFill REAL content.',
+      [
+        { path: 'deck.html', name: 'deck.html', kind: 'file' },
+        { path: 'refs/drive/m1abc-photo.png', name: 'photo.png', kind: 'image' },
+      ],
+      { slideOnlyMvp: true, templateCloneContentFill: true },
+    );
+    expect(prompt).toContain('[Attached image embed]');
+    expect(prompt).toContain('refs/drive/m1abc-photo.png');
+    expect(prompt).toContain('CREATE fill');
+    expect(prompt).not.toContain('surgical insert into the EXISTING deck');
+    expect(prompt).not.toContain('[Deliverable instruction]');
+  });
+});
 
 describe("promptWithSlideAttachmentDeliverableInstruction", () => {
   it("adds a hidden deliverable contract for slide-only attachment runs", () => {
@@ -51,12 +113,12 @@ describe("promptWithSlideAttachmentDeliverableInstruction", () => {
     ).toHaveLength(1);
   });
 
-  it("suppresses the hidden contract on comment-driven edits so the scope block wins", () => {
+  it("suppresses full-deck deliverable pressure on comment edits but keeps image embed", () => {
     // Comment edits already carry `<attached-preview-comments>` telling the
     // model to change ONLY the pinned elements; layering the "emit ONE
     // complete deck" pressure on top forced full-deck regeneration on every
-    // one-element edit (2+ minute round-trips). See ProjectView.handleSend
-    // for the paired change that plumbs commentAttachments.length through.
+    // one-element edit (2+ minute round-trips). Image attaches still need an
+    // exact <img src> contract for board/memo "넣어줘" turns.
     const prompt = promptWithSlideAttachmentDeliverableInstruction(
       "이 텍스트를 '안녕'으로 바꿔줘",
       [
@@ -66,8 +128,21 @@ describe("promptWithSlideAttachmentDeliverableInstruction", () => {
       { slideOnlyMvp: true, commentAttachmentCount: 1 },
     );
 
+    expect(prompt).toContain("[Attached image embed]");
+    expect(prompt).toContain('src="uploads/ref.png"');
+    expect(prompt).not.toContain("[Deliverable instruction]");
+    expect(stripUserVisibleUserMessageText(prompt)).toBe("이 텍스트를 '안녕'으로 바꿔줘");
+  });
+
+  it("keeps comment-only text edits free of deliverable and embed noise", () => {
+    const prompt = promptWithSlideAttachmentDeliverableInstruction(
+      "이 텍스트를 '안녕'으로 바꿔줘",
+      [{ path: "deck.html", name: "deck.html", kind: "file" }],
+      { slideOnlyMvp: true, commentAttachmentCount: 1 },
+    );
     expect(prompt).toBe("이 텍스트를 '안녕'으로 바꿔줘");
     expect(prompt).not.toContain("[Deliverable instruction]");
+    expect(prompt).not.toContain("[Attached image embed]");
   });
 
   it("suppresses full-deck deliverable pressure when editing an existing deck", () => {
@@ -91,6 +166,12 @@ describe("promptWithSlideAttachmentDeliverableInstruction", () => {
     );
     expect(prompt).toContain("[Attached image embed]");
     expect(prompt).toContain('src="m1abc-photo.png"');
+    expect(prompt).toContain("exact project-relative path");
+    expect(prompt).toContain("never strip directory prefixes");
+    expect(prompt).toContain("surgical insert into the EXISTING deck");
+    expect(prompt).toContain("NEVER reduce the number of `<section class=\"slide\">` blocks");
+    expect(prompt).toContain("deck-patch");
+    expect(prompt).toContain("Do NOT emit a greenfield 2-slide wireframe");
     expect(prompt).not.toContain("[Deliverable instruction]");
     expect(stripUserVisibleUserMessageText(prompt)).toBe("이 이미지를 슬라이드에 넣어줘");
   });
@@ -98,12 +179,15 @@ describe("promptWithSlideAttachmentDeliverableInstruction", () => {
   it("lists image embed paths on greenfield attachment deliverable turns", () => {
     const prompt = promptWithSlideAttachmentDeliverableInstruction(
       "이 사진으로 슬라이드 만들어줘",
-      [{ path: "hero.png", name: "hero.png", kind: "image" }],
+      [{ path: "refs/drive/msh5lhfh-hero.png", name: "hero.png", kind: "image" }],
       { slideOnlyMvp: true },
     );
     expect(prompt).toContain("[Deliverable instruction]");
     expect(prompt).toContain("[Attached image embed]");
-    expect(prompt).toContain('src="hero.png"');
+    expect(prompt).toContain('src="refs/drive/msh5lhfh-hero.png"');
+    expect(prompt).toMatch(/NEW slide deck|This is CREATE/i);
+    expect(prompt).not.toContain("NEVER reduce the number of `<section class=\"slide\">` blocks");
+    expect(prompt).not.toContain("surgical insert into the EXISTING deck");
   });
 });
 
@@ -117,6 +201,38 @@ describe("imageAttachmentPathsForSlideEmbed", () => {
       ]),
     ).toEqual(["photo.png"]);
   });
+
+  it("upgrades basename mentions to refs/drive when the file index knows it", () => {
+    expect(
+      imageAttachmentPathsForSlideEmbed(
+        [{ path: "msh9rso1-서빙하는-금붕어.webp", name: "서빙하는-금붕어.webp", kind: "image" }],
+        ["refs/drive/msh9rso1-서빙하는-금붕어.webp", "deck.html"],
+      ),
+    ).toEqual(["refs/drive/msh9rso1-서빙하는-금붕어.webp"]);
+  });
+});
+
+describe("resolveCanonicalDeckFileForEdit", () => {
+  it("ignores leftover non-deck HTML and picks deck.html", () => {
+    expect(
+      resolveCanonicalDeckFileForEdit(
+        [
+          { name: "about.html", path: "about.html", kind: "html", size: 1, mtime: 1 },
+          { name: "deck.html", path: "deck.html", kind: "html", size: 2, mtime: 2 },
+        ] as never,
+        null,
+      )?.name,
+    ).toBe("deck.html");
+  });
+
+  it("returns null when only leftover HTML exists (first create)", () => {
+    expect(
+      resolveCanonicalDeckFileForEdit(
+        [{ name: "about.html", path: "about.html", kind: "html", size: 1, mtime: 1 }] as never,
+        "about.html",
+      ),
+    ).toBeNull();
+  });
 });
 
 describe("promptWithExistingDeckEditInstruction", () => {
@@ -129,6 +245,10 @@ describe("promptWithExistingDeckEditInstruction", () => {
     expect(prompt).toContain("deck.html");
     expect(prompt).toContain("do NOT claim there is no completed deck");
     expect(prompt).toContain("deck-patch");
+    expect(prompt).toContain("Applying your edits");
+    expect(prompt).toContain("Never \"초안이 생성\"");
+    expect(prompt).toContain("NEVER collapse the deck");
+    expect(prompt).toContain("keep at least the same slide count");
   });
 
   it("mentions attached image paths when present", () => {
@@ -137,8 +257,207 @@ describe("promptWithExistingDeckEditInstruction", () => {
       deckPath: "deck.html",
       imagePaths: ["photo.png"],
     });
-    expect(prompt).toContain("exact project-relative image paths");
-    expect(prompt).toContain("[Attached image embed]");
+    expect(prompt).toContain("exact project-relative paths");
+    expect(prompt).toContain("- photo.png");
+    expect(prompt).toContain("COPY the full current target slide HTML");
+  });
+});
+
+describe("chatAttachmentsForAutoContinueImageEmbed", () => {
+  it("keeps image + deck.html attachments across auto-continue so embed work is not dropped", () => {
+    const kept = chatAttachmentsForAutoContinueImageEmbed({
+      attachments: [
+        { path: "uploads/goldfish.webp", name: "goldfish.webp", kind: "image" },
+        { path: "deck.html", name: "deck.html", kind: "file" },
+        { path: "notes.md", name: "notes.md", kind: "file" },
+      ],
+    });
+    expect(kept.map((item) => item.path)).toEqual(["uploads/goldfish.webp", "deck.html"]);
+  });
+
+  it("drops cloned deck.html when the origin turn was Clone content-fill", () => {
+    const kept = chatAttachmentsForAutoContinueImageEmbed({
+      content: 'expo에 대해서 설명하는 피피티 만들어줘.\n\n[Template clone content fill]\nFill REAL content.',
+      attachments: [
+        { path: "uploads/goldfish.webp", name: "goldfish.webp", kind: "image" },
+        { path: "deck.html", name: "deck.html", kind: "file" },
+      ],
+    });
+    expect(kept.map((item) => item.path)).toEqual(["uploads/goldfish.webp"]);
+  });
+
+  it("recovers image attachments from @mentions when origin attachments were dropped", () => {
+    const kept = chatAttachmentsForAutoContinueImageEmbed({
+      content: "이 이미지 2페이지에 넣어줘 @msh9rso1-서빙하는-금붕어.webp",
+      attachments: [{ path: "deck.html", name: "deck.html", kind: "file" }],
+    });
+    expect(kept.map((item) => item.path)).toEqual([
+      "deck.html",
+      "msh9rso1-서빙하는-금붕어.webp",
+    ]);
+  });
+
+  it("omits deck.html on template-clone content-fill lineage (truncated LOOK hang)", () => {
+    const kept = chatAttachmentsForAutoContinueImageEmbed({
+      content: "expo 설명해줘\n\n[Template clone content fill]\nFill REAL content",
+      attachments: [
+        { path: "uploads/photo.png", name: "photo.png", kind: "image" },
+        { path: "deck.html", name: "deck.html", kind: "file" },
+      ],
+    });
+    expect(kept.map((item) => item.path)).toEqual(["uploads/photo.png"]);
+  });
+
+  it("omits html when omitHtml option is set", () => {
+    const kept = chatAttachmentsForAutoContinueImageEmbed(
+      {
+        attachments: [
+          { path: "uploads/photo.png", name: "photo.png", kind: "image" },
+          { path: "deck.html", name: "deck.html", kind: "file" },
+        ],
+      },
+      undefined,
+      { omitHtml: true },
+    );
+    expect(kept.map((item) => item.path)).toEqual(["uploads/photo.png"]);
+  });
+});
+
+describe("findClientSlideCountRegression", () => {
+  it("detects hard slide-count collapse that byte-size alone can miss", () => {
+    const priorHtml = Array.from(
+      { length: 8 },
+      (_, i) => `<section class="slide" data-slide-index="${i}">slide ${i + 1} with plenty of copy</section>`,
+    ).join("\n");
+    const nextHtml = [
+      '<section class="slide" data-slide-index="0">a</section>',
+      '<section class="slide" data-slide-index="1">b</section>',
+    ].join("\n");
+    const regression = findClientSlideCountRegression({
+      fileName: "deck.html",
+      htmlBody: nextHtml,
+      priorHtml,
+    });
+    expect(regression).toMatchObject({
+      fileName: "deck.html",
+      priorCount: 8,
+      newCount: 2,
+    });
+    expect(
+      findClientSlideCountRegression({
+        fileName: "deck.html",
+        htmlBody: priorHtml,
+        priorHtml,
+      }),
+    ).toBeNull();
+  });
+
+  it("strict mode blocks soft shrink on existing-deck / image-embed turns", () => {
+    const priorHtml = Array.from(
+      { length: 8 },
+      (_, i) => `<section class="slide" data-slide-index="${i}">slide ${i + 1}</section>`,
+    ).join("\n");
+    const soft = Array.from(
+      { length: 6 },
+      (_, i) => `<section class="slide" data-slide-index="${i}">slide ${i + 1}</section>`,
+    ).join("\n");
+    expect(
+      findClientSlideCountRegression({
+        fileName: "deck.html",
+        htmlBody: soft,
+        priorHtml,
+      }),
+    ).toBeNull();
+    expect(
+      findClientSlideCountRegression({
+        fileName: "deck.html",
+        htmlBody: soft,
+        priorHtml,
+        strict: true,
+      }),
+    ).toMatchObject({ priorCount: 8, newCount: 6 });
+  });
+
+  it("allows intentional slide-count reduction on Template Clone fill turns", () => {
+    const priorHtml = Array.from(
+      { length: 10 },
+      (_, i) => `<section class="slide" data-slide-index="${i}">look seed ${i + 1}</section>`,
+    ).join("\n");
+    const filled = Array.from(
+      { length: 6 },
+      (_, i) => `<section class="slide" data-slide-index="${i}">filled ${i + 1}</section>`,
+    ).join("\n");
+    expect(
+      findClientSlideCountRegression({
+        fileName: "deck.html",
+        htmlBody: filled,
+        priorHtml,
+        allowSlideCountReduction: true,
+      }),
+    ).toBeNull();
+  });
+
+  it("counts slides even when open-tags contain quoted '>' in style attrs", () => {
+    const priorHtml = Array.from({ length: 8 }, (_, i) =>
+      i === 0
+        ? `<section class="slide" style="content: '>'" data-slide-index="${i}">hero</section>`
+        : `<section class="slide" data-slide-index="${i}">slide ${i + 1}</section>`,
+    ).join("\n");
+    const soft = Array.from(
+      { length: 6 },
+      (_, i) => `<section class="slide" data-slide-index="${i}">slide ${i + 1}</section>`,
+    ).join("\n");
+    // Naive [^>]* open-tag regexes undercount prior to 1 and skip the guard.
+    expect(
+      findClientSlideCountRegression({
+        fileName: "deck.html",
+        htmlBody: soft,
+        priorHtml,
+        strict: true,
+      }),
+    ).toMatchObject({ priorCount: 8, newCount: 6 });
+  });
+});
+
+describe("findTemplateCloneFillSlideCountIncomplete", () => {
+  it("allows an explicit one-slide template fill request", () => {
+    expect(
+      findTemplateCloneFillSlideCountIncomplete({
+        fileName: "deck.html",
+        htmlBody: '<section class="slide"><h1>One-page brief</h1></section>',
+        requestedSlideCount: 1,
+      }),
+    ).toBeNull();
+  });
+
+  it("allows a titled one-slide cover draft so top-up can append the rest", () => {
+    expect(
+      findTemplateCloneFillSlideCountIncomplete({
+        fileName: "deck.html",
+        htmlBody: '<section class="slide"><h1>Cover only</h1></section>',
+        requestedSlideCount: null,
+      }),
+    ).toBeNull();
+  });
+
+  it("allows untitled one-slide drafts so top-up can append instead of incomplete_output", () => {
+    expect(
+      findTemplateCloneFillSlideCountIncomplete({
+        fileName: "deck.html",
+        htmlBody: '<section class="slide"><p>placeholder</p></section>',
+        requestedSlideCount: null,
+      }),
+    ).toBeNull();
+  });
+
+  it("does not block short fills against an explicit small slide count", () => {
+    expect(
+      findTemplateCloneFillSlideCountIncomplete({
+        fileName: "deck.html",
+        htmlBody: '<section class="slide"><p>placeholder</p></section>',
+        requestedSlideCount: 2,
+      }),
+    ).toBeNull();
   });
 });
 
@@ -225,9 +544,67 @@ describe("promptWithSlideCommentEditPatchInstruction", () => {
     });
     expect(second).toBe(first);
   });
+
+  it("nudges box/edit visual annotations toward element edits instead of decorative graft marks", () => {
+    const prompt = promptWithSlideCommentEditPatchInstruction(
+      "슬라이드 2 이 글씨들 더 크게",
+      {
+        slideOnlyMvp: true,
+        commentAttachmentCount: 1,
+        commentAttachments: [
+          {
+            id: 'visual-box-1',
+            order: 1,
+            filePath: 'deck.html',
+            elementId: 'visual-mark-box-1',
+            selector: '',
+            label: 'Marked screenshot region',
+            comment: '슬라이드 2 이 글씨들 더 크게',
+            currentText: '',
+            pagePosition: { x: 40, y: 50, width: 200, height: 80 },
+            htmlHint: '',
+            selectionKind: 'visual',
+            screenshotPath: 'drawing-1.png',
+            markKind: 'box',
+            slideIndex: 1,
+          },
+        ],
+      },
+    );
+
+    expect(prompt).toContain('[Visual annotation edit]');
+    expect(prompt).toContain('Do NOT add decorative overlay divs');
+    expect(prompt).not.toContain('[Visual mark edit]');
+    expect(prompt).not.toContain('ADD the requested mark (SVG/icon)');
+  });
 });
 
 describe("mergeServerMessagesIntoConversation", () => {
+  it("scrubs persisted Daisy badge / mid-SVG CSS debris on server hydrate", () => {
+    const debris = [
+      '<span style="background:',
+      "#FDE68A;border:3px solid ",
+      "#2D2D2D;border-radius:20px;padding:10px 28px;font-family:'Quicksand',sans-serif;box-shadow:4px 4px 0 ",
+      '#2D2D2D">Internal Team</span>',
+      "</div>",
+      "<!-- Daisy motif TL -->none;stroke:",
+      "#232323;stroke-width:2.0",
+    ].join("\n");
+    const server: ChatMessage = {
+      id: "a1",
+      role: "assistant",
+      content: `슬라이드 초안을 준비했습니다.\n\n${debris}`,
+      createdAt: 1,
+      events: [{ kind: "text", text: `슬라이드 초안을 준비했습니다.\n\n${debris}` }],
+    };
+    const merged = mergeServerMessagesIntoConversation([], [server]);
+    expect(merged[0]?.content).toBe("슬라이드 초안을 준비했습니다.");
+    expect(merged[0]?.events?.[0]).toMatchObject({
+      kind: "text",
+      text: "슬라이드 초안을 준비했습니다.",
+    });
+  });
+
   it("keeps local active runStatus when server row is stale", () => {
     const local: ChatMessage = {
       id: "a1",

@@ -3,6 +3,7 @@
 // descriptor pressure without adding useful design context.
 export const IGNORED_PROJECT_DIR_NAMES = new Set([
   '.git',
+  '_daemon',
   'node_modules',
   'vendor',
   '.od',

@@ -11,7 +11,7 @@
 // cards.
 
 import { describe, expect, it, afterEach, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { InstalledPluginRecord } from '@open-design/contracts';
 import type { ComponentProps } from 'react';
 import { PluginsHomeSection } from '../../src/components/PluginsHomeSection';
@@ -61,15 +61,17 @@ function renderSection(
   props: Partial<ComponentProps<typeof PluginsHomeSection>> = {},
 ) {
   return render(
-    <PluginsHomeSection
-      plugins={plugins}
-      loading={false}
-      activePluginId={null}
-      pendingApplyId={null}
-      onUse={() => {}}
-      onOpenDetails={() => {}}
-      {...props}
-    />,
+    <I18nProvider initial="en">
+      <PluginsHomeSection
+        plugins={plugins}
+        loading={false}
+        activePluginId={null}
+        pendingApplyId={null}
+        onUse={() => {}}
+        onOpenDetails={() => {}}
+        {...props}
+      />
+    </I18nProvider>,
   );
 }
 
@@ -135,17 +137,18 @@ const sample: InstalledPluginRecord[] = [
 
 describe('PluginsHomeSection (community gallery)', () => {
   const deckOnlySample: InstalledPluginRecord[] = [
-    makePlugin({ id: 'deck-pitch', mode: 'deck', tags: ['pitch-deck', 'pitch-business'] }),
-    makePlugin({ id: 'deck-training', mode: 'deck', tags: ['course-training'] }),
+    makePlugin({ id: 'deck-pitch', mode: 'deck', tags: ['pitch-deck'] }),
+    makePlugin({ id: 'deck-training', mode: 'deck', tags: ['training-deck'] }),
+    makePlugin({ id: 'deck-creative', mode: 'deck', tags: ['zhangzara'] }),
   ];
 
-  it('hides primary category pills in slide-only community mode but keeps deck subfacets', async () => {
+  it('hides primary category pills in slide-only community mode and defaults to Creative decks', async () => {
     renderSection(deckOnlySample, {
       cardLayout: 'gallery',
       hidePrimaryCategoryFacets: true,
       lockedFacetCategory: 'deck',
       preferDefaultFacet: true,
-      defaultFacetSelection: { category: 'deck', subcategory: null },
+      defaultFacetSelection: { category: 'deck', subcategory: 'creative-decks' },
     });
 
     expect(screen.getByTestId('plugins-home-row-category').getAttribute('data-hide-category-pills')).toBe(
@@ -156,6 +159,60 @@ describe('PluginsHomeSection (community gallery)', () => {
     expect(await screen.findByTestId('plugins-home-row-subcategory-deck')).toBeTruthy();
     expect(screen.getByTestId('plugins-home-pill-subcategory-deck-pitch-business')).toBeTruthy();
     expect(screen.getByTestId('plugins-home-pill-subcategory-deck-course-training')).toBeTruthy();
+    const creativePill = screen.getByTestId('plugins-home-pill-subcategory-deck-creative-decks');
+    expect(creativePill.getAttribute('aria-selected')).toBe('true');
+    expect(creativePill.className).toContain('is-active');
+    // Default filter: only the Creative decks template is listed.
+    expect(pluginIds()).toEqual(['deck-creative']);
+  });
+
+  it('applies Creative decks after paginated catalog grows to include that scene', async () => {
+    // ≥2 scene buckets so the sub-row renders; page-1 has no creative-decks.
+    const firstPage = [
+      makePlugin({ id: 'deck-pitch', mode: 'deck', tags: ['pitch-deck'] }),
+      makePlugin({ id: 'deck-training', mode: 'deck', tags: ['training-deck'] }),
+    ];
+    const afterLoadMore = [
+      ...firstPage,
+      makePlugin({ id: 'deck-creative', mode: 'deck', tags: ['zhangzara'] }),
+    ];
+    const view = renderSection(firstPage, {
+      cardLayout: 'gallery',
+      hidePrimaryCategoryFacets: true,
+      lockedFacetCategory: 'deck',
+      preferDefaultFacet: true,
+      defaultFacetSelection: { category: 'deck', subcategory: 'creative-decks' },
+    });
+
+    // Preferred scene missing → All selected until catalog grows.
+    expect(await screen.findByTestId('plugins-home-pill-subcategory-deck-all')).toBeTruthy();
+    expect(
+      screen.getByTestId('plugins-home-pill-subcategory-deck-all').getAttribute('aria-selected'),
+    ).toBe('true');
+    expect(pluginIds().sort()).toEqual(['deck-pitch', 'deck-training']);
+
+    view.rerender(
+      <PluginsHomeSection
+        plugins={afterLoadMore}
+        loading={false}
+        activePluginId={null}
+        pendingApplyId={null}
+        onUse={() => {}}
+        onOpenDetails={() => {}}
+        cardLayout="gallery"
+        hidePrimaryCategoryFacets
+        lockedFacetCategory="deck"
+        preferDefaultFacet
+        defaultFacetSelection={{ category: 'deck', subcategory: 'creative-decks' }}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId('plugins-home-pill-subcategory-deck-creative-decks').getAttribute('aria-selected'),
+      ).toBe('true');
+    });
+    expect(pluginIds()).toEqual(['deck-creative']);
   });
 
   it('keeps gallery tiles free of inline Use actions — Use lives in the detail modal', () => {
@@ -207,7 +264,8 @@ describe('PluginsHomeSection (category bar)', () => {
     expect(screen.getByTestId('plugins-home-row-subcategory-prototype')).toBeTruthy();
     expect(screen.getByTestId('plugins-home-pill-subcategory-prototype-business-dashboards')).toBeTruthy();
     expect(screen.getByTestId('plugins-home-pill-subcategory-prototype-app-prototypes')).toBeTruthy();
-    expect(screen.getByTestId('plugins-home-pill-subcategory-prototype-developer-tools')).toBeTruthy();
+    // Zero-count scene buckets are omitted from the facet list (facets.ts).
+    expect(screen.queryByTestId('plugins-home-pill-subcategory-prototype-developer-tools')).toBeNull();
   });
 
   it('filters Video separately from HyperFrames', () => {
@@ -286,14 +344,19 @@ describe('PluginsHomeSection (category bar)', () => {
     expect(screen.getByRole('status').textContent).toContain('Saved 瑞士国际主义 Deck.');
   });
 
-  it('shows the normal empty-filter state for planned empty buckets', () => {
+  it('omits zero-count scene buckets and shows empty state for non-matching search', () => {
     renderSection();
 
     fireEvent.click(screen.getByTestId('plugins-home-pill-category-video'));
-    fireEvent.click(screen.getByTestId('plugins-home-pill-subcategory-video-data-explainers'));
+    // Planned empty buckets (e.g. data-explainers) must not appear as pills.
+    expect(screen.queryByTestId('plugins-home-pill-subcategory-video-data-explainers')).toBeNull();
+    expect(screen.getByTestId('plugins-home-pill-subcategory-video-social-short-form')).toBeTruthy();
 
+    fireEvent.change(screen.getByTestId('plugins-home-search'), {
+      target: { value: 'zzz-no-such-plugin' },
+    });
     expect(screen.queryByRole('list')).toBeNull();
-    expect(screen.getByText(/No plugins match the current filters/i)).toBeTruthy();
+    expect(screen.getByText(/No plugins match your search/i)).toBeTruthy();
     expect(screen.queryByTestId('plugins-home-contribution-card')).toBeNull();
   });
 

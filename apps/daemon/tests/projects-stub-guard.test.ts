@@ -8,6 +8,7 @@ interface FilePostBody {
   content: string;
   encoding?: 'utf8' | 'base64';
   artifactManifest?: unknown;
+  skipArtifactStubGuard?: boolean;
 }
 
 function htmlBody(byteLength: number): string {
@@ -269,6 +270,81 @@ describe('artifact stub guard via /api/projects/:id/files', () => {
     const files = (await filesResp.json()) as { files: Array<{ name: string; size: number }> };
     const dashboard = files.files.find((f) => f.name === 'dashboard.html');
     expect(dashboard?.size).toBeGreaterThan(15_000);
+  });
+
+  it('allows compact same-name overwrite when skipArtifactStubGuard is true', async () => {
+    const projectId = await createProject('skip-guard-files');
+
+    const firstResp = await postFile(projectId, {
+      name: 'deck.html',
+      content: htmlBody(40_000),
+      artifactManifest: manifestFor('deck', 'deck'),
+    });
+    expect(firstResp.status).toBe(200);
+
+    const compact = htmlBody(4_000);
+    const fillResp = await postFile(projectId, {
+      name: 'deck.html',
+      content: compact,
+      artifactManifest: manifestFor('deck', 'deck'),
+      skipArtifactStubGuard: true,
+    });
+    expect(fillResp.status).toBe(200);
+
+    const filesResp = await fetch(`${baseUrl}/api/projects/${projectId}/files`);
+    const files = (await filesResp.json()) as { files: Array<{ name: string; size: number }> };
+    const deck = files.files.find((f) => f.name === 'deck.html');
+    expect(deck?.size).toBe(Buffer.byteLength(compact));
+  });
+
+  it('allows compact revision push when skipArtifactStubGuard is true', async () => {
+    const projectId = await createProject('skip-guard-rev');
+
+    const firstResp = await postFile(projectId, {
+      name: 'deck.html',
+      content: htmlBody(40_000),
+      artifactManifest: manifestFor('deck', 'deck'),
+    });
+    expect(firstResp.status).toBe(200);
+
+    const compact = htmlBody(4_000);
+    const rejected = await fetch(
+      `${baseUrl}/api/projects/${projectId}/files/deck.html/revisions`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          content: compact,
+          source: 'agent_full_deck',
+          label: 'fill without skip',
+          artifactManifest: manifestFor('deck', 'deck'),
+        }),
+      },
+    );
+    expect(rejected.status).toBe(422);
+    const rejectedBody = (await rejected.json()) as { error: { code: string } };
+    expect(rejectedBody.error.code).toBe('ARTIFACT_REGRESSION');
+
+    const allowed = await fetch(
+      `${baseUrl}/api/projects/${projectId}/files/deck.html/revisions`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          content: compact,
+          source: 'agent_full_deck',
+          label: 'clone content-fill',
+          artifactManifest: manifestFor('deck', 'deck'),
+          skipArtifactStubGuard: true,
+        }),
+      },
+    );
+    expect(allowed.status).toBe(200);
+
+    const filesResp = await fetch(`${baseUrl}/api/projects/${projectId}/files`);
+    const files = (await filesResp.json()) as { files: Array<{ name: string; size: number }> };
+    const deck = files.files.find((f) => f.name === 'deck.html');
+    expect(deck?.size).toBe(Buffer.byteLength(compact));
   });
 
   it('rejects stub regressions in subdirectories (Codex/mrcfps P2)', async () => {

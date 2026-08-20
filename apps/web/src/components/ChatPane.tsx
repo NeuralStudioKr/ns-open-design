@@ -28,11 +28,26 @@ import type { Dict } from '../i18n/types';
 import { copyToClipboard } from '../lib/copy-to-clipboard';
 import { projectRawUrl } from '../providers/registry';
 import { AuthenticatedProjectFileImage } from './AuthenticatedProjectFileImage';
+import { VisualCommentAttachmentChip } from './VisualCommentAttachmentChip';
 import {
+  chatAttachmentVisibleInProjectFiles,
   excludeAttachmentsBackedByVisualScreenshots,
+  isEphemeralDrawingScreenshotPath,
+  isRenderableImagePath,
+  normalizeProjectFilePath,
+  projectFilePathBasename,
   projectFilePathExists,
   projectFileResolvedPath,
 } from '../utils/projectFilePaths';
+import {
+  extractImageMentionPathsFromUserText,
+  recoverChatAttachmentsFromMentions,
+} from '../utils/recoverChatAttachmentsFromMentions';
+import {
+  buildInlineMentionParts,
+  inlineMentionToken,
+  type InlineMentionEntity,
+} from '../utils/inlineMentions';
 import { resolveTeamverDriveAssetUrl } from '../teamver/designApiBase';
 import { ProjectCardHtmlCover } from '../teamver/components/ProjectCardHtmlCover';
 import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
@@ -63,6 +78,11 @@ import {
   extractPersistedRunErrorDiagnostic,
 } from '../teamver/projectErrorMessages';
 import { AUTO_CONTINUE_STATUS_CODE, RESUME_CONTINUE_PROMPT, isAutoContinueIncompleteOutputPrompt } from '../runtime/resume';
+import { isSlideCountTopUpPrompt } from '../teamver/slideCountTopUp';
+import {
+  looksLikeDeckTemplateSkillId,
+  resolveSelectedDeckTemplateChipLabel,
+} from '../runtime/selected-deck-template';
 import { resolveLastAssistantMessageId } from '../runtime/conversation-message-dedupe';
 import {
   shouldIncludeMessageInChatRender,
@@ -329,7 +349,7 @@ function ImportedFolderArtifacts({
             tabIndex={openable ? 0 : undefined}
             title={openLabel}
             aria-label={openLabel}
-            onDoubleClick={openable ? openFile : undefined}
+            onClick={openable ? openFile : undefined}
             onKeyDown={
               openable
                 ? (event) => {
@@ -489,6 +509,7 @@ interface Props {
   // set to decide whether a path can be opened as a tab.
   projectFileNames?: Set<string>;
   onEnsureProject: () => Promise<string | null>;
+  onProjectFilesMaybeChanged?: () => void;
   previewComments?: PreviewComment[];
   attachedComments?: PreviewComment[];
   onAttachComment?: (comment: PreviewComment) => void;
@@ -714,6 +735,7 @@ export function ChatPane({
   activeDesignSystem = null,
   projectFileNames,
   onEnsureProject,
+  onProjectFilesMaybeChanged,
   previewComments = [],
   attachedComments = [],
   onAttachComment,
@@ -806,6 +828,7 @@ export function ChatPane({
   const { hideUsefulTips, slideOnlyMvp } = useTeamverBranding();
   const amrProfile = config?.agentCliEnv?.amr?.[AMR_PROFILE_ENV_KEY] ?? null;
   const logRef = useRef<HTMLDivElement | null>(null);
+  const chatJumpBtnRef = useRef<HTMLButtonElement | null>(null);
   const chatLogScrollIdleTimerRef = useRef<number | null>(null);
   const historyWrapRef = useRef<HTMLDivElement | null>(null);
   const composerRef = useRef<ChatComposerHandle | null>(null);
@@ -1170,7 +1193,10 @@ export function ChatPane({
   const firstUserMessageId = useMemo(
     () =>
       messages.find(
-        (m) => m.role === 'user' && !isAutoContinueIncompleteOutputPrompt(m.content),
+        (m) =>
+          m.role === 'user'
+          && !isAutoContinueIncompleteOutputPrompt(m.content)
+          && !isSlideCountTopUpPrompt(m.content),
       )?.id,
     [messages],
   );
@@ -1178,9 +1204,15 @@ export function ChatPane({
     () => currentSkillId ? skills.find((skill) => skill.id === currentSkillId) ?? null : null,
     [currentSkillId, skills],
   );
+  // Prefer message runContext (set at send) so refresh/re-entry keeps the chip
+  // even when live project.metadata title is briefly empty; fall back to
+  // project metadata id/title (not title-only).
   const activeTemplateTitle = useMemo(
-    () => projectMetadata?.selectedDeckTemplateTitle?.trim() || null,
-    [projectMetadata?.selectedDeckTemplateTitle],
+    () =>
+      resolveSelectedDeckTemplateChipLabel({
+        projectMetadata,
+      }),
+    [projectMetadata],
   );
   // Map each assistant message id to the user message that follows it (if any)
   // so the chat-side Questions banner can reopen that exact answered form in
@@ -1706,6 +1738,11 @@ export function ChatPane({
     anchorActiveRef.current = false;
     pinnedToBottomRef.current = true;
     resetTailSpacer();
+    // Blur before scroll hides the button (`tabIndex={-1}`). Otherwise the
+    // focused control stays focused while it leaves the a11y tree and Chrome
+    // logs: "Blocked aria-hidden on an element because its descendant
+    // retained focus" (browser warning — not an app console.log).
+    chatJumpBtnRef.current?.blur();
     el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
   }
 
@@ -1811,6 +1848,8 @@ export function ChatPane({
       initialDraft={initialDraft}
       draftStorageKey={composerDraftStorageKey}
       onEnsureProject={onEnsureProject}
+      onProjectFilesMaybeChanged={onProjectFilesMaybeChanged}
+      onRequestOpenFile={onRequestOpenFile}
       commentAttachments={commentsToAttachments(attachedComments)}
       onRemoveCommentAttachment={onDetachComment}
       onSend={(prompt, attachments, commentAttachments, meta) => {
@@ -1864,6 +1903,7 @@ export function ChatPane({
       currentSkillId={currentSkillId}
       onProjectSkillChange={onProjectSkillChange}
       pinnedPluginId={activePluginSnapshot?.pluginId ?? null}
+      pinnedAppliedPluginSnapshotId={activePluginSnapshot?.snapshotId ?? null}
       footerAccessory={composerFooterAccessory}
       leadingAccessory={composerLeadingAccessory}
       currentDesignSystemId={currentDesignSystemId}
@@ -2157,6 +2197,8 @@ export function ChatPane({
                 forceStreamingMessageIds={forceStreamingMessageIds}
                 lastAssistantId={lastAssistantId}
                 firstUserMessageId={firstUserMessageId}
+                projectMetadata={projectMetadata}
+                skills={skills}
                 activePluginSnapshot={activePluginSnapshot}
                 activeSkill={activeSkill}
                 activeTemplateTitle={activeTemplateTitle}
@@ -2314,14 +2356,19 @@ export function ChatPane({
             </div>
             {/* Always mounted so the CSS transition can play in both
                 directions; the `chat-jump-btn-active` class flips the
-                slide + opacity, and `aria-hidden` + `tabIndex={-1}`
-                keep it out of the a11y tree when it's not visible. */}
+                slide + opacity. When inactive, CSS `visibility: hidden`
+                already drops it from the a11y tree — avoid `aria-hidden`
+                on this focusable control (Chrome blocks it if focus
+                remains and logs a console warning). `tabIndex={-1}` keeps
+                it out of the tab order while hidden; jumpToBottom blurs
+                before the hide transition. */}
             <button
               type="button"
+              ref={chatJumpBtnRef}
               className={`chat-jump-btn${scrolledFromBottom ? ' chat-jump-btn-active' : ''}`}
               onClick={jumpToBottom}
               title={t('chat.scrollToLatest')}
-              aria-hidden={!scrolledFromBottom}
+              aria-label={t('chat.scrollToLatest')}
               tabIndex={scrolledFromBottom ? 0 : -1}
             >
               <Icon name="arrow-up" size={12} style={{ transform: 'rotate(180deg)' }} />
@@ -2477,6 +2524,8 @@ function ChatRows({
   forceStreamingMessageIds,
   lastAssistantId,
   firstUserMessageId,
+  projectMetadata,
+  skills,
   activePluginSnapshot,
   activeSkill,
   activeTemplateTitle,
@@ -2508,6 +2557,8 @@ function ChatRows({
   activeConversationKey: string;
   projectFiles: ProjectFile[];
   projectFileNames?: Set<string>;
+  projectMetadata?: ProjectMetadata;
+  skills: SkillSummary[];
   onRequestOpenFile?: (name: string) => void;
   onRequestPluginDetails?: (pluginId: string) => void;
   onRequestDesignSystemDetails?: (system: DesignSystemSummary) => void;
@@ -2680,7 +2731,7 @@ function ChatRows({
       // Automatic-continue recovery prompts are model-facing only. Showing
       // the long directive as a user bubble made brand-new projects look
       // like they were continuing another project's deck.
-      if (isAutoContinueIncompleteOutputPrompt(m.content)) {
+      if (isAutoContinueIncompleteOutputPrompt(m.content) || isSlideCountTopUpPrompt(m.content)) {
         return null;
       }
       return (
@@ -2688,6 +2739,7 @@ function ChatRows({
           message={m}
           projectId={projectId}
           projectFileNames={projectFileNames}
+          skills={skills}
           onRequestOpenFile={onRequestOpenFile}
           onRequestPluginDetails={onRequestPluginDetails}
           onRequestDesignSystemDetails={onRequestDesignSystemDetails}
@@ -2699,13 +2751,20 @@ function ChatRows({
           }
           activeSkill={
             m.id === firstUserMessageId
-              ? activeSkill ?? null
+              && activeSkill
+              && !looksLikeDeckTemplateSkillId(activeSkill.id)
+              ? activeSkill
               : null
           }
           activeTemplateTitle={
             m.id === firstUserMessageId
-              ? activeTemplateTitle ?? null
-              : null
+              ? resolveSelectedDeckTemplateChipLabel({
+                  projectMetadata,
+                  runContext: m.runContext,
+                }) ?? activeTemplateTitle ?? null
+              : resolveSelectedDeckTemplateChipLabel({
+                  runContext: m.runContext,
+                })
           }
           activeDesignSystem={
             m.id === firstUserMessageId
@@ -3521,10 +3580,14 @@ export function isAssistantMessageStreaming(
 }
 
 export function buildRunErrorDiagnosticText(input: RunErrorDiagnosticInput): string {
+  // Branding-neutral header — the diagnostic gets copied into support tickets
+  // by the "copy diagnostic" button. Ops needs the internal ids below; the
+  // header name is not user-facing surface.
+  const resolvedRunId = input.runId ?? input.traceId ?? null;
   const lines = [
-    'Open Design run error diagnostics',
+    'Run error diagnostics',
     `trace_id: ${input.traceId ?? 'n/a'}`,
-    `run_id: ${input.runId ?? input.traceId ?? 'n/a'}`,
+    `run_id: ${resolvedRunId ?? 'n/a'}`,
     `error_code: ${input.errorCode ?? 'n/a'}`,
     `project_id: ${input.projectId ?? 'n/a'}`,
     `conversation_id: ${input.conversationId ?? 'n/a'}`,
@@ -3538,6 +3601,16 @@ export function buildRunErrorDiagnosticText(input: RunErrorDiagnosticInput): str
   const raw = input.rawMessage?.trim();
   if (raw && raw !== input.message.trim()) {
     lines.push('', 'raw_error:', raw);
+  }
+
+  // BYOK / direct API agents never mint a daemon run id — `n/a` is expected,
+  // not a missing telemetry bug. Call that out so support tickets don't chase it.
+  const agentId = String(input.agentId ?? '').trim().toLowerCase();
+  if (!resolvedRunId && (agentId.endsWith('-api') || agentId.includes('byok'))) {
+    lines.push(
+      '',
+      'note: run_id/trace_id n/a is expected for BYOK/API agents (no daemon run).',
+    );
   }
 
   return lines.join('\n');
@@ -3648,10 +3721,48 @@ function ConversationRow({
 // props, so it skips re-render while a later turn streams.
 const UserMessage = memo(UserMessageImpl);
 
+function stubDesignSystemChip(
+  id: string,
+  title?: string | null,
+): DesignSystemSummary {
+  const trimmedId = id.trim();
+  const trimmedTitle = title?.trim();
+  return {
+    id: trimmedId,
+    title:
+      trimmedTitle
+      || trimmedId.replace(/^user:/i, '').replace(/[-_]+/g, ' ').trim()
+      || trimmedId,
+    category: '',
+    summary: '',
+  };
+}
+
+function stubSkillChip(id: string): SkillSummary {
+  const trimmedId = id.trim();
+  const label =
+    trimmedId.replace(/^user:/i, '').replace(/[-_]+/g, ' ').trim() || trimmedId;
+  return {
+    id: trimmedId,
+    name: label,
+    description: '',
+    triggers: [],
+    mode: 'prototype',
+    previewType: 'none',
+    designSystemRequired: false,
+    defaultFor: [],
+    upstream: null,
+    hasBody: false,
+    examplePrompt: '',
+    aggregatesExamples: false,
+  };
+}
+
 function UserMessageImpl({
   message,
   projectId,
   projectFileNames,
+  skills = [],
   onRequestOpenFile,
   onRequestPluginDetails,
   onRequestDesignSystemDetails,
@@ -3664,6 +3775,7 @@ function UserMessageImpl({
   message: ChatMessage;
   projectId: string | null;
   projectFileNames?: Set<string>;
+  skills?: SkillSummary[];
   onRequestOpenFile?: (name: string) => void;
   onRequestPluginDetails?: (pluginId: string) => void;
   onRequestDesignSystemDetails?: (system: DesignSystemSummary) => void;
@@ -3673,21 +3785,63 @@ function UserMessageImpl({
   activeTemplateTitle?: string | null;
   activeDesignSystem?: DesignSystemSummary | null;
 }) {
-  const attachments = sortChatAttachmentsForDisplay(message.attachments ?? []);
-  const commentAttachments = message.commentAttachments ?? [];
+  // Recover `@image.webp` mentions into attachment chips when attachments_json
+  // was dropped by a partial upsert / older client — otherwise refresh leaves
+  // only plain `@filename` text in the bubble.
+  const messageWithRecoveredAttachments = recoverChatAttachmentsFromMentions(message);
+  const attachments = sortChatAttachmentsForDisplay(messageWithRecoveredAttachments.attachments ?? []);
+  const commentAttachments = messageWithRecoveredAttachments.commentAttachments ?? [];
+  // After refresh, /files can lag behind durable Drive/local uploads that are
+  // still on disk. Keep those chips visible; only ephemeral drawings stay
+  // strictly index-gated so deleted marks do not resurrect.
   const visibleAttachments = excludeAttachmentsBackedByVisualScreenshots(
-    attachments.filter((attachment) => projectFilePathExists(projectFileNames, attachment.path)),
+    attachments.filter((attachment) =>
+      chatAttachmentVisibleInProjectFiles(projectFileNames, attachment.path),
+    ),
     commentAttachments,
   );
   const workspaceItems = message.runContext?.workspaceItems ?? [];
   const messagePluginSnapshot = message.appliedPluginSnapshot ?? activePluginSnapshot ?? null;
+  const templateChipTitle =
+    resolveSelectedDeckTemplateChipLabel({ runContext: message.runContext })
+    || activeTemplateTitle
+    || null;
+  const templateIdSet = new Set(
+    [
+      message.runContext?.selectedDeckTemplateId?.trim(),
+      ...(message.runContext?.skillIds ?? []).filter(looksLikeDeckTemplateSkillId),
+    ].filter((id): id is string => Boolean(id)),
+  );
+  const skillChips: SkillSummary[] = [];
+  for (const skillId of message.runContext?.skillIds ?? []) {
+    const id = skillId.trim();
+    if (!id || templateIdSet.has(id) || looksLikeDeckTemplateSkillId(id)) continue;
+    if (skillChips.some((entry) => entry.id === id)) continue;
+    const skill = skills.find((entry) => entry.id === id) ?? stubSkillChip(id);
+    skillChips.push(skill);
+  }
+  if (
+    activeSkill
+    && !looksLikeDeckTemplateSkillId(activeSkill.id)
+    && !skillChips.some((entry) => entry.id === activeSkill.id)
+  ) {
+    skillChips.push(activeSkill);
+  }
+  const designSystemChip = (() => {
+    const fromMsgId = message.runContext?.designSystemId?.trim();
+    if (fromMsgId) {
+      if (activeDesignSystem?.id === fromMsgId) return activeDesignSystem;
+      return stubDesignSystemChip(fromMsgId, message.runContext?.designSystemTitle);
+    }
+    return activeDesignSystem ?? null;
+  })();
   const hasRunContext = Boolean(
     message.sessionMode ||
       workspaceItems.length > 0 ||
       messagePluginSnapshot ||
-      activeSkill ||
-      activeTemplateTitle ||
-      activeDesignSystem,
+      skillChips.length > 0 ||
+      templateChipTitle ||
+      designSystemChip,
   );
   const [copied, setCopied] = useState(false);
   const copyTimerRef = useRef<ReturnType<typeof setTimeout>>();
@@ -3717,6 +3871,10 @@ function UserMessageImpl({
     strippedUserContent === COMMENT_ONLY_USER_PLACEHOLDER && commentAttachments.length > 0
       ? ''
       : strippedUserContent;
+  const userMentionEntities = useMemo(
+    () => mentionEntitiesForUserMessage(visibleAttachments, visibleUserContent),
+    [visibleAttachments, visibleUserContent],
+  );
   const ts = messageTime(message);
 
   return (
@@ -3743,14 +3901,15 @@ function UserMessageImpl({
               onOpenDetails={onRequestPluginDetails}
             />
           ) : null}
-          {activeSkill ? (
-            <ActiveSkillChip skill={activeSkill} />
-          ) : activeTemplateTitle ? (
-            <ActiveTemplateChip title={activeTemplateTitle} />
+          {skillChips.map((skill) => (
+            <ActiveSkillChip key={skill.id} skill={skill} />
+          ))}
+          {templateChipTitle ? (
+            <ActiveTemplateChip title={templateChipTitle} />
           ) : null}
-          {activeDesignSystem ? (
+          {designSystemChip ? (
             <ActiveDesignSystemChip
-              system={activeDesignSystem}
+              system={designSystemChip}
               onOpenDetails={onRequestDesignSystemDetails}
             />
           ) : null}
@@ -3761,8 +3920,9 @@ function UserMessageImpl({
           {visibleAttachments.map((a, index) => {
             const baseName = a.path.split('/').pop() || a.path;
             const openable = !!onRequestOpenFile;
+            // Prefer the full project-relative path so refs/drive/… opens correctly.
             const handleOpen = openable
-              ? () => onRequestOpenFile?.(baseName)
+              ? () => onRequestOpenFile?.(a.path || baseName)
               : undefined;
             return (
               <div key={a.path} className="user-attachment-row">
@@ -3776,7 +3936,19 @@ function UserMessageImpl({
                   <span className="staged-order" aria-label={`Attachment ${index + 1}`}>
                     {index + 1}
                   </span>
-                  <Icon name={a.kind === 'image' ? 'image' : 'file'} size={14} />
+                  {a.kind === 'image' && projectId ? (
+                    <AuthenticatedProjectFileImage
+                      projectId={projectId}
+                      path={a.path}
+                      alt=""
+                      // Durable memo/board uploads should show a real thumb.
+                      // Ephemeral drawing screenshots stay in VisualComment chips.
+                      trustExists={!isEphemeralDrawingScreenshotPath(a.path)}
+                      allowBackgroundRetry={!isEphemeralDrawingScreenshotPath(a.path)}
+                    />
+                  ) : (
+                    <Icon name={a.kind === 'image' ? 'image' : 'file'} size={14} />
+                  )}
                   <span className="staged-name">{a.name}</span>
                 </button>
                 {a.source?.type === 'teamver-drive' ? (
@@ -3800,19 +3972,13 @@ function UserMessageImpl({
       {commentAttachments.length > 0 ? (
         <div className="user-attachments comment-history-attachments">
           {commentAttachments.map((a) => (
-            <span key={a.id} className="user-attachment staged-comment">
-              <span
-                className="staged-name"
-                title={
-                  a.comment
-                    ? `${commentTargetDisplayName(a)}: ${a.comment}`
-                    : commentTargetDisplayName(a)
-                }
-              >
-                <strong>{commentTargetDisplayName(a)}</strong>
-                {a.comment ? <span>{a.comment}</span> : null}
-              </span>
-            </span>
+            <VisualCommentAttachmentChip
+              key={a.id}
+              attachment={a}
+              projectId={projectId}
+              projectFileNames={projectFileNames}
+              variant="history"
+            />
           ))}
         </div>
       ) : null}
@@ -3830,7 +3996,12 @@ function UserMessageImpl({
         </div>
       ) : visibleUserContent ? (
         <div className="user-text-wrap">
-          <div className="user-text user-bubble">{visibleUserContent}</div>
+          <div className="user-text user-bubble">
+            <UserMessageInlineContent
+              text={visibleUserContent}
+              entities={userMentionEntities}
+            />
+          </div>
           <div className="user-actions">
             {ts ? (
               <time
@@ -3854,6 +4025,82 @@ function UserMessageImpl({
         </div>
       ) : null}
     </div>
+  );
+}
+
+function mentionEntitiesForUserMessage(
+  attachments: readonly ChatAttachment[],
+  visibleText: string,
+): InlineMentionEntity[] {
+  const entities: InlineMentionEntity[] = [];
+  const seen = new Set<string>();
+  const pushFile = (path: string) => {
+    const trimmed = normalizeProjectFilePath(path);
+    if (!trimmed || seen.has(trimmed)) return;
+    seen.add(trimmed);
+    const base = projectFilePathBasename(trimmed);
+    entities.push({
+      id: trimmed,
+      kind: 'file',
+      label: base,
+      token: inlineMentionToken(trimmed),
+      title: `File: ${trimmed}`,
+    });
+    if (base !== trimmed && !seen.has(base)) {
+      seen.add(base);
+      entities.push({
+        id: trimmed,
+        kind: 'file',
+        label: base,
+        token: inlineMentionToken(base),
+        title: `File: ${trimmed}`,
+      });
+    }
+  };
+  for (const attachment of attachments) {
+    pushFile(attachment.path);
+  }
+  // Promote leftover `@*.webp` tokens even when attachment recovery failed so
+  // the bubble still matches the composer chip look. Do NOT scan via
+  // buildInlineMentionParts here — that WeakMap-caches an incomplete trie on
+  // this same array before we pushFile, leaving history pills as plain text.
+  for (const path of extractImageMentionPathsFromUserText(visibleText)) {
+    if (!isRenderableImagePath(path) || isEphemeralDrawingScreenshotPath(path)) continue;
+    pushFile(path);
+  }
+  return entities;
+}
+
+function UserMessageInlineContent({
+  text,
+  entities,
+}: {
+  text: string;
+  entities: InlineMentionEntity[];
+}) {
+  const parts = buildInlineMentionParts(text, entities, { highlightUnknown: false });
+  if (!parts) return <>{text}</>;
+  return (
+    <>
+      {parts.map((part, index) => {
+        if (part.kind === 'text') {
+          return <Fragment key={`t-${index}`}>{part.text}</Fragment>;
+        }
+        return (
+          <span
+            key={`m-${index}-${part.entity.id}`}
+            className={`composer-inline-mention composer-inline-mention--${part.entity.kind}`}
+            data-mention=""
+            data-mention-id={part.entity.id}
+            data-mention-kind={part.entity.kind}
+            data-testid="user-inline-mention"
+            title={part.entity.title ?? part.entity.label}
+          >
+            {part.text}
+          </span>
+        );
+      })}
+    </>
   );
 }
 
@@ -3979,7 +4226,7 @@ function ActiveDesignSystemChip({
     <>
       <span className="msg-plugin-chip__dot" aria-hidden />
       <span className="msg-plugin-chip__label">
-        <span className="msg-plugin-chip__kind">{embedUiLabel('Design System', '디자인 시스템')}</span>
+        <span className="msg-plugin-chip__kind">{embedUiLabel('Style', '스타일')}</span>
         <span className="msg-plugin-chip__title">{system.title}</span>
       </span>
       {system.category ? (

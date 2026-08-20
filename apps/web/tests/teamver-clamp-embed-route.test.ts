@@ -12,7 +12,7 @@ const embedBranding = {
 };
 
 describe("clampTeamverEmbedRoute", () => {
-  it("redirects hidden home views to Design home", () => {
+  it("redirects hidden home views to Slide home", () => {
     expect(clampTeamverEmbedRoute({ kind: "home", view: "plugins" }, embedBranding)).toEqual({
       kind: "home",
       view: "home",

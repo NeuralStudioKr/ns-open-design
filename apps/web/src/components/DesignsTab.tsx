@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { Dialog, DialogDescription, DialogFooter, DialogTitle } from "@open-design/components";
-import { projectKindToTracking } from "@open-design/contracts/analytics";
 import { useAnalytics } from "../analytics/provider";
 import {
   trackPageView,
@@ -25,6 +24,8 @@ import { LiveArtifactBadges } from "./LiveArtifactBadges";
 import { Toast } from "./Toast";
 import { isTeamverEmbedMode } from "../teamver/designApiBase";
 import { useTeamverBranding } from "../teamver/branding/TeamverBrandingProvider";
+import { projectListTrackingKind } from "../teamver/projectListCardCategory";
+import { DesignSystemProjectTag, ProjectListCardTag } from "../teamver/components/ProjectListCardTag";
 import { DesignsTabProjectThumb } from "../teamver/components/DesignsTabProjectThumb";
 import { TeamverLatestPublishChip } from "../teamver/components/TeamverLatestPublishChip";
 import {
@@ -32,6 +33,7 @@ import {
   projectCoverFilesEqual,
   type ProjectCoverFile,
 } from "../teamver/projectPreviewFile";
+import { subscribeProjectCoverClear } from "../teamver/projectCoverLoader";
 import { prefetchDesignsTabViewport } from "../teamver/prefetchDesignsTabViewport";
 import { PROJECT_LIST_VIEWPORT_BATCH } from "../teamver/projectListLimits";
 import {
@@ -148,6 +150,19 @@ export function DesignsTab({
 	>({});
 	const [coverOverrides, setCoverOverrides] = useState<Record<string, ProjectCoverFile | null>>({});
 	const projectEntryFileSnapshotRef = useRef<Map<string, string | undefined>>(new Map());
+
+	useEffect(() => {
+		return subscribeProjectCoverClear((clearedId) => {
+			setCoverOverrides((prev) => {
+				if (Object.keys(prev).length === 0) return prev;
+				if (clearedId === null) return {};
+				if (!(clearedId in prev)) return prev;
+				const next = { ...prev };
+				delete next[clearedId];
+				return next;
+			});
+		});
+	}, []);
 
 	useEffect(() => {
 		setCoverOverrides((prev) => {
@@ -608,7 +623,7 @@ export function DesignsTab({
 										/>
 									</div>
 									<div className="design-card-meta-block">
-										<ProjectTag category="live-artifact" />
+										<ProjectListCardTag category="live-artifact" />
 										<LiveArtifactBadges
 											className="design-card-badges"
 											status={artifact.status}
@@ -653,7 +668,7 @@ export function DesignsTab({
 										toggleSelected(p.id);
 									} else {
 										// P0 ui_click area=list element=project_card.
-										const projectKind = projectKindToTracking(p.metadata?.kind, p.metadata?.videoModel);
+										const projectKind = projectListTrackingKind(p, { slideOnly: slideOnlyMvp });
 										trackProjectsListClick(analytics.track, {
 											page_name: "projects",
 											area: "list",
@@ -698,7 +713,7 @@ export function DesignsTab({
 													const nextId = cur === p.id ? null : p.id;
 													if (nextId === p.id) {
 														setMenuOpenUp(openUp);
-														const projectKind = projectKindToTracking(p.metadata?.kind, p.metadata?.videoModel);
+														const projectKind = projectListTrackingKind(p, { slideOnly: slideOnlyMvp });
 														trackProjectsListClick(analytics.track, {
 															page_name: "projects",
 															area: "list",
@@ -725,7 +740,7 @@ export function DesignsTab({
 												type="button"
 												role="menuitem"
 												onClick={() => {
-													const projectKind = projectKindToTracking(p.metadata?.kind, p.metadata?.videoModel);
+													const projectKind = projectListTrackingKind(p, { slideOnly: slideOnlyMvp });
 													trackProjectsMorePopoverClick(analytics.track, {
 														page_name: "projects",
 														area: "projects_more_popover",
@@ -745,7 +760,7 @@ export function DesignsTab({
 												role="menuitem"
 												className="danger"
 												onClick={() => {
-													const projectKind = projectKindToTracking(p.metadata?.kind, p.metadata?.videoModel);
+													const projectKind = projectListTrackingKind(p, { slideOnly: slideOnlyMvp });
 													trackProjectsMorePopoverClick(analytics.track, {
 														page_name: "projects",
 														area: "projects_more_popover",
@@ -775,7 +790,7 @@ export function DesignsTab({
 										{designSystemProject ? (
 											<DesignSystemProjectTag />
 										) : (
-											<ProjectTag category={projectCategory(p)} />
+											<ProjectListCardTag project={p} />
 										)}
 									</div>
 									<div className="design-card-name" title={p.name}>
@@ -964,37 +979,3 @@ function isOrbitProject(project: Project): boolean {
 }
 
 
-type ProjectCategory = "prototype" | "live-artifact" | "slide" | "media";
-
-function projectCategory(project: Project): ProjectCategory {
-	const meta = project.metadata;
-	if (meta?.intent === "live-artifact" || project.skillId === "live-artifact") {
-		return "live-artifact";
-	}
-	if (meta?.kind === "deck") return "slide";
-	if (meta?.kind === "image" || meta?.kind === "video" || meta?.kind === "audio") {
-		return "media";
-	}
-	return "prototype";
-}
-
-function ProjectTag({ category }: { category: ProjectCategory }) {
-	const t = useT();
-	const label =
-		category === "live-artifact"
-			? t("designs.tagLiveArtifact")
-			: category === "slide"
-				? t("designs.tagSlide")
-				: category === "media"
-					? t("designs.tagMedia")
-					: t("designs.tagPrototype");
-	return (
-		<span className={`design-card-tag tag-${category}`}>{label}</span>
-	);
-}
-
-function DesignSystemProjectTag() {
-	return (
-		<span className="design-card-tag tag-design-system">Design System</span>
-	);
-}

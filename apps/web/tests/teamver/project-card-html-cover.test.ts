@@ -85,6 +85,25 @@ describe("ProjectCardHtmlCover srcDoc builders", () => {
     expect(srcDoc).not.toContain('.slide:not(:first-of-type)');
   });
 
+  it("heals cover HTML with stacked-canvas neutralize and design viewport lock", () => {
+    const html = `<!doctype html><html><head>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style data-od-official-look-css>
+.slide { position:absolute; inset:0; width:100%; height:100%; opacity:0; }
+/* stacked preview/export: Motif paint + fixed 1920 — poisoned marker without relative rules */
+</style>
+</head><body>
+<section class="slide"><div class="pill-coral">Cover</div></section>
+<section class="slide">Later</section>
+</body></html>`;
+    const srcDoc = buildHtmlCoverSrcDoc(html, "/api/projects/p1/raw/deck.html", { preferDeck: true });
+    expect(srcDoc).toContain('content="width=1920, initial-scale=1, maximum-scale=1"');
+    expect(srcDoc).not.toContain("width=device-width");
+    expect(srcDoc).toContain("position: relative !important");
+    expect(srcDoc).toContain("Cover");
+    expect(srcDoc).not.toContain(">Later<");
+  });
+
   it("removes later slides from the cover DOM so absolute/manual-edit chrome cannot bleed", () => {
     const html = `<html><head></head><body>
 <section class="slide"><h1>NeuralStudio</h1></section>
@@ -143,5 +162,66 @@ describe("ProjectCardHtmlCover srcDoc builders", () => {
     expect(srcDoc).toContain("HomeHero");
     expect(srcDoc).not.toContain("TrackRecord");
     expect(srcDoc).toContain('id="od-deck-card-preview"');
+  });
+
+  it("heals persisted css2 debris and flatten bleed before minting a deck cover", () => {
+    const html = `<html><head><style>
+1,6..96,400..900&family=Space+Grotesk:wght@300;400;500;600;700&display=swap');
+:root{--bg:#F5F5F0;--coral:#E85D4E}
+.slide-1{background:radial-gradient(ellipse at 20% 80%, rgba(200,217,78,0.15) 0%, transparent 50%), #F5F5F0}
+.pill{border-radius:9999px}
+</style></head><body>
+<section class="slide slide-1"><span class="pill">shadcn/ui</span></section>
+<style data-od-slide-surface-bleed="">html, body, .slide, section.slide { background: #F5F5F0 !important; color: #1A1A1A !important; }</style>
+</body></html>`;
+    const srcDoc = deckPreviewSrcDoc(html, "/api/projects/p1/raw/deck.html");
+    expect(srcDoc).not.toMatch(/1,6\.\.96/i);
+    expect(srcDoc).toContain(":root{--bg:#F5F5F0;--coral:#E85D4E}");
+    expect(srcDoc).toContain(".pill{border-radius:9999px}");
+    expect(srcDoc).toContain("radial-gradient");
+    expect(srcDoc).not.toMatch(
+      /html,\s*body,\s*\.slide,\s*section\.slide\s*\{[^}]*background:\s*#F5F5F0\s*!important/i,
+    );
+  });
+
+  it("does not inject stacked 1920 neutralize into official presenter thumbs", () => {
+    const html = `<!doctype html><html><head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<style>
+  html, body { width:100%; height:100%; overflow:hidden; }
+  .slide { position:absolute; inset:0; width:100%; height:100%; opacity:0; }
+  .slide.active { opacity:1; }
+</style>
+</head><body>
+<div class="presentation">
+  <div class="slide slide-1 active"><h1>CAPSULE</h1></div>
+  <div class="slide slide-2"><h1>Thought</h1></div>
+</div>
+<div class="nav-dots"><div class="nav-dot active"></div></div>
+</body></html>`;
+    const srcDoc = buildHtmlCoverSrcDoc(html, "/api/plugins/html-ppt-zhangzara-capsule/example");
+    expect(srcDoc).toContain("CAPSULE");
+    expect(srcDoc).not.toContain("Thought");
+    expect(srcDoc).not.toContain("data-od-stacked-canvas-neutralize");
+    expect(srcDoc).not.toContain("stacked preview/export: Motif paint + fixed 1920");
+    expect(srcDoc).not.toContain('content="width=1920, initial-scale=1, maximum-scale=1"');
+    expect(srcDoc).toContain("width=device-width");
+    expect(srcDoc).toContain('id="od-deck-card-preview"');
+  });
+
+  it("forces the isolated html-ppt cover slide visible despite presenter opacity:0", () => {
+    const html = `<html><head><style>
+.slide{opacity:0;pointer-events:none;transform:translateX(30px)}
+.slide.is-active{opacity:1}
+</style></head><body>
+<section class="slide"><h1>Filled brief title</h1></section>
+<section class="slide is-active"><h1>Later slide</h1></section>
+</body></html>`;
+    const srcDoc = deckPreviewSrcDoc(html, "/api/projects/p1/raw/deck.html");
+    expect(srcDoc).toContain("Filled brief title");
+    expect(srcDoc).not.toContain("Later slide");
+    expect(srcDoc).toMatch(/opacity:\s*1\s*!important/);
+    expect(srcDoc).toMatch(/visibility:\s*visible\s*!important/);
+    expect(srcDoc).toMatch(/transform:\s*none\s*!important/);
   });
 });

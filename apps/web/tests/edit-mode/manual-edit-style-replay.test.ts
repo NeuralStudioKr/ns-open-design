@@ -53,4 +53,29 @@ describe('manual edit style replay against freeze', () => {
       true,
     );
   });
+
+  it('parses freeze and saved once for multi-id decks', () => {
+    const frozen = `<!doctype html><html><body>
+<main data-od-id="a">A</main><p data-od-id="b">B</p><span data-od-id="c">C</span>
+</body></html>`;
+    const saved = `<!doctype html><html><body>
+<main data-od-id="a" style="font-size: 20px;">A</main>
+<p data-od-id="b" style="color: rgb(1, 2, 3);">B</p>
+<span data-od-id="c" style="font-weight: 700;">C</span>
+</body></html>`;
+    const original = DOMParser.prototype.parseFromString;
+    let parses = 0;
+    DOMParser.prototype.parseFromString = function (...args: Parameters<typeof original>) {
+      parses += 1;
+      return original.apply(this, args);
+    };
+    try {
+      const patches = manualEditStyleReplayPatches(frozen, saved);
+      expect(patches.length).toBeGreaterThanOrEqual(2);
+      // One Document each for freeze + saved (not N× per id).
+      expect(parses).toBe(2);
+    } finally {
+      DOMParser.prototype.parseFromString = original;
+    }
+  });
 });

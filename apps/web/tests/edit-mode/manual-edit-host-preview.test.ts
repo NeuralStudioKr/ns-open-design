@@ -3,6 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyManualEditPreviewStylesToDocument,
+  measureManualEditContentPageBounds,
   measureManualEditTargetContentRect,
   measureManualEditTargetHostRect,
 } from '../../src/edit-mode/manual-edit-host-preview';
@@ -175,5 +176,27 @@ describe('manual edit host preview fallback', () => {
     });
     frame.remove();
     host.remove();
+  });
+
+  it('measures iframe content page bounds from design-canvas when present', () => {
+    const frame = document.createElement('iframe');
+    document.body.appendChild(frame);
+    const doc = frame.contentDocument!;
+    const canvas = doc.createElement('div');
+    canvas.className = 'design-canvas';
+    doc.body.appendChild(canvas);
+    canvas.getBoundingClientRect = () => ({
+      x: 0, y: 0, width: 960, height: 540,
+      top: 0, left: 0, right: 960, bottom: 540,
+      toJSON: () => ({}),
+    }) as DOMRect;
+
+    expect(measureManualEditContentPageBounds(frame)).toEqual({
+      x: 0,
+      y: 0,
+      width: 960,
+      height: 540,
+    });
+    frame.remove();
   });
 });

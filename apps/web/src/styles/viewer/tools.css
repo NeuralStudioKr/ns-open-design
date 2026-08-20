@@ -39,16 +39,29 @@
 }
 .op-open {
   font-size: 10.5px;
+  min-height: 28px;
   padding: 2px 8px;
-  border: none;
+  border: 1px solid transparent;
   border-radius: var(--radius-sm);
   background: none;
   color: var(--text-muted);
   cursor: pointer;
+  transition:
+    background var(--dur-quick) var(--ease-out),
+    border-color var(--dur-quick) var(--ease-out),
+    color var(--dur-quick) var(--ease-out);
 }
 .op-open:hover {
-  background: var(--bg-fill-tertiary);
+  background: var(--bg-subtle);
+  border-color: var(--border);
   color: var(--text);
+}
+.op-open:active {
+  background: var(--bg-muted);
+}
+.op-open:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .produced-files {
@@ -77,11 +90,8 @@
   border: none;
   font-size: 12.5px;
   box-shadow: none;
-  transition: background 160ms var(--ease-out);
 }
-.produced-file:hover {
-  background: var(--bg-fill-tertiary);
-}
+/* Row is not clickable — only the Open control is interactive. */
 .produced-file-icon { width: 22px; text-align: center; color: var(--text-muted); }
 .produced-file-name {
   flex: 1;
@@ -100,16 +110,32 @@
 .produced-file-actions .ghost,
 .produced-file-actions .ghost-link {
   font-size: 11px;
-  padding: 2px 8px;
-  border: none;
-  background: none;
-  color: var(--text-muted);
+  min-height: 28px;
+  padding: 3px 9px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
   border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition:
+    background var(--dur-quick) var(--ease-out),
+    border-color var(--dur-quick) var(--ease-out),
+    color var(--dur-quick) var(--ease-out);
 }
 .produced-file-actions .ghost:hover,
 .produced-file-actions .ghost-link:hover {
-  background: var(--bg-fill-tertiary);
-  color: var(--text);
+  border-color: var(--accent);
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+.produced-file-actions .ghost:active,
+.produced-file-actions .ghost-link:active {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+.produced-file-actions .ghost:focus-visible,
+.produced-file-actions .ghost-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .plugin-action-panel {
@@ -224,10 +250,24 @@
   font-size: 11.5px;
   font-weight: 550;
   cursor: pointer;
+  transition:
+    background var(--dur-quick) var(--ease-out),
+    border-color var(--dur-quick) var(--ease-out),
+    color var(--dur-quick) var(--ease-out);
 }
 .plugin-action-button:hover:not(:disabled) {
   border-color: var(--accent);
   color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg-panel));
+}
+.plugin-action-button:active:not(:disabled) {
+  background: var(--bg-muted);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.plugin-action-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 .plugin-action-button:disabled {
   opacity: 0.58;
@@ -236,11 +276,18 @@
 .plugin-action-button--primary {
   border-color: var(--accent);
   background: var(--accent);
-  color: #fff;
+  color: var(--bg-panel);
 }
 .plugin-action-button--primary:hover:not(:disabled) {
-  color: #fff;
-  filter: brightness(0.85);
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+  color: var(--bg-panel);
+  filter: none;
+}
+.plugin-action-button--primary:active:not(:disabled) {
+  background: var(--accent-strong, var(--accent-hover));
+  border-color: var(--accent-strong, var(--accent-hover));
+  color: var(--bg-panel);
 }
 .plugin-action-card__notice {
   padding: 6px 8px;
@@ -288,6 +335,11 @@
   min-width: 0;
 }
 .file-ops-toggle:hover { background: var(--bg-subtle); }
+.file-ops-toggle:active { background: var(--bg-muted); }
+.file-ops-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
 .file-ops-icon { display: inline-flex; color: var(--text-muted); }
 .file-ops-label {
   font-size: 10.5px;
@@ -338,7 +390,7 @@
   font-size: 12px;
   min-width: 0;
 }
-.file-ops-row:hover { background: var(--bg-subtle); }
+/* Row is not clickable — Open button owns hover/focus affordance. */
 .file-ops-row--running { color: var(--text); }
 .file-ops-row--error { color: var(--text); }
 .file-ops-row-badges { display: inline-flex; gap: 3px; flex-shrink: 0; }
@@ -415,6 +467,7 @@
 }
 .file-ops-row-open {
   font-size: 11px;
+  min-height: 28px;
   padding: 3px 9px;
   background: transparent;
   border: 1px solid var(--border);
@@ -422,10 +475,22 @@
   color: var(--text);
   cursor: pointer;
   flex-shrink: 0;
+  transition:
+    background var(--dur-quick) var(--ease-out),
+    border-color var(--dur-quick) var(--ease-out),
+    color var(--dur-quick) var(--ease-out);
 }
 .file-ops-row-open:hover {
   border-color: var(--accent);
   color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+.file-ops-row-open:active {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+.file-ops-row-open:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .op-bash .op-command,
@@ -2060,6 +2125,11 @@
   background: var(--accent);
   color: var(--accent-contrast, #fff);
 }
+button.teamver-drive-import-attach:hover:not(:disabled) {
+  background: var(--accent-hover, color-mix(in srgb, var(--accent) 82%, #000));
+  border-color: var(--accent-hover, color-mix(in srgb, var(--accent) 82%, #000));
+  color: var(--accent-contrast, #fff);
+}
 .teamver-drive-import-attach:not(:disabled) {
   min-width: 96px;
   font-weight: 600;
@@ -2077,7 +2147,7 @@
 /* Picker grid needs enough room for 3–4 preview cards; single-option /
    legacy dropdown launches keep the compact 460px width. */
 .teamver-canvas-slide-launch-modal--wide {
-  width: min(920px, calc(100vw - 32px));
+  width: min(960px, calc(100vw - 32px));
 }
 /* Single outer scroll: header + footer stay fixed; body scrolls once (no
    nested template grid scroll). */
@@ -2234,12 +2304,15 @@
 .teamver-canvas-slide-launch-flow--wizard {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 16px;
 }
 .teamver-canvas-slide-launch-wizard {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 20px;
+}
+.teamver-canvas-slide-launch-stepper {
+  padding: 2px 0 4px;
 }
 .teamver-canvas-slide-launch-stepper-list {
   list-style: none;
@@ -2247,36 +2320,67 @@
   padding: 0;
   display: flex;
   flex-wrap: wrap;
-  gap: 8px 14px;
+  gap: 4px 0;
   align-items: center;
 }
 .teamver-canvas-slide-launch-stepper-item {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  font-size: 12px;
+  gap: 10px;
+  font-size: 14px;
+  font-weight: 550;
   color: var(--text-muted);
+}
+.teamver-canvas-slide-launch-stepper-item.is-upcoming {
+  color: var(--text-muted);
+}
+.teamver-canvas-slide-launch-stepper-item.is-complete {
+  color: var(--text);
 }
 .teamver-canvas-slide-launch-stepper-item.is-current {
   color: var(--text-strong);
+  font-weight: 700;
+}
+.teamver-canvas-slide-launch-stepper-item:not(:last-child)::after {
+  content: "";
+  width: 28px;
+  height: 2px;
+  margin: 0 10px 0 4px;
+  border-radius: 99px;
+  background: var(--border);
+  flex: 0 0 auto;
+}
+.teamver-canvas-slide-launch-stepper-item.is-complete:not(:last-child)::after {
+  background: color-mix(in srgb, var(--accent) 55%, var(--border));
 }
 .teamver-canvas-slide-launch-stepper-index {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: 28px;
+  height: 28px;
   border-radius: 999px;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 700;
   border: 1px solid var(--border);
   background: var(--bg);
   color: var(--text-muted);
 }
-.teamver-canvas-slide-launch-stepper-item.is-current .teamver-canvas-slide-launch-stepper-index {
-  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
-  background: color-mix(in srgb, var(--accent) 12%, var(--bg));
+.teamver-canvas-slide-launch-stepper-item.is-complete .teamver-canvas-slide-launch-stepper-index {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 16%, var(--bg));
   color: var(--accent);
+}
+.teamver-canvas-slide-launch-stepper-item.is-current .teamver-canvas-slide-launch-stepper-index {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-contrast, #fff);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+.teamver-canvas-slide-launch-stepper-item .teamver-canvas-slide-launch-step-title-text {
+  font-size: 14px;
+  font-weight: inherit;
+  color: inherit;
 }
 .teamver-canvas-slide-launch-wizard-panel {
   min-height: 0;
@@ -2344,7 +2448,7 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 12px 16px 8px;
+  padding: 18px 16px 12px;
 }
 .teamver-canvas-slide-launch-heading {
   margin: 0;
@@ -2441,8 +2545,10 @@
 }
 .teamver-canvas-slide-launch-template-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 10px;
+  /* 3× 16:9 thumbs on the wide modal (~920px). 4-col minmax(180px) made
+     cards too wide-and-short once example.html chrome ate the frame. */
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
   /* Flow with the modal's single outer scroll — no nested scroll trap. */
   max-height: none;
   overflow: visible;
@@ -2450,7 +2556,7 @@
 }
 @media (max-width: 640px) {
   .teamver-canvas-slide-launch-template-grid {
-    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
     max-height: none;
   }
 }
@@ -2542,11 +2648,18 @@
   border-radius: 6px;
   overflow: hidden;
   background: #fff;
+  /* Scale the 1920×1080 slide canvas by card width (same recipe as
+     recent-projects thumbs). Percent-of-parent iframe sizing copied the
+     chrome-shrunk frame, so 16:9 decks were cropped top/bottom. */
+  container-type: inline-size;
 }
-/* PreviewSurface inside the picker card mirrors the home gallery framing
-   (deck templates are authored for desktop, so scale a wider virtual viewport
-   into the 16:9 card). Kept scoped so it does not affect the home galleries. */
-.teamver-canvas-slide-launch-template-card-frame .plugins-home__preview {
+/* PreviewSurface inside the picker card: hide the example.html chrome
+   strip so the 16:9 frame is the slide, not slide-plus-browser-bar. */
+.teamver-canvas-slide-launch-template-card-frame .plugins-home__html-chrome {
+  display: none;
+}
+.teamver-canvas-slide-launch-template-card-frame .plugins-home__preview,
+.teamver-canvas-slide-launch-template-card-frame .plugins-home__html {
   position: absolute;
   inset: 0;
   aspect-ratio: auto;
@@ -2555,11 +2668,15 @@
 .teamver-canvas-slide-launch-template-card-frame .plugins-home__html-iframe {
   top: 0;
   left: 0;
-  width: 360%;
-  height: 360%;
-  transform: scale(0.2777778);
+  width: 1920px;
+  height: 1080px;
+  transform: scale(calc(100cqw / 1920px));
   transform-origin: 0 0;
   transition: none;
+}
+.teamver-canvas-slide-launch-template-card-frame .plugins-home__media-img,
+.teamver-canvas-slide-launch-template-card-frame .plugins-home__media-video {
+  object-fit: contain;
 }
 .teamver-canvas-slide-launch-template-card-default {
   position: absolute;
@@ -2723,6 +2840,24 @@
 }
 .teamver-canvas-slide-launch-skeleton-stack .teamver-canvas-slide-launch-skeleton:nth-child(2) {
   width: 68%;
+}
+.teamver-canvas-slide-launch-template-skeleton {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+  padding: 2px;
+}
+.teamver-canvas-slide-launch-template-skeleton-card {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  height: auto;
+  border-radius: 12px;
+  animation: teamver-canvas-slide-launch-shimmer 1.2s ease-in-out infinite;
+}
+@media (max-width: 640px) {
+  .teamver-canvas-slide-launch-template-skeleton {
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  }
 }
 @keyframes teamver-canvas-slide-launch-shimmer {
   0% { background-position: 100% 0; }
@@ -3372,4 +3507,345 @@
   background: var(--bg-subtle);
   border-color: var(--border);
   font-weight: 500;
+}
+
+/* Teamver Home create wizard (docs 61) — brand lockup reuses HomeHero classes.
+   Hover must set background on `button.…` so it beats global `button:hover`
+   (`background: var(--bg-subtle)`), which made the fill look like it vanished. */
+.teamver-home-create-hero {
+  padding-bottom: 20px;
+}
+button.teamver-home-create-hero-cta {
+  margin-top: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 0 22px 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  cursor: pointer;
+  box-shadow: 0 1px 2px color-mix(in srgb, #000 16%, transparent);
+  transition:
+    background 140ms ease,
+    border-color 140ms ease,
+    box-shadow 140ms ease;
+}
+.teamver-home-create-hero-cta-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: color-mix(in srgb, #fff 22%, transparent);
+  flex-shrink: 0;
+}
+button.teamver-home-create-hero-cta:hover:not(:disabled) {
+  background: var(--accent-hover, color-mix(in srgb, var(--accent) 82%, #000));
+  border-color: var(--accent-hover, color-mix(in srgb, var(--accent) 82%, #000));
+  color: #fff;
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+button.teamver-home-create-hero-cta:active:not(:disabled) {
+  background: var(--accent-strong, var(--accent-hover, var(--accent)));
+  border-color: var(--accent-strong, var(--accent-hover, var(--accent)));
+  color: #fff;
+  box-shadow: none;
+}
+button.teamver-home-create-hero-cta:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+button.teamver-home-create-hero-cta:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+.teamver-home-slide-create-modal.teamver-drive-picker-modal {
+  max-height: min(88vh, 860px);
+  transition: width 160ms ease;
+}
+.teamver-home-slide-create-modal--compact {
+  width: min(600px, calc(100vw - 32px));
+}
+.teamver-home-slide-create-head {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 14px;
+  padding: 18px 24px 0;
+  border-bottom: 0;
+}
+.teamver-home-slide-create-head-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.teamver-home-slide-create-head-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.teamver-home-slide-create-lead {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+.teamver-home-slide-create-modal .teamver-canvas-slide-launch-stepper {
+  padding: 0 0 16px;
+  margin: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+}
+.teamver-home-slide-create-modal .teamver-canvas-slide-launch-stepper-list {
+  max-width: 560px;
+  width: 100%;
+  margin: 0 auto;
+}
+.teamver-home-slide-create-modal .teamver-canvas-slide-launch-stepper-item:not(:last-child) {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.teamver-home-slide-create-modal .teamver-canvas-slide-launch-stepper-item:not(:last-child)::after {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 36px;
+  max-width: none;
+  margin: 0 12px;
+}
+button.teamver-home-slide-create-stepper-btn:hover:not(:disabled),
+button.teamver-home-slide-create-stepper-btn:focus-visible {
+  background: transparent;
+  border-color: transparent;
+}
+.teamver-home-slide-create-stepper-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  padding: 0;
+}
+.teamver-home-slide-create-step-check {
+  font-size: 12px;
+  color: var(--accent);
+}
+.teamver-home-slide-create-step-pick {
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 550;
+  color: var(--text-muted);
+}
+.teamver-home-slide-create-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.teamver-home-slide-create-section-title,
+.teamver-home-slide-create-prompt-label {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  color: var(--text-muted);
+}
+.teamver-home-slide-create-attach-zone {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border: 1px dashed color-mix(in srgb, var(--border) 80%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--bg-subtle) 40%, var(--bg-panel));
+  transition: border-color 140ms ease, background 140ms ease;
+}
+.teamver-home-slide-create-attach-zone.is-drag-active {
+  border-color: var(--accent);
+  border-style: solid;
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg-panel));
+}
+.teamver-home-slide-create-attach-menu {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+button.teamver-home-slide-create-attach-item {
+  appearance: none;
+  flex: 1 1 180px;
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  color: var(--text-strong);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 550;
+  text-align: left;
+  cursor: pointer;
+}
+button.teamver-home-slide-create-attach-item:hover:not(:disabled),
+button.teamver-home-slide-create-attach-item:focus-visible {
+  background: var(--bg-subtle);
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+  color: var(--text-strong);
+  outline: none;
+}
+button.teamver-home-slide-create-attach-item:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.teamver-home-slide-create-attach-item-icon {
+  flex: 0 0 auto;
+  color: var(--accent);
+}
+.teamver-home-slide-create-attach-hint {
+  margin: 0;
+  padding: 0 2px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+.teamver-home-slide-create-chips {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.teamver-home-slide-create-chips li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  font-size: 12px;
+}
+.teamver-home-slide-create-chips li span {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.teamver-home-slide-create-chips button {
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  color: var(--text-muted);
+  line-height: 1;
+}
+.teamver-home-slide-create-chips button:hover:not(:disabled) {
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-strong);
+}
+.teamver-home-slide-create-modal .teamver-canvas-slide-launch-quick-settings {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  gap: 10px;
+}
+.teamver-home-slide-create-modal .teamver-canvas-slide-launch-quick-group {
+  grid-template-columns: 52px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px 12px;
+}
+.teamver-home-slide-create-modal .teamver-canvas-slide-launch-quick-label {
+  padding-top: 0;
+  font-size: 12px;
+}
+.teamver-home-slide-create-slide-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 26px;
+  padding: 3px 9px 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1;
+}
+.teamver-home-slide-create-slide-count.is-selected {
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
+  background: color-mix(in srgb, var(--accent) 14%, var(--bg));
+  color: var(--text-strong);
+  font-weight: 650;
+}
+.teamver-home-slide-create-slide-count input {
+  width: 2.1em;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: center;
+}
+.teamver-home-slide-create-slide-count input:focus {
+  outline: none;
+}
+.teamver-home-slide-create-slide-count input:disabled {
+  cursor: not-allowed;
+}
+.teamver-home-slide-create-prompt {
+  min-height: 132px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.teamver-home-slide-create-footer {
+  padding: 14px 24px;
+  gap: 16px;
+}
+.teamver-home-slide-create-summary {
+  margin: 0;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+.teamver-home-slide-create-footer-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-left: auto;
+}
+.teamver-home-slide-create-content {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  width: 100%;
+  max-width: 560px;
+  margin: 0 auto;
+}
+.teamver-home-slide-create-body {
+  max-height: min(68vh, 640px);
+  overflow: auto;
+  padding: 22px 24px 20px;
 }

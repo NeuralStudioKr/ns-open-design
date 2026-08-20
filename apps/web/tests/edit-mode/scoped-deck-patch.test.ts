@@ -8,6 +8,7 @@ import {
   mergeScopedCommentTargetsFromPatchedDeck,
   reconcileCommentAttachmentElementId,
   reconcileCommentAttachmentSlideIndex,
+  reconcileCommentScopeForPersist,
   resolveElementPatchAllowedSlideIndexes,
   resolveScopedCommentSlideCandidates,
   scopedCommentElementIds,
@@ -15,11 +16,18 @@ import {
   repairWipedSlidesForVisualMarks,
   stabilizeVisualMarkDeckHtml,
   hasElementScopedCommentAttachments,
+  isDrawnVisualMarkAttachment,
+  shouldClientGraftVisualMarkWithoutAi,
   isVisualCommentAttachment,
 } from '../../src/edit-mode/scoped-deck-patch';
+import {
+  extractDeckBodyContent,
+  extractTopLevelSlideSections,
+} from '../../src/artifacts/deck-patch';
 import { parseElementPatch } from '../../src/artifacts/element-patch';
 import type { ChatCommentAttachment } from '../../src/types';
 import { buildVisualAnnotationAttachment } from '../../src/comments';
+import { sanitizeManualEditFullSource } from '../../src/edit-mode/source-patches';
 
 const CURRENT_HTML = `<!doctype html><html><body>
 <section class="slide" data-slide-index="0"><h1>인트로</h1></section>
@@ -55,6 +63,40 @@ describe('hasElementScopedCommentAttachments', () => {
       screenshotPath: 'uploads/visual-mark-1.png',
       markKind: 'stroke',
     }])).toBe(false);
+  });
+
+  it('does not client-graft box marks — they select a region to edit via AI', () => {
+    expect(shouldClientGraftVisualMarkWithoutAi({
+      ...attachment(1),
+      selectionKind: 'visual',
+      elementId: 'visual-mark-box-1',
+      selector: '',
+      htmlHint: '',
+      screenshotPath: 'drawing-1.png',
+      markKind: 'box',
+      comment: '슬라이드 2 이 글씨들 더 크게',
+      intent: 'User request from the annotation note: "슬라이드 2 이 글씨들 더 크게". The screenshot has a red selection box...',
+    })).toBe(false);
+    expect(isDrawnVisualMarkAttachment({
+      ...attachment(1),
+      selectionKind: 'visual',
+      markKind: 'box',
+    })).toBe(true);
+  });
+
+  it('does not graft box marks into deck html', () => {
+    const deck = `<!doctype html><html><body>
+<section class="slide" data-slide-index="1"><p>Keep this text</p></section>
+</body></html>`;
+    const visual = buildVisualAnnotationAttachment({
+      order: 1,
+      screenshotPath: 'drawing-1.png',
+      markKind: 'box',
+      note: '슬라이드 2 이 글씨들 더 크게',
+      bounds: { x: 40, y: 50, width: 200, height: 80 },
+      slideIndex: 1,
+    });
+    expect(graftVisualMarksIntoDeckHtml(deck, [visual])).toBeNull();
   });
 
   it('returns false when selectionKind is missing but screenshotPath marks a visual annotation', () => {
@@ -313,10 +355,12 @@ describe('mergeScopedCommentTargetsFromPatchedDeck', () => {
     });
     expect(result.ok, JSON.stringify(result)).toBe(true);
     if (!result.ok) return;
-    expect(result.html).not.toMatch(/<script\b/i);
-    expect(result.html).not.toContain('evil.example');
-    expect(result.html).not.toMatch(/onclick/i);
-    expect(result.html).toContain('data-od-id="hero"');
+    // Slide swaps defer full-source scrub to ProjectView terminal sanitize.
+    const clean = sanitizeManualEditFullSource(result.html);
+    expect(clean).not.toMatch(/<script\b/i);
+    expect(clean).not.toContain('evil.example');
+    expect(clean).not.toMatch(/onclick/i);
+    expect(clean).toContain('data-od-id="hero"');
   });
 
   it('merges framework deck comments via selector hint when stale path ids miss on disk', () => {
@@ -400,9 +444,10 @@ describe('mergeScopedCommentTargetsFromPatchedDeck', () => {
     expect(result.ok, JSON.stringify(result)).toBe(true);
     if (!result.ok) return;
     expect(result.html).toContain('color:#ef4444');
-    expect(result.html).not.toMatch(/<script\b/i);
-    expect(result.html).not.toMatch(/onerror/i);
-    expect(result.html).not.toContain('evil.example');
+    const clean = sanitizeManualEditFullSource(result.html);
+    expect(clean).not.toMatch(/<script\b/i);
+    expect(clean).not.toMatch(/onerror/i);
+    expect(clean).not.toContain('evil.example');
   });
 
   it('accepts an anchor-less scoped edit via the last-resort slide-level swap', () => {
@@ -716,6 +761,68 @@ describe('mergeScopedCommentTargetsFromPatchedDeck', () => {
     expect(grafted).toMatch(/<svg[^>]*viewBox="0 0 24 24"/);
   });
 
+  it('ensures the slide root is position:relative for absolute mark positioning', () => {
+    const deck = `<!doctype html><html><body>
+<section class="slide" data-slide-index="0"><h1>Title slide</h1></section>
+</body></html>`;
+    const visual = buildVisualAnnotationAttachment({
+      order: 1,
+      screenshotPath: 'annotations/test.png',
+      markKind: 'stroke',
+      note: '하트',
+      bounds: { x: 40, y: 50, width: 80, height: 60 },
+      slideIndex: 0,
+    });
+    const grafted = graftVisualMarksIntoDeckHtml(deck, [visual]);
+    expect(grafted).toContain('position:relative');
+    expect(grafted).toContain('od-visual-mark-target');
+  });
+
+  it('grafts drawn visual marks even when reconciler bound a real DOM element', () => {
+    const deck = `<!doctype html><html><body>
+<section class="slide" data-slide-index="0"><h1 data-od-id="title-1">Title</h1></section>
+</body></html>`;
+    const visual = buildVisualAnnotationAttachment({
+      order: 1,
+      screenshotPath: 'annotations/test.png',
+      markKind: 'stroke',
+      note: '하트 그려줘',
+      bounds: { x: 40, y: 50, width: 80, height: 60 },
+      slideIndex: 0,
+      target: {
+        filePath: 'deck.html',
+        elementId: 'title-1',
+        selector: '[data-od-id="title-1"]',
+        label: 'Title',
+        position: { x: 40, y: 50, width: 80, height: 60 },
+      },
+    });
+    const grafted = graftVisualMarksIntoDeckHtml(deck, [visual]);
+    expect(grafted).toContain('od-visual-mark-target');
+    expect(grafted).toMatch(/<svg[^>]*viewBox="0 0 24 24"/);
+  });
+
+  it('inserts a visible fallback marker when no shape keyword is present', () => {
+    const deck = `<!doctype html><html><body>
+<section class="slide" data-slide-index="0"><h1>Title slide</h1></section>
+<section class="slide" data-slide-index="1"><p>Keep this text</p></section>
+</body></html>`;
+    const visual = buildVisualAnnotationAttachment({
+      order: 1,
+      screenshotPath: 'annotations/test.png',
+      markKind: 'stroke',
+      // Deliberately vague note — the client graft used to embed an empty
+      // HTML comment div (invisible) for these; now falls back to a dashed
+      // marker so the user sees where the mark landed.
+      note: '이거 좀 봐줘',
+      bounds: { x: 40, y: 50, width: 80, height: 60 },
+      slideIndex: 1,
+    });
+    const grafted = graftVisualMarksIntoDeckHtml(deck, [visual]);
+    expect(grafted).toContain('od-visual-mark-target');
+    expect(grafted).toMatch(/<svg[^>]*stroke-dasharray/);
+  });
+
   it('repairs model deck-patches that wiped slide content for visual marks', () => {
     const deck = `<!doctype html><html><body>
 <section class="slide" data-slide-index="0"><h1>Title slide</h1></section>
@@ -742,6 +849,27 @@ describe('mergeScopedCommentTargetsFromPatchedDeck', () => {
     expect(repaired).toMatch(/<svg[^>]*viewBox="0 0 24 24"/);
   });
 
+  it('does not repair wiped slides for box/edit annotations — those are model edits, not graft marks', () => {
+    const deck = `<!doctype html><html><body>
+<section class="slide" data-slide-index="1"><p>Keep this text</p></section>
+</body></html>`;
+    const visual = buildVisualAnnotationAttachment({
+      order: 1,
+      screenshotPath: 'drawing-1.png',
+      markKind: 'box',
+      note: '슬라이드 2 이 글씨들 더 크게',
+      bounds: { x: 40, y: 50, width: 200, height: 80 },
+      slideIndex: 1,
+    });
+    const wiped = `<!doctype html><html><body>
+<section class="slide" data-slide-index="1" style="position:relative">
+<div class="od-visual-mark-target" style="position:absolute;left:40px;top:50px;width:200px;height:80px"></div>
+</section>
+</body></html>`;
+    const repaired = repairWipedSlidesForVisualMarks(deck, wiped, [visual]);
+    expect(repaired).toBe(wiped);
+  });
+
   it('stabilizeVisualMarkDeckHtml grafts into current deck when slide count collapses', () => {
     const deck = `<!doctype html><html><body>
 <section class="slide" data-slide-index="0"><h1>Slide 1</h1></section>
@@ -766,9 +894,17 @@ describe('mergeScopedCommentTargetsFromPatchedDeck', () => {
     expect(stabilized).toContain('Keep this text');
     expect(stabilized).toContain('Slide 3');
     expect(stabilized).toContain('od-visual-mark-target');
+    // Shared sections path must match cold materialize (finalize/applyScoped).
+    const currentSlides = extractTopLevelSlideSections(extractDeckBodyContent(deck));
+    const mergedSlides = extractTopLevelSlideSections(extractDeckBodyContent(collapsed));
+    const shared = stabilizeVisualMarkDeckHtml(deck, collapsed, [visual], {
+      currentSlides,
+      mergedSlides,
+    });
+    expect(shared).toBe(stabilized);
   });
 
-  it('sanitizes on*/script from unscoped deck-patch merges', () => {
+  it('folds full-source sanitize into deck-patch merges (ProjectView can skip terminal scrub)', () => {
     const currentHtml = `<!doctype html><html><body>
 <section class="slide" data-slide-index="0"><h1>Old</h1></section>
 </body></html>`;
@@ -790,6 +926,7 @@ describe('mergeScopedCommentTargetsFromPatchedDeck', () => {
     });
     expect(result.ok, JSON.stringify(result)).toBe(true);
     if (!result.ok) return;
+    expect(result.sanitized).toBe(true);
     expect(result.html).toContain('New');
     expect(result.html).not.toMatch(/onerror/i);
     expect(result.html).not.toMatch(/<script\b/i);
@@ -822,5 +959,91 @@ describe('mergeScopedCommentTargetsFromPatchedDeck', () => {
     expect(repaired).toContain('od-visual-mark-target');
     expect(repaired).not.toMatch(/onload/i);
     expect(repaired).not.toMatch(/onerror/i);
+  });
+
+  it('keeps nested mark children past the first </div> (Document extract, not shallow regex)', () => {
+    const deck = `<!doctype html><html><body>
+<section class="slide" data-slide-index="0"><h1>Title slide</h1></section>
+<section class="slide" data-slide-index="1"><p>Keep this text</p></section>
+</body></html>`;
+    const visual = buildVisualAnnotationAttachment({
+      order: 1,
+      screenshotPath: 'annotations/test.png',
+      markKind: 'stroke',
+      note: 'nested mark',
+      bounds: { x: 40, y: 50, width: 80, height: 60 },
+      slideIndex: 1,
+    });
+    // Inner </div> would truncate a shallow regex before the svg lands.
+    const wiped = `<!doctype html><html><body>
+<section class="slide" data-slide-index="0"><h1>Title slide</h1></section>
+<section class="slide" data-slide-index="1" style="position:relative">
+<div class="od-visual-mark-target" style="position:absolute;left:40px;top:50px;width:80px;height:60px">
+<div class="mark-inner">pin</div>
+<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/></svg>
+</div>
+</section>
+</body></html>`;
+    const repaired = repairWipedSlidesForVisualMarks(deck, wiped, [visual]);
+    expect(repaired).toContain('Keep this text');
+    expect(repaired).toContain('od-visual-mark-target');
+    expect(repaired).toContain('mark-inner');
+    expect(repaired).toMatch(/<svg[^>]*viewBox="0 0 24 24"/);
+  });
+
+  it('skips full-source sanitize when graft is called with sanitize:false', () => {
+    const deck = `<!doctype html><html><body>
+<section class="slide" data-slide-index="0"><h1>Title slide</h1></section>
+<section class="slide" data-slide-index="1"><p>Keep this text</p></section>
+</body></html>`;
+    const visual = buildVisualAnnotationAttachment({
+      order: 1,
+      screenshotPath: 'annotations/test.png',
+      markKind: 'stroke',
+      note: '하트 그려줘',
+      bounds: { x: 40, y: 50, width: 80, height: 60 },
+      slideIndex: 1,
+    });
+    const raw = graftVisualMarksIntoDeckHtml(deck, [visual], { sanitize: false });
+    const scrubbed = graftVisualMarksIntoDeckHtml(deck, [visual]);
+    expect(raw).toContain('od-visual-mark-target');
+    expect(scrubbed).toContain('od-visual-mark-target');
+    // Default path still runs full-source scrub; unsanitized path is for
+    // callers that own terminal sanitize (stabilize → applyScoped / salvage).
+    expect(sanitizeManualEditFullSource(raw ?? '')).toContain('Keep this text');
+    expect(scrubbed).toContain('Keep this text');
+  });
+
+  it('reconcileCommentScopeForPersist returns attachments and slide indexes together', () => {
+    const scope = reconcileCommentScopeForPersist(CURRENT_HTML, [attachment(0)]);
+    expect(scope.attachments[0]?.slideIndex).toBe(1);
+    expect(scope.allowedSlideIndexes).toContain(1);
+  });
+
+  it('reconcileCommentScopeForPersist shares one section pass across attachments', () => {
+    const scope = reconcileCommentScopeForPersist(CURRENT_HTML, [
+      attachment(0),
+      { ...attachment(1), currentText: 'Keep me', htmlHint: '' },
+    ]);
+    expect(scope.attachments).toHaveLength(2);
+    expect(scope.allowedSlideIndexes?.length).toBeGreaterThan(0);
+    expect(scope.attachments[0]?.slideIndex).toBe(1);
+  });
+
+  it('merges id-bearing attachment with stale slideIndex across candidates', () => {
+    const patchedHtml = CURRENT_HTML.replace(
+      '뉴럴스튜디오㈜는 Agentic AI OS 기반의 AI-native 회사입니다.',
+      '<strong>뉴럴스튜디오㈜</strong>는 Agentic AI OS 기반의 AI-native 회사입니다.',
+    );
+    const result = mergeScopedCommentTargetsFromPatchedDeck({
+      currentHtml: CURRENT_HTML,
+      patchedHtml,
+      commentAttachments: [attachment(0)],
+      instructionText: '회사 이름 눈에 잘 띄게 수정',
+    });
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    if (!result.ok) return;
+    expect(result.html).toContain('<strong>뉴럴스튜디오㈜</strong>');
+    expect(result.narrowed).toBe(true);
   });
 });

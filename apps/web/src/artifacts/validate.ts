@@ -40,7 +40,10 @@
  */
 
 import {
+  deckArtifactStartsWithMotifSvgDump,
+  deckSlideHeadingsLookLikeFailedGenerate,
   documentContainsSlideSection,
+  eachSlideHostOpenIndex,
   hasSalvageableDeckSlideContent,
   isDeckStatusProseOnlyBody,
   meetsMinimumDeckDeliverableQuality,
@@ -59,8 +62,6 @@ const STYLE_BLOCK_RE = /<style\b[^>]*>([\s\S]*?)<\/style>/gi;
 const CSS_URL_RE = /\burl\(\s*(?:"([^"]*)"|'([^']*)'|([^)]*?))\s*\)/gi;
 const CSS_IMPORT_RE =
   /@import\s+(?:url\(\s*(?:"([^"]*)"|'([^']*)'|([^)]*?))\s*\)|"([^"]*)"|'([^']*)')/gi;
-const SLIDE_LIKE_SECTION_RE =
-  /<section\b[^>]*(?:\bclass\s*=\s*(?:"[^"]*\bslide\b[^"]*"|'[^']*\bslide\b[^']*'|[^\s"'`=<>]*\bslide\b[^\s"'`=<>]*)|\bdata-slide(?:-index)?\b)[^>]*>/gi;
 const DELIVERABLE_PLACEHOLDER_TEXT_RE =
   /(?:\b(?:error|loading)\b|만들고\s*있|작성\s*중|생성\s*중|준비\s*중|잠시만\s*기다|발표\s*개요|바로\s*만들|만들어\s*드릴)/i;
 const MEDIA_OR_REPLACED_CONTENT_RE = /<(img|video|audio|canvas|svg|iframe|picture|object|embed)\b/i;
@@ -153,6 +154,12 @@ export function isLowSubstanceSlideDeckArtifact(content: string): boolean {
 
   const bodyText = visibleHtmlBodyText(trimmed);
   const withoutNoise = stripHtmlNoise(trimmed);
+  if (deckSlideHeadingsLookLikeFailedGenerate(trimmed)) {
+    return true;
+  }
+  if (deckArtifactStartsWithMotifSvgDump(trimmed)) {
+    return true;
+  }
   if (MEDIA_OR_REPLACED_CONTENT_RE.test(withoutNoise)) return false;
 
   if (DELIVERABLE_PLACEHOLDER_TEXT_RE.test(bodyText) && bodyText.length < 320) {
@@ -192,12 +199,7 @@ function isEffectivelyEmptyHtmlBody(html: string): boolean {
 }
 
 function countSlideLikeSections(html: string): number {
-  SLIDE_LIKE_SECTION_RE.lastIndex = 0;
-  let count = 0;
-  while (SLIDE_LIKE_SECTION_RE.exec(html) !== null) {
-    count += 1;
-  }
-  return count;
+  return eachSlideHostOpenIndex(html).length;
 }
 
 function visibleHtmlBodyText(html: string): string {

@@ -1,4 +1,5 @@
 import type { FileRevision } from '@open-design/contracts';
+import { revisionSnapshotContentMatches } from './revision-content-match';
 
 /** User intentionally navigated to a revision older than head. */
 export function isUserViewingOlderRevision(
@@ -25,7 +26,7 @@ export function isHeadDiskSyncLag(
   if (!headRevision || !matchingRevision) return false;
   if (matchingRevision.id !== headRevision.id) return false;
   if (cursor.id === headRevision.id) return false;
-  if (diskContent === cursorSnapshotContent) return false;
+  if (revisionSnapshotContentMatches(diskContent, cursorSnapshotContent)) return false;
   if (activeSequence != null && activeSequence < headRevision.sequence) return true;
   return cursor.sequence < headRevision.sequence;
 }
@@ -38,7 +39,7 @@ export function shouldPreserveCursorDuringDiskLag(
   previewSource: string | null,
   cursorSnapshotContent: string,
 ): boolean {
-  if (previewSource !== cursorSnapshotContent) return false;
+  if (!revisionSnapshotContentMatches(previewSource, cursorSnapshotContent)) return false;
   if (!headRevision) return false;
   if (activeSequence != null) return activeSequence < headRevision.sequence;
   return cursor.sequence < headRevision.sequence;
@@ -91,7 +92,7 @@ export function classifyRevisionDiskReconcile(input: RevisionDiskReconcileInput)
     matchingRevision,
   } = input;
 
-  if (diskContent === cursorSnapshotContent) {
+  if (revisionSnapshotContentMatches(diskContent, cursorSnapshotContent)) {
     return 'cursor_matches_disk';
   }
 
@@ -122,7 +123,26 @@ export function classifyRevisionDiskReconcile(input: RevisionDiskReconcileInput)
     return 'preserve_history_cursor';
   }
 
+  // Preview already shows the cursor revision while disk diverged — scratch/S3
+  // lag or byte-normalization drift, not an external edit the user can see.
+  if (isRevisionPreviewAlignedWithCursor(previewSource, cursorSnapshotContent)) {
+    return 'preserve_history_cursor';
+  }
+
   return 'external_conflict';
+}
+
+/** Preview HTML already matches the active cursor snapshot. */
+export function isRevisionPreviewAlignedWithCursor(
+  previewSource: string | null,
+  cursorSnapshotContent: string,
+  additionalAlignedSources: ReadonlyArray<string | null | undefined> = [],
+): boolean {
+  if (revisionSnapshotContentMatches(previewSource, cursorSnapshotContent)) return true;
+  for (const candidate of additionalAlignedSources) {
+    if (revisionSnapshotContentMatches(candidate, cursorSnapshotContent)) return true;
+  }
+  return false;
 }
 
 /** True when disk diverged from known revision history in a way that invalidates undo/redo. */
@@ -144,7 +164,7 @@ export function shouldApplyHeadRevisionSnapshotAuthority(
 ): boolean {
   if (!headRevision || !userAtHeadRevision) return false;
   if (cursor.id !== headRevision.id) return false;
-  if (diskContent === cursorSnapshotContent) return false;
+  if (revisionSnapshotContentMatches(diskContent, cursorSnapshotContent)) return false;
   if (matchingRevision?.id === headRevision.id) return false;
   return matchingRevision != null && matchingRevision.sequence < headRevision.sequence;
 }

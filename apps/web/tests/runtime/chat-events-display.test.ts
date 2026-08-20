@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
+import { EMERGENCY_DECK_FALLBACK_STATUS_CODE } from '../../src/artifacts/emergency-deck';
 import {
   appendErrorStatusEvent,
   assistantEventsForDisplay,
   assistantMessageTextBody,
   attachAutoContinueIncompleteOutputNotice,
   attachPersistedChatError,
+  clearDurableDeliverableErrorsAfterRecovery,
   messageHasPersistedChatError,
   messageHasVisibleProse,
   reconcileChatMessageOnLoad,
@@ -290,6 +292,76 @@ describe('reconcileChatMessageOnLoad', () => {
       ],
     };
     expect(reconcileChatMessageOnLoad(message)).toBe(message);
+  });
+
+  it('keeps emergency salvage success as succeeded and strips leftover incomplete_output', () => {
+    const withErrors: ChatMessage = {
+      id: 'a1',
+      role: 'assistant',
+      content: 'partial',
+      createdAt: 1,
+      runStatus: 'succeeded',
+      events: [
+        {
+          kind: 'status',
+          label: 'error',
+          detail: DELIVERABLE_MISSING_ENCODED,
+          code: 'incomplete_output',
+        },
+        {
+          kind: 'status',
+          label: 'error',
+          detail: '이어쓰기…',
+          code: AUTO_CONTINUE_STATUS_CODE,
+        },
+        {
+          kind: 'status',
+          label: 'warning',
+          detail: '임시 복구 덱',
+          code: EMERGENCY_DECK_FALLBACK_STATUS_CODE,
+        },
+      ],
+    };
+    const cleared = clearDurableDeliverableErrorsAfterRecovery(withErrors);
+    expect(cleared.events?.some((event) => event.code === 'incomplete_output')).toBe(false);
+    expect(cleared.events?.some((event) => event.code === AUTO_CONTINUE_STATUS_CODE)).toBe(false);
+    expect(cleared.events?.some((event) => event.code === EMERGENCY_DECK_FALLBACK_STATUS_CODE)).toBe(
+      true,
+    );
+
+    const reconciled = reconcileChatMessageOnLoad(withErrors);
+    expect(reconciled.runStatus).toBe('succeeded');
+    expect(reconciled.events?.some((event) => event.code === 'incomplete_output')).toBe(false);
+  });
+
+  it('strips deliverable lifecycle errors from every succeeded assistant on load', () => {
+    const message: ChatMessage = {
+      id: 'a-clean-success',
+      role: 'assistant',
+      content: '',
+      createdAt: 1,
+      runStatus: 'succeeded',
+      endedAt: 2,
+      events: [
+        { kind: 'status', label: 'requesting' },
+        {
+          kind: 'status',
+          label: 'error',
+          detail: DELIVERABLE_MISSING_ENCODED,
+          code: 'incomplete_output',
+        },
+        {
+          kind: 'status',
+          label: 'error',
+          detail: '이어쓰기…',
+          code: AUTO_CONTINUE_STATUS_CODE,
+        },
+      ],
+    };
+    const reconciled = reconcileChatMessageOnLoad(message);
+    expect(reconciled.runStatus).toBe('succeeded');
+    expect(reconciled.events?.some((event) => event.code === 'incomplete_output')).toBe(false);
+    expect(reconciled.events?.some((event) => event.code === AUTO_CONTINUE_STATUS_CODE)).toBe(false);
   });
 
   it('rehydrates user comment chips from attached-preview-comments content on load', () => {

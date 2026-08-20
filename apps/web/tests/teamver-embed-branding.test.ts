@@ -34,9 +34,11 @@ describe('Teamver embed branding policy', () => {
     const branding = resolveTeamverBranding();
 
     expect(branding.enabled).toBe(true);
-    expect(branding.title).toBe('teamver Design');
+    expect(branding.title).toBe('teamver Slide');
     expect(branding.heroSubtitle.length).toBeGreaterThan(0);
     expect(branding.faviconUrl).toBe('/teamver/Logo-icon.svg');
+    expect(branding.logoUrl).toBe('/teamver/teamver-slide-light.png');
+    expect(branding.logoUrlDark).toBe('/teamver/teamver-slide-dark.png');
     expect(branding.hideExternalLinks).toBe(true);
     expect(branding.hideTopbarExecutionSwitcher).toBe(true);
     expect(branding.hideSettingsDialogLink).toBe(true);
@@ -92,7 +94,7 @@ describe('Teamver embed branding policy', () => {
     const fileViewer = readFileSync(resolve(webRoot, 'src/components/FileViewer.tsx'), 'utf8');
 
     expect(chatPane).toContain('hideUsefulTips');
-    expect(chatPane).toContain('hideUsefulTips ? null : (');
+    expect(chatPane).toContain('hideUsefulTips ? (');
     expect(chatPane).toContain('chat-examples');
     expect(designFiles).toContain('!hideUsefulTips ? (');
     expect(designFiles).toContain('df-footer-info');

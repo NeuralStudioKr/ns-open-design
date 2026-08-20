@@ -1,32 +1,62 @@
-import { extractTopLevelSlideSections } from '../artifacts/deck-patch';
+import { extractDeckBodyContent, extractTopLevelSlideSections } from '../artifacts/deck-patch';
 import type { ChatCommentAttachment } from '../types';
-import { readScopedCommentTargetText } from './source-patches';
+import { parseManualEditSource, readScopedCommentTargetText } from './source-patches';
 
-function listDeckSlideIndexes(html: string): number[] {
-  const bodyMatch = /<body\b[^>]*>([\s\S]*?)<\/body\s*>/i.exec(html);
-  const scope = bodyMatch ? bodyMatch[1] ?? '' : html;
-  return extractTopLevelSlideSections(scope).map((_, index) => index);
+/** Mirror findScopedRoot slide discovery so Document path stays selector-parity. */
+const INTENT_STRUCTURED_SLIDE_SELECTOR =
+  '.deck > .slide, .deck-stage > .slide, .deck-shell > .slide, #od-stacked-deck-stage > .slide, body > .slide, body > section.slide, body > section[class~="slide"]';
+
+function listDeckSlideIndexes(html: string, parsedDoc?: Document | null): number[] {
+  // When finalize already shared a Document, derive indexes without body extract.
+  if (parsedDoc) {
+    const structured = parsedDoc.querySelectorAll(INTENT_STRUCTURED_SLIDE_SELECTOR);
+    if (structured.length > 0) {
+      return Array.from({ length: structured.length }, (_, index) => index);
+    }
+    const anySlide = parsedDoc.querySelectorAll('.slide');
+    if (anySlide.length > 0) {
+      return Array.from({ length: anySlide.length }, (_, index) => index);
+    }
+  }
+  return extractTopLevelSlideSections(extractDeckBodyContent(html)).map((_, index) => index);
 }
 
+/**
+ * Returns `verified` when at least one slide already preserves target text
+ * (caller must not re-parse). Otherwise returns candidate slide indexes.
+ */
 function resolveValidationSlideIndexes(
   mergedHtml: string,
   attachment: ChatCommentAttachment,
-): number[] {
-  const slides = listDeckSlideIndexes(mergedHtml);
+  parsedDoc?: Document | null,
+): { verified: true } | { verified: false; candidates: number[] } {
+  const slides = listDeckSlideIndexes(mergedHtml, parsedDoc);
   const hint = {
     elementId: attachment.elementId,
     currentText: attachment.currentText,
     htmlHint: attachment.htmlHint,
     selector: attachment.selector,
   };
-  const verified: number[] = [];
-  for (const slideIndex of slides) {
-    const mergedText = readScopedCommentTargetText(mergedHtml, { slideIndex }, hint);
-    if (mergedText !== null && targetTextContentPreserved(attachment, mergedText)) {
-      verified.push(slideIndex);
+  const pinned =
+    typeof attachment.slideIndex === 'number'
+    && Number.isInteger(attachment.slideIndex)
+    && attachment.slideIndex >= 0
+      ? Math.floor(attachment.slideIndex)
+      : null;
+  // Prefer the pinned slide first — full-deck walk only when that miss.
+  if (pinned != null) {
+    const pinnedText = readScopedCommentTargetText(mergedHtml, { slideIndex: pinned }, hint, parsedDoc);
+    if (pinnedText !== null && targetTextContentPreserved(attachment, pinnedText)) {
+      return { verified: true };
     }
   }
-  if (verified.length > 0) return verified;
+  for (const slideIndex of slides) {
+    if (slideIndex === pinned) continue;
+    const mergedText = readScopedCommentTargetText(mergedHtml, { slideIndex }, hint, parsedDoc);
+    if (mergedText !== null && targetTextContentPreserved(attachment, mergedText)) {
+      return { verified: true };
+    }
+  }
 
   const candidates: number[] = [];
   const pushUnique = (index: number) => {
@@ -34,17 +64,11 @@ function resolveValidationSlideIndexes(
       candidates.push(index);
     }
   };
-  if (
-    typeof attachment.slideIndex === 'number'
-    && Number.isInteger(attachment.slideIndex)
-    && attachment.slideIndex >= 0
-  ) {
-    pushUnique(attachment.slideIndex);
-  }
+  if (pinned != null) pushUnique(pinned);
   for (const slideIndex of slides) {
     pushUnique(slideIndex);
   }
-  return candidates;
+  return { verified: false, candidates };
 }
 
 function collapseText(value: string): string {
@@ -148,15 +172,21 @@ export function validateCommentEditIntentRespected(input: {
   mergedHtml: string;
   commentAttachments: readonly ChatCommentAttachment[];
   instructionText?: string;
+  /** When set, skip a second DOMParser (deck-patch finalize / full-deck guard). */
+  parsedDoc?: Document | null;
 }): { ok: true } | { ok: false; reason: string } {
   const instruction = [
     input.instructionText,
     ...input.commentAttachments.map((attachment) => attachment.comment),
   ].filter(Boolean).join('\n');
-  if (!looksLikeStyleOnlyCommentRequest(instruction)) {
+  // Style ∪ layout ∪ alignment — "한 줄로" / "정렬" must not wipe pinned text either.
+  if (!looksLikePresentationTweakCommentRequest(instruction)) {
     return { ok: true };
   }
 
+  const parsedDoc = input.parsedDoc !== undefined
+    ? input.parsedDoc
+    : parseManualEditSource(input.mergedHtml);
   for (const attachment of input.commentAttachments) {
     if (attachment.selectionKind === 'visual') continue;
     const hint = {
@@ -165,18 +195,24 @@ export function validateCommentEditIntentRespected(input: {
       htmlHint: attachment.htmlHint,
       selector: attachment.selector,
     };
-    const slideIndexes = resolveValidationSlideIndexes(input.mergedHtml, attachment);
-    if (slideIndexes.length === 0) continue;
+    const resolved = resolveValidationSlideIndexes(input.mergedHtml, attachment, parsedDoc);
+    if (resolved.verified) continue;
+    if (resolved.candidates.length === 0) continue;
 
-    const preserved = slideIndexes.some((slideIndex) => {
-      const mergedText = readScopedCommentTargetText(input.mergedHtml, { slideIndex }, hint);
+    const preserved = resolved.candidates.some((slideIndex) => {
+      const mergedText = readScopedCommentTargetText(
+        input.mergedHtml,
+        { slideIndex },
+        hint,
+        parsedDoc,
+      );
       return mergedText !== null && targetTextContentPreserved(attachment, mergedText);
     });
     if (!preserved) {
       return {
         ok: false,
         reason:
-          'style-only comment edit removed or emptied the pinned target text; use set-style (e.g. fontSize) and keep currentText verbatim',
+          'presentation-only comment edit removed or emptied the pinned target text; keep currentText verbatim while changing style/layout/alignment',
       };
     }
   }

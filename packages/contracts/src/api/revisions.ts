@@ -31,6 +31,8 @@ export interface FileRevisionsListResponse {
   headRevisionId: string | null;
   /** Server-side retention cap for this file (matches OD_FILE_REVISION_RETENTION_LIMIT). */
   retentionLimit: number;
+  /** True when count retention sweep is still draining rows over the cap. */
+  retentionPending?: boolean;
 }
 
 /** GET /api/projects/:id/files/:name/revisions/:revId */
@@ -49,6 +51,12 @@ export interface FileRevisionPushRequest {
   assistantMessageId?: string;
   /** When set, revisions with sequence greater than this are pruned before push. */
   truncateAfterSequence?: number;
+  /**
+   * Clone LOOK → fill intentionally replaces a large template seed with a
+   * compact content deck. When true, daemon stub-guard must not reject the
+   * smaller fill as ARTIFACT_REGRESSION.
+   */
+  skipArtifactStubGuard?: boolean;
 }
 
 export interface FileRevisionPushResponse {

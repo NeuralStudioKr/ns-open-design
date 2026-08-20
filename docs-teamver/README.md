@@ -50,6 +50,8 @@
 | **[55 Main↔Design UI 스타일](./55_Main_Teamver_vs_Design_UI_스타일_통일_분석.md)** | **분석·보류 — indigo/Geist 통일은 합의 전 재개 금지** |
 | **[56 UI polish a11y·터치](./56_UI_polish_a11y_터치_개선.md)** | **focus·hit·touch · soft/28 포화·리뷰 교정** |
 | **[57-0~1 Docker 배포 빌드](./57-0_Docker_배포_빌드_가속_현황.md)** | **Phase 0 가속 현황 · [57-1 CI·ECR 설계](./57-1_Docker_이미지_CI_ECR_배포_설계.md) (미구현) · 구 52-x Docker에서 재번호** |
+| **[58 덱 Preview letterbox](./58_덱_미리보기_letterbox_빈화면_안정화.md)** | **재진입·사용 중 검정 Preview · prefix settle · filesRefresh · host-viewport fit** |
+| **[60 Canvas→Slide 시스템 프롬프트·템플릿](./60_Canvas_Slide_시스템_프롬프트_템플릿적용_개선.md)** | **Daisy Days→Neutral RCA · compose 우선순위 · FE/BE · 퀵설정 · 회귀 방어 SSOT** |
 | **[46 embed 슬라이드 품질](./46_embed_슬라이드_품질_원인분석_개선로드맵.md)** | **품질 trade-off · Phase 1~3 로드맵** |
 | **[47 body-first compact deck 검토](./47_body-first_compact_deck_아키텍처_검토_및_0716이후_변경판단.md)** | **body-first 결정 · 0716 이후 판단 · 유지/롤백 SSOT** |
 | **[17 Production 출시 작업 순서](./17_Production_출시_작업_순서.md)** | **Step 0~6 체크리스트 · ACM→TF→DNS→EC2→e2e-strict** |
@@ -100,6 +102,8 @@
 | 56 | **[UI polish a11y·터치](./56_UI_polish_a11y_터치_개선.md)** — soft/28 포화 |
 | 57-0 | **[Docker 배포 빌드 가속 현황](./57-0_Docker_배포_빌드_가속_현황.md)** — Phase 0 BuildKit·Playwright (구 52-0 Docker) |
 | 57-1 | **[Docker 이미지 CI·ECR 배포 설계](./57-1_Docker_이미지_CI_ECR_배포_설계.md)** — 다음 단계 (미구현 · 구 52-1 Docker) |
+| 58 | **[덱 Preview letterbox / 빈 화면](./58_덱_미리보기_letterbox_빈화면_안정화.md)** — 재진입·사용 중 검정 Preview · host-viewport |
+| 60 | **[Canvas→Slide 시스템 프롬프트·템플릿 적용](./60_Canvas_Slide_시스템_프롬프트_템플릿적용_개선.md)** — Daisy Days→Neutral RCA · compose SSOT |
 | 46 | **[embed 슬라이드 품질 원인분석·로드맵](./46_embed_슬라이드_품질_원인분석_개선로드맵.md)** — Phase 1~3 |
 | 47 | **[body-first compact deck 검토·0716 이후 판단](./47_body-first_compact_deck_아키텍처_검토_및_0716이후_변경판단.md)** — 유지/롤백 SSOT |
 | 17 | **[Production 출시 작업 순서](./17_Production_출시_작업_순서.md)** |

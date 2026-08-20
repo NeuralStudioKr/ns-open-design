@@ -1,0 +1,313 @@
+/* ============================================================
+   Recent projects strip — horizontal grid of recent project cards
+   on the Home view, with a "View all" anchor that switches to the
+   Projects view.
+   ============================================================ */
+.recent-projects {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.recent-projects__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.recent-projects__title {
+  margin: 0;
+  font-family: var(--sans);
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-strong);
+  letter-spacing: -0.01em;
+}
+.recent-projects__view-all {
+  appearance: none;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 12.5px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 4px;
+  border-radius: var(--radius-sm);
+}
+.recent-projects__view-all:hover {
+  color: var(--text);
+  background: var(--bg-subtle);
+}
+.recent-projects__view-all:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  color: var(--text);
+  background: var(--bg-subtle);
+}
+.recent-projects__empty {
+  color: var(--text-muted);
+  font-size: 13px;
+  padding: 20px 16px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  text-align: center;
+}
+.recent-projects__row {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px;
+}
+.recent-projects__card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-panel);
+  text-align: left;
+  overflow: visible;
+  transition: border-color 120ms var(--ease-out), box-shadow 120ms var(--ease-out), transform 120ms var(--ease-out);
+}
+.recent-projects__card-open {
+  appearance: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  overflow: hidden;
+  color: inherit;
+}
+.recent-projects__card:hover {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-sm);
+  transform: translateY(-1px);
+}
+.recent-projects__card:hover .design-card-more,
+.recent-projects__card:focus-within .design-card-more,
+.recent-projects__card .design-card-more[aria-expanded="true"],
+.recent-projects__card .design-card-more:focus-visible {
+  opacity: 1;
+}
+@media (hover: none) {
+  .recent-projects__card .design-card-more {
+    opacity: 1;
+  }
+}
+.recent-projects__menu-anchor {
+  /* Keep kebab + open menu above the open-card hit target */
+  z-index: 6;
+}
+.recent-projects__card.is-design-system-project {
+  border-color: color-mix(in srgb, var(--red) 62%, var(--border));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--red) 42%, transparent);
+}
+.recent-projects__card.is-design-system-project:hover {
+  border-color: var(--red);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--red) 54%, transparent),
+    var(--shadow-sm);
+}
+.recent-projects__card-thumb {
+  aspect-ratio: 16 / 9;
+  background: linear-gradient(135deg, var(--accent-tint) 0%, var(--bg-subtle) 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+  /* Container for the HTML preview iframe's responsive scale (below): the
+   * iframe renders at a fixed desktop design width and is scaled by the
+   * card's own width so the page reads as a faithful thumbnail instead of
+   * collapsing at the narrow card width. */
+  container-type: inline-size;
+}
+.recent-projects__card-thumb-html,
+.recent-projects__card-thumb-image,
+.recent-projects__card-thumb-video,
+.recent-projects__card-thumb-logo {
+  background: var(--bg-subtle);
+}
+.recent-projects__thumb-media,
+.recent-projects__thumb-iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+.recent-projects__thumb-media {
+  object-fit: cover;
+}
+.recent-projects__card-thumb-logo .recent-projects__thumb-media {
+  inset: 22%;
+  width: 56%;
+  height: 56%;
+  object-fit: contain;
+}
+.recent-projects__thumb-iframe {
+  pointer-events: none;
+  background: #fff;
+  /* Render the page at the Teamver slide canvas size, then scale it down to the
+   * card width via a container query so non-responsive galleries don't
+   * collapse at the narrow card size. 1920×1080 matches ProjectCardHtmlCover
+   * / DECK_PREVIEW_* so the scaled iframe fills the 16/9 thumb exactly. */
+  inset: auto;
+  top: 0;
+  left: 0;
+  width: 1920px;
+  height: 1080px;
+  transform-origin: 0 0;
+  transform: scale(calc(100cqw / 1920px));
+}
+.recent-projects__deck-frame,
+.recent-projects__deck-iframe,
+.recent-projects__deck-cover-loading {
+  position: absolute;
+  inset: 0;
+}
+.recent-projects__deck-frame {
+  overflow: hidden;
+  background: #fff;
+}
+.recent-projects__deck-iframe {
+  width: 1920px;
+  height: 1080px;
+  border: 0;
+  pointer-events: none;
+  transform: scale(var(--recent-deck-scale, 1));
+  transform-origin: 0 0;
+}
+.recent-projects__deck-cover-loading {
+  width: 100%;
+  height: 100%;
+  background:
+    linear-gradient(110deg, transparent 30%, rgba(255, 255, 255, 0.52) 50%, transparent 70%) 0 0 / 200% 100%,
+    var(--bg-subtle);
+  animation: recent-projects-shimmer 1.4s ease-in-out infinite;
+}
+.recent-projects__card-glyph {
+  font-family: var(--sans);
+  font-size: 32px;
+  font-weight: 600;
+  color: var(--accent);
+  letter-spacing: -0.02em;
+}
+.recent-projects__card-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px 12px;
+  min-width: 0;
+}
+.recent-projects__card-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-strong);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.recent-projects__card-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.recent-projects__card-time {
+  font-size: 11.5px;
+  color: var(--text-soft);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  flex-wrap: nowrap;
+}
+.recent-projects__card-updated {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.recent-projects__card-drive {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.recent-projects__card-sep {
+  color: var(--text-soft);
+}
+.recent-projects__card-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 500;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.recent-projects__card-status-running {
+  color: var(--accent);
+}
+.recent-projects__card-status-awaiting_input {
+  color: var(--amber);
+}
+.recent-projects__card-status-queued,
+.recent-projects__card-status-not_started,
+.recent-projects__card-status-canceled {
+  color: var(--text-muted);
+}
+.recent-projects__card-status-succeeded {
+  color: var(--green);
+}
+.recent-projects__card-status-failed {
+  color: var(--red);
+}
+.recent-projects__card-status-published {
+  color: var(--green);
+}
+.recent-projects__card-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+.recent-projects__card-status-running .recent-projects__card-status-dot {
+  animation: recent-projects-pulse 1.4s ease-in-out infinite;
+}
+@keyframes recent-projects-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+.recent-projects__card--skeleton {
+  pointer-events: none;
+  min-height: 168px;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--bg-panel) 88%, transparent) 0%,
+    color-mix(in srgb, var(--bg-subtle) 92%, transparent) 50%,
+    color-mix(in srgb, var(--bg-panel) 88%, transparent) 100%
+  );
+  background-size: 200% 100%;
+  animation: recent-projects-shimmer 1.4s ease-in-out infinite;
+  border: 1px solid var(--border);
+}
+
+
+@keyframes recent-projects-shimmer {
+  from {
+    background-position: 200% 0, 0 0;
+  }
+  to {
+    background-position: -200% 0, 0 0;
+  }
+}

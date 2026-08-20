@@ -1,6 +1,7 @@
 import type { ChatAttachment, ChatCommentAttachment } from '../types';
 import { uploadProjectFiles } from '../providers/registry';
 import { projectFilePathsReferToSameFile } from './projectFilePaths';
+import { stageReadableUploadedAttachments } from './uploadedImagesReadable';
 
 export const PENDING_ANNOTATION_PATH_PREFIX = '__pending-annotation__/';
 
@@ -62,11 +63,15 @@ export async function flushPendingAnnotationUploads(
       result.uploaded.length > 0
         ? await uploadedImagesReadableOnDisk(projectId, result.uploaded)
         : [];
-    const resolvedUploaded =
-      readableUploaded.length > 0 ? readableUploaded : result.uploaded;
+    const { staged: resolvedUploaded } = stageReadableUploadedAttachments(
+      result.uploaded,
+      readableUploaded,
+    );
     const uploaded = resolvedUploaded[0];
     if (!uploaded) {
-      nextAttachments.push(attachment);
+      // Drop cold pending annotation screenshots — keep the pending path only
+      // when upload produced nothing at all (caller can surface an error).
+      if (result.uploaded.length === 0) nextAttachments.push(attachment);
       continue;
     }
     const remapped: ChatAttachment = {

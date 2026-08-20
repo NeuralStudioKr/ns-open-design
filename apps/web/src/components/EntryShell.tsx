@@ -90,6 +90,7 @@ import {
   coerceNewProjectTab,
   resolveSlideOnlyCreatePluginId,
   defaultSlideOnlyDeckPluginInputs,
+  explicitSlideOnlyDeckTemplatePluginInputs,
 } from '../teamver/branding/slideOnlyMvpPolicy';
 import { isTeamverEmbedMode } from '../teamver/designApiBase';
 import {
@@ -652,16 +653,42 @@ export function EntryShell({
       payload.driveAttachments?.[0]?.filename ??
       payload.driveAttachments?.[0]?.assetId ??
       '';
+    const topicFromPluginInputs =
+      typeof payload.pluginInputs?.topic === 'string'
+        ? payload.pluginInputs.topic.trim()
+        : '';
     const topicHint =
       payload.canvasHandoff?.title?.trim() ||
       payload.canvasHandoff?.threadTitle?.trim() ||
-      null;
+      (topicFromPluginInputs
+        && !/^the (?:attached source document|user brief)$/i.test(topicFromPluginInputs)
+        && !/^new slide deck$/i.test(topicFromPluginInputs)
+        ? topicFromPluginInputs
+        : null);
     const name = deriveProjectNameForCreate({
       prompt: payload.prompt,
       topicHint,
       attachmentLabel: firstAttachmentName || null,
-      pluginTitle: payload.pluginTitle,
+      // Never stamp template marketing titles (Daisy / Html Ppt / …) as the project name.
+      pluginTitle: null,
     });
+    // Empty prompt + no topic/attachment → generated Untitled (first real chat turn may rename).
+    const nameSource: ProjectMetadata['nameSource'] =
+      name === 'Untitled' && !topicHint && !firstAttachmentName
+        ? 'generated'
+        : 'prompt';
+    const payloadTemplateId =
+      typeof payload.projectMetadata?.selectedDeckTemplateId === 'string'
+        ? payload.projectMetadata.selectedDeckTemplateId.trim()
+        : typeof payload.pluginInputs?.selectedDeckTemplateId === 'string'
+          ? payload.pluginInputs.selectedDeckTemplateId.trim()
+          : '';
+    const payloadTemplateTitle =
+      typeof payload.projectMetadata?.selectedDeckTemplateTitle === 'string'
+        ? payload.projectMetadata.selectedDeckTemplateTitle.trim()
+        : typeof payload.pluginInputs?.selectedDeckTemplateTitle === 'string'
+          ? payload.pluginInputs.selectedDeckTemplateTitle.trim()
+          : '';
     const metadata: ProjectMetadata = {
       ...(payload.projectMetadata ?? {}),
       // Teamver embed slide-only MVP locks the artifact to a deck. Free-form
@@ -670,7 +697,17 @@ export function EntryShell({
       // those surfaces. Pinning the kind here removes the ambiguity before
       // the run reaches the daemon.
       kind: resolvePluginLoopProjectKind(payload),
-      nameSource: 'prompt',
+      nameSource,
+      // Home wizard / gallery Use may put the visual id only on pluginInputs;
+      // promote it onto metadata so App Clone always sees selectedDeckTemplateId.
+      ...(payloadTemplateId
+        ? {
+            selectedDeckTemplateId: payloadTemplateId,
+            ...(payloadTemplateTitle
+              ? { selectedDeckTemplateTitle: payloadTemplateTitle }
+              : {}),
+          }
+        : {}),
       ...(payload.contextPlugins && payload.contextPlugins.length > 0
         ? { contextPlugins: payload.contextPlugins }
         : {}),
@@ -701,6 +738,10 @@ export function EntryShell({
         ? {
             ...defaultSlideOnlyDeckPluginInputs(name),
             ...(payload.pluginInputs ?? {}),
+            ...explicitSlideOnlyDeckTemplatePluginInputs(
+              metadata.selectedDeckTemplateTitle,
+              metadata.selectedDeckTemplateId,
+            ),
           }
         : payload.pluginInputs ?? null;
     return onCreateProject({

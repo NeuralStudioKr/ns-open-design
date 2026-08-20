@@ -20,7 +20,7 @@ import type {
   AudioVoiceOption,
 } from '@open-design/contracts';
 import { DEFAULT_UNSELECTED_SCENARIO_PLUGIN_ID } from '@open-design/contracts';
-import { projectKindToTracking } from '@open-design/contracts/analytics';
+import { projectListTrackingKind } from '../teamver/projectListCardCategory';
 import { useAnalytics } from '../analytics/provider';
 import {
   trackCommunityGalleryClick,
@@ -53,7 +53,14 @@ import {
   mergeAihubmixImageModels,
   useAIHubMixImageModels,
 } from '../media/aihubmix-image-models';
-import { openFolderDialog, fetchRecentLinkedDirs, pushRecentLinkedDir } from '../providers/registry';
+import {
+  openFolderDialog,
+  fetchRecentLinkedDirs,
+  pushRecentLinkedDir,
+  fetchPluginPreviewHtml,
+} from '../providers/registry';
+import { openSandboxedPreviewInNewTab } from '../runtime/exports';
+import { embedUiLabel } from '../teamver/embedUiLabels';
 import { isOpenDesignHostAvailable, pickHostWorkingDir } from '@open-design/host';
 import type {
   DesignSystemSummary,
@@ -66,7 +73,7 @@ import { inlineMentionToken, mentionTokenPresent } from '../utils/inlineMentions
 import { smoothScrollToTop } from '../utils/smoothScrollToTop';
 import { missingRequiredInputs, pluginInputsAreValid } from '../utils/pluginRequiredInputs';
 import { HomeHero, type ExamplePromptInfo, type HomeHeroHandle } from './HomeHero';
-import { findChip, pluginIdsBoundToHomeHeroChips, type HomeHeroChip } from './home-hero/chips';
+import { findChip, type HomeHeroChip } from './home-hero/chips';
 import {
   buildHomeMediaComposer,
   homeMediaSurfaceForChipId,
@@ -84,6 +91,7 @@ import {
 import { PluginDetailsModal } from './PluginDetailsModal';
 import { HomeTemplatesReveal } from './HomeTemplatesReveal';
 import { PluginsHomeSection } from './PluginsHomeSection';
+import { Toast } from './Toast';
 import type { PluginLoopSubmit } from './PluginLoopHome';
 import { localizePluginTitle } from './plugins-home/localization';
 import type { PluginUseAction } from './plugins-home/useActions';
@@ -91,11 +99,13 @@ import { examplePresetSeedPrompt } from './plugins-home/presetSeedPrompt';
 import { localizePluginDescription } from './plugins-home/localization';
 import { RecentProjectsStrip } from './RecentProjectsStrip';
 import { AnimatePresence } from 'motion/react';
+import { embedAttachBlockReason } from '../teamver/branding/embedFileAttachPolicy';
 import { embedSlideOnlyOutboundBlockReason } from '../teamver/branding/embedSlideOnlyOutboundGuard';
 import { isRenderableDesignTemplate } from '../teamver/branding/designTemplateVisibility';
 import {
   communityGalleryFacetUi,
   defaultSlideOnlyDeckPluginInputs,
+  explicitSlideOnlyDeckTemplatePluginInputs,
   homeHeroChipsForGroup,
   pluginsForSlideOnlyMvp,
   resolveSlideOnlyDeckTemplateSkillId,
@@ -122,21 +132,36 @@ import { subscribeTeamverWorkspaceChanged } from '../teamver/teamverWorkspaceEve
 import type { TeamverDriveImportAsset } from '../teamver/importDriveAssets';
 import { formatDriveImportErrorForUser } from '../teamver/importDriveAssets';
 import { formatTeamverCanvasImportErrorMessage } from '../teamver/importCanvas';
+import { redirectToTeamverLoginFromEmbed } from '../teamver/teamverBffAuthError';
+import { isMainSsoRequiredError, isMainSsoUserMismatchError } from '../teamver/teamverMainSsoGate';
+import { beginMainSsoMismatchRecovery } from '../teamver/mainSsoMismatchRecovery';
 import { TeamverDriveImportModal } from '../teamver/components/TeamverDriveImportModal';
 import { teamverDriveAssetIdsFromImportAssets } from '../teamver/driveImportAttachedIds';
 import {
   TeamverCanvasSlideLaunchModal,
   type TeamverCanvasSlideLaunchSource,
 } from '../teamver/components/TeamverCanvasSlideLaunchModal';
+import { TeamverHomeCreateHero } from '../teamver/components/TeamverHomeCreateHero';
+import {
+  TeamverHomeSlideCreateModal,
+  type TeamverHomeSlideCreateEntry,
+} from '../teamver/components/TeamverHomeSlideCreateModal';
 import { consumeTeamverCanvasLaunchHandoff } from '../teamver/canvasLaunchHandoff';
 import {
   CANVAS_CREATE_SLIDES_PLUGIN_ID,
   DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS,
+  createHomeSlideCreateQuickSettings,
+  hasHomeSlideCreateContent,
   canvasCreateSlidesPluginInputs,
   canvasCreateSlidesRunPrompt,
+  sanitizeSlideCreateTopicHint,
   canvasCreateSlidesSourceBrief,
   buildSlideOnlyDeckTemplateCreateBinding,
+  isExplicitCanvasSlideVisualTemplate,
+  readLastExplicitDeckTemplateId,
   readTeamverCreateSlidesLaunchFromUrl,
+  rememberLastExplicitDeckTemplateId,
+  clearLastExplicitDeckTemplateId,
   resolveCanvasSlideTemplate,
   driveCreateSlidesSourceBrief,
   type CanvasSlideQuickSettings,
@@ -369,10 +394,50 @@ export function HomeView({
   const [canvasSlideLaunch, setCanvasSlideLaunch] = useState<TeamverCanvasSlideLaunchSource | null>(null);
   const [canvasSlideLaunchBusy, setCanvasSlideLaunchBusy] = useState(false);
   const [canvasSlideLaunchError, setCanvasSlideLaunchError] = useState<string | null>(null);
+  const [canvasSlideLaunchAuthRelogin, setCanvasSlideLaunchAuthRelogin] = useState(false);
+  const [homeSlideCreateOpen, setHomeSlideCreateOpen] = useState(false);
+  const [homeSlideCreateEntry, setHomeSlideCreateEntry] =
+    useState<TeamverHomeSlideCreateEntry>('new');
+  const [homeSlideCreateBusy, setHomeSlideCreateBusy] = useState(false);
+  const [homeSlideCreateError, setHomeSlideCreateError] = useState<string | null>(null);
+  const [homeSlideUserPrompt, setHomeSlideUserPrompt] = useState('');
+  const [homeSlideQuickSettings, setHomeSlideQuickSettings] = useState<CanvasSlideQuickSettings>(
+    createHomeSlideCreateQuickSettings,
+  );
+  const [homeSlideTemplateId, setHomeSlideTemplateId] = useState<string>(CANVAS_CREATE_SLIDES_PLUGIN_ID);
   const [canvasSlideTemplateId, setCanvasSlideTemplateId] = useState<string>(CANVAS_CREATE_SLIDES_PLUGIN_ID);
   const [canvasSlideUserPrompt, setCanvasSlideUserPrompt] = useState('');
   const [canvasSlideQuickSettings, setCanvasSlideQuickSettings] = useState<CanvasSlideQuickSettings>(
     DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS,
+  );
+  // Persist Canvas→Slide picker picks only. Home wizard close/create
+  // clears the session pin so 「새 슬라이드」 does not reopen on the last card.
+  useEffect(() => {
+    rememberLastExplicitDeckTemplateId(canvasSlideTemplateId);
+  }, [canvasSlideTemplateId]);
+  // Canvas→Slide: slideOnly gallery Use opens the Home wizard and never
+  // sets `active`. Seed only from the Canvas session pin / active plugin —
+  // never from a live Home wizard pick (the two surfaces stay independent).
+  useEffect(() => {
+    if (!canvasSlideLaunch) return;
+    const fromActive = slideOnlyMvp
+      ? resolveSlideOnlyDeckTemplateSkillId(active?.record)
+      : null;
+    const fromSession = readLastExplicitDeckTemplateId();
+    const preferred = fromActive || fromSession;
+    if (!preferred) return;
+    setCanvasSlideTemplateId((current) =>
+      current === CANVAS_CREATE_SLIDES_PLUGIN_ID || !current.trim()
+        ? preferred
+        : current,
+    );
+  }, [
+    canvasSlideLaunch,
+    active?.record,
+    slideOnlyMvp,
+  ]);
+  const [communityExternalPreviewError, setCommunityExternalPreviewError] = useState<string | null>(
+    null,
   );
   const teamverDriveImportEnabled = useMemo(() => getDesignBffClient() !== null, []);
   const teamverDriveImportAllowed = useMemo(
@@ -383,14 +448,6 @@ export function HomeView({
         snapshotAppEnabled: isTeamverEmbedDesignSurfaceEnabled(),
       }),
     [designAccessTick, teamverDriveImportEnabled, teamverWorkspaceId],
-  );
-  const canvasSlideTemplates = useCanvasSlideLaunchTemplates({
-    active: canvasSlideLaunch !== null,
-    locale,
-  });
-  const selectedCanvasSlideTemplate = useMemo(
-    () => resolveCanvasSlideTemplate(canvasSlideTemplates, canvasSlideTemplateId),
-    [canvasSlideTemplates, canvasSlideTemplateId],
   );
   useEffect(() => {
     if (!teamverDriveImportEnabled) return;
@@ -449,13 +506,28 @@ export function HomeView({
       for (const asset of assets) {
         if (seen.has(asset.assetId)) continue;
         if (next.length >= HOME_DRIVE_IMPORT_MAX) break;
+        if (
+          slideOnlyMvp
+          && embedAttachBlockReason(asset.filename ?? asset.assetId, {
+            mimeType: asset.mimeType,
+            slideOnlyMvp: true,
+          })
+        ) {
+          continue;
+        }
         next.push(asset);
         seen.add(asset.assetId);
       }
       return next;
     });
+    // slideOnly: land in the Home wizard with the handoff already staged.
+    // Opening the Drive picker (OD HomeHero path) would lose chips on 「새 슬라이드」.
+    if (slideOnlyMvp) {
+      openHomeSlideCreate('new', undefined, { preserveAttachments: true });
+      return;
+    }
     setDriveImportOpen(true);
-  }, [teamverDriveImportAllowed, teamverWorkspaceId]);
+  }, [teamverDriveImportAllowed, teamverWorkspaceId, slideOnlyMvp]);
   const [workingDir, setWorkingDir] = useState<string | null>(null);
   // Token paired with `workingDir` when picked through the desktop host's
   // native dialog. Spent on the post-creation working-dir POST so the
@@ -560,14 +632,40 @@ export function HomeView({
         plugin_id: record.sourceMarketplaceEntryName ?? record.id,
         plugin_type: record.marketplaceTrust ?? 'official',
       });
+      // Fetch HTML via the authenticated API client, then open a sandboxed
+      // blob tab. A raw `/api/plugins/.../preview` top-level navigation
+      // drops embed session cookies and lands on session_expired.
+      void (async () => {
+        try {
+          const result = await fetchPluginPreviewHtml(record.id);
+          if (!('html' in result) || !result.html) {
+            setCommunityExternalPreviewError(t('preview.errorBody'));
+            return;
+          }
+          const odMode = record.manifest?.od?.mode;
+          const previewBlock = record.manifest?.od?.preview as { type?: unknown } | undefined;
+          const isDeck =
+            odMode === 'deck' ||
+            odMode === 'template' ||
+            previewBlock?.type === 'html';
+          openSandboxedPreviewInNewTab(
+            result.html,
+            localizePluginTitle(locale, record),
+            { deck: isDeck },
+          );
+        } catch {
+          setCommunityExternalPreviewError(t('preview.errorBody'));
+        }
+      })();
     },
-    [analytics.track],
+    [analytics.track, locale, t],
   );
   const inputRef = useRef<HomeHeroHandle | null>(null);
   const homeViewRef = useRef<HTMLDivElement | null>(null);
   const consumedHandoffIdRef = useRef<number | null>(null);
   const pendingPromptFocusEndRef = useRef(false);
   const activePluginApplyRequestRef = useRef(0);
+  const chipResolveRequestRef = useRef(0);
   const scrollHomeToTop = useCallback(() => {
     requestAnimationFrame(() => {
       const scrollContainer = homeViewRef.current?.closest('.entry-main--scroll');
@@ -632,45 +730,9 @@ export function HomeView({
     });
   }, [communityPluginQuery, pluginsLoadingMore, pluginsNextOffset, slideOnlyMvp]);
 
-  const chipBoundPluginIds = useMemo(
-    () => pluginIdsBoundToHomeHeroChips([
-      ...homeHeroChipsForGroup('create', { slideOnlyMvp }),
-      ...homeHeroChipsForGroup('migrate', { slideOnlyMvp }),
-    ]),
-    [slideOnlyMvp],
-  );
-
-  const missingChipBoundPluginIds = useMemo(
-    () => chipBoundPluginIds.filter(
-      (id) => !plugins.some((plugin) => plugin.id === id),
-    ),
-    [chipBoundPluginIds, plugins],
-  );
-
-  useEffect(() => {
-    if (pluginsLoading || missingChipBoundPluginIds.length === 0) return;
-    let cancelled = false;
-    void Promise.all(
-      missingChipBoundPluginIds.map((id) => getInstalledPlugin(id)),
-    ).then((records) => {
-      if (cancelled) return;
-      const resolved = records.filter((record): record is InstalledPluginRecord => record != null);
-      if (resolved.length === 0) return;
-      setPlugins((current) => {
-        const seen = new Set(current.map((plugin) => plugin.id));
-        const next = [...current];
-        for (const record of resolved) {
-          if (seen.has(record.id)) continue;
-          seen.add(record.id);
-          next.push(record);
-        }
-        return next;
-      });
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [missingChipBoundPluginIds, pluginsLoading]);
+  // Chip-bound plugins (e.g. example-simple-deck) are often outside the first
+  // Community page (title ASC + limit=24). Do not boot-prefetch detail GETs —
+  // pickChip / handoff already lazy-load via getInstalledPlugin (0806-N09).
 
   useEffect(() => {
     if (hideComposerIntegrations) {
@@ -899,6 +961,23 @@ export function HomeView({
   const communityPlugins = useMemo(
     () => pluginsForSlideOnlyMvp(plugins, { slideOnlyMvp }),
     [plugins, slideOnlyMvp],
+  );
+
+  // Merge Home's already-loaded deck plugins so Canvas launch doesn't wait
+  // on a cold cache miss / skeleton when the Community gallery is warm.
+  const { options: canvasSlideTemplates, loading: canvasSlideTemplatesLoading } =
+    useCanvasSlideLaunchTemplates({
+      active: canvasSlideLaunch !== null || homeSlideCreateOpen,
+      callerPlugins: communityPlugins,
+      locale,
+    });
+  const selectedCanvasSlideTemplate = useMemo(
+    () => resolveCanvasSlideTemplate(canvasSlideTemplates, canvasSlideTemplateId),
+    [canvasSlideTemplates, canvasSlideTemplateId],
+  );
+  const selectedHomeSlideTemplate = useMemo(
+    () => resolveCanvasSlideTemplate(canvasSlideTemplates, homeSlideTemplateId),
+    [canvasSlideTemplates, homeSlideTemplateId],
   );
 
   const showCommunityGallery = shouldShowHomeCommunityGallery({
@@ -1193,6 +1272,11 @@ export function HomeView({
       plugin_type: record.marketplaceTrust ?? 'official',
       action: action === 'use-with-query' ? 'use_with_query' : 'use',
     });
+    if (slideOnlyMvp) {
+      openHomeSlideCreate('template', record.id);
+      setDetailsRecord(null);
+      return;
+    }
     if (action === 'use-with-query') {
       // "Replicate this content" seeds the composer with the SAME human-friendly
       // text the Home example-prompt cards use (examplePresetSeedPrompt), NOT the
@@ -1393,9 +1477,44 @@ export function HomeView({
 
   function stageFiles(files: File[]) {
     if (files.length === 0) return;
-    setStagedFiles((current) => [...current, ...files]);
+    let blockReason: string | null = null;
+    const allowed = slideOnlyMvp
+      ? files.filter((file) => {
+          const reason = embedAttachBlockReason(file.name, {
+            mimeType: file.type,
+            sizeBytes: file.size,
+            slideOnlyMvp: true,
+          });
+          if (reason) {
+            blockReason ??= reason;
+            return false;
+          }
+          return true;
+        })
+      : files;
+    if (blockReason && homeSlideCreateOpen) {
+      setHomeSlideCreateError(blockReason);
+    }
+    if (allowed.length === 0) return;
+    setStagedFiles((current) => {
+      const next = [...current];
+      for (const file of allowed) {
+        if (
+          next.some(
+            (item) =>
+              item.name === file.name
+              && item.size === file.size
+              && item.lastModified === file.lastModified,
+          )
+        ) {
+          continue;
+        }
+        next.push(file);
+      }
+      return next;
+    });
     setError(null);
-    focusPromptAtEnd();
+    if (!homeSlideCreateOpen) focusPromptAtEnd();
   }
 
   function removeStagedFile(index: number) {
@@ -1404,9 +1523,27 @@ export function HomeView({
 
   function stageDriveAssets(assets: TeamverDriveImportAsset[]) {
     if (assets.length === 0) return;
+    let blockReason: string | null = null;
+    const allowed = slideOnlyMvp
+      ? assets.filter((asset) => {
+          const reason = embedAttachBlockReason(asset.filename ?? asset.assetId, {
+            mimeType: asset.mimeType,
+            slideOnlyMvp: true,
+          });
+          if (reason) {
+            blockReason ??= reason;
+            return false;
+          }
+          return true;
+        })
+      : assets;
+    if (blockReason && homeSlideCreateOpen) {
+      setHomeSlideCreateError(blockReason);
+    }
+    if (allowed.length === 0) return;
     setStagedDriveAssets((current) => {
       const next = [...current];
-      for (const asset of assets) {
+      for (const asset of allowed) {
         if (next.length >= HOME_DRIVE_IMPORT_MAX) break;
         if (next.some((item) => item.assetId === asset.assetId)) continue;
         next.push(asset);
@@ -1414,7 +1551,7 @@ export function HomeView({
       return next.slice(0, HOME_DRIVE_IMPORT_MAX);
     });
     setError(null);
-    focusPromptAtEnd();
+    if (!homeSlideCreateOpen) focusPromptAtEnd();
   }
 
   function removeStagedDriveAsset(index: number) {
@@ -1730,12 +1867,21 @@ export function HomeView({
       const targetId = chip.action.pluginId;
       const record = plugins.find((p) => p.id === targetId);
       if (!record) {
+        const requestId = chipResolveRequestRef.current + 1;
+        chipResolveRequestRef.current = requestId;
         setPendingChipId(chip.id);
-        void getInstalledPlugin(targetId).then((resolved) => {
+        void getInstalledPlugin(targetId, {
+          // Scenario chip bind: keep picker denylist off so a missing mode
+          // field never masks a successful GET as "not installed".
+          bypassSlideOnlyCatalogFilter: true,
+          // User click may need cookie refresh; catalog list keeps skip.
+          allowAuthRecovery: true,
+        }).then((resolved) => {
+          if (chipResolveRequestRef.current !== requestId) return;
           setPendingChipId(null);
           if (!resolved) {
             setError(
-              `Bundled scenario "${targetId}" is not installed. Reinstall the daemon to restore the default plugin set.`,
+              `Could not load scenario "${targetId}". Refresh the page and try again.`,
             );
             return;
           }
@@ -1767,58 +1913,256 @@ export function HomeView({
     }
   }
 
-  async function confirmCanvasSlideLaunch() {
-    if (!canvasSlideLaunch || canvasSlideLaunchBusy || submitPending) return;
-    if (!teamverDriveImportAllowed) {
-      setCanvasSlideLaunchError(
-        canvasSlideLaunch.kind === 'canvas'
-          ? 'Teamver 작업공간을 먼저 선택한 뒤 다시 시도하세요.'
-          : formatDriveImportErrorForUser('teamver_workspace_required'),
-      );
-      return;
+  function resetHomeSlideCreateDraft() {
+    setHomeSlideCreateEntry('new');
+    setHomeSlideCreateError(null);
+    setHomeSlideUserPrompt('');
+    setHomeSlideQuickSettings(createHomeSlideCreateQuickSettings());
+    setHomeSlideTemplateId(CANVAS_CREATE_SLIDES_PLUGIN_ID);
+    setStagedFiles([]);
+    setStagedDriveAssets([]);
+    setDriveImportOpen(false);
+    clearLastExplicitDeckTemplateId();
+  }
+
+  function openHomeSlideCreate(
+    entry: TeamverHomeSlideCreateEntry,
+    templateId?: string,
+    options?: { preserveAttachments?: boolean },
+  ) {
+    if (!options?.preserveAttachments) {
+      setStagedFiles([]);
+      setStagedDriveAssets([]);
     }
-    setCanvasSlideLaunchBusy(true);
-    setCanvasSlideLaunchError(null);
+    setDriveImportOpen(false);
+    setHomeSlideCreateEntry(entry);
+    const explicit = templateId?.trim() || '';
+    setHomeSlideTemplateId(
+      isExplicitCanvasSlideVisualTemplate({ id: explicit })
+        ? explicit
+        : CANVAS_CREATE_SLIDES_PLUGIN_ID,
+    );
+    setHomeSlideUserPrompt('');
+    setHomeSlideQuickSettings(createHomeSlideCreateQuickSettings());
+    setHomeSlideCreateError(null);
+    setHomeSlideCreateOpen(true);
+  }
+
+  function closeHomeSlideCreate() {
+    if (homeSlideCreateBusy) return;
+    setHomeSlideCreateOpen(false);
+    resetHomeSlideCreateDraft();
+  }
+
+  async function confirmHomeSlideCreate() {
+    if (!homeSlideCreateOpen || homeSlideCreateBusy || submitPending) return;
+    if (!hasHomeSlideCreateContent({
+      prompt: homeSlideUserPrompt,
+      files: stagedFiles,
+      driveAssets: stagedDriveAssets,
+    })) return;
+    setHomeSlideCreateBusy(true);
+    setHomeSlideCreateError(null);
     setError(null);
     try {
-      if (canvasSlideLaunch.kind === 'canvas') {
-        const submittedDesignSystemId = slideOnlyMvp
+      // Prefer the live picker id; never silently drop an explicit gallery /
+      // wizard pick back to "기본" when the catalog is still loading.
+      const template = resolveCanvasSlideTemplate(
+        canvasSlideTemplates,
+        homeSlideTemplateId.trim() || selectedHomeSlideTemplate.id,
+      );
+      const templateBinding = buildSlideOnlyDeckTemplateCreateBinding(template, {
+        slideOnlyMvp: true,
+      });
+      if (
+        isExplicitCanvasSlideVisualTemplate(template)
+        && !templateBinding.projectMetadata.selectedDeckTemplateId
+      ) {
+        setHomeSlideCreateError(t('teamver.homeCreate.errorTemplateLost'));
+        return;
+      }
+      const topicHint = sanitizeSlideCreateTopicHint(
+        homeSlideUserPrompt.trim().split(/\n/)[0]?.slice(0, 120)
+        || stagedFiles[0]?.name
+        || stagedDriveAssets[0]?.filename
+        || null,
+      );
+      const attachBrief = [
+        ...stagedFiles.map((file) => `file:${file.name}`),
+        ...stagedDriveAssets.map(
+          (asset) => `drive:${asset.filename ?? asset.assetId}`,
+        ),
+      ].join('\n');
+      // Clone content-swap needs textual outline — prefer the user brief, then
+      // attachment labels (empty attach-only brief used to yield a blank outline).
+      const sourceBrief = [
+        homeSlideUserPrompt.trim()
+          ? `User instruction:\n${homeSlideUserPrompt.trim()}`
+          : '',
+        attachBrief ? `Attachments:\n${attachBrief}` : '',
+      ]
+        .filter(Boolean)
+        .join('\n\n') || null;
+      const submittedDesignSystemId =
+        !isExplicitCanvasSlideVisualTemplate(template)
           ? resolveEmbedSlideDesignSystemId({
               explicitId: null,
               workspaceDefaultId: defaultDesignSystemId,
               designSystems: designSystemPickerSystems,
             })
           : null;
-        const topicHint =
+      const hasSourceMaterial =
+        stagedFiles.length > 0 || stagedDriveAssets.length > 0;
+      const submitResult = await Promise.resolve(
+        onSubmit({
+          prompt: canvasCreateSlidesRunPrompt(
+            template.title,
+            sourceBrief,
+            homeSlideUserPrompt,
+            homeSlideQuickSettings,
+            { hasSourceMaterial, templateId: template.id },
+          ),
+          pluginId: templateBinding.pluginId,
+          pluginType: 'official',
+          skillId: null,
+          appliedPluginSnapshotId: null,
+          pluginTitle: null,
+          taskKind: null,
+          pluginInputs: {
+            ...canvasCreateSlidesPluginInputs(
+              topicHint,
+              template.title,
+              sourceBrief,
+              homeSlideUserPrompt,
+              homeSlideQuickSettings,
+              { hasSourceMaterial },
+            ),
+            ...templateBinding.pluginInputsPatch,
+            // Belt-and-suspenders: App Clone also reads pluginInputs when
+            // metadata is stripped by an intermediate shell.
+            ...(templateBinding.projectMetadata.selectedDeckTemplateId
+              ? {
+                  selectedDeckTemplateId:
+                    templateBinding.projectMetadata.selectedDeckTemplateId,
+                  selectedDeckTemplateTitle:
+                    templateBinding.projectMetadata.selectedDeckTemplateTitle,
+                }
+              : {}),
+          },
+          projectKind: 'deck',
+          projectMetadata: {
+            ...templateBinding.projectMetadata,
+            // Keep the visual id even if binding omitted it (should not happen
+            // for explicit picks — defensive for catalog-loading races).
+            ...(isExplicitCanvasSlideVisualTemplate(template)
+              ? {
+                  selectedDeckTemplateId: template.id,
+                  selectedDeckTemplateTitle: template.title,
+                }
+              : {}),
+          },
+          designSystemId: submittedDesignSystemId,
+          contextPlugins: [],
+          contextMcpServers: [],
+          contextConnectors: [],
+          attachments: stagedFiles,
+          ...(stagedDriveAssets.length > 0
+            ? { driveAttachments: stagedDriveAssets }
+            : {}),
+          conversationMode: 'design',
+        }),
+      );
+      if (submitResult === false) {
+        setHomeSlideCreateError(t('teamver.homeCreate.errorCreateFailed'));
+        return;
+      }
+      setStagedFiles([]);
+      setStagedDriveAssets([]);
+      setHomeSlideCreateOpen(false);
+      resetHomeSlideCreateDraft();
+    } catch (err) {
+      if (isMainSsoUserMismatchError(err)) {
+        void beginMainSsoMismatchRecovery();
+        setHomeSlideCreateError(null);
+      } else {
+        setHomeSlideCreateError(t('teamver.homeCreate.errorCreateFailed'));
+      }
+    } finally {
+      setHomeSlideCreateBusy(false);
+    }
+  }
+
+  async function confirmCanvasSlideLaunch() {
+    if (!canvasSlideLaunch || canvasSlideLaunchBusy || submitPending) return;
+    if (!teamverDriveImportAllowed) {
+      setCanvasSlideLaunchError(
+        formatDriveImportErrorForUser('teamver_workspace_required'),
+      );
+      return;
+    }
+    setCanvasSlideLaunchBusy(true);
+    setCanvasSlideLaunchError(null);
+    setCanvasSlideLaunchAuthRelogin(false);
+    setError(null);
+    try {
+      if (canvasSlideLaunch.kind === 'canvas') {
+        // Prefer an explicit modal pick; if the modal is still on the default
+        // "기본" option, honor the community gallery deck the user already
+        // activated (same id Clone will read).
+        const templateForRun = (() => {
+          if (isExplicitCanvasSlideVisualTemplate(selectedCanvasSlideTemplate)) {
+            return selectedCanvasSlideTemplate;
+          }
+          const fromActive = slideOnlyMvp
+            ? resolveSlideOnlyDeckTemplateSkillId(active?.record)
+            : null;
+          if (!fromActive) return selectedCanvasSlideTemplate;
+          return resolveCanvasSlideTemplate(canvasSlideTemplates, fromActive);
+        })();
+        // Explicit visual templates (Daisy Days, etc.) own the look via
+        // selectedDeckTemplate* + example.html kit. Do not auto-bind Neutral
+        // Modern — its DESIGN.md was still landing in the BYOK system prompt.
+        const submittedDesignSystemId =
+          slideOnlyMvp && !isExplicitCanvasSlideVisualTemplate(templateForRun)
+            ? resolveEmbedSlideDesignSystemId({
+                explicitId: null,
+                workspaceDefaultId: defaultDesignSystemId,
+                designSystems: designSystemPickerSystems,
+              })
+            : null;
+        const topicHint = sanitizeSlideCreateTopicHint(
           canvasSlideLaunch.handoff.title?.trim() ||
           canvasSlideLaunch.handoff.threadTitle?.trim() ||
-          null;
+          null,
+        );
         const sourceBrief = canvasCreateSlidesSourceBrief(canvasSlideLaunch.handoff);
         const templateBinding = buildSlideOnlyDeckTemplateCreateBinding(
-          selectedCanvasSlideTemplate,
+          templateForRun,
           { slideOnlyMvp },
         );
         const submitResult = await Promise.resolve(
           onSubmit({
             prompt: canvasCreateSlidesRunPrompt(
-              selectedCanvasSlideTemplate.title,
+              templateForRun.title,
               sourceBrief,
               canvasSlideUserPrompt,
               canvasSlideQuickSettings,
+              { hasSourceMaterial: true, templateId: templateForRun.id },
             ),
             pluginId: templateBinding.pluginId,
             pluginType: 'official',
             skillId: null,
             appliedPluginSnapshotId: null,
-            pluginTitle: selectedCanvasSlideTemplate.title,
+            pluginTitle: null,
             taskKind: null,
             pluginInputs: {
               ...canvasCreateSlidesPluginInputs(
                 topicHint,
-                selectedCanvasSlideTemplate.title,
+                templateForRun.title,
                 sourceBrief,
                 canvasSlideUserPrompt,
                 canvasSlideQuickSettings,
+                { hasSourceMaterial: true },
               ),
               ...templateBinding.pluginInputsPatch,
             },
@@ -1834,7 +2178,7 @@ export function HomeView({
           }),
         );
         if (submitResult === false) {
-          setCanvasSlideLaunchError('프로젝트를 만들지 못했습니다 — 다시 시도해 주세요.');
+          setCanvasSlideLaunchError(t('teamver.homeCreate.errorCreateFailed'));
           return;
         }
         consumeTeamverCanvasLaunchHandoff();
@@ -1847,43 +2191,56 @@ export function HomeView({
 
       const asset = canvasSlideLaunch.asset;
       const sourceBrief = driveCreateSlidesSourceBrief(asset);
+      const templateForRun = (() => {
+        if (isExplicitCanvasSlideVisualTemplate(selectedCanvasSlideTemplate)) {
+          return selectedCanvasSlideTemplate;
+        }
+        const fromActive = slideOnlyMvp
+          ? resolveSlideOnlyDeckTemplateSkillId(active?.record)
+          : null;
+        if (!fromActive) return selectedCanvasSlideTemplate;
+        return resolveCanvasSlideTemplate(canvasSlideTemplates, fromActive);
+      })();
       const templateBinding = buildSlideOnlyDeckTemplateCreateBinding(
-        selectedCanvasSlideTemplate,
+        templateForRun,
         { slideOnlyMvp },
       );
       const submitResult = await Promise.resolve(
         onSubmit({
           prompt: canvasCreateSlidesRunPrompt(
-            selectedCanvasSlideTemplate.title,
+            templateForRun.title,
             sourceBrief,
             canvasSlideUserPrompt,
             canvasSlideQuickSettings,
+            { hasSourceMaterial: true, templateId: templateForRun.id },
           ),
           pluginId: templateBinding.pluginId,
           pluginType: 'official',
           skillId: null,
           appliedPluginSnapshotId: null,
-          pluginTitle: selectedCanvasSlideTemplate.title,
+          pluginTitle: null,
           taskKind: null,
           pluginInputs: {
             ...canvasCreateSlidesPluginInputs(
               asset.filename ?? asset.assetId,
-              selectedCanvasSlideTemplate.title,
+              templateForRun.title,
               sourceBrief,
               canvasSlideUserPrompt,
               canvasSlideQuickSettings,
+              { hasSourceMaterial: true },
             ),
             ...templateBinding.pluginInputsPatch,
           },
           projectKind: 'deck',
           projectMetadata: templateBinding.projectMetadata,
-          designSystemId: slideOnlyMvp
-            ? resolveEmbedSlideDesignSystemId({
-                explicitId: null,
-                workspaceDefaultId: defaultDesignSystemId,
-                designSystems: designSystemPickerSystems,
-              })
-            : null,
+          designSystemId:
+            slideOnlyMvp && !isExplicitCanvasSlideVisualTemplate(templateForRun)
+              ? resolveEmbedSlideDesignSystemId({
+                  explicitId: null,
+                  workspaceDefaultId: defaultDesignSystemId,
+                  designSystems: designSystemPickerSystems,
+                })
+              : null,
           contextPlugins: [],
           contextMcpServers: [],
           contextConnectors: [],
@@ -1902,22 +2259,37 @@ export function HomeView({
       setCanvasSlideUserPrompt('');
       setCanvasSlideQuickSettings(DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS);
     } catch (err) {
-      const message =
-        canvasSlideLaunch.kind === 'canvas'
-          ? formatTeamverCanvasImportErrorMessage(err)
-          : formatDriveImportErrorForUser(
-              err instanceof Error ? err.message : String(err),
-            );
-      setCanvasSlideLaunchError(message);
+      if (isMainSsoUserMismatchError(err)) {
+        void beginMainSsoMismatchRecovery();
+        setCanvasSlideLaunchError(null);
+        setCanvasSlideLaunchAuthRelogin(false);
+      } else {
+        const message =
+          canvasSlideLaunch.kind === 'canvas'
+            ? formatTeamverCanvasImportErrorMessage(err)
+            : formatDriveImportErrorForUser(
+                err instanceof Error ? err.message : String(err),
+              );
+        setCanvasSlideLaunchError(message);
+        setCanvasSlideLaunchAuthRelogin(isMainSsoRequiredError(err));
+      }
     } finally {
       setCanvasSlideLaunchBusy(false);
     }
   }
 
   async function submit() {
+    if (slideOnlyMvp) {
+      if (!homeSlideCreateOpen) openHomeSlideCreate('new');
+      return;
+    }
     if (submitPending) return;
     const trimmed = prompt.trim();
-    if (!trimmed && stagedFiles.length === 0 && stagedDriveAssets.length === 0) return;
+    if (!hasHomeSlideCreateContent({
+      prompt: trimmed,
+      files: stagedFiles,
+      driveAssets: stagedDriveAssets,
+    })) return;
     const slideOnlyBlock = embedSlideOnlyOutboundBlockReason(trimmed, { slideOnlyMvp });
     if (slideOnlyBlock) {
       setError(slideOnlyBlock);
@@ -1948,16 +2320,31 @@ export function HomeView({
     setSubmitPending(true);
     try {
       const defaultInputs = { prompt: trimmed };
+      // Resolve visual template id early so we can null Neutral DESIGN.md when
+      // an explicit deck template owns the look (same policy as wizard/Canvas).
+      const earlySelectedDeckTemplateId = slideOnlyMvp
+        ? resolveSlideOnlyDeckTemplateSkillId(submittedActive?.record)
+          ?? (
+            activeSkill && isRenderableDesignTemplate(activeSkill)
+              ? activeSkill.id
+              : null
+          )
+        : null;
       const submittedDesignSystemId = slideOnlyMvp
-        ? resolveEmbedSlideDesignSystemId({
-            explicitId: homeDesignSystemSelectionForInputs(
-              submittedActive?.inputs ?? null,
-              designSystemPickerSystems,
-              t('designSystemPicker.noneTitle'),
-            ),
-            workspaceDefaultId: defaultDesignSystemId,
-            designSystems: designSystemPickerSystems,
-          })
+        ? (
+          earlySelectedDeckTemplateId
+            && isExplicitCanvasSlideVisualTemplate({ id: earlySelectedDeckTemplateId })
+            ? null
+            : resolveEmbedSlideDesignSystemId({
+                explicitId: homeDesignSystemSelectionForInputs(
+                  submittedActive?.inputs ?? null,
+                  designSystemPickerSystems,
+                  t('designSystemPicker.noneTitle'),
+                ),
+                workspaceDefaultId: defaultDesignSystemId,
+                designSystems: designSystemPickerSystems,
+              })
+        )
         : homeDesignSystemSelectionForInputs(
             submittedActive?.inputs ?? null,
             designSystemPickerSystems,
@@ -2096,10 +2483,10 @@ export function HomeView({
             ...defaultSlideOnlyDeckPluginInputs(trimmed),
             ...(submittedPluginInputs ?? {}),
             ...(selectedDeckTemplateSkillId && selectedDeckTemplateLabel
-              ? {
-                  designSystem: selectedDeckTemplateLabel,
-                  visualTemplate: selectedDeckTemplateLabel,
-                }
+              ? explicitSlideOnlyDeckTemplatePluginInputs(
+                  selectedDeckTemplateLabel,
+                  selectedDeckTemplateSkillId,
+                )
               : {}),
           }
         : submittedPluginInputs;
@@ -2117,7 +2504,7 @@ export function HomeView({
         pluginType: submittedActive?.record.marketplaceTrust ?? (routedPluginId ? 'official' : null),
         skillId: resolvedSkillId,
         appliedPluginSnapshotId: submittedActive?.result?.appliedPlugin?.snapshotId ?? null,
-        pluginTitle: submittedActive?.record.title ?? null,
+        pluginTitle: slideOnlyMvp ? null : (submittedActive?.record.title ?? null),
         taskKind: submittedActive?.result?.appliedPlugin?.taskKind ?? null,
         pluginInputs: submittedPluginInputsForCreate,
         projectKind: submittedProjectKind,
@@ -2153,6 +2540,12 @@ export function HomeView({
 
   return (
     <div className="home-view" data-testid="home-view" ref={homeViewRef}>
+      {slideOnlyMvp ? (
+        <TeamverHomeCreateHero
+          disabled={homeSlideCreateBusy || submitPending}
+          onCreate={() => openHomeSlideCreate('new')}
+        />
+      ) : (
       <HomeHero
         ref={inputRef}
         active={isActive}
@@ -2262,6 +2655,43 @@ export function HomeView({
         onExamplePromptStatusChange={handleExamplePromptStatusChange}
         executionSwitcher={executionSwitcher}
       />
+      )}
+      {slideOnlyMvp ? (
+        <TeamverHomeSlideCreateModal
+          open={homeSlideCreateOpen}
+          entry={homeSlideCreateEntry}
+          confirming={homeSlideCreateBusy}
+          errorMessage={homeSlideCreateError}
+          templateOptions={canvasSlideTemplates}
+          templatesLoading={canvasSlideTemplatesLoading}
+          selectedTemplateId={selectedHomeSlideTemplate.id}
+          onTemplateChange={setHomeSlideTemplateId}
+          userPrompt={homeSlideUserPrompt}
+          onUserPromptChange={setHomeSlideUserPrompt}
+          quickSettings={homeSlideQuickSettings}
+          onQuickSettingsChange={setHomeSlideQuickSettings}
+          stagedFiles={stagedFiles}
+          onAddFiles={stageFiles}
+          onRemoveFile={removeStagedFile}
+          stagedDriveAssets={stagedDriveAssets}
+          onRemoveDriveAsset={(assetId) => {
+            setStagedDriveAssets((current) =>
+              current.filter((asset) => asset.assetId !== assetId),
+            );
+          }}
+          onAttachFromDrive={
+            teamverDriveImportAllowed
+              ? () => {
+                  setDriveImportOpen(true);
+                }
+              : undefined
+          }
+          onClose={closeHomeSlideCreate}
+          onConfirm={() => {
+            void confirmHomeSlideCreate();
+          }}
+        />
+      ) : null}
       {teamverDriveImportAllowed && teamverWorkspaceId ? (
         <TeamverDriveImportModal
           open={driveImportOpen}
@@ -2283,12 +2713,16 @@ export function HomeView({
           confirming={canvasSlideLaunchBusy}
           errorMessage={canvasSlideLaunchError}
           templateOptions={canvasSlideTemplates}
+          templatesLoading={canvasSlideTemplatesLoading}
           selectedTemplateId={selectedCanvasSlideTemplate.id}
           onTemplateChange={setCanvasSlideTemplateId}
           userPrompt={canvasSlideUserPrompt}
           onUserPromptChange={setCanvasSlideUserPrompt}
           quickSettings={canvasSlideQuickSettings}
           onQuickSettingsChange={setCanvasSlideQuickSettings}
+          onRelogin={
+            canvasSlideLaunchAuthRelogin ? redirectToTeamverLoginFromEmbed : null
+          }
           onClose={() => {
             if (!canvasSlideLaunchBusy) {
               if (canvasSlideLaunch.kind === 'canvas') {
@@ -2298,6 +2732,7 @@ export function HomeView({
               }
               setCanvasSlideLaunch(null);
               setCanvasSlideLaunchError(null);
+              setCanvasSlideLaunchAuthRelogin(false);
               setCanvasSlideUserPrompt('');
               setCanvasSlideQuickSettings(DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS);
             }
@@ -2321,7 +2756,9 @@ export function HomeView({
           // before navigation so the event isn't lost when the host
           // re-renders into the project view.
           const project = projects.find((p) => p.id === id);
-          const projectKind = projectKindToTracking(project?.metadata?.kind, project?.metadata?.videoModel);
+          const projectKind = project
+            ? projectListTrackingKind(project, { slideOnly: slideOnlyMvp })
+            : (slideOnlyMvp ? 'slide_deck' : null);
           trackRecentProjectsClick(analytics.track, {
             page_name: 'home',
             area: 'recent_projects',
@@ -2368,8 +2805,36 @@ export function HomeView({
           loadingMorePlugins={pluginsLoadingMore}
           onLoadMorePlugins={loadMoreCommunityPlugins}
           cardLayout="gallery"
+          {...(slideOnlyMvp
+            ? {
+                title: embedUiLabel('Slide templates', '슬라이드 템플릿'),
+                searchPlaceholder: embedUiLabel('Search templates…', '템플릿 검색…'),
+                emptyMessage: embedUiLabel(
+                  'No slide templates yet.',
+                  '슬라이드 템플릿이 없습니다.',
+                ),
+                emptyFilteredMessage: embedUiLabel(
+                  'No templates match the current filters.',
+                  '현재 필터와 일치하는 템플릿이 없습니다.',
+                ),
+                emptyFilteredSearchMessage: embedUiLabel(
+                  'No templates match your search.',
+                  '검색과 일치하는 템플릿이 없습니다.',
+                ),
+              }
+            : {})}
         />
       </HomeTemplatesReveal>
+      ) : null}
+
+      {communityExternalPreviewError ? (
+        <Toast
+          message={communityExternalPreviewError}
+          tone="error"
+          role="alert"
+          ttlMs={3200}
+          onDismiss={() => setCommunityExternalPreviewError(null)}
+        />
       ) : null}
 
       <AnimatePresence>

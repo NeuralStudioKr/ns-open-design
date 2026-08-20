@@ -1,6 +1,18 @@
-import { stripTrailingUnclosedRawBlocks } from '@open-design/contracts';
+import {
+  looksLikeInstructionCopy,
+  looksLikeTemplateMarketingTitle,
+  stripIncompleteOpenTags,
+  stripTrailingUnclosedRawBlocks,
+} from '@open-design/contracts';
 import { validateHtmlArtifact, isIncompleteHtmlDocumentShell } from './validate';
-import { hasSalvageableDeckSlideContent } from './deck-html-content';
+import {
+  closeUnclosedSlideSectionsForSalvage,
+  eachSlideHostOpenIndex,
+  hasSalvageableDeckSlideContent,
+  isClosedSoftSalvageDeckHtml,
+  meetsTruncationSalvageQuality,
+  startsWithSlideHost,
+} from './deck-html-content';
 
 type RecoverHtmlArtifactInput = {
   artifactHtml: string;
@@ -16,14 +28,24 @@ const DOCTYPE_HTML_BLOCK_RE = /<!doctype\s+html[\s\S]*?<\/html\s*>/gi;
 const HTML_DOCUMENT_BLOCK_RE = /<html\b[\s\S]*?<\/html\s*>/gi;
 const STARTS_WITH_DOCUMENT_RE = /^(?:<!doctype\s+html\b|<html\b)/i;
 const STARTS_WITH_BODY_RE = /^<body\b/i;
-const STARTS_WITH_SLIDE_SECTION_RE = /^<section\b[^>]*\bclass\s*=\s*(?:"[^"]*\bslide\b[^"]*"|'[^']*\bslide\b[^']*'|[^\s"'`=<>]*\bslide\b[^\s"'`=<>]*)/i;
 const BODY_TAG_RE = /<body\b/gi;
-const SLIDE_SECTION_TAG_RE = /<section\b[^>]*\bclass\s*=\s*(?:"[^"]*\bslide\b[^"]*"|'[^']*\bslide\b[^']*'|[^\s"'`=<>]*\bslide\b[^\s"'`=<>]*)/gi;
 const HAS_HTML_CLOSE_RE = /<\/html\s*>/i;
 const HAS_BODY_CLOSE_RE = /<\/body\s*>/i;
 
 function hasSalvageableSlideContent(html: string): boolean {
   return hasSalvageableDeckSlideContent(html);
+}
+
+function hasTruncationSalvageableContent(html: string): boolean {
+  return meetsTruncationSalvageQuality(html) || hasSalvageableDeckSlideContent(html);
+}
+
+/** Strip trailing junk and close unmatched slide sections before quality sniff. */
+function prepareTruncatedHtmlForSalvage(html: string): string {
+  let out = html.replace(/<[^>]*$/, '');
+  out = stripTrailingUnclosedRawBlocks(out);
+  out = stripIncompleteOpenTags(out);
+  return closeUnclosedSlideSectionsForSalvage(out);
 }
 
 function findLastArtifactOpen(sourceText: string, identifier?: string): number {
@@ -145,17 +167,32 @@ export function recoverBestHtmlDocumentFromText(
 }
 
 function collectTruncatedHtmlDocumentsFromText(sourceText: string, candidates: string[]): void {
-  const doctypeTail = sourceText.match(/<!doctype\s+html[\s\S]*/i)?.[0];
-  if (!doctypeTail) return;
-  const salvaged = salvageTruncatedHtmlDocument(doctypeTail);
-  if (salvaged) candidates.push(salvaged);
+  // Split on each doctype so a later empty closed `</html>` artifact cannot
+  // poison salvage of an earlier truncated deck (or vice versa).
+  const segments = sourceText.match(/<!doctype\s+html[\s\S]*?(?=(?:<!doctype\s+html)|$)/gi) ?? [];
+  if (segments.length === 0) {
+    const doctypeTail = sourceText.match(/<!doctype\s+html[\s\S]*/i)?.[0];
+    if (!doctypeTail) return;
+    const salvaged = salvageTruncatedHtmlDocument(doctypeTail);
+    if (salvaged) candidates.push(salvaged);
+    return;
+  }
+  for (const segment of segments) {
+    const salvaged = salvageTruncatedHtmlDocument(segment);
+    if (salvaged) candidates.push(salvaged);
+  }
 }
 
 function collectCompleteHtmlDocumentsFromText(sourceText: string, candidates: string[]): void {
   const addCandidate = (candidate: string) => {
     const normalized = candidate.replace(/^﻿/, '').trim();
     if (/<\/?artifact\b/i.test(normalized)) return;
-    if (validateHtmlArtifact(normalized).ok && !isIncompleteHtmlDocumentShell(normalized)) {
+    if (!validateHtmlArtifact(normalized).ok) return;
+    // Include closed soft-salvage decks (strict incomplete ratio still fails).
+    if (
+      !isIncompleteHtmlDocumentShell(normalized)
+      || isClosedSoftSalvageDeckHtml(normalized)
+    ) {
       candidates.push(normalized);
     }
   };
@@ -192,10 +229,8 @@ function recoverBodyFirstHtmlDocumentsFromText(sourceText: string): string[] {
     addTail(bodyMatch.index);
   }
 
-  SLIDE_SECTION_TAG_RE.lastIndex = 0;
-  let sectionMatch: RegExpExecArray | null;
-  while ((sectionMatch = SLIDE_SECTION_TAG_RE.exec(sourceText)) !== null) {
-    addTail(sectionMatch.index);
+  for (const index of eachSlideHostOpenIndex(sourceText)) {
+    addTail(index);
   }
 
   return out;
@@ -204,7 +239,8 @@ function recoverBodyFirstHtmlDocumentsFromText(sourceText: string): string[] {
 /**
  * Teamver API deck prompts intentionally say "body-first" to avoid a huge
  * head/CSS prelude. Some models interpret that literally and emit an artifact
- * body that starts with `<body>` or the first `<section class="slide">`,
+ * body that starts with `<body>` or the first slide host
+ * (`section|div.slide`, not chrome like `.slide-inner`),
  * without the outer `<!doctype html><html>`. Wrap only slide-looking content
  * with real text/media so prose or empty SLOT skeletons still fail.
  */
@@ -213,18 +249,19 @@ export function normalizeBodyFirstHtmlDocument(content: string | null | undefine
   if (trimmed.length < 64) return null;
   if (STARTS_WITH_DOCUMENT_RE.test(trimmed)) return null;
   const startsWithBody = STARTS_WITH_BODY_RE.test(trimmed);
-  const startsWithSlide = STARTS_WITH_SLIDE_SECTION_RE.test(trimmed);
+  const startsWithSlide = startsWithSlideHost(trimmed);
   if (!startsWithBody && !startsWithSlide) return null;
-  if (!hasSalvageableSlideContent(trimmed)) return null;
 
-  const cleaned = stripTrailingUnclosedRawBlocks(trimmed);
-  if (!hasSalvageableSlideContent(cleaned)) return null;
+  // Close unclosed slide sections first — mid-first-slide truncation otherwise
+  // fails the content sniff because only `</section>`-closed slides count.
+  const cleaned = prepareTruncatedHtmlForSalvage(trimmed);
+  if (!hasTruncationSalvageableContent(cleaned)) return null;
 
   const body = startsWithBody
     ? `${cleaned.replace(/<\/html\s*>\s*$/i, '')}${HAS_BODY_CLOSE_RE.test(cleaned) ? '' : '</body>'}`
     : `<body>${cleaned}${HAS_BODY_CLOSE_RE.test(cleaned) ? '' : '</body>'}`;
   const html = `<!doctype html><html lang="ko">${body}${HAS_HTML_CLOSE_RE.test(body) ? '' : '</html>'}`;
-  return validateHtmlArtifact(html).ok && hasSalvageableSlideContent(html) ? html : null;
+  return validateHtmlArtifact(html).ok && hasTruncationSalvageableContent(html) ? html : null;
 }
 
 /**
@@ -241,24 +278,19 @@ export function salvageTruncatedHtmlDocument(content: string | null | undefined)
   if (trimmed.length < 128) return null;
   if (!STARTS_WITH_DOCUMENT_RE.test(trimmed)) return null;
   if (HAS_HTML_CLOSE_RE.test(trimmed) && HAS_BODY_CLOSE_RE.test(trimmed)) return null;
-  // Strip SLOT / placeholder comments before the content sniff — otherwise a
-  // skeleton with only `<!-- SLOT: slide N -->` looks "long enough" to salvage
-  // into a closed blank deck.
-  if (!hasSalvageableSlideContent(trimmed)) return null;
 
-  let out = trimmed;
-  // Drop a trailing partial tag the stream was cut mid-attribute on
-  // (e.g. `<section class="sli`). Browsers forgive this, but closing
-  // after an open `<` can confuse some parsers.
-  out = out.replace(/<[^>]*$/, '');
-  // Drop trailing unclosed <script>/<style> (and close raw blocks truncated
-  // before <body>/slides) before appending document closers — otherwise
-  // salvage writes permanently preview-unstable HTML to disk.
-  out = stripTrailingUnclosedRawBlocks(out);
-  if (!hasSalvageableSlideContent(out)) return null;
+  // Drop trailing partial tags / unclosed raw blocks / stutter openers, then
+  // close unmatched slide sections BEFORE the content sniff. Mid-first-slide
+  // max_tokens cuts otherwise look empty (only closed </section> counted).
+  let out = prepareTruncatedHtmlForSalvage(trimmed);
+  if (!hasTruncationSalvageableContent(out)) return null;
 
   if (!HAS_BODY_CLOSE_RE.test(out)) {
-    if (!/<body\b/i.test(out)) {
+    if (HAS_HTML_CLOSE_RE.test(out)) {
+      // Premature </html> without </body> — insert body closer before html
+      // closer so we never emit `</html></body>`.
+      out = out.replace(/<\/html\s*>/i, '</body></html>');
+    } else if (!/<body\b/i.test(out)) {
       // Head-only truncation with some content outside body — wrap remainder.
       const headClose = /<\/head\s*>/i.exec(out);
       if (headClose) {
@@ -276,7 +308,88 @@ export function salvageTruncatedHtmlDocument(content: string | null | undefined)
   }
 
   if (!validateHtmlArtifact(out).ok) return null;
-  // Still refuse empty shells that only got closers appended.
-  if (!hasSalvageableSlideContent(out)) return null;
+  // Still refuse empty / SLOT-only shells that only got closers appended.
+  if (!hasTruncationSalvageableContent(out)) return null;
   return out;
+}
+
+const GENERIC_TEMPLATE_FILL_TITLE_RE =
+  /^(?:x|ok|deck|untitled|slide|presentation(?:\s+template)?|daisy days|html ppt|zhangzara|template)\b/i;
+
+function decodeBasicHtmlEntities(text: string): string {
+  return text
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&');
+}
+
+function visibleHeadingCandidate(html: string): string {
+  const withoutChrome = html
+    .replace(/<style\b[\s\S]*?<\/style>/gi, '')
+    .replace(/<script\b[\s\S]*?<\/script>/gi, '')
+    .replace(/<!--[\s\S]*?-->/g, '');
+  const heading =
+    /<h[1-3]\b[^>]*>([\s\S]*?)(?:<\/h[1-3]>|$)/i.exec(withoutChrome)?.[1]
+    ?? /<title\b[^>]*>([\s\S]*?)<\/title>/i.exec(withoutChrome)?.[1]
+    ?? '';
+  return decodeBasicHtmlEntities(heading.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim());
+}
+
+function isUnusableCoverTitle(title: string): boolean {
+  const trimmed = title.trim();
+  if (trimmed.length < 2) return true;
+  if (GENERIC_TEMPLATE_FILL_TITLE_RE.test(trimmed)) return true;
+  if (looksLikeTemplateMarketingTitle(trimmed) || looksLikeInstructionCopy(trimmed)) return true;
+  return false;
+}
+
+function build1920CoverDraftHtml(title: string): string | null {
+  const escaped = title
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+  const html = [
+    '<!doctype html><html lang="ko"><body style="margin:0">',
+    '<section class="slide" style="width:1920px;height:1080px;box-sizing:border-box;',
+    'overflow:hidden;display:flex;flex-direction:column;justify-content:center;',
+    'padding:80px 88px">',
+    `<h1>${escaped}</h1>`,
+    '</section></body></html>',
+  ].join('');
+  return validateHtmlArtifact(html).ok ? html : null;
+}
+
+export type SalvageCoverDraftOptions = {
+  fallbackTitle?: string | null;
+  lastResortTitle?: string | null;
+};
+
+/**
+ * Head-only / kit-CSS shells never reached a slide. Persist used to skip
+ * those as `incomplete-html-document-shell` → `incomplete_output`. Prefer
+ * a real brief title (not Daisy chrome), then a caller fallback, then a
+ * last-resort cover so top-up can append instead of auto-continue rewriting
+ * from `<head>`.
+ */
+export function salvageTemplateFillShellAsCoverDraft(
+  content: string | null | undefined,
+  options?: SalvageCoverDraftOptions,
+): string | null {
+  const trimmed = String(content ?? '').replace(/^﻿/, '').trim();
+  if (!trimmed || trimmed.length < 24) return null;
+  if (!/<(?:!doctype\s+html|html\b|head\b|body\b)/i.test(trimmed)) return null;
+  if (hasTruncationSalvageableContent(trimmed) || hasSalvageableSlideContent(trimmed)) {
+    return null;
+  }
+
+  const fromHtml = visibleHeadingCandidate(trimmed);
+  const fallback = decodeBasicHtmlEntities(String(options?.fallbackTitle ?? '').trim());
+  const lastResort = decodeBasicHtmlEntities(String(options?.lastResortTitle ?? '').trim());
+  const heading = [fromHtml, fallback, lastResort].find((title) => !isUnusableCoverTitle(title));
+  if (!heading) return null;
+
+  return build1920CoverDraftHtml(heading);
 }

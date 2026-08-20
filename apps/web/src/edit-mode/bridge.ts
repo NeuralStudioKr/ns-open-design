@@ -1,5 +1,15 @@
+import {
+  buildGraphicContainerBridgeSnippet,
+  isDeckSlideRootElement,
+  resolveGraphicContainerTarget,
+} from './manual-edit-graphic-container';
+
+export { isDeckSlideRootElement, resolveGraphicContainerTarget };
+
 export const MANUAL_EDIT_DISCOVERY_SELECTOR = 'main, nav, section, article, header, footer, div, h1, h2, h3, p, a, button, img, svg, strong, span';
+
 export const MANUAL_EDIT_SOURCE_PATH_ATTR = 'data-od-source-path';
+export const MANUAL_EDIT_SCREEN_LABEL_ATTR = 'data-screen-label';
 export const MANUAL_EDIT_HOST_NODE_SELECTOR = [
   '[data-od-sandbox-shim]',
   '[data-od-deck-bridge]',
@@ -30,6 +40,8 @@ export function isManualEditHostNode(el: Element): boolean {
 export function manualEditStableIdForElement(el: Element): string {
   const explicit = el.getAttribute('data-od-id');
   if (explicit) return explicit;
+  const screenLabel = el.getAttribute(MANUAL_EDIT_SCREEN_LABEL_ATTR);
+  if (screenLabel) return screenLabel;
   const generated = el.getAttribute(MANUAL_EDIT_SOURCE_PATH_ATTR) || el.getAttribute('data-od-runtime-id') || manualEditDomPathForElement(el);
   if (generated) el.setAttribute('data-od-runtime-id', generated);
   return generated || 'unknown';
@@ -40,16 +52,22 @@ export function isMeaningfulManualEditElement(el: Element, rect: Pick<DOMRect, '
 }
 
 export function isSourceMappableManualEditElement(el: Element): boolean {
-  return el.hasAttribute('data-od-id') || el.hasAttribute(MANUAL_EDIT_SOURCE_PATH_ATTR);
+  return (
+    el.hasAttribute('data-od-id')
+    || el.hasAttribute(MANUAL_EDIT_SCREEN_LABEL_ATTR)
+    || el.hasAttribute(MANUAL_EDIT_SOURCE_PATH_ATTR)
+  );
 }
 
 export function buildManualEditBridge(enabled: boolean): string {
+  const graphicContainerSnippet = buildGraphicContainerBridgeSnippet();
   return `<script data-od-edit-bridge>(function(){
   var enabled = ${JSON.stringify(enabled)};
   var discoverySelector = ${JSON.stringify(MANUAL_EDIT_DISCOVERY_SELECTOR)};
   var hostNodeSelector = ${JSON.stringify(MANUAL_EDIT_HOST_NODE_SELECTOR)};
   var sourcePathAttr = ${JSON.stringify(MANUAL_EDIT_SOURCE_PATH_ATTR)};
-  var styleProps = ['fontFamily','fontSize','fontWeight','color','display','textAlign','textDecoration','whiteSpace','lineHeight','letterSpacing','width','height','minHeight','maxWidth','maxHeight','position','left','top','right','bottom','gap','flexDirection','justifyContent','alignItems','backgroundColor','opacity','padding','paddingTop','paddingRight','paddingBottom','paddingLeft','margin','marginTop','marginRight','marginBottom','marginLeft','border','borderTopWidth','borderRightWidth','borderBottomWidth','borderLeftWidth','borderStyle','borderColor','borderRadius'];
+  var screenLabelAttr = ${JSON.stringify(MANUAL_EDIT_SCREEN_LABEL_ATTR)};
+  var styleProps = ['fontFamily','fontSize','fontWeight','color','display','textAlign','textDecoration','whiteSpace','lineHeight','letterSpacing','width','height','minHeight','maxWidth','maxHeight','position','left','top','right','bottom','gap','flexDirection','justifyContent','alignItems','backgroundColor','opacity','padding','paddingTop','paddingRight','paddingBottom','paddingLeft','margin','marginTop','marginRight','marginBottom','marginLeft','border','borderTopWidth','borderRightWidth','borderBottomWidth','borderLeftWidth','borderStyle','borderColor','borderRadius','zIndex'];
   function isHostNode(el){
     return !!(el && el.matches && el.matches(hostNodeSelector));
   }
@@ -68,16 +86,23 @@ export function buildManualEditBridge(enabled: boolean): string {
   function stableId(el){
     var explicit = el.getAttribute('data-od-id');
     if (explicit) return explicit;
+    var screenLabel = el.getAttribute(screenLabelAttr);
+    if (screenLabel) return screenLabel;
     var generated = el.getAttribute(sourcePathAttr) || el.getAttribute('data-od-runtime-id') || domPath(el);
     if (generated) el.setAttribute('data-od-runtime-id', generated);
     return generated || 'unknown';
   }
   function isSourceMappable(el){
-    return !!(el && el.hasAttribute && (el.hasAttribute('data-od-id') || el.hasAttribute(sourcePathAttr)));
+    return !!(el && el.hasAttribute && (
+      el.hasAttribute('data-od-id')
+      || el.hasAttribute(screenLabelAttr)
+      || el.hasAttribute(sourcePathAttr)
+    ));
   }
   function isDiscoveryTarget(el){
     return !!(el && el.matches && el.matches(discoverySelector));
   }
+  ${graphicContainerSnippet}
   function inferKind(el){
     var explicit = el.getAttribute('data-od-edit');
     if (explicit) return explicit;
@@ -110,7 +135,7 @@ export function buildManualEditBridge(enabled: boolean): string {
   // Typography/paint still fall back to computed for the inspector.
   var geometryStyleProps = {
     display:1, width:1, height:1, minHeight:1, maxWidth:1, maxHeight:1, position:1,
-    left:1, top:1, right:1, bottom:1,
+    left:1, top:1, right:1, bottom:1, zIndex:1,
     margin:1, marginTop:1, marginRight:1, marginBottom:1, marginLeft:1,
     padding:1, paddingTop:1, paddingRight:1, paddingBottom:1, paddingLeft:1,
     gap:1, flexDirection:1, justifyContent:1, alignItems:1,
@@ -277,6 +302,49 @@ export function buildManualEditBridge(enabled: boolean): string {
     if (isAbsoluteContainingBlock(window.getComputedStyle(scrollport))) return '';
     return stableId(scrollport);
   }
+  function slideIndexFor(el){
+    var node = el;
+    while (node && node !== document.documentElement) {
+      if (node.getAttribute) {
+        var raw = node.getAttribute('data-slide-index');
+        if (raw != null && raw !== '') {
+          var idx = parseInt(raw, 10);
+          if (Number.isFinite(idx) && idx >= 0) return idx;
+        }
+      }
+      node = node.parentElement;
+    }
+    return undefined;
+  }
+  function readPositionedZIndex(el){
+    var cs = window.getComputedStyle(el);
+    var pos = (cs.position || 'static').toLowerCase();
+    if (pos !== 'absolute' && pos !== 'fixed' && pos !== 'relative' && pos !== 'sticky' && pos !== 'static') return 0;
+    var raw = cs.zIndex;
+    if (!raw || raw === 'auto') return 0;
+    var parsed = parseInt(raw, 10);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  function stackMetaFor(el){
+    var parent = el.parentElement;
+    var parentKey = '';
+    var parentSiblingIndex = 0;
+    var parentStackZ = 0;
+    if (parent && parent !== document.documentElement) {
+      parentKey = stableId(parent);
+      if (parent.parentElement) {
+        parentSiblingIndex = Array.prototype.indexOf.call(parent.parentElement.children, parent);
+      }
+      parentStackZ = readPositionedZIndex(parent);
+    }
+    return {
+      parentKey: parentKey,
+      parentSiblingIndex: parentSiblingIndex,
+      parentStackZ: parentStackZ,
+      stackZ: readPositionedZIndex(el),
+      siblingIndex: parent ? Array.prototype.indexOf.call(parent.children, el) : 0,
+    };
+  }
   function targetFrom(el, includeOuterHtml){
     var rect = el.getBoundingClientRect();
     var kind = inferKind(el);
@@ -299,6 +367,7 @@ export function buildManualEditBridge(enabled: boolean): string {
     // persisted as width — that shrinks the box on first resize preview.
     var layoutW = Math.round(Math.max(1, el.offsetWidth || 0));
     var layoutH = Math.round(Math.max(1, el.offsetHeight || 0));
+    var stackMeta = stackMetaFor(el);
     var target = {
       id: id,
       kind: kind,
@@ -317,24 +386,55 @@ export function buildManualEditBridge(enabled: boolean): string {
       cssPosition: (window.getComputedStyle(el).position || 'static'),
       offsetLeft: promo.left,
       offsetTop: promo.top,
+      parentKey: stackMeta.parentKey,
+      parentSiblingIndex: stackMeta.parentSiblingIndex,
+      parentStackZ: stackMeta.parentStackZ,
+      stackZ: stackMeta.stackZ,
+      siblingIndex: stackMeta.siblingIndex,
       outerHtml: includeOuterHtml ? (el.outerHTML || '').replace(/\\sdata-od-runtime-id="[^"]*"/g, '').replace(/\\sdata-od-source-path="[^"]*"/g, '').replace(/\\sdata-od-edit-selected="[^"]*"/g, '').replace(/\\sdata-od-edit-host-chrome="[^"]*"/g, '') : ''
     };
     if (stickyScrollportId) target.stickyScrollportId = stickyScrollportId;
+    var slideIndex = slideIndexFor(el);
+    if (slideIndex !== undefined) target.slideIndex = slideIndex;
     return target;
+  }
+  function markGraphicWrapperHints(){
+    var marked = document.querySelectorAll('[data-od-edit-graphic-wrapper]');
+    for (var mi = 0; mi < marked.length; mi++) {
+      marked[mi].removeAttribute('data-od-edit-graphic-wrapper');
+    }
+    if (!enabled) return;
+    var nodes = document.body ? document.body.querySelectorAll(discoverySelector) : [];
+    for (var ni = 0; ni < nodes.length; ni++) {
+      var node = nodes[ni];
+      var ntag = node.tagName ? node.tagName.toLowerCase() : '';
+      if (ntag !== 'img' && ntag !== 'svg') continue;
+      var wrap = resolveGraphicContainerTarget(node);
+      if (wrap && wrap !== node) wrap.setAttribute('data-od-edit-graphic-wrapper', 'true');
+    }
   }
   function allTargets(){
     var nodes = document.body ? document.body.querySelectorAll(discoverySelector) : [];
     var targets = [];
+    var seenIds = Object.create(null);
     for (var i = 0; i < nodes.length; i++) {
-      var rect = nodes[i].getBoundingClientRect();
-      if (!isSourceMappable(nodes[i])) continue;
-      if (!isHiddenTarget(nodes[i], rect) && (rect.width < 4 || rect.height < 4)) continue;
-      targets.push(targetFrom(nodes[i], false));
+      var node = nodes[i];
+      if (!isSourceMappable(node)) continue;
+      var resolved = resolveGraphicContainerTarget(node);
+      var nodeTag = node.tagName ? node.tagName.toLowerCase() : '';
+      if ((nodeTag === 'img' || nodeTag === 'svg') && resolved !== node) continue;
+      var rect = resolved.getBoundingClientRect();
+      if (!isHiddenTarget(resolved, rect) && (rect.width < 4 || rect.height < 4)) continue;
+      var rid = stableId(resolved);
+      if (seenIds[rid]) continue;
+      seenIds[rid] = 1;
+      targets.push(targetFrom(resolved, false));
     }
     return targets;
   }
   function postTargets(){
     if (!enabled) return;
+    markGraphicWrapperHints();
     window.parent.postMessage({ type: 'od-edit-targets', targets: allTargets() }, '*');
   }
   var lastHoverId = null;
@@ -350,6 +450,7 @@ export function buildManualEditBridge(enabled: boolean): string {
     for (var i = 0; i < selected.length; i++) {
       selected[i].removeAttribute('data-od-edit-selected');
       selected[i].removeAttribute('data-od-edit-host-chrome');
+      selected[i].removeAttribute('data-od-edit-primary');
     }
   }
   function setSelectedTarget(id, hostChrome){
@@ -362,15 +463,73 @@ export function buildManualEditBridge(enabled: boolean): string {
     // iframe outline/glow so users do not see a double border.
     if (hostChrome) el.setAttribute('data-od-edit-host-chrome', 'true');
   }
-  function closestTarget(event){
-    var el = event.target;
+  function setSelectedTargets(ids, primaryId, hostChrome){
+    clearSelectedTarget();
+    if (!ids || !ids.length) return;
+    for (var i = 0; i < ids.length; i++) {
+      var sid = ids[i];
+      var el = findById(sid);
+      if (!el) continue;
+      el.setAttribute('data-od-edit-selected', 'true');
+      if (sid === primaryId) {
+        el.setAttribute('data-od-edit-primary', 'true');
+        if (hostChrome) el.setAttribute('data-od-edit-host-chrome', 'true');
+      }
+    }
+  }
+  function isVisibleHitTarget(el){
+    if (!el || el === document.body || el === document.documentElement) return false;
+    try {
+      var cs = window.getComputedStyle(el);
+      if (cs.display === 'none' || cs.visibility === 'hidden') return false;
+    } catch (e) {}
+    return true;
+  }
+  function pickMappableTargetFrom(el){
     while (el && el !== document.documentElement) {
-      if (el !== document.body && el !== document.documentElement && isSourceMappable(el) && isDiscoveryTarget(el)) {
-        return el;
+      if (
+        el !== document.body
+        && el !== document.documentElement
+        && isVisibleHitTarget(el)
+        && isSourceMappable(el)
+        && isDiscoveryTarget(el)
+      ) {
+        return resolveGraphicContainerTarget(el);
       }
       el = el.parentElement;
     }
     return null;
+  }
+  function pickTargetAtPoint(x, y){
+    var candidates = [];
+    if (typeof document.elementsFromPoint === 'function') {
+      try { candidates = document.elementsFromPoint(x, y); } catch (e) { candidates = []; }
+    }
+    if (!candidates || candidates.length === 0) {
+      var fallback = document.elementFromPoint(x, y);
+      if (fallback) candidates = [fallback];
+    }
+    for (var i = 0; i < candidates.length; i++) {
+      var hit = pickMappableTargetFrom(candidates[i]);
+      if (hit) return hit;
+    }
+    return null;
+  }
+  function closestTarget(event){
+    var fromTarget = pickMappableTargetFrom(event.target);
+    var x = event.clientX;
+    var y = event.clientY;
+    if (typeof x === 'number' && typeof y === 'number' && typeof document.elementsFromPoint === 'function') {
+      var fromPoint = pickTargetAtPoint(x, y);
+      if (fromPoint) {
+        if (!fromTarget) return fromPoint;
+        if (fromPoint !== fromTarget && fromTarget.contains && fromTarget.contains(fromPoint)) {
+          var resolvedPoint = resolveGraphicContainerTarget(fromPoint);
+          return resolvedPoint !== fromPoint ? resolvedPoint : fromPoint;
+        }
+      }
+    }
+    return fromTarget;
   }
   function caretRangeFromClick(clickEvent){
     if (!clickEvent) return null;
@@ -472,6 +631,7 @@ export function buildManualEditBridge(enabled: boolean): string {
     if (!id) return null;
     if (id === '__body__') return document.body;
     var el = document.querySelector('[data-od-id="' + cssEscapeId(id) + '"]')
+          || document.querySelector('[' + screenLabelAttr + '="' + cssEscapeId(id) + '"]')
           || document.querySelector('[data-od-runtime-id="' + cssEscapeId(id) + '"]')
           || document.querySelector('[' + sourcePathAttr + '="' + cssEscapeId(id) + '"]');
     if (el) return el;
@@ -528,6 +688,50 @@ export function buildManualEditBridge(enabled: boolean): string {
         if (value.trim() === '') el.style.removeProperty(cssName);
         else el.style.setProperty(cssName, value.trim(), 'important');
       }
+      var tag = el.tagName ? el.tagName.toLowerCase() : '';
+      if (tag === 'svg') {
+        if (Object.prototype.hasOwnProperty.call(styles || {}, 'width')) {
+          var wv = coercePreviewStyleValue('width', (styles || {}).width);
+          if (wv != null && String(wv).trim() === '') el.removeAttribute('width');
+          else if (wv && /px$/i.test(String(wv).trim())) el.setAttribute('width', String(wv).trim().replace(/px$/i, ''));
+        }
+        if (Object.prototype.hasOwnProperty.call(styles || {}, 'height')) {
+          var hv = coercePreviewStyleValue('height', (styles || {}).height);
+          if (hv != null && String(hv).trim() === '') el.removeAttribute('height');
+          else if (hv && /px$/i.test(String(hv).trim())) el.setAttribute('height', String(hv).trim().replace(/px$/i, ''));
+        }
+      }
+      if ((tag === 'div' || tag === 'section' || tag === 'article')
+        && el.children
+        && el.children.length === 1
+        && ((styles || {}).width != null || (styles || {}).height != null)) {
+        var lone = el.children[0];
+        var loneTag = lone && lone.tagName ? lone.tagName.toLowerCase() : '';
+        if (loneTag === 'svg' || loneTag === 'img') {
+          var childStyles = { display: 'block', maxWidth: 'none', maxHeight: 'none' };
+          if (Object.prototype.hasOwnProperty.call(styles || {}, 'width')) childStyles.width = (styles || {}).width;
+          if (Object.prototype.hasOwnProperty.call(styles || {}, 'height')) childStyles.height = (styles || {}).height;
+          var childKeys = Object.keys(childStyles);
+          for (var ck = 0; ck < childKeys.length; ck++) {
+            var ckey = childKeys[ck];
+            var cval = coercePreviewStyleValue(ckey, childStyles[ckey]);
+            if (cval == null) continue;
+            var ccss = camelToKebab(ckey);
+            if (String(cval).trim() === '') lone.style.removeProperty(ccss);
+            else lone.style.setProperty(ccss, String(cval).trim(), 'important');
+          }
+          if (loneTag === 'svg') {
+            if (childStyles.width != null) {
+              var cwv = coercePreviewStyleValue('width', childStyles.width);
+              if (cwv && /px$/i.test(String(cwv).trim())) lone.setAttribute('width', String(cwv).trim().replace(/px$/i, ''));
+            }
+            if (childStyles.height != null) {
+              var chv = coercePreviewStyleValue('height', childStyles.height);
+              if (chv && /px$/i.test(String(chv).trim())) lone.setAttribute('height', String(chv).trim().replace(/px$/i, ''));
+            }
+          }
+        }
+      }
       window.parent.postMessage({ type: 'od-edit-preview-style-applied', id: id, version: Number(version) || 0, ok: true }, '*');
     } catch (e) {
       window.parent.postMessage({ type: 'od-edit-preview-style-applied', id: id, version: Number(version) || 0, ok: false, error: e && e.message ? String(e.message) : 'Could not apply preview styles' }, '*');
@@ -543,7 +747,13 @@ export function buildManualEditBridge(enabled: boolean): string {
       return;
     }
     if (ev.data.type === 'od-edit-selected-target') {
-      setSelectedTarget(ev.data.id || null, !!ev.data.hostChrome);
+      var ids = ev.data.ids && ev.data.ids.length ? ev.data.ids : (ev.data.id ? [ev.data.id] : []);
+      var primaryId = ev.data.primaryId || ev.data.id || null;
+      if (ids.length > 1) {
+        setSelectedTargets(ids, primaryId, false);
+      } else {
+        setSelectedTarget(primaryId, !!ev.data.hostChrome);
+      }
       return;
     }
     if (ev.data.type === 'od-edit-hover-reset') {
@@ -554,6 +764,10 @@ export function buildManualEditBridge(enabled: boolean): string {
     }
     if (ev.data.type === 'od-edit-preview-style') {
       applyPreviewStyles(ev.data.id, ev.data.styles || {}, ev.data.version);
+      return;
+    }
+    if (ev.data.type === 'od-edit-refresh-targets') {
+      postTargets();
       return;
     }
     if (ev.data.type === 'od-edit-remeasure') {
@@ -594,7 +808,8 @@ export function buildManualEditBridge(enabled: boolean): string {
     }
     // Select only — text/link stay selectable for resize (wrap width) and the
     // inspector. Inline contenteditable is double-click (51-1 §12).
-    window.parent.postMessage({ type: 'od-edit-select', target: targetFrom(el, true) }, '*');
+    var additive = !!(ev.shiftKey || ev.metaKey || ev.ctrlKey);
+    window.parent.postMessage({ type: 'od-edit-select', target: targetFrom(el, true), additive: additive }, '*');
   }, true);
   document.addEventListener('dblclick', function(ev){
     if (!enabled) return;
@@ -605,7 +820,7 @@ export function buildManualEditBridge(enabled: boolean): string {
     if (!el) return;
     var kind = inferKind(el);
     if (kind !== 'text' && kind !== 'link') return;
-    window.parent.postMessage({ type: 'od-edit-select', target: targetFrom(el, true) }, '*');
+    window.parent.postMessage({ type: 'od-edit-select', target: targetFrom(el, true), additive: false }, '*');
     makeEditable(el, ev);
   }, true);
   document.addEventListener('pointerover', function(ev){
@@ -625,7 +840,13 @@ export function buildManualEditBridge(enabled: boolean): string {
 export function buildManualEditBridgeStyle(): string {
   return `<style data-od-edit-bridge-style>
 html[data-od-edit-mode] body * { cursor: pointer !important; }
+/* Deck templates often disable pointer-events on decorative SVGs — re-enable in edit mode so logos/icons are pickable. */
+html[data-od-edit-mode] img,
+html[data-od-edit-mode] svg { pointer-events: auto !important; }
+/* Absolute graphic wrappers (deck cover logos) also use pointer-events:none — restore hits on the full box. */
+html[data-od-edit-mode] [data-od-edit-graphic-wrapper] { pointer-events: auto !important; }
 html[data-od-edit-mode] [data-od-id],
+html[data-od-edit-mode] [data-screen-label],
 html[data-od-edit-mode] [data-od-runtime-id],
 html[data-od-edit-mode] [data-od-source-path] { outline: 1px dashed rgba(37, 99, 235, 0.35); outline-offset: 2px; }
 /* Nested editable boxes: only the outer ancestor paints at rest (avoids double dashed rings). */
@@ -639,6 +860,7 @@ html[data-od-edit-mode] [data-od-source-path] [data-od-id],
 html[data-od-edit-mode] [data-od-source-path] [data-od-runtime-id],
 html[data-od-edit-mode] [data-od-source-path] [data-od-source-path] { outline-color: transparent; }
 html[data-od-edit-mode] [data-od-id]:hover,
+html[data-od-edit-mode] [data-screen-label]:hover,
 html[data-od-edit-mode] [data-od-runtime-id]:hover,
 html[data-od-edit-mode] [data-od-source-path]:hover { outline: 2px solid #2563eb; outline-offset: 2px; }
 html[data-od-edit-mode] [data-od-edit-selected] {
@@ -651,6 +873,7 @@ html[data-od-edit-mode] [data-od-edit-selected][data-od-edit-host-chrome] {
   outline: none !important;
   outline-offset: 0;
   box-shadow: none !important;
+  pointer-events: none !important;
 }
 html[data-od-edit-mode] [data-od-editing="true"] {
   outline: 2px solid #2563eb !important;

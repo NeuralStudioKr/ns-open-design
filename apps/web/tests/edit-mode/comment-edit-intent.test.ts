@@ -1,13 +1,22 @@
 // @vitest-environment jsdom
 
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   looksLikeMarkupLayoutCommentRequest,
+  looksLikePresentationTweakCommentRequest,
   looksLikeStyleOnlyCommentRequest,
   targetTextContentPreserved,
   validateCommentEditIntentRespected,
 } from '../../src/edit-mode/comment-edit-intent';
 import type { ChatCommentAttachment } from '../../src/types';
+
+const intentSource = readFileSync(
+  join(dirname(fileURLToPath(import.meta.url)), '../../src/edit-mode/comment-edit-intent.ts'),
+  'utf8',
+);
 
 function attachment(overrides: Partial<ChatCommentAttachment> = {}): ChatCommentAttachment {
   return {
@@ -74,8 +83,38 @@ describe('validateCommentEditIntentRespected', () => {
     });
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.reason).toContain('style-only');
+      expect(result.reason).toContain('presentation-only');
     }
+  });
+
+  it('rejects when a layout-only request emptied the pinned target text', () => {
+    const mergedHtml = currentHtml.replace(
+      '<p data-od-id="path-1-1">뉴럴스튜디오㈜는 회사입니다.</p>',
+      '<p data-od-id="path-1-1" style="white-space:nowrap"></p>',
+    );
+    expect(looksLikePresentationTweakCommentRequest('줄바꿈 없이 한줄로 해줘')).toBe(true);
+    const result = validateCommentEditIntentRespected({
+      mergedHtml,
+      commentAttachments: [attachment({ comment: '줄바꿈 없이 한줄로 해줘' })],
+      instructionText: '줄바꿈 없이 한줄로 해줘',
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.reason).toContain('presentation-only');
+    }
+  });
+
+  it('accepts when layout tweak kept the text', () => {
+    const mergedHtml = currentHtml.replace(
+      '<p data-od-id="path-1-1">뉴럴스튜디오㈜는 회사입니다.</p>',
+      '<p data-od-id="path-1-1" style="white-space:nowrap">뉴럴스튜디오㈜는 회사입니다.</p>',
+    );
+    const result = validateCommentEditIntentRespected({
+      mergedHtml,
+      commentAttachments: [attachment({ comment: '줄바꿈 없이 한줄로 해줘' })],
+      instructionText: '줄바꿈 없이 한줄로 해줘',
+    });
+    expect(result.ok).toBe(true);
   });
 
   it('accepts when set-style kept the text and only presentation changed', () => {
@@ -115,5 +154,13 @@ describe('targetTextContentPreserved', () => {
       { currentText: '뉴럴스튜디오㈜는 회사입니다.' },
       '',
     )).toBe(false);
+  });
+});
+
+describe('comment-edit-intent Document slide list', () => {
+  it('derives slide indexes from parsedDoc without body extract', () => {
+    expect(intentSource).toContain('INTENT_STRUCTURED_SLIDE_SELECTOR');
+    expect(intentSource).toContain('listDeckSlideIndexes(mergedHtml, parsedDoc)');
+    expect(intentSource).toContain('When finalize already shared a Document');
   });
 });

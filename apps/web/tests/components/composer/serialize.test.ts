@@ -104,6 +104,17 @@ describe('serializeComposer / setComposerFromText round-trip', () => {
     expect(result.present).toHaveLength(0);
   });
 
+  it('promotes file-shaped @image tokens to MentionNodes without a known entity', () => {
+    const editor = makeEditor();
+    const text = '넣어줘 @msh9rso1-서빙하는-금붕어.webp';
+    setComposerFromText(editor, text, []);
+    const result = serializeComposer(editor.getEditorState());
+    expect(result.text).toBe(text);
+    expect(result.present).toHaveLength(1);
+    expect(result.present[0]?.kind).toBe('file');
+    expect(result.present[0]?.id).toBe('msh9rso1-서빙하는-금붕어.webp');
+  });
+
   it('builds a single root paragraph (no \\n\\n block join)', () => {
     const editor = makeEditor();
     setComposerFromText(editor, 'line one\nline two', []);

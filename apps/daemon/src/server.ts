@@ -16,6 +16,7 @@ import net from 'node:net';
 import {
   defaultScenarioPluginIdForProjectMetadata,
   sanitizeAssistantProseForDisplay,
+  stripRemoteCssImportsQuoteAware,
   type OpenDesignDiscordPresenceResponse,
   type OpenDesignGithubLatestReleaseResponse,
   type OpenDesignGithubRepoResponse,
@@ -193,6 +194,7 @@ import {
   readPluginLockfile,
   registerBuiltInAtomWorkers,
   registerBundledPlugins,
+  ensureBundledPluginRegistered,
   registryRootsForDataDir,
   restoreProjectSnapshotLink,
   resolvePluginSnapshot,
@@ -526,6 +528,7 @@ import {
   listLatestProjectRunStatuses,
   listLatestProjectRunStatusesAsync,
   listMessages,
+  listMessagesAsync,
   listPreviewComments,
   listProjects,
   listRoutines,
@@ -1029,7 +1032,7 @@ export function normalizeCommentAttachments(input) {
         screenshotPath: selectionKind === 'visual' ? screenshotPath : undefined,
         markKind: selectionKind === 'visual' ? markKind : undefined,
         intent: selectionKind === 'visual'
-          ? intent || visualAnnotationIntent(markKind)
+          ? intent || visualAnnotationIntent(markKind, comment)
           : undefined,
         imageAttachments: imageAttachments.length > 0 ? imageAttachments : undefined,
         commentContext,
@@ -1073,7 +1076,7 @@ export function renderCommentAttachmentHint(commentAttachments) {
       lines.push(
         `screenshot: ${item.screenshotPath}`,
         `markKind: ${item.markKind || 'stroke'}`,
-        `intent: ${item.intent || visualAnnotationIntent(item.markKind || 'stroke')}`,
+        `intent: ${item.intent || visualAnnotationIntent(item.markKind || 'stroke', item.comment)}`,
       );
       if (item.selector) lines.push(`selector: ${item.selector}`);
     } else {
@@ -1130,18 +1133,30 @@ function imageOnlyCommentFallback(count) {
 
 function normalizeVisualMarkKind(value) {
   return value === 'click' || value === 'click+stroke' || value === 'stroke'
+    || value === 'box' || value === 'click+box'
     ? value
     : 'stroke';
 }
 
-function visualAnnotationIntent(markKind) {
+function visualAnnotationIntent(markKind, userNote) {
+  const note = cleanString(userNote);
+  let base;
   if (markKind === 'click') {
-    return 'The screenshot has a blue focus box around the picked element; modify that picked part first.';
+    base = 'The screenshot has a blue focus box around the picked element; modify that picked part first.';
+  } else if (markKind === 'click+box') {
+    base =
+      'The screenshot has a blue focus box around the picked element and a red selection box; the red box outlines the region the user wants changed.';
+  } else if (markKind === 'click+stroke') {
+    base = 'The screenshot has a blue focus box and red strokes; together they identify the part the user wants changed.';
+  } else if (markKind === 'box') {
+    base =
+      'The screenshot has a red selection box that outlines the region the user wants changed. Treat the box as the intended target area—not decoration.';
+  } else {
+    base =
+      'The screenshot has red strokes that identify the visual region the user wants changed. Treat the drawn ink as the intended shape or placement guide—not decoration. ADD the requested shape/icon inside that region; do NOT delete or clear the rest of the slide.';
   }
-  if (markKind === 'click+stroke') {
-    return 'The screenshot has a blue focus box and red strokes; together they identify the part the user wants changed.';
-  }
-  return 'The screenshot has red strokes that identify the visual region the user wants changed.';
+  if (!note) return base;
+  return `User request from the annotation note: "${note}". ${base}`;
 }
 
 function compactString(value, max) {
@@ -6702,6 +6717,7 @@ export async function startServer({
     updateConversation,
     deleteConversation,
     listMessages,
+    listMessagesAsync,
     upsertMessage,
     listPreviewComments,
     upsertPreviewComment,
@@ -7052,6 +7068,7 @@ export async function startServer({
     exports: projectExportDeps,
     projectFiles: projectFileDeps,
     validation: validationDeps,
+    projectStorageHooks,
   });
   registerProjectFileRoutes(app, {
     db,
@@ -7064,7 +7081,22 @@ export async function startServer({
     documents: { buildDocumentPreview },
     artifacts: artifactDeps,
     projectPreviewScopes,
+    conversations: conversationDeps,
+    ids: idDeps,
     projectStorageHooks,
+    ensureBundledPluginForClone: async (pluginId) => {
+      const registered = await ensureBundledPluginRegistered({
+        db,
+        bundledRoot: BUNDLED_PLUGINS_DIR,
+        pluginId,
+        marketplaceProvenance: {
+          sourceMarketplaceId: OFFICIAL_MARKETPLACE_ID,
+          marketplaceTrust: 'official',
+          entryNamePrefix: 'open-design',
+        },
+      });
+      return registered ? { id: registered.id } : null;
+    },
   });
 
   registerMediaRoutes(app, {
@@ -7133,14 +7165,20 @@ export async function startServer({
   // ---- Conversations --------------------------------------------------------
 
   app.get('/api/projects/:id/conversations', async (req, res) => {
-    if (!getProject(db, req.params.id)) {
+    const conversationProject = getProjectAsync
+      ? await getProjectAsync(db, req.params.id)
+      : getProject(db, req.params.id);
+    if (!conversationProject) {
       return res.status(404).json({ error: 'project not found' });
     }
     res.json({ conversations: await listConversationsAsync(db, req.params.id) });
   });
 
-  app.post('/api/projects/:id/conversations', (req, res) => {
-    if (!getProject(db, req.params.id)) {
+  app.post('/api/projects/:id/conversations', async (req, res) => {
+    const conversationProject = getProjectAsync
+      ? await getProjectAsync(db, req.params.id)
+      : getProject(db, req.params.id);
+    if (!conversationProject) {
       return res.status(404).json({ error: 'project not found' });
     }
     const { title, seedFromConversationId, forkAfterMessageId } = req.body || {};
@@ -7918,7 +7956,25 @@ export async function startServer({
 
   app.get('/api/plugins/:id', async (req, res) => {
     try {
-      const plugin = getInstalledPlugin(db, req.params.id);
+      let plugin = getInstalledPluginForRoute(req.params.id);
+      if (!plugin) {
+        // Boot walk can miss a row (fresh volume race, prune after a
+        // transient parse fail, HA sqlite drift). Re-hydrate from the
+        // image's plugins/_official tree before 404 — Home chip binds
+        // (example-simple-deck) depend on this GET.
+        const routeId = String(req.params.id ?? '').trim();
+        const normalized = normalizedPluginRouteId(routeId) || routeId;
+        plugin = await ensureBundledPluginRegistered({
+          db,
+          bundledRoot: BUNDLED_PLUGINS_DIR,
+          pluginId: normalized,
+          marketplaceProvenance: {
+            sourceMarketplaceId: OFFICIAL_MARKETPLACE_ID,
+            marketplaceTrust: 'official',
+            entryNamePrefix: 'open-design',
+          },
+        });
+      }
       if (!plugin) return res.status(404).json({ error: 'plugin not found' });
       if (
         isExcludedChinesePrimaryDeckPlugin(plugin, readExcludeChineseDeckTemplatesFromEnv())
@@ -8785,6 +8841,19 @@ export async function startServer({
       if (byNormalizedId) return byNormalizedId;
     }
 
+    // Bare folder id ↔ bundled `example-<folder>` install id
+    // (Daisy Days: html-ppt-zhangzara-daisy-days ↔ example-html-ppt-zhangzara-daisy-days).
+    const aliasBase = normalized || id;
+    if (aliasBase) {
+      const alias = aliasBase.startsWith('example-')
+        ? aliasBase.slice('example-'.length)
+        : `example-${aliasBase}`;
+      if (alias && alias !== id && alias !== normalized) {
+        const byAlias = getInstalledPlugin(db, alias);
+        if (byAlias) return byAlias;
+      }
+    }
+
     try {
       const byEntry = db.prepare(
         `SELECT id FROM installed_plugins WHERE source_marketplace_entry_name = ?`,
@@ -8864,15 +8933,8 @@ export async function startServer({
     return html.replace(
       /<style\b([^>]*)>([\s\S]*?)<\/style>/gi,
       (match, attrs, css) => {
-        let stripped = false;
-        const nextCss = String(css).replace(
-          /@import\s+(?:url\(\s*)?(["']?)https?:\/\/[^"')\s;]+(?:\1\s*\))?[^;]*;?/gi,
-          () => {
-            stripped = true;
-            return '/* od stripped external css import */';
-          },
-        );
-        return stripped ? `<style${attrs}>${nextCss}</style>` : match;
+        const next = stripRemoteCssImportsQuoteAware(String(css));
+        return next.stripped ? `<style${attrs}>${next.css}</style>` : match;
       },
     );
   }
@@ -10351,7 +10413,7 @@ export async function startServer({
         projectId,
         artifactId: req.params.artifactId,
       });
-      updateProject(db, projectId, {});
+      updateProject(db, projectId, { updatedAt: Date.now() });
       emitLiveArtifactEvent({ projectId }, 'deleted', existing.artifact);
       res.json({ ok: true });
     } catch (err) {
@@ -11728,6 +11790,8 @@ export async function startServer({
     skillId,
     skillIds,
     designSystemId,
+    selectedDeckTemplateId,
+    selectedDeckTemplateTitle,
     streamFormat,
     locale,
     sessionMode,
@@ -11735,10 +11799,32 @@ export async function startServer({
     appliedPluginSnapshotId,
     mediaExecution,
   }) => {
-    const project =
-      typeof projectId === 'string' && projectId
-        ? getProject(db, projectId)
-        : null;
+    // Multi-node Teamver / Postgres-backed deploys: `getProject` returns
+    // cache-only in Postgres mode. If the create request landed on Node A
+    // (populating that cache with the freshly-inserted project metadata,
+    // including `selectedDeckTemplateId`) and the run request lands on Node
+    // B (cold cache), the sync lookup returns null → metadata is invisible
+    // → selectedDeckTemplate goes unset → the picked Canvas → Slide
+    // template is silently dropped and the deck comes back looking like
+    // the default scenario body. Awaiting `getProjectAsync` here does the
+    // Postgres round-trip on cache miss and populates the local cache so
+    // downstream sync callers see the row too.
+    //
+    // Belt-and-suspenders: fall back to the sync cache lookup if the async
+    // path throws (e.g. Postgres pool degraded mid-run). Compose runs on
+    // every turn and must never turn a transient DB blip into an
+    // incomplete_output that also silently drops the selected template.
+    let project: Awaited<ReturnType<typeof getProjectAsync>> | null = null;
+    if (typeof projectId === 'string' && projectId) {
+      try {
+        project = await getProjectAsync(db, projectId);
+      } catch (err) {
+        console.warn(
+          `[compose] getProjectAsync failed for ${projectId}, falling back to sync cache: ${err?.message ?? err}`,
+        );
+        project = getProject(db, projectId);
+      }
+    }
     const effectiveSkillId =
       typeof skillId === 'string' && skillId ? skillId : project?.skillId;
     const effectiveDesignSystemId =
@@ -11810,7 +11896,17 @@ export async function startServer({
     };
     // Read early so ad-hoc skill composition can skip the visual template
     // (it becomes the primary body below) without losing other skillIds.
-    const selectedDeckTemplate = readSelectedDeckTemplateFromMetadata(metadata);
+    const selectedDeckTemplateFromRun =
+      typeof selectedDeckTemplateId === 'string' && selectedDeckTemplateId.trim()
+        ? {
+            id: selectedDeckTemplateId.trim(),
+            ...(typeof selectedDeckTemplateTitle === 'string' && selectedDeckTemplateTitle.trim()
+              ? { title: selectedDeckTemplateTitle.trim() }
+              : {}),
+          }
+        : null;
+    const selectedDeckTemplate =
+      selectedDeckTemplateFromRun ?? readSelectedDeckTemplateFromMetadata(metadata);
 
     if (effectiveSkillId) {
       // Span both functional skills and design templates so a project
@@ -11952,6 +12048,7 @@ export async function startServer({
 
     if (selectedDeckTemplate) {
       let templateBody: string | null = null;
+      let templateSource: 'skill' | 'design-template' | 'plugin-local' | null = null;
       try {
         // Mirror web/API order: skill-like / design-template body first, then
         // community plugin local SKILL.md. Metadata-only design-template picks
@@ -11960,6 +12057,9 @@ export async function startServer({
         const templateSkill = findSkillById(allSkills, selectedDeckTemplate.id);
         if (templateSkill?.body?.trim()) {
           templateBody = templateSkill.body;
+          templateSource = templateSkill.source === 'user'
+            ? 'skill'
+            : (templateSkill.mode === 'deck' ? 'design-template' : 'skill');
           registerSkillDir(templateSkill.dir);
           if (!activeSkillDir) activeSkillDir = templateSkill.dir;
           registerPrimarySkillMode(templateSkill.mode ?? 'deck');
@@ -11969,14 +12069,37 @@ export async function startServer({
             const local = await loadPluginLocalSkill(plugin);
             if (local?.body?.trim()) {
               templateBody = local.body;
+              templateSource = 'plugin-local';
               registerSkillDir(local.dir);
               if (!activeSkillDir) activeSkillDir = local.dir;
+            } else {
+              console.warn(
+                `[selected-deck-template] plugin ${selectedDeckTemplate.id} found in installed_plugins but SKILL.md body is empty / unreadable — falling back to title stub`,
+              );
             }
+          } else {
+            // No global skill / design-template row AND no installed plugin
+            // matches this id. On multi-node deploys this used to hit here
+            // because the cache-only getProject race dropped metadata; the
+            // async fallback above closes that. Log so a real missing id
+            // (e.g. template was uninstalled after the user picked it) is
+            // visible in ops logs instead of degrading silently.
+            console.warn(
+              `[selected-deck-template] id ${selectedDeckTemplate.id} not found in skills/design-templates/installed_plugins — deck will use title stub only (visual template will look generic)`,
+            );
           }
         }
       } catch (err) {
         console.warn(
           `[plugins] selectedDeckTemplate load failed: ${err?.message ?? err}`,
+        );
+      }
+      if (templateBody && templateSource) {
+        // Positive signal so ops can grep for the successful template load
+        // path alongside the negative signals above. Cheap: fires once per
+        // run, and only when a template was actually picked.
+        console.log(
+          `[selected-deck-template] loaded id=${selectedDeckTemplate.id} via=${templateSource} bytes=${templateBody.length}`,
         );
       }
       const preferred = preferSelectedDeckTemplateSkill({
@@ -12059,7 +12182,10 @@ export async function startServer({
     let designSystemImportMode;
     let designSystemCraftApplies = [];
     let designSystemCraftExemptions = [];
-    if (effectiveDesignSystemId) {
+    const omitDesignSystemForSelectedTemplate =
+      Boolean(selectedDeckTemplate)
+      && (metadata?.kind === 'deck' || skillMode === 'deck');
+    if (effectiveDesignSystemId && !omitDesignSystemForSelectedTemplate) {
       let systems = await listAllDesignSystems();
       let summary = systems.find((s) => s.id === effectiveDesignSystemId);
       if (summary?.source === 'user') {
@@ -12210,7 +12336,13 @@ export async function startServer({
     ) {
       try {
         const snap = getSnapshot(db, appliedPluginSnapshotId);
-        if (snap) pluginBlock = pluginPromptBlock(snap);
+        // Mirror web BYOK: when a Canvas→Slide visual template is selected,
+        // the applied scenario plugin must not claim visual ownership.
+        if (snap) {
+          pluginBlock = pluginPromptBlock(snap, {
+            role: selectedDeckTemplate ? 'scenario-only' : 'primary',
+          });
+        }
       } catch (err) {
         console.warn(
           `[plugins] pluginBlock build failed: ${err?.message ?? err}`,
@@ -12789,6 +12921,8 @@ export async function startServer({
         skillId,
         skillIds,
         designSystemId,
+        selectedDeckTemplateId,
+        selectedDeckTemplateTitle,
         streamFormat: def?.streamFormat ?? 'plain',
         locale,
         sessionMode: runSessionMode,
@@ -16982,6 +17116,9 @@ export async function startServer({
       } catch {
         // never block boot on observability
       }
+      // Warm design-template catalog so the first home GET hits TTL cache
+      // instead of scanning ~100 SKILL.md files on the critical path (N05).
+      void listAllDesignTemplates().catch(() => undefined);
       server.once('listening', () => {
         // Widen the between-request idle window so kept-alive sockets
         // belonging to chat/SSE clients survive the gaps between bursts.

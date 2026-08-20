@@ -296,13 +296,22 @@
   cursor: pointer;
   transition: border-color 120ms var(--ease-out), background-color 120ms var(--ease-out), color 120ms var(--ease-out);
 }
-.plugins-home__pill:hover {
+/* `button.…` beats global `button:hover { background: var(--bg-subtle) }` —
+   otherwise active pills keep light/dark text on a near-identical fill and
+   the label disappears (slide-template scene / tag badges). */
+button.plugins-home__pill:hover:not(:disabled) {
   border-color: var(--border-strong);
   color: var(--text);
+  background: var(--bg-muted);
 }
 .plugins-home__pill.is-active {
   background: var(--text);
   border-color: var(--text);
+  color: var(--bg-panel);
+}
+button.plugins-home__pill.is-active:hover:not(:disabled) {
+  background: var(--text-strong, var(--text));
+  border-color: var(--text-strong, var(--text));
   color: var(--bg-panel);
 }
 .plugins-home__pill.is-active .plugins-home__pill-count {
@@ -319,9 +328,19 @@
   border-color: color-mix(in srgb, var(--accent) 30%, var(--border));
   color: var(--accent);
 }
+button.plugins-home__pill--all:hover:not(:disabled):not(.is-active) {
+  background: color-mix(in srgb, var(--accent-tint) 70%, var(--bg-muted));
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  color: var(--accent-strong, var(--accent));
+}
 .plugins-home__pill--all.is-active {
   background: var(--accent);
   border-color: var(--accent);
+  color: white;
+}
+button.plugins-home__pill--all.is-active:hover:not(:disabled) {
+  background: var(--accent-hover, var(--accent));
+  border-color: var(--accent-hover, var(--accent));
   color: white;
 }
 .plugins-home__pill--all.is-active .plugins-home__pill-count {
@@ -429,6 +448,16 @@
   grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
   gap: 16px;
 }
+@media (max-width: 900px) {
+  .plugins-home__grid--gallery {
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
+  }
+}
+@media (max-width: 720px) {
+  .plugins-home__grid--gallery {
+    grid-template-columns: 1fr;
+  }
+}
 @media (min-width: 1400px) {
   .plugins-home__grid--gallery {
     grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
@@ -457,6 +486,14 @@
   flex: 0 0 9px;
   border-radius: 50%;
   background: #3ad29f;
+}
+/* Mute the “live” dot when the thumb is still loading or unreachable. */
+.plugins-home__card--gallery:has(.plugins-home__html-skeleton.is-active) .plugins-home__gallery-dot {
+  background: #c4a35a;
+}
+.plugins-home__card--gallery:has(.plugins-home__html--fallback) .plugins-home__gallery-dot {
+  background: var(--text-muted, #8a8f98);
+  opacity: 0.7;
 }
 .plugins-home__gallery-name {
   flex: 1;
@@ -490,8 +527,12 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
   border-radius: 6px;
   color: var(--text-muted);
   text-decoration: none;
@@ -499,6 +540,10 @@
 .plugins-home__gallery-open:hover {
   background: var(--bg-panel);
   color: var(--accent);
+}
+.plugins-home__gallery-open:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 .plugins-home__gallery-frame {
   position: relative;
@@ -687,6 +732,7 @@
    strip) so the row keeps a uniform rhythm, but pretends the iframe
    is a glyph patch so the tile never paints empty white. */
 .plugins-home__html--fallback {
+  position: relative;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -704,6 +750,35 @@
   text-shadow: 0 4px 24px rgba(0, 0, 0, 0.45);
   user-select: none;
   font-weight: 600;
+}
+.plugins-home__html-fallback-retry {
+  position: absolute;
+  left: 50%;
+  bottom: 28px;
+  transform: translateX(-50%);
+  z-index: 2;
+  appearance: none;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 999px;
+  padding: 6px 14px;
+  background: rgba(0, 0, 0, 0.45);
+  color: rgba(255, 255, 255, 0.95);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+.plugins-home__html-fallback-retry:hover {
+  background: rgba(0, 0, 0, 0.62);
+  border-color: rgba(255, 255, 255, 0.45);
+}
+.plugins-home__html-fallback-retry:focus-visible {
+  background: rgba(0, 0, 0, 0.62);
+  border-color: rgba(255, 255, 255, 0.55);
+  outline: 2px solid rgba(255, 255, 255, 0.85);
+  outline-offset: 2px;
 }
 .plugins-home__html--fallback .plugins-home__html-chrome {
   background: rgba(0, 0, 0, 0.32);
@@ -1188,6 +1263,15 @@ button.home-templates-reveal__hint:focus-visible {
   }
   .home-templates-reveal__body {
     transition: none;
+  }
+  .plugins-home__card--gallery .plugins-home__html-iframe,
+  .plugins-home__card--gallery:hover .plugins-home__html-iframe {
+    transition: none;
+    top: 0;
+  }
+  .plugins-home__html-skeleton.is-active span,
+  .plugins-home__media-skeleton.is-active {
+    animation: none;
   }
 }
 

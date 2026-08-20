@@ -319,14 +319,29 @@ function normalizeAllowedSlideIndexes(indexes: readonly number[] | undefined): S
 export function diffDeckSlideIndexes(
   beforeHtml: string,
   afterHtml: string,
+  options?: {
+    /** Pre-materialized before sections (e.g. persist reconcile). */
+    beforeSlides?: readonly { outerHtml: string }[];
+    /** Pre-materialized after sections. */
+    afterSlides?: readonly { outerHtml: string }[];
+  },
 ): DeckSlideDiffSuccess | DeckSlideDiffFailure {
-  const beforeBody = findBodyContentRange(beforeHtml);
-  const afterBody = findBodyContentRange(afterHtml);
-  if (!beforeBody || !afterBody) {
-    return { ok: false, reason: 'deck diff requires <body>…</body> in both documents' };
+  let beforeSlides = options?.beforeSlides;
+  let afterSlides = options?.afterSlides;
+  if (!beforeSlides) {
+    const beforeBody = findBodyContentRange(beforeHtml);
+    if (!beforeBody) {
+      return { ok: false, reason: 'deck diff requires <body>…</body> in both documents' };
+    }
+    beforeSlides = extractTopLevelSlideSections(beforeHtml.slice(beforeBody.start, beforeBody.end));
   }
-  const beforeSlides = extractTopLevelSlideSections(beforeHtml.slice(beforeBody.start, beforeBody.end));
-  const afterSlides = extractTopLevelSlideSections(afterHtml.slice(afterBody.start, afterBody.end));
+  if (!afterSlides) {
+    const afterBody = findBodyContentRange(afterHtml);
+    if (!afterBody) {
+      return { ok: false, reason: 'deck diff requires <body>…</body> in both documents' };
+    }
+    afterSlides = extractTopLevelSlideSections(afterHtml.slice(afterBody.start, afterBody.end));
+  }
   if (beforeSlides.length === 0 || afterSlides.length === 0) {
     return { ok: false, reason: 'deck diff requires slide sections in both documents' };
   }
@@ -371,7 +386,13 @@ export interface TopLevelSlideSection {
 const SECTION_OPEN_ATTRS_RE = String.raw`(?:[^>"']|"[^"]*"|'[^']*')*`;
 const SECTION_OPEN_RE = new RegExp(String.raw`<section\b(${SECTION_OPEN_ATTRS_RE})>`, 'gi');
 
+/** Last HTML → sections cache shared by applyDeckPatch and extractSlideByIndex. */
+let topLevelSlideSectionCache: { html: string; sections: TopLevelSlideSection[] } | null = null;
+
 export function extractTopLevelSlideSections(html: string): TopLevelSlideSection[] {
+  if (topLevelSlideSectionCache?.html === html) {
+    return topLevelSlideSectionCache.sections;
+  }
   const results: TopLevelSlideSection[] = [];
   const openRe = new RegExp(SECTION_OPEN_RE.source, 'gi');
   const closeRe = /<\/section\s*>/gi;
@@ -422,6 +443,7 @@ export function extractTopLevelSlideSections(html: string): TopLevelSlideSection
     });
     searchFrom = matchedCloseEnd;
   }
+  topLevelSlideSectionCache = { html, sections: results };
   return results;
 }
 
@@ -522,7 +544,7 @@ function readOp(openTag: string): DeckPatchOp | null {
  * replacement can be sliced back into the surrounding `<head>` + closing
  * boilerplate without touching them.
  */
-function findBodyContentRange(html: string): { start: number; end: number } | null {
+export function findBodyContentRange(html: string): { start: number; end: number } | null {
   // Allow `>` inside quoted body attrs (same class of bug as section/patch opens).
   const openMatch = /<body\b(?:[^>"']|"[^"]*"|'[^']*')*>/i.exec(html);
   if (!openMatch) return null;
@@ -530,6 +552,13 @@ function findBodyContentRange(html: string): { start: number; end: number } | nu
   const closeMatch = /<\/body\s*>/i.exec(html.slice(start));
   if (!closeMatch) return null;
   return { start, end: start + closeMatch.index };
+}
+
+/** Quote-aware body inner HTML — shared by applyDeckPatch / extractSlideByIndex. */
+export function extractDeckBodyContent(html: string): string {
+  const range = findBodyContentRange(html);
+  if (!range) return html;
+  return html.slice(range.start, range.end);
 }
 
 /**
@@ -565,4 +594,154 @@ function pickInterSlideSeparator(
   if (slides.length < 2) return '\n';
   const between = bodyContent.slice(slides[0]!.end, slides[1]!.start);
   return /^\s+$/.test(between) ? between : '\n';
+}
+
+function incomingLooksLikeFullDocument(html: string): boolean {
+  return /<!doctype\s+html|<html\b|<head\b/i.test(html);
+}
+
+/**
+ * Slide-count top-up / "add next pages" persist.
+ *
+ * The model must emit only new `<section class="slide">` blocks (or a
+ * longer deck whose tail is new). We splice those onto the saved deck so
+ * official look/`<head>` never has to be rewritten — that rewrite is the
+ * 2–3 minute hang after a 1-slide first fill.
+ */
+export function appendIncomingSlidesOntoExistingDeck(
+  existingHtml: string,
+  incomingHtml: string,
+): string | null {
+  const existing = String(existingHtml ?? "");
+  const incomingRaw = String(incomingHtml ?? "");
+  if (!existing.trim() || !incomingRaw.trim()) return null;
+
+  // Top-up streams often truncate mid-slide; close hosts so we can still
+  // append a titled fragment instead of failing as incomplete_output.
+  const incoming = closeUnclosedSlideHostsForAppend(incomingRaw);
+
+  const incomingSlides = extractAppendableSlideSections(extractDeckBodyContent(incoming));
+  if (incomingSlides.length === 0) return null;
+
+  const existingSlides = extractAppendableSlideSections(extractDeckBodyContent(existing));
+  const existingCount = existingSlides.length;
+
+  let toAppend = incomingSlides;
+  if (existingCount > 0 && incomingLooksLikeFullDocument(incoming)) {
+    if (incomingSlides.length <= existingCount) return null;
+    toAppend = incomingSlides.slice(existingCount);
+  }
+
+  if (toAppend.length === 0) return null;
+
+  const range = findBodyContentRange(existing);
+  const chunk = toAppend.map((slide) => slide.outerHtml).join("\n");
+  if (!range) return `${existing.replace(/\s*$/, "\n")}${chunk}\n`;
+  return `${existing.slice(0, range.end)}\n${chunk}\n${existing.slice(range.end)}`;
+}
+
+/** Close truncated section|div.slide hosts so append can see titled fragments. */
+function closeUnclosedSlideHostsForAppend(html: string): string {
+  // Local close — mirrors deck-html-content salvage without a circular import.
+  const openRe = /<(section|div)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
+  const opens: { tag: string; contentStart: number; openStart: number }[] = [];
+  let match: RegExpExecArray | null;
+  const source = String(html ?? "");
+  openRe.lastIndex = 0;
+  while ((match = openRe.exec(source)) !== null) {
+    if (!isSlideClass(match[2] ?? "")) continue;
+    opens.push({
+      tag: (match[1] ?? "section").toLowerCase(),
+      openStart: match.index,
+      contentStart: match.index + match[0].length,
+    });
+  }
+  if (opens.length === 0) return source;
+  const insertions: { at: number; text: string }[] = [];
+  for (let i = 0; i < opens.length; i += 1) {
+    const tag = opens[i]!.tag;
+    const contentStart = opens[i]!.contentStart;
+    const contentEnd = i + 1 < opens.length ? opens[i + 1]!.openStart : source.length;
+    const chunk = source.slice(contentStart, contentEnd);
+    let depth = 1;
+    const tagRe = new RegExp(`<\\/?${tag}\\b[^>]*>`, "gi");
+    let tagMatch: RegExpExecArray | null;
+    while ((tagMatch = tagRe.exec(chunk)) !== null) {
+      if (new RegExp(`^<\\/${tag}`, "i").test(tagMatch[0])) {
+        depth -= 1;
+        if (depth === 0) break;
+      } else if (!/^<\//.test(tagMatch[0])) {
+        depth += 1;
+      }
+    }
+    if (depth > 0) {
+      insertions.push({ at: contentEnd, text: `</${tag}>`.repeat(depth) });
+    }
+  }
+  if (insertions.length === 0) return source;
+  let out = source;
+  for (let i = insertions.length - 1; i >= 0; i -= 1) {
+    const item = insertions[i]!;
+    out = `${out.slice(0, item.at)}${item.text}${out.slice(item.at)}`;
+  }
+  return out;
+}
+
+/**
+ * Top-up append accepts official catalog hosts (`section|div.slide`).
+ * Deck-patch stays section-only via {@link extractTopLevelSlideSections}.
+ */
+function extractAppendableSlideSections(html: string): TopLevelSlideSection[] {
+  const sectionOnly = extractTopLevelSlideSections(html);
+  if (sectionOnly.length > 0) return sectionOnly;
+  return extractTopLevelDivSlideSections(html);
+}
+
+function extractTopLevelDivSlideSections(html: string): TopLevelSlideSection[] {
+  const results: TopLevelSlideSection[] = [];
+  const openRe = /<div\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
+  const closeRe = /<\/div\s*>/gi;
+  let searchFrom = 0;
+  while (searchFrom < html.length) {
+    openRe.lastIndex = searchFrom;
+    const openMatch = openRe.exec(html);
+    if (!openMatch) break;
+    const openStart = openMatch.index;
+    const openEnd = openStart + openMatch[0].length;
+    if (!isSlideClass(openMatch[1] ?? "")) {
+      searchFrom = openEnd;
+      continue;
+    }
+    let depth = 1;
+    let cursor = openEnd;
+    let matchedCloseEnd = -1;
+    while (cursor < html.length && depth > 0) {
+      openRe.lastIndex = cursor;
+      closeRe.lastIndex = cursor;
+      const nextOpen = openRe.exec(html);
+      const nextClose = closeRe.exec(html);
+      if (!nextClose) break;
+      if (nextOpen && nextOpen.index < nextClose.index) {
+        depth += 1;
+        cursor = nextOpen.index + nextOpen[0].length;
+      } else {
+        depth -= 1;
+        const closeEnd = nextClose.index + nextClose[0].length;
+        cursor = closeEnd;
+        if (depth === 0) matchedCloseEnd = closeEnd;
+      }
+    }
+    if (matchedCloseEnd === -1) {
+      searchFrom = openEnd;
+      continue;
+    }
+    results.push({
+      openTag: openMatch[0],
+      outerHtml: html.slice(openStart, matchedCloseEnd),
+      start: openStart,
+      end: matchedCloseEnd,
+    });
+    searchFrom = matchedCloseEnd;
+  }
+  return results;
 }

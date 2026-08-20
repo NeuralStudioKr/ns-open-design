@@ -101,7 +101,7 @@ describe("fetchTeamverRuntimeConfig auth gate (docs-teamver/43)", () => {
     expect(httpGet).not.toHaveBeenCalled();
     expect(
       fetchMock.mock.calls.filter((c) => String(c[0]).includes("/auth/session-probe")),
-    ).toHaveLength(2);
+    ).toHaveLength(1);
   });
 
   it("caches session-probe 401 locally and skips repeat network probes for 60s", async () => {
@@ -122,6 +122,70 @@ describe("fetchTeamverRuntimeConfig auth gate (docs-teamver/43)", () => {
 
     await expect(probeDesignBffSessionAuthenticated()).resolves.toBe(false);
     await expect(probeDesignBffSessionAuthenticated()).resolves.toBe(false);
+    expect(
+      fetchMock.mock.calls.filter((c) => String(c[0]).includes("/auth/session-probe")),
+    ).toHaveLength(1);
+  });
+
+  it("skips session-probe when boot already proved the session alive", async () => {
+    const { setTeamverEmbedSessionAuthenticated, resetTeamverEmbedSessionRelayForTests } =
+      await import("../src/teamver/teamverEmbedSession");
+    const {
+      fetchTeamverRuntimeConfig,
+      resetDesignAuthRefreshDeclinedForTests,
+      resetTeamverRuntimeConfigCacheForTests,
+    } = await import("../src/teamver/designBffClient");
+
+    resetTeamverEmbedSessionRelayForTests();
+    resetDesignAuthRefreshDeclinedForTests();
+    resetTeamverRuntimeConfigCacheForTests();
+    setTeamverEmbedSessionAuthenticated(true);
+
+    const fetchMock = stubSessionProbe(204);
+    httpGet.mockResolvedValue({
+      configured: true,
+      apiKeyConfigured: true,
+      apiProtocol: "anthropic",
+      baseUrl: "https://api.example",
+      model: "claude",
+    });
+
+    await expect(
+      fetchTeamverRuntimeConfig({ sessionAlreadyProbedAlive: true }),
+    ).resolves.toMatchObject({ configured: true });
+    expect(
+      fetchMock.mock.calls.filter((c) => String(c[0]).includes("/auth/session-probe")),
+    ).toHaveLength(0);
+    expect(httpGet).toHaveBeenCalled();
+  });
+
+  it("coalesces concurrent alive session-probe calls and short-caches 204", async () => {
+    const { setTeamverEmbedSessionAuthenticated, resetTeamverEmbedSessionRelayForTests } =
+      await import("../src/teamver/teamverEmbedSession");
+    const {
+      probeDesignBffSessionAuthenticated,
+      resetDesignAuthRefreshDeclinedForTests,
+      resetTeamverRuntimeConfigCacheForTests,
+    } = await import("../src/teamver/designBffClient");
+
+    resetTeamverEmbedSessionRelayForTests();
+    resetDesignAuthRefreshDeclinedForTests();
+    resetTeamverRuntimeConfigCacheForTests();
+    setTeamverEmbedSessionAuthenticated(true);
+
+    const fetchMock = stubSessionProbe(204);
+
+    const [a, b] = await Promise.all([
+      probeDesignBffSessionAuthenticated(),
+      probeDesignBffSessionAuthenticated(),
+    ]);
+    expect(a).toBe(true);
+    expect(b).toBe(true);
+    expect(
+      fetchMock.mock.calls.filter((c) => String(c[0]).includes("/auth/session-probe")),
+    ).toHaveLength(1);
+
+    await expect(probeDesignBffSessionAuthenticated()).resolves.toBe(true);
     expect(
       fetchMock.mock.calls.filter((c) => String(c[0]).includes("/auth/session-probe")),
     ).toHaveLength(1);

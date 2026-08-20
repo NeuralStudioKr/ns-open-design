@@ -1,9 +1,24 @@
+import {
+  isAllowlistedFontStylesheetHref,
+  OFFICIAL_DECK_LOOK_STYLE_ATTR,
+  OFFICIAL_DECK_MOTIF_HTML_ATTR,
+  rewriteCssImportsForPersist,
+} from '@open-design/contracts';
 import { emptyManualEditStyles, MANUAL_EDIT_STYLE_PROPS, type ManualEditFields, type ManualEditPatch, type ManualEditStyles } from './types';
 
 export interface ManualEditPatchResult {
   ok: boolean;
   source: string;
   error?: string;
+  /** When `captureTargetSnapshot` is set, styles/outerHtml after mutate (skip re-parse). */
+  targetSnapshot?: {
+    fields: import('./types').ManualEditFields;
+    styles: import('./types').ManualEditStyles;
+    attributes: Record<string, string>;
+    outerHtml: string;
+  };
+  /** When `captureTargetSnapshots` is set on a batch apply. */
+  targetSnapshots?: Record<string, ManualEditPatchResult['targetSnapshot'] & object>;
 }
 
 export type ManualEditMaskTargetsResult =
@@ -32,11 +47,33 @@ export interface ManualEditSourceScope {
 
 type ManualEditLookupRoot = (ParentNode & Element) | Document;
 
+export interface ApplyManualEditPatchOptions {
+  /** Sanitize the live document before serialize (avoids a second full parse). */
+  sanitize?: boolean;
+  /** Capture target styles/outerHtml from the live Document before serialize. */
+  captureTargetSnapshot?: boolean;
+  /**
+   * After a multi-patch batch, capture a snapshot per patched id from the live
+   * Document (FileViewer batch reconcile — skip N× re-parse).
+   */
+  captureTargetSnapshots?: boolean;
+  /**
+   * Pre-parsed Document (e.g. from style-diff). Mutated in place — caller must
+   * not reuse after apply. Skips a second full-deck parse on the apply path.
+   */
+  parsedDoc?: Document | null;
+}
+
+/**
+ * Apply one patch. Prefer `applyManualEditPatches` when multiple ops share a deck
+ * so the document is parsed/serialized once.
+ */
 export function applyManualEditPatch(
   source: string,
   patch: ManualEditPatch,
   scope: ManualEditSourceScope = {},
   hint?: ManualEditMergeTargetHint,
+  options?: ApplyManualEditPatchOptions,
 ): ManualEditPatchResult {
   if (patch.kind === 'set-full-source') {
     // Undo / snapshot restore — still run the same tree sanitize so a
@@ -44,22 +81,111 @@ export function applyManualEditPatch(
     return { ok: true, source: sanitizeManualEditFullSource(patch.source) };
   }
 
-  const doc = parseSource(source);
+  const doc = options?.parsedDoc ?? parseSource(source);
   if (!doc) return { ok: false, source, error: 'Could not parse source.' };
+
+  const mutated = mutateManualEditPatch(doc, patch, scope, hint);
+  if (!mutated.ok) return { ok: false, source, error: mutated.error };
+  if (options?.sanitize && isManualEditFullHtmlDocument(source)) {
+    sanitizeManualEditDocumentInPlace(doc);
+  }
+  const targetSnapshot = options?.captureTargetSnapshot && 'id' in patch
+    ? readManualEditTargetSnapshotFromDoc(doc, patch.id, scope)
+    : undefined;
+  return { ok: true, source: serializeSource(doc, source), targetSnapshot };
+}
+
+export type ManualEditPatchApplyItem = {
+  patch: ManualEditPatch;
+  scope?: ManualEditSourceScope;
+  hint?: ManualEditMergeTargetHint;
+};
+
+/**
+ * Apply many patches against one parsed document (element-patch multi-op hot path).
+ */
+export function applyManualEditPatches(
+  source: string,
+  items: readonly ManualEditPatchApplyItem[],
+  options?: ApplyManualEditPatchOptions,
+): ManualEditPatchResult & { appliedCount: number } {
+  if (items.length === 0) return { ok: true, source, appliedCount: 0 };
+  if (items.length === 1 && items[0]!.patch.kind === 'set-full-source') {
+    const single = applyManualEditPatch(source, items[0]!.patch);
+    return { ...single, appliedCount: single.ok ? 1 : 0 };
+  }
+
+  const doc = options?.parsedDoc ?? parseSource(source);
+  if (!doc) return { ok: false, source, error: 'Could not parse source.', appliedCount: 0 };
+
+  let appliedCount = 0;
+  for (const item of items) {
+    if (item.patch.kind === 'set-full-source') {
+      return {
+        ok: false,
+        source,
+        error: 'set-full-source is not supported inside a multi-patch batch.',
+        appliedCount,
+      };
+    }
+    const mutated = mutateManualEditPatch(doc, item.patch, item.scope ?? {}, item.hint);
+    if (!mutated.ok) {
+      return { ok: false, source, error: mutated.error, appliedCount };
+    }
+    appliedCount += 1;
+  }
+  if (options?.sanitize && isManualEditFullHtmlDocument(source)) {
+    sanitizeManualEditDocumentInPlace(doc);
+  }
+  let targetSnapshots: ManualEditPatchResult['targetSnapshots'];
+  if (options?.captureTargetSnapshots) {
+    targetSnapshots = {};
+    for (const item of items) {
+      if (!('id' in item.patch)) continue;
+      targetSnapshots[item.patch.id] = readManualEditTargetSnapshotFromDoc(
+        doc,
+        item.patch.id,
+        item.scope ?? {},
+      );
+    }
+  }
+  return { ok: true, source: serializeSource(doc, source), appliedCount, targetSnapshots };
+}
+
+/** Mutate `doc` in place. Caller owns parse/serialize (element-patch batch). */
+export function applyManualEditPatchMutation(
+  doc: Document,
+  patch: ManualEditPatch,
+  scope: ManualEditSourceScope = {},
+  hint?: ManualEditMergeTargetHint,
+): { ok: true } | { ok: false; error: string } {
+  return mutateManualEditPatch(doc, patch, scope, hint);
+}
+
+/** Mutate `doc` in place. Caller owns parse/serialize. */
+function mutateManualEditPatch(
+  doc: Document,
+  patch: ManualEditPatch,
+  scope: ManualEditSourceScope = {},
+  hint?: ManualEditMergeTargetHint,
+): { ok: true } | { ok: false; error: string } {
+  if (patch.kind === 'set-full-source') {
+    return { ok: false, error: 'set-full-source cannot mutate an existing document.' };
+  }
 
   if (patch.kind === 'set-token') {
     if (!isSafeCssTokenName(patch.token) || !isSafeCssTokenValue(patch.value)) {
-      return { ok: false, source, error: 'CSS token name or value is not allowed.' };
+      return { ok: false, error: 'CSS token name or value is not allowed.' };
     }
     const changed = setCssToken(doc, patch.token, patch.value);
     return changed
-      ? { ok: true, source: serializeSource(doc, source) }
-      : { ok: false, source, error: `Token not found: ${patch.token}` };
+      ? { ok: true }
+      : { ok: false, error: `Token not found: ${patch.token}` };
   }
 
   const effectiveHint = hint ?? scope.targetHint;
   let el = findEditableElement(doc, patch.id, scope, effectiveHint);
-  if (!el) return { ok: false, source, error: `Target not found: ${patch.id}` };
+  if (!el) return { ok: false, error: `Target not found: ${patch.id}` };
 
   const hostTag = el.tagName.toLowerCase();
   if (
@@ -77,7 +203,6 @@ export function applyManualEditPatch(
     // inert scripts by clearing type=).
     return {
       ok: false,
-      source,
       error: `Edits of kind ${patch.kind} are not allowed on <${hostTag}> elements.`,
     };
   }
@@ -108,7 +233,7 @@ export function applyManualEditPatch(
         // breaks have no leaf element to patch. Write plain text, mapping
         // committed `\n` back to `<br>` so intentional wraps survive.
         applyManualEditPlainText(el, patch.value);
-        return { ok: true, source: serializeSource(doc, source) };
+        return { ok: true };
       } else if (containsOnlyInlineTextFormatting(el)) {
         // Ambiguous inline siblings (e.g. `<span>Alpha</span><span>Beta</span>`,
         // gradient + label wrappers). The wrapper is a plain text container
@@ -117,9 +242,9 @@ export function applyManualEditPatch(
         // spans but keeps the edit unblocked, matching upstream v2's
         // `set-inner-html` fallback.
         applyManualEditPlainText(el, patch.value);
-        return { ok: true, source: serializeSource(doc, source) };
+        return { ok: true };
       } else {
-        return { ok: false, source, error: 'This element contains nested markup. Use the HTML tab instead.' };
+        return { ok: false, error: 'This element contains nested markup. Use the HTML tab instead.' };
       }
     }
     applyManualEditPlainText(el, patch.value);
@@ -127,7 +252,7 @@ export function applyManualEditPatch(
     const linkTag = el.tagName.toLowerCase();
     // Do not retarget <link>/<base>/SVG resource hosts via the link editor.
     if (linkTag !== 'a' && linkTag !== 'area') {
-      return { ok: false, source, error: 'Link edits are only allowed on <a> / <area> elements.' };
+      return { ok: false, error: 'Link edits are only allowed on <a> / <area> elements.' };
     }
     if (hasElementChildren(el)) {
       const currentText = manualEditElementToPlainText(el);
@@ -137,60 +262,69 @@ export function applyManualEditPatch(
       } else if (containsOnlyInlineTextFormatting(el)) {
         applyManualEditPlainText(el, patch.text);
       } else {
-        return { ok: false, source, error: 'This link contains nested markup. Use the HTML tab to change its label.' };
+        return { ok: false, error: 'This link contains nested markup. Use the HTML tab to change its label.' };
       }
     } else {
       applyManualEditPlainText(el, patch.text);
     }
     if (!isSafeManualEditUrl(patch.href)) {
-      return { ok: false, source, error: 'Link href uses a disallowed URL scheme.' };
+      return { ok: false, error: 'Link href uses a disallowed URL scheme.' };
     }
     el.setAttribute('href', patch.href);
   } else if (patch.kind === 'set-image') {
     const imageTag = el.tagName.toLowerCase();
     // Do not retarget <script>/<iframe>/etc. that happen to share an edit id.
     if (imageTag !== 'img') {
-      return { ok: false, source, error: 'Image edits are only allowed on <img> elements.' };
+      return { ok: false, error: 'Image edits are only allowed on <img> elements.' };
     }
     if (!isSafeManualEditUrl(patch.src)) {
-      return { ok: false, source, error: 'Image src uses a disallowed URL scheme.' };
+      return { ok: false, error: 'Image src uses a disallowed URL scheme.' };
     }
     el.setAttribute('src', patch.src);
     el.setAttribute('alt', patch.alt);
   } else if (patch.kind === 'set-style') {
     setInlineStyles(el as HTMLElement, patch.styles);
   } else if (patch.kind === 'set-attributes') {
-    setAttributes(el, patch.attributes);
+    const attrResult = setAttributes(el, patch.attributes);
+    // Value-safety reject (rejected > 0) fails closed with zero mutation (441).
+    if (
+      attrResult.rejected > 0
+      || (attrResult.attempted > 0 && attrResult.applied === 0)
+    ) {
+      return {
+        ok: false,
+        error: 'None of the requested attributes could be applied.',
+      };
+    }
   } else if (patch.kind === 'set-outer-html') {
     const replaced = replaceOuterHtml(doc, el, patch.html);
     if (!replaced.ok) {
       return {
         ok: false,
-        source,
         error: 'error' in replaced ? replaced.error : 'Could not replace element HTML.',
       };
     }
   } else if (patch.kind === 'remove-element') {
     if (!el.parentElement) {
-      return { ok: false, source, error: 'Cannot remove the root element.' };
+      return { ok: false, error: 'Cannot remove the root element.' };
     }
     if (el.parentElement === doc.body && doc.body.children.length === 1) {
-      return { ok: false, source, error: 'Cannot remove the last element in the document.' };
+      return { ok: false, error: 'Cannot remove the last element in the document.' };
     }
     el.remove();
   }
 
-  return { ok: true, source: serializeSource(doc, source) };
+  return { ok: true };
 }
 
-export function readManualEditFields(
-  source: string,
-  id: string,
-  scope: ManualEditSourceScope = {},
-): ManualEditFields {
-  const doc = parseSource(source);
-  const el = doc ? findEditableElement(doc, id, scope) : null;
-  if (!el) return {};
+export type ManualEditTargetSnapshot = {
+  fields: ManualEditFields;
+  styles: ManualEditStyles;
+  attributes: Record<string, string>;
+  outerHtml: string;
+};
+
+function readManualEditFieldsFromElement(el: Element): ManualEditFields {
   const kind = inferKind(el);
   if (kind === 'link') {
     return {
@@ -207,14 +341,7 @@ export function readManualEditFields(
   return { text: manualEditElementToPlainText(el) };
 }
 
-export function readManualEditStyles(
-  source: string,
-  id: string,
-  scope: ManualEditSourceScope = {},
-): ManualEditStyles {
-  const doc = parseSource(source);
-  const el = doc ? findEditableElement(doc, id, scope) : null;
-  if (!el) return emptyManualEditStyles();
+function readManualEditStylesFromElement(el: Element): ManualEditStyles {
   const style = (el as HTMLElement).style;
   return MANUAL_EDIT_STYLE_PROPS.reduce<ManualEditStyles>((acc, key) => {
     acc[key] = (style[key as unknown as keyof CSSStyleDeclaration] as string | undefined) ?? '';
@@ -222,14 +349,7 @@ export function readManualEditStyles(
   }, {} as ManualEditStyles);
 }
 
-export function readManualEditAttributes(
-  source: string,
-  id: string,
-  scope: ManualEditSourceScope = {},
-): Record<string, string> {
-  const doc = parseSource(source);
-  const el = doc ? findEditableElement(doc, id, scope) : null;
-  if (!el) return {};
+function readManualEditAttributesFromElement(el: Element): Record<string, string> {
   const attrs: Record<string, string> = {};
   Array.from(el.attributes).forEach((attr) => {
     if (attr.name === 'data-od-runtime-id') return;
@@ -238,13 +358,81 @@ export function readManualEditAttributes(
   return attrs;
 }
 
+function readManualEditTargetSnapshotFromDoc(
+  doc: Document,
+  id: string,
+  scope: ManualEditSourceScope = {},
+): ManualEditTargetSnapshot {
+  const el = findEditableElement(doc, id, scope);
+  if (!el) {
+    return {
+      fields: {},
+      styles: emptyManualEditStyles(),
+      attributes: {},
+      outerHtml: '',
+    };
+  }
+  return {
+    fields: readManualEditFieldsFromElement(el),
+    styles: readManualEditStylesFromElement(el),
+    attributes: readManualEditAttributesFromElement(el),
+    outerHtml: el.outerHTML,
+  };
+}
+
+/** One parse → fields/styles/attrs/outerHtml (FileViewer selection hot path). */
+export function readManualEditTargetSnapshot(
+  source: string,
+  id: string,
+  scope: ManualEditSourceScope = {},
+  parsedDoc?: Document | null,
+): ManualEditTargetSnapshot {
+  const doc = parsedDoc !== undefined ? parsedDoc : parseSource(source);
+  if (!doc) {
+    return {
+      fields: {},
+      styles: emptyManualEditStyles(),
+      attributes: {},
+      outerHtml: '',
+    };
+  }
+  return readManualEditTargetSnapshotFromDoc(doc, id, scope);
+}
+
+export function readManualEditFields(
+  source: string,
+  id: string,
+  scope: ManualEditSourceScope = {},
+): ManualEditFields {
+  return readManualEditTargetSnapshot(source, id, scope).fields;
+}
+
+export function readManualEditStyles(
+  source: string,
+  id: string,
+  scope: ManualEditSourceScope = {},
+  parsedDoc?: Document | null,
+): ManualEditStyles {
+  if (parsedDoc) {
+    return readManualEditTargetSnapshotFromDoc(parsedDoc, id, scope).styles;
+  }
+  return readManualEditTargetSnapshot(source, id, scope).styles;
+}
+
+export function readManualEditAttributes(
+  source: string,
+  id: string,
+  scope: ManualEditSourceScope = {},
+): Record<string, string> {
+  return readManualEditTargetSnapshot(source, id, scope).attributes;
+}
+
 export function readManualEditOuterHtml(
   source: string,
   id: string,
   scope: ManualEditSourceScope = {},
 ): string {
-  const doc = parseSource(source);
-  return (doc ? findEditableElement(doc, id, scope)?.outerHTML : '') ?? '';
+  return readManualEditTargetSnapshot(source, id, scope).outerHtml;
 }
 
 /**
@@ -283,8 +471,10 @@ export function resolveManualEditTargetReference(
   id: string,
   scope: ManualEditSourceScope = {},
   hint?: ManualEditMergeTargetHint,
+  /** Reuse a parsed document to avoid N× DOMParser on multi-op element-patch. */
+  parsedDoc?: Document | null,
 ): string | null {
-  const doc = parseSource(source);
+  const doc = parsedDoc ?? parseSource(source);
   if (!doc) return null;
   const normalizedId = String(id || '').trim();
   const root = findScopedRoot(doc, scope);
@@ -345,33 +535,42 @@ export function maskManualEditTargets(
 ): ManualEditMaskTargetsResult {
   const doc = parseSource(source);
   if (!doc) return { ok: false, source, reason: 'Could not parse source.' };
+  const maskedCount = maskManualEditTargetsOnDocument(doc, ids, scope, hints);
+  if (maskedCount === 0) {
+    return { ok: false, source, reason: 'No targets found to mask.' };
+  }
+  return {
+    ok: true,
+    source: serializeSource(doc, source),
+    maskedCount,
+  };
+}
+
+/** Mask targets on an already-parsed document (full-deck guard multi-attachment). */
+export function maskManualEditTargetsOnDocument(
+  doc: Document,
+  ids: readonly string[],
+  scope: ManualEditSourceScope = {},
+  hints: readonly ManualEditMergeTargetHint[] = [],
+  startIndex = 0,
+): number {
   const targets = new Set<Element>();
   for (const id of ids) {
     const normalized = String(id || '').trim();
     if (!normalized) continue;
     // Accept per-id hints so the full-deck guard's target masking
     // benefits from the same hint fallback the scoped merge uses.
-    // Without this, a click id that no longer resolves structurally
-    // masks nothing → the guard reports "target unresolved" and the
-    // whole full-deck path fails while the merge path would have
-    // recovered via hint.
     const hint = hints.find((candidate) => String(candidate.id || '').trim() === normalized);
     const target = findEditableElement(doc, normalized, scope, hint);
     if (target) targets.add(target);
   }
-  if (targets.size === 0) {
-    return { ok: false, source, reason: 'No targets found to mask.' };
-  }
-  let index = 0;
+  if (targets.size === 0) return 0;
+  let index = startIndex;
   for (const target of targets) {
     target.replaceWith(doc.createComment(`od-masked-comment-target:${index}`));
     index += 1;
   }
-  return {
-    ok: true,
-    source: serializeSource(doc, source),
-    maskedCount: targets.size,
-  };
+  return targets.size;
 }
 
 export function mergeManualEditTargetsFromSource(
@@ -380,9 +579,10 @@ export function mergeManualEditTargetsFromSource(
   ids: readonly string[],
   scope: ManualEditSourceScope = {},
   hints: readonly ManualEditMergeTargetHint[] = [],
+  parsedDocs?: { current?: Document | null; next?: Document | null },
 ): ManualEditMergeTargetsResult {
-  const currentDoc = parseSource(currentSource);
-  const nextDoc = parseSource(nextSource);
+  const currentDoc = parsedDocs?.current ?? parseSource(currentSource);
+  const nextDoc = parsedDocs?.next ?? parseSource(nextSource);
   if (!currentDoc || !nextDoc) {
     return { ok: false, source: currentSource, reason: 'Could not parse source.' };
   }
@@ -449,9 +649,10 @@ export function graftPatchedTargetElementFromSource(
   targetId: string,
   scope: ManualEditSourceScope = {},
   hint?: ManualEditMergeTargetHint,
+  parsedDocs?: { current?: Document | null; patched?: Document | null },
 ): ManualEditPatchResult {
-  const currentDoc = parseSource(currentSource);
-  const patchedDoc = parseSource(patchedSource);
+  const currentDoc = parsedDocs?.current ?? parseSource(currentSource);
+  const patchedDoc = parsedDocs?.patched ?? parseSource(patchedSource);
   if (!currentDoc || !patchedDoc) {
     return { ok: false, source: currentSource, error: 'Could not parse source.' };
   }
@@ -496,9 +697,18 @@ function parseSource(source: string): Document | null {
   return null;
 }
 
+/** Shared parse for multi-attachment mask / element-patch batch helpers. */
+export function parseManualEditSource(source: string): Document | null {
+  return parseSource(source);
+}
+
 function serializeSource(doc: Document, originalSource: string): string {
   if (!isManualEditFullHtmlDocument(originalSource)) return doc.body.innerHTML;
   return `<!doctype html>\n${doc.documentElement.outerHTML}`;
+}
+
+export function serializeManualEditSource(doc: Document, originalSource: string): string {
+  return serializeSource(doc, originalSource);
 }
 
 export function isManualEditFullHtmlDocument(source: string): boolean {
@@ -742,9 +952,10 @@ export function mergeManualEditTargetByHint(
   nextSource: string,
   scope: ManualEditSourceScope = {},
   hint: ManualEditMergeTargetHint,
+  parsedDocs?: { current?: Document | null; next?: Document | null },
 ): ManualEditMergeTargetsResult {
-  const currentDoc = parseSource(currentSource);
-  const nextDoc = parseSource(nextSource);
+  const currentDoc = parsedDocs?.current ?? parseSource(currentSource);
+  const nextDoc = parsedDocs?.next ?? parseSource(nextSource);
   if (!currentDoc || !nextDoc) {
     return { ok: false, source: currentSource, reason: 'Could not parse source.' };
   }
@@ -791,8 +1002,9 @@ export function readScopedCommentTargetText(
   html: string,
   scope: ManualEditSourceScope,
   hint: ManualEditMergeTargetHint & { elementId?: string },
+  parsedDoc?: Document | null,
 ): string | null {
-  const doc = parseSource(html);
+  const doc = parsedDoc ?? parseSource(html);
   if (!doc) return null;
   const id = String(hint.elementId || hint.id || '').trim();
   const el = id
@@ -977,6 +1189,16 @@ const MANUAL_EDIT_DANGEROUS_REPLACEMENT_TAGS = new Set([
   'frameset',
   // SVG discard can delete sanitized content after persist.
   'discard',
+  // Modern / chrome embed hosts.
+  'fencedframe',
+  'portal',
+  'webview',
+  // Legacy raw-text hosts that corrupt serialization.
+  'plaintext',
+  'xmp',
+  // HTML islands that can host interactive markup after attr scrub.
+  'foreignobject',
+  'annotation-xml',
 ]);
 
 const MANUAL_EDIT_SMIL_ANIM_TAGS = new Set([
@@ -987,14 +1209,31 @@ const MANUAL_EDIT_SMIL_ANIM_TAGS = new Set([
   'animatecolor',
 ]);
 
+/** Local name for `svg:animate` / namespaced tags (HTML/XML parsers). */
+function manualEditLocalTagName(tag: string): string {
+  const lower = String(tag || '').toLowerCase();
+  const idx = lower.lastIndexOf(':');
+  return idx >= 0 ? lower.slice(idx + 1) : lower;
+}
+
+/** Local name for `svg:onerror` / namespaced attrs (HTML/XML parsers). */
+function manualEditLocalAttrName(name: string): string {
+  const lower = String(name || '').toLowerCase();
+  const idx = lower.lastIndexOf(':');
+  return idx >= 0 ? lower.slice(idx + 1) : lower;
+}
+
 /** Hosts that must not receive set-text / set-style / set-attributes mutation. */
 function isManualEditLockedHostTag(tag: string): boolean {
   const lower = String(tag || '').toLowerCase();
+  const local = manualEditLocalTagName(lower);
   return (
     MANUAL_EDIT_DANGEROUS_REPLACEMENT_TAGS.has(lower)
+    || MANUAL_EDIT_DANGEROUS_REPLACEMENT_TAGS.has(local)
     || MANUAL_EDIT_NO_URL_MUTATION_TAGS.has(lower)
+    || MANUAL_EDIT_NO_URL_MUTATION_TAGS.has(local)
     // SMIL nodes assign attrs via attributeName+to — block direct mutation.
-    || MANUAL_EDIT_SMIL_ANIM_TAGS.has(lower)
+    || MANUAL_EDIT_SMIL_ANIM_TAGS.has(local)
   );
 }
 
@@ -1004,10 +1243,13 @@ function isManualEditLockedHostTag(tag: string): boolean {
  */
 function sanitizeManualEditElementAttrs(el: Element): void {
   const tag = el.tagName.toLowerCase();
+  const tagLocal = manualEditLocalTagName(tag);
   for (const attr of Array.from(el.attributes)) {
     const lower = attr.name.toLowerCase();
+    // Namespaced handlers (`svg:onerror`) — gate on local name.
+    const local = manualEditLocalAttrName(attr.name);
     if (
-      lower.startsWith('on')
+      local.startsWith('on')
       || lower === 'srcdoc'
       || lower === 'behavior'
       || lower === 'http-equiv'
@@ -1015,17 +1257,22 @@ function sanitizeManualEditElementAttrs(el: Element): void {
       el.removeAttribute(attr.name);
       continue;
     }
-    if (lower === 'style') {
+    if (lower === 'style' || local === 'style') {
       const scrubbed = scrubUnsafeInlineStyleAttr(attr.value);
       if (!scrubbed) el.removeAttribute(attr.name);
       else if (scrubbed !== attr.value) el.setAttribute(attr.name, scrubbed);
       continue;
     }
-    if (MANUAL_EDIT_CSS_URL_PRESENTATION_ATTRS.has(lower)) {
-      const scrubbed = scrubUnsafeCssFunctions(
-        normalizeCssForSafetyScan(attr.value),
-      ).trim();
-      if (!scrubbed || !isSafeManualEditPresentationCssValue(scrubbed)) {
+    if (
+      MANUAL_EDIT_CSS_URL_PRESENTATION_ATTRS.has(lower)
+      || MANUAL_EDIT_CSS_URL_PRESENTATION_ATTRS.has(local)
+    ) {
+      const normalized = normalizeCssForSafetyScan(attr.value);
+      const scrubbed = scrubUnsafeCssFunctions(normalized).trim();
+      if (
+        !scrubbed
+        || !isSafeManualEditPresentationCssValue(scrubbed, { alreadyNormalized: true })
+      ) {
         el.removeAttribute(attr.name);
       } else if (scrubbed !== attr.value) {
         el.setAttribute(attr.name, scrubbed);
@@ -1033,20 +1280,46 @@ function sanitizeManualEditElementAttrs(el: Element): void {
       continue;
     }
     if (
-      MANUAL_EDIT_SVG_FRAGMENT_ONLY_TAGS.has(tag)
-      && (lower === 'href' || lower === 'xlink:href')
+      (MANUAL_EDIT_SVG_FRAGMENT_ONLY_TAGS.has(tag)
+        || MANUAL_EDIT_SVG_FRAGMENT_ONLY_TAGS.has(tagLocal))
+      && (local === 'href' || lower === 'xlink:href')
       && !isSafeManualEditSvgResourceRef(attr.value)
     ) {
       el.removeAttribute(attr.name);
       continue;
     }
+    // Prefer full name for xlink:href safety gate; else local URL attr name.
+    // Explicit srcset/imagesrcset/values keep namespaced local-name parity obvious
+    // even though they also live in MANUAL_EDIT_URL_ATTRS.
+    const urlAttrKey = lower === 'xlink:href'
+      ? 'xlink:href'
+      : (MANUAL_EDIT_URL_ATTRS.has(lower)
+        || lower === 'srcset'
+        || lower === 'imagesrcset'
+        || lower === 'values')
+        ? lower
+        : (MANUAL_EDIT_URL_ATTRS.has(local)
+          || local === 'srcset'
+          || local === 'imagesrcset'
+          || local === 'values')
+          ? local
+          : null;
     if (
-      (MANUAL_EDIT_URL_ATTRS.has(lower) || lower === 'srcset' || lower === 'values')
-      && !isSafeManualEditUrlAttrValue(lower, attr.value)
+      urlAttrKey != null
+      && !isSafeManualEditUrlAttrValue(urlAttrKey, attr.value)
     ) {
       el.removeAttribute(attr.name);
     }
   }
+}
+
+/** Scrub a <style> host in-place; return false when it should be removed. */
+function scrubManualEditStyleElement(el: Element): boolean {
+  sanitizeManualEditElementAttrs(el);
+  const text = scrubSalvagedStyleText(el.textContent ?? '');
+  if (!text) return false;
+  el.textContent = text;
+  return true;
 }
 
 /** Strip executable chrome tags, event handlers, and unsafe URL attrs. */
@@ -1054,12 +1327,19 @@ function sanitizeManualEditReplacementTree(root: Element): void {
   const toRemove: Element[] = [];
   const walk = (el: Element): void => {
     const tag = el.tagName.toLowerCase();
+    // Nested slide <style> must survive comment "make it stand out" edits —
+    // scrub like head/body style hosts instead of dropping the whole node.
+    if (el !== root && tag === 'style') {
+      if (!scrubManualEditStyleElement(el)) toRemove.push(el);
+      return;
+    }
     if (el !== root && MANUAL_EDIT_DANGEROUS_REPLACEMENT_TAGS.has(tag)) {
       toRemove.push(el);
       return;
     }
     // SMIL can assign on* / style / href via attributeName + to/values without on* attrs.
-    if (MANUAL_EDIT_SMIL_ANIM_TAGS.has(tag)) {
+    // Use local name so `svg:animate` is treated like `animate`.
+    if (MANUAL_EDIT_SMIL_ANIM_TAGS.has(manualEditLocalTagName(tag))) {
       const smilAttr = (
         el.getAttribute('attributeName')
         || el.getAttribute('attributename')
@@ -1069,8 +1349,11 @@ function sanitizeManualEditReplacementTree(root: Element): void {
         smilAttr.startsWith('on')
         || smilAttr === 'srcdoc'
         || smilAttr === 'content'
+        || smilAttr === 'behavior'
+        || smilAttr === 'http-equiv'
       ) {
-        // srcdoc/content can carry HTML/script payloads via to=/values=.
+        // srcdoc/content/behavior/http-equiv can carry HTML/script/HTC/refresh
+        // payloads via to=/values= — drop the SMIL node (parity with HTML attrs).
         toRemove.push(el);
         return;
       }
@@ -1087,17 +1370,50 @@ function sanitizeManualEditReplacementTree(root: Element): void {
           return;
         }
       }
+      // Presentation paint via SMIL attributeName — same SSOT as failClosed /
+      // element attrs (color-profile, marker-start, fill, …).
       if (MANUAL_EDIT_CSS_URL_PRESENTATION_ATTRS.has(smilAttr)) {
-        // animate attributeName=filter/fill/… with url(https://…) paint servers.
+        // Same scrub-then-isSafe pipeline as presentation attrs (not boolean-only).
         for (const key of ['to', 'from', 'by', 'values'] as const) {
           const raw = el.getAttribute(key);
           if (raw == null) continue;
-          const pieces = key === 'values' ? String(raw).split(';') : [raw];
-          const unsafe = pieces.some((piece) => {
-            const trimmed = piece.trim();
-            return Boolean(trimmed) && !isSafeManualEditPresentationCssValue(trimmed);
-          });
-          if (unsafe) el.removeAttribute(key);
+          if (key === 'values') {
+            const pieces = String(raw).split(';');
+            let dropped = false;
+            const nextPieces: string[] = [];
+            for (const piece of pieces) {
+              const trimmed = piece.trim();
+              if (!trimmed) {
+                nextPieces.push('');
+                continue;
+              }
+              const scrubbed = scrubUnsafeCssFunctions(
+                normalizeCssForSafetyScan(trimmed),
+              ).trim();
+              if (
+                !scrubbed
+                || !isSafeManualEditPresentationCssValue(scrubbed, { alreadyNormalized: true })
+              ) {
+                dropped = true;
+                break;
+              }
+              nextPieces.push(scrubbed);
+            }
+            if (dropped) el.removeAttribute(key);
+            else el.setAttribute(key, nextPieces.join(';'));
+            continue;
+          }
+          const scrubbed = scrubUnsafeCssFunctions(
+            normalizeCssForSafetyScan(raw),
+          ).trim();
+          if (
+            !scrubbed
+            || !isSafeManualEditPresentationCssValue(scrubbed, { alreadyNormalized: true })
+          ) {
+            el.removeAttribute(key);
+          } else if (scrubbed !== raw) {
+            el.setAttribute(key, scrubbed);
+          }
         }
         if (!['to', 'from', 'by', 'values'].some((key) => el.hasAttribute(key))) {
           toRemove.push(el);
@@ -1111,7 +1427,8 @@ function sanitizeManualEditReplacementTree(root: Element): void {
           const pieces = key === 'values' ? String(raw).split(';') : [raw];
           const unsafe = pieces.some((piece) => {
             const trimmed = piece.trim();
-            return Boolean(trimmed) && !isSafeManualEditRelativeOrFragmentUrl(trimmed);
+            if (!trimmed) return false;
+            return !isSafeManualEditSmilNavValue(smilAttr, trimmed);
           });
           if (unsafe) el.removeAttribute(key);
         }
@@ -1142,16 +1459,25 @@ function finalizeManualEditReplacement(currentTarget: Element, replacement: Elem
  * Sanitize a slide/fragment HTML string with the same rules as set-outer-html
  * replacements — used by scoped slide-level merge fallbacks that skip finalize.
  */
-export function sanitizeManualEditHtmlFragment(html: string): string {
+export function sanitizeManualEditHtmlFragment(
+  html: string,
+  /** Reuse one empty host Document across multi-mark graft/repair batches. */
+  hostDoc?: Document | null,
+): string {
   const source = String(html || '');
   const trimmed = source.trim();
   if (!trimmed) return source;
-  const doc = parseSource('<!doctype html><html><body></body></html>');
-  if (!doc?.body) return source;
+  const doc = hostDoc ?? parseSource('<!doctype html><html><body></body></html>');
+  // Fail closed: never return raw fragment HTML when the parser is unavailable.
+  if (!doc?.body) return failClosedScrubHtmlWithoutParser(trimmed);
   const template = doc.createElement('template');
   template.innerHTML = trimmed;
   for (const root of Array.from(template.content.children)) {
     const tag = root.tagName.toLowerCase();
+    if (tag === 'style') {
+      if (!scrubManualEditStyleElement(root)) root.remove();
+      continue;
+    }
     if (MANUAL_EDIT_DANGEROUS_REPLACEMENT_TAGS.has(tag)) {
       root.remove();
       continue;
@@ -1175,16 +1501,342 @@ function isUnsafeManualEditReplacementRoot(el: Element): boolean {
 }
 
 /**
+ * URL attrs shared by DOM sanitize (`MANUAL_EDIT_URL_ATTRS`) and failClosed.
+ * Longer names first so optional namespace prefix + alternation prefers
+ * `xlink:href` / `imagesrcset` over bare `href` / `srcset` (predictable capture).
+ */
+const MANUAL_EDIT_URL_ATTR_NAMES_LONGER_FIRST = [
+  'xlink:href',
+  'imagesrcset',
+  'formaction',
+  'longdesc',
+  'background',
+  'codebase',
+  'classid',
+  'manifest',
+  'archive',
+  'usemap',
+  'href',
+  'src',
+  'srcset',
+  'action',
+  'poster',
+  'cite',
+  'ping',
+  'dynsrc',
+  'lowsrc',
+  'data',
+  // SVG SMIL can assign href via to/from/by/values without on* handlers.
+  'to',
+  'from',
+  'by',
+  'values',
+] as const;
+
+/**
+ * Presentation attrs shared by DOM sanitize and failClosed.
+ * Longer names first (`marker-start` / `clip-path` / `color-profile`) so
+ * optional namespace prefix + alternation captures predictably.
+ */
+const MANUAL_EDIT_CSS_URL_PRESENTATION_ATTR_NAMES_LONGER_FIRST = [
+  'color-profile',
+  'marker-start',
+  'marker-mid',
+  'marker-end',
+  'clip-path',
+  'clippath',
+  'filter',
+  'stroke',
+  'cursor',
+  'marker',
+  'mask',
+  'fill',
+] as const;
+
+/**
  * Sanitize a full HTML document (set-full-source / undo snapshots) with the
  * same dangerous-tag / attr / SMIL rules as fragment replacements.
  */
-export function sanitizeManualEditFullSource(source: string): string {
-  const raw = String(source || '');
-  if (!raw.trim()) return raw;
-  const doc = parseSource(raw);
-  if (!doc) return raw;
-  // html/head/body themselves are hosts — scrub their on*/style/URL attrs
-  // before walking children (child walk never touches the host element).
+/**
+ * Last-resort scrub when DOMParser/document are unavailable (node tests /
+ * workers). Prefer the DOM walk above; this only strips obvious executable
+ * surface so we never pass raw HTML through unchanged.
+ */
+function failClosedScrubHtmlWithoutParser(raw: string): string {
+  // Align with MANUAL_EDIT_DANGEROUS_REPLACEMENT_TAGS (+ annotation-xml) and
+  // neutralize common URL-scheme smuggling when DOMParser is unavailable.
+  const dangerous = [
+    'script', 'iframe', 'object', 'embed', 'base', 'link', 'meta', 'noscript',
+    'template', 'style', 'handler', 'applet', 'frame', 'frameset', 'discard',
+    'fencedframe', 'portal', 'webview', 'plaintext', 'xmp', 'foreignobject',
+    'annotation-xml',
+  ].join('|');
+  // Decode entities first so &#106;avascript: / &colon; cannot bypass scheme scrub.
+  const text = decodeHtmlCharacterReferences(String(raw || ''));
+  // Same membership as MANUAL_EDIT_URL_ATTRS (longer-first for regex alternation).
+  const urlAttrs = MANUAL_EDIT_URL_ATTR_NAMES_LONGER_FIRST.join('|');
+  const smil = 'animate|animatemotion|animatetransform|set|animatecolor';
+  // Optional XML/SVG namespace prefix (`svg:animate`) — local-name only misses these.
+  const smilTag = `(?:[\\w.-]+:)?(?:${smil})`;
+  // Same membership as MANUAL_EDIT_CSS_URL_PRESENTATION_ATTRS (longer-first).
+  const presentationAttrs = MANUAL_EDIT_CSS_URL_PRESENTATION_ATTR_NAMES_LONGER_FIRST.join('|');
+  return text
+    .replace(new RegExp(`<(?:${dangerous})\\b[\\s\\S]*?<\\/(?:${dangerous})\\s*>`, 'gi'), '')
+    .replace(new RegExp(`<(?:${dangerous})\\b[^>]*\\/?>`, 'gi'), '')
+    // SMIL animation nodes can navigate via to/from/by/values without a DOM walk.
+    .replace(new RegExp(`<${smilTag}\\b[\\s\\S]*?<\\/${smilTag}\\s*>`, 'gi'), '')
+    .replace(new RegExp(`<${smilTag}\\b[^>]*\\/?>`, 'gi'), '')
+    // Optional namespace prefix (`svg:onerror`) — local-name `on*` only misses these.
+    .replace(/\s(?:[\w.-]+:)?on[a-z]+\s*=\s*(['"]).*?\1/gi, '')
+    .replace(/\s(?:[\w.-]+:)?on[a-z]+\s*=\s*[^\s>]+/gi, '')
+    .replace(/\ssrcdoc\s*=\s*(['"]).*?\1/gi, '')
+    // Unquoted srcdoc=… (DOM walk removes the attr; fail-closed must too).
+    .replace(/\ssrcdoc\s*=\s*[^\s>]+/gi, '')
+    // IE/HTC behavior + meta http-equiv (DOM walk removes these attrs).
+    .replace(/\sbehavior\s*=\s*(['"]).*?\1/gi, '')
+    .replace(/\sbehavior\s*=\s*[^\s>]+/gi, '')
+    .replace(/\shttp-equiv\s*=\s*(['"]).*?\1/gi, '')
+    .replace(/\shttp-equiv\s*=\s*[^\s>]+/gi, '')
+    // Inline style can carry expression()/url(javascript:) without a DOM walk.
+    .replace(/\sstyle\s*=\s*(['"])[\s\S]*?\1/gi, '')
+    .replace(/\sstyle\s*=\s*[^\s>]+/gi, '')
+    // SVG presentation attrs — same gate as DOM isSafeManualEditPresentationCssValue
+    // (normalize/escape, bare data|blob, url/var/expression, image-set/element/-moz-binding).
+    // Optional namespace prefix (`svg:fill`) — local-name only misses these.
+    .replace(
+      new RegExp(
+        `\\s(?:[\\w.-]+:)?(?:${presentationAttrs})\\s*=\\s*(['"])([\\s\\S]*?)\\1`,
+        'gi',
+      ),
+      (full, _quote: string, value: string) => (
+        isSafeManualEditPresentationCssValue(value) ? full : ''
+      ),
+    )
+    .replace(
+      new RegExp(
+        `\\s(?:[\\w.-]+:)?(?:${presentationAttrs})\\s*=\\s*([^\\s>]+)`,
+        'gi',
+      ),
+      (full, value: string) => (
+        isSafeManualEditPresentationCssValue(value) ? full : ''
+      ),
+    )
+    // Navigable URL attrs — same gate as DOM isSafeManualEditUrlAttrValue
+    // (ZWSP/soft-hyphen compact, data MIME allow-list, srcset/ping token rules).
+    // Optional namespace prefix (`foo:href`) — local-name only misses these.
+    .replace(
+      new RegExp(
+        `\\s(?:[\\w.-]+:)?(${urlAttrs})\\s*=\\s*(['"])([\\s\\S]*?)\\2`,
+        'gi',
+      ),
+      (full, attr: string, _quote: string, value: string) => (
+        isSafeManualEditUrlAttrValue(attr, value) ? full : ''
+      ),
+    )
+    .replace(
+      new RegExp(
+        `\\s(?:[\\w.-]+:)?(${urlAttrs})\\s*=\\s*([^\\s>]+)`,
+        'gi',
+      ),
+      (full, attr: string, value: string) => (
+        isSafeManualEditUrlAttrValue(attr, value) ? full : ''
+      ),
+    )
+    // Protocol-relative residual — isSafeManualEditUrl allows //cdn… media.
+    .replace(
+      new RegExp(
+        `\\s(?:[\\w.-]+:)?(?:${urlAttrs})\\s*=\\s*(['"])\\s*//[\\s\\S]*?\\1`,
+        'gi',
+      ),
+      '',
+    )
+    .replace(
+      new RegExp(
+        `\\s(?:[\\w.-]+:)?(?:${urlAttrs})\\s*=\\s*//[^\\s>]*`,
+        'gi',
+      ),
+      '',
+    )
+    // Backslash-authority on general URL attrs (DOM: isSafeManualEditUrl).
+    .replace(
+      new RegExp(
+        `\\s(?:[\\w.-]+:)?(?:${urlAttrs})\\s*=\\s*(['"])[\\s\\S]*?\\\\[\\s\\S]*?\\1`,
+        'gi',
+      ),
+      '',
+    )
+    .replace(
+      new RegExp(
+        `\\s(?:[\\w.-]+:)?(?:${urlAttrs})\\s*=\\s*[^\\s>]*\\\\[^\\s>]*`,
+        'gi',
+      ),
+      '',
+    )
+    // Form navigators + ping — absolute/proto residual (SMIL to/from/by/values
+    // already gated by isSafeManualEditUrlAttrValue above; do not treat CSS
+    // paints like `color:red` as URL schemes in failClosed).
+    .replace(
+      /\s(?:action|formaction|ping)\s*=\s*(['"])\s*(?:(?:https?|javascript|vbscript|data|blob|file|about|filesystem|chrome(?:-extension)?|moz-extension|resource|view-source|ms-appx(?:-web)?)\s*:|\/\/)[\s\S]*?\1/gi,
+      '',
+    )
+    .replace(
+      /\s(?:action|formaction|ping)\s*=\s*(?:(?:https?|javascript|vbscript|data|blob|file|about|filesystem|chrome(?:-extension)?|moz-extension|resource|view-source|ms-appx(?:-web)?)\s*:|\/\/)[^\s>]*/gi,
+      '',
+    )
+    .replace(
+      /\s(?:action|formaction|ping|to|from|by|values)\s*=\s*(['"])[\s\S]*?\\[\s\S]*?\1/gi,
+      '',
+    )
+    .replace(
+      /\s(?:action|formaction|ping|to|from|by|values)\s*=\s*[^\s>]*\\[^\s>]*/gi,
+      '',
+    )
+    // Multi-token URL lists — drop attr when ANY candidate matches the deny list
+    // (prefix-of-whole-value misses `srcset="/ok.png, javascript:…"`).
+    // Include `values` again for defense-in-depth: isSafe is primary, but
+    // comma/whitespace-smuggled schemes must not survive failClosed. CSS paints
+    // like `color:red` do not match this scheme list.
+    .replace(
+      /\s(?:srcset|imagesrcset|archive|values)\s*=\s*(['"])[\s\S]*?(?:javascript|vbscript|blob\s*:|file\s*:|data\s*:|about\s*:|filesystem\s*:|chrome(?:-extension)?\s*:|moz-extension\s*:|resource\s*:|view-source\s*:|ms-appx(?:-web)?\s*:|\/\/)[\s\S]*?\1/gi,
+      '',
+    )
+    .replace(
+      /\s(?:srcset|imagesrcset|archive|values)\s*=\s*[^\s>]*(?:javascript|vbscript|blob\s*:|file\s*:|data\s*:|about\s*:|filesystem\s*:|chrome(?:-extension)?\s*:|moz-extension\s*:|resource\s*:|view-source\s*:|ms-appx(?:-web)?\s*:|\/\/)[^\s>]*/gi,
+      '',
+    )
+    // Multi-token ping — drop when ANY whitespace token is absolute/proto/\\.
+    // (DOM: isSafeManualEditUrlAttrValue('ping') per-token relative-only.)
+    .replace(
+      /\sping\s*=\s*(['"])[\s\S]*?(?:\s(?:[a-z][a-z0-9+.-]*\s*:|\/\/)|\\)[\s\S]*?\1/gi,
+      '',
+    )
+    .replace(
+      /\sping\s*=\s*[^\s>]*(?:\s(?:[a-z][a-z0-9+.-]*\s*:|\/\/)|\\)[^\s>]*/gi,
+      '',
+    )
+    // SVG paint/resource tags — fail closed to same-document #fragment only
+    // (DOM: MANUAL_EDIT_SVG_FRAGMENT_ONLY_TAGS + isSafeManualEditSvgResourceRef).
+    // Absolute https://… / path / backslash survive generic URL-attr deny above.
+    .replace(
+      new RegExp(
+        `(<(?:${[
+          'use', 'image', 'feimage', 'mpath', 'textpath', 'pattern',
+          'lineargradient', 'radialgradient', 'filter',
+          'animate', 'animatemotion', 'animatetransform', 'animatecolor', 'set',
+          'cursor', 'font-face-uri', 'altglyph', 'glyphref', 'tref', 'color-profile',
+        ].join('|')})\\b[^>]*?)\\s(?:href|xlink:href)\\s*=\\s*(['"])(?!#[^\\\\/:'"]*)[\\s\\S]*?\\2`,
+        'gi',
+      ),
+      '$1',
+    )
+    .replace(
+      new RegExp(
+        `(<(?:${[
+          'use', 'image', 'feimage', 'mpath', 'textpath', 'pattern',
+          'lineargradient', 'radialgradient', 'filter',
+          'animate', 'animatemotion', 'animatetransform', 'animatecolor', 'set',
+          'cursor', 'font-face-uri', 'altglyph', 'glyphref', 'tref', 'color-profile',
+        ].join('|')})\\b[^>]*?)\\s(?:href|xlink:href)\\s*=\\s*(?!['"]|#)[^\\s>]*`,
+        'gi',
+      ),
+      '$1',
+    )
+    // Unsafe #fragments (`#/x`, `#foo:bar`) — DOM isSafeManualEditSvgResourceRef.
+    .replace(
+      new RegExp(
+        `(<(?:${[
+          'use', 'image', 'feimage', 'mpath', 'textpath', 'pattern',
+          'lineargradient', 'radialgradient', 'filter',
+          'animate', 'animatemotion', 'animatetransform', 'animatecolor', 'set',
+          'cursor', 'font-face-uri', 'altglyph', 'glyphref', 'tref', 'color-profile',
+        ].join('|')})\\b[^>]*?)\\s(?:href|xlink:href)\\s*=\\s*(['"])#[^'"]*[\\\\/][^'"]*\\2`,
+        'gi',
+      ),
+      '$1',
+    )
+    .replace(
+      new RegExp(
+        `(<(?:${[
+          'use', 'image', 'feimage', 'mpath', 'textpath', 'pattern',
+          'lineargradient', 'radialgradient', 'filter',
+          'animate', 'animatemotion', 'animatetransform', 'animatecolor', 'set',
+          'cursor', 'font-face-uri', 'altglyph', 'glyphref', 'tref', 'color-profile',
+        ].join('|')})\\b[^>]*?)\\s(?:href|xlink:href)\\s*=\\s*(['"])#[a-z][a-z0-9+.-]*:[^'"]*\\2`,
+        'gi',
+      ),
+      '$1',
+    )
+    // usemap — same-document #fragment only (DOM isSafeManualEditSvgResourceRef).
+    .replace(
+      /\susemap\s*=\s*(['"])(?!#[^\\/:'"]*)[\s\S]*?\1/gi,
+      '',
+    )
+    .replace(
+      /\susemap\s*=\s*(?!['"]|#)[^\s>]*/gi,
+      '',
+    )
+    .replace(
+      /\susemap\s*=\s*(['"])#[^'"]*[\\/][^'"]*\1/gi,
+      '',
+    )
+    .replace(
+      /\susemap\s*=\s*(['"])#[a-z][a-z0-9+.-]*:[^'"]*\1/gi,
+      '',
+    )
+    // Unquoted unsafe usemap fragments (`usemap=#/x`, `usemap=#foo:bar`).
+    .replace(
+      /\susemap\s*=\s*#[^\s>]*[\\/][^\s>]*/gi,
+      '',
+    )
+    .replace(
+      /\susemap\s*=\s*#[a-z][a-z0-9+.-]*:[^\s>]*/gi,
+      '',
+    )
+    // Unquoted unsafe SVG href/xlink:href fragments (parity with quoted strips).
+    .replace(
+      new RegExp(
+        `(<(?:${[
+          'use', 'image', 'feimage', 'mpath', 'textpath', 'pattern',
+          'lineargradient', 'radialgradient', 'filter',
+          'animate', 'animatemotion', 'animatetransform', 'animatecolor', 'set',
+          'cursor', 'font-face-uri', 'altglyph', 'glyphref', 'tref', 'color-profile',
+        ].join('|')})\\b[^>]*?)\\s(?:href|xlink:href)\\s*=\\s*#[^\\s>]*[\\\\/][^\\s>]*`,
+        'gi',
+      ),
+      '$1',
+    )
+    .replace(
+      new RegExp(
+        `(<(?:${[
+          'use', 'image', 'feimage', 'mpath', 'textpath', 'pattern',
+          'lineargradient', 'radialgradient', 'filter',
+          'animate', 'animatemotion', 'animatetransform', 'animatecolor', 'set',
+          'cursor', 'font-face-uri', 'altglyph', 'glyphref', 'tref', 'color-profile',
+        ].join('|')})\\b[^>]*?)\\s(?:href|xlink:href)\\s*=\\s*#[a-z][a-z0-9+.-]*:[^\\s>]*`,
+        'gi',
+      ),
+      '$1',
+    );
+}
+
+function isAllowlistedFontHeadLink(el: Element): boolean {
+  const rel = (el.getAttribute('rel') || '').toLowerCase();
+  const relTokens = rel.split(/\s+/).filter(Boolean);
+  if (
+    !relTokens.includes('stylesheet')
+    && !relTokens.includes('preconnect')
+    && !relTokens.includes('preload')
+  ) {
+    return false;
+  }
+  if (relTokens.includes('preload') && (el.getAttribute('as') || '').toLowerCase() !== 'style') {
+    return false;
+  }
+  return isAllowlistedFontStylesheetHref(el.getAttribute('href') || '');
+}
+
+/** In-place full-document scrub — shared by sanitizeFullSource and apply options. */
+export function sanitizeManualEditDocumentInPlace(doc: Document): void {
   if (doc.documentElement) sanitizeManualEditElementAttrs(doc.documentElement);
   if (doc.head) sanitizeManualEditElementAttrs(doc.head);
   if (doc.body) sanitizeManualEditElementAttrs(doc.body);
@@ -1192,15 +1844,24 @@ export function sanitizeManualEditFullSource(source: string): string {
     if (!host) return;
     for (const child of Array.from(host.children)) {
       const tag = child.tagName.toLowerCase();
-      if (MANUAL_EDIT_DANGEROUS_REPLACEMENT_TAGS.has(tag) && tag !== 'style') {
-        child.remove();
+      if (tag === 'style') {
+        if (child.hasAttribute(OFFICIAL_DECK_LOOK_STYLE_ATTR)) continue;
+        if (!scrubManualEditStyleElement(child)) child.remove();
         continue;
       }
-      if (tag === 'style') {
+      if (child.hasAttribute(OFFICIAL_DECK_MOTIF_HTML_ATTR) && (tag === 'svg' || tag === 'div' || tag === 'span')) {
+        continue;
+      }
+      if (
+        tag === 'link'
+        && isAllowlistedFontHeadLink(child)
+      ) {
+        // Body-first kits emit Google Fonts after `<body>` — keep those too.
         sanitizeManualEditElementAttrs(child);
-        const text = scrubSalvagedStyleText(child.textContent ?? '');
-        if (!text) child.remove();
-        else child.textContent = text;
+        continue;
+      }
+      if (MANUAL_EDIT_DANGEROUS_REPLACEMENT_TAGS.has(tag) && tag !== 'style') {
+        child.remove();
         continue;
       }
       sanitizeManualEditReplacementTree(child);
@@ -1208,6 +1869,15 @@ export function sanitizeManualEditFullSource(source: string): string {
   };
   scrubHostChildren(doc.head);
   scrubHostChildren(doc.body);
+}
+
+export function sanitizeManualEditFullSource(source: string): string {
+  const raw = String(source || '');
+  if (!raw.trim()) return raw;
+  const doc = parseSource(raw);
+  // Fail closed: never re-persist unsanitized HTML when the parser is unavailable.
+  if (!doc) return failClosedScrubHtmlWithoutParser(raw);
+  sanitizeManualEditDocumentInPlace(doc);
   return serializeSource(doc, raw);
 }
 
@@ -1419,7 +2089,7 @@ function queryDomSelectorWithinRoot(
  * scoped to the matching slide, strip the absolute `body > … > section:nth-of-type(N)`
  * prefix and resolve the remainder inside that slide.
  */
-export function parseAbsoluteDomSlideSelector(
+function parseAbsoluteDomSlideSelector(
   selector: string,
 ): { suffix: string; slideIndex: number } | null {
   const trimmed = String(selector || '').trim();
@@ -1705,6 +2375,8 @@ export function coerceManualEditStyleValue(name: string, value: unknown): string
   if (typeof value === 'string') {
     const trimmed = value.trim();
     if (trimmed === '') return '';
+    // Reject declaration breakout / markup before CSSOM setProperty.
+    if (/[;{}<>\n\r]/.test(trimmed)) return null;
     // Models often emit unitless length strings (`"32"`). Append px so
     // setProperty does not silently ignore invalid CSS lengths.
     if (
@@ -1737,18 +2409,78 @@ export function coerceManualEditStyleRecord(
   return out;
 }
 
+function syncSvgDimensionAttributes(el: HTMLElement, styles: Partial<ManualEditStyles>): void {
+  if (el.tagName.toLowerCase() !== 'svg') return;
+  const syncAttr = (key: 'width' | 'height') => {
+    if (!Object.prototype.hasOwnProperty.call(styles, key)) return;
+    const coerced = coerceManualEditStyleValue(key, styles[key]);
+    if (coerced == null || String(coerced).trim() === '') {
+      el.removeAttribute(key);
+      return;
+    }
+    const trimmed = String(coerced).trim();
+    const pxMatch = /^(-?\d+(?:\.\d+)?)px$/i.exec(trimmed);
+    if (pxMatch) el.setAttribute(key, pxMatch[1]);
+  };
+  syncAttr('width');
+  syncAttr('height');
+}
+
+/** Host preview + bridge preview share SVG width/height attribute sync. */
+export function syncSvgDimensionAttributesFromStyles(
+  el: HTMLElement,
+  styles: Partial<ManualEditStyles>,
+): void {
+  syncSvgDimensionAttributes(el, styles);
+}
+
+/** Mirror wrapper width/height onto a lone svg/img child (persist + tests). */
+export function syncGraphicChildDimensionsFromStyles(
+  el: HTMLElement,
+  styles: Partial<ManualEditStyles>,
+): void {
+  const tag = el.tagName.toLowerCase();
+  if (tag !== 'div' && tag !== 'section' && tag !== 'article') return;
+  if (
+    !Object.prototype.hasOwnProperty.call(styles, 'width')
+    && !Object.prototype.hasOwnProperty.call(styles, 'height')
+  ) {
+    return;
+  }
+  if (el.children.length !== 1) return;
+  const child = el.children[0] as HTMLElement;
+  const childTag = child.tagName.toLowerCase();
+  if (childTag !== 'svg' && childTag !== 'img') return;
+  const childStyles: Partial<ManualEditStyles> = { display: 'block', maxWidth: 'none', maxHeight: 'none' };
+  if (Object.prototype.hasOwnProperty.call(styles, 'width')) childStyles.width = styles.width;
+  if (Object.prototype.hasOwnProperty.call(styles, 'height')) childStyles.height = styles.height;
+  setInlineStyles(child, childStyles);
+}
+
 function setInlineStyles(el: HTMLElement, styles: Partial<ManualEditStyles>): void {
   const coerced = coerceManualEditStyleRecord(styles as Record<string, unknown>);
   for (const [name, value] of Object.entries(coerced)) {
     const cssName = camelToKebab(name);
-    if (typeof value !== 'string' || value.trim() === '') el.style.removeProperty(cssName);
+    if (typeof value !== 'string' || value.trim() === '') {
+      el.style.removeProperty(cssName);
+      continue;
+    }
     // Match live preview (`!important`) so brand-kit / artifact CSS rules
     // cannot silently win after freeze remount drops postMessage styles.
-    else el.style.setProperty(cssName, value.trim(), 'important');
+    try {
+      el.style.setProperty(cssName, value.trim(), 'important');
+    } catch {
+      // Invalid CSSOM values must not throw out of applyManualEditPatch.
+    }
   }
+  syncSvgDimensionAttributes(el, styles);
+  syncGraphicChildDimensionsFromStyles(el, styles);
 }
 
-function setAttributes(el: Element, attributes: Record<string, string>): void {
+function setAttributes(
+  el: Element,
+  attributes: Record<string, string>,
+): { attempted: number; applied: number; rejected: number } {
   // Keep identity / slide-scope attrs aligned with set-outer-html preservation.
   const protectedAttrs = new Set([
     'data-od-id',
@@ -1760,39 +2492,95 @@ function setAttributes(el: Element, attributes: Record<string, string>): void {
     'data-screen-label',
   ]);
   const tag = el.tagName.toLowerCase();
+  const tagLocal = manualEditLocalTagName(tag);
+  const entries = Object.entries(attributes);
   // Deny all attr mutation on executable / chrome hosts — including empty
   // values that would remove `type` from an inert <script type="application/json">.
-  if (isManualEditLockedHostTag(tag)) return;
-  for (const [name, value] of Object.entries(attributes)) {
+  if (isManualEditLockedHostTag(tag)) {
+    return { attempted: entries.length, applied: 0, rejected: entries.length };
+  }
+  // Two-pass: any value-safety reject aborts the whole op so mixed batches
+  // never report ok while silently dropping javascript: fill/href (441).
+  // Unsafe names (on*/style) and protected identity attrs stay soft-skips so
+  // inspector dumps can still apply the remaining safe keys.
+  type AttrDecision =
+    | { kind: 'skip' }
+    | { kind: 'reject' }
+    | { kind: 'remove'; name: string }
+    | { kind: 'set'; name: string; value: string };
+  const decisions: AttrDecision[] = [];
+  let rejected = 0;
+  for (const [name, value] of entries) {
     // Attribute names are case-insensitive in HTML; protect via lowercase.
     const lower = name.toLowerCase();
-    if (!isSafeAttributeName(name) || protectedAttrs.has(lower)) continue;
-    if (value.trim() === '') {
-      el.removeAttribute(name);
+    const local = manualEditLocalAttrName(name);
+    if (!isSafeAttributeName(name) || protectedAttrs.has(lower) || protectedAttrs.has(local)) {
+      decisions.push({ kind: 'skip' });
       continue;
     }
-    if (MANUAL_EDIT_CSS_URL_PRESENTATION_ATTRS.has(lower)) {
-      const scrubbed = scrubUnsafeCssFunctions(normalizeCssForSafetyScan(value)).trim();
-      if (!scrubbed || !isSafeManualEditPresentationCssValue(scrubbed)) continue;
-      el.setAttribute(name, scrubbed);
+    if (value.trim() === '') {
+      decisions.push({ kind: 'remove', name });
       continue;
     }
     if (
-      MANUAL_EDIT_SVG_FRAGMENT_ONLY_TAGS.has(tag)
-      && (lower === 'href' || lower === 'xlink:href')
+      MANUAL_EDIT_CSS_URL_PRESENTATION_ATTRS.has(lower)
+      || MANUAL_EDIT_CSS_URL_PRESENTATION_ATTRS.has(local)
+    ) {
+      const scrubbed = scrubUnsafeCssFunctions(normalizeCssForSafetyScan(value)).trim();
+      if (
+        !scrubbed
+        || !isSafeManualEditPresentationCssValue(scrubbed, { alreadyNormalized: true })
+      ) {
+        rejected += 1;
+        decisions.push({ kind: 'reject' });
+        continue;
+      }
+      decisions.push({ kind: 'set', name, value: scrubbed });
+      continue;
+    }
+    if (
+      (MANUAL_EDIT_SVG_FRAGMENT_ONLY_TAGS.has(tag)
+        || MANUAL_EDIT_SVG_FRAGMENT_ONLY_TAGS.has(tagLocal))
+      && (local === 'href' || lower === 'xlink:href')
       && !isSafeManualEditSvgResourceRef(value)
     ) {
+      rejected += 1;
+      decisions.push({ kind: 'reject' });
       continue;
     }
-    // Block dangerous URL schemes on navigable / embeddable attrs.
+    // Block dangerous URL schemes on navigable / embeddable attrs (local name too).
+    // Explicit srcset/imagesrcset keep namespaced local-name parity with the walk above.
+    const urlAttrKey = lower === 'xlink:href'
+      ? 'xlink:href'
+      : (MANUAL_EDIT_URL_ATTRS.has(lower) || lower === 'srcset' || lower === 'imagesrcset')
+        ? lower
+        : (MANUAL_EDIT_URL_ATTRS.has(local) || local === 'srcset' || local === 'imagesrcset')
+          ? local
+          : null;
     if (
-      (MANUAL_EDIT_URL_ATTRS.has(lower) || lower === 'srcset')
-      && !isSafeManualEditUrlAttrValue(lower, value)
+      urlAttrKey != null
+      && !isSafeManualEditUrlAttrValue(urlAttrKey, value)
     ) {
+      rejected += 1;
+      decisions.push({ kind: 'reject' });
       continue;
     }
-    el.setAttribute(name, value);
+    decisions.push({ kind: 'set', name, value });
   }
+  if (rejected > 0) {
+    return { attempted: entries.length, applied: 0, rejected };
+  }
+  let applied = 0;
+  for (const decision of decisions) {
+    if (decision.kind === 'remove') {
+      el.removeAttribute(decision.name);
+      applied += 1;
+    } else if (decision.kind === 'set') {
+      el.setAttribute(decision.name, decision.value);
+      applied += 1;
+    }
+  }
+  return { attempted: entries.length, applied, rejected: 0 };
 }
 
 function replaceOuterHtml(doc: Document, el: Element, html: string): { ok: true } | { ok: false; error: string } {
@@ -1855,6 +2643,13 @@ const NON_CONTENT_REPLACEMENT_TAGS = new Set([
   'FRAME',
   'FRAMESET',
   'DISCARD',
+  'FENCEDFRAME',
+  'PORTAL',
+  'WEBVIEW',
+  'PLAINTEXT',
+  'XMP',
+  'FOREIGNOBJECT',
+  'ANNOTATION-XML',
 ]);
 
 /**
@@ -1985,9 +2780,15 @@ function isSafeCssTokenValue(value: string): boolean {
   // Decode CSS hex escapes so `\75rl(` / `\65xpression(` cannot bypass denies.
   const normalized = normalizeCssForSafetyScan(trimmed);
   if (/\burl\s*\(/i.test(normalized)) return false;
+  // CSS Images string forms are peer URL carriers to url().
+  if (/\b(?:-webkit-)?image(?:-set)?\s*\(/i.test(normalized)) return false;
+  if (/\belement\s*\(/i.test(normalized)) return false;
   if (/\bexpression\s*\(/i.test(normalized)) return false;
   if (/-moz-binding/i.test(normalized)) return false;
   if (/\bbehavior\s*:/i.test(normalized)) return false;
+  // Bare scheme strings (not only inside url()).
+  if (containsUnsafeEmbeddedCssOrScheme(normalized, { alreadyNormalized: true })) return false;
+  if (/(?:javascript|vbscript|data):/i.test(normalized)) return false;
   return true;
 }
 
@@ -1995,7 +2796,8 @@ function isSafeCssTokenValue(value: string): boolean {
  * Normalize CSS enough to defeat comment / hex-escape @import smuggling
  * (hex-escaped "@import", comment-split import) before salvage scrubbing.
  */
-function normalizeCssForSafetyScan(css: string): string {
+/** Normalize CSS enough to defeat comment / hex-escape smuggling before scans. */
+export function normalizeCssForSafetyScan(css: string): string {
   let text = String(css || '');
   text = text.replace(/\/\*[\s\S]*?\*\//g, '');
   // CSS string line continuations: "java\<newline>script:" → "javascript:"
@@ -2014,31 +2816,130 @@ function normalizeCssForSafetyScan(css: string): string {
   return text;
 }
 
-/** Strip @import / @namespace / @font-face from salvaged style text. */
-function stripDangerousCssAtRules(css: string): string {
-  const normalized = normalizeCssForSafetyScan(css);
-  return normalized
-    .replace(/@import\b[^;]*;?/gi, '')
-    .replace(/@namespace\b[^;]*;?/gi, '')
-    .replace(/@font-face\s*\{[^}]*\}/gi, '')
-    .trim();
+/**
+ * Strip a block/semicolon at-rule with quote-aware brace matching so
+ * `suffix:"}"` cannot truncate `@counter-style` / `@font-face` / `@page`.
+ */
+function stripCssAtRule(css: string, ruleName: string): string {
+  const lower = css.toLowerCase();
+  const needle = `@${ruleName.toLowerCase()}`;
+  let out = '';
+  let cursor = 0;
+  while (cursor < css.length) {
+    const idx = lower.indexOf(needle, cursor);
+    if (idx < 0) {
+      out += css.slice(cursor);
+      break;
+    }
+    // Ident boundary after the rule name (`@page` vs `@pages`).
+    const afterName = idx + needle.length;
+    if (afterName < css.length && /[\w-]/.test(css[afterName]!)) {
+      out += css.slice(cursor, afterName);
+      cursor = afterName;
+      continue;
+    }
+    out += css.slice(cursor, idx);
+    let i = afterName;
+    while (i < css.length && /[\s\r\n\f]/.test(css[i]!)) i += 1;
+    // Prelude until `{` or `;` (for `@page` margin shorthands without block).
+    let quote: '"' | "'" | null = null;
+    while (i < css.length) {
+      const ch = css[i]!;
+      if (quote) {
+        if (ch === '\\') {
+          i += 2;
+          continue;
+        }
+        if (ch === quote) quote = null;
+        i += 1;
+        continue;
+      }
+      if (ch === '"' || ch === "'") {
+        quote = ch;
+        i += 1;
+        continue;
+      }
+      if (ch === ';') {
+        i += 1;
+        break;
+      }
+      if (ch === '{') {
+        let depth = 1;
+        i += 1;
+        while (i < css.length && depth > 0) {
+          const inner = css[i]!;
+          if (quote) {
+            if (inner === '\\') {
+              i += 2;
+              continue;
+            }
+            if (inner === quote) quote = null;
+            i += 1;
+            continue;
+          }
+          if (inner === '"' || inner === "'") {
+            quote = inner;
+            i += 1;
+            continue;
+          }
+          if (inner === '{') depth += 1;
+          else if (inner === '}') depth -= 1;
+          i += 1;
+        }
+        break;
+      }
+      i += 1;
+    }
+    cursor = i;
+  }
+  return out;
 }
 
+/** Strip @import / @namespace / @font-face / @counter-style / @page from salvaged style text. */
+function stripDangerousCssAtRules(css: string): string {
+  let text = rewriteCssImportsForPersist(normalizeCssForSafetyScan(css));
+  text = stripCssAtRule(text, 'namespace');
+  // Remote symbols / page backgrounds — same fetch class as @font-face.
+  for (const rule of ['font-face', 'counter-style', 'page'] as const) {
+    text = stripCssAtRule(text, rule);
+  }
+  text = text.trim();
+  // Fail closed if a dangerous at-rule survived a truncated strip.
+  if (/@(?:font-face|counter-style|page)\b/i.test(text)) return '';
+  return text;
+}
+
+/**
+ * CSS properties that may load remote paint/resources via url()/image().
+ * Shared by non-fragment drop and var() fail-closed scrub.
+ * Intentionally excludes background/background-image (slide imagery).
+ */
+const MANUAL_EDIT_CSS_RESOURCE_PROP_PATTERN = [
+  '(?:-webkit-)?(?:backdrop-)?filter',
+  '(?:-webkit-)?(?:clip-path|mask(?:-image)?|fill|stroke|cursor|marker(?:-(?:start|mid|end))?)',
+  '(?:-webkit-)?border-image(?:-source)?',
+  'mask-border(?:-source)?',
+  '-webkit-mask-box-image(?:-source)?',
+  '-webkit-box-reflect',
+  'shape-outside',
+  'offset-path',
+  'list-style(?:-image)?',
+].join('|');
+
+/** Hoisted so every style attr/block does not recompile the huge alternation. */
+const MANUAL_EDIT_CSS_RESOURCE_DECL_RE = new RegExp(
+  `(^|[;{])(\\s*)(?<![\\w-])(${MANUAL_EDIT_CSS_RESOURCE_PROP_PATTERN})\\s*:\\s*([^;{}]*)`,
+  'gi',
+);
+const MANUAL_EDIT_CSS_RESOURCE_VAR_RE = new RegExp(
+  `(^|[;{])(\\s*)(?<![\\w-])(${MANUAL_EDIT_CSS_RESOURCE_PROP_PATTERN})\\s*:\\s*([^;{}]*\\bvar\\s*\\([^;{}]*)`,
+  'gi',
+);
+
 /** Presentation attrs that accept CSS `url()` and need the same scrub as style. */
-const MANUAL_EDIT_CSS_URL_PRESENTATION_ATTRS = new Set([
-  'filter',
-  'fill',
-  'stroke',
-  'clip-path',
-  'clippath',
-  'mask',
-  'cursor',
-  'marker',
-  'marker-start',
-  'marker-mid',
-  'marker-end',
-  'color-profile',
-]);
+const MANUAL_EDIT_CSS_URL_PRESENTATION_ATTRS = new Set<string>(
+  MANUAL_EDIT_CSS_URL_PRESENTATION_ATTR_NAMES_LONGER_FIRST,
+);
 
 /** SVG paint-server / resource tags restricted to same-document `#fragment` refs. */
 const MANUAL_EDIT_SVG_FRAGMENT_ONLY_TAGS = new Set([
@@ -2076,6 +2977,19 @@ const MANUAL_EDIT_SMIL_NAV_ATTR_NAMES = new Set([
   'poster',
   'cite',
   'ping',
+  // Align with MANUAL_EDIT_URL_ATTRS — SMIL can retarget these via to/values.
+  'background',
+  'dynsrc',
+  'lowsrc',
+  'srcset',
+  'imagesrcset',
+  'longdesc',
+  'manifest',
+  'codebase',
+  'classid',
+  'archive',
+  'usemap',
+  'data',
 ]);
 
 /** Tags whose URL attrs must not be mutated via set-attributes (chrome/exec). */
@@ -2093,6 +3007,10 @@ const MANUAL_EDIT_NO_URL_MUTATION_TAGS = new Set([
   'applet',
   'handler',
   'discard',
+  // Modern / chrome embed hosts.
+  'fencedframe',
+  'portal',
+  'webview',
 ]);
 
 function isForbiddenCssUrlScheme(value: string): boolean {
@@ -2104,63 +3022,53 @@ function isForbiddenCssUrlScheme(value: string): boolean {
   );
 }
 
-/** Drop javascript/vbscript/data urls, image-set strings, and expression(). */
+/** Drop javascript/vbscript/data urls, image()/image-set strings, and expression(). */
 function scrubUnsafeCssFunctions(css: string): string {
   let text = String(css || '');
-  // Quoted and unquoted url(...) — compact ZWSP/Cf before scheme checks.
-  text = text.replace(/url\s*\(\s*(['"])([\s\S]*?)\1\s*\)/gi, (match, _q, inner: string) => (
-    isForbiddenCssUrlScheme(inner) ? 'url()' : match
-  ));
-  text = text.replace(/url\s*\(\s*([^)'"][^)]*)\)/gi, (match, inner: string) => (
-    isForbiddenCssUrlScheme(inner) ? 'url()' : match
-  ));
-  // CSS Images string form bypasses url(): -webkit-image-set("javascript:…" 1x)
-  text = text.replace(/-webkit-image-set\s*\([^)]*(?:javascript|vbscript|data):[^)]*\)/gi, 'none');
-  text = text.replace(/image-set\s*\([^)]*(?:javascript|vbscript|data):[^)]*\)/gi, 'none');
-  text = text.replace(/expression\s*\([^)]*\)/gi, 'initial');
+  // Quote-aware rewrites — regex `[^)]*` truncates on `)` inside SVG/data URLs.
+  text = rewriteCssUrlFunctions(text);
+  text = rewriteCssImageFunctions(text);
+  text = rewriteCssFunctionCalls(text, 'expression', 'initial');
+  // Firefox element() can sample arbitrary document regions into paint.
+  text = rewriteCssFunctionCalls(text, 'element', 'none');
   text = text.replace(/-moz-binding\s*:[^;]*/gi, '');
   // IE/HTC binding — same threat class as -moz-binding (incl. mid-rule).
   text = text.replace(/\bbehavior\s*:[^;}]*/gi, '');
   // Legacy Opera CSS link bindings (javascript: outside url()).
   text = text.replace(/-o-link(?:-source)?\s*:[^;}]*/gi, '');
-  // SVG/CSS paint & resource properties — remote url() can fetch attacker
-  // content into preview. Keep same-document #fragment only.
+  // SVG/CSS paint & resource properties — remote url()/image() can fetch
+  // attacker content into preview. Keep same-document #fragment only.
   // Declaration-level match so `filter: blur(2px) url(https://…)` is dropped,
   // and `(?<![-\w])` avoids mangling `background-filter` / `--hero-filter`.
   // Intentionally does NOT touch background/background-image (slide imagery).
-  text = dropCssDeclsWithNonFragmentUrl(
-    text,
-    '(?:-webkit-)?(?:backdrop-)?filter',
-  );
-  text = dropCssDeclsWithNonFragmentUrl(
-    text,
-    '(?:-webkit-)?(?:clip-path|mask(?:-image)?|fill|stroke|cursor|marker(?:-(?:start|mid|end))?)',
-  );
+  text = dropCssDeclsWithNonFragmentResource(text);
   // Resource props using var() cannot be proven fragment-safe (custom props
   // may stash remote url()). Keep --bg:url(https) for slide imagery intact.
-  text = text.replace(
-    /(^|[;{])(\s*)(?<![\w-])((?:-webkit-)?(?:backdrop-)?filter|(?:-webkit-)?(?:clip-path|mask(?:-image)?|fill|stroke|cursor|marker(?:-(?:start|mid|end))?))\s*:\s*([^;{}]*\bvar\s*\([^;{}]*)/gi,
-    '$1$2',
-  );
+  MANUAL_EDIT_CSS_RESOURCE_VAR_RE.lastIndex = 0;
+  text = text.replace(MANUAL_EDIT_CSS_RESOURCE_VAR_RE, '$1$2');
   return text;
 }
 
 /**
- * Drop whole CSS declarations whose value embeds a non-fragment url(...).
- * `propPattern` is inserted after a property-name boundary lookbehind.
+ * Drop whole CSS declarations whose value embeds a non-fragment url(...)/image(...).
  */
-function dropCssDeclsWithNonFragmentUrl(css: string, propPattern: string): string {
-  const re = new RegExp(
-    `(^|[;{])(\\s*)(?<![\\w-])(${propPattern})\\s*:\\s*([^;{}]*)`,
-    'gi',
+function dropCssDeclsWithNonFragmentResource(css: string): string {
+  MANUAL_EDIT_CSS_RESOURCE_DECL_RE.lastIndex = 0;
+  return String(css || '').replace(
+    MANUAL_EDIT_CSS_RESOURCE_DECL_RE,
+    (match, prefix: string, ws: string, _prop: string, value: string) => {
+      const hasUrl = /\burl\s*\(/i.test(value);
+      const hasImageFn = /\b(?:-webkit-)?image(?:-set)?\s*\(/i.test(value);
+      if (!hasUrl && !hasImageFn) return match;
+      if (
+        (hasUrl && cssDeclarationHasNonFragmentUrl(value))
+        || (hasImageFn && cssDeclarationHasNonFragmentImageFn(value))
+      ) {
+        return prefix === '{' ? `{${ws}` : prefix === ';' ? `;${ws}` : ws;
+      }
+      return match;
+    },
   );
-  return String(css || '').replace(re, (match, prefix: string, ws: string, _prop: string, value: string) => {
-    if (!/\burl\s*\(/i.test(value)) return match;
-    if (cssDeclarationHasNonFragmentUrl(value)) {
-      return prefix === '{' ? `{${ws}` : prefix === ';' ? `;${ws}` : ws;
-    }
-    return match;
-  });
 }
 
 /** True when a CSS declaration value contains url(...) that is not #fragment. */
@@ -2173,10 +3081,21 @@ function cssDeclarationHasNonFragmentUrl(value: string): boolean {
   return inners.some((inner) => !isSafeManualEditSvgResourceRef(inner));
 }
 
+/** True when image()/image-set() embeds a non-fragment resource URL. */
+function cssDeclarationHasNonFragmentImageFn(value: string): boolean {
+  const text = String(value || '');
+  if (!/\b(?:-webkit-)?image(?:-set)?\s*\(/i.test(text)) return false;
+  const inners = extractCssImageFunctionUrlInners(text);
+  // Fail closed if image( is present but nothing parseable was extracted.
+  if (inners.length === 0) return true;
+  return inners.some((inner) => !isSafeManualEditSvgResourceRef(inner));
+}
+
 function scrubSalvagedStyleText(css: string): string {
+  // stripDangerousCssAtRules already normalizes for safety scan.
   const scrubbed = scrubUnsafeCssFunctions(stripDangerousCssAtRules(css)).trim();
   // Fail closed if scheme text still survives after declaration scrubs.
-  if (containsUnsafeEmbeddedCssOrScheme(scrubbed)) return '';
+  if (containsUnsafeEmbeddedCssOrScheme(scrubbed, { alreadyNormalized: true })) return '';
   return scrubbed;
 }
 
@@ -2185,7 +3104,7 @@ function scrubUnsafeInlineStyleAttr(value: string): string {
   const normalized = normalizeCssForSafetyScan(String(value || ''));
   const scrubbed = scrubUnsafeCssFunctions(normalized).trim().replace(/^;+|;+$/g, '').trim();
   // If anything still looks like a scriptable url, drop the whole attr.
-  if (containsUnsafeEmbeddedCssOrScheme(scrubbed)) return '';
+  if (containsUnsafeEmbeddedCssOrScheme(scrubbed, { alreadyNormalized: true })) return '';
   if (/\bexpression\s*\(/i.test(scrubbed)) return '';
   if (/-moz-binding/i.test(scrubbed)) return '';
   if (/\bbehavior\s*:/i.test(scrubbed)) return '';
@@ -2205,30 +3124,189 @@ function isSafeManualEditSvgResourceRef(value: string): boolean {
 /**
  * SVG presentation attr / SMIL CSS values: plain paints OK; every url(...) must
  * be a same-document #fragment (remote SVG paint servers are blocked).
+ * Pass `alreadyNormalized` when the caller already ran `normalizeCssForSafetyScan`.
  */
-function isSafeManualEditPresentationCssValue(value: string): boolean {
-  const normalized = normalizeCssForSafetyScan(String(value || '')).trim();
+function isSafeManualEditPresentationCssValue(
+  value: string,
+  options?: { alreadyNormalized?: boolean },
+): boolean {
+  const normalized = options?.alreadyNormalized
+    ? String(value || '').trim()
+    : normalizeCssForSafetyScan(String(value || '')).trim();
   if (!normalized) return true;
-  if (containsUnsafeEmbeddedCssOrScheme(normalized)) return false;
+  // Bare scheme as the whole presentation value (`fill="data:image/svg+xml,…"`).
+  if (/^(?:javascript|vbscript|data|blob)\s*:/i.test(normalized)) return false;
+  // image-set / element / -moz-binding are never safe paint-server values.
+  if (/\b(?:-webkit-)?image-set\s*\(/i.test(normalized)) return false;
+  if (/\belement\s*\(/i.test(normalized)) return false;
+  if (/-moz-binding/i.test(normalized)) return false;
+  if (containsUnsafeEmbeddedCssOrScheme(normalized, { alreadyNormalized: true })) return false;
   // var() can hide remote url() via custom props — fail closed for paint attrs.
   if (/\bvar\s*\(/i.test(normalized)) return false;
   if (cssDeclarationHasNonFragmentUrl(normalized)) return false;
+  if (cssDeclarationHasNonFragmentImageFn(normalized)) return false;
   return true;
 }
 
-/** Quote-aware extraction of url(...) inner texts from a CSS value. */
-function extractCssUrlInners(value: string): string[] {
-  const text = String(value || '');
+/**
+ * Find the next CSS function call named `funcName` (e.g. "url", "image-set")
+ * starting at `from`. Pass `lowerHaystack` to avoid re-lowercasing large CSS
+ * on every call (hot path inside rewrite loops).
+ */
+function findNextCssFunctionCall(
+  text: string,
+  funcName: string,
+  from = 0,
+  lowerHaystack?: string,
+): { start: number; end: number; args: string } | null {
+  const lower = lowerHaystack ?? text.toLowerCase();
+  const needle = `${funcName.toLowerCase()}(`;
+  let search = from;
+  while (search < text.length) {
+    const idx = lower.indexOf(needle, search);
+    if (idx < 0) return null;
+    // Require a CSS ident boundary so `mask-image(` is not matched as `image(`.
+    if (idx > 0 && /[\w-]/.test(text[idx - 1]!)) {
+      search = idx + 1;
+      continue;
+    }
+    let i = idx + needle.length;
+    let depth = 1;
+    let quote: '"' | "'" | null = null;
+    while (i < text.length && depth > 0) {
+      const ch = text[i]!;
+      if (quote) {
+        if (ch === '\\') {
+          i += 2;
+          continue;
+        }
+        if (ch === quote) quote = null;
+        i += 1;
+        continue;
+      }
+      if (ch === '"' || ch === "'") {
+        quote = ch;
+        i += 1;
+        continue;
+      }
+      if (ch === '(') depth += 1;
+      else if (ch === ')') depth -= 1;
+      i += 1;
+    }
+    if (depth !== 0) return null;
+    return {
+      start: idx,
+      end: i,
+      args: text.slice(idx + needle.length, i - 1),
+    };
+  }
+  return null;
+}
+
+/** Earliest match among several function names (longest names should be listed first). */
+function findNextCssFunctionCallNamed(
+  text: string,
+  names: readonly string[],
+  from: number,
+  lowerHaystack: string,
+): { start: number; end: number; args: string } | null {
+  let best: { start: number; end: number; args: string } | null = null;
+  for (const name of names) {
+    const call = findNextCssFunctionCall(text, name, from, lowerHaystack);
+    if (call && (!best || call.start < best.start)) best = call;
+  }
+  return best;
+}
+
+/** Rewrite every quote-aware call of `funcName` to `replacement`. */
+function rewriteCssFunctionCalls(
+  css: string,
+  funcName: string,
+  replacement: string,
+): string {
+  const text = String(css || '');
+  const lower = text.toLowerCase();
+  let out = '';
+  let cursor = 0;
+  while (cursor < text.length) {
+    const call = findNextCssFunctionCall(text, funcName, cursor, lower);
+    if (!call) {
+      out += text.slice(cursor);
+      break;
+    }
+    out += text.slice(cursor, call.start);
+    out += replacement;
+    cursor = call.end;
+  }
+  return out;
+}
+
+/** Rewrite url(...) with forbidden schemes to url() using quote-aware scans. */
+function rewriteCssUrlFunctions(css: string): string {
+  const text = String(css || '');
+  const lower = text.toLowerCase();
+  let out = '';
+  let cursor = 0;
+  while (cursor < text.length) {
+    const call = findNextCssFunctionCall(text, 'url', cursor, lower);
+    if (!call) {
+      out += text.slice(cursor);
+      break;
+    }
+    out += text.slice(cursor, call.start);
+    const inner = call.args.trim().replace(/^(['"])([\s\S]*)\1$/, '$2');
+    out += isForbiddenCssUrlScheme(inner) ? 'url()' : text.slice(call.start, call.end);
+    cursor = call.end;
+  }
+  return out;
+}
+
+const MANUAL_EDIT_CSS_IMAGE_FN_NAMES = [
+  '-webkit-image-set',
+  'image-set',
+  'image',
+] as const;
+
+/**
+ * Rewrite image()/image-set()/-webkit-image-set() calls that embed forbidden
+ * schemes to `none`. Single left-to-right pass (avoids 3× full rescans).
+ */
+function rewriteCssImageFunctions(css: string): string {
+  const text = String(css || '');
+  const lower = text.toLowerCase();
+  let out = '';
+  let cursor = 0;
+  while (cursor < text.length) {
+    const call = findNextCssFunctionCallNamed(
+      text,
+      MANUAL_EDIT_CSS_IMAGE_FN_NAMES,
+      cursor,
+      lower,
+    );
+    if (!call) {
+      out += text.slice(cursor);
+      break;
+    }
+    out += text.slice(cursor, call.start);
+    const urls = extractUrlCandidatesFromCssFunctionArgs(call.args);
+    const unsafe = urls.some((u) => isForbiddenCssUrlScheme(u))
+      || /(?:javascript|vbscript|data):/i.test(normalizeCssForSafetyScan(call.args));
+    out += unsafe ? 'none' : text.slice(call.start, call.end);
+    cursor = call.end;
+  }
+  return out;
+}
+
+/** Pull quoted strings and url() inners from image()/image-set() args. */
+function extractUrlCandidatesFromCssFunctionArgs(args: string): string[] {
+  const text = String(args || '');
   const out: string[] = [];
+  for (const inner of extractCssUrlInners(text)) out.push(inner);
   let i = 0;
   while (i < text.length) {
-    const idx = text.slice(i).toLowerCase().indexOf('url(');
-    if (idx < 0) break;
-    i += idx + 4;
-    while (i < text.length && /\s/.test(text[i]!)) i += 1;
-    let inner = '';
-    const q = text[i];
-    if (q === '"' || q === "'") {
+    const ch = text[i]!;
+    if (ch === '"' || ch === "'") {
+      const q = ch;
       i += 1;
       let end = i;
       while (end < text.length) {
@@ -2239,16 +3317,49 @@ function extractCssUrlInners(value: string): string[] {
         if (text[end] === q) break;
         end += 1;
       }
-      inner = text.slice(i, end);
+      const inner = text.slice(i, end).trim();
+      if (inner) out.push(inner);
       i = end < text.length ? end + 1 : end;
-    } else {
-      let end = i;
-      while (end < text.length && text[end] !== ')') end += 1;
-      inner = text.slice(i, end);
-      i = end < text.length ? end + 1 : end;
+      continue;
     }
-    const trimmed = inner.trim();
-    if (trimmed) out.push(trimmed);
+    i += 1;
+  }
+  return out;
+}
+
+/** Quote-aware extraction of url(...) inner texts from a CSS value. */
+function extractCssUrlInners(value: string): string[] {
+  const text = String(value || '');
+  const lower = text.toLowerCase();
+  const out: string[] = [];
+  let cursor = 0;
+  while (cursor < text.length) {
+    const call = findNextCssFunctionCall(text, 'url', cursor, lower);
+    if (!call) break;
+    const raw = call.args.trim();
+    const unquoted = raw.replace(/^(['"])([\s\S]*)\1$/, '$2').trim();
+    if (unquoted) out.push(unquoted);
+    cursor = call.end;
+  }
+  return out;
+}
+
+/** Quoted / url() resource candidates inside image()/image-set() calls. */
+function extractCssImageFunctionUrlInners(value: string): string[] {
+  const text = String(value || '');
+  const lower = text.toLowerCase();
+  const out: string[] = [];
+  let cursor = 0;
+  while (cursor < text.length) {
+    const call = findNextCssFunctionCallNamed(
+      text,
+      MANUAL_EDIT_CSS_IMAGE_FN_NAMES,
+      cursor,
+      lower,
+    );
+    if (!call) break;
+    out.push(...extractUrlCandidatesFromCssFunctionArgs(call.args));
+    cursor = call.end;
   }
   return out;
 }
@@ -2287,10 +3398,12 @@ function camelToKebab(value: string): string {
 function isSafeAttributeName(value: string): boolean {
   if (!/^[a-zA-Z_:][a-zA-Z0-9_:.-]*$/.test(value)) return false;
   const lower = value.toLowerCase();
-  // Block event handlers and high-risk markup attrs from model set-attributes.
-  if (lower.startsWith('on')) return false;
+  const local = manualEditLocalAttrName(value);
+  // Block event handlers (incl. `svg:onerror`) and high-risk markup attrs.
+  if (local.startsWith('on')) return false;
   if (
     lower === 'style'
+    || local === 'style'
     || lower === 'srcdoc'
     || lower === 'behavior'
     || lower === 'http-equiv'
@@ -2301,37 +3414,50 @@ function isSafeAttributeName(value: string): boolean {
 }
 
 /** Attrs whose values are treated as URLs for scheme deny-list checks. */
-const MANUAL_EDIT_URL_ATTRS = new Set([
-  'href',
-  'src',
-  'xlink:href',
-  'action',
-  'formaction',
-  'poster',
-  'cite',
-  'ping',
-  'background',
-  'dynsrc',
-  'lowsrc',
-  'srcset',
-  'imagesrcset',
-  'longdesc',
-  'manifest',
-  'codebase',
-  'classid',
-  'archive',
-  'usemap',
-  'data',
-  // SVG SMIL can assign href via to/from/by/values without on* handlers.
-  'to',
-  'from',
-  'by',
-  'values',
-]);
+const MANUAL_EDIT_URL_ATTRS = new Set<string>(MANUAL_EDIT_URL_ATTR_NAMES_LONGER_FIRST);
 
 const SAFE_MANUAL_EDIT_DATA_IMAGE_RE = /^data:image\/(png|jpe?g|gif|webp|avif|bmp)(;|,)/i;
 
-/** Decode numeric/hex HTML character references used to smuggle schemes. */
+/**
+ * Named entities commonly used to smuggle URL schemes past allowlists.
+ * Soft hyphen / Cf / Zs entities decode then collapse in compact().
+ */
+const MANUAL_EDIT_NAMED_HTML_ENTITIES: Record<string, string> = {
+  colon: ':',
+  tab: '\t',
+  newline: '\n',
+  amp: '&',
+  quot: '"',
+  apos: "'",
+  lt: '<',
+  gt: '>',
+  // Soft hyphen / format / zero-width — strip via compact after decode.
+  shy: '\u00ad',
+  wj: '\u2060',
+  zerowidthspace: '\u200b',
+  lrm: '\u200e',
+  rlm: '\u200f',
+  zwj: '\u200d',
+  zwnj: '\u200c',
+  // HTML5 space entities (collapse to whitespace, then stripped).
+  thinsp: ' ',
+  nbsp: ' ',
+  ensp: ' ',
+  emsp: ' ',
+  emsp13: ' ',
+  emsp14: ' ',
+  numsp: ' ',
+  puncsp: ' ',
+  hairsp: ' ',
+  thickspace: ' ',
+  mediumspace: ' ',
+  nnbsp: ' ',
+  negativemediumspace: '',
+  negativethinspace: '',
+  negativeverythinspace: '',
+};
+
+/** Decode numeric/hex/named HTML character references used to smuggle schemes. */
 function decodeHtmlCharacterReferences(value: string): string {
   let out = String(value || '');
   for (let i = 0; i < 3; i += 1) {
@@ -2353,6 +3479,11 @@ function decodeHtmlCharacterReferences(value: string): string {
         } catch {
           return '';
         }
+      })
+      .replace(/&([a-zA-Z][a-zA-Z0-9]+);?/g, (_match, name: string) => {
+        const mapped = MANUAL_EDIT_NAMED_HTML_ENTITIES[name.toLowerCase()];
+        // Fail closed: unknown named entities are scheme-smuggling bait.
+        return mapped !== undefined ? mapped : '';
       });
     if (next === out) break;
     out = next;
@@ -2360,13 +3491,17 @@ function decodeHtmlCharacterReferences(value: string): string {
   return out;
 }
 
-/** Compact URL text for scheme checks — strip controls, ZWSP/Cf, and BOM. */
+/**
+ * Compact URL text for scheme checks — strip controls, soft hyphen, ZWSP/Cf,
+ * and BOM. Uses an explicit smuggling-char class (not `\p{Cf}`) so CSS/URL
+ * hot paths avoid unicode-property regex cost on multi-KB style blocks.
+ */
 function compactManualEditUrlForSchemeCheck(value: string): string {
   return String(value || '')
-    .replace(/[\s\u0000-\u001f\u007f\ufeff]+/g, '')
-    // ZWSP/ZWNJ/ZWJ/word-joiner and other format chars smuggle `java\u200bscript:`.
-    .replace(/[\u200b-\u200d\u2060\ufeff]/g, '')
-    .replace(/\p{Cf}/gu, '')
+    // Controls + common Zs whitespace (incl. NBSP).
+    .replace(/[\s\u0000-\u001f\u007f\u00a0\ufeff]+/g, '')
+    // Soft hyphen, ZWSP/ZWNJ/ZWJ, LRM/RLM, word-joiner, bidi isolates/overrides.
+    .replace(/[\u00ad\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u206f\ufeff]/g, '')
     .toLowerCase();
 }
 
@@ -2377,6 +3512,8 @@ export function isSafeManualEditUrl(value: string): boolean {
   // Decode &#106;avascript: / javascript&#58; before scheme checks.
   const decoded = decodeHtmlCharacterReferences(trimmed);
   const compact = compactManualEditUrlForSchemeCheck(decoded);
+  // UNC / backslash-authority phishing (`\\evil.example`) — align relative-only.
+  if (compact.includes('\\')) return false;
   if (compact.startsWith('javascript:')) return false;
   if (compact.startsWith('vbscript:')) return false;
   // Local / opaque navigators — not needed for deck media and leak context.
@@ -2388,6 +3525,10 @@ export function isSafeManualEditUrl(value: string): boolean {
   if (compact.startsWith('chrome-extension:')) return false;
   if (compact.startsWith('moz-extension:')) return false;
   if (compact.startsWith('resource:')) return false;
+  // Browser / OS navigators that are not deck media.
+  if (compact.startsWith('view-source:')) return false;
+  if (compact.startsWith('ms-appx:')) return false;
+  if (compact.startsWith('ms-appx-web:')) return false;
   if (compact.startsWith('data:')) {
     if (compact.startsWith('data:text/html')) return false;
     if (compact.startsWith('data:image/svg+xml')) return false;
@@ -2400,15 +3541,34 @@ export function isSafeManualEditUrl(value: string): boolean {
   return true;
 }
 
-/** True when a SMIL/CSS value embeds a scriptable scheme anywhere (not only as prefix). */
-function containsUnsafeEmbeddedCssOrScheme(value: string): boolean {
-  const normalized = compactManualEditUrlForSchemeCheck(
-    normalizeCssForSafetyScan(decodeHtmlCharacterReferences(value)),
-  );
-  if (normalized.includes('javascript:')) return true;
-  if (normalized.includes('vbscript:')) return true;
-  if (/\bexpression\(/.test(normalized)) return true;
-  if (/url\((?:javascript|vbscript|data)\b/.test(normalized)) return true;
+/**
+ * True when a SMIL/CSS value embeds a scriptable scheme in a URL/value position.
+ * Avoids false positives on selectors like `.javascript:hover` or path segments
+ * such as `/assets/javascript:docs.png` after url() rewrite.
+ */
+function containsUnsafeEmbeddedCssOrScheme(
+  value: string,
+  options?: { alreadyNormalized?: boolean },
+): boolean {
+  // `alreadyNormalized` skips CSS escape/comment rewrite only. HTML entities
+  // (`&#106;avascript:`) must still decode before scheme scans.
+  const scanned = options?.alreadyNormalized
+    ? decodeHtmlCharacterReferences(String(value || ''))
+    : normalizeCssForSafetyScan(decodeHtmlCharacterReferences(value));
+  if (/\bexpression\s*\(/i.test(scanned)) return true;
+  if (/\belement\s*\(/i.test(scanned)) return true;
+  for (const inner of extractCssUrlInners(scanned)) {
+    if (isForbiddenCssUrlScheme(inner)) return true;
+  }
+  for (const inner of extractCssImageFunctionUrlInners(scanned)) {
+    if (isForbiddenCssUrlScheme(inner)) return true;
+  }
+  // Bare scheme as a declaration value (`content:javascript:…`), not a selector.
+  if (/(?:^|[;{])\s*[^:{}]+?:\s*(?:javascript|vbscript|data):/i.test(scanned)) {
+    return true;
+  }
+  // Quoted string values carrying schemes outside url()/image().
+  if (/['"](?:javascript|vbscript|data):/i.test(scanned)) return true;
   return false;
 }
 
@@ -2421,8 +3581,38 @@ export function isSafeManualEditRelativeOrFragmentUrl(value: string): boolean {
   if (!trimmed) return true;
   if (!isSafeManualEditUrl(trimmed)) return false;
   const compact = compactManualEditUrlForSchemeCheck(decodeHtmlCharacterReferences(trimmed));
+  // Reject scheme / protocol-relative / backslash-authority phishing
+  // (`\\evil.example` / `\evil.example` normalize toward remote hosts in
+  // legacy IE / UNC-style URL handling).
+  if (compact.includes('\\')) return false;
   if (/^(?:[a-z][a-z0-9+.-]*:|\/\/)/i.test(compact)) return false;
   return true;
+}
+
+/**
+ * SMIL attributeName=to/from/by/values — per-attr token rules.
+ * href/xlink:href/usemap are #fragment-only; ping/archive/srcset split tokens.
+ */
+function isSafeManualEditSmilNavValue(attr: string, value: string): boolean {
+  const lower = String(attr || '').toLowerCase();
+  const trimmed = String(value || '').trim();
+  if (!trimmed) return true;
+  if (lower === 'usemap' || lower === 'href' || lower === 'xlink:href') {
+    return isSafeManualEditSvgResourceRef(trimmed);
+  }
+  if (lower === 'ping' || lower === 'archive') {
+    return trimmed
+      .split(/\s+/)
+      .filter(Boolean)
+      .every((part) => isSafeManualEditRelativeOrFragmentUrl(part));
+  }
+  if (lower === 'srcset' || lower === 'imagesrcset') {
+    return trimmed.split(',').every((part) => {
+      const url = part.trim().split(/\s+/)[0] || '';
+      return !url || isSafeManualEditRelativeOrFragmentUrl(url);
+    });
+  }
+  return isSafeManualEditRelativeOrFragmentUrl(trimmed);
 }
 
 /** Validate URL attr values; `srcset`/`values` check each candidate URL. */
@@ -2446,6 +3636,10 @@ export function isSafeManualEditUrlAttrValue(attr: string, value: string): boole
   if (lower === 'action' || lower === 'formaction') {
     return isSafeManualEditRelativeOrFragmentUrl(value);
   }
+  // HTML usemap must reference a same-document map name (`#name`).
+  if (lower === 'usemap') {
+    return isSafeManualEditSvgResourceRef(value);
+  }
   // `ping` is a whitespace-separated URL list — validate each token.
   if (lower === 'ping') {
     return String(value || '')
@@ -2456,12 +3650,37 @@ export function isSafeManualEditUrlAttrValue(attr: string, value: string): boole
   }
   if (lower === 'to' || lower === 'from' || lower === 'by' || lower === 'values') {
     // SMIL may carry bare URLs or CSS (`attributeName=style`) — reject either shape.
+    // Absolute / protocol-relative / backslash tokens are relative/fragment only
+    // (https://… retargets blocked). CSS paints (`color:red`, `10`) keep the
+    // general isSafeManualEditUrl gate — do not treat `color:` as a URL scheme.
+    // Also reject mid-token smuggling (`#ok, javascript:…`) that prefix-only
+    // isSafeManualEditUrl misses after `;`-split.
     const pieces = lower === 'values' ? String(value || '').split(';') : [value];
     for (const part of pieces) {
       const piece = part.trim();
       if (!piece) continue;
       if (containsUnsafeEmbeddedCssOrScheme(piece)) return false;
-      if (!isSafeManualEditUrl(piece)) return false;
+      const compact = compactManualEditUrlForSchemeCheck(
+        decodeHtmlCharacterReferences(piece),
+      );
+      if (
+        /(?:javascript|vbscript|blob|file|about|filesystem|chrome(?:-extension)?|moz-extension|resource|view-source|ms-appx(?:-web)?):/i
+          .test(compact)
+        || /data:(?:text\/html|image\/svg\+xml)/i.test(compact)
+      ) {
+        return false;
+      }
+      const tokens = piece.split(/[\s,]+/).map((token) => token.trim()).filter(Boolean);
+      const candidates = tokens.length > 0 ? tokens : [piece];
+      for (const token of candidates) {
+        const absoluteOrProto = /^(?:[a-z][a-z0-9+.-]*:\/\/|\/\/)/i.test(token)
+          || token.includes('\\');
+        if (absoluteOrProto) {
+          if (!isSafeManualEditRelativeOrFragmentUrl(token)) return false;
+        } else if (!isSafeManualEditUrl(token)) {
+          return false;
+        }
+      }
     }
     return true;
   }

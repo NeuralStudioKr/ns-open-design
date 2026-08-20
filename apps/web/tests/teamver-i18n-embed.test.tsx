@@ -8,9 +8,9 @@ import { I18nProvider, useT } from "../src/i18n";
 vi.mock("../src/teamver/branding/TeamverBrandingProvider", () => ({
   useTeamverBranding: () => ({
     enabled: true,
-    title: "teamver Design",
+    title: "teamver Slide",
     subtitle: "AI로 슬라이드·디자인 초안까지",
-    heroTitle: "teamver Design",
+    heroTitle: "teamver Slide",
     heroSubtitle: "Create with AI",
   }),
 }));
@@ -22,8 +22,8 @@ describe("I18nProvider teamver embed", () => {
     });
 
     expect(result.current("dsManager.createBody")).toBe(
-      "teamver Design에 브랜드, 제품, 코드, 에셋, 디자인 레퍼런스를 학습시키세요.",
+      "teamver Slide에 브랜드, 제품, 코드, 에셋, 디자인 레퍼런스를 학습시키세요.",
     );
-    expect(result.current("app.brand")).toBe("teamver Design");
+    expect(result.current("app.brand")).toBe("teamver Slide");
   });
 });

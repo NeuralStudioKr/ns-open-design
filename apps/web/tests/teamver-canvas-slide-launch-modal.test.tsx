@@ -300,6 +300,36 @@ describe("TeamverCanvasSlideLaunchModal", () => {
     expect(screen.getByTestId("teamver-canvas-slide-launch-confirm")).toBeTruthy();
   });
 
+  it("reserves the template wizard step with a skeleton while templates load", () => {
+    render(
+      <TeamverCanvasSlideLaunchModal
+        open
+        source={{ kind: "drive", asset: { assetId: "AST-loading", filename: "canvas.html" } }}
+        templateOptions={[{ id: "example-simple-deck", title: "기본 슬라이드 템플릿" }]}
+        templatesLoading
+        selectedTemplateId="example-simple-deck"
+        onTemplateChange={vi.fn()}
+        onConfirm={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId("teamver-canvas-slide-launch-modal").getAttribute("data-wizard-steps")).toBe(
+      "3",
+    );
+    expect(screen.getByTestId("teamver-canvas-slide-launch-modal").className).toContain(
+      "teamver-canvas-slide-launch-modal--wide",
+    );
+    expect(screen.getByTestId("teamver-canvas-slide-launch-stepper-template")).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId("teamver-canvas-slide-launch-footer-next"));
+    fireEvent.click(screen.getByTestId("teamver-canvas-slide-launch-footer-next"));
+    expect(screen.getByTestId("teamver-canvas-slide-launch-template-skeleton")).toBeTruthy();
+    expect(
+      (screen.getByTestId("teamver-canvas-slide-launch-confirm") as HTMLButtonElement).disabled,
+    ).toBe(true);
+  });
+
   it("uses wide wizard on multi-template launches (studio layout removed)", () => {
     render(
       <TeamverCanvasSlideLaunchModal

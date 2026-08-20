@@ -32,6 +32,18 @@ describe('deckPreviewFit', () => {
     expect(postMessage).toHaveBeenNthCalledWith(2, { type: 'od:deck-nudge-fit' }, '*');
   });
 
+  it('invokes onAfterNudge after od:deck-nudge-fit (487)', () => {
+    const postMessage = vi.fn();
+    const onAfterNudge = vi.fn();
+    const target = {
+      contentWindow: { postMessage } as unknown as Window,
+      getBoundingClientRect: () => ({ width: 640, height: 480 } as DOMRect),
+    };
+    nudgeDeckPreviewFit(target, 1, { onAfterNudge });
+    expect(postMessage).toHaveBeenCalledWith({ type: 'od:deck-nudge-fit' }, '*');
+    expect(onAfterNudge).toHaveBeenCalledTimes(1);
+  });
+
   it('skips host viewport post when the iframe has no measurable box', () => {
     const postMessage = vi.fn();
     expect(
@@ -63,8 +75,34 @@ describe('deckPreviewFit', () => {
       '*',
     );
     vi.advanceTimersByTime(200);
-    // Already posted — further delays must not spam.
-    expect(postMessage).toHaveBeenCalledTimes(1);
+    // Keep posting across the window so a remount after the first success still
+    // receives host viewport (black letterbox until refresh).
+    expect(postMessage).toHaveBeenCalledTimes(2);
+    cancel();
+  });
+
+  it('re-posts to a remounted iframe after an early successful post', () => {
+    const postMessageA = vi.fn();
+    const postMessageB = vi.fn();
+    const frameA = {
+      contentWindow: { postMessage: postMessageA } as unknown as Window,
+      getBoundingClientRect: () => ({ width: 640, height: 480 } as DOMRect),
+    };
+    const frameB = {
+      contentWindow: { postMessage: postMessageB } as unknown as Window,
+      getBoundingClientRect: () => ({ width: 800, height: 600 } as DOMRect),
+    };
+    let current: typeof frameA | typeof frameB = frameA;
+    const cancel = schedulePostDeckHostViewportUntilSized(() => current, 1, [0, 50, 100]);
+    vi.advanceTimersByTime(0);
+    expect(postMessageA).toHaveBeenCalledTimes(1);
+    current = frameB;
+    vi.advanceTimersByTime(50);
+    expect(postMessageB).toHaveBeenCalledTimes(1);
+    expect(postMessageB).toHaveBeenCalledWith(
+      { type: 'od:deck-host-viewport', width: 800, height: 600, scale: 1, layoutFit: false },
+      '*',
+    );
     cancel();
   });
 

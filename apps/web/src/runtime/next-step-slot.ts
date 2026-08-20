@@ -2,6 +2,7 @@ import type { ChatMessage, ProjectFile } from '../types';
 import { isEmbedSupportingProjectFile } from '../teamver/branding/embedDeliverableFilePolicy';
 import { isActiveRunStatus } from '../teamver/backgroundChatRecovery';
 import { isAutoContinueIncompleteOutputPrompt } from './resume';
+import { isSlideCountTopUpPrompt } from '../teamver/slideCountTopUp';
 
 export function isPreviewableHtml(file: ProjectFile): boolean {
   return file.kind === 'html' || /\.html?$/i.test(file.name);
@@ -53,7 +54,7 @@ export function hasUserMessagesAfterAssistant(
   for (let index = assistantIndex + 1; index < messages.length; index += 1) {
     const message = messages[index];
     if (message?.role !== 'user') continue;
-    if (isAutoContinueIncompleteOutputPrompt(message.content)) continue;
+    if (isAutoContinueIncompleteOutputPrompt(message.content) || isSlideCountTopUpPrompt(message.content)) continue;
     return true;
   }
   return false;
@@ -94,7 +95,7 @@ export function hasBlockingFollowUpAfterAssistant(
   for (let index = assistantIndex + 1; index < messages.length; index += 1) {
     const message = messages[index];
     if (message?.role !== 'user') continue;
-    if (isAutoContinueIncompleteOutputPrompt(message.content)) continue;
+    if (isAutoContinueIncompleteOutputPrompt(message.content) || isSlideCountTopUpPrompt(message.content)) continue;
 
     let reply: ChatMessage | null = null;
     for (let j = index + 1; j < messages.length; j += 1) {

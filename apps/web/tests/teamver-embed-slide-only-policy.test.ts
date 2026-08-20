@@ -27,10 +27,10 @@ describe('embed slide-only plugin policy', () => {
     ).toEqual(['deck-1']);
   });
 
-  it('defaults slide-only Community browsing to the deck facet', () => {
+  it('defaults slide-only Community browsing to Creative decks', () => {
     expect(SLIDE_ONLY_COMMUNITY_FACET_SELECTION).toEqual({
       category: 'deck',
-      subcategory: null,
+      subcategory: 'creative-decks',
     });
   });
 

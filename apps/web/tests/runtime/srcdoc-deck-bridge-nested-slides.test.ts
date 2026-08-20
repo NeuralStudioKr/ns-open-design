@@ -325,17 +325,24 @@ describe('deck bridge — nested slide markup (#1530)', () => {
       `<section class="slide" style="min-height:100vh;padding:40px">Slide ${i + 1}</section>`,
     ).join('');
     const { win, parentPostMessage } = setupDeckBridge(slides);
-    await new Promise<void>((resolve) => win.setTimeout(resolve, 350));
+    Object.defineProperty(win.document.documentElement, 'clientWidth', { configurable: true, value: 800 });
+    Object.defineProperty(win.document.documentElement, 'clientHeight', { configurable: true, value: 600 });
+    win.dispatchEvent(new win.MessageEvent('message', {
+      data: { type: 'od:deck-host-viewport', width: 800, height: 600, scale: 1, layoutFit: false },
+    }));
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 450));
 
-    const slideEls = Array.from(win.document.querySelectorAll('.slide')) as HTMLElement[];
+    const slideEls = Array.from(win.document.querySelectorAll('#od-stacked-deck-stage > .slide, body > .slide')) as HTMLElement[];
+    expect(slideEls.length).toBe(3);
     expect(slideEls.filter((el) => el.style.display !== 'none').length).toBe(1);
     expect(lastSlideState(parentPostMessage)).toMatchObject({ active: 0, count: 3 });
 
     postSlide(win, 'next');
-    await new Promise<void>((resolve) => win.setTimeout(resolve, 350));
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 450));
 
-    expect(slideEls[1]?.style.display).not.toBe('none');
-    expect(slideEls[0]?.style.display).toBe('none');
+    const after = Array.from(win.document.querySelectorAll('#od-stacked-deck-stage > .slide, body > .slide')) as HTMLElement[];
+    expect(after[1]?.style.display).not.toBe('none');
+    expect(after[0]?.style.display).toBe('none');
     expect(lastSlideState(parentPostMessage)).toMatchObject({ active: 1, count: 3 });
   });
 
@@ -349,7 +356,10 @@ describe('deck bridge — nested slide markup (#1530)', () => {
     const { win } = setupDeckBridge(bodyHtml);
     Object.defineProperty(win.document.documentElement, 'clientWidth', { configurable: true, value: 960 });
     Object.defineProperty(win.document.documentElement, 'clientHeight', { configurable: true, value: 540 });
-    await new Promise<void>((resolve) => win.setTimeout(resolve, 50));
+    win.dispatchEvent(new win.MessageEvent('message', {
+      data: { type: 'od:deck-host-viewport', width: 960, height: 540, scale: 1, layoutFit: false },
+    }));
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 450));
 
     const stage = win.document.getElementById('od-stacked-deck-stage');
     expect(stage).toBeTruthy();

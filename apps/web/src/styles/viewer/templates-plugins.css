@@ -1442,9 +1442,11 @@
   font-size: 11.5px;
   cursor: pointer;
 }
-.plugin-details-modal__chip-btn:hover {
+/* Explicit fill — global `button:hover` → `--bg-subtle` can crush contrast. */
+button.plugin-details-modal__chip-btn:hover:not(:disabled) {
   color: var(--accent);
   border-color: var(--accent);
+  background: var(--accent-tint);
 }
 .plugin-details-modal__query {
   margin: 0;

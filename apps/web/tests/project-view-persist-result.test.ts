@@ -29,4 +29,17 @@ describe('shouldFailRunForArtifactPersistResult', () => {
       }),
     ).toBe(true);
   });
+
+  it('does not fail skipped-noop (avoids auto-continue churn)', () => {
+    expect(
+      shouldFailRunForArtifactPersistResult(
+        {
+          kind: 'skipped-noop',
+          fileName: 'deck.html',
+          reason: 'scoped comment edit did not change the deck on disk',
+        },
+        { scopedCommentEdit: true },
+      ),
+    ).toBe(false);
+  });
 });

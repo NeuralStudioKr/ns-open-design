@@ -56,15 +56,13 @@ function emitByokBillingDropMarker(
   err: unknown,
 ): void {
   try {
+    // Always-on ops marker. Keep metric/stage/error only — no workspace/run ids.
     console.warn(
       JSON.stringify({
         metric: "teamver_usage_5xx",
         stage,
         ts: Date.now(),
-        workspaceId: input.workspaceId,
-        runId: input.runId,
         runStatus: input.runStatus,
-        modelName: input.modelName,
         error: err instanceof Error ? err.message : String(err),
       }),
     );

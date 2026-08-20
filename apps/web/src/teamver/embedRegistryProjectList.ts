@@ -22,6 +22,8 @@ import { PROJECT_LIST_PAGE_SIZE } from "./projectListLimits";
 import type { ProjectsListPageResult } from "../state/projects";
 import { isTeamverProjectDeletedTombstoned } from "./deletedProjectTombstones";
 import { resolveActiveTeamverWorkspaceId } from "./activeTeamverWorkspace";
+import { parseTeamverTimestampMs } from "./teamverTimestamp";
+import { withTeamverSlideListKind } from "./projectListCardCategory";
 
 type ProjectListCursor = { updatedAt: number; id: string };
 
@@ -44,12 +46,7 @@ export function resolveProjectDisplayName(
 }
 
 function parseRegistryTimestamp(raw: unknown, fallback = 0): number {
-  if (typeof raw === "number" && Number.isFinite(raw)) return raw;
-  if (typeof raw === "string" && raw.trim()) {
-    const parsed = Date.parse(raw);
-    if (Number.isFinite(parsed)) return parsed;
-  }
-  return fallback;
+  return parseTeamverTimestampMs(raw, fallback);
 }
 
 function normalizeRegistryDisplayStatus(raw: unknown): Project["status"] | undefined {
@@ -114,6 +111,7 @@ export function mapRegistryRowToProject(row: TeamverRegisteredProject): Project 
     createdAt: safeCreatedAt,
     updatedAt: safeUpdatedAt,
     status: normalizeRegistryDisplayStatus(row.status) ?? { value: "not_started" },
+    metadata: withTeamverSlideListKind(undefined),
   });
 }
 
@@ -138,9 +136,11 @@ export function mergeDaemonFieldsOntoRegistryProjects(
       skillId: daemon.skillId ?? registry.skillId,
       designSystemId: daemon.designSystemId ?? registry.designSystemId,
       status: mergeProjectDisplayStatus(registry.status, daemon.status),
-      metadata: daemon.metadata ?? registry.metadata,
+      metadata: withTeamverSlideListKind(daemon.metadata ?? registry.metadata),
       createdAt: registry.createdAt || daemon.createdAt,
-      updatedAt: Math.max(registry.updatedAt, daemon.updatedAt),
+      // Daemon clock is last content edit. Registry can move on access /
+      // idempotent re-register and must not win (Home 「방금 전」 on open).
+      updatedAt: daemon.updatedAt || registry.updatedAt || 0,
     });
   });
 }

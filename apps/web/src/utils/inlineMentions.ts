@@ -30,13 +30,24 @@ export function inlineMentionToken(label: string): string {
   return label.startsWith('@') ? label : `@${label}`;
 }
 
+/** Hangul / macOS paths often arrive NFD; mention tokens are NFC-normalized. */
+export function normalizeInlineMentionText(text: string): string {
+  try {
+    return String(text ?? '').normalize('NFC');
+  } catch {
+    return String(text ?? '');
+  }
+}
+
 export function buildInlineMentionParts(
   text: string,
   entities: InlineMentionEntity[],
   options: { highlightUnknown?: boolean } = {},
 ): InlineMentionPart[] | null {
   if (!text) return null;
-  if (!text.includes('@')) return null;
+  // NFC so `@msh9…-금붕어.webp` (NFD from macOS) matches recovered NFC entities.
+  const source = normalizeInlineMentionText(text);
+  if (!source.includes('@')) return null;
   const highlightUnknown = options.highlightUnknown ?? true;
   const known = getMentionTokenIndex(entities);
   const parts: InlineMentionPart[] = [];
@@ -44,16 +55,16 @@ export function buildInlineMentionParts(
   let copiedUntil = 0;
   let found = false;
 
-  while (scanStart < text.length) {
-    const start = text.indexOf('@', scanStart);
+  while (scanStart < source.length) {
+    const start = source.indexOf('@', scanStart);
     if (start === -1) break;
-    if (!isMentionBoundary(text, start)) {
+    if (!isMentionBoundary(source, start)) {
       scanStart = start + 1;
       continue;
     }
 
-    const knownMatch = findKnownMentionAt(text, known, start);
-    const unknownMatch = highlightUnknown ? findUnknownMentionAt(text, start) : null;
+    const knownMatch = findKnownMentionAt(source, known, start);
+    const unknownMatch = highlightUnknown ? findUnknownMentionAt(source, start) : null;
     const match =
       knownMatch && (!unknownMatch || knownMatch.token.length >= unknownMatch.token.length)
         ? knownMatch
@@ -65,7 +76,7 @@ export function buildInlineMentionParts(
     }
 
     if (match.start > copiedUntil) {
-      parts.push({ kind: 'text', text: text.slice(copiedUntil, match.start) });
+      parts.push({ kind: 'text', text: source.slice(copiedUntil, match.start) });
     }
     parts.push({
       kind: 'mention',
@@ -77,8 +88,8 @@ export function buildInlineMentionParts(
     scanStart = copiedUntil;
   }
 
-  if (copiedUntil < text.length) {
-    parts.push({ kind: 'text', text: text.slice(copiedUntil) });
+  if (copiedUntil < source.length) {
+    parts.push({ kind: 'text', text: source.slice(copiedUntil) });
   }
 
   return found ? coalesceTextParts(parts) : null;
@@ -92,19 +103,21 @@ interface MentionTrieNode {
 
 interface MentionTokenIndex {
   root: MentionTrieNode;
+  /** Invalidate WeakMap entries when callers mutate the entities array in place. */
+  entityCount: number;
 }
 
 const mentionTokenIndexCache = new WeakMap<InlineMentionEntity[], MentionTokenIndex>();
 
 function getMentionTokenIndex(entities: InlineMentionEntity[]): MentionTokenIndex {
   const cached = mentionTokenIndexCache.get(entities);
-  if (cached) return cached;
+  if (cached && cached.entityCount === entities.length) return cached;
 
   const root: MentionTrieNode = { children: new Map() };
   const seen = new Set<string>();
   const normalized = entities
     .map((entity) => {
-      const token = entity.token ?? inlineMentionToken(entity.label);
+      const token = normalizeInlineMentionText(entity.token ?? inlineMentionToken(entity.label));
       return {
         id: entity.id,
         kind: entity.kind,
@@ -140,7 +153,7 @@ function getMentionTokenIndex(entities: InlineMentionEntity[]): MentionTokenInde
     }
   }
 
-  const index = { root };
+  const index = { root, entityCount: entities.length };
   mentionTokenIndexCache.set(entities, index);
   return index;
 }
@@ -260,18 +273,19 @@ function isMentionSubmitRightBoundary(text: string, end: number): boolean {
  * `isMentionSubmitRightBoundary`.
  */
 export function mentionTokenPresent(text: string, label: string): boolean {
-  const token = inlineMentionToken(label);
+  const source = normalizeInlineMentionText(text);
+  const token = normalizeInlineMentionText(inlineMentionToken(label));
   let from = 0;
-  let start = text.indexOf(token, from);
+  let start = source.indexOf(token, from);
   while (start !== -1) {
     if (
-      isMentionBoundary(text, start) &&
-      isMentionSubmitRightBoundary(text, start + token.length)
+      isMentionBoundary(source, start) &&
+      isMentionSubmitRightBoundary(source, start + token.length)
     ) {
       return true;
     }
     from = start + 1;
-    start = text.indexOf(token, from);
+    start = source.indexOf(token, from);
   }
   return false;
 }

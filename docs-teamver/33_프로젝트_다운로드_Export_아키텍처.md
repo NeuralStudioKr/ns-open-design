@@ -7,9 +7,9 @@
 
 ## 0. 한 줄 결론 (헷갈릴 때 이것만)
 
-> **Design FE는 프로젝트 파일 다운로드 시 S3 presigned URL을 직접 호출하지 않는다.**  
-> 브라우저는 항상 **`/api/projects/...` (nginx → EC2 daemon)** 를 호출하고, daemon이 **필요 시 S3→scratch sync-down** 후 **scratch에서 읽거나 export를 생성**한다.  
-> 최종 저장은 브라우저가 받은 바이트를 **로컬 디스크에 저장** (`Blob` + `<a download>`).
+> **원본 다운로드·Export는 여전히 daemon(`/api/projects/...`)을 경유**한다 (sync-down → scratch 읽기 또는 Chromium 렌더).  
+> **예외(채팅 썸네일·이미지 Open):** session-gated `POST /api/projects/:id/presign-get` 으로 짧은 TTL의 S3 GET을 mint한 뒤, 브라우저가 해당 URL을 직접 로드할 수 있다. 실패 시 기존 `/raw/` 인증 fetch로 폴백한다.  
+> 파일 **다운로드(저장)** 는 계속 same-origin/`Blob` + `<a download>` 경로를 쓴다.
 
 ---
 
@@ -20,6 +20,7 @@ FileViewer·프로젝트 화면의 **Download / Export** 메뉴는 크게 세 �
 | 사용자 행동 | FE가 호출하는 API | daemon이 하는 일 | S3 직접? |
 |-------------|-------------------|------------------|----------|
 | **원본 파일 받기** (이미지·HTML·CSV 등) | `GET /api/projects/:id/raw/{path}` | sync-down → scratch에서 파일 스트리밍 | ❌ FE 직접 |
+| **채팅 썸네일 / 이미지 Open** | `POST /api/projects/:id/presign-get` → S3 GET | session/ACL 확인 + HEAD + SigV4 mint (scratch sync-down 없음) | ✅ 짧은 TTL GET |
 | **렌더링 Export** (HTML·PDF·ZIP·PNG/JPEG/WebP) | `POST /api/projects/:id/export/{html\|pdf\|zip\|image}` | sync-down → scratch 읽기 → headless Chromium 렌더 → 바이트 응답 | ❌ FE 직접 |
 | **Markdown 등 소스 그대로** | (없음 — 이미 FE에 로드된 텍스트) | 브라우저에서 Blob 생성 | ❌ |
 | **Drive에 발행** (다운로드 아님) | design-api `POST …/publish-drive` | daemon export → **Main BE Drive presigned PUT** | ❌ FE 직접 |
@@ -193,15 +194,29 @@ daemon export (sync-down → scratch → render)
 
 ## 6. presigned URL이 등장하는 경우 (다운로드와 구분)
 
-Design **프로젝트 다운로드**와 presigned가 겹치지 않는다. presigned는 **다른 기능**에서만 쓰인다.
+**원본 다운로드·Export 저장**은 여전히 daemon을 경유한다. presigned는 **표시/Open·Drive 연동**에서만 쓴다.
 
 | 기능 | presigned 방향 | **누가** S3/Drive URL 호출? | FE 직접? |
 |------|----------------|----------------------------|----------|
-| 프로젝트 `/raw`·`/export` 다운로드 | — | daemon (IAM/instance profile) | ❌ |
+| 프로젝트 `/raw`·`/export` **다운로드(저장)** | — | daemon (IAM/instance profile) | ❌ |
+| 채팅 썸네일 / 이미지 **Open** | GET (project object) | daemon이 mint → FE가 S3 GET | ✅ 짧은 TTL (실패 시 `/raw/` 폴백) |
 | Drive → Design **import** | GET (Drive asset) | **design-api BE** → stream → daemon upload | ❌ |
 | Design → Drive **publish** | PUT (Drive bucket) | **design-api BE** | ❌ |
 | Drive import **썸네일** | GET (object-url batch) | FE `<img src={objectUrl}>` | ✅ **표시만** (다운로드 아님) |
 | Publish history “Drive 열기” | — | Drive asset deep link (UI) | Drive 앱/웹 |
+
+**프로젝트 파일 GET mint:** `POST /api/projects/:id/presign-get` `{ path }` → `ProjectFilePresignedGetResponse`.  
+환경변수: `OD_PROJECT_FILE_PRESIGN_ENABLED` (S3일 때 기본 on, `=0`으로 끔), `OD_PROJECT_FILE_PRESIGN_TTL_SEC` (60–300, 기본 120).
+
+### 6.1 출시 전 전략 (GET 우선 / Upload 보류)
+
+| 항목 | 결정 | 이유 |
+|------|------|------|
+| **이미지 GET** | 프리사인 우선 (`AuthenticatedProjectFileImage`) | 채팅 썸네일·파일 뷰어·**프로젝트 카드 커버**(drawing PNG 포함) 바이트가 데몬을 건너뜀. mint 404는 `/raw/` 재시도 안 함(이중 404 방지). |
+| **`/raw/` 폴백** | mint `disabled`/일시 실패, 또는 indexed 파일의 S3←scratch 레이스 | 로컬/비-S3·업로드 직후 sync-up 지연만 허용 |
+| **Upload** | **당분간 daemon `POST /upload` 유지** | agent run이 scratch를 읽음. 프리사인 PUT은 완료 콜백·multipart·CORS·정합 리스크가 커서 출시 후 마일스톤 |
+| **HTML/iframe** | `/raw/` 또는 scoped `/preview/` 유지 | 상대 자산·CSP·same-origin 필요 |
+| **Download(저장)** | authenticated `/raw/` → blob | cross-origin S3는 `download` 파일명 불가 |
 
 **import 상세:** `drive_import_service.py` — Main BE `create_download_url` → BE가 presigned GET으로 chunk stream → daemon `POST /upload` → scratch → sync-up ([14 §4.2](./14_Design_Drive_연동_설계.md)).
 
@@ -224,7 +239,9 @@ Design **프로젝트 다운로드**와 presigned가 겹치지 않는다. presig
 |------|------|
 | FE export helpers | `apps/web/src/runtime/exports.ts` |
 | FE raw URL | `apps/web/src/providers/registry.ts` — `projectRawUrl()` |
+| FE project-file presign | `apps/web/src/utils/projectFilePresign.ts` · `useProjectFileSignedUrl` |
 | FileViewer Download UI | `apps/web/src/components/FileViewer.tsx` |
+| daemon project-file presign | `apps/daemon/src/project-file-presign.ts` · `POST …/presign-get` |
 | daemon export routes | `apps/daemon/src/import-export-routes.ts` |
 | PDF/HTML input (scratch read) | `apps/daemon/src/pdf-export.ts` |
 | lazy sync-down middleware | `apps/daemon/src/storage/lazy-project-materialization.ts` |

@@ -1,5 +1,6 @@
 import { reconcileUserCommentAttachments } from '../comments';
 import type { ChatCommentAttachment, ChatMessage } from '../types';
+import { recoverChatAttachmentsFromMentions } from '../utils/recoverChatAttachmentsFromMentions';
 import { isAutoContinueIncompleteOutputPrompt } from './resume';
 
 /**
@@ -37,8 +38,11 @@ export function findPrecedingUserMessage(
     const candidate = messages[cursor];
     if (candidate?.role !== 'user') continue;
     if (isAutoContinueIncompleteOutputPrompt(candidate.content)) continue;
-    const reconciled = reconcileUserCommentAttachments(candidate);
+    const reconciled = recoverChatAttachmentsFromMentions(
+      reconcileUserCommentAttachments(candidate),
+    );
     if ((reconciled.commentAttachments?.length ?? 0) > 0) return reconciled;
+    if ((reconciled.attachments?.length ?? 0) > 0 && !fallback) fallback = reconciled;
     if (!fallback) fallback = reconciled;
   }
   return fallback;

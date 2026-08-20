@@ -20,13 +20,15 @@
 
 import type { ManualEditPatch } from '../edit-mode/types';
 import {
-  applyManualEditPatch,
+  applyManualEditPatchMutation,
   coerceManualEditStyleRecord,
   extractIdentityFromAttrSelectorId,
   isEphemeralGeneratedPathId,
+  parseManualEditSource,
   resolveManualEditTargetReference,
+  sanitizeManualEditDocumentInPlace,
+  serializeManualEditSource,
   type ManualEditMergeTargetHint,
-  type ManualEditPatchResult,
   type ManualEditSourceScope,
 } from '../edit-mode/source-patches';
 import { attachmentMergeHint, scopedCommentElementIds } from '../edit-mode/scoped-deck-patch';
@@ -445,7 +447,7 @@ export type ElementPatchTargetHint = ManualEditMergeTargetHint & {
 };
 
 export type ApplyElementPatchResult =
-  | { ok: true; html: string; appliedCount: number }
+  | { ok: true; html: string; appliedCount: number; sanitized?: boolean }
   | { ok: false; reason: string };
 
 export function applyElementPatches(options: ApplyElementPatchOptions): ApplyElementPatchResult {
@@ -456,13 +458,18 @@ export function applyElementPatches(options: ApplyElementPatchOptions): ApplyEle
     ? new Set(options.allowedTargetIds.map((id) => String(id || '').trim()).filter(Boolean))
     : null;
 
-  let html = options.currentHtml;
+  const html = options.currentHtml;
+  const doc = parseManualEditSource(html);
+  if (!doc) {
+    return { ok: false, reason: 'Could not parse current deck HTML.' };
+  }
   let appliedCount = 0;
   const normalizedPatches = normalizeElementPatchTargetsForApply({
     currentHtml: html,
     patches: options.patches,
     commentAttachments: options.commentAttachments,
     instructionText: options.instructionText,
+    parsedDoc: doc,
   });
 
   for (let index = 0; index < normalizedPatches.length; index += 1) {
@@ -503,21 +510,33 @@ export function applyElementPatches(options: ApplyElementPatchOptions): ApplyEle
     const scope: ManualEditSourceScope = targetHint
       ? { slideIndex, targetHint }
       : { slideIndex };
-    const result = applyManualEditPatch(html, manualEdit, scope, hint);
+    let result = applyManualEditPatchMutation(doc, manualEdit, scope, hint);
     if (!result.ok) {
-      const salvaged = retryManualEditPatchWithHintResolution(html, manualEdit, scope, hint);
+      const salvaged = retryManualEditPatchMutationWithHintResolution(
+        doc,
+        html,
+        manualEdit,
+        scope,
+        hint,
+      );
       if (!salvaged.ok) {
         return { ok: false, reason: result.error ?? `failed to apply ${manualEdit.kind} on ${targetId}` };
       }
-      html = salvaged.source;
       appliedCount += 1;
       continue;
     }
-    html = result.source;
     appliedCount += 1;
   }
 
-  return { ok: true, html, appliedCount };
+  // Fold terminal scrub into the live Document (FileViewer parity) so ProjectView
+  // can skip a second full-deck sanitize parse on the element-patch success path.
+  sanitizeManualEditDocumentInPlace(doc);
+  return {
+    ok: true,
+    html: serializeManualEditSource(doc, html),
+    appliedCount,
+    sanitized: true,
+  };
 }
 
 function manualEditTargetId(patch: ManualEditPatch): string {
@@ -528,23 +547,24 @@ function elementPatchTargetId(patch: ElementPatchOp): string {
   return 'id' in patch ? String(patch.id || '').trim() : '';
 }
 
-function retryManualEditPatchWithHintResolution(
+function retryManualEditPatchMutationWithHintResolution(
+  doc: Document,
   html: string,
   manualEdit: ManualEditPatch,
   scope: ManualEditSourceScope,
   hint: ManualEditMergeTargetHint | undefined,
-): ManualEditPatchResult {
-  if (!hint) return { ok: false, source: html, error: 'no merge hint' };
+): { ok: true } | { ok: false; error: string } {
+  if (!hint) return { ok: false, error: 'no merge hint' };
   const targetId = manualEditTargetId(manualEdit);
   const resolved =
-    resolveManualEditTargetReference(html, targetId, scope, hint)
-    ?? resolveManualEditTargetReference(html, '', scope, hint);
-  if (!resolved) return { ok: false, source: html, error: 'hint target unresolved' };
+    resolveManualEditTargetReference(html, targetId, scope, hint, doc)
+    ?? resolveManualEditTargetReference(html, '', scope, hint, doc);
+  if (!resolved) return { ok: false, error: 'hint target unresolved' };
   if (!('id' in manualEdit)) {
-    return { ok: false, source: html, error: 'patch has no target id' };
+    return { ok: false, error: 'patch has no target id' };
   }
-  return applyManualEditPatch(
-    html,
+  return applyManualEditPatchMutation(
+    doc,
     { ...manualEdit, id: resolved },
     scope,
     hint,
@@ -634,8 +654,10 @@ export function normalizeElementPatchTargetsForApply(input: {
   patches: readonly ElementPatchOp[];
   commentAttachments?: readonly ChatCommentAttachment[];
   instructionText?: string;
+  parsedDoc?: Document | null;
 }): ElementPatchOp[] {
   if (!input.commentAttachments?.length) return [...input.patches];
+  const parsedDoc = input.parsedDoc ?? parseManualEditSource(input.currentHtml);
 
   return input.patches.map((patch) => {
     const hint = elementPatchMergeHintForPatch(
@@ -650,6 +672,7 @@ export function normalizeElementPatchTargetsForApply(input: {
       patchId,
       scope,
       hint,
+      parsedDoc,
     );
     if (resolved && resolved !== patchId) {
       // Never replace a structural `path-N` id with `dom:[data-od-id="path-N"]`
@@ -675,6 +698,7 @@ export function normalizeElementPatchTargetsForApply(input: {
         elementId,
         scope,
         hint,
+        parsedDoc,
       );
       if (byElementId) {
         return { ...patch, id: byElementId };

@@ -534,18 +534,18 @@ describe('fetchProjectFileText', () => {
   });
 
   it('can bypass caches when fetching source text', async () => {
-    const fetchMock = vi.fn(async () => new Response('<svg />', { status: 200 }));
+    const fetchMock = vi.fn(async () => new Response('<html />', { status: 200 }));
     vi.stubGlobal('fetch', fetchMock);
 
     await expect(
-      fetchProjectFileText('project-1', 'diagram.svg', {
+      fetchProjectFileText('project-1', 'deck.html', {
         cache: 'no-store',
         cacheBustKey: '1710000000-2',
       }),
-    ).resolves.toBe('<svg />');
+    ).resolves.toBe('<html />');
 
     expect(fetchMock).toHaveBeenCalledWith(
-      '/api/projects/project-1/raw/diagram.svg?cacheBust=1710000000-2',
+      '/api/projects/project-1/raw/deck.html?cacheBust=1710000000-2',
       { cache: 'no-store', credentials: 'same-origin', headers: {} },
     );
   });
@@ -554,18 +554,19 @@ describe('fetchProjectFileText', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     vi.stubGlobal('fetch', vi.fn(async () => new Response('missing', { status: 404, statusText: 'Not Found' })));
 
-    await expect(fetchProjectFileText('project-1', 'missing.svg')).resolves.toBeNull();
+    await expect(fetchProjectFileText('project-1', 'missing.html')).resolves.toBeNull();
 
     expect(warn).toHaveBeenCalledWith(
       '[fetchProjectFileText] failed:',
       expect.objectContaining({
-        name: 'missing.svg',
         projectId: 'project-1',
         status: 404,
         statusText: 'Not Found',
-        url: '/api/projects/project-1/raw/missing.svg',
       }),
     );
+    // Emitted via devLog (NODE_ENV=test); production builds stay silent.
+    expect(warn.mock.calls[0]?.[1]).not.toHaveProperty('url');
+    expect(warn.mock.calls[0]?.[1]).not.toHaveProperty('name');
   });
 
   it('logs thrown fetch errors before returning null', async () => {
@@ -575,17 +576,17 @@ describe('fetchProjectFileText', () => {
       throw error;
     }));
 
-    await expect(fetchProjectFileText('project-1', 'diagram.svg')).resolves.toBeNull();
+    await expect(fetchProjectFileText('project-1', 'deck.html')).resolves.toBeNull();
 
     expect(warn).toHaveBeenCalledWith(
       '[fetchProjectFileText] failed:',
       expect.objectContaining({
-        error,
-        name: 'diagram.svg',
+        error: 'network down',
         projectId: 'project-1',
-        url: '/api/projects/project-1/raw/diagram.svg',
       }),
     );
+    expect(warn.mock.calls[0]?.[1]).not.toHaveProperty('url');
+    expect(warn.mock.calls[0]?.[1]).not.toHaveProperty('name');
   });
 });
 
@@ -993,8 +994,33 @@ describe('uploadProjectFiles', () => {
     expect(result.uploaded).toHaveLength(1);
     expect(result.uploaded[0]).toMatchObject({
       path: 'mxk7-test.pdf',
-      name: decomposed,
+      // Attachment identity must be the on-disk basename (not originalName).
+      name: 'mxk7-test.pdf',
       size: 5,
+    });
+  });
+
+  it('uses the stored timestamped basename as ChatAttachment.name for local uploads', async () => {
+    const file = new File(['img'], '놀란 고양이 (1).jpeg', { type: 'image/jpeg' });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify({
+        files: [
+          {
+            name: 'msh9y0i9-놀란-고양이-_1_.jpeg',
+            path: 'msh9y0i9-놀란-고양이-_1_.jpeg',
+            size: 3,
+            originalName: '놀란 고양이 (1).jpeg',
+          },
+        ],
+      }), { status: 200 })),
+    );
+
+    const result = await uploadProjectFiles('project-1', [file]);
+    expect(result.uploaded[0]).toMatchObject({
+      path: 'msh9y0i9-놀란-고양이-_1_.jpeg',
+      name: 'msh9y0i9-놀란-고양이-_1_.jpeg',
+      kind: 'image',
     });
   });
 

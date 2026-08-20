@@ -16,8 +16,15 @@ export function normalizeManualEditInspectorColor(value: string): string {
   return `#${toHex(rgba[1]!)}${toHex(rgba[2]!)}${toHex(rgba[3]!)}`;
 }
 
+export function normalizeManualEditZIndexValue(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.toLowerCase() === 'auto') return '';
+  return trimmed;
+}
+
 export function manualEditInspectorStyleValue(key: keyof ManualEditStyles, value: string): string {
   if (!value) return '';
+  if (key === 'zIndex') return normalizeManualEditZIndexValue(value);
   if (key === 'color' || key === 'backgroundColor' || key === 'borderColor') {
     return normalizeManualEditInspectorColor(value);
   }

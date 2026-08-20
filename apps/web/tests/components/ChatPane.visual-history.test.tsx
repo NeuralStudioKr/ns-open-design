@@ -26,13 +26,24 @@ vi.mock('../../src/components/AuthenticatedProjectFileImage', () => ({
     path,
     alt,
     fetchEnabled,
+    trustExists,
+    allowBackgroundRetry,
   }: {
     path: string;
     alt?: string;
     fetchEnabled?: boolean;
+    trustExists?: boolean;
+    allowBackgroundRetry?: boolean;
   }) => (
     fetchEnabled === false ? null : (
-      <img data-testid="auth-project-image" src={`blob:${path}`} alt={alt || ''} />
+      <img
+        data-testid="auth-project-image"
+        data-path={path}
+        data-trust-exists={trustExists ? '1' : '0'}
+        data-allow-background-retry={allowBackgroundRetry ? '1' : '0'}
+        src={`blob:${path}`}
+        alt={alt || ''}
+      />
     )
   ),
 }));
@@ -95,9 +106,9 @@ describe('ChatPane visual mark history', () => {
       />,
     );
 
-    expect(screen.getByText('시각 마크')).toBeTruthy();
+    expect(screen.queryByText('시각 마크')).toBeNull();
     expect(screen.getByText('여기 텍스트 키워')).toBeTruthy();
-    expect(screen.queryByTestId('auth-project-image')).toBeNull();
+    expect(screen.getByTestId('auth-project-image')).toBeTruthy();
   });
 
   it('does not duplicate visual screenshots as file attachment rows', () => {
@@ -156,12 +167,193 @@ describe('ChatPane visual mark history', () => {
       />,
     );
 
-    expect(screen.queryByTestId('auth-project-image')).toBeNull();
-    expect(screen.getByText('시각 마크')).toBeTruthy();
+    expect(screen.getByTestId('auth-project-image')).toBeTruthy();
+    expect(screen.getByText('여기 텍스트 키워')).toBeTruthy();
+    expect(screen.queryByText('시각 마크')).toBeNull();
     expect(screen.queryByText('visual-mark-1.png')).toBeNull();
   });
 
-  it('keeps visual comment chips when the drawing screenshot file was deleted', () => {
+  it('keeps Drive/local upload chips visible after refresh when /files index is stale', () => {
+    const messages: ChatMessage[] = [
+      {
+        id: 'user-drive-image',
+        role: 'user',
+        content: '이 이미지 넣어줘',
+        createdAt: 1,
+        attachments: [
+          {
+            path: 'refs/drive/msh5lhfh-놀란고양이-_1_.jpeg',
+            name: 'msh5lhfh-놀란고양이-_1_.jpeg',
+            kind: 'image',
+            order: 0,
+          },
+        ],
+      },
+    ];
+
+    render(
+      <ChatPane
+        messages={messages}
+        streaming={false}
+        error={null}
+        projectId="project-1"
+        projectFiles={[{ name: 'deck.html', path: 'deck.html' } as never]}
+        projectFileNames={new Set(['deck.html'])}
+        onEnsureProject={async () => 'project-1'}
+        onSend={vi.fn()}
+        onStop={vi.fn()}
+        conversations={[
+          { projectId: 'project-1', id: 'conv-1', title: 'Current', createdAt: 1, updatedAt: 1 },
+        ]}
+        activeConversationId="conv-1"
+        onSelectConversation={vi.fn()}
+        onDeleteConversation={vi.fn()}
+        config={{ agentId: 'claude', agentCliEnv: {} } as unknown as AppConfig}
+      />,
+    );
+
+    expect(screen.getByTestId('auth-project-image')).toBeTruthy();
+    expect(screen.getByTestId('auth-project-image').getAttribute('data-path')).toBe(
+      'refs/drive/msh5lhfh-놀란고양이-_1_.jpeg',
+    );
+    expect(screen.getByText('msh5lhfh-놀란고양이-_1_.jpeg')).toBeTruthy();
+  });
+
+  it('recovers attachment chips + @mention pills from content when attachments were dropped', () => {
+    const messages: ChatMessage[] = [
+      {
+        id: 'user-mention-only',
+        role: 'user',
+        content: '이 이미지 2페이지에 넣어줘 @msh9rso1-서빙하는-금붕어.webp',
+        createdAt: 1,
+      },
+    ];
+
+    render(
+      <ChatPane
+        messages={messages}
+        streaming={false}
+        error={null}
+        projectId="project-1"
+        projectFiles={[{ name: 'deck.html', path: 'deck.html' } as never]}
+        projectFileNames={new Set(['deck.html'])}
+        onEnsureProject={async () => 'project-1'}
+        onSend={vi.fn()}
+        onStop={vi.fn()}
+        conversations={[
+          { projectId: 'project-1', id: 'conv-1', title: 'Current', createdAt: 1, updatedAt: 1 },
+        ]}
+        activeConversationId="conv-1"
+        onSelectConversation={vi.fn()}
+        onDeleteConversation={vi.fn()}
+        config={{ agentId: 'claude', agentCliEnv: {} } as unknown as AppConfig}
+      />,
+    );
+
+    expect(screen.getByTestId('auth-project-image').getAttribute('data-path')).toBe(
+      'msh9rso1-서빙하는-금붕어.webp',
+    );
+    expect(screen.getByText('msh9rso1-서빙하는-금붕어.webp')).toBeTruthy();
+    const mention = screen.getByTestId('user-inline-mention');
+    expect(mention.getAttribute('data-mention-kind')).toBe('file');
+    expect(mention.textContent).toBe('@msh9rso1-서빙하는-금붕어.webp');
+  });
+
+  it('renders @mention pills for NFD Hangul filenames against NFC attachment paths', () => {
+    const nfc = '서빙하는-금붕어'.normalize('NFC');
+    const nfd = '서빙하는-금붕어'.normalize('NFD');
+    expect(nfc).not.toBe(nfd);
+    const basename = `msh9rso1-${nfc}.webp`;
+    const messages: ChatMessage[] = [
+      {
+        id: 'user-nfd-mention',
+        role: 'user',
+        content: `이 이미지 2페이지에 넣어줘 @msh9rso1-${nfd}.webp`,
+        createdAt: 1,
+        attachments: [
+          {
+            path: `refs/drive/${basename}`,
+            name: basename,
+            kind: 'image',
+            order: 0,
+          },
+        ],
+      },
+    ];
+
+    render(
+      <ChatPane
+        messages={messages}
+        streaming={false}
+        error={null}
+        projectId="project-1"
+        projectFiles={[{ name: 'deck.html', path: 'deck.html' } as never]}
+        projectFileNames={new Set(['deck.html', `refs/drive/${basename}`])}
+        onEnsureProject={async () => 'project-1'}
+        onSend={vi.fn()}
+        onStop={vi.fn()}
+        conversations={[
+          { projectId: 'project-1', id: 'conv-1', title: 'Current', createdAt: 1, updatedAt: 1 },
+        ]}
+        activeConversationId="conv-1"
+        onSelectConversation={vi.fn()}
+        onDeleteConversation={vi.fn()}
+        config={{ agentId: 'claude', agentCliEnv: {} } as unknown as AppConfig}
+      />,
+    );
+
+    const mention = screen.getByTestId('user-inline-mention');
+    expect(mention.getAttribute('data-mention-kind')).toBe('file');
+    expect(mention.textContent).toBe(`@${basename}`);
+  });
+
+  it('renders durable memo/board image attachments as thumbs (not title-only)', () => {
+    const messages: ChatMessage[] = [
+      {
+        id: 'user-memo-image',
+        role: 'user',
+        content: '이 참고 이미지 반영해줘',
+        createdAt: 1,
+        attachments: [
+          {
+            path: 'uploads/ref-memo.png',
+            name: 'ref-memo.png',
+            kind: 'image',
+            order: 0,
+          },
+        ],
+      },
+    ];
+
+    render(
+      <ChatPane
+        messages={messages}
+        streaming={false}
+        error={null}
+        projectId="project-1"
+        projectFiles={[{ name: 'uploads/ref-memo.png', path: 'uploads/ref-memo.png' } as never]}
+        projectFileNames={new Set(['uploads/ref-memo.png'])}
+        onEnsureProject={async () => 'project-1'}
+        onSend={vi.fn()}
+        onStop={vi.fn()}
+        conversations={[
+          { projectId: 'project-1', id: 'conv-1', title: 'Current', createdAt: 1, updatedAt: 1 },
+        ]}
+        activeConversationId="conv-1"
+        onSelectConversation={vi.fn()}
+        onDeleteConversation={vi.fn()}
+        config={{ agentId: 'claude', agentCliEnv: {} } as unknown as AppConfig}
+      />,
+    );
+
+    const img = screen.getByTestId('auth-project-image');
+    expect(img.getAttribute('data-path')).toBe('uploads/ref-memo.png');
+    expect(img.getAttribute('data-trust-exists')).toBe('1');
+    expect(img.getAttribute('data-allow-background-retry')).toBe('1');
+    expect(screen.getByText('ref-memo.png')).toBeTruthy();
+  });
+
+  it('keeps visual comment chips visible even when the drawing PNG cannot render', () => {
     const messages: ChatMessage[] = [
       {
         id: 'user-visual-missing',
@@ -209,8 +401,10 @@ describe('ChatPane visual mark history', () => {
       />,
     );
 
-    expect(screen.getByText('시각 마크')).toBeTruthy();
     expect(screen.getByText('여기')).toBeTruthy();
-    expect(screen.queryByTestId('auth-project-image')).toBeNull();
+    expect(screen.queryByText('시각 마크')).toBeNull();
+    // The chip always attempts a remote fetch; when the file is missing the
+    // shared 404 cache prevents repeat calls while the composer/history stays
+    // rendered with the compact chip label.
   });
 });

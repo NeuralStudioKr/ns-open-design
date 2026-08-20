@@ -26,6 +26,7 @@
  * forms — so AssistantMessage can render the form inline.
  */
 import { parsePartialJson } from '../runtime/partial-json';
+import { devLog } from '../lib/devLog';
 
 export type QuestionType =
   | 'radio'
@@ -635,7 +636,7 @@ function recordQuestionFormParseFailure(
   tagName: string,
   body: string,
 ): void {
-  console.warn('[question-form] failed to render inline question form', {
+  devLog.warn('[question-form] failed to render inline question form', {
     reason: reason ?? 'unsupported-payload',
     tagName,
     bodyLength: body.length,
@@ -726,6 +727,8 @@ const SLIDE_SKIP_ALL_DELIVERABLE_DIRECTIVE_RE =
   /\n*\[Deliverable instruction\][\s\S]*$/i;
 const QUESTION_FORM_PROTOCOL_FRAGMENT_LINE_RE =
   /^\s*<\/?(?:question(?:-form)?|ask(?:-question)?)\b[^>\n]*(?:>\s*)?$/i;
+const FORM_ANSWERS_HEADER_LINE_RE = /^\s*\[form answers[^\]]*\]\s*$/i;
+const FORM_ANSWER_VALUE_TOKEN_RE = /\s*\[value:\s*[^\]]+\]/gi;
 
 export function isAllFormAnswersSkipped(
   form: QuestionForm,
@@ -768,7 +771,11 @@ export function stripUserVisibleQuestionFormProtocolText(content: string | null 
   const withoutDirective = String(content ?? '').replace(SLIDE_SKIP_ALL_DELIVERABLE_DIRECTIVE_RE, '');
   return withoutDirective
     .split(/\r?\n/)
-    .filter((line) => !QUESTION_FORM_PROTOCOL_FRAGMENT_LINE_RE.test(line))
+    .filter((line) => (
+      !QUESTION_FORM_PROTOCOL_FRAGMENT_LINE_RE.test(line)
+      && !FORM_ANSWERS_HEADER_LINE_RE.test(line)
+    ))
+    .map((line) => line.replace(FORM_ANSWER_VALUE_TOKEN_RE, '').trimEnd())
     .join('\n')
     .trim();
 }

@@ -235,7 +235,10 @@ function isLikelyInternalMarkupLine(line: string): boolean {
   if (/^#deck-(?:stage|prev|next|idx)\b/i.test(trimmed)) return true;
   if (/^<h[1-6]\b/i.test(trimmed) && /\bstyle\s*=/i.test(trimmed)) return true;
   if (/^[\d.]+(?:px|em|rem)(?:\/[\d.]+)?">/i.test(trimmed)) return true;
-  if (/^@(?:page|media|keyframes|import)\b/.test(trimmed)) return true;
+  if (/^@(?:page|media|keyframes|import|font-face|supports|layer)\b/.test(trimmed)) return true;
+  if (/^(?:from|to|\d+%)\s*\{/.test(trimmed) && /transform|opacity|translate|rotate/i.test(trimmed)) {
+    return true;
+  }
   if (/^\.[a-zA-Z0-9_-]+(\s*::(?:before|after))?\s*\{/.test(trimmed)) {
     if (/1920px|1080px|box-sizing|overflow:\s*hidden|pointer-events:\s*none|grain/i.test(trimmed)) {
       return true;
@@ -295,6 +298,51 @@ const DECK_TRAILING_INLINE_MARKUP_RE =
   /(?:\n|^)\s*<p\b[^>]*style\s*=\s*["'][^"']*(?:font|letter-spacing|margin)[^"']*["'][^>]*>[\s\S]*$/i;
 const DECK_TRAILING_HEADING_MARKUP_RE =
   /(?:\n|^)\s*<h[1-6]\b[^>]*(?:style\s*=)?[^>]*>[\s\S]*$/i;
+const DECK_MOTIF_ABSOLUTE_DIV_TAIL_RE =
+  /<(?:div|span)\b[^>]*\bstyle\s*=\s*["'][\s\S]*?position\s*:\s*absolute[\s\S]*$/i;
+const DECK_MOTIF_PILL_RADIUS_TAIL_RE =
+  /<(?:div|span)\b[^>]*\bstyle\s*=\s*["'][\s\S]*?border-radius\s*:\s*9999px[\s\S]*$/i;
+/**
+ * Daisy / Quicksand badge pills (`border-radius:20px` + box-shadow / font-family)
+ * — not covered by the Capsule `9999px` pill pattern.
+ */
+const DECK_MOTIF_STYLED_BADGE_TAIL_RE =
+  /<(?:div|span)\b[^>]*\bstyle\s*=\s*["'][\s\S]*?border-radius\s*:\s*\d+px[\s\S]*?(?:box-shadow|font-family|font-weight|padding)\s*:[\s\S]*$/i;
+const DECK_CARD_STYLE_DIV_TAIL_RE =
+  /<(?:div|article)\b[^>]*\bclass\s*=\s*["'][^"']*\b(?:card|pill|chip|deco)[^"']*["'][^>]*\bstyle\s*=[\s\S]*$/i;
+const DECK_DECO_CLASS_TAIL_RE =
+  /<(?:div|span|svg|g|i)\b[^>]*\bclass\s*=\s*["'][^"']*\b(?:deco-|floating-pill|pixel-glitch|win-titlebar)[\s\S]*$/i;
+const DECK_MOTIF_SVG_TAIL_RE =
+  /<svg\b[^>]*(?:class\s*=\s*["'][^"']*\b(?:deco-|floating-pill)|viewBox\s*=|style\s*=\s*["'][^"']*position\s*:\s*absolute)[\s\S]*$/i;
+const DECK_MOTIF_PATH_TAIL_RE =
+  /<path\b[^>]*\bd\s*=\s*["'][\s\S]*$/i;
+/** Leftover Daisy SVG children after `<svg` was already consumed. */
+const DECK_MOTIF_SVG_PRIMITIVE_TAIL_RE =
+  /<(?:circle|rect|ellipse|polygon|polyline|line|g|defs|linearGradient|radialGradient|stop|use|text|tspan)\b/i;
+const DECK_MOTIF_SVG_CLOSE_TAIL_RE = /<\/svg\b/i;
+/** `<!-- Daisy motif TL -->` (and siblings) plus any CSS that follows. */
+const DECK_MOTIF_HTML_COMMENT_TAIL_RE =
+  /<!--\s*(?:Daisy|motif|deco|SLIDE)\b[\s\S]*$/i;
+const DECK_BROKEN_SECTION_CSS_DEBRIS_TAIL_RE =
+  /<\/(?:section|div)>\s*[-a-z]*weight\s*:[\s\S]*$/i;
+/**
+ * Truncated inline-style attribute debris that starts mid-declaration
+ * (`px;left:60px;…uppercase">Label</div>`) — common after mid-artifact abort
+ * when the leading `<div style="…` was already consumed by stripArtifact.
+ *
+ * Values may be quoted (`font-family:'Space Grotesk'`) or split across
+ * newlines (`color:\n#7ECDC0`). Require two declarations so a lone
+ * `color: red">` mention in prose is not chopped.
+ */
+const DECK_ORPHAN_MID_STYLE_ATTR_TAIL_RE =
+  /(?:^|\n)(?:(?:px|em|rem|%|vh|vw)\s*;\s*)?(?:[a-zA-Z-]+\s*:\s*[^;]*;?\s*){2,}[\s\S]*?["']\s*>[\s\S]*$/i;
+/**
+ * Truncated SVG `<style>` body (`none;stroke:…}.cls-3{…}</style>`) after the
+ * opening `<style>` / comment was already stripped. `</style>` is optional —
+ * reload can persist a cut mid-declaration without the closing tag.
+ */
+const DECK_ORPHAN_MID_SVG_CSS_STYLE_TAIL_RE =
+  /(?:^|\n)(?:(?:none|solid|inherit|round|butt|miter|bevel)\s*;\s*)?(?:(?:stroke(?:-[\w]+)?|fill|stroke-width|stroke-linecap|stroke-linejoin|stroke-miterlimit)\s*:[^;]*;?\s*){2,}[\s\S]*$/i;
 const DECK_SLIDE_PARTIAL_OPEN_TAG_RE =
   /<(?:section|div)\b[^>]*(?:\bclass\s*=\s*["'][^"']*\bslide\b|data-slide-index|data-slide\b)[^>]*>/i;
 
@@ -320,18 +368,39 @@ function findTrailingSameLineDeckHtmlCut(line: string): number | null {
 /** Drop truncated deck slide HTML leaked into chat prose (mid-artifact abort). */
 export function stripTrailingDeckHtmlMarkupLeak(input: string): string {
   if (!input) return input;
+  let cut: number | null = null;
   for (const re of [
     DECK_SLIDE_OPEN_TAG_TAIL_RE,
     DECK_SLIDE_ORPHAN_ATTR_TAIL_RE,
     DECK_ORPHAN_STYLE_CLOSE_TAIL_RE,
     DECK_TRAILING_HEADING_MARKUP_RE,
     DECK_TRAILING_INLINE_MARKUP_RE,
+    DECK_MOTIF_ABSOLUTE_DIV_TAIL_RE,
+    DECK_MOTIF_PILL_RADIUS_TAIL_RE,
+    DECK_MOTIF_STYLED_BADGE_TAIL_RE,
+    DECK_CARD_STYLE_DIV_TAIL_RE,
+    DECK_DECO_CLASS_TAIL_RE,
+    DECK_MOTIF_SVG_TAIL_RE,
+    DECK_MOTIF_PATH_TAIL_RE,
+    DECK_MOTIF_SVG_PRIMITIVE_TAIL_RE,
+    DECK_MOTIF_SVG_CLOSE_TAIL_RE,
+    DECK_MOTIF_HTML_COMMENT_TAIL_RE,
+    DECK_BROKEN_SECTION_CSS_DEBRIS_TAIL_RE,
+    DECK_ORPHAN_MID_STYLE_ATTR_TAIL_RE,
+    DECK_ORPHAN_MID_SVG_CSS_STYLE_TAIL_RE,
   ]) {
     const match = re.exec(input);
-    if (!match || match.index === undefined) continue;
-    return input.slice(0, match.index).trimEnd();
+    if (match?.index === undefined) continue;
+    if (cut == null || match.index < cut) cut = match.index;
   }
-  return input;
+  if (cut == null) return input;
+  return input.slice(0, cut).trimEnd();
+}
+
+function findArtifactOpenIndex(input: string, from: number): number {
+  const slice = from > 0 ? input.slice(from) : input;
+  const match = /<artifact(?=[\s>/])/i.exec(slice);
+  return match?.index == null ? -1 : (from > 0 ? from : 0) + match.index;
 }
 
 function stripTrailingDeckHtmlMarkupLeakRespectingArtifacts(
@@ -342,7 +411,7 @@ function stripTrailingDeckHtmlMarkupLeakRespectingArtifacts(
   let result = "";
   let cursor = 0;
   while (cursor < input.length) {
-    const open = input.indexOf("<artifact", cursor);
+    const open = findArtifactOpenIndex(input, cursor);
     if (open === -1) {
       result += stripTrailingDeckHtmlMarkupLeak(input.slice(cursor));
       break;
@@ -539,6 +608,18 @@ function trailingDisplayProseStart(input: string, fromIndex: number): number {
   return offset;
 }
 
+/**
+ * True when an open artifact is a Teamver deck deliverable. Mid-stream
+ * max_tokens cuts often end on a slide text node (`Andiamo! (안디아모 =`) —
+ * that must NOT be promoted into the chat bubble as "user-facing prose".
+ * Broader `type="text/html"` artifacts still allow trailing summary promotion
+ * (BYOK pseudo-tool turns often leave a Korean status line after the body).
+ */
+function isOpenDeckDeliverableArtifactTag(openTag: string): boolean {
+  return /\btype\s*=\s*(?:"|')(?:deck|deck-patch)(?:"|')/i.test(openTag)
+    || /\bidentifier\s*=\s*(?:"|')(?:deck|slides?)(?:"|')/i.test(openTag);
+}
+
 /** Strip an unclosed `<artifact …>` block; preserve trailing user-facing prose after the body. */
 function stripTrailingOpenArtifact(
   input: string,
@@ -558,6 +639,11 @@ function stripTrailingOpenArtifact(
   const closeIdx = findCloseTag(input, openEnd, "</artifact>");
   if (closeIdx !== -1) {
     return { text: input, hadOpenInternalMarkup: false };
+  }
+  // Truncated deck bodies: drop from `<artifact` to EOF. Never promote slide
+  // copy / emoji chips that happen to look like chat prose.
+  if (isOpenDeckDeliverableArtifactTag(lastOpen[0] ?? "")) {
+    return { text: input.slice(0, openStart).trimEnd(), hadOpenInternalMarkup: true };
   }
   const proseStart = trailingDisplayProseStart(input, openEnd);
   if (proseStart === -1) {
@@ -1630,6 +1716,9 @@ export function sanitizeAssistantProseForDisplay(
   if (stripDeckCssTail) {
     text = stripTrailingDeckFrameworkCssLeak(text);
   }
+  // Kit `:root{--bg:#…}` dumps can appear mid-message (not only trailing).
+  // Never scrub inside preserved artifact bodies (live style tokens stay intact).
+  text = stripLeakedCssCustomPropertyBlocksRespectingArtifacts(text, preservingArtifacts);
   text = stripTrailingDeckHtmlMarkupLeakRespectingArtifacts(text, preservingArtifacts);
   // Absolute last pass: classic/minified click-nav and keydown advance must
   // never survive a dialect miss or partial open-form match.
@@ -1640,15 +1729,104 @@ export function sanitizeAssistantProseForDisplay(
 /** Drop truncated deck stylesheet/CSS leaked into chat prose (mid-artifact abort). */
 export function stripTrailingDeckFrameworkCssLeak(input: string): string {
   if (!input) return input;
-  const match = /(?:^|\n\n|\n)((?:\.slide|(?:\.[A-Za-z_-][\w-]*|#[A-Za-z_-][\w-]*|h[1-6]|p|ul|li|body|section(?:\.[\w-]+)?)\s*\{)[\s\S]*)$/.exec(input);
+  const match = /(?:^|\n\n|\n)((?::root\s*\{|@(?:-webkit-)?(?:keyframes\s+[\w-]+|font-face)\s*\{|@(?:media|page|supports|layer)\b[^{]*\{|@import\s+(?:url\(|["'])|<style\b[^>]*>|(?:from|to|\d+%)\s*\{|(?:\.slide|(?:\.[A-Za-z_-][\w-]*|#[A-Za-z_-][\w-]*|h[1-6]|p|ul|li|body|section(?:\.[\w-]+)?)\s*\{))[\s\S]*)$/i.exec(input);
   if (!match || match.index === undefined) return input;
   const tail = match[1] ?? "";
   const looksLikeDeckFramework =
     /width:\s*1920px|height:\s*1080px|box-sizing:\s*border-box|\.grain::after/i.test(tail)
-    || /<\/style>|<section\b[^>]*\bclass\s*=\s*["'][^"']*\bslide\b|<!--\s*SLIDE\b/i.test(tail)
-    || /^\.slide\s*\{[\s\S]*/.test(tail.trim());
+    || /<\/style>|<style\b|<section\b[^>]*\bclass\s*=\s*["'][^"']*\bslide\b|<!--\s*(?:SLIDE|Daisy|motif|deco)\b/i.test(tail)
+    || /^\.slide\s*\{[\s\S]*/.test(tail.trim())
+    || /\.deco-[\w-]+\s*\{/i.test(tail)
+    || /\.cls-\d+\s*\{/i.test(tail)
+    || /@keyframes\s+[\w-]+\s*\{/i.test(tail)
+    || /@font-face\b/i.test(tail)
+    || /@media\b/i.test(tail)
+    || /@import\s+(?:url\(|["'])/i.test(tail)
+    || /@page\b/i.test(tail)
+    || /@supports\b/i.test(tail)
+    || /@layer\b/i.test(tail)
+    || /(?:^|\n)(?:from|to|\d+%)\s*\{[\s\S]*(?:transform|opacity|translate|rotate)/i.test(tail)
+    || looksLikeLeakedCssCustomPropertyBlock(tail);
   if (!looksLikeDeckFramework) return input;
   return input.slice(0, match.index).trimEnd();
+}
+
+/**
+ * True for `:root{--bg:#…;--coral:#…}` (and multiline hex splits) that must
+ * never appear as chat copy — models often emit kit tokens before/without the
+ * deck artifact.
+ */
+function looksLikeLeakedCssCustomPropertyBlock(text: string): boolean {
+  const sample = String(text ?? "").trim();
+  if (!sample) return false;
+  if (!/^:root\b/i.test(sample) && !/--[a-zA-Z_][\w-]*\s*:/.test(sample)) return false;
+  const customProps = sample.match(/--[a-zA-Z_][\w-]*\s*:/g) ?? [];
+  if (customProps.length < 2) return false;
+  // Palette / surface dumps always carry hex (optionally split across lines).
+  const hexHits = sample.match(/#[0-9A-Fa-f]{3,8}\b/g) ?? [];
+  if (hexHits.length < 2 && !/--(?:bg|fg|ink|paper|surface|outline|coral|lime|sky)\b/i.test(sample)) {
+    return false;
+  }
+  // Reject if it still looks like normal prose with an incidental mention.
+  if (/[가-힣A-Za-z]{12,}/.test(sample.replace(/:root|var\(--[\w-]+\)|--[\w-]+/gi, " "))) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Strip standalone kit `:root { --token: #hex }` dumps anywhere in chat prose
+ * (not only trailing). Keeps real sentences; drops pure token blocks.
+ */
+export function stripLeakedCssCustomPropertyBlocks(input: string): string {
+  if (!input) return input;
+  let text = String(input);
+  // Compact or pretty `:root{--a:#…;--b:#…}` blocks (hex may wrap after `:`).
+  text = text.replace(
+    /(?:^|\n)\s*:root\s*\{[\s\S]*?\}/gi,
+    (block, offset) => (looksLikeLeakedCssCustomPropertyBlock(block) ? (offset > 0 ? "\n" : "") : block),
+  );
+  // Entire-message dump without a closing `}` yet (streaming / aborted style).
+  if (looksLikeLeakedCssCustomPropertyBlock(text) && !/<[a-z]|[가-힣]{4,}/i.test(text.replace(/:root|--[\w-]+|#[0-9A-Fa-f]+/gi, " "))) {
+    return "";
+  }
+  text = text.replace(/\n{3,}/g, "\n\n");
+  // Do not trim — preserving a trailing `\n` before `<artifact` matters for
+  // streaming/history equality and monotonic chat growth.
+  if (!text.trim()) return "";
+  return text;
+}
+
+function stripLeakedCssCustomPropertyBlocksRespectingArtifacts(
+  input: string,
+  preserveArtifactBodies: boolean,
+): string {
+  if (!preserveArtifactBodies) return stripLeakedCssCustomPropertyBlocks(input);
+  let result = "";
+  let cursor = 0;
+  while (cursor < input.length) {
+    const open = input.indexOf("<artifact", cursor);
+    if (open === -1) {
+      result += stripLeakedCssCustomPropertyBlocks(input.slice(cursor));
+      break;
+    }
+    result += stripLeakedCssCustomPropertyBlocks(input.slice(cursor, open));
+    const gt = input.indexOf(">", open);
+    if (gt === -1) {
+      result += input.slice(open);
+      break;
+    }
+    const close = input.toLowerCase().indexOf("</artifact>", gt);
+    if (close === -1) {
+      // Open artifact: scrub prose before it, keep the open body untouched.
+      result += input.slice(open);
+      break;
+    }
+    const end = close + "</artifact>".length;
+    result += input.slice(open, end);
+    cursor = end;
+  }
+  return result;
 }
 
 /**

@@ -28,6 +28,11 @@ import {
 import { normalizeArtifactRuntimeImports } from './artifact-runtime-compat.js';
 import { isIgnoredProjectDirName } from './project-ignored-dirs.js';
 import {
+  addDeletedProjectRelpath,
+  filterDeletedProjectRelpaths,
+  readDeletedProjectRelpaths,
+} from './project-deleted-relpaths.js';
+import {
   isSandboxImportedProjectRootAllowed,
   isSandboxModeEnabled,
   SANDBOX_IMPORTED_PROJECT_UNAVAILABLE_MESSAGE,
@@ -133,11 +138,13 @@ export async function listFiles(projectsRoot, projectId, opts = {}) {
   await collectFiles(dir, '', out, isIgnoredProjectDirName, dir);
   // Newest first — matches the visual order users expect after generating.
   out.sort((a, b) => b.mtime - a.mtime);
+  const deleted = await readDeletedProjectRelpaths(dir);
+  const visible = filterDeletedProjectRelpaths(out, deleted);
   const since = Number(opts.since);
   if (Number.isFinite(since) && since > 0) {
-    return out.filter((f) => Number(f.mtime) > since);
+    return visible.filter((f) => Number(f.mtime) > since);
   }
-  return out;
+  return visible;
 }
 
 export async function listProjectFolders(projectsRoot, projectId, opts = {}) {
@@ -234,19 +241,81 @@ export async function deleteProjectFolder(projectsRoot, projectId, name, metadat
   await rm(target, { recursive: true, force: true });
 }
 
-// Best-effort entry-file detector — looks for index.html at the root,
-// then any *.html file. Returns null if nothing obvious is found, in
-// which case the project simply opens to the file panel with no
-// auto-selected tab.
+async function collectRefHtmlBasenames(refsDir: string, out: Set<string>): Promise<void> {
+  let entries = [];
+  try {
+    entries = await readdir(refsDir, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  for (const entry of entries) {
+    if (entry.name.startsWith('.')) continue;
+    const full = path.join(refsDir, entry.name);
+    if (entry.isDirectory()) {
+      await collectRefHtmlBasenames(full, out);
+      continue;
+    }
+    if (entry.isFile() && /\.html?$/i.test(entry.name)) {
+      out.add(entry.name.toLowerCase());
+    }
+  }
+}
+
+async function findNestedDeckHtml(dir: string, relDir = '', depth = 0): Promise<string | null> {
+  if (depth > 2) return null;
+  let entries = [];
+  try {
+    entries = await readdir(dir, { withFileTypes: true });
+  } catch {
+    return null;
+  }
+  const dirs = [];
+  for (const entry of entries) {
+    if (entry.name.startsWith('.')) continue;
+    if (entry.name === 'refs' || entry.name === 'node_modules') continue;
+    const rel = relDir ? `${relDir}/${entry.name}` : entry.name;
+    if (entry.isFile() && /^deck(?:[-_.].*)?\.html?$/i.test(entry.name)) {
+      return rel;
+    }
+    if (entry.isDirectory()) dirs.push({ full: path.join(dir, entry.name), rel });
+  }
+  for (const child of dirs) {
+    const nested = await findNestedDeckHtml(child.full, child.rel, depth + 1);
+    if (nested) return nested;
+  }
+  return null;
+}
+
+// Best-effort entry-file detector — prefer a root deck*.html (Teamver slide
+// deliverable), then a shallow nested deck*.html, then index.html, then any
+// other root *.html. Returns null if nothing obvious is found, in which case
+// the project simply opens to the file panel with no auto-selected tab.
+//
+// Canvas→Slide imports often leave a root near-copy of the refs source
+// (index.html / canvas.html). Preferring deck*.html and excluding refs
+// basename leaks keeps cover-hints on the real slide deliverable.
 export async function detectEntryFile(dir: string): Promise<string | null> {
   try {
-    await stat(path.join(dir, 'index.html'));
-    return 'index.html';
-  } catch { /* not found */ }
-  try {
     const entries = await readdir(dir, { withFileTypes: true });
-    const htmlFile = entries.find((e) => e.isFile() && /\.html?$/i.test(e.name));
-    if (htmlFile) return htmlFile.name;
+    const htmlFiles = entries
+      .filter((e) => e.isFile() && /\.html?$/i.test(e.name))
+      .map((e) => e.name);
+    const deck = htmlFiles.find((name) => /^deck(?:[-_.].*)?\.html?$/i.test(name));
+    if (deck) return deck;
+
+    const nestedDeck = await findNestedDeckHtml(dir);
+    if (nestedDeck) return nestedDeck;
+
+    const refsBasenames = new Set();
+    await collectRefHtmlBasenames(path.join(dir, 'refs'), refsBasenames);
+    const nonLeak = htmlFiles.filter((name) => !refsBasenames.has(name.toLowerCase()));
+
+    const index = nonLeak.find((name) => name.toLowerCase() === 'index.html');
+    if (index) return index;
+    if (nonLeak[0]) return nonLeak[0];
+    // Every root HTML duplicates a refs source — do not advertise Canvas HTML
+    // as the project entry/cover.
+    return null;
   } catch { /* ignore */ }
   return null;
 }
@@ -365,11 +434,36 @@ export async function buildBatchArchive(projectsRoot, projectId, fileNames, meta
   const rejected = [];
 
   for (const name of fileNames) {
+    // NFC/NFD fallback: caller may send NFC (metadata / model / MCP) while
+    // disk has NFD (macOS legacy upload). Pick whichever Unicode form
+    // actually exists on scratch so batch downloads do not silently drop
+    // Hangul-named files.
     let filePath;
-    try {
-      filePath = resolveSafe(projectRoot, name);
-    } catch (err) {
-      rejected.push({ name, reason: `invalid path: ${err?.message || err}` });
+    let effectiveName = name;
+    let resolveErr = null;
+    for (const candidate of uniquePathCandidates(name)) {
+      try {
+        const attempt = resolveSafe(projectRoot, candidate);
+        try {
+          await lstat(attempt);
+        } catch (probeErr) {
+          if (!probeErr || probeErr.code !== 'ENOENT') throw probeErr;
+          resolveErr = probeErr;
+          continue;
+        }
+        filePath = attempt;
+        effectiveName = candidate;
+        resolveErr = null;
+        break;
+      } catch (err) {
+        resolveErr = err;
+      }
+    }
+    if (!filePath) {
+      const reason = resolveErr
+        ? `invalid path: ${resolveErr.message || resolveErr}`
+        : 'invalid path';
+      rejected.push({ name, reason });
       continue;
     }
 
@@ -443,7 +537,9 @@ export async function buildBatchArchive(projectsRoot, projectId, fileNames, meta
     }
 
     const buf = await readFile(filePath);
-    zip.file(name, buf, {
+    // Emit the on-disk (resolved) name in the archive so downstream tooling
+    // sees the actual bytes rather than the alternate Unicode form.
+    zip.file(effectiveName, buf, {
       date: new Date(st.mtimeMs),
       binary: true,
     });
@@ -644,7 +740,7 @@ This archive is the source of truth for turning the design into production code.
 - Build production UI from the exported design, not a loose reinterpretation.
 - Preserve typography scale, spacing rhythm, color tokens, border radii, shadows, motion timing, and component states.
 - Replace static placeholders only when the target app has real data or functional equivalents.
-- Keep generated product UI free of Open Design chrome, preview labels, or design-process annotations.
+- Keep generated product UI free of host app chrome, preview labels, or design-process annotations.
 - Treat this handoff as a visual contract: if implementation choices conflict, match the exported pixels and behavior first, then refactor internals.
 
 ## Source map
@@ -675,7 +771,7 @@ For responsive web exports, treat these as a modern breakpoint system for one ad
 - Preserve real copy, labels, and data shown in the export. Do not replace specific text with generic marketing filler.
 - Preserve interactive affordances: hover, focus, pressed, disabled, loading, validation, copy/share, tab/accordion, modal/sheet, and keyboard states where present.
 - Preserve accessibility semantics when converting: headings stay hierarchical, controls remain buttons/links/inputs, focus states stay visible.
-- Do not keep prototype-only annotations, frame labels, or Open Design chrome in the production UI.
+- Do not keep prototype-only annotations, frame labels, or host app chrome in the production UI.
 
 ## CJX-ready UX contract
 - Use \`${DESIGN_MANIFEST_FILENAME}\` as the machine-readable map for screens, app modules, OS widgets, landing pages, tokens, interactions, and viewport checks.
@@ -726,12 +822,63 @@ ${list(assetFiles)}
 `;
 }
 
+/**
+ * NFC/NFD-tolerant file resolution: /raw/, /preview/<scope>/, and PDF/HTML
+ * export subresource fetches all pass byte-exact paths through this helper.
+ * A file uploaded as NFD (macOS drag-drop) but requested as NFC (or vice
+ * versa) would otherwise ENOENT. Try the alternate Unicode form when the
+ * primary lookup fails.
+ */
+async function readFileWithUnicodeFallback(
+  dir,
+  requestedName,
+) {
+  const candidates = uniquePathCandidates(requestedName);
+  let lastErr = null;
+  for (const candidate of candidates) {
+    try {
+      const file = await resolveSafeReal(dir, candidate);
+      const buf = await readFile(file);
+      const st = await stat(file);
+      return { file, buf, st };
+    } catch (err) {
+      if (!err || err.code !== 'ENOENT') throw err;
+      lastErr = err;
+    }
+  }
+  throw lastErr || Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
+}
+
+async function statFileWithUnicodeFallback(dir, requestedName) {
+  const candidates = uniquePathCandidates(requestedName);
+  let lastErr = null;
+  for (const candidate of candidates) {
+    try {
+      const file = await resolveSafeReal(dir, candidate);
+      const st = await stat(file);
+      return { file, st };
+    } catch (err) {
+      if (!err || err.code !== 'ENOENT') throw err;
+      lastErr = err;
+    }
+  }
+  throw lastErr || Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
+}
+
+function uniquePathCandidates(requestedName) {
+  const primary = String(requestedName ?? '');
+  const nfc = projectRelpathNfcVariant(primary);
+  const nfd = projectRelpathNfdVariant(primary);
+  const out = [primary];
+  if (nfc) out.push(nfc);
+  if (nfd && !out.includes(nfd)) out.push(nfd);
+  return [...new Set(out.filter(Boolean))];
+}
+
 export async function readProjectFile(projectsRoot, projectId, name, metadata?) {
   assertVisibleForImportedProject(name, metadata);
   const dir = resolveProjectDir(projectsRoot, projectId, metadata);
-  const file = await resolveSafeReal(dir, name);
-  const buf = await readFile(file);
-  const st = await stat(file);
+  const { file, buf, st } = await readFileWithUnicodeFallback(dir, name);
   const rootReal = await realpath(dir).catch(() => dir);
   const rel = toProjectPath(path.relative(rootReal, file));
   const manifest = await readManifestForPath(dir, rel);
@@ -753,8 +900,7 @@ export async function readProjectFile(projectsRoot, projectId, name, metadata?) 
 export async function resolveProjectFilePath(projectsRoot, projectId, name, metadata?) {
   assertVisibleForImportedProject(name, metadata);
   const dir = resolveProjectDir(projectsRoot, projectId, metadata);
-  const file = await resolveSafeReal(dir, name);
-  const st = await stat(file);
+  const { file, st } = await statFileWithUnicodeFallback(dir, name);
   const rootReal = await realpath(dir).catch(() => dir);
   const rel = toProjectPath(path.relative(rootReal, file));
   return {
@@ -772,7 +918,12 @@ export async function writeProjectFile(
   projectId,
   name,
   body,
-  { overwrite = true, artifactManifest = null } = {},
+  {
+    overwrite = true,
+    artifactManifest = null,
+    skipArtifactStubGuard = false,
+    skipArtifactPublicationGuard = false,
+  } = {},
   metadata?,
 ) {
   assertVisibleForImportedProject(name, metadata);
@@ -803,7 +954,12 @@ export async function writeProjectFile(
       // every artifact that flows through writeProjectFile, regardless of
       // which agent/atom produced the body. Throws
       // ArtifactPublicationBlockedError which the route layer maps to 422.
-      if (isPublicationGuardedArtifactKind(validatedManifest.kind)) {
+      // Trusted template-clone may leave decorative copy that matches pitch
+      // markers — callers opt out via skipArtifactPublicationGuard.
+      if (
+        !skipArtifactPublicationGuard
+        && isPublicationGuardedArtifactKind(validatedManifest.kind)
+      ) {
         assertArtifactPublicationAllowed(body);
       }
       const identifier = typeof validatedManifest.metadata?.identifier === 'string'
@@ -812,7 +968,14 @@ export async function writeProjectFile(
       // Stub-guard applies to HTML-rendered manifest kinds (html, deck).
       // Other kinds (markdown, svg, code-snippet) can legitimately be small
       // and are skipped.
-      if (identifier.length > 0 && STUB_GUARDED_MANIFEST_KINDS.has(validatedManifest.kind)) {
+      //
+      // Trusted template-clone reseeds may intentionally shrink a prior Neutral
+      // or larger deck; callers opt out via skipArtifactStubGuard.
+      if (
+        !skipArtifactStubGuard
+        && identifier.length > 0
+        && STUB_GUARDED_MANIFEST_KINDS.has(validatedManifest.kind)
+      ) {
         // Scan the directory the new file actually lands in, not the project
         // root — writeProjectFile accepts nested paths like reports/X.html
         // and a root-only scan would miss prior siblings in subdirectories.
@@ -954,16 +1117,40 @@ function parseManifest(raw) {
 export async function deleteProjectFile(projectsRoot, projectId, name, metadata?) {
   assertVisibleForImportedProject(name, metadata);
   const dir = resolveProjectDir(projectsRoot, projectId, metadata);
-  const file = await resolveSafeReal(dir, name);
-  await unlink(file);
+  // NFC/NFD fallback: user-visible delete of an NFC-request name must still
+  // find the actual NFD-stored file (macOS legacy uploads). Also tombstone
+  // BOTH forms so sync-down cannot resurrect the file under the sibling
+  // Unicode variant.
+  const candidates = uniquePathCandidates(name);
+  let deletedPath: string | null = null;
+  let lastErr: any = null;
+  for (const candidate of candidates) {
+    try {
+      const file = await resolveSafeReal(dir, candidate);
+      await unlink(file);
+      deletedPath = candidate;
+      break;
+    } catch (err: any) {
+      if (!err || err.code !== 'ENOENT') throw err;
+      lastErr = err;
+    }
+  }
+  if (!deletedPath) {
+    throw lastErr || Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
+  }
+  // Record BOTH Unicode forms so a sibling-node sync-down of the alternate-
+  // encoded S3 object cannot resurrect a user-deleted file after a refresh.
+  for (const candidate of candidates) {
+    await addDeletedProjectRelpath(dir, candidate);
+  }
 }
 
 export async function renameProjectFile(projectsRoot, projectId, fromName, toName, metadata?) {
   assertVisibleForImportedProject(fromName, metadata);
   assertVisibleForImportedProject(toName, metadata);
   const dir = resolveProjectDir(projectsRoot, projectId, metadata);
-  const oldName = validateProjectPath(fromName);
-  const newName = sanitizePath(toName);
+  const requestedOld = validateProjectPath(fromName);
+  const newName = sanitizePath(toName); // sanitizePath already NFC-normalizes
   try {
     await stat(dir);
   } catch (err) {
@@ -974,8 +1161,28 @@ export async function renameProjectFile(projectsRoot, projectId, fromName, toNam
     }
     throw err;
   }
-  const source = await resolveSafeReal(dir, oldName);
-  const sourceStat = await stat(source);
+  // NFC/NFD fallback for the source path — user-visible name may be NFC while
+  // disk stores NFD (macOS legacy). Try both forms.
+  let source: string | null = null;
+  let oldName: string = requestedOld;
+  let sourceStat: any = null;
+  {
+    let lastErr: any = null;
+    for (const candidate of uniquePathCandidates(requestedOld)) {
+      try {
+        const attempt = await resolveSafeReal(dir, candidate);
+        const st = await stat(attempt);
+        source = attempt;
+        oldName = candidate;
+        sourceStat = st;
+        break;
+      } catch (err: any) {
+        if (!err || err.code !== 'ENOENT') throw err;
+        lastErr = err;
+      }
+    }
+    if (!source) throw lastErr || Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
+  }
   if (!sourceStat.isFile()) {
     const err = new Error('source is not a regular file');
     err.code = 'EISDIR';
@@ -1425,7 +1632,54 @@ export function sanitizeName(raw) {
     .replace(/[^\p{L}\p{N}._-]/gu, '_')
     .replace(/^\.+/, '_')
     .trim();
-  return cleaned || `file-${Date.now()}`;
+  // NFC-normalize so macOS NFD Hangul uploads stay reachable via the NFC
+  // request paths our FE / model / preview / export pipeline all use.
+  // Prior NFD-on-disk vs NFC-in-URL mismatch broke /raw/, presign-get,
+  // preview subresources, and PDF/HTML export image loading.
+  const nfc = safeNormalizeFilename(cleaned);
+  return nfc || `file-${Date.now()}`;
+}
+
+function safeNormalizeFilename(value) {
+  const source = String(value ?? '');
+  if (!source) return source;
+  try {
+    return source.normalize('NFC');
+  } catch {
+    return source;
+  }
+}
+
+/**
+ * Return NFD form of a project-relative path, or empty when normalization
+ * would be a no-op. Used to probe alternate Unicode forms when the primary
+ * (usually NFC) path is not on scratch — macOS uploaders historically stored
+ * NFD, and existing on-disk / S3 objects predate the ingestion NFC pass.
+ */
+export function projectRelpathNfdVariant(relpath) {
+  const source = String(relpath ?? '').trim();
+  if (!source) return '';
+  try {
+    const nfd = source.normalize('NFD');
+    return nfd === source ? '' : nfd;
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Return NFC form of a project-relative path, or empty when it already is.
+ * Symmetric helper to {@link projectRelpathNfdVariant}.
+ */
+export function projectRelpathNfcVariant(relpath) {
+  const source = String(relpath ?? '').trim();
+  if (!source) return '';
+  try {
+    const nfc = source.normalize('NFC');
+    return nfc === source ? '' : nfc;
+  } catch {
+    return '';
+  }
 }
 
 // multer@1 decodes multipart filenames as latin1, which mangles any

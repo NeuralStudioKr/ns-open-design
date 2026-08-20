@@ -1,9 +1,11 @@
 // Periodic GC for file revision snapshots (undo/redo history bytes).
 //
-// Complements per-push retention in `createFileRevisionService`. Sweeps:
+// Owns count retention, byte compaction, and orphan cleanup. Push schedules
+// batched deferred sweeps (retention + compaction via PUSH_PRUNE_MAX); this
+// worker is the authoritative safety net on a fixed interval. Sweeps:
 //   - orphan BLOB rows (metadata deleted, snapshot left behind)
-//   - global per-file retention safety pass
-//   - deferred snapshot byte compaction (push schedules batched via PUSH_PRUNE_MAX; GC uncapped)
+//   - global per-file retention (uncapped)
+//   - deferred snapshot byte compaction (uncapped)
 //   - orphan `.od/revisions/*` files on disk (files mode / migration leftovers)
 //   - optional SQLite VACUUM when enough bytes were reclaimed
 //
@@ -15,7 +17,7 @@ import {
   runFileRevisionGc,
   type FileRevisionGcResult,
 } from './maintenance.js';
-import { updateFileRevisionMetrics } from './metrics.js';
+import { updateFileRevisionMetrics, markFileRevisionGcSuccess } from './metrics.js';
 import {
   resolveFileRevisionSnapshotStorage,
 } from './snapshot-storage.js';
@@ -109,8 +111,9 @@ export function startFileRevisionGc(opts: FileRevisionGcWorkerOptions): FileRevi
         lastVacuumAtMs = Date.now();
       }
       try {
-        const stats = await collectFileRevisionStorageStats(opts.db);
+        const stats = await collectFileRevisionStorageStats(opts.db, opts.projectsRoot);
         updateFileRevisionMetrics(stats);
+        markFileRevisionGcSuccess();
       } catch (err) {
         log(`[file-revisions] GC metrics update failed: ${err instanceof Error ? err.message : String(err)}`);
       }
@@ -128,7 +131,7 @@ export function startFileRevisionGc(opts: FileRevisionGcWorkerOptions): FileRevi
       clearInterval(timer);
     },
     sweep,
-    stats: () => collectFileRevisionStorageStats(opts.db),
+    stats: () => collectFileRevisionStorageStats(opts.db, opts.projectsRoot),
   };
 }
 

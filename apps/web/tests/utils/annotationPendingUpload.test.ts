@@ -30,7 +30,7 @@ describe('annotationPendingUpload', () => {
       uploaded: [
         {
           path: 'mse2lcw6-drawing-2026-08-04T05-14-00-000Z.png',
-          name: file.name,
+          name: 'mse2lcw6-drawing-2026-08-04T05-14-00-000Z.png',
           kind: 'image' as const,
         },
       ],
@@ -39,7 +39,7 @@ describe('annotationPendingUpload', () => {
     const readable = vi.fn().mockResolvedValue([
       {
         path: 'mse2lcw6-drawing-2026-08-04T05-14-00-000Z.png',
-        name: file.name,
+        name: 'mse2lcw6-drawing-2026-08-04T05-14-00-000Z.png',
         kind: 'image' as const,
       },
     ]);
@@ -56,5 +56,31 @@ describe('annotationPendingUpload', () => {
     expect(pathReplacements.get(pendingPath)?.path).toBe(
       'mse2lcw6-drawing-2026-08-04T05-14-00-000Z.png',
     );
+  });
+
+  it('drops cold uploaded annotation screenshots instead of staging unreadables', async () => {
+    const file = new File(['png'], 'drawing.png', { type: 'image/png' });
+    const pendingPath = pendingAnnotationPathForFile(file);
+    vi.mocked(uploadProjectFiles).mockResolvedValue({
+      uploaded: [
+        {
+          path: 'mse2lcw6-drawing.png',
+          name: 'mse2lcw6-drawing.png',
+          kind: 'image' as const,
+        },
+      ],
+      failed: [],
+    });
+    const readable = vi.fn().mockResolvedValue([]);
+
+    const { attachments, pathReplacements } = await flushPendingAnnotationUploads(
+      'project-1',
+      [{ path: pendingPath, name: file.name, kind: 'image', order: 0 }],
+      new Map([[pendingPath, file]]),
+      readable,
+    );
+
+    expect(attachments).toEqual([]);
+    expect(pathReplacements.size).toBe(0);
   });
 });

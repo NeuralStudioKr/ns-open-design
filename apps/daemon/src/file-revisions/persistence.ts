@@ -7,6 +7,7 @@ import {
   schedulePostgresWrite,
 } from '../storage/daemon-db-runtime.js';
 import { migrateFileRevisionSnapshots, usesPostgresRevisionSnapshots } from './snapshot-storage.js';
+import { selectChainAwarePruneIds } from './prune-chain.js';
 import {
   pgDeleteFileRevisionsAfterSequence as pgDeleteRevisionsAfterSequence,
   pgDeleteFileRevisionsByIds,
@@ -24,6 +25,21 @@ export function resolveFileRevisionRetentionLimit(
 }
 
 export const FILE_REVISION_RETENTION_LIMIT = resolveFileRevisionRetentionLimit();
+
+/**
+ * Canonical NFC key for `file_revisions.file_name` — SQL comparisons are
+ * byte-exact so we must persist and query in a single Unicode form. Hangul
+ * filenames uploaded from macOS legacy (NFD) that later come back through
+ * the FE (NFC) would otherwise land in a different row and orphan history.
+ */
+export function canonicalizeFileRevisionKey(fileName: string): string {
+  const raw = String(fileName ?? '').trim().replace(/\\/g, '/');
+  try {
+    return raw.normalize('NFC');
+  } catch {
+    return raw;
+  }
+}
 
 export interface FileRevisionRow {
   id: string;
@@ -94,6 +110,7 @@ function rowToRevision(row: FileRevisionRow): FileRevision {
 }
 
 export function insertFileRevision(db: Database.Database, input: FileRevisionInsert): FileRevision {
+  const canonicalFileName = canonicalizeFileRevisionKey(input.fileName);
   db.prepare(`
     INSERT INTO file_revisions (
       id, project_id, file_name, parent_revision_id, sequence, created_at,
@@ -105,7 +122,7 @@ export function insertFileRevision(db: Database.Database, input: FileRevisionIns
   `).run({
     id: input.id,
     projectId: input.projectId,
-    fileName: input.fileName,
+    fileName: canonicalFileName,
     parentRevisionId: input.parentRevisionId ?? null,
     sequence: input.sequence,
     createdAt: input.createdAt,
@@ -118,7 +135,7 @@ export function insertFileRevision(db: Database.Database, input: FileRevisionIns
   const revision = rowToRevision({
     id: input.id,
     projectId: input.projectId,
-    fileName: input.fileName,
+    fileName: canonicalFileName,
     parentRevisionId: input.parentRevisionId ?? null,
     sequence: input.sequence,
     createdAt: input.createdAt,
@@ -226,6 +243,7 @@ export function getFileRevision(
   fileName: string,
   revisionId: string,
 ): FileRevision | null {
+  const canonical = canonicalizeFileRevisionKey(fileName);
   const row = db.prepare(`
     SELECT
       id,
@@ -241,7 +259,7 @@ export function getFileRevision(
       assistant_message_id AS assistantMessageId
     FROM file_revisions
     WHERE project_id = ? AND file_name = ? AND id = ?
-  `).get(projectId, fileName, revisionId) as FileRevisionRow | undefined;
+  `).get(projectId, canonical, revisionId) as FileRevisionRow | undefined;
   return row ? rowToRevision(row) : null;
 }
 
@@ -250,6 +268,7 @@ export function listFileRevisions(
   projectId: string,
   fileName: string,
 ): FileRevision[] {
+  const canonical = canonicalizeFileRevisionKey(fileName);
   const rows = db.prepare(`
     SELECT
       id,
@@ -266,7 +285,7 @@ export function listFileRevisions(
     FROM file_revisions
     WHERE project_id = ? AND file_name = ?
     ORDER BY sequence ASC
-  `).all(projectId, fileName) as FileRevisionRow[];
+  `).all(projectId, canonical) as FileRevisionRow[];
   return rows.map(rowToRevision);
 }
 
@@ -275,6 +294,7 @@ export function getLatestFileRevision(
   projectId: string,
   fileName: string,
 ): FileRevision | null {
+  const canonical = canonicalizeFileRevisionKey(fileName);
   const row = db.prepare(`
     SELECT
       id,
@@ -292,7 +312,7 @@ export function getLatestFileRevision(
     WHERE project_id = ? AND file_name = ?
     ORDER BY sequence DESC
     LIMIT 1
-  `).get(projectId, fileName) as FileRevisionRow | undefined;
+  `).get(projectId, canonical) as FileRevisionRow | undefined;
   return row ? rowToRevision(row) : null;
 }
 
@@ -302,6 +322,7 @@ export function deleteFileRevisionsAfterSequence(
   fileName: string,
   sequence: number,
 ): FileRevision[] {
+  const canonical = canonicalizeFileRevisionKey(fileName);
   const rows = db.prepare(`
     SELECT
       id,
@@ -318,13 +339,13 @@ export function deleteFileRevisionsAfterSequence(
     FROM file_revisions
     WHERE project_id = ? AND file_name = ? AND sequence > ?
     ORDER BY sequence ASC
-  `).all(projectId, fileName, sequence) as FileRevisionRow[];
+  `).all(projectId, canonical, sequence) as FileRevisionRow[];
   if (rows.length === 0) return [];
   db.prepare(`
     DELETE FROM file_revisions
     WHERE project_id = ? AND file_name = ? AND sequence > ?
-  `).run(projectId, fileName, sequence);
-  syncDeleteAfterSequenceToPostgres(projectId, fileName, sequence);
+  `).run(projectId, canonical, sequence);
+  syncDeleteAfterSequenceToPostgres(projectId, canonical, sequence);
   return rows.map(rowToRevision);
 }
 
@@ -364,28 +385,27 @@ export function pruneOldestFileRevisions(
   fileName: string,
   keep: number,
 ): FileRevision[] {
-  const rows = db.prepare(`
-    SELECT
-      id,
-      project_id AS projectId,
-      file_name AS fileName,
-      parent_revision_id AS parentRevisionId,
-      sequence,
-      created_at AS createdAt,
-      byte_size AS byteSize,
-      source,
-      label,
-      conversation_id AS conversationId,
-      assistant_message_id AS assistantMessageId
-    FROM file_revisions
-    WHERE project_id = ? AND file_name = ?
-    ORDER BY sequence DESC
-    LIMIT -1 OFFSET ?
-  `).all(projectId, fileName, keep) as FileRevisionRow[];
-  if (rows.length === 0) return [];
-  const ids = rows.map((row) => row.id);
-  const placeholders = ids.map(() => '?').join(', ');
-  db.prepare(`DELETE FROM file_revisions WHERE id IN (${placeholders})`).run(...ids);
-  syncDeletedRevisionIdsToPostgres(ids);
-  return rows.map(rowToRevision);
+  return pruneOldestFileRevisionsLimited(db, projectId, fileName, keep, Number.POSITIVE_INFINITY).revisions;
+}
+
+export function pruneOldestFileRevisionsLimited(
+  db: Database.Database,
+  projectId: string,
+  fileName: string,
+  keep: number,
+  maxDeletes: number,
+): { revisions: FileRevision[]; remainingExcess: number } {
+  const revisions = listFileRevisions(db, projectId, fileName);
+  const selection = selectChainAwarePruneIds(revisions, keep, maxDeletes);
+  if (selection.revisionIds.length === 0) {
+    return { revisions: [], remainingExcess: selection.remainingExcess };
+  }
+
+  const placeholders = selection.revisionIds.map(() => '?').join(', ');
+  db.prepare(`DELETE FROM file_revisions WHERE id IN (${placeholders})`).run(...selection.revisionIds);
+  syncDeletedRevisionIdsToPostgres(selection.revisionIds);
+  return {
+    revisions: selection.revisions,
+    remainingExcess: selection.remainingExcess,
+  };
 }

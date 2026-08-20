@@ -35,6 +35,11 @@ describe("Teamver embed API polling cadence", () => {
     expect(source).toContain("nextRunsPollDelay");
     expect(source).toContain("handleRunsVisibilityChange");
     expect(source).not.toContain("window.setInterval(refresh, 2000)");
+    // L-492: first tick must be immediate even on project deep-link / cold mount.
+    expect(source).toContain("Always poll once immediately (L-492)");
+    expect(source).not.toMatch(
+      /kind === ['"]project['"][\s\S]{0,120}scheduleNextRunsPoll\(\)/,
+    );
   });
 
   it("treats BYOK proxy active 401 as quiet transient auth during background polling", () => {
@@ -43,7 +48,7 @@ describe("Teamver embed API polling cadence", () => {
     expect(source).toContain("ActiveByokProxyAuthTransientError");
     expect(source).toContain("shouldSkipByokProxyActivePoll");
     expect(source).toContain("err instanceof ActiveByokProxyAuthTransientError");
-    expect(source).toContain("? console.debug");
-    expect(source).toContain(": console.warn");
+    expect(source).toContain("? devLog.debug");
+    expect(source).toContain(": devLog.warn");
   });
 });

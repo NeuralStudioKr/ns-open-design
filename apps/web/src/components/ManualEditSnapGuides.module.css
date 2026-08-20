@@ -1,0 +1,23 @@
+.overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 19;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.line {
+  position: absolute;
+  background: #f43f5e;
+  pointer-events: none;
+}
+
+.vertical {
+  width: 1px;
+  transform: translateX(-0.5px);
+}
+
+.horizontal {
+  height: 1px;
+  transform: translateY(-0.5px);
+}

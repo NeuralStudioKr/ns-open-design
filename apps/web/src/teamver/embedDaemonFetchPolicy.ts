@@ -116,6 +116,35 @@ export function shouldFetchEntryCatalogsOnBoot(routeKind: string): boolean {
   return routeKind === 'home' || routeKind === 'design-system-create' || routeKind === 'design-system-detail';
 }
 
+/**
+ * Slide-only embed home: keep `design-templates` on the critical path;
+ * defer skills / design-systems / listTemplates until the browser is idle.
+ */
+export function shouldDeferNonCriticalEntryCatalogsOnBoot(): boolean {
+  if (!isTeamverEmbedMode()) return false;
+  return branding().slideOnlyMvp;
+}
+
+const DEFAULT_IDLE_TIMEOUT_MS = 2500;
+
+/** `requestIdleCallback` with timeout; falls back to `setTimeout`. */
+export function scheduleWhenIdle(
+  callback: () => void,
+  options?: { timeoutMs?: number },
+): () => void {
+  const timeoutMs = options?.timeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS;
+  if (typeof globalThis.requestIdleCallback === 'function') {
+    const id = globalThis.requestIdleCallback(() => callback(), { timeout: timeoutMs });
+    return () => {
+      if (typeof globalThis.cancelIdleCallback === 'function') {
+        globalThis.cancelIdleCallback(id);
+      }
+    };
+  }
+  const timer = globalThis.setTimeout(callback, timeoutMs);
+  return () => globalThis.clearTimeout(timer);
+}
+
 /** Home recent rail (`GET /api/projects/recent`) — defer on project-file deep links. */
 export function shouldFetchHomeProjectsOnBoot(routeKind: string): boolean {
   if (!isTeamverEmbedMode()) return true;
@@ -123,8 +152,9 @@ export function shouldFetchHomeProjectsOnBoot(routeKind: string): boolean {
 }
 
 /**
- * Community gallery HTML iframe probes (`GET …/preview`) on home boot.
- * Embed defers to in-view / hover so boot does not fan out plugin previews.
+ * Community gallery HTML preview probes — wide IntersectionObserver rootMargin
+ * (eager). Embed keeps this false so only ~120px in-view cards fetch; HtmlSurface
+ * still arms those visible tiles (not hover-only).
  */
 export function shouldEagerLoadCommunityPluginPreviews(): boolean {
   return !isTeamverEmbedMode();

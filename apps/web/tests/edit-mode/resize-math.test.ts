@@ -18,6 +18,7 @@ import {
   resizeViewportOrigin,
   startAnchorFromTarget,
   resizeFreezeContentRect,
+  shouldPromoteInlineTargetForResize,
   startSizeFromTarget,
   type ResizeMathInput,
 } from '../../src/edit-mode/resize-math';
@@ -192,6 +193,32 @@ describe('canResizeTarget / slide root', () => {
 });
 
 describe('style helpers', () => {
+  it('promotes inline SVG for resize so width/height CSS can apply', () => {
+    expect(shouldPromoteInlineTargetForResize(target({
+      kind: 'image',
+      tagName: 'svg',
+      styles: emptyManualEditStyles(),
+    }))).toBe(true);
+    expect(resizeResultToStyles({
+      widthPx: 360,
+      heightPx: 360,
+      x: 0,
+      y: 0,
+      touchedWidth: true,
+      touchedHeight: true,
+      leftPx: null,
+      topPx: null,
+    }, target({
+      kind: 'image',
+      tagName: 'svg',
+      styles: emptyManualEditStyles(),
+    }))).toMatchObject({
+      display: 'inline-block',
+      width: '360px',
+      height: '360px',
+    });
+  });
+
   it('parses explicit px only', () => {
     expect(parseExplicitPx('320px')).toBe(320);
     expect(parseExplicitPx('auto')).toBeNull();
@@ -208,6 +235,31 @@ describe('style helpers', () => {
       styles: { ...emptyManualEditStyles(), width: '100px', height: '50px' },
       rect: { x: 0, y: 0, width: 300, height: 150 },
     }))).toEqual({ widthPx: 300, heightPx: 150 });
+  });
+
+  it('image: recovers style width/height when a broken <img> collapses layout+rect to 0', () => {
+    // Broken / not-yet-loaded <img>: offsetWidth and getBoundingClientRect can
+    // both collapse to 0 while `style="width:400px;height:300px"` stays. Prior
+    // behavior returned 1×1 → resize overlay started at 1px and any drag
+    // delta jumped visibly (the "drag box weird" symptom the user hit).
+    expect(startSizeFromTarget(target({
+      kind: 'image',
+      tagName: 'img',
+      styles: { ...emptyManualEditStyles(), width: '400px', height: '300px' },
+      rect: { x: 200, y: 100, width: 0, height: 0 },
+      layoutWidth: 0,
+      layoutHeight: 0,
+    }))).toEqual({ widthPx: 400, heightPx: 300 });
+    // Non-image target with only style px still returns 1 — the fallback is
+    // image-specific to keep the flow-text / container invariants above intact.
+    expect(startSizeFromTarget(target({
+      kind: 'container',
+      tagName: 'div',
+      styles: { ...emptyManualEditStyles(), width: '400px', height: '300px' },
+      rect: { x: 200, y: 100, width: 0, height: 0 },
+      layoutWidth: 0,
+      layoutHeight: 0,
+    }))).toEqual({ widthPx: 1, heightPx: 1 });
   });
 
   it('prefers layout offset size over transform-shrunk getBoundingClientRect', () => {

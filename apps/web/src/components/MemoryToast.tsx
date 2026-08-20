@@ -7,7 +7,6 @@
 // extracted entries. The component owns its own EventSource so it can
 // be dropped into App.tsx with no other plumbing.
 import { useEffect, useRef, useState } from 'react';
-import type { CSSProperties } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import type { MemoryChangeEvent } from '@open-design/contracts';
 import { useT } from '../i18n';
@@ -87,27 +86,7 @@ export function MemoryToast({ onOpenMemory }: Props) {
       : `(${toast.count})`
     : '';
   const clickHint = toast ? t('settings.memoryToastClickHint') : '';
-
-  const pillStyle: CSSProperties = {
-    position: 'fixed',
-    bottom: 20,
-    right: 20,
-    zIndex: 1000,
-    padding: '8px 14px',
-    borderRadius: 999,
-    background: 'rgba(20, 20, 20, 0.92)',
-    color: '#fff',
-    fontSize: 13,
-    boxShadow: '0 6px 24px rgba(0,0,0,0.18)',
-    display: 'flex',
-    alignItems: 'center',
-    gap: 8,
-    backdropFilter: 'blur(8px)',
-    border: 'none',
-    font: 'inherit',
-    cursor: onOpenMemory ? 'pointer' : 'default',
-    transition: 'transform 0.15s ease, box-shadow 0.15s ease',
-  };
+  const className = `od-memory-toast${onOpenMemory ? ' is-clickable' : ''}`;
 
   return (
     <AnimatePresence>
@@ -117,15 +96,15 @@ export function MemoryToast({ onOpenMemory }: Props) {
             key={toast.key}
             role="status"
             aria-live="polite"
-            style={pillStyle}
+            className={className}
             variants={toastSlideUp}
             initial="hidden"
             animate="visible"
             exit="exit"
           >
-            <span aria-hidden style={{ fontSize: 14 }}>✦</span>
+            <span aria-hidden>✦</span>
             <span>{label}</span>
-            <span style={{ opacity: 0.65 }}>{detail}</span>
+            <span className="od-memory-toast-detail">{detail}</span>
           </motion.div>
         ) : (
           <motion.button
@@ -135,27 +114,16 @@ export function MemoryToast({ onOpenMemory }: Props) {
             aria-label={`${label} ${detail} — ${clickHint}`}
             title={clickHint}
             onClick={onOpenMemory}
-            whileHover={{ y: -1, boxShadow: '0 10px 28px rgba(0,0,0,0.24)' }}
-            style={pillStyle}
+            className={className}
             variants={toastSlideUp}
             initial="hidden"
             animate="visible"
             exit="exit"
           >
-            <span aria-hidden style={{ fontSize: 14 }}>✦</span>
+            <span aria-hidden>✦</span>
             <span>{label}</span>
-            <span style={{ opacity: 0.65 }}>{detail}</span>
-            <span
-              aria-hidden
-              style={{
-                marginLeft: 4,
-                paddingLeft: 8,
-                borderLeft: '1px solid rgba(255,255,255,0.18)',
-                opacity: 0.85,
-                fontSize: 12,
-                fontWeight: 500,
-              }}
-            >
+            <span className="od-memory-toast-detail">{detail}</span>
+            <span aria-hidden className="od-memory-toast-hint">
               {clickHint} →
             </span>
           </motion.button>

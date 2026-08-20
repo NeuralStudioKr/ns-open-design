@@ -1,6 +1,12 @@
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { JSDOM } from 'jsdom';
 import { buildSrcdoc } from '../../src/runtime/srcdoc';
+
+const here = dirname(fileURLToPath(import.meta.url));
+const srcdocSource = readFileSync(join(here, '../../src/runtime/srcdoc.ts'), 'utf8');
 
 const deckHtml = `<!doctype html>
 <html>
@@ -13,6 +19,38 @@ const deckHtml = `<!doctype html>
 </html>`;
 
 describe('buildSrcdoc', () => {
+  it('does not stacked-neutralize official Capsule presenter Motif in template preview', () => {
+    const capsule = `<!doctype html><html><head><style>
+.presentation{position:relative;width:100vw;height:100vh;overflow:hidden}
+.slide{position:absolute;inset:0;width:100%;height:100%;display:flex;flex-direction:column;opacity:0}
+.slide.active{opacity:1}
+.slide-1{justify-content:center;align-items:center}
+.deco-pill{position:absolute;border-radius:9999px}
+.title-pill{position:relative;z-index:2}
+.main-title{position:relative;z-index:2;font-size:clamp(3rem,8vw,7rem)}
+</style></head><body>
+<div class="presentation">
+  <div class="slide slide-1 active" data-slide="1">
+    <div class="deco-pill" style="width:120px;height:55px;top:12%;left:8%">Concept</div>
+    <div class="title-pill">Presentation Template</div>
+    <h1 class="main-title">CAPSULE</h1>
+  </div>
+  <div class="slide" data-slide="2">Two</div>
+</div>
+</body></html>`;
+    const doc = buildSrcdoc(capsule, { deck: true });
+    expect(doc).not.toContain('data-od-stacked-canvas-neutralize');
+    expect(doc).not.toContain('data-od-compact-stacked');
+    expect(doc).not.toContain('data-od-deck-stacked-fix');
+    // Deck-bridge JS comments mention flex-direction:unset — assert CSS rule only.
+    expect(doc).not.toMatch(/flex-direction:\s*unset\s*;/);
+    expect(doc).not.toContain('content="width=1920, initial-scale=1, maximum-scale=1"');
+    expect(doc).toContain('width=device-width');
+    expect(doc).toContain('flex-direction:column');
+    expect(doc).toContain('CAPSULE');
+    expect(doc).toContain('Concept');
+  });
+
   it('repairs viewport leaks in HTML fragments before wrapping', () => {
     const fragment = `viewport=width=device-width, initial-scale=1" />
 <section class="slide active">A</section>`;
@@ -44,14 +82,15 @@ describe('buildSrcdoc', () => {
     const corrupt = `<!doctype html><html><head>device-width, initial-scale=1" /><title>T</title></head><body><div class="slide">A</div></body></html>`;
     const doc = buildSrcdoc(corrupt, { deck: true });
     expect(doc).not.toMatch(/<head>\s*device-width/i);
-    expect(doc).toContain('content="width=device-width, initial-scale=1"');
+    // Deck preview may lock compact-like slides to 1920; presenter decks keep device-width.
+    expect(doc).toMatch(/<meta[^>]+name=["']viewport["'][^>]*content="width=(?:device-width|1920)/i);
   });
 
   it('repairs the shorter -width viewport suffix leak in preview srcdoc', () => {
     const corrupt = `<!doctype html><html><head><title>T</title></head><body>-width, initial-scale=1" /><div class="slide">A</div></body></html>`;
     const doc = buildSrcdoc(corrupt, { deck: true, previewFocusGuard: true });
     expect(doc).not.toMatch(/<body[^>]*>[\s\S]*?>\s*-width\s*,\s*initial-scale/i);
-    expect(doc).toContain('content="width=device-width, initial-scale=1"');
+    expect(doc).toMatch(/<meta[^>]+name=["']viewport["'][^>]*content="width=(?:device-width|1920)/i);
   });
 
   it('preserves deck fit() scripts through buildSrcdoc repair and restores mangled bodies', () => {
@@ -183,7 +222,9 @@ describe('buildSrcdoc', () => {
     const srcdoc = buildSrcdoc('<link rel="stylesheet" href="https://fonts.example/app.css"><style>@import "https://fonts.example/css"; @font-face { font-family: Remote; src: url(remote.woff2); } main { color: red; }</style><main>Hero</main>');
 
     expect(srcdoc).toContain('link[rel~="stylesheet"], link[rel~="preload"], link[rel~="preconnect"]');
-    expect(srcdoc).toContain('.replace(/@import[^;]+;/gi,');
+    // Must not use naive @import[^;]+; — Google Fonts CSS2 URLs embed `;`.
+    expect(srcdoc).not.toContain('.replace(/@import[^;]+;/gi,');
+    expect(srcdoc).toMatch(/\.replace\(\/@import\\s\+/);
     expect(srcdoc).toContain('.replace(/@font-face\\s*\\{[^}]*\\}/gi,');
   });
 
@@ -367,8 +408,11 @@ describe('buildSrcdoc', () => {
 
     // Value sanitizer drops any character that could close the declaration,
     // the rule, or the <style> element.
-    expect(srcdoc).toContain('var UNSAFE_VALUE = /[;{}<>\\n\\r]/;');
-    expect(srcdoc).toContain('UNSAFE_VALUE.test(v)');
+    expect(srcdoc).toContain('var UNSAFE_VALUE = /[;{}<>\\n\\r]|url\\s*\\(|expression\\s*\\(|image-set\\s*\\(|element\\s*\\(|-moz-binding|javascript\\s*:|vbscript\\s*:|data\\s*:/i;');
+    expect(srcdoc).toContain('function normalizeInspectCssValue(css)');
+    expect(srcdoc).toContain('function inspectValueUnsafe(v)');
+    expect(srcdoc).toContain('inspectValueUnsafe(v)');
+    expect(srcdoc).toContain('Mirror HOST_UNSAFE_INSPECT_VALUE');
 
     // Selector is recomputed from elementId, not echoed back from the
     // inbound message — defends against a forged selector breaking out
@@ -538,5 +582,48 @@ describe('buildSrcdoc', () => {
     // Its direct-child divs are matched by [id] > div[class] / [id] > div[id]
     expect(srcdoc).toContain('<div class="content" data-od-id=');
     expect(srcdoc).toContain('<div id="named" data-od-id=');
+  });
+
+  it('folds od-id + source-path annotation and skips intact-head repair', () => {
+    expect(srcdocSource).toContain('annotatePreviewEditTargets');
+    expect(srcdocSource).toContain('artifactDocumentHeadLooksIntact');
+    expect(srcdocSource).toContain('repairArtifactDocumentHeadIfNeeded');
+    expect(srcdocSource).toContain('repairDeckSlideSurfaceBleed');
+    expect(srcdocSource).toContain('relaxPersistedDeckSlideSurfaceBleed');
+    expect(srcdocSource).toContain('repairArtifactStyleSheets');
+    expect(srcdocSource).toMatch(
+      /relaxPersistedDeckSlideSurfaceBleed\([\s\S]{0,120}repairArtifactStyleSheets/,
+    );
+    expect(srcdocSource).toContain('shouldAnnotatePreviewEditTargets');
+    expect(srcdocSource).toContain('annotateMissingOdIdsOnDocument');
+    expect(srcdocSource).toContain('annotateManualEditSourcePathsOnDocument');
+    expect(srcdocSource).toContain("wrapPreviewHtmlShell(repaired, { alreadyRepaired: true })");
+    expect(srcdocSource).toContain('options.exportDocument');
+  });
+
+  it('skips od-id annotation for exportDocument builds', () => {
+    const dom = new JSDOM('');
+    globalThis.DOMParser = dom.window.DOMParser;
+    const srcdoc = buildSrcdoc('<section><h1>Title</h1></section>', {
+      exportDocument: true,
+    });
+    Reflect.deleteProperty(globalThis, 'DOMParser');
+    expect(srcdoc).not.toContain('data-od-id=');
+    expect(srcdoc).not.toContain('data-od-preview-redirect-guard');
+  });
+
+  it('skips annotate when structural opens already carry data-od-id', () => {
+    const dom = new JSDOM('');
+    globalThis.DOMParser = dom.window.DOMParser;
+    const html = [
+      '<!doctype html><html><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /></head>',
+      '<body><section data-od-id="s0"><h1 data-od-id="h0">Title</h1></section></body></html>',
+    ].join('');
+    const srcdoc = buildSrcdoc(html, {});
+    Reflect.deleteProperty(globalThis, 'DOMParser');
+    expect(srcdoc).toContain('data-od-id="s0"');
+    expect(srcdoc).toContain('data-od-id="h0"');
+    // No fallback od-* ids injected for already-annotated structural opens.
+    expect(srcdoc).not.toMatch(/data-od-id="od-/);
   });
 });

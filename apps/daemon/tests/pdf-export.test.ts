@@ -4,7 +4,12 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { buildDesktopPdfExportInput } from '../src/pdf-export.js';
+import {
+  buildDesktopPdfExportInput,
+  collectRelativeProjectAssetPaths,
+  inlineProjectImagesFromScratch,
+  warmExportRelativeAssets,
+} from '../src/pdf-export.js';
 import { startServer } from '../src/server.js';
 
 describe('buildDesktopPdfExportInput', () => {
@@ -157,6 +162,131 @@ describe('buildDesktopPdfExportInput', () => {
     expect(built.input.html).toContain('built');
     // Cache key SSOT: mtime tracks the dist file, not the dev shell (§20.1).
     expect(built.source.relPath).toBe('deck/dist/index.html');
+  });
+});
+
+describe('inlineProjectImagesFromScratch', () => {
+  let projectsRoot = '';
+  const projectId = 'proj-inline-fs';
+
+  beforeEach(async () => {
+    projectsRoot = mkdtempSync(path.join(tmpdir(), 'od-inline-fs-'));
+    await mkdir(path.join(projectsRoot, projectId, 'refs', 'drive'), { recursive: true });
+  });
+
+  afterEach(() => {
+    if (projectsRoot) rmSync(projectsRoot, { recursive: true, force: true });
+  });
+
+  it('replaces relative <img src> with data URIs read from scratch', async () => {
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    await writeFile(path.join(projectsRoot, projectId, 'refs', 'drive', 'a.png'), png);
+    const html = '<img src="refs/drive/a.png" alt="a" srcset="refs/drive/a.png 2x">';
+    const out = await inlineProjectImagesFromScratch({ html, projectId, projectsRoot });
+    expect(out).toContain('src="data:image/png;base64,iVBORw0KGgo=');
+    // Sibling srcset must be dropped once src became a data URI so Chromium
+    // does not re-fetch the relative URL for a higher-DPR variant.
+    expect(out).not.toMatch(/srcset\s*=/);
+  });
+
+  it('resolves NFC img src against NFD on-disk file (Hangul filenames)', async () => {
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 1]);
+    const nfd = 'msh9rso1-서빙하는-금붕어.webp'.normalize('NFD');
+    const nfc = 'msh9rso1-서빙하는-금붕어.webp'.normalize('NFC');
+    await writeFile(path.join(projectsRoot, projectId, 'refs', 'drive', nfd), png);
+    const html = `<img src="refs/drive/${nfc}" alt="fish">`;
+    const out = await inlineProjectImagesFromScratch({ html, projectId, projectsRoot });
+    expect(out).toMatch(/src="data:image\/webp;base64,/);
+  });
+
+  it('leaves external / data / api URLs unchanged', async () => {
+    const html = [
+      '<img src="https://cdn.example/a.png">',
+      '<img src="data:image/png;base64,xx">',
+      '<img src="/api/projects/p/raw/skip.png">',
+    ].join('');
+    const out = await inlineProjectImagesFromScratch({ html, projectId, projectsRoot });
+    expect(out).toBe(html);
+  });
+
+  it('leaves relative src alone when file is missing on disk', async () => {
+    const html = '<img src="uploads/missing.png" alt="?">';
+    const out = await inlineProjectImagesFromScratch({ html, projectId, projectsRoot });
+    expect(out).toBe(html);
+  });
+
+  it('basename-fallback resolves a bare filename to the timestamp-prefixed disk file', async () => {
+    // Model sometimes emits `<img src="민들레.png">` while the on-disk file is
+    // `msh9rso1-민들레.png` (staged with a session id prefix). Without this
+    // fallback the preview iframe collapses to alt-only text ("민들레") — the
+    // exact regression the user reports.
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 42]);
+    await writeFile(
+      path.join(projectsRoot, projectId, 'msh9rso1-민들레.png'),
+      png,
+    );
+    const html = '<img src="민들레.png" alt="민들레">';
+    const out = await inlineProjectImagesFromScratch({ html, projectId, projectsRoot });
+    expect(out).toMatch(/src="data:image\/png;base64,/);
+    expect(out).toContain('alt="민들레"');
+  });
+
+  it('basename-fallback tolerates NFC/NFD mismatch when the disk file uses the alternate form', async () => {
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 1]);
+    // Disk stores NFD (macOS drag-drop pre-NFC-normalization).
+    const diskNameNfd = 'msh9rso1-서빙하는-금붕어.webp'.normalize('NFD');
+    // Model emits NFC bare basename without the id prefix.
+    const bareNfc = '서빙하는-금붕어.webp'.normalize('NFC');
+    await writeFile(path.join(projectsRoot, projectId, diskNameNfd), png);
+    const html = `<img src="${bareNfc}" alt="fish">`;
+    const out = await inlineProjectImagesFromScratch({ html, projectId, projectsRoot });
+    expect(out).toMatch(/src="data:image\/webp;base64,/);
+  });
+
+  it('basename-fallback recovers wrong-directory refs (e.g., <img src="refs/drive/bare.png">)', async () => {
+    // Model sometimes types the right parent dir but forgets the id prefix.
+    // Without a nested-path fallback the preview still collapses to alt only.
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 7]);
+    await writeFile(
+      path.join(projectsRoot, projectId, 'refs', 'drive', 'msh9rso1-hero.png'),
+      png,
+    );
+    const html = '<img src="refs/drive/hero.png" alt="hero">';
+    const out = await inlineProjectImagesFromScratch({ html, projectId, projectsRoot });
+    expect(out).toMatch(/src="data:image\/png;base64,/);
+  });
+});
+
+describe('collectRelativeProjectAssetPaths / warmExportRelativeAssets', () => {
+  it('collects Drive/composer relative imgs and css urls, skips absolute/data', () => {
+    const html = `
+      <section class="slide">
+        <img src="refs/drive/msh5lhfh-놀란고양이-_1_.jpeg" alt="cat">
+        <img src="/refs/drive/leading-slash.png" alt="slash">
+        <img src="/api/projects/p/raw/skip.png">
+        <img src="data:image/png;base64,xx">
+        <img src="https://cdn.example/remote.png">
+        <div style="background-image:url('uploads/hero.png')"></div>
+      </section>`;
+    expect(collectRelativeProjectAssetPaths(html)).toEqual([
+      'refs/drive/msh5lhfh-놀란고양이-_1_.jpeg',
+      'refs/drive/leading-slash.png',
+      'uploads/hero.png',
+    ]);
+  });
+
+  it('point-gets collected relative assets before Chromium export', async () => {
+    const called: string[] = [];
+    const warmed = await warmExportRelativeAssets({
+      projectId: 'proj-1',
+      html: '<img src="refs/drive/a.png"><img src="photo.jpeg">',
+      ensureFileAvailable: async (_id, relpath) => {
+        called.push(relpath);
+        return true;
+      },
+    });
+    expect(called.sort()).toEqual(['photo.jpeg', 'refs/drive/a.png']);
+    expect(warmed.sort()).toEqual(['photo.jpeg', 'refs/drive/a.png']);
   });
 });
 

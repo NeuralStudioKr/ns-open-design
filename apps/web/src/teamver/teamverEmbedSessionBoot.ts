@@ -1,4 +1,5 @@
 import type { Project } from "../types";
+import { devLog } from '../lib/devLog';
 import {
   fetchDesignAuthSession,
   type FetchDesignAuthSessionOptions,
@@ -85,7 +86,29 @@ export async function runTeamverEmbedSessionBoot(
         unlockBootIfNeeded(deps.isCancelled);
         return null;
       }
+
+      // Nginx live check BEFORE announcing authenticated. Setting the embed
+      // flag first raced App session-changed → runtime-config probe×2 while
+      // boot still ran refresh HA (refresh + probe×2) — staging 401 storm.
+      if (isTeamverRuntimeConfigAuthBlocked()) {
+        unlockBootIfNeeded(deps.isCancelled);
+        return null;
+      }
+      let nginxLive = await probeDesignBffSessionAuthenticated();
+      if (!nginxLive && !isDesignAuthRefreshDeclined()) {
+        nginxLive = await ensureDesignBffSessionAuthenticated();
+      }
+      if (!nginxLive && !isDesignAuthRefreshDeclined()) {
+        nginxLive = await refreshDesignAuthCookie();
+        if (!nginxLive) {
+          nginxLive = await probeDesignBffSessionAuthenticated();
+        }
+      }
+      if (deps.isCancelled()) return null;
+
+      // Announce after the ladder settles (live cookie or soft sticky).
       setTeamverEmbedSessionAuthenticated(true);
+
       const launchWorkspaceId = readLaunchWorkspaceIdFromBrowserUrl();
       let activeWorkspaceId: string | null = null;
       if (launchWorkspaceId) {
@@ -114,29 +137,12 @@ export async function runTeamverEmbedSessionBoot(
       consumeTeamverAuthReturnPending();
       unlockBootIfNeeded(deps.isCancelled);
 
-      // `/auth/session` may be stale-grace authenticated while nginx auth_request
-      // is already dead. Probe (and at most one refresh) before registry /
-      // runtime-config so boot does not open:
-      // GET /runtime-config 401 → POST /auth/refresh → session-probe×2.
-      if (isTeamverRuntimeConfigAuthBlocked()) {
-        return null;
-      }
-      let nginxLive = await probeDesignBffSessionAuthenticated();
-      if (!nginxLive && !isDesignAuthRefreshDeclined()) {
-        nginxLive = await ensureDesignBffSessionAuthenticated();
-      }
-      if (!nginxLive && !isDesignAuthRefreshDeclined()) {
-        nginxLive = await refreshDesignAuthCookie();
-        if (!nginxLive) {
-          nginxLive = await probeDesignBffSessionAuthenticated();
-        }
-      }
-      if (!nginxLive || deps.isCancelled()) {
+      if (!nginxLive || isTeamverRuntimeConfigAuthBlocked()) {
         return null;
       }
 
       void syncAllDaemonProjectsToRegistry().catch((err) => {
-        console.warn("[teamver] embed boot registry sync failed", err);
+        devLog.warn("[teamver] embed boot registry sync failed", err);
       });
       if (detailRoute) {
         void (async () => {
@@ -147,15 +153,18 @@ export async function runTeamverEmbedSessionBoot(
             deps.onProjectPrefetched(project);
             warmEmbedProjectListCaches([project]);
           } catch (err) {
-            console.warn("[teamver] embed boot project prefetch failed", err);
+            devLog.warn("[teamver] embed boot project prefetch failed", err);
           }
         })();
       }
 
       try {
-        return await fetchTeamverRuntimeConfig();
+        // nginxLive already probed above — skip the duplicate session-probe.
+        return await fetchTeamverRuntimeConfig({
+          sessionAlreadyProbedAlive: nginxLive,
+        });
       } catch (err) {
-        console.warn("[teamver] embed boot runtime-config failed", err);
+        devLog.warn("[teamver] embed boot runtime-config failed", err);
         return null;
       }
     }
@@ -178,7 +187,7 @@ export async function runTeamverEmbedSessionBoot(
     // fetchTeamverRuntimeConfig is belt-and-suspenders; skip the call here.
     return null;
   } catch (err) {
-    console.warn("[teamver] embed boot session probe failed", err);
+    devLog.warn("[teamver] embed boot session probe failed", err);
     // Transient probe failure: unlock the gate without claiming a session.
     // Stale authenticated memory cache in designBffClient may still serve
     // follow-up probes (STALE_SESSION_GRACE_MS). Keep auth-return pending so

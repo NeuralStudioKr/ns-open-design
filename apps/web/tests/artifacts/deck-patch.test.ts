@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  appendIncomingSlidesOntoExistingDeck,
   applyDeckPatch,
   diffDeckSlideIndexes,
+  extractTopLevelSlideSections,
   isDeckPatchArtifactType,
   parseDeckPatch,
   parseDeckPatchWithSalvage,
@@ -351,6 +353,26 @@ describe('diffDeckSlideIndexes', () => {
     expect(diff.changedSlideIndexes).toEqual([1]);
   });
 
+  it('accepts pre-materialized beforeSlides without rematerializing', () => {
+    const next = CURRENT_DECK.replace('<h2>Numbers</h2>', '<h2>Numbers v2</h2>');
+    const beforeBody = CURRENT_DECK.match(/<body[^>]*>([\s\S]*)<\/body>/i)?.[1] ?? '';
+    const beforeSlides = extractTopLevelSlideSections(beforeBody);
+    const diff = diffDeckSlideIndexes('<!-- no body -->', next, { beforeSlides });
+    expect(diff.ok).toBe(true);
+    if (!diff.ok) return;
+    expect(diff.changedSlideIndexes).toEqual([1]);
+  });
+
+  it('accepts pre-materialized afterSlides without rematerializing', () => {
+    const next = CURRENT_DECK.replace('<h2>Numbers</h2>', '<h2>Numbers v2</h2>');
+    const afterBody = next.match(/<body[^>]*>([\s\S]*)<\/body>/i)?.[1] ?? '';
+    const afterSlides = extractTopLevelSlideSections(afterBody);
+    const diff = diffDeckSlideIndexes(CURRENT_DECK, '<!-- no body -->', { afterSlides });
+    expect(diff.ok).toBe(true);
+    if (!diff.ok) return;
+    expect(diff.changedSlideIndexes).toEqual([1]);
+  });
+
   it('fails when a full deck fallback changes the slide count', () => {
     const next = CURRENT_DECK.replace(
       '<script>/* deck runtime */</script>',
@@ -361,5 +383,73 @@ describe('diffDeckSlideIndexes', () => {
     if (!diff.ok) {
       expect(diff.reason).toMatch(/slide count changed/);
     }
+  });
+});
+
+describe('appendIncomingSlidesOntoExistingDeck', () => {
+  it('appends body-only new slides onto a saved official-look deck', () => {
+    const oneSlide = [
+      '<!doctype html><html><head><title>Daisy Days</title>',
+      '<style>.deco{position:absolute}</style></head><body>',
+      '<section class="slide"><h1>Linux Internals</h1><p>Cover</p></section>',
+      '</body></html>',
+    ].join('');
+    const incoming =
+      '<section class="slide"><h2>Why it matters</h2><p>Kernel ABI.</p></section>'
+      + '<section class="slide"><h2>Next steps</h2><p>Trace syscalls.</p></section>';
+    const merged = appendIncomingSlidesOntoExistingDeck(oneSlide, incoming);
+    expect(merged).toContain('<title>Daisy Days</title>');
+    expect(merged).toContain('<h1>Linux Internals</h1>');
+    expect(merged).toContain('<h2>Why it matters</h2>');
+    expect(merged).toContain('<h2>Next steps</h2>');
+    expect(extractTopLevelSlideSections(merged ?? '').length).toBe(3);
+  });
+
+  it('keeps only the tail when incoming is a longer full rewrite', () => {
+    const prior =
+      '<!doctype html><html><body><section class="slide"><h1>Cover</h1></section></body></html>';
+    const incoming = [
+      '<!doctype html><html><head><style>.x{}</style></head><body>',
+      '<section class="slide"><h1>Cover</h1></section>',
+      '<section class="slide"><h2>Body</h2><p>More.</p></section>',
+      '</body></html>',
+    ].join('');
+    const merged = appendIncomingSlidesOntoExistingDeck(prior, incoming);
+    expect(merged).toContain('<h1>Cover</h1>');
+    expect(merged).toContain('<h2>Body</h2>');
+    expect(extractTopLevelSlideSections(merged ?? '').length).toBe(2);
+  });
+
+  it('appends a truncated mid-slide fragment after closing the host', () => {
+    const prior =
+      '<!doctype html><html><body><section class="slide"><h1>Cover</h1></section></body></html>';
+    const truncated =
+      '<section class="slide" style="width:1920px;height:1080px"><h2>Why it matters</h2><p>Kernel ABI and';
+    const merged = appendIncomingSlidesOntoExistingDeck(prior, truncated);
+    expect(merged).toContain('<h1>Cover</h1>');
+    expect(merged).toContain('<h2>Why it matters</h2>');
+    expect(merged).toContain('</section>');
+    expect(extractTopLevelSlideSections(merged ?? '').length).toBe(2);
+  });
+
+  it('appends catalog div.slide hosts onto a section-based deck', () => {
+    const prior =
+      '<!doctype html><html><body><section class="slide"><h1>Cover</h1></section></body></html>';
+    const incoming =
+      '<div class="slide" style="width:1920px;height:1080px"><h2>Body</h2><p>More.</p></div>';
+    const merged = appendIncomingSlidesOntoExistingDeck(prior, incoming);
+    expect(merged).toContain('<h1>Cover</h1>');
+    expect(merged).toContain('<h2>Body</h2>');
+    expect(merged).toContain('<div class="slide"');
+  });
+
+  it('does not clobber the saved deck with a shorter head rewrite', () => {
+    const prior =
+      '<!doctype html><html><head><style>.kit{}</style></head><body>'
+      + '<section class="slide"><h1>Cover</h1></section></body></html>';
+    const rewrite =
+      '<!doctype html><html><head><title>Daisy</title></head><body>'
+      + '<section class="slide"><h1>New cover</h1></section></body></html>';
+    expect(appendIncomingSlidesOntoExistingDeck(prior, rewrite)).toBeNull();
   });
 });

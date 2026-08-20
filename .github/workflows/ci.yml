@@ -493,6 +493,9 @@ jobs:
       - name: Prebuild web sidecar declarations
         run: pnpm --filter @open-design/web build:sidecar
 
+      - name: Tip remount smoke pin
+        run: pnpm --filter @open-design/web test:tip-remount-smoke
+
       - name: Web workspace tests
         run: pnpm --filter @open-design/web test
 

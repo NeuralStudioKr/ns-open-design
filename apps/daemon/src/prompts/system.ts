@@ -37,7 +37,13 @@ import { renderMediaGenerationContract } from './media-contract.js';
 import { IMAGE_MODELS } from '../media-models.js';
 import { renderPanelPrompt } from './panel.js';
 import { defaultCritiqueConfig, type CritiqueConfig } from '@open-design/contracts/critique';
-import type { ChatSessionMode, MediaExecutionPolicy, MediaSurface } from '@open-design/contracts';
+import {
+  SLIDE_DECK_CONTENT_EXPANSION_EXAMPLE,
+  SLIDE_DECK_CONTENT_EXPANSION_INSTRUCTION,
+  type ChatSessionMode,
+  type MediaExecutionPolicy,
+  type MediaSurface,
+} from '@open-design/contracts';
 
 // Prepended first in every composed prompt so it wins precedence over all
 // later sections, including skill bodies and user/project instructions.
@@ -86,7 +92,7 @@ function renderUiLocalePrompt(locale: string | undefined): string {
   const lines = [
     '# UI locale override',
     '',
-    `The Open Design UI locale for this run is \`${normalized}\` (${languageName}). All user-visible chat prose and generated UI controls must follow this locale, especially \`<question-form>\` titles, descriptions, labels, placeholders, helper text, and option labels. Keep machine-readable ids and object option \`value\` fields exact and unlocalized.`,
+    `The UI locale for this run is \`${normalized}\` (${languageName}). All user-visible chat prose and generated UI controls must follow this locale, especially \`<question-form>\` titles, descriptions, labels, placeholders, helper text, and option labels. Keep machine-readable ids and object option \`value\` fields exact and unlocalized.`,
     `The artifacts you generate must also be in ${languageName}: every piece of user-visible copy in the HTML/React/page/deck you produce — headings, body text, navigation, button and link labels, captions, alt text, and form fields — is written in this language by default. This holds even when a chosen template, plugin, or design system ships its reference/example content in another language: treat that copy as a layout and style reference and translate/adapt it into ${languageName}, do not ship its wording verbatim. Keep brand names, code, and technical identifiers as-is, and honor an explicit user request for a different output language.`,
     'Exception: for the default task-type form, keep the `taskType` option labels as the canonical routing choices: `Prototype`, `Live artifact`, `Slide deck`, `Image`, `Video`, `HyperFrames`, `Audio`, `Other`. Do not translate, reorder, or rewrite those option labels.',
   ];
@@ -308,15 +314,19 @@ export const SKIP_DISCOVERY_BRIEF_OVERRIDE = `# Automated project mode — skip 
 
 This project was created through the daemon API with \`skipDiscoveryBrief: true\`. Override the discovery rules below: do NOT emit \`<question-form id="discovery">\`, do NOT show "Quick brief — 30 seconds", and do NOT ask a first-turn clarification form. Treat the user's first message and project metadata as the brief, then proceed directly to planning/building under the normal artifact workflow. Ask at most one concise follow-up only if a required detail is impossible to infer safely.
 
+${SLIDE_DECK_CONTENT_EXPANSION_INSTRUCTION}
+
+${SLIDE_DECK_CONTENT_EXPANSION_EXAMPLE}
+
 Site-ref: URL-only deck asks missing audience/purpose/tone/count/topics need \`<question-form id="discovery">\`; don't re-ask URL unless skip/metadata filled.`;
 
 const TEAMVER_SLIDE_ONLY_SCOPE = `
 
 ---
 
-## Teamver embed — slide deck scope only (load-bearing, OVERRIDES discovery)
+## Slide deck scope only (load-bearing, OVERRIDES discovery)
 
-This workspace is **Teamver Design embed** with media generation **disabled** for the 1st launch.
+This workspace is **slide-only** with media generation **disabled** for the 1st launch.
 
 **In scope:** slide decks / HTML presentations / speaker notes / deck polish on existing project files.
 
@@ -327,7 +337,7 @@ This workspace is **Teamver Design embed** with media generation **disabled** fo
 - Prototype pages, live artifacts, dashboards, or non-deck web apps
 
 When the user asks for any out-of-scope output:
-1. Reply briefly that Teamver Design currently supports **slides only**.
+1. Reply briefly that this workspace currently supports **slides only**.
 2. Offer to help as a **slide deck** instead (or to use images only as references inside slides).
 3. Do **not** call \`generate_image\`, \`generate_video\`, \`generate_speech\`, \`od media generate\`, provider media APIs, or Bash media pipelines.
 
@@ -340,13 +350,13 @@ Deck work inside the project workspace remains fully supported.
 For every slide deck creation or edit request, the turn is successful only if it leaves a previewable HTML deck in the project workspace.
 
 - Preferred path: write or edit the canonical \`.html\` deck file with filesystem tools, then briefly name that file.
-- Fallback path: if filesystem tools are unavailable or the file write did not happen, end with exactly one complete \`<artifact type="deck">\` block whose body starts with \`<!doctype html>\` and contains the full standalone deck document. Teamver supports deck artifacts only; never use \`type="text/html"\` for the artifact contract.
+- Fallback path: if filesystem tools are unavailable or the file write did not happen, end with exactly one complete \`<artifact type="deck">\` block whose body starts with \`<!doctype html>\` and contains the full standalone deck document. This workspace supports deck artifacts only; never use \`type="text/html"\` for the artifact contract.
 - Do not finish a slide request with only a plan, outline, promise, summary, filename pointer, partial HTML head, or truncated deck navigation script.
 - If you cannot create or update the HTML deck, say that plainly instead of reporting completion.
 
 ### Discovery / question-form override (slide-only mode)
 
-The discovery section earlier in this prompt ships English example forms with non-slide options ("Prototype", "Live artifact", "Image", "Video", "HyperFrames", "Audio", "Single web prototype / landing", "Multi-screen app prototype", "Dashboard / tool UI", "Editorial / marketing page", "iOS app", "Android app", "Tablet app", "Desktop app", etc.). Those examples **DO NOT APPLY HERE**. In Teamver Design embed the artifact kind is **always a slide deck** — the user cannot pick anything else. Apply the following overrides whenever you emit a \`<question-form>\` in this run:
+The discovery section earlier in this prompt ships English example forms with non-slide options ("Prototype", "Live artifact", "Image", "Video", "HyperFrames", "Audio", "Single web prototype / landing", "Multi-screen app prototype", "Dashboard / tool UI", "Editorial / marketing page", "iOS app", "Android app", "Tablet app", "Desktop app", etc.). Those examples **DO NOT APPLY HERE**. In this workspace the artifact kind is **always a slide deck** — the user cannot pick anything else. Apply the following overrides whenever you emit a \`<question-form>\` in this run:
 
 1. **\`<question-form id="task-type">\`** (the Default-router exception form): do **NOT** emit it. The artifact kind is already locked to "Slide deck". Skip the task-type form entirely and behave as if the user picked Slide deck. Treat the user's first message as the deck brief and continue with the discovery override below (or skip the form when project metadata + the brief leave nothing to clarify).
 2. **\`<question-form id="discovery">\` ("Quick brief — 30 seconds")**: if you do emit a discovery form, the form **MUST**:
@@ -607,7 +617,7 @@ export function composeSystemPrompt({
   craftBody,
   craftSections,
   memoryBody,
-  metadata,
+  metadata: inputMetadata,
   template,
   audioVoiceOptions,
   audioVoiceOptionsError,
@@ -624,6 +634,19 @@ export function composeSystemPrompt({
   projectInstructions,
   mediaExecution,
 }: ComposeInput): string {
+  // Teamver slide-only (media disabled): stale sqlite rows still store
+  // kind=prototype from pre-slide-only hydrate. Do not persist-rewrite those
+  // rows (Canvas index.html thumbs), but the prompt must see a deck so we
+  // inject the framework + slideCount contract instead of iOS/fidelity asks.
+  // Keep in sync with contracts `metadataForTeamverSlideOnlyPrompt`.
+  const storedKind = inputMetadata?.kind;
+  const isStoredMediaSurface =
+    storedKind === 'image' || storedKind === 'video' || storedKind === 'audio';
+  const metadata =
+    (mediaExecution?.mode ?? 'enabled') === 'disabled' && !isStoredMediaSurface
+      ? { ...(inputMetadata ?? {}), kind: 'deck' }
+      : inputMetadata;
+
   // Injection resistance goes FIRST — before everything else — so no later
   // section (skill body, user instructions, project instructions, tool result)
   // can instruct the model to disregard it.
@@ -920,7 +943,7 @@ export function composeSystemPrompt({
 
   if (agentId === 'gemini') {
     parts.push(
-      "\n\n---\n\n## Gemini todo tool mapping\n\nWhen an Open Design instruction says to call `TodoWrite`, use Gemini CLI's native `write_todos` tool only if it is present in the current tool list. Pass the full task list as `todos`, with each item using `description` for the task text and `status` set to `pending`, `in_progress`, `completed`, `cancelled`, or `blocked`.\n\nIf `write_todos` is not present, do not simulate it with markdown, plan-mode files, JSON files, TODO files, or shell commands. Continue the work normally without a todo tool.",
+      "\n\n---\n\n## Gemini todo tool mapping\n\nWhen an instruction says to call `TodoWrite`, use Gemini CLI's native `write_todos` tool only if it is present in the current tool list. Pass the full task list as `todos`, with each item using `description` for the task text and `status` set to `pending`, `in_progress`, `completed`, `cancelled`, or `blocked`.\n\nIf `write_todos` is not present, do not simulate it with markdown, plan-mode files, JSON files, TODO files, or shell commands. Continue the work normally without a todo tool.",
     );
   }
 
@@ -991,7 +1014,7 @@ const BYOK_TOOLS_OVERRIDE = (toolNames: readonly string[]): string => {
   const formatted = toolNames.map((n) => `\`${n}\``).join(', ');
   return `# API mode — BYOK tools available (read first — overrides every rule below)
 
-You are running through the Open Design BYOK proxy. The following tools ARE wired through to you: ${formatted}. Call them like any other tool — the daemon routes the call, runs the executor, and feeds the result back as a \`tool\` role message.
+You are running through the BYOK proxy. The following tools ARE wired through to you: ${formatted}. Call them like any other tool — the daemon routes the call, runs the executor, and feeds the result back as a \`tool\` role message.
 
 \`TodoWrite\`, \`Read\`, \`Write\`, \`Edit\`, \`Bash\`, and \`WebFetch\` are NOT available in this run — those are CLI-agent tools. If a later instruction tells you to call them, do not attempt it; use the BYOK tools listed above instead. Specifically: to read a URL the user gave you, call \`web_fetch\` with the absolute URL — do not claim you fetched it, do not narrate the fetch in prose, and do not produce pseudo-tool markup.
 
@@ -1012,11 +1035,11 @@ For slide deck / presentation / PPT requests in API mode, the plan is not the de
 
 const CHAT_MODE_OVERRIDE = `# Chat mode — standard conversation (read first — overrides every rule below)
 
-This conversation is in Open Design Chat mode. Open Design is the open-source Claude Design alternative and a native Figma counterpart. Official links: GitHub https://github.com/nexu-io/open-design, website https://open-design.ai/, Discord https://discord.com/invite/9ptkbbqRu.
+This conversation is in chat mode. Answer like a fast, direct, multi-turn desktop chat assistant. Prefer concise prose, explanations, comparisons, debugging help, and follow-up questions only when needed.
 
-Use the same available context, files, attachments, connectors, MCP servers, project memory, and model capabilities as Design mode. The difference is behavior: answer like a fast, direct, multi-turn desktop chat assistant. Prefer concise prose, explanations, comparisons, debugging help, and follow-up questions only when needed.
+Use the same available context, files, attachments, connectors, MCP servers, project memory, and model capabilities as Design mode.
 
-Override artifact-first discovery rules below: do not emit a default discovery \`<question-form>\`, do not call TodoWrite just to plan a chat answer, and do not create or edit project files, HTML, PPT, slide decks, images, video, or audio unless the user explicitly asks you to generate/build/design/export/modify something. When the user does ask for a design artifact or file change, you may use the normal Open Design agent workflow and the same tools/capabilities available in Design mode.`;
+Override artifact-first discovery rules below: do not emit a default discovery \`<question-form>\`, do not call TodoWrite just to plan a chat answer, and do not create or edit project files, HTML, PPT, slide decks, images, video, or audio unless the user explicitly asks you to generate/build/design/export/modify something. When the user does ask for a design artifact or file change, you may use the normal agent workflow and the same tools/capabilities available in Design mode.`;
 
 // Defense-in-depth against Claude Code's synthetic OAuth tools.
 //
@@ -1517,7 +1540,7 @@ function renderMediaMetadataAction(
   const article = surface === 'audio' ? 'an' : 'a';
   const mode = mediaExecution?.mode ?? 'enabled';
   if (mode === 'disabled') {
-    return `This is ${article} **${surface}** project, but Open Design-owned media execution is disabled for this run. Plan the creative brief only unless an external MCP media tool is explicitly configured. Do NOT call OD media generation tools and do NOT emit \`<artifact>\` HTML for media surfaces.`;
+    return `This is ${article} **${surface}** project, but built-in media execution is disabled for this run. Plan the creative brief only unless an external MCP media tool is explicitly configured. Do NOT call built-in media generation tools and do NOT emit \`<artifact>\` HTML for media surfaces.`;
   }
   return `This is ${article} **${surface}** project. Plan the creative brief carefully, then dispatch via the **media generation contract** using ${command}. Do NOT emit \`<artifact>\` HTML for media surfaces.`;
 }

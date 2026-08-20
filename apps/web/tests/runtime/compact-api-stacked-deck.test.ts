@@ -10,6 +10,7 @@ import {
   looksLikeAuthoredScrollNavigateDeck,
   looksLikeCompactApiStackedDeck,
   looksLikeCompactApiStackedDeckForPreview,
+  normalizeCompactStackedDeckForExport,
   wrapPreviewHtmlShell,
 } from '../../src/runtime/compact-api-stacked-deck';
 import { buildSrcdoc } from '../../src/runtime/srcdoc';
@@ -32,6 +33,21 @@ describe('looksLikeCompactApiStackedDeck', () => {
     expect(looksLikeCompactApiStackedDeck(fragment)).toBe(false);
     expect(looksLikeCompactApiStackedDeckForPreview(fragment)).toBe(true);
     expect(looksLikeCompactApiStackedDeck(wrapPreviewHtmlShell(fragment))).toBe(true);
+  });
+
+  it('supports alreadyRepaired wrap skip for buildSrcdoc hot path', () => {
+    const source = readFileSync(
+      resolve(import.meta.dirname, '../../src/runtime/compact-api-stacked-deck.ts'),
+      'utf8',
+    );
+    expect(source).toContain('alreadyRepaired');
+    expect(source).toContain('WrapPreviewHtmlShellOptions');
+    expect(source).toContain('repairArtifactDocumentHeadIfNeeded');
+    expect(source).toContain('prepareCompactStackedDeckPreviewHtml');
+    // Fragment shell final pass is intact-gated (not always repairArtifactDocumentHead).
+    expect(source).toContain('return repairArtifactDocumentHeadIfNeeded(wrapped)');
+    expect(source).not.toContain('return repairArtifactDocumentHead(wrapped)');
+    expect(wrapPreviewHtmlShell('<main>x</main>', { alreadyRepaired: true })).toContain('<!doctype html>');
   });
 
   it('rejects framework decks with #deck-stage', () => {
@@ -436,7 +452,7 @@ describe('looksLikeCompactApiStackedDeck', () => {
     expect(buildSrcdoc(html, { deck: true })).toContain('data-od-deck-stacked-fix');
   });
 
-  it('keeps scrollIntoView-authored slide decks on native scroll navigation', () => {
+  it('keeps non-compact scrollIntoView-authored slide decks on native scroll navigation', () => {
     const navScript = `(function(){
 var slides=document.querySelectorAll('.slide');
 var cur=0;
@@ -452,13 +468,255 @@ if(e.key==='ArrowLeft'||e.key==='ArrowUp')go(cur-1);
 })();`;
     const html = [
       '<!doctype html><html><body>',
-      '<section class="slide" style="min-height:100vh">One</section>',
-      '<section class="slide" style="min-height:100vh">Two</section>',
+      '<section class="slide">One</section>',
+      '<section class="slide">Two</section>',
       `<script>${navScript}</script>`,
       '</body></html>',
     ].join('');
     expect(looksLikeAuthoredScrollNavigateDeck(html)).toBe(true);
     expect(looksLikeCompactApiStackedDeck(html)).toBe(false);
     expect(buildSrcdoc(html, { deck: true })).not.toContain('data-od-deck-stacked-fix');
+  });
+
+  it('recovers compact body-first decks even when the model emitted scrollIntoView navigation', () => {
+    const navScript = `(function(){
+var slides=document.querySelectorAll('.slide');
+var cur=0;
+function go(n){
+n=Math.max(0,Math.min(slides.length-1,n));
+slides[n].scrollIntoView({behavior:'smooth'});
+cur=n;
+}
+})();`;
+    const html = [
+      '<!doctype html><html><body>',
+      '<section class="slide" style="min-height:100vh">One</section>',
+      '<section class="slide" style="min-height:100vh">Two</section>',
+      `<script>${navScript}</script>`,
+      '</body></html>',
+    ].join('');
+    expect(looksLikeAuthoredScrollNavigateDeck(html)).toBe(true);
+    expect(looksLikeCompactApiStackedDeck(html)).toBe(true);
+    expect(buildSrcdoc(html, { deck: true })).toContain('data-od-deck-stacked-fix');
+  });
+
+  it('keeps body-first Motif absolute fills on the compact 1920 letterbox path', () => {
+    const motifFill = `<!doctype html><html><head><style>
+.slide{position:absolute;inset:0;width:100%;height:100%;display:flex;flex-direction:column;padding:64px}
+.pill{border-radius:9999px;display:inline-flex}
+</style></head><body>
+<section class="slide"><span class="pill">TOOLING COMPARISON</span><h1>Turborepo vs Nx</h1></section>
+<section class="slide"><h1>Roadmap</h1></section>
+</body></html>`;
+    expect(looksLikeCompactApiStackedDeck(motifFill)).toBe(true);
+    const srcdoc = buildSrcdoc(motifFill, { deck: true });
+    expect(srcdoc).toContain('data-od-deck-stacked-fix');
+    expect(srcdoc).toContain('content="width=1920, initial-scale=1, maximum-scale=1"');
+    expect(srcdoc).toContain('#od-stacked-deck-stage');
+    expect(srcdoc).toContain('width: 1920px !important');
+    expect(srcdoc).toContain('height: 1080px !important');
+  });
+
+  it('still letterboxes compact official-look fills that copied a .presentation host', async () => {
+    const html = [
+      '<!doctype html><html lang="ko"><head>',
+      '<style data-od-official-look-css>',
+      '.slide { position:absolute; inset:0; width:100%; height:100%; display:flex; flex-direction:column; }',
+      '.slide-6 { justify-content:center; }',
+      '/* stacked preview/export: Motif paint + fixed 1920 */',
+      'html, body { overflow: visible !important; height: auto !important; }',
+      '.slide { opacity: 1 !important; position: relative !important; width: 1920px !important; height: 1080px !important; flex-direction: unset; }',
+      '</style></head><body>',
+      '<div class="presentation">',
+      '<section class="slide"><h2>도입 로드맵</h2><p>Phase 1-4</p></section>',
+      '<section class="slide" style="display:flex;gap:0;padding:0;width:1920px;height:1080px">',
+      '<div class="split-left">Turborepo</div><div class="split-right">Nx</div>',
+      '</section>',
+      '<section class="slide slide-6"><h2>체크리스트</h2></section>',
+      '</div></body></html>',
+    ].join('');
+
+    expect(looksLikeCompactApiStackedDeck(html)).toBe(true);
+    expect(looksLikeCompactApiStackedDeckForPreview(html)).toBe(true);
+
+    const srcdoc = buildSrcdoc(html, { deck: true });
+    expect(srcdoc).toContain('data-od-deck-stacked-fix');
+    expect(srcdoc).toContain('content="width=1920, initial-scale=1, maximum-scale=1"');
+
+    const match = srcdoc.match(/<script data-od-deck-bridge>([\s\S]*?)<\/script>/);
+    expect(match?.[1]).toBeTruthy();
+    const { JSDOM } = await import('jsdom');
+    const dom = new JSDOM(srcdoc.replace(/<script\b[\s\S]*?<\/script>/gi, ''), {
+      runScripts: 'outside-only',
+      pretendToBeVisual: true,
+    });
+    const win = dom.window;
+    Object.defineProperty(win, 'parent', { configurable: true, value: { postMessage: () => {} } });
+    new win.Function(match![1]!).call(win);
+    win.dispatchEvent(new win.MessageEvent('message', {
+      data: { type: 'od:deck-host-viewport', width: 960, height: 540, scale: 1 },
+    }));
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 100));
+
+    const stage = win.document.getElementById('od-stacked-deck-stage') as HTMLElement | null;
+    expect(stage).toBeTruthy();
+    const slideEls = Array.from(win.document.querySelectorAll('#od-stacked-deck-stage > .slide')) as HTMLElement[];
+    expect(slideEls).toHaveLength(3);
+    expect(slideEls[0]?.style.flexDirection).toBe('column');
+    expect(slideEls[0]?.style.justifyContent).toBe('center');
+    expect(slideEls[1]?.style.flexDirection).toBe('row');
+    expect(slideEls[2]?.classList.contains('slide-6')).toBe(true);
+    expect(slideEls[2]?.style.justifyContent).not.toBe('center');
+
+    const firstTransform = String(stage?.style.transform || '');
+    expect(firstTransform).toMatch(/translate\(calc\(-50%/);
+    expect(firstTransform).toMatch(/scale\(/);
+
+    win.dispatchEvent(new win.MessageEvent('message', { data: { type: 'od:slide', action: 'next' } }));
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 40));
+    win.dispatchEvent(new win.MessageEvent('message', { data: { type: 'od:slide', action: 'next' } }));
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 40));
+    expect(String(stage?.style.transform || '')).toBe(firstTransform);
+  });
+
+  it('keeps official catalog presenters on native 100% fill instead of stacked 1920', () => {
+    const official = readFileSync(
+      resolve(repoRoot, 'plugins/_official/examples/html-ppt-zhangzara-capsule/example.html'),
+      'utf8',
+    );
+    expect(looksLikeCompactApiStackedDeck(official)).toBe(false);
+    expect(looksLikeCompactApiStackedDeckForPreview(official)).toBe(false);
+    const srcdoc = buildSrcdoc(official, { deck: true });
+    expect(srcdoc).not.toContain('data-od-stacked-canvas-neutralize');
+    expect(srcdoc).not.toContain('data-od-deck-stacked-fix');
+    expect(srcdoc).not.toContain('content="width=1920, initial-scale=1, maximum-scale=1"');
+    expect(srcdoc).toContain('width=device-width');
+    expect(srcdoc).toContain('CAPSULE');
+    expect(srcdoc).toMatch(/\.slide\s*\{[^}]*position:\s*absolute/i);
+  });
+
+  it('does not force stacked slides into a centered column that clips 16:9 split layouts', async () => {
+    const html = [
+      '<!doctype html><html lang="ko"><head>',
+      '<style data-od-official-look-css>',
+      '.slide { position:absolute; inset:0; width:100%; height:100%; display:flex; flex-direction:column; padding:3rem 4rem; overflow:hidden; }',
+      '.pill-coral { background:#E85D4E; }',
+      '/* stacked preview/export: keep Motif paint, do not hide non-active slides */',
+      'html, body { overflow: visible !important; height: auto !important; }',
+      '.slide, .slide.active { opacity: 1 !important; pointer-events: auto !important; }',
+      '</style></head><body>',
+      '<section class="slide" style="display:flex;gap:0;padding:0;width:1920px;height:1080px">',
+      '<div class="split-left"><h2>마이그레이션 전략</h2></div>',
+      '<div class="split-right" style="width:620px;flex-shrink:0">마이그레이션 단계</div>',
+      '</section>',
+      '<section class="slide" style="display:flex;flex-direction:column;padding:90px 140px;width:1920px;height:1080px">',
+      '<h2>체크리스트</h2>',
+      '</section>',
+      '</body></html>',
+    ].join('');
+
+    const srcdoc = buildSrcdoc(html, { deck: true });
+    expect(srcdoc).toContain('data-od-deck-stacked-fix');
+    expect(srcdoc).toContain('stacked preview/export: Motif paint + fixed 1920');
+    const hostSlideCss = srcdoc.match(/#od-stacked-deck-stage\s*>\s*\.slide\s*\{[\s\S]*?\}/)?.[0] ?? '';
+    expect(hostSlideCss).toContain('width: 1920px');
+    expect(hostSlideCss).toContain('height: 1080px');
+    expect(hostSlideCss).not.toMatch(/flex-direction\s*:\s*column/);
+    expect(hostSlideCss).not.toMatch(/justify-content\s*:\s*center/);
+
+    const match = srcdoc.match(/<script data-od-deck-bridge>([\s\S]*?)<\/script>/);
+    expect(match?.[1]).toBeTruthy();
+    const { JSDOM } = await import('jsdom');
+    const dom = new JSDOM(srcdoc.replace(/<script\b[\s\S]*?<\/script>/gi, ''), {
+      runScripts: 'outside-only',
+      pretendToBeVisual: true,
+    });
+    const win = dom.window;
+    Object.defineProperty(win, 'parent', { configurable: true, value: { postMessage: () => {} } });
+    new win.Function(match![1]!).call(win);
+    win.dispatchEvent(new win.MessageEvent('message', {
+      data: { type: 'od:deck-host-viewport', width: 960, height: 540, scale: 1 },
+    }));
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 100));
+
+    const slideEls = Array.from(win.document.querySelectorAll('#od-stacked-deck-stage > .slide')) as HTMLElement[];
+    expect(slideEls).toHaveLength(2);
+    expect(slideEls[0]?.style.display).toBe('flex');
+    const splitDir = String(win.getComputedStyle(slideEls[0]!).flexDirection || '').toLowerCase();
+    expect(splitDir).not.toBe('column');
+    expect(['row', 'unset', 'initial', '']).toContain(splitDir);
+    expect(String(win.getComputedStyle(slideEls[0]!).justifyContent || '').toLowerCase()).not.toBe('center');
+
+    win.dispatchEvent(new win.MessageEvent('message', { data: { type: 'od:slide', action: 'next' } }));
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 50));
+    expect(slideEls[1]?.style.display).toBe('flex');
+    expect(String(win.getComputedStyle(slideEls[1]!).flexDirection || '').toLowerCase()).toBe('column');
+  });
+
+  it('keeps authored grid slides on grid and strips official max-width collapse CSS', async () => {
+    const html = [
+      '<!doctype html><html lang="ko"><head>',
+      '<style data-od-official-look-css>',
+      '.slide { position:absolute; inset:0; width:100%; height:100%; display:flex; flex-direction:column; }',
+      '.cards-grid { display:grid; grid-template-columns:repeat(3,1fr); }',
+      '@media (max-width: 900px) { .cards-grid { grid-template-columns: 1fr; } .slide { padding: 2rem; } }',
+      '/* stacked preview/export: Motif paint + fixed 1920 */',
+      'html, body { overflow: visible !important; height: auto !important; }',
+      '.slide { opacity: 1 !important; flex-direction: unset; }',
+      '</style></head><body>',
+      '<section class="slide" style="display:grid;grid-template-columns:1fr 1fr;width:1920px;height:1080px;padding:0">',
+      '<div>left</div><div>right</div>',
+      '</section>',
+      '</body></html>',
+    ].join('');
+    const srcdoc = buildSrcdoc(html, { deck: true });
+    const look = srcdoc.match(/<style[^>]*data-od-official-look-css[^>]*>([\s\S]*?)<\/style>/i)?.[1] ?? '';
+    expect(look).toContain('.cards-grid { display:grid; grid-template-columns:repeat(3,1fr); }');
+    expect(look).not.toMatch(/@media\s*\(\s*max-width/i);
+
+    const match = srcdoc.match(/<script data-od-deck-bridge>([\s\S]*?)<\/script>/);
+    const { JSDOM } = await import('jsdom');
+    const dom = new JSDOM(srcdoc.replace(/<script\b[\s\S]*?<\/script>/gi, ''), {
+      runScripts: 'outside-only',
+      pretendToBeVisual: true,
+    });
+    const win = dom.window;
+    Object.defineProperty(win, 'parent', { configurable: true, value: { postMessage: () => {} } });
+    new win.Function(match![1]!).call(win);
+    win.dispatchEvent(new win.MessageEvent('message', {
+      data: { type: 'od:deck-host-viewport', width: 800, height: 450, scale: 1 },
+    }));
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 100));
+    const slide = win.document.querySelector('#od-stacked-deck-stage > .slide') as HTMLElement | null;
+    expect(slide?.style.display).toBe('grid');
+  });
+
+  it('normalizes compact stacked decks for standalone export without hiding slides', () => {
+    const html = [
+      '<!doctype html><html><head><meta name="viewport" content="width=device-width"></head><body>',
+      '<section class="slide" style="min-height:100vh">One</section>',
+      '<section class="slide" style="min-height:100vh">Two</section>',
+      '</body></html>',
+    ].join('');
+    const out = normalizeCompactStackedDeckForExport(html, true);
+    expect(out).toContain('data-od-compact-deck-export-fix');
+    expect(out).toContain('width=1920, initial-scale=1, maximum-scale=1');
+    expect(out).toContain('width: 1920px !important');
+    expect(out).toContain('height: 1080px !important');
+    expect(out).not.toContain('data-od-deck-bridge');
+    expect(out).not.toMatch(/html,\s*body\s*\{[^}]*background:\s*#0b0c10/);
+  });
+
+  it('does not normalize framework or horizontal decks for standalone export', () => {
+    const framework = '<!doctype html><html><body><div id="deck-stage"></div></body></html>';
+    const horizontal = [
+      '<!doctype html><html><head><style>',
+      'body{scroll-snap-type:x mandatory}.slide{min-height:100vh;scroll-snap-align:start}',
+      '</style></head><body>',
+      '<section class="slide">A</section><section class="slide">B</section>',
+      '</body></html>',
+    ].join('');
+    expect(normalizeCompactStackedDeckForExport(framework, true)).not.toContain('data-od-compact-deck-export-fix');
+    expect(normalizeCompactStackedDeckForExport(horizontal, true)).not.toContain('data-od-compact-deck-export-fix');
   });
 });

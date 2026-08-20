@@ -161,6 +161,27 @@ describe('historyWithApiAttachmentContext', () => {
     expect(mockedFetchProjectFilePreview).not.toHaveBeenCalled();
   });
 
+  it('advertises the on-disk path (not a friendlier display name) for native image embeds', async () => {
+    const path = 'msh9y0i9-놀란-고양이-_1_.jpeg';
+    const history = await historyWithApiAttachmentContext(
+      [
+        userMessage('msg-1', 'Put this in a slide', [
+          { path, name: '놀란 고양이 (1).jpeg', kind: 'image' },
+        ]),
+      ],
+      'msg-1',
+      'project-1',
+      [projectFile(path, 'image')],
+      { omitNativeImageAttachments: true },
+    );
+
+    expect(history[0]?.content).toContain(`path: ${path}`);
+    expect(history[0]?.content).toContain(`<img src="${path}" alt="">`);
+    expect(history[0]?.content).toContain(`### Attachment 1: ${path}`);
+    expect(history[0]?.content).not.toContain('alt="놀란 고양이 (1).jpeg"');
+    expect(history[0]?.content).not.toContain('### Attachment 1: 놀란 고양이 (1).jpeg');
+  });
+
   it('keeps unsupported image metadata when native image blocks cannot carry them', async () => {
     for (const path of ['hero.avif', 'hero.bmp']) {
       const history = await historyWithApiAttachmentContext(
@@ -197,6 +218,28 @@ describe('historyWithApiAttachmentContext', () => {
 
     expect(mockedFetchProjectFilePreview).toHaveBeenCalledWith('project-1', 'report.pdf');
     expect(history[0]?.content).toContain('Quarterly results');
+  });
+});
+
+describe('clipAttachmentText', () => {
+  it('keeps body/slides when truncating large HTML instead of mid-CSS head only', async () => {
+    const { clipAttachmentText } = await import('../src/api-attachment-context');
+    const style = `<style>${'x'.repeat(30_000)}</style>`;
+    const html = [
+      '<!doctype html><html><head>',
+      style,
+      '</head><body>',
+      '<section class="slide" data-slide-index="0"><h1>Cover Expo</h1></section>',
+      '<section class="slide" data-slide-index="1"><h2>API</h2><p>takeaway</p></section>',
+      '</body></html>',
+    ].join('');
+    const clipped = clipAttachmentText(html, 8_000, { preferHtmlBody: true });
+    expect(clipped.length).toBeLessThanOrEqual(8_500);
+    expect(clipped).toMatch(/Cover Expo/);
+    expect(clipped).toMatch(/omitted mid kit CSS|body\/slides/i);
+    expect(clipped).not.toContain('Open Design');
+    // Must not be a pure head prefix that never reaches slides.
+    expect(clipped).toMatch(/<section\b[^>]*\bslide\b/i);
   });
 });
 

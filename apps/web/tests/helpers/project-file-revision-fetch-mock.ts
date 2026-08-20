@@ -6,11 +6,15 @@ export function createProjectFileRevisionFetchMock(options: {
   projectId: string;
   fileName: string;
   initialSource: string;
+  initialRetentionPending?: boolean;
 }) {
-  const { projectId, fileName, initialSource } = options;
+  const { projectId, fileName, initialSource, initialRetentionPending = false } = options;
   let persistedSource = initialSource;
+  let retentionPending = initialRetentionPending;
   const revisions: StoredRevision[] = [];
   let nextSequence = 0;
+  let listCallCount = 0;
+  let listFailCount = 0;
   let restoreCallCount = 0;
   let restoreDelayMs = 0;
   let restoreShouldFail = false;
@@ -49,6 +53,11 @@ export function createProjectFileRevisionFetchMock(options: {
       });
     }
     if (url.includes(encodedPath) && (!init?.method || init.method === 'GET')) {
+      listCallCount += 1;
+      if (listFailCount > 0) {
+        listFailCount -= 1;
+        return new Response(JSON.stringify({ error: 'temporary list failure' }), { status: 503 });
+      }
       const head = revisions[revisions.length - 1] ?? null;
       return new Response(JSON.stringify({
         revisions: revisions.map((revision) => ({
@@ -64,6 +73,7 @@ export function createProjectFileRevisionFetchMock(options: {
         })),
         headRevisionId: head?.id ?? null,
         retentionLimit: 30,
+        retentionPending,
       }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
@@ -157,7 +167,14 @@ export function createProjectFileRevisionFetchMock(options: {
       persistedSource = next;
     },
     getRevisions: () => revisions,
+    getListCallCount: () => listCallCount,
+    setListFailCount: (count: number) => {
+      listFailCount = count;
+    },
     getRestoreCallCount: () => restoreCallCount,
+    setRetentionPending: (next: boolean) => {
+      retentionPending = next;
+    },
     setRestoreDelayMs: (ms: number) => {
       restoreDelayMs = ms;
     },

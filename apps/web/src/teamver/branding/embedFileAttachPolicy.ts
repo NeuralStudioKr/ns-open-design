@@ -32,6 +32,27 @@ const SLIDE_FRIENDLY_EXTENSIONS = new Set([
   "htm",
 ]);
 
+/** `<input type="file" accept>` for Home wizard / embed upload. */
+export const EMBED_SLIDE_ATTACH_ACCEPT = [
+  "image/*",
+  ".pdf",
+  ".doc",
+  ".docx",
+  ".odt",
+  ".ppt",
+  ".pptx",
+  ".odp",
+  ".key",
+  ".md",
+  ".markdown",
+  ".txt",
+  ".csv",
+  ".tsv",
+  ".json",
+  ".html",
+  ".htm",
+].join(",");
+
 const BLOCKED_EXTENSIONS = new Set([
   // Keep in sync with drive_import_policy.py _BLOCKED_EXTENSIONS (loop 162).
   "exe",

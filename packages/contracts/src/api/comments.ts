@@ -33,7 +33,12 @@ export interface PreviewAnnotationStyle {
 }
 
 export type PreviewCommentSelectionKind = 'element' | 'pod';
-export type PreviewVisualMarkKind = 'click' | 'stroke' | 'click+stroke';
+export type PreviewVisualMarkKind =
+  | 'click'
+  | 'stroke'
+  | 'click+stroke'
+  | 'box'
+  | 'click+box';
 
 /**
  * An image attached to a preview comment. `path` is the project-relative file

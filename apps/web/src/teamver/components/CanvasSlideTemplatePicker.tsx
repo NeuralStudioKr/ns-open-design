@@ -46,6 +46,11 @@ type Props = {
 // value, so we hide it to keep the modal chrome light.
 const AUTO_SHOW_SEARCH_THRESHOLD = 8;
 
+function defaultTemplateDisplayTitle(option: TeamverCanvasSlideTemplateOption): string {
+  if (option.id !== CANVAS_CREATE_SLIDES_PLUGIN_ID) return option.title;
+  return embedUiLabel("Default slide template", "기본 슬라이드 템플릿");
+}
+
 // Minimal `CSS.escape` polyfill sufficient for template ids (kebab-case /
 // dotted plugin ids). Only used to build attribute selectors; jsdom test
 // runs do not ship `window.CSS`, so we must never touch a missing global.
@@ -62,7 +67,7 @@ export function CanvasSlideTemplatePicker({
   onSelect,
   disabled = false,
   showSearch,
-  label = "슬라이드 템플릿",
+  label = embedUiLabel("Slide templates", "슬라이드 템플릿"),
   hint = null,
 }: Props) {
   const groupId = useId();
@@ -163,13 +168,13 @@ export function CanvasSlideTemplatePicker({
     [disabled, filtered, focusCard, moveSelection, onSelect],
   );
 
-  // If the current selection is filtered out (e.g. by a search query) auto
-  // fall back to the first visible option so the CTA reflects reality.
+  // Only seed a default when nothing is selected yet. Never rewrite an
+  // explicit pick just because search filtered it out or the catalog is
+  // still loading — that race reset users to "기본 슬라이드 템플릿".
   useEffect(() => {
     if (filtered.length === 0) return;
-    if (!filtered.some((option) => option.id === selectedTemplateId)) {
-      onSelect(filtered[0]!.id);
-    }
+    if (selectedTemplateId.trim()) return;
+    onSelect(filtered[0]!.id);
   }, [filtered, onSelect, selectedTemplateId]);
 
   if (options.length === 0) return null;
@@ -182,7 +187,9 @@ export function CanvasSlideTemplatePicker({
         data-testid="teamver-canvas-slide-launch-template"
       >
         <span className="teamver-canvas-slide-launch-template-label">{label}</span>
-        <span className="teamver-canvas-slide-launch-template-static">{options[0]!.title}</span>
+        <span className="teamver-canvas-slide-launch-template-static">
+          {defaultTemplateDisplayTitle(options[0]!)}
+        </span>
       </div>
     );
   }
@@ -225,8 +232,11 @@ export function CanvasSlideTemplatePicker({
       >
         {query.trim()
           ? filtered.length === 0
-            ? "검색 결과 없음"
-            : `템플릿 ${filtered.length}개 표시`
+            ? embedUiLabel("No search results", "검색 결과 없음")
+            : embedUiLabel(
+                `Showing ${filtered.length} templates`,
+                `템플릿 ${filtered.length}개 표시`,
+              )
           : ""}
       </span>
       <div
@@ -242,14 +252,19 @@ export function CanvasSlideTemplatePicker({
             className="teamver-canvas-slide-launch-template-empty"
             data-testid="teamver-canvas-slide-launch-template-empty"
           >
-            <p>검색어와 일치하는 템플릿이 없습니다.</p>
+            <p>
+              {embedUiLabel(
+                "No templates match this search.",
+                "검색어와 일치하는 템플릿이 없습니다.",
+              )}
+            </p>
             <button
               type="button"
               className="teamver-canvas-slide-launch-template-empty-clear"
               data-testid="teamver-canvas-slide-launch-template-empty-clear"
               onClick={() => setQuery("")}
             >
-              검색어 지우기
+              {embedUiLabel("Clear search", "검색어 지우기")}
             </button>
           </div>
         ) : (
@@ -385,7 +400,7 @@ function CanvasSlideTemplateCard({ option, selected, disabled, onSelect }: CardP
             className="teamver-canvas-slide-launch-template-card-badge"
             data-testid={`teamver-canvas-slide-launch-template-card-default-badge-${option.id}`}
           >
-            기본
+            {embedUiLabel("Default", "기본")}
           </span>
         ) : null}
         {selected ? (
@@ -422,8 +437,11 @@ function CanvasSlideTemplateCard({ option, selected, disabled, onSelect }: CardP
           </span>
         ) : null}
       </span>
-      <span className="teamver-canvas-slide-launch-template-card-title" title={option.title}>
-        {option.title}
+      <span
+        className="teamver-canvas-slide-launch-template-card-title"
+        title={defaultTemplateDisplayTitle(option)}
+      >
+        {defaultTemplateDisplayTitle(option)}
       </span>
     </button>
   );
