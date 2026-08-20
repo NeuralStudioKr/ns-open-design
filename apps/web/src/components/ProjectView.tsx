@@ -5327,10 +5327,8 @@ export function ProjectView({
       const title = art.title || art.identifier || fileName;
       let htmlBody =
         ext === '.html'
-          ? repairDeckSlideSurfaceBleed(
-            repairArtifactStyleSheets(
-              repairArtifactDocumentHeadIfNeeded(artifactToPersist.html),
-            ),
+          ? repairArtifactStyleSheets(
+            repairArtifactDocumentHeadIfNeeded(artifactToPersist.html),
           )
           : artifactToPersist.html;
       if (
@@ -5399,7 +5397,10 @@ export function ProjectView({
           selectedDeckTemplateMetadata(project.metadata)?.id,
           project.metadata?.selectedDeckTemplateId,
         );
+        // Look/Motif/fonts first, then surface bleed — so cream !important
+        // does not win over official dark identity (Hermes) or Motif washes.
         htmlBody = await mergeOfficialLookCssForTemplate(htmlBody, persistTemplateId);
+        htmlBody = repairDeckSlideSurfaceBleed(htmlBody);
       }
       if (ext === '.html' && persistCommentAttachments.length > 0) {
         const currentScopedHtml = await readDiskHtml(fileName);
@@ -7819,6 +7820,7 @@ export function ProjectView({
                             project.metadata?.selectedDeckTemplateId,
                           ),
                         );
+                        const withSurface = repairDeckSlideSurfaceBleed(withLook);
                         const attachmentPaths = runAttachmentsRef.current
                           .map((attachment) => attachment.path.trim())
                           .filter(Boolean);
@@ -7827,13 +7829,13 @@ export function ProjectView({
                           ...attachmentPaths,
                         ].filter(Boolean);
                         const { html: healed, changed } = await healDiskHtmlAttachmentImageSrcs({
-                          html: withLook,
+                          html: withSurface,
                           projectFilePaths: projectPaths,
                           preferredAttachmentPaths: attachmentPaths,
                         });
                         if (
                           changed
-                          || withLook !== diskHtml
+                          || withSurface !== diskHtml
                           || isTemplateCloneLookSeedFile(recoveredExistingArtifact)
                         ) {
                           await writeProjectTextFileDetailed(
@@ -9785,6 +9787,7 @@ export function ProjectView({
                         project.metadata?.selectedDeckTemplateId,
                       ),
                     );
+                    const withSurface = repairDeckSlideSurfaceBleed(withLook);
                     const attachmentPaths = runAttachmentsRef.current
                       .map((attachment) => attachment.path.trim())
                       .filter(Boolean);
@@ -9793,13 +9796,13 @@ export function ProjectView({
                       ...attachmentPaths,
                     ].filter(Boolean);
                     const { html: healed, changed } = await healDiskHtmlAttachmentImageSrcs({
-                      html: withLook,
+                      html: withSurface,
                       projectFilePaths: projectPaths,
                       preferredAttachmentPaths: attachmentPaths,
                     });
                     if (
                       changed
-                      || withLook !== diskHtml
+                      || withSurface !== diskHtml
                       || isTemplateCloneLookSeedFile(sameTurnHtmlWrite)
                     ) {
                       await writeProjectTextFileDetailed(

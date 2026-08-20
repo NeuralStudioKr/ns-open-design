@@ -54,6 +54,49 @@ html, body, .slide { background:#F5F0E6; color:#2D2D2D; }
     expect(repairDeckSlideSurfaceBleed(html)).toBe(html);
   });
 
+  it('prefers Hermes --hc-bg over shared light :root --bg', () => {
+    const html = `<!doctype html><html><head><style>
+:root{--bg:#ffffff;--surface:#ffffff;--fg:#111}
+.tpl-hermes-cyber-terminal{--hc-bg:#0a0c10;--hc-ink:#e8f0ea;background:var(--hc-bg);color:var(--hc-ink)}
+.tpl-hermes-cyber-terminal .slide{background:var(--hc-bg);color:var(--hc-ink)}
+</style></head>
+<body class="tpl-hermes-cyber-terminal">
+<section class="slide" style="width:1920px;height:1080px"><h1>$ cover</h1></section>
+</body></html>`;
+    expect(inferDeckSlidePaperSurface(html)?.background.toLowerCase()).toBe('#0a0c10');
+    expect(deckHasPerSlideSurfacePaint(html)).toBe(true);
+    const repaired = repairDeckSlideSurfaceBleed(html);
+    expect(repaired).toMatch(/background:\s*#0a0c10/i);
+    expect(repaired).not.toMatch(
+      /html,\s*body,\s*\.slide,\s*section\.slide\s*\{[^}]*background:\s*#ffffff\s*!important/i,
+    );
+    // Letterbox only — keep `.tpl-* .slide` identity wash.
+    expect(repaired).toMatch(
+      /html,\s*body\s*\{[^}]*background:\s*#0a0c10\s*!important/i,
+    );
+  });
+
+  it('upgrades persisted cream flatten bleed after dark identity look is present', () => {
+    const html = `<!doctype html><html><head>
+<style data-od-official-look-css>
+:root{--bg:#ffffff}
+.tpl-hermes-cyber-terminal{--hc-bg:#0a0c10;--hc-ink:#e8f0ea}
+.tpl-hermes-cyber-terminal .slide{background:var(--hc-bg);color:var(--hc-ink)}
+</style>
+<style data-od-slide-surface-bleed>
+html, body, .slide, section.slide { background: #F5F0E6 !important; color: #2D2D2D !important; }
+</style>
+</head>
+<body class="tpl-hermes-cyber-terminal">
+<section class="slide" style="width:1920px;height:1080px"><h1>Terminal</h1></section>
+</body></html>`;
+    const repaired = repairDeckSlideSurfaceBleed(html);
+    expect(repaired).toMatch(/background:\s*#0a0c10\s*!important/i);
+    expect(repaired).not.toMatch(
+      /html,\s*body,\s*\.slide,\s*section\.slide\s*\{[^}]*background:\s*#F5F0E6\s*!important/i,
+    );
+  });
+
   it('does not flatten Capsule radial-gradient slides with a --bg paper token', () => {
     const html = `<!doctype html><html><head><style>
 :root{--bg:#F5F5F0;--fg:#1A1A1A}

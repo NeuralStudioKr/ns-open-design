@@ -366,6 +366,14 @@ describe("ProjectView message loading", () => {
     expect(persistBlock).toContain("firstOfficialDeckTemplateId");
     expect(persistBlock).toContain("runSelectedDeckTemplateIdRef.current");
     expect(persistBlock).toContain("Single terminal scrub after salvage/repair/stabilize");
+    // Look/Motif merge before surface bleed so cream !important cannot win
+    // over official dark identity or Motif washes.
+    expect(persistBlock).toMatch(
+      /mergeOfficialLookCssForTemplate[\s\S]{0,240}repairDeckSlideSurfaceBleed/,
+    );
+    expect(persistBlock).not.toMatch(
+      /repairDeckSlideSurfaceBleed\([\s\S]{0,200}mergeOfficialLookCssForTemplate/,
+    );
     // Must not reintroduce early full-source scrubs on recovered/scoped decks.
     expect(persistBlock).not.toContain(
       "html: sanitizeManualEditFullSource(recoveredHtml)",

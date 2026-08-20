@@ -39,6 +39,7 @@ import {
   buildDeckBrowserPrintScaleCss,
   buildStandaloneDeckHtmlDocument,
   healDeckHtmlForStandaloneExport,
+  relaxPersistedDeckSlideSurfaceBleed,
 } from '@open-design/contracts';
 import { repairDeckSlideSurfaceBleed } from '../artifacts/deck-slide-surface';
 import { normalizeCompactStackedDeckForExport } from './compact-api-stacked-deck';
@@ -1160,7 +1161,9 @@ function inlineExportHtmlPayload(
   // dark --shell letterbox the iframe srcdoc would have repaired.
   const html = normalizeCompactStackedDeckForExport(
     repairDeckSlideSurfaceBleed(
-      healDeckHtmlForStandaloneExport(htmlSnapshot),
+      relaxPersistedDeckSlideSurfaceBleed(
+        healDeckHtmlForStandaloneExport(htmlSnapshot),
+      ),
     ),
     deck === true,
   );

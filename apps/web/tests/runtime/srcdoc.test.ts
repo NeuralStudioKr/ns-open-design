@@ -589,7 +589,11 @@ describe('buildSrcdoc', () => {
     expect(srcdocSource).toContain('artifactDocumentHeadLooksIntact');
     expect(srcdocSource).toContain('repairArtifactDocumentHeadIfNeeded');
     expect(srcdocSource).toContain('repairDeckSlideSurfaceBleed');
+    expect(srcdocSource).toContain('relaxPersistedDeckSlideSurfaceBleed');
     expect(srcdocSource).toContain('repairArtifactStyleSheets');
+    expect(srcdocSource).toMatch(
+      /relaxPersistedDeckSlideSurfaceBleed\([\s\S]{0,120}repairArtifactStyleSheets/,
+    );
     expect(srcdocSource).toContain('shouldAnnotatePreviewEditTargets');
     expect(srcdocSource).toContain('annotateMissingOdIdsOnDocument');
     expect(srcdocSource).toContain('annotateManualEditSourcePathsOnDocument');

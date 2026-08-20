@@ -122,14 +122,19 @@ export {
 } from './artifact-document-head';
 import { repairArtifactDocumentHeadIfNeeded } from './artifact-document-head';
 import { repairDeckSlideSurfaceBleed } from '../artifacts/deck-slide-surface';
+import { relaxPersistedDeckSlideSurfaceBleed } from '@open-design/contracts';
 
 export function buildSrcdoc(
   html: string,
   options: SrcdocOptions = {}
 ): string {
+  // Match cover thumbs: relax flattened `.slide` bleed so official Motif /
+  // identity dark washes can paint, then re-letterbox html/body only.
   const repairedHead = repairDeckSlideSurfaceBleed(
-    repairArtifactStyleSheets(
-      repairArtifactDocumentHeadIfNeeded(html),
+    relaxPersistedDeckSlideSurfaceBleed(
+      repairArtifactStyleSheets(
+        repairArtifactDocumentHeadIfNeeded(html),
+      ),
     ),
   );
   // Deck preview/export: compact fills lock to a 1920×1080 canvas.

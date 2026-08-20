@@ -174,10 +174,21 @@ export function deckHasPerSlideSurfacePaint(html: string): boolean {
   const sheets = collectAuthorStyleSheetTexts(html);
   if (!sheets.trim()) return false;
   for (const rule of sheets.matchAll(/([^{}@][^{]*)\{([^}]+)\}/g)) {
-    const selectors = (rule[1] ?? '').split(',').map((part) => cssLeafSelector(part)).filter(Boolean);
-    const surfaceSelectors = selectors.filter((selector) => isDeckSlideSurfaceSelector(selector, extras));
+    const rawSelectors = (rule[1] ?? '').split(',').map((part) => part.trim()).filter(Boolean);
+    const surfaceSelectors = rawSelectors.filter((selector) => {
+      const leaf = cssLeafSelector(selector);
+      return isDeckSlideSurfaceSelector(leaf, extras);
+    });
     if (surfaceSelectors.length === 0) continue;
-    if (surfaceSelectors.every((selector) => isGenericSlideOnlyLeaf(selector))) continue;
+    // `.tpl-hermes .slide` / `.theme-* .slide` are identity washes — not generic
+    // `.slide { }` that letterbox bleed may safely flatten.
+    const allGeneric = surfaceSelectors.every((selector) => {
+      if (/\.(?:tpl|theme)-[a-z0-9_-]+/i.test(selector) && /\.slide\b/i.test(selector)) {
+        return false;
+      }
+      return isGenericSlideOnlyLeaf(cssLeafSelector(selector));
+    });
+    if (allGeneric) continue;
     const background = readBackgroundFromStyleDecl(rule[2] ?? '');
     if (background && !isWhiteOrEmptyBackground(background)) return true;
   }
@@ -337,6 +348,49 @@ export type DeckSlidePaperSurface = {
   color: string;
 };
 
+function extractCssVarMap(html: string): Record<string, string> {
+  const vars: Record<string, string> = {};
+  const sheets = collectAuthorStyleSheetTexts(html);
+  for (const match of sheets.matchAll(/--([A-Za-z0-9_-]+)\s*:\s*([^;}\n]+)/g)) {
+    const name = (match[1] ?? '').toLowerCase();
+    const raw = (match[2] ?? '').trim();
+    if (!name || !raw || /^var\(/i.test(raw)) continue;
+    if (!/^#|^rgb|^hsl|^oklch|^oklab|^color-mix/i.test(raw)) continue;
+    vars[name] = raw;
+  }
+  return vars;
+}
+
+/**
+ * Prefer html-ppt identity surfaces (`--hc-bg`, `--gd-bg`, cream/paper) over
+ * the shared light `:root --bg/#ffffff` every full-deck ships.
+ */
+function pickPreferredSurfaceFromVars(vars: Record<string, string>): string | null {
+  if (vars.cream?.trim()) return vars.cream.trim();
+  if (vars.paper?.trim()) return vars.paper.trim();
+  const namedBg = Object.keys(vars)
+    .sort()
+    .find((name) => /-(?:bg|background)$/.test(name) && name !== 'bg' && name !== 'background' && vars[name]?.trim());
+  if (namedBg) return vars[namedBg]!.trim();
+  if (vars.surface?.trim()) return vars.surface.trim();
+  if (vars.bg?.trim()) return vars.bg.trim();
+  if (vars.background?.trim()) return vars.background.trim();
+  return null;
+}
+
+function pickPreferredInkFromVars(vars: Record<string, string>): string | null {
+  const namedInk = Object.keys(vars)
+    .sort()
+    .find((name) => /-(?:ink|fg|text)$/.test(name) && !['ink', 'text', 'fg'].includes(name) && vars[name]?.trim());
+  if (namedInk) return vars[namedInk]!.trim();
+  if (vars['text-dark']?.trim()) return vars['text-dark']!.trim();
+  if (vars.ink?.trim()) return vars.ink.trim();
+  if (vars.foreground?.trim()) return vars.foreground.trim();
+  if (vars.text?.trim()) return vars.text.trim();
+  if (vars.fg?.trim()) return vars.fg.trim();
+  return null;
+}
+
 /**
  * Infer the deck paper color that should fill html/body/.slide edge-to-edge.
  */
@@ -344,8 +398,19 @@ export function inferDeckSlidePaperSurface(html: string): DeckSlidePaperSurface 
   const source = String(html ?? '');
   if (!source.trim()) return null;
 
+  const vars = extractCssVarMap(source);
+  const identityHostBg = solidPaperFromBackground(
+    extractRuleBackground(
+      source,
+      (selector) => /\.(?:tpl|theme)-[a-z0-9_-]+/i.test(selector) && !/\.slide\b/i.test(selector),
+    ),
+  );
+  const preferredVar = pickPreferredSurfaceFromVars(vars);
+
   const background =
-    extractCssVarLiteral(source, ['cream', 'paper', 'surface', 'bg', 'background'])
+    (preferredVar && !isWhiteOrEmptyBackground(preferredVar) ? preferredVar : null)
+    ?? (identityHostBg && !isWhiteOrEmptyBackground(identityHostBg) ? identityHostBg : null)
+    ?? extractCssVarLiteral(source, ['cream', 'paper', 'surface', 'bg', 'background'])
     ?? solidPaperFromBackground(extractRuleBackground(source, /^(?:[a-z][a-z0-9]*)?\.slide$/i))
     ?? solidPaperFromBackground(extractInlineSlideBackground(source))
     ?? extractInnerPaperBackground(source)
@@ -353,11 +418,20 @@ export function inferDeckSlidePaperSurface(html: string): DeckSlidePaperSurface 
   if (!background || isWhiteOrEmptyBackground(background)) return null;
 
   const color =
-    extractCssVarLiteral(source, ['text-dark', 'text', 'ink', 'foreground', 'black'])
+    pickPreferredInkFromVars(vars)
+    ?? extractCssVarLiteral(source, ['text-dark', 'text', 'ink', 'foreground', 'black'])
     ?? extractRuleBackgroundColor(source)
     ?? '#2D2D2D';
 
   return { background, color };
+}
+
+function bleedBackgroundDisagrees(html: string, paper: DeckSlidePaperSurface): boolean {
+  const bleed = html.match(SURFACE_STYLE_RE)?.[0] ?? '';
+  const bg = readBackgroundFromStyleDecl(bleed);
+  if (!bg) return false;
+  const norm = (value: string) => value.replace(/\s+/g, '').toLowerCase();
+  return norm(bg) !== norm(paper.background);
 }
 
 function extractRuleBackgroundColor(html: string): string | null {
@@ -427,6 +501,11 @@ export function repairDeckSlideSurfaceBleed(html: string): string {
   if (hasBleed) {
     if (paper && preserveSlidePaint && bleedStyleTargetsSlides(source)) {
       return source.replace(SURFACE_STYLE_RE, renderSurfaceBleedStyle(paper, true));
+    }
+    // Upgrade cream/white flatten bleed after official look merge injects
+    // identity dark tokens (Hermes `--hc-bg`) or Motif role washes.
+    if (paper && bleedBackgroundDisagrees(source, paper)) {
+      return source.replace(SURFACE_STYLE_RE, renderSurfaceBleedStyle(paper, preserveSlidePaint));
     }
     return source;
   }
