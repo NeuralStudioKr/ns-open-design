@@ -241,6 +241,7 @@ Capsule은 empty `.deco-pill` + look CSS로 살아나지만 Daisy 정체성은 ~
 - [x] Pitch cover-blob · Safety stripe · Coral zigzag · Cartesian geo · Blue cover-decoration · Biennale sunglow
 - [x] export cache v28
 
+<<<<<<< HEAD
 ### 0.57 2026-08-20 — 1장 게이트 / head-only shell → incomplete_output 재발
 
 사용자 재현 (같은 대화, 연속 두 배너):
@@ -259,6 +260,16 @@ Capsule은 empty `.deco-pill` + look CSS로 살아나지만 Daisy 정체성은 ~
 - [x] untitled 1장 persist (gate null)
 - [x] Linux Internals head-only → cover draft
 - [x] Daisy Days title → no draft
+=======
+### 0.56a 2026-08-20 — compact 3장 wireframe · Daisy slide-title · kit tiny-flower 금지
+
+§0.56 Motif/persist heal에 더해 모델 측 계약 + cover role class:
+- `DECK_FRAMEWORK_DIRECTIVE_COMPACT` 3장 wireframe + flex center
+- kit Daisy Motif 예시 inset-safe (음수 offset 금지)
+- fill hard rules: invented 12–48px flower / emoji daisy 금지
+- Daisy cover에 `slide-title` (official Motif CSS 스코프)
+- export cache `v32`
+>>>>>>> 80b6b34f2 (fix(deck): compact 3-slide wireframe + Daisy slide-title (v32))
 
 ### 0.56 2026-08-20 — Daisy 꽃 미사용 · 16:9 비율 · 1장 incomplete_output
 
@@ -1430,7 +1441,11 @@ User-message 쪽 `[Existing deck edit]` / `<attached-preview-comments>` 주입�
 | 2026-08-13 | **§0.0 정책 개정** — template = layout vocabulary + visual look, 페이지 수/순서/구성은 브리프 기반. content-swap → pick-and-choose layout roles. daemon Clone default count = 6 (shells.length 아님), `pickTemplateShells` role-based scoring 도입. `template-visual-kit.ts` HARD_RULES 재작성, `DEFAULT_MAX_CHARS` 12000 → 14000. |
 | 2026-08-18 | Clone content-fill motif 보정 — 8/13 SVG hang 방지 패치가 first fill에서 `Motif sprites`/`Decoration CSS`/`Layout CSS`를 통째로 생략해 Daisy/Capsule 템플릿 정체성이 약해졌다. `slimTemplateVisualKitForFill`이 큰 SVG sprite sheet와 전체 stylesheet dump는 계속 제거하되, Daisy star/rainbow·Capsule pill/capsule·Terminal scanline 같은 compact motif recipe와 짧은 Decoration/Layout CSS cue를 보존하도록 변경했다. |
 | 2026-08-18 | §0.20 — html-ppt identity scope. 공유 `:root --bg:#ffffff` 대신 `.tpl-*` host 토큰/슬라이드 surface/폰트를 kit 계약으로 쓰고, SKILL `copy index.html` filesystem 지시를 neutralize. |
+<<<<<<< HEAD
 | 2026-08-20 | §0.57 — 1장 게이트 제거 + head-only Template fill을 브리프 제목 표지 초안으로 salvage. `expected at least 3` → shell 연속 실패 차단. |
+=======
+| 2026-08-20 | §0.56a — compact 3-slide wireframe · Daisy `slide-title` · kit/fill tiny-flower·음수 Motif offset 금지 · cache v32. |
+>>>>>>> 80b6b34f2 (fix(deck): compact 3-slide wireframe + Daisy slide-title (v32))
 | 2026-08-20 | §0.56 — Daisy 표지 4귀퉁이 % 스케일 · 작은 발명 꽃 제거 · 16:9 column+center · titled 1장 persist+top-up · cache v31. |
 | 2026-08-20 | §0.55 — Capsule 커버 Motif 전 장 스탬프. 장 역할별 deco-pills / floating-pills / closing · cache v30. |
 | 2026-08-20 | §0.54 — Motif identity 오탐(chart/empty-pill/comment) · wrong shell fill · content chrome denylist · cache v29. |

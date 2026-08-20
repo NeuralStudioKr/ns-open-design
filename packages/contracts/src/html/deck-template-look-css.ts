@@ -1270,18 +1270,29 @@ function ensureSlideMotifRoleClass(dest: string, seeds: string[]): string {
   const needsSakuraCover = seeds.some(
     (seed) => motifSeedFamily(seed) === 'sakura' || /\bpetals?\b/i.test(seed),
   );
+  const needsDaisyTitle = seeds.some(
+    (seed) => /deco-daisy|#fcdf6c/i.test(seed) || motifSeedFamily(seed) === 'daisy',
+  );
   const needsPixelAtmosphere = seeds.some((seed) =>
     /\bpixel-(?:glitch|particles|corners)\b/i.test(seed),
   );
 
-  if (needsSakuraCover) {
+  const addClassToSlide = (slideHtml: string, className: string): string => {
+    if (new RegExp(`\\b${className}\\b`, 'i').test(slideHtml)) return slideHtml;
+    return slideHtml.replace(
+      /^(<(?:section|div|main|article)\b[^>]*\bclass\s*=\s*)(["'])([^"']*)\2/i,
+      (_m, prefix: string, q: string, prev: string) =>
+        `${prefix}${q}${prev}${prev ? ' ' : ''}${className}${q}`,
+    );
+  };
+
+  if (needsSakuraCover || needsDaisyTitle) {
     const first = listSlideBlocks(out)[0];
-    if (first && !/\bs-cover\b/i.test(first.html)) {
-      const nextFirst = first.html.replace(
-        /^(<(?:section|div|main|article)\b[^>]*\bclass\s*=\s*)(["'])([^"']*)\2/i,
-        (_m, prefix: string, q: string, prev: string) =>
-          `${prefix}${q}${prev}${prev ? ' ' : ''}s-cover${q}`,
-      );
+    if (first) {
+      let nextFirst = first.html;
+      if (needsSakuraCover) nextFirst = addClassToSlide(nextFirst, 's-cover');
+      // Official Daisy Motif CSS is scoped under `.slide-title .deco-daisy-*`.
+      if (needsDaisyTitle) nextFirst = addClassToSlide(nextFirst, 'slide-title');
       if (nextFirst !== first.html) {
         out = `${out.slice(0, first.start)}${nextFirst}${out.slice(first.end)}`;
       }

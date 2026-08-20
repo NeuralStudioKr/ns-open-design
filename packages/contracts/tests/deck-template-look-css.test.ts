@@ -511,11 +511,12 @@ html, body { overflow: visible !important; height: auto !important; }
 <section class="slide"><h2>Closing</h2></section>
 </body></html>`;
     const merged = mergeOfficialDeckLookCss(sixSlides, assets);
-    const cover = merged.match(/<section class="slide"[\s\S]*?<\/section>/i)?.[0] ?? '';
+    const cover = merged.match(/<section\b[^>]*\bclass\s*=\s*"[^"]*\bslide\b[^"]*"[\s\S]*?<\/section>/i)?.[0] ?? '';
     expect(cover).toMatch(/deco-daisy-tl/i);
     expect(cover).toMatch(/deco-daisy-tr/i);
     expect(cover).toMatch(/deco-daisy-bl/i);
     expect(cover).toMatch(/deco-daisy-br|deco-daisy\b/i);
+    expect(cover).toMatch(/slide-title/);
     expect(cover).toMatch(/width:\s*22%/i);
     expect((cover.match(/deco-daisy/gi) ?? []).length).toBeGreaterThanOrEqual(4);
     expect(merged).toMatch(/flex-direction:\s*column/);
@@ -539,8 +540,9 @@ html, body { overflow: visible !important; height: auto !important; }
 <section class="slide"><h2>Body</h2></section>
 </body></html>`;
     const merged = mergeOfficialDeckLookCss(tiny, assets);
-    const cover = merged.match(/<section class="slide"[\s\S]*?<\/section>/i)?.[0] ?? '';
+    const cover = merged.match(/<section\b[^>]*\bclass\s*=\s*"[^"]*\bslide\b[^"]*"[\s\S]*?<\/section>/i)?.[0] ?? '';
     expect(cover).toMatch(/deco-daisy-tl/i);
+    expect(cover).toMatch(/slide-title/);
     expect(cover).toMatch(/width:\s*22%/i);
     expect(cover).not.toMatch(/width:\s*40px/i);
     expect(cover).toContain('Linux Internals');

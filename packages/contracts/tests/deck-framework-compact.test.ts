@@ -20,6 +20,17 @@ describe('DECK_FRAMEWORK_DIRECTIVE_COMPACT', () => {
     expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT).toContain('Do not add `<head>`');
   });
 
+  it('uses a three-slide wireframe so one-slide covers are not modeled as complete', () => {
+    expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT).toContain('three slides on purpose');
+    expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT).toContain(
+      'Never close `</html></artifact>` after a single section',
+    );
+    expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT).toContain('justify-content:center');
+    expect(
+      DECK_FRAMEWORK_DIRECTIVE_COMPACT.match(/<section class="slide"/g)?.length,
+    ).toBeGreaterThanOrEqual(3);
+  });
+
   it('names the core layout roles for API decks', () => {
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('**Cover**');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('**Big stat**');
@@ -73,7 +84,7 @@ describe('DECK_FRAMEWORK_DIRECTIVE_COMPACT', () => {
       'compact motif/deco cues',
     );
     expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_SELECTED_TEMPLATE).toContain(
-      'never spend >~800 chars on motif markup',
+      'exempt from the ~800-char Motif-budget',
     );
     expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_SELECTED_TEMPLATE).not.toContain(
       'optional short style with kit @import',

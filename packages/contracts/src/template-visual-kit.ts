@@ -2066,7 +2066,7 @@ function capDecorationsCssSectionForFill(section: string): string {
     }
   } else if (geometryKind === 'svg-sprite') {
     lines.push(
-      'Example Motif (AFTER title): `<div class="deco deco-daisy-tl" style="position:absolute;top:-20px;left:-20px;width:180px;height:180px;pointer-events:none;z-index:1">` + the capped Motif sprite SVG + `</div>`. Repeat one corner on a body slide. Tiny CSS dots are not Daisy Motif.',
+      'Example Motif (AFTER title): `<div class="deco deco-daisy-tl" style="position:absolute;top:24px;left:28px;width:200px;height:200px;pointer-events:none;z-index:2">` + the capped Motif sprite SVG + `</div>` (keep Motif inside the 1920×1080 box — never negative offsets). Repeat one corner on a body slide with `deco-daisy-br` at `bottom:28px;right:28px`. Tiny CSS dots / invented 12–48px flower SVGs are not Daisy Motif.',
     );
   } else if (geometryKind === 'oblong-capsule' || hasCapsuleMotifSignal(pickedCss) || hasCapsuleMotifSignal(section)) {
     lines.push(
