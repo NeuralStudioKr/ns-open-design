@@ -486,7 +486,7 @@ describe('composeSystemPrompt', () => {
 
       expect(prompt).toContain('- **kind**: deck');
       expect(prompt).toContain('- **slideCount**:');
-      expect(prompt).toContain('Teamver embed — slide deck scope only');
+      expect(prompt).toContain('Slide deck scope only');
       expect(prompt).not.toContain('screen-file-first rule');
       expect(prompt).not.toContain('- **fidelity**:');
     });
@@ -497,7 +497,7 @@ describe('composeSystemPrompt', () => {
         mediaExecution: { mode: 'disabled' },
       });
 
-      expect(prompt).toContain('Teamver embed — slide deck scope only');
+      expect(prompt).toContain('Slide deck scope only');
       expect(prompt).toContain('this workspace currently supports **slides only**');
       expect(prompt).not.toContain('Teamver Design');
       expect(prompt).not.toContain('## Media generation (if asked)');
@@ -609,7 +609,7 @@ describe('composeSystemPrompt', () => {
         });
 
         expect(prompt).not.toContain('Discovery / question-form override (slide-only mode)');
-        expect(prompt).not.toContain('Teamver embed — slide deck scope only');
+        expect(prompt).not.toContain('Slide deck scope only');
       });
     });
 

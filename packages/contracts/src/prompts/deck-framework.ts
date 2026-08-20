@@ -542,7 +542,7 @@ Quality bar: match the requested slide count (see slide-count rule below); each 
  */
 export const DECK_COMPACT_INLINE_LAYOUT_VOCABULARY_FOR_SELECTED_TEMPLATE = `# Compact API — inline layout vocabulary with Selected deck template (structure only)
 
-Each slide is a **fixed 1920×1080** Teamver canvas: inline \`width:1920px;height:1080px;box-sizing:border-box;overflow:hidden\` on every \`<section class="slide">\`; avoid viewport-only \`min-height:100vh\`. Use large presentation typography and fill the canvas.
+Each slide is a **fixed 1920×1080** canvas: inline \`width:1920px;height:1080px;box-sizing:border-box;overflow:hidden\` on every \`<section class="slide">\`; avoid viewport-only \`min-height:100vh\`. Use large presentation typography and fill the canvas.
 
 **Colors, fonts, borders, shadows, and decorative density MUST come from the Selected deck template / Template visual kit above.** Do not invent a slate/navy corporate palette. Forbidden fallbacks when a kit is present: \`#0f172a\`, \`#1e293b\`, \`#111827\`, \`#f8fafc\` + Inter-only sparse covers.
 
@@ -568,7 +568,7 @@ export const DECK_FRAMEWORK_DIRECTIVE_COMPACT = `# Slide deck — API compact co
 
 You are in API mode. **Do NOT paste/recreate a large framework skeleton.** Do NOT spend tokens on \`<head>\`, big \`<style>\`, scale JS, print CSS, chrome counters, keyboard handlers, or comments first.
 
-When the brief is ready and this is a deck-delivery turn, emit ONE \`<artifact type="deck" identifier="deck">\` whose body is a complete \`<!doctype html>…</html>\` document **in this same response**. The artifact type is always \`deck\` in Teamver; do not use \`text/html\`, \`html\`, \`prototype\`, or \`live-artifact\` as the artifact type. For Teamver API stability, prefer the no-head static shape below: start \`<body>\` immediately and write the visible slides first.
+When the brief is ready and this is a deck-delivery turn, emit ONE \`<artifact type="deck" identifier="deck">\` whose body is a complete \`<!doctype html>…</html>\` document **in this same response**. The artifact type is always \`deck\` in this workspace; do not use \`text/html\`, \`html\`, \`prototype\`, or \`live-artifact\` as the artifact type. For API stability, prefer the no-head static shape below: start \`<body>\` immediately and write the visible slides first.
 
 Required wireframe only (structural — **do not** copy literally; use varied layouts below). This sample is **three slides on purpose** (cover + body + closing). Prefer at least this shape when the user did not ask for 1 page; a short closed draft still saves and slide-count top-up can append. Never close \`</html></artifact>\` after a single section:
 
@@ -623,11 +623,11 @@ ${DECK_COMPACT_INLINE_LAYOUT_VOCABULARY_FOR_SELECTED_TEMPLATE}
  * First Clone content-fill: OD-style create. Motif SVG paste is deferred so the
  * model can close a compact deck instead of hanging on multi-KB ornament dumps.
  */
-export const DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_TEMPLATE_FILL = `# Slide deck — API compact contract for Template Clone content-fill (OD-style CREATE)
+export const DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_TEMPLATE_FILL = `# Slide deck — API compact contract for Template Clone content-fill
 
 You are in API mode after a LOOK seed. **Finish a closed compact deck THIS TURN.**
 
-OD succeeds by editing cloned HTML text. Teamver BYOK cannot — so regenerate content with kit **palette + fonts + Motif vocabulary + capped Layout CSS**. Do not hang on multi-KB Motif dumps.
+In-place HTML edits are unavailable in this API run — so regenerate content with kit **palette + fonts + Motif vocabulary + capped Layout CSS**. Do not hang on multi-KB Motif dumps.
 
 **Body / title-first (non-negotiable):**
 1. Status sentence → open \`<artifact type="deck" identifier="deck">\`.

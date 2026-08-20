@@ -41,7 +41,7 @@ describe("composeSystemPrompt — Teamver slide-only BYOK", () => {
 
     expect(prompt).toContain("- **kind**: deck");
     expect(prompt).toContain("- **slideCount**:");
-    expect(prompt).toContain("Teamver embed — slide deck scope only");
+    expect(prompt).toContain("Slide deck scope only");
     expect(prompt).not.toContain("Teamver Design");
     expect(prompt).not.toContain("screen-file-first rule");
     expect(prompt).not.toContain("- **fidelity**:");

@@ -55,7 +55,7 @@ const TEAMVER_SLIDE_ONLY_SCOPE = `
 
 ---
 
-## Teamver embed — slide deck scope only
+## Slide deck scope only
 
 This workspace is slide-only with media generation disabled for the 1st launch.
 
@@ -74,7 +74,7 @@ For every slide deck creation or edit request, the turn is successful only if it
 - When the user attaches image files and asks to place them on slides, embed them with project-relative \`<img src="exact-attachment-path">\` (paths are listed in \`<attached-project-files>\` / \`[Attached image embed]\`). Do not invent remote URLs or data: URIs. Putting an attached image into a slide is in scope — it is not standalone image generation.
 `;
 
-const TEAMVER_SLIDE_ONLY_FIRST_TURN_OVERRIDE = `# Teamver slide-only — turn-1 quick brief (required)
+const TEAMVER_SLIDE_ONLY_FIRST_TURN_OVERRIDE = `# Slide-only — turn-1 quick brief (required)
 
 This is a slide-only workspace. On the user's **first message** in a new conversation (no prior \`[form answers — discovery]\` in the transcript):
 
@@ -791,7 +791,7 @@ export function composeSystemPrompt({
  */
 const TEAMVER_SLIDE_ONLY_API_DELIVERABLE_OVERRIDE = `
 
-## Teamver slide-only API deliverable rule
+## Slide-only API deliverable rule
 
 When the user asks for a slide deck, presentation, PPT, pitch deck, or slide edit, do not treat a plan/outline/progress note as a valid final answer.
 
@@ -819,7 +819,7 @@ When the user message includes \`[Existing deck edit]\` and/or \`[Attached image
 
 const TEAMVER_API_DECK_FRAMEWORK_OVERRIDE = `
 
-## Teamver API — deck framework emission override (overrides daemon workflow above)
+## API — deck framework emission override (overrides daemon workflow above)
 
 The deck framework workflow above assumes TodoWrite and filesystem copies. **In this API run, override it:**
 
@@ -841,7 +841,7 @@ ${SLIDE_DECK_CONTENT_EXPANSION_EXAMPLE}`;
 
 const TEAMVER_API_SKILL_SEED_OVERRIDE = `
 
-## Teamver API — skill seed override (read last — beats Active skill Pre-flight)
+## API — skill seed override (read last — beats Active skill Pre-flight)
 
 The active skill mentions \`assets/template.html\`. **In this API run that file is not readable** (no Read/Bash tools). Ignore every instruction to copy, Read, or paste the seed template verbatim.
 
@@ -1350,7 +1350,7 @@ function summarizeApiModeSkillBody(skillBody: string): string {
  * conflict between "artifact last" (daemon charter), "start artifact ASAP"
  * (compact deck), and "never open until complete" (deliverable override).
  */
-const TEAMVER_SLIDE_API_UNIFIED_STREAMING_RULE = `# Teamver slide-only API — unified streaming rule (READ LAST — beats every rule above)
+const TEAMVER_SLIDE_API_UNIFIED_STREAMING_RULE = `# Slide-only API — unified streaming rule (READ LAST — beats every rule above)
 
 **Turn 1 (first user message, no prior form answers):** emit a UI-locale quick-brief \`<question-form id="discovery">\` JSON block only. No HTML artifact on turn 1.
 
@@ -1373,7 +1373,7 @@ const TEAMVER_SLIDE_API_UNIFIED_STREAMING_RULE = `# Teamver slide-only API — u
 
 If you already started \`<head>\` by mistake, **abandon that output** and restart the artifact with \`<body><section class="slide">\` content immediately.`;
 
-const TEAMVER_SLIDE_API_DISCOVERY_BINDING_RULE = `# Teamver slide-only API — bind quick-brief answers (turn 2+)
+const TEAMVER_SLIDE_API_DISCOVERY_BINDING_RULE = `# Slide-only API — bind quick-brief answers (turn 2+)
 
 When the user's message starts with \`[form answers — discovery]\`, treat every answered field as **hard constraints** for the deck you emit in that same turn:
 
@@ -1384,7 +1384,7 @@ When the user's message starts with \`[form answers — discovery]\`, treat ever
 
 If a field was skipped, choose a sensible default and proceed — do not emit another discovery form. Preserve the Selected deck template look (design system is secondary brand context only), and vary slide layouts per the compact inline vocabulary (split, stat, timeline, quote, column); do not output 6 identical white boxes.`;
 
-const TEAMVER_SLIDE_API_EXISTING_DECK_IMAGE_EDIT_RULE = `# Teamver slide-only API — existing-deck image embed (READ LAST)
+const TEAMVER_SLIDE_API_EXISTING_DECK_IMAGE_EDIT_RULE = `# Slide-only API — existing-deck image embed (READ LAST)
 
 If the turn carries \`[Attached image embed]\` and/or \`[Existing deck edit]\` (or an attached \`deck.html\`):
 
@@ -1405,7 +1405,7 @@ Hard rules:
 - Status sentence: "수정 반영 중" / "Applying your edits" — never "초안 생성" / "creating the deck".
 `;
 
-const TEAMVER_SLIDE_API_COMMENT_EDIT_PATCH_RULE = `# Teamver slide-only API — comment-edit patch (READ LAST)
+const TEAMVER_SLIDE_API_COMMENT_EDIT_PATCH_RULE = `# Slide-only API — comment-edit patch (READ LAST)
 
 If the turn carries \`<attached-preview-comments>\`, prefer a structured element patch over a full deck rewrite:
 
@@ -1428,7 +1428,7 @@ Fallback for multi-element / slide-structure changes:
 - Use full \`<artifact type="deck">\` for deck-wide/unclear scope. Never ask users for internal \`slideIndex\`.
 - Status sentence on comment-edit turns: "수정 반영 중" / "Applying your edits" (present tense). Never "슬라이드 초안이 생성", "creating the deck", or "draft is ready".`;
 
-const TEAMVER_SLIDE_API_DIRECT_STREAMING_RULE = `# Teamver slide-only API — direct deck generation rule (READ LAST — beats every rule above)
+const TEAMVER_SLIDE_API_DIRECT_STREAMING_RULE = `# Slide-only API — direct deck generation rule (READ LAST — beats every rule above)
 
 This project has \`skipDiscoveryBrief: true\` or an already-complete brief. Do NOT emit \`<question-form>\`, do NOT show "Quick brief — 30 seconds", and do NOT wait for another user message.
 
@@ -1460,7 +1460,7 @@ Token-aware rule:
 - Prefer finishing a complete deck via kit tokens + compact motif/deco cues + scaffold map.
 - If a full scaffold HTML block is present and copying it risks truncation / max_tokens, **immediately** stay on the kit + map path (do not burn the turn on a partial CSS shell).
 - When using kit/scaffold CSS, bind slide-surface \`background\`/\`color\` on **both** \`html\`/\`body\` **and** every \`<section class="slide">\`. Do not leave \`body\` on a dark app-shell default around cream slides — that reads as a dark deck in the preview panel.
-- **Fixed 1920×1080 canvas:** The preview scales slides inside a panel, so every \`<section class="slide">\` must use \`width:1920px;height:1080px;box-sizing:border-box;position:relative;overflow:hidden\`. Do not paste template presenter CSS such as \`width:100vw\`, \`height:100vh\`, scroll-snap, or full-screen \`html,body\` sizing.
+- **Fixed 1920×1080 canvas:** The preview panel scales slides, so every \`<section class="slide">\` must use \`width:1920px;height:1080px;box-sizing:border-box;position:relative;overflow:hidden\`. Do not paste template presenter CSS such as \`width:100vw\`, \`height:100vh\`, scroll-snap, or full-screen \`html,body\` sizing.
 
 Shared hard rules:
 - Adapt slide count by duplicating/dropping whole slide shells — do not invent a new CSS system.
@@ -1483,7 +1483,7 @@ Hard requirements for every slide:
 - **Forbidden skeleton / Neutral substitutes:** slate \`#0f172a\`/\`#1e293b\`/\`#111827\`, OD terracotta \`#c96442\` unless listed in kit, Inter/Noto/system-ui-only typography that ignores kit fonts, empty corporate gradients, "no ornament" layouts.
 - **Forbidden:** carrying over the ATTACHED SOURCE FILE's own visual styling. Source contributes TEXT and structure only — palette/fonts/motif MUST come from the kit.
 - **Surface lock:** if the Template visual kit exposes a \`### Slide surface\` block, bind that exact \`background\` / \`color\` on **both** \`html\` / \`body\` **and** every \`.slide\`. Painting only \`.slide\` leaves a wrong preview-panel shell. Never substitute an ink/border token for a slide background. Dark-on-dark, light-on-light, and paper-slides-on-wrong-shell are failed deliverables.
-- **Fixed 1920×1080 canvas:** The preview scales this in a panel; every \`<section class="slide">\` MUST inline \`width:1920px;height:1080px;box-sizing:border-box;position:relative;overflow:hidden\`. Do NOT paste presenter CSS such as \`width:100vw\`, \`height:100vh\`, \`min-height:100vh\`, scroll-snap, or full-screen \`html,body\` sizing.
+- **Fixed 1920×1080 canvas:** The preview panel scales this; every \`<section class="slide">\` MUST inline \`width:1920px;height:1080px;box-sizing:border-box;position:relative;overflow:hidden\`. Do NOT paste presenter CSS such as \`width:100vw\`, \`height:100vh\`, \`min-height:100vh\`, scroll-snap, or full-screen \`html,body\` sizing.
 - **Output order:** first finish visible slide content. Never start by dumping a long \`<head>\` or full Decoration CSS; a complete recognizable deck beats a perfect-but-truncated shell.
 
 If any earlier compact wireframe / deck-skeleton sample conflicts with the kit (including \`--accent: #c96442\`), **ignore the sample colors** and follow the kit.
@@ -1698,7 +1698,7 @@ export function composeTeamverSlideApiPrompt({
     if (hasSelectedTemplate) {
       const hardRequirements = templateCloneContentFill === true
         ? (
-          'Hard requirements (first content-fill — OD-style CREATE, kit Motif AFTER title):\n'
+          'Hard requirements (first content-fill — kit Motif AFTER title):\n'
           + '- Bind kit palette hex + fonts + Slide surface on html/body AND every `.slide` edge-to-edge (no white outer + inner cream panel).\n'
           + '- Title-first body: cover title + lead BEFORE any decoration. Close `</artifact>` this turn with 3 slides.\n'
           + '- Motif `<svg>` is NOT required this turn (official Motif is merged after save). Optional tiny kit Motif CSS AFTER title is OK. FORBIDDEN: Motif `<svg>` this turn; Motif geometry from another template family; inventing generic CSS circles; inventing Capsule coral pills when kit Motif is petals/blobs/pins/pixel.\n'

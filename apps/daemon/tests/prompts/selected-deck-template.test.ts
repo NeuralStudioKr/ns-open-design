@@ -26,7 +26,7 @@ describe('selected-deck-template prompt helpers', () => {
 
   it('wraps deck skill bodies with the selected-template guard', () => {
     const wrapped = wrapSelectedDeckTemplateSkillBody('body', 'Hermes');
-    expect(wrapped).toContain('# Teamver selected deck template guard');
+    expect(wrapped).toContain('# Selected deck template guard');
     expect(wrapped).toContain('Template: Hermes');
     expect(wrapped).toContain('Content quality bar');
     expect(wrapped).toContain('headline, takeaway');
@@ -54,7 +54,7 @@ describe('selected-deck-template prompt helpers', () => {
       secondarySkillName: 'Simple Deck',
     });
     expect(preferred?.skillName).toBe('Hermes');
-    expect(preferred?.skillBody).toContain('# Teamver selected deck template guard');
+    expect(preferred?.skillBody).toContain('# Selected deck template guard');
     expect(preferred?.skillBody).toContain('# Hermes visual rules');
     // Secondary Simple Deck body historically reclaimed visuals over the
     // selected template — structure lives in compact deck rules instead.

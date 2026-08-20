@@ -25,7 +25,7 @@ export function wrapSelectedDeckTemplateSkillBody(
 ): string {
   const title = templateTitle.trim() || 'selected deck template';
   return [
-    '# Teamver selected deck template guard',
+    '# Selected deck template guard',
     '',
     `Template: ${title}`,
     '',

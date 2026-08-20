@@ -138,12 +138,15 @@ describe('composeSystemPrompt — API mode (#313)', () => {
         mediaExecution: { mode: 'disabled' },
       });
 
-      expect(prompt).toContain('Teamver embed — slide deck scope only');
+      expect(prompt).toContain('Slide deck scope only');
       expect(prompt).toContain('this workspace currently supports slides only');
       expect(prompt).not.toContain('Open Design UI locale');
       expect(prompt).not.toContain('teamver Slide currently supports');
       expect(prompt).not.toContain('teamver Slide embed');
       expect(prompt).not.toContain('Teamver Design');
+      expect(prompt).not.toContain('Teamver embed');
+      expect(prompt).not.toContain('## Teamver');
+      expect(prompt).not.toContain('# Teamver');
       expect(prompt).toContain('This workspace is slide-only');
       expect(prompt).toContain('turn-1 quick brief');
       expect(prompt).toContain('UI-locale line');
@@ -155,7 +158,7 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).toContain('For slide deck / presentation / PPT requests in API mode');
       expect(prompt).toContain('the plan is not the deliverable');
       expect(prompt).toContain('include the complete HTML deck artifact in this same response');
-      expect(prompt).toContain('Teamver slide-only API deliverable rule');
+      expect(prompt).toContain('Slide-only API deliverable rule');
       expect(prompt).toContain('your same response MUST include exactly one complete `<artifact type="deck" identifier="deck">...</artifact>` block');
       expect(prompt).toContain('optional: one tiny user-visible UI-locale status sentence tailored to the brief');
       expect(prompt).toContain('optional: one tiny brief-specific UI-locale status sentence');
@@ -164,7 +167,7 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).toContain('Artifact-only is OK for speed/tokens');
       expect(prompt).toContain('Never start a deck with `<artifact type="text/html"`');
       expect(prompt).not.toContain('Never open `<artifact type="deck">` until the complete deck is ready');
-      expect(prompt).toContain('Teamver API — deck framework emission override');
+      expect(prompt).toContain('API — deck framework emission override');
       expect(prompt).toContain('API compact contract');
       expect(prompt).toContain('<artifact type="deck" identifier="deck">');
       // Allow short kit <style>/<link>; still forbid empty/long head chrome.
@@ -188,11 +191,11 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       });
 
       expect(prompt).toContain('API compact contract');
-      expect(prompt).toContain('Teamver API — deck framework emission override');
+      expect(prompt).toContain('API — deck framework emission override');
       expect(prompt).toContain('Visual style reference');
       expect(prompt).toContain('API-safe skill summary only');
       expect(prompt).not.toContain('Read `assets/template.html`');
-      expect(prompt).not.toContain('Teamver API — skill seed override');
+      expect(prompt).not.toContain('API — skill seed override');
     });
 
     // Regression coverage for the unified ask-user flow: API/BYOK mode must
@@ -275,7 +278,7 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       // Slide-only runs use the dedicated lean composer (no BYOK tool list —
       // media is disabled and the deliverable is always an HTML deck).
       expect(prompt).toContain('unified streaming rule');
-      expect(prompt).toContain('Teamver slide-only API deliverable rule');
+      expect(prompt).toContain('Slide-only API deliverable rule');
       expect(prompt).toContain('your same response MUST include exactly one complete `<artifact type="deck" identifier="deck">...</artifact>` block');
       expect(prompt).not.toContain('API mode — BYOK tools available');
     });
@@ -598,8 +601,8 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       // still mention patch types briefly for existing-deck anti-patterns.
       expect(prompt).not.toContain('comment-edit patch');
       expect(prompt).not.toContain('existing-deck image embed');
-      expect(prompt).not.toContain('Teamver slide-only API — comment-edit patch');
-      expect(prompt).not.toContain('Teamver slide-only API — existing-deck image embed');
+      expect(prompt).not.toContain('Slide-only API — comment-edit patch');
+      expect(prompt).not.toContain('Slide-only API — existing-deck image embed');
     });
 
     it('carries the comment-edit element-patch contract when FE gates it on', () => {
@@ -637,7 +640,7 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       // looking generic even though [selected-deck-template] logs said
       // the body 'loaded'.
       const wrappedSkillBody = [
-        '# Teamver selected deck template guard',
+        '# Selected deck template guard',
         '',
         'Template: Html Ppt Hermes Cyber Terminal',
         '',
@@ -681,7 +684,7 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).toContain('赛博网格');
       // The wrap guard prose survives verbatim (was dropped by the
       // summarizer's 18-line ceiling).
-      expect(prompt).toContain('# Teamver selected deck template guard');
+      expect(prompt).toContain('# Selected deck template guard');
       expect(prompt).toContain('--- Template specification follows ---');
       // Old summarized header must NOT appear when a template is pinned —
       // otherwise the model sees two competing visual references.
@@ -709,7 +712,7 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       // frontmatter visual summary prepended). Summarizing in that window
       // is what made "템플릿 적용 안 됨" survive the metadata-only guard.
       const wrappedSkillBody = [
-        '# Teamver selected deck template guard',
+        '# Selected deck template guard',
         '',
         'Template: Html Ppt Hermes Cyber Terminal',
         '',
@@ -759,7 +762,7 @@ describe('composeSystemPrompt — API mode (#313)', () => {
 
     it('requires kit Motif vocabulary AFTER title on Clone content-fill turns', () => {
       const kitBody = [
-        '# Teamver selected deck template guard',
+        '# Selected deck template guard',
         '',
         '## Template visual kit (from example.html) — Daisy',
         '',
@@ -792,7 +795,8 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       });
       expect(fill).toContain('READ LAST (first content-fill)');
       expect(fill).toMatch(/Motif vocabulary \(required\)|kit Motif vocabulary/i);
-      expect(fill).toContain('OD-style CREATE, kit Motif AFTER title');
+      expect(fill).toContain('kit Motif AFTER title');
+      expect(fill).not.toContain('OD-style CREATE');
       expect(fill).toMatch(/Never invent Motif geometry from another template family|FORBIDDEN substitutes|no invented generic circles/i);
       expect(fill).not.toContain('Copy Motif sprites verbatim');
       expect(normal).not.toContain('Copy Motif sprites verbatim');

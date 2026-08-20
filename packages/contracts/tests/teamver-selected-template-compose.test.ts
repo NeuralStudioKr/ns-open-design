@@ -17,7 +17,7 @@ import type { AppliedPluginSnapshot } from '../src/plugins/apply.js';
  */
 function wrapSelectedDeckTemplateSkillBody(skillBody: string, templateTitle: string): string {
   return [
-    '# Teamver selected deck template guard',
+    '# Selected deck template guard',
     '',
     `Template: ${templateTitle}`,
     '',

@@ -324,7 +324,7 @@ const TEAMVER_SLIDE_ONLY_SCOPE = `
 
 ---
 
-## Teamver embed — slide deck scope only (load-bearing, OVERRIDES discovery)
+## Slide deck scope only (load-bearing, OVERRIDES discovery)
 
 This workspace is **slide-only** with media generation **disabled** for the 1st launch.
 
