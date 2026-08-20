@@ -128,6 +128,11 @@ html, body {
   height: 100% !important;
   display: block !important;
 }
+/* Official presenter chrome is position:fixed — stacked preview would
+   pin those dots/counters on every page. Hide them; Motif stays per-slide. */
+.nav-dots, .slide-counter, .nav-dot, .nav-hint, .deck-nav, .deck-counter {
+  display: none !important;
+}
 `;
 
 const LOOK_NEUTRALIZE_TAIL_RE =
@@ -606,7 +611,9 @@ function extractVisibleMotifInstances(html: string): string[] {
     const isStar = /deco-star/i.test(row.key);
     if (isDaisy && daisyCount >= 4) continue;
     if (isStar && starCount >= 3) continue;
-    if (hasSvg && !isDaisy && !isStar && svgCount >= 3) continue;
+    const isAccentSvg = /deco-(?:sun|rainbow|cloud)/i.test(row.key);
+    if (hasSvg && !isDaisy && !isStar && !isAccentSvg && svgCount >= 3) continue;
+    if (hasSvg && isAccentSvg && svgCount >= 8) continue;
     if (!hasSvg && cssCount >= 3) continue;
     seenKeys.add(row.key);
     out.push(row.block);
@@ -614,7 +621,7 @@ function extractVisibleMotifInstances(html: string): string[] {
     if (isStar) starCount += 1;
     if (hasSvg) svgCount += 1;
     else cssCount += 1;
-    if (out.length >= 10) break;
+    if (out.length >= 16) break;
   }
   return out;
 }
@@ -765,7 +772,9 @@ function slideHasOfficialMotifPaint(
   index = 0,
   total = 0,
 ): boolean {
-  const pack = motifPackForSlide(instances, index, total);
+  const role = slideMotifRole(index, total > 0 ? total : index + 1);
+  if (role !== 'cover' && slideHasCoverScaleDaisyPack(slideHtml)) return false;
+  const pack = motifPackForSlide(instances, index, total, slideHtml);
   if (!pack) return destHasVisibleMotifIdentity(slideHtml, instances);
   return destHasInstancePaint(slideHtml, pack);
 }
@@ -897,35 +906,149 @@ function pickDaisy(daisies: string[], corner: string): string | undefined {
   return daisies.find((block) => daisyCornerKey(block) === corner);
 }
 
-function daisyPackForRole(
-  daisies: string[],
-  stars: string[],
+const MOTIF_ABS = 'position:absolute;pointer-events:none;z-index:1';
+const DAISY_SLIDE_LAYOUT_RE =
+  /\bslide-(title|welcome|weekly|timeline|chart-bar|cards|quote|team|process|donut)\b/i;
+const DAISY_BODY_LAYOUTS = [
+  'slide-welcome',
+  'slide-weekly',
+  'slide-timeline',
+  'slide-chart-bar',
+  'slide-cards',
+  'slide-process',
+  'slide-donut',
+] as const;
+
+/** Cover % stay large (§0.56). Body/closing use ~0.65 so flowers do not lock every page. */
+const DAISY_PLACEMENT: Record<string, string> = {
+  'cover-tl': `${MOTIF_ABS};top:-4%;left:-3%;width:22%;height:39%`,
+  'cover-tr': `${MOTIF_ABS};top:2%;right:-2%;width:18%;height:32%`,
+  'cover-bl': `${MOTIF_ABS};bottom:-4%;left:1%;width:19%;height:34%`,
+  'cover-br': `${MOTIF_ABS};bottom:-2%;right:-3%;width:20%;height:36%`,
+  'body-tl': `${MOTIF_ABS};top:-2%;left:-2%;width:14%;height:25%`,
+  'body-tr': `${MOTIF_ABS};top:2%;right:-1%;width:12%;height:22%`,
+  'body-bl': `${MOTIF_ABS};bottom:-2%;left:1%;width:13%;height:23%`,
+  'body-br': `${MOTIF_ABS};bottom:-2%;right:-2%;width:14%;height:25%`,
+  sun: `${MOTIF_ABS};top:6%;left:4%;width:10%;height:18%`,
+  rainbow: `${MOTIF_ABS};bottom:4%;right:3%;width:12%;height:16%`,
+  cloud: `${MOTIF_ABS};top:6%;right:5%;width:10%;height:18%`,
+  'cloud-2': `${MOTIF_ABS};bottom:10%;left:3%;width:9%;height:16%`,
+  star: `${MOTIF_ABS};top:12%;right:7%;width:6%;height:11%`,
+  'star-alt': `${MOTIF_ABS};bottom:14%;left:5%;width:5%;height:9%`,
+};
+
+function replaceWrapperStyle(block: string, style: string): string {
+  const openMatch = /^<([a-zA-Z][\w-]*)\b([^>]*)>/.exec(block);
+  if (!openMatch) return block;
+  let attrs = openMatch[2] ?? '';
+  if (/\bstyle\s*=/i.test(attrs)) {
+    attrs = attrs.replace(/\bstyle\s*=\s*(["'])[\s\S]*?\1/i, `style="${style}"`);
+  } else {
+    attrs = `${attrs} style="${style}"`;
+  }
+  const marked = markOfficialMotifHtml(`<${openMatch[1]}${attrs}>`);
+  return `${marked}${block.slice(openMatch[0].length)}`;
+}
+
+function pickNamedMotif(instances: string[], token: string): string | undefined {
+  return instances.find((block) => hasExactClassToken(classAttrValue(block), token));
+}
+
+function daisySlideLayoutClass(slideHtml: string, index: number, total: number): string {
+  const hit = DAISY_SLIDE_LAYOUT_RE.exec(slideHtml);
+  if (hit) return `slide-${String(hit[1] ?? '').toLowerCase()}`;
+  const role = slideMotifRole(index, total);
+  if (role === 'cover') return 'slide-title';
+  if (role === 'closing') return 'slide-quote';
+  return DAISY_BODY_LAYOUTS[(Math.max(index, 1) - 1) % DAISY_BODY_LAYOUTS.length]!;
+}
+
+function addSlideLayoutClass(slideHtml: string, layoutClass: string): string {
+  if (new RegExp(`\\b${layoutClass}\\b`, 'i').test(slideHtml)) return slideHtml;
+  return slideHtml.replace(
+    /^(<(?:section|div|main|article)\b[^>]*\bclass\s*=\s*)(["'])([^"']*)\2/i,
+    (_m, prefix: string, q: string, prev: string) =>
+      `${prefix}${q}${prev}${prev ? ' ' : ''}${layoutClass}${q}`,
+  );
+}
+
+function slideHasCoverScaleDaisyPack(slideHtml: string): boolean {
+  const corners = daisyCornerTokens(slideHtml);
+  return corners.length >= 3 && /width\s*:\s*22%/i.test(slideHtml);
+}
+
+function daisyPackForLayout(
+  instances: string[],
+  layoutClass: string,
   role: SlideMotifRole,
   index: number,
 ): string {
+  const daisies = instances.filter((block) => /deco-daisy/i.test(block));
+  const stars = instances.filter((block) => /deco-star/i.test(block));
   const tl = pickDaisy(daisies, 'tl');
   const tr = pickDaisy(daisies, 'tr');
   const bl = pickDaisy(daisies, 'bl');
   const br = pickDaisy(daisies, 'br');
-  const starA = stars[0];
-  const starB = stars[1];
-  if (role === 'cover') {
-    return [tl, tr, bl, br, starA, starB].filter(Boolean).join('\n');
+  const sun = pickNamedMotif(instances, 'deco-sun');
+  const rainbow = pickNamedMotif(instances, 'deco-rainbow');
+  const cloud = pickNamedMotif(instances, 'deco-cloud');
+  const cloud2 = pickNamedMotif(instances, 'deco-cloud-2') ?? cloud;
+  const place = (block: string | undefined, style: string): string | undefined => (
+    block ? replaceWrapperStyle(block, style) : undefined
+  );
+
+  if (layoutClass === 'slide-title' || role === 'cover') {
+    return [
+      place(tl, DAISY_PLACEMENT['cover-tl']!),
+      place(tr, DAISY_PLACEMENT['cover-tr']!),
+      place(bl, DAISY_PLACEMENT['cover-bl']!),
+      place(br, DAISY_PLACEMENT['cover-br']!),
+      place(stars[0], DAISY_PLACEMENT.star!),
+      place(stars[1], DAISY_PLACEMENT['star-alt']!),
+    ].filter(Boolean).join('\n');
   }
-  if (role === 'closing') {
-    return [tl ?? bl, br ?? tr, starA].filter(Boolean).join('\n');
+  if (layoutClass === 'slide-welcome' && (sun || rainbow)) {
+    return [
+      place(sun, DAISY_PLACEMENT.sun!),
+      place(rainbow, DAISY_PLACEMENT.rainbow!),
+      place(stars[0], DAISY_PLACEMENT.star!),
+      place(stars[1], DAISY_PLACEMENT['star-alt']!),
+    ].filter(Boolean).join('\n');
   }
-  const pairs: Array<Array<string | undefined>> = [
-    [tl, br],
-    [tr, bl],
-    [tl, tr],
-    [bl, br],
+  if ((layoutClass === 'slide-timeline' || layoutClass === 'slide-process') && cloud) {
+    return [
+      place(cloud, DAISY_PLACEMENT.cloud!),
+      place(cloud2, DAISY_PLACEMENT['cloud-2']!),
+      place(br ?? tl, DAISY_PLACEMENT['body-br']!),
+      place(stars[0], DAISY_PLACEMENT.star!),
+    ].filter(Boolean).join('\n');
+  }
+  if (role === 'closing' || layoutClass === 'slide-quote') {
+    return [
+      place(tl ?? bl, DAISY_PLACEMENT['body-tl']!),
+      place(br ?? tr, DAISY_PLACEMENT['body-br']!),
+      place(stars[0], DAISY_PLACEMENT.star!),
+    ].filter(Boolean).join('\n');
+  }
+  const pairs: Array<Array<[string | undefined, string]>> = [
+    [[tl, DAISY_PLACEMENT['body-tl']!], [br, DAISY_PLACEMENT['body-br']!]],
+    [[tr, DAISY_PLACEMENT['body-tr']!], [bl, DAISY_PLACEMENT['body-bl']!]],
+    [[tl, DAISY_PLACEMENT['body-tl']!], [tr, DAISY_PLACEMENT['body-tr']!]],
+    [[bl, DAISY_PLACEMENT['body-bl']!], [br, DAISY_PLACEMENT['body-br']!]],
   ];
-  const pair = pairs[index % pairs.length] ?? [tl, br];
-  return [...pair, starA].filter(Boolean).join('\n');
+  const pair = pairs[index % pairs.length] ?? pairs[0]!;
+  return [
+    ...pair.map(([block, style]) => place(block, style)),
+    place(stars[0], DAISY_PLACEMENT['star-alt']!),
+  ].filter(Boolean).join('\n');
 }
 
-function motifPackForSlide(instances: string[], index: number, total = 0): string {
+function motifPackForSlide(
+  instances: string[],
+  index: number,
+  total = 0,
+  slideHtml = '',
+): string {
   const role = slideMotifRole(index, total > 0 ? total : index + 1);
   const clusters = instances.filter((block) => isMotifClusterClass(classAttrValue(block)));
   const cover = findClusterByName(clusters, 'deco-pills')
@@ -950,9 +1073,13 @@ function motifPackForSlide(instances: string[], index: number, total = 0): strin
     if (cover) return cover;
   }
   const daisies = instances.filter((block) => /deco-daisy/i.test(block));
-  const stars = instances.filter((block) => /deco-star/i.test(block));
   if (daisies.length > 0) {
-    return daisyPackForRole(daisies, stars, role, index);
+    return daisyPackForLayout(
+      instances,
+      daisySlideLayoutClass(slideHtml, index, total > 0 ? total : index + 1),
+      role,
+      index,
+    );
   }
   const dots = instances.filter((block) => hasExactClassToken(classAttrValue(block), 'deco-dots'));
   const circles = instances.filter((block) => /deco-(?:green-)?circle/i.test(classAttrValue(block)));
@@ -976,7 +1103,14 @@ function trailingMotifSelector(selector: string): string | null {
   return parts.slice(start).join(' ');
 }
 
+function officialCssHasScopedMotifPlacement(officialCss: string): boolean {
+  return /\.slide-(?:title|welcome|weekly|timeline|chart-bar|cards|quote|team|process|donut)\s+\.(?:deco-|petal)/i.test(
+    officialCss,
+  );
+}
+
 function motifFallbackCss(officialCss: string, instances: string[]): string {
+  if (officialCssHasScopedMotifPlacement(officialCss)) return '';
   const names = new Set<string>();
   for (const block of instances) {
     const open = /^<[^>]+>/.exec(block)?.[0] ?? '';
@@ -993,16 +1127,27 @@ function motifFallbackCss(officialCss: string, instances: string[]): string {
     let match: RegExpExecArray | null;
     let kept = 0;
     while ((match = re.exec(officialCss)) !== null && kept < 4) {
-      const trailing = trailingMotifSelector(match[1] ?? '');
+      const selector = match[1] ?? '';
+      const trailing = trailingMotifSelector(selector);
       const body = (match[2] ?? '').trim();
       if (!trailing || !body) continue;
-      const rule = `.slide ${trailing}{${body}}`;
+      const role = /\.(slide-[a-z0-9-]+)/i.exec(selector)?.[1];
+      const rule = role
+        ? `.${role} ${trailing}{${body}}`
+        : `.slide ${trailing}{${body}}`;
       if (!rules.includes(rule)) rules.push(rule);
       kept += 1;
     }
     if (rules.length >= 32) break;
   }
   return rules.join('\n');
+}
+
+function stripUnscopedDaisyMotifFallbackCss(dest: string): string {
+  return dest.replace(
+    /<style\b[^>]*\bdata-od-official-motif-deco-css\b[^>]*>([\s\S]*?)<\/style>/gi,
+    (all, css: string) => (/\.slide\s+\.deco-daisy/i.test(css) ? '' : all),
+  );
 }
 
 function mergeMotifFallbackCss(dest: string, officialCss: string, instances: string[]): string {
@@ -1022,7 +1167,8 @@ function mergeVisibleMotifInstances(
 ): string {
   if (!dest || instances.length === 0) return dest;
 
-  let out = mergeMotifFallbackCss(dest, officialCss, instances);
+  let out = stripUnscopedDaisyMotifFallbackCss(dest);
+  out = mergeMotifFallbackCss(out, officialCss, instances);
   out = fillEmptyMotifShells(out, instances);
 
   const slides = listSlideBlocks(out);
@@ -1032,10 +1178,12 @@ function mergeVisibleMotifInstances(
   }
 
   const nextSlides = slides.map((slide, index) => {
-    const pack = motifPackForSlide(instances, index, slides.length);
+    const layoutClass = daisySlideLayoutClass(slide.html, index, slides.length);
+    const pack = motifPackForSlide(instances, index, slides.length, slide.html);
     let html = /deco-daisy/i.test(slide.html) || /deco-daisy/i.test(pack)
       ? stripUnderScaleDaisyInstances(slide.html)
       : slide.html;
+    html = addSlideLayoutClass(html, layoutClass);
     if (slideHasOfficialMotifPaint(html, instances, index, slides.length)) {
       return html;
     }

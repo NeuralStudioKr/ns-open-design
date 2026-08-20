@@ -325,6 +325,26 @@ salvage/1장 persist는 최후 안전망으로 유지한다.
 - [x] top-up은 deck attach / 「수정 반영 중」 없음
 - [x] top-up head-kit abort
 
+### 0.63 2026-08-20 — 모든 페이지에 표지 Daisy가 같은 자리에 고정
+
+**증상:** persist 후 표지뿐 아니라 모든 장에 큰 꽃이 같은 귀퉁이에 붙고, `data-od-official-motif-deco-css`가 `.slide .deco-daisy-tl`을 여러 번 풀어 마지막 좌표가 전 장에 적용된다. 공식 CSS의 `.slide-title` / `.slide-welcome` 스코프는 인라인 표지 %에 진다. presenter `position:fixed` nav는 스택 preview에서 전 장에 겹친다.
+
+**원인:** Motif 추출이 표지 크기 인라인을 모든 daisy 인스턴스에 박고, fallback CSS가 장 역할 selector를 벗겨 `.slide .deco-*`로 평탄화함. `daisyPackForRole`은 본문에도 같은 daisy 인스턴스를 재사용함.
+
+**수정:**
+- 표지만 22% 4귀퉁이. 본문/클로징은 14% 대각 쌍 또는 welcome sun/rainbow · timeline cloud
+- 장에 `slide-welcome` 등 역할 class를 붙여 공식 스코프 CSS가 먹게 함
+- 공식 look CSS가 이미 스코프되어 있으면 unscoped motif-deco-css를 넣지 않고 기존 블록은 제거
+- stacked neutralize에서 `.nav-dots` / `.slide-counter` `display:none`
+- export cache `v34`
+
+구현 현황:
+
+- [x] per-slide Daisy pack + 역할 class
+- [x] scoped deco CSS / strip unscoped fallback
+- [x] hide fixed nav chrome
+- [x] rematch가 표지 스케일 본문 팩을 다시 찍음
+
 ### 0.56a 2026-08-20 — compact 3장 wireframe · Daisy slide-title · kit tiny-flower 금지
 
 §0.56 Motif/persist heal에 더해 모델 측 계약 + cover role class:
@@ -1504,6 +1524,7 @@ User-message 쪽 `[Existing deck edit]` / `<attached-preview-comments>` 주입�
 | 2026-08-13 | **§0.0 정책 개정** — template = layout vocabulary + visual look, 페이지 수/순서/구성은 브리프 기반. content-swap → pick-and-choose layout roles. daemon Clone default count = 6 (shells.length 아님), `pickTemplateShells` role-based scoring 도입. `template-visual-kit.ts` HARD_RULES 재작성, `DEFAULT_MAX_CHARS` 12000 → 14000. |
 | 2026-08-18 | Clone content-fill motif 보정 — 8/13 SVG hang 방지 패치가 first fill에서 `Motif sprites`/`Decoration CSS`/`Layout CSS`를 통째로 생략해 Daisy/Capsule 템플릿 정체성이 약해졌다. `slimTemplateVisualKitForFill`이 큰 SVG sprite sheet와 전체 stylesheet dump는 계속 제거하되, Daisy star/rainbow·Capsule pill/capsule·Terminal scanline 같은 compact motif recipe와 짧은 Decoration/Layout CSS cue를 보존하도록 변경했다. |
 | 2026-08-18 | §0.20 — html-ppt identity scope. 공유 `:root --bg:#ffffff` 대신 `.tpl-*` host 토큰/슬라이드 surface/폰트를 kit 계약으로 쓰고, SKILL `copy index.html` filesystem 지시를 neutralize. |
+| 2026-08-20 | §0.63 — 모든 장에 표지 Daisy가 같은 자리에 고정되던 문제. 본문 팩 + scoped deco CSS + fixed nav 숨김 · cache v34. |
 | 2026-08-20 | §0.61 — Motif merge harden after Motif-defer. slide cap 16 · Capsule pill geometry · no-head viewport · Daisy ≥100px · top-up edit skip · fill kit Motif SVG deferred · cache v33. |
 | 2026-08-20 | §0.60 — 1장 이후 top-up/다음-장이 공식 Daisy `deck.html`을 다시 써서 멈추던 문제. append-only + persist merge + top-up abort. |
 | 2026-08-20 | §0.59 — 첫 fill을 3장·body-first로 cap · Motif SVG 이번 턴 금지 · head-kit dump mid-stream abort · persist `초안` 제목 제거. |

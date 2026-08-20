@@ -525,6 +525,48 @@ html, body { overflow: visible !important; height: auto !important; }
     expect(twice).toBe(merged);
   });
 
+  it('does not lock cover-scale Daisy corners onto every body slide', () => {
+    const official = loadOfficialLookSource(join(EXAMPLES_DIR, 'html-ppt-zhangzara-daisy-days/example.html'));
+    const assets = extractOfficialDeckLookAssets(official)!;
+    const fourSlides = `<!doctype html><html lang="ko"><body>
+<section class="slide"><h1>Cover</h1></section>
+<section class="slide"><h2>Welcome</h2></section>
+<section class="slide"><h2>Agenda</h2></section>
+<section class="slide"><h2>Thanks</h2></section>
+</body></html>`;
+    const merged = mergeOfficialDeckLookCss(fourSlides, assets);
+    const sections = [...merged.matchAll(/<section\b[\s\S]*?<\/section>/gi)].map((m) => m[0]);
+    const cover = sections[0] ?? '';
+    const welcome = sections[1] ?? '';
+    const agenda = sections[2] ?? '';
+    const closing = sections[3] ?? '';
+    expect(cover).toMatch(/width:\s*22%/i);
+    expect((cover.match(/deco-daisy/gi) ?? []).length).toBeGreaterThanOrEqual(4);
+    expect(welcome).toMatch(/slide-welcome/);
+    expect(welcome).not.toMatch(/width:\s*22%/i);
+    expect((welcome.match(/deco-daisy/gi) ?? []).length).toBeLessThan(4);
+    expect(welcome).toMatch(/deco-sun|deco-rainbow/i);
+    expect(agenda).not.toMatch(/width:\s*22%/i);
+    expect((agenda.match(/deco-daisy/gi) ?? []).length).toBeLessThan(4);
+    expect(closing).not.toMatch(/width:\s*22%/i);
+    expect(merged).not.toMatch(/data-od-official-motif-deco-css[\s\S]*?\.slide \.deco-daisy-tl/i);
+    expect(merged).toMatch(/\.nav-dots[\s\S]*?display:\s*none/i);
+    const alreadyLocked = `<!doctype html><html lang="ko"><head>
+<style data-od-official-motif-deco-css>.slide .deco-daisy-tl{top:4%;left:4%;width:150px}</style>
+</head><body>
+<section class="slide"><div data-od-official-motif-html class="deco deco-daisy-tl" style="position:absolute;width:22%;height:39%"></div><div data-od-official-motif-html class="deco deco-daisy-tr" style="width:18%"></div><div data-od-official-motif-html class="deco deco-daisy-bl" style="width:19%"></div><div data-od-official-motif-html class="deco deco-daisy" style="width:20%"></div><h1>Cover</h1></section>
+<section class="slide"><div data-od-official-motif-html class="deco deco-daisy-tl" style="width:22%"></div><div data-od-official-motif-html class="deco deco-daisy-tr" style="width:18%"></div><div data-od-official-motif-html class="deco deco-daisy-bl" style="width:19%"></div><div data-od-official-motif-html class="deco deco-daisy" style="width:20%"></div><h2>Welcome</h2></section>
+<section class="slide"><h2>Agenda</h2></section>
+<section class="slide"><h2>Thanks</h2></section>
+</body></html>`;
+    const healed = mergeOfficialDeckLookCss(alreadyLocked, assets);
+    const healedWelcome = [...healed.matchAll(/<section\b[\s\S]*?<\/section>/gi)].map((m) => m[0])[1] ?? '';
+    expect(healedWelcome).not.toMatch(/width:\s*22%/i);
+    expect(healed).not.toMatch(/data-od-official-motif-deco-css[\s\S]*?\.slide \.deco-daisy-tl/i);
+    const twice = mergeOfficialDeckLookCss(merged, assets);
+    expect(twice).toBe(merged);
+  });
+
   it('does not treat a tiny invented Daisy icon as official Motif paint', () => {
     const official = loadOfficialLookSource(join(EXAMPLES_DIR, 'html-ppt-zhangzara-daisy-days/example.html'));
     const assets = extractOfficialDeckLookAssets(official)!;
@@ -724,7 +766,7 @@ html, body { overflow: visible !important; height: auto !important; }
       '<div class="deco-pill"></div></section>',
     );
     const merged = mergeOfficialDeckLookCss(emptyPill, assets);
-    const cover = merged.match(/<section class="slide"[\s\S]*?<\/section>/i)?.[0] ?? '';
+    const cover = merged.match(/<section\b[^>]*\bclass\s*=\s*"[^"]*\bslide\b[^"]*"[\s\S]*?<\/section>/i)?.[0] ?? '';
     expect(cover).toMatch(/deco-pill[^>]*(?:style\s*=\s*["'][^"']*width\s*:)/i);
     expect(merged).toContain('Linux Internals for Senior Engineers');
   });
@@ -743,7 +785,7 @@ html, body { overflow: visible !important; height: auto !important; }
 <section class="slide" style="width:1920px;height:1080px;position:relative"><h2>Body</h2></section>
 </body></html>`;
     const merged = mergeOfficialDeckLookCss(chartCover, assets);
-    const cover = merged.match(/<section class="slide"[\s\S]*?<\/section>/i)?.[0] ?? '';
+    const cover = merged.match(/<section\b[^>]*\bclass\s*=\s*"[^"]*\bslide\b[^"]*"[\s\S]*?<\/section>/i)?.[0] ?? '';
     expect(cover).toMatch(/deco-daisy[\s\S]{0,240}<svg\b[\s\S]{80,}?#fcdf6c/i);
   });
 
