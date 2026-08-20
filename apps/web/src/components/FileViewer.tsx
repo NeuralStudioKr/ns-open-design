@@ -369,6 +369,8 @@ import {
   shouldSkipOdEditTargetsSingleInspectorReseedDuringPostExitAbsorb,
   shouldTreatPostExitAbsorbAsTipProtect,
   shouldSettleInspectorStylesOnPostExitAbsorb,
+  shouldPreferPendingDraftOverAbsorbInspectorSettle,
+  shouldRefreshHostMetricsBeforeTipRemountGeometryApply,
   shouldArmTipPostAbsorbInspectorQuiet,
   shouldSkipOdEditTargetsIdentityMixedReseedDuringPostAbsorbQuiet,
   shouldTreatPostAbsorbQuietAsTipProtect,
@@ -413,6 +415,7 @@ import {
   shouldClearTipSyncedIdentityStickyRetainOnGraceClear,
   shouldReadSingleInspectorStylesFromSourceOnlyForOdEditTargets,
   shouldRefreshHostMetricsAfterTipRemountMultiRemasure,
+  shouldBumpGeomEpochAfterTipRemountMultiRemasure,
   shouldSkipSrcDocTransportRemountForManualEditFreezeTipSync,
   shouldDisableManualEditChromeUntilTipRemasure,
   shouldAbortManualEditGestureForTipYieldFreezeSync,
@@ -8125,7 +8128,13 @@ function HtmlViewer({
     if (!frame || !workspace) return;
     setManualEditHostScale(measureIframeHostScale(frame));
     setManualEditHostOffset(measureIframeOffsetInHost(frame, workspace));
-    setManualEditGeomEpoch((n) => n + 1);
+    // Multi union: bump epoch so paint sync effect + overlay recompose (515).
+    if (shouldBumpGeomEpochAfterTipRemountMultiRemasure(
+      selectedManualEditTargetIdsRef.current.length,
+      appliedAny,
+    )) {
+      setManualEditGeomEpoch((n) => n + 1);
+    }
   }
 
   /**
@@ -8175,37 +8184,70 @@ function HtmlViewer({
     const ordered = primaryId && ids.includes(primaryId)
       ? [primaryId, ...ids.filter((id) => id !== primaryId)]
       : ids;
-    let primaryMeasured = false;
-    let appliedAny = false;
+    // Measure first — apply only after host metrics refresh when chrome is
+    // interactive so scale/offset and rects land in one coherent frame (513).
+    const measured: Array<{
+      id: string;
+      rect: ManualEditTarget['rect'];
+      layoutWidth: number;
+      layoutHeight: number;
+      base: ManualEditTarget | null;
+    }> = [];
     for (const id of ordered) {
       const content = measureManualEditTargetContentRect(frame, id);
       if (!content) continue;
       const base = selectedManualEditTargetRef.current?.id === id
         ? selectedManualEditTargetRef.current
         : null;
-      if (base) {
+      measured.push({
+        id,
+        rect: content.rect,
+        layoutWidth: content.layoutWidth,
+        layoutHeight: content.layoutHeight,
+        base,
+      });
+    }
+    const appliedAny = measured.length > 0;
+    if (shouldRefreshHostMetricsBeforeTipRemountGeometryApply(
+      appliedAny,
+      manualEditTipRemountChromeSuppressedRef.current,
+      remasureDelayMs,
+      TIP_REMOUNT_FIT_SETTLE_CHROME_RELEASE_MS,
+    )) {
+      refreshManualEditHostMetricsAfterTipRemountMulti(frame, appliedAny);
+    }
+    let primaryMeasured = false;
+    for (const item of measured) {
+      if (item.base) {
         applyManualEditMeasuredGeometry({
-          ...base,
-          rect: content.rect,
-          layoutWidth: content.layoutWidth,
-          layoutHeight: content.layoutHeight,
+          ...item.base,
+          rect: item.rect,
+          layoutWidth: item.layoutWidth,
+          layoutHeight: item.layoutHeight,
         });
       } else {
         applyManualEditMeasuredGeometry({
-          id,
-          rect: content.rect,
-          layoutWidth: content.layoutWidth,
-          layoutHeight: content.layoutHeight,
+          id: item.id,
+          rect: item.rect,
+          layoutWidth: item.layoutWidth,
+          layoutHeight: item.layoutHeight,
         } as ManualEditTarget);
       }
-      appliedAny = true;
-      if (id === primaryId) primaryMeasured = true;
+      if (item.id === primaryId) primaryMeasured = true;
     }
     if (primaryMeasured && primaryId && shouldRefreshHostPaintAfterTipRemountRemasure(true)) {
       refreshManualEditHostPaintRect(primaryId, { force: true });
     }
-    // Multi: refresh scale/offset after fit nudges so union tracks post-fit tip (461).
-    refreshManualEditHostMetricsAfterTipRemountMulti(frame, appliedAny);
+    // Multi/single: refresh scale/offset after fit nudges when not already
+    // refreshed pre-geometry (still-inert early delays) (461/515).
+    if (!shouldRefreshHostMetricsBeforeTipRemountGeometryApply(
+      appliedAny,
+      manualEditTipRemountChromeSuppressedRef.current,
+      remasureDelayMs,
+      TIP_REMOUNT_FIT_SETTLE_CHROME_RELEASE_MS,
+    )) {
+      refreshManualEditHostMetricsAfterTipRemountMulti(frame, appliedAny);
+    }
     // Arm one-shot wild-jump skip for late post-latch deck nudges (485).
     if (shouldArmPostTipFitSettleWildJumpSkip(appliedAny, ids.length)) {
       manualEditTipPostFitSettleWildJumpSkipRef.current = true;
@@ -10446,10 +10488,14 @@ function HtmlViewer({
           );
           // Absorb: source-only settle once so tip-preserved draft does not stick (511).
           // Quiet then blocks the next live catalog from re-firing Mixed (509).
+          // Pending draft wins — settle yields; pending-aware field refresh runs (514).
           const settleAbsorbInspector = shouldSettleInspectorStylesOnPostExitAbsorb(
             postExitAbsorbAtEntry,
             selectionIdsChanged,
             styleDraftPending,
+          ) && !shouldPreferPendingDraftOverAbsorbInspectorSettle(
+            styleDraftPending,
+            postExitAbsorbAtEntry,
           );
           // Multi-select inspector: reparse on id-set OR selected identity change
           // (59 mixed styles). Geometry-only broadcasts keep fingerprint equal.

@@ -20,6 +20,7 @@ import {
   shouldRetainTipSyncedIdentityDuringPostSoftLandExitLatch,
   shouldRetainTipSyncedIdentityDuringPostStickySoftLand,
   shouldSettleInspectorStylesOnPostExitAbsorb,
+  shouldPreferPendingDraftOverAbsorbInspectorSettle,
   shouldSkipOdEditTargetsIdentityMixedReseedDuringPostAbsorbQuiet,
   shouldSkipOdEditTargetsIdentityMixedReseedDuringPostExitAbsorb,
   shouldTreatPostAbsorbQuietAsTipProtect,
@@ -92,6 +93,9 @@ describe('manual-edit tip soft-land→absorb sequence (507/509)', () => {
     // Identity-churn path stays skipped, but absorb must settle draft once (511).
     expect(shouldSettleInspectorStylesOnPostExitAbsorb(state.absorb, false)).toBe(true);
     expect(shouldSettleInspectorStylesOnPostExitAbsorb(state.absorb, false, true)).toBe(false);
+    // Pending draft blocks settle; pending-aware path still allowed (514).
+    expect(shouldPreferPendingDraftOverAbsorbInspectorSettle(true, state.absorb)).toBe(true);
+    expect(shouldPreferPendingDraftOverAbsorbInspectorSettle(false, state.absorb)).toBe(false);
     expect(shouldAbsorbLiveIdentityFingerprintOnPostExitLatch(
       state.absorb, false,
     )).toBe(true);

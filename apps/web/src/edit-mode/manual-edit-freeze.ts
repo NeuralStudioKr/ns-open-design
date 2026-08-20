@@ -927,6 +927,33 @@ export function shouldSettleInspectorStylesOnPostExitAbsorb(
 }
 
 /**
+ * Pending style draft wins over absorb inspector settle — fields/mixedKeys may
+ * still refresh via the pending-aware path (514 / 기획 59).
+ */
+export function shouldPreferPendingDraftOverAbsorbInspectorSettle(
+  styleDraftPending: boolean,
+  absorbArmed: boolean,
+): boolean {
+  return styleDraftPending && absorbArmed;
+}
+
+/**
+ * After chrome is interactive (or at chrome-release delay), refresh host
+ * scale/offset before applying tip geometry so handles do not double-jump from
+ * stale compose metrics (513).
+ */
+export function shouldRefreshHostMetricsBeforeTipRemountGeometryApply(
+  hasMeasuredGeometry: boolean,
+  chromeSuppressed: boolean,
+  remasureDelayMs: number,
+  chromeReleaseDelayMs: number = TIP_REMOUNT_FIT_SETTLE_CHROME_RELEASE_MS,
+): boolean {
+  if (!hasMeasuredGeometry) return false;
+  if (!chromeSuppressed) return true;
+  return remasureDelayMs >= chromeReleaseDelayMs;
+}
+
+/**
  * After absorb syncs live fingerprints, keep one quiet catalog so the first
  * post-absorb live bridge broadcast cannot one-shot Mixed/inspector (509).
  */
@@ -1297,10 +1324,21 @@ export function withPreservedTipSyncedIdentityOnBridgeTarget<T extends {
 }
 
 /**
- * After multi tip remasure, refresh host scale/offset + geom epoch so union
- * chrome compose and live measureHostRect stay aligned (461).
+ * After tip remasure, refresh host scale/offset + geom epoch so chrome compose
+ * stays aligned — multi union and single late fit remasures (461/515).
  */
 export function shouldRefreshHostMetricsAfterTipRemountMultiRemasure(
+  selectedCount: number,
+  appliedAny: boolean,
+): boolean {
+  return appliedAny && selectedCount >= 1;
+}
+
+/**
+ * Multi tip remasure should bump geom epoch even when only siblings measured
+ * (primary paint may be skipped) so union chrome re-syncs (515).
+ */
+export function shouldBumpGeomEpochAfterTipRemountMultiRemasure(
   selectedCount: number,
   appliedAny: boolean,
 ): boolean {

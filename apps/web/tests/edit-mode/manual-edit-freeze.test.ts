@@ -40,6 +40,8 @@ import {
   shouldSkipOdEditTargetsSingleInspectorReseedDuringPostExitAbsorb,
   shouldTreatPostExitAbsorbAsTipProtect,
   shouldSettleInspectorStylesOnPostExitAbsorb,
+  shouldPreferPendingDraftOverAbsorbInspectorSettle,
+  shouldRefreshHostMetricsBeforeTipRemountGeometryApply,
   shouldClearTipPostProtectOnSelectionChange,
   shouldClearTipRemountOnManualEditModeExit,
   tipRemountPostProtectArmed,
@@ -69,6 +71,7 @@ import {
   shouldSkipWildJumpForTipRemountSelectedMember,
   shouldSkipWildJumpDuringTipRemountFitSettleForSelectedMember,
   shouldRefreshHostMetricsAfterTipRemountMultiRemasure,
+  shouldBumpGeomEpochAfterTipRemountMultiRemasure,
   tipRemountSessionActive,
   shouldSkipOdEditTargetsIdentityMixedReseedDuringTipRemount,
   shouldAllowOdEditTargetsPendingReseedDuringTipProtect,
@@ -263,6 +266,13 @@ describe('manual edit freeze reset', () => {
     expect(shouldSettleInspectorStylesOnPostExitAbsorb(true, false, true)).toBe(false);
     expect(shouldSettleInspectorStylesOnPostExitAbsorb(true, true)).toBe(false);
     expect(shouldSettleInspectorStylesOnPostExitAbsorb(false, false)).toBe(false);
+    expect(shouldPreferPendingDraftOverAbsorbInspectorSettle(true, true)).toBe(true);
+    expect(shouldPreferPendingDraftOverAbsorbInspectorSettle(false, true)).toBe(false);
+    expect(shouldPreferPendingDraftOverAbsorbInspectorSettle(true, false)).toBe(false);
+    expect(shouldRefreshHostMetricsBeforeTipRemountGeometryApply(true, false, 900)).toBe(true);
+    expect(shouldRefreshHostMetricsBeforeTipRemountGeometryApply(true, true, 400)).toBe(true);
+    expect(shouldRefreshHostMetricsBeforeTipRemountGeometryApply(true, true, 150)).toBe(false);
+    expect(shouldRefreshHostMetricsBeforeTipRemountGeometryApply(false, false, 900)).toBe(false);
     expect(shouldArmTipPostAbsorbInspectorQuiet(true, false)).toBe(true);
     expect(shouldArmTipPostAbsorbInspectorQuiet(true, true)).toBe(false);
     expect(shouldSkipOdEditTargetsIdentityMixedReseedDuringPostAbsorbQuiet(false, true)).toBe(true);
@@ -543,8 +553,12 @@ describe('manual edit freeze reset', () => {
   it('refreshes host metrics after multi tip-remount remasure', () => {
     expect(shouldRefreshHostMetricsAfterTipRemountMultiRemasure(2, true)).toBe(true);
     expect(shouldRefreshHostMetricsAfterTipRemountMultiRemasure(3, true)).toBe(true);
-    expect(shouldRefreshHostMetricsAfterTipRemountMultiRemasure(1, true)).toBe(false);
+    expect(shouldRefreshHostMetricsAfterTipRemountMultiRemasure(1, true)).toBe(true);
     expect(shouldRefreshHostMetricsAfterTipRemountMultiRemasure(2, false)).toBe(false);
+    expect(shouldRefreshHostMetricsAfterTipRemountMultiRemasure(0, true)).toBe(false);
+    expect(shouldBumpGeomEpochAfterTipRemountMultiRemasure(2, true)).toBe(true);
+    expect(shouldBumpGeomEpochAfterTipRemountMultiRemasure(1, true)).toBe(false);
+    expect(shouldBumpGeomEpochAfterTipRemountMultiRemasure(2, false)).toBe(false);
   });
 
   it('detects tip-remount session from grace or fit-settle (466)', () => {

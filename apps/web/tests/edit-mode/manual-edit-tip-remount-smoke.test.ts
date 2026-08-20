@@ -20,6 +20,11 @@ import {
   shouldReleaseTipRemountChromeAfterFailedFitSettleRemasure,
   shouldReleaseTipRemountChromeAfterFitSettleRemasure,
   shouldReleaseTipRemountChromeAfterResizeGestureEnds,
+  shouldRefreshHostMetricsBeforeTipRemountGeometryApply,
+  shouldRefreshHostMetricsAfterTipRemountMultiRemasure,
+  shouldBumpGeomEpochAfterTipRemountMultiRemasure,
+  shouldPreferPendingDraftOverAbsorbInspectorSettle,
+  shouldSettleInspectorStylesOnPostExitAbsorb,
   shouldSkipOdEditTargetsIdentityMixedReseedDuringPostExitAbsorb,
   shouldSkipOdEditTargetsSingleInspectorReseedDuringPostExitAbsorb,
   shouldSkipTipRemountFitSettleRemasureDuringResizeGesture,
@@ -69,6 +74,27 @@ describe('manual-edit tip remount smoke (500/501/506)', () => {
     expect(fileViewer).toContain('shouldSettleInspectorStylesOnPostExitAbsorb');
     expect(fileViewer).toContain('settleAbsorbInspector');
     expect(freezeSource).toContain('shouldSettleInspectorStylesOnPostExitAbsorb');
+  });
+
+  it('keeps pending draft over absorb settle (514)', () => {
+    expect(shouldPreferPendingDraftOverAbsorbInspectorSettle(true, true)).toBe(true);
+    expect(shouldSettleInspectorStylesOnPostExitAbsorb(true, false, true)).toBe(false);
+    expect(fileViewer).toContain('shouldPreferPendingDraftOverAbsorbInspectorSettle');
+    expect(fileViewer).toContain('Pending draft wins');
+  });
+
+  it('refreshes host metrics before geometry after chrome release (513)', () => {
+    expect(shouldRefreshHostMetricsBeforeTipRemountGeometryApply(true, false, 900)).toBe(true);
+    expect(shouldRefreshHostMetricsBeforeTipRemountGeometryApply(true, true, 150)).toBe(false);
+    expect(fileViewer).toContain('shouldRefreshHostMetricsBeforeTipRemountGeometryApply');
+    expect(fileViewer).toContain('Measure first — apply only after host metrics refresh');
+  });
+
+  it('refreshes host metrics for single+multi and bumps epoch for multi (515)', () => {
+    expect(shouldRefreshHostMetricsAfterTipRemountMultiRemasure(1, true)).toBe(true);
+    expect(shouldBumpGeomEpochAfterTipRemountMultiRemasure(2, true)).toBe(true);
+    expect(shouldBumpGeomEpochAfterTipRemountMultiRemasure(1, true)).toBe(false);
+    expect(fileViewer).toContain('shouldBumpGeomEpochAfterTipRemountMultiRemasure');
   });
 
   it('releases chrome at 400ms even when fit remasure applied nothing (512)', () => {
