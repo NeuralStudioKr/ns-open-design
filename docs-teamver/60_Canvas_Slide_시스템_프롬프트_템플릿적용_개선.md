@@ -32,6 +32,31 @@
 | scaffold로 갑자기 바꾸면? | **안 됨.** kit hard cutover 금지. full HTML scaffold도 기본 inject 하지 않음 |
 | 1장짜리 템플릿 결과가 저장되는가? | **제품 경로는 첫 fill 3장.** 잘리면 제목 있는 1장은 저장하고 top-up이 덧붙인다. 제목 없는 빈 셸만 미완성으로 차단. 사용자가 1장을 명시한 경우도 허용 |
 
+### 0.65 2026-08-20 — 미리보기 dark / 결과 cream · 폰트·요소 불일치
+
+§0.64는 Hermes `--hc-bg` / cream bleed 순서를 고쳤지만, Pink Script 같은 **dark stage + `--paper` ink** 템플릿은 여전히 썸네일만 어둡고 결과물은 밝았다.
+
+**원인:**
+1. kit `pickSurfaceTokenName`이 `--paper #F5EDF1`(잉크)을 캔버스로 골랐다. `isSlideSurfaceSelector`가 `deck-stage > section.slide` 방사 그라데이션(`#0A0709`)을 읽지 못함.
+2. persist official look은 `deck-stage > section.slide { background: … }` 그대로라 body-first `<section class="slide">`에 안 붙음. compact fill의 늦은 `.slide{background:#F5F0E6}`가 이김.
+3. 공식 디스플레이 페이스(Instrument Serif)는 `.script` / `.s-cover .title`에만 있어, 모델이 낸 bare `h1`은 Quicksand로 남음.
+
+**수정:**
+- slide surface selector가 host `> section.slide`를 읽고, 그 값이 dark/gradient면 `--paper`는 ink라고 kit에 명시
+- `--paper` + dark `html,body`는 캔버스 후보에서 제외 (Coral `--cream`은 유지)
+- persist look: `deck-stage > section.slide` → `section.slide` (inner `.stage`는 건드리지 않음)
+- compact/body-first는 official look을 `</body>` 앞에 넣어 cream body style보다 뒤
+- compact type lock: official `html,body` + `.script`/`h1` 폰트를 `.slide` / headings에 복사
+- export cache `v37`
+
+구현 현황:
+
+- [x] Pink Script kit surface = dark stage, not `--paper`
+- [x] host>slide selector rewrite + body-trail look insert
+- [x] compact type lock (Inter + Instrument Serif on cream fill)
+- [x] Coral cream-over-dark-body 유지
+- [x] cache v37
+
 ### 0.0 2026-08-13 정책 (개정) — **template = layout vocabulary + visual look, 페이지 수/순서/구성은 브리프 기반**
 
 **제품 판단 (2026-08-13 09:00 KST 업데이트):** 이전 "token-safe content-swap" 정책은 템플릿 shell 순서/개수/구성을 그대로 preserve하고 텍스트만 바꾸는 방향이었다. 그러나 이 방침으로 Daisy Days sales-pitch 브리프에 template의 Weekly Grid / Timeline / Day-of-Week 슬라이드가 강제 삽입되어 브리프와 맞지 않는 결과가 반복됐다.
@@ -1504,6 +1529,7 @@ User-message 쪽 `[Existing deck edit]` / `<attached-preview-comments>` 주입�
 | 2026-08-13 | **§0.0 정책 개정** — template = layout vocabulary + visual look, 페이지 수/순서/구성은 브리프 기반. content-swap → pick-and-choose layout roles. daemon Clone default count = 6 (shells.length 아님), `pickTemplateShells` role-based scoring 도입. `template-visual-kit.ts` HARD_RULES 재작성, `DEFAULT_MAX_CHARS` 12000 → 14000. |
 | 2026-08-18 | Clone content-fill motif 보정 — 8/13 SVG hang 방지 패치가 first fill에서 `Motif sprites`/`Decoration CSS`/`Layout CSS`를 통째로 생략해 Daisy/Capsule 템플릿 정체성이 약해졌다. `slimTemplateVisualKitForFill`이 큰 SVG sprite sheet와 전체 stylesheet dump는 계속 제거하되, Daisy star/rainbow·Capsule pill/capsule·Terminal scanline 같은 compact motif recipe와 짧은 Decoration/Layout CSS cue를 보존하도록 변경했다. |
 | 2026-08-18 | §0.20 — html-ppt identity scope. 공유 `:root --bg:#ffffff` 대신 `.tpl-*` host 토큰/슬라이드 surface/폰트를 kit 계약으로 쓰고, SKILL `copy index.html` filesystem 지시를 neutralize. |
+| 2026-08-20 | §0.65 — Pink Script surface lock. kit dark stage not `--paper` · host>slide rewrite · body-trail look · compact type lock · cache v37. |
 | 2026-08-20 | §0.64 — template look drift. look→bleed order · preview relax · identity `--*-bg` · tpl `.slide` preserve · cache v36. |
 | 2026-08-20 | §0.63 — Motif overscale heal + stacking upgrade. Daisy 9.5–14% band · z-index:2 !important proof · empty-shell stamp · split gutter · Motif-defer prompts · cache v35. |
 | 2026-08-20 | §0.62 — Motif text occlusion. Daisy ~12%/20% · Motif z-index≤1 · content z-index:2 · Motif-safe padding · cache v34. |

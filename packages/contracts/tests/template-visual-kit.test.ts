@@ -161,6 +161,26 @@ describe('extractTemplateVisualKitFromHtml', () => {
     if (inter >= 0) expect(jb).toBeLessThan(inter);
   });
 
+  it('binds Pink Script slide surface to the dark stage, not --paper ink', async () => {
+    const html = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/html-ppt-zhangzara-pink-script/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const kit = extractTemplateVisualKitFromHtml(html, {
+      title: 'Html Ppt Zhangzara Pink Script',
+    });
+    expect(kit).toBeTruthy();
+    expect(kit).toContain('### Slide surface');
+    expect(kit).toMatch(/\*\*background\*\*:\s*`[^`]*#0[Aa]0709|radial-gradient|`#000`/i);
+    expect(kit).not.toMatch(/\*\*background\*\*:\s*`#F5EDF1`/i);
+    expect(kit).not.toMatch(/Main surface\/background:\s*--paper #F5EDF1/i);
+    expect(kit).toMatch(/Instrument Serif/i);
+    expect(kit).toMatch(/JetBrains Mono/i);
+  });
+
   it('prefers slide paper over dark body chrome (Coral-style)', () => {
     const html = `
 <style>

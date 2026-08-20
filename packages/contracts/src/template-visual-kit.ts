@@ -245,19 +245,30 @@ function buildTemplateAnchorSummary(options: {
   title: string;
   rootCss: string | null;
   fonts: readonly string[];
+  slideBackground?: string | null;
+  slideSource?: string | null;
 }): string[] {
   const vars = extractCssVariables(options.rootCss);
   const anchors: string[] = [];
   const surfaceName = pickSurfaceTokenName(vars);
   const inkName = pickInkTokenName(vars);
-  const surface = surfaceName && vars[surfaceName] ? `--${surfaceName} ${vars[surfaceName]}` : firstVarValue(vars, ['cream', 'paper', 'surface', 'bg', 'background']);
+  const tokenSurface = surfaceName && vars[surfaceName] ? `--${surfaceName} ${vars[surfaceName]}` : firstVarValue(vars, ['cream', 'paper', 'surface', 'bg', 'background']);
+  const slideSurface = String(options.slideBackground ?? '').trim();
+  const surface = slideSurface
+    ? `${slideSurface}${options.slideSource ? ` (from ${options.slideSource})` : ''}`
+    : tokenSurface;
   const text = inkName && vars[inkName] ? `--${inkName} ${vars[inkName]}` : firstVarValue(vars, ['text-dark', 'text', 'foreground', 'ink']);
   const accent = firstVarValue(vars, ['turquoise', 'coral', 'butter', 'mint', 'primary', 'accent']);
   const border = firstVarValue(vars, ['border', 'border-width']);
   const shadow = firstVarValue(vars, ['shadow', 'shadow-sm']);
   if (surface) {
+    const darkSurface = contrastLabel(slideSurface || '') === 'dark'
+      || /gradient\(/i.test(slideSurface)
+      || /#0[0-9a-f]{5}\b/i.test(slideSurface);
     anchors.push(
-      `- Main surface/background: ${surface}. The cover and most slides MUST use this template surface; do not choose a dark default unless this value is dark.`,
+      darkSurface
+        ? `- Main surface/background: ${surface}. The cover and most slides MUST use this dark stage; do not invert it to cream/white paper. \`--paper\` is ink/type, not the canvas.`
+        : `- Main surface/background: ${surface}. The cover and most slides MUST use this template surface; do not choose a dark default unless this value is dark.`,
     );
   }
   if (text) anchors.push(`- Main text/ink: ${text}.`);
@@ -322,13 +333,19 @@ function splitCssSelectors(selectorText: string): string[] {
 function isDocumentSurfaceSelector(part: string): boolean {
   return /^(?:html|body)$/i.test(part)
     || /^html\s+body$/i.test(part)
+    || /^deck-stage$/i.test(part)
     || /^\.deck-stage$/i.test(part)
     || /^\.slides-container$/i.test(part);
 }
 
-/** Bare `.slide` / `section.slide` — never `.slide-title` or `.slide-welcome`. */
+/** Bare `.slide` / `section.slide` / host `> section.slide` — never `.slide-title`. */
 function isSlideSurfaceSelector(part: string): boolean {
-  return /^(?:[a-z][a-z0-9]*)?\.slide$/i.test(part);
+  const trimmed = part.trim();
+  if (/^(?:[a-z][a-z0-9]*)?\.slide$/i.test(trimmed)) return true;
+  // Official presenters scope the canvas to `deck-stage > section.slide`.
+  return /^(?:deck-stage|#deck-stage|\.deck-stage|\.deck-shell|\.presentation|\.slides-container|\.deck)\s*>\s*(?:section\.)?slide$/i.test(
+    trimmed,
+  );
 }
 
 /**
@@ -515,7 +532,12 @@ function extractSlideSurfaceBinding(
   }
 
   // 3) :root --cream/--paper when body chrome disagrees.
-  const fromToken = preferPaperOverBodyChrome(tokenPaper);
+  // `--paper` on dark editorial stages (Pink Script) is ink/type, not the canvas.
+  const paperIsInkOnDarkStage =
+    tokenPaper.source === '--paper'
+    && Boolean(body.background)
+    && contrastLabel(body.background) === 'dark';
+  const fromToken = paperIsInkOnDarkStage ? null : preferPaperOverBodyChrome(tokenPaper);
   if (fromToken) return fromToken;
 
   if (variantPaper.background) {
@@ -525,7 +547,7 @@ function extractSlideSurfaceBinding(
       source: variantPaper.source,
     };
   }
-  if (tokenPaper.background) {
+  if (tokenPaper.background && !paperIsInkOnDarkStage) {
     return {
       background: tokenPaper.background,
       color: tokenPaper.color ?? body.color,
@@ -1703,7 +1725,13 @@ export function extractTemplateVisualKitFromHtml(
   if (surfaceBlock) {
     lines.push(surfaceBlock, '');
   }
-  const anchors = buildTemplateAnchorSummary({ title, rootCss: rootForPrompt, fonts });
+  const anchors = buildTemplateAnchorSummary({
+    title,
+    rootCss: rootForPrompt,
+    fonts,
+    slideBackground: surfaceBinding.background,
+    slideSource: surfaceBinding.source,
+  });
   if (identity.className && !anchors.some((line) => line.includes(identity.className!))) {
     anchors.unshift(`- Identity host class: \`.${identity.className}\``);
   }
