@@ -638,6 +638,7 @@ export function composeSystemPrompt({
   // kind=prototype from pre-slide-only hydrate. Do not persist-rewrite those
   // rows (Canvas index.html thumbs), but the prompt must see a deck so we
   // inject the framework + slideCount contract instead of iOS/fidelity asks.
+  // Keep in sync with contracts `metadataForTeamverSlideOnlyPrompt`.
   const storedKind = inputMetadata?.kind;
   const isStoredMediaSurface =
     storedKind === 'image' || storedKind === 'video' || storedKind === 'audio';

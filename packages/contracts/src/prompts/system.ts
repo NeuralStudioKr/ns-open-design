@@ -474,6 +474,33 @@ export interface ComposeInput {
   templateCloneContentFill?: boolean | undefined;
 }
 
+/**
+ * Prompt-only: Teamver slide-only (media disabled) still has sqlite rows
+ * with kind=prototype from pre-slide-only hydrate. Do not persist-rewrite
+ * those rows (Canvas index.html thumbs). The composer must see a deck so
+ * we inject slideCount + framework instead of iOS/fidelity / screen-file-first.
+ *
+ * Image/video/audio stay as-is so disabled OD media still exposes external MCP.
+ * Keep in sync with apps/daemon/src/prompts/system.ts.
+ */
+export function metadataForTeamverSlideOnlyPrompt<
+  T extends { kind?: string } | undefined,
+>(
+  metadata: T,
+  mediaExecution?: { mode?: string } | null,
+): T | (Omit<NonNullable<T>, 'kind'> & { kind: 'deck' }) {
+  const storedKind = metadata?.kind;
+  if (
+    (mediaExecution?.mode ?? 'enabled') === 'disabled'
+    && storedKind !== 'image'
+    && storedKind !== 'video'
+    && storedKind !== 'audio'
+  ) {
+    return { ...(metadata ?? ({} as T)), kind: 'deck' };
+  }
+  return metadata;
+}
+
 export function composeSystemPrompt({
   skillBody,
   skillName,
@@ -481,7 +508,7 @@ export function composeSystemPrompt({
   designSystemBody,
   designSystemTitle,
   memoryBody,
-  metadata,
+  metadata: inputMetadata,
   template,
   pluginBlock,
   activeStageBlocks,
@@ -502,6 +529,7 @@ export function composeSystemPrompt({
   // turn 1", "branch on brand on turn 2", "TodoWrite on turn 3", run
   // checklist + critique before <artifact>) win precedence over softer
   // wording later in the official base prompt.
+  const metadata = metadataForTeamverSlideOnlyPrompt(inputMetadata, mediaExecution);
   const parts: string[] = [];
   const activeDesignSystemBody = designSystemBody?.trim();
   const isMediaSurfaceEarly =

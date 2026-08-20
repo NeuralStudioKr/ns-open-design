@@ -134,14 +134,15 @@ describe("ProjectView message loading", () => {
 
   it("passes Teamver slide-only media policy into API-mode system prompts", () => {
     const source = readSource("src/components/ProjectView.tsx");
-    const start = source.indexOf("return composeSystemPrompt({");
+    const start = source.indexOf("const composeMetadata: ProjectMetadata = metadataForTeamverSlideOnlyPrompt({");
     expect(start).toBeGreaterThan(0);
-    const block = source.slice(start, start + 1800);
+    const block = source.slice(start, start + 2200);
 
     // composeMetadata merges this-turn Canvas/Drive template pins so the
     // first send is not stuck on stale React project.metadata.
     expect(block).toContain("mediaExecution: mediaExecutionPolicyForProjectMetadata(composeMetadata");
     expect(block).toContain("slideOnlyMvp");
+    expect(block).toContain("mode: slideOnlyMvp ? 'disabled' : 'enabled'");
     expect(block).toContain("streamFormat: config.mode === 'api' ? 'plain' : undefined");
   });
 

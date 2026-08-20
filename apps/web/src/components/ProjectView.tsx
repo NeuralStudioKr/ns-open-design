@@ -147,6 +147,7 @@ import { useProjectFileEvents, type ProjectEvent } from '../providers/project-ev
 import { useCoalescedCallback } from '../hooks/useCoalescedCallback';
 import {
   composeSystemPrompt,
+  metadataForTeamverSlideOnlyPrompt,
   firstOfficialDeckTemplateId,
   renderPluginBlock,
   repairArtifactStyleSheets,
@@ -6346,8 +6347,8 @@ export function ProjectView({
     } else {
       setAudioVoiceOptionsError(null);
     }
-    const composeMetadata: ProjectMetadata = {
-      kind: project.metadata?.kind ?? (selectedTemplate || turnDeckTemplateMeta?.skipDiscoveryBrief === true
+    const composeMetadata: ProjectMetadata = metadataForTeamverSlideOnlyPrompt({
+      kind: project.metadata?.kind ?? (selectedTemplate || turnDeckTemplateMeta?.skipDiscoveryBrief === true || slideOnlyMvp
         ? 'deck'
         : 'prototype'),
       ...(project.metadata ?? {}),
@@ -6367,7 +6368,7 @@ export function ProjectView({
               : {}),
           }
         : {}),
-    };
+    }, { mode: slideOnlyMvp ? 'disabled' : 'enabled' });
     return composeSystemPrompt({
       skillBody,
       skillName,
@@ -13499,7 +13500,7 @@ export function ProjectView({
         ) : null}
         <FileWorkspace
           projectId={project.id}
-          projectKind={projectListTrackingKind(project, { slideOnly: slideOnlyMvp }) ?? 'prototype'}
+          projectKind={projectListTrackingKind(project, { slideOnly: slideOnlyMvp }) ?? (slideOnlyMvp ? 'slide_deck' : 'prototype')}
           projectDisplayName={project.name}
           rootDirName={designFilesRootLabel}
           reloading={false}
