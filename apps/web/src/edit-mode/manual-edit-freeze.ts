@@ -521,6 +521,64 @@ export function shouldSkipWildJumpDuringTipRemountFitSettleForSelectedMember(
 }
 
 /**
+ * Tip-remount session is live while geometry grace or deck fit-settle latch
+ * remains for the armed primary (466).
+ */
+export function tipRemountSessionActive(
+  graceId: string | null | undefined,
+  nowMs: number,
+  graceUntilMs: number,
+  fitSettleUntilMs: number,
+): boolean {
+  if (!graceId) return false;
+  return !tipRemountGeometryGraceExpired(nowMs, graceUntilMs)
+    || !tipRemountFitSettleExpired(nowMs, fitSettleUntilMs);
+}
+
+/**
+ * od-edit-targets after tip-yield can flip selected identity via bridge
+ * `target.styles` (live preview) and re-fire Mixed reseed — flicker even when
+ * Mixed is source-only. Skip identity-only Mixed/draft reseed while tip
+ * remount is settling; membership changes still reseed (466).
+ */
+export function shouldSkipOdEditTargetsIdentityMixedReseedDuringTipRemount(
+  selectionIdsChanged: boolean,
+  tipRemountActive: boolean,
+): boolean {
+  return tipRemountActive && !selectionIdsChanged;
+}
+
+/**
+ * Keep tip-synced styles on a bridge target while tip remount settles so
+ * identity fingerprint / Mixed do not flip from live preview styles (467).
+ */
+export function withPreservedTipSyncedStylesOnBridgeTarget<T extends {
+  styles: unknown;
+}>(
+  bridge: T,
+  tipStyles: T['styles'] | null | undefined,
+): T {
+  if (tipStyles == null) return bridge;
+  return { ...bridge, styles: tipStyles };
+}
+
+/**
+ * Tip styles for a selected id during od-edit-targets preserve: primary ref
+ * first, then prior catalog (closure state before bridge replace) (467).
+ */
+export function resolveTipSyncedStylesForOdEditTargetsPreserve<T extends {
+  id: string;
+  styles: unknown;
+}>(
+  targetId: string,
+  primary: T | null | undefined,
+  priorCatalog: readonly T[],
+): T['styles'] | undefined {
+  if (primary?.id === targetId) return primary.styles;
+  return priorCatalog.find((item) => item.id === targetId)?.styles;
+}
+
+/**
  * After multi tip remasure, refresh host scale/offset + geom epoch so union
  * chrome compose and live measureHostRect stay aligned (461).
  */

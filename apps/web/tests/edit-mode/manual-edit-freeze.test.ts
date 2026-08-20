@@ -19,6 +19,10 @@ import {
   shouldSkipWildJumpForTipRemountSelectedMember,
   shouldSkipWildJumpDuringTipRemountFitSettleForSelectedMember,
   shouldRefreshHostMetricsAfterTipRemountMultiRemasure,
+  tipRemountSessionActive,
+  shouldSkipOdEditTargetsIdentityMixedReseedDuringTipRemount,
+  withPreservedTipSyncedStylesOnBridgeTarget,
+  resolveTipSyncedStylesForOdEditTargetsPreserve,
   tipRemountFitSettleExpired,
   shouldSkipSrcDocTransportRemountForManualEditFreezeTipSync,
   shouldSuppressManualEditChromeUntilTipRemasure,
@@ -354,5 +358,39 @@ describe('manual edit freeze reset', () => {
     expect(shouldRefreshHostMetricsAfterTipRemountMultiRemasure(3, true)).toBe(true);
     expect(shouldRefreshHostMetricsAfterTipRemountMultiRemasure(1, true)).toBe(false);
     expect(shouldRefreshHostMetricsAfterTipRemountMultiRemasure(2, false)).toBe(false);
+  });
+
+  it('detects tip-remount session from grace or fit-settle (466)', () => {
+    expect(tipRemountSessionActive('el-1', 1_000, 1_800, 0)).toBe(true);
+    expect(tipRemountSessionActive('el-1', 1_000, 0, 1_500)).toBe(true);
+    expect(tipRemountSessionActive('el-1', 2_000, 1_800, 1_500)).toBe(false);
+    expect(tipRemountSessionActive(null, 1_000, 1_800, 1_500)).toBe(false);
+  });
+
+  it('skips identity-only Mixed reseed during tip remount (466)', () => {
+    expect(shouldSkipOdEditTargetsIdentityMixedReseedDuringTipRemount(false, true)).toBe(true);
+    expect(shouldSkipOdEditTargetsIdentityMixedReseedDuringTipRemount(true, true)).toBe(false);
+    expect(shouldSkipOdEditTargetsIdentityMixedReseedDuringTipRemount(false, false)).toBe(false);
+  });
+
+  it('preserves tip-synced styles on bridge targets (467)', () => {
+    const bridge = { id: 'a', styles: { color: 'red' } };
+    const tip = { color: 'blue' };
+    expect(withPreservedTipSyncedStylesOnBridgeTarget(bridge, tip).styles).toEqual(tip);
+    expect(withPreservedTipSyncedStylesOnBridgeTarget(bridge, null)).toBe(bridge);
+    expect(withPreservedTipSyncedStylesOnBridgeTarget(bridge, undefined)).toBe(bridge);
+
+    const primary = { id: 'a', styles: { color: 'tip' } };
+    const catalog = [
+      { id: 'a', styles: { color: 'catalog-a' } },
+      { id: 'b', styles: { color: 'catalog-b' } },
+    ];
+    expect(resolveTipSyncedStylesForOdEditTargetsPreserve('a', primary, catalog)).toEqual({
+      color: 'tip',
+    });
+    expect(resolveTipSyncedStylesForOdEditTargetsPreserve('b', primary, catalog)).toEqual({
+      color: 'catalog-b',
+    });
+    expect(resolveTipSyncedStylesForOdEditTargetsPreserve('c', primary, catalog)).toBeUndefined();
   });
 });

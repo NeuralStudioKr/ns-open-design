@@ -245,6 +245,14 @@ describe('FileViewer revision tip advance after undo', () => {
     expect(fileViewer).toContain('Pending owns styles — still align primary text fields with tip');
     expect(fileViewer).toContain('planManualEditMultiInspectorReseed');
     expect(fileViewer).toContain("shouldReadMultiInspectorStylesFromSourceOnly(\n              'od-edit-targets'");
+    expect(fileViewer).toContain('tipRemountSessionActive');
+    expect(fileViewer).toContain('shouldSkipOdEditTargetsIdentityMixedReseedDuringTipRemount');
+    expect(fileViewer).toContain('withPreservedTipSyncedStylesOnBridgeTarget');
+    expect(fileViewer).toContain('resolveTipSyncedStylesForOdEditTargetsPreserve');
+    expect(fileViewer).toContain('manualEditTargetsRef');
+    expect(fileViewer).toContain('skipIdentityMixedReseed');
+    expect(fileViewer).toContain('Tip-remount: preserve tip-synced styles on the selected set');
+    expect(fileViewer).toContain('skip identity-only churn');
     expect(fileViewer).toContain("shouldReadMultiInspectorStylesFromSourceOnly('cancel')");
     expect(fileViewer).toContain("shouldReadMultiInspectorStylesFromSourceOnly('noop-flush')");
     expect(fileViewer).toContain('styleDraftPending');

@@ -345,6 +345,10 @@ import {
   shouldSkipWildJumpDuringTipRemountFitSettle,
   shouldSkipWildJumpForTipRemountSelectedMember,
   shouldSkipWildJumpDuringTipRemountFitSettleForSelectedMember,
+  tipRemountSessionActive,
+  shouldSkipOdEditTargetsIdentityMixedReseedDuringTipRemount,
+  withPreservedTipSyncedStylesOnBridgeTarget,
+  resolveTipSyncedStylesForOdEditTargetsPreserve,
   shouldRefreshHostMetricsAfterTipRemountMultiRemasure,
   shouldSkipSrcDocTransportRemountForManualEditFreezeTipSync,
   shouldDisableManualEditChromeUntilTipRemasure,
@@ -5759,6 +5763,10 @@ function HtmlViewer({
     });
   }, []);
   const [manualEditTargets, setManualEditTargets] = useState<ManualEditTarget[]>([]);
+  // Bridge message handlers omit manualEditTargets from effect deps — keep a
+  // live catalog for tip-remount style preserve (467).
+  const manualEditTargetsRef = useRef(manualEditTargets);
+  manualEditTargetsRef.current = manualEditTargets;
   const [selectedManualEditTarget, setSelectedManualEditTarget] = useState<ManualEditTarget | null>(null);
   const [selectedManualEditTargetIds, setSelectedManualEditTargetIds] = useState<string[]>([]);
   const [manualEditMixedStyleKeys, setManualEditMixedStyleKeys] = useState<Set<keyof ManualEditStyles>>(
@@ -9747,13 +9755,39 @@ function HtmlViewer({
       const data = ev.data as ManualEditBridgeMessage | null;
       if (!data?.type) return;
       if (data.type === 'od-edit-targets' && Array.isArray(data.targets)) {
+        // Tip-remount session (grace or deck fit-settle) — hoist before catalog
+        // replace so bridge styles do not wipe tip-synced selected styles (466/467).
+        const tipRemountActive = tipRemountSessionActive(
+          manualEditTipRemountGeometryGraceIdRef.current,
+          Date.now(),
+          manualEditTipRemountGeometryGraceUntilRef.current,
+          manualEditTipRemountFitSettleUntilRef.current,
+        );
         // Skip React state when identity is unchanged (geometry-only rebroadcasts).
         const targetsFingerprint = manualEditTargetsIdentityFingerprint(data.targets);
         const targetsIdentityChanged =
           targetsFingerprint !== manualEditTargetsIdentityFingerprintRef.current;
         if (targetsIdentityChanged) {
           manualEditTargetsIdentityFingerprintRef.current = targetsFingerprint;
-          setManualEditTargets(data.targets);
+          // Tip-remount: keep tip-synced styles on the selected set when bridge
+          // live styles flip catalog identity (467).
+          if (tipRemountActive) {
+            const selectedIds = selectedManualEditTargetIdsRef.current;
+            const priorCatalog = manualEditTargetsRef.current;
+            setManualEditTargets(data.targets.map((target) => {
+              if (!selectedIds.includes(target.id)) return target;
+              return withPreservedTipSyncedStylesOnBridgeTarget(
+                target,
+                resolveTipSyncedStylesForOdEditTargetsPreserve(
+                  target.id,
+                  selectedManualEditTargetRef.current,
+                  priorCatalog,
+                ),
+              );
+            }));
+          } else {
+            setManualEditTargets(data.targets);
+          }
         } else if (shouldPatchSelectedGeometryFromTargetsBroadcast(
           targetsIdentityChanged,
           selectedManualEditTargetIdsRef.current,
@@ -9799,9 +9833,18 @@ function HtmlViewer({
         // settling; keep the user's inspector selection unless a fresh copy is
         // available to update its metadata.
         const selectedIdBefore = selectedManualEditTargetIdRef.current;
-        const selectedNext = selectedIdBefore
+        const selectedNextRaw = selectedIdBefore
           ? data.targets.find((target) => target.id === selectedIdBefore) ?? null
           : null;
+        // Tip-remount: keep tip-synced styles on the selected target — bridge
+        // live styles would flip identity fingerprint / Mixed (466/467).
+        const selectedNext = selectedNextRaw && tipRemountActive
+          && selectedManualEditTargetRef.current?.id === selectedNextRaw.id
+          ? withPreservedTipSyncedStylesOnBridgeTarget(
+            selectedNextRaw,
+            selectedManualEditTargetRef.current.styles,
+          )
+          : selectedNextRaw;
         if (selectedNext) {
           const prevSelected = selectedManualEditTargetRef.current;
           const selectedIdentityChanged = manualEditTargetsIdentityFingerprint([selectedNext])
@@ -9829,7 +9872,18 @@ function HtmlViewer({
         }
         const currentIds = selectedManualEditTargetIdsRef.current;
         if (currentIds.length > 0) {
-          const refreshed = resolveManualEditTargetsByIds(currentIds, data.targets);
+          const refreshedRaw = resolveManualEditTargetsByIds(currentIds, data.targets);
+          // Tip-remount: preserve tip-synced styles on the selected set (467).
+          const refreshed = tipRemountActive
+            ? refreshedRaw.map((item) => withPreservedTipSyncedStylesOnBridgeTarget(
+              item,
+              resolveTipSyncedStylesForOdEditTargetsPreserve(
+                item.id,
+                selectedManualEditTargetRef.current,
+                manualEditTargetsRef.current,
+              ),
+            ))
+            : refreshedRaw;
           const nextIds = refreshed.map((item) => item.id);
           if (nextIds.length === 0) {
             void clearManualEditTargetSelection();
@@ -9852,10 +9906,17 @@ function HtmlViewer({
           if (selectionIdsChanged || selectedTargetsIdentityChanged) {
             manualEditSelectedIdentityFingerprintRef.current = selectedIdentityFingerprint;
           }
+          // Tip-remount: bridge target.styles can flip identity fingerprint and
+          // re-fire Mixed/draft reseed — skip identity-only churn (466).
+          const skipIdentityMixedReseed = shouldSkipOdEditTargetsIdentityMixedReseedDuringTipRemount(
+            selectionIdsChanged,
+            tipRemountActive,
+          );
           // Multi-select inspector: reparse on id-set OR selected identity change
           // (59 mixed styles). Geometry-only broadcasts keep fingerprint equal.
           if (
             nextIds.length > 1
+            && !skipIdentityMixedReseed
             && (selectionIdsChanged || (selectedTargetsIdentityChanged && !styleDraftPending))
           ) {
             const base = sourceRef.current ?? '';
@@ -9884,6 +9945,7 @@ function HtmlViewer({
             }
           } else if (
             nextIds.length > 1
+            && !skipIdentityMixedReseed
             && !selectionIdsChanged
             && selectedTargetsIdentityChanged
             && styleDraftPending
@@ -9914,6 +9976,7 @@ function HtmlViewer({
             }));
           } else if (
             nextIds.length === 1
+            && !skipIdentityMixedReseed
             && !selectionIdsChanged
             && selectedTargetsIdentityChanged
             && !styleDraftPending
@@ -9940,6 +10003,7 @@ function HtmlViewer({
             }));
           } else if (
             nextIds.length === 1
+            && !skipIdentityMixedReseed
             && !selectionIdsChanged
             && selectedTargetsIdentityChanged
             && styleDraftPending
