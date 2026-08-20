@@ -214,14 +214,32 @@ describe('looksLikeCompactApiStackedDeck', () => {
     expect(injectStackedDeckViewport(html)).not.toContain('width=device-width');
   });
 
-  it('rejects decks wrapped in a .deck container under body', () => {
+  it('letterboxes body-first 100vh slides wrapped in a .deck container', () => {
     const html = [
       '<!doctype html><html><body>',
       '<div class="deck">',
       '<section class="slide" style="min-height:100vh">A</section>',
+      '<section class="slide" style="min-height:100vh">B</section>',
       '</div></body></html>',
     ].join('');
-    expect(looksLikeCompactApiStackedDeck(html)).toBe(false);
+    expect(looksLikeCompactApiStackedDeck(html)).toBe(true);
+    expect(buildSrcdoc(html, { deck: true })).toContain('data-od-deck-stacked-fix');
+  });
+
+  it('letterboxes body-first 100vh slides wrapped in a .presentation shell without official look', () => {
+    const html = [
+      '<!doctype html><html><body>',
+      '<div class="presentation">',
+      '<section class="slide" style="min-height:100vh;background:#0b0c10;color:#f5d76e">A</section>',
+      '<section class="slide" style="min-height:100vh">B</section>',
+      '</div></body></html>',
+    ].join('');
+    expect(looksLikeCompactApiStackedDeck(html)).toBe(true);
+    const srcdoc = buildSrcdoc(html, { deck: true });
+    expect(srcdoc).toContain('data-od-deck-stacked-fix');
+    expect(srcdoc).toContain('width: 1920px !important');
+    expect(srcdoc).toContain('height: 1080px !important');
+    expect(srcdoc).toContain('data-od-deck-fixed-canvas-pin');
   });
 
   it('matches body-first slides when a <style> block precedes them in body', () => {
@@ -564,6 +582,10 @@ cur=n;
     expect(slideEls).toHaveLength(3);
     expect(slideEls[0]?.style.flexDirection).toBe('column');
     expect(slideEls[0]?.style.justifyContent).toBe('center');
+    // Axis lock runs when a slide becomes visible (setSlideDisplayed). Reveal
+    // the split slide before asserting its authored row flex.
+    win.dispatchEvent(new win.MessageEvent('message', { data: { type: 'od:slide', action: 'next' } }));
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 40));
     expect(slideEls[1]?.style.flexDirection).toBe('row');
     expect(slideEls[2]?.classList.contains('slide-6')).toBe(true);
     expect(slideEls[2]?.style.justifyContent).not.toBe('center');
@@ -572,8 +594,6 @@ cur=n;
     expect(firstTransform).toMatch(/translate\(calc\(-50%/);
     expect(firstTransform).toMatch(/scale\(/);
 
-    win.dispatchEvent(new win.MessageEvent('message', { data: { type: 'od:slide', action: 'next' } }));
-    await new Promise<void>((resolve) => win.setTimeout(resolve, 40));
     win.dispatchEvent(new win.MessageEvent('message', { data: { type: 'od:slide', action: 'next' } }));
     await new Promise<void>((resolve) => win.setTimeout(resolve, 40));
     expect(String(stage?.style.transform || '')).toBe(firstTransform);

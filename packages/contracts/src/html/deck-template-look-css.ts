@@ -1934,7 +1934,18 @@ function looksLikeAuthoredMultiSlideCss(html: string): boolean {
     /<(?:section|div|main|article)\b[^>]*\bclass\s*=\s*['"][^'"]*\bslide\b/gi,
   );
   if (!slideOpens || slideOpens.length < 2) return false;
-  return /\.slide\b[^{]*\{/i.test(html);
+  // Require presenter-like rules. A lone `.slide { background… }` from surface
+  // bleed / canvas pin must not flip compact `.presentation` fills into the
+  // catalog-native path (§0.67).
+  if (
+    /\.slide\b[^{]*\{[^}]*(?:opacity\s*:|scroll-snap-|position\s*:\s*(?:absolute|fixed))/i.test(
+      html,
+    )
+  ) {
+    return true;
+  }
+  if (/\.slide\.(?:active|is-active|current)\b[^{]*\{/i.test(html)) return true;
+  return false;
 }
 
 /**

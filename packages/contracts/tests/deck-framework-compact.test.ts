@@ -42,6 +42,14 @@ describe('DECK_FRAMEWORK_DIRECTIVE_COMPACT', () => {
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('designed presentation');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('1920×1080');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('72px/1.05');
+    expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('width:1920px;height:1080px');
+    // Samples must not teach viewport sizing (ban prose may still name 100vh).
+    expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).not.toMatch(
+      /style="[^"]*min-height:100vh/,
+    );
+    expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).not.toMatch(
+      /style="[^"]*\b100vw\b/,
+    );
   });
 
   it('selected-template compact contract omits Neutral sample colors', () => {

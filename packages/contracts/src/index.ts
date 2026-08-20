@@ -61,5 +61,6 @@ export * from './html/artifactPreviewTextLeaks.js';
 export * from './html/isArtifactHtmlStableForPreview.js';
 export * from './html/deckPdfExport.js';
 export * from './html/deck-template-look-css.js';
+export * from './html/deck-fixed-canvas.js';
 export * from './analytics/events.js';
 export * from './analytics/public-params.js';

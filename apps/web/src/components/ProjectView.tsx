@@ -155,6 +155,7 @@ import {
   deriveDeckCoverTitleFromBrief,
   metadataForTeamverSlideOnlyPrompt,
   firstOfficialDeckTemplateId,
+  pinDeckSlidesToFixedCanvas,
   renderPluginBlock,
   repairArtifactStyleSheets,
   slimTemplateVisualKitForFill,
@@ -5412,6 +5413,9 @@ export function ProjectView({
         // does not win over official dark identity (Hermes) or Motif washes.
         htmlBody = await mergeOfficialLookCssForTemplate(htmlBody, persistTemplateId);
         htmlBody = repairDeckSlideSurfaceBleed(htmlBody);
+        // Pin every .slide to 1920×1080 so 100vh / presentation-wrapper fills
+        // cannot stretch into a tall portrait preview panel (§0.67).
+        htmlBody = pinDeckSlidesToFixedCanvas(htmlBody);
       }
       if (ext === '.html' && persistCommentAttachments.length > 0) {
         const currentScopedHtml = await readDiskHtml(fileName);
@@ -7832,6 +7836,7 @@ export function ProjectView({
                           ),
                         );
                         const withSurface = repairDeckSlideSurfaceBleed(withLook);
+                        const withCanvas = pinDeckSlidesToFixedCanvas(withSurface);
                         const attachmentPaths = runAttachmentsRef.current
                           .map((attachment) => attachment.path.trim())
                           .filter(Boolean);
@@ -7840,13 +7845,13 @@ export function ProjectView({
                           ...attachmentPaths,
                         ].filter(Boolean);
                         const { html: healed, changed } = await healDiskHtmlAttachmentImageSrcs({
-                          html: withSurface,
+                          html: withCanvas,
                           projectFilePaths: projectPaths,
                           preferredAttachmentPaths: attachmentPaths,
                         });
                         if (
                           changed
-                          || withSurface !== diskHtml
+                          || withCanvas !== diskHtml
                           || isTemplateCloneLookSeedFile(recoveredExistingArtifact)
                         ) {
                           await writeProjectTextFileDetailed(
@@ -9799,6 +9804,7 @@ export function ProjectView({
                       ),
                     );
                     const withSurface = repairDeckSlideSurfaceBleed(withLook);
+                    const withCanvas = pinDeckSlidesToFixedCanvas(withSurface);
                     const attachmentPaths = runAttachmentsRef.current
                       .map((attachment) => attachment.path.trim())
                       .filter(Boolean);
@@ -9807,13 +9813,13 @@ export function ProjectView({
                       ...attachmentPaths,
                     ].filter(Boolean);
                     const { html: healed, changed } = await healDiskHtmlAttachmentImageSrcs({
-                      html: withSurface,
+                      html: withCanvas,
                       projectFilePaths: projectPaths,
                       preferredAttachmentPaths: attachmentPaths,
                     });
                     if (
                       changed
-                      || withSurface !== diskHtml
+                      || withCanvas !== diskHtml
                       || isTemplateCloneLookSeedFile(sameTurnHtmlWrite)
                     ) {
                       await writeProjectTextFileDetailed(

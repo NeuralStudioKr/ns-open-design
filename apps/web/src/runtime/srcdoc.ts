@@ -22,7 +22,7 @@ import {
   MANUAL_EDIT_DISCOVERY_SELECTOR,
   MANUAL_EDIT_SOURCE_PATH_ATTR,
 } from '../edit-mode/bridge';
-import { buildArtifactPreviewDomLeakGuardScript, repairArtifactDocumentHead, repairArtifactStyleSheets, lockStackedDeckCanvasForPreview } from '@open-design/contracts';
+import { buildArtifactPreviewDomLeakGuardScript, repairArtifactDocumentHead, repairArtifactStyleSheets, lockStackedDeckCanvasForPreview, pinDeckSlidesToFixedCanvas } from '@open-design/contracts';
 import { stripConflictingSrcDocCspBaseUri } from './authenticatedHtmlSrcDoc';
 import {
   injectStackedDeckViewport,
@@ -137,10 +137,19 @@ export function buildSrcdoc(
       ),
     ),
   );
+  // Detect compact stacked BEFORE canvas pin — pin rewrites 100vh → 1920×1080
+  // and would flip authored scroll / root-scroll decks onto the letterbox path.
+  const detectionBase = wrapPreviewHtmlShell(repairedHead, { alreadyRepaired: true });
+  const compactStackedDeck = options.deck
+    ? looksLikeCompactApiStackedDeck(detectionBase)
+    : false;
   // Deck preview/export: compact fills lock to a 1920×1080 canvas.
   // Official catalog presenters keep iframe-relative 100% fill.
+  // Pin only when letterboxing so older 100vh decks paint as 16:9 (§0.67).
   const deckCanvasReady = options.deck
-    ? lockStackedDeckCanvasForPreview(repairedHead)
+    ? lockStackedDeckCanvasForPreview(
+      compactStackedDeck ? pinDeckSlidesToFixedCanvas(repairedHead) : repairedHead,
+    )
     : repairedHead;
   const repaired = stripConflictingSrcDocCspBaseUri(deckCanvasReady);
   // alreadyRepaired: avoid wrapPreviewHtmlShell re-running repair on full docs.
@@ -148,7 +157,9 @@ export function buildSrcdoc(
   // compact fills only (official presenters stay device-width).
   const wrappedRaw = wrapPreviewHtmlShell(repaired, { alreadyRepaired: true });
   const wrapped = options.deck
-    ? lockStackedDeckCanvasForPreview(wrappedRaw)
+    ? lockStackedDeckCanvasForPreview(
+      compactStackedDeck ? pinDeckSlidesToFixedCanvas(wrappedRaw) : wrappedRaw,
+    )
     : wrappedRaw;
   // Export docs skip od-id / source-path annotation (no selection/edit bridges).
   // OD-authored decks that already carry annotations skip the DOMParser walk.
@@ -172,7 +183,6 @@ export function buildSrcdoc(
   if (options.exportDocument) {
     return withArtifactGuard;
   }
-  const compactStackedDeck = options.deck ? looksLikeCompactApiStackedDeck(wrapped) : false;
   const withStackedViewport = compactStackedDeck
     ? injectStackedDeckViewport(withArtifactGuard)
     : withArtifactGuard;
@@ -2877,6 +2887,8 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
       }
 
       moveSlidesIntoStackedStage(stage, slideList);
+      // Freeze authored inline styles before forceReveal writes display:none.
+      snapshotAuthoredStackedSlideStyles(slideList);
 
       if (ref && ref !== stage && ref.parentNode === body) {
         removeEmptyBodyDirectWrapper(body, ref, stage);
@@ -3524,8 +3536,12 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     // each page looks like a different canvas. Snapshot the authored
     // style once — later reveal writes display:flex and must not be
     // re-read as an implicit row split.
+    // Don't freeze a post-hide snapshot (display:none) as authored axis.
     if (!el.hasAttribute('data-od-authored-style')) {
-      el.setAttribute('data-od-authored-style', el.getAttribute('style') || '');
+      var liveStyle = el.getAttribute('style') || '';
+      if (!/(?:^|;)\s*display\s*:\s*none\b/i.test(liveStyle)) {
+        el.setAttribute('data-od-authored-style', liveStyle);
+      }
     }
     var authoredStyle = String(el.getAttribute('data-od-authored-style') || '');
     var authoredDisplayMatch = /(?:^|;)\s*display\s*:\s*([^;!]+)/i.exec(authoredStyle);
@@ -3540,19 +3556,29 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     );
     if (authoredDisplay === 'grid' || authoredDisplay === 'inline-grid') return;
     if (authoredDir) {
-      el.style.flexDirection = authoredDir;
+      el.style.setProperty('flex-direction', authoredDir, 'important');
       return;
     }
     if (authoredDisplay === 'flex' || authoredDisplay === 'inline-flex') {
-      el.style.flexDirection = 'row';
+      el.style.setProperty('flex-direction', 'row', 'important');
       return;
     }
-    el.style.flexDirection = 'column';
+    el.style.setProperty('flex-direction', 'column', 'important');
     if (
       !/(?:^|;)\s*justify-content\s*:/i.test(authoredStyle)
       && !/(?:^|\\s)slide-\\d+(?:\\s|$)/.test(className)
     ) {
-      el.style.justifyContent = 'center';
+      el.style.setProperty('justify-content', 'center', 'important');
+    }
+  }
+  function snapshotAuthoredStackedSlideStyles(list) {
+    if (!list || !list.length) return;
+    for (var i = 0; i < list.length; i++) {
+      var el = list[i];
+      if (!el || el.hasAttribute('data-od-authored-style')) continue;
+      var style = el.getAttribute('style') || '';
+      if (/(?:^|;)\s*display\s*:\s*none\b/i.test(style)) continue;
+      el.setAttribute('data-od-authored-style', style);
     }
   }
   function setSlideDisplayed(el, visible) {
@@ -3932,6 +3958,9 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     if (!compactStackedDeckEnabled) return;
     ensureStackedDeckStage();
     var list = slides();
+    // Capture authored inline styles before the first display:none hide so
+    // 16:9 split slides that only set display:flex keep row on reveal.
+    snapshotAuthoredStackedSlideStyles(list);
     if (list.length) {
       var target = Math.max(0, Math.min(list.length - 1, initialSlideIndex));
       forceRevealSlide(target);

@@ -12,6 +12,7 @@ import {
   ensureOfficialLookStackedCanvasNeutralize,
   lockDeckDesignViewportMeta,
 } from './deck-template-look-css.js';
+import { pinDeckSlidesToFixedCanvas } from './deck-fixed-canvas.js';
 
 export const DECK_SLIDE_SELECTOR =
   '.slide, [data-slide], [data-screen-label], section.slide, .deck-slide, .ppt-slide';
@@ -101,7 +102,9 @@ export function healDeckHtmlForStandaloneExport(html: string): string {
       relaxPersistedDeckSlideSurfaceBleed(String(html ?? '')),
     ),
   );
-  return lockDeckDesignViewportMeta(ensureOfficialLookStackedCanvasNeutralize(repaired));
+  // Pin 100vh / missing-size slides to 1920×1080 before neutralize + viewport lock.
+  const pinned = pinDeckSlidesToFixedCanvas(repaired);
+  return lockDeckDesignViewportMeta(ensureOfficialLookStackedCanvasNeutralize(pinned));
 }
 
 function injectExportSnippetIntoHead(html: string, snippet: string): string {

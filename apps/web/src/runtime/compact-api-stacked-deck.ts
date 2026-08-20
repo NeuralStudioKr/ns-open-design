@@ -186,28 +186,26 @@ export function looksLikeCompactApiStackedDeck(html: string): boolean {
   if (looksLikeOfficialFullscreenPresenterDeck(html)) return false;
   if (looksLikeFrameworkDeckMarkup(html)) return false;
   if (looksLikeAuthoredHorizontalSwipeDeck(html)) return false;
-  // Official catalog presenters (no look-css marker) keep native 100% fill.
-  // Compact fills that copied a `.presentation` / `.deck` host after official
-  // look merge must still letterbox to one 1920×1080 stage — otherwise each
-  // page sizes to its Motif content and the visual center jumps.
+  // Official catalog presenters (no look-css marker) keep native 100% fill
+  // via looksLikeOfficialFullscreenPresenterDeck above. Compact body-first
+  // fills often copy a `.presentation` / `.deck` wrapper from templates —
+  // those MUST still letterbox. Otherwise `min-height:100vh` slides fill the
+  // tall preview panel as a portrait document with a vertical scrollbar.
   const officialLookFill = hasOfficialLookStyleAttr(html);
-  if (
-    !officialLookFill
-    && /<(?:div|section|main)\b[^>]*\bclass\s*=\s*['"][^'"]*\bpresentation\b/i.test(html)
-  ) {
-    return false;
-  }
   const bodyFirst = hasBodyFirstSlide(html);
   const viewportSized = looksLikeSlideViewportSized(html);
   const legacyBodyFirst = looksLikeLegacyStyledBodyFirstDeck(html);
   const compactBodyFirst = bodyFirst && (viewportSized || legacyBodyFirst);
   if (looksLikeAuthoredScrollNavigateDeck(html) && !compactBodyFirst) return false;
-  if (
-    !officialLookFill
-    && /<body\b[^>]*>[\s\S]*<(?:div|section)\b[^>]*\bclass\s*=\s*['"][^'"]*(?:^|\s)deck(?:\s|["']|$)/i.test(
+  const hasPresentationShell =
+    /<(?:div|section|main)\b[^>]*\bclass\s*=\s*['"][^'"]*\bpresentation\b/i.test(html);
+  const hasDeckShell =
+    /<body\b[^>]*>[\s\S]*<(?:div|section)\b[^>]*\bclass\s*=\s*['"][^'"]*(?:^|\s)deck(?:\s|["']|$)/i.test(
       html,
-    )
-  ) {
+    );
+  // Non-compact presentation/deck shells (catalog-like, not body-first
+  // viewport pages) stay on native fill — but never block compactBodyFirst.
+  if (!officialLookFill && !compactBodyFirst && (hasPresentationShell || hasDeckShell)) {
     return false;
   }
   if (!bodyFirst) return false;
