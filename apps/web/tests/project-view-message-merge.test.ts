@@ -580,6 +580,31 @@ describe("promptWithSlideCommentEditPatchInstruction", () => {
 });
 
 describe("mergeServerMessagesIntoConversation", () => {
+  it("scrubs persisted Daisy badge / mid-SVG CSS debris on server hydrate", () => {
+    const debris = [
+      '<span style="background:',
+      "#FDE68A;border:3px solid ",
+      "#2D2D2D;border-radius:20px;padding:10px 28px;font-family:'Quicksand',sans-serif;box-shadow:4px 4px 0 ",
+      '#2D2D2D">Internal Team</span>',
+      "</div>",
+      "<!-- Daisy motif TL -->none;stroke:",
+      "#232323;stroke-width:2.0",
+    ].join("\n");
+    const server: ChatMessage = {
+      id: "a1",
+      role: "assistant",
+      content: `슬라이드 초안을 준비했습니다.\n\n${debris}`,
+      createdAt: 1,
+      events: [{ kind: "text", text: `슬라이드 초안을 준비했습니다.\n\n${debris}` }],
+    };
+    const merged = mergeServerMessagesIntoConversation([], [server]);
+    expect(merged[0]?.content).toBe("슬라이드 초안을 준비했습니다.");
+    expect(merged[0]?.events?.[0]).toMatchObject({
+      kind: "text",
+      text: "슬라이드 초안을 준비했습니다.",
+    });
+  });
+
   it("keeps local active runStatus when server row is stale", () => {
     const local: ChatMessage = {
       id: "a1",

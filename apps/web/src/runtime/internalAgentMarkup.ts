@@ -43,9 +43,9 @@ const DECK_BROKEN_SECTION_CSS_DEBRIS_TAIL_RE =
 /** Mid-attribute style debris, including quoted font-family / flex props. */
 const DECK_ORPHAN_MID_STYLE_ATTR_TAIL_RE =
   /(?:^|\n)(?:(?:px|em|rem|%|vh|vw)\s*;\s*)?(?:[a-zA-Z-]+\s*:\s*[^;]*;?\s*){2,}[\s\S]*?["']\s*>[\s\S]*$/i;
-/** Truncated SVG style body: `none;stroke:…}.cls-3{…}</style>`. */
+/** Truncated SVG style body: `none;stroke:…` (with or without `</style>`). */
 const DECK_ORPHAN_MID_SVG_CSS_STYLE_TAIL_RE =
-  /(?:^|\n)(?:(?:none|solid|inherit|round|butt|miter|bevel)\s*;\s*)?(?:(?:stroke(?:-[\w]+)?|fill|stroke-width|stroke-linecap|stroke-linejoin|stroke-miterlimit)\s*:[^;]*;?\s*){2,}[\s\S]*?<\/style>[\s\S]*$/i;
+  /(?:^|\n)(?:(?:none|solid|inherit|round|butt|miter|bevel)\s*;\s*)?(?:(?:stroke(?:-[\w]+)?|fill|stroke-width|stroke-linecap|stroke-linejoin|stroke-miterlimit)\s*:[^;]*;?\s*){2,}[\s\S]*$/i;
 /** Stale-dist last pass for kit CSS at-rules contracts already strip. */
 const DECK_FRAMEWORK_CSS_TAIL_RE =
   /(?:^|\n\n|\n)((?::root\s*\{|@(?:-webkit-)?(?:keyframes\s+[\w-]+|font-face)\s*\{|@(?:media|page|supports|layer)\b[^{]*\{|@import\s+(?:url\(|["'])|<style\b[^>]*>|(?:from|to|\d+%)\s*\{|(?:\.slide|(?:\.[A-Za-z_-][\w-]*|#[A-Za-z_-][\w-]*|h[1-6]|p|ul|li|body|section(?:\.[\w-]+)?)\s*\{))[\s\S]*)$/i;

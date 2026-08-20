@@ -338,10 +338,11 @@ const DECK_ORPHAN_MID_STYLE_ATTR_TAIL_RE =
   /(?:^|\n)(?:(?:px|em|rem|%|vh|vw)\s*;\s*)?(?:[a-zA-Z-]+\s*:\s*[^;]*;?\s*){2,}[\s\S]*?["']\s*>[\s\S]*$/i;
 /**
  * Truncated SVG `<style>` body (`none;stroke:…}.cls-3{…}</style>`) after the
- * opening `<style>` / comment was already stripped.
+ * opening `<style>` / comment was already stripped. `</style>` is optional —
+ * reload can persist a cut mid-declaration without the closing tag.
  */
 const DECK_ORPHAN_MID_SVG_CSS_STYLE_TAIL_RE =
-  /(?:^|\n)(?:(?:none|solid|inherit|round|butt|miter|bevel)\s*;\s*)?(?:(?:stroke(?:-[\w]+)?|fill|stroke-width|stroke-linecap|stroke-linejoin|stroke-miterlimit)\s*:[^;]*;?\s*){2,}[\s\S]*?<\/style>[\s\S]*$/i;
+  /(?:^|\n)(?:(?:none|solid|inherit|round|butt|miter|bevel)\s*;\s*)?(?:(?:stroke(?:-[\w]+)?|fill|stroke-width|stroke-linecap|stroke-linejoin|stroke-miterlimit)\s*:[^;]*;?\s*){2,}[\s\S]*$/i;
 const DECK_SLIDE_PARTIAL_OPEN_TAG_RE =
   /<(?:section|div)\b[^>]*(?:\bclass\s*=\s*["'][^"']*\bslide\b|data-slide-index|data-slide\b)[^>]*>/i;
 

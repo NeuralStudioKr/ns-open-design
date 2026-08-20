@@ -56,6 +56,15 @@ describe("internalAgentMarkup", () => {
     }
   });
 
+  it("hard-strips mid-SVG CSS even when </style> was truncated on reload", () => {
+    const cssOnlyNoClose = ["none;stroke:", "#232323;stroke-width:2.0"].join("\n");
+    for (const streaming of [true, false]) {
+      expect(
+        sanitizeAssistantProseForDisplay(`진행.\n${cssOnlyNoClose}`, { streaming }),
+      ).toBe("진행.");
+    }
+  });
+
   it("hard-strips Daisy badge span + motif comment + mid SVG CSS after reload", () => {
     const frag = [
       '<span style="background:',

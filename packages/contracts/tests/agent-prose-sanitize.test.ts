@@ -132,6 +132,9 @@ describe("agent-prose-sanitize SSOT", () => {
       "#232323;stroke-width:2.0745;stroke-linecap:round;}.cls-3{fill:#FFFFFF;}</style>",
     ].join("\n");
     expect(sanitizeAssistantProseForDisplay(`진행.\n${cssOnly}`)).toBe("진행.");
+    // Reload can cut before `</style>` (user report fragment ending at stroke-width).
+    const cssOnlyNoClose = ["none;stroke:", "#232323;stroke-width:2.0"].join("\n");
+    expect(sanitizeAssistantProseForDisplay(`진행.\n${cssOnlyNoClose}`)).toBe("진행.");
     expect(
       sanitizeAssistantProseForDisplay("진행.\n<!-- Daisy motif TL -->\n<style>.cls-1{}</style>"),
     ).toBe("진행.");

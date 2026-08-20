@@ -796,12 +796,39 @@ export function mergeServerMessagesIntoConversation(
   const currentById = new Map(current.map((message) => [message.id, message]));
   const serverIds = new Set(serverMessages.map((message) => message.id));
   const merged = serverMessages.map((message) =>
-    mergeServerMessageWithLocal(message, currentById.get(message.id)),
+    sanitizePersistedAssistantChatMessage(
+      mergeServerMessageWithLocal(message, currentById.get(message.id)),
+    ),
   );
   for (const message of current) {
     if (!serverIds.has(message.id)) merged.push(message);
   }
   return dedupeConversationAssistantRows(orderConversationMessages(merged, current));
+}
+
+/**
+ * Cold-load / soft-refresh: scrub deck HTML debris that was persisted before
+ * display last-pass (or mid-`</style>` truncations) so reload matches live chat.
+ */
+export function sanitizePersistedAssistantChatMessage(message: ChatMessage): ChatMessage {
+  if (message.role !== 'assistant') return message;
+  const content = message.content ?? '';
+  const nextContent = sanitizeAssistantProseForDisplay(content, { stripCodeFences: true });
+  let eventsChanged = false;
+  const nextEvents = message.events?.map((event) => {
+    if (event.kind !== 'text' && event.kind !== 'thinking') return event;
+    const text = typeof event.text === 'string' ? event.text : '';
+    const cleaned = sanitizeAssistantProseForDisplay(text, { stripCodeFences: true });
+    if (cleaned === text) return event;
+    eventsChanged = true;
+    return { ...event, text: cleaned };
+  });
+  if (nextContent === content && !eventsChanged) return message;
+  return {
+    ...message,
+    content: nextContent,
+    ...(nextEvents ? { events: nextEvents } : {}),
+  };
 }
 
 function synthesizeAssistantMessageForActiveRun(run: {
@@ -3983,7 +4010,9 @@ export function ProjectView({
       try {
         const [list, comments, activeRuns] = await loadMessagesWithRetry();
         if (cancelled) return;
-        const mergedMessages = mergeActiveRunsIntoMessages(list, activeRuns);
+        const mergedMessages = mergeActiveRunsIntoMessages(list, activeRuns).map(
+          sanitizePersistedAssistantChatMessage,
+        );
         setMessages(mergedMessages);
         setMessagesInitialized(true);
         if (activeRuns.length > 0) {
