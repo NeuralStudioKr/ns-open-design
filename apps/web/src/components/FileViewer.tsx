@@ -44,6 +44,10 @@ import {
 } from '../teamver/designApiBase';
 import { isTeamverPptxExportEnabled } from '../teamver/pptxExportEnable';
 import { isTeamverSourceHtmlCopyEnabled } from '../teamver/sourceHtmlCopyEnable';
+import {
+  deckHtmlNeedsOfficialMotifRemerge,
+  healOfficialMotifForDeckPreview,
+} from '../teamver/deckPreviewOfficialLookHeal';
 import { beginTeamverEmbedActiveWork, endTeamverEmbedActiveWork } from '../teamver/teamverEmbedActiveWork';
 import { fetchTeamverDaemon } from '../teamver/teamverDaemonHeaders';
 import { TEAMVER_EMBED_PASSIVE_AUTH_RECOVERED_EVENT } from '../teamver/teamverEmbedPassiveAuth';
@@ -6781,6 +6785,22 @@ function HtmlViewer({
       preferredPaths: preferredAttachmentPaths,
     });
   }, [preferredAttachmentPaths, projectFilePaths, rawLivePreviewSource]);
+  // Display-only Motif remmerge for pre-v34 overscale Daisy (export already heals;
+  // preview used to show 22% flowers until the next persist remmerge).
+  const [officialLookHealedPreview, setOfficialLookHealedPreview] = useState<string | null>(null);
+  useEffect(() => {
+    setOfficialLookHealedPreview(null);
+    if (streaming || manualEditMode || !effectiveDeck || !projectId) return;
+    if (!livePreviewSource || !deckHtmlNeedsOfficialMotifRemerge(livePreviewSource)) return;
+    let cancelled = false;
+    void healOfficialMotifForDeckPreview(livePreviewSource, projectId).then((healed) => {
+      if (cancelled) return;
+      if (healed && healed !== livePreviewSource) setOfficialLookHealedPreview(healed);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [effectiveDeck, livePreviewSource, manualEditMode, projectId, streaming, file.name]);
   const attachmentImageSrcRewritten = Boolean(
     rawLivePreviewSource
     && livePreviewSource
@@ -6800,7 +6820,7 @@ function HtmlViewer({
   }, [manualEditMode, manualEditFrozenSource, livePreviewSource]);
   const previewSource = (manualEditMode && manualEditFrozenSource !== null)
     ? manualEditFrozenSource
-    : livePreviewSource;
+    : (officialLookHealedPreview ?? livePreviewSource);
   const compactApiStackedDeck = useMemo(
     () => (previewSource != null && looksLikeCompactApiStackedDeckForPreview(previewSource)),
     [previewSource],

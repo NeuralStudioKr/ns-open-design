@@ -3541,9 +3541,11 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
       clearInlineSlideHide(el);
       return;
     }
-    if (stacked) lockStackedSlideAxis(el);
     if (visible) {
-      if (!stacked) {
+      if (stacked) {
+        // Must re-apply flex after display:none !important on the previous turn.
+        lockStackedSlideAxis(el);
+      } else {
         // Framework / class-toggle decks: clear any previous hide so author
         // .active / variant classes (flex/grid/block) control layout.
         el.style.removeProperty('display');

@@ -566,7 +566,7 @@ persist는 cover cluster만 남기고 전 장에 찍었다.
 
 - [x] 1-based pagination + chrome sync
 - [x] Capsule presenter red spec (load `active:0` → next → next)
-- [ ] 인접: `srcdoc-deck-bridge-nested-slides` stacked hoist 2건은 staging 기존 실패 — 별도 후속
+- [x] 인접: `srcdoc-deck-bridge-nested-slides` stacked hoist 2건 — host viewport + stacked display restore로 고정 (2026-08-20)
 
 ### 0.44 2026-08-19 — 카탈로그 템플릿 1920 lock opt-in (전수)
 
