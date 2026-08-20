@@ -349,6 +349,8 @@ import {
   shouldSkipOdEditTargetsIdentityMixedReseedDuringTipRemount,
   withPreservedTipSyncedStylesOnBridgeTarget,
   resolveTipSyncedStylesForOdEditTargetsPreserve,
+  nextTipRemountIdentityHoldUntilMs,
+  shouldReadSingleInspectorStylesFromSourceOnlyForOdEditTargets,
   shouldRefreshHostMetricsAfterTipRemountMultiRemasure,
   shouldSkipSrcDocTransportRemountForManualEditFreezeTipSync,
   shouldDisableManualEditChromeUntilTipRemasure,
@@ -5507,6 +5509,8 @@ function HtmlViewer({
   const manualEditTipRemountGeometryGraceUntilRef = useRef(0);
   /** Deck host-fit settle — remasure after scale nudges (460). */
   const manualEditTipRemountFitSettleUntilRef = useRef(0);
+  /** Post-settle identity protect after grace clear (468). */
+  const manualEditTipRemountIdentityHoldUntilRef = useRef(0);
   const manualEditTipRemountFitSettleCancelRef = useRef<(() => void) | null>(null);
   /** Pending onLoad sync measure rAF retry — cancel on grace clear (463). */
   const manualEditTipRemountSyncRetryRafRef = useRef<number | null>(null);
@@ -8241,6 +8245,16 @@ function HtmlViewer({
 
   /** Clear tip-remount grace latch (id + until) — expiry, consume, or leave. */
   function clearManualEditTipRemountGeometryGrace() {
+    // Keep tip identity protect briefly after settle so the first post-grace
+    // od-edit-targets broadcast cannot flip Mixed/inspector (468).
+    // Only arm when clearing an armed grace — repeat clears must not wipe hold.
+    const hadArmedGrace = Boolean(manualEditTipRemountGeometryGraceIdRef.current);
+    if (hadArmedGrace) {
+      manualEditTipRemountIdentityHoldUntilRef.current = nextTipRemountIdentityHoldUntilMs(
+        Date.now(),
+        true,
+      );
+    }
     manualEditTipRemountGeometryGraceIdRef.current = null;
     manualEditTipRemountGeometryGraceUntilRef.current = 0;
     manualEditTipRemountFitSettleUntilRef.current = 0;
@@ -8316,6 +8330,8 @@ function HtmlViewer({
       }
       manualEditTipRemountGeometryGraceIdRef.current = graceId;
       manualEditTipRemountGeometryGraceUntilRef.current = graceUntil;
+      // New tip-remount session owns identity protect (replace stale post-settle hold).
+      manualEditTipRemountIdentityHoldUntilRef.current = 0;
       // Deck host-fit may rescale after onLoad — keep settle latch past grace (460).
       const fitSettleUntil = shouldArmTipRemountFitSettleForDeckHostFit(
         deckHostViewportFitActive,
@@ -9762,32 +9778,32 @@ function HtmlViewer({
           Date.now(),
           manualEditTipRemountGeometryGraceUntilRef.current,
           manualEditTipRemountFitSettleUntilRef.current,
+          manualEditTipRemountIdentityHoldUntilRef.current,
         );
+        // Tip-remount: fingerprint the catalog we will store (preserved tip
+        // styles), not raw bridge — latch must match React state (468).
+        const selectedIdsForPreserve = selectedManualEditTargetIdsRef.current;
+        const priorCatalogForPreserve = manualEditTargetsRef.current;
+        const nextCatalogTargets = tipRemountActive
+          ? data.targets.map((target) => {
+            if (!selectedIdsForPreserve.includes(target.id)) return target;
+            return withPreservedTipSyncedStylesOnBridgeTarget(
+              target,
+              resolveTipSyncedStylesForOdEditTargetsPreserve(
+                target.id,
+                selectedManualEditTargetRef.current,
+                priorCatalogForPreserve,
+              ),
+            );
+          })
+          : data.targets;
         // Skip React state when identity is unchanged (geometry-only rebroadcasts).
-        const targetsFingerprint = manualEditTargetsIdentityFingerprint(data.targets);
+        const targetsFingerprint = manualEditTargetsIdentityFingerprint(nextCatalogTargets);
         const targetsIdentityChanged =
           targetsFingerprint !== manualEditTargetsIdentityFingerprintRef.current;
         if (targetsIdentityChanged) {
           manualEditTargetsIdentityFingerprintRef.current = targetsFingerprint;
-          // Tip-remount: keep tip-synced styles on the selected set when bridge
-          // live styles flip catalog identity (467).
-          if (tipRemountActive) {
-            const selectedIds = selectedManualEditTargetIdsRef.current;
-            const priorCatalog = manualEditTargetsRef.current;
-            setManualEditTargets(data.targets.map((target) => {
-              if (!selectedIds.includes(target.id)) return target;
-              return withPreservedTipSyncedStylesOnBridgeTarget(
-                target,
-                resolveTipSyncedStylesForOdEditTargetsPreserve(
-                  target.id,
-                  selectedManualEditTargetRef.current,
-                  priorCatalog,
-                ),
-              );
-            }));
-          } else {
-            setManualEditTargets(data.targets);
-          }
+          setManualEditTargets(nextCatalogTargets);
         } else if (shouldPatchSelectedGeometryFromTargetsBroadcast(
           targetsIdentityChanged,
           selectedManualEditTargetIdsRef.current,
@@ -9997,7 +10013,10 @@ function HtmlViewer({
               href: snapshot.fields.href ?? selectedNext.fields.href ?? '',
               src: snapshot.fields.src ?? selectedNext.fields.src ?? '',
               alt: snapshot.fields.alt ?? selectedNext.fields.alt ?? '',
-              styles: mergeManualEditInspectorStyles(snapshot.styles, selectedNext.styles),
+              // Source-only — bridge preview merge flickers tip settle-exit (468).
+              styles: shouldReadSingleInspectorStylesFromSourceOnlyForOdEditTargets()
+                ? snapshot.styles
+                : mergeManualEditInspectorStyles(snapshot.styles, selectedNext.styles),
               attributesText: JSON.stringify(snapshot.attributes, null, 2),
               outerHtml: snapshot.outerHtml || selectedNext.outerHtml,
             }));

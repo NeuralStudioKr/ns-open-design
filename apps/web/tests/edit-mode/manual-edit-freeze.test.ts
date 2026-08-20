@@ -23,6 +23,8 @@ import {
   shouldSkipOdEditTargetsIdentityMixedReseedDuringTipRemount,
   withPreservedTipSyncedStylesOnBridgeTarget,
   resolveTipSyncedStylesForOdEditTargetsPreserve,
+  nextTipRemountIdentityHoldUntilMs,
+  shouldReadSingleInspectorStylesFromSourceOnlyForOdEditTargets,
   tipRemountFitSettleExpired,
   shouldSkipSrcDocTransportRemountForManualEditFreezeTipSync,
   shouldSuppressManualEditChromeUntilTipRemasure,
@@ -365,6 +367,15 @@ describe('manual edit freeze reset', () => {
     expect(tipRemountSessionActive('el-1', 1_000, 0, 1_500)).toBe(true);
     expect(tipRemountSessionActive('el-1', 2_000, 1_800, 1_500)).toBe(false);
     expect(tipRemountSessionActive(null, 1_000, 1_800, 1_500)).toBe(false);
+  });
+
+  it('keeps tip-remount session during post-settle identity hold (468)', () => {
+    expect(tipRemountSessionActive(null, 1_000, 0, 0, 1_400)).toBe(true);
+    expect(tipRemountSessionActive(null, 1_400, 0, 0, 1_400)).toBe(false);
+    expect(tipRemountSessionActive('el-1', 2_000, 1_800, 0, 2_500)).toBe(true);
+    expect(nextTipRemountIdentityHoldUntilMs(1_000, true, 450)).toBe(1_450);
+    expect(nextTipRemountIdentityHoldUntilMs(1_000, false, 450)).toBe(0);
+    expect(shouldReadSingleInspectorStylesFromSourceOnlyForOdEditTargets()).toBe(true);
   });
 
   it('skips identity-only Mixed reseed during tip remount (466)', () => {

@@ -253,6 +253,11 @@ describe('FileViewer revision tip advance after undo', () => {
     expect(fileViewer).toContain('skipIdentityMixedReseed');
     expect(fileViewer).toContain('Tip-remount: preserve tip-synced styles on the selected set');
     expect(fileViewer).toContain('skip identity-only churn');
+    expect(fileViewer).toContain('nextTipRemountIdentityHoldUntilMs');
+    expect(fileViewer).toContain('manualEditTipRemountIdentityHoldUntilRef');
+    expect(fileViewer).toContain('shouldReadSingleInspectorStylesFromSourceOnlyForOdEditTargets');
+    expect(fileViewer).toContain('Source-only — bridge preview merge flickers tip settle-exit');
+    expect(fileViewer).toContain('fingerprint the catalog we will store');
     expect(fileViewer).toContain("shouldReadMultiInspectorStylesFromSourceOnly('cancel')");
     expect(fileViewer).toContain("shouldReadMultiInspectorStylesFromSourceOnly('noop-flush')");
     expect(fileViewer).toContain('styleDraftPending');

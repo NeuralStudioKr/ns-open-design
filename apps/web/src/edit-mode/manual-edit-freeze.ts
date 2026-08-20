@@ -521,18 +521,44 @@ export function shouldSkipWildJumpDuringTipRemountFitSettleForSelectedMember(
 }
 
 /**
- * Tip-remount session is live while geometry grace or deck fit-settle latch
- * remains for the armed primary (466).
+ * Tip-remount session is live while geometry grace, deck fit-settle latch, or
+ * post-settle identity hold remains (466/468).
+ * Identity hold may outlive grace id clear so od-edit-targets cannot flip
+ * Mixed/inspector on the first post-settle bridge broadcast.
  */
 export function tipRemountSessionActive(
   graceId: string | null | undefined,
   nowMs: number,
   graceUntilMs: number,
   fitSettleUntilMs: number,
+  identityHoldUntilMs = 0,
 ): boolean {
+  if (identityHoldUntilMs > 0 && nowMs < identityHoldUntilMs) return true;
   if (!graceId) return false;
   return !tipRemountGeometryGraceExpired(nowMs, graceUntilMs)
     || !tipRemountFitSettleExpired(nowMs, fitSettleUntilMs);
+}
+
+/** Post-settle window: keep tip identity protect after grace clear (468). */
+export const TIP_REMOUNT_IDENTITY_HOLD_MS = 450;
+
+/**
+ * Arm identity hold when clearing an armed tip-remount grace (468).
+ */
+export function nextTipRemountIdentityHoldUntilMs(
+  nowMs: number,
+  hadArmedGrace: boolean,
+  holdMs: number = TIP_REMOUNT_IDENTITY_HOLD_MS,
+): number {
+  return hadArmedGrace ? nowMs + holdMs : 0;
+}
+
+/**
+ * Single-select od-edit-targets identity reseed must use source styles only —
+ * merging bridge preview fills empty tip keys and flickers the inspector (468).
+ */
+export function shouldReadSingleInspectorStylesFromSourceOnlyForOdEditTargets(): boolean {
+  return true;
 }
 
 /**
