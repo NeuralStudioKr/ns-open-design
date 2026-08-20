@@ -2178,6 +2178,16 @@ export async function restoreProjectFileRevision(
       };
     }
     const json = (await resp.json()) as FileRevisionRestoreResponse;
+    // Same as write/push: undo/redo/history restore must bust list-card HTML covers.
+    if (/\.html?$/i.test(fileName)) {
+      void import('../teamver/projectCoverLoader')
+        .then((mod) => {
+          mod.clearProjectCoverCache(projectId);
+        })
+        .catch(() => {
+          /* cover bust is best-effort */
+        });
+    }
     return { ok: true, revision: json.revision, file: json.file };
   } catch {
     return { ok: false, message: 'Network error while restoring the revision' };
