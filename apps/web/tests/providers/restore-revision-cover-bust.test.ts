@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const registry = readFileSync(join(here, "../src/providers/registry.ts"), "utf8");
+const registry = readFileSync(join(here, "../../src/providers/registry.ts"), "utf8");
 
 describe("restoreProjectFileRevision cover bust", () => {
   it("clears project cover cache after successful HTML restore (SSOT with write/push)", () => {
