@@ -36,4 +36,14 @@ describe('deckHtmlNeedsOfficialMotifRemerge', () => {
   it('skips non-Daisy decks', () => {
     expect(deckHtmlNeedsOfficialMotifRemerge('<section class="slide">Hi</section>')).toBe(false);
   });
+
+  it('detects Graphify / XHS Motif hang CSS that letterbox clips', () => {
+    const html = [
+      '<style data-od-official-look-css>',
+      '.tpl .gd-orb-1{top:-12%;left:-6%;width:520px}',
+      '.tpl .xp-blob.b1{top:-8%;right:-6%;width:420px}',
+      '</style>',
+    ].join('');
+    expect(deckHtmlNeedsOfficialMotifRemerge(html)).toBe(true);
+  });
 });

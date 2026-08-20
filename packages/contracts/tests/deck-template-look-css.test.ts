@@ -21,6 +21,7 @@ import {
   looksLikeOfficialFullscreenPresenterDeck,
   mergeOfficialDeckLookCss,
   needsStackedDesignViewportLock,
+  sanitizeMotifOutsideCanvasOffsets,
 } from '../src/html/deck-template-look-css';
 import {
   listLocalStylesheetHrefs,
@@ -735,6 +736,19 @@ html, body { overflow: visible !important; height: auto !important; }
     const merged = mergeOfficialDeckLookCss(currentWithHang, assets);
     expect(merged).not.toMatch(/deco-daisy[^\{]*\{[^}]*(?:top|left|right|bottom)\s*:\s*-\d/i);
     expect(merged).toMatch(/deco-daisy-tl\{[^}]*top:\s*0/i);
+  });
+
+  it('sanitizes Graphify/XHS Motif hang CSS (gd-orb / xp-blob)', () => {
+    const hang = `
+.tpl-graphify-dark-graph .gd-orb-1{width:520px;height:520px;top:-12%;left:-6%}
+.tpl-xhs-pastel-card .xp-blob.b1{width:420px;height:420px;top:-8%;right:-6%}
+.slide-title .deco-daisy-tl{top:-30px;left:-30px;width:220px;height:220px}
+`;
+    const out = sanitizeMotifOutsideCanvasOffsets(hang);
+    expect(out).not.toMatch(/(?:top|left|right|bottom)\s*:\s*-\d/);
+    expect(out).toMatch(/gd-orb-1\{[^}]*top:\s*0/);
+    expect(out).toMatch(/xp-blob\.b1\{[^}]*top:\s*0/);
+    expect(out).toMatch(/deco-daisy-tl\{[^}]*top:\s*0/);
   });
 
   it('injects Motif-safe gutter on split slides with padding:0', () => {

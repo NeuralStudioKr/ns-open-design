@@ -138,7 +138,7 @@ html, body {
   position: relative !important;
   z-index: 2 !important;
 }
-.slide > div:not([data-od-official-motif-html]):not(.deco):not([class*="deco-"]):not(.floating-pills):not(.petals):not(.gd-ambient):not(.pixel-glitch):not(.scanlines):not(.grain):not(.hc-scanlines):not(.hc-grid) {
+.slide > div:not([data-od-official-motif-html]):not(.deco):not([class*="deco-"]):not(.floating-pills):not(.petals):not(.gd-ambient):not(.pixel-glitch):not(.scanlines):not(.grain):not(.hc-scanlines):not(.hc-grid):not(.sunglow):not(.cover-blob):not([class*="cover-blob"]):not(.geo-decoration):not([class*="gd-orb"]):not(.xp-blob):not([class*="xp-blob"]):not([class*="post-it"]):not([class*="pin-"]):not([class*="doodle"]):not([class*="petal"]) {
   position: relative !important;
   z-index: 2 !important;
 }
@@ -221,8 +221,8 @@ function officialLookCssLooksCurrent(css: string): boolean {
     && /\.slide\s*>\s*:is\(h1/i.test(css)
     && /z-index\s*:\s*2\s*!important/i.test(css)
     && !OFFICIAL_LOOK_MAX_VIEWPORT_MEDIA_RE.test(css)
-    // §0.72 — official Daisy hang offsets must not count as "current".
-    && !/\.(?:deco-daisy|deco-star|sunglow|cover-blob|cover-decoration|geo-decoration)[^{]*\{[^}]*(?:top|left|right|bottom)\s*:\s*-\d/i.test(css)
+    // §0.72/§0.73 — Motif hang offsets must not count as "current".
+    && !/\.(?:deco-daisy|deco-star|sunglow|cover-blob|cover-decoration|geo-decoration|xp-blob|gd-orb|post-it|petal|pin-|doodle-|zigzag-deco)[^{]*\{[^}]*(?:top|left|right|bottom)\s*:\s*-\d/i.test(css)
   );
 }
 
@@ -230,6 +230,17 @@ function officialLookCssLooksCurrent(css: string): boolean {
 function sanitizeOfficialLookStyleBodies(html: string): string {
   return html.replace(
     /(<style\b[^>]*\bdata-od-official-look-css\b[^>]*>)([\s\S]*?)(<\/style>)/gi,
+    (_m, open: string, css: string, close: string) => {
+      const next = sanitizeMotifOutsideCanvasOffsets(css);
+      return `${open}${next}${close}`;
+    },
+  );
+}
+
+/** Strip Motif hang offsets from deco fallback sheets too (§0.73). */
+function sanitizeOfficialMotifDecoStyleBodies(html: string): string {
+  return html.replace(
+    /(<style\b[^>]*\bdata-od-official-motif-deco-css\b[^>]*>)([\s\S]*?)(<\/style>)/gi,
     (_m, open: string, css: string, close: string) => {
       const next = sanitizeMotifOutsideCanvasOffsets(css);
       return `${open}${next}${close}`;
@@ -370,6 +381,10 @@ function isReusableSpriteSheet(svg: string): boolean {
  */
 const MOTIF_PAINT_CLASS_RE =
   /\b(?:deco-[a-z0-9_-]+|deco-pill|[cf]-pill|petals?|(?:cover-)?blob(?:-[a-z0-9_-]+)?|stamp|tape|pin(?:-[a-z0-9_-]+)?|doodle(?:-[a-z0-9_-]+)?|scribble(?:-[a-z0-9_-]+)?|post-it(?:-[a-z0-9_-]+)?|xp-blob|gd-(?:orb|ambient)(?:-[a-z0-9_-]+)?|pixel-[a-z0-9_-]+|hc-scanlines?|win-(?:titlebar|window|btn)|corner-bracket|cover-decoration|geo-decoration|zigzag-deco|sunglow|ts-stripe(?:-b)?)\b/i;
+
+/** Selectors that often carry official outside-canvas Motif hangs. */
+const MOTIF_HANG_SANITIZE_SELECTOR_RE =
+  /\.(?:deco-daisy|deco-star|sunglow|cover-blob|cover-decoration|geo-decoration|xp-blob|gd-orb|post-it|petal|pin-|doodle-|zigzag-deco)/i;
 
 function classTokens(classAttr: string): string[] {
   return String(classAttr ?? '').trim().split(/\s+/).filter(Boolean);
@@ -748,41 +763,27 @@ function daisyOpenIsOfficialScale(open: string): boolean {
   return n >= 100 && n <= 240;
 }
 
-function daisyOpenHasOfficialWidth(open: string): boolean {
-  const width = /width\s*:\s*([\d.]+)\s*(px|%)/i.exec(open);
-  if (!width) return false;
-  const n = Number(width[1]);
-  if (!Number.isFinite(n)) return false;
-  if (width[2] === '%') return n >= 9.5 && n <= 14;
-  return n >= 100 && n <= 240;
-}
-
-function daisyOpenHasOutsideCanvasHang(open: string): boolean {
-  return /(?:top|left|right|bottom)\s*:\s*-\d/i.test(open);
-}
-
 /**
- * Rewrite Daisy Motif inline hangs (top:-3% etc.) to inside-canvas placement
- * without stripping the host — preserves body TL+BR instead of remmerging the
- * index-rotated TR+BL pack (§0.72).
+ * Rewrite Motif inline hangs (top:-3% etc.) to inside-canvas placement without
+ * stripping the host — preserves body packs instead of remmerging (§0.72/§0.73).
  */
-function healDaisyOutsideCanvasOffsets(slideHtml: string): string {
+function healMotifOutsideCanvasOffsets(slideHtml: string): string {
   let out = slideHtml;
-  const opens = daisyOpenTags(out);
+  const opens = out.match(
+    /<(?:div|span)[^>]*\bclass\s*=\s*(?:"[^"]+"|'[^']+')[^>]*>/gi,
+  ) ?? [];
   for (let i = opens.length - 1; i >= 0; i -= 1) {
     const open = opens[i]!;
-    if (!daisyOpenHasOutsideCanvasHang(open)) continue;
-    if (!daisyOpenHasOfficialWidth(open) && !/width\s*:/i.test(open)) {
-      // Unknown size — leave for strip/remmerge.
-      continue;
-    }
+    const cls = classAttrValue(open);
+    if (!MOTIF_PAINT_CLASS_RE.test(cls) && !isMotifClusterClass(cls)) continue;
+    if (!/(?:top|left|right|bottom)\s*:\s*-\d/i.test(open)) continue;
     const index = out.lastIndexOf(open);
     if (index < 0) continue;
     const tagMatch = /^<(div|span)\b/i.exec(open);
     if (!tagMatch) continue;
     const tag = tagMatch[1] ?? 'div';
     const attrs = open.replace(new RegExp(`^<${tag}\\b`, 'i'), '').replace(/>$/, '');
-    const placement = placementStyleForMotifClass(classAttrValue(open));
+    const placement = placementStyleForMotifClass(cls);
     const nextOpen = `<${tag}${applyMotifPlacementStyle(attrs, placement)}>`;
     out = `${out.slice(0, index)}${nextOpen}${out.slice(index + open.length)}`;
   }
@@ -1215,9 +1216,9 @@ function mergeVisibleMotifInstances(
   const nextSlides = slides.map((slide, index) => {
     const pack = motifPackForSlide(instances, index, slides.length);
     let html = slide.html;
+    // Heal Motif hangs in place first — preserve packs (§0.72/§0.73).
+    html = healMotifOutsideCanvasOffsets(html);
     if (/deco-daisy/i.test(html) || /deco-daisy/i.test(pack)) {
-      // Heal hangs in place first — preserve TL+BR body packs (§0.72).
-      html = healDaisyOutsideCanvasOffsets(html);
       html = stripMisScaledDaisyInstances(html);
     }
     if (slideHasOfficialMotifPaint(html, instances, index, slides.length)) {
@@ -1847,16 +1848,19 @@ function sanitizeMotifOffsetDeclarations(body: string): string {
 }
 
 /**
- * Official Daisy example.css uses negative top/left (e.g. top:-30px) so flowers
- * bleed past the slide in the fullscreen presenter. Stacked letterbox clips
- * those hangs. Rewrite Motif position offsets to 0 while keeping width/height.
+ * Official Motif example CSS often uses negative top/left so decorations bleed
+ * past the slide in the fullscreen presenter. Stacked letterbox clips those
+ * hangs. Rewrite Motif position offsets to 0 while keeping width/height.
  */
 export function sanitizeMotifOutsideCanvasOffsets(css: string): string {
   const source = String(css ?? '');
   if (!source.trim()) return source;
   return source.replace(
-    /([^{}]*\.(?:deco-daisy|deco-star|sunglow|cover-blob|cover-decoration|geo-decoration)[^{]*)\{([^}]*)\}/gi,
-    (_m, sel: string, body: string) => `${sel}{${sanitizeMotifOffsetDeclarations(body)}}`,
+    /([^{}]+)\{([^}]*)\}/g,
+    (full, sel: string, body: string) => {
+      if (!MOTIF_HANG_SANITIZE_SELECTOR_RE.test(sel)) return full;
+      return `${sel}{${sanitizeMotifOffsetDeclarations(body)}}`;
+    },
   );
 }
 
@@ -2136,9 +2140,9 @@ export function ensureOfficialLookStackedCanvasNeutralize(html: string): string 
     officialLookHasCurrentNeutralize(dest)
     && hasOfficialLookStackedCanvasNeutralizeProof(dest)
   ) {
-    // Even "current" neutralize sheets may still carry official Daisy hangs
-    // from pre-§0.72 merges — strip those without a full rewrite (§0.72).
-    return sanitizeOfficialLookStyleBodies(dest);
+    // Even "current" neutralize sheets may still carry official Motif hangs
+    // from pre-§0.72/§0.73 merges — strip look + deco without a full rewrite.
+    return sanitizeOfficialMotifDecoStyleBodies(sanitizeOfficialLookStyleBodies(dest));
   }
 
   if (hasOfficialLookStyleAttr(dest)) {

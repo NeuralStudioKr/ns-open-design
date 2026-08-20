@@ -9,17 +9,20 @@ import { mergeOfficialLookCssForTemplate } from './fetchPluginLocalSkill';
  */
 export function deckHtmlNeedsOfficialMotifRemerge(html: string): boolean {
   const dest = String(html ?? '');
-  if (!/deco-daisy/i.test(dest)) return false;
-  // Percent overscale (15%+) — official band is ~9.5–14%.
-  if (/deco-daisy[^>]*width\s*:\s*(?:1[5-9]|[2-9]\d+)\s*%/i.test(dest)) return true;
-  // Pixel overscale (>240px) — official paint is ~100–240px.
-  if (/deco-daisy[^>]*width\s*:\s*(?:2[5-9]\d|[3-9]\d{2}|\d{4,})\s*px/i.test(dest)) return true;
-  // Outside-canvas hangs on Motif hosts (inline).
-  if (/deco-daisy[^>]*(?:top|left|right|bottom)\s*:\s*-\d/i.test(dest)) return true;
-  // Official look/deco CSS still carrying hang offsets (e.g. top:-30px).
+  // Daisy overscale / hang (pre-§0.62 / pre-v34 stamps).
+  if (/deco-daisy/i.test(dest)) {
+    if (/deco-daisy[^>]*width\s*:\s*(?:1[5-9]|[2-9]\d+)\s*%/i.test(dest)) return true;
+    if (/deco-daisy[^>]*width\s*:\s*(?:2[5-9]\d|[3-9]\d{2}|\d{4,})\s*px/i.test(dest)) return true;
+    if (/deco-daisy[^>]*(?:top|left|right|bottom)\s*:\s*-\d/i.test(dest)) return true;
+  }
+  // Broader Motif hang CSS / inline (Graphify orbs, XHS blobs, geo, etc.).
   if (
-    /\.(?:slide-title\s+)?\.?deco-daisy[^\{]*\{[^}]*(?:top|left|right|bottom)\s*:\s*-\d/i.test(dest)
-    || /deco-daisy[^\{]*\{[^}]*(?:top|left|right|bottom)\s*:\s*-\d/i.test(dest)
+    /\.(?:deco-daisy|deco-star|sunglow|cover-blob|cover-decoration|geo-decoration|xp-blob|gd-orb|post-it|petal|pin-|doodle-|zigzag-deco)[^{]*\{[^}]*(?:top|left|right|bottom)\s*:\s*-\d/i.test(dest)
+  ) {
+    return true;
+  }
+  if (
+    /<(?:div|span)[^>]*\bclass\s*=\s*["'][^"']*(?:deco-daisy|deco-star|sunglow|cover-blob|geo-decoration|xp-blob|gd-orb|post-it|petal|pin-|doodle-)[^"']*["'][^>]*(?:top|left|right|bottom)\s*:\s*-\d/i.test(dest)
   ) {
     return true;
   }
