@@ -23,9 +23,7 @@ describe('DECK_FRAMEWORK_DIRECTIVE_COMPACT', () => {
 
   it('uses a three-slide wireframe so one-slide covers are not modeled as complete', () => {
     expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT).toContain('three slides on purpose');
-    expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT).toContain(
-      'Never close `</html></artifact>` after a single section',
-    );
+    expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT).toContain('slide-count top-up can append');
     expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT).toContain('justify-content:center');
     expect(
       DECK_FRAMEWORK_DIRECTIVE_COMPACT.match(/<section class="slide"/g)?.length,
@@ -94,7 +92,7 @@ describe('DECK_FRAMEWORK_DIRECTIVE_COMPACT', () => {
       'three slides on purpose',
     );
     expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_SELECTED_TEMPLATE).toContain(
-      'Never close `</html></artifact>` after a single section',
+      'slide-count top-up can append',
     );
     expect(
       DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_SELECTED_TEMPLATE.match(

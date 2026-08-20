@@ -456,6 +456,11 @@ function placementStyleForMotifClass(classAttr: string): string {
   if (isMotifClusterClass(classAttr)) {
     return 'position:absolute;inset:0;pointer-events:none;z-index:1';
   }
+  // Capsule pills already carry oblong geometry in style — never stamp a
+  // 140×140 default that overrides width/height via later declarations.
+  if (/\bdeco-pill\b/i.test(classAttr) || /\bpill-(?:coral|lime|lavender|sky|violet|yellow|peach|mint|white)\b/i.test(classAttr)) {
+    return 'position:absolute;pointer-events:none;z-index:2';
+  }
   if (/\bpetals?\b|\bblob\b|\bgd-orb|\bxp-blob/i.test(classAttr)) {
     return 'position:absolute;top:8%;left:6%;width:28%;height:28%;pointer-events:none;z-index:1';
   }
@@ -481,7 +486,11 @@ function ensureInlineStyle(attrs: string, style: string): string {
   if (/\bstyle\s*=/i.test(attrs)) {
     return attrs.replace(
       /\bstyle\s*=\s*(["'])([\s\S]*?)\1/i,
-      (_m, q: string, prev: string) => `style=${q}${prev}${/;?\s*$/.test(prev) ? '' : ';'}${style}${q}`,
+      (_m, q: string, prev: string) => {
+        const trimmed = String(prev).trimEnd();
+        const sep = !trimmed || /;\s*$/.test(trimmed) ? '' : ';';
+        return `style=${q}${trimmed}${sep}${style}${q}`;
+      },
     );
   }
   return `${attrs} style="${style}"`;
@@ -674,7 +683,9 @@ function daisyPaintIsOfficialScale(html: string): boolean {
     const width = /width\s*:\s*([\d.]+)\s*(px|%)/i.exec(open);
     if (!width) return false;
     const n = Number(width[1]);
-    return width[2] === '%' ? n >= 12 : n >= 140;
+    // Official Daisy timeline uses 120px; invented corner icons are ~12–48px.
+    // Accept ≥100px or ≥12% of the 1920 canvas.
+    return width[2] === '%' ? n >= 12 : n >= 100;
   });
 }
 
@@ -855,7 +866,7 @@ function listSlideBlocks(html: string): Array<{ start: number; end: number; html
       end: match.index + markup.length,
       html: markup,
     });
-    if (blocks.length >= 12) break;
+    if (blocks.length >= 16) break;
   }
   return blocks;
 }
@@ -1841,6 +1852,10 @@ export function lockDeckDesignViewportMeta(html: string): string {
   }
   if (/<head\b/i.test(dest)) {
     return dest.replace(/<head\b[^>]*>/i, (open) => `${open}\n  ${tag}`);
+  }
+  // Compact fills often omit `<head>`; still pin 1920 so vw/% Motif math matches.
+  if (/<html\b[^>]*>/i.test(dest)) {
+    return dest.replace(/<html\b[^>]*>/i, (open) => `${open}\n<head>\n  ${tag}\n</head>`);
   }
   return dest;
 }

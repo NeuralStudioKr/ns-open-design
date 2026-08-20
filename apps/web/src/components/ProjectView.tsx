@@ -1645,7 +1645,7 @@ function slideTemplateCloneContentFillInstruction(
   const lines = [
     TEMPLATE_CLONE_CONTENT_FILL_TURN_MARKER,
     'Daemon Clone seeded a LOOK preview at `deck.html`. This turn REPLACES it with a compact content-complete deck.',
-    'Do NOT attach or reproduce the full cloned example.html CSS/SVG dump — use kit palette/fonts/scaffold map. Skip Motif SVG paste this turn.',
+    'Do NOT attach or reproduce the full cloned example.html CSS/SVG dump — use kit palette/fonts/scaffold map. Title-first, then at most ONE capped kit Motif sprite when Motif sprites lists one (official Motif CSS/SVG is also merged after save).',
     ...templateCloneContentFillHardRules(),
   ];
   if (imagePaths.length > 0) {
@@ -9203,7 +9203,10 @@ export function ProjectView({
         commentAttachmentCount: scopedCommentAttachments.length,
         commentAttachments: scopedCommentAttachments,
       });
-      if (autoAttachedDeckPath) {
+      // Slide-count top-up already requires a full deck artifact that copies
+      // existing slides — do not re-stamp the generic "prefer element-patch /
+      // full deck only for redesigns" edit contract on top of it.
+      if (autoAttachedDeckPath && !isSlideCountTopUpSend) {
         modelPrompt = promptWithExistingDeckEditInstruction(modelPrompt, {
           slideOnlyMvp,
           deckPath: autoAttachedDeckPath,

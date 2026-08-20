@@ -548,6 +548,67 @@ html, body { overflow: visible !important; height: auto !important; }
     expect(cover).toContain('Linux Internals');
   });
 
+  it('keeps official-scale 120px Daisy paint and rejects only tiny invented icons', () => {
+    const official = loadOfficialLookSource(join(EXAMPLES_DIR, 'html-ppt-zhangzara-daisy-days/example.html'));
+    const assets = extractOfficialDeckLookAssets(official)!;
+    const daisySvg = assets.motifHtml.find((block) => /deco-daisy[\s\S]*?<svg\b/i.test(block));
+    expect(daisySvg).toBeTruthy();
+    const svg = /<svg\b[\s\S]*?<\/svg>/i.exec(daisySvg!)?.[0] ?? '';
+    const timelineScale = `<!doctype html><html lang="ko"><body>
+<section class="slide slide-title" style="background:#F5F0E6;width:1920px;height:1080px;position:relative">
+  <div class="deco deco-daisy" style="position:absolute;bottom:5%;right:5%;width:120px;height:120px">${svg}</div>
+  <h1>Timeline</h1>
+</section>
+<section class="slide"><h2>Body</h2></section>
+</body></html>`;
+    const merged = mergeOfficialDeckLookCss(timelineScale, assets);
+    const cover = merged.match(/<section\b[^>]*\bclass\s*=\s*"[^"]*\bslide\b[^"]*"[\s\S]*?<\/section>/i)?.[0] ?? '';
+    expect(cover).toMatch(/width:\s*120px/i);
+    expect(cover).toContain('Timeline');
+  });
+
+  it('does not override Capsule deco-pill oblong geometry with a 140px Motif default', () => {
+    const official = loadOfficialLookSource(join(EXAMPLES_DIR, 'html-ppt-zhangzara-capsule/example.html'));
+    const assets = extractOfficialDeckLookAssets(official)!;
+    const pillOpen = assets.motifHtml
+      .flatMap((block) => block.match(/<(?:div|span)\b[^>]*\bdeco-pill\b[^>]*>/gi) ?? [])
+      .find((open) => /width\s*:\s*\d+px/i.test(open));
+    expect(pillOpen).toBeTruthy();
+    const style = /style="([^"]*)"/i.exec(pillOpen!)?.[1] ?? '';
+    expect(style).toMatch(/width\s*:\s*\d+px/i);
+    expect(style).not.toMatch(/width\s*:\s*140px/i);
+    expect(style).not.toMatch(/[a-z0-9.%)]position:/i);
+  });
+
+  it('pins width=1920 viewport on no-head compact decks', () => {
+    const official = loadOfficialLookSource(join(EXAMPLES_DIR, 'html-ppt-zhangzara-daisy-days/example.html'));
+    const assets = extractOfficialDeckLookAssets(official)!;
+    const noHead = `<!doctype html><html lang="ko"><body>
+<section class="slide" style="width:1920px;height:1080px;background:#F5F0E6"><h1>Cover</h1></section>
+<section class="slide" style="width:1920px;height:1080px"><h2>Body</h2></section>
+</body></html>`;
+    const merged = mergeOfficialDeckLookCss(noHead, assets);
+    expect(merged).toMatch(/<head>[\s\S]*name="viewport"[\s\S]*width=1920/i);
+    expect(merged).toContain('Cover');
+  });
+
+  it('merges Motif onto slides beyond the old 12-slide cap', () => {
+    const official = loadOfficialLookSource(join(EXAMPLES_DIR, 'html-ppt-zhangzara-daisy-days/example.html'));
+    const assets = extractOfficialDeckLookAssets(official)!;
+    const slides = Array.from({ length: 15 }, (_, i) =>
+      i === 0
+        ? '<section class="slide"><h1>Cover</h1></section>'
+        : `<section class="slide"><h2>Slide ${i + 1}</h2></section>`,
+    ).join('\n');
+    const deck = `<!doctype html><html lang="ko"><body>${slides}</body></html>`;
+    const merged = mergeOfficialDeckLookCss(deck, assets);
+    expect(merged).toContain('Slide 15');
+    const last = [...merged.matchAll(/<section\b[^>]*\bclass\s*=\s*"[^"]*\bslide\b[^"]*"[\s\S]*?<\/section>/gi)]
+      .map((m) => m[0])
+      .find((block) => /Slide 15/.test(block)) ?? '';
+    expect(last).toMatch(/deco-daisy/i);
+  });
+
   it('does not stamp the Capsule cover pill pack onto every slide', () => {
     const official = loadOfficialLookSource(join(EXAMPLES_DIR, 'html-ppt-zhangzara-capsule', 'example.html'));
     const assets = extractOfficialDeckLookAssets(official)!;

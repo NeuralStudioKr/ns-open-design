@@ -378,6 +378,13 @@ describe("ProjectView message loading", () => {
     );
   });
 
+  it("does not restamp element-patch edit contract onto slide-count top-up sends", () => {
+    const source = readSource("src/components/ProjectView.tsx");
+    expect(source).toContain("autoAttachedDeckPath && !isSlideCountTopUpSend");
+    expect(source).toContain("Title-first, then at most ONE capped kit Motif sprite");
+    expect(source).not.toContain("Skip Motif SVG paste this turn");
+  });
+
   it("merges official look CSS on Write-tool and recovered disk HTML paths", () => {
     const source = readSource("src/components/ProjectView.tsx");
     expect(source).toContain("findSameTurnHtmlWriteForRecoveredArtifact");

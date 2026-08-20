@@ -293,14 +293,15 @@ html,body{background:var(--cream);color:var(--text-dark)}
     if (/#fcdf6c/i.test(daisyKit)) {
       expect(daisySlim).toMatch(/#fcdf6c/i);
     }
-    expect(daisySlim).toMatch(/REQUIRED after cover|~2KB|800-char Motif-budget does not apply/i);
+    expect(daisySlim).toMatch(/Motif `<svg>` is NOT required this turn|OPTIONAL identity reference/i);
     expect(daisySlim).toMatch(/Motif geometry:\s*\*\*kit Motif SVG sprites\*\*/i);
+    expect(daisySlim).not.toMatch(/REQUIRED after cover title\/lead:\s*paste exactly ONE/i);
     expect(daisySlim).not.toMatch(/Motif sprites \(omitted for first content-fill/i);
     expect(daisySlim).not.toMatch(/ZERO Motif|Motif SVG paste is DISABLED/i);
     expect(daisySlim).toMatch(/Daisy placement recipe/i);
     const daisySnippets = /Motif HTML snippets[\s\S]*?```html\n([\s\S]*?)```/i.exec(daisySlim)?.[1] ?? '';
     expect(daisySnippets).toMatch(/deco-daisy/i);
-    expect(daisySnippets).toMatch(/paste capped Motif sprite here/i);
+    expect(daisySlim).toMatch(/official Motif merge|leave empty|NOT required this turn/i);
     expect(daisySnippets).not.toMatch(/deco-rainbow[\s\S]*deco-star|deco-star[\s\S]*deco-rainbow/i);
 
     const capsuleHtml = await readFile(
