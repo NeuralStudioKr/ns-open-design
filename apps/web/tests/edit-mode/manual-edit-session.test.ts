@@ -56,6 +56,18 @@ describe('manual edit session', () => {
     })).toBe(false);
   });
 
+  it('skips history confirm when warm tip cache is behind the session cursor', () => {
+    const saved = '<html>saved</html>';
+    const stale = '<html>stale</html>';
+    expect(shouldSkipManualEditHistoryConfirm(true, {
+      expectedSource: saved,
+      tipContent: stale,
+      authoredSource: saved,
+      tipRevisionSequence: 4,
+      activeRevisionSequence: 5,
+    })).toBe(true);
+  });
+
   it('holds disk preview refresh while the freeze is active', () => {
     expect(shouldHoldDiskPreviewDuringManualEdit(true, '<html/>')).toBe(true);
     expect(shouldHoldDiskPreviewDuringManualEdit(true, null)).toBe(false);

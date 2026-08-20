@@ -1,3 +1,5 @@
+import { manualEditHistoryConfirmTipIsWarmerThanSession } from './manual-edit-save-pin';
+
 /**
  * Invariants for an active manual-edit session. While edit mode is on, the
  * iframe paints from `manualEditFrozenSource` (display freeze) while
@@ -33,14 +35,44 @@ export function shouldSkipManualEditHistoryConfirm(
     expectedSource?: string | null;
     tipContent?: string | null;
     authoredSource?: string | null;
+    tipRevisionSequence?: number | null;
+    activeRevisionSequence?: number | null;
   },
 ): boolean {
   if (!manualEditMode) return false;
   const tip = options?.tipContent;
   const expected = options?.expectedSource;
-  if (tip != null && expected != null && tip !== expected) return false;
   const authored = options?.authoredSource;
-  if (tip != null && authored != null && tip !== authored) return false;
+  const tipGateBase = {
+    tipRevisionSequence: options?.tipRevisionSequence,
+    activeRevisionSequence: options?.activeRevisionSequence,
+  };
+  if (tip != null && expected != null && tip !== expected) {
+    if (
+      !manualEditHistoryConfirmTipIsWarmerThanSession({
+        tipContent: tip,
+        expectedSource: expected,
+        authoredSource: authored,
+        ...tipGateBase,
+      })
+    ) {
+      return true;
+    }
+    return false;
+  }
+  if (tip != null && authored != null && tip !== authored) {
+    if (
+      !manualEditHistoryConfirmTipIsWarmerThanSession({
+        tipContent: tip,
+        expectedSource: expected ?? authored,
+        authoredSource: authored,
+        ...tipGateBase,
+      })
+    ) {
+      return true;
+    }
+    return false;
+  }
   return true;
 }
 

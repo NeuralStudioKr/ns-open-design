@@ -12390,11 +12390,11 @@ function HtmlViewer({
       // external-change detection. Pin only after a successful revision save.
       // Tip≠expected forces confirm even in edit mode (기획 50 tip advance).
       {
-        const tipForConfirm = tipContentForManualEditSavePin(
-          revisionStackRef.current,
-          getActiveRevisionSequence(projectId, file.name),
-          (revisionId) => getRevisionContentCache(projectId, file.name, revisionId),
-        );
+        const {
+          tipContent: tipForConfirm,
+          tipRevisionSequence,
+          activeRevisionSequence,
+        } = readManualEditHistoryConfirmTipContext();
         const authoredForConfirm = manualEditPinnedSourceRef.current?.source
           ?? lastStablePreviewSourceRef.current
           ?? sourceRef.current;
@@ -12403,6 +12403,8 @@ function HtmlViewer({
             expectedSource: baseSource,
             tipContent: tipForConfirm,
             authoredSource: authoredForConfirm,
+            tipRevisionSequence,
+            activeRevisionSequence,
           })
           && !(await confirmManualEditHistorySource(
             baseSource,
@@ -12646,11 +12648,11 @@ function HtmlViewer({
       }
       // Tip≠expected forces confirm even in edit mode (기획 50 tip advance).
       {
-        const tipForConfirm = tipContentForManualEditSavePin(
-          revisionStackRef.current,
-          getActiveRevisionSequence(projectId, file.name),
-          (revisionId) => getRevisionContentCache(projectId, file.name, revisionId),
-        );
+        const {
+          tipContent: tipForConfirm,
+          tipRevisionSequence,
+          activeRevisionSequence,
+        } = readManualEditHistoryConfirmTipContext();
         const authoredForConfirm = manualEditPinnedSourceRef.current?.source
           ?? lastStablePreviewSourceRef.current
           ?? sourceRef.current;
@@ -12659,6 +12661,8 @@ function HtmlViewer({
             expectedSource: baseSource,
             tipContent: tipForConfirm,
             authoredSource: authoredForConfirm,
+            tipRevisionSequence,
+            activeRevisionSequence,
           })
           && !(await confirmManualEditHistorySource(
             baseSource,
@@ -12771,6 +12775,27 @@ function HtmlViewer({
     }
   }
 
+  function readManualEditHistoryConfirmTipContext(): {
+    tipContent: string | null;
+    tipRevisionSequence: number | null;
+    activeRevisionSequence: number | null;
+  } {
+    const activeRevisionSequence = getActiveRevisionSequence(projectId, file.name);
+    const tipRevision = resolveManualEditSavePinTipRevision(
+      revisionStackRef.current,
+      activeRevisionSequence,
+    );
+    return {
+      tipContent: tipContentForManualEditSavePin(
+        revisionStackRef.current,
+        activeRevisionSequence,
+        (revisionId) => getRevisionContentCache(projectId, file.name, revisionId),
+      ),
+      tipRevisionSequence: tipRevision?.sequence ?? null,
+      activeRevisionSequence,
+    };
+  }
+
   async function confirmManualEditHistorySource(expectedSource: string, message: string): Promise<boolean> {
     const authored = manualEditPinnedSourceRef.current?.source
       ?? lastStablePreviewSourceRef.current
@@ -12778,11 +12803,11 @@ function HtmlViewer({
     const now = Date.now();
     // Tip + pin/authored gates share one tipContent (no false "external change"
     // after tip yield when expected already matches tip — 기획 50).
-    const tipContent = tipContentForManualEditSavePin(
-      revisionStackRef.current,
-      getActiveRevisionSequence(projectId, file.name),
-      (revisionId) => getRevisionContentCache(projectId, file.name, revisionId),
-    );
+    const {
+      tipContent,
+      tipRevisionSequence,
+      activeRevisionSequence,
+    } = readManualEditHistoryConfirmTipContext();
     // Skip disk GET when pin/authored already match the save payload.
     // Tip≠expected forces GET (parity with trustsLocal tip yield gate).
     if (manualEditHistoryConfirmCanSkipDiskFetch(
@@ -12791,6 +12816,8 @@ function HtmlViewer({
       now,
       authored,
       tipContent,
+      tipRevisionSequence,
+      activeRevisionSequence,
     )) {
       return true;
     }
@@ -12805,6 +12832,8 @@ function HtmlViewer({
       now,
       authored,
       tipContent,
+      tipRevisionSequence,
+      activeRevisionSequence,
     )) {
       return true;
     }

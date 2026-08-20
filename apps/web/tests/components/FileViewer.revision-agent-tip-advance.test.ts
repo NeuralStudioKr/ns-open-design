@@ -389,7 +389,9 @@ describe('FileViewer revision tip advance after undo', () => {
     const confirmStart = fileViewer.indexOf('async function confirmManualEditHistorySource');
     expect(confirmStart).toBeGreaterThan(0);
     const confirmBlock = fileViewer.slice(confirmStart, confirmStart + 3_800);
-    expect(confirmBlock.indexOf('tipContentForManualEditSavePin')).toBeLessThan(
+    expect(confirmBlock.indexOf('readManualEditHistoryConfirmTipContext')).toBeGreaterThan(-1);
+    expect(confirmBlock.indexOf('manualEditHistoryConfirmCanSkipDiskFetch')).toBeGreaterThan(-1);
+    expect(confirmBlock.indexOf('readManualEditHistoryConfirmTipContext')).toBeLessThan(
       confirmBlock.indexOf('manualEditHistoryConfirmCanSkipDiskFetch'),
     );
     expect(confirmBlock).toContain('manualEditHistoryConfirmTrustsLocal(');

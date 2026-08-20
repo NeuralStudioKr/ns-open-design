@@ -5,6 +5,7 @@ import {
   createManualEditSourcePin,
   isManualEditSourcePinFresh,
   manualEditHistoryConfirmCanSkipDiskFetch,
+  manualEditHistoryConfirmTipIsWarmerThanSession,
   manualEditHistoryConfirmTrustsLocal,
   preferManualEditPinnedSource,
   preferManualEditPinnedSourceOverLive,
@@ -174,6 +175,47 @@ describe('manual edit save pin', () => {
     expect(manualEditHistoryConfirmTrustsLocal(saved, null, null, 1_000 + 100, saved, tip)).toBe(false);
     // Authored already at tip — stale expected must not win.
     expect(manualEditHistoryConfirmTrustsLocal(saved, stale, null, 1_000 + 100, tip, tip)).toBe(false);
+  });
+
+  it('trusts local when warm tip cache is behind the session cursor (move/style save)', () => {
+    const pinned = createManualEditSourcePin(saved, 1_000);
+    // Session saved to seq 5; warm cache still holds seq 4 bytes.
+    expect(manualEditHistoryConfirmTipIsWarmerThanSession({
+      tipContent: stale,
+      expectedSource: saved,
+      authoredSource: saved,
+      tipRevisionSequence: 4,
+      activeRevisionSequence: 5,
+    })).toBe(false);
+    expect(manualEditHistoryConfirmCanSkipDiskFetch(
+      saved,
+      pinned,
+      1_000 + 50,
+      saved,
+      stale,
+      4,
+      5,
+    )).toBe(true);
+    expect(manualEditHistoryConfirmTrustsLocal(
+      saved,
+      saved,
+      pinned,
+      1_000 + 50,
+      saved,
+      stale,
+      4,
+      5,
+    )).toBe(true);
+    expect(manualEditHistoryConfirmTrustsLocal(
+      saved,
+      stale,
+      null,
+      1_000 + 100,
+      saved,
+      stale,
+      4,
+      5,
+    )).toBe(true);
   });
 
   it('yields warm tip over pin even when live/disk candidate is still stale', () => {

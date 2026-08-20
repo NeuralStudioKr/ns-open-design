@@ -273,6 +273,39 @@ export function shouldPreferTipAfterConfirmRefuseArtifactSwitch(): boolean {
   });
 }
 
+export type ManualEditHistoryConfirmTipGateInput = {
+  tipContent?: string | null;
+  expectedSource: string;
+  authoredSource?: string | null;
+  tipRevisionSequence?: number | null;
+  activeRevisionSequence?: number | null;
+};
+
+/**
+ * True when warm tip HTML is ahead of the save base / session cursor.
+ * When false, tip≠expected is stale cache (manual-edit move/style save).
+ *
+ * Without revision sequences, tip≠expected is conservatively warmer (agent tip
+ * lag — 기획 50).
+ */
+export function manualEditHistoryConfirmTipIsWarmerThanSession(
+  input: ManualEditHistoryConfirmTipGateInput,
+): boolean {
+  const {
+    tipContent,
+    expectedSource,
+    authoredSource,
+    tipRevisionSequence,
+    activeRevisionSequence,
+  } = input;
+  if (tipContent == null || tipContent === expectedSource) return false;
+  if (authoredSource != null && authoredSource === tipContent) return true;
+  if (tipRevisionSequence != null && activeRevisionSequence != null) {
+    return tipRevisionSequence > activeRevisionSequence;
+  }
+  return true;
+}
+
 /**
  * History confirm fetches disk before undo/redo/next edit. If that GET is
  * still the pre-write snapshot while `expectedSource` is our local save,
@@ -290,11 +323,32 @@ export function manualEditHistoryConfirmTrustsLocal(
   now: number = Date.now(),
   authoredSource?: string | null,
   tipContent?: string | null,
+  tipRevisionSequence?: number | null,
+  activeRevisionSequence?: number | null,
 ): boolean {
+  const tipGate: ManualEditHistoryConfirmTipGateInput = {
+    tipContent,
+    expectedSource,
+    authoredSource,
+    tipRevisionSequence,
+    activeRevisionSequence,
+  };
   // Tip≠expected must run BEFORE persisted===expected. S3 can still show the
   // old save while tip cache is warmer — trusting local would overwrite tip.
   if (tipContent != null && tipContent !== expectedSource) {
-    // Disk already at tip, or session authored already adopted tip.
+    const tipWarmer = manualEditHistoryConfirmTipIsWarmerThanSession(tipGate);
+    if (!tipWarmer) {
+      if (authoredSource != null && authoredSource === expectedSource) return true;
+      if (
+        isManualEditSourcePinActive(pinned, now)
+        && pinned
+        && pinned.source === expectedSource
+      ) {
+        return true;
+      }
+      if (persisted == null || persisted === expectedSource) return true;
+    }
+    // Tip is warmer (or legacy strict) — standard yield gates.
     if (persisted === tipContent) return false;
     if (authoredSource != null && authoredSource === tipContent) return false;
     // Disk still null/expected (lag) while tip is warm — force refresh path.
@@ -322,11 +376,29 @@ export function manualEditHistoryConfirmCanSkipDiskFetch(
   now: number = Date.now(),
   authoredSource?: string | null,
   tipContent?: string | null,
+  tipRevisionSequence?: number | null,
+  activeRevisionSequence?: number | null,
 ): boolean {
   if (
     tipContent != null
     && tipContent !== expectedSource
   ) {
+    if (!manualEditHistoryConfirmTipIsWarmerThanSession({
+      tipContent,
+      expectedSource,
+      authoredSource,
+      tipRevisionSequence,
+      activeRevisionSequence,
+    })) {
+      if (authoredSource != null && authoredSource === expectedSource) return true;
+      if (
+        isManualEditSourcePinActive(pinned, now)
+        && pinned
+        && pinned.source === expectedSource
+      ) {
+        return true;
+      }
+    }
     return false;
   }
   if (authoredSource != null && authoredSource === expectedSource) return true;
