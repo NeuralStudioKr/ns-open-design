@@ -309,6 +309,13 @@ const DECK_MOTIF_PATH_TAIL_RE =
   /<path\b[^>]*\bd\s*=\s*["'][\s\S]*$/i;
 const DECK_BROKEN_SECTION_CSS_DEBRIS_TAIL_RE =
   /<\/(?:section|div)>\s*[-a-z]*weight\s*:[\s\S]*$/i;
+/**
+ * Truncated inline-style attribute debris that starts mid-declaration
+ * (`px;left:60px;…uppercase">Label</div>`) — common after mid-artifact abort
+ * when the leading `<div style="…` was already consumed by stripArtifact.
+ */
+const DECK_ORPHAN_MID_STYLE_ATTR_TAIL_RE =
+  /(?:^|\n)(?:(?:px|em|rem|%|vh|vw)\s*;\s*)?(?:(?:left|top|right|bottom|width|height|font-size|font-weight|letter-spacing|line-height|color|background(?:-color)?|text-transform|opacity|margin(?:-\w+)?|padding(?:-\w+)?|border(?:-\w+)?|display|position|z-index)\s*:[^;\n"'<>]*;?\s*){1,}[\s\S]*?["']\s*>[\s\S]*$/i;
 const DECK_SLIDE_PARTIAL_OPEN_TAG_RE =
   /<(?:section|div)\b[^>]*(?:\bclass\s*=\s*["'][^"']*\bslide\b|data-slide-index|data-slide\b)[^>]*>/i;
 
@@ -347,6 +354,7 @@ export function stripTrailingDeckHtmlMarkupLeak(input: string): string {
     DECK_MOTIF_SVG_TAIL_RE,
     DECK_MOTIF_PATH_TAIL_RE,
     DECK_BROKEN_SECTION_CSS_DEBRIS_TAIL_RE,
+    DECK_ORPHAN_MID_STYLE_ATTR_TAIL_RE,
   ]) {
     const match = re.exec(input);
     if (!match || match.index === undefined) continue;

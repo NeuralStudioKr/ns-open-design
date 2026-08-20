@@ -29,6 +29,19 @@ describe("internalAgentMarkup", () => {
     }
   });
 
+  it("hard-strips mid-style attribute debris that appears after reload", () => {
+    const frag = [
+      "px;left:60px;font-size:28px;font-weight:700;color:",
+      '#7ECDC0;letter-spacing:3px;text-transform:uppercase">Senior Engineer Series</div>',
+    ].join("\n");
+    for (const streaming of [true, false]) {
+      expect(
+        sanitizeAssistantProseForDisplay(`슬라이드 초안을 준비했습니다.\n\n${frag}`, { streaming }),
+      ).toBe("슬라이드 초안을 준비했습니다.");
+      expect(sanitizeAssistantProseForDisplay(frag, { streaming }).trim()).toBe("");
+    }
+  });
+
   it("hard-strips Daisy SVG / deco-class shells via web display path", () => {
     const leaked = [
       '<div class="deco-daisy">',

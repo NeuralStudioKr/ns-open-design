@@ -80,6 +80,19 @@ describe("agent-prose-sanitize SSOT", () => {
     ).toBe("진행.");
   });
 
+  it("strips mid-style attribute debris that appears after reload", () => {
+    // Leading `<div style="…` was already stripped; history still has the
+    // truncated attribute body + label + closer (user report 2026-08-20).
+    const frag = [
+      "px;left:60px;font-size:28px;font-weight:700;color:",
+      '#7ECDC0;letter-spacing:3px;text-transform:uppercase">Senior Engineer Series</div>',
+    ].join("\n");
+    expect(sanitizeAssistantProseForDisplay(frag)).toBe("");
+    expect(
+      sanitizeAssistantProseForDisplay(`슬라이드 초안을 준비했습니다.\n\n${frag}`),
+    ).toBe("슬라이드 초안을 준비했습니다.");
+  });
+
   it("strips Daisy SVG / deco-class shells leaked into chat", () => {
     const svgLeak = [
       '<svg class="deco-daisy" viewBox="0 0 180 180" style="position:absolute;top:8%;right:6%">',
