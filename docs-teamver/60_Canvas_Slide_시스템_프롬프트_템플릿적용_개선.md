@@ -32,6 +32,23 @@
 | scaffold로 갑자기 바꾸면? | **안 됨.** kit hard cutover 금지. full HTML scaffold도 기본 inject 하지 않음 |
 | 1장짜리 템플릿 결과가 저장되는가? | **제품 경로는 첫 fill 3장.** 잘리면 제목 있는 1장은 저장하고 top-up이 덧붙인다. 제목 없는 빈 셸만 미완성으로 차단. 사용자가 1장을 명시한 경우도 허용 |
 
+### 0.69 2026-08-20 — 5장 완료 뒤 자동 '수정 요청'
+
+첫 생성이 요청한 5장을 다 만들었는데도 「슬라이드 초안이 생성되었습니다」 다음에 숨은 follow-up이 다시 돈다. 내용이 빈약해서 보완하는 경로가 아니다.
+
+**원인:** persist 성공 후 slide-count top-up이 항상 예약된다. 목표를 범위 **상한**으로 본다 (`5-6`→6, Home auto `6-8`→8). 기본값 6도 명시 장수가 빠지면 5장 완료 덱을 부족하다고 본다. 새 턴은 hidden user prompt라 사용자는 자동 수정 요청으로 읽는다.
+
+**수정:**
+- 범위는 **하한**에 도달하면 완료 (`5-6`에서 5장이면 stop)
+- 본문 `5페이지`가 quick-length 범위보다 우선
+- 명시 목표가 없을 때 5장 이상 닫힌 덱은 default 6 top-up 금지
+
+구현 현황:
+
+- [x] 5페이지 vs 6-8 range red spec
+- [x] 5-6 short preset는 5장에서 stop
+- [x] implicit default 6은 5장+ 덱에 안 붙음
+
 ### 0.68 2026-08-20 — Pink Script 템플릿 미리보기 2페이지부터 흰 화면
 
 카탈로그 `Html Ppt Zhangzara Pink Script` PreviewModal에서 다음 페이지로 가면 2페이지부터 흰 화면만 보인다. 생성 결과 look lock(§0.65)과 별개 — 공식 `example.html` 미리보기 내비게이션이다.
@@ -1561,6 +1578,7 @@ User-message 쪽 `[Existing deck edit]` / `<attached-preview-comments>` 주입�
 | 2026-08-13 | **§0.0 정책 개정** — template = layout vocabulary + visual look, 페이지 수/순서/구성은 브리프 기반. content-swap → pick-and-choose layout roles. daemon Clone default count = 6 (shells.length 아님), `pickTemplateShells` role-based scoring 도입. `template-visual-kit.ts` HARD_RULES 재작성, `DEFAULT_MAX_CHARS` 12000 → 14000. |
 | 2026-08-18 | Clone content-fill motif 보정 — 8/13 SVG hang 방지 패치가 first fill에서 `Motif sprites`/`Decoration CSS`/`Layout CSS`를 통째로 생략해 Daisy/Capsule 템플릿 정체성이 약해졌다. `slimTemplateVisualKitForFill`이 큰 SVG sprite sheet와 전체 stylesheet dump는 계속 제거하되, Daisy star/rainbow·Capsule pill/capsule·Terminal scanline 같은 compact motif recipe와 짧은 Decoration/Layout CSS cue를 보존하도록 변경했다. |
 | 2026-08-18 | §0.20 — html-ppt identity scope. 공유 `:root --bg:#ffffff` 대신 `.tpl-*` host 토큰/슬라이드 surface/폰트를 kit 계약으로 쓰고, SKILL `copy index.html` filesystem 지시를 neutralize. |
+| 2026-08-20 | §0.69 — 5-page first fill no longer queues hidden top-up. Range satisfied at min · brief 5페이지 beats 6-8 auto. |
 | 2026-08-20 | §0.68 — Pink Script catalog preview page 2+ white. `<deck-stage>` goTo / data-deck-active, no display:none hoist. |
 | 2026-08-20 | §0.67 — salvage wrap of body-only top-up was treated as a short rewrite (3≤3). head/same-cover rewrite only. |
 | 2026-08-20 | §0.66 — top-up append miss → skipped-noop (not incomplete_output). close truncated hosts · div.slide · closed-section prompt. |

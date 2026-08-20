@@ -4,8 +4,10 @@ import {
   SLIDE_COUNT_REQUEST_MAX,
   SLIDE_COUNT_TOP_UP_PROMPT_SENTINEL,
   buildSlideCountTopUpPrompt,
+  extractRequestedSlideCountSpecFromMessages,
   extractRequestedSlideCountTargetFromMessages,
   looksLikeSlideCountExpansionRequest,
+  parseSlideCountSpec,
   parseSlideCountTarget,
   shouldQueueSlideCountTopUp,
 } from "../../src/teamver/slideCountTopUp";
@@ -28,6 +30,8 @@ describe("slideCountTopUp", () => {
     expect(parseSlideCountTarget("15", { allowBareNumber: true })).toBe(15);
     expect(parseSlideCountTarget("6-8 (stability cap for first template fill)")).toBeNull();
     expect(parseSlideCountTarget("20장")).toBeNull();
+    expect(parseSlideCountSpec("5-6")).toEqual({ min: 5, max: 6 });
+    expect(parseSlideCountSpec("5페이지")).toEqual({ min: 5, max: 5 });
   });
 
   it("reads the uncapped user request from fill seeds, not the stability hint", () => {
@@ -45,6 +49,51 @@ describe("slideCountTopUp", () => {
       ),
     ];
     expect(extractRequestedSlideCountTargetFromMessages(messages)).toBe(15);
+  });
+
+  it("lets a typed 5-page brief beat a quick-length 6-8 range in the fill seed", () => {
+    const messages: ChatMessage[] = [
+      userMessage(
+        "u1",
+        [
+          "온보딩 슬라이드 5페이지 만들어줘",
+          "",
+          "[Template clone content fill]",
+          "User requested slide count: 6-8.",
+          "Slide count hint: 3 (stability cap for first template fill).",
+          'slideCount: "6-8"',
+        ].join("\n"),
+      ),
+    ];
+    expect(extractRequestedSlideCountSpecFromMessages(messages)).toEqual({ min: 5, max: 5 });
+    expect(extractRequestedSlideCountTargetFromMessages(messages)).toBe(5);
+  });
+
+  it("treats a 5-6 short preset as done at 5 pages", () => {
+    const messages: ChatMessage[] = [
+      userMessage(
+        "u1",
+        [
+          "온보딩 슬라이드 만들어줘",
+          "",
+          "[Template clone content fill]",
+          "User requested slide count: 5-6.",
+        ].join("\n"),
+      ),
+    ];
+    expect(extractRequestedSlideCountSpecFromMessages(messages)).toEqual({ min: 5, max: 6 });
+    expect(shouldQueueSlideCountTopUp({
+      produced: 5,
+      requested: 6,
+      requestedMin: 5,
+      topUpCount: 0,
+    })).toBe(false);
+    expect(shouldQueueSlideCountTopUp({
+      produced: 3,
+      requested: 6,
+      requestedMin: 5,
+      topUpCount: 0,
+    })).toBe(true);
   });
 
   it("skips hidden top-up turns when reading the requested count", () => {
@@ -99,6 +148,17 @@ describe("slideCountTopUp", () => {
       requested: 15,
       topUpCount: 0,
       hasIncompleteAssistant: true,
+    })).toBe(false);
+    expect(shouldQueueSlideCountTopUp({
+      produced: 5,
+      requested: 5,
+      topUpCount: 0,
+    })).toBe(false);
+    expect(shouldQueueSlideCountTopUp({
+      produced: 5,
+      requested: null,
+      defaultRequested: 6,
+      topUpCount: 0,
     })).toBe(false);
   });
 

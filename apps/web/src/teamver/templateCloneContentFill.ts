@@ -22,7 +22,7 @@ import {
   HOME_FILL_SLIDES_PROMPT_LEGACY,
   isSlideCreateBoilerplateLine,
 } from './slideCreateBoilerplate';
-import { parseSlideCountTarget } from './slideCountTopUp';
+import { isSlideCountRangeHint, parseSlideCountTarget } from './slideCountTopUp';
 
 /** Keep local — importing canvasSlideLaunch here caused circular init of expansion consts. */
 const SLIDE_DECK_QUALITY_BAR_INSTRUCTION =
@@ -368,9 +368,13 @@ export function buildTemplateCloneContentFillSeed(options: {
   if (templateTitle) {
     parts.push(`Selected template: ${templateTitle}.`);
   }
+  const visibleSlideCount = parseSlideCountTarget(visible);
+  const pluginOrUiHint = options.slideCountHint;
+  // Typed `5페이지` beats Home/Canvas quick-length ranges (`6-8` auto, `5-6` short).
   const slideCountHintSource =
-    options.slideCountHint
-    ?? parseSlideCountTarget(visible);
+    visibleSlideCount != null && isSlideCountRangeHint(pluginOrUiHint)
+      ? visibleSlideCount
+      : (pluginOrUiHint ?? visibleSlideCount);
   const requestedLine = formatUserRequestedSlideCountLine(slideCountHintSource);
   if (requestedLine) {
     parts.push(requestedLine);

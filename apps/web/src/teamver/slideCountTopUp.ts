@@ -72,33 +72,45 @@ export function rollbackSlideCountTopUpCount(
   return next;
 }
 
-/**
- * Range → upper bound (8-10 → 10). Ignores first-fill "stability cap" phrases
- * so a capped hint cannot become the user's target.
- */
-export function parseSlideCountTarget(
-  text: string | null | undefined,
-  options?: { allowBareNumber?: boolean },
-): number | null {
-  const normalized = String(text ?? "")
+export type SlideCountSpec = { min: number; max: number };
+
+function normalizeSlideCountText(text: string | null | undefined): string {
+  return String(text ?? "")
     .replace(/\s+/g, " ")
     .trim()
     .replace(/[.。．]+$/u, "")
     .trim();
+}
+
+function isValidSlideCount(n: number): boolean {
+  return Number.isFinite(n) && n >= 1 && n <= SLIDE_COUNT_REQUEST_MAX;
+}
+
+/** Quick-length presets like `5-6` / `6-8` — not an exact typed count. */
+export function isSlideCountRangeHint(text: string | number | null | undefined): boolean {
+  const normalized = normalizeSlideCountText(String(text ?? ""));
+  if (!normalized || /stability cap/i.test(normalized)) return false;
+  return /^\d{1,2}\s*[~\-–—]\s*\d{1,2}$/.test(normalized);
+}
+
+/**
+ * Range keeps both ends (`5-6` → min 5). Exact `5장` / `5페이지` is min=max.
+ * Ignores first-fill "stability cap" phrases so a capped hint cannot become
+ * the user's target.
+ */
+export function parseSlideCountSpec(
+  text: string | null | undefined,
+  options?: { allowBareNumber?: boolean },
+): SlideCountSpec | null {
+  const normalized = normalizeSlideCountText(text);
   if (!normalized || /stability cap/i.test(normalized)) return null;
 
   const range = normalized.match(/(\d{1,2})\s*[~\-–—]\s*(\d{1,2})/);
   if (range?.[1] && range[2]) {
     const lower = Number(range[1]);
     const upper = Number(range[2]);
-    if (
-      Number.isFinite(lower)
-      && Number.isFinite(upper)
-      && lower >= 1
-      && upper >= lower
-      && upper <= SLIDE_COUNT_REQUEST_MAX
-    ) {
-      return upper;
+    if (isValidSlideCount(lower) && isValidSlideCount(upper) && upper >= lower) {
+      return { min: lower, max: upper };
     }
   }
 
@@ -106,26 +118,39 @@ export function parseSlideCountTarget(
     /(?:정확히|exact(?:ly)?)\s*(\d{1,2})|(\d{1,2})\s*(?:장|slides?|pages?|페이지)/i,
   );
   const unitCount = Number(withUnit?.[1] || withUnit?.[2] || NaN);
-  if (Number.isFinite(unitCount) && unitCount >= 1 && unitCount <= SLIDE_COUNT_REQUEST_MAX) {
-    return unitCount;
-  }
+  if (isValidSlideCount(unitCount)) return { min: unitCount, max: unitCount };
 
   if (options?.allowBareNumber) {
     const bare = normalized.match(/^(\d{1,2})$/);
     const n = Number(bare?.[1] || NaN);
-    if (Number.isFinite(n) && n >= 1 && n <= SLIDE_COUNT_REQUEST_MAX) return n;
+    if (isValidSlideCount(n)) return { min: n, max: n };
   }
 
   return null;
 }
 
+/** Range → upper bound (8-10 → 10). Prefer `parseSlideCountSpec` for completion. */
+export function parseSlideCountTarget(
+  text: string | null | undefined,
+  options?: { allowBareNumber?: boolean },
+): number | null {
+  return parseSlideCountSpec(text, options)?.max ?? null;
+}
+
+function visibleUserSlideCountSource(content: string): string {
+  return (content.split(/\n\n\[Deliverable instruction\]/i)[0] ?? content)
+    .split("[Template clone content fill]")[0]
+    ?? content;
+}
+
 /**
  * User-facing requested count — not the first-fill stability cap.
- * Prefers the explicit `User requested slide count:` line written into Clone fill seeds.
+ * An exact `5페이지` in the visible brief beats a quick-length range
+ * (`6-8` auto / `5-6` short) written into the fill seed.
  */
-export function extractRequestedSlideCountTargetFromMessages(
+export function extractRequestedSlideCountSpecFromMessages(
   messages: readonly ChatMessage[],
-): number | null {
+): SlideCountSpec | null {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index]!;
     if (message.role !== "user") continue;
@@ -133,38 +158,47 @@ export function extractRequestedSlideCountTargetFromMessages(
     if (isAutoContinueIncompleteOutputPrompt(content)) continue;
     if (isSlideCountTopUpPrompt(content)) continue;
 
+    const visible = visibleUserSlideCountSource(content);
+    const fromVisible = parseSlideCountSpec(visible);
+    const visibleIsExact = fromVisible != null && fromVisible.min === fromVisible.max;
+
     const requestedLine = content.match(USER_REQUESTED_SLIDE_COUNT_RE);
-    if (requestedLine?.[1]) {
-      const fromLine = parseSlideCountTarget(requestedLine[1], { allowBareNumber: true });
-      if (fromLine != null) return fromLine;
-    }
+    const fromLine = requestedLine?.[1]
+      ? parseSlideCountSpec(requestedLine[1], { allowBareNumber: true })
+      : null;
+    const lineIsRange = fromLine != null && fromLine.min !== fromLine.max;
+    if (visibleIsExact && (lineIsRange || fromLine == null)) return fromVisible;
+    if (fromLine != null) return fromLine;
+    if (fromVisible != null) return fromVisible;
 
     const pluginMatch = content.match(SLIDE_COUNT_PLUGIN_INPUT_RE);
     if (pluginMatch?.[1] && !/stability cap/i.test(pluginMatch[1])) {
-      const fromPlugin = parseSlideCountTarget(pluginMatch[1], { allowBareNumber: true });
+      const fromPlugin = parseSlideCountSpec(pluginMatch[1], { allowBareNumber: true });
       if (fromPlugin != null) return fromPlugin;
     }
 
     for (const line of content.split(/\r?\n/)) {
       const formMatch = line.match(SLIDE_COUNT_FORM_LABEL_RE);
       if (formMatch?.[1]) {
-        const fromForm = parseSlideCountTarget(formMatch[1], { allowBareNumber: true });
+        const fromForm = parseSlideCountSpec(formMatch[1], { allowBareNumber: true });
         if (fromForm != null) return fromForm;
       }
     }
-
-    const visible = (content.split(/\n\n\[Deliverable instruction\]/i)[0] ?? content)
-      .split("[Template clone content fill]")[0]
-      ?? content;
-    const fromVisible = parseSlideCountTarget(visible);
-    if (fromVisible != null) return fromVisible;
   }
   return null;
+}
+
+export function extractRequestedSlideCountTargetFromMessages(
+  messages: readonly ChatMessage[],
+): number | null {
+  return extractRequestedSlideCountSpecFromMessages(messages)?.max ?? null;
 }
 
 export function shouldQueueSlideCountTopUp(input: {
   produced: number;
   requested: number | null;
+  /** Range floor (`5-6` → 5). Exact counts omit this (min = requested). */
+  requestedMin?: number | null;
   topUpCount: number;
   commentAttachmentCount?: number;
   hasIncompleteAssistant?: boolean;
@@ -173,12 +207,16 @@ export function shouldQueueSlideCountTopUp(input: {
 }): boolean {
   if (input.hasIncompleteAssistant) return false;
   if ((input.commentAttachmentCount ?? 0) > 0) return false;
-  const target = input.requested ?? input.defaultRequested ?? null;
-  if (target == null) return false;
+  const targetMax = input.requested ?? input.defaultRequested ?? null;
+  const targetMin = input.requestedMin ?? input.requested ?? input.defaultRequested ?? null;
+  if (targetMax == null || targetMin == null) return false;
   const minProduced = input.defaultRequested != null ? 1 : 3;
   if (!Number.isFinite(input.produced) || input.produced < minProduced) return false;
   if (input.topUpCount >= SLIDE_COUNT_TOP_UP_MAX_PER_CONVERSATION) return false;
-  return target > input.produced;
+  // Implicit default 6 is only for short first fills. A closed 5-page deck
+  // already matches "short" / typed 5 — do not start a hidden follow-up.
+  if (input.requested == null && input.produced >= 5) return false;
+  return input.produced < targetMin;
 }
 
 export function buildSlideCountTopUpPrompt(input: {

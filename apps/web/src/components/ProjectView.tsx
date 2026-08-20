@@ -490,6 +490,7 @@ import { consumeTeamverPublishMenuArm, maybeArmTeamverPublishMenuAfterRunSuccess
 import {
   SLIDE_COUNT_TOP_UP_ENTRY_FROM,
   buildSlideCountTopUpPrompt,
+  extractRequestedSlideCountSpecFromMessages,
   extractRequestedSlideCountTargetFromMessages,
   isSlideCountTopUpPrompt,
   looksLikeSlideCountExpansionRequest,
@@ -11349,8 +11350,8 @@ export function ProjectView({
         const allowDefaultShortDeckTopUp =
           runTemplateCloneContentFillRef.current
           || (slideOnlyMvp && !runPersistTargetFileRef.current);
-        const requested = extractRequestedSlideCountTargetFromMessages(conversationMessages)
-          ?? (allowDefaultShortDeckTopUp ? 6 : null);
+        const requestedSpec = extractRequestedSlideCountSpecFromMessages(conversationMessages);
+        const requested = requestedSpec?.max ?? null;
         const already = syncSlideCountTopUpCountFromMessages(
           conversationSlideCountTopUpCountRef.current,
           activeConversationId,
@@ -11359,6 +11360,7 @@ export function ProjectView({
         if (!shouldQueueSlideCountTopUp({
           produced,
           requested,
+          requestedMin: requestedSpec?.min,
           defaultRequested: allowDefaultShortDeckTopUp ? 6 : undefined,
           topUpCount: already,
           commentAttachmentCount: runCommentAttachmentsRef.current.length,
@@ -11394,7 +11396,8 @@ export function ProjectView({
             return;
           }
           const sendNow = handleSendRef.current;
-          if (!sendNow || requested == null) {
+          const topUpTarget = requested ?? (allowDefaultShortDeckTopUp ? 6 : null);
+          if (!sendNow || topUpTarget == null) {
             rollbackSlideCountTopUpCount(
               conversationSlideCountTopUpCountRef.current,
               scheduledConversationId,
@@ -11402,7 +11405,7 @@ export function ProjectView({
             return;
           }
           const started = sendNow(
-            buildSlideCountTopUpPrompt({ produced, requested }),
+            buildSlideCountTopUpPrompt({ produced, requested: topUpTarget }),
             [],
             [],
             { entryFrom: SLIDE_COUNT_TOP_UP_ENTRY_FROM as ChatAnalyticsEntryFrom },

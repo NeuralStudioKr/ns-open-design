@@ -110,6 +110,17 @@ describe('templateCloneContentFill', () => {
     expect(seed).toContain('Slide count hint: 3 (stability cap for first template fill).');
   });
 
+  it('records a typed 5-page brief instead of the auto 6-8 quick-length range', () => {
+    const seed = buildTemplateCloneContentFillSeed({
+      userInstruction: '온보딩 슬라이드 5페이지 만들어줘.',
+      templateTitle: 'Html Ppt Zhangzara Pink Script',
+      slideCountHint: '6-8',
+    });
+    expect(seed).toContain('User requested slide count: 5.');
+    expect(seed).not.toContain('User requested slide count: 6-8.');
+    expect(seed).toContain('Slide count hint: 3 (stability cap for first template fill).');
+  });
+
   it('fallback fill copy does not claim 첨부한 자료 or 요청한 내용 when topic is missing', () => {
     const visible = extractTemplateCloneUserFacingRequest({
       pendingPrompt: '첨부한 자료를 바탕으로 슬라이드 덱을 만들어줘.',
