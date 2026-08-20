@@ -51,8 +51,13 @@ const MOTIF_HOST_RE =
   /<(div|span)\b[^>]*\bclass\s*=\s*(?:"[^"]*"|'[^']*')[^>]*>\s*<\/\1>/gi;
 const MOTIF_HOST_CLASS_RE = /\b(?:grain-overlay|crt-overlay|hc-scanlines)\b/i;
 /** Capsule/Sakura/Hermes/Pastel CSS Motif identity seeds (not grain/crt alone). */
+const CAPSULE_PILL_COLOR_RE =
+  /\bpill-(?:coral|lime|lavender|sky|violet|yellow|peach|mint|white)\b/i;
 const CSS_MOTIF_SEED_CLASS_RE =
-  /\b(?:deco-pill|pill-[a-z0-9_-]+|petals?|blob|xp-blob|hc-scanlines|hc-grid|post-it|pixel-[a-z0-9_-]+|doodle|scribble|win-titlebar|cover-blob|cover-decoration|geo-decoration|zigzag-deco|sunglow|ts-stripe(?:-b)?|corner-bracket|deco-green-circle)\b/i;
+  /\b(?:deco-pill|pill-(?:coral|lime|lavender|sky|violet|yellow|peach|mint|white)|petals?|cover-blob|blob|xp-blob|hc-scanlines|hc-grid|post-it|pixel-(?:glitch|particles|corners|stack)|doodle|scribble|win-titlebar|cover-decoration|geo-decoration|zigzag-deco|sunglow|ts-stripe(?:-b)?|corner-bracket|deco-green-circle)\b/i;
+/** Content chrome that must never count as Motif paint / seeds. */
+const MOTIF_CONTENT_CHROME_RE =
+  /\b(?:stat-bar|pill-accent|pill-academic|pill-divider|pixel-label|pixel-hero-text|pixel-chart|pixel-btn|pixel-face|pixel-avatar|quote-container|diagram-canvas|title-pill|header-pill|orbit-pill)\b/i;
 
 /** Layout/chrome classes compact fill routinely emits — not proof of official look. */
 const GENERIC_LOOK_PROOF_CLASS_RE =
@@ -470,8 +475,25 @@ function stripMotifSampleText(html: string): string {
   });
 }
 
+/** 8-bit orbit particles are JS-filled in the example — seed static dots for Motif floor. */
+function enrichEmptyPixelParticles(block: string): string {
+  if (!/\bpixel-particles\b/i.test(block)) return block;
+  if (/<div\b[^>]*\bclass\s*=\s*["'][^"']*\bp\b/i.test(block)) return block;
+  const dots = [
+    '<div class="p" style="left:12%;top:18%;background:#5EDCF4"></div>',
+    '<div class="p" style="left:68%;top:26%;background:#FF6EC7"></div>',
+    '<div class="p" style="left:42%;top:62%;background:#FFE66D"></div>',
+    '<div class="p" style="left:78%;top:70%;background:#5EDCF4"></div>',
+    '<div class="p" style="left:22%;top:78%;background:#FF6EC7"></div>',
+  ].join('');
+  if (/<\/div>\s*$/i.test(block)) {
+    return block.replace(/<\/div>\s*$/i, `${dots}</div>`);
+  }
+  return block.replace(/\/>\s*$/, `>${dots}</div>`);
+}
+
 function isChartLikeSvg(svg: string): boolean {
-  if (/deco-|doodle|pin-|pixel-|zigzag/i.test(svg)) return false;
+  if (/deco-|doodle|pin-|pixel-|zigzag|<pattern\b/i.test(svg)) return false;
   const rects = (svg.match(/<rect\b/gi) ?? []).length;
   return rects >= 4 && /<polyline\b|<line\b/i.test(svg);
 }
@@ -490,9 +512,10 @@ function extractVisibleMotifInstances(html: string): string[] {
     const className = classAttrValue(open);
     const primary = motifPrimaryClass(className);
     if (!primary) continue;
-    if (/^pixel-(?:btn|label|hero-text|chart|bar|hbar|avatar|landscape)/i.test(primary)) continue;
+    if (MOTIF_CONTENT_CHROME_RE.test(className)) continue;
+    if (/^pixel-(?:btn|label|hero-text|chart|bar|hbar|avatar|landscape|face)/i.test(primary)) continue;
     if (/^win-(?:body|btn|buttons|icon|title-left)$/i.test(primary)) continue;
-    if (/\bpill\b/i.test(className) && !/\bdeco-pill\b|pill-(?:coral|lime|lavender|sky|violet|yellow|peach|mint|white)/i.test(className)) {
+    if (/\bpill\b/i.test(className) && !/\bdeco-pill\b/i.test(className) && !CAPSULE_PILL_COLOR_RE.test(className)) {
       if (!/\bpin-|petal|blob|doodle|post-it|deco-/i.test(className)) continue;
     }
     const start = match.index;
@@ -516,7 +539,8 @@ function extractVisibleMotifInstances(html: string): string[] {
     }
     if (primary === 'win-window' && raw.length > 800) continue;
     if (!svgMatch && !isMotifClusterClass(primary) && raw.length > 1_200) continue;
-    const cleaned = stripMotifSampleText(raw);
+    let cleaned = stripMotifSampleText(raw);
+    if (/\bpixel-particles\b/i.test(className)) cleaned = enrichEmptyPixelParticles(cleaned);
     const openMatch = /^<([a-zA-Z][\w-]*)\b([^>]*)>/.exec(cleaned);
     if (!openMatch) continue;
     const style = placementStyleForMotifClass(className);
@@ -567,12 +591,45 @@ function isVisibleMotifInstanceBlock(block: string): boolean {
 }
 
 function svgBlocksContainDaisyIdentity(html: string): boolean {
+  // Official Daisy paint = flower wrapper + substantial SVG with butter center.
+  // A lone `#fcdf6c` stroke/rect chart must NOT count (false-positive skip).
+  if (/deco-daisy[\s\S]{0,240}<svg\b[\s\S]{80,}?#fcdf6c/i.test(html)) return true;
   SVG_BLOCK_RE.lastIndex = 0;
   let match: RegExpExecArray | null;
   while ((match = SVG_BLOCK_RE.exec(html)) !== null) {
     const svg = match[0] ?? '';
-    if (svg.length < 80 || /<symbol\b/i.test(svg)) continue;
-    if (/#fcdf6c/i.test(svg) && /<path\b/i.test(svg)) return true;
+    if (svg.length < 200 || /<symbol\b/i.test(svg)) continue;
+    if (!/#fcdf6c/i.test(svg) || !/<path\b/i.test(svg)) continue;
+    const paths = (svg.match(/<path\b/gi) ?? []).length;
+    // Daisy flower uses multiple petal paths; a single chart stroke is not enough.
+    if (paths >= 3) return true;
+  }
+  return false;
+}
+
+function cssMotifElementHasPaint(dest: string, primary: string): boolean {
+  const escaped = primary.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const openRe = new RegExp(
+    `<(div|span)\\b([^>]*\\bclass\\s*=\\s*(?:"[^"]*\\b${escaped}\\b[^"]*"|'[^']*\\b${escaped}\\b[^']*')[^>]*)>`,
+    'gi',
+  );
+  // Empty host is real Motif for CSS-disc / overlay families (look CSS paints them).
+  // Capsule `.deco-pill` still needs geometry style — bare shell is not paint.
+  const cssDiscHost =
+    /^(?:gd-orb|xp-blob|cover-blob|sunglow|ts-stripe|pixel-particles|pixel-corners|hc-scanlines|win-titlebar|zigzag-deco|corner-bracket|deco-green-circle|cover-decoration|geo-decoration|deco-dots|post-it|doodle)/i.test(
+      primary,
+    );
+  let match: RegExpExecArray | null;
+  while ((match = openRe.exec(dest)) !== null) {
+    const tag = match[1] ?? 'div';
+    const attrs = match[2] ?? '';
+    const block = extractBalancedElement(dest, match.index) ?? match[0];
+    if (!block) continue;
+    if (/\bstyle\s*=\s*(["'])[^"']*(?:width|height)\s*:/i.test(attrs)) return true;
+    if (/<svg\b/i.test(block)) return true;
+    const inner = block.replace(new RegExp(`^<${tag}\\b[^>]*>|</${tag}\\s*>$`, 'gi'), '').trim();
+    if (inner.length > 0 && !/^<!--/.test(inner)) return true;
+    if (cssDiscHost) return true;
   }
   return false;
 }
@@ -580,16 +637,32 @@ function svgBlocksContainDaisyIdentity(html: string): boolean {
 function destHasInstancePaint(dest: string, block: string): boolean {
   const primary = motifPrimaryClass(classAttrValue(/^<[^>]+>/.exec(block)?.[0] ?? block));
   if (!primary) return false;
-  if (primary.includes('daisy')) return svgBlocksContainDaisyIdentity(dest);
+  if (primary.includes('daisy')) {
+    return (
+      /deco-daisy[\s\S]{0,240}<svg\b/i.test(dest)
+      && svgBlocksContainDaisyIdentity(dest)
+    );
+  }
+  if (primary.includes('pixel-glitch')) {
+    return /pixel-glitch[\s\S]{0,240}<svg\b/i.test(dest);
+  }
   if (!destHasExactClassToken(dest, primary)) return false;
   if (isMotifClusterClass(primary)) {
     const children = visiblePaintTokensFromBlock(block);
-    return children.length === 0
-      ? destHasExactClassToken(dest, primary)
-      : children.some((cls) => destHasExactClassToken(dest, cls));
+    if (children.length === 0) return cssMotifElementHasPaint(dest, primary);
+    return children.some((cls) => {
+      if (/deco-pill|petal|xp-blob|gd-orb|(?:cover-)?blob|post-it|doodle/i.test(cls)) {
+        return cssMotifElementHasPaint(dest, cls);
+      }
+      return destHasExactClassToken(dest, cls);
+    });
   }
   if (/<svg\b/i.test(block)) {
     return destHasExactClassToken(dest, primary) && /<svg\b/i.test(dest);
+  }
+  // Empty CSS Motif shells (bare `.deco-pill`) are not paint.
+  if (/deco-pill|xp-blob|cover-blob|gd-orb|post-it|pixel-particles|pixel-corners|sunglow|zigzag|corner-bracket|deco-green|ts-stripe|win-titlebar/i.test(primary)) {
+    return cssMotifElementHasPaint(dest, primary);
   }
   return true;
 }
@@ -603,11 +676,36 @@ function slideHasOfficialMotifPaint(slideHtml: string, instances: string[]): boo
   return destHasVisibleMotifIdentity(slideHtml, instances);
 }
 
-function fillEmptyMotifShells(dest: string, svg: string): string {
-  if (!dest || !svg) return dest;
+function fillEmptyMotifShells(dest: string, instances: string[]): string {
+  if (!dest || instances.length === 0) return dest;
+  const daisySvg =
+    instances
+      .map((block) => /deco-daisy/i.test(block) ? /<svg\b[\s\S]*?<\/svg>/i.exec(block)?.[0] : null)
+      .find(Boolean) ?? '';
+  const starSvg =
+    instances
+      .map((block) => /deco-star/i.test(block) ? /<svg\b[\s\S]*?<\/svg>/i.exec(block)?.[0] : null)
+      .find(Boolean) ?? '';
+  const rainbowSvg =
+    instances
+      .map((block) => /deco-rainbow/i.test(block) ? /<svg\b[\s\S]*?<\/svg>/i.exec(block)?.[0] : null)
+      .find(Boolean) ?? '';
+  const glitchSvg =
+    instances
+      .map((block) => /pixel-glitch/i.test(block) ? /<svg\b[\s\S]*?<\/svg>/i.exec(block)?.[0] : null)
+      .find(Boolean) ?? '';
+
   return dest.replace(
-    /<(div|span)\b([^>]*\bclass\s*=\s*(?:"[^"]*\b(?:deco-[a-z0-9_-]+|petal|blob)[^"]*"|'[^']*\b(?:deco-[a-z0-9_-]+|petal|blob)[^']*')[^>]*)>\s*<\/\1>/gi,
+    /<(div|span)\b([^>]*\bclass\s*=\s*(?:"[^"]*\b(?:deco-[a-z0-9_-]+|petal|blob|pixel-glitch)[^"]*"|'[^']*\b(?:deco-[a-z0-9_-]+|petal|blob|pixel-glitch)[^']*')[^>]*)>\s*<\/\1>/gi,
     (_m, tag: string, attrs: string) => {
+      const cls = classAttrValue(attrs);
+      let svg = '';
+      if (/deco-daisy/i.test(cls)) svg = daisySvg;
+      else if (/deco-star/i.test(cls)) svg = starSvg;
+      else if (/deco-rainbow/i.test(cls)) svg = rainbowSvg;
+      else if (/pixel-glitch/i.test(cls)) svg = glitchSvg;
+      // Never fill a star/petal shell with an unrelated Motif SVG.
+      if (!svg) return _m;
       const marked = markOfficialMotifHtml(`<${tag}${attrs}>`);
       return `${marked}${svg}</${tag}>`;
     },
@@ -750,8 +848,7 @@ function mergeVisibleMotifInstances(
   if (!dest || instances.length === 0) return dest;
 
   let out = mergeMotifFallbackCss(dest, officialCss, instances);
-  const primarySvg = /<svg\b[\s\S]*?<\/svg>/i.exec(instances[0] ?? '')?.[0] ?? '';
-  if (primarySvg) out = fillEmptyMotifShells(out, primarySvg);
+  out = fillEmptyMotifShells(out, instances);
 
   const slides = listSlideBlocks(out);
   if (slides.length === 0) {
@@ -899,9 +996,12 @@ function extractCssMotifSeeds(html: string): string[] {
     const open = genericMatch[0] ?? '';
     const cls = classAttrValue(open);
     if (!CSS_MOTIF_SEED_CLASS_RE.test(cls)) continue;
-    if (/\b(?:petals?|deco-pill|hc-scanlines|xp-blob)\b/i.test(cls)) continue;
+    if (/\b(?:petals?|deco-pill|hc-scanlines|xp-blob|cover-blob|pixel-glitch|pixel-particles|pixel-corners)\b/i.test(cls)) continue;
+    if (MOTIF_CONTENT_CHROME_RE.test(cls)) continue;
     const block = extractBalancedElement(source, genericMatch.index) ?? open;
     if (!block || block.length < 12 || block.length > 800) continue;
+    const innerText = block.replace(/<[^>]+>/g, '').trim();
+    if (innerText.length > 24) continue;
     const marked = markOfficialMotifHtml(block);
     if (!marked) continue;
     const proof = cssMotifSeedProofClass(marked) ?? cls.slice(0, 32);
@@ -989,18 +1089,54 @@ function ensureIdentityHostClass(dest: string, hostClass: string | null | undefi
 }
 
 function ensureSlideMotifRoleClass(dest: string, seeds: string[]): string {
-  if (!dest || !seeds.some((seed) => motifSeedFamily(seed) === 'sakura')) return dest;
+  if (!dest || seeds.length === 0) return dest;
   const slides = listSlideBlocks(dest);
   if (slides.length === 0) return dest;
-  const first = slides[0]!;
-  if (/\bs-cover\b/i.test(first.html)) return dest;
-  const nextFirst = first.html.replace(
-    /^(<(?:section|div|main|article)\b[^>]*\bclass\s*=\s*)(["'])([^"']*)\2/i,
-    (_m, prefix: string, q: string, prev: string) =>
-      `${prefix}${q}${prev}${prev ? ' ' : ''}s-cover${q}`,
+
+  let out = dest;
+  const needsSakuraCover = seeds.some(
+    (seed) => motifSeedFamily(seed) === 'sakura' || /\bpetals?\b/i.test(seed),
   );
-  if (nextFirst === first.html) return dest;
-  return `${dest.slice(0, first.start)}${nextFirst}${dest.slice(first.end)}`;
+  const needsPixelAtmosphere = seeds.some((seed) =>
+    /\bpixel-(?:glitch|particles|corners)\b/i.test(seed),
+  );
+
+  if (needsSakuraCover) {
+    const first = listSlideBlocks(out)[0];
+    if (first && !/\bs-cover\b/i.test(first.html)) {
+      const nextFirst = first.html.replace(
+        /^(<(?:section|div|main|article)\b[^>]*\bclass\s*=\s*)(["'])([^"']*)\2/i,
+        (_m, prefix: string, q: string, prev: string) =>
+          `${prefix}${q}${prev}${prev ? ' ' : ''}s-cover${q}`,
+      );
+      if (nextFirst !== first.html) {
+        out = `${out.slice(0, first.start)}${nextFirst}${out.slice(first.end)}`;
+      }
+    }
+  }
+
+  if (needsPixelAtmosphere) {
+    const refreshed = listSlideBlocks(out);
+    for (let i = refreshed.length - 1; i >= 0; i -= 1) {
+      if (i > 1) continue;
+      const slide = refreshed[i]!;
+      if (/\bscanlines\b/i.test(slide.html) && /\bgrain\b/i.test(slide.html)) continue;
+      const nextHtml = slide.html.replace(
+        /^(<(?:section|div|main|article)\b[^>]*\bclass\s*=\s*)(["'])([^"']*)\2/i,
+        (_m, prefix: string, q: string, prev: string) => {
+          const parts = prev.split(/\s+/).filter(Boolean);
+          if (!parts.some((c) => /^scanlines$/i.test(c))) parts.push('scanlines');
+          if (!parts.some((c) => /^grain$/i.test(c))) parts.push('grain');
+          return `${prefix}${q}${parts.join(' ')}${q}`;
+        },
+      );
+      if (nextHtml !== slide.html) {
+        out = `${out.slice(0, slide.start)}${nextHtml}${out.slice(slide.end)}`;
+      }
+    }
+  }
+
+  return out;
 }
 
 function mergeCssMotifSeeds(dest: string, seeds: string[]): string {
@@ -1206,10 +1342,11 @@ export function deckHtmlHasOfficialLookCss(
   assets: OfficialDeckLookAssets,
 ): boolean {
   const dest = String(html ?? '');
-  // Our merge writes this marker with the official sheet. Compact mid-sheet
-  // windows do not survive pretty-printed sibling CSS (Pin assets/styles.css),
-  // so a second pass would duplicate the sheet if we still required window hits.
-  if (dest.includes(OFFICIAL_DECK_LOOK_STYLE_ATTR)) return true;
+  // Require a real <style data-od-official-look-css> — comments / text mentioning
+  // the attr must not skip the official sheet (poisoned "already merged").
+  if (new RegExp(`<style\\b[^>]*\\b${OFFICIAL_DECK_LOOK_STYLE_ATTR}\\b`, 'i').test(dest)) {
+    return true;
+  }
 
   const windows = officialLookCssWindows(assets.css);
   const windowHits = countOfficialLookWindows(dest, assets);

@@ -575,6 +575,81 @@ html, body { overflow: visible !important; height: auto !important; }
     }
   });
 
+  it('does not treat an empty deco-pill shell as Capsule Motif paint', () => {
+    const official = loadOfficialLookSource(join(EXAMPLES_DIR, 'html-ppt-zhangzara-capsule', 'example.html'));
+    const assets = extractOfficialDeckLookAssets(official)!;
+    const emptyPill = LINUX_SPARSE_COVER.replace(
+      '</section>',
+      '<div class="deco-pill"></div></section>',
+    );
+    const merged = mergeOfficialDeckLookCss(emptyPill, assets);
+    const cover = merged.match(/<section class="slide"[\s\S]*?<\/section>/i)?.[0] ?? '';
+    expect(cover).toMatch(/deco-pill[^>]*(?:style\s*=\s*["'][^"']*width\s*:)/i);
+    expect(merged).toContain('Linux Internals for Senior Engineers');
+  });
+
+  it('does not treat a butter-colored chart SVG as Daisy Motif identity', () => {
+    const official = loadOfficialLookSource(join(EXAMPLES_DIR, 'html-ppt-zhangzara-daisy-days/example.html'));
+    const assets = extractOfficialDeckLookAssets(official)!;
+    const chartCover = `<!doctype html><html lang="ko"><body>
+<section class="slide" style="background:#F5F0E6;width:1920px;height:1080px;position:relative">
+  <h1>Linux Internals for Senior Engineers</h1>
+  <svg viewBox="0 0 120 40" width="120" height="40">
+    <path d="M0 20 H120" stroke="#fcdf6c" fill="none"/>
+    <rect x="10" y="8" width="12" height="24" fill="#fcdf6c"/>
+  </svg>
+</section>
+<section class="slide" style="width:1920px;height:1080px;position:relative"><h2>Body</h2></section>
+</body></html>`;
+    const merged = mergeOfficialDeckLookCss(chartCover, assets);
+    const cover = merged.match(/<section class="slide"[\s\S]*?<\/section>/i)?.[0] ?? '';
+    expect(cover).toMatch(/deco-daisy[\s\S]{0,240}<svg\b[\s\S]{80,}?#fcdf6c/i);
+  });
+
+  it('does not skip official look CSS when the attr only appears in a comment', () => {
+    const official = loadOfficialLookSource(join(EXAMPLES_DIR, 'html-ppt-zhangzara-capsule/example.html'));
+    const assets = extractOfficialDeckLookAssets(official)!;
+    const poisoned = `<!doctype html><html><head><!-- data-od-official-look-css --></head><body>
+<section class="slide"><h1>Topic</h1></section></body></html>`;
+    expect(deckHtmlHasOfficialLookCss(poisoned, assets)).toBe(false);
+    const merged = mergeOfficialDeckLookCss(poisoned, assets);
+    expect(merged).toMatch(/<style[^>]*\bdata-od-official-look-css\b/i);
+    expect(merged).toContain('Topic');
+  });
+
+  it('fills empty Daisy star shells with star SVG, not butter flower SVG', () => {
+    const official = loadOfficialLookSource(join(EXAMPLES_DIR, 'html-ppt-zhangzara-daisy-days/example.html'));
+    const assets = extractOfficialDeckLookAssets(official)!;
+    const shells = `<!doctype html><html lang="ko"><body>
+<section class="slide" style="position:relative;background:#F5F0E6">
+  <div class="deco deco-star-1"></div>
+  <h1>Topic</h1>
+</section>
+</body></html>`;
+    const merged = mergeOfficialDeckLookCss(shells, assets);
+    expect(merged).toMatch(/deco-star-1[\s\S]{0,120}<svg\b/i);
+    expect(merged).not.toMatch(/deco-star-1[\s\S]{0,400}#fcdf6c/i);
+  });
+
+  it('does not extract content chrome pills/labels as Motif seeds', () => {
+    for (const folder of [
+      'html-ppt-pitch-deck',
+      'html-ppt-course-module',
+      'html-ppt-zhangzara-long-table',
+      'html-ppt-zhangzara-8-bit-orbit',
+      'html-ppt-zhangzara-capsule',
+    ]) {
+      const official = loadOfficialLookSource(join(EXAMPLES_DIR, folder, 'example.html'));
+      const assets = extractOfficialDeckLookAssets(official)!;
+      expect(
+        assets.motifHtml.every(
+          (block) => !/\bpill-(?:accent|academic|divider)\b|\bpixel-label\b|\bstat-bar\b|\bquote-container\b|\bpixel-face\b/i.test(block),
+        ),
+        folder,
+      ).toBe(true);
+    }
+  });
+
   it('still injects Daisy flower SVG when the fill already has tiny decorative <svg> dots', () => {
     const official = loadOfficialLookSource(join(EXAMPLES_DIR, 'html-ppt-zhangzara-daisy-days/example.html'));
     const assets = extractOfficialDeckLookAssets(official)!;
