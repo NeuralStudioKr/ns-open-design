@@ -1732,7 +1732,7 @@ export function extractTemplateVisualKitFromHtml(
     slideBackground: surfaceBinding.background,
     slideSource: surfaceBinding.source,
   });
-  if (identity.className && !anchors.some((line) => line.includes(identity.className!))) {
+  if (identity.className && !anchors.some((line) => line.includes('Identity host class:'))) {
     anchors.unshift(`- Identity host class: \`.${identity.className}\``);
   }
   if (anchors.length > 0) {

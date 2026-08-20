@@ -1836,7 +1836,7 @@ export function mergeOfficialDeckLookCss(
       const href = hrefFromLinkTag(tag);
       return href ? !out.includes(href) : !out.includes(tag);
     });
-    const rewritten = prepareOfficialLookCss(assets.css);
+    const rewritten = prepareOfficialLookCss(assets.css).trim();
     const style = rewritten
       ? `<style ${OFFICIAL_DECK_LOOK_STYLE_ATTR}>\n${rewritten}\n${LOOK_NEUTRALIZE_CSS}\n</style>`
       : '';
@@ -1849,11 +1849,9 @@ export function mergeOfficialDeckLookCss(
         : insertBeforeCloseHeadOrOpenBody(out, style);
     }
   } else if (hasOfficialLookStyleAttr(out)) {
-    out = out.replace(
-      /(<style\b[^>]*\bdata-od-official-look-css\b[^>]*>)([\s\S]*?)(<\/style>)/gi,
-      (_m, open: string, css: string, close: string) =>
-        `${open}${appendCompactOfficialTypeLock(rewriteOfficialLookHostSlideSelectors(css))}${close}`,
-    );
+    // Rewrite official selectors only — never the neutralize tail
+    // (`.presentation > .slide` must keep its specificity).
+    out = replaceOfficialLookNeutralizeBlock(out);
   }
 
   return lockDeckDesignViewportMeta(
@@ -1976,8 +1974,8 @@ function replaceOfficialLookNeutralizeBlock(html: string): string {
     (_m, open: string, css: string, close: string) => {
       const prepared = prepareOfficialLookCss(
         String(css).replace(LOOK_NEUTRALIZE_TAIL_RE, ''),
-      ).trimEnd();
-      return `${open}${prepared}\n${LOOK_NEUTRALIZE_CSS}\n${close}`;
+      ).trim();
+      return `${open}\n${prepared}\n${LOOK_NEUTRALIZE_CSS}\n${close}`;
     },
   );
 }
