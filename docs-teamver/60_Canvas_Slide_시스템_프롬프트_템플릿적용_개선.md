@@ -1504,6 +1504,7 @@ User-message 쪽 `[Existing deck edit]` / `<attached-preview-comments>` 주입�
 | 2026-08-13 | **§0.0 정책 개정** — template = layout vocabulary + visual look, 페이지 수/순서/구성은 브리프 기반. content-swap → pick-and-choose layout roles. daemon Clone default count = 6 (shells.length 아님), `pickTemplateShells` role-based scoring 도입. `template-visual-kit.ts` HARD_RULES 재작성, `DEFAULT_MAX_CHARS` 12000 → 14000. |
 | 2026-08-18 | Clone content-fill motif 보정 — 8/13 SVG hang 방지 패치가 first fill에서 `Motif sprites`/`Decoration CSS`/`Layout CSS`를 통째로 생략해 Daisy/Capsule 템플릿 정체성이 약해졌다. `slimTemplateVisualKitForFill`이 큰 SVG sprite sheet와 전체 stylesheet dump는 계속 제거하되, Daisy star/rainbow·Capsule pill/capsule·Terminal scanline 같은 compact motif recipe와 짧은 Decoration/Layout CSS cue를 보존하도록 변경했다. |
 | 2026-08-18 | §0.20 — html-ppt identity scope. 공유 `:root --bg:#ffffff` 대신 `.tpl-*` host 토큰/슬라이드 surface/폰트를 kit 계약으로 쓰고, SKILL `copy index.html` filesystem 지시를 neutralize. |
+| 2026-08-20 | §0.62 — Motif text occlusion. Daisy ~12%/20% · Motif z-index≤1 · content z-index:2 · Motif-safe padding · cache v34. |
 | 2026-08-20 | §0.61 — Motif merge harden after Motif-defer. slide cap 16 · Capsule pill geometry · no-head viewport · Daisy ≥100px · top-up edit skip · fill kit Motif SVG deferred · cache v33. |
 | 2026-08-20 | §0.60 — 1장 이후 top-up/다음-장이 공식 Daisy `deck.html`을 다시 써서 멈추던 문제. append-only + persist merge + top-up abort. |
 | 2026-08-20 | §0.59 — 첫 fill을 3장·body-first로 cap · Motif SVG 이번 턴 금지 · head-kit dump mid-stream abort · persist `초안` 제목 제거. |

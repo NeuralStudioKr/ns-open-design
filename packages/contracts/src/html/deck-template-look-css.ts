@@ -128,6 +128,19 @@ html, body {
   height: 100% !important;
   display: block !important;
 }
+/* Compact fills often omit .title-box; keep copy above Motif corners/pills. */
+.slide > :is(h1, h2, h3, p, ul, ol, blockquote, figure, table),
+.slide > .title-box, .slide > .main-title, .slide > .title-pill,
+.slide > .content, .slide > .slide-inner, .slide > .slide-body,
+.slide > .copy, .slide > .text, .slide > .lead, .slide > .welcome-frame,
+.slide > .card {
+  position: relative;
+  z-index: 2;
+}
+.slide > div:not([data-od-official-motif-html]):not(.deco):not([class*="deco-"]):not(.floating-pills):not(.petals):not(.gd-ambient):not(.pixel-glitch):not(.scanlines):not(.grain):not(.hc-scanlines):not(.hc-grid) {
+  position: relative;
+  z-index: 2;
+}
 `;
 
 const LOOK_NEUTRALIZE_TAIL_RE =
@@ -436,48 +449,49 @@ function motifInstanceScore(block: string, className: string): number {
 }
 
 function placementStyleForMotifClass(classAttr: string): string {
-  // % of the 1920×1080 canvas so preview scale matches the official
-  // presenter look (220px flowers on a ~1000px iframe ≈ 22% of 1920).
+  // % of the 1920×1080 canvas ≈ official Daisy px recipes (220/1920≈11.5%,
+  // 220/1080≈20%). Earlier 22%/39% stamps invaded the title band.
   if (/deco-daisy-tl/i.test(classAttr)) {
-    return 'position:absolute;top:-4%;left:-3%;width:22%;height:39%;pointer-events:none;z-index:1';
+    return 'position:absolute;top:-3%;left:-2%;width:12%;height:20%;pointer-events:none;z-index:1';
   }
   if (/deco-daisy-tr/i.test(classAttr)) {
-    return 'position:absolute;top:2%;right:-2%;width:18%;height:32%;pointer-events:none;z-index:1';
+    return 'position:absolute;top:2%;right:-1%;width:10%;height:17%;pointer-events:none;z-index:1';
   }
   if (/deco-daisy-bl/i.test(classAttr)) {
-    return 'position:absolute;bottom:-4%;left:1%;width:19%;height:34%;pointer-events:none;z-index:1';
+    return 'position:absolute;bottom:-4%;left:1%;width:11%;height:19%;pointer-events:none;z-index:1';
   }
   if (/deco-daisy-br/i.test(classAttr) || /deco-daisy\b/i.test(classAttr)) {
-    return 'position:absolute;bottom:-2%;right:-3%;width:20%;height:36%;pointer-events:none;z-index:1';
+    return 'position:absolute;bottom:-1%;right:-2%;width:11%;height:19%;pointer-events:none;z-index:1';
   }
   if (/deco-star/i.test(classAttr)) {
-    return 'position:absolute;top:12%;right:7%;width:8%;height:14%;pointer-events:none;z-index:1';
+    return 'position:absolute;top:12%;right:7%;width:5%;height:8%;pointer-events:none;z-index:1';
   }
   if (isMotifClusterClass(classAttr)) {
     return 'position:absolute;inset:0;pointer-events:none;z-index:1';
   }
   // Capsule pills already carry oblong geometry in style — never stamp a
   // 140×140 default that overrides width/height via later declarations.
+  // Keep Motif at z-index:1 so compact titles (z-index:2) stay readable.
   if (/\bdeco-pill\b/i.test(classAttr) || /\bpill-(?:coral|lime|lavender|sky|violet|yellow|peach|mint|white)\b/i.test(classAttr)) {
-    return 'position:absolute;pointer-events:none;z-index:2';
+    return 'position:absolute;pointer-events:none;z-index:1';
   }
   if (/\bpetals?\b|\bblob\b|\bgd-orb|\bxp-blob/i.test(classAttr)) {
-    return 'position:absolute;top:8%;left:6%;width:28%;height:28%;pointer-events:none;z-index:1';
+    return 'position:absolute;top:6%;left:4%;width:16%;height:22%;pointer-events:none;z-index:1';
   }
   if (/\bpin-/i.test(classAttr)) {
-    return 'position:absolute;top:8%;right:8%;width:180px;height:56px;pointer-events:none;z-index:2;color:#1E1E1E';
+    return 'position:absolute;top:8%;right:8%;width:180px;height:56px;pointer-events:none;z-index:1;color:#1E1E1E';
   }
   if (/pixel-glitch/i.test(classAttr)) {
-    return 'position:absolute;top:0;right:0;width:28%;height:100%;pointer-events:none;z-index:1';
+    return 'position:absolute;top:0;right:0;width:22%;height:100%;pointer-events:none;z-index:1';
   }
   if (/win-titlebar/i.test(classAttr)) {
-    return 'position:absolute;top:8%;left:10%;width:72%;height:36px;pointer-events:none;z-index:2';
+    return 'position:absolute;top:8%;left:10%;width:72%;height:36px;pointer-events:none;z-index:1';
   }
   if (/ts-stripe/i.test(classAttr)) {
     return 'position:absolute;top:0;left:0;width:100%;height:12px;pointer-events:none;z-index:1';
   }
   if (/sunglow|cover-blob|cover-decoration|geo-decoration/i.test(classAttr)) {
-    return 'position:absolute;top:-8%;right:-6%;width:42%;height:42%;pointer-events:none;z-index:0';
+    return 'position:absolute;top:-8%;right:-6%;width:36%;height:36%;pointer-events:none;z-index:0';
   }
   return 'position:absolute;top:10%;right:8%;width:140px;height:140px;pointer-events:none;z-index:1';
 }
@@ -826,6 +840,36 @@ function insertMotifIntoSlide(slideHtml: string, motif: string): string {
   );
 }
 
+/**
+ * Compact Motif-deferred fills often omit slide padding. Corner Motifs then
+ * sit on the title band. Inject Daisy/Capsule-like insets when no padding is
+ * declared — leave explicit padding (incl. split `padding:0`) alone.
+ */
+function ensureMotifSafeSlideInsets(slideHtml: string): string {
+  if (!slideHtml) return slideHtml;
+  if (/split-(?:left|right)|class\s*=\s*["'][^"']*\bsplit-/i.test(slideHtml)) {
+    return slideHtml;
+  }
+  const open = /^(<(?:section|div|main|article)\b)([^>]*)(>)/i.exec(slideHtml);
+  if (!open) return slideHtml;
+  const [, tag, attrs, close] = open;
+  const styleMatch = /\bstyle\s*=\s*(["'])([\s\S]*?)\1/i.exec(attrs ?? '');
+  if (styleMatch) {
+    const style = styleMatch[2] ?? '';
+    if (/padding(?:-(?:top|right|bottom|left))?\s*:/i.test(style)) return slideHtml;
+    const q = styleMatch[1];
+    const trimmed = style.trimEnd();
+    const sep = !trimmed || /;\s*$/.test(trimmed) ? '' : ';';
+    const nextAttrs = (attrs ?? '').replace(
+      /\bstyle\s*=\s*(["'])([\s\S]*?)\1/i,
+      `style=${q}${trimmed}${sep}padding:56px 72px${q}`,
+    );
+    return `${tag}${nextAttrs}${close}${slideHtml.slice(open[0].length)}`;
+  }
+  const nextAttrs = `${attrs ?? ''} style="padding:56px 72px"`;
+  return `${tag}${nextAttrs}${close}${slideHtml.slice(open[0].length)}`;
+}
+
 function extractBalancedElement(html: string, start: number): string | null {
   const openMatch = /^<([a-zA-Z][\w-]*)\b[^>]*>/.exec(html.slice(start));
   if (!openMatch) return null;
@@ -1002,6 +1046,16 @@ function motifFallbackCss(officialCss: string, instances: string[]): string {
     }
     if (rules.length >= 32) break;
   }
+  const stacking = [
+    '/* Content above Motif — compact fills lack .title-box z-index */',
+    '.slide > :is(h1,h2,h3,p,ul,ol,blockquote,figure,table),',
+    '.slide > .title-box,.slide > .main-title,.slide > .title-pill,',
+    '.slide > .content,.slide > .slide-inner,.slide > .slide-body,',
+    '.slide > .copy,.slide > .text,.slide > .lead,.slide > .welcome-frame,.slide > .card{',
+    'position:relative;z-index:2;',
+    '}',
+  ].join('');
+  rules.push(stacking);
   return rules.join('\n');
 }
 
@@ -1037,12 +1091,12 @@ function mergeVisibleMotifInstances(
       ? stripUnderScaleDaisyInstances(slide.html)
       : slide.html;
     if (slideHasOfficialMotifPaint(html, instances, index, slides.length)) {
-      return html;
+      return ensureMotifSafeSlideInsets(html);
     }
     if (/data-od-official-motif-html/i.test(html)) {
       html = stripOfficialMotifInstances(html);
     }
-    return insertMotifIntoSlide(html, pack);
+    return ensureMotifSafeSlideInsets(insertMotifIntoSlide(html, pack));
   });
 
   for (let i = slides.length - 1; i >= 0; i -= 1) {

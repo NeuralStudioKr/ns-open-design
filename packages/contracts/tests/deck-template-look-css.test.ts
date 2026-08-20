@@ -517,10 +517,14 @@ html, body { overflow: visible !important; height: auto !important; }
     expect(cover).toMatch(/deco-daisy-bl/i);
     expect(cover).toMatch(/deco-daisy-br|deco-daisy\b/i);
     expect(cover).toMatch(/slide-title/);
-    expect(cover).toMatch(/width:\s*22%/i);
+    expect(cover).toMatch(/width:\s*12%/i);
+    expect(cover).not.toMatch(/width:\s*22%/i);
     expect((cover.match(/deco-daisy/gi) ?? []).length).toBeGreaterThanOrEqual(4);
     expect(merged).toMatch(/flex-direction:\s*column/);
     expect(merged).toMatch(/justify-content:\s*center/);
+    // Compact cover titles must stack above Motif corners.
+    expect(merged).toMatch(/\.slide\s*>\s*:is\(h1[\s\S]*z-index:\s*2/i);
+    expect(cover).toMatch(/padding:\s*56px\s+72px/i);
     const twice = mergeOfficialDeckLookCss(merged, assets);
     expect(twice).toBe(merged);
   });
@@ -543,9 +547,50 @@ html, body { overflow: visible !important; height: auto !important; }
     const cover = merged.match(/<section\b[^>]*\bclass\s*=\s*"[^"]*\bslide\b[^"]*"[\s\S]*?<\/section>/i)?.[0] ?? '';
     expect(cover).toMatch(/deco-daisy-tl/i);
     expect(cover).toMatch(/slide-title/);
-    expect(cover).toMatch(/width:\s*22%/i);
+    expect(cover).toMatch(/width:\s*12%/i);
     expect(cover).not.toMatch(/width:\s*40px/i);
     expect(cover).toContain('Linux Internals');
+  });
+
+  it('keeps long compact titles readable above Motif corners (z-index + safe padding)', () => {
+    const official = loadOfficialLookSource(join(EXAMPLES_DIR, 'html-ppt-zhangzara-daisy-days/example.html'));
+    const assets = extractOfficialDeckLookAssets(official)!;
+    const sparse = `<!doctype html><html lang="ko"><body>
+<section class="slide" style="background:#F5F0E6;width:1920px;height:1080px">
+  <h1>Linux Internals &amp; Production Mastery for Senior Engineers</h1>
+  <p>Kernel, cgroups, observability, and trade-offs.</p>
+</section>
+<section class="slide"><h2>Body</h2></section>
+</body></html>`;
+    const merged = mergeOfficialDeckLookCss(sparse, assets);
+    const cover = merged.match(/<section\b[^>]*\bclass\s*=\s*"[^"]*\bslide\b[^"]*"[\s\S]*?<\/section>/i)?.[0] ?? '';
+    expect(cover).toMatch(/deco-daisy-tl/i);
+    expect(cover).toMatch(/padding:\s*56px\s+72px/i);
+    expect(cover).toMatch(/width:\s*12%/i);
+    expect(cover).not.toMatch(/width:\s*22%/i);
+    expect(merged).toMatch(/z-index:\s*2/);
+    // Motif stays under content.
+    expect(cover).toMatch(/deco-daisy[\s\S]*z-index:\s*1/i);
+    expect(cover).toContain('Linux Internals');
+  });
+
+  it('does not raise Capsule Motif pills above compact title stacking', () => {
+    const official = loadOfficialLookSource(join(EXAMPLES_DIR, 'html-ppt-zhangzara-capsule/example.html'));
+    const assets = extractOfficialDeckLookAssets(official)!;
+    const sparse = `<!doctype html><html lang="ko"><body>
+<section class="slide" style="background:#FFF8F0;width:1920px;height:1080px"><h1>Capsule Cover</h1></section>
+<section class="slide"><h2>Body</h2></section>
+</body></html>`;
+    const merged = mergeOfficialDeckLookCss(sparse, assets);
+    const cover = merged.match(/<section\b[^>]*\bclass\s*=\s*"[^"]*\bslide\b[^"]*"[\s\S]*?<\/section>/i)?.[0] ?? '';
+    const pillStyles = [...cover.matchAll(/<(?:div|span)\b[^>]*\bdeco-pill\b[^>]*style="([^"]*)"/gi)]
+      .map((m) => m[1] ?? '');
+    expect(pillStyles.length).toBeGreaterThan(0);
+    for (const style of pillStyles) {
+      expect(style).not.toMatch(/z-index:\s*2/i);
+      if (/z-index\s*:/i.test(style)) expect(style).toMatch(/z-index:\s*1/i);
+    }
+    expect(merged).toMatch(/z-index:\s*2/);
   });
 
   it('keeps official-scale 120px Daisy paint and rejects only tiny invented icons', () => {
