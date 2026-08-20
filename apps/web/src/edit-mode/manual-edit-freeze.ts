@@ -554,6 +554,28 @@ export function nextTipRemountIdentityHoldUntilMs(
 }
 
 /**
+ * Only remasure consume / grace expiry should arm post-settle identity hold.
+ * Selection leave / mode exit must drop hold so a new target is not painted
+ * with the previous tip's styles (469).
+ */
+export function shouldArmTipRemountIdentityHoldOnGraceClear(
+  reason: 'consume' | 'expiry' | 'safety' | 'selection' | 'mode-exit',
+): boolean {
+  return reason === 'consume' || reason === 'expiry' || reason === 'safety';
+}
+
+/**
+ * Tip style preserve / identity Mixed skip apply only while tip protect is
+ * active AND selection membership is unchanged (469).
+ */
+export function shouldPreserveTipSyncedStylesOnOdEditTargets(
+  tipRemountActive: boolean,
+  selectionIdsChanged: boolean,
+): boolean {
+  return tipRemountActive && !selectionIdsChanged;
+}
+
+/**
  * Single-select od-edit-targets identity reseed must use source styles only —
  * merging bridge preview fills empty tip keys and flickers the inspector (468).
  */

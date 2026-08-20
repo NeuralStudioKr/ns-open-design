@@ -350,6 +350,8 @@ import {
   withPreservedTipSyncedStylesOnBridgeTarget,
   resolveTipSyncedStylesForOdEditTargetsPreserve,
   nextTipRemountIdentityHoldUntilMs,
+  shouldArmTipRemountIdentityHoldOnGraceClear,
+  shouldPreserveTipSyncedStylesOnOdEditTargets,
   shouldReadSingleInspectorStylesFromSourceOnlyForOdEditTargets,
   shouldRefreshHostMetricsAfterTipRemountMultiRemasure,
   shouldSkipSrcDocTransportRemountForManualEditFreezeTipSync,
@@ -8244,16 +8246,23 @@ function HtmlViewer({
   }
 
   /** Clear tip-remount grace latch (id + until) — expiry, consume, or leave. */
-  function clearManualEditTipRemountGeometryGrace() {
-    // Keep tip identity protect briefly after settle so the first post-grace
-    // od-edit-targets broadcast cannot flip Mixed/inspector (468).
-    // Only arm when clearing an armed grace — repeat clears must not wipe hold.
+  function clearManualEditTipRemountGeometryGrace(
+    reason: 'consume' | 'expiry' | 'safety' | 'selection' | 'mode-exit' = 'consume',
+  ) {
+    // Remasure consume / expiry / safety: keep tip identity protect briefly so
+    // the first post-grace od-edit-targets cannot flip Mixed/inspector (468).
+    // Selection leave / mode-exit: drop hold so a new target is not painted
+    // with the previous tip's styles (469).
     const hadArmedGrace = Boolean(manualEditTipRemountGeometryGraceIdRef.current);
-    if (hadArmedGrace) {
-      manualEditTipRemountIdentityHoldUntilRef.current = nextTipRemountIdentityHoldUntilMs(
-        Date.now(),
-        true,
-      );
+    if (shouldArmTipRemountIdentityHoldOnGraceClear(reason)) {
+      if (hadArmedGrace) {
+        manualEditTipRemountIdentityHoldUntilRef.current = nextTipRemountIdentityHoldUntilMs(
+          Date.now(),
+          true,
+        );
+      }
+    } else {
+      manualEditTipRemountIdentityHoldUntilRef.current = 0;
     }
     manualEditTipRemountGeometryGraceIdRef.current = null;
     manualEditTipRemountGeometryGraceUntilRef.current = 0;
@@ -8297,7 +8306,7 @@ function HtmlViewer({
       manualEditTipRemountGeometryGraceIdRef.current,
       nextSelectedId,
     )) {
-      clearManualEditTipRemountGeometryGrace();
+      clearManualEditTipRemountGeometryGrace('selection');
     }
   }
 
@@ -8350,7 +8359,7 @@ function HtmlViewer({
       manualEditTipRemountChromeSafetyTimeoutRef.current = window.setTimeout(() => {
         manualEditTipRemountChromeSafetyTimeoutRef.current = null;
         if (manualEditTipRemountGeometryGraceUntilRef.current === graceUntil) {
-          clearManualEditTipRemountGeometryGrace();
+          clearManualEditTipRemountGeometryGrace('safety');
         }
       }, Math.max(0, safetyClearAt - Date.now()));
     }
@@ -8755,7 +8764,7 @@ function HtmlViewer({
     manualEditSuppressTipPreferUntilRefreshRef.current = nextTipPreferSuppressState(
       'artifact-switch',
     );
-    clearManualEditTipRemountGeometryGrace();
+    clearManualEditTipRemountGeometryGrace('mode-exit');
     return () => {
       // Drop in-flight reconcile/refresh work so unmount cannot overwrite
       // persisted revision cursor state in sessionStorage after a tab switch.
@@ -8767,7 +8776,7 @@ function HtmlViewer({
       manualEditSuppressTipPreferUntilRefreshRef.current = nextTipPreferSuppressState(
         'artifact-switch',
       );
-      clearManualEditTipRemountGeometryGrace();
+      clearManualEditTipRemountGeometryGrace('mode-exit');
     };
   }, [file.name]);
 
@@ -9773,16 +9782,33 @@ function HtmlViewer({
       if (data.type === 'od-edit-targets' && Array.isArray(data.targets)) {
         // Tip-remount session (grace or deck fit-settle) — hoist before catalog
         // replace so bridge styles do not wipe tip-synced selected styles (466/467).
-        const tipRemountActive = tipRemountSessionActive(
+        const tipRemountSession = tipRemountSessionActive(
           manualEditTipRemountGeometryGraceIdRef.current,
           Date.now(),
           manualEditTipRemountGeometryGraceUntilRef.current,
           manualEditTipRemountFitSettleUntilRef.current,
           manualEditTipRemountIdentityHoldUntilRef.current,
         );
+        // Membership change during hold must not paint the new set with the
+        // previous tip's styles — drop hold + skip preserve (469).
+        const selectedIdsForPreserve = selectedManualEditTargetIdsRef.current;
+        const refreshedProbe = selectedIdsForPreserve.length > 0
+          ? resolveManualEditTargetsByIds(selectedIdsForPreserve, data.targets)
+          : [];
+        const selectionIdsChangedEarly = selectedIdsForPreserve.length > 0
+          && !manualEditSelectionIdsEqual(
+            selectedIdsForPreserve,
+            refreshedProbe.map((item) => item.id),
+          );
+        if (selectionIdsChangedEarly) {
+          manualEditTipRemountIdentityHoldUntilRef.current = 0;
+        }
+        const tipRemountActive = shouldPreserveTipSyncedStylesOnOdEditTargets(
+          tipRemountSession,
+          selectionIdsChangedEarly,
+        );
         // Tip-remount: fingerprint the catalog we will store (preserved tip
         // styles), not raw bridge — latch must match React state (468).
-        const selectedIdsForPreserve = selectedManualEditTargetIdsRef.current;
         const priorCatalogForPreserve = manualEditTargetsRef.current;
         const nextCatalogTargets = tipRemountActive
           ? data.targets.map((target) => {
@@ -10157,7 +10183,7 @@ function HtmlViewer({
             manualEditTipRemountGeometryGraceUntilRef.current,
             manualEditTipRemountFitSettleUntilRef.current,
           )) {
-            clearManualEditTipRemountGeometryGrace();
+            clearManualEditTipRemountGeometryGrace('expiry');
           }
           return;
         }
@@ -10170,7 +10196,7 @@ function HtmlViewer({
               Boolean(measured),
             )
           ) {
-            clearManualEditTipRemountGeometryGrace();
+            clearManualEditTipRemountGeometryGrace('safety');
           }
           return;
         }
@@ -10187,7 +10213,7 @@ function HtmlViewer({
           manualEditTipRemountGeometryGraceUntilRef.current,
           manualEditTipRemountFitSettleUntilRef.current,
         )) {
-          clearManualEditTipRemountGeometryGrace();
+          clearManualEditTipRemountGeometryGrace('expiry');
         }
         const current = selectedManualEditTargetRef.current;
         const selectedIds = selectedManualEditTargetIdsRef.current;
@@ -10240,7 +10266,7 @@ function HtmlViewer({
         if (consumeGrace) {
           // Apply tip geometry before releasing chrome suppress (same tick batch) (455).
           applyManualEditMeasuredGeometry(measured);
-          clearManualEditTipRemountGeometryGrace();
+          clearManualEditTipRemountGeometryGrace('consume');
           // Multi tip-yield reseed and Mixed→single both arm tip-remount grace;
           // refresh host paint once remasure consumes it (431/430).
           if (shouldRefreshHostPaintAfterTipRemountRemasure(true)) {

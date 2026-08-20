@@ -24,6 +24,8 @@ import {
   withPreservedTipSyncedStylesOnBridgeTarget,
   resolveTipSyncedStylesForOdEditTargetsPreserve,
   nextTipRemountIdentityHoldUntilMs,
+  shouldArmTipRemountIdentityHoldOnGraceClear,
+  shouldPreserveTipSyncedStylesOnOdEditTargets,
   shouldReadSingleInspectorStylesFromSourceOnlyForOdEditTargets,
   tipRemountFitSettleExpired,
   shouldSkipSrcDocTransportRemountForManualEditFreezeTipSync,
@@ -376,6 +378,17 @@ describe('manual edit freeze reset', () => {
     expect(nextTipRemountIdentityHoldUntilMs(1_000, true, 450)).toBe(1_450);
     expect(nextTipRemountIdentityHoldUntilMs(1_000, false, 450)).toBe(0);
     expect(shouldReadSingleInspectorStylesFromSourceOnlyForOdEditTargets()).toBe(true);
+  });
+
+  it('arms identity hold only on consume/expiry/safety — not selection (469)', () => {
+    expect(shouldArmTipRemountIdentityHoldOnGraceClear('consume')).toBe(true);
+    expect(shouldArmTipRemountIdentityHoldOnGraceClear('expiry')).toBe(true);
+    expect(shouldArmTipRemountIdentityHoldOnGraceClear('safety')).toBe(true);
+    expect(shouldArmTipRemountIdentityHoldOnGraceClear('selection')).toBe(false);
+    expect(shouldArmTipRemountIdentityHoldOnGraceClear('mode-exit')).toBe(false);
+    expect(shouldPreserveTipSyncedStylesOnOdEditTargets(true, false)).toBe(true);
+    expect(shouldPreserveTipSyncedStylesOnOdEditTargets(true, true)).toBe(false);
+    expect(shouldPreserveTipSyncedStylesOnOdEditTargets(false, false)).toBe(false);
   });
 
   it('skips identity-only Mixed reseed during tip remount (466)', () => {
