@@ -43,6 +43,10 @@ const STATIC_TEAMVER_VITE_ENV: Record<string, string | undefined> = {
       : undefined,
   VITE_TEAMVER_DRAW_ANNOTATION_ENABLE:
     typeof process !== "undefined" ? process.env.VITE_TEAMVER_DRAW_ANNOTATION_ENABLE : undefined,
+  VITE_TEAMVER_SOURCE_HTML_COPY_ENABLE:
+    typeof process !== "undefined"
+      ? process.env.VITE_TEAMVER_SOURCE_HTML_COPY_ENABLE
+      : undefined,
   VITE_TEAMVER_MANUAL_EDIT_BOX_DRAG_ENABLE:
     typeof process !== "undefined"
       ? process.env.VITE_TEAMVER_MANUAL_EDIT_BOX_DRAG_ENABLE

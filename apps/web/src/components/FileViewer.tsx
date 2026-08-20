@@ -43,6 +43,7 @@ import {
   shouldUseTeamverAuthenticatedProjectRawFetch,
 } from '../teamver/designApiBase';
 import { isTeamverPptxExportEnabled } from '../teamver/pptxExportEnable';
+import { isTeamverSourceHtmlCopyEnabled } from '../teamver/sourceHtmlCopyEnable';
 import { beginTeamverEmbedActiveWork, endTeamverEmbedActiveWork } from '../teamver/teamverEmbedActiveWork';
 import { fetchTeamverDaemon } from '../teamver/teamverDaemonHeaders';
 import { TEAMVER_EMBED_PASSIVE_AUTH_RECOVERED_EVENT } from '../teamver/teamverEmbedPassiveAuth';
@@ -5412,6 +5413,8 @@ function HtmlViewer({
     });
   };
   const [mode, setMode] = useState<'preview' | 'source'>('preview');
+  const [sourceHtmlCopied, setSourceHtmlCopied] = useState(false);
+  const sourceHtmlCopyEnabled = isTeamverSourceHtmlCopyEnabled();
   // One intact-gated repair for liveHtml init (was 3× ungated repair on mount).
   const initialLiveHtmlRepaired = liveHtml == null
     ? null
@@ -13788,6 +13791,14 @@ function HtmlViewer({
     setMode(nextMode);
   }
 
+  async function copyHtmlSourceToClipboard() {
+    if (!source) return;
+    const ok = await copyTextToClipboard(source);
+    if (!ok) return;
+    setSourceHtmlCopied(true);
+    window.setTimeout(() => setSourceHtmlCopied(false), 1500);
+  }
+
   function activateBoard(nextTool?: BoardTool) {
     setMode('preview');
     setBoardMode(true);
@@ -15741,6 +15752,23 @@ function HtmlViewer({
                 </div>
               ) : null}
             </>
+          ) : null}
+          {sourceHtmlCopyEnabled && mode === 'source' && source !== null ? (
+            <button
+              type="button"
+              className="viewer-action od-tooltip"
+              data-testid="html-source-copy-button"
+              data-tooltip={t('fileViewer.copyTitle')}
+              data-tooltip-placement="bottom"
+              title={t('fileViewer.copyTitle')}
+              aria-label={sourceHtmlCopied ? t('fileViewer.copied') : t('fileViewer.copy')}
+              onClick={() => {
+                void copyHtmlSourceToClipboard();
+              }}
+            >
+              <Icon name={sourceHtmlCopied ? 'check' : 'copy'} size={13} />
+              <span>{sourceHtmlCopied ? t('fileViewer.copied') : t('fileViewer.copy')}</span>
+            </button>
           ) : null}
         </div>
       </div>
