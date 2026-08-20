@@ -71,4 +71,73 @@ describe('deck bridge — official catalog presenter navigation', () => {
     expect(win.document.getElementById('current')?.textContent).toBe('03');
     expect(lastSlideState(parentPostMessage)).toMatchObject({ active: 2, count: 10 });
   });
+
+  it('navigates <deck-stage> via goTo instead of display:none (preview page 2 stays painted)', async () => {
+    const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"></head>
+<body>
+<deck-stage>
+  <section class="slide s-cover">Cover After Hours</section>
+  <section class="slide s-toc">The Index</section>
+  <section class="slide s-stats">By the Numbers</section>
+</deck-stage>
+</body></html>`;
+    const srcdoc = buildSrcdoc(html, { deck: true });
+    expect(srcdoc).not.toContain('data-od-deck-stacked-fix');
+    const script = extractDeckBridgeScript(srcdoc);
+    const dom = new JSDOM(srcdoc.replace(/<script\b[\s\S]*?<\/script>/gi, ''), {
+      runScripts: 'outside-only',
+      pretendToBeVisual: true,
+    });
+    const win = dom.window;
+    class DeckStage extends win.HTMLElement {
+      _index = 0;
+      connectedCallback() {
+        this._apply(0);
+      }
+      get index() { return this._index; }
+      get length() { return this.querySelectorAll('.slide').length; }
+      goTo(i: number) {
+        this._index = Math.max(0, Math.min(this.length - 1, i));
+        this._apply(this._index);
+      }
+      next() { this.goTo(this._index + 1); }
+      prev() { this.goTo(this._index - 1); }
+      _apply(curr: number) {
+        this.querySelectorAll('.slide').forEach((slide, index) => {
+          if (index === curr) slide.setAttribute('data-deck-active', '');
+          else slide.removeAttribute('data-deck-active');
+        });
+      }
+    }
+    win.customElements.define('deck-stage', DeckStage);
+    const parentPostMessage = vi.fn();
+    Object.defineProperty(win, 'parent', {
+      configurable: true,
+      value: { postMessage: parentPostMessage },
+    });
+    new win.Function(script).call(win);
+    win.document.querySelectorAll('deck-stage').forEach((node) => {
+      if (typeof (node as { connectedCallback?: () => void }).connectedCallback === 'function') {
+        (node as { connectedCallback: () => void }).connectedCallback();
+      }
+    });
+    win.dispatchEvent(new win.Event('load'));
+    win.dispatchEvent(new win.MessageEvent('message', { data: { type: 'od:slide-state-request' } }));
+
+    const slides = [...win.document.querySelectorAll('.slide')] as HTMLElement[];
+    expect(slides).toHaveLength(3);
+    expect(slides[0]?.hasAttribute('data-deck-active')).toBe(true);
+    expect(lastSlideState(parentPostMessage)).toMatchObject({ active: 0, count: 3 });
+
+    postSlide(win, 'next');
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 40));
+
+    expect(win.document.getElementById('od-stacked-deck-stage')).toBeNull();
+    expect(slides[0]?.hasAttribute('data-deck-active')).toBe(false);
+    expect(slides[1]?.hasAttribute('data-deck-active')).toBe(true);
+    expect(slides[1]?.textContent).toContain('The Index');
+    expect(slides[0]?.style.display).not.toBe('none');
+    expect(slides[1]?.style.display).not.toBe('none');
+    expect(lastSlideState(parentPostMessage)).toMatchObject({ active: 1, count: 3 });
+  });
 });

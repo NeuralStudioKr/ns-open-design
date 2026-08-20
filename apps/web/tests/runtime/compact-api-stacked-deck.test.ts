@@ -579,6 +579,20 @@ cur=n;
     expect(String(stage?.style.transform || '')).toBe(firstTransform);
   });
 
+  it('does not letterbox Zhangzara <deck-stage> catalogs as compact stacked decks', () => {
+    const official = readFileSync(
+      resolve(repoRoot, 'plugins/_official/examples/html-ppt-zhangzara-pink-script/example.html'),
+      'utf8',
+    );
+    expect(official).toMatch(/<deck-stage\b/i);
+    expect(looksLikeCompactApiStackedDeck(official)).toBe(false);
+    expect(looksLikeCompactApiStackedDeckForPreview(official)).toBe(false);
+    const srcdoc = buildSrcdoc(official, { deck: true });
+    expect(srcdoc).not.toContain('data-od-deck-stacked-fix');
+    expect(srcdoc).not.toContain('data-od-compact-stacked');
+    expect(srcdoc).not.toContain('content="width=1920, initial-scale=1, maximum-scale=1"');
+  });
+
   it('keeps official catalog presenters on native 100% fill instead of stacked 1920', () => {
     const official = readFileSync(
       resolve(repoRoot, 'plugins/_official/examples/html-ppt-zhangzara-capsule/example.html'),
