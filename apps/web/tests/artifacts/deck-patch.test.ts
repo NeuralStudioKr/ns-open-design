@@ -420,6 +420,29 @@ describe('appendIncomingSlidesOntoExistingDeck', () => {
     expect(extractTopLevelSlideSections(merged ?? '').length).toBe(2);
   });
 
+  it('appends a truncated mid-slide fragment after closing the host', () => {
+    const prior =
+      '<!doctype html><html><body><section class="slide"><h1>Cover</h1></section></body></html>';
+    const truncated =
+      '<section class="slide" style="width:1920px;height:1080px"><h2>Why it matters</h2><p>Kernel ABI and';
+    const merged = appendIncomingSlidesOntoExistingDeck(prior, truncated);
+    expect(merged).toContain('<h1>Cover</h1>');
+    expect(merged).toContain('<h2>Why it matters</h2>');
+    expect(merged).toContain('</section>');
+    expect(extractTopLevelSlideSections(merged ?? '').length).toBe(2);
+  });
+
+  it('appends catalog div.slide hosts onto a section-based deck', () => {
+    const prior =
+      '<!doctype html><html><body><section class="slide"><h1>Cover</h1></section></body></html>';
+    const incoming =
+      '<div class="slide" style="width:1920px;height:1080px"><h2>Body</h2><p>More.</p></div>';
+    const merged = appendIncomingSlidesOntoExistingDeck(prior, incoming);
+    expect(merged).toContain('<h1>Cover</h1>');
+    expect(merged).toContain('<h2>Body</h2>');
+    expect(merged).toContain('<div class="slide"');
+  });
+
   it('does not clobber the saved deck with a shorter head rewrite', () => {
     const prior =
       '<!doctype html><html><head><style>.kit{}</style></head><body>'

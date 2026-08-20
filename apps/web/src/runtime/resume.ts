@@ -380,6 +380,7 @@ export const AUTO_CONTINUE_ENTRY_FROM = 'auto_continue_incomplete_output';
 
 export type AutoContinuePersistResultKind =
   | 'skipped-incomplete'
+  | 'skipped-noop'
   | 'rejected'
   | 'save-failed'
   | 'persisted'

@@ -198,6 +198,7 @@ export function buildSlideCountTopUpPrompt(input: {
     "This is an explicit slide-count expansion — not a redesign and not an incomplete-output retry.",
     "Do NOT rewrite the saved deck. Do NOT emit `<head>`, Motif `<svg>`, or copy existing slides.",
     "Emit ONLY the new `<section class=\"slide\">` blocks (body-first). Persist appends them after the saved slides.",
+    "Each new slide MUST be a complete closed `<section class=\"slide\" …>…</section>` with real title + body. Unclosed fragments are discarded.",
     "Each new slide: fixed 1920×1080 canvas, box-sizing:border-box, overflow:hidden, Motif-safe padding (~56px 72px).",
     "Motif SVG is NOT required — official Motif is merged after save. Do not invent tiny corner flowers or Capsule pills.",
     "Do not use element-patch. Do not start over from a short new deck.",

@@ -613,13 +613,17 @@ export function appendIncomingSlidesOntoExistingDeck(
   incomingHtml: string,
 ): string | null {
   const existing = String(existingHtml ?? "");
-  const incoming = String(incomingHtml ?? "");
-  if (!existing.trim() || !incoming.trim()) return null;
+  const incomingRaw = String(incomingHtml ?? "");
+  if (!existing.trim() || !incomingRaw.trim()) return null;
 
-  const incomingSlides = extractTopLevelSlideSections(extractDeckBodyContent(incoming));
+  // Top-up streams often truncate mid-slide; close hosts so we can still
+  // append a titled fragment instead of failing as incomplete_output.
+  const incoming = closeUnclosedSlideHostsForAppend(incomingRaw);
+
+  const incomingSlides = extractAppendableSlideSections(extractDeckBodyContent(incoming));
   if (incomingSlides.length === 0) return null;
 
-  const existingSlides = extractTopLevelSlideSections(extractDeckBodyContent(existing));
+  const existingSlides = extractAppendableSlideSections(extractDeckBodyContent(existing));
   const existingCount = existingSlides.length;
 
   let toAppend = incomingSlides;
@@ -634,4 +638,110 @@ export function appendIncomingSlidesOntoExistingDeck(
   const chunk = toAppend.map((slide) => slide.outerHtml).join("\n");
   if (!range) return `${existing.replace(/\s*$/, "\n")}${chunk}\n`;
   return `${existing.slice(0, range.end)}\n${chunk}\n${existing.slice(range.end)}`;
+}
+
+/** Close truncated section|div.slide hosts so append can see titled fragments. */
+function closeUnclosedSlideHostsForAppend(html: string): string {
+  // Local close — mirrors deck-html-content salvage without a circular import.
+  const openRe = /<(section|div)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
+  const opens: { tag: string; contentStart: number; openStart: number }[] = [];
+  let match: RegExpExecArray | null;
+  const source = String(html ?? "");
+  openRe.lastIndex = 0;
+  while ((match = openRe.exec(source)) !== null) {
+    if (!isSlideClass(match[2] ?? "")) continue;
+    opens.push({
+      tag: (match[1] ?? "section").toLowerCase(),
+      openStart: match.index,
+      contentStart: match.index + match[0].length,
+    });
+  }
+  if (opens.length === 0) return source;
+  const insertions: { at: number; text: string }[] = [];
+  for (let i = 0; i < opens.length; i += 1) {
+    const tag = opens[i]!.tag;
+    const contentStart = opens[i]!.contentStart;
+    const contentEnd = i + 1 < opens.length ? opens[i + 1]!.openStart : source.length;
+    const chunk = source.slice(contentStart, contentEnd);
+    let depth = 1;
+    const tagRe = new RegExp(`<\\/?${tag}\\b[^>]*>`, "gi");
+    let tagMatch: RegExpExecArray | null;
+    while ((tagMatch = tagRe.exec(chunk)) !== null) {
+      if (new RegExp(`^<\\/${tag}`, "i").test(tagMatch[0])) {
+        depth -= 1;
+        if (depth === 0) break;
+      } else if (!/^<\//.test(tagMatch[0])) {
+        depth += 1;
+      }
+    }
+    if (depth > 0) {
+      insertions.push({ at: contentEnd, text: `</${tag}>`.repeat(depth) });
+    }
+  }
+  if (insertions.length === 0) return source;
+  let out = source;
+  for (let i = insertions.length - 1; i >= 0; i -= 1) {
+    const item = insertions[i]!;
+    out = `${out.slice(0, item.at)}${item.text}${out.slice(item.at)}`;
+  }
+  return out;
+}
+
+/**
+ * Top-up append accepts official catalog hosts (`section|div.slide`).
+ * Deck-patch stays section-only via {@link extractTopLevelSlideSections}.
+ */
+function extractAppendableSlideSections(html: string): TopLevelSlideSection[] {
+  const sectionOnly = extractTopLevelSlideSections(html);
+  if (sectionOnly.length > 0) return sectionOnly;
+  return extractTopLevelDivSlideSections(html);
+}
+
+function extractTopLevelDivSlideSections(html: string): TopLevelSlideSection[] {
+  const results: TopLevelSlideSection[] = [];
+  const openRe = /<div\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
+  const closeRe = /<\/div\s*>/gi;
+  let searchFrom = 0;
+  while (searchFrom < html.length) {
+    openRe.lastIndex = searchFrom;
+    const openMatch = openRe.exec(html);
+    if (!openMatch) break;
+    const openStart = openMatch.index;
+    const openEnd = openStart + openMatch[0].length;
+    if (!isSlideClass(openMatch[1] ?? "")) {
+      searchFrom = openEnd;
+      continue;
+    }
+    let depth = 1;
+    let cursor = openEnd;
+    let matchedCloseEnd = -1;
+    while (cursor < html.length && depth > 0) {
+      openRe.lastIndex = cursor;
+      closeRe.lastIndex = cursor;
+      const nextOpen = openRe.exec(html);
+      const nextClose = closeRe.exec(html);
+      if (!nextClose) break;
+      if (nextOpen && nextOpen.index < nextClose.index) {
+        depth += 1;
+        cursor = nextOpen.index + nextOpen[0].length;
+      } else {
+        depth -= 1;
+        const closeEnd = nextClose.index + nextClose[0].length;
+        cursor = closeEnd;
+        if (depth === 0) matchedCloseEnd = closeEnd;
+      }
+    }
+    if (matchedCloseEnd === -1) {
+      searchFrom = openEnd;
+      continue;
+    }
+    results.push({
+      openTag: openMatch[0],
+      outerHtml: html.slice(openStart, matchedCloseEnd),
+      start: openStart,
+      end: matchedCloseEnd,
+    });
+    searchFrom = matchedCloseEnd;
+  }
+  return results;
 }

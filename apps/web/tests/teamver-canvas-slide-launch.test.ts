@@ -740,6 +740,11 @@ describe("canvasSlideLaunch", () => {
     expect(projectView).toContain("slimTemplateVisualKitForFill(");
     expect(projectView).toContain("templateCloneContentFill: isCloneContentFillTurn");
     expect(projectView).toContain("appendIncomingSlidesOntoExistingDeck(");
+    expect(projectView).toContain("top-up-did-not-append-slides");
+    expect(projectView).toContain("kind: 'skipped-noop'");
+    expect(projectView).toMatch(
+      /top-up-did-not-append-slides[\s\S]{0,200}skipped-noop|skipped-noop[\s\S]{0,200}top-up-did-not-append-slides/,
+    );
     expect(projectView).toContain("slideCountTopUp: isSlideCountTopUpSend");
     expect(projectView).toContain("runSlideCountTopUpRef");
     expect(projectView).toContain('Status tone: "슬라이드 추가 중"');

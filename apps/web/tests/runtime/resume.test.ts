@@ -418,6 +418,16 @@ describe('shouldAutoContinueForIncompleteOutput', () => {
     shouldFailMissingSlideHtml: false,
   };
 
+  it('does NOT fire for skipped-noop (top-up no-op / calm edits)', () => {
+    expect(
+      shouldAutoContinueForIncompleteOutput({
+        ...base,
+        terminalPersistResultKind: 'skipped-noop',
+        terminalPersistResultReason: 'top-up-did-not-append-slides',
+      }),
+    ).toBe(false);
+  });
+
   it('fires for skipped-incomplete shells', () => {
     expect(
       shouldAutoContinueForIncompleteOutput({

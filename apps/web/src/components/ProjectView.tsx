@@ -5251,8 +5251,11 @@ export function ProjectView({
               countDeckSlideSections(artifactToPersist.html)
               <= countDeckSlideSections(priorHtml)
             ) {
+              // Prior deck is already a valid deliverable. Do NOT route this
+              // as skipped-incomplete → incomplete_output (or auto-continue
+              // head rewrite). Keep disk as-is and treat as a calm no-op.
               return {
-                kind: 'skipped-incomplete',
+                kind: 'skipped-noop',
                 fileName,
                 reason: 'top-up-did-not-append-slides',
               };
