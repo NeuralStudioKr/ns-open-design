@@ -48,6 +48,13 @@ import {
   shouldMarkTipRemountChromeReleasePendingAfterResizeSkip,
   shouldReleaseTipRemountChromeAfterResizeGestureEnds,
   shouldReleaseTipRemountChromeWhenDeckNudgeFollowEnds,
+  shouldArmTipPostAbsorbInspectorQuiet,
+  shouldSkipOdEditTargetsIdentityMixedReseedDuringPostAbsorbQuiet,
+  shouldTreatPostAbsorbQuietAsTipProtect,
+  clearTipPostAbsorbInspectorQuiet,
+  shouldClearTipPostProtectOnOdEditTargetsSelectionIdsChange,
+  shouldDeferTipRemountChromeReleaseAfterFollowEndBlockedBySafety,
+  shouldFlushDeferredTipRemountChromeReleaseAfterSafety,
   shouldSkipTipRemountFitSettleRemasureDuringResizeGesture,
   shouldArmPostTipFitSettleWildJumpSkip,
   shouldSkipWildJumpOnceAfterTipFitSettle,
@@ -246,6 +253,14 @@ describe('manual edit freeze reset', () => {
     expect(shouldSkipOdEditTargetsSingleInspectorReseedDuringPostExitAbsorb(false, true, true)).toBe(false);
     expect(shouldTreatPostExitAbsorbAsTipProtect(true)).toBe(true);
     expect(shouldTreatPostExitAbsorbAsTipProtect(false)).toBe(false);
+    expect(shouldArmTipPostAbsorbInspectorQuiet(true, false)).toBe(true);
+    expect(shouldArmTipPostAbsorbInspectorQuiet(true, true)).toBe(false);
+    expect(shouldSkipOdEditTargetsIdentityMixedReseedDuringPostAbsorbQuiet(false, true)).toBe(true);
+    expect(shouldSkipOdEditTargetsIdentityMixedReseedDuringPostAbsorbQuiet(false, true, true)).toBe(false);
+    expect(shouldTreatPostAbsorbQuietAsTipProtect(true)).toBe(true);
+    expect(clearTipPostAbsorbInspectorQuiet()).toBe(false);
+    expect(shouldClearTipPostProtectOnOdEditTargetsSelectionIdsChange(true)).toBe(true);
+    expect(shouldClearTipPostProtectOnOdEditTargetsSelectionIdsChange(false)).toBe(false);
     expect(shouldClearTipPostProtectOnSelectionChange('a', 'b')).toBe(true);
     expect(shouldClearTipPostProtectOnSelectionChange('a', null)).toBe(true);
     expect(shouldClearTipPostProtectOnSelectionChange('a', 'a')).toBe(false);
@@ -255,6 +270,7 @@ describe('manual edit freeze reset', () => {
     expect(shouldClearTipRemountOnManualEditModeExit(true, true)).toBe(false);
     expect(tipRemountPostProtectArmed({})).toBe(false);
     expect(tipRemountPostProtectArmed({ absorb: true, softLandRemaining: 0 })).toBe(true);
+    expect(tipRemountPostProtectArmed({ postAbsorbQuiet: true })).toBe(true);
     expect(tipRemountPostProtectArmed({ followUntilMs: 1 })).toBe(true);
     expect(shouldThrottleTipRemountDeckNudgeRemasure(1_000, 1_050)).toBe(true);
     expect(shouldThrottleTipRemountDeckNudgeRemasure(1_000, 1_200)).toBe(false);
@@ -264,6 +280,11 @@ describe('manual edit freeze reset', () => {
     expect(shouldReleaseTipRemountChromeWhenDeckNudgeFollowEnds(true, true, true)).toBe(false);
     expect(shouldReleaseTipRemountChromeWhenDeckNudgeFollowEnds(true, false)).toBe(false);
     expect(shouldReleaseTipRemountChromeWhenDeckNudgeFollowEnds(false, true)).toBe(false);
+    expect(shouldDeferTipRemountChromeReleaseAfterFollowEndBlockedBySafety(true, true, true)).toBe(true);
+    expect(shouldDeferTipRemountChromeReleaseAfterFollowEndBlockedBySafety(true, true, false)).toBe(false);
+    expect(shouldFlushDeferredTipRemountChromeReleaseAfterSafety(true, true, false)).toBe(true);
+    expect(shouldFlushDeferredTipRemountChromeReleaseAfterSafety(true, true, true)).toBe(false);
+    expect(shouldFlushDeferredTipRemountChromeReleaseAfterSafety(false, true, false)).toBe(false);
     expect(nextTipRemountDeckNudgeFollowUntilMs(1_000, true)).toBe(
       1_000 + TIP_REMOUNT_DECK_NUDGE_FOLLOW_MS,
     );

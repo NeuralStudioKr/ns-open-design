@@ -365,6 +365,11 @@ import {
   shouldKeepMultiInspectorSourceOnlyDuringTipExitLatch,
   shouldSkipOdEditTargetsSingleInspectorReseedDuringPostExitAbsorb,
   shouldTreatPostExitAbsorbAsTipProtect,
+  shouldArmTipPostAbsorbInspectorQuiet,
+  shouldSkipOdEditTargetsIdentityMixedReseedDuringPostAbsorbQuiet,
+  shouldTreatPostAbsorbQuietAsTipProtect,
+  clearTipPostAbsorbInspectorQuiet,
+  shouldClearTipPostProtectOnOdEditTargetsSelectionIdsChange,
   shouldClearTipPostProtectOnSelectionChange,
   shouldClearTipRemountOnManualEditModeExit,
   tipRemountPostProtectArmed,
@@ -375,6 +380,8 @@ import {
   shouldMarkTipRemountChromeReleasePendingAfterResizeSkip,
   shouldReleaseTipRemountChromeAfterResizeGestureEnds,
   shouldReleaseTipRemountChromeWhenDeckNudgeFollowEnds,
+  shouldDeferTipRemountChromeReleaseAfterFollowEndBlockedBySafety,
+  shouldFlushDeferredTipRemountChromeReleaseAfterSafety,
   shouldSkipTipRemountFitSettleRemasureDuringResizeGesture,
   shouldArmPostTipFitSettleWildJumpSkip,
   shouldSkipWildJumpOnceAfterTipFitSettle,
@@ -5575,12 +5582,16 @@ function HtmlViewer({
   const manualEditTipPostSoftLandExitLatchRef = useRef(false);
   /** Post-exit Mixed absorb — live FP without preserve (491/493). */
   const manualEditTipPostExitMixedAbsorbRef = useRef(false);
+  /** One quiet catalog after absorb so first live Mixed does not flicker (509). */
+  const manualEditTipPostAbsorbInspectorQuietRef = useRef(false);
   /** Follow late deck fit nudges without extending wild-jump latch (487). */
   const manualEditTipDeckNudgeFollowUntilRef = useRef(0);
   /** Last follow-only remasure time for throttle (492). */
   const manualEditTipDeckNudgeRemasureAtRef = useRef(0);
   /** Safety: release chrome when deck-nudge follow ends (494). */
   const manualEditTipDeckNudgeFollowChromeTimeoutRef = useRef<number | null>(null);
+  /** Follow-end chrome release deferred while remount safety timeout pending (510). */
+  const manualEditTipFollowChromeReleaseDeferredRef = useRef(false);
   /** rAF coalesce for follow-only deck-nudge remasures (497). */
   const manualEditTipDeckNudgeRemasureRafRef = useRef<number | null>(null);
   /** Chrome release deferred because fit remasure hit an active resize (489). */
@@ -8435,10 +8446,12 @@ function HtmlViewer({
       manualEditTipPostStickySoftLandRef.current = 0;
       manualEditTipPostSoftLandExitLatchRef.current = false;
       manualEditTipPostExitMixedAbsorbRef.current = false;
+      manualEditTipPostAbsorbInspectorQuietRef.current = false;
       manualEditTipDeckNudgeFollowUntilRef.current = 0;
       manualEditTipDeckNudgeRemasureAtRef.current = 0;
       manualEditTipChromeReleaseAfterResizeRef.current = false;
       manualEditTipPostFitSettleWildJumpSkipRef.current = false;
+      manualEditTipFollowChromeReleaseDeferredRef.current = false;
       if (manualEditTipDeckNudgeFollowChromeTimeoutRef.current != null) {
         window.clearTimeout(manualEditTipDeckNudgeFollowChromeTimeoutRef.current);
         manualEditTipDeckNudgeFollowChromeTimeoutRef.current = null;
@@ -8539,16 +8552,18 @@ function HtmlViewer({
       manualEditTipPostStickySoftLandRef.current = 0;
       manualEditTipPostSoftLandExitLatchRef.current = false;
       manualEditTipPostExitMixedAbsorbRef.current = false;
+      manualEditTipPostAbsorbInspectorQuietRef.current = false;
       manualEditTipChromeReleaseAfterResizeRef.current = false;
       manualEditTipPostFitSettleWildJumpSkipRef.current = false;
       manualEditTipDeckNudgeRemasureAtRef.current = 0;
+      manualEditTipFollowChromeReleaseDeferredRef.current = false;
       // Follow late deck nudges (2500+) without extending wild-jump latch (487).
       manualEditTipDeckNudgeFollowUntilRef.current = nextTipRemountDeckNudgeFollowUntilMs(
         nowMs,
         true,
         TIP_REMOUNT_DECK_NUDGE_FOLLOW_MS,
       );
-      // Safety: release chrome when follow ends if still inert (494).
+      // Safety: release chrome when follow ends if still inert (494/510).
       if (manualEditTipDeckNudgeFollowChromeTimeoutRef.current != null) {
         window.clearTimeout(manualEditTipDeckNudgeFollowChromeTimeoutRef.current);
       }
@@ -8559,15 +8574,23 @@ function HtmlViewer({
         if (ended) {
           manualEditTipDeckNudgeFollowUntilRef.current = 0;
         }
+        const safetyPending = manualEditTipRemountChromeSafetyTimeoutRef.current != null;
         if (shouldReleaseTipRemountChromeWhenDeckNudgeFollowEnds(
           manualEditTipRemountChromeSuppressedRef.current,
           ended,
-          // Do not race tip remount safety clear still in flight (499).
-          manualEditTipRemountChromeSafetyTimeoutRef.current != null,
+          // Do not race tip remount safety clear still in flight (499/510).
+          safetyPending,
         )) {
           manualEditTipRemountChromeSuppressedRef.current = false;
           setManualEditTipRemountChromeSuppressed(false);
           manualEditTipChromeReleaseAfterResizeRef.current = false;
+          manualEditTipFollowChromeReleaseDeferredRef.current = false;
+        } else if (shouldDeferTipRemountChromeReleaseAfterFollowEndBlockedBySafety(
+          manualEditTipRemountChromeSuppressedRef.current,
+          ended,
+          safetyPending,
+        )) {
+          manualEditTipFollowChromeReleaseDeferredRef.current = true;
         }
       }, TIP_REMOUNT_DECK_NUDGE_FOLLOW_MS + 20);
       // Deck host-fit may rescale after onLoad — keep settle latch past grace (460/481).
@@ -8589,6 +8612,16 @@ function HtmlViewer({
         manualEditTipRemountChromeSafetyTimeoutRef.current = null;
         if (manualEditTipRemountGeometryGraceUntilRef.current === graceUntil) {
           clearManualEditTipRemountGeometryGrace('safety');
+        } else if (shouldFlushDeferredTipRemountChromeReleaseAfterSafety(
+          manualEditTipFollowChromeReleaseDeferredRef.current,
+          manualEditTipRemountChromeSuppressedRef.current,
+          false,
+        )) {
+          // Follow-end was blocked by this safety timeout — flush chrome (510).
+          manualEditTipRemountChromeSuppressedRef.current = false;
+          setManualEditTipRemountChromeSuppressed(false);
+          manualEditTipChromeReleaseAfterResizeRef.current = false;
+          manualEditTipFollowChromeReleaseDeferredRef.current = false;
         }
       }, Math.max(0, safetyClearAt - Date.now()));
     }
@@ -9983,6 +10016,7 @@ function HtmlViewer({
           softLandRemaining: manualEditTipPostStickySoftLandRef.current,
           exitLatch: manualEditTipPostSoftLandExitLatchRef.current,
           absorb: manualEditTipPostExitMixedAbsorbRef.current,
+          postAbsorbQuiet: manualEditTipPostAbsorbInspectorQuietRef.current,
           followUntilMs: manualEditTipDeckNudgeFollowUntilRef.current,
           chromeSuppressed: manualEditTipRemountChromeSuppressedRef.current,
           followChromeTimeoutPending:
@@ -10046,12 +10080,15 @@ function HtmlViewer({
         const softLandAtEntry = manualEditTipPostStickySoftLandRef.current;
         const exitLatchAtEntry = manualEditTipPostSoftLandExitLatchRef.current;
         const postExitAbsorbAtEntry = manualEditTipPostExitMixedAbsorbRef.current;
+        const postAbsorbQuietAtEntry = manualEditTipPostAbsorbInspectorQuietRef.current;
         const tipProtectSource = tipRemountSession
           || manualEditTipSyncedIdentityRetainRef.current
           || softLandAtEntry > 0
           || exitLatchAtEntry
           // Absorb is tip-protect for membership noise / empty catalog (498).
-          || shouldTreatPostExitAbsorbAsTipProtect(postExitAbsorbAtEntry);
+          || shouldTreatPostExitAbsorbAsTipProtect(postExitAbsorbAtEntry)
+          // Post-absorb quiet also tip-protects one settle catalog (509).
+          || shouldTreatPostAbsorbQuietAsTipProtect(postAbsorbQuietAtEntry);
         const refreshedProbe = selectedIdsForPreserve.length > 0
           ? resolveManualEditTargetsByIds(selectedIdsForPreserve, data.targets)
           : [];
@@ -10076,13 +10113,28 @@ function HtmlViewer({
           refreshedProbe.length,
           data.targets.length,
         );
-        if (selectionIdsChangedEarly) {
+        if (shouldClearTipPostProtectOnOdEditTargetsSelectionIdsChange(
+          selectionIdsChangedEarly,
+        )) {
           manualEditTipRemountIdentityHoldUntilRef.current = 0;
           manualEditTipSyncedIdentityRetainRef.current = false;
           manualEditTipPostStickySoftLandRef.current = 0;
           manualEditTipPostSoftLandExitLatchRef.current = false;
           manualEditTipPostExitMixedAbsorbRef.current = false;
+          manualEditTipPostAbsorbInspectorQuietRef.current = false;
           manualEditTipPostFitSettleWildJumpSkipRef.current = false;
+          // Membership change must also drop deck-nudge follow (508).
+          manualEditTipDeckNudgeFollowUntilRef.current = 0;
+          manualEditTipDeckNudgeRemasureAtRef.current = 0;
+          manualEditTipFollowChromeReleaseDeferredRef.current = false;
+          if (manualEditTipDeckNudgeFollowChromeTimeoutRef.current != null) {
+            window.clearTimeout(manualEditTipDeckNudgeFollowChromeTimeoutRef.current);
+            manualEditTipDeckNudgeFollowChromeTimeoutRef.current = null;
+          }
+          if (manualEditTipDeckNudgeRemasureRafRef.current != null) {
+            window.cancelAnimationFrame(manualEditTipDeckNudgeRemasureRafRef.current);
+            manualEditTipDeckNudgeRemasureRafRef.current = null;
+          }
         }
         const softLandActive = shouldRetainTipSyncedIdentityDuringPostStickySoftLand(
           softLandAtEntry,
@@ -10098,8 +10150,10 @@ function HtmlViewer({
           selectionIdsChangedEarly,
         ) || softLandActive || exitLatchActive;
         // Absorb tick is not tip-preserve, but still tip-protect for wipe/noise (498).
+        // Post-absorb quiet likewise tip-protects without preserve (509).
         const tipProtectActive = tipRemountActive
-          || shouldTreatPostExitAbsorbAsTipProtect(postExitAbsorbAtEntry);
+          || shouldTreatPostExitAbsorbAsTipProtect(postExitAbsorbAtEntry)
+          || shouldTreatPostAbsorbQuietAsTipProtect(postAbsorbQuietAtEntry);
         if (
           !selectionIdsChangedEarly
           && shouldDeferTipSyncedIdentityStickyClearUntilAfterPreserve(clearStickyAfterPreserve)
@@ -10332,6 +10386,14 @@ function HtmlViewer({
             manualEditTargetsIdentityFingerprintRef.current = targetsFingerprint;
             manualEditSelectedIdentityFingerprintRef.current = selectedIdentityFingerprint;
             manualEditTipPostExitMixedAbsorbRef.current = false;
+            // First post-absorb live catalog stays Mixed-quiet (509).
+            if (shouldArmTipPostAbsorbInspectorQuiet(true, selectionIdsChanged)) {
+              manualEditTipPostAbsorbInspectorQuietRef.current = true;
+            }
+          }
+          // Quiet tick spends after Mixed skip uses entry latch (509).
+          if (postAbsorbQuietAtEntry) {
+            manualEditTipPostAbsorbInspectorQuietRef.current = clearTipPostAbsorbInspectorQuiet();
           }
           // Tip-remount: bridge target.styles can flip identity fingerprint and
           // re-fire Mixed/draft reseed — skip identity-only churn (466).
@@ -10349,11 +10411,19 @@ function HtmlViewer({
             selectionIdsChanged,
             postExitAbsorbAtEntry,
             styleDraftPending,
+          ) || shouldSkipOdEditTargetsIdentityMixedReseedDuringPostAbsorbQuiet(
+            selectionIdsChanged,
+            postAbsorbQuietAtEntry,
+            styleDraftPending,
           );
-          // Single absorb skip shares the Mixed absorb latch (496).
+          // Single absorb skip shares the Mixed absorb latch (496); quiet too (509).
           const skipIdentitySingleReseed = shouldSkipOdEditTargetsSingleInspectorReseedDuringPostExitAbsorb(
             selectionIdsChanged,
             postExitAbsorbAtEntry,
+            styleDraftPending,
+          ) || shouldSkipOdEditTargetsIdentityMixedReseedDuringPostAbsorbQuiet(
+            selectionIdsChanged,
+            postAbsorbQuietAtEntry,
             styleDraftPending,
           );
           const skipIdentityInspectorReseed = skipIdentityMixedReseed || skipIdentitySingleReseed;

@@ -896,6 +896,57 @@ export function shouldTreatPostExitAbsorbAsTipProtect(
 }
 
 /**
+ * After absorb syncs live fingerprints, keep one quiet catalog so the first
+ * post-absorb live bridge broadcast cannot one-shot Mixed/inspector (509).
+ */
+export function shouldArmTipPostAbsorbInspectorQuiet(
+  absorbSpent: boolean,
+  selectionIdsChanged: boolean,
+): boolean {
+  return absorbSpent && !selectionIdsChanged;
+}
+
+/**
+ * Post-absorb quiet skips identity Mixed/single reseed (not tip-preserve) (509).
+ * Pending drafts stay reachable (same carve-out as absorb).
+ */
+export function shouldSkipOdEditTargetsIdentityMixedReseedDuringPostAbsorbQuiet(
+  selectionIdsChanged: boolean,
+  quietArmed: boolean,
+  styleDraftPending = false,
+): boolean {
+  if (styleDraftPending) return false;
+  return quietArmed && !selectionIdsChanged;
+}
+
+/**
+ * Quiet latch also tip-protects empty-catalog / membership noise for one tick (509).
+ */
+export function shouldTreatPostAbsorbQuietAsTipProtect(
+  quietArmed: boolean,
+): boolean {
+  return quietArmed;
+}
+
+/**
+ * Quiet tick spends the latch — later catalogs go fully live (509).
+ */
+export function clearTipPostAbsorbInspectorQuiet(): false {
+  return false;
+}
+
+/**
+ * od-edit-targets membership actually changed (not tip-protect noise) — drop
+ * soft-land / absorb / quiet / follow so the new set is not painted with tip
+ * post-protect (508).
+ */
+export function shouldClearTipPostProtectOnOdEditTargetsSelectionIdsChange(
+  selectionIdsChangedEarly: boolean,
+): boolean {
+  return selectionIdsChangedEarly;
+}
+
+/**
  * Selection primary changed or cleared after grace is already gone — still drop
  * sticky/soft-land/absorb/follow so a new target is not painted with tip protect (499).
  */
@@ -928,6 +979,7 @@ export function tipRemountPostProtectArmed(input: {
   softLandRemaining?: number;
   exitLatch?: boolean;
   absorb?: boolean;
+  postAbsorbQuiet?: boolean;
   followUntilMs?: number;
   chromeSuppressed?: boolean;
   followChromeTimeoutPending?: boolean;
@@ -939,6 +991,7 @@ export function tipRemountPostProtectArmed(input: {
     || (input.softLandRemaining != null && input.softLandRemaining > 0)
     || input.exitLatch
     || input.absorb
+    || input.postAbsorbQuiet
     || (input.followUntilMs != null && input.followUntilMs > 0)
     || input.chromeSuppressed
     || input.followChromeTimeoutPending
@@ -948,7 +1001,7 @@ export function tipRemountPostProtectArmed(input: {
 
 /**
  * Follow-end chrome release must not race an in-flight tip remount safety
- * clear — wait until safety timeout is gone (499).
+ * clear — wait until safety timeout is gone (499/510).
  */
 export function shouldReleaseTipRemountChromeWhenDeckNudgeFollowEnds(
   chromeSuppressed: boolean,
@@ -956,6 +1009,30 @@ export function shouldReleaseTipRemountChromeWhenDeckNudgeFollowEnds(
   tipRemountSafetyTimeoutPending = false,
 ): boolean {
   return chromeSuppressed && followWindowEnded && !tipRemountSafetyTimeoutPending;
+}
+
+/**
+ * Follow-end wanted chrome release but safety timeout was still pending —
+ * defer and retry after safety callback nulls the ref (510).
+ */
+export function shouldDeferTipRemountChromeReleaseAfterFollowEndBlockedBySafety(
+  chromeSuppressed: boolean,
+  followWindowEnded: boolean,
+  tipRemountSafetyTimeoutPending: boolean,
+): boolean {
+  return chromeSuppressed && followWindowEnded && tipRemountSafetyTimeoutPending;
+}
+
+/**
+ * After safety timeout fires (ref already nulled), flush a deferred follow-end
+ * chrome release if chrome is still inert (510).
+ */
+export function shouldFlushDeferredTipRemountChromeReleaseAfterSafety(
+  deferredRelease: boolean,
+  chromeSuppressed: boolean,
+  tipRemountSafetyTimeoutPending: boolean,
+): boolean {
+  return deferredRelease && chromeSuppressed && !tipRemountSafetyTimeoutPending;
 }
 
 /**

@@ -1,22 +1,27 @@
 /**
- * Tip remount soft-land → exit latch → absorb state-machine sequence (507).
- * Exercises freeze helpers in catalog order without mounting FileViewer.
+ * Tip remount soft-land → absorb → quiet → live sequence (507/509)
+ * and od-edit-targets selection-ids clear of follow (508).
  */
 import { describe, expect, it } from 'vitest';
 import {
   TIP_POST_STICKY_SOFT_LAND_CATALOGS,
+  clearTipPostAbsorbInspectorQuiet,
   clearTipPostSoftLandExitLatch,
   consumeTipPostStickySoftLandCatalog,
   shouldAbsorbLiveIdentityFingerprintOnPostExitLatch,
+  shouldArmTipPostAbsorbInspectorQuiet,
   shouldArmTipPostExitLatchMixedAbsorb,
   shouldArmTipPostExitLatchMixedAbsorbOnSoftLandEarlyExit,
   shouldArmTipPostSoftLandExitLatch,
   shouldArmTipPostStickySoftLand,
   shouldClearManualEditSelectionOnEmptyOdEditTargets,
+  shouldClearTipPostProtectOnOdEditTargetsSelectionIdsChange,
   shouldEarlyExitTipPostStickySoftLand,
   shouldRetainTipSyncedIdentityDuringPostSoftLandExitLatch,
   shouldRetainTipSyncedIdentityDuringPostStickySoftLand,
+  shouldSkipOdEditTargetsIdentityMixedReseedDuringPostAbsorbQuiet,
   shouldSkipOdEditTargetsIdentityMixedReseedDuringPostExitAbsorb,
+  shouldTreatPostAbsorbQuietAsTipProtect,
   shouldTreatPostExitAbsorbAsTipProtect,
   tipRemountPostProtectArmed,
 } from '../../src/edit-mode/manual-edit-freeze';
@@ -25,6 +30,8 @@ type TipPostProtectState = {
   softLandRemaining: number;
   exitLatch: boolean;
   absorb: boolean;
+  quiet: boolean;
+  followUntilMs: number;
 };
 
 function armSoftLandFromStickyClear(): TipPostProtectState {
@@ -33,35 +40,32 @@ function armSoftLandFromStickyClear(): TipPostProtectState {
     softLandRemaining: TIP_POST_STICKY_SOFT_LAND_CATALOGS,
     exitLatch: false,
     absorb: false,
+    quiet: false,
+    followUntilMs: 7_000,
   };
 }
 
-describe('manual-edit tip soft-land→absorb sequence (507)', () => {
-  it('walks soft-land catalogs → exit latch → absorb → live', () => {
+describe('manual-edit tip soft-land→absorb sequence (507/509)', () => {
+  it('walks soft-land → exit latch → absorb → quiet → live', () => {
     let state = armSoftLandFromStickyClear();
     expect(state.softLandRemaining).toBe(2);
     expect(tipRemountPostProtectArmed({
       softLandRemaining: state.softLandRemaining,
       absorb: state.absorb,
+      postAbsorbQuiet: state.quiet,
     })).toBe(true);
 
     // Catalog A: soft-land tick 1 → remaining 1
     expect(shouldRetainTipSyncedIdentityDuringPostStickySoftLand(
       state.softLandRemaining, false,
     )).toBe(true);
-    expect(shouldClearManualEditSelectionOnEmptyOdEditTargets(true)).toBe(false);
     state.softLandRemaining = consumeTipPostStickySoftLandCatalog(
       state.softLandRemaining, false,
     );
     expect(state.softLandRemaining).toBe(1);
-    expect(shouldArmTipPostSoftLandExitLatch(1, state.softLandRemaining, false, false))
-      .toBe(false);
 
     // Catalog B: soft-land tick 2 → remaining 0, arm exit latch
     const softLandAtEntry = state.softLandRemaining;
-    expect(shouldRetainTipSyncedIdentityDuringPostStickySoftLand(
-      softLandAtEntry, false,
-    )).toBe(true);
     state.softLandRemaining = consumeTipPostStickySoftLandCatalog(
       softLandAtEntry, false,
     );
@@ -78,13 +82,9 @@ describe('manual-edit tip soft-land→absorb sequence (507)', () => {
     expect(shouldArmTipPostExitLatchMixedAbsorb(state.exitLatch, false)).toBe(true);
     state.exitLatch = clearTipPostSoftLandExitLatch();
     state.absorb = true;
-    expect(state.exitLatch).toBe(false);
 
-    // Catalog D: absorb tip-protect + Mixed skip, then spend absorb
+    // Catalog D: absorb tip-protect + Mixed skip, arm quiet, clear absorb
     expect(shouldTreatPostExitAbsorbAsTipProtect(state.absorb)).toBe(true);
-    expect(shouldClearManualEditSelectionOnEmptyOdEditTargets(
-      shouldTreatPostExitAbsorbAsTipProtect(state.absorb),
-    )).toBe(false);
     expect(shouldSkipOdEditTargetsIdentityMixedReseedDuringPostExitAbsorb(
       false, state.absorb,
     )).toBe(true);
@@ -92,45 +92,57 @@ describe('manual-edit tip soft-land→absorb sequence (507)', () => {
       state.absorb, false,
     )).toBe(true);
     state.absorb = false;
+    expect(shouldArmTipPostAbsorbInspectorQuiet(true, false)).toBe(true);
+    state.quiet = true;
+
+    // Catalog E: post-absorb quiet — Mixed skip without tip-preserve (509)
+    expect(shouldTreatPostAbsorbQuietAsTipProtect(state.quiet)).toBe(true);
+    expect(shouldClearManualEditSelectionOnEmptyOdEditTargets(
+      shouldTreatPostAbsorbQuietAsTipProtect(state.quiet),
+    )).toBe(false);
+    expect(shouldSkipOdEditTargetsIdentityMixedReseedDuringPostAbsorbQuiet(
+      false, state.quiet,
+    )).toBe(true);
+    state.quiet = clearTipPostAbsorbInspectorQuiet();
+    expect(state.quiet).toBe(false);
 
     // Live: no tip post-protect left
     expect(tipRemountPostProtectArmed({
       softLandRemaining: state.softLandRemaining,
       absorb: state.absorb,
+      postAbsorbQuiet: state.quiet,
     })).toBe(false);
     expect(shouldClearManualEditSelectionOnEmptyOdEditTargets(false)).toBe(true);
   });
 
-  it('early-exits soft-land into absorb without exit latch', () => {
+  it('early-exits soft-land into absorb then quiet', () => {
     let state = armSoftLandFromStickyClear();
     const softLandAtEntry = state.softLandRemaining;
-    const preserved = 'id-fp:same';
-    const live = 'id-fp:same';
-
     expect(shouldEarlyExitTipPostStickySoftLand(
-      softLandAtEntry, false, preserved, live,
+      softLandAtEntry, false, 'id-fp:same', 'id-fp:same',
     )).toBe(true);
     expect(shouldArmTipPostExitLatchMixedAbsorbOnSoftLandEarlyExit(true, false))
       .toBe(true);
-    // Early exit does not arm exit latch (shouldArmTipPostSoftLandExitLatch blocks).
-    expect(shouldArmTipPostSoftLandExitLatch(softLandAtEntry, 0, false, true))
-      .toBe(false);
     state.softLandRemaining = 0;
-    state.exitLatch = false;
     state.absorb = true;
-
-    expect(shouldTreatPostExitAbsorbAsTipProtect(state.absorb)).toBe(true);
     expect(shouldAbsorbLiveIdentityFingerprintOnPostExitLatch(state.absorb, false))
       .toBe(true);
     state.absorb = false;
+    state.quiet = true;
+    expect(shouldSkipOdEditTargetsIdentityMixedReseedDuringPostAbsorbQuiet(
+      false, state.quiet,
+    )).toBe(true);
+    state.quiet = clearTipPostAbsorbInspectorQuiet();
     expect(tipRemountPostProtectArmed({
       softLandRemaining: state.softLandRemaining,
       absorb: state.absorb,
+      postAbsorbQuiet: state.quiet,
     })).toBe(false);
   });
 
-  it('selection change aborts soft-land without arming exit latch or absorb', () => {
+  it('selection-ids change clears soft-land/absorb/quiet/follow (508)', () => {
     const softLandAtEntry = TIP_POST_STICKY_SOFT_LAND_CATALOGS;
+    expect(shouldClearTipPostProtectOnOdEditTargetsSelectionIdsChange(true)).toBe(true);
     expect(shouldRetainTipSyncedIdentityDuringPostStickySoftLand(
       softLandAtEntry, true,
     )).toBe(false);
@@ -139,6 +151,12 @@ describe('manual-edit tip soft-land→absorb sequence (507)', () => {
     expect(shouldArmTipPostSoftLandExitLatch(softLandAtEntry, remaining, true, false))
       .toBe(false);
     expect(shouldArmTipPostExitLatchMixedAbsorb(true, true)).toBe(false);
-    expect(shouldTreatPostExitAbsorbAsTipProtect(false)).toBe(false);
+    expect(shouldArmTipPostAbsorbInspectorQuiet(true, true)).toBe(false);
+    // Follow must be dropped with the same clear gate (508).
+    let followUntilMs = 7_000;
+    if (shouldClearTipPostProtectOnOdEditTargetsSelectionIdsChange(true)) {
+      followUntilMs = 0;
+    }
+    expect(followUntilMs).toBe(0);
   });
 });

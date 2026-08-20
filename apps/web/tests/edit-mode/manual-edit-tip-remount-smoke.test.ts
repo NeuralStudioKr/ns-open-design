@@ -44,9 +44,31 @@ describe('manual-edit tip remount smoke (500/501/506)', () => {
     expect(webPackageJson).toContain('"test:tip-remount-smoke"');
     expect(webPackageJson).toContain('manual-edit-tip-remount-smoke.test.ts');
     expect(webPackageJson).toContain('manual-edit-tip-soft-land-absorb-sequence.test.ts');
+    expect(webPackageJson).toContain('manual-edit-tip-deck-nudge-follow-chrome-race.test.ts');
     expect(freezeSource).not.toContain('spendTipPostSoftLandExitLatch');
     expect(fileViewer).toContain('clearTipPostSoftLandExitLatch');
     expect(fileViewer).not.toContain('spendTipPostSoftLandExitLatch');
+  });
+
+  it('clears follow on od-edit-targets selection-ids change (508)', () => {
+    expect(fileViewer).toContain('shouldClearTipPostProtectOnOdEditTargetsSelectionIdsChange');
+    expect(fileViewer).toContain('Membership change must also drop deck-nudge follow');
+    expect(fileViewer).toContain('manualEditTipPostAbsorbInspectorQuietRef');
+  });
+
+  it('arms post-absorb inspector quiet after absorb spend (509)', () => {
+    expect(fileViewer).toContain('shouldArmTipPostAbsorbInspectorQuiet');
+    expect(fileViewer).toContain('shouldSkipOdEditTargetsIdentityMixedReseedDuringPostAbsorbQuiet');
+    expect(fileViewer).toContain('shouldTreatPostAbsorbQuietAsTipProtect');
+    expect(fileViewer).toContain('clearTipPostAbsorbInspectorQuiet');
+    expect(freezeSource).toContain('shouldArmTipPostAbsorbInspectorQuiet');
+  });
+
+  it('defers follow-end chrome release while safety timeout pending (510)', () => {
+    expect(fileViewer).toContain('shouldDeferTipRemountChromeReleaseAfterFollowEndBlockedBySafety');
+    expect(fileViewer).toContain('shouldFlushDeferredTipRemountChromeReleaseAfterSafety');
+    expect(fileViewer).toContain('manualEditTipFollowChromeReleaseDeferredRef');
+    expect(TIP_REMOUNT_DECK_NUDGE_FOLLOW_MS).toBeGreaterThan(TIP_REMOUNT_FIT_SETTLE_LATCH_MS);
   });
 
   it('keeps chrome release at 400ms and latch covering 1600 remasure', () => {

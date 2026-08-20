@@ -29,7 +29,7 @@
     "typecheck": "tsc -b --noEmit",
     "pretest": "node scripts/pretest.mjs",
     "test": "vitest run -c vitest.config.ts",
-    "test:tip-remount-smoke": "vitest run -c vitest.config.ts tests/edit-mode/manual-edit-tip-remount-smoke.test.ts tests/edit-mode/manual-edit-tip-soft-land-absorb-sequence.test.ts"
+    "test:tip-remount-smoke": "vitest run -c vitest.config.ts tests/edit-mode/manual-edit-tip-remount-smoke.test.ts tests/edit-mode/manual-edit-tip-soft-land-absorb-sequence.test.ts tests/edit-mode/manual-edit-tip-deck-nudge-follow-chrome-race.test.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "0.32.1",

@@ -301,6 +301,12 @@ describe('FileViewer revision tip advance after undo', () => {
     expect(fileViewer).toContain('TIP_REMOUNT_DECK_NUDGE_REMEASURE_THROTTLE_MS');
     expect(fileViewer).toContain('shouldReleaseTipRemountChromeWhenDeckNudgeFollowEnds');
     expect(fileViewer).toContain('manualEditTipDeckNudgeFollowChromeTimeoutRef');
+    expect(fileViewer).toContain('shouldDeferTipRemountChromeReleaseAfterFollowEndBlockedBySafety');
+    expect(fileViewer).toContain('shouldFlushDeferredTipRemountChromeReleaseAfterSafety');
+    expect(fileViewer).toContain('manualEditTipFollowChromeReleaseDeferredRef');
+    expect(fileViewer).toContain('shouldClearTipPostProtectOnOdEditTargetsSelectionIdsChange');
+    expect(fileViewer).toContain('shouldArmTipPostAbsorbInspectorQuiet');
+    expect(fileViewer).toContain('manualEditTipPostAbsorbInspectorQuietRef');
     expect(fileViewer).toContain("clearManualEditTipRemountGeometryGrace('mode-exit')");
     expect(fileViewer).toContain('TIP_REMOUNT_DECK_NUDGE_FOLLOW_MS');
     expect(fileViewer).toContain('shouldRemeasureTipRemountOnDeckHostFitNudge');
