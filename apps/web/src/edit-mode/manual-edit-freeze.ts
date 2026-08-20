@@ -183,6 +183,22 @@ export function shouldReleaseTipRemountChromeAfterFitSettleRemasure(
 }
 
 /**
+ * Chrome-release delay remasure applied nothing (iframe/layout not ready) —
+ * still drop inert so handles are not stuck until the ~1.7s safety clear (512).
+ * Later 900/1600ms remasures can still catch geometry up.
+ */
+export function shouldReleaseTipRemountChromeAfterFailedFitSettleRemasure(
+  chromeSuppressed: boolean,
+  appliedAny: boolean,
+  remasureDelayMs: number,
+  chromeReleaseDelayMs: number = TIP_REMOUNT_FIT_SETTLE_CHROME_RELEASE_MS,
+): boolean {
+  return chromeSuppressed
+    && !appliedAny
+    && remasureDelayMs >= chromeReleaseDelayMs;
+}
+
+/**
  * Mid-gesture fit-settle remasure would fight the resize/move draft — skip
  * apply while a Manual Edit gesture session is active (482). Chrome release
  * and later scheduled delays still run once the gesture ends.
@@ -892,6 +908,21 @@ export function shouldSkipOdEditTargetsSingleInspectorReseedDuringPostExitAbsorb
 export function shouldTreatPostExitAbsorbAsTipProtect(
   absorbArmed: boolean,
 ): boolean {
+  return absorbArmed;
+}
+
+/**
+ * Absorb tick must source-only settle inspector draft once — otherwise tip-
+ * preserved draft styles stick after FP absorb when identity is unchanged
+ * (early-exit) or when Mixed skip blocks the live reseed (511).
+ * Pending drafts stay owned by the user (기획 59).
+ */
+export function shouldSettleInspectorStylesOnPostExitAbsorb(
+  absorbArmed: boolean,
+  selectionIdsChanged: boolean,
+  styleDraftPending = false,
+): boolean {
+  if (styleDraftPending || selectionIdsChanged) return false;
   return absorbArmed;
 }
 

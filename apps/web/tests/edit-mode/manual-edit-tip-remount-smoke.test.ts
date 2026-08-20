@@ -17,6 +17,7 @@ import {
   shouldAllowOdEditTargetsPendingReseedDuringTipProtect,
   shouldClearManualEditSelectionOnEmptyOdEditTargets,
   shouldClearTipRemountOnManualEditModeExit,
+  shouldReleaseTipRemountChromeAfterFailedFitSettleRemasure,
   shouldReleaseTipRemountChromeAfterFitSettleRemasure,
   shouldReleaseTipRemountChromeAfterResizeGestureEnds,
   shouldSkipOdEditTargetsIdentityMixedReseedDuringPostExitAbsorb,
@@ -62,6 +63,19 @@ describe('manual-edit tip remount smoke (500/501/506)', () => {
     expect(fileViewer).toContain('shouldTreatPostAbsorbQuietAsTipProtect');
     expect(fileViewer).toContain('clearTipPostAbsorbInspectorQuiet');
     expect(freezeSource).toContain('shouldArmTipPostAbsorbInspectorQuiet');
+  });
+
+  it('settles inspector source-only on absorb so tip draft does not stick (511)', () => {
+    expect(fileViewer).toContain('shouldSettleInspectorStylesOnPostExitAbsorb');
+    expect(fileViewer).toContain('settleAbsorbInspector');
+    expect(freezeSource).toContain('shouldSettleInspectorStylesOnPostExitAbsorb');
+  });
+
+  it('releases chrome at 400ms even when fit remasure applied nothing (512)', () => {
+    expect(fileViewer).toContain('shouldReleaseTipRemountChromeAfterFailedFitSettleRemasure');
+    expect(freezeSource).toContain('shouldReleaseTipRemountChromeAfterFailedFitSettleRemasure');
+    expect(shouldReleaseTipRemountChromeAfterFailedFitSettleRemasure(true, false, 400)).toBe(true);
+    expect(shouldReleaseTipRemountChromeAfterFailedFitSettleRemasure(true, true, 400)).toBe(false);
   });
 
   it('defers follow-end chrome release while safety timeout pending (510)', () => {

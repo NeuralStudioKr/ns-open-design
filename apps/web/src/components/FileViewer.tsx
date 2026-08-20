@@ -339,6 +339,7 @@ import {
   shouldCancelTipRemountSyncHostMeasureRetry,
   shouldReleaseTipRemountChromeAfterSyncHostMeasure,
   shouldReleaseTipRemountChromeAfterFitSettleRemasure,
+  shouldReleaseTipRemountChromeAfterFailedFitSettleRemasure,
   TIP_REMOUNT_FIT_SETTLE_CHROME_RELEASE_MS,
   TIP_REMOUNT_FIT_SETTLE_LAST_REMEASURE_MS,
   TIP_REMOUNT_FIT_SETTLE_LATCH_MS,
@@ -365,6 +366,7 @@ import {
   shouldKeepMultiInspectorSourceOnlyDuringTipExitLatch,
   shouldSkipOdEditTargetsSingleInspectorReseedDuringPostExitAbsorb,
   shouldTreatPostExitAbsorbAsTipProtect,
+  shouldSettleInspectorStylesOnPostExitAbsorb,
   shouldArmTipPostAbsorbInspectorQuiet,
   shouldSkipOdEditTargetsIdentityMixedReseedDuringPostAbsorbQuiet,
   shouldTreatPostAbsorbQuietAsTipProtect,
@@ -8211,6 +8213,11 @@ function HtmlViewer({
       appliedAny,
       remasureDelayMs,
       TIP_REMOUNT_FIT_SETTLE_CHROME_RELEASE_MS,
+    ) || shouldReleaseTipRemountChromeAfterFailedFitSettleRemasure(
+      manualEditTipRemountChromeSuppressedRef.current,
+      appliedAny,
+      remasureDelayMs,
+      TIP_REMOUNT_FIT_SETTLE_CHROME_RELEASE_MS,
     )) {
       manualEditTipRemountChromeSuppressedRef.current = false;
       setManualEditTipRemountChromeSuppressed(false);
@@ -10433,9 +10440,61 @@ function HtmlViewer({
             selectedTargetsIdentityChanged,
             tipProtectActive,
           );
+          // Absorb: source-only settle once so tip-preserved draft does not stick (511).
+          // Quiet then blocks the next live catalog from re-firing Mixed (509).
+          const settleAbsorbInspector = shouldSettleInspectorStylesOnPostExitAbsorb(
+            postExitAbsorbAtEntry,
+            selectionIdsChanged,
+            styleDraftPending,
+          );
           // Multi-select inspector: reparse on id-set OR selected identity change
           // (59 mixed styles). Geometry-only broadcasts keep fingerprint equal.
           if (
+            settleAbsorbInspector
+            && nextIds.length > 1
+          ) {
+            const base = sourceRef.current ?? '';
+            const parsedDoc = parseManualEditSource(base);
+            const reseed = planManualEditMultiInspectorReseed({
+              selectedIds: nextIds,
+              readStyles: (id) => readManualEditStyles(base, id, {}, parsedDoc),
+              concurrentPending: manualEditPendingStyleRef.current
+                ? {
+                  styles: manualEditPendingStyleRef.current.styles,
+                  perTargetStyles: manualEditPendingStyleRef.current.perTargetStyles,
+                }
+                : null,
+            });
+            setManualEditMixedStyleKeys(reseed.mixedKeys);
+            if (reseed.styles != null) {
+              setManualEditDraft((current) => ({ ...current, styles: reseed.styles! }));
+            }
+          } else if (
+            settleAbsorbInspector
+            && nextIds.length === 1
+            && selectedNext
+          ) {
+            const base = sourceRef.current ?? '';
+            const parsedDoc = parseManualEditSource(base);
+            const snapshot = readManualEditTargetSnapshot(
+              base,
+              selectedNext.id,
+              {},
+              parsedDoc,
+            );
+            setManualEditDraft((current) => ({
+              ...current,
+              text: snapshot.fields.text ?? selectedNext.fields.text ?? selectedNext.text,
+              href: snapshot.fields.href ?? selectedNext.fields.href ?? '',
+              src: snapshot.fields.src ?? selectedNext.fields.src ?? '',
+              alt: snapshot.fields.alt ?? selectedNext.fields.alt ?? '',
+              styles: shouldReadSingleInspectorStylesFromSourceOnlyForOdEditTargets()
+                ? snapshot.styles
+                : mergeManualEditInspectorStyles(snapshot.styles, selectedNext.styles),
+              attributesText: JSON.stringify(snapshot.attributes, null, 2),
+              outerHtml: snapshot.outerHtml || selectedNext.outerHtml,
+            }));
+          } else if (
             nextIds.length > 1
             && !skipIdentityInspectorReseed
             && (selectionIdsChanged || (selectedTargetsIdentityChanged && !styleDraftPending))

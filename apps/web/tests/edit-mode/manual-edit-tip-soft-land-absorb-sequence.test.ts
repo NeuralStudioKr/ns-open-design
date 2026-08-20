@@ -19,6 +19,7 @@ import {
   shouldEarlyExitTipPostStickySoftLand,
   shouldRetainTipSyncedIdentityDuringPostSoftLandExitLatch,
   shouldRetainTipSyncedIdentityDuringPostStickySoftLand,
+  shouldSettleInspectorStylesOnPostExitAbsorb,
   shouldSkipOdEditTargetsIdentityMixedReseedDuringPostAbsorbQuiet,
   shouldSkipOdEditTargetsIdentityMixedReseedDuringPostExitAbsorb,
   shouldTreatPostAbsorbQuietAsTipProtect,
@@ -83,11 +84,14 @@ describe('manual-edit tip soft-land→absorb sequence (507/509)', () => {
     state.exitLatch = clearTipPostSoftLandExitLatch();
     state.absorb = true;
 
-    // Catalog D: absorb tip-protect + Mixed skip, arm quiet, clear absorb
+    // Catalog D: absorb tip-protect + source-only inspector settle, arm quiet
     expect(shouldTreatPostExitAbsorbAsTipProtect(state.absorb)).toBe(true);
     expect(shouldSkipOdEditTargetsIdentityMixedReseedDuringPostExitAbsorb(
       false, state.absorb,
     )).toBe(true);
+    // Identity-churn path stays skipped, but absorb must settle draft once (511).
+    expect(shouldSettleInspectorStylesOnPostExitAbsorb(state.absorb, false)).toBe(true);
+    expect(shouldSettleInspectorStylesOnPostExitAbsorb(state.absorb, false, true)).toBe(false);
     expect(shouldAbsorbLiveIdentityFingerprintOnPostExitLatch(
       state.absorb, false,
     )).toBe(true);
@@ -97,6 +101,7 @@ describe('manual-edit tip soft-land→absorb sequence (507/509)', () => {
 
     // Catalog E: post-absorb quiet — Mixed skip without tip-preserve (509)
     expect(shouldTreatPostAbsorbQuietAsTipProtect(state.quiet)).toBe(true);
+    expect(shouldSettleInspectorStylesOnPostExitAbsorb(false, false)).toBe(false);
     expect(shouldClearManualEditSelectionOnEmptyOdEditTargets(
       shouldTreatPostAbsorbQuietAsTipProtect(state.quiet),
     )).toBe(false);

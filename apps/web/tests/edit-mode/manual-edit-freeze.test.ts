@@ -12,6 +12,7 @@ import {
   shouldCancelTipRemountSyncHostMeasureRetry,
   shouldReleaseTipRemountChromeAfterSyncHostMeasure,
   shouldReleaseTipRemountChromeAfterFitSettleRemasure,
+  shouldReleaseTipRemountChromeAfterFailedFitSettleRemasure,
   TIP_REMOUNT_FIT_SETTLE_CHROME_RELEASE_MS,
   TIP_REMOUNT_FIT_SETTLE_LAST_REMEASURE_MS,
   TIP_REMOUNT_FIT_SETTLE_LATCH_MS,
@@ -38,6 +39,7 @@ import {
   shouldKeepMultiInspectorSourceOnlyDuringTipExitLatch,
   shouldSkipOdEditTargetsSingleInspectorReseedDuringPostExitAbsorb,
   shouldTreatPostExitAbsorbAsTipProtect,
+  shouldSettleInspectorStylesOnPostExitAbsorb,
   shouldClearTipPostProtectOnSelectionChange,
   shouldClearTipRemountOnManualEditModeExit,
   tipRemountPostProtectArmed,
@@ -206,6 +208,10 @@ describe('manual edit freeze reset', () => {
     expect(shouldReleaseTipRemountChromeAfterFitSettleRemasure(true, true, 150)).toBe(false);
     expect(shouldReleaseTipRemountChromeAfterFitSettleRemasure(true, false, 400)).toBe(false);
     expect(shouldReleaseTipRemountChromeAfterFitSettleRemasure(false, true, 400)).toBe(false);
+    expect(shouldReleaseTipRemountChromeAfterFailedFitSettleRemasure(true, false, 400)).toBe(true);
+    expect(shouldReleaseTipRemountChromeAfterFailedFitSettleRemasure(true, true, 400)).toBe(false);
+    expect(shouldReleaseTipRemountChromeAfterFailedFitSettleRemasure(true, false, 150)).toBe(false);
+    expect(shouldReleaseTipRemountChromeAfterFailedFitSettleRemasure(false, false, 400)).toBe(false);
     // 900/1600ms remasure updates geometry but must not re-gate chrome release (478/481).
     expect(shouldReleaseTipRemountChromeAfterFitSettleRemasure(
       false, true, 900, TIP_REMOUNT_FIT_SETTLE_CHROME_RELEASE_MS,
@@ -253,6 +259,10 @@ describe('manual edit freeze reset', () => {
     expect(shouldSkipOdEditTargetsSingleInspectorReseedDuringPostExitAbsorb(false, true, true)).toBe(false);
     expect(shouldTreatPostExitAbsorbAsTipProtect(true)).toBe(true);
     expect(shouldTreatPostExitAbsorbAsTipProtect(false)).toBe(false);
+    expect(shouldSettleInspectorStylesOnPostExitAbsorb(true, false)).toBe(true);
+    expect(shouldSettleInspectorStylesOnPostExitAbsorb(true, false, true)).toBe(false);
+    expect(shouldSettleInspectorStylesOnPostExitAbsorb(true, true)).toBe(false);
+    expect(shouldSettleInspectorStylesOnPostExitAbsorb(false, false)).toBe(false);
     expect(shouldArmTipPostAbsorbInspectorQuiet(true, false)).toBe(true);
     expect(shouldArmTipPostAbsorbInspectorQuiet(true, true)).toBe(false);
     expect(shouldSkipOdEditTargetsIdentityMixedReseedDuringPostAbsorbQuiet(false, true)).toBe(true);
