@@ -5414,7 +5414,7 @@ export function ProjectView({
         htmlBody = await mergeOfficialLookCssForTemplate(htmlBody, persistTemplateId);
         htmlBody = repairDeckSlideSurfaceBleed(htmlBody);
         // Pin every .slide to 1920×1080 so 100vh / presentation-wrapper fills
-        // cannot stretch into a tall portrait preview panel (§0.67).
+        // cannot stretch into a tall portrait preview panel (§0.70).
         htmlBody = pinDeckSlidesToFixedCanvas(htmlBody);
       }
       if (ext === '.html' && persistCommentAttachments.length > 0) {

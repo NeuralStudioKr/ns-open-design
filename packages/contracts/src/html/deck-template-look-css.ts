@@ -1936,7 +1936,7 @@ function looksLikeAuthoredMultiSlideCss(html: string): boolean {
   if (!slideOpens || slideOpens.length < 2) return false;
   // Require presenter-like rules. A lone `.slide { background… }` from surface
   // bleed / canvas pin must not flip compact `.presentation` fills into the
-  // catalog-native path (§0.67).
+  // catalog-native path (§0.70).
   if (
     /\.slide\b[^{]*\{[^}]*(?:opacity\s*:|scroll-snap-|position\s*:\s*(?:absolute|fixed))/i.test(
       html,

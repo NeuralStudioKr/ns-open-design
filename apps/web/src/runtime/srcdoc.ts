@@ -145,7 +145,7 @@ export function buildSrcdoc(
     : false;
   // Deck preview/export: compact fills lock to a 1920×1080 canvas.
   // Official catalog presenters keep iframe-relative 100% fill.
-  // Pin only when letterboxing so older 100vh decks paint as 16:9 (§0.67).
+  // Pin only when letterboxing so older 100vh decks paint as 16:9 (§0.70).
   const deckCanvasReady = options.deck
     ? lockStackedDeckCanvasForPreview(
       compactStackedDeck ? pinDeckSlidesToFixedCanvas(repairedHead) : repairedHead,
