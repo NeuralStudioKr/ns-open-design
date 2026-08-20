@@ -554,16 +554,23 @@ function extractVisibleMotifInstances(html: string): string[] {
     if (scored.length >= 80) break;
   }
   scored.sort((a, b) => a.score - b.score || a.block.length - b.block.length);
-  const preferredCluster = preferredMotifClusterKey(scored.map((row) => row.key));
   const out: string[] = [];
   const seenKeys = new Set<string>();
   let daisyCount = 0;
   let starCount = 0;
   let svgCount = 0;
   let cssCount = 0;
+  let clusterCount = 0;
   for (const row of scored) {
-    if (preferredCluster && isMotifClusterClass(row.key) && row.key !== preferredCluster) continue;
     if (seenKeys.has(row.key) || out.includes(row.block)) continue;
+    if (isMotifClusterClass(row.key)) {
+      if (clusterCount >= 3) continue;
+      seenKeys.add(row.key);
+      out.push(row.block);
+      clusterCount += 1;
+      if (out.length >= 8) break;
+      continue;
+    }
     const hasSvg = /<svg\b/i.test(row.block);
     const isDaisy = /deco-daisy/i.test(row.key);
     const isStar = /deco-star/i.test(row.key);
@@ -577,7 +584,7 @@ function extractVisibleMotifInstances(html: string): string[] {
     if (isStar) starCount += 1;
     if (hasSvg) svgCount += 1;
     else cssCount += 1;
-    if (out.length >= 6) break;
+    if (out.length >= 8) break;
   }
   return out;
 }
@@ -616,7 +623,7 @@ function cssMotifElementHasPaint(dest: string, primary: string): boolean {
   // Empty host is real Motif for CSS-disc / overlay families (look CSS paints them).
   // Capsule `.deco-pill` still needs geometry style — bare shell is not paint.
   const cssDiscHost =
-    /^(?:gd-orb|xp-blob|cover-blob|sunglow|ts-stripe|pixel-particles|pixel-corners|hc-scanlines|win-titlebar|zigzag-deco|corner-bracket|deco-green-circle|cover-decoration|geo-decoration|deco-dots|post-it|doodle)/i.test(
+    /^(?:gd-orb|xp-blob|cover-blob|sunglow|ts-stripe|pixel-particles|pixel-corners|hc-scanlines|win-titlebar|zigzag-deco|corner-bracket|deco-green-circle|cover-decoration|geo-decoration|deco-dots|post-it|doodle|petals?)/i.test(
       primary,
     );
   let match: RegExpExecArray | null;
@@ -672,8 +679,27 @@ function destHasVisibleMotifIdentity(dest: string, instances: string[]): boolean
   return instances.some((block) => destHasInstancePaint(dest, block));
 }
 
-function slideHasOfficialMotifPaint(slideHtml: string, instances: string[]): boolean {
-  return destHasVisibleMotifIdentity(slideHtml, instances);
+function slideHasOfficialMotifPaint(
+  slideHtml: string,
+  instances: string[],
+  index = 0,
+  total = 0,
+): boolean {
+  const pack = motifPackForSlide(instances, index, total);
+  if (!pack) return destHasVisibleMotifIdentity(slideHtml, instances);
+  return destHasInstancePaint(slideHtml, pack);
+}
+
+function stripOfficialMotifInstances(slideHtml: string): string {
+  let out = slideHtml;
+  for (let guard = 0; guard < 12; guard += 1) {
+    const match = /<(div|span|svg)\b[^>]*\bdata-od-official-motif-html\b[^>]*>/i.exec(out);
+    if (!match || match.index == null) break;
+    const block = extractBalancedElement(out, match.index);
+    if (!block) break;
+    out = `${out.slice(0, match.index)}${out.slice(match.index + block.length)}`;
+  }
+  return out;
 }
 
 function fillEmptyMotifShells(dest: string, instances: string[]): string {
@@ -765,14 +791,41 @@ function listSlideBlocks(html: string): Array<{ start: number; end: number; html
   return blocks;
 }
 
-function motifPackForSlide(instances: string[], index: number): string {
+type SlideMotifRole = 'cover' | 'body' | 'closing';
+
+function slideMotifRole(index: number, total: number): SlideMotifRole {
+  if (index <= 0) return 'cover';
+  if (total >= 3 && index === total - 1) return 'closing';
+  return 'body';
+}
+
+function findClusterByName(clusters: string[], name: string): string | undefined {
+  return clusters.find((block) => hasExactClassToken(classAttrValue(block), name));
+}
+
+function motifPackForSlide(instances: string[], index: number, total = 0): string {
+  const role = slideMotifRole(index, total > 0 ? total : index + 1);
   const clusters = instances.filter((block) => isMotifClusterClass(classAttrValue(block)));
-  if (clusters.length > 0) {
-    const preferred = preferredMotifClusterKey(clusters.map((block) => classAttrValue(block)));
-    const cover = preferred
-      ? clusters.find((block) => hasExactClassToken(classAttrValue(block), preferred))
-      : undefined;
-    return cover ?? clusters[index % clusters.length] ?? clusters[0]!;
+  const cover = findClusterByName(clusters, 'deco-pills')
+    ?? findClusterByName(clusters, 'petals')
+    ?? findClusterByName(clusters, 'gd-ambient')
+    ?? findClusterByName(clusters, 'pixel-glitch');
+  const bodyCluster = findClusterByName(clusters, 'floating-pills')
+    ?? findClusterByName(clusters, 'gd-ambient')
+    ?? findClusterByName(clusters, 'pixel-glitch');
+  const bodyLoose = instances.find((block) => (
+    /\b(?:xp-blob|(?:cover-)?blob|doodle-)/i.test(classAttrValue(block))
+    && block !== cover
+  ));
+  const body = bodyCluster ?? (cover ? bodyLoose : undefined);
+  const closing = findClusterByName(clusters, 'deco-pills-closing')
+    ?? findClusterByName(clusters, 'floating-pills')
+    ?? cover;
+  if (cover || bodyCluster || findClusterByName(clusters, 'deco-pills-closing')) {
+    if (role === 'cover' && cover) return cover;
+    if (role === 'closing' && closing) return closing;
+    if (role === 'body' && body) return body;
+    if (cover) return cover;
   }
   const daisies = instances.filter((block) => /deco-daisy/i.test(block));
   const stars = instances.filter((block) => /deco-star/i.test(block));
@@ -853,12 +906,18 @@ function mergeVisibleMotifInstances(
   const slides = listSlideBlocks(out);
   if (slides.length === 0) {
     if (destHasVisibleMotifIdentity(out, instances)) return out;
-    return insertAfterOpenBody(out, motifPackForSlide(instances, 0));
+    return insertAfterOpenBody(out, motifPackForSlide(instances, 0, 1));
   }
 
   const nextSlides = slides.map((slide, index) => {
-    if (slideHasOfficialMotifPaint(slide.html, instances)) return slide.html;
-    return insertMotifIntoSlide(slide.html, motifPackForSlide(instances, index));
+    const pack = motifPackForSlide(instances, index, slides.length);
+    if (slideHasOfficialMotifPaint(slide.html, instances, index, slides.length)) {
+      return slide.html;
+    }
+    const html = /data-od-official-motif-html/i.test(slide.html)
+      ? stripOfficialMotifInstances(slide.html)
+      : slide.html;
+    return insertMotifIntoSlide(html, pack);
   });
 
   for (let i = slides.length - 1; i >= 0; i -= 1) {

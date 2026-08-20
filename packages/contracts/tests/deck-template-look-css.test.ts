@@ -501,6 +501,39 @@ html, body { overflow: visible !important; height: auto !important; }
     }
   });
 
+  it('does not stamp the Capsule cover pill pack onto every slide', () => {
+    const official = loadOfficialLookSource(join(EXAMPLES_DIR, 'html-ppt-zhangzara-capsule', 'example.html'));
+    const assets = extractOfficialDeckLookAssets(official)!;
+    const sixSlides = `<!doctype html><html lang="ko"><body>
+<section class="slide"><h1>Cover</h1></section>
+<section class="slide"><h2>Body A</h2></section>
+<section class="slide"><h2>Body B</h2></section>
+<section class="slide"><h2>Body C</h2></section>
+<section class="slide"><h2>Body D</h2></section>
+<section class="slide"><h2>Closing</h2></section>
+</body></html>`;
+    const merged = mergeOfficialDeckLookCss(sixSlides, assets);
+    const decoPills = merged.match(/<div[^>]*\bdeco-pills\b(?!-)/gi) ?? [];
+    const floating = merged.match(/<div[^>]*\bfloating-pills\b/gi) ?? [];
+    const closing = merged.match(/<div[^>]*\bdeco-pills-closing\b/gi) ?? [];
+    expect(decoPills.length, 'cover deco-pills only').toBe(1);
+    expect(floating.length, 'body floating-pills').toBeGreaterThanOrEqual(3);
+    expect(closing.length, 'closing cluster').toBe(1);
+    expect(merged).toContain('Cover');
+    expect(merged).toContain('Body A');
+    expect(merged).toContain('Closing');
+    const twice = mergeOfficialDeckLookCss(merged, assets);
+    expect(twice).toBe(merged);
+
+    const stamped = sixSlides.replace(
+      /<section class="slide">/g,
+      '<section class="slide"><div data-od-official-motif-html class="deco-pills"><div class="deco-pill pill-coral" style="width:80px;height:36px"></div></div>',
+    );
+    const healed = mergeOfficialDeckLookCss(stamped, assets);
+    expect((healed.match(/<div[^>]*\bdeco-pills\b(?!-)/gi) ?? []).length).toBe(1);
+    expect((healed.match(/<div[^>]*\bfloating-pills\b/gi) ?? []).length).toBeGreaterThanOrEqual(3);
+  });
+
   it('loops every mode:deck example and paints official body Motif onto sparse fill', () => {
     const families: Array<{ id: string; official: RegExp; merged: RegExp }> = [
       { id: 'daisy-flower', official: /deco-daisy[\s\S]{0,240}<svg\b[\s\S]{80,}?#fcdf6c/i, merged: /deco-daisy[\s\S]{0,240}<svg\b[\s\S]{80,}?#fcdf6c/i },

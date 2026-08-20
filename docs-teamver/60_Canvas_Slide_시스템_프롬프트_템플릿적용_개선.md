@@ -241,6 +241,30 @@ Capsule은 empty `.deco-pill` + look CSS로 살아나지만 Daisy 정체성은 ~
 - [x] Pitch cover-blob · Safety stripe · Coral zigzag · Cartesian geo · Blue cover-decoration · Biennale sunglow
 - [x] export cache v28
 
+### 0.55 2026-08-20 — 커버 Motif가 전 장에 고정되는 문제
+
+사용자 재현: Capsule 덱에서 표지와 본문에 **같은 알약/원**이 같은 좌표로 반복. 의도 아님.
+
+공식 Capsule은 장 역할이 다르다:
+- 표지 `.deco-pills` > `.deco-pill`
+- 본문 `.floating-pills` > `.f-pill`
+- 클로징 `.deco-pills-closing` > `.c-pill`
+
+persist는 cover cluster만 남기고 전 장에 찍었다.
+
+수정:
+- cover/body/closing 클러스터를 함께 추출
+- `slideMotifRole`로 장별 팩
+- 이미 찍힌 official cover 스탬프는 걷고 역할 팩으로 교체
+- export cache `v30`
+
+구현 현황:
+
+- [x] 6장 Capsule sparse — cover 1 / body floating / closing 1
+- [x] 전 장 deco-pills 스탬프 heal
+- [x] catalog loop 회귀
+- [x] export cache v30
+
 ### 0.54 2026-08-20 — Motif identity 오탐 / wrong shell fill / content chrome
 
 §0.53 카탈로그 paint 이후에도 persist가 **가짜 identity**로 진짜 Motif를 스킵하거나 잘못된 SVG를 채웠다.
@@ -1360,6 +1384,7 @@ User-message 쪽 `[Existing deck edit]` / `<attached-preview-comments>` 주입�
 | 2026-08-13 | **§0.0 정책 개정** — template = layout vocabulary + visual look, 페이지 수/순서/구성은 브리프 기반. content-swap → pick-and-choose layout roles. daemon Clone default count = 6 (shells.length 아님), `pickTemplateShells` role-based scoring 도입. `template-visual-kit.ts` HARD_RULES 재작성, `DEFAULT_MAX_CHARS` 12000 → 14000. |
 | 2026-08-18 | Clone content-fill motif 보정 — 8/13 SVG hang 방지 패치가 first fill에서 `Motif sprites`/`Decoration CSS`/`Layout CSS`를 통째로 생략해 Daisy/Capsule 템플릿 정체성이 약해졌다. `slimTemplateVisualKitForFill`이 큰 SVG sprite sheet와 전체 stylesheet dump는 계속 제거하되, Daisy star/rainbow·Capsule pill/capsule·Terminal scanline 같은 compact motif recipe와 짧은 Decoration/Layout CSS cue를 보존하도록 변경했다. |
 | 2026-08-18 | §0.20 — html-ppt identity scope. 공유 `:root --bg:#ffffff` 대신 `.tpl-*` host 토큰/슬라이드 surface/폰트를 kit 계약으로 쓰고, SKILL `copy index.html` filesystem 지시를 neutralize. |
+| 2026-08-20 | §0.55 — Capsule 커버 Motif 전 장 스탬프. 장 역할별 deco-pills / floating-pills / closing · cache v30. |
 | 2026-08-20 | §0.54 — Motif identity 오탐(chart/empty-pill/comment) · wrong shell fill · content chrome denylist · cache v29. |
 | 2026-08-19 | §0.53 — 카탈로그 54개 루프. pixel-glitch/win-titlebar/deco-green-circle 및 cover-blob 등 장식 추출 · cache v28. |
 | 2026-08-19 | §0.52 — Motif persist가 Daisy/4-seed one-off라 카탈로그 도형이 빠짐. exact token · cluster child paint · 전 장 instance 주입 · cache v27. |
