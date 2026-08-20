@@ -582,8 +582,8 @@ cur=n;
     expect(slideEls).toHaveLength(3);
     expect(slideEls[0]?.style.flexDirection).toBe('column');
     expect(slideEls[0]?.style.justifyContent).toBe('center');
-    // Axis lock runs when a slide becomes visible (setSlideDisplayed). Reveal
-    // the split slide before asserting its authored row flex.
+    // Hoist locks every stacked slide so split pages stay row before first paint.
+    expect(slideEls[1]?.style.flexDirection).toBe('row');
     win.dispatchEvent(new win.MessageEvent('message', { data: { type: 'od:slide', action: 'next' } }));
     await new Promise<void>((resolve) => win.setTimeout(resolve, 40));
     expect(slideEls[1]?.style.flexDirection).toBe('row');

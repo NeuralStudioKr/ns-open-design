@@ -32,6 +32,27 @@
 | scaffold로 갑자기 바꾸면? | **안 됨.** kit hard cutover 금지. full HTML scaffold도 기본 inject 하지 않음 |
 | 1장짜리 템플릿 결과가 저장되는가? | **제품 경로는 첫 fill 3장.** 잘리면 제목 있는 1장은 저장하고 top-up이 덧붙인다. 제목 없는 빈 셸만 미완성으로 차단. 사용자가 1장을 명시한 경우도 허용 |
 
+### 0.74 2026-08-20 — Capsule 장수 · presentation 안 append · split 축 hoist
+
+Capsule `div.slide` 초안이 저장된 뒤 top-up이 안 돌거나, 새 장이 `.presentation` 밖에 붙어 미리보기가 비고, official-look split 16:9가 첫 장 다음부터 column으로 무너진다.
+
+**원인:**
+1. 저장 후 장수 게이트(`countDeckSlideSections`)는 `section.slide`만 센다. append는 이미 `section|div.slide`를 읽는다.
+2. `appendIncomingSlidesOntoExistingDeck`가 `</body>` 직전에 splice해서 `.presentation` / `<deck-stage>` 밖에 장이 붙는다. 호스트를 “첫 장 직전 태그”로만 보면 `<header>` 크롬이 있는 덱도 `</body>`로 떨어진다.
+3. stacked hoist는 지금 보이는 장만 `lockStackedSlideAxis`를 걸어, split 페이지는 `next` 전까지 `flex-direction:column`으로 남는다.
+
+**수정:**
+- `countAppendableDeckSlides` — 장수 게이트와 append 추출을 같은 `section|div.slide` 집합으로 맞춘다
+- `findSlideHostAppendOffset` — 아직 열린 `.presentation` / `.deck` / `<deck-stage>` 안에서 **마지막 장 뒤**에 이어붙인다 (브랜드 크롬·footer 유지)
+- `lockAllStackedSlideAxes` — hoist 직후 `#od-stacked-deck-stage` 자식 `.slide` 전부에 축 lock
+
+구현 현황:
+
+- [x] Capsule 3장 `div.slide` 카운트 3
+- [x] `.presentation` 안 append + `nav-dots`는 호스트 밖
+- [x] header/footer가 있는 `.presentation`에도 호스트 안 append
+- [x] official-look `.presentation` split 축을 첫 next 전에 row로 고정
+
 ### 0.69 2026-08-20 — 5장 완료 뒤 자동 '수정 요청'
 
 첫 생성이 요청한 5장을 다 만들었는데도 「슬라이드 초안이 생성되었습니다」 다음에 숨은 follow-up이 다시 돈다. 내용이 빈약해서 보완하는 경로가 아니다.
@@ -1578,6 +1599,7 @@ User-message 쪽 `[Existing deck edit]` / `<attached-preview-comments>` 주입�
 | 2026-08-13 | **§0.0 정책 개정** — template = layout vocabulary + visual look, 페이지 수/순서/구성은 브리프 기반. content-swap → pick-and-choose layout roles. daemon Clone default count = 6 (shells.length 아님), `pickTemplateShells` role-based scoring 도입. `template-visual-kit.ts` HARD_RULES 재작성, `DEFAULT_MAX_CHARS` 12000 → 14000. |
 | 2026-08-18 | Clone content-fill motif 보정 — 8/13 SVG hang 방지 패치가 first fill에서 `Motif sprites`/`Decoration CSS`/`Layout CSS`를 통째로 생략해 Daisy/Capsule 템플릿 정체성이 약해졌다. `slimTemplateVisualKitForFill`이 큰 SVG sprite sheet와 전체 stylesheet dump는 계속 제거하되, Daisy star/rainbow·Capsule pill/capsule·Terminal scanline 같은 compact motif recipe와 짧은 Decoration/Layout CSS cue를 보존하도록 변경했다. |
 | 2026-08-18 | §0.20 — html-ppt identity scope. 공유 `:root --bg:#ffffff` 대신 `.tpl-*` host 토큰/슬라이드 surface/폰트를 kit 계약으로 쓰고, SKILL `copy index.html` filesystem 지시를 neutralize. |
+| 2026-08-20 | §0.74 — Capsule `div.slide` count = append hosts · splice inside open `.presentation`/`.deck`/`<deck-stage>` after last slide · hoist locks every stacked flex axis. |
 | 2026-08-20 | §0.73 — compact samples still taught overflow:hidden; pin left it on already-sized slides; absolute footers overlapped subtitles. Strip clip · flow footers · cache v41. |
 | 2026-08-20 | §0.72 — Daisy Motif hang full audit. sanitize official -30px CSS · paint every+corners · export remmerge hang · placement replace · cache v40. |
 | 2026-08-20 | §0.71 — Daisy Motif hang clip after §0.70 letterbox. Motif inside-canvas · remmerge negative offsets · pin size-only · cache v39. |

@@ -658,7 +658,84 @@ export function appendIncomingSlidesOntoExistingDeck(
   const range = findBodyContentRange(existing);
   const chunk = toAppend.map((slide) => slide.outerHtml).join("\n");
   if (!range) return `${existing.replace(/\s*$/, "\n")}${chunk}\n`;
-  return `${existing.slice(0, range.end)}\n${chunk}\n${existing.slice(range.end)}`;
+  const insertAt = findSlideHostAppendOffset(existing, range, existingSlides);
+  return `${existing.slice(0, insertAt)}\n${chunk}\n${existing.slice(insertAt)}`;
+}
+
+const SLIDE_WRAPPER_TAG_RE =
+  /<\/?(div|main|section|article|deck-stage)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
+const SLIDE_WRAPPER_HOST_CLASS_RE =
+  /\b(?:presentation|deck|slides-container|deck-shell|deck-stage)\b/i;
+
+function attrsLookLikeSlideWrapperHost(tag: string, attrs: string): boolean {
+  return tag === "deck-stage" || SLIDE_WRAPPER_HOST_CLASS_RE.test(attrs);
+}
+
+/**
+ * Keep appended slides inside the saved host (`.presentation`, `.deck`,
+ * `<deck-stage>`). Splicing at `</body>` leaves 1–3 inside the wrapper and
+ * the rest as siblings — preview then blanks or only pages the first block.
+ * Brand chrome (`<header>`) before the first slide must not hide the host.
+ */
+function findSlideHostAppendOffset(
+  existing: string,
+  range: { start: number; end: number },
+  existingSlides: readonly TopLevelSlideSection[],
+): number {
+  if (existingSlides.length === 0) return range.end;
+  const first = existingSlides[0]!;
+  const last = existingSlides[existingSlides.length - 1]!;
+  const absFirst = range.start + first.start;
+  const absLast = range.start + last.end;
+  const before = existing.slice(range.start, absFirst);
+  const host = findInnermostOpenSlideWrapperHost(before);
+  if (!host) return range.end;
+  const after = existing.slice(absLast, range.end);
+  if (findMatchingTagCloseIndex(after, host.tag) < 0) return range.end;
+  // After the last existing slide, still inside the host, so a trailing
+  // footer / pager stays after the new pages instead of between them.
+  return absLast;
+}
+
+function findInnermostOpenSlideWrapperHost(
+  before: string,
+): { tag: string } | null {
+  const stack: { tag: string; isHost: boolean }[] = [];
+  SLIDE_WRAPPER_TAG_RE.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = SLIDE_WRAPPER_TAG_RE.exec(before)) !== null) {
+    const tag = (match[1] ?? "div").toLowerCase();
+    const attrs = match[2] ?? "";
+    if (/^<\//.test(match[0])) {
+      for (let i = stack.length - 1; i >= 0; i -= 1) {
+        if (stack[i]!.tag === tag) {
+          stack.splice(i);
+          break;
+        }
+      }
+      continue;
+    }
+    stack.push({ tag, isHost: attrsLookLikeSlideWrapperHost(tag, attrs) });
+  }
+  for (let i = stack.length - 1; i >= 0; i -= 1) {
+    if (stack[i]!.isHost) return { tag: stack[i]!.tag };
+  }
+  return null;
+}
+
+function findMatchingTagCloseIndex(after: string, tag: string): number {
+  const re = new RegExp(`<(\\/?)${tag}\\b[^>]*>`, "gi");
+  let depth = 1;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(after)) !== null) {
+    if (match[1]) {
+      depth -= 1;
+      if (depth === 0) return match.index;
+    } else {
+      depth += 1;
+    }
+  }
+  return -1;
 }
 
 /** Close truncated section|div.slide hosts so append can see titled fragments. */
@@ -712,10 +789,15 @@ function closeUnclosedSlideHostsForAppend(html: string): string {
  * Top-up append accepts official catalog hosts (`section|div.slide`).
  * Deck-patch stays section-only via {@link extractTopLevelSlideSections}.
  */
-function extractAppendableSlideSections(html: string): TopLevelSlideSection[] {
+export function extractAppendableSlideSections(html: string): TopLevelSlideSection[] {
   const sectionOnly = extractTopLevelSlideSections(html);
   if (sectionOnly.length > 0) return sectionOnly;
   return extractTopLevelDivSlideSections(html);
+}
+
+/** Same hosts as top-up append — Capsule `div.slide` must count or top-up never fires. */
+export function countAppendableDeckSlides(html: string): number {
+  return extractAppendableSlideSections(extractDeckBodyContent(html)).length;
 }
 
 function extractTopLevelDivSlideSections(html: string): TopLevelSlideSection[] {

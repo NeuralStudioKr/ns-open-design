@@ -13,6 +13,7 @@ import {
 import {
   diffDeckSlideIndexes,
   appendIncomingSlidesOntoExistingDeck,
+  countAppendableDeckSlides,
   extractDeckBodyContent,
   extractTopLevelSlideSections,
   isDeckPatchArtifactType,
@@ -2832,9 +2833,9 @@ const ARTIFACT_REGRESSION_MIN_PRIOR_BYTES = 8192;
 const ARTIFACT_REGRESSION_MIN_RATIO = 0.35;
 
 function countDeckSlideSections(html: string): number {
-  // Must match applyDeckPatch / extractSlideByIndex: naive `[^>]*` regexes undercount
-  // when slide open-tags contain `>` inside quoted attrs (style calc/content).
-  return extractTopLevelSlideSections(extractDeckBodyContent(html)).length;
+  // Same hosts as top-up append (`section|div.slide`). Section-only counts
+  // made Capsule fills look empty so hidden top-up never scheduled.
+  return countAppendableDeckSlides(html);
 }
 
 function findClientArtifactRegression(input: {

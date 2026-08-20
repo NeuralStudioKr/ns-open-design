@@ -2768,6 +2768,7 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
       if (slide.parentNode === stage) continue;
       try { stage.appendChild(slide); } catch (_) {}
     }
+    lockAllStackedSlideAxes(stage);
   }
   function bodyDirectChildAncestor(node, body) {
     var cur = node;
@@ -2838,6 +2839,7 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     var slideList = stackedSlideNodes();
     if (existing) {
       if (slideList.length) moveSlidesIntoStackedStage(existing, slideList);
+      else lockAllStackedSlideAxes(existing);
       return existing;
     }
     if (!slideList.length) return null;
@@ -3579,6 +3581,15 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
       var style = el.getAttribute('style') || '';
       if (/(?:^|;)\s*display\s*:\s*none\b/i.test(style)) continue;
       el.setAttribute('data-od-authored-style', style);
+    }
+  }
+  function lockAllStackedSlideAxes(stage) {
+    if (!stage || !stage.children) return;
+    for (var i = 0; i < stage.children.length; i++) {
+      var child = stage.children[i];
+      if (child && child.classList && child.classList.contains('slide')) {
+        lockStackedSlideAxis(child);
+      }
     }
   }
   function setSlideDisplayed(el, visible) {
