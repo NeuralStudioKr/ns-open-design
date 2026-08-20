@@ -30,7 +30,7 @@
 | full skeleton API 복귀? | **금지** ([47](./47_body-first_compact_deck_아키텍처_검토_및_0716이후_변경판단.md)) — truncation 재발 |
 | full example.html을 프롬프트에? | **기본 금지.** 입·출력 토큰 위험. kit(~2k) + scaffold map으로 계약 |
 | scaffold로 갑자기 바꾸면? | **안 됨.** kit hard cutover 금지. full HTML scaffold도 기본 inject 하지 않음 |
-| 1장짜리 템플릿 결과가 저장되는가? | **사용자가 1장을 명시한 경우만 허용.** 미지정/다장 요청의 Template Clone fill이 1–2장으로 끝나면 미완성으로 보고 저장 전 차단 |
+| 1장짜리 템플릿 결과가 저장되는가? | **제목 있는 1장 초안은 저장하고 top-up이 나머지를 덧붙인다.** 제목 없는 빈 셸만 미완성으로 차단. 사용자가 1장을 명시한 경우도 허용 |
 
 ### 0.0 2026-08-13 정책 (개정) — **template = layout vocabulary + visual look, 페이지 수/순서/구성은 브리프 기반**
 
@@ -240,6 +240,33 @@ Capsule은 empty `.deco-pill` + look CSS로 살아나지만 Daisy 정체성은 ~
 - [x] Cobalt / Retro Windows / Block-frame circle
 - [x] Pitch cover-blob · Safety stripe · Coral zigzag · Cartesian geo · Blue cover-decoration · Biennale sunglow
 - [x] export cache v28
+
+### 0.56 2026-08-20 — Daisy 꽃 미사용 · 16:9 비율 · 1장 incomplete_output
+
+사용자 재현 (Linux Internals + Daisy Days):
+- 커버 오른쪽 아래에 40px급 꽃 아이콘만 보임. 공식 표지는 네 귀퉁이 큰 `deco-daisy-*` + `.deco svg{width:100%}`
+- 본문이 프레임 위 2/3에 몰리고 아래가 빔 (16:9가 아님)
+- first fill이 1장이면 `skipped-incomplete expected at least 3` → `incomplete_output`
+
+원인:
+1. persist가 Daisy를 장당 꽃 1 + 별 1만 찍고, 180px 고정이라 preview scale(≈0.5)에서 점처럼 보임. 모델이 만든 작은 `deco-daisy`는 identity로 통과해 공식 SVG 주입을 스킵
+2. `LOOK_NEUTRALIZE_CSS`가 `flex-direction: unset`만 넣어 공식 Daisy의 column+center가 깨지고, 짧은 커버가 1920×1080 상단에 붙음
+3. 제목 있는 1장 초안도 저장 전 차단 → 사용자는 에러만 봄
+
+수정:
+- 표지 4귀퉁이 + 본문/클로징은 대각 쌍. 크기는 1920 기준 % (TL 22%)
+- 작은 발명 꽃은 걷고 공식 팩으로 교체. `.deco svg` 100% fill
+- neutralize = column + `justify-content:center`, split만 `unset`
+- 제목 있는 1–2장 초안은 저장하고 top-up이 6장(또는 요청 장수)까지 덧붙임
+- export cache `v31`
+
+구현 현황:
+
+- [x] Daisy 커버 4귀퉁이 red spec
+- [x] 40px 발명 꽃은 official paint가 아님
+- [x] neutralize column+center + split unset
+- [x] titled 1장 → persist + top-up
+- [x] export cache v31
 
 ### 0.55 2026-08-20 — 커버 Motif가 전 장에 고정되는 문제
 
@@ -1384,6 +1411,7 @@ User-message 쪽 `[Existing deck edit]` / `<attached-preview-comments>` 주입�
 | 2026-08-13 | **§0.0 정책 개정** — template = layout vocabulary + visual look, 페이지 수/순서/구성은 브리프 기반. content-swap → pick-and-choose layout roles. daemon Clone default count = 6 (shells.length 아님), `pickTemplateShells` role-based scoring 도입. `template-visual-kit.ts` HARD_RULES 재작성, `DEFAULT_MAX_CHARS` 12000 → 14000. |
 | 2026-08-18 | Clone content-fill motif 보정 — 8/13 SVG hang 방지 패치가 first fill에서 `Motif sprites`/`Decoration CSS`/`Layout CSS`를 통째로 생략해 Daisy/Capsule 템플릿 정체성이 약해졌다. `slimTemplateVisualKitForFill`이 큰 SVG sprite sheet와 전체 stylesheet dump는 계속 제거하되, Daisy star/rainbow·Capsule pill/capsule·Terminal scanline 같은 compact motif recipe와 짧은 Decoration/Layout CSS cue를 보존하도록 변경했다. |
 | 2026-08-18 | §0.20 — html-ppt identity scope. 공유 `:root --bg:#ffffff` 대신 `.tpl-*` host 토큰/슬라이드 surface/폰트를 kit 계약으로 쓰고, SKILL `copy index.html` filesystem 지시를 neutralize. |
+| 2026-08-20 | §0.56 — Daisy 표지 4귀퉁이 % 스케일 · 작은 발명 꽃 제거 · 16:9 column+center · titled 1장 persist+top-up · cache v31. |
 | 2026-08-20 | §0.55 — Capsule 커버 Motif 전 장 스탬프. 장 역할별 deco-pills / floating-pills / closing · cache v30. |
 | 2026-08-20 | §0.54 — Motif identity 오탐(chart/empty-pill/comment) · wrong shell fill · content chrome denylist · cache v29. |
 | 2026-08-19 | §0.53 — 카탈로그 54개 루프. pixel-glitch/win-titlebar/deco-green-circle 및 cover-blob 등 장식 추출 · cache v28. |

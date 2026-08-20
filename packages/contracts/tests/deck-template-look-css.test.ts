@@ -501,6 +501,51 @@ html, body { overflow: visible !important; height: auto !important; }
     }
   });
 
+  it('stamps official Daisy cover corners, not a single tiny bottom-right flower', () => {
+    const official = loadOfficialLookSource(join(EXAMPLES_DIR, 'html-ppt-zhangzara-daisy-days/example.html'));
+    const assets = extractOfficialDeckLookAssets(official)!;
+    const sixSlides = `<!doctype html><html lang="ko"><body>
+<section class="slide"><h1>Cover</h1></section>
+<section class="slide"><h2>Body A</h2></section>
+<section class="slide"><h2>Body B</h2></section>
+<section class="slide"><h2>Closing</h2></section>
+</body></html>`;
+    const merged = mergeOfficialDeckLookCss(sixSlides, assets);
+    const cover = merged.match(/<section class="slide"[\s\S]*?<\/section>/i)?.[0] ?? '';
+    expect(cover).toMatch(/deco-daisy-tl/i);
+    expect(cover).toMatch(/deco-daisy-tr/i);
+    expect(cover).toMatch(/deco-daisy-bl/i);
+    expect(cover).toMatch(/deco-daisy-br|deco-daisy\b/i);
+    expect(cover).toMatch(/width:\s*22%/i);
+    expect((cover.match(/deco-daisy/gi) ?? []).length).toBeGreaterThanOrEqual(4);
+    expect(merged).toMatch(/flex-direction:\s*column/);
+    expect(merged).toMatch(/justify-content:\s*center/);
+    const twice = mergeOfficialDeckLookCss(merged, assets);
+    expect(twice).toBe(merged);
+  });
+
+  it('does not treat a tiny invented Daisy icon as official Motif paint', () => {
+    const official = loadOfficialLookSource(join(EXAMPLES_DIR, 'html-ppt-zhangzara-daisy-days/example.html'));
+    const assets = extractOfficialDeckLookAssets(official)!;
+    const tiny = `<!doctype html><html lang="ko"><body>
+<section class="slide" style="background:#F5F0E6;width:1920px;height:1080px">
+  <h1>Linux Internals &amp; Production Mastery</h1>
+  <div class="deco deco-daisy" style="position:absolute;bottom:16px;right:16px;width:40px;height:40px">
+    <svg viewBox="0 0 150 150"><style>.cls-1{fill:#fcdf6c}</style>
+      <path d="M10 20"/><path d="M30 40"/><path d="M50 60"/><circle class="cls-1" cx="75" cy="75" r="10"/>
+    </svg>
+  </div>
+</section>
+<section class="slide"><h2>Body</h2></section>
+</body></html>`;
+    const merged = mergeOfficialDeckLookCss(tiny, assets);
+    const cover = merged.match(/<section class="slide"[\s\S]*?<\/section>/i)?.[0] ?? '';
+    expect(cover).toMatch(/deco-daisy-tl/i);
+    expect(cover).toMatch(/width:\s*22%/i);
+    expect(cover).not.toMatch(/width:\s*40px/i);
+    expect(cover).toContain('Linux Internals');
+  });
+
   it('does not stamp the Capsule cover pill pack onto every slide', () => {
     const official = loadOfficialLookSource(join(EXAMPLES_DIR, 'html-ppt-zhangzara-capsule', 'example.html'));
     const assets = extractOfficialDeckLookAssets(official)!;
@@ -872,6 +917,8 @@ html, body { overflow: visible !important; height: auto !important; }
     const merged = mergeOfficialDeckLookCss(splitFill, assets);
     expect(merged).toContain(OFFICIAL_DECK_LOOK_STYLE_ATTR);
     expect(merged).toContain('stacked preview/export: Motif paint + fixed 1920');
+    expect(merged).toMatch(/flex-direction:\s*column/);
+    expect(merged).toMatch(/justify-content:\s*center/);
     expect(merged).toMatch(/flex-direction:\s*unset/);
     expect(merged).toMatch(/position:\s*relative\s*!important/);
     expect(merged).toMatch(/inset:\s*auto\s*!important/);

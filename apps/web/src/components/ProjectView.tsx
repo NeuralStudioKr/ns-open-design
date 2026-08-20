@@ -2885,6 +2885,9 @@ export function findTemplateCloneFillSlideCountIncomplete(input: {
       ? requested
       : 3;
   if (producedCount >= expectedCount) return null;
+  // Titled cover drafts persist; slide-count top-up appends the rest.
+  // Untitled/empty shells stay incomplete so auto-continue can recover.
+  if (producedCount >= 1 && /<h[1-3]\b/i.test(input.htmlBody)) return null;
 
   return {
     fileName,
@@ -11217,7 +11220,8 @@ export function ProjectView({
         const produced = countDeckSlideSections(html);
         const conversationMessages = messagesRef.current;
         if (findIncompleteSlideAssistantForRecovery(conversationMessages)) return;
-        const requested = extractRequestedSlideCountTargetFromMessages(conversationMessages);
+        const requested = extractRequestedSlideCountTargetFromMessages(conversationMessages)
+          ?? (runTemplateCloneContentFillRef.current ? 6 : null);
         const already = syncSlideCountTopUpCountFromMessages(
           conversationSlideCountTopUpCountRef.current,
           activeConversationId,
@@ -11226,6 +11230,7 @@ export function ProjectView({
         if (!shouldQueueSlideCountTopUp({
           produced,
           requested,
+          defaultRequested: runTemplateCloneContentFillRef.current ? 6 : undefined,
           topUpCount: already,
           commentAttachmentCount: runCommentAttachmentsRef.current.length,
         })) {

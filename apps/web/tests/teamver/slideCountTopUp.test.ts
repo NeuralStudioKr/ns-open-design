@@ -76,6 +76,18 @@ describe("slideCountTopUp", () => {
       topUpCount: 0,
     })).toBe(false);
     expect(shouldQueueSlideCountTopUp({
+      produced: 1,
+      requested: null,
+      defaultRequested: 6,
+      topUpCount: 0,
+    })).toBe(true);
+    expect(shouldQueueSlideCountTopUp({
+      produced: 2,
+      requested: 15,
+      defaultRequested: 6,
+      topUpCount: 0,
+    })).toBe(true);
+    expect(shouldQueueSlideCountTopUp({
       produced: 6,
       requested: 15,
       topUpCount: 0,

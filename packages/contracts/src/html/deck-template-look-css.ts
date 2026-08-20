@@ -67,9 +67,10 @@ const GENERIC_LOOK_PROOF_CLASS_RE =
  * Official Capsule/etc. CSS is authored for one-slide presentation mode
  * (`.slide { position:absolute; inset:0; width/height:100%; flex-direction:column }`).
  * Stacked preview/PDF/HTML need a fixed 1920×1080 flow canvas or Motif
- * pills and title blocks clip to the browser viewport. `flex-direction`
- * is unset (not `!important`) so inline column slides keep their axis and
- * split slides that only set `display:flex` stay `row`.
+ * pills and title blocks clip to the browser viewport. Stacked fills use
+ * column + vertical center so a short title/lead sits in the 16:9 frame
+ * instead of clustering at the top. Split slides (`:has(.split-*)`) keep
+ * `flex-direction: unset` so inline row children stay side-by-side.
  */
 export const LOOK_NEUTRALIZE_CSS = `
 /* ${OFFICIAL_LOOK_STACKED_NEUTRALIZE_MARKER}×1080 canvas (not presentation absolute 100%) */
@@ -109,7 +110,23 @@ html, body {
   margin-left: auto !important;
   margin-right: auto !important;
   box-sizing: border-box !important;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: stretch;
+}
+/* Split/row fills keep their inline axis — do not force a column. */
+.slide:has(.split-left), .slide:has(.split-right),
+.slide:has([class*="split-"]) {
   flex-direction: unset;
+  justify-content: unset;
+  align-items: stretch;
+}
+.slide .deco svg,
+[data-od-official-motif-html] svg {
+  width: 100% !important;
+  height: 100% !important;
+  display: block !important;
 }
 `;
 
@@ -181,6 +198,7 @@ function officialLookCssBodies(html: string): string[] {
 function officialLookCssLooksCurrent(css: string): boolean {
   return (
     css.includes(OFFICIAL_LOOK_STACKED_NEUTRALIZE_MARKER)
+    && /flex-direction:\s*column/.test(css)
     && /flex-direction:\s*unset/.test(css)
     && /position\s*:\s*relative\s*!important/i.test(css)
     && /width\s*:\s*1920px\s*!important/i.test(css)
@@ -200,6 +218,7 @@ export function hasOfficialLookStackedCanvasNeutralizeProof(html: string): boole
     /position\s*:\s*relative\s*!important/i.test(dest)
     && /width\s*:\s*1920px\s*!important/i.test(dest)
     && /height\s*:\s*1080px\s*!important/i.test(dest)
+    && /flex-direction:\s*column/.test(dest)
     && /flex-direction:\s*unset/.test(dest)
   );
 }
@@ -417,20 +436,22 @@ function motifInstanceScore(block: string, className: string): number {
 }
 
 function placementStyleForMotifClass(classAttr: string): string {
+  // % of the 1920×1080 canvas so preview scale matches the official
+  // presenter look (220px flowers on a ~1000px iframe ≈ 22% of 1920).
   if (/deco-daisy-tl/i.test(classAttr)) {
-    return 'position:absolute;top:-20px;left:-20px;width:200px;height:200px;pointer-events:none;z-index:1';
+    return 'position:absolute;top:-4%;left:-3%;width:22%;height:39%;pointer-events:none;z-index:1';
   }
   if (/deco-daisy-tr/i.test(classAttr)) {
-    return 'position:absolute;top:16px;right:-16px;width:170px;height:170px;pointer-events:none;z-index:1';
+    return 'position:absolute;top:2%;right:-2%;width:18%;height:32%;pointer-events:none;z-index:1';
   }
   if (/deco-daisy-bl/i.test(classAttr)) {
-    return 'position:absolute;bottom:-24px;left:16px;width:180px;height:180px;pointer-events:none;z-index:1';
+    return 'position:absolute;bottom:-4%;left:1%;width:19%;height:34%;pointer-events:none;z-index:1';
   }
   if (/deco-daisy-br/i.test(classAttr) || /deco-daisy\b/i.test(classAttr)) {
-    return 'position:absolute;bottom:-10px;right:-20px;width:180px;height:180px;pointer-events:none;z-index:1';
+    return 'position:absolute;bottom:-2%;right:-3%;width:20%;height:36%;pointer-events:none;z-index:1';
   }
   if (/deco-star/i.test(classAttr)) {
-    return 'position:absolute;top:12%;right:7%;width:72px;height:72px;pointer-events:none;z-index:1';
+    return 'position:absolute;top:12%;right:7%;width:8%;height:14%;pointer-events:none;z-index:1';
   }
   if (isMotifClusterClass(classAttr)) {
     return 'position:absolute;inset:0;pointer-events:none;z-index:1';
@@ -574,8 +595,8 @@ function extractVisibleMotifInstances(html: string): string[] {
     const hasSvg = /<svg\b/i.test(row.block);
     const isDaisy = /deco-daisy/i.test(row.key);
     const isStar = /deco-star/i.test(row.key);
-    if (isDaisy && daisyCount >= 2) continue;
-    if (isStar && starCount >= 2) continue;
+    if (isDaisy && daisyCount >= 4) continue;
+    if (isStar && starCount >= 3) continue;
     if (hasSvg && !isDaisy && !isStar && svgCount >= 3) continue;
     if (!hasSvg && cssCount >= 3) continue;
     seenKeys.add(row.key);
@@ -584,7 +605,7 @@ function extractVisibleMotifInstances(html: string): string[] {
     if (isStar) starCount += 1;
     if (hasSvg) svgCount += 1;
     else cssCount += 1;
-    if (out.length >= 8) break;
+    if (out.length >= 10) break;
   }
   return out;
 }
@@ -641,14 +662,62 @@ function cssMotifElementHasPaint(dest: string, primary: string): boolean {
   return false;
 }
 
+function daisyOpenTags(html: string): string[] {
+  return html.match(
+    /<(?:div|span)[^>]*\bclass\s*=\s*(?:"[^"]*\bdeco-daisy[^"]*"|'[^']*\bdeco-daisy[^']*')[^>]*>/gi,
+  ) ?? [];
+}
+
+function daisyPaintIsOfficialScale(html: string): boolean {
+  return daisyOpenTags(html).some((open) => {
+    if (/data-od-official-motif-html/i.test(open)) return true;
+    const width = /width\s*:\s*([\d.]+)\s*(px|%)/i.exec(open);
+    if (!width) return false;
+    const n = Number(width[1]);
+    return width[2] === '%' ? n >= 12 : n >= 140;
+  });
+}
+
+function daisyCornerTokens(html: string): string[] {
+  const tokens = new Set<string>();
+  for (const open of daisyOpenTags(html)) {
+    for (const token of classTokens(classAttrValue(open))) {
+      if (/^deco-daisy(?:-[a-z]+)?$/i.test(token)) tokens.add(token.toLowerCase());
+    }
+  }
+  return [...tokens];
+}
+
+/** Official Daisy paint = flower SVG at cover scale, not a 40px invented icon. */
+function destHasDaisyOfficialPaint(dest: string, pack: string): boolean {
+  if (!/deco-daisy[\s\S]{0,240}<svg\b/i.test(dest)) return false;
+  if (!svgBlocksContainDaisyIdentity(dest)) return false;
+  if (!daisyPaintIsOfficialScale(dest)) return false;
+  const packCorners = daisyCornerTokens(pack);
+  if (packCorners.length >= 3 && daisyCornerTokens(dest).length < 3) return false;
+  return true;
+}
+
+function stripUnderScaleDaisyInstances(slideHtml: string): string {
+  let out = slideHtml;
+  const opens = daisyOpenTags(out);
+  for (let i = opens.length - 1; i >= 0; i -= 1) {
+    const open = opens[i]!;
+    if (daisyPaintIsOfficialScale(open)) continue;
+    const index = out.lastIndexOf(open);
+    if (index < 0) continue;
+    const block = extractBalancedElement(out, index);
+    if (!block) continue;
+    out = `${out.slice(0, index)}${out.slice(index + block.length)}`;
+  }
+  return out;
+}
+
 function destHasInstancePaint(dest: string, block: string): boolean {
   const primary = motifPrimaryClass(classAttrValue(/^<[^>]+>/.exec(block)?.[0] ?? block));
   if (!primary) return false;
   if (primary.includes('daisy')) {
-    return (
-      /deco-daisy[\s\S]{0,240}<svg\b/i.test(dest)
-      && svgBlocksContainDaisyIdentity(dest)
-    );
+    return destHasDaisyOfficialPaint(dest, block);
   }
   if (primary.includes('pixel-glitch')) {
     return /pixel-glitch[\s\S]{0,240}<svg\b/i.test(dest);
@@ -803,6 +872,48 @@ function findClusterByName(clusters: string[], name: string): string | undefined
   return clusters.find((block) => hasExactClassToken(classAttrValue(block), name));
 }
 
+function daisyCornerKey(block: string): string {
+  const cls = classAttrValue(block);
+  if (hasExactClassToken(cls, 'deco-daisy-tl')) return 'tl';
+  if (hasExactClassToken(cls, 'deco-daisy-tr')) return 'tr';
+  if (hasExactClassToken(cls, 'deco-daisy-bl')) return 'bl';
+  if (hasExactClassToken(cls, 'deco-daisy-br')) return 'br';
+  if (hasExactClassToken(cls, 'deco-daisy')) return 'br';
+  return '';
+}
+
+function pickDaisy(daisies: string[], corner: string): string | undefined {
+  return daisies.find((block) => daisyCornerKey(block) === corner);
+}
+
+function daisyPackForRole(
+  daisies: string[],
+  stars: string[],
+  role: SlideMotifRole,
+  index: number,
+): string {
+  const tl = pickDaisy(daisies, 'tl');
+  const tr = pickDaisy(daisies, 'tr');
+  const bl = pickDaisy(daisies, 'bl');
+  const br = pickDaisy(daisies, 'br');
+  const starA = stars[0];
+  const starB = stars[1];
+  if (role === 'cover') {
+    return [tl, tr, bl, br, starA, starB].filter(Boolean).join('\n');
+  }
+  if (role === 'closing') {
+    return [tl ?? bl, br ?? tr, starA].filter(Boolean).join('\n');
+  }
+  const pairs: Array<Array<string | undefined>> = [
+    [tl, br],
+    [tr, bl],
+    [tl, tr],
+    [bl, br],
+  ];
+  const pair = pairs[index % pairs.length] ?? [tl, br];
+  return [...pair, starA].filter(Boolean).join('\n');
+}
+
 function motifPackForSlide(instances: string[], index: number, total = 0): string {
   const role = slideMotifRole(index, total > 0 ? total : index + 1);
   const clusters = instances.filter((block) => isMotifClusterClass(classAttrValue(block)));
@@ -829,8 +940,8 @@ function motifPackForSlide(instances: string[], index: number, total = 0): strin
   }
   const daisies = instances.filter((block) => /deco-daisy/i.test(block));
   const stars = instances.filter((block) => /deco-star/i.test(block));
-  if (daisies.length > 0 && stars.length > 0) {
-    return `${daisies[index % daisies.length]}\n${stars[index % stars.length]}`;
+  if (daisies.length > 0) {
+    return daisyPackForRole(daisies, stars, role, index);
   }
   const dots = instances.filter((block) => hasExactClassToken(classAttrValue(block), 'deco-dots'));
   const circles = instances.filter((block) => /deco-(?:green-)?circle/i.test(classAttrValue(block)));
@@ -911,12 +1022,15 @@ function mergeVisibleMotifInstances(
 
   const nextSlides = slides.map((slide, index) => {
     const pack = motifPackForSlide(instances, index, slides.length);
-    if (slideHasOfficialMotifPaint(slide.html, instances, index, slides.length)) {
-      return slide.html;
-    }
-    const html = /data-od-official-motif-html/i.test(slide.html)
-      ? stripOfficialMotifInstances(slide.html)
+    let html = /deco-daisy/i.test(slide.html) || /deco-daisy/i.test(pack)
+      ? stripUnderScaleDaisyInstances(slide.html)
       : slide.html;
+    if (slideHasOfficialMotifPaint(html, instances, index, slides.length)) {
+      return html;
+    }
+    if (/data-od-official-motif-html/i.test(html)) {
+      html = stripOfficialMotifInstances(html);
+    }
     return insertMotifIntoSlide(html, pack);
   });
 
@@ -1547,6 +1661,7 @@ function officialLookHasCurrentNeutralize(html: string): boolean {
   if (bodies.length > 0) return bodies.every((css) => officialLookCssLooksCurrent(css));
   return (
     html.includes(OFFICIAL_LOOK_STACKED_NEUTRALIZE_MARKER)
+    && /flex-direction:\s*column/.test(html)
     && /flex-direction:\s*unset/.test(html)
   );
 }
