@@ -234,6 +234,10 @@ describe('FileViewer revision tip advance after undo', () => {
     expect(fileViewer).toContain('activeSeq miss → null (no HEAD fallback) so cold tip remount can adopt');
     expect(fileViewer).toContain('manualEditHistoryConfirmTrustsLocal(');
     expect(fileViewer).toContain('manualEditHistoryConfirmCanSkipDiskFetch(');
+    expect(fileViewer).toContain('shouldAdoptManualEditHistoryConfirmPersisted(');
+    expect(fileViewer).toContain('shouldDropManualEditSavePinForFilesRefresh(');
+    expect(fileViewer).toContain('readManualEditPatchBaseSource(');
+    expect(fileViewer).toContain('resolveManualEditHistoryConfirmTipContext(');
     expect(fileViewer).toContain('Tip≠expected forces GET');
     expect(fileViewer).toContain('Tip≠expected forces confirm even in edit mode');
     expect(fileViewer).toContain('no false "external change"');
@@ -414,12 +418,14 @@ describe('FileViewer revision tip advance after undo', () => {
     expect(fileViewer).toContain('settleManualEditGeometryHandoff');
     const confirmStart = fileViewer.indexOf('async function confirmManualEditHistorySource');
     expect(confirmStart).toBeGreaterThan(0);
-    const confirmBlock = fileViewer.slice(confirmStart, confirmStart + 3_800);
+    const confirmBlock = fileViewer.slice(confirmStart, confirmStart + 4_400);
     expect(confirmBlock.indexOf('readManualEditHistoryConfirmTipContext')).toBeGreaterThan(-1);
     expect(confirmBlock.indexOf('manualEditHistoryConfirmCanSkipDiskFetch')).toBeGreaterThan(-1);
     expect(confirmBlock.indexOf('readManualEditHistoryConfirmTipContext')).toBeLessThan(
       confirmBlock.indexOf('manualEditHistoryConfirmCanSkipDiskFetch'),
     );
+    expect(confirmBlock).toContain('shouldAdoptManualEditHistoryConfirmPersisted');
+    expect(confirmBlock).toContain('Missing disk must not wipe the session buffer');
     expect(confirmBlock).toContain('manualEditHistoryConfirmTrustsLocal(');
     expect(confirmBlock).toContain('tipContent');
     expect(confirmBlock).toContain('Keep warm stack until refreshRevisionStack lands');

@@ -326,12 +326,14 @@ import {
   isManualEditSourcePinActive,
   acceptedKeepsEarlyPaintTipOrPin,
   nextTipPreferSuppressState,
+  resolveManualEditHistoryConfirmTipContext,
   resolveManualEditSavePinTipRevision,
   resolveManualEditSourceAgainstPinAndTip,
+  shouldAdoptManualEditHistoryConfirmPersisted,
   shouldClearTipContentCacheAfterConfirmRefuse,
+  shouldDropManualEditSavePinForFilesRefresh,
   shouldEarlyPaintResolvedPinTipSource,
   shouldPreferTipWhenCandidateLags,
-  tipContentForManualEditSavePin,
   type ManualEditSourcePin,
 } from '../edit-mode/manual-edit-save-pin';
 import { manualEditTargetsIdentityFingerprint } from '../edit-mode/manual-edit-targets-identity';
@@ -5782,15 +5784,20 @@ function HtmlViewer({
         const stack = revisionStackRef.current;
         const activeSeq = getActiveRevisionSequence(projectId, file.name);
         // activeSeq miss → null (no HEAD fallback) so cold tip remount can adopt.
-        const tipCached = tipContentForManualEditSavePin(
+        const tipCtx = resolveManualEditHistoryConfirmTipContext({
           stack,
-          activeSeq,
-          (revisionId) => getRevisionContentCache(projectId, file.name, revisionId),
-        );
+          activeSequence: activeSeq,
+          readContent: (revisionId) => getRevisionContentCache(projectId, file.name, revisionId),
+        });
+        const tipCached = tipCtx.tipContent;
         const activeSeqMissingFromStack = activeSeq != null
           && !stack.revisions.some((revision) => revision.sequence === activeSeq);
-        if (tipCached != null && tipCached !== pinned.source) {
-          // Warm tip cache already diverges — drop pin and remount.
+        if (shouldDropManualEditSavePinForFilesRefresh({
+          pinnedSource: pinned.source,
+          tipCached,
+          paintedSource: sourceRef.current,
+        })) {
+          // Canvas already paints the diverging tip — drop pin and remount.
           manualEditPinnedSourceRef.current = null;
         } else if (activeSeqMissingFromStack) {
           // Tip seq advanced but stack/cache still cold — remount so refresh
@@ -6433,18 +6440,21 @@ function HtmlViewer({
     if (accepted != null) {
       // A lagging parent liveHtml token must not clobber a just-saved pin
       // (S3/lazy race + ProjectView still holding the pre-edit buffer).
-      const tipContent = tipContentForManualEditSavePin(
-        revisionStackRef.current,
-        getActiveRevisionSequence(projectId, file.name),
-        (revisionId) => getRevisionContentCache(projectId, file.name, revisionId),
-      );
+      const tipCtx = resolveManualEditHistoryConfirmTipContext({
+        stack: revisionStackRef.current,
+        activeSequence: getActiveRevisionSequence(projectId, file.name),
+        readContent: (revisionId) => getRevisionContentCache(projectId, file.name, revisionId),
+      });
       // Tip≠pin paints tip even when liveHtml is still the pre-tip buffer.
       const resolvedLive = resolveManualEditSourceAgainstPinAndTip({
         pinned: manualEditPinnedSourceRef.current,
         candidate: accepted,
-        tipContent,
+        tipContent: tipCtx.tipContent,
         // Do not prefer tip over streaming live when pin is inactive.
         preferTipWhenCandidateLags: false,
+        tipRevisionSequence: tipCtx.tipRevisionSequence,
+        activeRevisionSequence: tipCtx.activeRevisionSequence,
+        authoredSource: sourceRef.current,
       });
       if (resolvedLive.clearPin) {
         manualEditPinnedSourceRef.current = null;
@@ -6680,12 +6690,13 @@ function HtmlViewer({
         // When tip cache already equals fetch and differs from pin, release pin
         // so agent tips paint (preferManualEditPinnedSource tipContent yield).
         // Cold tip cache: snapshot/cache resolve IS tip content for pin yield.
-        const tipContent = tipContentForManualEditSavePin(
-          revisionStackRef.current,
-          getActiveRevisionSequence(projectId, file.name),
-          (revisionId) => getRevisionContentCache(projectId, file.name, revisionId),
-          activeTipResolvedHtml,
-        );
+        const tipCtx = resolveManualEditHistoryConfirmTipContext({
+          stack: revisionStackRef.current,
+          activeSequence: getActiveRevisionSequence(projectId, file.name),
+          readContent: (revisionId) => getRevisionContentCache(projectId, file.name, revisionId),
+          coldFallback: activeTipResolvedHtml,
+        });
+        const tipContent = tipCtx.tipContent;
         const resolvedDisk = resolveManualEditSourceAgainstPinAndTip({
           pinned: manualEditPinnedSourceRef.current,
           candidate: text,
@@ -6696,6 +6707,9 @@ function HtmlViewer({
             diskPath: true,
             suppressUntilRefresh: manualEditSuppressTipPreferUntilRefreshRef.current,
           }),
+          tipRevisionSequence: tipCtx.tipRevisionSequence,
+          activeRevisionSequence: tipCtx.activeRevisionSequence,
+          authoredSource: sourceRef.current,
         });
         if (resolvedDisk.clearPin) {
           manualEditPinnedSourceRef.current = null;
@@ -12061,11 +12075,7 @@ function HtmlViewer({
     manualEditResizePausedRef.current = true;
     setManualEditGroupDraftRects(null);
     applyManualEditGroupOptimisticRects(updates);
-    const baseSource = manualEditPatchBaseSource({
-      manualEditMode,
-      frozenSource: manualEditFrozenSource,
-      liveSource: sourceRef.current,
-    });
+    const baseSource = readManualEditPatchBaseSource();
     if (baseSource == null) {
       rollbackManualEditGroupGestureStyles(stylesBefore, memberStarts);
       return;
@@ -12129,11 +12139,7 @@ function HtmlViewer({
     manualEditResizePausedRef.current = true;
     setManualEditGroupDraftRects(null);
     applyManualEditGroupOptimisticRects(updates);
-    const baseSource = manualEditPatchBaseSource({
-      manualEditMode,
-      frozenSource: manualEditFrozenSource,
-      liveSource: sourceRef.current,
-    });
+    const baseSource = readManualEditPatchBaseSource();
     if (baseSource == null) {
       rollbackManualEditGroupGestureStyles(stylesBefore, memberStarts);
       return;
@@ -12184,11 +12190,7 @@ function HtmlViewer({
     const targets = resolveSelectedManualEditMoveTargets();
     if (targets.length < 2 || updates.length === 0) return false;
     handleManualEditGroupGeometryPreview(updates, label);
-    const baseSource = manualEditPatchBaseSource({
-      manualEditMode,
-      frozenSource: manualEditFrozenSource,
-      liveSource: sourceRef.current,
-    });
+    const baseSource = readManualEditPatchBaseSource();
     if (baseSource == null) return false;
     const { patches, parsedDoc } = buildGroupGeometryPatches(baseSource, updates);
     if (patches.length === 0) return true;
@@ -12350,11 +12352,7 @@ function HtmlViewer({
     clearManualEditStyleTimer();
     const zIndexTargetIds = collectZIndexTargetsFromPending(pending);
     manualEditPendingStyleRef.current = null;
-    const baseSource = manualEditPatchBaseSource({
-      manualEditMode,
-      frozenSource: manualEditFrozenSource,
-      liveSource: sourceRef.current,
-    });
+    const baseSource = readManualEditPatchBaseSource();
     if (baseSource == null) {
       manualEditPendingStyleRef.current = pending;
       return false;
@@ -12779,11 +12777,7 @@ function HtmlViewer({
     sharedParsedDoc?: Document | null,
   ): Promise<boolean> {
     if (manualEditSavingRef.current) return false;
-    const baseSource = manualEditPatchBaseSource({
-      manualEditMode,
-      frozenSource: manualEditFrozenSource,
-      liveSource: sourceRef.current,
-    });
+    const baseSource = readManualEditPatchBaseSource();
     if (baseSource == null) return false;
     if (revisionDiskSyncPromiseRef.current) {
       await revisionDiskSyncPromiseRef.current;
@@ -13047,11 +13041,7 @@ function HtmlViewer({
       return applyManualEdit(patches[0]!, label, undefined, undefined, sharedParsedDoc);
     }
     if (manualEditSavingRef.current) return false;
-    const baseSource = manualEditPatchBaseSource({
-      manualEditMode,
-      frozenSource: manualEditFrozenSource,
-      liveSource: sourceRef.current,
-    });
+    const baseSource = readManualEditPatchBaseSource();
     if (baseSource == null) return false;
     if (revisionDiskSyncPromiseRef.current) {
       await revisionDiskSyncPromiseRef.current;
@@ -13208,20 +13198,21 @@ function HtmlViewer({
     tipRevisionSequence: number | null;
     activeRevisionSequence: number | null;
   } {
-    const activeRevisionSequence = getActiveRevisionSequence(projectId, file.name);
-    const tipRevision = resolveManualEditSavePinTipRevision(
-      revisionStackRef.current,
-      activeRevisionSequence,
-    );
-    return {
-      tipContent: tipContentForManualEditSavePin(
-        revisionStackRef.current,
-        activeRevisionSequence,
-        (revisionId) => getRevisionContentCache(projectId, file.name, revisionId),
-      ),
-      tipRevisionSequence: tipRevision?.sequence ?? null,
-      activeRevisionSequence,
-    };
+    return resolveManualEditHistoryConfirmTipContext({
+      stack: revisionStackRef.current,
+      activeSequence: getActiveRevisionSequence(projectId, file.name),
+      readContent: (revisionId) => getRevisionContentCache(projectId, file.name, revisionId),
+    });
+  }
+
+  function readManualEditPatchBaseSource(): string | null {
+    const pinned = manualEditPinnedSourceRef.current;
+    return manualEditPatchBaseSource({
+      manualEditMode,
+      frozenSource: manualEditFrozenSource,
+      liveSource: sourceRef.current,
+      pinnedSource: isManualEditSourcePinActive(pinned) ? pinned?.source ?? null : null,
+    });
   }
 
   async function confirmManualEditHistorySource(expectedSource: string, message: string): Promise<boolean> {
@@ -13265,9 +13256,16 @@ function HtmlViewer({
     )) {
       return true;
     }
+    if (!shouldAdoptManualEditHistoryConfirmPersisted(persisted)) {
+      // Missing disk must not wipe the session buffer. Block the save and
+      // refresh the stack; keep source/freeze/pin as-is.
+      setManualEditError(message);
+      void refreshRevisionStack();
+      return false;
+    }
     // Tip/external refresh — adopt disk into source + freeze together so edit
     // mode does not keep painting a stale freeze after confirm refuses.
-    const refreshed = persisted!;
+    const refreshed = persisted;
     setSource(refreshed);
     sourceRef.current = refreshed;
     lastStablePreviewSourceRef.current = refreshed;

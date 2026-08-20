@@ -31,6 +31,34 @@ describe('manual edit session', () => {
     })).toBe('<html>live</html>');
   });
 
+  it('prefers an active save pin over a lagging live frame while editing', () => {
+    const pinned = '<html>saved</html>';
+    const stale = '<html>stale</html>';
+    expect(manualEditPatchBaseSource({
+      manualEditMode: true,
+      frozenSource: stale,
+      liveSource: stale,
+      pinnedSource: pinned,
+    })).toBe(pinned);
+  });
+
+  it('keeps the pin as the patch base until the pin is cleared', () => {
+    const pinned = '<html>saved</html>';
+    const tip = '<html>agent-tip</html>';
+    expect(manualEditPatchBaseSource({
+      manualEditMode: true,
+      frozenSource: pinned,
+      liveSource: tip,
+      pinnedSource: pinned,
+    })).toBe(pinned);
+    expect(manualEditPatchBaseSource({
+      manualEditMode: true,
+      frozenSource: pinned,
+      liveSource: tip,
+      pinnedSource: null,
+    })).toBe(tip);
+  });
+
   it('skips disk history confirm while editing', () => {
     expect(shouldSkipManualEditHistoryConfirm(true)).toBe(true);
     expect(shouldSkipManualEditHistoryConfirm(false)).toBe(false);
@@ -64,6 +92,14 @@ describe('manual edit session', () => {
       tipContent: stale,
       authoredSource: saved,
       tipRevisionSequence: 4,
+      activeRevisionSequence: 5,
+    })).toBe(true);
+    // Same revision (active unset → resolved HEAD): cache drift is not warmer.
+    expect(shouldSkipManualEditHistoryConfirm(true, {
+      expectedSource: saved,
+      tipContent: stale,
+      authoredSource: saved,
+      tipRevisionSequence: 5,
       activeRevisionSequence: 5,
     })).toBe(true);
   });
