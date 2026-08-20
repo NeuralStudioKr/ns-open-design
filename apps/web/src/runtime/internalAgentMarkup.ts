@@ -24,6 +24,12 @@ const DECK_MOTIF_PILL_RADIUS_TAIL_RE =
   /<(?:div|span)\b[^>]*\bstyle\s*=\s*["'][\s\S]*?border-radius\s*:\s*9999px[\s\S]*$/i;
 const DECK_CARD_STYLE_DIV_TAIL_RE =
   /<(?:div|article)\b[^>]*\bclass\s*=\s*["'][^"']*\b(?:card|pill|chip|deco)[^"']*["'][^>]*\bstyle\s*=[\s\S]*$/i;
+const DECK_DECO_CLASS_TAIL_RE =
+  /<(?:div|span|svg|g|i)\b[^>]*\bclass\s*=\s*["'][^"']*\b(?:deco-|floating-pill|pixel-glitch|win-titlebar)[\s\S]*$/i;
+const DECK_MOTIF_SVG_TAIL_RE =
+  /<svg\b[^>]*(?:class\s*=\s*["'][^"']*\b(?:deco-|floating-pill)|viewBox\s*=|style\s*=\s*["'][^"']*position\s*:\s*absolute)[\s\S]*$/i;
+const DECK_MOTIF_PATH_TAIL_RE =
+  /<path\b[^>]*\bd\s*=\s*["'][\s\S]*$/i;
 const DECK_BROKEN_SECTION_CSS_DEBRIS_TAIL_RE =
   /<\/(?:section|div)>\s*[-a-z]*weight\s*:[\s\S]*$/i;
 
@@ -39,6 +45,9 @@ function stripLeakedDeckMotifHtmlTail(input: string): string {
     DECK_MOTIF_ABSOLUTE_DIV_TAIL_RE,
     DECK_MOTIF_PILL_RADIUS_TAIL_RE,
     DECK_CARD_STYLE_DIV_TAIL_RE,
+    DECK_DECO_CLASS_TAIL_RE,
+    DECK_MOTIF_SVG_TAIL_RE,
+    DECK_MOTIF_PATH_TAIL_RE,
     DECK_BROKEN_SECTION_CSS_DEBRIS_TAIL_RE,
   ]) {
     const match = re.exec(input);

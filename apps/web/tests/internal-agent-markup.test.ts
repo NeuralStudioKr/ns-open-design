@@ -29,6 +29,21 @@ describe("internalAgentMarkup", () => {
     }
   });
 
+  it("hard-strips Daisy SVG / deco-class shells via web display path", () => {
+    const leaked = [
+      '<div class="deco-daisy">',
+      '<svg class="deco-daisy" viewBox="0 0 180 180" style="position:absolute;top:8%;right:6%">',
+      '<path d="M90 20 C110 40 110 60 90 80 C70 60 70 40 90 20 Z"></path>',
+      "</svg>",
+    ].join("\n");
+    for (const streaming of [true, false]) {
+      expect(
+        sanitizeAssistantProseForDisplay(`초안을 다듬는 중입니다.\n\n${leaked}`, { streaming }),
+      ).toBe("초안을 다듬는 중입니다.");
+      expect(sanitizeAssistantProseForDisplay(leaked, { streaming }).trim()).toBe("");
+    }
+  });
+
   it("keeps motif HTML inside an open streaming artifact", () => {
     const input = [
       "초안.",

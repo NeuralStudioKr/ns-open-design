@@ -80,6 +80,34 @@ describe("agent-prose-sanitize SSOT", () => {
     ).toBe("진행.");
   });
 
+  it("strips Daisy SVG / deco-class shells leaked into chat", () => {
+    const svgLeak = [
+      '<svg class="deco-daisy" viewBox="0 0 180 180" style="position:absolute;top:8%;right:6%">',
+      '<path d="M90 20 C110 40 110 60 90 80 C70 60 70 40 90 20 Z"></path>',
+      "</svg>",
+    ].join("\n");
+    expect(sanitizeAssistantProseForDisplay(svgLeak)).toBe("");
+    expect(sanitizeAssistantProseForDisplay(`초안을 다듬는 중입니다.\n\n${svgLeak}`)).toBe(
+      "초안을 다듬는 중입니다.",
+    );
+
+    const decoShell = '<div class="deco-daisy">\n<svg viewBox="0 0 100 100">';
+    expect(sanitizeAssistantProseForDisplay(`진행.\n${decoShell}`)).toBe("진행.");
+
+    const pathOnly = '<path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/>';
+    expect(sanitizeAssistantProseForDisplay(`장식 넣는 중.\n${pathOnly}`)).toBe("장식 넣는 중.");
+  });
+
+  it("strips .deco-* CSS dumps leaked after prose", () => {
+    const input = [
+      "덱을 구성합니다.",
+      "",
+      ".deco-daisy{position:absolute;width:180px;height:180px;top:8%;left:6%}",
+      ".deco-daisy svg{width:100%;height:100%}",
+    ].join("\n");
+    expect(sanitizeAssistantProseForDisplay(input)).toBe("덱을 구성합니다.");
+  });
+
   it("keeps motif HTML inside an uppercase streaming ARTIFACT tag", () => {
     const input = [
       "초안.",
