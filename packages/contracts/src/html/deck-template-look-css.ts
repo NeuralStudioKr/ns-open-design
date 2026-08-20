@@ -455,18 +455,19 @@ function motifInstanceScore(block: string, className: string): number {
 
 function placementStyleForMotifClass(classAttr: string): string {
   // % of the 1920×1080 canvas ≈ official Daisy px recipes (220/1920≈11.5%,
-  // 220/1080≈20%). Earlier 22%/39% stamps invaded the title band.
+  // 220/1080≈20%). Keep Motif fully inside the slide — negative top/left/right
+  // hangs get clipped by stacked/pin `overflow:hidden` (§0.70 regression).
   if (/deco-daisy-tl/i.test(classAttr)) {
-    return 'position:absolute;top:-3%;left:-2%;width:12%;height:20%;pointer-events:none;z-index:1';
+    return 'position:absolute;top:0;left:0;width:12%;height:20%;pointer-events:none;z-index:1';
   }
   if (/deco-daisy-tr/i.test(classAttr)) {
-    return 'position:absolute;top:2%;right:-1%;width:10%;height:17%;pointer-events:none;z-index:1';
+    return 'position:absolute;top:0;right:0;width:10%;height:17%;pointer-events:none;z-index:1';
   }
   if (/deco-daisy-bl/i.test(classAttr)) {
-    return 'position:absolute;bottom:-4%;left:1%;width:11%;height:19%;pointer-events:none;z-index:1';
+    return 'position:absolute;bottom:0;left:0;width:11%;height:19%;pointer-events:none;z-index:1';
   }
   if (/deco-daisy-br/i.test(classAttr) || /deco-daisy\b/i.test(classAttr)) {
-    return 'position:absolute;bottom:-1%;right:-2%;width:11%;height:19%;pointer-events:none;z-index:1';
+    return 'position:absolute;bottom:0;right:0;width:11%;height:19%;pointer-events:none;z-index:1';
   }
   if (/deco-star/i.test(classAttr)) {
     return 'position:absolute;top:12%;right:7%;width:5%;height:8%;pointer-events:none;z-index:1';
@@ -496,7 +497,7 @@ function placementStyleForMotifClass(classAttr: string): string {
     return 'position:absolute;top:0;left:0;width:100%;height:12px;pointer-events:none;z-index:1';
   }
   if (/sunglow|cover-blob|cover-decoration|geo-decoration/i.test(classAttr)) {
-    return 'position:absolute;top:-8%;right:-6%;width:36%;height:36%;pointer-events:none;z-index:0';
+    return 'position:absolute;top:0;right:0;width:32%;height:32%;pointer-events:none;z-index:0';
   }
   return 'position:absolute;top:8%;right:6%;width:9%;height:14%;pointer-events:none;z-index:1';
 }
@@ -698,6 +699,8 @@ function daisyOpenTags(html: string): string[] {
 
 function daisyPaintIsOfficialScale(html: string): boolean {
   return daisyOpenTags(html).some((open) => {
+    // Outside-canvas hangs (top:-3% etc.) clip under overflow:hidden letterbox.
+    if (/(?:top|left|right|bottom)\s*:\s*-\d/i.test(open)) return false;
     // Mark alone is not scale-proof — pre-v34 stamped Motif can be 22%/39%.
     const width = /width\s*:\s*([\d.]+)\s*(px|%)/i.exec(open);
     if (!width) return false;
@@ -730,7 +733,7 @@ function destHasDaisyOfficialPaint(dest: string, pack: string): boolean {
   return true;
 }
 
-/** Strip invented tiny icons AND pre-§0.62 overscale (22%/39%) Daisy stamps. */
+/** Strip invented tiny icons, pre-§0.62 overscale (22%/39%), and outside-canvas hangs. */
 function stripMisScaledDaisyInstances(slideHtml: string): string {
   let out = slideHtml;
   const opens = daisyOpenTags(out);

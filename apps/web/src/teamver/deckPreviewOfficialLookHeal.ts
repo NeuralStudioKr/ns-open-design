@@ -14,6 +14,8 @@ export function deckHtmlNeedsOfficialMotifRemerge(html: string): boolean {
   if (/deco-daisy[^>]*width\s*:\s*(?:1[5-9]|[2-9]\d+)\s*%/i.test(dest)) return true;
   // Pixel overscale (>240px) — official paint is ~100–240px.
   if (/deco-daisy[^>]*width\s*:\s*(?:2[5-9]\d|[3-9]\d{2}|\d{4,})\s*px/i.test(dest)) return true;
+  // Outside-canvas hangs clip under letterbox overflow:hidden (§0.71).
+  if (/deco-daisy[^>]*(?:top|left|right|bottom)\s*:\s*-\d/i.test(dest)) return true;
   return false;
 }
 

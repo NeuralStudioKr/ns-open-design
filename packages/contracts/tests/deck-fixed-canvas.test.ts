@@ -22,13 +22,17 @@ describe('pinDeckSlidesToFixedCanvas', () => {
     expect(pinned).not.toMatch(/min-height:\s*100vh/i);
     expect(pinned).toContain(DECK_FIXED_CANVAS_PIN_ATTR);
     expect(pinned).toMatch(/\.slide\s*\{[^}]*width:\s*1920px\s*!important/i);
+    // Motif corner hangs must not be clipped by a forced overflow:hidden pin.
+    expect(pinned).not.toMatch(/\.slide\s*\{[^}]*overflow:\s*hidden\s*!important/i);
   });
 
   it('adds fixed canvas style when slide hosts lack sizing attrs', () => {
     const html =
       '<!doctype html><html><body><section class="slide"><h1>A</h1></section></body></html>';
     const pinned = pinDeckSlidesToFixedCanvas(html);
-    expect(pinned).toContain('style="width:1920px;height:1080px;box-sizing:border-box;overflow:hidden"');
+    expect(pinned).toContain('style="width:1920px;height:1080px;box-sizing:border-box"');
+    expect(pinned).not.toMatch(/style="[^"]*overflow:\s*hidden/);
+    expect(pinned).not.toMatch(/\.slide\s*\{[^}]*overflow:\s*hidden/);
     expect(pinned).toContain(DECK_FIXED_CANVAS_PIN_ATTR);
   });
 

@@ -602,6 +602,8 @@ html, body { overflow: visible !important; height: auto !important; }
     // Motif stays under content.
     expect(cover).toMatch(/deco-daisy[\s\S]*z-index:\s*1/i);
     expect(cover).toContain('Linux Internals');
+    // Corner Motifs stay inside the 1920×1080 canvas (no negative hang).
+    expect(cover).not.toMatch(/deco-daisy[^>]*(?:top|left|right|bottom)\s*:\s*-\d/i);
   });
 
   it('restamps pre-v34 overscale Daisy (22%) and upgrades content stacking', () => {
@@ -630,6 +632,35 @@ html, body { overflow: visible !important; height: auto !important; }
     expect(cover).toMatch(/deco-daisy-tl/i);
     expect(merged).toMatch(/z-index:\s*2\s*!important/);
     expect(cover).toContain('Legacy Overscale');
+    expect(cover).not.toMatch(/deco-daisy[^>]*(?:top|left|right|bottom)\s*:\s*-\d/i);
+  });
+
+  it('restamps official-scale Daisy Motifs that hang outside the canvas', () => {
+    const official = loadOfficialLookSource(join(EXAMPLES_DIR, 'html-ppt-zhangzara-daisy-days/example.html'));
+    const assets = extractOfficialDeckLookAssets(official)!;
+    const daisySvg = assets.motifHtml.find((block) => /deco-daisy[\s\S]*?<svg\b/i.test(block));
+    const svg = /<svg\b[\s\S]*?<\/svg>/i.exec(daisySvg ?? '')?.[0]
+      ?? '<svg viewBox="0 0 10 10"><circle fill="#fcdf6c" cx="5" cy="5" r="4"/><path d="M1 2"/><path d="M3 4"/></svg>';
+    const hanging = `<!doctype html><html lang="ko"><head>
+<style data-od-official-look-css>
+/* stacked preview/export: Motif paint + fixed 1920 */
+.slide { position:relative !important; width:1920px !important; height:1080px !important; }
+.slide > :is(h1, h2, h3, p) { position:relative !important; z-index:2 !important; }
+</style>
+</head><body>
+<section class="slide slide-title" style="background:#F5F0E6;width:1920px;height:1080px;padding:56px 72px">
+  <div data-od-official-motif-html class="deco deco-daisy-tl" style="position:absolute;top:-3%;left:-2%;width:12%;height:20%;z-index:1">${svg}</div>
+  <div data-od-official-motif-html class="deco deco-daisy-br" style="position:absolute;bottom:-1%;right:-2%;width:11%;height:19%;z-index:1">${svg}</div>
+  <h1>도메인 체계 설계</h1>
+</section>
+</body></html>`;
+    const merged = mergeOfficialDeckLookCss(hanging, assets);
+    const cover = merged.match(/<section\b[^>]*\bclass\s*=\s*"[^"]*\bslide\b[^"]*"[\s\S]*?<\/section>/i)?.[0] ?? '';
+    expect(cover).toMatch(/deco-daisy-tl/i);
+    expect(cover).toMatch(/width:\s*12%/i);
+    expect(cover).not.toMatch(/deco-daisy[^>]*(?:top|left|right|bottom)\s*:\s*-\d/i);
+    expect(cover).toMatch(/deco-daisy-tl[^>]*top:\s*0/i);
+    expect(cover).toContain('도메인 체계 설계');
   });
 
   it('injects Motif-safe gutter on split slides with padding:0', () => {

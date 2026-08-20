@@ -17,6 +17,12 @@ describe('deckHtmlNeedsOfficialMotifRemerge', () => {
     expect(deckHtmlNeedsOfficialMotifRemerge(html)).toBe(false);
   });
 
+  it('detects outside-canvas Daisy hangs that letterbox overflow clips', () => {
+    const html =
+      '<div class="deco-daisy-tl" style="position:absolute;top:-3%;left:-2%;width:12%;height:20%"></div>';
+    expect(deckHtmlNeedsOfficialMotifRemerge(html)).toBe(true);
+  });
+
   it('skips non-Daisy decks', () => {
     expect(deckHtmlNeedsOfficialMotifRemerge('<section class="slide">Hi</section>')).toBe(false);
   });

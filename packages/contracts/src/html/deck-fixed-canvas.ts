@@ -14,10 +14,10 @@ const SLIDE_OPEN_RE =
   /<(section|div|main|article)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
 
 const FIXED_CANVAS_STYLE =
-  'width:1920px;height:1080px;box-sizing:border-box;overflow:hidden';
+  'width:1920px;height:1080px;box-sizing:border-box';
 
 const FIXED_CANVAS_CSS = `
-/* Teamver fixed 16:9 canvas pin */
+/* Teamver fixed 16:9 canvas pin (size only; Motif-safe — no overflow clip) */
 html, body { margin: 0; }
 .slide {
   width: 1920px !important;
@@ -27,7 +27,6 @@ html, body { margin: 0; }
   max-width: 1920px !important;
   max-height: 1080px !important;
   box-sizing: border-box !important;
-  overflow: hidden !important;
 }
 `.trim();
 
@@ -60,7 +59,7 @@ function pinInlineSlideStyle(style: string): string {
   // flex/grid axis declarations intact for split layouts.
   if (hasFixedCanvasSizing(next) && !hasViewportSlideSizing(next)) {
     if (!/\bbox-sizing\s*:/i.test(next)) next = `${next};box-sizing:border-box`;
-    if (!/\boverflow\s*:/i.test(next)) next = `${next};overflow:hidden`;
+    // Do not force overflow:hidden — Motif corner hangs must remain visible.
     return next.replace(/;;+/g, ';').replace(/^;|;$/g, '').trim();
   }
   // Drop viewport presenter sizing that expands into the host panel height.
@@ -82,8 +81,7 @@ function pinInlineSlideStyle(style: string): string {
     next = `${next};height:1080px`;
   }
   if (!/\bbox-sizing\s*:/i.test(next)) next = `${next};box-sizing:border-box`;
-  if (!/\boverflow\s*:/i.test(next)) next = `${next};overflow:hidden`;
-  // Clear leftover min-height:100vh that survived odd formatting.
+  // Size pin only — overflow:hidden clips Daisy Motif corner hangs (§0.71).
   next = next.replace(/\bmin-height\s*:\s*100(?:vh|dvh|svh|lvh)\b/gi, 'min-height:1080px');
   return next.replace(/;;+/g, ';').replace(/^;|;$/g, '').trim();
 }
