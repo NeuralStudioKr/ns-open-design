@@ -22,6 +22,9 @@ const DECK_MOTIF_ABSOLUTE_DIV_TAIL_RE =
   /<(?:div|span)\b[^>]*\bstyle\s*=\s*["'][\s\S]*?position\s*:\s*absolute[\s\S]*$/i;
 const DECK_MOTIF_PILL_RADIUS_TAIL_RE =
   /<(?:div|span)\b[^>]*\bstyle\s*=\s*["'][\s\S]*?border-radius\s*:\s*9999px[\s\S]*$/i;
+/** Daisy badge pills (`border-radius:20px` + box-shadow / font-family). */
+const DECK_MOTIF_STYLED_BADGE_TAIL_RE =
+  /<(?:div|span)\b[^>]*\bstyle\s*=\s*["'][\s\S]*?border-radius\s*:\s*\d+px[\s\S]*?(?:box-shadow|font-family|font-weight|padding)\s*:[\s\S]*$/i;
 const DECK_CARD_STYLE_DIV_TAIL_RE =
   /<(?:div|article)\b[^>]*\bclass\s*=\s*["'][^"']*\b(?:card|pill|chip|deco)[^"']*["'][^>]*\bstyle\s*=[\s\S]*$/i;
 const DECK_DECO_CLASS_TAIL_RE =
@@ -30,11 +33,18 @@ const DECK_MOTIF_SVG_TAIL_RE =
   /<svg\b[^>]*(?:class\s*=\s*["'][^"']*\b(?:deco-|floating-pill)|viewBox\s*=|style\s*=\s*["'][^"']*position\s*:\s*absolute)[\s\S]*$/i;
 const DECK_MOTIF_PATH_TAIL_RE =
   /<path\b[^>]*\bd\s*=\s*["'][\s\S]*$/i;
+const DECK_MOTIF_SVG_PRIMITIVE_TAIL_RE =
+  /<(?:circle|rect|ellipse|polygon|polyline|line|g|defs|linearGradient|radialGradient|stop|use)\b/i;
+const DECK_MOTIF_HTML_COMMENT_TAIL_RE =
+  /<!--\s*(?:Daisy|motif|deco|SLIDE)\b[\s\S]*$/i;
 const DECK_BROKEN_SECTION_CSS_DEBRIS_TAIL_RE =
   /<\/(?:section|div)>\s*[-a-z]*weight\s*:[\s\S]*$/i;
 /** Mid-attribute style debris, including quoted font-family / flex props. */
 const DECK_ORPHAN_MID_STYLE_ATTR_TAIL_RE =
   /(?:^|\n)(?:(?:px|em|rem|%|vh|vw)\s*;\s*)?(?:[a-zA-Z-]+\s*:\s*[^;]*;?\s*){2,}[\s\S]*?["']\s*>[\s\S]*$/i;
+/** Truncated SVG style body: `none;stroke:…}.cls-3{…}</style>`. */
+const DECK_ORPHAN_MID_SVG_CSS_STYLE_TAIL_RE =
+  /(?:^|\n)(?:(?:none|solid|inherit|round|butt|miter|bevel)\s*;\s*)?(?:(?:stroke(?:-[\w]+)?|fill|stroke-width|stroke-linecap|stroke-linejoin|stroke-miterlimit)\s*:[^;]*;?\s*){2,}[\s\S]*?<\/style>[\s\S]*$/i;
 /** Stale-dist last pass for kit CSS at-rules contracts already strip. */
 const DECK_FRAMEWORK_CSS_TAIL_RE =
   /(?:^|\n\n|\n)((?::root\s*\{|@(?:-webkit-)?(?:keyframes\s+[\w-]+|font-face)\s*\{|@(?:media|page|supports|layer)\b[^{]*\{|@import\s+(?:url\(|["'])|<style\b[^>]*>|(?:from|to|\d+%)\s*\{|(?:\.slide|(?:\.[A-Za-z_-][\w-]*|#[A-Za-z_-][\w-]*|h[1-6]|p|ul|li|body|section(?:\.[\w-]+)?)\s*\{))[\s\S]*)$/i;
@@ -48,9 +58,10 @@ const DECK_FRAMEWORK_CSS_TAIL_RE =
 function looksLikeLeakedDeckFrameworkCss(tail: string): boolean {
   return (
     /width:\s*1920px|height:\s*1080px|box-sizing:\s*border-box|\.grain::after/i.test(tail)
-    || /<\/style>|<style\b|<section\b[^>]*\bclass\s*=\s*["'][^"']*\bslide\b|<!--\s*SLIDE\b/i.test(tail)
+    || /<\/style>|<style\b|<section\b[^>]*\bclass\s*=\s*["'][^"']*\bslide\b|<!--\s*(?:SLIDE|Daisy|motif|deco)\b/i.test(tail)
     || /^\.slide\s*\{[\s\S]*/.test(tail.trim())
     || /\.deco-[\w-]+\s*\{/i.test(tail)
+    || /\.cls-\d+\s*\{/i.test(tail)
     || /@(?:keyframes|font-face|media|import|page|supports|layer)\b/i.test(tail)
     || /(?:^|\n)(?:from|to|\d+%)\s*\{[\s\S]*(?:transform|opacity|translate|rotate)/i.test(tail)
   );
@@ -58,20 +69,26 @@ function looksLikeLeakedDeckFrameworkCss(tail: string): boolean {
 
 function stripLeakedDeckMotifHtmlTail(input: string): string {
   if (!input) return input;
+  let cut: number | null = null;
   for (const re of [
     DECK_MOTIF_ABSOLUTE_DIV_TAIL_RE,
     DECK_MOTIF_PILL_RADIUS_TAIL_RE,
+    DECK_MOTIF_STYLED_BADGE_TAIL_RE,
     DECK_CARD_STYLE_DIV_TAIL_RE,
     DECK_DECO_CLASS_TAIL_RE,
     DECK_MOTIF_SVG_TAIL_RE,
     DECK_MOTIF_PATH_TAIL_RE,
+    DECK_MOTIF_SVG_PRIMITIVE_TAIL_RE,
+    DECK_MOTIF_HTML_COMMENT_TAIL_RE,
     DECK_BROKEN_SECTION_CSS_DEBRIS_TAIL_RE,
     DECK_ORPHAN_MID_STYLE_ATTR_TAIL_RE,
+    DECK_ORPHAN_MID_SVG_CSS_STYLE_TAIL_RE,
   ]) {
     const match = re.exec(input);
-    if (!match || match.index === undefined) continue;
-    return input.slice(0, match.index).trimEnd();
+    if (match?.index === undefined) continue;
+    if (cut == null || match.index < cut) cut = match.index;
   }
+  if (cut != null) return input.slice(0, cut).trimEnd();
   const css = DECK_FRAMEWORK_CSS_TAIL_RE.exec(input);
   if (css?.index !== undefined && looksLikeLeakedDeckFrameworkCss(css[1] ?? "")) {
     return input.slice(0, css.index).trimEnd();

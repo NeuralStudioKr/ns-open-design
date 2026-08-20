@@ -174,7 +174,7 @@ export function sanitizePriorAssistantTurnForTranscript(
     // `\1` backreference keeps the open/close tag names matched so we never
     // splice across a `<question-form>…</ask-question>` mismatch.
     /<(question-form|ask-question)\b[^>]*>[\s\S]*?<\/\1>/g,
-    '[question-form was emitted here on a prior turn; the user already answered, see their reply below.]',
+    '[A question form was emitted on a prior turn; the user already answered, see their reply below.]',
   );
   // Strip ```json (or plain ```) fenced blocks whose body matches the
   // form schema shape — `"questions": [` is the strongest tell. A

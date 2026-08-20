@@ -892,6 +892,19 @@ describe('preview comment attachment helpers', () => {
     expect(stripUserVisibleUserMessageText(prompt)).toBe('3번 슬라이드 제목만 짧게');
   });
 
+  it('strips form-answers protocol headers and [value:] tokens from user-visible chat text', () => {
+    const prompt = [
+      '[form answers — discovery]',
+      '- 누가 이 발표를 보나요?: 신입사원',
+      '- 원하는 톤은 무엇인가요?: 전문적이고 깔끔하게 [value: professional]',
+    ].join('\n');
+
+    expect(stripUserVisibleUserMessageText(prompt)).toBe([
+      '- 누가 이 발표를 보나요?: 신입사원',
+      '- 원하는 톤은 무엇인가요?: 전문적이고 깔끔하게',
+    ].join('\n'));
+  });
+
   it('strips web-fetch-context blocks from user-visible chat text', () => {
     const prompt = [
       '이 사이트 보고 3장만 만들어줘',

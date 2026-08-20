@@ -125,6 +125,12 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).toMatch(/<artifact>/);
     });
 
+    it('does not brand the UI locale override as Open Design', () => {
+      const prompt = composeSystemPrompt({ streamFormat: 'plain', locale: 'ko' });
+      expect(prompt).toContain('The UI locale for this run is `ko`');
+      expect(prompt).not.toContain('Open Design UI locale');
+    });
+
     it('requires slide API runs to produce the deck artifact, not just a plan', () => {
       const prompt = composeSystemPrompt({
         streamFormat: 'plain',
@@ -134,6 +140,7 @@ describe('composeSystemPrompt — API mode (#313)', () => {
 
       expect(prompt).toContain('Teamver embed — slide deck scope only');
       expect(prompt).toContain('this workspace currently supports slides only');
+      expect(prompt).not.toContain('Open Design UI locale');
       expect(prompt).not.toContain('teamver Slide currently supports');
       expect(prompt).not.toContain('teamver Slide embed');
       expect(prompt).toContain('turn-1 quick brief');

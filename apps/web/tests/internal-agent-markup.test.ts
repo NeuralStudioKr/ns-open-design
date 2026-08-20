@@ -56,6 +56,40 @@ describe("internalAgentMarkup", () => {
     }
   });
 
+  it("hard-strips Daisy badge span + motif comment + mid SVG CSS after reload", () => {
+    const frag = [
+      '<span style="background:',
+      "#FDE68A;border:3px solid ",
+      "#2D2D2D;border-radius:20px;padding:10px 28px;font-size:24px;font-family:'Quicksand',sans-serif;font-weight:700;box-shadow:4px 4px 0 ",
+      '#2D2D2D">Internal Team</span>',
+      "</div>",
+      "<!-- Daisy motif TL -->none;stroke:",
+      "#232323;stroke-width:2.0745;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:10;}.cls-3{fill:",
+      "#FFFFFF;stroke:",
+      "#232323;stroke-width:2.0745;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:10;}</style>",
+    ].join("\n");
+    for (const streaming of [true, false]) {
+      expect(
+        sanitizeAssistantProseForDisplay(`슬라이드 초안을 준비했습니다.\n\n${frag}`, { streaming }),
+      ).toBe("슬라이드 초안을 준비했습니다.");
+      expect(sanitizeAssistantProseForDisplay(frag, { streaming }).trim()).toBe("");
+    }
+  });
+
+  it("hard-strips leftover Daisy SVG primitives via web display last-pass", () => {
+    const leaked = [
+      '<circle cx="90" cy="90" r="40" fill="#7ECDC0"/>',
+      '<rect x="8" y="12" width="160" height="40" rx="20"/>',
+      '<defs><linearGradient id="g1"><stop offset="0"/></linearGradient></defs>',
+    ].join("\n");
+    for (const streaming of [true, false]) {
+      expect(
+        sanitizeAssistantProseForDisplay(`도형 넣는 중.\n${leaked}`, { streaming }),
+      ).toBe("도형 넣는 중.");
+      expect(sanitizeAssistantProseForDisplay(leaked, { streaming }).trim()).toBe("");
+    }
+  });
+
   it("hard-strips kit CSS at-rules via web display last-pass", () => {
     const leaked = [
       "@keyframes deco-spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}",
