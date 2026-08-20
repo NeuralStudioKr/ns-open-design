@@ -237,6 +237,7 @@ describe('clipAttachmentText', () => {
     expect(clipped.length).toBeLessThanOrEqual(8_500);
     expect(clipped).toMatch(/Cover Expo/);
     expect(clipped).toMatch(/omitted mid kit CSS|body\/slides/i);
+    expect(clipped).not.toContain('Open Design');
     // Must not be a pure head prefix that never reaches slides.
     expect(clipped).toMatch(/<section\b[^>]*\bslide\b/i);
   });

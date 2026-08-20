@@ -892,6 +892,20 @@ describe('preview comment attachment helpers', () => {
     expect(stripUserVisibleUserMessageText(prompt)).toBe('3번 슬라이드 제목만 짧게');
   });
 
+  it('strips attached-project-files blocks from user-visible chat text', () => {
+    const prompt = [
+      '이 파일 참고해서 3장만 다듬어줘',
+      '',
+      '<attached-project-files>',
+      'These are user-attached project files in user-visible order.',
+      '[Attachment context omitted remaining attached files because the attachment context budget was exhausted.]',
+      '### Attachment 1: deck.html',
+      '</attached-project-files>',
+    ].join('\n');
+
+    expect(stripUserVisibleUserMessageText(prompt)).toBe('이 파일 참고해서 3장만 다듬어줘');
+  });
+
   it('strips hidden existing-deck edit directives from user-visible chat text', () => {
     const prompt = [
       '폰트 사이즈 두배로 키워줘',

@@ -146,6 +146,39 @@ describe("agent-prose-sanitize SSOT", () => {
     expect(styleOut).not.toContain("floating-pills");
   });
 
+  it("strips @font-face / @media / @import / orphan keyframe bodies leaked after prose", () => {
+    const fontFace = [
+      "덱을 구성합니다.",
+      "",
+      "@font-face{font-family:'Space Grotesk';src:url(https://fonts.gstatic.com/s/spacegrotesk.woff2)}",
+    ].join("\n");
+    expect(sanitizeAssistantProseForDisplay(fontFace)).toBe("덱을 구성합니다.");
+
+    const media = [
+      "초안을 다듬는 중입니다.",
+      "",
+      "@media (max-width:768px){.slide{transform:scale(.5)}.deco-daisy{display:none}}",
+    ].join("\n");
+    expect(sanitizeAssistantProseForDisplay(media)).toBe("초안을 다듬는 중입니다.");
+
+    const fontImport = [
+      "타이포를 맞추는 중입니다.",
+      "",
+      "@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&display=swap');",
+    ].join("\n");
+    const importOut = sanitizeAssistantProseForDisplay(fontImport);
+    expect(importOut.trim()).toBe("타이포를 맞추는 중입니다.");
+    expect(importOut).not.toContain("@import");
+    expect(importOut).not.toContain("fonts.googleapis.com");
+
+    const orphanKeyframe = [
+      "모션을 넣는 중입니다.",
+      "",
+      "from{transform:rotate(0)}to{transform:rotate(360deg)}}",
+    ].join("\n");
+    expect(sanitizeAssistantProseForDisplay(orphanKeyframe)).toBe("모션을 넣는 중입니다.");
+  });
+
   it("strips .deco-* CSS dumps leaked after prose", () => {
     const input = [
       "덱을 구성합니다.",

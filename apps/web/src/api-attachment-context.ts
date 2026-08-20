@@ -100,7 +100,7 @@ async function buildApiAttachmentContext(
     }
     if (remaining <= 0) {
       blocks.push(
-        '[Open Design omitted remaining attached files because the attachment context budget was exhausted.]',
+        '[Attachment context omitted remaining attached files because the attachment context budget was exhausted.]',
       );
       break;
     }
@@ -272,18 +272,18 @@ export function clipAttachmentText(
     if (contentStart >= 0) {
       const headBudget = Math.min(2_400, Math.max(400, Math.floor(maxChars * 0.12)));
       const head = text.slice(0, Math.min(headBudget, contentStart));
-      const marker = '\n\n<!-- …Open Design omitted mid-document kit CSS/SVG… -->\n\n';
+      const marker = '\n\n<!-- …omitted mid-document kit CSS/SVG… -->\n\n';
       const bodyBudget = Math.max(0, maxChars - head.length - marker.length - 120);
       const body = text.slice(contentStart, contentStart + bodyBudget);
       const omitted = Math.max(0, text.length - head.length - body.length);
       return (
         `${head}${marker}${body}\n\n`
-        + `[Open Design truncated ${omitted} chars from this attachment before sending it to the API provider `
+        + `[Attachment context truncated ${omitted} chars from this attachment before sending it to the API provider `
         + `(kept document head prefix + body/slides; omitted mid kit CSS).]`
       );
     }
   }
-  return `${text.slice(0, maxChars)}\n\n[Open Design truncated ${omittedTotal} chars from this attachment before sending it to the API provider.]`;
+  return `${text.slice(0, maxChars)}\n\n[Attachment context truncated ${omittedTotal} chars from this attachment before sending it to the API provider.]`;
 }
 
 function escapeMarkdownFence(text: string): string {
