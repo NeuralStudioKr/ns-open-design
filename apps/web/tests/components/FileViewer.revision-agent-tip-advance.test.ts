@@ -258,7 +258,10 @@ describe('FileViewer revision tip advance after undo', () => {
     expect(fileViewer).toContain('shouldClearManualEditSelectionOnEmptyOdEditTargets');
     expect(fileViewer).toContain('ignoreMembershipNoise');
     expect(fileViewer).toContain('shouldReleaseTipRemountChromeAfterFitSettleRemasure');
-    expect(fileViewer).toContain('Fit-settle latch done — release inert chrome');
+    expect(fileViewer).toContain('TIP_REMOUNT_FIT_SETTLE_LAST_REMEASURE_MS');
+    expect(fileViewer).toContain('Last scheduled fit nudge remasure — release inert');
+    expect(fileViewer).toContain('shouldClearTipSyncedIdentityStickyRetainOnFullCatalog');
+    expect(fileViewer).toContain('resume live identity');
     expect(fileViewer).toContain('withPreservedTipSyncedStylesOnBridgeTarget');
     expect(fileViewer).toContain('resolveTipSyncedStylesForOdEditTargetsPreserve');
     expect(fileViewer).toContain('withPreservedTipSyncedIdentityOnBridgeTarget');

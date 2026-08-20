@@ -339,8 +339,10 @@ import {
   shouldCancelTipRemountSyncHostMeasureRetry,
   shouldReleaseTipRemountChromeAfterSyncHostMeasure,
   shouldReleaseTipRemountChromeAfterFitSettleRemasure,
+  TIP_REMOUNT_FIT_SETTLE_LAST_REMEASURE_MS,
   shouldIgnoreOdEditTargetsMembershipNoiseDuringTipProtect,
   shouldClearManualEditSelectionOnEmptyOdEditTargets,
+  shouldClearTipSyncedIdentityStickyRetainOnFullCatalog,
   shouldArmTipRemountFitSettleForDeckHostFit,
   shouldRemeasureTipRemountAfterDeckHostFitSettle,
   shouldScheduleTipRemountFitSettleRemasureOnLoad,
@@ -8046,6 +8048,7 @@ function HtmlViewer({
    */
   function remeasureTipRemountAfterDeckHostFitSettle(
     target: HTMLIFrameElement | null = iframeRef.current,
+    remasureDelayMs = TIP_REMOUNT_FIT_SETTLE_LAST_REMEASURE_MS,
   ) {
     const ids = selectedManualEditTargetIdsRef.current;
     if (!shouldRemeasureTipRemountAfterDeckHostFitSettle(
@@ -8094,11 +8097,12 @@ function HtmlViewer({
     }
     // Multi: refresh scale/offset after fit nudges so union tracks post-fit tip (461).
     refreshManualEditHostMetricsAfterTipRemountMulti(frame, appliedAny);
-    // Fit-settle latch done — release inert chrome so handles match live geometry (475).
+    // Last scheduled fit nudge remasure — release inert; latch stays for wild-jump (476).
     if (shouldReleaseTipRemountChromeAfterFitSettleRemasure(
       manualEditTipRemountChromeSuppressedRef.current,
-      manualEditTipRemountFitSettleUntilRef.current,
-      Date.now(),
+      appliedAny,
+      remasureDelayMs,
+      TIP_REMOUNT_FIT_SETTLE_LAST_REMEASURE_MS,
     )) {
       manualEditTipRemountChromeSuppressedRef.current = false;
       setManualEditTipRemountChromeSuppressed(false);
@@ -8129,9 +8133,9 @@ function HtmlViewer({
       return;
     }
     // Mirror early DEFAULT_FIT_NUDGE_DELAYS_MS — scale usually settles here.
-    const delaysMs = [50, 150, 400];
+    const delaysMs = [50, 150, TIP_REMOUNT_FIT_SETTLE_LAST_REMEASURE_MS];
     const timers = delaysMs.map((delay) => window.setTimeout(() => {
-      remeasureTipRemountAfterDeckHostFitSettle(getFrame());
+      remeasureTipRemountAfterDeckHostFitSettle(getFrame(), delay);
     }, delay));
     manualEditTipRemountFitSettleCancelRef.current = () => {
       for (const id of timers) window.clearTimeout(id);
@@ -9843,6 +9847,15 @@ function HtmlViewer({
         const selectionIdsChangedEarly = selectionIdsChangedEarlyRaw && !ignoreMembershipNoise;
         if (selectionIdsChangedEarly) {
           manualEditTipRemountIdentityHoldUntilRef.current = 0;
+          manualEditTipSyncedIdentityRetainRef.current = false;
+        } else if (shouldClearTipSyncedIdentityStickyRetainOnFullCatalog(
+          manualEditTipSyncedIdentityRetainRef.current,
+          tipRemountSession,
+          selectedIdsForPreserve.length,
+          refreshedProbe.length,
+          data.targets.length,
+        )) {
+          // Session/hold over + complete catalog — resume live identity (477).
           manualEditTipSyncedIdentityRetainRef.current = false;
         }
         const tipRemountActive = shouldRetainTipSyncedIdentityAfterHold(

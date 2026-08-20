@@ -145,15 +145,23 @@ export function shouldReleaseTipRemountChromeAfterSyncHostMeasure(
 }
 
 /**
- * After a fit-settle remasure pass, release inert once the latch has expired (475).
+ * After a fit-settle remasure pass, release inert on the last scheduled nudge
+ * remasure (50/150/400) once geometry applied — do not wait for the full
+ * ~1.2s wild-jump latch (476). Latch stays for wild-jump skip separately.
  */
 export function shouldReleaseTipRemountChromeAfterFitSettleRemasure(
   chromeSuppressed: boolean,
-  fitSettleUntilMs: number,
-  nowMs: number,
+  appliedAny: boolean,
+  remasureDelayMs: number,
+  lastScheduledDelayMs = 400,
 ): boolean {
-  return chromeSuppressed && (fitSettleUntilMs <= 0 || nowMs >= fitSettleUntilMs);
+  return chromeSuppressed
+    && appliedAny
+    && remasureDelayMs >= lastScheduledDelayMs;
 }
+
+/** Final deck-fit nudge delay used for tip-remount remasure schedule (460/476). */
+export const TIP_REMOUNT_FIT_SETTLE_LAST_REMEASURE_MS = 400;
 
 /**
  * Empty/partial od-edit-targets during tip protect is settle noise — do not
@@ -637,6 +645,23 @@ export function shouldClearTipSyncedIdentityStickyRetainOnGraceClear(
   reason: 'consume' | 'expiry' | 'safety' | 'selection' | 'mode-exit',
 ): boolean {
   return reason === 'selection' || reason === 'mode-exit';
+}
+
+/**
+ * After tip remount session/hold ends, the first complete non-noise catalog can
+ * drop sticky retain so inspector/Mixed track live source again (477).
+ * Keeps sticky during session and during empty/partial catalog noise (473).
+ */
+export function shouldClearTipSyncedIdentityStickyRetainOnFullCatalog(
+  stickyArmed: boolean,
+  tipRemountSessionActive: boolean,
+  selectedCount: number,
+  resolvedCount: number,
+  catalogLength: number,
+): boolean {
+  if (!stickyArmed || tipRemountSessionActive) return false;
+  if (selectedCount <= 0 || catalogLength <= 0) return false;
+  return resolvedCount >= selectedCount;
 }
 
 /**

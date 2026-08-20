@@ -12,8 +12,10 @@ import {
   shouldCancelTipRemountSyncHostMeasureRetry,
   shouldReleaseTipRemountChromeAfterSyncHostMeasure,
   shouldReleaseTipRemountChromeAfterFitSettleRemasure,
+  TIP_REMOUNT_FIT_SETTLE_LAST_REMEASURE_MS,
   shouldIgnoreOdEditTargetsMembershipNoiseDuringTipProtect,
   shouldClearManualEditSelectionOnEmptyOdEditTargets,
+  shouldClearTipSyncedIdentityStickyRetainOnFullCatalog,
   shouldArmTipRemountFitSettleForDeckHostFit,
   shouldRemeasureTipRemountAfterDeckHostFitSettle,
   shouldScheduleTipRemountFitSettleRemasureOnLoad,
@@ -153,15 +155,22 @@ describe('manual edit freeze reset', () => {
     expect(shouldReleaseTipRemountChromeAfterSyncHostMeasure(false)).toBe(false);
     expect(shouldReleaseTipRemountChromeAfterSyncHostMeasure(true, 2_000, 1_000)).toBe(false);
     expect(shouldReleaseTipRemountChromeAfterSyncHostMeasure(true, 2_000, 2_000)).toBe(true);
-    expect(shouldReleaseTipRemountChromeAfterFitSettleRemasure(true, 2_000, 1_000)).toBe(false);
-    expect(shouldReleaseTipRemountChromeAfterFitSettleRemasure(true, 2_000, 2_000)).toBe(true);
-    expect(shouldReleaseTipRemountChromeAfterFitSettleRemasure(false, 0, 1_000)).toBe(false);
+    expect(shouldReleaseTipRemountChromeAfterFitSettleRemasure(
+      true, true, TIP_REMOUNT_FIT_SETTLE_LAST_REMEASURE_MS,
+    )).toBe(true);
+    expect(shouldReleaseTipRemountChromeAfterFitSettleRemasure(true, true, 150)).toBe(false);
+    expect(shouldReleaseTipRemountChromeAfterFitSettleRemasure(true, false, 400)).toBe(false);
+    expect(shouldReleaseTipRemountChromeAfterFitSettleRemasure(false, true, 400)).toBe(false);
     expect(shouldIgnoreOdEditTargetsMembershipNoiseDuringTipProtect(true, 2, 0, 0)).toBe(true);
     expect(shouldIgnoreOdEditTargetsMembershipNoiseDuringTipProtect(true, 2, 1, 5)).toBe(true);
     expect(shouldIgnoreOdEditTargetsMembershipNoiseDuringTipProtect(true, 2, 2, 5)).toBe(false);
     expect(shouldIgnoreOdEditTargetsMembershipNoiseDuringTipProtect(false, 2, 0, 0)).toBe(false);
     expect(shouldClearManualEditSelectionOnEmptyOdEditTargets(true)).toBe(false);
     expect(shouldClearManualEditSelectionOnEmptyOdEditTargets(false)).toBe(true);
+    expect(shouldClearTipSyncedIdentityStickyRetainOnFullCatalog(true, false, 2, 2, 5)).toBe(true);
+    expect(shouldClearTipSyncedIdentityStickyRetainOnFullCatalog(true, true, 2, 2, 5)).toBe(false);
+    expect(shouldClearTipSyncedIdentityStickyRetainOnFullCatalog(true, false, 2, 1, 5)).toBe(false);
+    expect(shouldClearTipSyncedIdentityStickyRetainOnFullCatalog(false, false, 2, 2, 5)).toBe(false);
   });
 
   it('retries tip remount sync host measure once when first load tick misses', () => {
