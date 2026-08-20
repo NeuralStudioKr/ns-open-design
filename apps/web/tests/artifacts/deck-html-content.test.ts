@@ -191,6 +191,12 @@ describe("deck-html-content", () => {
     ).toBe(false);
     expect(
       shouldAbortStreamForHeadOnlyKitDump({
+        streamedText: headDump,
+        slideCountTopUp: true,
+      }),
+    ).toBe(true);
+    expect(
+      shouldAbortStreamForHeadOnlyKitDump({
         streamedText:
           '<artifact type="deck"><!doctype html><html lang="ko"><head><title>x</title></head>',
         templateCloneContentFill: true,

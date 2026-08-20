@@ -595,3 +595,43 @@ function pickInterSlideSeparator(
   const between = bodyContent.slice(slides[0]!.end, slides[1]!.start);
   return /^\s+$/.test(between) ? between : '\n';
 }
+
+function incomingLooksLikeFullDocument(html: string): boolean {
+  return /<!doctype\s+html|<html\b|<head\b/i.test(html);
+}
+
+/**
+ * Slide-count top-up / "add next pages" persist.
+ *
+ * The model must emit only new `<section class="slide">` blocks (or a
+ * longer deck whose tail is new). We splice those onto the saved deck so
+ * official look/`<head>` never has to be rewritten — that rewrite is the
+ * 2–3 minute hang after a 1-slide first fill.
+ */
+export function appendIncomingSlidesOntoExistingDeck(
+  existingHtml: string,
+  incomingHtml: string,
+): string | null {
+  const existing = String(existingHtml ?? "");
+  const incoming = String(incomingHtml ?? "");
+  if (!existing.trim() || !incoming.trim()) return null;
+
+  const incomingSlides = extractTopLevelSlideSections(extractDeckBodyContent(incoming));
+  if (incomingSlides.length === 0) return null;
+
+  const existingSlides = extractTopLevelSlideSections(extractDeckBodyContent(existing));
+  const existingCount = existingSlides.length;
+
+  let toAppend = incomingSlides;
+  if (existingCount > 0 && incomingLooksLikeFullDocument(incoming)) {
+    if (incomingSlides.length <= existingCount) return null;
+    toAppend = incomingSlides.slice(existingCount);
+  }
+
+  if (toAppend.length === 0) return null;
+
+  const range = findBodyContentRange(existing);
+  const chunk = toAppend.map((slide) => slide.outerHtml).join("\n");
+  if (!range) return `${existing.replace(/\s*$/, "\n")}${chunk}\n`;
+  return `${existing.slice(0, range.end)}\n${chunk}\n${existing.slice(range.end)}`;
+}

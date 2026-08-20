@@ -205,12 +205,13 @@ function motifSvgDumpLooksCommitted(html: string): boolean {
 export function shouldAbortStreamForMotifSvgDump(options: {
   streamedText: string;
   templateCloneContentFill?: boolean;
+  slideCountTopUp?: boolean;
 }): boolean {
   const text = String(options.streamedText ?? "");
   if (!DECK_STREAM_OPEN_RE.test(text)) return false;
   const htmlish = extractStreamedDeckHtml(text);
   if (!deckArtifactStartsWithMotifSvgDump(htmlish)) return false;
-  if (options.templateCloneContentFill) return /<svg\b/i.test(htmlish);
+  if (options.templateCloneContentFill || options.slideCountTopUp) return /<svg\b/i.test(htmlish);
   return motifSvgDumpLooksCommitted(htmlish);
 }
 
@@ -236,8 +237,9 @@ function firstHeadOrStyleIndex(html: string): number {
 export function shouldAbortStreamForHeadOnlyKitDump(options: {
   streamedText: string;
   templateCloneContentFill?: boolean;
+  slideCountTopUp?: boolean;
 }): boolean {
-  if (!options.templateCloneContentFill) return false;
+  if (!options.templateCloneContentFill && !options.slideCountTopUp) return false;
   const text = String(options.streamedText ?? "");
   if (!DECK_STREAM_OPEN_RE.test(text)) return false;
   const htmlish = extractStreamedDeckHtml(text);

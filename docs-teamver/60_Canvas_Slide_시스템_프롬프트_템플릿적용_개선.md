@@ -306,6 +306,25 @@ salvage/1장 persist는 최후 안전망으로 유지한다.
 - [x] `shouldAbortStreamForHeadOnlyKitDump`
 - [x] persist `초안` last-resort 제거
 
+### 0.60 2026-08-20 — 1장 이후 수정/top-up이 3분째 다음 장을 안 냄
+
+**증상:** 1장만 저장된 뒤 hidden top-up 또는 “다음 페이지” 요청이 「수정 반영 중」으로 몇 분 동안 돌고 다음 장이 안 나온다.
+
+**원인:** persist가 공식 Daisy look을 `deck.html`에 합친 뒤, top-up이 그 파일 전체를 첨부하고 “existing slides를 verbatim copy한 complete `<artifact type="deck">`” + 「수정 반영 중」을 요구함. 모델이 `<head>`/Motif CSS부터 다시 쓰다 BYOK가 멈춘다. head-kit abort는 fill 턴에만 걸려 있었음.
+
+**수정:**
+- top-up/다음-장 요청은 `deck.html`을 첨부하지 않고 existing-deck edit 톤을 쓰지 않음
+- 모델은 새 `<section class="slide">`만 냄 (이번 턴 3장). persist가 저장된 덱 뒤에 붙임
+- head-kit / Motif-SVG abort를 top-up에도 적용
+- batch 6 → 3
+
+구현 현황:
+
+- [x] append-only top-up prompt
+- [x] `appendIncomingSlidesOntoExistingDeck`
+- [x] top-up은 deck attach / 「수정 반영 중」 없음
+- [x] top-up head-kit abort
+
 ### 0.56a 2026-08-20 — compact 3장 wireframe · Daisy slide-title · kit tiny-flower 금지
 
 §0.56 Motif/persist heal에 더해 모델 측 계약 + cover role class:
@@ -1485,6 +1504,7 @@ User-message 쪽 `[Existing deck edit]` / `<attached-preview-comments>` 주입�
 | 2026-08-13 | **§0.0 정책 개정** — template = layout vocabulary + visual look, 페이지 수/순서/구성은 브리프 기반. content-swap → pick-and-choose layout roles. daemon Clone default count = 6 (shells.length 아님), `pickTemplateShells` role-based scoring 도입. `template-visual-kit.ts` HARD_RULES 재작성, `DEFAULT_MAX_CHARS` 12000 → 14000. |
 | 2026-08-18 | Clone content-fill motif 보정 — 8/13 SVG hang 방지 패치가 first fill에서 `Motif sprites`/`Decoration CSS`/`Layout CSS`를 통째로 생략해 Daisy/Capsule 템플릿 정체성이 약해졌다. `slimTemplateVisualKitForFill`이 큰 SVG sprite sheet와 전체 stylesheet dump는 계속 제거하되, Daisy star/rainbow·Capsule pill/capsule·Terminal scanline 같은 compact motif recipe와 짧은 Decoration/Layout CSS cue를 보존하도록 변경했다. |
 | 2026-08-18 | §0.20 — html-ppt identity scope. 공유 `:root --bg:#ffffff` 대신 `.tpl-*` host 토큰/슬라이드 surface/폰트를 kit 계약으로 쓰고, SKILL `copy index.html` filesystem 지시를 neutralize. |
+| 2026-08-20 | §0.60 — 1장 이후 top-up/다음-장이 공식 Daisy `deck.html`을 다시 써서 멈추던 문제. append-only + persist merge + top-up abort. |
 | 2026-08-20 | §0.59 — 첫 fill을 3장·body-first로 cap · Motif SVG 이번 턴 금지 · head-kit dump mid-stream abort · persist `초안` 제목 제거. |
 | 2026-08-20 | §0.58 — 짧은 1장 초안 persist · Daisy chrome+브리프 fallback · auto-continue 3장 reject 문구 삭제 · same-turn shell은 persist salvage. |
 | 2026-08-20 | §0.57 — 1장 게이트 제거 + head-only Template fill을 브리프 제목 표지 초안으로 salvage. `expected at least 3` → shell 연속 실패 차단. |

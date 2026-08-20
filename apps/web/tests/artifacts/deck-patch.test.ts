@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  appendIncomingSlidesOntoExistingDeck,
   applyDeckPatch,
   diffDeckSlideIndexes,
   extractTopLevelSlideSections,
@@ -382,5 +383,50 @@ describe('diffDeckSlideIndexes', () => {
     if (!diff.ok) {
       expect(diff.reason).toMatch(/slide count changed/);
     }
+  });
+});
+
+describe('appendIncomingSlidesOntoExistingDeck', () => {
+  it('appends body-only new slides onto a saved official-look deck', () => {
+    const oneSlide = [
+      '<!doctype html><html><head><title>Daisy Days</title>',
+      '<style>.deco{position:absolute}</style></head><body>',
+      '<section class="slide"><h1>Linux Internals</h1><p>Cover</p></section>',
+      '</body></html>',
+    ].join('');
+    const incoming =
+      '<section class="slide"><h2>Why it matters</h2><p>Kernel ABI.</p></section>'
+      + '<section class="slide"><h2>Next steps</h2><p>Trace syscalls.</p></section>';
+    const merged = appendIncomingSlidesOntoExistingDeck(oneSlide, incoming);
+    expect(merged).toContain('<title>Daisy Days</title>');
+    expect(merged).toContain('<h1>Linux Internals</h1>');
+    expect(merged).toContain('<h2>Why it matters</h2>');
+    expect(merged).toContain('<h2>Next steps</h2>');
+    expect(extractTopLevelSlideSections(merged ?? '').length).toBe(3);
+  });
+
+  it('keeps only the tail when incoming is a longer full rewrite', () => {
+    const prior =
+      '<!doctype html><html><body><section class="slide"><h1>Cover</h1></section></body></html>';
+    const incoming = [
+      '<!doctype html><html><head><style>.x{}</style></head><body>',
+      '<section class="slide"><h1>Cover</h1></section>',
+      '<section class="slide"><h2>Body</h2><p>More.</p></section>',
+      '</body></html>',
+    ].join('');
+    const merged = appendIncomingSlidesOntoExistingDeck(prior, incoming);
+    expect(merged).toContain('<h1>Cover</h1>');
+    expect(merged).toContain('<h2>Body</h2>');
+    expect(extractTopLevelSlideSections(merged ?? '').length).toBe(2);
+  });
+
+  it('does not clobber the saved deck with a shorter head rewrite', () => {
+    const prior =
+      '<!doctype html><html><head><style>.kit{}</style></head><body>'
+      + '<section class="slide"><h1>Cover</h1></section></body></html>';
+    const rewrite =
+      '<!doctype html><html><head><title>Daisy</title></head><body>'
+      + '<section class="slide"><h1>New cover</h1></section></body></html>';
+    expect(appendIncomingSlidesOntoExistingDeck(prior, rewrite)).toBeNull();
   });
 });

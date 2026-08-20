@@ -5,6 +5,7 @@ import {
   SLIDE_COUNT_TOP_UP_PROMPT_SENTINEL,
   buildSlideCountTopUpPrompt,
   extractRequestedSlideCountTargetFromMessages,
+  looksLikeSlideCountExpansionRequest,
   parseSlideCountTarget,
   shouldQueueSlideCountTopUp,
 } from "../../src/teamver/slideCountTopUp";
@@ -105,8 +106,18 @@ describe("slideCountTopUp", () => {
     const prompt = buildSlideCountTopUpPrompt({ produced: 6, requested: 15 });
     expect(prompt.startsWith(SLIDE_COUNT_TOP_UP_PROMPT_SENTINEL)).toBe(true);
     expect(prompt).toContain("Keep slides 1–6");
-    expect(prompt).toContain("APPEND only new slides 7 through 12");
+    expect(prompt).toContain("APPEND only new slides 7 through 9");
     expect(prompt).toContain("Do not start over");
+    expect(prompt).toMatch(/emit ONLY the new `<section class="slide">`/i);
+    expect(prompt).not.toContain("copies every existing slide verbatim");
+    expect(prompt).toMatch(/NEVER "수정 반영 중"/);
     expect(prompt).not.toContain("[Template clone content fill]");
+  });
+
+  it("detects add-next-pages follow-ups and ignores surgical title edits", () => {
+    expect(looksLikeSlideCountExpansionRequest("다음 페이지도 만들어줘")).toBe(true);
+    expect(looksLikeSlideCountExpansionRequest("나머지 슬라이드 채워줘")).toBe(true);
+    expect(looksLikeSlideCountExpansionRequest("add more slides")).toBe(true);
+    expect(looksLikeSlideCountExpansionRequest("표지 제목만 바꿔줘")).toBe(false);
   });
 });

@@ -12,6 +12,7 @@ import {
 } from '../artifacts/validate';
 import {
   diffDeckSlideIndexes,
+  appendIncomingSlidesOntoExistingDeck,
   extractDeckBodyContent,
   extractTopLevelSlideSections,
   isDeckPatchArtifactType,
@@ -491,6 +492,7 @@ import {
   buildSlideCountTopUpPrompt,
   extractRequestedSlideCountTargetFromMessages,
   isSlideCountTopUpPrompt,
+  looksLikeSlideCountExpansionRequest,
   rollbackSlideCountTopUpCount,
   shouldQueueSlideCountTopUp,
   syncSlideCountTopUpCountFromMessages,
@@ -3281,6 +3283,8 @@ export function ProjectView({
    * large cloned CSS/SVG shell, and must not block intentional slide-count caps.
    */
   const runTemplateCloneContentFillRef = useRef(false);
+  /** Hidden / user slide-count append — persist merges new sections onto disk. */
+  const runSlideCountTopUpRef = useRef(false);
   /**
    * Per-run skip-discovery pin from turn meta / Canvas template pick.
    * Persist must not wait on React `project.metadata` settling — a stale false
@@ -5204,6 +5208,27 @@ export function ProjectView({
           });
         if (salvaged) {
           artifactToPersist = { ...artifactToPersist, html: salvaged };
+        }
+        if (runSlideCountTopUpRef.current) {
+          const priorHtml = await readDiskHtml(fileName);
+          if (priorHtml) {
+            const merged = appendIncomingSlidesOntoExistingDeck(
+              priorHtml,
+              artifactToPersist.html,
+            );
+            if (merged) {
+              artifactToPersist = { ...artifactToPersist, html: merged };
+            } else if (
+              countDeckSlideSections(artifactToPersist.html)
+              <= countDeckSlideSections(priorHtml)
+            ) {
+              return {
+                kind: 'skipped-incomplete',
+                fileName,
+                reason: 'top-up-did-not-append-slides',
+              };
+            }
+          }
         }
         // Upstream resolveTerminal / bestArtifact may already have closed the
         // truncated body. Re-running salvage then returns null — still trust
@@ -8983,7 +9008,13 @@ export function ProjectView({
         || isAutoContinueIncompleteOutputPrompt(prompt);
       const isSlideCountTopUpSend =
         meta?.entryFrom === SLIDE_COUNT_TOP_UP_ENTRY_FROM
-        || isSlideCountTopUpPrompt(prompt);
+        || isSlideCountTopUpPrompt(prompt)
+        || (
+          slideOnlyMvp
+          && commentAttachments.length === 0
+          && looksLikeSlideCountExpansionRequest(prompt)
+        );
+      runSlideCountTopUpRef.current = isSlideCountTopUpSend;
       let filesSnapshot = projectFiles;
       if (
         commentAttachments.some(
@@ -9046,7 +9077,7 @@ export function ProjectView({
       const fillPluginInputs = isCloneContentFillTurn
         ? withTemplateCloneFillPluginInputs(meta?.pluginInputs, fillSlideCountHint)
         : meta?.pluginInputs;
-      if (isCloneContentFillTurn) {
+      if (isCloneContentFillTurn || isSlideCountTopUpSend) {
         effectiveAttachments = effectiveAttachments.filter(
           (attachment) => !isCanonicalDeckFileName(
             String(attachment.path || attachment.name || '').trim(),
@@ -9058,7 +9089,7 @@ export function ProjectView({
       // on-disk deck attached so the model can emit element-patch / deck-patch
       // against real target ids instead of guessing from stale chat prose.
       // Skip for Clone content-fill — LOOK seed must not re-enter as edit context.
-      if (slideOnlyMvp && scopedCommentAttachments.length > 0 && !isCloneContentFillTurn) {
+      if (slideOnlyMvp && scopedCommentAttachments.length > 0 && !isCloneContentFillTurn && !isSlideCountTopUpSend) {
         const existingDeck = resolveCanonicalDeckFileForEdit(
           filesSnapshot,
           project.metadata?.entryFile ?? null,
@@ -9081,7 +9112,7 @@ export function ProjectView({
       // no prior assistant in historyBase, but the project already has deck.html.
       // Do not treat leftover about.html / notes.html as an existing deck edit.
       // Skip for Clone content-fill: kit-driven compact CREATE instead of HTML rewrite.
-      if (slideOnlyMvp && scopedCommentAttachments.length === 0 && !isCloneContentFillTurn) {
+      if (slideOnlyMvp && scopedCommentAttachments.length === 0 && !isCloneContentFillTurn && !isSlideCountTopUpSend) {
         const existingDeck = resolveCanonicalDeckFileForEdit(
           filesSnapshot,
           project.metadata?.entryFile ?? null,
@@ -9132,7 +9163,7 @@ export function ProjectView({
           }
         }
       }
-      if (isCloneContentFillTurn) {
+      if (isCloneContentFillTurn || isSlideCountTopUpSend) {
         effectiveAttachments = withoutCanonicalDeckAttachments(effectiveAttachments);
         autoAttachedDeckPath = null;
       }
@@ -9187,6 +9218,15 @@ export function ProjectView({
           slideOnlyMvp,
           imagePaths: imageAttachmentPathsForSlideEmbed(effectiveAttachments),
         });
+      }
+      if (isSlideCountTopUpSend && !isSlideCountTopUpPrompt(modelPrompt)) {
+        modelPrompt = [
+          modelPrompt.trim(),
+          '',
+          'APPEND-ONLY: emit new `<section class="slide">` blocks only.',
+          'Do NOT emit `<head>`, Motif `<svg>`, or rewrite saved slides. Persist appends them.',
+          'Status tone: "슬라이드 추가 중" — NEVER "수정 반영 중" / "Applying your edits".',
+        ].join('\n');
       }
       if (!retryTarget && meta?.queueOnly) {
         queueChatSendForCurrentConversation({
@@ -10567,6 +10607,7 @@ export function ProjectView({
             && shouldAbortStreamForMotifSvgDump({
               streamedText,
               templateCloneContentFill: isCloneContentFillTurn,
+              slideCountTopUp: isSlideCountTopUpSend,
             })
           ) {
             motifSvgDumpAbortArmed = true;
@@ -10577,6 +10618,7 @@ export function ProjectView({
             && shouldAbortStreamForHeadOnlyKitDump({
               streamedText,
               templateCloneContentFill: isCloneContentFillTurn,
+              slideCountTopUp: isSlideCountTopUpSend,
             })
           ) {
             headKitDumpAbortArmed = true;
@@ -11066,6 +11108,7 @@ export function ProjectView({
               // fill must not flip system prompt into EXISTING_DECK edit / 「수정 반영 중」.
               includeExistingDeckImageEditRule:
                 !isCloneContentFillTurn
+                && !isSlideCountTopUpSend
                 && (
                   autoAttachedDeckPath != null
                   || imageAttachmentPathsForSlideEmbed(effectiveAttachments).length > 0

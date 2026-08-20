@@ -739,6 +739,10 @@ describe("canvasSlideLaunch", () => {
     expect(projectView).toContain("templateCloneFillSlideCountOverrideNotice(");
     expect(projectView).toContain("slimTemplateVisualKitForFill(");
     expect(projectView).toContain("templateCloneContentFill: isCloneContentFillTurn");
+    expect(projectView).toContain("appendIncomingSlidesOntoExistingDeck(");
+    expect(projectView).toContain("slideCountTopUp: isSlideCountTopUpSend");
+    expect(projectView).toContain("runSlideCountTopUpRef");
+    expect(projectView).toContain('Status tone: "슬라이드 추가 중"');
     expect(projectView).toContain("deckArtifactStartsWithMotifSvgDump");
     expect(projectView).toContain("shouldAbortStreamForMotifSvgDump");
     expect(projectView).toContain("shouldAbortStreamForHeadOnlyKitDump");

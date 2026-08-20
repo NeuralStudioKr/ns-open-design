@@ -13,9 +13,9 @@ export const SLIDE_COUNT_TOP_UP_PROMPT_SENTINEL = "<!--od:slide_count_top_up-->"
 /** Analytics `entry_from` for the append loop — not incomplete-output recovery. */
 export const SLIDE_COUNT_TOP_UP_ENTRY_FROM = "slide_count_top_up";
 
-/** First fill stays short; two batches of ~6 reach the 15-slide UI cap. */
+/** First fill stays short; two batches of 3 reach a 6–9 slide default. */
 export const SLIDE_COUNT_TOP_UP_MAX_PER_CONVERSATION = 2;
-export const SLIDE_COUNT_TOP_UP_BATCH = 6;
+export const SLIDE_COUNT_TOP_UP_BATCH = 3;
 
 const USER_REQUESTED_SLIDE_COUNT_RE = /User requested slide count:\s*([^\n]+)/i;
 const SLIDE_COUNT_PLUGIN_INPUT_RE =
@@ -26,6 +26,23 @@ const SLIDE_COUNT_FORM_LABEL_RE =
 export function isSlideCountTopUpPrompt(content: string | null | undefined): boolean {
   const text = (content ?? "").trimStart();
   return text.startsWith(SLIDE_COUNT_TOP_UP_PROMPT_SENTINEL);
+}
+
+/** User follow-up that wants more pages — not a title/color surgical edit. */
+export function looksLikeSlideCountExpansionRequest(
+  text: string | null | undefined,
+): boolean {
+  const raw = String(text ?? "").trim();
+  if (!raw || isSlideCountTopUpPrompt(raw)) return false;
+  if (
+    /(?:제목|텍스트|색|폰트|위치|크기)\s*(?:만\s*)?(?:바|고|수)|change\s+the\s+title|recolor/i.test(raw)
+    && !/(?:다음|나머지|추가).*(?:장|페이지|슬라이드)/i.test(raw)
+  ) {
+    return false;
+  }
+  return /(?:다음|나머지|추가)\s*(?:페이지|장|슬라이드)|더\s*(?:만들|채워|추가)|장(?:수를?)?\s*(?:늘려|추가)|add\s+(?:more\s+)?(?:slides?|pages?)|continue\s+(?:the\s+)?(?:deck|slides?)|next\s+(?:pages?|slides?)/i.test(
+    raw,
+  );
 }
 
 export function countSlideCountTopUpAttemptsInConversation(
@@ -179,11 +196,13 @@ export function buildSlideCountTopUpPrompt(input: {
     `Keep slides 1–${input.produced} exactly as they are. Do not rewrite, restyle, delete, or collapse them.`,
     `APPEND only new slides ${input.produced + 1} through ${appendUntil} (inclusive).`,
     "This is an explicit slide-count expansion — not a redesign and not an incomplete-output retry.",
-    "Emit one complete `<artifact type=\"deck\">` that copies every existing slide verbatim and adds the new slides after them.",
+    "Do NOT rewrite the saved deck. Do NOT emit `<head>`, Motif `<svg>`, or copy existing slides.",
+    "Emit ONLY the new `<section class=\"slide\">` blocks (body-first). Persist appends them after the saved slides.",
     "Do not use element-patch. Do not start over from a short new deck.",
     "Increasing the slide count is required. Never reduce it.",
-    "Match the existing deck's visual kit, typography, and layout language.",
+    "Reuse the existing deck's palette/fonts via inline styles on the new sections only.",
     "Each new slide needs a real title plus 2–4 concrete bullets or a real paragraph. No placeholders, no SLOT comments.",
+    "Status tone: \"슬라이드 추가 중\" — NEVER \"수정 반영 중\" / \"Applying your edits\".",
     "Finish a closed `</artifact>` this turn.",
   ].join("\n");
 }
