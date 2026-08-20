@@ -250,6 +250,10 @@ describe('FileViewer revision tip advance after undo', () => {
     expect(fileViewer).toContain('shouldAllowOdEditTargetsPendingReseedDuringTipProtect');
     expect(fileViewer).toContain('allowPendingReseed');
     expect(fileViewer).toContain('Pending drafts stay reachable during tip protect');
+    expect(fileViewer).toContain('shouldRetainTipSyncedIdentityAfterHold');
+    expect(fileViewer).toContain('manualEditTipSyncedIdentityRetainRef');
+    expect(fileViewer).toContain('shouldClearTipSyncedIdentityStickyRetainOnGraceClear');
+    expect(fileViewer).toContain('Sticky retain past timed hold until selection leave');
     expect(fileViewer).toContain('withPreservedTipSyncedStylesOnBridgeTarget');
     expect(fileViewer).toContain('resolveTipSyncedStylesForOdEditTargetsPreserve');
     expect(fileViewer).toContain('withPreservedTipSyncedIdentityOnBridgeTarget');

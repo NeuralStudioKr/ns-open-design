@@ -567,12 +567,37 @@ export function shouldArmTipRemountIdentityHoldOnGraceClear(
 /**
  * Tip style preserve / identity Mixed skip apply only while tip protect is
  * active AND selection membership is unchanged (469).
+ * Tip protect includes remount session/hold OR sticky post-hold retain (472).
  */
 export function shouldPreserveTipSyncedStylesOnOdEditTargets(
   tipRemountActive: boolean,
   selectionIdsChanged: boolean,
 ): boolean {
   return tipRemountActive && !selectionIdsChanged;
+}
+
+/**
+ * After tip remount settle/hold, keep tip-synced identity fill for the current
+ * selection until leave/mode-exit — bridge catalogs send `outerHtml: ''` and
+ * live styles that one-shot Mixed/inspector when the 450ms hold ends (472).
+ */
+export function shouldRetainTipSyncedIdentityAfterHold(
+  tipRemountSessionActive: boolean,
+  stickyRetainArmed: boolean,
+  selectionIdsChanged: boolean,
+): boolean {
+  if (selectionIdsChanged) return false;
+  return tipRemountSessionActive || stickyRetainArmed;
+}
+
+/**
+ * Sticky retain clears on selection leave / mode-exit only — remasure consume
+ * and grace expiry must keep it armed past the timed hold (472).
+ */
+export function shouldClearTipSyncedIdentityStickyRetainOnGraceClear(
+  reason: 'consume' | 'expiry' | 'safety' | 'selection' | 'mode-exit',
+): boolean {
+  return reason === 'selection' || reason === 'mode-exit';
 }
 
 /**

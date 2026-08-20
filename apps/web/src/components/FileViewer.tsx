@@ -355,6 +355,8 @@ import {
   nextTipRemountIdentityHoldUntilMs,
   shouldArmTipRemountIdentityHoldOnGraceClear,
   shouldPreserveTipSyncedStylesOnOdEditTargets,
+  shouldRetainTipSyncedIdentityAfterHold,
+  shouldClearTipSyncedIdentityStickyRetainOnGraceClear,
   shouldReadSingleInspectorStylesFromSourceOnlyForOdEditTargets,
   shouldRefreshHostMetricsAfterTipRemountMultiRemasure,
   shouldSkipSrcDocTransportRemountForManualEditFreezeTipSync,
@@ -5516,6 +5518,11 @@ function HtmlViewer({
   const manualEditTipRemountFitSettleUntilRef = useRef(0);
   /** Post-settle identity protect after grace clear (468). */
   const manualEditTipRemountIdentityHoldUntilRef = useRef(0);
+  /**
+   * Sticky tip identity retain after hold — bridge blank outerHtml must not
+   * one-shot Mixed when the timed hold ends (472). Cleared on selection leave.
+   */
+  const manualEditTipSyncedIdentityRetainRef = useRef(false);
   const manualEditTipRemountFitSettleCancelRef = useRef<(() => void) | null>(null);
   /** Pending onLoad sync measure rAF retry — cancel on grace clear (463). */
   const manualEditTipRemountSyncRetryRafRef = useRef<number | null>(null);
@@ -8267,6 +8274,9 @@ function HtmlViewer({
     } else {
       manualEditTipRemountIdentityHoldUntilRef.current = 0;
     }
+    if (shouldClearTipSyncedIdentityStickyRetainOnGraceClear(reason)) {
+      manualEditTipSyncedIdentityRetainRef.current = false;
+    }
     manualEditTipRemountGeometryGraceIdRef.current = null;
     manualEditTipRemountGeometryGraceUntilRef.current = 0;
     manualEditTipRemountFitSettleUntilRef.current = 0;
@@ -8344,6 +8354,8 @@ function HtmlViewer({
       manualEditTipRemountGeometryGraceUntilRef.current = graceUntil;
       // New tip-remount session owns identity protect (replace stale post-settle hold).
       manualEditTipRemountIdentityHoldUntilRef.current = 0;
+      // Sticky retain past timed hold until selection leave (472).
+      manualEditTipSyncedIdentityRetainRef.current = true;
       // Deck host-fit may rescale after onLoad — keep settle latch past grace (460).
       const fitSettleUntil = shouldArmTipRemountFitSettleForDeckHostFit(
         deckHostViewportFitActive,
@@ -9805,9 +9817,11 @@ function HtmlViewer({
           );
         if (selectionIdsChangedEarly) {
           manualEditTipRemountIdentityHoldUntilRef.current = 0;
+          manualEditTipSyncedIdentityRetainRef.current = false;
         }
-        const tipRemountActive = shouldPreserveTipSyncedStylesOnOdEditTargets(
+        const tipRemountActive = shouldRetainTipSyncedIdentityAfterHold(
           tipRemountSession,
+          manualEditTipSyncedIdentityRetainRef.current,
           selectionIdsChangedEarly,
         );
         // Tip-remount: fingerprint the catalog we will store (preserved tip
