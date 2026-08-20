@@ -36,6 +36,32 @@ describe('pinDeckSlidesToFixedCanvas', () => {
     expect(pinned).toContain(DECK_FIXED_CANVAS_PIN_ATTR);
   });
 
+  it('strips authored overflow:hidden from already-sized 1920×1080 slides', () => {
+    const html = [
+      '<section class="slide" style="width:1920px;height:1080px;box-sizing:border-box;overflow:hidden;padding:80px">',
+      '<h1>Title</h1><p class="subtitle">Lead</p>',
+      '</section>',
+    ].join('');
+    const pinned = pinDeckSlidesToFixedCanvas(html);
+    expect(pinned).not.toMatch(/class="slide"[^>]*overflow:\s*hidden/i);
+    expect(pinned).toMatch(/\.slide\s*\{[^}]*overflow:\s*visible\s*!important/i);
+  });
+
+  it('moves absolute bottom footers into flex flow so they do not cover the subtitle', () => {
+    const html = [
+      '<section class="slide" style="width:1920px;height:1080px;display:flex;flex-direction:column;justify-content:center">',
+      '<h1>Title</h1>',
+      '<p class="subtitle">Long lead that used to collide with the footer</p>',
+      '<p class="footer" style="position:absolute;bottom:48px;left:80px">Company · 2026</p>',
+      '</section>',
+    ].join('');
+    const pinned = pinDeckSlidesToFixedCanvas(html);
+    expect(pinned).toMatch(/class="footer"[^>]*position:relative/);
+    expect(pinned).toMatch(/class="footer"[^>]*margin-top:auto/);
+    expect(pinned).not.toMatch(/class="footer"[^>]*position:absolute/);
+    expect(pinned).not.toMatch(/class="footer"[^>]*bottom:48px/);
+  });
+
   it('is idempotent for the injected style tag', () => {
     const once = pinDeckSlidesToFixedCanvas(
       '<body><section class="slide" style="min-height:100vh">A</section></body>',

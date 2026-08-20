@@ -50,6 +50,18 @@ describe('DECK_FRAMEWORK_DIRECTIVE_COMPACT', () => {
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).not.toMatch(
       /style="[^"]*\b100vw\b/,
     );
+    expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).not.toMatch(
+      /style="[^"]*overflow:hidden/,
+    );
+    expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT).not.toMatch(
+      /style="[^"]*overflow:hidden/,
+    );
+    expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_SELECTED_TEMPLATE).not.toMatch(
+      /style="[^"]*overflow:hidden/,
+    );
+    expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_TEMPLATE_FILL).not.toMatch(
+      /style="[^"]*overflow:hidden/,
+    );
   });
 
   it('selected-template compact contract omits Neutral sample colors', () => {

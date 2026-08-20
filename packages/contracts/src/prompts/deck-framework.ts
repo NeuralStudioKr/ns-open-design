@@ -502,21 +502,21 @@ When the brief is "make me a deck", your output is this skeleton with theme toke
  */
 export const DECK_COMPACT_INLINE_LAYOUT_VOCABULARY = `# Compact API — inline layout vocabulary (no <head>, no shared CSS)
 
-Each slide is a **fixed 1920×1080** canvas (16:9). Inline \`width:1920px;height:1080px;box-sizing:border-box;overflow:hidden\` on every \`<section class="slide">\`. Never use \`min-height:100vh\`, \`height:100vh\`, \`width:100vw\`, or scroll-snap presenter sizing — those stretch into the tall preview panel and break PPT aspect ratio. Motif/decoration corners must stay **inside** the canvas (\`top/left/right/bottom: 0\` or positive inset) — never negative offsets that get clipped. Use large presentation typography, fill the canvas, and center content vertically with flex plus generous padding (64–96px).
+Each slide is a **fixed 1920×1080** canvas (16:9). Inline \`width:1920px;height:1080px;box-sizing:border-box\` on every \`<section class="slide">\`. Never use \`min-height:100vh\`, \`height:100vh\`, \`width:100vw\`, or scroll-snap presenter sizing — those stretch into the tall preview panel and break PPT aspect ratio. Do not put \`overflow:hidden\` on the slide host — it clips Motif corners and colliding subtitle/footer. Motif/decoration corners must stay **inside** the canvas (\`top/left/right/bottom: 0\` or positive inset) — never negative offsets that get clipped. Keep footers in flex flow (\`margin-top:auto\`), never \`position:absolute; bottom:…\`. Use large presentation typography, fill the canvas, and center content vertically with flex plus generous padding (64–96px).
 
 Do not invent one identical white box for every slide. Pick the closest layout below and vary **background color**, **padding**, **composition**, and **density** across slides (alternate light/dark surfaces — never 3+ identical slides in a row). A good deck should look like a designed presentation, not a web article split into full-screen rows.
 
 **Cover** — big title + one lead line:
-\`<section class="slide" style="width:1920px;height:1080px;box-sizing:border-box;overflow:hidden;padding:96px 88px;background:#0f172a;color:#f8fafc;display:flex;flex-direction:column;justify-content:center"><p style="font:600 18px sans-serif;letter-spacing:.08em">컨텍스트</p><h1 style="font:700 72px/1.05 serif">실제 헤드라인</h1><p style="font:28px/1.45 sans-serif">한 줄 리드.</p></section>\`
+\`<section class="slide" style="width:1920px;height:1080px;box-sizing:border-box;padding:96px 88px;background:#0f172a;color:#f8fafc;display:flex;flex-direction:column;justify-content:center"><p style="font:600 18px sans-serif;letter-spacing:.08em">컨텍스트</p><h1 style="font:700 72px/1.05 serif">실제 헤드라인</h1><p style="font:28px/1.45 sans-serif">한 줄 리드.</p></section>\`
 
 **Body** — eyebrow + headline + paragraph or bullets:
-\`<section class="slide" style="width:1920px;height:1080px;box-sizing:border-box;overflow:hidden;padding:80px 88px;background:#fff;color:#111;display:flex;flex-direction:column;justify-content:center"><p style="font:600 16px sans-serif;letter-spacing:.06em;color:#64748b">섹션 라벨</p><h2 style="font:700 52px/1.1 sans-serif">핵심 메시지</h2><ul style="font:26px/1.55 sans-serif"><li>구체적 불릿</li></ul></section>\`
+\`<section class="slide" style="width:1920px;height:1080px;box-sizing:border-box;padding:80px 88px;background:#fff;color:#111;display:flex;flex-direction:column;justify-content:center"><p style="font:600 16px sans-serif;letter-spacing:.06em;color:#64748b">섹션 라벨</p><h2 style="font:700 52px/1.1 sans-serif">핵심 메시지</h2><ul style="font:26px/1.55 sans-serif"><li>구체적 불릿</li></ul></section>\`
 
 **Big stat** — one number + caption (centered):
-\`<section class="slide" style="width:1920px;height:1080px;box-sizing:border-box;overflow:hidden;padding:80px 88px;background:#111827;color:#fff;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center"><div style="font:700 120px/1 sans-serif">38<span style="font-size:.45em">%</span></div><p style="margin:28px 0 0;max-width:36rem;font:26px/1.5 sans-serif;opacity:.85">수치가 의미하는 한 줄 설명.</p></section>\`
+\`<section class="slide" style="width:1920px;height:1080px;box-sizing:border-box;padding:80px 88px;background:#111827;color:#fff;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center"><div style="font:700 120px/1 sans-serif">38<span style="font-size:.45em">%</span></div><p style="margin:28px 0 0;max-width:36rem;font:26px/1.5 sans-serif;opacity:.85">수치가 의미하는 한 줄 설명.</p></section>\`
 
 **Three-column** — headline + 3 points (use flex, keep copy short):
-\`<section class="slide" style="width:1920px;height:1080px;box-sizing:border-box;overflow:hidden;padding:72px 80px;background:#f8fafc;color:#0f172a;display:flex;flex-direction:column;justify-content:center"><h2 style="font:700 48px/1.15 sans-serif">세 가지 포인트</h2><div style="display:flex;gap:28px"><p>포인트 1</p><p>포인트 2</p><p>포인트 3</p></div></section>\`
+\`<section class="slide" style="width:1920px;height:1080px;box-sizing:border-box;padding:72px 80px;background:#f8fafc;color:#0f172a;display:flex;flex-direction:column;justify-content:center"><h2 style="font:700 48px/1.15 sans-serif">세 가지 포인트</h2><div style="display:flex;gap:28px"><p>포인트 1</p><p>포인트 2</p><p>포인트 3</p></div></section>\`
 
 **Split thesis** — left headline, right evidence cards:
 Use CSS grid .9fr/1.1fr: strong left claim + two right evidence cards.
@@ -528,7 +528,7 @@ Use 4 numbered horizontal steps; each step gets one short label and one evidence
 Use a 56–72px blockquote/principle sentence with small attribution.
 
 **Closing** — recap CTA:
-\`<section class="slide" style="width:1920px;height:1080px;box-sizing:border-box;overflow:hidden;padding:96px 88px;background:#1e293b;color:#fff;display:flex;flex-direction:column;justify-content:center"><h2 style="margin:0 0 20px;font:700 56px/1.1 sans-serif;max-width:16ch">다음 단계</h2><p style="margin:0;font:26px/1.5 sans-serif;max-width:40rem">행동을 유도하는 마무리 한두 문장.</p></section>\`
+\`<section class="slide" style="width:1920px;height:1080px;box-sizing:border-box;padding:96px 88px;background:#1e293b;color:#fff;display:flex;flex-direction:column;justify-content:center"><h2 style="margin:0 0 20px;font:700 56px/1.1 sans-serif;max-width:16ch">다음 단계</h2><p style="margin:0;font:26px/1.5 sans-serif;max-width:40rem">행동을 유도하는 마무리 한두 문장.</p></section>\`
 
 Quality bar: match the requested slide count (see slide-count rule below); each slide needs a distinct layout role (cover → split/body/stat/timeline/quote/column mixes → closing). When a Selected deck template is active, bind its visual-kit colors/fonts — design-system tokens are secondary brand context only. Do not use the example colors literally when a selected template (or, if none, an active design system) supplies a stronger visual direction.
 `;
@@ -542,7 +542,7 @@ Quality bar: match the requested slide count (see slide-count rule below); each 
  */
 export const DECK_COMPACT_INLINE_LAYOUT_VOCABULARY_FOR_SELECTED_TEMPLATE = `# Compact API — inline layout vocabulary with Selected deck template (structure only)
 
-Each slide is a **fixed 1920×1080** canvas: inline \`width:1920px;height:1080px;box-sizing:border-box;overflow:hidden\` on every \`<section class="slide">\`; avoid viewport-only \`min-height:100vh\`. Motif corners must stay inside the canvas (no negative top/left/right/bottom). Use large presentation typography and fill the canvas.
+Each slide is a **fixed 1920×1080** canvas: inline \`width:1920px;height:1080px;box-sizing:border-box\` on every \`<section class="slide">\`; avoid viewport-only \`min-height:100vh\` and slide-host \`overflow:hidden\`. Motif corners must stay inside the canvas (no negative top/left/right/bottom). Keep footers in flex flow, not absolute bottom. Use large presentation typography and fill the canvas.
 
 **Colors, fonts, borders, shadows, and decorative density MUST come from the Selected deck template / Template visual kit above.** Do not invent a slate/navy corporate palette. Forbidden fallbacks when a kit is present: \`#0f172a\`, \`#1e293b\`, \`#111827\`, \`#f8fafc\` + Inter-only sparse covers.
 
@@ -572,7 +572,7 @@ When the brief is ready and this is a deck-delivery turn, emit ONE \`<artifact t
 
 Required wireframe only (structural — **do not** copy literally; use varied layouts below). This sample is **three slides on purpose** (cover + body + closing). Prefer at least this shape when the user did not ask for 1 page; a short closed draft still saves and slide-count top-up can append. Never close \`</html></artifact>\` after a single section:
 
-\`<artifact type="deck" identifier="deck"><!doctype html><html lang="ko"><body style="margin:0"><section class="slide" style="width:1920px;height:1080px;padding:80px 88px;box-sizing:border-box;overflow:hidden;display:flex;flex-direction:column;justify-content:center"><h1 style="margin:0 0 20px">실제 제목</h1><p style="margin:0;max-width:48rem">실제 본문.</p></section><section class="slide" style="width:1920px;height:1080px;padding:80px 88px;box-sizing:border-box;overflow:hidden;display:flex;flex-direction:column;justify-content:center"><h2 style="margin:0 0 16px">실제 제목</h2><ul style="margin:0"><li>실제 불릿</li></ul></section><section class="slide" style="width:1920px;height:1080px;padding:80px 88px;box-sizing:border-box;overflow:hidden;display:flex;flex-direction:column;justify-content:center"><h2 style="margin:0 0 16px">실제 제목</h2><p style="margin:0">실제 마무리.</p></section></body></html></artifact>\`
+\`<artifact type="deck" identifier="deck"><!doctype html><html lang="ko"><body style="margin:0"><section class="slide" style="width:1920px;height:1080px;padding:80px 88px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:center"><h1 style="margin:0 0 20px">실제 제목</h1><p style="margin:0;max-width:48rem">실제 본문.</p></section><section class="slide" style="width:1920px;height:1080px;padding:80px 88px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:center"><h2 style="margin:0 0 16px">실제 제목</h2><ul style="margin:0"><li>실제 불릿</li></ul></section><section class="slide" style="width:1920px;height:1080px;padding:80px 88px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:center"><h2 style="margin:0 0 16px">실제 제목</h2><p style="margin:0">실제 마무리.</p></section></body></html></artifact>\`
 
 Rules:
 1. On deck-delivery turns, optional: one tiny brief-specific UI-locale status sentence, then start the artifact. Artifact-only is OK for speed/tokens. No generic promise-only line. On quick-brief/question-form turns, do not emit an artifact.
@@ -605,7 +605,7 @@ Do **not** paste a full \`example.html\` dump into the artifact (input was alrea
 
 Fallback wireframe ONLY when neither kit nor scaffold map is usable (structure only — still use Selected template tokens). This sample is **three slides on purpose** (cover + body + closing). Prefer at least this shape when the user did not ask for 1 page; a short closed draft still saves and slide-count top-up can append. Never close \`</html></artifact>\` after a single section:
 
-\`<artifact type="deck" identifier="deck"><!doctype html><html lang="ko"><body style="margin:0"><section class="slide" style="width:1920px;height:1080px;padding:80px 88px;box-sizing:border-box;overflow:hidden;display:flex;flex-direction:column;justify-content:center"><h1 style="margin:0 0 20px">실제 제목</h1><p style="margin:0;max-width:48rem">실제 본문.</p></section><section class="slide" style="width:1920px;height:1080px;padding:80px 88px;box-sizing:border-box;overflow:hidden;display:flex;flex-direction:column;justify-content:center"><h2 style="margin:0 0 16px">실제 제목</h2><ul style="margin:0"><li>실제 불릿</li></ul></section><section class="slide" style="width:1920px;height:1080px;padding:80px 88px;box-sizing:border-box;overflow:hidden;display:flex;flex-direction:column;justify-content:center"><h2 style="margin:0 0 16px">실제 제목</h2><p style="margin:0">실제 마무리.</p></section></body></html></artifact>\`
+\`<artifact type="deck" identifier="deck"><!doctype html><html lang="ko"><body style="margin:0"><section class="slide" style="width:1920px;height:1080px;padding:80px 88px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:center"><h1 style="margin:0 0 20px">실제 제목</h1><p style="margin:0;max-width:48rem">실제 본문.</p></section><section class="slide" style="width:1920px;height:1080px;padding:80px 88px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:center"><h2 style="margin:0 0 16px">실제 제목</h2><ul style="margin:0"><li>실제 불릿</li></ul></section><section class="slide" style="width:1920px;height:1080px;padding:80px 88px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:center"><h2 style="margin:0 0 16px">실제 제목</h2><p style="margin:0">실제 마무리.</p></section></body></html></artifact>\`
 
 Rules:
 1. On deck-delivery turns, optional: one tiny brief-specific UI-locale status sentence, then start the artifact. Artifact-only is OK for speed/tokens.
@@ -631,7 +631,7 @@ In-place HTML edits are unavailable in this API run — so regenerate content wi
 
 **Body / title-first (non-negotiable):**
 1. Status sentence → open \`<artifact type="deck" identifier="deck">\`.
-2. First bytes: \`<!doctype html><html lang="ko"><body style="margin:0;background:<kit surface hex>;color:<kit ink hex>"><section class="slide" style="width:1920px;height:1080px;box-sizing:border-box;overflow:hidden;padding:56px 72px;background:<kit surface hex>;color:<kit ink hex>;…">\` with a real \`h1\`/\`h2\` title + lead **before any decoration**.
+2. First bytes: \`<!doctype html><html lang="ko"><body style="margin:0;background:<kit surface hex>;color:<kit ink hex>"><section class="slide" style="width:1920px;height:1080px;box-sizing:border-box;padding:56px 72px;background:<kit surface hex>;color:<kit ink hex>;…">\` with a real \`h1\`/\`h2\` title + lead **before any decoration**.
 3. Slide count THIS TURN: honor an explicit small count (1–2) if the user asked for it. Otherwise produce **3** filled slides and close the artifact. Hidden top-up appends more. Never close after a single cover. Motif \`<svg>\` is NOT required this turn (official Motif is merged after save).
 4. Close \`</body></html></artifact>\` in this same response.
 

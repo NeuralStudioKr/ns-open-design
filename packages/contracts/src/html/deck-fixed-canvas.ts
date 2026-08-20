@@ -27,6 +27,7 @@ html, body { margin: 0; }
   max-width: 1920px !important;
   max-height: 1080px !important;
   box-sizing: border-box !important;
+  overflow: visible !important;
 }
 `.trim();
 
@@ -53,13 +54,19 @@ function hasViewportSlideSizing(style: string): boolean {
   );
 }
 
+function stripSlideHostOverflowClip(style: string): string {
+  return String(style ?? '')
+    .replace(/(?:^|;)\s*overflow(?:-x|-y)?\s*:\s*(?:hidden|clip)\s*(?=;|$)/gi, ';');
+}
+
 function pinInlineSlideStyle(style: string): string {
-  let next = String(style ?? '');
+  let next = stripSlideHostOverflowClip(style);
   // Already a fixed 16:9 canvas without viewport sizing — keep authored
   // flex/grid axis declarations intact for split layouts.
   if (hasFixedCanvasSizing(next) && !hasViewportSlideSizing(next)) {
     if (!/\bbox-sizing\s*:/i.test(next)) next = `${next};box-sizing:border-box`;
-    // Do not force overflow:hidden — Motif corner hangs must remain visible.
+    // Never keep authored overflow:hidden — Motif corners / lead+footer
+    // still clip after §0.71 when the model copies compact samples.
     return next.replace(/;;+/g, ';').replace(/^;|;$/g, '').trim();
   }
   // Drop viewport presenter sizing that expands into the host panel height.
@@ -81,8 +88,8 @@ function pinInlineSlideStyle(style: string): string {
     next = `${next};height:1080px`;
   }
   if (!/\bbox-sizing\s*:/i.test(next)) next = `${next};box-sizing:border-box`;
-  // Size pin only — overflow:hidden clips Daisy Motif corner hangs (§0.71).
   next = next.replace(/\bmin-height\s*:\s*100(?:vh|dvh|svh|lvh)\b/gi, 'min-height:1080px');
+  next = stripSlideHostOverflowClip(next);
   return next.replace(/;;+/g, ';').replace(/^;|;$/g, '').trim();
 }
 
@@ -108,6 +115,43 @@ function countSlideHosts(html: string): number {
     if (isSlideHost(match[2] ?? '')) count += 1;
   }
   return count;
+}
+
+const FOOTER_HOST_RE =
+  /<(p|div|span|footer|small)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
+
+function isContentFooterHost(attrs: string): boolean {
+  const cls = extractClassAttr(attrs);
+  if (!/\b(?:slide-footer|slide-meta|kicker-footer|footer)\b/i.test(cls)) return false;
+  return !/\b(?:deco|motif|floating-pills|petals)\b/i.test(cls);
+}
+
+function flowAbsoluteFooterStyle(style: string): string | null {
+  const source = String(style ?? '');
+  if (!/position\s*:\s*absolute/i.test(source)) return null;
+  if (!/\bbottom\s*:/i.test(source)) return null;
+  let next = source
+    .replace(/position\s*:\s*absolute/gi, 'position:relative')
+    .replace(/(?:^|;)\s*(?:top|right|bottom|left)\s*:[^;]*/gi, ';');
+  if (!/margin-top\s*:/i.test(next)) next = `${next};margin-top:auto`;
+  next = next.replace(/;;+/g, ';').replace(/^;|;$/g, '').trim();
+  return next;
+}
+
+/** Absolute bottom footers collide with centered subtitle/lead on flex slides. */
+function flowAbsoluteSlideFooters(html: string): string {
+  return html.replace(FOOTER_HOST_RE, (open, _tag: string, attrs: string) => {
+    if (!isContentFooterHost(attrs)) return open;
+    if (!/\bstyle\s*=/i.test(attrs)) return open;
+    const nextAttrs = attrs.replace(
+      /\bstyle\s*=\s*(['"])([\s\S]*?)\1/i,
+      (_m, q: string, style: string) => {
+        const next = flowAbsoluteFooterStyle(style);
+        return next == null ? `style=${q}${style}${q}` : `style=${q}${next}${q}`;
+      },
+    );
+    return open.replace(attrs, nextAttrs);
+  });
 }
 
 function injectFixedCanvasStyle(html: string): string {
@@ -138,6 +182,7 @@ export function pinDeckSlidesToFixedCanvas(html: string): string {
     if (!isSlideHost(attrs)) return open;
     return pinSlideOpenTag(open, attrs);
   });
+  out = flowAbsoluteSlideFooters(out);
   out = injectFixedCanvasStyle(out);
   return out;
 }

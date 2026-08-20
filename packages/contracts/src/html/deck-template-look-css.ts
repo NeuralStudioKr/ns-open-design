@@ -110,6 +110,7 @@ html, body {
   margin-left: auto !important;
   margin-right: auto !important;
   box-sizing: border-box !important;
+  overflow: visible !important;
   display: flex;
   flex-direction: column;
   justify-content: center;
