@@ -1139,6 +1139,15 @@ html, body { overflow: visible !important; height: auto !important; }
     expect(refreshed).toContain('split');
   });
 
+  it('treats Zhangzara <deck-stage> catalogs as presenters, not stacked fills', () => {
+    const official = readFileSync(join(EXAMPLES_DIR, 'html-ppt-zhangzara-pink-script/example.html'), 'utf8');
+    expect(official).toMatch(/<deck-stage\b/i);
+    expect(looksLikeOfficialFullscreenPresenterDeck(official)).toBe(true);
+    const out = lockStackedDeckCanvasForPreview(official);
+    expect(out).not.toContain('data-od-stacked-canvas-neutralize');
+    expect(out).not.toMatch(/content="width=1920/);
+  });
+
   it('does not lock official Capsule example.html to a stacked 1920 canvas', () => {
     const official = readFileSync(join(EXAMPLES_DIR, 'html-ppt-zhangzara-capsule/example.html'), 'utf8');
     expect(looksLikeOfficialFullscreenPresenterDeck(official)).toBe(true);

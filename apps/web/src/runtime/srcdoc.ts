@@ -2524,7 +2524,8 @@ function injectDeckBridge(
   const safeInitialSlideIndex = Number.isFinite(initialSlideIndex)
     ? Math.max(0, Math.floor(initialSlideIndex))
     : 0;
-  const isFrameworkDeck = /\bid\s*=\s*["']deck-stage["']/i.test(doc);
+  const isFrameworkDeck = /\bid\s*=\s*["']deck-stage["']/i.test(doc)
+    || /<deck-stage\b/i.test(doc);
   const isCompactStackedDeck = compactStackedDeck;
   const legacyDeckFix = isFrameworkDeck
     ? ''
@@ -2628,6 +2629,10 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
   function frameworkDeckStage() {
     return document.getElementById('deck-stage');
   }
+  function webComponentDeckStage() {
+    try { return document.querySelector('deck-stage'); }
+    catch (_) { return null; }
+  }
   function stackedDeckStage() {
     return document.getElementById('od-stacked-deck-stage');
   }
@@ -2637,7 +2642,8 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     if (el.closest && el.closest('header, nav, #od-stacked-deck-stage')) return false;
     // Only skip slides owned by the real framework / transform-track hosts.
     // Decorative deck-shell wrappers without #deck-stage must still hoist.
-    if (el.closest && el.closest('#deck-stage, #deck, #deck-track')) return false;
+    // <deck-stage> (custom element) is a presenter — do not hoist its children.
+    if (el.closest && el.closest('#deck-stage, #deck, #deck-track, deck-stage')) return false;
     return !!(el.classList && el.classList.contains('slide'));
   }
   function slidesFromElementChildren(container) {
@@ -2684,6 +2690,7 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
   function shouldUseStackedDeckStage() {
     if (!compactStackedDeckEnabled) return false;
     if (frameworkDeckStage()) return false;
+    if (webComponentDeckStage()) return false;
     if (stackedDeckStage()) return true;
     var direct = stackedSlideNodes();
     if (!direct.length) return false;
@@ -3009,7 +3016,7 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     // fall back to all .slide only when nothing structured matched, so
     // freeform decks that nest slides under an extra wrapper still report
     // the real count instead of leaving the host counter at 1 / 0.
-    var structured = document.querySelectorAll('.deck > .slide, .deck-stage > .slide, .deck-shell > .slide, #od-stacked-deck-stage > .slide, body > .slide');
+    var structured = document.querySelectorAll('.deck > .slide, .deck-stage > .slide, deck-stage > .slide, .deck-shell > .slide, #od-stacked-deck-stage > .slide, body > .slide');
     if (structured.length) return structured;
     return document.querySelectorAll('.slide');
   }
@@ -3090,6 +3097,12 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     }
     return false;
   }
+  function findActiveByDeckAttr(list){
+    for (var i=0; i<list.length; i++) {
+      if (list[i].hasAttribute && list[i].hasAttribute('data-deck-active')) return i;
+    }
+    return -1;
+  }
   function findActiveByClass(list){
     for (var i=0; i<list.length; i++) {
       var cl = list[i].classList;
@@ -3108,6 +3121,8 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
   }
   function activeIndex(list){
     if (!list || !list.length) return 0;
+    var byDeckAttr = findActiveByDeckAttr(list);
+    if (byDeckAttr >= 0) return byDeckAttr;
     if (stackedDeckStage()) {
       var stackedByClass = findActiveByClass(list);
       if (stackedByClass >= 0) return stackedByClass;
@@ -3168,6 +3183,10 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     return false;
   }
   function canSetActive(list){
+    // <deck-stage> hides inactive slides via ::slotted([data-deck-active]).
+    // Mutating .active / display:none blanks the white canvas and leaves
+    // the real active attribute on slide 1.
+    if (webComponentDeckStage()) return false;
     // A bare active-class marker is not enough to prove the host can drive the
     // deck by class mutation alone. Many generated decks keep that marker in
     // sync for counters / dots but move the visible slide via a translated
@@ -3194,8 +3213,9 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
         continue;
       }
       // Framework decks drive slides via active-class toggles on #deck-stage
-      // children, not by translating the stage itself.
-      if (node.id === 'deck-stage') {
+      // children, not by translating the stage itself. <deck-stage> uses
+      // data-deck-active in shadow CSS — do not treat it as a translate track.
+      if (node.id === 'deck-stage' || String(node.tagName || '').toLowerCase() === 'deck-stage') {
         node = node.parentElement;
         continue;
       }
@@ -3600,6 +3620,7 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     return true;
   }
   function forceRevealSlide(i){
+    if (webComponentDeckStage()) return false;
     var list = slides();
     if (!list.length) return false;
     var target = Math.max(0, Math.min(list.length - 1, i));
@@ -3635,6 +3656,7 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     // Translate-strip decks intentionally keep all slides painted in a
     // row; "many visible" is not overlap. forceReveal would collapse the
     // strip and break host/native page turns.
+    if (webComponentDeckStage()) return false;
     if (transformTrack(list)) return false;
     if (countVisibleSlides(list) <= 1) return false;
     var target = typeof preferredIndex === 'number'
@@ -3669,11 +3691,29 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     if (action === 'last') return list.length - 1;
     return i;
   }
+  function webComponentDeckGo(target){
+    var stage = webComponentDeckStage();
+    if (!stage) return false;
+    if (typeof stage.goTo === 'function') {
+      try { stage.goTo(target); }
+      catch (_) { return false; }
+      report();
+      return true;
+    }
+    var list = slides();
+    for (var k = 0; k < list.length; k++) {
+      if (k === target) list[k].setAttribute('data-deck-active', '');
+      else list[k].removeAttribute('data-deck-active');
+    }
+    report();
+    return true;
+  }
   function go(action){
     var list = slides();
     if (!list.length) return;
     var target = Math.max(0, Math.min(list.length - 1, targetFor(action, list)));
     if (target !== activeIndex(list)) resetDeckPan();
+    if (webComponentDeckGo(target)) return;
     if (compactStackedDeckNavigationReady()) {
       if (forceRevealSlide(target)) return;
     }
@@ -3684,7 +3724,7 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
       return;
     }
     if (canSetActive(list) && setActive(target)) return;
-    if (!transformTrack(list) && forceRevealSlide(target)) return;
+    if (!webComponentDeckStage() && !transformTrack(list) && forceRevealSlide(target)) return;
     if (action === 'next') dispatchKey('ArrowRight');
     else if (action === 'prev') dispatchKey('ArrowLeft');
     else if (action === 'first') dispatchKey('Home');
@@ -3697,6 +3737,7 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     var target = Math.max(0, Math.min(list.length - 1, i));
     var prev = activeIndex(list);
     if (target !== prev) resetDeckPan();
+    if (webComponentDeckGo(target)) return;
     if (compactStackedDeckNavigationReady()) {
       if (forceRevealSlide(target)) return;
     }
@@ -3704,7 +3745,7 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     if (transformGo(target)) return;
     if (isScrollDeck()) { scrollGo(target); return; }
     if (canSetActive(list) && setActive(target)) return;
-    if (!transformTrack(list) && forceRevealSlide(target)) return;
+    if (!webComponentDeckStage() && !transformTrack(list) && forceRevealSlide(target)) return;
     var current = activeIndex(list);
     var diff = target - current;
     if (!diff) { report(); return; }

@@ -32,6 +32,24 @@
 | scaffold로 갑자기 바꾸면? | **안 됨.** kit hard cutover 금지. full HTML scaffold도 기본 inject 하지 않음 |
 | 1장짜리 템플릿 결과가 저장되는가? | **제품 경로는 첫 fill 3장.** 잘리면 제목 있는 1장은 저장하고 top-up이 덧붙인다. 제목 없는 빈 셸만 미완성으로 차단. 사용자가 1장을 명시한 경우도 허용 |
 
+### 0.68 2026-08-20 — Pink Script 템플릿 미리보기 2페이지부터 흰 화면
+
+카탈로그 `Html Ppt Zhangzara Pink Script` PreviewModal에서 다음 페이지로 가면 2페이지부터 흰 화면만 보인다. 생성 결과 look lock(§0.65)과 별개 — 공식 `example.html` 미리보기 내비게이션이다.
+
+**원인:** 공식 템플릿은 `<deck-stage>` 커스텀 엘리먼트 + `assets/deck-stage.js`다. Shadow CSS가 `::slotted(*)`를 숨기고 `::slotted([data-deck-active])`만 그린다. Host srcdoc bridge는 slotted sibling을 class-toggle 덱으로 보고 `display:none` / `.active`를 걸어, `data-deck-active`는 1페이지에 남고 캔버스 `#fff`만 보인다.
+
+**수정:**
+- `<deck-stage>`를 framework presenter로 인식하고 슬라이드를 hoist하지 않음
+- host next/prev는 `stage.goTo(i)` 또는 `data-deck-active`만 사용
+- `canSetActive` / `forceRevealSlide`는 커스텀 엘리먼트에서 금지
+- compact stacked letterbox / 1920 viewport lock 제외
+
+구현 현황:
+
+- [x] `<deck-stage>` goTo / data-deck-active 내비게이션 red spec
+- [x] Pink Script catalog는 compact stacked가 아님
+- [x] official presenter shell에 `<deck-stage>` 포함
+
 ### 0.67 2026-08-20 — salvage wrap 3≤3이면 top-up 장이 안 붙음
 
 §0.66은 append 실패를 `skipped-noop`으로 바꿔 incomplete_output 배너는 없앴다. 그러나 모델이 새 장 3개를 제대로 내도 persist가 못 붙이면 사용자는 첫 fill 3장만 본다.
@@ -1543,6 +1561,7 @@ User-message 쪽 `[Existing deck edit]` / `<attached-preview-comments>` 주입�
 | 2026-08-13 | **§0.0 정책 개정** — template = layout vocabulary + visual look, 페이지 수/순서/구성은 브리프 기반. content-swap → pick-and-choose layout roles. daemon Clone default count = 6 (shells.length 아님), `pickTemplateShells` role-based scoring 도입. `template-visual-kit.ts` HARD_RULES 재작성, `DEFAULT_MAX_CHARS` 12000 → 14000. |
 | 2026-08-18 | Clone content-fill motif 보정 — 8/13 SVG hang 방지 패치가 first fill에서 `Motif sprites`/`Decoration CSS`/`Layout CSS`를 통째로 생략해 Daisy/Capsule 템플릿 정체성이 약해졌다. `slimTemplateVisualKitForFill`이 큰 SVG sprite sheet와 전체 stylesheet dump는 계속 제거하되, Daisy star/rainbow·Capsule pill/capsule·Terminal scanline 같은 compact motif recipe와 짧은 Decoration/Layout CSS cue를 보존하도록 변경했다. |
 | 2026-08-18 | §0.20 — html-ppt identity scope. 공유 `:root --bg:#ffffff` 대신 `.tpl-*` host 토큰/슬라이드 surface/폰트를 kit 계약으로 쓰고, SKILL `copy index.html` filesystem 지시를 neutralize. |
+| 2026-08-20 | §0.68 — Pink Script catalog preview page 2+ white. `<deck-stage>` goTo / data-deck-active, no display:none hoist. |
 | 2026-08-20 | §0.67 — salvage wrap of body-only top-up was treated as a short rewrite (3≤3). head/same-cover rewrite only. |
 | 2026-08-20 | §0.66 — top-up append miss → skipped-noop (not incomplete_output). close truncated hosts · div.slide · closed-section prompt. |
 | 2026-08-20 | §0.65 — Pink Script surface lock. kit dark stage not `--paper` · host>slide rewrite · body-trail look · compact type lock · cache v37. |

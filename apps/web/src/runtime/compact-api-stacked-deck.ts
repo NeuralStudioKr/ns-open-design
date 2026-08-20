@@ -170,6 +170,7 @@ function looksLikeFrameworkDeckMarkup(html: string): boolean {
   // `.deck-shell` / `.deck-stage` class names that API compact decks
   // sometimes copy without the framework script or visibility CSS.
   if (/\bid\s*=\s*["']deck-stage["']/i.test(html)) return true;
+  if (/<deck-stage\b/i.test(html)) return true;
   if (/<div[^>]*\bid\s*=\s*['"](?:deck|deck-track)['"]/i.test(html)) return true;
   return false;
 }

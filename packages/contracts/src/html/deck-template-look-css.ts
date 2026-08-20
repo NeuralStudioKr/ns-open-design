@@ -1875,7 +1875,8 @@ function hasOfficialLookStyleAttr(html: string): boolean {
 
 function hasOfficialPresenterShell(html: string): boolean {
   return (
-    /\bclass\s*=\s*(["'])[^"'<>]*\bpresentation\b/i.test(html)
+    /<deck-stage\b/i.test(html)
+    || /\bclass\s*=\s*(["'])[^"'<>]*\bpresentation\b/i.test(html)
     || /\bclass\s*=\s*(["'])[^"'<>]*\b(?:deck|slides-container|stage)\b/i.test(html)
     || (/\bnav-dots\b/i.test(html) && /\bnav-dot\b/i.test(html))
     || /\bclass\s*=\s*(["'])[^"'<>]*\bslide-counter\b/i.test(html)
