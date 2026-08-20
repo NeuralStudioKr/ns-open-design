@@ -28,9 +28,17 @@ export function manualEditTargetsIdentityFingerprint(targets: ManualEditTarget[]
     target.isHidden ? '1' : '0',
     // Style identity without box geometry so idle remasure / move / resize
     // do not force mixed-inspector reseed (기획 59 + 51–53).
+    // Omit empty / whitespace values so tip-sparse '' and missing keys hash
+    // the same — bridge computed fills still need soft-land/preserve (484).
     MANUAL_EDIT_STYLE_PROPS
       .filter((key) => !MANUAL_EDIT_GEOMETRY_STYLE_PROP_KEYS.has(key))
-      .map((key) => target.styles?.[key] ?? '')
+      .map((key) => {
+        const value = target.styles?.[key];
+        if (value == null) return null;
+        const trimmed = String(value).trim();
+        return trimmed === '' ? null : `${key}=${trimmed}`;
+      })
+      .filter((entry): entry is string => entry != null)
       .join('\x1e'),
   ].join('\0')).join('\n');
 }

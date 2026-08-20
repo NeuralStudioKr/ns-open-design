@@ -341,11 +341,20 @@ import {
   shouldReleaseTipRemountChromeAfterFitSettleRemasure,
   TIP_REMOUNT_FIT_SETTLE_CHROME_RELEASE_MS,
   TIP_REMOUNT_FIT_SETTLE_LAST_REMEASURE_MS,
+  TIP_REMOUNT_FIT_SETTLE_LATCH_MS,
   TIP_REMOUNT_FIT_SETTLE_REMEASURE_DELAYS_MS,
+  TIP_POST_STICKY_SOFT_LAND_CATALOGS,
   shouldIgnoreOdEditTargetsMembershipNoiseDuringTipProtect,
   shouldClearManualEditSelectionOnEmptyOdEditTargets,
   shouldClearTipSyncedIdentityStickyRetainOnFullCatalog,
   shouldDeferTipSyncedIdentityStickyClearUntilAfterPreserve,
+  shouldArmTipPostStickySoftLand,
+  shouldRetainTipSyncedIdentityDuringPostStickySoftLand,
+  consumeTipPostStickySoftLandCatalog,
+  shouldSkipTipRemountFitSettleRemasureDuringResizeGesture,
+  shouldArmPostTipFitSettleWildJumpSkip,
+  shouldSkipWildJumpOnceAfterTipFitSettle,
+  shouldConsumePostTipFitSettleWildJumpSkip,
   shouldArmTipRemountFitSettleForDeckHostFit,
   shouldRemeasureTipRemountAfterDeckHostFitSettle,
   shouldScheduleTipRemountFitSettleRemasureOnLoad,
@@ -354,6 +363,8 @@ import {
   shouldSkipWildJumpForTipRemountSelectedMember,
   shouldSkipWildJumpDuringTipRemountFitSettleForSelectedMember,
   tipRemountSessionActive,
+  tipRemountGeometryGraceExpired,
+  tipRemountFitSettleExpired,
   shouldSkipOdEditTargetsIdentityMixedReseedDuringTipRemount,
   shouldAllowOdEditTargetsPendingReseedDuringTipProtect,
   withPreservedTipSyncedStylesOnBridgeTarget,
@@ -5531,6 +5542,13 @@ function HtmlViewer({
    * one-shot Mixed when the timed hold ends (472). Cleared on selection leave.
    */
   const manualEditTipSyncedIdentityRetainRef = useRef(false);
+  /**
+   * Post-sticky soft-land catalogs — tip identity / membership hold after
+   * sticky clear so Mixed does not one-shot on the first live broadcast (480/483).
+   */
+  const manualEditTipPostStickySoftLandRef = useRef(0);
+  /** One-shot wild-jump skip after tip fit-settle remasure (485). */
+  const manualEditTipPostFitSettleWildJumpSkipRef = useRef(false);
   const manualEditTipRemountFitSettleCancelRef = useRef<(() => void) | null>(null);
   /** Pending onLoad sync measure rAF retry — cancel on grace clear (463). */
   const manualEditTipRemountSyncRetryRafRef = useRef<number | null>(null);
@@ -8062,6 +8080,12 @@ function HtmlViewer({
     )) {
       return;
     }
+    // Mid-gesture remasure fights resize/move draft — skip apply (482).
+    if (shouldSkipTipRemountFitSettleRemasureDuringResizeGesture(
+      manualEditResizeSessionActiveRef.current,
+    )) {
+      return;
+    }
     const frame = target ?? iframeRef.current;
     const workspace = manualEditWorkspaceRef.current;
     if (!frame || !workspace) return;
@@ -8100,8 +8124,12 @@ function HtmlViewer({
     }
     // Multi: refresh scale/offset after fit nudges so union tracks post-fit tip (461).
     refreshManualEditHostMetricsAfterTipRemountMulti(frame, appliedAny);
-    // Last chrome-release fit nudge remasure — release inert; later 900ms
-    // remasure only updates geometry (476/478). Latch stays for wild-jump.
+    // Arm one-shot wild-jump skip for late post-latch deck nudges (485).
+    if (shouldArmPostTipFitSettleWildJumpSkip(appliedAny, ids.length)) {
+      manualEditTipPostFitSettleWildJumpSkipRef.current = true;
+    }
+    // Last chrome-release fit nudge remasure — release inert; later 900/1600ms
+    // remasure only updates geometry (476/478/481). Latch stays for wild-jump.
     if (shouldReleaseTipRemountChromeAfterFitSettleRemasure(
       manualEditTipRemountChromeSuppressedRef.current,
       appliedAny,
@@ -8116,7 +8144,7 @@ function HtmlViewer({
     }
   }
 
-  /** Schedule fit-settle remasures aligned with early deck fit nudge delays (460/478). */
+  /** Schedule fit-settle remasures aligned with early deck fit nudge delays (460/478/481). */
   function scheduleTipRemountRemasureAfterDeckHostFitSettle(
     getFrame: () => HTMLIFrameElement | null,
   ) {
@@ -8136,8 +8164,8 @@ function HtmlViewer({
     )) {
       return;
     }
-    // Early DEFAULT_FIT_NUDGE_DELAYS_MS inside tip latch — include 900ms so
-    // chrome released at 400ms does not jump on the next fit nudge (478).
+    // Early DEFAULT_FIT_NUDGE_DELAYS_MS inside tip latch — include 900/1600ms so
+    // chrome released at 400ms does not jump on later fit nudges (478/481).
     const delaysMs = [...TIP_REMOUNT_FIT_SETTLE_REMEASURE_DELAYS_MS];
     const timers = delaysMs.map((delay) => window.setTimeout(() => {
       remeasureTipRemountAfterDeckHostFitSettle(getFrame(), delay);
@@ -8301,6 +8329,8 @@ function HtmlViewer({
     }
     if (shouldClearTipSyncedIdentityStickyRetainOnGraceClear(reason)) {
       manualEditTipSyncedIdentityRetainRef.current = false;
+      manualEditTipPostStickySoftLandRef.current = 0;
+      manualEditTipPostFitSettleWildJumpSkipRef.current = false;
     }
     manualEditTipRemountGeometryGraceIdRef.current = null;
     manualEditTipRemountGeometryGraceUntilRef.current = 0;
@@ -8381,11 +8411,14 @@ function HtmlViewer({
       manualEditTipRemountIdentityHoldUntilRef.current = 0;
       // Sticky retain past timed hold until selection leave (472).
       manualEditTipSyncedIdentityRetainRef.current = true;
-      // Deck host-fit may rescale after onLoad — keep settle latch past grace (460).
+      // New tip session replaces any post-sticky soft-land / wild-jump one-shot.
+      manualEditTipPostStickySoftLandRef.current = 0;
+      manualEditTipPostFitSettleWildJumpSkipRef.current = false;
+      // Deck host-fit may rescale after onLoad — keep settle latch past grace (460/481).
       const fitSettleUntil = shouldArmTipRemountFitSettleForDeckHostFit(
         deckHostViewportFitActive,
       )
-        ? nowMs + 1_200
+        ? nowMs + TIP_REMOUNT_FIT_SETTLE_LATCH_MS
         : 0;
       manualEditTipRemountFitSettleUntilRef.current = fitSettleUntil;
       // Inert chrome until remasure — keep last rect visible, block gestures (458).
@@ -9832,9 +9865,12 @@ function HtmlViewer({
         // Membership change during hold must not paint the new set with the
         // previous tip's styles — drop hold + skip preserve (469).
         // Empty/partial catalogs during tip protect are settle noise — ignore (473).
+        // Post-sticky soft-land also ignores membership noise (483).
         const selectedIdsForPreserve = selectedManualEditTargetIdsRef.current;
+        const softLandAtEntry = manualEditTipPostStickySoftLandRef.current;
         const tipProtectSource = tipRemountSession
-          || manualEditTipSyncedIdentityRetainRef.current;
+          || manualEditTipSyncedIdentityRetainRef.current
+          || softLandAtEntry > 0;
         const refreshedProbe = selectedIdsForPreserve.length > 0
           ? resolveManualEditTargetsByIds(selectedIdsForPreserve, data.targets)
           : [];
@@ -9862,17 +9898,32 @@ function HtmlViewer({
         if (selectionIdsChangedEarly) {
           manualEditTipRemountIdentityHoldUntilRef.current = 0;
           manualEditTipSyncedIdentityRetainRef.current = false;
+          manualEditTipPostStickySoftLandRef.current = 0;
+          manualEditTipPostFitSettleWildJumpSkipRef.current = false;
         }
+        const softLandActive = shouldRetainTipSyncedIdentityDuringPostStickySoftLand(
+          softLandAtEntry,
+          selectionIdsChangedEarly,
+        );
         const tipRemountActive = shouldRetainTipSyncedIdentityAfterHold(
           tipRemountSession,
           manualEditTipSyncedIdentityRetainRef.current,
           selectionIdsChangedEarly,
-        );
+        ) || softLandActive;
         if (
           !selectionIdsChangedEarly
           && shouldDeferTipSyncedIdentityStickyClearUntilAfterPreserve(clearStickyAfterPreserve)
         ) {
           manualEditTipSyncedIdentityRetainRef.current = false;
+          // Arm soft-land for subsequent catalogs (do not consume this tick) (480/483).
+          if (shouldArmTipPostStickySoftLand(clearStickyAfterPreserve)) {
+            manualEditTipPostStickySoftLandRef.current = TIP_POST_STICKY_SOFT_LAND_CATALOGS;
+          }
+        } else if (softLandAtEntry > 0 && !selectionIdsChangedEarly) {
+          manualEditTipPostStickySoftLandRef.current = consumeTipPostStickySoftLandCatalog(
+            softLandAtEntry,
+            selectionIdsChangedEarly,
+          );
         }
         // Tip-remount: fingerprint the catalog we will store (preserved tip
         // identity), not raw bridge — latch must match React state (468/470).
@@ -10293,6 +10344,11 @@ function HtmlViewer({
         }
         const current = selectedManualEditTargetRef.current;
         const selectedIds = selectedManualEditTargetIdsRef.current;
+        const postFitSettleWildJumpSkip = shouldSkipWildJumpOnceAfterTipFitSettle(
+          manualEditTipPostFitSettleWildJumpSkipRef.current,
+          measured.id,
+          selectedIds,
+        );
         const tipRemountGrace = shouldSkipWildJumpAfterTipRemountGrace(
           manualEditTipRemountGeometryGraceIdRef.current,
           measured.id,
@@ -10305,7 +10361,7 @@ function HtmlViewer({
           selectedManualEditTargetIdRef.current,
           nowMs,
           manualEditTipRemountFitSettleUntilRef.current,
-        );
+        ) || postFitSettleWildJumpSkip;
         // Multi tip-yield: sibling members share the tip-remount session (461).
         const tipRemountSelectedMember = shouldSkipWildJumpForTipRemountSelectedMember(
           manualEditTipRemountGeometryGraceIdRef.current,
@@ -10319,7 +10375,22 @@ function HtmlViewer({
           selectedIds,
           nowMs,
           manualEditTipRemountFitSettleUntilRef.current,
-        );
+        ) || postFitSettleWildJumpSkip;
+        // Consume one-shot only post-latch — do not burn it while grace/fit cover (485).
+        if (shouldConsumePostTipFitSettleWildJumpSkip(
+          manualEditTipPostFitSettleWildJumpSkipRef.current,
+          postFitSettleWildJumpSkip
+            && tipRemountGeometryGraceExpired(
+              nowMs,
+              manualEditTipRemountGeometryGraceUntilRef.current,
+            )
+            && tipRemountFitSettleExpired(
+              nowMs,
+              manualEditTipRemountFitSettleUntilRef.current,
+            ),
+        )) {
+          manualEditTipPostFitSettleWildJumpSkipRef.current = false;
+        }
         if (
           current?.id === measured.id
           && !tipRemountGrace

@@ -14,11 +14,20 @@ import {
   shouldReleaseTipRemountChromeAfterFitSettleRemasure,
   TIP_REMOUNT_FIT_SETTLE_CHROME_RELEASE_MS,
   TIP_REMOUNT_FIT_SETTLE_LAST_REMEASURE_MS,
+  TIP_REMOUNT_FIT_SETTLE_LATCH_MS,
   TIP_REMOUNT_FIT_SETTLE_REMEASURE_DELAYS_MS,
+  TIP_POST_STICKY_SOFT_LAND_CATALOGS,
   shouldIgnoreOdEditTargetsMembershipNoiseDuringTipProtect,
   shouldClearManualEditSelectionOnEmptyOdEditTargets,
   shouldClearTipSyncedIdentityStickyRetainOnFullCatalog,
   shouldDeferTipSyncedIdentityStickyClearUntilAfterPreserve,
+  shouldArmTipPostStickySoftLand,
+  shouldRetainTipSyncedIdentityDuringPostStickySoftLand,
+  consumeTipPostStickySoftLandCatalog,
+  shouldSkipTipRemountFitSettleRemasureDuringResizeGesture,
+  shouldArmPostTipFitSettleWildJumpSkip,
+  shouldSkipWildJumpOnceAfterTipFitSettle,
+  shouldConsumePostTipFitSettleWildJumpSkip,
   shouldArmTipRemountFitSettleForDeckHostFit,
   shouldRemeasureTipRemountAfterDeckHostFitSettle,
   shouldScheduleTipRemountFitSettleRemasureOnLoad,
@@ -166,13 +175,37 @@ describe('manual edit freeze reset', () => {
     expect(shouldReleaseTipRemountChromeAfterFitSettleRemasure(true, true, 150)).toBe(false);
     expect(shouldReleaseTipRemountChromeAfterFitSettleRemasure(true, false, 400)).toBe(false);
     expect(shouldReleaseTipRemountChromeAfterFitSettleRemasure(false, true, 400)).toBe(false);
-    // 900ms remasure updates geometry but must not re-gate chrome release (478).
+    // 900/1600ms remasure updates geometry but must not re-gate chrome release (478/481).
     expect(shouldReleaseTipRemountChromeAfterFitSettleRemasure(
       false, true, 900, TIP_REMOUNT_FIT_SETTLE_CHROME_RELEASE_MS,
     )).toBe(false);
-    expect(TIP_REMOUNT_FIT_SETTLE_REMEASURE_DELAYS_MS).toEqual([50, 150, 400, 900]);
-    expect(TIP_REMOUNT_FIT_SETTLE_REMEASURE_DELAYS_MS).toContain(900);
-    expect(Math.max(...TIP_REMOUNT_FIT_SETTLE_REMEASURE_DELAYS_MS)).toBeLessThanOrEqual(1_200);
+    expect(shouldReleaseTipRemountChromeAfterFitSettleRemasure(
+      false, true, 1600, TIP_REMOUNT_FIT_SETTLE_CHROME_RELEASE_MS,
+    )).toBe(false);
+    expect(TIP_REMOUNT_FIT_SETTLE_REMEASURE_DELAYS_MS).toEqual([50, 150, 400, 900, 1600]);
+    expect(TIP_REMOUNT_FIT_SETTLE_REMEASURE_DELAYS_MS).toContain(1600);
+    expect(TIP_REMOUNT_FIT_SETTLE_LATCH_MS).toBeGreaterThanOrEqual(
+      Math.max(...TIP_REMOUNT_FIT_SETTLE_REMEASURE_DELAYS_MS),
+    );
+    expect(shouldSkipTipRemountFitSettleRemasureDuringResizeGesture(true)).toBe(true);
+    expect(shouldSkipTipRemountFitSettleRemasureDuringResizeGesture(false)).toBe(false);
+    expect(shouldArmTipPostStickySoftLand(true)).toBe(true);
+    expect(shouldArmTipPostStickySoftLand(false)).toBe(false);
+    expect(TIP_POST_STICKY_SOFT_LAND_CATALOGS).toBeGreaterThanOrEqual(1);
+    expect(shouldRetainTipSyncedIdentityDuringPostStickySoftLand(2, false)).toBe(true);
+    expect(shouldRetainTipSyncedIdentityDuringPostStickySoftLand(0, false)).toBe(false);
+    expect(shouldRetainTipSyncedIdentityDuringPostStickySoftLand(2, true)).toBe(false);
+    expect(consumeTipPostStickySoftLandCatalog(2, false)).toBe(1);
+    expect(consumeTipPostStickySoftLandCatalog(1, false)).toBe(0);
+    expect(consumeTipPostStickySoftLandCatalog(2, true)).toBe(0);
+    expect(shouldArmPostTipFitSettleWildJumpSkip(true, 1)).toBe(true);
+    expect(shouldArmPostTipFitSettleWildJumpSkip(false, 1)).toBe(false);
+    expect(shouldArmPostTipFitSettleWildJumpSkip(true, 0)).toBe(false);
+    expect(shouldSkipWildJumpOnceAfterTipFitSettle(true, 'a', ['a', 'b'])).toBe(true);
+    expect(shouldSkipWildJumpOnceAfterTipFitSettle(true, 'c', ['a', 'b'])).toBe(false);
+    expect(shouldSkipWildJumpOnceAfterTipFitSettle(false, 'a', ['a'])).toBe(false);
+    expect(shouldConsumePostTipFitSettleWildJumpSkip(true, true)).toBe(true);
+    expect(shouldConsumePostTipFitSettleWildJumpSkip(true, false)).toBe(false);
     expect(shouldIgnoreOdEditTargetsMembershipNoiseDuringTipProtect(true, 2, 0, 0)).toBe(true);
     expect(shouldIgnoreOdEditTargetsMembershipNoiseDuringTipProtect(true, 2, 1, 5)).toBe(true);
     expect(shouldIgnoreOdEditTargetsMembershipNoiseDuringTipProtect(true, 2, 2, 5)).toBe(false);

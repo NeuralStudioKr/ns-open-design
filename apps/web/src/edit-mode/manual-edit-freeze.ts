@@ -153,16 +153,23 @@ export const TIP_REMOUNT_FIT_SETTLE_CHROME_RELEASE_MS = 400;
 export const TIP_REMOUNT_FIT_SETTLE_LAST_REMEASURE_MS = TIP_REMOUNT_FIT_SETTLE_CHROME_RELEASE_MS;
 
 /**
- * Tip remasure delays inside the ~1.2s fit-settle latch. Mirrors early
- * DEFAULT_FIT_NUDGE_DELAYS_MS including 900ms so chrome does not jump after
- * the 400ms release (478). Do not include 1600+ (outside tip latch).
+ * Tip remasure delays inside the fit-settle latch. Mirrors early
+ * DEFAULT_FIT_NUDGE_DELAYS_MS through 1600ms so chrome does not jump after
+ * the 400ms release on later fit nudges (478/481). Chrome release stays at
+ * TIP_REMOUNT_FIT_SETTLE_CHROME_RELEASE_MS — later delays are geometry only.
  */
-export const TIP_REMOUNT_FIT_SETTLE_REMEASURE_DELAYS_MS = [50, 150, 400, 900] as const;
+export const TIP_REMOUNT_FIT_SETTLE_REMEASURE_DELAYS_MS = [50, 150, 400, 900, 1600] as const;
+
+/**
+ * Deck host-fit settle latch must outlive the last tip remasure delay so the
+ * 1600ms nudge can still skip wild-jump and remasure (481).
+ */
+export const TIP_REMOUNT_FIT_SETTLE_LATCH_MS = 1_700;
 
 /**
  * After a fit-settle remasure pass, release inert once the chrome-release
- * delay remasure applied geometry — do not wait for the full ~1.2s wild-jump
- * latch (476). Later in-latch remasures (900ms) only update geometry (478).
+ * delay remasure applied geometry — do not wait for the full wild-jump latch
+ * (476). Later in-latch remasures (900/1600ms) only update geometry (478/481).
  */
 export function shouldReleaseTipRemountChromeAfterFitSettleRemasure(
   chromeSuppressed: boolean,
@@ -173,6 +180,17 @@ export function shouldReleaseTipRemountChromeAfterFitSettleRemasure(
   return chromeSuppressed
     && appliedAny
     && remasureDelayMs >= chromeReleaseDelayMs;
+}
+
+/**
+ * Mid-gesture fit-settle remasure would fight the resize/move draft — skip
+ * apply while a Manual Edit gesture session is active (482). Chrome release
+ * and later scheduled delays still run once the gesture ends.
+ */
+export function shouldSkipTipRemountFitSettleRemasureDuringResizeGesture(
+  resizeSessionActive: boolean,
+): boolean {
+  return resizeSessionActive;
 }
 
 /**
@@ -685,6 +703,78 @@ export function shouldDeferTipSyncedIdentityStickyClearUntilAfterPreserve(
   clearStickyForLaterCatalogs: boolean,
 ): boolean {
   return clearStickyForLaterCatalogs;
+}
+
+/**
+ * After sticky clear, soft-land tip identity for a few more catalogs so Mixed /
+ * membership do not one-shot on the first live bridge broadcast (480/483).
+ */
+export const TIP_POST_STICKY_SOFT_LAND_CATALOGS = 2;
+
+/**
+ * Arm post-sticky soft-land when sticky is deferred-cleared for later catalogs.
+ */
+export function shouldArmTipPostStickySoftLand(
+  clearStickyAfterPreserve: boolean,
+): boolean {
+  return clearStickyAfterPreserve;
+}
+
+/**
+ * Soft-land remaining catalogs keep tip identity protect / Mixed skip /
+ * membership noise ignore (480/483).
+ */
+export function shouldRetainTipSyncedIdentityDuringPostStickySoftLand(
+  softLandRemaining: number,
+  selectionIdsChanged: boolean,
+): boolean {
+  return softLandRemaining > 0 && !selectionIdsChanged;
+}
+
+/**
+ * Consume one soft-land catalog after a tick that entered with soft-land armed
+ * (do not consume on the sticky-clear tick that arms it) (480).
+ */
+export function consumeTipPostStickySoftLandCatalog(
+  softLandRemainingAtEntry: number,
+  selectionIdsChanged: boolean,
+): number {
+  if (selectionIdsChanged || softLandRemainingAtEntry <= 0) {
+    return selectionIdsChanged ? 0 : softLandRemainingAtEntry;
+  }
+  return softLandRemainingAtEntry - 1;
+}
+
+/**
+ * Arm a one-shot wild-jump skip after a tip fit-settle remasure so a late
+ * deck nudge that lands past the latch (or races expiry) is not dropped (485).
+ */
+export function shouldArmPostTipFitSettleWildJumpSkip(
+  remasureAppliedAny: boolean,
+  selectionCount: number,
+): boolean {
+  return remasureAppliedAny && selectionCount > 0;
+}
+
+/**
+ * One-shot wild-jump skip for a selected member after tip fit-settle remasure.
+ */
+export function shouldSkipWildJumpOnceAfterTipFitSettle(
+  oneShotArmed: boolean,
+  rectId: string,
+  selectedIds: readonly string[],
+): boolean {
+  return oneShotArmed && selectedIds.includes(rectId);
+}
+
+/**
+ * Consume the post-fit-settle wild-jump one-shot once it covers a remasure.
+ */
+export function shouldConsumePostTipFitSettleWildJumpSkip(
+  oneShotArmed: boolean,
+  skippedForThisRect: boolean,
+): boolean {
+  return oneShotArmed && skippedForThisRect;
 }
 
 /**

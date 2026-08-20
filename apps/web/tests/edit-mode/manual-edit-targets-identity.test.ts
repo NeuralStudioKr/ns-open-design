@@ -59,4 +59,20 @@ describe('manualEditTargetsIdentityFingerprint', () => {
     expect(manualEditTargetsIdentityFingerprint([withMarkup]))
       .toBe(manualEditTargetsIdentityFingerprint([blankCatalog]));
   });
+
+  it('ignores empty vs missing non-geometry style keys (484)', () => {
+    const sparseEmpty = target({
+      styles: { ...emptyManualEditStyles(), color: '', fontSize: '' },
+    });
+    const missingKeys = target({
+      styles: emptyManualEditStyles(),
+    });
+    const filled = target({
+      styles: { ...emptyManualEditStyles(), color: '#111' },
+    });
+    expect(manualEditTargetsIdentityFingerprint([sparseEmpty]))
+      .toBe(manualEditTargetsIdentityFingerprint([missingKeys]));
+    expect(manualEditTargetsIdentityFingerprint([sparseEmpty]))
+      .not.toBe(manualEditTargetsIdentityFingerprint([filled]));
+  });
 });
