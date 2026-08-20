@@ -527,7 +527,7 @@ export const ja: Dict = {
   'homeHero.chip.template': 'テンプレートから',
   'homeHero.chip.liveArtifactHint': 'ライブでプレビューできるインタラクティブな HTML/CSS/JS アーティファクトを構築します。',
   'homeHero.chip.hyperframesHint': 'HTML ベースのモーションを作成：キャプション、オーディオリアクティブなビジュアル、シーン遷移。',
-  'homeHero.chip.createPluginHint': '再利用可能な Open Design プラグインを作成し、マイプラグインに追加します。',
+  'homeHero.chip.createPluginHint': '再利用可能なプラグインを作成し、マイプラグインに追加します。',
   'homeHero.chip.figmaHint': 'Figma フレームを有効なデザインシステムに移行します。',
   'homeHero.chip.folderHint': '既存のローカルフォルダーをインポートして編集を続けます。',
   'homeHero.chip.templateHint': '付属のテンプレートから開始します。',

@@ -527,7 +527,7 @@ export const ko: Dict = {
   'homeHero.chip.template': '템플릿에서 가져오기',
   'homeHero.chip.liveArtifactHint': '실시간으로 미리 볼 수 있는 인터랙티브 HTML/CSS/JS 아티팩트를 만듭니다.',
   'homeHero.chip.hyperframesHint': 'HTML 기반 모션을 제작하세요: 캡션, 오디오 반응형 비주얼, 장면 전환.',
-  'homeHero.chip.createPluginHint': '재사용 가능한 Open Design 플러그인을 제작하여 내 플러그인에 추가하세요.',
+  'homeHero.chip.createPluginHint': '재사용 가능한 플러그인을 제작하여 내 플러그인에 추가하세요.',
   'homeHero.chip.figmaHint': 'Figma 프레임을 활성 디자인 시스템으로 마이그레이션합니다.',
   'homeHero.chip.folderHint': '기존 로컬 폴더를 가져와 계속 편집합니다.',
   'homeHero.chip.templateHint': '번들 템플릿에서 시작합니다.',

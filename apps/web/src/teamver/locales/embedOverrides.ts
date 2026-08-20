@@ -58,6 +58,8 @@ export function teamverEmbedOverrides(
   overrides["chat.attachAria"] = "파일 첨부";
   overrides["settings.designTemplatesLockedDeck"] =
     "이 워크스페이스에서는 슬라이드 덱 템플릿이 항상 켜집니다";
+  overrides["homeHero.chip.createPluginHint"] =
+    "재사용 가능한 플러그인을 제작하여 내 플러그인에 추가하세요.";
   overrides["teamver.driveImport.attachFromMenu"] = "드라이브에서 가져오기";
   overrides["teamver.driveImport.pickHint"] = "클릭해 선택 · 더블클릭 또는 첨부 버튼으로 적용";
   return overrides;

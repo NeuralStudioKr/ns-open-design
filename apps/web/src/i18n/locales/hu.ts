@@ -527,7 +527,7 @@ export const hu: Dict = {
   'homeHero.chip.template': 'Sablonból',
   'homeHero.chip.liveArtifactHint': 'Készíts interaktív HTML/CSS/JS artifactot, amelyet élőben előnézhetsz.',
   'homeHero.chip.hyperframesHint': 'Hozz létre HTML-alapú animációt: feliratok, hangra reagáló vizuálok, jelenetátmenetek.',
-  'homeHero.chip.createPluginHint': 'Hozz létre újrafelhasználható Open Design plugint, és add hozzá a Saját pluginjaimhoz.',
+  'homeHero.chip.createPluginHint': 'Hozz létre újrafelhasználható plugint, és add hozzá a Saját pluginjaimhoz.',
   'homeHero.chip.figmaHint': 'Migrálj egy Figma frame-et az aktív tervezőrendszerbe.',
   'homeHero.chip.folderHint': 'Importálj egy meglévő helyi mappát, és folytasd a szerkesztést.',
   'homeHero.chip.templateHint': 'Indulj egy beépített sablonból.',

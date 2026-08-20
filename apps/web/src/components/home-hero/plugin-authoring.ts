@@ -23,7 +23,7 @@ export const PLUGIN_AUTHORING_GOAL_INPUT = 'pluginGoal';
 export const PLUGIN_AUTHORING_DEFAULT_GOAL = "a reusable workflow described by the user's prompt";
 
 export const PLUGIN_AUTHORING_PROMPT_TEMPLATE = [
-  `Create an Open Design plugin for: {{${PLUGIN_AUTHORING_GOAL_INPUT}}}.`,
+  `Create a reusable plugin for: {{${PLUGIN_AUTHORING_GOAL_INPUT}}}.`,
   '',
   'Run the agent-assisted plugin authoring flow end to end. Follow docs/plugins-spec.md and produce a folder named generated-plugin with:',
   '- SKILL.md describing the agent behavior and workflow',

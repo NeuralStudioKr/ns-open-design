@@ -527,7 +527,7 @@ export const zhTW: Dict = {
   'homeHero.chip.template': '從範本建立',
   'homeHero.chip.liveArtifactHint': '建立可即時預覽的互動式 HTML/CSS/JS 成品。',
   'homeHero.chip.hyperframesHint': '製作以 HTML 為基礎的動態效果：字幕、音訊反應視覺與場景轉場。',
-  'homeHero.chip.createPluginHint': '編寫可重複使用的 Open Design 外掛並將其加入「我的外掛」。',
+  'homeHero.chip.createPluginHint': '編寫可重複使用的外掛並將其加入「我的外掛」。',
   'homeHero.chip.figmaHint': '將 Figma 畫格遷移至使用中的設計系統。',
   'homeHero.chip.folderHint': '匯入現有的本機資料夾並繼續編輯。',
   'homeHero.chip.templateHint': '從內建範本開始。',

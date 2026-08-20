@@ -527,7 +527,7 @@ export const ptBR: Dict = {
   'homeHero.chip.template': 'De um modelo',
   'homeHero.chip.liveArtifactHint': 'Crie um artefato interativo em HTML/CSS/JS que você pode visualizar ao vivo.',
   'homeHero.chip.hyperframesHint': 'Crie animações baseadas em HTML: legendas, visuais reativos ao áudio, transições de cena.',
-  'homeHero.chip.createPluginHint': 'Crie um plugin reutilizável do Open Design e adicione-o aos Meus plugins.',
+  'homeHero.chip.createPluginHint': 'Crie um plugin reutilizável e adicione-o aos Meus plugins.',
   'homeHero.chip.figmaHint': 'Migre um frame do Figma para o design system ativo.',
   'homeHero.chip.folderHint': 'Importe uma pasta local existente e continue editando.',
   'homeHero.chip.templateHint': 'Comece a partir de um modelo incluído.',

@@ -527,7 +527,7 @@ export const fr: Dict = {
   'homeHero.chip.template': 'Depuis un modèle',
   'homeHero.chip.liveArtifactHint': 'Créer un artefact HTML/CSS/JS interactif que vous pouvez prévisualiser en direct.',
   'homeHero.chip.hyperframesHint': 'Créer du motion design basé sur HTML : sous-titres, visuels réactifs à l’audio, transitions de scènes.',
-  'homeHero.chip.createPluginHint': 'Créer un plugin Open Design réutilisable et l’ajouter à Mes plugins.',
+  'homeHero.chip.createPluginHint': 'Créer un plugin réutilisable et l’ajouter à Mes plugins.',
   'homeHero.chip.figmaHint': 'Migrer une frame Figma vers le système de design actif.',
   'homeHero.chip.folderHint': 'Importer un dossier local existant et continuer à l’éditer.',
   'homeHero.chip.templateHint': 'Commencer depuis un modèle intégré.',

@@ -527,7 +527,7 @@ export const tr: Dict = {
   'homeHero.chip.template': 'Şablondan',
   'homeHero.chip.liveArtifactHint': 'Canlı önizleyebileceğiniz etkileşimli bir HTML/CSS/JS çıktısı oluşturun.',
   'homeHero.chip.hyperframesHint': 'HTML tabanlı hareket oluşturun: altyazılar, sese tepki veren görseller, sahne geçişleri.',
-  'homeHero.chip.createPluginHint': 'Yeniden kullanılabilir bir Open Design plugin\'i oluşturun ve Plugin\'lerim\'e ekleyin.',
+  'homeHero.chip.createPluginHint': 'Yeniden kullanılabilir bir plugin\'i oluşturun ve Plugin\'lerim\'e ekleyin.',
   'homeHero.chip.figmaHint': 'Bir Figma frame\'ini etkin tasarım sistemine taşıyın.',
   'homeHero.chip.folderHint': 'Mevcut bir yerel klasörü içe aktarın ve düzenlemeye devam edin.',
   'homeHero.chip.templateHint': 'Paketlenmiş bir şablonla başlayın.',

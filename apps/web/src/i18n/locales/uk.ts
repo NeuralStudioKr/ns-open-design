@@ -527,7 +527,7 @@ export const uk: Dict = {
   'homeHero.chip.template': 'З шаблону',
   'homeHero.chip.liveArtifactHint': 'Створіть інтерактивний артефакт HTML/CSS/JS, який можна переглядати наживо.',
   'homeHero.chip.hyperframesHint': 'Створюйте анімацію на основі HTML: субтитри, візуалізації, що реагують на аудіо, переходи між сценами.',
-  'homeHero.chip.createPluginHint': 'Створіть багаторазовий плагін Open Design і додайте його до «Мої плагіни».',
+  'homeHero.chip.createPluginHint': 'Створіть багаторазовий плагін і додайте його до «Мої плагіни».',
   'homeHero.chip.figmaHint': 'Перенесіть фрейм Figma в активну дизайн-систему.',
   'homeHero.chip.folderHint': 'Імпортуйте наявну локальну папку та продовжте редагування.',
   'homeHero.chip.templateHint': 'Почніть із вбудованого шаблону.',

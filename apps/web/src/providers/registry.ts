@@ -1014,7 +1014,7 @@ export interface ConnectorActionResult {
 }
 
 function popupBlockedMessage(): string {
-  return 'Popup blocked. Allow popups for Open Design and try again.';
+  return 'Popup blocked. Allow popups for this app and try again.';
 }
 
 export async function openExternalUrl(url: string): Promise<boolean> {

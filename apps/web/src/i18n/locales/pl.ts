@@ -527,7 +527,7 @@ export const pl: Dict = {
   'homeHero.chip.template': 'Z szablonu',
   'homeHero.chip.liveArtifactHint': 'Zbuduj interaktywny artefakt HTML/CSS/JS, który możesz podejrzeć na żywo.',
   'homeHero.chip.hyperframesHint': 'Twórz animacje oparte na HTML: napisy, wizualizacje reagujące na dźwięk, przejścia między scenami.',
-  'homeHero.chip.createPluginHint': 'Stwórz wielokrotnego użytku wtyczkę Open Design i dodaj ją do Moich wtyczek.',
+  'homeHero.chip.createPluginHint': 'Stwórz wielokrotnego użytku wtyczkę i dodaj ją do Moich wtyczek.',
   'homeHero.chip.figmaHint': 'Przenieś ramkę Figma do aktywnego systemu projektowego.',
   'homeHero.chip.folderHint': 'Zaimportuj istniejący folder lokalny i kontynuuj edycję.',
   'homeHero.chip.templateHint': 'Zacznij od dołączonego szablonu.',

@@ -527,7 +527,7 @@ export const ar: Dict = {
   'homeHero.chip.template': 'من قالب',
   'homeHero.chip.liveArtifactHint': 'أنشئ عنصرًا تفاعليًا بـ HTML/CSS/JS يمكنك معاينته مباشرة.',
   'homeHero.chip.hyperframesHint': 'صمّم حركة قائمة على HTML: تسميات توضيحية، ومرئيات تتفاعل مع الصوت، وانتقالات بين المشاهد.',
-  'homeHero.chip.createPluginHint': 'أنشئ إضافة Open Design قابلة لإعادة الاستخدام وأضِفها إلى إضافاتي.',
+  'homeHero.chip.createPluginHint': 'أنشئ إضافة قابلة لإعادة الاستخدام وأضِفها إلى إضافاتي.',
   'homeHero.chip.figmaHint': 'رحّل إطار Figma إلى نظام التصميم النشط.',
   'homeHero.chip.folderHint': 'استورد مجلدًا محليًا موجودًا وتابع التحرير.',
   'homeHero.chip.templateHint': 'ابدأ من قالب مُضمّن.',

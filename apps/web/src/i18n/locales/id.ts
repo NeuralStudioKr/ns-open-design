@@ -527,7 +527,7 @@ export const id: Dict = {
   'homeHero.chip.template': 'Dari templat',
   'homeHero.chip.liveArtifactHint': 'Bangun artefak HTML/CSS/JS interaktif yang bisa Anda pratinjau secara langsung.',
   'homeHero.chip.hyperframesHint': 'Buat animasi berbasis HTML: keterangan, visual reaktif-audio, transisi adegan.',
-  'homeHero.chip.createPluginHint': 'Buat plugin Open Design yang dapat digunakan ulang dan tambahkan ke My plugins.',
+  'homeHero.chip.createPluginHint': 'Buat plugin yang dapat digunakan ulang dan tambahkan ke My plugins.',
   'homeHero.chip.figmaHint': 'Migrasikan frame Figma ke design system yang aktif.',
   'homeHero.chip.folderHint': 'Impor folder lokal yang sudah ada dan lanjutkan menyunting.',
   'homeHero.chip.templateHint': 'Mulai dari templat bawaan.',

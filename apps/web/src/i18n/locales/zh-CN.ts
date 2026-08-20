@@ -527,7 +527,7 @@ export const zhCN: Dict = {
   'homeHero.chip.template': '来自模板',
   'homeHero.chip.liveArtifactHint': '构建可实时预览的交互式 HTML/CSS/JS 制品。',
   'homeHero.chip.hyperframesHint': '创作基于 HTML 的动态内容：字幕、音频响应视觉和场景转场。',
-  'homeHero.chip.createPluginHint': '创作可复用的 Open Design 插件，并添加到我的插件。',
+  'homeHero.chip.createPluginHint': '创作可复用的插件，并添加到我的插件。',
   'homeHero.chip.figmaHint': '将 Figma 画框迁移到当前设计体系。',
   'homeHero.chip.folderHint': '导入本地文件夹并继续编辑。',
   'homeHero.chip.templateHint': '从内置模板开始。',

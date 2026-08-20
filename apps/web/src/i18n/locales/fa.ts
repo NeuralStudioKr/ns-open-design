@@ -527,7 +527,7 @@ export const fa: Dict = {
   'homeHero.chip.template': 'از قالب',
   'homeHero.chip.liveArtifactHint': 'یک آرتیفکت تعاملی HTML/CSS/JS بسازید که بتوانید آن را به‌صورت زنده پیش‌نمایش کنید.',
   'homeHero.chip.hyperframesHint': 'ساخت موشن مبتنی بر HTML: زیرنویس‌ها، تصاویر واکنش‌گرا به صدا، گذارهای صحنه.',
-  'homeHero.chip.createPluginHint': 'یک افزونه قابل استفاده مجدد Open Design بسازید و آن را به افزونه‌های من اضافه کنید.',
+  'homeHero.chip.createPluginHint': 'یک افزونه قابل استفاده مجدد بسازید و آن را به افزونه‌های من اضافه کنید.',
   'homeHero.chip.figmaHint': 'یک فریم Figma را به سیستم طراحی فعال منتقل کنید.',
   'homeHero.chip.folderHint': 'یک پوشه محلی موجود را وارد کنید و ویرایش را ادامه دهید.',
   'homeHero.chip.templateHint': 'از یک قالب همراه شروع کنید.',

@@ -527,7 +527,7 @@ export const de: Dict = {
   'homeHero.chip.template': 'Aus Vorlage',
   'homeHero.chip.liveArtifactHint': 'Erstelle ein interaktives HTML/CSS/JS-Artefakt, das du live in der Vorschau ansehen kannst.',
   'homeHero.chip.hyperframesHint': 'Erstelle HTML-basierte Animationen: Untertitel, audioreaktive Visuals, Szenenübergänge.',
-  'homeHero.chip.createPluginHint': 'Erstelle ein wiederverwendbares Open Design Plugin und füge es zu Meine Plugins hinzu.',
+  'homeHero.chip.createPluginHint': 'Erstelle ein wiederverwendbares Plugin und füge es zu Meine Plugins hinzu.',
   'homeHero.chip.figmaHint': 'Migriere einen Figma-Frame in das aktive Designsystem.',
   'homeHero.chip.folderHint': 'Importiere einen vorhandenen lokalen Ordner und setze die Bearbeitung fort.',
   'homeHero.chip.templateHint': 'Beginne mit einer mitgelieferten Vorlage.',

@@ -527,7 +527,7 @@ export const th: Dict = {
   'homeHero.chip.template': 'จากเทมเพลต',
   'homeHero.chip.liveArtifactHint': 'สร้าง artifact แบบ HTML/CSS/JS ที่โต้ตอบได้ ซึ่งคุณสามารถดูตัวอย่างแบบสดได้',
   'homeHero.chip.hyperframesHint': 'สร้างภาพเคลื่อนไหวแบบ HTML: คำบรรยาย ภาพที่ตอบสนองต่อเสียง และการเปลี่ยนฉาก',
-  'homeHero.chip.createPluginHint': 'สร้างปลั๊กอิน Open Design ที่นำกลับมาใช้ใหม่ได้ และเพิ่มลงในปลั๊กอินของฉัน',
+  'homeHero.chip.createPluginHint': 'สร้างปลั๊กอินที่นำกลับมาใช้ใหม่ได้ และเพิ่มลงในปลั๊กอินของฉัน',
   'homeHero.chip.figmaHint': 'ย้าย frame ของ Figma เข้าสู่ design system ที่ใช้งานอยู่',
   'homeHero.chip.folderHint': 'นำเข้าโฟลเดอร์ภายในเครื่องที่มีอยู่และแก้ไขต่อ',
   'homeHero.chip.templateHint': 'เริ่มจากเทมเพลตที่มาพร้อมกัน',
