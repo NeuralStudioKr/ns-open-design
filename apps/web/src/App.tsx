@@ -3479,11 +3479,10 @@ function AppInner() {
       }
     };
 
-    if (isTeamverEmbedMode() && routeRef.current.kind === 'project') {
-      scheduleNextRunsPoll();
-    } else {
-      runRunsPoll();
-    }
+    // Always poll once immediately (L-492). Delaying the first tick on
+    // project deep-link / cold mount left Stop/task banner idle for up to
+    // RUNS_POLL_IDLE_MS (30s). Subsequent cadence still uses nextRunsPollDelay.
+    runRunsPoll();
     window.addEventListener(RUNS_CHANGED_EVENT, handleRunsChanged);
     document.addEventListener('visibilitychange', handleRunsVisibilityChange);
     return () => {

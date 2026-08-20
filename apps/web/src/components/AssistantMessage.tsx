@@ -736,7 +736,15 @@ function AssistantMessageImpl({
     unfinishedTodos.length > 0 &&
     !!onContinueRemainingTasks;
   const canFork = !streaming && !!onForkFromMessage;
-  const copyMarkdown = message.content.trim().length > 0 ? message.content : undefined;
+  const copyMarkdown = useMemo(() => {
+    const raw = message.content.trim();
+    if (!raw) return undefined;
+    // Copy must match display scrub — raw persist can still hold Daisy/SVG debris.
+    const cleaned = sanitizeAssistantProseForDisplay(raw, {
+      stripCodeFences: hideAssistantThinkingDetails,
+    }).trim();
+    return cleaned.length > 0 ? cleaned : undefined;
+  }, [hideAssistantThinkingDetails, message.content]);
   const showFeedback =
     !!onFeedback &&
     isFeedbackEligible({

@@ -368,4 +368,27 @@ describe("sanitizeChatMessageLeakedPseudoTool (expanded)", () => {
     expect(sanitized.content).toBe("");
     expect(sanitized.events?.[0]).toEqual({ kind: "text", text: "Plan\n" });
   });
+
+  it("strips Daisy badge + mid-SVG CSS without </style> on persist write path", () => {
+    const debris = [
+      '<span style="background:',
+      "#FDE68A;border:3px solid ",
+      "#2D2D2D;border-radius:20px;padding:10px 28px;font-family:'Quicksand',sans-serif;box-shadow:4px 4px 0 ",
+      '#2D2D2D">Internal Team</span>',
+      "</div>",
+      "<!-- Daisy motif TL -->none;stroke:",
+      "#232323;stroke-width:2.0",
+    ].join("\n");
+    const sanitized = sanitizeChatMessageLeakedPseudoTool({
+      id: "m2",
+      role: "assistant",
+      content: `슬라이드 초안을 준비했습니다.\n\n${debris}`,
+      events: [{ kind: "text", text: `슬라이드 초안을 준비했습니다.\n\n${debris}` }],
+    });
+    expect(sanitized.content).toBe("슬라이드 초안을 준비했습니다.");
+    expect(sanitized.events?.[0]).toMatchObject({
+      kind: "text",
+      text: "슬라이드 초안을 준비했습니다.",
+    });
+  });
 });
