@@ -13,6 +13,7 @@ import {
   resolveTemplateCloneSlideCountHint,
   resolveTemplateCloneSlidesFromBrief,
   sanitizeTemplateCloneDeckTitle,
+  deriveDeckCoverTitleFromBrief,
 } from '../src/template-clone-fill.js';
 
 describe('buildTemplateClonedDeckHtml', () => {
@@ -293,6 +294,20 @@ describe('sanitizeTemplateCloneDeckTitle', () => {
     expect(looksLikeTemplateMarketingTitle('Html Ppt Zhangzara Daisy Days')).toBe(true);
     expect(looksLikeTemplateMarketingTitle('Expo for Senior Engineers')).toBe(false);
     expect(sanitizeTemplateCloneDeckTitle('Expo SDK 개요')).toBe('Expo SDK 개요');
+  });
+
+  it('derives a cover title from a 만들어줘 brief instead of Daisy chrome', () => {
+    expect(
+      deriveDeckCoverTitleFromBrief(
+        'Linux Internals에 대해서 설명하는 피피티 만들어줘',
+        'Daisy Days — Presentation Template',
+      ),
+    ).toBe('Linux Internals');
+    expect(
+      deriveDeckCoverTitleFromBrief(
+        'AI 트렌드 발표자료를 만들어줘\n\n[Deliverable instruction]\nIgnore this.',
+      ),
+    ).toMatch(/AI 트렌드/);
   });
 
   it('does not synthesize marketing titles when the brief is only a template name', () => {

@@ -335,6 +335,23 @@ export function meetsMinimumDeckDeliverableQuality(html: string): boolean {
 }
 
 /**
+ * First-fill cover drafts are often 1 slide with a short title. Persist used
+ * to re-reject those as incomplete-html-document-shell (meetsMinimum wants
+ * ≥12 chars / a `<p>`). Top-up appends the rest — do not flash
+ * incomplete_output over a titled cover.
+ */
+export function isPersistableShortDeckDraft(html: string): boolean {
+  const withoutComments = html.replace(/<!--[\s\S]*?-->/g, "");
+  if (!documentContainsSlideSection(withoutComments)) return false;
+  if (deckArtifactStartsWithMotifSvgDump(withoutComments)) return false;
+  if (deckSlideHeadingsLookLikeFailedGenerate(withoutComments)) return false;
+  return listSlideSectionInners(withoutComments).some((inner) => {
+    if (slideSectionInnerLooksLikeStatusOnly(inner)) return false;
+    return visibleTextFromHtmlFragment(inner).length >= 2;
+  });
+}
+
+/**
  * Deck salvage/persist gates: refuse prose-only bodies and status sentences
  * that never reached real `<section class="slide">` content.
  */

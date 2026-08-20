@@ -630,6 +630,19 @@ export function sanitizeTemplateCloneDeckTitle(
 }
 
 /**
+ * Cover title from a Home / wizard / Clone fill prompt. Strips protocol
+ * blocks and "만들어줘" wrappers so persist can salvage a head-only CSS
+ * shell without parroting Daisy marketing or the raw instruction.
+ */
+export function deriveDeckCoverTitleFromBrief(
+  prompt: string,
+  deckTitle?: string | null,
+): string {
+  const brief = extractUserFacingBrief(prompt);
+  return deriveTitleFromBrief(brief, deckTitle);
+}
+
+/**
  * Free-form Home/wizard prompts have no Visible-headings outline. Still
  * synthesize content-bearing slides so Clone does not leave template marketing
  * copy intact. Length follows the brief — never the template's demo page count.

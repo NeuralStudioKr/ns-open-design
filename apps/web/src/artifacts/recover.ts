@@ -1,4 +1,6 @@
 import {
+  looksLikeInstructionCopy,
+  looksLikeTemplateMarketingTitle,
   stripIncompleteOpenTags,
   stripTrailingUnclosedRawBlocks,
 } from '@open-design/contracts';
@@ -314,6 +316,16 @@ export function salvageTruncatedHtmlDocument(content: string | null | undefined)
 const GENERIC_TEMPLATE_FILL_TITLE_RE =
   /^(?:x|ok|deck|untitled|slide|presentation(?:\s+template)?|daisy days|html ppt|zhangzara|template)\b/i;
 
+function decodeBasicHtmlEntities(text: string): string {
+  return text
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&');
+}
+
 function visibleHeadingCandidate(html: string): string {
   const withoutChrome = html
     .replace(/<style\b[\s\S]*?<\/style>/gi, '')
@@ -323,28 +335,19 @@ function visibleHeadingCandidate(html: string): string {
     /<h[1-3]\b[^>]*>([\s\S]*?)(?:<\/h[1-3]>|$)/i.exec(withoutChrome)?.[1]
     ?? /<title\b[^>]*>([\s\S]*?)<\/title>/i.exec(withoutChrome)?.[1]
     ?? '';
-  return heading.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  return decodeBasicHtmlEntities(heading.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim());
 }
 
-/**
- * Template Clone fill sometimes burns the turn on `<head>` / kit CSS and
- * never reaches a slide. Persist used to skip that as
- * `incomplete-html-document-shell` → `incomplete_output`. When the shell
- * still carries a real brief title (not Daisy/template chrome), keep a
- * 1920×1080 cover draft so slide-count top-up can append the rest.
- */
-export function salvageTemplateFillShellAsCoverDraft(
-  content: string | null | undefined,
-): string | null {
-  const trimmed = String(content ?? '').replace(/^﻿/, '').trim();
-  if (!trimmed || trimmed.length < 24) return null;
-  if (hasTruncationSalvageableContent(trimmed) || hasSalvageableSlideContent(trimmed)) {
-    return null;
-  }
-  const heading = visibleHeadingCandidate(trimmed);
-  if (heading.length < 4 || GENERIC_TEMPLATE_FILL_TITLE_RE.test(heading)) return null;
+function isUnusableCoverTitle(title: string): boolean {
+  const trimmed = title.trim();
+  if (trimmed.length < 2) return true;
+  if (GENERIC_TEMPLATE_FILL_TITLE_RE.test(trimmed)) return true;
+  if (looksLikeTemplateMarketingTitle(trimmed) || looksLikeInstructionCopy(trimmed)) return true;
+  return false;
+}
 
-  const escaped = heading
+function build1920CoverDraftHtml(title: string): string | null {
+  const escaped = title
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
@@ -357,4 +360,36 @@ export function salvageTemplateFillShellAsCoverDraft(
     '</section></body></html>',
   ].join('');
   return validateHtmlArtifact(html).ok ? html : null;
+}
+
+export type SalvageCoverDraftOptions = {
+  fallbackTitle?: string | null;
+  lastResortTitle?: string | null;
+};
+
+/**
+ * Head-only / kit-CSS shells never reached a slide. Persist used to skip
+ * those as `incomplete-html-document-shell` → `incomplete_output`. Prefer
+ * a real brief title (not Daisy chrome), then a caller fallback, then a
+ * last-resort cover so top-up can append instead of auto-continue rewriting
+ * from `<head>`.
+ */
+export function salvageTemplateFillShellAsCoverDraft(
+  content: string | null | undefined,
+  options?: SalvageCoverDraftOptions,
+): string | null {
+  const trimmed = String(content ?? '').replace(/^﻿/, '').trim();
+  if (!trimmed || trimmed.length < 24) return null;
+  if (!/<(?:!doctype\s+html|html\b|head\b|body\b)/i.test(trimmed)) return null;
+  if (hasTruncationSalvageableContent(trimmed) || hasSalvageableSlideContent(trimmed)) {
+    return null;
+  }
+
+  const fromHtml = visibleHeadingCandidate(trimmed);
+  const fallback = decodeBasicHtmlEntities(String(options?.fallbackTitle ?? '').trim());
+  const lastResort = decodeBasicHtmlEntities(String(options?.lastResortTitle ?? '').trim());
+  const heading = [fromHtml, fallback, lastResort].find((title) => !isUnusableCoverTitle(title));
+  if (!heading) return null;
+
+  return build1920CoverDraftHtml(heading);
 }

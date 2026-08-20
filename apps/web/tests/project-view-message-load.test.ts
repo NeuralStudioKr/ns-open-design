@@ -382,7 +382,7 @@ describe("ProjectView message loading", () => {
     const source = readSource("src/components/ProjectView.tsx");
     const persistStart = source.indexOf("const persistArtifact = useCallback");
     expect(persistStart).toBeGreaterThan(0);
-    const persistBlock = source.slice(persistStart, persistStart + 24000);
+    const persistBlock = source.slice(persistStart, persistStart + 40000);
     expect(persistBlock).toContain("htmlBodyBeforeSanitize");
     expect(persistBlock).toContain("scoped edit scrubbed to no-op");
     expect(persistBlock).toContain(
@@ -395,7 +395,7 @@ describe("ProjectView message loading", () => {
     const source = readSource("src/components/ProjectView.tsx");
     const persistStart = source.indexOf("const persistArtifact = useCallback");
     expect(persistStart).toBeGreaterThan(0);
-    const persistBlock = source.slice(persistStart, persistStart + 28000);
+    const persistBlock = source.slice(persistStart, persistStart + 40000);
     expect(persistBlock).toContain("const readDiskHtml = async");
     expect(persistBlock).toContain("diskHtmlForTarget");
     expect(persistBlock).toContain("currentHtml: diskHtmlForTarget");
@@ -461,7 +461,7 @@ describe("ProjectView message loading", () => {
     expect(source).toContain("captureTargetSnapshots: true");
     expect(source).toContain("parseManualEditSource(baseSource)");
     expect(source).toContain("reconcileManualEditDraftAfterNoOpFlush");
-    expect(source).toContain("One Document for all pending/selected targets");
+    expect(source).toContain("One Document for all batch ops + per-id snapshots for reconcile");
     expect(source).toContain("One Document for snapshot + multi-select inspector merge");
     expect(source).toContain("contentUnchanged");
     expect(source).toContain("const contentToSave = result.source");
@@ -535,12 +535,16 @@ describe("ProjectView message loading", () => {
     // 18000 when the empty-element-patch → auto-continue routing
     // (without client-side fast-path salvage) landed, then 24000 for
     // readDiskHtml cache + visualMarksAlreadyStabilized + skipped-noop,
-    // then 28000 for official template look CSS merge on persist.
-    const persistBlock = source.slice(persistStart, persistStart + 28000);
+    // then 28000 for official template look CSS merge on persist,
+    // then 40000 for cover-draft salvage + persistable short-draft trust.
+    const persistBlock = source.slice(persistStart, persistStart + 40000);
 
     expect(persistBlock).toContain("Promise<ArtifactPersistResult>");
     expect(persistBlock).toContain("preferDeck: slideOnlyMvp");
     expect(persistBlock).toContain("isIncompleteHtmlDocumentShell(artifactToPersist.html)");
+    expect(persistBlock).toContain("isPersistableShortDeckDraft(artifactToPersist.html)");
+    expect(persistBlock).toContain("salvageTemplateFillShellAsCoverDraft(artifactToPersist.html,");
+    expect(persistBlock).toContain("deriveDeckCoverTitleFromBrief(");
     expect(persistBlock).toContain("kind: 'skipped-incomplete'");
     // deck-patch interceptor must run BEFORE the incomplete-shell / validate
     // gates so partial patches never get rejected as "not a full document".
@@ -554,7 +558,7 @@ describe("ProjectView message loading", () => {
     // must stay quiet so they do not contradict the automatic-continue notice.
     expect(persistBlock).toContain("formatProjectArtifactRejectedError(");
     const shellStart = source.indexOf(
-      "if (isIncompleteHtmlDocumentShell(artifactToPersist.html))",
+      "isIncompleteHtmlDocumentShell(artifactToPersist.html)",
       persistStart,
     );
     expect(shellStart).toBeGreaterThan(persistStart);
@@ -565,18 +569,19 @@ describe("ProjectView message loading", () => {
 
     const autoOpenStart = source.indexOf("const scheduleStreamRunHtmlAutoOpen");
     expect(autoOpenStart).toBeGreaterThan(0);
-    const autoOpenBlock = source.slice(autoOpenStart, autoOpenStart + 24000);
+    const autoOpenBlock = source.slice(autoOpenStart, autoOpenStart + 60000);
 
     expect(autoOpenBlock).toContain("const rawFinalText = streamedText || fullText || latestAssistantMsg.content || ''");
     expect(autoOpenBlock).toContain("const persistResult = await persistArtifact(");
-    expect(autoOpenBlock).toContain("terminalArtifactPersistFailed = shouldFailRunForArtifactPersistResult(persistResult)");
+    expect(autoOpenBlock).toContain("terminalArtifactPersistFailed = shouldFailRunForArtifactPersistResult(");
+    expect(autoOpenBlock).toContain("isReusableSameTurnDeckWrite(diskPeek)");
     // deliverableError fallback now feeds the persist-result kind through
     // so the "결과물이 생성되지 않았습니다" banner in a copied bug report
     // includes `terminalPersistResultKind=<kind>` (or `no-artifact` for
     // null). Previously the fallback was a bare no-arg call and future
     // reports could not distinguish "model returned nothing" from
     // "persist returned skipped-incomplete" without browser console.
-    expect(autoOpenBlock).toContain("formatProjectRunDeliverableMissingError({");
+    expect(autoOpenBlock).toContain("formatProjectRunDeliverableMissingError()");
     expect(autoOpenBlock).toContain("kind: terminalPersistResult?.kind ?? null,");
     expect(autoOpenBlock).toContain("terminalPersistResult?.kind === 'rejected'");
     expect(autoOpenBlock).toContain("resolveTerminalArtifactToPersist(");
@@ -653,7 +658,7 @@ describe("ProjectView message loading", () => {
     // Keep this window broad enough for the prompt preparation block above
     // the auto-continue counter reset; this test asserts the ordering contract,
     // not an exact source distance.
-    const handleSendBlock = source.slice(handleSendStart, handleSendStart + 9600);
+    const handleSendBlock = source.slice(handleSendStart, handleSendStart + 28000);
     expect(handleSendBlock).toContain("isAutoContinueIncompleteOutputPrompt(prompt)");
     expect(handleSendBlock).toContain("conversationAutoContinueCountRef.current.set(runConversationId, 0)");
     expect(handleSendBlock).toContain("scopedCommentAttachments.length > 0");
@@ -724,7 +729,7 @@ describe("ProjectView message loading", () => {
     // is the mirror of the existing element-patch → deck-patch route.
     const deckPatchStart = source.indexOf("async function tryApplyDeckPatchAgainstCurrentDeck");
     expect(deckPatchStart).toBeGreaterThan(0);
-    const deckPatchBlock = source.slice(deckPatchStart, deckPatchStart + 2400);
+    const deckPatchBlock = source.slice(deckPatchStart, deckPatchStart + 10000);
     expect(deckPatchBlock).toContain("deckPatchBodyLooksLikeElementPatch(input.patchBody)");
     expect(deckPatchBlock).toContain("[deck-patch] body looks like element-patch — falling back");
     expect(deckPatchBlock).toContain("tryApplyElementPatchesAgainstCurrentDeck({");
@@ -734,7 +739,7 @@ describe("ProjectView message loading", () => {
     // empty element-patch policy.
     const persistStart = source.indexOf("const persistArtifact = useCallback");
     expect(persistStart).toBeGreaterThan(0);
-    const persistBlock = source.slice(persistStart, persistStart + 14000);
+    const persistBlock = source.slice(persistStart, persistStart + 40000);
     expect(persistBlock).toContain(
       "isDeckPatchEmptyBody(art.html ?? '', merged.reason)",
     );

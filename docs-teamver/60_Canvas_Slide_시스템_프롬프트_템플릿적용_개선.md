@@ -258,7 +258,33 @@ Capsule은 empty `.deco-pill` + look CSS로 살아나지만 Daisy 정체성은 ~
 
 - [x] untitled 1장 persist (gate null)
 - [x] Linux Internals head-only → cover draft
-- [x] Daisy Days title → no draft
+- [x] Daisy Days title → no draft (fallback은 §0.58)
+
+### 0.58 2026-08-20 — persist/auto-continue 잔여 incomplete_output 구멍
+
+§0.57 이후에도 같은 배너가 날 수 있는 경로:
+
+1. 닫힌 1장 + 짧은 제목(`<h1>AI</h1>`)은 `meetsMinimum` 실패 → `incomplete-html-document-shell`
+2. Daisy chrome `<title>`만 있는 head-only는 salvage null → 다시 shell skip
+3. auto-continue 문구가 옛 게이트(`expected at least 3`)를 말해 모델이 `<head>`부터 3장을 다시 쓰다 끊김
+4. Write-tool이 같은 shell을 디스크에 쓰면 persist salvage를 건너뜀
+5. clone fill이 아닌 slide-only 1장은 top-up 대상이 아님
+
+수정:
+- `isPersistableShortDeckDraft` — 상태문/빈 장/패롯이 아니면 1장 초안 저장
+- cover salvage에 브리프 fallback + 마지막 `초안` 표지
+- auto-continue는 body-first 덧붙임 (3장 reject 문구 삭제)
+- same-turn Write shell은 persist로 넘김
+- greenfield slide-only도 default 6장 top-up
+
+구현 현황:
+
+- [x] 짧은 1장 제목 persistable
+- [x] Daisy title + Linux brief → cover
+- [x] last-resort 초안
+- [x] auto-continue 문구
+- [x] same-turn shell은 reuse 안 함
+
 ### 0.56a 2026-08-20 — compact 3장 wireframe · Daisy slide-title · kit tiny-flower 금지
 
 §0.56 Motif/persist heal에 더해 모델 측 계약 + cover role class:
@@ -1438,6 +1464,7 @@ User-message 쪽 `[Existing deck edit]` / `<attached-preview-comments>` 주입�
 | 2026-08-13 | **§0.0 정책 개정** — template = layout vocabulary + visual look, 페이지 수/순서/구성은 브리프 기반. content-swap → pick-and-choose layout roles. daemon Clone default count = 6 (shells.length 아님), `pickTemplateShells` role-based scoring 도입. `template-visual-kit.ts` HARD_RULES 재작성, `DEFAULT_MAX_CHARS` 12000 → 14000. |
 | 2026-08-18 | Clone content-fill motif 보정 — 8/13 SVG hang 방지 패치가 first fill에서 `Motif sprites`/`Decoration CSS`/`Layout CSS`를 통째로 생략해 Daisy/Capsule 템플릿 정체성이 약해졌다. `slimTemplateVisualKitForFill`이 큰 SVG sprite sheet와 전체 stylesheet dump는 계속 제거하되, Daisy star/rainbow·Capsule pill/capsule·Terminal scanline 같은 compact motif recipe와 짧은 Decoration/Layout CSS cue를 보존하도록 변경했다. |
 | 2026-08-18 | §0.20 — html-ppt identity scope. 공유 `:root --bg:#ffffff` 대신 `.tpl-*` host 토큰/슬라이드 surface/폰트를 kit 계약으로 쓰고, SKILL `copy index.html` filesystem 지시를 neutralize. |
+| 2026-08-20 | §0.58 — 짧은 1장 초안 persist · Daisy chrome+브리프 fallback · auto-continue 3장 reject 문구 삭제 · same-turn shell은 persist salvage. |
 | 2026-08-20 | §0.57 — 1장 게이트 제거 + head-only Template fill을 브리프 제목 표지 초안으로 salvage. `expected at least 3` → shell 연속 실패 차단. |
 | 2026-08-20 | §0.56a — compact 3-slide wireframe · Daisy `slide-title` · kit/fill tiny-flower·음수 Motif offset 금지 · cache v32. |
 | 2026-08-20 | §0.56 — Daisy 표지 4귀퉁이 % 스케일 · 작은 발명 꽃 제거 · 16:9 column+center · titled 1장 persist+top-up · cache v31. |

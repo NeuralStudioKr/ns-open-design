@@ -6,6 +6,7 @@ import {
   hasSalvageableDeckSlideContent,
   isClosedSoftSalvageDeckHtml,
   isDeckStatusProseOnlyBody,
+  isPersistableShortDeckDraft,
   deckArtifactStartsWithMotifSvgDump,
   deckSlideHeadingsLookLikeFailedGenerate,
   shouldAbortStreamForMotifSvgDump,
@@ -34,6 +35,27 @@ describe("deck-html-content", () => {
 <title>Linux Internals &amp; Production Mastery</title>
 <style>.deco-daisy{color:#fcdf6c}</style></head>`;
     expect(hasSalvageableDeckSlideContent(html)).toBe(false);
+  });
+
+  it("treats a short titled one-slide cover as a persistable draft", () => {
+    const html =
+      '<!doctype html><html><body><section class="slide"><h1>AI</h1></section></body></html>';
+    expect(meetsMinimumDeckDeliverableQuality(html)).toBe(false);
+    expect(isIncompleteHtmlDocumentShell(html)).toBe(true);
+    expect(isPersistableShortDeckDraft(html)).toBe(true);
+  });
+
+  it("does not persist status-only or empty one-slide shells as drafts", () => {
+    expect(
+      isPersistableShortDeckDraft(
+        '<!doctype html><html><body><section class="slide"><h1>만들고 있어요</h1></section></body></html>',
+      ),
+    ).toBe(false);
+    expect(
+      isPersistableShortDeckDraft(
+        '<!doctype html><html><body><section class="slide"></section></body></html>',
+      ),
+    ).toBe(false);
   });
 
   it("does not treat a head SVG plus title as salvageable slide copy", () => {

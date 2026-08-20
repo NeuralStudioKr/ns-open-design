@@ -66,6 +66,7 @@ import {
   deckArtifactStartsWithMotifSvgDump,
   deckSlideHeadingsLookLikeFailedGenerate,
   isClosedSoftSalvageDeckHtml,
+  isPersistableShortDeckDraft,
   shouldAbortStreamForMotifSvgDump,
   stripAbandonedMotifSvgDumpFromStreamedText,
 } from '../artifacts/deck-html-content';
@@ -147,6 +148,7 @@ import { useProjectFileEvents, type ProjectEvent } from '../providers/project-ev
 import { useCoalescedCallback } from '../hooks/useCoalescedCallback';
 import {
   composeSystemPrompt,
+  deriveDeckCoverTitleFromBrief,
   metadataForTeamverSlideOnlyPrompt,
   firstOfficialDeckTemplateId,
   renderPluginBlock,
@@ -5189,22 +5191,30 @@ export function ProjectView({
         // quality is applied inside salvage — do NOT re-reject with the
         // stricter incomplete/low-substance gates or previewable salvage is
         // thrown away and the user only sees incomplete_output.
+        const coverFallbackTitle = deriveDeckCoverTitleFromBrief(
+          runVisiblePromptRef.current || '',
+          project.name,
+        );
         const salvaged = salvageTruncatedHtmlDocument(artifactToPersist.html)
-          ?? (
-            runTemplateCloneContentFillRef.current
-              ? salvageTemplateFillShellAsCoverDraft(artifactToPersist.html)
-              : null
-          );
+          ?? salvageTemplateFillShellAsCoverDraft(artifactToPersist.html, {
+            fallbackTitle: coverFallbackTitle,
+            lastResortTitle:
+              runTemplateCloneContentFillRef.current || slideOnlyMvp
+                ? '초안'
+                : null,
+          });
         if (salvaged) {
           artifactToPersist = { ...artifactToPersist, html: salvaged };
         }
         // Upstream resolveTerminal / bestArtifact may already have closed the
         // truncated body. Re-running salvage then returns null — still trust
         // closed soft-quality decks so strict incomplete/low-substance cannot
-        // throw away the same previewable HTML.
+        // throw away the same previewable HTML. 1-slide titled covers also
+        // persist so top-up can append instead of incomplete_output.
         const trustSoftTruncationSalvage =
           Boolean(salvaged)
-          || isClosedSoftSalvageDeckHtml(artifactToPersist.html);
+          || isClosedSoftSalvageDeckHtml(artifactToPersist.html)
+          || isPersistableShortDeckDraft(artifactToPersist.html);
         // Empty scaffolds can pass the 64-char length gate once a charset
         // meta is present — still skip silently so we never write phantoms
         // or flash 「저장을 거부했습니다」 during deck generation.
@@ -7731,6 +7741,12 @@ export function ProjectView({
                     recoveredExistingArtifact = null;
                   }
                   if (recoveredExistingArtifact) {
+                    const recoveredDisk = await readProjectHtml(recoveredExistingArtifact.name);
+                    if (!isReusableSameTurnDeckWrite(recoveredDisk)) {
+                      recoveredExistingArtifact = null;
+                    }
+                  }
+                  if (recoveredExistingArtifact) {
                     savedArtifactRef.current = recoveredExistingArtifact.name;
                     try {
                       const diskHtml = await readProjectHtml(recoveredExistingArtifact.name);
@@ -9667,10 +9683,15 @@ export function ProjectView({
                   readProjectHtml,
                   allowAnyHtmlWrite: assistantAgentId === 'claude',
                 });
-              if (
+              let reuseSameTurnWrite = Boolean(
                 sameTurnHtmlWrite
                 && shouldReuseSameTurnHtmlWriteAsPersist(sameTurnHtmlWrite, { slideOnlyMvp })
-              ) {
+              );
+              if (reuseSameTurnWrite && sameTurnHtmlWrite) {
+                const diskPeek = await readProjectHtml(sameTurnHtmlWrite.name);
+                reuseSameTurnWrite = isReusableSameTurnDeckWrite(diskPeek);
+              }
+              if (reuseSameTurnWrite && sameTurnHtmlWrite) {
                 savedArtifactRef.current = sameTurnHtmlWrite.name;
                 // Write-tool short-circuit skips persistArtifact's img-src heal.
                 // Heal on disk now so reload/export do not keep alt-only paths.
@@ -11214,8 +11235,11 @@ export function ProjectView({
         const produced = countDeckSlideSections(html);
         const conversationMessages = messagesRef.current;
         if (findIncompleteSlideAssistantForRecovery(conversationMessages)) return;
+        const allowDefaultShortDeckTopUp =
+          runTemplateCloneContentFillRef.current
+          || (slideOnlyMvp && !runPersistTargetFileRef.current);
         const requested = extractRequestedSlideCountTargetFromMessages(conversationMessages)
-          ?? (runTemplateCloneContentFillRef.current ? 6 : null);
+          ?? (allowDefaultShortDeckTopUp ? 6 : null);
         const already = syncSlideCountTopUpCountFromMessages(
           conversationSlideCountTopUpCountRef.current,
           activeConversationId,
@@ -11224,7 +11248,7 @@ export function ProjectView({
         if (!shouldQueueSlideCountTopUp({
           produced,
           requested,
-          defaultRequested: runTemplateCloneContentFillRef.current ? 6 : undefined,
+          defaultRequested: allowDefaultShortDeckTopUp ? 6 : undefined,
           topUpCount: already,
           commentAttachmentCount: runCommentAttachmentsRef.current.length,
         })) {
@@ -14096,8 +14120,17 @@ export function shouldFailSlideRunForMissingHtmlDeliverable(options: {
 
 const DOCTYPE_HTML_TAIL_RE = /<!doctype\s+html[\s\S]*/i;
 
+/** Write-tool same-turn HTML must already be a persistable deck, not a CSS shell. */
+function isReusableSameTurnDeckWrite(html: string | null | undefined): boolean {
+  const trimmed = String(html ?? '').trim();
+  if (!trimmed || !validateHtmlArtifact(trimmed).ok) return false;
+  if (isPersistableShortDeckDraft(trimmed) || isClosedSoftSalvageDeckHtml(trimmed)) return true;
+  return !isIncompleteHtmlDocumentShell(trimmed);
+}
+
 function artifactFromSalvagedHtml(html: string, base: Artifact): Artifact | null {
-  const salvaged = salvageTruncatedHtmlDocument(html);
+  const salvaged = salvageTruncatedHtmlDocument(html)
+    ?? salvageTemplateFillShellAsCoverDraft(html);
   // Soft truncation salvage already quality-gated. Do not re-reject with the
   // stricter incomplete-shell ratio (empty placeholders + 1–2 filled slides).
   if (salvaged && validateHtmlArtifact(salvaged).ok) {
@@ -14110,10 +14143,14 @@ function artifactFromSalvagedHtml(html: string, base: Artifact): Artifact | null
 function isUsableDeckHtmlArtifact(html: string | null | undefined): boolean {
   const trimmed = String(html ?? '').trim();
   if (!trimmed || !validateHtmlArtifact(trimmed).ok) return false;
+  if (isPersistableShortDeckDraft(trimmed)) return true;
   if (!isIncompleteHtmlDocumentShell(trimmed)) return true;
   // Already-closed soft salvage returns null from salvageTruncated — still usable.
   if (isClosedSoftSalvageDeckHtml(trimmed)) return true;
-  return Boolean(salvageTruncatedHtmlDocument(trimmed));
+  return Boolean(
+    salvageTruncatedHtmlDocument(trimmed)
+    ?? salvageTemplateFillShellAsCoverDraft(trimmed),
+  );
 }
 
 /** Pick the best HTML artifact candidate for terminal persist / auto-open. */

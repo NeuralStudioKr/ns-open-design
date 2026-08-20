@@ -128,10 +128,11 @@ const AUTO_CONTINUE_HEAD_ONLY_BODY_FIRST =
   + 'A compact static deck beats another CSS-only truncation.';
 
 const AUTO_CONTINUE_TEMPLATE_FILL_MIN_SLIDES =
-  '\n\nCRITICAL: Do not close `</html></artifact>` after a single cover. '
-  + 'Persist rejects 1–2 slide template fills unless the user asked for 1–4 slides '
-  + '(expected at least 3). Write cover + at least two more complete '
-  + '`<section class="slide">` (or `<div class="slide">`) bodies THIS TURN.';
+  '\n\nCRITICAL: Do not restart from `<head>` / kit CSS. Persist keeps a '
+  + '1–2 slide cover draft and hidden top-up appends — do not burn this turn '
+  + 'rewriting Daisy Days chrome. Emit BODY-FIRST slides (title + 2–4 bullets). '
+  + 'If you continue, APPEND more `<section class="slide">` (or `<div class="slide">`) '
+  + 'bodies. Official look/Motif CSS is merged after save.';
 
 const AUTO_CONTINUE_MOTIF_SVG_DUMP_ABANDON =
   '\n\nCRITICAL: The previous turn dumped Motif `<svg>` path data before any cover `<h1>`. '

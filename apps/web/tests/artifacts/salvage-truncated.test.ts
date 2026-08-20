@@ -303,6 +303,29 @@ describe("salvageTemplateFillShellAsCoverDraft", () => {
     expect(salvageTemplateFillShellAsCoverDraft(shell)).toBeNull();
   });
 
+  it("uses the user brief when the head title is Daisy chrome", () => {
+    const shell = `<!doctype html><html><head><title>Daisy Days — Presentation Template</title>
+<style>.deco{position:absolute}</style></head><body>`;
+    const draft = salvageTemplateFillShellAsCoverDraft(shell, {
+      fallbackTitle: "Linux Internals",
+    });
+    expect(draft).toContain("<h1>Linux Internals</h1>");
+    expect(draft).toContain("width:1920px");
+  });
+
+  it("decodes title entities and keeps a last-resort cover for head-only shells", () => {
+    const shell = `<!doctype html><html lang="ko"><head>
+<title>Linux Internals &amp; Production Mastery</title>
+<style>.slide{width:100vw`;
+    const draft = salvageTemplateFillShellAsCoverDraft(shell);
+    expect(draft).toContain("<h1>Linux Internals &amp; Production Mastery</h1>");
+    const chrome = salvageTemplateFillShellAsCoverDraft(
+      `<!doctype html><html><head><title>Daisy Days</title><style>.x{`,
+      { lastResortTitle: "초안" },
+    );
+    expect(chrome).toContain("<h1>초안</h1>");
+  });
+
   it("does not replace a truncation that already has slide copy", () => {
     const truncated = `<!doctype html><html><body>
 <section class="slide"><h1>기업 AI 도입 효과</h1><p>개요 설명입니다.</p></section>`;

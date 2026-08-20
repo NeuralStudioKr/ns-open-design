@@ -151,7 +151,7 @@ export function shouldQueueSlideCountTopUp(input: {
   topUpCount: number;
   commentAttachmentCount?: number;
   hasIncompleteAssistant?: boolean;
-  /** Template-clone first fill: allow 1–2 titled slides and default to 6. */
+  /** First fill / short draft: allow 1–2 slides and default to 6. */
   defaultRequested?: number;
 }): boolean {
   if (input.hasIncompleteAssistant) return false;
