@@ -620,7 +620,7 @@ ${DECK_COMPACT_INLINE_LAYOUT_VOCABULARY_FOR_SELECTED_TEMPLATE}
 `;
 
 /**
- * First Clone content-fill: OD-style create. Motif SVG paste is deferred so the
+ * First Clone content-fill: kit Motif create. Motif SVG paste is deferred so the
  * model can close a compact deck instead of hanging on multi-KB ornament dumps.
  */
 export const DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_TEMPLATE_FILL = `# Slide deck — API compact contract for Template Clone content-fill

@@ -1491,7 +1491,7 @@ If the attached source's palette conflicts with the kit, **ignore the source's p
 
 const TEAMVER_SELECTED_TEMPLATE_VISUAL_READ_LAST_FOR_FILL = `# Selected deck template visual — READ LAST (first content-fill)
 
-This is the first content fill after a LOOK seed (OD-style create with kit Motif vocabulary).
+This is the first content fill after a LOOK seed (create with kit Motif vocabulary).
 
 **Close a compact deck THIS TURN** that still looks like the selected template.
 

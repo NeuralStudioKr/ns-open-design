@@ -118,11 +118,24 @@ export function shouldFetchEntryCatalogsOnBoot(routeKind: string): boolean {
 
 /**
  * Slide-only embed home: keep `design-templates` on the critical path;
- * defer skills / design-systems / listTemplates until the browser is idle.
+ * defer skills / design-systems until the browser is idle.
+ * Project `/api/templates` is skipped entirely in slide-only (see
+ * `shouldFetchProjectTemplatesCatalog`).
  */
 export function shouldDeferNonCriticalEntryCatalogsOnBoot(): boolean {
   if (!isTeamverEmbedMode()) return false;
   return branding().slideOnlyMvp;
+}
+
+/**
+ * Legacy project templates (`GET /api/templates`). Slide-only embed uses
+ * `design-templates?mode=deck` + plugin catalog; boot/idle must not fan out
+ * the unused `/api/templates` list. Settings refresh still calls `listTemplates`
+ * when that surface mounts.
+ */
+export function shouldFetchProjectTemplatesCatalog(): boolean {
+  if (!isTeamverEmbedMode()) return true;
+  return !branding().slideOnlyMvp;
 }
 
 const DEFAULT_IDLE_TIMEOUT_MS = 2500;

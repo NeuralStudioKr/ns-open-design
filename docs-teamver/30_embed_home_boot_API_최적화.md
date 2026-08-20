@@ -226,8 +226,8 @@ bash deploy/teamver/scripts/deploy.sh --staging --rds
 
 | ID | 항목 | 설명 |
 |----|------|------|
-| P1 | BFF `teamver-bff/projects` boot 1회화 | registry sync vs list warm — 호출 경로 통합 검토 |
-| P1 | `/api/templates` 2회 | consumer 통합 또는 SWR |
+| P1 | BFF `teamver-bff/projects` boot 1회화 | ✅ 2026-08-20 — `fetchRegistryProjectsFromBff` in-flight coalesce (ids+list 동시 호출 1 GET) |
+| P1 | `/api/templates` 2회 | ✅ 2026-08-20 — slide-only `shouldFetchProjectTemplatesCatalog()===false` (boot/idle skip) |
 | P2 | project auto-open burst | last-opened project deep link — 홈-only와 분리 문서화 |
 | P2 | plugin `/preview` iframe | community gallery off 시 0 — gallery mount 재확인 |
 

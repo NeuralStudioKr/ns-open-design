@@ -70,6 +70,7 @@ import {
   shouldFetchEntryCatalogsOnBoot,
   shouldFetchHomeProjectsOnBoot,
   shouldFetchMediaProviderConfig,
+  shouldFetchProjectTemplatesCatalog,
   shouldFetchPromptTemplateCatalog,
   shouldPollDaemonRuns,
   shouldPostDaemonActiveContext,
@@ -1176,10 +1177,12 @@ function AppInner() {
       // gate `skillsLoading` together so the EntryView stops rendering
       // its loader once both registries respond — neither tab would have
       // a complete picture if we cleared the flag on the first reply.
-      // Slide-only embed: defer skills/design-systems/listTemplates to idle;
-      // `skillsLoading` waits on design-templates only.
+      // Slide-only embed: defer skills/design-systems to idle;
+      // `skillsLoading` waits on design-templates only. `/api/templates` is
+      // skipped in slide-only (design-templates + plugins cover the catalog).
       const deferSecondaryCatalogs =
         fetchEntryCatalogs && shouldDeferNonCriticalEntryCatalogsOnBoot();
+      const fetchProjectTemplates = shouldFetchProjectTemplatesCatalog();
       let functionalReady = deferSecondaryCatalogs;
       let templatesReady = false;
       const maybeClearLoading = () => {
@@ -1198,10 +1201,12 @@ function AppInner() {
           setDesignSystems(list);
           setDsLoading(false);
         });
-        void listTemplates().then((list) => {
-          if (cancelled) return;
-          setTemplates(list);
-        });
+        if (fetchProjectTemplates) {
+          void listTemplates().then((list) => {
+            if (cancelled) return;
+            setTemplates(list);
+          });
+        }
       };
       if (fetchEntryCatalogs) {
         if (!deferSecondaryCatalogs) {
@@ -1229,10 +1234,12 @@ function AppInner() {
             setDesignSystems(list);
             setDsLoading(false);
           });
-          void listTemplates().then((list) => {
-            if (cancelled) return;
-            setTemplates(list);
-          });
+          if (fetchProjectTemplates) {
+            void listTemplates().then((list) => {
+              if (cancelled) return;
+              setTemplates(list);
+            });
+          }
         }
       } else {
         setSkills([]);

@@ -120,6 +120,11 @@ let registryListCache: {
 } | null = null;
 /** Bumped on list invalidate so in-flight GETs cannot repopulate a stale membership. */
 let registryListFetchEpoch = 0;
+let registryListInflight: Promise<{
+  workspaceId: string;
+  userId: string | null;
+  projects: TeamverRegisteredProject[];
+} | null> | null = null;
 let syncAllInflight: Promise<void> | null = null;
 let syncAllAt = 0;
 /** Workspace id of the last completed (or in-flight) syncAll run. */
@@ -192,6 +197,8 @@ function primeFeAccessAllowed(projectId: string, workspaceId: string, userId: st
 function invalidateRegisteredIdsCache(): void {
   registryListCache = null;
   registryListFetchEpoch += 1;
+  // Do not clear registryListInflight — epoch already discards stale seeds;
+  // waiters on the in-flight GET still share one network hop.
 }
 
 /** Clear FE registry caches after auth/workspace changes. */
@@ -223,6 +230,7 @@ async function getRegisteredProjectIds(_workspaceId: string): Promise<Set<string
 /** @internal vitest only — module-level caches are not request-scoped. */
 export function resetTeamverProjectRegistryStateForTests(): void {
   invalidateTeamverProjectRegistryCaches();
+  registryListInflight = null;
   syncAllInflight = null;
   syncAllAt = 0;
   syncAllWorkspaceId = null;
@@ -468,46 +476,56 @@ async function fetchRegistryProjectsFromBff(): Promise<{
     };
   }
 
-  try {
-    const epochAtStart = registryListFetchEpoch;
-    const result = await withDesignBffCookieAuthRecovery(() =>
-      client.http.get<{ projects?: TeamverRegisteredProject[] }>(
-        "/projects",
-        {
-          workspaceId,
-          ...TEAMVER_BFF_REQUEST_OPTIONS,
-        },
-      ),
-    );
-    const projects = result.projects ?? [];
-    const ids = new Set<string>();
-    for (const project of projects) {
-      const odProjectId = readRegistryOdProjectId(project);
-      if (odProjectId) {
-        ids.add(odProjectId);
-        rememberTeamverProjectS3Prefix(workspaceId, odProjectId, project.s3Prefix);
+  // Boot often races listTeamverRegistryProjects + listTeamverRegisteredProjectIds
+  // before the 15s cache is warm — coalesce to one BFF GET.
+  if (registryListInflight) return registryListInflight;
+
+  registryListInflight = (async () => {
+    try {
+      const epochAtStart = registryListFetchEpoch;
+      const result = await withDesignBffCookieAuthRecovery(() =>
+        client.http.get<{ projects?: TeamverRegisteredProject[] }>(
+          "/projects",
+          {
+            workspaceId,
+            ...TEAMVER_BFF_REQUEST_OPTIONS,
+          },
+        ),
+      );
+      const projects = result.projects ?? [];
+      const ids = new Set<string>();
+      for (const project of projects) {
+        const odProjectId = readRegistryOdProjectId(project);
+        if (odProjectId) {
+          ids.add(odProjectId);
+          rememberTeamverProjectS3Prefix(workspaceId, odProjectId, project.s3Prefix);
+        }
       }
-    }
-    // Delete/unregister bumps epoch while this GET was in flight — never
-    // re-seed the 15s cache with pre-delete membership.
-    if (userId && epochAtStart === registryListFetchEpoch) {
-      registryListCache = {
-        workspaceId,
-        userId,
-        projects,
-        ids,
-        at: Date.now(),
-      };
-    }
-    return { workspaceId, userId, projects };
-  } catch (err) {
-    if (isTeamverBffUnauthorizedError(err)) {
-      handleEmbedPassiveUnauthorized("bff");
+      // Delete/unregister bumps epoch while this GET was in flight — never
+      // re-seed the 15s cache with pre-delete membership.
+      if (userId && epochAtStart === registryListFetchEpoch) {
+        registryListCache = {
+          workspaceId,
+          userId,
+          projects,
+          ids,
+          at: Date.now(),
+        };
+      }
+      return { workspaceId, userId, projects };
+    } catch (err) {
+      if (isTeamverBffUnauthorizedError(err)) {
+        handleEmbedPassiveUnauthorized("bff");
+        return null;
+      }
+      devLog.warn("[teamver] project registry list failed", err);
       return null;
+    } finally {
+      registryListInflight = null;
     }
-    devLog.warn("[teamver] project registry list failed", err);
-    return null;
-  }
+  })();
+
+  return registryListInflight;
 }
 
 /** Embed list SSOT — full registry rows (RDS; safe across multi-node EC2). */

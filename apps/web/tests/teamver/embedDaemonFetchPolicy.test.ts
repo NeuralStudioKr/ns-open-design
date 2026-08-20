@@ -20,6 +20,7 @@ import {
   shouldFetchHomeProjectsOnBoot,
   shouldFetchMarketingCommunityApis,
   shouldFetchMediaProviderConfig,
+  shouldFetchProjectTemplatesCatalog,
   shouldFetchPromptTemplateCatalog,
   shouldFetchRecentLinkedDirs,
   shouldMountPluginRegistryView,
@@ -87,8 +88,19 @@ describe('embedDaemonFetchPolicy', () => {
     const brandingSpy = vi.spyOn(brandingConfig, 'resolveTeamverBranding');
     brandingSpy.mockReturnValue({ ...base, slideOnlyMvp: false });
     expect(shouldDeferNonCriticalEntryCatalogsOnBoot()).toBe(false);
+    expect(shouldFetchProjectTemplatesCatalog()).toBe(true);
     brandingSpy.mockReturnValue({ ...base, slideOnlyMvp: true });
     expect(shouldDeferNonCriticalEntryCatalogsOnBoot()).toBe(true);
+    expect(shouldFetchProjectTemplatesCatalog()).toBe(false);
+  });
+
+  it('skips legacy /api/templates catalog outside slide-only only when not embed', () => {
+    expect(shouldFetchProjectTemplatesCatalog()).toBe(true);
+    vi.mocked(isTeamverEmbedMode).mockReturnValue(true);
+    const base = brandingConfig.resolveTeamverBranding();
+    const brandingSpy = vi.spyOn(brandingConfig, 'resolveTeamverBranding');
+    brandingSpy.mockReturnValue({ ...base, slideOnlyMvp: false });
+    expect(shouldFetchProjectTemplatesCatalog()).toBe(true);
   });
 
   it('scheduleWhenIdle falls back to setTimeout when idle callback is missing', () => {

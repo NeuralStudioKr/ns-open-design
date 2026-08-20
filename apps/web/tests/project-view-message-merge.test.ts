@@ -25,7 +25,7 @@ import type { ChatMessage } from "../src/types";
 describe("stripGreenfieldDeliverableInstruction", () => {
   it("removes a trailing [Deliverable instruction] block", () => {
     const stale =
-      '이미지 넣어줘\n\n[Deliverable instruction]\nSLIDE ATTACHMENT DELIVERABLE INSTRUCTION\nEmit ONE complete Teamver compact deck...';
+      '이미지 넣어줘\n\n[Deliverable instruction]\nSLIDE ATTACHMENT DELIVERABLE INSTRUCTION\nEmit ONE complete compact deck...';
     expect(stripGreenfieldDeliverableInstruction(stale)).toBe('이미지 넣어줘');
   });
 
@@ -47,7 +47,7 @@ describe("promptWithSlideAttachmentDeliverableInstruction", () => {
     // does not see conflicting "emit ONE complete deck" + "edit existing" —
     // that combo was the infinite-loop cause of stub-guard rejects.
     const stale =
-      '이 이미지 1페이지에 넣어줘\n\n[Deliverable instruction]\nEmit ONE complete Teamver compact deck.';
+      '이 이미지 1페이지에 넣어줘\n\n[Deliverable instruction]\nEmit ONE complete compact deck.';
     const prompt = promptWithSlideAttachmentDeliverableInstruction(
       stale,
       [
