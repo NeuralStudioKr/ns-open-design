@@ -504,7 +504,7 @@ export const DECK_COMPACT_INLINE_LAYOUT_VOCABULARY = `# Compact API — inline l
 
 Each slide is rendered on a **1920×1080** canvas. Use large presentation typography, fill the canvas, and center content vertically with flex plus generous padding (64–96px).
 
-Do not invent one identical white box for every slide. Pick the closest layout below and vary **background color**, **padding**, **composition**, and **density** across slides (alternate light/dark surfaces — never 3+ identical slides in a row). A good Teamver deck should look like a designed presentation, not a web article split into full-screen rows.
+Do not invent one identical white box for every slide. Pick the closest layout below and vary **background color**, **padding**, **composition**, and **density** across slides (alternate light/dark surfaces — never 3+ identical slides in a row). A good deck should look like a designed presentation, not a web article split into full-screen rows.
 
 **Cover** — big title + one lead line:
 \`<section class="slide" style="min-height:100vh;padding:96px 88px;background:#0f172a;color:#f8fafc;display:flex;flex-direction:column;justify-content:center"><p style="font:600 18px sans-serif;letter-spacing:.08em">컨텍스트</p><h1 style="font:700 72px/1.05 serif">실제 헤드라인</h1><p style="font:28px/1.45 sans-serif">한 줄 리드.</p></section>\`

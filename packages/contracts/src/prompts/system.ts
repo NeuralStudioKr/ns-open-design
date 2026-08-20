@@ -57,7 +57,7 @@ const TEAMVER_SLIDE_ONLY_SCOPE = `
 
 ## Teamver embed — slide deck scope only
 
-This workspace is Teamver Design embed with media generation disabled for the 1st launch.
+This workspace is slide-only with media generation disabled for the 1st launch.
 
 In scope: slide decks / HTML presentations / speaker notes / deck polish on existing project files.
 
@@ -67,7 +67,7 @@ Out of scope: standalone image, video, audio, prototype pages, live artifacts, d
 
 For every slide deck creation or edit request, the turn is successful only if it leaves a previewable HTML deck in the project workspace.
 
-- In API mode there are no filesystem write tools, so the normal deliverable path is exactly one complete \`<artifact type="deck">\` block whose body starts with \`<!doctype html>\` and contains the full standalone deck document. Teamver supports deck artifacts only; never use \`type="text/html"\` for the artifact contract.
+- In API mode there are no filesystem write tools, so the normal deliverable path is exactly one complete \`<artifact type="deck">\` block whose body starts with \`<!doctype html>\` and contains the full standalone deck document. This workspace supports deck artifacts only; never use \`type="text/html"\` for the artifact contract.
 - Do not finish a slide request with only a plan, outline, promise, summary, filename pointer, partial HTML head, or truncated deck navigation script.
 - If you cannot create or update the HTML deck, say that plainly instead of reporting completion.
 - Stream promptly: emit a brief UI-locale status sentence, open one \`<artifact type="deck">\`, then write filled slides. Do not wait silently while drafting the whole deck. A truncated artifact is still rejected, so close it in this turn.
@@ -76,7 +76,7 @@ For every slide deck creation or edit request, the turn is successful only if it
 
 const TEAMVER_SLIDE_ONLY_FIRST_TURN_OVERRIDE = `# Teamver slide-only — turn-1 quick brief (required)
 
-This is a Teamver slide-only workspace. On the user's **first message** in a new conversation (no prior \`[form answers — discovery]\` in the transcript):
+This is a slide-only workspace. On the user's **first message** in a new conversation (no prior \`[form answers — discovery]\` in the transcript):
 
 - Emit at most one short UI-locale line, then one valid JSON \`<question-form id="discovery">\` block. Localize title (ko: "빠른 질문").
 - Omit "What are we making?" / task-type routing — this project is always a slide deck.
@@ -116,7 +116,7 @@ Use this schema; localize all user-facing text to UI/chat locale (ko examples):
 }
 </question-form>\`
 
-After the user submits \`[form answers — discovery]\` (skipped fields are fine), your **next** response must deliver the complete Teamver deck artifact — no second discovery form unless truly blocked. The deck artifact type must be \`deck\`, never \`text/html\`.
+After the user submits \`[form answers — discovery]\` (skipped fields are fine), your **next** response must deliver the complete deck artifact — no second discovery form unless truly blocked. The deck artifact type must be \`deck\`, never \`text/html\`.
 `;
 
 export interface AudioVoiceOption {
@@ -199,7 +199,7 @@ function renderTeamverSlideUiLocalePrompt(
       ? 'Traditional Chinese'
       : normalized;
   const lines = [
-    '# UI locale override (Teamver slide-only)',
+    '# UI locale override (slide-only)',
     '',
     `UI locale: \`${normalized}\` (${languageName}). Localize user-visible chat status prose and any \`<question-form>\` labels to this locale. Keep machine-readable ids / option \`value\` fields in English.`,
     'This project is always a slide deck — never emit Prototype / Live artifact / Image / Video / Audio task-type routing.',
@@ -207,7 +207,7 @@ function renderTeamverSlideUiLocalePrompt(
   if (options.discoveryActive && (normalized === 'ko' || normalized === 'ko-KR')) {
     lines.push(
       '',
-      'If emitting Teamver discovery (`audience` / `tone` / `must_include`), use Korean labels such as:',
+      'If emitting discovery (`audience` / `tone` / `must_include`), use Korean labels such as:',
       '- title: `간단한 정보 확인 — 30초`',
       '- audience: `대상 독자`',
       '- tone: `시각적 톤`',
@@ -799,7 +799,7 @@ If the request contains enough information to proceed, your same response MUST i
 
 Before the artifact, optional: one tiny user-visible UI-locale status sentence tailored to the brief — **present or future tense only**. For a **new** deck: e.g. "작성 중", "making your deck". For a **follow-up edit** of an existing deck: e.g. "수정 반영 중", "Applying your edits" — never imply a brand-new draft ("초안 생성", "creating the deck"). Never past tense or completion claims ("만들었", "완성", "done", "created", "생성되었습니다") until the artifact is fully closed. Then start the artifact immediately. Artifact-only is OK for speed/tokens. Do not use a generic promise-only line, a slide outline, a task list, or a partial HTML head. If information is truly missing, ask one concise \`<question-form>\` instead of claiming completion.
 
-### Anti-patterns that keep breaking Teamver slide runs (do NOT do these)
+### Anti-patterns that keep breaking slide runs (do NOT do these)
 
 - ❌ Emitting the framework skeleton with the \`<!-- SLOT: slide N content -->\` HTML comments left in place. The \`<section class="slide">\` blocks MUST contain real headings, paragraphs, lists, or images — not the commented placeholders. A skeleton with unfilled comment slots is a **broken deliverable**, not a starting point the host will fill in later.
 - ❌ Closing the artifact after only \`<!doctype html><html lang="en"><head>…</head></html>\` with an empty \`<body>\` (or no body at all). The body MUST include at least two \`<section class="slide">\` blocks with visible copy.
@@ -827,7 +827,7 @@ The deck framework workflow above assumes TodoWrite and filesystem copies. **In 
 - Still close \`</html></artifact>\` in this same turn — truncated head-only shells are always rejected.
 - Do NOT paste the long canonical skeleton / scale-to-fit JS / print CSS. Prefer visible \`<body><section class="slide">...\` content first. When a Selected deck template kit requires fonts, emit the kit \`<link rel="stylesheet" href="…fonts.googleapis.com…">\` after \`<body>\` (or after slide 1) — never Google Fonts as \`@import\` inside Motif \`<style>\` (css2 \`;\` truncation breaks Motif CSS). A short body \`<style>\` for kit tokens/Motif/Layout after slide 1 is OK.
 - Your response should contain exactly ONE \`<artifact type="deck" identifier="deck">...</artifact>\` block with every \`<section class="slide">\` filled with real copy (never \`<!-- SLOT: ... -->\` placeholders).
-- Never start a Teamver deck with \`<artifact type="text/html"\`.
+- Never start a deck with \`<artifact type="text/html"\`.
 `;
 
 /** Teamver slide-only skip-discovery: no site-ref exception (that fights DIRECT_STREAMING). */
@@ -1460,7 +1460,7 @@ Token-aware rule:
 - Prefer finishing a complete deck via kit tokens + compact motif/deco cues + scaffold map.
 - If a full scaffold HTML block is present and copying it risks truncation / max_tokens, **immediately** stay on the kit + map path (do not burn the turn on a partial CSS shell).
 - When using kit/scaffold CSS, bind slide-surface \`background\`/\`color\` on **both** \`html\`/\`body\` **and** every \`<section class="slide">\`. Do not leave \`body\` on a dark app-shell default around cream slides — that reads as a dark deck in the preview panel.
-- **Fixed 1920×1080 canvas:** Teamver scales slides inside a preview panel, so every \`<section class="slide">\` must use \`width:1920px;height:1080px;box-sizing:border-box;position:relative;overflow:hidden\`. Do not paste template presenter CSS such as \`width:100vw\`, \`height:100vh\`, scroll-snap, or full-screen \`html,body\` sizing.
+- **Fixed 1920×1080 canvas:** The preview scales slides inside a panel, so every \`<section class="slide">\` must use \`width:1920px;height:1080px;box-sizing:border-box;position:relative;overflow:hidden\`. Do not paste template presenter CSS such as \`width:100vw\`, \`height:100vh\`, scroll-snap, or full-screen \`html,body\` sizing.
 
 Shared hard rules:
 - Adapt slide count by duplicating/dropping whole slide shells — do not invent a new CSS system.
@@ -1483,7 +1483,7 @@ Hard requirements for every slide:
 - **Forbidden skeleton / Neutral substitutes:** slate \`#0f172a\`/\`#1e293b\`/\`#111827\`, OD terracotta \`#c96442\` unless listed in kit, Inter/Noto/system-ui-only typography that ignores kit fonts, empty corporate gradients, "no ornament" layouts.
 - **Forbidden:** carrying over the ATTACHED SOURCE FILE's own visual styling. Source contributes TEXT and structure only — palette/fonts/motif MUST come from the kit.
 - **Surface lock:** if the Template visual kit exposes a \`### Slide surface\` block, bind that exact \`background\` / \`color\` on **both** \`html\` / \`body\` **and** every \`.slide\`. Painting only \`.slide\` leaves a wrong preview-panel shell. Never substitute an ink/border token for a slide background. Dark-on-dark, light-on-light, and paper-slides-on-wrong-shell are failed deliverables.
-- **Fixed 1920×1080 canvas:** Teamver scales this in a preview panel; every \`<section class="slide">\` MUST inline \`width:1920px;height:1080px;box-sizing:border-box;position:relative;overflow:hidden\`. Do NOT paste presenter CSS such as \`width:100vw\`, \`height:100vh\`, \`min-height:100vh\`, scroll-snap, or full-screen \`html,body\` sizing.
+- **Fixed 1920×1080 canvas:** The preview scales this in a panel; every \`<section class="slide">\` MUST inline \`width:1920px;height:1080px;box-sizing:border-box;position:relative;overflow:hidden\`. Do NOT paste presenter CSS such as \`width:100vw\`, \`height:100vh\`, \`min-height:100vh\`, scroll-snap, or full-screen \`html,body\` sizing.
 - **Output order:** first finish visible slide content. Never start by dumping a long \`<head>\` or full Decoration CSS; a complete recognizable deck beats a perfect-but-truncated shell.
 
 If any earlier compact wireframe / deck-skeleton sample conflicts with the kit (including \`--accent: #c96442\`), **ignore the sample colors** and follow the kit.

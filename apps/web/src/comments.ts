@@ -928,7 +928,7 @@ export function visualMarkPlacementGuidance(
   const pos = normalizePosition(position);
   return [
     'Preserve the current slide HTML from disk; do not redesign unrelated layout.',
-    `Place the requested icon/shape inside the marked box at x=${pos.x} y=${pos.y} ${pos.width}x${pos.height} (slide canvas pixels; Teamver decks are 1920×1080).`,
+    `Place the requested icon/shape inside the marked box at x=${pos.x} y=${pos.y} ${pos.width}x${pos.height} (slide canvas pixels; decks are 1920×1080).`,
     `Wrap the new markup in a container with style="${formatVisualMarkPlacementStyle(position)}" inside a position:relative slide root.`,
     'Size the icon/SVG to fill that box (width/height 100% or matching px).',
   ].join(' ');

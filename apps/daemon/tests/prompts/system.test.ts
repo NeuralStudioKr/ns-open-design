@@ -498,6 +498,8 @@ describe('composeSystemPrompt', () => {
       });
 
       expect(prompt).toContain('Teamver embed — slide deck scope only');
+      expect(prompt).toContain('this workspace currently supports **slides only**');
+      expect(prompt).not.toContain('Teamver Design');
       expect(prompt).not.toContain('## Media generation (if asked)');
     });
 

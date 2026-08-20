@@ -46,6 +46,10 @@ export function teamverEmbedOverrides(
   // Project edit surface — strip OD product name from composer placeholders.
   overrides["chat.activeFilePlaceholder"] = "슬라이드 {file} 변경 요청…";
   overrides["chat.startTitle"] = "슬라이드 작업 시작";
+  overrides["chat.mode.design.solves"] =
+    "파일 생성, 워크스페이스 업데이트, 브리프를 슬라이드 결과물로 바꿀 때 사용합니다.";
+  overrides["chat.amrCard.switchBody"] =
+    "공식 AMR 모델 서비스로 전환하세요 — API 키 설정이 필요 없습니다. 로그인·인증·충전 후 이 작업이 자동으로 재시도됩니다.";
   overrides["fileViewer.loading"] = "슬라이드 미리보기 불러오는 중…";
   overrides["fileViewer.updatingPreview"] = "슬라이드 업데이트 반영 중…";
   overrides["chat.annotationSending"] = "채팅에 보내는 중…";

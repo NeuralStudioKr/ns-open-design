@@ -33,6 +33,11 @@ describe("teamver embed locale", () => {
     });
     expect(overrides["chat.activeFilePlaceholder"]).toBe("슬라이드 {file} 변경 요청…");
     expect(overrides["chat.startTitle"]).toBe("슬라이드 작업 시작");
+    expect(overrides["chat.mode.design.solves"]).toContain("슬라이드 결과물");
+    expect(overrides["chat.mode.design.solves"]).not.toContain("Open Design");
+    expect(overrides["chat.amrCard.switchBody"]).toContain("공식 AMR");
+    expect(overrides["chat.amrCard.switchBody"]).not.toContain("Open Design");
+    expect(overrides["chat.amrCard.switchBody"]).not.toContain("teamver Slide");
     expect(overrides["fileViewer.loading"]).toBe("슬라이드 미리보기 불러오는 중…");
     expect(overrides["fileViewer.updatingPreview"]).toBe("슬라이드 업데이트 반영 중…");
     expect(overrides["common.loading"]).toBe("불러오는 중…");

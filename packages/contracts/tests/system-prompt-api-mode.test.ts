@@ -143,6 +143,8 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).not.toContain('Open Design UI locale');
       expect(prompt).not.toContain('teamver Slide currently supports');
       expect(prompt).not.toContain('teamver Slide embed');
+      expect(prompt).not.toContain('Teamver Design');
+      expect(prompt).toContain('This workspace is slide-only');
       expect(prompt).toContain('turn-1 quick brief');
       expect(prompt).toContain('UI-locale line');
       expect(prompt).toContain('Localize title');
@@ -160,7 +162,7 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).toContain('Stream promptly');
       expect(prompt).toContain('Do not wait silently');
       expect(prompt).toContain('Artifact-only is OK for speed/tokens');
-      expect(prompt).toContain('Never start a Teamver deck with `<artifact type="text/html"`');
+      expect(prompt).toContain('Never start a deck with `<artifact type="text/html"`');
       expect(prompt).not.toContain('Never open `<artifact type="deck">` until the complete deck is ready');
       expect(prompt).toContain('Teamver API — deck framework emission override');
       expect(prompt).toContain('API compact contract');

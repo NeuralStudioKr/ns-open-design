@@ -159,14 +159,14 @@ export const CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION =
   SLIDE_DECK_CONTENT_EXPANSION_INSTRUCTION + " " +
   SLIDE_DECK_CONTENT_EXPANSION_EXAMPLE + " " +
   "When source material is attached, expand its headings into presentation-ready copy — do not paste the user instruction or a heading list as the only body text. " +
-  "Emit ONE complete Teamver deck in this same response: " +
+  "Emit ONE complete deck in this same response: " +
   "`<artifact type=\"deck\" identifier=\"deck\">` with one filled `<section class=\"slide\">` per requested slide count " +
   `(see Plugin inputs slideCount / user brief; ${COMPACT_DECK_SLIDE_COUNT_GUIDANCE}), ` +
   "body-first: start the artifact body as `<!doctype html><html lang=\"ko\"><body><section class=\"slide\" ...>`; " +
   "do not emit `<head>`, `<title>`, meta tags, or a long style prelude before slide 1. " +
-  "Include no OD framework chrome/nav/print scaffolding. " +
+  "Include no host framework chrome/nav/print scaffolding. " +
   "Each slide must be a fixed 1920×1080 canvas (`width:1920px;height:1080px;box-sizing:border-box;position:relative;overflow:hidden`) " +
-  "so Teamver can scale the whole slide; do not size core typography or layout with viewport units that reflow by panel size. " +
+  "so the preview can scale the whole slide; do not size core typography or layout with viewport units that reflow by panel size. " +
   "Do not finish with prose only and do not stop before `</artifact>`.";
 
 /**
@@ -187,14 +187,14 @@ export const HOME_CREATE_SLIDES_INTERNAL_INSTRUCTION =
   SLIDE_DECK_QUALITY_BAR_INSTRUCTION + " " +
   SLIDE_DECK_CONTENT_EXPANSION_INSTRUCTION + " " +
   SLIDE_DECK_CONTENT_EXPANSION_EXAMPLE + " " +
-  "Emit ONE complete Teamver deck in this same response: " +
+  "Emit ONE complete deck in this same response: " +
   "`<artifact type=\"deck\" identifier=\"deck\">` with one filled `<section class=\"slide\">` per requested slide count " +
   `(see Plugin inputs slideCount / user brief; ${COMPACT_DECK_SLIDE_COUNT_GUIDANCE}), ` +
   "body-first: start the artifact body as `<!doctype html><html lang=\"ko\"><body><section class=\"slide\" ...>`; " +
   "do not emit `<head>`, `<title>`, meta tags, or a long style prelude before slide 1. " +
-  "Include no OD framework chrome/nav/print scaffolding. " +
+  "Include no host framework chrome/nav/print scaffolding. " +
   "Each slide must be a fixed 1920×1080 canvas (`width:1920px;height:1080px;box-sizing:border-box;position:relative;overflow:hidden`) " +
-  "so Teamver can scale the whole slide; do not size core typography or layout with viewport units that reflow by panel size. " +
+  "so the preview can scale the whole slide; do not size core typography or layout with viewport units that reflow by panel size. " +
   "Do not finish with prose only and do not stop before `</artifact>`.";
 
 export function resolveCreateSlidesInternalInstruction(hasSourceMaterial: boolean): string {
