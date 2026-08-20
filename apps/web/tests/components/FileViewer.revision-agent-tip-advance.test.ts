@@ -249,9 +249,11 @@ describe('FileViewer revision tip advance after undo', () => {
     expect(fileViewer).toContain('shouldSkipOdEditTargetsIdentityMixedReseedDuringTipRemount');
     expect(fileViewer).toContain('withPreservedTipSyncedStylesOnBridgeTarget');
     expect(fileViewer).toContain('resolveTipSyncedStylesForOdEditTargetsPreserve');
+    expect(fileViewer).toContain('withPreservedTipSyncedIdentityOnBridgeTarget');
+    expect(fileViewer).toContain('resolveTipSyncedTargetForOdEditTargetsPreserve');
     expect(fileViewer).toContain('manualEditTargetsRef');
     expect(fileViewer).toContain('skipIdentityMixedReseed');
-    expect(fileViewer).toContain('Tip-remount: preserve tip-synced styles on the selected set');
+    expect(fileViewer).toContain('Tip-remount: preserve tip-synced identity on the selected set');
     expect(fileViewer).toContain('skip identity-only churn');
     expect(fileViewer).toContain('nextTipRemountIdentityHoldUntilMs');
     expect(fileViewer).toContain('manualEditTipRemountIdentityHoldUntilRef');

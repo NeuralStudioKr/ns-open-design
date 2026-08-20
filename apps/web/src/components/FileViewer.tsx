@@ -349,6 +349,8 @@ import {
   shouldSkipOdEditTargetsIdentityMixedReseedDuringTipRemount,
   withPreservedTipSyncedStylesOnBridgeTarget,
   resolveTipSyncedStylesForOdEditTargetsPreserve,
+  withPreservedTipSyncedIdentityOnBridgeTarget,
+  resolveTipSyncedTargetForOdEditTargetsPreserve,
   nextTipRemountIdentityHoldUntilMs,
   shouldArmTipRemountIdentityHoldOnGraceClear,
   shouldPreserveTipSyncedStylesOnOdEditTargets,
@@ -9808,14 +9810,14 @@ function HtmlViewer({
           selectionIdsChangedEarly,
         );
         // Tip-remount: fingerprint the catalog we will store (preserved tip
-        // styles), not raw bridge — latch must match React state (468).
+        // identity), not raw bridge — latch must match React state (468/470).
         const priorCatalogForPreserve = manualEditTargetsRef.current;
         const nextCatalogTargets = tipRemountActive
           ? data.targets.map((target) => {
             if (!selectedIdsForPreserve.includes(target.id)) return target;
-            return withPreservedTipSyncedStylesOnBridgeTarget(
+            return withPreservedTipSyncedIdentityOnBridgeTarget(
               target,
-              resolveTipSyncedStylesForOdEditTargetsPreserve(
+              resolveTipSyncedTargetForOdEditTargetsPreserve(
                 target.id,
                 selectedManualEditTargetRef.current,
                 priorCatalogForPreserve,
@@ -9878,13 +9880,13 @@ function HtmlViewer({
         const selectedNextRaw = selectedIdBefore
           ? data.targets.find((target) => target.id === selectedIdBefore) ?? null
           : null;
-        // Tip-remount: keep tip-synced styles on the selected target — bridge
-        // live styles would flip identity fingerprint / Mixed (466/467).
+        // Tip-remount: keep tip-synced identity on the selected target — bridge
+        // live styles / empty outerHtml would flip fingerprint / Mixed (466/470).
         const selectedNext = selectedNextRaw && tipRemountActive
           && selectedManualEditTargetRef.current?.id === selectedNextRaw.id
-          ? withPreservedTipSyncedStylesOnBridgeTarget(
+          ? withPreservedTipSyncedIdentityOnBridgeTarget(
             selectedNextRaw,
-            selectedManualEditTargetRef.current.styles,
+            selectedManualEditTargetRef.current,
           )
           : selectedNextRaw;
         if (selectedNext) {
@@ -9915,11 +9917,11 @@ function HtmlViewer({
         const currentIds = selectedManualEditTargetIdsRef.current;
         if (currentIds.length > 0) {
           const refreshedRaw = resolveManualEditTargetsByIds(currentIds, data.targets);
-          // Tip-remount: preserve tip-synced styles on the selected set (467).
+          // Tip-remount: preserve tip-synced identity on the selected set (467/470).
           const refreshed = tipRemountActive
-            ? refreshedRaw.map((item) => withPreservedTipSyncedStylesOnBridgeTarget(
+            ? refreshedRaw.map((item) => withPreservedTipSyncedIdentityOnBridgeTarget(
               item,
-              resolveTipSyncedStylesForOdEditTargetsPreserve(
+              resolveTipSyncedTargetForOdEditTargetsPreserve(
                 item.id,
                 selectedManualEditTargetRef.current,
                 manualEditTargetsRef.current,

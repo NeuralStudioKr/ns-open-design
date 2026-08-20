@@ -627,6 +627,59 @@ export function resolveTipSyncedStylesForOdEditTargetsPreserve<T extends {
 }
 
 /**
+ * Tip target for od-edit-targets identity preserve: primary ref first, then
+ * prior catalog (470).
+ */
+export function resolveTipSyncedTargetForOdEditTargetsPreserve<T extends {
+  id: string;
+}>(
+  targetId: string,
+  primary: T | null | undefined,
+  priorCatalog: readonly T[],
+): T | undefined {
+  if (primary?.id === targetId) return primary;
+  return priorCatalog.find((item) => item.id === targetId);
+}
+
+/**
+ * Preserve tip-synced identity on a bridge target (text/fields/outerHtml/
+ * className/styles/…) while keeping bridge geometry. Bridge catalogs often
+ * send `outerHtml: ''`, which flips fingerprint after styles-only preserve (470).
+ */
+export function withPreservedTipSyncedIdentityOnBridgeTarget<T extends {
+  styles: unknown;
+  kind: unknown;
+  label: unknown;
+  tagName: unknown;
+  className: unknown;
+  text: unknown;
+  fields: unknown;
+  attributes: unknown;
+  isLayoutContainer: unknown;
+  isHidden?: unknown;
+  outerHtml: unknown;
+}>(
+  bridge: T,
+  tip: T | null | undefined,
+): T {
+  if (!tip) return bridge;
+  return {
+    ...bridge,
+    kind: tip.kind,
+    label: tip.label,
+    tagName: tip.tagName,
+    className: tip.className,
+    text: tip.text,
+    fields: tip.fields,
+    attributes: tip.attributes,
+    styles: tip.styles,
+    isLayoutContainer: tip.isLayoutContainer,
+    isHidden: tip.isHidden,
+    outerHtml: tip.outerHtml,
+  };
+}
+
+/**
  * After multi tip remasure, refresh host scale/offset + geom epoch so union
  * chrome compose and live measureHostRect stay aligned (461).
  */

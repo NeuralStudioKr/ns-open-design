@@ -23,6 +23,8 @@ import {
   shouldSkipOdEditTargetsIdentityMixedReseedDuringTipRemount,
   withPreservedTipSyncedStylesOnBridgeTarget,
   resolveTipSyncedStylesForOdEditTargetsPreserve,
+  withPreservedTipSyncedIdentityOnBridgeTarget,
+  resolveTipSyncedTargetForOdEditTargetsPreserve,
   nextTipRemountIdentityHoldUntilMs,
   shouldArmTipRemountIdentityHoldOnGraceClear,
   shouldPreserveTipSyncedStylesOnOdEditTargets,
@@ -416,5 +418,43 @@ describe('manual edit freeze reset', () => {
       color: 'catalog-b',
     });
     expect(resolveTipSyncedStylesForOdEditTargetsPreserve('c', primary, catalog)).toBeUndefined();
+  });
+
+  it('preserves tip-synced identity fields on bridge targets (470)', () => {
+    const bridge = {
+      id: 'a',
+      kind: 'text' as const,
+      label: 'bridge',
+      tagName: 'P',
+      className: 'live',
+      text: 'live',
+      fields: { href: '', src: '', alt: '' },
+      attributes: {},
+      styles: { color: 'red' },
+      isLayoutContainer: false,
+      outerHtml: '',
+      rect: { x: 1, y: 2, width: 3, height: 4 },
+    };
+    const tip = {
+      ...bridge,
+      label: 'tip',
+      className: 'tip-class',
+      text: 'tip text',
+      styles: { color: 'blue' },
+      outerHtml: '<p class="tip-class">tip text</p>',
+      rect: { x: 9, y: 9, width: 9, height: 9 },
+    };
+    const merged = withPreservedTipSyncedIdentityOnBridgeTarget(bridge, tip);
+    expect(merged.outerHtml).toBe(tip.outerHtml);
+    expect(merged.text).toBe('tip text');
+    expect(merged.className).toBe('tip-class');
+    expect(merged.styles).toEqual({ color: 'blue' });
+    // Bridge geometry wins.
+    expect(merged.rect).toEqual(bridge.rect);
+    expect(withPreservedTipSyncedIdentityOnBridgeTarget(bridge, null)).toBe(bridge);
+
+    const catalog = [tip, { ...tip, id: 'b', outerHtml: '<b/>' }];
+    expect(resolveTipSyncedTargetForOdEditTargetsPreserve('a', tip, catalog)).toBe(tip);
+    expect(resolveTipSyncedTargetForOdEditTargetsPreserve('b', tip, catalog)?.outerHtml).toBe('<b/>');
   });
 });
