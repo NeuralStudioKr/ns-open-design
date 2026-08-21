@@ -294,30 +294,64 @@ const DECK_SLIDE_ORPHAN_ATTR_TAIL_RE =
   /-index\s*=\s*["']\d+["']\s+style\s*=\s*["'][\s\S]*?(?:>[\s\S]*)?$/i;
 const DECK_ORPHAN_STYLE_CLOSE_TAIL_RE =
   /\s+[\d.]+(?:px|em|rem|%|vh|vw)(?:\/[\d.]+)?">[\s\S]*$/i;
+/**
+ * Trailing styled inline chrome. Nested quotes inside `style="font-family:'X'"`
+ * must NOT use `[^"']*` (that stops at the first inner quote).
+ */
 const DECK_TRAILING_INLINE_MARKUP_RE =
-  /(?:\n|^)\s*<(?:p|span|div)\b[^>]*style\s*=\s*["'][^"']*(?:font|letter-spacing|margin|text-transform)[^"']*["'][^>]*>[\s\S]*$/i;
+  /(?:\n|^)\s*<(?:p|span|div|strong|em|b|i|button|label)\b[^>]*\bstyle\s*=\s*["'][\s\S]*?(?:font|letter-spacing|margin|text-transform|display\s*:\s*flex)[\s\S]*$/i;
 const DECK_TRAILING_HEADING_MARKUP_RE =
   /(?:\n|^)\s*<h[1-6]\b[^>]*(?:style\s*=)?[^>]*>[\s\S]*$/i;
 const DECK_MOTIF_ABSOLUTE_DIV_TAIL_RE =
-  /<(?:div|span)\b[^>]*\bstyle\s*=\s*["'][\s\S]*?position\s*:\s*absolute[\s\S]*$/i;
+  /<(?:div|span|header|footer|nav|img|aside)\b[^>]*\bstyle\s*=\s*["'][\s\S]*?position\s*:\s*(?:absolute|fixed)[\s\S]*$/i;
 const DECK_MOTIF_PILL_RADIUS_TAIL_RE =
-  /<(?:div|span)\b[^>]*\bstyle\s*=\s*["'][\s\S]*?border-radius\s*:\s*9999px[\s\S]*$/i;
+  /<(?:div|span|button)\b[^>]*\bstyle\s*=\s*["'][\s\S]*?border-radius\s*:\s*9999px[\s\S]*$/i;
 /**
  * Daisy / Quicksand badge pills (`border-radius:20px` + box-shadow / font-family)
  * — not covered by the Capsule `9999px` pill pattern.
  */
 const DECK_MOTIF_STYLED_BADGE_TAIL_RE =
-  /<(?:div|span)\b[^>]*\bstyle\s*=\s*["'][\s\S]*?border-radius\s*:\s*\d+px[\s\S]*?(?:box-shadow|font-family|font-weight|padding)\s*:[\s\S]*$/i;
+  /<(?:div|span|button)\b[^>]*\bstyle\s*=\s*["'][\s\S]*?border-radius\s*:\s*\d+px[\s\S]*?(?:box-shadow|font-family|font-weight|padding)\s*:[\s\S]*$/i;
 /**
  * Deck eyebrow / hero typography chrome (`font-family` + letter-spacing /
  * text-transform / large display size) without border-radius — user report
  * 2026-08-20 reload leak (`Barlow` + `Engineering Deep Dive`).
  */
 const DECK_MOTIF_STYLED_TYPOGRAPHY_TAIL_RE =
-  /<(?:div|span)\b[^>]*\bstyle\s*=\s*["'][\s\S]*?font-family\s*:[\s\S]*?(?:letter-spacing|text-transform|font-size\s*:\s*\d{2,}px|font-weight\s*:\s*(?:[5-9]00|bold))[\s\S]*$/i;
+  /<(?:div|span|strong|em|b|p|h[1-6]|button|label)\b[^>]*\bstyle\s*=\s*["'][\s\S]*?font-family\s*:[\s\S]*?(?:letter-spacing|text-transform|font-size\s*:\s*\d{2,}px|font-weight\s*:\s*(?:[5-9]00|bold))[\s\S]*$/i;
 /** Orphan `</div><div style="flex:…">` layout shells after the opener was cut. */
 const DECK_ORPHAN_FLEX_LAYOUT_DIV_TAIL_RE =
   /<\/div>\s*<div\b[^>]*\bstyle\s*=\s*["'][\s\S]*?(?:display\s*:\s*flex|flex\s*:|flex-direction|justify-content|gap\s*:)[\s\S]*$/i;
+/** Standalone flex/grid layout shells (no preceding `</div>` required). */
+const DECK_FLEX_OR_GRID_LAYOUT_TAIL_RE =
+  /<(?:div|section|header|footer|nav|main|article)\b[^>]*\bstyle\s*=\s*["'][\s\S]*?(?:display\s*:\s*(?:flex|grid)|flex-direction|grid-template|justify-content|align-items|gap\s*:\s*\d)[\s\S]*$/i;
+/** Full-bleed 1920×1080 slide frame without `class="slide"`. */
+const DECK_FULL_FRAME_SIZE_TAIL_RE =
+  /<(?:section|div|main|article)\b[^>]*\bstyle\s*=\s*["'][\s\S]*?(?:width\s*:\s*1920px|height\s*:\s*1080px)[\s\S]*$/i;
+/** `data-deck-*` / `data-slide-*` chrome. */
+const DECK_DATA_ATTR_TAIL_RE =
+  /<(?:div|section|main|article)\b[^>]*\bdata-(?:deck|slide)[\w-]*\s*=/i;
+/** %-positioned deco shells (relative/absolute). */
+const DECK_POSITIONED_PCT_TAIL_RE =
+  /<(?:div|span)\b[^>]*\bstyle\s*=\s*["'][\s\S]*?(?:(?:top|right|bottom|left)\s*:\s*[\d.]+%|(?:transform\s*:\s*translate)|(?:position\s*:\s*(?:relative|absolute|fixed)[\s\S]*?(?:top|left|right|bottom|inset)\s*:))[\s\S]*$/i;
+/** Table / list chrome with inline styles. */
+const DECK_TABLE_OR_LIST_TAIL_RE =
+  /<(?:table|ul|ol)\b[^>]*\bstyle\s*=\s*["'][\s\S]*$/i;
+/** Deck `<img … style|motif.svg>`. */
+const DECK_IMG_TAIL_RE =
+  /<img\b[^>]*(?:\bstyle\s*=|src\s*=\s*["'][^"']*(?:motif|deco|\.svg))[\s\S]*$/i;
+/** Landmark chrome (`header`/`footer`/`nav`). */
+const DECK_CHROME_LANDMARK_TAIL_RE =
+  /<(?:header|footer|nav|aside)\b[^>]*\bstyle\s*=\s*["'][\s\S]*$/i;
+/** Trailing orphan close-tag stacks (`</div></div></section>`). */
+const DECK_ORPHAN_CLOSE_TAGS_TAIL_RE =
+  /(?:\n|^)\s*(?:<\/(?:div|span|section|header|footer|nav|aside|main|article|h[1-6]|p|ul|ol|li|table|tr|td|th|button)+>\s*)+\s*$/i;
+/** Mid-message CSS custom-property dumps (`--bg:#…;--fg:#…`). */
+const DECK_CSS_CUSTOM_PROP_DUMP_TAIL_RE =
+  /(?:\n|^)\s*(?:--[\w-]+\s*:\s*[^;\n]+;\s*){2,}[\s\S]*$/i;
+/** `<br>`-stacked hero titles ending in `</h1>` without a clean opener. */
+const DECK_BR_STACKED_HEADING_TAIL_RE =
+  /(?:\n|^)[^\n]*<br\b[\s\S]*?<\/h[1-6]>/i;
 const DECK_CARD_STYLE_DIV_TAIL_RE =
   /<(?:div|article)\b[^>]*\bclass\s*=\s*["'][^"']*\b(?:card|pill|chip|deco)[^"']*["'][^>]*\bstyle\s*=[\s\S]*$/i;
 const DECK_DECO_CLASS_TAIL_RE =
@@ -363,6 +397,22 @@ function isDeckSlidePartialTag(name: string, after: string): boolean {
   return tail.includes("slide") || tail.includes("data-slide");
 }
 
+/** Incomplete open tags for deck chrome left after mid-scrub (`<span style="`). */
+function isDeckChromePartialTag(name: string, after: string): boolean {
+  const lower = name.toLowerCase();
+  if (
+    !/^(?:div|span|section|header|footer|nav|aside|main|article|table|tr|td|th|ul|ol|li|img|button|strong|em|b|i|p|h[1-6]|figure|figcaption|label|a)$/.test(
+      lower,
+    )
+  ) {
+    return false;
+  }
+  return (
+    /\b(?:style|class|data-(?:slide|deck)|src|href)\s*=/i.test(after)
+    || /\b(?:style|class)\s*=\s*["']?\s*$/i.test(after)
+  );
+}
+
 function findTrailingSameLineDeckHtmlCut(line: string): number | null {
   const orphan = line.match(/^(.*?)(-index\s*=\s*["']\d+["']\s+style\s*=.*)$/i);
   if (orphan?.[1] !== undefined) return orphan[1].length;
@@ -374,14 +424,23 @@ function findTrailingSameLineDeckHtmlCut(line: string): number | null {
   if (open?.[1] !== undefined) return open[1].length;
   // Mid-word CSS join after Hangul/Latin: `슬라이드 추가 중ospace;font-size:…">Label</div>`
   // (`ospace` = truncated `monospace`). Keep the human prefix.
+  // NEVER cut intact `… style="font-family:…"` tags — that left `<span style="`
+  // residues that later scrapers could not match (2026-08-21 regression).
   const midCss = line.match(
     /^(.*?)((?:[a-z]{2,14};)?(?:[a-zA-Z-]+\s*:\s*[^;]*;){2,}[\s\S]*?["']\s*>[\s\S]*)$/i,
   );
   if (midCss?.[1] !== undefined && midCss[2]) {
     const prefix = midCss[1];
     const css = midCss[2];
+    const endsInStyleAttr = /\bstyle\s*=\s*["']\s*$/i.test(prefix);
+    const openTagPrefix = /<[a-z][\w:-]*\b[^>]*$/i.test(prefix);
+    const cjkGlue = /[\u3000-\u9fff\uac00-\ud7af]/u.test(prefix.slice(-12));
+    const midWordCssFrag = /^(?:[a-z]{2,14};)/i.test(css);
     if (
-      /(?:font-size|letter-spacing|text-transform|opacity|margin|font-family|line-height)\s*:/i.test(css)
+      !endsInStyleAttr
+      && !openTagPrefix
+      && (cjkGlue || midWordCssFrag)
+      && /(?:font-size|letter-spacing|text-transform|opacity|margin|font-family|line-height)\s*:/i.test(css)
       && /(?:<\/(?:div|span|p|h[1-6])>|<br\b)/i.test(css)
       && /[\p{L}\p{N}]/u.test(prefix.slice(-8))
     ) {
@@ -411,6 +470,16 @@ export function stripTrailingDeckHtmlMarkupLeak(input: string): string {
     DECK_MOTIF_STYLED_BADGE_TAIL_RE,
     DECK_MOTIF_STYLED_TYPOGRAPHY_TAIL_RE,
     DECK_ORPHAN_FLEX_LAYOUT_DIV_TAIL_RE,
+    DECK_FLEX_OR_GRID_LAYOUT_TAIL_RE,
+    DECK_FULL_FRAME_SIZE_TAIL_RE,
+    DECK_DATA_ATTR_TAIL_RE,
+    DECK_POSITIONED_PCT_TAIL_RE,
+    DECK_TABLE_OR_LIST_TAIL_RE,
+    DECK_IMG_TAIL_RE,
+    DECK_CHROME_LANDMARK_TAIL_RE,
+    DECK_ORPHAN_CLOSE_TAGS_TAIL_RE,
+    DECK_CSS_CUSTOM_PROP_DUMP_TAIL_RE,
+    DECK_BR_STACKED_HEADING_TAIL_RE,
     DECK_CARD_STYLE_DIV_TAIL_RE,
     DECK_DECO_CLASS_TAIL_RE,
     DECK_MOTIF_SVG_TAIL_RE,
@@ -1684,6 +1753,9 @@ export function stripIncompleteTrailingMarkupToken(input: string): string {
   if (isDeckSlidePartialTag(rawName, after)) {
     return input.slice(0, lt).trimEnd();
   }
+  if (isDeckChromePartialTag(rawName, after)) {
+    return input.slice(0, lt).trimEnd();
+  }
   return input;
 }
 
@@ -1766,6 +1838,9 @@ export function sanitizeAssistantProseForDisplay(
   // Never scrub inside preserved artifact bodies (live style tokens stay intact).
   text = stripLeakedCssCustomPropertyBlocksRespectingArtifacts(text, preservingArtifacts);
   text = stripTrailingDeckHtmlMarkupLeakRespectingArtifacts(text, preservingArtifacts);
+  // Final incomplete open-tag chop — catches residues like `<span style="`
+  // left by an earlier mid-line cut that no longer matches typography regexes.
+  text = stripIncompleteTrailingMarkupToken(text);
   // Absolute last pass: classic/minified click-nav and keydown advance must
   // never survive a dialect miss or partial open-form match.
   text = stripHardDeckNavJsFingerprints(text);
@@ -1833,9 +1908,27 @@ export function stripLeakedCssCustomPropertyBlocks(input: string): string {
     (block, offset) => (looksLikeLeakedCssCustomPropertyBlock(block) ? (offset > 0 ? "\n" : "") : block),
   );
   // Entire-message dump without a closing `}` yet (streaming / aborted style).
-  if (looksLikeLeakedCssCustomPropertyBlock(text) && !/<[a-z]|[가-힣]{4,}/i.test(text.replace(/:root|--[\w-]+|#[0-9A-Fa-f]+/gi, " "))) {
+  // Keep short Hangul/Latin prefixes (`초안.` / `Done.`) — only wipe when the
+  // residue after token/hex scrub has no real prose.
+  const residue = text
+    .replace(/:root|--[\w-]+|#[0-9A-Fa-f]+|var\([^)]*\)|[{};:,()\s]/gi, " ")
+    .trim();
+  if (
+    looksLikeLeakedCssCustomPropertyBlock(text)
+    && !/<[a-z]/i.test(text)
+    && !/[가-힣]{2,}/.test(residue)
+    && !/[A-Za-z]{3,}/.test(residue)
+  ) {
     return "";
   }
+  // Trailing / mid-message bare `--token:#hex;` dumps (no `:root{…}` wrapper).
+  text = text.replace(
+    /(?:\n|^)\s*(?:--[\w-]+\s*:\s*[^;\n]+;\s*){2,}[^\n]*/g,
+    (block, offset) => {
+      if (!looksLikeLeakedCssCustomPropertyBlock(block)) return block;
+      return offset > 0 ? "" : "";
+    },
+  );
   text = text.replace(/\n{3,}/g, "\n\n");
   // Do not trim — preserving a trailing `\n` before `<artifact` matters for
   // streaming/history equality and monotonic chat growth.

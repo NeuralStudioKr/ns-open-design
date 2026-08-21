@@ -154,6 +154,13 @@ describe("agent-prose-sanitize SSOT", () => {
       sanitizeAssistantProseForDisplay(`초안을 다듬는 중입니다.\n\n${frag}`),
     ).toBe("초안을 다듬는 중입니다.");
 
+    // Single-line last-line Barlow must not leave `<span style="` (midCss false cut).
+    expect(
+      sanitizeAssistantProseForDisplay(
+        `초안.\n\n<span style="font-family:'Barlow';font-size:14px;font-weight:700;letter-spacing:0.18em;text-transform:uppercase">Engineering Deep Dive</span>`,
+      ),
+    ).toBe("초안.");
+
     const midWord = [
       "슬라이드 추가 중ospace;font-size:13px;letter-spacing:0.14em;text-transform:uppercase;opacity:0.5;margin-bottom:18px\">Observability in Depth</div>",
     ].join("\n");
@@ -161,6 +168,55 @@ describe("agent-prose-sanitize SSOT", () => {
     expect(
       sanitizeAssistantProseForDisplay(`진행 중.\n${midWord}`),
     ).toBe("진행 중.\n슬라이드 추가 중");
+  });
+
+  it("strips deck chrome family matrix (flex/grid/landmarks/img/closers/vars)", () => {
+    expect(
+      sanitizeAssistantProseForDisplay(
+        `<div style="display:flex;flex-direction:column;gap:32px;justify-content:center">x</div>`,
+      ),
+    ).toBe("");
+    expect(
+      sanitizeAssistantProseForDisplay(
+        `<div style="display:grid;grid-template-columns:1fr 1fr;gap:24px">a</div>`,
+      ),
+    ).toBe("");
+    expect(
+      sanitizeAssistantProseForDisplay(
+        `<section style="width:1920px;height:1080px;background:#000">Hi</section>`,
+      ),
+    ).toBe("");
+    expect(
+      sanitizeAssistantProseForDisplay(`진행.\n</div></div></section>`),
+    ).toBe("진행.");
+    expect(
+      sanitizeAssistantProseForDisplay(
+        `요약.\n<table style="width:100%"><tr><td style="padding:24px">KPI</td></tr></table>`,
+      ),
+    ).toBe("요약.");
+    expect(
+      sanitizeAssistantProseForDisplay(
+        `참고.\n<img src="motif.svg" style="position:absolute;width:22%" />`,
+      ),
+    ).toBe("참고.");
+    expect(
+      sanitizeAssistantProseForDisplay(
+        `<footer style="position:absolute;bottom:48px;left:64px;font-size:14px">1 / 12</footer>`,
+      ),
+    ).toBe("");
+    expect(
+      sanitizeAssistantProseForDisplay(
+        `<header style="display:flex;justify-content:space-between;padding:32px">logo</header>`,
+      ),
+    ).toBe("");
+    expect(
+      sanitizeAssistantProseForDisplay(`초안.\n--bg:#0f172a;--fg:#fff;--accent:#c96442;`),
+    ).toBe("초안.");
+    expect(
+      sanitizeAssistantProseForDisplay(
+        `메모.\n<strong style="font-size:64px;letter-spacing:-2px">TITLE</strong>`,
+      ),
+    ).toBe("메모.");
   });
 
   it("strips Daisy SVG / deco-class shells leaked into chat", () => {

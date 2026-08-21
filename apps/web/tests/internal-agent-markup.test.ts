@@ -93,12 +93,40 @@ describe("internalAgentMarkup", () => {
     ].join("\n");
     const midWord =
       '슬라이드 추가 중ospace;font-size:13px;letter-spacing:0.14em;text-transform:uppercase;opacity:0.5;margin-bottom:18px">Observability in Depth</div>';
+    const singleBarlow =
+      `초안.\n\n<span style="font-family:'Barlow';font-size:14px;font-weight:700;letter-spacing:0.18em;text-transform:uppercase">Engineering Deep Dive</span>`;
     for (const streaming of [true, false]) {
       expect(
         sanitizeAssistantProseForDisplay(`초안을 다듬는 중입니다.\n\n${frag}`, { streaming }),
       ).toBe("초안을 다듬는 중입니다.");
       expect(sanitizeAssistantProseForDisplay(frag, { streaming }).trim()).toBe("");
       expect(sanitizeAssistantProseForDisplay(midWord, { streaming })).toBe("슬라이드 추가 중");
+      expect(sanitizeAssistantProseForDisplay(singleBarlow, { streaming })).toBe("초안.");
+    }
+  });
+
+  it("hard-strips deck chrome family via web last-pass (flex/landmarks/closers)", () => {
+    for (const streaming of [true, false]) {
+      expect(
+        sanitizeAssistantProseForDisplay(
+          `<div style="display:flex;flex-direction:column;gap:32px">x</div>`,
+          { streaming },
+        ),
+      ).toBe("");
+      expect(
+        sanitizeAssistantProseForDisplay(`진행.\n</div></div></section>`, { streaming }),
+      ).toBe("진행.");
+      expect(
+        sanitizeAssistantProseForDisplay(
+          `<footer style="position:absolute;bottom:48px;left:64px">1 / 12</footer>`,
+          { streaming },
+        ),
+      ).toBe("");
+      expect(
+        sanitizeAssistantProseForDisplay(`초안.\n--bg:#0f172a;--fg:#fff;--accent:#c96442;`, {
+          streaming,
+        }),
+      ).toBe("초안.");
     }
   });
 

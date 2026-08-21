@@ -15,21 +15,46 @@ import {
   sanitizeAssistantProseForDisplay as sanitizeAssistantProseForDisplayContracts,
   sanitizeLeakedAgentProse,
   stripHardDeckNavJsFingerprints,
+  stripIncompleteTrailingMarkupToken,
   type SanitizeAssistantProseOptions,
 } from "@open-design/contracts";
 
 const DECK_MOTIF_ABSOLUTE_DIV_TAIL_RE =
-  /<(?:div|span)\b[^>]*\bstyle\s*=\s*["'][\s\S]*?position\s*:\s*absolute[\s\S]*$/i;
+  /<(?:div|span|header|footer|nav|img|aside)\b[^>]*\bstyle\s*=\s*["'][\s\S]*?position\s*:\s*(?:absolute|fixed)[\s\S]*$/i;
 const DECK_MOTIF_PILL_RADIUS_TAIL_RE =
-  /<(?:div|span)\b[^>]*\bstyle\s*=\s*["'][\s\S]*?border-radius\s*:\s*9999px[\s\S]*$/i;
+  /<(?:div|span|button)\b[^>]*\bstyle\s*=\s*["'][\s\S]*?border-radius\s*:\s*9999px[\s\S]*$/i;
 /** Daisy badge pills (`border-radius:20px` + box-shadow / font-family). */
 const DECK_MOTIF_STYLED_BADGE_TAIL_RE =
-  /<(?:div|span)\b[^>]*\bstyle\s*=\s*["'][\s\S]*?border-radius\s*:\s*\d+px[\s\S]*?(?:box-shadow|font-family|font-weight|padding)\s*:[\s\S]*$/i;
+  /<(?:div|span|button)\b[^>]*\bstyle\s*=\s*["'][\s\S]*?border-radius\s*:\s*\d+px[\s\S]*?(?:box-shadow|font-family|font-weight|padding)\s*:[\s\S]*$/i;
 /** Eyebrow / hero typography chrome without border-radius (Barlow reload leak). */
 const DECK_MOTIF_STYLED_TYPOGRAPHY_TAIL_RE =
-  /<(?:div|span)\b[^>]*\bstyle\s*=\s*["'][\s\S]*?font-family\s*:[\s\S]*?(?:letter-spacing|text-transform|font-size\s*:\s*\d{2,}px|font-weight\s*:\s*(?:[5-9]00|bold))[\s\S]*$/i;
+  /<(?:div|span|strong|em|b|p|h[1-6]|button|label)\b[^>]*\bstyle\s*=\s*["'][\s\S]*?font-family\s*:[\s\S]*?(?:letter-spacing|text-transform|font-size\s*:\s*\d{2,}px|font-weight\s*:\s*(?:[5-9]00|bold))[\s\S]*$/i;
 const DECK_ORPHAN_FLEX_LAYOUT_DIV_TAIL_RE =
   /<\/div>\s*<div\b[^>]*\bstyle\s*=\s*["'][\s\S]*?(?:display\s*:\s*flex|flex\s*:|flex-direction|justify-content|gap\s*:)[\s\S]*$/i;
+const DECK_FLEX_OR_GRID_LAYOUT_TAIL_RE =
+  /<(?:div|section|header|footer|nav|main|article)\b[^>]*\bstyle\s*=\s*["'][\s\S]*?(?:display\s*:\s*(?:flex|grid)|flex-direction|grid-template|justify-content|align-items|gap\s*:\s*\d)[\s\S]*$/i;
+const DECK_FULL_FRAME_SIZE_TAIL_RE =
+  /<(?:section|div|main|article)\b[^>]*\bstyle\s*=\s*["'][\s\S]*?(?:width\s*:\s*1920px|height\s*:\s*1080px)[\s\S]*$/i;
+const DECK_DATA_ATTR_TAIL_RE =
+  /<(?:div|section|main|article)\b[^>]*\bdata-(?:deck|slide)[\w-]*\s*=/i;
+const DECK_POSITIONED_PCT_TAIL_RE =
+  /<(?:div|span)\b[^>]*\bstyle\s*=\s*["'][\s\S]*?(?:(?:top|right|bottom|left)\s*:\s*[\d.]+%|(?:transform\s*:\s*translate)|(?:position\s*:\s*(?:relative|absolute|fixed)[\s\S]*?(?:top|left|right|bottom|inset)\s*:))[\s\S]*$/i;
+const DECK_TABLE_OR_LIST_TAIL_RE =
+  /<(?:table|ul|ol)\b[^>]*\bstyle\s*=\s*["'][\s\S]*$/i;
+const DECK_IMG_TAIL_RE =
+  /<img\b[^>]*(?:\bstyle\s*=|src\s*=\s*["'][^"']*(?:motif|deco|\.svg))[\s\S]*$/i;
+const DECK_CHROME_LANDMARK_TAIL_RE =
+  /<(?:header|footer|nav|aside)\b[^>]*\bstyle\s*=\s*["'][\s\S]*$/i;
+const DECK_ORPHAN_CLOSE_TAGS_TAIL_RE =
+  /(?:\n|^)\s*(?:<\/(?:div|span|section|header|footer|nav|aside|main|article|h[1-6]|p|ul|ol|li|table|tr|td|th|button)+>\s*)+\s*$/i;
+const DECK_CSS_CUSTOM_PROP_DUMP_TAIL_RE =
+  /(?:\n|^)\s*(?:--[\w-]+\s*:\s*[^;\n]+;\s*){2,}[\s\S]*$/i;
+const DECK_BR_STACKED_HEADING_TAIL_RE =
+  /(?:\n|^)[^\n]*<br\b[\s\S]*?<\/h[1-6]>/i;
+const DECK_TRAILING_INLINE_MARKUP_RE =
+  /(?:\n|^)\s*<(?:p|span|div|strong|em|b|i|button|label)\b[^>]*\bstyle\s*=\s*["'][\s\S]*?(?:font|letter-spacing|margin|text-transform|display\s*:\s*flex)[\s\S]*$/i;
+const DECK_TRAILING_HEADING_MARKUP_RE =
+  /(?:\n|^)\s*<h[1-6]\b[^>]*(?:style\s*=)?[^>]*>[\s\S]*$/i;
 const DECK_CARD_STYLE_DIV_TAIL_RE =
   /<(?:div|article)\b[^>]*\bclass\s*=\s*["'][^"']*\b(?:card|pill|chip|deco)[^"']*["'][^>]*\bstyle\s*=[\s\S]*$/i;
 const DECK_DECO_CLASS_TAIL_RE =
@@ -74,14 +99,23 @@ function looksLikeLeakedDeckFrameworkCss(tail: string): boolean {
 }
 
 function findTrailingSameLineDeckHtmlCut(line: string): number | null {
+  // Same guards as contracts SSOT — never carve intact `style="…"` tags down
+  // to `<span style="` residues.
   const midCss = line.match(
     /^(.*?)((?:[a-z]{2,14};)?(?:[a-zA-Z-]+\s*:\s*[^;]*;){2,}[\s\S]*?["']\s*>[\s\S]*)$/i,
   );
   if (midCss?.[1] !== undefined && midCss[2]) {
     const prefix = midCss[1];
     const css = midCss[2];
+    const endsInStyleAttr = /\bstyle\s*=\s*["']\s*$/i.test(prefix);
+    const openTagPrefix = /<[a-z][\w:-]*\b[^>]*$/i.test(prefix);
+    const cjkGlue = /[\u3000-\u9fff\uac00-\ud7af]/u.test(prefix.slice(-12));
+    const midWordCssFrag = /^(?:[a-z]{2,14};)/i.test(css);
     if (
-      /(?:font-size|letter-spacing|text-transform|opacity|margin|font-family|line-height)\s*:/i.test(css)
+      !endsInStyleAttr
+      && !openTagPrefix
+      && (cjkGlue || midWordCssFrag)
+      && /(?:font-size|letter-spacing|text-transform|opacity|margin|font-family|line-height)\s*:/i.test(css)
       && /(?:<\/(?:div|span|p|h[1-6])>|<br\b)/i.test(css)
       && /[\p{L}\p{N}]/u.test(prefix.slice(-8))
     ) {
@@ -99,11 +133,23 @@ function stripLeakedDeckMotifHtmlTail(input: string): string {
   if (!input) return input;
   let cut: number | null = null;
   for (const re of [
+    DECK_TRAILING_HEADING_MARKUP_RE,
+    DECK_TRAILING_INLINE_MARKUP_RE,
     DECK_MOTIF_ABSOLUTE_DIV_TAIL_RE,
     DECK_MOTIF_PILL_RADIUS_TAIL_RE,
     DECK_MOTIF_STYLED_BADGE_TAIL_RE,
     DECK_MOTIF_STYLED_TYPOGRAPHY_TAIL_RE,
     DECK_ORPHAN_FLEX_LAYOUT_DIV_TAIL_RE,
+    DECK_FLEX_OR_GRID_LAYOUT_TAIL_RE,
+    DECK_FULL_FRAME_SIZE_TAIL_RE,
+    DECK_DATA_ATTR_TAIL_RE,
+    DECK_POSITIONED_PCT_TAIL_RE,
+    DECK_TABLE_OR_LIST_TAIL_RE,
+    DECK_IMG_TAIL_RE,
+    DECK_CHROME_LANDMARK_TAIL_RE,
+    DECK_ORPHAN_CLOSE_TAGS_TAIL_RE,
+    DECK_CSS_CUSTOM_PROP_DUMP_TAIL_RE,
+    DECK_BR_STACKED_HEADING_TAIL_RE,
     DECK_CARD_STYLE_DIV_TAIL_RE,
     DECK_DECO_CLASS_TAIL_RE,
     DECK_MOTIF_SVG_TAIL_RE,
@@ -193,9 +239,11 @@ export function sanitizeAssistantProseForDisplay(
   const fromContracts = sanitizeAssistantProseForDisplayContracts(input, options);
   const preservingArtifacts =
     options.streaming === true || options.preserveClosedArtifact === true;
-  return stripLeakedDeckMotifHtmlForDisplay(
-    stripHardDeckNavJsFingerprints(fromContracts),
-    preservingArtifacts,
+  return stripIncompleteTrailingMarkupToken(
+    stripLeakedDeckMotifHtmlForDisplay(
+      stripHardDeckNavJsFingerprints(fromContracts),
+      preservingArtifacts,
+    ),
   );
 }
 
@@ -215,4 +263,11 @@ export function stripInternalOpenDesignMarkup(
   options: { preserveClosedArtifact?: boolean } = {},
 ): string {
   return sanitizeLeakedAgentProse(input, options);
+}
+
+export type { SanitizeAssistantProseOptions };
+
+/** @deprecated Prefer sanitizeAssistantProseForDisplay. */
+export function sanitizeStreamingAssistantVisibleText(input: string): string {
+  return sanitizeLeakedAgentProse(input);
 }
