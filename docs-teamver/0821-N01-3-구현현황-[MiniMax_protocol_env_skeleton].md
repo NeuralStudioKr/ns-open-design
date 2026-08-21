@@ -14,7 +14,7 @@
 | runtime-config allowlist (FE + design-api) | ☑ |
 | validate_deploy_env | ☑ |
 | 테스트 | ☑ |
-| changelog · push | ☐ |
+| changelog · push | ☑ |
 
 ## 결정
 
