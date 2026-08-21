@@ -1175,6 +1175,63 @@ export function shouldDeferTipRemountPostReleaseGeometryApply(
 }
 
 /**
+ * Replace deferred geometry payload when a newer deferred remasure arrives —
+ * the pending rAF must apply only the latest measure (519).
+ */
+export function shouldReplaceDeferredTipRemountGeometryPayload(
+  deferring: boolean,
+  hasMeasuredGeometry: boolean,
+): boolean {
+  return deferring && hasMeasuredGeometry;
+}
+
+/**
+ * Immediate (non-deferred) geometry apply must invalidate any pending deferred
+ * rAF so a stale 900ms payload cannot overwrite a later 1600ms apply (519).
+ */
+export function shouldInvalidateDeferredTipRemountGeometryOnImmediateApply(
+  applyingImmediately: boolean,
+  deferredPayloadPending: boolean,
+): boolean {
+  return applyingImmediately && deferredPayloadPending;
+}
+
+/**
+ * Chrome just unlocked while the pointer is still over chrome (or buttons down)
+ * — keep chrome gated until pointerup so the unlock frame does not eat the
+ * first gesture (520).
+ */
+export function shouldArmTipRemountChromeUnlockPointerGate(
+  wasChromeSuppressed: boolean,
+  nowChromeSuppressed: boolean,
+  pointerOverChromeOrButtonsDown: boolean,
+): boolean {
+  return wasChromeSuppressed && !nowChromeSuppressed && pointerOverChromeOrButtonsDown;
+}
+
+/**
+ * Unlock gate keeps overlays disabled until pointerup clears it (520).
+ */
+export function shouldDisableManualEditChromeForTipRemountUnlockGate(
+  tipRemountChromeInert: boolean,
+  unlockPointerGateArmed: boolean,
+): boolean {
+  return tipRemountChromeInert || unlockPointerGateArmed;
+}
+
+/**
+ * During tip remount follow/settle, reuse the last good host paint when a live
+ * measure misses — avoids multi union flashing to composed fallback (521).
+ */
+export function shouldReuseLastHostRectOnTipRemountMeasureMiss(
+  tipRemountChromeSessionLive: boolean,
+  measuredPaintOk: boolean,
+  hasLastGoodHostRect: boolean,
+): boolean {
+  return tipRemountChromeSessionLive && !measuredPaintOk && hasLastGoodHostRect;
+}
+
+/**
  * Multi tip remasure measured only some selected members — retry once so union
  * chrome does not keep a one-sided box (518).
  */

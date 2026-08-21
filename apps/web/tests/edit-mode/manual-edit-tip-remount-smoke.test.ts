@@ -26,6 +26,11 @@ import {
   shouldPreferPendingDraftOverAbsorbInspectorSettle,
   shouldSettleInspectorStylesOnPostExitAbsorb,
   shouldDeferTipRemountPostReleaseGeometryApply,
+  shouldReplaceDeferredTipRemountGeometryPayload,
+  shouldInvalidateDeferredTipRemountGeometryOnImmediateApply,
+  shouldArmTipRemountChromeUnlockPointerGate,
+  shouldDisableManualEditChromeForTipRemountUnlockGate,
+  shouldReuseLastHostRectOnTipRemountMeasureMiss,
   shouldCatchUpHostMetricsWhenDeckNudgeRemasureThrottled,
   shouldRetryTipRemountSiblingMeasure,
   shouldSkipOdEditTargetsIdentityMixedReseedDuringPostExitAbsorb,
@@ -106,6 +111,29 @@ describe('manual-edit tip remount smoke (500/501/506)', () => {
     expect(fileViewer).toContain('shouldDeferTipRemountPostReleaseGeometryApply');
     expect(fileViewer).toContain('onChromePointerHoverChange');
     expect(fileViewer).toContain('manualEditTipChromePointerHoverRef');
+  });
+
+  it('keeps only latest deferred geometry payload (519)', () => {
+    expect(shouldReplaceDeferredTipRemountGeometryPayload(true, true)).toBe(true);
+    expect(shouldInvalidateDeferredTipRemountGeometryOnImmediateApply(true, true)).toBe(true);
+    expect(fileViewer).toContain('shouldReplaceDeferredTipRemountGeometryPayload');
+    expect(fileViewer).toContain('manualEditTipDeferredGeometryPayloadRef');
+    expect(fileViewer).toContain('shouldInvalidateDeferredTipRemountGeometryOnImmediateApply');
+  });
+
+  it('gates chrome until pointerup after unlock (520)', () => {
+    expect(shouldArmTipRemountChromeUnlockPointerGate(true, false, true)).toBe(true);
+    expect(shouldDisableManualEditChromeForTipRemountUnlockGate(false, true)).toBe(true);
+    expect(fileViewer).toContain('shouldArmTipRemountChromeUnlockPointerGate');
+    expect(fileViewer).toContain('shouldDisableManualEditChromeForTipRemountUnlockGate');
+    expect(fileViewer).toContain('manualEditTipChromeUnlockPointerGate');
+    expect(fileViewer).toContain('releaseTipRemountChromeSuppress');
+  });
+
+  it('reuses last host rect on tip remount measure miss (521)', () => {
+    expect(shouldReuseLastHostRectOnTipRemountMeasureMiss(true, false, true)).toBe(true);
+    expect(fileViewer).toContain('shouldReuseLastHostRectOnTipRemountMeasureMiss');
+    expect(fileViewer).toContain('manualEditTipLastHostRectByIdRef');
   });
 
   it('catch-up host metrics when follow remasure is throttled (517)', () => {
