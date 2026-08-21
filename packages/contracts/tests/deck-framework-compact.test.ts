@@ -43,6 +43,11 @@ describe('DECK_FRAMEWORK_DIRECTIVE_COMPACT', () => {
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('1920×1080');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('72px/1.05');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('width:1920px;height:1080px');
+    expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('never omit `class="slide"`');
+    expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('one idea only');
+    expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('no stat column');
+    expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT).toContain('data-screen-label="01 Cover"');
+    expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY_FOR_SELECTED_TEMPLATE).toContain('one idea only');
     // Samples must not teach viewport sizing (ban prose may still name 100vh).
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).not.toMatch(
       /style="[^"]*min-height:100vh/,
