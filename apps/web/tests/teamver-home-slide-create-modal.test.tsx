@@ -316,6 +316,9 @@ describe("TeamverHomeSlideCreateModal", () => {
     expect(chips.textContent).toContain(".pdf");
     expect(chips.textContent).toContain(".pptx");
     expect(chips.textContent).toContain(".csv");
+    expect(screen.getByLabelText("Remove attachment: brief.pdf")).toBeTruthy();
+    expect(screen.getByLabelText("Remove attachment: pitch.pptx")).toBeTruthy();
+    expect(screen.getByLabelText("Remove attachment: metrics.csv")).toBeTruthy();
   });
 
   it("renders a local image thumbnail for staged image attachments", () => {
@@ -342,6 +345,43 @@ describe("TeamverHomeSlideCreateModal", () => {
         .querySelector("img.teamver-home-slide-create-chip-thumb") as HTMLImageElement | null;
       expect(thumb?.getAttribute("src")).toBe(objectUrl);
       expect(createObjectURL).toHaveBeenCalled();
+      expect(screen.getByLabelText("Remove attachment: cover.png")).toBeTruthy();
+    } finally {
+      cleanup();
+      createObjectURL.mockRestore();
+      revokeObjectURL.mockRestore();
+    }
+  });
+
+  it("falls back to a type icon when an image thumbnail fails to load", () => {
+    const objectUrl = "blob:teamver-home-attach-broken";
+    const createObjectURL = vi.spyOn(URL, "createObjectURL").mockReturnValue(objectUrl);
+    const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+    try {
+      wrap(
+        <TeamverHomeSlideCreateModal
+          open
+          entry="new"
+          templateOptions={templates}
+          selectedTemplateId="html-ppt-hermes"
+          onTemplateChange={() => {}}
+          userPrompt=""
+          onUserPromptChange={() => {}}
+          stagedFiles={[new File(["img"], "broken.png", { type: "image/png" })]}
+          onConfirm={() => {}}
+          onClose={() => {}}
+        />,
+      );
+      const thumb = screen
+        .getByTestId("teamver-home-slide-create-chips")
+        .querySelector("img.teamver-home-slide-create-chip-thumb") as HTMLImageElement | null;
+      expect(thumb).toBeTruthy();
+      fireEvent.error(thumb!);
+      expect(
+        screen
+          .getByTestId("teamver-home-slide-create-chips")
+          .querySelector('[data-testid="teamver-home-slide-create-chip-icon"][data-icon="image"]'),
+      ).toBeTruthy();
     } finally {
       cleanup();
       createObjectURL.mockRestore();
@@ -366,7 +406,7 @@ describe("TeamverHomeSlideCreateModal", () => {
         onClose={() => {}}
       />,
     );
-    fireEvent.click(screen.getByLabelText("Remove attachment"));
+    fireEvent.click(screen.getByLabelText("Remove attachment: brief.pdf"));
     expect(onRemoveDriveAsset).toHaveBeenCalledWith("drv-1");
   });
 

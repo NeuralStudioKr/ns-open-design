@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Icon } from "../../components/Icon";
 import {
   driveImportAssetIconName,
@@ -21,30 +21,48 @@ type Props = {
   onRemoveDriveAsset?: (assetId: string) => void;
 };
 
-function filePreviewKey(file: File, index: number): string {
-  return `file:${index}:${file.name}:${file.size}:${file.lastModified}`;
-}
+/**
+ * Object-URL previews keyed by the File object itself so removing a middle
+ * chip does not recreate URLs for every later file (index-based keys did).
+ */
+function useLocalImagePreviewUrls(files: File[]): Map<File, string> {
+  const [urls, setUrls] = useState(() => new Map<File, string>());
+  const urlsRef = useRef(urls);
+  urlsRef.current = urls;
 
-function useLocalImagePreviewUrls(files: File[]): Map<string, string> {
-  const signature = files
-    .map((file, index) => filePreviewKey(file, index))
-    .join("|");
+  useEffect(() => {
+    if (typeof URL === "undefined" || typeof URL.createObjectURL !== "function") {
+      setUrls(new Map());
+      return;
+    }
 
-  const urls = useMemo(() => {
-    const next = new Map<string, string>();
-    files.forEach((file, index) => {
-      if (!isDriveImageAsset(file.name, file.type)) return;
-      if (typeof URL === "undefined" || typeof URL.createObjectURL !== "function") return;
-      next.set(filePreviewKey(file, index), URL.createObjectURL(file));
+    setUrls((prev) => {
+      const next = new Map<File, string>();
+      const keep = new Set(files);
+      for (const file of files) {
+        if (!isDriveImageAsset(file.name, file.type)) continue;
+        const existing = prev.get(file);
+        if (existing) {
+          next.set(file, existing);
+          continue;
+        }
+        next.set(file, URL.createObjectURL(file));
+      }
+      for (const [file, url] of prev) {
+        if (keep.has(file) && next.has(file)) continue;
+        try {
+          URL.revokeObjectURL(url);
+        } catch {
+          /* ignore */
+        }
+      }
+      return next;
     });
-    return next;
-    // Recreate only when the staged file identity set changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [signature]);
+  }, [files]);
 
   useEffect(() => {
     return () => {
-      for (const url of urls.values()) {
+      for (const url of urlsRef.current.values()) {
         try {
           URL.revokeObjectURL(url);
         } catch {
@@ -52,7 +70,7 @@ function useLocalImagePreviewUrls(files: File[]): Map<string, string> {
         }
       }
     };
-  }, [urls]);
+  }, []);
 
   return urls;
 }
@@ -119,7 +137,16 @@ function ChipVisual({
   mimeType?: string;
   previewUrl?: string | null;
 }) {
-  if (previewUrl) {
+  const [thumbFailed, setThumbFailed] = useState(false);
+  const iconName = driveImportAssetIconName(name, mimeType);
+  const showThumb = Boolean(previewUrl) && !thumbFailed;
+
+  // Reset failure when the preview URL identity changes (new file / new Drive thumb).
+  useEffect(() => {
+    setThumbFailed(false);
+  }, [previewUrl]);
+
+  if (showThumb && previewUrl) {
     return (
       <span className="teamver-home-slide-create-chip-visual" aria-hidden>
         <img
@@ -127,11 +154,12 @@ function ChipVisual({
           alt=""
           className="teamver-home-slide-create-chip-thumb"
           decoding="async"
+          onError={() => setThumbFailed(true)}
         />
       </span>
     );
   }
-  const iconName = driveImportAssetIconName(name, mimeType);
+
   return (
     <span
       className="teamver-home-slide-create-chip-visual teamver-home-slide-create-chip-visual--icon"
@@ -142,6 +170,12 @@ function ChipVisual({
       <Icon name={iconName} size={14} />
     </span>
   );
+}
+
+function removeLabelFor(base: string, name: string): string {
+  const trimmed = name.trim();
+  if (!trimmed) return base;
+  return `${base}: ${trimmed}`;
 }
 
 export function HomeSlideCreateAttachChips({
@@ -161,14 +195,14 @@ export function HomeSlideCreateAttachChips({
   return (
     <ul className="teamver-home-slide-create-chips" data-testid="teamver-home-slide-create-chips">
       {stagedFiles.map((file, index) => {
-        const key = filePreviewKey(file, index);
-        const previewUrl = localPreviewUrls.get(key) ?? null;
+        const previewUrl = localPreviewUrls.get(file) ?? null;
         return (
           <li
-            key={key}
+            key={`file-${file.name}-${file.size}-${file.lastModified}-${index}`}
             className="teamver-home-slide-create-chip"
             data-testid="teamver-home-slide-create-chip-file"
             data-filename={file.name}
+            title={file.name}
           >
             <ChipVisual name={file.name} mimeType={file.type} previewUrl={previewUrl} />
             <TeamverDriveDisplayFileName
@@ -177,7 +211,7 @@ export function HomeSlideCreateAttachChips({
             />
             <button
               type="button"
-              aria-label={removeAttachLabel}
+              aria-label={removeLabelFor(removeAttachLabel, file.name)}
               disabled={confirming}
               onClick={() => onRemoveFile?.(index)}
             >
@@ -195,6 +229,7 @@ export function HomeSlideCreateAttachChips({
             className="teamver-home-slide-create-chip"
             data-testid="teamver-home-slide-create-chip-drive"
             data-asset-id={asset.assetId}
+            title={name}
           >
             <ChipVisual name={name} mimeType={asset.mimeType} previewUrl={previewUrl} />
             <TeamverDriveDisplayFileName
@@ -203,7 +238,7 @@ export function HomeSlideCreateAttachChips({
             />
             <button
               type="button"
-              aria-label={removeAttachLabel}
+              aria-label={removeLabelFor(removeAttachLabel, name)}
               disabled={confirming}
               onClick={() => onRemoveDriveAsset?.(asset.assetId)}
             >
