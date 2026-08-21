@@ -343,9 +343,9 @@ const DECK_IMG_TAIL_RE =
 /** `<picture>` / `<source srcset>` media chrome. */
 const DECK_PICTURE_TAIL_RE =
   /<(?:picture|source)\b[\s\S]*$/i;
-/** Video / canvas / iframe deck chrome. */
+/** Video / canvas / iframe / object / embed deck chrome. */
 const DECK_MEDIA_EMBED_TAIL_RE =
-  /<(?:video|canvas|iframe|audio)\b[^>]*(?:\bstyle\s*=|width\s*=\s*["']?1920|height\s*=\s*["']?1080|poster\s*=|object-fit)[\s\S]*$/i;
+  /<(?:video|canvas|iframe|audio|object|embed)\b[^>]*(?:\bstyle\s*=|width\s*=\s*["']?1920|height\s*=\s*["']?1080|poster\s*=|object-fit|data\s*=|type\s*=\s*["']image\/)[\s\S]*$/i;
 /** `role="presentation"` / `aria-hidden` deco shells. */
 const DECK_A11Y_DECO_SHELL_TAIL_RE =
   /<(?:div|span|section)\b[^>]*(?:\brole\s*=\s*["']presentation["']|\baria-hidden\s*=\s*["']true["'])[^>]*(?:\bstyle\s*=)?[\s\S]*$/i;
@@ -357,7 +357,19 @@ const DECK_FIGURE_TAIL_RE =
  * backdrop-filter (with or without border-radius).
  */
 const DECK_VISUAL_EFFECT_STYLE_TAIL_RE =
-  /<(?:div|span|section|aside|header|footer)\b[^>]*\bstyle\s*=\s*["'][\s\S]*?(?:(?:linear|radial|conic)-gradient\s*\(|clip-path\s*:|(?:-webkit-)?backdrop-filter\s*:|mix-blend-mode\s*:)[\s\S]*$/i;
+  /<(?:div|span|section|aside|header|footer)\b[^>]*\bstyle\s*=\s*["'][\s\S]*?(?:(?:linear|radial|conic)-gradient\s*\(|clip-path\s*:|(?:-webkit-)?backdrop-filter\s*:|mix-blend-mode\s*:|(?:-webkit-)?mask-image\s*:|filter\s*:\s*blur|aspect-ratio\s*:|background-image\s*:\s*url\s*\(\s*data:|box-shadow\s*:[\s\S]*border-radius\s*:|height\s*:\s*\d+px[\s\S]*width\s*:\s*\d+%|will-change\s*:|writing-mode\s*:|column-count\s*:)[\s\S]*$/i;
+/** Escaped inline style dumps (`style=\"font-family:…\"`). */
+const DECK_ESCAPED_STYLE_ATTR_TAIL_RE =
+  /(?:\n|^)\s*<(?:span|div|strong|em|p|h[1-6]|button)\b[^>]*\bstyle\s*=\s*\\["'][\s\S]*$/i;
+/** HTML-entity encoded deck tags (`&lt;span style=…&gt;`). */
+const DECK_HTML_ENTITY_TAG_TAIL_RE =
+  /(?:\n|^)\s*&lt;\/?(?:span|div|section|style|svg|h[1-6]|p|button)\b[\s\S]*$/i;
+/** Bare CSS dumps: pseudo elements / animation shorthand without `{` opener match. */
+const DECK_BARE_CSS_MOTION_TAIL_RE =
+  /(?:\n|^)\s*(?:\.[\w-]+(?:::?(?:before|after))?\s*\{|animation\s*:[\s\S]*?(?:infinite|forwards|ease|linear)|transform-origin\s*:)[\s\S]*$/i;
+/** MathML / foreignObject leftovers. */
+const DECK_MATH_OR_FOREIGN_TAIL_RE =
+  /<(?:math|foreignObject|mi|mo|mn|mrow)\b[\s\S]*$/i;
 /** Landmark chrome (`header`/`footer`/`nav`). */
 const DECK_CHROME_LANDMARK_TAIL_RE =
   /<(?:header|footer|nav|aside)\b[^>]*\bstyle\s*=\s*["'][\s\S]*$/i;
@@ -384,11 +396,11 @@ const DECK_MOTIF_PATH_TAIL_RE =
   /<path\b[^>]*\bd\s*=\s*["'][\s\S]*$/i;
 /** Leftover Daisy SVG children after `<svg` was already consumed. */
 const DECK_MOTIF_SVG_PRIMITIVE_TAIL_RE =
-  /<(?:circle|rect|ellipse|polygon|polyline|line|g|defs|linearGradient|radialGradient|stop|use|text|tspan)\b/i;
+  /<(?:circle|rect|ellipse|polygon|polyline|line|g|defs|linearGradient|radialGradient|stop|use|text|tspan|foreignObject)\b/i;
 const DECK_MOTIF_SVG_CLOSE_TAIL_RE = /<\/svg\b/i;
 /** `<!-- Daisy motif TL -->` (and siblings) plus any CSS that follows. */
 const DECK_MOTIF_HTML_COMMENT_TAIL_RE =
-  /<!--\s*(?:Daisy|motif|deco|SLIDE)\b[\s\S]*$/i;
+  /<!--\s*(?:Daisy|motif|deco|SLIDE|slide)\b[\s\S]*$/i;
 const DECK_BROKEN_SECTION_CSS_DEBRIS_TAIL_RE =
   /<\/(?:section|div)>\s*[-a-z]*weight\s*:[\s\S]*$/i;
 /**
@@ -423,14 +435,14 @@ function isDeckSlidePartialTag(name: string, after: string): boolean {
 function isDeckChromePartialTag(name: string, after: string): boolean {
   const lower = name.toLowerCase();
   if (
-    !/^(?:div|span|section|header|footer|nav|aside|main|article|table|tr|td|th|ul|ol|li|img|button|strong|em|b|i|p|h[1-6]|figure|figcaption|label|a|video|canvas|iframe|audio|picture|source)$/.test(
+    !/^(?:div|span|section|header|footer|nav|aside|main|article|table|tr|td|th|ul|ol|li|img|button|strong|em|b|i|p|h[1-6]|figure|figcaption|label|a|video|canvas|iframe|audio|picture|source|object|embed|math|foreignObject|link|meta)$/.test(
       lower,
     )
   ) {
     return false;
   }
   return (
-    /\b(?:style|class|data-(?:slide|deck)|src|href|srcset|poster|role|aria-hidden)\s*=/i.test(after)
+    /\b(?:style|class|data-(?:slide|deck)|src|href|srcset|poster|role|aria-hidden|rel|name|content|data)\s*=/i.test(after)
     || /\b(?:style|class)\s*=\s*["']?\s*$/i.test(after)
   );
 }
@@ -508,6 +520,10 @@ export function stripTrailingDeckHtmlMarkupLeak(input: string): string {
     DECK_A11Y_DECO_SHELL_TAIL_RE,
     DECK_FIGURE_TAIL_RE,
     DECK_VISUAL_EFFECT_STYLE_TAIL_RE,
+    DECK_ESCAPED_STYLE_ATTR_TAIL_RE,
+    DECK_HTML_ENTITY_TAG_TAIL_RE,
+    DECK_BARE_CSS_MOTION_TAIL_RE,
+    DECK_MATH_OR_FOREIGN_TAIL_RE,
     DECK_CHROME_LANDMARK_TAIL_RE,
     DECK_ORPHAN_CLOSE_TAGS_TAIL_RE,
     DECK_CSS_CUSTOM_PROP_DUMP_TAIL_RE,
@@ -1889,7 +1905,8 @@ export function stripTrailingDeckFrameworkCssLeak(input: string): string {
     /width:\s*1920px|height:\s*1080px|box-sizing:\s*border-box|\.grain::after/i.test(tail)
     || /<\/style>|<style\b|<section\b[^>]*\bclass\s*=\s*["'][^"']*\bslide\b|<!--\s*(?:SLIDE|Daisy|motif|deco)\b/i.test(tail)
     || /^\.slide\s*\{[\s\S]*/.test(tail.trim())
-    || /\.deco-[\w-]+\s*\{/i.test(tail)
+    || /\.deco-[\w-]+(?:\s*\{|::)/i.test(tail)
+    || /(?:^|\n)\s*animation\s*:/i.test(tail)
     || /\.cls-\d+\s*\{/i.test(tail)
     || /@keyframes\s+[\w-]+\s*\{/i.test(tail)
     || /@font-face\b/i.test(tail)

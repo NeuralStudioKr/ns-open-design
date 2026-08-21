@@ -46,13 +46,21 @@ const DECK_IMG_TAIL_RE =
 const DECK_PICTURE_TAIL_RE =
   /<(?:picture|source)\b[\s\S]*$/i;
 const DECK_MEDIA_EMBED_TAIL_RE =
-  /<(?:video|canvas|iframe|audio)\b[^>]*(?:\bstyle\s*=|width\s*=\s*["']?1920|height\s*=\s*["']?1080|poster\s*=|object-fit)[\s\S]*$/i;
+  /<(?:video|canvas|iframe|audio|object|embed)\b[^>]*(?:\bstyle\s*=|width\s*=\s*["']?1920|height\s*=\s*["']?1080|poster\s*=|object-fit|data\s*=|type\s*=\s*["']image\/)[\s\S]*$/i;
 const DECK_A11Y_DECO_SHELL_TAIL_RE =
   /<(?:div|span|section)\b[^>]*(?:\brole\s*=\s*["']presentation["']|\baria-hidden\s*=\s*["']true["'])[^>]*(?:\bstyle\s*=)?[\s\S]*$/i;
 const DECK_FIGURE_TAIL_RE =
   /<(?:figure|figcaption)\b[^>]*\bstyle\s*=\s*["'][\s\S]*$/i;
 const DECK_VISUAL_EFFECT_STYLE_TAIL_RE =
-  /<(?:div|span|section|aside|header|footer)\b[^>]*\bstyle\s*=\s*["'][\s\S]*?(?:(?:linear|radial|conic)-gradient\s*\(|clip-path\s*:|(?:-webkit-)?backdrop-filter\s*:|mix-blend-mode\s*:)[\s\S]*$/i;
+  /<(?:div|span|section|aside|header|footer)\b[^>]*\bstyle\s*=\s*["'][\s\S]*?(?:(?:linear|radial|conic)-gradient\s*\(|clip-path\s*:|(?:-webkit-)?backdrop-filter\s*:|mix-blend-mode\s*:|(?:-webkit-)?mask-image\s*:|filter\s*:\s*blur|aspect-ratio\s*:|background-image\s*:\s*url\s*\(\s*data:|box-shadow\s*:[\s\S]*border-radius\s*:|height\s*:\s*\d+px[\s\S]*width\s*:\s*\d+%|will-change\s*:|writing-mode\s*:|column-count\s*:)[\s\S]*$/i;
+const DECK_ESCAPED_STYLE_ATTR_TAIL_RE =
+  /(?:\n|^)\s*<(?:span|div|strong|em|p|h[1-6]|button)\b[^>]*\bstyle\s*=\s*\\["'][\s\S]*$/i;
+const DECK_HTML_ENTITY_TAG_TAIL_RE =
+  /(?:\n|^)\s*&lt;\/?(?:span|div|section|style|svg|h[1-6]|p|button)\b[\s\S]*$/i;
+const DECK_BARE_CSS_MOTION_TAIL_RE =
+  /(?:\n|^)\s*(?:\.[\w-]+(?:::?(?:before|after))?\s*\{|animation\s*:[\s\S]*?(?:infinite|forwards|ease|linear)|transform-origin\s*:)[\s\S]*$/i;
+const DECK_MATH_OR_FOREIGN_TAIL_RE =
+  /<(?:math|foreignObject|mi|mo|mn|mrow)\b[\s\S]*$/i;
 const DECK_CHROME_LANDMARK_TAIL_RE =
   /<(?:header|footer|nav|aside)\b[^>]*\bstyle\s*=\s*["'][\s\S]*$/i;
 const DECK_ORPHAN_CLOSE_TAGS_TAIL_RE =
@@ -74,10 +82,10 @@ const DECK_MOTIF_SVG_TAIL_RE =
 const DECK_MOTIF_PATH_TAIL_RE =
   /<path\b[^>]*\bd\s*=\s*["'][\s\S]*$/i;
 const DECK_MOTIF_SVG_PRIMITIVE_TAIL_RE =
-  /<(?:circle|rect|ellipse|polygon|polyline|line|g|defs|linearGradient|radialGradient|stop|use|text|tspan)\b/i;
+  /<(?:circle|rect|ellipse|polygon|polyline|line|g|defs|linearGradient|radialGradient|stop|use|text|tspan|foreignObject)\b/i;
 const DECK_MOTIF_SVG_CLOSE_TAIL_RE = /<\/svg\b/i;
 const DECK_MOTIF_HTML_COMMENT_TAIL_RE =
-  /<!--\s*(?:Daisy|motif|deco|SLIDE)\b[\s\S]*$/i;
+  /<!--\s*(?:Daisy|motif|deco|SLIDE|slide)\b[\s\S]*$/i;
 const DECK_BROKEN_SECTION_CSS_DEBRIS_TAIL_RE =
   /<\/(?:section|div)>\s*[-a-z]*weight\s*:[\s\S]*$/i;
 /** Mid-attribute style debris, including quoted font-family / flex props. */
@@ -166,6 +174,10 @@ function stripLeakedDeckMotifHtmlTail(input: string): string {
     DECK_A11Y_DECO_SHELL_TAIL_RE,
     DECK_FIGURE_TAIL_RE,
     DECK_VISUAL_EFFECT_STYLE_TAIL_RE,
+    DECK_ESCAPED_STYLE_ATTR_TAIL_RE,
+    DECK_HTML_ENTITY_TAG_TAIL_RE,
+    DECK_BARE_CSS_MOTION_TAIL_RE,
+    DECK_MATH_OR_FOREIGN_TAIL_RE,
     DECK_CHROME_LANDMARK_TAIL_RE,
     DECK_ORPHAN_CLOSE_TAGS_TAIL_RE,
     DECK_CSS_CUSTOM_PROP_DUMP_TAIL_RE,

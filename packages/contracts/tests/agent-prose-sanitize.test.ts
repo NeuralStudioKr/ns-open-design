@@ -197,6 +197,32 @@ describe("agent-prose-sanitize SSOT", () => {
     ).toBe("제목 넣는 중");
   });
 
+  it("strips object/embed/aspect/entity/CSS-motion deck chrome (round3)", () => {
+    expect(
+      sanitizeAssistantProseForDisplay(
+        `요약.\n<div style="aspect-ratio:16/9;width:100%;overflow:hidden">frame</div>`,
+      ),
+    ).toBe("요약.");
+    expect(
+      sanitizeAssistantProseForDisplay(
+        `참고.\n<object data="motif.svg" type="image/svg+xml" style="width:22%"></object>`,
+      ),
+    ).toBe("참고.");
+    expect(
+      sanitizeAssistantProseForDisplay(
+        `<div style="background-image:url(data:image/svg+xml;base64,PHN2Zy);background-size:cover">bg</div>`,
+      ),
+    ).toBe("");
+    expect(
+      sanitizeAssistantProseForDisplay(`진행.\n.deco-orb::before{content:"";position:absolute;inset:0}`),
+    ).toBe("진행.");
+    expect(
+      sanitizeAssistantProseForDisplay(
+        `초안.\n&lt;span style="font-family:Barlow;letter-spacing:0.2em"&gt;TAG&lt;/span&gt;`,
+      ),
+    ).toBe("초안.");
+  });
+
   it("strips deck chrome family matrix (flex/grid/landmarks/img/closers/vars)", () => {
     expect(
       sanitizeAssistantProseForDisplay(
