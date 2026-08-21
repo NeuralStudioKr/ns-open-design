@@ -2537,12 +2537,11 @@ function injectDeckBridge(
   const isFrameworkDeck = /\bid\s*=\s*["']deck-stage["']/i.test(doc)
     || /<deck-stage\b/i.test(doc);
   const isCompactStackedDeck = compactStackedDeck;
-  // Catalog opacity-stack presenters (Playful, Coral, Cartesian, …) hide
-  // inactive pages with author CSS (`opacity:0; visibility:hidden`). Host
-  // `display:none !important` on those siblings survives native `#nextBtn`
-  // class toggles, so page 2+ reports the right index but paints only the
-  // body background. Same lesson as <deck-stage> (§0.68): do not collapse
-  // official presenters. Compact letterbox fills still need the hide.
+  // Catalog presenters hide inactive pages with author CSS (opacity or
+  // display:none + .active). Host `display:none !important` survives
+  // native `#nextBtn` class toggles, so later pages report the right
+  // index but paint only the body background. Do not collapse any
+  // non-compact / non-framework deck. Compact letterbox fills still hide.
   const legacyDeckFix = isFrameworkDeck
     ? ''
     : `<style data-od-deck-fix>
