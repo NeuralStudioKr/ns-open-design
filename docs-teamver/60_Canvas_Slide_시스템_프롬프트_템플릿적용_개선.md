@@ -54,6 +54,17 @@
 - [x] selected-template guard도 동일 정책으로 정렬 — 명시 템플릿 선택 시 Neutral/default로 빠지지 않도록 유지
 - [x] 회귀 테스트: `templateCloneContentFill.test.ts`, `selected-deck-template.test.ts`
 
+### 1.01 2026-08-21 — auto-continue/top-up/launch 경로 Motif 정책 정렬
+
+현재 시점 기준 판단: Clone content-fill 첫 턴만 고치면 충분하지 않다. 생성이 길어져 auto-continue가 붙거나, 사용자가 원하는 장수보다 적게 생성되어 slide-count top-up이 붙거나, Canvas/Drive 런치에서 선택 템플릿 지시가 다시 조립될 때 예전 문구가 살아 있으면 “대표 Motif는 없어도 된다”는 신호가 재발한다. 따라서 대형 SVG/style 덤프는 계속 차단하되, kit가 노출한 작은 대표 장식·도형·CSS cue는 유지하도록 모든 관련 경로를 같은 문장으로 맞춘다.
+
+구현 현황:
+
+- [x] `resume.ts` Motif-SVG-first auto-continue: `Motif <svg> is NOT required` 제거, compact kit motif/deco 재사용 명시
+- [x] `slideCountTopUp.ts`: 추가 슬라이드에서도 기존 deck의 lightweight motif/deco vocabulary를 유지하도록 명시
+- [x] `canvasSlideLaunch.ts`: 선택 템플릿 visual contract에서 `Motif SVG is optional` 제거, small complete snippets 허용 + huge dump 금지로 정렬
+- [x] 회귀 테스트: `resume.test.ts`, `slideCountTopUp.test.ts`, `teamver-canvas-slide-launch.test.ts`
+
 ### 0.98 2026-08-21 — 루트 갤러리 템플릿 썸네일 1920 캔버스 스케일
 
 커버 isolation 이후 루트 community 갤러리의 360% iframe 레시피가 1920×1080 캔버스를 좌상단 crop 했다. 피커와 같은 `100cqw / 1920` 스케일로 맞추고, mode 누락 html-ppt도 `data-od-mode="deck"`을 유지한다.

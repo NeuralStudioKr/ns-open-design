@@ -172,6 +172,8 @@ describe("slideCountTopUp", () => {
     expect(prompt).not.toContain("copies every existing slide verbatim");
     expect(prompt).toMatch(/NEVER "수정 반영 중"/);
     expect(prompt).not.toContain("[Template clone content fill]");
+    expect(prompt).toContain("lightweight motif/deco vocabulary");
+    expect(prompt).not.toContain("Motif SVG is NOT required");
   });
 
   it("detects add-next-pages follow-ups and ignores surgical title edits", () => {

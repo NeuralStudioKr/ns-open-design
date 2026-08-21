@@ -788,6 +788,8 @@ describe("canvasSlideLaunch", () => {
     expect(launch).toContain("LAST_EXPLICIT_DECK_TEMPLATE_KEY");
     expect(launch).toContain("clearLastExplicitDeckTemplateId");
     expect(launch).toContain('from "./slideCreateBoilerplate"');
+    expect(launch).toContain("compact template motif/deco cues");
+    expect(launch).not.toContain("Motif SVG is optional");
     expect(launch).toContain("briefLooksLikeAttachedSource(brief)");
     const bundled = readFileSync(
       resolve(__dirname, "../../daemon/src/plugins/bundled.ts"),

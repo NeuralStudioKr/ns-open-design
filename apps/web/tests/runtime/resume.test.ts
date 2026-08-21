@@ -336,8 +336,9 @@ describe('runtime/resume shell/no-HTML recovery constants', () => {
     expect(prompt).not.toContain('```html');
     expect(prompt).not.toContain('<path d="M0 0h150v150H0z');
     expect(prompt).toContain('Motif `<svg>` 선두 덤프');
-    expect(prompt).toContain('ABANDON that SVG');
-    expect(prompt).toMatch(/kit Motif vocabulary|Motif CSS|deco-pill/);
+    expect(prompt).toContain('ABANDON that large SVG');
+    expect(prompt).toContain('compact kit motif/deco cues');
+    expect(prompt).not.toContain('Motif `<svg>` is NOT required');
     expect(prompt).toContain('BODY-FIRST');
     expect(prompt).toContain('[Template clone content fill]');
     expect(excerptPartialHtmlForAutoContinue(hung)).toBe('');
