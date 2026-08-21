@@ -1669,7 +1669,7 @@ User-message 쪽 `[Existing deck edit]` / `<attached-preview-comments>` 주입�
 | 2026-08-21 | §0.80 — cross-template Motif hang/stacking/placement. Unified Motif hang lexicon (bare pin / ribbon / Block-frame deco / tape) · remmerge gate = sanitize SSOT · non-Daisy stamp chrome-only · kit Decorations hang strip · scaffold overflow:visible · cache v44. |
 | 2026-08-21 | §0.78 — incomplete-html-document-shell + letterbox Motif clip. greenfield head-kit abort · short draft not shell · preview/export overflow:visible · Motif offset-only heal · cache v43. |
 | 2026-08-21 | §0.77 — Pink Script catalog thumbs stayed white. Catalog srcDoc isolates cover and drops deck-stage.js; picker/gallery deck frames go dark + contain. |
-| 2026-08-21 | §0.79 — compact fills that omit `class="slide"` and keep `data-screen-label="01 Cover"` stayed 100vh. Pin/letterbox those hosts · skip inner comment labels · keep inactive slides hidden. |
+| 2026-08-21 | §0.80 — compact fills that omit `class="slide"` and keep `data-screen-label="01 Cover"` stayed 100vh. Pin/letterbox those hosts · skip inner comment labels · cache v44. |
 | 2026-08-20 | §0.76 — compact-fill preview stayed Neutral until persist. Display-only official look merge when look sheet is missing. |
 | 2026-08-20 | §0.75 — Motif hang sanitize beyond Daisy (gd-orb/xp-blob) · remmerge/deco early sanitize · cache v42. |
 | 2026-08-20 | §0.74 — Capsule `div.slide` count = append hosts · splice inside open `.presentation`/`.deck`/`<deck-stage>` after last slide · hoist locks every stacked flex axis. |
