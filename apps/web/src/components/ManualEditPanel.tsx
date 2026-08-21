@@ -98,7 +98,6 @@ export function ManualEditPanel({
   onRedo: () => void;
 }) {
   const t = useT();
-  const [confirmDelete, setConfirmDelete] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [collapsedState, setCollapsedState] = useState(false);
   const collapsed = collapsedProp ?? collapsedState;
@@ -122,11 +121,6 @@ export function ManualEditPanel({
   useEffect(() => {
     selectedTargetRef.current = selectedTarget;
   }, [selectedTarget]);
-  // Keep collapse sticky across selection — only clear delete confirm.
-  useEffect(() => {
-    setConfirmDelete(false);
-  }, [selectedTarget?.id]);
-
   const changeTargetStyle = (key: keyof ManualEditStyles, value: string) => {
     const nextStyles = { ...draft.styles, [key]: value };
     onDraftChange({ ...draft, styles: nextStyles });
@@ -372,45 +366,21 @@ export function ManualEditPanel({
               <div className="manual-edit-footer-actions">
                 <div className="manual-edit-footer-left">
                   {targetForInspector && !isMultiSelect ? (
-                    confirmDelete ? (
-                      <div className="manual-edit-delete-confirm">
-                        <button
-                          type="button"
-                          className="manual-edit-delete-btn manual-edit-delete-confirm-action"
-                          aria-label={t('manualEdit.deleteElement')}
-                          title={canUndo ? t('manualEdit.deleteElementConfirm') : t('manualEdit.deleteElement')}
-                          disabled={busy}
-                          onClick={() => {
-                            setConfirmDelete(false);
-                            onApplyPatch(
-                              { id: targetForInspector.id, kind: 'remove-element' },
-                              t('manualEdit.deleteElement'),
-                            );
-                          }}
-                        >
-                          <Icon name="trash" size={15} />
-                        </button>
-                        <button
-                          type="button"
-                          className="manual-edit-footer-btn subtle"
-                          disabled={busy}
-                          onClick={() => setConfirmDelete(false)}
-                        >
-                          {t('common.cancel')}
-                        </button>
-                      </div>
-                    ) : (
-                      <button
-                        type="button"
-                        className="manual-edit-delete-btn"
-                        aria-label={t('manualEdit.deleteElement')}
-                        title={t('manualEdit.deleteElement')}
-                        disabled={busy}
-                        onClick={() => setConfirmDelete(true)}
-                      >
-                        <Icon name="trash" size={15} />
-                      </button>
-                    )
+                    <button
+                      type="button"
+                      className="manual-edit-delete-btn"
+                      aria-label={t('manualEdit.deleteElement')}
+                      title={canUndo ? t('manualEdit.deleteElementConfirm') : t('manualEdit.deleteElement')}
+                      disabled={busy}
+                      onClick={() => {
+                        onApplyPatch(
+                          { id: targetForInspector.id, kind: 'remove-element' },
+                          t('manualEdit.deleteElement'),
+                        );
+                      }}
+                    >
+                      <Icon name="trash" size={15} />
+                    </button>
                   ) : null}
                 </div>
                 <div className="manual-edit-footer-right">

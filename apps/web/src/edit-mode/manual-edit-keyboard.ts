@@ -36,3 +36,13 @@ export function resolveManualEditDeleteKeyboardAction(
   if (isManualEditKeyboardTextTarget(event.target)) return false;
   return event.key === 'Delete' || event.key === 'Backspace';
 }
+
+/** Single-select only. Empty ids may still resolve via the primary inspector target. */
+export function resolveManualEditDeleteTargetId(
+  selectedIds: readonly string[],
+  primaryId?: string | null,
+): string | null {
+  if (selectedIds.length === 1) return selectedIds[0] ?? null;
+  if (selectedIds.length === 0 && primaryId) return primaryId;
+  return null;
+}

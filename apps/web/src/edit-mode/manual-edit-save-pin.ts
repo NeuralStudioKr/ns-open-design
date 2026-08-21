@@ -58,14 +58,22 @@ export function shouldReleaseManualEditSavePinForTip(
   fetched: string | null,
   tipContent: string | null | undefined,
   now: number = Date.now(),
+  authoredSource?: string | null,
 ): boolean {
   if (!isManualEditSourcePinActive(pinned, now) || !pinned) return false;
-  return (
-    fetched != null
-    && tipContent != null
-    && fetched === tipContent
-    && fetched !== pinned.source
-  );
+  if (
+    fetched == null
+    || tipContent == null
+    || fetched !== tipContent
+    || fetched === pinned.source
+  ) {
+    return false;
+  }
+  // fetched===tip≠pin is also the move-save false positive (stale GET and
+  // stale active-revision cache agree). Release only when the session already
+  // paints that tip, or when no painted-source hint is available (legacy).
+  if (authoredSource != null && authoredSource === pinned.source) return false;
+  return true;
 }
 
 /**
@@ -84,10 +92,11 @@ export function preferManualEditPinnedSource(
   fetched: string | null,
   now: number = Date.now(),
   tipContent?: string | null,
+  authoredSource?: string | null,
 ): string | null {
   if (!isManualEditSourcePinActive(pinned, now) || !pinned) return null;
   if (fetched != null && fetched === pinned.source) return null;
-  if (shouldReleaseManualEditSavePinForTip(pinned, fetched, tipContent, now)) {
+  if (shouldReleaseManualEditSavePinForTip(pinned, fetched, tipContent, now, authoredSource)) {
     return null;
   }
   if (fetched == null || fetched !== pinned.source) return pinned.source;
@@ -115,9 +124,27 @@ export function preferManualEditTipOverPinnedSave(
   pinned: ManualEditSourcePin | null | undefined,
   tipContent: string | null | undefined,
   now: number = Date.now(),
+  tipGate?: Pick<
+    ManualEditHistoryConfirmTipGateInput,
+    'tipRevisionSequence' | 'activeRevisionSequence' | 'authoredSource'
+  >,
 ): string | null {
   if (!isManualEditSourcePinActive(pinned, now) || !pinned) return null;
   if (tipContent == null || tipContent === pinned.source) return null;
+  // Same-revision stale cache is not a warmer agent tip — keep the pin
+  // (move/style save must not revert to pre-edit HTML).
+  if (
+    tipGate
+    && !manualEditHistoryConfirmTipIsWarmerThanSession({
+      tipContent,
+      expectedSource: pinned.source,
+      authoredSource: tipGate.authoredSource ?? pinned.source,
+      tipRevisionSequence: tipGate.tipRevisionSequence,
+      activeRevisionSequence: tipGate.activeRevisionSequence,
+    })
+  ) {
+    return null;
+  }
   return tipContent;
 }
 
@@ -141,12 +168,27 @@ export function resolveManualEditSourceAgainstPinAndTip(input: {
   tipContent: string | null | undefined;
   now?: number;
   preferTipWhenCandidateLags?: boolean;
+  tipRevisionSequence?: number | null;
+  activeRevisionSequence?: number | null;
+  authoredSource?: string | null;
 }): ManualEditPinTipResolveResult {
   const now = input.now ?? Date.now();
+  const tipGate = (
+    input.tipRevisionSequence != null
+    || input.activeRevisionSequence != null
+    || input.authoredSource != null
+  )
+    ? {
+      tipRevisionSequence: input.tipRevisionSequence,
+      activeRevisionSequence: input.activeRevisionSequence,
+      authoredSource: input.authoredSource,
+    }
+    : undefined;
   const tipOverPin = preferManualEditTipOverPinnedSave(
     input.pinned,
     input.tipContent,
     now,
+    tipGate,
   );
   if (tipOverPin != null) {
     return { source: tipOverPin, clearPin: true };
@@ -156,6 +198,7 @@ export function resolveManualEditSourceAgainstPinAndTip(input: {
     input.candidate,
     input.tipContent,
     now,
+    input.authoredSource,
   )) {
     return { source: input.candidate, clearPin: true };
   }
@@ -164,6 +207,7 @@ export function resolveManualEditSourceAgainstPinAndTip(input: {
     input.candidate,
     now,
     input.tipContent,
+    input.authoredSource,
   );
   if (preferred != null) {
     return { source: preferred, clearPin: false };
@@ -173,6 +217,18 @@ export function resolveManualEditSourceAgainstPinAndTip(input: {
     && input.tipContent != null
     && (input.candidate == null || input.candidate !== input.tipContent)
   ) {
+    if (
+      tipGate
+      && !manualEditHistoryConfirmTipIsWarmerThanSession({
+        tipContent: input.tipContent,
+        expectedSource: input.candidate ?? input.pinned?.source ?? input.tipContent,
+        authoredSource: input.authoredSource,
+        tipRevisionSequence: input.tipRevisionSequence,
+        activeRevisionSequence: input.activeRevisionSequence,
+      })
+    ) {
+      return { source: input.candidate, clearPin: false };
+    }
     return { source: input.tipContent, clearPin: false };
   }
   return { source: input.candidate, clearPin: false };
@@ -299,11 +355,87 @@ export function manualEditHistoryConfirmTipIsWarmerThanSession(
     activeRevisionSequence,
   } = input;
   if (tipContent == null || tipContent === expectedSource) return false;
-  if (authoredSource != null && authoredSource === tipContent) return true;
+  // Same/older revision: cache or lastStable paint drift is not agent tip
+  // advance — even when authored already drifted to those stale bytes.
   if (tipRevisionSequence != null && activeRevisionSequence != null) {
     return tipRevisionSequence > activeRevisionSequence;
   }
+  if (authoredSource != null && authoredSource === tipContent) return true;
   return true;
+}
+
+/**
+ * Warm tip HTML + sequences for history-confirm / pin-yield gates.
+ * When the session cursor is unset, treat the resolved revision as the cursor
+ * so same-revision cache drift is not a false "warmer tip".
+ */
+export function resolveManualEditHistoryConfirmTipContext(input: {
+  stack: ManualEditSavePinTipStack;
+  activeSequence: number | null | undefined;
+  readContent: (revisionId: string) => string | null;
+  coldFallback?: string | null;
+}): {
+  tipContent: string | null;
+  tipRevisionSequence: number | null;
+  activeRevisionSequence: number | null;
+} {
+  const tipRevision = resolveManualEditSavePinTipRevision(input.stack, input.activeSequence);
+  const resolvedSeq = tipRevision?.sequence ?? null;
+  return {
+    tipContent: tipContentForManualEditSavePin(
+      input.stack,
+      input.activeSequence,
+      input.readContent,
+      input.coldFallback,
+    ),
+    tipRevisionSequence: resolvedSeq,
+    activeRevisionSequence: input.activeSequence ?? resolvedSeq,
+  };
+}
+
+/**
+ * filesRefresh must not drop a just-saved pin because the active-revision
+ * cache still holds pre-edit bytes. Drop only when the canvas already paints
+ * the diverging tip (agent tip adopted).
+ */
+export function shouldDropManualEditSavePinForFilesRefresh(input: {
+  pinnedSource: string;
+  tipCached: string | null | undefined;
+  paintedSource: string | null | undefined;
+  tipRevisionSequence?: number | null;
+  activeRevisionSequence?: number | null;
+}): boolean {
+  if (input.tipCached == null || input.tipCached === input.pinnedSource) return false;
+  if (input.paintedSource !== input.tipCached) return false;
+  // Canvas matching a diverging cache is only a tip adopt when that cache
+  // is a newer revision — not the same-revision stale paint of a move save.
+  return manualEditHistoryConfirmTipIsWarmerThanSession({
+    tipContent: input.tipCached,
+    expectedSource: input.pinnedSource,
+    authoredSource: input.paintedSource,
+    tipRevisionSequence: input.tipRevisionSequence,
+    activeRevisionSequence: input.activeRevisionSequence,
+  });
+}
+
+/**
+ * Session bytes for history-confirm. Prefer the last save pin (even after
+ * hard cap) then the live session buffer — lastStable can be a stale
+ * accepted preview frame and must not win over sourceRef.
+ */
+export function resolveManualEditHistoryConfirmAuthoredSource(input: {
+  pinnedSource?: string | null;
+  liveSource?: string | null;
+  lastStableSource?: string | null;
+}): string | null {
+  return input.pinnedSource ?? input.liveSource ?? input.lastStableSource ?? null;
+}
+
+/** Confirm refuse must not adopt a missing disk frame over the session buffer. */
+export function shouldAdoptManualEditHistoryConfirmPersisted(
+  persisted: string | null,
+): persisted is string {
+  return persisted != null;
 }
 
 /**

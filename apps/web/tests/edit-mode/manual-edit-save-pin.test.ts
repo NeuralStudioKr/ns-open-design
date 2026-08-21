@@ -7,6 +7,10 @@ import {
   manualEditHistoryConfirmCanSkipDiskFetch,
   manualEditHistoryConfirmTipIsWarmerThanSession,
   manualEditHistoryConfirmTrustsLocal,
+  resolveManualEditHistoryConfirmAuthoredSource,
+  resolveManualEditHistoryConfirmTipContext,
+  shouldAdoptManualEditHistoryConfirmPersisted,
+  shouldDropManualEditSavePinForFilesRefresh,
   preferManualEditPinnedSource,
   preferManualEditPinnedSourceOverLive,
   preferManualEditTipOverPinnedSave,
@@ -99,6 +103,9 @@ describe('manual edit save pin', () => {
     const pinned = createManualEditSourcePin(saved, 1_000);
     const tip = '<html><body><h1>Agent tip</h1></body></html>';
     expect(shouldReleaseManualEditSavePinForTip(pinned, tip, tip, 1_000 + 100)).toBe(true);
+    // Session still on the save — stale GET+cache agreeing is not a tip yield.
+    expect(shouldReleaseManualEditSavePinForTip(pinned, stale, stale, 1_000 + 100, saved)).toBe(false);
+    expect(shouldReleaseManualEditSavePinForTip(pinned, tip, tip, 1_000 + 100, tip)).toBe(true);
     expect(preferManualEditPinnedSource(pinned, tip, 1_000 + 100, tip)).toBeNull();
     // Stale fetch that is not the tip still loses to the pin.
     expect(preferManualEditPinnedSource(pinned, stale, 1_000 + 100, tip)).toBe(saved);
@@ -214,6 +221,23 @@ describe('manual edit save pin', () => {
       saved,
       stale,
       4,
+      5,
+    )).toBe(true);
+    // lastStable/canvas already drifted to stale cache bytes — still not warmer.
+    expect(manualEditHistoryConfirmTipIsWarmerThanSession({
+      tipContent: stale,
+      expectedSource: saved,
+      authoredSource: stale,
+      tipRevisionSequence: 5,
+      activeRevisionSequence: 5,
+    })).toBe(false);
+    expect(manualEditHistoryConfirmCanSkipDiskFetch(
+      saved,
+      pinned,
+      1_000 + 50,
+      stale,
+      stale,
+      5,
       5,
     )).toBe(true);
   });
@@ -339,5 +363,106 @@ describe('manual edit save pin', () => {
     })).toBe(false);
     // Artifact switch clears suppress so disk tip prefer works again.
     expect(shouldPreferTipAfterConfirmRefuseArtifactSwitch()).toBe(true);
+  });
+
+  it('does not drop a save pin on filesRefresh when tip cache is stale vs the canvas', () => {
+    expect(shouldDropManualEditSavePinForFilesRefresh({
+      pinnedSource: saved,
+      tipCached: stale,
+      paintedSource: saved,
+    })).toBe(false);
+    expect(shouldDropManualEditSavePinForFilesRefresh({
+      pinnedSource: saved,
+      tipCached: saved,
+      paintedSource: saved,
+    })).toBe(false);
+    // Canvas already paints the diverging tip — pin must yield.
+    expect(shouldDropManualEditSavePinForFilesRefresh({
+      pinnedSource: saved,
+      tipCached: '<html><body><h1>Agent tip</h1></body></html>',
+      paintedSource: '<html><body><h1>Agent tip</h1></body></html>',
+    })).toBe(true);
+    // Same-revision stale paint matching stale cache must not drop the pin.
+    expect(shouldDropManualEditSavePinForFilesRefresh({
+      pinnedSource: saved,
+      tipCached: stale,
+      paintedSource: stale,
+      tipRevisionSequence: 5,
+      activeRevisionSequence: 5,
+    })).toBe(false);
+  });
+
+  it('prefers pin then live session over a stale lastStable frame for confirm authored', () => {
+    expect(resolveManualEditHistoryConfirmAuthoredSource({
+      pinnedSource: saved,
+      liveSource: stale,
+      lastStableSource: stale,
+    })).toBe(saved);
+    expect(resolveManualEditHistoryConfirmAuthoredSource({
+      pinnedSource: null,
+      liveSource: saved,
+      lastStableSource: stale,
+    })).toBe(saved);
+    expect(resolveManualEditHistoryConfirmAuthoredSource({
+      pinnedSource: null,
+      liveSource: null,
+      lastStableSource: stale,
+    })).toBe(stale);
+  });
+
+  it('does not adopt a null disk frame after history-confirm refuse', () => {
+    expect(shouldAdoptManualEditHistoryConfirmPersisted(null)).toBe(false);
+    expect(shouldAdoptManualEditHistoryConfirmPersisted(saved)).toBe(true);
+  });
+
+  it('treats same-revision cache drift as not warmer when the cursor is unset', () => {
+    const stack = {
+      revisions: [
+        { id: 'r4', sequence: 4 },
+        { id: 'r5', sequence: 5 },
+      ],
+      headRevisionId: 'r5',
+    };
+    const cache = new Map<string, string>([['r5', stale]]);
+    const ctx = resolveManualEditHistoryConfirmTipContext({
+      stack,
+      activeSequence: null,
+      readContent: (id) => cache.get(id) ?? null,
+    });
+    expect(ctx.tipRevisionSequence).toBe(5);
+    expect(ctx.activeRevisionSequence).toBe(5);
+    expect(manualEditHistoryConfirmTipIsWarmerThanSession({
+      tipContent: ctx.tipContent,
+      expectedSource: saved,
+      authoredSource: saved,
+      tipRevisionSequence: ctx.tipRevisionSequence,
+      activeRevisionSequence: ctx.activeRevisionSequence,
+    })).toBe(false);
+  });
+
+  it('keeps the pin when tip cache is same-revision drift (move save)', () => {
+    const pinned = createManualEditSourcePin(saved, 1_000);
+    const live = resolveManualEditSourceAgainstPinAndTip({
+      pinned,
+      candidate: stale,
+      tipContent: stale,
+      now: 1_000 + 100,
+      preferTipWhenCandidateLags: false,
+      tipRevisionSequence: 5,
+      activeRevisionSequence: 5,
+      authoredSource: saved,
+    });
+    expect(live).toEqual({ source: saved, clearPin: false });
+    const disk = resolveManualEditSourceAgainstPinAndTip({
+      pinned,
+      candidate: stale,
+      tipContent: stale,
+      now: 1_000 + 100,
+      preferTipWhenCandidateLags: true,
+      tipRevisionSequence: 5,
+      activeRevisionSequence: 5,
+      authoredSource: saved,
+    });
+    expect(disk).toEqual({ source: saved, clearPin: false });
   });
 });

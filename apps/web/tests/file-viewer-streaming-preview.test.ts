@@ -37,6 +37,9 @@ describe("FileViewer streaming slide preview", () => {
     // Immediate remount on every filesRefresh is forbidden; reloadKey refetch only.
     expect(block).not.toMatch(/setSrcDocTransportResetKey\(\(key\) => key \+ 1\)/);
     expect(block).toContain('do NOT clear last-stable');
+    expect(block).toContain('shouldDropManualEditSavePinForFilesRefresh');
+    expect(block).toContain('Canvas already paints the diverging tip');
+    expect(block).toContain('if (lastStablePreviewSourceRef.current !== pinned.source)');
   });
 
   it('holds srcDoc until preview prefix settles (no early no-base paint)', () => {

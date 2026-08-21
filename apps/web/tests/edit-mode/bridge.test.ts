@@ -791,6 +791,53 @@ describe('manual edit bridge target normalization', () => {
     dom.window.close();
   });
 
+  it('forwards Delete and Backspace to the host as od-edit-key when not typing', () => {
+    const dom = new JSDOM(
+      `<main><h1 data-od-id="hero">Hero</h1></main>${buildManualEditBridge(true)}`,
+      { runScripts: 'dangerously', url: 'http://localhost' },
+    );
+    const hero = dom.window.document.querySelector('[data-od-id="hero"]') as HTMLElement;
+    const postMessage = vi.spyOn(dom.window.parent, 'postMessage');
+
+    hero.dispatchEvent(new dom.window.KeyboardEvent('keydown', {
+      bubbles: true,
+      cancelable: true,
+      key: 'Delete',
+    }));
+    hero.dispatchEvent(new dom.window.KeyboardEvent('keydown', {
+      bubbles: true,
+      cancelable: true,
+      key: 'Backspace',
+    }));
+
+    expect(postMessage).toHaveBeenCalledWith({ type: 'od-edit-key', key: 'Delete' }, '*');
+    expect(postMessage).toHaveBeenCalledWith({ type: 'od-edit-key', key: 'Backspace' }, '*');
+
+    dom.window.close();
+  });
+
+  it('does not forward Delete while an inline editing host is active', () => {
+    const dom = new JSDOM(
+      `<main><h1 data-od-id="hero" data-od-editing="true" contenteditable="plaintext-only">Hero</h1></main>${buildManualEditBridge(true)}`,
+      { runScripts: 'dangerously', url: 'http://localhost' },
+    );
+    const hero = dom.window.document.querySelector('[data-od-id="hero"]') as HTMLElement;
+    const postMessage = vi.spyOn(dom.window.parent, 'postMessage');
+
+    hero.dispatchEvent(new dom.window.KeyboardEvent('keydown', {
+      bubbles: true,
+      cancelable: true,
+      key: 'Delete',
+    }));
+
+    expect(postMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'od-edit-key' }),
+      '*',
+    );
+
+    dom.window.close();
+  });
+
   it('posts additive selection when shift-clicking a target', () => {
     const dom = new JSDOM(
       `<main><h1 data-od-id="title">Title</h1></main>${buildManualEditBridge(true)}`,

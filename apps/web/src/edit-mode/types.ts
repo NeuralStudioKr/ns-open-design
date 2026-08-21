@@ -181,6 +181,11 @@ export interface ManualEditTextActiveMessage {
   active: boolean;
 }
 
+export interface ManualEditKeyMessage {
+  type: 'od-edit-key';
+  key: string;
+}
+
 export interface ManualEditRectMessage {
   type: 'od-edit-rect';
   id: string;
@@ -197,6 +202,7 @@ export type ManualEditBridgeMessage =
   | ManualEditPreviewAppliedMessage
   | ManualEditTextCommitMessage
   | ManualEditTextActiveMessage
+  | ManualEditKeyMessage
   | ManualEditRectMessage;
 
 export const MANUAL_EDIT_STYLE_PROPS: readonly (keyof ManualEditStyles)[] = [

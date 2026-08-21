@@ -14,8 +14,14 @@ export function manualEditPatchBaseSource(input: {
   manualEditMode: boolean;
   frozenSource: string | null;
   liveSource: string | null;
+  pinnedSource?: string | null;
 }): string | null {
   if (input.manualEditMode) {
+    if (input.pinnedSource != null) {
+      // Last successful save owns the next patch. Agent tip paths clear the
+      // pin before live becomes the session buffer.
+      return input.pinnedSource;
+    }
     // Prefer the session save buffer so successive patches compose.
     if (input.liveSource != null) return input.liveSource;
     if (input.frozenSource != null) return input.frozenSource;
