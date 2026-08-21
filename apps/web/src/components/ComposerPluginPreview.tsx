@@ -26,6 +26,7 @@ import {
   localizePluginDescription,
   localizePluginTitle,
 } from './plugins-home/localization';
+import { resolveGalleryOdMode } from './plugins-home/galleryOdMode';
 import { inferPluginPreview } from './plugins-home/preview';
 import { TrustBadge } from './TrustBadge';
 
@@ -94,6 +95,7 @@ export function ComposerPluginPreview({
     return isDesignSystemRecord(record) ? t('entry.navDesignSystems') : null;
   }, [record, t]);
   const odMode = (record.manifest?.od as { mode?: unknown } | undefined)?.mode;
+  const galleryOdMode = resolveGalleryOdMode(record, odMode);
 
   return (
     <div className="plus-menu__preview" data-plugin-id={record.id}>
@@ -113,7 +115,7 @@ export function ComposerPluginPreview({
       </div>
       <div
         className="plus-menu__preview-hero"
-        {...(typeof odMode === 'string' ? { 'data-od-mode': odMode } : {})}
+        {...(typeof galleryOdMode === 'string' ? { 'data-od-mode': galleryOdMode } : {})}
       >
         {/* `eager` mounts media/iframe immediately — the panel is already a
             deliberate hover, so there is no off-screen cost to defer. */}

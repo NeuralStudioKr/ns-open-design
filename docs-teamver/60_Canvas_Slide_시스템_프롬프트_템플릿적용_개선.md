@@ -32,6 +32,18 @@
 | scaffold로 갑자기 바꾸면? | **안 됨.** kit hard cutover 금지. full HTML scaffold도 기본 inject 하지 않음 |
 | 1장짜리 템플릿 결과가 저장되는가? | **제품 경로는 첫 fill 3장.** 잘리면 제목 있는 1장은 저장하고 top-up이 덧붙인다. 제목 없는 빈 셸만 미완성으로 차단. 사용자가 1장을 명시한 경우도 허용 |
 
+### 0.98 2026-08-21 — 루트 갤러리 템플릿 썸네일 1920 캔버스 스케일
+
+커버 isolation 이후 루트 community 갤러리의 360% iframe 레시피가 1920×1080 캔버스를 좌상단 crop 했다. 피커와 같은 `100cqw / 1920` 스케일로 맞추고, mode 누락 html-ppt도 `data-od-mode="deck"`을 유지한다.
+
+구현 현황:
+
+- [x] gallery deck iframe `1920×1080` + `scale(calc(100cqw / 1920px))`
+- [x] `.plugins-home__gallery-frame`에 `container-type: inline-size`
+- [x] `resolveGalleryOdMode` — explicit mode 우선, html-ppt/canvas-slide 추론
+- [x] PluginCard / ComposerPluginPreview `data-od-mode` 연결
+- [x] framing source-lock을 360%에서 1920 cqw로 갱신
+
 ### 0.97 2026-08-21 — 잔여 `\\bslide\\b` 호출부를 호스트 SSOT로
 
 §0.96 persist/stream 이후에도 clone/kit/scaffold, 수동편집 root, attachment clip, repair/stable-preview가 `\\bslide\\b`로 chrome을 페이지로 잡았다. 카탈로그 빈 캔버스와 같은 계열이 다른 경로에서 재발한다.

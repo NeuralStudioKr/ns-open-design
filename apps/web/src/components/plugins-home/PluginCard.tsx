@@ -23,6 +23,7 @@ import { shouldEagerLoadCommunityPluginPreviews } from '../../teamver/embedDaemo
 import { embedUiLabel } from '../../teamver/embedUiLabels';
 import { PreviewSurface } from './cards/PreviewSurface';
 import { localizePluginDescription, localizePluginTitle } from './localization';
+import { resolveGalleryOdMode } from './galleryOdMode';
 import { inferPluginPreview } from './preview';
 import type { PluginUseAction } from './useActions';
 
@@ -103,6 +104,7 @@ export function PluginCard({
     // Deck templates render a fixed 16:9 stage; tag them so gallery previews
     // use a 16:9 frame instead of the tall scroll-preview viewport.
     const odMode = (record.manifest?.od as { mode?: unknown } | undefined)?.mode;
+    const galleryOdMode = resolveGalleryOdMode(record, odMode);
     const previewSrc = preview.kind === 'html' ? preview.src : null;
     return (
       <article
@@ -118,7 +120,7 @@ export function PluginCard({
           .join(' ')}
         data-plugin-id={record.id}
         data-preview-kind={preview.kind}
-        {...(typeof odMode === 'string' ? { 'data-od-mode': odMode } : {})}
+        {...(typeof galleryOdMode === 'string' ? { 'data-od-mode': galleryOdMode } : {})}
         {...(isFeatured ? { 'data-featured': 'true' } : {})}
         // Mouse convenience: clicking anywhere on the tile opens details.
         // Keyboard/AT users get a real, announced control via the title
