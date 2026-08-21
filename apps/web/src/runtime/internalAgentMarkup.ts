@@ -42,7 +42,17 @@ const DECK_POSITIONED_PCT_TAIL_RE =
 const DECK_TABLE_OR_LIST_TAIL_RE =
   /<(?:table|ul|ol)\b[^>]*\bstyle\s*=\s*["'][\s\S]*$/i;
 const DECK_IMG_TAIL_RE =
-  /<img\b[^>]*(?:\bstyle\s*=|src\s*=\s*["'][^"']*(?:motif|deco|\.svg))[\s\S]*$/i;
+  /<img\b[^>]*(?:\bstyle\s*=|src\s*=\s*["'][^"']*(?:motif|deco|\.svg)|object-fit\s*:)[\s\S]*$/i;
+const DECK_PICTURE_TAIL_RE =
+  /<(?:picture|source)\b[\s\S]*$/i;
+const DECK_MEDIA_EMBED_TAIL_RE =
+  /<(?:video|canvas|iframe|audio)\b[^>]*(?:\bstyle\s*=|width\s*=\s*["']?1920|height\s*=\s*["']?1080|poster\s*=|object-fit)[\s\S]*$/i;
+const DECK_A11Y_DECO_SHELL_TAIL_RE =
+  /<(?:div|span|section)\b[^>]*(?:\brole\s*=\s*["']presentation["']|\baria-hidden\s*=\s*["']true["'])[^>]*(?:\bstyle\s*=)?[\s\S]*$/i;
+const DECK_FIGURE_TAIL_RE =
+  /<(?:figure|figcaption)\b[^>]*\bstyle\s*=\s*["'][\s\S]*$/i;
+const DECK_VISUAL_EFFECT_STYLE_TAIL_RE =
+  /<(?:div|span|section|aside|header|footer)\b[^>]*\bstyle\s*=\s*["'][\s\S]*?(?:(?:linear|radial|conic)-gradient\s*\(|clip-path\s*:|(?:-webkit-)?backdrop-filter\s*:|mix-blend-mode\s*:)[\s\S]*$/i;
 const DECK_CHROME_LANDMARK_TAIL_RE =
   /<(?:header|footer|nav|aside)\b[^>]*\bstyle\s*=\s*["'][\s\S]*$/i;
 const DECK_ORPHAN_CLOSE_TAGS_TAIL_RE =
@@ -50,7 +60,7 @@ const DECK_ORPHAN_CLOSE_TAGS_TAIL_RE =
 const DECK_CSS_CUSTOM_PROP_DUMP_TAIL_RE =
   /(?:\n|^)\s*(?:--[\w-]+\s*:\s*[^;\n]+;\s*){2,}[\s\S]*$/i;
 const DECK_BR_STACKED_HEADING_TAIL_RE =
-  /(?:\n|^)[^\n]*<br\b[\s\S]*?<\/h[1-6]>/i;
+  /(?:\n|^)(?![^\n]*[\uac00-\ud7af])[^\n]*<br\b[\s\S]*?<\/h[1-6]>/i;
 const DECK_TRAILING_INLINE_MARKUP_RE =
   /(?:\n|^)\s*<(?:p|span|div|strong|em|b|i|button|label)\b[^>]*\bstyle\s*=\s*["'][\s\S]*?(?:font|letter-spacing|margin|text-transform|display\s*:\s*flex)[\s\S]*$/i;
 const DECK_TRAILING_HEADING_MARKUP_RE =
@@ -99,6 +109,11 @@ function looksLikeLeakedDeckFrameworkCss(tail: string): boolean {
 }
 
 function findTrailingSameLineDeckHtmlCut(line: string): number | null {
+  // Hangul/CJK glued to stacked hero: `제목 넣는 중CLOUD<br>NATIVE</h1>`
+  const hangulBrHero = line.match(
+    /^(.*?[\uac00-\ud7af\u3000-\u9fff])\s*([A-Za-z][\s\S]*<br\b[\s\S]*<\/h[1-6]>)/u,
+  );
+  if (hangulBrHero?.[1] !== undefined) return hangulBrHero[1].length;
   // Same guards as contracts SSOT — never carve intact `style="…"` tags down
   // to `<span style="` residues.
   const midCss = line.match(
@@ -146,6 +161,11 @@ function stripLeakedDeckMotifHtmlTail(input: string): string {
     DECK_POSITIONED_PCT_TAIL_RE,
     DECK_TABLE_OR_LIST_TAIL_RE,
     DECK_IMG_TAIL_RE,
+    DECK_PICTURE_TAIL_RE,
+    DECK_MEDIA_EMBED_TAIL_RE,
+    DECK_A11Y_DECO_SHELL_TAIL_RE,
+    DECK_FIGURE_TAIL_RE,
+    DECK_VISUAL_EFFECT_STYLE_TAIL_RE,
     DECK_CHROME_LANDMARK_TAIL_RE,
     DECK_ORPHAN_CLOSE_TAGS_TAIL_RE,
     DECK_CSS_CUSTOM_PROP_DUMP_TAIL_RE,

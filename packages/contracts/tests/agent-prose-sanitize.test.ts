@@ -170,6 +170,33 @@ describe("agent-prose-sanitize SSOT", () => {
     ).toBe("진행 중.\n슬라이드 추가 중");
   });
 
+  
+  it("strips media/gradient/figure/hangul-br deck chrome (round2)", () => {
+    expect(
+      sanitizeAssistantProseForDisplay(
+        `요약.\n<div role="presentation" style="width:100%;height:100%">deck</div>`,
+      ),
+    ).toBe("요약.");
+    expect(
+      sanitizeAssistantProseForDisplay(
+        `<div style="background:linear-gradient(135deg,#0f172a,#1e293b);padding:48px">Hero</div>`,
+      ),
+    ).toBe("");
+    expect(
+      sanitizeAssistantProseForDisplay(
+        `참고.\n<video style="width:100%;object-fit:cover" poster="cover.jpg"></video>`,
+      ),
+    ).toBe("참고.");
+    expect(
+      sanitizeAssistantProseForDisplay(
+        `참고.\n<picture><source srcset="a.webp"><img src="a.jpg" style="width:100%"></picture>`,
+      ),
+    ).toBe("참고.");
+    expect(
+      sanitizeAssistantProseForDisplay(`제목 넣는 중CLOUD<br>NATIVE<br>ENGINEERING</h1>`),
+    ).toBe("제목 넣는 중");
+  });
+
   it("strips deck chrome family matrix (flex/grid/landmarks/img/closers/vars)", () => {
     expect(
       sanitizeAssistantProseForDisplay(

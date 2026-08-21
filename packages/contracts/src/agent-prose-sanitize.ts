@@ -339,7 +339,25 @@ const DECK_TABLE_OR_LIST_TAIL_RE =
   /<(?:table|ul|ol)\b[^>]*\bstyle\s*=\s*["'][\s\S]*$/i;
 /** Deck `<img … style|motif.svg>`. */
 const DECK_IMG_TAIL_RE =
-  /<img\b[^>]*(?:\bstyle\s*=|src\s*=\s*["'][^"']*(?:motif|deco|\.svg))[\s\S]*$/i;
+  /<img\b[^>]*(?:\bstyle\s*=|src\s*=\s*["'][^"']*(?:motif|deco|\.svg)|object-fit\s*:)[\s\S]*$/i;
+/** `<picture>` / `<source srcset>` media chrome. */
+const DECK_PICTURE_TAIL_RE =
+  /<(?:picture|source)\b[\s\S]*$/i;
+/** Video / canvas / iframe deck chrome. */
+const DECK_MEDIA_EMBED_TAIL_RE =
+  /<(?:video|canvas|iframe|audio)\b[^>]*(?:\bstyle\s*=|width\s*=\s*["']?1920|height\s*=\s*["']?1080|poster\s*=|object-fit)[\s\S]*$/i;
+/** `role="presentation"` / `aria-hidden` deco shells. */
+const DECK_A11Y_DECO_SHELL_TAIL_RE =
+  /<(?:div|span|section)\b[^>]*(?:\brole\s*=\s*["']presentation["']|\baria-hidden\s*=\s*["']true["'])[^>]*(?:\bstyle\s*=)?[\s\S]*$/i;
+/** Figure / figcaption chrome. */
+const DECK_FIGURE_TAIL_RE =
+  /<(?:figure|figcaption)\b[^>]*\bstyle\s*=\s*["'][\s\S]*$/i;
+/**
+ * Visual chrome styles that are never chat prose: gradients, clip-path,
+ * backdrop-filter (with or without border-radius).
+ */
+const DECK_VISUAL_EFFECT_STYLE_TAIL_RE =
+  /<(?:div|span|section|aside|header|footer)\b[^>]*\bstyle\s*=\s*["'][\s\S]*?(?:(?:linear|radial|conic)-gradient\s*\(|clip-path\s*:|(?:-webkit-)?backdrop-filter\s*:|mix-blend-mode\s*:)[\s\S]*$/i;
 /** Landmark chrome (`header`/`footer`/`nav`). */
 const DECK_CHROME_LANDMARK_TAIL_RE =
   /<(?:header|footer|nav|aside)\b[^>]*\bstyle\s*=\s*["'][\s\S]*$/i;
@@ -349,9 +367,13 @@ const DECK_ORPHAN_CLOSE_TAGS_TAIL_RE =
 /** Mid-message CSS custom-property dumps (`--bg:#…;--fg:#…`). */
 const DECK_CSS_CUSTOM_PROP_DUMP_TAIL_RE =
   /(?:\n|^)\s*(?:--[\w-]+\s*:\s*[^;\n]+;\s*){2,}[\s\S]*$/i;
-/** `<br>`-stacked hero titles ending in `</h1>` without a clean opener. */
+/**
+ * `<br>`-stacked hero titles ending in `</h1>` without a clean opener.
+ * Hangul-glued forms (`제목 넣는 중CLOUD<br>…`) are handled by
+ * findTrailingSameLineDeckHtmlCut so the Hangul prefix is kept.
+ */
 const DECK_BR_STACKED_HEADING_TAIL_RE =
-  /(?:\n|^)[^\n]*<br\b[\s\S]*?<\/h[1-6]>/i;
+  /(?:\n|^)(?![^\n]*[\uac00-\ud7af])[^\n]*<br\b[\s\S]*?<\/h[1-6]>/i;
 const DECK_CARD_STYLE_DIV_TAIL_RE =
   /<(?:div|article)\b[^>]*\bclass\s*=\s*["'][^"']*\b(?:card|pill|chip|deco)[^"']*["'][^>]*\bstyle\s*=[\s\S]*$/i;
 const DECK_DECO_CLASS_TAIL_RE =
@@ -401,14 +423,14 @@ function isDeckSlidePartialTag(name: string, after: string): boolean {
 function isDeckChromePartialTag(name: string, after: string): boolean {
   const lower = name.toLowerCase();
   if (
-    !/^(?:div|span|section|header|footer|nav|aside|main|article|table|tr|td|th|ul|ol|li|img|button|strong|em|b|i|p|h[1-6]|figure|figcaption|label|a)$/.test(
+    !/^(?:div|span|section|header|footer|nav|aside|main|article|table|tr|td|th|ul|ol|li|img|button|strong|em|b|i|p|h[1-6]|figure|figcaption|label|a|video|canvas|iframe|audio|picture|source)$/.test(
       lower,
     )
   ) {
     return false;
   }
   return (
-    /\b(?:style|class|data-(?:slide|deck)|src|href)\s*=/i.test(after)
+    /\b(?:style|class|data-(?:slide|deck)|src|href|srcset|poster|role|aria-hidden)\s*=/i.test(after)
     || /\b(?:style|class)\s*=\s*["']?\s*$/i.test(after)
   );
 }
@@ -422,6 +444,11 @@ function findTrailingSameLineDeckHtmlCut(line: string): number | null {
     /^(.*?)(<(?:section|div)\b[^>]*(?:data-slide-index|\bclass\s*=\s*["'][^"']*\bslide\b)[^>]*)$/i,
   );
   if (open?.[1] !== undefined) return open[1].length;
+  // Hangul/CJK glued to stacked hero: `제목 넣는 중CLOUD<br>NATIVE</h1>`
+  const hangulBrHero = line.match(
+    /^(.*?[\uac00-\ud7af\u3000-\u9fff])\s*([A-Za-z][\s\S]*<br\b[\s\S]*<\/h[1-6]>)/u,
+  );
+  if (hangulBrHero?.[1] !== undefined) return hangulBrHero[1].length;
   // Mid-word CSS join after Hangul/Latin: `슬라이드 추가 중ospace;font-size:…">Label</div>`
   // (`ospace` = truncated `monospace`). Keep the human prefix.
   // NEVER cut intact `… style="font-family:…"` tags — that left `<span style="`
@@ -476,6 +503,11 @@ export function stripTrailingDeckHtmlMarkupLeak(input: string): string {
     DECK_POSITIONED_PCT_TAIL_RE,
     DECK_TABLE_OR_LIST_TAIL_RE,
     DECK_IMG_TAIL_RE,
+    DECK_PICTURE_TAIL_RE,
+    DECK_MEDIA_EMBED_TAIL_RE,
+    DECK_A11Y_DECO_SHELL_TAIL_RE,
+    DECK_FIGURE_TAIL_RE,
+    DECK_VISUAL_EFFECT_STYLE_TAIL_RE,
     DECK_CHROME_LANDMARK_TAIL_RE,
     DECK_ORPHAN_CLOSE_TAGS_TAIL_RE,
     DECK_CSS_CUSTOM_PROP_DUMP_TAIL_RE,
