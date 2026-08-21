@@ -81,12 +81,18 @@ html, body {
   height: auto !important;
   min-height: 0 !important;
 }
-.presentation, .deck, .deck-shell, .deck-stage, #deck-stage, .stage, .slides-container {
+.presentation, .deck, #deck, #deck-track, .slide-deck, .deck-shell, .deck-stage, #deck-stage, .stage, .slides-container {
   position: static !important;
   inset: auto !important;
   width: auto !important;
+  max-width: none !important;
   height: auto !important;
   min-height: 0 !important;
+  /* Horizontal #deck strips (Studio/Grove/Signal) must stack for letterbox. */
+  display: flex !important;
+  flex-direction: column !important;
+  flex-wrap: nowrap !important;
+  align-items: center !important;
   transform: none !important;
   overflow: visible !important;
 }
@@ -230,6 +236,15 @@ export function stripOfficialLookSlideHostCanvasClips(css: string): string {
         )
         .replace(
           /(?:^|;)\s*(?:min-|max-)?(?:width|height)\s*:\s*[^;]*\b100\s*v(?:w|h|min|max|i|b)\b[^;]*(?=;|$)/gi,
+          ';',
+        )
+        // Studio/Grove horizontal strip: flex-basis 100vw keeps N×viewport width.
+        .replace(
+          /(?:^|;)\s*flex\s*:\s*[^;]*\b100\s*v(?:w|h|min|max)\b[^;]*(?=;|$)/gi,
+          ';',
+        )
+        .replace(
+          /(?:^|;)\s*flex-basis\s*:\s*[^;]*\b100\s*v(?:w|h|min|max)\b[^;]*(?=;|$)/gi,
           ';',
         )
         .replace(/;;+/g, ';')
@@ -2082,13 +2097,35 @@ export function deckHtmlHasMotifOutsideCanvasHang(html: string): boolean {
 function prepareOfficialLookCss(css: string): string {
   return appendCompactOfficialTypeLock(
     rewriteOfficialLookHostSlideSelectors(
-      sanitizeMotifOutsideCanvasOffsets(
-        stripOfficialLookSlideHostCanvasClips(
-          stripOfficialLookViewportMediaQueries(css),
+      rewriteOfficialLookViewportLengthsToCanvasPx(
+        sanitizeMotifOutsideCanvasOffsets(
+          stripOfficialLookSlideHostCanvasClips(
+            stripOfficialLookViewportMediaQueries(css),
+          ),
         ),
       ),
     ),
   );
+}
+
+/**
+ * Official Studio/Grove tokens use `12vw` / `5vh` for type+padding. Under the
+ * stacked 1920×1080 letterbox those resolve against the iframe viewport and
+ * look tiny/huge. Map leftover viewport lengths to design-canvas px (§0.92).
+ * Runs after Motif hang sanitize (Motif vw→% already applied).
+ */
+export function rewriteOfficialLookViewportLengthsToCanvasPx(css: string): string {
+  const src = String(css ?? '');
+  if (!src.trim()) return src;
+  const fmt = (n: number) => {
+    const rounded = Math.round(n * 100) / 100;
+    return Number.isInteger(rounded) ? String(rounded) : String(rounded);
+  };
+  return src
+    .replace(/(\d+(?:\.\d+)?)\s*vw\b/gi, (_m, raw: string) => `${fmt(parseFloat(raw) * 19.2)}px`)
+    .replace(/(\d+(?:\.\d+)?)\s*vh\b/gi, (_m, raw: string) => `${fmt(parseFloat(raw) * 10.8)}px`)
+    .replace(/(\d+(?:\.\d+)?)\s*vmin\b/gi, (_m, raw: string) => `${fmt(parseFloat(raw) * 10.8)}px`)
+    .replace(/(\d+(?:\.\d+)?)\s*vmax\b/gi, (_m, raw: string) => `${fmt(parseFloat(raw) * 19.2)}px`);
 }
 
 function insertAfterOpenBody(dest: string, snippet: string): string {
@@ -2224,10 +2261,12 @@ function hasOfficialLookStyleAttr(html: string): boolean {
 function hasOfficialPresenterShell(html: string): boolean {
   return (
     /<deck-stage\b/i.test(html)
+    || /\bid\s*=\s*["']deck(?:-track)?["']/i.test(html)
     || /\bclass\s*=\s*(["'])[^"'<>]*\bpresentation\b/i.test(html)
-    || /\bclass\s*=\s*(["'])[^"'<>]*\b(?:deck|slides-container|stage)\b/i.test(html)
+    || /\bclass\s*=\s*(["'])[^"'<>]*\b(?:deck|slides-container|stage|slide-deck)\b/i.test(html)
     || (/\bnav-dots\b/i.test(html) && /\bnav-dot\b/i.test(html))
     || /\bclass\s*=\s*(["'])[^"'<>]*\bslide-counter\b/i.test(html)
+    || /\bid\s*=\s*["']slide-counter["']/i.test(html)
     || /\bclass\s*=\s*(["'])[^"'<>]*\bslide-number\b/i.test(html)
     // Opacity-stack presenters (one slide visible) even without a named shell.
     || (
@@ -2273,11 +2312,20 @@ export function looksLikeOfficialFullscreenPresenterDeck(html: string): boolean 
 /** Body > .slide markup used by compact API fills (not `.presentation` hosts). */
 function looksLikeBodyFirstSlideDeck(html: string): boolean {
   const dest = String(html ?? '');
+  if (!dest) return false;
+  // Horizontal #deck / slide-deck strips are catalog presenters, never body-first.
+  if (
+    /<div\b[^>]*\bid\s*=\s*["']deck(?:-track)?["'][^>]*>/i.test(dest)
+    || /<(?:div|section)\b[^>]*\bclass\s*=\s*['"][^'"]*\bslide-deck\b/i.test(dest)
+  ) {
+    return false;
+  }
   const bodyMatch = /<body\b[^>]*>/i.exec(dest);
   if (!bodyMatch) return false;
   let rest = dest.slice((bodyMatch.index ?? 0) + bodyMatch[0].length);
+  // Comment matcher must not span `-->` via backtracking (Studio/Grove).
   rest = rest.replace(
-    /^(?:\s|<!--[\s\S]*?-->|<(?:header|nav)\b[^>]*>[\s\S]*?<\/(?:header|nav)>|<style\b[^>]*>[\s\S]*?<\/style>|<script\b[^>]*>[\s\S]*?<\/script>)*/i,
+    /^(?:\s|<!--(?:(?!-->)[\s\S])*-->|<(?:header|nav)\b[^>]*>[\s\S]*?<\/(?:header|nav)>|<style\b[^>]*>[\s\S]*?<\/style>|<script\b[^>]*>[\s\S]*?<\/script>)*/i,
     '',
   );
   const open = /^<(?:section|div|main|article)\b([^>]*)>/i.exec(rest);
@@ -2302,6 +2350,17 @@ function looksLikeAuthoredMultiSlideCss(html: string): boolean {
     return true;
   }
   if (/\.slide\.(?:active|is-active|current)\b[^{]*\{/i.test(html)) return true;
+  // Horizontal #deck strips (Studio/Vellum) translateX between 100vw slides —
+  // often without a `.slide.is-active {…}` rule (§0.92).
+  if (
+    /\bid\s*=\s*["']deck(?:-track)?["']/i.test(html)
+    && /#deck\b[^{]*\{[^}]*display\s*:\s*flex/i.test(html)
+    && /\.slide\b[^{]*\{[^}]*(?:flex\s*:\s*[^;]*100vw|width\s*:\s*100vw|height\s*:\s*100vh)/i.test(
+      html,
+    )
+  ) {
+    return true;
+  }
   return false;
 }
 

@@ -32,6 +32,17 @@
 | scaffold로 갑자기 바꾸면? | **안 됨.** kit hard cutover 금지. full HTML scaffold도 기본 inject 하지 않음 |
 | 1장짜리 템플릿 결과가 저장되는가? | **제품 경로는 첫 fill 3장.** 잘리면 제목 있는 1장은 저장하고 top-up이 덧붙인다. 제목 없는 빈 셸만 미완성으로 차단. 사용자가 1장을 명시한 경우도 허용 |
 
+### 0.92 2026-08-21 — Studio/#deck 수평 스트립 비율·스크롤·nav (cache v48)
+
+Studio·Grove·Signal 계열은 `#deck{display:flex}` + `.slide{flex:0 0 100vw}` 수평 strip이다. body-first 오탐으로 카탈로그가 1920 lock 되고, fill neutralize는 `#deck`을 놓쳐 가로 스크롤·translate nav 충돌·`12vw` 타입 붕괴가 났다.
+
+구현 현황:
+
+- [x] body-first comment/`#deck` 가드
+- [x] LOOK_NEUTRALIZE `#deck` column stack · flex 100vw strip · vw→canvas px
+- [x] transformTrack skips column flex tracks
+- [x] Studio family presenter/fill red spec · cache v48
+
 ### 0.89 2026-08-21 — look CSS slide-host clip/100vh strip (cache v47)
 
 공식 look이 presenter `.slide{overflow:hidden;height:100vh}`를 그대로 실어 neutralize에만 의존했다. prepare에서 **slide/deck host** 규칙만 clip·100vh/vw를 제거하고, 전수 survivor scan이 remmerge·host-clip까지 검사한다.
@@ -1709,6 +1720,7 @@ User-message 쪽 `[Existing deck edit]` / `<attached-preview-comments>` 주입�
 | 2026-08-13 | **§0.0 정책 개정** — template = layout vocabulary + visual look, 페이지 수/순서/구성은 브리프 기반. content-swap → pick-and-choose layout roles. daemon Clone default count = 6 (shells.length 아님), `pickTemplateShells` role-based scoring 도입. `template-visual-kit.ts` HARD_RULES 재작성, `DEFAULT_MAX_CHARS` 12000 → 14000. |
 | 2026-08-18 | Clone content-fill motif 보정 — 8/13 SVG hang 방지 패치가 first fill에서 `Motif sprites`/`Decoration CSS`/`Layout CSS`를 통째로 생략해 Daisy/Capsule 템플릿 정체성이 약해졌다. `slimTemplateVisualKitForFill`이 큰 SVG sprite sheet와 전체 stylesheet dump는 계속 제거하되, Daisy star/rainbow·Capsule pill/capsule·Terminal scanline 같은 compact motif recipe와 짧은 Decoration/Layout CSS cue를 보존하도록 변경했다. |
 | 2026-08-18 | §0.20 — html-ppt identity scope. 공유 `:root --bg:#ffffff` 대신 `.tpl-*` host 토큰/슬라이드 surface/폰트를 kit 계약으로 쓰고, SKILL `copy index.html` filesystem 지시를 neutralize. |
+| 2026-08-21 | §0.92 — Studio/#deck horizontal strip: body-first false positive · neutralize #deck column · flex 100vw strip · vw→1920px · transformTrack column skip · cache v48. |
 | 2026-08-21 | §0.91 — all-template PreviewModal blank canvas. `slide-counter` is not a slide host · official presenter restore · native next clears host hide · author class-toggle catalogs never collapse. |
 | 2026-08-21 | §0.90 — PreviewModal Playful/opacity-stack page 2+ painted only body bg. Official presenters must not host-`display:none` inactive slides; native next only flips `.active`. |
 | 2026-08-21 | §0.89 — strip official look slide-host overflow:hidden + 100vh/vw in prepare · harden 54-template survivor scan · cache v47. |

@@ -830,8 +830,12 @@ html, body { overflow: visible !important; height: auto !important; }
     expect(LOOK_NEUTRALIZE_CSS).toMatch(/:not\(\[class\*="pixel-"\]\)/);
     expect(LOOK_NEUTRALIZE_CSS).toMatch(/section\[data-screen-label\]/);
     expect(LOOK_NEUTRALIZE_CSS).not.toMatch(/\[data-slide\],\s*\[data-screen-label\]/);
-    // Do not force display:flex — Cobalt/Neo-grid need display:grid (§0.83).
-    expect(LOOK_NEUTRALIZE_CSS).not.toMatch(/overflow:\s*visible\s*!important;\s*display:\s*flex/);
+    // Do not force display:flex on slide hosts — Cobalt/Neo-grid need display:grid (§0.83).
+    // Deck shells (#deck) DO force flex-column to kill Studio horizontal strips (§0.90).
+    expect(LOOK_NEUTRALIZE_CSS).toMatch(/#deck\b[^\{]*\{[^}]*flex-direction:\s*column\s*!important/i);
+    expect(LOOK_NEUTRALIZE_CSS).not.toMatch(
+      /\.slide[^{]*\{[^}]*overflow:\s*visible\s*!important;\s*display:\s*flex/i,
+    );
   });
 
   it('sanitizes Scatterbrain title-accent hangs during official look merge (§0.83)', () => {
@@ -1425,6 +1429,57 @@ html, body { overflow: visible !important; height: auto !important; }
     const out = lockStackedDeckCanvasForPreview(official);
     expect(out).not.toContain('data-od-stacked-canvas-neutralize');
     expect(out).not.toMatch(/content="width=1920/);
+  });
+
+  it('treats Studio/Grove/Signal #deck horizontal strips as catalog presenters (§0.92)', () => {
+    const family = [
+      'html-ppt-zhangzara-studio',
+      'html-ppt-zhangzara-grove',
+      'html-ppt-zhangzara-signal',
+      'html-ppt-zhangzara-mat',
+      'html-ppt-zhangzara-broadside',
+      'html-ppt-zhangzara-vellum',
+      'html-ppt-zhangzara-monochrome',
+      'html-ppt-zhangzara-raw-grid',
+    ];
+    const failures: string[] = [];
+    for (const folder of family) {
+      const official = readFileSync(join(EXAMPLES_DIR, folder, 'example.html'), 'utf8');
+      if (!looksLikeOfficialFullscreenPresenterDeck(official)) {
+        failures.push(`${folder}: not detected as fullscreen presenter`);
+      }
+      if (needsStackedDesignViewportLock(official)) {
+        failures.push(`${folder}: catalog wrongly needs 1920 lock`);
+      }
+      const locked = lockStackedDeckCanvasForPreview(official);
+      if (/content="width=1920/.test(locked)) {
+        failures.push(`${folder}: catalog gained width=1920 meta`);
+      }
+      const assets = extractOfficialDeckLookAssets(official);
+      if (!assets?.css) {
+        failures.push(`${folder}: no look CSS`);
+        continue;
+      }
+      const sparse = `<!doctype html><html lang="ko"><body>
+<section class="slide" style="width:1920px;height:1080px"><h1>Studio Fill</h1></section>
+<section class="slide" style="width:1920px;height:1080px"><h2>Two</h2></section>
+</body></html>`;
+      const merged = mergeOfficialDeckLookCss(sparse, assets);
+      const look =
+        merged.match(/<style[^>]*data-od-official-look-css[^>]*>([\s\S]*?)<\/style>/i)?.[1] ?? '';
+      if (!/#deck\b[^\{]*\{[^}]*flex-direction:\s*column\s*!important/i.test(look)) {
+        failures.push(`${folder}: merge neutralize missing #deck column stack`);
+      }
+      const body = look.replace(/\n?\/\*\s*stacked preview\/export:[\s\S]*$/i, '');
+      if (/flex\s*:\s*[^;]*100vw/i.test(body) && /(?:^|,)\s*\.slide\s*\{[^}]*flex\s*:/im.test(body)) {
+        failures.push(`${folder}: .slide flex 100vw survived prepare`);
+      }
+      // Design tokens should leave the iframe viewport (12vw → canvas px).
+      if (/--sz-[a-z0-9-]+\s*:\s*[^;]*\bvw\b/i.test(body)) {
+        failures.push(`${folder}: type-scale vw token survived canvas px rewrite`);
+      }
+    }
+    expect(failures, failures.join('\n')).toEqual([]);
   });
 
   it('does not lock official Capsule example.html to a stacked 1920 canvas', () => {

@@ -3276,6 +3276,13 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
         var style = window.getComputedStyle(node);
         var computedTransform = style.transform || '';
         var hasComputedTransform = !!(computedTransform && computedTransform !== 'none');
+        var flexDir = String(style.flexDirection || '').toLowerCase();
+        // Stacked letterbox neutralize forces #deck to column — do not treat as
+        // horizontal translate track (Studio/Grove/Signal fills).
+        if (flexDir === 'column' || flexDir === 'column-reverse') {
+          node = node.parentElement;
+          continue;
+        }
         if (
           directSlides >= list.length &&
           (
