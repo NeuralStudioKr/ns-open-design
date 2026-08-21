@@ -108,6 +108,7 @@ function assetFromRow(row: TeamverDriveImportAssetRow): TeamverDriveImportAsset 
     assetId: row.assetId,
     filename: row.name,
     mimeType: row.mimeType,
+    sharedDriveId: row.sharedDriveId ?? null,
   };
 }
 

@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
 import { TeamverHomeSlideCreateModal } from "../src/teamver/components/TeamverHomeSlideCreateModal";
+import { HomeSlideCreateAttachChips } from "../src/teamver/components/HomeSlideCreateAttachChips";
 import { TeamverHomeCreateHero } from "../src/teamver/components/TeamverHomeCreateHero";
 import {
   CANVAS_CREATE_SLIDES_PLUGIN_ID,
@@ -386,6 +387,125 @@ describe("TeamverHomeSlideCreateModal", () => {
       cleanup();
       createObjectURL.mockRestore();
       revokeObjectURL.mockRestore();
+    }
+  });
+
+  it("keeps object URLs for remaining image chips when a middle file is removed", () => {
+    const createObjectURL = vi
+      .spyOn(URL, "createObjectURL")
+      .mockImplementation((blob) => `blob:preview-${(blob as File).name}`);
+    const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+    try {
+      const files = [
+        new File(["a"], "a.png", { type: "image/png" }),
+        new File(["b"], "b.png", { type: "image/png" }),
+        new File(["c"], "c.png", { type: "image/png" }),
+      ];
+      const onRemoveFile = vi.fn();
+      const { rerender } = wrap(
+        <TeamverHomeSlideCreateModal
+          open
+          entry="new"
+          templateOptions={templates}
+          selectedTemplateId="html-ppt-hermes"
+          onTemplateChange={() => {}}
+          userPrompt=""
+          onUserPromptChange={() => {}}
+          stagedFiles={files}
+          onRemoveFile={onRemoveFile}
+          onConfirm={() => {}}
+          onClose={() => {}}
+        />,
+      );
+      expect(createObjectURL).toHaveBeenCalledTimes(3);
+      const before = Array.from(
+        screen
+          .getByTestId("teamver-home-slide-create-chips")
+          .querySelectorAll("img.teamver-home-slide-create-chip-thumb"),
+      ).map((node) => (node as HTMLImageElement).getAttribute("src"));
+      expect(before).toEqual(["blob:preview-a.png", "blob:preview-b.png", "blob:preview-c.png"]);
+
+      createObjectURL.mockClear();
+      rerender(
+        <I18nProvider locale="en">
+          <TeamverHomeSlideCreateModal
+            open
+            entry="new"
+            templateOptions={templates}
+            selectedTemplateId="html-ppt-hermes"
+            onTemplateChange={() => {}}
+            userPrompt=""
+            onUserPromptChange={() => {}}
+            stagedFiles={[files[0]!, files[2]!]}
+            onRemoveFile={onRemoveFile}
+            onConfirm={() => {}}
+            onClose={() => {}}
+          />
+        </I18nProvider>,
+      );
+
+      expect(createObjectURL).not.toHaveBeenCalled();
+      expect(revokeObjectURL).toHaveBeenCalledWith("blob:preview-b.png");
+      const after = Array.from(
+        screen
+          .getByTestId("teamver-home-slide-create-chips")
+          .querySelectorAll("img.teamver-home-slide-create-chip-thumb"),
+      ).map((node) => (node as HTMLImageElement).getAttribute("src"));
+      expect(after).toEqual(["blob:preview-a.png", "blob:preview-c.png"]);
+    } finally {
+      cleanup();
+      createObjectURL.mockRestore();
+      revokeObjectURL.mockRestore();
+    }
+  });
+
+  it("refetches a Drive image thumb with sharedDriveId when the cache misses", async () => {
+    const thumbApi = await import("../src/teamver/driveImportThumbnails");
+    const peekSpy = vi.spyOn(thumbApi, "peekTeamverDriveImportThumbnail").mockReturnValue(undefined);
+    const fetchSpy = vi
+      .spyOn(thumbApi, "fetchTeamverDriveImportThumbnails")
+      .mockResolvedValue(new Map([["drv-img", "https://thumb.example/shared.png"]]));
+    try {
+      wrap(
+        <HomeSlideCreateAttachChips
+          stagedFiles={[]}
+          stagedDriveAssets={[
+            {
+              assetId: "drv-img",
+              filename: "shared.png",
+              mimeType: "image/png",
+              sharedDriveId: "SD-TEAM",
+            },
+          ]}
+          workspaceId="ws-1"
+          removeAttachLabel="Remove attachment"
+        />,
+      );
+      await vi.waitFor(() => {
+        expect(fetchSpy).toHaveBeenCalledWith({
+          workspaceId: "ws-1",
+          items: [
+            {
+              assetId: "drv-img",
+              name: "shared.png",
+              mimeType: "image/png",
+              sharedDriveId: "SD-TEAM",
+            },
+          ],
+        });
+      });
+      await vi.waitFor(() => {
+        expect(
+          screen
+            .getByTestId("teamver-home-slide-create-chips")
+            .querySelector("img.teamver-home-slide-create-chip-thumb")
+            ?.getAttribute("src"),
+        ).toBe("https://thumb.example/shared.png");
+      });
+    } finally {
+      peekSpy.mockRestore();
+      fetchSpy.mockRestore();
+      cleanup();
     }
   });
 

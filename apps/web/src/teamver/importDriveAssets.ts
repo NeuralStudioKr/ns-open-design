@@ -17,6 +17,8 @@ export type TeamverDriveImportAsset = {
   filename?: string;
   destPath?: string;
   mimeType?: string;
+  /** Needed to re-fetch image thumbs for shared-drive assets after picker cache miss. */
+  sharedDriveId?: string | null;
 };
 
 export type TeamverDriveImportedAsset = {
@@ -186,7 +188,21 @@ export async function importTeamverDriveAssets(
     const response = await withDesignBffCookieAuthRecovery(() =>
       client.http.post<DriveImportResponse>(
         `/projects/${encodeURIComponent(projectId)}/import-drive`,
-        { assets },
+        {
+          // sharedDriveId is FE-only (thumb refetch); BE schema does not accept it.
+          assets: assets.map((asset) => {
+            const body: {
+              assetId: string;
+              filename?: string;
+              destPath?: string;
+              mimeType?: string;
+            } = { assetId: asset.assetId };
+            if (asset.filename !== undefined) body.filename = asset.filename;
+            if (asset.destPath !== undefined) body.destPath = asset.destPath;
+            if (asset.mimeType !== undefined) body.mimeType = asset.mimeType;
+            return body;
+          }),
+        },
         {
           workspaceId,
           ...TEAMVER_BFF_REQUEST_OPTIONS,

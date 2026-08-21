@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "../../components/Icon";
 import {
   driveImportAssetIconName,
@@ -21,14 +21,26 @@ type Props = {
   onRemoveDriveAsset?: (assetId: string) => void;
 };
 
+function localFileIdentity(file: File): string {
+  return `${file.name}\0${file.size}\0${file.lastModified}\0${file.type}`;
+}
+
 /**
  * Object-URL previews keyed by the File object itself so removing a middle
  * chip does not recreate URLs for every later file (index-based keys did).
+ * Effect deps use a content signature so a new array wrapper with the same
+ * File identities does not churn revoke/create.
  */
 function useLocalImagePreviewUrls(files: File[]): Map<File, string> {
   const [urls, setUrls] = useState(() => new Map<File, string>());
   const urlsRef = useRef(urls);
   urlsRef.current = urls;
+  const filesRef = useRef(files);
+  filesRef.current = files;
+  const fileSignature = useMemo(
+    () => files.map(localFileIdentity).join("|"),
+    [files],
+  );
 
   useEffect(() => {
     if (typeof URL === "undefined" || typeof URL.createObjectURL !== "function") {
@@ -36,10 +48,11 @@ function useLocalImagePreviewUrls(files: File[]): Map<File, string> {
       return;
     }
 
+    const currentFiles = filesRef.current;
     setUrls((prev) => {
       const next = new Map<File, string>();
-      const keep = new Set(files);
-      for (const file of files) {
+      const keep = new Set(currentFiles);
+      for (const file of currentFiles) {
         if (!isDriveImageAsset(file.name, file.type)) continue;
         const existing = prev.get(file);
         if (existing) {
@@ -58,7 +71,7 @@ function useLocalImagePreviewUrls(files: File[]): Map<File, string> {
       }
       return next;
     });
-  }, [files]);
+  }, [fileSignature]);
 
   useEffect(() => {
     return () => {
@@ -81,19 +94,34 @@ function useDriveImageThumbUrls(
 ): Map<string, string> {
   const [thumbUrls, setThumbUrls] = useState<Map<string, string>>(() => new Map());
   const ws = workspaceId?.trim() ?? "";
-  const assetSignature = assets
-    .map((asset) => `${asset.assetId}:${asset.filename ?? ""}:${asset.mimeType ?? ""}`)
-    .join("|");
+  const assetsRef = useRef(assets);
+  assetsRef.current = assets;
+  const assetSignature = useMemo(
+    () =>
+      assets
+        .map(
+          (asset) =>
+            `${asset.assetId}:${asset.filename ?? ""}:${asset.mimeType ?? ""}:${asset.sharedDriveId ?? ""}`,
+        )
+        .join("|"),
+    [assets],
+  );
 
   useEffect(() => {
-    if (!ws || assets.length === 0) {
+    const currentAssets = assetsRef.current;
+    if (!ws || currentAssets.length === 0) {
       setThumbUrls(new Map());
       return;
     }
 
     const seeded = new Map<string, string>();
-    const requests: Array<{ assetId: string; name: string; mimeType?: string }> = [];
-    for (const asset of assets) {
+    const requests: Array<{
+      assetId: string;
+      name: string;
+      mimeType?: string;
+      sharedDriveId?: string | null;
+    }> = [];
+    for (const asset of currentAssets) {
       const name = asset.filename?.trim() || asset.assetId;
       if (!isDriveImageAsset(name, asset.mimeType)) continue;
       const cached = peekTeamverDriveImportThumbnail(ws, asset.assetId);
@@ -103,6 +131,7 @@ function useDriveImageThumbUrls(
           assetId: asset.assetId,
           name,
           mimeType: asset.mimeType,
+          sharedDriveId: asset.sharedDriveId ?? null,
         });
       }
     }
@@ -110,19 +139,21 @@ function useDriveImageThumbUrls(
     if (requests.length === 0) return;
 
     let canceled = false;
-    void fetchTeamverDriveImportThumbnails({ workspaceId: ws, items: requests }).then((next) => {
-      if (canceled || next.size === 0) return;
-      setThumbUrls((current) => {
-        const merged = new Map(current);
-        for (const [assetId, url] of next) merged.set(assetId, url);
-        return merged;
+    void fetchTeamverDriveImportThumbnails({ workspaceId: ws, items: requests })
+      .then((next) => {
+        if (canceled || next.size === 0) return;
+        setThumbUrls((current) => {
+          const merged = new Map(current);
+          for (const [assetId, url] of next) merged.set(assetId, url);
+          return merged;
+        });
+      })
+      .catch(() => {
+        /* keep seeded / prior thumbs */
       });
-    });
     return () => {
       canceled = true;
     };
-    // Intentionally keyed by asset signature + workspace, not asset object identity.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ws, assetSignature]);
 
   return thumbUrls;
@@ -154,6 +185,8 @@ function ChipVisual({
           alt=""
           className="teamver-home-slide-create-chip-thumb"
           decoding="async"
+          loading="lazy"
+          draggable={false}
           onError={() => setThumbFailed(true)}
         />
       </span>
@@ -178,6 +211,12 @@ function removeLabelFor(base: string, name: string): string {
   return `${base}: ${trimmed}`;
 }
 
+function fileChipKey(file: File): string {
+  // Home blocks duplicate attaches by name+size+lastModified, so this is stable
+  // across middle-chip removal (index-in-key remounted later chips).
+  return `file:${localFileIdentity(file)}`;
+}
+
 export function HomeSlideCreateAttachChips({
   stagedFiles,
   stagedDriveAssets,
@@ -198,7 +237,7 @@ export function HomeSlideCreateAttachChips({
         const previewUrl = localPreviewUrls.get(file) ?? null;
         return (
           <li
-            key={`file-${file.name}-${file.size}-${file.lastModified}-${index}`}
+            key={fileChipKey(file)}
             className="teamver-home-slide-create-chip"
             data-testid="teamver-home-slide-create-chip-file"
             data-filename={file.name}
