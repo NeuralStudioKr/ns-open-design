@@ -405,6 +405,8 @@ import {
   shouldTrustTipRemountHostPaintDespiteComposedStale,
   shouldArmTipRemountPaintSyncHold,
   clearTipRemountPaintSyncHold,
+  nextTipRemountPaintSyncHoldToken,
+  shouldApplyTipRemountPaintSyncHoldClear,
   shouldDeferTipRemountGeomEpochBumpForPaintSync,
   shouldFlushDeferredTipRemountGeomEpochAfterPaintSyncHold,
   shouldRetryTipRemountSiblingMeasure,
@@ -5663,6 +5665,8 @@ function HtmlViewer({
   const [manualEditTipPaintSyncHold, setManualEditTipPaintSyncHold] = useState(false);
   const manualEditTipPaintSyncHoldRef = useRef(false);
   const manualEditTipPaintSyncHoldRafRef = useRef<number | null>(null);
+  /** Generation token — nested rAF cancel cannot orphan the inner frame (534). */
+  const manualEditTipPaintSyncHoldTokenRef = useRef(0);
   /** Geom-epoch bump deferred until paint-sync hold clears (533). */
   const manualEditTipDeferredGeomEpochBumpRef = useRef(false);
 
@@ -8288,6 +8292,17 @@ function HtmlViewer({
     }
   }
 
+  function cancelTipRemountPaintSyncHoldRaf() {
+    // Bump token first so any nested in-flight rAF no-ops (534).
+    manualEditTipPaintSyncHoldTokenRef.current = nextTipRemountPaintSyncHoldToken(
+      manualEditTipPaintSyncHoldTokenRef.current,
+    );
+    if (manualEditTipPaintSyncHoldRafRef.current != null) {
+      window.cancelAnimationFrame(manualEditTipPaintSyncHoldRafRef.current);
+      manualEditTipPaintSyncHoldRafRef.current = null;
+    }
+  }
+
   function flushDeferredTipRemountGeomEpochAfterPaintSync() {
     if (shouldFlushDeferredTipRemountGeomEpochAfterPaintSyncHold(
       true,
@@ -8310,11 +8325,25 @@ function HtmlViewer({
       setManualEditTipPaintSyncHold(true);
       const primaryId = selectedManualEditTargetIdRef.current;
       if (primaryId) refreshManualEditHostPaintRect(primaryId, { force: true });
-      if (manualEditTipPaintSyncHoldRafRef.current != null) {
-        window.cancelAnimationFrame(manualEditTipPaintSyncHoldRafRef.current);
-      }
+      cancelTipRemountPaintSyncHoldRaf();
+      const holdToken = nextTipRemountPaintSyncHoldToken(
+        manualEditTipPaintSyncHoldTokenRef.current,
+      );
+      manualEditTipPaintSyncHoldTokenRef.current = holdToken;
       manualEditTipPaintSyncHoldRafRef.current = requestAnimationFrame(() => {
+        if (!shouldApplyTipRemountPaintSyncHoldClear(
+          holdToken,
+          manualEditTipPaintSyncHoldTokenRef.current,
+        )) {
+          return;
+        }
         manualEditTipPaintSyncHoldRafRef.current = requestAnimationFrame(() => {
+          if (!shouldApplyTipRemountPaintSyncHoldClear(
+            holdToken,
+            manualEditTipPaintSyncHoldTokenRef.current,
+          )) {
+            return;
+          }
           manualEditTipPaintSyncHoldRafRef.current = null;
           manualEditTipPaintSyncHoldRef.current = clearTipRemountPaintSyncHold();
           setManualEditTipPaintSyncHold(false);
@@ -8883,10 +8912,7 @@ function HtmlViewer({
       manualEditTipChromeUnlockPointerGateRef.current = false;
       setManualEditTipChromeUnlockPointerGate(false);
       clearTipRemountPostUnlockQuietState();
-      if (manualEditTipPaintSyncHoldRafRef.current != null) {
-        window.cancelAnimationFrame(manualEditTipPaintSyncHoldRafRef.current);
-        manualEditTipPaintSyncHoldRafRef.current = null;
-      }
+      cancelTipRemountPaintSyncHoldRaf();
       manualEditTipPaintSyncHoldRef.current = clearTipRemountPaintSyncHold();
       setManualEditTipPaintSyncHold(false);
       manualEditTipDeferredGeomEpochBumpRef.current = false;
@@ -8997,10 +9023,7 @@ function HtmlViewer({
       manualEditTipChromeUnlockPointerGateRef.current = false;
       setManualEditTipChromeUnlockPointerGate(false);
       clearTipRemountPostUnlockQuietState();
-      if (manualEditTipPaintSyncHoldRafRef.current != null) {
-        window.cancelAnimationFrame(manualEditTipPaintSyncHoldRafRef.current);
-        manualEditTipPaintSyncHoldRafRef.current = null;
-      }
+      cancelTipRemountPaintSyncHoldRaf();
       manualEditTipPaintSyncHoldRef.current = clearTipRemountPaintSyncHold();
       setManualEditTipPaintSyncHold(false);
       manualEditTipDeferredGeomEpochBumpRef.current = false;
@@ -10598,10 +10621,7 @@ function HtmlViewer({
           manualEditTipChromeUnlockPointerGateRef.current = false;
           setManualEditTipChromeUnlockPointerGate(false);
           clearTipRemountPostUnlockQuietState();
-          if (manualEditTipPaintSyncHoldRafRef.current != null) {
-            window.cancelAnimationFrame(manualEditTipPaintSyncHoldRafRef.current);
-            manualEditTipPaintSyncHoldRafRef.current = null;
-          }
+          cancelTipRemountPaintSyncHoldRaf();
           manualEditTipPaintSyncHoldRef.current = clearTipRemountPaintSyncHold();
           setManualEditTipPaintSyncHold(false);
           manualEditTipDeferredGeomEpochBumpRef.current = false;

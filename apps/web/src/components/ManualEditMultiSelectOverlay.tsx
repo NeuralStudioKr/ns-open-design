@@ -29,6 +29,7 @@ import {
   shouldOmitComposedMembersFromTipRemountPartialUnion,
   shouldLatchTipRemountPartialUnionMinSize,
   resolveTipRemountPartialUnionWithMinSizeLatch,
+  shouldClearTipRemountPartialUnionMinSizeLatch,
 } from '../edit-mode/manual-edit-freeze';
 import {
   RESIZE_HANDLES,
@@ -153,7 +154,11 @@ function unionHostRect(
   trustHostPaintDespiteStale = false,
   stabilizePartialPaintUnion = false,
   previousUnion: ManualEditRect | null = null,
-): ManualEditRect | null {
+): {
+  rect: ManualEditRect | null;
+  paintBearingCount: number;
+  omittedComposed: boolean;
+} {
   const members = targets.map((target) => {
     const contentRect = memberContentRect(target, draftMemberRects?.[target.id] ?? null);
     const paint = preferComposed ? null : measureHostRect(target.id);
@@ -198,9 +203,13 @@ function unionHostRect(
       union.width >= 1 && union.height >= 1,
     )
   ) {
-    return resolveTipRemountPartialUnionWithMinSizeLatch(previousUnion, union);
+    return {
+      rect: resolveTipRemountPartialUnionWithMinSizeLatch(previousUnion, union),
+      paintBearingCount,
+      omittedComposed: omitComposed,
+    };
   }
-  return union;
+  return { rect: union, paintBearingCount, omittedComposed: omitComposed };
 }
 
 function resolveGestureHostScale(
@@ -468,7 +477,7 @@ export function ManualEditMultiSelectOverlay({
   if (!stabilizePartialPaintUnion) {
     tipRemountPartialUnionLatchRef.current = null;
   }
-  const hostRect = unionHostRect(
+  const unionResult = unionHostRect(
     targets,
     composeScale,
     composeOffset,
@@ -479,7 +488,15 @@ export function ManualEditMultiSelectOverlay({
     stabilizePartialPaintUnion,
     tipRemountPartialUnionLatchRef.current,
   );
-  if (hostRect && hostRect.width >= 1 && hostRect.height >= 1) {
+  const hostRect = unionResult.rect;
+  // Full paint / session end — drop expanded partial envelope (535).
+  if (shouldClearTipRemountPartialUnionMinSizeLatch(
+    stabilizePartialPaintUnion,
+    targets.length,
+    unionResult.paintBearingCount,
+  )) {
+    tipRemountPartialUnionLatchRef.current = null;
+  } else if (hostRect && hostRect.width >= 1 && hostRect.height >= 1 && unionResult.omittedComposed) {
     tipRemountPartialUnionLatchRef.current = { ...hostRect };
   }
   if (!hostRect || hostRect.width < 1 || hostRect.height < 1) return null;

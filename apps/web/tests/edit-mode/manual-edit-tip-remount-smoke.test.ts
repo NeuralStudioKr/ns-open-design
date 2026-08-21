@@ -42,10 +42,15 @@ import {
   shouldOmitComposedMembersFromTipRemountPartialUnion,
   shouldLatchTipRemountPartialUnionMinSize,
   resolveTipRemountPartialUnionWithMinSizeLatch,
+  shouldClearTipRemountPartialUnionMinSizeLatch,
   shouldArmTipRemountPaintSyncHold,
   clearTipRemountPaintSyncHold,
+  nextTipRemountPaintSyncHoldToken,
+  shouldApplyTipRemountPaintSyncHoldClear,
   shouldDeferTipRemountGeomEpochBumpForPaintSync,
   shouldFlushDeferredTipRemountGeomEpochAfterPaintSyncHold,
+  TIP_REMOUNT_POST_PROTECT_SEQUENCE,
+  TIP_REMOUNT_CHROME_RELEASE_SEQUENCE,
   shouldCatchUpHostMetricsWhenDeckNudgeRemasureThrottled,
   shouldRetryTipRemountSiblingMeasure,
   shouldSkipOdEditTargetsIdentityMixedReseedDuringPostExitAbsorb,
@@ -217,12 +222,30 @@ describe('manual-edit tip remount smoke (500/501/506)', () => {
     expect(multiOverlay).toContain('tipRemountPartialUnionLatchRef');
   });
 
+  it('clears min-size latch on full paint coverage (535)', () => {
+    expect(shouldClearTipRemountPartialUnionMinSizeLatch(true, 3, 3)).toBe(true);
+    expect(shouldClearTipRemountPartialUnionMinSizeLatch(true, 3, 1)).toBe(false);
+    expect(shouldClearTipRemountPartialUnionMinSizeLatch(false, 3, 1)).toBe(true);
+    expect(multiOverlay).toContain('shouldClearTipRemountPartialUnionMinSizeLatch');
+  });
+
   it('holds host paint trust for inert→interactive paint sync (530)', () => {
     expect(shouldArmTipRemountPaintSyncHold(true, false)).toBe(true);
     expect(shouldTrustTipRemountHostPaintDespiteComposedStale(false, true, true)).toBe(true);
     expect(clearTipRemountPaintSyncHold()).toBe(false);
     expect(fileViewer).toContain('shouldArmTipRemountPaintSyncHold');
     expect(fileViewer).toContain('manualEditTipPaintSyncHold');
+  });
+
+  it('cancels paint-sync nested rAF via generation token (534)', () => {
+    let token = 0;
+    token = nextTipRemountPaintSyncHoldToken(token);
+    expect(shouldApplyTipRemountPaintSyncHoldClear(token, token)).toBe(true);
+    const cancelled = nextTipRemountPaintSyncHoldToken(token);
+    expect(shouldApplyTipRemountPaintSyncHoldClear(token, cancelled)).toBe(false);
+    expect(fileViewer).toContain('nextTipRemountPaintSyncHoldToken');
+    expect(fileViewer).toContain('shouldApplyTipRemountPaintSyncHoldClear');
+    expect(fileViewer).toContain('cancelTipRemountPaintSyncHoldRaf');
   });
 
   it('defers geom-epoch bump until paint-sync hold clears (533)', () => {
@@ -232,6 +255,22 @@ describe('manual-edit tip remount smoke (500/501/506)', () => {
     expect(fileViewer).toContain('shouldDeferTipRemountGeomEpochBumpForPaintSync');
     expect(fileViewer).toContain('flushDeferredTipRemountGeomEpochAfterPaintSync');
     expect(fileViewer).toContain('chromeReleasePendingThisFrame');
+  });
+
+  it('pins tip remount state-machine sequences (536)', () => {
+    expect(TIP_REMOUNT_POST_PROTECT_SEQUENCE[0]).toBe('sticky-clear');
+    expect(TIP_REMOUNT_POST_PROTECT_SEQUENCE.at(-1)).toBe('live');
+    expect(TIP_REMOUNT_CHROME_RELEASE_SEQUENCE).toContain('paint-sync-hold');
+    expect(TIP_REMOUNT_CHROME_RELEASE_SEQUENCE).toContain('post-unlock-quiet');
+    expect(TIP_REMOUNT_CHROME_RELEASE_SEQUENCE).toContain('geom-epoch-flush');
+    expect(TIP_REMOUNT_CHROME_RELEASE_SEQUENCE.indexOf('paint-sync-hold')).toBeLessThan(
+      TIP_REMOUNT_CHROME_RELEASE_SEQUENCE.indexOf('unlock-pointer-gate'),
+    );
+    expect(TIP_REMOUNT_CHROME_RELEASE_SEQUENCE.indexOf('pointerup-deferred-flush')).toBeLessThan(
+      TIP_REMOUNT_CHROME_RELEASE_SEQUENCE.indexOf('post-unlock-quiet'),
+    );
+    expect(freezeSource).toContain('TIP_REMOUNT_POST_PROTECT_SEQUENCE');
+    expect(freezeSource).toContain('TIP_REMOUNT_CHROME_RELEASE_SEQUENCE');
   });
 
   it('pins 522–524 FileViewer wiring on tip remount path (527)', () => {

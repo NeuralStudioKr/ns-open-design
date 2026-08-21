@@ -1366,6 +1366,21 @@ export function resolveTipRemountPartialUnionWithMinSizeLatch(
 }
 
 /**
+ * Drop min-size latch when tip session ends or every member has paint — prevents
+ * an expanded partial envelope from sticking after sibling retry (535).
+ */
+export function shouldClearTipRemountPartialUnionMinSizeLatch(
+  tipRemountChromeSessionLive: boolean,
+  memberCount: number,
+  paintBearingCount: number,
+): boolean {
+  if (!tipRemountChromeSessionLive) return true;
+  return memberCount >= 2
+    && paintBearingCount > 0
+    && paintBearingCount >= memberCount;
+}
+
+/**
  * Chrome just left tip-remount inert — hold host-paint trust for one paint sync
  * frame so interactive chrome does not flash composed (530).
  */
@@ -1379,6 +1394,21 @@ export function shouldArmTipRemountPaintSyncHold(
 /** Paint-sync hold ends after double-rAF settle (530). */
 export function clearTipRemountPaintSyncHold(): false {
   return false;
+}
+
+/**
+ * Nested paint-sync rAF uses a generation token — cancel bumps the token so
+ * in-flight outer/inner frames no-op even if only one id was cancelled (534).
+ */
+export function nextTipRemountPaintSyncHoldToken(previousToken: number): number {
+  return previousToken + 1;
+}
+
+export function shouldApplyTipRemountPaintSyncHoldClear(
+  scheduledToken: number,
+  currentToken: number,
+): boolean {
+  return scheduledToken === currentToken;
 }
 
 /**
@@ -1401,6 +1431,31 @@ export function shouldFlushDeferredTipRemountGeomEpochAfterPaintSyncHold(
 ): boolean {
   return paintSyncHoldClearing && deferredEpochBumpPending;
 }
+
+/**
+ * Canonical tip remount user-perception + chrome-release sequences for smoke
+ * pins (536). Order is the contract — do not reorder casually.
+ */
+export const TIP_REMOUNT_POST_PROTECT_SEQUENCE = [
+  'sticky-clear',
+  'soft-land',
+  'exit-latch',
+  'absorb',
+  'post-absorb-quiet',
+  'live',
+] as const;
+
+export const TIP_REMOUNT_CHROME_RELEASE_SEQUENCE = [
+  'chrome-suppress',
+  'fit-remasure',
+  'chrome-release',
+  'paint-sync-hold',
+  'unlock-pointer-gate',
+  'pointerup-deferred-flush',
+  'post-unlock-quiet',
+  'geom-epoch-flush',
+  'live',
+] as const;
 
 /**
  * Multi tip remasure measured only some selected members — retry once so union

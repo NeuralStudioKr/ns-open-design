@@ -66,10 +66,15 @@ import {
   shouldOmitComposedMembersFromTipRemountPartialUnion,
   shouldLatchTipRemountPartialUnionMinSize,
   resolveTipRemountPartialUnionWithMinSizeLatch,
+  shouldClearTipRemountPartialUnionMinSizeLatch,
   shouldArmTipRemountPaintSyncHold,
   clearTipRemountPaintSyncHold,
+  nextTipRemountPaintSyncHoldToken,
+  shouldApplyTipRemountPaintSyncHoldClear,
   shouldDeferTipRemountGeomEpochBumpForPaintSync,
   shouldFlushDeferredTipRemountGeomEpochAfterPaintSyncHold,
+  TIP_REMOUNT_POST_PROTECT_SEQUENCE,
+  TIP_REMOUNT_CHROME_RELEASE_SEQUENCE,
   shouldRetryTipRemountSiblingMeasure,
   TIP_REMOUNT_DECK_NUDGE_REMEASURE_THROTTLE_MS,
   shouldMarkTipRemountChromeReleasePendingAfterResizeSkip,
@@ -374,15 +379,41 @@ describe('manual edit freeze reset', () => {
       { x: 0, y: 0, width: 100, height: 80 },
       { x: 10, y: 10, width: 40, height: 30 },
     )).toEqual({ x: 0, y: 0, width: 100, height: 80 });
+    expect(shouldClearTipRemountPartialUnionMinSizeLatch(false, 3, 1)).toBe(true);
+    expect(shouldClearTipRemountPartialUnionMinSizeLatch(true, 3, 3)).toBe(true);
+    expect(shouldClearTipRemountPartialUnionMinSizeLatch(true, 3, 1)).toBe(false);
     expect(shouldArmTipRemountPaintSyncHold(true, false)).toBe(true);
     expect(shouldArmTipRemountPaintSyncHold(false, false)).toBe(false);
     expect(clearTipRemountPaintSyncHold()).toBe(false);
+    expect(nextTipRemountPaintSyncHoldToken(0)).toBe(1);
+    expect(nextTipRemountPaintSyncHoldToken(7)).toBe(8);
+    expect(shouldApplyTipRemountPaintSyncHoldClear(3, 3)).toBe(true);
+    expect(shouldApplyTipRemountPaintSyncHoldClear(3, 4)).toBe(false);
     expect(shouldDeferTipRemountGeomEpochBumpForPaintSync(true, false)).toBe(true);
     expect(shouldDeferTipRemountGeomEpochBumpForPaintSync(false, true)).toBe(true);
     expect(shouldDeferTipRemountGeomEpochBumpForPaintSync(false, false)).toBe(false);
     expect(shouldFlushDeferredTipRemountGeomEpochAfterPaintSyncHold(true, true)).toBe(true);
     expect(shouldFlushDeferredTipRemountGeomEpochAfterPaintSyncHold(true, false)).toBe(false);
     expect(shouldFlushDeferredTipRemountGeomEpochAfterPaintSyncHold(false, true)).toBe(false);
+    expect([...TIP_REMOUNT_POST_PROTECT_SEQUENCE]).toEqual([
+      'sticky-clear',
+      'soft-land',
+      'exit-latch',
+      'absorb',
+      'post-absorb-quiet',
+      'live',
+    ]);
+    expect([...TIP_REMOUNT_CHROME_RELEASE_SEQUENCE]).toEqual([
+      'chrome-suppress',
+      'fit-remasure',
+      'chrome-release',
+      'paint-sync-hold',
+      'unlock-pointer-gate',
+      'pointerup-deferred-flush',
+      'post-unlock-quiet',
+      'geom-epoch-flush',
+      'live',
+    ]);
     expect(shouldRetryTipRemountSiblingMeasure(2, 2, 1)).toBe(true);
     expect(shouldRetryTipRemountSiblingMeasure(2, 2, 2)).toBe(false);
     expect(shouldRetryTipRemountSiblingMeasure(1, 1, 0)).toBe(false);

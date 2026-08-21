@@ -326,6 +326,8 @@ describe('FileViewer revision tip advance after undo', () => {
     expect(fileViewer).toContain('shouldArmTipRemountPaintSyncHold');
     expect(fileViewer).toContain('shouldForceSpendTipRemountPostUnlockQuiet');
     expect(fileViewer).toContain('shouldDeferTipRemountGeomEpochBumpForPaintSync');
+    expect(fileViewer).toContain('nextTipRemountPaintSyncHoldToken');
+    expect(fileViewer).toContain('cancelTipRemountPaintSyncHoldRaf');
     expect(fileViewer).toContain('resolveTipRemountHostPaintRect');
     expect(fileViewer).toContain('manualEditPointerButtonsDownRef');
     expect(fileViewer).toContain('manualEditTipPostUnlockQuietRef');
@@ -339,6 +341,7 @@ describe('FileViewer revision tip advance after undo', () => {
     );
     expect(multiOverlay).toContain('shouldOmitComposedMembersFromTipRemountPartialUnion');
     expect(multiOverlay).toContain('shouldLatchTipRemountPartialUnionMinSize');
+    expect(multiOverlay).toContain('shouldClearTipRemountPartialUnionMinSizeLatch');
     expect(fileViewer).toContain("clearManualEditTipRemountGeometryGrace('mode-exit')");
     expect(fileViewer).toContain('TIP_REMOUNT_DECK_NUDGE_FOLLOW_MS');
     expect(fileViewer).toContain('shouldRemeasureTipRemountOnDeckHostFitNudge');
