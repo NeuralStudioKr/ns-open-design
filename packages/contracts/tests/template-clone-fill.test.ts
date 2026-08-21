@@ -348,4 +348,20 @@ describe('sanitizeTemplateCloneDeckTitle', () => {
     expect(cloned).not.toContain('Html Ppt Zhangzara Daisy Days');
     expect(cloned).not.toContain('Daisy Days');
   });
+
+  it('does not treat Studio slide-chrome / slide-counter as clone shells', () => {
+    const html = `
+<section class="slide">
+  <div class="slide-chrome">01 / Studio</div>
+  <h1>Cover</h1>
+</section>
+<section class="slide-counter">5 / 10</section>
+<section class="slide"><h1>Body</h1></section>
+`.trim();
+    const shells = listTemplateCloneSlideShells(html);
+    expect(shells).toHaveLength(2);
+    expect(shells.some((shell) => /slide-chrome|slide-counter/.test(shell.attrs))).toBe(false);
+    expect(shells[0]?.body).toContain('Cover');
+    expect(shells[1]?.body).toContain('Body');
+  });
 });

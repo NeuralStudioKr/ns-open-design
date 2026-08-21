@@ -1,3 +1,8 @@
+import {
+  classAttrHasDeckSlideToken,
+  classAttrHasTemplateSlideAlias,
+} from '@open-design/contracts';
+
 /** Keep in sync with bridge.ts discovery + mappable checks (avoids import cycle). */
 const DISCOVERY_SELECTOR = 'main, nav, section, article, header, footer, div, h1, h2, h3, p, a, button, img, svg, strong, span';
 
@@ -17,9 +22,11 @@ export function isDeckSlideRootElement(el: Element): boolean {
   const tag = el.tagName.toLowerCase();
   if (tag !== 'section' && tag !== 'div') return false;
   const cls = ` ${typeof el.className === 'string' ? el.className : ''} `;
-  if (/\bslide\b/.test(cls)) return true;
+  if (classAttrHasDeckSlideToken(cls) || classAttrHasTemplateSlideAlias(cls)) return true;
   if (el.hasAttribute('data-slide')) return true;
   if (el.hasAttribute('data-slide-index')) return true;
+  const label = el.getAttribute('data-screen-label');
+  if (label != null && /^\d{2}(?:\s|$)/.test(label)) return true;
   return false;
 }
 
@@ -111,14 +118,26 @@ export function resolveGraphicContainerTarget(
  */
 export function buildGraphicContainerBridgeSnippet(): string {
   return `
+  function isDeckSlideClassToken(token){
+    token = String(token || '').trim().toLowerCase();
+    if (!token) return false;
+    if (token === 'slide' || token === 'ppt-slide' || token === 'deck-slide' || token === 'slide-frame') return true;
+    if (/^slide-\\d+$/.test(token) || /^s(?:-[a-z0-9_-]+|\\d+)$/.test(token)) return true;
+    return false;
+  }
   function isDeckSlideRootEl(el){
     if (!el || !el.tagName) return false;
     var tag = el.tagName.toLowerCase();
     if (tag !== 'section' && tag !== 'div') return false;
-    var cls = ' ' + (typeof el.className === 'string' ? el.className : '') + ' ';
-    if (/\\bslide\\b/.test(cls)) return true;
+    var cls = typeof el.className === 'string' ? el.className : '';
+    var tokens = cls.split(/\\s+/);
+    for (var i = 0; i < tokens.length; i++) {
+      if (isDeckSlideClassToken(tokens[i])) return true;
+    }
     if (el.getAttribute('data-slide') != null) return true;
     if (el.getAttribute('data-slide-index') != null) return true;
+    var label = el.getAttribute('data-screen-label');
+    if (label && /^\\d{2}(?:\\s|$)/.test(label)) return true;
     return false;
   }
   function parentHasOnlyGraphicChildren(parent){

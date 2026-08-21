@@ -9,6 +9,8 @@
  * demo page count, order, or section lineup.
  */
 
+import { attrsLookLikeDeckOrTemplateSlideHost } from './html/deck-slide-class.js';
+
 export type TemplateCloneSlideContent = {
   title: string;
   body?: string;
@@ -44,11 +46,7 @@ function stripScriptsAndNav(html: string): string {
 }
 
 function isSlideAttrs(attrs: string): boolean {
-  return (
-    /\bslide\b/i.test(attrs)
-    || /\bclass\s*=\s*["'][^"']*\bs-[a-z0-9_-]+/i.test(attrs)
-    || /\bid\s*=\s*["']slide/i.test(attrs)
-  );
+  return attrsLookLikeDeckOrTemplateSlideHost(attrs);
 }
 
 /** Collect slide shells from `<section class="slide|s-*">` or `<div class="slide">`. */
@@ -63,9 +61,8 @@ export function listTemplateCloneSlideShells(html: string): SlideShell[] {
     .filter((shell) => isSlideAttrs(shell.attrs));
   if (sections.length > 0) return sections;
 
-  const opens = [...html.matchAll(
-    /<div\b([^>]*\bclass\s*=\s*(["'])[^"']*\bslide\b[^"']*\2[^>]*)>/gi,
-  )];
+  const opens = [...html.matchAll(/<div\b([^>]*)>/gi)]
+    .filter((match) => attrsLookLikeDeckOrTemplateSlideHost(match[1] ?? ''));
   const out: SlideShell[] = [];
   for (let i = 0; i < opens.length; i += 1) {
     const open = opens[i]!;

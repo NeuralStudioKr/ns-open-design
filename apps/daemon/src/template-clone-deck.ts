@@ -10,6 +10,7 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import type Database from 'better-sqlite3';
 import {
+  attrsLookLikeDeckOrTemplateSlideHost,
   buildTemplateClonedDeckHtml,
   pickPluginPreviewHtmlPath,
   resolveTemplateCloneSlideCountHint,
@@ -107,10 +108,13 @@ async function loadTemplatePreviewHtml(
 
 function countSlides(html: string): number {
   const sections = (html.match(/<section\b[^>]*>/gi) ?? []).filter((open) =>
-    /\bslide\b/i.test(open) || /\bs-[a-z0-9_-]+/i.test(open),
+    attrsLookLikeDeckOrTemplateSlideHost(open),
   ).length;
   if (sections > 0) return sections;
-  return (html.match(/<div\b[^>]*\bclass\s*=\s*["'][^"']*\bslide\b/gi) ?? []).length || 1;
+  const divs = (html.match(/<div\b[^>]*>/gi) ?? []).filter((open) =>
+    attrsLookLikeDeckOrTemplateSlideHost(open),
+  ).length;
+  return divs || 1;
 }
 
 function asMetadataRecord(value: unknown): Record<string, unknown> | null {
@@ -144,7 +148,8 @@ export function isNeutralDeckStubHtml(html: string): boolean {
   if (trimmed.includes('data-od-official-look-css') || trimmed.includes('od-official-deck-look')) {
     return false;
   }
-  const slideOpens = trimmed.match(/<(?:section|div)\b[^>]*\b(?:class|id)\s*=\s*["'][^"']*\bslide\b/gi) ?? [];
+  const slideOpens = (trimmed.match(/<(?:section|div)\b[^>]*>/gi) ?? [])
+    .filter((open) => attrsLookLikeDeckOrTemplateSlideHost(open));
   const hasPlaceholderKo =
     trimmed.includes('슬라이드 제목') && trimmed.includes('내용을 입력하세요');
   const hasNeutralPalette =

@@ -84,6 +84,7 @@ describe("deck-html-content", () => {
       + "<section class=\"slide\"><h2>서비스</h2><p>AI 디자인 자동화 플랫폼</p></section>"
       + "</body></html>";
     expect(documentContainsSlideSection('<div class="slide-counter">1 / 10</div>')).toBe(false);
+    expect(documentContainsSlideSection('<div class="slide-chrome">Studio</div>')).toBe(false);
     expect(documentContainsSlideSection(
       '<section class="s1" data-screen-label="01 Cover"><h1>Cover</h1></section>',
     )).toBe(true);
@@ -239,6 +240,23 @@ describe("deck-html-content", () => {
     const stripped = stripAbandonedHeadKitDumpFromStreamedText(headDump);
     expect(stripped).toContain("<!-- head kit dump abandoned -->");
     expect(stripped).not.toContain("<title>Daisy Days</title>");
+    expect(
+      shouldAbortStreamForHeadOnlyKitDump({
+        streamedText:
+          '<artifact type="deck"><body><div class="slide-counter">5 / 10</div><h1>Chrome</h1>'
+          + kit,
+        templateCloneContentFill: true,
+      }),
+    ).toBe(true);
+    expect(
+      shouldAbortStreamForHeadOnlyKitDump({
+        streamedText:
+          '<artifact type="deck"><body><div class="slide-counter">5 / 10</div>'
+          + '<section class="slide"><h1>Expo</h1></section>'
+          + kit,
+        templateCloneContentFill: true,
+      }),
+    ).toBe(false);
   });
 
   it("does not treat Motif-SVG-only slides as deliverable copy", () => {

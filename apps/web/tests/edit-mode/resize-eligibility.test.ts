@@ -27,6 +27,22 @@ describe('resize-eligibility', () => {
     expect(canResizeTarget(target, { inlineTextEditing: true })).toBe(false);
   });
 
+  it('does not treat slide-chrome as a slide root', () => {
+    const chrome = baseTarget({
+      tagName: 'div',
+      className: 'slide-chrome',
+    });
+    expect(isDeckSlideRoot(chrome)).toBe(false);
+    expect(canResizeTarget(chrome)).toBe(true);
+    expect(isDeckSlideRoot(baseTarget({ tagName: 'section', className: 'slide-5' }))).toBe(true);
+    expect(isDeckSlideRoot(baseTarget({ tagName: 'section', className: 's1' }))).toBe(true);
+    expect(isDeckSlideRoot(baseTarget({
+      tagName: 'section',
+      className: 'page',
+      attributes: { 'data-screen-label': '01 Cover' },
+    }))).toBe(true);
+  });
+
   it('locks aspect for images unless shift is held', () => {
     expect(aspectLockForTarget('image', false)).toBe(true);
     expect(aspectLockForTarget('image', true)).toBe(false);

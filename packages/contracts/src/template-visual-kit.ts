@@ -13,6 +13,7 @@
  * `.deco` CSS + hard anti-emoji rules placed before any large cue.
  */
 
+import { attrsLookLikeDeckOrTemplateSlideHost } from './html/deck-slide-class.js';
 import { sanitizeMotifOutsideCanvasOffsets } from './html/deck-template-look-css.js';
 
 // Raised through 11 000 → 12 000 so Daisy Days can ship daisy+star+rainbow
@@ -1530,15 +1531,19 @@ function extractFontImportHint(html: string, fonts: string[]): string | null {
 
 /** Structure cue without embedding huge/truncated SVG markup. */
 function extractFirstSlideStructureCue(html: string, budget: number): string | null {
-  const sectionMatch =
-    /<section\b[^>]*class=["'][^"']*slide[^"']*["'][^>]*>[\s\S]*?<\/section>/i.exec(
-      html,
-    );
-  const divMatch =
-    /<div\b[^>]*class=["'][^"']*\bslide\b[^"']*["'][^>]*>[\s\S]{0,2400}?<\/div>/i.exec(
-      html,
-    );
-  const raw = sectionMatch?.[0] ?? divMatch?.[0] ?? null;
+  const sectionMatch = [...html.matchAll(/<section\b([^>]*)>([\s\S]*?)<\/section>/gi)]
+    .find((match) => attrsLookLikeDeckOrTemplateSlideHost(match[1] ?? ''));
+  let raw = sectionMatch?.[0] ?? null;
+  if (!raw) {
+    const divOpen = [...html.matchAll(/<div\b([^>]*)>/gi)]
+      .find((match) => attrsLookLikeDeckOrTemplateSlideHost(match[1] ?? ''));
+    if (divOpen) {
+      const start = divOpen.index ?? 0;
+      const slice = html.slice(start, start + 2400);
+      const close = slice.lastIndexOf('</div>');
+      raw = close >= 0 ? slice.slice(0, close + 6) : slice;
+    }
+  }
   if (!raw) return null;
   const snippet = raw
     .replace(/<script\b[\s\S]*?<\/script>/gi, '')
@@ -1555,16 +1560,11 @@ type SlideShell = { attrs: string; body: string };
 function listSlideShells(html: string): SlideShell[] {
   const sections = [...html.matchAll(/<section\b([^>]*)>([\s\S]*?)<\/section>/gi)]
     .map((match) => ({ attrs: match[1] ?? '', body: match[2] ?? '' }))
-    .filter(({ attrs }) =>
-      /\bslide\b/i.test(attrs)
-      || /\bclass\s*=\s*["'][^"']*\bs-[a-z0-9_-]+/i.test(attrs)
-      || /\bid\s*=\s*["']slide/i.test(attrs)
-    );
+    .filter(({ attrs }) => attrsLookLikeDeckOrTemplateSlideHost(attrs));
   if (sections.length > 0) return sections;
 
-  const opens = [...html.matchAll(
-    /<div\b([^>]*\bclass\s*=\s*(["'])[^"']*\bslide\b[^"']*\2[^>]*)>/gi,
-  )];
+  const opens = [...html.matchAll(/<div\b([^>]*)>/gi)]
+    .filter((match) => attrsLookLikeDeckOrTemplateSlideHost(match[1] ?? ''));
   const out: SlideShell[] = [];
   for (let i = 0; i < opens.length; i += 1) {
     const open = opens[i]!;

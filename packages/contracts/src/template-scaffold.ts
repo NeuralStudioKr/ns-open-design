@@ -13,6 +13,7 @@
  * body-first document the model can copy.
  */
 
+import { attrsLookLikeDeckOrTemplateSlideHost } from './html/deck-slide-class.js';
 import { stripCssAtImportsBalanced } from './html/repairArtifactStyleSheets.js';
 import { extractTemplateVisualKitFromHtml } from './template-visual-kit.js';
 
@@ -63,9 +64,10 @@ function extractStyleSheets(html: string): string {
 }
 
 function listSlideSections(html: string): string[] {
-  return [...html.matchAll(
-    /<section\b[^>]*\bclass\s*=\s*(?:"[^"]*\bslide\b[^"]*"|'[^']*\bslide\b[^']*'|[^\s"'`=<>]*\bslide\b[^\s"'`=<>]*)[^>]*>[\s\S]*?<\/section>/gi,
-  )].map((match) => match[0] ?? '').filter(Boolean);
+  return [...html.matchAll(/<section\b([^>]*)>([\s\S]*?)<\/section>/gi)]
+    .filter((match) => attrsLookLikeDeckOrTemplateSlideHost(match[1] ?? ''))
+    .map((match) => match[0] ?? '')
+    .filter(Boolean);
 }
 
 /** Pick cover + evenly spaced body slides up to maxSlides. */

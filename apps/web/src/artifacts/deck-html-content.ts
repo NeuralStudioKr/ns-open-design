@@ -1,4 +1,5 @@
 import {
+  attrsLookLikeDeckOrTemplateSlideHost,
   htmlHasDeckSlideHost,
   htmlLooksLikeSlideDeliverableStream,
   indexOfFirstDeckSlideHost,
@@ -11,7 +12,7 @@ const SLIDE_HOST_OPEN_RE = /<(section|div|main|article)\b((?:[^>"']|"[^"]*"|'[^'
 
 /** Official catalog hosts plus cover dialects (`data-slide` / `data-slide-index`). */
 function attrsLookLikeSlideHost(attrs: string): boolean {
-  return looksLikeDeckSlideHostAttrs(attrs) || /\bdata-slide(?:-index)?\b/i.test(attrs);
+  return looksLikeDeckSlideHostAttrs(attrs) || attrsLookLikeDeckOrTemplateSlideHost(attrs);
 }
 
 type SlideHostBlock = {

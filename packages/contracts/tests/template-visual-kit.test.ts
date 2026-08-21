@@ -229,6 +229,21 @@ html,body{background:var(--ink);color:#fff}
     expect(kit).toContain('role=cover');
   });
 
+  it('skips slide-counter / slide-chrome when mapping template shells', () => {
+    const html = `
+<style>:root{--bg:#fff8f0;--ink:#1c1c1c}</style>
+<section class="slide-counter">5 / 10</section>
+<section class="slide slide-cover"><h1>Cover Expo</h1></section>
+<section class="slide"><div class="slide-chrome">02</div><h2>Body pack</h2></section>
+`.trim();
+    const kit = extractTemplateVisualKitFromHtml(html, { title: 'Studio Chrome' });
+    expect(kit).toContain('### Template scaffold map');
+    expect(kit).toContain('Cover Expo');
+    expect(kit).toContain('Body pack');
+    expect(kit).not.toMatch(/classes="[^"]*slide-counter/);
+    expect(kit).not.toMatch(/classes="[^"]*slide-chrome/);
+  });
+
   it('does not treat .welcome-body as the document surface', () => {
     const html = `
 <style>

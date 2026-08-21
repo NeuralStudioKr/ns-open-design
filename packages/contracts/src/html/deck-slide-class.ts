@@ -71,8 +71,40 @@ export function openTagHasDeckSlideClass(openOrAttrs: string): boolean {
   return classAttrHasDeckSlideToken(classAttrFromOpenTag(openOrAttrs));
 }
 
+/** Neutral / kit aliases: `s1`, `s-cover`. Not `slide-chrome`. */
+export function isTemplateSlideAliasClassToken(token: string): boolean {
+  return /^s(?:-[a-z0-9_-]+|\d+)$/i.test(String(token ?? '').trim());
+}
+
+export function classAttrHasTemplateSlideAlias(classAttr: string): boolean {
+  return String(classAttr ?? '').split(/\s+/).some(isTemplateSlideAliasClassToken);
+}
+
+/**
+ * Clone / kit / edit / stream hosts: allowlisted page tokens, Neutral `s1`,
+ * numbered Teamver labels, and `data-slide`. Never `slide-chrome` / `slide-counter`.
+ */
+export function attrsLookLikeDeckOrTemplateSlideHost(attrs: string): boolean {
+  const source = String(attrs ?? '');
+  const cls = classAttrFromOpenTag(source);
+  if (classAttrHasDeckSlideToken(cls) || classAttrHasTemplateSlideAlias(cls)) return true;
+  if (/\bid\s*=\s*["']slide(?:-\d+)?["']/i.test(source)) return true;
+  if (/\bdata-slide(?:-index)?\s*=/i.test(source)) return true;
+  return /\bdata-screen-label\s*=\s*(['"])\d{2}(?:\s|\1)/i.test(source);
+}
+
 const SLIDE_HOST_OPEN_RE =
   /<(section|div|main|article)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
+
+/** First page-host open, or -1. Skips slide-counter / slide-chrome. */
+export function findFirstDeckSlideHostIndex(html: string): number {
+  SLIDE_HOST_OPEN_RE.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = SLIDE_HOST_OPEN_RE.exec(String(html ?? ''))) !== null) {
+    if (attrsLookLikeDeckOrTemplateSlideHost(match[2] ?? '')) return match.index;
+  }
+  return -1;
+}
 
 /** Count page hosts only — ignores `slide-chrome` / `slide-counter` wrappers. */
 export function countDeckSlideHostOpens(html: string): number {

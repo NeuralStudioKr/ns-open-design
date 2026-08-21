@@ -6,7 +6,10 @@
  * panel treats each slide as a full document viewport (portrait scroll).
  */
 
-import { classAttrHasDeckSlideToken } from './deck-slide-class.js';
+import {
+  attrsLookLikeDeckOrTemplateSlideHost,
+  classAttrHasDeckSlideToken,
+} from './deck-slide-class.js';
 import { looksLikeOfficialFullscreenPresenterDeck } from './deck-template-look-css.js';
 
 export const DECK_FIXED_CANVAS_PIN_ATTR = 'data-od-deck-fixed-canvas-pin';
@@ -78,7 +81,10 @@ export function indexOfFirstDeckSlideHost(html: string): number {
   try {
     let match: RegExpExecArray | null;
     while ((match = SLIDE_OPEN_RE.exec(String(html ?? ''))) !== null) {
-      if (looksLikeDeckSlideHostAttrs(match[2] ?? '')) return match.index;
+      const attrs = match[2] ?? '';
+      if (looksLikeDeckSlideHostAttrs(attrs) || attrsLookLikeDeckOrTemplateSlideHost(attrs)) {
+        return match.index;
+      }
     }
     return -1;
   } finally {

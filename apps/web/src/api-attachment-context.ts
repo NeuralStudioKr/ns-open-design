@@ -1,3 +1,4 @@
+import { findFirstDeckSlideHostIndex } from '@open-design/contracts';
 import {
   fetchProjectFilePreview,
   fetchProjectFileText,
@@ -267,7 +268,7 @@ export function clipAttachmentText(
   const omittedTotal = text.length - maxChars;
   if (options?.preferHtmlBody) {
     const bodyIdx = text.search(/<body\b/i);
-    const sectionIdx = text.search(/<section\b[^>]*\bclass=(["'])[^"']*\bslide\b[^"']*\1/i);
+    const sectionIdx = findFirstDeckSlideHostIndex(text);
     const contentStart = bodyIdx >= 0 ? bodyIdx : sectionIdx;
     if (contentStart >= 0) {
       const headBudget = Math.min(2_400, Math.max(400, Math.floor(maxChars * 0.12)));

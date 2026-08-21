@@ -36,6 +36,9 @@ describe('manual-edit-graphic-container', () => {
     } as DOMRect);
 
     expect(isDeckSlideRootElement(dom.window.document.querySelector('section')!)).toBe(true);
+    const chromeDom = new JSDOM('<div class="slide-chrome">01 / Studio</div>');
+    expect(isDeckSlideRootElement(chromeDom.window.document.querySelector('div')!)).toBe(false);
+    chromeDom.window.close();
     expect(resolveGraphicContainerTarget(svg)).toBe(wrap);
 
     dom.window.close();

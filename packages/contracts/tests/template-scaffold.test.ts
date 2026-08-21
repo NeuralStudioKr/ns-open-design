@@ -121,4 +121,18 @@ describe('composeTeamverSlideApiPrompt with scaffold', () => {
       /\.slides-container\{[^}]*overflow:visible[\s\S]*?\.slide\{[^}]*overflow:visible/i,
     );
   });
+
+  it('does not copy slide-counter chrome as a scaffold shell', () => {
+    const html = `
+<style>.slide{background:#fff}</style>
+<section class="slide-counter">5 / 10</section>
+<section class="slide"><h1>Cover Expo</h1></section>
+<section class="slide"><h2>Body pack</h2></section>
+`.trim();
+    const scaffold = extractTemplateScaffoldFromHtml(html, { title: 'Studio Chrome' });
+    expect(scaffold).toBeTruthy();
+    expect(scaffold).toContain('Cover Expo');
+    expect(scaffold).toContain('Body pack');
+    expect(scaffold).not.toMatch(/class="slide-counter"/);
+  });
 });

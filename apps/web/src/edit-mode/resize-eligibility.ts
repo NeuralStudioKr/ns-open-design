@@ -1,3 +1,7 @@
+import {
+  classAttrHasDeckSlideToken,
+  classAttrHasTemplateSlideAlias,
+} from '@open-design/contracts';
 import type { ManualEditKind, ManualEditTarget } from './types';
 
 export const MANUAL_EDIT_RESIZE_MIN_PX = 24;
@@ -10,9 +14,11 @@ export function isDeckSlideRoot(target: ManualEditTarget): boolean {
   const tag = target.tagName.toLowerCase();
   const cls = ` ${target.className} `;
   if (tag !== 'section' && tag !== 'div') return false;
-  if (/\bslide\b/.test(cls)) return true;
+  if (classAttrHasDeckSlideToken(cls) || classAttrHasTemplateSlideAlias(cls)) return true;
   if (target.attributes['data-slide'] != null) return true;
   if (target.attributes['data-slide-index'] != null) return true;
+  const label = target.attributes['data-screen-label'];
+  if (label != null && /^\d{2}(?:\s|$)/.test(String(label))) return true;
   return false;
 }
 

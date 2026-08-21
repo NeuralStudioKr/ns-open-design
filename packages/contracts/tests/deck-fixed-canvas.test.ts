@@ -13,8 +13,10 @@ import {
   pinDeckSlidesToFixedCanvas,
 } from '../src/html/deck-fixed-canvas.js';
 import {
+  attrsLookLikeDeckOrTemplateSlideHost,
   classAttrHasDeckSlideToken,
   countDeckSlideHostOpens,
+  findFirstDeckSlideHostIndex,
   isDeckSlideClassToken,
   looksLikeAuthorClassToggleDeck,
 } from '../src/html/deck-slide-class.js';
@@ -238,5 +240,25 @@ describe('deck slide class tokens', () => {
     expect(indexOfFirstDeckSlideHost(
       '<div class="slide-counter">1</div><section class="slide"><h1>A</h1></section>',
     )).toBeGreaterThan(0);
+  });
+
+  it('finds the first real page host after slide-counter / slide-chrome', () => {
+    const html = [
+      '<div class="slide-counter">5 / 10</div>',
+      '<div class="slide-chrome">Studio</div>',
+      '<section class="slide"><h1>The Collective</h1></section>',
+    ].join('');
+    expect(attrsLookLikeDeckOrTemplateSlideHost('class="slide-chrome"')).toBe(false);
+    expect(attrsLookLikeDeckOrTemplateSlideHost('class="slide-counter" id="slide-counter"')).toBe(false);
+    expect(attrsLookLikeDeckOrTemplateSlideHost('class="s1"')).toBe(true);
+    expect(attrsLookLikeDeckOrTemplateSlideHost('id="slide"')).toBe(true);
+    expect(attrsLookLikeDeckOrTemplateSlideHost('id="slide-3"')).toBe(true);
+    expect(attrsLookLikeDeckOrTemplateSlideHost('id="slide-counter"')).toBe(false);
+    const hostAt = findFirstDeckSlideHostIndex(html);
+    expect(hostAt).toBe(html.indexOf('<section class="slide"'));
+    expect(findFirstDeckSlideHostIndex(
+      '<div class="slide-counter">5 / 10</div><div class="slide-chrome">x</div>',
+    )).toBe(-1);
+    expect(indexOfFirstDeckSlideHost(html)).toBe(hostAt);
   });
 });

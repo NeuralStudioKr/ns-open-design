@@ -32,6 +32,20 @@
 | scaffold로 갑자기 바꾸면? | **안 됨.** kit hard cutover 금지. full HTML scaffold도 기본 inject 하지 않음 |
 | 1장짜리 템플릿 결과가 저장되는가? | **제품 경로는 첫 fill 3장.** 잘리면 제목 있는 1장은 저장하고 top-up이 덧붙인다. 제목 없는 빈 셸만 미완성으로 차단. 사용자가 1장을 명시한 경우도 허용 |
 
+### 0.97 2026-08-21 — 잔여 `\\bslide\\b` 호출부를 호스트 SSOT로
+
+§0.96 persist/stream 이후에도 clone/kit/scaffold, 수동편집 root, attachment clip, repair/stable-preview가 `\\bslide\\b`로 chrome을 페이지로 잡았다. 카탈로그 빈 캔버스와 같은 계열이 다른 경로에서 재발한다.
+
+구현 현황:
+
+- [x] `attrsLookLikeDeckOrTemplateSlideHost` / `findFirstDeckSlideHostIndex`
+- [x] clone-fill / visual-kit / scaffold 셸 수집
+- [x] edit-mode resize / graphic-container root
+- [x] attachment clip · ProjectView salvage chrome 제외
+- [x] repair/stable-preview 호스트 판정
+- [x] `indexOfFirstDeckSlideHost`에 Neutral alias 포함
+- [x] chrome vs real host red spec
+
 ### 0.96 2026-08-21 — explicit `#deck-track` 보호 범위 확장
 
 §0.93에서 bare `#deck` viewport strip은 Teamver 1920×1080 stacked stage로 복구하도록 바꿨다. 추가 검토 결과, 명시적 native transform track 보호는 `div#deck-track`에만 묶여 있었다. 생성/템플릿 HTML이 `section#deck-track` / `main#deck-track` 형태를 쓰면 framework 보호가 빠져 compact로 오인될 수 있다.

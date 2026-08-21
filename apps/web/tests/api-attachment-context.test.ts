@@ -241,6 +241,18 @@ describe('clipAttachmentText', () => {
     // Must not be a pure head prefix that never reaches slides.
     expect(clipped).toMatch(/<section\b[^>]*\bslide\b/i);
   });
+
+  it('does not start a no-body clip at slide-counter chrome', async () => {
+    const { clipAttachmentText } = await import('../src/api-attachment-context');
+    const html = [
+      '<div class="slide-counter">5 / 10</div>',
+      `<style>${'x'.repeat(30_000)}</style>`,
+      '<section class="slide" data-slide-index="0"><h1>Cover Expo</h1></section>',
+    ].join('');
+    const clipped = clipAttachmentText(html, 8_000, { preferHtmlBody: true });
+    expect(clipped).toMatch(/Cover Expo/);
+    expect(clipped).toMatch(/<section\b[^>]*class="slide"/i);
+  });
 });
 
 function userMessage(

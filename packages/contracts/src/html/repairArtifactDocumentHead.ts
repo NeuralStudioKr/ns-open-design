@@ -11,6 +11,7 @@ import {
   artifactCdnHostWithOptionalPathAlternation,
   artifactCdnHrefTokenAlternation,
 } from "./artifactCdnHosts.js";
+import { findFirstDeckSlideHostIndex } from "./deck-slide-class.js";
 
 /**
  * Repair common agent-emitted `<head>` corruption where a truncated viewport
@@ -56,8 +57,10 @@ const TRAILING_DOCUMENT_CLOSERS_RE = /((?:\s*<\/body\s*>)?(?:\s*<\/html\s*>)?)\s
 /** HTML that proves the model left a raw block and resumed document markup. */
 const STRUCTURAL_HTML_AFTER_RAW_RE =
   /<\/head\s*>|<body\b|<section\b|<div\b(?=[^>]*\b(?:class\s*=\s*["'][^"']*\b(?:slide|deck)|id\s*=\s*["']deck))/i;
-const SLIDE_MARKUP_RE =
-  /<(?:section|div)\b[^>]*\b(?:class\s*=\s*["'][^"']*\bslide\b|data-slide|id\s*=\s*["']deck)/i;
+function regionHasSlideOrDeckMarkup(region: string): boolean {
+  if (findFirstDeckSlideHostIndex(region) >= 0) return true;
+  return /<(?:section|div)\b[^>]*\bid\s*=\s*["']deck/i.test(region);
+}
 
 type RawBlockOpen = { index: number; tag: string; openEnd: number };
 
@@ -124,7 +127,7 @@ function stripOneTrailingUnclosedRawBlock(html: string): string {
   // Never cut through slide markup (unclosed head style that still embeds body).
   // `closeRawBlocksTruncatedBeforeStructuralHtml` should have closed those first;
   // if it could not, refuse to destroy slides.
-  if (SLIDE_MARKUP_RE.test(region) || /<body\b/i.test(region)) {
+  if (regionHasSlideOrDeckMarkup(region) || /<body\b/i.test(region)) {
     return html;
   }
 
