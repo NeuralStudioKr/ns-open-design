@@ -550,6 +550,10 @@ export function stripTrailingDeckHtmlMarkupLeak(input: string): string {
     DECK_ORPHAN_MID_STYLE_ATTR_TAIL_RE,
     DECK_ORPHAN_MID_SVG_CSS_STYLE_TAIL_RE,
   ]) {
+    // Fail-fast: mid-style attr scrapers ReDoS without `">` on long CSS dumps.
+    if (re === DECK_ORPHAN_MID_STYLE_ATTR_TAIL_RE && !/["']\s*>/.test(input)) {
+      continue;
+    }
     const match = re.exec(input);
     if (match?.index === undefined) continue;
     if (cut == null || match.index < cut) cut = match.index;
