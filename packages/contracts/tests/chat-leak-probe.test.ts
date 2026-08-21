@@ -92,7 +92,8 @@ const CASES: Case[] = [
   {
     name: "mixed prose then html then prose",
     input: `좋아요.\n<span style="font-family:Barlow;letter-spacing:0.2em">TAG</span>\n추가 설명은 여기.`,
-    keep: "좋아요.",
+    // Heuristic line scrub keeps Hangul on both sides of the chrome island.
+    keep: "좋아요.\n추가 설명은 여기.",
   },
   {
     name: "user report full barlow block",
@@ -104,6 +105,8 @@ const CASES: Case[] = [
       ``,
       `슬라이드 추가 중ospace;font-size:13px;letter-spacing:0.14em;text-transform:uppercase;opacity:0.5;margin-bottom:18px">Observability in Depth</div>`,
     ].join("\n"),
+    // Mid-word CSS cut keeps the Hangul status prefix.
+    keep: "슬라이드 추가 중",
   },
   {
     name: "strong em with deck styles",

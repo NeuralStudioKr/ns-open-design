@@ -471,25 +471,29 @@ function findTrailingSameLineDeckHtmlCut(line: string): number | null {
   // (`ospace` = truncated `monospace`). Keep the human prefix.
   // NEVER cut intact `… style="font-family:…"` tags — that left `<span style="`
   // residues that later scrapers could not match (2026-08-21 regression).
-  const midCss = line.match(
-    /^(.*?)((?:[a-z]{2,14};)?(?:[a-zA-Z-]+\s*:\s*[^;]*;){2,}[\s\S]*?["']\s*>[\s\S]*)$/i,
-  );
-  if (midCss?.[1] !== undefined && midCss[2]) {
-    const prefix = midCss[1];
-    const css = midCss[2];
-    const endsInStyleAttr = /\bstyle\s*=\s*["']\s*$/i.test(prefix);
-    const openTagPrefix = /<[a-z][\w:-]*\b[^>]*$/i.test(prefix);
-    const cjkGlue = /[\u3000-\u9fff\uac00-\ud7af]/u.test(prefix.slice(-12));
-    const midWordCssFrag = /^(?:[a-z]{2,14};)/i.test(css);
-    if (
-      !endsInStyleAttr
-      && !openTagPrefix
-      && (cjkGlue || midWordCssFrag)
-      && /(?:font-size|letter-spacing|text-transform|opacity|margin|font-family|line-height)\s*:/i.test(css)
-      && /(?:<\/(?:div|span|p|h[1-6])>|<br\b)/i.test(css)
-      && /[\p{L}\p{N}]/u.test(prefix.slice(-8))
-    ) {
-      return prefix.length;
+  // Fail fast when the line has no attr-close / tag-close — otherwise the
+  // reluctant `[\s\S]*?["']\s*>` backtracks into ReDoS on long CSS dumps.
+  if (/["']\s*>|<\/(?:div|span|p|h[1-6])\b|<br\b/i.test(line)) {
+    const midCss = line.match(
+      /^(.*?)((?:[a-z]{2,14};)?(?:[a-zA-Z-]+\s*:\s*[^;]*;){2,}[\s\S]*?["']\s*>[\s\S]*)$/i,
+    );
+    if (midCss?.[1] !== undefined && midCss[2]) {
+      const prefix = midCss[1];
+      const css = midCss[2];
+      const endsInStyleAttr = /\bstyle\s*=\s*["']\s*$/i.test(prefix);
+      const openTagPrefix = /<[a-z][\w:-]*\b[^>]*$/i.test(prefix);
+      const cjkGlue = /[\u3000-\u9fff\uac00-\ud7af]/u.test(prefix.slice(-12));
+      const midWordCssFrag = /^(?:[a-z]{2,14};)/i.test(css);
+      if (
+        !endsInStyleAttr
+        && !openTagPrefix
+        && (cjkGlue || midWordCssFrag)
+        && /(?:font-size|letter-spacing|text-transform|opacity|margin|font-family|line-height)\s*:/i.test(css)
+        && /(?:<\/(?:div|span|p|h[1-6])>|<br\b)/i.test(css)
+        && /[\p{L}\p{N}]/u.test(prefix.slice(-8))
+      ) {
+        return prefix.length;
+      }
     }
   }
   // Broken attribute splice: `font-size:131 style="font-family:…`
@@ -1884,6 +1888,9 @@ export function sanitizeAssistantProseForDisplay(
   });
   // Debris scrub can leave a truncated tag name (`<link`); strip it now.
   text = stripIncompleteTrailingMarkupToken(text);
+  // Line-heuristic before any trailing `[\s\S]*$` CSS scrapers so Hangul
+  // after a mid-message `.tag.inv{…}` dump is preserved.
+  text = stripLeakedDeckCodeDebrisBlocksRespectingArtifacts(text, preservingArtifacts);
   const stripDeckCssTail =
     !streaming || !hasUnclosedTrailingArtifact(text);
   if (stripDeckCssTail) {
@@ -1892,7 +1899,11 @@ export function sanitizeAssistantProseForDisplay(
   // Kit `:root{--bg:#…}` dumps can appear mid-message (not only trailing).
   // Never scrub inside preserved artifact bodies (live style tokens stay intact).
   text = stripLeakedCssCustomPropertyBlocksRespectingArtifacts(text, preservingArtifacts);
+  text = stripLeakedDeckCodeDebrisBlocksRespectingArtifacts(text, preservingArtifacts);
   text = stripTrailingDeckHtmlMarkupLeakRespectingArtifacts(text, preservingArtifacts);
+  // Second heuristic pass: catch residues left after named scrapers
+  // (e.g. incomplete open tags / property continuations).
+  text = stripLeakedDeckCodeDebrisBlocksRespectingArtifacts(text, preservingArtifacts);
   // Final incomplete open-tag chop — catches residues like `<span style="`
   // left by an earlier mid-line cut that no longer matches typography regexes.
   text = stripIncompleteTrailingMarkupToken(text);
@@ -1928,6 +1939,200 @@ export function stripTrailingDeckFrameworkCssLeak(input: string): string {
     || looksLikeLeakedCssCustomPropertyBlock(tail);
   if (!looksLikeDeckFramework) return input;
   return input.slice(0, match.index).trimEnd();
+}
+
+/**
+ * True when a single chat line is deck CSS/HTML chrome rather than prose.
+ * Used as a catch-all after named regex scrapers so unknown utility classes
+ * (`.tag.inv`, `.chip.on`, …) and multi-line `color:\n#hex}` splits cannot
+ * re-enter the bubble.
+ */
+export function looksLikeDeckCodeDebrisLine(line: string): boolean {
+  const trimmed = String(line ?? "").trim();
+  if (!trimmed) return false;
+
+  // Markdown ATX headings (`# Title`) are prose — not CSS id selectors.
+  if (/^#{1,6}\s+\S/.test(trimmed)) return false;
+  // Numbered / bulleted list prose.
+  if (/^(?:[-*+]|\d+[.)])\s+\S/.test(trimmed)) return false;
+
+  // Orphan close-tag stacks (incl. `</style>` left after body scrub).
+  if (/^(?:<\/(?:div|span|section|header|footer|nav|aside|main|article|h[1-6]|p|ul|ol|li|table|tr|td|th|button|svg|style|script)+>\s*)+$/i.test(trimmed)) {
+    return true;
+  }
+  // Mid-attribute / truncated style debris (`#2D2D2D;border-radius:…` or
+  // `#2D2D2D">Label</span>` after a previous style line was removed).
+  if (/^#[0-9A-Fa-f]{3,8}\s*["']\s*>/.test(trimmed)) {
+    return true;
+  }
+  if (
+    /^(?:#[0-9A-Fa-f]{3,8}\s*;|(?:none|solid|inherit|px|em|rem|%)\s*;)/i.test(trimmed)
+    && /(?:[a-zA-Z-]+\s*:|<\/?[a-zA-Z]|["']\s*>)/.test(trimmed)
+  ) {
+    return true;
+  }
+  // Custom-prop continuations (`#1A1A1A;--coral:` / `--violet:#…`).
+  if (/^(?:#[0-9A-Fa-f]{3,8}\s*;\s*)?--[A-Za-z_][\w-]*\s*:/.test(trimmed)) {
+    return true;
+  }
+  if (/^#[0-9A-Fa-f]{3,8}\s*;\s*--[A-Za-z_]/.test(trimmed)) {
+    return true;
+  }
+  // HTML chrome with deck-ish attrs / tags.
+  if (
+    /^<\/?[a-zA-Z][\w:-]*\b/.test(trimmed)
+    && /(?:\bstyle\s*=|\bclass\s*=|data-(?:slide|deck)|role\s*=\s*["']presentation|aria-hidden\s*=\s*["']true|<(?:svg|path|circle|rect|video|canvas|iframe|object|embed|picture|source|math|foreignObject)\b|<\/(?:div|section|span|svg|h[1-6]|style)\b|<br\b)/i.test(
+      trimmed,
+    )
+  ) {
+    return true;
+  }
+  // CSS selectors / at-rules / keyframe stops.
+  if (
+    /^(?:(?:\.[A-Za-z_-][\w-]*){1,8}|#[A-Za-z_-][\w-]*|@(?:keyframes|font-face|media|import|supports|layer|page)\b|:(?:root|from|to)\b|(?:from|to|\d+%)\s*\{)/i.test(
+      trimmed,
+    )
+  ) {
+    return true;
+  }
+  // Custom-property dumps.
+  if (/^--[A-Za-z_][\w-]*\s*:/.test(trimmed) && /(?:#|rgba?\(|hsla?\()/i.test(trimmed)) {
+    return true;
+  }
+  // Property declaration lines (possibly truncated).
+  if (
+    /^(?:-?[a-zA-Z]+(?:-[a-zA-Z0-9]+)*)\s*:\s*\S/.test(trimmed)
+    && /(?:rgba?\(|hsla?\(|#[0-9A-Fa-f]{3,8}|\d+(?:px|em|rem|%|vh|vw)|border|padding|margin|font-|display\s*:|transform|opacity|background)/i.test(
+      trimmed,
+    )
+  ) {
+    return true;
+  }
+  // Density heuristic: braces/semicolons dominate and Hangul/prose is scarce.
+  const cssSignals = (trimmed.match(/[{};:]/g) ?? []).length;
+  const hangul = (trimmed.match(/[\uac00-\ud7af]/g) ?? []).length;
+  if (cssSignals >= 3 && hangul < 2 && /[{}]/.test(trimmed) && /:/.test(trimmed)) {
+    return true;
+  }
+  // HTML-entity encoded tags.
+  if (/^&lt;\/?[a-zA-Z]/.test(trimmed) && /(?:style\s*=|class\s*=|&gt;)/i.test(trimmed)) {
+    return true;
+  }
+  return false;
+}
+
+/** Hex / unit / brace-only continuations of a prior CSS dump line. */
+export function looksLikeDeckCssContinuationLine(line: string): boolean {
+  const trimmed = String(line ?? "").trim();
+  if (!trimmed) return false;
+  if (/^#[0-9A-Fa-f]{3,8}\s*;?\s*\}?\s*$/.test(trimmed)) return true;
+  if (/^#[0-9A-Fa-f]{3,8}\s*;\s*(?:--|[a-zA-Z-]+\s*:)/.test(trimmed)) return true;
+  if (/^rgba?\([^)]*\)\s*;?\s*\}?\s*$/i.test(trimmed)) return true;
+  if (/^[\d.]+(?:px|em|rem|%|vh|vw)?\s*;?\s*\}?\s*$/i.test(trimmed)) return true;
+  if (/^[a-zA-Z-]+\s*:\s*[^;{]+;?\s*\}?\s*$/.test(trimmed)) return true;
+  if (/^--[A-Za-z_][\w-]*\s*:/.test(trimmed)) return true;
+  if (/^\}\s*$/.test(trimmed)) return true;
+  return false;
+}
+
+function lineOpensUnclosedCssBlock(line: string): boolean {
+  const open = (line.match(/\{/g) ?? []).length;
+  const close = (line.match(/\}/g) ?? []).length;
+  return open > close;
+}
+
+/**
+ * Remove CSS/HTML chrome lines from assistant chat prose. Specific scrapers
+ * handle known dialects; this catch-all drops unknown utility-class dumps and
+ * multi-line color splits so they cannot paint the bubble after reload.
+ */
+export function stripLeakedDeckCodeDebrisBlocks(input: string): string {
+  if (!input) return input;
+  const lines = String(input).split("\n");
+  const kept: string[] = [];
+  let inCssContinuation = false;
+
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i] ?? "";
+    const trimmed = line.trim();
+    if (!trimmed) {
+      // Defer blank lines — drop trailing blanks at the end; keep mid gaps
+      // only when followed by kept prose (handled when flushing).
+      kept.push(line);
+      continue;
+    }
+
+    const isDebris =
+      looksLikeDeckCodeDebrisLine(trimmed)
+      || (inCssContinuation && looksLikeDeckCssContinuationLine(trimmed));
+
+    if (isDebris) {
+      inCssContinuation =
+        lineOpensUnclosedCssBlock(trimmed)
+        || (inCssContinuation && !trimmed.includes("}"));
+      // Drop trailing blanks that only separated debris from prior prose.
+      while (kept.length > 0 && !(kept[kept.length - 1] ?? "").trim()) {
+        kept.pop();
+      }
+      continue;
+    }
+
+    inCssContinuation = false;
+    kept.push(line);
+  }
+
+  while (kept.length > 0 && !(kept[kept.length - 1] ?? "").trim()) {
+    kept.pop();
+  }
+  // Collapse runs of blank lines introduced by debris removal.
+  const collapsed: string[] = [];
+  for (const line of kept) {
+    if (!(line ?? "").trim()) {
+      if (collapsed.length === 0) continue;
+      if (!(collapsed[collapsed.length - 1] ?? "").trim()) continue;
+    }
+    collapsed.push(line);
+  }
+  let out = collapsed.join("\n");
+  // Preserve a single trailing newline when the source had one so
+  // artifact-respecting concatenation (`prose\n` + `<artifact`) stays intact.
+  if (/\n$/.test(input)) {
+    out = `${out.replace(/\n+$/g, "")}\n`;
+  } else {
+    out = out.replace(/\n+$/g, "");
+  }
+  return out;
+}
+
+export function stripLeakedDeckCodeDebrisBlocksRespectingArtifacts(
+  input: string,
+  preserveArtifactBodies: boolean,
+): string {
+  if (!preserveArtifactBodies) return stripLeakedDeckCodeDebrisBlocks(input);
+  let result = "";
+  let cursor = 0;
+  while (cursor < input.length) {
+    const open = findArtifactOpenIndex(input, cursor);
+    if (open === -1) {
+      result += stripLeakedDeckCodeDebrisBlocks(input.slice(cursor));
+      break;
+    }
+    result += stripLeakedDeckCodeDebrisBlocks(input.slice(cursor, open));
+    const gt = input.indexOf(">", open);
+    if (gt === -1) {
+      result += input.slice(open);
+      break;
+    }
+    const close = input.toLowerCase().indexOf("</artifact>", gt);
+    if (close === -1) {
+      result += input.slice(open);
+      break;
+    }
+    const end = close + "</artifact>".length;
+    result += input.slice(open, end);
+    cursor = end;
+  }
+  return result;
 }
 
 /**

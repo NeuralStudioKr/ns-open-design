@@ -135,7 +135,7 @@ const CASES: Case[] = [
       `</div> <div style="flex:1;display:flex;flex-direction:column;justify-content:center;gap:32px;">`,
       `슬라이드 추가 중ospace;font-size:13px;letter-spacing:0.14em;text-transform:uppercase;opacity:0.5;margin-bottom:18px">Observability in Depth</div>`,
     ].join("\n"),
-    keep: "초안을 다듬는 중입니다.",
+    keep: "초안을 다듬는 중입니다.\n슬라이드 추가 중",
   },
 ];
 

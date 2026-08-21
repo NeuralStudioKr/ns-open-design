@@ -413,7 +413,7 @@ describe("sanitizeChatMessageLeakedPseudoTool (expanded)", () => {
     };
     const sanitized = sanitizeChatMessageLeakedPseudoTool(message);
     expect(sanitized.content).toBe("");
-    expect(sanitized.events?.[0]).toEqual({ kind: "text", text: "Plan\n" });
+    expect(sanitized.events?.[0]).toEqual({ kind: "text", text: "Plan" });
   });
 
   it("strips Daisy badge + mid-SVG CSS without </style> on persist write path", () => {

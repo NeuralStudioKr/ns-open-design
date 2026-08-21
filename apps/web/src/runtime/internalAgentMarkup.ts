@@ -16,6 +16,7 @@ import {
   sanitizeLeakedAgentProse,
   stripHardDeckNavJsFingerprints,
   stripIncompleteTrailingMarkupToken,
+  stripLeakedDeckCodeDebrisBlocksRespectingArtifacts,
   type SanitizeAssistantProseOptions,
 } from "@open-design/contracts";
 
@@ -126,26 +127,28 @@ function findTrailingSameLineDeckHtmlCut(line: string): number | null {
   );
   if (hangulBrHero?.[1] !== undefined) return hangulBrHero[1].length;
   // Same guards as contracts SSOT — never carve intact `style="…"` tags down
-  // to `<span style="` residues.
-  const midCss = line.match(
-    /^(.*?)((?:[a-z]{2,14};)?(?:[a-zA-Z-]+\s*:\s*[^;]*;){2,}[\s\S]*?["']\s*>[\s\S]*)$/i,
-  );
-  if (midCss?.[1] !== undefined && midCss[2]) {
-    const prefix = midCss[1];
-    const css = midCss[2];
-    const endsInStyleAttr = /\bstyle\s*=\s*["']\s*$/i.test(prefix);
-    const openTagPrefix = /<[a-z][\w:-]*\b[^>]*$/i.test(prefix);
-    const cjkGlue = /[\u3000-\u9fff\uac00-\ud7af]/u.test(prefix.slice(-12));
-    const midWordCssFrag = /^(?:[a-z]{2,14};)/i.test(css);
-    if (
-      !endsInStyleAttr
-      && !openTagPrefix
-      && (cjkGlue || midWordCssFrag)
-      && /(?:font-size|letter-spacing|text-transform|opacity|margin|font-family|line-height)\s*:/i.test(css)
-      && /(?:<\/(?:div|span|p|h[1-6])>|<br\b)/i.test(css)
-      && /[\p{L}\p{N}]/u.test(prefix.slice(-8))
-    ) {
-      return prefix.length;
+  // to `<span style="` residues. Fail fast without attr-close to avoid ReDoS.
+  if (/["']\s*>|<\/(?:div|span|p|h[1-6])\b|<br\b/i.test(line)) {
+    const midCss = line.match(
+      /^(.*?)((?:[a-z]{2,14};)?(?:[a-zA-Z-]+\s*:\s*[^;]*;){2,}[\s\S]*?["']\s*>[\s\S]*)$/i,
+    );
+    if (midCss?.[1] !== undefined && midCss[2]) {
+      const prefix = midCss[1];
+      const css = midCss[2];
+      const endsInStyleAttr = /\bstyle\s*=\s*["']\s*$/i.test(prefix);
+      const openTagPrefix = /<[a-z][\w:-]*\b[^>]*$/i.test(prefix);
+      const cjkGlue = /[\u3000-\u9fff\uac00-\ud7af]/u.test(prefix.slice(-12));
+      const midWordCssFrag = /^(?:[a-z]{2,14};)/i.test(css);
+      if (
+        !endsInStyleAttr
+        && !openTagPrefix
+        && (cjkGlue || midWordCssFrag)
+        && /(?:font-size|letter-spacing|text-transform|opacity|margin|font-family|line-height)\s*:/i.test(css)
+        && /(?:<\/(?:div|span|p|h[1-6])>|<br\b)/i.test(css)
+        && /[\p{L}\p{N}]/u.test(prefix.slice(-8))
+      ) {
+        return prefix.length;
+      }
     }
   }
   const brokenAttr = line.match(
@@ -258,6 +261,95 @@ function stripLeakedDeckMotifHtmlForDisplay(
   return result;
 }
 
+function looksLikeDeckCodeDebrisLineFallback(line: string): boolean {
+  const trimmed = String(line ?? "").trim();
+  if (!trimmed) return false;
+  if (/^#{1,6}\s+\S/.test(trimmed)) return false;
+  if (/^(?:[-*+]|\d+[.)])\s+\S/.test(trimmed)) return false;
+  if (/^(?:<\/(?:div|span|section|header|footer|nav|aside|main|article|h[1-6]|p|ul|ol|li|table|tr|td|th|button|svg|style|script)+>\s*)+$/i.test(trimmed)) {
+    return true;
+  }
+  if (
+    /^(?:#[0-9A-Fa-f]{3,8}(?:\s*;|(?=["']))|(?:none|solid|inherit|px|em|rem|%)\s*;)/i.test(trimmed)
+    && /(?:[a-zA-Z-]+\s*:|<\/?[a-zA-Z]|["']\s*>)/.test(trimmed)
+  ) {
+    return true;
+  }
+  if (/^(?:#[0-9A-Fa-f]{3,8}\s*;\s*)?--[A-Za-z_][\w-]*\s*:/.test(trimmed)) return true;
+  if (
+    /^<\/?[a-zA-Z][\w:-]*\b/.test(trimmed)
+    && /(?:\bstyle\s*=|\bclass\s*=|data-(?:slide|deck)|role\s*=\s*["']presentation|aria-hidden\s*=\s*["']true|<(?:svg|path|circle|rect|video|canvas|iframe|object|embed|picture|source|math|foreignObject)\b|<\/(?:div|section|span|svg|h[1-6]|style)\b|<br\b)/i.test(trimmed)
+  ) {
+    return true;
+  }
+  if (/^(?:(?:\.[A-Za-z_-][\w-]*){1,8}|#[A-Za-z_-][\w-]*|@(?:keyframes|font-face|media|import|supports|layer|page)\b|:(?:root|from|to)\b|(?:from|to|\d+%)\s*\{)/i.test(trimmed)) {
+    return true;
+  }
+  if (
+    /^(?:-?[a-zA-Z]+(?:-[a-zA-Z0-9]+)*)\s*:\s*\S/.test(trimmed)
+    && /(?:rgba?\(|hsla?\(|#[0-9A-Fa-f]{3,8}|\d+(?:px|em|rem|%|vh|vw)|border|padding|margin|font-|display\s*:|transform|opacity|background)/i.test(trimmed)
+  ) {
+    return true;
+  }
+  const cssSignals = (trimmed.match(/[{};:]/g) ?? []).length;
+  const hangul = (trimmed.match(/[\uac00-\ud7af]/g) ?? []).length;
+  return cssSignals >= 3 && hangul < 2 && /[{}]/.test(trimmed) && /:/.test(trimmed);
+}
+
+function stripLeakedDeckCodeDebrisBlocksFallback(input: string): string {
+  if (!input) return input;
+  const kept: string[] = [];
+  for (const line of String(input).split("\n")) {
+    if (looksLikeDeckCodeDebrisLineFallback(line)) {
+      while (kept.length > 0 && !(kept[kept.length - 1] ?? "").trim()) kept.pop();
+      continue;
+    }
+    kept.push(line);
+  }
+  while (kept.length > 0 && !(kept[kept.length - 1] ?? "").trim()) kept.pop();
+  const collapsed: string[] = [];
+  for (const line of kept) {
+    if (!(line ?? "").trim()) {
+      if (collapsed.length === 0) continue;
+      if (!(collapsed[collapsed.length - 1] ?? "").trim()) continue;
+    }
+    collapsed.push(line);
+  }
+  return collapsed.join("\n").replace(/\n+$/g, "");
+}
+
+function stripLeakedDeckCodeDebrisBlocksForDisplayFallback(
+  input: string,
+  preserveArtifactBodies: boolean,
+): string {
+  if (!input) return input;
+  if (!preserveArtifactBodies) return stripLeakedDeckCodeDebrisBlocksFallback(input);
+  let result = "";
+  let cursor = 0;
+  while (cursor < input.length) {
+    const open = findArtifactOpenIndex(input, cursor);
+    if (open === -1) {
+      result += stripLeakedDeckCodeDebrisBlocksFallback(input.slice(cursor));
+      break;
+    }
+    result += stripLeakedDeckCodeDebrisBlocksFallback(input.slice(cursor, open));
+    const gt = input.indexOf(">", open);
+    if (gt === -1) {
+      result += input.slice(open);
+      break;
+    }
+    const close = input.toLowerCase().indexOf("</artifact>", gt);
+    if (close === -1) {
+      result += input.slice(open);
+      break;
+    }
+    const end = close + "</artifact>".length;
+    result += input.slice(open, end);
+    cursor = end;
+  }
+  return result;
+}
+
 /**
  * Display sanitizer with a web-local last pass for classic deck-nav JS and
  * leaked Capsule motif HTML.
@@ -275,9 +367,18 @@ export function sanitizeAssistantProseForDisplay(
   const fromContracts = sanitizeAssistantProseForDisplayContracts(input, options);
   const preservingArtifacts =
     options.streaming === true || options.preserveClosedArtifact === true;
+  // Stale-dist safety: re-run heuristic debris strip + motif last-pass even if
+  // contracts dist is older than this web bundle.
+  const afterMotif = stripLeakedDeckMotifHtmlForDisplay(
+    stripHardDeckNavJsFingerprints(fromContracts),
+    preservingArtifacts,
+  );
   return stripIncompleteTrailingMarkupToken(
-    stripLeakedDeckMotifHtmlForDisplay(
-      stripHardDeckNavJsFingerprints(fromContracts),
+    stripLeakedDeckCodeDebrisBlocksForDisplayFallback(
+      stripLeakedDeckCodeDebrisBlocksRespectingArtifacts(
+        afterMotif,
+        preservingArtifacts,
+      ),
       preservingArtifacts,
     ),
   );
