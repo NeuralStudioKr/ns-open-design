@@ -3562,9 +3562,16 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     // Dead onclick / content CTA: do not consume the host next. Fall through
     // to setActive / forceReveal / goTo so every catalog dialect can move.
     if (activeIndex(slides()) === before) return false;
-    // Native driver only flipped .active — drop host display:none so the
-    // newly marked page can paint (Playful / Block-frame / framework nextBtn).
-    releaseHostSlideCollapse(slides());
+    if (compactStackedDeckEnabled) {
+      // Compact letterbox CSS hides inactive pages on the stacked stage.
+      // Releasing inline hide unmasks every page or lets that rule hide
+      // the newly active one.
+      forceRevealSlide(activeIndex(slides()));
+    } else {
+      // Native driver only flipped .active — drop host display:none so the
+      // newly marked page can paint (Playful / Block-frame / framework nextBtn).
+      releaseHostSlideCollapse(slides());
+    }
     setTimeout(report, 80);
     setTimeout(report, 220);
     setTimeout(function(){
@@ -4014,7 +4021,7 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     hostSlideNavigationSeen = true;
     if (data.action === 'go' && typeof data.index === 'number') gotoIndex(data.index);
     else go(data.action);
-  });
+  }, true);
   function ownDeckButton(id, action){
     var btn = document.getElementById(id);
     if (!btn || btn.__odDeckOwned) return;
@@ -4164,6 +4171,15 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     if (!list.length) { setTimeout(observeSlides, 150); return; }
     try {
       var mo = new MutationObserver(function(){
+        if (compactStackedDeckEnabled) {
+          var list = slides();
+          var marked = findActiveByClass(list);
+          if (marked >= 0 && list[marked] && list[marked].style && (
+            list[marked].style.display === 'none' || list[marked].style.visibility === 'hidden'
+          )) {
+            forceRevealSlide(marked);
+          }
+        }
         clearTimeout(window.__odReportT2);
         window.__odReportT2 = setTimeout(report, 60);
       });

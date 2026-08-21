@@ -1,4 +1,8 @@
-import { classAttrHasDeckSlideToken } from './deck-slide-class.js';
+import {
+  classAttrHasDeckSlideToken,
+  countDeckSlideHostOpens,
+  DECK_SLIDE_HOST_CSS_CLASS,
+} from './deck-slide-class.js';
 
 /**
  * Compact BYOK fill is forbidden from dumping the official example.html
@@ -1145,10 +1149,10 @@ function extractBalancedElement(html: string, start: number): string | null {
 
 function listSlideBlocks(html: string): Array<{ start: number; end: number; html: string }> {
   const blocks: Array<{ start: number; end: number; html: string }> = [];
-  const re =
-    /<(section|div|main|article)\b[^>]*\bclass\s*=\s*(?:"[^"]*\bslide\b[^"]*"|'[^']*\bslide\b[^']*')[^>]*>/gi;
+  const re = /<(section|div|main|article)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
   let match: RegExpExecArray | null;
   while ((match = re.exec(html)) !== null) {
+    if (!classAttrHasDeckSlideToken(classAttrValue(match[0] ?? ''))) continue;
     const markup = extractBalancedElement(html, match.index);
     if (!markup) continue;
     blocks.push({
@@ -2270,8 +2274,8 @@ function hasOfficialPresenterShell(html: string): boolean {
     || /\bclass\s*=\s*(["'])[^"'<>]*\bslide-number\b/i.test(html)
     // Opacity-stack presenters (one slide visible) even without a named shell.
     || (
-      /\.slide\b[^{]*\{[^}]*opacity\s*:\s*0\b/i.test(html)
-      && /\.slide\.(?:active|is-active|current)\b[^{]*\{[^}]*opacity\s*:\s*1\b/i.test(html)
+      new RegExp(`${DECK_SLIDE_HOST_CSS_CLASS}[^{]*\\{[^}]*opacity\\s*:\\s*0\\b`, 'i').test(html)
+      && /\.slide\.(?:active|is-active|current)(?![\w-])[^{]*\{[^}]*opacity\s*:\s*1\b/i.test(html)
     )
   );
 }
@@ -2335,29 +2339,29 @@ function looksLikeBodyFirstSlideDeck(html: string): boolean {
 }
 
 function looksLikeAuthoredMultiSlideCss(html: string): boolean {
-  const slideOpens = html.match(
-    /<(?:section|div|main|article)\b[^>]*\bclass\s*=\s*['"][^'"]*\bslide\b/gi,
-  );
-  if (!slideOpens || slideOpens.length < 2) return false;
+  if (countDeckSlideHostOpens(html) < 2) return false;
   // Require presenter-like rules. A lone `.slide { background… }` from surface
   // bleed / canvas pin must not flip compact `.presentation` fills into the
   // catalog-native path (§0.70).
+  const host = DECK_SLIDE_HOST_CSS_CLASS;
   if (
-    /\.slide\b[^{]*\{[^}]*(?:opacity\s*:|scroll-snap-|position\s*:\s*(?:absolute|fixed))/i.test(
-      html,
-    )
+    new RegExp(
+      `${host}[^{]*\\{[^}]*(?:opacity\\s*:|scroll-snap-|position\\s*:\\s*(?:absolute|fixed))`,
+      'i',
+    ).test(html)
   ) {
     return true;
   }
-  if (/\.slide\.(?:active|is-active|current)\b[^{]*\{/i.test(html)) return true;
+  if (/\.slide\.(?:active|is-active|current)(?![\w-])[^{]*\{/i.test(html)) return true;
   // Horizontal #deck strips (Studio/Vellum) translateX between 100vw slides —
   // often without a `.slide.is-active {…}` rule (§0.92).
   if (
     /\bid\s*=\s*["']deck(?:-track)?["']/i.test(html)
     && /#deck\b[^{]*\{[^}]*display\s*:\s*flex/i.test(html)
-    && /\.slide\b[^{]*\{[^}]*(?:flex\s*:\s*[^;]*100vw|width\s*:\s*100vw|height\s*:\s*100vh)/i.test(
-      html,
-    )
+    && new RegExp(
+      `${host}[^{]*\\{[^}]*(?:flex\\s*:\\s*[^;]*100vw|width\\s*:\\s*100vw|height\\s*:\\s*100vh)`,
+      'i',
+    ).test(html)
   ) {
     return true;
   }

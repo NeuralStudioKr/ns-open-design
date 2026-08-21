@@ -5,7 +5,12 @@ import {
   looksLikeDeckSlideHostAttrs,
   pinDeckSlidesToFixedCanvas,
 } from '../src/html/deck-fixed-canvas.js';
-import { classAttrHasDeckSlideToken } from '../src/html/deck-slide-class.js';
+import {
+  classAttrHasDeckSlideToken,
+  countDeckSlideHostOpens,
+  isDeckSlideClassToken,
+  looksLikeAuthorClassToggleDeck,
+} from '../src/html/deck-slide-class.js';
 
 describe('pinDeckSlidesToFixedCanvas', () => {
   it('rewrites min-height:100vh slide hosts to a fixed 1920×1080 canvas', () => {
@@ -135,5 +140,52 @@ describe('deck slide class tokens', () => {
     expect(looksLikeDeckSlideHostAttrs('class="slide-counter" id="slideCounter"')).toBe(false);
     expect(looksLikeDeckSlideHostAttrs('class="slide slide-1 active"')).toBe(true);
     expect(looksLikeDeckSlideHostAttrs('class="slide-5"')).toBe(true);
+  });
+
+  it('allowlists page hosts and rejects nested Studio chrome / wrappers', () => {
+    for (const chrome of [
+      'slide-chrome',
+      'slide-body',
+      'slide-foot',
+      'slide-inner',
+      'slide-deck',
+      'slide-wrap',
+      'slide-track',
+      'slides-container',
+    ]) {
+      expect(isDeckSlideClassToken(chrome), chrome).toBe(false);
+      expect(looksLikeDeckSlideHostAttrs(`class="${chrome}"`), chrome).toBe(false);
+    }
+    expect(isDeckSlideClassToken('slide-frame')).toBe(true);
+    expect(countDeckSlideHostOpens([
+      '<section class="slide dark slide--cover">Cover</section>',
+      '<div class="slide-chrome">01</div>',
+      '<div class="slide-body">Copy</div>',
+      '<div id="slide-counter" class="slide-counter">1 / 10</div>',
+      '<section class="slide light">Body</section>',
+    ].join(''))).toBe(2);
+  });
+
+  it('does not pin nested slide-chrome to the 1920 canvas', () => {
+    const html = [
+      '<section class="slide" style="min-height:100vh"><h1>Cover</h1>',
+      '<div class="slide-chrome">01 / Studio</div>',
+      '</section>',
+      '<section class="slide" style="min-height:100vh">Body</section>',
+    ].join('');
+    const pinned = pinDeckSlidesToFixedCanvas(html);
+    expect(pinned).toMatch(/class="slide"[^>]*width:1920px/);
+    expect(pinned).not.toMatch(/class="slide-chrome"[^>]*width:1920px/);
+  });
+
+  it('does not treat .slide-chrome opacity rules as author class-toggle', () => {
+    expect(looksLikeAuthorClassToggleDeck([
+      '<style>.slide-chrome{opacity:0}.slide.active{opacity:1}</style>',
+      '<section class="slide">A</section><section class="slide">B</section>',
+    ].join(''))).toBe(false);
+    expect(looksLikeAuthorClassToggleDeck([
+      '<style>.slide{opacity:0}.slide.active{opacity:1}</style>',
+      '<section class="slide">A</section><section class="slide">B</section>',
+    ].join(''))).toBe(true);
   });
 });

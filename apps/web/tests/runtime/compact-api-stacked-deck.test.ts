@@ -3,6 +3,8 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
+import { JSDOM } from 'jsdom';
+import { looksLikeOfficialFullscreenPresenterDeck } from '@open-design/contracts';
 import { buildEmergencySlideDeckFromOutline } from '../../src/artifacts/emergency-deck';
 import {
   injectStackedDeckViewport,
@@ -890,6 +892,69 @@ cur=n;
     expect(out).toContain('height: 1080px !important');
     expect(out).not.toContain('data-od-deck-bridge');
     expect(out).not.toMatch(/html,\s*body\s*\{[^}]*background:\s*#0b0c10/);
+  });
+
+  it('does not letterbox an opacity-stack presenter whose first child is slide-counter chrome', () => {
+    const html = [
+      '<!doctype html><html><head><style>',
+      '.slide{position:absolute;inset:0;opacity:0}.slide.active{opacity:1}',
+      '.slide-counter{position:fixed}',
+      '</style></head><body>',
+      '<div class="slide-counter">1 / 10</div>',
+      '<div class="presentation">',
+      '<section class="slide active">Cover</section>',
+      '<section class="slide">Agenda</section>',
+      '</div></body></html>',
+    ].join('');
+    expect(looksLikeOfficialFullscreenPresenterDeck(html)).toBe(true);
+    expect(looksLikeCompactApiStackedDeck(html)).toBe(false);
+    expect(buildSrcdoc(html, { deck: true })).not.toContain('data-od-deck-stacked-fix');
+  });
+
+  it('keeps exclusive host hide after compact native nextBtn (no ghost / blank release)', async () => {
+    const html = [
+      '<!doctype html><html><head><style>',
+      '.slide{height:100vh;width:100%}',
+      '</style></head><body>',
+      '<section class="slide active">Cover One</section>',
+      '<section class="slide">Agenda Two</section>',
+      '<button id="nextBtn">Next</button>',
+      `<script>(function(){
+        var i=0, slides=document.querySelectorAll('.slide');
+        document.getElementById('nextBtn').onclick=function(){
+          slides[i].classList.remove('active');
+          i=Math.min(i+1, slides.length-1);
+          slides[i].classList.add('active');
+        };
+      })();</script>`,
+      '</body></html>',
+    ].join('');
+    expect(looksLikeCompactApiStackedDeck(html)).toBe(true);
+    const srcdoc = buildSrcdoc(html, { deck: true });
+    expect(srcdoc).toContain('data-od-deck-stacked-fix');
+    const script = srcdoc.match(/<script data-od-deck-bridge>([\s\S]*?)<\/script>/)?.[1];
+    expect(script).toBeTruthy();
+    const author = [...srcdoc.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)]
+      .filter((match) => !/data-od-/i.test(match[1] ?? ''))
+      .map((match) => match[2] ?? '')
+      .filter(Boolean);
+    const dom = new JSDOM(srcdoc.replace(/<script\b[\s\S]*?<\/script>/gi, ''), {
+      runScripts: 'outside-only',
+      pretendToBeVisual: true,
+    });
+    const win = dom.window;
+    Object.defineProperty(win, 'parent', { configurable: true, value: { postMessage: () => {} } });
+    for (const body of author) new win.Function(body).call(win);
+    new win.Function(script!).call(win);
+    win.dispatchEvent(new win.Event('load'));
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 260));
+    win.dispatchEvent(new win.MessageEvent('message', { data: { type: 'od:slide', action: 'next' } }));
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 40));
+    const slides = [...win.document.querySelectorAll('.slide')] as HTMLElement[];
+    expect(slides).toHaveLength(2);
+    expect(slides[1]?.classList.contains('active')).toBe(true);
+    expect(slides[1]?.style.display).not.toBe('none');
+    expect(slides[0]?.style.display).toBe('none');
   });
 
   it('does not normalize framework or horizontal decks for standalone export', () => {

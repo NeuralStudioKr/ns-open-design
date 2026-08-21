@@ -1,4 +1,5 @@
 import {
+  DECK_SLIDE_HOST_CSS_CLASS,
   OFFICIAL_DECK_LOOK_STYLE_ATTR,
   looksLikeDeckSlideHostAttrs,
   looksLikeOfficialFullscreenPresenterDeck,
@@ -88,7 +89,7 @@ function countSlideElements(html: string): number {
 function looksLikeLegacyStyledBodyFirstDeck(html: string): boolean {
   if (countSlideElements(html) < 2) return false;
   if (extractSlideInlineStyles(html).length >= 2) return true;
-  return /\.slide\b[^{]*\{/i.test(extractCssBlocks(html));
+  return new RegExp(`${DECK_SLIDE_HOST_CSS_CLASS}[^{]*\\{`, 'i').test(extractCssBlocks(html));
 }
 
 /**
@@ -126,7 +127,9 @@ export function looksLikeAuthoredHorizontalSwipeDeck(html: string): boolean {
   const css = extractCssBlocks(html);
   if (css) {
     if (/scroll-snap-type\s*:\s*x\b/i.test(css)) return true;
-    if (/\.slide\b[^{]*\{[^}]*min-width\s*:\s*100vw\b/i.test(css)) return true;
+    if (new RegExp(`${DECK_SLIDE_HOST_CSS_CLASS}[^{]*\\{[^}]*min-width\\s*:\\s*100vw\\b`, 'i').test(css)) {
+      return true;
+    }
     const rowFlexWithHorizontalScroll =
       /(?:html\s*,\s*body|body|html)\s*\{[^}]*\bdisplay\s*:\s*flex\b[^}]*\boverflow-x\s*:\s*(?:auto|scroll|overlay)\b/i.test(css)
       || /(?:html\s*,\s*body|body|html)\s*\{[^}]*\boverflow-x\s*:\s*(?:auto|scroll|overlay)\b[^}]*\bdisplay\s*:\s*flex\b/i.test(css);
@@ -147,13 +150,12 @@ export function looksLikeAuthoredHorizontalSwipeDeck(html: string): boolean {
 
 function looksLikeBareDeckViewportTrack(html: string): boolean {
   if (!/<(?:div|section|main)\b[^>]*\bid\s*=\s*['"]deck['"]/i.test(html)) return false;
-  const rawSlideCount = (html.match(/<(?:section|div|main|article)\b[^>]*\bclass\s*=\s*['"][^'"]*\bslide\b/gi) ?? []).length;
-  if (Math.max(countSlideElements(html), rawSlideCount) < 2) return false;
+  if (countSlideElements(html) < 2) return false;
   const css = extractCssBlocks(html);
   if (!css) return false;
   const deckRule = css.match(/#deck\b[^{]*\{([^}]*)\}/i)?.[1] ?? '';
   if (!/\bdisplay\s*:\s*flex\b/i.test(deckRule)) return false;
-  const slideRules = [...css.matchAll(/\.slide\b[^{]*\{([^}]*)\}/gi)]
+  const slideRules = [...css.matchAll(new RegExp(`${DECK_SLIDE_HOST_CSS_CLASS}[^{]*\\{([^}]*)\\}`, 'gi'))]
     .map((match) => match[1] ?? '')
     .join('\n');
   return (
@@ -169,8 +171,10 @@ function looksLikeSlideViewportSized(html: string): boolean {
     if (hasFixedCanvasSizing(style)) return true;
   }
   const css = extractCssBlocks(html);
-  if (/\.slide\b[^{]*\{[^}]*(?:min-)?height\s*:\s*100(?:vh|dvh|svh|lvh)/i.test(css)) return true;
-  for (const match of css.matchAll(/\.slide\b[^{]*\{([^}]*)\}/gi)) {
+  if (new RegExp(`${DECK_SLIDE_HOST_CSS_CLASS}[^{]*\\{[^}]*(?:min-)?height\\s*:\\s*100(?:vh|dvh|svh|lvh)`, 'i').test(css)) {
+    return true;
+  }
+  for (const match of css.matchAll(new RegExp(`${DECK_SLIDE_HOST_CSS_CLASS}[^{]*\\{([^}]*)\\}`, 'gi'))) {
     if (hasFixedCanvasSizing(match[1] ?? '')) return true;
   }
   return false;
@@ -184,16 +188,7 @@ function hasBodyFirstSlide(html: string): boolean {
       if (attrsLookLikeDeckSlide(match[1] ?? '')) return true;
     }
   }
-  if (
-    /<body\b[^>]*>(?:\s|<!--[\s\S]*?-->|<(?:header|nav)\b[^>]*>[\s\S]*?<\/(?:header|nav)>|<style\b[^>]*>[\s\S]*?<\/style>|<script\b[^>]*>[\s\S]*?<\/script>)*<(?:section|div|main|article)\b[^>]*\bclass\s*=\s*['"][^'"]*\bslide\b/i.test(
-      html,
-    )
-  ) {
-    return true;
-  }
-  return /<body\b[^>]*>[\s\S]*<(?:div|section|main)\b[^>]*>[\s\S]*<(?:section|div)\b[^>]*\bclass\s*=\s*['"][^'"]*\bslide\b[\s\S]*<(?:section|div)\b[^>]*\bclass\s*=\s*['"][^'"]*\bslide\b/i.test(
-    html,
-  );
+  return false;
 }
 
 function looksLikeFrameworkDeckMarkup(html: string): boolean {

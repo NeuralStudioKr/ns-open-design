@@ -330,6 +330,13 @@ describe("ProjectCardHtmlCover srcDoc builders", () => {
       if (!/\bdata-deck-active\b/i.test(coverOpen)) problems.push("cover not stamped");
       if (!/(?:^|[\s"'])active(?:[\s"']|$)/i.test(coverOpen)) problems.push("missing active");
       if (!/(?:^|[\s"'])is-active(?:[\s"']|$)/i.test(coverOpen)) problems.push("missing is-active");
+      const copy = (remaining[0]?.outerHtml ?? "")
+        .replace(/<script\b[\s\S]*?<\/script>/gi, " ")
+        .replace(/<style\b[\s\S]*?<\/style>/gi, " ")
+        .replace(/<[^>]+>/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+      if (copy.length < 8) problems.push("cover copy empty");
       if (problems.length) failures.push(`${dir}: ${problems.join("; ")}`);
     }
     expect(failures).toEqual([]);

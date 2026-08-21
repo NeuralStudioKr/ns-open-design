@@ -32,6 +32,19 @@
 | scaffold로 갑자기 바꾸면? | **안 됨.** kit hard cutover 금지. full HTML scaffold도 기본 inject 하지 않음 |
 | 1장짜리 템플릿 결과가 저장되는가? | **제품 경로는 첫 fill 3장.** 잘리면 제목 있는 1장은 저장하고 top-up이 덧붙인다. 제목 없는 빈 셸만 미완성으로 차단. 사용자가 1장을 명시한 경우도 허용 |
 
+### 0.94 2026-08-21 — 호스트 토큰 allowlist · compact native next exclusive show
+
+`slide-*` prefix + 짧은 chrome denylist는 Studio `slide-chrome` / `slide-body` / `slide-deck`을 페이지 호스트로 오인했다. compact leftover `\\bslide\\b`와 native next 후 무조건 hide 해제도 같은 계열(빈 캔버스 / 고스트)을 재발시킨다.
+
+구현 현황:
+
+- [x] `isDeckSlideClassToken` allowlist (`slide` / `ppt-slide` / `deck-slide` / `slide-frame` / `slide-N`)
+- [x] CSS 호스트 `.slide(?![\w-])` — `.slide-chrome` 오탐 금지
+- [x] `listSlideBlocks` / `looksLikeAuthoredMultiSlideCss` / compact body-first leftover를 토큰 SSOT로
+- [x] compact native next → `forceRevealSlide` (release는 non-compact only)
+- [x] `od:slide` capture 처리 · compact observer가 marked-active+hidden 힐 (kami/landing)
+- [x] chrome pin/toggle red spec · catalog cover copy · Playful/54-deck paint 유지
+
 ### 0.93 2026-08-21 현재 판단 — Zhangzara Studio 계열 `#deck` 100vw strip 비율·스크롤·페이지 이동
 
 `Html Ppt Zhangzara Studio` 및 유사 Zhangzara 템플릿 일부는 공식 example이 `#deck{display:flex}` + `.slide{flex:0 0 100vw;width:100vw;height:100vh}` 수평 strip으로 되어 있다. Teamver 미리보기 iframe은 임의 패널 비율이므로 이 구조를 그대로 두면 16:9 캔버스가 아니라 iframe viewport에 맞춰 재계산되어 비율·폰트 크기·요소 배치가 깨지고, 브라우저 스크롤/템플릿 자체 transform nav와 host prev/next가 충돌한다.
