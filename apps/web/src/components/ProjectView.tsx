@@ -154,6 +154,7 @@ import { useCoalescedCallback } from '../hooks/useCoalescedCallback';
 import {
   composeSystemPrompt,
   deriveDeckCoverTitleFromBrief,
+  healInstructionCopyCoverHeading,
   metadataForTeamverSlideOnlyPrompt,
   firstOfficialDeckTemplateId,
   pinDeckSlidesToFixedCanvas,
@@ -5308,6 +5309,14 @@ export function ProjectView({
         );
         // Soft salvage may keep a previewable truncated deck, but never a
         // "만들어줘" / template-marketing cover — that is a failed generate.
+        artifactToPersist = {
+          ...artifactToPersist,
+          html: healInstructionCopyCoverHeading(
+            artifactToPersist.html,
+            runVisiblePromptRef.current || '',
+            project.name,
+          ),
+        };
         const failedGenerateHeadings =
           normalizedArtifactType === 'deck'
           && (

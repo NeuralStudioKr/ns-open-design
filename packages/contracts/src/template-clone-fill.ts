@@ -643,6 +643,38 @@ export function deriveDeckCoverTitleFromBrief(
 }
 
 /**
+ * Persist heal: first cover heading that still parrots "만들어줘" / template
+ * marketing is rewritten from the user brief so a complete deck is not
+ * skipped as a failed generate.
+ */
+export function healInstructionCopyCoverHeading(
+  html: string,
+  brief: string,
+  deckTitle?: string | null,
+): string {
+  const dest = String(html ?? '');
+  const replacement = sanitizeTemplateCloneDeckTitle(
+    deriveDeckCoverTitleFromBrief(brief, deckTitle),
+  );
+  if (!replacement || !dest.trim()) return dest;
+  const headingRe = /<h([1-3])\b([^>]*)>([\s\S]*?)<\/h\1>/i;
+  const match = headingRe.exec(dest);
+  if (!match) return dest;
+  const visible = match[3]
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!looksLikeInstructionCopy(visible) && !looksLikeTemplateMarketingTitle(visible)) {
+    return dest;
+  }
+  return (
+    dest.slice(0, match.index)
+    + `<h${match[1]}${match[2]}>${escapeHtml(replacement)}</h${match[1]}>`
+    + dest.slice(match.index + match[0].length)
+  );
+}
+
+/**
  * Free-form Home/wizard prompts have no Visible-headings outline. Still
  * synthesize content-bearing slides so Clone does not leave template marketing
  * copy intact. Length follows the brief — never the template's demo page count.

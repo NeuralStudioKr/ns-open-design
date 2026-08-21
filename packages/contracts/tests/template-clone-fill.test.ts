@@ -14,6 +14,7 @@ import {
   resolveTemplateCloneSlidesFromBrief,
   sanitizeTemplateCloneDeckTitle,
   deriveDeckCoverTitleFromBrief,
+  healInstructionCopyCoverHeading,
 } from '../src/template-clone-fill.js';
 
 describe('buildTemplateClonedDeckHtml', () => {
@@ -294,6 +295,26 @@ describe('sanitizeTemplateCloneDeckTitle', () => {
     expect(looksLikeTemplateMarketingTitle('Html Ppt Zhangzara Daisy Days')).toBe(true);
     expect(looksLikeTemplateMarketingTitle('Expo for Senior Engineers')).toBe(false);
     expect(sanitizeTemplateCloneDeckTitle('Expo SDK 개요')).toBe('Expo SDK 개요');
+  });
+
+  it('heals a 만들어줘 cover heading from the user brief', () => {
+    const html = [
+      '<!doctype html><html><body>',
+      '<section class="slide"><h1>expo에 대해서 설명하는 피피티 만들어줘</h1><p>시니어</p></section>',
+      '<section class="slide"><h2>Agenda</h2></section>',
+      '</body></html>',
+    ].join('');
+    const healed = healInstructionCopyCoverHeading(
+      html,
+      'expo에 대해서 설명하는 피피티 만들어줘. 시니어 개발자 레벨.',
+    );
+    expect(healed).toContain('<h1>expo</h1>');
+    expect(healed).not.toContain('만들어줘');
+    expect(healed).toContain('<h2>Agenda</h2>');
+    expect(healInstructionCopyCoverHeading(
+      '<section class="slide"><h1>Expo SDK 개요</h1></section>',
+      'expo에 대해서 설명하는 피피티 만들어줘',
+    )).toContain('<h1>Expo SDK 개요</h1>');
   });
 
   it('derives a cover title from a 만들어줘 brief instead of Daisy chrome', () => {
