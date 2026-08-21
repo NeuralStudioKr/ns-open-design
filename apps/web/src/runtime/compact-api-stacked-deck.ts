@@ -197,7 +197,7 @@ function looksLikeFrameworkDeckMarkup(html: string): boolean {
   // sometimes copy without the framework script or visibility CSS.
   if (/\bid\s*=\s*["']deck-stage["']/i.test(html)) return true;
   if (/<deck-stage\b/i.test(html)) return true;
-  if (/<div[^>]*\bid\s*=\s*['"]deck-track['"]/i.test(html)) return true;
+  if (/<(?:div|section|main|article)[^>]*\bid\s*=\s*['"]deck-track['"]/i.test(html)) return true;
   return false;
 }
 

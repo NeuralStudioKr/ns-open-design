@@ -296,14 +296,42 @@ function looksLikeDeckCodeDebrisLineFallback(line: string): boolean {
   return cssSignals >= 3 && hangul < 2 && /[{}]/.test(trimmed) && /:/.test(trimmed);
 }
 
+function looksLikeDeckCssContinuationLineFallback(line: string): boolean {
+  const trimmed = String(line ?? "").trim();
+  if (!trimmed) return false;
+  if (/^#[0-9A-Fa-f]{3,8}\s*;?\s*\}?\s*$/.test(trimmed)) return true;
+  if (/^#[0-9A-Fa-f]{3,8}\s*;\s*(?:--|[a-zA-Z-]+\s*:)/.test(trimmed)) return true;
+  if (/^rgba?\([^)]*\)\s*;?\s*\}?\s*$/i.test(trimmed)) return true;
+  if (/^[\d.]+(?:px|em|rem|%|vh|vw)?\s*;?\s*\}?\s*$/i.test(trimmed)) return true;
+  if (/^[a-zA-Z-]+\s*:\s*[^;{]+;?\s*\}?\s*$/.test(trimmed)) return true;
+  if (/^--[A-Za-z_][\w-]*\s*:/.test(trimmed)) return true;
+  if (/^\}\s*$/.test(trimmed)) return true;
+  return false;
+}
+
+function lineOpensUnclosedCssBlockFallback(line: string): boolean {
+  const open = (line.match(/\{/g) ?? []).length;
+  const close = (line.match(/\}/g) ?? []).length;
+  return open > close;
+}
+
 function stripLeakedDeckCodeDebrisBlocksFallback(input: string): string {
   if (!input) return input;
   const kept: string[] = [];
+  let inCssContinuation = false;
   for (const line of String(input).split("\n")) {
-    if (looksLikeDeckCodeDebrisLineFallback(line)) {
+    const trimmed = line.trim();
+    const isDebris =
+      looksLikeDeckCodeDebrisLineFallback(trimmed)
+      || (inCssContinuation && looksLikeDeckCssContinuationLineFallback(trimmed));
+    if (isDebris) {
+      inCssContinuation =
+        lineOpensUnclosedCssBlockFallback(trimmed)
+        || (inCssContinuation && !trimmed.includes("}"));
       while (kept.length > 0 && !(kept[kept.length - 1] ?? "").trim()) kept.pop();
       continue;
     }
+    inCssContinuation = false;
     kept.push(line);
   }
   while (kept.length > 0 && !(kept[kept.length - 1] ?? "").trim()) kept.pop();

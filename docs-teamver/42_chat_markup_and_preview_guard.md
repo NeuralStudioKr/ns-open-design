@@ -9,6 +9,7 @@
 - named regex로 특정 템플릿 조각을 하나씩 막지 않고, line-level heuristic으로 compound utility class, custom prop, hex continuation, orphan close tag, deck-ish HTML chrome을 처리한다.
 - 단, `# 다음 단계`, `- 차트 추가`, CSS 조각 앞뒤의 한국어 일반 prose는 유지한다. 기존 “숨김 우선” 때문에 자연어까지 사라지는 회귀를 막기 위한 정책이다.
 - web bundle은 `@open-design/contracts` dist가 stale일 수 있어 `internalAgentMarkup.ts`에 동일 목적의 display-only fallback을 둔다.
+- web fallback도 multi-line CSS continuation 상태를 유지한다. 예: `.tag.inv{color:` 다음 줄의 `#1c1c1c}`이 contracts dist stale 상황에서도 남지 않아야 한다.
 - 회귀 테스트:
   - `packages/contracts/tests/deck-code-debris-heuristic.test.ts`
   - `packages/contracts/tests/chat-leak-probe*.test.ts`

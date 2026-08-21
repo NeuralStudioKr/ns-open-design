@@ -532,6 +532,20 @@ describe('looksLikeCompactApiStackedDeck', () => {
     expect(buildSrcdoc(html, { deck: true })).toContain('data-od-deck-stacked-fix');
   });
 
+  it('keeps explicit non-div #deck-track transform decks on their native runtime path', () => {
+    const html = [
+      '<!doctype html><html><head><style>',
+      '#deck-track{display:flex;width:300vw;transform:translateX(0)}.slide{flex:0 0 100vw;height:100vh}',
+      '</style></head><body>',
+      '<section id="deck-track">',
+      '<section class="slide">A</section><section class="slide">B</section>',
+      '</section>',
+      '</body></html>',
+    ].join('');
+    expect(looksLikeCompactApiStackedDeck(html)).toBe(false);
+    expect(buildSrcdoc(html, { deck: true })).not.toContain('data-od-deck-stacked-fix');
+  });
+
   it('letterboxes Zhangzara #deck viewport-track catalog decks for Teamver preview', () => {
     const templatesRoot = resolve(repoRoot, 'design-templates');
     const matchingTemplates = readdirSync(templatesRoot)

@@ -85,6 +85,20 @@ describe("internalAgentMarkup", () => {
     }
   });
 
+  it("hard-strips unknown utility CSS continuations via web stale-dist fallback", () => {
+    const frag = [
+      ".tag.inv{border-color:rgba(28,28,28,0.35);color:",
+      "#1c1c1c}",
+      ".chip.on{padding:4px 10px;background:#eee}",
+    ].join("\n");
+    for (const streaming of [true, false]) {
+      expect(
+        sanitizeAssistantProseForDisplay(`초안을 다듬는 중입니다.\n\n${frag}`, { streaming }),
+      ).toBe("초안을 다듬는 중입니다.");
+      expect(sanitizeAssistantProseForDisplay(frag, { streaming }).trim()).toBe("");
+    }
+  });
+
   it("hard-strips Barlow typography chrome + mid-word CSS join after reload", () => {
     const frag = [
       `<span style="font-family:'Barlow','Noto Sans SC',sans-serif;font-size:14px;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;color:rgba(245,210,0,0.58)">Engineering Deep Dive</span>`,
