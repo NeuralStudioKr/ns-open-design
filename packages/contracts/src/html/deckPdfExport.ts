@@ -15,7 +15,7 @@ import {
 import { pinDeckSlidesToFixedCanvas } from './deck-fixed-canvas.js';
 
 export const DECK_SLIDE_SELECTOR =
-  '.slide, [data-slide], [data-screen-label], section.slide, .deck-slide, .ppt-slide';
+  '.slide, section.slide, .deck-slide, .ppt-slide, section[data-screen-label], main[data-screen-label], article[data-screen-label]';
 
 export const DECK_WRAPPER_SELECTOR =
   '.deck, .deck-shell, .deck-stage, #deck-stage, #deck, .stage';

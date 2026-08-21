@@ -762,9 +762,14 @@ html, body { overflow: visible !important; height: auto !important; }
 .post-it-yellow{top:-40px;right:-60px}
 .cover-blob{right:-140px;top:-140px;width:560px;height:560px}
 .deco-pill{width:20vw;height:8vh;top:-4%}
+.title-accent-1{top:-40px;right:-60px}
+.hero-shot{right:-60px;top:10%}
+.slide.dark::before{content:'';position:absolute;bottom:-10%;right:-5%;width:40%;height:40%}
+.deco-orb{left:-10vw;top:12vh;width:20vw;height:20vh}
 `;
     const out = sanitizeMotifOutsideCanvasOffsets(hang);
     expect(out).not.toMatch(/(?:top|left|right|bottom)\s*:\s*-\d/);
+    expect(out).not.toMatch(/(?:top|left|right|bottom)\s*:\s*0(?:vw|vh)\b/);
     expect(out).toMatch(/\.pin::before\{[^}]*top:\s*0/);
     expect(out).toMatch(/\.tape::after\{[^}]*top:\s*0/);
     expect(out).toMatch(/\.ribbon\{[^}]*left:\s*0/);
@@ -772,17 +777,38 @@ html, body { overflow: visible !important; height: auto !important; }
     expect(out).toMatch(/deco-pink-rect\{[^}]*top:\s*0/);
     expect(out).toMatch(/deco-yellow-bar\{[^}]*bottom:\s*0/);
     expect(out).toMatch(/cover-blob\{[^}]*right:\s*0/);
+    expect(out).toMatch(/title-accent-1\{[^}]*top:\s*0/);
+    expect(out).toMatch(/hero-shot\{[^}]*right:\s*0/);
+    expect(out).toMatch(/::before\{[^}]*bottom:\s*0/);
     expect(out).toMatch(/deco-pill\{[^}]*width:\s*20%/);
     expect(out).toMatch(/deco-pill\{[^}]*height:\s*8%/);
+    expect(out).toMatch(/deco-orb\{[^}]*left:\s*0/);
+    expect(out).toMatch(/deco-orb\{[^}]*top:\s*12%/);
     expect(out).not.toMatch(/deco-pill\{[^}]*(?:vw|vh)\b/);
   });
 
   it('LOOK_NEUTRALIZE keeps bare pin / ribbon / win Motif hosts below content (§0.80)', () => {
     expect(LOOK_NEUTRALIZE_CSS).toMatch(/:not\(\.pin\)/);
-    expect(LOOK_NEUTRALIZE_CSS).toMatch(/:not\(\[class\*="pin"\]\)/);
+    expect(LOOK_NEUTRALIZE_CSS).toMatch(/:not\(\[class\^="pin-"\]\)/);
+    expect(LOOK_NEUTRALIZE_CSS).not.toMatch(/:not\(\[class\*="pin"\]\)/);
     expect(LOOK_NEUTRALIZE_CSS).toMatch(/:not\(\.ribbon\)/);
-    expect(LOOK_NEUTRALIZE_CSS).toMatch(/:not\(\[class\*="win-"\]\)/);
+    expect(LOOK_NEUTRALIZE_CSS).toMatch(/:not\(\[class\^="win-"\]\)/);
     expect(LOOK_NEUTRALIZE_CSS).toMatch(/:not\(\[class\*="pixel-"\]\)/);
+    expect(LOOK_NEUTRALIZE_CSS).toMatch(/section\[data-screen-label\]/);
+    expect(LOOK_NEUTRALIZE_CSS).not.toMatch(/\[data-slide\],\s*\[data-screen-label\]/);
+    // Do not force display:flex — Cobalt/Neo-grid need display:grid (§0.83).
+    expect(LOOK_NEUTRALIZE_CSS).not.toMatch(/overflow:\s*visible\s*!important;\s*display:\s*flex/);
+  });
+
+  it('sanitizes Scatterbrain title-accent hangs during official look merge (§0.83)', () => {
+    const official = loadOfficialLookSource(join(EXAMPLES_DIR, 'html-ppt-zhangzara-scatterbrain/example.html'));
+    const assets = extractOfficialDeckLookAssets(official)!;
+    const sparse = `<!doctype html><html lang="ko"><body>
+<section class="slide" style="background:#F6E7D8;width:1920px;height:1080px"><h1>Scatter</h1></section>
+<section class="slide"><h2>Body</h2></section>
+</body></html>`;
+    const merged = mergeOfficialDeckLookCss(sparse, assets);
+    expect(merged).not.toMatch(/title-accent[^\{]*\{[^}]*(?:top|left|right|bottom)\s*:\s*-\d/i);
   });
 
   it('does not restamp Graphify orb geometry onto Daisy TL recipes (§0.80)', () => {

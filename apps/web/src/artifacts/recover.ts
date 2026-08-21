@@ -354,7 +354,7 @@ function build1920CoverDraftHtml(title: string): string | null {
   const html = [
     '<!doctype html><html lang="ko"><body style="margin:0">',
     '<section class="slide" style="width:1920px;height:1080px;box-sizing:border-box;',
-    'overflow:hidden;display:flex;flex-direction:column;justify-content:center;',
+    'overflow:visible;display:flex;flex-direction:column;justify-content:center;',
     'padding:80px 88px">',
     `<h1>${escaped}</h1>`,
     '</section></body></html>',

@@ -165,7 +165,7 @@ export const CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION =
   "body-first: start the artifact body as `<!doctype html><html lang=\"ko\"><body><section class=\"slide\" ...>`; " +
   "do not emit `<head>`, `<title>`, meta tags, or a long style prelude before slide 1. " +
   "Include no host framework chrome/nav/print scaffolding. " +
-  "Each slide must be a fixed 1920×1080 canvas (`width:1920px;height:1080px;box-sizing:border-box;position:relative;overflow:hidden`) " +
+  "Each slide must be a fixed 1920×1080 canvas (`width:1920px;height:1080px;box-sizing:border-box;position:relative;overflow:visible`) " +
   "so the preview can scale the whole slide; do not size core typography or layout with viewport units that reflow by panel size. " +
   "Do not finish with prose only and do not stop before `</artifact>`.";
 
@@ -193,7 +193,7 @@ export const HOME_CREATE_SLIDES_INTERNAL_INSTRUCTION =
   "body-first: start the artifact body as `<!doctype html><html lang=\"ko\"><body><section class=\"slide\" ...>`; " +
   "do not emit `<head>`, `<title>`, meta tags, or a long style prelude before slide 1. " +
   "Include no host framework chrome/nav/print scaffolding. " +
-  "Each slide must be a fixed 1920×1080 canvas (`width:1920px;height:1080px;box-sizing:border-box;position:relative;overflow:hidden`) " +
+  "Each slide must be a fixed 1920×1080 canvas (`width:1920px;height:1080px;box-sizing:border-box;position:relative;overflow:visible`) " +
   "so the preview can scale the whole slide; do not size core typography or layout with viewport units that reflow by panel size. " +
   "Do not finish with prose only and do not stop before `</artifact>`.";
 

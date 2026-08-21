@@ -1,4 +1,5 @@
 import {
+  deckHtmlHasMotifOutsideCanvasHang,
   firstOfficialDeckTemplateId,
   OFFICIAL_DECK_LOOK_STYLE_ATTR,
 } from '@open-design/contracts';
@@ -8,7 +9,7 @@ import { mergeOfficialLookCssForTemplate } from './fetchPluginLocalSkill';
 /**
  * True when preview HTML still has pre-§0.62 / pre-v34 Daisy Motif stamps
  * that only remmerge (official example pack) can restamp — stacking neutralize
- * alone is not enough. Also catches Graphify/XHS Motif hang CSS (§0.75).
+ * alone is not enough. Also catches cross-template Motif hang CSS (§0.75–§0.83).
  */
 export function deckHtmlNeedsOfficialMotifRemerge(html: string): boolean {
   const dest = String(html ?? '');
@@ -18,18 +19,8 @@ export function deckHtmlNeedsOfficialMotifRemerge(html: string): boolean {
     if (/deco-daisy[^>]*width\s*:\s*(?:2[5-9]\d|[3-9]\d{2}|\d{4,})\s*px/i.test(dest)) return true;
     if (/deco-daisy[^>]*(?:top|left|right|bottom)\s*:\s*-\d/i.test(dest)) return true;
   }
-  // Broader Motif hang CSS / inline (Graphify orbs, XHS blobs, geo, etc.).
-  if (
-    /\.(?:deco-daisy|deco-star|sunglow|cover-blob|cover-decoration|geo-decoration|xp-blob|gd-orb|post-it|petal|pin-|doodle-|zigzag-deco)[^{]*\{[^}]*(?:top|left|right|bottom)\s*:\s*-\d/i.test(dest)
-  ) {
-    return true;
-  }
-  if (
-    /<(?:div|span)[^>]*\bclass\s*=\s*["'][^"']*(?:deco-daisy|deco-star|sunglow|cover-blob|geo-decoration|xp-blob|gd-orb|post-it|petal|pin-|doodle-)[^"']*["'][^>]*(?:top|left|right|bottom)\s*:\s*-\d/i.test(dest)
-  ) {
-    return true;
-  }
-  return false;
+  // Shared Motif hang SSOT with persist sanitize (§0.83).
+  return deckHtmlHasMotifOutsideCanvasHang(dest);
 }
 
 const OFFICIAL_LOOK_STYLE_RE = new RegExp(
@@ -82,6 +73,3 @@ export async function healOfficialLookForDeckPreview(
     return dest;
   }
 }
-
-/** Same display-only merge — keep the Motif-era name for export callers. */
-export const healOfficialMotifForDeckPreview = healOfficialLookForDeckPreview;

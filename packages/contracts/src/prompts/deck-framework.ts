@@ -100,7 +100,7 @@ export const DECK_SKELETON_HTML = `<!doctype html>
     .slide {
       position: absolute;
       inset: 0;
-      overflow: hidden;
+      overflow: visible;
     }
     /* Visibility toggle hardened with :not(.active) + !important so cascade
        order can't break it. The previous \`.slide { display:none }\` rule

@@ -88,10 +88,13 @@ html, body {
   transform: none !important;
   overflow: visible !important;
 }
-/* Include .presentation > .slide so we beat catalog presentation specificity. */
+/* Include .presentation > .slide so we beat catalog presentation specificity.
+ * Size/overflow only — do not force display:flex (Cobalt/Neo-grid need display:grid).
+ * Never size bare [data-slide] / [data-screen-label] (nav dots / eyebrow labels). */
 .presentation > .slide, .presentation .slide,
 .slide, .slide.active, .slide.is-active, .slide.current,
-[data-slide], [data-screen-label], section.slide, .deck-slide, .ppt-slide {
+section.slide, .deck-slide, .ppt-slide,
+section[data-screen-label], main[data-screen-label], article[data-screen-label] {
   opacity: 1 !important;
   pointer-events: auto !important;
   position: relative !important;
@@ -111,10 +114,6 @@ html, body {
   margin-right: auto !important;
   box-sizing: border-box !important;
   overflow: visible !important;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: stretch;
 }
 /* Split/row fills keep their inline axis — do not force a column. */
 .slide:has(.split-left), .slide:has(.split-right),
@@ -138,7 +137,7 @@ html, body {
   position: relative !important;
   z-index: 2 !important;
 }
-.slide > div:not([data-od-official-motif-html]):not(.deco):not([class*="deco-"]):not(.floating-pills):not(.petals):not(.gd-ambient):not(.pixel-glitch):not(.scanlines):not(.grain):not(.hc-scanlines):not(.hc-grid):not(.sunglow):not(.cover-blob):not([class*="cover-blob"]):not(.geo-decoration):not([class*="gd-orb"]):not(.xp-blob):not([class*="xp-blob"]):not([class*="post-it"]):not(.pin):not([class*="pin"]):not([class*="doodle"]):not([class*="petal"]):not([class*="stamp"]):not([class*="tape"]):not([class*="pill"]):not([class*="corner-bracket"]):not([class*="ts-stripe"]):not([class*="zigzag"]):not(.ribbon):not(.ribbons):not(.rib):not([class*="ribbon"]):not([class*="win-"]):not([class*="shape"]):not([class*="pixel-"]):not([class*="hc-"]) {
+.slide > div:not([data-od-official-motif-html]):not(.deco):not([class*="deco-"]):not(.floating-pills):not(.petals):not(.gd-ambient):not(.pixel-glitch):not(.scanlines):not(.grain):not(.hc-scanlines):not(.hc-grid):not(.sunglow):not(.cover-blob):not([class*="cover-blob"]):not(.geo-decoration):not([class*="gd-orb"]):not(.xp-blob):not([class*="xp-blob"]):not([class*="post-it"]):not(.pin):not([class^="pin-"]):not([class*=" pin-"]):not([class*="doodle"]):not([class*="petal"]):not([class*="stamp"]):not([class*="tape"]):not([class*="pill"]):not([class*="corner-bracket"]):not([class*="ts-stripe"]):not([class*="zigzag"]):not(.ribbon):not(.ribbons):not(.rib):not([class*="ribbon"]):not([class^="win-"]):not([class*=" win-"]):not(.shape):not([class*="pixel-"]):not([class^="hc-"]):not([class*=" hc-"]):not([class*="title-accent"]):not([class*="closing-accent"]):not(.mini-note):not(.hero-shot):not([class*="card-deco"]) {
   position: relative !important;
   z-index: 2 !important;
 }
@@ -212,8 +211,6 @@ function officialLookCssBodies(html: string): string[] {
 function officialLookCssLooksCurrent(css: string): boolean {
   return (
     css.includes(OFFICIAL_LOOK_STACKED_NEUTRALIZE_MARKER)
-    && /flex-direction:\s*column/.test(css)
-    && /flex-direction:\s*unset/.test(css)
     && /position\s*:\s*relative\s*!important/i.test(css)
     && /width\s*:\s*1920px\s*!important/i.test(css)
     && /height\s*:\s*1080px\s*!important/i.test(css)
@@ -221,8 +218,11 @@ function officialLookCssLooksCurrent(css: string): boolean {
     && /\.slide\s*>\s*:is\(h1/i.test(css)
     && /z-index\s*:\s*2\s*!important/i.test(css)
     && !OFFICIAL_LOOK_MAX_VIEWPORT_MEDIA_RE.test(css)
-    // §0.80 — hang gate tracks full Motif lexicon (sanitize SSOT), not Daisy-only.
+    // §0.83 — hang gate tracks full Motif lexicon (sanitize SSOT), not Daisy-only.
     && sanitizeMotifOutsideCanvasOffsets(css) === css
+    // §0.83 neutralize: size labeled section hosts; never bare [data-slide] nav dots.
+    && /section\[data-screen-label\]/i.test(css)
+    && !/\[data-slide\],\s*\[data-screen-label\]/i.test(css)
   );
 }
 
@@ -259,8 +259,6 @@ export function hasOfficialLookStackedCanvasNeutralizeProof(html: string): boole
     /position\s*:\s*relative\s*!important/i.test(dest)
     && /width\s*:\s*1920px\s*!important/i.test(dest)
     && /height\s*:\s*1080px\s*!important/i.test(dest)
-    && /flex-direction:\s*column/.test(dest)
-    && /flex-direction:\s*unset/.test(dest)
     && /\.slide\s*>\s*:is\(h1/i.test(dest)
     && /z-index\s*:\s*2\s*!important/i.test(dest)
   );
@@ -378,17 +376,17 @@ function isReusableSpriteSheet(svg: string): boolean {
  * Catalog Motif paint classes — keep aligned with
  * `MOTIF_CLASS_TOKEN_RE` in template-visual-kit.ts. Persist injects these
  * nodes; Daisy `deco-daisy-*` is only one family.
- * §0.80: include bare `.pin`, Sakura `.ribbon`/`.rib`, Block-frame `.deco-*`.
+ * §0.80/§0.83: bare `.pin`, Sakura ribbon/rib, Block-frame deco-*, Scatterbrain accents.
  */
 const MOTIF_PAINT_CLASS_RE =
-  /\b(?:deco-[a-z0-9_-]+|deco-pill|[cf]-pill|petals?|(?:cover-)?blob(?:-[a-z0-9_-]+)?|stamp|tape|pin(?:-[a-z0-9_-]+)?|doodle(?:-[a-z0-9_-]+)?|scribble(?:-[a-z0-9_-]+)?|post-it(?:-[a-z0-9_-]+)?|xp-blob|gd-(?:orb|ambient)(?:-[a-z0-9_-]+)?|pixel-[a-z0-9_-]+|hc-scanlines?|win-(?:titlebar|window|btn)|corner-bracket|cover-decoration|geo-decoration|zigzag-deco|sunglow|ts-stripe(?:-b)?|ribbons?|rib|shape)\b/i;
+  /\b(?:deco-[a-z0-9_-]+|deco-pill|[cf]-pill|petals?|(?:cover-)?blob(?:-[a-z0-9_-]+)?|(?:rsvp-)?stamp|tape|pin(?:-[a-z0-9_-]+)?|doodle(?:-[a-z0-9_-]+)?|scribble(?:-[a-z0-9_-]+)?|post-it(?:-[a-z0-9_-]+)?|xp-blob|gd-(?:orb|ambient)(?:-[a-z0-9_-]+)?|pixel-[a-z0-9_-]+|hc-scanlines?|win-(?:titlebar|window|btn)|corner-bracket|cover-decoration|geo-decoration|zigzag-deco|sunglow|ts-stripe(?:-b)?|ribbons?|rib|shape|title-accent(?:-[a-z0-9_-]+)?|closing-accent(?:-[a-z0-9_-]+)?|mini-note|hero-shot|card-deco|photo-frame|marker|arrows?|arr)\b/i;
 
 /**
  * Selectors that often carry official outside-canvas Motif hangs.
  * Must stay in lockstep with MOTIF_PAINT_CLASS_RE (+ kit Motif CSS selectors).
  */
 const MOTIF_HANG_SANITIZE_SELECTOR_RE =
-  /\.(?:deco-[a-z0-9_-]+|deco-pill|[cf]-pill|petals?|(?:cover-)?blob(?:-[a-z0-9_-]+)?|stamp|tape|pin(?:-[a-z0-9_-]+)?|doodle(?:-[a-z0-9_-]+)?|scribble(?:-[a-z0-9_-]+)?|post-it(?:-[a-z0-9_-]+)?|xp-blob|gd-(?:orb|ambient)(?:-[a-z0-9_-]+)?|pixel-[a-z0-9_-]+|hc-[a-z0-9_-]+|win-[a-z0-9_-]+|corner-bracket|cover-decoration|geo-decoration|zigzag-deco|sunglow|ts-stripe(?:-b)?|ribbons?|rib|shape)\b/i;
+  /\.(?:deco-[a-z0-9_-]+|deco-pill|[cf]-pill|petals?|(?:cover-)?blob(?:-[a-z0-9_-]+)?|[a-z0-9_-]*stamp\b|tape|pin(?:-[a-z0-9_-]+)?|doodle(?:-[a-z0-9_-]+)?|scribble(?:-[a-z0-9_-]+)?|post-it(?:-[a-z0-9_-]+)?|xp-blob|gd-(?:orb|ambient)(?:-[a-z0-9_-]+)?|pixel-[a-z0-9_-]+|hc-[a-z0-9_-]+|win-[a-z0-9_-]+|corner-bracket|cover-decoration|geo-decoration|zigzag-deco|sunglow|ts-stripe(?:-b)?|ribbons?|rib|shape|title-accent(?:-[a-z0-9_-]+)?|closing-accent(?:-[a-z0-9_-]+)?|mini-note|hero-shot|card-deco|photo-frame|marker|arrows?|arr)\b/i;
 
 function classTokens(classAttr: string): string[] {
   return String(classAttr ?? '').trim().split(/\s+/).filter(Boolean);
@@ -541,8 +539,8 @@ function placementStyleForMotifClass(classAttr: string): string {
 /**
  * Daisy corners get official in-canvas recipes. Other Motifs that already
  * carry width/height/corner keep authored geometry — only neutralize hangs
- * (§0.80: do not restamp Graphify orbs / Block-frame rects onto Daisy TL discs).
- * CSS Motif shells (gd-orb / deco-pink-rect / ribbon) also keep size in look CSS.
+ * (§0.80/§0.83: do not restamp Graphify orbs / Block-frame rects onto Daisy TL discs).
+ * CSS Motif shells and unknown Motif classes stamp chrome only (never Daisy fallthrough).
  */
 function stampOrPreserveMotifPlacement(className: string, attrs: string): string {
   if (/deco-daisy/i.test(className)) {
@@ -567,19 +565,21 @@ function stampOrPreserveMotifPlacement(className: string, attrs: string): string
       },
     );
   }
-  // CSS Motif hosts: geometry lives in official look/deco sheets — stamp chrome only.
-  if (
-    /\b(?:gd-orb|xp-blob|cover-blob|petals?|post-it|tape|pin(?:-|\b)|ribbons?|rib|deco-(?:pink|green|yellow|dots|circle|square|pill)|sunglow|cover-decoration|geo-decoration|zigzag|ts-stripe|win-titlebar|pixel-|hc-scanlines|hc-grid|shape)\b/i.test(
-      className,
-    )
-    || isMotifClusterClass(className)
-  ) {
-    const chrome = isMotifClusterClass(className)
-      ? 'position:absolute;inset:0;pointer-events:none;z-index:1'
-      : 'position:absolute;pointer-events:none;z-index:1';
-    return applyMotifPlacementStyle(attrs, chrome);
+  // Non-Daisy default: geometry lives in official look/deco sheets — chrome only.
+  const chrome = isMotifClusterClass(className)
+    ? 'position:absolute;inset:0;pointer-events:none;z-index:1'
+    : 'position:absolute;pointer-events:none;z-index:1';
+  // Family-specific recipes only when the Motif needs a known footprint and has no style.
+  if (/pixel-glitch/i.test(className)) {
+    return applyMotifPlacementStyle(attrs, placementStyleForMotifClass(className));
   }
-  return applyMotifPlacementStyle(attrs, placementStyleForMotifClass(className));
+  if (/win-titlebar|ts-stripe/i.test(className)) {
+    return applyMotifPlacementStyle(attrs, placementStyleForMotifClass(className));
+  }
+  if (/\bdeco-pill\b/i.test(className) || /\bpill-(?:coral|lime|lavender|sky|violet|yellow|peach|mint|white)\b/i.test(className)) {
+    return applyMotifPlacementStyle(attrs, placementStyleForMotifClass(className));
+  }
+  return applyMotifPlacementStyle(attrs, chrome);
 }
 
 /** Apply Motif placement by replacing conflicting props (not blind append). */
@@ -1909,15 +1909,22 @@ export function appendCompactOfficialTypeLock(css: string): string {
 
 /** Neutralize negative Motif position declarations inside a CSS rule body. */
 function sanitizeMotifOffsetDeclarations(body: string): string {
-  return String(body ?? '').replace(
-    /(^|[;\s])(top|left|right|bottom)\s*:\s*-\d+(?:\.\d+)?(?:px|%|em|rem)?/gi,
-    '$1$2:0',
-  );
+  return String(body ?? '')
+    // Consume full unit so `left:-10vw` becomes `left:0` (not orphan `0vw`).
+    .replace(
+      /(^|[;\s])(top|left|right|bottom)\s*:\s*-\d+(?:\.\d+)?(?:px|%|em|rem|vw|vh|vmin|vmax)?/gi,
+      '$1$2:0',
+    )
+    // Positive Motif offsets in viewport units → canvas % under letterbox.
+    .replace(
+      /(^|[;\s])(top|left|right|bottom)\s*:\s*(\d+(?:\.\d+)?)\s*(?:vw|vh|vmin|vmax)\b/gi,
+      '$1$2:$3%',
+    );
 }
 
 /**
  * Motif width/height in vw/vh break aspect under letterbox (Cartesian viewport
- * units). Map to the same numeric % of the 1920×1080 canvas (§0.80).
+ * units). Map to the same numeric % of the 1920×1080 canvas (§0.80/§0.83).
  */
 function sanitizeMotifViewportSizeDeclarations(body: string): string {
   return String(body ?? '')
@@ -1943,7 +1950,7 @@ function sanitizeMotifViewportSizeDeclarations(body: string): string {
  * Official Motif example CSS often uses negative top/left so decorations bleed
  * past the slide in the fullscreen presenter. Stacked letterbox clips those
  * hangs. Rewrite Motif position offsets to 0 while keeping width/height.
- * Also rewrite Motif vw/vh sizes to canvas % (§0.80 cross-template).
+ * Also rewrite Motif vw/vh sizes to canvas % (§0.80/§0.83 cross-template).
  */
 export function sanitizeMotifOutsideCanvasOffsets(css: string): string {
   const source = String(css ?? '');
@@ -1951,13 +1958,55 @@ export function sanitizeMotifOutsideCanvasOffsets(css: string): string {
   return source.replace(
     /([^{}]+)\{([^}]*)\}/g,
     (full, sel: string, body: string) => {
-      if (!MOTIF_HANG_SANITIZE_SELECTOR_RE.test(sel)) return full;
+      // Motif lexicon OR absolute :before/:after ambient hangs (Mat/Coral/Creative).
+      const motifSel = MOTIF_HANG_SANITIZE_SELECTOR_RE.test(sel);
+      const ambientPseudo =
+        /:{1,2}(?:before|after)\b/i.test(sel)
+        && /position\s*:\s*absolute/i.test(body)
+        && /(?:top|left|right|bottom)\s*:\s*-\d/i.test(body);
+      if (!motifSel && !ambientPseudo) return full;
       const next = sanitizeMotifViewportSizeDeclarations(
         sanitizeMotifOffsetDeclarations(body),
       );
       return `${sel}{${next}}`;
     },
   );
+}
+
+/**
+ * True when HTML/CSS still carries Motif outside-canvas hangs that sanitize
+ * or remmerge must heal. Shared by persist + preview remmerge gates (§0.83).
+ */
+export function deckHtmlHasMotifOutsideCanvasHang(html: string): boolean {
+  const dest = String(html ?? '');
+  if (!dest.trim()) return false;
+  let sawStyle = false;
+  const styleRe = /<style\b[^>]*>([\s\S]*?)<\/style>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = styleRe.exec(dest)) !== null) {
+    sawStyle = true;
+    const css = match[1] ?? '';
+    if (sanitizeMotifOutsideCanvasOffsets(css) !== css) return true;
+  }
+  // Pure CSS string (no HTML).
+  if (!sawStyle && /\{[^}]+\}/.test(dest) && !/<\/?[a-z]/i.test(dest)) {
+    return sanitizeMotifOutsideCanvasOffsets(dest) !== dest;
+  }
+  const opens = dest.match(
+    /<(?:div|span)[^>]*\bclass\s*=\s*(?:"[^"]+"|'[^']+')[^>]*>/gi,
+  ) ?? [];
+  for (const open of opens) {
+    if (!/(?:top|left|right|bottom)\s*:\s*-\d/i.test(open)) continue;
+    const cls = classAttrValue(open);
+    if (
+      MOTIF_PAINT_CLASS_RE.test(cls)
+      || isMotifClusterClass(cls)
+      || /\b(?:accent|hero-shot|card-deco|mini-note|marker|photo-frame)\b/i.test(cls)
+    ) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function prepareOfficialLookCss(css: string): string {

@@ -20,12 +20,12 @@ const FIXED_CANVAS_CSS = `
 /* Teamver fixed 16:9 canvas pin (size only; Motif-safe — no overflow clip) */
 html, body { margin: 0; }
 .slide,
-[data-screen-label],
-section[data-slide],
-main[data-slide],
-article[data-slide],
+section.slide,
 .deck-slide,
-.ppt-slide {
+.ppt-slide,
+section[data-screen-label],
+main[data-screen-label],
+article[data-screen-label] {
   width: 1920px !important;
   height: 1080px !important;
   min-width: 1920px !important;
