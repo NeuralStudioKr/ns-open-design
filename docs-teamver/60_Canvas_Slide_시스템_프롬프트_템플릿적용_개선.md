@@ -32,6 +32,22 @@
 | scaffold로 갑자기 바꾸면? | **안 됨.** kit hard cutover 금지. full HTML scaffold도 기본 inject 하지 않음 |
 | 1장짜리 템플릿 결과가 저장되는가? | **제품 경로는 첫 fill 3장.** 잘리면 제목 있는 1장은 저장하고 top-up이 덧붙인다. 제목 없는 빈 셸만 미완성으로 차단. 사용자가 1장을 명시한 경우도 허용 |
 
+### 0.93 2026-08-21 현재 판단 — Zhangzara Studio 계열 `#deck` 100vw strip 비율·스크롤·페이지 이동
+
+`Html Ppt Zhangzara Studio` 및 유사 Zhangzara 템플릿 일부는 공식 example이 `#deck{display:flex}` + `.slide{flex:0 0 100vw;width:100vw;height:100vh}` 수평 strip으로 되어 있다. Teamver 미리보기 iframe은 임의 패널 비율이므로 이 구조를 그대로 두면 16:9 캔버스가 아니라 iframe viewport에 맞춰 재계산되어 비율·폰트 크기·요소 배치가 깨지고, 브라우저 스크롤/템플릿 자체 transform nav와 host prev/next가 충돌한다.
+
+현재 결정:
+
+- bare `id="deck"` viewport strip은 Teamver slide preview에서 **1920×1080 compact stacked stage**로 복구한다.
+- `id="deck-track"`, `#deck-stage`, `<deck-stage>`처럼 명시적 프레임워크/웹컴포넌트 presenter는 계속 native runtime 보호 대상이다.
+- `flex:0 0 100vw`만으로 모든 덱을 horizontal-native로 분류하지 않는다. `scroll-snap-type:x`, body row flex overflow 같은 명시적 horizontal scroll 문서만 native로 둔다.
+- 회귀 테스트는 Studio 단일 fixture가 아니라 `html-ppt-zhangzara-*` 중 `#deck` viewport-track 패턴 전체를 스캔한다. 현재 최소 기대 포함: Broadside, Grove, Mat, Monochrome, Signal, Studio, Vellum.
+
+검증:
+
+- [x] `compact-api-stacked-deck.test.ts` — Zhangzara `#deck` viewport-track 전체가 `data-od-deck-stacked-fix` 경로로 들어감
+- [x] `srcdoc-deck-bridge-nested-slides.test.ts` — `#deck-track` native transform deck은 계속 보호됨
+
 ### 0.92 2026-08-21 — Studio/#deck 수평 스트립 비율·스크롤·nav (cache v48)
 
 Studio·Grove·Signal 계열은 `#deck{display:flex}` + `.slide{flex:0 0 100vw}` 수평 strip이다. body-first 오탐으로 카탈로그가 1920 lock 되고, fill neutralize는 `#deck`을 놓쳐 가로 스크롤·translate nav 충돌·`12vw` 타입 붕괴가 났다.

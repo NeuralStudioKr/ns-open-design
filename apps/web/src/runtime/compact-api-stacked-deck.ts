@@ -122,12 +122,10 @@ export function looksLikeAuthoredScrollNavigateDeck(html: string): boolean {
 export function looksLikeAuthoredHorizontalSwipeDeck(html: string): boolean {
   if (!html) return false;
   if (/scroll-snap-type\s*:\s*x\b/i.test(html)) return true;
-  if (/\bflex\s*:\s*0\s+0\s+100vw\b/i.test(html)) return true;
 
   const css = extractCssBlocks(html);
   if (css) {
     if (/scroll-snap-type\s*:\s*x\b/i.test(css)) return true;
-    if (/\bflex\s*:\s*0\s+0\s+100vw\b/i.test(css)) return true;
     if (/\.slide\b[^{]*\{[^}]*min-width\s*:\s*100vw\b/i.test(css)) return true;
     const rowFlexWithHorizontalScroll =
       /(?:html\s*,\s*body|body|html)\s*\{[^}]*\bdisplay\s*:\s*flex\b[^}]*\boverflow-x\s*:\s*(?:auto|scroll|overlay)\b/i.test(css)
@@ -145,6 +143,24 @@ export function looksLikeAuthoredHorizontalSwipeDeck(html: string): boolean {
     return true;
   }
   return false;
+}
+
+function looksLikeBareDeckViewportTrack(html: string): boolean {
+  if (!/<(?:div|section|main)\b[^>]*\bid\s*=\s*['"]deck['"]/i.test(html)) return false;
+  const rawSlideCount = (html.match(/<(?:section|div|main|article)\b[^>]*\bclass\s*=\s*['"][^'"]*\bslide\b/gi) ?? []).length;
+  if (Math.max(countSlideElements(html), rawSlideCount) < 2) return false;
+  const css = extractCssBlocks(html);
+  if (!css) return false;
+  const deckRule = css.match(/#deck\b[^{]*\{([^}]*)\}/i)?.[1] ?? '';
+  if (!/\bdisplay\s*:\s*flex\b/i.test(deckRule)) return false;
+  const slideRules = [...css.matchAll(/\.slide\b[^{]*\{([^}]*)\}/gi)]
+    .map((match) => match[1] ?? '')
+    .join('\n');
+  return (
+    /\bflex\s*:\s*0\s+0\s+100vw\b/i.test(slideRules)
+    || /\bwidth\s*:\s*100vw\b/i.test(slideRules)
+    || /\bheight\s*:\s*100(?:vh|dvh|svh|lvh)\b/i.test(slideRules)
+  );
 }
 
 function looksLikeSlideViewportSized(html: string): boolean {
@@ -186,7 +202,7 @@ function looksLikeFrameworkDeckMarkup(html: string): boolean {
   // sometimes copy without the framework script or visibility CSS.
   if (/\bid\s*=\s*["']deck-stage["']/i.test(html)) return true;
   if (/<deck-stage\b/i.test(html)) return true;
-  if (/<div[^>]*\bid\s*=\s*['"](?:deck|deck-track)['"]/i.test(html)) return true;
+  if (/<div[^>]*\bid\s*=\s*['"]deck-track['"]/i.test(html)) return true;
   return false;
 }
 
@@ -198,7 +214,8 @@ function looksLikeFrameworkDeckMarkup(html: string): boolean {
  */
 export function looksLikeCompactApiStackedDeck(html: string): boolean {
   if (!html) return false;
-  if (looksLikeOfficialFullscreenPresenterDeck(html)) return false;
+  const deckViewportTrack = looksLikeBareDeckViewportTrack(html);
+  if (!deckViewportTrack && looksLikeOfficialFullscreenPresenterDeck(html)) return false;
   if (looksLikeFrameworkDeckMarkup(html)) return false;
   if (looksLikeAuthoredHorizontalSwipeDeck(html)) return false;
   // Official catalog presenters (no look-css marker) keep native 100% fill
@@ -210,7 +227,7 @@ export function looksLikeCompactApiStackedDeck(html: string): boolean {
   const bodyFirst = hasBodyFirstSlide(html);
   const viewportSized = looksLikeSlideViewportSized(html);
   const legacyBodyFirst = looksLikeLegacyStyledBodyFirstDeck(html);
-  const compactBodyFirst = bodyFirst && (viewportSized || legacyBodyFirst);
+  const compactBodyFirst = (bodyFirst && (viewportSized || legacyBodyFirst)) || deckViewportTrack;
   if (looksLikeAuthoredScrollNavigateDeck(html) && !compactBodyFirst) return false;
   const hasPresentationShell =
     /<(?:div|section|main)\b[^>]*\bclass\s*=\s*['"][^'"]*\bpresentation\b/i.test(html);
@@ -223,7 +240,8 @@ export function looksLikeCompactApiStackedDeck(html: string): boolean {
   if (!officialLookFill && !compactBodyFirst && (hasPresentationShell || hasDeckShell)) {
     return false;
   }
-  if (!bodyFirst) return false;
+  if (!bodyFirst && !deckViewportTrack) return false;
+  if (deckViewportTrack) return true;
   if (viewportSized) return true;
   // Legacy Canvas/Drive → Slide decks can be body-first multi-slide HTML
   // without explicit 100vh or 1920×1080 sizing. Keep existing deliverables

@@ -1,6 +1,6 @@
 // @vitest-environment node
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { buildEmergencySlideDeckFromOutline } from '../../src/artifacts/emergency-deck';
@@ -516,7 +516,7 @@ describe('looksLikeCompactApiStackedDeck', () => {
     expect(buildSrcdoc(html, { deck: true })).not.toContain('data-od-deck-stacked-fix');
   });
 
-  it('keeps transform-track decks on their native runtime path', () => {
+  it('letterboxes #deck viewport transform-track decks instead of letting iframe ratio reflow them', () => {
     const html = [
       '<!doctype html><html><head><style>',
       '#deck{display:flex;width:300vw;transform:translateX(0)}.slide{flex:0 0 100vw;height:100vh}',
@@ -526,8 +526,40 @@ describe('looksLikeCompactApiStackedDeck', () => {
       '</div>',
       '</body></html>',
     ].join('');
-    expect(looksLikeCompactApiStackedDeck(html)).toBe(false);
-    expect(buildSrcdoc(html, { deck: true })).not.toContain('data-od-deck-stacked-fix');
+    expect(looksLikeCompactApiStackedDeck(html)).toBe(true);
+    expect(buildSrcdoc(html, { deck: true })).toContain('data-od-deck-stacked-fix');
+  });
+
+  it('letterboxes Zhangzara #deck viewport-track catalog decks for Teamver preview', () => {
+    const templatesRoot = resolve(repoRoot, 'design-templates');
+    const matchingTemplates = readdirSync(templatesRoot)
+      .filter((name) => name.startsWith('html-ppt-zhangzara-'))
+      .filter((name) => {
+        const html = readFileSync(resolve(templatesRoot, name, 'example.html'), 'utf8');
+        return /id\s*=\s*["']deck["']/i.test(html)
+          && /#deck\b[^{]*\{[\s\S]*?display\s*:\s*flex/i.test(html)
+          && /\.slide\b[^{]*\{[\s\S]*?(?:flex\s*:\s*0\s+0\s+100vw|width\s*:\s*100vw|height\s*:\s*100vh)/i.test(html);
+      });
+
+    expect(matchingTemplates).toEqual(expect.arrayContaining([
+      'html-ppt-zhangzara-broadside',
+      'html-ppt-zhangzara-grove',
+      'html-ppt-zhangzara-mat',
+      'html-ppt-zhangzara-monochrome',
+      'html-ppt-zhangzara-signal',
+      'html-ppt-zhangzara-studio',
+      'html-ppt-zhangzara-vellum',
+    ]));
+
+    for (const templateName of matchingTemplates) {
+      const html = readFileSync(resolve(templatesRoot, templateName, 'example.html'), 'utf8');
+      expect(looksLikeAuthoredHorizontalSwipeDeck(html), templateName).toBe(false);
+      expect(looksLikeCompactApiStackedDeck(html), templateName).toBe(true);
+      const srcdoc = buildSrcdoc(html, { deck: true });
+      expect(srcdoc, templateName).toContain('data-od-deck-stacked-fix');
+      expect(srcdoc, templateName).toContain('content="width=1920, initial-scale=1, maximum-scale=1"');
+      expect(srcdoc, templateName).toContain('#od-stacked-deck-stage');
+    }
   });
 
   it('treats deck-shell wrappers without #deck-stage as compact stacked decks', () => {

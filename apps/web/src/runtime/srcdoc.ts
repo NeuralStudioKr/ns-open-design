@@ -2674,7 +2674,7 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     // Only skip slides owned by the real framework / transform-track hosts.
     // Decorative deck-shell wrappers without #deck-stage must still hoist.
     // <deck-stage> (custom element) is a presenter — do not hoist its children.
-    if (el.closest && el.closest('#deck-stage, #deck, #deck-track, deck-stage')) return false;
+    if (el.closest && el.closest('#deck-stage, #deck-track, deck-stage')) return false;
     if (el.classList && (el.classList.contains('slide') || el.classList.contains('deck-slide') || el.classList.contains('ppt-slide'))) {
       return true;
     }
@@ -2744,7 +2744,8 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     } catch (_) {}
     var list = [];
     for (var d = 0; d < direct.length; d++) list.push(direct[d]);
-    if (transformTrack(list)) return false;
+    var track = transformTrack(list);
+    if (track && track.id !== 'deck') return false;
     var stackedViewport = false;
     function hasFixedCanvasSizingText(value) {
       var text = String(value || '');
