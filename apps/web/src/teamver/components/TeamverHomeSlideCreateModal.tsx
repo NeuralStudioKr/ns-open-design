@@ -19,6 +19,7 @@ import {
 } from "../canvasSlideLaunch";
 import { useTeamverDriveModalFocusTrap } from "../useTeamverDriveModalFocusTrap";
 import { CanvasSlideTemplatePicker } from "./CanvasSlideTemplatePicker";
+import { HomeSlideCreateAttachChips } from "./HomeSlideCreateAttachChips";
 
 export type TeamverHomeSlideCreateEntry = "new" | "template";
 export type TeamverHomeSlideCreateStep = "content" | "template";
@@ -42,6 +43,8 @@ type Props = {
   stagedDriveAssets?: TeamverDriveImportAsset[];
   onRemoveDriveAsset?: (assetId: string) => void;
   onAttachFromDrive?: () => void;
+  /** Optional workspace for Drive image chip thumbnails. */
+  workspaceId?: string | null;
   onConfirm: () => void | Promise<void>;
   onClose: () => void;
 };
@@ -140,6 +143,7 @@ export function TeamverHomeSlideCreateModal({
   stagedDriveAssets = [],
   onRemoveDriveAsset,
   onAttachFromDrive,
+  workspaceId = null,
   onConfirm,
   onClose,
 }: Props) {
@@ -448,38 +452,15 @@ export function TeamverHomeSlideCreateModal({
             />
           </div>
           <p className="teamver-home-slide-create-attach-hint">{t("teamver.homeCreate.attachHint")}</p>
-          {(stagedFiles.length > 0 || stagedDriveAssets.length > 0) && (
-            <ul className="teamver-home-slide-create-chips">
-              {stagedFiles.map((file, index) => (
-                <li key={`file-${file.name}-${index}`}>
-                  <span title={file.name}>{file.name}</span>
-                  <button
-                    type="button"
-                    aria-label={t("teamver.homeCreate.removeAttach")}
-                    disabled={confirming}
-                    onClick={() => onRemoveFile?.(index)}
-                  >
-                    ×
-                  </button>
-                </li>
-              ))}
-              {stagedDriveAssets.map((asset) => (
-                <li key={`drive-${asset.assetId}`}>
-                  <span title={asset.filename ?? asset.assetId}>
-                    {asset.filename ?? asset.assetId}
-                  </span>
-                  <button
-                    type="button"
-                    aria-label={t("teamver.homeCreate.removeAttach")}
-                    disabled={confirming}
-                    onClick={() => onRemoveDriveAsset?.(asset.assetId)}
-                  >
-                    ×
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
+          <HomeSlideCreateAttachChips
+            stagedFiles={stagedFiles}
+            stagedDriveAssets={stagedDriveAssets}
+            confirming={confirming}
+            workspaceId={workspaceId}
+            removeAttachLabel={t("teamver.homeCreate.removeAttach")}
+            onRemoveFile={onRemoveFile}
+            onRemoveDriveAsset={onRemoveDriveAsset}
+          />
         </div>
       </div>
 

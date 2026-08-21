@@ -284,6 +284,71 @@ describe("TeamverHomeSlideCreateModal", () => {
     expect(onConfirm).toHaveBeenCalledOnce();
   });
 
+  it("shows a type icon for non-image attachments and keeps the extension visible", () => {
+    wrap(
+      <TeamverHomeSlideCreateModal
+        open
+        entry="new"
+        templateOptions={templates}
+        selectedTemplateId="html-ppt-hermes"
+        onTemplateChange={() => {}}
+        userPrompt=""
+        onUserPromptChange={() => {}}
+        stagedFiles={[
+          new File(["brief"], "brief.pdf", { type: "application/pdf" }),
+          new File(["deck"], "pitch.pptx", {
+            type: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+          }),
+        ]}
+        stagedDriveAssets={[{ assetId: "drv-csv", filename: "metrics.csv", mimeType: "text/csv" }]}
+        onConfirm={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    const chips = screen.getByTestId("teamver-home-slide-create-chips");
+    expect(chips.querySelectorAll("[data-testid='teamver-home-slide-create-chip-icon']")).toHaveLength(3);
+    expect(
+      chips.querySelector('[data-filename="pitch.pptx"] [data-icon="present"]'),
+    ).toBeTruthy();
+    expect(
+      chips.querySelector('[data-asset-id="drv-csv"] [data-icon="file-code"]'),
+    ).toBeTruthy();
+    expect(chips.textContent).toContain(".pdf");
+    expect(chips.textContent).toContain(".pptx");
+    expect(chips.textContent).toContain(".csv");
+  });
+
+  it("renders a local image thumbnail for staged image attachments", () => {
+    const objectUrl = "blob:teamver-home-attach-preview";
+    const createObjectURL = vi.spyOn(URL, "createObjectURL").mockReturnValue(objectUrl);
+    const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+    try {
+      wrap(
+        <TeamverHomeSlideCreateModal
+          open
+          entry="new"
+          templateOptions={templates}
+          selectedTemplateId="html-ppt-hermes"
+          onTemplateChange={() => {}}
+          userPrompt=""
+          onUserPromptChange={() => {}}
+          stagedFiles={[new File(["img"], "cover.png", { type: "image/png" })]}
+          onConfirm={() => {}}
+          onClose={() => {}}
+        />,
+      );
+      const thumb = screen
+        .getByTestId("teamver-home-slide-create-chips")
+        .querySelector("img.teamver-home-slide-create-chip-thumb") as HTMLImageElement | null;
+      expect(thumb?.getAttribute("src")).toBe(objectUrl);
+      expect(createObjectURL).toHaveBeenCalled();
+    } finally {
+      cleanup();
+      createObjectURL.mockRestore();
+      revokeObjectURL.mockRestore();
+    }
+  });
+
   it("removes a drive attachment by asset id", () => {
     const onRemoveDriveAsset = vi.fn();
     wrap(

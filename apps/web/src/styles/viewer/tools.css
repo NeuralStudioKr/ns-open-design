@@ -3731,24 +3731,62 @@ button.teamver-home-slide-create-attach-item:disabled {
   padding: 0;
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 8px;
 }
-.teamver-home-slide-create-chips li {
+.teamver-home-slide-create-chips li,
+.teamver-home-slide-create-chip {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  max-width: 100%;
-  padding: 4px 8px;
+  gap: 8px;
+  max-width: min(100%, 280px);
+  padding: 4px 8px 4px 4px;
   border-radius: 999px;
   background: var(--bg-subtle);
   border: 1px solid var(--border);
   font-size: 12px;
 }
-.teamver-home-slide-create-chips li span {
-  max-width: 220px;
+.teamver-home-slide-create-chip-visual {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-elevated, var(--bg));
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+}
+.teamver-home-slide-create-chip-visual--icon {
+  background: color-mix(in srgb, var(--bg-subtle) 70%, var(--accent, #5b8def) 12%);
+}
+.teamver-home-slide-create-chip-thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.teamver-home-slide-create-chip-name,
+.teamver-home-slide-create-chips .teamver-drive-display-filename {
+  min-width: 0;
+  flex: 1 1 auto;
+  max-width: 200px;
+}
+.teamver-home-slide-create-chips li span:not([class]),
+.teamver-home-slide-create-chips .teamver-drive-display-filename-stem {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.teamver-home-slide-create-chips .teamver-drive-display-filename {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 200px;
+}
+.teamver-home-slide-create-chips .teamver-drive-display-filename-ext {
+  flex: 0 0 auto;
+  color: var(--text-muted);
 }
 .teamver-home-slide-create-chips button {
   border: 0;
@@ -3756,6 +3794,7 @@ button.teamver-home-slide-create-attach-item:disabled {
   cursor: pointer;
   color: var(--text-muted);
   line-height: 1;
+  flex: 0 0 auto;
 }
 .teamver-home-slide-create-chips button:hover:not(:disabled) {
   background: transparent;

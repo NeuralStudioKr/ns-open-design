@@ -2686,6 +2686,7 @@ export function HomeView({
                 }
               : undefined
           }
+          workspaceId={teamverWorkspaceId}
           onClose={closeHomeSlideCreate}
           onConfirm={() => {
             void confirmHomeSlideCreate();
