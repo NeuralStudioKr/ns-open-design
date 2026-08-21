@@ -1,6 +1,6 @@
 // @vitest-environment node
 
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { JSDOM } from 'jsdom';
@@ -139,5 +139,106 @@ describe('deck bridge — official catalog presenter navigation', () => {
     expect(slides[0]?.style.display).not.toBe('none');
     expect(slides[1]?.style.display).not.toBe('none');
     expect(lastSlideState(parentPostMessage)).toMatchObject({ active: 1, count: 3 });
+  });
+
+  it('does not let a content CTA arrow swallow host next (product-launch dialect)', async () => {
+    const html = `<!doctype html><html><head><style>
+.slide{position:absolute;inset:0;opacity:0}
+.slide.is-active{opacity:1}
+</style></head><body>
+<div class="deck">
+  <section class="slide is-active"><h1>Cover</h1></section>
+  <section class="slide"><h1>Agenda</h1></section>
+  <section class="slide dark"><a class="cta-btn" href="#">Pre-order Halo v2 →</a></section>
+</div>
+</body></html>`;
+    const srcdoc = buildSrcdoc(html, { deck: true });
+    const script = extractDeckBridgeScript(srcdoc);
+    const dom = new JSDOM(srcdoc.replace(/<script\b[\s\S]*?<\/script>/gi, ''), {
+      runScripts: 'outside-only',
+      pretendToBeVisual: true,
+    });
+    const win = dom.window;
+    const parentPostMessage = vi.fn();
+    Object.defineProperty(win, 'parent', {
+      configurable: true,
+      value: { postMessage: parentPostMessage },
+    });
+    new win.Function(script).call(win);
+    win.dispatchEvent(new win.Event('load'));
+    win.dispatchEvent(new win.MessageEvent('message', { data: { type: 'od:slide-state-request' } }));
+    expect(lastSlideState(parentPostMessage)).toMatchObject({ active: 0, count: 3 });
+
+    postSlide(win, 'next');
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 40));
+
+    expect(lastSlideState(parentPostMessage)).toMatchObject({ active: 1, count: 3 });
+    expect(win.document.querySelectorAll('.slide')[1]?.classList.contains('is-active')).toBe(true);
+    expect(win.document.querySelectorAll('.slide')[0]?.classList.contains('is-active')).toBe(false);
+  });
+
+  it('advances page 2 on every official html-ppt catalog presenter', async () => {
+    const examplesDir = resolve(repoRoot, 'plugins/_official/examples');
+    const dirs = readdirSync(examplesDir).filter((name) => name.startsWith('html-ppt-'));
+    expect(dirs.length).toBeGreaterThan(20);
+    const failures: string[] = [];
+
+    for (const dir of dirs) {
+      const html = readFileSync(resolve(examplesDir, dir, 'example.html'), 'utf8');
+      const srcdoc = buildSrcdoc(html, { deck: true });
+      const script = extractDeckBridgeScript(srcdoc);
+      const dom = new JSDOM(srcdoc.replace(/<script\b[\s\S]*?<\/script>/gi, ''), {
+        runScripts: 'outside-only',
+        pretendToBeVisual: true,
+      });
+      const win = dom.window;
+      const parentPostMessage = vi.fn();
+      Object.defineProperty(win, 'parent', {
+        configurable: true,
+        value: { postMessage: parentPostMessage },
+      });
+      if (win.document.querySelector('deck-stage')) {
+        class DeckStage extends win.HTMLElement {
+          _index = 0;
+          connectedCallback() { this._apply(0); }
+          get length() {
+            return [...this.children].filter((node) => node.nodeType === 1).length;
+          }
+          goTo(i: number) {
+            this._index = Math.max(0, Math.min(this.length - 1, i));
+            this._apply(this._index);
+          }
+          _apply(curr: number) {
+            [...this.children].forEach((slide, index) => {
+              if (slide.nodeType !== 1) return;
+              const el = slide as HTMLElement;
+              if (index === curr) el.setAttribute('data-deck-active', '');
+              else el.removeAttribute('data-deck-active');
+            });
+          }
+        }
+        try { win.customElements.define('deck-stage', DeckStage); } catch { /* defined */ }
+      }
+      new win.Function(script).call(win);
+      win.document.querySelectorAll('deck-stage').forEach((node) => {
+        const cb = (node as { connectedCallback?: () => void }).connectedCallback;
+        if (typeof cb === 'function') cb.call(node);
+      });
+      win.dispatchEvent(new win.Event('load'));
+      win.dispatchEvent(new win.MessageEvent('message', { data: { type: 'od:slide-state-request' } }));
+      const before = lastSlideState(parentPostMessage);
+      postSlide(win, 'next');
+      await new Promise<void>((resolve) => win.setTimeout(resolve, 20));
+      const after = lastSlideState(parentPostMessage);
+      if (!before || (before.count ?? 0) < 2) {
+        failures.push(`${dir}: count=${before?.count ?? '?'}`);
+        continue;
+      }
+      if (!after || after.active !== 1 || after.count !== before.count) {
+        failures.push(`${dir}: ${before.active}/${before.count} -> ${after?.active}/${after?.count}`);
+      }
+    }
+
+    expect(failures).toEqual([]);
   });
 });

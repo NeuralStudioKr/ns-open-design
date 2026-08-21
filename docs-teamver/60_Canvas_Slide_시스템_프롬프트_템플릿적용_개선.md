@@ -32,6 +32,18 @@
 | scaffold로 갑자기 바꾸면? | **안 됨.** kit hard cutover 금지. full HTML scaffold도 기본 inject 하지 않음 |
 | 1장짜리 템플릿 결과가 저장되는가? | **제품 경로는 첫 fill 3장.** 잘리면 제목 있는 1장은 저장하고 top-up이 덧붙인다. 제목 없는 빈 셸만 미완성으로 차단. 사용자가 1장을 명시한 경우도 허용 |
 
+### 0.82 2026-08-21 — 카탈로그 PreviewModal 다음 장 전 템플릿
+
+§0.68은 Pink Script `<deck-stage>` goTo만 고쳤다. Product Launch 본문 CTA `→`가 호스트 「다음」을 삼키고, nextBtn만 있는 템플릿은 스크립트가 죽으면 1장에 남는다.
+
+**수정:** deck bridge가 크롬(id/class/aria)만 next/prev로 보고, 클릭 후 장이 안 바뀌면 setActive/forceReveal/goTo로 넘긴다.
+
+구현 현황:
+
+- [x] product-launch CTA `→`가 next를 삼키지 않음
+- [x] official html-ppt-* 전수 next → page 2
+- [x] 기존 Capsule / deck-stage 게이트 유지
+
 ### 0.79 2026-08-21 — 카탈로그 썸네일 전 템플릿 고립
 
 §0.77 Pink Script 고립만으로는 Pitch/Grove/Block Frame/Creative Mode 등에서 카드가 희거나 비어 있다. 썸네일은 JS를 안 돌리므로 `.slide { opacity:0|display:none }`, `[data-anim]`, `deck-stage` + `class="s1"` 방언이 커버를 숨긴다.

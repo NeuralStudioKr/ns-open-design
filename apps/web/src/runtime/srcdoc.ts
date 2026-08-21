@@ -3475,17 +3475,32 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     return true;
   }
   var hostNativeClickInFlight = false;
-  function nativeControlMatches(node, action){
-    if (!node) return false;
-    var text = [
+  function nativeControlChrome(node){
+    return [
       node.id,
       node.className,
       node.getAttribute && node.getAttribute('aria-label'),
-      node.getAttribute && node.getAttribute('title'),
-      node.textContent
+      node.getAttribute && node.getAttribute('title')
     ].join(' ').toLowerCase();
-    if (action === 'next') return /\\bnext\\b|다음|→|›|>|right|forward/.test(text);
-    if (action === 'prev') return /\\bprev\\b|\\bprevious\\b|이전|←|‹|<|left|back/.test(text);
+  }
+  function nativeControlLooksLikeNav(chrome){
+    return /nextbtn|prevbtn|nav-btn|nav-arrow|nav-dot|deck-next|deck-prev|page-next|page-prev|pagination|pager|arrow/.test(chrome)
+      || /\\b(next|prev|previous|slide)\\b/.test(chrome);
+  }
+  function nativeControlMatches(node, action){
+    if (!node) return false;
+    // Chrome only — never scan textContent. Product-launch CTAs like
+    // "Pre-order Halo v2 →" used to swallow host next and stay on page 1.
+    var chrome = nativeControlChrome(node);
+    var glyph = String(node.textContent || '');
+    if (action === 'next') {
+      if (/nextbtn|deck-next|page-next/.test(chrome) || /\\bnext\\b|다음|forward/.test(chrome)) return true;
+      return nativeControlLooksLikeNav(chrome) && /→|›|»|▶|►/.test(glyph);
+    }
+    if (action === 'prev') {
+      if (/prevbtn|deck-prev|page-prev/.test(chrome) || /\\bprev\\b|\\bprevious\\b|이전/.test(chrome)) return true;
+      return nativeControlLooksLikeNav(chrome) && /←|‹|«|◀|◄/.test(glyph);
+    }
     return false;
   }
   function clickableControls(){
@@ -3522,6 +3537,9 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
       }
     }
     if (!clicked) return false;
+    // Dead onclick / content CTA: do not consume the host next. Fall through
+    // to setActive / forceReveal / goTo so every catalog dialect can move.
+    if (activeIndex(slides()) === before) return false;
     setTimeout(report, 80);
     setTimeout(report, 220);
     setTimeout(function(){
