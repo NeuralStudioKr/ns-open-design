@@ -811,6 +811,20 @@ html, body { overflow: visible !important; height: auto !important; }
     expect(merged).not.toMatch(/title-accent[^\{]*\{[^}]*(?:top|left|right|bottom)\s*:\s*-\d/i);
   });
 
+  it('injects Block-frame signature Motif paint (pink-rect / yellow-bar) (§0.84)', () => {
+    const official = loadOfficialLookSource(join(EXAMPLES_DIR, 'html-ppt-zhangzara-block-frame/example.html'));
+    const assets = extractOfficialDeckLookAssets(official)!;
+    expect(assets.motifHtml.some((b) => /\bdeco-pink-rect\b/i.test(b))).toBe(true);
+    expect(assets.motifHtml.some((b) => /\bdeco-yellow-bar\b/i.test(b))).toBe(true);
+    const sparse = `<!doctype html><html lang="ko"><body>
+<section class="slide" style="background:#F5F0E6;width:1920px;height:1080px"><h1>Block</h1></section>
+<section class="slide"><h2>Body</h2></section>
+</body></html>`;
+    const merged = mergeOfficialDeckLookCss(sparse, assets);
+    expect(merged).toMatch(/<(?:div|span)[^>]*\bdeco-pink-rect\b/i);
+    expect(merged).toMatch(/<(?:div|span)[^>]*\bdeco-yellow-bar\b/i);
+  });
+
   it('does not restamp Graphify orb geometry onto Daisy TL recipes (§0.80)', () => {
     const official = loadOfficialLookSource(join(EXAMPLES_DIR, 'html-ppt-graphify-dark-graph/example.html'));
     const assets = extractOfficialDeckLookAssets(official)!;

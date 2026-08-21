@@ -54,7 +54,7 @@ const MOTIF_HOST_CLASS_RE = /\b(?:grain-overlay|crt-overlay|hc-scanlines)\b/i;
 const CAPSULE_PILL_COLOR_RE =
   /\bpill-(?:coral|lime|lavender|sky|violet|yellow|peach|mint|white)\b/i;
 const CSS_MOTIF_SEED_CLASS_RE =
-  /\b(?:deco-pill|pill-(?:coral|lime|lavender|sky|violet|yellow|peach|mint|white)|petals?|cover-blob|blob|xp-blob|hc-scanlines|hc-grid|post-it|pixel-(?:glitch|particles|corners|stack)|doodle|scribble|win-titlebar|cover-decoration|geo-decoration|zigzag-deco|sunglow|ts-stripe(?:-b)?|corner-bracket|deco-green-circle|ribbons?|rib)\b/i;
+  /\b(?:deco-pill|pill-(?:coral|lime|lavender|sky|violet|yellow|peach|mint|white)|petals?|cover-blob|blob|xp-blob|hc-scanlines|hc-grid|post-it|pixel-(?:glitch|particles|corners|stack)|doodle|scribble|win-titlebar|cover-decoration|geo-decoration|zigzag-deco|sunglow|ts-stripe(?:-b)?|corner-bracket|deco-green-circle|deco-pink-rect|deco-yellow-bar|deco-dots|hero-shot|ribbons?|rib)\b/i;
 /** Content chrome that must never count as Motif paint / seeds. */
 const MOTIF_CONTENT_CHROME_RE =
   /\b(?:stat-bar|pill-accent|pill-academic|pill-divider|pixel-label|pixel-hero-text|pixel-chart|pixel-btn|pixel-face|pixel-avatar|quote-container|diagram-canvas|title-pill|header-pill|orbit-pill)\b/i;
@@ -475,8 +475,8 @@ function motifInstanceScore(block: string, className: string): number {
   if (/deco-daisy|#fcdf6c/i.test(block) && /<svg\b/i.test(block)) return 0;
   if (/<svg\b/i.test(block) && /<path\b|<use\b/i.test(block)) return 1;
   if (
-    /^(?:deco-dots|deco-green-circle)$/i.test(className)
-    || /deco-pill|petal|blob|pin-|doodle|post-it|gd-orb|xp-blob|corner-bracket|pixel-|win-titlebar|cover-blob|cover-decoration|geo-decoration|zigzag-deco|sunglow|ts-stripe|ribbon|rib\b|shape/i.test(className)
+    /^(?:deco-dots|deco-green-circle|deco-pink-rect|deco-yellow-bar|deco-square)$/i.test(className)
+    || /deco-pill|petal|blob|pin-|doodle|post-it|gd-orb|xp-blob|corner-bracket|pixel-|win-titlebar|cover-blob|cover-decoration|geo-decoration|zigzag-deco|sunglow|ts-stripe|ribbon|rib\b|shape|hero-shot|title-accent|card-deco/i.test(className)
   ) {
     return 1;
   }
@@ -730,14 +730,15 @@ function extractVisibleMotifInstances(html: string): string[] {
     if (isDaisy && daisyCount >= 4) continue;
     if (isStar && starCount >= 3) continue;
     if (hasSvg && !isDaisy && !isStar && svgCount >= 3) continue;
-    if (!hasSvg && cssCount >= 3) continue;
+    // Block-frame / Product Launch need >3 CSS Motif hosts (pink+yellow+dots+…).
+    if (!hasSvg && cssCount >= 6) continue;
     seenKeys.add(row.key);
     out.push(row.block);
     if (isDaisy) daisyCount += 1;
     if (isStar) starCount += 1;
     if (hasSvg) svgCount += 1;
     else cssCount += 1;
-    if (out.length >= 10) break;
+    if (out.length >= 12) break;
   }
   return out;
 }
@@ -1176,9 +1177,24 @@ function motifPackForSlide(instances: string[], index: number, total = 0): strin
   }
   const dots = instances.filter((block) => hasExactClassToken(classAttrValue(block), 'deco-dots'));
   const circles = instances.filter((block) => /deco-(?:green-)?circle/i.test(classAttrValue(block)));
+  const pinkRects = instances.filter((block) => hasExactClassToken(classAttrValue(block), 'deco-pink-rect'));
+  const yellowBars = instances.filter((block) => hasExactClassToken(classAttrValue(block), 'deco-yellow-bar'));
+  // Block-frame cover identity = pink rect + yellow bar (not dots-only).
+  if (role === 'cover' && (pinkRects.length > 0 || yellowBars.length > 0)) {
+    const parts = [pinkRects[0], yellowBars[0], dots[0]].filter(Boolean) as string[];
+    const unique = [...new Set(parts)].slice(0, 3);
+    if (unique.length > 0) return unique.join('\n');
+  }
   if (dots.length > 0 && circles.length > 0) {
     return `${dots[0]}\n${circles[0]}`;
   }
+  if (pinkRects.length > 0 || yellowBars.length > 0) {
+    const parts = [pinkRects[0], yellowBars[0], circles[0]].filter(Boolean) as string[];
+    const unique = [...new Set(parts)].slice(0, 2);
+    if (unique.length > 0) return unique.join('\n');
+  }
+  const heroShot = instances.find((block) => hasExactClassToken(classAttrValue(block), 'hero-shot'));
+  if (heroShot) return heroShot;
   const titlebar = instances.find((block) => hasExactClassToken(classAttrValue(block), 'win-titlebar'));
   if (titlebar) return titlebar;
   if (instances.length === 1) return instances[0]!;

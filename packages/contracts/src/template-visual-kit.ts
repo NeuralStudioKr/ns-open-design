@@ -674,6 +674,14 @@ function sanitizeCssRuleForFixedCanvas(rule: string): string | null {
       const prop = (rawProp ?? '').trim().toLowerCase();
       const value = rest.join(':').trim().toLowerCase();
       if (!prop || !value) return false;
+      // Prefixed `.tpl-* .slide{overflow:hidden}` still clips Motif after fill (§0.84).
+      if (
+        /\.slide\b/i.test(selector)
+        && /^overflow(?:-x|-y)?$/i.test(prop)
+        && /^(?:hidden|clip)$/i.test(value)
+      ) {
+        return false;
+      }
       // Viewport-relative sizing on ANY selector — a `.slide-title{height:100vh}`
       // still stretches the slide to the browser.
       if (/^(?:min-|max-)?(?:width|height)$/i.test(prop) && /\b\d+\s*v(?:w|h|min|max|i|b)\b/i.test(value)) {
@@ -696,10 +704,10 @@ function sanitizeCssRuleForFixedCanvas(rule: string): string | null {
 
 /** Catalog-wide Motif class lexicon — not Capsule/Daisy-only. */
 const MOTIF_CLASS_TOKEN_RE =
-  /\b(?:deco(?:-[a-z0-9_-]+)?|pill(?:-[a-z0-9_-]+)?|deco-pills|floating-pills|[cf]-pill|blob(?:-[a-z0-9_-]+)?|petal(?:s)?|stamp|tape|pin(?:-[a-z0-9_-]+)?|doodle|scribble(?:-[a-z0-9_-]+)?|shape|sticker|dot-grid|ornament|floater|spark|confetti|grain|pixel(?:-[a-z0-9_-]+)?|ribbons?|rib|glow|hairlines?|stripes?|bracket|corner-bracket|post-it(?:-[a-z0-9_-]+)?|cork|scanlines?|orb(?:-[a-z0-9_-]+)?|ambient|starfield|cross|cassette|jis|bg-cork|(?:tpl|theme)-[a-z0-9_-]+|(?:hc|gd|win)-[a-z0-9_-]+)\b/i;
+  /\b(?:deco(?:-[a-z0-9_-]+)?|pill(?:-[a-z0-9_-]+)?|deco-pills|floating-pills|[cf]-pill|blob(?:-[a-z0-9_-]+)?|petal(?:s)?|(?:rsvp-)?stamp|tape|pin(?:-[a-z0-9_-]+)?|doodle|scribble(?:-[a-z0-9_-]+)?|shape|sticker|dot-grid|ornament|floater|spark|confetti|grain|pixel(?:-[a-z0-9_-]+)?|ribbons?|rib|glow|hairlines?|stripes?|bracket|corner-bracket|post-it(?:-[a-z0-9_-]+)?|cork|scanlines?|orb(?:-[a-z0-9_-]+)?|ambient|starfield|cross|cassette|jis|bg-cork|title-accent(?:-[a-z0-9_-]+)?|closing-accent(?:-[a-z0-9_-]+)?|mini-note|hero-shot|card-deco|photo-frame|marker|arrows?|arr|(?:tpl|theme)-[a-z0-9_-]+|(?:hc|gd|win)-[a-z0-9_-]+)\b/i;
 
 const MOTIF_CSS_SELECTOR_RE =
-  /\.(?:deco(?:-[a-z0-9_-]+)?|pill(?:-[a-z0-9_-]+)?|deco-pills|floating-pills|[cf]-pill|blob(?:-[a-z0-9_-]+)?|petal(?:s)?|stamp|tape|pin(?:-[a-z0-9_-]+)?|doodle|scribble(?:-[a-z0-9_-]+)?|shape|sticker|dot-grid|ornament|floater|spark|confetti|grain|pixel(?:-[a-z0-9_-]+)?|ribbons?|rib|glow|hairlines?|stripes?|bracket|corner-bracket|post-it(?:-[a-z0-9_-]+)?|cork|scanlines?|orb(?:-[a-z0-9_-]+)?|ambient|starfield|cross|cassette|jis|(?:tpl|theme)-[a-z0-9_-]+|(?:hc|gd|win)-[a-z0-9_-]+)\b/i;
+  /\.(?:deco(?:-[a-z0-9_-]+)?|pill(?:-[a-z0-9_-]+)?|deco-pills|floating-pills|[cf]-pill|blob(?:-[a-z0-9_-]+)?|petal(?:s)?|[a-z0-9_-]*stamp\b|tape|pin(?:-[a-z0-9_-]+)?|doodle|scribble(?:-[a-z0-9_-]+)?|shape|sticker|dot-grid|ornament|floater|spark|confetti|grain|pixel(?:-[a-z0-9_-]+)?|ribbons?|rib|glow|hairlines?|stripes?|bracket|corner-bracket|post-it(?:-[a-z0-9_-]+)?|cork|scanlines?|orb(?:-[a-z0-9_-]+)?|ambient|starfield|cross|cassette|jis|title-accent(?:-[a-z0-9_-]+)?|closing-accent(?:-[a-z0-9_-]+)?|mini-note|hero-shot|card-deco|photo-frame|marker|arrows?|arr|(?:tpl|theme)-[a-z0-9_-]+|(?:hc|gd|win)-[a-z0-9_-]+)\b/i;
 
 /** True Capsule Motif — not shared OD `.pill` chrome tags. */
 function hasCapsuleMotifSignal(text: string): boolean {

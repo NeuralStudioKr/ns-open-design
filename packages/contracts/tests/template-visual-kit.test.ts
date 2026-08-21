@@ -482,6 +482,25 @@ html,body{background:var(--cream);color:var(--text-dark)}
     }
   });
 
+  it('kit Decorations strip overflow:hidden from prefixed .slide rules (§0.84)', async () => {
+    for (const folder of [
+      'html-ppt-hermes-cyber-terminal',
+      'html-ppt-graphify-dark-graph',
+      'html-ppt-zhangzara-pink-script',
+    ]) {
+      const html = await readFile(
+        new URL(`../../../plugins/_official/examples/${folder}/example.html`, import.meta.url),
+        'utf8',
+      );
+      const kit = extractTemplateVisualKitFromHtml(html, { title: folder });
+      if (!kit) continue;
+      const decoFence = /### Decorations CSS[\s\S]*?```css\s*([\s\S]*?)```/i.exec(kit)?.[1] ?? '';
+      const layoutFence = /### Layout CSS[\s\S]*?```css\s*([\s\S]*?)```/i.exec(kit)?.[1] ?? '';
+      const css = `${decoFence}\n${layoutFence}`;
+      expect(css, folder).not.toMatch(/\.slide[^{]*\{[^}]*overflow\s*:\s*hidden/i);
+    }
+  });
+
   it('resolveSiblingAssetPath joins preview-relative local CSS hrefs', async () => {
     const { resolveSiblingAssetPath } = await import('../src/template-visual-kit.js');
     expect(resolveSiblingAssetPath('example.html', 'assets/styles.css')).toBe('assets/styles.css');

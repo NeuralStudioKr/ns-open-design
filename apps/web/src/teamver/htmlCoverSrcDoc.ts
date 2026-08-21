@@ -7,6 +7,7 @@ import {
   lockStackedDeckCanvasForPreview,
   relaxPersistedDeckSlideSurfaceBleed,
   repairArtifactStyleSheets,
+  sanitizeMotifOutsideCanvasOffsets,
 } from "@open-design/contracts";
 import { repairDeckSlideSurfaceBleed } from "../artifacts/deck-slide-surface";
 import {
@@ -14,11 +15,16 @@ import {
   resolvePluginPreviewBaseHref,
 } from "../runtime/authenticatedHtmlSrcDoc";
 
-/** Heal already-persisted css2 debris + flatten bleed before isolation. */
+/** Heal already-persisted css2 debris + Motif hangs + flatten bleed before isolation. */
 function healCoverHtml(html: string): string {
+  const healedSheets = String(html ?? '').replace(
+    /(<style\b[^>]*>)([\s\S]*?)(<\/style>)/gi,
+    (_m, open: string, css: string, close: string) =>
+      `${open}${sanitizeMotifOutsideCanvasOffsets(css)}${close}`,
+  );
   return lockStackedDeckCanvasForPreview(
     repairDeckSlideSurfaceBleed(
-      relaxPersistedDeckSlideSurfaceBleed(repairArtifactStyleSheets(html)),
+      relaxPersistedDeckSlideSurfaceBleed(repairArtifactStyleSheets(healedSheets)),
     ),
   );
 }
