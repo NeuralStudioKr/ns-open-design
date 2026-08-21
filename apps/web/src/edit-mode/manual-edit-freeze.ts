@@ -1216,6 +1216,20 @@ export function clearTipRemountPostUnlockQuiet(): false {
 }
 
 /**
+ * Post-unlock quiet with no remasure (resize-skip / follow idle) must not stick —
+ * force-spend on follow end or quiet timeout (531).
+ */
+export const TIP_REMOUNT_POST_UNLOCK_QUIET_TIMEOUT_MS = 2_000;
+
+export function shouldForceSpendTipRemountPostUnlockQuiet(
+  quietArmed: boolean,
+  followEnded: boolean,
+  quietTimedOut = false,
+): boolean {
+  return quietArmed && (followEnded || quietTimedOut);
+}
+
+/**
  * Replace deferred geometry payload when a newer deferred remasure arrives —
  * the pending rAF must apply only the latest measure (519).
  */
@@ -1321,6 +1335,37 @@ export function shouldOmitComposedMembersFromTipRemountPartialUnion(
 }
 
 /**
+ * While omitting composed-only members, latch the previous union envelope so
+ * chrome does not shrink then grow when sibling paint arrives (532).
+ */
+export function shouldLatchTipRemountPartialUnionMinSize(
+  omittingComposedMembers: boolean,
+  previousUnionOk: boolean,
+  nextUnionOk: boolean,
+): boolean {
+  return omittingComposedMembers && previousUnionOk && nextUnionOk;
+}
+
+/**
+ * Expand next union to cover previous bounds — min-size latch against shrink (532).
+ */
+export function resolveTipRemountPartialUnionWithMinSizeLatch(
+  previous: { x: number; y: number; width: number; height: number },
+  next: { x: number; y: number; width: number; height: number },
+): { x: number; y: number; width: number; height: number } {
+  const left = Math.min(previous.x, next.x);
+  const top = Math.min(previous.y, next.y);
+  const right = Math.max(previous.x + previous.width, next.x + next.width);
+  const bottom = Math.max(previous.y + previous.height, next.y + next.height);
+  return {
+    x: left,
+    y: top,
+    width: right - left,
+    height: bottom - top,
+  };
+}
+
+/**
  * Chrome just left tip-remount inert — hold host-paint trust for one paint sync
  * frame so interactive chrome does not flash composed (530).
  */
@@ -1334,6 +1379,27 @@ export function shouldArmTipRemountPaintSyncHold(
 /** Paint-sync hold ends after double-rAF settle (530). */
 export function clearTipRemountPaintSyncHold(): false {
   return false;
+}
+
+/**
+ * Defer multi geom-epoch bump while paint-sync hold is armed, or when this
+ * remasure frame is about to arm it — paint refresh must win first (533).
+ */
+export function shouldDeferTipRemountGeomEpochBumpForPaintSync(
+  paintSyncHoldArmed: boolean,
+  chromeReleasePendingThisFrame: boolean,
+): boolean {
+  return paintSyncHoldArmed || chromeReleasePendingThisFrame;
+}
+
+/**
+ * When paint-sync hold clears, flush any deferred geom-epoch bump (533).
+ */
+export function shouldFlushDeferredTipRemountGeomEpochAfterPaintSyncHold(
+  paintSyncHoldClearing: boolean,
+  deferredEpochBumpPending: boolean,
+): boolean {
+  return paintSyncHoldClearing && deferredEpochBumpPending;
 }
 
 /**

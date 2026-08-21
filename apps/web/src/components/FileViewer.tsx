@@ -396,6 +396,8 @@ import {
   shouldArmTipRemountPostUnlockQuiet,
   shouldSpendTipRemountPostUnlockQuiet,
   clearTipRemountPostUnlockQuiet,
+  shouldForceSpendTipRemountPostUnlockQuiet,
+  TIP_REMOUNT_POST_UNLOCK_QUIET_TIMEOUT_MS,
   shouldArmTipRemountChromeUnlockPointerGate,
   shouldDisableManualEditChromeForTipRemountUnlockGate,
   shouldReuseLastHostRectOnTipRemountMeasureMiss,
@@ -403,6 +405,8 @@ import {
   shouldTrustTipRemountHostPaintDespiteComposedStale,
   shouldArmTipRemountPaintSyncHold,
   clearTipRemountPaintSyncHold,
+  shouldDeferTipRemountGeomEpochBumpForPaintSync,
+  shouldFlushDeferredTipRemountGeomEpochAfterPaintSyncHold,
   shouldRetryTipRemountSiblingMeasure,
   TIP_REMOUNT_DECK_NUDGE_REMEASURE_THROTTLE_MS,
   shouldMarkTipRemountChromeReleasePendingAfterResizeSkip,
@@ -5653,17 +5657,17 @@ function HtmlViewer({
   const flushDeferredTipRemountGeometryRef = useRef<() => void>(() => {});
   /** One remasure quiet after unlock gate clear — block re-defer/re-arm (528). */
   const manualEditTipPostUnlockQuietRef = useRef(false);
+  /** Force-spend quiet if remasure never runs (531). */
+  const manualEditTipPostUnlockQuietTimeoutRef = useRef<number | null>(null);
   /** Hold host-paint trust for inert→interactive paint sync frame (530). */
   const [manualEditTipPaintSyncHold, setManualEditTipPaintSyncHold] = useState(false);
   const manualEditTipPaintSyncHoldRef = useRef(false);
   const manualEditTipPaintSyncHoldRafRef = useRef<number | null>(null);
+  /** Geom-epoch bump deferred until paint-sync hold clears (533). */
+  const manualEditTipDeferredGeomEpochBumpRef = useRef(false);
 
   useEffect(() => {
-    const onDown = () => {
-      manualEditPointerButtonsDownRef.current = true;
-    };
-    const onUp = () => {
-      manualEditPointerButtonsDownRef.current = false;
+    const clearUnlockGateAndArmQuiet = () => {
       const gateArmed = manualEditTipChromeUnlockPointerGateRef.current;
       const deferredPending = manualEditTipDeferredGeometryPayloadRef.current != null
         || manualEditTipDeferredGeometryRafRef.current != null;
@@ -5676,17 +5680,48 @@ function HtmlViewer({
       if (!gateArmed) return;
       if (shouldArmTipRemountPostUnlockQuiet(true)) {
         manualEditTipPostUnlockQuietRef.current = true;
+        if (manualEditTipPostUnlockQuietTimeoutRef.current != null) {
+          window.clearTimeout(manualEditTipPostUnlockQuietTimeoutRef.current);
+        }
+        manualEditTipPostUnlockQuietTimeoutRef.current = window.setTimeout(() => {
+          manualEditTipPostUnlockQuietTimeoutRef.current = null;
+          if (shouldForceSpendTipRemountPostUnlockQuiet(
+            manualEditTipPostUnlockQuietRef.current,
+            false,
+            true,
+          )) {
+            manualEditTipPostUnlockQuietRef.current = clearTipRemountPostUnlockQuiet();
+          }
+        }, TIP_REMOUNT_POST_UNLOCK_QUIET_TIMEOUT_MS);
       }
       manualEditTipChromeUnlockPointerGateRef.current = false;
       setManualEditTipChromeUnlockPointerGate(false);
     };
+    const onDown = () => {
+      manualEditPointerButtonsDownRef.current = true;
+    };
+    const onUp = () => {
+      manualEditPointerButtonsDownRef.current = false;
+      clearUnlockGateAndArmQuiet();
+    };
+    const onBlur = () => {
+      // Lost window focus — drop buttons-down and clear unlock gate (review).
+      manualEditPointerButtonsDownRef.current = false;
+      clearUnlockGateAndArmQuiet();
+    };
     window.addEventListener('pointerdown', onDown, true);
     window.addEventListener('pointerup', onUp, true);
     window.addEventListener('pointercancel', onUp, true);
+    window.addEventListener('blur', onBlur);
     return () => {
       window.removeEventListener('pointerdown', onDown, true);
       window.removeEventListener('pointerup', onUp, true);
       window.removeEventListener('pointercancel', onUp, true);
+      window.removeEventListener('blur', onBlur);
+      if (manualEditTipPostUnlockQuietTimeoutRef.current != null) {
+        window.clearTimeout(manualEditTipPostUnlockQuietTimeoutRef.current);
+        manualEditTipPostUnlockQuietTimeoutRef.current = null;
+      }
     };
   }, []);
   /** Chrome release deferred because fit remasure hit an active resize (489). */
@@ -8216,6 +8251,7 @@ function HtmlViewer({
   function refreshManualEditHostMetricsAfterTipRemountMulti(
     frame: HTMLIFrameElement | null,
     appliedAny: boolean,
+    chromeReleasePendingThisFrame = false,
   ) {
     if (!shouldRefreshHostMetricsAfterTipRemountMultiRemasure(
       selectedManualEditTargetIdsRef.current.length,
@@ -8228,10 +8264,36 @@ function HtmlViewer({
     setManualEditHostScale(measureIframeHostScale(frame));
     setManualEditHostOffset(measureIframeOffsetInHost(frame, workspace));
     // Multi union: bump epoch so paint sync effect + overlay recompose (515).
+    // Defer bump when paint-sync hold is armed / about to arm (533).
     if (shouldBumpGeomEpochAfterTipRemountMultiRemasure(
       selectedManualEditTargetIdsRef.current.length,
       appliedAny,
     )) {
+      if (shouldDeferTipRemountGeomEpochBumpForPaintSync(
+        manualEditTipPaintSyncHoldRef.current,
+        chromeReleasePendingThisFrame,
+      )) {
+        manualEditTipDeferredGeomEpochBumpRef.current = true;
+      } else {
+        setManualEditGeomEpoch((n) => n + 1);
+      }
+    }
+  }
+
+  function clearTipRemountPostUnlockQuietState() {
+    manualEditTipPostUnlockQuietRef.current = clearTipRemountPostUnlockQuiet();
+    if (manualEditTipPostUnlockQuietTimeoutRef.current != null) {
+      window.clearTimeout(manualEditTipPostUnlockQuietTimeoutRef.current);
+      manualEditTipPostUnlockQuietTimeoutRef.current = null;
+    }
+  }
+
+  function flushDeferredTipRemountGeomEpochAfterPaintSync() {
+    if (shouldFlushDeferredTipRemountGeomEpochAfterPaintSyncHold(
+      true,
+      manualEditTipDeferredGeomEpochBumpRef.current,
+    )) {
+      manualEditTipDeferredGeomEpochBumpRef.current = false;
       setManualEditGeomEpoch((n) => n + 1);
     }
   }
@@ -8243,6 +8305,7 @@ function HtmlViewer({
     setManualEditTipRemountChromeSuppressed(false);
     manualEditTipChromeReleaseAfterResizeRef.current = false;
     if (shouldArmTipRemountPaintSyncHold(wasSuppressed, false)) {
+      // Paint refresh before any deferred epoch flush (533).
       manualEditTipPaintSyncHoldRef.current = true;
       setManualEditTipPaintSyncHold(true);
       const primaryId = selectedManualEditTargetIdRef.current;
@@ -8255,6 +8318,7 @@ function HtmlViewer({
           manualEditTipPaintSyncHoldRafRef.current = null;
           manualEditTipPaintSyncHoldRef.current = clearTipRemountPaintSyncHold();
           setManualEditTipPaintSyncHold(false);
+          flushDeferredTipRemountGeomEpochAfterPaintSync();
         });
       });
     }
@@ -8422,6 +8486,18 @@ function HtmlViewer({
       manualEditTipChromeUnlockPointerGateRef.current,
       postUnlockQuiet,
     );
+    const chromeWasSuppressed = manualEditTipRemountChromeSuppressedRef.current;
+    const chromeReleasePendingThisFrame = shouldReleaseTipRemountChromeAfterFitSettleRemasure(
+      chromeWasSuppressed,
+      appliedAny,
+      remasureDelayMs,
+      TIP_REMOUNT_FIT_SETTLE_CHROME_RELEASE_MS,
+    ) || shouldReleaseTipRemountChromeAfterFailedFitSettleRemasure(
+      chromeWasSuppressed,
+      appliedAny,
+      remasureDelayMs,
+      TIP_REMOUNT_FIT_SETTLE_CHROME_RELEASE_MS,
+    );
     if (shouldRefreshHostMetricsBeforeTipRemountGeometryApply(
       appliedAny,
       manualEditTipRemountChromeSuppressedRef.current,
@@ -8429,7 +8505,12 @@ function HtmlViewer({
       TIP_REMOUNT_FIT_SETTLE_CHROME_RELEASE_MS,
     ) || deferGeometry) {
       // Metrics first even when geometry is deferred under the pointer (513/516).
-      refreshManualEditHostMetricsAfterTipRemountMulti(frame, appliedAny);
+      // Defer geom-epoch when this frame will arm paint-sync hold (533).
+      refreshManualEditHostMetricsAfterTipRemountMulti(
+        frame,
+        appliedAny,
+        chromeReleasePendingThisFrame,
+      );
     }
 
     const applyMeasuredGeometry = (
@@ -8509,7 +8590,11 @@ function HtmlViewer({
         remasureDelayMs,
         TIP_REMOUNT_FIT_SETTLE_CHROME_RELEASE_MS,
       )) {
-        refreshManualEditHostMetricsAfterTipRemountMulti(frame, appliedAny);
+        refreshManualEditHostMetricsAfterTipRemountMulti(
+          frame,
+          appliedAny,
+          chromeReleasePendingThisFrame,
+        );
       }
     }
     // Arm one-shot wild-jump skip for late post-latch deck nudges (485).
@@ -8518,18 +8603,7 @@ function HtmlViewer({
     }
     // Last chrome-release fit nudge remasure — release inert; later 900/1600ms
     // remasure only updates geometry (476/478/481). Latch stays for wild-jump.
-    const chromeWasSuppressed = manualEditTipRemountChromeSuppressedRef.current;
-    if (shouldReleaseTipRemountChromeAfterFitSettleRemasure(
-      chromeWasSuppressed,
-      appliedAny,
-      remasureDelayMs,
-      TIP_REMOUNT_FIT_SETTLE_CHROME_RELEASE_MS,
-    ) || shouldReleaseTipRemountChromeAfterFailedFitSettleRemasure(
-      chromeWasSuppressed,
-      appliedAny,
-      remasureDelayMs,
-      TIP_REMOUNT_FIT_SETTLE_CHROME_RELEASE_MS,
-    )) {
+    if (chromeReleasePendingThisFrame) {
       releaseTipRemountChromeSuppress(true);
     }
     for (const id of ordered) {
@@ -8548,7 +8622,7 @@ function HtmlViewer({
       }
     }
     if (shouldSpendTipRemountPostUnlockQuiet(postUnlockQuiet, true)) {
-      manualEditTipPostUnlockQuietRef.current = clearTipRemountPostUnlockQuiet();
+      clearTipRemountPostUnlockQuietState();
     }
     return appliedAny;
   }
@@ -8808,13 +8882,14 @@ function HtmlViewer({
       manualEditTipDeferredGeometryPayloadRef.current = null;
       manualEditTipChromeUnlockPointerGateRef.current = false;
       setManualEditTipChromeUnlockPointerGate(false);
-      manualEditTipPostUnlockQuietRef.current = clearTipRemountPostUnlockQuiet();
+      clearTipRemountPostUnlockQuietState();
       if (manualEditTipPaintSyncHoldRafRef.current != null) {
         window.cancelAnimationFrame(manualEditTipPaintSyncHoldRafRef.current);
         manualEditTipPaintSyncHoldRafRef.current = null;
       }
       manualEditTipPaintSyncHoldRef.current = clearTipRemountPaintSyncHold();
       setManualEditTipPaintSyncHold(false);
+      manualEditTipDeferredGeomEpochBumpRef.current = false;
       manualEditTipLastHostRectByIdRef.current.clear();
       if (manualEditTipSiblingRetryRafRef.current != null) {
         window.cancelAnimationFrame(manualEditTipSiblingRetryRafRef.current);
@@ -8921,13 +8996,14 @@ function HtmlViewer({
       manualEditTipFollowChromeReleaseDeferredRef.current = false;
       manualEditTipChromeUnlockPointerGateRef.current = false;
       setManualEditTipChromeUnlockPointerGate(false);
-      manualEditTipPostUnlockQuietRef.current = clearTipRemountPostUnlockQuiet();
+      clearTipRemountPostUnlockQuietState();
       if (manualEditTipPaintSyncHoldRafRef.current != null) {
         window.cancelAnimationFrame(manualEditTipPaintSyncHoldRafRef.current);
         manualEditTipPaintSyncHoldRafRef.current = null;
       }
       manualEditTipPaintSyncHoldRef.current = clearTipRemountPaintSyncHold();
       setManualEditTipPaintSyncHold(false);
+      manualEditTipDeferredGeomEpochBumpRef.current = false;
       manualEditTipDeferredGeometryPayloadRef.current = null;
       manualEditTipLastHostRectByIdRef.current.clear();
       // Follow late deck nudges (2500+) without extending wild-jump latch (487).
@@ -8948,6 +9024,14 @@ function HtmlViewer({
           manualEditTipDeckNudgeFollowUntilRef.current = 0;
           // Follow ended — drop tip-era last-good rects when fully idle (524).
           maybeClearTipRemountLastHostRectCache();
+          // Quiet with no remasure must not stick past follow end (531).
+          if (shouldForceSpendTipRemountPostUnlockQuiet(
+            manualEditTipPostUnlockQuietRef.current,
+            true,
+            false,
+          )) {
+            clearTipRemountPostUnlockQuietState();
+          }
         }
         const safetyPending = manualEditTipRemountChromeSafetyTimeoutRef.current != null;
         if (shouldReleaseTipRemountChromeWhenDeckNudgeFollowEnds(
@@ -10513,13 +10597,14 @@ function HtmlViewer({
           manualEditTipDeferredGeometryPayloadRef.current = null;
           manualEditTipChromeUnlockPointerGateRef.current = false;
           setManualEditTipChromeUnlockPointerGate(false);
-          manualEditTipPostUnlockQuietRef.current = clearTipRemountPostUnlockQuiet();
+          clearTipRemountPostUnlockQuietState();
           if (manualEditTipPaintSyncHoldRafRef.current != null) {
             window.cancelAnimationFrame(manualEditTipPaintSyncHoldRafRef.current);
             manualEditTipPaintSyncHoldRafRef.current = null;
           }
           manualEditTipPaintSyncHoldRef.current = clearTipRemountPaintSyncHold();
           setManualEditTipPaintSyncHold(false);
+          manualEditTipDeferredGeomEpochBumpRef.current = false;
           manualEditTipLastHostRectByIdRef.current.clear();
           if (manualEditTipSiblingRetryRafRef.current != null) {
             window.cancelAnimationFrame(manualEditTipSiblingRetryRafRef.current);
@@ -15725,6 +15810,7 @@ function HtmlViewer({
           true,
           manualEditTipPaintSyncHold,
         )}
+        stabilizePartialPaintUnion={tipRemountChromeSessionLiveNow()}
         movable={manualEditGroupMoveEnabled}
         resizable={manualEditGroupResizeEnabled}
         // Tip-remount: keep multi chrome mounted inert at last union rect (458).

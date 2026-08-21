@@ -56,14 +56,20 @@ import {
   shouldArmTipRemountPostUnlockQuiet,
   shouldSpendTipRemountPostUnlockQuiet,
   clearTipRemountPostUnlockQuiet,
+  shouldForceSpendTipRemountPostUnlockQuiet,
+  TIP_REMOUNT_POST_UNLOCK_QUIET_TIMEOUT_MS,
   shouldArmTipRemountChromeUnlockPointerGate,
   shouldDisableManualEditChromeForTipRemountUnlockGate,
   shouldReuseLastHostRectOnTipRemountMeasureMiss,
   shouldClearTipRemountLastHostRectCache,
   shouldTrustTipRemountHostPaintDespiteComposedStale,
   shouldOmitComposedMembersFromTipRemountPartialUnion,
+  shouldLatchTipRemountPartialUnionMinSize,
+  resolveTipRemountPartialUnionWithMinSizeLatch,
   shouldArmTipRemountPaintSyncHold,
   clearTipRemountPaintSyncHold,
+  shouldDeferTipRemountGeomEpochBumpForPaintSync,
+  shouldFlushDeferredTipRemountGeomEpochAfterPaintSyncHold,
   shouldRetryTipRemountSiblingMeasure,
   TIP_REMOUNT_DECK_NUDGE_REMEASURE_THROTTLE_MS,
   shouldMarkTipRemountChromeReleasePendingAfterResizeSkip,
@@ -334,6 +340,11 @@ describe('manual edit freeze reset', () => {
     expect(shouldSpendTipRemountPostUnlockQuiet(true, true)).toBe(true);
     expect(shouldSpendTipRemountPostUnlockQuiet(true, false)).toBe(false);
     expect(clearTipRemountPostUnlockQuiet()).toBe(false);
+    expect(shouldForceSpendTipRemountPostUnlockQuiet(true, true, false)).toBe(true);
+    expect(shouldForceSpendTipRemountPostUnlockQuiet(true, false, true)).toBe(true);
+    expect(shouldForceSpendTipRemountPostUnlockQuiet(true, false, false)).toBe(false);
+    expect(shouldForceSpendTipRemountPostUnlockQuiet(false, true, true)).toBe(false);
+    expect(TIP_REMOUNT_POST_UNLOCK_QUIET_TIMEOUT_MS).toBe(2_000);
     expect(shouldArmTipRemountChromeUnlockPointerGate(true, false, true)).toBe(true);
     expect(shouldArmTipRemountChromeUnlockPointerGate(true, false, false)).toBe(false);
     expect(shouldArmTipRemountChromeUnlockPointerGate(true, false, false, true)).toBe(true);
@@ -356,9 +367,22 @@ describe('manual edit freeze reset', () => {
     expect(shouldOmitComposedMembersFromTipRemountPartialUnion(true, 3, 3)).toBe(false);
     expect(shouldOmitComposedMembersFromTipRemountPartialUnion(true, 3, 0)).toBe(false);
     expect(shouldOmitComposedMembersFromTipRemountPartialUnion(false, 3, 1)).toBe(false);
+    expect(shouldLatchTipRemountPartialUnionMinSize(true, true, true)).toBe(true);
+    expect(shouldLatchTipRemountPartialUnionMinSize(true, false, true)).toBe(false);
+    expect(shouldLatchTipRemountPartialUnionMinSize(false, true, true)).toBe(false);
+    expect(resolveTipRemountPartialUnionWithMinSizeLatch(
+      { x: 0, y: 0, width: 100, height: 80 },
+      { x: 10, y: 10, width: 40, height: 30 },
+    )).toEqual({ x: 0, y: 0, width: 100, height: 80 });
     expect(shouldArmTipRemountPaintSyncHold(true, false)).toBe(true);
     expect(shouldArmTipRemountPaintSyncHold(false, false)).toBe(false);
     expect(clearTipRemountPaintSyncHold()).toBe(false);
+    expect(shouldDeferTipRemountGeomEpochBumpForPaintSync(true, false)).toBe(true);
+    expect(shouldDeferTipRemountGeomEpochBumpForPaintSync(false, true)).toBe(true);
+    expect(shouldDeferTipRemountGeomEpochBumpForPaintSync(false, false)).toBe(false);
+    expect(shouldFlushDeferredTipRemountGeomEpochAfterPaintSyncHold(true, true)).toBe(true);
+    expect(shouldFlushDeferredTipRemountGeomEpochAfterPaintSyncHold(true, false)).toBe(false);
+    expect(shouldFlushDeferredTipRemountGeomEpochAfterPaintSyncHold(false, true)).toBe(false);
     expect(shouldRetryTipRemountSiblingMeasure(2, 2, 1)).toBe(true);
     expect(shouldRetryTipRemountSiblingMeasure(2, 2, 2)).toBe(false);
     expect(shouldRetryTipRemountSiblingMeasure(1, 1, 0)).toBe(false);

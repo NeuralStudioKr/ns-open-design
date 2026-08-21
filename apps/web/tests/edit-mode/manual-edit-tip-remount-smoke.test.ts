@@ -32,14 +32,20 @@ import {
   shouldArmTipRemountPostUnlockQuiet,
   shouldSpendTipRemountPostUnlockQuiet,
   clearTipRemountPostUnlockQuiet,
+  shouldForceSpendTipRemountPostUnlockQuiet,
+  TIP_REMOUNT_POST_UNLOCK_QUIET_TIMEOUT_MS,
   shouldArmTipRemountChromeUnlockPointerGate,
   shouldDisableManualEditChromeForTipRemountUnlockGate,
   shouldReuseLastHostRectOnTipRemountMeasureMiss,
   shouldClearTipRemountLastHostRectCache,
   shouldTrustTipRemountHostPaintDespiteComposedStale,
   shouldOmitComposedMembersFromTipRemountPartialUnion,
+  shouldLatchTipRemountPartialUnionMinSize,
+  resolveTipRemountPartialUnionWithMinSizeLatch,
   shouldArmTipRemountPaintSyncHold,
   clearTipRemountPaintSyncHold,
+  shouldDeferTipRemountGeomEpochBumpForPaintSync,
+  shouldFlushDeferredTipRemountGeomEpochAfterPaintSyncHold,
   shouldCatchUpHostMetricsWhenDeckNudgeRemasureThrottled,
   shouldRetryTipRemountSiblingMeasure,
   shouldSkipOdEditTargetsIdentityMixedReseedDuringPostExitAbsorb,
@@ -163,6 +169,16 @@ describe('manual-edit tip remount smoke (500/501/506)', () => {
     expect(fileViewer).toContain('manualEditTipPostUnlockQuietRef');
   });
 
+  it('force-spends post-unlock quiet on follow-end or timeout (531)', () => {
+    expect(shouldForceSpendTipRemountPostUnlockQuiet(true, true, false)).toBe(true);
+    expect(shouldForceSpendTipRemountPostUnlockQuiet(true, false, true)).toBe(true);
+    expect(TIP_REMOUNT_POST_UNLOCK_QUIET_TIMEOUT_MS).toBe(2_000);
+    expect(fileViewer).toContain('shouldForceSpendTipRemountPostUnlockQuiet');
+    expect(fileViewer).toContain('clearTipRemountPostUnlockQuietState');
+    expect(fileViewer).toContain('TIP_REMOUNT_POST_UNLOCK_QUIET_TIMEOUT_MS');
+    expect(fileViewer).toContain("addEventListener('blur'");
+  });
+
   it('reuses last host rect on tip remount measure miss (521/523)', () => {
     expect(shouldReuseLastHostRectOnTipRemountMeasureMiss(true, false, true)).toBe(true);
     expect(fileViewer).toContain('shouldReuseLastHostRectOnTipRemountMeasureMiss');
@@ -188,6 +204,17 @@ describe('manual-edit tip remount smoke (500/501/506)', () => {
     expect(shouldOmitComposedMembersFromTipRemountPartialUnion(true, 3, 1)).toBe(true);
     expect(shouldOmitComposedMembersFromTipRemountPartialUnion(true, 2, 2)).toBe(false);
     expect(multiOverlay).toContain('shouldOmitComposedMembersFromTipRemountPartialUnion');
+    expect(multiOverlay).toContain('stabilizePartialPaintUnion');
+  });
+
+  it('latches previous union min-size while partial omit (532)', () => {
+    expect(shouldLatchTipRemountPartialUnionMinSize(true, true, true)).toBe(true);
+    expect(resolveTipRemountPartialUnionWithMinSizeLatch(
+      { x: 0, y: 0, width: 100, height: 50 },
+      { x: 20, y: 0, width: 30, height: 50 },
+    )).toEqual({ x: 0, y: 0, width: 100, height: 50 });
+    expect(multiOverlay).toContain('shouldLatchTipRemountPartialUnionMinSize');
+    expect(multiOverlay).toContain('tipRemountPartialUnionLatchRef');
   });
 
   it('holds host paint trust for inert→interactive paint sync (530)', () => {
@@ -196,6 +223,15 @@ describe('manual-edit tip remount smoke (500/501/506)', () => {
     expect(clearTipRemountPaintSyncHold()).toBe(false);
     expect(fileViewer).toContain('shouldArmTipRemountPaintSyncHold');
     expect(fileViewer).toContain('manualEditTipPaintSyncHold');
+  });
+
+  it('defers geom-epoch bump until paint-sync hold clears (533)', () => {
+    expect(shouldDeferTipRemountGeomEpochBumpForPaintSync(true, false)).toBe(true);
+    expect(shouldDeferTipRemountGeomEpochBumpForPaintSync(false, true)).toBe(true);
+    expect(shouldFlushDeferredTipRemountGeomEpochAfterPaintSyncHold(true, true)).toBe(true);
+    expect(fileViewer).toContain('shouldDeferTipRemountGeomEpochBumpForPaintSync');
+    expect(fileViewer).toContain('flushDeferredTipRemountGeomEpochAfterPaintSync');
+    expect(fileViewer).toContain('chromeReleasePendingThisFrame');
   });
 
   it('pins 522–524 FileViewer wiring on tip remount path (527)', () => {

@@ -25,7 +25,11 @@ import {
 } from '../edit-mode/manual-edit-group-resize';
 import { hostDeltaToContentDelta, freezeGestureHostGeom } from '../edit-mode/preview-coords';
 import { resolveManualEditChromeHostRect } from '../edit-mode/move-math';
-import { shouldOmitComposedMembersFromTipRemountPartialUnion } from '../edit-mode/manual-edit-freeze';
+import {
+  shouldOmitComposedMembersFromTipRemountPartialUnion,
+  shouldLatchTipRemountPartialUnionMinSize,
+  resolveTipRemountPartialUnionWithMinSizeLatch,
+} from '../edit-mode/manual-edit-freeze';
 import {
   RESIZE_HANDLES,
   cursorForResizeHandle,
@@ -57,6 +61,11 @@ export type ManualEditMultiSelectOverlayProps = {
    * (526).
    */
   trustHostPaintDespiteStale?: boolean;
+  /**
+   * Tip remount session only (not paint-sync hold) — omit composed-only
+   * members from partial-paint union (529/532).
+   */
+  stabilizePartialPaintUnion?: boolean;
   /** Tip remount: track pointer over chrome so late geometry apply can defer (516). */
   onChromePointerHoverChange?: (hovering: boolean) => void;
   draftMemberRects?: Record<string, ManualEditRect> | null;
@@ -142,6 +151,8 @@ function unionHostRect(
   draftMemberRects?: Record<string, ManualEditRect> | null,
   preferComposed = false,
   trustHostPaintDespiteStale = false,
+  stabilizePartialPaintUnion = false,
+  previousUnion: ManualEditRect | null = null,
 ): ManualEditRect | null {
   const members = targets.map((target) => {
     const contentRect = memberContentRect(target, draftMemberRects?.[target.id] ?? null);
@@ -151,7 +162,7 @@ function unionHostRect(
   });
   const paintBearingCount = members.filter((m) => m.paintOk).length;
   const omitComposed = shouldOmitComposedMembersFromTipRemountPartialUnion(
-    trustHostPaintDespiteStale,
+    stabilizePartialPaintUnion,
     targets.length,
     paintBearingCount,
   );
@@ -177,6 +188,17 @@ function unionHostRect(
       width: right - Math.min(union.x, hostRect.x),
       height: bottom - Math.min(union.y, hostRect.y),
     };
+  }
+  if (
+    union
+    && previousUnion
+    && shouldLatchTipRemountPartialUnionMinSize(
+      omitComposed,
+      previousUnion.width >= 1 && previousUnion.height >= 1,
+      union.width >= 1 && union.height >= 1,
+    )
+  ) {
+    return resolveTipRemountPartialUnionWithMinSizeLatch(previousUnion, union);
   }
   return union;
 }
@@ -234,6 +256,7 @@ export function ManualEditMultiSelectOverlay({
   resizable = false,
   disabled = false,
   trustHostPaintDespiteStale = false,
+  stabilizePartialPaintUnion = false,
   onChromePointerHoverChange,
   draftMemberRects = null,
   onGroupMovePreview,
@@ -247,6 +270,8 @@ export function ManualEditMultiSelectOverlay({
   snapEnabled = true,
 }: ManualEditMultiSelectOverlayProps) {
   const dragRef = useRef<MultiSelectDragState | null>(null);
+  /** Previous tip remount union — min-size latch while partial paint omit (532). */
+  const tipRemountPartialUnionLatchRef = useRef<ManualEditRect | null>(null);
   const [gesturing, setGesturing] = useState(false);
   const [moving, setMoving] = useState(false);
   const [resizing, setResizing] = useState(false);
@@ -440,6 +465,9 @@ export function ManualEditMultiSelectOverlay({
   );
   const composeScale = gestureSnapScale ?? previewScale;
   const composeOffset = gestureSnapOffset ?? hostOffset;
+  if (!stabilizePartialPaintUnion) {
+    tipRemountPartialUnionLatchRef.current = null;
+  }
   const hostRect = unionHostRect(
     targets,
     composeScale,
@@ -448,7 +476,12 @@ export function ManualEditMultiSelectOverlay({
     draftMemberRects,
     gestureComposed,
     trustHostPaintDespiteStale,
+    stabilizePartialPaintUnion,
+    tipRemountPartialUnionLatchRef.current,
   );
+  if (hostRect && hostRect.width >= 1 && hostRect.height >= 1) {
+    tipRemountPartialUnionLatchRef.current = { ...hostRect };
+  }
   if (!hostRect || hostRect.width < 1 || hostRect.height < 1) return null;
 
   const interactive = (movable || resizable) && !disabled;
