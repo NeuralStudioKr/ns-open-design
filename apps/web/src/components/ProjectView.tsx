@@ -508,6 +508,8 @@ import { resolveEmbedSlideDesignSystemId } from '../teamver/embedSlideDesignSyst
 import {
   fetchPluginLocalSkill,
   mergeOfficialLookCssForTemplate,
+  shouldNotifyTemplateVisualKitMiss,
+  skillBodyHasTemplateVisualKit,
 } from '../teamver/fetchPluginLocalSkill';
 import { throwIfProjectCommentUploadIncomplete } from '../teamver/projectUploadErrors';
 import { stripLeakedPseudoToolXml } from '../utils/stripLeakedPseudoToolXml';
@@ -3293,6 +3295,7 @@ export function ProjectView({
   const [queuedAutoStartTick, setQueuedAutoStartTick] = useState(0);
   const skillCache = useRef<Map<string, string>>(new Map());
   const pluginSkillCache = useRef<Map<string, string>>(new Map());
+  const notifiedTemplateKitMissIdsRef = useRef<Set<string>>(new Set());
   const designCache = useRef<Map<string, string>>(new Map());
   const templateCache = useRef<Map<string, ProjectTemplate>>(new Map());
   // We auto-save the most recent artifact to the project folder. Track the
@@ -6180,7 +6183,7 @@ export function ProjectView({
       // example.html CSS tokens instead of a prose-only visual summary.
       const cachedLooksRich =
         typeof cached === 'string'
-        && cached.includes('## Template visual kit (from example.html)');
+        && skillBodyHasTemplateVisualKit(cached);
       if (cached !== undefined && cachedLooksRich) {
         skillBody = cached;
         skillName = selectedTemplate.title ?? skillName;
@@ -11177,6 +11180,22 @@ export function ProjectView({
               templateCloneContentFill: isCloneContentFillTurn,
             },
           );
+          const kitMissTemplateId = shouldNotifyTemplateVisualKitMiss({
+            selectedTemplateId: selectedDeckTemplateForTurn?.id,
+            systemPrompt,
+            slideCountTopUp: isSlideCountTopUpSend,
+            alreadyNotifiedIds: notifiedTemplateKitMissIdsRef.current,
+          });
+          if (kitMissTemplateId) {
+            notifiedTemplateKitMissIdsRef.current.add(kitMissTemplateId);
+            setProjectActionsToast({
+              message: embedUiLabel(
+                "Couldn't load this template's visual kit. Slides may not match the selected look.",
+                '템플릿 시각 키트를 불러오지 못했습니다. 선택한 룩과 다를 수 있습니다.',
+              ),
+              details: selectedDeckTemplateForTurn?.title?.trim() || kitMissTemplateId,
+            });
+          }
           const webFetchContexts = await fetchApiWebFetchContexts(userMsg.content);
           apiHistory = await historyWithApiAttachmentContext(
             historyWithApiWebFetchContext(

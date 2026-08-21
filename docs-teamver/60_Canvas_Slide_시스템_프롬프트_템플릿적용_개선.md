@@ -1500,7 +1500,7 @@ Free-text 파서 (`parseExplicitSlideCountFromText`):
 | greenfield에 edit 계약 bloat | P1 토큰 | 턴 플래그 gating 필요 (`hasPreviewComments` 등) |
 | 여러 “READ LAST” 공존 | P2 | 장기적으로 Final authority 섹션 통합 |
 | auto Length → 항상 6–8 | P2 | 유저 장수 있으면면 override됨 |
-| kit fetch 실패 UX | P2 | 프롬프트 완화는 됨 · FE 에러 표시는 별도 |
+| kit fetch 실패 UX | P2 | **완료** — 선택 템플릿 kit heading 없으면 toast 1회 |
 | lean path에서 `byokToolNames` 무시 | P2 | URL-only embed 지원 여부는 제품 결정 |
 | brand DS + visual template 동시 | P2 | 현재 Canvas는 DS null · 필요 시 brand stub만 |
 
@@ -1630,7 +1630,7 @@ daemon 로컬 skill 워크플로 잔재다. Daisy Days에는 Teamver API 노트�
 | P0 | soft re-reject · `kind:deck` discovery 회귀 · emergency UI/order · doctype poison | **완료** — 다회 감사 핫픽스 (`isClosedSoftSalvageDeckHtml` 등) |
 | P0 | `skipped-incomplete` hard fail (CSS/title truncation · AC head fence · 비가시) | **완료** — title salvage · body excerpt · BODY-FIRST · AC cap 4 · background AC |
 | P2 | READ LAST 통합 / Final authority 섹션 | 미착수 |
-| P2 | kit fetch 실패 UX(사용자 알림) | 미착수 |
+| P2 | kit fetch 실패 UX(사용자 알림) | **완료** — 선택 템플릿 kit heading 없으면 toast 1회 (`shouldNotifyTemplateVisualKitMiss`) |
 | P0 | motif 구현 — kit에 작은 complete SVG sprite + `.deco` CSS · emoji 대체 금지 | **완료** — `extractTemplateVisualKitFromHtml` 재작성 + READ LAST/vocab/SKILL |
 | P2 | motif 구현 힌트 · Google Fonts `@import` 레시피 일반화 | **부분 완료** — kit에 `@import` 레시피 + Motif sprites; 추가 템플릿별 튜닝은 후속 |
 | P2 | lean compose에 slide-safe `web_fetch` 노출 여부 | 제품 결정 |
@@ -1678,6 +1678,7 @@ User-message 쪽 `[Existing deck edit]` / `<attached-preview-comments>` 주입�
 | 2026-08-13 | **§0.0 정책 개정** — template = layout vocabulary + visual look, 페이지 수/순서/구성은 브리프 기반. content-swap → pick-and-choose layout roles. daemon Clone default count = 6 (shells.length 아님), `pickTemplateShells` role-based scoring 도입. `template-visual-kit.ts` HARD_RULES 재작성, `DEFAULT_MAX_CHARS` 12000 → 14000. |
 | 2026-08-18 | Clone content-fill motif 보정 — 8/13 SVG hang 방지 패치가 first fill에서 `Motif sprites`/`Decoration CSS`/`Layout CSS`를 통째로 생략해 Daisy/Capsule 템플릿 정체성이 약해졌다. `slimTemplateVisualKitForFill`이 큰 SVG sprite sheet와 전체 stylesheet dump는 계속 제거하되, Daisy star/rainbow·Capsule pill/capsule·Terminal scanline 같은 compact motif recipe와 짧은 Decoration/Layout CSS cue를 보존하도록 변경했다. |
 | 2026-08-18 | §0.20 — html-ppt identity scope. 공유 `:root --bg:#ffffff` 대신 `.tpl-*` host 토큰/슬라이드 surface/폰트를 kit 계약으로 쓰고, SKILL `copy index.html` filesystem 지시를 neutralize. |
+| 2026-08-21 | §0.85 — kit fetch miss was silent. Toast once per selected template when the example.html kit heading is absent; skip hidden top-up. |
 | 2026-08-21 | §0.84 — Block-frame Motif paint (pink-rect/yellow-bar) · kit strip prefixed .slide overflow:hidden · catalog Motif hang sanitize · cache v46. |
 | 2026-08-21 | §0.83 — Motif hang SSOT + neutralize harden. Accent/:after/arr/rsvp-stamp lexicon · vw offset units · preview remmerge uses deckHtmlHasMotifOutsideCanvasHang · no flex-force / bare [data-slide] · overflow:visible teaching · cache v45. |
 | 2026-08-21 | §0.81 — compact API had no density rule so covers packed title+stats+footer. Short Density block + require `class="slide" data-screen-label="NN Title"`. || 2026-08-21 | §0.80 — cross-template Motif hang/stacking/placement. Unified Motif hang lexicon (bare pin / ribbon / Block-frame deco / tape) · remmerge gate = sanitize SSOT · non-Daisy stamp chrome-only · kit Decorations hang strip · scaffold overflow:visible · cache v44. |

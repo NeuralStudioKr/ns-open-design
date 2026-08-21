@@ -20,6 +20,29 @@ export type PluginLocalSkillSummary = {
   name: string;
 };
 
+/** Official example.html kit heading — cache + compose + miss-notice SSOT. */
+export const TEMPLATE_VISUAL_KIT_HEADING = '## Template visual kit (from example.html)';
+
+export function skillBodyHasTemplateVisualKit(body: string | null | undefined): boolean {
+  return typeof body === 'string' && body.includes(TEMPLATE_VISUAL_KIT_HEADING);
+}
+
+/** Toast once per template when the selected look kit never landed in the prompt. */
+export function shouldNotifyTemplateVisualKitMiss(options: {
+  selectedTemplateId?: string | null;
+  systemPrompt: string;
+  slideCountTopUp?: boolean;
+  alreadyNotifiedIds?: Iterable<string>;
+}): string | null {
+  const id = String(options.selectedTemplateId ?? '').trim();
+  if (!id || options.slideCountTopUp) return null;
+  if (skillBodyHasTemplateVisualKit(options.systemPrompt)) return null;
+  for (const seen of options.alreadyNotifiedIds ?? []) {
+    if (seen === id) return null;
+  }
+  return id;
+}
+
 function pickFirstLocalSkillPath(manifest: PluginManifest | undefined): string | null {
   for (const ref of manifest?.od?.context?.skills ?? []) {
     if (typeof ref?.ref === 'string' && ref.ref.trim().length > 0) continue;
