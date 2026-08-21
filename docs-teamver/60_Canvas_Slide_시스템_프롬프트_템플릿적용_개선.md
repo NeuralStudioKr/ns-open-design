@@ -32,6 +32,23 @@
 | scaffold로 갑자기 바꾸면? | **안 됨.** kit hard cutover 금지. full HTML scaffold도 기본 inject 하지 않음 |
 | 1장짜리 템플릿 결과가 저장되는가? | **제품 경로는 첫 fill 3장.** 잘리면 제목 있는 1장은 저장하고 top-up이 덧붙인다. 제목 없는 빈 셸만 미완성으로 차단. 사용자가 1장을 명시한 경우도 허용 |
 
+### 0.77 2026-08-21 — Pink Script 카탈로그 썸네일 흰 화면
+
+`Html Ppt Zhangzara Pink Script` 카드/히어로 썸네일이 하얗다. PreviewModal 2장 흰 화면(§0.68)과 별개 — 카탈로그 `example.html`을 작은 iframe에 그대로 넣던 경로.
+
+**원인:** `<deck-stage>` + `deck-stage.js`는 `[data-deck-active]`만 그리고 `.canvas` 기본이 `#fff`. 썸네일 iframe은 스크립트 로드/업그레이드가 실패하기 쉽고, 그 전까지 흰 캔버스만 보인다. `HtmlSurface`는 `pluginPreviewSrcDoc`(base만)을 써서 9장 전부를 넣었다.
+
+**수정:**
+- `pluginCatalogPreviewSrcDoc` — 2장 이상이면 `buildHtmlCoverSrcDoc` (1장 고립, 스크립트 제거)
+- 커버 CSS에 `deck-stage { display:block; 1920×1080 }`
+- 피커/갤러리 deck 프레임 배경 `#0b0c10`, baked media `object-fit: contain`
+
+구현 현황:
+
+- [x] Pink Script raw preview는 Index+deck-stage.js, catalog thumb는 Cover only
+- [x] HtmlSurface 게이트 source-lock
+- [x] PluginPreviewHero / PluginDetailView 동일 SSOT
+
 ### 0.76 2026-08-20 — 생성 중 미리보기 Neutral 룩
 
 compact fill은 룩 CSS를 스트리밍하지 않는다. persist가 끝난 뒤에야 템플릿이 붙어서, 생성 직후 미리보기는 Neutral/와이어프레임으로 보인다.
@@ -1611,6 +1628,7 @@ User-message 쪽 `[Existing deck edit]` / `<attached-preview-comments>` 주입�
 | 2026-08-13 | **§0.0 정책 개정** — template = layout vocabulary + visual look, 페이지 수/순서/구성은 브리프 기반. content-swap → pick-and-choose layout roles. daemon Clone default count = 6 (shells.length 아님), `pickTemplateShells` role-based scoring 도입. `template-visual-kit.ts` HARD_RULES 재작성, `DEFAULT_MAX_CHARS` 12000 → 14000. |
 | 2026-08-18 | Clone content-fill motif 보정 — 8/13 SVG hang 방지 패치가 first fill에서 `Motif sprites`/`Decoration CSS`/`Layout CSS`를 통째로 생략해 Daisy/Capsule 템플릿 정체성이 약해졌다. `slimTemplateVisualKitForFill`이 큰 SVG sprite sheet와 전체 stylesheet dump는 계속 제거하되, Daisy star/rainbow·Capsule pill/capsule·Terminal scanline 같은 compact motif recipe와 짧은 Decoration/Layout CSS cue를 보존하도록 변경했다. |
 | 2026-08-18 | §0.20 — html-ppt identity scope. 공유 `:root --bg:#ffffff` 대신 `.tpl-*` host 토큰/슬라이드 surface/폰트를 kit 계약으로 쓰고, SKILL `copy index.html` filesystem 지시를 neutralize. |
+| 2026-08-21 | §0.77 — Pink Script catalog thumbs stayed white. Catalog srcDoc isolates cover and drops deck-stage.js; picker/gallery deck frames go dark + contain. |
 | 2026-08-20 | §0.76 — compact-fill preview stayed Neutral until persist. Display-only official look merge when look sheet is missing. |
 | 2026-08-20 | §0.75 — Motif hang sanitize beyond Daisy (gd-orb/xp-blob) · remmerge/deco early sanitize · cache v42. |
 | 2026-08-20 | §0.74 — Capsule `div.slide` count = append hosts · splice inside open `.presentation`/`.deck`/`<deck-stage>` after last slide · hoist locks every stacked flex axis. |

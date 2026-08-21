@@ -2647,7 +2647,9 @@ button.teamver-drive-import-attach:hover:not(:disabled) {
   aspect-ratio: 16 / 9;
   border-radius: 6px;
   overflow: hidden;
-  background: #fff;
+  /* Dark stage presenters (Pink Script) letterbox on a white frame and
+     read as a blank cream thumb. All picker cards are 16:9 decks. */
+  background: #0b0c10;
   /* Scale the 1920×1080 slide canvas by card width (same recipe as
      recent-projects thumbs). Percent-of-parent iframe sizing copied the
      chrome-shrunk frame, so 16:9 decks were cropped top/bottom. */

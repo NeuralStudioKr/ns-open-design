@@ -9,7 +9,10 @@ import {
   repairArtifactStyleSheets,
 } from "@open-design/contracts";
 import { repairDeckSlideSurfaceBleed } from "../artifacts/deck-slide-surface";
-import { injectHtmlBaseHref } from "../runtime/authenticatedHtmlSrcDoc";
+import {
+  injectHtmlBaseHref,
+  resolvePluginPreviewBaseHref,
+} from "../runtime/authenticatedHtmlSrcDoc";
 
 /** Heal already-persisted css2 debris + flatten bleed before isolation. */
 function healCoverHtml(html: string): string {
@@ -36,6 +39,20 @@ export type CoverSlideSection = {
   start: number;
   end: number;
 };
+
+/**
+ * Catalog / picker thumbs. Multi-slide official presenters (`<deck-stage>`)
+ * must isolate slide 1 and drop `deck-stage.js` — the live CE hides every
+ * slide except `[data-deck-active]` and paints a white `.canvas` until
+ * upgrade, which is the Pink Script white thumbnail.
+ */
+export function pluginCatalogPreviewSrcDoc(html: string, sourceUrl: string): string {
+  const baseHref = resolvePluginPreviewBaseHref(sourceUrl);
+  if (htmlLooksLikeMultiSlideDeck(html)) {
+    return buildHtmlCoverSrcDoc(html, baseHref);
+  }
+  return injectHtmlBaseHref(html, baseHref);
+}
 
 /**
  * SSOT for any HTML thumb that must not paint later-slide absolute chrome.
@@ -101,6 +118,14 @@ export function deckPreviewSrcDoc(
     body {
       display: block !important;
       scroll-snap-type: none !important;
+    }
+    /* Undefined <deck-stage> is display:inline. Without the CE stylesheet
+       the cover slide would not fill the 16:9 thumb. */
+    deck-stage {
+      display: block !important;
+      position: relative !important;
+      width: ${HTML_COVER_CANVAS_WIDTH}px !important;
+      height: ${HTML_COVER_CANVAS_HEIGHT}px !important;
     }
     .slide,
     section[data-slide],

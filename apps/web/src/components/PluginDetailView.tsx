@@ -16,7 +16,7 @@ import { localizePluginDescription, localizePluginTitle } from './plugins-home/l
 import { useAnalytics } from '../analytics/provider';
 import { trackPluginDetailClick } from '../analytics/events';
 import { fetchPluginPreviewHtml } from '../providers/registry';
-import { pluginPreviewSrcDoc } from '../runtime/authenticatedHtmlSrcDoc';
+import { pluginCatalogPreviewSrcDoc } from '../teamver/htmlCoverSrcDoc';
 
 interface Props {
   pluginId: string;
@@ -271,7 +271,7 @@ function PluginDetailPreviewFrame({
         setSrcDoc(null);
         return;
       }
-      setSrcDoc(pluginPreviewSrcDoc(result.html, previewUrl));
+      setSrcDoc(pluginCatalogPreviewSrcDoc(result.html, previewUrl));
     });
     return () => {
       cancelled = true;

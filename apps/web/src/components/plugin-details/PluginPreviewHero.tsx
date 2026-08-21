@@ -10,7 +10,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Icon } from '../Icon';
 import { fetchPluginExampleHtml } from '../../providers/registry';
-import { pluginPreviewSrcDoc } from '../../runtime/authenticatedHtmlSrcDoc';
+import { pluginCatalogPreviewSrcDoc } from '../../teamver/htmlCoverSrcDoc';
 import { embedUiLabel } from '../../teamver/embedUiLabels';
 
 export interface PluginExampleEntry {
@@ -58,7 +58,7 @@ export function PluginPreviewHero({ pluginId, pluginTitle, examples }: Props) {
         setSrcDoc(null);
         return;
       }
-      setSrcDoc(pluginPreviewSrcDoc(result.html, href));
+      setSrcDoc(pluginCatalogPreviewSrcDoc(result.html, href));
     });
     return () => {
       cancelled = true;

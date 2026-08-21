@@ -33,6 +33,7 @@ import {
   looksLikeHtmlDocument,
   pluginPreviewSrcDoc,
 } from '../../../runtime/authenticatedHtmlSrcDoc';
+import { pluginCatalogPreviewSrcDoc } from '../../../teamver/htmlCoverSrcDoc';
 import { fetchTeamverDaemon } from '../../../teamver/teamverDaemonHeaders';
 import { TEAMVER_EMBED_PASSIVE_AUTH_RECOVERED_EVENT } from '../../../teamver/teamverEmbedPassiveAuth';
 import { embedUiLabel } from '../../../teamver/embedUiLabels';
@@ -207,7 +208,7 @@ async function loadPluginPreviewHtml(url: string): Promise<string> {
     if (isUnauthorizedHtmlBody(text, contentType) || !looksLikeHtmlDocument(text)) {
       throw new Error('plugin_preview_not_html');
     }
-    const srcDoc = pluginPreviewSrcDoc(text, cacheKey);
+    const srcDoc = pluginCatalogPreviewSrcDoc(text, cacheKey);
     rememberPreviewHtml(cacheKey, srcDoc);
     return srcDoc;
   }).finally(() => {

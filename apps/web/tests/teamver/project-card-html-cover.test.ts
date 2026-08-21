@@ -1,5 +1,8 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
+import { pluginPreviewSrcDoc } from "../../src/runtime/authenticatedHtmlSrcDoc";
 import {
   deckPreviewSrcDoc,
   extractCoverSlideSections,
@@ -7,7 +10,14 @@ import {
   isolateFirstDeckSlideHtml,
   pagePreviewSrcDoc,
   buildHtmlCoverSrcDoc,
+  pluginCatalogPreviewSrcDoc,
 } from "../../src/teamver/htmlCoverSrcDoc";
+
+const repoRoot = resolve(import.meta.dirname, "../../../..");
+const PINK_SCRIPT = readFileSync(
+  resolve(repoRoot, "plugins/_official/examples/html-ppt-zhangzara-pink-script/example.html"),
+  "utf8",
+);
 import { parseProjectRawUrl } from "../../src/teamver/components/ProjectCardHtmlCover";
 
 describe("ProjectCardHtmlCover srcDoc builders", () => {
@@ -223,5 +233,27 @@ describe("ProjectCardHtmlCover srcDoc builders", () => {
     expect(srcDoc).toMatch(/opacity:\s*1\s*!important/);
     expect(srcDoc).toMatch(/visibility:\s*visible\s*!important/);
     expect(srcDoc).toMatch(/transform:\s*none\s*!important/);
+  });
+
+  it("isolates Pink Script catalog thumbs to the cover (no deck-stage.js, no Index)", () => {
+    expect(htmlLooksLikeMultiSlideDeck(PINK_SCRIPT)).toBe(true);
+    const live = pluginPreviewSrcDoc(
+      PINK_SCRIPT,
+      "/api/plugins/example-html-ppt-zhangzara-pink-script/preview",
+    );
+    expect(live).toContain("deck-stage.js");
+    expect(live).toContain("The Index");
+
+    const thumb = pluginCatalogPreviewSrcDoc(
+      PINK_SCRIPT,
+      "/api/plugins/example-html-ppt-zhangzara-pink-script/preview",
+    );
+    expect(thumb).toContain("After");
+    expect(thumb).toContain("Hours");
+    expect(thumb).toContain('id="od-deck-card-preview"');
+    expect(thumb).toMatch(/deck-stage\s*\{/);
+    expect(thumb).not.toContain("deck-stage.js");
+    expect(thumb).not.toContain("The Index");
+    expect(thumb).toContain("<base href=");
   });
 });

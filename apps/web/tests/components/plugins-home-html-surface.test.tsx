@@ -136,6 +136,8 @@ describe('HtmlSurface authenticated srcDoc', () => {
     // Shared inflight / no per-card AbortSignal (N07 cover pattern).
     expect(source).toContain('pluginPreviewCacheKey');
     expect(source).not.toMatch(/loadPluginPreviewHtml\([^)]*abort\.signal/);
+    expect(source).toContain("pluginCatalogPreviewSrcDoc");
+    expect(source).not.toMatch(/const srcDoc = pluginPreviewSrcDoc\(text, cacheKey\)/);
   });
 
   it('fetches plugin preview on inView in Teamver embed (linger, not hover-only)', async () => {

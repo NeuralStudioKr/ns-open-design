@@ -581,6 +581,12 @@ button.plugins-home__pill--all.is-active:hover:not(:disabled) {
 .plugins-home__card--gallery[data-od-mode="deck"] .plugins-home__gallery-frame {
   height: auto;
   aspect-ratio: 16 / 9;
+  background: #0b0c10;
+}
+.plugins-home__card--gallery[data-od-mode="deck"] .plugins-home__media-img,
+.plugins-home__card--gallery[data-od-mode="deck"] .plugins-home__media-video {
+  object-fit: contain;
+  background: #0b0c10;
 }
 .plugins-home__card--gallery[data-od-mode="deck"] .plugins-home__html-iframe,
 .plugins-home__card--gallery[data-od-mode="deck"]:hover .plugins-home__html-iframe {
