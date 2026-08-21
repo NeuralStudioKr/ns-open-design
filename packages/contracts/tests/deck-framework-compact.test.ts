@@ -47,6 +47,15 @@ describe('DECK_FRAMEWORK_DIRECTIVE_COMPACT', () => {
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('one idea only');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('no stat column');
     expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT).toContain('data-screen-label="01 Cover"');
+    const unlabeledNeutralHosts = [
+      ...DECK_COMPACT_INLINE_LAYOUT_VOCABULARY.matchAll(
+        /<section class="slide"(?![^>]*data-screen-label=)/g,
+      ),
+    ];
+    expect(unlabeledNeutralHosts).toHaveLength(0);
+    expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('data-screen-label="02 Body"');
+    expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('data-screen-label="03 Stat"');
+    expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('data-screen-label="05 Close"');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY_FOR_SELECTED_TEMPLATE).toContain('one idea only');
     // Samples must not teach viewport sizing (ban prose may still name 100vh).
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).not.toMatch(
