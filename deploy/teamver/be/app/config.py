@@ -113,6 +113,24 @@ class Settings(BaseModel):
     teamver_od_api_model: str = os.getenv("TEAMVER_OD_API_MODEL", "claude-sonnet-4-6")
     teamver_od_api_key: str = os.getenv("TEAMVER_OD_API_KEY", "")
     teamver_od_anthropic_api_key: str = os.getenv("ANTHROPIC_API_KEY", "")
+    # MiniMax managed canary — design-api never needs the secret for runtime-config;
+    # TEAMVER_MINIMAX_CONFIGURED (or optional key presence) proves daemon is wired.
+    teamver_design_default_provider: str = os.getenv(
+        "TEAMVER_DESIGN_DEFAULT_PROVIDER", ""
+    )
+    teamver_minimax_configured: bool = Field(
+        default_factory=lambda: _env_bool("TEAMVER_MINIMAX_CONFIGURED", default=False)
+    )
+    teamver_minimax_enabled: bool = Field(
+        default_factory=lambda: _env_bool("TEAMVER_MINIMAX_ENABLED", default=False)
+    )
+    teamver_minimax_api_key: str = os.getenv("TEAMVER_MINIMAX_API_KEY", "")
+    teamver_minimax_base_url: str = os.getenv(
+        "TEAMVER_MINIMAX_BASE_URL", "https://api.minimax.io/v1"
+    )
+    teamver_minimax_chat_model: str = os.getenv(
+        "TEAMVER_MINIMAX_CHAT_MODEL", "MiniMax-M3"
+    )
 
     cors_origins: str = os.getenv("CORS_ORIGINS", "")
     cors_teamver_subdomain_regex: bool = Field(
@@ -178,7 +196,18 @@ class Settings(BaseModel):
         if not (self.teamver_main_login_url or "").strip():
             raise ValueError(f"TEAMVER_MAIN_LOGIN_URL is required in {deploy_env}")
         if not self.teamver_od_api_key.strip():
-            raise ValueError(f"TEAMVER_OD_API_KEY is required in {deploy_env}")
+            minimax_ok = self.teamver_minimax_configured or bool(
+                (self.teamver_minimax_api_key or "").strip()
+            )
+            protocol = (
+                (self.teamver_od_api_protocol or self.teamver_design_default_provider or "")
+                .strip()
+                .lower()
+            )
+            if protocol == "minimax" and minimax_ok:
+                pass  # MiniMax canary — Anthropic managed key optional
+            else:
+                raise ValueError(f"TEAMVER_OD_API_KEY is required in {deploy_env}")
         registry_configured = all(
             value.strip()
             for value in (

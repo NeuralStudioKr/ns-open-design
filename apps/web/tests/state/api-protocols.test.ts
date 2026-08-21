@@ -14,6 +14,7 @@ describe('apiProtocols table consistency', () => {
   it('advertises daemon BYOK tools only for protocols with the tool-loop proxy', () => {
     expect(byokChatToolNamesForProtocol('senseaudio')).toBe(BYOK_CHAT_TOOL_NAMES);
     expect(byokChatToolNamesForProtocol('aihubmix')).toBe(BYOK_CHAT_TOOL_NAMES);
+    expect(byokChatToolNamesForProtocol('minimax')).toEqual(['web_fetch']);
     expect(byokChatToolNamesForProtocol('anthropic')).toBeUndefined();
     expect(byokChatToolNamesForProtocol('openai')).toBeUndefined();
     expect(byokChatToolNamesForProtocol('google')).toBeUndefined();

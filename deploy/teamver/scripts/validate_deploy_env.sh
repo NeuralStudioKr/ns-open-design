@@ -225,13 +225,30 @@ if [[ "$http_timeout" =~ ^[0-9]+([.][0-9]+)?$ && "$long_timeout" =~ ^[0-9]+([.][
   fi
 fi
 
-if [[ -z "${TEAMVER_OD_API_KEY:-}" && -z "${ANTHROPIC_API_KEY:-}" ]]; then
-  warn "TEAMVER_OD_API_KEY·ANTHROPIC_API_KEY 모두 없음 — embed managed API/chat 비활성 (BYOK만)"
+if [[ -z "${TEAMVER_OD_API_KEY:-}" && -z "${ANTHROPIC_API_KEY:-}" && -z "${TEAMVER_MINIMAX_API_KEY:-}" ]]; then
+  warn "TEAMVER_OD_API_KEY·ANTHROPIC_API_KEY·TEAMVER_MINIMAX_API_KEY 모두 없음 — embed managed API/chat 비활성 (BYOK만)"
 fi
 
-# Staging embed — managed runtime-config (Settings BYOK 숨김) 에 TEAMVER_OD_API_KEY 필수.
+# MiniMax canary — default provider/protocol is minimax → daemon MiniMax key required.
+_default_provider="$(echo "${TEAMVER_DESIGN_DEFAULT_PROVIDER:-}${TEAMVER_OD_API_PROTOCOL:-}" | tr '[:upper:]' '[:lower:]')"
+_wants_minimax=false
+if [[ "${TEAMVER_DESIGN_DEFAULT_PROVIDER:-}" == "minimax" || "${TEAMVER_OD_API_PROTOCOL:-}" == "minimax" ]]; then
+  _wants_minimax=true
+fi
+if [[ "$_wants_minimax" == true ]]; then
+  if [[ -z "${TEAMVER_MINIMAX_API_KEY:-}" && -z "${OD_MINIMAX_API_KEY:-}" && -z "${MINIMAX_API_KEY:-}" ]]; then
+    fail "MiniMax default provider: TEAMVER_MINIMAX_API_KEY (or OD_MINIMAX_API_KEY/MINIMAX_API_KEY) 필요 — daemon managed MiniMax"
+  fi
+fi
+
+# Staging embed — managed runtime-config (Settings BYOK 숨김).
+# Anthropic path: TEAMVER_OD_API_KEY. MiniMax path: TEAMVER_MINIMAX_* (+ CONFIGURED 권장).
 if [[ "$ENV_FILE" == ".env.staging" ]]; then
-  if [[ -z "${TEAMVER_OD_API_KEY:-}" ]]; then
+  if [[ "$_wants_minimax" == true ]]; then
+    if [[ "${TEAMVER_MINIMAX_CONFIGURED:-0}" != "1" && -z "${TEAMVER_MINIMAX_API_KEY:-}" ]]; then
+      warn "staging MiniMax: TEAMVER_MINIMAX_CONFIGURED=1 권장 (design-api runtime-config configured=true)"
+    fi
+  elif [[ -z "${TEAMVER_OD_API_KEY:-}" ]]; then
     fail "staging embed: TEAMVER_OD_API_KEY 필요 — /api/v1/runtime-config configured=true (사용자 Settings BYOK 비활성)"
   fi
 fi
@@ -248,11 +265,12 @@ if [[ "$ENV_FILE" == ".env.production" ]]; then
   has_managed_key=false
   has_daemon_llm=false
   [[ -n "${TEAMVER_OD_API_KEY:-}" ]] && has_managed_key=true
+  [[ -n "${TEAMVER_MINIMAX_API_KEY:-}" || -n "${OD_MINIMAX_API_KEY:-}" || -n "${MINIMAX_API_KEY:-}" ]] && has_managed_key=true
   if [[ -n "${ANTHROPIC_API_KEY:-}" || -n "${OPENAI_API_KEY:-}" ]]; then
     has_daemon_llm=true
   fi
   if [[ "$has_managed_key" != true && "$has_daemon_llm" != true ]]; then
-    fail "production: TEAMVER_OD_API_KEY (managed) 또는 ANTHROPIC_API_KEY/OPENAI_API_KEY (daemon) 중 최소 하나 필요 — 공개 사용자 chat 게이트"
+    fail "production: TEAMVER_OD_API_KEY/TEAMVER_MINIMAX_API_KEY (managed) 또는 ANTHROPIC_API_KEY/OPENAI_API_KEY (daemon) 중 최소 하나 필요 — 공개 사용자 chat 게이트"
   fi
 
   # G6 — Production 은 instance profile 만. 정적 AWS access key 가 깔리면

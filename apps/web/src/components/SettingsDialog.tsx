@@ -589,6 +589,10 @@ const API_KEY_CONSOLE_LINKS: Record<ApiProtocol, { host: string; url: string }> 
     host: 'aihubmix.com',
     url: 'https://aihubmix.com/?aff=JA1e',
   },
+  minimax: {
+    host: 'platform.minimax.io',
+    url: 'https://platform.minimax.io/',
+  },
 };
 
 const AGENT_SHORT_DESCRIPTIONS: Record<string, string> = {

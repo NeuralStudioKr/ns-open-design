@@ -20,6 +20,7 @@ const ALLOWED_PROTOCOLS: readonly ApiProtocol[] = [
   "ollama",
   "senseaudio",
   "aihubmix",
+  "minimax",
 ];
 
 function normalizeProtocol(raw: string | undefined): ApiProtocol | undefined {
@@ -44,6 +45,14 @@ export function mergeTeamverRuntimeConfigIntoAppConfig(
   pinTeamverExecutionConfig({ apiProtocol, baseUrl, model, managedApiConfigured: true });
 
   const mode = "api";
+  const teamverManagedProvider =
+    apiProtocol === "minimax" || apiProtocol === "anthropic"
+      ? {
+          provider: apiProtocol as "anthropic" | "minimax",
+          configured: true as const,
+          source: "runtime-config" as const,
+        }
+      : config.teamverManagedProvider;
 
   if (
     !config.apiKey?.trim()
@@ -66,6 +75,7 @@ export function mergeTeamverRuntimeConfigIntoAppConfig(
     baseUrl,
     model,
     apiProtocolConfigs: {},
+    ...(teamverManagedProvider ? { teamverManagedProvider } : {}),
   };
 }
 

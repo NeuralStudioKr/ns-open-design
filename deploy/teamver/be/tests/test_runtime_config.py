@@ -17,6 +17,12 @@ def _reset_runtime_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "teamver_od_api_protocol", "anthropic")
     monkeypatch.setattr(settings, "teamver_od_api_base_url", "https://api.anthropic.com")
     monkeypatch.setattr(settings, "teamver_od_api_model", "claude-sonnet-4-6")
+    monkeypatch.setattr(settings, "teamver_design_default_provider", "")
+    monkeypatch.setattr(settings, "teamver_minimax_configured", False)
+    monkeypatch.setattr(settings, "teamver_minimax_enabled", False)
+    monkeypatch.setattr(settings, "teamver_minimax_api_key", "")
+    monkeypatch.setattr(settings, "teamver_minimax_base_url", "https://api.minimax.io/v1")
+    monkeypatch.setattr(settings, "teamver_minimax_chat_model", "MiniMax-M3")
 
 
 def test_runtime_config_unconfigured_when_no_key() -> None:
@@ -56,3 +62,30 @@ def test_runtime_config_normalizes_legacy_anthropic_model(monkeypatch: pytest.Mo
     monkeypatch.setattr(settings, "teamver_od_api_model", "claude-sonnet-4-5")
     payload = od_runtime_config.resolve_od_runtime_config_payload()
     assert payload["model"] == "claude-sonnet-4-6"
+
+
+def test_runtime_config_minimax_requires_configured_flag(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "teamver_od_api_protocol", "minimax")
+    monkeypatch.setattr(settings, "teamver_minimax_configured", False)
+    payload = od_runtime_config.resolve_od_runtime_config_payload()
+    assert payload == {"configured": False}
+
+
+def test_runtime_config_minimax_when_configured(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "teamver_od_api_protocol", "minimax")
+    monkeypatch.setattr(settings, "teamver_minimax_configured", True)
+    payload = od_runtime_config.resolve_od_runtime_config_payload()
+    assert payload["configured"] is True
+    assert payload["apiKeyConfigured"] is True
+    assert "apiKey" not in payload
+    assert payload["apiProtocol"] == "minimax"
+    assert payload["model"] == "MiniMax-M3"
+    assert "minimax.io" in payload["baseUrl"]
+
+
+def test_runtime_config_inherits_default_provider_minimax(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "teamver_od_api_protocol", "")
+    monkeypatch.setattr(settings, "teamver_design_default_provider", "minimax")
+    monkeypatch.setattr(settings, "teamver_minimax_configured", True)
+    payload = od_runtime_config.resolve_od_runtime_config_payload()
+    assert payload["apiProtocol"] == "minimax"

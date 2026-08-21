@@ -105,7 +105,22 @@ export type {
 } from '@open-design/contracts';
 
 export type ExecMode = 'daemon' | 'api';
-export type ApiProtocol = 'anthropic' | 'openai' | 'azure' | 'google' | 'ollama' | 'senseaudio' | 'aihubmix';
+export type ApiProtocol =
+  | 'anthropic'
+  | 'openai'
+  | 'azure'
+  | 'google'
+  | 'ollama'
+  | 'senseaudio'
+  | 'aihubmix'
+  | 'minimax';
+
+/** Embed managed provider metadata from design-api runtime-config (never carries secrets). */
+export type TeamverManagedProviderInfo = {
+  provider: 'anthropic' | 'minimax';
+  configured: boolean;
+  source: 'runtime-config';
+};
 
 export type LiveArtifactTabId = `live:${string}`;
 // Tab ids are arbitrary strings; the template-literal members below are
@@ -366,6 +381,8 @@ export interface AppConfig {
   apiKey: string;
   /** Server-managed embed BYOK — key never stored in browser localStorage. */
   apiKeyConfigured?: boolean;
+  /** Optional managed-provider metadata from design-api (no secrets). */
+  teamverManagedProvider?: TeamverManagedProviderInfo;
   baseUrl: string;
   model: string;
   apiProtocol?: ApiProtocol;
