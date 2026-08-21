@@ -1160,18 +1160,31 @@ export function shouldCatchUpHostMetricsWhenDeckNudgeRemasureThrottled(
 
 /**
  * After chrome is interactive, defer late fit remasure geometry one tick while
- * the pointer is over selection chrome so handles do not jump under the cursor
- * (516). Metrics may still refresh immediately.
+ * the pointer is over selection chrome — or while unlock pointer gate is still
+ * armed — so handles do not jump under the cursor (516/525). Metrics may still
+ * refresh immediately.
  */
 export function shouldDeferTipRemountPostReleaseGeometryApply(
   chromeSuppressed: boolean,
   remasureDelayMs: number,
   pointerOverChrome: boolean,
   chromeReleaseDelayMs: number = TIP_REMOUNT_FIT_SETTLE_CHROME_RELEASE_MS,
+  unlockPointerGateArmed = false,
 ): boolean {
   return !chromeSuppressed
     && remasureDelayMs >= chromeReleaseDelayMs
-    && pointerOverChrome;
+    && (pointerOverChrome || unlockPointerGateArmed);
+}
+
+/**
+ * On unlock-gate pointerup, flush deferred geometry before clearing the gate so
+ * chrome becomes interactive on the latest measure, not a stale box (525).
+ */
+export function shouldFlushDeferredTipRemountGeometryBeforeUnlockGateClear(
+  unlockPointerGateArmed: boolean,
+  deferredGeometryPending: boolean,
+): boolean {
+  return unlockPointerGateArmed && deferredGeometryPending;
 }
 
 /**
@@ -1245,6 +1258,18 @@ export function shouldClearTipRemountLastHostRectCache(
   tipPostProtectArmed: boolean,
 ): boolean {
   return !tipRemountSessionLive && !followWindowLive && !tipPostProtectArmed;
+}
+
+/**
+ * During tip remount chrome session, prefer live/last-good host paint even when
+ * it disagrees with composed target.rect — composed often lags fit/tip apply
+ * and would otherwise flash the wrong box (526).
+ */
+export function shouldTrustTipRemountHostPaintDespiteComposedStale(
+  tipRemountChromeSessionLive: boolean,
+  hostPaintOk: boolean,
+): boolean {
+  return tipRemountChromeSessionLive && hostPaintOk;
 }
 
 /**

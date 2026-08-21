@@ -52,10 +52,12 @@ import {
   shouldDeferTipRemountPostReleaseGeometryApply,
   shouldReplaceDeferredTipRemountGeometryPayload,
   shouldInvalidateDeferredTipRemountGeometryOnImmediateApply,
+  shouldFlushDeferredTipRemountGeometryBeforeUnlockGateClear,
   shouldArmTipRemountChromeUnlockPointerGate,
   shouldDisableManualEditChromeForTipRemountUnlockGate,
   shouldReuseLastHostRectOnTipRemountMeasureMiss,
   shouldClearTipRemountLastHostRectCache,
+  shouldTrustTipRemountHostPaintDespiteComposedStale,
   shouldRetryTipRemountSiblingMeasure,
   TIP_REMOUNT_DECK_NUDGE_REMEASURE_THROTTLE_MS,
   shouldMarkTipRemountChromeReleasePendingAfterResizeSkip,
@@ -312,10 +314,14 @@ describe('manual edit freeze reset', () => {
     expect(shouldDeferTipRemountPostReleaseGeometryApply(false, 900, false)).toBe(false);
     expect(shouldDeferTipRemountPostReleaseGeometryApply(true, 900, true)).toBe(false);
     expect(shouldDeferTipRemountPostReleaseGeometryApply(false, 150, true)).toBe(false);
+    expect(shouldDeferTipRemountPostReleaseGeometryApply(false, 900, false, undefined, true)).toBe(true);
     expect(shouldReplaceDeferredTipRemountGeometryPayload(true, true)).toBe(true);
     expect(shouldReplaceDeferredTipRemountGeometryPayload(true, false)).toBe(false);
     expect(shouldInvalidateDeferredTipRemountGeometryOnImmediateApply(true, true)).toBe(true);
     expect(shouldInvalidateDeferredTipRemountGeometryOnImmediateApply(false, true)).toBe(false);
+    expect(shouldFlushDeferredTipRemountGeometryBeforeUnlockGateClear(true, true)).toBe(true);
+    expect(shouldFlushDeferredTipRemountGeometryBeforeUnlockGateClear(true, false)).toBe(false);
+    expect(shouldFlushDeferredTipRemountGeometryBeforeUnlockGateClear(false, true)).toBe(false);
     expect(shouldArmTipRemountChromeUnlockPointerGate(true, false, true)).toBe(true);
     expect(shouldArmTipRemountChromeUnlockPointerGate(true, false, false)).toBe(false);
     expect(shouldArmTipRemountChromeUnlockPointerGate(true, false, false, true)).toBe(true);
@@ -329,6 +335,9 @@ describe('manual edit freeze reset', () => {
     expect(shouldClearTipRemountLastHostRectCache(true, false, false)).toBe(false);
     expect(shouldClearTipRemountLastHostRectCache(false, true, false)).toBe(false);
     expect(shouldClearTipRemountLastHostRectCache(false, false, true)).toBe(false);
+    expect(shouldTrustTipRemountHostPaintDespiteComposedStale(true, true)).toBe(true);
+    expect(shouldTrustTipRemountHostPaintDespiteComposedStale(true, false)).toBe(false);
+    expect(shouldTrustTipRemountHostPaintDespiteComposedStale(false, true)).toBe(false);
     expect(shouldRetryTipRemountSiblingMeasure(2, 2, 1)).toBe(true);
     expect(shouldRetryTipRemountSiblingMeasure(2, 2, 2)).toBe(false);
     expect(shouldRetryTipRemountSiblingMeasure(1, 1, 0)).toBe(false);

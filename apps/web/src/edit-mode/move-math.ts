@@ -502,6 +502,7 @@ export function resolveManualEditChromeHostRect(
   previewScale: number,
   hostOffset: { x: number; y: number },
   hostPaintRect: ManualEditRect | null,
+  trustHostPaintDespiteStale = false,
 ): ManualEditRect {
   const scaled = {
     x: targetRect.x * previewScale,
@@ -519,7 +520,10 @@ export function resolveManualEditChromeHostRect(
     hostPaintRect
     && hostPaintRect.width >= 1
     && hostPaintRect.height >= 1
-    && !manualEditHostPaintRectStale(hostPaintRect, composedHostRect)
+    && (
+      trustHostPaintDespiteStale
+      || !manualEditHostPaintRectStale(hostPaintRect, composedHostRect)
+    )
   ) {
     return hostPaintRect;
   }

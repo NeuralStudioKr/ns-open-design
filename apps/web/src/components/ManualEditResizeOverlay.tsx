@@ -67,6 +67,11 @@ export type ManualEditResizeOverlayProps = {
    * whenever scale/offset state lags the painted iframe.
    */
   hostPaintRect?: ManualEditRect | null;
+  /**
+   * Tip remount: keep host paint even when it disagrees with composed
+   * target.rect (fit/tip lag) so chrome does not flash to composed (526).
+   */
+  trustHostPaintDespiteStale?: boolean;
   /** Live draft size while dragging; null uses target.rect. */
   draftWidthPx: number | null;
   draftHeightPx: number | null;
@@ -218,6 +223,7 @@ export function ManualEditResizeOverlay({
   previewScale,
   hostOffset = { x: 0, y: 0 },
   hostPaintRect = null,
+  trustHostPaintDespiteStale = false,
   draftWidthPx,
   draftHeightPx,
   draftLeftPx = null,
@@ -318,6 +324,7 @@ export function ManualEditResizeOverlay({
     hostPaintRect
     && hostPaintRect.width >= 1
     && hostPaintRect.height >= 1
+    && !trustHostPaintDespiteStale
     && manualEditHostPaintRectStale(hostPaintRect, composedHostRect),
   );
   const hostRect = !gestureComposed

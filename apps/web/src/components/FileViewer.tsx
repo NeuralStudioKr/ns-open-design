@@ -392,10 +392,12 @@ import {
   shouldDeferTipRemountPostReleaseGeometryApply,
   shouldReplaceDeferredTipRemountGeometryPayload,
   shouldInvalidateDeferredTipRemountGeometryOnImmediateApply,
+  shouldFlushDeferredTipRemountGeometryBeforeUnlockGateClear,
   shouldArmTipRemountChromeUnlockPointerGate,
   shouldDisableManualEditChromeForTipRemountUnlockGate,
   shouldReuseLastHostRectOnTipRemountMeasureMiss,
   shouldClearTipRemountLastHostRectCache,
+  shouldTrustTipRemountHostPaintDespiteComposedStale,
   shouldRetryTipRemountSiblingMeasure,
   TIP_REMOUNT_DECK_NUDGE_REMEASURE_THROTTLE_MS,
   shouldMarkTipRemountChromeReleasePendingAfterResizeSkip,
@@ -5642,6 +5644,8 @@ function HtmlViewer({
   const manualEditTipLastHostRectByIdRef = useRef<Map<string, ManualEditRect>>(new Map());
   /** Sibling measure retry rAF after partial multi remasure (518). */
   const manualEditTipSiblingRetryRafRef = useRef<number | null>(null);
+  /** Flush deferred geometry before unlock-gate clear (525). */
+  const flushDeferredTipRemountGeometryRef = useRef<() => void>(() => {});
 
   useEffect(() => {
     const onDown = () => {
@@ -5649,7 +5653,16 @@ function HtmlViewer({
     };
     const onUp = () => {
       manualEditPointerButtonsDownRef.current = false;
-      if (!manualEditTipChromeUnlockPointerGateRef.current) return;
+      const gateArmed = manualEditTipChromeUnlockPointerGateRef.current;
+      const deferredPending = manualEditTipDeferredGeometryPayloadRef.current != null
+        || manualEditTipDeferredGeometryRafRef.current != null;
+      if (shouldFlushDeferredTipRemountGeometryBeforeUnlockGateClear(
+        gateArmed,
+        deferredPending,
+      )) {
+        flushDeferredTipRemountGeometryRef.current();
+      }
+      if (!gateArmed) return;
       manualEditTipChromeUnlockPointerGateRef.current = false;
       setManualEditTipChromeUnlockPointerGate(false);
     };
@@ -8374,6 +8387,7 @@ function HtmlViewer({
       remasureDelayMs,
       manualEditTipChromePointerHoverRef.current,
       TIP_REMOUNT_FIT_SETTLE_CHROME_RELEASE_MS,
+      manualEditTipChromeUnlockPointerGateRef.current,
     );
     if (shouldRefreshHostMetricsBeforeTipRemountGeometryApply(
       appliedAny,
@@ -8416,6 +8430,15 @@ function HtmlViewer({
       if (primaryMeasured && primaryId && shouldRefreshHostPaintAfterTipRemountRemasure(true)) {
         refreshManualEditHostPaintRect(primaryId, { force: true });
       }
+    };
+    flushDeferredTipRemountGeometryRef.current = () => {
+      if (manualEditTipDeferredGeometryRafRef.current != null) {
+        window.cancelAnimationFrame(manualEditTipDeferredGeometryRafRef.current);
+        manualEditTipDeferredGeometryRafRef.current = null;
+      }
+      const latest = manualEditTipDeferredGeometryPayloadRef.current;
+      manualEditTipDeferredGeometryPayloadRef.current = null;
+      if (latest && latest.length > 0) applyMeasuredGeometry(latest);
     };
 
     if (
@@ -15560,6 +15583,10 @@ function HtmlViewer({
           selectedManualEditTarget.id,
           manualEditHostPaintRect,
         )}
+        trustHostPaintDespiteStale={shouldTrustTipRemountHostPaintDespiteComposedStale(
+          tipRemountChromeSessionLiveNow(),
+          true,
+        )}
         draftWidthPx={manualEditResizeDraftSize?.width ?? null}
         draftHeightPx={manualEditResizeDraftSize?.height ?? null}
         draftLeftPx={manualEditMoveDraftPos?.x ?? null}
@@ -15635,6 +15662,10 @@ function HtmlViewer({
           const paint = measureManualEditTargetHostRect(frame, workspace, id);
           return resolveTipRemountHostPaintRect(id, paint);
         }}
+        trustHostPaintDespiteStale={shouldTrustTipRemountHostPaintDespiteComposedStale(
+          tipRemountChromeSessionLiveNow(),
+          true,
+        )}
         movable={manualEditGroupMoveEnabled}
         resizable={manualEditGroupResizeEnabled}
         // Tip-remount: keep multi chrome mounted inert at last union rect (458).

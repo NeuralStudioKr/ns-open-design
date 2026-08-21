@@ -51,6 +51,11 @@ export type ManualEditMultiSelectOverlayProps = {
   movable?: boolean;
   resizable?: boolean;
   disabled?: boolean;
+  /**
+   * Tip remount: keep measured/last-good paint even when stale vs composed
+   * (526).
+   */
+  trustHostPaintDespiteStale?: boolean;
   /** Tip remount: track pointer over chrome so late geometry apply can defer (516). */
   onChromePointerHoverChange?: (hovering: boolean) => void;
   draftMemberRects?: Record<string, ManualEditRect> | null;
@@ -135,6 +140,7 @@ function unionHostRect(
   measureHostRect: (id: string) => ManualEditRect | null,
   draftMemberRects?: Record<string, ManualEditRect> | null,
   preferComposed = false,
+  trustHostPaintDespiteStale = false,
 ): ManualEditRect | null {
   let union: ManualEditRect | null = null;
   for (const target of targets) {
@@ -145,6 +151,7 @@ function unionHostRect(
       composeScale,
       composeOffset,
       paint,
+      trustHostPaintDespiteStale,
     );
     if (!union) {
       union = { ...hostRect };
@@ -214,6 +221,7 @@ export function ManualEditMultiSelectOverlay({
   movable = false,
   resizable = false,
   disabled = false,
+  trustHostPaintDespiteStale = false,
   onChromePointerHoverChange,
   draftMemberRects = null,
   onGroupMovePreview,
@@ -427,6 +435,7 @@ export function ManualEditMultiSelectOverlay({
     measureHostRect,
     draftMemberRects,
     gestureComposed,
+    trustHostPaintDespiteStale,
   );
   if (!hostRect || hostRect.width < 1 || hostRect.height < 1) return null;
 

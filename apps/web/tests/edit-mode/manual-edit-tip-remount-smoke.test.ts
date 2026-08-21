@@ -28,10 +28,12 @@ import {
   shouldDeferTipRemountPostReleaseGeometryApply,
   shouldReplaceDeferredTipRemountGeometryPayload,
   shouldInvalidateDeferredTipRemountGeometryOnImmediateApply,
+  shouldFlushDeferredTipRemountGeometryBeforeUnlockGateClear,
   shouldArmTipRemountChromeUnlockPointerGate,
   shouldDisableManualEditChromeForTipRemountUnlockGate,
   shouldReuseLastHostRectOnTipRemountMeasureMiss,
   shouldClearTipRemountLastHostRectCache,
+  shouldTrustTipRemountHostPaintDespiteComposedStale,
   shouldCatchUpHostMetricsWhenDeckNudgeRemasureThrottled,
   shouldRetryTipRemountSiblingMeasure,
   shouldSkipOdEditTargetsIdentityMixedReseedDuringPostExitAbsorb,
@@ -109,6 +111,7 @@ describe('manual-edit tip remount smoke (500/501/506)', () => {
   it('defers late geometry while pointer is over chrome (516)', () => {
     expect(shouldDeferTipRemountPostReleaseGeometryApply(false, 900, true)).toBe(true);
     expect(shouldDeferTipRemountPostReleaseGeometryApply(false, 900, false)).toBe(false);
+    expect(shouldDeferTipRemountPostReleaseGeometryApply(false, 900, false, undefined, true)).toBe(true);
     expect(fileViewer).toContain('shouldDeferTipRemountPostReleaseGeometryApply');
     expect(fileViewer).toContain('onChromePointerHoverChange');
     expect(fileViewer).toContain('manualEditTipChromePointerHoverRef');
@@ -133,6 +136,13 @@ describe('manual-edit tip remount smoke (500/501/506)', () => {
     expect(fileViewer).toContain('releaseTipRemountChromeSuppress');
   });
 
+  it('flushes deferred geometry before unlock gate clear on pointerup (525)', () => {
+    expect(shouldFlushDeferredTipRemountGeometryBeforeUnlockGateClear(true, true)).toBe(true);
+    expect(shouldFlushDeferredTipRemountGeometryBeforeUnlockGateClear(false, true)).toBe(false);
+    expect(fileViewer).toContain('shouldFlushDeferredTipRemountGeometryBeforeUnlockGateClear');
+    expect(fileViewer).toContain('flushDeferredTipRemountGeometryRef');
+  });
+
   it('reuses last host rect on tip remount measure miss (521/523)', () => {
     expect(shouldReuseLastHostRectOnTipRemountMeasureMiss(true, false, true)).toBe(true);
     expect(fileViewer).toContain('shouldReuseLastHostRectOnTipRemountMeasureMiss');
@@ -145,6 +155,23 @@ describe('manual-edit tip remount smoke (500/501/506)', () => {
     expect(shouldClearTipRemountLastHostRectCache(false, true, false)).toBe(false);
     expect(fileViewer).toContain('shouldClearTipRemountLastHostRectCache');
     expect(fileViewer).toContain('maybeClearTipRemountLastHostRectCache');
+  });
+
+  it('trusts tip remount host paint despite composed stale (526)', () => {
+    expect(shouldTrustTipRemountHostPaintDespiteComposedStale(true, true)).toBe(true);
+    expect(shouldTrustTipRemountHostPaintDespiteComposedStale(false, true)).toBe(false);
+    expect(fileViewer).toContain('shouldTrustTipRemountHostPaintDespiteComposedStale');
+    expect(fileViewer).toContain('trustHostPaintDespiteStale');
+  });
+
+  it('pins 522–524 FileViewer wiring on tip remount path (527)', () => {
+    expect(fileViewer).toContain('manualEditPointerButtonsDownRef');
+    expect(fileViewer).toContain('resolveTipRemountHostPaintRect');
+    expect(fileViewer).toContain('maybeClearTipRemountLastHostRectCache');
+    expect(fileViewer).toContain('manualEditTipLastHostRectByIdRef');
+    expect(fileViewer).toContain('shouldArmTipRemountChromeUnlockPointerGate');
+    expect(fileViewer).toContain('shouldClearTipRemountLastHostRectCache');
+    expect(fileViewer).toContain('shouldReuseLastHostRectOnTipRemountMeasureMiss');
   });
 
   it('catch-up host metrics when follow remasure is throttled (517)', () => {
