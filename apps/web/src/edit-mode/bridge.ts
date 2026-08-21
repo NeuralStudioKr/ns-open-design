@@ -794,6 +794,19 @@ export function buildManualEditBridge(enabled: boolean): string {
       return;
     }
   });
+  document.addEventListener('keydown', function(ev){
+    if (!enabled) return;
+    if (ev.repeat || ev.metaKey || ev.ctrlKey || ev.altKey || ev.shiftKey) return;
+    if (ev.key !== 'Delete' && ev.key !== 'Backspace') return;
+    if (ev.target && ev.target.closest && ev.target.closest('[data-od-editing="true"]')) return;
+    var tag = ev.target && ev.target.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+    if (ev.target && ev.target.isContentEditable) return;
+    if (ev.target && ev.target.closest && ev.target.closest('[contenteditable]:not([contenteditable="false"])')) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    window.parent.postMessage({ type: 'od-edit-key', key: ev.key }, '*');
+  }, true);
   document.addEventListener('click', function(ev){
     if (!enabled) return;
     if (ev.target && ev.target.closest && ev.target.closest('[data-od-editing="true"]')) return;

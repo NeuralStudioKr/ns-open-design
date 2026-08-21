@@ -217,26 +217,28 @@ describe('ManualEditPanel', () => {
     expect(footer?.textContent).toContain('Save');
   });
 
-  it('keeps delete confirmation as an icon-only action', () => {
-    renderPanel();
+  it('deletes the selected element on one trash click', () => {
+    const onApplyPatch = vi.fn<OnApplyPatch>();
+    renderPanel({ onApplyPatch });
 
     const footer = host.querySelector('.manual-edit-footer');
     const deleteButton = host.querySelector('button[aria-label="Delete element"]') as HTMLButtonElement | null;
     if (!deleteButton) throw new Error('Delete button not found');
 
+    expect(footer?.contains(deleteButton)).toBe(true);
+    expect(deleteButton.textContent).toBe('');
+    expect(deleteButton.className).toContain('manual-edit-delete-btn');
+
     act(() => {
       deleteButton.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
     });
 
-    const confirmDeleteButton = host.querySelector(
-      '.manual-edit-delete-confirm-action[aria-label="Delete element"]',
-    ) as HTMLButtonElement | null;
-    if (!confirmDeleteButton) throw new Error('Confirm delete button not found');
-
-    expect(footer?.contains(confirmDeleteButton)).toBe(true);
-    expect(confirmDeleteButton.textContent).toBe('');
-    expect(confirmDeleteButton.className).toContain('manual-edit-delete-btn');
-    expect(host.querySelector('.manual-edit-delete-confirm')?.textContent).toBe('Cancel');
+    expect(onApplyPatch).toHaveBeenCalledTimes(1);
+    expect(onApplyPatch).toHaveBeenCalledWith(
+      { id: 'hero-title', kind: 'remove-element' },
+      'Delete element',
+    );
+    expect(host.querySelector('.manual-edit-delete-confirm')).toBeNull();
   });
 
   it('routes footer cancel and save actions', () => {

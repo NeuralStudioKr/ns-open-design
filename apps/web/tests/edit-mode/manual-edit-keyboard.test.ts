@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
   isManualEditKeyboardTextTarget,
   resolveManualEditDeleteKeyboardAction,
+  resolveManualEditDeleteTargetId,
 } from '../../src/edit-mode/manual-edit-keyboard';
 
 describe('manual edit keyboard text target', () => {
@@ -65,5 +66,12 @@ describe('manual edit keyboard text target', () => {
       repeat: false,
       target: input,
     })).toBe(false);
+  });
+
+  it('resolves a single selected id, or the primary inspector target when ids are empty', () => {
+    expect(resolveManualEditDeleteTargetId(['hero'])).toBe('hero');
+    expect(resolveManualEditDeleteTargetId([], 'hero')).toBe('hero');
+    expect(resolveManualEditDeleteTargetId([])).toBeNull();
+    expect(resolveManualEditDeleteTargetId(['a', 'b'], 'a')).toBeNull();
   });
 });

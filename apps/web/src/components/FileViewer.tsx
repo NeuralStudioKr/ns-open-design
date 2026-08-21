@@ -463,7 +463,7 @@ import {
   shouldSyncManualEditFrozenSourceToPainted,
   shouldUpdateManualEditFrozenSourceOnPatch,
 } from '../edit-mode/manual-edit-freeze';
-import { isManualEditKeyboardTextTarget, resolveManualEditDeleteKeyboardAction } from '../edit-mode/manual-edit-keyboard';
+import { isManualEditKeyboardTextTarget, resolveManualEditDeleteKeyboardAction, resolveManualEditDeleteTargetId } from '../edit-mode/manual-edit-keyboard';
 import {
   MANUAL_EDIT_STYLE_AUTOSAVE_MS,
   keyedManualEditStyleRollback,
@@ -11112,6 +11112,28 @@ function HtmlViewer({
         void selectManualEditTarget(data.target, { additive: data.additive === true });
         return;
       }
+      if (data.type === 'od-edit-key') {
+        // Preview iframe keeps focus after click-to-select; Delete/Backspace
+        // never reach the host window unless the bridge forwards them.
+        if (!resolveManualEditDeleteKeyboardAction({
+          key: String(data.key ?? ''),
+          metaKey: false,
+          ctrlKey: false,
+          altKey: false,
+          shiftKey: false,
+          repeat: false,
+          target: document.body,
+        })) return;
+        if (manualEditSavingRef.current) return;
+        if (manualEditInlineTextEditingRef.current) return;
+        if (manualEditResizeSessionActiveRef.current) return;
+        if (!resolveManualEditDeleteTargetId(
+          selectedManualEditTargetIdsRef.current,
+          selectedManualEditTargetRef.current?.id,
+        )) return;
+        manualEditDeleteHandlerRef.current?.();
+        return;
+      }
       if (data.type === 'od-edit-hover') {
         // Hover only surfaces a lightweight "edit params" affordance; it must
         // NOT switch the pinned inspector. The panel changes only when the
@@ -13876,12 +13898,15 @@ function HtmlViewer({
       if (manualEditSavingRef.current) return;
       if (manualEditInlineTextEditing) return;
       if (manualEditResizeSessionActiveRef.current) return;
-      if (selectedManualEditTargetIdsRef.current.length !== 1) return;
+      if (!resolveManualEditDeleteTargetId(
+        selectedManualEditTargetIdsRef.current,
+        selectedManualEditTargetRef.current?.id,
+      )) return;
       e.preventDefault();
       manualEditDeleteHandlerRef.current?.();
     }
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
   }, [manualEditMode, drawOverlayOpen, manualEditInlineTextEditing]);
 
   useEffect(() => {
@@ -15520,9 +15545,11 @@ function HtmlViewer({
     if (manualEditInlineTextEditing) return;
     if (manualEditResizeSessionActiveRef.current) return;
     if (manualEditSavingRef.current) return;
-    const ids = selectedManualEditTargetIdsRef.current;
-    if (ids.length !== 1) return;
-    const id = ids[0]!;
+    const id = resolveManualEditDeleteTargetId(
+      selectedManualEditTargetIdsRef.current,
+      selectedManualEditTargetRef.current?.id,
+    );
+    if (!id) return;
     if (!(await settleManualEditStyleBoundary())) return;
     await applyManualEdit({ id, kind: 'remove-element' }, t('manualEdit.deleteElement'));
   }

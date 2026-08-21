@@ -458,6 +458,8 @@ describe('FileViewer revision tip advance after undo', () => {
     expect(fileViewer).toContain('Active pin owns the painted frame — adopt pin if paint drifted');
     expect(fileViewer).toContain('Prefer active → head → tip');
     expect(fileViewer).toContain('Re-key soft-cache to the cursor/tip seq');
+    expect(fileViewer).toContain("data.type === 'od-edit-key'");
+    expect(fileViewer).toContain('resolveManualEditDeleteTargetId');
     expect(fileViewer).toContain('Already on empty page-styles — skip clear/draft wipe churn');
     expect(fileViewer).toContain('Manual-edit is srcdoc — URL-load only needs reloadKey bust');
     expect(fileViewer).toContain('clearProjectCoverCache(projectId)');
