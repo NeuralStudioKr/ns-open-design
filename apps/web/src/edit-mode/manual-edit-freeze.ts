@@ -1197,16 +1197,19 @@ export function shouldInvalidateDeferredTipRemountGeometryOnImmediateApply(
 }
 
 /**
- * Chrome just unlocked while the pointer is still over chrome (or buttons down)
- * — keep chrome gated until pointerup so the unlock frame does not eat the
- * first gesture (520).
+ * Chrome just unlocked while the pointer is still over chrome or any pointer
+ * button is down — keep chrome gated until pointerup so the unlock frame does
+ * not eat the first gesture (520/522).
  */
 export function shouldArmTipRemountChromeUnlockPointerGate(
   wasChromeSuppressed: boolean,
   nowChromeSuppressed: boolean,
-  pointerOverChromeOrButtonsDown: boolean,
+  pointerOverChrome: boolean,
+  pointerButtonsDown = false,
 ): boolean {
-  return wasChromeSuppressed && !nowChromeSuppressed && pointerOverChromeOrButtonsDown;
+  return wasChromeSuppressed
+    && !nowChromeSuppressed
+    && (pointerOverChrome || pointerButtonsDown);
 }
 
 /**
@@ -1221,7 +1224,8 @@ export function shouldDisableManualEditChromeForTipRemountUnlockGate(
 
 /**
  * During tip remount follow/settle, reuse the last good host paint when a live
- * measure misses — avoids multi union flashing to composed fallback (521).
+ * measure misses — avoids multi/single chrome flashing to composed fallback
+ * (521/523).
  */
 export function shouldReuseLastHostRectOnTipRemountMeasureMiss(
   tipRemountChromeSessionLive: boolean,
@@ -1229,6 +1233,18 @@ export function shouldReuseLastHostRectOnTipRemountMeasureMiss(
   hasLastGoodHostRect: boolean,
 ): boolean {
   return tipRemountChromeSessionLive && !measuredPaintOk && hasLastGoodHostRect;
+}
+
+/**
+ * Drop tip-era last-good host rects once tip remount protect / follow is fully
+ * idle — prevents stale boxes after settle (524).
+ */
+export function shouldClearTipRemountLastHostRectCache(
+  tipRemountSessionLive: boolean,
+  followWindowLive: boolean,
+  tipPostProtectArmed: boolean,
+): boolean {
+  return !tipRemountSessionLive && !followWindowLive && !tipPostProtectArmed;
 }
 
 /**

@@ -55,6 +55,7 @@ import {
   shouldArmTipRemountChromeUnlockPointerGate,
   shouldDisableManualEditChromeForTipRemountUnlockGate,
   shouldReuseLastHostRectOnTipRemountMeasureMiss,
+  shouldClearTipRemountLastHostRectCache,
   shouldRetryTipRemountSiblingMeasure,
   TIP_REMOUNT_DECK_NUDGE_REMEASURE_THROTTLE_MS,
   shouldMarkTipRemountChromeReleasePendingAfterResizeSkip,
@@ -317,12 +318,17 @@ describe('manual edit freeze reset', () => {
     expect(shouldInvalidateDeferredTipRemountGeometryOnImmediateApply(false, true)).toBe(false);
     expect(shouldArmTipRemountChromeUnlockPointerGate(true, false, true)).toBe(true);
     expect(shouldArmTipRemountChromeUnlockPointerGate(true, false, false)).toBe(false);
+    expect(shouldArmTipRemountChromeUnlockPointerGate(true, false, false, true)).toBe(true);
     expect(shouldArmTipRemountChromeUnlockPointerGate(false, false, true)).toBe(false);
     expect(shouldDisableManualEditChromeForTipRemountUnlockGate(false, true)).toBe(true);
     expect(shouldDisableManualEditChromeForTipRemountUnlockGate(false, false)).toBe(false);
     expect(shouldReuseLastHostRectOnTipRemountMeasureMiss(true, false, true)).toBe(true);
     expect(shouldReuseLastHostRectOnTipRemountMeasureMiss(true, true, true)).toBe(false);
     expect(shouldReuseLastHostRectOnTipRemountMeasureMiss(false, false, true)).toBe(false);
+    expect(shouldClearTipRemountLastHostRectCache(false, false, false)).toBe(true);
+    expect(shouldClearTipRemountLastHostRectCache(true, false, false)).toBe(false);
+    expect(shouldClearTipRemountLastHostRectCache(false, true, false)).toBe(false);
+    expect(shouldClearTipRemountLastHostRectCache(false, false, true)).toBe(false);
     expect(shouldRetryTipRemountSiblingMeasure(2, 2, 1)).toBe(true);
     expect(shouldRetryTipRemountSiblingMeasure(2, 2, 2)).toBe(false);
     expect(shouldRetryTipRemountSiblingMeasure(1, 1, 0)).toBe(false);

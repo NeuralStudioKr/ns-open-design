@@ -31,6 +31,7 @@ import {
   shouldArmTipRemountChromeUnlockPointerGate,
   shouldDisableManualEditChromeForTipRemountUnlockGate,
   shouldReuseLastHostRectOnTipRemountMeasureMiss,
+  shouldClearTipRemountLastHostRectCache,
   shouldCatchUpHostMetricsWhenDeckNudgeRemasureThrottled,
   shouldRetryTipRemountSiblingMeasure,
   shouldSkipOdEditTargetsIdentityMixedReseedDuringPostExitAbsorb,
@@ -121,19 +122,29 @@ describe('manual-edit tip remount smoke (500/501/506)', () => {
     expect(fileViewer).toContain('shouldInvalidateDeferredTipRemountGeometryOnImmediateApply');
   });
 
-  it('gates chrome until pointerup after unlock (520)', () => {
+  it('gates chrome until pointerup after unlock (520/522)', () => {
     expect(shouldArmTipRemountChromeUnlockPointerGate(true, false, true)).toBe(true);
+    expect(shouldArmTipRemountChromeUnlockPointerGate(true, false, false, true)).toBe(true);
     expect(shouldDisableManualEditChromeForTipRemountUnlockGate(false, true)).toBe(true);
     expect(fileViewer).toContain('shouldArmTipRemountChromeUnlockPointerGate');
     expect(fileViewer).toContain('shouldDisableManualEditChromeForTipRemountUnlockGate');
     expect(fileViewer).toContain('manualEditTipChromeUnlockPointerGate');
+    expect(fileViewer).toContain('manualEditPointerButtonsDownRef');
     expect(fileViewer).toContain('releaseTipRemountChromeSuppress');
   });
 
-  it('reuses last host rect on tip remount measure miss (521)', () => {
+  it('reuses last host rect on tip remount measure miss (521/523)', () => {
     expect(shouldReuseLastHostRectOnTipRemountMeasureMiss(true, false, true)).toBe(true);
     expect(fileViewer).toContain('shouldReuseLastHostRectOnTipRemountMeasureMiss');
     expect(fileViewer).toContain('manualEditTipLastHostRectByIdRef');
+    expect(fileViewer).toContain('resolveTipRemountHostPaintRect');
+  });
+
+  it('clears tip last-good host rect cache when session idle (524)', () => {
+    expect(shouldClearTipRemountLastHostRectCache(false, false, false)).toBe(true);
+    expect(shouldClearTipRemountLastHostRectCache(false, true, false)).toBe(false);
+    expect(fileViewer).toContain('shouldClearTipRemountLastHostRectCache');
+    expect(fileViewer).toContain('maybeClearTipRemountLastHostRectCache');
   });
 
   it('catch-up host metrics when follow remasure is throttled (517)', () => {
