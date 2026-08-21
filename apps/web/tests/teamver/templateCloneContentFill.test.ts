@@ -53,8 +53,9 @@ describe('templateCloneContentFill', () => {
     expect(seed).toMatch(/Slide count THIS TURN/i);
     expect(seed).toMatch(/default 3-slide outline/i);
     expect(seed).toMatch(/Named motif cue/i);
-    expect(seed).toMatch(/Motif CSS|kit Motif|deco-pill|Decorations CSS/i);
+    expect(seed).toMatch(/compact template-identifying motif|kit motif family|deco-pill|Decorations CSS/i);
     expect(seed).toMatch(/generic CSS circles/i);
+    expect(seed).toMatch(/do not omit recognizable kit identity/i);
     expect(seed).toMatch(/Full-bleed surface/i);
     expect(seed).toMatch(/white bands at top\/bottom|white top\/bottom bands/i);
     expect(seed).toMatch(/NEVER "수정 반영 중"/);
@@ -81,7 +82,8 @@ describe('templateCloneContentFill', () => {
     );
     expect(seed).toMatch(/close exactly 3 complete body-first slides/i);
     expect(seed).not.toMatch(/persist rejects 1–2/i);
-    expect(seed).toMatch(/Motif SVG is NOT required this turn/i);
+    expect(seed).toMatch(/large SVG sprites|full Motif sprite dumps/i);
+    expect(seed).toMatch(/compact template-identifying motif\/deco cues/i);
   });
 
   it('derives explicit slide counts from the visible user request when no UI hint is present', () => {
@@ -332,7 +334,7 @@ describe('templateCloneContentFill', () => {
     expect(continued).toContain(TEMPLATE_CLONE_CONTENT_FILL_MARKER);
     expect(continued).toContain(TEMPLATE_CLONE_CONTENT_FILL_TURN_MARKER);
     expect(continued).toMatch(/NEVER "수정 반영 중"/);
-    expect(continued).toMatch(/kit Motif vocabulary|Motif CSS|ABANDON any Motif/);
+    expect(continued).toMatch(/kit motif vocabulary|compact existing CSS classes|ABANDON any large Motif/i);
     expect(continued).toMatch(/body-first/i);
     expect(continued).not.toContain('[Existing deck edit]');
     expect(continued).toMatch(/이전 응답이 끊겼습니다/);

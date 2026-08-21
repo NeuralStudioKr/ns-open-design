@@ -43,6 +43,17 @@
 - [x] `resolveGalleryOdMode` — html-ppt identity가 `html`보다 우선, mode 소문자 정규화
 - [x] PluginPreviewHero isolation → `data-od-cover="deck"` 1920 `cqw`
 
+### 1.00 2026-08-21 — Motif 생략 방지와 SVG 덤프 방지를 분리
+
+현재 시점 기준 판단: Daisy Days / Capsule / Studio 계열에서 “템플릿 대표 SVG·CSS·도형을 못 쓴다”는 증상은 모델이 기존 `Motif SVG is NOT required` / `Motif <svg> 금지` 문구를 **대표 장식 전체 생략 허용**으로 해석할 여지가 있었기 때문이다. 실제 목표는 full `example.html` / 대형 SVG sprite / `<head>` 선두 덤프를 막는 것이지, 템플릿 정체성 자체를 빼는 것이 아니다.
+
+구현 현황:
+
+- [x] Clone content-fill hard rules를 “large/full Motif sprite dump 금지”로 좁힘
+- [x] kit가 제공하는 lightweight motif/deco cue는 slide별 1–2개 사용하도록 명시
+- [x] selected-template guard도 동일 정책으로 정렬 — 명시 템플릿 선택 시 Neutral/default로 빠지지 않도록 유지
+- [x] 회귀 테스트: `templateCloneContentFill.test.ts`, `selected-deck-template.test.ts`
+
 ### 0.98 2026-08-21 — 루트 갤러리 템플릿 썸네일 1920 캔버스 스케일
 
 커버 isolation 이후 루트 community 갤러리의 360% iframe 레시피가 1920×1080 캔버스를 좌상단 crop 했다. 피커와 같은 `100cqw / 1920` 스케일로 맞추고, mode 누락 html-ppt도 `data-od-mode="deck"`을 유지한다.

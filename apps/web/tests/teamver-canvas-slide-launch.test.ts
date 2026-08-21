@@ -768,7 +768,8 @@ describe("canvasSlideLaunch", () => {
     expect(fillSrc).toContain("`<head>` is FORBIDDEN on this fill turn");
     expect(fillSrc).toContain("first 800 characters after `<artifact`");
     expect(fillSrc).toContain("close exactly 3 complete body-first slides");
-    expect(fillSrc).toContain("Motif SVG is NOT required this turn");
+    expect(fillSrc).toContain("large SVG sprites this turn");
+    expect(fillSrc).toContain("compact template-identifying motif/deco cues");
     expect(projectView).not.toMatch(/lastResortTitle:\s*[\s\S]{0,120}'초안'/);
     expect(fillSrc).toContain("SLIDE_DECK_CONTENT_EXPANSION_INSTRUCTION");
     expect(fillSrc).toContain("BRIEF/TOPIC");

@@ -70,13 +70,18 @@ export function historyHasTemplateCloneContentFill(
  * No-op when the prompt already carries a fill marker (first seed or prior stamp).
  */
 const TEMPLATE_CLONE_FILL_SVG_ABANDON =
-  'ABANDON any Motif `<svg>` started BEFORE the cover title (or any Motif SVG this turn). Restart body-first with `<h1>` then lead `<p>`. Motif SVG is NOT required — official Motif is merged after save. Optional tiny kit Motif CSS classes AFTER title are OK. Keep ~56–80px slide padding. Never invent generic CSS circles / tiny corner flowers.';
+  'ABANDON any large Motif `<svg>` started BEFORE the cover title. Restart body-first with `<h1>` then lead `<p>`. Do not dump full SVG/style sprites, but DO reuse the kit motif vocabulary after title copy: compact existing CSS classes, small complete inline motifs, or template deco snippets from the visual kit. Keep ~56–80px slide padding. Never invent generic CSS circles / tiny corner flowers.';
 
 export function ensureTemplateCloneContentFillContinuePrompt(prompt: string): string {
   const trimmed = String(prompt ?? '').trim();
   if (!trimmed) return trimmed;
   if (isTemplateCloneContentFillPrompt(trimmed)) {
-    if (trimmed.includes('ABANDON any Motif') || trimmed.includes('kit Motif vocabulary')) return trimmed;
+    if (
+      trimmed.includes('ABANDON any Motif')
+      || trimmed.includes('ABANDON any large Motif')
+      || trimmed.includes('kit Motif vocabulary')
+      || trimmed.includes('kit motif vocabulary')
+    ) return trimmed;
     return `${trimmed}\n\n${TEMPLATE_CLONE_FILL_SVG_ABANDON}`;
   }
   return [
@@ -239,11 +244,11 @@ export function templateCloneContentFillHardRules(): string[] {
     '- Strict body-first contract: start the artifact body exactly like `<!doctype html><html lang="ko"><body><section class="slide" ...>`.',
     '- `<head>` is FORBIDDEN on this fill turn. Do not emit `<head>`, `<title>`, meta tags, or a style prelude before slide 1.',
     '- The first 800 characters after `<artifact` MUST include `<body` and one complete `<section class="slide">` with real topical copy (cover title + lead).',
-    '- Slide count THIS TURN: honor an explicit small count (1–2) if the user asked for it. Otherwise close exactly 3 complete body-first slides and `</html></artifact>`. Hidden top-up appends the rest of the user request (5–6 / 8 / 12…). Never spend this turn on `<head>` or Motif SVG. Do not stop after a single cover.',
-    '- Official look/Motif CSS/SVG is merged after save. Do not stream `<head>`, a full example.html stylesheet, or Motif `<svg>` this turn.',
+    '- Slide count THIS TURN: honor an explicit small count (1–2) if the user asked for it. Otherwise close exactly 3 complete body-first slides and `</html></artifact>`. Hidden top-up appends the rest of the user request (5–6 / 8 / 12…). Never spend this turn on `<head>` or full Motif sprite dumps. Do not stop after a single cover.',
+    '- Official look/Motif CSS/SVG is merged after save. Do not stream `<head>`, a full example.html stylesheet, or large SVG sprites this turn. Still include 1–2 compact template-identifying motif/deco cues per slide when the visual kit provides them.',
     '- If the brief is only a topic, use this default 3-slide outline: cover, why it matters / key concepts, next steps. Adapt labels to the topic and audience.',
-    '- Motif vocabulary OVERRIDE: Motif SVG is NOT required this turn (official Motif CSS/SVG is merged after save). Title-first always. Optional kit Motif CSS classes AFTER cover `<h1>`/`<h2>` + lead are OK if they stay tiny. Keep slide padding (~56–80px) and put titles in normal flow (not under absolute Motif corners). FORBIDDEN this turn: Motif `<svg>`, multi-KB sprite dumps, inventing generic CSS circles / tiny corner dots / 12–48px flower SVGs / emoji daisies, Capsule coral pills when the kit Motif is petals/flowers/blobs/pins/pixel/scanlines, empty `.deco` shells, Motif `<svg>` before title copy. If you already started an SVG-before-title dump, abandon it and restart with `<h1>`.',
-    '- Named motif cue: do not invent a different motif family. Prefer finishing 3 titled slides over drawing Daisy/Capsule/Terminal ornaments this turn — persist paints official Motif after save.',
+    '- Motif vocabulary OVERRIDE: Title-first always. Use the selected kit motif family after cover `<h1>`/`<h2>` + lead: compact existing classes, small complete inline snippets, or deco HTML from the kit. Keep slide padding (~56–80px) and put titles in normal flow (not under absolute Motif corners). FORBIDDEN this turn: Motif `<svg>` before title copy, multi-KB sprite dumps, inventing generic CSS circles / tiny corner dots / fake 12–48px flower SVGs / emoji daisies, Capsule coral pills when the kit Motif is petals/flowers/blobs/pins/pixel/scanlines, empty `.deco` shells. If you already started an SVG-before-title dump, abandon it and restart with `<h1>`.',
+    '- Named motif cue: do not invent a different motif family and do not omit recognizable kit identity entirely. Finish 3 titled slides first, but each slide should carry at least one lightweight kit-specific motif/deco cue when the visual kit exposes one.',
     '- Layout OVERRIDE: reuse capped Layout CSS + scaffold roles when present. FORBIDDEN: flattening every slide into one centered flex title column when the kit ships grids/splits/cards.',
     '- Full-bleed surface: bind kit Slide surface hex on `html`/`body` AND every `<section class="slide" style="…background:<kit surface>…">` edge-to-edge for the full 1920×1080 canvas. Prefer the kit identity surface (e.g. `--hc-bg` / cream / paper) — never substitute Neutral white/`#0f172a` when the kit names a surface. FORBIDDEN: white/default outer slide with an inner cream "paper" panel that leaves white bands at top/bottom. White title cards ON cream paper are OK.',
     '- Keep `<style>` very short (kit tokens + fonts only, ideally under ~1KB) and place it after slide 1 or omit it in favor of inline styles. Never dump the whole template stylesheet.',

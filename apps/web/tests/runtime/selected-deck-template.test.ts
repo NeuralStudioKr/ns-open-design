@@ -149,6 +149,8 @@ describe('selected-deck-template runtime helpers', () => {
     expect(wrapped).toMatch(/TOPIC to research/);
     expect(wrapped).toMatch(/echoes the prompt/);
     expect(wrapped).toContain('kit Motif vocabulary');
+    expect(wrapped).toContain('lightweight template-identifying Motif/deco cues');
+    expect(wrapped).toContain('never omit kit identity');
     expect(wrapped).toMatch(/never invent generic(?: CSS)? circles/i);
     expect(wrapped).toMatch(/never open Motif `<svg>` before cover (?:copy|title)/i);
   });
