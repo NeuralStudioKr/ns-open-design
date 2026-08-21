@@ -32,6 +32,22 @@
 | scaffold로 갑자기 바꾸면? | **안 됨.** kit hard cutover 금지. full HTML scaffold도 기본 inject 하지 않음 |
 | 1장짜리 템플릿 결과가 저장되는가? | **제품 경로는 첫 fill 3장.** 잘리면 제목 있는 1장은 저장하고 top-up이 덧붙인다. 제목 없는 빈 셸만 미완성으로 차단. 사용자가 1장을 명시한 경우도 허용 |
 
+### 0.79 2026-08-21 — 카탈로그 썸네일 전 템플릿 고립
+
+§0.77 Pink Script 고립만으로는 Pitch/Grove/Block Frame/Creative Mode 등에서 카드가 희거나 비어 있다. 썸네일은 JS를 안 돌리므로 `.slide { opacity:0|display:none }`, `[data-anim]`, `deck-stage` + `class="s1"` 방언이 커버를 숨긴다.
+
+**수정:**
+- `stampIsolatedCoverSlideVisible` — 남은 커버에 `active` / `is-active` / `data-deck-active`
+- 호스트 `.presentation` `.deck` `#deck` `.slides-container` `.slide-deck` `.stage` `deck-stage` 를 1920×1080 블록으로
+- `[data-anim]` 강제 표시
+- `section|main|article` 추출. nav-dot `div[data-slide]`는 제외
+
+구현 현황:
+
+- [x] official html-ppt-* 전수 커버 1장 + 스탬프 red spec
+- [x] display:none / data-anim / creative-mode 방언 fixture
+- [x] Pink Script 기존 게이트 유지
+
 ### 0.77 2026-08-21 — Pink Script 카탈로그 썸네일 흰 화면
 
 `Html Ppt Zhangzara Pink Script` 카드/히어로 썸네일이 하얗다. PreviewModal 2장 흰 화면(§0.68)과 별개 — 카탈로그 `example.html`을 작은 iframe에 그대로 넣던 경로.

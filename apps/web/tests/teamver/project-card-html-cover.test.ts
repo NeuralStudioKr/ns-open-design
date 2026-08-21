@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -11,6 +11,7 @@ import {
   pagePreviewSrcDoc,
   buildHtmlCoverSrcDoc,
   pluginCatalogPreviewSrcDoc,
+  stampIsolatedCoverSlideVisible,
 } from "../../src/teamver/htmlCoverSrcDoc";
 
 const repoRoot = resolve(import.meta.dirname, "../../../..");
@@ -251,9 +252,86 @@ describe("ProjectCardHtmlCover srcDoc builders", () => {
     expect(thumb).toContain("After");
     expect(thumb).toContain("Hours");
     expect(thumb).toContain('id="od-deck-card-preview"');
-    expect(thumb).toMatch(/deck-stage\s*\{/);
+    expect(thumb).toMatch(/deck-stage,/);
     expect(thumb).not.toContain("deck-stage.js");
     expect(thumb).not.toContain("The Index");
     expect(thumb).toContain("<base href=");
+  });
+
+  it("stamps the isolated cover so inactive-only presenter CSS still paints", () => {
+    const html = `<html><body>
+<section class="slide" data-title="Cover"><h1>Pitch</h1></section>
+<section class="slide" data-title="Agenda"><h1>Agenda</h1></section>
+</body></html>`;
+    const stamped = stampIsolatedCoverSlideVisible(isolateFirstDeckSlideHtml(html));
+    expect(stamped).toMatch(/(?:^|[\s"'])active(?:[\s"']|$)/);
+    expect(stamped).toMatch(/(?:^|[\s"'])is-active(?:[\s"']|$)/);
+    expect(stamped).toContain('data-deck-active="1"');
+    expect(stamped).toContain("Pitch");
+    expect(stamped).not.toContain("Agenda");
+  });
+
+  it("reveals display:none + data-anim dialects used by non-Pink templates", () => {
+    const blockFrame = `<html><head><style>
+.slide { display:none; opacity:0 }
+.slide.active { display:flex; opacity:1 }
+[data-anim] { opacity:0 }
+.slide.is-active [data-anim] { opacity:1 }
+</style></head><body>
+<div class="slides-container">
+  <section class="slide"><h1>Block Cover</h1><p data-anim="fade-up">Lead</p></section>
+  <section class="slide"><h1>Later Bleed</h1></section>
+</div>
+</body></html>`;
+    const thumb = pluginCatalogPreviewSrcDoc(blockFrame, "/api/plugins/example-html-ppt-block/preview");
+    expect(thumb).toContain("Block Cover");
+    expect(thumb).toContain("Lead");
+    expect(thumb).not.toContain("Later Bleed");
+    expect(thumb).toContain('data-deck-active="1"');
+    expect(thumb).toMatch(/(?:^|[\s"'])active(?:[\s"']|$)/);
+    expect(thumb).toMatch(/(?:^|[\s"'])is-active(?:[\s"']|$)/);
+    expect(thumb).toContain(".slides-container");
+    expect(thumb).toContain("[data-anim]");
+  });
+
+  it("isolates creative-mode sections that are not class=slide", () => {
+    const html = `<html><body>
+<deck-stage>
+  <section class="s1" data-screen-label="01 Title"><h1>Creative Cover</h1></section>
+  <section class="s2" data-screen-label="02 Agenda"><h1>Creative Later</h1></section>
+</deck-stage>
+<script src="assets/deck-stage.js"></script>
+</body></html>`;
+    expect(htmlLooksLikeMultiSlideDeck(html)).toBe(true);
+    const thumb = pluginCatalogPreviewSrcDoc(html, "/api/plugins/example-html-ppt-creative/preview");
+    expect(thumb).toContain("Creative Cover");
+    expect(thumb).not.toContain("Creative Later");
+    expect(thumb).not.toContain("deck-stage.js");
+    expect(thumb).toContain('data-deck-active="1"');
+    expect(extractCoverSlideSections(thumb)).toHaveLength(1);
+  });
+
+  it("isolates every official html-ppt catalog thumb to one stamped cover", () => {
+    const examplesDir = resolve(repoRoot, "plugins/_official/examples");
+    const dirs = readdirSync(examplesDir).filter((name) => name.startsWith("html-ppt-"));
+    expect(dirs.length).toBeGreaterThan(20);
+    const failures: string[] = [];
+    for (const dir of dirs) {
+      const html = readFileSync(resolve(examplesDir, dir, "example.html"), "utf8");
+      const slides = extractCoverSlideSections(html);
+      if (slides.length < 2) continue;
+      const thumb = pluginCatalogPreviewSrcDoc(html, `/api/plugins/example-${dir}/preview`);
+      const remaining = extractCoverSlideSections(thumb);
+      const coverOpen = remaining[0]?.openTag ?? "";
+      const problems: string[] = [];
+      if (!thumb.includes('id="od-deck-card-preview"')) problems.push("missing cover css");
+      if (/deck-stage\.js/i.test(thumb)) problems.push("kept deck-stage.js");
+      if (remaining.length !== 1) problems.push(`remaining=${remaining.length}`);
+      if (!/\bdata-deck-active\b/i.test(coverOpen)) problems.push("cover not stamped");
+      if (!/(?:^|[\s"'])active(?:[\s"']|$)/i.test(coverOpen)) problems.push("missing active");
+      if (!/(?:^|[\s"'])is-active(?:[\s"']|$)/i.test(coverOpen)) problems.push("missing is-active");
+      if (problems.length) failures.push(`${dir}: ${problems.join("; ")}`);
+    }
+    expect(failures).toEqual([]);
   });
 });

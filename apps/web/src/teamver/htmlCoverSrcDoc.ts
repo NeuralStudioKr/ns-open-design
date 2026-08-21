@@ -29,7 +29,7 @@ export const HTML_COVER_CANVAS_HEIGHT = 1080;
 /** Opening-tag attrs that may contain `>` inside quotes (style/content). */
 const TAG_OPEN_ATTRS_RE = String.raw`(?:[^>"']|"[^"]*"|'[^']*')*`;
 const COVER_SLIDE_OPEN_RE = new RegExp(
-  String.raw`<(section|div)\b(${TAG_OPEN_ATTRS_RE})>`,
+  String.raw`<(section|div|main|article)\b(${TAG_OPEN_ATTRS_RE})>`,
   "gi",
 );
 
@@ -106,7 +106,8 @@ export function deckPreviewSrcDoc(
   // slides. Absolute-stacked + manually moved children then bleed into the
   // first-slide thumb (home/designs card covers).
   const source = options?.alreadyHealed ? html : healCoverHtml(html);
-  const withoutScripts = stripHtmlScripts(isolateFirstDeckSlideHtml(source));
+  const isolated = stampIsolatedCoverSlideVisible(isolateFirstDeckSlideHtml(source));
+  const withoutScripts = stripHtmlScripts(isolated);
   const style = `<style id="od-deck-card-preview">
     html,
     body {
@@ -119,37 +120,67 @@ export function deckPreviewSrcDoc(
       display: block !important;
       scroll-snap-type: none !important;
     }
-    /* Undefined <deck-stage> is display:inline. Without the CE stylesheet
-       the cover slide would not fill the 16:9 thumb. */
-    deck-stage {
+    /* Undefined <deck-stage> is display:inline. Other hosts are 100vw/100vh
+       scroll rows — both collapse or letterbox in a catalog iframe unless
+       the cover host is a fixed 16:9 block. Do not include .stage: Pink
+       Script uses that class for an inner title wrap. */
+    deck-stage,
+    .presentation,
+    .deck,
+    #deck,
+    .deck-shell,
+    .slides-container,
+    .slide-deck {
       display: block !important;
       position: relative !important;
       width: ${HTML_COVER_CANVAS_WIDTH}px !important;
       height: ${HTML_COVER_CANVAS_HEIGHT}px !important;
+      max-width: none !important;
+      max-height: none !important;
+      overflow: hidden !important;
     }
     .slide,
+    .slide-frame,
+    section.slide,
+    div.slide,
+    article.slide,
+    main.slide,
     section[data-slide],
     section[data-slide-index],
-    section[data-screen-label] {
+    section[data-screen-label],
+    section[data-label],
+    [data-deck-active] {
       position: absolute !important;
       inset: 0 !important;
       width: ${HTML_COVER_CANVAS_WIDTH}px !important;
       height: ${HTML_COVER_CANVAS_HEIGHT}px !important;
       flex: none !important;
       scroll-snap-align: none !important;
-      /* html-ppt / presenter CSS hides non-active slides with opacity:0.
-         Isolation already dropped later slides — the remaining cover must paint. */
+      /* Presenter CSS hides inactive slides (opacity:0 / display:none).
+         Isolation dropped later slides — the stamped cover must paint. */
       opacity: 1 !important;
       visibility: visible !important;
       pointer-events: none !important;
       transform: none !important;
     }
+    /* Grove / Broadside / Mat keep [data-anim] at opacity:0 until JS
+       adds .is-active. Catalog thumbs never run that script. */
+    [data-deck-active] [data-anim],
+    .slide.active [data-anim],
+    .slide.is-active [data-anim] {
+      opacity: 1 !important;
+      visibility: visible !important;
+      transform: none !important;
+      animation: none !important;
+    }
     /* Backup if isolation missed a dialect — sibling combinator: :first-of-type
        hides the real first .slide when a preceding <section> steals it. */
     .slide ~ .slide,
+    .slide-frame ~ .slide-frame,
     section[data-slide] ~ section[data-slide],
     section[data-slide-index] ~ section[data-slide-index],
     section[data-screen-label] ~ section[data-screen-label],
+    section[data-label] ~ section[data-label],
     .deck-counter,
     .deck-controls,
     .deck-hint,
@@ -187,13 +218,29 @@ export function deckPreviewSrcDoc(
   // leftovers (nav chrome, non-.slide sections).
   const trail = `<style id="od-deck-card-preview-trail">
     .slide ~ .slide,
+    .slide-frame ~ .slide-frame,
     section[data-slide] ~ section[data-slide],
     section[data-slide-index] ~ section[data-slide-index],
-    section[data-screen-label] ~ section[data-screen-label] {
+    section[data-screen-label] ~ section[data-screen-label],
+    section[data-label] ~ section[data-label] {
       display: none !important;
       visibility: hidden !important;
       content-visibility: hidden !important;
       pointer-events: none !important;
+    }
+    [data-deck-active],
+    .slide.active,
+    .slide.is-active {
+      opacity: 1 !important;
+      visibility: visible !important;
+    }
+    [data-deck-active] [data-anim],
+    .slide.active [data-anim],
+    .slide.is-active [data-anim] {
+      opacity: 1 !important;
+      visibility: visible !important;
+      transform: none !important;
+      animation: none !important;
     }
   </style>`;
   return injectBefore(
@@ -207,8 +254,8 @@ export function deckPreviewSrcDoc(
  * Drop every top-level slide-like block after the first so card thumbs cannot
  * paint later-slide absolute/manual-edit chrome over the cover.
  *
- * Dialects: `<section|div class="slide">`, `section[data-slide]`,
- * `section[data-slide-index]`, `section[data-screen-label]`. Nested slides
+ * Dialects: `<section|div|main|article class="slide">`, `[data-slide]`,
+ * `[data-slide-index]`, `[data-screen-label]`, `[data-label]`. Nested slides
  * inside the first slide are kept (not treated as later siblings).
  */
 export function isolateFirstDeckSlideHtml(html: string): string {
@@ -224,6 +271,32 @@ export function isolateFirstDeckSlideHtml(html: string): string {
 }
 
 /**
+ * Catalog thumbs are static — presenter / deck-stage JS never runs.
+ * Stamp the remaining cover so author CSS that paints only `.active`,
+ * `.is-active`, or `[data-deck-active]` cannot blank the iframe.
+ */
+export function stampIsolatedCoverSlideVisible(html: string): string {
+  const first = extractCoverSlideSections(html)[0];
+  if (!first) return html;
+  let next = first.openTag;
+  if (!/\bclass\s*=/i.test(next)) {
+    next = next.replace(/>$/, ' class="active is-active">');
+  } else {
+    if (!/(?:^|[\s"'])active(?:[\s"']|$)/i.test(next)) {
+      next = next.replace(/\bclass\s*=\s*(["'])/i, "class=$1active ");
+    }
+    if (!/(?:^|[\s"'])is-active(?:[\s"']|$)/i.test(next)) {
+      next = next.replace(/\bclass\s*=\s*(["'])/i, "class=$1is-active ");
+    }
+  }
+  if (!/\bdata-deck-active\b/i.test(next)) {
+    next = next.replace(/>$/, ' data-deck-active="1">');
+  }
+  if (next === first.openTag) return html;
+  return `${html.slice(0, first.start)}${next}${html.slice(first.start + first.openTag.length)}`;
+}
+
+/**
  * Top-level slide-like blocks for cover isolation (outermost only).
  */
 export function extractCoverSlideSections(html: string): CoverSlideSection[] {
@@ -232,6 +305,8 @@ export function extractCoverSlideSections(html: string): CoverSlideSection[] {
   const closeByTag = {
     section: /<\/section\s*>/gi,
     div: /<\/div\s*>/gi,
+    main: /<\/main\s*>/gi,
+    article: /<\/article\s*>/gi,
   } as const;
 
   let searchFrom = 0;
@@ -293,19 +368,21 @@ export function extractCoverSlideSections(html: string): CoverSlideSection[] {
 }
 
 function isCoverSlideOpen(tag: string, attrs: string): boolean {
-  if (hasSlideClass(attrs)) return true;
-  if (tag !== "section") return false;
+  if (hasClassToken(attrs, "slide") || hasClassToken(attrs, "slide-frame")) return true;
+  // Nav dots reuse data-slide on <div class="nav-dot"> — never treat those as slides.
+  if (tag !== "section" && tag !== "main" && tag !== "article") return false;
   return (
     /\bdata-slide(?:-index)?\s*=/i.test(attrs)
     || /\bdata-screen-label\s*=/i.test(attrs)
+    || /\bdata-label\s*=/i.test(attrs)
   );
 }
 
-function hasSlideClass(attrs: string): boolean {
+function hasClassToken(attrs: string, token: string): boolean {
   const match = /\bclass\s*=\s*(?:"([^"]*)"|'([^']*)'|(\S+))/i.exec(attrs);
   if (!match) return false;
   const value = match[1] ?? match[2] ?? match[3] ?? "";
-  return /(^|\s)slide(\s|$)/i.test(value);
+  return new RegExp(`(^|\\s)${token}(\\s|$)`, "i").test(value);
 }
 
 function injectPreviewHead(source: string, sourceUrl: string, style: string): string {
