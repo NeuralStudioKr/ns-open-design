@@ -127,6 +127,8 @@ describe("internalAgentMarkup", () => {
           streaming,
         }),
       ).toBe("초안.");
+      const tagInv = `.tag.inv{border-color:rgba(28,28,28,0.35);color:\n#1c1c1c}`;
+      expect(sanitizeAssistantProseForDisplay(`초안.\n${tagInv}`, { streaming })).toBe("초안.");
     }
   });
 

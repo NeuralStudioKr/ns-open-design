@@ -223,6 +223,17 @@ describe("agent-prose-sanitize SSOT", () => {
     ).toBe("초안.");
   });
 
+  it("strips compound class CSS dumps like .tag.inv{border-color…}", () => {
+    const frag = `.tag.inv{border-color:rgba(28,28,28,0.35);color:\n#1c1c1c}`;
+    expect(sanitizeAssistantProseForDisplay(frag).trim()).toBe("");
+    expect(sanitizeAssistantProseForDisplay(`초안.\n${frag}`)).toBe("초안.");
+    expect(
+      sanitizeAssistantProseForDisplay(
+        `완료.\n.tag{padding:4px 10px;border:1px solid}\n.tag.inv{border-color:rgba(28,28,28,0.35);color:\n#1c1c1c}`,
+      ),
+    ).toBe("완료.");
+  });
+
   it("strips deck chrome family matrix (flex/grid/landmarks/img/closers/vars)", () => {
     expect(
       sanitizeAssistantProseForDisplay(

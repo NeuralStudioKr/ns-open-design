@@ -58,7 +58,9 @@ const DECK_ESCAPED_STYLE_ATTR_TAIL_RE =
 const DECK_HTML_ENTITY_TAG_TAIL_RE =
   /(?:\n|^)\s*&lt;\/?(?:span|div|section|style|svg|h[1-6]|p|button)\b[\s\S]*$/i;
 const DECK_BARE_CSS_MOTION_TAIL_RE =
-  /(?:\n|^)\s*(?:\.[\w-]+(?:::?(?:before|after))?\s*\{|animation\s*:[\s\S]*?(?:infinite|forwards|ease|linear)|transform-origin\s*:)[\s\S]*$/i;
+  /(?:\n|^)\s*(?:(?:\.[A-Za-z_-][\w-]*)+(?:::?(?:before|after))?\s*\{|animation\s*:[\s\S]*?(?:infinite|forwards|ease|linear)|transform-origin\s*:)[\s\S]*$/i;
+const DECK_CLASS_RULE_CSS_TAIL_RE =
+  /(?:\n|^)\s*(?:\.[A-Za-z_-][\w-]*){1,6}\s*\{[\s\S]*?(?:(?:border(?:-color|-radius|-width)?|color|padding|margin|background|font|display|opacity)\s*:|rgba?\(|hsla?\(|#[0-9A-Fa-f]{3,8})[\s\S]*$/i;
 const DECK_MATH_OR_FOREIGN_TAIL_RE =
   /<(?:math|foreignObject|mi|mo|mn|mrow)\b[\s\S]*$/i;
 const DECK_CHROME_LANDMARK_TAIL_RE =
@@ -96,7 +98,7 @@ const DECK_ORPHAN_MID_SVG_CSS_STYLE_TAIL_RE =
   /(?:^|\n)(?:(?:none|solid|inherit|round|butt|miter|bevel)\s*;\s*)?(?:(?:stroke(?:-[\w]+)?|fill|stroke-width|stroke-linecap|stroke-linejoin|stroke-miterlimit)\s*:[^;]*;?\s*){2,}[\s\S]*$/i;
 /** Stale-dist last pass for kit CSS at-rules contracts already strip. */
 const DECK_FRAMEWORK_CSS_TAIL_RE =
-  /(?:^|\n\n|\n)((?::root\s*\{|@(?:-webkit-)?(?:keyframes\s+[\w-]+|font-face)\s*\{|@(?:media|page|supports|layer)\b[^{]*\{|@import\s+(?:url\(|["'])|<style\b[^>]*>|(?:from|to|\d+%)\s*\{|(?:\.slide|(?:\.[A-Za-z_-][\w-]*|#[A-Za-z_-][\w-]*|h[1-6]|p|ul|li|body|section(?:\.[\w-]+)?)\s*\{))[\s\S]*)$/i;
+  /(?:^|\n\n|\n)((?::root\s*\{|@(?:-webkit-)?(?:keyframes\s+[\w-]+|font-face)\s*\{|@(?:media|page|supports|layer)\b[^{]*\{|@import\s+(?:url\(|["'])|<style\b[^>]*>|(?:from|to|\d+%)\s*\{|(?:\.slide|(?:(?:\.[A-Za-z_-][\w-]*)+|#[A-Za-z_-][\w-]*|h[1-6]|p|ul|li|body|section(?:\.[\w-]+)?)\s*\{))[\s\S]*)$/i;
 
 /**
  * Display-only last pass for Capsule motif pills / truncated slide HTML that
@@ -111,6 +113,7 @@ function looksLikeLeakedDeckFrameworkCss(tail: string): boolean {
     || /^\.slide\s*\{[\s\S]*/.test(tail.trim())
     || /\.deco-[\w-]+\s*\{/i.test(tail)
     || /\.cls-\d+\s*\{/i.test(tail)
+    || /(?:^|\n)\s*(?:\.[A-Za-z_-][\w-]*){1,6}\s*\{[\s\S]*(?:border(?:-color)?|color|padding|background|rgba?\(|#[0-9A-Fa-f]{3,8})/i.test(tail)
     || /@(?:keyframes|font-face|media|import|page|supports|layer)\b/i.test(tail)
     || /(?:^|\n)(?:from|to|\d+%)\s*\{[\s\S]*(?:transform|opacity|translate|rotate)/i.test(tail)
   );
@@ -177,6 +180,7 @@ function stripLeakedDeckMotifHtmlTail(input: string): string {
     DECK_ESCAPED_STYLE_ATTR_TAIL_RE,
     DECK_HTML_ENTITY_TAG_TAIL_RE,
     DECK_BARE_CSS_MOTION_TAIL_RE,
+    DECK_CLASS_RULE_CSS_TAIL_RE,
     DECK_MATH_OR_FOREIGN_TAIL_RE,
     DECK_CHROME_LANDMARK_TAIL_RE,
     DECK_ORPHAN_CLOSE_TAGS_TAIL_RE,

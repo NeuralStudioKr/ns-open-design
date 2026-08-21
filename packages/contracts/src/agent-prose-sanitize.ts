@@ -364,9 +364,15 @@ const DECK_ESCAPED_STYLE_ATTR_TAIL_RE =
 /** HTML-entity encoded deck tags (`&lt;span style=…&gt;`). */
 const DECK_HTML_ENTITY_TAG_TAIL_RE =
   /(?:\n|^)\s*&lt;\/?(?:span|div|section|style|svg|h[1-6]|p|button)\b[\s\S]*$/i;
-/** Bare CSS dumps: pseudo elements / animation shorthand without `{` opener match. */
+/** Bare CSS dumps: class rules (incl. `.tag.inv`), pseudo, animation shorthand. */
 const DECK_BARE_CSS_MOTION_TAIL_RE =
-  /(?:\n|^)\s*(?:\.[\w-]+(?:::?(?:before|after))?\s*\{|animation\s*:[\s\S]*?(?:infinite|forwards|ease|linear)|transform-origin\s*:)[\s\S]*$/i;
+  /(?:\n|^)\s*(?:(?:\.[A-Za-z_-][\w-]*)+(?:::?(?:before|after))?\s*\{|animation\s*:[\s\S]*?(?:infinite|forwards|ease|linear)|transform-origin\s*:)[\s\S]*$/i;
+/**
+ * Compound / utility class CSS rule dumps that are never chat prose
+ * (`.tag.inv{border-color:rgba(…);color:\n#1c1c1c}`).
+ */
+const DECK_CLASS_RULE_CSS_TAIL_RE =
+  /(?:\n|^)\s*(?:\.[A-Za-z_-][\w-]*){1,6}\s*\{[\s\S]*?(?:(?:border(?:-color|-radius|-width)?|color|padding|margin|background|font|display|opacity)\s*:|rgba?\(|hsla?\(|#[0-9A-Fa-f]{3,8})[\s\S]*$/i;
 /** MathML / foreignObject leftovers. */
 const DECK_MATH_OR_FOREIGN_TAIL_RE =
   /<(?:math|foreignObject|mi|mo|mn|mrow)\b[\s\S]*$/i;
@@ -523,6 +529,7 @@ export function stripTrailingDeckHtmlMarkupLeak(input: string): string {
     DECK_ESCAPED_STYLE_ATTR_TAIL_RE,
     DECK_HTML_ENTITY_TAG_TAIL_RE,
     DECK_BARE_CSS_MOTION_TAIL_RE,
+    DECK_CLASS_RULE_CSS_TAIL_RE,
     DECK_MATH_OR_FOREIGN_TAIL_RE,
     DECK_CHROME_LANDMARK_TAIL_RE,
     DECK_ORPHAN_CLOSE_TAGS_TAIL_RE,
@@ -1898,7 +1905,7 @@ export function sanitizeAssistantProseForDisplay(
 /** Drop truncated deck stylesheet/CSS leaked into chat prose (mid-artifact abort). */
 export function stripTrailingDeckFrameworkCssLeak(input: string): string {
   if (!input) return input;
-  const match = /(?:^|\n\n|\n)((?::root\s*\{|@(?:-webkit-)?(?:keyframes\s+[\w-]+|font-face)\s*\{|@(?:media|page|supports|layer)\b[^{]*\{|@import\s+(?:url\(|["'])|<style\b[^>]*>|(?:from|to|\d+%)\s*\{|(?:\.slide|(?:\.[A-Za-z_-][\w-]*|#[A-Za-z_-][\w-]*|h[1-6]|p|ul|li|body|section(?:\.[\w-]+)?)\s*\{))[\s\S]*)$/i.exec(input);
+  const match = /(?:^|\n\n|\n)((?::root\s*\{|@(?:-webkit-)?(?:keyframes\s+[\w-]+|font-face)\s*\{|@(?:media|page|supports|layer)\b[^{]*\{|@import\s+(?:url\(|["'])|<style\b[^>]*>|(?:from|to|\d+%)\s*\{|(?:\.slide|(?:(?:\.[A-Za-z_-][\w-]*)+|#[A-Za-z_-][\w-]*|h[1-6]|p|ul|li|body|section(?:\.[\w-]+)?)\s*\{))[\s\S]*)$/i.exec(input);
   if (!match || match.index === undefined) return input;
   const tail = match[1] ?? "";
   const looksLikeDeckFramework =
@@ -1908,6 +1915,8 @@ export function stripTrailingDeckFrameworkCssLeak(input: string): string {
     || /\.deco-[\w-]+(?:\s*\{|::)/i.test(tail)
     || /(?:^|\n)\s*animation\s*:/i.test(tail)
     || /\.cls-\d+\s*\{/i.test(tail)
+    // Utility / compound class dumps (`.tag.inv{border-color:…}`)
+    || /(?:^|\n)\s*(?:\.[A-Za-z_-][\w-]*){1,6}\s*\{[\s\S]*(?:border(?:-color)?|color|padding|background|rgba?\(|#[0-9A-Fa-f]{3,8})/i.test(tail)
     || /@keyframes\s+[\w-]+\s*\{/i.test(tail)
     || /@font-face\b/i.test(tail)
     || /@media\b/i.test(tail)
