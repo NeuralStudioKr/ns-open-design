@@ -72,14 +72,31 @@ export function looksLikeDeckSlideHostAttrs(attrs: string): boolean {
   return hasFixedCanvasSizing(style) || hasViewportSlideSizing(style);
 }
 
+/** Index of the first page host — not slide-counter / slide-chrome. */
+export function indexOfFirstDeckSlideHost(html: string): number {
+  SLIDE_OPEN_RE.lastIndex = 0;
+  try {
+    let match: RegExpExecArray | null;
+    while ((match = SLIDE_OPEN_RE.exec(String(html ?? ''))) !== null) {
+      if (looksLikeDeckSlideHostAttrs(match[2] ?? '')) return match.index;
+    }
+    return -1;
+  } finally {
+    SLIDE_OPEN_RE.lastIndex = 0;
+  }
+}
+
 /** True when HTML contains at least one page host — not slide-counter / slide-chrome. */
 export function htmlHasDeckSlideHost(html: string): boolean {
-  SLIDE_OPEN_RE.lastIndex = 0;
-  let match: RegExpExecArray | null;
-  while ((match = SLIDE_OPEN_RE.exec(String(html ?? ''))) !== null) {
-    if (looksLikeDeckSlideHostAttrs(match[2] ?? '')) return true;
-  }
-  return false;
+  return indexOfFirstDeckSlideHost(html) >= 0;
+}
+
+/** Stream / emergency persist: real document or a page host, not chrome-only HTML. */
+export function htmlLooksLikeSlideDeliverableStream(text: string): boolean {
+  const source = String(text ?? '');
+  if (!source.trim()) return false;
+  if (/<!doctype\s+html|<html\b|<body\b|<artifact\b/i.test(source)) return true;
+  return htmlHasDeckSlideHost(source);
 }
 
 /** FileViewer / memory-preview: enable deck nav without treating chrome as a page. */

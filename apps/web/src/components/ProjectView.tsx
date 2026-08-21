@@ -155,6 +155,8 @@ import {
   composeSystemPrompt,
   deriveDeckCoverTitleFromBrief,
   healInstructionCopyCoverHeading,
+  htmlHasDeckSlideHost,
+  htmlLooksLikeSlideDeliverableStream,
   metadataForTeamverSlideOnlyPrompt,
   firstOfficialDeckTemplateId,
   pinDeckSlidesToFixedCanvas,
@@ -1932,9 +1934,7 @@ function elementPatchTargetHintsFromCommentAttachments(
 export function elementPatchBodyLooksLikeDeckPatch(body: string | null | undefined): boolean {
   const source = String(body ?? '');
   if (!source.trim()) return false;
-  return /<section\b[^>]*\bclass\s*=\s*(?:"[^"]*\bslide\b[^"]*"|'[^']*\bslide\b[^']*')/i.test(
-    source,
-  );
+  return htmlHasDeckSlideHost(source);
 }
 
 /**
@@ -2009,7 +2009,7 @@ export function isDeckPatchEmptyBody(body: string, reason: string): boolean {
 export function deckPatchBodyLooksLikeElementPatch(body: string | null | undefined): boolean {
   const source = String(body ?? '');
   if (!source.trim()) return false;
-  if (/<section\b[^>]*\bclass\s*=\s*(?:"[^"]*\bslide\b[^"]*"|'[^']*\bslide\b[^']*')/i.test(source)) {
+  if (htmlHasDeckSlideHost(source)) {
     return false;
   }
   // Allow ">" inside quoted attrs (dom:body > section… target-ids).
@@ -10033,8 +10033,7 @@ export function ProjectView({
               // a skeleton outline deck here — that used to mark junk as succeeded
               // and skip auto-continue. If salvage misses, fall through to retry.
               const streamLooksLikeHtmlDeliverable =
-                /<!doctype\s+html|<html\b|<body\b|<section\b[^>]*\bslide\b|<artifact\b/i
-                  .test(rawFinalText);
+                htmlLooksLikeSlideDeliverableStream(rawFinalText);
               if (
                 slideOnlyMvp
                 && !producedHtmlToOpen

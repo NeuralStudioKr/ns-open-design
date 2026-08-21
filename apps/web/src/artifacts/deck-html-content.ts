@@ -1,4 +1,7 @@
 import {
+  htmlHasDeckSlideHost,
+  htmlLooksLikeSlideDeliverableStream,
+  indexOfFirstDeckSlideHost,
   looksLikeDeckSlideHostAttrs,
   looksLikeInstructionCopy,
   looksLikeTemplateMarketingTitle,
@@ -169,15 +172,16 @@ export function deckArtifactStartsWithMotifSvgDump(html: string): boolean {
   return svgAt < headingAt;
 }
 
-const DECK_STREAM_OPEN_RE =
-  /<artifact\b|<!doctype\s+html|<html\b|<body\b|<(?:section|div)\b[^>]*(?:\bslide\b|data-slide)/i;
-
 function extractStreamedDeckHtml(text: string): string {
   const raw = String(text ?? "");
   const artifact = /<artifact\b[^>]*>/i.exec(raw);
   if (artifact && artifact.index != null) return raw.slice(artifact.index);
-  const doc = /<!doctype\s+html|<html\b|<body\b|<(?:section|div)\b[^>]*(?:\bslide\b|data-slide)/i.exec(raw);
-  if (doc && doc.index != null) return raw.slice(doc.index);
+  const doc = /<!doctype\s+html|<html\b|<body\b/i.exec(raw);
+  const hostAt = indexOfFirstDeckSlideHost(raw);
+  const starts = [doc?.index, hostAt >= 0 ? hostAt : undefined].filter(
+    (n): n is number => typeof n === "number" && n >= 0,
+  );
+  if (starts.length > 0) return raw.slice(Math.min(...starts));
   return raw;
 }
 
@@ -202,7 +206,7 @@ export function shouldAbortStreamForMotifSvgDump(options: {
   slideCountTopUp?: boolean;
 }): boolean {
   const text = String(options.streamedText ?? "");
-  if (!DECK_STREAM_OPEN_RE.test(text)) return false;
+  if (!htmlLooksLikeSlideDeliverableStream(text)) return false;
   const htmlish = extractStreamedDeckHtml(text);
   if (!deckArtifactStartsWithMotifSvgDump(htmlish)) return false;
   if (options.templateCloneContentFill || options.slideCountTopUp) return /<svg\b/i.test(htmlish);
@@ -212,7 +216,8 @@ export function shouldAbortStreamForMotifSvgDump(options: {
 const FILL_HEAD_KIT_DUMP_MIN_CHARS = 800;
 
 function htmlishHasSlideWithHeading(html: string): boolean {
-  return /<(?:section|div)\b[^>]*(?:\bslide\b|data-slide)[\s\S]{0,8000}<h[1-3]\b/i.test(html);
+  if (!htmlHasDeckSlideHost(html) || !/<h[1-3]\b/i.test(html)) return false;
+  return extractSlideHostBlocks(html).some((block) => /<h[1-3]\b/i.test(block.inner));
 }
 
 function firstHeadOrStyleIndex(html: string): number {
@@ -245,7 +250,7 @@ export function shouldAbortStreamForHeadOnlyKitDump(options: {
     return false;
   }
   const text = String(options.streamedText ?? "");
-  if (!DECK_STREAM_OPEN_RE.test(text)) return false;
+  if (!htmlLooksLikeSlideDeliverableStream(text)) return false;
   const htmlish = extractStreamedDeckHtml(text);
   const kitAt = firstHeadOrStyleIndex(htmlish);
   if (kitAt < 0) return false;

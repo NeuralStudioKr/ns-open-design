@@ -165,6 +165,20 @@ describe("deck-html-content", () => {
     expect(
       shouldAbortStreamForMotifSvgDump({
         streamedText:
+          '<div class="slide-counter">1 / 10</div><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 150 150">',
+        templateCloneContentFill: true,
+      }),
+    ).toBe(false);
+    expect(
+      shouldAbortStreamForMotifSvgDump({
+        streamedText:
+          '<section class="s1" data-screen-label="01 Cover"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 150 150">',
+        templateCloneContentFill: true,
+      }),
+    ).toBe(true);
+    expect(
+      shouldAbortStreamForMotifSvgDump({
+        streamedText:
           '<artifact type="deck"><section class="slide"><h1>Expo for Senior Engineers</h1>'
           + '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/></svg>',
         templateCloneContentFill: true,

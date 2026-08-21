@@ -7,6 +7,8 @@ import {
   DECK_FIXED_CANVAS_PIN_ATTR,
   htmlHasDeckSlideHost,
   htmlLooksLikeNavigableDeckPreview,
+  htmlLooksLikeSlideDeliverableStream,
+  indexOfFirstDeckSlideHost,
   looksLikeDeckSlideHostAttrs,
   pinDeckSlidesToFixedCanvas,
 } from '../src/html/deck-fixed-canvas.js';
@@ -222,5 +224,19 @@ describe('deck slide class tokens', () => {
     expect(htmlHasDeckSlideHost(
       '<section class="s1" data-screen-label="01 Cover">Title</section>',
     )).toBe(true);
+  });
+
+  it('does not treat chrome-only HTML as a slide deliverable stream', () => {
+    expect(htmlLooksLikeSlideDeliverableStream('')).toBe(false);
+    expect(htmlLooksLikeSlideDeliverableStream(
+      '<div class="slide-counter">1 / 10</div><section class="slide-chrome">Studio</section>',
+    )).toBe(false);
+    expect(htmlLooksLikeSlideDeliverableStream(
+      '<section class="s1" data-screen-label="01 Cover"><h1>Cover</h1></section>',
+    )).toBe(true);
+    expect(htmlLooksLikeSlideDeliverableStream('<!doctype html><html><body></body></html>')).toBe(true);
+    expect(indexOfFirstDeckSlideHost(
+      '<div class="slide-counter">1</div><section class="slide"><h1>A</h1></section>',
+    )).toBeGreaterThan(0);
   });
 });
