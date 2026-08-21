@@ -1,6 +1,8 @@
 /**
  * Tip remount chrome-release sequence walk (537) — mirrors soft-land absorb
- * sequence coverage for TIP_REMOUNT_CHROME_RELEASE_SEQUENCE.
+ * sequence coverage. After chrome-release, paint-sync and pointer-unlock are
+ * parallel tracks (540); this walk still exercises helpers in one list for
+ * readability but does not claim geom-epoch waits on post-unlock quiet.
  */
 import { describe, expect, it } from 'vitest';
 import {

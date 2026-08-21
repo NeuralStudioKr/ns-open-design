@@ -30,6 +30,8 @@ import {
   shouldLatchTipRemountPartialUnionMinSize,
   resolveTipRemountPartialUnionWithMinSizeLatch,
   shouldClearTipRemountPartialUnionMinSizeLatch,
+  tipRemountPartialUnionLatchMemberKey,
+  shouldInvalidateTipRemountPartialUnionLatchOnMembershipChange,
 } from '../edit-mode/manual-edit-freeze';
 import {
   RESIZE_HANDLES,
@@ -281,6 +283,8 @@ export function ManualEditMultiSelectOverlay({
   const dragRef = useRef<MultiSelectDragState | null>(null);
   /** Previous tip remount union — min-size latch while partial paint omit (532). */
   const tipRemountPartialUnionLatchRef = useRef<ManualEditRect | null>(null);
+  /** Membership fingerprint — invalidate latch across target-set changes (541). */
+  const tipRemountPartialUnionLatchMemberKeyRef = useRef<string | null>(null);
   const [gesturing, setGesturing] = useState(false);
   const [moving, setMoving] = useState(false);
   const [resizing, setResizing] = useState(false);
@@ -474,8 +478,17 @@ export function ManualEditMultiSelectOverlay({
   );
   const composeScale = gestureSnapScale ?? previewScale;
   const composeOffset = gestureSnapOffset ?? hostOffset;
+  const memberKey = tipRemountPartialUnionLatchMemberKey(targets.map((target) => target.id));
+  if (shouldInvalidateTipRemountPartialUnionLatchOnMembershipChange(
+    tipRemountPartialUnionLatchMemberKeyRef.current,
+    memberKey,
+  )) {
+    tipRemountPartialUnionLatchRef.current = null;
+  }
+  tipRemountPartialUnionLatchMemberKeyRef.current = memberKey || null;
   if (!stabilizePartialPaintUnion) {
     tipRemountPartialUnionLatchRef.current = null;
+    tipRemountPartialUnionLatchMemberKeyRef.current = null;
   }
   const unionResult = unionHostRect(
     targets,
@@ -489,7 +502,7 @@ export function ManualEditMultiSelectOverlay({
     tipRemountPartialUnionLatchRef.current,
   );
   const hostRect = unionResult.rect;
-  // Full paint / session end — drop expanded partial envelope (535).
+  // Full paint / zero paint / session end — drop expanded partial envelope (535/541).
   if (shouldClearTipRemountPartialUnionMinSizeLatch(
     stabilizePartialPaintUnion,
     targets.length,

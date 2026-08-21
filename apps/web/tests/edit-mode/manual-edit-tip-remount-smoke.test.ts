@@ -44,6 +44,9 @@ import {
   shouldLatchTipRemountPartialUnionMinSize,
   resolveTipRemountPartialUnionWithMinSizeLatch,
   shouldClearTipRemountPartialUnionMinSizeLatch,
+  tipRemountPartialUnionLatchMemberKey,
+  shouldInvalidateTipRemountPartialUnionLatchOnMembershipChange,
+  shouldReleaseTipRemountChromeViaPaintSyncOnGraceClear,
   shouldArmTipRemountPaintSyncHold,
   clearTipRemountPaintSyncHold,
   nextTipRemountPaintSyncHoldToken,
@@ -52,6 +55,9 @@ import {
   shouldFlushDeferredTipRemountGeomEpochAfterPaintSyncHold,
   TIP_REMOUNT_POST_PROTECT_SEQUENCE,
   TIP_REMOUNT_CHROME_RELEASE_SEQUENCE,
+  TIP_REMOUNT_CHROME_RELEASE_PREFIX,
+  TIP_REMOUNT_PAINT_SYNC_TRACK,
+  TIP_REMOUNT_POINTER_UNLOCK_TRACK,
   shouldCatchUpHostMetricsWhenDeckNudgeRemasureThrottled,
   shouldRetryTipRemountSiblingMeasure,
   shouldSkipOdEditTargetsIdentityMixedReseedDuringPostExitAbsorb,
@@ -238,6 +244,16 @@ describe('manual-edit tip remount smoke (500/501/506)', () => {
     expect(multiOverlay).toContain('shouldClearTipRemountPartialUnionMinSizeLatch');
   });
 
+  it('invalidates min-size latch on membership change or zero paint (541)', () => {
+    expect(shouldClearTipRemountPartialUnionMinSizeLatch(true, 3, 0)).toBe(true);
+    expect(shouldInvalidateTipRemountPartialUnionLatchOnMembershipChange(
+      tipRemountPartialUnionLatchMemberKey(['a', 'b']),
+      tipRemountPartialUnionLatchMemberKey(['a', 'c']),
+    )).toBe(true);
+    expect(multiOverlay).toContain('tipRemountPartialUnionLatchMemberKey');
+    expect(multiOverlay).toContain('shouldInvalidateTipRemountPartialUnionLatchOnMembershipChange');
+  });
+
   it('holds host paint trust for inert→interactive paint sync (530)', () => {
     expect(shouldArmTipRemountPaintSyncHold(true, false)).toBe(true);
     expect(shouldTrustTipRemountHostPaintDespiteComposedStale(false, true, true)).toBe(true);
@@ -264,22 +280,36 @@ describe('manual-edit tip remount smoke (500/501/506)', () => {
     expect(fileViewer).toContain('shouldDeferTipRemountGeomEpochBumpForPaintSync');
     expect(fileViewer).toContain('flushDeferredTipRemountGeomEpochAfterPaintSync');
     expect(fileViewer).toContain('chromeReleasePendingThisFrame');
+    expect(fileViewer).toContain('manualEditTipDeferredGeomEpochBumpRef.current = false');
   });
 
-  it('pins tip remount state-machine sequences (536)', () => {
+  it('pins tip remount paint vs pointer tracks after chrome-release (540)', () => {
     expect(TIP_REMOUNT_POST_PROTECT_SEQUENCE[0]).toBe('sticky-clear');
     expect(TIP_REMOUNT_POST_PROTECT_SEQUENCE.at(-1)).toBe('live');
-    expect(TIP_REMOUNT_CHROME_RELEASE_SEQUENCE).toContain('paint-sync-hold');
-    expect(TIP_REMOUNT_CHROME_RELEASE_SEQUENCE).toContain('post-unlock-quiet');
-    expect(TIP_REMOUNT_CHROME_RELEASE_SEQUENCE).toContain('geom-epoch-flush');
-    expect(TIP_REMOUNT_CHROME_RELEASE_SEQUENCE.indexOf('paint-sync-hold')).toBeLessThan(
-      TIP_REMOUNT_CHROME_RELEASE_SEQUENCE.indexOf('unlock-pointer-gate'),
+    expect([...TIP_REMOUNT_CHROME_RELEASE_PREFIX]).toEqual([
+      'chrome-suppress',
+      'fit-remasure',
+      'chrome-release',
+    ]);
+    expect(TIP_REMOUNT_PAINT_SYNC_TRACK.indexOf('paint-sync-hold')).toBeLessThan(
+      TIP_REMOUNT_PAINT_SYNC_TRACK.indexOf('geom-epoch-flush'),
     );
-    expect(TIP_REMOUNT_CHROME_RELEASE_SEQUENCE.indexOf('pointerup-deferred-flush')).toBeLessThan(
-      TIP_REMOUNT_CHROME_RELEASE_SEQUENCE.indexOf('post-unlock-quiet'),
+    expect(TIP_REMOUNT_POINTER_UNLOCK_TRACK.indexOf('pointerup-deferred-flush')).toBeLessThan(
+      TIP_REMOUNT_POINTER_UNLOCK_TRACK.indexOf('post-unlock-quiet'),
     );
-    expect(freezeSource).toContain('TIP_REMOUNT_POST_PROTECT_SEQUENCE');
+    // Epoch is on the paint track — must not be asserted after quiet.
+    expect(TIP_REMOUNT_PAINT_SYNC_TRACK).toContain('geom-epoch-flush');
+    expect(TIP_REMOUNT_POINTER_UNLOCK_TRACK).not.toContain('geom-epoch-flush');
+    expect(freezeSource).toContain('TIP_REMOUNT_PAINT_SYNC_TRACK');
+    expect(freezeSource).toContain('TIP_REMOUNT_POINTER_UNLOCK_TRACK');
     expect(freezeSource).toContain('TIP_REMOUNT_CHROME_RELEASE_SEQUENCE');
+  });
+
+  it('releases grace safety/expiry via paint-sync path (542)', () => {
+    expect(shouldReleaseTipRemountChromeViaPaintSyncOnGraceClear('safety')).toBe(true);
+    expect(shouldReleaseTipRemountChromeViaPaintSyncOnGraceClear('selection')).toBe(false);
+    expect(fileViewer).toContain('shouldReleaseTipRemountChromeViaPaintSyncOnGraceClear');
+    expect(fileViewer).toContain('releaseTipRemountChromeSuppress(true)');
   });
 
   it('pins 522–524 FileViewer wiring on tip remount path (527)', () => {

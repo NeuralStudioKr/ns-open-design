@@ -14,10 +14,14 @@
  * ---------------------------------------------------------------------------
  * Post-protect: TIP_REMOUNT_POST_PROTECT_SEQUENCE
  *   sticky-clear → soft-land → exit-latch → absorb → post-absorb-quiet → live
- * Chrome release: TIP_REMOUNT_CHROME_RELEASE_SEQUENCE
- *   chrome-suppress → fit-remasure → chrome-release → paint-sync-hold →
- *   unlock-pointer-gate → pointerup-deferred-flush → post-unlock-quiet →
- *   geom-epoch-flush → live
+ * Chrome release prefix: TIP_REMOUNT_CHROME_RELEASE_PREFIX
+ *   chrome-suppress → fit-remasure → chrome-release
+ * Then **parallel tracks** (540) — not one causal chain:
+ *   paint: TIP_REMOUNT_PAINT_SYNC_TRACK
+ *     paint-sync-hold → geom-epoch-flush → live
+ *   pointer: TIP_REMOUNT_POINTER_UNLOCK_TRACK
+ *     unlock-pointer-gate → pointerup-deferred-flush → post-unlock-quiet → live
+ * TIP_REMOUNT_CHROME_RELEASE_SEQUENCE remains a concatenated view for older pins.
  * Timing:
  *   TIP_REMOUNT_FIT_SETTLE_CHROME_RELEASE_MS (400)
  *   TIP_REMOUNT_FIT_SETTLE_REMEASURE_DELAYS_MS [50,150,400,900,1600]
@@ -1399,8 +1403,8 @@ export function resolveTipRemountPartialUnionWithMinSizeLatch(
 }
 
 /**
- * Drop min-size latch when tip session ends or every member has paint — prevents
- * an expanded partial envelope from sticking after sibling retry (535).
+ * Drop min-size latch when tip session ends, every member has paint, or no
+ * member has paint (stale partial envelope must not stick) (535/541).
  */
 export function shouldClearTipRemountPartialUnionMinSizeLatch(
   tipRemountChromeSessionLive: boolean,
@@ -1408,9 +1412,43 @@ export function shouldClearTipRemountPartialUnionMinSizeLatch(
   paintBearingCount: number,
 ): boolean {
   if (!tipRemountChromeSessionLive) return true;
+  if (memberCount >= 2 && paintBearingCount === 0) return true;
   return memberCount >= 2
     && paintBearingCount > 0
     && paintBearingCount >= memberCount;
+}
+
+/**
+ * Stable fingerprint for tip remount multi membership — latch must not carry
+ * across target-set changes (541).
+ */
+export function tipRemountPartialUnionLatchMemberKey(memberIds: readonly string[]): string {
+  return [...memberIds]
+    .map((id) => id.trim())
+    .filter(Boolean)
+    .sort()
+    .join('\0');
+}
+
+export function shouldInvalidateTipRemountPartialUnionLatchOnMembershipChange(
+  previousKey: string | null | undefined,
+  nextKey: string,
+): boolean {
+  const prev = previousKey?.trim() ?? '';
+  const next = nextKey.trim();
+  if (!next) return Boolean(prev);
+  return Boolean(prev) && prev !== next;
+}
+
+/**
+ * Grace safety/expiry/consume still need paint-sync + unlock gate — bare
+ * suppress drop flashes composed chrome (542). Selection/mode-exit keep a
+ * clean sticky teardown instead.
+ */
+export function shouldReleaseTipRemountChromeViaPaintSyncOnGraceClear(
+  reason: 'consume' | 'expiry' | 'safety' | 'selection' | 'mode-exit',
+): boolean {
+  return reason === 'consume' || reason === 'expiry' || reason === 'safety';
 }
 
 /**
@@ -1466,8 +1504,9 @@ export function shouldFlushDeferredTipRemountGeomEpochAfterPaintSyncHold(
 }
 
 /**
- * Canonical tip remount user-perception + chrome-release sequences for smoke
- * pins (536). Order is the contract — do not reorder casually.
+ * Canonical tip remount sequences for smoke pins (536/540).
+ * After chrome-release, paint-sync and pointer-unlock run as **parallel tracks**
+ * — geom-epoch-flush is tied to paint-sync clear, not to post-unlock quiet.
  */
 export const TIP_REMOUNT_POST_PROTECT_SEQUENCE = [
   'sticky-clear',
@@ -1478,10 +1517,34 @@ export const TIP_REMOUNT_POST_PROTECT_SEQUENCE = [
   'live',
 ] as const;
 
-export const TIP_REMOUNT_CHROME_RELEASE_SEQUENCE = [
+/** Shared prefix before paint / pointer tracks diverge (540). */
+export const TIP_REMOUNT_CHROME_RELEASE_PREFIX = [
   'chrome-suppress',
   'fit-remasure',
   'chrome-release',
+] as const;
+
+/** Paint-sync track after chrome-release (540). */
+export const TIP_REMOUNT_PAINT_SYNC_TRACK = [
+  'paint-sync-hold',
+  'geom-epoch-flush',
+  'live',
+] as const;
+
+/** Pointer unlock track after chrome-release — parallel with paint track (540). */
+export const TIP_REMOUNT_POINTER_UNLOCK_TRACK = [
+  'unlock-pointer-gate',
+  'pointerup-deferred-flush',
+  'post-unlock-quiet',
+  'live',
+] as const;
+
+/**
+ * @deprecated Prefer TIP_REMOUNT_PAINT_SYNC_TRACK + TIP_REMOUNT_POINTER_UNLOCK_TRACK.
+ * Concatenated view for older smoke pins — not a single causal chain after release.
+ */
+export const TIP_REMOUNT_CHROME_RELEASE_SEQUENCE = [
+  ...TIP_REMOUNT_CHROME_RELEASE_PREFIX,
   'paint-sync-hold',
   'unlock-pointer-gate',
   'pointerup-deferred-flush',

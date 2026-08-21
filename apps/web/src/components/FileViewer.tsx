@@ -410,6 +410,7 @@ import {
   shouldApplyTipRemountPaintSyncHoldClear,
   shouldDeferTipRemountGeomEpochBumpForPaintSync,
   shouldFlushDeferredTipRemountGeomEpochAfterPaintSyncHold,
+  shouldReleaseTipRemountChromeViaPaintSyncOnGraceClear,
   shouldRetryTipRemountSiblingMeasure,
   TIP_REMOUNT_DECK_NUDGE_REMEASURE_THROTTLE_MS,
   shouldMarkTipRemountChromeReleasePendingAfterResizeSkip,
@@ -8280,6 +8281,9 @@ function HtmlViewer({
       )) {
         manualEditTipDeferredGeomEpochBumpRef.current = true;
       } else {
+        // Immediate bump owns the flag — clear so a later paint-sync flush
+        // cannot double-bump (542).
+        manualEditTipDeferredGeomEpochBumpRef.current = false;
         setManualEditGeomEpoch((n) => n + 1);
       }
     }
@@ -8935,8 +8939,17 @@ function HtmlViewer({
       window.cancelAnimationFrame(manualEditTipRemountSyncRetryRafRef.current!);
       manualEditTipRemountSyncRetryRafRef.current = null;
     }
-    manualEditTipRemountChromeSuppressedRef.current = false;
-    setManualEditTipRemountChromeSuppressed(false);
+    const wasChromeSuppressed = manualEditTipRemountChromeSuppressedRef.current;
+    if (
+      wasChromeSuppressed
+      && shouldReleaseTipRemountChromeViaPaintSyncOnGraceClear(reason)
+    ) {
+      // safety/expiry/consume: release via paint-sync + unlock gate (542).
+      releaseTipRemountChromeSuppress(true);
+    } else {
+      manualEditTipRemountChromeSuppressedRef.current = false;
+      setManualEditTipRemountChromeSuppressed(false);
+    }
     if (manualEditTipRemountChromeSafetyTimeoutRef.current != null) {
       window.clearTimeout(manualEditTipRemountChromeSafetyTimeoutRef.current);
       manualEditTipRemountChromeSafetyTimeoutRef.current = null;
