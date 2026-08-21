@@ -1,20 +1,14 @@
 import {
+  looksLikeDeckSlideHostAttrs,
   looksLikeInstructionCopy,
   looksLikeTemplateMarketingTitle,
 } from '@open-design/contracts';
 
-const SLIDE_HOST_OPEN_RE = /<(section|div)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
-
-function classAttrHasExactSlideToken(attrs: string): boolean {
-  const match = /\bclass\s*=\s*(?:"([^"]*)"|'([^']*)'|(\S+))/i.exec(attrs);
-  if (!match) return false;
-  const value = match[1] ?? match[2] ?? match[3] ?? "";
-  return /(^|\s)slide(\s|$)/i.test(value);
-}
+const SLIDE_HOST_OPEN_RE = /<(section|div|main|article)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
 
 /** Official catalog hosts plus cover dialects (`data-slide` / `data-slide-index`). */
 function attrsLookLikeSlideHost(attrs: string): boolean {
-  return classAttrHasExactSlideToken(attrs) || /\bdata-slide(?:-index)?\b/i.test(attrs);
+  return looksLikeDeckSlideHostAttrs(attrs) || /\bdata-slide(?:-index)?\b/i.test(attrs);
 }
 
 type SlideHostBlock = {

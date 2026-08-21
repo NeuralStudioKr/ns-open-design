@@ -32,6 +32,17 @@
 | scaffold로 갑자기 바꾸면? | **안 됨.** kit hard cutover 금지. full HTML scaffold도 기본 inject 하지 않음 |
 | 1장짜리 템플릿 결과가 저장되는가? | **제품 경로는 첫 fill 3장.** 잘리면 제목 있는 1장은 저장하고 top-up이 덧붙인다. 제목 없는 빈 셸만 미완성으로 차단. 사용자가 1장을 명시한 경우도 허용 |
 
+### 0.95 2026-08-21 — FileViewer / memory preview 호스트 SSOT
+
+§0.94 이후에도 프로젝트 FileViewer와 streaming memory srcDoc이 `\\bslide\\b`로 deck 여부를 판정했다. `slide-counter`만 있는 프레임에 브리지가 켜지면 카탈로그와 같은 빈 캔버스가 재발한다.
+
+구현 현황:
+
+- [x] `htmlHasDeckSlideHost` / `htmlLooksLikeNavigableDeckPreview`
+- [x] FileViewer looksLikeDeck · last-stable 게이트
+- [x] memory-only preview `deck:` 판정
+- [x] salvage 호스트를 `looksLikeDeckSlideHostAttrs`에 맞춤
+
 ### 0.94 2026-08-21 — 호스트 토큰 allowlist · compact native next exclusive show
 
 `slide-*` prefix + 짧은 chrome denylist는 Studio `slide-chrome` / `slide-body` / `slide-deck`을 페이지 호스트로 오인했다. compact leftover `\\bslide\\b`와 native next 후 무조건 hide 해제도 같은 계열(빈 캔버스 / 고스트)을 재발시킨다.

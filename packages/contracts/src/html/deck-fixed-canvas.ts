@@ -72,6 +72,25 @@ export function looksLikeDeckSlideHostAttrs(attrs: string): boolean {
   return hasFixedCanvasSizing(style) || hasViewportSlideSizing(style);
 }
 
+/** True when HTML contains at least one page host — not slide-counter / slide-chrome. */
+export function htmlHasDeckSlideHost(html: string): boolean {
+  SLIDE_OPEN_RE.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = SLIDE_OPEN_RE.exec(String(html ?? ''))) !== null) {
+    if (looksLikeDeckSlideHostAttrs(match[2] ?? '')) return true;
+  }
+  return false;
+}
+
+/** FileViewer / memory-preview: enable deck nav without treating chrome as a page. */
+export function htmlLooksLikeNavigableDeckPreview(html: string): boolean {
+  const source = String(html ?? '');
+  if (!source) return false;
+  if (htmlHasDeckSlideHost(source)) return true;
+  if (/<deck-stage\b/i.test(source)) return true;
+  return /\bid\s*=\s*["']deck-stage["']/i.test(source);
+}
+
 function isSlideHost(attrs: string): boolean {
   return looksLikeDeckSlideHostAttrs(attrs);
 }

@@ -1,3 +1,4 @@
+import { htmlLooksLikeNavigableDeckPreview } from '@open-design/contracts';
 import { buildSrcdoc } from '../runtime/srcdoc';
 import { projectRawUrl } from '../providers/registry';
 import { projectScopedPreviewUrl } from '../teamver/teamverProjectPreviewScope';
@@ -9,10 +10,7 @@ function baseDirFor(fileName: string): string {
 }
 
 function looksLikeDeckHtml(html: string): boolean {
-  return (
-    /\bclass\s*=\s*['"][^'"]*\bslide\b/i.test(html)
-    || /<section[^>]*\bclass\s*=\s*['"]slide['"]/i.test(html)
-  );
+  return htmlLooksLikeNavigableDeckPreview(html);
 }
 
 function resolveMemoryPreviewBaseHref(options: {

@@ -5,6 +5,8 @@ import { Button, Input, Select } from '@open-design/components';
 import { APP_CHROME_FILE_ACTIONS_ID, APP_CHROME_FILE_ACTIONS_SELECTOR } from './AppChromeHeader';
 import {
   buildSocialSharePayload,
+  htmlHasDeckSlideHost,
+  htmlLooksLikeNavigableDeckPreview,
   OPEN_DESIGN_GITHUB_REPO_URL,
   isArtifactHtmlStableForPreview,
   type SocialShareRequest,
@@ -4758,8 +4760,11 @@ const HTML_PREVIEW_SOURCE_RETRY_MAX_MS = 5_000;
 /** Cap soft retries even when the wall has not elapsed (~0.4+0.8+1.6+3.2+5+5s). */
 const HTML_PREVIEW_SOURCE_MAX_SOFT_RETRIES = 6;
 
-const DECK_SLIDE_MARKUP_RE =
-  /<(?:section|div)\b[^>]*\b(?:class\s*=\s*["'][^"']*\bslide\b|data-slide)/i;
+function sourceHasDeckSlideMarkup(html: string): boolean {
+  // Token SSOT — `\bslide\b` matches slide-counter / slide-chrome and used
+  // to enable the deck bridge (then host-hide) on chrome-only frames.
+  return htmlHasDeckSlideHost(html) || /<(?:section|div|main|article)\b[^>]*\bdata-slide(?:-index)?\s*=/i.test(html);
+}
 
 function acceptPreviewHtmlCandidate(
   candidate: string | null,
@@ -4771,7 +4776,7 @@ function acceptPreviewHtmlCandidate(
     // Repair can theoretically close/strip into a slide-less shell that still
     // tag-balances. Never pin that as last-stable when the candidate itself
     // still carried deck slides — keep the previous good frame instead.
-    if (DECK_SLIDE_MARKUP_RE.test(candidate) && !hasSalvageableDeckSlideContent(repaired)) {
+    if (sourceHasDeckSlideMarkup(candidate) && !hasSalvageableDeckSlideContent(repaired)) {
       return lastStableRef.current;
     }
     lastStableRef.current = repaired;
@@ -6598,7 +6603,7 @@ function HtmlViewer({
           const repairedTipOrPin = repairArtifactDocumentHeadIfNeeded(resolvedDisk.source);
           const tipOrPinStable = isArtifactHtmlStableForPreview(repairedTipOrPin)
             && !(
-              DECK_SLIDE_MARKUP_RE.test(resolvedDisk.source)
+              sourceHasDeckSlideMarkup(resolvedDisk.source)
               && !hasSalvageableDeckSlideContent(repairedTipOrPin)
             );
           if (shouldEarlyPaintResolvedPinTipSource({
@@ -6772,10 +6777,7 @@ function HtmlViewer({
   // never surface and the deck becomes a static, unnavigable preview.
   const looksLikeDeck = useMemo(() => {
     if (!source) return false;
-    return (
-      /\bclass\s*=\s*['"][^'"]*\bslide\b/i.test(source)
-      || /<section[^>]*\bclass\s*=\s*['"]slide['"]/i.test(source)
-    );
+    return htmlLooksLikeNavigableDeckPreview(source);
   }, [source]);
   const effectiveDeck = isDeck || looksLikeDeck;
   const rawLivePreviewSource = inlinedSource ?? source;

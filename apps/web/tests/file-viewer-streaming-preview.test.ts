@@ -176,7 +176,8 @@ describe("FileViewer streaming slide preview", () => {
   it("refuses to pin slide-less repaired shells as last-stable preview", () => {
     const source = readSource("src/components/FileViewer.tsx");
     expect(source).toContain("hasSalvageableDeckSlideContent");
-    expect(source).toContain("DECK_SLIDE_MARKUP_RE");
+    expect(source).toContain("sourceHasDeckSlideMarkup");
+    expect(source).toContain("htmlHasDeckSlideHost");
     expect(source).toContain(
       "Never pin that as last-stable when the candidate itself",
     );

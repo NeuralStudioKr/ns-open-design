@@ -108,7 +108,7 @@ export function looksLikeAuthoredScrollNavigateDeck(html: string): boolean {
   if (/\.slide[^;\n]{0,120}\.scrollIntoView\s*\(/i.test(html)) return true;
   if (
     /scrollIntoView\s*\(\s*\{[^}]*behavior\s*:\s*['"]smooth['"]/i.test(html)
-    && /\.slide\b/i.test(html)
+    && new RegExp(DECK_SLIDE_HOST_CSS_CLASS, 'i').test(html)
     && countSlideElements(html) >= 2
   ) {
     return true;

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   closeUnclosedSlideSectionsForSalvage,
+  documentContainsSlideSection,
   hasFilledSlideSection,
   hasSalvageableDeckSlideContent,
   isClosedSoftSalvageDeckHtml,
@@ -82,6 +83,10 @@ describe("deck-html-content", () => {
       + "<section class=\"slide\"><h1>Neural Studio</h1><p>회사 소개 슬라이드입니다.</p></section>"
       + "<section class=\"slide\"><h2>서비스</h2><p>AI 디자인 자동화 플랫폼</p></section>"
       + "</body></html>";
+    expect(documentContainsSlideSection('<div class="slide-counter">1 / 10</div>')).toBe(false);
+    expect(documentContainsSlideSection(
+      '<section class="s1" data-screen-label="01 Cover"><h1>Cover</h1></section>',
+    )).toBe(true);
     expect(hasFilledSlideSection(html)).toBe(true);
     expect(hasSalvageableDeckSlideContent(html)).toBe(true);
     expect(isDeckStatusProseOnlyBody(html)).toBe(false);

@@ -53,4 +53,28 @@ describe('prepareMemoryOnlySlidePreviewSrcDoc', () => {
       /<base[^>]+href="\/api\/projects\/project-1\/preview\/scope-abc\/"/i,
     );
   });
+
+  it('does not enable the deck bridge for slide-counter chrome only', () => {
+    const srcDoc = prepareMemoryOnlySlidePreviewSrcDoc({
+      html: '<div class="slide-counter">1 / 10</div><div class="slide-chrome">Studio</div>',
+      projectId: 'project-1',
+      fileName: 'deck.html',
+      projectFilePaths: [],
+      teamverEmbedMode: false,
+      embedPreviewPrefix: null,
+    });
+    expect(srcDoc).not.toContain('data-od-deck-bridge');
+  });
+
+  it('enables the deck bridge for a real slide host', () => {
+    const srcDoc = prepareMemoryOnlySlidePreviewSrcDoc({
+      html: '<section class="slide"><h1>Cover</h1></section>',
+      projectId: 'project-1',
+      fileName: 'deck.html',
+      projectFilePaths: [],
+      teamverEmbedMode: false,
+      embedPreviewPrefix: null,
+    });
+    expect(srcDoc).toContain('data-od-deck-bridge');
+  });
 });

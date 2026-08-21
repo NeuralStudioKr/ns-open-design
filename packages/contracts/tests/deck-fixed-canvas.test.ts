@@ -5,6 +5,8 @@ import { fileURLToPath } from 'node:url';
 
 import {
   DECK_FIXED_CANVAS_PIN_ATTR,
+  htmlHasDeckSlideHost,
+  htmlLooksLikeNavigableDeckPreview,
   looksLikeDeckSlideHostAttrs,
   pinDeckSlidesToFixedCanvas,
 } from '../src/html/deck-fixed-canvas.js';
@@ -204,5 +206,21 @@ describe('deck slide class tokens', () => {
       '<style>.slide{opacity:0}.slide.active{opacity:1}</style>',
       '<section class="slide">A</section><section class="slide">B</section>',
     ].join(''))).toBe(true);
+  });
+
+  it('does not treat chrome-only HTML as a navigable deck preview', () => {
+    const chromeOnly = [
+      '<div class="slide-counter">1 / 10</div>',
+      '<div class="slide-chrome">Studio</div>',
+    ].join('');
+    expect(htmlHasDeckSlideHost(chromeOnly)).toBe(false);
+    expect(htmlLooksLikeNavigableDeckPreview(chromeOnly)).toBe(false);
+    expect(htmlLooksLikeNavigableDeckPreview(
+      '<section class="slide"><h1>Cover</h1></section>',
+    )).toBe(true);
+    expect(htmlLooksLikeNavigableDeckPreview('<deck-stage></deck-stage>')).toBe(true);
+    expect(htmlHasDeckSlideHost(
+      '<section class="s1" data-screen-label="01 Cover">Title</section>',
+    )).toBe(true);
   });
 });
