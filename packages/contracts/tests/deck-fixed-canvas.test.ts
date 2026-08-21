@@ -1,4 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import {
   DECK_FIXED_CANVAS_PIN_ATTR,
@@ -11,6 +14,11 @@ import {
   isDeckSlideClassToken,
   looksLikeAuthorClassToggleDeck,
 } from '../src/html/deck-slide-class.js';
+
+const EXAMPLES_DIR = join(
+  dirname(fileURLToPath(import.meta.url)),
+  '../../../plugins/_official/examples',
+);
 
 describe('pinDeckSlidesToFixedCanvas', () => {
   it('rewrites min-height:100vh slide hosts to a fixed 1920×1080 canvas', () => {
@@ -130,6 +138,15 @@ describe('pinDeckSlidesToFixedCanvas', () => {
     expect(pinned).not.toMatch(
       new RegExp(`${DECK_FIXED_CANVAS_PIN_ATTR}[^>]*>[\\s\\S]*overflow:\\s*hidden`, 'i'),
     );
+  });
+
+  it('force-pins official #deck catalog presenters for compact letterbox (§0.93)', () => {
+    const html = readFileSync(join(EXAMPLES_DIR, 'html-ppt-zhangzara-studio/example.html'), 'utf8');
+    expect(pinDeckSlidesToFixedCanvas(html)).toBe(html);
+    const forced = pinDeckSlidesToFixedCanvas(html, { force: true });
+    expect(forced).toContain(DECK_FIXED_CANVAS_PIN_ATTR);
+    expect(forced).toMatch(/\.slide,[\s\S]*\{[^}]*width:\s*1920px\s*!important/i);
+    expect(forced).toMatch(/overflow:\s*visible\s*!important/i);
   });
 });
 

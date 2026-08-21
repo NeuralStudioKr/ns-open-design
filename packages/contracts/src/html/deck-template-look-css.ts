@@ -210,7 +210,12 @@ function isOfficialLookSlideHostSelector(part: string): boolean {
     .replace(/::?[a-z0-9_-]+(?:\([^)]*\))?/gi, '')
     .trim();
   if (!cleaned) return false;
-  if (/^(?:\.slides-container|\.presentation|\.deck|\.deck-shell|\.stage|#deck)(?:\.[\w-]+)*$/i.test(cleaned)) {
+  // Keep in sync with LOOK_NEUTRALIZE deck/shell hosts (§0.93).
+  if (
+    /^(?:\.slides-container|\.slides|\.presentation|\.deck|\.deck-shell|\.deck-stage|\.stage|#deck|#deck-track|#deck-stage)(?:\.[\w-]+)*$/i.test(
+      cleaned,
+    )
+  ) {
     return true;
   }
   const last = cleaned.split(/\s+/).pop() ?? '';
@@ -2473,6 +2478,39 @@ export function lockDeckDesignViewportMeta(html: string): string {
     return dest.replace(/<html\b[^>]*>/i, (open) => `${open}\n<head>\n  ${tag}\n</head>`);
   }
   return dest;
+}
+
+/**
+ * Inject LOOK_NEUTRALIZE for compact letterbox of dual-classified catalogs
+ * (Studio/Grove `#deck` strips that are still official presenters).
+ * `ensureOfficialLookStackedCanvasNeutralize` strips neutralize on presenters;
+ * the web compact path calls this *after* that helper so letterbox heals.
+ */
+export function injectStackedCanvasNeutralizeForLetterbox(html: string): string {
+  const dest = String(html ?? '');
+  if (!dest.trim()) return dest;
+  if (
+    /data-od-stacked-canvas-neutralize/i.test(dest)
+    && hasOfficialLookStackedCanvasNeutralizeProof(dest)
+  ) {
+    return dest;
+  }
+  if (
+    hasOfficialLookStyleAttr(dest)
+    && officialLookHasCurrentNeutralize(dest)
+    && hasOfficialLookStackedCanvasNeutralizeProof(dest)
+  ) {
+    return dest;
+  }
+  // Drop a stale/poisoned standalone sheet before re-injecting current rules.
+  let out = dest.replace(
+    /<style\b[^>]*\bdata-od-stacked-canvas-neutralize\b[^>]*>[\s\S]*?<\/style>/gi,
+    '',
+  );
+  const tag = `<style data-od-stacked-canvas-neutralize>\n${LOOK_NEUTRALIZE_CSS}\n</style>`;
+  if (/<\/head\s*>/i.test(out)) return out.replace(/<\/head\s*>/i, `${tag}</head>`);
+  if (/<body\b/i.test(out)) return out.replace(/<body\b[^>]*>/i, (open) => `${open}\n${tag}`);
+  return `${tag}\n${out}`;
 }
 
 /**

@@ -217,14 +217,28 @@ function injectFixedCanvasStyle(html: string): string {
   return `${tag}\n${html}`;
 }
 
+export type PinDeckSlidesToFixedCanvasOptions = {
+  /**
+   * Compact letterbox path: pin even when the HTML is still classified as an
+   * official fullscreen presenter (Studio/Grove `#deck` viewport strips).
+   * Without force, catalog dual-classification skips the pin and leaves
+   * 100vw/100vh hosts fighting the stacked 1920×1080 stage (§0.93).
+   */
+  force?: boolean;
+};
+
 /**
  * Rewrite body-first / freeform deck slide hosts to a fixed 1920×1080 canvas.
- * No-ops for official fullscreen catalog presenters and non-slide HTML.
+ * No-ops for official fullscreen catalog presenters and non-slide HTML
+ * unless `force` is set for compact letterbox dual-classification.
  */
-export function pinDeckSlidesToFixedCanvas(html: string): string {
+export function pinDeckSlidesToFixedCanvas(
+  html: string,
+  options?: PinDeckSlidesToFixedCanvasOptions,
+): string {
   const source = String(html ?? '');
   if (!source.trim()) return source;
-  if (looksLikeOfficialFullscreenPresenterDeck(source)) return source;
+  if (!options?.force && looksLikeOfficialFullscreenPresenterDeck(source)) return source;
   if (countSlideHosts(source) === 0) return source;
 
   let out = source.replace(SLIDE_OPEN_RE, (open, _tag: string, attrs: string) => {

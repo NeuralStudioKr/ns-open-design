@@ -561,13 +561,20 @@ describe('deck bridge — nested slide markup (#1530)', () => {
     const slides = Array.from({ length: 2 }, (_, i) =>
       `<section class="slide" style="min-height:100vh;padding:40px">Slide ${i + 1}</section>`,
     ).join('');
-    const { win } = setupDeckBridge(slides);
+    const { win, parentPostMessage } = setupDeckBridge(slides);
     await new Promise<void>((resolve) => win.setTimeout(resolve, 450));
 
-    const wheel = new win.WheelEvent('wheel', { deltaY: 120, cancelable: true });
+    expect(lastSlideState(parentPostMessage)).toMatchObject({ active: 0, count: 2 });
+
+    const wheel = new win.WheelEvent('wheel', { deltaY: 120, cancelable: true, bubbles: true });
     const prevented = !win.document.dispatchEvent(wheel);
     expect(prevented).toBe(true);
     expect(win.document.documentElement.scrollTop).toBe(0);
+
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 350));
+    // Host owns wheel after compact letterbox — author goTo must not be the
+    // only driver (§0.93).
+    expect(lastSlideState(parentPostMessage)).toMatchObject({ active: 1, count: 2 });
   });
 
   it('advances compact stacked decks on ArrowRight inside the iframe', async () => {

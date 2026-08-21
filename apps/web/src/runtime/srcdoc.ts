@@ -22,7 +22,15 @@ import {
   MANUAL_EDIT_DISCOVERY_SELECTOR,
   MANUAL_EDIT_SOURCE_PATH_ATTR,
 } from '../edit-mode/bridge';
-import { buildArtifactPreviewDomLeakGuardScript, repairArtifactDocumentHead, repairArtifactStyleSheets, lockStackedDeckCanvasForPreview, pinDeckSlidesToFixedCanvas } from '@open-design/contracts';
+import {
+  buildArtifactPreviewDomLeakGuardScript,
+  repairArtifactDocumentHead,
+  repairArtifactStyleSheets,
+  injectStackedCanvasNeutralizeForLetterbox,
+  lockStackedDeckCanvasForPreview,
+  looksLikeOfficialFullscreenPresenterDeck,
+  pinDeckSlidesToFixedCanvas,
+} from '@open-design/contracts';
 import { stripConflictingSrcDocCspBaseUri } from './authenticatedHtmlSrcDoc';
 import {
   injectStackedDeckViewport,
@@ -143,13 +151,27 @@ export function buildSrcdoc(
   const compactStackedDeck = options.deck
     ? looksLikeCompactApiStackedDeck(detectionBase)
     : false;
+  // Dual-classified Studio/Grove `#deck` catalogs are still "official
+  // presenters" for merge semantics, but compact letterbox must force pin +
+  // LOOK_NEUTRALIZE after lockStacked (which strips neutralize on presenters).
+  const compactLetterboxOfficialPresenter = compactStackedDeck
+    && looksLikeOfficialFullscreenPresenterDeck(repairedHead);
+  const pinForCompact = (html: string) => (
+    compactStackedDeck
+      ? pinDeckSlidesToFixedCanvas(html, { force: compactLetterboxOfficialPresenter })
+      : html
+  );
+  const healCompactLetterbox = (html: string) => {
+    const locked = lockStackedDeckCanvasForPreview(pinForCompact(html));
+    return compactLetterboxOfficialPresenter
+      ? injectStackedCanvasNeutralizeForLetterbox(locked)
+      : locked;
+  };
   // Deck preview/export: compact fills lock to a 1920×1080 canvas.
-  // Official catalog presenters keep iframe-relative 100% fill.
-  // Pin only when letterboxing so older 100vh decks paint as 16:9 (§0.70).
+  // Official catalog presenters keep iframe-relative 100% fill — except the
+  // dual-classified `#deck` viewport strips above (§0.70 / §0.93).
   const deckCanvasReady = options.deck
-    ? lockStackedDeckCanvasForPreview(
-      compactStackedDeck ? pinDeckSlidesToFixedCanvas(repairedHead) : repairedHead,
-    )
+    ? (compactStackedDeck ? healCompactLetterbox(repairedHead) : lockStackedDeckCanvasForPreview(repairedHead))
     : repairedHead;
   const repaired = stripConflictingSrcDocCspBaseUri(deckCanvasReady);
   // alreadyRepaired: avoid wrapPreviewHtmlShell re-running repair on full docs.
@@ -157,9 +179,7 @@ export function buildSrcdoc(
   // compact fills only (official presenters stay device-width).
   const wrappedRaw = wrapPreviewHtmlShell(repaired, { alreadyRepaired: true });
   const wrapped = options.deck
-    ? lockStackedDeckCanvasForPreview(
-      compactStackedDeck ? pinDeckSlidesToFixedCanvas(wrappedRaw) : wrappedRaw,
-    )
+    ? (compactStackedDeck ? healCompactLetterbox(wrappedRaw) : lockStackedDeckCanvasForPreview(wrappedRaw))
     : wrappedRaw;
   // Export docs skip od-id / source-path annotation (no selection/edit bridges).
   // OD-authored decks that already carry annotations skip the DOMParser walk.
@@ -2874,8 +2894,10 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     var existing = stackedDeckStage();
     var slideList = stackedSlideNodes();
     if (existing) {
-      if (slideList.length) moveSlidesIntoStackedStage(existing, slideList);
-      else lockAllStackedSlideAxes(existing);
+      if (slideList.length) {
+        snapshotAuthoredStackedSlideStyles(slideList);
+        moveSlidesIntoStackedStage(existing, slideList);
+      } else lockAllStackedSlideAxes(existing);
       return existing;
     }
     if (!slideList.length) return null;
@@ -2885,6 +2907,7 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     if (!first || !first.parentNode) return null;
     var hostStage = first.closest ? first.closest('#od-stacked-deck-stage') : null;
     if (hostStage) {
+      snapshotAuthoredStackedSlideStyles(slideList);
       moveSlidesIntoStackedStage(hostStage, slideList);
       return hostStage;
     }
@@ -2894,6 +2917,7 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     try {
       existing = stackedDeckStage();
       if (existing) {
+        snapshotAuthoredStackedSlideStyles(slideList);
         moveSlidesIntoStackedStage(existing, slideList);
         return existing;
       }
@@ -2924,6 +2948,11 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
         try { insertParent.appendChild(stage); } catch (__) { return stackedDeckStage(); }
       }
 
+      // Snapshot stylesheet display:grid *before* slides enter the stage —
+      // od-stacked-deck-stage > .slide { display:none } would otherwise
+      // make getComputedStyle report none and lockStackedSlideAxis would
+      // freeze flex over Studio grid layouts (§0.93).
+      snapshotAuthoredStackedSlideStyles(slideList);
       moveSlidesIntoStackedStage(stage, slideList, false);
       // Freeze authored inline styles before forceReveal writes display:none.
       snapshotAuthoredStackedSlideStyles(slideList);
@@ -2935,6 +2964,7 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
 
       existing = stackedDeckStage();
       if (existing && existing !== stage) {
+        snapshotAuthoredStackedSlideStyles(slideList);
         moveSlidesIntoStackedStage(existing, slideList);
         try { if (stage.parentNode) stage.parentNode.removeChild(stage); } catch (_) {}
         return existing;
@@ -3625,9 +3655,30 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
         el.setAttribute('data-od-authored-style', liveStyle);
       }
     }
+    // Studio/Grove slides use stylesheet display:grid (not inline). Capture
+    // computed display once while the slide is still painted (§0.93).
+    // Do NOT snapshot computed flex-direction — browsers default to row and
+    // that would skip the Motif column+center path for bare flex slides.
+    if (!el.hasAttribute('data-od-authored-display')) {
+      try {
+        var snapCs = window.getComputedStyle(el);
+        var snapDisplay = String(snapCs.display || '').toLowerCase();
+        if (snapDisplay && snapDisplay !== 'none') {
+          el.setAttribute('data-od-authored-display', snapDisplay);
+        }
+      } catch (_) {}
+    }
     var authoredStyle = String(el.getAttribute('data-od-authored-style') || '');
     var authoredDisplayMatch = /(?:^|;)\s*display\s*:\s*([^;!]+)/i.exec(authoredStyle);
     var authoredDisplay = authoredDisplayMatch ? String(authoredDisplayMatch[1] || '').trim().toLowerCase() : '';
+    // Computed snapshot is only for stylesheet grid (Studio). Do not promote
+    // computed flex — that would skip the Motif column+center fallback.
+    if (!authoredDisplay) {
+      var snapDisplay = String(el.getAttribute('data-od-authored-display') || '').toLowerCase();
+      if (snapDisplay === 'grid' || snapDisplay === 'inline-grid') {
+        authoredDisplay = snapDisplay;
+      }
+    }
     var authoredDirMatch = /(?:^|;)\s*flex-direction\s*:\s*([^;!]+)/i.exec(authoredStyle);
     var authoredDir = authoredDirMatch ? String(authoredDirMatch[1] || '').trim().toLowerCase() : '';
     var className = String(el.className || '');
@@ -3657,10 +3708,23 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     if (!list || !list.length) return;
     for (var i = 0; i < list.length; i++) {
       var el = list[i];
-      if (!el || el.hasAttribute('data-od-authored-style')) continue;
-      var style = el.getAttribute('style') || '';
-      if (/(?:^|;)\s*display\s*:\s*none\b/i.test(style)) continue;
-      el.setAttribute('data-od-authored-style', style);
+      if (!el) continue;
+      if (!el.hasAttribute('data-od-authored-style')) {
+        var style = el.getAttribute('style') || '';
+        if (!/(?:^|;)\s*display\s*:\s*none\b/i.test(style)) {
+          el.setAttribute('data-od-authored-style', style);
+        }
+      }
+      // Only freeze stylesheet grid — flex defaults must not poison Motif axis.
+      if (!el.hasAttribute('data-od-authored-display')) {
+        try {
+          var cs = window.getComputedStyle(el);
+          var display = String(cs.display || '').toLowerCase();
+          if (display === 'grid' || display === 'inline-grid') {
+            el.setAttribute('data-od-authored-display', display);
+          }
+        } catch (_) {}
+      }
     }
   }
   function lockAllStackedSlideAxes(stage) {
@@ -3999,6 +4063,11 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
   // can no longer post od:slide, so handle presenter keys inside the bridge
   // for every deck shape — not only compact stacked decks.
   document.addEventListener('keydown', onDeckBridgeKeydown, true);
+  // Compact letterbox must own od:slide. Catalogs like kami-deck /
+  // open-design-landing-deck register a bubble message listener that
+  // stopImmediatePropagation + only toggles .active/translateX — fine for
+  // native strips, but after stacked hoist host display:none never updates
+  // and the marked-active page stays hidden (§0.93).
   window.addEventListener('message', function(ev){
     var data = ev && ev.data;
     if (!data) return;
@@ -4018,6 +4087,9 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     if (data.type === 'od:deck-pan-reset') { resetDeckPan(); return; }
     if (data.type === 'od:slide-state-request') { report(); return; }
     if (data.type !== 'od:slide') return;
+    if (compactStackedDeckEnabled && ev && typeof ev.stopImmediatePropagation === 'function') {
+      ev.stopImmediatePropagation();
+    }
     hostSlideNavigationSeen = true;
     if (data.action === 'go' && typeof data.index === 'number') gotoIndex(data.index);
     else go(data.action);
@@ -4148,12 +4220,64 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
   else window.addEventListener('load', chaseFirstLayout);
   if (compactStackedDeckEnabled || frameworkDeckStage()) requestHostDeckViewport();
   if (compactStackedDeckEnabled) {
+    var wheelNavCooldown = false;
     document.addEventListener('wheel', function(e) {
       e.preventDefault();
+      // Own wheel nav — author Studio/Grove goTo + translateX desyncs from
+      // host display:none after stacked hoist (§0.93).
+      e.stopImmediatePropagation();
+      if (wheelNavCooldown) return;
+      var dy = Number(e.deltaY || 0);
+      var dx = Number(e.deltaX || 0);
+      if (!Number.isFinite(dy)) dy = 0;
+      if (!Number.isFinite(dx)) dx = 0;
+      if (Math.abs(dy) < 8 && Math.abs(dx) < 8) return;
+      wheelNavCooldown = true;
+      setTimeout(function() { wheelNavCooldown = false; }, 420);
+      if (dy > 0 || dx > 0) go('next');
+      else go('prev');
     }, { passive: false, capture: true });
     document.addEventListener('touchmove', function(e) {
       if (e.cancelable) e.preventDefault();
     }, { passive: false, capture: true });
+    var compactTouchStartX = null;
+    var compactTouchStartY = null;
+    document.addEventListener('touchstart', function(e) {
+      if (!e.touches || !e.touches[0]) return;
+      compactTouchStartX = e.touches[0].clientX;
+      compactTouchStartY = e.touches[0].clientY;
+    }, { capture: true, passive: true });
+    document.addEventListener('touchend', function(e) {
+      if (compactTouchStartX == null) return;
+      var touch = e.changedTouches && e.changedTouches[0];
+      var startX = compactTouchStartX;
+      var startY = compactTouchStartY;
+      compactTouchStartX = null;
+      compactTouchStartY = null;
+      if (!touch) return;
+      var dx = startX - touch.clientX;
+      var dy = startY - touch.clientY;
+      if (!(Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 40)) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      if (dx > 0) go('next');
+      else go('prev');
+    }, { capture: true, passive: false });
+    document.addEventListener('click', function(e) {
+      if (hostNativeClickInFlight) return;
+      var node = e.target;
+      if (!node || !node.closest) return;
+      var dot = node.closest('.nav-dot, #nav-dots > *, .nav-dots > *, [data-deck-dots] > *, .dots > *, .pagination > *');
+      if (!dot) return;
+      var list = slides();
+      if (!list.length) return;
+      var idx = controlIndex(dot, list.length);
+      if (idx < 0) idx = indexWithinControlGroup(dot, list.length);
+      if (idx < 0) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      gotoIndex(idx);
+    }, true);
   }
   // Re-nudge whenever the iframe itself is resized by the host (e.g.
   // user toggles zoom, resizes the chat sidebar, exits Present).

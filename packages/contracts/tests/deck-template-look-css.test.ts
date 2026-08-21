@@ -16,6 +16,7 @@ import {
   ensureOfficialLookStackedCanvasNeutralize,
   extractOfficialDeckLookAssets,
   firstOfficialDeckTemplateId,
+  injectStackedCanvasNeutralizeForLetterbox,
   listOfficialLookProofClasses,
   listOfficialMotifSymbolIds,
   lockStackedDeckCanvasForPreview,
@@ -1455,6 +1456,15 @@ html, body { overflow: visible !important; height: auto !important; }
       if (/content="width=1920/.test(locked)) {
         failures.push(`${folder}: catalog gained width=1920 meta`);
       }
+      // Compact letterbox half-path injects neutralize even though lockStacked
+      // strips it for presenters (§0.93).
+      const letterboxed = injectStackedCanvasNeutralizeForLetterbox(locked);
+      if (!/data-od-stacked-canvas-neutralize/.test(letterboxed)) {
+        failures.push(`${folder}: letterbox neutralize missing`);
+      }
+      if (!/#deck\b[^\{]*\{[^}]*flex-direction:\s*column\s*!important/i.test(letterboxed)) {
+        failures.push(`${folder}: letterbox neutralize missing #deck column`);
+      }
       const assets = extractOfficialDeckLookAssets(official);
       if (!assets?.css) {
         failures.push(`${folder}: no look CSS`);
@@ -1615,7 +1625,7 @@ ${LOOK_NEUTRALIZE_CSS}
         .replace(/::?[a-z0-9_-]+(?:\([^)]*\))?/gi, '')
         .trim();
       if (!cleaned) return false;
-      if (/^(?:\.slides-container|\.presentation|\.deck|\.deck-shell|\.stage|#deck)(?:\.[\w-]+)*$/i.test(cleaned)) {
+      if (/^(?:\.slides-container|\.slides|\.presentation|\.deck|\.deck-shell|\.deck-stage|\.stage|#deck|#deck-track|#deck-stage)(?:\.[\w-]+)*$/i.test(cleaned)) {
         return true;
       }
       const last = cleaned.split(/\s+/).pop() ?? '';

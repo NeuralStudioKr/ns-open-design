@@ -561,6 +561,13 @@ describe('looksLikeCompactApiStackedDeck', () => {
       expect(srcdoc, templateName).toContain('data-od-deck-stacked-fix');
       expect(srcdoc, templateName).toContain('content="width=1920, initial-scale=1, maximum-scale=1"');
       expect(srcdoc, templateName).toContain('#od-stacked-deck-stage');
+      // Dual-classified official presenters must still force pin + neutralize
+      // on the compact letterbox path (§0.93).
+      expect(srcdoc, templateName).toContain('data-od-deck-fixed-canvas-pin');
+      expect(srcdoc, templateName).toContain('data-od-stacked-canvas-neutralize');
+      expect(srcdoc, templateName).toMatch(/#deck\b[^\{]*\{[^}]*flex-direction:\s*column\s*!important/i);
+      expect(srcdoc, templateName).toContain('data-od-authored-display');
+      expect(srcdoc, templateName).toContain('stopImmediatePropagation');
     }
   });
 
@@ -876,6 +883,57 @@ cur=n;
     await new Promise<void>((resolve) => win.setTimeout(resolve, 100));
     const slide = win.document.querySelector('#od-stacked-deck-stage > .slide') as HTMLElement | null;
     expect(slide?.style.display).toBe('grid');
+  });
+
+  it('preserves stylesheet display:grid on Studio-like #deck letterbox (§0.93)', async () => {
+    const html = [
+      '<!doctype html><html><head><style>',
+      '#deck{display:flex;height:100vh}',
+      '.slide{flex:0 0 100vw;width:100vw;height:100vh;display:grid;grid-template-rows:auto 1fr auto;overflow:hidden}',
+      '</style></head><body>',
+      '<div id="deck">',
+      '<section class="slide is-active"><header>H</header><div class="slide-body">A</div><footer>F</footer></section>',
+      '<section class="slide"><header>H</header><div class="slide-body">B</div><footer>F</footer></section>',
+      '</div>',
+      '<div id="nav-dots"><button class="nav-dot is-active"></button><button class="nav-dot"></button></div>',
+      '</body></html>',
+    ].join('');
+    expect(looksLikeCompactApiStackedDeck(html)).toBe(true);
+    const srcdoc = buildSrcdoc(html, { deck: true });
+    expect(srcdoc).toContain('data-od-deck-fixed-canvas-pin');
+    expect(srcdoc).toContain('data-od-stacked-canvas-neutralize');
+
+    const match = srcdoc.match(/<script data-od-deck-bridge>([\s\S]*?)<\/script>/);
+    expect(match?.[1]).toBeTruthy();
+    const { JSDOM } = await import('jsdom');
+    const parentPostMessage = vi.fn();
+    const dom = new JSDOM(srcdoc.replace(/<script\b[\s\S]*?<\/script>/gi, ''), {
+      runScripts: 'outside-only',
+      pretendToBeVisual: true,
+    });
+    const win = dom.window;
+    Object.defineProperty(win, 'parent', { configurable: true, value: { postMessage: parentPostMessage } });
+    new win.Function(match![1]!).call(win);
+    win.dispatchEvent(new win.MessageEvent('message', {
+      data: { type: 'od:deck-host-viewport', width: 960, height: 540, scale: 1 },
+    }));
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 200));
+
+    const slideEls = Array.from(
+      win.document.querySelectorAll('#od-stacked-deck-stage > .slide'),
+    ) as HTMLElement[];
+    expect(slideEls.length).toBeGreaterThanOrEqual(2);
+    expect(slideEls[0]?.getAttribute('data-od-authored-display')).toBe('grid');
+    expect(slideEls[0]?.style.display).toBe('grid');
+
+    const wheel = new win.WheelEvent('wheel', { deltaY: 120, cancelable: true, bubbles: true });
+    win.document.dispatchEvent(wheel);
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 350));
+    const states = parentPostMessage.mock.calls
+      .map((call: unknown[]) => call[0])
+      .filter((m: { type?: string }) => m?.type === 'od:slide-state');
+    expect(states.at(-1)).toMatchObject({ active: 1, count: 2 });
+    expect(slideEls[1]?.style.display).toBe('grid');
   });
 
   it('normalizes compact stacked decks for standalone export without hiding slides', () => {

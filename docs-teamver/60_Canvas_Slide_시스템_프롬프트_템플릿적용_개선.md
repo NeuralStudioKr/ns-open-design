@@ -45,20 +45,36 @@
 - [x] `od:slide` capture 처리 · compact observer가 marked-active+hidden 힐 (kami/landing)
 - [x] chrome pin/toggle red spec · catalog cover copy · Playful/54-deck paint 유지
 
-### 0.93 2026-08-21 현재 판단 — Zhangzara Studio 계열 `#deck` 100vw strip 비율·스크롤·페이지 이동
+### 0.93 2026-08-21 — Zhangzara Studio 계열 `#deck` letterbox half-path 힐 (cache v49)
 
 `Html Ppt Zhangzara Studio` 및 유사 Zhangzara 템플릿 일부는 공식 example이 `#deck{display:flex}` + `.slide{flex:0 0 100vw;width:100vw;height:100vh}` 수평 strip으로 되어 있다. Teamver 미리보기 iframe은 임의 패널 비율이므로 이 구조를 그대로 두면 16:9 캔버스가 아니라 iframe viewport에 맞춰 재계산되어 비율·폰트 크기·요소 배치가 깨지고, 브라우저 스크롤/템플릿 자체 transform nav와 host prev/next가 충돌한다.
 
-현재 결정:
+§0.92 fill neutralize 이후에도 **카탈로그 미리보기**는 이중 분류 half-path가 남았다:
+
+1. `looksLikeOfficialFullscreenPresenterDeck` = true **그리고** `looksLikeBareDeckViewportTrack` → compact letterbox
+2. `pinDeckSlidesToFixedCanvas` / `ensureOfficialLookStackedCanvasNeutralize`는 presenter라서 no-op·strip
+3. `lockStackedSlideAxis`가 stylesheet `display:grid`를 inline flex로 덮어 Studio 레이아웃 붕괴
+4. author `goTo`/wheel/dots가 hoist 이후 host `display:none`과 어긋남
+
+**수정 (cache v49):**
 
 - bare `id="deck"` viewport strip은 Teamver slide preview에서 **1920×1080 compact stacked stage**로 복구한다.
 - `id="deck-track"`, `#deck-stage`, `<deck-stage>`처럼 명시적 프레임워크/웹컴포넌트 presenter는 계속 native runtime 보호 대상이다.
-- `flex:0 0 100vw`만으로 모든 덱을 horizontal-native로 분류하지 않는다. `scroll-snap-type:x`, body row flex overflow 같은 명시적 horizontal scroll 문서만 native로 둔다.
-- 회귀 테스트는 Studio 단일 fixture가 아니라 `html-ppt-zhangzara-*` 중 `#deck` viewport-track 패턴 전체를 스캔한다. 현재 최소 기대 포함: Broadside, Grove, Mat, Monochrome, Signal, Studio, Vellum.
+- compact+official dual path: `pin(..., { force: true })` + `injectStackedCanvasNeutralizeForLetterbox` (lockStacked 이후 재주입)
+- hoist 전 computed `display`/`flex-direction` 스냅샷 → grid 슬라이드 보존
+- compact wheel/touch swipe/nav-dot는 host가 `stopImmediatePropagation` 후 소유
+- compact letterbox는 `message` listener를 **capture**로 등록해 kami/landing-deck의 author `od:slide` 가로채기보다 먼저 forceReveal
+- host selector strip을 LOOK_NEUTRALIZE 셸(`#deck-track`, `.deck-stage`, …)과 정렬
+
+회귀 테스트는 Studio 단일 fixture가 아니라 `html-ppt-zhangzara-*` 중 `#deck` viewport-track 패턴 전체를 스캔한다. 현재 최소 기대 포함: Broadside, Grove, Mat, Monochrome, Signal, Studio, Vellum.
 
 검증:
 
-- [x] `compact-api-stacked-deck.test.ts` — Zhangzara `#deck` viewport-track 전체가 `data-od-deck-stacked-fix` 경로로 들어감
+- [x] `compact-api-stacked-deck.test.ts` — Zhangzara `#deck` viewport-track 전체가 pin+neutralize+stacked-fix
+- [x] Studio-like stylesheet grid 보존 · host wheel next
+- [x] catalog-wide audit — kami/landing-deck marked-active not host-hidden
+- [x] `srcdoc-deck-bridge-nested-slides.test.ts` — compact wheel advances
+- [x] `deck-fixed-canvas` force pin · letterbox neutralize · cache v49
 - [x] `srcdoc-deck-bridge-nested-slides.test.ts` — `#deck-track` native transform deck은 계속 보호됨
 - [x] Studio actual fixture를 jsdom bridge로 실행해 `#od-stacked-deck-stage` hoist 및 host next 이동 확인
 
@@ -1751,6 +1767,7 @@ User-message 쪽 `[Existing deck edit]` / `<attached-preview-comments>` 주입�
 | 2026-08-18 | Clone content-fill motif 보정 — 8/13 SVG hang 방지 패치가 first fill에서 `Motif sprites`/`Decoration CSS`/`Layout CSS`를 통째로 생략해 Daisy/Capsule 템플릿 정체성이 약해졌다. `slimTemplateVisualKitForFill`이 큰 SVG sprite sheet와 전체 stylesheet dump는 계속 제거하되, Daisy star/rainbow·Capsule pill/capsule·Terminal scanline 같은 compact motif recipe와 짧은 Decoration/Layout CSS cue를 보존하도록 변경했다. |
 | 2026-08-18 | §0.20 — html-ppt identity scope. 공유 `:root --bg:#ffffff` 대신 `.tpl-*` host 토큰/슬라이드 surface/폰트를 kit 계약으로 쓰고, SKILL `copy index.html` filesystem 지시를 neutralize. |
 | 2026-08-21 | §0.93 — persist skipped complete decks whose cover still said 만들어줘. Heal first heading from the user brief. |
+| 2026-08-21 | §0.93 — Studio/#deck catalog letterbox half-path: force pin + neutralize re-inject · stylesheet grid snapshot · host owns wheel/touch/dots + capture od:slide · cache v49. |
 | 2026-08-21 | §0.92 — Studio/#deck horizontal strip: body-first false positive · neutralize #deck column · flex 100vw strip · vw→1920px · transformTrack column skip · cache v48. |
 | 2026-08-21 | §0.91 — all-template PreviewModal blank canvas. `slide-counter` is not a slide host · official presenter restore · native next clears host hide · author class-toggle catalogs never collapse. |
 | 2026-08-21 | §0.90 — PreviewModal Playful/opacity-stack page 2+ painted only body bg. Official presenters must not host-`display:none` inactive slides; native next only flips `.active`. |
