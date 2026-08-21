@@ -659,17 +659,17 @@ export function healInstructionCopyCoverHeading(
   if (!replacement || !dest.trim()) return dest;
   const headingRe = /<h([1-3])\b([^>]*)>([\s\S]*?)<\/h\1>/i;
   const match = headingRe.exec(dest);
-  if (!match) return dest;
-  const visible = match[3]
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
+  const inner = match?.[3];
+  const level = match?.[1];
+  if (!match || inner == null || level == null) return dest;
+  const attrs = match[2] ?? '';
+  const visible = inner.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
   if (!looksLikeInstructionCopy(visible) && !looksLikeTemplateMarketingTitle(visible)) {
     return dest;
   }
   return (
     dest.slice(0, match.index)
-    + `<h${match[1]}${match[2]}>${escapeHtml(replacement)}</h${match[1]}>`
+    + `<h${level}${attrs}>${escapeHtml(replacement)}</h${level}>`
     + dest.slice(match.index + match[0].length)
   );
 }
