@@ -22,7 +22,7 @@ import {
   MANUAL_EDIT_DISCOVERY_SELECTOR,
   MANUAL_EDIT_SOURCE_PATH_ATTR,
 } from '../edit-mode/bridge';
-import { buildArtifactPreviewDomLeakGuardScript, repairArtifactDocumentHead, repairArtifactStyleSheets, lockStackedDeckCanvasForPreview, pinDeckSlidesToFixedCanvas } from '@open-design/contracts';
+import { buildArtifactPreviewDomLeakGuardScript, repairArtifactDocumentHead, repairArtifactStyleSheets, lockStackedDeckCanvasForPreview, pinDeckSlidesToFixedCanvas, looksLikeOfficialFullscreenPresenterDeck } from '@open-design/contracts';
 import { stripConflictingSrcDocCspBaseUri } from './authenticatedHtmlSrcDoc';
 import {
   injectStackedDeckViewport,
@@ -2537,6 +2537,15 @@ function injectDeckBridge(
   const isFrameworkDeck = /\bid\s*=\s*["']deck-stage["']/i.test(doc)
     || /<deck-stage\b/i.test(doc);
   const isCompactStackedDeck = compactStackedDeck;
+  // Catalog opacity-stack presenters (Playful, Coral, Cartesian, …) hide
+  // inactive pages with author CSS (`opacity:0; visibility:hidden`). Host
+  // `display:none !important` on those siblings survives native `#nextBtn`
+  // class toggles, so page 2+ reports the right index but paints only the
+  // body background. Same lesson as <deck-stage> (§0.68): do not collapse
+  // official presenters. Compact letterbox fills still need the hide.
+  const officialFullscreenPresenter = !isCompactStackedDeck
+    && !isFrameworkDeck
+    && looksLikeOfficialFullscreenPresenterDeck(doc);
   const legacyDeckFix = isFrameworkDeck
     ? ''
     : `<style data-od-deck-fix>
@@ -2617,6 +2626,7 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
   const script = `<script data-od-deck-bridge>(function(){
   var initialSlideIndex = ${safeInitialSlideIndex};
   var compactStackedDeckEnabled = ${isCompactStackedDeck ? 'true' : 'false'};
+  var officialFullscreenPresenter = ${officialFullscreenPresenter ? 'true' : 'false'};
   var didRestoreInitialSlide = false;
   var hostSlideNavigationSeen = false;
   var hostViewport = { w: 0, h: 0, scale: 1, layoutFit: false };
@@ -3643,6 +3653,13 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
   }
   function setSlideDisplayed(el, visible) {
     if (!el || !el.style) return;
+    if (officialFullscreenPresenter && !compactStackedDeckEnabled) {
+      // Author .active / opacity-stack owns paint. Always clear a prior
+      // host hide so restoreInitialSlide cannot trap later native next.
+      clearInlineSlideHide(el);
+      if (visible && el.removeAttribute) el.removeAttribute('hidden');
+      return;
+    }
     var parent = el.parentElement;
     var stacked = !!(parent && (parent.id === 'od-stacked-deck-stage' || parent.getAttribute('data-od-stacked-deck-stage') !== null));
     // Horizontal translate strips keep every slide in document flow.

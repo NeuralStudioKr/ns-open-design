@@ -27,6 +27,24 @@ function postSlide(win: Window, action: 'next' | 'prev') {
   }));
 }
 
+function extractNonOdScripts(srcdoc: string): string[] {
+  const scripts: string[] = [];
+  for (const match of srcdoc.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)) {
+    const attrs = match[1] ?? '';
+    if (/data-od-/i.test(attrs)) continue;
+    const body = match[2]?.trim();
+    if (body) scripts.push(body);
+  }
+  return scripts;
+}
+
+function paintedSlideCopy(el: Element | null): string {
+  if (!el) return '';
+  const host = el as HTMLElement;
+  if (host.style.display === 'none' || host.style.visibility === 'hidden') return '';
+  return (host.textContent || '').replace(/\s+/g, ' ').trim();
+}
+
 describe('deck bridge — official catalog presenter navigation', () => {
   it('does not treat 1-based nav-dot data-slide as already being on slide 2', async () => {
     const official = readFileSync(
@@ -241,4 +259,133 @@ describe('deck bridge — official catalog presenter navigation', () => {
 
     expect(failures).toEqual([]);
   });
+
+  it('keeps Playful page 5 painted after restoreInitialSlide + native next (opacity-stack)', async () => {
+    const html = readFileSync(
+      resolve(repoRoot, 'plugins/_official/examples/html-ppt-zhangzara-playful/example.html'),
+      'utf8',
+    );
+    const srcdoc = buildSrcdoc(html, { deck: true });
+    const script = extractDeckBridgeScript(srcdoc);
+    const authorScripts = extractNonOdScripts(srcdoc);
+    const dom = new JSDOM(srcdoc.replace(/<script\b[\s\S]*?<\/script>/gi, ''), {
+      runScripts: 'outside-only',
+      pretendToBeVisual: true,
+    });
+    const win = dom.window;
+    const parentPostMessage = vi.fn();
+    Object.defineProperty(win, 'parent', {
+      configurable: true,
+      value: { postMessage: parentPostMessage },
+    });
+    for (const author of authorScripts) new win.Function(author).call(win);
+    new win.Function(script).call(win);
+    win.dispatchEvent(new win.Event('load'));
+    // restoreInitialSlide (100ms observe + 200ms load) used to display:none
+    // every inactive opacity-stack page. Native #nextBtn then only flips
+    // .active, leaving page 5 as peach body with no "The Collective".
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 260));
+
+    for (let i = 0; i < 4; i++) {
+      postSlide(win, 'next');
+      await new Promise<void>((resolve) => win.setTimeout(resolve, 30));
+    }
+
+    const slide5 = win.document.querySelector('.slide-5') as HTMLElement | null;
+    expect(slide5?.classList.contains('active')).toBe(true);
+    expect(slide5?.style.display).not.toBe('none');
+    expect(slide5?.style.visibility).not.toBe('hidden');
+    expect(paintedSlideCopy(slide5)).toContain('The Collective');
+    expect(lastSlideState(parentPostMessage)).toMatchObject({ active: 4, count: 10 });
+  });
+
+  it('does not trap official html-ppt pages behind display:none after restore + next', async () => {
+    const examplesDir = resolve(repoRoot, 'plugins/_official/examples');
+    const dirs = readdirSync(examplesDir).filter((name) => name.startsWith('html-ppt-'));
+    const failures: string[] = [];
+
+    for (const dir of dirs) {
+      const html = readFileSync(resolve(examplesDir, dir, 'example.html'), 'utf8');
+      const srcdoc = buildSrcdoc(html, { deck: true });
+      const script = extractDeckBridgeScript(srcdoc);
+      const authorScripts = extractNonOdScripts(srcdoc);
+      const dom = new JSDOM(srcdoc.replace(/<script\b[\s\S]*?<\/script>/gi, ''), {
+        runScripts: 'outside-only',
+        pretendToBeVisual: true,
+      });
+      const win = dom.window;
+      const parentPostMessage = vi.fn();
+      Object.defineProperty(win, 'parent', {
+        configurable: true,
+        value: { postMessage: parentPostMessage },
+      });
+      if (win.document.querySelector('deck-stage')) {
+        class DeckStage extends win.HTMLElement {
+          _index = 0;
+          connectedCallback() { this._apply(0); }
+          get length() {
+            return [...this.children].filter((node) => node.nodeType === 1).length;
+          }
+          goTo(i: number) {
+            this._index = Math.max(0, Math.min(this.length - 1, i));
+            this._apply(this._index);
+          }
+          _apply(curr: number) {
+            [...this.children].forEach((slide, index) => {
+              if (slide.nodeType !== 1) return;
+              const el = slide as HTMLElement;
+              if (index === curr) el.setAttribute('data-deck-active', '');
+              else el.removeAttribute('data-deck-active');
+            });
+          }
+        }
+        try { win.customElements.define('deck-stage', DeckStage); } catch { /* defined */ }
+      }
+      for (const author of authorScripts) {
+        try { new win.Function(author).call(win); } catch { /* template chrome */ }
+      }
+      new win.Function(script).call(win);
+      win.document.querySelectorAll('deck-stage').forEach((node) => {
+        const cb = (node as { connectedCallback?: () => void }).connectedCallback;
+        if (typeof cb === 'function') cb.call(node);
+      });
+      win.dispatchEvent(new win.Event('load'));
+      // Same path as restoreInitialSlide — goto 0 then native/host next —
+      // without waiting the 200ms load timer for every catalog example.
+      win.dispatchEvent(new win.MessageEvent('message', {
+        data: { type: 'od:slide', action: 'go', index: 0 },
+      }));
+      await new Promise<void>((resolve) => win.setTimeout(resolve, 20));
+      postSlide(win, 'next');
+      await new Promise<void>((resolve) => win.setTimeout(resolve, 20));
+
+      const after = lastSlideState(parentPostMessage);
+      if (!after || after.count < 2) {
+        failures.push(`${dir}: count=${after?.count ?? '?'}`);
+        continue;
+      }
+      const slides = [...win.document.querySelectorAll(
+        '.slide, .ppt-slide, .deck-slide, [data-screen-label]',
+      )] as HTMLElement[];
+      const marked = slides.filter((el) =>
+        el.classList.contains('active')
+        || el.classList.contains('is-active')
+        || el.classList.contains('current')
+        || el.hasAttribute('data-deck-active'),
+      );
+      const trapped = marked.filter((el) =>
+        el.style.display === 'none' || el.style.visibility === 'hidden',
+      );
+      if (trapped.length) {
+        failures.push(`${dir}: ${trapped.length} marked-active slide(s) still host-hidden`);
+        continue;
+      }
+      const active = slides[after.active];
+      if (active && (active.style.display === 'none' || active.style.visibility === 'hidden')) {
+        failures.push(`${dir}: reported active ${after.active} host-hidden`);
+      }
+    }
+
+    expect(failures).toEqual([]);
+  }, 20_000);
 });
