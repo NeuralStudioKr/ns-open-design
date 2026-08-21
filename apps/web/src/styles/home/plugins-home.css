@@ -467,6 +467,17 @@ button.plugins-home__pill--all.is-active:hover:not(:disabled) {
   cursor: pointer;
   contain-intrinsic-size: 400px 340px;
 }
+/* Deck thumbs are 16:9 + a title bar. The default 400×340 intrinsic box
+   is taller than the painted card, so content-visibility / tab-focus
+   scrolled to the wrong place and 100cqw briefly used the leftover tall
+   hover-pan recipe. */
+.plugins-home__card--gallery[data-od-mode="deck"],
+.plugins-home__grid--deck .plugins-home__card--gallery {
+  content-visibility: visible;
+  contain: paint;
+  contain-intrinsic-size: auto 400px 262px;
+  container-type: inline-size;
+}
 .plugins-home__card--gallery:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
@@ -576,23 +587,31 @@ button.plugins-home__pill--all.is-active:hover:not(:disabled) {
    (`pluginCatalogPreviewSrcDoc`). Percent-of-card iframe sizing (360%)
    assumed the iframe viewport *was* the slide; after isolation it cropped
    the 1920 canvas from the top-left and looked like a wrong aspect + focus.
-   Same recipe as picker / plus-menu: pin 1920×1080, scale by card width. */
-.plugins-home__card--gallery[data-od-mode="deck"] .plugins-home__gallery-frame {
+   Same recipe as picker / plus-menu: pin 1920×1080, scale by card width.
+   Slide-only Community (`plugins-home__grid--deck`) applies this even when
+   a row omitted `data-od-mode`. */
+.plugins-home__card--gallery[data-od-mode="deck"] .plugins-home__gallery-frame,
+.plugins-home__grid--deck .plugins-home__card--gallery .plugins-home__gallery-frame {
   height: auto;
   aspect-ratio: 16 / 9;
   background: #0b0c10;
   container-type: inline-size;
 }
-.plugins-home__card--gallery[data-od-mode="deck"] .plugins-home__html-chrome {
+.plugins-home__card--gallery[data-od-mode="deck"] .plugins-home__html-chrome,
+.plugins-home__grid--deck .plugins-home__card--gallery .plugins-home__html-chrome {
   display: none;
 }
 .plugins-home__card--gallery[data-od-mode="deck"] .plugins-home__media-img,
-.plugins-home__card--gallery[data-od-mode="deck"] .plugins-home__media-video {
+.plugins-home__card--gallery[data-od-mode="deck"] .plugins-home__media-video,
+.plugins-home__grid--deck .plugins-home__card--gallery .plugins-home__media-img,
+.plugins-home__grid--deck .plugins-home__card--gallery .plugins-home__media-video {
   object-fit: contain;
   background: #0b0c10;
 }
 .plugins-home__card--gallery[data-od-mode="deck"] .plugins-home__html-iframe,
-.plugins-home__card--gallery[data-od-mode="deck"]:hover .plugins-home__html-iframe {
+.plugins-home__card--gallery[data-od-mode="deck"]:hover .plugins-home__html-iframe,
+.plugins-home__grid--deck .plugins-home__card--gallery .plugins-home__html-iframe,
+.plugins-home__grid--deck .plugins-home__card--gallery:hover .plugins-home__html-iframe {
   top: 0;
   left: 0;
   width: 1920px;

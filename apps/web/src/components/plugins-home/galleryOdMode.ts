@@ -6,35 +6,40 @@ function readOdTags(od: { tags?: unknown } | undefined): string[] {
   return Array.isArray(od?.tags) ? od.tags.map((tag) => String(tag).toLowerCase()) : [];
 }
 
-/**
- * Gallery / plus-menu thumbs key 16:9 isolation framing off `data-od-mode="deck"`.
- * Official catalog skills set `manifest.od.mode`, but community html-ppt rows
- * sometimes omit it — without the attribute they fall through to the tall
- * 1440×2200 hover-pan recipe and look cropped / wrongly focused.
- */
-export function resolveGalleryOdMode(
+function normalizeOdMode(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const mode = value.trim().toLowerCase();
+  return mode || undefined;
+}
+
+export function looksLikeDeckGalleryIdentity(
   record: Pick<InstalledPluginRecord, 'id' | 'manifest'>,
-  explicitMode?: unknown,
-): string | undefined {
-  if (typeof explicitMode === 'string' && explicitMode.trim()) {
-    return explicitMode;
-  }
-  const od = record.manifest?.od as { mode?: unknown; tags?: unknown } | undefined;
-  if (typeof od?.mode === 'string' && od.mode.trim()) {
-    return od.mode;
-  }
+): boolean {
+  const od = record.manifest?.od as { tags?: unknown } | undefined;
   const tags = [
     ...(record.manifest?.tags ?? []).map((tag) => tag.toLowerCase()),
     ...readOdTags(od),
   ];
   const id = `${record.id ?? ''} ${record.manifest?.id ?? ''}`;
-  if (
+  return (
     tags.includes('html-ppt')
     || tags.includes('deck')
     || tags.includes('canvas-slide')
     || DECK_ID_RE.test(id)
-  ) {
-    return 'deck';
-  }
-  return undefined;
+  );
+}
+
+/**
+ * Gallery / plus-menu thumbs key 16:9 isolation framing off `data-od-mode="deck"`.
+ * Official catalog skills set `manifest.od.mode`, but community html-ppt rows
+ * sometimes omit it or ship `mode: html`. Without the deck attribute they fall
+ * through to the tall 1440×2200 hover-pan recipe and look cropped.
+ */
+export function resolveGalleryOdMode(
+  record: Pick<InstalledPluginRecord, 'id' | 'manifest'>,
+  explicitMode?: unknown,
+): string | undefined {
+  if (looksLikeDeckGalleryIdentity(record)) return 'deck';
+  return normalizeOdMode(explicitMode)
+    ?? normalizeOdMode((record.manifest?.od as { mode?: unknown } | undefined)?.mode);
 }

@@ -31,6 +31,12 @@ function healCoverHtml(html: string): string {
 
 export const HTML_COVER_CANVAS_WIDTH = 1920;
 export const HTML_COVER_CANVAS_HEIGHT = 1080;
+export const OD_DECK_CARD_PREVIEW_STYLE_ID = "od-deck-card-preview";
+
+/** True when srcDoc was isolated to the 1920×1080 cover canvas. */
+export function srcDocHasIsolatedDeckCover(srcDoc: string | null | undefined): boolean {
+  return typeof srcDoc === "string" && srcDoc.includes(`id="${OD_DECK_CARD_PREVIEW_STYLE_ID}"`);
+}
 
 /** Opening-tag attrs that may contain `>` inside quotes (style/content). */
 const TAG_OPEN_ATTRS_RE = String.raw`(?:[^>"']|"[^"]*"|'[^']*')*`;
@@ -114,7 +120,7 @@ export function deckPreviewSrcDoc(
   const source = options?.alreadyHealed ? html : healCoverHtml(html);
   const isolated = stampIsolatedCoverSlideVisible(isolateFirstDeckSlideHtml(source));
   const withoutScripts = stripHtmlScripts(isolated);
-  const style = `<style id="od-deck-card-preview">
+  const style = `<style id="${OD_DECK_CARD_PREVIEW_STYLE_ID}">
     html,
     body {
       margin: 0 !important;

@@ -1341,6 +1341,11 @@
   border-color: var(--accent);
   background: var(--accent-tint);
 }
+.plugin-details-modal__hero-stage {
+  position: relative;
+  overflow: hidden;
+  background: #ffffff;
+}
 .plugin-details-modal__hero-iframe {
   border: none;
   width: 100%;
@@ -1348,10 +1353,31 @@
   background: #ffffff;
   display: block;
 }
+/* Isolated catalog covers are a 1920×1080 canvas. A fluid 100%×380px
+   iframe showed only the top-left crop — same class of bug as the
+   home gallery 360% recipe. */
+.plugin-details-modal__hero[data-od-cover="deck"] .plugin-details-modal__hero-stage {
+  aspect-ratio: 16 / 9;
+  background: #0b0c10;
+  container-type: inline-size;
+}
+.plugin-details-modal__hero[data-od-cover="deck"] .plugin-details-modal__hero-iframe {
+  position: absolute;
+  inset: auto;
+  top: 0;
+  left: 0;
+  width: 1920px;
+  height: 1080px;
+  transform: scale(calc(100cqw / 1920px));
+  transform-origin: 0 0;
+}
 
 @media (max-width: 640px) {
   .plugin-details-modal__hero-iframe {
     height: 280px;
+  }
+  .plugin-details-modal__hero[data-od-cover="deck"] .plugin-details-modal__hero-iframe {
+    height: 1080px;
   }
 }
 

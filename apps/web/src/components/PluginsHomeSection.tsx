@@ -274,7 +274,15 @@ export function PluginsHomeSection({
             </div>
           ) : (
             <div
-              className={`plugins-home__grid${cardLayout === 'gallery' ? ' plugins-home__grid--gallery' : ''}`}
+              className={[
+                'plugins-home__grid',
+                cardLayout === 'gallery' ? 'plugins-home__grid--gallery' : '',
+                cardLayout === 'gallery' && hidePrimaryCategoryFacets
+                  ? 'plugins-home__grid--deck'
+                  : '',
+              ]
+                .filter(Boolean)
+                .join(' ')}
               role="list"
             >
               {renderedPlugins.map((p) => (

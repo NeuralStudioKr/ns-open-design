@@ -30,6 +30,24 @@ describe('plugins home gallery deck framing', () => {
     expect(css).toContain('transition: none;');
     expect(css).not.toContain('width: 360%;');
     expect(css).not.toContain('transform: scale(0.2777778);');
+    expect(css).toContain('.plugins-home__grid--deck .plugins-home__card--gallery');
+    expect(css).toContain('content-visibility: visible;');
+    expect(css).toContain('contain-intrinsic-size: auto 400px 262px;');
+  });
+
+  it('marks slide-only community grids as deck-framed', () => {
+    const source = readRepoFile('src/components/PluginsHomeSection.tsx');
+    expect(source).toContain('plugins-home__grid--deck');
+    expect(source).toContain('hidePrimaryCategoryFacets');
+  });
+
+  it('scales isolated plugin-detail heroes to the 1920 cover', () => {
+    const source = readRepoFile('src/components/plugin-details/PluginPreviewHero.tsx');
+    const css = readRepoFile('src/styles/viewer/templates-plugins.css');
+    expect(source).toContain('srcDocHasIsolatedDeckCover');
+    expect(source).toContain("'data-od-cover': 'deck'");
+    expect(css).toContain('.plugin-details-modal__hero[data-od-cover="deck"] .plugin-details-modal__hero-iframe');
+    expect(css).toContain('transform: scale(calc(100cqw / 1920px));');
   });
 
   it('keeps composer plugin deck previews on the same 1920 canvas scale', () => {

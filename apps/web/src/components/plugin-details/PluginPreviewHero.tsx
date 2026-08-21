@@ -10,7 +10,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Icon } from '../Icon';
 import { fetchPluginExampleHtml } from '../../providers/registry';
-import { pluginCatalogPreviewSrcDoc } from '../../teamver/htmlCoverSrcDoc';
+import {
+  pluginCatalogPreviewSrcDoc,
+  srcDocHasIsolatedDeckCover,
+} from '../../teamver/htmlCoverSrcDoc';
 import { embedUiLabel } from '../../teamver/embedUiLabels';
 
 export interface PluginExampleEntry {
@@ -22,6 +25,8 @@ interface Props {
   pluginId: string;
   pluginTitle: string;
   examples: PluginExampleEntry[];
+  /** Size the hero as a 16:9 cover before srcDoc isolation is known. */
+  preferDeckCover?: boolean;
 }
 
 interface NormalizedExample {
@@ -31,7 +36,12 @@ interface NormalizedExample {
   href: string;
 }
 
-export function PluginPreviewHero({ pluginId, pluginTitle, examples }: Props) {
+export function PluginPreviewHero({
+  pluginId,
+  pluginTitle,
+  examples,
+  preferDeckCover = false,
+}: Props) {
   const items = useMemo<NormalizedExample[]>(
     () => examples.map((e, idx) => normalize(pluginId, e, idx)),
     [pluginId, examples],
@@ -71,6 +81,9 @@ export function PluginPreviewHero({ pluginId, pluginTitle, examples }: Props) {
     <section
       className="plugin-details-modal__hero"
       data-testid="plugin-details-hero"
+      {...(preferDeckCover || srcDocHasIsolatedDeckCover(srcDoc)
+        ? { 'data-od-cover': 'deck' }
+        : {})}
     >
       <div className="plugin-details-modal__hero-head">
         <div className="plugin-details-modal__hero-eyebrow">
@@ -135,23 +148,25 @@ export function PluginPreviewHero({ pluginId, pluginTitle, examples }: Props) {
             <span>Open</span>
           </a>
         </div>
-        {srcDoc ? (
-          <iframe
-            key={active.key}
-            title={`${pluginTitle} — ${active.name}`}
-            srcDoc={srcDoc}
-            sandbox="allow-scripts"
-            loading="lazy"
-            className="plugin-details-modal__hero-iframe"
-            data-testid="plugin-details-hero-iframe"
-          />
-        ) : (
-          <div
-            className="plugin-details-modal__hero-iframe"
-            data-testid="plugin-details-hero-loading"
-            aria-hidden
-          />
-        )}
+        <div className="plugin-details-modal__hero-stage">
+          {srcDoc ? (
+            <iframe
+              key={active.key}
+              title={`${pluginTitle} — ${active.name}`}
+              srcDoc={srcDoc}
+              sandbox="allow-scripts"
+              loading="lazy"
+              className="plugin-details-modal__hero-iframe"
+              data-testid="plugin-details-hero-iframe"
+            />
+          ) : (
+            <div
+              className="plugin-details-modal__hero-iframe"
+              data-testid="plugin-details-hero-loading"
+              aria-hidden
+            />
+          )}
+        </div>
       </div>
     </section>
   );

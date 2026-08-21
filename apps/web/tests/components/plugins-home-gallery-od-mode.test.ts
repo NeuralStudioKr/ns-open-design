@@ -15,16 +15,28 @@ function record(
 }
 
 describe('resolveGalleryOdMode', () => {
-  it('keeps an explicit od.mode string', () => {
+  it('normalizes explicit od.mode casing', () => {
+    expect(
+      resolveGalleryOdMode(
+        record({
+          id: 'weekly-update',
+          manifest: { od: { mode: 'Deck' } } as InstalledPluginRecord['manifest'],
+        }),
+        'Deck',
+      ),
+    ).toBe('deck');
+  });
+
+  it('prefers deck framing for html-ppt identity even when mode is html', () => {
     expect(
       resolveGalleryOdMode(
         record({
           id: 'community-html-ppt-studio',
-          manifest: { od: { mode: 'html' } } as InstalledPluginRecord['manifest'],
+          manifest: { od: { mode: 'html' }, tags: ['html-ppt'] } as InstalledPluginRecord['manifest'],
         }),
         'html',
       ),
-    ).toBe('html');
+    ).toBe('deck');
   });
 
   it('reads manifest.od.mode when the explicit arg is missing', () => {

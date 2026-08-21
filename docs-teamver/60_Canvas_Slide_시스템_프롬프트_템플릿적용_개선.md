@@ -32,6 +32,17 @@
 | scaffold로 갑자기 바꾸면? | **안 됨.** kit hard cutover 금지. full HTML scaffold도 기본 inject 하지 않음 |
 | 1장짜리 템플릿 결과가 저장되는가? | **제품 경로는 첫 fill 3장.** 잘리면 제목 있는 1장은 저장하고 top-up이 덧붙인다. 제목 없는 빈 셸만 미완성으로 차단. 사용자가 1장을 명시한 경우도 허용 |
 
+### 0.99 2026-08-21 — 루트 갤러리 썸네일 포커스·비율 잔여 구멍
+
+§0.98 이후에도 `content-visibility` intrinsic, `mode: html` html-ppt, slide-only 그리드 전체, 상세 hero 100%×380px가 같은 crop/포커스 계열을 남겼다.
+
+구현 현황:
+
+- [x] `plugins-home__grid--deck` — slide-only gallery 전체 16:9 1920 스케일
+- [x] deck 카드 `content-visibility: visible` + 16:9 intrinsic
+- [x] `resolveGalleryOdMode` — html-ppt identity가 `html`보다 우선, mode 소문자 정규화
+- [x] PluginPreviewHero isolation → `data-od-cover="deck"` 1920 `cqw`
+
 ### 0.98 2026-08-21 — 루트 갤러리 템플릿 썸네일 1920 캔버스 스케일
 
 커버 isolation 이후 루트 community 갤러리의 360% iframe 레시피가 1920×1080 캔버스를 좌상단 crop 했다. 피커와 같은 `100cqw / 1920` 스케일로 맞추고, mode 누락 html-ppt도 `data-od-mode="deck"`을 유지한다.

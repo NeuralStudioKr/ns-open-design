@@ -11,6 +11,7 @@ import {
   pagePreviewSrcDoc,
   buildHtmlCoverSrcDoc,
   pluginCatalogPreviewSrcDoc,
+  srcDocHasIsolatedDeckCover,
   stampIsolatedCoverSlideVisible,
 } from "../../src/teamver/htmlCoverSrcDoc";
 
@@ -80,6 +81,8 @@ describe("ProjectCardHtmlCover srcDoc builders", () => {
 
     expect(srcDoc.match(/<base\b/g)).toHaveLength(1);
     expect(srcDoc).toContain('id="od-deck-card-preview"');
+    expect(srcDocHasIsolatedDeckCover(srcDoc)).toBe(true);
+    expect(srcDocHasIsolatedDeckCover('<html></html>')).toBe(false);
     expect(srcDoc).not.toContain("<script");
   });
 

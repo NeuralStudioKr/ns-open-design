@@ -20,6 +20,7 @@ import { PluginPreviewHero } from './PluginPreviewHero';
 import { PluginMetaSections } from './PluginMetaSections';
 import { PluginShareMenu } from './PluginShareMenu';
 import { buildPluginUseMenu, pluginUsePrimaryAction } from './pluginUseMenu';
+import { resolveGalleryOdMode } from '../plugins-home/galleryOdMode';
 import type { PluginUseAction } from '../plugins-home/useActions';
 
 interface Props {
@@ -136,6 +137,7 @@ export function PluginScenarioDetail({
               pluginId={record.id}
               pluginTitle={record.title}
               examples={examples}
+              preferDeckCover={resolveGalleryOdMode(record) === 'deck'}
             />
           ) : null}
 

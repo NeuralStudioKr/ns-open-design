@@ -151,6 +151,9 @@ describe('PluginsHomeSection (community gallery)', () => {
       defaultFacetSelection: { category: 'deck', subcategory: 'creative-decks' },
     });
 
+    expect(document.querySelector('.plugins-home__grid')?.className).toContain(
+      'plugins-home__grid--deck',
+    );
     expect(screen.getByTestId('plugins-home-row-category').getAttribute('data-hide-category-pills')).toBe(
       'true',
     );
