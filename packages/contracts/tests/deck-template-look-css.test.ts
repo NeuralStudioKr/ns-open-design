@@ -741,7 +741,7 @@ html, body { overflow: visible !important; height: auto !important; }
     expect(merged).toMatch(/deco-daisy-tl\{[^}]*top:\s*0/i);
   });
 
-  it('strips slide-host overflow:hidden and 100vh from official look CSS (§0.88)', () => {
+  it('strips slide-host overflow:hidden and 100vh from official look CSS (§0.89)', () => {
     const raw = `
 .slide{position:relative;width:100vw;height:100vh;overflow:hidden;background:#fff}
 .tpl-demo .slide{overflow:hidden;height:100vh}

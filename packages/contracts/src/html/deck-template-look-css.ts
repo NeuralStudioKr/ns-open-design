@@ -189,7 +189,7 @@ export function stripOfficialLookViewportMediaQueries(css: string): string {
 
 /**
  * True when a selector paints the slide/deck host itself (not a descendant
- * panel). Used to strip presenter clip/viewport sizing from look CSS (§0.88).
+ * panel). Used to strip presenter clip/viewport sizing from look CSS (§0.89).
  */
 function isOfficialLookSlideHostSelector(part: string): boolean {
   const cleaned = String(part ?? '')
@@ -210,7 +210,7 @@ function isOfficialLookSlideHostSelector(part: string): boolean {
  * Official catalogs ship `.slide{overflow:hidden;height:100vh}` for fullscreen
  * presenters. LOOK_NEUTRALIZE overrides with !important, but prepare still
  * strips host clip/viewport sizing so Motif cannot clip if neutralize is
- * missing or specificity races (§0.88 · cache v47).
+ * missing or specificity races (§0.89 · cache v47).
  */
 export function stripOfficialLookSlideHostCanvasClips(css: string): string {
   return String(css ?? '').replace(
