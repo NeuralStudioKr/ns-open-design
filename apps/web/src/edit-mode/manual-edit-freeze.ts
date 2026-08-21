@@ -8,6 +8,23 @@
  * pre-edit snapshot: exit looks correct (live source), re-enter looks reverted
  * (stale freeze). Entering always clears too so the freeze effect re-snapshots
  * from the latest live/saved source.
+ *
+ * ---------------------------------------------------------------------------
+ * Tip remount index (539) — user-perception sequences & key constants
+ * ---------------------------------------------------------------------------
+ * Post-protect: TIP_REMOUNT_POST_PROTECT_SEQUENCE
+ *   sticky-clear → soft-land → exit-latch → absorb → post-absorb-quiet → live
+ * Chrome release: TIP_REMOUNT_CHROME_RELEASE_SEQUENCE
+ *   chrome-suppress → fit-remasure → chrome-release → paint-sync-hold →
+ *   unlock-pointer-gate → pointerup-deferred-flush → post-unlock-quiet →
+ *   geom-epoch-flush → live
+ * Timing:
+ *   TIP_REMOUNT_FIT_SETTLE_CHROME_RELEASE_MS (400)
+ *   TIP_REMOUNT_FIT_SETTLE_REMEASURE_DELAYS_MS [50,150,400,900,1600]
+ *   TIP_REMOUNT_FIT_SETTLE_LATCH_MS (1700)
+ *   TIP_REMOUNT_DECK_NUDGE_FOLLOW_MS / TIP_REMOUNT_POST_UNLOCK_QUIET_TIMEOUT_MS
+ * Soft-land catalogs: TIP_POST_STICKY_SOFT_LAND_CATALOGS (2) — intentional.
+ * Do not retune fit delays / latch / soft-land without a tip-remount loop note.
  */
 export function shouldClearManualEditFrozenSourceOnModeChange(
   previousEnabled: boolean,
@@ -1282,14 +1299,30 @@ export function shouldDisableManualEditChromeForTipRemountUnlockGate(
 /**
  * During tip remount follow/settle, reuse the last good host paint when a live
  * measure misses — avoids multi/single chrome flashing to composed fallback
- * (521/523).
+ * (521/523). Paint-sync hold also reuses last-good so inert→interactive does
+ * not null the box (538).
  */
 export function shouldReuseLastHostRectOnTipRemountMeasureMiss(
   tipRemountChromeSessionLive: boolean,
   measuredPaintOk: boolean,
   hasLastGoodHostRect: boolean,
+  paintSyncHoldArmed = false,
 ): boolean {
-  return tipRemountChromeSessionLive && !measuredPaintOk && hasLastGoodHostRect;
+  return (tipRemountChromeSessionLive || paintSyncHoldArmed)
+    && !measuredPaintOk
+    && hasLastGoodHostRect;
+}
+
+/**
+ * Paint-sync hold: keep the current host paint when a forced remasure misses
+ * and there is no last-good yet — avoid single-overlay null flash (538).
+ */
+export function shouldRetainCurrentHostPaintOnTipRemountPaintMiss(
+  paintSyncHoldArmed: boolean,
+  measuredPaintOk: boolean,
+  hasCurrentHostPaint: boolean,
+): boolean {
+  return paintSyncHoldArmed && !measuredPaintOk && hasCurrentHostPaint;
 }
 
 /**

@@ -401,6 +401,7 @@ import {
   shouldArmTipRemountChromeUnlockPointerGate,
   shouldDisableManualEditChromeForTipRemountUnlockGate,
   shouldReuseLastHostRectOnTipRemountMeasureMiss,
+  shouldRetainCurrentHostPaintOnTipRemountPaintMiss,
   shouldClearTipRemountLastHostRectCache,
   shouldTrustTipRemountHostPaintDespiteComposedStale,
   shouldArmTipRemountPaintSyncHold,
@@ -8413,7 +8414,7 @@ function HtmlViewer({
     }
   }
 
-  /** Resolve host paint for chrome — tip session reuses last-good on miss (521/523). */
+  /** Resolve host paint for chrome — tip session reuses last-good on miss (521/523/538). */
   function resolveTipRemountHostPaintRect(
     id: string | null | undefined,
     paint: ManualEditRect | null,
@@ -8428,6 +8429,7 @@ function HtmlViewer({
       tipRemountChromeSessionLiveNow(),
       false,
       lastGood != null,
+      manualEditTipPaintSyncHoldRef.current,
     )) {
       return lastGood;
     }
@@ -11657,6 +11659,16 @@ function HtmlViewer({
       const fallback = resolveTipRemountHostPaintRect(id, null);
       if (fallback) {
         setManualEditHostPaintRect(fallback);
+      } else if (shouldRetainCurrentHostPaintOnTipRemountPaintMiss(
+        manualEditTipPaintSyncHoldRef.current,
+        false,
+        Boolean(
+          manualEditHostPaintRectRef.current
+          && manualEditHostPaintRectRef.current.width >= 1
+          && manualEditHostPaintRectRef.current.height >= 1,
+        ),
+      )) {
+        // Paint-sync hold: keep current box instead of nulling (538).
       } else if (!options?.force) {
         // Keep optimistic seed on failed measure — nulling flashes hybrid compose.
         setManualEditHostPaintRect(null);
