@@ -187,6 +187,58 @@ export function stripOfficialLookViewportMediaQueries(css: string): string {
   return out.replace(/\n{3,}/g, '\n\n');
 }
 
+/**
+ * True when a selector paints the slide/deck host itself (not a descendant
+ * panel). Used to strip presenter clip/viewport sizing from look CSS (§0.88).
+ */
+function isOfficialLookSlideHostSelector(part: string): boolean {
+  const cleaned = String(part ?? '')
+    .trim()
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/::?[a-z0-9_-]+(?:\([^)]*\))?/gi, '')
+    .trim();
+  if (!cleaned) return false;
+  if (/^(?:\.slides-container|\.presentation|\.deck|\.deck-shell|\.stage|#deck)(?:\.[\w-]+)*$/i.test(cleaned)) {
+    return true;
+  }
+  const last = cleaned.split(/\s+/).pop() ?? '';
+  return /^(?:[a-z][\w-]*|\*)?(?:\.slide|\.deck-slide|\.ppt-slide|\.slide-deck)(?:\.[\w-]+)*$/i.test(last)
+    || /^section\.slide(?:\.[\w-]+)*$/i.test(last);
+}
+
+/**
+ * Official catalogs ship `.slide{overflow:hidden;height:100vh}` for fullscreen
+ * presenters. LOOK_NEUTRALIZE overrides with !important, but prepare still
+ * strips host clip/viewport sizing so Motif cannot clip if neutralize is
+ * missing or specificity races (§0.88 · cache v47).
+ */
+export function stripOfficialLookSlideHostCanvasClips(css: string): string {
+  return String(css ?? '').replace(
+    /([^{}]+)\{([^}]*)\}/g,
+    (full, sel: string, body: string) => {
+      const parts = String(sel)
+        .split(',')
+        .map((part) => part.trim())
+        .filter(Boolean);
+      if (!parts.length || !parts.every(isOfficialLookSlideHostSelector)) return full;
+      const next = String(body)
+        .replace(
+          /(?:^|;)\s*overflow(?:-x|-y)?\s*:\s*(?:hidden|clip)\s*(?:!important)?\s*(?=;|$)/gi,
+          ';',
+        )
+        .replace(
+          /(?:^|;)\s*(?:min-|max-)?(?:width|height)\s*:\s*[^;]*\b100\s*v(?:w|h|min|max|i|b)\b[^;]*(?=;|$)/gi,
+          ';',
+        )
+        .replace(/;;+/g, ';')
+        .replace(/^\s*;\s*|\s*;\s*$/g, '')
+        .trim();
+      if (!next) return `${sel}{/* od-slide-host-canvas-clip-stripped */}`;
+      return `${sel}{${next}}`;
+    },
+  );
+}
+
 function matchingCssBraceEnd(source: string, openBrace: number): number {
   let depth = 0;
   for (let j = openBrace; j < source.length; j += 1) {
@@ -2029,7 +2081,9 @@ function prepareOfficialLookCss(css: string): string {
   return appendCompactOfficialTypeLock(
     rewriteOfficialLookHostSlideSelectors(
       sanitizeMotifOutsideCanvasOffsets(
-        stripOfficialLookViewportMediaQueries(css),
+        stripOfficialLookSlideHostCanvasClips(
+          stripOfficialLookViewportMediaQueries(css),
+        ),
       ),
     ),
   );

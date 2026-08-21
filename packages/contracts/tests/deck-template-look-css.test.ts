@@ -23,6 +23,7 @@ import {
   mergeOfficialDeckLookCss,
   needsStackedDesignViewportLock,
   sanitizeMotifOutsideCanvasOffsets,
+  stripOfficialLookSlideHostCanvasClips,
 } from '../src/html/deck-template-look-css';
 import {
   extractTemplateVisualKitFromHtml,
@@ -715,7 +716,7 @@ html, body { overflow: visible !important; height: auto !important; }
     expect(merged).toMatch(/deco-daisy-tl/i);
   });
 
-  it('strips hang offsets from already-current look CSS sheets', () => {
+  it('strips Motif hang offsets from already-current look CSS sheets', () => {
     const official = loadOfficialLookSource(join(EXAMPLES_DIR, 'html-ppt-zhangzara-daisy-days/example.html'));
     const assets = extractOfficialDeckLookAssets(official)!;
     // Full neutralize proof present, but look body still carries official hangs
@@ -738,6 +739,37 @@ html, body { overflow: visible !important; height: auto !important; }
     const merged = mergeOfficialDeckLookCss(currentWithHang, assets);
     expect(merged).not.toMatch(/deco-daisy[^\{]*\{[^}]*(?:top|left|right|bottom)\s*:\s*-\d/i);
     expect(merged).toMatch(/deco-daisy-tl\{[^}]*top:\s*0/i);
+  });
+
+  it('strips slide-host overflow:hidden and 100vh from official look CSS (§0.88)', () => {
+    const raw = `
+.slide{position:relative;width:100vw;height:100vh;overflow:hidden;background:#fff}
+.tpl-demo .slide{overflow:hidden;height:100vh}
+.slide .panel{overflow:hidden;height:40vh}
+.presentation{overflow:hidden;height:100vh}
+.deco-orb{top:-10%;left:5vw;width:20vw;height:20vh}
+`;
+    const out = stripOfficialLookSlideHostCanvasClips(raw);
+    expect(out).not.toMatch(/\.slide\{[^}]*overflow\s*:\s*hidden/i);
+    expect(out).not.toMatch(/\.slide\{[^}]*height\s*:\s*100vh/i);
+    expect(out).not.toMatch(/\.tpl-demo \.slide\{[^}]*overflow\s*:\s*hidden/i);
+    expect(out).not.toMatch(/\.presentation\{[^}]*overflow\s*:\s*hidden/i);
+    // Nested panel clip + Motif geometry stay for Motif sanitize / author intent.
+    expect(out).toMatch(/\.slide \.panel\{[^}]*overflow\s*:\s*hidden/i);
+    expect(out).toMatch(/\.slide \.panel\{[^}]*height\s*:\s*40vh/i);
+    expect(out).toMatch(/deco-orb\{[^}]*top:\s*-10%/i);
+
+    const daisy = loadOfficialLookSource(join(EXAMPLES_DIR, 'html-ppt-zhangzara-daisy-days/example.html'));
+    const assets = extractOfficialDeckLookAssets(daisy)!;
+    const sparse = `<!doctype html><html lang="ko"><body>
+<section class="slide" style="width:1920px;height:1080px"><h1>Clip strip</h1></section>
+</body></html>`;
+    const merged = mergeOfficialDeckLookCss(sparse, assets);
+    const look =
+      merged.match(/<style[^>]*data-od-official-look-css[^>]*>([\s\S]*?)<\/style>/i)?.[1] ?? '';
+    const body = look.replace(/\n?\/\*\s*stacked preview\/export:[\s\S]*$/i, '');
+    expect(body).not.toMatch(/(?:^|,)\s*\.slide\s*\{[^}]*overflow\s*:\s*(?:hidden|clip)/im);
+    expect(body).not.toMatch(/(?:^|,)\s*\.slide\s*\{[^}]*height\s*:\s*100vh/im);
   });
 
   it('sanitizes Graphify/XHS Motif hang CSS (gd-orb / xp-blob)', () => {
@@ -1496,7 +1528,7 @@ ${LOOK_NEUTRALIZE_CSS}
     expect(firstOfficialDeckTemplateId(['research-brief', 'web-fetch'])).toBeNull();
   });
 
-  it('survivor scan: every mode:deck merge clears Motif hang and keeps 16:9 letterbox lock', () => {
+  it('survivor scan: every mode:deck merge clears Motif hang, slide-host clip, and keeps 16:9 letterbox lock', () => {
     const sparse = `<!doctype html><html lang="ko"><head><meta charset="utf-8"></head><body>
 <section class="slide" style="background:#F5F0E6;width:1920px;height:1080px">
   <h1>Linux Internals for Senior Engineers</h1>
@@ -1504,6 +1536,20 @@ ${LOOK_NEUTRALIZE_CSS}
 </section>
 <section class="slide" style="width:1920px;height:1080px"><h2>Kernel</h2></section>
 </body></html>`;
+    const isSlideHostSelector = (part: string): boolean => {
+      const cleaned = part
+        .trim()
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .replace(/::?[a-z0-9_-]+(?:\([^)]*\))?/gi, '')
+        .trim();
+      if (!cleaned) return false;
+      if (/^(?:\.slides-container|\.presentation|\.deck|\.deck-shell|\.stage|#deck)(?:\.[\w-]+)*$/i.test(cleaned)) {
+        return true;
+      }
+      const last = cleaned.split(/\s+/).pop() ?? '';
+      return /^(?:[a-z][\w-]*|\*)?(?:\.slide|\.deck-slide|\.ppt-slide|\.slide-deck)(?:\.[\w-]+)*$/i.test(last)
+        || /^section\.slide(?:\.[\w-]+)*$/i.test(last);
+    };
     const examples = listOfficialDeckExamplePaths();
     expect(examples.length).toBeGreaterThan(40);
     const failures: string[] = [];
@@ -1524,6 +1570,10 @@ ${LOOK_NEUTRALIZE_CSS}
       if (deckHtmlHasMotifOutsideCanvasHang(merged)) {
         failures.push(`${folder}: Motif hang survives merge`);
       }
+      const remmerged = mergeOfficialDeckLookCss(merged, assets);
+      if (deckHtmlHasMotifOutsideCanvasHang(remmerged)) {
+        failures.push(`${folder}: Motif hang survives remmerge`);
+      }
       if (!needsStackedDesignViewportLock(merged)) {
         failures.push(`${folder}: merged fill does not need 1920 viewport lock`);
       }
@@ -1536,8 +1586,28 @@ ${LOOK_NEUTRALIZE_CSS}
       }
       const lookCss =
         merged.match(/<style[^>]*data-od-official-look-css[^>]*>([\s\S]*?)<\/style>/i)?.[1] ?? '';
-      if (sanitizeMotifOutsideCanvasOffsets(lookCss) !== lookCss) {
+      const lookBody = lookCss.replace(/\n?\/\*\s*stacked preview\/export:[\s\S]*$/i, '');
+      if (sanitizeMotifOutsideCanvasOffsets(lookBody) !== lookBody) {
         failures.push(`${folder}: look CSS still has Motif hang after prepare`);
+      }
+      if (stripOfficialLookSlideHostCanvasClips(lookBody) !== lookBody) {
+        failures.push(`${folder}: look CSS still has slide-host overflow/100vh after prepare`);
+      }
+      for (const rule of lookBody.matchAll(/([^{}]+)\{([^}]*)\}/g)) {
+        const parts = String(rule[1] ?? '')
+          .split(',')
+          .map((part) => part.trim())
+          .filter(Boolean);
+        if (!parts.length || !parts.every(isSlideHostSelector)) continue;
+        const body = rule[2] ?? '';
+        if (/overflow(?:-x|-y)?\s*:\s*(?:hidden|clip)/i.test(body)) {
+          failures.push(`${folder}: slide-host overflow clip remains (${parts[0]})`);
+          break;
+        }
+        if (/(?:^|[;-])\s*(?:min-|max-)?(?:width|height)\s*:\s*[^;]*\b100\s*v(?:w|h)\b/i.test(body)) {
+          failures.push(`${folder}: slide-host 100vh/vw remains (${parts[0]})`);
+          break;
+        }
       }
       const kit = extractTemplateVisualKitFromHtml(official, { title: folder });
       if (kit) {
