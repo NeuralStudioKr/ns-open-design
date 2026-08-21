@@ -11,6 +11,7 @@ import {
   LOOK_NEUTRALIZE_CSS,
   OFFICIAL_DECK_LOOK_STYLE_ATTR,
   OFFICIAL_DECK_MOTIF_HTML_ATTR,
+  deckHtmlHasMotifOutsideCanvasHang,
   deckHtmlHasOfficialLookCss,
   ensureOfficialLookStackedCanvasNeutralize,
   extractOfficialDeckLookAssets,
@@ -24,6 +25,7 @@ import {
   sanitizeMotifOutsideCanvasOffsets,
 } from '../src/html/deck-template-look-css';
 import {
+  extractTemplateVisualKitFromHtml,
   listLocalStylesheetHrefs,
   resolveSiblingAssetPath,
 } from '../src/template-visual-kit';
@@ -1493,4 +1495,62 @@ ${LOOK_NEUTRALIZE_CSS}
     )).toBe('example-html-ppt-zhangzara-capsule');
     expect(firstOfficialDeckTemplateId(['research-brief', 'web-fetch'])).toBeNull();
   });
+
+  it('survivor scan: every mode:deck merge clears Motif hang and keeps 16:9 letterbox lock', () => {
+    const sparse = `<!doctype html><html lang="ko"><head><meta charset="utf-8"></head><body>
+<section class="slide" style="background:#F5F0E6;width:1920px;height:1080px">
+  <h1>Linux Internals for Senior Engineers</h1>
+  <p>Topic overview</p>
+</section>
+<section class="slide" style="width:1920px;height:1080px"><h2>Kernel</h2></section>
+</body></html>`;
+    const examples = listOfficialDeckExamplePaths();
+    expect(examples.length).toBeGreaterThan(40);
+    const failures: string[] = [];
+    let officialHangHits = 0;
+    for (const examplePath of examples) {
+      const folder = examplePath.slice(EXAMPLES_DIR.length + 1).split('/')[0] ?? examplePath;
+      const official = loadOfficialLookSource(examplePath);
+      const assets = extractOfficialDeckLookAssets(official);
+      if (!assets?.css || assets.css.length < 80) {
+        failures.push(`${folder}: no extractable look CSS`);
+        continue;
+      }
+      if (deckHtmlHasMotifOutsideCanvasHang(official)) officialHangHits += 1;
+      const merged = mergeOfficialDeckLookCss(sparse, assets);
+      if (!merged.includes(OFFICIAL_DECK_LOOK_STYLE_ATTR)) {
+        failures.push(`${folder}: missing official look style marker`);
+      }
+      if (deckHtmlHasMotifOutsideCanvasHang(merged)) {
+        failures.push(`${folder}: Motif hang survives merge`);
+      }
+      if (!needsStackedDesignViewportLock(merged)) {
+        failures.push(`${folder}: merged fill does not need 1920 viewport lock`);
+      }
+      if (looksLikeOfficialFullscreenPresenterDeck(merged)) {
+        failures.push(`${folder}: sparse merge wrongly classified as catalog presenter`);
+      }
+      const locked = lockStackedDeckCanvasForPreview(merged);
+      if (!/content="width=1920/.test(locked)) {
+        failures.push(`${folder}: letterbox lock missing width=1920 meta`);
+      }
+      const lookCss =
+        merged.match(/<style[^>]*data-od-official-look-css[^>]*>([\s\S]*?)<\/style>/i)?.[1] ?? '';
+      if (sanitizeMotifOutsideCanvasOffsets(lookCss) !== lookCss) {
+        failures.push(`${folder}: look CSS still has Motif hang after prepare`);
+      }
+      const kit = extractTemplateVisualKitFromHtml(official, { title: folder });
+      if (kit) {
+        const fence = [...kit.matchAll(/### (?:Decorations|Layout) CSS[\s\S]*?```css\n([\s\S]*?)```/gi)]
+          .map((m) => m[1] ?? '')
+          .join('\n');
+        if (/\.slide\b[^{]*\{[^}]*overflow\s*:\s*(?:hidden|clip)/i.test(fence)) {
+          failures.push(`${folder}: kit still emits .slide{overflow:hidden|clip}`);
+        }
+      }
+    }
+    // Catalog presenters intentionally hang Motifs for fullscreen; merge must clear them.
+    expect(officialHangHits).toBeGreaterThan(10);
+    expect(failures, failures.join('\n')).toEqual([]);
+  }, 90_000);
 });
