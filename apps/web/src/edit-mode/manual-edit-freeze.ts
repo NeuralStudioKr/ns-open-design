@@ -1161,8 +1161,9 @@ export function shouldCatchUpHostMetricsWhenDeckNudgeRemasureThrottled(
 /**
  * After chrome is interactive, defer late fit remasure geometry one tick while
  * the pointer is over selection chrome — or while unlock pointer gate is still
- * armed — so handles do not jump under the cursor (516/525). Metrics may still
- * refresh immediately.
+ * armed — so handles do not jump under the cursor (516/525). Post-unlock quiet
+ * forces one immediate apply so the first remasure after pointerup does not
+ * re-defer (528). Metrics may still refresh immediately.
  */
 export function shouldDeferTipRemountPostReleaseGeometryApply(
   chromeSuppressed: boolean,
@@ -1170,7 +1171,9 @@ export function shouldDeferTipRemountPostReleaseGeometryApply(
   pointerOverChrome: boolean,
   chromeReleaseDelayMs: number = TIP_REMOUNT_FIT_SETTLE_CHROME_RELEASE_MS,
   unlockPointerGateArmed = false,
+  postUnlockQuietArmed = false,
 ): boolean {
+  if (postUnlockQuietArmed) return false;
   return !chromeSuppressed
     && remasureDelayMs >= chromeReleaseDelayMs
     && (pointerOverChrome || unlockPointerGateArmed);
@@ -1185,6 +1188,31 @@ export function shouldFlushDeferredTipRemountGeometryBeforeUnlockGateClear(
   deferredGeometryPending: boolean,
 ): boolean {
   return unlockPointerGateArmed && deferredGeometryPending;
+}
+
+/**
+ * Clearing unlock gate on pointerup — arm one quiet remasure tick so the next
+ * late remasure does not immediately re-defer / re-arm the gate (528).
+ */
+export function shouldArmTipRemountPostUnlockQuiet(
+  unlockingGate: boolean,
+): boolean {
+  return unlockingGate;
+}
+
+/**
+ * Quiet spends on the next remasure attempt after unlock gate clear (528).
+ */
+export function shouldSpendTipRemountPostUnlockQuiet(
+  quietArmed: boolean,
+  remasureAttempted: boolean,
+): boolean {
+  return quietArmed && remasureAttempted;
+}
+
+/** Quiet tick done — later remasures may defer again (528). */
+export function clearTipRemountPostUnlockQuiet(): false {
+  return false;
 }
 
 /**
@@ -1212,14 +1240,16 @@ export function shouldInvalidateDeferredTipRemountGeometryOnImmediateApply(
 /**
  * Chrome just unlocked while the pointer is still over chrome or any pointer
  * button is down — keep chrome gated until pointerup so the unlock frame does
- * not eat the first gesture (520/522).
+ * not eat the first gesture (520/522). Post-unlock quiet blocks re-arm (528).
  */
 export function shouldArmTipRemountChromeUnlockPointerGate(
   wasChromeSuppressed: boolean,
   nowChromeSuppressed: boolean,
   pointerOverChrome: boolean,
   pointerButtonsDown = false,
+  postUnlockQuietArmed = false,
 ): boolean {
+  if (postUnlockQuietArmed) return false;
   return wasChromeSuppressed
     && !nowChromeSuppressed
     && (pointerOverChrome || pointerButtonsDown);
@@ -1263,13 +1293,47 @@ export function shouldClearTipRemountLastHostRectCache(
 /**
  * During tip remount chrome session, prefer live/last-good host paint even when
  * it disagrees with composed target.rect — composed often lags fit/tip apply
- * and would otherwise flash the wrong box (526).
+ * and would otherwise flash the wrong box (526). Paint-sync hold covers the
+ * inert→interactive frame (530).
  */
 export function shouldTrustTipRemountHostPaintDespiteComposedStale(
   tipRemountChromeSessionLive: boolean,
   hostPaintOk: boolean,
+  paintSyncHoldArmed = false,
 ): boolean {
-  return tipRemountChromeSessionLive && hostPaintOk;
+  return (tipRemountChromeSessionLive || paintSyncHoldArmed) && hostPaintOk;
+}
+
+/**
+ * Tip remount multi union: when only some members have host paint/last-good,
+ * omit composed-only members so the union does not mix tip-era paint with
+ * pre-tip composed boxes (529). Sibling retry (518) fills the rest.
+ */
+export function shouldOmitComposedMembersFromTipRemountPartialUnion(
+  tipRemountChromeSessionLive: boolean,
+  memberCount: number,
+  paintBearingCount: number,
+): boolean {
+  return tipRemountChromeSessionLive
+    && memberCount >= 2
+    && paintBearingCount > 0
+    && paintBearingCount < memberCount;
+}
+
+/**
+ * Chrome just left tip-remount inert — hold host-paint trust for one paint sync
+ * frame so interactive chrome does not flash composed (530).
+ */
+export function shouldArmTipRemountPaintSyncHold(
+  wasChromeSuppressed: boolean,
+  nowChromeSuppressed: boolean,
+): boolean {
+  return wasChromeSuppressed && !nowChromeSuppressed;
+}
+
+/** Paint-sync hold ends after double-rAF settle (530). */
+export function clearTipRemountPaintSyncHold(): false {
+  return false;
 }
 
 /**

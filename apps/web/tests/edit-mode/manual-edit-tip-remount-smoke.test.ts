@@ -29,11 +29,17 @@ import {
   shouldReplaceDeferredTipRemountGeometryPayload,
   shouldInvalidateDeferredTipRemountGeometryOnImmediateApply,
   shouldFlushDeferredTipRemountGeometryBeforeUnlockGateClear,
+  shouldArmTipRemountPostUnlockQuiet,
+  shouldSpendTipRemountPostUnlockQuiet,
+  clearTipRemountPostUnlockQuiet,
   shouldArmTipRemountChromeUnlockPointerGate,
   shouldDisableManualEditChromeForTipRemountUnlockGate,
   shouldReuseLastHostRectOnTipRemountMeasureMiss,
   shouldClearTipRemountLastHostRectCache,
   shouldTrustTipRemountHostPaintDespiteComposedStale,
+  shouldOmitComposedMembersFromTipRemountPartialUnion,
+  shouldArmTipRemountPaintSyncHold,
+  clearTipRemountPaintSyncHold,
   shouldCatchUpHostMetricsWhenDeckNudgeRemasureThrottled,
   shouldRetryTipRemountSiblingMeasure,
   shouldSkipOdEditTargetsIdentityMixedReseedDuringPostExitAbsorb,
@@ -45,6 +51,10 @@ import {
 
 const fileViewer = readFileSync(
   resolve(import.meta.dirname, '../../src/components/FileViewer.tsx'),
+  'utf8',
+);
+const multiOverlay = readFileSync(
+  resolve(import.meta.dirname, '../../src/components/ManualEditMultiSelectOverlay.tsx'),
   'utf8',
 );
 const webPackageJson = readFileSync(
@@ -143,6 +153,16 @@ describe('manual-edit tip remount smoke (500/501/506)', () => {
     expect(fileViewer).toContain('flushDeferredTipRemountGeometryRef');
   });
 
+  it('arms post-unlock quiet so first remasure does not re-defer (528)', () => {
+    expect(shouldArmTipRemountPostUnlockQuiet(true)).toBe(true);
+    expect(shouldSpendTipRemountPostUnlockQuiet(true, true)).toBe(true);
+    expect(clearTipRemountPostUnlockQuiet()).toBe(false);
+    expect(shouldDeferTipRemountPostReleaseGeometryApply(false, 900, true, undefined, false, true)).toBe(false);
+    expect(shouldArmTipRemountChromeUnlockPointerGate(true, false, true, false, true)).toBe(false);
+    expect(fileViewer).toContain('shouldArmTipRemountPostUnlockQuiet');
+    expect(fileViewer).toContain('manualEditTipPostUnlockQuietRef');
+  });
+
   it('reuses last host rect on tip remount measure miss (521/523)', () => {
     expect(shouldReuseLastHostRectOnTipRemountMeasureMiss(true, false, true)).toBe(true);
     expect(fileViewer).toContain('shouldReuseLastHostRectOnTipRemountMeasureMiss');
@@ -162,6 +182,20 @@ describe('manual-edit tip remount smoke (500/501/506)', () => {
     expect(shouldTrustTipRemountHostPaintDespiteComposedStale(false, true)).toBe(false);
     expect(fileViewer).toContain('shouldTrustTipRemountHostPaintDespiteComposedStale');
     expect(fileViewer).toContain('trustHostPaintDespiteStale');
+  });
+
+  it('omits composed-only members from partial tip remount union (529)', () => {
+    expect(shouldOmitComposedMembersFromTipRemountPartialUnion(true, 3, 1)).toBe(true);
+    expect(shouldOmitComposedMembersFromTipRemountPartialUnion(true, 2, 2)).toBe(false);
+    expect(multiOverlay).toContain('shouldOmitComposedMembersFromTipRemountPartialUnion');
+  });
+
+  it('holds host paint trust for inert→interactive paint sync (530)', () => {
+    expect(shouldArmTipRemountPaintSyncHold(true, false)).toBe(true);
+    expect(shouldTrustTipRemountHostPaintDespiteComposedStale(false, true, true)).toBe(true);
+    expect(clearTipRemountPaintSyncHold()).toBe(false);
+    expect(fileViewer).toContain('shouldArmTipRemountPaintSyncHold');
+    expect(fileViewer).toContain('manualEditTipPaintSyncHold');
   });
 
   it('pins 522–524 FileViewer wiring on tip remount path (527)', () => {

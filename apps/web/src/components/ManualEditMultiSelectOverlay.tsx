@@ -25,6 +25,7 @@ import {
 } from '../edit-mode/manual-edit-group-resize';
 import { hostDeltaToContentDelta, freezeGestureHostGeom } from '../edit-mode/preview-coords';
 import { resolveManualEditChromeHostRect } from '../edit-mode/move-math';
+import { shouldOmitComposedMembersFromTipRemountPartialUnion } from '../edit-mode/manual-edit-freeze';
 import {
   RESIZE_HANDLES,
   cursorForResizeHandle,
@@ -142,15 +143,26 @@ function unionHostRect(
   preferComposed = false,
   trustHostPaintDespiteStale = false,
 ): ManualEditRect | null {
-  let union: ManualEditRect | null = null;
-  for (const target of targets) {
+  const members = targets.map((target) => {
     const contentRect = memberContentRect(target, draftMemberRects?.[target.id] ?? null);
     const paint = preferComposed ? null : measureHostRect(target.id);
+    const paintOk = Boolean(paint && paint.width >= 1 && paint.height >= 1);
+    return { target, contentRect, paint, paintOk };
+  });
+  const paintBearingCount = members.filter((m) => m.paintOk).length;
+  const omitComposed = shouldOmitComposedMembersFromTipRemountPartialUnion(
+    trustHostPaintDespiteStale,
+    targets.length,
+    paintBearingCount,
+  );
+  let union: ManualEditRect | null = null;
+  for (const member of members) {
+    if (omitComposed && !member.paintOk) continue;
     const hostRect = resolveManualEditChromeHostRect(
-      contentRect,
+      member.contentRect,
       composeScale,
       composeOffset,
-      paint,
+      member.paint,
       trustHostPaintDespiteStale,
     );
     if (!union) {
