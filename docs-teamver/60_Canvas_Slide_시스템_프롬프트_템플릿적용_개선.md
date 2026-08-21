@@ -65,6 +65,28 @@
 - [x] HtmlSurface 게이트 source-lock
 - [x] PluginPreviewHero / PluginDetailView 동일 SSOT
 
+### 0.79 2026-08-21 — `data-screen-label` 덱의 16:9 고정 누락 · stage 재확인 중 inactive slide 재노출
+
+일부 생성 결과는 host가 페이지 수를 인식할 수 있도록 `data-screen-label="01 Cover"`를 갖지만, 실제 slide host에는 `class="slide"`가 없다. 이 경우 FileViewer 상단 카운터는 `1 / 7`처럼 보이지만, contracts pin과 compact stacked runtime은 `.slide`만 보고 100vh 문서로 남겨 preview가 세로 HTML처럼 스크롤된다. 사용자가 보고한 `cloud native` 화면처럼 1920 기준 요소가 panel에 그대로 흘러 들어와 비율·크기·배치가 깨지고 horizontal/vertical scrollbar가 생긴다.
+
+두 번째 원인은 stacked stage가 이미 있는 상태에서 `ensureStackedDeckStage()`가 다시 실행될 때 `lockAllStackedSlideAxes()`가 모든 자식 slide에 `display:flex`를 다시 입히는 경로다. inactive slide가 `display:none`에서 되살아나면 여러 장이 동시에 visible이 되어 검은 배경/겹침/스크롤 증상으로 이어질 수 있다.
+
+**수정:**
+- `looksLikeDeckSlideHostAttrs`를 contracts SSOT로 만들고, `class="slide"`뿐 아니라 실제 페이지 label인 `data-screen-label` host를 slide로 본다.
+- 단, inner comment label이나 pagination dot 오인을 막기 위해 `data-screen-label`은 `01 ...` 형식 또는 fixed/viewport sizing이 있는 host만 통과시키고, `data-slide`만으로는 slide host로 보지 않는다.
+- `pinDeckSlidesToFixedCanvas`가 `data-screen-label` host도 1920×1080으로 pin하고, preview/export CSS selector도 해당 host를 포함한다.
+- `compact-api-stacked-deck`와 `srcdoc` bridge가 같은 host 판정을 사용한다.
+- `srcdoc` bridge는 `.slide`가 없는 `data-screen-label` host를 stage로 hoist할 때 `.slide` class를 보강한다.
+- stage가 이미 존재하는 재확인 루프에서는 move 후 현재 active index를 다시 `forceRevealSlide()`로 적용해 inactive slide가 되살아나지 않게 한다.
+
+구현 현황:
+
+- [x] `data-screen-label` only 2장 덱이 compact stacked deck으로 감지됨
+- [x] contracts pin이 `min-height:100vh`를 제거하고 1920×1080 fixed canvas로 저장
+- [x] iframe bridge가 `#od-stacked-deck-stage > .slide`로 hoist 후 1장만 visible
+- [x] portfolio-style compact deck의 재확인 루프가 inactive slide를 다시 flex로 만들지 않음
+- [x] `deck-preview-fit` 회귀 테스트 통과
+
 ### 0.76 2026-08-20 — 생성 중 미리보기 Neutral 룩
 
 compact fill은 룩 CSS를 스트리밍하지 않는다. persist가 끝난 뒤에야 템플릿이 붙어서, 생성 직후 미리보기는 Neutral/와이어프레임으로 보인다.
@@ -1646,6 +1668,7 @@ User-message 쪽 `[Existing deck edit]` / `<attached-preview-comments>` 주입�
 | 2026-08-18 | §0.20 — html-ppt identity scope. 공유 `:root --bg:#ffffff` 대신 `.tpl-*` host 토큰/슬라이드 surface/폰트를 kit 계약으로 쓰고, SKILL `copy index.html` filesystem 지시를 neutralize. |
 | 2026-08-21 | §0.78 — incomplete-html-document-shell + letterbox Motif clip. greenfield head-kit abort · short draft not shell · preview/export overflow:visible · Motif offset-only heal · cache v43. |
 | 2026-08-21 | §0.77 — Pink Script catalog thumbs stayed white. Catalog srcDoc isolates cover and drops deck-stage.js; picker/gallery deck frames go dark + contain. |
+| 2026-08-21 | §0.79 — compact fills that omit `class="slide"` and keep `data-screen-label="01 Cover"` stayed 100vh. Pin/letterbox those hosts · skip inner comment labels · keep inactive slides hidden. |
 | 2026-08-20 | §0.76 — compact-fill preview stayed Neutral until persist. Display-only official look merge when look sheet is missing. |
 | 2026-08-20 | §0.75 — Motif hang sanitize beyond Daisy (gd-orb/xp-blob) · remmerge/deco early sanitize · cache v42. |
 | 2026-08-20 | §0.74 — Capsule `div.slide` count = append hosts · splice inside open `.presentation`/`.deck`/`<deck-stage>` after last slide · hoist locks every stacked flex axis. |

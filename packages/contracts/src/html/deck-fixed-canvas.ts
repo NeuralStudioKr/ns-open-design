@@ -19,7 +19,13 @@ const FIXED_CANVAS_STYLE =
 const FIXED_CANVAS_CSS = `
 /* Teamver fixed 16:9 canvas pin (size only; Motif-safe — no overflow clip) */
 html, body { margin: 0; }
-.slide {
+.slide,
+[data-screen-label],
+section[data-slide],
+main[data-slide],
+article[data-slide],
+.deck-slide,
+.ppt-slide {
   width: 1920px !important;
   height: 1080px !important;
   min-width: 1920px !important;
@@ -46,8 +52,27 @@ function extractClassAttr(attrs: string): string {
   return match?.[2] ?? '';
 }
 
+function extractStyleAttr(attrs: string): string {
+  const match = attrs.match(/\bstyle\s*=\s*(['"])([\s\S]*?)\1/i);
+  return match?.[2] ?? '';
+}
+
+/**
+ * Compact fills sometimes omit `class="slide"` and keep only a Teamver page
+ * label (`data-screen-label="01 Cover"`). Do not treat inner comment targets
+ * (`data-screen-label="eyebrow"`) as slide hosts.
+ */
+export function looksLikeDeckSlideHostAttrs(attrs: string): boolean {
+  const source = String(attrs ?? '');
+  if (/\bslide\b/i.test(extractClassAttr(source))) return true;
+  if (!/\bdata-screen-label\s*=/i.test(source)) return false;
+  if (/\bdata-screen-label\s*=\s*(['"])\d{2}(?:\s|\1)/i.test(source)) return true;
+  const style = extractStyleAttr(source);
+  return hasFixedCanvasSizing(style) || hasViewportSlideSizing(style);
+}
+
 function isSlideHost(attrs: string): boolean {
-  return /\bslide\b/i.test(extractClassAttr(attrs));
+  return looksLikeDeckSlideHostAttrs(attrs);
 }
 
 function hasFixedCanvasSizing(style: string): boolean {

@@ -1,5 +1,6 @@
 import {
   OFFICIAL_DECK_LOOK_STYLE_ATTR,
+  looksLikeDeckSlideHostAttrs,
   looksLikeOfficialFullscreenPresenterDeck,
 } from '@open-design/contracts';
 import { repairArtifactDocumentHeadIfNeeded } from './artifact-document-head';
@@ -61,12 +62,15 @@ function extractHtmlAttr(attrs: string, name: string): string {
   return match?.[2] ?? '';
 }
 
+function attrsLookLikeDeckSlide(attrs: string): boolean {
+  return looksLikeDeckSlideHostAttrs(attrs);
+}
+
 function extractSlideInlineStyles(html: string): string[] {
   const styles: string[] = [];
   for (const match of html.matchAll(/<(?:section|div|main|article)\b([^>]*)>/gi)) {
     const attrs = match[1] ?? '';
-    const className = extractHtmlAttr(attrs, 'class');
-    if (!/\bslide\b/i.test(className)) continue;
+    if (!attrsLookLikeDeckSlide(attrs)) continue;
     const style = extractHtmlAttr(attrs, 'style');
     if (style) styles.push(style);
   }
@@ -74,7 +78,11 @@ function extractSlideInlineStyles(html: string): string[] {
 }
 
 function countSlideElements(html: string): number {
-  return [...html.matchAll(/<(?:section|div|main|article)\b[^>]*\bclass\s*=\s*['"][^'"]*\bslide\b[^'"]*['"]/gi)].length;
+  let count = 0;
+  for (const match of html.matchAll(/<(?:section|div|main|article)\b([^>]*)>/gi)) {
+    if (attrsLookLikeDeckSlide(match[1] ?? '')) count += 1;
+  }
+  return count;
 }
 
 function looksLikeLegacyStyledBodyFirstDeck(html: string): boolean {
@@ -153,6 +161,13 @@ function looksLikeSlideViewportSized(html: string): boolean {
 }
 
 function hasBodyFirstSlide(html: string): boolean {
+  const bodyMatch = /<body\b[^>]*>/i.exec(html);
+  if (bodyMatch) {
+    const body = html.slice((bodyMatch.index ?? 0) + bodyMatch[0].length);
+    for (const match of body.matchAll(/<(?:section|div|main|article)\b([^>]*)>/gi)) {
+      if (attrsLookLikeDeckSlide(match[1] ?? '')) return true;
+    }
+  }
   if (
     /<body\b[^>]*>(?:\s|<!--[\s\S]*?-->|<(?:header|nav)\b[^>]*>[\s\S]*?<\/(?:header|nav)>|<style\b[^>]*>[\s\S]*?<\/style>|<script\b[^>]*>[\s\S]*?<\/script>)*<(?:section|div|main|article)\b[^>]*\bclass\s*=\s*['"][^'"]*\bslide\b/i.test(
       html,

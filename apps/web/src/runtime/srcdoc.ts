@@ -2647,6 +2647,21 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
   function stackedDeckStage() {
     return document.getElementById('od-stacked-deck-stage');
   }
+  function isSlideHostTag(el) {
+    var tag = String(el.tagName || '').toLowerCase();
+    return tag === 'section' || tag === 'div' || tag === 'main' || tag === 'article';
+  }
+  function isStackedSlideParent(el) {
+    var parent = el && el.parentElement;
+    if (!parent) return false;
+    if (String(parent.tagName || '').toLowerCase() === 'body') return true;
+    if (parent.id === 'od-stacked-deck-stage') return true;
+    return !!(parent.classList && (
+      parent.classList.contains('presentation')
+      || parent.classList.contains('deck')
+      || parent.classList.contains('deck-shell')
+    ));
+  }
   function isStackedSlideCandidate(el) {
     if (!el || el.nodeType !== 1) return false;
     if (el.id === 'od-stacked-deck-stage') return false;
@@ -2655,7 +2670,15 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     // Decorative deck-shell wrappers without #deck-stage must still hoist.
     // <deck-stage> (custom element) is a presenter — do not hoist its children.
     if (el.closest && el.closest('#deck-stage, #deck, #deck-track, deck-stage')) return false;
-    return !!(el.classList && el.classList.contains('slide'));
+    if (el.classList && (el.classList.contains('slide') || el.classList.contains('deck-slide') || el.classList.contains('ppt-slide'))) {
+      return true;
+    }
+    if (!isSlideHostTag(el)) return false;
+    if (el.hasAttribute && el.hasAttribute('data-screen-label')) {
+      var label = String(el.getAttribute('data-screen-label') || '');
+      return /^\d{2}(?:\s|$)/.test(label) || isStackedSlideParent(el);
+    }
+    return false;
   }
   function slidesFromElementChildren(container) {
     var out = [];
@@ -2667,7 +2690,7 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     return out;
   }
   function stackedSlideNodes() {
-    var direct = document.querySelectorAll('body > .slide');
+    var direct = document.querySelectorAll('body > .slide, body > .deck-slide, body > .ppt-slide, body > [data-screen-label]');
     if (direct.length) return direct;
     if (!document.body) return direct;
     var children = document.body.children;
@@ -2677,7 +2700,7 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
       if (el.id === 'od-stacked-deck-stage') continue;
       var tag = String(el.tagName || '').toLowerCase();
       if (tag === 'header' || tag === 'nav' || tag === 'style' || tag === 'script') continue;
-      if (el.classList && el.classList.contains('slide')) continue;
+      if (isStackedSlideCandidate(el)) continue;
       var wrapped = slidesFromElementChildren(el);
       if (wrapped.length >= 2) return wrapped;
       if (wrapped.length === 0 && el.children.length === 1) {
@@ -2689,7 +2712,7 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
       }
     }
     if (!frameworkDeckStage()) {
-      var all = document.querySelectorAll('body .slide');
+      var all = document.querySelectorAll('body .slide, body .deck-slide, body .ppt-slide, body [data-screen-label]');
       var list = [];
       for (var a = 0; a < all.length; a++) {
         if (isStackedSlideCandidate(all[a])) list.push(all[a]);
@@ -2761,15 +2784,21 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     return stackedViewport;
   }
   var stackedDeckStageHoistInFlight = false;
-  function moveSlidesIntoStackedStage(stage, slideList) {
+  function moveSlidesIntoStackedStage(stage, slideList, revealAfterMove) {
     if (!stage || !slideList || !slideList.length) return;
+    var target = activeIndex(slides());
+    if (target < 0) target = Math.max(0, Math.min(slideList.length - 1, initialSlideIndex));
     for (var i = 0; i < slideList.length; i++) {
       var slide = slideList[i];
       if (!slide || !slide.parentNode) continue;
+      try {
+        if (slide.classList && !slide.classList.contains('slide')) slide.classList.add('slide');
+      } catch (_) {}
       if (slide.parentNode === stage) continue;
       try { stage.appendChild(slide); } catch (_) {}
     }
-    lockAllStackedSlideAxes(stage);
+    if (revealAfterMove === false) lockAllStackedSlideAxes(stage);
+    else forceRevealSlide(target);
   }
   function bodyDirectChildAncestor(node, body) {
     var cur = node;
@@ -2800,13 +2829,13 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
       if (el.id === 'od-stacked-deck-stage') continue;
       var tag = String(el.tagName || '').toLowerCase();
       if (tag === 'header' || tag === 'nav' || tag === 'style' || tag === 'script') continue;
-      if (el.querySelector && el.querySelector('.slide')) continue;
+      if (el.querySelector && el.querySelector('.slide, .deck-slide, .ppt-slide, [data-screen-label]')) continue;
       var peel = el;
       while (peel && peel !== body && peel !== stage && peel.children && peel.children.length === 1) {
         var only = peel.children[0];
         if (!only || only.nodeType !== 1) break;
-        if (only.classList && only.classList.contains('slide')) break;
-        if (only.querySelector && only.querySelector('.slide')) break;
+        if (isStackedSlideCandidate(only)) break;
+        if (only.querySelector && only.querySelector('.slide, .deck-slide, .ppt-slide, [data-screen-label]')) break;
         var onlyHasElement = false;
         for (var k = 0; k < only.childNodes.length; k++) {
           if (only.childNodes[k].nodeType === 1) { onlyHasElement = true; break; }
@@ -2889,7 +2918,7 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
         try { insertParent.appendChild(stage); } catch (__) { return stackedDeckStage(); }
       }
 
-      moveSlidesIntoStackedStage(stage, slideList);
+      moveSlidesIntoStackedStage(stage, slideList, false);
       // Freeze authored inline styles before forceReveal writes display:none.
       snapshotAuthoredStackedSlideStyles(slideList);
 
@@ -3031,9 +3060,9 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     // fall back to all .slide only when nothing structured matched, so
     // freeform decks that nest slides under an extra wrapper still report
     // the real count instead of leaving the host counter at 1 / 0.
-    var structured = document.querySelectorAll('.deck > .slide, .deck-stage > .slide, deck-stage > .slide, .deck-shell > .slide, #od-stacked-deck-stage > .slide, body > .slide');
+    var structured = document.querySelectorAll('.deck > .slide, .deck > [data-screen-label], .deck-stage > .slide, .deck-stage > [data-screen-label], deck-stage > .slide, deck-stage > [data-screen-label], .deck-shell > .slide, .deck-shell > [data-screen-label], #od-stacked-deck-stage > .slide, #od-stacked-deck-stage > [data-screen-label], body > .slide, body > .deck-slide, body > .ppt-slide, body > [data-screen-label]');
     if (structured.length) return structured;
-    return document.querySelectorAll('.slide');
+    return document.querySelectorAll('.slide, .deck-slide, .ppt-slide, [data-screen-label]');
   }
   function scrollOverflow(el){
     if (!el) return 0;
@@ -3588,9 +3617,10 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     if (!stage || !stage.children) return;
     for (var i = 0; i < stage.children.length; i++) {
       var child = stage.children[i];
-      if (child && child.classList && child.classList.contains('slide')) {
-        lockStackedSlideAxis(child);
-      }
+      if (!child || !child.classList || !child.classList.contains('slide')) continue;
+      // Chase/re-hoist must not undo forceReveal's display:none on inactive pages.
+      if (child.style && child.style.display === 'none') continue;
+      lockStackedSlideAxis(child);
     }
   }
   function setSlideDisplayed(el, visible) {

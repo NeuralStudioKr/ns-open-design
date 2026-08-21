@@ -272,7 +272,7 @@ describe('looksLikeCompactApiStackedDeck', () => {
     expect(looksLikeCompactApiStackedDeck(html)).toBe(true);
   });
 
-  it('locks portfolio-style compact decks to stacked letterbox without Motif-hostile slide clip', () => {
+  it('locks portfolio-style compact decks to stacked letterbox without Motif-hostile slide clip', { timeout: 15_000 }, async () => {
     const slides = [
       '<section class="slide" data-screen-label="01 Cover" style="min-height:100vh">',
       '<h1>김민준 <span>Frontend</span> Engineer</h1>',
@@ -289,6 +289,117 @@ describe('looksLikeCompactApiStackedDeck', () => {
     expect(srcdoc).toContain('bootstrapCompactStackedDeck');
     expect(srcdoc).toContain('data-od-stacked-deck-ready');
     expect(srcdoc).toContain('od:stacked-deck-ready');
+
+    const match = srcdoc.match(/<script data-od-deck-bridge>([\s\S]*?)<\/script>/);
+    expect(match?.[1]).toBeTruthy();
+    const { JSDOM } = await import('jsdom');
+    const dom = new JSDOM(`<!doctype html><html><body>${slides}</body></html>`, {
+      runScripts: 'outside-only',
+      pretendToBeVisual: true,
+      url: 'https://stg-design.teamver.test/',
+    });
+    const win = dom.window;
+    const parentPostMessage = vi.fn();
+    Object.defineProperty(win, 'parent', {
+      configurable: true,
+      value: { postMessage: parentPostMessage },
+    });
+    new win.Function(match![1]!).call(win);
+    win.dispatchEvent(new win.Event('load'));
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 500));
+
+    expect(win.document.documentElement.getAttribute('data-od-stacked-deck')).toBe('');
+    const stage = win.document.getElementById('od-stacked-deck-stage');
+    expect(stage).toBeTruthy();
+    const slideEls = Array.from(win.document.querySelectorAll('#od-stacked-deck-stage > .slide')) as HTMLElement[];
+    expect(slideEls).toHaveLength(2);
+
+    win.dispatchEvent(new win.MessageEvent('message', {
+      data: { type: 'od:deck-host-viewport', width: 960, height: 540, scale: 1 },
+    }));
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 50));
+    expect(win.document.documentElement.getAttribute('data-od-stacked-deck-ready')).toBe('');
+    expect(slideEls.filter((el) => el.style.display !== 'none')).toHaveLength(1);
+    expect(parentPostMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'od:stacked-deck-ready' }),
+      '*',
+    );
+
+    win.dispatchEvent(new win.MessageEvent('message', { data: { type: 'od:slide', action: 'next' } }));
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 350));
+    expect(slideEls[0]?.style.display).toBe('none');
+    expect(slideEls[1]?.style.display).toBe('flex');
+  });
+
+  it('letterboxes data-screen-label slide hosts that omit the slide class', { timeout: 15_000 }, async () => {
+    const html = [
+      '<!doctype html><html lang="ko"><body style="margin:0;background:#1d1d1b">',
+      '<section data-screen-label="01 Cover" style="min-height:100vh;padding:96px;color:#d6c20f">',
+      '<h1>CLOUD NATIVE</h1>',
+      '</section>',
+      '<section data-screen-label="02 Body" style="min-height:100vh;padding:96px;color:#d6c20f">',
+      '<h2>Runtime</h2>',
+      '</section>',
+      '</body></html>',
+    ].join('');
+    expect(looksLikeCompactApiStackedDeck(html)).toBe(true);
+    const srcdoc = buildSrcdoc(html, { deck: true });
+    expect(srcdoc).toContain('data-od-deck-stacked-fix');
+    expect(srcdoc).toContain('data-od-deck-fixed-canvas-pin');
+    expect(srcdoc).toContain('[data-screen-label]');
+
+    const match = srcdoc.match(/<script data-od-deck-bridge>([\s\S]*?)<\/script>/);
+    expect(match?.[1]).toBeTruthy();
+    const { JSDOM } = await import('jsdom');
+    const dom = new JSDOM(html, {
+      runScripts: 'outside-only',
+      pretendToBeVisual: true,
+      url: 'https://stg-design.teamver.test/',
+    });
+    const win = dom.window;
+    Object.defineProperty(win, 'parent', { configurable: true, value: { postMessage: () => {} } });
+    new win.Function(match![1]!).call(win);
+    win.dispatchEvent(new win.MessageEvent('message', {
+      data: { type: 'od:deck-host-viewport', width: 960, height: 540, scale: 1 },
+    }));
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 100));
+
+    const slideEls = Array.from(win.document.querySelectorAll('#od-stacked-deck-stage > .slide')) as HTMLElement[];
+    expect(slideEls).toHaveLength(2);
+    expect(slideEls[0]?.getAttribute('data-screen-label')).toBe('01 Cover');
+    expect(slideEls[0]?.style.display).toBe('flex');
+    expect(slideEls[1]?.style.display).toBe('none');
+  });
+
+  it('does not hoist inner data-screen-label comment targets as extra slides', { timeout: 15_000 }, async () => {
+    const html = [
+      '<!doctype html><html lang="ko"><body style="margin:0">',
+      '<section class="slide" style="width:1920px;height:1080px;padding:96px">',
+      '<div data-screen-label="eyebrow">Context</div>',
+      '<h1 data-screen-label="title">Cover</h1>',
+      '</section>',
+      '<section class="slide" style="width:1920px;height:1080px;padding:96px">',
+      '<h2>Body</h2>',
+      '</section>',
+      '</body></html>',
+    ].join('');
+    expect(looksLikeCompactApiStackedDeck(html)).toBe(true);
+    const srcdoc = buildSrcdoc(html, { deck: true });
+    const match = srcdoc.match(/<script data-od-deck-bridge>([\s\S]*?)<\/script>/);
+    expect(match?.[1]).toBeTruthy();
+    const { JSDOM } = await import('jsdom');
+    const dom = new JSDOM(html, { runScripts: 'outside-only', pretendToBeVisual: true });
+    const win = dom.window;
+    Object.defineProperty(win, 'parent', { configurable: true, value: { postMessage: () => {} } });
+    new win.Function(match![1]!).call(win);
+    win.dispatchEvent(new win.MessageEvent('message', {
+      data: { type: 'od:deck-host-viewport', width: 960, height: 540, scale: 1 },
+    }));
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 100));
+
+    const slideEls = Array.from(win.document.querySelectorAll('#od-stacked-deck-stage > .slide')) as HTMLElement[];
+    expect(slideEls).toHaveLength(2);
+    expect(win.document.querySelectorAll('[data-screen-label="eyebrow"]').length).toBe(1);
   });
 
   it('reveals slide 2 for body-leading style portfolio decks on next navigation', async () => {

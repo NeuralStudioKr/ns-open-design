@@ -21,7 +21,7 @@ describe('pinDeckSlidesToFixedCanvas', () => {
     expect(pinned).toContain('height:1080px');
     expect(pinned).not.toMatch(/min-height:\s*100vh/i);
     expect(pinned).toContain(DECK_FIXED_CANVAS_PIN_ATTR);
-    expect(pinned).toMatch(/\.slide\s*\{[^}]*width:\s*1920px\s*!important/i);
+    expect(pinned).toMatch(/\.slide,[\s\S]*\{[^}]*width:\s*1920px\s*!important/i);
     // Motif corner hangs must not be clipped by a forced overflow:hidden pin.
     expect(pinned).not.toMatch(/\.slide\s*\{[^}]*overflow:\s*hidden\s*!important/i);
   });
@@ -36,6 +36,45 @@ describe('pinDeckSlidesToFixedCanvas', () => {
     expect(pinned).toContain(DECK_FIXED_CANVAS_PIN_ATTR);
   });
 
+  it('pins data-screen-label slide hosts that omit the slide class', () => {
+    const html = [
+      '<!doctype html><html><body>',
+      '<section data-screen-label="01 Cover" style="min-height:100vh;padding:96px">A</section>',
+      '<section data-screen-label="02 Body" style="min-height:100vh;padding:96px">B</section>',
+      '</body></html>',
+    ].join('');
+    const pinned = pinDeckSlidesToFixedCanvas(html);
+    expect(pinned).toMatch(/data-screen-label="01 Cover"[^>]*width:1920px/);
+    expect(pinned).toMatch(/data-screen-label="02 Body"[^>]*height:1080px/);
+    expect(pinned).not.toMatch(/min-height:\s*100vh/i);
+    expect(pinned).toContain('[data-screen-label]');
+    expect(pinned).toContain(DECK_FIXED_CANVAS_PIN_ATTR);
+  });
+
+  it('does not treat inner comment labels as slide hosts', () => {
+    const html = [
+      '<!doctype html><html><body>',
+      '<section class="slide" style="width:1920px;height:1080px">',
+      '<div data-screen-label="eyebrow" style="font-size:18px">Context</div>',
+      '<h1>Title</h1>',
+      '</section>',
+      '</body></html>',
+    ].join('');
+    const pinned = pinDeckSlidesToFixedCanvas(html);
+    expect(pinned).not.toMatch(/data-screen-label="eyebrow"[^>]*width:1920px/);
+    expect(pinned).toMatch(/data-screen-label="eyebrow"[^>]*font-size:18px/);
+  });
+
+  it('does not treat data-slide pagination dots as slide hosts', () => {
+    const html = [
+      '<!doctype html><html><body>',
+      '<div class="nav-dot" data-slide="0" style="width:8px;height:8px"></div>',
+      '<div class="nav-dot" data-slide="1" style="width:8px;height:8px"></div>',
+      '</body></html>',
+    ].join('');
+    expect(pinDeckSlidesToFixedCanvas(html)).toBe(html);
+  });
+
   it('strips authored overflow:hidden from already-sized 1920×1080 slides', () => {
     const html = [
       '<section class="slide" style="width:1920px;height:1080px;box-sizing:border-box;overflow:hidden;padding:80px">',
@@ -44,7 +83,7 @@ describe('pinDeckSlidesToFixedCanvas', () => {
     ].join('');
     const pinned = pinDeckSlidesToFixedCanvas(html);
     expect(pinned).not.toMatch(/class="slide"[^>]*overflow:\s*hidden/i);
-    expect(pinned).toMatch(/\.slide\s*\{[^}]*overflow:\s*visible\s*!important/i);
+    expect(pinned).toMatch(/\.slide,[\s\S]*\{[^}]*overflow:\s*visible\s*!important/i);
   });
 
   it('moves absolute bottom footers into flex flow so they do not cover the subtitle', () => {
@@ -80,7 +119,7 @@ describe('pinDeckSlidesToFixedCanvas', () => {
       '</body></html>',
     ].join('');
     const pinned = pinDeckSlidesToFixedCanvas(html);
-    expect(pinned).toMatch(/\.slide\s*\{[^}]*overflow:\s*visible\s*!important/i);
+    expect(pinned).toMatch(/\.slide,[\s\S]*\{[^}]*overflow:\s*visible\s*!important/i);
     expect(pinned).not.toMatch(
       new RegExp(`${DECK_FIXED_CANVAS_PIN_ATTR}[^>]*>[\\s\\S]*overflow:\\s*hidden`, 'i'),
     );
