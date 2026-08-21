@@ -22,7 +22,7 @@ import {
   MANUAL_EDIT_DISCOVERY_SELECTOR,
   MANUAL_EDIT_SOURCE_PATH_ATTR,
 } from '../edit-mode/bridge';
-import { buildArtifactPreviewDomLeakGuardScript, repairArtifactDocumentHead, repairArtifactStyleSheets, lockStackedDeckCanvasForPreview, pinDeckSlidesToFixedCanvas, looksLikeOfficialFullscreenPresenterDeck } from '@open-design/contracts';
+import { buildArtifactPreviewDomLeakGuardScript, repairArtifactDocumentHead, repairArtifactStyleSheets, lockStackedDeckCanvasForPreview, pinDeckSlidesToFixedCanvas } from '@open-design/contracts';
 import { stripConflictingSrcDocCspBaseUri } from './authenticatedHtmlSrcDoc';
 import {
   injectStackedDeckViewport,
@@ -2543,9 +2543,6 @@ function injectDeckBridge(
   // class toggles, so page 2+ reports the right index but paints only the
   // body background. Same lesson as <deck-stage> (§0.68): do not collapse
   // official presenters. Compact letterbox fills still need the hide.
-  const officialFullscreenPresenter = !isCompactStackedDeck
-    && !isFrameworkDeck
-    && looksLikeOfficialFullscreenPresenterDeck(doc);
   const legacyDeckFix = isFrameworkDeck
     ? ''
     : `<style data-od-deck-fix>
@@ -2626,7 +2623,6 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
   const script = `<script data-od-deck-bridge>(function(){
   var initialSlideIndex = ${safeInitialSlideIndex};
   var compactStackedDeckEnabled = ${isCompactStackedDeck ? 'true' : 'false'};
-  var officialFullscreenPresenter = ${officialFullscreenPresenter ? 'true' : 'false'};
   var didRestoreInitialSlide = false;
   var hostSlideNavigationSeen = false;
   var hostViewport = { w: 0, h: 0, scale: 1, layoutFit: false };
@@ -3431,6 +3427,15 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     el.style.removeProperty('pointer-events');
     el.style.removeProperty('visibility');
   }
+  function releaseHostSlideCollapse(list){
+    if (!list) return;
+    for (var i = 0; i < list.length; i++) clearInlineSlideHide(list[i]);
+  }
+  function hostMustNotCollapseSlides(){
+    if (frameworkDeckStage() || webComponentDeckStage()) return false;
+    if (compactStackedDeckEnabled || stackedDeckStage()) return false;
+    return true;
+  }
   function syncPaginationControls(target, count){
     try {
       var groups = [
@@ -3550,6 +3555,9 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     // Dead onclick / content CTA: do not consume the host next. Fall through
     // to setActive / forceReveal / goTo so every catalog dialect can move.
     if (activeIndex(slides()) === before) return false;
+    // Native driver only flipped .active — drop host display:none so the
+    // newly marked page can paint (Playful / Block-frame / framework nextBtn).
+    releaseHostSlideCollapse(slides());
     setTimeout(report, 80);
     setTimeout(report, 220);
     setTimeout(function(){
@@ -3653,9 +3661,10 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
   }
   function setSlideDisplayed(el, visible) {
     if (!el || !el.style) return;
-    if (officialFullscreenPresenter && !compactStackedDeckEnabled) {
-      // Author .active / opacity-stack owns paint. Always clear a prior
-      // host hide so restoreInitialSlide cannot trap later native next.
+    if (hostMustNotCollapseSlides()) {
+      // Author .active / opacity-stack / display:flex owns paint. Always
+      // clear a prior host hide so restoreInitialSlide cannot trap later
+      // native next on Playful, Block-frame, Cobalt, Retro Zine, …
       clearInlineSlideHide(el);
       if (visible && el.removeAttribute) el.removeAttribute('hidden');
       return;

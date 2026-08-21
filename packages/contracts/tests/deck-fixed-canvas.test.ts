@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 
 import {
   DECK_FIXED_CANVAS_PIN_ATTR,
+  looksLikeDeckSlideHostAttrs,
   pinDeckSlidesToFixedCanvas,
 } from '../src/html/deck-fixed-canvas.js';
+import { classAttrHasDeckSlideToken } from '../src/html/deck-slide-class.js';
 
 describe('pinDeckSlidesToFixedCanvas', () => {
   it('rewrites min-height:100vh slide hosts to a fixed 1920×1080 canvas', () => {
@@ -123,5 +125,15 @@ describe('pinDeckSlidesToFixedCanvas', () => {
     expect(pinned).not.toMatch(
       new RegExp(`${DECK_FIXED_CANVAS_PIN_ATTR}[^>]*>[\\s\\S]*overflow:\\s*hidden`, 'i'),
     );
+  });
+});
+
+describe('deck slide class tokens', () => {
+  it('does not treat slide-counter chrome as a slide host', () => {
+    expect(classAttrHasDeckSlideToken('slide-counter')).toBe(false);
+    expect(classAttrHasDeckSlideToken('slide-number')).toBe(false);
+    expect(looksLikeDeckSlideHostAttrs('class="slide-counter" id="slideCounter"')).toBe(false);
+    expect(looksLikeDeckSlideHostAttrs('class="slide slide-1 active"')).toBe(true);
+    expect(looksLikeDeckSlideHostAttrs('class="slide-5"')).toBe(true);
   });
 });

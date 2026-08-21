@@ -1,3 +1,5 @@
+import { classAttrHasDeckSlideToken } from './deck-slide-class.js';
+
 /**
  * Compact BYOK fill is forbidden from dumping the official example.html
  * stylesheet (token budget / Motif-SVG hang). Standalone HTML/PDF then
@@ -2270,9 +2272,18 @@ export function looksLikeOfficialFullscreenPresenterDeck(html: string): boolean 
 
 /** Body > .slide markup used by compact API fills (not `.presentation` hosts). */
 function looksLikeBodyFirstSlideDeck(html: string): boolean {
-  return /<body\b[^>]*>(?:\s|<!--[\s\S]*?-->|<(?:header|nav)\b[^>]*>[\s\S]*?<\/(?:header|nav)>|<style\b[^>]*>[\s\S]*?<\/style>|<script\b[^>]*>[\s\S]*?<\/script>)*<(?:section|div|main|article)\b[^>]*\bclass\s*=\s*['"][^'"]*\bslide\b/i.test(
-    html,
+  const dest = String(html ?? '');
+  const bodyMatch = /<body\b[^>]*>/i.exec(dest);
+  if (!bodyMatch) return false;
+  let rest = dest.slice((bodyMatch.index ?? 0) + bodyMatch[0].length);
+  rest = rest.replace(
+    /^(?:\s|<!--[\s\S]*?-->|<(?:header|nav)\b[^>]*>[\s\S]*?<\/(?:header|nav)>|<style\b[^>]*>[\s\S]*?<\/style>|<script\b[^>]*>[\s\S]*?<\/script>)*/i,
+    '',
   );
+  const open = /^<(?:section|div|main|article)\b([^>]*)>/i.exec(rest);
+  if (!open) return false;
+  const classAttr = /\bclass\s*=\s*(['"])([\s\S]*?)\1/i.exec(open[1] ?? '')?.[2] ?? '';
+  return classAttrHasDeckSlideToken(classAttr);
 }
 
 function looksLikeAuthoredMultiSlideCss(html: string): boolean {

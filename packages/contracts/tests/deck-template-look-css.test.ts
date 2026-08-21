@@ -1401,6 +1401,23 @@ html, body { overflow: visible !important; height: auto !important; }
     expect(refreshed).toContain('split');
   });
 
+  it('treats catalog hide-toggle templates as presenters even when slide-counter precedes slides', () => {
+    const folders = [
+      'html-ppt-zhangzara-playful',
+      'html-ppt-zhangzara-cartesian',
+      'html-ppt-zhangzara-block-frame',
+      'html-ppt-zhangzara-cobalt-grid',
+      'html-ppt-zhangzara-retro-zine',
+      'html-ppt-zhangzara-coral',
+      'html-ppt-zhangzara-capsule',
+    ];
+    for (const folder of folders) {
+      const html = readFileSync(join(EXAMPLES_DIR, folder, 'example.html'), 'utf8');
+      expect(looksLikeOfficialFullscreenPresenterDeck(html), folder).toBe(true);
+      expect(needsStackedDesignViewportLock(html), folder).toBe(false);
+    }
+  });
+
   it('treats Zhangzara <deck-stage> catalogs as presenters, not stacked fills', () => {
     const official = readFileSync(join(EXAMPLES_DIR, 'html-ppt-zhangzara-pink-script/example.html'), 'utf8');
     expect(official).toMatch(/<deck-stage\b/i);

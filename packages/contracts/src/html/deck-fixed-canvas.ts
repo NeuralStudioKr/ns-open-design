@@ -6,6 +6,7 @@
  * panel treats each slide as a full document viewport (portrait scroll).
  */
 
+import { classAttrHasDeckSlideToken } from './deck-slide-class.js';
 import { looksLikeOfficialFullscreenPresenterDeck } from './deck-template-look-css.js';
 
 export const DECK_FIXED_CANVAS_PIN_ATTR = 'data-od-deck-fixed-canvas-pin';
@@ -64,7 +65,7 @@ function extractStyleAttr(attrs: string): string {
  */
 export function looksLikeDeckSlideHostAttrs(attrs: string): boolean {
   const source = String(attrs ?? '');
-  if (/\bslide\b/i.test(extractClassAttr(source))) return true;
+  if (classAttrHasDeckSlideToken(extractClassAttr(source))) return true;
   if (!/\bdata-screen-label\s*=/i.test(source)) return false;
   if (/\bdata-screen-label\s*=\s*(['"])\d{2}(?:\s|\1)/i.test(source)) return true;
   const style = extractStyleAttr(source);
