@@ -47,6 +47,7 @@
 
 - [x] `compact-api-stacked-deck.test.ts` — Zhangzara `#deck` viewport-track 전체가 `data-od-deck-stacked-fix` 경로로 들어감
 - [x] `srcdoc-deck-bridge-nested-slides.test.ts` — `#deck-track` native transform deck은 계속 보호됨
+- [x] Studio actual fixture를 jsdom bridge로 실행해 `#od-stacked-deck-stage` hoist 및 host next 이동 확인
 
 ### 0.92 2026-08-21 — Studio/#deck 수평 스트립 비율·스크롤·nav (cache v48)
 

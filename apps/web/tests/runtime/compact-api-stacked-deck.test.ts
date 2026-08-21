@@ -562,6 +562,52 @@ describe('looksLikeCompactApiStackedDeck', () => {
     }
   });
 
+  it('hoists Zhangzara Studio #deck strips into host-controlled stacked navigation', { timeout: 15_000 }, async () => {
+    const studio = readFileSync(
+      resolve(repoRoot, 'design-templates/html-ppt-zhangzara-studio/example.html'),
+      'utf8',
+    );
+    const srcdoc = buildSrcdoc(studio, { deck: true });
+    const match = srcdoc.match(/<script data-od-deck-bridge>([\s\S]*?)<\/script>/);
+    expect(match?.[1]).toBeTruthy();
+
+    const { JSDOM } = await import('jsdom');
+    const dom = new JSDOM(srcdoc.replace(/<script\b[\s\S]*?<\/script>/gi, ''), {
+      runScripts: 'outside-only',
+      pretendToBeVisual: true,
+      url: 'https://stg-design.teamver.test/',
+    });
+    const win = dom.window;
+    const parentPostMessage = vi.fn();
+    Object.defineProperty(win, 'parent', {
+      configurable: true,
+      value: { postMessage: parentPostMessage },
+    });
+
+    new win.Function(match![1]!).call(win);
+    win.dispatchEvent(new win.MessageEvent('message', {
+      data: { type: 'od:deck-host-viewport', width: 1280, height: 720, scale: 1 },
+    }));
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 120));
+
+    const stage = win.document.getElementById('od-stacked-deck-stage');
+    expect(stage).toBeTruthy();
+    const slideEls = Array.from(win.document.querySelectorAll('#od-stacked-deck-stage > .slide')) as HTMLElement[];
+    expect(slideEls.length).toBeGreaterThan(1);
+    expect(slideEls[0]?.style.display).toBe('flex');
+    expect(slideEls[1]?.style.display).toBe('none');
+
+    win.dispatchEvent(new win.MessageEvent('message', { data: { type: 'od:slide', action: 'next' } }));
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 80));
+
+    expect(slideEls[0]?.style.display).toBe('none');
+    expect(slideEls[1]?.style.display).toBe('flex');
+    const states = parentPostMessage.mock.calls
+      .map((call) => call[0])
+      .filter((message) => message?.type === 'od:slide-state');
+    expect(states.at(-1)).toMatchObject({ active: 1, count: slideEls.length });
+  });
+
   it('treats deck-shell wrappers without #deck-stage as compact stacked decks', () => {
     const html = [
       '<!doctype html><html><body>',
