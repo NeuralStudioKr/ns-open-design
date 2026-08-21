@@ -10679,6 +10679,7 @@ export function ProjectView({
               streamedText,
               templateCloneContentFill: isCloneContentFillTurn,
               slideCountTopUp: isSlideCountTopUpSend,
+              slideOnlyDeck: slideOnlyMvp,
             })
           ) {
             headKitDumpAbortArmed = true;

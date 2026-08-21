@@ -1359,17 +1359,17 @@ const TEAMVER_SLIDE_API_UNIFIED_STREAMING_RULE = `# Slide-only API — unified s
 - **First deck after discovery:** \`<artifact type="deck" identifier="deck">…</artifact>\` with status like "작성 중" / "making your deck".
 - **Follow-up edit of an existing deck** (user asks to change slides that already exist, with or without preview comments): prefer \`element-patch\` / \`deck-patch\` when scope is clear; if you must emit full \`type="deck"\`, status must be edit-toned ("수정 반영 중" / "Applying your edits") — never "초안이 생성", "creating the deck", or "draft is ready".
 
-\`<artifact type="deck" identifier="deck"><!doctype html><html lang="ko"><body>…6+ filled <section class="slide"> blocks…</body></html></artifact>\`
+\`<artifact type="deck" identifier="deck"><!doctype html><html lang="ko"><body>…at least 3 filled <section class="slide"> blocks this turn (top-up appends more)…</body></html></artifact>\`
 
 **How to stream the deck (non-negotiable on turn 2+):**
 1. Emit the status sentence first, then open the artifact early. Never \`type="text/html"\`.
-2. First bytes inside a full deck artifact: \`<!doctype html><html><body>\` then either a kit font \`<link rel="stylesheet">\` / short kit \`<style>\` (tokens only — never font \`@import\`) or \`<section class="slide">\` with real copy — never an empty shell or long \`<head>\` chrome.
+2. First bytes inside a full deck artifact: \`<!doctype html><html><body>\` then immediately a titled \`<section class="slide">\` with real copy. Kit font \`<link>\` / short body \`<style>\` only AFTER slide 1 — never \`<head>\` / long CSS / Motif first.
 3. ${COMPACT_DECK_SLIDE_COUNT_GUIDANCE} Write one filled \`<section class="slide">\` per requested slide. If a Selected deck template is active, match its visual kit (palette/fonts/density) with inline styles or one short body \`<style>\` after slide 1 — design system is brand context only and must not override the template look; do not merely describe the template.
 4. Close with \`</body></html></artifact>\` (or the matching patch close) in this same turn.
 
 **Content expansion:** ${SLIDE_DECK_CONTENT_EXPANSION_INSTRUCTION}
 
-**Forbidden on deck turns:** outlines, plans, TodoWrite, \`[读取 template.html]\`, SLOT comments, a second artifact, stopping after \`<head>\`, announcing a brand-new draft on an edit turn, parroting the user brief as slide titles/body, or announcing completion without the requested slide count (minimum 6 when unspecified).
+**Forbidden on deck turns:** outlines, plans, TodoWrite, \`[读取 template.html]\`, SLOT comments, a second artifact, stopping after \`<head>\`, announcing a brand-new draft on an edit turn, parroting the user brief as slide titles/body, or announcing completion without the requested slide count (prefer 3 this turn + top-up when unspecified; 6–8 only as the final target).
 
 If you already started \`<head>\` by mistake, **abandon that output** and restart the artifact with \`<body><section class="slide">\` content immediately.`;
 
@@ -1434,11 +1434,11 @@ This project has \`skipDiscoveryBrief: true\` or an already-complete brief. Do N
 
 Your successful response is optional tiny UI-locale status sentence + **exactly one** streaming artifact in this same turn. Artifact-only is OK for speed/tokens:
 
-\`<artifact type="deck" identifier="deck"><!doctype html><html lang="ko"><body>…6+ filled <section class="slide"> blocks…</body></html></artifact>\`
+\`<artifact type="deck" identifier="deck"><!doctype html><html lang="ko"><body>…at least 3 filled <section class="slide"> blocks this turn (top-up appends more)…</body></html></artifact>\`
 
 **How to stream the deck (non-negotiable):**
 1. Emit the status sentence first, then open \`<artifact type="deck">\` early. Never \`type="text/html"\`.
-2. First bytes inside artifact: \`<!doctype html><html><body>\` then either a kit font \`<link rel="stylesheet">\` / short kit \`<style>\` (tokens only — never font \`@import\`) or \`<section class="slide">\` with real copy — never an empty shell or long \`<head>\` chrome.
+2. First bytes inside artifact: \`<!doctype html><html><body>\` then immediately a titled \`<section class="slide">\` with real copy. Kit font \`<link>\` / short body \`<style>\` only AFTER slide 1 — never \`<head>\` / long CSS / Motif first.
 3. ${COMPACT_DECK_SLIDE_COUNT_GUIDANCE} Write one filled \`<section class="slide">\` per requested slide. **Every slide MUST be a fixed 1920×1080 canvas** — use inline \`style="width:1920px;height:1080px;box-sizing:border-box;position:relative;..."\` on every \`<section class="slide">\`. Do NOT use \`width:100vw\`, \`height:100vh\`, \`min-height:100vh\`, or scroll-snap presenter-mode plumbing — those come from the template's \`example.html\` presenter and make the deck stretch/reflow with the browser instead of matching PPT aspect ratio (16:9). If a Selected deck template is active, match its visual kit (palette/fonts/density) with inline styles or one short body \`<style>\` — but keep width/height/positioning fixed regardless of what the template's own preview HTML shows. Design system is brand context only and must not override the template look; do not merely describe the template.
 4. Close with \`</body></html></artifact>\` in this same turn.
 
@@ -1446,7 +1446,7 @@ Your successful response is optional tiny UI-locale status sentence + **exactly 
 
 ${SLIDE_DECK_CONTENT_EXPANSION_EXAMPLE}
 
-**Forbidden:** "바로 만들어 드리겠습니다" / "I'll make it" promise-only replies, question-form, outlines, plans, TodoWrite, \`[读取 template.html]\`, SLOT comments, a second artifact, stopping after \`<head>\`, parroting the user brief as slide titles/body, announcing completion without the requested slide count (minimum 6 when unspecified), or repeating the same layout/background/composition on every slide. Preserve the Selected deck template look (design system is secondary brand context only) and vary layouts per the compact inline layout vocabulary.`;
+**Forbidden:** "바로 만들어 드리겠습니다" / "I'll make it" promise-only replies, question-form, outlines, plans, TodoWrite, \`[读取 template.html]\`, SLOT comments, a second artifact, stopping after \`<head>\`, parroting the user brief as slide titles/body, announcing completion without the requested slide count (prefer 3 this turn + top-up when unspecified; 6–8 only as the final target), or repeating the same layout/background/composition on every slide. Preserve the Selected deck template look (design system is secondary brand context only) and vary layouts per the compact inline layout vocabulary.`;
 
 /**
  * Final visual authority when Canvas → Slide (or equivalent) pinned a template.

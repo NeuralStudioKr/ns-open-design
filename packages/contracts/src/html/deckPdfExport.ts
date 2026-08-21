@@ -190,8 +190,9 @@ export function buildDeckFlattenCssRules(): string {
     max-height: ${DECK_EXPORT_HEIGHT}px !important;
     /* Per-slide background comes from the slide's own CSS (.dark, .s-dark,
        .s-cover, etc.) plus revealAllDeckSlides inline resolve — do NOT
-       force var(--bg) here or dark cover slides print as light paper. */
-    overflow: hidden !important;
+       force var(--bg) here or dark cover slides print as light paper.
+       Motif-safe: overflow:hidden clips corner Motifs after hang heal (§0.76). */
+    overflow: visible !important;
     page-break-after: always !important;
     break-after: page !important;
     break-inside: avoid !important;
@@ -276,7 +277,7 @@ export function buildDeckHtmlExportScreenCss(): string {
     height: ${DECK_EXPORT_HEIGHT}px !important;
     min-height: ${DECK_EXPORT_HEIGHT}px !important;
     max-height: ${DECK_EXPORT_HEIGHT}px !important;
-    overflow: hidden !important;
+    overflow: visible !important;
     visibility: visible !important;
     opacity: 1 !important;
     transform: none !important;

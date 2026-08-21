@@ -5,7 +5,7 @@ import {
   EMERGENCY_DECK_FALLBACK_STATUS_CODE,
   buildEmergencyArtifactFromMessages,
 } from '../artifacts/emergency-deck';
-import { isClosedSoftSalvageDeckHtml } from '../artifacts/deck-html-content';
+import { isClosedSoftSalvageDeckHtml, isPersistableShortDeckDraft } from '../artifacts/deck-html-content';
 import { recoverBestHtmlDocumentFromText } from '../artifacts/recover';
 import { isIncompleteHtmlDocumentShell, validateHtmlArtifact } from '../artifacts/validate';
 import { resolveLastSubstantiveAssistantMessageId } from './conversation-message-dedupe';
@@ -196,7 +196,12 @@ export async function verifySlideProducedHtmlDeliverable(
   const html = await readProjectHtml(fileName);
   if (!html) return null;
   if (!validateHtmlArtifact(html).ok) return null;
-  if (isIncompleteHtmlDocumentShell(html) && !isClosedSoftSalvageDeckHtml(html)) return null;
+  if (isIncompleteHtmlDocumentShell(html)
+    && !isClosedSoftSalvageDeckHtml(html)
+    && !isPersistableShortDeckDraft(html)
+  ) {
+    return null;
+  }
   return fileName;
 }
 

@@ -43,7 +43,8 @@ describe("deck-html-content", () => {
     const html =
       '<!doctype html><html><body><section class="slide"><h1>AI</h1></section></body></html>';
     expect(meetsMinimumDeckDeliverableQuality(html)).toBe(false);
-    expect(isIncompleteHtmlDocumentShell(html)).toBe(true);
+    // Soft/short drafts must not trip incomplete-html-document-shell (§0.76).
+    expect(isIncompleteHtmlDocumentShell(html)).toBe(false);
     expect(isPersistableShortDeckDraft(html)).toBe(true);
   });
 
@@ -192,6 +193,12 @@ describe("deck-html-content", () => {
     expect(
       shouldAbortStreamForHeadOnlyKitDump({
         streamedText: headDump,
+        slideOnlyDeck: true,
+      }),
+    ).toBe(true);
+    expect(
+      shouldAbortStreamForHeadOnlyKitDump({
+        streamedText: headDump,
         slideCountTopUp: true,
       }),
     ).toBe(true);
@@ -282,6 +289,7 @@ describe("deck-html-content", () => {
       + "<section class=\"slide\"></section>"
       + "</body></html>";
     expect(meetsMinimumDeckDeliverableQuality(html)).toBe(false);
+    // Multi-slide sparse still trips the shell predicate; persist trusts soft.
     expect(isIncompleteHtmlDocumentShell(html)).toBe(true);
     expect(isClosedSoftSalvageDeckHtml(html)).toBe(true);
   });

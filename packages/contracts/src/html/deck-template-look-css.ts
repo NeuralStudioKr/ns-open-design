@@ -138,7 +138,7 @@ html, body {
   position: relative !important;
   z-index: 2 !important;
 }
-.slide > div:not([data-od-official-motif-html]):not(.deco):not([class*="deco-"]):not(.floating-pills):not(.petals):not(.gd-ambient):not(.pixel-glitch):not(.scanlines):not(.grain):not(.hc-scanlines):not(.hc-grid):not(.sunglow):not(.cover-blob):not([class*="cover-blob"]):not(.geo-decoration):not([class*="gd-orb"]):not(.xp-blob):not([class*="xp-blob"]):not([class*="post-it"]):not([class*="pin-"]):not([class*="doodle"]):not([class*="petal"]) {
+.slide > div:not([data-od-official-motif-html]):not(.deco):not([class*="deco-"]):not(.floating-pills):not(.petals):not(.gd-ambient):not(.pixel-glitch):not(.scanlines):not(.grain):not(.hc-scanlines):not(.hc-grid):not(.sunglow):not(.cover-blob):not([class*="cover-blob"]):not(.geo-decoration):not([class*="gd-orb"]):not(.xp-blob):not([class*="xp-blob"]):not([class*="post-it"]):not([class*="pin-"]):not([class*="doodle"]):not([class*="petal"]):not([class*="stamp"]):not([class*="tape"]):not([class*="pill"]):not([class*="corner-bracket"]):not([class*="ts-stripe"]):not([class*="zigzag"]) {
   position: relative !important;
   z-index: 2 !important;
 }
@@ -384,7 +384,7 @@ const MOTIF_PAINT_CLASS_RE =
 
 /** Selectors that often carry official outside-canvas Motif hangs. */
 const MOTIF_HANG_SANITIZE_SELECTOR_RE =
-  /\.(?:deco-daisy|deco-star|sunglow|cover-blob|cover-decoration|geo-decoration|xp-blob|gd-orb|post-it|petal|pin-|doodle-|zigzag-deco)/i;
+  /\.(?:deco-[a-z0-9_-]+|deco-pill|[cf]-pill|petals?|(?:cover-)?blob|stamp|tape|pin-|doodle-|scribble-|post-it|xp-blob|gd-(?:orb|ambient)|pixel-|hc-|win-|corner-bracket|cover-decoration|geo-decoration|zigzag-deco|sunglow|ts-stripe)/i;
 
 function classTokens(classAttr: string): string[] {
   return String(classAttr ?? '').trim().split(/\s+/).filter(Boolean);
@@ -764,8 +764,10 @@ function daisyOpenIsOfficialScale(open: string): boolean {
 }
 
 /**
- * Rewrite Motif inline hangs (top:-3% etc.) to inside-canvas placement without
- * stripping the host — preserves body packs instead of remmerging (§0.72/§0.73).
+ * Rewrite Motif inline hangs (top:-3% etc.) without stripping the host.
+ * Daisy corners get official in-canvas placement recipes. Other Motifs
+ * (gd-orb / xp-blob / geo) only neutralize negative offsets — keep authored
+ * width/height/corner so Graphify ambient orbs are not collapsed to a TL disc (§0.76).
  */
 function healMotifOutsideCanvasOffsets(slideHtml: string): string {
   let out = slideHtml;
@@ -783,8 +785,21 @@ function healMotifOutsideCanvasOffsets(slideHtml: string): string {
     if (!tagMatch) continue;
     const tag = tagMatch[1] ?? 'div';
     const attrs = open.replace(new RegExp(`^<${tag}\\b`, 'i'), '').replace(/>$/, '');
-    const placement = placementStyleForMotifClass(cls);
-    const nextOpen = `<${tag}${applyMotifPlacementStyle(attrs, placement)}>`;
+    let nextOpen: string;
+    if (/deco-daisy/i.test(cls)) {
+      const placement = placementStyleForMotifClass(cls);
+      nextOpen = `<${tag}${applyMotifPlacementStyle(attrs, placement)}>`;
+    } else if (/\bstyle\s*=/i.test(attrs)) {
+      const nextAttrs = attrs.replace(
+        /\bstyle\s*=\s*(['"])([\s\S]*?)\1/i,
+        (_m, q: string, style: string) => (
+          `style=${q}${sanitizeMotifOffsetDeclarations(String(style))}${q}`
+        ),
+      );
+      nextOpen = `<${tag}${nextAttrs}>`;
+    } else {
+      continue;
+    }
     out = `${out.slice(0, index)}${nextOpen}${out.slice(index + open.length)}`;
   }
   return out;

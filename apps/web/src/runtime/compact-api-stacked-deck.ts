@@ -266,7 +266,7 @@ function compactStackedDeckExportCss(): string {
       max-height: 1080px !important;
       box-sizing: border-box !important;
       margin: 0 auto !important;
-      overflow: hidden !important;
+      overflow: visible !important;
       page-break-after: always !important;
       break-after: page !important;
       flex: none !important;
@@ -290,7 +290,7 @@ function compactStackedDeckExportCss(): string {
         height: 1080px !important;
         min-height: 1080px !important;
         max-height: 1080px !important;
-        overflow: hidden !important;
+        overflow: visible !important;
       }
     }
   </style>`;

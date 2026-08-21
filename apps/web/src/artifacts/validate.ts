@@ -46,6 +46,7 @@ import {
   eachSlideHostOpenIndex,
   hasSalvageableDeckSlideContent,
   isDeckStatusProseOnlyBody,
+  isPersistableShortDeckDraft,
   meetsMinimumDeckDeliverableQuality,
 } from './deck-html-content';
 
@@ -179,11 +180,13 @@ export function isLowSubstanceSlideDeckArtifact(content: string): boolean {
 function isEffectivelyEmptyHtmlBody(html: string): boolean {
   if (isDeckStatusProseOnlyBody(html)) return true;
   const withoutComments = html.replace(/<!--[\s\S]*?-->/g, '');
-  if (
-    documentContainsSlideSection(withoutComments)
-    && !meetsMinimumDeckDeliverableQuality(withoutComments)
-  ) {
-    return true;
+  if (documentContainsSlideSection(withoutComments)) {
+    // 1–2 slide titled covers are not empty shells — persist + top-up own them.
+    // Multi-slide soft salvage still counts as incomplete here so persist can
+    // use isClosedSoftSalvageDeckHtml trust without writing low-substance decks
+    // that skip the low-substance gate (§0.76).
+    if (isPersistableShortDeckDraft(withoutComments)) return false;
+    if (!meetsMinimumDeckDeliverableQuality(withoutComments)) return true;
   }
   const bodyMatch = /<body\b[^>]*>([\s\S]*)<\/body>/i.exec(withoutComments);
   const body = bodyMatch ? bodyMatch[1]! : withoutComments;

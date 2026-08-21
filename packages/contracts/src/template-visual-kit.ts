@@ -677,6 +677,13 @@ function sanitizeCssRuleForFixedCanvas(rule: string): string | null {
       if (/^(?:min-|max-)?(?:width|height)$/i.test(prop) && /\b\d+\s*v(?:w|h|min|max|i|b)\b/i.test(value)) {
         return false;
       }
+      // Viewport-relative Motif/position props float off the 1920×1080 canvas.
+      if (
+        /^(?:top|left|right|bottom|inset|margin(?:-top|-right|-bottom|-left)?|padding(?:-top|-right|-bottom|-left)?|gap|font-size)$/i.test(prop)
+        && /\b\d*\.?\d+\s*v(?:w|h|min|max|i|b)\b/i.test(value)
+      ) {
+        return false;
+      }
       // Scroll-snap plumbing is presenter-mode only.
       if (/^scroll-snap-(?:type|align|stop)$/i.test(prop) || prop === 'scroll-behavior') return false;
       return true;

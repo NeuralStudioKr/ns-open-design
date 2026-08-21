@@ -29,6 +29,16 @@ html, body { margin: 0; }
   box-sizing: border-box !important;
   overflow: visible !important;
 }
+/* Absolute bottom footers collide with centered lead under flex justify. */
+.slide > :is(.slide-footer, .slide-meta, .kicker-footer, .footer):not([class*="deco"]):not([class*="motif"]) {
+  position: relative !important;
+  inset: auto !important;
+  top: auto !important;
+  right: auto !important;
+  bottom: auto !important;
+  left: auto !important;
+  margin-top: auto !important;
+}
 `.trim();
 
 function extractClassAttr(attrs: string): string {
@@ -155,7 +165,20 @@ function flowAbsoluteSlideFooters(html: string): string {
 }
 
 function injectFixedCanvasStyle(html: string): string {
-  if (new RegExp(`<style\\b[^>]*\\b${DECK_FIXED_CANVAS_PIN_ATTR}\\b`, 'i').test(html)) {
+  const pinRe = new RegExp(
+    `(<style\\b[^>]*\\b${DECK_FIXED_CANVAS_PIN_ATTR}\\b[^>]*>)([\\s\\S]*?)(<\\/style>)`,
+    'i',
+  );
+  const existing = pinRe.exec(html);
+  if (existing) {
+    const body = existing[2] ?? '';
+    // Upgrade pre-§0.73 pin sheets that still force overflow:hidden (§0.76).
+    if (
+      /overflow\s*:\s*(?:hidden|clip)/i.test(body)
+      || !/overflow\s*:\s*visible/i.test(body)
+    ) {
+      return html.replace(pinRe, `$1\n${FIXED_CANVAS_CSS}\n$3`);
+    }
     return html;
   }
   const tag = `<style ${DECK_FIXED_CANVAS_PIN_ATTR}>\n${FIXED_CANVAS_CSS}\n</style>`;

@@ -2607,7 +2607,8 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
   position: absolute !important;
   top: 0 !important;
   left: 0 !important;
-  overflow: hidden !important;
+  /* Motif-safe — overflow:hidden re-clips Daisy/Graphify hangs after pin heal (§0.76). */
+  overflow: visible !important;
   display: none !important;
 }
 </style>`

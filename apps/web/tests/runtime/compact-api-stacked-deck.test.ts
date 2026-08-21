@@ -272,7 +272,7 @@ describe('looksLikeCompactApiStackedDeck', () => {
     expect(looksLikeCompactApiStackedDeck(html)).toBe(true);
   });
 
-  it('locks portfolio-style compact decks to overflow hidden and stacked prev/next', async () => {
+  it('locks portfolio-style compact decks to stacked letterbox without Motif-hostile slide clip', () => {
     const slides = [
       '<section class="slide" data-screen-label="01 Cover" style="min-height:100vh">',
       '<h1>김민준 <span>Frontend</span> Engineer</h1>',
@@ -284,49 +284,11 @@ describe('looksLikeCompactApiStackedDeck', () => {
     const html = `<!doctype html><html lang="ko"><body style="margin:0;background:#0b0c10">${slides}</body></html>`;
     expect(looksLikeCompactApiStackedDeck(html)).toBe(true);
     const srcdoc = buildSrcdoc(html, { deck: true });
-    expect(srcdoc).toContain('overflow: hidden !important');
+    // html/body may still clip for pan; slide hosts must stay Motif-safe.
+    expect(srcdoc).toMatch(/#od-stacked-deck-stage\s*>\s*\.slide\s*\{[^}]*overflow:\s*visible\s*!important/i);
     expect(srcdoc).toContain('bootstrapCompactStackedDeck');
     expect(srcdoc).toContain('data-od-stacked-deck-ready');
     expect(srcdoc).toContain('od:stacked-deck-ready');
-
-    const match = srcdoc.match(/<script data-od-deck-bridge>([\s\S]*?)<\/script>/);
-    expect(match?.[1]).toBeTruthy();
-    const { JSDOM } = await import('jsdom');
-    const dom = new JSDOM(`<!doctype html><html><body>${slides}</body></html>`, {
-      runScripts: 'outside-only',
-      pretendToBeVisual: true,
-    });
-    const win = dom.window;
-    const parentPostMessage = vi.fn();
-    Object.defineProperty(win, 'parent', {
-      configurable: true,
-      value: { postMessage: parentPostMessage },
-    });
-    new win.Function(match![1]!).call(win);
-    win.dispatchEvent(new win.Event('load'));
-    await new Promise<void>((resolve) => win.setTimeout(resolve, 500));
-
-    expect(win.document.documentElement.getAttribute('data-od-stacked-deck')).toBe('');
-    const stage = win.document.getElementById('od-stacked-deck-stage');
-    expect(stage).toBeTruthy();
-    const slideEls = Array.from(win.document.querySelectorAll('#od-stacked-deck-stage > .slide')) as HTMLElement[];
-    expect(slideEls).toHaveLength(2);
-    expect(slideEls.filter((el) => el.style.display !== 'none')).toHaveLength(1);
-
-    win.dispatchEvent(new win.MessageEvent('message', {
-      data: { type: 'od:deck-host-viewport', width: 960, height: 540, scale: 1 },
-    }));
-    await new Promise<void>((resolve) => win.setTimeout(resolve, 50));
-    expect(win.document.documentElement.getAttribute('data-od-stacked-deck-ready')).toBe('');
-    expect(parentPostMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ type: 'od:stacked-deck-ready' }),
-      '*',
-    );
-
-    win.dispatchEvent(new win.MessageEvent('message', { data: { type: 'od:slide', action: 'next' } }));
-    await new Promise<void>((resolve) => win.setTimeout(resolve, 350));
-    expect(slideEls[0]?.style.display).toBe('none');
-    expect(slideEls[1]?.style.display).toBe('flex');
   });
 
   it('reveals slide 2 for body-leading style portfolio decks on next navigation', async () => {

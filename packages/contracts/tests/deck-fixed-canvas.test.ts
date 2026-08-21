@@ -69,4 +69,20 @@ describe('pinDeckSlidesToFixedCanvas', () => {
     const twice = pinDeckSlidesToFixedCanvas(once);
     expect(twice.match(new RegExp(DECK_FIXED_CANVAS_PIN_ATTR, 'g'))).toHaveLength(1);
   });
+
+  it('upgrades stale pin sheets that still force overflow:hidden', () => {
+    const html = [
+      '<!doctype html><html><head>',
+      `<style ${DECK_FIXED_CANVAS_PIN_ATTR}>`,
+      '.slide { width:1920px !important; height:1080px !important; overflow:hidden !important; }',
+      '</style></head><body>',
+      '<section class="slide" style="width:1920px;height:1080px"><h1>Pin upgrade</h1></section>',
+      '</body></html>',
+    ].join('');
+    const pinned = pinDeckSlidesToFixedCanvas(html);
+    expect(pinned).toMatch(/\.slide\s*\{[^}]*overflow:\s*visible\s*!important/i);
+    expect(pinned).not.toMatch(
+      new RegExp(`${DECK_FIXED_CANVAS_PIN_ATTR}[^>]*>[\\s\\S]*overflow:\\s*hidden`, 'i'),
+    );
+  });
 });

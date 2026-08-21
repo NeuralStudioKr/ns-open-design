@@ -230,16 +230,26 @@ function firstHeadOrStyleIndex(html: string): number {
 }
 
 /**
- * Fill-turn abort: the model is dumping `<head>` / prelude `<style>`
- * without a titled slide. Those streams burn max_tokens on Daisy CSS
- * and never reach body copy.
+ * Abort when the model dumps a long `<head>` / prelude `<style>` without a
+ * titled slide — burns max_tokens on Daisy CSS and never reaches body copy.
+ * Applies to Clone fill, slide-count top-up, AND Teamver slide-only greenfield
+ * (BYOK/API) — greenfield was previously exempt and still hit
+ * incomplete-html-document-shell (§0.76).
  */
 export function shouldAbortStreamForHeadOnlyKitDump(options: {
   streamedText: string;
   templateCloneContentFill?: boolean;
   slideCountTopUp?: boolean;
+  /** Teamver slide-only / Canvas→Slide greenfield (no Clone fill flag). */
+  slideOnlyDeck?: boolean;
 }): boolean {
-  if (!options.templateCloneContentFill && !options.slideCountTopUp) return false;
+  if (
+    !options.templateCloneContentFill
+    && !options.slideCountTopUp
+    && !options.slideOnlyDeck
+  ) {
+    return false;
+  }
   const text = String(options.streamedText ?? "");
   if (!DECK_STREAM_OPEN_RE.test(text)) return false;
   const htmlish = extractStreamedDeckHtml(text);
@@ -397,9 +407,17 @@ export function isPersistableShortDeckDraft(html: string): boolean {
   if (!documentContainsSlideSection(withoutComments)) return false;
   if (deckArtifactStartsWithMotifSvgDump(withoutComments)) return false;
   if (deckSlideHeadingsLookLikeFailedGenerate(withoutComments)) return false;
-  return listSlideSectionInners(withoutComments).some((inner) => {
+  const inners = listSlideSectionInners(withoutComments);
+  // First-fill cover drafts are 1–2 slides; multi-slide sparse shells stay on
+  // the soft-salvage / incomplete trust path instead.
+  if (inners.length === 0 || inners.length > 2) return false;
+  return inners.some((inner) => {
     if (slideSectionInnerLooksLikeStatusOnly(inner)) return false;
-    return visibleTextFromHtmlFragment(inner).length >= 2;
+    const text = visibleTextFromHtmlFragment(inner);
+    if (text.length < 2) return false;
+    // Reject outline labels ("발표 개요") but allow short real titles ("AI").
+    if (GENERIC_OUTLINE_HEADING_RE.test(text)) return false;
+    return true;
   });
 }
 
@@ -541,6 +559,8 @@ export function closeUnclosedSlideSectionsForSalvage(html: string): string {
 export function isDeckStatusProseOnlyBody(html: string): boolean {
   const withoutComments = html.replace(/<!--[\s\S]*?-->/g, "");
   if (documentContainsSlideSection(withoutComments)) {
+    // 1–2 slide titled covers are first-fill drafts, not status prose (§0.76).
+    if (isPersistableShortDeckDraft(withoutComments)) return false;
     return !meetsMinimumDeckDeliverableQuality(html);
   }
   const bodyMatch = /<body\b[^>]*>([\s\S]*)<\/body>/i.exec(withoutComments);
