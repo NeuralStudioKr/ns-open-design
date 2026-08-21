@@ -1,6 +1,7 @@
 import {
   deckHtmlHasMotifOutsideCanvasHang,
   firstOfficialDeckTemplateId,
+  looksLikeDeckSlideHostAttrs,
   OFFICIAL_DECK_LOOK_STYLE_ATTR,
 } from '@open-design/contracts';
 import { fetchTeamverDaemon } from './teamverDaemonHeaders';
@@ -33,10 +34,21 @@ const OFFICIAL_LOOK_STYLE_RE = new RegExp(
  * Preview used to stay Neutral until disk write — heal display-only when the
  * look sheet is missing, or when Motif still needs remmerge.
  */
+function htmlLooksLikeOfficialLookPreviewHost(html: string): boolean {
+  if (/<deck-stage\b/i.test(html)) return true;
+  for (const match of html.matchAll(/<(?:section|div|main|article)\b([^>]*)>/gi)) {
+    if (looksLikeDeckSlideHostAttrs(match[1] ?? '')) return true;
+  }
+  return false;
+}
+
 export function deckHtmlNeedsOfficialLookPreviewHeal(html: string): boolean {
   const dest = String(html ?? '');
   if (deckHtmlNeedsOfficialMotifRemerge(dest)) return true;
-  if (!/\bclass\s*=\s*['"][^'"]*\bslide\b|<deck-stage\b/i.test(dest)) return false;
+  // Compact fills copy Creative Mode / editorial hosts as
+  // `class="s1" data-screen-label="01 Title"` without `class="slide"`.
+  // Those still need the persist look sheet on live preview.
+  if (!htmlLooksLikeOfficialLookPreviewHost(dest)) return false;
   return !OFFICIAL_LOOK_STYLE_RE.test(dest);
 }
 

@@ -79,6 +79,20 @@ describe('deckHtmlNeedsOfficialLookPreviewHeal', () => {
     expect(deckHtmlNeedsOfficialLookPreviewHeal(COMPACT_CAPSULE_FILL)).toBe(true);
   });
 
+  it('heals labeled Creative Mode hosts that omit class=slide', () => {
+    const html = [
+      '<!doctype html><html><body><deck-stage>',
+      '<section class="s1" data-screen-label="01 Title"><h1>Cover</h1></section>',
+      '<section class="s2" data-screen-label="02 Agenda"><h1>Agenda</h1></section>',
+      '</deck-stage></body></html>',
+    ].join('');
+    expect(deckHtmlNeedsOfficialLookPreviewHeal(html)).toBe(true);
+    const withoutStage = html.replace(/<\/?deck-stage>/g, '');
+    expect(withoutStage).not.toMatch(/class="[^"]*\bslide\b/);
+    expect(deckHtmlNeedsOfficialLookPreviewHeal(withoutStage)).toBe(true);
+    expect(deckHtmlNeedsOfficialLookPreviewHeal('<section class="hero">Landing</section>')).toBe(false);
+  });
+
   it('skips decks that already have the official look style marker', () => {
     const persisted = `${COMPACT_CAPSULE_FILL}<style data-od-official-look-css>.pill-coral{}</style>`;
     expect(deckHtmlNeedsOfficialLookPreviewHeal(persisted)).toBe(false);

@@ -32,6 +32,18 @@
 | scaffold로 갑자기 바꾸면? | **안 됨.** kit hard cutover 금지. full HTML scaffold도 기본 inject 하지 않음 |
 | 1장짜리 템플릿 결과가 저장되는가? | **제품 경로는 첫 fill 3장.** 잘리면 제목 있는 1장은 저장하고 top-up이 덧붙인다. 제목 없는 빈 셸만 미완성으로 차단. 사용자가 1장을 명시한 경우도 허용 |
 
+### 0.88 2026-08-21 — 라벨 호스트 라이브 미리보기 룩 힐
+
+§0.76은 `class="slide"` / `<deck-stage>`만 힐했다. Creative Mode compact fill(`class="s1" data-screen-label="01 Title"`)은 생성 직후 Neutral로 남는다.
+
+**수정:** `looksLikeDeckSlideHostAttrs`와 같은 번호형 라벨 호스트도 persist look sheet를 display-only로 붙인다.
+
+구현 현황:
+
+- [x] labeled Creative Mode compact fill heal red spec
+- [x] landing `class="hero"`는 skip
+- [x] FileViewer 기존 게이트 유지
+
 ### 0.87 2026-08-21 — 전 활성 템플릿 Motif/letterbox 전수 게이트
 
 활성 `mode:deck` example.html **54개**에 대해 official look merge 후 Motif hang이 0이고, sparse fill이 1920 letterbox lock을 유지하며, kit Decorations/Layout이 `.slide{overflow:hidden}`을 다시 가르치지 않는지 survivor scan으로 고정한다. (카탈로그 presenter의 intentional hang은 merge sanitize 대상.)
