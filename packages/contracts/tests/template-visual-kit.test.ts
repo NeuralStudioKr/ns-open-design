@@ -458,6 +458,30 @@ html,body{background:var(--cream);color:var(--text-dark)}
     expect(slim).not.toMatch(/<polyline\b/i);
   });
 
+  it('Decorations CSS kits do not teach Motif outside-canvas hangs (§0.80)', async () => {
+    for (const folder of [
+      'html-ppt-zhangzara-daisy-days',
+      'html-ppt-zhangzara-block-frame',
+      'html-ppt-zhangzara-scatterbrain',
+      'html-ppt-zhangzara-sakura-chroma',
+      'html-ppt-graphify-dark-graph',
+      'html-ppt-xhs-pastel-card',
+      'html-ppt-pitch-deck',
+    ]) {
+      const html = await readFile(
+        new URL(`../../../plugins/_official/examples/${folder}/example.html`, import.meta.url),
+        'utf8',
+      );
+      const kit = extractTemplateVisualKitFromHtml(html, { title: folder });
+      if (!kit) continue;
+      const decoFence = /### Decorations CSS[\s\S]*?```css\s*([\s\S]*?)```/i.exec(kit)?.[1] ?? '';
+      if (!decoFence.trim()) continue;
+      expect(decoFence, folder).not.toMatch(
+        /\.(?:deco-|gd-orb|xp-blob|pin|tape|ribbon|rib|cover-blob|post-it)[^{]*\{[^}]*(?:top|left|right|bottom)\s*:\s*-\d/i,
+      );
+    }
+  });
+
   it('resolveSiblingAssetPath joins preview-relative local CSS hrefs', async () => {
     const { resolveSiblingAssetPath } = await import('../src/template-visual-kit.js');
     expect(resolveSiblingAssetPath('example.html', 'assets/styles.css')).toBe('assets/styles.css');

@@ -13,6 +13,8 @@
  * `.deco` CSS + hard anti-emoji rules placed before any large cue.
  */
 
+import { sanitizeMotifOutsideCanvasOffsets } from './html/deck-template-look-css.js';
+
 // Raised through 11 000 → 12 000 so Daisy Days can ship daisy+star+rainbow
 // plus Layout CSS (grid/flex/regions) without truncating Motif sprites.
 // Raised 12 000 → 14 000. The HARD_RULES expansion for the "LAYOUT
@@ -694,10 +696,10 @@ function sanitizeCssRuleForFixedCanvas(rule: string): string | null {
 
 /** Catalog-wide Motif class lexicon — not Capsule/Daisy-only. */
 const MOTIF_CLASS_TOKEN_RE =
-  /\b(?:deco(?:-[a-z0-9_-]+)?|pill(?:-[a-z0-9_-]+)?|deco-pills|floating-pills|[cf]-pill|blob(?:-[a-z0-9_-]+)?|petal(?:s)?|stamp|tape|pin(?:-[a-z0-9_-]+)?|doodle|scribble(?:-[a-z0-9_-]+)?|shape|sticker|dot-grid|ornament|floater|spark|confetti|grain|pixel(?:-[a-z0-9_-]+)?|ribbon|glow|hairlines?|stripes?|bracket|corner-bracket|post-it(?:-[a-z0-9_-]+)?|cork|scanlines?|orb(?:-[a-z0-9_-]+)?|ambient|starfield|cross|cassette|jis|bg-cork|(?:tpl|theme)-[a-z0-9_-]+|(?:hc|gd|win)-[a-z0-9_-]+)\b/i;
+  /\b(?:deco(?:-[a-z0-9_-]+)?|pill(?:-[a-z0-9_-]+)?|deco-pills|floating-pills|[cf]-pill|blob(?:-[a-z0-9_-]+)?|petal(?:s)?|stamp|tape|pin(?:-[a-z0-9_-]+)?|doodle|scribble(?:-[a-z0-9_-]+)?|shape|sticker|dot-grid|ornament|floater|spark|confetti|grain|pixel(?:-[a-z0-9_-]+)?|ribbons?|rib|glow|hairlines?|stripes?|bracket|corner-bracket|post-it(?:-[a-z0-9_-]+)?|cork|scanlines?|orb(?:-[a-z0-9_-]+)?|ambient|starfield|cross|cassette|jis|bg-cork|(?:tpl|theme)-[a-z0-9_-]+|(?:hc|gd|win)-[a-z0-9_-]+)\b/i;
 
 const MOTIF_CSS_SELECTOR_RE =
-  /\.(?:deco(?:-[a-z0-9_-]+)?|pill(?:-[a-z0-9_-]+)?|deco-pills|floating-pills|[cf]-pill|blob(?:-[a-z0-9_-]+)?|petal(?:s)?|stamp|tape|pin(?:-[a-z0-9_-]+)?|doodle|scribble(?:-[a-z0-9_-]+)?|shape|sticker|dot-grid|ornament|floater|spark|confetti|grain|pixel(?:-[a-z0-9_-]+)?|ribbon|glow|hairlines?|stripes?|bracket|corner-bracket|post-it(?:-[a-z0-9_-]+)?|cork|scanlines?|orb(?:-[a-z0-9_-]+)?|ambient|starfield|cross|cassette|jis|(?:tpl|theme)-[a-z0-9_-]+|(?:hc|gd|win)-[a-z0-9_-]+)\b/i;
+  /\.(?:deco(?:-[a-z0-9_-]+)?|pill(?:-[a-z0-9_-]+)?|deco-pills|floating-pills|[cf]-pill|blob(?:-[a-z0-9_-]+)?|petal(?:s)?|stamp|tape|pin(?:-[a-z0-9_-]+)?|doodle|scribble(?:-[a-z0-9_-]+)?|shape|sticker|dot-grid|ornament|floater|spark|confetti|grain|pixel(?:-[a-z0-9_-]+)?|ribbons?|rib|glow|hairlines?|stripes?|bracket|corner-bracket|post-it(?:-[a-z0-9_-]+)?|cork|scanlines?|orb(?:-[a-z0-9_-]+)?|ambient|starfield|cross|cassette|jis|(?:tpl|theme)-[a-z0-9_-]+|(?:hc|gd|win)-[a-z0-9_-]+)\b/i;
 
 /** True Capsule Motif — not shared OD `.pill` chrome tags. */
 function hasCapsuleMotifSignal(text: string): boolean {
@@ -1103,7 +1105,7 @@ function extractDecorationCss(html: string, budget: number, identity: IdentitySc
       return 1;
     }
     // Identity color / named Motif tokens (pill-coral, petal, blob, stamp…).
-    if (/\.pill-[a-z0-9_-]+|\.petal|\.blob|\.stamp|\.tape|\.pin(?:-[a-z0-9_-]+)?|\.pixel-|\.shape\b|\.post-it|\.doodle|\.ribbon|\.orb|\.cork\b/i.test(rule)) {
+    if (/\.pill-[a-z0-9_-]+|\.petal|\.blob|\.stamp|\.tape|\.pin(?:-[a-z0-9_-]+)?|\.pixel-|\.shape\b|\.post-it|\.doodle|\.ribbons?|\.rib\b|\.orb|\.cork\b/i.test(rule)) {
       return 2;
     }
     if (MOTIF_CSS_SELECTOR_RE.test(rule)) return 3;
@@ -1131,7 +1133,8 @@ function extractDecorationCss(html: string, budget: number, identity: IdentitySc
   // Phase 2: remaining deco/card/slide chrome.
   for (const rule of prioritized) tryPick(rule);
   if (picked.length === 0) return null;
-  return picked.join('\n');
+  // §0.80: kit must not teach presenter Motif hangs / Cartesian vw Motif sizes.
+  return sanitizeMotifOutsideCanvasOffsets(picked.join('\n'));
 }
 
 /**
@@ -2051,7 +2054,7 @@ function capDecorationsCssSectionForFill(section: string): string {
     if (/\.deco-pill\b|deco-pills|floating-pills|border-radius\s*:\s*999/i.test(rule) && MOTIF_CSS_SELECTOR_RE.test(rule)) {
       return 1;
     }
-    if (/\.pill-[a-z0-9_-]+|\.petal|\.blob|\.stamp|\.tape|\.pin(?:-[a-z0-9_-]+)?|\.pixel-|\.shape\b|\.post-it|\.doodle|\.ribbon|\.orb|\.cork\b/i.test(rule)) {
+    if (/\.pill-[a-z0-9_-]+|\.petal|\.blob|\.stamp|\.tape|\.pin(?:-[a-z0-9_-]+)?|\.pixel-|\.shape\b|\.post-it|\.doodle|\.ribbons?|\.rib\b|\.orb|\.cork\b/i.test(rule)) {
       return 2;
     }
     if (MOTIF_CSS_SELECTOR_RE.test(rule)) return 3;
@@ -2073,7 +2076,9 @@ function capDecorationsCssSectionForFill(section: string): string {
     if (score(rule) <= 2) tryPick(rule);
   }
   for (const rule of rules) tryPick(rule);
-  const pickedCss = picked.join('\n');
+  // §0.80: never teach negative Motif hangs / vw Motif sizes in fill kits.
+  const pickedCss = sanitizeMotifOutsideCanvasOffsets(picked.join('\n'));
+  const sanitizedPicked = pickedCss.split('\n').map((l) => l.trim()).filter(Boolean);
   const htmlSnippets = [...section.matchAll(/```html\s*([\s\S]*?)```/gi)]
     .map((m) => (m[1] ?? '').trim())
     .filter(Boolean)
@@ -2134,8 +2139,8 @@ function capDecorationsCssSectionForFill(section: string): string {
   lines.push(
     '',
     '```css',
-    ...(picked.length > 0
-      ? picked
+    ...(sanitizedPicked.length > 0
+      ? sanitizedPicked
       : ['/* kit Motif rules unavailable — reuse Motif class names / HTML snippets from this kit */']),
     '```',
     '',

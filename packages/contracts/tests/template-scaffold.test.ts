@@ -102,4 +102,23 @@ describe('composeTeamverSlideApiPrompt with scaffold', () => {
     expect(prompt).toMatch(/token-safe|kit \+ Template scaffold map|Prefer finishing a complete deck/i);
     expect(prompt).not.toContain('No ornament.');
   });
+
+  it('Teamver slide scaffold prefers overflow:visible on the Teamver override block (§0.80)', async () => {
+    const html = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/html-ppt-zhangzara-daisy-days/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const scaffold = extractTemplateScaffoldFromHtml(html, {
+      title: 'Html Ppt Zhangzara Daisy Days',
+    });
+    expect(scaffold).toBeTruthy();
+    // Teamver override is prepended before template presenter CSS (which may
+    // still carry overflow:hidden for fullscreen preview).
+    expect(scaffold).toMatch(
+      /\.slides-container\{[^}]*overflow:visible[\s\S]*?\.slide\{[^}]*overflow:visible/i,
+    );
+  });
 });

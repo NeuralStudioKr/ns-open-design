@@ -129,7 +129,7 @@ function teamverSlideCssOverrides(): string {
   return [
     'html,body{margin:0;padding:0;font-family:var(--font-body,var(--sans),system-ui,sans-serif)}',
     '.slides-container{width:auto;height:auto;overflow:visible;scroll-snap-type:none}',
-    '.slide{width:1920px;height:1080px;min-height:1080px;max-height:1080px;padding:64px 80px;box-sizing:border-box;position:relative;overflow:hidden;display:flex;flex-direction:column;justify-content:center;align-items:stretch;scroll-snap-align:none}',
+    '.slide{width:1920px;height:1080px;min-height:1080px;max-height:1080px;padding:64px 80px;box-sizing:border-box;position:relative;overflow:visible;display:flex;flex-direction:column;justify-content:center;align-items:stretch;scroll-snap-align:none}',
     '.nav-dots,.slide-counter,.nav-dot{display:none!important}',
     '.deco{position:absolute;pointer-events:none;z-index:1}',
     '.deco svg{width:100%;height:100%;display:block}',

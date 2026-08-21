@@ -751,6 +751,75 @@ html, body { overflow: visible !important; height: auto !important; }
     expect(out).toMatch(/deco-daisy-tl\{[^}]*top:\s*0/);
   });
 
+  it('sanitizes Motif hangs across Pin / Sakura / Block-frame / Scatterbrain families (§0.80)', () => {
+    const hang = `
+.pin::before{top:-12px;left:50%}
+.tape::after{top:-15px;left:50%}
+.s-cover .ribbon{left:-20%;width:160%}
+.ribbon-stack .rib{left:-20%;width:140%}
+.slide-1 .deco-pink-rect{top:-30px;right:80px;width:100px;height:100px}
+.slide-1 .deco-yellow-bar{bottom:-18px;left:80px;width:140px}
+.post-it-yellow{top:-40px;right:-60px}
+.cover-blob{right:-140px;top:-140px;width:560px;height:560px}
+.deco-pill{width:20vw;height:8vh;top:-4%}
+`;
+    const out = sanitizeMotifOutsideCanvasOffsets(hang);
+    expect(out).not.toMatch(/(?:top|left|right|bottom)\s*:\s*-\d/);
+    expect(out).toMatch(/\.pin::before\{[^}]*top:\s*0/);
+    expect(out).toMatch(/\.tape::after\{[^}]*top:\s*0/);
+    expect(out).toMatch(/\.ribbon\{[^}]*left:\s*0/);
+    expect(out).toMatch(/\.rib\{[^}]*left:\s*0/);
+    expect(out).toMatch(/deco-pink-rect\{[^}]*top:\s*0/);
+    expect(out).toMatch(/deco-yellow-bar\{[^}]*bottom:\s*0/);
+    expect(out).toMatch(/cover-blob\{[^}]*right:\s*0/);
+    expect(out).toMatch(/deco-pill\{[^}]*width:\s*20%/);
+    expect(out).toMatch(/deco-pill\{[^}]*height:\s*8%/);
+    expect(out).not.toMatch(/deco-pill\{[^}]*(?:vw|vh)\b/);
+  });
+
+  it('LOOK_NEUTRALIZE keeps bare pin / ribbon / win Motif hosts below content (§0.80)', () => {
+    expect(LOOK_NEUTRALIZE_CSS).toMatch(/:not\(\.pin\)/);
+    expect(LOOK_NEUTRALIZE_CSS).toMatch(/:not\(\[class\*="pin"\]\)/);
+    expect(LOOK_NEUTRALIZE_CSS).toMatch(/:not\(\.ribbon\)/);
+    expect(LOOK_NEUTRALIZE_CSS).toMatch(/:not\(\[class\*="win-"\]\)/);
+    expect(LOOK_NEUTRALIZE_CSS).toMatch(/:not\(\[class\*="pixel-"\]\)/);
+  });
+
+  it('does not restamp Graphify orb geometry onto Daisy TL recipes (§0.80)', () => {
+    const official = loadOfficialLookSource(join(EXAMPLES_DIR, 'html-ppt-graphify-dark-graph/example.html'));
+    const assets = extractOfficialDeckLookAssets(official)!;
+    const sparse = `<!doctype html><html lang="ko"><body>
+<section class="slide" style="background:#0a0c10;width:1920px;height:1080px"><h1>Graph</h1></section>
+<section class="slide"><h2>Body</h2></section>
+</body></html>`;
+    const merged = mergeOfficialDeckLookCss(sparse, assets);
+    const orb = merged.match(/<(?:div|span)\b[^>]*\bgd-orb\b[^>]*>/i)?.[0] ?? '';
+    expect(orb).toBeTruthy();
+    // Preserve official orb scale — not a 12%/18% Daisy corner disc.
+    expect(orb).not.toMatch(/width:\s*12%/i);
+    expect(orb).not.toMatch(/height:\s*18%/i);
+    expect(orb).not.toMatch(/(?:top|left|right|bottom)\s*:\s*-\d/i);
+  });
+
+  it('remmerges look sheets whose hang gate previously missed Block-frame deco (§0.80)', () => {
+    const official = loadOfficialLookSource(join(EXAMPLES_DIR, 'html-ppt-zhangzara-block-frame/example.html'));
+    const assets = extractOfficialDeckLookAssets(official)!;
+    const stale = `<!doctype html><html lang="ko"><head>
+<style data-od-official-look-css>
+/* stacked preview/export: Motif paint + fixed 1920 */
+.presentation, .deck, [id="od-stacked-deck-stage"] { display:flex !important; flex-direction:column !important; }
+.presentation > .slide, .deck > .slide { flex-direction:unset !important; }
+.slide { position:relative !important; width:1920px !important; height:1080px !important; }
+.slide > :is(h1, h2, h3, p) { position:relative !important; z-index:2 !important; }
+.slide-1 .deco-pink-rect{top:-30px;right:80px;width:100px;height:100px}
+</style>
+</head><body>
+<section class="slide slide-1" style="width:1920px;height:1080px"><h1>Block</h1></section>
+</body></html>`;
+    const merged = mergeOfficialDeckLookCss(stale, assets);
+    expect(merged).not.toMatch(/deco-pink-rect\{[^}]*top:\s*-\d/i);
+  });
+
   it('injects Motif-safe gutter on split slides with padding:0', () => {
     const official = loadOfficialLookSource(join(EXAMPLES_DIR, 'html-ppt-zhangzara-daisy-days/example.html'));
     const assets = extractOfficialDeckLookAssets(official)!;
