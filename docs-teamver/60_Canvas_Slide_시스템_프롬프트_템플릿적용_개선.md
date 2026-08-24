@@ -44,7 +44,19 @@
 - [x] `pickOfficialLookHealedPreviewSource` source-match gate
 - [x] FileViewer wiring · debounce · templateId memo
 - [x] 회귀: `deck-preview-official-look-heal`
-- [ ] fill prompt에 kit Motif CSS cue 1–2개 강제 — 후속
+
+### 1.22 2026-08-24 — fill 턴 Motif CSS cue 1–2개 강제
+
+Motif-defer가 Motif **SVG**를 금지하면서 Decorations **CSS**까지 Optional로 남겨 Capsule/Daisy 등이 title-only sparse fill이 됐다. Clone user brief는 이미 1–2 cue를 요구했는데 framework / READ LAST / slim kit는 Optional이었다.
+
+**수정:** SSOT를 **REQUIRE 1–2 kit Motif CSS/deco classes AFTER title when Decorations are listed**로 통일. Motif `<svg>` / multi-KB dump는 계속 금지. Daisy는 `.deco-daisy-*` 셸 1–2개.
+
+구현 현황:
+
+- [x] `DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_TEMPLATE_FILL`
+- [x] `TEAMVER_SELECTED_TEMPLATE_VISUAL_READ_LAST_FOR_FILL` · clone fill hard rules · NO_SVG READ LAST
+- [x] `slimTemplateVisualKitForFill` / `capDecorationsCssSectionForFill`
+- [x] 회귀: deck-framework-compact · template-visual-kit · system-prompt Clone fill
 
 ### 1.18 2026-08-24 — Studio-family compact type-lock (utility / `--f-*`)
 
@@ -57,7 +69,7 @@
 - [x] Pink Script Instrument 회귀 유지
 - [x] Studio/Broadside/Signal fixture motif = type-lock heading face (token 존재만으로 통과 금지)
 - [x] live preview streaming 중 official-look heal — §1.21
-- [ ] fill prompt에 kit Motif CSS cue 1–2개 강제 — 후속
+- [x] fill prompt에 kit Motif CSS cue 1–2개 강제 — §1.22
 
 ### 1.17 2026-08-24 — Teamver 상세에서 설치 명령·버전/kind 메타 숨김
 

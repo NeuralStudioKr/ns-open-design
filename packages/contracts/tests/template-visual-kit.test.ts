@@ -329,6 +329,8 @@ html,body{background:var(--cream);color:var(--text-dark)}
       expect(daisySlim).toMatch(/#fcdf6c/i);
     }
     expect(daisySlim).toMatch(/Motif `<svg>` is NOT required this turn|OPTIONAL identity reference/i);
+    expect(daisySlim).toMatch(/REQUIRE 1–2 kit Motif CSS\/deco|1–2 `\.deco-daisy-\*`/i);
+    expect(daisySlim).not.toMatch(/Optional tiny kit Motif CSS/i);
     expect(daisySlim).toMatch(/Motif geometry:\s*\*\*kit Motif SVG sprites\*\*/i);
     expect(daisySlim).not.toMatch(/REQUIRED after cover title\/lead:\s*paste exactly ONE/i);
     expect(daisySlim).not.toMatch(/Motif sprites \(omitted for first content-fill/i);

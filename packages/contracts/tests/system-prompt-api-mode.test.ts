@@ -804,6 +804,7 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(normal).toContain('Motif budget');
       expect(normal).toContain('paste at most ONE capped kit Motif sprite');
       expect(fill).toMatch(/Motif `<svg>` is NOT required this turn/i);
+      expect(fill).toMatch(/REQUIRE 1–2 kit Motif CSS\/deco classes/i);
       expect(fill).toMatch(/produce 3 filled 1920×1080 slides/i);
     });
   });
