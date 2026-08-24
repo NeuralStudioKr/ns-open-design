@@ -487,4 +487,27 @@ describe("sanitizeChatMessageLeakedPseudoTool (expanded)", () => {
       sanitizeAssistantProseForDisplay(`초안. class="card pill"`, { stripCodeFences: true }),
     ).toBe("초안.");
   });
+
+  it("hard-strips encoded tags / svg attr / css-fn leftovers via web display last-pass", () => {
+    expect(
+      sanitizeAssistantProseForDisplay(`진행.\n&#60;div class="slide"&#62;본문&#60;/div&#62;`, {
+        stripCodeFences: true,
+      }),
+    ).toBe("진행.");
+    expect(
+      sanitizeAssistantProseForDisplay(`초안. xmlns="http://www.w3.org/2000/svg"`, {
+        stripCodeFences: true,
+      }),
+    ).toBe("초안.");
+    expect(
+      sanitizeAssistantProseForDisplay(`초안.\nlinear-gradient(90deg,#F5F0E6,#fff)`, {
+        stripCodeFences: true,
+      }),
+    ).toBe("초안.");
+    expect(
+      sanitizeAssistantProseForDisplay(`진행.\nel.innerHTML = '<section class="slide">x</section>'`, {
+        stripCodeFences: true,
+      }),
+    ).toBe("진행.");
+  });
 });

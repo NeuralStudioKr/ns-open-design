@@ -259,6 +259,47 @@ function looksLikeHtmlAttrContinuationLine(line: string): boolean {
   return false;
 }
 
+/** Standalone SVG/XML/HTML attribute dumps left after the opener was cut. */
+function looksLikeHtmlAttrDumpLine(line: string): boolean {
+  const trimmed = String(line ?? "").trim();
+  if (!trimmed || lineIsChatProseProtocolMarkup(trimmed)) return false;
+  if (/^<https?:\/\//i.test(trimmed)) return false;
+  if (
+    /^(?:xmlns(?::[\w-]+)?|viewBox|preserveAspectRatio|srcset|sizes|tabindex|clip-rule|fill-rule)\s*=/i.test(
+      trimmed,
+    )
+  ) {
+    return true;
+  }
+  if (/^d\s*=\s*["'][MmLlHhVvCcSsQqTtAaZz]/.test(trimmed)) return true;
+  if (
+    /^(?:class|id|style)\s*=\s*[^\s<>]+$/.test(trimmed)
+    && !/[\uac00-\ud7af]{4,}/.test(trimmed)
+  ) {
+    return true;
+  }
+  if (
+    /^(?:[\w:-]+\s*=\s*(?:"[^"]*"|'[^']*')\s*){1,12}$/.test(trimmed)
+    && /(?:xmlns|viewBox|class|style|data-|aria-|srcset|tabindex|role)\b/i.test(trimmed)
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/** Whole-line CSS function leftovers (`linear-gradient(…)`, `var(--bg)`). */
+function looksLikeCssFunctionDebrisLine(line: string): boolean {
+  const trimmed = String(line ?? "").trim();
+  if (!trimmed || /[\uac00-\ud7af]{3,}/.test(trimmed)) return false;
+  if (/^(?:repeating-)?(?:linear|radial|conic)-gradient\s*\(/i.test(trimmed)) return true;
+  if (/^var\(\s*--[\w-]+\s*(?:,[^)]*)?\)\s*;?\s*$/i.test(trimmed)) return true;
+  if (/^(?:oklch|oklab|hwb|lab|lch|color-mix)\s*\(/i.test(trimmed)) return true;
+  if (/^hsla?\s*\(\s*[\d.]+(?:[\s,/%\d.]+)+\)\s*;?\s*$/i.test(trimmed)) return true;
+  if (/^url\(\s*data:/i.test(trimmed)) return true;
+  if (/^data:image\//i.test(trimmed)) return true;
+  return false;
+}
+
 function looksLikeBrStackedHeadingLine(line: string): boolean {
   const trimmed = String(line ?? "").trim();
   if (!/<br\b/i.test(trimmed) || trimmed.length > 80 || /[.!?。…?]/.test(trimmed)) {
@@ -566,12 +607,12 @@ function findTrailingSameLineDeckHtmlCut(line: string): number | null {
   ) {
     return gluedCss[1].length;
   }
-  const voidSlash = /^(.*?)(?:\s+\/>)\s*$/.exec(line);
+  const voidSlash = /^(.*?(?:[.。…]|\s))(?:\s*\/\s*>)\s*$/u.exec(line);
   if (voidSlash?.[1] !== undefined && /[\p{L}\p{N}.。…]$/u.test(voidSlash[1].trimEnd())) {
     return voidSlash[1].trimEnd().length;
   }
   const attrTail =
-    /^(.*?)(?:\s+["']?\s*(?:class|id|style|role|aria-[\w-]+)\s*=\s*["'][^"']*["']\s*)$/i.exec(
+    /^(.*?)(?:\s+["']?\s*(?:class|id|style|role|aria-[\w-]+|data-[\w-]+|xmlns(?::[\w-]+)?|viewBox|d|srcset|sizes|tabindex|src|href)\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>"']+))+\s*$/i.exec(
       line,
     );
   if (attrTail?.[1] !== undefined && /[\p{L}\p{N}.。…]$/u.test(attrTail[1].trimEnd())) {
@@ -2042,7 +2083,12 @@ export function looksLikeDeckCodeDebrisLine(line: string): boolean {
   if (/^<https?:\/\//i.test(trimmed)) return false;
   if (lineIsChatProseProtocolMarkup(trimmed)) return false;
   if (/^<\?(?:xml\b|[\w:-]+)/i.test(trimmed) || /^<!\[CDATA\[/.test(trimmed)) return true;
+  if (/^<!\[(?:if\b|endif)/i.test(trimmed)) return true;
+  if (/^\{\{[#/][\w.-]+/.test(trimmed)) return true;
+  if (/^<%[=#@-]/.test(trimmed)) return true;
   if (looksLikeBrStackedHeadingLine(trimmed)) return true;
+  if (looksLikeHtmlAttrDumpLine(trimmed)) return true;
+  if (looksLikeCssFunctionDebrisLine(trimmed)) return true;
   if (looksLikeHtmlAttrContinuationLine(trimmed)) return true;
   if (/^&amp;lt;\/?[A-Za-z]/.test(trimmed)) return true;
   if (/^rgba?\([^)]*\)\s*;\s*[a-zA-Z-]+\s*:/.test(trimmed)) return true;
@@ -2216,6 +2262,9 @@ export function looksLikeDeckJsDebrisLine(line: string): boolean {
   if (/\b(?:document|window)\.\w+\s*\(/.test(trimmed)) return true;
   if (/\brequestAnimationFrame\s*\(/.test(trimmed)) return true;
   if (/\bnew\s+(?:Animation|KeyframeEffect)\s*\(/.test(trimmed)) return true;
+  if (/\.(?:innerHTML|outerHTML)\s*=/.test(trimmed)) return true;
+  if (/\.insertAdjacentHTML\s*\(/.test(trimmed)) return true;
+  if (/\.classList\.(?:add|remove|toggle|replace)\s*\(/.test(trimmed)) return true;
   if (/\w+\.(?:animate|cancel|addEventListener|getAnimations)\s*\(/.test(trimmed)) return true;
   if (/^(?:const|let|var)\s+\w+\s*=\s*(?:document\.|window\.|\w+\.(?:animate|querySelector))/.test(trimmed)) {
     return true;
@@ -2325,7 +2374,7 @@ function cutInlineDeckHtmlPrefix(line: string): string | null | undefined {
   }
 
   const softCut =
-    /^(.*?)(\s+)(?=(?:-?(?:webkit|moz|ms)-)?[a-z][\w-]*(?:\s+[^\n:;{}]{1,64}){1,6};?\s*$|(?:document|window)\.\w+\s*\(|requestAnimationFrame\s*\(|cubic-bezier\s*\()/i.exec(
+    /^(.*?)(\s+)(?=(?:-?(?:webkit|moz|ms)-)?[a-z][\w-]*(?:\s+[^\n:;{}]{1,64}){1,6};?\s*$|(?:document|window)\.\w+\s*\(|requestAnimationFrame\s*\(|cubic-bezier\s*\(|\w+\.(?:innerHTML|outerHTML|insertAdjacentHTML|classList)\b)/i.exec(
       line,
     );
   if (softCut) {
@@ -2346,7 +2395,7 @@ function cutInlineDeckHtmlPrefix(line: string): string | null | undefined {
   }
 
   const match = new RegExp(
-    `^(.*?)(\\s*)(<!--|<(?!\\/?(?:${CHAT_PROSE_PROTOCOL_TAG_ALT}|https?|br|wbr)\\b)[A-Za-z][\\w:-]*(?:\\s|\\/?>))`,
+    `^(.*?)(\\s*)(<!--|<[?][\\w:-]+|<!\\[(?:CDATA\\[|if\\b|endif\\])|<(?!\\/?(?:${CHAT_PROSE_PROTOCOL_TAG_ALT}|https?|br|wbr)\\b)[A-Za-z][\\w:-]*(?:\\s|\\/?>))`,
     "i",
   ).exec(line);
   if (!match || match.index === undefined) return undefined;
@@ -2392,9 +2441,23 @@ export function stripResidualDeckHtmlMarkupFromProse(input: string): string {
   text = text.replace(/<!--[\s\S]*?-->/g, "");
   text = text.replace(/<!--[\s\S]*$/g, "");
   text = text.replace(/<!doctype\b[^>]*>/gi, "");
-  text = text.replace(/<\?[\w:-]+[\s\S]*?\?>/g, "");
+  text = text.replace(/<\?[\w:-]+[^\n]*\?>/g, "");
+  text = text.replace(/<\?[\w:-]+[^\n]*$/g, "");
   text = text.replace(/<!\[CDATA\[[\s\S]*?\]\]>/g, "");
   text = text.replace(/<!\[CDATA\[[\s\S]*$/g, "");
+  text = text.replace(/<!\[if\b[\s\S]*?\]>/gi, "");
+  text = text.replace(/<!\[endif\]>/gi, "");
+  // Normalize encoded angle brackets so the tag last-pass can see them.
+  text = text.replace(/&(?:amp;)+lt;/gi, "<");
+  text = text.replace(/&(?:amp;)+gt;/gi, ">");
+  text = text.replace(/&#0*60;/g, "<");
+  text = text.replace(/&#0*62;/g, ">");
+  text = text.replace(/&#x0*3c;/gi, "<");
+  text = text.replace(/&#x0*3e;/gi, ">");
+  text = text.replace(/\\u003c/gi, "<");
+  text = text.replace(/\\u003e/gi, ">");
+  text = text.replace(/%3c/gi, "<");
+  text = text.replace(/%3e/gi, ">");
   text = text.replace(/&amp;lt;\/?[A-Za-z][\w:-]*[\s\S]*?(?:&amp;gt;|&gt;|>)/gi, "");
   text = text.replace(
     /(?:^|\n)\s*(?:[\w:-]+\s*=\s*(?:"[^"]*"|'[^']*')\s*)+\/?>[^\n]*/g,
