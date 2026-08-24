@@ -119,6 +119,22 @@ describe("internalAgentMarkup", () => {
     }
   });
 
+  it("hard-strips Hangul glued to a truncated Caveat / Zilla mid-style dump", () => {
+    const userLeak = [
+      "슬라이드 추가 중Caveat',cursive;font-size:23px;line-height:1.75;margin:0;padding-left:20px;\"> 5px 0 ",
+      "#2d2a26;padding:28px;transform:rotate(0.6deg);\">Syft로 CycloneDX/SPDX 생성, Grype로 CVE 스캔SLSA Level 3: hermetic build + 검증 가능한 출처9c9,",
+      "#ff9f9f);border:2px solid ",
+      "#2d2a26;box-shadow:4px 5px 0 ",
+      "#2d2a26;padding:28px;transform:rotate(-0.4deg);\">:'Zilla Slab',",
+    ].join("\n");
+    for (const streaming of [true, false]) {
+      expect(sanitizeAssistantProseForDisplay(userLeak, { streaming })).toBe("슬라이드 추가 중");
+      expect(
+        sanitizeAssistantProseForDisplay(`초안.\n">:'Zilla Slab',`, { streaming }),
+      ).toBe("초안.");
+    }
+  });
+
   it("hard-strips deck chrome family via web last-pass (flex/landmarks/closers)", () => {
     for (const streaming of [true, false]) {
       expect(

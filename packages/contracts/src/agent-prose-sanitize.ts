@@ -569,7 +569,7 @@ const DECK_BROKEN_SECTION_CSS_DEBRIS_TAIL_RE =
  * `color: red">` mention in prose is not chopped.
  */
 const DECK_ORPHAN_MID_STYLE_ATTR_TAIL_RE =
-  /(?:^|\n)(?:(?:px|em|rem|%|vh|vw)\s*;\s*)?(?:[a-zA-Z-]+\s*:\s*[^;]*;?\s*){2,}[\s\S]*?["']\s*>[\s\S]*$/i;
+  /(?:^|\n)(?:(?:px|em|rem|%|vh|vw|#(?:[0-9A-Fa-f]{3,8}))\s*;\s*)?(?:[a-zA-Z-]+\s*:\s*[^;]*;?\s*){2,}[\s\S]*?["']\s*>[\s\S]*$/i;
 /**
  * Truncated SVG `<style>` body (`none;stroke:…}.cls-3{…}</style>`) after the
  * opening `<style>` / comment was already stripped. `</style>` is optional —
@@ -603,6 +603,28 @@ function isDeckChromePartialTag(name: string, after: string): boolean {
   );
 }
 
+/**
+ * Hangul/CJK status glued to a truncated font-family / mid-style dump:
+ * `슬라이드 추가 중Caveat',cursive;font-size:23px;…">`.
+ * The dump often starts with a font name leftover, not `property:`.
+ */
+function findHangulGluedStyleDumpCut(line: string): number | null {
+  const match = /^(.*[\uac00-\ud7af\u3000-\u9fff])([\s\S]+)$/u.exec(line);
+  if (!match?.[1] || !match[2] || match[2].length < 8) return null;
+  const prefix = match[1];
+  const dump = match[2];
+  if (/\s$/.test(prefix)) return null;
+  const decls = dump.match(/[a-zA-Z-]+\s*:\s*[^;\n]{1,96};/g) ?? [];
+  const fontStack = /(?:cursive|sans-serif|serif|monospace|fantasy|system-ui)\s*;/i.test(dump);
+  const styleClose = /["']\s*>/.test(dump);
+  const fontName = /(?:Caveat|Zilla|Quicksand|Fredoka|Grotesk|Barlow|Instrument|Plex|Inter|Geist)/i.test(
+    dump,
+  );
+  if (decls.length >= 2 && (styleClose || fontStack || fontName)) return prefix.length;
+  if (fontStack && decls.length >= 1) return prefix.length;
+  return null;
+}
+
 function findTrailingSameLineDeckHtmlCut(line: string): number | null {
   const orphan = line.match(/^(.*?)(-index\s*=\s*["']\d+["']\s+style\s*=.*)$/i);
   if (orphan?.[1] !== undefined) return orphan[1].length;
@@ -617,6 +639,11 @@ function findTrailingSameLineDeckHtmlCut(line: string): number | null {
     /^(.*?[\uac00-\ud7af\u3000-\u9fff])\s*([A-Za-z][\s\S]*<br\b[\s\S]*<\/h[1-6]>)/u,
   );
   if (hangulBrHero?.[1] !== undefined) return hangulBrHero[1].length;
+  // Hangul/CJK glued to a truncated font-family leftover:
+  // `슬라이드 추가 중Caveat',cursive;font-size:…">`. Run before midCss —
+  // midCss would otherwise keep `Caveat',` as the human prefix.
+  const hangulStyleGlue = findHangulGluedStyleDumpCut(line);
+  if (hangulStyleGlue != null) return hangulStyleGlue;
   // Mid-word CSS join after Hangul/Latin: `슬라이드 추가 중ospace;font-size:…">Label</div>`
   // (`ospace` = truncated `monospace`). Keep the human prefix.
   // NEVER cut intact `… style="font-family:…"` tags — that left `<span style="`
@@ -625,23 +652,25 @@ function findTrailingSameLineDeckHtmlCut(line: string): number | null {
   // reluctant `[\s\S]*?["']\s*>` backtracks into ReDoS on long CSS dumps.
   if (/["']\s*>|<\/(?:div|span|p|h[1-6])\b|<br\b/i.test(line)) {
     const midCss = line.match(
-      /^(.*?)((?:[a-z]{2,14};)?(?:[a-zA-Z-]+\s*:\s*[^;]*;){2,}[\s\S]*?["']\s*>[\s\S]*)$/i,
+      /^(.*?)((?:[A-Za-z][\w\s]{0,24}['"]\s*,\s*)?(?:[a-z]{2,14};)?(?:[a-zA-Z-]+\s*:\s*[^;]*;){2,}[\s\S]*?["']\s*>[\s\S]*)$/i,
     );
     if (midCss?.[1] !== undefined && midCss[2]) {
-      const prefix = midCss[1];
+      let prefix = midCss[1];
       const css = midCss[2];
       const endsInStyleAttr = /\bstyle\s*=\s*["']\s*$/i.test(prefix);
       const openTagPrefix = /<[a-z][\w:-]*\b[^>]*$/i.test(prefix);
       const cjkGlue = /[\u3000-\u9fff\uac00-\ud7af]/u.test(prefix.slice(-12));
-      const midWordCssFrag = /^(?:[a-z]{2,14};)/i.test(css);
+      const midWordCssFrag =
+        /^(?:[A-Za-z][\w\s]{0,24}['"]\s*,\s*)?(?:[a-z]{2,14};)/i.test(css);
       if (
         !endsInStyleAttr
         && !openTagPrefix
         && (cjkGlue || midWordCssFrag)
         && /(?:font-size|letter-spacing|text-transform|opacity|margin|font-family|line-height)\s*:/i.test(css)
-        && /(?:<\/(?:div|span|p|h[1-6])>|<br\b)/i.test(css)
+        && (/(?:<\/(?:div|span|p|h[1-6])>|<br\b)/i.test(css) || /["']\s*>/.test(css))
         && /[\p{L}\p{N}]/u.test(prefix.slice(-8))
       ) {
+        prefix = prefix.replace(/[A-Za-z][\w\s]{0,24}['"]\s*,\s*$/u, "");
         return prefix.length;
       }
     }
@@ -2282,6 +2311,27 @@ export function looksLikeDeckCodeDebrisLine(line: string): boolean {
   if (/^#[0-9A-Fa-f]{3,8}\s*;\s*--[A-Za-z_]/.test(trimmed)) {
     return true;
   }
+  // Mid-style hex dump: `#2d2a26;padding:28px;transform:…">`.
+  if (/^#(?:[0-9A-Fa-f]{3,8})\s*;\s*[a-zA-Z-]+\s*:/.test(trimmed)) {
+    return true;
+  }
+  // Split gradient token: `9c9,#ff9f9f);border:2px solid`.
+  if (/^#(?:[0-9A-Fa-f]{3,8})\s*\)\s*;\s*[a-zA-Z-]+\s*:/.test(trimmed)) {
+    return true;
+  }
+  // Quoted attribute closer leaking a font stack: `">:'Zilla Slab',`.
+  if (
+    /^["']\s*>/.test(trimmed)
+    && /(?:[a-zA-Z-]+\s*:|['"]?[A-Za-z][\w\s]*['"]?\s*,|(?:Slab|Serif|Sans|Caveat|cursive|Grotesk|Zilla))/i.test(trimmed)
+  ) {
+    return true;
+  }
+  if (
+    /^:['"][A-Za-z]/.test(trimmed)
+    && /(?:Slab|Serif|Sans|Caveat|Grotesk|Quicksand|Fredoka|Zilla)/i.test(trimmed)
+  ) {
+    return true;
+  }
   if (
     /^<\/?[a-zA-Z][\w:-]*\b/.test(trimmed)
     && /(?:\bstyle\s*=|\bclass\s*=|data-(?:slide|deck)|role\s*=\s*["']presentation|aria-hidden\s*=\s*["']true|<(?:svg|path|circle|rect|video|canvas|iframe|object|embed|picture|source|math|foreignObject)\b|<\/(?:div|section|span|svg|h[1-6]|style|pre)\b|<br\b)/i.test(
@@ -2368,6 +2418,10 @@ export function looksLikeDeckCssContinuationLine(line: string): boolean {
   if (/^rgba?\([^)]*\)\s*;?\s*[}\uFF5D]?\s*$/iu.test(trimmed)) return true;
   if (/^rgba?\([^)]*\)\s*;\s*[a-zA-Z-]+\s*:/.test(trimmed)) return true;
   if (/^[\d.]+(?:px|em|rem|%|vh|vw|ms|s)?\s*;?\s*[}\uFF5D]?\s*$/iu.test(trimmed)) return true;
+  // Split box-shadow / spacing residue: `5px 0`.
+  if (/^[\d.]+(?:px|em|rem|%)\s+[\d.]+\s*;?\s*$/i.test(trimmed)) return true;
+  // Split hex list residue: `9c9,`.
+  if (/^[0-9A-Fa-f]{3,8}\s*,\s*$/.test(trimmed)) return true;
   if (/^[a-zA-Z-]+\s*:\s*[^;{]+;?\s*[}\uFF5D]?\s*$/u.test(trimmed)) return true;
   if (/^--[A-Za-z_][\w-]*\s*:/.test(trimmed)) return true;
   if (/^[}\]\uFF5D]+\s*$/u.test(trimmed)) return true;
