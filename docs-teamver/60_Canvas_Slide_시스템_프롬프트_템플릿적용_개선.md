@@ -32,6 +32,19 @@
 | scaffold로 갑자기 바꾸면? | **안 됨.** kit hard cutover 금지. full HTML scaffold도 기본 inject 하지 않음 |
 | 1장짜리 템플릿 결과가 저장되는가? | **제품 경로는 첫 fill 3장.** 잘리면 제목 있는 1장은 저장하고 top-up이 덧붙인다. 제목 없는 빈 셸만 미완성으로 차단. 사용자가 1장을 명시한 경우도 허용 |
 
+### 1.18 2026-08-24 — Studio-family compact type-lock (utility / `--f-*`)
+
+§0.65 Pink Script type-lock은 `html,body` + `.script` / bare `h1`만 봤다. Studio / Broadside / Signal / Vellum은 디스플레이 페이스를 **`.display` / `.h1` + `:root --f-display|--f-heading|--f-body`**에만 두고 bare heading에는 붙이지 않는다. compact fill의 semantic `<h1>`/`<h2>`는 Neutral Quicksand로 남고 palette만 템플릿처럼 보였다. 추가로 Studio ZONE box comment가 naive `{…}` split의 셀렉터에 붙어 `:root` / `.display` 매칭이 실패했다.
+
+구현 현황:
+
+- [x] 셀렉터 comment-strip 후 `--f-*` / `--font-*` resolve + `.display`/`.h1`/`.h2`/`.body` 추출
+- [x] heading lock selector에 `.display, .h1, .h2` 포함 (body=display 동일해도 emit)
+- [x] Pink Script Instrument 회귀 유지
+- [x] Studio/Broadside/Signal fixture motif = type-lock heading face (token 존재만으로 통과 금지)
+- [ ] live preview streaming 중 official-look heal — 후속
+- [ ] fill prompt에 kit Motif CSS cue 1–2개 강제 — 후속
+
 ### 1.17 2026-08-24 — Teamver 상세에서 설치 명령·버전/kind 메타 숨김
 
 §1.16은 예시 프롬프트와 context bundle을 가렸다. 시나리오/미디어/디자인시스템 상세에는 여전히 `od plugin install`, marketplace, `v0.1.0 · scenario · bundled`가 남는다. 룩 피커에는 제목·소개·작성자만 둔다.
@@ -44,6 +57,7 @@
 - [x] 회귀: plugin-detail-display helper · PluginMetaSections omit
 - [ ] HomeHero 프리셋 매직 스케일 — slide-only 비노출, 후속
 - [ ] 비덱 갤러리 hover-pan / live-artifact 250% — 프로토타입 경로, 후속
+
 
 ### 1.16 2026-08-24 — Teamver 상세에서 예시 프롬프트·context bundle 숨김
 
@@ -83,6 +97,7 @@ Html Ppt 스캐폴드는 목록에서 뺐지만, 남은 템플릿 상세에도 `
 - [x] 회귀: toolbox-catalog-display · slide-only policy · canvas picker
 - [ ] HomeHero 프리셋 매직 스케일 — slide-only 비노출, 후속
 - [ ] 비덱 갤러리 hover-pan / live-artifact 250% — 프로토타입 경로, 후속
+
 
 ### 1.13 2026-08-24 — thumbnail batch 1장 커버가 빈 카드로 남는 문제
 
@@ -1994,6 +2009,7 @@ User-message 쪽 `[Existing deck edit]` / `<attached-preview-comments>` 주입�
 
 | 날짜 | 내용 |
 |------|------|
+| 2026-08-24 | §1.18 — Studio/Broadside/Signal/Vellum compact type-lock. Resolve `--f-*` + `.display`/`.h1` onto semantic headings; tighten generated-deck fixtures to require type-lock face. |
 | 2026-08-24 | §1.04 — Studio/Daisy/Capsule 대표 생성 결과 fixture 가드. official look/motif merge + standalone export에서 motif/look paint, 1920×1080 fixed canvas, slide count 보존 검증. head/body cleanup이 첫 slide host를 삭제하지 않도록 slide host count guard 추가. |
 | 2026-08-10 | 초안 — Daisy Days Neutral 덮어쓰기 RCA · compose SSOT · 3커밋 타임라인 · 회귀 검토 · 검증 체크리스트 |
 | 2026-08-10 | 후속 — edit-contract FE gate · Zhangzara×31 Teamver 노트 · kit asset 5xx retry |

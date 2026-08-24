@@ -16,6 +16,7 @@ import {
   ensureOfficialLookStackedCanvasNeutralize,
   extractOfficialDeckLookAssets,
   firstOfficialDeckTemplateId,
+  appendCompactOfficialTypeLock,
   injectStackedCanvasNeutralizeForLetterbox,
   listOfficialLookProofClasses,
   listOfficialMotifSymbolIds,
@@ -589,11 +590,57 @@ html, body { overflow: visible !important; height: auto !important; }
     expect(lookCss).toMatch(/od-compact-type-lock/);
     expect(lookCss).toMatch(/Instrument Serif/i);
     expect(lookCss).toMatch(/html,\s*body,\s*section\.slide,\s*\.slide\s*\{[^}]*font-family:[^}]*Inter/i);
+    expect(lookCss).toMatch(/\.slide :is\(h1,\s*h2,\s*h3,\s*\.title,\s*\.display,\s*\.h1,\s*\.h2\)\s*\{[^}]*Instrument Serif/i);
     const officialIdx = merged.lastIndexOf(OFFICIAL_DECK_LOOK_STYLE_ATTR);
     const creamRuleIdx = merged.lastIndexOf('.slide{background:#F5F0E6');
     expect(officialIdx).toBeGreaterThan(creamRuleIdx);
     const twice = mergeOfficialDeckLookCss(merged, assets);
     expect(twice).toBe(merged);
+  });
+
+  it('locks Studio-family utility/token faces onto compact semantic headings (§1.18)', () => {
+    const creamFill = `<!doctype html><html lang="ko"><head><meta charset="utf-8"></head><body>
+<style>.slide{background:#111;color:#eee;font-family:Quicksand,sans-serif}</style>
+<section class="slide"><h1>Cloud Native</h1><p>Lead copy.</p></section>
+<section class="slide"><h2>Map</h2></section>
+</body></html>`;
+    const cases: Array<[string, RegExp, RegExp]> = [
+      ['html-ppt-zhangzara-studio', /Barlow/i, /Barlow/i],
+      ['html-ppt-zhangzara-broadside', /Barlow/i, /Barlow/i],
+      ['html-ppt-zhangzara-signal', /Source Serif 4/i, /DM Sans/i],
+      ['html-ppt-zhangzara-vellum', /Cormorant Garamond/i, /DM Sans/i],
+    ];
+    for (const [folder, headingFace, bodyFace] of cases) {
+      const official = loadOfficialLookSource(join(EXAMPLES_DIR, folder, 'example.html'));
+      const assets = extractOfficialDeckLookAssets(official)!;
+      expect(assets.css, folder).toMatch(/--f-display\s*:/i);
+      const locked = appendCompactOfficialTypeLock(assets.css);
+      expect(locked, folder).toMatch(/od-compact-type-lock/);
+      expect(locked, folder).toMatch(
+        new RegExp(
+          String.raw`\.slide :is\(h1,\s*h2,\s*h3,\s*\.title,\s*\.display,\s*\.h1,\s*\.h2\)\s*\{[^}]*font-family:[^}]*${headingFace.source}`,
+          'i',
+        ),
+      );
+      expect(locked, folder).toMatch(
+        new RegExp(
+          String.raw`html,\s*body,\s*section\.slide,\s*\.slide\s*\{[^}]*font-family:[^}]*${bodyFace.source}`,
+          'i',
+        ),
+      );
+      const merged = mergeOfficialDeckLookCss(creamFill, assets);
+      const lookCss = [...merged.matchAll(/<style\b[^>]*data-od-official-look-css[^>]*>([\s\S]*?)<\/style>/gi)]
+        .map((m) => m[1] ?? '')
+        .join('\n');
+      expect(lookCss, folder).toMatch(/od-compact-type-lock/);
+      expect(lookCss, folder).toMatch(headingFace);
+      expect(lookCss, folder).not.toMatch(/Quicksand/i);
+      const officialIdx = merged.lastIndexOf(OFFICIAL_DECK_LOOK_STYLE_ATTR);
+      const creamRuleIdx = merged.lastIndexOf('.slide{background:#111');
+      expect(officialIdx, folder).toBeGreaterThan(creamRuleIdx);
+      const twice = mergeOfficialDeckLookCss(merged, assets);
+      expect(twice, folder).toBe(merged);
+    }
   });
 
   it('stamps official Daisy cover corners, not a single tiny bottom-right flower', () => {
