@@ -67,6 +67,24 @@ function batchHtmlResponse(urls: string[]): Response {
   } as unknown as Response;
 }
 
+function batchItemFailureResponse(urls: string[], status: number): Response {
+  return {
+    ok: true,
+    status: 200,
+    headers: { get: (name: string) => (name.toLowerCase() === 'content-type' ? 'application/json' : null) },
+    json: async () => ({
+      results: urls.map((url) => ({
+        url,
+        ok: false,
+        status,
+      })),
+    }),
+    clone() {
+      return batchItemFailureResponse(urls, status);
+    },
+  } as unknown as Response;
+}
+
 function jsonUnauthorizedResponse(): Response {
   const body = '{"detail":"session_expired","login_url":"/login"}';
   return {
@@ -165,7 +183,7 @@ describe('HtmlSurface authenticated srcDoc', () => {
   it('fetches plugin preview on inView in Teamver embed (linger, not hover-only)', async () => {
     const designApiBase = await import('../../src/teamver/designApiBase');
     const embedSpy = vi.spyOn(designApiBase, 'isTeamverEmbedMode').mockReturnValue(true);
-    const fetchMock = vi.fn().mockResolvedValue(htmlResponse());
+    const fetchMock = vi.fn().mockResolvedValue(batchHtmlResponse([PREVIEW.src]));
     vi.stubGlobal('fetch', fetchMock);
     const { container } = render(
       <HtmlSurface
@@ -248,7 +266,7 @@ describe('HtmlSurface authenticated srcDoc', () => {
   });
 
   it('reuses sessionStorage preview HTML without a second network GET', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(htmlResponse());
+    const fetchMock = vi.fn().mockResolvedValue(batchHtmlResponse([PREVIEW.src]));
     vi.stubGlobal('fetch', fetchMock);
     const { unmount } = render(
       <HtmlSurface
@@ -263,7 +281,7 @@ describe('HtmlSurface authenticated srcDoc', () => {
     unmount();
     __clearHtmlSurfaceMemoryCacheForTests();
     expect(
-      sessionStorage.getItem('od:plugin-preview:v1:/api/plugins/example-html-ppt/preview'),
+      sessionStorage.getItem('od:plugin-preview:v2:/api/plugins/example-html-ppt/preview'),
     ).toBeTruthy();
     render(
       <HtmlSurface
@@ -282,8 +300,31 @@ describe('HtmlSurface authenticated srcDoc', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it('uses compact preview batch even when only one card is visible', async () => {
+    const fetchMock = vi.fn().mockImplementation(async (url: string, init?: RequestInit) => {
+      expect(url).toBe('/api/plugins/preview-batch');
+      const parsed = JSON.parse(String(init?.body ?? '{}')) as { urls?: string[]; mode?: string };
+      expect(parsed.urls).toEqual(['/api/plugins/example-html-ppt/preview']);
+      expect(parsed.mode).toBe('thumbnail');
+      return batchHtmlResponse(parsed.urls ?? []);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <HtmlSurface
+        preview={PREVIEW}
+        pluginId="example-html-ppt"
+        pluginTitle="Html Ppt"
+        inView
+        eager
+      />,
+    );
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+  });
+
   it('renders an iframe with srcDoc once HTML loads (not bare src)', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(htmlResponse());
+    const fetchMock = vi.fn().mockResolvedValue(batchHtmlResponse([PREVIEW.src]));
     vi.stubGlobal('fetch', fetchMock);
     const { container } = render(
       <HtmlSurface
@@ -312,7 +353,7 @@ describe('HtmlSurface authenticated srcDoc', () => {
   });
 
   it('renders the typographic fallback when the URL 404s', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(notFoundResponse());
+    const fetchMock = vi.fn().mockResolvedValue(batchItemFailureResponse([PREVIEW.src], 404));
     vi.stubGlobal('fetch', fetchMock);
     const { container } = render(
       <HtmlSurface
@@ -344,8 +385,8 @@ describe('HtmlSurface authenticated srcDoc', () => {
   it('force-retries sticky 404 cache when Retry is clicked', async () => {
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce(notFoundResponse())
-      .mockResolvedValueOnce(htmlResponse());
+      .mockResolvedValueOnce(batchItemFailureResponse([PREVIEW.src], 404))
+      .mockResolvedValueOnce(batchHtmlResponse([PREVIEW.src]));
     vi.stubGlobal('fetch', fetchMock);
     const { container } = render(
       <HtmlSurface
@@ -380,7 +421,7 @@ describe('HtmlSurface authenticated srcDoc', () => {
   });
 
   it('renders the typographic fallback for session_expired JSON (never paints JSON thumb)', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(jsonUnauthorizedResponse());
+    const fetchMock = vi.fn().mockResolvedValue(batchItemFailureResponse([PREVIEW.src], 401));
     vi.stubGlobal('fetch', fetchMock);
     const { container } = render(
       <HtmlSurface
@@ -406,8 +447,8 @@ describe('HtmlSurface authenticated srcDoc', () => {
   it('retries preview GET after embed passive-auth recovered', async () => {
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce(jsonUnauthorizedResponse())
-      .mockResolvedValueOnce(htmlResponse());
+      .mockResolvedValueOnce(batchItemFailureResponse([PREVIEW.src], 401))
+      .mockResolvedValueOnce(batchHtmlResponse([PREVIEW.src]));
     vi.stubGlobal('fetch', fetchMock);
     const { container } = render(
       <HtmlSurface

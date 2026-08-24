@@ -188,7 +188,7 @@ export const BYOK_WEB_FETCH_TOOL = {
   function: {
     name: 'web_fetch',
     description:
-      'Fetch a public http(s) URL and return its content as plain text (HTML stripped, ≤100KB). Use this whenever the user gives you a URL and you need to read its content — for example to summarise a webpage, extract a product description, or pull the brief from a team page. The response is the page text plus the document title. NOT for authenticated, internal, or interactive content.',
+      'Fetch a public http(s) HTML page and return its content as plain text (HTML stripped, ≤100KB). Use this only when the user asked you to read a website, article, or product/team page. Do NOT fetch stylesheets, fonts, images, scripts, CDN assets, Google Fonts css2, kit @import / <link href>, or URLs that appear only as visual-kit decoration. The response is the page text plus the document title. NOT for authenticated, internal, or interactive content.',
     parameters: {
       type: 'object',
       properties: {

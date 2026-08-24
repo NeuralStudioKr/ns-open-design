@@ -73,6 +73,14 @@ describe('daemon composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).toMatch(/<artifact>/);
     });
 
+    it('tells BYOK web_fetch not to load kit fonts or stylesheets', () => {
+      const prompt = composeSystemPrompt({
+        streamFormat: 'plain',
+        byokToolNames: ['web_fetch'],
+      });
+      expect(prompt).toMatch(/Do not call `web_fetch` on fonts, CSS/i);
+    });
+
     it('treats pre-fetched URL context as readable reference material', () => {
       const prompt = composeSystemPrompt({ streamFormat: 'plain' });
       expect(prompt).toContain('<web-fetch-context>');

@@ -23,7 +23,7 @@ import { shouldEagerLoadCommunityPluginPreviews } from '../../teamver/embedDaemo
 import { embedUiLabel } from '../../teamver/embedUiLabels';
 import { PreviewSurface } from './cards/PreviewSurface';
 import { localizePluginDescription, localizePluginTitle } from './localization';
-import { resolveGalleryOdMode } from './galleryOdMode';
+import { resolveGalleryOdMode, shouldPreferBakedGalleryClip } from './galleryOdMode';
 import { inferPluginPreview } from './preview';
 import type { PluginUseAction } from './useActions';
 
@@ -73,9 +73,14 @@ export function PluginCard({
 }: Props) {
   const { locale } = useI18n();
   const [useMenuOpen, setUseMenuOpen] = useState(false);
-  // Tiles prefer the cheap pre-baked hover-pan clip; the detail modal still
-  // opens the live interactive page (it calls inferPluginPreview without this).
-  const preview = useMemo(() => inferPluginPreview(record, { preferBaked: true }), [record]);
+  // Non-deck tiles prefer the cheap pre-baked hover-pan clip. Deck identity
+  // stays on the isolated 1920 HTML cover so 1.31 bakes do not letterbox
+  // inside the 16:9 frame. The detail modal still calls inferPluginPreview
+  // without preferBaked and opens the live page.
+  const preview = useMemo(
+    () => inferPluginPreview(record, { preferBaked: shouldPreferBakedGalleryClip(record) }),
+    [record],
+  );
   const title = localizePluginTitle(locale, record);
   const description = localizePluginDescription(locale, record);
   const tags = useMemo(

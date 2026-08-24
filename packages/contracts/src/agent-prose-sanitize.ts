@@ -1967,44 +1967,60 @@ export function looksLikeDeckCodeDebrisLine(line: string): boolean {
   const trimmed = String(line ?? "").trim();
   if (!trimmed) return false;
 
-  // Markdown ATX headings (`# Title`) are prose — not CSS id selectors.
   if (/^#{1,6}\s+\S/.test(trimmed)) return false;
-  // Numbered / bulleted list prose (markdown) — not HTML `<li>`.
   if (/^(?:[-*+]|\d+[.)])\s+\S/.test(trimmed)) return false;
 
-  // HTML comments / truncated comment tails (`용 & 다음 단계 (dark) -->`).
-  if (/^<!--/.test(trimmed) || /-->\s*$/.test(trimmed) || /<!--[\s\S]*-->/.test(trimmed)) {
+  if (/^[}\]\uFF5D]+\s*$/u.test(trimmed)) return true;
+  if (/^(?:[}\]\uFF5D]\s*|<\/?(?:pre|code|div|span|p)>\s*)+$/iu.test(trimmed)) return true;
+  if (/^\}?\s*<\/pre>\s*\}?/i.test(trimmed) && !/[\uac00-\ud7af]{3,}/.test(trimmed)) {
     return true;
   }
-  // Bare open/close div stacks (`<div>`, `<div> <div>`).
+  if (
+    /^<[a-zA-Z][\w:-]{0,12}(?:\s|$)/.test(trimmed)
+    && !/>/.test(trimmed)
+    && (/(?:transition|transform|background|animation|opacity|cubic-bezier|filter|will-change)\b/i.test(trimmed)
+      || /[\uac00-\ud7af]/.test(trimmed))
+  ) {
+    return true;
+  }
+  if (looksLikeSoftCssDeclarationLine(trimmed)) return true;
+  if (/^cubic-bezier\s*\(/i.test(trimmed)) return true;
+  if (
+    /^[\d.]+(?:ms|s)\b/i.test(trimmed)
+    && /(?:ease|cubic-bezier|\(|,|;)/i.test(trimmed)
+  ) {
+    return true;
+  }
+  if (looksLikeDeckJsDebrisLine(trimmed)) return true;
+  if (/-->\s*$/.test(trimmed) && trimmed.length <= 80 && !/[\uac00-\ud7af]{8,}/.test(trimmed)) {
+    return true;
+  }
+
+  if (/^<!--/.test(trimmed) || /<!--[\s\S]*-->/.test(trimmed)) {
+    return true;
+  }
   if (/^(?:<\/?div>\s*)+$/i.test(trimmed)) {
     return true;
   }
-  // Orphan close after short Latin/label (`LEVEL</p>`, `2급</p>`).
   if (/^(?:[\w\s/·.\-]{1,40}|[\uac00-\ud7af\s/·.\-]{1,20})<\/(?:p|div|h[1-6]|span|li|ul|ol)>\s*$/iu.test(trimmed)) {
     return true;
   }
-  // Orphan close-tag stacks (incl. `</style>` left after body scrub).
-  if (/^(?:<\/(?:div|span|section|header|footer|nav|aside|main|article|h[1-6]|p|ul|ol|li|table|tr|td|th|button|svg|style|script)+>\s*)+$/i.test(trimmed)) {
+  if (/^(?:<\/(?:div|span|section|header|footer|nav|aside|main|article|h[1-6]|p|ul|ol|li|table|tr|td|th|button|svg|style|script|pre|code)+>\s*)+$/i.test(trimmed)) {
     return true;
   }
-  // Deck body dumps: `<li>…</li>`, mismatched `<div>…</p>`, bare structural tags.
   if (
-    /^<\/?(?:div|li|ul|ol|p|span|section|header|footer|nav|aside|main|article|h[1-6]|strong|em|button|table|thead|tbody|tr|td|th|figure|figcaption)\b/i.test(
+    /^<\/?(?:div|li|ul|ol|p|span|section|header|footer|nav|aside|main|article|h[1-6]|strong|em|button|table|thead|tbody|tr|td|th|figure|figcaption|pre|code)\b/i.test(
       trimmed,
     )
   ) {
     return true;
   }
-  // Hangul/status glued to deck tags on the same line.
   if (
-    /(?:<!--|<(?:li|div|ul|ol|table|tr|td|th|section)\b)/i.test(trimmed)
-    && /(?:-->|<\/(?:li|div|ul|ol|p|td|tr|th|section)|<br\b)/i.test(trimmed)
+    /(?:<!--|<(?:li|div|ul|ol|table|tr|td|th|section|pre)\b)/i.test(trimmed)
+    && /(?:-->|<\/(?:li|div|ul|ol|p|td|tr|th|section|pre)|<br\b)/i.test(trimmed)
   ) {
     return true;
   }
-  // Mid-attribute / truncated style debris (`#2D2D2D;border-radius:…` or
-  // `#2D2D2D">Label</span>` after a previous style line was removed).
   if (/^#[0-9A-Fa-f]{3,8}\s*["']\s*>/.test(trimmed)) {
     return true;
   }
@@ -2014,23 +2030,20 @@ export function looksLikeDeckCodeDebrisLine(line: string): boolean {
   ) {
     return true;
   }
-  // Custom-prop continuations (`#1A1A1A;--coral:` / `--violet:#…`).
   if (/^(?:#[0-9A-Fa-f]{3,8}\s*;\s*)?--[A-Za-z_][\w-]*\s*:/.test(trimmed)) {
     return true;
   }
   if (/^#[0-9A-Fa-f]{3,8}\s*;\s*--[A-Za-z_]/.test(trimmed)) {
     return true;
   }
-  // HTML chrome with deck-ish attrs / tags (style=/class=/svg/…).
   if (
     /^<\/?[a-zA-Z][\w:-]*\b/.test(trimmed)
-    && /(?:\bstyle\s*=|\bclass\s*=|data-(?:slide|deck)|role\s*=\s*["']presentation|aria-hidden\s*=\s*["']true|<(?:svg|path|circle|rect|video|canvas|iframe|object|embed|picture|source|math|foreignObject)\b|<\/(?:div|section|span|svg|h[1-6]|style)\b|<br\b)/i.test(
+    && /(?:\bstyle\s*=|\bclass\s*=|data-(?:slide|deck)|role\s*=\s*["']presentation|aria-hidden\s*=\s*["']true|<(?:svg|path|circle|rect|video|canvas|iframe|object|embed|picture|source|math|foreignObject)\b|<\/(?:div|section|span|svg|h[1-6]|style|pre)\b|<br\b)/i.test(
       trimmed,
     )
   ) {
     return true;
   }
-  // CSS selectors / at-rules / keyframe stops.
   if (
     /^(?:(?:\.[A-Za-z_-][\w-]*){1,8}|#[A-Za-z_-][\w-]*|@(?:keyframes|font-face|media|import|supports|layer|page)\b|:(?:root|from|to)\b|(?:from|to|\d+%)\s*\{)/i.test(
       trimmed,
@@ -2038,54 +2051,99 @@ export function looksLikeDeckCodeDebrisLine(line: string): boolean {
   ) {
     return true;
   }
-  // Custom-property dumps.
   if (/^--[A-Za-z_][\w-]*\s*:/.test(trimmed) && /(?:#|rgba?\(|hsla?\()/i.test(trimmed)) {
     return true;
   }
-  // Property declaration lines (possibly truncated).
   if (
     /^(?:-?[a-zA-Z]+(?:-[a-zA-Z0-9]+)*)\s*:\s*\S/.test(trimmed)
-    && /(?:rgba?\(|hsla?\(|#[0-9A-Fa-f]{3,8}|\d+(?:px|em|rem|%|vh|vw)|border|padding|margin|font-|display\s*:|transform|opacity|background)/i.test(
+    && /(?:rgba?\(|hsla?\(|#[0-9A-Fa-f]{3,8}|\d+(?:px|em|rem|%|vh|vw|ms|s)|border|padding|margin|font-|display\s*:|transform|opacity|background|filter|transition)/i.test(
       trimmed,
     )
   ) {
     return true;
   }
-  // Density heuristic: braces/semicolons dominate and Hangul/prose is scarce.
-  const cssSignals = (trimmed.match(/[{};:]/g) ?? []).length;
+  const cssSignals = (trimmed.match(/[{};:\uFF5D]/gu) ?? []).length;
   const hangul = (trimmed.match(/[\uac00-\ud7af]/g) ?? []).length;
-  if (cssSignals >= 3 && hangul < 2 && /[{}]/.test(trimmed) && /:/.test(trimmed)) {
+  if (cssSignals >= 3 && hangul < 2 && /[{}\uFF5D]/u.test(trimmed) && /:/.test(trimmed)) {
     return true;
   }
-  // HTML tag density — deck body chrome without a named opener.
   const htmlTags = (trimmed.match(/<\/?[a-zA-Z][\w:-]*\b/g) ?? []).length;
-  if (htmlTags >= 2 && /<\/?(?:li|div|ul|ol|p|span|strong)\b/i.test(trimmed)) {
+  if (htmlTags >= 2 && /<\/?(?:li|div|ul|ol|p|span|strong|pre)\b/i.test(trimmed)) {
     return true;
   }
-  // HTML-entity encoded tags.
   if (/^&lt;\/?[a-zA-Z]/.test(trimmed) && /(?:style\s*=|class\s*=|&gt;)/i.test(trimmed)) {
     return true;
   }
   return false;
 }
 
+/**
+ * Colon-less CSS property dumps (`background 200ms`, `filter blur(8px)`,
+ * `will-change transform`, `transition all 200ms`). Prefer shape over allowlist.
+ */
+export function looksLikeSoftCssDeclarationLine(line: string): boolean {
+  const trimmed = String(line ?? "").trim();
+  if (!trimmed || /:/.test(trimmed)) return false;
+  if (
+    !/^(?:-?(?:webkit|moz|ms)-)?[a-z][\w-]*(?:\s+[^\n:;{}]{1,64}){1,6};?\s*$/i.test(trimmed)
+  ) {
+    return false;
+  }
+  if (/[\uac00-\ud7af]/.test(trimmed)) return false;
+  const cssValueSignal =
+    /(?:\d+(?:\.\d+)?(?:px|em|rem|%|vh|vw|ms|s|deg|fr|ch)?\b|\b(?:ease(?:-in|-out|-in-out)?|linear|infinite|alternate|forwards|backwards|both|none|auto|inherit|initial|unset|cover|contain|blur|circle|ellipse|closest-side|farthest-side|all|transform|opacity|scroll|contents|fixed|absolute|relative|sticky|flex|grid|block|inline|row|column|wrap|nowrap|hidden|visible|solid|dashed|dotted)\b|rgba?\(|hsla?\(|#[0-9A-Fa-f]{3,8}\b|cubic-bezier\s*\(|linear-gradient\s*\(|matrix3d?\s*\(|(?:translate|scale|rotate|skew)[XYZxyz3d]?\s*(?:\(|$))/i;
+  if (cssValueSignal.test(trimmed)) return true;
+  const two = /^(?:-?(?:webkit|moz|ms)-)?([a-z][\w-]*)\s+([a-z0-9.#%()-][\w.#%()-]*)\s*;?\s*$/i.exec(
+    trimmed,
+  );
+  if (!two) return false;
+  const prop = (two[1] ?? "").toLowerCase();
+  return prop.includes("-")
+    || /^(?:opacity|transform|filter|transition|animation|display|position|overflow|float|clear|cursor|visibility|content|appearance|isolation|resize|left|right|top|bottom|width|height|margin|padding|border|color|background|outline|flex|grid|gap|order|scale|rotate|skew)$/i.test(
+      prop,
+    );
+}
+
 /** Hex / unit / brace-only continuations of a prior CSS dump line. */
 export function looksLikeDeckCssContinuationLine(line: string): boolean {
   const trimmed = String(line ?? "").trim();
   if (!trimmed) return false;
-  if (/^#[0-9A-Fa-f]{3,8}\s*;?\s*\}?\s*$/.test(trimmed)) return true;
+  if (/^#[0-9A-Fa-f]{3,8}\s*;?\s*[}\uFF5D]?\s*$/u.test(trimmed)) return true;
   if (/^#[0-9A-Fa-f]{3,8}\s*;\s*(?:--|[a-zA-Z-]+\s*:)/.test(trimmed)) return true;
-  if (/^rgba?\([^)]*\)\s*;?\s*\}?\s*$/i.test(trimmed)) return true;
-  if (/^[\d.]+(?:px|em|rem|%|vh|vw)?\s*;?\s*\}?\s*$/i.test(trimmed)) return true;
-  if (/^[a-zA-Z-]+\s*:\s*[^;{]+;?\s*\}?\s*$/.test(trimmed)) return true;
+  if (/^rgba?\([^)]*\)\s*;?\s*[}\uFF5D]?\s*$/iu.test(trimmed)) return true;
+  if (/^[\d.]+(?:px|em|rem|%|vh|vw|ms|s)?\s*;?\s*[}\uFF5D]?\s*$/iu.test(trimmed)) return true;
+  if (/^[a-zA-Z-]+\s*:\s*[^;{]+;?\s*[}\uFF5D]?\s*$/u.test(trimmed)) return true;
   if (/^--[A-Za-z_][\w-]*\s*:/.test(trimmed)) return true;
-  if (/^\}\s*$/.test(trimmed)) return true;
+  if (/^[}\]\uFF5D]+\s*$/u.test(trimmed)) return true;
+  if (/^cubic-bezier\s*\(/i.test(trimmed)) return true;
+  if (looksLikeSoftCssDeclarationLine(trimmed)) return true;
+  if (/^\);?\s*$/.test(trimmed)) return true;
+  if (/^[(){};,\s\uFF5D]+$/u.test(trimmed)) return true;
+  return false;
+}
+
+/** Web Animations / DOM / GSAP-ish scraps leaked from deck demos. */
+export function looksLikeDeckJsDebrisLine(line: string): boolean {
+  const trimmed = String(line ?? "").trim();
+  if (!trimmed) return false;
+  if (/\b(?:document|window)\.\w+\s*\(/.test(trimmed)) return true;
+  if (/\brequestAnimationFrame\s*\(/.test(trimmed)) return true;
+  if (/\bnew\s+(?:Animation|KeyframeEffect)\s*\(/.test(trimmed)) return true;
+  if (/\w+\.(?:animate|cancel|addEventListener|getAnimations)\s*\(/.test(trimmed)) return true;
+  if (/^(?:const|let|var)\s+\w+\s*=\s*(?:document\.|window\.|\w+\.(?:animate|querySelector))/.test(trimmed)) {
+    return true;
+  }
+  if (/\b(?:morphSVG|gsap|ScrollTrigger|KeyframeEffect)\b/i.test(trimmed)) return true;
+  if (/\bTrigger\s*,\s*timeline\b/i.test(trimmed)) return true;
+  if (/<\/pre>/i.test(trimmed) && /(?:animate|querySelector|morphSVG|timeline|const\s+\w+|addEventListener)/i.test(trimmed)) {
+    return true;
+  }
   return false;
 }
 
 function lineOpensUnclosedCssBlock(line: string): boolean {
-  const open = (line.match(/\{/g) ?? []).length;
-  const close = (line.match(/\}/g) ?? []).length;
+  const open = (line.match(/[{([]/g) ?? []).length;
+  const close = (line.match(/[})\]]/g) ?? []).length;
   return open > close;
 }
 
@@ -2128,7 +2186,7 @@ export function stripLeakedDeckCodeDebrisBlocks(input: string): string {
     if (isDebris) {
       inCssContinuation =
         lineOpensUnclosedCssBlock(trimmed)
-        || (inCssContinuation && !trimmed.includes("}"));
+        || (inCssContinuation && !/[})\]\uFF5D]/u.test(trimmed));
       while (kept.length > 0 && !(kept[kept.length - 1] ?? "").trim()) {
         kept.pop();
       }
@@ -2154,16 +2212,47 @@ export function stripLeakedDeckCodeDebrisBlocks(input: string): string {
 }
 
 /**
- * When Hangul/status prose is glued to a deck HTML dump on the same line
- * (`초안. <li>…` / `진행 <!-- Left -->`), keep the human prefix and drop the
- * dump. Returns `undefined` when no inline cut applies, `null` to drop the
- * whole line, or the kept prefix string.
+ * When Hangul/status prose is glued to a deck HTML/CSS/JS dump on the same
+ * line, keep the human prefix and drop the dump.
  */
 function cutInlineDeckHtmlPrefix(line: string): string | null | undefined {
-  const match = /^(.*?)(\s*)(<!--|<(?:li|div|ul|ol|table|tr|td|th|section)\b)/i.exec(line);
+  const leadScrap = /^(?:[\s}\]\uFF5D]+|<\/?(?:pre|code)(?:\s[^>]*)?>)+/iu.exec(line);
+  if (leadScrap) {
+    const rest = line.slice(leadScrap[0].length).trimStart();
+    if (
+      rest
+      && /[\uac00-\ud7af]/.test(rest)
+      && !looksLikeDeckCodeDebrisLine(rest)
+      && !looksLikeDeckJsDebrisLine(rest)
+    ) {
+      return rest;
+    }
+  }
+
+  const softCut =
+    /^(.*?)(\s+)(?=(?:-?(?:webkit|moz|ms)-)?[a-z][\w-]*(?:\s+[^\n:;{}]{1,64}){1,6};?\s*$|(?:document|window)\.\w+\s*\(|requestAnimationFrame\s*\(|cubic-bezier\s*\()/i.exec(
+      line,
+    );
+  if (softCut) {
+    const prefixRaw = softCut[1] ?? "";
+    const ticksBefore = (prefixRaw.match(/`/g) ?? []).length;
+    if (ticksBefore % 2 !== 1) {
+      const prefix = prefixRaw.trimEnd();
+      const dump = line.slice(prefixRaw.length).trimStart();
+      if (
+        prefix
+        && /[\p{L}\p{N}]/u.test(prefix)
+        && !looksLikeDeckCodeDebrisLine(prefix)
+        && (looksLikeSoftCssDeclarationLine(dump) || looksLikeDeckJsDebrisLine(dump) || /^cubic-bezier\s*\(/i.test(dump))
+      ) {
+        return prefix;
+      }
+    }
+  }
+
+  const match = /^(.*?)(\s*)(<!--|<(?:li|div|ul|ol|table|tr|td|th|section|pre)\b)/i.exec(line);
   if (!match || match.index === undefined) return undefined;
   const prefixRaw = match[1] ?? "";
-  // Do not cut inside inline code spans (`…`).
   const ticksBefore = (prefixRaw.match(/`/g) ?? []).length;
   if (ticksBefore % 2 === 1) return undefined;
   const prefix = prefixRaw.trimEnd();
@@ -2173,7 +2262,7 @@ function cutInlineDeckHtmlPrefix(line: string): string | null | undefined {
   if (!/[\p{L}\p{N}]/u.test(prefix)) return undefined;
   if (
     !looksLikeDeckCodeDebrisLine(dump.trim())
-    && !/<!--|<\/(?:li|div|ul|ol|p|td)|<li\b[^>]*>[\s\S]*<\/li>/i.test(dump)
+    && !/<!--|<\/(?:li|div|ul|ol|p|td|pre)|<li\b[^>]*>[\s\S]*<\/li>/i.test(dump)
   ) {
     return undefined;
   }
@@ -2183,7 +2272,6 @@ function cutInlineDeckHtmlPrefix(line: string): string | null | undefined {
 /**
  * Absolute last-pass: strip residual deck HTML comments/tags that line
  * scrapers left (single-line glued dumps, table rows, entity-encoded tags).
- * Never runs inside preserved artifact bodies.
  */
 export function stripResidualDeckHtmlMarkupFromProse(input: string): string {
   if (!input) return input;
@@ -2204,7 +2292,7 @@ export function stripResidualDeckHtmlMarkupFromProse(input: string): string {
   text = text.replace(/<!--[\s\S]*$/g, "");
 
   const paired =
-    "li|ul|ol|div|section|header|footer|nav|aside|main|article|table|thead|tbody|tr|td|th|p|h[1-6]|span|strong|em|button|figure|figcaption";
+    "li|ul|ol|div|section|header|footer|nav|aside|main|article|table|thead|tbody|tr|td|th|p|h[1-6]|span|strong|em|button|figure|figcaption|pre|code";
   for (let pass = 0; pass < 5; pass += 1) {
     const before = text;
     text = text.replace(new RegExp(`<(${paired})\\b[^>]*>[\\s\\S]*?<\\/\\1>`, "gi"), "");
@@ -2212,14 +2300,15 @@ export function stripResidualDeckHtmlMarkupFromProse(input: string): string {
   }
   text = text.replace(new RegExp(`<\\/?(?:${paired}|br)\\b[^>]*\\/?>`, "gi"), "");
   text = text.replace(
-    /&lt;\/?(?:li|div|ul|ol|span|p|strong|section|table|tr|td|th)\b[\s\S]*?(?:&gt;|>)/gi,
+    /&lt;\/?(?:li|div|ul|ol|span|p|strong|section|table|tr|td|th|pre|code)\b[\s\S]*?(?:&gt;|>)/gi,
     "",
   );
-  // Truncated layout-comment tails without an opener.
   text = text.replace(
     /(?:^|\n)[^\n]*(?:dark|left|right|col\s*\d|layout|statement|registration|tips)\s*-->[^\n]*/gi,
     "\n",
   );
+  text = text.replace(/(?:^|\n)\s*[}\]\uFF5D]+\s*(?=\n|$)/gu, "\n");
+  text = text.replace(/\}?\s*<\/?pre\b[^>]*>\s*\}?/gi, "");
 
   text = text.replace(/\0FENCE(\d+)\0/g, (_, i) => fences[Number(i)] ?? "");
   text = text.replace(/\0INLINE(\d+)\0/g, (_, i) => inlines[Number(i)] ?? "");

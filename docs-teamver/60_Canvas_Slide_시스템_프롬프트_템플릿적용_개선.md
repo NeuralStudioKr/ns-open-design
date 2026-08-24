@@ -32,6 +32,19 @@
 | scaffold로 갑자기 바꾸면? | **안 됨.** kit hard cutover 금지. full HTML scaffold도 기본 inject 하지 않음 |
 | 1장짜리 템플릿 결과가 저장되는가? | **제품 경로는 첫 fill 3장.** 잘리면 제목 있는 1장은 저장하고 top-up이 덧붙인다. 제목 없는 빈 셸만 미완성으로 차단. 사용자가 1장을 명시한 경우도 허용 |
 
+### 1.11 2026-08-24 — 덱 16:9 썸네일은 baked 1.31 클립을 건너뜀
+
+Community / Canvas 피커 / plus-menu는 1920×1080 `cqw`인데, 공식 html-ppt bake는 1.31 비율 슬라이드 워크다. `preferBaked: true`가 그 영상을 먼저 쓰면 16:9 프레임에 옆 여백이 생긴다.
+
+구현 현황:
+
+- [x] `shouldPreferBakedGalleryClip` — deck identity면 bake 금지
+- [x] PluginCard · CanvasSlideTemplatePicker · ComposerPluginPreview 배선
+- [x] HomeHero는 `preferBaked: true` 유지 (1.31 타일, slide-only 비노출)
+- [x] 회귀: plugins-home-preview Orbit html · gallery-od-mode · framing 호출부
+- [ ] HomeHero 프리셋 매직 스케일 — slide-only 비노출, 후속
+- [ ] 비덱 갤러리 hover-pan / live-artifact 250% — 프로토타입 경로, 후속
+
 ### 1.08 2026-08-24 — 템플릿 썸네일·미리보기 전면 검토
 
 슬라이드 전용 갤러리·피커·히어로·프로젝트 커버는 1920×1080 `cqw`로 맞춰져 있다. 남은 큰 구멍은 라이브 PreviewModal: 8-Bit Orbit처럼 `#slidesContainer { translateY(-N00vh) }`를 호스트가 `translateX`로 덮으면 페이지 이동 후 빈 캔버스가 된다.
@@ -139,6 +152,17 @@
 - [x] 단건 `/api/plugins/:id/preview`, `/example/:name`, batch 기본 mode는 기존 full HTML 유지 — 상세 preview/modal/download 동작에 영향 없음
 - [x] sibling slide 제거는 `attrsLookLikeDeckOrTemplateSlideHost` SSOT를 사용해 `slide-chrome`류 오탐을 피함
 - [x] 회귀 테스트: `plugins-home-html-surface.test.tsx`, `plugins-preview-fallback.test.ts`
+
+### 1.04 2026-08-24 — 단일 썸네일 카드 compact 경로 일관화
+
+현재 시점 기준 판단: §1.03 적용 후에도 batch queue에 카드가 1개만 모이면 기존 단건 GET으로 우회해 full HTML을 받았다. composer hover panel, 작은 viewport, 빠른 스크롤 후 1개 카드만 남는 상황에서는 response body 축소 효과가 빠질 수 있다. 썸네일 표면은 단일 카드여도 첫 화면만 필요하므로 batch item 수와 무관하게 compact thumbnail mode를 쓰는 것이 일관적이다.
+
+구현 현황:
+
+- [x] `HtmlSurface` batch queue가 1개 item이어도 `POST /api/plugins/preview-batch` + `mode: "thumbnail"` 사용
+- [x] batch endpoint 장애 시에만 기존 단건 GET fallback 유지
+- [x] sessionStorage key를 `od:plugin-preview:v2:`로 올려 기존 full HTML cache가 compact 경로를 가리지 않도록 분리
+- [x] 회귀 테스트: 단일 카드 batch mode, v2 session cache, item 404/401 fallback UI
 
 ### 0.98 2026-08-21 — 루트 갤러리 템플릿 썸네일 1920 캔버스 스케일
 

@@ -66,7 +66,7 @@ const PREVIEW_FETCH_CONCURRENCY = 3;
 /** Coalesce same-frame visible card preview requests into one daemon call. */
 const PREVIEW_BATCH_DELAY_MS = 24;
 const PREVIEW_BATCH_MAX_ITEMS = 24;
-const SESSION_PREVIEW_PREFIX = 'od:plugin-preview:v1:';
+const SESSION_PREVIEW_PREFIX = 'od:plugin-preview:v2:';
 const SESSION_PREVIEW_MAX_ENTRY_CHARS = 180_000;
 const SESSION_PREVIEW_MAX_ENTRIES = 16;
 
@@ -204,16 +204,6 @@ function schedulePluginPreviewBatch(): void {
     const batch = previewBatchQueue.splice(0, PREVIEW_BATCH_MAX_ITEMS);
     if (previewBatchQueue.length > 0) schedulePluginPreviewBatch();
     if (batch.length === 0) return;
-    if (batch.length === 1) {
-      const [item] = batch;
-      if (item) {
-        withPreviewFetchSlot(() => fetchSinglePluginPreviewHtml(item.url))
-          .then(item.resolve)
-          .catch(item.reject);
-      }
-      return;
-    }
-
     const uniqueUrls = Array.from(new Set(batch.map((entry) => entry.url)));
     withPreviewFetchSlot(async () => {
       try {

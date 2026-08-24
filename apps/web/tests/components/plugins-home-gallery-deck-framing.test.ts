@@ -60,6 +60,22 @@ describe('plugins home gallery deck framing', () => {
     expect(css).toContain('transform: scale(calc(100cqw / 1920px));');
   });
 
+  it('skips baked 1.31 clips on 16:9 deck thumbs, not HomeHero', () => {
+    const helper = readRepoFile('src/components/plugins-home/galleryOdMode.ts');
+    const card = readRepoFile('src/components/plugins-home/PluginCard.tsx');
+    const picker = readRepoFile('src/teamver/components/CanvasSlideTemplatePicker.tsx');
+    const plus = readRepoFile('src/components/ComposerPluginPreview.tsx');
+    const hero = readRepoFile('src/components/HomeHero.tsx');
+
+    expect(helper).toContain('export function shouldPreferBakedGalleryClip');
+    expect(helper).toContain('return !looksLikeDeckGalleryIdentity(record)');
+    expect(card).toContain('preferBaked: shouldPreferBakedGalleryClip(record)');
+    expect(picker).toContain('preferBaked: shouldPreferBakedGalleryClip(record)');
+    expect(plus).toContain('preferBaked: shouldPreferBakedGalleryClip(record)');
+    expect(hero).toContain('inferPluginPreview(record, { preferBaked: true })');
+    expect(hero).not.toContain('shouldPreferBakedGalleryClip');
+  });
+
   it('keeps composer plugin deck previews on the same 1920 canvas scale', () => {
     const source = readRepoFile('src/components/ComposerPluginPreview.tsx');
     const css = readRepoFile('src/styles/home/plus-menu.css');
