@@ -124,6 +124,53 @@ function setupTransformDeck() {
 }
 
 describe('deck bridge - transform-driven decks', () => {
+  it('keeps vertical translateY tracks on the Y axis (8-Bit Orbit)', async () => {
+    const bodyHtml = `
+      <style>
+        html, body { margin: 0; height: 100%; overflow: hidden; background: #0A0E27; }
+        .deck { width: 100%; height: 100vh; overflow: hidden; position: relative; }
+        .slides-container { width: 100%; height: 100%; }
+        .slide { width: 100%; height: 100vh; }
+      </style>
+      <div class="deck" id="deck">
+        <div class="slide-counter" id="slideCounter">01 / 03</div>
+        <div class="slides-container" id="slidesContainer">
+          <section class="slide">One</section>
+          <section class="slide">Two</section>
+          <section class="slide">Three</section>
+        </div>
+      </div>
+      <script>container.style.transform = \`translateY(-\${currentSlide * 100}vh)\`;</script>
+    `;
+    const srcdoc = buildSrcdoc(`<!doctype html><html><body>${bodyHtml}</body></html>`, {
+      deck: true,
+    });
+    const script = extractDeckBridgeScript(srcdoc);
+    const dom = new JSDOM(`<!doctype html><html><body>${bodyHtml}</body></html>`, {
+      runScripts: 'outside-only',
+      pretendToBeVisual: true,
+    });
+    const win = dom.window;
+    Object.defineProperty(win, 'parent', {
+      configurable: true,
+      value: { postMessage: vi.fn() },
+    });
+    Object.defineProperty(win, 'innerWidth', { configurable: true, value: 1920 });
+    Object.defineProperty(win, 'innerHeight', { configurable: true, value: 1080 });
+    const track = win.document.getElementById('slidesContainer') as HTMLElement;
+    track.style.transform = 'translateY(0vh)';
+    const evaluate = new win.Function(script);
+    evaluate.call(win);
+
+    win.dispatchEvent(new win.MessageEvent('message', {
+      data: { type: 'od:slide', action: 'next' },
+    }));
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 40));
+
+    expect(track.style.transform).toBe('translateY(-100vh)');
+    expect(track.style.transform).not.toContain('translateX');
+  });
+
   it('routes host navigation through the deck runtime even when the transformed track overflows horizontally', async () => {
     const { win, track, parentPostMessage } = setupTransformDeck();
 

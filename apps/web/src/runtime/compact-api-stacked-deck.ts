@@ -148,9 +148,20 @@ export function looksLikeAuthoredHorizontalSwipeDeck(html: string): boolean {
   return false;
 }
 
+function looksLikeNestedVerticalTranslateYDeck(html: string): boolean {
+  // 8-Bit Orbit: `#deck` is chrome only; pages live in `#slidesContainer`
+  // and the author script pages with translateY(-N00vh). That is not a
+  // compact horizontal `#deck` strip and must not letterbox / sibling-hide.
+  return (
+    /<(?:div|section)\b[^>]*(?:\bid\s*=\s*['"]slidesContainer['"]|\bclass\s*=\s*['"][^'"]*\bslides-container\b)/i.test(html)
+    && /translateY\s*\(\s*-?\$\{[^}]*\}\s*vh/i.test(html)
+  );
+}
+
 function looksLikeBareDeckViewportTrack(html: string): boolean {
   if (!/<(?:div|section|main)\b[^>]*\bid\s*=\s*['"]deck['"]/i.test(html)) return false;
   if (countSlideElements(html) < 2) return false;
+  if (looksLikeNestedVerticalTranslateYDeck(html)) return false;
   const css = extractCssBlocks(html);
   if (!css) return false;
   const deckRule = css.match(/#deck\b[^{]*\{([^}]*)\}/i)?.[1] ?? '';
@@ -209,6 +220,7 @@ function looksLikeFrameworkDeckMarkup(html: string): boolean {
  */
 export function looksLikeCompactApiStackedDeck(html: string): boolean {
   if (!html) return false;
+  if (looksLikeNestedVerticalTranslateYDeck(html)) return false;
   const deckViewportTrack = looksLikeBareDeckViewportTrack(html);
   if (!deckViewportTrack && looksLikeOfficialFullscreenPresenterDeck(html)) return false;
   if (looksLikeFrameworkDeckMarkup(html)) return false;

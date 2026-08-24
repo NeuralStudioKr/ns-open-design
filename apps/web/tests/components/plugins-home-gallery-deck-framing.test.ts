@@ -50,6 +50,16 @@ describe('plugins home gallery deck framing', () => {
     expect(css).toContain('transform: scale(calc(100cqw / 1920px));');
   });
 
+  it('scales canvas-slide template picker cards on the same 1920 canvas', () => {
+    const css = readRepoFile('src/styles/viewer/tools.css');
+    expect(css).toContain('.teamver-canvas-slide-launch-template-card-frame');
+    expect(css).toContain('aspect-ratio: 16 / 9;');
+    expect(css).toContain('container-type: inline-size;');
+    expect(css).toContain('width: 1920px;');
+    expect(css).toContain('height: 1080px;');
+    expect(css).toContain('transform: scale(calc(100cqw / 1920px));');
+  });
+
   it('keeps composer plugin deck previews on the same 1920 canvas scale', () => {
     const source = readRepoFile('src/components/ComposerPluginPreview.tsx');
     const css = readRepoFile('src/styles/home/plus-menu.css');
