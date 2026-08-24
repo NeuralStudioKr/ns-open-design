@@ -29,6 +29,8 @@ import { copyToClipboard } from '../lib/copy-to-clipboard';
 import { projectRawUrl } from '../providers/registry';
 import { AuthenticatedProjectFileImage } from './AuthenticatedProjectFileImage';
 import { VisualCommentAttachmentChip } from './VisualCommentAttachmentChip';
+import { driveImportAssetIconName } from '../teamver/driveFileVisual';
+import { TeamverDriveDisplayFileName } from '../teamver/components/TeamverDriveDisplayFileName';
 import {
   chatAttachmentVisibleInProjectFiles,
   excludeAttachmentsBackedByVisualScreenshots,
@@ -3947,9 +3949,19 @@ function UserMessageImpl({
                       allowBackgroundRetry={!isEphemeralDrawingScreenshotPath(a.path)}
                     />
                   ) : (
-                    <Icon name={a.kind === 'image' ? 'image' : 'file'} size={14} />
+                    <span
+                      className="staged-icon"
+                      aria-hidden
+                      data-testid="chat-history-attach-icon"
+                      data-icon={a.kind === 'image' ? 'image' : driveImportAssetIconName(a.name)}
+                    >
+                      <Icon
+                        name={a.kind === 'image' ? 'image' : driveImportAssetIconName(a.name)}
+                        size={14}
+                      />
+                    </span>
                   )}
-                  <span className="staged-name">{a.name}</span>
+                  <TeamverDriveDisplayFileName name={a.name} className="staged-name" />
                 </button>
                 {a.source?.type === 'teamver-drive' ? (
                   <a

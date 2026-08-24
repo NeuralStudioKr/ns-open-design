@@ -48,6 +48,8 @@ import { isTeamverEmbedMode, resolveTeamverDriveAssetUrl } from '../teamver/desi
 import { embedUiLabel } from '../teamver/embedUiLabels';
 import { AuthenticatedProjectFileImage } from './AuthenticatedProjectFileImage';
 import { excludeAttachmentsBackedByVisualScreenshots, isEphemeralDrawingScreenshotPath, isRenderableImagePath, projectFilePathExists, projectFilePathsInclude, visualCommentScreenshotPaths } from '../utils/projectFilePaths';
+import { driveImportAssetIconName } from '../teamver/driveFileVisual';
+import { TeamverDriveDisplayFileName } from '../teamver/components/TeamverDriveDisplayFileName';
 import { mergeImageMentionAttachments } from '../utils/recoverChatAttachmentsFromMentions';
 import {
   attachmentsHavePendingAnnotationPaths,
@@ -4603,16 +4605,23 @@ function StagedRunContexts({
                     allowBackgroundRetry={!isEphemeralDrawingScreenshotPath(a.path)}
                   />
                 )}
-                <span className="staged-name">{a.name}</span>
+                <TeamverDriveDisplayFileName name={a.name} className="staged-name" />
               </button>
             ) : (
               <>
-                <span className="staged-icon" aria-hidden>
-                  <Icon name="file" size={13} />
+                <span
+                  className="staged-icon"
+                  aria-hidden
+                  data-testid="chat-staged-file-icon"
+                  data-icon={driveImportAssetIconName(a.name)}
+                >
+                  <Icon name={driveImportAssetIconName(a.name)} size={13} />
                 </span>
-                <span className="staged-name" title={a.path}>
-                  {a.name}
-                </span>
+                <TeamverDriveDisplayFileName
+                  name={a.name}
+                  className="staged-name"
+                  title={a.path}
+                />
               </>
             )}
             {a.source?.type === 'teamver-drive' ? (
@@ -6432,9 +6441,11 @@ function MentionPopover({
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => onPickFile(key)}
                 >
-                  <Icon name="file" size={12} />
+                  <Icon name={driveImportAssetIconName(f.name)} size={12} />
                   <span className="mention-item-body">
-                    <strong>{projectFileMentionTitle(f, key)}</strong>
+                    <strong>
+                      <TeamverDriveDisplayFileName name={projectFileMentionTitle(f, key)} />
+                    </strong>
                     <span className="mention-meta mention-meta--desc mention-meta--path">
                       {projectFileMentionDescription(f, key)}
                     </span>

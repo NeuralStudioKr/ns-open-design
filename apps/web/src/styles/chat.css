@@ -2419,6 +2419,29 @@
   color: var(--text);
   line-height: 12px;
 }
+.staged-name.teamver-drive-display-filename,
+.staged-name .teamver-drive-display-filename {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 106px;
+  overflow: hidden;
+}
+.staged-name .teamver-drive-display-filename-stem,
+.staged-name.teamver-drive-display-filename .teamver-drive-display-filename-stem {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.staged-name .teamver-drive-display-filename-ext,
+.staged-name.teamver-drive-display-filename .teamver-drive-display-filename-ext {
+  flex: 0 0 auto;
+  color: var(--text-muted);
+}
+.user-attachment .staged-name.teamver-drive-display-filename,
+.user-attachment .staged-name .teamver-drive-display-filename {
+  max-width: 140px;
+}
 .staged-remove {
   width: 18px;
   height: 18px;
