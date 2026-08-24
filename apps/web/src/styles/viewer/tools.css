@@ -2024,23 +2024,62 @@
   flex-shrink: 0;
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: 6px;
   padding: 0 12px 8px;
-  max-height: 72px;
+  max-height: 88px;
   overflow-y: auto;
 }
 .teamver-drive-import-selected-chip {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  max-width: min(220px, 100%);
-  padding: 3px 7px;
-  border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border));
-  border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  gap: 6px;
+  max-width: min(240px, 100%);
+  padding: 3px 7px 3px 3px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-subtle);
   color: var(--text);
   font-size: 11px;
   cursor: pointer;
+}
+.teamver-drive-import-selected-chip:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+.teamver-drive-import-selected-chip:focus-visible {
+  outline: 2px solid var(--accent, #5b8def);
+  outline-offset: 1px;
+}
+.teamver-drive-import-selected-visual {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-elevated, var(--bg));
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+}
+.teamver-drive-import-selected-visual--icon {
+  background: var(--bg-elevated, var(--bg));
+}
+@supports (background: color-mix(in srgb, white 50%, black)) {
+  .teamver-drive-import-selected-visual--icon {
+    background: color-mix(in srgb, var(--bg-subtle) 70%, var(--accent, #5b8def) 12%);
+  }
+  .teamver-drive-import-selected-chip {
+    border-color: color-mix(in srgb, var(--accent) 30%, var(--border));
+    background: color-mix(in srgb, var(--accent) 8%, transparent);
+  }
+}
+.teamver-drive-import-selected-thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
 }
 .teamver-drive-import-selected-name {
   min-width: 0;
@@ -2048,6 +2087,15 @@
 }
 .teamver-drive-import-selected-name.teamver-drive-display-filename {
   max-width: 100%;
+}
+.teamver-drive-import-selected .teamver-drive-display-filename-stem {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.teamver-drive-import-selected .teamver-drive-display-filename-ext {
+  flex: 0 0 auto;
+  color: var(--text-muted);
 }
 .teamver-drive-import-load-more {
   display: block;

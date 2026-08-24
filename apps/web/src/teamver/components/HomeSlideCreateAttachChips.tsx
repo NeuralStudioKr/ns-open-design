@@ -1,7 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Icon } from "../../components/Icon";
 import {
-  driveImportAssetIconName,
   isDriveImageAsset,
 } from "../driveFileVisual";
 import {
@@ -9,6 +7,7 @@ import {
   peekTeamverDriveImportThumbnail,
 } from "../driveImportThumbnails";
 import type { TeamverDriveImportAsset } from "../importDriveAssets";
+import { TeamverAttachChipVisual } from "./TeamverAttachChipVisual";
 import { TeamverDriveDisplayFileName } from "./TeamverDriveDisplayFileName";
 
 type Props = {
@@ -159,52 +158,6 @@ function useDriveImageThumbUrls(
   return thumbUrls;
 }
 
-function ChipVisual({
-  name,
-  mimeType,
-  previewUrl,
-}: {
-  name: string;
-  mimeType?: string;
-  previewUrl?: string | null;
-}) {
-  const [thumbFailed, setThumbFailed] = useState(false);
-  const iconName = driveImportAssetIconName(name, mimeType);
-  const showThumb = Boolean(previewUrl) && !thumbFailed;
-
-  // Reset failure when the preview URL identity changes (new file / new Drive thumb).
-  useEffect(() => {
-    setThumbFailed(false);
-  }, [previewUrl]);
-
-  if (showThumb && previewUrl) {
-    return (
-      <span className="teamver-home-slide-create-chip-visual" aria-hidden>
-        <img
-          src={previewUrl}
-          alt=""
-          className="teamver-home-slide-create-chip-thumb"
-          decoding="async"
-          loading="lazy"
-          draggable={false}
-          onError={() => setThumbFailed(true)}
-        />
-      </span>
-    );
-  }
-
-  return (
-    <span
-      className="teamver-home-slide-create-chip-visual teamver-home-slide-create-chip-visual--icon"
-      aria-hidden
-      data-testid="teamver-home-slide-create-chip-icon"
-      data-icon={iconName}
-    >
-      <Icon name={iconName} size={14} />
-    </span>
-  );
-}
-
 function removeLabelFor(base: string, name: string): string {
   const trimmed = name.trim();
   if (!trimmed) return base;
@@ -243,7 +196,12 @@ export function HomeSlideCreateAttachChips({
             data-filename={file.name}
             title={file.name}
           >
-            <ChipVisual name={file.name} mimeType={file.type} previewUrl={previewUrl} />
+            <TeamverAttachChipVisual
+              name={file.name}
+              mimeType={file.type}
+              previewUrl={previewUrl}
+              testId="teamver-home-slide-create-chip-icon"
+            />
             <TeamverDriveDisplayFileName
               name={file.name}
               className="teamver-home-slide-create-chip-name"
@@ -270,7 +228,12 @@ export function HomeSlideCreateAttachChips({
             data-asset-id={asset.assetId}
             title={name}
           >
-            <ChipVisual name={name} mimeType={asset.mimeType} previewUrl={previewUrl} />
+            <TeamverAttachChipVisual
+              name={name}
+              mimeType={asset.mimeType}
+              previewUrl={previewUrl}
+              testId="teamver-home-slide-create-chip-icon"
+            />
             <TeamverDriveDisplayFileName
               name={name}
               className="teamver-home-slide-create-chip-name"
