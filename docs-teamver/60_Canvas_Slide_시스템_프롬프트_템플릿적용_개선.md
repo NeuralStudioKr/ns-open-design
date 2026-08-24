@@ -32,6 +32,17 @@
 | scaffold로 갑자기 바꾸면? | **안 됨.** kit hard cutover 금지. full HTML scaffold도 기본 inject 하지 않음 |
 | 1장짜리 템플릿 결과가 저장되는가? | **제품 경로는 첫 fill 3장.** 잘리면 제목 있는 1장은 저장하고 top-up이 덧붙인다. 제목 없는 빈 셸만 미완성으로 차단. 사용자가 1장을 명시한 경우도 허용 |
 
+### 1.13 2026-08-24 — thumbnail batch 1장 커버가 빈 카드로 남는 문제
+
+§1.11 이후 bake를 건너뛴 덱 카드는 preview-batch `thumbnail` HTML을 받는다. 형제 슬라이드가 이미 없어서 `htmlLooksLikeMultiSlideDeck`이 false가 되고, Studio `[data-anim]` / Soft Editorial·Stencil `<deck-stage>` 커버가 투명·높이 0으로 남는다.
+
+구현 현황:
+
+- [x] `pluginCatalogPreviewSrcDoc` — 슬라이드 호스트 ≥1이면 `preferDeck` 커버 isolation
+- [x] 회귀: compacted Studio / Soft Editorial / Stencil catalog thumbs
+- [ ] HomeHero 프리셋 매직 스케일 — slide-only 비노출, 후속
+- [ ] 비덱 갤러리 hover-pan / live-artifact 250% — 프로토타입 경로, 후속
+
 ### 1.11 2026-08-24 — 덱 16:9 썸네일은 baked 1.31 클립을 건너뜀
 
 Community / Canvas 피커 / plus-menu는 1920×1080 `cqw`인데, 공식 html-ppt bake는 1.31 비율 슬라이드 워크다. `preferBaked: true`가 그 영상을 먼저 쓰면 16:9 프레임에 옆 여백이 생긴다.

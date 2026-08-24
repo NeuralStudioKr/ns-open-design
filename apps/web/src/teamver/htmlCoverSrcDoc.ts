@@ -57,11 +57,16 @@ export type CoverSlideSection = {
  * must isolate slide 1 and drop `deck-stage.js` — the live CE hides every
  * slide except `[data-deck-active]` and paints a white `.canvas` until
  * upgrade, which is the Pink Script white thumbnail.
+ *
+ * Preview-batch `mode: thumbnail` already drops sibling slides. A 1-slide
+ * body still needs the cover lock + `.is-active` stamp: Studio keeps
+ * `[data-anim]{opacity:0}` until JS, and Soft Editorial / Stencil covers
+ * are absolute-positioned inside a 0-height `<deck-stage>`.
  */
 export function pluginCatalogPreviewSrcDoc(html: string, sourceUrl: string): string {
   const baseHref = resolvePluginPreviewBaseHref(sourceUrl);
-  if (htmlLooksLikeMultiSlideDeck(html)) {
-    return buildHtmlCoverSrcDoc(html, baseHref);
+  if (extractCoverSlideSections(html).length >= 1) {
+    return buildHtmlCoverSrcDoc(html, baseHref, { preferDeck: true });
   }
   return injectHtmlBaseHref(html, baseHref);
 }

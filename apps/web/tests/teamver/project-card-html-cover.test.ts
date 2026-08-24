@@ -344,4 +344,40 @@ describe("ProjectCardHtmlCover srcDoc builders", () => {
     }
     expect(failures).toEqual([]);
   });
+
+  it("paints thumbnail-compacted Studio / Soft Editorial / Stencil covers", () => {
+    const cases = [
+      {
+        dir: "html-ppt-zhangzara-studio",
+        copy: "PROPOSAL",
+      },
+      {
+        dir: "html-ppt-zhangzara-soft-editorial",
+        copy: "What we learned",
+      },
+      {
+        dir: "html-ppt-zhangzara-stencil-tablet",
+        copy: "Bold by",
+      },
+    ] as const;
+    for (const { dir, copy } of cases) {
+      const html = readFileSync(
+        resolve(repoRoot, "plugins/_official/examples", dir, "example.html"),
+        "utf8",
+      );
+      const compacted = isolateFirstDeckSlideHtml(html);
+      expect(extractCoverSlideSections(compacted).length, dir).toBe(1);
+      expect(htmlLooksLikeMultiSlideDeck(compacted), dir).toBe(false);
+      const thumb = pluginCatalogPreviewSrcDoc(
+        compacted,
+        `/api/plugins/example-${dir}/preview`,
+      );
+      expect(thumb, dir).toContain('id="od-deck-card-preview"');
+      expect(thumb, dir).toContain(copy);
+      expect(thumb, dir).toMatch(/data-deck-active="1"/);
+      expect(thumb, dir).toMatch(/(?:^|[\s"'])is-active(?:[\s"']|$)/);
+      expect(thumb, dir).toMatch(/opacity:\s*1\s*!important/);
+      expect(thumb, dir).not.toContain("deck-stage.js");
+    }
+  });
 });
