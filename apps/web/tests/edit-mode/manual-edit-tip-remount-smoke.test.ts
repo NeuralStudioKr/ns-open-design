@@ -40,6 +40,7 @@ import {
   shouldRetainCurrentHostPaintOnTipRemountPaintMiss,
   shouldSeedTipRemountLastHostRectFromLivePaint,
   shouldApplyTipRemountLastHostRectOnLayoutPaintMiss,
+  hostPaintRectForManualEditSelectionCommit,
   shouldClearTipRemountLastHostRectCache,
   shouldTrustTipRemountHostPaintDespiteComposedStale,
   shouldOmitComposedMembersFromTipRemountPartialUnion,
@@ -95,10 +96,18 @@ describe('manual-edit tip remount smoke (500/501/506)', () => {
     expect(webPackageJson).toContain('manual-edit-tip-post-protect-chrome-cross-walk.test.ts');
     expect(webPackageJson).toContain('manual-edit-tip-deck-nudge-follow-chrome-race.test.ts');
     expect(freezeSource).not.toContain('spendTipPostSoftLandExitLatch');
-    expect(freezeSource).toContain('Tip remount index (539)');
+    expect(freezeSource).toContain('Tip remount index (546)');
     expect(freezeSource).toContain('docs-teamver/49_tip_remount');
+    expect(freezeSource).toContain('hostPaintRectForManualEditSelectionCommit');
+    expect(fileViewer).toContain('hostPaintRectForManualEditSelectionCommit');
     expect(fileViewer).toContain('clearTipPostSoftLandExitLatch');
     expect(fileViewer).not.toContain('spendTipPostSoftLandExitLatch');
+    const sequenceFixtures = readFileSync(
+      resolve(import.meta.dirname, './tip-remount-sequence-fixtures.ts'),
+      'utf8',
+    );
+    expect(sequenceFixtures).toContain('advanceTipPostProtectToLive');
+    expect(sequenceFixtures).toContain('advanceTipChromeReleaseToLive');
   });
 
   it('clears follow on od-edit-targets selection-ids change (508)', () => {
@@ -217,6 +226,16 @@ describe('manual-edit tip remount smoke (500/501/506)', () => {
     )).toBe(true);
     expect(fileViewer).toContain('shouldSeedTipRemountLastHostRectFromLivePaint');
     expect(fileViewer).toContain('shouldApplyTipRemountLastHostRectOnLayoutPaintMiss');
+  });
+
+  it('seeds last-good on selection commit during tip/paint-sync (546)', () => {
+    expect(hostPaintRectForManualEditSelectionCommit(
+      true, false, { x: 10, y: 20, width: 30, height: 40 },
+    )).toEqual({ x: 10, y: 20, width: 30, height: 40 });
+    expect(hostPaintRectForManualEditSelectionCommit(false, false, {
+      x: 10, y: 20, width: 30, height: 40,
+    })).toBeNull();
+    expect(fileViewer).toContain('hostPaintRectForManualEditSelectionCommit');
   });
 
   it('clears tip last-good host rect cache when session idle (524)', () => {

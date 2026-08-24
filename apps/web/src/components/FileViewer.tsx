@@ -404,6 +404,7 @@ import {
   shouldRetainCurrentHostPaintOnTipRemountPaintMiss,
   shouldSeedTipRemountLastHostRectFromLivePaint,
   shouldApplyTipRemountLastHostRectOnLayoutPaintMiss,
+  hostPaintRectForManualEditSelectionCommit,
   shouldClearTipRemountLastHostRectCache,
   shouldTrustTipRemountHostPaintDespiteComposedStale,
   shouldArmTipRemountPaintSyncHold,
@@ -12727,7 +12728,13 @@ function HtmlViewer({
       manualEditTargetsIdentityFingerprint(nextTargets);
     setSelectedManualEditTargetIds(nextIds);
     setSelectedManualEditTarget(primary);
-    setManualEditHostPaintRect(null);
+    // Tip/paint-sync: seed last-good for next primary instead of unconditional
+    // null — refresh early-return or multi commit must not flash hybrid (546).
+    setManualEditHostPaintRect(hostPaintRectForManualEditSelectionCommit(
+      tipRemountChromeSessionLiveNow(),
+      manualEditTipPaintSyncHoldRef.current,
+      manualEditTipLastHostRectByIdRef.current.get(primary.id) ?? null,
+    ));
     if (nextTargets.length === 1) {
       refreshManualEditHostPaintRect(primary.id);
       const snapshot = readManualEditTargetSnapshot(base, primary.id, {}, parsedDoc);

@@ -3,6 +3,7 @@
  * sequence coverage. After chrome-release, paint-sync and pointer-unlock are
  * parallel tracks (540); this walk still exercises helpers in one list for
  * readability but does not claim geom-epoch waits on post-unlock quiet.
+ * Shared prefix/live advance: tip-remount-sequence-fixtures (547).
  */
 import { describe, expect, it } from 'vitest';
 import {
@@ -27,6 +28,10 @@ import {
   shouldSpendTipRemountPostUnlockQuiet,
   shouldTrustTipRemountHostPaintDespiteComposedStale,
 } from '../../src/edit-mode/manual-edit-freeze';
+import {
+  advanceTipChromeReleaseToLive,
+  createTipChromeSuppressState,
+} from './tip-remount-sequence-fixtures';
 
 type ChromeReleaseState = {
   step: (typeof TIP_REMOUNT_CHROME_RELEASE_SEQUENCE)[number];
@@ -41,14 +46,15 @@ type ChromeReleaseState = {
 };
 
 function armChromeSuppress(): ChromeReleaseState {
+  const base = createTipChromeSuppressState();
   return {
     step: 'chrome-suppress',
-    chromeSuppressed: true,
-    paintSyncHold: false,
-    unlockGate: false,
-    deferredGeometryPending: false,
-    postUnlockQuiet: false,
-    deferredEpochBump: false,
+    chromeSuppressed: base.chromeSuppressed,
+    paintSyncHold: base.paintSyncHold,
+    unlockGate: base.unlockGate,
+    deferredGeometryPending: base.deferredGeometryPending,
+    postUnlockQuiet: base.postUnlockQuiet,
+    deferredEpochBump: base.deferredEpochBump,
     paintSyncToken: 0,
     hostPaintOk: true,
   };
@@ -67,6 +73,16 @@ describe('manual-edit tip chrome-release sequence (537)', () => {
       'geom-epoch-flush',
       'live',
     ]);
+  });
+
+  it('shared fixture advances chrome-release → live on parallel tracks', () => {
+    const live = advanceTipChromeReleaseToLive(createTipChromeSuppressState());
+    expect(live.chromeSuppressed).toBe(false);
+    expect(live.paintSyncHold).toBe(false);
+    expect(live.unlockGate).toBe(false);
+    expect(live.postUnlockQuiet).toBe(false);
+    expect(live.deferredEpochBump).toBe(false);
+    expect(live.deferredGeometryPending).toBe(false);
   });
 
   it('walks chrome-suppress → live through helpers', () => {
