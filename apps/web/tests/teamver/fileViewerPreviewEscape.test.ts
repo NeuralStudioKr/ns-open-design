@@ -3,7 +3,10 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
-import { resolveFileViewerPreviewEscapeAction } from '../../src/teamver/fileViewerPreviewEscape';
+import {
+  applyFileViewerPreviewEscapeAction,
+  resolveFileViewerPreviewEscapeAction,
+} from '../../src/teamver/fileViewerPreviewEscape';
 
 const closed: Parameters<typeof resolveFileViewerPreviewEscapeAction>[0] = {
   presentMenuOpen: false,
@@ -42,5 +45,21 @@ describe('FileViewer HtmlViewer escape wiring', () => {
     expect(escapeBlock).toContain('deployMenuOpen');
     expect(escapeBlock).not.toMatch(/\bshareMenuOpen\b/);
     expect(htmlViewer).not.toMatch(/setShareMenuOpen\(/);
+    expect(htmlViewer).toMatch(/preview escape failed/);
+  });
+});
+
+describe('applyFileViewerPreviewEscapeAction', () => {
+  it('invokes only the matching setter', () => {
+    const calls: string[] = [];
+    applyFileViewerPreviewEscapeAction('close-share-menus', {
+      closePresentMenu: () => calls.push('present'),
+      closeZoomMenu: () => calls.push('zoom'),
+      closeArtifactTools: () => calls.push('tools'),
+      closeShareMenus: () => calls.push('share'),
+      exitInTabPresent: () => calls.push('present-tab'),
+      closeDeployModal: () => calls.push('deploy'),
+    });
+    expect(calls).toEqual(['share']);
   });
 });

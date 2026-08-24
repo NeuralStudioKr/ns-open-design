@@ -37,3 +37,25 @@ export function resolveFileViewerPreviewEscapeAction(
   if (chrome.deployModalOpen) return 'close-deploy-modal';
   return 'noop';
 }
+
+export type FileViewerEscapeSetters = {
+  closePresentMenu: () => void;
+  closeZoomMenu: () => void;
+  closeArtifactTools: () => void;
+  closeShareMenus: () => void;
+  exitInTabPresent: () => void;
+  closeDeployModal: () => void;
+};
+
+/** Apply one Escape layer. Callers must wrap this so a setter throw cannot kill the tree. */
+export function applyFileViewerPreviewEscapeAction(
+  action: FileViewerEscapeAction,
+  setters: FileViewerEscapeSetters,
+): void {
+  if (action === 'close-present-menu') setters.closePresentMenu();
+  else if (action === 'close-zoom-menu') setters.closeZoomMenu();
+  else if (action === 'close-artifact-tools') setters.closeArtifactTools();
+  else if (action === 'close-share-menus') setters.closeShareMenus();
+  else if (action === 'exit-in-tab-present') setters.exitInTabPresent();
+  else if (action === 'close-deploy-modal') setters.closeDeployModal();
+}

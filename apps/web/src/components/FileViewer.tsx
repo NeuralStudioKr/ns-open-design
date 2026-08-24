@@ -158,6 +158,7 @@ import {
 } from '../runtime/srcdoc';
 import {
   PREVIEW_ESCAPE_MESSAGE,
+  applyFileViewerPreviewEscapeAction,
   resolveFileViewerPreviewEscapeAction,
 } from '../teamver/fileViewerPreviewEscape';
 import { repairArtifactDocumentHeadIfNeeded } from '../runtime/artifact-document-head';
@@ -14554,26 +14555,35 @@ function HtmlViewer({
 
   useEffect(() => {
     function onMessage(ev: MessageEvent) {
-      if (!isOurPreviewIframeSource(ev.source)) return;
-      const data = ev.data as { type?: string } | null;
-      if (data?.type !== PREVIEW_ESCAPE_MESSAGE) return;
-      const action = resolveFileViewerPreviewEscapeAction({
-        presentMenuOpen,
-        zoomMenuOpen,
-        agentToolsOpen,
-        deployMenuOpen,
-        downloadMenuOpen,
-        inTabPresent,
-        deployModalOpen,
-      });
-      if (action === 'close-present-menu') setPresentMenuOpen(false);
-      else if (action === 'close-zoom-menu') setZoomMenuOpen(false);
-      else if (action === 'close-artifact-tools') closeArtifactToolMenus();
-      else if (action === 'close-share-menus') {
-        setDeployMenuOpen(false);
-        setDownloadMenuOpen(false);
-      } else if (action === 'exit-in-tab-present') setInTabPresent(false);
-      else if (action === 'close-deploy-modal') closeDeployModal();
+      try {
+        if (!isOurPreviewIframeSource(ev.source)) return;
+        const data = ev.data as { type?: string } | null;
+        if (data?.type !== PREVIEW_ESCAPE_MESSAGE) return;
+        const action = resolveFileViewerPreviewEscapeAction({
+          presentMenuOpen,
+          zoomMenuOpen,
+          agentToolsOpen,
+          deployMenuOpen,
+          downloadMenuOpen,
+          inTabPresent,
+          deployModalOpen,
+        });
+        applyFileViewerPreviewEscapeAction(action, {
+          closePresentMenu: () => setPresentMenuOpen(false),
+          closeZoomMenu: () => setZoomMenuOpen(false),
+          closeArtifactTools: closeArtifactToolMenus,
+          closeShareMenus: () => {
+            setDeployMenuOpen(false);
+            setDownloadMenuOpen(false);
+          },
+          exitInTabPresent: () => setInTabPresent(false),
+          closeDeployModal,
+        });
+      } catch (err) {
+        // Escape is dismiss-only. A leftover identifier / setter throw must
+        // not take down the Teamver embed error boundary (shareMenuOpen §1.20).
+        console.error('[HtmlViewer] preview escape failed', err);
+      }
     }
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
