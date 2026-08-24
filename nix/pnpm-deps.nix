@@ -9,6 +9,6 @@
   # 1. Temporarily set the consuming `hash = lib.fakeHash;`
   # 2. Run the relevant nix build/flake check
   # 3. Copy the expected hash printed by Nix into the matching field below
-  daemonHash = "sha256-QR49Ld0IP/3r89UIR+uzrTVYcvycQAYPXcBwzYWTfNE=";
+  daemonHash = "sha256-b18PEMnkTcrTiMQmUePm4244CWaDQBsM/bT5v+lDxVk=";
   webHash = "sha256-Y9hspnCl3NGO7yTIIfqu2yBN0hYvfLEjiWRKxjasGmg=";
 }
