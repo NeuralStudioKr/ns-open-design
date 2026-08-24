@@ -4810,16 +4810,20 @@ function acceptPreviewHtmlCandidate(
   lastStableRef: { current: string | null },
 ): string | null {
   if (candidate == null) return null;
-  const repaired = repairArtifactDocumentHeadIfNeeded(candidate);
-  if (isArtifactHtmlStableForPreview(repaired)) {
-    // Repair can theoretically close/strip into a slide-less shell that still
-    // tag-balances. Never pin that as last-stable when the candidate itself
-    // still carried deck slides — keep the previous good frame instead.
-    if (sourceHasDeckSlideMarkup(candidate) && !hasSalvageableDeckSlideContent(repaired)) {
-      return lastStableRef.current;
+  try {
+    const repaired = repairArtifactDocumentHeadIfNeeded(candidate);
+    if (isArtifactHtmlStableForPreview(repaired)) {
+      // Repair can theoretically close/strip into a slide-less shell that still
+      // tag-balances. Never pin that as last-stable when the candidate itself
+      // still carried deck slides — keep the previous good frame instead.
+      if (sourceHasDeckSlideMarkup(candidate) && !hasSalvageableDeckSlideContent(repaired)) {
+        return lastStableRef.current;
+      }
+      lastStableRef.current = repaired;
+      return repaired;
     }
-    lastStableRef.current = repaired;
-    return repaired;
+  } catch (err) {
+    console.error('[HtmlViewer] acceptPreviewHtmlCandidate failed', err);
   }
   // Prefer the last stable frame over painting leak debris / unbalanced tags.
   return lastStableRef.current;
@@ -15485,11 +15489,15 @@ function HtmlViewer({
   const boardAvailable = mode === 'preview' && source !== null;
   const showPreviewToolbarControls = mode === 'preview';
   const showPreviewViewportControls = showPreviewToolbarControls && !effectiveDeck;
-  const liveHtmlUnstableForPreview = Boolean(
-    streaming
-    && liveHtml?.trim()
-    && !isArtifactHtmlStableForPreview(repairArtifactDocumentHeadIfNeeded(liveHtml)),
-  );
+  const liveHtmlUnstableForPreview = (() => {
+    if (!streaming || !liveHtml?.trim()) return false;
+    try {
+      return !isArtifactHtmlStableForPreview(repairArtifactDocumentHeadIfNeeded(liveHtml));
+    } catch (err) {
+      console.error('[HtmlViewer] liveHtmlUnstableForPreview failed', err);
+      return false;
+    }
+  })();
   const showStreamingAwaitingLiveHtml = Boolean(streaming && !liveHtml?.trim());
   // Empty branch used to never render the veil (it lived under source !== null).
   // Do not gate on !sourceLoadFailed — mid-stream incomplete disk used to flip

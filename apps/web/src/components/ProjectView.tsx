@@ -822,23 +822,33 @@ export function mergeServerMessagesIntoConversation(
  */
 export function sanitizePersistedAssistantChatMessage(message: ChatMessage): ChatMessage {
   if (message.role !== 'assistant') return message;
-  const content = message.content ?? '';
-  const nextContent = sanitizeAssistantProseForDisplay(content, { stripCodeFences: true });
-  let eventsChanged = false;
-  const nextEvents = message.events?.map((event) => {
-    if (event.kind !== 'text' && event.kind !== 'thinking') return event;
-    const text = typeof event.text === 'string' ? event.text : '';
-    const cleaned = sanitizeAssistantProseForDisplay(text, { stripCodeFences: true });
-    if (cleaned === text) return event;
-    eventsChanged = true;
-    return { ...event, text: cleaned };
-  });
-  if (nextContent === content && !eventsChanged) return message;
-  return {
-    ...message,
-    content: nextContent,
-    ...(nextEvents ? { events: nextEvents } : {}),
-  };
+  try {
+    const content = message.content ?? '';
+    const nextContent = sanitizeAssistantProseForDisplay(content, { stripCodeFences: true });
+    let eventsChanged = false;
+    const nextEvents = message.events?.map((event) => {
+      if (event.kind !== 'text' && event.kind !== 'thinking') return event;
+      const text = typeof event.text === 'string' ? event.text : '';
+      let cleaned = text;
+      try {
+        cleaned = sanitizeAssistantProseForDisplay(text, { stripCodeFences: true });
+      } catch {
+        cleaned = text;
+      }
+      if (cleaned === text) return event;
+      eventsChanged = true;
+      return { ...event, text: cleaned };
+    });
+    if (nextContent === content && !eventsChanged) return message;
+    return {
+      ...message,
+      content: nextContent,
+      ...(nextEvents ? { events: nextEvents } : {}),
+    };
+  } catch (err) {
+    console.error('[ProjectView] sanitizePersistedAssistantChatMessage failed', message.id, err);
+    return message;
+  }
 }
 
 function synthesizeAssistantMessageForActiveRun(run: {

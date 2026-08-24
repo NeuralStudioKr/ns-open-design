@@ -2220,17 +2220,22 @@ function ProseBlock({
   const { locale } = useI18n();
   const { slideOnlyMvp, hideAssistantThinkingDetails, enabled: teamverEmbedEnabled } = useTeamverBranding();
   const cleaned = useMemo(() => {
-    const stripped = stripAllClosedArtifacts(text);
-    const base = hideRecoveredHtmlFallback ? stripRecoveredHtmlFallbackForDisplay(stripped, text) : stripped;
     try {
-      return sanitizeAssistantProseForDisplay(base, {
-        streaming,
-        // Display-only strip; artifact recovery keeps raw fences in ProjectView buffers.
-        stripCodeFences: hideStreamingCodeFences || hideAssistantThinkingDetails,
-      });
+      const stripped = stripAllClosedArtifacts(text);
+      const base = hideRecoveredHtmlFallback ? stripRecoveredHtmlFallbackForDisplay(stripped, text) : stripped;
+      try {
+        return sanitizeAssistantProseForDisplay(base, {
+          streaming,
+          // Display-only strip; artifact recovery keeps raw fences in ProjectView buffers.
+          stripCodeFences: hideStreamingCodeFences || hideAssistantThinkingDetails,
+        });
+      } catch (err) {
+        console.error('[AssistantMessage] sanitize prose failed', err);
+        return base;
+      }
     } catch (err) {
-      console.error('[AssistantMessage] sanitize prose failed', err);
-      return base;
+      console.error('[AssistantMessage] prose strip failed', err);
+      return String(text ?? '');
     }
   }, [hideAssistantThinkingDetails, hideRecoveredHtmlFallback, hideStreamingCodeFences, streaming, text]);
   // While the latest turn is still streaming a not-yet-closed question-form,
