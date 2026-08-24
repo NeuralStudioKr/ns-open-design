@@ -196,7 +196,7 @@ export async function fetchUrlContent(
   if (!isWebFetchPageUrl(url)) {
     return {
       ok: false,
-      error: 'url is a stylesheet or font asset, not a page',
+      error: 'url is a stylesheet, font, or static asset, not a page',
     };
   }
 

@@ -23,6 +23,24 @@ describe('api web fetch context', () => {
     expect(extractPublicHttpUrls('https://fonts.googleapis.com/css2')).toEqual([]);
   });
 
+  it('does not extract @import / link / url() assets even on unknown hosts', () => {
+    expect(
+      extractPublicHttpUrls(
+        [
+          "@import url('https://brand.example.com/webfonts');",
+          '<link rel="stylesheet" href="https://brand.example.com/tokens">',
+          '그리고 https://teamver.com 도 참고해줘.',
+        ].join(' '),
+      ),
+    ).toEqual(['https://teamver.com/']);
+    expect(extractPublicHttpUrls('background: url(https://cdn.example.com/hero)')).toEqual([]);
+  });
+
+  it('does not treat kit CDN hosts as pages', () => {
+    expect(extractPublicHttpUrls('https://cdn.jsdelivr.net/npm/foo 참고')).toEqual([]);
+    expect(extractPublicHttpUrls('unpkg.com/react 보고 만들어줘')).toEqual([]);
+  });
+
   it('extracts at most three public http urls from a prompt', () => {
     expect(
       extractPublicHttpUrls(
