@@ -47,8 +47,10 @@ import {
 import { isTeamverPptxExportEnabled } from '../teamver/pptxExportEnable';
 import { isTeamverSourceHtmlCopyEnabled } from '../teamver/sourceHtmlCopyEnable';
 import {
-  deckHtmlNeedsOfficialLookPreviewHeal,
   healOfficialLookForDeckPreview,
+  OFFICIAL_LOOK_STREAMING_HEAL_DEBOUNCE_MS,
+  pickOfficialLookHealedPreviewSource,
+  shouldApplyOfficialLookPreviewHeal,
 } from '../teamver/deckPreviewOfficialLookHeal';
 import { beginTeamverEmbedActiveWork, endTeamverEmbedActiveWork } from '../teamver/teamverEmbedActiveWork';
 import { fetchTeamverDaemon } from '../teamver/teamverDaemonHeaders';
@@ -6944,18 +6946,45 @@ function HtmlViewer({
     }
   }, [preferredAttachmentPaths, projectFilePaths, rawLivePreviewSource, file.name]);
   // Display-only official look merge + Motif remmerge. Compact fills stream
-  // without look CSS; persist merges after save. Preview used to stay Neutral
-  // until disk write.
+  // without look CSS; persist merges after save. §1.21 also heals stable
+  // streaming snapshots so generation no longer looks Neutral until disk write.
   const [officialLookHealedPreview, setOfficialLookHealedPreview] = useState<string | null>(null);
+  const [officialLookHealedForSource, setOfficialLookHealedForSource] = useState<string | null>(null);
   useEffect(() => {
-    setOfficialLookHealedPreview(null);
-    if (streaming || manualEditMode || !effectiveDeck || !projectId) return;
-    if (!livePreviewSource || !deckHtmlNeedsOfficialLookPreviewHeal(livePreviewSource)) return;
+    if (manualEditMode || !effectiveDeck || !projectId) {
+      setOfficialLookHealedPreview(null);
+      setOfficialLookHealedForSource(null);
+      return;
+    }
+    if (
+      !livePreviewSource
+      || !shouldApplyOfficialLookPreviewHeal(livePreviewSource, { streaming })
+    ) {
+      setOfficialLookHealedPreview(null);
+      setOfficialLookHealedForSource(null);
+      return;
+    }
     let cancelled = false;
-    void healOfficialLookForDeckPreview(livePreviewSource, projectId).then((healed) => {
-      if (cancelled) return;
-      if (healed && healed !== livePreviewSource) setOfficialLookHealedPreview(healed);
-    });
+    const run = () => {
+      void healOfficialLookForDeckPreview(livePreviewSource, projectId).then((healed) => {
+        if (cancelled) return;
+        if (healed && healed !== livePreviewSource) {
+          setOfficialLookHealedPreview(healed);
+          setOfficialLookHealedForSource(livePreviewSource);
+        } else {
+          setOfficialLookHealedPreview(null);
+          setOfficialLookHealedForSource(null);
+        }
+      });
+    };
+    if (streaming) {
+      const timer = window.setTimeout(run, OFFICIAL_LOOK_STREAMING_HEAL_DEBOUNCE_MS);
+      return () => {
+        cancelled = true;
+        window.clearTimeout(timer);
+      };
+    }
+    run();
     return () => {
       cancelled = true;
     };
@@ -6979,7 +7008,11 @@ function HtmlViewer({
   }, [manualEditMode, manualEditFrozenSource, livePreviewSource]);
   const previewSource = (manualEditMode && manualEditFrozenSource !== null)
     ? manualEditFrozenSource
-    : (officialLookHealedPreview ?? livePreviewSource);
+    : pickOfficialLookHealedPreviewSource({
+      livePreviewSource,
+      healedPreview: officialLookHealedPreview,
+      healedForSource: officialLookHealedForSource,
+    });
   const compactApiStackedDeck = useMemo(
     () => {
       if (previewSource == null) return false;

@@ -32,6 +32,20 @@
 | scaffold로 갑자기 바꾸면? | **안 됨.** kit hard cutover 금지. full HTML scaffold도 기본 inject 하지 않음 |
 | 1장짜리 템플릿 결과가 저장되는가? | **제품 경로는 첫 fill 3장.** 잘리면 제목 있는 1장은 저장하고 top-up이 덧붙인다. 제목 없는 빈 셸만 미완성으로 차단. 사용자가 1장을 명시한 경우도 허용 |
 
+### 1.21 2026-08-24 — 스트리밍 중에도 stable 스냅샷 official-look heal
+
+§0.76은 FileViewer가 `streaming`이면 look heal을 전부 건너뛰었다. compact fill은 룩 CSS를 스트리밍하지 않으므로, 생성 중 미리보기가 Neutral/Quicksand로 남고 §1.18 type-lock·Motif도 persist 뒤에야 보였다.
+
+**수정:** `shouldApplyOfficialLookPreviewHeal` — streaming이어도 `isArtifactHtmlStableForPreview`인 스냅샷은 display-only heal. 400ms debounce · project templateId 캐시 · healed는 **동일 live source**에만 적용(장수 증가 시 옛 healed로 sticky되지 않음). 디스크는 쓰지 않음.
+
+구현 현황:
+
+- [x] streaming + stable → heal (open shell은 계속 skip)
+- [x] `pickOfficialLookHealedPreviewSource` source-match gate
+- [x] FileViewer wiring · debounce · templateId memo
+- [x] 회귀: `deck-preview-official-look-heal`
+- [ ] fill prompt에 kit Motif CSS cue 1–2개 강제 — 후속
+
 ### 1.18 2026-08-24 — Studio-family compact type-lock (utility / `--f-*`)
 
 §0.65 Pink Script type-lock은 `html,body` + `.script` / bare `h1`만 봤다. Studio / Broadside / Signal / Vellum은 디스플레이 페이스를 **`.display` / `.h1` + `:root --f-display|--f-heading|--f-body`**에만 두고 bare heading에는 붙이지 않는다. compact fill의 semantic `<h1>`/`<h2>`는 Neutral Quicksand로 남고 palette만 템플릿처럼 보였다. 추가로 Studio ZONE box comment가 naive `{…}` split의 셀렉터에 붙어 `:root` / `.display` 매칭이 실패했다.
@@ -42,7 +56,7 @@
 - [x] heading lock selector에 `.display, .h1, .h2` 포함 (body=display 동일해도 emit)
 - [x] Pink Script Instrument 회귀 유지
 - [x] Studio/Broadside/Signal fixture motif = type-lock heading face (token 존재만으로 통과 금지)
-- [ ] live preview streaming 중 official-look heal — 후속
+- [x] live preview streaming 중 official-look heal — §1.21
 - [ ] fill prompt에 kit Motif CSS cue 1–2개 강제 — 후속
 
 ### 1.17 2026-08-24 — Teamver 상세에서 설치 명령·버전/kind 메타 숨김
