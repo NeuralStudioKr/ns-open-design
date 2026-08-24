@@ -8,6 +8,21 @@ import {
 import type { ChatMessage } from '../src/types';
 
 describe('api web fetch context', () => {
+  it('does not treat Google Fonts css2 or stylesheet assets as web-fetch targets', () => {
+    expect(
+      extractPublicHttpUrls(
+        [
+          "Daisy kit @import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@600&display=swap');",
+          'https://fonts.googleapis.com/css2',
+          'fonts.gstatic.com/s/fredoka/v1.woff2',
+          '그리고 https://teamver.com 도 참고해줘.',
+        ].join(' '),
+      ),
+    ).toEqual(['https://teamver.com/']);
+    expect(extractPublicHttpUrls('https://example.com/theme.css')).toEqual([]);
+    expect(extractPublicHttpUrls('https://fonts.googleapis.com/css2')).toEqual([]);
+  });
+
   it('extracts at most three public http urls from a prompt', () => {
     expect(
       extractPublicHttpUrls(

@@ -20,6 +20,7 @@ import type {
   WebFetchBackendResult,
   WebFetchToolResult,
 } from './backend.js';
+import { isWebFetchPageUrl } from './page-url.js';
 import { resolveWebFetchBackend } from './select.js';
 import type { WebFetchBackendPair } from './select.js';
 
@@ -190,6 +191,13 @@ export async function fetchUrlContent(
   // Only http(s) — block file://, ftp://, data:, javascript:, etc.
   if (!/^https?:\/\//i.test(url)) {
     return { ok: false, error: 'only http(s) URLs are supported' };
+  }
+
+  if (!isWebFetchPageUrl(url)) {
+    return {
+      ok: false,
+      error: 'url is a stylesheet or font asset, not a page',
+    };
   }
 
   const startedAt = Date.now();
