@@ -30,6 +30,21 @@ export const FETCH_TIMEOUT_MS = 12_000; // 12s — one tool-loop round must not 
 export const USER_AGENT =
   'Mozilla/5.0 (compatible; TeamverDesignBot/1.0; +https://teamver.com)';
 
+/** Kit `<link>` / Google Fonts css2 is not page text. Returning ok:false
+ *  mapped POST /api/tools/web-fetch to 400 and made MiniMax retry. */
+export const WEB_FETCH_ASSET_SKIP_TEXT =
+  'Not an HTML page — this is a font, stylesheet, or CDN asset from the visual kit. '
+  + 'Keep it as <link rel="stylesheet"> in the deck. '
+  + 'Do not call web_fetch again on fonts, CSS, images, scripts, or kit CDN URLs.';
+
+function skipWebFetchAssetResult(): WebFetchToolResult {
+  return {
+    ok: true,
+    title: '(kit asset — not a page)',
+    text: WEB_FETCH_ASSET_SKIP_TEXT,
+  };
+}
+
 interface StrippedHtml {
   text: string;
   title?: string;
@@ -199,10 +214,10 @@ export async function fetchUrlContent(
   }
 
   if (!isWebFetchPageUrl(url)) {
-    return {
-      ok: false,
-      error: 'url is a stylesheet, font, or static asset, not a page',
-    };
+    console.log(
+      `web_fetch.backend=- url_host=${safeUrlHost(url)} duration_ms=0 status=skipped_asset`,
+    );
+    return skipWebFetchAssetResult();
   }
 
   const startedAt = Date.now();
@@ -302,6 +317,12 @@ async function runBackend(
         ...hopsOut,
       };
     }
+    if (/stylesheet, font, or static asset/i.test(raw.error ?? '')) {
+      return {
+        result: skipWebFetchAssetResult(),
+        ...hopsOut,
+      };
+    }
     return {
       result: { ok: false, error: raw.error ?? 'unknown backend error' },
       ...hopsOut,
@@ -311,10 +332,7 @@ async function runBackend(
   const rawText = raw.text ?? '';
   if (!isHtmlHint(raw.isHtml, rawText) && looksLikeWebFetchStylesheetText(rawText)) {
     return {
-      result: {
-        ok: false,
-        error: 'response is a stylesheet, font, or static asset, not a page',
-      },
+      result: skipWebFetchAssetResult(),
       ...hopsOut,
     };
   }
