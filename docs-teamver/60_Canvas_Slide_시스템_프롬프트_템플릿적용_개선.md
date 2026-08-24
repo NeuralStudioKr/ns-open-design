@@ -2023,6 +2023,7 @@ User-message 쪽 `[Existing deck edit]` / `<attached-preview-comments>` 주입�
 
 | 날짜 | 내용 |
 |------|------|
+| 2026-08-24 | §1.21 — streaming official-look heal for stable live snapshots (debounce · source-match · templateId cache). Generation preview no longer waits for persist. |
 | 2026-08-24 | §1.18 — Studio/Broadside/Signal/Vellum compact type-lock. Resolve `--f-*` + `.display`/`.h1` onto semantic headings; tighten generated-deck fixtures to require type-lock face. |
 | 2026-08-24 | §1.04 — Studio/Daisy/Capsule 대표 생성 결과 fixture 가드. official look/motif merge + standalone export에서 motif/look paint, 1920×1080 fixed canvas, slide count 보존 검증. head/body cleanup이 첫 slide host를 삭제하지 않도록 slide host count guard 추가. |
 | 2026-08-10 | 초안 — Daisy Days Neutral 덮어쓰기 RCA · compose SSOT · 3커밋 타임라인 · 회귀 검토 · 검증 체크리스트 |
