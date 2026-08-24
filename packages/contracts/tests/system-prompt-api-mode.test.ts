@@ -565,7 +565,7 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt.length).toBeLessThan(29_000);
     });
 
-    it('appends Motif-AFTER-title READ LAST on template clone fill turns', () => {
+    it('appends a single Final authority READ LAST on template clone fill turns', () => {
       const prompt = composeTeamverSlideApiPrompt({
         skillBody:
           '## Template visual kit (from example.html)\n\n'
@@ -579,15 +579,20 @@ describe('composeSystemPrompt — API mode (#313)', () => {
         },
         templateCloneContentFill: true,
       });
-      expect(prompt).toContain('Template clone fill — Motif AFTER title');
+      expect(prompt).toContain('# Final authority (READ LAST)');
+      expect(prompt.match(/# Final authority \(READ LAST\)/g)?.length).toBe(1);
+      expect(prompt).toContain('## Selected template — first content-fill');
+      expect(prompt).not.toContain('Template clone fill — Motif AFTER title');
+      expect(prompt).not.toContain('Selected deck template visual — READ LAST');
+      expect(prompt).not.toContain('direct deck generation rule (READ LAST');
       expect(prompt).toMatch(/Motif CSS|kit Motif vocabulary|deco-pill|Decorations CSS/i);
-      expect(prompt).toMatch(/Never invent Motif geometry from another template family|no invented generic circles/i);
-      expect(prompt.indexOf('Template clone fill — Motif AFTER title')).toBeGreaterThan(
-        prompt.indexOf('Selected deck template visual — READ LAST'),
-      );
+      expect(prompt).toMatch(/Never invent Motif geometry from another template family|no invented generic circles|FORBIDDEN substitutes/i);
       expect(prompt).toMatch(/Motif vocabulary REQUIRED|kit Motif AFTER title/i);
       expect(prompt).toMatch(/Motif sprites \(capped for first content-fill/i);
       expect(prompt).toMatch(/<svg\b/i);
+      expect(prompt.indexOf('# Final authority (READ LAST)')).toBeGreaterThan(
+        prompt.indexOf('Slide deck — API compact contract'),
+      );
     });
 
     it('omits comment-edit / existing-deck contracts on greenfield turns', () => {
@@ -792,7 +797,9 @@ describe('composeSystemPrompt — API mode (#313)', () => {
           selectedDeckTemplateId: 'example-html-ppt-zhangzara-daisy-days',
         },
       });
-      expect(fill).toContain('READ LAST (first content-fill)');
+      expect(fill).toContain('# Final authority (READ LAST)');
+      expect(fill).toContain('## Selected template — first content-fill');
+      expect(fill).not.toContain('READ LAST (first content-fill)');
       expect(fill).toMatch(/Motif vocabulary \(required\)|kit Motif vocabulary/i);
       expect(fill).toContain('kit Motif AFTER title');
       expect(fill).not.toContain('OD-style CREATE');

@@ -32,6 +32,18 @@
 | scaffold로 갑자기 바꾸면? | **안 됨.** kit hard cutover 금지. full HTML scaffold도 기본 inject 하지 않음 |
 | 1장짜리 템플릿 결과가 저장되는가? | **제품 경로는 첫 fill 3장.** 잘리면 제목 있는 1장은 저장하고 top-up이 덧붙인다. 제목 없는 빈 셸만 미완성으로 차단. 사용자가 1장을 명시한 경우도 허용 |
 
+### 1.30 2026-08-24 — Clone fill Final authority 단일 READ LAST
+
+Daisy Clone fill 끝이 streaming · FOR_FILL · NO_SVG 세 개의 “READ LAST”로 갈라져 Motif/body-first가 삼중 중복됐다 (§8.2 / §12 P2).
+
+구현 현황:
+
+- [x] fill 턴 `# Final authority (READ LAST)` = streaming 본문 + Motif fill visual (FOR_FILL+NO_SVG 병합)
+- [x] create 경로 WITH_KIT / WITHOUT_KIT / scaffold visual READ LAST 유지
+- [x] 회귀: system-prompt-api-mode (단일 Final authority) · selected-template-compose · compact · kit · quality
+- [ ] create/edit 경로까지 Final authority 단일화 — 후속
+- [ ] HomeHero magic scale — slide-only 비노출, 후속
+
 ### 1.29 2026-08-24 — 슬라이드 API 프롬프트 예산 정리
 
 lean compose가 27k를 넘고 Daisy fill은 ~43k였다. Motif CSS cue / type-lock / content-expansion이 kit SVG 본문·중복 REQUIRE에 묻혔고, streaming body-first의 `empty shell` / `font @import` 문구도 빠졌다.
@@ -42,7 +54,7 @@ lean compose가 27k를 넘고 Daisy fill은 ~43k였다. Motif CSS cue / type-loc
 - [x] Motif REQUIRE 문장 압축 (framework / READ LAST / hard rules)
 - [x] fill kit Motif sprites — SVG 본문 제거, 클래스 어휘만
 - [x] lean ceiling 29k · Daisy fill pin <42k
-- [ ] READ LAST Final-authority 단일 블록 — 후속
+- [x] READ LAST Final-authority 단일 블록 — fill 경로 §1.30
 - [ ] HomeHero magic scale — slide-only 비노출, 후속
 
 ### 1.21 2026-08-24 — 스트리밍 중에도 stable 스냅샷 official-look heal
@@ -1882,7 +1894,7 @@ Free-text 파서 (`parseExplicitSlideCountFromText`):
 | 항목 | 심각도 | 메모 |
 |------|--------|------|
 | greenfield에 edit 계약 bloat | P1 토큰 | 턴 플래그 gating 필요 (`hasPreviewComments` 등) |
-| 여러 “READ LAST” 공존 | P2 | 장기적으로 Final authority 섹션 통합 |
+| 여러 “READ LAST” 공존 | P2 | **부분 완료** — Clone fill은 §1.30 Final authority 단일화. create/edit 경로는 후속 |
 | auto Length → 항상 6–8 | P2 | 유저 장수 있으면면 override됨 |
 | kit fetch 실패 UX | P2 | **완료** — 선택 템플릿 kit heading 없으면 toast 1회 |
 | lean path에서 `byokToolNames` 무시 | P2 | URL-only embed 지원 여부는 제품 결정 |
@@ -2013,7 +2025,7 @@ daemon 로컬 skill 워크플로 잔재다. Daisy Days에는 Teamver API 노트�
 | P0 | 잘린 HTML 자동 보완(salvage) — mid-slide close · soft quality · persist 신뢰 | **완료** — `closeUnclosedSlideSectionsForSalvage` + truncation soft bar + salvage 재거부 제거 |
 | P0 | soft re-reject · `kind:deck` discovery 회귀 · emergency UI/order · doctype poison | **완료** — 다회 감사 핫픽스 (`isClosedSoftSalvageDeckHtml` 등) |
 | P0 | `skipped-incomplete` hard fail (CSS/title truncation · AC head fence · 비가시) | **완료** — title salvage · body excerpt · BODY-FIRST · AC cap 4 · background AC |
-| P2 | READ LAST 통합 / Final authority 섹션 | 미착수 |
+| P2 | READ LAST 통합 / Final authority 섹션 | **부분 완료** — Clone fill §1.30 (`# Final authority (READ LAST)`). create/edit 후속 |
 | P2 | kit fetch 실패 UX(사용자 알림) | **완료** — 선택 템플릿 kit heading 없으면 toast 1회 (`shouldNotifyTemplateVisualKitMiss`) |
 | P0 | motif 구현 — kit에 작은 complete SVG sprite + `.deco` CSS · emoji 대체 금지 | **완료** — `extractTemplateVisualKitFromHtml` 재작성 + READ LAST/vocab/SKILL |
 | P2 | motif 구현 힌트 · Google Fonts `@import` 레시피 일반화 | **부분 완료** — kit에 `@import` 레시피 + Motif sprites; 추가 템플릿별 튜닝은 후속 |
@@ -2048,6 +2060,7 @@ User-message 쪽 `[Existing deck edit]` / `<attached-preview-comments>` 주입�
 
 | 날짜 | 내용 |
 |------|------|
+| 2026-08-24 | §1.30 — Clone fill collapses streaming + Motif fill visual into one `# Final authority (READ LAST)`. |
 | 2026-08-24 | §1.29 — slide API prompt budget: restore body-first phrases · trim Motif REQUIRE · strip fill Motif SVG bodies · lean ceiling 29k.
 | 2026-08-24 | §1.21 — streaming official-look heal for stable live snapshots (debounce · source-match · templateId cache). Generation preview no longer waits for persist. |
 | 2026-08-24 | §1.18 — Studio/Broadside/Signal/Vellum compact type-lock. Resolve `--f-*` + `.display`/`.h1` onto semantic headings; tighten generated-deck fixtures to require type-lock face. |
