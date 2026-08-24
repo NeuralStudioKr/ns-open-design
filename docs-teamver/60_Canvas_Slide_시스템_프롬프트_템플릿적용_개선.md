@@ -32,6 +32,17 @@
 | scaffold로 갑자기 바꾸면? | **안 됨.** kit hard cutover 금지. full HTML scaffold도 기본 inject 하지 않음 |
 | 1장짜리 템플릿 결과가 저장되는가? | **제품 경로는 첫 fill 3장.** 잘리면 제목 있는 1장은 저장하고 top-up이 덧붙인다. 제목 없는 빈 셸만 미완성으로 차단. 사용자가 1장을 명시한 경우도 허용 |
 
+### 1.15 2026-08-24 — 등장 애니메이션 커버가 목록에서 비거나 일부만 보임
+
+§1.13은 `[data-anim]`을 `.slide.is-active` 하에서만 켰다. 공식 html-ppt는 `.anim-fade-up` 등에 `animation-fill-mode: both`를 써서 from-keyframe(opacity 0 / clip-path / width 0)이 즉시 적용된다. 카탈로그 iframe은 그 애니메이션을 거의 재생하지 않아 제목·리스트가 빈 채로 남는다.
+
+구현 현황:
+
+- [x] `CATALOG_COVER_ENTRANCE_REVEAL_CSS` — `[data-anim]` · `[class*="anim-"]` · stagger · typewriter 를 정적 표시로 고정
+- [x] 회귀: anim-fade-up / stagger / reveal-right 커버 픽스처
+- [ ] HomeHero 프리셋 매직 스케일 — slide-only 비노출, 후속
+- [ ] 비덱 갤러리 hover-pan / live-artifact 250% — 프로토타입 경로, 후속
+
 ### 1.13 2026-08-24 — thumbnail batch 1장 커버가 빈 카드로 남는 문제
 
 §1.11 이후 bake를 건너뛴 덱 카드는 preview-batch `thumbnail` HTML을 받는다. 형제 슬라이드가 이미 없어서 `htmlLooksLikeMultiSlideDeck`이 false가 되고, Studio `[data-anim]` / Soft Editorial·Stencil `<deck-stage>` 커버가 투명·높이 0으로 남는다.

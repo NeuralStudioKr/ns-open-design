@@ -33,6 +33,36 @@ export const HTML_COVER_CANVAS_WIDTH = 1920;
 export const HTML_COVER_CANVAS_HEIGHT = 1080;
 export const OD_DECK_CARD_PREVIEW_STYLE_ID = "od-deck-card-preview";
 
+/**
+ * Catalog thumbs are static iframes. Official html-ppt entrance systems
+ * (`[data-anim]`, `.anim-fade-up`, stagger lists) start at the from-keyframe
+ * via `animation-fill-mode: both` / `opacity:0`. Offscreen or tiny tiles
+ * often never tick those animations, so the cover stays blank or missing
+ * pieces. Neutralize entrance motion here; keep this out of live PreviewModal.
+ */
+export const CATALOG_COVER_ENTRANCE_REVEAL_CSS = `
+    [data-anim],
+    [data-anim-target],
+    [class*="anim-"],
+    .anim-stagger-list > * {
+      opacity: 1 !important;
+      visibility: visible !important;
+      transform: none !important;
+      filter: none !important;
+      clip-path: none !important;
+      translate: none !important;
+      animation: none !important;
+      animation-delay: 0s !important;
+      animation-fill-mode: none !important;
+    }
+    .anim-typewriter {
+      width: auto !important;
+      max-width: none !important;
+      overflow: visible !important;
+      border-right-width: 0 !important;
+    }
+`;
+
 /** True when srcDoc was isolated to the 1920×1080 cover canvas. */
 export function srcDocHasIsolatedDeckCover(srcDoc: string | null | undefined): boolean {
   return typeof srcDoc === "string" && srcDoc.includes(`id="${OD_DECK_CARD_PREVIEW_STYLE_ID}"`);
@@ -180,16 +210,7 @@ export function deckPreviewSrcDoc(
       pointer-events: none !important;
       transform: none !important;
     }
-    /* Grove / Broadside / Mat keep [data-anim] at opacity:0 until JS
-       adds .is-active. Catalog thumbs never run that script. */
-    [data-deck-active] [data-anim],
-    .slide.active [data-anim],
-    .slide.is-active [data-anim] {
-      opacity: 1 !important;
-      visibility: visible !important;
-      transform: none !important;
-      animation: none !important;
-    }
+    ${CATALOG_COVER_ENTRANCE_REVEAL_CSS}
     /* Backup if isolation missed a dialect — sibling combinator: :first-of-type
        hides the real first .slide when a preceding <section> steals it. */
     .slide ~ .slide,
@@ -251,14 +272,7 @@ export function deckPreviewSrcDoc(
       opacity: 1 !important;
       visibility: visible !important;
     }
-    [data-deck-active] [data-anim],
-    .slide.active [data-anim],
-    .slide.is-active [data-anim] {
-      opacity: 1 !important;
-      visibility: visible !important;
-      transform: none !important;
-      animation: none !important;
-    }
+    ${CATALOG_COVER_ENTRANCE_REVEAL_CSS}
   </style>`;
   return injectBefore(
     injectPreviewHead(withoutScripts, sourceUrl, style),
