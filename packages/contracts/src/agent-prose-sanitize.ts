@@ -265,7 +265,7 @@ function looksLikeHtmlAttrDumpLine(line: string): boolean {
   if (!trimmed || lineIsChatProseProtocolMarkup(trimmed)) return false;
   if (/^<https?:\/\//i.test(trimmed)) return false;
   if (
-    /^(?:xmlns(?::[\w-]+)?|viewBox|preserveAspectRatio|srcset|sizes|tabindex|clip-rule|fill-rule)\s*=/i.test(
+    /^(?:xmlns(?::[\w-]+)?|viewBox|preserveAspectRatio|srcset|sizes|tabindex|clip-rule|fill-rule|xlink:href|stroke(?:-width|-linecap|-linejoin|-miterlimit)?|className|on[a-z]+)\s*=/i.test(
       trimmed,
     )
   ) {
@@ -273,7 +273,7 @@ function looksLikeHtmlAttrDumpLine(line: string): boolean {
   }
   if (/^d\s*=\s*["'][MmLlHhVvCcSsQqTtAaZz]/.test(trimmed)) return true;
   if (
-    /^(?:class|id|style)\s*=\s*[^\s<>]+$/.test(trimmed)
+    /^(?:class|id|style|className)\s*=\s*[^\s<>]+$/.test(trimmed)
     && !/[\uac00-\ud7af]{4,}/.test(trimmed)
   ) {
     return true;
@@ -297,7 +297,30 @@ function looksLikeCssFunctionDebrisLine(line: string): boolean {
   if (/^hsla?\s*\(\s*[\d.]+(?:[\s,/%\d.]+)+\)\s*;?\s*$/i.test(trimmed)) return true;
   if (/^url\(\s*data:/i.test(trimmed)) return true;
   if (/^data:image\//i.test(trimmed)) return true;
+  if (/^(?:calc|clamp|min|max|minmax|repeat)\s*\(/i.test(trimmed)) return true;
+  if (
+    /^(?:translate(?:3d|[XYZ])?|rotate(?:[XYZ]|3d)?|scale(?:3d|[XYZ])?|skew(?:[XY])?|matrix(?:3d)?|perspective)\s*\(/i.test(
+      trimmed,
+    )
+  ) {
+    return true;
+  }
   return false;
+}
+
+/** Tailwind arbitrary size/color dumps (`bg-[#F5F0E6] w-[1920px]`). */
+function looksLikeTailwindArbitraryDebrisLine(line: string): boolean {
+  const trimmed = String(line ?? "").trim();
+  if (!trimmed || /[\uac00-\ud7af]{3,}/.test(trimmed)) return false;
+  if (/[{};<>]/.test(trimmed)) return false;
+  const tokens = trimmed.split(/\s+/);
+  const arbitrary = tokens.filter((token) =>
+    /^(?:[a-z]{1,12}-)?(?:w|h|min-w|min-h|max-w|max-h|bg|text|border|p|px|py|m|mx|my|gap|top|left|right|bottom|inset)-\[/.test(
+      token,
+    ),
+  );
+  if (arbitrary.length >= 2) return true;
+  return arbitrary.length >= 1 && /1920|1080|#[0-9A-Fa-f]{3,8}/.test(trimmed);
 }
 
 function looksLikeBrStackedHeadingLine(line: string): boolean {
@@ -612,11 +635,16 @@ function findTrailingSameLineDeckHtmlCut(line: string): number | null {
     return voidSlash[1].trimEnd().length;
   }
   const attrTail =
-    /^(.*?)(?:\s+["']?\s*(?:class|id|style|role|aria-[\w-]+|data-[\w-]+|xmlns(?::[\w-]+)?|viewBox|d|srcset|sizes|tabindex|src|href)\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>"']+))+\s*$/i.exec(
+    /^(.*?)(?:\s+["']?\s*(?:class|id|style|role|aria-[\w-]+|data-[\w-]+|xmlns(?::[\w-]+)?|viewBox|d|srcset|sizes|tabindex|src|href|className|xlink:href|stroke(?:-width|-linecap|-linejoin|-miterlimit)?|on[a-z]+)\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>"']+))+\s*$/i.exec(
       line,
     );
   if (attrTail?.[1] !== undefined && /[\p{L}\p{N}.。…]$/u.test(attrTail[1].trimEnd())) {
     return attrTail[1].trimEnd().length;
+  }
+  const mixedQuote =
+    /^(.*?)(?:\s+(?:class|id|style|className)\s*=\s*(?:"[^"\n]*'|'[^'\n]*"))\s*$/i.exec(line);
+  if (mixedQuote?.[1] !== undefined && /[\p{L}\p{N}.。…]$/u.test(mixedQuote[1].trimEnd())) {
+    return mixedQuote[1].trimEnd().length;
   }
   return null;
 }
@@ -2086,9 +2114,17 @@ export function looksLikeDeckCodeDebrisLine(line: string): boolean {
   if (/^<!\[(?:if\b|endif)/i.test(trimmed)) return true;
   if (/^\{\{[#/][\w.-]+/.test(trimmed)) return true;
   if (/^<%[=#@-]/.test(trimmed)) return true;
+  if (/^\{#(?:each|if|await|key)\b/.test(trimmed)) return true;
+  if (/^\{\/(?:each|if|await|key)\}/.test(trimmed)) return true;
+  if (/^\{%\s*(?:for|if|endif|endfor|assign|set|block)\b/.test(trimmed)) return true;
+  if (/^\]\]>\s*$/.test(trimmed)) return true;
+  if (/^\/\*[\s\S]*\*\/\s*$/.test(trimmed) && trimmed.length <= 120) return true;
+  if (/^!important\s*;?\s*$/i.test(trimmed)) return true;
+  if (/^!\[[^\]]*\]\(\s*data:image\//i.test(trimmed)) return true;
   if (looksLikeBrStackedHeadingLine(trimmed)) return true;
   if (looksLikeHtmlAttrDumpLine(trimmed)) return true;
   if (looksLikeCssFunctionDebrisLine(trimmed)) return true;
+  if (looksLikeTailwindArbitraryDebrisLine(trimmed)) return true;
   if (looksLikeHtmlAttrContinuationLine(trimmed)) return true;
   if (/^&amp;lt;\/?[A-Za-z]/.test(trimmed)) return true;
   if (/^rgba?\([^)]*\)\s*;\s*[a-zA-Z-]+\s*:/.test(trimmed)) return true;
@@ -2168,7 +2204,7 @@ export function looksLikeDeckCodeDebrisLine(line: string): boolean {
     return true;
   }
   if (
-    /^(?:(?:\.[A-Za-z_-][\w-]*){1,8}|#[A-Za-z_-][\w-]*|@(?:keyframes|font-face|media|import|supports|layer|page)\b|:(?:root|from|to)\b|(?:from|to|\d+%)\s*\{)/i.test(
+    /^(?:(?:\.[A-Za-z_-][\w-]*){1,8}|#[A-Za-z_-][\w-]*|@(?:keyframes|font-face|media|import|supports|layer|page|charset|namespace|property|scope|starting-style|container|counter-style)\b|:(?:root|from|to)\b|(?:from|to|\d+%)\s*\{)/i.test(
       trimmed,
     )
   ) {
@@ -2179,7 +2215,7 @@ export function looksLikeDeckCodeDebrisLine(line: string): boolean {
   }
   if (
     /^(?:-?[a-zA-Z]+(?:-[a-zA-Z0-9]+)*)\s*:\s*\S/.test(trimmed)
-    && /(?:rgba?\(|hsla?\(|#[0-9A-Fa-f]{3,8}|\d+(?:px|em|rem|%|vh|vw|ms|s)|border|padding|margin|font-|display\s*:|transform|opacity|background|filter|transition)/i.test(
+    && /(?:rgba?\(|hsla?\(|#[0-9A-Fa-f]{3,8}|\d+(?:px|em|rem|%|vh|vw|ms|s)|border|padding|margin|font-|display\s*:|transform|opacity|background|filter|transition|content\s*:|\\[Aa]|!important)/i.test(
       trimmed,
     )
   ) {
@@ -2265,6 +2301,11 @@ export function looksLikeDeckJsDebrisLine(line: string): boolean {
   if (/\.(?:innerHTML|outerHTML)\s*=/.test(trimmed)) return true;
   if (/\.insertAdjacentHTML\s*\(/.test(trimmed)) return true;
   if (/\.classList\.(?:add|remove|toggle|replace)\s*\(/.test(trimmed)) return true;
+  if (/\.setAttribute\s*\(/.test(trimmed)) return true;
+  if (/\.className\s*=/.test(trimmed)) return true;
+  if (/^(?:querySelector(?:All)?|getElementById|getElementsBy(?:ClassName|TagName)|closest)\s*\(/.test(trimmed)) {
+    return true;
+  }
   if (/\w+\.(?:animate|cancel|addEventListener|getAnimations)\s*\(/.test(trimmed)) return true;
   if (/^(?:const|let|var)\s+\w+\s*=\s*(?:document\.|window\.|\w+\.(?:animate|querySelector))/.test(trimmed)) {
     return true;
@@ -2438,16 +2479,7 @@ export function stripResidualDeckHtmlMarkupFromProse(input: string): string {
     return `\0INLINE${inlines.length - 1}\0`;
   });
 
-  text = text.replace(/<!--[\s\S]*?-->/g, "");
-  text = text.replace(/<!--[\s\S]*$/g, "");
-  text = text.replace(/<!doctype\b[^>]*>/gi, "");
-  text = text.replace(/<\?[\w:-]+[^\n]*\?>/g, "");
-  text = text.replace(/<\?[\w:-]+[^\n]*$/g, "");
-  text = text.replace(/<!\[CDATA\[[\s\S]*?\]\]>/g, "");
-  text = text.replace(/<!\[CDATA\[[\s\S]*$/g, "");
-  text = text.replace(/<!\[if\b[\s\S]*?\]>/gi, "");
-  text = text.replace(/<!\[endif\]>/gi, "");
-  // Normalize encoded angle brackets so the tag last-pass can see them.
+  // Normalize encoded / fullwidth angle brackets before PI and tag scrapers.
   text = text.replace(/&(?:amp;)+lt;/gi, "<");
   text = text.replace(/&(?:amp;)+gt;/gi, ">");
   text = text.replace(/&#0*60;/g, "<");
@@ -2458,6 +2490,19 @@ export function stripResidualDeckHtmlMarkupFromProse(input: string): string {
   text = text.replace(/\\u003e/gi, ">");
   text = text.replace(/%3c/gi, "<");
   text = text.replace(/%3e/gi, ">");
+  text = text.replace(/\uFF1C/g, "<");
+  text = text.replace(/\uFF1E/g, ">");
+  text = text.replace(/<!--[\s\S]*?-->/g, "");
+  text = text.replace(/<!--[\s\S]*$/g, "");
+  text = text.replace(/<!doctype\b[^>]*>/gi, "");
+  text = text.replace(/<\?[\w:-]+[^\n]*\?>/g, "");
+  text = text.replace(/<\?[\w:-]+[^\n]*$/g, "");
+  text = text.replace(/<!\[CDATA\[[\s\S]*?\]\]>/g, "");
+  text = text.replace(/<!\[CDATA\[[\s\S]*$/g, "");
+  text = text.replace(/<!\[if\b[\s\S]*?\]>/gi, "");
+  text = text.replace(/<!\[endif\]>/gi, "");
+  text = text.replace(/^\s*]]>\s*$/gm, "");
+  text = text.replace(/!\[[^\]]*\]\(\s*data:image\/[^)]+\)/gi, "");
   text = text.replace(/&amp;lt;\/?[A-Za-z][\w:-]*[\s\S]*?(?:&amp;gt;|&gt;|>)/gi, "");
   text = text.replace(
     /(?:^|\n)\s*(?:[\w:-]+\s*=\s*(?:"[^"]*"|'[^']*')\s*)+\/?>[^\n]*/g,

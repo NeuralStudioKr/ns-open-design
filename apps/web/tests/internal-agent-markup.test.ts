@@ -488,6 +488,23 @@ describe("sanitizeChatMessageLeakedPseudoTool (expanded)", () => {
     ).toBe("초안.");
   });
 
+  it("hard-strips fullwidth tags / css-fn / event-attr leftovers via web display last-pass", () => {
+    expect(
+      sanitizeAssistantProseForDisplay(`진행.\n＜div class="slide"＞본문＜/div＞`, {
+        stripCodeFences: true,
+      }),
+    ).toBe("진행.");
+    expect(
+      sanitizeAssistantProseForDisplay(`초안.\ncalc(100% - 48px)`, { stripCodeFences: true }),
+    ).toBe("초안.");
+    expect(
+      sanitizeAssistantProseForDisplay(`초안. onclick="next()"`, { stripCodeFences: true }),
+    ).toBe("초안.");
+    expect(
+      sanitizeAssistantProseForDisplay(`진행.\nquerySelector('.slide')`, { stripCodeFences: true }),
+    ).toBe("진행.");
+  });
+
   it("hard-strips encoded tags / svg attr / css-fn leftovers via web display last-pass", () => {
     expect(
       sanitizeAssistantProseForDisplay(`진행.\n&#60;div class="slide"&#62;본문&#60;/div&#62;`, {
