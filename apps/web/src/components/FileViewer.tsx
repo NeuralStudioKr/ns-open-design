@@ -7568,32 +7568,38 @@ function HtmlViewer({
   // 536-byte body.
   useEffect(() => {
     function onMessage(ev: MessageEvent) {
-      if (ev.source !== srcDocPreviewIframeRef.current?.contentWindow) return;
-      const data = ev.data as { type?: string } | null;
-      if (data?.type !== 'od:srcdoc-transport-ready') return;
-      setSrcDocShellReady(true);
+      runFileViewerPreviewMessageHandler('srcdoc-ready', () => {
+        if (ev.source !== srcDocPreviewIframeRef.current?.contentWindow) return;
+        const data = ev.data as { type?: string } | null;
+        if (data?.type !== 'od:srcdoc-transport-ready') return;
+        setSrcDocShellReady(true);
+      });
     }
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
   }, []);
   useEffect(() => {
     function onMessage(ev: MessageEvent) {
-      if (ev.source !== srcDocPreviewIframeRef.current?.contentWindow) return;
-      const data = ev.data as { type?: string } | null;
-      if (data?.type !== PREVIEW_REDIRECT_LOOP_MESSAGE) return;
-      setRedirectLoopBlocked(true);
+      runFileViewerPreviewMessageHandler('redirect-loop', () => {
+        if (ev.source !== srcDocPreviewIframeRef.current?.contentWindow) return;
+        const data = ev.data as { type?: string } | null;
+        if (data?.type !== PREVIEW_REDIRECT_LOOP_MESSAGE) return;
+        setRedirectLoopBlocked(true);
+      });
     }
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
   }, []);
   useEffect(() => {
     function onMessage(ev: MessageEvent) {
-      const frame = urlPreviewIframeRef.current;
-      if (ev.source !== frame?.contentWindow) return;
-      if (frame.getAttribute('src') === 'about:blank') return;
-      const data = ev.data as { type?: string } | null;
-      if (data?.type !== 'od:url-selection-bridge-ready') return;
-      setUrlSelectionBridgeReady(true);
+      runFileViewerPreviewMessageHandler('url-bridge-ready', () => {
+        const frame = urlPreviewIframeRef.current;
+        if (ev.source !== frame?.contentWindow) return;
+        if (frame.getAttribute('src') === 'about:blank') return;
+        const data = ev.data as { type?: string } | null;
+        if (data?.type !== 'od:url-selection-bridge-ready') return;
+        setUrlSelectionBridgeReady(true);
+      });
     }
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);

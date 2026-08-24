@@ -69,13 +69,16 @@ describe('runFileViewerPreviewMessageHandler', () => {
 });
 
 describe('FileViewer HtmlViewer preview message guards', () => {
-  it('guards slide-state, comment, and inspect iframe handlers', () => {
+  it('guards slide-state, handshake, comment, and inspect iframe handlers', () => {
     const source = readFileSync(
       join(dirname(fileURLToPath(import.meta.url)), '../../src/components/FileViewer.tsx'),
       'utf8',
     );
     const htmlViewer = source.slice(source.indexOf('function HtmlViewer('));
     expect(htmlViewer).toContain("runFileViewerPreviewMessageHandler('slide-state'");
+    expect(htmlViewer).toContain("runFileViewerPreviewMessageHandler('srcdoc-ready'");
+    expect(htmlViewer).toContain("runFileViewerPreviewMessageHandler('redirect-loop'");
+    expect(htmlViewer).toContain("runFileViewerPreviewMessageHandler('url-bridge-ready'");
     expect(htmlViewer).toContain("runFileViewerPreviewMessageHandler('comment-targets'");
     expect(htmlViewer).toContain("runFileViewerPreviewMessageHandler('comment-overlay'");
     expect(htmlViewer).toContain("runFileViewerPreviewMessageHandler('inspect-target'");
