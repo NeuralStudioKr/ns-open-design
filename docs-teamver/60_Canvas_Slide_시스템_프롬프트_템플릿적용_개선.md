@@ -153,6 +153,17 @@ Community / Canvas 피커 / plus-menu는 1920×1080 `cqw`인데, 공식 html-ppt
 - [x] sibling slide 제거는 `attrsLookLikeDeckOrTemplateSlideHost` SSOT를 사용해 `slide-chrome`류 오탐을 피함
 - [x] 회귀 테스트: `plugins-home-html-surface.test.tsx`, `plugins-preview-fallback.test.ts`
 
+### 1.04 2026-08-24 — 단일 썸네일 카드 compact 경로 일관화
+
+현재 시점 기준 판단: §1.03 적용 후에도 batch queue에 카드가 1개만 모이면 기존 단건 GET으로 우회해 full HTML을 받았다. composer hover panel, 작은 viewport, 빠른 스크롤 후 1개 카드만 남는 상황에서는 response body 축소 효과가 빠질 수 있다. 썸네일 표면은 단일 카드여도 첫 화면만 필요하므로 batch item 수와 무관하게 compact thumbnail mode를 쓰는 것이 일관적이다.
+
+구현 현황:
+
+- [x] `HtmlSurface` batch queue가 1개 item이어도 `POST /api/plugins/preview-batch` + `mode: "thumbnail"` 사용
+- [x] batch endpoint 장애 시에만 기존 단건 GET fallback 유지
+- [x] sessionStorage key를 `od:plugin-preview:v2:`로 올려 기존 full HTML cache가 compact 경로를 가리지 않도록 분리
+- [x] 회귀 테스트: 단일 카드 batch mode, v2 session cache, item 404/401 fallback UI
+
 ### 0.98 2026-08-21 — 루트 갤러리 템플릿 썸네일 1920 캔버스 스케일
 
 커버 isolation 이후 루트 community 갤러리의 360% iframe 레시피가 1920×1080 캔버스를 좌상단 crop 했다. 피커와 같은 `100cqw / 1920` 스케일로 맞추고, mode 누락 html-ppt도 `data-od-mode="deck"`을 유지한다.
