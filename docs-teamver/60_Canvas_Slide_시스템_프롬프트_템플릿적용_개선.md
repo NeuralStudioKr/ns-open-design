@@ -39,7 +39,9 @@
 구현 현황:
 
 - [x] `CATALOG_COVER_ENTRANCE_REVEAL_CSS` — `[data-anim]` · `[class*="anim-"]` · stagger · typewriter 를 정적 표시로 고정
-- [x] 회귀: anim-fade-up / stagger · reveal-right 커버 픽스처
+- [x] 회귀: anim-fade-up / stagger / reveal-right 커버 픽스처
+- [x] jsdom computed opacity — compacted Studio · Pitch Deck
+- [x] preview session cache `v3` — 옛 빈 커버 srcDoc 재사용 방지
 - [ ] HomeHero 프리셋 매직 스케일 — slide-only 비노출, 후속
 - [ ] 비덱 갤러리 hover-pan / live-artifact 250% — 프로토타입 경로, 후속
 
