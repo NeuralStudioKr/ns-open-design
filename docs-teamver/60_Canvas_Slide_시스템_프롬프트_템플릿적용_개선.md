@@ -43,6 +43,17 @@
 - [x] `resolveGalleryOdMode` — html-ppt identity가 `html`보다 우선, mode 소문자 정규화
 - [x] PluginPreviewHero isolation → `data-od-cover="deck"` 1920 `cqw`
 
+### 1.03 2026-08-24 — compact preview stage chrome vs slide paper
+
+§0.9/§0.10에서 cream 덱이 어두운 `#0b0c10` letterbox로 “템플릿 미적용”처럼 보이던 문제를 피하려고 compact stacked가 `html/body` 배경을 **침묵**했다. 그 결과 슬라이드 종이색이 iframe 전체(거터 포함)를 칠해 **PPT 16:9 프레임이 안 보였다**.
+
+구현 현황:
+
+- [x] `data-od-deck-stacked-fix`: `html/body` → 중립 stage chrome `#17181d` (paper·`#0b0c10` 아님)
+- [x] 1920×1080 `.slide` / bleed paper는 stage 위에만 유지
+- [x] stage `box-shadow`로 cream 카드 가장자리 가독성
+- [x] `compact-api-stacked-deck` 회귀 — cream full-bleed 금지
+
 ### 1.00 2026-08-21 — Motif 생략 방지와 SVG 덤프 방지를 분리
 
 현재 시점 기준 판단: Daisy Days / Capsule / Studio 계열에서 “템플릿 대표 SVG·CSS·도형을 못 쓴다”는 증상은 모델이 기존 `Motif SVG is NOT required` / `Motif <svg> 금지` 문구를 **대표 장식 전체 생략 허용**으로 해석할 여지가 있었기 때문이다. 실제 목표는 full `example.html` / 대형 SVG sprite / `<head>` 선두 덤프를 막는 것이지, 템플릿 정체성 자체를 빼는 것이 아니다.

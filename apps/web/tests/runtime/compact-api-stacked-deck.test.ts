@@ -198,6 +198,36 @@ describe('looksLikeCompactApiStackedDeck', () => {
     expect(srcdoc).toContain('width=1920, initial-scale=1');
   });
 
+  it('letterboxes cream decks with neutral stage chrome, not full-bleed paper (§1.03)', () => {
+    const html = [
+      '<!doctype html><html lang="ko"><head><style>',
+      'html, body { margin: 0; background: #F5F0E6; color: #2D2D2D; }',
+      '.slide { width: 1920px; height: 1080px; background: #F5F0E6; color: #2D2D2D; }',
+      '</style></head><body>',
+      '<section class="slide"><h1>좋은 프롬프트란 무엇인가?</h1></section>',
+      '<section class="slide"><h2>Agenda</h2></section>',
+      '</body></html>',
+    ].join('');
+    expect(looksLikeCompactApiStackedDeck(html)).toBe(true);
+    const srcdoc = buildSrcdoc(html, { deck: true });
+    expect(srcdoc).toContain('data-od-deck-stacked-fix');
+    expect(srcdoc).toContain('data-od-compact-stacked');
+    // Stage chrome (gutters) — distinct from near-black false-template #0b0c10
+    // and from cream paper that previously filled the whole iframe.
+    expect(srcdoc).toMatch(
+      /html\[data-od-compact-stacked\][\s\S]*?background:\s*#17181d\s*!important/,
+    );
+    expect(srcdoc).not.toMatch(
+      /html\[data-od-compact-stacked\][\s\S]*?background:\s*#0b0c10/,
+    );
+    expect(srcdoc).not.toMatch(
+      /html\[data-od-compact-stacked\][\s\S]*?background:\s*#F5F0E6/i,
+    );
+    // Slide paper stays on the 1920×1080 stage children / author rules.
+    expect(srcdoc).toMatch(/\.slide[^{]*\{[^}]*background:\s*#F5F0E6/i);
+    expect(srcdoc).toContain('#od-stacked-deck-stage');
+  });
+
   it('matches slides wrapped in a single body child container', () => {
     const html = [
       '<!doctype html><html><body>',

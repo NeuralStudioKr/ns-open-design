@@ -2587,17 +2587,14 @@ body > .slide:not(.active):not(.is-active):not(.current) {
     : '';
   const compactStackedDeckFix = isCompactStackedDeck
     ? `<style data-od-deck-stacked-fix>
-/* Do not declare a \`background\` for html/body here — the compact-stacked
-   stage runs for BOTH model-authored compact decks AND daemon Clone decks
-   whose template ships \`body { background: var(--cream) }\` (Daisy Days)
-   or another pastel surface. Forcing \`background: #0b0c10 !important\`
-   painted every scaled cream slide with a near-black letterbox and users
-   read that as "template not applied". Forcing \`background: transparent
-   !important\` was equally wrong — it overrode the deck's own cream body
-   background and left the iframe default (white) in its place. Silence
-   here keeps the deck's own \`body { background: … }\` in effect: cream
-   for Daisy Days, dark for terminal templates, transparent for compact
-   model decks with no body background (which then read as neutral). */
+/* Stage chrome vs slide paper (§1.03).
+   Earlier we left html/body background alone so cream decks filled the
+   whole iframe (avoiding a near-black #0b0c10 letterbox that read as
+   "template not applied"). That made PPT gutters the same color as the
+   1920×1080 slide — users could not see the 16:9 frame.
+   Paint a neutral stage chrome on html/body (not #0b0c10, not paper) and
+   keep author / bleed paper on \`.slide\` only. Attribute selectors beat
+   \`[data-od-slide-surface-bleed]\` element rules. */
 html[data-od-compact-stacked],
 html[data-od-compact-stacked] body {
   width: 100% !important;
@@ -2606,6 +2603,7 @@ html[data-od-compact-stacked] body {
   overflow: hidden !important;
   overscroll-behavior: none !important;
   touch-action: none !important;
+  background: #17181d !important;
 }
 html[data-od-compact-stacked] body {
   position: relative !important;
@@ -2621,6 +2619,8 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
   height: 1080px;
   margin: 0;
   transform-origin: center center;
+  /* Soft edge so cream slides read as a card on the stage chrome. */
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06);
 }
 #od-stacked-deck-stage > .slide {
   box-sizing: border-box !important;
