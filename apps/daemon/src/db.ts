@@ -11,7 +11,7 @@ import { randomUUID } from 'node:crypto';
 import type { ProjectBrowserWorkspaceTab, ProjectTabsState } from '@open-design/contracts';
 import { migrateCritique } from './critique/persistence.js';
 import { migrateFileRevisions } from './file-revisions/persistence.js';
-import { deleteFileRevisionSnapshotsForProjectDurable } from './file-revisions/snapshot-storage.js';
+import { deleteFileRevisionSnapshotsForProjectDurable, deleteFileRevisionSnapshotsFromDb } from './file-revisions/snapshot-storage.js';
 import { migrateMediaTasks } from './media-tasks.js';
 import { migratePlugins } from './plugins/persistence.js';
 import {
@@ -148,6 +148,7 @@ function migrate(db: SqliteDb): void {
       produced_files_json TEXT,
       feedback_json TEXT,
       pre_turn_file_names_json TEXT,
+      slide_turn_kind TEXT,
       session_mode TEXT,
       run_context_json TEXT,
       applied_plugin_snapshot_json TEXT,
@@ -316,6 +317,9 @@ function migrate(db: SqliteDb): void {
   }
   if (!messageCols.some((c: DbRow) => c.name === 'pre_turn_file_names_json')) {
     db.exec(`ALTER TABLE messages ADD COLUMN pre_turn_file_names_json TEXT`);
+  }
+  if (!messageCols.some((c: DbRow) => c.name === 'slide_turn_kind')) {
+    db.exec(`ALTER TABLE messages ADD COLUMN slide_turn_kind TEXT`);
   }
   if (!messageCols.some((c: DbRow) => c.name === 'session_mode')) {
     db.exec(`ALTER TABLE messages ADD COLUMN session_mode TEXT`);
@@ -1095,7 +1099,7 @@ export function updateProject(db: SqliteDb, id: string, patch: DbRow) {
     const merged = {
       ...existing,
       ...patch,
-      updatedAt: typeof patch.updatedAt === 'number' ? patch.updatedAt : Date.now(),
+      updatedAt: resolveProjectPatchUpdatedAt(existing, patch),
     };
     setCachedProject(merged);
     mirrorProjectRowToSqlite(db, projectRowForSqliteMirror(merged));
@@ -1109,7 +1113,7 @@ export function updateProject(db: SqliteDb, id: string, patch: DbRow) {
   const merged = {
     ...existing,
     ...patch,
-    updatedAt: typeof patch.updatedAt === 'number' ? patch.updatedAt : Date.now(),
+    updatedAt: resolveProjectPatchUpdatedAt(existing, patch),
   };
   db.prepare(
     `UPDATE projects
@@ -1134,19 +1138,187 @@ export function updateProject(db: SqliteDb, id: string, patch: DbRow) {
   return getProject(db, id);
 }
 
-export function deleteProject(db: SqliteDb, id: string) {
-  try {
-    void deleteFileRevisionSnapshotsForProjectDurable(id, db);
-  } catch {
-    // Best-effort — CASCADE on file_revisions still removes metadata.
+/**
+ * Empty patch (`{}`) is not activity — read-only open / identical message
+ * re-PUT must not show 「방금 전」. Callers that mean "user worked"
+ * (new/changed message, comments, live-artifact delete) pass an explicit
+ * `updatedAt`. pendingPrompt-only patches never bump.
+ * No-op field patches preserve existing.updatedAt.
+ */
+export function resolveProjectPatchUpdatedAt(
+  existing: {
+    updatedAt: number;
+    name?: string | null;
+    skillId?: string | null;
+    designSystemId?: string | null;
+    pendingPrompt?: string | null;
+    metadata?: unknown;
+    customInstructions?: string | null;
+  },
+  patch: DbRow,
+): number {
+  if (typeof patch.updatedAt === 'number' && Number.isFinite(patch.updatedAt)) {
+    return patch.updatedAt;
   }
+  const keys = Object.keys(patch).filter((key) => key !== 'updatedAt');
+  if (keys.length === 0) return existing.updatedAt;
+
+  // Composer seed is ephemeral — never treat pendingPrompt-only as activity.
+  const contentKeys = keys.filter((key) => key !== 'pendingPrompt');
+  if (contentKeys.length === 0) return existing.updatedAt;
+
+  const sameNullable = (a: unknown, b: unknown) => (a ?? null) === (b ?? null);
+  const sameMetadata = (a: unknown, b: unknown) => {
+    if (a === b) return true;
+    if (a == null && b == null) return true;
+    try {
+      return stableJsonStringify(a) === stableJsonStringify(b);
+    } catch {
+      return false;
+    }
+  };
+
+  let changed = false;
+  if ('name' in patch && !sameNullable(patch.name, existing.name)) changed = true;
+  if ('skillId' in patch && !sameNullable(patch.skillId, existing.skillId)) changed = true;
+  if ('designSystemId' in patch && !sameNullable(patch.designSystemId, existing.designSystemId)) {
+    changed = true;
+  }
+  if ('metadata' in patch && !sameMetadata(patch.metadata, existing.metadata)) {
+    // Open/hydrate often pins metadata.entryFile (+ kind:deck) without a user
+    // edit. That must not move Home 「방금 전」.
+    if (!isOpenHydrationMetadataOnly(existing.metadata, patch.metadata)) {
+      changed = true;
+    }
+  }
+  if (
+    'customInstructions' in patch
+    && !sameNullable(patch.customInstructions, existing.customInstructions)
+  ) {
+    changed = true;
+  }
+  return changed ? Date.now() : existing.updatedAt;
+}
+
+/** True when metadata only pins entryFile / kind (open finalize), not real edits. */
+function isOpenHydrationMetadataOnly(existing: unknown, incoming: unknown): boolean {
+  if (!incoming || typeof incoming !== 'object' || Array.isArray(incoming)) return false;
+  const prev =
+    existing && typeof existing === 'object' && !Array.isArray(existing)
+      ? (existing as Record<string, unknown>)
+      : {};
+  const next = incoming as Record<string, unknown>;
+  const stripHydrationKeys = (meta: Record<string, unknown>) => {
+    const { entryFile: _entryFile, kind: _kind, ...rest } = meta;
+    return rest;
+  };
+  try {
+    if (stableJsonStringify(stripHydrationKeys(prev)) !== stableJsonStringify(stripHydrationKeys(next))) {
+      return false;
+    }
+  } catch {
+    return false;
+  }
+  const prevEntry = typeof prev.entryFile === 'string' ? prev.entryFile.trim() : '';
+  const nextEntry = typeof next.entryFile === 'string' ? next.entryFile.trim() : '';
+  if (nextEntry && nextEntry !== prevEntry) return true;
+  if ((prev.kind ?? null) !== (next.kind ?? null) && next.kind === 'deck') return true;
+  return false;
+}
+
+/** True when a message upsert is real chat/edit work, not an identical re-save. */
+export function messageUpsertIsProjectActivity(
+  existing: {
+    content?: unknown;
+    runStatus?: unknown;
+    endedAt?: unknown;
+    producedFiles?: unknown;
+  } | null | undefined,
+  incoming: {
+    content?: unknown;
+    runStatus?: unknown;
+    endedAt?: unknown;
+    producedFiles?: unknown;
+  },
+): boolean {
+  if (!existing) return true;
+  if ((existing.content ?? '') !== (incoming.content ?? existing.content ?? '')) return true;
+
+  const normalizeStatus = (value: unknown): string | null => {
+    if (value == null || value === '') return null;
+    const raw = String(value).trim().toLowerCase();
+    if (raw === 'success' || raw === 'completed' || raw === 'complete' || raw === 'done') {
+      return 'succeeded';
+    }
+    if (raw === 'failure' || raw === 'error') return 'failed';
+    if (raw === 'cancelled') return 'canceled';
+    return raw;
+  };
+  const existingStatus = normalizeStatus(existing.runStatus);
+  const incomingStatus = normalizeStatus(
+    incoming.runStatus !== undefined ? incoming.runStatus : existing.runStatus,
+  );
+  if (existingStatus !== incomingStatus) return true;
+
+  const normalizeEndedAt = (value: unknown): number | null => {
+    if (value == null || value === '') return null;
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+    if (typeof value === 'string' && value.trim()) {
+      const asNum = Number(value);
+      if (Number.isFinite(asNum)) return asNum;
+      const asDate = Date.parse(value);
+      if (Number.isFinite(asDate)) return asDate;
+    }
+    return null;
+  };
+  const existingEnded = normalizeEndedAt(existing.endedAt);
+  const incomingEnded = normalizeEndedAt(
+    incoming.endedAt !== undefined ? incoming.endedAt : existing.endedAt,
+  );
+  if (existingEnded !== incomingEnded) return true;
+
+  // producedFiles / events / telemetry flags are often filled on open via HTML
+  // recovery — that is not a user edit and must not bump Home 「방금 전」.
+  return false;
+}
+
+function stableJsonStringify(value: unknown): string {
+  return JSON.stringify(sortJsonValue(value));
+}
+
+function sortJsonValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(sortJsonValue);
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    const sorted: Record<string, unknown> = {};
+    for (const key of Object.keys(record).sort()) {
+      sorted[key] = sortJsonValue(record[key]);
+    }
+    return sorted;
+  }
+  return value;
+}
+
+export function deleteProject(db: SqliteDb, id: string) {
   if (isDaemonDbPostgres()) {
     deleteCachedProject(id);
-    deleteProjectRowFromSqlite(db, id);
     schedulePostgresWrite(async () => {
+      try {
+        await deleteFileRevisionSnapshotsForProjectDurable(id, db);
+      } catch {
+        // Best-effort — v9 FK CASCADE is the backstop.
+      }
       await pgCore.pgDeleteProject(getPostgresPool(), id);
     });
+    deleteProjectRowFromSqlite(db, id);
     return;
+  }
+  const revisionRows = db.prepare(`
+    SELECT id FROM file_revisions WHERE project_id = ?
+  `).all(id) as Array<{ id: string }>;
+  if (revisionRows.length > 0) {
+    deleteFileRevisionSnapshotsFromDb(db, revisionRows.map((row) => row.id));
+    db.prepare(`DELETE FROM file_revisions WHERE project_id = ?`).run(id);
   }
   db.prepare(`DELETE FROM projects WHERE id = ?`).run(id);
 }
@@ -1158,6 +1330,11 @@ export async function deleteProjectAsync(db: SqliteDb, id: string): Promise<void
     return;
   }
   deleteCachedProject(id);
+  try {
+    await deleteFileRevisionSnapshotsForProjectDurable(id, db);
+  } catch {
+    // Best-effort — pgDeleteProject still runs; v9 FK CASCADE is the backstop.
+  }
   await pgCore.pgDeleteProject(getPostgresPool(), id);
   deleteProjectRowFromSqlite(db, id);
 }
@@ -1846,6 +2023,7 @@ export function listMessages(db: SqliteDb, conversationId: string) {
               produced_files_json AS producedFilesJson,
               feedback_json AS feedbackJson,
               pre_turn_file_names_json AS preTurnFileNamesJson,
+              slide_turn_kind AS slideTurnKind,
               session_mode AS sessionMode,
               run_context_json AS runContextJson,
               applied_plugin_snapshot_json AS appliedPluginSnapshotJson,
@@ -1893,6 +2071,7 @@ export function upsertMessage(db: SqliteDb, conversationId: string, m: DbRow) {
       producedFilesJson: merged.producedFiles ? JSON.stringify(merged.producedFiles) : null,
       feedbackJson: merged.feedback ? JSON.stringify(merged.feedback) : null,
       preTurnFileNamesJson: merged.preTurnFileNames ? JSON.stringify(merged.preTurnFileNames) : null,
+      slideTurnKind: merged.slideTurnKind ?? null,
       sessionMode: merged.sessionMode ?? null,
       runContextJson: merged.runContext ? JSON.stringify(merged.runContext) : null,
       appliedPluginSnapshotJson: merged.appliedPluginSnapshot ? JSON.stringify(merged.appliedPluginSnapshot) : null,
@@ -1934,6 +2113,7 @@ export function upsertMessage(db: SqliteDb, conversationId: string, m: DbRow) {
               produced_files_json AS producedFilesJson,
               feedback_json AS feedbackJson,
               pre_turn_file_names_json AS preTurnFileNamesJson,
+              slide_turn_kind AS slideTurnKind,
               session_mode AS sessionMode,
               run_context_json AS runContextJson,
               applied_plugin_snapshot_json AS appliedPluginSnapshotJson,
@@ -1958,6 +2138,7 @@ export function upsertMessage(db: SqliteDb, conversationId: string, m: DbRow) {
               comment_attachments_json = COALESCE(?, comment_attachments_json),
               produced_files_json = COALESCE(?, produced_files_json), feedback_json = ?,
               pre_turn_file_names_json = COALESCE(?, pre_turn_file_names_json),
+              slide_turn_kind = COALESCE(?, slide_turn_kind),
               session_mode = ?, run_context_json = ?, applied_plugin_snapshot_json = ?,
               telemetry_finalized_at = CASE
                 WHEN ? THEN COALESCE(telemetry_finalized_at, ?)
@@ -1979,6 +2160,7 @@ export function upsertMessage(db: SqliteDb, conversationId: string, m: DbRow) {
       merged.producedFiles ? JSON.stringify(merged.producedFiles) : null,
       merged.feedback ? JSON.stringify(merged.feedback) : null,
       merged.preTurnFileNames ? JSON.stringify(merged.preTurnFileNames) : null,
+      normalizeSlideTurnKindForStorage(merged.slideTurnKind),
       normalizeMessageSessionModeForStorage(merged.sessionMode),
       merged.runContext ? JSON.stringify(merged.runContext) : null,
       merged.appliedPluginSnapshot ? JSON.stringify(merged.appliedPluginSnapshot) : null,
@@ -1995,10 +2177,10 @@ export function upsertMessage(db: SqliteDb, conversationId: string, m: DbRow) {
       )
       .get(conversationId) as DbRow | undefined;
     const position = (max?.m ?? -1) + 1;
-    // 23 values: id, conversation_id, role, content, agent_id, agent_name,
+    // 24 values: id, conversation_id, role, content, agent_id, agent_name,
     // run_id, run_status, last_run_event_id, events_json, attachments_json,
     // comment_attachments_json, produced_files_json, feedback_json,
-    // pre_turn_file_names_json, session_mode, run_context_json,
+    // pre_turn_file_names_json, slide_turn_kind, session_mode, run_context_json,
     // applied_plugin_snapshot_json, telemetry_finalized_at, started_at,
     // ended_at, position, created_at.
     db.prepare(
@@ -2006,10 +2188,10 @@ export function upsertMessage(db: SqliteDb, conversationId: string, m: DbRow) {
          (id, conversation_id, role, content, agent_id, agent_name,
           run_id, run_status, last_run_event_id, events_json,
           attachments_json, comment_attachments_json, produced_files_json,
-          feedback_json, pre_turn_file_names_json,
+          feedback_json, pre_turn_file_names_json, slide_turn_kind,
           session_mode, run_context_json, applied_plugin_snapshot_json,
           telemetry_finalized_at, started_at, ended_at, position, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       merged.id,
       conversationId,
@@ -2026,6 +2208,7 @@ export function upsertMessage(db: SqliteDb, conversationId: string, m: DbRow) {
       merged.producedFiles ? JSON.stringify(merged.producedFiles) : null,
       merged.feedback ? JSON.stringify(merged.feedback) : null,
       merged.preTurnFileNames ? JSON.stringify(merged.preTurnFileNames) : null,
+      normalizeSlideTurnKindForStorage(merged.slideTurnKind),
       normalizeMessageSessionModeForStorage(merged.sessionMode),
       merged.runContext ? JSON.stringify(merged.runContext) : null,
       merged.appliedPluginSnapshot ? JSON.stringify(merged.appliedPluginSnapshot) : null,
@@ -2052,6 +2235,7 @@ export function upsertMessage(db: SqliteDb, conversationId: string, m: DbRow) {
               produced_files_json AS producedFilesJson,
               feedback_json AS feedbackJson,
               pre_turn_file_names_json AS preTurnFileNamesJson,
+              slide_turn_kind AS slideTurnKind,
               session_mode AS sessionMode,
               run_context_json AS runContextJson,
               applied_plugin_snapshot_json AS appliedPluginSnapshotJson,
@@ -2596,6 +2780,7 @@ function normalizeMessage(row: DbRow) {
     producedFiles: parseJsonOrUndef(row.producedFilesJson),
     feedback: parseJsonOrUndef(row.feedbackJson),
     preTurnFileNames: parseJsonOrUndef(row.preTurnFileNamesJson),
+    slideTurnKind: normalizeSlideTurnKind(row.slideTurnKind),
     sessionMode: normalizeMessageSessionMode(row.sessionMode),
     runContext: parseJsonOrUndef(row.runContextJson),
     appliedPluginSnapshot: parseJsonOrUndef(row.appliedPluginSnapshotJson),
@@ -2603,6 +2788,14 @@ function normalizeMessage(row: DbRow) {
     startedAt: row.startedAt ?? undefined,
     endedAt: row.endedAt ?? undefined,
   };
+}
+
+function normalizeSlideTurnKind(value: unknown): 'create' | 'edit' | undefined {
+  return value === 'create' || value === 'edit' ? value : undefined;
+}
+
+function normalizeSlideTurnKindForStorage(value: unknown): 'create' | 'edit' | null {
+  return value === 'create' || value === 'edit' ? value : null;
 }
 
 function normalizeMessageSessionMode(value: unknown): ChatSessionMode | undefined {
@@ -3003,6 +3196,7 @@ function messageRowForPgUpsert(messageId: string, merged: DbRow, events: DbRow[]
     producedFiles: merged.producedFiles,
     feedback: merged.feedback,
     preTurnFileNames: merged.preTurnFileNames,
+    slideTurnKind: merged.slideTurnKind,
     sessionMode: merged.sessionMode,
     runContext: merged.runContext,
     appliedPluginSnapshot: merged.appliedPluginSnapshot,
@@ -3045,6 +3239,7 @@ async function upsertMessageRowToPostgresMerged(
     preTurnFileNamesJson: durable.preTurnFileNames
       ? JSON.stringify(durable.preTurnFileNames)
       : null,
+    slideTurnKind: durable.slideTurnKind ?? null,
     sessionMode: durable.sessionMode ?? null,
     runContextJson: durable.runContext ? JSON.stringify(durable.runContext) : null,
     appliedPluginSnapshotJson: durable.appliedPluginSnapshot

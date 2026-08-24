@@ -43,7 +43,15 @@
 | **[49 Canvas→Design 런치 모달 UX](./49_Canvas_Design_슬라이드_런치_모달_UX_안_비교.md)** | **스텝 위저드 vs 2열·아코디언 · X-only · 푸터 취소 제거** |
 | **[50 Undo/Redo 설계](./50_undo_redo_설계.md)** · [50-1 현황](./50-1-구현현황-undo_redo.md) · **[50-2 Canvas vs Design 비교](./50-2_Teamver_Canvas_vs_Design_Undo_비교.md)** | **수동편집·에이전트 revision undo · Teamver canvas와 차이** |
 | **[51-0~2 드래그 리사이즈](./51-0_수동편집_드래그_리사이즈_기획.md)** | **Manual Edit 박스 핸들 · [51-0 기획](./51-0_수동편집_드래그_리사이즈_기획.md) · [51-1 설계](./51-1_수동편집_드래그_리사이즈_설계.md) · [51-2 현황](./51-2_수동편집_드래그_리사이즈_구현현황.md)** |
-| **[52-0~1 Docker 배포 빌드](./52-0_Docker_배포_빌드_가속_현황.md)** | **Phase 0 가속 현황 · [52-1 CI·ECR 설계](./52-1_Docker_이미지_CI_ECR_배포_설계.md) (미구현)** |
+| **[52-0~2 위치 이동](./52-0_수동편집_위치_이동_기획.md)** | **absolute/fixed 본체 드래그 · [52-0 기획](./52-0_수동편집_위치_이동_기획.md) · [52-1 설계](./52-1_수동편집_위치_이동_설계.md) · [52-2 현황](./52-2_수동편집_위치_이동_구현현황.md)** |
+| **[53-0~2 위치 승격](./53-0_수동편집_위치_승격_기획.md)** | **flow→positioned 승격 · [53-0](./53-0_수동편집_위치_승격_기획.md) · [53-1](./53-1_수동편집_위치_승격_설계.md) · [53-2](./53-2_수동편집_위치_승격_구현현황.md)** |
+| **[54 MiniMax 전환 기획·설계](./54_MiniMax_전환_기획_설계.md)** | **2026-08-03 현재 판단 · Claude 비용 절감 · server-only MiniMax · deck-only · web_fetch · S3/DB/백그라운드 계약** |
+| **[54-1 MiniMax 전환 개발설계](./54-1_MiniMax_전환_개발설계.md)** | **구현자용 상세 설계 · MiniMax stream/web_fetch 1차 구현 현황 · API/env 계약 · 테스트·배포 순서** |
+| **[55 Main↔Design UI 스타일](./55_Main_Teamver_vs_Design_UI_스타일_통일_분석.md)** | **분석·보류 — indigo/Geist 통일은 합의 전 재개 금지** |
+| **[56 UI polish a11y·터치](./56_UI_polish_a11y_터치_개선.md)** | **focus·hit·touch · soft/28 포화·리뷰 교정** |
+| **[57-0~1 Docker 배포 빌드](./57-0_Docker_배포_빌드_가속_현황.md)** | **Phase 0 가속 현황 · [57-1 CI·ECR 설계](./57-1_Docker_이미지_CI_ECR_배포_설계.md) (미구현) · 구 52-x Docker에서 재번호** |
+| **[58 덱 Preview letterbox](./58_덱_미리보기_letterbox_빈화면_안정화.md)** | **재진입·사용 중 검정 Preview · prefix settle · filesRefresh · host-viewport fit** |
+| **[60 Canvas→Slide 시스템 프롬프트·템플릿](./60_Canvas_Slide_시스템_프롬프트_템플릿적용_개선.md)** | **Daisy Days→Neutral RCA · compose 우선순위 · FE/BE · 퀵설정 · 회귀 방어 SSOT** |
 | **[46 embed 슬라이드 품질](./46_embed_슬라이드_품질_원인분석_개선로드맵.md)** | **품질 trade-off · Phase 1~3 로드맵** |
 | **[47 body-first compact deck 검토](./47_body-first_compact_deck_아키텍처_검토_및_0716이후_변경판단.md)** | **body-first 결정 · 0716 이후 판단 · 유지/롤백 SSOT** |
 | **[17 Production 출시 작업 순서](./17_Production_출시_작업_순서.md)** | **Step 0~6 체크리스트 · ACM→TF→DNS→EC2→e2e-strict** |
@@ -86,8 +94,16 @@
 | 49 | **[Canvas→Design 런치 모달 UX 안 비교](./49_Canvas_Design_슬라이드_런치_모달_UX_안_비교.md)** — 스텝 위저드(권장) · Studio 2열 폐기 · 크롬 X-only |
 | 50 | **[Undo/Redo 설계](./50_undo_redo_설계.md)** · [50-1 현황](./50-1-구현현황-undo_redo.md) · **[50-2 Canvas vs Design 비교](./50-2_Teamver_Canvas_vs_Design_Undo_비교.md)** |
 | 51-0 | **[드래그 리사이즈 기획](./51-0_수동편집_드래그_리사이즈_기획.md)** · [51-1 설계](./51-1_수동편집_드래그_리사이즈_설계.md) · [51-2 현황](./51-2_수동편집_드래그_리사이즈_구현현황.md) |
-| 52-0 | **[Docker 배포 빌드 가속 현황](./52-0_Docker_배포_빌드_가속_현황.md)** — Phase 0 BuildKit·Playwright |
-| 52-1 | **[Docker 이미지 CI·ECR 배포 설계](./52-1_Docker_이미지_CI_ECR_배포_설계.md)** — 다음 단계 (미구현) |
+| 52-0 | **[위치 이동 기획](./52-0_수동편집_위치_이동_기획.md)** · [52-1 설계](./52-1_수동편집_위치_이동_설계.md) · [52-2 현황](./52-2_수동편집_위치_이동_구현현황.md) |
+| 53-0 | **[위치 승격 기획](./53-0_수동편집_위치_승격_기획.md)** · [53-1 설계](./53-1_수동편집_위치_승격_설계.md) · [53-2 현황](./53-2_수동편집_위치_승격_구현현황.md) |
+| 54 | **[MiniMax 전환 기획·설계](./54_MiniMax_전환_기획_설계.md)** — 2026-08-03 현재 판단 · Claude 비용 절감 · server-only MiniMax · deck-only · web_fetch · S3/DB/백그라운드 |
+| 54-1 | **[MiniMax 전환 개발설계](./54-1_MiniMax_전환_개발설계.md)** — 구현자용 상세 설계 · 파일별 변경점 · API/env 계약 · stream/tool loop · 테스트·배포 순서 |
+| 55 | **[Main↔Design UI 스타일 통일 분석](./55_Main_Teamver_vs_Design_UI_스타일_통일_분석.md)** — 보류 |
+| 56 | **[UI polish a11y·터치](./56_UI_polish_a11y_터치_개선.md)** — soft/28 포화 |
+| 57-0 | **[Docker 배포 빌드 가속 현황](./57-0_Docker_배포_빌드_가속_현황.md)** — Phase 0 BuildKit·Playwright (구 52-0 Docker) |
+| 57-1 | **[Docker 이미지 CI·ECR 배포 설계](./57-1_Docker_이미지_CI_ECR_배포_설계.md)** — 다음 단계 (미구현 · 구 52-1 Docker) |
+| 58 | **[덱 Preview letterbox / 빈 화면](./58_덱_미리보기_letterbox_빈화면_안정화.md)** — 재진입·사용 중 검정 Preview · host-viewport |
+| 60 | **[Canvas→Slide 시스템 프롬프트·템플릿 적용](./60_Canvas_Slide_시스템_프롬프트_템플릿적용_개선.md)** — Daisy Days→Neutral RCA · compose SSOT |
 | 46 | **[embed 슬라이드 품질 원인분석·로드맵](./46_embed_슬라이드_품질_원인분석_개선로드맵.md)** — Phase 1~3 |
 | 47 | **[body-first compact deck 검토·0716 이후 판단](./47_body-first_compact_deck_아키텍처_검토_및_0716이후_변경판단.md)** — 유지/롤백 SSOT |
 | 17 | **[Production 출시 작업 순서](./17_Production_출시_작업_순서.md)** |
@@ -143,7 +159,11 @@
 
 | 일자 | 내용 |
 |------|------|
-| 2026-07-31 | [52-0 Docker 빌드 가속 현황](./52-0_Docker_배포_빌드_가속_현황.md) · [52-1 CI·ECR 배포 설계](./52-1_Docker_이미지_CI_ECR_배포_설계.md) |
+| 2026-08-04 | MiniMax provider skeleton 구현 착수 — 별도 worktree `ns-open-design-minimax-impl`, branch `codex/minimax-provider-skeleton` ([00](./00_구현_내역_누적.md) · [54-1 §26](./54-1_MiniMax_전환_개발설계.md#26-구현-착수-현황-2026-08-04-현재)) |
+| 2026-08-04 | Docker 문서 **52 → 57** 재번호 — 수동편집 위치이동 `52-x`와 충돌 해소 ([57-0](./57-0_Docker_배포_빌드_가속_현황.md) · [57-1](./57-1_Docker_이미지_CI_ECR_배포_설계.md)) |
+| 2026-08-03 | [54-1 MiniMax 전환 개발설계](./54-1_MiniMax_전환_개발설계.md) — 구현자용 상세 설계 · 파일별 변경점 · API/env 계약 · 테스트·배포 순서 |
+| 2026-08-03 | [54 MiniMax 전환 기획·설계](./54_MiniMax_전환_기획_설계.md) — 2026-08-03 현재 판단 · Claude 비용 절감 · server-only MiniMax 전환 로드맵 |
+| 2026-07-31 | [57-0 Docker 빌드 가속 현황](./57-0_Docker_배포_빌드_가속_현황.md) · [57-1 CI·ECR 배포 설계](./57-1_Docker_이미지_CI_ECR_배포_설계.md) |
 | 2026-07-23 | [40 OD upstream main 반영 검토](./40_OD_upstream_main_반영_검토.md) — 루프 20: main `034c3895d` 기준 43개 신규 커밋 분류, P0 run/artifact/security 포팅 순서 갱신 |
 | 2026-07-14 | [39_10 HA 세션쿠키 경합](./39_10_HA_세션쿠키_경합_해결.md) — Drive `session_expired` 근본 원인·해결 SSOT |
 | 2026-07-08 | [40 OD upstream main 반영 검토](./40_OD_upstream_main_반영_검토.md) — 현재 시점 기준 반영 후보·보류 커밋 정리 |

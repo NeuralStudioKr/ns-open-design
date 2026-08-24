@@ -13,7 +13,10 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
   HtmlSurface,
+  __clearHtmlSurfaceMemoryCacheForTests,
   __htmlSurfaceProbeCacheSizeForTests,
+  __pluginPreviewBatchMaxItemsForTests,
+  __pluginPreviewFetchConcurrencyForTests,
   __resetHtmlSurfaceProbeCacheForTests,
   isPluginPreviewUnauthorizedBody,
   looksLikePluginPreviewHtml,
@@ -40,6 +43,44 @@ function htmlResponse(html = SAMPLE_HTML): Response {
     text: async () => html,
     clone() {
       return htmlResponse(html);
+    },
+  } as unknown as Response;
+}
+
+function batchHtmlResponse(urls: string[]): Response {
+  return {
+    ok: true,
+    status: 200,
+    headers: { get: (name: string) => (name.toLowerCase() === 'content-type' ? 'application/json' : null) },
+    json: async () => ({
+      results: urls.map((url) => ({
+        url,
+        ok: true,
+        status: 200,
+        html: SAMPLE_HTML,
+        contentType: 'text/html; charset=utf-8',
+      })),
+    }),
+    clone() {
+      return batchHtmlResponse(urls);
+    },
+  } as unknown as Response;
+}
+
+function batchItemFailureResponse(urls: string[], status: number): Response {
+  return {
+    ok: true,
+    status: 200,
+    headers: { get: (name: string) => (name.toLowerCase() === 'content-type' ? 'application/json' : null) },
+    json: async () => ({
+      results: urls.map((url) => ({
+        url,
+        ok: false,
+        status,
+      })),
+    }),
+    clone() {
+      return batchItemFailureResponse(urls, status);
     },
   } as unknown as Response;
 }
@@ -125,15 +166,165 @@ describe('HtmlSurface authenticated srcDoc', () => {
       'utf8',
     );
     const fetchBlock = source.slice(
-      source.indexOf('await fetchTeamverDaemon(url, {'),
+      source.indexOf('await fetchTeamverDaemon(cacheKey, {'),
       source.indexOf('if (!res.ok)'),
     );
     expect(fetchBlock).toContain('skipEmbedAuthRecovery: true');
+    expect(fetchBlock).toContain('skipEmbedUnauthorizedNotify: true');
     expect(fetchBlock).toContain('skipTeamverWorkspaceHeaders: true');
+    // Shared inflight / no per-card AbortSignal (N07 cover pattern).
+    expect(source).toContain('pluginPreviewCacheKey');
+    expect(source).not.toMatch(/loadPluginPreviewHtml\([^)]*abort\.signal/);
+    expect(source).toContain("fetchTeamverDaemon('/api/plugins/preview-batch'");
+    expect(source).toContain("pluginCatalogPreviewSrcDoc");
+    expect(source).not.toMatch(/const srcDoc = pluginPreviewSrcDoc\(text, cacheKey\)/);
+  });
+
+  it('fetches plugin preview on inView in Teamver embed (linger, not hover-only)', async () => {
+    const designApiBase = await import('../../src/teamver/designApiBase');
+    const embedSpy = vi.spyOn(designApiBase, 'isTeamverEmbedMode').mockReturnValue(true);
+    const fetchMock = vi.fn().mockResolvedValue(batchHtmlResponse([PREVIEW.src]));
+    vi.stubGlobal('fetch', fetchMock);
+    const { container } = render(
+      <HtmlSurface
+        preview={PREVIEW}
+        pluginId="example-html-ppt"
+        pluginTitle="Html Ppt"
+        inView
+      />,
+    );
+    await waitFor(
+      () => {
+        expect(fetchMock).toHaveBeenCalled();
+      },
+      { timeout: 2000 },
+    );
+    await waitFor(
+      () => {
+        expect(container.querySelector('iframe')).toBeTruthy();
+      },
+      { timeout: 2000 },
+    );
+    embedSpy.mockRestore();
+  });
+
+  it('keeps community preview eager off in embed policy (tight rootMargin)', async () => {
+    const source = await readFile(
+      join(process.cwd(), 'src/teamver/embedDaemonFetchPolicy.ts'),
+      'utf8',
+    );
+    expect(source).toContain('shouldEagerLoadCommunityPluginPreviews');
+    expect(source).toMatch(
+      /function shouldEagerLoadCommunityPluginPreviews\(\)[\s\S]*?return !isTeamverEmbedMode\(\);/,
+    );
+  });
+
+  it('batches visible plugin preview GETs to avoid daemon stampede', async () => {
+    const limit = __pluginPreviewFetchConcurrencyForTests();
+    expect(limit).toBe(3);
+    expect(__pluginPreviewBatchMaxItemsForTests()).toBe(24);
+    let inFlight = 0;
+    let peak = 0;
+    const fetchMock = vi.fn().mockImplementation(
+      async (url: string, init?: RequestInit) => {
+        expect(url).toBe('/api/plugins/preview-batch');
+        const parsed = JSON.parse(String(init?.body ?? '{}')) as { urls?: string[] };
+        inFlight += 1;
+        peak = Math.max(peak, inFlight);
+        inFlight -= 1;
+        return batchHtmlResponse(parsed.urls ?? []);
+      },
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const cards = Array.from({ length: 5 }, (_, i) => ({
+      ...PREVIEW,
+      src: `/api/plugins/example-html-ppt-${i}/preview`,
+    }));
+    for (const preview of cards) {
+      render(
+        <HtmlSurface
+          preview={preview}
+          pluginId={preview.src}
+          pluginTitle="Html Ppt"
+          inView
+          eager
+        />,
+      );
+    }
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body ?? '{}')) as {
+      urls?: string[];
+      mode?: string;
+    };
+    expect(body.urls).toHaveLength(cards.length);
+    expect(body.mode).toBe('thumbnail');
+    expect(peak).toBeLessThanOrEqual(limit);
+  });
+
+  it('reuses sessionStorage preview HTML without a second network GET', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(batchHtmlResponse([PREVIEW.src]));
+    vi.stubGlobal('fetch', fetchMock);
+    const { unmount } = render(
+      <HtmlSurface
+        preview={PREVIEW}
+        pluginId="example-html-ppt"
+        pluginTitle="Html Ppt"
+        inView
+        eager
+      />,
+    );
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    unmount();
+    __clearHtmlSurfaceMemoryCacheForTests();
+    expect(
+      sessionStorage.getItem('od:plugin-preview:v2:/api/plugins/example-html-ppt/preview'),
+    ).toBeTruthy();
+    render(
+      <HtmlSurface
+        preview={PREVIEW}
+        pluginId="example-html-ppt"
+        pluginTitle="Html Ppt"
+        inView
+        eager
+      />,
+    );
+    await waitFor(() => {
+      const iframe = document.querySelector('iframe.plugins-home__html-iframe');
+      expect(iframe).toBeTruthy();
+      expect(iframe?.getAttribute('title')).toMatch(/Html Ppt (preview|미리보기)/);
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses compact preview batch even when only one card is visible', async () => {
+    const fetchMock = vi.fn().mockImplementation(async (url: string, init?: RequestInit) => {
+      expect(url).toBe('/api/plugins/preview-batch');
+      const parsed = JSON.parse(String(init?.body ?? '{}')) as { urls?: string[]; mode?: string };
+      expect(parsed.urls).toEqual(['/api/plugins/example-html-ppt/preview']);
+      expect(parsed.mode).toBe('thumbnail');
+      return batchHtmlResponse(parsed.urls ?? []);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <HtmlSurface
+        preview={PREVIEW}
+        pluginId="example-html-ppt"
+        pluginTitle="Html Ppt"
+        inView
+        eager
+      />,
+    );
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
   });
 
   it('renders an iframe with srcDoc once HTML loads (not bare src)', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(htmlResponse());
+    const fetchMock = vi.fn().mockResolvedValue(batchHtmlResponse([PREVIEW.src]));
     vi.stubGlobal('fetch', fetchMock);
     const { container } = render(
       <HtmlSurface
@@ -162,7 +353,7 @@ describe('HtmlSurface authenticated srcDoc', () => {
   });
 
   it('renders the typographic fallback when the URL 404s', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(notFoundResponse());
+    const fetchMock = vi.fn().mockResolvedValue(batchItemFailureResponse([PREVIEW.src], 404));
     vi.stubGlobal('fetch', fetchMock);
     const { container } = render(
       <HtmlSurface
@@ -185,10 +376,52 @@ describe('HtmlSurface authenticated srcDoc', () => {
     expect(
       container.querySelector('.plugins-home__html-fallback-glyph')?.textContent,
     ).toBe('H');
+    // Touch/click path — hover-only retry left mobile thumbs stuck.
+    expect(
+      container.querySelector('[data-testid="plugins-home-html-fallback-retry"]'),
+    ).toBeTruthy();
+  });
+
+  it('force-retries sticky 404 cache when Retry is clicked', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(batchItemFailureResponse([PREVIEW.src], 404))
+      .mockResolvedValueOnce(batchHtmlResponse([PREVIEW.src]));
+    vi.stubGlobal('fetch', fetchMock);
+    const { container } = render(
+      <HtmlSurface
+        preview={PREVIEW}
+        pluginId="example-html-ppt"
+        pluginTitle="Html Ppt"
+        inView
+        eager
+      />,
+    );
+    await waitFor(
+      () => {
+        expect(
+          container.querySelector('[data-testid="plugins-home-html-fallback-retry"]'),
+        ).toBeTruthy();
+      },
+      { timeout: 2000 },
+    );
+    const callsAfter404 = fetchMock.mock.calls.length;
+    (
+      container.querySelector(
+        '[data-testid="plugins-home-html-fallback-retry"]',
+      ) as HTMLButtonElement
+    ).click();
+    await waitFor(
+      () => {
+        expect(fetchMock.mock.calls.length).toBeGreaterThan(callsAfter404);
+        expect(container.querySelector('iframe')).toBeTruthy();
+      },
+      { timeout: 2000 },
+    );
   });
 
   it('renders the typographic fallback for session_expired JSON (never paints JSON thumb)', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(jsonUnauthorizedResponse());
+    const fetchMock = vi.fn().mockResolvedValue(batchItemFailureResponse([PREVIEW.src], 401));
     vi.stubGlobal('fetch', fetchMock);
     const { container } = render(
       <HtmlSurface
@@ -209,6 +442,31 @@ describe('HtmlSurface authenticated srcDoc', () => {
     );
     expect(container.querySelector('iframe')).toBeNull();
     expect(container.textContent).not.toContain('session_expired');
+  });
+
+  it('retries preview GET after embed passive-auth recovered', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(batchItemFailureResponse([PREVIEW.src], 401))
+      .mockResolvedValueOnce(batchHtmlResponse([PREVIEW.src]));
+    vi.stubGlobal('fetch', fetchMock);
+    const { container } = render(
+      <HtmlSurface
+        preview={PREVIEW}
+        pluginId="example-html-ppt"
+        pluginTitle="Html Ppt"
+        inView
+        eager
+      />,
+    );
+    await waitFor(() => {
+      expect(container.querySelector('[data-testid="plugins-home-html-fallback"]')).toBeTruthy();
+    });
+    window.dispatchEvent(new Event('teamver:embed-passive-auth-recovered'));
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(container.querySelector('iframe')).toBeTruthy();
+    });
   });
 
   it('caps the preview HTML cache and evicts the oldest preview URL', async () => {

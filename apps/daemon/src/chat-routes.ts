@@ -10,6 +10,7 @@ import {
 import {
   BYOK_SENSEAUDIO_TOOLS,
   BYOK_AIHUBMIX_TOOLS,
+  BYOK_MINIMAX_TOOLS,
   executeGenerateImage,
   executeGenerateSpeech,
   executeGenerateVideo,
@@ -64,6 +65,12 @@ import {
   proxyHttpErrorCode,
   proxyHttpRetryable,
 } from './proxy-error-classification.js';
+import {
+  MINIMAX_DEFAULT_BASE_URL,
+  buildMiniMaxChatCompletionExtras,
+  normalizeMiniMaxBaseUrl,
+  resolveMiniMaxToolLoopLimit,
+} from './minimax-runtime.js';
 
 // Allowlist for the `/feedback` route. Mirrors the
 // ChatMessageFeedbackReasonCode union in packages/contracts/src/api/chat.ts.
@@ -208,11 +215,14 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
   function resolveProxyApiKeyOrSendError(
     req: Request,
     res: Response,
-    proxyBody: { apiKey?: unknown; useManagedApiKey?: unknown },
+    proxyBody: { apiKey?: unknown; useManagedApiKey?: unknown; apiProtocol?: unknown },
   ): string | null {
     const resolution = resolveProxyStreamApiKeyDetailed(req, proxyBody);
     if (resolution.ok) return resolution.apiKey;
-    const { httpStatus, code, message } = proxyApiKeyFailureToErrorCode(resolution.failure);
+    const { httpStatus, code, message } = proxyApiKeyFailureToErrorCode(
+      resolution.failure,
+      { provider: proxyBody.apiProtocol === 'minimax' ? 'minimax' : 'anthropic' },
+    );
     sendApiError(res, httpStatus, code, message);
     return null;
   }
@@ -371,13 +381,13 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
     const protocol = body.protocol;
     if (
       typeof protocol !== 'string' ||
-      !['anthropic', 'openai', 'azure', 'google', 'ollama', 'senseaudio', 'aihubmix'].includes(protocol)
+      !['anthropic', 'openai', 'azure', 'google', 'ollama', 'senseaudio', 'aihubmix', 'minimax'].includes(protocol)
     ) {
       return sendApiError(
         res,
         400,
         'BAD_REQUEST',
-        'protocol must be one of anthropic|openai|azure|google|ollama|senseaudio|aihubmix',
+        'protocol must be one of anthropic|openai|azure|google|ollama|senseaudio|aihubmix|minimax',
       );
     }
     // AIHubMix's catalogue (GET /api/v1/models?type=llm) is public, so its
@@ -442,13 +452,13 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         const protocol = body.protocol;
         if (
           typeof protocol !== 'string' ||
-          !['anthropic', 'openai', 'azure', 'google', 'ollama', 'senseaudio', 'aihubmix'].includes(protocol)
+          !['anthropic', 'openai', 'azure', 'google', 'ollama', 'senseaudio', 'aihubmix', 'minimax'].includes(protocol)
         ) {
           return sendApiError(
             res,
             400,
             'BAD_REQUEST',
-            'protocol must be one of anthropic|openai|azure|google|ollama|senseaudio|aihubmix',
+            'protocol must be one of anthropic|openai|azure|google|ollama|senseaudio|aihubmix|minimax',
           );
         }
         if (
@@ -2030,6 +2040,12 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
      * uses the OpenAI tool-loop path (SenseAudio).
      */
     routeByModel?: boolean;
+    omitMaxTokens?: boolean;
+    /** MiniMax-M3: send `max_completion_tokens` while omitting legacy `max_tokens`. */
+    maxCompletionTokens?: number;
+    thinking?: { type: 'disabled' | 'adaptive' };
+    includeUsage?: boolean;
+    maxToolLoops?: number;
   }
 
   const registerByokToolChatProxy = (
@@ -2051,7 +2067,13 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       byokSpeechModel,
       byokSpeechVoice,
     } = proxyBody;
-    const apiKey = resolveProxyApiKeyOrSendError(req, res, proxyBody);
+    const apiKey = resolveProxyApiKeyOrSendError(
+      req,
+      res,
+      opts.providerId === 'minimax'
+        ? { ...proxyBody, apiProtocol: 'minimax' }
+        : proxyBody,
+    );
     if (!apiKey) return;
     if (!model) {
       return sendApiError(res, 400, 'BAD_REQUEST', 'model is required');
@@ -2070,7 +2092,9 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       );
     }
 
-    const effectiveBaseUrl = baseUrl || opts.defaultBaseUrl;
+    const effectiveBaseUrl = opts.providerId === 'minimax'
+      ? normalizeMiniMaxBaseUrl(typeof baseUrl === 'string' ? baseUrl : opts.defaultBaseUrl)
+      : baseUrl || opts.defaultBaseUrl;
     const validated = await validateExternalApiBaseUrl(effectiveBaseUrl);
     if (validated.error) {
       return sendApiError(
@@ -2149,6 +2173,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         ? { defaultSpeechVoice: validDefaultSpeechVoice }
         : {}),
     };
+    const maxToolLoops = opts.maxToolLoops ?? MAX_BYOK_TOOL_LOOPS;
 
     // Run one round-trip: POST to upstream, stream text deltas to the
     // client as they arrive, accumulate any tool_call deltas. Returns
@@ -2168,15 +2193,32 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       const payload: any = {
         model,
         messages: messagesForTurn,
-        max_tokens:
-          typeof maxTokens === 'number' && maxTokens > 0 ? maxTokens : 8192,
         stream: true,
-        // OpenAI-compatible endpoints omit usage in streaming responses
-        // unless this is set.
-        stream_options: { include_usage: true },
         tools: opts.tools,
         tool_choice: 'auto',
       };
+      if (opts.providerId === 'minimax') {
+        Object.assign(payload, buildMiniMaxChatCompletionExtras({
+          requestedMaxCompletionTokens:
+            typeof maxTokens === 'number' && maxTokens > 0 ? maxTokens : null,
+        }));
+      } else {
+        if (!opts.omitMaxTokens) {
+          payload.max_tokens =
+            typeof maxTokens === 'number' && maxTokens > 0 ? maxTokens : 8192;
+        }
+        if (typeof opts.maxCompletionTokens === 'number' && opts.maxCompletionTokens > 0) {
+          payload.max_completion_tokens = opts.maxCompletionTokens;
+        }
+        if (opts.thinking) {
+          payload.thinking = opts.thinking;
+        }
+        if (opts.includeUsage !== false) {
+          // OpenAI-compatible endpoints omit usage in streaming responses
+          // unless this is set.
+          payload.stream_options = { include_usage: true };
+        }
+      }
       const response = await fetch(url, {
         ...toolCtx.requestInit,
         method: 'POST',
@@ -2558,7 +2600,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         toolCtx.requestInit = { ...proxyDispatcher.requestInit, ...(signal ? { signal } : {}) };
         sse.send('start', { model });
         const convMessages: any[] = Array.isArray(messages) ? [...messages] : [];
-        for (let loop = 0; loop < MAX_BYOK_TOOL_LOOPS; loop++) {
+        for (let loop = 0; loop < maxToolLoops; loop++) {
           if (signal?.aborted) return sse.end();
           const turn = await runAnthropicToolTurn(sse, anthropicUrl, headers, convMessages);
           if (turn.kind === 'error') return sse.end();
@@ -2595,7 +2637,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
           convMessages.push({ role: 'user', content: toolResults });
         }
         console.warn(
-          `[${opts.logTag}] anthropic tool loop bounded at MAX_BYOK_TOOL_LOOPS=${MAX_BYOK_TOOL_LOOPS}`,
+          `[${opts.logTag}] anthropic tool loop bounded at maxToolLoops=${maxToolLoops}`,
         );
         sendProxyUsageIfPresent(
           res,
@@ -2794,7 +2836,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
           role: m.role === 'assistant' ? 'model' : 'user',
           parts: [{ text: typeof m.content === 'string' ? m.content : '' }],
         }));
-        for (let loop = 0; loop < MAX_BYOK_TOOL_LOOPS; loop++) {
+        for (let loop = 0; loop < maxToolLoops; loop++) {
           if (signal?.aborted) return sse.end();
           const turn = await runGeminiToolTurn(sse, geminiUrl, headers, contents);
           if (turn.kind === 'error') return sse.end();
@@ -2832,7 +2874,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
           contents.push({ role: 'user', parts: responseParts });
         }
         console.warn(
-          `[${opts.logTag}] gemini tool loop bounded at MAX_BYOK_TOOL_LOOPS=${MAX_BYOK_TOOL_LOOPS}`,
+          `[${opts.logTag}] gemini tool loop bounded at maxToolLoops=${maxToolLoops}`,
         );
         sendProxyUsageIfPresent(
           res,
@@ -2943,7 +2985,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       const signal = byokProxyAbortSignalFromRes(res);
       toolCtx.requestInit = { ...proxyDispatcher.requestInit, ...(signal ? { signal } : {}) };
       sse.send('start', { model });
-      for (let loop = 0; loop < MAX_BYOK_TOOL_LOOPS; loop++) {
+      for (let loop = 0; loop < maxToolLoops; loop++) {
         if (signal?.aborted) return sse.end();
         const turn = await runTurn(sse, workingMessages);
         if (turn.kind === 'error') {
@@ -2999,7 +3041,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       // bounded close we still owe the BYOK ledger whatever tokens did get
       // spent across the turns we already ran.
       console.warn(
-        `[${opts.logTag}] tool loop bounded at MAX_BYOK_TOOL_LOOPS=${MAX_BYOK_TOOL_LOOPS}`,
+        `[${opts.logTag}] tool loop bounded at maxToolLoops=${maxToolLoops}`,
       );
       sendProxyUsageIfPresent(
         res,
@@ -3060,6 +3102,20 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
     runVideo: executeAIHubMixGenerateVideo,
     runWebFetch: executeWebFetch,
     routeByModel: true,
+  });
+
+  registerByokToolChatProxy('/api/proxy/minimax/stream', {
+    providerId: 'minimax',
+    logTag: 'proxy:minimax',
+    defaultBaseUrl: MINIMAX_DEFAULT_BASE_URL,
+    tools: BYOK_MINIMAX_TOOLS,
+    buildHeaders: (apiKey) => ({ Authorization: `Bearer ${apiKey}` }),
+    isImageModel: () => false,
+    runImage: async () => ({ ok: false, error: 'image generation is not enabled for MiniMax chat yet' }),
+    runSpeech: async () => ({ ok: false, error: 'speech generation is not enabled for MiniMax chat yet' }),
+    runWebFetch: executeWebFetch,
+    omitMaxTokens: true,
+    maxToolLoops: resolveMiniMaxToolLoopLimit(),
   });
 
 }

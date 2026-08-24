@@ -5,6 +5,9 @@ export interface SlideImage {
   jpeg: boolean;
 }
 
+/** Shown in PPTX Application / creator / theme — keep in sync with embed brand. */
+export const DECK_PPTX_PRODUCT_NAME = 'teamver Slide';
+
 const EMU_PER_INCH = 914_400;
 const PPTX_SLIDE_WIDTH_IN = 13.333;
 const PPTX_SLIDE_WIDTH_EMU = Math.round(PPTX_SLIDE_WIDTH_IN * EMU_PER_INCH);
@@ -226,7 +229,7 @@ function slideMasterRelsXml(): string {
 
 function themeXml(): string {
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" name="Teamver Design">
+<a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" name="${DECK_PPTX_PRODUCT_NAME}">
   <a:themeElements>
     <a:clrScheme name="Teamver">
       <a:dk1><a:srgbClr val="000000"/></a:dk1>
@@ -276,7 +279,7 @@ function tableStylesXml(): string {
 function appXml(slideCount: number): string {
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">
-  <Application>Teamver Design</Application>
+  <Application>${DECK_PPTX_PRODUCT_NAME}</Application>
   <PresentationFormat>On-screen Show</PresentationFormat>
   <Slides>${slideCount}</Slides>
 </Properties>`;
@@ -284,12 +287,12 @@ function appXml(slideCount: number): string {
 
 function coreXml(title?: string): string {
   const now = new Date().toISOString();
-  const safeTitle = title ? escapeXml(title) : 'Teamver Design export';
+  const safeTitle = title ? escapeXml(title) : `${DECK_PPTX_PRODUCT_NAME} export`;
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
   <dc:title>${safeTitle}</dc:title>
-  <dc:creator>Teamver Design</dc:creator>
-  <cp:lastModifiedBy>Teamver Design</cp:lastModifiedBy>
+  <dc:creator>${DECK_PPTX_PRODUCT_NAME}</dc:creator>
+  <cp:lastModifiedBy>${DECK_PPTX_PRODUCT_NAME}</cp:lastModifiedBy>
   <dcterms:created xsi:type="dcterms:W3CDTF">${now}</dcterms:created>
   <dcterms:modified xsi:type="dcterms:W3CDTF">${now}</dcterms:modified>
 </cp:coreProperties>`;

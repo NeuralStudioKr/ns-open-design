@@ -172,6 +172,7 @@ shouldFetchAppVersionAboutPanel()      // About 중복 version skip
 - `/api/design-templates`도 같은 `q/limit/offset` 계약을 지원한다. 기존 `{ designTemplates }` 응답은 유지하고 `total/limit/offset/nextOffset` 메타만 추가했다.
 - `limit`을 명시하지 않은 기존 호출은 전체 목록을 반환한다. 즉 standalone/관리 화면은 기존 계약을 유지하고, embed 최적화 표면만 명시적으로 페이지 크기를 요청한다.
 - 다음 단계는 Home/Composer toolbox 검색 입력을 서버 `q`에 연결하고, `nextOffset` 기반 더보기 UI를 붙일지 결정하는 것이다.
+- **2026-08-20 (L-484):** Home Community는 기존 `q`+`nextOffset` 유지. Composer `ComposerPlusMenu` Plugins flyout · Design toolbox · `ToolsPluginsPanel` 검색도 서버 `q`(debounce 180ms) + `nextOffset` 더보기로 연결.
 
 ---
 
@@ -225,8 +226,8 @@ bash deploy/teamver/scripts/deploy.sh --staging --rds
 
 | ID | 항목 | 설명 |
 |----|------|------|
-| P1 | BFF `teamver-bff/projects` boot 1회화 | registry sync vs list warm — 호출 경로 통합 검토 |
-| P1 | `/api/templates` 2회 | consumer 통합 또는 SWR |
+| P1 | BFF `teamver-bff/projects` boot 1회화 | ✅ 2026-08-20 — `fetchRegistryProjectsFromBff` in-flight coalesce (ids+list 동시 호출 1 GET) |
+| P1 | `/api/templates` 2회 | ✅ 2026-08-20 — slide-only `shouldFetchProjectTemplatesCatalog()===false` (boot/idle skip) |
 | P2 | project auto-open burst | last-opened project deep link — 홈-only와 분리 문서화 |
 | P2 | plugin `/preview` iframe | community gallery off 시 0 — gallery mount 재확인 |
 

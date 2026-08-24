@@ -43,8 +43,9 @@ export async function normalizeFetchedImageBlob(blob: Blob): Promise<Blob | null
   if (mime.startsWith('image/')) return blob;
 
   if (mime === '' || mime === 'application/octet-stream') {
-    // Last resort: assume PNG so downstream data URLs stay renderable in <img>.
-    return new Blob([buffer], { type: 'image/png' });
+    // Do not label arbitrary bytes as PNG — error HTML / truncated uploads
+    // must not render as a broken image tile in chat or the file viewer.
+    return null;
   }
   return null;
 }
@@ -60,7 +61,7 @@ export async function blobToImageDataUrl(blob: Blob): Promise<string | null> {
     if (sniffed) {
       normalized = new Blob([buffer], { type: sniffed });
     } else if (mime === '' || mime === 'application/octet-stream') {
-      normalized = new Blob([buffer], { type: 'image/png' });
+      return null;
     }
   }
   return new Promise((resolve) => {

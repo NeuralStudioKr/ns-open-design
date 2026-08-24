@@ -40,9 +40,13 @@
  */
 
 import {
+  deckArtifactStartsWithMotifSvgDump,
+  deckSlideHeadingsLookLikeFailedGenerate,
   documentContainsSlideSection,
+  eachSlideHostOpenIndex,
   hasSalvageableDeckSlideContent,
   isDeckStatusProseOnlyBody,
+  isPersistableShortDeckDraft,
   meetsMinimumDeckDeliverableQuality,
 } from './deck-html-content';
 
@@ -59,8 +63,6 @@ const STYLE_BLOCK_RE = /<style\b[^>]*>([\s\S]*?)<\/style>/gi;
 const CSS_URL_RE = /\burl\(\s*(?:"([^"]*)"|'([^']*)'|([^)]*?))\s*\)/gi;
 const CSS_IMPORT_RE =
   /@import\s+(?:url\(\s*(?:"([^"]*)"|'([^']*)'|([^)]*?))\s*\)|"([^"]*)"|'([^']*)')/gi;
-const SLIDE_LIKE_SECTION_RE =
-  /<section\b[^>]*(?:\bclass\s*=\s*(?:"[^"]*\bslide\b[^"]*"|'[^']*\bslide\b[^']*'|[^\s"'`=<>]*\bslide\b[^\s"'`=<>]*)|\bdata-slide(?:-index)?\b)[^>]*>/gi;
 const DELIVERABLE_PLACEHOLDER_TEXT_RE =
   /(?:\b(?:error|loading)\b|만들고\s*있|작성\s*중|생성\s*중|준비\s*중|잠시만\s*기다|발표\s*개요|바로\s*만들|만들어\s*드릴)/i;
 const MEDIA_OR_REPLACED_CONTENT_RE = /<(img|video|audio|canvas|svg|iframe|picture|object|embed)\b/i;
@@ -153,18 +155,22 @@ export function isLowSubstanceSlideDeckArtifact(content: string): boolean {
 
   const bodyText = visibleHtmlBodyText(trimmed);
   const withoutNoise = stripHtmlNoise(trimmed);
+  if (deckSlideHeadingsLookLikeFailedGenerate(trimmed)) {
+    return true;
+  }
+  if (deckArtifactStartsWithMotifSvgDump(trimmed)) {
+    return true;
+  }
   if (MEDIA_OR_REPLACED_CONTENT_RE.test(withoutNoise)) return false;
 
   if (DELIVERABLE_PLACEHOLDER_TEXT_RE.test(bodyText) && bodyText.length < 320) {
     return true;
   }
 
-  // A multi-slide deck with only a few words across all slides is almost
-  // always a placeholder shell, even if it has enough tags/CSS to pass the
-  // structural HTML validator.
-  if (slideCount >= 3 && bodyText.length < Math.max(90, slideCount * 24)) {
-    return true;
-  }
+  // Compact API first-fill is 3 short Korean slides (title + lead). The
+  // salvage/minimum bar already rejected empty shells — do not add a second
+  // 90-char body-text floor that turns MiniMax 3-slide drafts into
+  // incomplete_output / low-substance.
 
   return false;
 }
@@ -172,11 +178,13 @@ export function isLowSubstanceSlideDeckArtifact(content: string): boolean {
 function isEffectivelyEmptyHtmlBody(html: string): boolean {
   if (isDeckStatusProseOnlyBody(html)) return true;
   const withoutComments = html.replace(/<!--[\s\S]*?-->/g, '');
-  if (
-    documentContainsSlideSection(withoutComments)
-    && !meetsMinimumDeckDeliverableQuality(withoutComments)
-  ) {
-    return true;
+  if (documentContainsSlideSection(withoutComments)) {
+    // 1–2 slide titled covers are not empty shells — persist + top-up own them.
+    // Multi-slide soft salvage still counts as incomplete here so persist can
+    // use isClosedSoftSalvageDeckHtml trust without writing low-substance decks
+    // that skip the low-substance gate (§0.76).
+    if (isPersistableShortDeckDraft(withoutComments)) return false;
+    if (!meetsMinimumDeckDeliverableQuality(withoutComments)) return true;
   }
   const bodyMatch = /<body\b[^>]*>([\s\S]*)<\/body>/i.exec(withoutComments);
   const body = bodyMatch ? bodyMatch[1]! : withoutComments;
@@ -192,12 +200,7 @@ function isEffectivelyEmptyHtmlBody(html: string): boolean {
 }
 
 function countSlideLikeSections(html: string): number {
-  SLIDE_LIKE_SECTION_RE.lastIndex = 0;
-  let count = 0;
-  while (SLIDE_LIKE_SECTION_RE.exec(html) !== null) {
-    count += 1;
-  }
-  return count;
+  return eachSlideHostOpenIndex(html).length;
 }
 
 function visibleHtmlBodyText(html: string): string {

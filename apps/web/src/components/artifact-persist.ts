@@ -67,13 +67,31 @@ export function resolveArtifactPersistFileName(
   art: ArtifactPersistShape,
   projectFiles: readonly ProjectFile[],
   activeTabName: string | null | undefined,
-  options?: { preferredFileName?: string | null },
+  options?: { preferredFileName?: string | null; slideOnlyMvp?: boolean },
 ): string {
-  const baseName = artifactBaseNameForPersist(art);
   const ext = artifactExtensionForPersist(art);
+  // Slide-only Canvas→Slide must never persist the artifact under a Canvas
+  // basename (`canvas.html` / `index.html`) — force the canonical deck name
+  // unless an explicit preferred deck target is already set.
+  const slideOnlyForceDeck =
+    options?.slideOnlyMvp === true
+    && ext === '.html'
+    && !options?.preferredFileName?.trim();
+  const baseName = slideOnlyForceDeck ? 'deck' : artifactBaseNameForPersist(art);
   const existing = new Set(projectFiles.map((file) => file.name));
 
   const preferredRaw = options?.preferredFileName?.trim().replace(/\\/g, '/').replace(/^\.\//, '');
+  if (slideOnlyForceDeck && !preferredRaw) {
+    // Clone LOOK seed already occupies deck.html in the same turn. Minting
+    // deck-2.html leaves the template default as entryFile/cover — after
+    // reload the generated deck looks like it "reverted" to the template.
+    const existingDeck = projectFiles.find((file) => {
+      const rel = String(file.path || file.name || '').replace(/\\/g, '/').replace(/^\.\//, '');
+      return rel.toLowerCase() === 'deck.html';
+    });
+    if (existingDeck) return existingDeck.path?.trim() || existingDeck.name;
+    return 'deck.html';
+  }
   if (preferredRaw) {
     const preferredBase = preferredRaw.split('/').filter(Boolean).pop() ?? preferredRaw;
     const hasDirectory = preferredRaw.includes('/');
@@ -120,6 +138,20 @@ export function resolveArtifactPersistFileName(
     n += 1;
   }
   return fileName;
+}
+
+/**
+ * Write-tool same-turn recover may bind `deck-2.html`. Slide-only must still
+ * persist onto root `deck.html` so entry/cover cannot keep the Clone seed.
+ */
+export function shouldReuseSameTurnHtmlWriteAsPersist(
+  file: { name: string; path?: string } | null | undefined,
+  options?: { slideOnlyMvp?: boolean },
+): boolean {
+  if (!file) return false;
+  if (options?.slideOnlyMvp !== true) return true;
+  const rel = (file.path || file.name).replace(/\\/g, '/').replace(/^\.\//, '').trim();
+  return rel.toLowerCase() === 'deck.html';
 }
 
 /** Open tabs that are older numbered siblings of the file being focused. */
@@ -205,18 +237,50 @@ export function collapseArtifactVersionOpenTabs(
   return tabs.filter((tab) => !toClose.has(tab));
 }
 
-/** Block turn-1 deck writes while Quick brief is still outstanding. */
+/**
+ * Whether this slide-only run should skip Quick brief discovery defer.
+ *
+ * Canvas→Slide launches pin `skipDiscoveryBrief` on project metadata / turn
+ * meta. React state can lag the first persist, so also honor a per-run pin and
+ * an explicit selected visual template. Do NOT treat bare `kind: 'deck'` as
+ * skip — home freeform slide projects always use that kind and must still get
+ * Quick brief discovery on turn 1.
+ */
+export function resolveSlideOnlySkipDiscoveryBrief(options: {
+  projectSkipDiscoveryBrief?: boolean;
+  /** @deprecated Ignored — `kind: 'deck'` alone must not skip discovery. */
+  projectKind?: string | null;
+  selectedDeckTemplateId?: string | null;
+  runSkipDiscoveryBrief?: boolean;
+}): boolean {
+  if (options.runSkipDiscoveryBrief === true) return true;
+  if (options.projectSkipDiscoveryBrief === true) return true;
+  if (options.selectedDeckTemplateId?.trim()) return true;
+  return false;
+}
+
+/**
+ * Block turn-1 deck writes while Quick brief is still outstanding.
+ *
+ * Important: any streamed HTML body (complete OR truncated) means generation
+ * already started. Never treat that as a discovery turn — incomplete shells
+ * must reach salvage / `skipped-incomplete` so auto-continue can recover
+ * instead of failing as `skipped-discovery-turn` → `incomplete_output`.
+ */
 export function shouldDeferSlideOnlyDiscoveryArtifactPersist(
   messages: readonly ChatMessage[],
   options: {
     slideOnlyMvp: boolean;
     skipDiscoveryBrief?: boolean;
+    /** True when the artifact carries any non-empty HTML (even truncated). */
+    hasArtifactHtml?: boolean;
     hasCompleteHtmlArtifact?: boolean;
   },
 ): boolean {
   if (!options.slideOnlyMvp) return false;
   if (options.skipDiscoveryBrief) return false;
-  if (options.hasCompleteHtmlArtifact) return false;
+  // Truncated/incomplete HTML is still a generation attempt — not discovery.
+  if (options.hasArtifactHtml || options.hasCompleteHtmlArtifact) return false;
   const hasFormAnswers = messages.some(
     (message) =>
       message.role === 'user'

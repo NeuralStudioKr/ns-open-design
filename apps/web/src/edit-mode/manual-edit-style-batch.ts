@@ -5,13 +5,17 @@ import type { ManualEditStyles } from './types';
 /**
  * Returns only style keys in `pendingStyles` that differ from the saved source.
  * Used to skip no-op revision pushes when autosave/flush replays unchanged values.
+ *
+ * Pass `sourceStyles` when the caller already parsed the target (FileViewer flush
+ * shares one read with the subsequent apply/reconcile path).
  */
 export function diffManualEditStylePatch(
   baseSource: string,
   id: string,
   pendingStyles: Partial<ManualEditStyles>,
+  options?: { sourceStyles?: ManualEditStyles },
 ): Partial<ManualEditStyles> {
-  const sourceStyles = readManualEditStyles(baseSource, id);
+  const sourceStyles = options?.sourceStyles ?? readManualEditStyles(baseSource, id);
   const diff: Partial<ManualEditStyles> = {};
   for (const [key, value] of Object.entries(pendingStyles) as Array<[keyof ManualEditStyles, string]>) {
     const next = String(value ?? '');

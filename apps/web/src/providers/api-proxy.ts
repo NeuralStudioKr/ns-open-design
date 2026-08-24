@@ -6,7 +6,6 @@ import type {
   ProxyMessageContent,
   ProxyTextContentBlock,
 } from '@open-design/contracts';
-import { projectFileUrl } from './registry';
 import type { StreamHandlers } from './anthropic';
 import { parseSseFrame } from './sse';
 import { isAnthropicSupportedImagePath } from '../utils/apiProtocol';
@@ -18,14 +17,24 @@ import {
   hasChatApiCredentials,
   usesServerManagedChatApiKey,
 } from '../teamver/chatApiCredentials';
-import { EXPLICIT_PROXY_STOP_REASON, requestProxyAbort } from './proxyAbort';
+import {
+  requestProxyAbort,
+  shouldFinalizeAbortedStreamAsIncomplete,
+  shouldRequestUpstreamProxyAbort,
+} from './proxyAbort';
 import { COMMENT_ONLY_USER_PLACEHOLDER } from '../comments';
 import { waitForTeamverProjectStoragePrefix } from '../teamver/teamverProjectS3PrefixResolve';
-import { projectFilePathExists, projectFilePathBasename } from '../utils/projectFilePaths';
+import {
+  isEphemeralDrawingScreenshotPath,
+  isRenderableImagePath,
+  projectFilePathExists,
+  projectFilePathBasename,
+} from '../utils/projectFilePaths';
+import { mergeImageMentionAttachments } from '../utils/recoverChatAttachmentsFromMentions';
 import {
   isProjectRawFileKnownMissing,
-  markProjectRawFileMissing,
 } from '../utils/projectFileFetchCache';
+import { loadAuthenticatedProjectFileBlob } from '../hooks/useAuthenticatedProjectFileObjectUrl';
 
 /** No SSE bytes for this long → surface a retryable stall error instead of infinite Working UI. */
 const PROXY_STREAM_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
@@ -257,6 +266,7 @@ async function streamProxyEndpointOnce(
         baseUrl: cfg.baseUrl,
         ...(managed ? { useManagedApiKey: true } : { apiKey: cfg.apiKey }),
         model: cfg.model,
+        apiProtocol: cfg.apiProtocol,
         systemPrompt: system,
         messages,
         maxTokens: effectiveMaxTokensWithFloor(cfg, context?.minOutputTokens),
@@ -300,9 +310,8 @@ async function streamProxyEndpointOnce(
 
     // Embed BYOK cancellation policy (PR1 §3.5): the daemon hands us a
     // streamId via the `X-Stream-Id` header. When the caller signals an
-    // **explicit Stop** (handleStop / onStop pass
-    // `EXPLICIT_PROXY_STOP_REASON` to `controller.abort(reason)`), fire
-    // `POST /api/proxy/abort` with `keepalive: true` so the daemon
+    // **upstream-cancel** reason (user Stop or Motif-SVG dump abort),
+    // fire `POST /api/proxy/abort` with `keepalive: true` so the daemon
     // cancels the upstream LLM fetch. Any other abort reason (page
     // exit, route change, supersession) intentionally lets the daemon
     // drain the upstream so background sync-up commits scratch writes.
@@ -317,9 +326,9 @@ async function streamProxyEndpointOnce(
     if (proxyStreamId) {
       const onSignalAbort = () => {
         // `signal.reason` carries whatever the caller passed to
-        // `controller.abort(reason)`; equality with the explicit-stop
-        // sentinel is the only safe distinction the daemon can rely on.
-        if ((signal as AbortSignal).reason === EXPLICIT_PROXY_STOP_REASON) {
+        // `controller.abort(reason)`; only upstream-cancel sentinels
+        // (user Stop + Motif-SVG dump) POST /api/proxy/abort.
+        if (shouldRequestUpstreamProxyAbort((signal as AbortSignal).reason)) {
           requestProxyAbort(proxyStreamId);
         }
       };
@@ -515,7 +524,13 @@ async function streamProxyEndpointOnce(
     handlers.onDone(acc);
     return 'ok';
   } catch (err) {
-    if ((err as Error).name === 'AbortError') return 'aborted';
+    if ((err as Error).name === 'AbortError') {
+      if (shouldFinalizeAbortedStreamAsIncomplete((signal as AbortSignal).reason)) {
+        handlers.onDone(acc);
+        return 'ok';
+      }
+      return 'aborted';
+    }
     const error = (err instanceof Error ? err : new Error(String(err))) as Error & {
       code?: string;
       retryable?: boolean;
@@ -656,10 +671,19 @@ type AnthropicImageCandidate = {
  * dropped — still emit native Anthropic image blocks for those paths.
  */
 export function anthropicImageCandidatesFromMessage(
-  message: Pick<ChatMessage, 'attachments' | 'commentAttachments'>,
+  message: Pick<ChatMessage, 'attachments' | 'commentAttachments' | 'content' | 'role'>,
 ): AnthropicImageCandidate[] {
+  // Rebuild chips from `@image` / embed-contract paths when attachments_json
+  // was dropped — otherwise BYOK vision silently becomes text-only after refresh.
+  const recoveredAttachments = mergeImageMentionAttachments(
+    message.attachments,
+    message.content,
+  );
   const imageAttachments = sortAttachmentsByUserOrder(
-    (message.attachments ?? []).filter((attachment) => attachment.kind === 'image'),
+    recoveredAttachments.filter(
+      (attachment) =>
+        attachment.kind === 'image' || isRenderableImagePath(attachment.path),
+    ),
   );
   const seen = new Set(imageAttachments.map((attachment) => projectFilePathBasename(attachment.path)));
   const fromAttachments: AnthropicImageCandidate[] = imageAttachments.map((attachment) => ({
@@ -699,7 +723,11 @@ export function filterAnthropicImageCandidatesByProjectFiles(
 ): AnthropicImageCandidate[] {
   return candidates.filter((candidate) => {
     if (isProjectRawFileKnownMissing(projectId, candidate.path)) return false;
-    if (projectFileNames && !projectFilePathExists(projectFileNames, candidate.path)) return false;
+    if (!projectFileNames || projectFilePathExists(projectFileNames, candidate.path)) return true;
+    // Ephemeral annotation drawings must stay gated by the file index so
+    // deleted marks do not spam raw GETs. Other message attachments may race
+    // ahead of /files refresh — still allow vision for those paths.
+    if (isEphemeralDrawingScreenshotPath(candidate.path)) return false;
     return true;
   });
 }
@@ -763,59 +791,39 @@ async function readAnthropicImageBlock(
   path: string,
 ): Promise<ProxyImageContentBlock | null> {
   if (isProjectRawFileKnownMissing(projectId, path)) return null;
-  try {
-    await waitForTeamverProjectStoragePrefix(projectId, { quick: true });
-  } catch {
-    // Prefix warm is best-effort; still attempt the raw fetch.
+
+  // Enable Drive/NFD alternates for vision fetch — the message attachment path
+  // is often a canonical NFC form while the daemon has the NFD-encoded file
+  // (macOS uploads) or moved it under refs/drive/.
+  const blob = await loadAuthenticatedProjectFileBlob(projectId, path, {
+    delaysMs: ANTHROPIC_IMAGE_FETCH_DELAYS_MS,
+    trustExists: true,
+  });
+  if (!blob) return null;
+
+  const mediaType = supportedAnthropicImageMediaType(blob.type, path);
+  if (!mediaType) return null;
+
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  if (!isValidAnthropicImageBytes(bytes, mediaType)) return null;
+  let payload = bytes;
+  if (payload.length > MAX_ANTHROPIC_PROXY_IMAGE_BYTES) {
+    const downscaled = await downscaleImageBytesForAnthropicProxy(
+      payload,
+      mediaType,
+      MAX_ANTHROPIC_PROXY_IMAGE_BYTES,
+    );
+    if (!downscaled) return null;
+    payload = downscaled;
   }
-
-  for (let attempt = 0; attempt < ANTHROPIC_IMAGE_FETCH_DELAYS_MS.length; attempt += 1) {
-    const delay = ANTHROPIC_IMAGE_FETCH_DELAYS_MS[attempt] ?? 0;
-    if (delay > 0) {
-      await new Promise((resolve) => setTimeout(resolve, delay));
-    }
-    try {
-      const resp = await fetchTeamverDaemon(projectFileUrl(projectId, path), {
-        cache: 'no-store',
-        teamverProjectId: projectId,
-      });
-      if (resp.status === 404) {
-        markProjectRawFileMissing(projectId, path);
-        return null;
-      }
-      if (!resp.ok) continue;
-
-      const mediaType = supportedAnthropicImageMediaType(
-        resp.headers.get('content-type') ?? '',
-        path,
-      );
-      if (!mediaType) return null;
-
-      const bytes = new Uint8Array(await resp.arrayBuffer());
-      if (!isValidAnthropicImageBytes(bytes, mediaType)) return null;
-      let payload = bytes;
-      if (payload.length > MAX_ANTHROPIC_PROXY_IMAGE_BYTES) {
-        const downscaled = await downscaleImageBytesForAnthropicProxy(
-          payload,
-          mediaType,
-          MAX_ANTHROPIC_PROXY_IMAGE_BYTES,
-        );
-        if (!downscaled) return null;
-        payload = downscaled;
-      }
-      return {
-        type: 'image',
-        source: {
-          type: 'base64',
-          media_type: mediaType,
-          data: bytesToBase64(payload),
-        },
-      };
-    } catch {
-      // Auth / storage race — retry remaining attempts.
-    }
-  }
-  return null;
+  return {
+    type: 'image',
+    source: {
+      type: 'base64',
+      media_type: mediaType,
+      data: bytesToBase64(payload),
+    },
+  };
 }
 
 /** Reject HTML/JSON error bodies that inherit a .png path extension. */

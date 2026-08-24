@@ -19,6 +19,7 @@ export interface ManualEditStyles {
   fontSize: string;
   fontWeight: string;
   color: string;
+  display: string;
   textAlign: string;
   textDecoration: string;
   /** Layout wrap control — prompted for "한 줄로/nowrap" comment edits. */
@@ -63,6 +64,8 @@ export interface ManualEditStyles {
   borderStyle: string;
   borderColor: string;
   borderRadius: string;
+  /** Stacking among positioned siblings (absolute/fixed). */
+  zIndex: string;
 }
 
 export interface ManualEditTarget {
@@ -95,6 +98,24 @@ export interface ManualEditTarget {
   /** offsetParent-relative left/top for promote-on-drag (53). */
   offsetLeft?: number;
   offsetTop?: number;
+  /**
+   * When sticky→absolute promote needs a static scrollport as CB, bridge
+   * reports that ancestor's stable id so the host persists `position:relative`
+   * before the promote set-style (53 Loop15).
+   */
+  stickyScrollportId?: string;
+  /** Deck slide index from nearest `data-slide-index` ancestor. */
+  slideIndex?: number;
+  /** Parent stable id for layer paint-order sorting. */
+  parentKey?: string;
+  /** Parent's index among its parent's element children. */
+  parentSiblingIndex?: number;
+  /** Parent effective z-index when positioned. */
+  parentStackZ?: number;
+  /** Effective z-index when positioned (absolute/fixed). */
+  stackZ?: number;
+  /** Index among parent's element children. */
+  siblingIndex?: number;
   outerHtml: string;
 }
 
@@ -126,6 +147,8 @@ export interface ManualEditTargetMessage {
 export interface ManualEditSelectMessage {
   type: 'od-edit-select';
   target: ManualEditTarget;
+  /** Shift / meta / ctrl — toggle membership in the current selection set. */
+  additive?: boolean;
 }
 
 export interface ManualEditHoverMessage {
@@ -177,14 +200,14 @@ export type ManualEditBridgeMessage =
   | ManualEditRectMessage;
 
 export const MANUAL_EDIT_STYLE_PROPS: readonly (keyof ManualEditStyles)[] = [
-  'fontFamily', 'fontSize', 'fontWeight', 'color', 'textAlign', 'textDecoration', 'whiteSpace', 'lineHeight', 'letterSpacing',
+  'fontFamily', 'fontSize', 'fontWeight', 'color', 'display', 'textAlign', 'textDecoration', 'whiteSpace', 'lineHeight', 'letterSpacing',
   'width', 'height', 'minHeight', 'maxWidth', 'maxHeight', 'position', 'left', 'top', 'right', 'bottom',
   'gap', 'flexDirection', 'justifyContent', 'alignItems',
   'backgroundColor', 'opacity',
   'padding', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
   'margin', 'marginTop', 'marginRight', 'marginBottom', 'marginLeft',
   'border', 'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth',
-  'borderStyle', 'borderColor', 'borderRadius',
+  'borderStyle', 'borderColor', 'borderRadius', 'zIndex',
 ];
 
 export function emptyManualEditStyles(): ManualEditStyles {

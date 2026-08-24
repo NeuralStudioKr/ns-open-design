@@ -649,20 +649,22 @@
 .teamver-background-runs__copy {
   display: flex;
   flex-direction: column;
-  gap: 0.1rem;
+  gap: 0.25rem;
   min-width: 0;
   flex: 1;
 }
 
 .teamver-background-runs__title {
-  font-size: 0.78rem;
+  font-size: 0.8125rem;
   font-weight: 600;
   color: var(--text-strong);
+  line-height: 1.3;
 }
 
 .teamver-background-runs__detail {
-  font-size: 0.72rem;
+  font-size: 0.75rem;
   color: var(--text-muted);
+  line-height: 1.35;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -675,14 +677,15 @@
 .teamver-background-runs__open {
   display: inline-flex;
   align-items: center;
-  gap: 0.2rem;
+  gap: 0.25rem;
   flex-shrink: 0;
-  padding: 0.28rem 0.55rem;
+  min-height: 28px;
+  padding: 0.3rem 0.65rem;
   border-radius: 8px;
   border: 1px solid var(--border);
   background: var(--bg);
   color: var(--text-strong);
-  font-size: 0.72rem;
+  font-size: 0.75rem;
   font-weight: 600;
   cursor: pointer;
 }
@@ -789,18 +792,19 @@
 .teamver-run-recovery__copy {
   display: flex;
   flex-direction: column;
-  gap: 0.15rem;
+  gap: 0.25rem;
   min-width: 0;
 }
 
 .teamver-run-recovery__title {
-  font-size: 0.78rem;
+  font-size: 0.8125rem;
   font-weight: 650;
-  color: var(--text);
+  color: var(--text-strong);
+  line-height: 1.3;
 }
 
 .teamver-run-recovery__detail {
-  font-size: 0.74rem;
+  font-size: 0.75rem;
   color: var(--text-muted);
   line-height: 1.35;
   overflow-wrap: anywhere;
@@ -821,14 +825,16 @@
 .teamver-latest-publish-chip {
   display: inline-flex;
   align-items: center;
-  gap: 0.2rem;
-  padding: 0.08rem 0.35rem;
-  border-radius: 6px;
+  gap: 4px;
+  min-height: 22px;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
   border: 1px solid color-mix(in srgb, var(--accent) 25%, var(--border));
   background: color-mix(in srgb, var(--accent) 6%, var(--bg-elevated));
   color: var(--accent);
-  font-size: 0.68rem;
+  font-size: 11px;
   font-weight: 600;
+  line-height: 1.2;
   text-decoration: none;
   vertical-align: middle;
 }
@@ -837,4 +843,9 @@
   border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
   background: color-mix(in srgb, var(--accent) 12%, var(--bg-elevated));
   text-decoration: none;
+}
+
+.teamver-latest-publish-chip:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  outline-offset: 1px;
 }

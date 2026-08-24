@@ -347,6 +347,30 @@ CREATE TABLE IF NOT EXISTS file_revision_snapshots (
 );
 `;
 
+export const DAEMON_DB_POSTGRES_MIGRATION_V9 = `
+DELETE FROM file_revision_snapshots s
+WHERE NOT EXISTS (
+  SELECT 1 FROM file_revisions r WHERE r.id = s.revision_id
+);
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'file_revision_snapshots_revision_id_fkey'
+  ) THEN
+    ALTER TABLE file_revision_snapshots
+      ADD CONSTRAINT file_revision_snapshots_revision_id_fkey
+      FOREIGN KEY (revision_id) REFERENCES file_revisions(id) ON DELETE CASCADE;
+  END IF;
+END $$;
+`;
+
+export const DAEMON_DB_POSTGRES_MIGRATION_V10 = `
+ALTER TABLE messages
+  ADD COLUMN IF NOT EXISTS slide_turn_kind TEXT;
+`;
+
 export const DAEMON_DB_POSTGRES_MIGRATIONS: ReadonlyArray<{
   version: number;
   sql: string;
@@ -359,4 +383,6 @@ export const DAEMON_DB_POSTGRES_MIGRATIONS: ReadonlyArray<{
   { version: 6, sql: DAEMON_DB_POSTGRES_MIGRATION_V6 },
   { version: 7, sql: DAEMON_DB_POSTGRES_MIGRATION_V7 },
   { version: 8, sql: DAEMON_DB_POSTGRES_MIGRATION_V8 },
+  { version: 9, sql: DAEMON_DB_POSTGRES_MIGRATION_V9 },
+  { version: 10, sql: DAEMON_DB_POSTGRES_MIGRATION_V10 },
 ];

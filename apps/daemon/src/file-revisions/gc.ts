@@ -1,8 +1,11 @@
 // Periodic GC for file revision snapshots (undo/redo history bytes).
 //
-// Complements per-push retention in `createFileRevisionService`. Sweeps:
+// Owns count retention, byte compaction, and orphan cleanup. Push schedules
+// batched deferred sweeps (retention + compaction via PUSH_PRUNE_MAX); this
+// worker is the authoritative safety net on a fixed interval. Sweeps:
 //   - orphan BLOB rows (metadata deleted, snapshot left behind)
-//   - global per-file retention safety pass
+//   - global per-file retention (uncapped)
+//   - deferred snapshot byte compaction (uncapped)
 //   - orphan `.od/revisions/*` files on disk (files mode / migration leftovers)
 //   - optional SQLite VACUUM when enough bytes were reclaimed
 //
@@ -14,6 +17,7 @@ import {
   runFileRevisionGc,
   type FileRevisionGcResult,
 } from './maintenance.js';
+import { updateFileRevisionMetrics, markFileRevisionGcSuccess } from './metrics.js';
 import {
   resolveFileRevisionSnapshotStorage,
 } from './snapshot-storage.js';
@@ -41,6 +45,8 @@ const NOOP_HANDLE: FileRevisionGcHandle = {
     orphanSnapshotsRemoved: 0,
     orphanSnapshotBytesReclaimed: 0,
     retentionRevisionsPruned: 0,
+    globalBudgetRevisionsPruned: 0,
+    globalBudgetBytesReclaimed: 0,
     orphanFilesRemoved: 0,
     vacuum: null,
   }),
@@ -91,10 +97,11 @@ export function startFileRevisionGc(opts: FileRevisionGcWorkerOptions): FileRevi
   });
 
   const tick = () => {
-    void sweep().then((result) => {
+    void sweep().then(async (result) => {
       if (
         result.orphanSnapshotsRemoved > 0
         || result.retentionRevisionsPruned > 0
+        || result.globalBudgetRevisionsPruned > 0
         || result.orphanFilesRemoved > 0
         || result.vacuum
       ) {
@@ -102,6 +109,13 @@ export function startFileRevisionGc(opts: FileRevisionGcWorkerOptions): FileRevi
       }
       if (result.vacuum) {
         lastVacuumAtMs = Date.now();
+      }
+      try {
+        const stats = await collectFileRevisionStorageStats(opts.db, opts.projectsRoot);
+        updateFileRevisionMetrics(stats);
+        markFileRevisionGcSuccess();
+      } catch (err) {
+        log(`[file-revisions] GC metrics update failed: ${err instanceof Error ? err.message : String(err)}`);
       }
       opts.onTick?.(result);
     }).catch((err) => {
@@ -117,7 +131,7 @@ export function startFileRevisionGc(opts: FileRevisionGcWorkerOptions): FileRevi
       clearInterval(timer);
     },
     sweep,
-    stats: () => collectFileRevisionStorageStats(opts.db),
+    stats: () => collectFileRevisionStorageStats(opts.db, opts.projectsRoot),
   };
 }
 

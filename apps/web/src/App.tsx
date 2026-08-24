@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { devLog } from './lib/devLog';
 import { flushSync } from 'react-dom';
 import { AnimatePresence, motion, MotionConfig } from 'motion/react';
 import { useAnalytics } from './analytics/provider';
@@ -13,7 +14,7 @@ import {
   projectKindToTracking,
   fidelityToTracking,
 } from '@open-design/contracts/analytics';
-import type { AmrModelsResponse, ChatSessionMode } from '@open-design/contracts';
+import { sanitizeTemplateCloneDeckTitle, type AmrModelsResponse, type ChatSessionMode } from '@open-design/contracts';
 import { EntryView } from './components/EntryView';
 import { EmbedBootstrapGate } from './components/EmbedBootstrapGate';
 import { CenteredLoader } from './components/Loading';
@@ -64,9 +65,12 @@ import {
   shouldFetchAgentRegistryOnBoot,
   shouldFetchAmrIntegrationApis,
   shouldFetchAppVersionAboutPanel,
+  scheduleWhenIdle,
+  shouldDeferNonCriticalEntryCatalogsOnBoot,
   shouldFetchEntryCatalogsOnBoot,
   shouldFetchHomeProjectsOnBoot,
   shouldFetchMediaProviderConfig,
+  shouldFetchProjectTemplatesCatalog,
   shouldFetchPromptTemplateCatalog,
   shouldPollDaemonRuns,
   shouldPostDaemonActiveContext,
@@ -122,6 +126,23 @@ import {
 } from './teamver/importCanvas';
 import type { TeamverCanvasLaunchHandoff } from './teamver/canvasLaunchHandoff';
 import { consumeTeamverCanvasLaunchHandoff } from './teamver/canvasLaunchHandoff';
+import {
+  canvasCreateSlidesSourceBrief,
+  driveCreateSlidesSourceBrief,
+  isExplicitCanvasSlideVisualTemplate,
+} from './teamver/canvasSlideLaunch';
+import { seedTemplateClonedDeck } from './teamver/seedTemplateClonedDeck';
+import {
+  buildTemplateCloneContentFillSeed,
+  queueTemplateCloneContentFill,
+  withoutCanonicalDeckAttachments,
+} from './teamver/templateCloneContentFill';
+import {
+  extractUserFacingCreateRequest,
+  isUsableDeckCoverTitle,
+  summarizeProjectNameFromUserTurn,
+} from './utils/projectName';
+import { briefLooksLikeAttachedSource } from './teamver/slideCreateBoilerplate';
 import { clearTeamverEmbedListCaches, clearTeamverEmbedProjectCaches } from './teamver/teamverEmbedListCaches';
 import { clearProjectCoverCache } from './teamver/projectCoverLoader';
 import { resetEmbedRunTrackingRefs, seedEmbedRunTrackingFromRuns, processEmbedBackgroundRunCompletions, buildEmbedKnownProjectIds, filterRunsForEmbedKnownProjects, pruneSessionActiveRunProjectIds, buildEmbedActiveRunAllowMissingIds, noticeStatusForBackgroundRun, markEmbedUserStoppedBackgroundProject, reconcileEmbedUserStoppedBackgroundProjects, filterBackgroundRunSummariesForUserStop } from './teamver/teamverEmbedRunTracking';
@@ -209,6 +230,11 @@ import {
   syncMediaProvidersToDaemon,
 } from './state/config';
 import { playSound, showCompletionNotification } from './utils/notifications';
+import { clearProjectRawFileMissing } from './utils/projectFileFetchCache';
+import {
+  stageReadableUploadedAttachments,
+  uploadedImagesReadableOnDisk,
+} from './utils/uploadedImagesReadable';
 import { applyAppearanceToDocument } from './state/appearance';
 import { isMacPlatform } from './utils/platform';
 import {
@@ -730,7 +756,7 @@ function AppInner() {
       latestPersistedConfigRef.current = locked;
       setConfig(locked);
     } catch (err) {
-      console.warn("[teamver] runtime-config reload failed", err);
+      devLog.warn("[teamver] runtime-config reload failed", err);
     }
   }, []);
 
@@ -741,7 +767,7 @@ function AppInner() {
       && embedActiveWorkspaceIdRef.current
       && request.workspaceId !== embedActiveWorkspaceIdRef.current
     ) {
-      console.info('[teamver] project list response ignored after workspace changed', {
+      devLog.info('[teamver] project list response ignored after workspace changed', {
         requestWorkspaceId: request.workspaceId,
         activeWorkspaceId: embedActiveWorkspaceIdRef.current,
       });
@@ -1062,6 +1088,7 @@ function AppInner() {
   // gate every tab including the ones that don't need agents at all.
   useEffect(() => {
     let cancelled = false;
+    let cancelSecondaryCatalogIdle: (() => void) | undefined;
     const agentStreamAbort = new AbortController();
     (async () => {
       const bootRouteKind = routeRef.current.kind;
@@ -1150,18 +1177,46 @@ function AppInner() {
       // gate `skillsLoading` together so the EntryView stops rendering
       // its loader once both registries respond — neither tab would have
       // a complete picture if we cleared the flag on the first reply.
-      let functionalReady = false;
+      // Slide-only embed: defer skills/design-systems to idle;
+      // `skillsLoading` waits on design-templates only. `/api/templates` is
+      // skipped in slide-only (design-templates + plugins cover the catalog).
+      const deferSecondaryCatalogs =
+        fetchEntryCatalogs && shouldDeferNonCriticalEntryCatalogsOnBoot();
+      const fetchProjectTemplates = shouldFetchProjectTemplatesCatalog();
+      let functionalReady = deferSecondaryCatalogs;
       let templatesReady = false;
       const maybeClearLoading = () => {
         if (functionalReady && templatesReady) setSkillsLoading(false);
       };
-      if (fetchEntryCatalogs) {
+      const loadSecondaryEntryCatalogs = () => {
+        if (cancelled) return;
         void fetchSkills().then((list) => {
           if (cancelled) return;
           setSkills(list);
           functionalReady = true;
           maybeClearLoading();
         });
+        void fetchDesignSystems().then((list) => {
+          if (cancelled) return;
+          setDesignSystems(list);
+          setDsLoading(false);
+        });
+        if (fetchProjectTemplates) {
+          void listTemplates().then((list) => {
+            if (cancelled) return;
+            setTemplates(list);
+          });
+        }
+      };
+      if (fetchEntryCatalogs) {
+        if (!deferSecondaryCatalogs) {
+          void fetchSkills().then((list) => {
+            if (cancelled) return;
+            setSkills(list);
+            functionalReady = true;
+            maybeClearLoading();
+          });
+        }
 
         void fetchDesignTemplatesForCurrentBranding().then((list) => {
           if (cancelled) return;
@@ -1170,11 +1225,22 @@ function AppInner() {
           maybeClearLoading();
         });
 
-        void fetchDesignSystems().then((list) => {
-          if (cancelled) return;
-          setDesignSystems(list);
-          setDsLoading(false);
-        });
+        if (deferSecondaryCatalogs) {
+          // dsLoading stays true until idle fetch lands (Settings DS tab).
+          cancelSecondaryCatalogIdle = scheduleWhenIdle(loadSecondaryEntryCatalogs);
+        } else {
+          void fetchDesignSystems().then((list) => {
+            if (cancelled) return;
+            setDesignSystems(list);
+            setDsLoading(false);
+          });
+          if (fetchProjectTemplates) {
+            void listTemplates().then((list) => {
+              if (cancelled) return;
+              setTemplates(list);
+            });
+          }
+        }
       } else {
         setSkills([]);
         setDesignTemplates([]);
@@ -1204,13 +1270,6 @@ function AppInner() {
         })();
       } else {
         setProjectsLoading(false);
-      }
-
-      if (fetchEntryCatalogs) {
-        void listTemplates().then((list) => {
-          if (cancelled) return;
-          setTemplates(list);
-        });
       }
 
       if (shouldFetchPromptTemplateCatalog()) {
@@ -1297,7 +1356,9 @@ function AppInner() {
             daemonProviders: daemonMediaProvidersLoaded,
           });
         }
-        void syncConfigToDaemon(lockedNext);
+        // Skip echo PUT when merge→lock did not change daemon-owned prefs
+        // (home boot was always doing GET /api/app-config + PUT /api/app-config).
+        void syncConfigToDaemon(lockedNext, { baselineDaemonPrefs: daemonConfig });
         // Embed: Composio UI is hidden; daemon PUT is loopback-only (403 on remote staging).
         if (!isTeamverEmbedMode()) {
           void syncComposioConfigToDaemon(lockedNext.composio);
@@ -1322,6 +1383,7 @@ function AppInner() {
     return () => {
       cancelled = true;
       agentStreamAbort.abort();
+      cancelSecondaryCatalogIdle?.();
     };
   }, [
     beginAgentStreamRequest,
@@ -1751,7 +1813,7 @@ function AppInner() {
       setBackgroundRunSummaries([]);
       const current = routeRef.current;
       if (current.kind !== 'project') return;
-      console.info('[teamver] home-nav: design app disabled mid-session', {
+      devLog.info('[teamver] home-nav: design app disabled mid-session', {
         projectId: current.projectId,
         reason: detail.appDisabledReason ?? null,
       });
@@ -1809,7 +1871,7 @@ function AppInner() {
           try {
             await syncAllDaemonProjectsToRegistry();
           } catch (err) {
-            console.warn("[teamver] registry sync on workspace switch failed", err);
+            devLog.warn("[teamver] registry sync on workspace switch failed", err);
           }
           void reloadTeamverRuntimeConfig({ force: true });
           const request = beginProjectListRequest();
@@ -1845,13 +1907,13 @@ function AppInner() {
                 await assertTeamverProjectAccessIfNeeded(currentProjectId)
               : false;
             if (allowed) {
-              console.info('[teamver] workspace switch — project missing from list but access confirmed', {
+              devLog.info('[teamver] workspace switch — project missing from list but access confirmed', {
                 projectId: currentProjectId,
                 workspaceId: trimmed,
               });
               return;
             }
-            console.info('[teamver] home-nav: workspace switch — project not in new list', {
+            devLog.info('[teamver] home-nav: workspace switch — project not in new list', {
               projectId: currentProjectId,
               workspaceId: trimmed,
             });
@@ -1945,6 +2007,11 @@ function AppInner() {
       // Stale authenticated=true + sticky decline must not force reload
       // /runtime-config or project lists (401 → refresh → probe×2).
       if (isDesignAuthRefreshDeclined() || isTeamverRuntimeConfigAuthBlocked()) {
+        return;
+      }
+      // Boot owns the first nginx ladder + runtime-config. session-changed
+      // during incomplete boot raced probe×2 + refresh HA (staging 401 storm).
+      if (!isTeamverEmbedBootComplete()) {
         return;
       }
       void (async () => {
@@ -2267,13 +2334,30 @@ function AppInner() {
           return false;
         }
       }
-      const resolvedDesignSystemId = isTeamverEmbedMode()
-        ? resolveEmbedSlideDesignSystemId({
-            explicitId: input.designSystemId,
-            workspaceDefaultId: config.designSystemId,
-            designSystems,
-          })
-        : input.designSystemId;
+      // Canvas → Slide / Home wizard / gallery Use pin the visual template via
+      // metadata (preferred) or pluginInputs (Home wizard binding patch).
+      // Honor a null/empty designSystemId there — re-resolving to Neutral
+      // Modern | Starter re-injected DESIGN.md into BYOK compose and overrode
+      // Daisy Days / Zhangzara kits.
+      const selectedDeckTemplateIdFromMeta =
+        typeof input.metadata?.selectedDeckTemplateId === 'string'
+          ? input.metadata.selectedDeckTemplateId.trim()
+          : '';
+      const selectedDeckTemplateIdFromInputs =
+        typeof input.pluginInputs?.selectedDeckTemplateId === 'string'
+          ? input.pluginInputs.selectedDeckTemplateId.trim()
+          : '';
+      const selectedDeckTemplateId =
+        selectedDeckTemplateIdFromMeta || selectedDeckTemplateIdFromInputs;
+      const resolvedDesignSystemId = !isTeamverEmbedMode()
+        ? input.designSystemId
+        : selectedDeckTemplateId
+          ? (input.designSystemId?.trim() || null)
+          : resolveEmbedSlideDesignSystemId({
+              explicitId: input.designSystemId,
+              workspaceDefaultId: config.designSystemId,
+              designSystems,
+            });
       let result;
       try {
         result = await createProject({
@@ -2342,7 +2426,10 @@ function AppInner() {
               Boolean(asset && typeof asset === 'object' && typeof asset.assetId === 'string'),
           )
         : [];
-      const pendingCanvasHandoff =
+      // Keep display fields (title/headings/preview) for clone source-brief —
+      // stripping them to import-only ids dropped Canvas headings and broke
+      // typecheck for canvasCreateSlidesSourceBrief.
+      const pendingCanvasHandoff: TeamverCanvasLaunchHandoff | null =
         input.pendingCanvasHandoff &&
         typeof input.pendingCanvasHandoff.sessionId === 'string' &&
         typeof input.pendingCanvasHandoff.artifactId === 'string' &&
@@ -2355,7 +2442,29 @@ function AppInner() {
                 ? { revision: input.pendingCanvasHandoff.revision.trim() }
                 : {}),
               ...(input.pendingCanvasHandoff.title?.trim()
-                ? { filename: `${input.pendingCanvasHandoff.title.trim()}.html` }
+                ? { title: input.pendingCanvasHandoff.title.trim() }
+                : {}),
+              ...(input.pendingCanvasHandoff.preview?.trim()
+                ? { preview: input.pendingCanvasHandoff.preview.trim() }
+                : {}),
+              ...(input.pendingCanvasHandoff.threadTitle?.trim()
+                ? { threadTitle: input.pendingCanvasHandoff.threadTitle.trim() }
+                : {}),
+              ...(typeof input.pendingCanvasHandoff.sectionCount === 'number'
+                && Number.isFinite(input.pendingCanvasHandoff.sectionCount)
+                && input.pendingCanvasHandoff.sectionCount > 0
+                ? { sectionCount: Math.floor(input.pendingCanvasHandoff.sectionCount) }
+                : {}),
+              ...(Array.isArray(input.pendingCanvasHandoff.headings)
+                ? {
+                    headings: input.pendingCanvasHandoff.headings
+                      .filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+                      .map((item) => item.trim())
+                      .slice(0, 12),
+                  }
+                : {}),
+              ...(input.pendingCanvasHandoff.updatedAt?.trim()
+                ? { updatedAt: input.pendingCanvasHandoff.updatedAt.trim() }
                 : {}),
             }
           : null;
@@ -2388,7 +2497,11 @@ function AppInner() {
           // handoff as failed so the upload + auto-send branches below are
           // skipped, then surface a create-time error so the user can
           // re-pick the working directory from inside the project.
-          console.warn('Failed to set working directory for new project', userWorkingDir, err);
+          devLog.warn('Failed to set working directory for new project', {
+            hasWorkingDir: Boolean(userWorkingDir?.trim()),
+            workingDirLen: userWorkingDir?.trim().length ?? 0,
+            error: err instanceof Error ? err.message : String(err),
+          });
           workingDirHandoffFailed = true;
           setWorkingDirError(
             `Couldn't apply the chosen folder "${userWorkingDir}". The project was created in the default location — re-pick the working directory from the project before uploading files or sending a message.`,
@@ -2396,6 +2509,13 @@ function AppInner() {
         }
       }
       let firstMessageAttachments: ChatAttachment[] = [];
+      let homeDriveImportSucceeded = false;
+      const homeDriveSourceAsset = pendingDriveAssets[0] ?? null;
+      const slideCountHintFromInputs = ((): string | number | null => {
+        const raw = input.pluginInputs?.slideCount;
+        if (typeof raw === 'string' || typeof raw === 'number') return raw;
+        return null;
+      })();
       if (!workingDirHandoffFailed && pendingFiles.length > 0) {
         // Home composer attaches stay client-side until submit lands a
         // project; the actual upload happens here. v2 doc wants one
@@ -2404,10 +2524,30 @@ function AppInner() {
         // file_manager Upload button and the chat_panel composer.
         const cohort = deriveUploadCohort(pendingFiles);
         const uploadResult = await uploadProjectFiles(result.project.id, pendingFiles);
-        firstMessageAttachments = uploadResult.uploaded;
+        for (const item of uploadResult.uploaded) {
+          clearProjectRawFileMissing(result.project.id, item.path);
+        }
+        const readyLocal = await uploadedImagesReadableOnDisk(
+          result.project.id,
+          uploadResult.uploaded,
+        );
+        const stagedLocal = stageReadableUploadedAttachments(
+          uploadResult.uploaded,
+          readyLocal,
+        );
+        firstMessageAttachments = stagedLocal.staged;
+        if (stagedLocal.coldImageCount > 0) {
+          setWorkingDirError(
+            `이미지 ${stagedLocal.coldImageCount}개가 아직 준비 중입니다. 잠시 후 전송해 주세요.`,
+          );
+        }
         const partial = uploadResult.failed.length > 0;
         if (partial) {
-          console.warn('Some Home attachments failed to upload', uploadResult.failed);
+          devLog.warn('Some Home attachments failed to upload', {
+            failedCount: uploadResult.failed.length,
+            uploadedCount: uploadResult.uploaded.length,
+            error: uploadResult.error,
+          });
           if (isTeamverEmbedMode() && uploadResult.error) {
             setWorkingDirError(
               resolveProjectUploadBatchErrorMessage({
@@ -2433,16 +2573,41 @@ function AppInner() {
       if (!workingDirHandoffFailed && pendingDriveAssets.length > 0) {
         try {
           const driveResult = await importTeamverDriveAssets(result.project.id, pendingDriveAssets);
+          for (const item of driveResult.imported) {
+            clearProjectRawFileMissing(result.project.id, item.path);
+          }
+          homeDriveImportSucceeded = driveResult.imported.length > 0;
           const driveAttachments = driveImportedToChatAttachments(driveResult.imported);
-          firstMessageAttachments = [...firstMessageAttachments, ...driveAttachments];
+          const readyDrive = await uploadedImagesReadableOnDisk(
+            result.project.id,
+            driveAttachments,
+          );
+          const stagedDrive = stageReadableUploadedAttachments(
+            driveAttachments,
+            readyDrive,
+          );
+          firstMessageAttachments = [
+            ...firstMessageAttachments,
+            ...stagedDrive.staged,
+          ];
+          if (stagedDrive.coldImageCount > 0) {
+            setWorkingDirError(
+              `Drive 이미지 ${stagedDrive.coldImageCount}개가 아직 준비 중입니다. 잠시 후 전송해 주세요.`,
+            );
+          }
           if (driveResult.partial) {
-            console.warn('Some Home Drive attachments failed to import', driveResult.failed);
+            devLog.warn('Some Home Drive attachments failed to import', {
+              failedCount: driveResult.failed.length,
+              importedCount: driveResult.imported.length,
+              errorCodes: [...new Set(driveResult.failed.map((item) => item.errorCode))],
+            });
             setWorkingDirError(
               `일부 Drive 파일을 가져오지 못했습니다 (${driveResult.failed.length}개). 프로젝트는 생성되었습니다.`,
             );
           }
         } catch (err) {
-          console.warn('Home Drive import failed for new project', err);
+          homeDriveImportSucceeded = false;
+          devLog.warn('Home Drive import failed for new project', err);
           if (isMainSsoUserMismatchError(err)) {
             void beginMainSsoMismatchRecovery();
             setWorkingDirError(null);
@@ -2452,11 +2617,103 @@ function AppInner() {
         }
       }
       let canvasImportFailed = false;
+      let seededDeckFileName: string | null = null;
+      let preservedFilledDeck = false;
+      let queuedFillSeed: string | null = null;
       if (!workingDirHandoffFailed && pendingCanvasHandoff) {
         try {
-          const canvasResult = await importTeamverCanvas(result.project.id, pendingCanvasHandoff);
+          const canvasResult = await importTeamverCanvas(result.project.id, {
+            sessionId: pendingCanvasHandoff.sessionId,
+            artifactId: pendingCanvasHandoff.artifactId,
+            ...(pendingCanvasHandoff.revision
+              ? { revision: pendingCanvasHandoff.revision }
+              : {}),
+            ...(pendingCanvasHandoff.title?.trim()
+              ? { filename: `${pendingCanvasHandoff.title.trim()}.html` }
+              : {}),
+          });
+          for (const item of canvasResult.imported) {
+            clearProjectRawFileMissing(result.project.id, item.path);
+          }
           const canvasAttachments = canvasImportedToChatAttachments(canvasResult.imported);
-          firstMessageAttachments = [...firstMessageAttachments, ...canvasAttachments];
+          const readyCanvas = await uploadedImagesReadableOnDisk(
+            result.project.id,
+            canvasAttachments,
+          );
+          const stagedCanvas = stageReadableUploadedAttachments(
+            canvasAttachments,
+            readyCanvas,
+          );
+          firstMessageAttachments = [
+            ...firstMessageAttachments,
+            ...stagedCanvas.staged,
+          ];
+          if (stagedCanvas.coldImageCount > 0) {
+            setWorkingDirError(
+              `Canvas 이미지 ${stagedCanvas.coldImageCount}개가 아직 준비 중입니다. 잠시 후 전송해 주세요.`,
+            );
+          }
+          // Explicit visual template only (not default scenario id): daemon
+          // Clones example.html + content-swap as an initial preview seed.
+          // The actual user request must still auto-send so the AI reads the
+          // attachment/source and generates real content from the prompt.
+          if (
+            slideOnlyMvp
+            && isExplicitCanvasSlideVisualTemplate({ id: selectedDeckTemplateId })
+          ) {
+            const sourceBrief = canvasCreateSlidesSourceBrief(pendingCanvasHandoff);
+            const templateTitle =
+              typeof input.metadata?.selectedDeckTemplateTitle === 'string'
+                ? input.metadata.selectedDeckTemplateTitle.trim()
+                : '';
+            const userFacingRequest = extractUserFacingCreateRequest(derivedPendingPrompt);
+            const seeded = await seedTemplateClonedDeck({
+              projectId: result.project.id,
+              pluginId: selectedDeckTemplateId,
+              templateTitle: templateTitle || selectedDeckTemplateId,
+              sourceBrief,
+              userInstruction: userFacingRequest || null,
+              deckTitle:
+                sanitizeTemplateCloneDeckTitle(pendingCanvasHandoff.title)
+                || sanitizeTemplateCloneDeckTitle(pendingCanvasHandoff.threadTitle)
+                || (isUsableDeckCoverTitle(result.project.name)
+                  ? sanitizeTemplateCloneDeckTitle(result.project.name)
+                  : null)
+                || sanitizeTemplateCloneDeckTitle(
+                  summarizeProjectNameFromUserTurn(derivedPendingPrompt ?? ''),
+                )
+                || sanitizeTemplateCloneDeckTitle(userFacingRequest.split('\n')[0])
+                || null,
+              slideCountHint: slideCountHintFromInputs,
+            });
+            queuedFillSeed = buildTemplateCloneContentFillSeed({
+              userInstruction: userFacingRequest || null,
+              sourceBrief,
+              pendingPrompt: derivedPendingPrompt ?? null,
+              templateTitle: templateTitle || selectedDeckTemplateId,
+              hasSourceMaterial: true,
+              slideCountHint: slideCountHintFromInputs,
+            });
+            queueTemplateCloneContentFill({
+              projectId: result.project.id,
+              seed: queuedFillSeed,
+              attachments: firstMessageAttachments,
+            });
+            if (seeded.ok) {
+              seededDeckFileName = seeded.fileName;
+              preservedFilledDeck = seeded.preservedFilled === true;
+            } else {
+              // Clone LOOK seed failed — still run kit-driven CREATE fill so
+              // the first turn is not a Neutral/instruction dump.
+              devLog.warn(
+                'Home Canvas template clone seed failed; continuing with selected-template AI fill',
+                seeded,
+              );
+              setWorkingDirError(
+                '템플릿 미리보기 준비에 실패했습니다. 선택한 템플릿 컨텍스트로 슬라이드 생성을 계속합니다.',
+              );
+            }
+          }
           // Drop URL handoff once import succeeded so ProjectView does not
           // re-open one-confirm while auto-send is queued.
           consumeTeamverCanvasLaunchHandoff();
@@ -2468,7 +2725,7 @@ function AppInner() {
             return false;
           }
           canvasImportFailed = true;
-          console.warn('Home Canvas import-canvas failed for new project', err);
+          devLog.warn('Home Canvas import-canvas failed for new project', err);
           trackProjectCreateResult(
             analytics.track,
             {
@@ -2499,6 +2756,83 @@ function AppInner() {
           throw err instanceof Error ? err : new Error(String(err));
         }
       }
+      // Home wizard / gallery / community card (no Canvas handoff): still Clone
+      // the selected visual template so look matches preview instead of Neutral.
+      // Drive import failure must NOT skip Clone — otherwise Daisy is never
+      // applied and the user only sees an empty project (auto-send also blocked).
+      if (
+        !workingDirHandoffFailed
+        && !canvasImportFailed
+        && !pendingCanvasHandoff
+        && slideOnlyMvp
+        && isExplicitCanvasSlideVisualTemplate({ id: selectedDeckTemplateId })
+      ) {
+        const templateTitle =
+          typeof input.metadata?.selectedDeckTemplateTitle === 'string'
+            ? input.metadata.selectedDeckTemplateTitle.trim()
+            : '';
+        const userFacingRequest = extractUserFacingCreateRequest(derivedPendingPrompt);
+        const pluginSourceBrief =
+          typeof input.pluginInputs?.sourceBrief === 'string'
+            ? input.pluginInputs.sourceBrief.trim()
+            : '';
+        const sourceBrief =
+          homeDriveImportSucceeded && homeDriveSourceAsset
+            ? driveCreateSlidesSourceBrief(homeDriveSourceAsset)
+            : (pluginSourceBrief
+              || (userFacingRequest ? `User instruction:\n${userFacingRequest}` : null));
+        const hasSourceMaterial =
+          Boolean(homeDriveImportSucceeded && homeDriveSourceAsset)
+          || firstMessageAttachments.length > 0
+          || briefLooksLikeAttachedSource(sourceBrief);
+        // Prefer project name / user topic / Drive filename — never the plugin
+        // marketing title ("Html Ppt Zhangzara Daisy Days"), which used to land
+        // on the cover when free-form briefs had no numbered outline.
+        const clonedDeckCoverTitle =
+          (isUsableDeckCoverTitle(result.project.name)
+            ? sanitizeTemplateCloneDeckTitle(result.project.name)
+            : null)
+          || sanitizeTemplateCloneDeckTitle(
+            summarizeProjectNameFromUserTurn(derivedPendingPrompt ?? ''),
+          )
+          || sanitizeTemplateCloneDeckTitle(userFacingRequest.split('\n')[0])
+          || sanitizeTemplateCloneDeckTitle(homeDriveSourceAsset?.filename)
+          || null;
+        const seeded = await seedTemplateClonedDeck({
+          projectId: result.project.id,
+          pluginId: selectedDeckTemplateId,
+          templateTitle: templateTitle || selectedDeckTemplateId,
+          sourceBrief,
+          userInstruction: userFacingRequest || null,
+          deckTitle: clonedDeckCoverTitle,
+          slideCountHint: slideCountHintFromInputs,
+        });
+        queuedFillSeed = buildTemplateCloneContentFillSeed({
+          userInstruction: userFacingRequest || null,
+          sourceBrief,
+          pendingPrompt: derivedPendingPrompt ?? null,
+          templateTitle: templateTitle || selectedDeckTemplateId,
+          hasSourceMaterial,
+          slideCountHint: slideCountHintFromInputs,
+        });
+        queueTemplateCloneContentFill({
+          projectId: result.project.id,
+          seed: queuedFillSeed,
+          attachments: firstMessageAttachments,
+        });
+        if (seeded.ok) {
+          seededDeckFileName = seeded.fileName;
+          preservedFilledDeck = seeded.preservedFilled === true;
+        } else {
+          devLog.warn(
+            'Home template clone seed failed; continuing with selected-template AI fill',
+            seeded,
+          );
+          setWorkingDirError(
+            '템플릿 미리보기 준비에 실패했습니다. 선택한 템플릿 컨텍스트로 슬라이드 생성을 계속합니다.',
+          );
+        }
+      }
       trackProjectCreateResult(
         analytics.track,
         {
@@ -2519,9 +2853,14 @@ function AppInner() {
       // sendMessage(pendingPrompt) once on mount instead of just
       // pre-filling the composer. Scoped to sessionStorage so a page
       // reload after the run has started does not refire.
+      // Drive create-slides with a failed import must not auto-send a model
+      // structure turn (no source attach → Neutral look risk).
+      const suppressAutoSendForFailedDriveImport =
+        pendingDriveAssets.length > 0 && !homeDriveImportSucceeded;
       if (
         !workingDirHandoffFailed &&
         !canvasImportFailed &&
+        !suppressAutoSendForFailedDriveImport &&
         input.autoSendFirstMessage &&
         (derivedPendingPrompt !== undefined || firstMessageAttachments.length > 0)
       ) {
@@ -2531,9 +2870,12 @@ function AppInner() {
             '1',
           );
           if (firstMessageAttachments.length > 0) {
+            const autoSendAttachments = queuedFillSeed
+              ? withoutCanonicalDeckAttachments(firstMessageAttachments)
+              : firstMessageAttachments;
             window.sessionStorage.setItem(
               `od:auto-send-attachments:${result.project.id}`,
-              JSON.stringify(firstMessageAttachments),
+              JSON.stringify(autoSendAttachments),
             );
           } else {
             window.sessionStorage.removeItem(
@@ -2551,17 +2893,36 @@ function AppInner() {
             appliedPluginSnapshotId: result.appliedPluginSnapshotId,
           }
         : result.project;
-      rememberLocalProject(project.id);
+      const projectForNav = queuedFillSeed
+        ? {
+            ...project,
+            // Replace the create-time pendingPrompt (full canvas run dump)
+            // with the fill seed so ProjectView auto-send cannot prefer the
+            // stale "만들어줘" instruction over the queued fill contract.
+            pendingPrompt: queuedFillSeed,
+            metadata: {
+              ...(project.metadata && typeof project.metadata === 'object'
+                ? project.metadata
+                : {}),
+              templateClonedDeckSeeded: Boolean(seededDeckFileName) && !preservedFilledDeck,
+              templateCloneContentFillPending: true,
+              ...(selectedDeckTemplateId
+                ? { selectedDeckTemplateId }
+                : {}),
+            },
+          }
+        : project;
+      rememberLocalProject(projectForNav.id);
       flushSync(() => {
         setProjects((curr) => [
-          project,
-          ...curr.filter((p) => p.id !== project.id),
+          projectForNav,
+          ...curr.filter((p) => p.id !== projectForNav.id),
         ]);
       });
       const projectRoute = {
         kind: 'project',
-        projectId: project.id,
-        fileName: null,
+        projectId: projectForNav.id,
+        fileName: seededDeckFileName,
       } as const;
       if (!hideWorkspaceTabsBar) {
         openWorkspaceTab(projectRoute);
@@ -2569,7 +2930,7 @@ function AppInner() {
       navigate(projectRoute);
       return true;
     },
-    [analytics.track, config.designSystemId, designSystems, hideWorkspaceTabsBar, rememberLocalProject],
+    [analytics.track, config.designSystemId, designSystems, hideWorkspaceTabsBar, rememberLocalProject, slideOnlyMvp],
   );
 
   const handleCreatePluginShareProject = useCallback(
@@ -2657,7 +3018,7 @@ function AppInner() {
         await registerTeamverProjectIfNeeded(project);
       } catch (err) {
         if (err instanceof TeamverProjectRegistryError) {
-          console.info('[teamver] home-nav: project registry error on import', {
+          devLog.info('[teamver] home-nav: project registry error on import', {
             projectId: result.projectId,
             code: err.code,
           });
@@ -2767,7 +3128,7 @@ function AppInner() {
         allowed = await assertTeamverProjectAccessIfNeeded(activeProjectRouteId);
       }
       if (cancelled || allowed) return;
-      console.info('[teamver] home-nav: project access denied on route mount', {
+      devLog.info('[teamver] home-nav: project access denied on route mount', {
         projectId: activeProjectRouteId,
       });
       if (isTeamverEmbedMode()) {
@@ -2866,11 +3227,11 @@ function AppInner() {
               } catch (err) {
                 streamPollFailed = true;
                 const log = err instanceof ActiveByokProxyAuthTransientError
-                  ? console.debug
-                  : console.warn;
+                  ? devLog.debug
+                  : devLog.warn;
                 log("[teamver] byok background stream poll failed", {
                   projectId,
-                  error: err,
+                  error: err instanceof Error ? err.message : String(err),
                 });
               }
             }),
@@ -2967,7 +3328,7 @@ function AppInner() {
           }
         }
         if (!inSameProject && !locallyDeletedProjectIdsRef.current.has(completedRun.projectId)) {
-          const resolvedProjectName = completedProject?.name ?? 'teamver Design';
+          const resolvedProjectName = completedProject?.name ?? 'teamver Slide';
           const status = noticeStatusForBackgroundRun(completedRun);
           const reopenExtras = navigateExtrasForBackgroundRun(completedRun, completedProject);
           setBackgroundRunNotice({
@@ -3097,7 +3458,7 @@ function AppInner() {
       runsPollInFlight = true;
       void refresh()
         .catch((err) => {
-          console.warn("[teamver] runs poll failed", err);
+          devLog.warn("[teamver] runs poll failed", err);
         })
         .finally(() => {
           runsPollInFlight = false;
@@ -3125,11 +3486,10 @@ function AppInner() {
       }
     };
 
-    if (isTeamverEmbedMode() && routeRef.current.kind === 'project') {
-      scheduleNextRunsPoll();
-    } else {
-      runRunsPoll();
-    }
+    // Always poll once immediately (L-492). Delaying the first tick on
+    // project deep-link / cold mount left Stop/task banner idle for up to
+    // RUNS_POLL_IDLE_MS (30s). Subsequent cadence still uses nextRunsPollDelay.
+    runRunsPoll();
     window.addEventListener(RUNS_CHANGED_EVENT, handleRunsChanged);
     document.addEventListener('visibilitychange', handleRunsVisibilityChange);
     return () => {
@@ -3218,7 +3578,7 @@ function AppInner() {
     try {
       await registerTeamverProjectIfNeeded(updated, { reactivateIfDeleted: false });
     } catch (err) {
-      console.warn('[teamver] registry sync after project rename failed', err);
+      devLog.warn('[teamver] registry sync after project rename failed', err);
     }
   }, []);
 
@@ -3234,6 +3594,10 @@ function AppInner() {
         p.id === projectId ? { ...p, pendingPrompt: undefined } : p,
       ),
     );
+    // pendingPrompt is a one-shot composer seed, not content. Daemon
+    // resolveProjectPatchUpdatedAt preserves updatedAt for pendingPrompt-only
+    // patches — do not send a client updatedAt (stale list ref can roll back
+    // a newer daemon timestamp from another tab / message PUT).
     void patchProject(projectId, { pendingPrompt: null });
   }, [route]);
 
@@ -3374,7 +3738,7 @@ function AppInner() {
       try {
         await ensureTeamverProjectRegisteredById(route.projectId);
       } catch (err) {
-        console.warn('[teamver] home-nav: deep-linked project registry preflight failed', {
+        devLog.warn('[teamver] home-nav: deep-linked project registry preflight failed', {
           projectId: route.projectId,
           error: err,
         });
@@ -3397,7 +3761,7 @@ function AppInner() {
           try {
             allowed = await assertTeamverProjectAccessIfNeeded(route.projectId);
           } catch (err) {
-            console.warn('[teamver] home-nav: deep-linked project access check failed', {
+            devLog.warn('[teamver] home-nav: deep-linked project access check failed', {
               projectId: route.projectId,
               error: err,
             });
@@ -3428,7 +3792,7 @@ function AppInner() {
       const detailRoute = readEmbedProjectDetailRoute(route);
       if (detailRoute) {
         if (!pendingLocalProjectIdsRef.current.has(detailRoute.projectId)) {
-          console.info('[teamver] home-nav: deep-linked project not found (detail route)', {
+          devLog.info('[teamver] home-nav: deep-linked project not found (detail route)', {
             projectId: detailRoute.projectId,
           });
           if (isTeamverEmbedMode()) {
@@ -3458,7 +3822,7 @@ function AppInner() {
       const knownLocalProject =
         staleRequest && pendingLocalProjectIdsRef.current.has(route.projectId);
       if (!fetchedProject && !knownLocalProject) {
-        console.info('[teamver] home-nav: deep-linked project missing after list refresh', {
+        devLog.info('[teamver] home-nav: deep-linked project missing after list refresh', {
           projectId: route.projectId,
         });
         if (isTeamverEmbedMode()) {
@@ -3468,7 +3832,7 @@ function AppInner() {
       }
     })().catch((err) => {
       if (cancelled) return;
-      console.warn('[teamver] home-nav: deep-linked project hydration failed', {
+      devLog.warn('[teamver] home-nav: deep-linked project hydration failed', {
         projectId: route.projectId,
         error: err,
       });

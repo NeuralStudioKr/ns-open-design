@@ -1,5 +1,5 @@
-import { build } from 'esbuild';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -7,6 +7,63 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const entry = join(root, 'src/runtime/snapshot-dom-entry.ts');
 const publicOut = join(root, 'public/od-snapshot-capture.js');
 const inlineOut = join(root, 'src/runtime/snapshot-capture-inline.ts');
+
+/**
+ * Resolve roots for sparse agent/CI installs where apps/web/node_modules may
+ * lack a direct link while the workspace still has the package elsewhere.
+ */
+function workspaceResolveRoots() {
+  return [
+    join(root, 'package.json'),
+    join(root, '../../package.json'),
+    join(root, '../../packages/contracts/package.json'),
+  ];
+}
+
+function createWorkspaceRequires() {
+  return workspaceResolveRoots().map((pkgJson) => createRequire(pkgJson));
+}
+
+function formatResolveFailure(name, detail) {
+  const tried = workspaceResolveRoots().map((p) => `  - ${p}`).join('\n');
+  return (
+    `${name} not found for build:snapshot-capture${detail ? ` (${detail})` : ''}.\n`
+    + `Tried createRequire from:\n${tried}\n`
+    + 'Run pnpm install so apps/web (and contracts for esbuild) declare the dependency.'
+  );
+}
+
+function loadEsbuild() {
+  for (const require of createWorkspaceRequires()) {
+    try {
+      return require('esbuild');
+    } catch {
+      // try next root
+    }
+  }
+  throw new Error(formatResolveFailure('esbuild'));
+}
+
+/**
+ * Prefer modern-screenshot ESM (`dist/index.mjs`).
+ * `require.resolve('modern-screenshot')` follows exports.require → `.cjs`,
+ * which inflates the browser IIFE with CJS interop wrappers (417 side effect).
+ */
+function resolveModernScreenshotEsm() {
+  for (const require of createWorkspaceRequires()) {
+    try {
+      const pkgJson = require.resolve('modern-screenshot/package.json');
+      const esm = join(dirname(pkgJson), 'dist', 'index.mjs');
+      if (existsSync(esm)) return esm;
+    } catch {
+      // try next root
+    }
+  }
+  throw new Error(formatResolveFailure('modern-screenshot', 'dist/index.mjs'));
+}
+
+const { build } = loadEsbuild();
+const modernScreenshotEntry = resolveModernScreenshotEsm();
 
 await build({
   entryPoints: [entry],
@@ -18,6 +75,11 @@ await build({
   target: ['es2020'],
   minify: true,
   legalComments: 'none',
+  // Sparse installs may lack apps/web/node_modules/modern-screenshot — pin the
+  // resolved ESM absolute entry so esbuild does not depend on that symlink.
+  alias: {
+    'modern-screenshot': modernScreenshotEntry,
+  },
 });
 
 const bundle = readFileSync(publicOut, 'utf8').replace(/<\/script/gi, '<\\/script');

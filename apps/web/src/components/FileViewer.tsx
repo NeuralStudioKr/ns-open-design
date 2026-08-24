@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent as ReactDragEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
+import { devLog } from '../lib/devLog';
 import { createPortal, flushSync } from 'react-dom';
 import { Button, Input, Select } from '@open-design/components';
 import { APP_CHROME_FILE_ACTIONS_ID, APP_CHROME_FILE_ACTIONS_SELECTOR } from './AppChromeHeader';
 import {
   buildSocialSharePayload,
+  htmlHasDeckSlideHost,
+  htmlLooksLikeNavigableDeckPreview,
   OPEN_DESIGN_GITHUB_REPO_URL,
   isArtifactHtmlStableForPreview,
-  repairArtifactDocumentHead,
   type SocialShareRequest,
   type SocialShareResponse,
 } from '@open-design/contracts';
@@ -36,20 +38,32 @@ import { useTeamverT } from '../teamver/branding/useTeamverT';
 import { TeamverExportMenu, type ShareExportFormat } from '../teamver/components/TeamverExportMenu';
 import { TeamverPublishDriveModal } from '../teamver/components/TeamverPublishDriveModal';
 import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
-import { isTeamverEmbedMode, resolveTeamverDriveAssetUrl, resolveTeamverMainOrigin } from '../teamver/designApiBase';
+import {
+  isTeamverEmbedMode,
+  resolveTeamverDriveAssetUrl,
+  resolveTeamverMainOrigin,
+  shouldUseTeamverAuthenticatedProjectRawFetch,
+} from '../teamver/designApiBase';
 import { isTeamverPptxExportEnabled } from '../teamver/pptxExportEnable';
+import { isTeamverSourceHtmlCopyEnabled } from '../teamver/sourceHtmlCopyEnable';
+import {
+  deckHtmlNeedsOfficialLookPreviewHeal,
+  healOfficialLookForDeckPreview,
+} from '../teamver/deckPreviewOfficialLookHeal';
 import { beginTeamverEmbedActiveWork, endTeamverEmbedActiveWork } from '../teamver/teamverEmbedActiveWork';
 import { fetchTeamverDaemon } from '../teamver/teamverDaemonHeaders';
 import { TEAMVER_EMBED_PASSIVE_AUTH_RECOVERED_EVENT } from '../teamver/teamverEmbedPassiveAuth';
 import { subscribeTeamverEmbedSessionChanged } from '../teamver/teamverEmbedSession';
 import {
   invalidateTeamverProjectPreviewPrefix,
+  peekTeamverProjectPreviewPrefix,
   projectScopedPreviewUrl,
   resolveTeamverProjectPreviewPrefix,
 } from '../teamver/teamverProjectPreviewScope';
 import { TEAMVER_DRIVE_ASSET_LINK_LABEL } from '../teamver/teamverDriveDeepLink';
 import { embedUiLabel } from '../teamver/embedUiLabels';
 import { formatTeamverDesignErrorMessage } from '../teamver/publishToDrive';
+import { clearProjectCoverCache } from '../teamver/projectCoverLoader';
 import {
   formatTeamverEmbedOperationFailureMessage,
   notifyTeamverEmbedAuthFailureIfNeeded,
@@ -126,7 +140,12 @@ import {
 } from '../runtime/exports';
 import { copyToClipboard } from '../lib/copy-to-clipboard';
 import { isMacPlatform } from '../utils/platform';
-import { projectFileResolvedPath } from '../utils/projectFilePaths';
+import {
+  isEphemeralDrawingScreenshotPath,
+  isRenderableImagePath,
+  projectFileResolvedPath,
+} from '../utils/projectFilePaths';
+import { rewriteAttachmentImageSrcs } from '../utils/rewriteAttachmentImageSrcs';
 import { buildReactComponentSrcdoc } from '../runtime/react-component';
 import { shouldConsumeSlideNav } from '../runtime/slide-nav';
 import { findHtmlEntriesReferencing } from '../runtime/jsx-module-refs';
@@ -138,7 +157,13 @@ import {
   PREVIEW_REDIRECT_LOOP_MESSAGE,
 } from '../runtime/srcdoc';
 import {
+  PREVIEW_ESCAPE_MESSAGE,
+  resolveFileViewerPreviewEscapeAction,
+} from '../teamver/fileViewerPreviewEscape';
+import { repairArtifactDocumentHeadIfNeeded } from '../runtime/artifact-document-head';
+import {
   clearActiveRevisionSequence,
+  getActiveRevisionSequence,
   setActiveRevisionSequence,
 } from '../runtime/revision-active-sequence';
 import {
@@ -151,9 +176,11 @@ import {
   canRedoRevisionStack,
   canUndoRevisionStack,
   createRevisionStackSnapshot,
+  resolveRevisionCursorId,
   revisionAfterCursor,
   revisionBeforeCursor,
   stackWithCursor,
+  stackWithPushedRevision,
   truncateAfterSequenceForStack,
   type RevisionStackSnapshot,
 } from '../runtime/revision-stack';
@@ -162,7 +189,13 @@ import {
   findRevisionMatchingDiskContent,
   revisionCursorMatchesDisk,
 } from '../runtime/revision-conflict';
+import { revisionSnapshotContentMatches } from '../runtime/revision-content-match';
 import {
+  classifyRevisionDiskReconcile,
+  shouldApplyHeadRevisionSnapshotAuthority,
+} from '../runtime/revision-reconcile';
+import {
+  clearRevisionContentCacheEntry,
   clearRevisionContentCacheForFile,
   getRevisionContentCache,
   prefetchRevisionContents,
@@ -171,7 +204,9 @@ import {
 } from '../runtime/revision-content-cache';
 import { canResizeTarget } from '../edit-mode/resize-eligibility';
 import { cacheParentRevisionOnPush, canApplyRevisionFromClientCache } from '../runtime/revision-restore';
+import { syncRevisionWithRetry } from '../runtime/revision-disk-sync';
 import {
+  nudgeDeckPreviewFit,
   postDeckHostViewportToIframe,
   postDeckPreviewPanBy,
   resetDeckPreviewPan,
@@ -189,7 +224,10 @@ import {
   htmlNeedsRedirectGuard,
   htmlNeedsSandboxShim,
   parseForceInline,
+  isEmbedPreviewAwaitingScopedPrefix,
   resolveHtmlPreviewAssetUrl,
+  resolveHtmlPreviewSrcDocBaseHref,
+  resolveSrcDocPreviewMountKey,
   shouldUrlLoadHtmlPreview,
 } from './file-viewer-render-mode';
 import { saveTemplate } from '../state/projects';
@@ -202,10 +240,17 @@ import type {
   ProjectFile,
 } from '../types';
 import { AuthenticatedProjectFileImage } from './AuthenticatedProjectFileImage';
+import { loadAuthenticatedProjectFileBlob } from '../hooks/useAuthenticatedProjectFileObjectUrl';
+import { useProjectFileSignedUrl } from '../hooks/useProjectFileSignedUrl';
 import { Icon } from './Icon';
 import { RemixIcon } from './RemixIcon';
 import { SocialShareGrid } from './SocialShareGrid';
 import { Toast } from './Toast';
+import {
+  ANNOTATION_LAZY_SHELL_WAIT_MS,
+  ANNOTATION_SNAPSHOT_BRIDGE_RETRY_MS,
+  DRAW_CAPTURE_READY_DEADLINE_MS,
+} from '../utils/annotationCaptureBudget';
 import { PreviewDrawOverlay, type DrawToolbarElement } from './PreviewDrawOverlay';
 import {
   buildBoardCommentAttachments,
@@ -237,59 +282,226 @@ import type {
   PreviewCommentTarget,
 } from '../types';
 import { ManualEditPanel, emptyManualEditDraft, type ManualEditDraft } from './ManualEditPanel';
+import { ManualEditLayersPanel } from './ManualEditLayersPanel';
+import { ManualEditMultiSelectOverlay } from './ManualEditMultiSelectOverlay';
 import { ManualEditResizeOverlay } from './ManualEditResizeOverlay';
 import { FileViewerUndoRedoToolbar } from './FileViewerUndoRedoToolbar';
 import { FileRevisionHistoryPanel } from './FileRevisionHistoryPanel';
 import {
   applyManualEditPatch,
   isManualEditFullHtmlDocument,
-  readManualEditAttributes,
-  readManualEditFields,
-  readManualEditOuterHtml,
+  normalizeCssForSafetyScan,
+  parseManualEditSource,
   readManualEditStyles,
+  readManualEditTargetSnapshot,
 } from '../edit-mode/source-patches';
 import {
   contentRectToHostRect,
   measureIframeHostScale,
   measureIframeOffsetInHost,
 } from '../edit-mode/preview-coords';
-import { placeManualEditFloatingPanel } from '../edit-mode/floating-panel-place';
+import {
+  clampFloatingPanelPosition,
+  MANUAL_EDIT_PANEL_COLLAPSED_HEIGHT_PX,
+  placeManualEditFloatingPanel,
+  shouldRepositionFloatingPanelForSelection,
+  withPinnedFloatingPanelPosition,
+} from '../edit-mode/floating-panel-place';
 import {
   parseExplicitPx,
   resizeHistoryLabel,
 } from '../edit-mode/resize-math';
 import {
+  createManualEditRemeasureAwaiter,
+} from '../edit-mode/remeasure-await';
+import {
   moveHistoryLabel,
   PROMOTE_MOVE_STYLE_KEYS,
+  hostPaintRectAfterVisualMove,
+  hostPaintRectFromVisualContent,
+  manualEditGeometryIsWildJump,
+  manualEditGeometryRoughlyMatches,
+  resolveManualEditChromeHostRect,
   viewportRectAfterMoveCommit,
+  visualRectFromMoveViewportDraft,
 } from '../edit-mode/move-math';
 import {
   createManualEditSourcePin,
+  manualEditHistoryConfirmCanSkipDiskFetch,
   manualEditHistoryConfirmTrustsLocal,
-  preferManualEditPinnedSource,
-  preferManualEditPinnedSourceOverLive,
+  isManualEditSourcePinActive,
+  acceptedKeepsEarlyPaintTipOrPin,
+  nextTipPreferSuppressState,
+  resolveManualEditSavePinTipRevision,
+  resolveManualEditSourceAgainstPinAndTip,
+  shouldClearTipContentCacheAfterConfirmRefuse,
+  shouldEarlyPaintResolvedPinTipSource,
+  shouldPreferTipWhenCandidateLags,
+  tipContentForManualEditSavePin,
   type ManualEditSourcePin,
 } from '../edit-mode/manual-edit-save-pin';
+import { manualEditTargetsIdentityFingerprint } from '../edit-mode/manual-edit-targets-identity';
 import {
   shouldClearManualEditFrozenSourceOnModeChange,
+  shouldClearMixedKeysAfterTipYieldReseedSkip,
+  shouldClearTipRemountGeometryGraceOnExpiry,
+  shouldClearTipRemountGeometryGraceOnSelectionChange,
+  shouldEchoManualEditSelectionAfterFreezeSync,
+  shouldRequestTipRemountRemasureAfterSrcDocLoad,
+  shouldApplyTipRemountSyncHostMeasureOnSrcDocLoad,
+  shouldRetryTipRemountSyncHostMeasureAfterSrcDocLoad,
+  shouldCancelTipRemountSyncHostMeasureRetry,
+  shouldReleaseTipRemountChromeAfterSyncHostMeasure,
+  shouldReleaseTipRemountChromeAfterFitSettleRemasure,
+  shouldReleaseTipRemountChromeAfterFailedFitSettleRemasure,
+  TIP_REMOUNT_FIT_SETTLE_CHROME_RELEASE_MS,
+  TIP_REMOUNT_FIT_SETTLE_LAST_REMEASURE_MS,
+  TIP_REMOUNT_FIT_SETTLE_LATCH_MS,
+  TIP_REMOUNT_FIT_SETTLE_REMEASURE_DELAYS_MS,
+  TIP_POST_STICKY_SOFT_LAND_CATALOGS,
+  TIP_REMOUNT_DECK_NUDGE_FOLLOW_MS,
+  shouldIgnoreOdEditTargetsMembershipNoiseDuringTipProtect,
+  shouldClearManualEditSelectionOnEmptyOdEditTargets,
+  shouldClearTipSyncedIdentityStickyRetainOnFullCatalog,
+  shouldDeferTipSyncedIdentityStickyClearUntilAfterPreserve,
+  shouldArmTipPostStickySoftLand,
+  shouldRetainTipSyncedIdentityDuringPostStickySoftLand,
+  consumeTipPostStickySoftLandCatalog,
+  shouldEarlyExitTipPostStickySoftLand,
+  shouldArmTipPostSoftLandExitLatch,
+  shouldRetainTipSyncedIdentityDuringPostSoftLandExitLatch,
+  clearTipPostSoftLandExitLatch,
+  shouldLatchSelectedIdentityFingerprintDuringTipSoftLand,
+  shouldArmTipPostExitLatchMixedAbsorb,
+  shouldArmTipPostExitLatchMixedAbsorbOnSoftLandEarlyExit,
+  shouldSkipOdEditTargetsIdentityMixedReseedDuringPostExitAbsorb,
+  shouldAbsorbLiveIdentityFingerprintOnPostExitLatch,
+  shouldSyncSelectedIdentityFingerprintOnSoftLandEarlyExit,
+  shouldKeepMultiInspectorSourceOnlyDuringTipExitLatch,
+  shouldSkipOdEditTargetsSingleInspectorReseedDuringPostExitAbsorb,
+  shouldTreatPostExitAbsorbAsTipProtect,
+  shouldSettleInspectorStylesOnPostExitAbsorb,
+  shouldPreferPendingDraftOverAbsorbInspectorSettle,
+  shouldRefreshHostMetricsBeforeTipRemountGeometryApply,
+  shouldArmTipPostAbsorbInspectorQuiet,
+  shouldSkipOdEditTargetsIdentityMixedReseedDuringPostAbsorbQuiet,
+  shouldTreatPostAbsorbQuietAsTipProtect,
+  clearTipPostAbsorbInspectorQuiet,
+  shouldClearTipPostProtectOnOdEditTargetsSelectionIdsChange,
+  shouldClearTipPostProtectOnSelectionChange,
+  shouldClearTipRemountOnManualEditModeExit,
+  tipRemountPostProtectArmed,
+  nextTipRemountDeckNudgeFollowUntilMs,
+  shouldRemeasureTipRemountOnDeckHostFitNudge,
+  shouldThrottleTipRemountDeckNudgeRemasure,
+  shouldCatchUpHostMetricsWhenDeckNudgeRemasureThrottled,
+  shouldDeferTipRemountPostReleaseGeometryApply,
+  shouldReplaceDeferredTipRemountGeometryPayload,
+  shouldInvalidateDeferredTipRemountGeometryOnImmediateApply,
+  shouldFlushDeferredTipRemountGeometryBeforeUnlockGateClear,
+  shouldArmTipRemountPostUnlockQuiet,
+  shouldSpendTipRemountPostUnlockQuiet,
+  clearTipRemountPostUnlockQuiet,
+  shouldForceSpendTipRemountPostUnlockQuiet,
+  TIP_REMOUNT_POST_UNLOCK_QUIET_TIMEOUT_MS,
+  shouldArmTipRemountChromeUnlockPointerGate,
+  shouldDisableManualEditChromeForTipRemountUnlockGate,
+  shouldReuseLastHostRectOnTipRemountMeasureMiss,
+  shouldSeedTipRemountLastHostRectFromLivePaint,
+  shouldApplyTipRemountLastHostRectOnLayoutPaintMiss,
+  hostPaintRectForManualEditSelectionCommit,
+  resolveTipRemountRefreshMissAction,
+  shouldClearTipRemountLastHostRectCache,
+  shouldTrustTipRemountHostPaintDespiteComposedStale,
+  shouldArmTipRemountPaintSyncHold,
+  clearTipRemountPaintSyncHold,
+  nextTipRemountPaintSyncHoldToken,
+  shouldApplyTipRemountPaintSyncHoldClear,
+  shouldDeferTipRemountGeomEpochBumpForPaintSync,
+  shouldFlushDeferredTipRemountGeomEpochAfterPaintSyncHold,
+  shouldReleaseTipRemountChromeViaPaintSyncOnGraceClear,
+  shouldRetryTipRemountSiblingMeasure,
+  TIP_REMOUNT_DECK_NUDGE_REMEASURE_THROTTLE_MS,
+  shouldMarkTipRemountChromeReleasePendingAfterResizeSkip,
+  shouldReleaseTipRemountChromeAfterResizeGestureEnds,
+  shouldReleaseTipRemountChromeWhenDeckNudgeFollowEnds,
+  shouldDeferTipRemountChromeReleaseAfterFollowEndBlockedBySafety,
+  shouldFlushDeferredTipRemountChromeReleaseAfterSafety,
+  shouldSkipTipRemountFitSettleRemasureDuringResizeGesture,
+  shouldArmPostTipFitSettleWildJumpSkip,
+  shouldSkipWildJumpOnceAfterTipFitSettle,
+  shouldConsumePostTipFitSettleWildJumpSkip,
+  shouldArmTipRemountFitSettleForDeckHostFit,
+  shouldRemeasureTipRemountAfterDeckHostFitSettle,
+  shouldScheduleTipRemountFitSettleRemasureOnLoad,
+  shouldDeferTipRemountGraceConsumeForDeckHostFitSettle,
+  shouldSkipWildJumpDuringTipRemountFitSettle,
+  shouldSkipWildJumpForTipRemountSelectedMember,
+  shouldSkipWildJumpDuringTipRemountFitSettleForSelectedMember,
+  tipRemountSessionActive,
+  tipRemountGeometryGraceExpired,
+  tipRemountFitSettleExpired,
+  shouldSkipOdEditTargetsIdentityMixedReseedDuringTipRemount,
+  shouldAllowOdEditTargetsPendingReseedDuringTipProtect,
+  withPreservedTipSyncedStylesOnBridgeTarget,
+  resolveTipSyncedStylesForOdEditTargetsPreserve,
+  withPreservedTipSyncedIdentityOnBridgeTarget,
+  resolveTipSyncedTargetForOdEditTargetsPreserve,
+  nextTipRemountIdentityHoldUntilMs,
+  shouldArmTipRemountIdentityHoldOnGraceClear,
+  shouldPreserveTipSyncedStylesOnOdEditTargets,
+  shouldRetainTipSyncedIdentityAfterHold,
+  shouldClearTipSyncedIdentityStickyRetainOnGraceClear,
+  shouldReadSingleInspectorStylesFromSourceOnlyForOdEditTargets,
+  shouldRefreshHostMetricsAfterTipRemountMultiRemasure,
+  shouldBumpGeomEpochAfterTipRemountMultiRemasure,
+  shouldSkipSrcDocTransportRemountForManualEditFreezeTipSync,
+  shouldDisableManualEditChromeUntilTipRemasure,
+  shouldAbortManualEditGestureForTipYieldFreezeSync,
+  shouldReleaseTipRemountChromeOnFailedRemasure,
+  shouldPostHostChromeDuringTipRemountSuppress,
+  shouldPatchSelectedGeometryFromTargetsBroadcast,
+  shouldReseedManualEditMultiInspectorAfterFreezeSync,
+  shouldReseedSingleInspectorAfterTipYieldMixedClear,
+  shouldApplyTipYieldSingleInspectorSnapshot,
+  shouldRefreshHostPaintAfterTipYieldSingleReseed,
+  shouldRefreshHostPaintAfterTipRemountRemasure,
+  shouldConsumeTipRemountGeometryGraceOnRemasure,
+  shouldSyncSelectedTargetIdentityAfterTipYieldSingleReseed,
+  shouldSyncSelectedTargetsIdentityAfterTipYieldMultiReseed,
+  shouldSkipWildJumpAfterTipRemountGrace,
+  shouldSyncManualEditFrozenSourceToPainted,
   shouldUpdateManualEditFrozenSourceOnPatch,
 } from '../edit-mode/manual-edit-freeze';
-import { isManualEditKeyboardTextTarget } from '../edit-mode/manual-edit-keyboard';
+import { isManualEditKeyboardTextTarget, resolveManualEditDeleteKeyboardAction } from '../edit-mode/manual-edit-keyboard';
 import {
   MANUAL_EDIT_STYLE_AUTOSAVE_MS,
   keyedManualEditStyleRollback,
   manualEditGestureRollbackKeys,
   restoreManualEditPendingStyleAfterFailedFlush,
+  manualEditPendingAffectedIds,
+  manualEditPendingStyleEntries,
   shouldFlushManualEditStylesOnTargetBoundary,
+  shouldSkipManualEditStyleFlushWhilePaused,
   waitForManualEditSaveIdle,
 } from '../edit-mode/manual-edit-style-persist';
 import { manualEditStyleReplayPatches } from '../edit-mode/manual-edit-style-replay';
 import {
+  manualEditInspectorStyleValue,
+  manualEditStyleValuesEqual,
+} from '../edit-mode/manual-edit-style-values';
+import {
   applyManualEditPreviewStylesToDocument,
   iframeContentDocumentIfAccessible,
+  measureManualEditContentPageBounds,
   measureManualEditTargetContentRect,
   measureManualEditTargetHostRect,
+  measureManualEditViewportBounds,
 } from '../edit-mode/manual-edit-host-preview';
+import {
+  manualEditTargetIsDescendantOfInDocument,
+  resolveManualEditGraphicContainerId,
+} from '../edit-mode/manual-edit-target-resolve';
 import {
   manualEditPatchBaseSource,
   shouldHoldDiskPreviewDuringManualEdit,
@@ -297,15 +509,83 @@ import {
 } from '../edit-mode/manual-edit-session';
 import { diffManualEditStylePatch } from '../edit-mode/manual-edit-style-batch';
 import {
-  manualEditInspectorStyleValue,
-  manualEditStyleValuesEqual,
-} from '../edit-mode/manual-edit-style-values';
+  applyManualEditPatches,
+  buildManualEditStylePatchesForTargets,
+  mergeInspectorStylesForTargets,
+  mixedKeysForPendingStyleDraft,
+  concurrentPendingOwnsTipYieldReseedStyles,
+  planManualEditMultiInspectorReseed,
+  resolveTipYieldIdentityStyles,
+  shouldReadMultiInspectorStylesFromSourceOnly,
+  manualEditSelectionIdsEqual,
+  nextManualEditSelectionIds,
+  resolveManualEditTargetsByIds,
+  MANUAL_EDIT_MULTI_SELECT_MAX,
+  shouldFlushManualEditStylesOnSelectionBoundary,
+} from '../edit-mode/manual-edit-multi-select';
+import {
+  buildGroupMoveMemberStarts,
+  buildGroupMoveStylePatches,
+  canGroupBoundingMove,
+  groupMoveHistoryLabel,
+  resolveGroupMoveTargets,
+  resolveGroupMovableTargets,
+  type GroupMoveMemberStart,
+  type GroupMovePreviewUpdate,
+} from '../edit-mode/manual-edit-group-move';
+import {
+  buildGroupResizeMemberStarts,
+  buildGroupResizeStylePatches,
+  canGroupBoundingResize,
+  groupResizeHistoryLabel,
+  resolveGroupResizableTargets,
+  type GroupResizeMemberStart,
+  type GroupResizePreviewUpdate,
+} from '../edit-mode/manual-edit-group-resize';
+import type { ResizeHandle } from '../edit-mode/resize-math';
+import {
+  buildGroupGeometryPatches,
+  canGroupAlign,
+  canGroupDistribute,
+  computeGroupAlignPreviewUpdates,
+  computeGroupDistributePreviewUpdates,
+  groupAlignHistoryLabel,
+  type GroupAlignKind,
+  type GroupDistributeKind,
+} from '../edit-mode/manual-edit-group-align';
+import { collectSnapSources } from '../edit-mode/manual-edit-geometry-snap';
+import {
+  buildLayerReorderZIndexPatches,
+  layerReorderGroupFrontFirstIds,
+  layerReorderHistoryLabel,
+  layerReorderInsertIndex,
+  reorderLayerPaintOrder,
+  resolveLayerReorderSiblings,
+  mergeVisibleLayerReorderIntoStack,
+  resolveLayerReorderStackSiblings,
+} from '../edit-mode/manual-edit-layer-reorder';
+import { filterManualEditLayerTargets, sortManualEditLayerTargetsByPaintOrder } from '../edit-mode/manual-edit-layer-targets';
+import { filterRootTargetsForGroupGeometry } from '../edit-mode/manual-edit-selection-ancestry';
+import {
+  buildZOrderStylePatch,
+  canAdjustZOrderTarget,
+  computeZOrderPatchForTargetWithFallback,
+  mergeZOrderCapabilities,
+  readStackZFromZIndexStyle,
+  resolveZOrderContextWithFallback,
+  resolveZOrderKeyboardAction,
+  zOrderHistoryLabel,
+  type ZOrderAction,
+} from '../edit-mode/manual-edit-z-order';
 import { MANUAL_EDIT_STYLE_PROPS, type ManualEditBridgeMessage, type ManualEditHistoryEntry, type ManualEditPatch, type ManualEditRect, type ManualEditStyles, type ManualEditTarget } from '../edit-mode/types';
 import { isRenderableSketchJson, SketchPreview } from './SketchPreview';
 import {
   FILE_REVISION_RETENTION_LIMIT_DEFAULT,
   type FileRevision,
 } from '@open-design/contracts';
+
+/** Poll revision list while deferred retention sweep is still trimming history. */
+const FILE_REVISION_RETENTION_POLL_MS = 4_000;
 
 function resolveChromeActionsHost(): HTMLElement | null {
   return document.querySelector<HTMLElement>(APP_CHROME_FILE_ACTIONS_SELECTOR)
@@ -318,6 +598,10 @@ type BoardTool = 'inspect' | 'pod';
 type StrokePoint = { x: number; y: number };
 export type ManualEditPendingStyleSave = {
   id: string;
+  /** When set, flush applies the same style diff to every id (multi-select). */
+  targetIds?: string[];
+  /** Per-target styles for group bounding move (distinct left/top per id). */
+  perTargetStyles?: Record<string, Partial<ManualEditStyles>>;
   styles: Partial<ManualEditStyles>;
   label: string;
   version: number;
@@ -468,13 +752,14 @@ function previewSourceCacheKey(projectId: string, fileName: string): string {
 function readCachedPreviewSource(projectId: string, fileName: string): string | null {
   const cached = htmlPreviewSourceCache.get(previewSourceCacheKey(projectId, fileName));
   if (!cached?.trim()) return null;
-  const repaired = repairArtifactDocumentHead(cached);
+  const repaired = repairArtifactDocumentHeadIfNeeded(cached);
   return isArtifactHtmlStableForPreview(repaired) ? repaired : null;
 }
 
-function rememberStablePreviewSource(projectId: string, fileName: string, source: string | null | undefined) {
+/** Cache stable preview HTML for remount / pending-tab bootstrap (module-level). */
+export function rememberStablePreviewSource(projectId: string, fileName: string, source: string | null | undefined) {
   if (!source?.trim()) return;
-  const repaired = repairArtifactDocumentHead(source);
+  const repaired = repairArtifactDocumentHeadIfNeeded(source);
   if (!isArtifactHtmlStableForPreview(repaired)) return;
   const key = previewSourceCacheKey(projectId, fileName);
   htmlPreviewSourceCache.set(key, repaired);
@@ -483,6 +768,88 @@ function rememberStablePreviewSource(projectId: string, fileName: string, source
     if (oldest != null) htmlPreviewSourceCache.delete(oldest);
   }
 }
+
+/** Drop module-level preview HTML cached before an agent/manual disk write. */
+export function invalidateCachedPreviewSource(projectId: string, fileName: string): void {
+  htmlPreviewSourceCache.delete(previewSourceCacheKey(projectId, fileName));
+}
+
+type RevisionListSoftCacheEntry = {
+  activeSeq: number;
+  list: Awaited<ReturnType<typeof listProjectFileRevisions>>;
+  at: number;
+  /** Stack-warmed lists are shorter-lived than server-fetched lists. */
+  optimistic?: boolean;
+};
+const REVISION_LIST_SOFT_CACHE_TTL_MS = 4_000;
+const REVISION_LIST_SOFT_CACHE_OPTIMISTIC_TTL_MS = 1_000;
+const revisionListSoftCache = new Map<string, RevisionListSoftCacheEntry>();
+
+function revisionListSoftCacheKey(projectId: string, fileName: string): string {
+  return `${projectId}\0${fileName}`;
+}
+
+/** Soft-retry disk fetch: reuse list for the same activeSeq within a short TTL. */
+async function listProjectFileRevisionsSoftCached(
+  projectId: string,
+  fileName: string,
+  activeSeq: number,
+): Promise<Awaited<ReturnType<typeof listProjectFileRevisions>>> {
+  const key = revisionListSoftCacheKey(projectId, fileName);
+  const cached = revisionListSoftCache.get(key);
+  const ttl = cached?.optimistic
+    ? REVISION_LIST_SOFT_CACHE_OPTIMISTIC_TTL_MS
+    : REVISION_LIST_SOFT_CACHE_TTL_MS;
+  if (
+    cached
+    && cached.activeSeq === activeSeq
+    && Date.now() - cached.at < ttl
+  ) {
+    return cached.list;
+  }
+  const list = await listProjectFileRevisions(projectId, fileName);
+  revisionListSoftCache.set(key, { activeSeq, list, at: Date.now(), optimistic: false });
+  if (revisionListSoftCache.size > 64) {
+    const oldest = revisionListSoftCache.keys().next().value;
+    if (oldest != null) revisionListSoftCache.delete(oldest);
+  }
+  return list;
+}
+
+/** Warm soft-cache from an optimistic local tip push (skips immediate list GET). */
+function warmRevisionListSoftCacheFromStack(
+  projectId: string,
+  fileName: string,
+  stack: RevisionStackSnapshot,
+  activeSeq: number,
+  retentionLimit: number,
+): void {
+  const list: NonNullable<Awaited<ReturnType<typeof listProjectFileRevisions>>> = {
+    revisions: stack.revisions,
+    headRevisionId: stack.headRevisionId ?? stack.cursorRevisionId,
+    retentionLimit,
+  };
+  warmRevisionListSoftCacheFromList(projectId, fileName, activeSeq, list, { optimistic: true });
+}
+
+/** Re-key soft-cache after adopt/head seq changes using an already-fetched list. */
+function warmRevisionListSoftCacheFromList(
+  projectId: string,
+  fileName: string,
+  activeSeq: number,
+  list: Awaited<ReturnType<typeof listProjectFileRevisions>>,
+  options?: { optimistic?: boolean },
+): void {
+  if (!list || typeof activeSeq !== 'number') return;
+  const key = revisionListSoftCacheKey(projectId, fileName);
+  revisionListSoftCache.set(key, {
+    activeSeq,
+    list,
+    at: Date.now(),
+    optimistic: options?.optimistic === true,
+  });
+}
+
 const MAX_CACHED_PREVIEW_VIEWPORTS = 128;
 // Grace window before the inspect hover card is torn down. Long enough to absorb
 // the async iframe mouseout (od:comment-leave) that fires when the pointer slides
@@ -955,39 +1322,46 @@ function pickLatestShareDeployment(
     .sort(compareDeploymentsByNewest)[0] ?? null;
 }
 
+function manualEditPanelHostRect(
+  target: ManualEditTarget,
+  previewScale: number,
+  hostOffset: { x: number; y: number } = { x: 0, y: 0 },
+  hostPaintRect: ManualEditRect | null = null,
+): { x: number; y: number; width: number; height: number } {
+  return resolveManualEditChromeHostRect(
+    target.rect,
+    previewScale,
+    hostOffset,
+    hostPaintRect,
+  );
+}
+
 function manualEditFloatingPanelStyle(
   target: ManualEditTarget,
   previewScale: number,
   canvasSize: PreviewCanvasSize | undefined,
   hostOffset: { x: number; y: number } = { x: 0, y: 0 },
   hostPaintRect: ManualEditRect | null = null,
+  pinnedPosition: { left: number; top: number } | null = null,
 ): CSSProperties {
   const canvasWidth = canvasSize?.width ?? 1200;
   const canvasHeight = canvasSize?.height ?? 800;
-  const scaled = contentRectToHostRect(target.rect, previewScale);
-  const composedHostRect = {
-    x: hostOffset.x + scaled.x,
-    y: hostOffset.y + scaled.y,
-    width: scaled.width,
-    height: scaled.height,
-  };
-  // Prefer live paint when available so placement matches the selection chrome.
-  const hostRect =
-    hostPaintRect
-    && hostPaintRect.width >= 1
-    && hostPaintRect.height >= 1
-      ? hostPaintRect
-      : composedHostRect;
+  const hostRect = manualEditPanelHostRect(target, previewScale, hostOffset, hostPaintRect);
   // Prefer a non-overlapping side (right → left → below → above → dock).
   // Wide headlines used to clamp over the target when neither flank fit 320px.
-  const placed = placeManualEditFloatingPanel({
-    target: hostRect,
-    canvasWidth,
-    canvasHeight,
-  });
+  const placed = withPinnedFloatingPanelPosition(
+    placeManualEditFloatingPanel({
+      target: hostRect,
+      canvasWidth,
+      canvasHeight,
+    }),
+    pinnedPosition,
+  );
   // Height is left to the content (auto): a short inspector (e.g. typography
   // only) should be a compact card, not a tall half-empty panel. The cap only
   // engages for long inspectors, at which point the scroll body takes over.
+  // left/top stay pinned across resize/move and across selection changes unless
+  // the panel would cover the newly selected element.
   return {
     left: placed.left,
     top: placed.top,
@@ -1005,18 +1379,18 @@ function manualEditHoverIconStyle(
   previewScale: number,
   canvasSize: PreviewCanvasSize | undefined,
   hostOffset: { x: number; y: number } = { x: 0, y: 0 },
+  hostPaintRect: ManualEditRect | null = null,
 ): CSSProperties {
   const iconSize = 26;
   const inset = 4;
   const canvasWidth = canvasSize?.width ?? 1200;
   const canvasHeight = canvasSize?.height ?? 800;
-  const scaled = contentRectToHostRect(target.rect, previewScale);
-  const hostRect = {
-    x: hostOffset.x + scaled.x,
-    y: hostOffset.y + scaled.y,
-    width: scaled.width,
-    height: scaled.height,
-  };
+  const hostRect = resolveManualEditChromeHostRect(
+    target.rect,
+    previewScale,
+    hostOffset,
+    hostPaintRect,
+  );
   const targetTop = hostRect.y;
   const targetRight = hostRect.x + hostRect.width;
   const left = Math.max(
@@ -1035,7 +1409,9 @@ export function cancelManualEditPendingStyleSnapshot(
   id: string,
   keys: Array<keyof ManualEditStyles>,
 ): ManualEditPendingStyleSave | null {
-  if (!pending || pending.id !== id || keys.length === 0) return pending;
+  if (!pending || keys.length === 0) return pending;
+  const pendingIds = pending.targetIds ?? [pending.id];
+  if (!pendingIds.includes(id)) return pending;
   const nextStyles = { ...pending.styles };
   for (const key of keys) delete nextStyles[key];
   if (Object.keys(nextStyles).length === 0) return null;
@@ -1141,7 +1517,6 @@ function temporarilyExposeIframeForSnapshot(iframe: HTMLIFrameElement): () => vo
   };
 }
 
-const ANNOTATION_SNAPSHOT_RETRY_MS = [2_500, 3_000] as const;
 const EXPORT_SNAPSHOT_RETRY_MS = [1500, 3000, 6000] as const;
 
 async function requestPreviewSnapshotWithRetry(
@@ -1201,6 +1576,10 @@ interface Props {
   // Bumped nonce asking a deck preview to flip to `slideIndex` (a queued chat
   // send for this file just started processing).
   slideNavRequest?: { slideIndex: number; nonce: number } | null;
+  /** Project-relative paths for healing wrong local-upload <img src> in preview. */
+  projectFilePaths?: readonly string[];
+  /** Current-turn attachment paths — preferred when stem collisions occur. */
+  preferredAttachmentPaths?: readonly string[];
 }
 
 type ExportToastTranslate = (key: keyof Dict, vars?: Record<string, string | number>) => string;
@@ -1244,9 +1623,9 @@ function exportFormatLabel(format: ShareExportFormat): string {
     case 'image':
       return 'IMAGE';
     case 'markdown':
-      return 'MD';
+      return 'Markdown';
     default:
-      return String(format).toUpperCase();
+      return 'Export';
   }
 }
 
@@ -1292,6 +1671,8 @@ export function FileViewer({
   shareRequest,
   downloadRequest,
   slideNavRequest,
+  projectFilePaths,
+  preferredAttachmentPaths,
 }: Props) {
   const rendererMatch = artifactRendererRegistry.resolve({
     file,
@@ -1316,12 +1697,15 @@ export function FileViewer({
   if (rendererMatch?.renderer.id === 'html' || rendererMatch?.renderer.id === 'deck-html') {
     return (
       <HtmlViewer
+        key={`${projectId}\0${file.name}`}
         projectId={projectId}
         projectKind={projectKind}
         projectDisplayName={projectDisplayName}
         file={file}
         liveHtml={liveHtml}
         filesRefreshKey={filesRefreshKey}
+        projectFilePaths={projectFilePaths}
+        preferredAttachmentPaths={preferredAttachmentPaths}
         isDeck={rendererMatch.renderer.id === 'deck-html'}
         onExportAsPptx={onExportAsPptx}
         streaming={Boolean(streaming)}
@@ -1355,7 +1739,14 @@ export function FileViewer({
   if (rendererMatch?.renderer.id === 'svg') {
     return <SvgViewer projectId={projectId} file={file} />;
   }
-  if (file.kind === 'image') {
+  const resolvedFilePath = projectFileResolvedPath(file);
+  const fileMime = String(file.mime || '').toLowerCase();
+  const rasterImageViewer =
+    file.kind === 'image'
+    || (file.kind === 'sketch' && !isRenderableSketchJson(file))
+    || isRenderableImagePath(resolvedFilePath)
+    || fileMime.startsWith('image/');
+  if (rasterImageViewer) {
     return <ImageViewer projectId={projectId} file={file} />;
   }
   if (file.kind === 'video') {
@@ -1364,11 +1755,8 @@ export function FileViewer({
   if (file.kind === 'audio') {
     return <AudioViewer projectId={projectId} file={file} />;
   }
-  if (file.kind === 'sketch') {
-    if (isRenderableSketchJson(file)) {
-      return <SketchViewer projectId={projectId} file={file} />;
-    }
-    return <ImageViewer projectId={projectId} file={file} />;
+  if (file.kind === 'sketch' && isRenderableSketchJson(file)) {
+    return <SketchViewer projectId={projectId} file={file} />;
   }
   if (file.kind === 'text' || file.kind === 'code') {
     return <TextViewer projectId={projectId} file={file} />;
@@ -2915,7 +3303,11 @@ export function CommentSidePanel({
                           projectId={projectId}
                           path={attachment.path}
                           alt={attachment.name}
-                          trustExists
+                          // Durable memo/board uploads: trustExists + retry for
+                          // S3 lag. Ephemeral drawings stay missing-cache-only
+                          // so deleted screenshots do not remount-/raw/.
+                          trustExists={!isEphemeralDrawingScreenshotPath(attachment.path)}
+                          allowBackgroundRetry={!isEphemeralDrawingScreenshotPath(attachment.path)}
                         />
                       </a>
                     );
@@ -3468,8 +3860,16 @@ const HOST_ALLOWED_INSPECT_PROPS = new Set([
 
 // Reject values that could break out of `prop: value` and into the
 // surrounding <style> block — semicolons, braces, angle brackets, and
-// newlines. Mirrors the bridge's UNSAFE_VALUE regex.
-const HOST_UNSAFE_INSPECT_VALUE = /[;{}<>\n\r]/;
+// newlines — plus CSS url()/expression()/javascript: (XSS via inspect CSS).
+// Mirrors the bridge's UNSAFE_VALUE regex.
+const HOST_UNSAFE_INSPECT_VALUE = /[;{}<>\n\r]|url\s*\(|expression\s*\(|image-set\s*\(|element\s*\(|-moz-binding|javascript\s*:|vbscript\s*:|data\s*:/i;
+
+/** Normalize then deny — blocks comment/escape smuggling of unsafe CSS. */
+function inspectOverrideValueIsUnsafe(value: string): boolean {
+  const trimmed = String(value || '').trim();
+  if (!trimmed) return false;
+  return HOST_UNSAFE_INSPECT_VALUE.test(normalizeCssForSafetyScan(trimmed));
+}
 
 // Reject elementIds whose characters could break out of `[attr="..."]`
 // inside a <style> block. Forbidden:
@@ -3518,7 +3918,7 @@ export function serializeInspectOverrides(overrides: unknown): string {
       const name = rawName.toLowerCase();
       if (!HOST_ALLOWED_INSPECT_PROPS.has(name)) continue;
       const value = rawValue.trim();
-      if (!value || HOST_UNSAFE_INSPECT_VALUE.test(value)) continue;
+      if (!value || inspectOverrideValueIsUnsafe(value)) continue;
       decls.push(`${name}: ${value} !important`);
     }
     if (!decls.length) continue;
@@ -3543,7 +3943,7 @@ export function updateInspectOverride(
   const propName = String(prop || '').toLowerCase();
   if (!HOST_ALLOWED_INSPECT_PROPS.has(propName)) return map;
   const trimmed = String(value ?? '').trim();
-  if (trimmed && HOST_UNSAFE_INSPECT_VALUE.test(trimmed)) return map;
+  if (trimmed && inspectOverrideValueIsUnsafe(trimmed)) return map;
   const existing = map[elementId];
   const nextProps: Record<string, string> = { ...(existing?.props ?? {}) };
   if (!trimmed) {
@@ -3585,6 +3985,8 @@ export function updateInspectOverride(
 export function parseInspectOverridesFromSource(source: string): InspectOverrideMap {
   const map: InspectOverrideMap = {};
   if (!source) return map;
+  // Cheap preflight — most decks never host inspect overrides; skip the walker.
+  if (!/\bdata-od-inspect-overrides\b/i.test(source)) return map;
   for (const body of stripInspectOverridesAndIndex(source).bodies) {
     const ruleRe = /(\[data-(?:od-id|screen-label)="([^"]*)"\])\s*\{\s*([^}]*)\}/g;
     let ruleMatch: RegExpExecArray | null;
@@ -3601,7 +4003,7 @@ export function parseInspectOverridesFromSource(source: string): InspectOverride
         const name = raw.slice(0, colon).trim().toLowerCase();
         if (!HOST_ALLOWED_INSPECT_PROPS.has(name)) continue;
         const value = raw.slice(colon + 1).replace(/!important/gi, '').trim();
-        if (!value || HOST_UNSAFE_INSPECT_VALUE.test(value)) continue;
+        if (!value || inspectOverrideValueIsUnsafe(value)) continue;
         props[name] = value;
       }
       if (Object.keys(props).length) {
@@ -4415,22 +4817,28 @@ const HTML_PREVIEW_DISK_FETCH_DEBOUNCE_MS = 200;
 /** Wall-clock deadline so hung GETs cannot leave "loading…" forever. */
 const HTML_PREVIEW_SOURCE_WALL_MS = 30_000;
 const HTML_PREVIEW_SOURCE_FIRST_RETRY_MS = 400;
-const HTML_PREVIEW_SOURCE_RETRY_MS = 1_200;
+/** Soft-retry backoff ceiling (exponential from FIRST, ×2 each attempt). */
+const HTML_PREVIEW_SOURCE_RETRY_MAX_MS = 5_000;
+/** Cap soft retries even when the wall has not elapsed (~0.4+0.8+1.6+3.2+5+5s). */
+const HTML_PREVIEW_SOURCE_MAX_SOFT_RETRIES = 6;
 
-const DECK_SLIDE_MARKUP_RE =
-  /<(?:section|div)\b[^>]*\b(?:class\s*=\s*["'][^"']*\bslide\b|data-slide)/i;
+function sourceHasDeckSlideMarkup(html: string): boolean {
+  // Token SSOT — `\bslide\b` matches slide-counter / slide-chrome and used
+  // to enable the deck bridge (then host-hide) on chrome-only frames.
+  return htmlHasDeckSlideHost(html) || /<(?:section|div|main|article)\b[^>]*\bdata-slide(?:-index)?\s*=/i.test(html);
+}
 
 function acceptPreviewHtmlCandidate(
   candidate: string | null,
   lastStableRef: { current: string | null },
 ): string | null {
   if (candidate == null) return null;
-  const repaired = repairArtifactDocumentHead(candidate);
+  const repaired = repairArtifactDocumentHeadIfNeeded(candidate);
   if (isArtifactHtmlStableForPreview(repaired)) {
     // Repair can theoretically close/strip into a slide-less shell that still
     // tag-balances. Never pin that as last-stable when the candidate itself
     // still carried deck slides — keep the previous good frame instead.
-    if (DECK_SLIDE_MARKUP_RE.test(candidate) && !hasSalvageableDeckSlideContent(repaired)) {
+    if (sourceHasDeckSlideMarkup(candidate) && !hasSalvageableDeckSlideContent(repaired)) {
       return lastStableRef.current;
     }
     lastStableRef.current = repaired;
@@ -4789,6 +5197,8 @@ function HtmlViewer({
   file,
   liveHtml,
   filesRefreshKey = 0,
+  projectFilePaths,
+  preferredAttachmentPaths,
   isDeck,
   onExportAsPptx,
   streaming,
@@ -4811,6 +5221,8 @@ function HtmlViewer({
   file: ProjectFile;
   liveHtml?: string;
   filesRefreshKey?: number;
+  projectFilePaths?: readonly string[];
+  preferredAttachmentPaths?: readonly string[];
   isDeck: boolean;
   onExportAsPptx?: ((fileName: string) => void) | undefined;
   streaming: boolean;
@@ -4891,6 +5303,14 @@ function HtmlViewer({
     const showExportFailureToast = (err: unknown) => {
       if (!toastFormats.has(format)) return;
       notifyTeamverEmbedAuthFailureIfNeeded(err, 'daemon');
+      if (format === 'pptx' && isDeckTooLargeForPptxExportError(err)) {
+        setExportToast({
+          message: '슬라이드가 너무 많아 PPTX 다운로드를 만들 수 없습니다. PDF 다운로드를 사용해 주세요.',
+          tone: 'error',
+          ttlMs: 9000,
+        });
+        return;
+      }
       const message = formatExportFailureMessageForUser(
         err,
         '다운로드를 만들지 못했습니다. 잠시 후 다시 시도하세요.',
@@ -4899,18 +5319,6 @@ function HtmlViewer({
           transientMessage: '내보내기 중 연결을 확인하지 못했습니다. 잠시 후 다시 시도하세요.',
         },
       );
-      if (format === 'pptx' && isDeckTooLargeForPptxExportError(err)) {
-        setExportToast({
-          actionLabel: t('fileViewer.exportPdf'),
-          message,
-          onAction: () => {
-            fireShareExport('pdf', () => runCurrentPdfExport());
-          },
-          tone: 'error',
-          ttlMs: 9000,
-        });
-        return;
-      }
       setExportToast({ message, tone: 'error' });
     };
     // Teamver rendered exports need a stable HTML snapshot (or the daemon
@@ -5019,31 +5427,16 @@ function HtmlViewer({
     status: AsyncExportProgressStatus,
   ) => {
     const message = asyncExportProgressToastMessage(format, status, t);
-    setAsyncExportProgress((current) => ({
+    setAsyncExportProgress({
       format,
       message,
-    }));
+    });
     setExportToast({
       message,
       tone: 'loading',
       ttlMs: 0,
     });
   };
-  const runCurrentPdfExport = (options?: { fresh?: boolean }) => exportProjectAsPdf({
-    deck: effectiveDeck,
-    fallbackPdf: () => exportAsPdf(
-      source ?? lastStablePreviewSourceRef.current ?? '',
-      exportTitle,
-      { deck: effectiveDeck },
-    ),
-    filePath: file.name,
-    fresh: options?.fresh,
-    htmlSnapshot: source ?? lastStablePreviewSourceRef.current ?? null,
-    onAsyncExportStatus: showAsyncExportProgress('pdf'),
-    projectId,
-    requireRenderedExport: isTeamverEmbedMode(),
-    title: exportTitle,
-  });
   // P0 helpers — keep the artifact_id + artifact_kind derivation in one place
   // so each per-button onClick stays a one-liner. We compute lazily inside the
   // closure because `file.kind` / `file.name` can change as the user navigates
@@ -5125,20 +5518,18 @@ function HtmlViewer({
     });
   };
   const [mode, setMode] = useState<'preview' | 'source'>('preview');
-  const [source, setSource] = useState<string | null>(() => {
-    if (liveHtml == null) return null;
-    const repaired = repairArtifactDocumentHead(liveHtml);
-    return isArtifactHtmlStableForPreview(repaired) ? repaired : null;
-  });
+  const [sourceHtmlCopied, setSourceHtmlCopied] = useState(false);
+  const sourceHtmlCopyEnabled = isTeamverSourceHtmlCopyEnabled();
+  // One intact-gated repair for liveHtml init (was 3× ungated repair on mount).
+  const initialLiveHtmlRepaired = liveHtml == null
+    ? null
+    : (() => {
+      const repaired = repairArtifactDocumentHeadIfNeeded(liveHtml);
+      return isArtifactHtmlStableForPreview(repaired) ? repaired : null;
+    })();
+  const [source, setSource] = useState<string | null>(() => initialLiveHtmlRepaired);
   const [sourceLoadFailed, setSourceLoadFailed] = useState(false);
-  const lastStablePreviewSourceRef = useRef<string | null>(
-    liveHtml
-      ? (() => {
-        const repaired = repairArtifactDocumentHead(liveHtml);
-        return isArtifactHtmlStableForPreview(repaired) ? repaired : null;
-      })()
-      : null,
-  );
+  const lastStablePreviewSourceRef = useRef<string | null>(initialLiveHtmlRepaired);
   // After POST /files succeeds, pin the saved HTML so onFileSaved → disk
   // refetch cannot briefly restore the pre-edit snapshot (S3/lazy race).
   const manualEditPinnedSourceRef = useRef<ManualEditSourcePin | null>(null);
@@ -5151,11 +5542,9 @@ function HtmlViewer({
   const lastStablePreviewIdentityRef = useRef<string | null>(null);
   // When liveHtml is present and paints (stable or last-stable fallback),
   // skip disk fetch. Token churn must NOT cancel an in-flight disk debounce.
-  const [liveHtmlPaintsPreview, setLiveHtmlPaintsPreview] = useState(() => {
-    if (liveHtml == null) return false;
-    const repaired = repairArtifactDocumentHead(liveHtml);
-    return isArtifactHtmlStableForPreview(repaired);
-  });
+  const [liveHtmlPaintsPreview, setLiveHtmlPaintsPreview] = useState(
+    () => initialLiveHtmlRepaired != null,
+  );
   const hasLiveHtml = liveHtml !== undefined;
   // Disk-fetch callbacks read streaming via ref so soft-retry / wall decisions
   // stay correct without re-subscribing on every liveHtml token.
@@ -5250,6 +5639,8 @@ function HtmlViewer({
   const [manualEditSrcDocActive, setManualEditSrcDocActive] = useState(false);
   const [manualEditFrozenSource, setManualEditFrozenSource] = useState<string | null>(null);
   const [manualEditInlineTextEditing, setManualEditInlineTextEditing] = useState(false);
+  const manualEditInlineTextEditingRef = useRef(false);
+  manualEditInlineTextEditingRef.current = manualEditInlineTextEditing;
   const [manualEditResizeDraftSize, setManualEditResizeDraftSize] = useState<{
     width: number;
     height: number;
@@ -5258,20 +5649,175 @@ function HtmlViewer({
     x: number;
     y: number;
   } | null>(null);
+  const [manualEditGroupDraftRects, setManualEditGroupDraftRects] = useState<
+    Record<string, ManualEditRect> | null
+  >(null);
   /** Iframe offset inside `.manual-edit-workspace` — canvas may be centered. */
   const [manualEditHostOffset, setManualEditHostOffset] = useState({ x: 0, y: 0 });
   /** Measured CSS scale of the preview iframe (toolbar zoom can diverge). */
   const [manualEditHostScale, setManualEditHostScale] = useState(1);
+  /** Iframe content-space page bounds for canvas snap guides. */
+  const [manualEditContentPageBounds, setManualEditContentPageBounds] = useState<ManualEditRect | null>(null);
+  const [manualEditViewportBounds, setManualEditViewportBounds] = useState<ManualEditRect | null>(null);
+  const [manualEditLayersPanelOpen, setManualEditLayersPanelOpen] = useState(false);
   /**
    * Live host-space paint box for the selected element. Overlay prefers this
    * over composing target.rect × scale + offset (which goes stale when the
    * iframe is not ready yet or zoom shell remounts).
    */
   const [manualEditHostPaintRect, setManualEditHostPaintRect] = useState<ManualEditRect | null>(null);
+  const manualEditHostPaintRectRef = useRef<ManualEditRect | null>(null);
   /** Bumped when the active preview iframe loads so geometry sync retries. */
   const [manualEditGeomEpoch, setManualEditGeomEpoch] = useState(0);
   const manualEditWorkspaceRef = useRef<HTMLDivElement | null>(null);
   const manualEditResizeSessionActiveRef = useRef(false);
+  const manualEditGeometryHandoffIdRef = useRef<string | null>(null);
+  /** Tip-yield freeze remount — skip idle wild-jump deny until first remasure. */
+  const manualEditTipRemountGeometryGraceIdRef = useRef<string | null>(null);
+  const manualEditTipRemountGeometryGraceUntilRef = useRef(0);
+  /** Deck host-fit settle — remasure after scale nudges (460). */
+  const manualEditTipRemountFitSettleUntilRef = useRef(0);
+  /** Post-settle identity protect after grace clear (468). */
+  const manualEditTipRemountIdentityHoldUntilRef = useRef(0);
+  /**
+   * Sticky tip identity retain after hold — bridge blank outerHtml must not
+   * one-shot Mixed when the timed hold ends (472). Cleared on selection leave.
+   */
+  const manualEditTipSyncedIdentityRetainRef = useRef(false);
+  /**
+   * Post-sticky soft-land catalogs — tip identity / membership hold after
+   * sticky clear so Mixed does not one-shot on the first live broadcast (480/483).
+   */
+  const manualEditTipPostStickySoftLandRef = useRef(0);
+  /** One more preserve catalog after soft-land ends (486). */
+  const manualEditTipPostSoftLandExitLatchRef = useRef(false);
+  /** Post-exit Mixed absorb — live FP without preserve (491/493). */
+  const manualEditTipPostExitMixedAbsorbRef = useRef(false);
+  /** One quiet catalog after absorb so first live Mixed does not flicker (509). */
+  const manualEditTipPostAbsorbInspectorQuietRef = useRef(false);
+  /** Follow late deck fit nudges without extending wild-jump latch (487). */
+  const manualEditTipDeckNudgeFollowUntilRef = useRef(0);
+  /** Last follow-only remasure time for throttle (492). */
+  const manualEditTipDeckNudgeRemasureAtRef = useRef(0);
+  /** Safety: release chrome when deck-nudge follow ends (494). */
+  const manualEditTipDeckNudgeFollowChromeTimeoutRef = useRef<number | null>(null);
+  /** Follow-end chrome release deferred while remount safety timeout pending (510). */
+  const manualEditTipFollowChromeReleaseDeferredRef = useRef(false);
+  /** rAF coalesce for follow-only deck-nudge remasures (497). */
+  const manualEditTipDeckNudgeRemasureRafRef = useRef<number | null>(null);
+  /** Pointer over selection chrome — defer late tip geometry apply (516). */
+  const manualEditTipChromePointerHoverRef = useRef(false);
+  /** Deferred post-release geometry payload — always latest measure (516/519). */
+  const manualEditTipDeferredGeometryPayloadRef = useRef<Array<{
+    id: string;
+    rect: ManualEditTarget['rect'];
+    layoutWidth: number;
+    layoutHeight: number;
+    base: ManualEditTarget | null;
+  }> | null>(null);
+  /** Deferred post-release geometry apply rAF (516). */
+  const manualEditTipDeferredGeometryRafRef = useRef<number | null>(null);
+  /** After chrome unlock, ignore gestures until pointerup (520). */
+  const [manualEditTipChromeUnlockPointerGate, setManualEditTipChromeUnlockPointerGate] = useState(false);
+  const manualEditTipChromeUnlockPointerGateRef = useRef(false);
+  /** Any primary pointer button down — unlock gate without hover (522). */
+  const manualEditPointerButtonsDownRef = useRef(false);
+  /** Last good host paint rects during tip remount — measure-miss fallback (521/523). */
+  const manualEditTipLastHostRectByIdRef = useRef<Map<string, ManualEditRect>>(new Map());
+  /** Sibling measure retry rAF after partial multi remasure (518). */
+  const manualEditTipSiblingRetryRafRef = useRef<number | null>(null);
+  /** Flush deferred geometry before unlock-gate clear (525). */
+  const flushDeferredTipRemountGeometryRef = useRef<() => void>(() => {});
+  /** One remasure quiet after unlock gate clear — block re-defer/re-arm (528). */
+  const manualEditTipPostUnlockQuietRef = useRef(false);
+  /** Force-spend quiet if remasure never runs (531). */
+  const manualEditTipPostUnlockQuietTimeoutRef = useRef<number | null>(null);
+  /** Hold host-paint trust for inert→interactive paint sync frame (530). */
+  const [manualEditTipPaintSyncHold, setManualEditTipPaintSyncHold] = useState(false);
+  const manualEditTipPaintSyncHoldRef = useRef(false);
+  const manualEditTipPaintSyncHoldRafRef = useRef<number | null>(null);
+  /** Generation token — nested rAF cancel cannot orphan the inner frame (534). */
+  const manualEditTipPaintSyncHoldTokenRef = useRef(0);
+  /** Geom-epoch bump deferred until paint-sync hold clears (533). */
+  const manualEditTipDeferredGeomEpochBumpRef = useRef(false);
+
+  useEffect(() => {
+    const clearUnlockGateAndArmQuiet = () => {
+      const gateArmed = manualEditTipChromeUnlockPointerGateRef.current;
+      const deferredPending = manualEditTipDeferredGeometryPayloadRef.current != null
+        || manualEditTipDeferredGeometryRafRef.current != null;
+      if (shouldFlushDeferredTipRemountGeometryBeforeUnlockGateClear(
+        gateArmed,
+        deferredPending,
+      )) {
+        flushDeferredTipRemountGeometryRef.current();
+      }
+      if (!gateArmed) return;
+      if (shouldArmTipRemountPostUnlockQuiet(true)) {
+        manualEditTipPostUnlockQuietRef.current = true;
+        if (manualEditTipPostUnlockQuietTimeoutRef.current != null) {
+          window.clearTimeout(manualEditTipPostUnlockQuietTimeoutRef.current);
+        }
+        manualEditTipPostUnlockQuietTimeoutRef.current = window.setTimeout(() => {
+          manualEditTipPostUnlockQuietTimeoutRef.current = null;
+          if (shouldForceSpendTipRemountPostUnlockQuiet(
+            manualEditTipPostUnlockQuietRef.current,
+            false,
+            true,
+          )) {
+            manualEditTipPostUnlockQuietRef.current = clearTipRemountPostUnlockQuiet();
+          }
+        }, TIP_REMOUNT_POST_UNLOCK_QUIET_TIMEOUT_MS);
+      }
+      manualEditTipChromeUnlockPointerGateRef.current = false;
+      setManualEditTipChromeUnlockPointerGate(false);
+    };
+    const onDown = () => {
+      manualEditPointerButtonsDownRef.current = true;
+    };
+    const onUp = () => {
+      manualEditPointerButtonsDownRef.current = false;
+      clearUnlockGateAndArmQuiet();
+    };
+    const onBlur = () => {
+      // Lost window focus — drop buttons-down and clear unlock gate (review).
+      manualEditPointerButtonsDownRef.current = false;
+      clearUnlockGateAndArmQuiet();
+    };
+    window.addEventListener('pointerdown', onDown, true);
+    window.addEventListener('pointerup', onUp, true);
+    window.addEventListener('pointercancel', onUp, true);
+    window.addEventListener('blur', onBlur);
+    return () => {
+      window.removeEventListener('pointerdown', onDown, true);
+      window.removeEventListener('pointerup', onUp, true);
+      window.removeEventListener('pointercancel', onUp, true);
+      window.removeEventListener('blur', onBlur);
+      if (manualEditTipPostUnlockQuietTimeoutRef.current != null) {
+        window.clearTimeout(manualEditTipPostUnlockQuietTimeoutRef.current);
+        manualEditTipPostUnlockQuietTimeoutRef.current = null;
+      }
+    };
+  }, []);
+  /** Chrome release deferred because fit remasure hit an active resize (489). */
+  const manualEditTipChromeReleaseAfterResizeRef = useRef(false);
+  /** One-shot wild-jump skip after tip fit-settle remasure (485). */
+  const manualEditTipPostFitSettleWildJumpSkipRef = useRef(false);
+  const manualEditTipRemountFitSettleCancelRef = useRef<(() => void) | null>(null);
+  /** Stable tip remasure hook for deck fit onAfterNudge (487). */
+  const tipRemasureOnDeckNudgeRef = useRef<() => void>(() => {});
+  /** Pending onLoad sync measure rAF retry — cancel on grace clear (463). */
+  const manualEditTipRemountSyncRetryRafRef = useRef<number | null>(null);
+  /** Inert resize/multi chrome until tip remasure applies tip geometry (455/458). */
+  const [manualEditTipRemountChromeSuppressed, setManualEditTipRemountChromeSuppressed] = useState(false);
+  const manualEditTipRemountChromeSuppressedRef = useRef(false);
+  /** Deferred Mixed/single reseed after freeze — cancelled when a newer tip-yield schedules. */
+  const manualEditFreezeEchoTimeoutRef = useRef<number | null>(null);
+  /** Safety clear for tip chrome suppress if remasure never arrives (457). */
+  const manualEditTipRemountChromeSafetyTimeoutRef = useRef<number | null>(null);
+  /** Confirm refuse → suppress disk tip prefer until refresh commits. */
+  const manualEditSuppressTipPreferUntilRefreshRef = useRef(false);
+  const manualEditRemeasureAwaiterRef = useRef(createManualEditRemeasureAwaiter());
   const manualEditModeRef = useRef(false);
   const manualEditResizePausedRef = useRef(false);
   const manualEditFrozenSourceRef = useRef<string | null>(null);
@@ -5291,6 +5837,59 @@ function HtmlViewer({
   /** Draw mode remounts srcDoc; block capture until the active frame has loaded. */
   const drawCaptureReadyRef = useRef(true);
   const activatedSrcDocTransportHtmlRef = useRef<string | null>(null);
+  const prevFilesRefreshKeyRef = useRef(filesRefreshKey);
+  // Agent / manual writes bump `filesRefreshKey` before project mtimes settle.
+  // Invalidate the disk cache and refetch — but do NOT clear last-stable or
+  // remount the iframe here. Clearing last-stable blanked the hold path on
+  // null/incomplete GETs, and an immediate remount interrupted compact-deck
+  // host-viewport fit (preview goes black with 1/N still working until refresh).
+  useEffect(() => {
+    if (filesRefreshKey <= 0 || filesRefreshKey === prevFilesRefreshKeyRef.current) return;
+    prevFilesRefreshKeyRef.current = filesRefreshKey;
+    invalidateCachedPreviewSource(projectId, file.name);
+    // Keep an active save-pin through chokidar refresh storms so disk lag
+    // cannot restore the pre-edit frame; re-seed the module cache from pin.
+    // When tip content cache already differs from the pin (agent tip landed),
+    // clear the pin and fall through so the newer tip can remount.
+    if (isManualEditSourcePinActive(manualEditPinnedSourceRef.current)) {
+      const pinned = manualEditPinnedSourceRef.current;
+      if (pinned?.source) {
+        const stack = revisionStackRef.current;
+        const activeSeq = getActiveRevisionSequence(projectId, file.name);
+        // activeSeq miss → null (no HEAD fallback) so cold tip remount can adopt.
+        const tipCached = tipContentForManualEditSavePin(
+          stack,
+          activeSeq,
+          (revisionId) => getRevisionContentCache(projectId, file.name, revisionId),
+        );
+        const activeSeqMissingFromStack = activeSeq != null
+          && !stack.revisions.some((revision) => revision.sequence === activeSeq);
+        if (tipCached != null && tipCached !== pinned.source) {
+          // Warm tip cache already diverges — drop pin and remount.
+          manualEditPinnedSourceRef.current = null;
+        } else if (activeSeqMissingFromStack) {
+          // Tip seq advanced but stack/cache still cold — remount so refresh
+          // can adopt; pin stays so resolveManualEditSourceAgainstPinAndTip guards stale GET.
+        } else {
+          rememberStablePreviewSource(projectId, file.name, pinned.source);
+          // Active pin owns the painted frame — adopt pin if paint drifted;
+          // never tear srcdoc / bust reloadKey while the pin is live.
+          if (sourceRef.current !== pinned.source) {
+            setSource(pinned.source);
+            sourceRef.current = pinned.source;
+            lastStablePreviewSourceRef.current = pinned.source;
+            exportHtmlSnapshotGateRef.current = pinned.source;
+          }
+          return;
+        }
+      }
+    } else {
+      manualEditPinnedSourceRef.current = null;
+    }
+    activatedSrcDocTransportHtmlRef.current = null;
+    setLiveHtmlPaintsPreview(false);
+    setReloadKey((key) => key + 1);
+  }, [filesRefreshKey, projectId, file.name]);
   // Tracks the iframe DOM node whose dedupe ref was last reset by the
   // srcDoc onLoad handler. We reset the dedupe exactly once per freshly
   // mounted iframe (the first load is the shell HTML), and skip every
@@ -5462,12 +6061,35 @@ function HtmlViewer({
     });
   }, []);
   const [manualEditTargets, setManualEditTargets] = useState<ManualEditTarget[]>([]);
+  // Bridge message handlers omit manualEditTargets from effect deps — keep a
+  // live catalog for tip-remount style preserve (467).
+  const manualEditTargetsRef = useRef(manualEditTargets);
+  manualEditTargetsRef.current = manualEditTargets;
   const [selectedManualEditTarget, setSelectedManualEditTarget] = useState<ManualEditTarget | null>(null);
+  const [selectedManualEditTargetIds, setSelectedManualEditTargetIds] = useState<string[]>([]);
+  const [manualEditMixedStyleKeys, setManualEditMixedStyleKeys] = useState<Set<keyof ManualEditStyles>>(
+    () => new Set(),
+  );
   const [manualEditHoverTarget, setManualEditHoverTarget] = useState<ManualEditTarget | null>(null);
   const [manualEditPageStylesOpen, setManualEditPageStylesOpen] = useState(false);
+  const manualEditPageStylesOpenRef = useRef(false);
+  manualEditPageStylesOpenRef.current = manualEditPageStylesOpen;
   const [manualEditPanelPosition, setManualEditPanelPosition] = useState<{ left: number; top: number } | null>(null);
+  const [manualEditPanelCollapsed, setManualEditPanelCollapsed] = useState(false);
+  const manualEditPanelPositionRef = useRef<{ left: number; top: number } | null>(null);
+  const manualEditPanelCollapsedRef = useRef(false);
+  manualEditPanelPositionRef.current = manualEditPanelPosition;
+  manualEditPanelCollapsedRef.current = manualEditPanelCollapsed;
+  /** Auto pin may upgrade once when first paint rect arrives; user drag freezes forever. */
+  const manualEditPanelUserPinnedRef = useRef(false);
+  const manualEditPanelPaintPinnedIdRef = useRef<string | null>(null);
   const selectedManualEditTargetIdRef = useRef<string | null>(null);
   const selectedManualEditTargetRef = useRef<ManualEditTarget | null>(null);
+  const selectedManualEditTargetIdsRef = useRef<string[]>([]);
+  const manualEditTargetsIdentityFingerprintRef = useRef<string>('');
+  /** Selected-set identity only — multi inspector reseed must not follow unselected churn. */
+  const manualEditSelectedIdentityFingerprintRef = useRef<string>('');
+  const manualEditHoverTargetIdRef = useRef<string | null>(null);
   const [manualEditDraft, setManualEditDraft] = useState<ManualEditDraft>(() => emptyManualEditDraft());
   const [revisionStack, setRevisionStack] = useState<RevisionStackSnapshot>(() => (
     createRevisionStackSnapshot([], null)
@@ -5480,13 +6102,40 @@ function HtmlViewer({
     revisionReconcileGenerationRef.current += 1;
     setRevisionStack(next);
   }
+  function isStaleRevisionReconcile(reconcileGeneration: number): boolean {
+    return reconcileGeneration !== revisionReconcileGenerationRef.current;
+  }
   const revisionSyncSuppressRef = useRef(false);
   const revisionSkipReconcileOnceRef = useRef(false);
+  const revisionRefreshGenerationRef = useRef(0);
+  const deferredRevisionRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const revisionRefreshActiveRetryRef = useRef(0);
+  const revisionRefreshListRetryRef = useRef(0);
   const revisionConflictSuppressedRef = useRef(false);
+  // First reconcile after mount / file-switch. Suppress the scary "file was
+  // changed unexpectedly" toast on this pass because:
+  //   * The user just arrived at this file — they cannot have observed any
+  //     mid-session mutation, so a toast on entry always reads as spurious.
+  //   * Common causes of disk↔snapshot drift on entry are structural
+  //     (folder-import wrote without pushing a revision, an old file predates
+  //     the revision system, restoreRevision path applied a daemon-side
+  //     content transform, etc.), not something the user did.
+  // We still perform the state updates that mark the stack as invalidated so
+  // undo/redo stays honestly disabled — only the toast is quiet.
+  const revisionInitialReconcileRef = useRef(true);
+  const revisionConflictMessageRef = useRef(t('fileRevision.conflict.message'));
+  revisionConflictMessageRef.current = t('fileRevision.conflict.message');
+  const revisionDiskSyncMessageRef = useRef(t('fileRevision.diskSync.failedMessage'));
+  revisionDiskSyncMessageRef.current = t('fileRevision.diskSync.failedMessage');
+  const revisionDiskSyncRetryLabelRef = useRef(t('fileRevision.diskSync.retryAction'));
+  revisionDiskSyncRetryLabelRef.current = t('fileRevision.diskSync.retryAction');
+  const revisionDiskSyncFailedTargetRef = useRef<FileRevision | null>(null);
   const revisionDiskSyncPromiseRef = useRef<Promise<boolean> | null>(null);
   const [manualEditError, setManualEditError] = useState<string | null>(null);
   const [manualEditSaving, setManualEditSaving] = useState(false);
   const manualEditSavingRef = useRef(false);
+  const manualEditZOrderHandlerRef = useRef<((action: ZOrderAction) => void) | null>(null);
+  const manualEditDeleteHandlerRef = useRef<(() => void) | null>(null);
   const manualEditPendingStyleRef = useRef<ManualEditPendingStyleSave | null>(null);
   const manualEditStyleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const manualEditPreviewVersionRef = useRef(0);
@@ -5636,11 +6285,10 @@ function HtmlViewer({
       message: string;
       tone: 'default' | 'success' | 'error' | 'loading';
       ttlMs?: number;
-      actionLabel?: string;
-      onAction?: () => void;
     } | null
   >(null);
-  const [asyncExportProgress, setAsyncExportProgress] = useState<AsyncExportProgressPanelState | null>(null);
+  const [asyncExportProgress, setAsyncExportProgress] =
+    useState<AsyncExportProgressPanelState | null>(null);
   const [shareLinkFeedback, setShareLinkFeedback] = useState<'copied' | 'failed' | null>(null);
   const [shareGuideToast, setShareGuideToast] = useState<string | null>(null);
   const [selectedSideCommentIds, setSelectedSideCommentIds] = useState<Set<string>>(() => new Set());
@@ -5650,8 +6298,17 @@ function HtmlViewer({
     if (hideFileRevisionChrome) setRevisionHistoryOpen(false);
   }, [hideFileRevisionChrome]);
   const [revisionConflictToast, setRevisionConflictToast] = useState<string | null>(null);
+  const [revisionDiskSyncToast, setRevisionDiskSyncToast] = useState<string | null>(null);
+  const dismissRevisionConflictToast = useCallback(() => {
+    revisionConflictSuppressedRef.current = true;
+    setRevisionConflictToast(null);
+  }, []);
+  const dismissRevisionDiskSyncToast = useCallback(() => {
+    setRevisionDiskSyncToast(null);
+  }, []);
   const [revisionStackInvalidated, setRevisionStackInvalidated] = useState(false);
   const [revisionRetentionLimit, setRevisionRetentionLimit] = useState(FILE_REVISION_RETENTION_LIMIT_DEFAULT);
+  const [revisionRetentionPending, setRevisionRetentionPending] = useState(false);
   const revisionStackInvalidatedRef = useRef(revisionStackInvalidated);
   revisionStackInvalidatedRef.current = revisionStackInvalidated;
   const [strokePoints, setStrokePoints] = useState<StrokePoint[]>([]);
@@ -5853,18 +6510,53 @@ function HtmlViewer({
     if (accepted != null) {
       // A lagging parent liveHtml token must not clobber a just-saved pin
       // (S3/lazy race + ProjectView still holding the pre-edit buffer).
-      const pinnedOverLive = preferManualEditPinnedSourceOverLive(
-        manualEditPinnedSourceRef.current,
-        accepted,
+      const tipContent = tipContentForManualEditSavePin(
+        revisionStackRef.current,
+        getActiveRevisionSequence(projectId, file.name),
+        (revisionId) => getRevisionContentCache(projectId, file.name, revisionId),
       );
-      const nextSource = pinnedOverLive ?? accepted;
+      // Tip≠pin paints tip even when liveHtml is still the pre-tip buffer.
+      const resolvedLive = resolveManualEditSourceAgainstPinAndTip({
+        pinned: manualEditPinnedSourceRef.current,
+        candidate: accepted,
+        tipContent,
+        // Do not prefer tip over streaming live when pin is inactive.
+        preferTipWhenCandidateLags: false,
+      });
+      if (resolvedLive.clearPin) {
+        manualEditPinnedSourceRef.current = null;
+      }
+      const nextSource = resolvedLive.source ?? accepted;
       // Keep the pin after a matching fetch — a later stale GET in the same
       // session must still lose to history-confirm / prefer-pin.
-      setSource(nextSource);
-      sourceRef.current = nextSource;
-      lastStablePreviewSourceRef.current = nextSource;
-      exportHtmlSnapshotGateRef.current = nextSource;
-      rememberStablePreviewSource(projectId, file.name, nextSource);
+      const contentUnchanged = sourceRef.current === nextSource;
+      if (!contentUnchanged) {
+        setSource(nextSource);
+        sourceRef.current = nextSource;
+        lastStablePreviewSourceRef.current = nextSource;
+        exportHtmlSnapshotGateRef.current = nextSource;
+        rememberStablePreviewSource(projectId, file.name, nextSource);
+      } else {
+        if (lastStablePreviewSourceRef.current !== nextSource) {
+          lastStablePreviewSourceRef.current = nextSource;
+        }
+        if (exportHtmlSnapshotGateRef.current !== nextSource) {
+          exportHtmlSnapshotGateRef.current = nextSource;
+        }
+      }
+      // Tip yield only — do NOT remount freeze on ordinary liveHtml tokens
+      // (that would defeat entry freeze + od-edit-preview-style).
+      if (
+        resolvedLive.clearPin
+        && shouldSyncManualEditFrozenSourceToPainted(
+          manualEditModeRef.current,
+          manualEditFrozenSourceRef.current,
+          nextSource,
+        )
+      ) {
+        setManualEditFrozenSource(nextSource);
+        scheduleManualEditSelectionEchoAfterFreezeSync();
+      }
       setSourceLoadFailed(false);
       setLiveHtmlPaintsPreview(true);
       if (previewSourceWallTimerRef.current != null) {
@@ -5887,8 +6579,13 @@ function HtmlViewer({
   // Disk / raw fetch — independent of liveHtml token identity.
   // While streaming, a stable live paint can skip disk. After stream ends,
   // always allow disk so turn-end scrubbed HTML can replace a stale live frame.
+  //
+  // Do NOT depend on `liveHtmlPaintsPreview`: incomplete→stable token flicker
+  // during a stream would abort+restart `/raw/?cacheBust=…` in a tight loop.
+  // Read the ref at schedule time; `streaming` / `hasLiveHtml` still re-enter
+  // when the stream starts or ends.
   useEffect(() => {
-    if (streaming && hasLiveHtml && liveHtmlPaintsPreview) return;
+    if (streaming && hasLiveHtml && liveHtmlPaintsPreviewRef.current) return;
 
     const artifactIdentity = `${projectId}\0${file.name}`;
     if (lastStablePreviewIdentityRef.current !== artifactIdentity) {
@@ -5921,8 +6618,11 @@ function HtmlViewer({
       setSourceLoadFailed(false);
       const stable = lastStablePreviewSourceRef.current;
       if (stable) {
-        setSource(stable);
-        sourceRef.current = stable;
+        // live→raw hold: skip setSource when already painting stable.
+        if (sourceRef.current !== stable) {
+          setSource(stable);
+          sourceRef.current = stable;
+        }
         exportHtmlSnapshotGateRef.current = stable;
       } else {
         setSource(null);
@@ -5944,6 +6644,7 @@ function HtmlViewer({
     }
     const retryUntil = previewSourceRetryUntilRef.current.until;
     let nextSoftRetryDelay = HTML_PREVIEW_SOURCE_FIRST_RETRY_MS;
+    let softRetryCount = 0;
 
     const clearPreviewSourceWall = () => {
       if (previewSourceWallTimerRef.current != null) {
@@ -5991,38 +6692,138 @@ function HtmlViewer({
           armPreviewSourceWall();
           return false;
         }
+        if (softRetryCount >= HTML_PREVIEW_SOURCE_MAX_SOFT_RETRIES) {
+          armPreviewSourceWall();
+          return false;
+        }
         if (streamingRef.current && liveHtmlPaintsPreviewRef.current) {
           return false;
         }
         setSourceLoadFailed(false);
         armPreviewSourceWall();
+        softRetryCount += 1;
         const delay = nextSoftRetryDelay;
-        nextSoftRetryDelay = HTML_PREVIEW_SOURCE_RETRY_MS;
+        nextSoftRetryDelay = Math.min(
+          nextSoftRetryDelay * 2,
+          HTML_PREVIEW_SOURCE_RETRY_MAX_MS,
+        );
         softRetryTimer = setTimeout(runFetch, delay);
         return true;
       };
       void fetchProjectFileText(projectId, file.name, {
         cacheBustKey: `${file.mtime}-${reloadKey}-${filesRefreshKey}-${embedAuthRecoveryNonce}`,
         signal: abort.signal,
-      }).then((text) => {
+      }).then(async (rawText) => {
         if (cancelled || abort.signal.aborted) return;
         if (requestGeneration !== previewSourceFetchGenerationRef.current) return;
+        let text = rawText;
+        // Authoritative tip HTML resolved for the active cursor (cold-cache path).
+        let activeTipResolvedHtml: string | null = null;
+        // Prefer the revision snapshot for the active cursor when raw GET lags
+        // scratch/S3 — including remount after undo/restore while filesRefreshKey
+        // is unchanged. If the in-memory stack has not refreshed yet, list once.
+        if (text != null) {
+          const activeSeq = getActiveRevisionSequence(projectId, file.name);
+          if (activeSeq != null) {
+            let revisionForActive = revisionStackRef.current.revisions.find(
+              (revision) => revision.sequence === activeSeq,
+            );
+            if (!revisionForActive) {
+              // Soft-retry storms share one list for (file, activeSeq).
+              const list = await listProjectFileRevisionsSoftCached(
+                projectId,
+                file.name,
+                activeSeq,
+              );
+              revisionForActive = list?.revisions?.find(
+                (revision) => revision.sequence === activeSeq,
+              );
+            }
+            if (revisionForActive) {
+              const authoritative =
+                getRevisionContentCache(projectId, file.name, revisionForActive.id)
+                ?? await resolveRevisionSnapshotContent(revisionForActive.id);
+              if (authoritative != null) {
+                if (authoritative !== text) text = authoritative;
+                // Cold tip cache: snapshot/cache resolve IS tip content for pin yield.
+                activeTipResolvedHtml = authoritative;
+              }
+            }
+          }
+        }
         // Manual-edit POST succeeded but GET may still return null/stale S3
         // for a few seconds — keep the pinned saved buffer instead of
         // painting the pre-edit lastStable frame (looks like "edit didn't save").
-        const pinnedPreferred = preferManualEditPinnedSource(
-          manualEditPinnedSourceRef.current,
-          text,
+        // When tip cache already equals fetch and differs from pin, release pin
+        // so agent tips paint (preferManualEditPinnedSource tipContent yield).
+        // Cold tip cache: snapshot/cache resolve IS tip content for pin yield.
+        const tipContent = tipContentForManualEditSavePin(
+          revisionStackRef.current,
+          getActiveRevisionSequence(projectId, file.name),
+          (revisionId) => getRevisionContentCache(projectId, file.name, revisionId),
+          activeTipResolvedHtml,
         );
-        if (pinnedPreferred != null) {
-          setSource(pinnedPreferred);
-          sourceRef.current = pinnedPreferred;
-          lastStablePreviewSourceRef.current = pinnedPreferred;
-          exportHtmlSnapshotGateRef.current = pinnedPreferred;
-          rememberStablePreviewSource(projectId, file.name, pinnedPreferred);
-          clearPreviewSourceWall();
-          setSourceLoadFailed(false);
-          return;
+        const resolvedDisk = resolveManualEditSourceAgainstPinAndTip({
+          pinned: manualEditPinnedSourceRef.current,
+          candidate: text,
+          tipContent,
+          // Disk: active tip cache wins over lagging GET / missing stack tip.
+          // Confirm-refuse suppress: do not re-paint stale warm tip over adopted disk.
+          preferTipWhenCandidateLags: shouldPreferTipWhenCandidateLags({
+            diskPath: true,
+            suppressUntilRefresh: manualEditSuppressTipPreferUntilRefreshRef.current,
+          }),
+        });
+        if (resolvedDisk.clearPin) {
+          manualEditPinnedSourceRef.current = null;
+        }
+        // Tip yield / pin prefer — paint before edit-mode disk hold.
+        // Unstable tip must not early-paint over a retryable incomplete GET.
+        if (resolvedDisk.source != null) {
+          const repairedTipOrPin = repairArtifactDocumentHeadIfNeeded(resolvedDisk.source);
+          const tipOrPinStable = isArtifactHtmlStableForPreview(repairedTipOrPin)
+            && !(
+              sourceHasDeckSlideMarkup(resolvedDisk.source)
+              && !hasSalvageableDeckSlideContent(repairedTipOrPin)
+            );
+          if (shouldEarlyPaintResolvedPinTipSource({
+            resolved: resolvedDisk,
+            candidate: text,
+            tipOrPinStable,
+          })) {
+            // Route tip/pin through accept so lastStable stays consistent even
+            // when sourceRef already equals paint (stale lastStable / race).
+            const acceptedPaint = acceptPreviewHtmlCandidate(
+              repairedTipOrPin,
+              lastStablePreviewSourceRef,
+            );
+            if (acceptedKeepsEarlyPaintTipOrPin(repairedTipOrPin, acceptedPaint)) {
+              const paintSource = acceptedPaint;
+              if (sourceRef.current !== paintSource) {
+                setSource(paintSource);
+                sourceRef.current = paintSource;
+                exportHtmlSnapshotGateRef.current = paintSource;
+                rememberStablePreviewSource(projectId, file.name, paintSource);
+              } else if (exportHtmlSnapshotGateRef.current !== paintSource) {
+                exportHtmlSnapshotGateRef.current = paintSource;
+              }
+              // Tip yield while editing must remount freeze — preview paints freeze.
+              if (shouldSyncManualEditFrozenSourceToPainted(
+                manualEditModeRef.current,
+                manualEditFrozenSourceRef.current,
+                paintSource,
+              )) {
+                setManualEditFrozenSource(paintSource);
+                scheduleManualEditSelectionEchoAfterFreezeSync();
+              }
+              clearPreviewSourceWall();
+              setSourceLoadFailed(false);
+              return;
+            }
+            // Accept fell back — soft-retry before edit-mode hold so incomplete
+            // tip/GET can recover (hold would otherwise skip scheduleSoftRetry).
+            if (scheduleSoftRetry()) return;
+          }
         }
         if (shouldHoldDiskPreviewDuringManualEdit(
           manualEditModeRef.current,
@@ -6037,8 +6838,11 @@ function HtmlViewer({
         // shell stays on prior frame. Keep the last good text instead.
         if (text == null) {
           if (lastStablePreviewSourceRef.current) {
-            setSource(lastStablePreviewSourceRef.current);
-            sourceRef.current = lastStablePreviewSourceRef.current;
+            const stable = lastStablePreviewSourceRef.current;
+            if (sourceRef.current !== stable) {
+              setSource(stable);
+              sourceRef.current = stable;
+            }
             clearPreviewSourceWall();
             setSourceLoadFailed(false);
             return;
@@ -6061,11 +6865,13 @@ function HtmlViewer({
           armPreviewSourceWall();
           return;
         }
-        setSource(accepted);
-        sourceRef.current = accepted;
-        lastStablePreviewSourceRef.current = accepted;
-        exportHtmlSnapshotGateRef.current = accepted;
-        rememberStablePreviewSource(projectId, file.name, accepted);
+        if (sourceRef.current !== accepted) {
+          setSource(accepted);
+          sourceRef.current = accepted;
+          lastStablePreviewSourceRef.current = accepted;
+          exportHtmlSnapshotGateRef.current = accepted;
+          rememberStablePreviewSource(projectId, file.name, accepted);
+        }
         setSourceLoadFailed(false);
         clearPreviewSourceWall();
       });
@@ -6085,7 +6891,6 @@ function HtmlViewer({
     };
   }, [
     hasLiveHtml,
-    liveHtmlPaintsPreview,
     streaming,
     projectId,
     file.name,
@@ -6123,9 +6928,21 @@ function HtmlViewer({
 
   useEffect(() => {
     if (!isTeamverEmbedMode()) return;
-    const bump = () => setEmbedAuthRecoveryNonce((value) => value + 1);
+    // Passive recovery may dispatch session(forceEvent) + recovered together;
+    // explicit 「다시 시도」 (useTeamverEmbed) often fires only forceEvent while
+    // the memory flag stayed true — still must remint preview scopes.
+    let coalesceScheduled = false;
+    const bump = () => {
+      if (coalesceScheduled) return;
+      coalesceScheduled = true;
+      queueMicrotask(() => {
+        coalesceScheduled = false;
+        setEmbedAuthRecoveryNonce((value) => value + 1);
+      });
+    };
     window.addEventListener(TEAMVER_EMBED_PASSIVE_AUTH_RECOVERED_EVENT, bump);
     const unsubscribe = subscribeTeamverEmbedSessionChanged(({ authenticated }) => {
+      // Includes forceEvent reaffirm while already authenticated.
       if (authenticated) bump();
     });
     return () => {
@@ -6140,13 +6957,47 @@ function HtmlViewer({
   // never surface and the deck becomes a static, unnavigable preview.
   const looksLikeDeck = useMemo(() => {
     if (!source) return false;
-    return (
-      /\bclass\s*=\s*['"][^'"]*\bslide\b/i.test(source)
-      || /<section[^>]*\bclass\s*=\s*['"]slide['"]/i.test(source)
-    );
+    return htmlLooksLikeNavigableDeckPreview(source);
   }, [source]);
   const effectiveDeck = isDeck || looksLikeDeck;
-  const livePreviewSource = inlinedSource ?? source;
+  const rawLivePreviewSource = inlinedSource ?? source;
+  const livePreviewSource = useMemo(() => {
+    if (!rawLivePreviewSource) return rawLivePreviewSource;
+    const healPaths = Array.from(
+      new Set([
+        ...(projectFilePaths ?? []).map((path) => String(path || '').trim()).filter(Boolean),
+        ...(preferredAttachmentPaths ?? [])
+          .map((path) => String(path || '').trim())
+          .filter(Boolean),
+      ]),
+    );
+    if (healPaths.length === 0) return rawLivePreviewSource;
+    return rewriteAttachmentImageSrcs(rawLivePreviewSource, healPaths, {
+      preferredPaths: preferredAttachmentPaths,
+    });
+  }, [preferredAttachmentPaths, projectFilePaths, rawLivePreviewSource]);
+  // Display-only official look merge + Motif remmerge. Compact fills stream
+  // without look CSS; persist merges after save. Preview used to stay Neutral
+  // until disk write.
+  const [officialLookHealedPreview, setOfficialLookHealedPreview] = useState<string | null>(null);
+  useEffect(() => {
+    setOfficialLookHealedPreview(null);
+    if (streaming || manualEditMode || !effectiveDeck || !projectId) return;
+    if (!livePreviewSource || !deckHtmlNeedsOfficialLookPreviewHeal(livePreviewSource)) return;
+    let cancelled = false;
+    void healOfficialLookForDeckPreview(livePreviewSource, projectId).then((healed) => {
+      if (cancelled) return;
+      if (healed && healed !== livePreviewSource) setOfficialLookHealedPreview(healed);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [effectiveDeck, livePreviewSource, manualEditMode, projectId, streaming, file.name]);
+  const attachmentImageSrcRewritten = Boolean(
+    rawLivePreviewSource
+    && livePreviewSource
+    && rawLivePreviewSource !== livePreviewSource,
+  );
   // Freeze the iframe input on the snapshot taken at Edit-mode entry. Any
   // source rewrite during edit (1.5s debounced set-style patches) stays
   // invisible to the iframe — live updates flow through od-edit-preview-style
@@ -6161,7 +7012,7 @@ function HtmlViewer({
   }, [manualEditMode, manualEditFrozenSource, livePreviewSource]);
   const previewSource = (manualEditMode && manualEditFrozenSource !== null)
     ? manualEditFrozenSource
-    : livePreviewSource;
+    : (officialLookHealedPreview ?? livePreviewSource);
   const compactApiStackedDeck = useMemo(
     () => (previewSource != null && looksLikeCompactApiStackedDeckForPreview(previewSource)),
     [previewSource],
@@ -6172,11 +7023,29 @@ function HtmlViewer({
     [previewSource],
   );
   const needsDeckHostViewportFit = compactApiStackedDeck || frameworkDeckPreview;
+  // Once this artifact has been classified as a fixed-stage deck, keep the
+  // host-viewport listener armed even if `previewSource` briefly goes null
+  // during refresh/auth races — otherwise chaseFirstLayout requests are dropped
+  // and the preview freezes on a black letterbox until toolbar refresh.
+  const deckHostViewportFitIdentityRef = useRef(`${projectId}\0${file.name}`);
+  const needsDeckHostViewportFitStickyRef = useRef(false);
+  {
+    const fitIdentity = `${projectId}\0${file.name}`;
+    if (deckHostViewportFitIdentityRef.current !== fitIdentity) {
+      deckHostViewportFitIdentityRef.current = fitIdentity;
+      needsDeckHostViewportFitStickyRef.current = false;
+    }
+    if (needsDeckHostViewportFit) needsDeckHostViewportFitStickyRef.current = true;
+  }
+  const deckHostViewportFitActive =
+    needsDeckHostViewportFit || needsDeckHostViewportFitStickyRef.current;
   const deckPreviewUsesFixedStage = compactApiStackedDeck;
   // Host toolbar zoom is CSS transform-only. Posting overlayPreviewScale into the
   // deck bridge refits slide layout (vw/vh, letterbox math) and makes elements
   // appear to resize with zoom — apply to compact + framework decks alike.
-  const deckPreviewFitScale = needsDeckHostViewportFit ? 1 : overlayPreviewScale;
+  // Use sticky-active so a brief null `previewSource` does not flip options to
+  // non-layoutBox and strand an already-mounted compact deck.
+  const deckPreviewFitScale = deckHostViewportFitActive ? 1 : overlayPreviewScale;
   const deckPreviewPanActive = deckPreviewUsesFixedStage
     && mode === 'preview'
     && !drawOverlayOpen
@@ -6184,9 +7053,17 @@ function HtmlViewer({
     && !manualEditMode
     && !inspectMode
     && !slideOnlyMvp;
-  const deckPreviewFitOptions = needsDeckHostViewportFit
-    ? FIXED_STAGE_DECK_FIT_OPTIONS
-    : undefined;
+  const deckPreviewFitOptions = useMemo(
+    () => (deckHostViewportFitActive
+      ? {
+        ...FIXED_STAGE_DECK_FIT_OPTIONS,
+        onAfterNudge: () => {
+          tipRemasureOnDeckNudgeRef.current();
+        },
+      }
+      : undefined),
+    [deckHostViewportFitActive],
+  );
   const onDeckPreviewWheel = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
     if (!deckPreviewPanActive) return;
     const frame = iframeRef.current;
@@ -6262,54 +7139,152 @@ function HtmlViewer({
     [source],
   );
   const [urlSelectionBridgeReady, setUrlSelectionBridgeReady] = useState(false);
-  const [embedPreviewPrefix, setEmbedPreviewPrefix] = useState<string | null>(null);
+  const [embedPreviewPrefix, setEmbedPreviewPrefix] = useState<string | null>(() =>
+    peekTeamverProjectPreviewPrefix(projectId),
+  );
+  // Hold srcDoc until the scoped prefix settle finishes. Painting without a
+  // base then updating srcDoc in place on the same iframe node interrupts the
+  // compact deck host-viewport handshake — black letterbox with a working 1/N
+  // counter until toolbar refresh. Seed settled=true when a cached prefix already exists
+  // so remounting the deck tab after an image/other file does not flash empty.
+  // Never "fail-open" settled=true with a null prefix: srcDoc still requires a
+  // real base, and that dead state left a permanent blank canvas until manual remount.
+  const [embedPreviewPrefixSettled, setEmbedPreviewPrefixSettled] = useState(
+    () => !isTeamverEmbedMode() || peekTeamverProjectPreviewPrefix(projectId) != null,
+  );
   const teamverEmbedPreviewMode = isTeamverEmbedMode();
+  const embedPreviewIdentityRef = useRef<string | null>(null);
+  // Edge-trigger remint: sticky `nonce > 0` used to invalidate+hold on every
+  // file switch after the first recovery, killing cached peek paint.
+  const lastProcessedAuthRecoveryNonceRef = useRef(0);
   useEffect(() => {
     if (!teamverEmbedPreviewMode) {
       setEmbedPreviewPrefix(null);
+      setEmbedPreviewPrefixSettled(true);
+      embedPreviewIdentityRef.current = null;
       return;
     }
     let cancelled = false;
-    const retryDelaysMs = [0, 400, 1_200] as const;
-    // Fail-open on first null so srcDoc can paint, then retry with a fresh
-    // abort budget. Auth recovery bumps embedAuthRecoveryNonce and invalidates
-    // the cached prefix so stale daemon scopes / 401 races do not leave deck
-    // relative assets resolving against about:blank forever.
-    if (embedAuthRecoveryNonce > 0) {
-      invalidateTeamverProjectPreviewPrefix(projectId);
+    let backgroundRetryTimer: ReturnType<typeof setTimeout> | null = null;
+    let fastRetryDelayTimer: ReturnType<typeof setTimeout> | null = null;
+    let settleFastRetryDelay: (() => void) | null = null;
+    const identity = `${projectId}\0${file.name}`;
+    const identityChanged = embedPreviewIdentityRef.current !== identity;
+    embedPreviewIdentityRef.current = identity;
+    const authRemintRequested =
+      embedAuthRecoveryNonce > lastProcessedAuthRecoveryNonceRef.current;
+    if (authRemintRequested) {
+      lastProcessedAuthRecoveryNonceRef.current = embedAuthRecoveryNonce;
     }
+    // First paint / file switch: hold empty srcDoc only when no cached prefix.
+    // Cached peek lets image→deck tab switches paint immediately.
+    // Auth recovery (nonce edge) must remint scopes so relative assets do not
+    // resolve against a stale/unauthorized prefix.
+    if (authRemintRequested) {
+      invalidateTeamverProjectPreviewPrefix(projectId);
+      // Auth recovery must hold empty srcDoc (no relative-asset paint against a
+      // stale/unauthorized prefix) until a fresh mint settles.
+      setEmbedPreviewPrefix(null);
+      setEmbedPreviewPrefixSettled(false);
+    } else {
+      // Valid cache: paint immediately and skip the retry/mint loop entirely.
+      const peeked = peekTeamverProjectPreviewPrefix(projectId);
+      if (peeked) {
+        setEmbedPreviewPrefix(peeked);
+        setEmbedPreviewPrefixSettled(true);
+        return;
+      }
+    }
+    if (identityChanged || authRemintRequested) {
+      setEmbedPreviewPrefix(null);
+      setEmbedPreviewPrefixSettled(false);
+    }
+    const retryDelaysMs = [0, 400, 1_200] as const;
+    // Do NOT fail-open after attempt 0 — painting relative refs/drive|assets|
+    // uploads imgs without <base href> leaves broken-image + alt text until
+    // remount (or forever if mint never recovers). Hold empty srcDoc until a
+    // real prefix arrives; keep soft background remint after the fast window.
+    const adoptPrefix = (resolved: string) => {
+      if (cancelled) return;
+      setEmbedPreviewPrefix(resolved);
+      setEmbedPreviewPrefixSettled(true);
+    };
+    const mintOnce = async (): Promise<string | null> => {
+      const peeked = peekTeamverProjectPreviewPrefix(projectId);
+      if (peeked) return peeked;
+      const abort = new AbortController();
+      const mintAbortTimer = window.setTimeout(() => abort.abort(), 8_000);
+      try {
+        return await resolveTeamverProjectPreviewPrefix(projectId, file.name, {
+          signal: abort.signal,
+        });
+      } finally {
+        window.clearTimeout(mintAbortTimer);
+      }
+    };
+    const scheduleBackgroundRemint = (delayMs: number) => {
+      backgroundRetryTimer = setTimeout(() => {
+        backgroundRetryTimer = null;
+        if (cancelled) return;
+        void (async () => {
+          const resolved = await mintOnce();
+          if (cancelled) return;
+          if (resolved) {
+            adoptPrefix(resolved);
+            return;
+          }
+          scheduleBackgroundRemint(Math.min(Math.round(delayMs * 1.5), 15_000));
+        })();
+      }, delayMs);
+    };
     void (async () => {
       for (let attempt = 0; attempt < retryDelaysMs.length; attempt += 1) {
         if (cancelled) return;
         const delay = retryDelaysMs[attempt] ?? 0;
         if (delay > 0) {
-          await new Promise((settle) => window.setTimeout(settle, delay));
-          if (cancelled) return;
-          invalidateTeamverProjectPreviewPrefix(projectId);
-        }
-        const abort = new AbortController();
-        const failOpenTimer = window.setTimeout(() => abort.abort(), 8_000);
-        let resolved: string | null = null;
-        try {
-          resolved = await resolveTeamverProjectPreviewPrefix(projectId, file.name, {
-            signal: abort.signal,
+          await new Promise<void>((settle) => {
+            settleFastRetryDelay = settle;
+            fastRetryDelayTimer = setTimeout(() => {
+              fastRetryDelayTimer = null;
+              settleFastRetryDelay = null;
+              settle();
+            }, delay);
           });
-        } finally {
-          window.clearTimeout(failOpenTimer);
+          settleFastRetryDelay = null;
+          if (cancelled) return;
+          // Do not invalidate between attempts — that forced up to 3 preview-url
+          // mints. resolveTeamverProjectPreviewPrefix already reuses cache/inflight.
         }
+        const resolved = await mintOnce();
         if (cancelled) return;
         if (resolved) {
-          setEmbedPreviewPrefix(resolved);
+          adoptPrefix(resolved);
           return;
         }
-        if (attempt === 0) setEmbedPreviewPrefix(null);
       }
-      if (!cancelled) setEmbedPreviewPrefix(null);
+      if (cancelled) return;
+      // Stay unsettled — never paint without a scoped base. Soft remint picks
+      // up late auth recovery / warm batch seeds without toolbar refresh.
+      setEmbedPreviewPrefix(null);
+      setEmbedPreviewPrefixSettled(false);
+      scheduleBackgroundRemint(2_500);
     })();
     return () => {
       cancelled = true;
+      if (backgroundRetryTimer != null) clearTimeout(backgroundRetryTimer);
+      if (fastRetryDelayTimer != null) {
+        clearTimeout(fastRetryDelayTimer);
+        fastRetryDelayTimer = null;
+      }
+      settleFastRetryDelay?.();
     };
   }, [embedAuthRecoveryNonce, file.name, projectId, teamverEmbedPreviewMode]);
+  const embedPreviewAwaitingPrefix = isEmbedPreviewAwaitingScopedPrefix({
+    teamverEmbedMode: teamverEmbedPreviewMode,
+    hasSource: source != null,
+    embedPreviewPrefix,
+    embedPreviewPrefixSettled,
+  });
   const useUrlLoadPreview = shouldUrlLoadHtmlPreview({
     mode,
     isDeck: effectiveDeck,
@@ -6325,7 +7300,10 @@ function HtmlViewer({
     // Tweaks template needs the srcDoc bridge so the toolbar toggle can arm.
     tweaksBridge: hasTweaksTemplate(source),
   }) && !manualEditRequiresSrcDoc
-    && (!teamverEmbedPreviewMode || embedPreviewPrefix != null);
+    && (!teamverEmbedPreviewMode || embedPreviewPrefix != null)
+    // Wrong local-upload src only heals in the srcDoc path; URL-load serves
+    // disk HTML verbatim and would keep showing alt-only broken images.
+    && !attachmentImageSrcRewritten;
   const projectPreviewAssetUrl = useCallback(
     (filePath: string) => resolveHtmlPreviewAssetUrl({
       teamverEmbedMode: teamverEmbedPreviewMode,
@@ -6336,6 +7314,20 @@ function HtmlViewer({
         : null,
     }),
     [embedPreviewPrefix, projectId, teamverEmbedPreviewMode],
+  );
+  // srcDoc `<base href>` — never inject about:blank while the Teamver
+  // preview prefix is still resolving (first paint would strand relative
+  // assets until the user hits toolbar refresh / remount).
+  const srcDocBaseHref = useMemo(
+    () => resolveHtmlPreviewSrcDocBaseHref({
+      teamverEmbedMode: teamverEmbedPreviewMode,
+      embedPreviewPrefix,
+      rawUrl: projectRawUrl(projectId, baseDirFor(file.name)),
+      scopedUrl: embedPreviewPrefix
+        ? projectScopedPreviewUrl(embedPreviewPrefix, baseDirFor(file.name))
+        : null,
+    }),
+    [embedPreviewPrefix, file.name, projectId, teamverEmbedPreviewMode],
   );
   const basePreviewSrcUrl = useMemo(
     () => `${projectPreviewAssetUrl(file.name)}?v=${Math.round(file.mtime)}&r=${reloadKey}&odPreviewBridge=scroll&odPreviewBridge=selection&odPreviewBridge=snapshot`,
@@ -6372,7 +7364,45 @@ function HtmlViewer({
   useEffect(() => {
     setInlinedSource(null);
     if (useUrlLoadPreview) return;
-    if (!source || effectiveDeck || !hasRelativeAssetRefs(source)) return;
+    if (!source) return;
+    if (effectiveDeck) {
+      // Decks: fetch the daemon-side inlined form so `<img>` subresource GETs
+      // inside the srcdoc iframe never race Hangul NFC/NFD filename mismatches,
+      // transient /preview 404s, or missing preview-scope auth headers. The
+      // primary `source` state stays raw (used by manual edit, model context
+      // retry payloads, element-patch diff, and export snapshots — all of
+      // which must see the on-disk bytes, not multi-MB data URIs).
+      //
+      // Gate on the presence of an inline-able <img>. Skip when nothing to
+      // inline so the primary /raw fetch already covered the paint.
+      if (!hasRelativeImageRefs(source)) return;
+      let cancelled = false;
+      // Content-derived fingerprint: file.mtime lags behind Manual Edit
+      // set-image saves (source updates locally before the /files list
+      // refresh bumps mtime), and reloadKey does not tick on manual patches.
+      // Without something that varies with source bytes the browser serves
+      // the previous /raw?inlineAssets=1 response — the srcdoc iframe then
+      // paints an old inlined deck whose data-URI images do not match the
+      // just-updated `<img src>` refs in `source` (image "flies away" and
+      // only alt is visible). Length + first / last 64 chars is cheap and
+      // deterministic; combined with mtime + reloadKey it covers all three
+      // invalidation triggers (external write, reload, in-session patch).
+      const inlineContentKey = manualEditPreviewInlineContentKey(source);
+      void fetchProjectFileText(projectId, file.name, {
+        cacheBustKey: `${file.mtime}-${reloadKey}-${inlineContentKey}-preview-inline`,
+        inlineAssetsForPreview: true,
+      }).then((next) => {
+        if (cancelled || next == null) return;
+        setInlinedSource(next);
+      }).catch(() => {
+        // Silently fall back to the raw source — the iframe will still attempt
+        // live subresource GETs and my daemon /preview NFC/NFD fallback path.
+      });
+      return () => {
+        cancelled = true;
+      };
+    }
+    if (!hasRelativeAssetRefs(source)) return;
     let cancelled = false;
     void inlineRelativeAssets(source, projectId, file.name).then((next) => {
       if (!cancelled) setInlinedSource(next);
@@ -6383,36 +7413,133 @@ function HtmlViewer({
   }, [source, effectiveDeck, projectId, file.name, reloadKey, useUrlLoadPreview]);
 
   const srcDoc = useMemo(
-    () => (redirectLoopBlocked ? buildRedirectLoopBlockedDoc() : previewSource ? buildSrcdoc(previewSource, {
-      deck: effectiveDeck,
-      baseHref: projectPreviewAssetUrl(baseDirFor(file.name)),
-      initialSlideIndex: htmlPreviewSlideState.get(previewStateKey)?.active ?? 0,
-      selectionBridge: true,
-      editBridge: manualEditRequiresSrcDoc,
-      paletteBridge: false,
-      previewFocusGuard: true,
-    }) : ''),
+    () => {
+      // Teamver embed: do not paint deck HTML until preview-url prefix settle
+      // completes with a real scoped base. Avoids no-base first paint → remount
+      // → lost fit. Hold empty srcDoc (never settle without a prefix).
+      // Never paint Teamver decks without a scoped base — relative composer/
+      // Drive images resolve against about:srcdoc and show as alt-only.
+      if (teamverEmbedPreviewMode && (!embedPreviewPrefixSettled || !embedPreviewPrefix)) {
+        return '';
+      }
+      return redirectLoopBlocked
+        ? buildRedirectLoopBlockedDoc()
+        : previewSource
+          ? buildSrcdoc(previewSource, {
+            deck: effectiveDeck,
+            baseHref: srcDocBaseHref,
+            initialSlideIndex: htmlPreviewSlideState.get(previewStateKey)?.active ?? 0,
+            selectionBridge: true,
+            editBridge: manualEditRequiresSrcDoc,
+            paletteBridge: false,
+            previewFocusGuard: true,
+          })
+          : '';
+    },
     [
       redirectLoopBlocked,
       previewSource,
       effectiveDeck,
-      projectPreviewAssetUrl,
-      file.name,
+      srcDocBaseHref,
       previewStateKey,
       manualEditRequiresSrcDoc,
+      teamverEmbedPreviewMode,
+      embedPreviewPrefix,
+      embedPreviewPrefixSettled,
     ],
   );
   const lazySrcDocTransport = useMemo(() => buildLazySrcdocTransport(), []);
   const [srcDocTransportResetKey, setSrcDocTransportResetKey] = useState(0);
+  // Include settled prefix in the mount key so hold→paint is a fresh iframe
+  // mount (never an in-place ''→HTML srcDoc attribute update that strands
+  // deck fit until toolbar refresh).
+  const srcDocPreviewMountKey = resolveSrcDocPreviewMountKey({
+    transportResetKey: srcDocTransportResetKey,
+    teamverEmbedMode: teamverEmbedPreviewMode,
+    embedPreviewPrefix,
+    embedPreviewPrefixSettled,
+  });
   const [srcDocShellReady, setSrcDocShellReady] = useState(false);
   const wasUrlLoadPreviewRef = useRef(useUrlLoadPreview);
   const urlPreviewKeepAliveKey = previewIframeKeepAliveKey(projectId, file.name);
+  // undefined = never painted under current identity; null/string = last painted base.
+  const prevEmbedPreviewPrefixRef = useRef<string | null | undefined>(undefined);
+  // When the scoped prefix rotates after a settled paint (auth recovery remint),
+  // clear activation dedupe. Hold→first-paint remount is owned by
+  // `srcDocPreviewMountKey` (prefix in the React key) so we do NOT skip or
+  // specially handle `prev === undefined` here — that skip used to leave the
+  // empty-hold iframe in place and strand compact decks blank.
+  useEffect(() => {
+    if (!teamverEmbedPreviewMode) {
+      prevEmbedPreviewPrefixRef.current = embedPreviewPrefix;
+      return;
+    }
+    if (!embedPreviewPrefixSettled || !embedPreviewPrefix) {
+      prevEmbedPreviewPrefixRef.current = undefined;
+      return;
+    }
+    const prev = prevEmbedPreviewPrefixRef.current;
+    prevEmbedPreviewPrefixRef.current = embedPreviewPrefix;
+    if (prev === undefined) return;
+    if (embedPreviewPrefix === prev) return;
+    activatedSrcDocTransportHtmlRef.current = null;
+    setSrcDocTransportResetKey((key) => key + 1);
+  }, [embedPreviewPrefix, embedPreviewPrefixSettled, teamverEmbedPreviewMode]);
+  // Agent / disk HTML replacement often updates the srcDoc attribute in place.
+  // Some browsers reuse the iframe document without a clean bridge boot, which
+  // leaves compact decks on a black letterbox until toolbar refresh. Remount
+  // once per non-streaming content change on the srcDoc transport — and once
+  // when leaving a stream (content may be identical bytes but the live→disk
+  // handoff still needs a clean bridge boot).
+  const lastDeckPreviewSourceRef = useRef<string | null>(null);
+  const wasStreamingDeckPreviewRef = useRef(false);
+  useEffect(() => {
+    const identity = `${projectId}\0${file.name}`;
+    if (deckHostViewportFitIdentityRef.current !== identity) {
+      lastDeckPreviewSourceRef.current = null;
+      wasStreamingDeckPreviewRef.current = false;
+    }
+    if (!deckHostViewportFitActive || mode !== 'preview' || useUrlLoadPreview) return;
+    if (!previewSource) return;
+    if (streaming) {
+      lastDeckPreviewSourceRef.current = previewSource;
+      wasStreamingDeckPreviewRef.current = true;
+      return;
+    }
+    const prev = lastDeckPreviewSourceRef.current;
+    const leftStreaming = wasStreamingDeckPreviewRef.current;
+    wasStreamingDeckPreviewRef.current = false;
+    lastDeckPreviewSourceRef.current = previewSource;
+    if (leftStreaming || (prev != null && prev !== previewSource)) {
+      // Tip-yield freeze already reloads via srcDoc — skip a second shell remount (453).
+      if (shouldSkipSrcDocTransportRemountForManualEditFreezeTipSync(
+        leftStreaming,
+        manualEditMode,
+        manualEditFrozenSource != null,
+      )) {
+        return;
+      }
+      activatedSrcDocTransportHtmlRef.current = null;
+      setSrcDocTransportResetKey((key) => key + 1);
+    }
+  }, [
+    previewSource,
+    streaming,
+    deckHostViewportFitActive,
+    mode,
+    useUrlLoadPreview,
+    projectId,
+    file.name,
+    manualEditMode,
+    manualEditFrozenSource,
+  ]);
   // Reset the shell-ready latch whenever the srcDoc iframe re-mounts. The
   // next shell will post `od:srcdoc-transport-ready` (or fire onLoad) and
-  // flip this back to true. See #2253.
+  // flip this back to true. See #2253. Use mount key (includes prefix settle)
+  // so hold→paint remounts reset the latch too.
   useEffect(() => {
     setSrcDocShellReady(false);
-  }, [srcDocTransportResetKey]);
+  }, [srcDocPreviewMountKey]);
   // Listen for the shell's ready handshake. Gating activation on this is
   // what fixes the #2253 race: opening Tweaks right after a key-driven
   // re-mount used to post `activate` before the shell's listener was
@@ -6646,7 +7773,7 @@ function HtmlViewer({
   }, [effectiveDeck, isActivePreviewIframeSource, isOurPreviewIframeSource, previewStateKey]);
 
   useEffect(() => {
-    if (!needsDeckHostViewportFit || mode !== 'preview') return;
+    if (!deckHostViewportFitActive || mode !== 'preview') return;
     let cancelZeroSizeRetry: (() => void) | null = null;
     function onDeckViewportRequest(ev: MessageEvent) {
       // Accept any of our preview iframes — during liveHtml→disk srcDoc churn
@@ -6672,27 +7799,27 @@ function HtmlViewer({
       if (target && target === activeTransport) {
         iframeRef.current = target;
       }
-      // Immediate post may no-op at 0×0; coalesce one retry schedule so chase
-      // spam does not stack dozens of timer chains.
-      const posted = postDeckHostViewportToIframe(target, deckPreviewFitScale, deckPreviewFitOptions);
-      if (!posted) {
-        cancelZeroSizeRetry?.();
-        cancelZeroSizeRetry = schedulePostDeckHostViewportUntilSized(
-          () =>
-            resolveDeckPreviewIframeFromSource(requestSource, [
-              srcDocPreviewIframeRef.current,
-              urlPreviewIframeRef.current,
-              presentIframeRef.current,
-              iframeRef.current,
-            ])
-            ?? (useUrlLoadPreview
-              ? urlPreviewIframeRef.current
-              : srcDocPreviewIframeRef.current)
-            ?? iframeRef.current,
-          deckPreviewFitScale,
-          deckPreviewFitOptions,
-        );
-      }
+      // Immediate post may no-op at 0×0. Always arm a short follow-up window —
+      // a successful post to a frame that remounts on the next tick otherwise
+      // leaves the replacement iframe without a host viewport.
+      postDeckHostViewportToIframe(target, deckPreviewFitScale, deckPreviewFitOptions);
+      cancelZeroSizeRetry?.();
+      cancelZeroSizeRetry = schedulePostDeckHostViewportUntilSized(
+        () =>
+          resolveDeckPreviewIframeFromSource(requestSource, [
+            srcDocPreviewIframeRef.current,
+            urlPreviewIframeRef.current,
+            presentIframeRef.current,
+            iframeRef.current,
+          ])
+          ?? (useUrlLoadPreview
+            ? urlPreviewIframeRef.current
+            : srcDocPreviewIframeRef.current)
+          ?? iframeRef.current,
+        deckPreviewFitScale,
+        [0, 32, 80, 160, 320, 640, 1_200, 2_400],
+        deckPreviewFitOptions,
+      );
     }
     window.addEventListener('message', onDeckViewportRequest);
     return () => {
@@ -6700,7 +7827,7 @@ function HtmlViewer({
       cancelZeroSizeRetry?.();
     };
   }, [
-    needsDeckHostViewportFit,
+    deckHostViewportFitActive,
     mode,
     isOurPreviewIframeSource,
     deckPreviewFitScale,
@@ -6732,13 +7859,22 @@ function HtmlViewer({
       return;
     }
     drawCaptureReadyRef.current = false;
-    const iframe = srcDocPreviewIframeRef.current;
-    if (!iframe) {
-      drawCaptureReadyRef.current = true;
-      return;
-    }
     let cancelled = false;
     void (async () => {
+      // Draw mode forces srcDoc; the srcDoc iframe may not be mounted on the
+      // very first frame after the toggle. Poll briefly before falling back
+      // to "ready" so capture cannot race an unmounted iframe.
+      const start = Date.now();
+      let iframe = srcDocPreviewIframeRef.current;
+      while (!iframe && !cancelled && Date.now() - start < 1_500) {
+        await waitForAnimationFrame();
+        iframe = srcDocPreviewIframeRef.current;
+      }
+      if (cancelled) return;
+      if (!iframe) {
+        drawCaptureReadyRef.current = true;
+        return;
+      }
       await waitForIframeLoadOrTimeout(iframe, 5_000);
       await waitForAnimationFrame();
       await waitForAnimationFrame();
@@ -6751,7 +7887,7 @@ function HtmlViewer({
     return () => {
       cancelled = true;
     };
-  }, [drawOverlayOpen, srcDocTransportResetKey, srcDoc, useUrlLoadPreview]);
+  }, [drawOverlayOpen, srcDocPreviewMountKey, srcDoc, useUrlLoadPreview]);
 
   const resolveAnnotationCaptureFrameRect = useCallback(() => {
     const iframe = resolveActiveDeckPreviewIframe();
@@ -6762,7 +7898,7 @@ function HtmlViewer({
   }, [resolveActiveDeckPreviewIframe]);
 
   useEffect(() => {
-    if (!needsDeckHostViewportFit || mode !== 'preview') return;
+    if (!deckHostViewportFitActive || mode !== 'preview') return;
     // Resolve the iframe at fire time — stream-end / liveHtml clear remounts
     // often leave a null capture from effect start (black letterbox until refresh).
     return scheduleDeckPreviewFitNudges(
@@ -6771,7 +7907,7 @@ function HtmlViewer({
       deckPreviewFitOptions,
     );
   }, [
-    needsDeckHostViewportFit,
+    deckHostViewportFitActive,
     mode,
     zoom,
     deckPreviewFitScale,
@@ -6781,7 +7917,7 @@ function HtmlViewer({
     srcDoc,
     previewStateKey,
     useUrlLoadPreview,
-    srcDocTransportResetKey,
+    srcDocPreviewMountKey,
     resolveActiveDeckPreviewIframe,
     // Terminal: liveHtml clear / streaming off rebuilds srcDoc — re-nudge fit.
     streaming,
@@ -6789,11 +7925,126 @@ function HtmlViewer({
     source,
   ]);
 
+  // Persistent host→iframe fit recovery: panel resize, sidebar drag, and
+  // mid-session remounts can strand compact decks on a black letterbox even
+  // after the initial nudge window. Re-post whenever the active frame's box
+  // changes, and keep a slow recovery loop until the bridge reports ready.
+  useEffect(() => {
+    if (!deckHostViewportFitActive || mode !== 'preview') return;
+    let cancelled = false;
+    let stackedReady = !compactApiStackedDeck;
+    const onReady = (ev: MessageEvent) => {
+      if (!isOurPreviewIframeSource(ev.source)) return;
+      const data = ev.data as { type?: string } | null;
+      if (data?.type !== 'od:stacked-deck-ready') return;
+      stackedReady = true;
+    };
+    window.addEventListener('message', onReady);
+
+    const nudge = () => {
+      if (cancelled) return;
+      nudgeDeckPreviewFit(
+        resolveActiveDeckPreviewIframe,
+        deckPreviewFitScale,
+        deckPreviewFitOptions,
+      );
+    };
+
+    let observer: ResizeObserver | null = null;
+    let observedFrame: HTMLIFrameElement | null = null;
+    const observeTarget = () => {
+      const frame = resolveActiveDeckPreviewIframe();
+      if (!frame || typeof ResizeObserver === 'undefined') return;
+      if (observer && observedFrame === frame) return;
+      observer?.disconnect();
+      observedFrame = frame;
+      observer = new ResizeObserver(() => {
+        nudge();
+      });
+      observer.observe(frame);
+      if (previewBodyRef.current) observer.observe(previewBodyRef.current);
+    };
+    observeTarget();
+
+    const cancelUntilSized = schedulePostDeckHostViewportUntilSized(
+      resolveActiveDeckPreviewIframe,
+      deckPreviewFitScale,
+      deckPreviewFitOptions,
+    );
+
+    // Slow recovery: remount/srcDoc churn can land after the fast nudge window.
+    // Do not tear down ResizeObserver every tick — only rebind when the frame node changes.
+    let slowAttempts = 0;
+    const slowTimer = window.setInterval(() => {
+      if (cancelled || stackedReady) return;
+      slowAttempts += 1;
+      observeTarget();
+      nudge();
+      if (slowAttempts >= 40) stackedReady = true; // ~20s — stop polling
+    }, 500);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener('message', onReady);
+      observer?.disconnect();
+      cancelUntilSized();
+      window.clearInterval(slowTimer);
+    };
+    // Intentionally omit `srcDoc`: token-level HTML churn would reset the recovery
+    // loop every stream tick. Remount key + transport switch are enough.
+  }, [
+    deckHostViewportFitActive,
+    mode,
+    compactApiStackedDeck,
+    srcDocPreviewMountKey,
+    useUrlLoadPreview,
+    deckPreviewFitScale,
+    deckPreviewFitOptions,
+    resolveActiveDeckPreviewIframe,
+    isOurPreviewIframeSource,
+    embedPreviewPrefixSettled,
+  ]);
+
+  // Tab blur/background can leave compact decks unfitted after the iframe
+  // throttles timers; re-nudge when the page becomes visible again.
+  useEffect(() => {
+    if (!deckHostViewportFitActive || mode !== 'preview') return;
+    let cancelUntilSized: (() => void) | null = null;
+    const recover = () => {
+      if (document.visibilityState === 'hidden') return;
+      cancelUntilSized?.();
+      nudgeDeckPreviewFit(
+        resolveActiveDeckPreviewIframe,
+        deckPreviewFitScale,
+        deckPreviewFitOptions,
+      );
+      cancelUntilSized = schedulePostDeckHostViewportUntilSized(
+        resolveActiveDeckPreviewIframe,
+        deckPreviewFitScale,
+        [0, 50, 150, 400, 900],
+        deckPreviewFitOptions,
+      );
+    };
+    document.addEventListener('visibilitychange', recover);
+    window.addEventListener('pageshow', recover);
+    return () => {
+      cancelUntilSized?.();
+      document.removeEventListener('visibilitychange', recover);
+      window.removeEventListener('pageshow', recover);
+    };
+  }, [
+    deckHostViewportFitActive,
+    mode,
+    deckPreviewFitScale,
+    deckPreviewFitOptions,
+    resolveActiveDeckPreviewIframe,
+  ]);
+
   // Stream end often rebuilds srcDoc / clears liveHtml — re-nudge fit once.
   useEffect(() => {
     const wasStreaming = wasStreamingForDeckFitRef.current;
     wasStreamingForDeckFitRef.current = streaming;
-    if (!needsDeckHostViewportFit || mode !== 'preview') return;
+    if (!deckHostViewportFitActive || mode !== 'preview') return;
     if (!(wasStreaming && !streaming)) return;
     return scheduleDeckPreviewFitNudges(
       resolveActiveDeckPreviewIframe,
@@ -6802,7 +8053,7 @@ function HtmlViewer({
     );
   }, [
     streaming,
-    needsDeckHostViewportFit,
+    deckHostViewportFitActive,
     mode,
     deckPreviewFitScale,
     deckPreviewFitOptions,
@@ -6815,7 +8066,7 @@ function HtmlViewer({
   useEffect(() => {
     const hadLive = hadLiveHtmlForDeckFitRef.current;
     hadLiveHtmlForDeckFitRef.current = hasLiveHtml;
-    if (!needsDeckHostViewportFit || mode !== 'preview') return;
+    if (!deckHostViewportFitActive || mode !== 'preview') return;
     if (!(hadLive && !hasLiveHtml)) return;
     return scheduleDeckPreviewFitNudges(
       resolveActiveDeckPreviewIframe,
@@ -6824,7 +8075,7 @@ function HtmlViewer({
     );
   }, [
     hasLiveHtml,
-    needsDeckHostViewportFit,
+    deckHostViewportFitActive,
     mode,
     deckPreviewFitScale,
     deckPreviewFitOptions,
@@ -6834,7 +8085,7 @@ function HtmlViewer({
   useEffect(() => {
     if (!compactApiStackedDeck || previewScale !== 1) return;
     resetDeckPreviewPan(iframeRef.current);
-  }, [compactApiStackedDeck, previewScale, previewStateKey, srcDocTransportResetKey]);
+  }, [compactApiStackedDeck, previewScale, previewStateKey, srcDocPreviewMountKey]);
 
   useEffect(() => {
     const win = iframeRef.current?.contentWindow;
@@ -6850,15 +8101,24 @@ function HtmlViewer({
     const win = iframeRef.current?.contentWindow;
     if (!win) return;
     win.postMessage({ type: 'od-edit-mode', enabled: manualEditMode }, '*');
-    postSelectedManualEditTargetToIframe(manualEditMode ? selectedManualEditTarget?.id ?? null : null);
+    postSelectedManualEditTargetsToIframe(
+      manualEditMode ? selectedManualEditTargetIds : [],
+      manualEditMode ? selectedManualEditTarget?.id ?? null : null,
+    );
     // hostChrome tracks overlay mount: also re-post when draw / inline-text hide it.
+    // Tip-yield freeze remount: do NOT depend on manualEditFrozenSource — posting
+    // selection onto a dying frame causes outline clear→paint→clear; onLoad owns
+    // restore via syncBridgeModes (452). Re-post when tip chrome suppress toggles
+    // so hostChrome/pointer-events stay aligned (457).
   }, [
     manualEditMode,
     selectedManualEditTarget?.id,
+    selectedManualEditTargetIds,
     srcDoc,
     useUrlLoadPreview,
     manualEditInlineTextEditing,
     drawOverlayOpen,
+    manualEditTipRemountChromeSuppressed,
   ]);
 
   const previewStyleToIframe = useCallback((id: string, styles: Partial<ManualEditStyles>, version: number) => {
@@ -6879,36 +8139,790 @@ function HtmlViewer({
     return true;
   }, []);
 
-  function postSelectedManualEditTargetToIframe(id: string | null, target: HTMLIFrameElement | null = iframeRef.current) {
+  function postSelectedManualEditTargetsToIframe(
+    ids: string[],
+    primaryId: string | null,
+    target: HTMLIFrameElement | null = iframeRef.current,
+  ) {
     const win = target?.contentWindow;
     if (!win) return;
-    // Prefer render-state over the ref: the selection-sync effect can run
-    // before the ref-sync effect after setSelectedManualEditTarget.
-    const selected = (
-      id
+    const primary = (
+      primaryId
       && selectedManualEditTarget
-      && selectedManualEditTarget.id === id
+      && selectedManualEditTarget.id === primaryId
     )
       ? selectedManualEditTarget
-      : (id && selectedManualEditTargetRef.current?.id === id
+      : (primaryId && selectedManualEditTargetRef.current?.id === primaryId
         ? selectedManualEditTargetRef.current
         : null);
-    // Match ManualEditResizeOverlay mount: only suppress the iframe ring when
-    // the host overlay is actually painted (not during draw / inline text /
-    // prod drag kill-switch).
-    const hostChrome = Boolean(
-      selected
-      && !drawOverlayOpen
-      && !hideManualEditBoxDrag
-      && canResizeTarget(selected, { inlineTextEditing: manualEditInlineTextEditing }),
+    const hostChrome = shouldPostHostChromeDuringTipRemountSuppress(
+      Boolean(
+        ids.length === 1
+        && primary
+        && !drawOverlayOpen
+        && !hideManualEditBoxDrag
+        && canResizeTarget(primary, { inlineTextEditing: manualEditInlineTextEditing }),
+      ),
+      manualEditTipRemountChromeSuppressedRef.current,
     );
-    win.postMessage({ type: 'od-edit-selected-target', id, hostChrome }, '*');
+    win.postMessage({
+      type: 'od-edit-selected-target',
+      id: primaryId,
+      ids,
+      primaryId,
+      hostChrome,
+    }, '*');
+  }
+
+  /** @deprecated use postSelectedManualEditTargetsToIframe */
+  function postSelectedManualEditTargetToIframe(id: string | null, target?: HTMLIFrameElement | null) {
+    postSelectedManualEditTargetsToIframe(
+      id ? [id] : [],
+      id,
+      target,
+    );
+  }
+
+  function requestManualEditTargetsRefresh(target: HTMLIFrameElement | null = iframeRef.current) {
+    const win = target?.contentWindow;
+    if (!win) return;
+    win.postMessage({ type: 'od-edit-refresh-targets' }, '*');
   }
 
   function requestManualEditTargetRemeasure(id: string, target: HTMLIFrameElement | null = iframeRef.current) {
     const win = target?.contentWindow;
     if (!win || !id) return;
     win.postMessage({ type: 'od-edit-remeasure', id }, '*');
+  }
+
+  /** After tip-yield srcDoc onLoad — remasure selected ids while grace is armed (450/452). */
+  function requestTipRemountRemasureAfterSrcDocLoad(
+    target: HTMLIFrameElement | null = iframeRef.current,
+  ) {
+    const ids = selectedManualEditTargetIdsRef.current;
+    if (!shouldRequestTipRemountRemasureAfterSrcDocLoad(
+      manualEditModeRef.current,
+      ids,
+      manualEditTipRemountGeometryGraceIdRef.current,
+    )) {
+      return;
+    }
+    const primaryId = selectedManualEditTargetIdRef.current;
+    const ordered = primaryId && ids.includes(primaryId)
+      ? [primaryId, ...ids.filter((id) => id !== primaryId)]
+      : ids;
+    for (const id of ordered) {
+      requestManualEditTargetRemeasure(id, target);
+    }
+  }
+
+  /**
+   * Tip srcDoc onLoad — sync content/host measure so inert chrome tracks tip
+   * rect immediately; async od-edit-remeasure still confirms + consumes grace (459).
+   */
+  function applyTipRemountSyncHostMeasureAfterSrcDocLoad(
+    target: HTMLIFrameElement | null = iframeRef.current,
+  ): boolean {
+    const ids = selectedManualEditTargetIdsRef.current;
+    if (!shouldApplyTipRemountSyncHostMeasureOnSrcDocLoad(
+      manualEditModeRef.current,
+      ids,
+      manualEditTipRemountGeometryGraceIdRef.current,
+    )) {
+      return false;
+    }
+    const frame = target ?? iframeRef.current;
+    const workspace = manualEditWorkspaceRef.current;
+    if (!frame || !workspace) return false;
+    const primaryId = selectedManualEditTargetIdRef.current;
+    const ordered = primaryId && ids.includes(primaryId)
+      ? [primaryId, ...ids.filter((id) => id !== primaryId)]
+      : ids;
+    let primaryMeasured = false;
+    let appliedAny = false;
+    for (const id of ordered) {
+      const content = measureManualEditTargetContentRect(frame, id);
+      if (!content) continue;
+      const base = selectedManualEditTargetRef.current?.id === id
+        ? selectedManualEditTargetRef.current
+        : null;
+      if (base) {
+        applyManualEditMeasuredGeometry({
+          ...base,
+          rect: content.rect,
+          layoutWidth: content.layoutWidth,
+          layoutHeight: content.layoutHeight,
+        });
+      } else {
+        // Multi siblings: geometry-only — apply helper merges onto list membership.
+        applyManualEditMeasuredGeometry({
+          id,
+          rect: content.rect,
+          layoutWidth: content.layoutWidth,
+          layoutHeight: content.layoutHeight,
+        } as ManualEditTarget);
+      }
+      appliedAny = true;
+      if (id === primaryId) primaryMeasured = true;
+    }
+    if (!shouldReleaseTipRemountChromeAfterSyncHostMeasure(
+      primaryMeasured,
+      manualEditTipRemountFitSettleUntilRef.current,
+      Date.now(),
+    )) {
+      return false;
+    }
+    // Tip rect is live — drop inert; keep grace for wild-jump until async remasure.
+    releaseTipRemountChromeSuppress(true);
+    if (shouldRefreshHostPaintAfterTipRemountRemasure(true) && primaryId) {
+      refreshManualEditHostPaintRect(primaryId, { force: true });
+    }
+    // Multi: force host metrics so union chrome does not keep pre-tip compose (461).
+    refreshManualEditHostMetricsAfterTipRemountMulti(frame, appliedAny);
+    return true;
+  }
+
+  /**
+   * Tip srcDoc onLoad — sync measure, then one rAF retry if layout was not ready (462).
+   */
+  function applyTipRemountSyncHostMeasureAfterSrcDocLoadWithRetry(
+    target: HTMLIFrameElement | null = iframeRef.current,
+  ) {
+    const applied = applyTipRemountSyncHostMeasureAfterSrcDocLoad(target);
+    if (!shouldRetryTipRemountSyncHostMeasureAfterSrcDocLoad(
+      applied,
+      manualEditModeRef.current,
+      selectedManualEditTargetIdsRef.current,
+      manualEditTipRemountGeometryGraceIdRef.current,
+    )) {
+      return applied;
+    }
+    // Cancel any prior retry before arming a new one (463).
+    if (shouldCancelTipRemountSyncHostMeasureRetry(
+      manualEditTipRemountSyncRetryRafRef.current != null,
+    )) {
+      window.cancelAnimationFrame(manualEditTipRemountSyncRetryRafRef.current!);
+      manualEditTipRemountSyncRetryRafRef.current = null;
+    }
+    // First load tick often measures before fonts/deck-fit layout — retry once.
+    manualEditTipRemountSyncRetryRafRef.current = requestAnimationFrame(() => {
+      manualEditTipRemountSyncRetryRafRef.current = null;
+      if (!shouldApplyTipRemountSyncHostMeasureOnSrcDocLoad(
+        manualEditModeRef.current,
+        selectedManualEditTargetIdsRef.current,
+        manualEditTipRemountGeometryGraceIdRef.current,
+      )) {
+        return;
+      }
+      applyTipRemountSyncHostMeasureAfterSrcDocLoad(
+        target ?? iframeRef.current,
+      );
+    });
+    return false;
+  }
+
+  /**
+   * Multi tip-remount: refresh host scale/offset + geom epoch so union chrome
+   * and live measureHostRect do not keep pre-tip/pre-fit compose (461).
+   */
+  function refreshManualEditHostMetricsAfterTipRemountMulti(
+    frame: HTMLIFrameElement | null,
+    appliedAny: boolean,
+    chromeReleasePendingThisFrame = false,
+  ) {
+    if (!shouldRefreshHostMetricsAfterTipRemountMultiRemasure(
+      selectedManualEditTargetIdsRef.current.length,
+      appliedAny,
+    )) {
+      return;
+    }
+    const workspace = manualEditWorkspaceRef.current;
+    if (!frame || !workspace) return;
+    setManualEditHostScale(measureIframeHostScale(frame));
+    setManualEditHostOffset(measureIframeOffsetInHost(frame, workspace));
+    // Multi union: bump epoch so paint sync effect + overlay recompose (515).
+    // Defer bump when paint-sync hold is armed / about to arm (533).
+    if (shouldBumpGeomEpochAfterTipRemountMultiRemasure(
+      selectedManualEditTargetIdsRef.current.length,
+      appliedAny,
+    )) {
+      if (shouldDeferTipRemountGeomEpochBumpForPaintSync(
+        manualEditTipPaintSyncHoldRef.current,
+        chromeReleasePendingThisFrame,
+      )) {
+        manualEditTipDeferredGeomEpochBumpRef.current = true;
+      } else {
+        // Immediate bump owns the flag — clear so a later paint-sync flush
+        // cannot double-bump (542).
+        manualEditTipDeferredGeomEpochBumpRef.current = false;
+        setManualEditGeomEpoch((n) => n + 1);
+      }
+    }
+  }
+
+  function clearTipRemountPostUnlockQuietState() {
+    manualEditTipPostUnlockQuietRef.current = clearTipRemountPostUnlockQuiet();
+    if (manualEditTipPostUnlockQuietTimeoutRef.current != null) {
+      window.clearTimeout(manualEditTipPostUnlockQuietTimeoutRef.current);
+      manualEditTipPostUnlockQuietTimeoutRef.current = null;
+    }
+  }
+
+  function cancelTipRemountPaintSyncHoldRaf() {
+    // Bump token first so any nested in-flight rAF no-ops (534).
+    manualEditTipPaintSyncHoldTokenRef.current = nextTipRemountPaintSyncHoldToken(
+      manualEditTipPaintSyncHoldTokenRef.current,
+    );
+    if (manualEditTipPaintSyncHoldRafRef.current != null) {
+      window.cancelAnimationFrame(manualEditTipPaintSyncHoldRafRef.current);
+      manualEditTipPaintSyncHoldRafRef.current = null;
+    }
+  }
+
+  function flushDeferredTipRemountGeomEpochAfterPaintSync() {
+    if (shouldFlushDeferredTipRemountGeomEpochAfterPaintSyncHold(
+      true,
+      manualEditTipDeferredGeomEpochBumpRef.current,
+    )) {
+      manualEditTipDeferredGeomEpochBumpRef.current = false;
+      setManualEditGeomEpoch((n) => n + 1);
+    }
+  }
+
+  /** Drop tip-remount chrome inert; optionally gate until pointerup (520/522). */
+  function releaseTipRemountChromeSuppress(armUnlockGate = true) {
+    const wasSuppressed = manualEditTipRemountChromeSuppressedRef.current;
+    manualEditTipRemountChromeSuppressedRef.current = false;
+    setManualEditTipRemountChromeSuppressed(false);
+    manualEditTipChromeReleaseAfterResizeRef.current = false;
+    if (shouldArmTipRemountPaintSyncHold(wasSuppressed, false)) {
+      // Paint refresh before any deferred epoch flush (533).
+      manualEditTipPaintSyncHoldRef.current = true;
+      setManualEditTipPaintSyncHold(true);
+      const primaryId = selectedManualEditTargetIdRef.current;
+      if (primaryId) refreshManualEditHostPaintRect(primaryId, { force: true });
+      cancelTipRemountPaintSyncHoldRaf();
+      const holdToken = nextTipRemountPaintSyncHoldToken(
+        manualEditTipPaintSyncHoldTokenRef.current,
+      );
+      manualEditTipPaintSyncHoldTokenRef.current = holdToken;
+      manualEditTipPaintSyncHoldRafRef.current = requestAnimationFrame(() => {
+        if (!shouldApplyTipRemountPaintSyncHoldClear(
+          holdToken,
+          manualEditTipPaintSyncHoldTokenRef.current,
+        )) {
+          return;
+        }
+        manualEditTipPaintSyncHoldRafRef.current = requestAnimationFrame(() => {
+          if (!shouldApplyTipRemountPaintSyncHoldClear(
+            holdToken,
+            manualEditTipPaintSyncHoldTokenRef.current,
+          )) {
+            return;
+          }
+          manualEditTipPaintSyncHoldRafRef.current = null;
+          manualEditTipPaintSyncHoldRef.current = clearTipRemountPaintSyncHold();
+          setManualEditTipPaintSyncHold(false);
+          flushDeferredTipRemountGeomEpochAfterPaintSync();
+        });
+      });
+    }
+    if (
+      armUnlockGate
+      && shouldArmTipRemountChromeUnlockPointerGate(
+        wasSuppressed,
+        false,
+        manualEditTipChromePointerHoverRef.current,
+        manualEditPointerButtonsDownRef.current,
+        manualEditTipPostUnlockQuietRef.current,
+      )
+    ) {
+      manualEditTipChromeUnlockPointerGateRef.current = true;
+      setManualEditTipChromeUnlockPointerGate(true);
+    }
+  }
+
+  function tipRemountChromeSessionLiveNow(nowMs = Date.now()): boolean {
+    return tipRemountSessionActive(
+      manualEditTipRemountGeometryGraceIdRef.current,
+      nowMs,
+      manualEditTipRemountGeometryGraceUntilRef.current,
+      manualEditTipRemountFitSettleUntilRef.current,
+      manualEditTipRemountIdentityHoldUntilRef.current,
+    ) || shouldRemeasureTipRemountOnDeckHostFitNudge(
+      manualEditModeRef.current,
+      selectedManualEditTargetIdsRef.current,
+      manualEditTipDeckNudgeFollowUntilRef.current,
+      nowMs,
+    );
+  }
+
+  function tipRemountPostProtectArmedNow(): boolean {
+    return tipRemountPostProtectArmed({
+      softLandRemaining: manualEditTipPostStickySoftLandRef.current,
+      exitLatch: manualEditTipPostSoftLandExitLatchRef.current,
+      absorb: manualEditTipPostExitMixedAbsorbRef.current,
+      postAbsorbQuiet: manualEditTipPostAbsorbInspectorQuietRef.current,
+    });
+  }
+
+  function maybeClearTipRemountLastHostRectCache() {
+    const nowMs = Date.now();
+    const followLive = shouldRemeasureTipRemountOnDeckHostFitNudge(
+      manualEditModeRef.current,
+      selectedManualEditTargetIdsRef.current,
+      manualEditTipDeckNudgeFollowUntilRef.current,
+      nowMs,
+    );
+    if (shouldClearTipRemountLastHostRectCache(
+      tipRemountSessionActive(
+        manualEditTipRemountGeometryGraceIdRef.current,
+        nowMs,
+        manualEditTipRemountGeometryGraceUntilRef.current,
+        manualEditTipRemountFitSettleUntilRef.current,
+        manualEditTipRemountIdentityHoldUntilRef.current,
+      ),
+      followLive,
+      tipRemountPostProtectArmedNow(),
+    )) {
+      manualEditTipLastHostRectByIdRef.current.clear();
+    }
+  }
+
+  /** Resolve host paint for chrome — tip session reuses last-good on miss (521/523/538). */
+  function resolveTipRemountHostPaintRect(
+    id: string | null | undefined,
+    paint: ManualEditRect | null,
+  ): ManualEditRect | null {
+    if (paint && paint.width >= 1 && paint.height >= 1) {
+      if (id) manualEditTipLastHostRectByIdRef.current.set(id, { ...paint });
+      return paint;
+    }
+    if (!id) return null;
+    const lastGood = manualEditTipLastHostRectByIdRef.current.get(id) ?? null;
+    if (shouldReuseLastHostRectOnTipRemountMeasureMiss(
+      tipRemountChromeSessionLiveNow(),
+      false,
+      lastGood != null,
+      manualEditTipPaintSyncHoldRef.current,
+    )) {
+      return lastGood;
+    }
+    return null;
+  }
+
+  /**
+   * Deck host-fit nudges change stage scale after onLoad sync measure — remasure
+   * while fit-settle latch is live so chrome tracks post-fit tip geometry (460).
+   */
+  function remeasureTipRemountAfterDeckHostFitSettle(
+    target: HTMLIFrameElement | null = iframeRef.current,
+    remasureDelayMs = TIP_REMOUNT_FIT_SETTLE_LAST_REMEASURE_MS,
+    allowSiblingRetry = true,
+  ): boolean {
+    const ids = selectedManualEditTargetIdsRef.current;
+    const nowMs = Date.now();
+    const inFitSettleLatch = shouldRemeasureTipRemountAfterDeckHostFitSettle(
+      manualEditModeRef.current,
+      ids,
+      manualEditTipRemountFitSettleUntilRef.current,
+      nowMs,
+    );
+    const inDeckNudgeFollow = shouldRemeasureTipRemountOnDeckHostFitNudge(
+      manualEditModeRef.current,
+      ids,
+      manualEditTipDeckNudgeFollowUntilRef.current,
+      nowMs,
+    );
+    if (!inFitSettleLatch && !inDeckNudgeFollow) {
+      return false;
+    }
+    // Mid-gesture remasure fights resize/move draft — skip apply (482).
+    if (shouldSkipTipRemountFitSettleRemasureDuringResizeGesture(
+      manualEditResizeSessionActiveRef.current,
+    )) {
+      // Remember chrome release was due so gesture-end can drop inert (489).
+      if (shouldMarkTipRemountChromeReleasePendingAfterResizeSkip(
+        manualEditResizeSessionActiveRef.current,
+        manualEditTipRemountChromeSuppressedRef.current,
+        remasureDelayMs,
+        TIP_REMOUNT_FIT_SETTLE_CHROME_RELEASE_MS,
+      )) {
+        manualEditTipChromeReleaseAfterResizeRef.current = true;
+      }
+      return false;
+    }
+    const frame = target ?? iframeRef.current;
+    const workspace = manualEditWorkspaceRef.current;
+    if (!frame || !workspace) return false;
+    const primaryId = selectedManualEditTargetIdRef.current;
+    const ordered = primaryId && ids.includes(primaryId)
+      ? [primaryId, ...ids.filter((id) => id !== primaryId)]
+      : ids;
+    // Measure first — apply only after host metrics refresh when chrome is
+    // interactive so scale/offset and rects land in one coherent frame (513).
+    const measured: Array<{
+      id: string;
+      rect: ManualEditTarget['rect'];
+      layoutWidth: number;
+      layoutHeight: number;
+      base: ManualEditTarget | null;
+    }> = [];
+    for (const id of ordered) {
+      const content = measureManualEditTargetContentRect(frame, id);
+      if (!content) continue;
+      const base = selectedManualEditTargetRef.current?.id === id
+        ? selectedManualEditTargetRef.current
+        : null;
+      measured.push({
+        id,
+        rect: content.rect,
+        layoutWidth: content.layoutWidth,
+        layoutHeight: content.layoutHeight,
+        base,
+      });
+    }
+    const appliedAny = measured.length > 0;
+    const postUnlockQuiet = manualEditTipPostUnlockQuietRef.current;
+    const deferGeometry = shouldDeferTipRemountPostReleaseGeometryApply(
+      manualEditTipRemountChromeSuppressedRef.current,
+      remasureDelayMs,
+      manualEditTipChromePointerHoverRef.current,
+      TIP_REMOUNT_FIT_SETTLE_CHROME_RELEASE_MS,
+      manualEditTipChromeUnlockPointerGateRef.current,
+      postUnlockQuiet,
+    );
+    const chromeWasSuppressed = manualEditTipRemountChromeSuppressedRef.current;
+    const chromeReleasePendingThisFrame = shouldReleaseTipRemountChromeAfterFitSettleRemasure(
+      chromeWasSuppressed,
+      appliedAny,
+      remasureDelayMs,
+      TIP_REMOUNT_FIT_SETTLE_CHROME_RELEASE_MS,
+    ) || shouldReleaseTipRemountChromeAfterFailedFitSettleRemasure(
+      chromeWasSuppressed,
+      appliedAny,
+      remasureDelayMs,
+      TIP_REMOUNT_FIT_SETTLE_CHROME_RELEASE_MS,
+    );
+    if (shouldRefreshHostMetricsBeforeTipRemountGeometryApply(
+      appliedAny,
+      manualEditTipRemountChromeSuppressedRef.current,
+      remasureDelayMs,
+      TIP_REMOUNT_FIT_SETTLE_CHROME_RELEASE_MS,
+    ) || deferGeometry) {
+      // Metrics first even when geometry is deferred under the pointer (513/516).
+      // Defer geom-epoch when this frame will arm paint-sync hold (533).
+      refreshManualEditHostMetricsAfterTipRemountMulti(
+        frame,
+        appliedAny,
+        chromeReleasePendingThisFrame,
+      );
+    }
+
+    const applyMeasuredGeometry = (
+      items: Array<{
+        id: string;
+        rect: ManualEditTarget['rect'];
+        layoutWidth: number;
+        layoutHeight: number;
+        base: ManualEditTarget | null;
+      }>,
+    ) => {
+      let primaryMeasured = false;
+      for (const item of items) {
+        if (item.base) {
+          applyManualEditMeasuredGeometry({
+            ...item.base,
+            rect: item.rect,
+            layoutWidth: item.layoutWidth,
+            layoutHeight: item.layoutHeight,
+          });
+        } else {
+          applyManualEditMeasuredGeometry({
+            id: item.id,
+            rect: item.rect,
+            layoutWidth: item.layoutWidth,
+            layoutHeight: item.layoutHeight,
+          } as ManualEditTarget);
+        }
+        if (item.id === primaryId) primaryMeasured = true;
+      }
+      if (primaryMeasured && primaryId && shouldRefreshHostPaintAfterTipRemountRemasure(true)) {
+        refreshManualEditHostPaintRect(primaryId, { force: true });
+      }
+    };
+    flushDeferredTipRemountGeometryRef.current = () => {
+      if (manualEditTipDeferredGeometryRafRef.current != null) {
+        window.cancelAnimationFrame(manualEditTipDeferredGeometryRafRef.current);
+        manualEditTipDeferredGeometryRafRef.current = null;
+      }
+      const latest = manualEditTipDeferredGeometryPayloadRef.current;
+      manualEditTipDeferredGeometryPayloadRef.current = null;
+      if (latest && latest.length > 0) applyMeasuredGeometry(latest);
+    };
+
+    if (
+      shouldReplaceDeferredTipRemountGeometryPayload(deferGeometry, appliedAny)
+    ) {
+      // Always keep the latest measure; pending rAF reads from this ref (519).
+      manualEditTipDeferredGeometryPayloadRef.current = measured;
+      if (manualEditTipDeferredGeometryRafRef.current != null) {
+        window.cancelAnimationFrame(manualEditTipDeferredGeometryRafRef.current);
+      }
+      manualEditTipDeferredGeometryRafRef.current = requestAnimationFrame(() => {
+        manualEditTipDeferredGeometryRafRef.current = null;
+        const latest = manualEditTipDeferredGeometryPayloadRef.current;
+        manualEditTipDeferredGeometryPayloadRef.current = null;
+        if (latest && latest.length > 0) applyMeasuredGeometry(latest);
+      });
+    } else {
+      if (shouldInvalidateDeferredTipRemountGeometryOnImmediateApply(
+        appliedAny,
+        manualEditTipDeferredGeometryPayloadRef.current != null
+          || manualEditTipDeferredGeometryRafRef.current != null,
+      )) {
+        if (manualEditTipDeferredGeometryRafRef.current != null) {
+          window.cancelAnimationFrame(manualEditTipDeferredGeometryRafRef.current);
+          manualEditTipDeferredGeometryRafRef.current = null;
+        }
+        manualEditTipDeferredGeometryPayloadRef.current = null;
+      }
+      applyMeasuredGeometry(measured);
+      // Multi/single: refresh scale/offset after fit nudges when not already
+      // refreshed pre-geometry (still-inert early delays) (461/515).
+      if (!shouldRefreshHostMetricsBeforeTipRemountGeometryApply(
+        appliedAny,
+        manualEditTipRemountChromeSuppressedRef.current,
+        remasureDelayMs,
+        TIP_REMOUNT_FIT_SETTLE_CHROME_RELEASE_MS,
+      )) {
+        refreshManualEditHostMetricsAfterTipRemountMulti(
+          frame,
+          appliedAny,
+          chromeReleasePendingThisFrame,
+        );
+      }
+    }
+    // Arm one-shot wild-jump skip for late post-latch deck nudges (485).
+    if (shouldArmPostTipFitSettleWildJumpSkip(appliedAny, ids.length)) {
+      manualEditTipPostFitSettleWildJumpSkipRef.current = true;
+    }
+    // Last chrome-release fit nudge remasure — release inert; later 900/1600ms
+    // remasure only updates geometry (476/478/481). Latch stays for wild-jump.
+    if (chromeReleasePendingThisFrame) {
+      releaseTipRemountChromeSuppress(true);
+    }
+    for (const id of ordered) {
+      requestManualEditTargetRemeasure(id, frame);
+    }
+    // Partial multi measure — one rAF retry so union is not one-sided (518).
+    if (
+      allowSiblingRetry
+      && shouldRetryTipRemountSiblingMeasure(ids.length, ordered.length, measured.length)
+    ) {
+      if (manualEditTipSiblingRetryRafRef.current == null) {
+        manualEditTipSiblingRetryRafRef.current = requestAnimationFrame(() => {
+          manualEditTipSiblingRetryRafRef.current = null;
+          remeasureTipRemountAfterDeckHostFitSettle(frame, remasureDelayMs, false);
+        });
+      }
+    }
+    if (shouldSpendTipRemountPostUnlockQuiet(postUnlockQuiet, true)) {
+      clearTipRemountPostUnlockQuietState();
+    }
+    return appliedAny;
+  }
+
+  // Keep ref current for deck fit onAfterNudge without thrashing fit options (487).
+  // rAF coalesce storms; stamp throttle only after a remasure that applied (492/497).
+  tipRemasureOnDeckNudgeRef.current = () => {
+    if (manualEditTipDeckNudgeRemasureRafRef.current != null) return;
+    manualEditTipDeckNudgeRemasureRafRef.current = requestAnimationFrame(() => {
+      manualEditTipDeckNudgeRemasureRafRef.current = null;
+      const nowMs = Date.now();
+      const followUntil = manualEditTipDeckNudgeFollowUntilRef.current;
+      const inFollow = shouldRemeasureTipRemountOnDeckHostFitNudge(
+        manualEditModeRef.current,
+        selectedManualEditTargetIdsRef.current,
+        followUntil,
+        nowMs,
+      );
+      const fitSettleExpired = tipRemountFitSettleExpired(
+        nowMs,
+        manualEditTipRemountFitSettleUntilRef.current,
+      );
+      const throttled = shouldThrottleTipRemountDeckNudgeRemasure(
+        manualEditTipDeckNudgeRemasureAtRef.current,
+        nowMs,
+        TIP_REMOUNT_DECK_NUDGE_REMEASURE_THROTTLE_MS,
+      );
+      // Follow-only path: throttle after coalesce (492).
+      if (inFollow && fitSettleExpired && throttled) {
+        // Still catch up scale/offset so chrome does not lag the deck (517).
+        if (shouldCatchUpHostMetricsWhenDeckNudgeRemasureThrottled(
+          inFollow,
+          fitSettleExpired,
+          throttled,
+          manualEditTipRemountChromeSuppressedRef.current,
+        )) {
+          refreshManualEditHostMetricsAfterTipRemountMulti(iframeRef.current, true);
+        }
+        return;
+      }
+      const applied = remeasureTipRemountAfterDeckHostFitSettle(
+        iframeRef.current,
+        TIP_REMOUNT_FIT_SETTLE_CHROME_RELEASE_MS,
+      );
+      if (inFollow && applied) {
+        manualEditTipDeckNudgeRemasureAtRef.current = nowMs;
+      }
+    });
+  };
+
+  /** Schedule fit-settle remasures aligned with early deck fit nudge delays (460/478/481). */
+  function scheduleTipRemountRemasureAfterDeckHostFitSettle(
+    getFrame: () => HTMLIFrameElement | null,
+  ) {
+    manualEditTipRemountFitSettleCancelRef.current?.();
+    manualEditTipRemountFitSettleCancelRef.current = null;
+    if (!shouldScheduleTipRemountFitSettleRemasureOnLoad(
+      manualEditTipRemountFitSettleUntilRef.current,
+      Date.now(),
+    )) {
+      return;
+    }
+    if (!shouldRemeasureTipRemountAfterDeckHostFitSettle(
+      manualEditModeRef.current,
+      selectedManualEditTargetIdsRef.current,
+      manualEditTipRemountFitSettleUntilRef.current,
+      Date.now(),
+    )) {
+      return;
+    }
+    // Early DEFAULT_FIT_NUDGE_DELAYS_MS inside tip latch — include 900/1600ms so
+    // chrome released at 400ms does not jump on later fit nudges (478/481).
+    const delaysMs = [...TIP_REMOUNT_FIT_SETTLE_REMEASURE_DELAYS_MS];
+    const timers = delaysMs.map((delay) => window.setTimeout(() => {
+      remeasureTipRemountAfterDeckHostFitSettle(getFrame(), delay);
+    }, delay));
+    manualEditTipRemountFitSettleCancelRef.current = () => {
+      for (const id of timers) window.clearTimeout(id);
+    };
+  }
+
+  function waitForManualEditTargetRemeasure(id: string, timeoutMs = 500) {
+    return manualEditRemeasureAwaiterRef.current.waitFor(id, timeoutMs);
+  }
+
+  function applyManualEditMeasuredTarget(measured: ManualEditTarget) {
+    // Full-merge was unused and would clobber styles/text without fingerprint
+    // latch updates. Keep the name for call-site clarity but geometry-only —
+    // identity refreshes flow through od-edit-targets (446).
+    applyManualEditMeasuredGeometry(measured);
+  }
+
+  /** Handoff settle — geometry only; never clobber flushed styles from bridge scan. */
+  function applyManualEditMeasuredGeometry(measured: ManualEditTarget) {
+    setSelectedManualEditTarget((current) => {
+      if (current?.id !== measured.id) return current;
+      const nextOffsetLeft = measured.offsetLeft ?? current.offsetLeft;
+      const nextOffsetTop = measured.offsetTop ?? current.offsetTop;
+      const nextCssPosition = measured.cssPosition ?? current.cssPosition;
+      const nextSticky = measured.stickyScrollportId ?? current.stickyScrollportId;
+      // Equal geometry — keep prior reference (no selection/overlay churn).
+      if (
+        manualEditGeometryRoughlyMatches(current, measured)
+        && current.offsetLeft === nextOffsetLeft
+        && current.offsetTop === nextOffsetTop
+        && current.cssPosition === nextCssPosition
+        && current.stickyScrollportId === nextSticky
+      ) {
+        return current;
+      }
+      const next: ManualEditTarget = {
+        ...current,
+        rect: measured.rect,
+        layoutWidth: measured.layoutWidth,
+        layoutHeight: measured.layoutHeight,
+        offsetLeft: nextOffsetLeft,
+        offsetTop: nextOffsetTop,
+        cssPosition: nextCssPosition,
+        stickyScrollportId: nextSticky,
+      };
+      selectedManualEditTargetRef.current = next;
+      return next;
+    });
+    setManualEditTargets((current) =>
+      current.map((item) => {
+        if (item.id !== measured.id) return item;
+        const nextOffsetLeft = measured.offsetLeft ?? item.offsetLeft;
+        const nextOffsetTop = measured.offsetTop ?? item.offsetTop;
+        const nextCssPosition = measured.cssPosition ?? item.cssPosition;
+        const nextSticky = measured.stickyScrollportId ?? item.stickyScrollportId;
+        if (
+          manualEditGeometryRoughlyMatches(item, measured)
+          && item.offsetLeft === nextOffsetLeft
+          && item.offsetTop === nextOffsetTop
+          && item.cssPosition === nextCssPosition
+          && item.stickyScrollportId === nextSticky
+        ) {
+          return item;
+        }
+        return {
+          ...item,
+          rect: measured.rect,
+          layoutWidth: measured.layoutWidth,
+          layoutHeight: measured.layoutHeight,
+          offsetLeft: nextOffsetLeft,
+          offsetTop: nextOffsetTop,
+          cssPosition: nextCssPosition,
+          stickyScrollportId: nextSticky,
+        };
+      }),
+    );
+  }
+
+  type ManualEditGestureGeometrySnapshot = {
+    rect: ManualEditRect;
+    layoutWidth?: number;
+    layoutHeight?: number;
+    hostPaintRect: ManualEditRect | null;
+  };
+
+  function captureManualEditGestureGeometrySnapshot(
+    target: ManualEditTarget,
+  ): ManualEditGestureGeometrySnapshot {
+    const paint = manualEditHostPaintRectRef.current;
+    return {
+      rect: { ...target.rect },
+      layoutWidth: target.layoutWidth,
+      layoutHeight: target.layoutHeight,
+      hostPaintRect: paint && paint.width >= 1 && paint.height >= 1
+        ? { ...paint }
+        : null,
+    };
+  }
+
+  function restoreManualEditGestureGeometry(snapshot: ManualEditGestureGeometrySnapshot) {
+    const target = selectedManualEditTargetRef.current;
+    if (!target) return;
+    setSelectedManualEditTarget((current) => {
+      if (!current || current.id !== target.id) return current;
+      const next: ManualEditTarget = {
+        ...current,
+        rect: { ...snapshot.rect },
+        layoutWidth: snapshot.layoutWidth ?? current.layoutWidth,
+        layoutHeight: snapshot.layoutHeight ?? current.layoutHeight,
+      };
+      selectedManualEditTargetRef.current = next;
+      return next;
+    });
+    if (snapshot.hostPaintRect) {
+      manualEditHostPaintRectRef.current = { ...snapshot.hostPaintRect };
+      setManualEditHostPaintRect({ ...snapshot.hostPaintRect });
+    } else {
+      refreshManualEditHostPaintRect(target.id, { force: true });
+    }
   }
 
   function syncBridgeModes(target: HTMLIFrameElement | null = iframeRef.current) {
@@ -6920,9 +8934,505 @@ function HtmlViewer({
       mode: boardTool,
     }, '*');
     win.postMessage({ type: 'od-edit-mode', enabled: manualEditMode }, '*');
-    postSelectedManualEditTargetToIframe(manualEditMode ? selectedManualEditTarget?.id ?? null : null, target);
+    postSelectedManualEditTargetsToIframe(
+      manualEditMode ? selectedManualEditTargetIdsRef.current : [],
+      manualEditMode ? selectedManualEditTargetIdRef.current : null,
+      target,
+    );
     win.postMessage({ type: 'od:inspect-mode', enabled: inspectMode }, '*');
     if (effectiveDeck && boardMode) requestSlideStateFromIframe(target);
+  }
+
+  /** Clear tip-remount grace latch (id + until) — expiry, consume, or leave. */
+  function clearManualEditTipRemountGeometryGrace(
+    reason: 'consume' | 'expiry' | 'safety' | 'selection' | 'mode-exit' = 'consume',
+  ) {
+    // Remasure consume / expiry / safety: keep tip identity protect briefly so
+    // the first post-grace od-edit-targets cannot flip Mixed/inspector (468).
+    // Selection leave / mode-exit: drop hold so a new target is not painted
+    // with the previous tip's styles (469).
+    const hadArmedGrace = Boolean(manualEditTipRemountGeometryGraceIdRef.current);
+    if (shouldArmTipRemountIdentityHoldOnGraceClear(reason)) {
+      if (hadArmedGrace) {
+        manualEditTipRemountIdentityHoldUntilRef.current = nextTipRemountIdentityHoldUntilMs(
+          Date.now(),
+          true,
+        );
+      }
+    } else {
+      manualEditTipRemountIdentityHoldUntilRef.current = 0;
+    }
+    if (shouldClearTipSyncedIdentityStickyRetainOnGraceClear(reason)) {
+      manualEditTipSyncedIdentityRetainRef.current = false;
+      manualEditTipPostStickySoftLandRef.current = 0;
+      manualEditTipPostSoftLandExitLatchRef.current = false;
+      manualEditTipPostExitMixedAbsorbRef.current = false;
+      manualEditTipPostAbsorbInspectorQuietRef.current = false;
+      manualEditTipDeckNudgeFollowUntilRef.current = 0;
+      manualEditTipDeckNudgeRemasureAtRef.current = 0;
+      manualEditTipChromeReleaseAfterResizeRef.current = false;
+      manualEditTipPostFitSettleWildJumpSkipRef.current = false;
+      manualEditTipFollowChromeReleaseDeferredRef.current = false;
+      if (manualEditTipDeckNudgeFollowChromeTimeoutRef.current != null) {
+        window.clearTimeout(manualEditTipDeckNudgeFollowChromeTimeoutRef.current);
+        manualEditTipDeckNudgeFollowChromeTimeoutRef.current = null;
+      }
+      if (manualEditTipDeckNudgeRemasureRafRef.current != null) {
+        window.cancelAnimationFrame(manualEditTipDeckNudgeRemasureRafRef.current);
+        manualEditTipDeckNudgeRemasureRafRef.current = null;
+      }
+      if (manualEditTipDeferredGeometryRafRef.current != null) {
+        window.cancelAnimationFrame(manualEditTipDeferredGeometryRafRef.current);
+        manualEditTipDeferredGeometryRafRef.current = null;
+      }
+      manualEditTipDeferredGeometryPayloadRef.current = null;
+      manualEditTipChromeUnlockPointerGateRef.current = false;
+      setManualEditTipChromeUnlockPointerGate(false);
+      clearTipRemountPostUnlockQuietState();
+      cancelTipRemountPaintSyncHoldRaf();
+      manualEditTipPaintSyncHoldRef.current = clearTipRemountPaintSyncHold();
+      setManualEditTipPaintSyncHold(false);
+      manualEditTipDeferredGeomEpochBumpRef.current = false;
+      manualEditTipLastHostRectByIdRef.current.clear();
+      if (manualEditTipSiblingRetryRafRef.current != null) {
+        window.cancelAnimationFrame(manualEditTipSiblingRetryRafRef.current);
+        manualEditTipSiblingRetryRafRef.current = null;
+      }
+    }
+    manualEditTipRemountGeometryGraceIdRef.current = null;
+    manualEditTipRemountGeometryGraceUntilRef.current = 0;
+    manualEditTipRemountFitSettleUntilRef.current = 0;
+    manualEditTipRemountFitSettleCancelRef.current?.();
+    manualEditTipRemountFitSettleCancelRef.current = null;
+    if (shouldCancelTipRemountSyncHostMeasureRetry(
+      manualEditTipRemountSyncRetryRafRef.current != null,
+    )) {
+      window.cancelAnimationFrame(manualEditTipRemountSyncRetryRafRef.current!);
+      manualEditTipRemountSyncRetryRafRef.current = null;
+    }
+    const wasChromeSuppressed = manualEditTipRemountChromeSuppressedRef.current;
+    if (
+      wasChromeSuppressed
+      && shouldReleaseTipRemountChromeViaPaintSyncOnGraceClear(reason)
+    ) {
+      // safety/expiry/consume: release via paint-sync + unlock gate (542).
+      releaseTipRemountChromeSuppress(true);
+    } else {
+      manualEditTipRemountChromeSuppressedRef.current = false;
+      setManualEditTipRemountChromeSuppressed(false);
+    }
+    if (manualEditTipRemountChromeSafetyTimeoutRef.current != null) {
+      window.clearTimeout(manualEditTipRemountChromeSafetyTimeoutRef.current);
+      manualEditTipRemountChromeSafetyTimeoutRef.current = null;
+    }
+    // Grace/follow may both be idle after clear — drop tip-era last-good (524).
+    maybeClearTipRemountLastHostRectCache();
+  }
+
+  /** Tip remount unmounts overlays — abort in-flight gesture + live preview (457). */
+  function abortManualEditGestureForTipYieldFreezeSync() {
+    if (!shouldAbortManualEditGestureForTipYieldFreezeSync(
+      manualEditResizeSessionActiveRef.current,
+    )) {
+      return;
+    }
+    cancelManualEditStyleDraft();
+    manualEditResizeSessionActiveRef.current = false;
+    manualEditResizePausedRef.current = false;
+    setManualEditResizeDraftSize(null);
+    setManualEditMoveDraftPos(null);
+    setManualEditGroupDraftRects(null);
+  }
+
+  /** Selection left tip-remount grace primary — clear so overlay remasures cleanly. */
+  function clearManualEditTipRemountGeometryGraceIfNeeded(
+    nextSelectedId: string | null,
+  ) {
+    if (shouldClearTipRemountGeometryGraceOnSelectionChange(
+      manualEditTipRemountGeometryGraceIdRef.current,
+      nextSelectedId,
+    )) {
+      clearManualEditTipRemountGeometryGrace('selection');
+      return;
+    }
+    // Grace already gone — still drop sticky/soft-land/absorb/follow on leave (499).
+    if (shouldClearTipPostProtectOnSelectionChange(
+      selectedManualEditTargetIdRef.current,
+      nextSelectedId,
+    )) {
+      clearManualEditTipRemountGeometryGrace('selection');
+    }
+  }
+
+  /** Tip-yield freeze remount — deferred Mixed/single reseed (59). Selection
+   *  restore + remasure run from srcDoc onLoad so we do not paint a dying frame (452). */
+  function scheduleManualEditSelectionEchoAfterFreezeSync() {
+    const selectedIds = selectedManualEditTargetIdsRef.current;
+    const echo = shouldEchoManualEditSelectionAfterFreezeSync(
+      manualEditModeRef.current,
+      selectedIds,
+    );
+    const reseedMulti = shouldReseedManualEditMultiInspectorAfterFreezeSync(
+      manualEditModeRef.current,
+      selectedIds,
+    );
+    if (!echo && !reseedMulti) return;
+    // Tip remount would drop host overlays mid-drag — revert live preview first (457).
+    abortManualEditGestureForTipYieldFreezeSync();
+    // Idle remasure after tip remount may jump layout — skip wild-jump once.
+    const graceId = selectedManualEditTargetIdRef.current;
+    if (graceId) {
+      const nowMs = Date.now();
+      const graceUntil = nowMs + 800;
+      // Drop stale onLoad sync retry from a prior tip-yield (463).
+      if (shouldCancelTipRemountSyncHostMeasureRetry(
+        manualEditTipRemountSyncRetryRafRef.current != null,
+      )) {
+        window.cancelAnimationFrame(manualEditTipRemountSyncRetryRafRef.current!);
+        manualEditTipRemountSyncRetryRafRef.current = null;
+      }
+      manualEditTipRemountGeometryGraceIdRef.current = graceId;
+      manualEditTipRemountGeometryGraceUntilRef.current = graceUntil;
+      // New tip-remount session owns identity protect (replace stale post-settle hold).
+      manualEditTipRemountIdentityHoldUntilRef.current = 0;
+      // Sticky retain past timed hold until selection leave (472).
+      manualEditTipSyncedIdentityRetainRef.current = true;
+      // New tip session replaces any post-sticky soft-land / wild-jump one-shot.
+      manualEditTipPostStickySoftLandRef.current = 0;
+      manualEditTipPostSoftLandExitLatchRef.current = false;
+      manualEditTipPostExitMixedAbsorbRef.current = false;
+      manualEditTipPostAbsorbInspectorQuietRef.current = false;
+      manualEditTipChromeReleaseAfterResizeRef.current = false;
+      manualEditTipPostFitSettleWildJumpSkipRef.current = false;
+      manualEditTipDeckNudgeRemasureAtRef.current = 0;
+      manualEditTipFollowChromeReleaseDeferredRef.current = false;
+      manualEditTipChromeUnlockPointerGateRef.current = false;
+      setManualEditTipChromeUnlockPointerGate(false);
+      clearTipRemountPostUnlockQuietState();
+      cancelTipRemountPaintSyncHoldRaf();
+      manualEditTipPaintSyncHoldRef.current = clearTipRemountPaintSyncHold();
+      setManualEditTipPaintSyncHold(false);
+      manualEditTipDeferredGeomEpochBumpRef.current = false;
+      manualEditTipDeferredGeometryPayloadRef.current = null;
+      manualEditTipLastHostRectByIdRef.current.clear();
+      // Follow late deck nudges (2500+) without extending wild-jump latch (487).
+      manualEditTipDeckNudgeFollowUntilRef.current = nextTipRemountDeckNudgeFollowUntilMs(
+        nowMs,
+        true,
+        TIP_REMOUNT_DECK_NUDGE_FOLLOW_MS,
+      );
+      // Safety: release chrome when follow ends if still inert (494/510).
+      if (manualEditTipDeckNudgeFollowChromeTimeoutRef.current != null) {
+        window.clearTimeout(manualEditTipDeckNudgeFollowChromeTimeoutRef.current);
+      }
+      manualEditTipDeckNudgeFollowChromeTimeoutRef.current = window.setTimeout(() => {
+        manualEditTipDeckNudgeFollowChromeTimeoutRef.current = null;
+        const followUntil = manualEditTipDeckNudgeFollowUntilRef.current;
+        const ended = followUntil > 0 && Date.now() >= followUntil;
+        if (ended) {
+          manualEditTipDeckNudgeFollowUntilRef.current = 0;
+          // Follow ended — drop tip-era last-good rects when fully idle (524).
+          maybeClearTipRemountLastHostRectCache();
+          // Quiet with no remasure must not stick past follow end (531).
+          if (shouldForceSpendTipRemountPostUnlockQuiet(
+            manualEditTipPostUnlockQuietRef.current,
+            true,
+            false,
+          )) {
+            clearTipRemountPostUnlockQuietState();
+          }
+        }
+        const safetyPending = manualEditTipRemountChromeSafetyTimeoutRef.current != null;
+        if (shouldReleaseTipRemountChromeWhenDeckNudgeFollowEnds(
+          manualEditTipRemountChromeSuppressedRef.current,
+          ended,
+          // Do not race tip remount safety clear still in flight (499/510).
+          safetyPending,
+        )) {
+          releaseTipRemountChromeSuppress(true);
+          manualEditTipFollowChromeReleaseDeferredRef.current = false;
+        } else if (shouldDeferTipRemountChromeReleaseAfterFollowEndBlockedBySafety(
+          manualEditTipRemountChromeSuppressedRef.current,
+          ended,
+          safetyPending,
+        )) {
+          manualEditTipFollowChromeReleaseDeferredRef.current = true;
+        }
+      }, TIP_REMOUNT_DECK_NUDGE_FOLLOW_MS + 20);
+      // Deck host-fit may rescale after onLoad — keep settle latch past grace (460/481).
+      const fitSettleUntil = shouldArmTipRemountFitSettleForDeckHostFit(
+        deckHostViewportFitActive,
+      )
+        ? nowMs + TIP_REMOUNT_FIT_SETTLE_LATCH_MS
+        : 0;
+      manualEditTipRemountFitSettleUntilRef.current = fitSettleUntil;
+      // Inert chrome until remasure — keep last rect visible, block gestures (458).
+      manualEditTipRemountChromeSuppressedRef.current = true;
+      setManualEditTipRemountChromeSuppressed(true);
+      if (manualEditTipRemountChromeSafetyTimeoutRef.current != null) {
+        window.clearTimeout(manualEditTipRemountChromeSafetyTimeoutRef.current);
+      }
+      // Escape hatch: remasure never arrives — do not leave chrome stuck (457/460).
+      const safetyClearAt = Math.max(graceUntil, fitSettleUntil || graceUntil) + 20;
+      manualEditTipRemountChromeSafetyTimeoutRef.current = window.setTimeout(() => {
+        manualEditTipRemountChromeSafetyTimeoutRef.current = null;
+        if (manualEditTipRemountGeometryGraceUntilRef.current === graceUntil) {
+          clearManualEditTipRemountGeometryGrace('safety');
+        } else if (shouldFlushDeferredTipRemountChromeReleaseAfterSafety(
+          manualEditTipFollowChromeReleaseDeferredRef.current,
+          manualEditTipRemountChromeSuppressedRef.current,
+          false,
+        )) {
+          // Follow-end was blocked by this safety timeout — flush chrome (510).
+          releaseTipRemountChromeSuppress(true);
+          manualEditTipFollowChromeReleaseDeferredRef.current = false;
+        }
+      }, Math.max(0, safetyClearAt - Date.now()));
+    }
+    if (manualEditFreezeEchoTimeoutRef.current != null) {
+      window.clearTimeout(manualEditFreezeEchoTimeoutRef.current);
+      manualEditFreezeEchoTimeoutRef.current = null;
+    }
+    manualEditFreezeEchoTimeoutRef.current = window.setTimeout(() => {
+      manualEditFreezeEchoTimeoutRef.current = null;
+      const ids = selectedManualEditTargetIdsRef.current;
+      // Selection echo / remasure: srcDoc onLoad → syncBridgeModes + remasure (452).
+      if (!shouldReseedManualEditMultiInspectorAfterFreezeSync(
+        manualEditModeRef.current,
+        ids,
+      )) {
+        // 2→1 / clear during deferred tip-yield — drop stale Mixed (기획 59).
+        if (shouldClearMixedKeysAfterTipYieldReseedSkip(ids)) {
+          setManualEditMixedStyleKeys(new Set());
+          const pending = manualEditPendingStyleRef.current;
+          const pendingOwns = concurrentPendingOwnsTipYieldReseedStyles(
+            pending
+              ? { styles: pending.styles, perTargetStyles: pending.perTargetStyles }
+              : null,
+          );
+          // Mixed→single: reseed inspector from painted source (not empty shell).
+          if (shouldReseedSingleInspectorAfterTipYieldMixedClear(ids, pendingOwns)) {
+            const base = sourceRef.current ?? '';
+            const parsedDoc = parseManualEditSource(base);
+            const seedId = ids[0]!;
+            const snapshot = readManualEditTargetSnapshot(base, seedId, {}, parsedDoc);
+            // Tip source may have dropped the node — do not wipe styles/fields
+            // with an empty snapshot shell (416 side effect).
+            if (!shouldApplyTipYieldSingleInspectorSnapshot(snapshot.outerHtml)) {
+              setManualEditDraft((current) => (
+                current.fullSource === base ? current : { ...current, fullSource: base }
+              ));
+            } else {
+              const primary = selectedManualEditTargetRef.current;
+              setManualEditDraft((current) => ({
+                ...current,
+                text: snapshot.fields.text
+                  ?? (primary?.id === seedId ? primary.fields.text ?? primary.text : undefined)
+                  ?? current.text,
+                href: snapshot.fields.href
+                  ?? (primary?.id === seedId ? primary.fields.href : undefined)
+                  ?? current.href,
+                src: snapshot.fields.src
+                  ?? (primary?.id === seedId ? primary.fields.src : undefined)
+                  ?? current.src,
+                alt: snapshot.fields.alt
+                  ?? (primary?.id === seedId ? primary.fields.alt : undefined)
+                  ?? current.alt,
+                styles: snapshot.styles,
+                attributesText: JSON.stringify(snapshot.attributes, null, 2),
+                outerHtml: snapshot.outerHtml,
+                fullSource: base,
+              }));
+              // Keep selected target identity aligned with painted tip (426).
+              // Also refresh manualEditTargets membership for the same seed (435).
+              if (shouldSyncSelectedTargetIdentityAfterTipYieldSingleReseed(
+                primary?.id,
+                seedId,
+              )) {
+                setSelectedManualEditTarget((current) => {
+                  if (!current || current.id !== seedId) return current;
+                  const next = {
+                    ...current,
+                    text: snapshot.fields.text ?? current.text,
+                    fields: { ...current.fields, ...snapshot.fields },
+                    attributes: snapshot.attributes,
+                    styles: resolveTipYieldIdentityStyles(
+                      snapshot.styles,
+                      current.styles,
+                      true,
+                    ),
+                    outerHtml: snapshot.outerHtml || current.outerHtml,
+                  };
+                  selectedManualEditTargetRef.current = next;
+                  // Avoid redundant identity reseed on the next bridge broadcast (440).
+                  manualEditSelectedIdentityFingerprintRef.current =
+                    manualEditTargetsIdentityFingerprint([next]);
+                  return next;
+                });
+                setManualEditTargets((current) => {
+                  const nextList = current.map((item) => {
+                    if (item.id !== seedId) return item;
+                    return {
+                      ...item,
+                      text: snapshot.fields.text ?? item.text,
+                      fields: { ...item.fields, ...snapshot.fields },
+                      attributes: snapshot.attributes,
+                      styles: resolveTipYieldIdentityStyles(
+                        snapshot.styles,
+                        item.styles,
+                        true,
+                      ),
+                      outerHtml: snapshot.outerHtml || item.outerHtml,
+                    };
+                  });
+                  manualEditTargetsIdentityFingerprintRef.current =
+                    manualEditTargetsIdentityFingerprint(nextList);
+                  return nextList;
+                });
+              }
+            }
+          }
+          // 2→1 tip-yield: host paint may still track the prior multi primary.
+          // Skip while tip-remount grace is active — force measure can stamp a
+          // pre-layout wild rect; od-edit-rect owns geometry during grace (430).
+          {
+            const paintId = selectedManualEditTargetIdRef.current ?? ids[0]!;
+            if (shouldRefreshHostPaintAfterTipYieldSingleReseed(ids, {
+              graceId: manualEditTipRemountGeometryGraceIdRef.current,
+              paintId,
+              nowMs: Date.now(),
+              graceUntilMs: manualEditTipRemountGeometryGraceUntilRef.current,
+            })) {
+              refreshManualEditHostPaintRect(paintId, { force: true });
+            }
+          }
+        }
+        return;
+      }
+      // Source-only reseed (same plan helper as batch flush / cancel) — 기획 59.
+      // Pending with draft keys owns styles (null); empty shell allows source merge.
+      // Tip Mixed must not merge preview target.styles (451/465).
+      const base = sourceRef.current ?? '';
+      const parsedDoc = parseManualEditSource(base);
+      const pending = manualEditPendingStyleRef.current;
+      const concurrentPending = pending
+        ? { styles: pending.styles, perTargetStyles: pending.perTargetStyles }
+        : null;
+      const tipYieldSourceOnly = shouldReadMultiInspectorStylesFromSourceOnly('tip-yield');
+      // Tip-yield Mixed is always source-only — never merge preview styles (465).
+      if (!tipYieldSourceOnly) {
+        // Unreachable: tip-yield reason always returns true.
+      }
+      const reseed = planManualEditMultiInspectorReseed({
+        selectedIds: ids,
+        readStyles: (id) => readManualEditStyles(base, id, {}, parsedDoc),
+        concurrentPending,
+      });
+      setManualEditMixedStyleKeys(reseed.mixedKeys);
+      const pendingOwns = concurrentPendingOwnsTipYieldReseedStyles(concurrentPending);
+      const primaryId = selectedManualEditTargetIdRef.current ?? ids[ids.length - 1]!;
+      const primarySnapshot = readManualEditTargetSnapshot(base, primaryId, {}, parsedDoc);
+      // Multi tip-yield: sync identity for every selected id from painted tip (449).
+      if (shouldSyncSelectedTargetsIdentityAfterTipYieldMultiReseed(ids)) {
+        const snapshotsById = new Map(
+          ids.map((id) => [id, readManualEditTargetSnapshot(base, id, {}, parsedDoc)] as const),
+        );
+        setManualEditTargets((current) => {
+          const nextList = current.map((item) => {
+            const snapshot = snapshotsById.get(item.id);
+            if (!snapshot || !shouldApplyTipYieldSingleInspectorSnapshot(snapshot.outerHtml)) {
+              return item;
+            }
+            return {
+              ...item,
+              text: snapshot.fields.text ?? item.text,
+              fields: { ...item.fields, ...snapshot.fields },
+              attributes: snapshot.attributes,
+              // Tip source wins — do not merge pre-tip preview styles (465).
+              styles: resolveTipYieldIdentityStyles(
+                snapshot.styles,
+                item.styles,
+                true,
+              ),
+              outerHtml: snapshot.outerHtml || item.outerHtml,
+            };
+          });
+          manualEditTargetsIdentityFingerprintRef.current =
+            manualEditTargetsIdentityFingerprint(nextList);
+          const selectedForFp = resolveManualEditTargetsByIds(ids, nextList);
+          manualEditSelectedIdentityFingerprintRef.current =
+            manualEditTargetsIdentityFingerprint(selectedForFp);
+          return nextList;
+        });
+        setSelectedManualEditTarget((current) => {
+          if (!current) return current;
+          const snapshot = snapshotsById.get(current.id);
+          if (!snapshot || !shouldApplyTipYieldSingleInspectorSnapshot(snapshot.outerHtml)) {
+            return current;
+          }
+          const next = {
+            ...current,
+            text: snapshot.fields.text ?? current.text,
+            fields: { ...current.fields, ...snapshot.fields },
+            attributes: snapshot.attributes,
+            styles: resolveTipYieldIdentityStyles(
+              snapshot.styles,
+              current.styles,
+              true,
+            ),
+            outerHtml: snapshot.outerHtml || current.outerHtml,
+          };
+          selectedManualEditTargetRef.current = next;
+          return next;
+        });
+      }
+      // Never clobber in-flight draft styles while pending owns the panel.
+      // Always refresh primary fields from tip when snapshot is usable (449).
+      const primaryFieldsUsable = shouldApplyTipYieldSingleInspectorSnapshot(
+        primarySnapshot.outerHtml,
+      );
+      if (reseed.styles != null && !pendingOwns) {
+        setManualEditDraft((current) => ({
+          ...current,
+          text: primaryFieldsUsable
+            ? (primarySnapshot.fields.text ?? current.text)
+            : current.text,
+          href: primaryFieldsUsable
+            ? (primarySnapshot.fields.href ?? current.href)
+            : current.href,
+          src: primaryFieldsUsable
+            ? (primarySnapshot.fields.src ?? current.src)
+            : current.src,
+          alt: primaryFieldsUsable
+            ? (primarySnapshot.fields.alt ?? current.alt)
+            : current.alt,
+          styles: reseed.styles!,
+          fullSource: base,
+        }));
+      } else if (reseed.styles == null) {
+        setManualEditDraft((current) => {
+          const next = current.fullSource === base ? current : { ...current, fullSource: base };
+          if (!primaryFieldsUsable) return next;
+          return {
+            ...next,
+            text: primarySnapshot.fields.text ?? next.text,
+            href: primarySnapshot.fields.href ?? next.href,
+            src: primarySnapshot.fields.src ?? next.src,
+            alt: primarySnapshot.fields.alt ?? next.alt,
+          };
+        });
+      } else if (primaryFieldsUsable) {
+        // Pending owns styles — still align primary text fields with tip.
+        setManualEditDraft((current) => ({
+          ...current,
+          text: primarySnapshot.fields.text ?? current.text,
+          href: primarySnapshot.fields.href ?? current.href,
+          src: primarySnapshot.fields.src ?? current.src,
+          alt: primarySnapshot.fields.alt ?? current.alt,
+          fullSource: base,
+        }));
+      }
+    }, 0);
   }
 
   // Style saves leave the edit-mode freeze alone (postMessage live preview).
@@ -6945,7 +9455,16 @@ function HtmlViewer({
       }
       const pending = manualEditPendingStyleRef.current;
       if (!pending) return;
-      previewStyleToIframe(pending.id, pending.styles, pending.version);
+      if (pending.perTargetStyles) {
+        for (const [id, styles] of Object.entries(pending.perTargetStyles)) {
+          previewStyleToIframe(id, styles, pending.version);
+        }
+        return;
+      }
+      const pendingIds = pending.targetIds ?? [pending.id];
+      for (const id of pendingIds) {
+        previewStyleToIframe(id, pending.styles, pending.version);
+      }
     } finally {
       if (target && target !== previous) iframeRef.current = previous;
     }
@@ -7035,9 +9554,18 @@ function HtmlViewer({
     setManualEditFrozenSource(null);
     setManualEditViewportWidth(null);
     setManualEditTargets([]);
+    manualEditTargetsIdentityFingerprintRef.current = '';
+    manualEditSelectedIdentityFingerprintRef.current = '';
     setSelectedManualEditTarget(null);
+    setSelectedManualEditTargetIds([]);
+    setManualEditMixedStyleKeys(new Set());
     setManualEditPanelPosition(null);
+    setManualEditPanelCollapsed(false);
+    manualEditPanelUserPinnedRef.current = false;
+    manualEditPanelPaintPinnedIdRef.current = null;
     selectedManualEditTargetIdRef.current = null;
+    selectedManualEditTargetRef.current = null;
+    selectedManualEditTargetIdsRef.current = [];
     setManualEditDraft(emptyManualEditDraft());
     commitRevisionStack(createRevisionStackSnapshot([], null));
     clearRevisionContentCacheForFile(projectId, file.name);
@@ -7045,13 +9573,37 @@ function HtmlViewer({
     setRevisionHistoryOpen(false);
     setRevisionStackInvalidated(false);
     setRevisionConflictToast(null);
+    setRevisionDiskSyncToast(null);
+    revisionDiskSyncFailedTargetRef.current = null;
     revisionConflictSuppressedRef.current = false;
+    revisionInitialReconcileRef.current = true;
     setRevisionRetentionLimit(FILE_REVISION_RETENTION_LIMIT_DEFAULT);
+    setRevisionRetentionPending(false);
     manualEditPendingStyleRef.current = null;
     clearManualEditStyleTimer();
     manualEditResizePausedRef.current = false;
     setManualEditResizeDraftSize(null);
     setManualEditMoveDraftPos(null);
+    setManualEditGroupDraftRects(null);
+    // Artifact switch: cancel confirm-refuse tip-prefer suppress + tip remount grace
+    // (generation bump below would otherwise leave suppress stuck with no commit).
+    manualEditSuppressTipPreferUntilRefreshRef.current = nextTipPreferSuppressState(
+      'artifact-switch',
+    );
+    clearManualEditTipRemountGeometryGrace('mode-exit');
+    return () => {
+      // Drop in-flight reconcile/refresh work so unmount cannot overwrite
+      // persisted revision cursor state in sessionStorage after a tab switch.
+      revisionReconcileGenerationRef.current += 1;
+      revisionRefreshGenerationRef.current += 1;
+      revisionRefreshActiveRetryRef.current = 0;
+      revisionRefreshListRetryRef.current = 0;
+      // Generation bump cancels refresh before commit/give-up — clear suppress here.
+      manualEditSuppressTipPreferUntilRefreshRef.current = nextTipPreferSuppressState(
+        'artifact-switch',
+      );
+      clearManualEditTipRemountGeometryGrace('mode-exit');
+    };
   }, [file.name]);
 
   const resolveRevisionSnapshotContent = useCallback(async (revisionId: string): Promise<string | null> => {
@@ -7065,46 +9617,87 @@ function HtmlViewer({
     return response.content;
   }, [projectId, file.name]);
 
-  const reconcileRevisionWithDisk = useCallback(async () => {
+  const reconcileRevisionWithDisk = useCallback(async (
+    preloadedList?: Awaited<ReturnType<typeof listProjectFileRevisions>>,
+  ) => {
     if (revisionSyncSuppressRef.current || manualEditSavingRef.current) return;
     const reconcileGeneration = revisionReconcileGenerationRef.current;
     const stack = revisionStackRef.current;
     const cursor = cursorRevisionFromStack(stack);
     if (!cursor) return;
     const cursorRevisionId = cursor.id;
+    // Consume the "first reconcile after mount" flag once — the ref flips
+    // regardless of which reconcile branch we take, so a benign initial
+    // reconcile (cursor already matches disk) still hands the toast privilege
+    // over to whatever the NEXT reconcile decides.
+    const isInitialReconcile = revisionInitialReconcileRef.current;
+    revisionInitialReconcileRef.current = false;
 
-    const [disk, snapshotContent] = await Promise.all([
+    const [disk, snapshotContent, list] = await Promise.all([
       fetchProjectFileText(projectId, file.name, {
         cache: 'no-store',
         cacheBustKey: Date.now(),
       }),
       resolveRevisionSnapshotContent(cursorRevisionId),
+      preloadedList ?? listProjectFileRevisions(projectId, file.name),
     ]);
     if (
       revisionSyncSuppressRef.current
       || manualEditSavingRef.current
-      || reconcileGeneration !== revisionReconcileGenerationRef.current
+      || isStaleRevisionReconcile(reconcileGeneration)
       || revisionStackRef.current.cursorRevisionId !== cursorRevisionId
     ) {
       return;
     }
     if (disk == null || snapshotContent == null) return;
+    if (revisionDiskSyncFailedTargetRef.current?.id === cursorRevisionId) {
+      setRevisionStackInvalidated(false);
+      return;
+    }
     if (revisionCursorMatchesDisk(revisionStackRef.current, disk, snapshotContent)) {
       setRevisionStackInvalidated(false);
       return;
     }
 
-    const list = await listProjectFileRevisions(projectId, file.name);
+    const previewMatchesSnapshot = (candidate: string | null) => (
+      revisionSnapshotContentMatches(candidate, snapshotContent)
+    );
+    const previewAlignedWithCursor =
+      previewMatchesSnapshot(sourceRef.current)
+      || (
+        previewMatchesSnapshot(lastStablePreviewSourceRef.current)
+        && sourceRef.current === disk
+        && disk !== snapshotContent
+      );
+    const previewSourceForReconcile = previewAlignedWithCursor
+      ? snapshotContent
+      : sourceRef.current;
+
     if (!list) {
-      setRevisionStackInvalidated(true);
-      if (!revisionConflictSuppressedRef.current) {
-        setRevisionConflictToast(t('fileRevision.conflict.message'));
+      if (previewAlignedWithCursor) {
+        setRevisionStackInvalidated(false);
+        setRevisionConflictToast(null);
+        return;
+      }
+      if (revisionRefreshListRetryRef.current < 8) {
+        revisionRefreshListRetryRef.current += 1;
+        window.setTimeout(() => {
+          if (!isStaleRevisionReconcile(reconcileGeneration)) {
+            void reconcileRevisionWithDisk();
+          }
+        }, 250);
       }
       return;
     }
+    revisionRefreshListRetryRef.current = 0;
     if (typeof list.retentionLimit === 'number') {
       setRevisionRetentionLimit(list.retentionLimit);
     }
+    setRevisionRetentionPending(list.retentionPending === true);
+    const headRevision = list.revisions.find((revision) => revision.id === list.headRevisionId);
+    const activeSequence = getActiveRevisionSequence(projectId, file.name);
+    const userAtHeadRevision = activeSequence == null
+      || (headRevision != null && activeSequence === headRevision.sequence);
 
     const matchingRevision = await findRevisionMatchingDiskContent(
       list.revisions,
@@ -7112,88 +9705,355 @@ function HtmlViewer({
       resolveRevisionSnapshotContent,
       new Set([cursorRevisionId]),
     );
+    const anyKnownDiskRevision = await findRevisionMatchingDiskContent(
+      list.revisions,
+      disk,
+      resolveRevisionSnapshotContent,
+    );
     if (
       revisionSyncSuppressRef.current
       || manualEditSavingRef.current
-      || reconcileGeneration !== revisionReconcileGenerationRef.current
+      || isStaleRevisionReconcile(reconcileGeneration)
     ) {
       return;
     }
 
-    if (matchingRevision) {
-      commitRevisionStack(createRevisionStackSnapshot(
-        list.revisions,
-        list.headRevisionId,
-        matchingRevision.id,
-      ));
-      setActiveRevisionSequence(projectId, file.name, matchingRevision.sequence);
-      setRevisionStackInvalidated(false);
-      revisionConflictSuppressedRef.current = false;
-      setRevisionConflictToast(null);
-
+    if (!anyKnownDiskRevision && disk !== snapshotContent) {
+      if (previewAlignedWithCursor) {
+        setRevisionStackInvalidated(false);
+        setRevisionConflictToast(null);
+        return;
+      }
+      if (isStaleRevisionReconcile(reconcileGeneration)) {
+        return;
+      }
       if (sourceRef.current !== disk) {
         setSource(disk);
         sourceRef.current = disk;
         setInlinedSource(null);
         setManualEditFrozenSource(disk);
         setManualEditDraft((current) => ({ ...current, fullSource: disk }));
-        setReloadKey((k) => k + 1);
+        if (useUrlLoadPreview) setReloadKey((k) => k + 1);
+        manualEditPendingStyleRef.current = null;
+      }
+      setRevisionStackInvalidated(true);
+      // Silent on the first reconcile after mount — see
+      // revisionInitialReconcileRef declaration for rationale. Undo/redo still
+      // gets disabled (setRevisionStackInvalidated above) so the user cannot
+      // accidentally overwrite disk with a stale snapshot.
+      if (!revisionConflictSuppressedRef.current && !isInitialReconcile) {
+        setRevisionConflictToast(revisionConflictMessageRef.current);
+      }
+      const head = list.revisions.find((revision) => revision.id === list.headRevisionId);
+      if (head) {
+        setActiveRevisionSequence(projectId, file.name, head.sequence);
+        warmRevisionListSoftCacheFromList(projectId, file.name, head.sequence, list);
+      } else {
+        clearActiveRevisionSequence(projectId, file.name);
+      }
+      commitRevisionStack(createRevisionStackSnapshot(
+        list.revisions,
+        list.headRevisionId,
+        list.headRevisionId,
+      ));
+      return;
+    }
+
+    // Revision head snapshot is authoritative when scratch / S3 lag behind postgres.
+    if (
+      list.headRevisionId
+      && shouldApplyHeadRevisionSnapshotAuthority(
+        cursor,
+        headRevision,
+        userAtHeadRevision,
+        disk,
+        snapshotContent,
+        matchingRevision,
+      )
+    ) {
+      setRevisionStackInvalidated(false);
+      revisionConflictSuppressedRef.current = false;
+      setRevisionConflictToast(null);
+      if (sourceRef.current !== snapshotContent) {
+        setSource(snapshotContent);
+        sourceRef.current = snapshotContent;
+        lastStablePreviewSourceRef.current = snapshotContent;
+        rememberStablePreviewSource(projectId, file.name, snapshotContent);
+        setInlinedSource(null);
+        setManualEditFrozenSource(snapshotContent);
+        setManualEditDraft((current) => ({ ...current, fullSource: snapshotContent }));
+        if (useUrlLoadPreview) setReloadKey((k) => k + 1);
+        manualEditPinnedSourceRef.current = null;
         manualEditPendingStyleRef.current = null;
       }
       return;
     }
 
-    setSource(disk);
-    sourceRef.current = disk;
-    setInlinedSource(null);
-    setManualEditFrozenSource(disk);
-    setManualEditDraft((current) => ({ ...current, fullSource: disk }));
-    setReloadKey((k) => k + 1);
-    manualEditPendingStyleRef.current = null;
+    if (matchingRevision) {
+      const reconcileOutcome = classifyRevisionDiskReconcile({
+        cursor,
+        headRevision,
+        activeSequence,
+        diskContent: disk,
+        cursorSnapshotContent: snapshotContent,
+        previewSource: previewSourceForReconcile,
+        matchingRevision,
+      });
 
+      if (
+        reconcileOutcome === 'sync_lag_head_disk'
+        || reconcileOutcome === 'preserve_history_cursor'
+      ) {
+        setRevisionStackInvalidated(false);
+        setRevisionConflictToast(null);
+        return;
+      }
+
+      if (reconcileOutcome === 'adopt_matching_disk') {
+        commitRevisionStack(createRevisionStackSnapshot(
+          list.revisions,
+          list.headRevisionId,
+          matchingRevision.id,
+        ));
+        if (isStaleRevisionReconcile(reconcileGeneration)) {
+          return;
+        }
+        setActiveRevisionSequence(projectId, file.name, matchingRevision.sequence);
+        warmRevisionListSoftCacheFromList(
+          projectId,
+          file.name,
+          matchingRevision.sequence,
+          list,
+        );
+        setRevisionStackInvalidated(false);
+        revisionConflictSuppressedRef.current = false;
+        setRevisionConflictToast(null);
+
+        if (sourceRef.current !== disk) {
+          setSource(disk);
+          sourceRef.current = disk;
+          setInlinedSource(null);
+          setManualEditFrozenSource(disk);
+          setManualEditDraft((current) => ({ ...current, fullSource: disk }));
+          if (useUrlLoadPreview) setReloadKey((k) => k + 1);
+          manualEditPendingStyleRef.current = null;
+        }
+        return;
+      }
+    }
+
+    const reconcileOutcomeWithoutMatch = classifyRevisionDiskReconcile({
+      cursor,
+      headRevision,
+      activeSequence,
+      diskContent: disk,
+      cursorSnapshotContent: snapshotContent,
+      previewSource: previewSourceForReconcile,
+      matchingRevision: null,
+    });
+
+    if (reconcileOutcomeWithoutMatch === 'preserve_history_cursor') {
+      setRevisionStackInvalidated(false);
+      setRevisionConflictToast(null);
+      return;
+    }
+
+    if (reconcileOutcomeWithoutMatch !== 'external_conflict') {
+      return;
+    }
+
+    if (isStaleRevisionReconcile(reconcileGeneration)) {
+      return;
+    }
+
+    if (sourceRef.current !== disk) {
+      setSource(disk);
+      sourceRef.current = disk;
+      setInlinedSource(null);
+      setManualEditFrozenSource(disk);
+      setManualEditDraft((current) => ({ ...current, fullSource: disk }));
+      if (useUrlLoadPreview) setReloadKey((k) => k + 1);
+      manualEditPendingStyleRef.current = null;
+    }
+
+    setRevisionStackInvalidated(true);
+    // Silent on the first reconcile after mount — see the sibling
+    // `!anyKnownDiskRevision` branch above for the same rationale. Undo/redo
+    // still gets disabled so the user cannot overwrite disk with a stale
+    // snapshot; only the toast is suppressed on entry.
+    if (!revisionConflictSuppressedRef.current && !isInitialReconcile) {
+      setRevisionConflictToast(revisionConflictMessageRef.current);
+    }
+    const head = list.revisions.find((revision) => revision.id === list.headRevisionId);
+    if (head) {
+      setActiveRevisionSequence(projectId, file.name, head.sequence);
+      warmRevisionListSoftCacheFromList(projectId, file.name, head.sequence, list);
+    } else {
+      clearActiveRevisionSequence(projectId, file.name);
+    }
     commitRevisionStack(createRevisionStackSnapshot(
       list.revisions,
       list.headRevisionId,
       list.headRevisionId,
     ));
-    const head = list.revisions.find((revision) => revision.id === list.headRevisionId);
-    if (head) {
-      setActiveRevisionSequence(projectId, file.name, head.sequence);
-    } else {
-      clearActiveRevisionSequence(projectId, file.name);
-    }
-    setRevisionStackInvalidated(true);
-    if (!revisionConflictSuppressedRef.current) {
-      setRevisionConflictToast(t('fileRevision.conflict.message'));
-    }
-  }, [projectId, file.name, resolveRevisionSnapshotContent, t]);
+  }, [projectId, file.name, resolveRevisionSnapshotContent, useUrlLoadPreview]);
 
   const refreshRevisionStack = useCallback(async () => {
+    const refreshGeneration = ++revisionRefreshGenerationRef.current;
     const list = await listProjectFileRevisions(projectId, file.name);
-    if (!list || !Array.isArray(list.revisions)) return;
+    // Generation mismatch: keep tip-prefer suppress latch (newer refresh / artifact-switch owns release).
+    if (refreshGeneration !== revisionRefreshGenerationRef.current) return;
+    if (!list || !Array.isArray(list.revisions)) {
+      if (revisionRefreshListRetryRef.current < 8) {
+        revisionRefreshListRetryRef.current += 1;
+        window.setTimeout(() => {
+          if (refreshGeneration === revisionRefreshGenerationRef.current) {
+            void refreshRevisionStack();
+          }
+        }, 250);
+      } else {
+        // Give up — stop confirm-refuse tip-prefer suppress so disk can recover.
+        manualEditSuppressTipPreferUntilRefreshRef.current = nextTipPreferSuppressState(
+          'refresh-gave-up',
+        );
+      }
+      return;
+    }
+    revisionRefreshListRetryRef.current = 0;
+    // Warm soft-cache so tip-lag disk soft-retries reuse this list.
+    // Prefer active → head → tip (revisions ascend; [0] is oldest).
+    {
+      const softSeq = getActiveRevisionSequence(projectId, file.name)
+        ?? list.revisions.find((revision) => revision.id === list.headRevisionId)?.sequence
+        ?? list.revisions.at(-1)?.sequence;
+      if (typeof softSeq === 'number') {
+        warmRevisionListSoftCacheFromList(projectId, file.name, softSeq, list);
+      }
+    }
     if (typeof list.retentionLimit === 'number') {
       setRevisionRetentionLimit(list.retentionLimit);
     }
+    setRevisionRetentionPending(list.retentionPending === true);
+    const previousCursorId = revisionStackRef.current.cursorRevisionId;
+    const previousCursor = previousCursorId
+      ? revisionStackRef.current.revisions.find((revision) => revision.id === previousCursorId) ?? null
+      : null;
+    const activeSeq = getActiveRevisionSequence(projectId, file.name);
+    const activeMissingFromList = activeSeq != null
+      && !list.revisions.some((revision) => revision.sequence === activeSeq);
+    // Tip list lag: keep SSOT and retry shortly — do not fall back to an older
+    // cursor and rewrite activeSequence downward.
+    if (activeMissingFromList) {
+      if (revisionRefreshActiveRetryRef.current < 8) {
+        revisionRefreshActiveRetryRef.current += 1;
+        window.setTimeout(() => {
+          if (refreshGeneration === revisionRefreshGenerationRef.current) {
+            void refreshRevisionStack();
+          }
+        }, 250);
+      } else {
+        // Give up — stop confirm-refuse tip-prefer suppress so disk can recover.
+        manualEditSuppressTipPreferUntilRefreshRef.current = nextTipPreferSuppressState(
+          'refresh-gave-up',
+        );
+      }
+      return;
+    }
+    revisionRefreshActiveRetryRef.current = 0;
+    const nextCursorId = resolveRevisionCursorId(list.revisions, list.headRevisionId, {
+      currentCursorRevisionId: previousCursorId,
+      activeSequence: activeSeq,
+    });
+    const nextCursor = nextCursorId
+      ? list.revisions.find((revision) => revision.id === nextCursorId) ?? null
+      : null;
+    // activeSequence SSOT moved the cursor (agent tip advance OR toast Undo
+    // demote). Drop restore/save pin, paint the target revision HTML (cache
+    // then snapshot fetch), and sync Manual Edit freeze so preview cannot
+    // stay on the previous commit.
+    const cursorMovedByActiveSequence =
+      previousCursor != null
+      && nextCursor != null
+      && previousCursor.id !== nextCursor.id;
+    if (cursorMovedByActiveSequence && nextCursorId) {
+      manualEditPinnedSourceRef.current = null;
+      let targetHtml = getRevisionContentCache(projectId, file.name, nextCursorId);
+      if (targetHtml == null) {
+        targetHtml = await resolveRevisionSnapshotContent(nextCursorId);
+      }
+      if (refreshGeneration !== revisionRefreshGenerationRef.current) return;
+      if (targetHtml != null) {
+        // Same HTML already painted — sync refs/stack only (skip freeze remount
+        // + style-replay tax when tip advance lands on unchanged content).
+        const contentUnchanged = targetHtml === sourceRef.current;
+        revisionSkipReconcileOnceRef.current = true;
+        if (!contentUnchanged) {
+          // Changed tip content — paint + repair/cache + draft + freeze remount.
+          setSource(targetHtml);
+          sourceRef.current = targetHtml;
+          lastStablePreviewSourceRef.current = targetHtml;
+          exportHtmlSnapshotGateRef.current = targetHtml;
+          rememberStablePreviewSource(projectId, file.name, targetHtml);
+          setManualEditDraft((current) => (
+            current.fullSource === targetHtml ? current : { ...current, fullSource: targetHtml! }
+          ));
+          setManualEditFrozenSource(targetHtml);
+          // srcdoc updates via setSource; URL-load still needs reloadKey bust.
+          if (useUrlLoadPreview) setReloadKey((key) => key + 1);
+        } else {
+          // Identical HTML already painted — skip setSource/reloadKey;
+          // sync drifted freeze/gate/stable/draft without remount tax.
+          // Use frozen ref (callback may close over a stale freeze state).
+          if (manualEditFrozenSourceRef.current !== targetHtml) {
+            setManualEditFrozenSource(targetHtml);
+          }
+          if (lastStablePreviewSourceRef.current !== targetHtml) {
+            lastStablePreviewSourceRef.current = targetHtml;
+          }
+          if (exportHtmlSnapshotGateRef.current !== targetHtml) {
+            exportHtmlSnapshotGateRef.current = targetHtml;
+          }
+          setManualEditDraft((current) =>
+            current.fullSource === targetHtml
+              ? current
+              : { ...current, fullSource: targetHtml! },
+          );
+        }
+      }
+    }
+    if (refreshGeneration !== revisionRefreshGenerationRef.current) return;
     const nextStack = createRevisionStackSnapshot(
       list.revisions,
       list.headRevisionId,
-      revisionStackRef.current.cursorRevisionId
-        && list.revisions.some((revision) => revision.id === revisionStackRef.current.cursorRevisionId)
-        ? revisionStackRef.current.cursorRevisionId
-        : list.headRevisionId,
+      nextCursorId,
     );
     commitRevisionStack(nextStack);
+    // Confirm-refuse suppress ends once warm stack is replaced with list tip.
+    manualEditSuppressTipPreferUntilRefreshRef.current = nextTipPreferSuppressState(
+      'refresh-committed',
+    );
     const cursorRevision = nextStack.revisions.find((revision) => revision.id === nextStack.cursorRevisionId);
     if (cursorRevision) {
       setActiveRevisionSequence(projectId, file.name, cursorRevision.sequence);
+      // Re-key soft-cache to the cursor/tip seq (not the oldest fallback).
+      warmRevisionListSoftCacheFromList(
+        projectId,
+        file.name,
+        cursorRevision.sequence,
+        list,
+      );
     } else {
       clearActiveRevisionSequence(projectId, file.name);
     }
+    // Do not skip reconcile solely because we hydrated an older undo cursor —
+    // classifyRevisionDiskReconcile already preserves history browse vs lag.
+    // Only honor an explicit one-shot skip (restore paint / tip advance).
     const skipReconcile = revisionSkipReconcileOnceRef.current;
     revisionSkipReconcileOnceRef.current = false;
     if (!skipReconcile) {
-      await reconcileRevisionWithDisk();
+      await reconcileRevisionWithDisk(list);
     }
+    if (refreshGeneration !== revisionRefreshGenerationRef.current) return;
     const before = revisionBeforeCursor(revisionStackRef.current);
     const after = revisionAfterCursor(revisionStackRef.current);
     prefetchRevisionContents(
@@ -7204,12 +10064,47 @@ function HtmlViewer({
         .map((revision) => ({ revisionId: revision.id, byteSize: revision.byteSize })),
       (revisionId) => resolveRevisionSnapshotContent(revisionId),
     );
-  }, [projectId, file.name, reconcileRevisionWithDisk, resolveRevisionSnapshotContent]);
+  }, [projectId, file.name, reconcileRevisionWithDisk, resolveRevisionSnapshotContent, useUrlLoadPreview]);
+
+  /** Coalesce tip-push deferred list GET; clear on artifact switch / unmount. */
+  const scheduleDeferredRevisionStackRefresh = useCallback(() => {
+    if (deferredRevisionRefreshTimerRef.current) {
+      clearTimeout(deferredRevisionRefreshTimerRef.current);
+    }
+    deferredRevisionRefreshTimerRef.current = setTimeout(() => {
+      deferredRevisionRefreshTimerRef.current = null;
+      void refreshRevisionStack();
+    }, 250);
+  }, [refreshRevisionStack]);
+
+  useEffect(() => () => {
+    if (deferredRevisionRefreshTimerRef.current) {
+      clearTimeout(deferredRevisionRefreshTimerRef.current);
+      deferredRevisionRefreshTimerRef.current = null;
+    }
+  }, [projectId, file.name]);
+
+  // Refresh when the file hydrates or external writes bump filesRefreshKey.
+  // Do not depend on `source` string identity — reconcile can call setSource /
+  // setReloadKey and would otherwise re-enter this effect in a tight loop.
+  const sourceReadyForRevisionRefresh = source !== null;
+  useEffect(() => {
+    if (!sourceReadyForRevisionRefresh) return;
+    void refreshRevisionStack();
+  }, [projectId, file.name, filesRefreshKey, refreshRevisionStack, sourceReadyForRevisionRefresh]);
 
   useEffect(() => {
-    if (source === null) return;
-    void refreshRevisionStack();
-  }, [source, refreshRevisionStack, filesRefreshKey]);
+    if (!revisionHistoryOpen || !revisionRetentionPending || !sourceReadyForRevisionRefresh) return;
+    const id = window.setInterval(() => {
+      void refreshRevisionStack();
+    }, FILE_REVISION_RETENTION_POLL_MS);
+    return () => window.clearInterval(id);
+  }, [
+    revisionHistoryOpen,
+    revisionRetentionPending,
+    sourceReadyForRevisionRefresh,
+    refreshRevisionStack,
+  ]);
 
   // Selecting a new file or turning inspect/comment-inspect off resets the panel target.
   useEffect(() => {
@@ -7251,6 +10146,10 @@ function HtmlViewer({
   }, [source]);
 
   useEffect(() => {
+    manualEditHostPaintRectRef.current = manualEditHostPaintRect;
+  }, [manualEditHostPaintRect]);
+
+  useEffect(() => {
     selectedManualEditTargetIdRef.current = selectedManualEditTarget?.id ?? null;
     selectedManualEditTargetRef.current = selectedManualEditTarget;
   }, [selectedManualEditTarget?.id, selectedManualEditTarget]);
@@ -7264,6 +10163,9 @@ function HtmlViewer({
       setManualEditHostOffset({ x: 0, y: 0 });
       setManualEditHostScale(1);
       setManualEditHostPaintRect(null);
+      setManualEditContentPageBounds(null);
+      setManualEditViewportBounds(null);
+      setManualEditLayersPanelOpen(false);
       return;
     }
     let raf = 0;
@@ -7284,13 +10186,45 @@ function HtmlViewer({
           ? prev
           : nextOffset
       ));
+      const pageBounds = measureManualEditContentPageBounds(frame);
+      if (pageBounds) {
+        setManualEditContentPageBounds((prev) => (
+          prev
+          && Math.abs(prev.x - pageBounds.x) < 0.5
+          && Math.abs(prev.y - pageBounds.y) < 0.5
+          && Math.abs(prev.width - pageBounds.width) < 0.5
+          && Math.abs(prev.height - pageBounds.height) < 0.5
+            ? prev
+            : pageBounds
+        ));
+      }
+      const viewportBounds = measureManualEditViewportBounds(frame);
+      if (viewportBounds) {
+        setManualEditViewportBounds((prev) => (
+          prev
+          && Math.abs(prev.width - viewportBounds.width) < 0.5
+          && Math.abs(prev.height - viewportBounds.height) < 0.5
+            ? prev
+            : viewportBounds
+        ));
+      }
       const selectedId = selectedManualEditTargetIdRef.current;
       if (!selectedId) {
         setManualEditHostPaintRect(null);
         return true;
       }
       const paint = measureManualEditTargetHostRect(frame, workspace, selectedId);
-      if (paint && paint.width >= 1 && paint.height >= 1) {
+      const paintOk = Boolean(paint && paint.width >= 1 && paint.height >= 1);
+      const tipSessionLive = tipRemountChromeSessionLiveNow();
+      const paintSyncHold = manualEditTipPaintSyncHoldRef.current;
+      if (paintOk && paint) {
+        if (shouldSeedTipRemountLastHostRectFromLivePaint(
+          tipSessionLive,
+          paintSyncHold,
+          true,
+        )) {
+          manualEditTipLastHostRectByIdRef.current.set(selectedId, { ...paint });
+        }
         setManualEditHostPaintRect((prev) => (
           prev
           && Math.abs(prev.x - paint.x) < 0.5
@@ -7301,22 +10235,31 @@ function HtmlViewer({
             : paint
         ));
       } else {
-        // Failed measure for this id — drop stale paint from a prior (larger)
-        // selection so the overlay cannot stay oversized.
-        setManualEditHostPaintRect(null);
+        // Failed measure is often a transient iframe remount after move flush.
+        // Tip remount / paint-sync: prefer last-good when current is empty (543).
+        const currentOk = Boolean(
+          manualEditHostPaintRectRef.current
+          && manualEditHostPaintRectRef.current.width >= 1
+          && manualEditHostPaintRectRef.current.height >= 1,
+        );
+        const lastGood = manualEditTipLastHostRectByIdRef.current.get(selectedId) ?? null;
+        if (shouldApplyTipRemountLastHostRectOnLayoutPaintMiss(
+          tipSessionLive,
+          paintSyncHold,
+          false,
+          currentOk,
+          lastGood != null,
+        ) && lastGood) {
+          setManualEditHostPaintRect(lastGood);
+        }
+        // Otherwise keep the last good paint until a successful measure or
+        // selection clear — nulling forces hybrid compose and flashes the box.
       }
       const measured = measureManualEditTargetContentRect(frame, selectedId);
       if (!measured || measured.rect.width < 1 || measured.rect.height < 1) return true;
       setSelectedManualEditTarget((current) => {
         if (!current || current.id !== selectedId) return current;
-        const same =
-          current.rect.x === measured.rect.x
-          && current.rect.y === measured.rect.y
-          && current.rect.width === measured.rect.width
-          && current.rect.height === measured.rect.height
-          && current.layoutWidth === measured.layoutWidth
-          && current.layoutHeight === measured.layoutHeight;
-        if (same) return current;
+        if (manualEditGeometryRoughlyMatches(current, measured)) return current;
         const next = {
           ...current,
           rect: measured.rect,
@@ -7368,6 +10311,80 @@ function HtmlViewer({
     useUrlLoadPreview,
     previewBodySize?.width,
     previewBodySize?.height,
+  ]);
+
+  // Freeze inspector left/top per selection. Auto-placement used to follow live
+  // target/paint rects and walk the toolbar during resize/move. Upgrade the
+  // auto pin once when the first paint rect lands; user drags stay frozen.
+  useLayoutEffect(() => {
+    if (!manualEditMode || !selectedManualEditTarget) {
+      manualEditPanelUserPinnedRef.current = false;
+      manualEditPanelPaintPinnedIdRef.current = null;
+      return;
+    }
+    const canvasWidth = previewBodySize?.width ?? 1200;
+    const canvasHeight = previewBodySize?.height ?? 800;
+    const hasPaint = Boolean(
+      manualEditHostPaintRect
+      && manualEditHostPaintRect.width >= 1
+      && manualEditHostPaintRect.height >= 1,
+    );
+    const paintPinned = manualEditPanelPaintPinnedIdRef.current === selectedManualEditTarget.id;
+
+    if (manualEditPanelUserPinnedRef.current && manualEditPanelPosition) {
+      const clamped = clampFloatingPanelPosition(manualEditPanelPosition, {
+        canvasWidth,
+        canvasHeight,
+      });
+      if (
+        clamped.left !== manualEditPanelPosition.left
+        || clamped.top !== manualEditPanelPosition.top
+      ) {
+        setManualEditPanelPosition(clamped);
+      }
+      return;
+    }
+
+    if (manualEditPanelPosition != null && paintPinned) {
+      const clamped = clampFloatingPanelPosition(manualEditPanelPosition, {
+        canvasWidth,
+        canvasHeight,
+      });
+      if (
+        clamped.left !== manualEditPanelPosition.left
+        || clamped.top !== manualEditPanelPosition.top
+      ) {
+        setManualEditPanelPosition(clamped);
+      }
+      return;
+    }
+
+    // Keep a composed pin until paint arrives, then place once more from paint.
+    if (manualEditPanelPosition != null && !hasPaint) return;
+
+    const style = manualEditFloatingPanelStyle(
+      selectedManualEditTarget,
+      manualEditHostScale,
+      previewBodySize,
+      manualEditHostOffset,
+      manualEditHostPaintRect,
+    );
+    const left = typeof style.left === 'number' ? style.left : null;
+    const top = typeof style.top === 'number' ? style.top : null;
+    if (left == null || top == null) return;
+    const next = clampFloatingPanelPosition({ left, top }, { canvasWidth, canvasHeight });
+    setManualEditPanelPosition(next);
+    if (hasPaint) {
+      manualEditPanelPaintPinnedIdRef.current = selectedManualEditTarget.id;
+    }
+  }, [
+    manualEditMode,
+    selectedManualEditTarget,
+    manualEditPanelPosition,
+    manualEditHostScale,
+    previewBodySize,
+    manualEditHostOffset,
+    manualEditHostPaintRect,
   ]);
 
   useEffect(() => {
@@ -7578,14 +10595,52 @@ function HtmlViewer({
 
   useEffect(() => {
     if (!manualEditMode) {
+      // Drop tip remount soft-land/absorb/follow timers on mode-exit (499/503).
+      // Skip idle initial mount when nothing tip-related is armed.
+      if (shouldClearTipRemountOnManualEditModeExit(
+        false,
+        tipRemountPostProtectArmed({
+          graceId: manualEditTipRemountGeometryGraceIdRef.current,
+          stickyRetain: manualEditTipSyncedIdentityRetainRef.current,
+          softLandRemaining: manualEditTipPostStickySoftLandRef.current,
+          exitLatch: manualEditTipPostSoftLandExitLatchRef.current,
+          absorb: manualEditTipPostExitMixedAbsorbRef.current,
+          postAbsorbQuiet: manualEditTipPostAbsorbInspectorQuietRef.current,
+          followUntilMs: manualEditTipDeckNudgeFollowUntilRef.current,
+          chromeSuppressed: manualEditTipRemountChromeSuppressedRef.current,
+          followChromeTimeoutPending:
+            manualEditTipDeckNudgeFollowChromeTimeoutRef.current != null,
+          remountSafetyTimeoutPending:
+            manualEditTipRemountChromeSafetyTimeoutRef.current != null,
+        }),
+      )) {
+        clearManualEditTipRemountGeometryGrace('mode-exit');
+      }
       setManualEditTargets([]);
+      manualEditTargetsIdentityFingerprintRef.current = '';
+      manualEditSelectedIdentityFingerprintRef.current = '';
       setSelectedManualEditTarget(null);
+      setSelectedManualEditTargetIds([]);
+      setManualEditMixedStyleKeys(new Set());
+      manualEditHoverTargetIdRef.current = null;
       setManualEditHoverTarget(null);
       setManualEditPageStylesOpen(false);
       setManualEditPanelPosition(null);
+      setManualEditPanelCollapsed(false);
+      manualEditPanelUserPinnedRef.current = false;
+      manualEditPanelPaintPinnedIdRef.current = null;
       selectedManualEditTargetIdRef.current = null;
+      selectedManualEditTargetRef.current = null;
+      selectedManualEditTargetIdsRef.current = [];
       setManualEditError(null);
       manualEditPendingStyleRef.current = null;
+      manualEditRemeasureAwaiterRef.current.cancelAll();
+      manualEditGeometryHandoffIdRef.current = null;
+      manualEditResizeSessionActiveRef.current = false;
+      manualEditResizePausedRef.current = false;
+      setManualEditResizeDraftSize(null);
+      setManualEditMoveDraftPos(null);
+    setManualEditGroupDraftRects(null);
       if (manualEditStyleTimerRef.current) {
         clearTimeout(manualEditStyleTimerRef.current);
         manualEditStyleTimerRef.current = null;
@@ -7597,20 +10652,578 @@ function HtmlViewer({
       const data = ev.data as ManualEditBridgeMessage | null;
       if (!data?.type) return;
       if (data.type === 'od-edit-targets' && Array.isArray(data.targets)) {
-        setManualEditTargets(data.targets);
+        // Tip-remount session (grace or deck fit-settle) — hoist before catalog
+        // replace so bridge styles do not wipe tip-synced selected styles (466/467).
+        const tipRemountSession = tipRemountSessionActive(
+          manualEditTipRemountGeometryGraceIdRef.current,
+          Date.now(),
+          manualEditTipRemountGeometryGraceUntilRef.current,
+          manualEditTipRemountFitSettleUntilRef.current,
+          manualEditTipRemountIdentityHoldUntilRef.current,
+        );
+        // Membership change during hold must not paint the new set with the
+        // previous tip's styles — drop hold + skip preserve (469).
+        // Empty/partial catalogs during tip protect are settle noise — ignore (473).
+        // Post-sticky soft-land also ignores membership noise (483).
+        const selectedIdsForPreserve = selectedManualEditTargetIdsRef.current;
+        const softLandAtEntry = manualEditTipPostStickySoftLandRef.current;
+        const exitLatchAtEntry = manualEditTipPostSoftLandExitLatchRef.current;
+        const postExitAbsorbAtEntry = manualEditTipPostExitMixedAbsorbRef.current;
+        const postAbsorbQuietAtEntry = manualEditTipPostAbsorbInspectorQuietRef.current;
+        const tipProtectSource = tipRemountSession
+          || manualEditTipSyncedIdentityRetainRef.current
+          || softLandAtEntry > 0
+          || exitLatchAtEntry
+          // Absorb is tip-protect for membership noise / empty catalog (498).
+          || shouldTreatPostExitAbsorbAsTipProtect(postExitAbsorbAtEntry)
+          // Post-absorb quiet also tip-protects one settle catalog (509).
+          || shouldTreatPostAbsorbQuietAsTipProtect(postAbsorbQuietAtEntry);
+        const refreshedProbe = selectedIdsForPreserve.length > 0
+          ? resolveManualEditTargetsByIds(selectedIdsForPreserve, data.targets)
+          : [];
+        const selectionIdsChangedEarlyRaw = selectedIdsForPreserve.length > 0
+          && !manualEditSelectionIdsEqual(
+            selectedIdsForPreserve,
+            refreshedProbe.map((item) => item.id),
+          );
+        const ignoreMembershipNoise = shouldIgnoreOdEditTargetsMembershipNoiseDuringTipProtect(
+          tipProtectSource,
+          selectedIdsForPreserve.length,
+          refreshedProbe.length,
+          data.targets.length,
+        );
+        const selectionIdsChangedEarly = selectionIdsChangedEarlyRaw && !ignoreMembershipNoise;
+        // Drop sticky for *later* catalogs after session ends — this tick still
+        // tip-preserves so Mixed does not one-shot on the transition (479).
+        const clearStickyAfterPreserve = shouldClearTipSyncedIdentityStickyRetainOnFullCatalog(
+          manualEditTipSyncedIdentityRetainRef.current,
+          tipRemountSession,
+          selectedIdsForPreserve.length,
+          refreshedProbe.length,
+          data.targets.length,
+        );
+        if (shouldClearTipPostProtectOnOdEditTargetsSelectionIdsChange(
+          selectionIdsChangedEarly,
+        )) {
+          manualEditTipRemountIdentityHoldUntilRef.current = 0;
+          manualEditTipSyncedIdentityRetainRef.current = false;
+          manualEditTipPostStickySoftLandRef.current = 0;
+          manualEditTipPostSoftLandExitLatchRef.current = false;
+          manualEditTipPostExitMixedAbsorbRef.current = false;
+          manualEditTipPostAbsorbInspectorQuietRef.current = false;
+          manualEditTipPostFitSettleWildJumpSkipRef.current = false;
+          // Membership change must also drop deck-nudge follow (508).
+          manualEditTipDeckNudgeFollowUntilRef.current = 0;
+          manualEditTipDeckNudgeRemasureAtRef.current = 0;
+          manualEditTipFollowChromeReleaseDeferredRef.current = false;
+          if (manualEditTipDeckNudgeFollowChromeTimeoutRef.current != null) {
+            window.clearTimeout(manualEditTipDeckNudgeFollowChromeTimeoutRef.current);
+            manualEditTipDeckNudgeFollowChromeTimeoutRef.current = null;
+          }
+          if (manualEditTipDeckNudgeRemasureRafRef.current != null) {
+            window.cancelAnimationFrame(manualEditTipDeckNudgeRemasureRafRef.current);
+            manualEditTipDeckNudgeRemasureRafRef.current = null;
+          }
+          if (manualEditTipDeferredGeometryRafRef.current != null) {
+            window.cancelAnimationFrame(manualEditTipDeferredGeometryRafRef.current);
+            manualEditTipDeferredGeometryRafRef.current = null;
+          }
+          manualEditTipDeferredGeometryPayloadRef.current = null;
+          manualEditTipChromeUnlockPointerGateRef.current = false;
+          setManualEditTipChromeUnlockPointerGate(false);
+          clearTipRemountPostUnlockQuietState();
+          cancelTipRemountPaintSyncHoldRaf();
+          manualEditTipPaintSyncHoldRef.current = clearTipRemountPaintSyncHold();
+          setManualEditTipPaintSyncHold(false);
+          manualEditTipDeferredGeomEpochBumpRef.current = false;
+          manualEditTipLastHostRectByIdRef.current.clear();
+          if (manualEditTipSiblingRetryRafRef.current != null) {
+            window.cancelAnimationFrame(manualEditTipSiblingRetryRafRef.current);
+            manualEditTipSiblingRetryRafRef.current = null;
+          }
+          manualEditTipChromePointerHoverRef.current = false;
+        }
+        const softLandActive = shouldRetainTipSyncedIdentityDuringPostStickySoftLand(
+          softLandAtEntry,
+          selectionIdsChangedEarly,
+        );
+        const exitLatchActive = shouldRetainTipSyncedIdentityDuringPostSoftLandExitLatch(
+          exitLatchAtEntry,
+          selectionIdsChangedEarly,
+        );
+        const tipRemountActive = shouldRetainTipSyncedIdentityAfterHold(
+          tipRemountSession,
+          manualEditTipSyncedIdentityRetainRef.current,
+          selectionIdsChangedEarly,
+        ) || softLandActive || exitLatchActive;
+        // Absorb tick is not tip-preserve, but still tip-protect for wipe/noise (498).
+        // Post-absorb quiet likewise tip-protects without preserve (509).
+        const tipProtectActive = tipRemountActive
+          || shouldTreatPostExitAbsorbAsTipProtect(postExitAbsorbAtEntry)
+          || shouldTreatPostAbsorbQuietAsTipProtect(postAbsorbQuietAtEntry);
+        if (
+          !selectionIdsChangedEarly
+          && shouldDeferTipSyncedIdentityStickyClearUntilAfterPreserve(clearStickyAfterPreserve)
+        ) {
+          manualEditTipSyncedIdentityRetainRef.current = false;
+          // Arm soft-land for subsequent catalogs (do not consume this tick) (480/483).
+          if (shouldArmTipPostStickySoftLand(clearStickyAfterPreserve)) {
+            manualEditTipPostStickySoftLandRef.current = TIP_POST_STICKY_SOFT_LAND_CATALOGS;
+          }
+        } else if (softLandAtEntry > 0 && !selectionIdsChangedEarly) {
+          // Early exit when live bridge identity already matches preserved tip (488).
+          const liveProbeFp = manualEditTargetsIdentityFingerprint(refreshedProbe);
+          const preservedProbeFp = manualEditTargetsIdentityFingerprint(
+            refreshedProbe.map((item) => withPreservedTipSyncedIdentityOnBridgeTarget(
+              item,
+              resolveTipSyncedTargetForOdEditTargetsPreserve(
+                item.id,
+                selectedManualEditTargetRef.current,
+                manualEditTargetsRef.current,
+              ),
+            )),
+          );
+          const earlyExit = shouldEarlyExitTipPostStickySoftLand(
+            softLandAtEntry,
+            selectionIdsChangedEarly,
+            preservedProbeFp,
+            liveProbeFp,
+          );
+          if (earlyExit) {
+            manualEditTipPostStickySoftLandRef.current = 0;
+            // Sync selected FP to live + arm absorb for next catalog (493/491).
+            if (shouldSyncSelectedIdentityFingerprintOnSoftLandEarlyExit(
+              earlyExit,
+              selectionIdsChangedEarly,
+            )) {
+              manualEditSelectedIdentityFingerprintRef.current = liveProbeFp;
+            }
+            if (shouldArmTipPostExitLatchMixedAbsorbOnSoftLandEarlyExit(
+              earlyExit,
+              selectionIdsChangedEarly,
+            )) {
+              manualEditTipPostExitMixedAbsorbRef.current = true;
+            }
+          } else {
+            const remaining = consumeTipPostStickySoftLandCatalog(
+              softLandAtEntry,
+              selectionIdsChangedEarly,
+            );
+            manualEditTipPostStickySoftLandRef.current = remaining;
+            // Soft-land last catalog → one exit latch preserve for first live (486).
+            if (shouldArmTipPostSoftLandExitLatch(
+              softLandAtEntry,
+              remaining,
+              selectionIdsChangedEarly,
+              false,
+            )) {
+              manualEditTipPostSoftLandExitLatchRef.current = true;
+            }
+          }
+        }
+        // Exit-latch tick spends the latch after this preserve (486/502).
+        if (exitLatchAtEntry) {
+          manualEditTipPostSoftLandExitLatchRef.current = clearTipPostSoftLandExitLatch();
+          // Next catalog absorbs live FP without Mixed reseed (491).
+          if (shouldArmTipPostExitLatchMixedAbsorb(
+            exitLatchAtEntry,
+            selectionIdsChangedEarly,
+          )) {
+            manualEditTipPostExitMixedAbsorbRef.current = true;
+          }
+        }
+        // Tip-remount: fingerprint the catalog we will store (preserved tip
+        // identity), not raw bridge — latch must match React state (468/470).
+        const priorCatalogForPreserve = manualEditTargetsRef.current;
+        const nextCatalogTargets = tipRemountActive
+          ? data.targets.map((target) => {
+            if (!selectedIdsForPreserve.includes(target.id)) return target;
+            return withPreservedTipSyncedIdentityOnBridgeTarget(
+              target,
+              resolveTipSyncedTargetForOdEditTargetsPreserve(
+                target.id,
+                selectedManualEditTargetRef.current,
+                priorCatalogForPreserve,
+              ),
+            );
+          })
+          : data.targets;
+        // Skip React state when identity is unchanged (geometry-only rebroadcasts).
+        const targetsFingerprint = manualEditTargetsIdentityFingerprint(nextCatalogTargets);
+        const targetsIdentityChanged =
+          targetsFingerprint !== manualEditTargetsIdentityFingerprintRef.current;
+        if (targetsIdentityChanged) {
+          manualEditTargetsIdentityFingerprintRef.current = targetsFingerprint;
+          setManualEditTargets(nextCatalogTargets);
+        } else if (shouldPatchSelectedGeometryFromTargetsBroadcast(
+          targetsIdentityChanged,
+          selectedManualEditTargetIdsRef.current,
+        )) {
+          // Identity unchanged — still patch selected rects so multi overlay
+          // does not stay on pre-tip geometry (450).
+          const selectedIds = selectedManualEditTargetIdsRef.current;
+          const byId = new Map(
+            data.targets
+              .filter((target) => selectedIds.includes(target.id))
+              .map((target) => [target.id, target] as const),
+          );
+          if (byId.size > 0) {
+            setManualEditTargets((current) => current.map((item) => {
+              const next = byId.get(item.id);
+              if (!next) return item;
+              if (
+                manualEditGeometryRoughlyMatches(item, next)
+                && item.layoutWidth === next.layoutWidth
+                && item.layoutHeight === next.layoutHeight
+                && item.offsetLeft === next.offsetLeft
+                && item.offsetTop === next.offsetTop
+              ) {
+                return item;
+              }
+              return {
+                ...item,
+                rect: next.rect,
+                layoutWidth: next.layoutWidth,
+                layoutHeight: next.layoutHeight,
+                offsetLeft: next.offsetLeft ?? item.offsetLeft,
+                offsetTop: next.offsetTop ?? item.offsetTop,
+                cssPosition: next.cssPosition ?? item.cssPosition,
+                stickyScrollportId: next.stickyScrollportId ?? item.stickyScrollportId,
+              };
+            }));
+          }
+        }
+        // Geometry gestures own selection rect/paint — a mid-drag or post-commit
+        // targets scan must not clobber optimistic viewport (box flash).
+        if (manualEditResizeSessionActiveRef.current) return;
         // Target broadcasts can be briefly empty while the iframe/save path is
         // settling; keep the user's inspector selection unless a fresh copy is
         // available to update its metadata.
-        setSelectedManualEditTarget((current) =>
-          current ? data.targets.find((target) => target.id === current.id) ?? current : current,
-        );
-        const selectedId = selectedManualEditTargetIdRef.current;
-        if (selectedId) setTimeout(() => postSelectedManualEditTargetToIframe(selectedId), 0);
+        const selectedIdBefore = selectedManualEditTargetIdRef.current;
+        const selectedNextRaw = selectedIdBefore
+          ? data.targets.find((target) => target.id === selectedIdBefore) ?? null
+          : null;
+        // Tip-remount: keep tip-synced identity on the selected target — bridge
+        // live styles / empty outerHtml would flip fingerprint / Mixed (466/470).
+        const selectedNext = selectedNextRaw && tipRemountActive
+          && selectedManualEditTargetRef.current?.id === selectedNextRaw.id
+          ? withPreservedTipSyncedIdentityOnBridgeTarget(
+            selectedNextRaw,
+            selectedManualEditTargetRef.current,
+          )
+          : selectedNextRaw;
+        if (selectedNext) {
+          const prevSelected = selectedManualEditTargetRef.current;
+          const selectedIdentityChanged = manualEditTargetsIdentityFingerprint([selectedNext])
+            !== manualEditTargetsIdentityFingerprint(
+              prevSelected ? [prevSelected] : [],
+            );
+          selectedManualEditTargetRef.current = selectedNext;
+          selectedManualEditTargetIdRef.current = selectedNext.id;
+          // Geometry-only: update React state when rect moved so single chrome
+          // tracks tip (multi catalog patch above; 450).
+          if (selectedIdentityChanged || targetsIdentityChanged) {
+            setSelectedManualEditTarget(selectedNext);
+          } else if (
+            prevSelected
+            && (
+              !manualEditGeometryRoughlyMatches(prevSelected, selectedNext)
+              || prevSelected.layoutWidth !== selectedNext.layoutWidth
+              || prevSelected.layoutHeight !== selectedNext.layoutHeight
+              || prevSelected.offsetLeft !== selectedNext.offsetLeft
+              || prevSelected.offsetTop !== selectedNext.offsetTop
+            )
+          ) {
+            setSelectedManualEditTarget(selectedNext);
+          }
+        }
+        const currentIds = selectedManualEditTargetIdsRef.current;
+        if (currentIds.length > 0) {
+          const refreshedRaw = resolveManualEditTargetsByIds(currentIds, data.targets);
+          // Tip-remount: preserve tip-synced identity on the selected set (467/470).
+          const refreshed = tipRemountActive
+            ? refreshedRaw.map((item) => withPreservedTipSyncedIdentityOnBridgeTarget(
+              item,
+              resolveTipSyncedTargetForOdEditTargetsPreserve(
+                item.id,
+                selectedManualEditTargetRef.current,
+                manualEditTargetsRef.current,
+              ),
+            ))
+            : refreshedRaw;
+          const nextIds = refreshed.map((item) => item.id);
+          if (nextIds.length === 0) {
+            // Tip protect (incl. absorb): empty catalog is settle noise — keep selection (473/498).
+            if (!shouldClearManualEditSelectionOnEmptyOdEditTargets(tipProtectActive)) {
+              return;
+            }
+            void clearManualEditTargetSelection();
+            return;
+          }
+          const selectionIdsChanged = !manualEditSelectionIdsEqual(currentIds, nextIds);
+          if (selectionIdsChanged) {
+            selectedManualEditTargetIdsRef.current = nextIds;
+            setSelectedManualEditTargetIds(nextIds);
+          }
+          // Pending style draft owns the inspector — do not clobber with source
+          // merge while a flush/timer is in flight (기획 59).
+          const styleDraftPending = Boolean(
+            manualEditPendingStyleRef.current || manualEditStyleTimerRef.current,
+          );
+          // Multi-select reseed follows selected-set identity only (not unselected churn).
+          const selectedIdentityFingerprint = manualEditTargetsIdentityFingerprint(refreshed);
+          const selectedTargetsIdentityChanged =
+            selectedIdentityFingerprint !== manualEditSelectedIdentityFingerprintRef.current;
+          if (selectionIdsChanged || selectedTargetsIdentityChanged) {
+            manualEditSelectedIdentityFingerprintRef.current = selectedIdentityFingerprint;
+          }
+          // Soft-land / exit latch: pin selected FP to preserved so exit absorb
+          // does not look like identity churn (490).
+          if (shouldLatchSelectedIdentityFingerprintDuringTipSoftLand(
+            softLandActive || exitLatchActive,
+            selectionIdsChanged,
+          )) {
+            manualEditSelectedIdentityFingerprintRef.current = selectedIdentityFingerprint;
+          }
+          // Post-exit absorb: accept live FP into refs without Mixed reseed (491).
+          if (shouldAbsorbLiveIdentityFingerprintOnPostExitLatch(
+            postExitAbsorbAtEntry,
+            selectionIdsChanged,
+          )) {
+            manualEditTargetsIdentityFingerprintRef.current = targetsFingerprint;
+            manualEditSelectedIdentityFingerprintRef.current = selectedIdentityFingerprint;
+            manualEditTipPostExitMixedAbsorbRef.current = false;
+            // First post-absorb live catalog stays Mixed-quiet (509).
+            if (shouldArmTipPostAbsorbInspectorQuiet(true, selectionIdsChanged)) {
+              manualEditTipPostAbsorbInspectorQuietRef.current = true;
+            }
+          }
+          // Quiet tick spends after Mixed skip uses entry latch (509).
+          if (postAbsorbQuietAtEntry) {
+            manualEditTipPostAbsorbInspectorQuietRef.current = clearTipPostAbsorbInspectorQuiet();
+          }
+          // Tip-remount: bridge target.styles can flip identity fingerprint and
+          // re-fire Mixed/draft reseed — skip identity-only churn (466).
+          // Pending drafts stay reachable during tip protect (471).
+          // Multi exit-latch: keep source-only Mixed (495).
+          const exitLatchMultiSourceOnly = shouldKeepMultiInspectorSourceOnlyDuringTipExitLatch(
+            exitLatchActive,
+            nextIds.length,
+          );
+          const skipIdentityMixedReseed = shouldSkipOdEditTargetsIdentityMixedReseedDuringTipRemount(
+            selectionIdsChanged,
+            tipRemountActive || exitLatchMultiSourceOnly,
+            styleDraftPending,
+          ) || shouldSkipOdEditTargetsIdentityMixedReseedDuringPostExitAbsorb(
+            selectionIdsChanged,
+            postExitAbsorbAtEntry,
+            styleDraftPending,
+          ) || shouldSkipOdEditTargetsIdentityMixedReseedDuringPostAbsorbQuiet(
+            selectionIdsChanged,
+            postAbsorbQuietAtEntry,
+            styleDraftPending,
+          );
+          // Single absorb skip shares the Mixed absorb latch (496); quiet too (509).
+          const skipIdentitySingleReseed = shouldSkipOdEditTargetsSingleInspectorReseedDuringPostExitAbsorb(
+            selectionIdsChanged,
+            postExitAbsorbAtEntry,
+            styleDraftPending,
+          ) || shouldSkipOdEditTargetsIdentityMixedReseedDuringPostAbsorbQuiet(
+            selectionIdsChanged,
+            postAbsorbQuietAtEntry,
+            styleDraftPending,
+          );
+          const skipIdentityInspectorReseed = skipIdentityMixedReseed || skipIdentitySingleReseed;
+          const allowPendingReseed = shouldAllowOdEditTargetsPendingReseedDuringTipProtect(
+            styleDraftPending,
+            selectionIdsChanged,
+            selectedTargetsIdentityChanged,
+            tipProtectActive,
+          );
+          // Absorb: source-only settle once so tip-preserved draft does not stick (511).
+          // Quiet then blocks the next live catalog from re-firing Mixed (509).
+          // Pending draft wins — settle yields; pending-aware field refresh runs (514).
+          const settleAbsorbInspector = shouldSettleInspectorStylesOnPostExitAbsorb(
+            postExitAbsorbAtEntry,
+            selectionIdsChanged,
+            styleDraftPending,
+          ) && !shouldPreferPendingDraftOverAbsorbInspectorSettle(
+            styleDraftPending,
+            postExitAbsorbAtEntry,
+          );
+          // Multi-select inspector: reparse on id-set OR selected identity change
+          // (59 mixed styles). Geometry-only broadcasts keep fingerprint equal.
+          if (
+            settleAbsorbInspector
+            && nextIds.length > 1
+          ) {
+            const base = sourceRef.current ?? '';
+            const parsedDoc = parseManualEditSource(base);
+            const reseed = planManualEditMultiInspectorReseed({
+              selectedIds: nextIds,
+              readStyles: (id) => readManualEditStyles(base, id, {}, parsedDoc),
+              concurrentPending: manualEditPendingStyleRef.current
+                ? {
+                  styles: manualEditPendingStyleRef.current.styles,
+                  perTargetStyles: manualEditPendingStyleRef.current.perTargetStyles,
+                }
+                : null,
+            });
+            setManualEditMixedStyleKeys(reseed.mixedKeys);
+            if (reseed.styles != null) {
+              setManualEditDraft((current) => ({ ...current, styles: reseed.styles! }));
+            }
+          } else if (
+            settleAbsorbInspector
+            && nextIds.length === 1
+            && selectedNext
+          ) {
+            const base = sourceRef.current ?? '';
+            const parsedDoc = parseManualEditSource(base);
+            const snapshot = readManualEditTargetSnapshot(
+              base,
+              selectedNext.id,
+              {},
+              parsedDoc,
+            );
+            setManualEditDraft((current) => ({
+              ...current,
+              text: snapshot.fields.text ?? selectedNext.fields.text ?? selectedNext.text,
+              href: snapshot.fields.href ?? selectedNext.fields.href ?? '',
+              src: snapshot.fields.src ?? selectedNext.fields.src ?? '',
+              alt: snapshot.fields.alt ?? selectedNext.fields.alt ?? '',
+              styles: shouldReadSingleInspectorStylesFromSourceOnlyForOdEditTargets()
+                ? snapshot.styles
+                : mergeManualEditInspectorStyles(snapshot.styles, selectedNext.styles),
+              attributesText: JSON.stringify(snapshot.attributes, null, 2),
+              outerHtml: snapshot.outerHtml || selectedNext.outerHtml,
+            }));
+          } else if (
+            nextIds.length > 1
+            && !skipIdentityInspectorReseed
+            && (selectionIdsChanged || (selectedTargetsIdentityChanged && !styleDraftPending))
+          ) {
+            const base = sourceRef.current ?? '';
+            const parsedDoc = parseManualEditSource(base);
+            // Source-only Mixed — same plan helper as tip-yield / remove (451/465).
+            // inspectorManualEditStyles can keep pre-tip preview pollution.
+            const odEditTargetsSourceOnly = shouldReadMultiInspectorStylesFromSourceOnly(
+              'od-edit-targets',
+            );
+            if (!odEditTargetsSourceOnly) {
+              // Unreachable: od-edit-targets reason always returns true.
+            }
+            const reseed = planManualEditMultiInspectorReseed({
+              selectedIds: nextIds,
+              readStyles: (id) => readManualEditStyles(base, id, {}, parsedDoc),
+              concurrentPending: manualEditPendingStyleRef.current
+                ? {
+                  styles: manualEditPendingStyleRef.current.styles,
+                  perTargetStyles: manualEditPendingStyleRef.current.perTargetStyles,
+                }
+                : null,
+            });
+            setManualEditMixedStyleKeys(reseed.mixedKeys);
+            if (reseed.styles != null) {
+              setManualEditDraft((current) => ({ ...current, styles: reseed.styles! }));
+            }
+          } else if (
+            nextIds.length > 1
+            && !skipIdentityInspectorReseed
+            && allowPendingReseed
+            && selectedNext
+          ) {
+            // Multi + pending: keep draft styles; refresh fields + mixedKeys only.
+            // Tip protect may freeze identity fingerprint — still refresh (471).
+            const base = sourceRef.current ?? '';
+            const parsedDoc = parseManualEditSource(base);
+            const snapshot = readManualEditTargetSnapshot(
+              base,
+              selectedNext.id,
+              {},
+              parsedDoc,
+            );
+            setManualEditMixedStyleKeys(mixedKeysForPendingStyleDraft(
+              refreshed,
+              (id) => readManualEditStyles(base, id, {}, parsedDoc),
+              // Suppress Mixed on keys the user is actively drafting (59).
+              manualEditPendingStyleRef.current?.styles,
+              { perTargetStyles: manualEditPendingStyleRef.current?.perTargetStyles },
+            ));
+            setManualEditDraft((current) => ({
+              ...current,
+              text: snapshot.fields.text ?? selectedNext.fields.text ?? selectedNext.text,
+              href: snapshot.fields.href ?? selectedNext.fields.href ?? '',
+              src: snapshot.fields.src ?? selectedNext.fields.src ?? '',
+              alt: snapshot.fields.alt ?? selectedNext.fields.alt ?? '',
+            }));
+          } else if (
+            nextIds.length === 1
+            && !skipIdentityInspectorReseed
+            && !selectionIdsChanged
+            && selectedTargetsIdentityChanged
+            && !styleDraftPending
+            && selectedNext
+          ) {
+            // Single-select: identity field change (text/href/…) reseeds draft.
+            const base = sourceRef.current ?? '';
+            const parsedDoc = parseManualEditSource(base);
+            const snapshot = readManualEditTargetSnapshot(
+              base,
+              selectedNext.id,
+              {},
+              parsedDoc,
+            );
+            setManualEditDraft((current) => ({
+              ...current,
+              text: snapshot.fields.text ?? selectedNext.fields.text ?? selectedNext.text,
+              href: snapshot.fields.href ?? selectedNext.fields.href ?? '',
+              src: snapshot.fields.src ?? selectedNext.fields.src ?? '',
+              alt: snapshot.fields.alt ?? selectedNext.fields.alt ?? '',
+              // Source-only — bridge preview merge flickers tip settle-exit (468).
+              styles: shouldReadSingleInspectorStylesFromSourceOnlyForOdEditTargets()
+                ? snapshot.styles
+                : mergeManualEditInspectorStyles(snapshot.styles, selectedNext.styles),
+              attributesText: JSON.stringify(snapshot.attributes, null, 2),
+              outerHtml: snapshot.outerHtml || selectedNext.outerHtml,
+            }));
+          } else if (
+            nextIds.length === 1
+            && !skipIdentityInspectorReseed
+            && allowPendingReseed
+            && selectedNext
+          ) {
+            // Pending styles own the panel — refresh field identity only (기획 59/471).
+            const base = sourceRef.current ?? '';
+            const parsedDoc = parseManualEditSource(base);
+            const snapshot = readManualEditTargetSnapshot(
+              base,
+              selectedNext.id,
+              {},
+              parsedDoc,
+            );
+            setManualEditDraft((current) => ({
+              ...current,
+              text: snapshot.fields.text ?? selectedNext.fields.text ?? selectedNext.text,
+              href: snapshot.fields.href ?? selectedNext.fields.href ?? '',
+              src: snapshot.fields.src ?? selectedNext.fields.src ?? '',
+              alt: snapshot.fields.alt ?? selectedNext.fields.alt ?? '',
+            }));
+          }
+          // Echo selected-target only when membership changes — geometry storms
+          // must not ping-pong postSelected back into the iframe.
+          if (selectionIdsChanged) {
+            const primaryId = selectedManualEditTargetIdRef.current ?? nextIds[nextIds.length - 1]!;
+            setTimeout(() => postSelectedManualEditTargetsToIframe(nextIds, primaryId), 0);
+          }
+          return;
+        }
         return;
       }
       if (data.type === 'od-edit-select') {
+        manualEditHoverTargetIdRef.current = null;
         setManualEditHoverTarget(null);
-        void selectManualEditTarget(data.target);
+        void selectManualEditTarget(data.target, { additive: data.additive === true });
         return;
       }
       if (data.type === 'od-edit-hover') {
@@ -7618,16 +11231,29 @@ function HtmlViewer({
         // NOT switch the pinned inspector. The panel changes only when the
         // user clicks that affordance (or a container/image body), so moving
         // the cursor across the canvas never yanks the panel away mid-edit.
-        setManualEditHoverTarget(
-          data.target.id === selectedManualEditTargetIdRef.current ? null : data.target,
-        );
+        const nextHover = selectedManualEditTargetIdsRef.current.includes(data.target.id)
+          ? null
+          : data.target;
+        const nextHoverId = nextHover?.id ?? null;
+        // Geometry-only rebroadcasts for the same id skip React churn.
+        if (nextHoverId === manualEditHoverTargetIdRef.current) return;
+        manualEditHoverTargetIdRef.current = nextHoverId;
+        setManualEditHoverTarget(nextHover);
         return;
       }
       if (data.type === 'od-edit-background') {
         // Clicking empty canvas deselects and opens the compact page-styles
         // card — only meaningful for full HTML documents. Flush pending
         // styles first so a background click does not discard unsaved tweaks.
+        manualEditHoverTargetIdRef.current = null;
         setManualEditHoverTarget(null);
+        // Already on empty page-styles — skip clear/draft wipe churn.
+        if (
+          !selectedManualEditTargetIdRef.current
+          && manualEditPageStylesOpenRef.current
+        ) {
+          return;
+        }
         if (typeof source === 'string' && isManualEditFullHtmlDocument(source)) {
           void clearManualEditTargetSelection().then((ok) => {
             if (ok) setManualEditPageStylesOpen(true);
@@ -7639,10 +11265,13 @@ function HtmlViewer({
         // Text commits remount the freeze from saved source; flush style
         // drafts first or postMessage-only previews are lost on reload.
         void (async () => {
-          if (!(await flushManualEditStyleSave())) return;
+          if (!(await flushManualEditStyleSave({ force: true }))) {
+            setManualEditError(t('manualEdit.styleFlushBeforeTextFailed'));
+            return;
+          }
           const targetId = String(data.id);
-          const target = selectedManualEditTarget?.id === targetId
-            ? selectedManualEditTarget
+          const target = selectedManualEditTargetRef.current?.id === targetId
+            ? selectedManualEditTargetRef.current
             : manualEditTargets.find((item) => item.id === targetId) ?? null;
           const slideIndex = effectiveDeck
             ? htmlPreviewSlideState.get(previewStateKey)?.active
@@ -7668,23 +11297,157 @@ function HtmlViewer({
         return;
       }
       if (data.type === 'od-edit-text-active') {
-        setManualEditInlineTextEditing(Boolean(data.active));
+        const nextActive = Boolean(data.active);
+        if (nextActive === manualEditInlineTextEditingRef.current) return;
+        manualEditInlineTextEditingRef.current = nextActive;
+        setManualEditInlineTextEditing(nextActive);
         return;
       }
-      if (data.type === 'od-edit-rect' && data.ok && data.target) {
-        // Ignore remasure while a geometry gesture still owns the overlay —
-        // a stale postMessage must not yank the box mid-drag.
-        if (manualEditResizeSessionActiveRef.current) return;
-        const measured = data.target;
-        setSelectedManualEditTarget((current) => {
-          if (current?.id !== measured.id) return current;
-          const next = { ...current, ...measured };
-          selectedManualEditTargetRef.current = next;
-          return next;
-        });
-        setManualEditTargets((current) =>
-          current.map((item) => (item.id === measured.id ? { ...item, ...measured } : item)),
+      if (data.type === 'od-edit-rect') {
+        const rectId = String(data.id ?? '');
+        const handoffId = manualEditGeometryHandoffIdRef.current;
+        const isHandoffRect = Boolean(handoffId && rectId === handoffId);
+        const measured = data.ok && data.target ? data.target : null;
+        // Always complete awaiters (gesture waiters); paint path is gated below.
+        if (rectId) {
+          manualEditRemeasureAwaiterRef.current.complete(rectId, measured);
+        }
+        // Gesture session: awaiter done; never idle remasure / wild-jump (51–53).
+        // Still expire tip grace so chrome suppress cannot stick behind a drag (457).
+        if (manualEditResizeSessionActiveRef.current && !isHandoffRect) {
+          const nowMs = Date.now();
+          if (shouldClearTipRemountGeometryGraceOnExpiry(
+            manualEditTipRemountGeometryGraceIdRef.current,
+            nowMs,
+            manualEditTipRemountGeometryGraceUntilRef.current,
+            manualEditTipRemountFitSettleUntilRef.current,
+          )) {
+            clearManualEditTipRemountGeometryGrace('expiry');
+          }
+          return;
+        }
+        if (!measured || isHandoffRect) {
+          // Failed tip remasure — release suppress so handles are not stuck (457).
+          if (
+            !isHandoffRect
+            && shouldReleaseTipRemountChromeOnFailedRemasure(
+              manualEditTipRemountChromeSuppressedRef.current,
+              Boolean(measured),
+            )
+          ) {
+            clearManualEditTipRemountGeometryGrace('safety');
+          }
+          return;
+        }
+
+        // Idle remasure only: reject wild jumps; equal geometry skips inside apply.
+        // Gesture/handoff never reach this guard — resize session / isHandoffRect
+        // returned above; settleManualEditGeometryHandoff applies on its own path.
+        // Tip-yield freeze remount: first remasure may jump layout — skip deny.
+        // Expired grace: clear latch (id + until) so wild-jump deny is restored.
+        const nowMs = Date.now();
+        if (shouldClearTipRemountGeometryGraceOnExpiry(
+          manualEditTipRemountGeometryGraceIdRef.current,
+          nowMs,
+          manualEditTipRemountGeometryGraceUntilRef.current,
+          manualEditTipRemountFitSettleUntilRef.current,
+        )) {
+          clearManualEditTipRemountGeometryGrace('expiry');
+        }
+        const current = selectedManualEditTargetRef.current;
+        const selectedIds = selectedManualEditTargetIdsRef.current;
+        const postFitSettleWildJumpSkip = shouldSkipWildJumpOnceAfterTipFitSettle(
+          manualEditTipPostFitSettleWildJumpSkipRef.current,
+          measured.id,
+          selectedIds,
         );
+        const tipRemountGrace = shouldSkipWildJumpAfterTipRemountGrace(
+          manualEditTipRemountGeometryGraceIdRef.current,
+          measured.id,
+          selectedManualEditTargetIdRef.current,
+          nowMs,
+          manualEditTipRemountGeometryGraceUntilRef.current,
+        ) || shouldSkipWildJumpDuringTipRemountFitSettle(
+          manualEditTipRemountGeometryGraceIdRef.current,
+          measured.id,
+          selectedManualEditTargetIdRef.current,
+          nowMs,
+          manualEditTipRemountFitSettleUntilRef.current,
+        ) || postFitSettleWildJumpSkip;
+        // Multi tip-yield: sibling members share the tip-remount session (461).
+        const tipRemountSelectedMember = shouldSkipWildJumpForTipRemountSelectedMember(
+          manualEditTipRemountGeometryGraceIdRef.current,
+          measured.id,
+          selectedIds,
+          nowMs,
+          manualEditTipRemountGeometryGraceUntilRef.current,
+        ) || shouldSkipWildJumpDuringTipRemountFitSettleForSelectedMember(
+          manualEditTipRemountGeometryGraceIdRef.current,
+          measured.id,
+          selectedIds,
+          nowMs,
+          manualEditTipRemountFitSettleUntilRef.current,
+        ) || postFitSettleWildJumpSkip;
+        // Consume one-shot only post-latch — do not burn it while grace/fit cover (485).
+        if (shouldConsumePostTipFitSettleWildJumpSkip(
+          manualEditTipPostFitSettleWildJumpSkipRef.current,
+          postFitSettleWildJumpSkip
+            && tipRemountGeometryGraceExpired(
+              nowMs,
+              manualEditTipRemountGeometryGraceUntilRef.current,
+            )
+            && tipRemountFitSettleExpired(
+              nowMs,
+              manualEditTipRemountFitSettleUntilRef.current,
+            ),
+        )) {
+          manualEditTipPostFitSettleWildJumpSkipRef.current = false;
+        }
+        if (
+          current?.id === measured.id
+          && !tipRemountGrace
+          && manualEditGeometryIsWildJump(current, measured)
+        ) {
+          return;
+        }
+        // Sibling remasure must not consume primary grace (same id gate) (436).
+        // Deck host-fit settle: defer consume so post-fit remasure can still skip wild-jump (460).
+        const consumeGrace = shouldConsumeTipRemountGeometryGraceOnRemasure(
+          manualEditTipRemountGeometryGraceIdRef.current,
+          measured.id,
+          selectedManualEditTargetIdRef.current,
+          nowMs,
+          manualEditTipRemountGeometryGraceUntilRef.current,
+        ) && !shouldDeferTipRemountGraceConsumeForDeckHostFitSettle(
+          manualEditTipRemountFitSettleUntilRef.current,
+          nowMs,
+        );
+        if (consumeGrace) {
+          // Apply tip geometry before releasing chrome suppress (same tick batch) (455).
+          applyManualEditMeasuredGeometry(measured);
+          clearManualEditTipRemountGeometryGrace('consume');
+          // Multi tip-yield reseed and Mixed→single both arm tip-remount grace;
+          // refresh host paint once remasure consumes it (431/430).
+          if (shouldRefreshHostPaintAfterTipRemountRemasure(true)) {
+            refreshManualEditHostPaintRect(measured.id, { force: true });
+          }
+          refreshManualEditHostMetricsAfterTipRemountMulti(
+            iframeRef.current,
+            true,
+          );
+          return;
+        }
+        applyManualEditMeasuredGeometry(measured);
+        // Fit-settle / multi tip-remount: refresh host paint + multi metrics (460/461).
+        if (tipRemountGrace || tipRemountSelectedMember) {
+          if (shouldRefreshHostPaintAfterTipRemountRemasure(true)) {
+            refreshManualEditHostPaintRect(measured.id, { force: true });
+          }
+          refreshManualEditHostMetricsAfterTipRemountMulti(
+            iframeRef.current,
+            true,
+          );
+        }
         return;
       }
     }
@@ -7697,17 +11460,24 @@ function HtmlViewer({
     return manualEditPreviewVersionRef.current;
   }
 
-  function inspectorManualEditStyles(target: ManualEditTarget, baseSource: string): ManualEditStyles {
-    const inlineStyles = readManualEditStyles(baseSource, target.id);
-    return mergeManualEditInspectorStyles(inlineStyles, target.styles);
+  function inspectorManualEditStyles(
+    target: ManualEditTarget,
+    baseSource: string,
+    parsedDoc?: Document | null,
+  ): ManualEditStyles {
+    const snapshot = readManualEditTargetSnapshot(baseSource, target.id, {}, parsedDoc);
+    return mergeManualEditInspectorStyles(snapshot.styles, target.styles);
   }
 
   function reconcileManualEditStyleSave(
     id: string,
     savedStyles: Partial<ManualEditStyles>,
     savedSource: string,
+    /** When apply already captured styles/outerHtml, skip a third full-deck parse. */
+    capturedSnapshot?: ReturnType<typeof readManualEditTargetSnapshot>,
   ) {
-    if (id !== '__body__' && !readManualEditOuterHtml(savedSource, id)) {
+    const snapshot = capturedSnapshot ?? readManualEditTargetSnapshot(savedSource, id);
+    if (id !== '__body__' && !snapshot.outerHtml) {
       setManualEditError(
         embedUiLabel(
           'The selected target no longer exists in the saved source. Refreshing the preview.',
@@ -7716,10 +11486,11 @@ function HtmlViewer({
       );
       setSelectedManualEditTarget(null);
       setManualEditFrozenSource(null);
-      setReloadKey((key) => key + 1);
+      // Manual-edit is srcdoc — URL-load only needs reloadKey bust.
+      if (useUrlLoadPreview) setReloadKey((key) => key + 1);
       return;
     }
-    const sourceStyles = readManualEditStyles(savedSource, id);
+    const sourceStyles = snapshot.styles;
     const supersededStyles = manualEditPendingStyleRef.current?.id === id
       ? manualEditPendingStyleRef.current.styles
       : {};
@@ -7761,16 +11532,88 @@ function HtmlViewer({
     manualEditPendingStyleRef.current = nextPending;
   }
 
-  async function handleManualEditStyleChange(id: string, styles: Partial<ManualEditStyles>, label: string) {
+  async function handleManualEditStyleChange(
+    ids: string[],
+    styles: Partial<ManualEditStyles>,
+    label: string,
+  ) {
     const version = nextManualEditPreviewVersion();
+    const primaryId = ids[ids.length - 1] ?? ids[0];
+    if (!primaryId) return;
+    const resolveTarget = (id: string) => (
+      manualEditTargets.find((item) => item.id === id)
+      ?? (selectedManualEditTargetRef.current?.id === id ? selectedManualEditTargetRef.current : null)
+    );
+
+    if (styles.zIndex !== undefined) {
+      const patches = ids.map((id) => ({
+        id,
+        styles: promoteZIndexStylesForTarget(resolveTarget(id), styles),
+      }));
+      for (const patch of patches) {
+        previewStyleToIframe(patch.id, patch.styles, version);
+      }
+      applyManualEditZOrderOptimistic(patches);
+      const currentPending = manualEditPendingStyleRef.current;
+      const sameBatch = currentPending
+        && (currentPending.targetIds ?? [currentPending.id]).every((id, index) => ids[index] === id)
+        && ids.length === (currentPending.targetIds ?? [currentPending.id]).length;
+      if (ids.length > 1) {
+        const perTargetStyles = Object.fromEntries(
+          patches.map((patch) => [patch.id, patch.styles]),
+        );
+        manualEditPendingStyleRef.current = {
+          id: primaryId,
+          perTargetStyles,
+          styles: {},
+          label,
+          version,
+        };
+      } else {
+        const promoted = patches[0]!.styles;
+        manualEditPendingStyleRef.current = {
+          id: primaryId,
+          styles: sameBatch && currentPending
+            ? { ...currentPending.styles, ...promoted }
+            : promoted,
+          label,
+          version,
+        };
+      }
+      setManualEditError(null);
+      clearManualEditStyleTimer();
+      for (const id of ids) {
+        requestManualEditTargetRemeasure(id);
+      }
+      requestManualEditTargetsRefresh();
+      if (manualEditResizeSessionActiveRef.current) return;
+      manualEditStyleTimerRef.current = setTimeout(() => {
+        manualEditStyleTimerRef.current = null;
+        if (manualEditResizePausedRef.current) return;
+        void flushManualEditStyleSave();
+      }, MANUAL_EDIT_STYLE_AUTOSAVE_MS);
+      return;
+    }
+
     const currentPending = manualEditPendingStyleRef.current;
-    const pendingStyles = currentPending?.id === id
+    const sameBatch = currentPending
+      && (currentPending.targetIds ?? [currentPending.id]).every((id, index) => ids[index] === id)
+      && ids.length === (currentPending.targetIds ?? [currentPending.id]).length;
+    const pendingStyles = sameBatch && currentPending
       ? { ...currentPending.styles, ...styles }
       : styles;
-    const pending: ManualEditPendingStyleSave = { id, styles: pendingStyles, label, version };
+    const pending: ManualEditPendingStyleSave = {
+      id: primaryId,
+      targetIds: ids.length > 1 ? ids : undefined,
+      styles: pendingStyles,
+      label,
+      version,
+    };
     manualEditPendingStyleRef.current = pending;
     setManualEditError(null);
-    previewStyleToIframe(id, styles, version);
+    for (const id of ids) {
+      previewStyleToIframe(id, styles, version);
+    }
     // Autosave shortly after the user stops tweaking — select/background/
     // exit also flush, but a remount or crash before those gestures must not
     // be the only persistence path. Resize drag sessions pause this timer.
@@ -7784,10 +11627,30 @@ function HtmlViewer({
   }
 
   function handleManualEditResizeSessionChange(active: boolean) {
+    const wasActive = manualEditResizeSessionActiveRef.current;
     manualEditResizeSessionActiveRef.current = active;
     manualEditResizePausedRef.current = active;
     if (active) {
       clearManualEditStyleTimer();
+    }
+    // Gesture ended after a skipped chrome-release remasure — drop inert + catch up (489).
+    if (
+      wasActive
+      && !active
+      && shouldReleaseTipRemountChromeAfterResizeGestureEnds(
+        manualEditTipRemountChromeSuppressedRef.current,
+        manualEditTipChromeReleaseAfterResizeRef.current,
+        false,
+      )
+    ) {
+      manualEditTipChromeReleaseAfterResizeRef.current = false;
+      remeasureTipRemountAfterDeckHostFitSettle(
+        iframeRef.current,
+        TIP_REMOUNT_FIT_SETTLE_CHROME_RELEASE_MS,
+      );
+      if (manualEditTipRemountChromeSuppressedRef.current) {
+        releaseTipRemountChromeSuppress(true);
+      }
     }
     // Do not clear resize/move drafts here. endDrag clears liveViewport before
     // the async flush finishes; wiping drafts in the same turn snaps the host
@@ -7798,8 +11661,8 @@ function HtmlViewer({
     target: ManualEditTarget,
     styles: Partial<ManualEditStyles>,
     viewport?: { x: number; y: number },
-    options?: { promoted?: boolean },
-  ) {
+    options?: { promotedPosition?: string },
+  ): ManualEditRect | null {
     // Style width/height are layout px. Keep layout* in sync; scale visual rect
     // by the pre-gesture visual/layout ratio so deck fit-scale stays coherent
     // until remasure lands.
@@ -7823,50 +11686,173 @@ function HtmlViewer({
       : layoutHeight;
     const leftPx = parseExplicitPx(styles.left);
     const topPx = parseExplicitPx(styles.top);
+    // Gesture viewport mixes visualStart + layout Δ. Convert to visual content
+    // coords before idle compose (iframe previewScale ≈ 1 under deck fit-scale).
+    const nextRect = viewport
+      ? visualRectFromMoveViewportDraft(
+          target.rect,
+          viewport,
+          prevLayoutW,
+          prevLayoutH,
+          visualWidth,
+          visualHeight,
+        )
+      : viewportRectAfterMoveCommit(target.rect, visualWidth, visualHeight);
     setSelectedManualEditTarget((current) => {
       if (!current || current.id !== target.id) return current;
-      const base = viewportRectAfterMoveCommit(current.rect, visualWidth, visualHeight);
       const next: ManualEditTarget = {
         ...current,
-        // Apply gesture viewport immediately so the overlay never falls back to
-        // the pre-gesture rect while flush/remeasure is in flight.
-        rect: viewport
-          ? { ...base, x: Math.round(viewport.x), y: Math.round(viewport.y) }
-          : base,
+        rect: nextRect,
         layoutWidth,
         layoutHeight,
         styles: { ...current.styles, ...styles },
         offsetLeft: leftPx ?? current.offsetLeft,
         offsetTop: topPx ?? current.offsetTop,
-        cssPosition: options?.promoted ? 'absolute' : current.cssPosition,
+        cssPosition: options?.promotedPosition ?? current.cssPosition,
+        stickyScrollportId: options?.promotedPosition === 'absolute'
+          ? undefined
+          : current.stickyScrollportId,
       };
       selectedManualEditTargetRef.current = next;
       return next;
     });
+    return nextRect;
   }
 
-  function refreshManualEditHostPaintRect(id: string | null = selectedManualEditTargetIdRef.current) {
+  /**
+   * Seed idle paint from the optimistic visual rect so pointerup never flashes
+   * null / hybrid×previewScale. Prefer translating the frozen start paint by the
+   * visual delta — letterboxed iframe offsets stay correct under deck fit-scale.
+   */
+  function seedManualEditHostPaintFromVisual(
+    visualRect: ManualEditRect | null,
+    previousVisual: ManualEditRect,
+  ) {
+    if (!visualRect || visualRect.width < 1 || visualRect.height < 1) return;
+    const frame = iframeRef.current;
+    const workspace = manualEditWorkspaceRef.current;
+    const selectedId = selectedManualEditTargetIdRef.current;
+    const livePaint = frame && workspace && selectedId
+      ? measureManualEditTargetHostRect(frame, workspace, selectedId)
+      : null;
+    setManualEditHostPaintRect((prev) => {
+      const translated = prev
+        ? hostPaintRectAfterVisualMove(prev, previousVisual, visualRect)
+        : null;
+      return translated ?? livePaint ?? hostPaintRectFromVisualContent(
+        visualRect,
+        manualEditHostScale,
+        manualEditHostOffset,
+      );
+    });
+  }
+
+  function refreshManualEditHostPaintRect(
+    id: string | null = selectedManualEditTargetIdRef.current,
+    options?: { force?: boolean },
+  ) {
     if (!id) {
       setManualEditHostPaintRect(null);
       return;
     }
     // Gesture display is owned by overlay draft/liveViewport composition.
-    if (manualEditResizeSessionActiveRef.current) return;
+    if (manualEditResizeSessionActiveRef.current && !options?.force) return;
     const frame = iframeRef.current;
     const workspace = manualEditWorkspaceRef.current;
     if (!frame || !workspace) return;
     const paint = measureManualEditTargetHostRect(frame, workspace, id);
     if (paint && paint.width >= 1 && paint.height >= 1) {
+      manualEditTipLastHostRectByIdRef.current.set(id, { ...paint });
       setManualEditHostPaintRect(paint);
     } else {
-      setManualEditHostPaintRect(null);
+      const tipSessionLive = tipRemountChromeSessionLiveNow();
+      const paintSyncHold = manualEditTipPaintSyncHoldRef.current;
+      const lastGood = manualEditTipLastHostRectByIdRef.current.get(id) ?? null;
+      const hasCurrent = Boolean(
+        manualEditHostPaintRectRef.current
+        && manualEditHostPaintRectRef.current.width >= 1
+        && manualEditHostPaintRectRef.current.height >= 1,
+      );
+      // Miss order: last-good → retain → force-keep → clear (549/550).
+      // Selection-commit last-good (546) lands in the apply-last-good branch.
+      const missAction = resolveTipRemountRefreshMissAction(
+        tipSessionLive,
+        paintSyncHold,
+        lastGood != null,
+        hasCurrent,
+        Boolean(options?.force),
+      );
+      if (missAction === 'apply-last-good' && lastGood) {
+        setManualEditHostPaintRect(lastGood);
+      } else if (missAction === 'retain-current' || missAction === 'keep-force') {
+        // Keep current box — tip/paint-sync retain or force optimistic seed.
+      } else if (missAction === 'clear') {
+        setManualEditHostPaintRect(null);
+      }
     }
     setManualEditHostScale(measureIframeHostScale(frame));
     setManualEditHostOffset(measureIframeOffsetInHost(frame, workspace));
   }
 
+  /** Wait for bridge remeasure + host paint sync before geometry session unlock. */
+  async function settleManualEditGeometryHandoff(id: string): Promise<void> {
+    await new Promise<void>((resolve) => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => resolve());
+      });
+    });
+    manualEditGeometryHandoffIdRef.current = id;
+    try {
+      const optimistic = selectedManualEditTargetRef.current;
+      const frame = iframeRef.current;
+      const workspace = manualEditWorkspaceRef.current;
+      let measured: ManualEditTarget | null = null;
+
+      if (frame && workspace && optimistic?.id === id) {
+        const content = measureManualEditTargetContentRect(frame, id);
+        if (content) {
+          measured = {
+            ...optimistic,
+            rect: content.rect,
+            layoutWidth: content.layoutWidth,
+            layoutHeight: content.layoutHeight,
+          };
+        }
+      }
+
+      if (
+        !measured
+        || (optimistic && !manualEditGeometryRoughlyMatches(measured, optimistic))
+      ) {
+        requestManualEditTargetRemeasure(id);
+        const bridgeMeasured = await waitForManualEditTargetRemeasure(id);
+        if (
+          bridgeMeasured
+          && (!optimistic || manualEditGeometryRoughlyMatches(bridgeMeasured, optimistic))
+        ) {
+          measured = bridgeMeasured;
+        }
+      }
+
+      if (
+        measured
+        && optimistic
+        && manualEditGeometryRoughlyMatches(measured, optimistic)
+      ) {
+        applyManualEditMeasuredGeometry(measured);
+      }
+
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => resolve());
+      });
+      refreshManualEditHostPaintRect(id, { force: true });
+    } finally {
+      manualEditGeometryHandoffIdRef.current = null;
+    }
+  }
+
   function handleManualEditResizePreview(styles: Partial<ManualEditStyles>) {
-    const target = selectedManualEditTarget;
+    const target = selectedManualEditTargetRef.current;
     if (!target) return;
     const version = nextManualEditPreviewVersion();
     const currentPending = manualEditPendingStyleRef.current;
@@ -7900,8 +11886,11 @@ function HtmlViewer({
     });
   }
 
-  function handleManualEditMovePreview(styles: Partial<ManualEditStyles>) {
-    const target = selectedManualEditTarget;
+  function handleManualEditMovePreview(
+    styles: Partial<ManualEditStyles>,
+    viewport?: { x: number; y: number },
+  ) {
+    const target = selectedManualEditTargetRef.current;
     if (!target) return;
     const version = nextManualEditPreviewVersion();
     const currentPending = manualEditPendingStyleRef.current;
@@ -7921,6 +11910,12 @@ function HtmlViewer({
       ...current,
       styles: { ...current.styles, ...styles },
     }));
+    if (viewport) {
+      setManualEditMoveDraftPos({
+        x: Math.round(viewport.x),
+        y: Math.round(viewport.y),
+      });
+    }
   }
 
 
@@ -7929,11 +11924,16 @@ function HtmlViewer({
    * pointercancel and by flush-fail after commit — pending restore alone would
    * leave the live preview on post-gesture styles while disk stayed old.
    */
-  function rollbackManualEditGestureStyles(stylesBefore: Partial<ManualEditStyles>) {
-    const target = selectedManualEditTarget;
+  function rollbackManualEditGestureStyles(
+    stylesBefore: Partial<ManualEditStyles>,
+    geometryBefore?: ManualEditGestureGeometrySnapshot,
+  ) {
+    const target = selectedManualEditTargetRef.current;
     clearManualEditStyleTimer();
     manualEditResizeSessionActiveRef.current = false;
+    manualEditResizePausedRef.current = false;
     setManualEditMoveDraftPos(null);
+    setManualEditGroupDraftRects(null);
     setManualEditResizeDraftSize(null);
     if (!target) return;
     const cancelKeys = manualEditGestureRollbackKeys(stylesBefore, PROMOTE_MOVE_STYLE_KEYS);
@@ -7957,6 +11957,9 @@ function HtmlViewer({
       ...current,
       styles: { ...current.styles, ...reset },
     }));
+    if (geometryBefore) {
+      restoreManualEditGestureGeometry(geometryBefore);
+    }
     // Resume autosave for any non-geometry draft that survived the rollback.
     if (manualEditPendingStyleRef.current && !manualEditResizeSessionActiveRef.current) {
       clearManualEditStyleTimer();
@@ -7972,25 +11975,36 @@ function HtmlViewer({
     stylesBefore: Partial<ManualEditStyles>,
     viewport?: { x: number; y: number },
   ) {
-    const target = selectedManualEditTarget;
+    const target = selectedManualEditTargetRef.current;
     if (!target) return;
     handleManualEditResizePreview(styles);
+    const geometryBefore = captureManualEditGestureGeometrySnapshot(target);
     // Optimistic geometry must land before any await; otherwise clearing
     // liveViewport/drafts snaps the overlay to the pre-gesture rect.
-    applyManualEditGestureOptimisticTarget(target, styles, viewport);
-    manualEditResizeSessionActiveRef.current = false;
-    manualEditResizePausedRef.current = false;
+    const previousVisual = { ...target.rect };
+    const resizeViewport = viewport
+      && (
+        parseExplicitPx(styles.left) !== parseExplicitPx(stylesBefore.left)
+        || parseExplicitPx(styles.top) !== parseExplicitPx(stylesBefore.top)
+      )
+      ? viewport
+      : undefined;
+    const visualRect = applyManualEditGestureOptimisticTarget(target, styles, resizeViewport);
     setManualEditResizeDraftSize(null);
     setManualEditMoveDraftPos(null);
+    setManualEditGroupDraftRects(null);
+    seedManualEditHostPaintFromVisual(visualRect, previousVisual);
+    // Keep geometry session locked through persist + paint settle so RAF sync /
+    // od-edit-targets / od-edit-rect cannot clobber the handoff frame.
+    // Session unlock is owned by overlay finish() → onResizeSessionChange(false).
+    manualEditResizeSessionActiveRef.current = true;
+    manualEditResizePausedRef.current = true;
     const ok = await flushManualEditStyleSave({ force: true });
     if (!ok) {
-      rollbackManualEditGestureStyles(stylesBefore);
+      rollbackManualEditGestureStyles(stylesBefore, geometryBefore);
       return;
     }
-    // Sync host overlay to the iframe's real border-box after layout settles.
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => requestManualEditTargetRemeasure(target.id));
-    });
+    await settleManualEditGeometryHandoff(target.id);
   }
 
   async function handleManualEditMoveCommit(
@@ -7998,23 +12012,49 @@ function HtmlViewer({
     stylesBefore: Partial<ManualEditStyles>,
     viewport?: { x: number; y: number },
   ) {
-    const target = selectedManualEditTarget;
+    const target = selectedManualEditTargetRef.current;
     if (!target) return;
-    handleManualEditMovePreview(styles);
-    const promoted = String(styles.position || '').toLowerCase() === 'absolute';
-    applyManualEditGestureOptimisticTarget(target, styles, viewport, { promoted });
-    manualEditResizeSessionActiveRef.current = false;
-    manualEditResizePausedRef.current = false;
-    setManualEditMoveDraftPos(null);
-    setManualEditResizeDraftSize(null);
-    const ok = await flushManualEditStyleSave({ force: true });
-    if (!ok) {
-      rollbackManualEditGestureStyles(stylesBefore);
-      return;
+    handleManualEditMovePreview(styles, viewport);
+    const promotedPosition = String(styles.position || '').toLowerCase();
+    const stickyScrollportId = promotedPosition === 'absolute'
+      ? target.stickyScrollportId
+      : undefined;
+    const geometryBefore = captureManualEditGestureGeometrySnapshot(target);
+    const previousVisual = { ...target.rect };
+    // Keep geometry session locked through sticky pin / persist / paint settle.
+    // Session unlock is owned by overlay finish() → onResizeSessionChange(false).
+    manualEditResizeSessionActiveRef.current = true;
+    manualEditResizePausedRef.current = true;
+    try {
+      if (stickyScrollportId) {
+        const scrollportOk = await applyManualEdit(
+          { id: stickyScrollportId, kind: 'set-style', styles: { position: 'relative' } },
+          embedUiLabel('Pin scroll container', '스크롤 컨테이너 고정'),
+        );
+        if (!scrollportOk) {
+          rollbackManualEditGestureStyles(stylesBefore, geometryBefore);
+          return;
+        }
+      }
+      const visualRect = applyManualEditGestureOptimisticTarget(
+        target,
+        styles,
+        viewport,
+        promotedPosition ? { promotedPosition } : undefined,
+      );
+      setManualEditMoveDraftPos(null);
+    setManualEditGroupDraftRects(null);
+      setManualEditResizeDraftSize(null);
+      seedManualEditHostPaintFromVisual(visualRect, previousVisual);
+      const ok = await flushManualEditStyleSave({ force: true });
+      if (!ok) {
+        rollbackManualEditGestureStyles(stylesBefore, geometryBefore);
+        return;
+      }
+      await settleManualEditGeometryHandoff(target.id);
+    } catch {
+      rollbackManualEditGestureStyles(stylesBefore, geometryBefore);
     }
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => requestManualEditTargetRemeasure(target.id));
-    });
   }
 
   function handleManualEditResizeCancel(stylesBefore: Partial<ManualEditStyles>) {
@@ -8025,31 +12065,414 @@ function HtmlViewer({
     rollbackManualEditGestureStyles(stylesBefore);
   }
 
-  function reconcileManualEditDraftAfterNoOpFlush(pending: ManualEditPendingStyleSave) {
-    const base = sourceRef.current ?? '';
-    if (!base) return;
-    const keys = Object.keys(pending.styles) as Array<keyof ManualEditStyles>;
-    if (keys.length === 0) return;
+  function applyManualEditGroupOptimisticRects(
+    updates: Array<{ id: string; styles: Partial<ManualEditStyles>; rect: ManualEditRect }>,
+  ) {
+    const updateMap = new Map(updates.map((update) => [update.id, update]));
+    setManualEditTargets((current) =>
+      current.map((item) => {
+        const update = updateMap.get(item.id);
+        if (!update) return item;
+        const leftPx = parseExplicitPx(update.styles.left);
+        const topPx = parseExplicitPx(update.styles.top);
+        const widthPx = parseExplicitPx(update.styles.width);
+        const heightPx = parseExplicitPx(update.styles.height);
+        return {
+          ...item,
+          rect: { ...update.rect },
+          layoutWidth: widthPx ?? item.layoutWidth,
+          layoutHeight: heightPx ?? item.layoutHeight,
+          offsetLeft: leftPx ?? item.offsetLeft,
+          offsetTop: topPx ?? item.offsetTop,
+          styles: { ...item.styles, ...update.styles },
+        };
+      }),
+    );
+    const primaryId = selectedManualEditTargetIdRef.current;
+    const primaryUpdate = primaryId ? updateMap.get(primaryId) : null;
+    if (!primaryUpdate || !selectedManualEditTargetRef.current) return;
+    setSelectedManualEditTarget((current) => {
+      if (!current || current.id !== primaryId) return current;
+      const leftPx = parseExplicitPx(primaryUpdate.styles.left);
+      const topPx = parseExplicitPx(primaryUpdate.styles.top);
+      const widthPx = parseExplicitPx(primaryUpdate.styles.width);
+      const heightPx = parseExplicitPx(primaryUpdate.styles.height);
+      const next: ManualEditTarget = {
+        ...current,
+        rect: { ...primaryUpdate.rect },
+        layoutWidth: widthPx ?? current.layoutWidth,
+        layoutHeight: heightPx ?? current.layoutHeight,
+        offsetLeft: leftPx ?? current.offsetLeft,
+        offsetTop: topPx ?? current.offsetTop,
+        styles: { ...current.styles, ...primaryUpdate.styles },
+      };
+      selectedManualEditTargetRef.current = next;
+      return next;
+    });
+  }
 
-    const target = pending.id === '__body__'
-      ? null
-      : selectedManualEditTargetRef.current?.id === pending.id
-        ? selectedManualEditTargetRef.current
-        : manualEditTargets.find((item) => item.id === pending.id) ?? null;
+  function handleManualEditGroupGeometryPreview(
+    updates: Array<{ id: string; styles: Partial<ManualEditStyles>; rect: ManualEditRect }>,
+    label: string,
+  ) {
+    if (updates.length === 0) return;
+    const version = nextManualEditPreviewVersion();
+    const ids = updates.map((update) => update.id);
+    const perTargetStyles: Record<string, Partial<ManualEditStyles>> = {};
+    for (const update of updates) {
+      perTargetStyles[update.id] = update.styles;
+      previewStyleToIframe(update.id, update.styles, version);
+    }
+    clearManualEditStyleTimer();
+    manualEditPendingStyleRef.current = {
+      id: ids[ids.length - 1]!,
+      targetIds: ids,
+      perTargetStyles,
+      styles: {},
+      label,
+      version,
+    };
+    setManualEditError(null);
+    setManualEditGroupDraftRects(
+      Object.fromEntries(updates.map((update) => [update.id, update.rect])),
+    );
+    applyManualEditGroupOptimisticRects(updates);
+  }
 
-    const sourceStyles = target
-      ? inspectorManualEditStyles(target, base)
-      : readManualEditStyles(base, pending.id);
-    const resetStyles = keys.reduce<Partial<ManualEditStyles>>((acc, key) => {
-      acc[key] = sourceStyles[key] ?? '';
-      return acc;
-    }, {});
+  function handleManualEditGroupMovePreview(updates: GroupMovePreviewUpdate[]) {
+    handleManualEditGroupGeometryPreview(updates, groupMoveHistoryLabel(updates.length));
+  }
 
+  function rollbackManualEditGroupGestureStyles(
+    stylesBefore: Record<string, Partial<ManualEditStyles>>,
+    memberStarts: GroupMoveMemberStart[],
+  ) {
+    clearManualEditStyleTimer();
+    manualEditResizeSessionActiveRef.current = false;
+    manualEditResizePausedRef.current = false;
+    setManualEditGroupDraftRects(null);
+    const version = nextManualEditPreviewVersion();
+    for (const member of memberStarts) {
+      const before = stylesBefore[member.id] ?? {};
+      const cancelKeys = manualEditGestureRollbackKeys(before, PROMOTE_MOVE_STYLE_KEYS);
+      cancelManualEditPendingStyles(member.id, cancelKeys);
+      const reset = keyedManualEditStyleRollback(before, cancelKeys);
+      previewStyleToIframe(member.id, reset, version);
+    }
+    setManualEditTargets((current) =>
+      current.map((item) => {
+        const member = memberStarts.find((start) => start.id === item.id);
+        if (!member) return item;
+        return { ...item, rect: { ...member.startRect } };
+      }),
+    );
+    const primaryId = selectedManualEditTargetIdRef.current;
+    const primaryStart = memberStarts.find((start) => start.id === primaryId);
+    if (primaryStart && selectedManualEditTargetRef.current) {
+      setSelectedManualEditTarget((current) => {
+        if (!current || current.id !== primaryId) return current;
+        const before = stylesBefore[primaryStart.id] ?? {};
+        const next: ManualEditTarget = {
+          ...current,
+          rect: { ...primaryStart.startRect },
+          styles: { ...current.styles, ...before },
+        };
+        selectedManualEditTargetRef.current = next;
+        return next;
+      });
+    }
+    if (manualEditPendingStyleRef.current?.perTargetStyles) {
+      manualEditPendingStyleRef.current = null;
+    }
+    if (manualEditPendingStyleRef.current && !manualEditResizeSessionActiveRef.current) {
+      clearManualEditStyleTimer();
+      manualEditStyleTimerRef.current = setTimeout(() => {
+        manualEditStyleTimerRef.current = null;
+        void flushManualEditStyleSave();
+      }, MANUAL_EDIT_STYLE_AUTOSAVE_MS);
+    }
+  }
+
+  async function handleManualEditGroupMoveCommit(
+    updates: GroupMovePreviewUpdate[],
+    stylesBefore: Record<string, Partial<ManualEditStyles>>,
+  ) {
+    const targets = resolveSelectedManualEditMoveTargets();
+    if (targets.length < 2 || updates.length === 0) return;
+    handleManualEditGroupMovePreview(updates);
+    const memberStarts = buildGroupMoveMemberStarts(targets);
+    const anchor = memberStarts.find((member) => member.id === updates[0]!.id) ?? memberStarts[0]!;
+    const anchorUpdate = updates.find((update) => update.id === anchor.id) ?? updates[0]!;
+    const dx = (parseExplicitPx(anchorUpdate.styles.left) ?? anchor.startLeftPx) - anchor.startLeftPx;
+    const dy = (parseExplicitPx(anchorUpdate.styles.top) ?? anchor.startTopPx) - anchor.startTopPx;
+    manualEditResizeSessionActiveRef.current = true;
+    manualEditResizePausedRef.current = true;
+    setManualEditGroupDraftRects(null);
+    applyManualEditGroupOptimisticRects(updates);
+    const baseSource = manualEditPatchBaseSource({
+      manualEditMode,
+      frozenSource: manualEditFrozenSource,
+      liveSource: sourceRef.current,
+    });
+    if (baseSource == null) {
+      rollbackManualEditGroupGestureStyles(stylesBefore, memberStarts);
+      return;
+    }
+    const targetsById = new Map(targets.map((target) => [target.id, target]));
+    const { patches, parsedDoc } = buildGroupMoveStylePatches(
+      baseSource,
+      memberStarts,
+      targetsById,
+      dx,
+      dy,
+    );
+    try {
+      const ok = await applyManualEditBatch(
+        patches,
+        groupMoveHistoryLabel(targets.length),
+        parsedDoc,
+      );
+      if (!ok) {
+        rollbackManualEditGroupGestureStyles(stylesBefore, memberStarts);
+        return;
+      }
+      manualEditPendingStyleRef.current = null;
+      clearManualEditStyleTimer();
+      for (const target of targets) {
+        requestManualEditTargetRemeasure(target.id);
+      }
+      const primaryId = selectedManualEditTargetIdRef.current;
+      if (primaryId) {
+        await settleManualEditGeometryHandoff(primaryId);
+      }
+    } catch {
+      rollbackManualEditGroupGestureStyles(stylesBefore, memberStarts);
+    }
+  }
+
+  function handleManualEditGroupMoveCancel(
+    stylesBefore: Record<string, Partial<ManualEditStyles>>,
+    memberStarts: GroupMoveMemberStart[],
+  ) {
+    rollbackManualEditGroupGestureStyles(stylesBefore, memberStarts);
+  }
+
+  function handleManualEditGroupResizePreview(updates: GroupResizePreviewUpdate[]) {
+    handleManualEditGroupGeometryPreview(updates, groupResizeHistoryLabel(updates.length));
+  }
+
+  async function handleManualEditGroupResizeCommit(
+    updates: GroupResizePreviewUpdate[],
+    stylesBefore: Record<string, Partial<ManualEditStyles>>,
+    handle: ResizeHandle,
+    dx: number,
+    dy: number,
+    shiftKey: boolean,
+  ) {
+    const targets = resolveSelectedManualEditResizeTargets();
+    if (targets.length < 2 || updates.length === 0) return;
+    handleManualEditGroupResizePreview(updates);
+    const memberStarts = buildGroupResizeMemberStarts(targets);
+    manualEditResizeSessionActiveRef.current = true;
+    manualEditResizePausedRef.current = true;
+    setManualEditGroupDraftRects(null);
+    applyManualEditGroupOptimisticRects(updates);
+    const baseSource = manualEditPatchBaseSource({
+      manualEditMode,
+      frozenSource: manualEditFrozenSource,
+      liveSource: sourceRef.current,
+    });
+    if (baseSource == null) {
+      rollbackManualEditGroupGestureStyles(stylesBefore, memberStarts);
+      return;
+    }
+    const { patches, parsedDoc } = buildGroupResizeStylePatches(
+      baseSource,
+      memberStarts,
+      handle,
+      dx,
+      dy,
+      shiftKey,
+    );
+    try {
+      const ok = await applyManualEditBatch(
+        patches,
+        groupResizeHistoryLabel(targets.length),
+        parsedDoc,
+      );
+      if (!ok) {
+        rollbackManualEditGroupGestureStyles(stylesBefore, memberStarts);
+        return;
+      }
+      manualEditPendingStyleRef.current = null;
+      clearManualEditStyleTimer();
+      for (const target of targets) {
+        requestManualEditTargetRemeasure(target.id);
+      }
+      const primaryId = selectedManualEditTargetIdRef.current;
+      if (primaryId) {
+        await settleManualEditGeometryHandoff(primaryId);
+      }
+    } catch {
+      rollbackManualEditGroupGestureStyles(stylesBefore, memberStarts);
+    }
+  }
+
+  function handleManualEditGroupResizeCancel(
+    stylesBefore: Record<string, Partial<ManualEditStyles>>,
+    memberStarts: GroupResizeMemberStart[],
+  ) {
+    rollbackManualEditGroupGestureStyles(stylesBefore, memberStarts);
+  }
+
+  async function applyManualEditGroupGeometryAction(
+    updates: GroupMovePreviewUpdate[],
+    label: string,
+  ): Promise<boolean> {
+    const targets = resolveSelectedManualEditMoveTargets();
+    if (targets.length < 2 || updates.length === 0) return false;
+    handleManualEditGroupGeometryPreview(updates, label);
+    const baseSource = manualEditPatchBaseSource({
+      manualEditMode,
+      frozenSource: manualEditFrozenSource,
+      liveSource: sourceRef.current,
+    });
+    if (baseSource == null) return false;
+    const { patches, parsedDoc } = buildGroupGeometryPatches(baseSource, updates);
+    if (patches.length === 0) return true;
+    const ok = await applyManualEditBatch(patches, label, parsedDoc);
+    if (!ok) return false;
+    manualEditPendingStyleRef.current = null;
+    clearManualEditStyleTimer();
+    setManualEditGroupDraftRects(null);
+    for (const target of targets) {
+      requestManualEditTargetRemeasure(target.id);
+    }
+    const primaryId = selectedManualEditTargetIdRef.current;
+    if (primaryId) {
+      await settleManualEditGeometryHandoff(primaryId);
+    }
+    return true;
+  }
+
+  async function handleManualEditGroupAlign(kind: GroupAlignKind) {
+    const targets = resolveSelectedManualEditAnchoredMoveTargets();
+    if (!canGroupAlign(targets, selectedManualEditGeometryOptions(), manualEditTargetIsDescendantOf)) return;
+    const updates = computeGroupAlignPreviewUpdates(targets, kind);
+    await applyManualEditGroupGeometryAction(
+      updates,
+      groupAlignHistoryLabel(targets.length, kind),
+    );
+  }
+
+  async function handleManualEditGroupDistribute(kind: GroupDistributeKind) {
+    const targets = resolveSelectedManualEditAnchoredMoveTargets();
+    if (!canGroupDistribute(targets, selectedManualEditGeometryOptions(), manualEditTargetIsDescendantOf)) return;
+    const updates = computeGroupDistributePreviewUpdates(targets, kind);
+    await applyManualEditGroupGeometryAction(
+      updates,
+      groupAlignHistoryLabel(targets.length, kind),
+    );
+  }
+
+  function revertManualEditPendingStylePreview(
+    pending: ManualEditPendingStyleSave,
+    parsedDoc: Document,
+    base: string,
+  ) {
+    for (const { id, styles } of manualEditPendingStyleEntries(pending)) {
+      const keys = Object.keys(styles) as Array<keyof ManualEditStyles>;
+      if (keys.length === 0) continue;
+      const target = id === '__body__'
+        ? null
+        : manualEditTargets.find((item) => item.id === id)
+          ?? (selectedManualEditTargetRef.current?.id === id ? selectedManualEditTargetRef.current : null);
+      const sourceStyles = target
+        ? inspectorManualEditStyles(target, base, parsedDoc)
+        : readManualEditStyles(base, id, {}, parsedDoc);
+      const resetStyles = keys.reduce<Partial<ManualEditStyles>>((acc, key) => {
+        acc[key] = sourceStyles[key] ?? '';
+        return acc;
+      }, {});
+      previewStyleToIframe(id, resetStyles, nextManualEditPreviewVersion());
+    }
+    const affectedIds = manualEditPendingAffectedIds(pending).filter((id) => id !== '__body__');
+    const touchesZOrder = manualEditPendingStyleEntries(pending).some(
+      ({ styles }) => styles.zIndex !== undefined || styles.position !== undefined,
+    );
+    if (touchesZOrder && affectedIds.length > 0) {
+      setManualEditTargets((current) => current.map((item) => {
+        if (!affectedIds.includes(item.id)) return item;
+        const target = item;
+        const sourceStyles = inspectorManualEditStyles(target, base, parsedDoc);
+        return {
+          ...item,
+          styles: {
+            ...item.styles,
+            zIndex: sourceStyles.zIndex ?? '',
+            position: sourceStyles.position ?? item.styles.position,
+          },
+          stackZ: readStackZFromZIndexStyle(sourceStyles.zIndex),
+          cssPosition: sourceStyles.position || item.cssPosition,
+        };
+      }));
+      for (const id of affectedIds) {
+        requestManualEditTargetRemeasure(id);
+      }
+      requestManualEditTargetsRefresh();
+    }
     setManualEditResizeDraftSize(null);
     setManualEditMoveDraftPos(null);
-    previewStyleToIframe(pending.id, resetStyles, nextManualEditPreviewVersion());
+    setManualEditGroupDraftRects(null);
+  }
 
-    if (!target || selectedManualEditTarget?.id === pending.id) {
+  function reconcileManualEditDraftAfterNoOpFlush(
+    pending: ManualEditPendingStyleSave,
+    sharedParsedDoc?: Document | null,
+  ) {
+    const base = sourceRef.current ?? '';
+    if (!base) return;
+    const entries = manualEditPendingStyleEntries(pending);
+    if (entries.length === 0) return;
+
+    const parsedDoc = sharedParsedDoc ?? parseManualEditSource(base);
+    revertManualEditPendingStylePreview(pending, parsedDoc, base);
+
+    const keys = Array.from(new Set(
+      entries.flatMap(({ styles }) => Object.keys(styles) as Array<keyof ManualEditStyles>),
+    ));
+    if (keys.length === 0) return;
+
+    const selectedIds = selectedManualEditTargetIdsRef.current;
+    if (selectedIds.length > 1) {
+      const refreshed = resolveManualEditTargetsByIds(selectedIds, manualEditTargets);
+      const noopFlushSourceOnly = shouldReadMultiInspectorStylesFromSourceOnly('noop-flush');
+      const { styles, mixedKeys } = mergeInspectorStylesForTargets(
+        refreshed,
+        (id) => {
+          if (noopFlushSourceOnly) {
+            return readManualEditStyles(base, id, {}, parsedDoc);
+          }
+          const target = refreshed.find((item) => item.id === id) ?? null;
+          return target
+            ? inspectorManualEditStyles(target, base, parsedDoc)
+            : readManualEditStyles(base, id, {}, parsedDoc);
+        },
+      );
+      setManualEditMixedStyleKeys(mixedKeys);
+      setManualEditDraft((current) => ({ ...current, styles }));
+      return;
+    }
+    if (selectedManualEditTargetRef.current) {
+      const sourceStyles = inspectorManualEditStyles(
+        selectedManualEditTargetRef.current,
+        base,
+        parsedDoc,
+      );
+      const resetStyles = keys.reduce<Partial<ManualEditStyles>>((acc, key) => {
+        acc[key] = sourceStyles[key] ?? '';
+        return acc;
+      }, {});
       setManualEditDraft((current) => ({
         ...current,
         styles: { ...current.styles, ...resetStyles },
@@ -8058,7 +12481,10 @@ function HtmlViewer({
   }
 
   async function flushManualEditStyleSave(options?: { force?: boolean }): Promise<boolean> {
-    if (manualEditResizePausedRef.current && !options?.force) return true;
+    // Boundary exits must pass `{ force: true }` — see shouldSkip…WhilePaused.
+    if (shouldSkipManualEditStyleFlushWhilePaused(manualEditResizePausedRef.current, options)) {
+      return true;
+    }
     // Boundary flushes (exit / select / text commit) must not lose a race with
     // autosave: wait for the lock, then persist whatever draft remains.
     if (manualEditSavingRef.current) {
@@ -8070,6 +12496,7 @@ function HtmlViewer({
     if (!pending) return true;
     if (manualEditSavingRef.current) return false;
     clearManualEditStyleTimer();
+    const zIndexTargetIds = collectZIndexTargetsFromPending(pending);
     manualEditPendingStyleRef.current = null;
     const baseSource = manualEditPatchBaseSource({
       manualEditMode,
@@ -8080,14 +12507,77 @@ function HtmlViewer({
       manualEditPendingStyleRef.current = pending;
       return false;
     }
-    const effectiveStyles = diffManualEditStylePatch(baseSource, pending.id, pending.styles);
+    if (pending.perTargetStyles) {
+      const parsedDoc = parseManualEditSource(baseSource);
+      const patches = Object.entries(pending.perTargetStyles)
+        .map(([id, styles]) => {
+          const sourceStyles = readManualEditStyles(baseSource, id, {}, parsedDoc);
+          const effectiveStyles = diffManualEditStylePatch(baseSource, id, styles, {
+            sourceStyles,
+          });
+          if (Object.keys(effectiveStyles).length === 0) return null;
+          return { id, kind: 'set-style' as const, styles: effectiveStyles };
+        })
+        .filter((patch): patch is Extract<ManualEditPatch, { kind: 'set-style' }> => patch !== null);
+      if (patches.length === 0) {
+        reconcileManualEditDraftAfterNoOpFlush(pending, parsedDoc);
+        afterManualEditZIndexPersist(zIndexTargetIds);
+        return true;
+      }
+      const ok = await applyManualEditBatch(patches, pending.label, parsedDoc);
+      if (!ok) {
+        manualEditPendingStyleRef.current = restoreManualEditPendingStyleAfterFailedFlush(
+          manualEditPendingStyleRef.current,
+          pending,
+        );
+        return false;
+      }
+      afterManualEditZIndexPersist(zIndexTargetIds);
+      return true;
+    }
+    const targetIds = pending.targetIds ?? [pending.id];
+    if (targetIds.length > 1) {
+      // One Document for multi-target diff + no-op reconcile / apply.
+      const parsedDoc = parseManualEditSource(baseSource);
+      const patches = buildManualEditStylePatchesForTargets(
+        baseSource,
+        targetIds,
+        pending.styles,
+        parsedDoc,
+      );
+      if (patches.length === 0) {
+        reconcileManualEditDraftAfterNoOpFlush(pending, parsedDoc);
+        afterManualEditZIndexPersist(zIndexTargetIds);
+        return true;
+      }
+      const ok = await applyManualEditBatch(patches, pending.label, parsedDoc);
+      if (!ok) {
+        manualEditPendingStyleRef.current = restoreManualEditPendingStyleAfterFailedFlush(
+          manualEditPendingStyleRef.current,
+          pending,
+        );
+        return false;
+      }
+      afterManualEditZIndexPersist(zIndexTargetIds);
+      return true;
+    }
+    // One Document for style read + no-op reconcile + apply (was parse ×2/×3).
+    const parsedDoc = parseManualEditSource(baseSource);
+    const sourceStyles = readManualEditStyles(baseSource, pending.id, {}, parsedDoc);
+    const effectiveStyles = diffManualEditStylePatch(baseSource, pending.id, pending.styles, {
+      sourceStyles,
+    });
     if (Object.keys(effectiveStyles).length === 0) {
-      reconcileManualEditDraftAfterNoOpFlush(pending);
+      reconcileManualEditDraftAfterNoOpFlush(pending, parsedDoc);
+      afterManualEditZIndexPersist(zIndexTargetIds);
       return true;
     }
     const ok = await applyManualEdit(
       { id: pending.id, kind: 'set-style', styles: effectiveStyles },
       pending.label,
+      undefined,
+      undefined,
+      parsedDoc,
     );
     if (!ok) {
       manualEditPendingStyleRef.current = restoreManualEditPendingStyleAfterFailedFlush(
@@ -8096,11 +12586,14 @@ function HtmlViewer({
       );
       return false;
     }
+    afterManualEditZIndexPersist(zIndexTargetIds);
     return true;
   }
 
   async function settleManualEditStyleBoundary(): Promise<boolean> {
-    return flushManualEditStyleSave();
+    // History / text / patch boundaries must not soft-skip while a gesture
+    // paused autosave — that looked like a successful flush with no write.
+    return flushManualEditStyleSave({ force: true });
   }
 
 
@@ -8110,33 +12603,51 @@ function HtmlViewer({
     clearManualEditStyleTimer();
     manualEditPendingStyleRef.current = null;
     const base = sourceRef.current ?? '';
-    const target = pending.id === '__body__'
-      ? null
-      : selectedManualEditTarget?.id === pending.id
-        ? selectedManualEditTarget
-        : manualEditTargets.find((item) => item.id === pending.id) ?? null;
-    const sourceStyles = target
-      ? inspectorManualEditStyles(target, base)
-      : readManualEditStyles(base, pending.id);
-    const resetStyles = MANUAL_EDIT_STYLE_PROPS.reduce<Partial<ManualEditStyles>>((acc, key) => {
-      acc[key] = sourceStyles[key] ?? '';
-      return acc;
-    }, {});
-    previewStyleToIframe(pending.id, resetStyles, nextManualEditPreviewVersion());
-    if (!target || target.id === selectedManualEditTarget?.id) {
+    const parsedDoc = parseManualEditSource(base);
+    revertManualEditPendingStylePreview(pending, parsedDoc, base);
+    const selectedIds = selectedManualEditTargetIdsRef.current;
+    if (selectedIds.length > 1) {
+      const cancelSourceOnly = shouldReadMultiInspectorStylesFromSourceOnly('cancel');
+      const reseed = planManualEditMultiInspectorReseed({
+        selectedIds,
+        readStyles: (id) => {
+          if (cancelSourceOnly) {
+            return readManualEditStyles(base, id, {}, parsedDoc);
+          }
+          const target = resolveManualEditTargetsByIds([id], manualEditTargets)[0] ?? null;
+          return target
+            ? inspectorManualEditStyles(target, base, parsedDoc)
+            : readManualEditStyles(base, id, {}, parsedDoc);
+        },
+      });
+      setManualEditMixedStyleKeys(reseed.mixedKeys);
       setManualEditDraft((current) => ({
         ...current,
-        styles: target ? sourceStyles : current.styles,
+        styles: reseed.styles ?? current.styles,
         fullSource: base,
       }));
+    } else if (selectedManualEditTargetRef.current) {
+      const sourceStyles = inspectorManualEditStyles(
+        selectedManualEditTargetRef.current,
+        base,
+        parsedDoc,
+      );
+      setManualEditDraft((current) => ({ ...current, styles: sourceStyles, fullSource: base }));
+      setManualEditMixedStyleKeys(new Set());
     }
     setManualEditError(null);
   }
 
   async function exitManualEditModeAfterFlush(): Promise<boolean> {
-    const ok = await flushManualEditStyleSave();
+    // Force: geometry gestures pause autosave; a soft flush would no-op and the
+    // mode-off effect would then drop the pending draft.
+    const ok = await flushManualEditStyleSave({ force: true });
     if (!ok) return false;
+    manualEditResizeSessionActiveRef.current = false;
+    manualEditResizePausedRef.current = false;
     setManualEditPanelPosition(null);
+    setManualEditPanelCollapsed(false);
+    setManualEditLayersPanelOpen(false);
     setManualEditMode(false);
     return true;
   }
@@ -8152,45 +12663,191 @@ function HtmlViewer({
     if (win) win.postMessage({ type: 'od-edit-hover-reset' }, '*');
   }
 
-  async function selectManualEditTarget(target: ManualEditTarget) {
-    // Switching targets used to cancel the previous draft — looks like the
-    // style "didn't save". Flush the boundary first (upstream
-    // settleManualEditHistoryBoundary) and abort the switch if save fails.
-    if (shouldFlushManualEditStylesOnTargetBoundary(
-      manualEditPendingStyleRef.current?.id,
-      target.id,
-    )) {
-      if (!(await flushManualEditStyleSave())) return;
+  function manualEditTargetIsDescendantOf(childId: string, ancestorId: string): boolean {
+    return manualEditTargetIsDescendantOfInDocument(
+      iframeContentDocumentIfAccessible(iframeRef.current),
+      childId,
+      ancestorId,
+    );
+  }
+
+  function selectedManualEditGeometryOptions() {
+    return {
+      editMode: manualEditMode,
+      inlineTextEditing: manualEditInlineTextEditing,
+    };
+  }
+
+  function resolveSelectedManualEditAnchoredMoveTargets(
+    targets: readonly ManualEditTarget[] = resolveManualEditTargetsByIds(
+      selectedManualEditTargetIdsRef.current,
+      manualEditTargets,
+    ),
+  ) {
+    return resolveGroupMovableTargets(
+      targets,
+      selectedManualEditGeometryOptions(),
+      manualEditTargetIsDescendantOf,
+    );
+  }
+
+  function resolveSelectedManualEditMoveTargets(
+    targets: readonly ManualEditTarget[] = resolveManualEditTargetsByIds(
+      selectedManualEditTargetIdsRef.current,
+      manualEditTargets,
+    ),
+  ) {
+    return resolveGroupMoveTargets(
+      targets,
+      selectedManualEditGeometryOptions(),
+      manualEditTargetIsDescendantOf,
+    );
+  }
+
+  function resolveSelectedManualEditResizeTargets(
+    targets: readonly ManualEditTarget[] = resolveManualEditTargetsByIds(
+      selectedManualEditTargetIdsRef.current,
+      manualEditTargets,
+    ),
+  ) {
+    return resolveGroupResizableTargets(
+      targets,
+      selectedManualEditGeometryOptions(),
+      manualEditTargetIsDescendantOf,
+    );
+  }
+
+  async function selectManualEditTarget(
+    target: ManualEditTarget,
+    options?: { additive?: boolean },
+  ) {
+    if (manualEditResizeSessionActiveRef.current || manualEditInlineTextEditing) return;
+
+    const doc = iframeContentDocumentIfAccessible(iframeRef.current);
+    const resolvedId = resolveManualEditGraphicContainerId(doc, target.id);
+    const catalog = manualEditTargets.length > 0 ? manualEditTargets : [target];
+    const resolvedTarget = resolvedId !== target.id
+      ? (catalog.find((item) => item.id === resolvedId) ?? { ...target, id: resolvedId })
+      : target;
+
+    const currentIds = selectedManualEditTargetIdsRef.current;
+    const nextIds = nextManualEditSelectionIds(
+      currentIds,
+      resolvedTarget.id,
+      options?.additive ?? false,
+      MANUAL_EDIT_MULTI_SELECT_MAX,
+      manualEditTargetIsDescendantOf,
+    );
+    if (nextIds.length === 0) {
+      await clearManualEditTargetSelection();
+      return;
     }
+
+    const pending = manualEditPendingStyleRef.current;
+    const pendingIds = pending?.targetIds ?? (pending?.id ? [pending.id] : null);
+    if (shouldFlushManualEditStylesOnSelectionBoundary(pendingIds, nextIds)) {
+      if (!(await flushManualEditStyleSave({ force: true }))) return;
+    }
+
+    const catalogForResolve = manualEditTargets.length > 0
+      ? manualEditTargets
+      : [resolvedTarget];
+    const nextTargets = resolveManualEditTargetsByIds(nextIds, catalogForResolve);
+    if (nextTargets.length === 0) return;
+    const primary = nextTargets[nextTargets.length - 1]!;
+
     setManualEditPageStylesOpen(false);
-    // Re-run auto placement for the new target — keep a prior drag only while
-    // the same element stays selected.
-    setManualEditPanelPosition(null);
+    if (selectedManualEditTargetIdRef.current !== primary.id) {
+      const canvasWidth = previewBodySize?.width ?? 1200;
+      const canvasHeight = previewBodySize?.height ?? 800;
+      const hostRect = manualEditPanelHostRect(
+        primary,
+        manualEditHostScale,
+        manualEditHostOffset,
+        null,
+      );
+      const pinned = manualEditPanelPositionRef.current;
+      const panelHeight = manualEditPanelCollapsedRef.current
+        ? MANUAL_EDIT_PANEL_COLLAPSED_HEIGHT_PX
+        : Math.min(380, Math.max(260, canvasHeight - 24));
+      if (shouldRepositionFloatingPanelForSelection({
+        pinned,
+        target: hostRect,
+        canvasWidth,
+        canvasHeight,
+        panelHeight,
+      })) {
+        setManualEditPanelPosition(null);
+        manualEditPanelUserPinnedRef.current = false;
+        manualEditPanelPaintPinnedIdRef.current = null;
+      } else if (pinned) {
+        manualEditPanelPaintPinnedIdRef.current = primary.id;
+      }
+    }
     setManualEditResizeDraftSize(null);
     setManualEditMoveDraftPos(null);
+    setManualEditGroupDraftRects(null);
     manualEditResizeSessionActiveRef.current = false;
     manualEditResizePausedRef.current = false;
+
     const base = sourceRef.current ?? '';
-    const fields = readManualEditFields(base, target.id);
-    selectedManualEditTargetIdRef.current = target.id;
-    selectedManualEditTargetRef.current = target;
-    setSelectedManualEditTarget(target);
-    // Drop prior selection paint immediately — a larger parent's rect must not
-    // flash over a smaller newly selected child for a frame.
-    setManualEditHostPaintRect(null);
-    // Measure before paint so the overlay does not flash at scale=1 / offset=0.
-    refreshManualEditHostPaintRect(target.id);
-    setManualEditDraft({
-      text: fields.text ?? target.fields.text ?? target.text,
-      href: fields.href ?? target.fields.href ?? '',
-      src: fields.src ?? target.fields.src ?? '',
-      alt: fields.alt ?? target.fields.alt ?? '',
-      styles: inspectorManualEditStyles(target, base),
-      attributesText: JSON.stringify(readManualEditAttributes(base, target.id), null, 2),
-      outerHtml: readManualEditOuterHtml(base, target.id) || target.outerHtml,
-      fullSource: base,
-    });
+    // One Document for snapshot + multi-select inspector merge.
+    const parsedDoc = parseManualEditSource(base);
+    clearManualEditTipRemountGeometryGraceIfNeeded(primary.id);
+    selectedManualEditTargetIdRef.current = primary.id;
+    selectedManualEditTargetRef.current = primary;
+    selectedManualEditTargetIdsRef.current = nextIds;
+    // Selection commit owns selected-set identity — avoid redundant reseed on
+    // the next od-edit-targets broadcast (442 / same latch as tip-yield 440).
+    manualEditSelectedIdentityFingerprintRef.current =
+      manualEditTargetsIdentityFingerprint(nextTargets);
+    setSelectedManualEditTargetIds(nextIds);
+    setSelectedManualEditTarget(primary);
+    // Tip/paint-sync: seed last-good for next primary instead of unconditional
+    // null — refresh early-return or multi commit must not flash hybrid (546).
+    setManualEditHostPaintRect(hostPaintRectForManualEditSelectionCommit(
+      tipRemountChromeSessionLiveNow(),
+      manualEditTipPaintSyncHoldRef.current,
+      manualEditTipLastHostRectByIdRef.current.get(primary.id) ?? null,
+    ));
+    if (nextTargets.length === 1) {
+      refreshManualEditHostPaintRect(primary.id);
+      const snapshot = readManualEditTargetSnapshot(base, primary.id, {}, parsedDoc);
+      setManualEditMixedStyleKeys(new Set());
+      setManualEditDraft({
+        text: snapshot.fields.text ?? primary.fields.text ?? primary.text,
+        href: snapshot.fields.href ?? primary.fields.href ?? '',
+        src: snapshot.fields.src ?? primary.fields.src ?? '',
+        alt: snapshot.fields.alt ?? primary.fields.alt ?? '',
+        styles: mergeManualEditInspectorStyles(snapshot.styles, primary.styles),
+        attributesText: JSON.stringify(snapshot.attributes, null, 2),
+        outerHtml: snapshot.outerHtml || primary.outerHtml,
+        fullSource: base,
+      });
+    } else {
+      const { styles: mergedStyles, mixedKeys } = mergeInspectorStylesForTargets(
+        nextTargets,
+        (id) => inspectorManualEditStyles(
+          nextTargets.find((item) => item.id === id) ?? primary,
+          base,
+          parsedDoc,
+        ),
+      );
+      setManualEditMixedStyleKeys(mixedKeys);
+      const snapshot = readManualEditTargetSnapshot(base, primary.id, {}, parsedDoc);
+      setManualEditDraft({
+        text: snapshot.fields.text ?? primary.fields.text ?? primary.text,
+        href: snapshot.fields.href ?? primary.fields.href ?? '',
+        src: snapshot.fields.src ?? primary.fields.src ?? '',
+        alt: snapshot.fields.alt ?? primary.fields.alt ?? '',
+        styles: mergedStyles,
+        attributesText: '{}',
+        outerHtml: '',
+        fullSource: base,
+      });
+    }
     setManualEditError(null);
+    postSelectedManualEditTargetsToIframe(nextIds, primary.id);
   }
 
   async function clearManualEditTargetSelection(
@@ -8198,21 +12855,36 @@ function HtmlViewer({
   ): Promise<boolean> {
     if (options?.discardPendingStyles) {
       cancelManualEditStyleDraft();
-    } else if (shouldFlushManualEditStylesOnTargetBoundary(
-      manualEditPendingStyleRef.current?.id,
-      null,
+    } else if (shouldFlushManualEditStylesOnSelectionBoundary(
+      manualEditPendingStyleRef.current?.targetIds
+        ?? (manualEditPendingStyleRef.current?.id
+          ? [manualEditPendingStyleRef.current.id]
+          : null),
+      [],
     )) {
-      if (!(await flushManualEditStyleSave())) return false;
+      if (!(await flushManualEditStyleSave({ force: true }))) return false;
     }
+    // Clear tip-remount grace with selection clear (overlay residual).
+    clearManualEditTipRemountGeometryGraceIfNeeded(null);
     selectedManualEditTargetIdRef.current = null;
+    selectedManualEditTargetRef.current = null;
+    selectedManualEditTargetIdsRef.current = [];
+    manualEditSelectedIdentityFingerprintRef.current = '';
+    setSelectedManualEditTargetIds([]);
     setSelectedManualEditTarget(null);
+    setManualEditMixedStyleKeys(new Set());
     setManualEditPanelPosition(null);
+    manualEditPanelUserPinnedRef.current = false;
+    manualEditPanelPaintPinnedIdRef.current = null;
     setManualEditResizeDraftSize(null);
     setManualEditMoveDraftPos(null);
+    setManualEditGroupDraftRects(null);
     setManualEditHostPaintRect(null);
     manualEditResizeSessionActiveRef.current = false;
+    manualEditResizePausedRef.current = false;
     setManualEditDraft(emptyManualEditDraft(sourceRef.current ?? ''));
     setManualEditError(null);
+    postSelectedManualEditTargetsToIframe([], null);
     return true;
   }
 
@@ -8221,7 +12893,7 @@ function HtmlViewer({
   // the toolbar toggle's job. Dismiss flushes any in-flight tweak first so
   // nothing is lost; cancel reverts the in-flight unsaved tweak instead.
   async function dismissManualEditPanel() {
-    const ok = await flushManualEditStyleSave();
+    const ok = await flushManualEditStyleSave({ force: true });
     if (!ok) return;
     if (selectedManualEditTarget) void clearManualEditTargetSelection();
     else setManualEditPageStylesOpen(false);
@@ -8240,7 +12912,7 @@ function HtmlViewer({
     if (useUrlLoadPreview) return;
     const activated = buildSrcdoc(html, {
       deck: effectiveDeck,
-      baseHref: projectPreviewAssetUrl(baseDirFor(file.name)),
+      baseHref: srcDocBaseHref,
       initialSlideIndex: htmlPreviewSlideState.get(previewStateKey)?.active ?? 0,
       selectionBridge: true,
       editBridge: manualEditRequiresSrcDoc,
@@ -8258,6 +12930,7 @@ function HtmlViewer({
     label: string,
     scope?: { slideIndex?: number },
     hint?: { id?: string; currentText?: string; htmlHint?: string; selector?: string },
+    sharedParsedDoc?: Document | null,
   ): Promise<boolean> {
     if (manualEditSavingRef.current) return false;
     const baseSource = manualEditPatchBaseSource({
@@ -8273,11 +12946,20 @@ function HtmlViewer({
     setManualEditSaving(true);
     setManualEditError(null);
     try {
+      // Sanitize on the live Document before serialize — avoids a second
+      // full-document DOMParser pass via sanitizeManualEditFullSource.
+      // Capture target snapshot for set-style reconcile (skip a third parse).
+      // Prefer flush-shared Document when style-diff already parsed the deck.
       const result = applyManualEditPatch(
         baseSource,
         patch,
         { ...scope, targetHint: hint },
         hint,
+        {
+          sanitize: isManualEditFullHtmlDocument(baseSource),
+          captureTargetSnapshot: patch.kind === 'set-style',
+          parsedDoc: sharedParsedDoc,
+        },
       );
       if (!result.ok) {
         setManualEditError(
@@ -8288,25 +12970,298 @@ function HtmlViewer({
       // Do not pin `baseSource` before history confirm — that made
       // `manualEditHistoryConfirmTrustsLocal` always trust local and skip real
       // external-change detection. Pin only after a successful revision save.
-      if (
-        !shouldSkipManualEditHistoryConfirm(manualEditMode)
-        && !(await confirmManualEditHistorySource(
-          baseSource,
-          embedUiLabel(
-            'The file changed outside manual edit mode. Refreshing before applying manual edits.',
-            '수동 편집 모드 밖에서 파일이 변경되었습니다. 편집 적용 전에 새로고침합니다.',
-          ),
-        ))
-      ) return false;
+      // Tip≠expected forces confirm even in edit mode (기획 50 tip advance).
+      {
+        const {
+          tipContent: tipForConfirm,
+          tipRevisionSequence,
+          activeRevisionSequence,
+        } = readManualEditHistoryConfirmTipContext();
+        const authoredForConfirm = manualEditPinnedSourceRef.current?.source
+          ?? lastStablePreviewSourceRef.current
+          ?? sourceRef.current;
+        if (
+          !shouldSkipManualEditHistoryConfirm(manualEditMode, {
+            expectedSource: baseSource,
+            tipContent: tipForConfirm,
+            authoredSource: authoredForConfirm,
+            tipRevisionSequence,
+            activeRevisionSequence,
+          })
+          && !(await confirmManualEditHistorySource(
+            baseSource,
+            embedUiLabel(
+              'The file changed outside manual edit mode. Refreshing before applying manual edits.',
+              '수동 편집 모드 밖에서 파일이 변경되었습니다. 편집 적용 전에 새로고침합니다.',
+            ),
+          ))
+        ) return false;
+      }
       revisionSyncSuppressRef.current = true;
       // Do not echo `file.artifactManifest` on manual-edit pushes. Style/text
       // saves never update the sidecar, and a stale client manifest (empty
       // title, stripped exports) used to 400 the whole revision POST.
+      const truncateAfter = truncateAfterSequenceForStack(revisionStackRef.current);
+      const contentToSave = result.source;
+      const saved = await pushProjectFileRevision(projectId, file.name, {
+        content: contentToSave,
+        source: 'manual_edit',
+        label,
+        truncateAfterSequence: truncateAfter,
+      });
+      if (!saved.ok) {
+        const status = 'status' in saved ? saved.status : undefined;
+        const code = 'code' in saved ? saved.code : undefined;
+        const message = 'message' in saved ? saved.message : 'Unknown save error';
+        if (status === 401) {
+          notifyTeamverEmbedAuthFailureIfNeeded(new TeamverDaemonUnauthorizedError(), 'daemon');
+        }
+        setManualEditError(
+          isTeamverEmbedMode()
+            ? formatProjectArtifactSaveFailedError(file.name, { status, code, message })
+            : embedUiLabel(
+                `Could not save the edited file${status ? ` (${status}${code ? ` ${code}` : ''})` : ''}: ${message}`,
+                '편집한 파일을 저장하지 못했습니다.',
+              ),
+        );
+        return false;
+      }
+      setSource(contentToSave);
+      sourceRef.current = contentToSave;
+      pinManualEditSavedSource(contentToSave);
+      setInlinedSource(null);
+      // Style-only saves update source/pin but leave the entry freeze alone so
+      // postMessage live preview keeps working without a srcDoc remount.
+      // Structural / text patches remount freeze + push updated srcDoc.
+      capturePreviewScrollPosition();
+      if (shouldUpdateManualEditFrozenSourceOnPatch(patch.kind)) {
+        setManualEditFrozenSource(contentToSave);
+        queueMicrotask(() => activateManualEditPreviewHtml(contentToSave));
+      }
+      commitRevisionStack(stackWithPushedRevision(
+        revisionStackRef.current,
+        saved.revision,
+        truncateAfter,
+      ));
+      setRevisionContentCache(projectId, file.name, saved.revision.id, contentToSave);
+      cacheParentRevisionOnPush(projectId, file.name, saved.revision.parentRevisionId, baseSource);
+      revisionSkipReconcileOnceRef.current = true;
+      setActiveRevisionSequence(projectId, file.name, saved.revision.sequence);
+      emitRevisionPush(analytics.track, projectId, projectKind, file.name, saved.revision, 'manual_edit');
+      setRevisionStackInvalidated(false);
+      // Optimistic tip already matches the push — skip immediate list GET.
+      // Deferred refresh catches retention/conflict shortly after (not only filesRefresh).
+      warmRevisionListSoftCacheFromStack(
+        projectId,
+        file.name,
+        revisionStackRef.current,
+        saved.revision.sequence,
+        revisionRetentionLimit,
+      );
+      scheduleDeferredRevisionStackRefresh();
+      setManualEditDraft((current) => (
+        current.fullSource === contentToSave ? current : { ...current, fullSource: contentToSave }
+      ));
+      if (patch.kind === 'set-text') {
+        setSelectedManualEditTarget((current) => {
+          if (current?.id !== patch.id) return current;
+          const next = {
+            ...current,
+            text: patch.value,
+            fields: { ...current.fields, text: patch.value },
+          };
+          selectedManualEditTargetRef.current = next;
+          return next;
+        });
+        setManualEditTargets((current) => {
+          const nextList = current.map((item) => (
+            item.id === patch.id
+              ? { ...item, text: patch.value, fields: { ...item.fields, text: patch.value } }
+              : item
+          ));
+          manualEditTargetsIdentityFingerprintRef.current =
+            manualEditTargetsIdentityFingerprint(nextList);
+          const selectedIds = selectedManualEditTargetIdsRef.current;
+          const selectedForFp = selectedIds.length > 0
+            ? resolveManualEditTargetsByIds(selectedIds, nextList)
+            : (selectedManualEditTargetRef.current ? [selectedManualEditTargetRef.current] : []);
+          manualEditSelectedIdentityFingerprintRef.current =
+            manualEditTargetsIdentityFingerprint(selectedForFp);
+          return nextList;
+        });
+      } else if (patch.kind === 'remove-element') {
+        const pendingIds = manualEditPendingStyleRef.current?.targetIds
+          ?? (manualEditPendingStyleRef.current?.id
+            ? [manualEditPendingStyleRef.current.id]
+            : []);
+        if (pendingIds.includes(patch.id)) {
+          manualEditPendingStyleRef.current = null;
+          clearManualEditStyleTimer();
+        }
+        const remainingIds = selectedManualEditTargetIdsRef.current.filter((id) => id !== patch.id);
+        setManualEditTargets((current) => {
+          const nextList = current.filter((target) => target.id !== patch.id);
+          manualEditTargetsIdentityFingerprintRef.current =
+            manualEditTargetsIdentityFingerprint(nextList);
+          return nextList;
+        });
+        if (remainingIds.length === 0) {
+          clearManualEditTipRemountGeometryGraceIfNeeded(null);
+          selectedManualEditTargetIdRef.current = null;
+          selectedManualEditTargetRef.current = null;
+          selectedManualEditTargetIdsRef.current = [];
+          manualEditSelectedIdentityFingerprintRef.current = '';
+          setSelectedManualEditTargetIds([]);
+          setSelectedManualEditTarget(null);
+          setManualEditMixedStyleKeys(new Set());
+          setManualEditDraft(emptyManualEditDraft(contentToSave));
+          postSelectedManualEditTargetsToIframe([], null);
+        } else {
+          const refreshed = resolveManualEditTargetsByIds(
+            remainingIds,
+            manualEditTargets.filter((target) => target.id !== patch.id),
+          );
+          const nextIds = refreshed.map((item) => item.id);
+          const primary = refreshed[refreshed.length - 1]!;
+          clearManualEditTipRemountGeometryGraceIfNeeded(primary.id);
+          selectedManualEditTargetIdRef.current = primary.id;
+          selectedManualEditTargetRef.current = primary;
+          selectedManualEditTargetIdsRef.current = nextIds;
+          // Keep selected-set fingerprint aligned after membership shrink (442).
+          manualEditSelectedIdentityFingerprintRef.current =
+            manualEditTargetsIdentityFingerprint(refreshed);
+          setSelectedManualEditTargetIds(nextIds);
+          setSelectedManualEditTarget(primary);
+          if (nextIds.length > 1) {
+            // One Document for remaining multi-select inspector after remove.
+            // Source-only reseed (same plan helper as batch flush / cancel).
+            const remainingDoc = parseManualEditSource(contentToSave);
+            const reseed = planManualEditMultiInspectorReseed({
+              selectedIds: nextIds,
+              readStyles: (id) => readManualEditStyles(contentToSave, id, {}, remainingDoc),
+              concurrentPending: manualEditPendingStyleRef.current,
+            });
+            setManualEditMixedStyleKeys(reseed.mixedKeys);
+            setManualEditDraft((current) => (
+              reseed.styles
+                ? { ...current, styles: reseed.styles, fullSource: contentToSave }
+                : { ...current, fullSource: contentToSave }
+            ));
+          } else {
+            // 2→1: seed inspector from the remaining target snapshot (not empty).
+            const remainingDoc = parseManualEditSource(contentToSave);
+            const snapshot = readManualEditTargetSnapshot(
+              contentToSave,
+              primary.id,
+              {},
+              remainingDoc,
+            );
+            setManualEditMixedStyleKeys(new Set());
+            setManualEditDraft({
+              text: snapshot.fields.text ?? primary.fields.text ?? primary.text,
+              href: snapshot.fields.href ?? primary.fields.href ?? '',
+              src: snapshot.fields.src ?? primary.fields.src ?? '',
+              alt: snapshot.fields.alt ?? primary.fields.alt ?? '',
+              styles: mergeManualEditInspectorStyles(snapshot.styles, primary.styles),
+              attributesText: JSON.stringify(snapshot.attributes, null, 2),
+              outerHtml: snapshot.outerHtml || primary.outerHtml,
+              fullSource: contentToSave,
+            });
+          }
+          postSelectedManualEditTargetsToIframe(nextIds, primary.id);
+        }
+      } else {
+        setManualEditDraft((current) => ({ ...current, fullSource: contentToSave }));
+      }
+      if (patch.kind === 'set-style') {
+        reconcileManualEditStyleSave(
+          patch.id,
+          patch.styles,
+          contentToSave,
+          result.targetSnapshot,
+        );
+      }
+      setManualEditError(null);
+      await onFileSaved?.();
+      return true;
+    } finally {
+      revisionSyncSuppressRef.current = false;
+      manualEditSavingRef.current = false;
+      setManualEditSaving(false);
+    }
+  }
+
+  async function applyManualEditBatch(
+    patches: ManualEditPatch[],
+    label: string,
+    sharedParsedDoc?: Document | null,
+  ): Promise<boolean> {
+    if (patches.length === 0) return true;
+    if (patches.length === 1) {
+      return applyManualEdit(patches[0]!, label, undefined, undefined, sharedParsedDoc);
+    }
+    if (manualEditSavingRef.current) return false;
+    const baseSource = manualEditPatchBaseSource({
+      manualEditMode,
+      frozenSource: manualEditFrozenSource,
+      liveSource: sourceRef.current,
+    });
+    if (baseSource == null) return false;
+    if (revisionDiskSyncPromiseRef.current) {
+      await revisionDiskSyncPromiseRef.current;
+    }
+    manualEditSavingRef.current = true;
+    setManualEditSaving(true);
+    setManualEditError(null);
+    try {
+      // One Document for all batch ops + per-id snapshots for reconcile
+      // (was N× parse/serialize via sequential applyManualEditPatch).
+      // Prefer flush-shared Document when style-diff already parsed the deck.
+      const result = applyManualEditPatches(baseSource, patches, {
+        sanitize: isManualEditFullHtmlDocument(baseSource),
+        captureTargetSnapshots: true,
+        parsedDoc: sharedParsedDoc,
+      });
+      if (!result.ok) {
+        setManualEditError(
+          result.error ?? embedUiLabel('Could not apply edit.', '편집을 적용하지 못했습니다.'),
+        );
+        return false;
+      }
+      // Tip≠expected forces confirm even in edit mode (기획 50 tip advance).
+      {
+        const {
+          tipContent: tipForConfirm,
+          tipRevisionSequence,
+          activeRevisionSequence,
+        } = readManualEditHistoryConfirmTipContext();
+        const authoredForConfirm = manualEditPinnedSourceRef.current?.source
+          ?? lastStablePreviewSourceRef.current
+          ?? sourceRef.current;
+        if (
+          !shouldSkipManualEditHistoryConfirm(manualEditMode, {
+            expectedSource: baseSource,
+            tipContent: tipForConfirm,
+            authoredSource: authoredForConfirm,
+            tipRevisionSequence,
+            activeRevisionSequence,
+          })
+          && !(await confirmManualEditHistorySource(
+            baseSource,
+            embedUiLabel(
+              'The file changed outside manual edit mode. Refreshing before applying manual edits.',
+              '수동 편집 모드 밖에서 파일이 변경되었습니다. 편집 적용 전에 새로고침합니다.',
+            ),
+          ))
+        ) return false;
+      }
+      revisionSyncSuppressRef.current = true;
+      const truncateAfter = truncateAfterSequenceForStack(revisionStackRef.current);
       const saved = await pushProjectFileRevision(projectId, file.name, {
         content: result.source,
         source: 'manual_edit',
         label,
-        truncateAfterSequence: truncateAfterSequenceForStack(revisionStackRef.current),
+        truncateAfterSequence: truncateAfter,
       });
       if (!saved.ok) {
         const status = 'status' in saved ? saved.status : undefined;
@@ -8329,42 +13284,68 @@ function HtmlViewer({
       sourceRef.current = result.source;
       pinManualEditSavedSource(result.source);
       setInlinedSource(null);
-      // Style-only saves update source/pin but leave the entry freeze alone so
-      // postMessage live preview keeps working without a srcDoc remount.
-      // Structural / text patches remount freeze + push updated srcDoc.
       capturePreviewScrollPosition();
-      if (shouldUpdateManualEditFrozenSourceOnPatch(patch.kind)) {
-        setManualEditFrozenSource(result.source);
-        queueMicrotask(() => activateManualEditPreviewHtml(result.source));
-      }
-      commitRevisionStack(stackWithCursor(revisionStackRef.current, saved.revision.id));
+      commitRevisionStack(stackWithPushedRevision(
+        revisionStackRef.current,
+        saved.revision,
+        truncateAfter,
+      ));
       setRevisionContentCache(projectId, file.name, saved.revision.id, result.source);
       cacheParentRevisionOnPush(projectId, file.name, saved.revision.parentRevisionId, baseSource);
       revisionSkipReconcileOnceRef.current = true;
       setActiveRevisionSequence(projectId, file.name, saved.revision.sequence);
       emitRevisionPush(analytics.track, projectId, projectKind, file.name, saved.revision, 'manual_edit');
       setRevisionStackInvalidated(false);
-      await refreshRevisionStack();
-      setManualEditDraft((current) => ({ ...current, fullSource: result.source }));
-      if (patch.kind === 'set-text') {
-        setSelectedManualEditTarget((current) => current?.id === patch.id
-          ? { ...current, text: patch.value, fields: { ...current.fields, text: patch.value } }
-          : current);
-      } else if (patch.kind === 'remove-element') {
-        if (manualEditPendingStyleRef.current?.id === patch.id) {
-          manualEditPendingStyleRef.current = null;
-          clearManualEditStyleTimer();
+      // Optimistic tip already matches the push — skip immediate list GET.
+      // Deferred refresh catches retention/conflict shortly after (not only filesRefresh).
+      warmRevisionListSoftCacheFromStack(
+        projectId,
+        file.name,
+        revisionStackRef.current,
+        saved.revision.sequence,
+        revisionRetentionLimit,
+      );
+      scheduleDeferredRevisionStackRefresh();
+      // Flush clears pending before await — a non-null pending here is newer
+      // concurrent draft work and must not be wiped by this batch success.
+      const concurrentPending = manualEditPendingStyleRef.current;
+      for (const patch of patches) {
+        if (patch.kind === 'set-style') {
+          reconcileManualEditStyleSave(
+            patch.id,
+            patch.styles,
+            result.source,
+            result.targetSnapshots?.[patch.id],
+          );
         }
-        selectedManualEditTargetIdRef.current = null;
-        setSelectedManualEditTarget(null);
-        setManualEditTargets((current) => current.filter((target) => target.id !== patch.id));
-        setManualEditDraft(emptyManualEditDraft(result.source));
-        postSelectedManualEditTargetToIframe(null);
-      } else {
-        setManualEditDraft((current) => ({ ...current, fullSource: result.source }));
       }
-      if (patch.kind === 'set-style') {
-        reconcileManualEditStyleSave(patch.id, patch.styles, result.source);
+      // Multi-select: recompute mixedKeys from saved source (do not wipe all Mixed).
+      // Source-only styles — stale target.styles must not resurrect cleared values.
+      const selectedIdsAfterBatch = selectedManualEditTargetIdsRef.current;
+      if (selectedIdsAfterBatch.length > 1) {
+        const batchDoc = parseManualEditSource(result.source);
+        const reseed = planManualEditMultiInspectorReseed({
+          selectedIds: selectedIdsAfterBatch,
+          readStyles: (id) => readManualEditStyles(result.source, id, {}, batchDoc),
+          concurrentPending,
+        });
+        setManualEditMixedStyleKeys(reseed.mixedKeys);
+        setManualEditDraft((current) => (
+          reseed.styles
+            ? { ...current, styles: reseed.styles, fullSource: result.source }
+            : (current.fullSource === result.source
+              ? current
+              : { ...current, fullSource: result.source })
+        ));
+      } else if (!concurrentPending) {
+        setManualEditMixedStyleKeys(new Set());
+        setManualEditDraft((current) => (
+          current.fullSource === result.source ? current : { ...current, fullSource: result.source }
+        ));
+      } else {
+        setManualEditDraft((current) => (
+          current.fullSource === result.source ? current : { ...current, fullSource: result.source }
+        ));
       }
       setManualEditError(null);
       await onFileSaved?.();
@@ -8376,29 +13357,114 @@ function HtmlViewer({
     }
   }
 
+  function readManualEditHistoryConfirmTipContext(): {
+    tipContent: string | null;
+    tipRevisionSequence: number | null;
+    activeRevisionSequence: number | null;
+  } {
+    const activeRevisionSequence = getActiveRevisionSequence(projectId, file.name);
+    const tipRevision = resolveManualEditSavePinTipRevision(
+      revisionStackRef.current,
+      activeRevisionSequence,
+    );
+    return {
+      tipContent: tipContentForManualEditSavePin(
+        revisionStackRef.current,
+        activeRevisionSequence,
+        (revisionId) => getRevisionContentCache(projectId, file.name, revisionId),
+      ),
+      tipRevisionSequence: tipRevision?.sequence ?? null,
+      activeRevisionSequence,
+    };
+  }
+
   async function confirmManualEditHistorySource(expectedSource: string, message: string): Promise<boolean> {
+    const authored = manualEditPinnedSourceRef.current?.source
+      ?? lastStablePreviewSourceRef.current
+      ?? sourceRef.current;
+    const now = Date.now();
+    // Tip + pin/authored gates share one tipContent (no false "external change"
+    // after tip yield when expected already matches tip — 기획 50).
+    const {
+      tipContent,
+      tipRevisionSequence,
+      activeRevisionSequence,
+    } = readManualEditHistoryConfirmTipContext();
+    // Skip disk GET when pin/authored already match the save payload.
+    // Tip≠expected forces GET (parity with trustsLocal tip yield gate).
+    if (manualEditHistoryConfirmCanSkipDiskFetch(
+      expectedSource,
+      manualEditPinnedSourceRef.current,
+      now,
+      authored,
+      tipContent,
+      tipRevisionSequence,
+      activeRevisionSequence,
+    )) {
+      return true;
+    }
     const persisted = await fetchProjectFileText(projectId, file.name, {
       cache: 'no-store',
       cacheBustKey: Date.now(),
     });
-    const authored = manualEditPinnedSourceRef.current?.source
-      ?? lastStablePreviewSourceRef.current
-      ?? sourceRef.current;
     if (manualEditHistoryConfirmTrustsLocal(
       expectedSource,
       persisted,
       manualEditPinnedSourceRef.current,
-      Date.now(),
+      now,
       authored,
+      tipContent,
+      tipRevisionSequence,
+      activeRevisionSequence,
     )) {
       return true;
     }
-    setSource(persisted!);
-    sourceRef.current = persisted!;
+    // Tip/external refresh — adopt disk into source + freeze together so edit
+    // mode does not keep painting a stale freeze after confirm refuses.
+    const refreshed = persisted!;
+    setSource(refreshed);
+    sourceRef.current = refreshed;
+    lastStablePreviewSourceRef.current = refreshed;
+    exportHtmlSnapshotGateRef.current = refreshed;
+    rememberStablePreviewSource(projectId, file.name, refreshed);
+    // Drop stale warm tip cache A so authoritative tip resolve cannot overwrite
+    // adopted disk B (cache A would win getRevisionContentCache before snapshot).
+    {
+      const tipRevision = resolveManualEditSavePinTipRevision(
+        revisionStackRef.current,
+        getActiveRevisionSequence(projectId, file.name),
+      );
+      if (tipRevision) {
+        const cachedTip = getRevisionContentCache(projectId, file.name, tipRevision.id);
+        if (shouldClearTipContentCacheAfterConfirmRefuse(cachedTip, refreshed)) {
+          clearRevisionContentCacheEntry(projectId, file.name, tipRevision.id);
+        }
+      }
+    }
+    // Suppress disk tip prefer until refresh commits (warm stack tip≠ race).
+    manualEditSuppressTipPreferUntilRefreshRef.current = nextTipPreferSuppressState(
+      'confirm-refuse',
+    );
+    if (shouldSyncManualEditFrozenSourceToPainted(
+      manualEditMode,
+      manualEditFrozenSourceRef.current,
+      refreshed,
+    )) {
+      setManualEditFrozenSource(refreshed);
+      scheduleManualEditSelectionEchoAfterFreezeSync();
+    }
+    if (
+      manualEditPinnedSourceRef.current
+      && manualEditPinnedSourceRef.current.source !== refreshed
+    ) {
+      manualEditPinnedSourceRef.current = null;
+    }
     setInlinedSource(null);
-    commitRevisionStack(createRevisionStackSnapshot([], null));
+    // Keep warm stack until refreshRevisionStack lands — empty wipe + warm
+    // activeSeq makes tipContentForManualEditSavePin miss (activeSeq→null,
+    // no HEAD fallback) so concurrent live/disk tip resolve races mid-flight.
     manualEditPendingStyleRef.current = null;
-    setManualEditDraft((current) => ({ ...current, fullSource: persisted! }));
+    setManualEditDraft((current) => ({ ...current, fullSource: refreshed }));
     setManualEditError(message);
     void refreshRevisionStack();
     return false;
@@ -8412,19 +13478,40 @@ function HtmlViewer({
 
   function applyRestoredSourceToViewer(sourceToApply: string, target: FileRevision): void {
     revisionSkipReconcileOnceRef.current = true;
-    setSource(sourceToApply);
-    sourceRef.current = sourceToApply;
+    const contentUnchanged = sourceRef.current === sourceToApply;
+    if (!contentUnchanged) {
+      setSource(sourceToApply);
+      sourceRef.current = sourceToApply;
+    }
     pinManualEditSavedSource(sourceToApply);
     setInlinedSource(null);
-    setManualEditFrozenSource(sourceToApply);
-    commitRevisionStack(stackWithCursor(revisionStackRef.current, target.id));
+    if (!contentUnchanged || manualEditFrozenSourceRef.current !== sourceToApply) {
+      setManualEditFrozenSource(sourceToApply);
+    }
+    // SSOT before stack commit so a concurrent refresh cannot fall back to tip.
     setActiveRevisionSequence(projectId, file.name, target.sequence);
-    setManualEditDraft((current) => ({ ...current, fullSource: sourceToApply }));
-    if (manualEditMode && !useUrlLoadPreview) {
-      capturePreviewScrollPosition();
-      queueMicrotask(() => activateManualEditPreviewHtml(sourceToApply));
-    } else {
-      setReloadKey((k) => k + 1);
+    commitRevisionStack(stackWithCursor(revisionStackRef.current, target.id));
+    // Undo demotes activeSeq — warm soft-cache for the restored tip.
+    warmRevisionListSoftCacheFromStack(
+      projectId,
+      file.name,
+      revisionStackRef.current,
+      target.sequence,
+      revisionRetentionLimit,
+    );
+    setManualEditDraft((current) => (
+      current.fullSource === sourceToApply ? current : { ...current, fullSource: sourceToApply }
+    ));
+    if (!contentUnchanged) {
+      if (!useUrlLoadPreview) {
+        // srcdoc (edit or preview) updates via setSource / freeze activate.
+        if (manualEditMode) {
+          capturePreviewScrollPosition();
+          queueMicrotask(() => activateManualEditPreviewHtml(sourceToApply));
+        }
+      } else {
+        setReloadKey((k) => k + 1);
+      }
     }
     setRevisionStackInvalidated(false);
     const before = revisionBeforeCursor(revisionStackRef.current);
@@ -8439,33 +13526,60 @@ function HtmlViewer({
     );
   }
 
-  async function syncRevisionToDisk(target: FileRevision): Promise<boolean> {
+  async function syncRevisionToDisk(
+    target: FileRevision,
+    options?: { quiet?: boolean },
+  ): Promise<boolean> {
     const restored = await restoreProjectFileRevision(projectId, file.name, target.id);
     if (!restored.ok) {
       if (restored.status === 401) {
         notifyTeamverEmbedAuthFailureIfNeeded(new TeamverDaemonUnauthorizedError(), 'daemon');
       }
-      setManualEditError(
-        isTeamverEmbedMode()
-          ? formatProjectArtifactSaveFailedError(file.name, {
-              status: restored.status,
-              code: restored.code,
-              message: restored.message,
-            })
-          : embedUiLabel('Could not restore this revision.', '이 버전으로 복원하지 못했습니다.'),
-      );
+      if (!options?.quiet) {
+        setManualEditError(
+          isTeamverEmbedMode()
+            ? formatProjectArtifactSaveFailedError(file.name, {
+                status: restored.status,
+                code: restored.code,
+                message: restored.message,
+              })
+            : embedUiLabel('Could not restore this revision.', '이 버전으로 복원하지 못했습니다.'),
+        );
+      }
       return false;
     }
     return true;
   }
 
+  async function retryPendingRevisionDiskSync(): Promise<void> {
+    const target = revisionDiskSyncFailedTargetRef.current;
+    if (!target) return;
+    setRevisionDiskSyncToast(null);
+    const ok = await syncRevisionWithRetry(() => syncRevisionToDisk(target, { quiet: true }));
+    if (ok) {
+      revisionDiskSyncFailedTargetRef.current = null;
+      await onFileSaved?.();
+      await refreshRevisionStack();
+      return;
+    }
+    setRevisionDiskSyncToast(revisionDiskSyncMessageRef.current);
+  }
+
   async function scheduleBackgroundRevisionDiskSync(target: FileRevision): Promise<void> {
+    revisionDiskSyncFailedTargetRef.current = null;
+    setRevisionDiskSyncToast(null);
     const syncPromise = (async () => {
-      const ok = await syncRevisionToDisk(target);
+      const ok = await syncRevisionWithRetry(() => syncRevisionToDisk(target, { quiet: true }));
       if (ok) {
+        revisionDiskSyncFailedTargetRef.current = null;
+        setRevisionDiskSyncToast(null);
+        // Disk now matches restored revision — re-bust so cover-hints get the
+        // post-restore mtime (first clear may have raced ahead of this write).
+        clearProjectCoverCache(projectId);
         await onFileSaved?.();
       } else {
-        setRevisionStackInvalidated(true);
+        revisionDiskSyncFailedTargetRef.current = target;
+        setRevisionDiskSyncToast(revisionDiskSyncMessageRef.current);
       }
       return ok;
     })();
@@ -8493,6 +13607,9 @@ function HtmlViewer({
 
       if (canApplyRevisionFromClientCache(sourceToApply)) {
         applyRestoredSourceToViewer(sourceToApply, target);
+        // Bust list thumbs immediately — disk sync is background and list
+        // cover cache otherwise keeps pre-undo coverVersion/srcDoc for 60s.
+        clearProjectCoverCache(projectId);
         void scheduleBackgroundRevisionDiskSync(target);
         return true;
       }
@@ -8523,6 +13640,7 @@ function HtmlViewer({
       }
       setRevisionContentCache(projectId, file.name, target.id, diskSource);
       applyRestoredSourceToViewer(diskSource, target);
+      clearProjectCoverCache(projectId);
       await onFileSaved?.();
       return true;
     } finally {
@@ -8734,12 +13852,18 @@ function HtmlViewer({
     try {
       const css = serializeInspectOverrides(inspectOverrides).trim();
       const next = applyInspectOverridesToSource(source, css);
+      // No-op save — skip push / paint / reloadKey churn.
+      if (next === source || next === sourceRef.current) {
+        setInspectSavedAt(Date.now());
+        return;
+      }
+      const truncateAfter = truncateAfterSequenceForStack(revisionStackRef.current);
       const saved = await pushProjectFileRevision(projectId, file.name, {
         content: next,
         source: 'inspect',
         label: embedUiLabel('Style adjustments', '스타일 조정'),
         // Inspect tweaks are content-only — avoid stale-manifest 400s.
-        truncateAfterSequence: truncateAfterSequenceForStack(revisionStackRef.current),
+        truncateAfterSequence: truncateAfter,
       });
       if (!saved.ok) {
         const status = 'status' in saved ? saved.status : undefined;
@@ -8756,16 +13880,33 @@ function HtmlViewer({
       }
       setSource(next);
       sourceRef.current = next;
-      commitRevisionStack(stackWithCursor(revisionStackRef.current, saved.revision.id));
+      pinManualEditSavedSource(next);
+      commitRevisionStack(stackWithPushedRevision(
+        revisionStackRef.current,
+        saved.revision,
+        truncateAfter,
+      ));
       setRevisionContentCache(projectId, file.name, saved.revision.id, next);
       cacheParentRevisionOnPush(projectId, file.name, saved.revision.parentRevisionId, source);
       revisionSkipReconcileOnceRef.current = true;
       setActiveRevisionSequence(projectId, file.name, saved.revision.sequence);
       emitRevisionPush(analytics.track, projectId, projectKind, file.name, saved.revision, 'inspect_save');
       setRevisionStackInvalidated(false);
-      await refreshRevisionStack();
+      // Optimistic tip already matches the push — skip immediate list GET.
+      // Deferred refresh catches retention/conflict shortly after (not only filesRefresh).
+      warmRevisionListSoftCacheFromStack(
+        projectId,
+        file.name,
+        revisionStackRef.current,
+        saved.revision.sequence,
+        revisionRetentionLimit,
+      );
+      scheduleDeferredRevisionStackRefresh();
       setInspectSavedAt(Date.now());
-      setReloadKey((k) => k + 1);
+      // srcdoc path updates via setSource; URL-load still needs reloadKey bust.
+      if (useUrlLoadPreview) {
+        setReloadKey((k) => k + 1);
+      }
     } catch (err) {
       const msg = isTeamverEmbedMode()
         ? '소스에 저장하지 못했습니다.'
@@ -8845,6 +13986,54 @@ function HtmlViewer({
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [mode, source, drawOverlayOpen, hideFileRevisionChrome]);
+
+  // Layer z-order: `]` / `[` step, ⌘/Ctrl+`]` / `[` front/back (single anchored target).
+  useEffect(() => {
+    if (!manualEditMode || drawOverlayOpen) return;
+    function onKey(e: KeyboardEvent) {
+      const action = resolveZOrderKeyboardAction(e);
+      if (!action) return;
+      if (manualEditSavingRef.current) return;
+      const targets = resolveManualEditZOrderTargets();
+      if (targets.length === 0) return;
+      const doc = iframeContentDocumentIfAccessible(iframeRef.current);
+      const reorderOptions = {
+        deck: effectiveDeck,
+        activeSlideIndex: slideState?.active ?? null,
+      };
+      const capabilities = mergeZOrderCapabilities(
+        targets
+          .map((target) => resolveZOrderContextWithFallback(
+            doc,
+            manualEditTargets,
+            target.id,
+            reorderOptions,
+          )?.capabilities)
+          .filter((cap): cap is NonNullable<typeof cap> => Boolean(cap)),
+      );
+      if (!capabilities?.[action]) return;
+      e.preventDefault();
+      manualEditZOrderHandlerRef.current?.(action);
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [manualEditMode, drawOverlayOpen]);
+
+  // Delete / Backspace removes the selected manual-edit target.
+  useEffect(() => {
+    if (!manualEditMode || drawOverlayOpen) return;
+    function onKey(e: KeyboardEvent) {
+      if (!resolveManualEditDeleteKeyboardAction(e)) return;
+      if (manualEditSavingRef.current) return;
+      if (manualEditInlineTextEditing) return;
+      if (manualEditResizeSessionActiveRef.current) return;
+      if (selectedManualEditTargetIdsRef.current.length !== 1) return;
+      e.preventDefault();
+      manualEditDeleteHandlerRef.current?.();
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [manualEditMode, drawOverlayOpen, manualEditInlineTextEditing]);
 
   useEffect(() => {
     if (!presentMenuOpen) return;
@@ -8959,7 +14148,7 @@ function HtmlViewer({
     if (!source) return;
     openSandboxedPreviewInNewTab(source, exportTitle, {
       deck: effectiveDeck,
-      baseHref: projectPreviewAssetUrl(baseDirFor(file.name)),
+      baseHref: srcDocBaseHref,
       initialSlideIndex: htmlPreviewSlideState.get(previewStateKey)?.active ?? 0,
     });
   }
@@ -9240,6 +14429,12 @@ function HtmlViewer({
     capturePreviewScrollPosition();
     imageExportSnapshotDataUrlRef.current = null;
     setInlinedSource(null);
+    // Explicit refresh must remint Teamver preview scope — a dead/null prefix
+    // leaves srcDoc held empty forever, and reloadKey alone cannot recover.
+    if (isTeamverEmbedMode()) {
+      invalidateTeamverProjectPreviewPrefix(projectId);
+      setEmbedAuthRecoveryNonce((value) => value + 1);
+    }
     setReloadKey((key) => key + 1);
     if (!useUrlLoadPreview) {
       activatedSrcDocTransportHtmlRef.current = null;
@@ -9251,6 +14446,14 @@ function HtmlViewer({
   function selectMode(nextMode: 'preview' | 'source') {
     if (nextMode === 'source') setDrawOverlayOpen(false);
     setMode(nextMode);
+  }
+
+  async function copyHtmlSourceToClipboard() {
+    if (!source) return;
+    const ok = await copyTextToClipboard(source);
+    if (!ok) return;
+    setSourceHtmlCopied(true);
+    window.setTimeout(() => setSourceHtmlCopied(false), 1500);
   }
 
   function activateBoard(nextTool?: BoardTool) {
@@ -9294,6 +14497,46 @@ function HtmlViewer({
   function closeArtifactToolMenus() {
     setAgentToolsOpen(false);
   }
+
+  useEffect(() => {
+    function onMessage(ev: MessageEvent) {
+      if (!isOurPreviewIframeSource(ev.source)) return;
+      const data = ev.data as { type?: string } | null;
+      if (data?.type !== PREVIEW_ESCAPE_MESSAGE) return;
+      const action = resolveFileViewerPreviewEscapeAction({
+        presentMenuOpen,
+        zoomMenuOpen,
+        agentToolsOpen,
+        shareMenuOpen,
+        deployMenuOpen,
+        downloadMenuOpen,
+        inTabPresent,
+        deployModalOpen,
+      });
+      if (action === 'close-present-menu') setPresentMenuOpen(false);
+      else if (action === 'close-zoom-menu') setZoomMenuOpen(false);
+      else if (action === 'close-artifact-tools') closeArtifactToolMenus();
+      else if (action === 'close-share-menus') {
+        setShareMenuOpen(false);
+        setDeployMenuOpen(false);
+        setDownloadMenuOpen(false);
+      } else if (action === 'exit-in-tab-present') setInTabPresent(false);
+      else if (action === 'close-deploy-modal') closeDeployModal();
+    }
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, [
+    isOurPreviewIframeSource,
+    presentMenuOpen,
+    zoomMenuOpen,
+    agentToolsOpen,
+    shareMenuOpen,
+    deployMenuOpen,
+    downloadMenuOpen,
+    inTabPresent,
+    deployModalOpen,
+    closeDeployModal,
+  ]);
 
   function activateDrawTool() {
     fireArtifactToolbarClick('draw');
@@ -9705,26 +14948,33 @@ function HtmlViewer({
     // in the browser screenshot flow (DesignBrowserPanel).
     await waitForAnimationFrame();
     await waitForAnimationFrame();
-    if (drawOverlayOpen && !drawCaptureReadyRef.current) {
-      const deadline = Date.now() + 4_000;
-      while (!drawCaptureReadyRef.current && Date.now() < deadline) {
-        await waitForAnimationFrame();
-      }
-    }
     try {
     const srcDocIframe = srcDocPreviewIframeRef.current;
     const urlIframe = iframeRef.current ?? urlPreviewIframeRef.current;
     const visibleIframe = iframeRef.current ?? srcDocIframe;
     await ensureDeckSlideSyncedForSnapshot(visibleIframe);
+    // Host compositor capture uses on-screen iframe pixels and does not need
+    // the hidden srcDoc snapshot bridge. Attempt it before waiting on
+    // drawCaptureReady so PreviewDrawOverlay's marks-only fast fallback does
+    // not burn its budget on bridge readiness alone.
+    // Worst-case timing is mirrored in `annotationCaptureBudget.ts`
+    // (ANNOTATION_SLIDE_CONTEXT_CAPTURE_BUDGET_MS).
     const hostSnapshot = await captureHostIframeSnapshot(visibleIframe);
     if (hostSnapshot) return hostSnapshot;
+
+    if (drawOverlayOpen && !drawCaptureReadyRef.current) {
+      const deadline = Date.now() + DRAW_CAPTURE_READY_DEADLINE_MS;
+      while (!drawCaptureReadyRef.current && Date.now() < deadline) {
+        await waitForAnimationFrame();
+      }
+    }
 
     // Prefer the srcDoc transport iframe: it always carries the snapshot bridge
     // and (when draw mode is active) the full artifact HTML. URL-load frames
     // often lack the bridge and fail capture on web embeds.
     if (srcDocIframe?.contentWindow) {
       if (useLazySrcDocTransport && !srcDocShellReady) {
-        await waitForIframeLoadOrTimeout(srcDocIframe, 500);
+        await waitForIframeLoadOrTimeout(srcDocIframe, ANNOTATION_LAZY_SHELL_WAIT_MS);
       }
       if (useLazySrcDocTransport && activateSrcDocSnapshotTransport(srcDocIframe)) {
         await waitForIframeLoadOrTimeout(srcDocIframe);
@@ -9735,7 +14985,10 @@ function HtmlViewer({
       try {
         await ensureDeckSlideSyncedForSnapshot(srcDocIframe);
         await waitForAnimationFrame();
-        const srcDocSnapshot = await requestPreviewSnapshotWithRetry(srcDocIframe, ANNOTATION_SNAPSHOT_RETRY_MS);
+        const srcDocSnapshot = await requestPreviewSnapshotWithRetry(
+          srcDocIframe,
+          ANNOTATION_SNAPSHOT_BRIDGE_RETRY_MS,
+        );
         if (srcDocSnapshot) return srcDocSnapshot;
       } finally {
         restoreVisibility();
@@ -9845,7 +15098,7 @@ function HtmlViewer({
         // Prefer live source; if a post-write refresh briefly cleared it,
         // fall back to the last accepted preview HTML so export/download
         // does not fail until the user hard-refreshes.
-        htmlSnapshot: source ?? lastStablePreviewSourceRef.current ?? null,
+        htmlSnapshot: livePreviewSource ?? source ?? lastStablePreviewSourceRef.current ?? null,
         projectId,
         slideIndex: effectiveDeck ? slideState?.active : undefined,
         title: exportTitle,
@@ -9878,7 +15131,7 @@ function HtmlViewer({
         setImageExportPreparedBlob({ format, blob });
       }
     } catch (err) {
-      console.warn('[exportAsImage] failed to prepare snapshot:', err);
+      devLog.warn('[exportAsImage] failed to prepare snapshot:', err);
       if (imageExportPrepareIdRef.current === prepareId) {
         const baseMessage = t('fileViewer.exportImageFailed');
         const detail = serverFailureReason || (err instanceof Error ? err.message : null);
@@ -9889,7 +15142,7 @@ function HtmlViewer({
         setImageExportPreparing(false);
       }
     }
-  }, [captureExportImageSnapshot, effectiveDeck, exportTitle, file.name, previewViewport, projectId, slideState?.active, t]);
+  }, [captureExportImageSnapshot, effectiveDeck, exportTitle, file.name, livePreviewSource, previewViewport, projectId, slideState?.active, source, t]);
 
   const openImageExportModal = async () => {
     flushSync(() => {
@@ -9954,7 +15207,7 @@ function HtmlViewer({
           : t('fileViewer.exportImageDownloadDetails', { filename: target.filename }),
       });
     } catch (err) {
-      console.warn('[exportAsImage] failed to save snapshot:', err);
+      devLog.warn('[exportAsImage] failed to save snapshot:', err);
       setImageExportError(t('fileViewer.exportImageFailed'));
     } finally {
       setImageExportBusy(false);
@@ -10221,7 +15474,7 @@ function HtmlViewer({
   const liveHtmlUnstableForPreview = Boolean(
     streaming
     && liveHtml?.trim()
-    && !isArtifactHtmlStableForPreview(repairArtifactDocumentHead(liveHtml)),
+    && !isArtifactHtmlStableForPreview(repairArtifactDocumentHeadIfNeeded(liveHtml)),
   );
   const showStreamingAwaitingLiveHtml = Boolean(streaming && !liveHtml?.trim());
   // Empty branch used to never render the veil (it lived under source !== null).
@@ -10244,6 +15497,279 @@ function HtmlViewer({
     manualEditMode && !selectedManualEditTarget && manualEditPageStylesOpen;
   const manualEditPanelActive =
     manualEditMode && (!!selectedManualEditTarget || manualEditPageCardActive);
+  const selectedManualEditTargetsForPanel = resolveManualEditTargetsByIds(
+    selectedManualEditTargetIds,
+    manualEditTargets,
+  );
+  const manualEditMultiSelectActive = selectedManualEditTargetsForPanel.length > 1;
+  const manualEditGeometryOptions = selectedManualEditGeometryOptions();
+  const selectedManualEditAnchoredMoveTargets = resolveGroupMovableTargets(
+    selectedManualEditTargetsForPanel,
+    manualEditGeometryOptions,
+    manualEditTargetIsDescendantOf,
+  );
+  const selectedManualEditGroupMoveTargets = resolveGroupMoveTargets(
+    selectedManualEditTargetsForPanel,
+    manualEditGeometryOptions,
+    manualEditTargetIsDescendantOf,
+  );
+  const selectedManualEditResizeGeometryTargets = resolveGroupResizableTargets(
+    selectedManualEditTargetsForPanel,
+    manualEditGeometryOptions,
+    manualEditTargetIsDescendantOf,
+  );
+  const manualEditGroupMoveEnabled = selectedManualEditGroupMoveTargets.length >= 2;
+  const manualEditGroupResizeEnabled = selectedManualEditResizeGeometryTargets.length >= 2;
+  const manualEditMultiSelectOverlayTargets = manualEditGroupResizeEnabled
+    ? selectedManualEditResizeGeometryTargets
+    : manualEditGroupMoveEnabled
+      ? selectedManualEditGroupMoveTargets
+      : selectedManualEditTargetsForPanel;
+  const manualEditGroupAlignEnabled = canGroupAlign(
+    selectedManualEditAnchoredMoveTargets,
+    manualEditGeometryOptions,
+    manualEditTargetIsDescendantOf,
+  );
+  const manualEditGroupDistributeEnabled = canGroupDistribute(
+    selectedManualEditAnchoredMoveTargets,
+    manualEditGeometryOptions,
+    manualEditTargetIsDescendantOf,
+  );
+  const manualEditSnapPageBounds = manualEditContentPageBounds;
+  const manualEditSnapExcludeIds = useMemo(
+    () => new Set(selectedManualEditTargetIds),
+    [selectedManualEditTargetIds],
+  );
+  const manualEditSnapSources = useMemo(
+    () => collectSnapSources(
+      manualEditTargets,
+      manualEditSnapExcludeIds,
+      manualEditSnapPageBounds,
+      manualEditTargetIsDescendantOf,
+    ),
+    [
+      manualEditTargets,
+      manualEditSnapExcludeIds,
+      manualEditSnapPageBounds,
+      manualEditTargetIsDescendantOf,
+    ],
+  );
+  const manualEditLayerPanelTargets = useMemo(
+    () => sortManualEditLayerTargetsByPaintOrder(
+      filterManualEditLayerTargets(manualEditTargets, {
+        deck: effectiveDeck,
+        activeSlideIndex: slideState?.active ?? null,
+        viewportBounds: manualEditViewportBounds,
+      }),
+    ),
+    [manualEditTargets, effectiveDeck, slideState?.active, manualEditViewportBounds],
+  );
+  const manualEditZOrderCapabilities = useMemo(() => {
+    const doc = iframeContentDocumentIfAccessible(iframeRef.current);
+    const reorderOptions = {
+      deck: effectiveDeck,
+      activeSlideIndex: slideState?.active ?? null,
+    };
+    const targets = resolveManualEditTargetsByIds(
+      selectedManualEditTargetIds,
+      manualEditTargets,
+    ).filter((target) => canAdjustZOrderTarget(target.cssPosition));
+    const roots = targets.length > 1
+      ? filterRootTargetsForGroupGeometry(targets, manualEditTargetIsDescendantOf)
+      : targets;
+    if (roots.length === 0) return null;
+    const capabilities = roots
+      .map((target) => resolveZOrderContextWithFallback(
+        doc,
+        manualEditTargets,
+        target.id,
+        reorderOptions,
+      )?.capabilities)
+      .filter((cap): cap is NonNullable<typeof cap> => Boolean(cap));
+    return mergeZOrderCapabilities(capabilities);
+  }, [
+    selectedManualEditTargetIds,
+    selectedManualEditTarget?.id,
+    selectedManualEditTarget?.cssPosition,
+    manualEditDraft.styles.zIndex,
+    manualEditTargets,
+    manualEditTargetIsDescendantOf,
+    srcDoc,
+    effectiveDeck,
+    slideState?.active,
+  ]);
+
+  function collectZIndexTargetsFromPending(pending: ManualEditPendingStyleSave): string[] {
+    return manualEditPendingStyleEntries(pending)
+      .filter(({ styles }) => styles.zIndex !== undefined)
+      .map(({ id }) => id);
+  }
+
+  function afterManualEditZIndexPersist(targetIds: readonly string[]) {
+    if (targetIds.length === 0) return;
+    for (const id of targetIds) {
+      requestManualEditTargetRemeasure(id);
+    }
+    requestManualEditTargetsRefresh();
+  }
+
+  function promoteZIndexStylesForTarget(
+    target: ManualEditTarget | null | undefined,
+    styles: Partial<ManualEditStyles>,
+  ): Partial<ManualEditStyles> {
+    if (styles.zIndex === undefined) return styles;
+    return {
+      ...styles,
+      ...buildZOrderStylePatch(target?.cssPosition, styles.zIndex),
+    };
+  }
+
+  function applyManualEditZOrderOptimistic(
+    patches: Array<{ id: string; styles: Partial<ManualEditStyles> }>,
+  ) {
+    const patchMap = new Map(patches.map((patch) => [patch.id, patch.styles]));
+    setManualEditTargets((current) => current.map((item) => {
+      const styles = patchMap.get(item.id);
+      if (!styles) return item;
+      const stackZ = styles.zIndex !== undefined
+        ? readStackZFromZIndexStyle(styles.zIndex)
+        : item.stackZ;
+      return {
+        ...item,
+        styles: { ...item.styles, ...styles },
+        stackZ,
+        cssPosition: styles.position ?? item.cssPosition,
+      };
+    }));
+    const primaryId = selectedManualEditTargetIdRef.current;
+    const primaryStyles = primaryId ? patchMap.get(primaryId) : null;
+    if (!primaryId || !primaryStyles) return;
+    setSelectedManualEditTarget((current) => {
+      if (!current || current.id !== primaryId) return current;
+      const next: ManualEditTarget = {
+        ...current,
+        styles: { ...current.styles, ...primaryStyles },
+        stackZ: primaryStyles.zIndex !== undefined
+          ? readStackZFromZIndexStyle(primaryStyles.zIndex)
+          : current.stackZ,
+        cssPosition: primaryStyles.position ?? current.cssPosition,
+      };
+      selectedManualEditTargetRef.current = next;
+      return next;
+    });
+    setManualEditDraft((current) => ({
+      ...current,
+      styles: { ...current.styles, ...primaryStyles },
+    }));
+  }
+
+  function resolveManualEditZOrderTargets(): ManualEditTarget[] {
+    const ids = selectedManualEditTargetIdsRef.current;
+    const catalog = manualEditTargets;
+    const resolved = ids.length > 0
+      ? resolveManualEditTargetsByIds(ids, catalog)
+      : (selectedManualEditTargetRef.current ? [selectedManualEditTargetRef.current] : []);
+    const eligible = resolved.filter((target) => canAdjustZOrderTarget(target.cssPosition));
+    if (eligible.length <= 1) return eligible;
+    return filterRootTargetsForGroupGeometry(eligible, manualEditTargetIsDescendantOf);
+  }
+
+  function queueManualEditZOrderPatches(
+    patches: Array<{ id: string; styles: Partial<ManualEditStyles> }>,
+    label: string,
+  ) {
+    if (patches.length === 0) return;
+    const version = nextManualEditPreviewVersion();
+    const perTargetStyles: Record<string, Partial<ManualEditStyles>> = {};
+    for (const patch of patches) {
+      perTargetStyles[patch.id] = patch.styles;
+      previewStyleToIframe(patch.id, patch.styles, version);
+    }
+    clearManualEditStyleTimer();
+    manualEditPendingStyleRef.current = {
+      id: patches[patches.length - 1]!.id,
+      perTargetStyles,
+      styles: {},
+      label,
+      version,
+    };
+    setManualEditError(null);
+    applyManualEditZOrderOptimistic(patches);
+    for (const patch of patches) {
+      requestManualEditTargetRemeasure(patch.id);
+    }
+    requestManualEditTargetsRefresh();
+    if (manualEditResizeSessionActiveRef.current) return;
+    manualEditStyleTimerRef.current = setTimeout(() => {
+      manualEditStyleTimerRef.current = null;
+      if (manualEditResizePausedRef.current) return;
+      void flushManualEditStyleSave();
+    }, MANUAL_EDIT_STYLE_AUTOSAVE_MS);
+  }
+
+  async function handleManualEditDeleteSelected() {
+    if (manualEditInlineTextEditing) return;
+    if (manualEditResizeSessionActiveRef.current) return;
+    if (manualEditSavingRef.current) return;
+    const ids = selectedManualEditTargetIdsRef.current;
+    if (ids.length !== 1) return;
+    const id = ids[0]!;
+    if (!(await settleManualEditStyleBoundary())) return;
+    await applyManualEdit({ id, kind: 'remove-element' }, t('manualEdit.deleteElement'));
+  }
+
+  function handleManualEditZOrder(action: ZOrderAction) {
+    const doc = iframeContentDocumentIfAccessible(iframeRef.current);
+    const reorderOptions = {
+      deck: effectiveDeck,
+      activeSlideIndex: slideState?.active ?? null,
+    };
+    const targets = resolveManualEditZOrderTargets();
+    if (targets.length === 0) return;
+    const patches: Array<{ id: string; styles: Partial<ManualEditStyles> }> = [];
+    for (const target of targets) {
+      const patch = computeZOrderPatchForTargetWithFallback(
+        doc,
+        manualEditTargets,
+        target.id,
+        action,
+        reorderOptions,
+      );
+      if (!patch || Object.keys(patch).length === 0) continue;
+      patches.push({ id: target.id, styles: patch });
+    }
+    if (patches.length === 0) return;
+    const label = patches.length > 1
+      ? `Z-order: ${patches.length} elements`
+      : zOrderHistoryLabel(action);
+    queueManualEditZOrderPatches(patches, label);
+  }
+
+  function handleManualEditLayerReorder(draggedId: string, insertBeforeId: string | null) {
+    const reorderOptions = {
+      deck: effectiveDeck,
+      activeSlideIndex: slideState?.active ?? null,
+    };
+    const visibleSiblings = resolveLayerReorderSiblings(manualEditTargets, draggedId, reorderOptions);
+    if (visibleSiblings.length < 2) return;
+    const stackSiblings = resolveLayerReorderStackSiblings(manualEditTargets, draggedId, reorderOptions);
+    const visibleFrontFirst = layerReorderGroupFrontFirstIds(visibleSiblings);
+    const insertIndex = layerReorderInsertIndex(visibleFrontFirst, draggedId, insertBeforeId);
+    if (insertIndex === null) return;
+    const visibleNextOrder = reorderLayerPaintOrder(visibleFrontFirst, draggedId, insertIndex);
+    const nextOrder = mergeVisibleLayerReorderIntoStack(
+      stackSiblings,
+      visibleFrontFirst,
+      visibleNextOrder,
+    );
+    const patches = buildLayerReorderZIndexPatches(stackSiblings, nextOrder);
+    if (patches.length === 0) return;
+    queueManualEditZOrderPatches(patches, layerReorderHistoryLabel(patches.length));
+  }
+  manualEditZOrderHandlerRef.current = handleManualEditZOrder;
+  manualEditDeleteHandlerRef.current = () => {
+    void handleManualEditDeleteSelected();
+  };
   const revisionCanUndo = canUndoRevisionStack(revisionStack) && !revisionStackInvalidated;
   const revisionCanRedo = canRedoRevisionStack(revisionStack) && !revisionStackInvalidated;
   const revisionUndoUnavailableTooltip = revisionStackInvalidated
@@ -10253,6 +15779,8 @@ function HtmlViewer({
     <ManualEditPanel
       targets={manualEditTargets}
       selectedTarget={selectedManualEditTarget}
+      selectedTargets={selectedManualEditTargetsForPanel}
+      mixedStyleKeys={manualEditMixedStyleKeys}
       draft={manualEditDraft}
       history={[]}
       error={manualEditError}
@@ -10260,13 +15788,24 @@ function HtmlViewer({
       canRedo={revisionCanRedo}
       busy={manualEditSaving}
       pageStylesEnabled={manualEditPageStylesEnabled}
-      onSelectTarget={(target) => {
-        void selectManualEditTarget(target);
+      onSelectTarget={(target, options) => {
+        void selectManualEditTarget(target, options);
       }}
       onDraftChange={setManualEditDraft}
-      onStyleChange={(id, styles, label) => {
-        void handleManualEditStyleChange(id, styles, label);
+      onStyleChange={(ids, styles, label) => {
+        void handleManualEditStyleChange(ids, styles, label);
       }}
+      groupAlignEnabled={manualEditGroupAlignEnabled}
+      groupDistributeEnabled={manualEditGroupDistributeEnabled}
+      onGroupAlign={(kind) => {
+        void handleManualEditGroupAlign(kind);
+      }}
+      onGroupDistribute={(kind) => {
+        void handleManualEditGroupDistribute(kind);
+      }}
+      zOrderCapabilities={manualEditZOrderCapabilities}
+      onZOrder={handleManualEditZOrder}
+      zOrderBusy={manualEditSaving}
       onInvalidStyle={cancelManualEditPendingStyles}
       onApplyPatch={(patch, label) => {
         void (async () => {
@@ -10294,19 +15833,24 @@ function HtmlViewer({
         void redoManualEdit();
       }}
       floatingClassName={manualEditPageCardActive ? 'manual-edit-page-card' : undefined}
+      collapsed={manualEditPanelCollapsed}
+      onCollapsedChange={setManualEditPanelCollapsed}
       floatingStyle={selectedManualEditTarget
-        ? {
-            ...manualEditFloatingPanelStyle(
-              selectedManualEditTarget,
-              manualEditHostScale,
-              previewBodySize,
-              manualEditHostOffset,
-              manualEditHostPaintRect,
-            ),
-            ...(manualEditPanelPosition ?? {}),
-          }
+        ? manualEditFloatingPanelStyle(
+            selectedManualEditTarget,
+            manualEditHostScale,
+            previewBodySize,
+            manualEditHostOffset,
+            manualEditHostPaintRect,
+            manualEditPanelPosition,
+          )
         : { top: 12, right: 12, width: 320 }}
-      onFloatingPositionChange={selectedManualEditTarget ? setManualEditPanelPosition : undefined}
+      onFloatingPositionChange={selectedManualEditTarget
+        ? (position) => {
+            manualEditPanelUserPinnedRef.current = true;
+            setManualEditPanelPosition(position);
+          }
+        : undefined}
       onPickImage={async (pickedFile) => {
         const result = await uploadProjectFiles(projectId, [pickedFile]);
         const uploaded = result.uploaded[0];
@@ -10325,7 +15869,8 @@ function HtmlViewer({
   const manualEditHoverAffordance =
     manualEditMode &&
     manualEditHoverTarget &&
-    manualEditHoverTarget.id !== selectedManualEditTarget?.id ? (
+    manualEditHoverTarget &&
+    !selectedManualEditTargetIds.includes(manualEditHoverTarget.id) ? (
       <button
         type="button"
         className="manual-edit-hover-action"
@@ -10337,6 +15882,12 @@ function HtmlViewer({
           manualEditHostScale,
           previewBodySize,
           manualEditHostOffset,
+          (() => {
+            const frame = iframeRef.current;
+            const workspace = manualEditWorkspaceRef.current;
+            if (!frame || !workspace) return null;
+            return measureManualEditTargetHostRect(frame, workspace, manualEditHoverTarget.id);
+          })(),
         )}
         onClick={() => {
           const target = manualEditHoverTarget;
@@ -10347,10 +15898,15 @@ function HtmlViewer({
         <Icon name="sliders" size={15} />
       </button>
     ) : null;
+  const manualEditTipRemountChromeInert = shouldDisableManualEditChromeForTipRemountUnlockGate(
+    shouldDisableManualEditChromeUntilTipRemasure(manualEditTipRemountChromeSuppressed),
+    manualEditTipChromeUnlockPointerGate,
+  );
   const manualEditResizeOverlay =
     manualEditMode
     && !hideManualEditBoxDrag
     && !drawOverlayOpen
+    && !manualEditMultiSelectActive
     && selectedManualEditTarget
     && canResizeTarget(selectedManualEditTarget, {
       inlineTextEditing: manualEditInlineTextEditing,
@@ -10359,14 +15915,26 @@ function HtmlViewer({
         target={selectedManualEditTarget}
         previewScale={manualEditHostScale}
         hostOffset={manualEditHostOffset}
-        hostPaintRect={manualEditHostPaintRect}
+        hostPaintRect={resolveTipRemountHostPaintRect(
+          selectedManualEditTarget.id,
+          manualEditHostPaintRect,
+        )}
+        trustHostPaintDespiteStale={shouldTrustTipRemountHostPaintDespiteComposedStale(
+          tipRemountChromeSessionLiveNow(),
+          true,
+          manualEditTipPaintSyncHold,
+        )}
         draftWidthPx={manualEditResizeDraftSize?.width ?? null}
         draftHeightPx={manualEditResizeDraftSize?.height ?? null}
         draftLeftPx={manualEditMoveDraftPos?.x ?? null}
         draftTopPx={manualEditMoveDraftPos?.y ?? null}
         // Do not disable handles while saving — HTML disabled buttons drop
         // pointer events through to the movable body, so resize becomes move.
-        disabled={manualEditInlineTextEditing}
+        // Tip-remount: keep chrome mounted inert at last rect (458).
+        disabled={manualEditInlineTextEditing || manualEditTipRemountChromeInert}
+        onChromePointerHoverChange={(hovering) => {
+          manualEditTipChromePointerHoverRef.current = hovering;
+        }}
         onResizeSessionChange={handleManualEditResizeSessionChange}
         onResolveResizeStart={() => {
           const id = selectedManualEditTargetIdRef.current;
@@ -10407,6 +15975,63 @@ function HtmlViewer({
           void handleManualEditMoveCommit(styles, stylesBefore, viewport);
         }}
         onMoveCancel={handleManualEditMoveCancel}
+        onStartTextEdit={(targetId) => {
+          iframeRef.current?.contentWindow?.postMessage(
+            { type: 'od-edit-start-text-edit', id: targetId },
+            '*',
+          );
+        }}
+        snapSources={manualEditSnapSources}
+      />
+    ) : null;
+  const manualEditMultiSelectOverlay =
+    manualEditMode
+    && !drawOverlayOpen
+    && manualEditMultiSelectActive ? (
+      <ManualEditMultiSelectOverlay
+        targets={manualEditMultiSelectOverlayTargets}
+        previewScale={manualEditHostScale}
+        hostOffset={manualEditHostOffset}
+        measureHostRect={(id) => {
+          const frame = iframeRef.current;
+          const workspace = manualEditWorkspaceRef.current;
+          if (!frame || !workspace) return null;
+          const paint = measureManualEditTargetHostRect(frame, workspace, id);
+          return resolveTipRemountHostPaintRect(id, paint);
+        }}
+        trustHostPaintDespiteStale={shouldTrustTipRemountHostPaintDespiteComposedStale(
+          tipRemountChromeSessionLiveNow(),
+          true,
+          manualEditTipPaintSyncHold,
+        )}
+        stabilizePartialPaintUnion={tipRemountChromeSessionLiveNow()}
+        movable={manualEditGroupMoveEnabled}
+        resizable={manualEditGroupResizeEnabled}
+        // Tip-remount: keep multi chrome mounted inert at last union rect (458).
+        disabled={manualEditInlineTextEditing || manualEditTipRemountChromeInert}
+        onChromePointerHoverChange={(hovering) => {
+          manualEditTipChromePointerHoverRef.current = hovering;
+        }}
+        draftMemberRects={manualEditGroupDraftRects}
+        onGroupMovePreview={handleManualEditGroupMovePreview}
+        onGroupMoveCommit={(updates, stylesBefore) => {
+          void handleManualEditGroupMoveCommit(updates, stylesBefore);
+        }}
+        onGroupMoveCancel={handleManualEditGroupMoveCancel}
+        onGroupResizePreview={handleManualEditGroupResizePreview}
+        onGroupResizeCommit={(updates, stylesBefore, handle, dx, dy, shiftKey) => {
+          void handleManualEditGroupResizeCommit(
+            updates,
+            stylesBefore,
+            handle,
+            dx,
+            dy,
+            shiftKey,
+          );
+        }}
+        onGroupResizeCancel={handleManualEditGroupResizeCancel}
+        onGestureSessionChange={handleManualEditResizeSessionChange}
+        snapSources={manualEditSnapSources}
       />
     ) : null;
   const activeComposerComment = activePreviewCommentId
@@ -10431,10 +16056,11 @@ function HtmlViewer({
       images={boardImagePreviews}
       existingImages={
         activeComposerAttachments.map((attachment) => ({
-          url: projectRawUrl(projectId, attachment.path),
+          path: attachment.path,
           name: attachment.name,
         }))
       }
+      projectId={projectId}
       onAttachImages={addBoardImages}
       onRemoveImage={removeBoardImage}
       onPreviewImage={setBoardPreviewIndex}
@@ -10772,6 +16398,23 @@ function HtmlViewer({
               >
                 <RemixIcon name="edit-line" size={15} />
               </button>
+              {manualEditMode ? (
+                <button
+                  type="button"
+                  className={`viewer-action viewer-action-icon od-tooltip${manualEditLayersPanelOpen ? ' active' : ''}`}
+                  data-testid="manual-edit-layers-toggle"
+                  data-tooltip={t('manualEdit.toggleLayers')}
+                  data-tooltip-placement="bottom"
+                  title={t('manualEdit.toggleLayers')}
+                  aria-label={t('manualEdit.toggleLayers')}
+                  aria-pressed={manualEditLayersPanelOpen}
+                  onClick={() => {
+                    setManualEditLayersPanelOpen((open) => !open);
+                  }}
+                >
+                  <RemixIcon name="stack-line" size={15} />
+                </button>
+              ) : null}
               <span className="viewer-toolbar-tool-divider" aria-hidden />
               <button
                 type="button"
@@ -10828,6 +16471,23 @@ function HtmlViewer({
                 </div>
               ) : null}
             </>
+          ) : null}
+          {sourceHtmlCopyEnabled && mode === 'source' && source !== null ? (
+            <button
+              type="button"
+              className="viewer-action od-tooltip"
+              data-testid="html-source-copy-button"
+              data-tooltip={t('fileViewer.copyTitle')}
+              data-tooltip-placement="bottom"
+              title={t('fileViewer.copyTitle')}
+              aria-label={sourceHtmlCopied ? t('fileViewer.copied') : t('fileViewer.copy')}
+              onClick={() => {
+                void copyHtmlSourceToClipboard();
+              }}
+            >
+              <Icon name={sourceHtmlCopied ? 'check' : 'copy'} size={13} />
+              <span>{sourceHtmlCopied ? t('fileViewer.copied') : t('fileViewer.copy')}</span>
+            </button>
           ) : null}
         </div>
       </div>
@@ -11043,13 +16703,27 @@ function HtmlViewer({
                     onOpenImageExport={openImageExportModal}
                     onOpenSaveAsTemplate={openSaveAsTemplateModal}
                     fireShareExport={fireShareExport}
-	                    exportPdf={(options) => runCurrentPdfExport(options)}
+	                    exportPdf={(options) => exportProjectAsPdf({
+	                      deck: effectiveDeck,
+	                      fallbackPdf: () => exportAsPdf(
+                        livePreviewSource ?? source ?? lastStablePreviewSourceRef.current ?? '',
+                        exportTitle,
+                        { deck: effectiveDeck },
+                      ),
+	                      filePath: file.name,
+	                      fresh: options?.fresh,
+	                      htmlSnapshot: livePreviewSource ?? source ?? lastStablePreviewSourceRef.current ?? null,
+	                      onAsyncExportStatus: showAsyncExportProgress('pdf'),
+	                      projectId,
+	                      requireRenderedExport: isTeamverEmbedMode(),
+	                      title: exportTitle,
+	                    })}
                     exportPptx={() => exportProjectAsPptx({
                       deck: effectiveDeck,
                       projectId,
                       filePath: file.name,
                       title: exportTitle,
-                      htmlSnapshot: source ?? lastStablePreviewSourceRef.current ?? null,
+                      htmlSnapshot: livePreviewSource ?? source ?? lastStablePreviewSourceRef.current ?? null,
                       onAsyncExportStatus: showAsyncExportProgress('pptx'),
                       requireRenderedExport: isTeamverEmbedMode(),
                     })}
@@ -11057,9 +16731,9 @@ function HtmlViewer({
 	                      deck: effectiveDeck,
 	                      projectId,
 	                      filePath: file.name,
-	                      fallbackHtml: source ?? lastStablePreviewSourceRef.current ?? '',
+	                      fallbackHtml: livePreviewSource ?? source ?? lastStablePreviewSourceRef.current ?? '',
 	                      fallbackTitle: exportTitle,
-	                      htmlSnapshot: source ?? lastStablePreviewSourceRef.current ?? null,
+	                      htmlSnapshot: livePreviewSource ?? source ?? lastStablePreviewSourceRef.current ?? null,
 	                      onAsyncExportStatus: showAsyncExportProgress('html'),
 	                      requireRenderedExport: isTeamverEmbedMode(),
 	                    })}
@@ -11067,14 +16741,14 @@ function HtmlViewer({
 	                      deck: effectiveDeck,
 	                      projectId,
 	                      filePath: file.name,
-	                      fallbackHtml: source ?? lastStablePreviewSourceRef.current ?? '',
+	                      fallbackHtml: livePreviewSource ?? source ?? lastStablePreviewSourceRef.current ?? '',
 	                      fallbackTitle: exportTitle,
-	                      htmlSnapshot: source ?? lastStablePreviewSourceRef.current ?? null,
+	                      htmlSnapshot: livePreviewSource ?? source ?? lastStablePreviewSourceRef.current ?? null,
 	                      onAsyncExportStatus: showAsyncExportProgress('zip'),
 	                      requireRenderedExport: isTeamverEmbedMode(),
 	                    })}
                     exportMarkdown={() => exportAsMd(
-                      source ?? lastStablePreviewSourceRef.current ?? '',
+                      livePreviewSource ?? source ?? lastStablePreviewSourceRef.current ?? '',
                       exportTitle,
                     )}
                   />
@@ -11123,9 +16797,29 @@ function HtmlViewer({
             style={previewViewportStyle(previewViewport, previewScale, boardPreviewCanvasSize, boardPreviewScaleOptions)}
             onMouseLeave={manualEditMode ? clearManualEditHover : undefined}
           >
+            {manualEditMode && manualEditLayersPanelOpen ? (
+              <ManualEditLayersPanel
+                targets={manualEditLayerPanelTargets}
+                allTargets={manualEditTargets}
+                deck={effectiveDeck}
+                activeSlideIndex={slideState?.active ?? null}
+                selectedIds={selectedManualEditTargetIds}
+                onSelectTarget={(target, options) => {
+                  void selectManualEditTarget(target, options);
+                }}
+                onClose={() => {
+                  setManualEditLayersPanelOpen(false);
+                }}
+                zOrderCapabilities={manualEditZOrderCapabilities}
+                onZOrder={handleManualEditZOrder}
+                onLayerReorder={handleManualEditLayerReorder}
+                zOrderBusy={manualEditSaving}
+              />
+            ) : null}
             {manualEditPanel}
             {manualEditHoverAffordance}
             {manualEditResizeOverlay}
+            {manualEditMultiSelectOverlay}
             <div
               className={[
                 manualEditMode ? 'manual-edit-canvas' : 'comment-preview-canvas',
@@ -11168,7 +16862,7 @@ function HtmlViewer({
                     <div
                       className={[
                         'artifact-preview-transport-stack',
-                        showStreamingPreviewVeil ? 'is-streaming-unstable' : '',
+                        showStreamingPreviewVeil || embedPreviewAwaitingPrefix ? 'is-streaming-unstable' : '',
                       ].filter(Boolean).join(' ')}
                     >
                       {showStreamingPreviewVeil ? (
@@ -11187,6 +16881,25 @@ function HtmlViewer({
                             />
                             <span className="artifact-preview-streaming-veil__label">
                               {t('fileViewer.updatingPreview')}
+                            </span>
+                          </div>
+                        </div>
+                      ) : embedPreviewAwaitingPrefix ? (
+                        <div
+                          className="artifact-preview-streaming-veil"
+                          role="status"
+                          aria-live="polite"
+                          data-testid="artifact-preview-prefix-settle-veil"
+                        >
+                          <div className="artifact-preview-streaming-veil__backdrop" aria-hidden />
+                          <div className="artifact-preview-streaming-veil__card">
+                            <Icon
+                              name="spinner"
+                              size={18}
+                              className="artifact-preview-streaming-veil__icon"
+                            />
+                            <span className="artifact-preview-streaming-veil__label">
+                              {t('fileViewer.loading')}
                             </span>
                           </div>
                         </div>
@@ -11215,6 +16928,13 @@ function HtmlViewer({
                             }, '*');
                             frame?.contentWindow?.postMessage({ type: 'od:url-selection-bridge-probe' }, '*');
                             syncBridgeModes(frame);
+                            // Tip-yield: sync tip rect before async remasure (459).
+                            applyTipRemountSyncHostMeasureAfterSrcDocLoadWithRetry(frame);
+                            requestTipRemountRemasureAfterSrcDocLoad(frame);
+                            // Sticky deck fit may arm settle while needsFit is false (464).
+                            scheduleTipRemountRemasureAfterDeckHostFitSettle(
+                              () => frame ?? urlPreviewIframeRef.current,
+                            );
                             replayManualEditStylesToIframe(frame);
                             if (useUrlLoadPreview) restorePreviewScrollPosition();
                             if (needsDeckHostViewportFit) {
@@ -11254,6 +16974,13 @@ function HtmlViewer({
                             }, '*');
                             frame?.contentWindow?.postMessage({ type: 'od:url-selection-bridge-probe' }, '*');
                             syncBridgeModes(frame);
+                            // Tip-yield: sync tip rect before async remasure (459).
+                            applyTipRemountSyncHostMeasureAfterSrcDocLoadWithRetry(frame);
+                            requestTipRemountRemasureAfterSrcDocLoad(frame);
+                            // Sticky deck fit may arm settle while needsFit is false (464).
+                            scheduleTipRemountRemasureAfterDeckHostFitSettle(
+                              () => frame ?? urlPreviewIframeRef.current,
+                            );
                             replayManualEditStylesToIframe(frame);
                             if (useUrlLoadPreview) restorePreviewScrollPosition();
                             if (needsDeckHostViewportFit) {
@@ -11272,7 +16999,7 @@ function HtmlViewer({
                         />
                       )}
                       <iframe
-                        key={srcDocTransportResetKey}
+                        key={srcDocPreviewMountKey}
                         ref={srcDocPreviewIframeRef}
                         data-testid={useUrlLoadPreview ? 'artifact-preview-frame-srcdoc' : 'artifact-preview-frame'}
                         data-od-render-mode="srcdoc"
@@ -11329,6 +17056,13 @@ function HtmlViewer({
                           }, '*');
                           replayInspectOverridesToIframe(frame);
                           syncBridgeModes(frame);
+                          // Tip-yield: sync tip rect, then async remasure on the live tip document (452/459).
+                          applyTipRemountSyncHostMeasureAfterSrcDocLoadWithRetry(frame);
+                          requestTipRemountRemasureAfterSrcDocLoad(frame);
+                          // Sticky deck fit may arm settle while needsFit is false (464).
+                          scheduleTipRemountRemasureAfterDeckHostFitSettle(
+                            () => frame ?? srcDocPreviewIframeRef.current,
+                          );
                           replayManualEditStylesToIframe(frame);
                           syncCachedSlideStateToIframe(frame);
                           if (effectiveDeck) {
@@ -11383,24 +17117,6 @@ function HtmlViewer({
               ) : null}
               {/* Portaled to <body> so the screenshot/export toast escapes the
                   preview pane's transform + overflow:hidden. */}
-              {asyncExportProgress
-                ? createPortal(
-                    <div className="async-export-progress-panel" role="status" aria-live="polite">
-                      <div className="async-export-progress-row">
-                        <span className="async-export-progress-spinner" aria-hidden="true" />
-                        <div className="async-export-progress-copy">
-                          <span className="async-export-progress-title">
-                            {exportFormatLabel(asyncExportProgress.format)} {t('fileViewer.download')}
-                          </span>
-                          <span className="async-export-progress-message">
-                            {asyncExportProgress.message}
-                          </span>
-                        </div>
-                      </div>
-                    </div>,
-                    document.body,
-                  )
-                : null}
               {exportToast
                 ? createPortal(
                     <Toast
@@ -11416,10 +17132,26 @@ function HtmlViewer({
                           ?? (exportToast.tone === 'loading' ? 8000 : 2200)
                       }
                       placement="top"
-                      actionLabel={exportToast.actionLabel}
-                      onAction={exportToast.onAction}
                       onDismiss={() => setExportToast(null)}
                     />,
+                    document.body,
+                  )
+                : null}
+              {asyncExportProgress
+                ? createPortal(
+                    <div className="async-export-progress-panel" role="status" aria-live="polite">
+                      <div className="async-export-progress-row">
+                        <span className="async-export-progress-spinner" aria-hidden="true" />
+                        <div className="async-export-progress-copy">
+                          <span className="async-export-progress-title">
+                            {exportFormatLabel(asyncExportProgress.format)} {t('fileViewer.download')}
+                          </span>
+                          <span className="async-export-progress-message">
+                            {asyncExportProgress.message}
+                          </span>
+                        </div>
+                      </div>
+                    </div>,
                     document.body,
                   )
                 : null}
@@ -11573,6 +17305,7 @@ function HtmlViewer({
                 revisions={revisionStack.revisions}
                 cursorRevisionId={revisionStack.cursorRevisionId}
                 retentionLimit={revisionRetentionLimit}
+                retentionPending={revisionRetentionPending}
                 busy={manualEditSaving}
                 onRestore={(revision) => {
                   void restoreRevisionFromHistory(revision);
@@ -11611,6 +17344,7 @@ function HtmlViewer({
             />
           ) : (
             <iframe
+              key={`present:${srcDocPreviewMountKey}`}
               ref={presentIframeRef}
               title="present"
               sandbox="allow-scripts allow-downloads"
@@ -12172,6 +17906,21 @@ function HtmlViewer({
         />,
         document.body,
       ) : null}
+      {revisionDiskSyncToast && typeof document !== 'undefined' ? createPortal(
+        <Toast
+          message={revisionDiskSyncToast}
+          placement="top"
+          ttlMs={0}
+          role="alert"
+          tone="error"
+          actionLabel={revisionDiskSyncRetryLabelRef.current}
+          onAction={() => {
+            void retryPendingRevisionDiskSync();
+          }}
+          onDismiss={dismissRevisionDiskSyncToast}
+        />,
+        document.body,
+      ) : null}
       {revisionConflictToast && typeof document !== 'undefined' ? createPortal(
         <Toast
           message={revisionConflictToast}
@@ -12179,10 +17928,7 @@ function HtmlViewer({
           ttlMs={5000}
           role="alert"
           tone="error"
-          onDismiss={() => {
-            revisionConflictSuppressedRef.current = true;
-            setRevisionConflictToast(null);
-          }}
+          onDismiss={dismissRevisionConflictToast}
         />,
         document.body,
       ) : null}
@@ -12215,6 +17961,13 @@ function baseDirFor(fileName: string): string {
 }
 
 function toOwnerRelativePath(ownerFileName: string, targetPath: string): string {
+  const nfcSegment = (value: string) => {
+    try {
+      return value.normalize('NFC');
+    } catch {
+      return value;
+    }
+  };
   const normalize = (value: string) => decodeURIComponent(value).replace(/^\/+/, '');
   const squash = (parts: string[]) => {
     const out: string[] = [];
@@ -12237,7 +17990,10 @@ function toOwnerRelativePath(ownerFileName: string, targetPath: string): string 
   while (
     common < ownerParts.length &&
     common < targetParts.length &&
-    ownerParts[common] === targetParts[common]
+    // NFC-tolerant segment compare: owner file may be NFD on disk while the
+    // target upload came in as NFC — byte-exact `===` split the common
+    // prefix at the wrong depth and produced a wrong-directory `../` walk.
+    nfcSegment(ownerParts[common]!) === nfcSegment(targetParts[common]!)
   ) {
     common += 1;
   }
@@ -12261,6 +18017,48 @@ function hasRelativeAssetRefs(html: string): boolean {
     if (!value) continue;
     if (/^(?:https?:|data:|blob:|mailto:|tel:|#|\/)/i.test(value)) continue;
     return true;
+  }
+  return false;
+}
+
+/**
+ * Cheap content fingerprint (length + first / last 64 chars) used as the
+ * cache-bust suffix for the deck-preview inline-assets fetch. Manual Edit
+ * set-image / element-patch saves update `source` locally before the
+ * /files list refresh bumps `file.mtime`, so a mtime-only key hits the
+ * browser cache and paints a stale inlined deck.
+ */
+function manualEditPreviewInlineContentKey(source: string): string {
+  const value = String(source ?? '');
+  const head = value.length > 64 ? value.slice(0, 64) : value;
+  const tail = value.length > 64 ? value.slice(-64) : '';
+  // Percent-encode any non-ASCII so the value is safe to stuff into a query
+  // string (matches how the rest of `cacheBust` values are serialized).
+  return `${value.length}-${encodeURIComponent(head + tail).slice(0, 96)}`;
+}
+
+/**
+ * True when the HTML has at least one `<img src="…">` (or CSS `url(…)`) that
+ * is a relative path — the kind that the daemon-side inline pass can turn
+ * into a `data:` URI. Used to decide whether it's worth doing the extra
+ * `?inlineAssets=1` round trip for deck previews.
+ */
+function hasRelativeImageRefs(html: string): boolean {
+  const imgRe = /<img\b[^>]*\bsrc\s*=\s*["']([^"']+)["']/gi;
+  const cssUrlRe = /url\(\s*['"]?([^'")]+)['"]?\s*\)/gi;
+  const isRelative = (value: string | undefined): boolean => {
+    const trimmed = String(value || '').trim();
+    if (!trimmed) return false;
+    if (/^(?:https?:|data:|blob:|mailto:|tel:|#|\/\/)/i.test(trimmed)) return false;
+    if (trimmed.startsWith('/api/')) return false;
+    return true;
+  };
+  let match: RegExpExecArray | null;
+  while ((match = imgRe.exec(html)) !== null) {
+    if (isRelative(match[1])) return true;
+  }
+  while ((match = cssUrlRe.exec(html)) !== null) {
+    if (isRelative(match[1])) return true;
   }
   return false;
 }
@@ -12323,18 +18121,31 @@ async function fetchProjectRelativeText(
 ): Promise<string | null> {
   const filePath = resolveProjectRelativePath(ownerFileName, assetRef);
   if (!filePath) return null;
+  // Probe NFC and NFD forms so macOS-uploaded relative asset paths (NFD) still
+  // resolve when the deck / owner HTML references NFC (typical model output).
+  const candidates: string[] = [filePath];
   try {
-    // Teamver embed needs daemon auth / workspace / S3-prefix headers and
-    // 401 recovery — plain fetch() silently fails after auth races.
-    const resp = await fetchTeamverDaemon(projectRawUrl(projectId, filePath), {
-      cache: 'no-store',
-      teamverProjectId: projectId,
-    });
-    if (!resp.ok) return null;
-    return await resp.text();
-  } catch {
-    return null;
+    const nfc = filePath.normalize('NFC');
+    if (nfc !== filePath) candidates.push(nfc);
+  } catch { /* ignore */ }
+  try {
+    const nfd = filePath.normalize('NFD');
+    if (nfd !== filePath && !candidates.includes(nfd)) candidates.push(nfd);
+  } catch { /* ignore */ }
+  for (const candidate of candidates) {
+    try {
+      // Teamver embed needs daemon auth / workspace / S3-prefix headers and
+      // 401 recovery — plain fetch() silently fails after auth races.
+      const resp = await fetchTeamverDaemon(projectRawUrl(projectId, candidate), {
+        cache: 'no-store',
+        teamverProjectId: projectId,
+      });
+      if (resp.ok) return await resp.text();
+    } catch {
+      // Continue to the next candidate.
+    }
   }
+  return null;
 }
 
 function resolveProjectRelativePath(ownerFileName: string, assetRef: string): string | null {
@@ -12365,6 +18176,55 @@ function escapeHtmlAttr(value: string): string {
     .replace(/>/g, '&gt;');
 }
 
+function openImageViewerUrl(url: string): void {
+  // Popup-blocker friendly path: synthesize an anchor with target=_blank and
+  // click it inside the same user gesture. Falls back to `window.open` when
+  // the anchor click is silently swallowed (e.g. some embed sandboxes).
+  const link = document.createElement('a');
+  link.href = url;
+  link.target = '_blank';
+  link.rel = 'noopener noreferrer';
+  document.body.appendChild(link);
+  try {
+    link.click();
+  } catch {
+    const win = window.open(url, '_blank', 'noopener,noreferrer');
+    if (win) {
+      try {
+        win.opener = null;
+      } catch {
+        /* some browsers throw on cross-origin opener reset */
+      }
+    }
+  } finally {
+    link.remove();
+  }
+}
+
+function triggerBlobDownload(url: string, filename: string): void {
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+}
+
+/** @internal exported for ImageViewer open/download wiring tests */
+export function imageViewerCanOpen(input: {
+  useAuthenticatedFetch: boolean;
+  signedLoading: boolean;
+  signedSrc: string | null;
+  busy: boolean;
+}): boolean {
+  if (input.busy) return false;
+  if (!input.useAuthenticatedFetch) return true;
+  if (input.signedSrc) return true;
+  // Presign finished (ready/disabled/failed) — Open can fall back to a
+  // one-shot authenticated blob fetch on click.
+  return !input.signedLoading;
+}
+
 function ImageViewer({
   projectId,
   file,
@@ -12374,6 +18234,76 @@ function ImageViewer({
 }) {
   const t = useTeamverT();
   const filePath = projectFileResolvedPath(file);
+  const useAuthFetch = shouldUseTeamverAuthenticatedProjectRawFetch();
+  // Session-gated S3 GET for Open — do not eagerly daemon-proxy bytes just
+  // because the image viewer mounted. Download fetches a blob on click so the
+  // browser can honor the `download` filename attribute.
+  const signed = useProjectFileSignedUrl(
+    useAuthFetch ? projectId : null,
+    useAuthFetch ? filePath : null,
+    Math.round(file.mtime),
+    { trustExists: true },
+  );
+  const [busyOpen, setBusyOpen] = useState(false);
+  const [busyDownload, setBusyDownload] = useState(false);
+  const directRawUrl = `${projectFileUrl(projectId, filePath)}?v=${Math.round(file.mtime)}`;
+  const canOpen = imageViewerCanOpen({
+    useAuthenticatedFetch: useAuthFetch,
+    signedLoading: signed.loading,
+    signedSrc: signed.src,
+    busy: busyOpen,
+  });
+  const canDownload = !busyDownload;
+
+  const openInNewTab = async () => {
+    if (!canOpen) return;
+    if (!useAuthFetch) {
+      openImageViewerUrl(directRawUrl);
+      return;
+    }
+    if (signed.src) {
+      openImageViewerUrl(signed.src);
+      return;
+    }
+    setBusyOpen(true);
+    try {
+      const blob = await loadAuthenticatedProjectFileBlob(projectId, filePath, {
+        trustExists: true,
+        allowBackgroundRetry: true,
+      });
+      if (!blob) return;
+      const url = URL.createObjectURL(blob);
+      openImageViewerUrl(url);
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } finally {
+      setBusyOpen(false);
+    }
+  };
+
+  const downloadBlob = async () => {
+    if (!canDownload) return;
+    setBusyDownload(true);
+    try {
+      if (!useAuthFetch) {
+        triggerBlobDownload(directRawUrl, file.name);
+        return;
+      }
+      const blob = await loadAuthenticatedProjectFileBlob(projectId, filePath, {
+        trustExists: true,
+        allowBackgroundRetry: true,
+      });
+      if (!blob) return;
+      const url = URL.createObjectURL(blob);
+      try {
+        triggerBlobDownload(url, file.name);
+      } finally {
+        URL.revokeObjectURL(url);
+      }
+    } finally {
+      setBusyDownload(false);
+    }
+  };
+
   return (
     <div className="viewer image-viewer">
       <div className="viewer-toolbar">
@@ -12385,30 +18315,32 @@ function ImageViewer({
           </span>
         </div>
         <div className="viewer-toolbar-actions">
-          <a
+          <button
+            type="button"
             className="ghost-link"
-            href={projectFileUrl(projectId, file.name)}
-            download={file.name}
+            onClick={() => { void downloadBlob(); }}
+            disabled={!canDownload}
           >
             {t('fileViewer.download')}
-          </a>
-          <a
+          </button>
+          <button
+            type="button"
             className="ghost-link"
-            href={projectFileUrl(projectId, file.name)}
-            target="_blank"
-            rel="noreferrer noopener"
+            onClick={() => { void openInNewTab(); }}
+            disabled={!canOpen}
           >
             {t('fileViewer.open')}
-          </a>
+          </button>
         </div>
       </div>
       <div className="viewer-body image-body">
         <AuthenticatedProjectFileImage
           projectId={projectId}
           path={filePath}
-          alt={file.name}
+          alt=""
           rev={Math.round(file.mtime)}
           trustExists
+          allowBackgroundRetry
         />
       </div>
     </div>
@@ -12600,10 +18532,11 @@ export function SvgViewer({
         {mode === 'preview' ? (
           <AuthenticatedProjectFileImage
             projectId={projectId}
-            path={file.name}
-            alt={file.name}
+            path={projectFileResolvedPath(file)}
+            alt=""
             rev={`${Math.round(file.mtime)}-${reloadKey}`}
             trustExists
+            allowBackgroundRetry
           />
         ) : loadingSource ? (
           <div className="viewer-empty">{t('fileViewer.loading')}</div>

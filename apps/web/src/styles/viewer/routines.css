@@ -100,43 +100,59 @@
 }
 
 /* ----- Toast (#451) ---------------------------------------------------- */
-/* Single transient bottom-center toast for project-scoped actions. */
-.od-toast {
+/* Anchor owns fixed centering so Motion transform on .od-toast cannot
+   overwrite translateX(-50%). Surface tones use product green/red tokens. */
+.od-toast-anchor {
   position: fixed;
   bottom: 24px;
   left: 50%;
   transform: translateX(-50%);
+  z-index: 1000;
+  max-width: min(480px, calc(100vw - 32px));
+  width: max-content;
+  pointer-events: none;
+  -webkit-app-region: no-drag;
+}
+.od-toast-anchor.placement-top {
+  top: calc(var(--workspace-tabs-chrome-height, 38px) + var(--viewer-toolbar-height, 44px) + 8px);
+  bottom: auto;
+  /* Above workspace chrome (≤1300), staged preview modals (1200), and tooltips (4000 is pointer-events:none). */
+  z-index: 10000;
+}
+.od-toast {
+  position: relative;
   max-width: 480px;
   padding: 10px 14px;
-  border-radius: var(--radius-sm, 4px);
-  background: var(--text-strong, #1f2328);
-  color: var(--bg, white);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  color: var(--text);
   font-size: 12.5px;
   line-height: 1.4;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
-  z-index: 1000;
+  box-shadow: var(--shadow-md);
   pointer-events: auto;
-}
-.od-toast.placement-top {
-  top: 64px;
-  bottom: auto;
-  z-index: 1200;
+  -webkit-app-region: no-drag;
 }
 .od-toast.tone-success {
-  border: 1px solid color-mix(in srgb, var(--success, #2da44e) 42%, var(--border));
-  background: color-mix(in srgb, var(--success, #2da44e) 14%, var(--bg));
+  border-color: var(--green-border);
+  background: var(--green-bg);
   color: var(--text);
   box-shadow:
-    0 4px 14px rgba(0, 0, 0, 0.14),
-    0 0 0 1px color-mix(in srgb, var(--success, #2da44e) 12%, transparent);
+    var(--shadow-md),
+    0 0 0 1px color-mix(in srgb, var(--green) 12%, transparent);
 }
 .od-toast.tone-error {
-  border: 1px solid color-mix(in srgb, var(--danger, #cf222e) 42%, var(--border));
-  background: color-mix(in srgb, var(--danger, #cf222e) 13%, var(--bg));
+  border-color: var(--red-border);
+  background: var(--red-bg);
   color: var(--text);
   box-shadow:
-    0 4px 14px rgba(0, 0, 0, 0.14),
-    0 0 0 1px color-mix(in srgb, var(--danger, #cf222e) 12%, transparent);
+    var(--shadow-md),
+    0 0 0 1px color-mix(in srgb, var(--red) 12%, transparent);
+}
+.od-toast.tone-loading {
+  border-color: var(--border);
+  background: var(--bg-elevated);
+  color: var(--text);
 }
 .od-toast-body {
   display: flex;
@@ -160,45 +176,24 @@
   justify-content: center;
 }
 .od-toast.tone-success .od-toast-icon {
-  color: var(--success, #2da44e);
+  color: var(--green);
 }
 .od-toast.tone-error .od-toast-icon {
-  color: var(--danger, #cf222e);
+  color: var(--red);
 }
 .od-toast.tone-loading .od-toast-icon {
-  color: var(--text-muted, #6e7781);
+  color: var(--accent);
 }
-/* Entrance: gentle rise + fade (ease-out per the UI animation philosophy).
-   Exit: the .leaving class plays a faster fade-out before onDismiss unmounts
-   the toast, so confirmations like "copied to clipboard" don't blink away. */
-.od-toast {
-  animation: od-toast-in 200ms cubic-bezier(0.23, 1, 0.32, 1);
-}
+/* Exit only: entrance is Motion toastSlideUp. Opacity-only so we do not
+   fight Motion's transform. Fade plays inside the TTL window (EXIT_MS). */
 .od-toast.leaving {
-  animation: od-toast-out 140ms cubic-bezier(0.23, 1, 0.32, 1) forwards;
-}
-@keyframes od-toast-in {
-  from {
-    opacity: 0;
-    transform: translateX(-50%) translateY(8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(-50%) translateY(0);
-  }
+  animation: od-toast-out var(--dur-exit) var(--ease-out) forwards;
 }
 @keyframes od-toast-out {
-  from {
-    opacity: 1;
-    transform: translateX(-50%) translateY(0);
-  }
-  to {
-    opacity: 0;
-    transform: translateX(-50%) translateY(8px);
-  }
+  from { opacity: 1; }
+  to { opacity: 0; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .od-toast,
   .od-toast.leaving {
     animation: none;
   }
@@ -207,11 +202,13 @@
   font-weight: 500;
   min-width: 0;
 }
+/* Details inherit toast foreground; opacity dims relative to tone. */
 .od-toast-details {
-  margin-top: 4px;
+  margin-top: 6px;
   font-size: 11.5px;
   opacity: 0.85;
   font-weight: 400;
+  line-height: 1.4;
 }
 .od-toast-detail-links {
   display: flex;
@@ -230,21 +227,31 @@
   margin-top: 7px;
   padding: 4px 9px;
   border: 1px solid color-mix(in srgb, currentColor 22%, transparent);
-  border-radius: var(--radius-sm, 4px);
+  border-radius: var(--radius-sm);
   background: color-mix(in srgb, currentColor 8%, transparent);
   color: inherit;
   font-size: 11.5px;
   font-weight: 600;
   cursor: pointer;
+  transition:
+    background var(--dur-quick) var(--ease-out),
+    opacity var(--dur-quick) var(--ease-out);
 }
-.od-toast-action:hover,
+.od-toast-action:hover {
+  background: color-mix(in srgb, currentColor 14%, transparent);
+}
+.od-toast-action:active {
+  background: color-mix(in srgb, currentColor 18%, transparent);
+}
 .od-toast-action:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
   background: color-mix(in srgb, currentColor 14%, transparent);
 }
 .od-toast-code {
   margin: 8px 0 0;
   padding: 8px 10px;
-  border-radius: var(--radius-sm, 4px);
+  border-radius: var(--radius-sm);
   background: color-mix(in srgb, currentColor 8%, transparent);
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 11px;
@@ -258,6 +265,8 @@
 /* Icon dismiss sits on the same row as the message — never a second
    white chip that wraps under success/error toasts. */
 .od-toast-dismiss {
+  position: relative;
+  z-index: 1;
   flex: 0 0 auto;
   width: 28px;
   height: 28px;
@@ -267,16 +276,25 @@
   align-items: center;
   justify-content: center;
   border: none;
-  border-radius: var(--radius-sm, 4px);
+  border-radius: var(--radius-sm);
   background: transparent;
   color: inherit;
   opacity: 0.62;
   cursor: pointer;
   line-height: 1;
+  -webkit-app-region: no-drag;
+  pointer-events: auto;
+  transition:
+    background var(--dur-quick) var(--ease-out),
+    opacity var(--dur-quick) var(--ease-out);
 }
 .od-toast-dismiss:hover {
   opacity: 1;
   background: color-mix(in srgb, currentColor 10%, transparent);
+}
+.od-toast-dismiss:active {
+  opacity: 1;
+  background: color-mix(in srgb, currentColor 18%, transparent);
 }
 .od-toast-dismiss:focus-visible {
   outline: 2px solid var(--accent);
@@ -297,18 +315,23 @@
 .od-toast-dismiss.od-toast-dismiss-text:hover {
   background: color-mix(in srgb, currentColor 14%, transparent);
 }
+.od-toast-dismiss.od-toast-dismiss-text:active {
+  background: color-mix(in srgb, currentColor 18%, transparent);
+}
 
 /* Compact pill toast for save confirmations (AI edit saved + undo). */
 .od-toast.layout-compact {
   padding: 8px 10px 8px 12px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   max-width: min(520px, calc(100vw - 32px));
-  box-shadow:
-    0 10px 28px rgba(0, 0, 0, 0.16),
-    0 0 0 1px color-mix(in srgb, var(--success, #2da44e) 16%, transparent);
+  box-shadow: var(--shadow-md);
 }
 .od-toast.layout-compact.tone-success {
-  background: color-mix(in srgb, var(--bg) 90%, var(--success, #2da44e));
+  background: var(--green-bg);
+  border-color: var(--green-border);
+  box-shadow:
+    var(--shadow-md),
+    0 0 0 1px color-mix(in srgb, var(--green) 16%, transparent);
 }
 .od-toast-compact-row {
   display: flex;
@@ -327,7 +350,7 @@
   align-items: center;
   max-width: 180px;
   padding: 2px 8px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: color-mix(in srgb, currentColor 8%, transparent);
   border: 1px solid color-mix(in srgb, currentColor 14%, transparent);
   font-size: 11px;
@@ -346,13 +369,66 @@
 .od-toast-action.od-toast-action-inline {
   margin-top: 0;
   padding: 5px 12px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   white-space: nowrap;
 }
 .od-toast.layout-compact .od-toast-dismiss {
   width: 28px;
   height: 28px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
+}
+
+/* Memory extract pill — theme-safe elevated surface (was hardcoded dark hex). */
+.od-memory-toast {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 1000;
+  padding: 8px 14px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  box-shadow: var(--shadow-md);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  backdrop-filter: blur(8px);
+  cursor: default;
+  transition:
+    transform var(--dur-quick) var(--ease-out),
+    box-shadow var(--dur-quick) var(--ease-out),
+    background var(--dur-quick) var(--ease-out);
+  -webkit-app-region: no-drag;
+}
+.od-memory-toast.is-clickable {
+  cursor: pointer;
+}
+.od-memory-toast.is-clickable:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-lg);
+  background: color-mix(in srgb, var(--bg-elevated) 92%, var(--accent));
+}
+.od-memory-toast.is-clickable:active {
+  transform: translateY(0);
+  background: color-mix(in srgb, var(--bg-elevated) 86%, var(--accent));
+}
+.od-memory-toast.is-clickable:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.od-memory-toast-detail {
+  opacity: 0.65;
+}
+.od-memory-toast-hint {
+  margin-left: 4px;
+  padding-left: 8px;
+  border-left: 1px solid var(--border);
+  opacity: 0.85;
+  font-size: 12px;
+  font-weight: 500;
 }
 
 /* ---------------- Routines (Settings → Automations) ---------------- */
@@ -1282,6 +1358,13 @@
 .app .action-card-toggle:hover {
   background: var(--bg-fill-tertiary);
 }
+.app .action-card-toggle:active {
+  background: var(--bg-muted);
+}
+.app .action-card-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 .app .action-card-status {
   width: 24px;
   height: 24px;
@@ -1390,10 +1473,6 @@
   background: none;
   border: none;
   box-shadow: none;
-  transition: background 160ms var(--ease-out);
-}
-.app .produced-file:hover {
-  background: var(--bg-fill-tertiary);
 }
 .app .produced-file-icon {
   width: 20px;
@@ -1449,7 +1528,10 @@
   text-align: left;
 }
 .app .chat-empty-title {
-  font-size: 13.5px;
+  font-size: 14.5px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text-strong);
 }
 .app .chat-empty-hint {
   font-size: 12.5px;
@@ -1516,11 +1598,19 @@
 .app .chat-design-artifact[role='button'] {
   cursor: pointer;
 }
-.app .chat-design-artifact:hover {
+/* Non-openable cards stay inert; only interactive roles get hover/press. */
+.app .chat-design-artifact[role='button']:hover,
+.app .chat-design-artifact-more:hover {
   border-color: var(--border-strong);
   background: var(--bg-subtle);
 }
-.app .chat-design-artifact:focus-visible {
+.app .chat-design-artifact[role='button']:active,
+.app .chat-design-artifact-more:active {
+  background: var(--bg-muted);
+  border-color: var(--border-strong);
+}
+.app .chat-design-artifact[role='button']:focus-visible,
+.app .chat-design-artifact-more:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
@@ -1755,9 +1845,7 @@
 }
 .app .composer-row .icon-btn,
 .chat-composer-fixed-layer .composer-row .icon-btn {
-  /* Clear the 32px min-width/min-height that leaks from chat.css's base
-     `.composer-row .icon-btn`; without these, width/height: 28px is floored
-     back up to 32px and the + drifts taller than the rest of the toolbar. */
+  /* Keep + icon on the shared 28px chrome (chat.css base + this override). */
   width: 28px;
   height: 28px;
   min-width: 28px;

@@ -53,4 +53,11 @@ describe('buildPluginUseMenu', () => {
       'plugin-details-use-with-query-example-html-ppt-product-launch',
     ]);
   });
+
+  it('hides the composer-seed menu when slideOnly has no HomeHero', () => {
+    const onUse = vi.fn();
+    expect(
+      buildPluginUseMenu(deckTemplateFixture(), onUse, t, { hideComposerSeed: true }),
+    ).toBeUndefined();
+  });
 });

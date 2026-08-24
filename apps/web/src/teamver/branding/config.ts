@@ -84,12 +84,13 @@ export type TeamverBrandingConfig = {
   hideDrawAnnotation: boolean;
   /**
    * Hide Manual Edit box drag (resize handles + move/promote). Inspector panel
-   * and inline text edit stay available. See `manualEditBoxDragEnable.ts`.
+   * and inline text edit stay available. Driven by
+   * `isTeamverManualEditBoxDragEnabled()` (default on; env `=0` opt-out).
    */
   hideManualEditBoxDrag: boolean;
   /**
    * Hide file revision undo/redo toolbar + history toggle/panel (same bake flag
-   * as box drag until revision UX is prod-ready).
+   * as box drag).
    */
   hideFileRevisionChrome: boolean;
 };

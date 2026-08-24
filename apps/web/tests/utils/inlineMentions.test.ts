@@ -47,6 +47,45 @@ describe('buildInlineMentionParts', () => {
     ]);
   });
 
+  it('matches NFC file entities against NFD Hangul @mentions in history text', () => {
+    const nfc = '서빙하는-금붕어'.normalize('NFC');
+    const nfd = '서빙하는-금붕어'.normalize('NFD');
+    expect(nfc).not.toBe(nfd);
+    const basename = `msh9rso1-${nfc}.webp`;
+    const parts = buildInlineMentionParts(
+      `이 이미지 넣어줘 @msh9rso1-${nfd}.webp`,
+      [
+        {
+          id: basename,
+          kind: 'file',
+          label: basename,
+          token: `@${basename}`,
+        },
+      ],
+      { highlightUnknown: false },
+    );
+    expect(parts?.some((part) => part.kind === 'mention' && part.entity.kind === 'file')).toBe(true);
+    expect(parts?.find((part) => part.kind === 'mention')?.text).toBe(`@${basename}`);
+  });
+
+  it('rebuilds the mention index after entities are mutated in place', () => {
+    const entities: InlineMentionEntity[] = [];
+    // First call caches an empty trie on this array reference.
+    expect(buildInlineMentionParts('@goldfish.webp', entities, { highlightUnknown: false })).toBeNull();
+    entities.push({
+      id: 'goldfish.webp',
+      kind: 'file',
+      label: 'goldfish.webp',
+      token: '@goldfish.webp',
+    });
+    const parts = buildInlineMentionParts('@goldfish.webp', entities, { highlightUnknown: false });
+    expect(parts?.[0]).toMatchObject({
+      kind: 'mention',
+      text: '@goldfish.webp',
+      entity: { kind: 'file', id: 'goldfish.webp' },
+    });
+  });
+
   it('reuses the normalized mention index across draft updates', () => {
     let tokenReads = 0;
     const entities: InlineMentionEntity[] = Array.from({ length: 1_000 }, (_, index) => ({

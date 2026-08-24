@@ -8,7 +8,10 @@ import type { PreviewComment, PreviewCommentMember } from '../types';
 import { isImeComposing } from '../utils/imeComposing';
 
 import { Icon } from './Icon';
+import { AuthenticatedProjectFileImage } from './AuthenticatedProjectFileImage';
+import { projectRawUrl } from '../providers/registry';
 import { embedUiLabel } from '../teamver/embedUiLabels';
+import { isEphemeralDrawingScreenshotPath } from '../utils/projectFilePaths';
 
 type TranslateFn = (key: keyof Dict, vars?: Record<string, string | number>) => string;
 
@@ -261,6 +264,7 @@ export function BoardComposerPopover({
   onDeleteComment,
   images = [],
   existingImages = [],
+  projectId,
   onAttachImages,
   onRemoveImage,
   onPreviewImage,
@@ -289,8 +293,9 @@ export function BoardComposerPopover({
   onDeleteComment?: (commentId: string) => void | Promise<void>;
   /** Object-URL thumbnails for images the user attached to this comment. */
   images?: { file: File; url: string }[];
-  /** Already-saved attachment thumbnails (read-only) for a re-opened comment. */
-  existingImages?: { url: string; name: string }[];
+  /** Already-saved attachment thumbnails for a re-opened comment. */
+  existingImages?: { path: string; name: string }[];
+  projectId?: string;
   onAttachImages?: (files: File[]) => void;
   onRemoveImage?: (index: number) => void;
   onPreviewImage?: (index: number) => void;
@@ -441,16 +446,27 @@ export function BoardComposerPopover({
           {existingImages.length > 0 || images.length > 0 ? (
             <div className="comment-popover-images">
               {existingImages.map((item) => (
-                <div key={`saved-${item.url}`} className="comment-popover-image">
+                <div key={item.path} className="comment-popover-image">
                   <a
                     className="comment-popover-image-thumb"
                     data-testid="comment-popover-existing-image"
-                    href={item.url}
+                    href={projectId ? projectRawUrl(projectId, item.path) : '#'}
                     target="_blank"
                     rel="noopener noreferrer"
                     title={item.name}
                   >
-                    <img src={item.url} alt="" aria-hidden />
+                    {projectId ? (
+                      <AuthenticatedProjectFileImage
+                        projectId={projectId}
+                        path={item.path}
+                        alt=""
+                        // User-attached memo images are durable uploads — show
+                        // thumbs (with S3-lag retry). Ephemeral drawing PNGs
+                        // stay missing-cache-only to avoid /raw/ spam.
+                        trustExists={!isEphemeralDrawingScreenshotPath(item.path)}
+                        allowBackgroundRetry={!isEphemeralDrawingScreenshotPath(item.path)}
+                      />
+                    ) : null}
                   </a>
                 </div>
               ))}
@@ -578,8 +594,15 @@ export function BoardComposerPopover({
                 </>
               ) : (
                 <>
-                  {/* Element: comment (save) is the primary CTA (also Enter);
-                      send-to-chat is secondary. */}
+                  {/* Element: queue multiple memos before send; save persists to board. */}
+                  <Button
+                    variant="ghost"
+                    data-testid="comment-popover-add-note"
+                    disabled={!draft.trim()}
+                    onClick={onAddDraft}
+                  >
+                    {t('chat.comments.addNote')}
+                  </Button>
                   <Button
                     variant="ghost"
                     data-testid="comment-add-send"

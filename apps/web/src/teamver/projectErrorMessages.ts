@@ -84,15 +84,19 @@ const UPSTREAM_ERROR_CODES = new Set([
  * `save-failed` + code=ARTIFACT_REGRESSION. Both paths detect the
  * same failure — the model emitted a placeholder instead of a real
  * deck — and the user must see a single consistent copy explaining:
- *   (1) what happened (small placeholder detected)
- *   (2) that their existing deck is safe on disk
- *   (3) how to relax the guard for a deliberate small edit
+ *   (1) what happened in user-friendly language
+ *   (2) that their existing deck is safe (data-loss reassurance)
+ *   (3) what to do next (just retry)
+ *
+ * Never mention internal env vars or daemon-side toggle names to the
+ * end user — those belong in ops docs. A prior version leaked
+ * `OD_ARTIFACT_STUB_GUARD=warn` into the visible banner.
  */
-export function formatProjectArtifactRegressionRejectedError(fileName: string): string {
+export function formatProjectArtifactRegressionRejectedError(_fileName: string): string {
   const embed = isTeamverEmbedMode();
   return embed
-    ? `모델이 실제 슬라이드 대신 훨씬 작은 플레이스홀더를 보내서 "${fileName}" 저장을 거부했습니다. 기존 슬라이드는 그대로 남아 있으니 다시 시도해 주세요. (의도적으로 짧게 만든 편집이었다면 OD_ARTIFACT_STUB_GUARD=warn 으로 완화할 수 있습니다.)`
-    : `Refused to save "${fileName}" because the model returned a much smaller placeholder instead of the real slide deck. Your existing deck is preserved on disk — retry the request. (If this was a deliberate small edit, relax via OD_ARTIFACT_STUB_GUARD=warn.)`;
+    ? 'AI가 이번 응답에서 완성된 슬라이드 대신 짧은 초안만 반환해 저장하지 않았습니다. 기존 슬라이드는 그대로 유지되어 있으니 다시 요청해 주세요.'
+    : 'The AI returned a short draft instead of a full slide deck, so it was not saved. Your existing deck is preserved — please try again.';
 }
 
 export function formatProjectArtifactSaveFailedError(
@@ -197,14 +201,52 @@ export function formatProjectRunDeliverablePersistDiagnostic(detail?: {
   return parts.length > 0 ? parts.join(' ') : null;
 }
 
+function sanitizeRunErrorDiagFragment(value: string): string {
+  return value.replace(/-->/g, "—>").replace(/\s+/g, " ").trim().slice(0, 500);
+}
+
 /** Persist user copy + hidden diagnostic tail for the copy-diagnostics button. */
 export function encodePersistedRunErrorDetail(
   userMessage: string,
-  diagnostic?: { kind?: string | null; reason?: string | null },
+  diagnostic?: {
+    kind?: string | null;
+    reason?: string | null;
+    code?: string | null;
+  },
 ): string {
-  const diag = formatProjectRunDeliverablePersistDiagnostic(diagnostic);
-  if (!diag) return userMessage;
-  return `${userMessage}${RUN_ERROR_DIAG_MARKER_START}${diag}${RUN_ERROR_DIAG_MARKER_END}`;
+  const parts: string[] = [];
+  const fromLegacy = formatProjectRunDeliverablePersistDiagnostic(diagnostic);
+  if (fromLegacy) parts.push(fromLegacy);
+  const code = sanitizeRunErrorDiagFragment(String(diagnostic?.code ?? ""));
+  if (code && !parts.some((part) => part.includes(`code=${code}`))) {
+    parts.push(`code=${code.slice(0, 80)}`);
+  }
+  if (parts.length === 0) return userMessage;
+  return `${userMessage}${RUN_ERROR_DIAG_MARKER_START}${parts.join(" ")}${RUN_ERROR_DIAG_MARKER_END}`;
+}
+
+/**
+ * Persist the user-facing Korean/English banner AND the raw proxy/daemon
+ * message. API/BYOK (`anthropic-api`) rows have no daemon `run_id`, so the
+ * copy-diagnostics dump used to show only
+ * `error_code: AGENT_EXECUTION_FAILED` + the generic retry sentence — the
+ * actual "Upstream error: 529" / prompt-too-long text was discarded.
+ */
+export function formatPersistedProjectRunError(err: unknown): {
+  detail: string;
+  code: string;
+  userMessage: string;
+} {
+  const code = extractProjectRunErrorCode(err) || "AGENT_EXECUTION_FAILED";
+  const userMessage = formatProjectRunErrorForUser(err);
+  const raw = (err instanceof Error ? err.message : String(err ?? "")).trim();
+  const reason = raw && raw !== userMessage ? sanitizeRunErrorDiagFragment(raw) : "";
+  const detail = encodePersistedRunErrorDetail(userMessage, {
+    kind: "stream-error",
+    reason: reason || code,
+    code,
+  });
+  return { detail, code, userMessage };
 }
 
 /** Strip hidden diagnostic markers (and legacy inline suffixes) for UI display. */
@@ -274,18 +316,96 @@ export function formatEmergencyDeckFallbackNotice(): string {
     : "The stream ended early — recovered HTML from the response was saved. Please review.";
 }
 
-/** Resolve structured proxy/daemon error codes when `err.code` was not set. */
+/**
+ * Shown when every auto-continue retry and the stream-based emergency salvage
+ * all failed to produce a deck, and we saved a minimal outline-only
+ * placeholder from the conversation instead of surfacing a raw failure state.
+ */
+export function formatOutlineDeckFallbackNotice(): string {
+  return isTeamverEmbedMode()
+    ? "생성이 완성되지 않아 소스 자료의 목차만 담긴 임시 슬라이드를 저장했습니다. 우측의 '다시 시도' 버튼을 눌러 완성본을 다시 생성해 주세요."
+    : "The generation didn't complete — saved a placeholder deck built from the source outline. Use the retry button to regenerate the full deck.";
+}
+
+function mapHttpStatusToProjectRunErrorCode(status: number): string {
+  if (status === 401) return "UNAUTHORIZED";
+  if (status === 403) return "FORBIDDEN";
+  if (status === 404) return "NOT_FOUND";
+  if (status === 429) return "RATE_LIMITED";
+  if (status === 529) return "OVERLOADED_ERROR";
+  if (status === 400 || status === 422) return "BAD_REQUEST";
+  if (status === 408 || status >= 500) return "UPSTREAM_UNAVAILABLE";
+  if (status >= 400 && status < 500) return "BAD_REQUEST";
+  return "UPSTREAM_UNAVAILABLE";
+}
+
+function anthropicLikeErrorType(err: unknown): string {
+  if (!err || typeof err !== "object") return "";
+  const record = err as {
+    error?: { type?: unknown; error?: { type?: unknown } };
+    type?: unknown;
+  };
+  const nested =
+    (typeof record.error?.error?.type === "string" && record.error.error.type)
+    || (typeof record.error?.type === "string" && record.error.type)
+    || (typeof record.type === "string" && record.type)
+    || "";
+  return nested.trim();
+}
+
+function anthropicLikeErrorStatus(err: unknown): number | undefined {
+  if (!err || typeof err !== "object") return undefined;
+  const status = (err as { status?: unknown }).status;
+  return typeof status === "number" && Number.isFinite(status) ? status : undefined;
+}
+
+function messageImpliesContextLengthExceeded(message: string): boolean {
+  return /prompt.{0,16}too.?long|context[_ ]?length|too many tokens|maximum context|max_tokens/i.test(
+    message,
+  );
+}
+
+/** Resolve structured proxy/daemon/provider error codes when `err.code` was not set. */
 export function extractProjectRunErrorCode(err: unknown): string | undefined {
   const direct = err instanceof Error ? (err as Error & { code?: string }).code?.trim() : "";
+  if (direct === "TEAMVER_BROWSER_NETWORK_UNAVAILABLE") return "UPSTREAM_UNAVAILABLE";
   if (direct) return direct;
   const message = err instanceof Error ? err.message : String(err);
+  if (messageImpliesContextLengthExceeded(message)) {
+    return "CONTEXT_LENGTH_EXCEEDED";
+  }
   const proxyMatch = /^(?:proxy|daemon) \d+: (\S+)/.exec(message);
-  if (proxyMatch?.[1]?.trim()) return proxyMatch[1].trim();
+  if (proxyMatch?.[1]?.trim() && /^[A-Z][A-Z0-9_]+$/.test(proxyMatch[1].trim())) {
+    return proxyMatch[1].trim();
+  }
+  const upstreamStatus =
+    /(?:Upstream error:|proxy|daemon)\s+(\d{3})\b/i.exec(message);
+  if (upstreamStatus?.[1]) {
+    const status = Number(upstreamStatus[1]);
+    if (Number.isFinite(status)) return mapHttpStatusToProjectRunErrorCode(status);
+  }
+  if (/overloaded/i.test(message)) return "OVERLOADED_ERROR";
   const known =
-    /\b(UPSTREAM_UNAVAILABLE|RATE_LIMITED|UNAUTHORIZED|FORBIDDEN|BAD_REQUEST|INTERNAL_ERROR|OVERLOADED_ERROR|PROJECT_STORAGE_UNAVAILABLE|PROJECT_STORAGE_SYNC_FAILED|MANAGED_API_KEY_MISSING|API_KEY_REQUIRED|MANAGED_KEY_UNAVAILABLE)\b/.exec(
+    /\b(UPSTREAM_UNAVAILABLE|RATE_LIMITED|UNAUTHORIZED|FORBIDDEN|BAD_REQUEST|INTERNAL_ERROR|OVERLOADED_ERROR|PROJECT_STORAGE_UNAVAILABLE|PROJECT_STORAGE_SYNC_FAILED|MANAGED_API_KEY_MISSING|API_KEY_REQUIRED|MANAGED_KEY_UNAVAILABLE|CONTEXT_LENGTH_EXCEEDED|AGENT_EXECUTION_FAILED|AGENT_EXECUTION_STALLED)\b/.exec(
       message,
     );
-  return known?.[1];
+  if (known?.[1]) return known[1];
+
+  const type = anthropicLikeErrorType(err).toLowerCase();
+  const status = anthropicLikeErrorStatus(err);
+  if (type === "overloaded_error" || status === 529) return "OVERLOADED_ERROR";
+  if (type === "rate_limit_error" || status === 429) return "RATE_LIMITED";
+  if (type === "authentication_error" || status === 401) return "UNAUTHORIZED";
+  if (type === "permission_error" || status === 403) return "FORBIDDEN";
+  if (type === "invalid_request_error") {
+    return messageImpliesContextLengthExceeded(message)
+      ? "CONTEXT_LENGTH_EXCEEDED"
+      : "BAD_REQUEST";
+  }
+  if (status === 502 || status === 503 || status === 504) return "UPSTREAM_UNAVAILABLE";
+  if (status === 500) return "INTERNAL_ERROR";
+  if (status != null) return mapHttpStatusToProjectRunErrorCode(status);
+  return undefined;
 }
 
 /** User-facing run/stream failure — embed avoids raw daemon/SSE English (banner + chat status). */
@@ -314,6 +434,9 @@ export function formatProjectRunErrorForUser(err: unknown): string {
   if (code === "RATE_LIMITED") {
     return "요청이 너무 많습니다. 잠시 후 다시 시도하세요.";
   }
+  if (code === "CONTEXT_LENGTH_EXCEEDED") {
+    return "입력/참고 자료가 너무 길어 모델 한도를 초과했습니다. 첨부를 줄이거나 슬라이드 장수를 줄인 뒤 다시 시도하세요.";
+  }
   if (code === "UPSTREAM_UNAVAILABLE") {
     return "AI 서비스에 연결하지 못했습니다. 잠시 후 다시 시도하세요.";
   }
@@ -332,6 +455,9 @@ export function formatProjectRunErrorForUser(err: unknown): string {
   }
   if (code === "INTERNAL_ERROR") {
     return "실행 중 내부 오류가 발생했습니다. 다시 시도하세요.";
+  }
+  if (code === "PROJECT_NOT_FOUND" || code === "NOT_FOUND") {
+    return "이 슬라이드 프로젝트를 찾을 수 없습니다. 페이지를 새로고침한 뒤 다시 시도하세요.";
   }
   if (code === "AGENT_EXECUTION_STALLED") {
     return formatProjectRunStalledErrorForUser();

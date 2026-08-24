@@ -20,8 +20,10 @@ import type { PluginShareAction } from '../../state/projects';
 import { Icon } from '../Icon';
 import { TrustBadge } from '../TrustBadge';
 import { shouldEagerLoadCommunityPluginPreviews } from '../../teamver/embedDaemonFetchPolicy';
+import { embedUiLabel } from '../../teamver/embedUiLabels';
 import { PreviewSurface } from './cards/PreviewSurface';
 import { localizePluginDescription, localizePluginTitle } from './localization';
+import { resolveGalleryOdMode, shouldPreferBakedGalleryClip } from './galleryOdMode';
 import { inferPluginPreview } from './preview';
 import type { PluginUseAction } from './useActions';
 
@@ -45,9 +47,10 @@ interface Props {
   // is the minimal live-preview tile: a top bar (dot + name + open
   // fullscreen) over an eagerly-rendered example.html iframe.
   layout?: 'rich' | 'gallery';
-  // Gallery only: the ↗ that opens the real example page in a new tab.
-  // Fired alongside the default anchor navigation so analytics can tell
-  // "opened the finished page" apart from "opened the detail modal".
+  // Gallery only: the ↗ that opens the preview in a new tab. Prefer a
+  // button + handler (fetch HTML → sandboxed blob) over a raw
+  // `/api/plugins/.../preview` anchor — embed sessions cannot rely on
+  // cookie-auth for a top-level navigation to that URL.
   onOpenExternal?: (record: InstalledPluginRecord) => void;
 }
 
@@ -70,9 +73,14 @@ export function PluginCard({
 }: Props) {
   const { locale } = useI18n();
   const [useMenuOpen, setUseMenuOpen] = useState(false);
-  // Tiles prefer the cheap pre-baked hover-pan clip; the detail modal still
-  // opens the live interactive page (it calls inferPluginPreview without this).
-  const preview = useMemo(() => inferPluginPreview(record, { preferBaked: true }), [record]);
+  // Non-deck tiles prefer the cheap pre-baked hover-pan clip. Deck identity
+  // stays on the isolated 1920 HTML cover so 1.31 bakes do not letterbox
+  // inside the 16:9 frame. The detail modal still calls inferPluginPreview
+  // without preferBaked and opens the live page.
+  const preview = useMemo(
+    () => inferPluginPreview(record, { preferBaked: shouldPreferBakedGalleryClip(record) }),
+    [record],
+  );
   const title = localizePluginTitle(locale, record);
   const description = localizePluginDescription(locale, record);
   const tags = useMemo(
@@ -101,6 +109,7 @@ export function PluginCard({
     // Deck templates render a fixed 16:9 stage; tag them so gallery previews
     // use a 16:9 frame instead of the tall scroll-preview viewport.
     const odMode = (record.manifest?.od as { mode?: unknown } | undefined)?.mode;
+    const galleryOdMode = resolveGalleryOdMode(record, odMode);
     const previewSrc = preview.kind === 'html' ? preview.src : null;
     return (
       <article
@@ -116,7 +125,7 @@ export function PluginCard({
           .join(' ')}
         data-plugin-id={record.id}
         data-preview-kind={preview.kind}
-        {...(typeof odMode === 'string' ? { 'data-od-mode': odMode } : {})}
+        {...(typeof galleryOdMode === 'string' ? { 'data-od-mode': galleryOdMode } : {})}
         {...(isFeatured ? { 'data-featured': 'true' } : {})}
         // Mouse convenience: clicking anywhere on the tile opens details.
         // Keyboard/AT users get a real, announced control via the title
@@ -130,7 +139,10 @@ export function PluginCard({
             type="button"
             className="plugins-home__gallery-name"
             title={title}
-            aria-label={`Open ${title} details`}
+            aria-label={embedUiLabel(
+              `Open ${title} details`,
+              `${title} 상세 열기`,
+            )}
             onClick={(event) => {
               event.stopPropagation();
               onOpenDetails(record);
@@ -141,7 +153,23 @@ export function PluginCard({
           >
             {title}
           </button>
-          {previewSrc ? (
+          {previewSrc && onOpenExternal ? (
+            <button
+              type="button"
+              className="plugins-home__gallery-open"
+              onClick={(event) => {
+                event.stopPropagation();
+                onOpenExternal(record);
+              }}
+              aria-label={embedUiLabel(
+                `Open ${title} in a new tab`,
+                `${title} 새 탭에서 열기`,
+              )}
+              data-testid={`plugins-home-open-${record.id}`}
+            >
+              <Icon name="external-link" size={12} />
+            </button>
+          ) : previewSrc ? (
             <a
               className="plugins-home__gallery-open"
               href={previewSrc}
@@ -149,9 +177,11 @@ export function PluginCard({
               rel="noreferrer"
               onClick={(event) => {
                 event.stopPropagation();
-                onOpenExternal?.(record);
               }}
-              aria-label={`Open ${title} in a new tab`}
+              aria-label={embedUiLabel(
+                `Open ${title} in a new tab`,
+                `${title} 새 탭에서 열기`,
+              )}
               data-testid={`plugins-home-open-${record.id}`}
             >
               <Icon name="external-link" size={12} />

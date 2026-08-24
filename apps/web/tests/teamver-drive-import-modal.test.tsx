@@ -275,6 +275,53 @@ describe("TeamverDriveImportModal", () => {
     expect((screen.getByTestId("teamver-drive-import-attach") as HTMLButtonElement).disabled).toBe(false);
   });
 
+  it("shows type icons and image thumbs on selected chips", async () => {
+    browsePageMock.mockResolvedValue({
+      rows: [
+        { kind: "asset", assetId: "AST-1", name: "logo.svg", mimeType: "image/svg+xml" },
+        {
+          kind: "asset",
+          assetId: "AST-PDF",
+          name: "brief.pdf",
+          mimeType: "application/pdf",
+        },
+      ],
+      hasMore: false,
+      nextCursor: null,
+    });
+    fetchThumbnailsMock.mockResolvedValue(
+      new Map([["AST-1", "https://thumb.example/logo.svg"]]),
+    );
+
+    render(
+      <TeamverDriveImportModal
+        open
+        workspaceId="ws-1"
+        onClose={() => undefined}
+        onConfirm={async () => undefined}
+      />,
+    );
+
+    fireEvent.mouseDown(await screen.findByTestId("teamver-drive-import-asset-AST-1"));
+    fireEvent.mouseDown(await screen.findByTestId("teamver-drive-import-asset-AST-PDF"));
+
+    const selected = await screen.findByTestId("teamver-drive-import-selected");
+    await waitFor(() => {
+      expect(
+        selected.querySelector(
+          '[data-testid="teamver-drive-import-selected-chip-AST-1"] img.teamver-drive-import-selected-thumb',
+        )?.getAttribute("src"),
+      ).toBe("https://thumb.example/logo.svg");
+    });
+    expect(
+      selected.querySelector(
+        '[data-testid="teamver-drive-import-selected-chip-AST-PDF"] [data-testid="teamver-drive-import-selected-chip-icon"][data-icon="file"]',
+      ),
+    ).toBeTruthy();
+    expect(selected.textContent).toContain(".pdf");
+    expect(screen.getByLabelText("brief.pdf 선택 해제")).toBeTruthy();
+  });
+
   it("shows blocked hint when unsupported file is clicked", async () => {
     useTeamverBrandingMock.mockReturnValue({ slideOnlyMvp: true });
     browsePageMock.mockResolvedValue({

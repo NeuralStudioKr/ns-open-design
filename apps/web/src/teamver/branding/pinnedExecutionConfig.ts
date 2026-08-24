@@ -1,4 +1,5 @@
 import type { ApiProtocol } from "../../types";
+import { FAST_MODEL_BY_PROTOCOL, resolveFixedOriginBaseUrl } from "../../state/apiProtocols";
 
 export type PinnedTeamverExecutionConfig = {
   apiProtocol: ApiProtocol;
@@ -24,6 +25,7 @@ export function pinTeamverExecutionConfig(input: {
     "ollama",
     "senseaudio",
     "aihubmix",
+    "minimax",
   ];
   const rawProtocol = (input.apiProtocol ?? "anthropic").trim().toLowerCase();
   const apiProtocol = allowed.includes(rawProtocol as ApiProtocol)
@@ -31,8 +33,8 @@ export function pinTeamverExecutionConfig(input: {
     : "anthropic";
   pinned = {
     apiProtocol,
-    baseUrl: (input.baseUrl?.trim() || "https://api.anthropic.com"),
-    model: (input.model?.trim() || "claude-sonnet-4-6"),
+    baseUrl: resolveFixedOriginBaseUrl(apiProtocol, input.baseUrl?.trim() || "https://api.anthropic.com"),
+    model: (input.model?.trim() || FAST_MODEL_BY_PROTOCOL[apiProtocol] || "claude-sonnet-4-6"),
     managedApiConfigured: input.managedApiConfigured === true,
   };
 }

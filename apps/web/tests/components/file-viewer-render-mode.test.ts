@@ -6,8 +6,11 @@ import {
   htmlNeedsFocusGuard,
   htmlNeedsRedirectGuard,
   htmlNeedsSandboxShim,
+  isEmbedPreviewAwaitingScopedPrefix,
   parseForceInline,
   resolveHtmlPreviewAssetUrl,
+  resolveHtmlPreviewSrcDocBaseHref,
+  resolveSrcDocPreviewMountKey,
   shouldUrlLoadHtmlPreview,
 } from '../../src/components/file-viewer-render-mode';
 
@@ -108,6 +111,105 @@ describe('resolveHtmlPreviewAssetUrl', () => {
       rawUrl: '/api/projects/project-1/raw/page.html',
       scopedUrl: null,
     })).toBe('about:blank');
+  });
+});
+
+describe('resolveHtmlPreviewSrcDocBaseHref', () => {
+  it('omits about:blank so srcDoc does not inject a broken <base> before prefix resolves', () => {
+    expect(resolveHtmlPreviewSrcDocBaseHref({
+      teamverEmbedMode: true,
+      embedPreviewPrefix: null,
+      rawUrl: '/api/projects/project-1/raw/',
+      scopedUrl: null,
+    })).toBeUndefined();
+  });
+
+  it('returns the scoped prefix directory once Teamver preview scope is ready', () => {
+    expect(resolveHtmlPreviewSrcDocBaseHref({
+      teamverEmbedMode: true,
+      embedPreviewPrefix: '/api/projects/project-1/preview/scope-1',
+      rawUrl: '/api/projects/project-1/raw/',
+      scopedUrl: '/api/projects/project-1/preview/scope-1/',
+    })).toBe('/api/projects/project-1/preview/scope-1/');
+  });
+
+  it('keeps standalone OD raw directory URLs for srcDoc base', () => {
+    expect(resolveHtmlPreviewSrcDocBaseHref({
+      teamverEmbedMode: false,
+      embedPreviewPrefix: null,
+      rawUrl: '/api/projects/project-1/raw/',
+      scopedUrl: null,
+    })).toBe('/api/projects/project-1/raw/');
+  });
+});
+
+describe('resolveSrcDocPreviewMountKey', () => {
+  it('stays on transport reset key alone outside Teamver embed', () => {
+    expect(resolveSrcDocPreviewMountKey({
+      transportResetKey: 3,
+      teamverEmbedMode: false,
+      embedPreviewPrefix: null,
+      embedPreviewPrefixSettled: true,
+    })).toBe('3');
+  });
+
+  it('uses hold scope until a settled prefix is ready so React remounts on first paint', () => {
+    expect(resolveSrcDocPreviewMountKey({
+      transportResetKey: 0,
+      teamverEmbedMode: true,
+      embedPreviewPrefix: null,
+      embedPreviewPrefixSettled: false,
+    })).toBe('0:hold');
+    expect(resolveSrcDocPreviewMountKey({
+      transportResetKey: 0,
+      teamverEmbedMode: true,
+      embedPreviewPrefix: '/api/projects/p/preview/s',
+      embedPreviewPrefixSettled: false,
+    })).toBe('0:hold');
+  });
+
+  it('includes the settled prefix so hold→paint changes the iframe key', () => {
+    expect(resolveSrcDocPreviewMountKey({
+      transportResetKey: 1,
+      teamverEmbedMode: true,
+      embedPreviewPrefix: '/api/projects/p/preview/s',
+      embedPreviewPrefixSettled: true,
+    })).toBe('1:/api/projects/p/preview/s');
+  });
+});
+
+describe('isEmbedPreviewAwaitingScopedPrefix', () => {
+  it('is true only when embed has source but no settled scoped prefix', () => {
+    expect(isEmbedPreviewAwaitingScopedPrefix({
+      teamverEmbedMode: true,
+      hasSource: true,
+      embedPreviewPrefix: null,
+      embedPreviewPrefixSettled: false,
+    })).toBe(true);
+    expect(isEmbedPreviewAwaitingScopedPrefix({
+      teamverEmbedMode: true,
+      hasSource: true,
+      embedPreviewPrefix: null,
+      embedPreviewPrefixSettled: true,
+    })).toBe(true);
+    expect(isEmbedPreviewAwaitingScopedPrefix({
+      teamverEmbedMode: true,
+      hasSource: true,
+      embedPreviewPrefix: '/api/projects/p/preview/s',
+      embedPreviewPrefixSettled: true,
+    })).toBe(false);
+    expect(isEmbedPreviewAwaitingScopedPrefix({
+      teamverEmbedMode: false,
+      hasSource: true,
+      embedPreviewPrefix: null,
+      embedPreviewPrefixSettled: false,
+    })).toBe(false);
+    expect(isEmbedPreviewAwaitingScopedPrefix({
+      teamverEmbedMode: true,
+      hasSource: false,
+      embedPreviewPrefix: null,
+      embedPreviewPrefixSettled: false,
+    })).toBe(false);
   });
 });
 

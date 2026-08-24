@@ -10,6 +10,7 @@
  *                 non-zero (tail appended to the error message).
  */
 import type { AgentEvent, ChatCommentAttachment, ChatMessage } from '../types';
+import { devLog } from '../lib/devLog';
 
 import type { AmrEntryAttribution } from '../analytics/amr-attribution';
 import type {
@@ -75,7 +76,7 @@ export function latestUserPromptFromHistory(history: ChatMessage[]): string {
 function truncateForTranscript(content: string): string {
   if (content.length <= MAX_TRANSCRIPT_MESSAGE_CHARS) return content;
   const omitted = content.length - MAX_TRANSCRIPT_MESSAGE_CHARS;
-  return `${content.slice(0, MAX_TRANSCRIPT_MESSAGE_CHARS)}\n\n[Open Design truncated ${omitted} chars from this prior message before sending it to the agent. Full content remains in persisted history.]`;
+  return `${content.slice(0, MAX_TRANSCRIPT_MESSAGE_CHARS)}\n\n[Prior message truncated ${omitted} chars before sending it to the agent. Full content remains in persisted history.]`;
 }
 
 function escapeTranscriptRoleDelimiters(content: string): string {
@@ -134,7 +135,7 @@ function buildPriorRunContextWarning(history: ChatMessage[]): string | null {
 
   return [
     '## context warning',
-    `Open Design detected ${notes.join(', ')}.`,
+    `A previous turn detected ${notes.join(', ')}.`,
     'Keep this turn compact: summarize prior tool output, read large references from temp files, and quote only task-relevant lines.',
   ].join('\n');
 }
@@ -173,7 +174,7 @@ export function sanitizePriorAssistantTurnForTranscript(
     // `\1` backreference keeps the open/close tag names matched so we never
     // splice across a `<question-form>…</ask-question>` mismatch.
     /<(question-form|ask-question)\b[^>]*>[\s\S]*?<\/\1>/g,
-    '[question-form was emitted here on a prior turn; the user already answered, see their reply below.]',
+    '[A question form was emitted on a prior turn; the user already answered, see their reply below.]',
   );
   // Strip ```json (or plain ```) fenced blocks whose body matches the
   // form schema shape — `"questions": [` is the strongest tell. A
@@ -282,6 +283,8 @@ export interface DaemonStreamOptions {
   // change the project's persistent `skillId`.
   skillIds?: string[];
   designSystemId?: string | null;
+  selectedDeckTemplateId?: string | null;
+  selectedDeckTemplateTitle?: string | null;
   // Project-relative paths the user has staged for this turn. The
   // daemon resolves them inside the project folder, validates they
   // exist, and stitches them into the user message as `@<path>` hints.
@@ -582,6 +585,8 @@ export async function streamViaDaemon({
   skillId,
   skillIds,
   designSystemId,
+  selectedDeckTemplateId,
+  selectedDeckTemplateTitle,
   attachments,
   commentAttachments,
   model,
@@ -618,6 +623,8 @@ export async function streamViaDaemon({
     skillId: skillId ?? null,
     skillIds: Array.isArray(skillIds) ? skillIds : [],
     designSystemId: designSystemId ?? null,
+    selectedDeckTemplateId: selectedDeckTemplateId ?? null,
+    selectedDeckTemplateTitle: selectedDeckTemplateTitle ?? null,
     attachments: attachments ?? [],
     commentAttachments: commentAttachments ?? [],
     model: model ?? null,
@@ -899,7 +906,7 @@ export async function listActiveChatRuns(
     const qs = new URLSearchParams({ projectId, conversationId, status: 'active' });
     const resp = await fetchTeamverDaemon(`/api/runs?${qs.toString()}`);
     if (!resp.ok) {
-      console.warn('[teamver] listActiveChatRuns non-ok', {
+      devLog.warn('[teamver] listActiveChatRuns non-ok', {
         projectId,
         conversationId,
         status: resp.status,
@@ -910,7 +917,7 @@ export async function listActiveChatRuns(
     const body = (await resp.json()) as ChatRunListResponse;
     return body.runs ?? [];
   } catch (err) {
-    console.warn('[teamver] listActiveChatRuns failed', { projectId, conversationId, err });
+    devLog.warn('[teamver] listActiveChatRuns failed', { projectId, conversationId, err });
     return [];
   }
 }
@@ -935,7 +942,7 @@ export async function listProjectRuns(): Promise<ChatRunStatusResponse[]> {
       const resp = await fetchTeamverDaemon('/api/runs', { skipEmbedAuthRecovery: true });
       if (!resp.ok) {
         if (!(isTeamverEmbedMode() && resp.status === 401)) {
-          console.warn('[teamver] listProjectRuns non-ok', {
+          devLog.warn('[teamver] listProjectRuns non-ok', {
             status: resp.status,
             redirected: resp.type === 'opaqueredirect',
           });
@@ -945,7 +952,7 @@ export async function listProjectRuns(): Promise<ChatRunStatusResponse[]> {
       const body = (await resp.json()) as ChatRunListResponse;
       return body.runs ?? [];
     } catch (err) {
-      console.warn('[teamver] listProjectRuns failed', err);
+      devLog.warn('[teamver] listProjectRuns failed', err);
       return [];
     } finally {
       listProjectRunsInflight = null;

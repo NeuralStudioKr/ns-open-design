@@ -6,7 +6,6 @@ import {
   type MarkdownLinkClickHandler,
 } from "../runtime/markdown";
 import { asInProjectFilePath } from "../runtime/in-project-link";
-import { projectFileUrl } from "../providers/registry";
 import { userFacingRunErrorDetail } from "../teamver/projectErrorMessages";
 import { useAnalytics } from "../analytics/provider";
 import { useTeamverBranding } from "../teamver/branding/TeamverBrandingProvider";
@@ -21,6 +20,7 @@ import { isEmptyAssistantShell } from "../runtime/conversation-message-dedupe";
 import {
   hasEmbedVisibleAssistantBody,
   isTerminalSucceededEmptyShellForDisplay,
+  messageIndicatesSlideEditArtifact,
   messageLooksLikeSlideEditTurn,
   shouldSynthesizeTeamverCompletedArtifactLead,
   terminalSucceededAnchorLeadCopy,
@@ -59,8 +59,11 @@ import {
 import { useI18n } from "../i18n";
 import { parseSubmittedAnswers } from "./QuestionForm";
 import { splitStreamingArtifact, stripAllClosedArtifacts, stripRecoveredHtmlFallbackForDisplay } from "../artifacts/strip";
-import { isDeckPatchArtifactType } from "../artifacts/deck-patch";
-import { shouldHidePrematureDeckCompletionProse } from "../teamver/deckDeliverableProse";
+import {
+  shouldHideDeckCreateCompletionProseOnEditTurn,
+  shouldHidePrematureDeckCompletionProse,
+  stripDeckInFlightStatusResidue,
+} from "../teamver/deckDeliverableProse";
 import {
   getPluginFolderCandidates,
   type PluginFolderCandidate,
@@ -99,21 +102,6 @@ type TranslateFn = (
   key: keyof Dict,
   vars?: Record<string, string | number>
 ) => string;
-
-function messageIndicatesDeckPatchArtifact(
-  content: string,
-  liveArtifactType?: string | null,
-): boolean {
-  if (isDeckPatchArtifactType(liveArtifactType)) return true;
-  if (/<artifact\b[^>]*\stype=["'](?:deck-patch|slide-patch)["']/i.test(content)) return true;
-  const openIdx = content.search(/<artifact\b/i);
-  if (openIdx === -1) return false;
-  const gt = content.indexOf(">", openIdx);
-  // Opening tag still streaming — only match an in-progress `type=` value, not
-  // unrelated attrs like identifier="deck-patch" on a full-deck artifact.
-  const partialTag = gt === -1 ? content.slice(openIdx) : content.slice(openIdx, gt + 1);
-  return /\btype\s*=\s*["']?(?:deck-patch|slide-patch)\b/i.test(partialTag);
-}
 
 function teamverLiveArtifactLeadCopy(locale: string, deckPatch: boolean): string {
   if (locale.startsWith("ko")) {
@@ -450,6 +438,7 @@ function hasVisibleAssistantTextOutput(
     slideOnlyMvp,
     teamverEmbedEnabled,
     locale,
+    isSlideEditTurn = false,
   }: {
     streaming: boolean;
     hideRecoveredHtmlFallback: boolean;
@@ -458,6 +447,7 @@ function hasVisibleAssistantTextOutput(
     slideOnlyMvp: boolean;
     teamverEmbedEnabled: boolean;
     locale: string;
+    isSlideEditTurn?: boolean;
   },
 ): boolean {
   const stripped = stripAllClosedArtifacts(text);
@@ -487,10 +477,23 @@ function hasVisibleAssistantTextOutput(
     if (seg.kind === "form") return true;
     const visibleSegmentText = stripUserVisibleQuestionFormProtocolText(seg.text);
     if (visibleSegmentText.includes(INVALID_QUESTION_FORM_FALLBACK)) return false;
-    return visibleSegmentText.trim().length > 0;
+    const settledText = !streaming && slideOnlyGate
+      ? stripDeckInFlightStatusResidue(visibleSegmentText)
+      : visibleSegmentText;
+    if (
+      shouldHideDeckCreateCompletionProseOnEditTurn({
+        text: settledText,
+        isSlideEditTurn,
+        teamverSlideUi: slideOnlyGate,
+      })
+    ) {
+      return false;
+    }
+    return settledText.trim().length > 0;
   });
   // Premature deck completion lines are hidden only in ProseBlock while streaming
   // with an open artifact (`shouldHidePrematureDeckCompletionProse`) — not here.
+  // Live artifact progress still counts as visible activity for the footer.
   if (live) return true;
   return hasVisibleHead;
 }
@@ -633,7 +636,11 @@ function AssistantMessageImpl({
               fileOps,
               streaming,
             });
-      return filterEmbedDeliverableProducedFiles(base, { slideOnlyMvp }, { projectFiles });
+      return filterEmbedDeliverableProducedFiles(
+        filterImplicitProducedFiles(base),
+        { slideOnlyMvp },
+        { projectFiles },
+      );
     },
     [blocks, fileOps, message, produced, projectFiles, slideOnlyMvp, streaming],
   );
@@ -709,7 +716,11 @@ function AssistantMessageImpl({
   const roleName = hideAssistantModelLabels
     ? brandTitle
     : assistantRoleName(message, t);
-  const roleIconId = agentIconId(message.agentId, message.agentName);
+  // Embed hides provider chrome but still used agentIconId (e.g. anthropic-api
+  // → letter "A"). Brand the fallback glyph as Teamver ("T") instead.
+  const roleIconId = hideAssistantModelLabels
+    ? teamverAssistantIconId(brandTitle)
+    : agentIconId(message.agentId, message.agentName);
   const hasEmptyResponse = events.some(
     (e) => e.kind === "status" && e.label === "empty_response"
   );
@@ -725,7 +736,15 @@ function AssistantMessageImpl({
     unfinishedTodos.length > 0 &&
     !!onContinueRemainingTasks;
   const canFork = !streaming && !!onForkFromMessage;
-  const copyMarkdown = message.content.trim().length > 0 ? message.content : undefined;
+  const copyMarkdown = useMemo(() => {
+    const raw = message.content.trim();
+    if (!raw) return undefined;
+    // Copy must match display scrub — raw persist can still hold Daisy/SVG debris.
+    const cleaned = sanitizeAssistantProseForDisplay(raw, {
+      stripCodeFences: hideAssistantThinkingDetails,
+    }).trim();
+    return cleaned.length > 0 ? cleaned : undefined;
+  }, [hideAssistantThinkingDetails, message.content]);
   const showFeedback =
     !!onFeedback &&
     isFeedbackEligible({
@@ -748,6 +767,10 @@ function AssistantMessageImpl({
   // files) the footer shimmers "Preparing…"; the moment content lands it
   // flips to "Working". The elapsed clock stays anchored to the persisted run
   // start so switching project tabs or remounting the message cannot restart it.
+  // After reload, closed deck-patch tags may already be stripped — fall back
+  // to preTurn HTML baseline so we keep "slide edit applied" copy, not create.
+  const isDeckPatchArtifactTurn = messageLooksLikeSlideEditTurn(message)
+    || messageIndicatesSlideEditArtifact(assistantTextBody);
   // TodoWrite alone counts as activity even when tool cards are hidden in embed.
   const hasVisibleAssistantTextBlocks = blocks.some((b) => {
       if (b.kind === "status") return false;
@@ -760,6 +783,7 @@ function AssistantMessageImpl({
         slideOnlyMvp,
         teamverEmbedEnabled,
         locale,
+        isSlideEditTurn: isDeckPatchArtifactTurn,
       });
     });
   const hasContent =
@@ -768,10 +792,6 @@ function AssistantMessageImpl({
     || (!(hideAssistantThinkingDetails && streaming) && fileOps.length > 0)
     || streamingTodoProgress != null;
   const preparing = streaming && !hasContent;
-  // After reload, closed deck-patch tags may already be stripped — fall back
-  // to preTurn HTML baseline so we keep "slide edit applied" copy, not create.
-  const isDeckPatchArtifactTurn = messageLooksLikeSlideEditTurn(message)
-    || messageIndicatesDeckPatchArtifact(assistantTextBody);
   const teamverCompletedArtifactLead = teamverCompletedArtifactLeadCopy(
     locale,
     isDeckPatchArtifactTurn,
@@ -885,6 +905,7 @@ function AssistantMessageImpl({
                 showStreamCursor={streaming && i === lastTextBlockIndex}
                 nextUserContent={nextUserContent}
                 suppressDirectionForms={suppressDirectionForms}
+                isSlideEditTurn={isDeckPatchArtifactTurn}
                 onOpenQuestions={onOpenQuestions}
                 projectId={projectId}
                 projectFileNames={projectFileNames}
@@ -965,7 +986,6 @@ function AssistantMessageImpl({
         {!streaming && displayedProduced.length > 0 && projectId ? (
           <ProducedFiles
             files={displayedProduced}
-            projectId={projectId}
             onRequestOpenFile={onRequestOpenFile}
           />
         ) : null}
@@ -1140,6 +1160,16 @@ export function assistantRoleName(
     (e) => e.kind === "status" && e.label === "starting" && e.detail
   ) as Extract<AgentEvent, { kind: "status" }> | undefined;
   return agentDisplayName(starting?.detail) ?? t("assistant.role");
+}
+
+/**
+ * AgentIcon id used when Teamver embed hides provider labels.
+ * No bundled artwork → letter fallback; first latin letter of brand title
+ * (default "teamver Slide" → "T").
+ */
+export function teamverAssistantIconId(brandTitle: string): string {
+  const token = brandTitle.trim().match(/[a-z0-9]+/i)?.[0];
+  return (token || "teamver").toLowerCase();
 }
 
 export function assistantRoleLabel(
@@ -1890,11 +1920,9 @@ function UnfinishedTodosPanel({
 
 function ProducedFiles({
   files,
-  projectId,
   onRequestOpenFile,
 }: {
   files: ProjectFile[];
-  projectId: string;
   onRequestOpenFile?: (name: string) => void;
 }) {
   const t = useT();
@@ -1917,17 +1945,15 @@ function ProducedFiles({
                   type="button"
                   className="ghost"
                   onClick={() => onRequestOpenFile(f.name)}
+                  title={t("tool.openInTab", { name: f.name })}
+                  aria-label={t("tool.openInTab", { name: f.name })}
                 >
                   {t("assistant.openFile")}
                 </button>
               ) : null}
-              <a
-                className="ghost-link"
-                href={projectFileUrl(projectId, f.name)}
-                download={f.name}
-              >
-                {t("assistant.downloadFile")}
-              </a>
+              {/* Download is intentionally omitted: raw HTML (and similar)
+                  blobs from this chip open without the deck/srcdoc host, so
+                  layout/fonts/assets render incorrectly. Open in the viewer. */}
             </div>
           </div>
         ))}
@@ -2158,6 +2184,7 @@ function ProseBlock({
   showStreamCursor,
   nextUserContent,
   suppressDirectionForms,
+  isSlideEditTurn = false,
   onOpenQuestions,
   projectId,
   projectFileNames,
@@ -2172,6 +2199,8 @@ function ProseBlock({
   showStreamCursor?: boolean;
   nextUserContent?: string;
   suppressDirectionForms: boolean;
+  /** Existing deck baseline / deck-patch — prefer edit lead copy over create. */
+  isSlideEditTurn?: boolean;
   projectId?: string | null;
   projectFileNames?: Set<string>;
   onOpenQuestions?: (request?: QuestionFormOpenRequest) => void;
@@ -2284,16 +2313,36 @@ function ProseBlock({
   const visibleRenderable = useMemo(() => {
     const teamverSlideUi = slideOnlyMvp || teamverEmbedEnabled;
     if (!teamverSlideUi) return renderable;
-    return renderable.filter((seg) => {
-      if (seg.kind !== "text") return true;
-      return !shouldHidePrematureDeckCompletionProse({
-        text: seg.text,
-        streaming,
-        liveArtifactOpen: !!live,
-        teamverSlideUi,
-      });
+    return renderable.flatMap((seg) => {
+      if (seg.kind !== "text") return [seg];
+      if (
+        shouldHidePrematureDeckCompletionProse({
+          text: seg.text,
+          streaming,
+          liveArtifactOpen: !!live,
+          teamverSlideUi,
+        })
+      ) {
+        return [];
+      }
+      // Settled: strip bare "작성 중" / live-lead residue lines; keep explanations.
+      const text = !streaming
+        ? stripDeckInFlightStatusResidue(seg.text)
+        : seg.text;
+      if (!text.trim()) return [];
+      // Edit turns: suppress "draft created" prose so synthetic edit lead wins.
+      if (
+        shouldHideDeckCreateCompletionProseOnEditTurn({
+          text,
+          isSlideEditTurn,
+          teamverSlideUi,
+        })
+      ) {
+        return [];
+      }
+      return text === seg.text ? [seg] : [{ ...seg, text }];
     });
-  }, [renderable, streaming, live, slideOnlyMvp, teamverEmbedEnabled]);
+  }, [renderable, streaming, live, slideOnlyMvp, teamverEmbedEnabled, isSlideEditTurn]);
   const hasVisibleProseWhileLive = visibleRenderable.some(
     (seg) =>
       (seg.kind === "text" && seg.text.trim().length > 0)
@@ -2307,7 +2356,7 @@ function ProseBlock({
     && (slideOnlyMvp || teamverEmbedEnabled);
   const teamverLiveArtifactLead = teamverLiveArtifactLeadCopy(
     locale,
-    messageIndicatesDeckPatchArtifact(text, live?.artifactType),
+    isSlideEditTurn || messageIndicatesSlideEditArtifact(text, live?.artifactType),
   );
   if (visibleRenderable.length === 0 && !live && !hadOpenForm) return null;
   return (

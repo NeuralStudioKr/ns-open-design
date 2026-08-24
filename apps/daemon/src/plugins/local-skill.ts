@@ -17,6 +17,14 @@
 import path from 'node:path';
 import { promises as fsp } from 'node:fs';
 import type { InstalledPluginRecord } from '@open-design/contracts';
+import {
+  appendTemplateVisualKit,
+  extractTemplateVisualKitFromHtml,
+  listLocalStylesheetHrefs,
+  neutralizeFilesystemCloneWorkflow,
+  pickPluginPreviewHtmlPath,
+  readSkillFrontmatterDescription,
+} from '@open-design/contracts';
 import { pickFirstLocalSkillPath } from './apply.js';
 
 export interface PluginLocalSkill {
@@ -48,9 +56,58 @@ export async function loadPluginLocalSkill(
   } catch {
     return null;
   }
-  const body = stripFrontmatter(raw).trim();
-  if (!body) return null;
+  const bodyOnly = stripFrontmatter(raw).trim();
+  if (!bodyOnly) return null;
+  // Recovery hint: several bundled deck templates (Hermes cyber terminal,
+  // Graphify dark graph, zhangzara biennale, etc.) put the actual visual
+  // specification — palette hex codes, typography, motif language — in the
+  // frontmatter `description` field. The body under the frontmatter is
+  // meta-instructions ('read master skill, copy from templates folder')
+  // that the model cannot follow at runtime because those companion files
+  // are not mounted into the project workspace. Stripping the frontmatter
+  // therefore stripped the ONLY authoritative visual spec the model gets
+  // for those templates → deck came back looking generic even though the
+  // template body was 'loaded'. Prepend the frontmatter description /
+  // manifest description so the visual contract survives.
   const name = (manifest.title ?? manifest.name ?? plugin.id).toString();
+  let body = neutralizeFilesystemCloneWorkflow(
+    withFrontmatterDescriptionHeader(bodyOnly, raw, manifest),
+  );
+  // BYOK / API-mode cannot Read companion files. Attach a compact visual kit
+  // from example.html so selected Zhangzara templates keep cream/pastel
+  // tokens instead of collapsing to the Active design system look.
+  // Token-safe: kit + scaffold map only — never append full HTML scaffold.
+  const previewRel = pickPluginPreviewHtmlPath(manifest);
+  if (previewRel && previewRel !== safeRel) {
+    try {
+      const previewAbs = path.join(plugin.fsPath, previewRel);
+      const previewHtml = await fsp.readFile(previewAbs, 'utf8');
+      const previewDir = path.dirname(previewAbs);
+      const pluginRoot = path.resolve(plugin.fsPath);
+      const supplementalParts: string[] = [];
+      for (const href of listLocalStylesheetHrefs(previewHtml).slice(0, 3)) {
+        try {
+          const cssAbs = path.resolve(previewDir, href);
+          // Stay inside the plugin folder (path-boundary safe).
+          if (cssAbs !== pluginRoot && !cssAbs.startsWith(`${pluginRoot}${path.sep}`)) continue;
+          supplementalParts.push(await fsp.readFile(cssAbs, 'utf8'));
+        } catch {
+          // Best-effort sibling CSS (Pin-and-Paper assets/styles.css, etc.).
+        }
+      }
+      body = appendTemplateVisualKit(
+        body,
+        extractTemplateVisualKitFromHtml(previewHtml, {
+          title: name,
+          ...(supplementalParts.length > 0
+            ? { supplementalCss: supplementalParts.join('\n') }
+            : {}),
+        }),
+      );
+    } catch {
+      // Best-effort — SKILL.md visual summary still applies.
+    }
+  }
   return {
     body,
     name,
@@ -72,4 +129,33 @@ function stripFrontmatter(raw: string): string {
   if (closeIdx === -1) return raw;
   const after = raw.slice(closeIdx + 4);
   return after.replace(/^\r?\n/, '');
+}
+
+/**
+ * If the SKILL.md frontmatter (or the plugin manifest, as a fallback)
+ * carries a rich `description`, prepend it to the body as a `## Visual
+ * summary` block. Idempotent: if the body already contains that summary
+ * (author-authored, or a prior invocation persisted it), we leave the
+ * body alone.
+ *
+ * Motivation: bundled deck templates put the concrete visual spec in the
+ * frontmatter and reserve the body for cross-file authoring instructions.
+ * Without this, the composer feeds the model only the instructions and
+ * loses the palette / typography / motif contract entirely.
+ */
+function withFrontmatterDescriptionHeader(
+  bodyOnly: string,
+  raw: string,
+  manifest: InstalledPluginRecord['manifest'],
+): string {
+  const description = readSkillFrontmatterDescription(raw)
+    ?? (typeof manifest?.description === 'string' ? manifest.description.trim() : '');
+  if (!description) return bodyOnly;
+  if (bodyOnly.includes(description)) return bodyOnly;
+  const summary = [
+    '## Visual summary (from template frontmatter)',
+    '',
+    description,
+  ].join('\n');
+  return `${summary}\n\n${bodyOnly}`;
 }

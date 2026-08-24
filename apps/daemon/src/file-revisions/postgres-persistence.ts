@@ -185,6 +185,39 @@ export async function pgPruneOldestFileRevisionsWithSnapshots(
   return pgPruneOldestFileRevisions(pool, projectId, fileName, keep);
 }
 
+export async function pgPruneOldestFileRevisionsCapped(
+  pool: Pool,
+  projectId: string,
+  fileName: string,
+  keep: number,
+  maxDeletes: number,
+): Promise<{ ids: string[]; remainingExcess: number }> {
+  const countRow = await queryPostgresRow<{ c: string }>(
+    pool,
+    `SELECT count(*)::text AS c FROM file_revisions WHERE project_id = $1 AND file_name = $2`,
+    [projectId, fileName],
+  );
+  const excess = Math.max(0, Number(countRow?.c ?? 0) - keep);
+  if (excess === 0 || maxDeletes <= 0) {
+    return { ids: [], remainingExcess: excess };
+  }
+
+  const deleteCount = Math.min(excess, maxDeletes);
+  const rows = await queryPostgresRows<{ id: string }>(
+    pool,
+    `SELECT id FROM file_revisions
+     WHERE project_id = $1 AND file_name = $2
+     ORDER BY sequence ASC
+     LIMIT $3`,
+    [projectId, fileName, deleteCount],
+  );
+  const ids = rows.map((row) => row.id);
+  if (ids.length > 0) {
+    await pgDeleteFileRevisionsByIdsWithSnapshots(pool, ids);
+  }
+  return { ids, remainingExcess: Math.max(0, excess - ids.length) };
+}
+
 export async function pgCommitRevisionWithSnapshot(
   pool: Pool,
   input: PgFileRevisionRow,
@@ -221,6 +254,55 @@ export async function pgCommitRevisionWithSnapshot(
         input.label,
         input.conversationId,
         input.assistantMessageId,
+      ],
+    );
+    await client.query(
+      `INSERT INTO file_revision_snapshots (revision_id, compressed, storage_bytes)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (revision_id) DO UPDATE SET
+         compressed = EXCLUDED.compressed,
+         storage_bytes = EXCLUDED.storage_bytes`,
+      [input.id, compressed, compressed.length],
+    );
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+export async function pgUpdateFileRevisionHead(
+  pool: Pool,
+  input: {
+    id: string;
+    label: string;
+    byteSize: number;
+    createdAt: number;
+    conversationId?: string | null;
+    assistantMessageId?: string | null;
+  },
+  compressed: Buffer,
+): Promise<void> {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(
+      `UPDATE file_revisions
+       SET label = $2,
+           byte_size = $3,
+           created_at = $4,
+           conversation_id = COALESCE($5, conversation_id),
+           assistant_message_id = COALESCE($6, assistant_message_id)
+       WHERE id = $1`,
+      [
+        input.id,
+        input.label,
+        input.byteSize,
+        input.createdAt,
+        input.conversationId ?? null,
+        input.assistantMessageId ?? null,
       ],
     );
     await client.query(
@@ -306,6 +388,38 @@ export async function pgPruneOrphanFileRevisionSnapshots(pool: Pool): Promise<{
   const reclaimedBytes = rows.reduce((sum, row) => sum + (row.storageBytes ?? 0), 0);
   await pgDeleteFileRevisionSnapshots(pool, rows.map((row) => row.id));
   return { removed: rows.length, reclaimedBytes };
+}
+
+export async function pgListOldestRevisionsForPrune(
+  pool: Pool,
+  excludeRevisionIds: ReadonlySet<string>,
+  limit: number,
+): Promise<Array<{ id: string; projectId: string; fileName: string; storageBytes: number }>> {
+  if (limit <= 0) return [];
+  const exclude = [...excludeRevisionIds];
+  if (exclude.length === 0) {
+    return await queryPostgresRows<{ id: string; projectId: string; fileName: string; storageBytes: number }>(
+      pool,
+      `SELECT r.id AS id, r.project_id AS "projectId", r.file_name AS "fileName",
+              coalesce(s.storage_bytes, 0)::bigint AS "storageBytes"
+       FROM file_revisions r
+       LEFT JOIN file_revision_snapshots s ON s.revision_id = r.id
+       ORDER BY r.created_at ASC, r.sequence ASC
+       LIMIT $1`,
+      [limit],
+    );
+  }
+  return await queryPostgresRows<{ id: string; projectId: string; fileName: string; storageBytes: number }>(
+    pool,
+    `SELECT r.id AS id, r.project_id AS "projectId", r.file_name AS "fileName",
+            coalesce(s.storage_bytes, 0)::bigint AS "storageBytes"
+     FROM file_revisions r
+     LEFT JOIN file_revision_snapshots s ON s.revision_id = r.id
+     WHERE NOT (r.id = ANY($1::text[]))
+     ORDER BY r.created_at ASC, r.sequence ASC
+     LIMIT $2`,
+    [exclude, limit],
+  );
 }
 
 export async function pgGetFileRevisionSnapshotStorageStats(pool: Pool): Promise<{

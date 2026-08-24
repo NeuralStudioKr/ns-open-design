@@ -13,7 +13,7 @@ import {
   pgGetLatestFileRevision,
   pgListDistinctFileRevisionTargets,
   pgListFileRevisions,
-  pgPruneOldestFileRevisionsWithSnapshots,
+  pgUpdateFileRevisionHead,
   type PgFileRevisionRow,
 } from './postgres-persistence.js';
 import {
@@ -21,7 +21,7 @@ import {
   resolveFullSnapshotInterval,
   shouldForceFullSnapshot,
 } from './snapshot-codec.js';
-import { usesPostgresRevisionSnapshots } from './snapshot-storage.js';
+import { usesPostgresRevisionSnapshots, upsertFileRevisionSnapshot } from './snapshot-storage.js';
 
 function rowToRevision(row: FileRevisionRow): FileRevision {
   return {
@@ -283,40 +283,42 @@ export async function pruneOldestFileRevisionsDurable(
   fileName: string,
   keep: number,
 ): Promise<FileRevision[]> {
+  const result = await pruneOldestFileRevisionsDurableLimited(
+    db,
+    projectId,
+    fileName,
+    keep,
+    Number.POSITIVE_INFINITY,
+  );
+  return result.revisions;
+}
+
+export async function pruneOldestFileRevisionsDurableLimited(
+  db: Database.Database,
+  projectId: string,
+  fileName: string,
+  keep: number,
+  maxDeletes: number,
+): Promise<{ revisions: FileRevision[]; remainingExcess: number }> {
   if (usesPostgresRevisionSnapshots()) {
     await ensureFileRevisionsHydrated(db, projectId, fileName);
-    const rows = db.prepare(`
-      SELECT
-        id,
-        project_id AS projectId,
-        file_name AS fileName,
-        parent_revision_id AS parentRevisionId,
-        sequence,
-        created_at AS createdAt,
-        byte_size AS byteSize,
-        source,
-        label,
-        conversation_id AS conversationId,
-        assistant_message_id AS assistantMessageId
-      FROM file_revisions
-      WHERE project_id = ? AND file_name = ?
-      ORDER BY sequence DESC
-      LIMIT -1 OFFSET ?
-    `).all(projectId, fileName, keep) as FileRevisionRow[];
-    if (rows.length === 0) return [];
-    const prunedIds = rows.map((row) => row.id);
-    await pgPruneOldestFileRevisionsWithSnapshots(
-      getPostgresPool(),
-      projectId,
-      fileName,
-      keep,
-    );
-    const placeholders = prunedIds.map(() => '?').join(', ');
-    db.prepare(`DELETE FROM file_revisions WHERE id IN (${placeholders})`).run(...prunedIds);
-    return rows.map(rowToRevision);
+    const { listFileRevisions } = await import('./persistence.js');
+    const { selectChainAwarePruneIds } = await import('./prune-chain.js');
+    const revisions = listFileRevisions(db, projectId, fileName);
+    const selection = selectChainAwarePruneIds(revisions, keep, maxDeletes);
+    if (selection.revisionIds.length === 0) {
+      return { revisions: [], remainingExcess: selection.remainingExcess };
+    }
+    await pgDeleteFileRevisionsByIdsWithSnapshots(getPostgresPool(), selection.revisionIds);
+    const placeholders = selection.revisionIds.map(() => '?').join(', ');
+    db.prepare(`DELETE FROM file_revisions WHERE id IN (${placeholders})`).run(...selection.revisionIds);
+    return {
+      revisions: selection.revisions,
+      remainingExcess: selection.remainingExcess,
+    };
   }
-  const { pruneOldestFileRevisions } = await import('./persistence.js');
-  return pruneOldestFileRevisions(db, projectId, fileName, keep);
+  const { pruneOldestFileRevisionsLimited } = await import('./persistence.js');
+  return pruneOldestFileRevisionsLimited(db, projectId, fileName, keep, maxDeletes);
 }
 
 export function mirrorFileRevisionInsertToSqlite(
@@ -337,4 +339,70 @@ export function mirrorFileRevisionInsertToSqlite(
     conversationId: input.conversationId ?? null,
     assistantMessageId: input.assistantMessageId ?? null,
   });
+}
+
+export async function overwriteHeadRevisionSnapshotDurable(
+  db: Database.Database,
+  projectDir: string,
+  fileName: string,
+  head: FileRevision,
+  input: {
+    label: string;
+    byteSize: number;
+    createdAt: number;
+    content: string;
+    parentContent: string | null;
+    conversationId?: string | null;
+    assistantMessageId?: string | null;
+  },
+): Promise<FileRevision> {
+  const interval = resolveFullSnapshotInterval();
+  const forceFull = shouldForceFullSnapshot(head.sequence, interval) || input.parentContent == null;
+  const encoded = gzipRevisionSnapshot(input.content, {
+    parentContent: input.parentContent,
+    forceFull,
+  });
+  if (usesPostgresRevisionSnapshots()) {
+    await pgUpdateFileRevisionHead(
+      getPostgresPool(),
+      {
+        id: head.id,
+        label: input.label,
+        byteSize: input.byteSize,
+        createdAt: input.createdAt,
+        conversationId: input.conversationId ?? null,
+        assistantMessageId: input.assistantMessageId ?? null,
+      },
+      encoded.compressed,
+    );
+  }
+  const { updateFileRevisionHeadMetadata } = await import('./persistence.js');
+  const updated = updateFileRevisionHeadMetadata(db, head.id, {
+    label: input.label,
+    byteSize: input.byteSize,
+    createdAt: input.createdAt,
+    conversationId: input.conversationId ?? null,
+    assistantMessageId: input.assistantMessageId ?? null,
+  });
+  if (!updated) {
+    throw new Error(`revision not found: ${head.id}`);
+  }
+  if (!usesPostgresRevisionSnapshots()) {
+    const { resolveFileRevisionSnapshotStorage } = await import('./snapshot-storage.js');
+    const storage = resolveFileRevisionSnapshotStorage();
+    if (storage === 'sqlite') {
+      upsertFileRevisionSnapshot(db, head.id, encoded.compressed);
+    } else {
+      const { writeRevisionSnapshot } = await import('./store.js');
+      await writeRevisionSnapshot(
+        projectDir,
+        fileName,
+        head.id,
+        input.content,
+        { parentContent: input.parentContent, sequence: head.sequence },
+        { db, storage: 'files' },
+      );
+    }
+  }
+  return updated;
 }

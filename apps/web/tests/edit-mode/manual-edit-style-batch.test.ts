@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { describe, expect, it } from 'vitest';
-import { applyManualEditPatch } from '../../src/edit-mode/source-patches';
+import { applyManualEditPatch, readManualEditStyles } from '../../src/edit-mode/source-patches';
 import {
   diffManualEditStylePatch,
   isNoOpManualEditStyleFlush,
@@ -29,6 +29,16 @@ describe('manual-edit-style-batch', () => {
       width: '120px',
       height: '96px',
     })).toEqual({ height: '96px' });
+  });
+
+  it('reuses precomputed sourceStyles without re-reading the document', () => {
+    const html = sourceWithCardSize('120px', '80px');
+    const sourceStyles = readManualEditStyles(html, 'card');
+    // Force a bogus baseSource — only sourceStyles should matter.
+    expect(diffManualEditStylePatch('<html></html>', 'card', {
+      width: '200px',
+      height: '80px',
+    }, { sourceStyles })).toEqual({ width: '200px' });
   });
 
   it('treats unchanged pending styles as a no-op flush', () => {

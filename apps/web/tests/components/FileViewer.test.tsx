@@ -29,6 +29,8 @@ vi.mock('../../src/teamver/designApiBase', async () => {
   return {
     ...actual,
     isTeamverEmbedMode: vi.fn(() => false),
+    // FileViewer unit tests assert sync /raw/ img src; keep auth/presign path off.
+    shouldUseTeamverAuthenticatedProjectRawFetch: vi.fn(() => false),
   };
 });
 
@@ -69,6 +71,7 @@ afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
   vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(false);
+  vi.mocked(designApiBase.shouldUseTeamverAuthenticatedProjectRawFetch).mockReturnValue(false);
   vi.unstubAllGlobals();
   Reflect.deleteProperty(navigator, 'clipboard');
   Reflect.deleteProperty(document, 'execCommand');
@@ -5052,6 +5055,66 @@ describe('serializeInspectOverrides', () => {
     expect(out).toBe('');
   });
 
+  it('drops inspect values with url()/expression()/javascript:', () => {
+    const out = serializeInspectOverrides({
+      hero: {
+        selector: '[data-od-id="hero"]',
+        props: {
+          color: 'url(javascript:alert(1))',
+          'background-color': 'expression(alert(1))',
+          'font-family': 'javascript:alert(1)',
+        },
+      },
+    });
+    expect(out).toBe('');
+    expect(out).not.toContain('javascript');
+    expect(out).not.toContain('expression');
+  });
+
+  it('drops inspect values with vbscript:', () => {
+    const out = serializeInspectOverrides({
+      hero: {
+        selector: '[data-od-id="hero"]',
+        props: { color: 'vbscript:msgbox(1)' },
+      },
+    });
+    expect(out).toBe('');
+    expect(out).not.toContain('vbscript');
+  });
+
+  it('drops inspect values with bare data:', () => {
+    const out = serializeInspectOverrides({
+      hero: {
+        selector: '[data-od-id="hero"]',
+        props: { 'font-family': 'data:text/html,<script>alert(1)</script>' },
+      },
+    });
+    expect(out).toBe('');
+    expect(out).not.toContain('data:');
+  });
+
+  it('drops inspect values with comment-smuggled url( and image-set(', () => {
+    expect(serializeInspectOverrides({
+      hero: {
+        selector: '[data-od-id="hero"]',
+        props: { color: 'url/**/(javascript:alert(1))' },
+      },
+    })).toBe('');
+    expect(serializeInspectOverrides({
+      hero: {
+        selector: '[data-od-id="hero"]',
+        props: { color: 'image-set(url(https://evil.example/a.png) 1x)' },
+      },
+    })).toBe('');
+    // Legitimate allow-listed color still serializes.
+    expect(serializeInspectOverrides({
+      hero: {
+        selector: '[data-od-id="hero"]',
+        props: { color: '#112233' },
+      },
+    })).toContain('color: #112233 !important');
+  });
+
   // The vulnerability we're regression-testing: artifact code rendered with
   // scripts enabled can call window.parent.postMessage({ type:
   // 'od:inspect-overrides', overrides, css: '</style><script>...</script>' })
@@ -5072,7 +5135,7 @@ describe('serializeInspectOverrides', () => {
         selector: '[data-od-id="x"]',
         props: { color: '#fff' },
       },
-      // Hostile value: rejected by UNSAFE_VALUE.
+      // Hostile value: rejected by HOST_UNSAFE_INSPECT_VALUE.
       villain: {
         selector: '[data-od-id="villain"]',
         props: { color: '</style><script>alert(3)</script>' },

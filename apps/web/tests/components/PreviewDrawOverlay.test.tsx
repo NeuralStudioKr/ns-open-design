@@ -90,7 +90,7 @@ describe('PreviewDrawOverlay', () => {
     const noteActions = container.querySelector<HTMLElement>('.preview-draw-note-actions');
     const input = container.querySelector<HTMLInputElement>('.preview-draw-note-input');
 
-    expect(canvas?.style.zIndex).toBe('80');
+    expect(canvas?.style.zIndex).toBe('100');
     expect(toolbar?.style.zIndex).toBe('93');
     expect(toolbar?.style.flexWrap).toBe('wrap');
     expect(toolbar?.style.left).toBe('calc(50% - 52px)');

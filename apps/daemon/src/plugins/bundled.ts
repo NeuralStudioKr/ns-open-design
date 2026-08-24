@@ -25,6 +25,7 @@ import { promises as fsp } from 'node:fs';
 import type Database from 'better-sqlite3';
 import {
   deleteInstalledPlugin,
+  getInstalledPlugin,
   resolvePluginFolder,
   upsertInstalledPlugin,
   type RegistryRoots,
@@ -57,6 +58,17 @@ export interface RegisterBundledPluginsResult {
 }
 
 const SAFE_BASENAME = /^[a-z0-9][a-z0-9._-]*$/;
+
+/**
+ * Normalize a caller plugin id for bundled lookup: strip marketplace path
+ * prefixes (`open-design/example-…` → `example-…`) and keep only a safe basename.
+ */
+export function normalizeBundledPluginLookupId(pluginId: string): string {
+  const trimmed = String(pluginId ?? '').trim().toLowerCase();
+  if (!trimmed) return '';
+  const segments = trimmed.split('/').filter(Boolean);
+  return segments[segments.length - 1] ?? trimmed;
+}
 
 export async function registerBundledPlugins(
   input: RegisterBundledPluginsInput,
@@ -195,6 +207,122 @@ async function pathExists(p: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/**
+ * Lazily re-register one bundled plugin when the `installed_plugins` row is
+ * missing but the folder still ships in this image (HA sqlite drift, prune
+ * after a transient parse failure, or a fresh volume that skipped boot walk).
+ *
+ * Matches either the manifest `name` (e.g. `example-simple-deck`) or the
+ * on-disk folder basename (e.g. `simple-deck`). Returns null when the id is
+ * not under `bundledRoot`.
+ */
+export async function ensureBundledPluginRegistered(
+  input: RegisterBundledPluginsInput & { pluginId: string },
+): Promise<InstalledPluginRecord | null> {
+  // Gallery / marketplace ids often arrive as `open-design/example-…`.
+  // Strip the prefix so SAFE_BASENAME + folder matching can succeed.
+  const want = normalizeBundledPluginLookupId(input.pluginId);
+  if (!want || !SAFE_BASENAME.test(want)) return null;
+
+  const aliasWants = new Set<string>([want]);
+  if (want.startsWith('example-')) {
+    aliasWants.add(want.slice('example-'.length));
+  } else {
+    aliasWants.add(`example-${want}`);
+  }
+
+  for (const candidate of aliasWants) {
+    const existing = getInstalledPlugin(input.db, candidate);
+    if (existing) return existing;
+  }
+
+  let topLevel;
+  try {
+    topLevel = await fsp.readdir(input.bundledRoot, { withFileTypes: true });
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    throw err;
+  }
+
+  for (const tier of topLevel) {
+    if (!tier.isDirectory()) continue;
+    const tierAbs = path.join(input.bundledRoot, tier.name);
+    const tierManifest = path.join(tierAbs, 'open-design.json');
+    if (await pathExists(tierManifest)) {
+      for (const candidate of aliasWants) {
+        const hit = await registerOneIfIdMatches({
+          folder: tierAbs,
+          folderId: tier.name,
+          want: candidate,
+          input,
+        });
+        if (hit) return hit;
+      }
+      continue;
+    }
+    let inner;
+    try {
+      inner = await fsp.readdir(tierAbs, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of inner) {
+      if (!entry.isDirectory()) continue;
+      const folder = path.join(tierAbs, entry.name);
+      const manifest = path.join(folder, 'open-design.json');
+      if (!(await pathExists(manifest))) continue;
+      // Exact folder id, or `example-<folder>` ↔ folder basename
+      // (`example-simple-deck` ↔ `simple-deck`). Do not use loose
+      // `endsWith(-${base})` — that would parse every `*-deck` folder.
+      const base = entry.name.toLowerCase();
+      const matchesFolder = [...aliasWants].some(
+        (candidate) => candidate === base || candidate === `example-${base}`,
+      );
+      if (!matchesFolder) continue;
+      for (const candidate of aliasWants) {
+        const hit = await registerOneIfIdMatches({
+          folder,
+          folderId: entry.name,
+          want: candidate,
+          input,
+        });
+        if (hit) return hit;
+      }
+    }
+  }
+  return null;
+}
+
+async function registerOneIfIdMatches(args: {
+  folder: string;
+  folderId: string;
+  want: string;
+  input: RegisterBundledPluginsInput;
+}): Promise<InstalledPluginRecord | null> {
+  const folderId = args.folderId.toLowerCase();
+  if (!SAFE_BASENAME.test(folderId)) return null;
+  const probe = await resolvePluginFolder({
+    folder: args.folder,
+    folderId,
+    sourceKind: 'bundled',
+    source: args.folder,
+    trust: 'bundled',
+  });
+  if (!probe.ok) return null;
+  const record = withMarketplaceProvenance(probe.record, args.input.marketplaceProvenance);
+  // Manifest name is the install id (`example-html-ppt-…`). Callers may ask
+  // for the folder basename (`html-ppt-…`) or `example-<folder>` — accept all
+  // three so Canvas/skill ids resolve to the same bundled record.
+  const aliases = new Set([
+    record.id,
+    folderId,
+    `example-${folderId}`,
+  ]);
+  if (!aliases.has(args.want)) return null;
+  upsertInstalledPlugin(args.input.db, record);
+  return record;
 }
 
 // Default bundled root resolution. The daemon ships its `dist/` next to

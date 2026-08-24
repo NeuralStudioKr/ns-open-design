@@ -34,8 +34,19 @@ import type { MediaExecutionPolicy } from '../api/media.js';
 import type { ProjectMetadata, ProjectTemplate } from '../api/projects.js';
 import { OFFICIAL_DESIGNER_PROMPT } from './official-system.js';
 import { DISCOVERY_AND_PHILOSOPHY } from './discovery.js';
-import { DECK_FRAMEWORK_DIRECTIVE, DECK_FRAMEWORK_DIRECTIVE_COMPACT, COMPACT_DECK_SLIDE_COUNT_GUIDANCE } from './deck-framework.js';
+import {
+  DECK_FRAMEWORK_DIRECTIVE,
+  DECK_FRAMEWORK_DIRECTIVE_COMPACT,
+  DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_SELECTED_TEMPLATE,
+  DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_TEMPLATE_FILL,
+  COMPACT_DECK_SLIDE_COUNT_GUIDANCE,
+} from './deck-framework.js';
+import {
+  SLIDE_DECK_CONTENT_EXPANSION_EXAMPLE,
+  SLIDE_DECK_CONTENT_EXPANSION_INSTRUCTION,
+} from './deck-quality.js';
 import { MEDIA_GENERATION_CONTRACT } from './media-contract.js';
+import { stripTemplateVisualKitMotifSpritesForFill } from '../template-visual-kit.js';
 
 export const BASE_SYSTEM_PROMPT = OFFICIAL_DESIGNER_PROMPT;
 const ELEVENLABS_VOICE_PROMPT_OPTION_LIMIT = 100;
@@ -44,28 +55,28 @@ const TEAMVER_SLIDE_ONLY_SCOPE = `
 
 ---
 
-## Teamver embed — slide deck scope only
+## Slide deck scope only
 
-This workspace is Teamver Design embed with media generation disabled for the 1st launch.
+This workspace is slide-only with media generation disabled for the 1st launch.
 
 In scope: slide decks / HTML presentations / speaker notes / deck polish on existing project files.
 
-Out of scope: standalone image, video, audio, prototype pages, live artifacts, dashboards, and non-deck web apps. If the user asks for out-of-scope output, reply briefly that Teamver Design currently supports slides only and offer to help as a slide deck instead.
+Out of scope: standalone image, video, audio, prototype pages, live artifacts, dashboards, and non-deck web apps. If the user asks for out-of-scope output, reply briefly that this workspace currently supports slides only and offer to help as a slide deck instead.
 
 ### Slide deliverable contract
 
 For every slide deck creation or edit request, the turn is successful only if it leaves a previewable HTML deck in the project workspace.
 
-- In API mode there are no filesystem write tools, so the normal deliverable path is exactly one complete \`<artifact type="deck">\` block whose body starts with \`<!doctype html>\` and contains the full standalone deck document. Teamver supports deck artifacts only; never use \`type="text/html"\` for the artifact contract.
+- In API mode there are no filesystem write tools, so the normal deliverable path is exactly one complete \`<artifact type="deck">\` block whose body starts with \`<!doctype html>\` and contains the full standalone deck document. This workspace supports deck artifacts only; never use \`type="text/html"\` for the artifact contract.
 - Do not finish a slide request with only a plan, outline, promise, summary, filename pointer, partial HTML head, or truncated deck navigation script.
 - If you cannot create or update the HTML deck, say that plainly instead of reporting completion.
 - Stream promptly: emit a brief UI-locale status sentence, open one \`<artifact type="deck">\`, then write filled slides. Do not wait silently while drafting the whole deck. A truncated artifact is still rejected, so close it in this turn.
 - When the user attaches image files and asks to place them on slides, embed them with project-relative \`<img src="exact-attachment-path">\` (paths are listed in \`<attached-project-files>\` / \`[Attached image embed]\`). Do not invent remote URLs or data: URIs. Putting an attached image into a slide is in scope — it is not standalone image generation.
 `;
 
-const TEAMVER_SLIDE_ONLY_FIRST_TURN_OVERRIDE = `# Teamver slide-only — turn-1 quick brief (required)
+const TEAMVER_SLIDE_ONLY_FIRST_TURN_OVERRIDE = `# Slide-only — turn-1 quick brief (required)
 
-This is a Teamver slide-only workspace. On the user's **first message** in a new conversation (no prior \`[form answers — discovery]\` in the transcript):
+This is a slide-only workspace. On the user's **first message** in a new conversation (no prior \`[form answers — discovery]\` in the transcript):
 
 - Emit at most one short UI-locale line, then one valid JSON \`<question-form id="discovery">\` block. Localize title (ko: "빠른 질문").
 - Omit "What are we making?" / task-type routing — this project is always a slide deck.
@@ -105,7 +116,7 @@ Use this schema; localize all user-facing text to UI/chat locale (ko examples):
 }
 </question-form>\`
 
-After the user submits \`[form answers — discovery]\` (skipped fields are fine), your **next** response must deliver the complete Teamver deck artifact — no second discovery form unless truly blocked. The deck artifact type must be \`deck\`, never \`text/html\`.
+After the user submits \`[form answers — discovery]\` (skipped fields are fine), your **next** response must deliver the complete deck artifact — no second discovery form unless truly blocked. The deck artifact type must be \`deck\`, never \`text/html\`.
 `;
 
 export interface AudioVoiceOption {
@@ -139,7 +150,7 @@ function renderUiLocalePrompt(locale: string | undefined): string {
   const lines = [
     '# UI locale override',
     '',
-    `The Open Design UI locale for this run is \`${normalized}\` (${languageName}). All user-visible chat prose and generated UI controls must follow this locale, especially \`<question-form>\` titles, descriptions, labels, placeholders, helper text, and option labels. Keep machine-readable ids and object option \`value\` fields exact and unlocalized.`,
+    `The UI locale for this run is \`${normalized}\` (${languageName}). All user-visible chat prose and generated UI controls must follow this locale, especially \`<question-form>\` titles, descriptions, labels, placeholders, helper text, and option labels. Keep machine-readable ids and object option \`value\` fields exact and unlocalized.`,
     'Exception: for the default task-type form, keep the `taskType` option labels as the canonical routing choices: `Prototype`, `Live artifact`, `Slide deck`, `Image`, `Video`, `HyperFrames`, `Audio`, `Other`. Do not translate, reorder, or rewrite those option labels.',
   ];
   if (normalized === 'zh-CN') {
@@ -170,6 +181,37 @@ function renderUiLocalePrompt(locale: string | undefined): string {
       '- Omit "What are we making?" / task-type routing — this project is always a slide deck.',
       '- Keep every `id`, `type`, and option `value` in English. Only localize user-facing labels/placeholders.',
       '- Body must be valid JSON with no comments and no trailing commas.',
+    );
+  }
+  return lines.join('\n');
+}
+
+/** Lean locale block for Teamver slide-only (no OD task-type / mismatched discovery schema). */
+function renderTeamverSlideUiLocalePrompt(
+  locale: string | undefined,
+  options: { discoveryActive: boolean },
+): string {
+  const normalized = locale?.trim();
+  if (!normalized || normalized.toLowerCase() === 'en') return '';
+  const languageName = normalized === 'zh-CN'
+    ? 'Simplified Chinese'
+    : normalized === 'zh-TW'
+      ? 'Traditional Chinese'
+      : normalized;
+  const lines = [
+    '# UI locale override (slide-only)',
+    '',
+    `UI locale: \`${normalized}\` (${languageName}). Localize user-visible chat status prose and any \`<question-form>\` labels to this locale. Keep machine-readable ids / option \`value\` fields in English.`,
+    'This project is always a slide deck — never emit Prototype / Live artifact / Image / Video / Audio task-type routing.',
+  ];
+  if (options.discoveryActive && (normalized === 'ko' || normalized === 'ko-KR')) {
+    lines.push(
+      '',
+      'If emitting discovery (`audience` / `tone` / `must_include`), use Korean labels such as:',
+      '- title: `간단한 정보 확인 — 30초`',
+      '- audience: `대상 독자`',
+      '- tone: `시각적 톤`',
+      '- must_include: `반드시 포함할 내용`',
     );
   }
   return lines.join('\n');
@@ -207,7 +249,7 @@ function renderTeamverVisualSignatureBlock({
   body: string;
   fileNames?: string[];
 }): string {
-  const combined = body.slice(0, 12_000);
+  const combined = body.slice(0, 8_000);
   const colors = uniqueMatches(combined, /(?:#[0-9a-fA-F]{3,8}|rgba?\([^)]+\)|hsla?\([^)]+\))/g, 10);
   const fonts = uniqueMatches(combined, /font-family\s*:\s*([^;}\n]+)/gi, 5)
     .map((font) => normalizePromptText(font).slice(0, 80));
@@ -227,17 +269,17 @@ function renderTeamverVisualSignatureBlock({
   }
   const lines = [
     `## ${heading} — ${title}`,
-    description ? normalizePromptText(description).slice(0, 240) : '',
+    description ? normalizePromptText(description).slice(0, 180) : '',
     fileNames?.length ? `files: ${fileNames.join(', ')}` : '',
     colors.length > 0 ? `palette cues: ${colors.join(', ')}` : '',
     fonts.length > 0 ? `font cues: ${fonts.join(' | ')}` : '',
     classes.length > 0 ? `class/style cues: ${classes.join(', ')}` : '',
     layoutHints.length > 0 ? `layout cues: ${layoutHints.join(', ')}` : '',
-    'Must match template palette, type, density, accents, rhythm.',
-    'Style only; if brief lacks audience/purpose/tone/count/topics and discovery not skipped, ask quick brief first.',
-    'Template beats samples; never fall back to navy/white.',
-    'Use inline styles or one short body `<style>` after slide 1. No `<head>` first.',
-    'Do not copy full skeleton or emit long CSS/head/script.',
+    'Must match template palette/type/density/accent/rhythm.',
+    'Style only — content brief comes from the user message / Plugin inputs / discovery answers.',
+    'Template beats samples; no navy/white fallback.',
+    'Use inline styles or short body `<style>` after slide 1; no `<head>` first.',
+    'Do not copy full skeleton/CSS/head/script dumps.',
   ].filter(Boolean);
   return lines.join('\n');
 }
@@ -411,6 +453,52 @@ export interface ComposeInput {
   // Free-form instructions the user set on this specific project.
   // Injected after user-level instructions and before the design system.
   projectInstructions?: string | undefined;
+  /**
+   * Teamver slide-only: include the comment-edit element-patch contract.
+   * FE sets true when the turn carries `<attached-preview-comments>`.
+   * Default false so greenfield Canvas→Slide creates do not pay ~2KB of
+   * edit-only READ LAST rules.
+   */
+  includeCommentEditPatchRule?: boolean | undefined;
+  /**
+   * Teamver slide-only: include the existing-deck / image-embed surgical
+   * contract. FE sets true when a canonical deck.html is attached or the
+   * turn embeds images onto an existing deck. Default false for greenfield.
+   */
+  includeExistingDeckImageEditRule?: boolean | undefined;
+  /**
+   * Teamver Clone LOOK → first AI content-fill. Mutes Motif-verbatim READ LAST
+   * mandates and expects a slim kit (palette/fonts only) so the model can
+   * close a compact deck instead of hanging on Daisy `<svg><style>` dumps.
+   */
+  templateCloneContentFill?: boolean | undefined;
+}
+
+/**
+ * Prompt-only: Teamver slide-only (media disabled) still has sqlite rows
+ * with kind=prototype from pre-slide-only hydrate. Do not persist-rewrite
+ * those rows (Canvas index.html thumbs). The composer must see a deck so
+ * we inject slideCount + framework instead of iOS/fidelity / screen-file-first.
+ *
+ * Image/video/audio stay as-is so disabled OD media still exposes external MCP.
+ * Keep in sync with apps/daemon/src/prompts/system.ts.
+ */
+export function metadataForTeamverSlideOnlyPrompt<
+  T extends { kind?: string } | undefined,
+>(
+  metadata: T,
+  mediaExecution?: { mode?: string } | null,
+): T | (Omit<NonNullable<T>, 'kind'> & { kind: 'deck' }) {
+  const storedKind = metadata?.kind;
+  if (
+    (mediaExecution?.mode ?? 'enabled') === 'disabled'
+    && storedKind !== 'image'
+    && storedKind !== 'video'
+    && storedKind !== 'audio'
+  ) {
+    return { ...(metadata ?? ({} as T)), kind: 'deck' };
+  }
+  return metadata;
 }
 
 export function composeSystemPrompt({
@@ -420,7 +508,7 @@ export function composeSystemPrompt({
   designSystemBody,
   designSystemTitle,
   memoryBody,
-  metadata,
+  metadata: inputMetadata,
   template,
   pluginBlock,
   activeStageBlocks,
@@ -433,11 +521,15 @@ export function composeSystemPrompt({
   locale,
   userInstructions,
   projectInstructions,
+  includeCommentEditPatchRule,
+  includeExistingDeckImageEditRule,
+  templateCloneContentFill,
 }: ComposeInput): string {
   // Discovery + philosophy goes FIRST so its hard rules ("emit a form on
   // turn 1", "branch on brand on turn 2", "TodoWrite on turn 3", run
   // checklist + critique before <artifact>) win precedence over softer
   // wording later in the official base prompt.
+  const metadata = metadataForTeamverSlideOnlyPrompt(inputMetadata, mediaExecution);
   const parts: string[] = [];
   const activeDesignSystemBody = designSystemBody?.trim();
   const isMediaSurfaceEarly =
@@ -476,6 +568,9 @@ export function composeSystemPrompt({
       locale,
       userInstructions,
       projectInstructions,
+      includeCommentEditPatchRule,
+      includeExistingDeckImageEditRule,
+      templateCloneContentFill,
     });
   }
 
@@ -696,15 +791,15 @@ export function composeSystemPrompt({
  */
 const TEAMVER_SLIDE_ONLY_API_DELIVERABLE_OVERRIDE = `
 
-## Teamver slide-only API deliverable rule
+## Slide-only API deliverable rule
 
 When the user asks for a slide deck, presentation, PPT, pitch deck, or slide edit, do not treat a plan/outline/progress note as a valid final answer.
 
 If the request contains enough information to proceed, your same response MUST include exactly one complete \`<artifact type="deck" identifier="deck">...</artifact>\` block. The artifact type must be \`deck\` (never \`text/html\`); the identifier MUST be \`deck\` so the file persists as \`deck.html\`. Never copy or save an attached Canvas/Drive source HTML from \`refs/...\` into the project root. The artifact body must start with \`<!doctype html>\` and end with \`</html>\`; it must be a self-contained slide deck that can be previewed immediately.
 
-Before the artifact, optional: one tiny user-visible UI-locale status sentence tailored to the brief — **present or future tense only** (e.g. "작성 중", "making your deck"). Never past tense or completion claims ("만들었", "완성", "done", "created") until the artifact is fully closed. Then start the artifact immediately. Artifact-only is OK for speed/tokens. Do not use a generic promise-only line, a slide outline, a task list, or a partial HTML head. If information is truly missing, ask one concise \`<question-form>\` instead of claiming completion.
+Before the artifact, optional: one tiny user-visible UI-locale status sentence tailored to the brief — **present or future tense only**. For a **new** deck: e.g. "작성 중", "making your deck". For a **follow-up edit** of an existing deck: e.g. "수정 반영 중", "Applying your edits" — never imply a brand-new draft ("초안 생성", "creating the deck"). Never past tense or completion claims ("만들었", "완성", "done", "created", "생성되었습니다") until the artifact is fully closed. Then start the artifact immediately. Artifact-only is OK for speed/tokens. Do not use a generic promise-only line, a slide outline, a task list, or a partial HTML head. If information is truly missing, ask one concise \`<question-form>\` instead of claiming completion.
 
-### Anti-patterns that keep breaking Teamver slide runs (do NOT do these)
+### Anti-patterns that keep breaking slide runs (do NOT do these)
 
 - ❌ Emitting the framework skeleton with the \`<!-- SLOT: slide N content -->\` HTML comments left in place. The \`<section class="slide">\` blocks MUST contain real headings, paragraphs, lists, or images — not the commented placeholders. A skeleton with unfilled comment slots is a **broken deliverable**, not a starting point the host will fill in later.
 - ❌ Closing the artifact after only \`<!doctype html><html lang="en"><head>…</head></html>\` with an empty \`<body>\` (or no body at all). The body MUST include at least two \`<section class="slide">\` blocks with visible copy.
@@ -712,25 +807,41 @@ Before the artifact, optional: one tiny user-visible UI-locale status sentence t
 - ❌ Announcing the deck as done (\"완료\", \"완성했습니다\", \"here it is\", etc.) in the prose while the artifact body is empty or shell-only. If you cannot finish the deck this turn, say so plainly instead — a partial artifact + confident prose is the worst outcome for the user.
 
 **Minimum body contract:** each \`<section class="slide">\` MUST contain at least one real text node whose \`textContent.trim()\` is non-empty and is NOT the SLOT comment. If your response ends without meeting this bar, retry inside the same turn instead of emitting.
+
+### Existing-deck edits (overrides the "complete deck" pressure above)
+
+When the user message includes \`[Existing deck edit]\` and/or \`[Attached image embed]\` (or attaches the current \`deck.html\`):
+
+- The preferred final answer is a non-empty \`<artifact type="deck-patch">\` or \`<artifact type="element-patch">\` that changes only the requested slide/element.
+- Emitting a full \`<artifact type="deck">\` that drops slides from the attached on-disk deck (e.g. rewriting an 8-slide deck as 2 slides) is a **critical failure**.
+- Do NOT treat the compact 2-slide wireframe example as a literal template for edit turns — preserve the attached deck's slide count and content.
 `;
 
 const TEAMVER_API_DECK_FRAMEWORK_OVERRIDE = `
 
-## Teamver API — deck framework emission override (read last — overrides daemon workflow above)
+## API — deck framework emission override (overrides daemon workflow above)
 
 The deck framework workflow above assumes TodoWrite and filesystem copies. **In this API run, override it:**
 
-- Do NOT open \`<artifact type="deck">\` until the complete filled deck is ready in one shot.
-- Do NOT emit a head-only scaffold (\`<!doctype html><html><head>\` with no body slides) and stop — that is always rejected.
-- Do NOT paste the long canonical skeleton / scale-to-fit JS / print CSS. In API mode, avoid \`<head>\` and \`<style>\` entirely unless absolutely necessary; write visible \`<body><section class="slide">...\` content first.
-- Your response should contain exactly ONE \`<artifact type="deck" identifier="...">...</artifact>\` block whose body is the full \`<!doctype html>…</html>\` document with every \`<section class="slide">\` filled with real copy (never \`<!-- SLOT: ... -->\` placeholders).
-- Prefer starting directly with \`<artifact type="deck"\` (at most one short sentence before it). Never start a Teamver deck with \`<artifact type="text/html"\`.
-- The artifact MUST end with \`</html>\` and \`</artifact>\` in this same turn.
+- Stream promptly: optional tiny status sentence, then open \`<artifact type="deck">\` early and write filled slides. Do **not** wait until a private full draft is finished before opening the artifact.
+- Still close \`</html></artifact>\` in this same turn — truncated head-only shells are always rejected.
+- Do NOT paste the long canonical skeleton / scale-to-fit JS / print CSS. Prefer visible \`<body><section class="slide">...\` content first. When a Selected deck template kit requires fonts, emit the kit \`<link rel="stylesheet" href="…fonts.googleapis.com…">\` after \`<body>\` (or after slide 1) — never Google Fonts as \`@import\` inside Motif \`<style>\` (css2 \`;\` truncation breaks Motif CSS). A short body \`<style>\` for kit tokens/Motif/Layout after slide 1 is OK.
+- Your response should contain exactly ONE \`<artifact type="deck" identifier="deck">...</artifact>\` block with every \`<section class="slide">\` filled with real copy (never \`<!-- SLOT: ... -->\` placeholders).
+- Never start a deck with \`<artifact type="text/html"\`.
 `;
+
+/** Teamver slide-only skip-discovery: no site-ref exception (that fights DIRECT_STREAMING). */
+const SKIP_DISCOVERY_BRIEF_OVERRIDE_TEAMVER_SLIDE = `# Automated project mode — skip discovery form
+
+This project was created with \`skipDiscoveryBrief: true\` (Canvas → Slide / Drive → Slide / automated brief). Override discovery rules: do NOT emit \`<question-form id="discovery">\`, do NOT show "Quick brief — 30 seconds", and do NOT ask a first-turn clarification form. Do not emit any question form or choice card, and do not wait for user input. Treat the user's first message, Plugin inputs (including slideCount / audience / tone), Quick settings, and project metadata as the brief; choose reasonable defaults for any remaining gaps; then emit the deck artifact in this same turn.
+
+${SLIDE_DECK_CONTENT_EXPANSION_INSTRUCTION}
+
+${SLIDE_DECK_CONTENT_EXPANSION_EXAMPLE}`;
 
 const TEAMVER_API_SKILL_SEED_OVERRIDE = `
 
-## Teamver API — skill seed override (read last — beats Active skill Pre-flight)
+## API — skill seed override (read last — beats Active skill Pre-flight)
 
 The active skill mentions \`assets/template.html\`. **In this API run that file is not readable** (no Read/Bash tools). Ignore every instruction to copy, Read, or paste the seed template verbatim.
 
@@ -765,9 +876,9 @@ const BYOK_TOOLS_OVERRIDE = (
   const formatted = toolNames.map((n) => `\`${n}\``).join(', ');
   return `# API mode — BYOK tools available (read first — overrides every rule below)
 
-You are running through the Open Design BYOK proxy. The following tools ARE wired through to you: ${formatted}. Call them like any other tool — the daemon routes the call, runs the executor, and feeds the result back as a \`tool\` role message.
+You are running through the BYOK proxy. The following tools ARE wired through to you: ${formatted}. Call them like any other tool — the daemon routes the call, runs the executor, and feeds the result back as a \`tool\` role message.
 
-\`TodoWrite\`, \`Read\`, \`Write\`, \`Edit\`, \`Bash\`, and \`WebFetch\` are NOT available in this run — those are CLI-agent tools. If a later instruction tells you to call them, do not attempt it; use the BYOK tools listed above instead. Specifically: to read a URL the user gave you, call \`web_fetch\` with the absolute URL — do not claim you fetched it, do not narrate the fetch in prose, and do not produce pseudo-tool markup.
+\`TodoWrite\`, \`Read\`, \`Write\`, \`Edit\`, \`Bash\`, and \`WebFetch\` are NOT available in this run — those are CLI-agent tools. If a later instruction tells you to call them, do not attempt it; use the BYOK tools listed above instead. Specifically: to read a website the user gave you, call \`web_fetch\` with the absolute URL — do not claim you fetched it, do not narrate the fetch in prose, and do not produce pseudo-tool markup. Do not call \`web_fetch\` on fonts, CSS, images, scripts, Google Fonts css2, kit \`@import\` / stylesheet \`<link>\`, or jsDelivr/unpkg assets — those belong in the deck as \`<link>\` / kit tokens, not as page text.
 
 **Forbidden output:**
 - Pseudo-tool markup such as \`<todo-list>...</todo-list>\`, \`<tool-call>\`, or invented XML wrappers around a plan.
@@ -786,11 +897,11 @@ For slide deck / presentation / PPT requests in API mode, the plan is not the de
 
 const CHAT_MODE_OVERRIDE = `# Chat mode — standard conversation (read first — overrides every rule below)
 
-This conversation is in Open Design Chat mode. Open Design is the open-source Claude Design alternative and a native Figma counterpart. Official links: GitHub https://github.com/nexu-io/open-design, website https://open-design.ai/, Discord https://discord.com/invite/9ptkbbqRu.
+This conversation is in chat mode. Answer like a fast, direct, multi-turn desktop chat assistant. Prefer concise prose, explanations, comparisons, debugging help, and follow-up questions only when needed.
 
-Use the same available context, files, attachments, connectors, MCP servers, project memory, and model capabilities as Design mode. The difference is behavior: answer like a fast, direct, multi-turn desktop chat assistant. Prefer concise prose, explanations, comparisons, debugging help, and follow-up questions only when needed.
+Use the same available context, files, attachments, connectors, MCP servers, project memory, and model capabilities as Design mode.
 
-Override artifact-first discovery rules below: do not emit a default discovery \`<question-form>\`, do not call TodoWrite just to plan a chat answer, and do not create or edit project files, HTML, PPT, slide decks, images, video, or audio unless the user explicitly asks you to generate/build/design/export/modify something. When the user does ask for a design artifact or file change, you may use the normal Open Design agent workflow and the same tools/capabilities available in Design mode.`;
+Override artifact-first discovery rules below: do not emit a default discovery \`<question-form>\`, do not call TodoWrite just to plan a chat answer, and do not create or edit project files, HTML, PPT, slide decks, images, video, or audio unless the user explicitly asks you to generate/build/design/export/modify something. When the user does ask for a design artifact or file change, you may use the normal agent workflow and the same tools/capabilities available in Design mode.`;
 
 function renderMetadataBlock(
   metadata: ProjectMetadata | undefined,
@@ -1225,7 +1336,7 @@ function summarizeApiModeSkillBody(skillBody: string): string {
     summary || 'Use the active deck skill only as broad visual inspiration.',
     'Template is the visual contract; compact samples are only structure.',
     'Alternate light/dark; never repeat one background/composition 3+ slides.',
-    'Preserve template/design-system palette, type mood, density, accents, and rhythm visibly.',
+    'Preserve the selected template palette, type mood, density, accents, and rhythm visibly (design system is secondary brand context only).',
     'Implement with inline styles or one short body `<style>` after slide 1; never start with `<head>` or long CSS.',
     'Build a slide arc: cover, 4–6 varied evidence/story slides, closing; avoid generic title-plus-bullets.',
     'Output compact no-head deck HTML with varied inline layouts and visible content first.',
@@ -1239,25 +1350,30 @@ function summarizeApiModeSkillBody(skillBody: string): string {
  * conflict between "artifact last" (daemon charter), "start artifact ASAP"
  * (compact deck), and "never open until complete" (deliverable override).
  */
-const TEAMVER_SLIDE_API_UNIFIED_STREAMING_RULE = `# Teamver slide-only API — unified streaming rule (READ LAST — beats every rule above)
+const TEAMVER_SLIDE_API_UNIFIED_STREAMING_RULE = `# Slide-only API — unified streaming rule (READ LAST — beats every rule above)
 
 **Turn 1 (first user message, no prior form answers):** emit a UI-locale quick-brief \`<question-form id="discovery">\` JSON block only. No HTML artifact on turn 1.
 
-**Turn 2+ (after \`[form answers — discovery]\` or a follow-up edit request):** your successful response is optional tiny UI-locale status sentence + **exactly one** streaming artifact. Artifact-only is OK for speed/tokens:
+**Turn 2+ (after \`[form answers — discovery]\` or a follow-up edit request):** your successful response is optional tiny UI-locale status sentence + **exactly one** streaming artifact. Artifact-only is OK for speed/tokens.
 
-\`<artifact type="deck" identifier="deck"><!doctype html><html lang="ko"><body>…6+ filled <section class="slide"> blocks…</body></html></artifact>\`
+- **First deck after discovery:** \`<artifact type="deck" identifier="deck">…</artifact>\` with status like "작성 중" / "making your deck".
+- **Follow-up edit of an existing deck** (user asks to change slides that already exist, with or without preview comments): prefer \`element-patch\` / \`deck-patch\` when scope is clear; if you must emit full \`type="deck"\`, status must be edit-toned ("수정 반영 중" / "Applying your edits") — never "초안이 생성", "creating the deck", or "draft is ready".
+
+\`<artifact type="deck" identifier="deck"><!doctype html><html lang="ko"><body>…at least 3 filled <section class="slide"> blocks this turn (top-up appends more)…</body></html></artifact>\`
 
 **How to stream the deck (non-negotiable on turn 2+):**
-1. Emit the status sentence first, then open \`<artifact type="deck">\` early. Never \`type="text/html"\`.
-2. First bytes inside artifact: \`<!doctype html><html><body><section class="slide">\` with real copy — never \`<head>\`, \`<style>\`, or empty shell.
-3. ${COMPACT_DECK_SLIDE_COUNT_GUIDANCE} Write one filled \`<section class="slide">\` per requested slide. If a template/design system is active, apply it with inline styles or one short body \`<style>\` after slide 1; do not merely describe it.
-4. Close with \`</body></html></artifact>\` in this same turn.
+1. Emit the status sentence first, then open the artifact early. Never \`type="text/html"\`.
+2. First bytes inside a full deck artifact: \`<!doctype html><html><body>\` then immediately a titled \`<section class="slide">\` with real copy. Kit font \`<link>\` / short body \`<style>\` only AFTER slide 1 — never \`<head>\` / long CSS / Motif first.
+3. ${COMPACT_DECK_SLIDE_COUNT_GUIDANCE} Write one filled \`<section class="slide">\` per requested slide. Each slide needs a heading AND a \`<p>\`/\`<li>\` sentence — title-only slides fail persist. If an on-disk deck is attached, keep at least that slide count (do not rewrite an 8-slide deck as 3). If a Selected deck template is active, match its visual kit (palette/fonts/density) with inline styles or one short body \`<style>\` after slide 1 — design system is brand context only and must not override the template look; do not merely describe the template.
+4. Close with \`</body></html></artifact>\` (or the matching patch close) in this same turn.
 
-**Forbidden on deck turns:** outlines, plans, TodoWrite, \`[读取 template.html]\`, SLOT comments, a second artifact, stopping after \`<head>\`, or announcing completion without the requested slide count (minimum 6 when unspecified).
+**Content expansion:** ${SLIDE_DECK_CONTENT_EXPANSION_INSTRUCTION}
+
+**Forbidden on deck turns:** outlines, plans, TodoWrite, \`[读取 template.html]\`, SLOT comments, a second artifact, stopping after \`<head>\`, announcing a brand-new draft on an edit turn, parroting the user brief as slide titles/body, emitting the same heading/paragraph/badge twice in a row, or announcing completion without the requested slide count (prefer 3 this turn + top-up when unspecified; 6–8 only as the final target).
 
 If you already started \`<head>\` by mistake, **abandon that output** and restart the artifact with \`<body><section class="slide">\` content immediately.`;
 
-const TEAMVER_SLIDE_API_DISCOVERY_BINDING_RULE = `# Teamver slide-only API — bind quick-brief answers (turn 2+)
+const TEAMVER_SLIDE_API_DISCOVERY_BINDING_RULE = `# Slide-only API — bind quick-brief answers (turn 2+)
 
 When the user's message starts with \`[form answers — discovery]\`, treat every answered field as **hard constraints** for the deck you emit in that same turn:
 
@@ -1266,9 +1382,30 @@ When the user's message starts with \`[form answers — discovery]\`, treat ever
 - **scale** / **slideCount** — emit exactly the requested number of slides (parse ranges like "8~10장" or "10-15 pages" to the upper bound when a single target is needed).
 - **must_include** — each requested topic gets at least one dedicated slide or clearly labeled section; do not omit user-named items.
 
-If a field was skipped, choose a sensible default and proceed — do not emit another discovery form. Preserve the active template/design-system feel, and vary slide layouts per the compact inline vocabulary (split, stat, timeline, quote, column); do not output 6 identical white boxes.`;
+If a field was skipped, choose a sensible default and proceed — do not emit another discovery form. Preserve the Selected deck template look (design system is secondary brand context only), and vary slide layouts per the compact inline vocabulary (split, stat, timeline, quote, column); do not output 6 identical white boxes.`;
 
-const TEAMVER_SLIDE_API_COMMENT_EDIT_PATCH_RULE = `# Teamver slide-only API — comment-edit patch (READ LAST)
+const TEAMVER_SLIDE_API_EXISTING_DECK_IMAGE_EDIT_RULE = `# Slide-only API — existing-deck image embed (READ LAST)
+
+If the turn carries \`[Attached image embed]\` and/or \`[Existing deck edit]\` (or an attached \`deck.html\`):
+
+**Preferred deliverable — surgical insert, NOT a full rewrite:**
+
+\`\`\`
+<artifact type="deck-patch" identifier="deck">
+  <section class="slide" data-slide-index="{N}">…COPY the FULL current slide outer HTML from the attached deck, then INSERT <img src="{exact-path-from-embed-block}" alt="" style="max-width:100%;height:auto;object-fit:contain">…</section>
+</artifact>
+\`\`\`
+
+Hard rules:
+- **NEVER reduce** the number of \`<section class="slide">\` blocks vs the attached on-disk deck (do not turn an 8-slide deck into 2 slides).
+- **NEVER** emit a greenfield 2-slide wireframe as a replacement for an existing multi-slide deck.
+- Prefer \`deck-patch\` that copies the target slide HTML and inserts the image. Use \`set-image\` only when replacing an existing \`<img>\` element.
+- Full \`<artifact type="deck">\` is allowed ONLY if the user explicitly asks for a redesign/new deck — and even then you MUST keep at least the same slide count as the attached deck and include every attached image with its exact \`src\` path.
+- Copy \`src\` paths from \`[Attached image embed]\` character-for-character (including \`refs/drive/\` and timestamp prefixes). Never invent friendlier filenames.
+- Status sentence: "수정 반영 중" / "Applying your edits" — never "초안 생성" / "creating the deck".
+`;
+
+const TEAMVER_SLIDE_API_COMMENT_EDIT_PATCH_RULE = `# Slide-only API — comment-edit patch (READ LAST)
 
 If the turn carries \`<attached-preview-comments>\`, prefer a structured element patch over a full deck rewrite:
 
@@ -1288,23 +1425,112 @@ Fallback for multi-element / slide-structure changes:
 \`<artifact type="deck-patch" identifier="deck"><section class="slide" data-slide-index="{N}">…full replacement outer HTML…</section></artifact>\`
 
 - Emit ONE artifact: element-patch OR deck-patch OR full deck, never both.
-- Use full \`<artifact type="deck">\` for deck-wide/unclear scope. Never ask users for internal \`slideIndex\`.`;
+- Use full \`<artifact type="deck">\` for deck-wide/unclear scope. Never ask users for internal \`slideIndex\`.
+- Status sentence on comment-edit turns: "수정 반영 중" / "Applying your edits" (present tense). Never "슬라이드 초안이 생성", "creating the deck", or "draft is ready".`;
 
-const TEAMVER_SLIDE_API_DIRECT_STREAMING_RULE = `# Teamver slide-only API — direct deck generation rule (READ LAST — beats every rule above)
+const TEAMVER_SLIDE_API_DIRECT_STREAMING_RULE = `# Slide-only API — direct deck generation rule (READ LAST — beats every rule above)
 
 This project has \`skipDiscoveryBrief: true\` or an already-complete brief. Do NOT emit \`<question-form>\`, do NOT show "Quick brief — 30 seconds", and do NOT wait for another user message.
 
 Your successful response is optional tiny UI-locale status sentence + **exactly one** streaming artifact in this same turn. Artifact-only is OK for speed/tokens:
 
-\`<artifact type="deck" identifier="deck"><!doctype html><html lang="ko"><body>…6+ filled <section class="slide"> blocks…</body></html></artifact>\`
+\`<artifact type="deck" identifier="deck"><!doctype html><html lang="ko"><body>…at least 3 filled <section class="slide"> blocks this turn (top-up appends more)…</body></html></artifact>\`
 
 **How to stream the deck (non-negotiable):**
 1. Emit the status sentence first, then open \`<artifact type="deck">\` early. Never \`type="text/html"\`.
-2. First bytes inside artifact: \`<!doctype html><html><body><section class="slide">\` with real copy — never \`<head>\`, \`<style>\`, or empty shell.
-3. ${COMPACT_DECK_SLIDE_COUNT_GUIDANCE} Write one filled \`<section class="slide">\` per requested slide. If a template/design system is active, apply it with inline styles or one short body \`<style>\` after slide 1; do not merely describe it.
+2. First bytes inside artifact: \`<!doctype html><html><body>\` then immediately a titled \`<section class="slide">\` with real copy. Kit font \`<link>\` / short body \`<style>\` only AFTER slide 1 — never \`<head>\` / long CSS / Motif first.
+3. ${COMPACT_DECK_SLIDE_COUNT_GUIDANCE} Write one filled \`<section class="slide">\` per requested slide. **Every slide MUST be a fixed 1920×1080 canvas** — use inline \`style="width:1920px;height:1080px;box-sizing:border-box;position:relative;..."\` on every \`<section class="slide">\`. Do NOT use \`width:100vw\`, \`height:100vh\`, \`min-height:100vh\`, or scroll-snap presenter-mode plumbing — those come from the template's \`example.html\` presenter and make the deck stretch/reflow with the browser instead of matching PPT aspect ratio (16:9). If a Selected deck template is active, match its visual kit (palette/fonts/density) with inline styles or one short body \`<style>\` — but keep width/height/positioning fixed regardless of what the template's own preview HTML shows. Design system is brand context only and must not override the template look; do not merely describe the template.
 4. Close with \`</body></html></artifact>\` in this same turn.
 
-**Forbidden:** "바로 만들어 드리겠습니다" / "I'll make it" promise-only replies, question-form, outlines, plans, TodoWrite, \`[读取 template.html]\`, SLOT comments, a second artifact, stopping after \`<head>\`, announcing completion without the requested slide count (minimum 6 when unspecified), or repeating the same layout/background/composition on every slide. Preserve template/design-system feel and vary layouts per the compact inline layout vocabulary.`;
+**Content expansion:** ${SLIDE_DECK_CONTENT_EXPANSION_INSTRUCTION}
+
+${SLIDE_DECK_CONTENT_EXPANSION_EXAMPLE}
+
+**Forbidden:** "바로 만들어 드리겠습니다" / "I'll make it" promise-only replies, question-form, outlines, plans, TodoWrite, \`[读取 template.html]\`, SLOT comments, a second artifact, stopping after \`<head>\`, parroting the user brief as slide titles/body, emitting the same heading/paragraph/badge twice in a row, announcing completion without the requested slide count (prefer 3 this turn + top-up when unspecified; 6–8 only as the final target), or repeating the same layout/background/composition on every slide. Preserve the Selected deck template look (design system is secondary brand context only) and vary layouts per the compact inline layout vocabulary.`;
+
+/**
+ * Final visual authority when Canvas → Slide (or equivalent) pinned a template.
+ * Placed after compact + streaming rules so kit tokens beat Neutral samples.
+ */
+const TEAMVER_SELECTED_TEMPLATE_VISUAL_READ_LAST_WITH_SCAFFOLD = `# Selected deck template visual — READ LAST (highest visual priority)
+
+A Selected deck template is active. **Default and preferred path is token-safe:** Template visual kit + Template scaffold map (not a full example.html dump). A full **Template scaffold (CONTENT-SWAP BASE)** HTML block is rare/opt-in only — ignore it if finishing a complete deck would be at risk.
+
+Token-aware rule:
+- Prefer finishing a complete deck via kit tokens + compact motif/deco cues + scaffold map.
+- If a full scaffold HTML block is present and copying it risks truncation / max_tokens, **immediately** stay on the kit + map path (do not burn the turn on a partial CSS shell).
+- When using kit/scaffold CSS, bind slide-surface \`background\`/\`color\` on **both** \`html\`/\`body\` **and** every \`<section class="slide">\`. Do not leave \`body\` on a dark app-shell default around cream slides — that reads as a dark deck in the preview panel.
+- **Fixed 1920×1080 canvas:** The preview panel scales slides, so every \`<section class="slide">\` must use \`width:1920px;height:1080px;box-sizing:border-box;position:relative\`. Do not paste template presenter CSS such as \`width:100vw\`, \`height:100vh\`, scroll-snap, or full-screen \`html,body\` sizing.
+
+Shared hard rules:
+- Adapt slide count by duplicating/dropping whole slide shells — do not invent a new CSS system.
+- **Forbidden substitutes:** emoji motif rows (🌼🌸⭐🌈✈️ etc. as decoration), invented ellipse "daisy" SVGs, Neutral slate \`#0f172a\`, OD skeleton terracotta \`#c96442\` / ink \`#1c1b1a\` primary palettes, Noto-only typography that ignores template fonts.
+- **Forbidden:** carrying over the ATTACHED SOURCE FILE's own visual styling. Source contributes TEXT/structure only.
+- A complete closed deck beats a perfect-but-truncated scaffold copy.
+
+If any earlier compact wireframe / deck-skeleton sample conflicts with scaffold/kit (including \`--accent: #c96442\`), **ignore the sample**.`;
+
+const TEAMVER_SELECTED_TEMPLATE_VISUAL_READ_LAST_WITH_KIT = `# Selected deck template visual — READ LAST (highest visual priority)
+
+A Selected deck template is active and a **Template visual kit (from example.html)** is present (no full CONTENT-SWAP scaffold this turn). That kit is the **only** allowed palette, typography, border, shadow, and motif language.
+
+Hard requirements for every slide:
+- **Kit-driven visual, brief-driven structure:** kit + scaffold map provide palette, fonts, borders, shadows, compact motif/deco cues, and layout roles. Slide count/order/composition come from the user brief, NOT the template shell. Preserve surface colors, wrappers, cards, and motif language; choose roles that fit the brief, reuse when useful, and do NOT dump/rewrite full example.html.
+- Bind kit palette colors and font-family names (and border/shadow tokens when listed) with inline styles or one short body \`<style>\`. Whatever the kit lists MUST appear — do not approximate with a different template's look.
+- Keep decorative density the kit shows via a **small subset** of compact kit motif/deco cues. Sparse title-only slides that ignore the kit are a failure, but full CSS/SVG pasted before content is also a failure.
+- **Motif budget:** never open \`<svg\` in the first 800 characters after \`<artifact\`. Title-first always. AFTER visible title/body copy starts, paste at most ONE capped kit Motif sprite when Motif sprites lists one (Daisy flowers etc. may be ~2KB — that single kit sprite is exempt from the ~800-char Motif-budget). Empty \`.deco\` shells without child SVG, tiny CSS dots, emoji ornaments, and invented drawings are forbidden substitutes.
+- **Forbidden motif substitutes:** do **not** fake the template with unicode/emoji ornaments as decoration. Motif must be the kit's compact SVG/\`.deco\` patterns (or chunky borders when the kit has no sprites). Content emoji inside body copy is OK sparingly; decorative rows are not.
+- **Forbidden skeleton / Neutral substitutes:** slate \`#0f172a\`/\`#1e293b\`/\`#111827\`, OD terracotta \`#c96442\` unless listed in kit, Inter/Noto/system-ui-only typography that ignores kit fonts, empty corporate gradients, "no ornament" layouts.
+- **Forbidden:** carrying over the ATTACHED SOURCE FILE's own visual styling. Source contributes TEXT and structure only — palette/fonts/motif MUST come from the kit.
+- **Surface lock:** if the Template visual kit exposes a \`### Slide surface\` block, bind that exact \`background\` / \`color\` on **both** \`html\` / \`body\` **and** every \`.slide\`. Painting only \`.slide\` leaves a wrong preview-panel shell. Never substitute an ink/border token for a slide background. Dark-on-dark, light-on-light, and paper-slides-on-wrong-shell are failed deliverables.
+- **Fixed 1920×1080 canvas:** The preview panel scales this; every \`<section class="slide">\` MUST inline \`width:1920px;height:1080px;box-sizing:border-box;position:relative\`. Do NOT paste presenter CSS such as \`width:100vw\`, \`height:100vh\`, \`min-height:100vh\`, scroll-snap, or full-screen \`html,body\` sizing.
+- **Output order:** first finish visible slide content. Never start by dumping a long \`<head>\` or full Decoration CSS; a complete recognizable deck beats a perfect-but-truncated shell.
+
+If any earlier compact wireframe / deck-skeleton sample conflicts with the kit (including \`--accent: #c96442\`), **ignore the sample colors** and follow the kit.
+If the attached source's palette conflicts with the kit, **ignore the source's palette** and follow the kit.`;
+
+const TEAMVER_SELECTED_TEMPLATE_VISUAL_READ_LAST_FOR_FILL = `# Selected deck template visual — READ LAST (first content-fill)
+
+This is the first content fill after a LOOK seed (create with kit Motif vocabulary).
+
+**Close a compact deck THIS TURN** that still looks like the selected template.
+
+- Bind kit palette hex + fonts + Slide surface on \`html\`/\`body\` AND every \`.slide\` **edge-to-edge** (full 1920×1080). FORBIDDEN: white outer slide + inner cream paper panel that leaves white top/bottom bands. White title cards on cream paper are OK.
+- Title-first: cover must have a real \`h1\`/\`h2\` title + lead BEFORE any Motif decoration.
+- **Layout (required when kit has Layout CSS / scaffold roles):** reuse capped Layout CSS + scaffold roles. Do NOT flatten every slide into one centered flex title column when the kit ships grids/splits/cards.
+- **Motif vocabulary:** Motif \`<svg>\` is NOT required this turn (official Motif is merged after save). Optional tiny kit Motif CSS classes AFTER title/lead are OK. Prefer finishing 3 closed slides over any ornament.
+- **Named Motif fidelity:** do not invent a different motif family. Persist paints official Daisy/Capsule/Terminal Motif after save — do not draw lookalikes this turn.
+- **FORBIDDEN substitutes:** Motif \`<svg>\` this turn; Motif shapes from another template family; generic CSS circles; inventing Capsule coral pills when the kit Motif is petals/blobs/pins/pixel/scanlines; emoji ornament rows; Motif \`<svg>\` before cover title; multi-KB \`<svg><style>\` dumps; Neutral \`#0f172a\`; terracotta \`#c96442\`.
+- Slide count THIS TURN: honor an explicit small count (1–2) if the user asked for it. Otherwise produce 3 filled 1920×1080 slides and close the artifact. Hidden top-up appends more. Never close \`</html></artifact>\` after a single cover.
+- Stream: status → \`<artifact type="deck">\` → body-first sections with real topical copy → close \`</body></html></artifact>\` in this same response.
+`;
+
+const TEAMVER_SELECTED_TEMPLATE_VISUAL_READ_LAST_WITHOUT_KIT = `# Selected deck template visual — READ LAST (highest visual priority)
+
+A Selected deck template is active, but a concrete Template visual kit may be incomplete this turn.
+
+Hard requirements for every slide:
+- Match the Selected deck template **Visual summary / title / prose cues** (palette names, fonts, motif) as closely as possible.
+- If any hex codes or font names appear in the Selected section, bind them with inline styles or one short body \`<style>\`.
+- Do **not** invent a sparse Neutral Modern slate cover (\`#0f172a\` / Inter-only) when the template name or summary implies pastel, cream, playful, coral, terminal, editorial, etc.
+- **Contrast:** light templates need light \`html\`/\`body\`/\`.slide\` + dark ink; dark templates need dark surface + light ink. Never emit dark-on-dark or cream-slides-on-dark-shell.
+- **Fixed 1920×1080 canvas is non-negotiable.** Every \`<section class="slide">\` MUST inline \`width:1920px;height:1080px;box-sizing:border-box\`. Do not use \`100vw\`/\`100vh\`, \`min-height:100vh\`, or scroll-snap presenter plumbing — the preview panel is a scaled canvas, not a fullscreen viewport. Motif/decoration corners must stay **inside** the canvas (no negative top/left/right/bottom).
+- Do **not** fake floral/playful templates with emoji flowers/stars (🌼🌸⭐🌈). Prefer simple CSS shapes / chunky borders in the template palette over emoji ornament rows.
+- Do **not** carry over the attached source file's own visual styling either — the source HTML's palette / fonts / gradients belong to the source page, not to this deck. Even without a concrete kit, prefer the template name/summary mood over the source's colors.
+- Prefer recognizable template mood over a generic corporate title slide.`;
+
+const TEAMVER_TEMPLATE_CLONE_FILL_NO_SVG_READ_LAST = `# Template clone fill — Motif AFTER title (READ LAST — beats Motif-before-title dumps)
+
+This is the first content-fill after a Clone LOOK seed.
+
+- Cover order is mandatory: \`<section class="slide">\` → \`<h1>real topical title</h1>\` → lead \`<p>\`. kit Motif AFTER title is optional CSS only.
+- Motif \`<svg>\` is NOT required this turn. Official Motif CSS/SVG is merged after save. Do not paste Motif sprites.
+- Close **3** body-first slides this turn (unless the user asked for 1–2). Hidden top-up appends more.
+- Named Motif fidelity: do not invent a different motif family or tiny Daisy lookalikes. Persist paints official Motif after save.
+- Layout MUST come from capped Layout CSS + scaffold roles when present — do not flatten every slide to a centered flex title.
+- Never invent Motif geometry from another template family (no foreign Capsule coral pills when the kit Motif is petals/blobs/pins/pixel/scanlines; no invented generic circles).
+- Never open Motif \`<svg>\` this turn — before or after the cover title. A hang on Motif \`<svg><style>\` or a long \`<head>\` is a failed deliverable.
+- If any earlier rule said paste Motif sprites / Motif floor REQUIRED this turn, **IGNORE it** — finish 3 titled slides. Official Motif is merged after save.`;
 
 /**
  * Lean system prompt for Teamver embed slide-only + anthropic-api / BYOK proxy.
@@ -1324,6 +1550,9 @@ export function composeTeamverSlideApiPrompt({
   locale,
   userInstructions,
   projectInstructions,
+  includeCommentEditPatchRule,
+  includeExistingDeckImageEditRule,
+  templateCloneContentFill,
 }: Pick<
   ComposeInput,
   | 'skillBody'
@@ -1338,8 +1567,14 @@ export function composeTeamverSlideApiPrompt({
   | 'locale'
   | 'userInstructions'
   | 'projectInstructions'
+  | 'includeCommentEditPatchRule'
+  | 'includeExistingDeckImageEditRule'
+  | 'templateCloneContentFill'
 >): string {
   const parts: string[] = [];
+  if (templateCloneContentFill === true && skillBody?.trim()) {
+    skillBody = stripTemplateVisualKitMotifSpritesForFill(skillBody);
+  }
   const activeDesignSystemBody = designSystemBody?.trim();
   const directDeckGeneration =
     metadata?.skipDiscoveryBrief === true || metadata?.examplePrompt === true;
@@ -1347,12 +1582,15 @@ export function composeTeamverSlideApiPrompt({
   parts.push(API_MODE_OVERRIDE({ teamverSlideOnly: true }));
   parts.push(TEAMVER_SLIDE_ONLY_SCOPE.trim());
   if (directDeckGeneration) {
-    parts.push(SKIP_DISCOVERY_BRIEF_OVERRIDE);
+    // Teamver-specific: omit Site-ref discovery exception (fights DIRECT_STREAMING).
+    parts.push(SKIP_DISCOVERY_BRIEF_OVERRIDE_TEAMVER_SLIDE);
   } else {
     parts.push(TEAMVER_SLIDE_ONLY_FIRST_TURN_OVERRIDE.trim());
   }
 
-  const localePrompt = renderUiLocalePrompt(locale);
+  const localePrompt = renderTeamverSlideUiLocalePrompt(locale, {
+    discoveryActive: !directDeckGeneration,
+  });
   if (localePrompt) parts.push(localePrompt);
 
   if (userInstructions?.trim()) {
@@ -1365,12 +1603,47 @@ export function composeTeamverSlideApiPrompt({
       `## Custom instructions (project-level)\n\n${projectInstructions.trim()}`,
     );
   }
+  // Selected deck template wins over Active design system for look.
+  // Embed often auto-binds Neutral Modern | Starter. Even when labeled
+  // SECONDARY, shipping the full DESIGN.md ("No ornament", Inter, slate)
+  // still steers the model — omit the body entirely when a template is set.
+  const hasTemplateScaffold =
+    /## Template scaffold \(CONTENT-SWAP BASE\)/i.test(skillBody ?? '');
+  const hasTemplateVisualKit =
+    /## Template visual kit \(from example\.html\)/i.test(skillBody ?? '')
+    // Scaffold alone still counts as selected-template visual authority when
+    // kit extraction failed, but dual-path normally ships both.
+    || hasTemplateScaffold;
+  const hasTemplateVisualSummary =
+    /## Visual summary \(from template frontmatter\)/i.test(skillBody ?? '');
+  const hasSelectedTemplate =
+    (typeof metadata?.selectedDeckTemplateId === 'string'
+      && metadata.selectedDeckTemplateId.trim().length > 0)
+    || hasTemplateVisualSummary
+    || hasTemplateVisualKit;
+
   if (activeDesignSystemBody) {
-    parts.push(
-      `## Active design system${designSystemTitle ? ` — ${designSystemTitle}` : ''}\n\n`
-        + '**Mandatory:** bind these tokens into every slide\'s inline styles (background, text, accent, borders). Do not fall back to generic #fff/#111 when tokens exist.\n\n'
-        + activeDesignSystemBody,
-    );
+    if (hasSelectedTemplate) {
+      parts.push(
+        `## Active design system${designSystemTitle ? ` — ${designSystemTitle}` : ''} (SECONDARY — brand context only)\n\n`
+          + 'A selected deck template is the PRIMARY visual contract for this run. '
+          + 'Use the design system only for optional brand names / logos / product wording. '
+          + 'Do NOT replace the template palette, fonts, density, borders, decorative motif, '
+          + 'or light/dark scheme with design-system tokens. '
+          + 'Never turn a cheerful pastel / cream template into a dark Neutral Modern gradient.\n\n'
+          + (hasTemplateScaffold
+            ? '*(Full DESIGN.md omitted on purpose — Template scaffold owns the look; content-swap only.)*'
+            : hasTemplateVisualKit
+            ? '*(Full DESIGN.md omitted on purpose — template visual kit owns colors/fonts/density.)*'
+            : '*(Full DESIGN.md omitted on purpose — follow the Selected deck template Visual summary / title cues for look.)*'),
+      );
+    } else {
+      parts.push(
+        `## Active design system${designSystemTitle ? ` — ${designSystemTitle}` : ''}\n\n`
+          + '**Mandatory:** bind these tokens into every slide\'s inline styles (background, text, accent, borders). Do not fall back to generic #fff/#111 when tokens exist.\n\n'
+          + activeDesignSystemBody,
+      );
+    }
   }
 
   const metaBlock = renderMetadataBlock(
@@ -1391,19 +1664,98 @@ export function composeTeamverSlideApiPrompt({
     parts.push(templateVisualSignature);
   }
 
-  const skillVisualSignature = renderTeamverSkillVisualSignature(skillBody, skillName);
-  if (skillVisualSignature) {
-    parts.push(skillVisualSignature);
+  // Skip cue-extraction signature only when example.html kit is already in
+  // the Selected body. On kit-miss / title-stub turns the signature is the
+  // remaining palette/font cue extractor — keep it.
+  if (!(hasSelectedTemplate && hasTemplateVisualKit)) {
+    const skillVisualSignature = renderTeamverSkillVisualSignature(skillBody, skillName);
+    if (skillVisualSignature) {
+      parts.push(skillVisualSignature);
+    }
   }
 
   if (skillBody?.trim()) {
-    parts.push(
-      `## Visual style reference${skillName ? ` — ${skillName}` : ''}\n\n`
-        + summarizeApiModeSkillBody(skillBody),
-    );
+    // Canvas → Slide with an explicitly picked template writes
+    // `selectedDeckTemplateId` into metadata and the composer wraps that
+    // template's SKILL.md body (with a prepended `## Visual summary` block
+    // sourced from the SKILL.md frontmatter description) as the skillBody.
+    // For those runs the wrap is the ONLY concrete visual contract the
+    // model gets — running `summarizeApiModeSkillBody` here strips the
+    // wrap header, re-orders lines by regex, and truncates to 18 lines,
+    // which routinely drops the palette + typography spec. Result: the
+    // deck comes back looking generic ("템플릿 적용 안 됨").
+    //
+    // When a selected deck template is present, emit the wrapped body
+    // verbatim under a `## Selected deck template` header so the visual
+    // contract survives. For runs without a picked template (default
+    // scenario body only), keep the summarized path — those bodies
+    // contain skeleton copy workflows that ARE noise for API mode.
+    //
+    // Also treat the body itself as authoritative when it already carries
+    // the frontmatter visual summary / example.html visual kit: Canvas/Drive
+    // confirm can `patchProject` then send on the same tick while React
+    // `project.metadata` is still stale.
+    if (hasSelectedTemplate) {
+      const hardRequirements = templateCloneContentFill === true
+        ? (
+          'Hard requirements (first content-fill — kit Motif AFTER title):\n'
+          + '- Bind kit palette hex + fonts + Slide surface on html/body AND every `.slide` edge-to-edge (no white outer + inner cream panel).\n'
+          + '- Title-first body: cover title + lead BEFORE any decoration. Close `</artifact>` this turn with 3 slides.\n'
+          + '- Motif `<svg>` is NOT required this turn (official Motif is merged after save). Optional tiny kit Motif CSS AFTER title is OK. FORBIDDEN: Motif `<svg>` this turn; Motif geometry from another template family; inventing generic CSS circles; inventing Capsule coral pills when kit Motif is petals/blobs/pins/pixel.\n'
+          + '- Layout REQUIRED from capped Layout CSS + scaffold roles when present — do not flatten every slide into one centered flex title column.\n'
+          + '- Prefer 3 slides this turn unless the user asked for an exact small count. Hidden top-up appends more. No Neutral `#0f172a` / terracotta `#c96442`.\n'
+          + '- Do not dump or rewrite a full example.html. Never open Motif `<svg>` or a long `<head>` this turn.\n\n'
+        )
+        : hasTemplateScaffold
+        ? (
+          'Hard requirements (rare full HTML scaffold present — still prefer token-safe kit+map):\n'
+          + '- Prefer finishing a complete deck via kit tokens/compact motif cues + Template scaffold map. Only copy full scaffold HTML if you can close `</html></artifact>` safely.\n'
+          + '- Kit tokens (when present) are the mandatory palette/font/motif checklist either way.\n'
+          + '- Active design system is secondary brand context only; template look wins.\n'
+          + '- Forbidden substitutes: `#c96442` skeleton terracotta, Neutral `#0f172a`, emoji motif rows, invented ellipse daisies.\n\n'
+        )
+        : hasTemplateVisualKit
+        ? (
+          'Hard requirements (token-safe content-swap — MUST look like the template):\n'
+          + '- Background/surface, fonts, and layout MUST match the kit; Neutral / "similar vibe" is failed.\n'
+          + '- Use kit + scaffold map + Layout CSS as the base look; replace only visible content.\n'
+          + '- Do NOT dump/rewrite full example.html. Ignore SKILL.md "Clone example.html" in API mode.\n'
+          + '- Bind kit Slide surface on html/body AND every `.slide`; use kit font names exactly.\n'
+          + '- Follow scaffold map/Layout CSS roles. Keep compact motif/deco density via CSS shapes first. If SVG exists, use at most one short snippet AFTER title/body copy starts; never open Motif `<svg>` before cover copy; skip huge SVG/style payloads. No emoji ornaments.\n'
+          + '- Do not paste a long `<head>` before slide 1; first produce visible slide sections and finish the deck.\n'
+          + '- Active design system is secondary brand context only; template look wins.\n\n'
+        )
+        : (
+          'Hard requirements:\n'
+          + '- Match the Selected deck template Visual summary / title / prose cues (palette names, fonts, motif).\n'
+          + '- A Template visual kit may be missing this turn — still do NOT fall back to Neutral Modern slate `#0f172a` / Inter-only covers when the template implies pastel, cream, playful, coral, terminal, etc.\n'
+          + '- Do NOT fake the template with emoji ornaments (🌼🌸⭐🌈); use palette + chunky borders instead.\n'
+          + '- Active design system is secondary brand context only; template look wins.\n'
+          + '- Prefer rich multi-region layouts over empty gradient covers.\n\n'
+        );
+      parts.push(
+        `## Selected deck template${skillName ? ` — ${skillName}` : ''} — MUST MATCH THIS VISUAL SPEC\n\n`
+          + hardRequirements
+          + skillBody.trim(),
+      );
+    } else {
+      parts.push(
+        `## Visual style reference${skillName ? ` — ${skillName}` : ''}\n\n`
+          + summarizeApiModeSkillBody(skillBody),
+      );
+    }
   }
 
-  parts.push(DECK_FRAMEWORK_DIRECTIVE_COMPACT);
+  // When a visual template is selected, do NOT append the Neutral-colored
+  // compact wireframe (`#0f172a` / Inter). Models overweight the last concrete
+  // HTML samples and rewrite Daisy Days / Zhangzara kits into sparse corporate.
+  parts.push(
+    templateCloneContentFill === true
+      ? DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_TEMPLATE_FILL
+      : hasSelectedTemplate
+      ? DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_SELECTED_TEMPLATE
+      : DECK_FRAMEWORK_DIRECTIVE_COMPACT,
+  );
   parts.push(TEAMVER_API_DECK_FRAMEWORK_OVERRIDE.trim());
   if (!directDeckGeneration) {
     parts.push(TEAMVER_SLIDE_API_DISCOVERY_BINDING_RULE);
@@ -1413,11 +1765,29 @@ export function composeTeamverSlideApiPrompt({
       ? TEAMVER_SLIDE_API_DIRECT_STREAMING_RULE
       : TEAMVER_SLIDE_API_UNIFIED_STREAMING_RULE,
   );
-  // Always append the comment-edit patch contract — it is a no-op when the
-  // turn has no `<attached-preview-comments>` block, but on edit turns it
-  // gives the model a fast partial-deck path that saves 60–120s of output
-  // tokens versus regenerating the whole deck.
-  parts.push(TEAMVER_SLIDE_API_COMMENT_EDIT_PATCH_RULE);
+  // Edit contracts are turn-gated: greenfield Canvas→Slide creates must not
+  // pay ~3–4KB of patch/image READ LAST rules. FE sets these when the turn
+  // carries preview comments and/or an existing deck / image embed.
+  if (includeCommentEditPatchRule === true) {
+    parts.push(TEAMVER_SLIDE_API_COMMENT_EDIT_PATCH_RULE);
+  }
+  if (includeExistingDeckImageEditRule === true) {
+    parts.push(TEAMVER_SLIDE_API_EXISTING_DECK_IMAGE_EDIT_RULE);
+  }
+  if (hasSelectedTemplate) {
+    parts.push(
+      templateCloneContentFill === true
+        ? TEAMVER_SELECTED_TEMPLATE_VISUAL_READ_LAST_FOR_FILL
+        : hasTemplateScaffold
+        ? TEAMVER_SELECTED_TEMPLATE_VISUAL_READ_LAST_WITH_SCAFFOLD
+        : hasTemplateVisualKit
+        ? TEAMVER_SELECTED_TEMPLATE_VISUAL_READ_LAST_WITH_KIT
+        : TEAMVER_SELECTED_TEMPLATE_VISUAL_READ_LAST_WITHOUT_KIT,
+    );
+  }
+  if (templateCloneContentFill === true) {
+    parts.push(TEAMVER_TEMPLATE_CLONE_FILL_NO_SVG_READ_LAST);
+  }
 
   return parts.join('\n\n---\n\n');
 }

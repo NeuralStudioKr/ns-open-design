@@ -587,15 +587,57 @@ async function executeProjectFilesReadJson(options: ExecuteLocalDaemonRefreshSou
   const filePath = selectJsonPath(options.source.input as ProjectFilesReadJsonInput);
   if (!filePath.endsWith('.json')) throw new Error('project_files.read_json only supports .json files');
   const dir = projectDir(options.projectsRoot, options.projectId);
-  const target = path.resolve(dir, filePath);
-  const [dirReal, targetLinkStat] = await Promise.all([realpath(dir), lstat(target)]);
-  if (targetLinkStat.isSymbolicLink()) throw new Error('project_files.read_json does not follow symlinks');
-  const targetReal = await realpath(target);
-  if (!targetReal.startsWith(`${dirReal}${path.sep}`) && targetReal !== dirReal) {
-    throw new Error('project_files.read_json path escapes project dir');
+  // Probe NFC/NFD variants so macOS legacy uploads (NFD on disk) resolve
+  // against callers that pass NFC paths (metadata / model / MCP).
+  const candidates: string[] = [];
+  const seen = new Set<string>();
+  const pushCandidate = (value: string): void => {
+    if (!value || seen.has(value)) return;
+    seen.add(value);
+    candidates.push(value);
+  };
+  pushCandidate(filePath);
+  try { pushCandidate(filePath.normalize('NFC')); } catch { /* ignore */ }
+  try { pushCandidate(filePath.normalize('NFD')); } catch { /* ignore */ }
+
+  const dirReal = await realpath(dir);
+  let targetReal: string | null = null;
+  let entryStat: Awaited<ReturnType<typeof stat>> | null = null;
+  let lastErr: unknown = null;
+  for (const candidate of candidates) {
+    const target = path.resolve(dir, candidate);
+    let candidateLinkStat: Awaited<ReturnType<typeof lstat>>;
+    try {
+      candidateLinkStat = await lstat(target);
+    } catch (err) {
+      lastErr = err;
+      if (err && (err as { code?: string }).code === 'ENOENT') continue;
+      throw err;
+    }
+    if (candidateLinkStat.isSymbolicLink()) {
+      throw new Error('project_files.read_json does not follow symlinks');
+    }
+    let candidateReal: string;
+    try {
+      candidateReal = await realpath(target);
+    } catch (err) {
+      lastErr = err;
+      if (err && (err as { code?: string }).code === 'ENOENT') continue;
+      throw err;
+    }
+    if (!candidateReal.startsWith(`${dirReal}${path.sep}`) && candidateReal !== dirReal) {
+      throw new Error('project_files.read_json path escapes project dir');
+    }
+    const statResult = await stat(candidateReal);
+    if (!statResult.isFile()) throw new Error('project_files.read_json path must be a file');
+    targetReal = candidateReal;
+    entryStat = statResult;
+    break;
   }
-  const entryStat = await stat(targetReal);
-  if (!entryStat.isFile()) throw new Error('project_files.read_json path must be a file');
+  if (!targetReal || !entryStat) {
+    if (lastErr) throw lastErr;
+    throw Object.assign(new Error(`project_files.read_json not found: ${filePath}`), { code: 'ENOENT' });
+  }
   if (entryStat.size > 256 * 1024) throw new Error('project_files.read_json file exceeds 256KB');
   if (options.signal?.aborted === true) throw options.signal.reason;
   let parsed: BoundedJsonValue;

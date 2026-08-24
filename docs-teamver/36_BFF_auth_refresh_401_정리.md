@@ -57,6 +57,16 @@ staging 배포 후 프로젝트 상세 페이지를 새로고침해, 일반 진�
 - SSOT: **[41](./41_Design_Drive_인증_계약_권고.md)** · **[39_10](./39_10_HA_세션쿠키_경합_해결.md)** (§1~§7 stale Set-Cookie, §8 Main HS256 forwarding) · [22 §3.2g, §3.2f](./22_Drive_인증_Usage_연동_검토.md)
 - 운영 시 Network에 Drive `session_expired`가 보이면 본 문서의 FE refresh 억제 로직부터 건드리지 말고, **41 → 39_10 §8 → §5** 순으로 체크리스트를 본다.
 
+## 2026-08-05 — session-probe×2 + refresh + probe×2 폭풍
+
+**증상:** 세션 만료 시 DevTools에 probe×2 → refresh 401 → probe×2 (`provider.tsx`는 analytics fetch wrapper 스택).
+
+**원인:** boot가 `authenticated=true`를 nginx ladder보다 먼저 공표 → App session-changed runtime-config probe×2 레이스 + refresh HA `bypassNegativeCache` probe×2.
+
+**수정:** boot ladder 후 공표 · App boot-incomplete skip · confirm 재probe 제거 · known-dead 시 HA skip · decline 시 negative cache 시드 · sticky quiet 60s cooldown.
+
+**기대:** 확정 dead에서 불필요 401 반복 없음. cold-cache 첫 refresh 401의 HA sibling probe는 유지.
+
 ## 2026-07-16 — `GET /runtime-config` visibility 401 (본 문서와 구분)
 
 탭 focus마다 `GET /teamver-bff/runtime-config → 401 session_expired` 가 반복되는 현상은 **refresh POST가 아님**.  

@@ -251,19 +251,19 @@ test('[P2] captures the projects page surface', async ({ page }) => {
   await captureVisual(page, 'visual-projects');
 });
 
-test('[P2] captures the projects kanban surface', async ({ page }) => {
+test('[P2] captures the projects grid surface', async ({ page }) => {
   await configureVisualPage(page);
   await gotoVisualHome(page);
 
   await ensureRailOpen(page);
   await page.getByTestId('entry-nav-projects').click();
   const projects = page.getByTestId('entry-view-projects');
-  await projects.getByTestId('designs-view-kanban').click();
-  await expect(projects.getByTestId('designs-view-kanban')).toHaveAttribute('aria-pressed', 'true');
+  await expect(projects.locator('.design-grid')).toBeVisible();
+  await expect(projects.getByTestId('designs-view-kanban')).toHaveCount(0);
   await expect(projects.getByText('Launchpad dashboard').first()).toBeVisible();
   await waitForVisualFonts(page);
 
-  await captureVisual(page, 'visual-projects-kanban');
+  await captureVisual(page, 'visual-projects-grid');
 });
 
 test('[P2] captures the design systems page surface', async ({ page }) => {

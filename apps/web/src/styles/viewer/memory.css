@@ -646,6 +646,109 @@
   min-height: 0;
   background: var(--bg);
 }
+.manual-edit-workspace > .manual-edit-layers {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  bottom: 8px;
+  width: 240px;
+  max-width: calc(100% - 16px);
+  z-index: 40;
+}
+
+.manual-edit-layers-toggle {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 39;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-panel);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.12);
+}
+
+.manual-edit-layers-toggle:hover {
+  background: color-mix(in srgb, var(--text) 4%, var(--bg-panel));
+}
+
+.manual-edit-layers-toggle.active {
+  color: #2563eb;
+  border-color: color-mix(in srgb, #2563eb 45%, var(--border));
+}
+
+.manual-edit-layers-head-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.manual-edit-layers-hint {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.manual-edit-layers-head-actions {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.manual-edit-layers-count {
+  color: var(--text-muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.manual-edit-layers-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.manual-edit-layers-close:hover {
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+  color: var(--text);
+}
+
+.manual-edit-layer-empty {
+  margin: 0;
+  padding: 12px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.manual-edit-group-align-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.manual-edit-scroll > .cc-section.manual-edit-group-align {
+  padding: 0 12px;
+}
+
 .manual-edit-workspace > .manual-edit-right {
   position: absolute;
   top: 8px;
@@ -683,8 +786,13 @@
 /* Resize overlay is a sibling under .manual-edit-workspace (host layer).
    Keep below the floating inspector — equal z-index + later DOM painted the
    box over Font/Typography controls. */
-.manual-edit-workspace > [data-testid='manual-edit-resize-overlay'] {
+.manual-edit-workspace > [data-testid='manual-edit-resize-overlay'],
+.manual-edit-workspace > [data-testid='manual-edit-multi-select-overlay'] {
   z-index: 20;
+}
+
+.manual-edit-workspace > [data-testid='manual-edit-snap-guides'] {
+  z-index: 19;
 }
 
 .manual-edit-workspace > .manual-edit-hover-action {
@@ -916,9 +1024,30 @@
   padding: 10px;
 }
 
+.manual-edit-layer-row-wrap {
+  display: grid;
+  gap: 4px;
+}
+
+.manual-edit-layer-drop-marker {
+  height: 2px;
+  border-radius: 999px;
+  background: var(--accent);
+}
+
+.manual-edit-layer-drop-marker--end {
+  margin-top: 2px;
+}
+
+.manual-edit-layer-drop-tail {
+  min-height: 12px;
+}
+
 .manual-edit-layer-row {
   display: grid;
-  gap: 3px;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
   width: 100%;
   height: auto;
   padding: 9px 10px;
@@ -926,6 +1055,33 @@
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--bg-panel);
+}
+
+.manual-edit-layer-row[draggable='true'] {
+  cursor: grab;
+}
+
+.manual-edit-layer-row.dragging {
+  opacity: 0.55;
+  cursor: grabbing;
+}
+
+.manual-edit-layer-row.drop-target {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+}
+
+.manual-edit-layer-drag-handle {
+  color: var(--text-muted);
+  font-size: 10px;
+  line-height: 1;
+  letter-spacing: -1px;
+  user-select: none;
+}
+
+.manual-edit-layer-row-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
 }
 
 .manual-edit-layer-row.selected {
@@ -942,6 +1098,37 @@
 
 .manual-edit-layer-row span {
   color: var(--text-muted);
+  font-size: 11px;
+}
+
+.manual-edit-layers-arrange {
+  display: grid;
+  gap: 8px;
+  padding: 0 10px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.manual-edit-layers-arrange-label {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.manual-edit-zorder-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.manual-edit-zorder-grid--compact {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.manual-edit-zorder-btn {
+  min-height: 30px;
+  padding: 6px 8px;
   font-size: 11px;
 }
 
@@ -1094,10 +1281,52 @@
   min-height: 32px;
   padding: 8px 12px 2px;
 }
-.manual-edit-floating .manual-edit-titlebar-close {
+.manual-edit-floating .manual-edit-titlebar-close,
+.manual-edit-floating .manual-edit-titlebar-collapse {
   width: 28px;
   height: 28px;
   border-radius: var(--radius);
+}
+
+/* Collapsed inspector: titlebar chrome only so the selection stays visible. */
+.manual-edit-collapsed {
+  height: auto !important;
+  max-height: none !important;
+  bottom: auto;
+}
+.manual-edit-collapsed .manual-edit-modal.cc-panel,
+.manual-edit-modal--collapsed {
+  height: auto;
+  max-height: none;
+  padding-bottom: 4px;
+}
+.manual-edit-titlebar-collapse {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: var(--radius);
+  padding: 0;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.manual-edit-titlebar-collapse:hover {
+  color: var(--text);
+  background: var(--bg-subtle);
+}
+.manual-edit-titlebar-collapse svg {
+  transition: transform 160ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+/* Expanded: chevron points up (collapse). Collapsed: points down (expand). */
+.manual-edit-titlebar-collapse[aria-expanded='true'] svg {
+  transform: rotate(180deg);
+}
+.manual-edit-titlebar-collapse[aria-expanded='false'] svg {
+  transform: rotate(0deg);
 }
 
 .manual-edit-titlebar {

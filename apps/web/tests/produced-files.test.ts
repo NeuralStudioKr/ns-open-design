@@ -42,6 +42,18 @@ describe('computeProducedFiles', () => {
     expect(produced?.map((file) => file.name)).toEqual(['new.html']);
   });
 
+  it('excludes user annotation drawing screenshots from produced files', () => {
+    const produced = computeProducedFiles(
+      ['deck.html'],
+      [
+        { name: 'deck.html' },
+        { name: 'mse2lcw6-drawing-2026-08-04T05-14-00-000Z.png' },
+        { name: 'drawing-2026-08-04T05-14-00-000Z.png' },
+      ] as never[],
+    );
+    expect(produced?.map((file) => file.name)).toEqual([]);
+  });
+
   it('returns all files when the turn started from an empty project', () => {
     const produced = computeProducedFiles(
       [],

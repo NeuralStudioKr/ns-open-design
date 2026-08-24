@@ -612,24 +612,20 @@
   border: 0;
   border-radius: var(--radius-pill);
   background: transparent;
-  color: var(--text-faint);
+  color: var(--text-soft);
   cursor: pointer;
   transition: background-color 120ms var(--ease-out), color 120ms var(--ease-out);
 }
 .tab-panel-toolbar .toolbar-search .toolbar-search-clear:hover {
   background: var(--bg-subtle);
-  color: var(--text);
-}
-.tab-panel-toolbar .toolbar-search .toolbar-search-clear:focus-visible {
-  outline: 2px solid var(--text);
-  outline-offset: 2px;
+  color: var(--text-strong);
 }
 .tab-panel-toolbar .toolbar-search .search-icon {
   position: absolute;
   left: 9px;
   top: 50%;
   transform: translateY(-50%);
-  color: var(--text-faint);
+  color: var(--text-soft);
   font-size: 13px;
   pointer-events: none;
 }

@@ -73,6 +73,7 @@ describe("importTeamverDriveAssets", () => {
         assetId: "AST-1",
         destPath: "refs/logo.svg",
         mimeType: "image/svg+xml",
+        sharedDriveId: "SD-SHOULD-NOT-POST",
       },
     ]);
 
@@ -88,6 +89,11 @@ describe("importTeamverDriveAssets", () => {
         ],
       },
       expect.objectContaining({ workspaceId: "ws-1", skipAuthHeader: true }),
+    );
+    expect(postMock.mock.calls[0]?.[1]).not.toEqual(
+      expect.objectContaining({
+        assets: [expect.objectContaining({ sharedDriveId: expect.anything() })],
+      }),
     );
     expect(withDesignBffCookieAuthRecovery).toHaveBeenCalledTimes(1);
     expect(result.imported[0]?.path).toBe("refs/logo.svg");

@@ -759,7 +759,7 @@ describe('FileWorkspace launcher tab creation', () => {
       expect(onActiveContextChange).toHaveBeenLastCalledWith({
         id: 'workspace:design-files',
         kind: 'design-files',
-        label: 'Design Files',
+        label: 'Project files',
         tabId: '__design_files__',
         absolutePath: '/tmp/open-design/project-1',
       });
@@ -821,7 +821,7 @@ describe('FileWorkspace launcher tab creation', () => {
     );
 
     expect(renderedTabLabels()).toEqual([
-      'Design Files',
+      'Project files',
       'Browser',
       'New Terminal',
       'Side chat',

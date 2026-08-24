@@ -10,6 +10,7 @@ const API_PROTOCOL_LABELS: Record<ApiProtocol, string> = {
   ollama: 'Ollama Cloud API',
   senseaudio: 'SenseAudio API',
   aihubmix: 'AIHubMix API',
+  minimax: 'MiniMax API',
 };
 
 const API_PROTOCOL_AGENT_IDS: Record<ApiProtocol, string> = {
@@ -20,6 +21,7 @@ const API_PROTOCOL_AGENT_IDS: Record<ApiProtocol, string> = {
   ollama: 'ollama-cloud-api',
   senseaudio: 'senseaudio-api',
   aihubmix: 'aihubmix-api',
+  minimax: 'minimax-api',
 };
 
 export function apiProtocolLabel(protocol: ApiProtocol | undefined): string {
@@ -46,6 +48,7 @@ export function usesAnthropicProxy(cfg: AppConfig): boolean {
     cfg.apiProtocol === 'google' ||
     cfg.apiProtocol === 'senseaudio' ||
     cfg.apiProtocol === 'aihubmix' ||
+    cfg.apiProtocol === 'minimax' ||
     cfg.apiProtocol === 'openai'
   ) {
     return false;

@@ -49,13 +49,13 @@ export function renderMediaGenerationContract(
 
 ## Media generation policy (load-bearing — overrides softer wording above)
 
-Open Design-owned media execution is **disabled for this run**. Do not call
-\`"$OD_NODE_BIN" "$OD_BIN" media generate\`, Codex built-in imagegen, OD media
+Built-in media execution is **disabled for this run**. Do not call
+\`"$OD_NODE_BIN" "$OD_BIN" media generate\`, Codex built-in imagegen, built-in media
 provider APIs, local renderers, or ad-hoc scripts that create media bytes on
-OD's behalf.
+the workspace's behalf.
 
 External MCP media tools, when explicitly configured for this run, are outside
-this OD-owned media policy. If no such external tool is available and the user
+this built-in media policy. If no such external tool is available and the user
 asks for media, describe the intended creative brief, prompt, surface, model
 preference, references, and output filename in chat, then stop. Do not claim a
 file was generated and do not emit an \`<artifact>\` block for media.

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, useLayoutEffect, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MutableRefObject, type PointerEvent as ReactPointerEvent } from 'react';
+import { devLog } from '../lib/devLog';
 import { createPortal } from 'react-dom';
 import { AnimatePresence } from 'motion/react';
 import { createArtifactManifest, inferLegacyManifest } from '../artifacts/manifest';
@@ -11,6 +12,9 @@ import {
 } from '../artifacts/validate';
 import {
   diffDeckSlideIndexes,
+  appendIncomingSlidesOntoExistingDeck,
+  countAppendableDeckSlides,
+  extractDeckBodyContent,
   extractTopLevelSlideSections,
   isDeckPatchArtifactType,
   parseDeckPatchWithSalvage,
@@ -24,16 +28,20 @@ import {
 } from '../artifacts/element-patch';
 import {
   applyScopedDeckPatchToHtml,
+  attachmentMergeHint,
   inferSlideIndexFromDeckHtml,
   mergeScopedCommentTargetsFromPatchedDeck,
-  reconcileCommentAttachmentForDeck,
-  reconcileCommentAttachmentsForDeck,
+  finalizeScopedDeckMergeHtml,
+  reconcileCommentScopeForPersist,
   resolveElementPatchAllowedSlideIndexes,
   scopedCommentElementIds,
+  graftVisualMarksIntoDeckHtml,
+  stabilizeVisualMarkDeckHtml,
   hasElementScopedCommentAttachments,
+  isDrawnVisualMarkAttachment,
+  shouldClientGraftVisualMarkWithoutAi,
   isVisualCommentAttachment,
   scopedCommentSlideIndexesFromAttachments,
-  scopedCommentSlideIndexesFromDeck,
   type DeckPatchMergeResult,
   type ScopedDeckPersistFailureCode,
 } from '../edit-mode/scoped-deck-patch';
@@ -57,8 +65,20 @@ import {
   stashPendingArtifactWrite,
 } from '../artifacts/pendingWriteRecovery';
 import {
+  deckArtifactStartsWithMotifSvgDump,
+  deckSlideHeadingsLookLikeFailedGenerate,
+  isClosedSoftSalvageDeckHtml,
+  isPersistableShortDeckDraft,
+  isPersistableShortDeckDraftAfterHeal,
+  shouldAbortStreamForHeadOnlyKitDump,
+  shouldAbortStreamForMotifSvgDump,
+  stripAbandonedHeadKitDumpFromStreamedText,
+  stripAbandonedMotifSvgDumpFromStreamedText,
+} from '../artifacts/deck-html-content';
+import {
   recoverBestHtmlDocumentFromText,
   recoverHtmlArtifactFromPrecedingDocument,
+  salvageTemplateFillShellAsCoverDraft,
   salvageTruncatedHtmlDocument,
 } from '../artifacts/recover';
 import {
@@ -86,7 +106,12 @@ import {
 import { useI18n } from '../i18n';
 import { useTeamverT } from '../teamver/branding/useTeamverT';
 import { streamMessage } from '../providers/anthropic';
-import { EXPLICIT_PROXY_STOP_REASON, requestProxyAbort } from '../providers/proxyAbort';
+import {
+  EXPLICIT_PROXY_STOP_REASON,
+  FILL_HEAD_KIT_DUMP_STOP_REASON,
+  FILL_MOTIF_SVG_DUMP_STOP_REASON,
+  requestProxyAbort,
+} from '../providers/proxyAbort';
 import {
   ActiveByokProxyAuthTransientError,
   BYOK_PROXY_AUTH_BACKOFF_MS,
@@ -123,17 +148,29 @@ import {
   uploadProjectFiles,
   upsertPreviewComment,
   writeProjectTextFileDetailed,
+  deleteProjectFile,
 } from '../providers/registry';
 import { useProjectFileEvents, type ProjectEvent } from '../providers/project-events';
 import { useCoalescedCallback } from '../hooks/useCoalescedCallback';
 import {
   composeSystemPrompt,
-  repairArtifactDocumentHead,
+  deriveDeckCoverTitleFromBrief,
+  healInstructionCopyCoverHeading,
+  htmlHasDeckSlideHost,
+  htmlLooksLikeSlideDeliverableStream,
+  metadataForTeamverSlideOnlyPrompt,
+  firstOfficialDeckTemplateId,
+  collapseAdjacentDuplicateDeckSiblings,
+  pinDeckSlidesToFixedCanvas,
   renderPluginBlock,
+  repairArtifactStyleSheets,
+  slimTemplateVisualKitForFill,
   type AudioVoiceOption,
   type MemorySystemPromptResponse,
   type ResearchOptions,
 } from '@open-design/contracts';
+import { repairArtifactDocumentHeadIfNeeded } from '../runtime/artifact-document-head';
+import { repairDeckSlideSurfaceBleed } from '../artifacts/deck-slide-surface';
 import { embedUiLabel } from '../teamver/embedUiLabels';
 import {
   deriveAgentRevisionLabel,
@@ -150,16 +187,38 @@ import {
 } from '../runtime/revision-analytics';
 import {
   enrichChatSendMetaWithProjectDeckTemplate,
+  formatSelectedDeckTemplateChipLabel,
   resolveDeckTemplateSkillId,
   resolveScenarioPluginIdForLocalSkill,
   selectedDeckTemplateMetadata,
+  selectedDeckTemplateTitleStub,
   wrapSelectedDeckTemplateSkillBody,
 } from '../runtime/selected-deck-template';
 import {
+  CANVAS_CREATE_SLIDES_PLUGIN_ID,
+  isExplicitCanvasSlideVisualTemplate,
+} from '../teamver/canvasSlideLaunch';
+import {
+  TEMPLATE_CLONE_CONTENT_FILL_MARKER,
+  TEMPLATE_CLONE_CONTENT_FILL_TURN_MARKER,
+  clearTemplateCloneContentFillQueue,
+  ensureTemplateCloneContentFillContinuePrompt,
+  extractTemplateCloneFillSlideCountHintFromPrompt,
+  historyHasTemplateCloneContentFill,
+  isTemplateCloneContentFillPrompt,
+  isTemplateCloneContentFillQueued,
+  readQueuedAutoSendSeed,
+  resolveTemplateCloneAutoSendSeed,
+  templateCloneContentFillHardRules,
+  templateCloneFillSlideCountOverrideNotice,
+  withTemplateCloneFillPluginInputs,
+  withoutCanonicalDeckAttachments,
+} from '../teamver/templateCloneContentFill';
+import {
   anonymizeArtifactId,
   artifactKindToTracking,
-  projectKindToTracking,
 } from '@open-design/contracts/analytics';
+import { projectListTrackingKind } from '../teamver/projectListCardCategory';
 import type {
   TrackingArtifactKind,
   TrackingDesignSystemApplyTargetKind,
@@ -182,8 +241,8 @@ import { agentDisplayName, agentModelDisplayName } from '../utils/agentLabels';
 import { isMacPlatform } from '../utils/platform';
 import {
   canAutoRenameProjectFromPrompt,
+  conversationTitleFromUserTurn,
   deriveProjectNameForCreate,
-  extractUserPromptForNaming,
   summarizeProjectNameFromUserTurn,
 } from '../utils/projectName';
 import {
@@ -194,6 +253,23 @@ import {
 import { cleanupByokRetryArtifacts } from '../runtime/byok-retry-artifact-gc';
 import { playSound, showCompletionNotification } from '../utils/notifications';
 import { randomUUID } from '../utils/uuid';
+import {
+  excludeAttachmentsBackedByVisualScreenshots,
+  projectFilePathBasename,
+  projectFilePathsReferToSameFile,
+  projectFileResolvedPath,
+} from '../utils/projectFilePaths';
+import { reconcileProjectRawFileMissingCache } from '../utils/projectFileFetchCache';
+import {
+  resolveCanonicalProjectImagePath,
+  rewriteAttachmentImageSrcs,
+} from '../utils/rewriteAttachmentImageSrcs';
+import { healDiskHtmlAttachmentImageSrcs } from '../utils/healDiskHtmlAttachmentImageSrcs';
+import { mergeImageMentionAttachments } from '../utils/recoverChatAttachmentsFromMentions';
+import {
+  stageReadableUploadedAttachments,
+  uploadedImagesReadableOnDisk,
+} from '../utils/uploadedImagesReadable';
 import { DEFAULT_NOTIFICATIONS } from '../state/config';
 import type { TodoItem } from '../runtime/todos';
 import {
@@ -201,6 +277,7 @@ import {
   appendWarningStatusEvent,
   attachPersistedChatError,
   attachAutoContinueIncompleteOutputNotice,
+  clearDurableDeliverableErrorsAfterRecovery,
   messageHasPersistedChatError,
   messageHasVisibleProse,
 } from '../runtime/chat-events';
@@ -223,15 +300,19 @@ import {
 } from '../runtime/auto-continue-comment-scope';
 import {
   attemptEmergencySlideDeckRecovery,
+  attemptFinalOutlineDeckFallback,
   canFireAutoContinueForConversation,
   collectSlideReferencePathsFromMessages,
   extractRequestedSlideCountHintFromMessages,
   findIncompleteSlideAssistantForRecovery,
   isEmergencyArtifactPersistSuccess,
+  OUTLINE_DECK_FALLBACK_STATUS_CODE,
   resolveSlideProducedHtmlToOpen,
   syncAutoContinueCountFromMessages,
   verifySlideProducedHtmlDeliverable,
 } from '../runtime/slide-deliverable-recovery';
+import { tryPersistClientVisualMarksOnSend } from '../runtime/client-visual-mark-persist';
+import { resolveSlideTurnKindForSend } from '../runtime/chat-message-render';
 import {
   buildDesignSystemPackageAuditRepairPrompt,
   summarizeDesignSystemPackageAudit,
@@ -294,14 +375,18 @@ import {
   historyWithApiWebFetchContext,
 } from '../api-web-fetch-context';
 import {
+  buildConcreteDeckPatchTemplateForVisualMarks,
   buildConcretePatchTemplatesForCommentAttachments,
   chatAttachmentsFromPreviewCommentFiles,
   commentsToAttachments,
+  dedupeCommentAttachments,
   elementPatchCoerceHintsFromCommentAttachments,
   filterUsableCommentAttachments,
+  hasUserTypedVisualAnnotationRequest,
   historyWithCommentAttachmentContext,
   hydrateQueryContextCommentAttachments,
   isScreenshotOnlyVisualCommentTarget,
+  isVisualMarkPlacementOnlyCommentAttachments,
   mergeAttachedComments,
   mergePreviewCommentAttachments,
   messageContentWithCommentAttachments,
@@ -320,8 +405,11 @@ import {
 } from '../produced-files';
 import { buildPptxExportPrompt } from '../lib/build-pptx-export-prompt';
 import {
-  maskManualEditTargets,
+  maskManualEditTargetsOnDocument,
   elementPatchReasonTargetsSyntheticVisualMark,
+  parseManualEditSource,
+  sanitizeManualEditFullSource,
+  serializeManualEditSource,
 } from '../edit-mode/source-patches';
 import { AvatarMenu } from './AvatarMenu';
 import { EntrySettingsMenu } from './EntrySettingsMenu';
@@ -359,8 +447,8 @@ import {
   encodePersistedRunErrorDetail,
   formatAutoContinueIncompleteOutputNotice,
   formatEmergencyDeckFallbackNotice,
-  extractProjectRunErrorCode,
-  formatProjectRunErrorForUser,
+  formatOutlineDeckFallbackNotice,
+  formatPersistedProjectRunError,
   formatProjectRunStalledErrorForUser,
   formatProjectForkConversationError,
 } from '../teamver/projectErrorMessages';
@@ -407,11 +495,27 @@ import {
 import { subscribeTeamverEmbedSessionChanged } from '../teamver/teamverEmbedSession';
 import { consumeTeamverPublishMenuArm, maybeArmTeamverPublishMenuAfterRunSuccess } from '../teamver/teamverPostRunNavigation';
 import {
+  SLIDE_COUNT_TOP_UP_ENTRY_FROM,
+  buildSlideCountTopUpPrompt,
+  extractRequestedSlideCountSpecFromMessages,
+  extractRequestedSlideCountTargetFromMessages,
+  isSlideCountTopUpPrompt,
+  looksLikeSlideCountExpansionRequest,
+  rollbackSlideCountTopUpCount,
+  shouldQueueSlideCountTopUp,
+  syncSlideCountTopUpCountFromMessages,
+} from '../teamver/slideCountTopUp';
+import {
   looksLikeDeckDeliverablePromiseProse,
   looksLikeDeckIntentProse,
 } from '../teamver/deckDeliverableProse';
 import { resolveEmbedSlideDesignSystemId } from '../teamver/embedSlideDesignSystem';
-import { fetchPluginLocalSkill } from '../teamver/fetchPluginLocalSkill';
+import {
+  fetchPluginLocalSkill,
+  mergeOfficialLookCssForTemplate,
+  shouldNotifyTemplateVisualKitMiss,
+  skillBodyHasTemplateVisualKit,
+} from '../teamver/fetchPluginLocalSkill';
 import { throwIfProjectCommentUploadIncomplete } from '../teamver/projectUploadErrors';
 import { stripLeakedPseudoToolXml } from '../utils/stripLeakedPseudoToolXml';
 import {
@@ -441,14 +545,28 @@ import {
   selectAutoOpenProducedHtml,
 } from './auto-open-file';
 import { selectInitialDesignPreviewFile } from './design-files/designArtifacts';
-import { isEmbedSupportingProjectFile } from '../teamver/branding/embedDeliverableFilePolicy';
+import {
+  cleanupRootHtmlReferenceLeaks,
+  deleteRootHtmlReferenceLeakIfPresent,
+} from '../teamver/branding/cleanupRootHtmlReferenceLeaks';
+import {
+  isCanonicalDeckProjectPath,
+  isEmbedSupportingProjectFile,
+  isRootCanonicalDeckHtmlPath,
+  isTemplateCloneLookSeedFile,
+  resolveCanonicalDeckEntryPath,
+  resolveFilledDeckPromotion,
+} from '../teamver/branding/embedDeliverableFilePolicy';
+import { clearProjectCoverCache } from '../teamver/projectCoverLoader';
 import {
   artifactBaseNameForPersist,
   artifactVersionTabsToClose,
   collapseArtifactVersionOpenTabs,
   normalizeSlideOnlyArtifactContractType,
   resolveArtifactPersistFileName,
+  resolveSlideOnlySkipDiscoveryBrief,
   shouldDeferSlideOnlyDiscoveryArtifactPersist,
+  shouldReuseSameTurnHtmlWriteAsPersist,
 } from './artifact-persist';
 import { buildRepoImportPrompt, designSystemNeedsRepoConnect } from './design-system-github-evidence';
 import { collectReferencedJsxNames } from '../runtime/jsx-module-refs';
@@ -491,6 +609,11 @@ type ProjectChatSendMeta = ChatSendMeta & {
    *  this send (e.g. 'resume_continue' from the resumable-failure Continue
    *  action). Behavior never depends on it; it only shapes PostHog props. */
   entryFrom?: ChatAnalyticsEntryFrom;
+  /**
+   * Clone LOOK → first AI content fill lineage (including auto-continue).
+   * Forces create tone and blocks truncated deck.html re-attach.
+   */
+  templateCloneContentFill?: boolean;
 };
 
 const DAEMON_REATTACH_MISSING_RUN_GRACE_MS = 90_000;
@@ -549,6 +672,9 @@ function mergeServerMessageWithLocal(server: ChatMessage, local?: ChatMessage): 
   }
   if (!server.preTurnFileNames?.length && local.preTurnFileNames?.length) {
     merged.preTurnFileNames = local.preTurnFileNames;
+  }
+  if (!server.slideTurnKind && local.slideTurnKind) {
+    merged.slideTurnKind = local.slideTurnKind;
   }
   if (!server.lastRunEventId && local.lastRunEventId) {
     merged.lastRunEventId = local.lastRunEventId;
@@ -680,12 +806,39 @@ export function mergeServerMessagesIntoConversation(
   const currentById = new Map(current.map((message) => [message.id, message]));
   const serverIds = new Set(serverMessages.map((message) => message.id));
   const merged = serverMessages.map((message) =>
-    mergeServerMessageWithLocal(message, currentById.get(message.id)),
+    sanitizePersistedAssistantChatMessage(
+      mergeServerMessageWithLocal(message, currentById.get(message.id)),
+    ),
   );
   for (const message of current) {
     if (!serverIds.has(message.id)) merged.push(message);
   }
   return dedupeConversationAssistantRows(orderConversationMessages(merged, current));
+}
+
+/**
+ * Cold-load / soft-refresh: scrub deck HTML debris that was persisted before
+ * display last-pass (or mid-`</style>` truncations) so reload matches live chat.
+ */
+export function sanitizePersistedAssistantChatMessage(message: ChatMessage): ChatMessage {
+  if (message.role !== 'assistant') return message;
+  const content = message.content ?? '';
+  const nextContent = sanitizeAssistantProseForDisplay(content, { stripCodeFences: true });
+  let eventsChanged = false;
+  const nextEvents = message.events?.map((event) => {
+    if (event.kind !== 'text' && event.kind !== 'thinking') return event;
+    const text = typeof event.text === 'string' ? event.text : '';
+    const cleaned = sanitizeAssistantProseForDisplay(text, { stripCodeFences: true });
+    if (cleaned === text) return event;
+    eventsChanged = true;
+    return { ...event, text: cleaned };
+  });
+  if (nextContent === content && !eventsChanged) return message;
+  return {
+    ...message,
+    content: nextContent,
+    ...(nextEvents ? { events: nextEvents } : {}),
+  };
 }
 
 function synthesizeAssistantMessageForActiveRun(run: {
@@ -978,8 +1131,10 @@ function mergeChatAttachments(...groups: ChatAttachment[][]): ChatAttachment[] {
   for (const group of groups) {
     for (const attachment of group) {
       const path = attachment.path.trim();
-      if (!path || seen.has(path)) continue;
-      seen.add(path);
+      if (!path) continue;
+      const dedupeKey = projectFilePathBasename(path).toLowerCase();
+      if (seen.has(dedupeKey)) continue;
+      seen.add(dedupeKey);
       out.push({ ...attachment, path });
     }
   }
@@ -1019,6 +1174,35 @@ function isCanonicalDeckFileName(fileName: string): boolean {
   return /^deck(?:[-_.].*)?\.html?$/.test(base);
 }
 
+/**
+ * On-disk Teamver deck for *edit* auto-attach / prompt branching.
+ * Must NOT fall back to leftover non-deck HTML (about.html, etc.) — that would
+ * mark a first create as an "existing deck edit" and drive create/edit miscopy.
+ */
+export function resolveCanonicalDeckFileForEdit(
+  files: readonly ProjectFile[],
+  entryFile?: string | null,
+): ProjectFile | null {
+  const deliverables = files.filter(
+    (file) =>
+      isProjectHtmlFile(file)
+      && !isEmbedSupportingProjectFile(file, { projectFiles: files }),
+  );
+  if (deliverables.length === 0) return null;
+  const preferred = entryFile?.trim();
+  if (preferred) {
+    // NFC-tolerant match: metadata.entryFile may be NFC while listFiles bytes
+    // are NFD (macOS legacy). Byte-exact `===` selected the wrong deck.
+    const match = deliverables.find(
+      (file) =>
+        projectFilePathsReferToSameFile(file.name, preferred)
+        || projectFilePathsReferToSameFile(file.path, preferred),
+    );
+    if (match && isCanonicalDeckFileName(match.name)) return match;
+  }
+  return deliverables.find((file) => isCanonicalDeckFileName(file.name)) ?? null;
+}
+
 function resolvePrimaryDeckFile(
   files: readonly ProjectFile[],
   entryFile?: string | null,
@@ -1032,7 +1216,9 @@ function resolvePrimaryDeckFile(
   const preferred = entryFile?.trim();
   if (preferred) {
     const match = deliverables.find(
-      (file) => file.name === preferred || file.path === preferred,
+      (file) =>
+        projectFilePathsReferToSameFile(file.name, preferred)
+        || projectFilePathsReferToSameFile(file.path, preferred),
     );
     if (match) return match;
   }
@@ -1048,6 +1234,34 @@ function resolvePrimaryDeckFilePath(
   const deck = resolvePrimaryDeckFile(files, entryFile);
   if (!deck) return null;
   return deck.path?.trim() || deck.name;
+}
+
+/**
+ * Best-effort active slide index for the client visual-mark graft when
+ * reconciliation can't infer one from the deck HTML. Falls back to the
+ * attachment's carried `slideIndex` (from the draw overlay's slide bridge)
+ * or, as a last resort, slide 0.
+ */
+function activeDeckSlideIndexForVisualMarkGraft(
+  attachments: readonly ChatCommentAttachment[],
+): number {
+  for (const attachment of attachments) {
+    const index = attachment.slideIndex;
+    if (typeof index === 'number' && Number.isFinite(index) && index >= 0) {
+      return Math.floor(index);
+    }
+  }
+  return 0;
+}
+
+function visualAnnotationAutoContinueFlags(
+  attachments: readonly ChatCommentAttachment[],
+): { visualMarkOnly: boolean; visualAnnotationEdit: boolean } {
+  const usable = filterUsableCommentAttachments(attachments);
+  return {
+    visualMarkOnly: isVisualMarkPlacementOnlyCommentAttachments(usable),
+    visualAnnotationEdit: usable.some(hasUserTypedVisualAnnotationRequest),
+  };
 }
 
 async function hydrateDeckCommentSlideIndexes(input: {
@@ -1066,15 +1280,39 @@ async function hydrateDeckCommentSlideIndexes(input: {
     htmlCache.set(normalized, html);
     return html;
   };
-  const out: ChatCommentAttachment[] = [];
-  for (const attachment of input.attachments) {
-    const filePath = String(attachment.filePath || primaryDeckPath || '').trim();
-    if (!filePath) {
-      out.push(attachment);
+  // Group by deck path so one reconcileCommentScopeForPersist covers all
+  // attachments on that deck (was per-attachment double slide reconcile).
+  const groups = new Map<string, { indexes: number[]; attachments: ChatCommentAttachment[] }>();
+  const passthrough: Array<{ index: number; attachment: ChatCommentAttachment }> = [];
+  input.attachments.forEach((attachment, index) => {
+    const rawPath = String(attachment.filePath || '').trim();
+    const deckPath =
+      /\.html?$/i.test(rawPath) ? rawPath : (primaryDeckPath || rawPath);
+    if (!deckPath || !/\.html?$/i.test(deckPath)) {
+      passthrough.push({ index, attachment });
+      return;
+    }
+    const group = groups.get(deckPath) ?? { indexes: [], attachments: [] };
+    group.indexes.push(index);
+    group.attachments.push({ ...attachment, filePath: deckPath });
+    groups.set(deckPath, group);
+  });
+  const out: ChatCommentAttachment[] = input.attachments.slice();
+  for (const item of passthrough) {
+    out[item.index] = item.attachment;
+  }
+  for (const [deckPath, group] of groups) {
+    const html = await readDeckHtml(deckPath);
+    if (!html) {
+      for (let i = 0; i < group.attachments.length; i += 1) {
+        out[group.indexes[i]!] = group.attachments[i]!;
+      }
       continue;
     }
-    const html = await readDeckHtml(filePath);
-    out.push(html ? reconcileCommentAttachmentForDeck(html, attachment) : attachment);
+    const scope = reconcileCommentScopeForPersist(html, group.attachments);
+    for (let i = 0; i < scope.attachments.length; i += 1) {
+      out[group.indexes[i]!] = scope.attachments[i]!;
+    }
   }
   return out;
 }
@@ -1087,11 +1325,17 @@ const SLIDE_IMAGE_PATH_RE = /\.(png|jpe?g|gif|webp|avif|svg)$/i;
 
 export function imageAttachmentPathsForSlideEmbed(
   attachments: readonly ChatAttachment[],
+  projectFilePaths?: readonly string[],
 ): string[] {
   const seen = new Set<string>();
   const paths: string[] = [];
+  const index = projectFilePaths ?? [];
   for (const attachment of attachments) {
-    const path = attachment.path.trim();
+    const rawPath = attachment.path.trim();
+    if (!rawPath) continue;
+    const path = index.length > 0
+      ? resolveCanonicalProjectImagePath(rawPath, index)
+      : rawPath;
     if (!path || seen.has(path)) continue;
     const isImage =
       attachment.kind === 'image' || SLIDE_IMAGE_PATH_RE.test(path) || SLIDE_IMAGE_PATH_RE.test(attachment.name);
@@ -1105,40 +1349,126 @@ export function imageAttachmentPathsForSlideEmbed(
   return paths;
 }
 
+/** Keep image (+ optional deck.html) attachments across auto-continue so embed contracts survive retries. */
+export function chatAttachmentsForAutoContinueImageEmbed(
+  originUser: {
+    attachments?: readonly ChatAttachment[] | null;
+    content?: string | null;
+  } | null | undefined,
+  projectFilePaths?: readonly string[],
+  options?: { omitHtml?: boolean },
+): ChatAttachment[] {
+  // Recover `@image` / `[Attached image embed]` paths when attachments_json
+  // lagged — otherwise retries lose the embed contract and greenfield 8→2.
+  const attachments = mergeImageMentionAttachments(
+    originUser?.attachments,
+    originUser?.content,
+  );
+  const index = projectFilePaths ?? [];
+  const omitHtml =
+    options?.omitHtml === true
+    || isTemplateCloneContentFillPrompt(originUser?.content);
+  const out: ChatAttachment[] = [];
+  const seen = new Set<string>();
+  for (const attachment of attachments) {
+    const rawPath = attachment.path.trim();
+    if (!rawPath) continue;
+    // Upgrade basename mentions to refs/drive/… so retries advertise the
+    // exact on-disk path (matches what persist heal writes to deck.html).
+    const path = index.length > 0
+      ? resolveCanonicalProjectImagePath(rawPath, index)
+      : rawPath;
+    if (seen.has(path)) continue;
+    const isHtml = /\.html?$/i.test(path);
+    if (isHtml && omitHtml) continue;
+    const isImage =
+      attachment.kind === 'image'
+      || SLIDE_IMAGE_PATH_RE.test(path)
+      || SLIDE_IMAGE_PATH_RE.test(attachment.name);
+    if (!isHtml && !isImage) continue;
+    seen.add(path);
+    const name = attachment.name?.trim() || path.split('/').pop() || attachment.name;
+    out.push(path === rawPath ? attachment : { ...attachment, path, name });
+    if (out.length >= 16) break;
+  }
+  // Clone fill retries must not re-attach deck.html — that restarts the <head> hang.
+  return isTemplateCloneContentFillPrompt(originUser?.content)
+    ? withoutCanonicalDeckAttachments(out)
+    : out;
+}
+
 function slideImageEmbedInstruction(imagePaths: readonly string[]): string {
   return [
     SLIDE_IMAGE_EMBED_INSTRUCTION_MARKER,
     'The user attached image file(s) to place into the slide deck.',
-    'Embed each image with its exact project-relative path — never invent URLs, never use data: URIs, and do not omit the images:',
+    'This is a surgical insert into the EXISTING deck — do NOT regenerate a new short deck.',
+    'Embed each image with its exact project-relative path (copy the path characters verbatim, including any `refs/drive/` or timestamp prefix).',
+    'Never invent URLs, never use data: URIs, never strip directory prefixes, never rename the file, and do not omit the images:',
     ...imagePaths.map((path) => `- <img src="${path}" alt="" style="max-width:100%;height:auto;object-fit:contain">`),
-    'Prefer a dedicated image slide or an existing content area via deck-patch / set-outer-html / set-image (JSON `{ "src": "<path>" }`).',
-    'Keep the rest of the deck intact unless the user asks for a broader redesign.',
+    'Preferred deliverable: `<artifact type="deck-patch">` with one `<section class="slide" data-slide-index="{N}">` that COPIES the full current target slide HTML from the attached deck, then INSERTS the `<img>` above.',
+    'Use `set-image` only when replacing an existing `<img>` element. Use `set-outer-html` only for a local container that already exists on that slide.',
+    'Hard rule: NEVER reduce the number of `<section class="slide">` blocks vs the attached on-disk deck (e.g. do not turn 8 slides into 2).',
+    'Do NOT emit a greenfield 2-slide wireframe. Keep every other slide unchanged unless the user explicitly asks for a redesign.',
   ].join('\n');
 }
 
-function slideAttachmentDeliverableInstruction(attachments: ChatAttachment[]): string {
+function slideCreateImageEmbedHint(imagePaths: readonly string[]): string {
+  return [
+    SLIDE_IMAGE_EMBED_INSTRUCTION_MARKER,
+    'The user attached image file(s) to include in this NEW slide deck.',
+    'Embed each image with its exact project-relative path (copy characters verbatim):',
+    ...imagePaths.map((path) => `- <img src="${path}" alt="" style="max-width:100%;height:auto;object-fit:contain">`),
+    'This is CREATE — do not treat the request as a surgical edit of an existing completed deck.',
+  ].join('\n');
+}
+
+function slideAttachmentDeliverableInstruction(
+  attachments: ChatAttachment[],
+  projectFilePaths?: readonly string[],
+): string {
+  const index = projectFilePaths ?? [];
   const files = attachments
-    .map((attachment) => attachment.path.trim())
+    .map((attachment) => {
+      const raw = attachment.path.trim();
+      if (!raw) return '';
+      return index.length > 0 ? resolveCanonicalProjectImagePath(raw, index) : raw;
+    })
     .filter(Boolean)
     .slice(0, 12);
   const fileList = files.length > 0
     ? `\nReference files to read/use:\n${files.map((path) => `- ${path}`).join('\n')}`
     : '';
-  const imagePaths = imageAttachmentPathsForSlideEmbed(attachments);
+  const imagePaths = imageAttachmentPathsForSlideEmbed(attachments, projectFilePaths);
   const imageEmbed = imagePaths.length > 0
-    ? `\n${slideImageEmbedInstruction(imagePaths)}`
+    ? `\n${slideCreateImageEmbedHint(imagePaths)}`
     : '';
   return [
     SLIDE_ATTACHMENT_DELIVERABLE_INSTRUCTION_MARKER,
     'The attached/uploaded files are reference material for this slide deck request.',
-    'Read and use them as source content, but do not treat any attachment as the final deliverable.',
+    'Read them for TEXTUAL content — headings, body copy, callouts, section names, tables, image references — but do NOT treat any attachment as the final deliverable.',
+    '**Do NOT preserve the source attachment\'s visual styling.** The attached HTML (Canvas / Drive) may have its own background colors, gradients, font-families, borders, decorative accents, and section chrome. Those belong to the source page, NOT to the generated deck. Palette, typography, borders, shadows, and motif language for the deck come exclusively from the Selected deck template kit / Visual summary in the system prompt (or from the active design system when no template is selected) — never from the attached source HTML.',
     'Do not copy, rename, or save any attachment HTML (including Canvas exports under `refs/...`) into the project root.',
-    'Emit ONE complete Teamver compact deck artifact (`<artifact type="deck" identifier="deck">`) that persists as `deck.html`, with one filled `<section class="slide">` per requested slide count '
+    'Emit ONE complete compact deck artifact (`<artifact type="deck" identifier="deck">`) that persists as `deck.html`, with one filled `<section class="slide">` per requested slide count '
     + `(${COMPACT_DECK_SLIDE_COUNT_GUIDANCE}), body-first inline styles, and no \`<head>\`, nav, or print scaffolding.`,
     'Do not finish with prose only, do not stop after an outline, and do not stop before `</artifact>`.',
     fileList,
     imageEmbed,
   ].filter(Boolean).join('\n');
+}
+
+/**
+ * Strip a previously-injected `[Deliverable instruction]` (greenfield block)
+ * from a persisted prompt. Retry / auto-continue turns re-play the failed
+ * user message content; without this the greenfield contract survives even
+ * after we've learned this is actually an existing-deck edit — the model
+ * then sees conflicting "emit ONE complete deck" + "edit the existing deck"
+ * instructions and defaults back to a fresh short deck, tripping stub-guard
+ * on every retry.
+ */
+export function stripGreenfieldDeliverableInstruction(prompt: string): string {
+  const idx = prompt.indexOf(`\n\n${SLIDE_ATTACHMENT_DELIVERABLE_INSTRUCTION_MARKER}`);
+  if (idx < 0) return prompt;
+  return prompt.slice(0, idx).trimEnd();
 }
 
 export function promptWithSlideAttachmentDeliverableInstruction(
@@ -1159,22 +1489,54 @@ export function promptWithSlideAttachmentDeliverableInstruction(
     commentAttachmentCount?: number;
     /** Follow-up edit with the current deck auto-attached — not a greenfield generate. */
     existingDeckEdit?: boolean;
+    /** Current `/files` paths — upgrade basename attachments to refs/drive/… */
+    projectFilePaths?: readonly string[];
+    /** Clone content-fill is CREATE — never add surgical existing-deck image rules. */
+    templateCloneContentFill?: boolean;
   },
 ): string {
   if (!options.slideOnlyMvp || attachments.length === 0) return prompt;
-  if ((options.commentAttachmentCount ?? 0) > 0) return prompt;
-  // Existing-deck follow-ups skip full-deck deliverable pressure, but attached
-  // images still need an embed contract or the model has no <img src> path.
-  if (options.existingDeckEdit) {
-    const imagePaths = imageAttachmentPathsForSlideEmbed(attachments);
+  if (options.templateCloneContentFill) {
+    const imagePaths = imageAttachmentPathsForSlideEmbed(
+      attachments,
+      options.projectFilePaths,
+    );
     if (imagePaths.length === 0) return prompt;
     if (prompt.includes(SLIDE_IMAGE_EMBED_INSTRUCTION_MARKER)) return prompt;
-    const visiblePrompt = prompt.trim() || '첨부 이미지를 슬라이드에 넣어줘.';
+    return [
+      prompt.trim(),
+      '',
+      SLIDE_IMAGE_EMBED_INSTRUCTION_MARKER,
+      'Place attached images into the new deck using these exact project-relative paths:',
+      ...imagePaths.map((path) => `- ${path}`),
+      'This is a CREATE fill — do not treat the cloned deck as an existing edit target.',
+    ].join('\n');
+  }
+  // Comment edits suppress full-deck deliverable pressure (scope block wins),
+  // but attached images still need an exact <img src> contract — otherwise
+  // board/memo "이 이미지 넣어줘" turns have no path to copy.
+  if ((options.commentAttachmentCount ?? 0) > 0 || options.existingDeckEdit) {
+    // Retry / auto-continue path: the persisted first-turn content may already
+    // carry a stale `[Deliverable instruction]` from the failed greenfield
+    // send. Strip it now that we know this is really an existing-deck edit,
+    // otherwise the model sees two conflicting contracts and regenerates a
+    // fresh short deck (same failure as the first turn — infinite retry loop).
+    const cleanedPrompt = stripGreenfieldDeliverableInstruction(prompt);
+    const imagePaths = imageAttachmentPathsForSlideEmbed(
+      attachments,
+      options.projectFilePaths,
+    );
+    if (imagePaths.length === 0) return cleanedPrompt;
+    if (cleanedPrompt.includes(SLIDE_IMAGE_EMBED_INSTRUCTION_MARKER)) return cleanedPrompt;
+    const visiblePrompt = cleanedPrompt.trim() || '첨부 이미지를 슬라이드에 넣어줘.';
     return `${visiblePrompt}\n\n${slideImageEmbedInstruction(imagePaths)}`;
   }
   if (prompt.includes(SLIDE_ATTACHMENT_DELIVERABLE_INSTRUCTION_MARKER)) return prompt;
   const visiblePrompt = prompt.trim() || '첨부 파일을 참고해서 슬라이드 덱을 만들어줘.';
-  return `${visiblePrompt}\n\n${slideAttachmentDeliverableInstruction(attachments)}`;
+  return `${visiblePrompt}\n\n${slideAttachmentDeliverableInstruction(
+    attachments,
+    options.projectFilePaths,
+  )}`;
 }
 
 /**
@@ -1229,16 +1591,54 @@ export function promptWithSlideCommentEditPatchInstruction(
   if (!options.slideOnlyMvp || options.commentAttachmentCount <= 0) return prompt;
   if (prompt.includes(SLIDE_COMMENT_EDIT_PATCH_INSTRUCTION_MARKER)) return prompt;
   const visiblePrompt = prompt.trim() || '이 코멘트에 맞춰 슬라이드를 수정해줘.';
+  const usableAttachments = options.commentAttachments
+    ? filterUsableCommentAttachments(options.commentAttachments)
+    : [];
+  const visualMarkPlacementOnly =
+    usableAttachments.length > 0
+    && usableAttachments.every(
+      (attachment) =>
+        isScreenshotOnlyVisualCommentTarget(attachment)
+        && shouldClientGraftVisualMarkWithoutAi(attachment),
+    );
+  const visualAnnotationEdit = usableAttachments.some(
+    (attachment) => hasUserTypedVisualAnnotationRequest(attachment),
+  );
   const parts = [
     `${visiblePrompt}\n\n${slideCommentEditPatchInstruction(options.commentAttachmentCount)}`,
   ];
+  if (visualAnnotationEdit) {
+    parts.push(
+      '',
+      '[Visual annotation edit]',
+      '- The user drew a box or typed a note on the screenshot to show WHICH content to change (font size, color, copy, layout).',
+      '- Do NOT add decorative overlay divs (`od-visual-mark-target`) or paste icons unless the note explicitly asks for a shape.',
+      '- Apply the annotation note to the real slide content inside the boxed region from <attached-preview-comments> (use pagePosition bounds and slideIndex).',
+      '- Prefer element-patch set-style / set-text on elements overlapping that region; preserve all other slide content.',
+      '- Do NOT use element-patch for synthetic `visual-mark-*` ids — resolve real `data-od-id` targets from the deck HTML.',
+    );
+  }
+  if (visualMarkPlacementOnly) {
+    parts.push(
+      '',
+      '[Visual mark edit]',
+      '- The user drew on the screenshot (red strokes) to show WHERE and WHAT shape/icon to add (e.g. a heart).',
+      '- Do NOT delete, clear, or redesign the slide. Preserve every existing element, text block, image, and style on the target slide.',
+      '- Add ONLY the requested mark (SVG/icon) inside the marked box coordinates from <attached-preview-comments>.',
+      '- Never emit a deck-patch that replaces the slide with an empty shell or a single overlay div.',
+      '- If you emit deck-patch, COPY the full current slide HTML from disk and INSERT `<div class="od-visual-mark-target">…</div>` before `</section>`.',
+      '- Do NOT use element-patch for synthetic `visual-mark-*` ids — they are not in the deck DOM.',
+    );
+  }
   const concreteTemplate = options.commentAttachments?.length
     ? buildConcretePatchTemplatesForCommentAttachments(options.commentAttachments)
     : null;
   if (concreteTemplate) {
     parts.push(
       '',
-      'REQUIRED OUTPUT — respond with ONLY this artifact block (no greeting, no question-form, no deck rewrite). Copy target-id and slide-index exactly; replace only the patch body text:',
+      visualMarkPlacementOnly
+        ? 'PREFERRED OUTPUT — deck-patch that COPIES the full existing slide section then ADDS the visual mark div (see template). Do not remove sibling content:'
+        : 'REQUIRED OUTPUT — respond with ONLY this artifact block (no greeting, no question-form, no deck rewrite). Copy target-id and slide-index exactly; replace only the patch body text:',
       concreteTemplate,
     );
   }
@@ -1248,18 +1648,47 @@ export function promptWithSlideCommentEditPatchInstruction(
 function slideExistingDeckEditInstruction(
   deckPath: string,
   imagePaths: readonly string[] = [],
+  options: { templateCloneContentFill?: boolean } = {},
 ): string {
+  if (options.templateCloneContentFill) {
+    return slideTemplateCloneContentFillInstruction(imagePaths);
+  }
   const lines = [
     EXISTING_DECK_EDIT_INSTRUCTION_MARKER,
     `This project already has a completed slide deck saved as \`${deckPath}\` (see <attached-project-files> above).`,
     'This turn is an edit to that deck — do NOT claim there is no completed deck in this conversation.',
     'Read the attached deck HTML and apply the user request.',
     'Prefer `<artifact type="element-patch">` with `<patch target-id="…" slide-index="{N}" kind="…">` for single-element edits.',
-    'Use `<artifact type="deck-patch">` only when slide structure must change; use full `<artifact type="deck">` for deck-wide edits.',
+    'Use `<artifact type="deck-patch">` when inserting images or changing slide structure; COPY the full current target slide HTML then apply the minimal change.',
+    'Full `<artifact type="deck">` only for explicit redesigns — and you MUST keep at least the same slide count as the attached deck.',
+    'Hard rule: NEVER collapse the deck (e.g. 8 slides → 2). Preserving every existing slide is more important than polish.',
+    'If you emit a short status sentence, use edit tone only ("수정 반영 중" / "Applying your edits"). Never "초안이 생성", "creating the deck", or "draft is ready".',
+  ];
+  if (imagePaths.length > 0) {
+    // Prefer the dedicated [Attached image embed] block when present; otherwise
+    // list exact paths so comment/existing-deck turns still have copyable srcs.
+    lines.push(
+      'When the user asks to place attached images into the deck, emit deck-patch that copies the target slide and inserts `<img>` using these exact project-relative paths (copy characters verbatim):',
+      ...imagePaths.map((path) => `- ${path}`),
+    );
+  }
+  return lines.join('\n');
+}
+
+/** First AI turn after daemon template Clone — compact CREATE, not full HTML rewrite. */
+function slideTemplateCloneContentFillInstruction(
+  imagePaths: readonly string[] = [],
+): string {
+  const lines = [
+    TEMPLATE_CLONE_CONTENT_FILL_TURN_MARKER,
+    'Daemon Clone seeded a LOOK preview at `deck.html`. This turn REPLACES it with a compact content-complete deck.',
+    'Do NOT attach or reproduce the full cloned example.html CSS/SVG dump — use kit palette/fonts/scaffold map. Title-first, then at most ONE capped kit Motif sprite when Motif sprites lists one (official Motif CSS/SVG is also merged after save).',
+    ...templateCloneContentFillHardRules(),
   ];
   if (imagePaths.length > 0) {
     lines.push(
-      'When the user asks to place attached images into the deck, emit deck-patch / set-outer-html / set-image using the exact project-relative image paths from [Attached image embed] / <attached-project-files>.',
+      'When placing attached images, use these exact project-relative paths:',
+      ...imagePaths.map((path) => `- ${path}`),
     );
   }
   return lines.join('\n');
@@ -1279,7 +1708,42 @@ export function promptWithExistingDeckEditInstruction(
   if (!deckPath) return prompt;
   if (prompt.includes(EXISTING_DECK_EDIT_INSTRUCTION_MARKER)) return prompt;
   const visiblePrompt = prompt.trim() || '슬라이드 덱을 수정해줘.';
-  return `${visiblePrompt}\n\n${slideExistingDeckEditInstruction(deckPath, options.imagePaths ?? [])}`;
+  const templateCloneContentFill = isTemplateCloneContentFillPrompt(prompt);
+  return `${visiblePrompt}\n\n${slideExistingDeckEditInstruction(
+    deckPath,
+    options.imagePaths ?? [],
+    { templateCloneContentFill },
+  )}`;
+}
+
+/** Clone content-fill even when deck.html is intentionally NOT attached (token budget). */
+export function promptWithTemplateCloneContentFillInstruction(
+  prompt: string,
+  options: {
+    slideOnlyMvp: boolean;
+    imagePaths?: readonly string[];
+  },
+): string {
+  if (!options.slideOnlyMvp) return prompt;
+  if (!isTemplateCloneContentFillPrompt(prompt)) return prompt;
+  // Seed already carries hard rules. Re-appending the expansion contract
+  // burns tokens and does not change behavior.
+  if (
+    prompt.includes(TEMPLATE_CLONE_CONTENT_FILL_TURN_MARKER)
+    || prompt.includes(TEMPLATE_CLONE_CONTENT_FILL_MARKER)
+  ) {
+    const imagePaths = options.imagePaths ?? [];
+    if (imagePaths.length === 0 || /exact project-relative paths/i.test(prompt)) {
+      return prompt;
+    }
+    return [
+      prompt.trim(),
+      'When placing attached images, use these exact project-relative paths:',
+      ...imagePaths.map((path) => `- ${path}`),
+    ].join('\n');
+  }
+  const visiblePrompt = prompt.trim() || '슬라이드 덱을 만들어줘.';
+  return `${visiblePrompt}\n\n${slideTemplateCloneContentFillInstruction(options.imagePaths ?? [])}`;
 }
 
 async function tryApplyElementPatchesAgainstCurrentDeck(input: {
@@ -1290,6 +1754,10 @@ async function tryApplyElementPatchesAgainstCurrentDeck(input: {
   allowedSlideIndexes?: readonly number[];
   commentAttachments?: readonly ChatCommentAttachment[];
   instructionText?: string;
+  /** When set, skip a second disk fetch (persistArtifact cache). */
+  currentHtml?: string | null;
+  /** Pre-materialized sections from persist reconcile. */
+  currentSlides?: readonly { outerHtml: string; openTag: string }[];
 }): Promise<DeckPatchMergeResult> {
   const resolvedBody = resolveElementPatchBodyForApply({
     patchBody: input.patchBody,
@@ -1298,7 +1766,7 @@ async function tryApplyElementPatchesAgainstCurrentDeck(input: {
     instructionText: input.instructionText,
   });
   if (resolvedBody !== input.patchBody) {
-    console.warn('[element-patch] salvaged patch body from assistant output', {
+    devLog.warn('[element-patch] salvaged patch body from assistant output', {
       fileName: input.fileName,
       beforeLength: (input.patchBody ?? '').length,
       afterLength: resolvedBody.length,
@@ -1314,7 +1782,7 @@ async function tryApplyElementPatchesAgainstCurrentDeck(input: {
     // model glitch where the artifact type is off-by-one for the
     // content shape.
     if (elementPatchBodyLooksLikeDeckPatch(resolvedBody)) {
-      console.warn('[element-patch] body looks like deck-patch — falling back', {
+      devLog.warn('[element-patch] body looks like deck-patch — falling back', {
         fileName: input.fileName,
         parseReason: parsed.reason,
       });
@@ -1325,18 +1793,22 @@ async function tryApplyElementPatchesAgainstCurrentDeck(input: {
         allowedSlideIndexes: input.allowedSlideIndexes,
         commentAttachments: input.commentAttachments,
         instructionText: input.instructionText,
+        currentHtml: input.currentHtml,
+        currentSlides: input.currentSlides,
       });
     }
-    console.warn('[element-patch] parse failed', {
+    devLog.warn('[element-patch] parse failed', {
       fileName: input.fileName,
       reason: parsed.reason,
       bodyLength: (resolvedBody ?? '').length,
     });
     return { ok: false, code: 'deck_patch_parse_failed', reason: parsed.reason };
   }
-  const currentHtml = await fetchProjectFileText(input.projectId, input.fileName, {
-    cache: 'no-store',
-  });
+  const currentHtml = input.currentHtml !== undefined
+    ? input.currentHtml
+    : await fetchProjectFileText(input.projectId, input.fileName, {
+      cache: 'no-store',
+    });
   if (!currentHtml) {
     return {
       ok: false,
@@ -1360,6 +1832,7 @@ async function tryApplyElementPatchesAgainstCurrentDeck(input: {
     patches: parsed.patches,
     allowedSlideIndexes: input.allowedSlideIndexes,
     commentAttachments: input.commentAttachments,
+    currentSlides: input.currentSlides,
   });
   const applied = applyElementPatches({
     currentHtml,
@@ -1375,7 +1848,7 @@ async function tryApplyElementPatchesAgainstCurrentDeck(input: {
       elementPatchReasonTargetsSyntheticVisualMark(applied.reason)
       && elementPatchBodyLooksLikeDeckPatch(resolvedBody)
     ) {
-      console.warn('[element-patch] visual-mark target — falling back to deck-patch', {
+      devLog.warn('[element-patch] visual-mark target — falling back to deck-patch', {
         fileName: input.fileName,
         reason: applied.reason,
       });
@@ -1386,20 +1859,27 @@ async function tryApplyElementPatchesAgainstCurrentDeck(input: {
         allowedSlideIndexes: input.allowedSlideIndexes,
         commentAttachments: input.commentAttachments,
         instructionText: input.instructionText,
+        currentHtml,
+        currentSlides: input.currentSlides,
       });
     }
-    console.warn('[element-patch] apply failed', { fileName: input.fileName, reason: applied.reason });
+    devLog.warn('[element-patch] apply failed', { fileName: input.fileName, reason: applied.reason });
     return { ok: false, code: 'deck_patch_merge_failed', reason: applied.reason };
   }
-  const intent = validateCommentEditIntentRespected({
+  // Mirror deck-patch finalize (intent + stabilize + conditional sanitize).
+  // applyElementPatches already sanitized — skip no-op-stabilize re-scrub.
+  const mergedSlides = (input.commentAttachments?.length ?? 0) > 0
+    ? extractTopLevelSlideSections(extractDeckBodyContent(applied.html))
+    : undefined;
+  return finalizeScopedDeckMergeHtml({
+    currentHtml,
     mergedHtml: applied.html,
     commentAttachments: input.commentAttachments ?? [],
     instructionText: input.instructionText,
+    currentSlides: input.currentSlides,
+    mergedSlides,
+    alreadySanitized: true,
   });
-  if (!intent.ok) {
-    return { ok: false, code: 'comment_edit_intent_violated', reason: intent.reason };
-  }
-  return { ok: true, html: applied.html };
 }
 
 function elementPatchTargetHintsFromCommentAttachments(
@@ -1456,9 +1936,7 @@ function elementPatchTargetHintsFromCommentAttachments(
 export function elementPatchBodyLooksLikeDeckPatch(body: string | null | undefined): boolean {
   const source = String(body ?? '');
   if (!source.trim()) return false;
-  return /<section\b[^>]*\bclass\s*=\s*(?:"[^"]*\bslide\b[^"]*"|'[^']*\bslide\b[^']*')/i.test(
-    source,
-  );
+  return htmlHasDeckSlideHost(source);
 }
 
 /**
@@ -1479,7 +1957,7 @@ function routeScopedCommentPersistFailure(input: {
   logLabel: string;
 }): Extract<ArtifactPersistResult, { kind: 'skipped-incomplete' | 'scope-rejected' }> {
   if (input.runIsScoped && shouldRouteScopedCommentEditToAutoContinue(input.code, input.reason)) {
-    console.warn(`[${input.logLabel}] routing scoped edit to auto-continue`, {
+    devLog.warn(`[${input.logLabel}] routing scoped edit to auto-continue`, {
       fileName: input.fileName,
       code: input.code,
       reason: input.reason,
@@ -1533,7 +2011,7 @@ export function isDeckPatchEmptyBody(body: string, reason: string): boolean {
 export function deckPatchBodyLooksLikeElementPatch(body: string | null | undefined): boolean {
   const source = String(body ?? '');
   if (!source.trim()) return false;
-  if (/<section\b[^>]*\bclass\s*=\s*(?:"[^"]*\bslide\b[^"]*"|'[^']*\bslide\b[^']*')/i.test(source)) {
+  if (htmlHasDeckSlideHost(source)) {
     return false;
   }
   // Allow ">" inside quoted attrs (dom:body > section… target-ids).
@@ -1548,14 +2026,20 @@ async function tryApplyDeckPatchAgainstCurrentDeck(input: {
   allowedSlideIndexes?: readonly number[];
   commentAttachments?: readonly ChatCommentAttachment[];
   instructionText?: string;
+  /** When set, skip a second disk fetch (persistArtifact cache). */
+  currentHtml?: string | null;
+  /** Pre-materialized sections from persist reconcile. */
+  currentSlides?: readonly { outerHtml: string; openTag: string }[];
 }): Promise<DeckPatchMergeResult> {
   // Fetch current deck first so parse can recover missing
   // `data-slide-index` via data-screen-label / comment scope.
-  const currentHtml = await fetchProjectFileText(input.projectId, input.fileName, {
-    cache: 'no-store',
-  });
+  const currentHtml = input.currentHtml !== undefined
+    ? input.currentHtml
+    : await fetchProjectFileText(input.projectId, input.fileName, {
+      cache: 'no-store',
+    });
   if (!currentHtml) {
-    console.warn('[deck-patch] current deck file unreadable', {
+    devLog.warn('[deck-patch] current deck file unreadable', {
       projectId: input.projectId,
       fileName: input.fileName,
     });
@@ -1570,6 +2054,45 @@ async function tryApplyDeckPatchAgainstCurrentDeck(input: {
     currentHtml,
   });
   if (!parsed.ok) {
+    const grafted = input.commentAttachments
+      ? graftVisualMarksIntoDeckHtml(currentHtml, input.commentAttachments, {
+        currentSlides: input.currentSlides,
+      })
+      : null;
+    if (grafted) {
+      devLog.warn('[deck-patch] applied client visual-mark graft fallback', {
+        fileName: input.fileName,
+        parseReason: parsed.reason,
+      });
+      // graftVisualMarksIntoDeckHtml already full-source sanitized.
+      return { ok: true, html: grafted, sanitized: true };
+    }
+    const visualTemplate = input.commentAttachments
+      ? buildConcreteDeckPatchTemplateForVisualMarks(input.commentAttachments)
+      : null;
+    if (visualTemplate) {
+      const salvaged = parseDeckPatchWithSalvage(visualTemplate, {
+        fallbackSlideIndexes: input.allowedSlideIndexes,
+        currentHtml,
+      });
+      if (salvaged.ok) {
+        const salvagedResult = applyScopedDeckPatchToHtml({
+          currentHtml,
+          patch: salvaged.patch,
+          allowedSlideIndexes: input.allowedSlideIndexes,
+          commentAttachments: input.commentAttachments,
+          instructionText: input.instructionText,
+          currentSlides: input.currentSlides,
+        });
+        if (salvagedResult.ok) {
+          devLog.warn('[deck-patch] applied client visual-mark template fallback', {
+            fileName: input.fileName,
+            parseReason: parsed.reason,
+          });
+          return salvagedResult;
+        }
+      }
+    }
     // Symmetric salvage: the model wrapped element-patch content
     // (a list of `<patch>` blocks) in a `deck-patch` artifact by
     // mistake. Route the same body through the element-patch
@@ -1578,7 +2101,7 @@ async function tryApplyDeckPatchAgainstCurrentDeck(input: {
     // `elementPatchBodyLooksLikeDeckPatch` salvage in
     // `tryApplyElementPatchesAgainstCurrentDeck`.
     if (deckPatchBodyLooksLikeElementPatch(input.patchBody)) {
-      console.warn('[deck-patch] body looks like element-patch — falling back', {
+      devLog.warn('[deck-patch] body looks like element-patch — falling back', {
         fileName: input.fileName,
         parseReason: parsed.reason,
       });
@@ -1589,9 +2112,11 @@ async function tryApplyDeckPatchAgainstCurrentDeck(input: {
         allowedSlideIndexes: input.allowedSlideIndexes,
         commentAttachments: input.commentAttachments,
         instructionText: input.instructionText,
+        currentHtml,
+        currentSlides: input.currentSlides,
       });
     }
-    console.warn('[deck-patch] parse failed', { fileName: input.fileName, reason: parsed.reason });
+    devLog.warn('[deck-patch] parse failed', { fileName: input.fileName, reason: parsed.reason });
     return { ok: false, code: 'deck_patch_parse_failed', reason: parsed.reason };
   }
   const result = applyScopedDeckPatchToHtml({
@@ -1600,9 +2125,10 @@ async function tryApplyDeckPatchAgainstCurrentDeck(input: {
     allowedSlideIndexes: input.allowedSlideIndexes,
     commentAttachments: input.commentAttachments,
     instructionText: input.instructionText,
+    currentSlides: input.currentSlides,
   });
   if (!result.ok) {
-    console.warn('[deck-patch] scoped deck patch failed', {
+    devLog.warn('[deck-patch] scoped deck patch failed', {
       fileName: input.fileName,
       code: result.code,
       reason: result.reason,
@@ -1612,23 +2138,34 @@ async function tryApplyDeckPatchAgainstCurrentDeck(input: {
   return result;
 }
 
-function scopedCommentSlideIndexes(
-  commentAttachments: readonly ChatCommentAttachment[],
-): number[] | undefined {
-  return scopedCommentSlideIndexesFromAttachments(commentAttachments);
-}
-
-async function resolvePersistCommentAttachments(input: {
+async function resolvePersistCommentScope(input: {
   projectId: string;
   fileName: string;
   commentAttachments: readonly ChatCommentAttachment[];
-}): Promise<readonly ChatCommentAttachment[]> {
-  if (input.commentAttachments.length === 0) return input.commentAttachments;
-  const currentHtml = await fetchProjectFileText(input.projectId, input.fileName, {
-    cache: 'no-store',
-  });
-  if (!currentHtml) return input.commentAttachments;
-  return reconcileCommentAttachmentsForDeck(currentHtml, input.commentAttachments);
+  /** When set, skip a second disk fetch (persistArtifact cache). */
+  currentHtml?: string | null;
+}): Promise<{
+  attachments: readonly ChatCommentAttachment[];
+  allowedSlideIndexes?: number[];
+  sections?: readonly { outerHtml: string; openTag: string }[];
+}> {
+  if (input.commentAttachments.length === 0) {
+    return { attachments: input.commentAttachments };
+  }
+  const currentHtml = input.currentHtml !== undefined
+    ? input.currentHtml
+    : await fetchProjectFileText(input.projectId, input.fileName, {
+      cache: 'no-store',
+    });
+  if (!currentHtml) {
+    return {
+      attachments: input.commentAttachments,
+      allowedSlideIndexes: scopedCommentSlideIndexesFromAttachments(input.commentAttachments),
+    };
+  }
+  // One pass: reconcile attachments + allowed slide indexes (was reconcile then
+  // scopedCommentSlideIndexesFromDeck with duplicate candidate/infer walks).
+  return reconcileCommentScopeForPersist(currentHtml, input.commentAttachments);
 }
 
 async function fullDeckEditStaysInsideCommentScope(input: {
@@ -1637,12 +2174,27 @@ async function fullDeckEditStaysInsideCommentScope(input: {
   nextHtml: string;
   allowedSlideIndexes: readonly number[];
   commentAttachments: readonly ChatCommentAttachment[];
-}): Promise<{ ok: true } | { ok: false; code: ScopedDeckPersistFailureCode; reason: string }> {
-  const currentHtml = await fetchProjectFileText(input.projectId, input.fileName, {
-    cache: 'no-store',
-  });
+  /** When set, skip a second disk fetch (persistArtifact cache). */
+  currentHtml?: string | null;
+  /** Pre-materialized current sections from persist reconcile. */
+  beforeSlides?: readonly { outerHtml: string }[];
+}): Promise<
+  | { ok: true; afterSlides: ReturnType<typeof extractTopLevelSlideSections> }
+  | {
+    ok: false;
+    code: ScopedDeckPersistFailureCode;
+    reason: string;
+    /** Present once nextHtml sections were materialized (salvage reuse). */
+    afterSlides?: ReturnType<typeof extractTopLevelSlideSections>;
+  }
+> {
+  const currentHtml = input.currentHtml !== undefined
+    ? input.currentHtml
+    : await fetchProjectFileText(input.projectId, input.fileName, {
+      cache: 'no-store',
+    });
   if (!currentHtml) {
-    console.warn('[deck-patch] scoped full-deck guard could not read current deck', {
+    devLog.warn('[deck-patch] scoped full-deck guard could not read current deck', {
       projectId: input.projectId,
       fileName: input.fileName,
     });
@@ -1653,9 +2205,15 @@ async function fullDeckEditStaysInsideCommentScope(input: {
     };
   }
   let allowedSlideIndexes = [...input.allowedSlideIndexes];
+  // Prefer persist-reconcile sections; empty-allowed still reconciles once.
+  let beforeSlides = input.beforeSlides;
   if (allowedSlideIndexes.length === 0) {
-    const inferred = scopedCommentSlideIndexesFromDeck(currentHtml, input.commentAttachments);
-    if (inferred) {
+    // Prefer the same one-pass persist-scope walk used elsewhere (reconcile +
+    // candidates + infer) instead of a second scopedCommentSlideIndexesFromDeck.
+    const scope = reconcileCommentScopeForPersist(currentHtml, input.commentAttachments);
+    const inferred = scope.allowedSlideIndexes;
+    beforeSlides = beforeSlides ?? scope.sections;
+    if (inferred && inferred.length > 0) {
       allowedSlideIndexes = inferred;
     } else {
       return {
@@ -1665,18 +2223,23 @@ async function fullDeckEditStaysInsideCommentScope(input: {
       };
     }
   }
-  const diff = diffDeckSlideIndexes(currentHtml, input.nextHtml);
+  // Materialize after once; share into slide diff + salvage on reject.
+  const afterSlides = extractTopLevelSlideSections(extractDeckBodyContent(input.nextHtml));
+  const diff = diffDeckSlideIndexes(currentHtml, input.nextHtml, {
+    beforeSlides,
+    afterSlides,
+  });
   if (!diff.ok) {
-    console.warn('[deck-patch] scoped full-deck guard could not diff deck', {
+    devLog.warn('[deck-patch] scoped full-deck guard could not diff deck', {
       fileName: input.fileName,
       reason: diff.reason,
     });
-    return { ok: false, code: 'full_deck_diff_failed', reason: diff.reason };
+    return { ok: false, code: 'full_deck_diff_failed', reason: diff.reason, afterSlides };
   }
   const allowed = new Set(allowedSlideIndexes);
   const outsideScope = diff.changedSlideIndexes.filter((slideIndex) => !allowed.has(slideIndex));
   if (outsideScope.length > 0) {
-    console.warn('[deck-patch] scoped full-deck guard rejected outside-scope changes', {
+    devLog.warn('[deck-patch] scoped full-deck guard rejected outside-scope changes', {
       fileName: input.fileName,
       changedSlideIndexes: diff.changedSlideIndexes,
       allowedSlideIndexes,
@@ -1685,20 +2248,31 @@ async function fullDeckEditStaysInsideCommentScope(input: {
       ok: false,
       code: 'full_deck_outside_slide_scope',
       reason: `changed slides outside comment scope: ${outsideScope.join(', ')}`,
+      afterSlides,
     };
   }
   const hasElementScopedComment = input.commentAttachments.some((attachment) =>
     scopedCommentElementIds(attachment).length > 0,
   );
-  const beforeMasked = maskScopedCommentTargets(currentHtml, input.commentAttachments);
-  const afterMasked = maskScopedCommentTargets(input.nextHtml, input.commentAttachments);
+  // One parse of nextHtml for intent; mask mutates a clone when element-scoped.
+  const nextDoc = parseManualEditSource(input.nextHtml);
+  // Visual / id-less comments have nothing to mask — skip 2× full-deck parse.
   if (hasElementScopedComment) {
+    const beforeMasked = maskScopedCommentTargets(currentHtml, input.commentAttachments);
+    const afterMaskDoc = nextDoc
+      ? (nextDoc.cloneNode(true) as Document)
+      : null;
+    const afterMasked = maskScopedCommentTargets(
+      input.nextHtml,
+      input.commentAttachments,
+      afterMaskDoc,
+    );
     const targetUnresolved = !beforeMasked.ok
       || !afterMasked.ok
       || beforeMasked.maskedCount === 0
       || beforeMasked.maskedCount !== afterMasked.maskedCount;
     if (targetUnresolved) {
-      console.warn('[deck-patch] scoped full-deck guard rejected unresolved comment target', {
+      devLog.warn('[deck-patch] scoped full-deck guard rejected unresolved comment target', {
         fileName: input.fileName,
         beforeMaskedCount: beforeMasked.ok ? beforeMasked.maskedCount : 0,
         afterMaskedCount: afterMasked.ok ? afterMasked.maskedCount : 0,
@@ -1707,27 +2281,44 @@ async function fullDeckEditStaysInsideCommentScope(input: {
         ok: false,
         code: 'full_deck_comment_target_unresolved',
         reason: 'comment target could not be resolved in the current and updated deck',
+        afterSlides,
+      };
+    }
+    if (
+      beforeMasked.ok &&
+      afterMasked.ok &&
+      beforeMasked.maskedCount > 0 &&
+      beforeMasked.maskedCount === afterMasked.maskedCount &&
+      beforeMasked.source !== afterMasked.source
+    ) {
+      devLog.warn('[deck-patch] scoped full-deck guard rejected non-target changes inside target slide', {
+        fileName: input.fileName,
+        maskedCount: beforeMasked.maskedCount,
+      });
+      return {
+        ok: false,
+        code: 'full_deck_outside_element_scope',
+        reason: 'non-target changes inside the selected slide',
+        afterSlides,
       };
     }
   }
-  if (
-    beforeMasked.ok &&
-    afterMasked.ok &&
-    beforeMasked.maskedCount > 0 &&
-    beforeMasked.maskedCount === afterMasked.maskedCount &&
-    beforeMasked.source !== afterMasked.source
-  ) {
-    console.warn('[deck-patch] scoped full-deck guard rejected non-target changes inside target slide', {
-      fileName: input.fileName,
-      maskedCount: beforeMasked.maskedCount,
-    });
+  // Match deck/element-patch: presentation-only edits must not wipe pinned text
+  // even when the full-deck rewrite stays inside slide/mask scope.
+  const intent = validateCommentEditIntentRespected({
+    mergedHtml: input.nextHtml,
+    commentAttachments: input.commentAttachments,
+    parsedDoc: nextDoc,
+  });
+  if (!intent.ok) {
     return {
       ok: false,
-      code: 'full_deck_outside_element_scope',
-      reason: 'non-target changes inside the selected slide',
+      code: 'comment_edit_intent_violated',
+      reason: intent.reason,
+      afterSlides,
     };
   }
-  return { ok: true };
+  return { ok: true, afterSlides };
 }
 
 async function trySalvageScopedFullDeckRewrite(input: {
@@ -1736,18 +2327,31 @@ async function trySalvageScopedFullDeckRewrite(input: {
   patchedHtml: string;
   commentAttachments: readonly ChatCommentAttachment[];
   instructionText?: string;
-}): Promise<{ ok: true; html: string } | { ok: false; reason: string }> {
-  const currentHtml = await fetchProjectFileText(input.projectId, input.fileName, {
-    cache: 'no-store',
-  });
+  /** When set, skip a second disk fetch (persistArtifact cache). */
+  currentHtml?: string | null;
+  /** Pre-materialized current sections from persist reconcile. */
+  currentSlides?: readonly { outerHtml: string; openTag?: string }[];
+  /** Pre-materialized patched sections from full-deck guard (avoid rematerialize). */
+  patchedSlides?: readonly { outerHtml: string; openTag?: string }[];
+}): Promise<{ ok: true; html: string; sanitized: true } | { ok: false; reason: string }> {
+  const currentHtml = input.currentHtml !== undefined
+    ? input.currentHtml
+    : await fetchProjectFileText(input.projectId, input.fileName, {
+      cache: 'no-store',
+    });
   if (!currentHtml) {
     return { ok: false, reason: 'current deck file unreadable' };
   }
+  // Prefer guard-shared sections; otherwise materialize once for merge + finalize.
+  const patchedSlides = input.patchedSlides
+    ?? extractTopLevelSlideSections(extractDeckBodyContent(input.patchedHtml));
   const scoped = mergeScopedCommentTargetsFromPatchedDeck({
     currentHtml,
     patchedHtml: input.patchedHtml,
     commentAttachments: input.commentAttachments,
     instructionText: input.instructionText,
+    currentSlides: input.currentSlides,
+    patchedSlides,
   });
   if (!scoped.ok) {
     return { ok: false, reason: scoped.reason };
@@ -1755,22 +2359,30 @@ async function trySalvageScopedFullDeckRewrite(input: {
   if (!scoped.narrowed) {
     return { ok: false, reason: 'full-deck rewrite produced no narrowed scoped match' };
   }
-  const intent = validateCommentEditIntentRespected({
+  // Mirror applyScopedDeckPatchToHtml finalize (intent + stabilize + sanitize fold).
+  const finalized = finalizeScopedDeckMergeHtml({
+    currentHtml,
     mergedHtml: scoped.html,
     commentAttachments: input.commentAttachments,
     instructionText: input.instructionText,
+    currentSlides: input.currentSlides,
+    mergedSlides: scoped.sections,
   });
-  if (!intent.ok) {
-    return { ok: false, reason: intent.reason };
+  if (!finalized.ok) {
+    return { ok: false, reason: finalized.reason };
   }
-  return { ok: true, html: scoped.html };
+  return { ok: true, html: finalized.html, sanitized: true };
 }
 
 function maskScopedCommentTargets(
   source: string,
   commentAttachments: readonly ChatCommentAttachment[],
+  /** When set, mutate this Document (caller may pass a clone of a shared parse). */
+  parsedDoc?: Document | null,
 ): { ok: true; source: string; maskedCount: number } | { ok: false } {
-  let maskedSource = source;
+  // One DOMParser pass for all attachments (was N× parse/serialize).
+  const doc = parsedDoc ?? parseManualEditSource(source);
+  if (!doc) return { ok: false };
   let maskedCount = 0;
   for (const attachment of commentAttachments) {
     if (
@@ -1785,28 +2397,27 @@ function maskScopedCommentTargets(
     const ids = scopedCommentElementIds(attachment);
     if (ids.length === 0) continue;
     // Reuse the same hint set the scoped merge uses so the mask
-    // path resolves the target via currentText/htmlHint when the
+    // path resolves the target via currentText/htmlHint/selector when the
     // click id no longer maps structurally. Symmetric with
-    // mergeScopedCommentTargetsFromPatchedDeck.
+    // mergeScopedCommentTargetsFromPatchedDeck / attachmentMergeHint.
     const hints = ids.map((id) => ({
       id,
-      currentText: attachment.currentText,
-      instructionText: attachment.comment,
-      htmlHint: attachment.htmlHint,
+      ...attachmentMergeHint(attachment),
     }));
-    const masked = maskManualEditTargets(
-      maskedSource,
+    maskedCount += maskManualEditTargetsOnDocument(
+      doc,
       ids,
       { slideIndex: Math.floor(attachment.slideIndex) },
       hints,
+      maskedCount,
     );
-    if (!masked.ok) continue;
-    maskedSource = masked.source;
-    maskedCount += masked.maskedCount;
   }
-  return maskedCount > 0
-    ? { ok: true, source: maskedSource, maskedCount }
-    : { ok: false };
+  if (maskedCount === 0) return { ok: false };
+  return {
+    ok: true,
+    source: serializeManualEditSource(doc, source),
+    maskedCount,
+  };
 }
 
 function historyWithWorkspaceContext(
@@ -1820,7 +2431,7 @@ function historyWithWorkspaceContext(
     '',
     '',
     '<active-workspace-context>',
-    'Open Design selected the currently focused workspace tab as the default context for this turn.',
+    'The currently focused workspace tab is the default context for this turn.',
     ...items.map((item, index) => {
       const details = [
         item.path ? `path: ${item.path}` : null,
@@ -1844,6 +2455,21 @@ function historyWithWorkspaceContext(
 
 function commentTaskQuery(attachment: ChatCommentAttachment): string {
   return (attachment.comment ?? '').trim();
+}
+
+/** Drawing screenshots uploaded with this user turn are not assistant output. */
+function userVisualUploadBaselineNames(
+  attachments: readonly ChatCommentAttachment[],
+): string[] {
+  const names: string[] = [];
+  for (const attachment of attachments) {
+    const screenshot = String(attachment.screenshotPath || '').trim();
+    if (screenshot) {
+      names.push(projectFilePathBasename(screenshot));
+      names.push(screenshot);
+    }
+  }
+  return names;
 }
 
 function designSystemNeedsWorkPrompt(
@@ -1887,6 +2513,23 @@ function saveChatPanelWidth(width: number): void {
   } catch {
     // localStorage can be unavailable in hardened browser contexts.
   }
+}
+
+/** Reattach design-template / skill registry description lost at frontmatter strip. */
+function prependSkillDetailVisualSummary(
+  body: string,
+  description: string | null | undefined,
+): string {
+  const trimmedBody = body.trim();
+  const desc = typeof description === 'string' ? description.trim() : '';
+  if (!trimmedBody || !desc) return trimmedBody;
+  if (
+    trimmedBody.includes('## Visual summary (from template frontmatter)')
+    || trimmedBody.includes(desc)
+  ) {
+    return trimmedBody;
+  }
+  return `## Visual summary (from template frontmatter)\n\n${desc}\n\n${trimmedBody}`;
 }
 
 function autoSendFirstMessageKey(projectId: string): string {
@@ -2162,6 +2805,8 @@ type ArtifactPersistResult =
   | { kind: 'pointer'; fileName: string }
   | { kind: 'skipped-duplicate'; fileName: string }
   | { kind: 'skipped-incomplete'; fileName: string; reason?: string }
+  /** Benign no-op (post-sanitize equals disk) — must not arm auto-continue. */
+  | { kind: 'skipped-noop'; fileName: string; reason?: string }
   | { kind: 'scope-rejected'; fileName: string; code: ScopedDeckPersistFailureCode; reason: string }
   | { kind: 'artifact-regression'; fileName: string; reason: string }
   | { kind: 'rejected'; fileName: string; reason: string }
@@ -2169,26 +2814,45 @@ type ArtifactPersistResult =
   | { kind: 'auth-replay-queued'; fileName: string }
   | { kind: 'skipped-discovery-turn'; fileName: string };
 
-function shouldFailRunForArtifactPersistResult(result: ArtifactPersistResult | null): boolean {
+export function shouldFailRunForArtifactPersistResult(
+  result: ArtifactPersistResult | null,
+  options?: { scopedCommentEdit?: boolean },
+): boolean {
   // A truncated shell, a structural refusal, or a real write failure must
   // move the run into the recovery path. Auth-replay-queued keeps the run
   // as succeeded visually because memory preview + replay own that case.
+  // Scoped comment edits that hit skipped-duplicate mean the model turn
+  // produced HTML identical to disk — treat as incomplete so auto-continue
+  // can retry instead of painting "완료됨" over an unchanged slide.
+  // skipped-noop is intentionally excluded: the edit was a calm no-op.
   return result?.kind === 'skipped-incomplete'
     || result?.kind === 'rejected'
     || result?.kind === 'save-failed'
     || result?.kind === 'scope-rejected'
     || result?.kind === 'artifact-regression'
-    || result?.kind === 'skipped-discovery-turn';
+    || result?.kind === 'skipped-discovery-turn'
+    || (result?.kind === 'skipped-duplicate' && options?.scopedCommentEdit);
 }
 
 const ARTIFACT_REGRESSION_MIN_PRIOR_BYTES = 8192;
 const ARTIFACT_REGRESSION_MIN_RATIO = 0.35;
 
-function findClientArtifactRegression(input: {
+function countDeckSlideSections(html: string): number {
+  // Same hosts as top-up append (`section|div.slide`). Section-only counts
+  // made Capsule fills look empty so hidden top-up never scheduled.
+  return countAppendableDeckSlides(html);
+}
+
+export function findClientArtifactRegression(input: {
   fileName: string;
   htmlBody: string;
   projectFiles: readonly ProjectFile[];
+  /** Clone LOOK → fill intentionally replaces a large CSS/SVG seed with a compact deck. */
+  allowCompactReplacement?: boolean;
+  /** On-disk HTML for the same file, when already loaded this persist. */
+  priorHtml?: string | null;
 }): { fileName: string; priorSize: number; newSize: number; reason: string } | null {
+  if (input.allowCompactReplacement) return null;
   const fileName = input.fileName.trim();
   if (!fileName.toLowerCase().endsWith('.html')) return null;
   const newSize = new Blob([input.htmlBody]).size;
@@ -2196,10 +2860,30 @@ function findClientArtifactRegression(input: {
     const name = (file.path ?? file.name).trim();
     return name === fileName || file.name.trim() === fileName;
   });
+  // Compact fill must replace the same-turn Clone LOOK seed.
+  if (isTemplateCloneLookSeedFile(prior)) return null;
   const priorSize = typeof prior?.size === 'number' && Number.isFinite(prior.size)
     ? prior.size
     : 0;
   if (priorSize < ARTIFACT_REGRESSION_MIN_PRIOR_BYTES) return null;
+  const priorHtml = String(input.priorHtml ?? '').trim();
+  const incomingCompactDraft = isPersistableShortDeckDraft(input.htmlBody)
+    || (
+      isClosedSoftSalvageDeckHtml(input.htmlBody)
+      && countDeckSlideSections(input.htmlBody) <= 3
+    );
+  if (incomingCompactDraft && priorHtml) {
+    const priorCount = countDeckSlideSections(priorHtml);
+    // MiniMax 3-this-turn retries must replace a thin prior draft. Keep the
+    // byte-size guard when the on-disk deck is already a full multi-slide file.
+    if (
+      priorCount <= 3
+      || isPersistableShortDeckDraft(priorHtml)
+      || isLowSubstanceSlideDeckArtifact(priorHtml)
+    ) {
+      return null;
+    }
+  }
   if (newSize >= priorSize * ARTIFACT_REGRESSION_MIN_RATIO) return null;
   return {
     fileName,
@@ -2209,6 +2893,61 @@ function findClientArtifactRegression(input: {
       `New artifact body for "${fileName}" is ${newSize} bytes, but the current file is ${priorSize} bytes. ` +
       'This looks like a placeholder/regression and was not written over the existing deck.',
   };
+}
+
+/** Block full-deck writes that collapse slide count (e.g. 8 → 2) even when byte size looks fine. */
+export function findClientSlideCountRegression(input: {
+  fileName: string;
+  htmlBody: string;
+  priorHtml: string | null | undefined;
+  /**
+   * Existing-deck / image-embed / comment-scoped turns: reject ANY slide drop
+   * (8→6 still destroys content). Greenfield generates keep the hard-collapse
+   * threshold so intentional shorter drafts are not over-blocked.
+   */
+  strict?: boolean;
+  /** Clone fill replaces a multi-slide LOOK seed with a capped content deck. */
+  allowSlideCountReduction?: boolean;
+}): { fileName: string; priorCount: number; newCount: number; reason: string } | null {
+  if (input.allowSlideCountReduction) return null;
+  const fileName = input.fileName.trim();
+  if (!fileName.toLowerCase().endsWith('.html')) return null;
+  const priorHtml = input.priorHtml?.trim();
+  if (!priorHtml) return null;
+  const priorCount = countDeckSlideSections(priorHtml);
+  const newCount = countDeckSlideSections(input.htmlBody);
+  if (priorCount < 3 || newCount <= 0) return null;
+  if (newCount >= priorCount) return null;
+  const dropped = priorCount - newCount;
+  const collapsedHard = input.strict
+    ? dropped >= 1
+    : newCount <= Math.floor(priorCount * 0.5) || dropped >= 3;
+  if (!collapsedHard) return null;
+  return {
+    fileName,
+    priorCount,
+    newCount,
+    reason:
+      `New artifact for "${fileName}" has ${newCount} slides, but the current deck has ${priorCount}. ` +
+      'Slide-count collapse was blocked so the existing deck is preserved.',
+  };
+}
+
+export function findTemplateCloneFillSlideCountIncomplete(input: {
+  fileName: string;
+  htmlBody: string;
+  requestedSlideCount: number | null;
+}): { fileName: string; producedCount: number; expectedCount: number; reason: string } | null {
+  const fileName = input.fileName.trim();
+  if (!fileName.toLowerCase().endsWith('.html')) return null;
+  const producedCount = countDeckSlideSections(input.htmlBody);
+  if (producedCount <= 0) return null;
+
+  // Any 1+ slide draft persists. Blocking short fills caused
+  // incomplete_output, then auto-continue rewrote from `<head>` and
+  // failed as incomplete-html-document-shell. Slide-count top-up appends.
+  void input.requestedSlideCount;
+  return null;
 }
 
 export function ProjectView({
@@ -2579,6 +3318,7 @@ export function ProjectView({
   const [queuedAutoStartTick, setQueuedAutoStartTick] = useState(0);
   const skillCache = useRef<Map<string, string>>(new Map());
   const pluginSkillCache = useRef<Map<string, string>>(new Map());
+  const notifiedTemplateKitMissIdsRef = useRef<Set<string>>(new Set());
   const designCache = useRef<Map<string, string>>(new Map());
   const templateCache = useRef<Map<string, ProjectTemplate>>(new Map());
   // We auto-save the most recent artifact to the project folder. Track the
@@ -2593,8 +3333,28 @@ export function ProjectView({
   const htmlAutoOpenFinalizeInProgressRef = useRef<Set<string>>(new Set());
   /** Preview-comment edits must update the annotated deck file, not mint siblings. */
   const runPersistTargetFileRef = useRef<string | null>(null);
+  /**
+   * Active send is a Template Clone content-fill (LOOK seed → compact CREATE).
+   * Persist must not treat a smaller filled deck as a stub regression over the
+   * large cloned CSS/SVG shell, and must not block intentional slide-count caps.
+   */
+  const runTemplateCloneContentFillRef = useRef(false);
+  /** Hidden / user slide-count append — persist merges new sections onto disk. */
+  const runSlideCountTopUpRef = useRef(false);
+  /**
+   * Per-run skip-discovery pin from turn meta / Canvas template pick.
+   * Persist must not wait on React `project.metadata` settling — a stale false
+   * here turns truncated turn-1 HTML into `skipped-discovery-turn`.
+   */
+  const runSkipDiscoveryBriefRef = useRef(false);
+  /** Per-run visual template pin — persist must not wait on stale project.metadata. */
+  const runSelectedDeckTemplateIdRef = useRef<string | null>(null);
   /** Deck-patch from comment edits may only touch slides named by these attachments. */
   const runCommentAttachmentsRef = useRef<ChatCommentAttachment[]>([]);
+  /** Image/file attachments for the active run — used to heal <img src> when /files lags. */
+  const runAttachmentsRef = useRef<ChatAttachment[]>([]);
+  /** Reactive copy of run attachment paths for FileWorkspace/FileViewer preview heal. */
+  const [previewHealAttachmentPaths, setPreviewHealAttachmentPaths] = useState<string[]>([]);
   /** User-visible text for the active run; model-only prompt suffixes are excluded. */
   const runVisiblePromptRef = useRef<string>('');
   const htmlAutoOpenTimerRef = useRef<number | null>(null);
@@ -2626,6 +3386,11 @@ export function ProjectView({
   const pendingAutoContinueConversationIdRef = useRef<string | null>(null);
   /** True while the 600ms auto-continue timer is armed — ChatPane hides Retry. */
   const [autoContinuePending, setAutoContinuePending] = useState(false);
+  /** Closed-deck append loop (remaining slides after a short first fill). */
+  const conversationSlideCountTopUpCountRef = useRef<Map<string, number>>(new Map());
+  const slideCountTopUpTimerRef = useRef<number | null>(null);
+  const pendingSlideCountTopUpConversationIdRef = useRef<string | null>(null);
+  const requestSlideCountTopUpRef = useRef<(htmlPath: string | null) => void>(() => {});
   /**
    * Live streaming buffer mutator for the in-flight assistant row. `surfaceChatVisibleError`
    * updates React `messages` + saves, but the stream scheduler persists from a separate
@@ -2636,6 +3401,20 @@ export function ProjectView({
     assistantId: string;
     apply: (updater: (prev: ChatMessage) => ChatMessage) => void;
   } | null>(null);
+
+  const clearPendingSlideCountTopUpTimer = useCallback((options?: { rollback?: boolean }) => {
+    if (slideCountTopUpTimerRef.current === null) {
+      pendingSlideCountTopUpConversationIdRef.current = null;
+      return;
+    }
+    window.clearTimeout(slideCountTopUpTimerRef.current);
+    slideCountTopUpTimerRef.current = null;
+    const scheduledId = pendingSlideCountTopUpConversationIdRef.current;
+    pendingSlideCountTopUpConversationIdRef.current = null;
+    if (options?.rollback && scheduledId) {
+      rollbackSlideCountTopUpCount(conversationSlideCountTopUpCountRef.current, scheduledId);
+    }
+  }, []);
 
   const clearPendingAutoContinueTimer = useCallback((options?: { rollback?: boolean }) => {
     if (autoContinueTimerRef.current === null) {
@@ -2659,21 +3438,26 @@ export function ProjectView({
     runCommentAttachmentsRef.current = [];
     runVisiblePromptRef.current = '';
     runPersistTargetFileRef.current = null;
+    runSkipDiscoveryBriefRef.current = false;
+    runSelectedDeckTemplateIdRef.current = null;
     conversationRecoveryAttemptedRef.current.clear();
     conversationAutoContinueCountRef.current.clear();
+    conversationSlideCountTopUpCountRef.current.clear();
     if (htmlAutoOpenTimerRef.current !== null) {
       window.clearTimeout(htmlAutoOpenTimerRef.current);
       htmlAutoOpenTimerRef.current = null;
     }
     clearPendingAutoContinueTimer();
+    clearPendingSlideCountTopUpTimer();
     return () => {
       if (htmlAutoOpenTimerRef.current !== null) {
         window.clearTimeout(htmlAutoOpenTimerRef.current);
         htmlAutoOpenTimerRef.current = null;
       }
       clearPendingAutoContinueTimer();
+      clearPendingSlideCountTopUpTimer();
     };
-  }, [project.id, clearPendingAutoContinueTimer]);
+  }, [project.id, clearPendingAutoContinueTimer, clearPendingSlideCountTopUpTimer]);
 
   // Abort a pending automatic-continue when the user switches chats inside
   // the same project — otherwise a late timer can inject into the new chat.
@@ -2681,10 +3465,12 @@ export function ProjectView({
   // recover if the user switches back.
   useEffect(() => {
     clearPendingAutoContinueTimer({ rollback: true });
+    clearPendingSlideCountTopUpTimer({ rollback: true });
     return () => {
       clearPendingAutoContinueTimer({ rollback: true });
+      clearPendingSlideCountTopUpTimer({ rollback: true });
     };
-  }, [activeConversationId, clearPendingAutoContinueTimer]);
+  }, [activeConversationId, clearPendingAutoContinueTimer, clearPendingSlideCountTopUpTimer]);
 
   // Pending Write tool invocations: tool_use_id -> destination basename.
   // When the matching tool_result lands we refresh the file list and open
@@ -2693,6 +3479,12 @@ export function ProjectView({
   // the agent's Write actually completes, without the previous synthetic
   // "live" tab that was causing flicker against manual opens.
   const pendingWritesRef = useRef<Map<string, string>>(new Map());
+  // Filled after `finalizeSlideOnlyDeckArtifacts` is defined — early message-load
+  // emergency recovery calls through this ref so it never closes over a stale
+  // or TDZ callback.
+  const finalizeSlideOnlyDeckArtifactsRef = useRef<
+    (filesSnapshot: ProjectFile[], deckFileName?: string | null) => Promise<ProjectFile[]>
+  >(async (files) => files);
   // Track which conversation the current messages belong to, so we can
   // correctly gate new-conversation creation even during async loads.
   const messagesConversationIdRef = useRef<string | null>(null);
@@ -2716,7 +3508,7 @@ export function ProjectView({
     queuedChatSendsRef.current = restored;
     setQueuedChatSends(restored);
     if (restored.length > 0) {
-      console.info(
+      devLog.info(
         '[teamver] chat-queue: restored on project mount',
         { projectId: project.id, count: restored.length },
       );
@@ -3198,7 +3990,7 @@ export function ProjectView({
         try {
           return await fetchPreviewComments(project.id, activeConversationId);
         } catch (err) {
-          console.debug('[project] preview comments load skipped', err);
+          devLog.debug('[project] preview comments load skipped', err);
           return [];
         }
       };
@@ -3207,7 +3999,7 @@ export function ProjectView({
         try {
           return await listActiveChatRuns(project.id, activeConversationId);
         } catch (err) {
-          console.debug('[project] active daemon runs load skipped', err);
+          devLog.debug('[project] active daemon runs load skipped', err);
           return [];
         }
       };
@@ -3247,13 +4039,18 @@ export function ProjectView({
       try {
         const [list, comments, activeRuns] = await loadMessagesWithRetry();
         if (cancelled) return;
-        const mergedMessages = mergeActiveRunsIntoMessages(list, activeRuns);
+        const mergedMessages = mergeActiveRunsIntoMessages(list, activeRuns).map(
+          sanitizePersistedAssistantChatMessage,
+        );
         setMessages(mergedMessages);
         setMessagesInitialized(true);
         if (activeRuns.length > 0) {
           setReattachNonce((value) => value + 1);
         }
-        setPreviewComments(comments);
+        // Tombstone filter must apply here too: a fresh conversation reload
+        // (auth recovery / visibility retry) can otherwise resurrect a
+        // just-deleted memo while the daemon DELETE is still in flight.
+        setPreviewComments(filterLocallyDeletedPreviewComments(comments));
         setAttachedComments([]);
         setArtifact(null);
         setError(null);
@@ -3301,6 +4098,11 @@ export function ProjectView({
               activeConversationId,
               mergedMessages,
             );
+            syncSlideCountTopUpCountFromMessages(
+              conversationSlideCountTopUpCountRef.current,
+              activeConversationId,
+              mergedMessages,
+            );
             const incompleteAssistant = findIncompleteSlideAssistantForRecovery(mergedMessages);
             const recoveryCommentAttachments = incompleteAssistant
               ? extractCommentAttachmentsForAutoContinue(
@@ -3310,58 +4112,65 @@ export function ProjectView({
               : [];
             const recoveryAutoContinueMax = resolveAutoContinueMaxAttempts({
               scopedCommentAttachmentCount: recoveryCommentAttachments.length,
-              visualMarkOnly:
-                recoveryCommentAttachments.length > 0
-                && !hasElementScopedCommentAttachments(recoveryCommentAttachments),
+              visualMarkOnly: visualAnnotationAutoContinueFlags(recoveryCommentAttachments).visualMarkOnly,
             });
-            if (!canFireAutoContinueForConversation(autoContinueCount, recoveryAutoContinueMax)) {
-              if (incompleteAssistant && slideOnlyMvp) {
-                const incompleteIndex = mergedMessages.findIndex(
-                  (message) => message.id === incompleteAssistant.id,
+            // Prefer emergency salvage BEFORE burning auto-continue slots when
+            // the stream already contains model-authored HTML (matches live finalize).
+            if (incompleteAssistant && slideOnlyMvp) {
+              const incompleteIndex = mergedMessages.findIndex(
+                (message) => message.id === incompleteAssistant.id,
+              );
+              const beforeFileNames = resolveTurnStartFileBaseline(
+                incompleteAssistant.preTurnFileNames,
+                filesForRecovery,
+              );
+              const emergency = await attemptEmergencySlideDeckRecovery({
+                slideOnlyMvp,
+                producedHtmlToOpen: null,
+                scopedCommentAttachmentCount: recoveryCommentAttachments.length,
+                outlineMessages: mergedMessages.slice(0, incompleteIndex + 1),
+                finalText: incompleteAssistant.content,
+                projectFiles: filesForRecovery,
+                beforeFileNames,
+                startedAt: incompleteAssistant.startedAt ?? incompleteAssistant.createdAt ?? Date.now(),
+                persistArtifact,
+                refreshProjectFiles,
+                readProjectHtml,
+                computeProducedFiles,
+              });
+              if (emergency.recovered && emergency.htmlToOpen) {
+                const emergencyNotice = formatEmergencyDeckFallbackNotice();
+                const updatedAssistant = {
+                  ...appendWarningStatusEvent(
+                    clearDurableDeliverableErrorsAfterRecovery(incompleteAssistant),
+                    emergencyNotice,
+                    EMERGENCY_DECK_FALLBACK_STATUS_CODE,
+                  ),
+                  producedFiles: emergency.produced,
+                  runStatus: 'succeeded' as const,
+                  resumable: false,
+                  endedAt: incompleteAssistant.endedAt ?? Date.now(),
+                };
+                setMessages((current) =>
+                  current.map((message) =>
+                    message.id === updatedAssistant.id ? updatedAssistant : message,
+                  ),
                 );
-                const beforeFileNames = resolveTurnStartFileBaseline(
-                  incompleteAssistant.preTurnFileNames,
-                  filesForRecovery,
-                );
-                const emergency = await attemptEmergencySlideDeckRecovery({
-                  slideOnlyMvp,
-                  producedHtmlToOpen: null,
-                  scopedCommentAttachmentCount: recoveryCommentAttachments.length,
-                  outlineMessages: mergedMessages.slice(0, incompleteIndex + 1),
-                  finalText: incompleteAssistant.content,
-                  projectFiles: filesForRecovery,
-                  beforeFileNames,
-                  startedAt: incompleteAssistant.startedAt ?? incompleteAssistant.createdAt ?? Date.now(),
-                  persistArtifact,
-                  refreshProjectFiles,
-                  readProjectHtml,
-                  computeProducedFiles,
+                void saveMessage(project.id, activeConversationId, updatedAssistant, {
+                  telemetryFinalized: true,
                 });
-                if (emergency.recovered && emergency.htmlToOpen) {
-                  const emergencyNotice = formatEmergencyDeckFallbackNotice();
-                  const updatedAssistant = {
-                    ...appendWarningStatusEvent(
-                      incompleteAssistant,
-                      emergencyNotice,
-                      EMERGENCY_DECK_FALLBACK_STATUS_CODE,
-                    ),
-                    producedFiles: emergency.produced,
-                    runStatus: 'succeeded' as const,
-                    resumable: false,
-                    endedAt: incompleteAssistant.endedAt ?? Date.now(),
-                  };
-                  setMessages((current) =>
-                    current.map((message) =>
-                      message.id === updatedAssistant.id ? updatedAssistant : message,
-                    ),
-                  );
-                  void saveMessage(project.id, activeConversationId, updatedAssistant, {
-                    telemetryFinalized: true,
-                  });
-                  maybeArmTeamverPublishMenuAfterRunSuccess(project.id, emergency.htmlToOpen);
-                  requestOpenFile(emergency.htmlToOpen);
-                }
+                const filesAfterEmergency = await refreshProjectFiles();
+                await finalizeSlideOnlyDeckArtifactsRef.current(
+                  filesAfterEmergency,
+                  emergency.htmlToOpen,
+                );
+                maybeArmTeamverPublishMenuAfterRunSuccess(project.id, emergency.htmlToOpen);
+                requestSlideCountTopUpRef.current(emergency.htmlToOpen);
+                requestOpenFile(emergency.htmlToOpen);
+                return;
               }
+            }
+            if (!canFireAutoContinueForConversation(autoContinueCount, recoveryAutoContinueMax)) {
               return;
             }
             if (!incompleteAssistant) return;
@@ -3465,11 +4274,16 @@ export function ProjectView({
                 autoContinueCommentAttachments.length > 0
                   ? buildConcretePatchTemplatesForCommentAttachments(autoContinueCommentAttachments)
                   : null;
-              const autoContinuePrompt = resolveAutoContinuePrompt({
+              const autoContinueVisualFlags = visualAnnotationAutoContinueFlags(
+                autoContinueCommentAttachments,
+              );
+              const autoContinueOriginIsFill = isTemplateCloneContentFillPrompt(
+                autoContinueOriginUser?.content,
+              );
+              const autoContinuePromptRaw = resolveAutoContinuePrompt({
                 commentAttachmentCount: autoContinueCommentAttachments.length,
-                visualMarkOnly:
-                  autoContinueCommentAttachments.length > 0
-                  && !hasElementScopedCommentAttachments(autoContinueCommentAttachments),
+                visualMarkOnly: autoContinueVisualFlags.visualMarkOnly,
+                visualAnnotationEdit: autoContinueVisualFlags.visualAnnotationEdit,
                 scopedCommentContext,
                 scopedUserInstruction: autoContinueOriginUser
                   ? stripUserVisibleUserMessageText(autoContinueOriginUser.content).trim()
@@ -3479,24 +4293,32 @@ export function ProjectView({
                   attempt,
                   referenceFiles: collectSlideReferencePathsFromMessages(mergedMessages),
                   slideCountHint: extractRequestedSlideCountHintFromMessages(mergedMessages),
-                  existingDeckPath: resolvePrimaryDeckFilePath(
-                    filesForRecovery,
-                    project.metadata?.entryFile,
-                  ),
                   ...autoContinueCtx,
+                  existingDeckPath: autoContinueOriginIsFill
+                    ? null
+                    : resolvePrimaryDeckFilePath(
+                      filesForRecovery,
+                      project.metadata?.entryFile,
+                    ),
+                  templateCloneContentFill: autoContinueOriginIsFill,
                 },
               });
-              // Comment scope must survive the retry — see the sibling
-              // scheduleStreamRunHtmlAutoOpen auto-continue for the
-              // full rationale. Empty commentAttachments here caused
-              // the deck-patch / full-deck scope guards to fall
-              // silent on retry, letting the model overwrite the
-              // whole deck with a small placeholder.
+              const autoContinuePrompt = autoContinueOriginIsFill
+                ? ensureTemplateCloneContentFillContinuePrompt(autoContinuePromptRaw)
+                : autoContinuePromptRaw;
+              // Comment scope + image/deck attachments must survive the retry.
+              // Empty attachments here caused image-embed turns to lose their
+              // exact src paths and fall through to greenfield full-deck
+              // regeneration (often collapsing 8 slides → 2).
+              // Fill lineage: omit truncated Clone LOOK deck.html.
               const started = sendNow(
                 autoContinuePrompt,
-                [],
+                chatAttachmentsForAutoContinueImageEmbed(autoContinueOriginUser, projectFilesRef.current.map((file) => String(file.path || file.name || "").trim()).filter(Boolean)),
                 autoContinueCommentAttachments,
-                { entryFrom: AUTO_CONTINUE_ENTRY_FROM },
+                {
+                  entryFrom: AUTO_CONTINUE_ENTRY_FROM,
+                  ...(autoContinueOriginIsFill ? { templateCloneContentFill: true } : {}),
+                },
               );
               void Promise.resolve(started).then((ok) => {
                 if (ok === false) {
@@ -3851,6 +4673,106 @@ export function ProjectView({
     return next;
   }, [project.id]);
 
+  /**
+   * Canvas→Slide: pin metadata.entryFile to the real deck and delete root HTML
+   * that only duplicates an imported refs/ Canvas source (so project cards and
+   * the file tree stop treating the Canvas copy as the deliverable).
+   */
+  const finalizeSlideOnlyDeckArtifacts = useCallback(
+    async (
+      filesSnapshot: ProjectFile[],
+      deckFileName?: string | null,
+    ): Promise<ProjectFile[]> => {
+      if (!slideOnlyMvp) return filesSnapshot;
+      const candidate = (deckFileName ?? '').trim();
+      const fromCandidate =
+        candidate && isCanonicalDeckProjectPath(candidate) ? candidate.replace(/\\/g, '/') : null;
+      const promotion = resolveFilledDeckPromotion({
+        files: filesSnapshot,
+        preferredPath: fromCandidate,
+      });
+      let filesForPin = filesSnapshot;
+      let entryPath = promotion.entryPath;
+      if (promotion.copyFrom && entryPath && isRootCanonicalDeckHtmlPath(entryPath)) {
+        try {
+          const siblingHtml = await fetchProjectFileText(project.id, promotion.copyFrom, {
+            cache: 'no-store',
+          });
+          if (siblingHtml?.trim()) {
+            await writeProjectTextFileDetailed(project.id, 'deck.html', siblingHtml, {
+              skipArtifactStubGuard: true,
+              artifactManifest: createArtifactManifest({
+                entry: 'deck.html',
+                title: project.name || 'deck',
+                artifactType: 'deck',
+                preferDeck: true,
+                sourceSkillId: project.skillId ?? undefined,
+                designSystemId: project.designSystemId,
+                metadata: {
+                  identifier: 'deck',
+                  artifactType: 'deck',
+                  inferred: false,
+                  templateCloneContentFilled: true,
+                  templateClonedDeckSeeded: false,
+                },
+              }),
+            });
+            clearProjectCoverCache(project.id);
+            filesForPin = await refreshProjectFiles();
+            entryPath = 'deck.html';
+          }
+        } catch {
+          // Keep the resolved sibling path if promote fails.
+        }
+      }
+      if (entryPath) {
+        const currentEntry = project.metadata?.entryFile?.trim() ?? '';
+        if (currentEntry !== entryPath) {
+          const metadata = {
+            ...(project.metadata ?? {}),
+            kind: 'deck' as const,
+            entryFile: entryPath,
+          };
+          // Do not optimistic-bump updatedAt — open/hydrate entry pinning is
+          // not a user edit. Prefer the daemon's preserved timestamp.
+          onProjectChange({ ...project, metadata });
+          clearProjectCoverCache(project.id);
+          try {
+            // Await so DesignsTab / cover-hints see entryFile before the user
+            // lands back on the project list (fire-and-forget left Canvas pins).
+            // Preserve updatedAt — entry pin is open hydration, not an edit.
+            const patched = await patchProject(project.id, {
+              metadata,
+              updatedAt: project.updatedAt,
+            });
+            if (patched) onProjectChange(patched);
+          } catch {
+            // Local state already pinned the deck entry.
+          }
+        } else if (promotion.copyFrom) {
+          clearProjectCoverCache(project.id);
+        }
+      }
+      const deleted = await cleanupRootHtmlReferenceLeaks({
+        projectId: project.id,
+        files: filesForPin,
+        slideOnlyMvp: true,
+        deleteFile: deleteProjectFile,
+      });
+      if (deleted.length === 0) return filesForPin;
+      removeProjectFilesLocally(deleted);
+      return refreshProjectFiles();
+    },
+    [
+      slideOnlyMvp,
+      project,
+      onProjectChange,
+      removeProjectFilesLocally,
+      refreshProjectFiles,
+    ],
+  );
+  finalizeSlideOnlyDeckArtifactsRef.current = finalizeSlideOnlyDeckArtifacts;
+
   useEffect(() => {
     projectFilesRef.current = projectFiles;
   }, [projectFiles]);
@@ -3864,19 +4786,43 @@ export function ProjectView({
   );
   const readProjectHtml = useCallback(
     async (name: string): Promise<string | null> => {
-      const file = projectFilesRef.current.find((entry) => entry.name === name);
+      // NFC-tolerant `/files` lookup: metadata / model paths are NFC while
+      // listFiles disk bytes can be NFD. Byte-exact `entry.name === name`
+      // otherwise ignored mtime cache and forced a raw fetch every time.
+      const file = projectFilesRef.current.find((entry) =>
+        projectFilePathsReferToSameFile(entry.name, name)
+        || projectFilePathsReferToSameFile(entry.path, name),
+      );
       const mtime = file?.mtime ?? 0;
       const cached = htmlContentCacheRef.current.get(name);
       if (cached && cached.mtime === mtime) return cached.text;
+      // Probe raw + NFC + NFD forms so an NFC caller can reach an NFD-on-disk
+      // deck.html (macOS legacy). Return the first form that returns 200.
+      const candidates: string[] = [name];
       try {
-        const response = await fetch(projectRawUrl(project.id, name));
-        const text = response.ok ? await response.text() : null;
-        htmlContentCacheRef.current.set(name, { mtime, text });
-        return text;
-      } catch {
-        htmlContentCacheRef.current.set(name, { mtime, text: null });
-        return null;
+        const nfc = name.normalize('NFC');
+        if (nfc !== name) candidates.push(nfc);
+      } catch { /* ignore */ }
+      try {
+        const nfd = name.normalize('NFD');
+        if (nfd !== name && !candidates.includes(nfd)) candidates.push(nfd);
+      } catch { /* ignore */ }
+      for (const candidate of candidates) {
+        try {
+          const response = await fetchTeamverDaemon(projectRawUrl(project.id, candidate), {
+            teamverProjectId: project.id,
+          });
+          if (response.ok) {
+            const text = await response.text();
+            htmlContentCacheRef.current.set(name, { mtime, text });
+            return text;
+          }
+        } catch {
+          // Try next candidate.
+        }
       }
+      htmlContentCacheRef.current.set(name, { mtime, text: null });
+      return null;
     },
     [project.id],
   );
@@ -3968,18 +4914,33 @@ export function ProjectView({
       sourceText?: string,
       activityStartedAt?: number,
     ): Promise<ArtifactPersistResult> => {
-      if (
-        shouldDeferSlideOnlyDiscoveryArtifactPersist(messagesRef.current, {
-          slideOnlyMvp,
-          skipDiscoveryBrief: project.metadata?.skipDiscoveryBrief === true,
-          hasCompleteHtmlArtifact: Boolean(
-            art.html
-              && !isIncompleteHtmlDocumentShell(art.html)
-              && validateHtmlArtifact(art.html).ok,
-          ),
-        })
-      ) {
-        return { kind: 'skipped-discovery-turn', fileName: artifactBaseNameForPersist(art) };
+      {
+        const artifactHtml = typeof art.html === 'string' ? art.html.trim() : '';
+        const selectedTemplateId =
+          selectedDeckTemplateMetadata(project.metadata)?.id
+          ?? project.metadata?.selectedDeckTemplateId
+          ?? null;
+        if (
+          shouldDeferSlideOnlyDiscoveryArtifactPersist(messagesRef.current, {
+            slideOnlyMvp,
+            skipDiscoveryBrief: resolveSlideOnlySkipDiscoveryBrief({
+              projectSkipDiscoveryBrief: project.metadata?.skipDiscoveryBrief === true,
+              projectKind: project.metadata?.kind ?? null,
+              selectedDeckTemplateId: selectedTemplateId,
+              runSkipDiscoveryBrief: runSkipDiscoveryBriefRef.current,
+            }),
+            // Any streamed HTML (including truncated shells) means generation
+            // started — never discovery-skip; let salvage / auto-continue run.
+            hasArtifactHtml: artifactHtml.length > 0,
+            hasCompleteHtmlArtifact: Boolean(
+              artifactHtml
+                && !isIncompleteHtmlDocumentShell(art.html)
+                && validateHtmlArtifact(art.html).ok,
+            ),
+          })
+        ) {
+          return { kind: 'skipped-discovery-turn', fileName: artifactBaseNameForPersist(art) };
+        }
       }
       let effectiveArt = art;
       const currentProjectFilesForPatch = projectFilesSnapshot ?? projectFilesRef.current;
@@ -3987,28 +4948,39 @@ export function ProjectView({
         art,
         currentProjectFilesForPatch,
         openTabsStateRef.current.active,
-        { preferredFileName: runPersistTargetFileRef.current },
+        {
+          preferredFileName: runPersistTargetFileRef.current,
+          slideOnlyMvp,
+        },
       );
-      const persistCommentAttachments = await resolvePersistCommentAttachments({
+      // One disk read per persist — reused for reconcile / merge / scope /
+      // stabilize / noop / duplicate (helpers accept currentHtml).
+      let diskHtmlCache: { fileName: string; html: string | null } | null = null;
+      const readDiskHtml = async (name: string): Promise<string | null> => {
+        if (diskHtmlCache?.fileName === name) return diskHtmlCache.html;
+        const html = await fetchProjectFileText(project.id, name, { cache: 'no-store' });
+        diskHtmlCache = { fileName: name, html };
+        return html;
+      };
+      const diskHtmlForTarget = await readDiskHtml(targetFileName);
+      const persistCommentScope = await resolvePersistCommentScope({
         projectId: project.id,
         fileName: targetFileName,
         commentAttachments: runCommentAttachmentsRef.current,
+        currentHtml: diskHtmlForTarget,
       });
-      let scopedAllowedSlideIndexes = scopedCommentSlideIndexes(persistCommentAttachments);
-      if (persistCommentAttachments.length > 0) {
-        const currentHtmlForScope = await fetchProjectFileText(project.id, targetFileName, {
-          cache: 'no-store',
-        });
-        if (currentHtmlForScope) {
-          const fromDeck = scopedCommentSlideIndexesFromDeck(
-            currentHtmlForScope,
-            persistCommentAttachments,
-          );
-          if (fromDeck) {
-            scopedAllowedSlideIndexes = fromDeck;
-          }
-        }
-      }
+      const persistCommentAttachments = persistCommentScope.attachments;
+      let scopedAllowedSlideIndexes = persistCommentScope.allowedSlideIndexes
+        ?? scopedCommentSlideIndexesFromAttachments(persistCommentAttachments);
+      // Reuse reconcile sections for applyScoped / element-patch rediscovery.
+      const persistCommentSections = persistCommentScope.sections;
+      // deck-patch / element-patch merges already run stabilizeVisualMarkDeckHtml
+      // when comment attachments are present — skip a second full-deck pass.
+      const visualMarksAlreadyStabilized =
+        isElementPatchArtifactType(art.artifactType)
+        || isDeckPatchArtifactType(art.artifactType);
+      // element-patch / deck-patch apply sanitize before serialize.
+      let patchHtmlAlreadySanitized = false;
       // `deck-patch` short-circuits the full-deck emit path. Comment-driven
       // edits carry `<artifact type="deck-patch">` bodies whose sections list
       // ONLY the changed `<section class="slide">` blocks; we merge them into
@@ -4031,6 +5003,8 @@ export function ProjectView({
           allowedSlideIndexes: scopedAllowedSlideIndexes,
           commentAttachments: persistCommentAttachments,
           instructionText: runVisiblePromptRef.current,
+          currentHtml: diskHtmlForTarget,
+          currentSlides: persistCommentSections,
         });
         if (!merged.ok) {
           // Empty / patch-less element-patch means the model chose the
@@ -4060,7 +5034,7 @@ export function ProjectView({
             (isElementPatchEmptyBody(merged.reason) ||
               shouldRouteScopedCommentEditToAutoContinue(merged.code, merged.reason))
           ) {
-            console.warn('[element-patch] routing scoped edit to auto-continue', {
+            devLog.warn('[element-patch] routing scoped edit to auto-continue', {
               fileName: targetFileName,
               code: merged.code,
               reason: merged.reason,
@@ -4071,7 +5045,7 @@ export function ProjectView({
               reason: merged.reason,
             };
           } else if (isElementPatchEmptyBody(merged.reason) && !runIsScoped) {
-            console.warn('[element-patch] rejecting unscoped empty artifact', {
+            devLog.warn('[element-patch] rejecting unscoped empty artifact', {
               fileName: targetFileName,
               reason: merged.reason,
             });
@@ -4091,6 +5065,7 @@ export function ProjectView({
           });
         } else {
           effectiveArt = { ...art, html: merged.html, artifactType: 'deck' };
+          patchHtmlAlreadySanitized = true;
         }
       } else if (isDeckPatchArtifactType(art.artifactType)) {
         const merged = await tryApplyDeckPatchAgainstCurrentDeck({
@@ -4100,6 +5075,8 @@ export function ProjectView({
           allowedSlideIndexes: scopedAllowedSlideIndexes,
           commentAttachments: persistCommentAttachments,
           instructionText: runVisiblePromptRef.current,
+          currentHtml: diskHtmlForTarget,
+          currentSlides: persistCommentSections,
         });
         if (!merged.ok) {
           const runIsScoped = persistCommentAttachments.length > 0;
@@ -4107,7 +5084,7 @@ export function ProjectView({
             runIsScoped &&
             shouldRouteScopedCommentEditToAutoContinue(merged.code, merged.reason)
           ) {
-            console.warn('[deck-patch] scoped merge missed comment target — routing to auto-continue', {
+            devLog.warn('[deck-patch] scoped merge missed comment target — routing to auto-continue', {
               fileName: targetFileName,
               code: merged.code,
               reason: merged.reason,
@@ -4128,7 +5105,7 @@ export function ProjectView({
             isDeckPatchEmptyBody(art.html ?? '', merged.reason)
           ) {
             if (runIsScoped) {
-              console.warn('[deck-patch] routing scoped empty deck-patch to auto-continue', {
+              devLog.warn('[deck-patch] routing scoped empty deck-patch to auto-continue', {
                 fileName: targetFileName,
                 reason: merged.reason,
               });
@@ -4138,7 +5115,7 @@ export function ProjectView({
                 reason: merged.reason,
               };
             }
-            console.warn('[deck-patch] rejecting unscoped empty deck-patch', {
+            devLog.warn('[deck-patch] rejecting unscoped empty deck-patch', {
               fileName: targetFileName,
               reason: merged.reason,
             });
@@ -4158,6 +5135,7 @@ export function ProjectView({
           });
         } else {
           effectiveArt = { ...art, html: merged.html, artifactType: 'deck' };
+          patchHtmlAlreadySanitized = true;
         }
       } else if (scopedAllowedSlideIndexes && effectiveArt.html) {
         const scopeResult = await fullDeckEditStaysInsideCommentScope({
@@ -4166,6 +5144,8 @@ export function ProjectView({
           nextHtml: effectiveArt.html,
           allowedSlideIndexes: scopedAllowedSlideIndexes,
           commentAttachments: persistCommentAttachments,
+          currentHtml: diskHtmlForTarget,
+          beforeSlides: persistCommentSections,
         });
         if (!scopeResult.ok) {
           // Model emitted a full deck on a scoped comment turn (often after
@@ -4182,19 +5162,23 @@ export function ProjectView({
               patchedHtml: effectiveArt.html,
               commentAttachments: persistCommentAttachments,
               instructionText: runVisiblePromptRef.current,
+              currentHtml: diskHtmlForTarget,
+              currentSlides: persistCommentSections,
+              patchedSlides: scopeResult.afterSlides,
             });
             if (salvaged.ok) {
-              console.warn('[deck-patch] salvaged scoped full-deck rewrite via narrow merge', {
+              devLog.warn('[deck-patch] salvaged scoped full-deck rewrite via narrow merge', {
                 fileName: targetFileName,
                 code: scopeResult.code,
               });
               effectiveArt = { ...effectiveArt, html: salvaged.html };
+              patchHtmlAlreadySanitized = true;
               scopeCheckPassed = true;
             } else if (
               shouldRouteScopedCommentEditToAutoContinue(scopeResult.code, salvaged.reason)
               || shouldRouteScopedCommentEditToAutoContinue(scopeResult.code, scopeResult.reason)
             ) {
-              console.warn('[deck-patch] routing scoped full-deck rewrite to auto-continue', {
+              devLog.warn('[deck-patch] routing scoped full-deck rewrite to auto-continue', {
                 fileName: targetFileName,
                 code: scopeResult.code,
                 reason: salvaged.reason,
@@ -4217,13 +5201,18 @@ export function ProjectView({
             });
           }
         }
+        // Full-deck scope acceptance: terminal sanitize below covers the write.
       }
       const recoveredHtml = recoverHtmlArtifactFromPrecedingDocument({
         artifactHtml: effectiveArt.html,
         identifier: effectiveArt.identifier,
         sourceText,
       });
-      let artifactToPersist = recoveredHtml ? { ...effectiveArt, html: recoveredHtml } : effectiveArt;
+      // Recovery may pull a preceding document — terminal sanitize below
+      // scrubs it once after salvage/repair/stabilize mutations.
+      let artifactToPersist = recoveredHtml
+        ? { ...effectiveArt, html: recoveredHtml }
+        : effectiveArt;
       const baseName = artifactBaseNameFor(effectiveArt);
       const ext = artifactExtensionFor(effectiveArt);
       const currentProjectFiles = projectFilesSnapshot ?? projectFilesRef.current;
@@ -4231,7 +5220,10 @@ export function ProjectView({
         artifactToPersist,
         currentProjectFiles,
         openTabsStateRef.current.active,
-        { preferredFileName: runPersistTargetFileRef.current },
+        {
+          preferredFileName: runPersistTargetFileRef.current,
+          slideOnlyMvp,
+        },
       );
       if (ext === '.html') {
         const pointerTarget = resolveHtmlPointerArtifactTarget({
@@ -4255,32 +5247,112 @@ export function ProjectView({
       // such content lands as a phantom HTML file in the project panel.
       if (ext === '.html') {
         // Mid-stream truncation (max_tokens) often leaves a multi-KB deck
-        // with real <section class="slide"> content but no </html>. Closing
+        // with real <section|div class="slide"> content but no </html>. Closing
         // the document here salvages a previewable file instead of skipping
         // the write and burning an auto-continue turn that usually truncates
-        // again the same way.
-        const salvaged = salvageTruncatedHtmlDocument(artifactToPersist.html);
+        // again the same way. Run BEFORE the terminal sanitize so we parse once.
+        // Auto-repair truncated max_tokens decks: close unmatched slides +
+        // </body></html> when real slide copy already exists. Soft truncation
+        // quality is applied inside salvage — do NOT re-reject with the
+        // stricter incomplete/low-substance gates or previewable salvage is
+        // thrown away and the user only sees incomplete_output.
+        const coverFallbackTitle = deriveDeckCoverTitleFromBrief(
+          runVisiblePromptRef.current || '',
+          project.name,
+        );
+        const incomingBeforeSalvage = artifactToPersist.html;
+        const salvaged = salvageTruncatedHtmlDocument(artifactToPersist.html)
+          ?? (
+            runSlideCountTopUpRef.current
+              ? null
+              : salvageTemplateFillShellAsCoverDraft(artifactToPersist.html, {
+                fallbackTitle: coverFallbackTitle,
+              })
+          );
         if (salvaged) {
           artifactToPersist = { ...artifactToPersist, html: salvaged };
         }
+        if (runSlideCountTopUpRef.current) {
+          const priorHtml = await readDiskHtml(fileName);
+          if (priorHtml) {
+            const merged =
+              appendIncomingSlidesOntoExistingDeck(priorHtml, incomingBeforeSalvage)
+              ?? appendIncomingSlidesOntoExistingDeck(
+                priorHtml,
+                artifactToPersist.html,
+              );
+            if (merged) {
+              artifactToPersist = { ...artifactToPersist, html: merged };
+            } else if (
+              countDeckSlideSections(artifactToPersist.html)
+              <= countDeckSlideSections(priorHtml)
+            ) {
+              // Prior deck is already a valid deliverable. Do NOT route this
+              // as skipped-incomplete → incomplete_output (or auto-continue
+              // head rewrite). Keep disk as-is and treat as a calm no-op.
+              return {
+                kind: 'skipped-noop',
+                fileName,
+                reason: 'top-up-did-not-append-slides',
+              };
+            }
+          }
+        }
+        // Upstream resolveTerminal / bestArtifact may already have closed the
+        // truncated body. Re-running salvage then returns null — still trust
+        // closed soft-quality decks so strict incomplete/low-substance cannot
+        // throw away the same previewable HTML. 1-slide titled covers also
+        // persist so top-up can append instead of incomplete_output.
+        const normalizedArtifactType = normalizeSlideOnlyArtifactContractType(
+          artifactToPersist.artifactType,
+          slideOnlyMvp,
+        );
+        // Heal instruction/marketing titles *before* the short-draft / incomplete
+        // gates. A 1-slide "만들어줘" cover used to fail persistable-short and
+        // skip as incomplete-html-document-shell, so top-up never ran.
+        artifactToPersist = {
+          ...artifactToPersist,
+          html: healInstructionCopyCoverHeading(
+            artifactToPersist.html,
+            runVisiblePromptRef.current || '',
+            project.name,
+          ),
+        };
+        const trustSoftTruncationSalvage =
+          Boolean(salvaged)
+          || isClosedSoftSalvageDeckHtml(artifactToPersist.html)
+          || isPersistableShortDeckDraft(artifactToPersist.html);
         // Empty scaffolds can pass the 64-char length gate once a charset
         // meta is present — still skip silently so we never write phantoms
         // or flash 「저장을 거부했습니다」 during deck generation.
-        if (isIncompleteHtmlDocumentShell(artifactToPersist.html)) {
+        if (
+          !trustSoftTruncationSalvage
+          && isIncompleteHtmlDocumentShell(artifactToPersist.html)
+        ) {
           // Quiet skip — do NOT setError here. The terminal auto-open path
           // owns user-facing messaging (deliverable-missing banner and/or
           // the automatic-continue notice). Flashing 「저장을 거부했습니다:
           // incomplete HTML document shell」 mid/end-turn contradicted the
           // auto-continue banner and looked like a product failure during demos.
-          return { kind: 'skipped-incomplete', fileName };
+          return {
+            kind: 'skipped-incomplete',
+            fileName,
+            reason: 'incomplete-html-document-shell',
+          };
         }
-        const normalizedArtifactType = normalizeSlideOnlyArtifactContractType(
-          artifactToPersist.artifactType,
-          slideOnlyMvp,
-        );
+        const failedGenerateHeadings =
+          normalizedArtifactType === 'deck'
+          && (
+            deckSlideHeadingsLookLikeFailedGenerate(artifactToPersist.html)
+            || deckArtifactStartsWithMotifSvgDump(artifactToPersist.html)
+          );
         if (
-          normalizedArtifactType === 'deck' &&
-          isLowSubstanceSlideDeckArtifact(artifactToPersist.html)
+          failedGenerateHeadings
+          || (
+            !trustSoftTruncationSalvage
+            && normalizedArtifactType === 'deck'
+            && isLowSubstanceSlideDeckArtifact(artifactToPersist.html)
+          )
         ) {
           return {
             kind: 'skipped-incomplete',
@@ -4300,14 +5372,135 @@ export function ProjectView({
           return { kind: 'rejected', fileName, reason: validation.reason };
         }
       }
-      if (savedArtifactRef.current === fileName) return { kind: 'skipped-duplicate', fileName };
+      const title = art.title || art.identifier || fileName;
+      let htmlBody =
+        ext === '.html'
+          ? repairArtifactStyleSheets(
+            repairArtifactDocumentHeadIfNeeded(artifactToPersist.html),
+          )
+          : artifactToPersist.html;
+      if (
+        ext === '.html'
+        && persistCommentAttachments.some(isVisualCommentAttachment)
+        && !visualMarksAlreadyStabilized
+      ) {
+        const currentDeckHtml = await readDiskHtml(fileName);
+        if (currentDeckHtml) {
+          htmlBody = stabilizeVisualMarkDeckHtml(
+            currentDeckHtml,
+            htmlBody,
+            persistCommentAttachments,
+            {
+              currentSlides: persistCommentSections,
+              mergedSlides: extractTopLevelSlideSections(extractDeckBodyContent(htmlBody)),
+            },
+          );
+        }
+      }
+      const htmlBodyBeforeSanitize = htmlBody;
+      if (ext === '.html' && !patchHtmlAlreadySanitized) {
+        // Single terminal scrub after salvage/repair/stabilize — avoids
+        // 2–4× DOMParser passes on the same multi-KB deck per persist.
+        // element/deck-patch success already sanitized upstream.
+        htmlBody = sanitizeManualEditFullSource(htmlBody);
+      }
+      if (ext === '.html') {
+        if (runTemplateCloneContentFillRef.current) {
+          const slideCountIncomplete = findTemplateCloneFillSlideCountIncomplete({
+            fileName,
+            htmlBody,
+            requestedSlideCount: extractRequestedSlideCountTargetFromMessages(messagesRef.current),
+          });
+          if (slideCountIncomplete) {
+            devLog.warn('[teamver] blocked incomplete template fill before save', {
+              fileName: slideCountIncomplete.fileName,
+              producedCount: slideCountIncomplete.producedCount,
+              expectedCount: slideCountIncomplete.expectedCount,
+            });
+            return {
+              kind: 'skipped-incomplete',
+              fileName: slideCountIncomplete.fileName,
+              reason: slideCountIncomplete.reason,
+            };
+          }
+        }
+        // Heal model-emitted <img src> that used a human/original filename
+        // (or sanitized basename without the upload timestamp prefix) instead
+        // of the real on-disk path from /upload. Union turn attachments so
+        // Drive `refs/drive/…` heals even when /files has not refreshed yet.
+        const attachmentPaths = runAttachmentsRef.current
+          .map((attachment) => attachment.path.trim())
+          .filter(Boolean);
+        const projectPaths = [
+          ...currentProjectFiles.map(
+            (file) => String(file.path || file.name || '').trim(),
+          ),
+          ...attachmentPaths,
+        ].filter(Boolean);
+        htmlBody = rewriteAttachmentImageSrcs(htmlBody, projectPaths, {
+          preferredPaths: attachmentPaths,
+        });
+        const persistTemplateId = firstOfficialDeckTemplateId(
+          runSelectedDeckTemplateIdRef.current,
+          selectedDeckTemplateMetadata(project.metadata)?.id,
+          project.metadata?.selectedDeckTemplateId,
+        );
+        // Look/Motif/fonts first, then surface bleed — so cream !important
+        // does not win over official dark identity (Hermes) or Motif washes.
+        htmlBody = await mergeOfficialLookCssForTemplate(htmlBody, persistTemplateId);
+        htmlBody = repairDeckSlideSurfaceBleed(htmlBody);
+        // MiniMax rewrite-echo: drop adjacent twin headings/paragraphs/badges
+        // before the 16:9 pin so deck.html never stores stacked copy.
+        htmlBody = collapseAdjacentDuplicateDeckSiblings(htmlBody);
+        // Pin every .slide to 1920×1080 so 100vh / presentation-wrapper fills
+        // cannot stretch into a tall portrait preview panel (§0.70).
+        htmlBody = pinDeckSlidesToFixedCanvas(htmlBody);
+      }
+      if (ext === '.html' && persistCommentAttachments.length > 0) {
+        const currentScopedHtml = await readDiskHtml(fileName);
+        if (
+          currentScopedHtml
+          && normalizeHtmlForRecoveredArtifactComparison(currentScopedHtml)
+            === normalizeHtmlForRecoveredArtifactComparison(htmlBody)
+        ) {
+          // Model "edited" only unsafe markup that sanitize removed — reject
+          // explicitly instead of skipped-incomplete (auto-continue churn).
+          if (
+            normalizeHtmlForRecoveredArtifactComparison(currentScopedHtml)
+            !== normalizeHtmlForRecoveredArtifactComparison(htmlBodyBeforeSanitize)
+          ) {
+            devLog.warn('[deck-patch] scoped edit scrubbed to no-op', {
+              fileName,
+            });
+            return {
+              kind: 'rejected',
+              fileName,
+              reason: 'scoped comment edit only contained unsafe markup that was scrubbed',
+            };
+          }
+          devLog.warn('[deck-patch] scoped edit produced no disk change', {
+            fileName,
+          });
+          return {
+            kind: 'skipped-noop',
+            fileName,
+            reason: 'scoped comment edit did not change the deck on disk',
+          };
+        }
+      }
+      if (savedArtifactRef.current === fileName) {
+        const currentHtml = await readDiskHtml(fileName);
+        if (
+          normalizeHtmlForRecoveredArtifactComparison(currentHtml)
+          === normalizeHtmlForRecoveredArtifactComparison(htmlBody)
+        ) {
+          return { kind: 'skipped-duplicate', fileName };
+        }
+      }
       savedArtifactRef.current = fileName;
       if (isTeamverEmbedMode()) {
         await refreshTeamverEmbedAuthBeforeMutating({ activityStartedAt });
       }
-      const title = art.title || art.identifier || fileName;
-      const htmlBody =
-        ext === '.html' ? repairArtifactDocumentHead(artifactToPersist.html) : artifactToPersist.html;
       const contractArtifactType = normalizeSlideOnlyArtifactContractType(
         artifactToPersist.artifactType,
         slideOnlyMvp,
@@ -4316,6 +5509,12 @@ export function ProjectView({
         identifier: art.identifier,
         artifactType: contractArtifactType,
         inferred: false,
+        ...(slideOnlyMvp && ext === '.html'
+          ? {
+              templateCloneContentFilled: true,
+              templateClonedDeckSeeded: false,
+            }
+          : {}),
       };
       const manifest =
         ext === '.html'
@@ -4337,13 +5536,16 @@ export function ProjectView({
                 designSystemId: project.designSystemId,
               },
             });
+      const priorDiskHtml = ext === '.html' ? await readDiskHtml(fileName) : null;
       const regression = findClientArtifactRegression({
         fileName,
         htmlBody,
         projectFiles: currentProjectFiles,
+        allowCompactReplacement: runTemplateCloneContentFillRef.current,
+        priorHtml: priorDiskHtml,
       });
       if (regression) {
-        console.warn('[teamver] blocked placeholder artifact regression before save', {
+        devLog.warn('[teamver] blocked placeholder artifact regression before save', {
           fileName: regression.fileName,
           priorSize: regression.priorSize,
           newSize: regression.newSize,
@@ -4370,6 +5572,48 @@ export function ProjectView({
           reason: regression.reason,
         };
       }
+      // Dense 2-slide rewrites can pass the byte-size check while destroying
+      // an 8-slide deck after an image-insert turn. Block slide-count collapse
+      // even on comment-scoped persists (image+pin turns previously skipped
+      // this guard and still collapsed 8→2). Existing-deck / image-embed turns
+      // use strict mode so soft shrink (8→6) is also rejected.
+      if (ext === '.html') {
+        try {
+          const priorHtml = priorDiskHtml ?? await readDiskHtml(fileName);
+          const runImagePaths = imageAttachmentPathsForSlideEmbed(runAttachmentsRef.current);
+          const strictSlideCount =
+            persistCommentAttachments.length > 0
+            || runImagePaths.length > 0
+            || Boolean(runPersistTargetFileRef.current);
+          const slideRegression = findClientSlideCountRegression({
+            fileName,
+            htmlBody,
+            priorHtml,
+            strict: strictSlideCount,
+            allowSlideCountReduction: runTemplateCloneContentFillRef.current,
+          });
+          if (slideRegression) {
+            devLog.warn('[teamver] blocked slide-count collapse before save', {
+              fileName: slideRegression.fileName,
+              priorCount: slideRegression.priorCount,
+              newCount: slideRegression.newCount,
+              commentScoped: persistCommentAttachments.length > 0,
+              strict: strictSlideCount,
+            });
+            surfaceChatVisibleError(
+              formatProjectArtifactRegressionRejectedError(slideRegression.fileName),
+              'artifact_regression',
+            );
+            return {
+              kind: 'artifact-regression',
+              fileName: slideRegression.fileName,
+              reason: slideRegression.reason,
+            };
+          }
+        } catch {
+          // Soft-fail — missing prior HTML should not block otherwise-valid saves.
+        }
+      }
       const truncateAfterSequence = getActiveRevisionSequence(project.id, fileName);
       const assistantMessageId = [...messagesRef.current]
         .reverse()
@@ -4388,13 +5632,24 @@ export function ProjectView({
             ...(typeof truncateAfterSequence === 'number'
               ? { truncateAfterSequence }
               : {}),
+            // Clone LOOK seeds a large template; fill replaces it with a
+            // compact content deck. Client already skips the local regression
+            // check — daemon stub-guard must match or ARTIFACT_REGRESSION fires.
+            ...(runTemplateCloneContentFillRef.current
+              ? { skipArtifactStubGuard: true }
+              : {}),
           },
         )
         : await writeProjectTextFileDetailed(
           project.id,
           fileName,
           htmlBody,
-          { artifactManifest: manifest ?? undefined },
+          {
+            artifactManifest: manifest ?? undefined,
+            ...(runTemplateCloneContentFillRef.current
+              ? { skipArtifactStubGuard: true }
+              : {}),
+          },
         );
       if (result.ok) {
         const file = result.file;
@@ -4430,12 +5685,14 @@ export function ProjectView({
           emitRevisionPush(
             analytics.track,
             project.id,
-            projectKindToTracking(project.metadata?.kind, project.metadata?.videoModel),
+            projectListTrackingKind(project, { slideOnly: slideOnlyMvp }),
             file.name,
             pushedRevision,
             'agent_persist',
           );
-          if (pushedRevision.parentRevisionId) {
+          // Undo only when we have a real parent revision id — comments alone
+          // must not surface an action that POSTs /revisions/null/restore.
+          if (typeof pushedRevision.parentRevisionId === 'string') {
             const parentRevisionId = pushedRevision.parentRevisionId;
             const restoredFileName = file.name;
             setProjectActionsToast({
@@ -4451,15 +5708,19 @@ export function ProjectView({
                   );
                   if (!restored.ok) return;
                   const cursorRevision = restored.revision;
+                  clearProjectCoverCache(project.id);
                   emitRevisionUndo(
                     analytics.track,
                     project.id,
-                    projectKindToTracking(project.metadata?.kind, project.metadata?.videoModel),
+                    projectListTrackingKind(project, { slideOnly: slideOnlyMvp }),
                     restoredFileName,
                     cursorRevision,
                     'agent_toast',
                   );
+                  // Demote SSOT before refresh; drop in-memory tip HTML so
+                  // liveHtml cannot repaint the agent tip over restored disk.
                   setActiveRevisionSequence(project.id, restoredFileName, cursorRevision.sequence);
+                  setArtifact(null);
                   setFilesRefresh((count) => count + 1);
                   setProjectActionsToast(null);
                 })();
@@ -4505,7 +5766,7 @@ export function ProjectView({
             // inside the preview-file tab slot in the render ladder.
             requestOpenFile(fileName);
           } else {
-            console.warn('[teamver] failed to stash artifact for auth-recovery replay', {
+            devLog.warn('[teamver] failed to stash artifact for auth-recovery replay', {
               projectId: project.id,
               fileName,
               htmlLength: htmlBody.length,
@@ -4550,6 +5811,8 @@ export function ProjectView({
       project.designSystemId,
       project.skillId,
       project.metadata?.skipDiscoveryBrief,
+      project.metadata?.kind,
+      project.metadata?.selectedDeckTemplateId,
       requestOpenFile,
       slideOnlyMvp,
       activeConversationId,
@@ -4607,7 +5870,7 @@ export function ProjectView({
           } else if (result.status !== 401) {
             // Non-auth failure — the retry will never help; drop the stash.
             clearPendingArtifactWrite(entry.projectId, entry.fileName);
-            console.warn('[teamver] pending artifact replay failed non-401; dropping', {
+            devLog.warn('[teamver] pending artifact replay failed non-401; dropping', {
               projectId: entry.projectId,
               fileName: entry.fileName,
               status: result.status,
@@ -4619,7 +5882,7 @@ export function ProjectView({
         } catch (err) {
           if (cancelled) return;
           anyRemaining = true;
-          console.warn('[teamver] pending artifact replay threw', {
+          devLog.warn('[teamver] pending artifact replay threw', {
             projectId: entry.projectId,
             fileName: entry.fileName,
             err,
@@ -4680,10 +5943,23 @@ export function ProjectView({
   // Set of project file names that the chat surface uses to decide whether
   // a tool card's path is openable as a tab. Recomputed on every file-list
   // change; tool cards just read from the set.
-  const projectFileNames = useMemo(
-    () => new Set(projectFiles.map((f) => f.name)),
-    [projectFiles],
-  );
+  const projectFileNames = useMemo(() => {
+    const names = new Set<string>();
+    for (const file of projectFiles) {
+      const name = file.name?.trim();
+      const path = file.path?.trim();
+      if (name) names.add(name);
+      if (path) names.add(path);
+      const resolved = projectFileResolvedPath(file);
+      if (resolved) names.add(resolved);
+    }
+    return names;
+  }, [projectFiles]);
+
+  useEffect(() => {
+    reconcileProjectRawFileMissingCache(project.id, projectFileNames);
+  }, [project.id, projectFileNames]);
+
   const activeProjectFileName = useMemo(
     () => (
       openTabsState.active && projectFileNames.has(openTabsState.active)
@@ -4737,6 +6013,12 @@ export function ProjectView({
   const handleProjectEvent = useCallback((evt: ProjectEvent) => {
     if (evt.type === 'file-changed') {
       iframeKeepAlivePool.evictProject(project.id);
+      // Deck HTML restores/edits must bust list-card cover cache — otherwise
+      // cover-hints/`?v=` + htmlCover srcDoc stay on the pre-undo snapshot for
+      // COVER_FETCH_CACHE_MS even after disk content rolls back.
+      if (/\.html?$/i.test(evt.path)) {
+        clearProjectCoverCache(project.id);
+      }
       coalescedFileChangedRefresh();
       return;
     }
@@ -4907,6 +6189,16 @@ export function ProjectView({
     skillIdOverride?: string | null,
     pluginIdForLocalSkill?: string | null,
     pluginBlock?: string | null,
+    turnDeckTemplateMeta?: Pick<
+      ProjectChatSendMeta,
+      'selectedDeckTemplateId' | 'selectedDeckTemplateTitle' | 'skipDiscoveryBrief'
+    > | null,
+    slideEditContracts?: {
+      includeCommentEditPatchRule?: boolean;
+      includeExistingDeckImageEditRule?: boolean;
+      /** Clone LOOK → fill: strip Motif SVG dumps from the system kit. */
+      templateCloneContentFill?: boolean;
+    } | null,
   ): Promise<string> => {
     let skillBody: string | undefined;
     let skillName: string | undefined;
@@ -4914,32 +6206,60 @@ export function ProjectView({
     let designSystemBody: string | undefined;
     let designSystemTitle: string | undefined;
 
-    const selectedTemplate = selectedDeckTemplateMetadata(project.metadata);
+    // Prefer persisted project metadata, then this-turn Canvas/Drive pin.
+    // Confirm flows `patchProject` then send immediately; React state can
+    // still be stale on the first compose, which previously dropped the
+    // selected template and re-summarized the visual contract away.
+    const selectedTemplate = selectedDeckTemplateMetadata(
+      project.metadata,
+      turnDeckTemplateMeta,
+    );
     if (selectedTemplate) {
       const cached = pluginSkillCache.current.get(selectedTemplate.id);
-      if (cached !== undefined) {
+      // Bust pre-kit caches so Daisy Days / Zhangzara templates reload with
+      // example.html CSS tokens instead of a prose-only visual summary.
+      const cachedLooksRich =
+        typeof cached === 'string'
+        && skillBodyHasTemplateVisualKit(cached);
+      if (cached !== undefined && cachedLooksRich) {
         skillBody = cached;
         skillName = selectedTemplate.title ?? skillName;
         skillMode = 'deck';
       } else {
-        const summary =
-          skills.find((s) => s.id === selectedTemplate.id) ??
-          designTemplates.find((s) => s.id === selectedTemplate.id);
-        skillName = selectedTemplate.title ?? summary?.name;
-        skillMode = summary?.mode ?? 'deck';
-        const detail =
-          (await fetchSkill(selectedTemplate.id)) ??
-          (await fetchDesignTemplate(selectedTemplate.id));
-        if (detail) {
-          skillBody = detail.body;
-          pluginSkillCache.current.set(selectedTemplate.id, detail.body);
+        // Picker ids are plugin install ids (`example-html-ppt-…`). Prefer the
+        // plugin-local SKILL (with frontmatter visual summary + example.html
+        // visual kit) before the design-template registry.
+        const local = await fetchPluginLocalSkill(selectedTemplate.id);
+        if (local) {
+          skillBody = local.body;
+          skillName = selectedTemplate.title ?? local.name;
+          skillMode = 'deck';
+          pluginSkillCache.current.set(selectedTemplate.id, local.body);
         } else {
-          const local = await fetchPluginLocalSkill(selectedTemplate.id);
-          if (local) {
-            skillBody = local.body;
-            skillName = selectedTemplate.title ?? local.name;
-            skillMode = 'deck';
-            pluginSkillCache.current.set(selectedTemplate.id, local.body);
+          const bareDesignTemplateId = selectedTemplate.id.startsWith('example-')
+            ? selectedTemplate.id.slice('example-'.length)
+            : null;
+          const summary =
+            skills.find((s) => s.id === selectedTemplate.id) ??
+            designTemplates.find((s) => s.id === selectedTemplate.id) ??
+            (bareDesignTemplateId
+              ? designTemplates.find((s) => s.id === bareDesignTemplateId)
+              : undefined);
+          skillName = selectedTemplate.title ?? summary?.name;
+          skillMode = summary?.mode ?? 'deck';
+          const detail =
+            (await fetchSkill(selectedTemplate.id)) ??
+            (await fetchDesignTemplate(selectedTemplate.id)) ??
+            (bareDesignTemplateId
+              ? await fetchDesignTemplate(bareDesignTemplateId)
+              : null);
+          if (detail) {
+            const detailBody = prependSkillDetailVisualSummary(
+              detail.body,
+              detail.description,
+            );
+            skillBody = detailBody;
+            pluginSkillCache.current.set(selectedTemplate.id, detailBody);
           }
         }
       }
@@ -5003,8 +6323,14 @@ export function ProjectView({
     ) {
       const cached = pluginSkillCache.current.get(pluginIdForLocalSkill);
       if (cached !== undefined) {
-        if (!skillBody?.trim()) {
+        if (!skillBody?.trim() && !selectedTemplate) {
+          // Never promote the scenario (simple-deck) body into the primary
+          // slot when a visual template was selected — that made the wrapped
+          // "Selected deck template" section contain Simple Deck itself.
           skillBody = cached;
+        } else if (skillBody?.trim()) {
+          secondaryScenarioSkillBody = cached;
+          secondaryScenarioSkillName = pluginIdForLocalSkill;
         } else {
           secondaryScenarioSkillBody = cached;
           secondaryScenarioSkillName = pluginIdForLocalSkill;
@@ -5013,7 +6339,7 @@ export function ProjectView({
         const local = await fetchPluginLocalSkill(pluginIdForLocalSkill);
         if (local) {
           pluginSkillCache.current.set(pluginIdForLocalSkill, local.body);
-          if (!skillBody?.trim()) {
+          if (!skillBody?.trim() && !selectedTemplate) {
             skillBody = local.body;
             skillName = local.name;
           } else {
@@ -5023,14 +6349,11 @@ export function ProjectView({
         }
       }
     }
-    if (!skillBody?.trim() && selectedTemplate?.title) {
-      skillBody = [
-        `# Selected visual template`,
-        ``,
-        `Template: ${selectedTemplate.title}`,
-        `Match this selected deck template's visible style as closely as possible.`,
-      ].join('\n');
-      skillName = selectedTemplate.title;
+    if (!skillBody?.trim() && selectedTemplate) {
+      skillBody = selectedDeckTemplateTitleStub(
+        selectedTemplate.title?.trim() || selectedTemplate.id,
+      );
+      skillName = selectedTemplate.title?.trim() || selectedTemplate.id;
       skillMode = 'deck';
     }
     const shouldWrapSelectedTemplate =
@@ -5049,19 +6372,43 @@ export function ProjectView({
         || selectedTemplate?.title
         || 'selected deck template';
       skillBody = wrapSelectedDeckTemplateSkillBody(skillBody!, title);
-    } else if (skillBody?.trim() && skillMode === 'deck') {
-      // Non-template deck skills keep the prior wrap so API/daemon stay aligned.
-      skillBody = wrapSelectedDeckTemplateSkillBody(
-        skillBody,
-        skillName?.trim() || 'selected deck template',
-      );
     }
+    // First fill hangs when the model pastes multi-KB Motif SVGs before titles.
+    // Keep palette/fonts/scaffold; remove verbatim SVG dumps from the kit.
+    if (slideEditContracts?.templateCloneContentFill && skillBody?.trim()) {
+      skillBody = slimTemplateVisualKitForFill(skillBody);
+    }
+    // Do NOT wrap every deck skill as "user explicitly picked this template".
+    // That false framing ran for default Simple Deck / no-template paths and
+    // fought the summarized Visual style reference + Neutral compact contract.
     const secondary = secondaryScenarioSkillBody?.trim();
-    if (skillBody?.trim() && secondary && !skillBody.includes(secondary)) {
+    // Teamver slide-only BYOK: never splice the default scenario SKILL
+    // (example-simple-deck) into the selected visual template body. That
+    // append lived under `## Selected deck template — MUST MATCH`, so the
+    // model treated Simple Deck's light/dark hero rhythm as the visual
+    // contract ("기본 템플릿이 이용되고 있다") even when the picked
+    // template had loaded. Compact deck framework already covers structure.
+    const omitSecondaryScenarioForSelectedTemplate =
+      Boolean(selectedTemplate)
+      && slideOnlyMvp
+      && config.mode === 'api';
+    if (
+      skillBody?.trim()
+      && secondary
+      && !skillBody.includes(secondary)
+      && !omitSecondaryScenarioForSelectedTemplate
+    ) {
       const secondaryName = secondaryScenarioSkillName?.trim() || 'scenario';
       skillBody += `\n\n---\n\n## Composed skill — ${secondaryName}\n\n${secondary}`;
     }
-    if (designSystemIdOverride ?? project.designSystemId) {
+    // Selected visual template owns palette/fonts via example.html kit.
+    // Skip loading Neutral Modern (or any DS) body into BYOK compose — even a
+    // "SECONDARY" DESIGN.md still steers the model toward sparse corporate.
+    const omitDesignSystemForSelectedTemplate =
+      Boolean(selectedTemplate)
+      && slideOnlyMvp
+      && config.mode === 'api';
+    if (!omitDesignSystemForSelectedTemplate && (designSystemIdOverride ?? project.designSystemId)) {
       const effectiveDesignSystemId = designSystemIdOverride ?? project.designSystemId;
       const summary = designSystems.find((d) => d.id === effectiveDesignSystemId);
       designSystemTitle = summary?.title;
@@ -5127,6 +6474,28 @@ export function ProjectView({
     } else {
       setAudioVoiceOptionsError(null);
     }
+    const composeMetadata: ProjectMetadata = metadataForTeamverSlideOnlyPrompt({
+      kind: project.metadata?.kind ?? (selectedTemplate || turnDeckTemplateMeta?.skipDiscoveryBrief === true || slideOnlyMvp
+        ? 'deck'
+        : 'prototype'),
+      ...(project.metadata ?? {}),
+      ...(turnDeckTemplateMeta?.skipDiscoveryBrief === true
+        ? { kind: 'deck' as const, skipDiscoveryBrief: true }
+        : {}),
+      ...(selectedTemplate
+        ? {
+            selectedDeckTemplateId: selectedTemplate.id,
+            ...(selectedTemplate.title || skillName
+              ? {
+                  selectedDeckTemplateTitle:
+                    selectedTemplate.title
+                    || skillName
+                    || undefined,
+                }
+              : {}),
+          }
+        : {}),
+    }, { mode: slideOnlyMvp ? 'disabled' : 'enabled' });
     return composeSystemPrompt({
       skillBody,
       skillName,
@@ -5134,7 +6503,7 @@ export function ProjectView({
       designSystemBody,
       designSystemTitle,
       memoryBody,
-      metadata: project.metadata,
+      metadata: composeMetadata,
       template,
       pluginBlock: pluginBlock ?? undefined,
       audioVoiceOptions,
@@ -5144,12 +6513,21 @@ export function ProjectView({
         config.mode === 'api'
           ? byokChatToolNamesForProtocol(config.apiProtocol)
           : undefined,
-      mediaExecution: mediaExecutionPolicyForProjectMetadata(project.metadata, {
+      mediaExecution: mediaExecutionPolicyForProjectMetadata(composeMetadata, {
         slideOnlyMvp,
       }),
       sessionMode: sessionModeOverride,
       locale,
       userInstructions: config.customInstructions,
+      ...(slideEditContracts?.includeCommentEditPatchRule === true
+        ? { includeCommentEditPatchRule: true }
+        : {}),
+      ...(slideEditContracts?.includeExistingDeckImageEditRule === true
+        ? { includeExistingDeckImageEditRule: true }
+        : {}),
+      ...(slideEditContracts?.templateCloneContentFill === true
+        ? { templateCloneContentFill: true }
+        : {}),
     });
   }, [
     project.skillId,
@@ -5274,7 +6652,7 @@ export function ProjectView({
         setMessagesConversationId(conversationId);
         setFailedMessagesConversationId(null);
       } catch (err) {
-        console.warn('Failed to refresh conversation messages after run completion', err);
+        devLog.warn('Failed to refresh conversation messages after run completion', err);
       }
     },
     [project.id],
@@ -5308,13 +6686,29 @@ export function ProjectView({
         ?? selectTouchedHtmlOutputFromEvents(message.events, filesSnapshot, {
           branding: { slideOnlyMvp },
         });
-      if (!htmlToOpen) continue;
       if (slideOnlyMvp) {
-        htmlToOpen = await verifySlideProducedHtmlDeliverable(htmlToOpen, readProjectHtml);
+        if (htmlToOpen) {
+          htmlToOpen = await resolveSlideProducedHtmlToOpen(
+            htmlToOpen,
+            null,
+            readProjectHtml,
+          );
+        }
+        if (!htmlToOpen) {
+          const deckPath = resolveCanonicalDeckEntryPath(filesSnapshot);
+          if (deckPath) {
+            htmlToOpen = await verifySlideProducedHtmlDeliverable(deckPath, readProjectHtml);
+          }
+        }
         if (!htmlToOpen) continue;
+        const finalized = await finalizeSlideOnlyDeckArtifacts([...filesSnapshot], htmlToOpen);
+        htmlToOpen = resolveCanonicalDeckEntryPath(finalized) ?? htmlToOpen;
+      } else if (!htmlToOpen) {
+        continue;
       }
       htmlAutoOpenClaimedRef.current.add(assistantMessageId);
       maybeArmTeamverPublishMenuAfterRunSuccess(project.id, htmlToOpen);
+      requestSlideCountTopUpRef.current(htmlToOpen);
       requestOpenFile(htmlToOpen);
       if (!message.producedFiles?.length && produced.length > 0) {
         updateMessageById(
@@ -5327,7 +6721,14 @@ export function ProjectView({
       return true;
     }
     return false;
-  }, [project.id, readProjectHtml, requestOpenFile, slideOnlyMvp, updateMessageById]);
+  }, [
+    project.id,
+    readProjectHtml,
+    requestOpenFile,
+    slideOnlyMvp,
+    updateMessageById,
+    finalizeSlideOnlyDeckArtifacts,
+  ]);
 
   const markStreamingConversation = useCallback((conversationId: string) => {
     streamingConversationIdRef.current = conversationId;
@@ -5497,16 +6898,39 @@ export function ProjectView({
     [project.id, project.metadata, updateMessageById],
   );
 
+  // Preview-comment DELETE and status PATCH can race the periodic refresh:
+  // if the fetch begins before DELETE lands on the daemon, the deleted row
+  // returns in `next` and would resurrect in the side panel. Track locally
+  // deleted ids for a short window and drop them from any refresh merge.
+  const locallyDeletedPreviewCommentsRef = useRef<Map<string, number>>(new Map());
+  const noteLocallyDeletedPreviewComment = useCallback((commentId: string) => {
+    locallyDeletedPreviewCommentsRef.current.set(commentId, Date.now());
+  }, []);
+  const filterLocallyDeletedPreviewComments = useCallback(
+    (comments: readonly PreviewComment[]): PreviewComment[] => {
+      const tombstones = locallyDeletedPreviewCommentsRef.current;
+      if (tombstones.size === 0) return comments as PreviewComment[];
+      const now = Date.now();
+      for (const [id, at] of tombstones) {
+        if (now - at > 60_000) tombstones.delete(id);
+      }
+      if (tombstones.size === 0) return comments as PreviewComment[];
+      return comments.filter((comment) => !tombstones.has(comment.id));
+    },
+    [],
+  );
+
   const refreshPreviewComments = useCallback(async () => {
     if (!activeConversationId) return;
-    const next = await fetchPreviewComments(project.id, activeConversationId);
+    const raw = await fetchPreviewComments(project.id, activeConversationId);
+    const next = filterLocallyDeletedPreviewComments(raw);
     setPreviewComments(next);
     setAttachedComments((current) =>
       current
         .map((attached) => next.find((comment) => comment.id === attached.id))
         .filter((comment): comment is PreviewComment => Boolean(comment)),
     );
-  }, [project.id, activeConversationId]);
+  }, [project.id, activeConversationId, filterLocallyDeletedPreviewComments]);
 
   const savePreviewComment = useCallback(
     async (target: PreviewCommentTarget, note: string, attachAfterSave: boolean, images: File[] = []) => {
@@ -5518,10 +6942,23 @@ export function ProjectView({
       if (images.length > 0) {
         const result = await uploadProjectFiles(project.id, images);
         throwIfProjectCommentUploadIncomplete(result, images.length);
-        uploadedAttachments = result.uploaded.map((file) => ({ path: file.path, name: file.name }));
+        const ready = await uploadedImagesReadableOnDisk(project.id, result.uploaded);
+        const staged = stageReadableUploadedAttachments(result.uploaded, ready);
+        uploadedAttachments = staged.staged.map((file) => ({ path: file.path, name: file.name }));
+        await refreshProjectFiles().catch(() => undefined);
       }
+      // Existing lookup MUST match slideIndex too: the daemon uniqueness key is
+      // (conversation, filePath, elementId, slideIndex), so two comments with
+      // the same elementId on different deck slides are distinct rows. Merging
+      // attachments across slides used to cross-pollinate uploads.
+      const targetSlideIndex = typeof target.slideIndex === 'number' && Number.isFinite(target.slideIndex)
+        ? Math.floor(target.slideIndex)
+        : undefined;
       const existing = previewComments.find(
-        (comment) => comment.filePath === target.filePath && comment.elementId === target.elementId,
+        (comment) =>
+          comment.filePath === target.filePath
+          && comment.elementId === target.elementId
+          && (targetSlideIndex === undefined || comment.slideIndex === targetSlideIndex),
       );
       const attachments = mergePreviewCommentAttachments(existing?.attachments, uploadedAttachments);
       const saved = await upsertPreviewComment(project.id, activeConversationId, {
@@ -5536,18 +6973,55 @@ export function ProjectView({
       );
       return saved;
     },
-    [project.id, activeConversationId, previewComments],
+    [project.id, activeConversationId, previewComments, refreshProjectFiles],
   );
 
   const removePreviewComment = useCallback(
     async (commentId: string) => {
       if (!activeConversationId) return;
-      const ok = await deletePreviewComment(project.id, activeConversationId, commentId);
-      if (!ok) return;
+      const removedComment = previewComments.find((comment) => comment.id === commentId);
+      const removedAttachedIndex = attachedComments.findIndex(
+        (comment) => comment.id === commentId,
+      );
+      const removedAttached = removedAttachedIndex >= 0
+        ? attachedComments[removedAttachedIndex]
+        : null;
+      // Optimistic drop first, tombstone against refresh races, then daemon DELETE.
+      noteLocallyDeletedPreviewComment(commentId);
       setPreviewComments((current) => current.filter((comment) => comment.id !== commentId));
       setAttachedComments((current) => removeAttachedComment(current, commentId));
+      const ok = await deletePreviewComment(project.id, activeConversationId, commentId);
+      if (!ok) {
+        // Rollback: daemon still has the row. Restore local UI to match, and
+        // clear the tombstone so future refreshes will re-render it too.
+        locallyDeletedPreviewCommentsRef.current.delete(commentId);
+        if (removedComment) {
+          setPreviewComments((current) =>
+            current.some((comment) => comment.id === commentId)
+              ? current
+              : [...current, removedComment],
+          );
+        }
+        if (removedAttached) {
+          setAttachedComments((current) =>
+            current.some((comment) => comment.id === commentId)
+              ? current
+              : mergeAttachedComments(current, removedAttached),
+          );
+        }
+        setError(embedUiLabel(
+          'Failed to delete the memo. Please try again.',
+          '메모를 삭제하지 못했습니다. 잠시 후 다시 시도해 주세요.',
+        ));
+      }
     },
-    [project.id, activeConversationId],
+    [
+      project.id,
+      activeConversationId,
+      noteLocallyDeletedPreviewComment,
+      previewComments,
+      attachedComments,
+    ],
   );
 
   const attachPreviewComment = useCallback((comment: PreviewComment) => {
@@ -5654,11 +7128,11 @@ export function ProjectView({
                   ...prev,
                   endedAt: prev.endedAt ?? Date.now(),
                 },
-                formatProjectRunErrorForUser(
-                  Object.assign(new Error('AGENT_EXECUTION_FAILED'), {
+                formatPersistedProjectRunError(
+                  Object.assign(new Error('stale daemon run: status poll exhausted'), {
                     code: 'AGENT_EXECUTION_FAILED',
                   }),
-                ),
+                ).detail,
                 'AGENT_EXECUTION_FAILED',
               ),
             true,
@@ -5753,7 +7227,7 @@ export function ProjectView({
       try {
         activeRuns = await listActiveChatRuns(project.id, reattachConversationId);
       } catch (err) {
-        console.debug('[project] active daemon runs reattach probe skipped', err);
+        devLog.debug('[project] active daemon runs reattach probe skipped', err);
       }
       let messagesSnapshot = messages;
       if ((activeRuns?.length ?? 0) > 0) {
@@ -5839,7 +7313,7 @@ export function ProjectView({
       const missingRunIdMessages = recoverableMessages.filter((m) => !m.runId);
       const historicalRuns = missingRunIdMessages.length > 0
         ? (await listProjectRuns().catch((err) => {
-            console.debug('[project] daemon run history reattach probe skipped', err);
+            devLog.debug('[project] daemon run history reattach probe skipped', err);
             return [];
           })).filter(
             (run) => run.projectId === project.id && run.conversationId === reattachConversationId,
@@ -5904,11 +7378,11 @@ export function ProjectView({
                   ...prev,
                   endedAt: prev.endedAt ?? Date.now(),
                 },
-                formatProjectRunErrorForUser(
-                  Object.assign(new Error('AGENT_EXECUTION_FAILED'), {
+                formatPersistedProjectRunError(
+                  Object.assign(new Error('phantom running row: no daemon runId after reattach grace'), {
                     code: 'AGENT_EXECUTION_FAILED',
                   }),
-                ),
+                ).detail,
                 'AGENT_EXECUTION_FAILED',
               ),
             true,
@@ -5968,11 +7442,11 @@ export function ProjectView({
                   ...prev,
                   endedAt: prev.endedAt ?? Date.now(),
                 },
-                formatProjectRunErrorForUser(
-                  Object.assign(new Error('AGENT_EXECUTION_FAILED'), {
+                formatPersistedProjectRunError(
+                  Object.assign(new Error('daemon run status missing after reattach'), {
                     code: 'AGENT_EXECUTION_FAILED',
                   }),
-                ),
+                ).detail,
                 'AGENT_EXECUTION_FAILED',
               ),
             true,
@@ -6349,18 +7823,114 @@ export function ProjectView({
                   }
                   const producedBeforeFallback = computeProducedFiles(beforeFileNames, nextFiles) ?? [];
                   const runStartedAt = status.createdAt || message.startedAt || message.createdAt;
-                  recoveredExistingArtifact = findExistingArtifactProjectFile(
-                    artifactToPersist,
-                    nextFiles,
-                    { minMtime: runStartedAt },
-                  ) ?? await findSameTurnHtmlWriteForRecoveredArtifact({
-                    artifactHtml: artifactToPersist.html,
-                    producedFiles: producedBeforeFallback,
-                    readProjectHtml,
-                    allowAnyHtmlWrite: message.agentId === 'claude',
-                  });
+                  const reattachScopedComments = (message.commentAttachments?.length ?? 0) > 0;
+                  recoveredExistingArtifact = reattachScopedComments
+                    ? null
+                    : await findSameTurnHtmlWriteForRecoveredArtifact({
+                      artifactHtml: artifactToPersist.html,
+                      producedFiles: producedBeforeFallback,
+                      readProjectHtml,
+                      allowAnyHtmlWrite: message.agentId === 'claude',
+                    });
+                  if (!recoveredExistingArtifact) {
+                    const namedExisting = findExistingArtifactProjectFile(
+                      artifactToPersist,
+                      nextFiles,
+                      { minMtime: runStartedAt },
+                    );
+                    if (namedExisting) {
+                      const diskHtml = await readProjectHtml(namedExisting.name);
+                      if (
+                        !isTemplateCloneLookSeedFile(namedExisting)
+                        && normalizeHtmlForRecoveredArtifactComparison(diskHtml)
+                          === normalizeHtmlForRecoveredArtifactComparison(artifactToPersist.html)
+                      ) {
+                        recoveredExistingArtifact = namedExisting;
+                      }
+                    }
+                  }
+                  if (
+                    recoveredExistingArtifact
+                    && !shouldReuseSameTurnHtmlWriteAsPersist(recoveredExistingArtifact, {
+                      slideOnlyMvp,
+                    })
+                  ) {
+                    recoveredExistingArtifact = null;
+                  }
+                  if (recoveredExistingArtifact) {
+                    const recoveredDisk = await readProjectHtml(recoveredExistingArtifact.name);
+                    if (!isReusableSameTurnDeckWrite(recoveredDisk)) {
+                      recoveredExistingArtifact = null;
+                    }
+                  }
                   if (recoveredExistingArtifact) {
                     savedArtifactRef.current = recoveredExistingArtifact.name;
+                    try {
+                      const diskHtml = await readProjectHtml(recoveredExistingArtifact.name);
+                      if (diskHtml) {
+                        const withHeadings = healInstructionCopyCoverHeading(
+                          diskHtml,
+                          runVisiblePromptRef.current || '',
+                          project.name,
+                        );
+                        const withLook = await mergeOfficialLookCssForTemplate(
+                          withHeadings,
+                          firstOfficialDeckTemplateId(
+                            runSelectedDeckTemplateIdRef.current,
+                            selectedDeckTemplateMetadata(project.metadata)?.id,
+                            project.metadata?.selectedDeckTemplateId,
+                          ),
+                        );
+                        const withSurface = repairDeckSlideSurfaceBleed(withLook);
+                        const withCanvas = pinDeckSlidesToFixedCanvas(
+                          collapseAdjacentDuplicateDeckSiblings(withSurface),
+                        );
+                        const attachmentPaths = runAttachmentsRef.current
+                          .map((attachment) => attachment.path.trim())
+                          .filter(Boolean);
+                        const projectPaths = [
+                          ...nextFiles.map((file) => String(file.path || file.name || '').trim()),
+                          ...attachmentPaths,
+                        ].filter(Boolean);
+                        const { html: healed, changed } = await healDiskHtmlAttachmentImageSrcs({
+                          html: withCanvas,
+                          projectFilePaths: projectPaths,
+                          preferredAttachmentPaths: attachmentPaths,
+                        });
+                        if (
+                          changed
+                          || withCanvas !== diskHtml
+                          || isTemplateCloneLookSeedFile(recoveredExistingArtifact)
+                        ) {
+                          await writeProjectTextFileDetailed(
+                            project.id,
+                            recoveredExistingArtifact.name,
+                            healed,
+                            {
+                              skipArtifactStubGuard: true,
+                              artifactManifest: createArtifactManifest({
+                                entry: recoveredExistingArtifact.name,
+                                title: project.name || 'deck',
+                                artifactType: 'deck',
+                                preferDeck: slideOnlyMvp,
+                                sourceSkillId: project.skillId ?? undefined,
+                                designSystemId: project.designSystemId,
+                                metadata: {
+                                  identifier: 'deck',
+                                  artifactType: 'deck',
+                                  inferred: false,
+                                  templateCloneContentFilled: true,
+                                  templateClonedDeckSeeded: false,
+                                },
+                              }),
+                            },
+                          );
+                          nextFiles = await refreshProjectFiles();
+                        }
+                      }
+                    } catch {
+                      // Soft-fail — preview heal may still cover this turn.
+                    }
                     if (claimHtmlAutoOpenForMessage()) {
                       maybeArmTeamverPublishMenuAfterRunSuccess(
                         project.id,
@@ -6375,7 +7945,11 @@ export function ProjectView({
                       replayedContent,
                       runStartedAt,
                     );
-                    if (shouldFailRunForArtifactPersistResult(replayPersistResult)) {
+                    if (
+                      shouldFailRunForArtifactPersistResult(replayPersistResult, {
+                        scopedCommentEdit: runCommentAttachmentsRef.current.length > 0,
+                      })
+                    ) {
                       const endedAt = Date.now();
                       const detail = encodePersistedRunErrorDetail(
                         formatProjectRunDeliverableMissingError(),
@@ -6414,6 +7988,12 @@ export function ProjectView({
                     replayPersistResult,
                     readProjectHtml,
                   );
+                  nextFiles = await finalizeSlideOnlyDeckArtifacts(
+                    nextFiles,
+                    producedHtmlToOpen,
+                  );
+                  producedHtmlToOpen =
+                    resolveCanonicalDeckEntryPath(nextFiles) ?? producedHtmlToOpen;
                 }
                 produced = mergeRecoveredArtifact(
                   produced,
@@ -6425,6 +8005,7 @@ export function ProjectView({
                 );
                 if (producedHtmlToOpen && claimHtmlAutoOpenForMessage()) {
                   maybeArmTeamverPublishMenuAfterRunSuccess(project.id, producedHtmlToOpen);
+                  requestSlideCountTopUpRef.current(producedHtmlToOpen);
                   requestOpenFile(producedHtmlToOpen);
                 }
                 if (produced.length > 0) {
@@ -6440,7 +8021,7 @@ export function ProjectView({
               onProjectsRefresh();
             },
             onError: (err) => {
-              const errorCode = extractProjectRunErrorCode(err);
+              const persisted = formatPersistedProjectRunError(err);
               const resumable = (err as Error & { resumable?: boolean }).resumable === true;
               // A superseded reattached run must not paint a global failure
               // banner or re-finalize its message over the replacement run.
@@ -6450,15 +8031,14 @@ export function ProjectView({
               textBuffer.cancel();
               unregisterTextBuffer();
               if (runMayFinalize) {
-                const detail = formatProjectRunErrorForUser(err);
-                setError(detail);
+                setError(persisted.userMessage);
                 // Single persist: durable status:error + failed (+ resumable).
                 // Do not call persistNow afterward — that can race a second
                 // PUT from a pre-error snapshot before messagesRef syncs.
                 updateMessageById(
                   message.id,
                   (prev) => ({
-                    ...attachPersistedChatError(prev, detail, errorCode),
+                    ...attachPersistedChatError(prev, persisted.detail, persisted.code),
                     resumable,
                   }),
                   true,
@@ -6532,14 +8112,13 @@ export function ProjectView({
             const runMayFinalize =
               !supersededRunsRef.current.has(controller);
             if ((err as Error).name !== 'AbortError' && runMayFinalize) {
-              const errorCode = extractProjectRunErrorCode(err);
+              const persisted = formatPersistedProjectRunError(err);
               const resumable = (err as Error & { resumable?: boolean }).resumable === true;
-              const msg = formatProjectRunErrorForUser(err);
-              setError(msg);
+              setError(persisted.userMessage);
               updateMessageById(
                 message.id,
                 (prev) => ({
-                  ...attachPersistedChatError(prev, msg, errorCode),
+                  ...attachPersistedChatError(prev, persisted.detail, persisted.code),
                   resumable,
                 }),
                 true,
@@ -6586,6 +8165,7 @@ export function ProjectView({
     scheduleConversationMessageRefresh,
     reattachNonce,
     slideOnlyMvp,
+    finalizeSlideOnlyDeckArtifacts,
   ]);
 
   useEffect(() => {
@@ -6605,7 +8185,7 @@ export function ProjectView({
       try {
         activeStreams = await listActiveByokProxyStreams(project.id);
       } catch (err) {
-        console.debug('[teamver] api background recovery stream probe skipped', {
+        devLog.debug('[teamver] api background recovery stream probe skipped', {
           projectId: project.id,
           conversationId: recoveryConversationId,
           error: err,
@@ -6810,11 +8390,11 @@ export function ProjectView({
         activeStreams = await listActiveByokProxyStreams(project.id);
       } catch (err) {
         const isAuthTransient = err instanceof ActiveByokProxyAuthTransientError;
-        const log = isAuthTransient ? console.debug : console.warn;
+        const log = isAuthTransient ? devLog.debug : devLog.warn;
         log('[teamver] api background recovery stream poll failed', {
           projectId: project.id,
           conversationId: recoveryConversationId,
-          error: err,
+          error: err instanceof Error ? err.message : String(err),
         });
         scheduleNextPoll(
           isAuthTransient
@@ -6877,7 +8457,7 @@ export function ProjectView({
       try {
         nextFiles = await refreshProjectFiles();
       } catch (err) {
-        console.warn('[teamver] api background recovery file refresh failed', {
+        devLog.warn('[teamver] api background recovery file refresh failed', {
           projectId: project.id,
           conversationId: recoveryConversationId,
           error: err,
@@ -6903,6 +8483,11 @@ export function ProjectView({
           recoveryConversationId,
           mergedMessages,
         );
+        syncSlideCountTopUpCountFromMessages(
+          conversationSlideCountTopUpCountRef.current,
+          recoveryConversationId,
+          mergedMessages,
+        );
         const incompleteAssistant = findIncompleteSlideAssistantForRecovery(
           mergedMessages,
           { restrictToMessageIds: trackedAssistantIds },
@@ -6915,61 +8500,69 @@ export function ProjectView({
           : [];
         const recoveryAutoContinueMax = resolveAutoContinueMaxAttempts({
           scopedCommentAttachmentCount: recoveryCommentAttachments.length,
-          visualMarkOnly:
-            recoveryCommentAttachments.length > 0
-            && !hasElementScopedCommentAttachments(recoveryCommentAttachments),
+          visualMarkOnly: visualAnnotationAutoContinueFlags(recoveryCommentAttachments).visualMarkOnly,
         });
-        if (!canFireAutoContinueForConversation(autoContinueCount, recoveryAutoContinueMax)) {
-          if (incompleteAssistant && slideOnlyMvp) {
-            const incompleteIndex = mergedMessages.findIndex(
-              (message) => message.id === incompleteAssistant.id,
+        // Prefer emergency salvage before auto-continue (same as live finalize / reload).
+        if (incompleteAssistant && slideOnlyMvp) {
+          const incompleteIndex = mergedMessages.findIndex(
+            (message) => message.id === incompleteAssistant.id,
+          );
+          const beforeFileNames = resolveTurnStartFileBaseline(
+            incompleteAssistant.preTurnFileNames,
+            nextFiles,
+          );
+          const emergency = await attemptEmergencySlideDeckRecovery({
+            slideOnlyMvp,
+            producedHtmlToOpen: null,
+            scopedCommentAttachmentCount: recoveryCommentAttachments.length,
+            outlineMessages: mergedMessages.slice(0, incompleteIndex + 1),
+            finalText: incompleteAssistant.content,
+            projectFiles: nextFiles,
+            beforeFileNames,
+            startedAt: incompleteAssistant.startedAt ?? incompleteAssistant.createdAt ?? Date.now(),
+            persistArtifact,
+            refreshProjectFiles,
+            readProjectHtml,
+            computeProducedFiles,
+          });
+          if (emergency.recovered && emergency.htmlToOpen) {
+            const emergencyNotice = formatEmergencyDeckFallbackNotice();
+            const updatedAssistant = {
+              ...appendWarningStatusEvent(
+                clearDurableDeliverableErrorsAfterRecovery(incompleteAssistant),
+                emergencyNotice,
+                EMERGENCY_DECK_FALLBACK_STATUS_CODE,
+              ),
+              producedFiles: emergency.produced,
+              runStatus: 'succeeded' as const,
+              resumable: false,
+              endedAt: incompleteAssistant.endedAt ?? Date.now(),
+            };
+            setMessages((current) =>
+              current.map((message) =>
+                message.id === updatedAssistant.id ? updatedAssistant : message,
+              ),
             );
-            const beforeFileNames = resolveTurnStartFileBaseline(
-              incompleteAssistant.preTurnFileNames,
-              nextFiles,
-            );
-            const emergency = await attemptEmergencySlideDeckRecovery({
-              slideOnlyMvp,
-              producedHtmlToOpen: null,
-              scopedCommentAttachmentCount: recoveryCommentAttachments.length,
-              outlineMessages: mergedMessages.slice(0, incompleteIndex + 1),
-              finalText: incompleteAssistant.content,
-              projectFiles: nextFiles,
-              beforeFileNames,
-              startedAt: incompleteAssistant.startedAt ?? incompleteAssistant.createdAt ?? Date.now(),
-              persistArtifact,
-              refreshProjectFiles,
-              readProjectHtml,
-              computeProducedFiles,
+            void saveMessage(project.id, recoveryConversationId, updatedAssistant, {
+              telemetryFinalized: true,
             });
-            if (emergency.recovered && emergency.htmlToOpen) {
-              const emergencyNotice = formatEmergencyDeckFallbackNotice();
-              const updatedAssistant = {
-                ...appendWarningStatusEvent(
-                  incompleteAssistant,
-                  emergencyNotice,
-                  EMERGENCY_DECK_FALLBACK_STATUS_CODE,
-                ),
-                producedFiles: emergency.produced,
-                runStatus: 'succeeded' as const,
-                resumable: false,
-                endedAt: incompleteAssistant.endedAt ?? Date.now(),
-              };
-              setMessages((current) =>
-                current.map((message) =>
-                  message.id === updatedAssistant.id ? updatedAssistant : message,
-                ),
-              );
-              void saveMessage(project.id, recoveryConversationId, updatedAssistant, {
-                telemetryFinalized: true,
-              });
-              maybeArmTeamverPublishMenuAfterRunSuccess(project.id, emergency.htmlToOpen);
-              requestOpenFile(emergency.htmlToOpen);
-              finishRecovery();
-              return;
-            }
+            const filesAfterEmergency = await refreshProjectFiles();
+            await finalizeSlideOnlyDeckArtifacts(
+              filesAfterEmergency,
+              emergency.htmlToOpen,
+            );
+            maybeArmTeamverPublishMenuAfterRunSuccess(project.id, emergency.htmlToOpen);
+            requestSlideCountTopUpRef.current(emergency.htmlToOpen);
+            requestOpenFile(emergency.htmlToOpen);
+            finishRecovery();
+            return;
           }
-        } else if (incompleteAssistant) {
+        }
+        if (!canFireAutoContinueForConversation(autoContinueCount, recoveryAutoContinueMax)) {
+          finishRecovery();
+          return;
+        }
+        if (incompleteAssistant) {
           conversationAutoContinueCountRef.current.set(
             recoveryConversationId,
             autoContinueCount + 1,
@@ -7062,11 +8655,16 @@ export function ProjectView({
               autoContinueCommentAttachments.length > 0
                 ? buildConcretePatchTemplatesForCommentAttachments(autoContinueCommentAttachments)
                 : null;
-            const autoContinuePrompt = resolveAutoContinuePrompt({
+            const autoContinueVisualFlags = visualAnnotationAutoContinueFlags(
+              autoContinueCommentAttachments,
+            );
+            const autoContinueOriginIsFill = isTemplateCloneContentFillPrompt(
+              autoContinueOriginUser?.content,
+            );
+            const autoContinuePromptRaw = resolveAutoContinuePrompt({
               commentAttachmentCount: autoContinueCommentAttachments.length,
-              visualMarkOnly:
-                autoContinueCommentAttachments.length > 0
-                && !hasElementScopedCommentAttachments(autoContinueCommentAttachments),
+              visualMarkOnly: autoContinueVisualFlags.visualMarkOnly,
+              visualAnnotationEdit: autoContinueVisualFlags.visualAnnotationEdit,
               scopedCommentContext,
               scopedUserInstruction: autoContinueOriginUser
                 ? stripUserVisibleUserMessageText(autoContinueOriginUser.content).trim()
@@ -7076,23 +8674,30 @@ export function ProjectView({
                 attempt,
                 referenceFiles: collectSlideReferencePathsFromMessages(mergedMessages),
                 slideCountHint: extractRequestedSlideCountHintFromMessages(mergedMessages),
-                existingDeckPath: resolvePrimaryDeckFilePath(
-                  nextFiles,
-                  project.metadata?.entryFile,
-                ),
                 ...autoContinueCtx,
+                existingDeckPath: autoContinueOriginIsFill
+                  ? null
+                  : resolvePrimaryDeckFilePath(
+                    nextFiles,
+                    project.metadata?.entryFile,
+                  ),
+                templateCloneContentFill: autoContinueOriginIsFill,
               },
             });
-            // See scheduleStreamRunHtmlAutoOpen — passing [] here strips
-            // comment scope from the retry and the deck-patch /
-            // full-deck scope guards fall silent. Preserve the
-            // originating user turn's attachments so the retry stays
-            // scoped to the same target.
+            const autoContinuePrompt = autoContinueOriginIsFill
+              ? ensureTemplateCloneContentFillContinuePrompt(autoContinuePromptRaw)
+              : autoContinuePromptRaw;
+            // Preserve comment scope + image/deck attachments so image-embed
+            // retries keep exact src paths and existing-deck edit contracts.
+            // Fill lineage: omit truncated Clone LOOK deck.html.
             const started = sendNow(
               autoContinuePrompt,
-              [],
+              chatAttachmentsForAutoContinueImageEmbed(autoContinueOriginUser, projectFilesRef.current.map((file) => String(file.path || file.name || "").trim()).filter(Boolean)),
               autoContinueCommentAttachments,
-              { entryFrom: AUTO_CONTINUE_ENTRY_FROM },
+              {
+                entryFrom: AUTO_CONTINUE_ENTRY_FROM,
+                ...(autoContinueOriginIsFill ? { templateCloneContentFill: true } : {}),
+              },
             );
             void Promise.resolve(started).then((ok) => {
               if (ok === false) {
@@ -7224,7 +8829,7 @@ export function ProjectView({
       // resume dispatch. Log preservation for observability.
       const preservedCount = queuedChatSendsRef.current.length;
       if (preservedCount > 0) {
-        console.info(
+        devLog.info(
           '[teamver] chat-queue: preserved across session expiry',
           { projectId: project.id, count: preservedCount },
         );
@@ -7437,7 +9042,11 @@ export function ProjectView({
       meta?: ProjectChatSendMeta,
       baseMessages?: ChatMessage[],
     ) => {
-      if (embedSubmitDisabled && meta?.entryFrom !== AUTO_CONTINUE_ENTRY_FROM) {
+      if (
+        embedSubmitDisabled
+        && meta?.entryFrom !== AUTO_CONTINUE_ENTRY_FROM
+        && meta?.entryFrom !== SLIDE_COUNT_TOP_UP_ENTRY_FROM
+      ) {
         onEmbedSubmitBlocked?.();
         return false;
       }
@@ -7461,7 +9070,34 @@ export function ProjectView({
           // Best-effort GC — retry must not block on stale artifact cleanup.
         }
       }
-      const runContext = meta?.context ?? retryTarget?.userMsg.runContext;
+      const baseRunContext = meta?.context ?? retryTarget?.userMsg.runContext;
+      const turnDesignSystemId =
+        (typeof meta?.designSystemId === 'string' && meta.designSystemId.trim()
+          ? meta.designSystemId.trim()
+          : null)
+        ?? (typeof project.designSystemId === 'string' && project.designSystemId.trim()
+          ? project.designSystemId.trim()
+          : null);
+      const turnDesignSystemTitle =
+        turnDesignSystemId
+          ? designSystems.find((entry) => entry.id === turnDesignSystemId)?.title?.trim()
+            || (typeof baseRunContext?.designSystemTitle === 'string'
+              ? baseRunContext.designSystemTitle.trim()
+              : undefined)
+          : undefined;
+      const runContext = baseRunContext || turnDesignSystemId
+        ? {
+            ...(baseRunContext ?? {}),
+            ...(turnDesignSystemId
+              ? {
+                  designSystemId: turnDesignSystemId,
+                  ...(turnDesignSystemTitle
+                    ? { designSystemTitle: turnDesignSystemTitle }
+                    : {}),
+                }
+              : {}),
+          }
+        : undefined;
       const historyBase = retryTarget ? retryTarget.priorMessages : baseMessages ?? messages;
       if (
         !retryTarget &&
@@ -7472,12 +9108,26 @@ export function ProjectView({
       const isAutoContinueSend =
         meta?.entryFrom === AUTO_CONTINUE_ENTRY_FROM
         || isAutoContinueIncompleteOutputPrompt(prompt);
+      const isSlideCountTopUpSend =
+        meta?.entryFrom === SLIDE_COUNT_TOP_UP_ENTRY_FROM
+        || isSlideCountTopUpPrompt(prompt)
+        || (
+          slideOnlyMvp
+          && commentAttachments.length === 0
+          && looksLikeSlideCountExpansionRequest(prompt)
+        );
+      runSlideCountTopUpRef.current = isSlideCountTopUpSend;
       let filesSnapshot = projectFiles;
       if (
         commentAttachments.some(
           (attachment) =>
             Boolean(attachment.markKind)
             || String(attachment.screenshotPath || '').trim().length > 0,
+        )
+        || attachments.some(
+          (attachment) =>
+            attachment.kind === 'image'
+            || /\.(png|jpe?g|gif|webp|avif|svg)$/i.test(attachment.path),
         )
       ) {
         filesSnapshot = await refreshProjectFiles().catch(() => projectFiles);
@@ -7490,20 +9140,59 @@ export function ProjectView({
           entryFile: project.metadata?.entryFile ?? null,
         })
         : commentAttachments;
-      const scopedCommentAttachments = filterUsableCommentAttachments(hydratedCommentAttachments);
-      let effectiveAttachments = mergeChatAttachments(
-        attachments,
-        chatAttachmentsFromPreviewCommentFiles(scopedCommentAttachments, filesSnapshot),
-        ...scopedCommentAttachments.map((attachment) =>
-          chatAttachmentsFromPreviewCommentImages(attachment.imageAttachments),
-        ),
+      const scopedCommentAttachments = filterUsableCommentAttachments(
+        dedupeCommentAttachments(hydratedCommentAttachments),
       );
+      let effectiveAttachments = excludeAttachmentsBackedByVisualScreenshots(
+        mergeChatAttachments(
+          attachments,
+          chatAttachmentsFromPreviewCommentFiles(scopedCommentAttachments, filesSnapshot),
+          ...scopedCommentAttachments.map((attachment) =>
+            chatAttachmentsFromPreviewCommentImages(attachment.imageAttachments),
+          ),
+        ),
+        scopedCommentAttachments,
+      );
+      // Clone → content-fill must NOT ingest the full cloned deck.html (24KB truncated
+      // mid-CSS) — that anchors the model to rewrite a huge head and hang on max_tokens.
+      // Auto-continue prompts lose fill markers — recover from meta, retry origin, or history.
+      const isCloneContentFillTurn =
+        meta?.templateCloneContentFill === true
+        || isTemplateCloneContentFillPrompt(
+          retryTarget ? retryTarget.userMsg.content || prompt : prompt,
+        )
+        || (
+          (isAutoContinueSend || Boolean(retryTarget))
+          && historyHasTemplateCloneContentFill(historyBase)
+        );
+      runTemplateCloneContentFillRef.current = isCloneContentFillTurn;
+      const fillSlideCountHint =
+        extractTemplateCloneFillSlideCountHintFromPrompt(
+          retryTarget ? retryTarget.userMsg.content || prompt : prompt,
+        )
+        ?? (
+          typeof meta?.pluginInputs?.slideCount === 'string'
+          || typeof meta?.pluginInputs?.slideCount === 'number'
+            ? String(meta.pluginInputs.slideCount)
+            : null
+        );
+      const fillPluginInputs = isCloneContentFillTurn
+        ? withTemplateCloneFillPluginInputs(meta?.pluginInputs, fillSlideCountHint)
+        : meta?.pluginInputs;
+      if (isCloneContentFillTurn || isSlideCountTopUpSend) {
+        effectiveAttachments = effectiveAttachments.filter(
+          (attachment) => !isCanonicalDeckFileName(
+            String(attachment.path || attachment.name || '').trim(),
+          ),
+        );
+      }
       let autoAttachedDeckPath: string | null = null;
       // Scoped comment edits (including auto-continue retries) must keep the
       // on-disk deck attached so the model can emit element-patch / deck-patch
       // against real target ids instead of guessing from stale chat prose.
-      if (slideOnlyMvp && scopedCommentAttachments.length > 0) {
-        const existingDeck = resolvePrimaryDeckFile(
+      // Skip for Clone content-fill — LOOK seed must not re-enter as edit context.
+      if (slideOnlyMvp && scopedCommentAttachments.length > 0 && !isCloneContentFillTurn && !isSlideCountTopUpSend) {
+        const existingDeck = resolveCanonicalDeckFileForEdit(
           filesSnapshot,
           project.metadata?.entryFile ?? null,
         );
@@ -7521,14 +9210,12 @@ export function ProjectView({
           autoAttachedDeckPath = deckPath;
         }
       }
-      // Disk deck is enough — first-turn interrupt + retry often has no prior
-      // assistant in historyBase, but the project already has deck.html.
-      if (
-        slideOnlyMvp
-        && !isAutoContinueSend
-        && scopedCommentAttachments.length === 0
-      ) {
-        const existingDeck = resolvePrimaryDeckFile(
+      // Disk *canonical* deck is enough — first-turn interrupt + retry often has
+      // no prior assistant in historyBase, but the project already has deck.html.
+      // Do not treat leftover about.html / notes.html as an existing deck edit.
+      // Skip for Clone content-fill: kit-driven compact CREATE instead of HTML rewrite.
+      if (slideOnlyMvp && scopedCommentAttachments.length === 0 && !isCloneContentFillTurn && !isSlideCountTopUpSend) {
+        const existingDeck = resolveCanonicalDeckFileForEdit(
           filesSnapshot,
           project.metadata?.entryFile ?? null,
         );
@@ -7542,13 +9229,61 @@ export function ProjectView({
               effectiveAttachments,
               [chatAttachmentForProjectFile(existingDeck)],
             );
-            autoAttachedDeckPath = deckPath;
+          }
+          // Always mark existing-deck edit — even when deck.html was already
+          // in attachments, and even on auto-continue retries — so image-insert
+          // turns get the surgical contract instead of greenfield full-deck
+          // pressure (which collapses 8-slide decks to 2).
+          autoAttachedDeckPath = deckPath;
+        } else if (slideOnlyMvp) {
+          // Fallback root-cause guard: `/files` may 502 or hydrate empty on
+          // a cold sibling pod, so `filesSnapshot` is empty even though the
+          // project already has a deck. If the SEND ATTACHMENTS themselves
+          // reference a canonical deck HTML (composer auto-attach, previous
+          // assistant echo, auto-continue seed), treat this turn as an
+          // existing-deck edit — otherwise the greenfield instruction slips
+          // through and the model regenerates a fresh 2-slide placeholder
+          // (which stub-guard then correctly rejects, but the whole turn is
+          // wasted).
+          const attachedDeck = effectiveAttachments.find((attachment) => {
+            const attachPath = String(attachment.path || attachment.name || '').trim();
+            return attachPath && isCanonicalDeckFileName(attachPath);
+          });
+          if (attachedDeck) {
+            autoAttachedDeckPath = attachedDeck.path?.trim() || attachedDeck.name;
+          } else if (retryTarget || isAutoContinueSend) {
+            // On auto-continue / retry, the failed assistant's origin user
+            // typically had a deck attachment or the project already had a
+            // deck. Refusing to mark existing-deck-edit here loops the same
+            // greenfield → 2-slide → stub-guard reject failure on every retry.
+            const historyDeck = (retryTarget?.userMsg.attachments ?? []).find(
+              (attachment) => isCanonicalDeckFileName(String(attachment.path || attachment.name || '')),
+            );
+            if (historyDeck) {
+              autoAttachedDeckPath = historyDeck.path?.trim() || historyDeck.name;
+            }
           }
         }
+      }
+      if (isCloneContentFillTurn || isSlideCountTopUpSend) {
+        effectiveAttachments = withoutCanonicalDeckAttachments(effectiveAttachments);
+        autoAttachedDeckPath = null;
       }
       const instructionAttachments = retryTarget
         ? mergeChatAttachments(retryTarget.userMsg.attachments ?? [], effectiveAttachments)
         : effectiveAttachments;
+      // Prefer this-turn's filesSnapshot over the ref (which may have been
+      // wiped by a mid-flight /files 502 into projectFilesRef state). Falls
+      // back to the ref only when the snapshot is empty AND the ref has
+      // stuff — that combination should never happen because the snapshot
+      // is `refreshProjectFiles().catch(() => projectFiles)` earlier, but
+      // the guard costs nothing and matches the existing-deck fallback.
+      const filesSnapshotForEmbed = filesSnapshot.length > 0
+        ? filesSnapshot
+        : projectFilesRef.current;
+      const projectFilePathsForEmbed = filesSnapshotForEmbed.map((file) =>
+        String(file.path || file.name || '').trim(),
+      ).filter(Boolean);
       const modelPromptBase = promptWithSlideAttachmentDeliverableInstruction(
         retryTarget ? retryTarget.userMsg.content || prompt : prompt,
         instructionAttachments,
@@ -7556,6 +9291,8 @@ export function ProjectView({
           slideOnlyMvp,
           commentAttachmentCount: scopedCommentAttachments.length,
           existingDeckEdit: autoAttachedDeckPath != null,
+          projectFilePaths: projectFilePathsForEmbed,
+          templateCloneContentFill: isCloneContentFillTurn,
         },
       );
       // On Teamver slide-only comment edits, nudge the model into the
@@ -7568,12 +9305,33 @@ export function ProjectView({
         commentAttachmentCount: scopedCommentAttachments.length,
         commentAttachments: scopedCommentAttachments,
       });
-      if (autoAttachedDeckPath) {
+      // Slide-count top-up already requires a full deck artifact that copies
+      // existing slides — do not re-stamp the generic "prefer element-patch /
+      // full deck only for redesigns" edit contract on top of it.
+      if (autoAttachedDeckPath && !isSlideCountTopUpSend) {
         modelPrompt = promptWithExistingDeckEditInstruction(modelPrompt, {
           slideOnlyMvp,
           deckPath: autoAttachedDeckPath,
           imagePaths: imageAttachmentPathsForSlideEmbed(effectiveAttachments),
         });
+      } else if (isCloneContentFillTurn) {
+        // Auto-continue bodies drop fill markers — re-stamp CREATE fill contract.
+        if (!isTemplateCloneContentFillPrompt(modelPrompt)) {
+          modelPrompt = ensureTemplateCloneContentFillContinuePrompt(modelPrompt);
+        }
+        modelPrompt = promptWithTemplateCloneContentFillInstruction(modelPrompt, {
+          slideOnlyMvp,
+          imagePaths: imageAttachmentPathsForSlideEmbed(effectiveAttachments),
+        });
+      }
+      if (isSlideCountTopUpSend && !isSlideCountTopUpPrompt(modelPrompt)) {
+        modelPrompt = [
+          modelPrompt.trim(),
+          '',
+          'APPEND-ONLY: emit new `<section class="slide">` blocks only.',
+          'Do NOT emit `<head>`, Motif `<svg>`, or rewrite saved slides. Persist appends them.',
+          'Status tone: "슬라이드 추가 중" — NEVER "수정 반영 중" / "Applying your edits".',
+        ].join('\n');
       }
       if (!retryTarget && meta?.queueOnly) {
         queueChatSendForCurrentConversation({
@@ -7590,7 +9348,10 @@ export function ProjectView({
       // Without this, the setTimeout(600ms) that fires the auto-continue burns
       // its slot on a false-positive busy signal and the user is stuck with an
       // incomplete assistant row despite the "이어쓰기 시도 중" notice.
-      const bypassBusyForAutoContinue = meta?.entryFrom === AUTO_CONTINUE_ENTRY_FROM && !abortRef.current;
+      const bypassBusyForAutoContinue =
+        (meta?.entryFrom === AUTO_CONTINUE_ENTRY_FROM
+          || meta?.entryFrom === SLIDE_COUNT_TOP_UP_ENTRY_FROM)
+        && !abortRef.current;
       const bypassBusyForQueuedDrain = meta?.drainQueuedSend === true;
       if (currentConversationBusy && !bypassBusyForAutoContinue && !bypassBusyForQueuedDrain) {
         queueChatSendForCurrentConversation({
@@ -7607,8 +9368,9 @@ export function ProjectView({
       // Manual retries and fresh user turns get a full auto-continue budget.
       // Without this reset, a conversation that exhausted the cap on earlier
       // incomplete_output rows would never auto-recover on the next real send.
-      if (!isAutoContinueSend) {
+      if (!isAutoContinueSend && !isSlideCountTopUpSend) {
         conversationAutoContinueCountRef.current.set(runConversationId, 0);
+        conversationSlideCountTopUpCountRef.current.set(runConversationId, 0);
       }
       clearRunRecoveryBannerState(runConversationId);
       setError(null);
@@ -7623,7 +9385,7 @@ export function ProjectView({
             attachments: instructionAttachments.length > 0
               ? instructionAttachments
               : retryTarget.userMsg.attachments,
-            ...(scopedCommentAttachments.length > 0
+            ...(scopedCommentAttachments.length > 0 && !isAutoContinueSend
               ? { commentAttachments: scopedCommentAttachments }
               : {}),
           }
@@ -7638,17 +9400,53 @@ export function ProjectView({
               : {}),
             ...(runContext ? { runContext } : {}),
             attachments: effectiveAttachments.length > 0 ? effectiveAttachments : undefined,
-            commentAttachments: scopedCommentAttachments.length > 0 ? scopedCommentAttachments : undefined,
+            ...(scopedCommentAttachments.length > 0 && !isAutoContinueSend
+              ? { commentAttachments: scopedCommentAttachments }
+              : {}),
           };
-      const runCommentAttachments = userMsg.commentAttachments ?? [];
+      const runCommentAttachments = scopedCommentAttachments;
       runCommentAttachmentsRef.current = runCommentAttachments;
       runVisiblePromptRef.current = stripUserVisibleUserMessageText(prompt).trim();
-      const runAttachments = mergeChatAttachments(
+      const runAttachmentsRaw = mergeChatAttachments(
         userMsg.attachments ?? [],
         ...runCommentAttachments.map((attachment) =>
           chatAttachmentsFromPreviewCommentImages(attachment.imageAttachments),
         ),
       );
+      // Upgrade basename-only recovered mentions to refs/drive/… so persist +
+      // preview heal preferredPaths do not poison exact-match against a 404 root src.
+      const runAttachments = runAttachmentsRaw.map((attachment) => {
+        const raw = attachment.path.trim();
+        if (!raw || !SLIDE_IMAGE_PATH_RE.test(raw)) return attachment;
+        const canonical = resolveCanonicalProjectImagePath(raw, projectFilePathsForEmbed);
+        if (!canonical || canonical === raw) return attachment;
+        return {
+          ...attachment,
+          path: canonical,
+          name: attachment.name?.trim() || projectFilePathBasename(canonical),
+        };
+      });
+      runAttachmentsRef.current = runAttachments;
+      setPreviewHealAttachmentPaths(
+        runAttachments
+          .map((attachment) => attachment.path.trim())
+          .filter(Boolean),
+      );
+      runSkipDiscoveryBriefRef.current = resolveSlideOnlySkipDiscoveryBrief({
+        projectSkipDiscoveryBrief: project.metadata?.skipDiscoveryBrief === true,
+        projectKind: project.metadata?.kind ?? null,
+        selectedDeckTemplateId:
+          selectedDeckTemplateMetadata(project.metadata, meta)?.id
+          ?? meta?.selectedDeckTemplateId
+          ?? project.metadata?.selectedDeckTemplateId
+          ?? null,
+        runSkipDiscoveryBrief: meta?.skipDiscoveryBrief === true,
+      });
+      runSelectedDeckTemplateIdRef.current =
+        selectedDeckTemplateMetadata(project.metadata, meta)?.id
+        ?? meta?.selectedDeckTemplateId
+        ?? project.metadata?.selectedDeckTemplateId
+        ?? null;
       const commentPersistTarget = resolveCommentEditPersistTargetFileName(
         runCommentAttachments,
       );
@@ -7702,7 +9500,105 @@ export function ProjectView({
               effectiveSelectedAgentChoice?.model,
             )
           : apiProtocolModelLabel(config.apiProtocol, config.model);
-      const preTurnFileNames = projectFilesRef.current.map((f) => f.name);
+      // Client visual-mark fast path: placement-only marks (pen heart, etc.) graft
+      // locally. Box marks and typed overlay notes route to AI — they mean
+      // "change this region" (font size, copy, layout), not "paste a decoration".
+      const runIsAllClientGraftVisualMarks =
+        runCommentAttachments.length > 0
+        && runCommentAttachments.every((attachment) =>
+          shouldClientGraftVisualMarkWithoutAi(attachment),
+        );
+      if (
+        slideOnlyMvp
+        && !retryTarget
+        && !isAutoContinueSend
+        && runIsAllClientGraftVisualMarks
+      ) {
+        const clientVisual = await tryPersistClientVisualMarksOnSend({
+          projectId: project.id,
+          commentAttachments: runCommentAttachments,
+          projectFiles: filesSnapshot,
+          entryFile: project.metadata?.entryFile ?? null,
+          conversationId: runConversationId,
+          activeDeckSlideIndex: activeDeckSlideIndexForVisualMarkGraft(runCommentAttachments),
+        });
+        if (clientVisual.ok) {
+          const doneAt = Date.now();
+          const fastPathAssistantId = randomUUID();
+          const fastPathAssistant: ChatMessage = {
+            id: fastPathAssistantId,
+            role: 'assistant',
+            content: embedUiLabel(
+              'Added the visual mark to your slide.',
+              '슬라이드에 시각 마크를 추가했습니다.',
+            ),
+            agentId: assistantAgentId,
+            agentName: assistantAgentName,
+            createdAt: doneAt,
+            runStatus: 'succeeded',
+            startedAt,
+            endedAt: doneAt,
+            preTurnFileNames: [
+              ...new Set([
+                ...projectFilesRef.current.map((f) => f.name),
+                ...userVisualUploadBaselineNames(scopedCommentAttachments),
+              ]),
+            ],
+            ...(slideOnlyMvp ? { slideTurnKind: 'edit' as const } : {}),
+          };
+          const fastPathHistory = [...historyBase, userMsg];
+          setMessages(dedupeConversationAssistantRows([...fastPathHistory, fastPathAssistant]));
+          void saveMessage(project.id, runConversationId, userMsg)
+            .then(() => saveMessage(project.id, runConversationId, fastPathAssistant))
+            .catch(() => {});
+          emitRevisionPush(
+            analytics.track,
+            project.id,
+            projectListTrackingKind(project, { slideOnly: slideOnlyMvp }),
+            clientVisual.fileName,
+            clientVisual.revision,
+            'manual_edit',
+          );
+          setFilesRefresh((count) => count + 1);
+          await refreshProjectFiles().catch(() => undefined);
+          requestOpenFile(clientVisual.fileName);
+          void patchAttachedStatuses(runCommentAttachments, 'resolved');
+          const consumedCommentIds = new Set(runCommentAttachments.map((attachment) => attachment.id));
+          setAttachedComments((current) =>
+            current.filter((comment) => !consumedCommentIds.has(comment.id)),
+          );
+          setConversations((curr) =>
+            curr.map((conversation) =>
+              conversation.id === runConversationId
+                ? {
+                    ...conversation,
+                    updatedAt: doneAt,
+                    latestRun: {
+                      status: 'succeeded',
+                      startedAt,
+                      endedAt: doneAt,
+                      durationMs: Math.max(0, doneAt - startedAt),
+                    },
+                  }
+                : conversation,
+            ),
+          );
+          onTouchProject();
+          return true;
+        }
+      }
+      const preTurnFileNames = [
+        ...new Set([
+          ...projectFilesRef.current.map((f) => f.name),
+          ...userVisualUploadBaselineNames(scopedCommentAttachments),
+        ]),
+      ];
+      const slideTurnKind = resolveSlideTurnKindForSend({
+        slideOnlyMvp,
+        preTurnFileNames,
+        existingDeckAttached: autoAttachedDeckPath != null,
+        templateCloneContentFill: isCloneContentFillTurn,
+      });
       const assistantId = randomUUID();
       const assistantMsg: ChatMessage = {
         id: assistantId,
@@ -7717,6 +9613,7 @@ export function ProjectView({
         runStatus: config.mode === 'daemon' ? 'running' : undefined,
         startedAt,
         preTurnFileNames,
+        ...(slideTurnKind ? { slideTurnKind } : {}),
       };
       let latestAssistantMsg: ChatMessage = assistantMsg;
       const updateConversationLatestRun = (
@@ -7800,9 +9697,7 @@ export function ProjectView({
       if (!retryTarget && historyBase.length === 0) {
         const title = isDesignSystemWorkspacePrompt(prompt)
           ? DESIGN_SYSTEM_WORKSPACE_DISPLAY_TITLE
-          : summarizeProjectNameFromUserTurn(prompt)
-            || extractUserPromptForNaming(prompt).slice(0, 60).trim()
-            || prompt.slice(0, 60).trim();
+          : conversationTitleFromUserTurn(prompt);
         if (title) {
           setConversations((curr) =>
             curr.map((c) =>
@@ -7837,7 +9732,7 @@ export function ProjectView({
           }).then((patched) => {
             if (patched && isTeamverEmbedMode()) {
               void registerTeamverProjectIfNeeded(patched).catch((err) => {
-                console.warn('[teamver] registry sync after prompt rename failed', err);
+                devLog.warn('[teamver] registry sync after prompt rename failed', err);
               });
             }
           });
@@ -7853,6 +9748,8 @@ export function ProjectView({
       let parsedArtifact: Artifact | null = null;
       let liveHtml = '';
       let streamedText = '';
+      let motifSvgDumpAbortArmed = false;
+      let headKitDumpAbortArmed = false;
       // Best complete artifact seen so far in this turn. Prevents a
       // later `<artifact>` block with only a shell body (e.g. the model
       // opened a second, empty artifact after a valid one) from overwriting
@@ -7911,7 +9808,7 @@ export function ProjectView({
             const effectiveParsedArtifact: Artifact | null =
               hadIncompleteParsedArtifact
                 && bestArtifactSoFar?.html
-                && !isIncompleteHtmlDocumentShell(bestArtifactSoFar.html)
+                && isUsableDeckHtmlArtifact(bestArtifactSoFar.html)
                 ? bestArtifactSoFar
                 : parsedArtifact;
 
@@ -7922,14 +9819,93 @@ export function ProjectView({
             );
             if (artifactToPersist?.html) {
               const producedBeforeFallback = computeProducedFiles(beforeFileNames, nextFiles) ?? [];
-              const sameTurnHtmlWrite = await findSameTurnHtmlWriteForRecoveredArtifact({
-                artifactHtml: artifactToPersist.html,
-                producedFiles: producedBeforeFallback,
-                readProjectHtml,
-                allowAnyHtmlWrite: assistantAgentId === 'claude',
-              });
-              if (sameTurnHtmlWrite) {
+              const scopedCommentPersist = runCommentAttachmentsRef.current.length > 0;
+              const sameTurnHtmlWrite = scopedCommentPersist
+                ? null
+                : await findSameTurnHtmlWriteForRecoveredArtifact({
+                  artifactHtml: artifactToPersist.html,
+                  producedFiles: producedBeforeFallback,
+                  readProjectHtml,
+                  allowAnyHtmlWrite: assistantAgentId === 'claude',
+                });
+              let reuseSameTurnWrite = Boolean(
+                sameTurnHtmlWrite
+                && shouldReuseSameTurnHtmlWriteAsPersist(sameTurnHtmlWrite, { slideOnlyMvp })
+              );
+              if (reuseSameTurnWrite && sameTurnHtmlWrite) {
+                const diskPeek = await readProjectHtml(sameTurnHtmlWrite.name);
+                reuseSameTurnWrite = isReusableSameTurnDeckWrite(diskPeek);
+              }
+              if (reuseSameTurnWrite && sameTurnHtmlWrite) {
                 savedArtifactRef.current = sameTurnHtmlWrite.name;
+                // Write-tool short-circuit skips persistArtifact's img-src heal.
+                // Heal on disk now so reload/export do not keep alt-only paths.
+                try {
+                  const diskHtml = await readProjectHtml(sameTurnHtmlWrite.name);
+                  if (diskHtml) {
+                    const withHeadings = healInstructionCopyCoverHeading(
+                      diskHtml,
+                      runVisiblePromptRef.current || '',
+                      project.name,
+                    );
+                    const withLook = await mergeOfficialLookCssForTemplate(
+                      withHeadings,
+                      firstOfficialDeckTemplateId(
+                        runSelectedDeckTemplateIdRef.current,
+                        selectedDeckTemplateMetadata(project.metadata)?.id,
+                        project.metadata?.selectedDeckTemplateId,
+                      ),
+                    );
+                    const withSurface = repairDeckSlideSurfaceBleed(withLook);
+                    const withCanvas = pinDeckSlidesToFixedCanvas(
+                      collapseAdjacentDuplicateDeckSiblings(withSurface),
+                    );
+                    const attachmentPaths = runAttachmentsRef.current
+                      .map((attachment) => attachment.path.trim())
+                      .filter(Boolean);
+                    const projectPaths = [
+                      ...nextFiles.map((file) => String(file.path || file.name || '').trim()),
+                      ...attachmentPaths,
+                    ].filter(Boolean);
+                    const { html: healed, changed } = await healDiskHtmlAttachmentImageSrcs({
+                      html: withCanvas,
+                      projectFilePaths: projectPaths,
+                      preferredAttachmentPaths: attachmentPaths,
+                    });
+                    if (
+                      changed
+                      || withCanvas !== diskHtml
+                      || isTemplateCloneLookSeedFile(sameTurnHtmlWrite)
+                    ) {
+                      await writeProjectTextFileDetailed(
+                        project.id,
+                        sameTurnHtmlWrite.name,
+                        healed,
+                        {
+                          skipArtifactStubGuard: true,
+                          artifactManifest: createArtifactManifest({
+                            entry: sameTurnHtmlWrite.name,
+                            title: project.name || 'deck',
+                            artifactType: 'deck',
+                            preferDeck: slideOnlyMvp,
+                            sourceSkillId: project.skillId ?? undefined,
+                            designSystemId: project.designSystemId,
+                            metadata: {
+                              identifier: 'deck',
+                              artifactType: 'deck',
+                              inferred: false,
+                              templateCloneContentFilled: true,
+                              templateClonedDeckSeeded: false,
+                            },
+                          }),
+                        },
+                      );
+                      nextFiles = await refreshProjectFiles();
+                    }
+                  }
+                } catch {
+                  // Soft-fail — FileViewer preview heal may still cover this turn.
+                }
                 if (runIsVisible()) {
                   maybeArmTeamverPublishMenuAfterRunSuccess(project.id, sameTurnHtmlWrite.name);
                   requestOpenFile(sameTurnHtmlWrite.name);
@@ -7941,7 +9917,10 @@ export function ProjectView({
                   rawFinalText,
                   startedAt,
                 );
-                terminalArtifactPersistFailed = shouldFailRunForArtifactPersistResult(persistResult);
+                terminalArtifactPersistFailed = shouldFailRunForArtifactPersistResult(
+                  persistResult,
+                  { scopedCommentEdit: scopedCommentPersist },
+                );
                 terminalPersistResultKind = persistResult?.kind ?? null;
                 terminalPersistResult = persistResult;
                 nextFiles = await refreshProjectFiles();
@@ -7961,6 +9940,12 @@ export function ProjectView({
                 terminalPersistResult,
                 readProjectHtml,
               );
+              nextFiles = await finalizeSlideOnlyDeckArtifacts(
+                nextFiles,
+                producedHtmlToOpen,
+              );
+              producedHtmlToOpen =
+                resolveCanonicalDeckEntryPath(nextFiles) ?? producedHtmlToOpen;
             }
             produced = mergeRecoveredArtifact(
               produced,
@@ -7981,10 +9966,27 @@ export function ProjectView({
             if (shouldFailMissingSlideHtml) {
               terminalArtifactPersistFailed = true;
             }
+            // Persist already failed ⇒ shouldFailSlideRunForMissingHtmlDeliverable
+            // returns false (double-count guard). Still treat "no HTML on disk"
+            // as a missing-slide signal so rejected / discovery-skip can arm AC.
+            const missingSlideDeliverableForAutoContinue =
+              shouldFailMissingSlideHtml
+              || (slideOnlyMvp && !producedHtmlToOpen && terminalArtifactPersistFailed);
 
             if (producedHtmlToOpen && runIsVisible()) {
               maybeArmTeamverPublishMenuAfterRunSuccess(project.id, producedHtmlToOpen);
+              requestSlideCountTopUpRef.current(producedHtmlToOpen);
               requestOpenFile(producedHtmlToOpen);
+              const navTarget = queuedSlideNavTarget(runCommentAttachmentsRef.current, {
+                fallbackDeckFilePath: producedHtmlToOpen,
+              });
+              if (navTarget) {
+                setSlideNavRequest({
+                  name: navTarget.filePath,
+                  slideIndex: navTarget.slideIndex,
+                  nonce: Date.now(),
+                });
+              }
             }
 
             if (!isLatestTerminalAutoOpen()) return;
@@ -8033,20 +10035,25 @@ export function ProjectView({
                 runConversationId,
                 messagesRef.current,
               );
+              syncSlideCountTopUpCountFromMessages(
+                conversationSlideCountTopUpCountRef.current,
+                runConversationId,
+                messagesRef.current,
+              );
               const terminalAutoContinueCommentAttachments = extractCommentAttachmentsForAutoContinue(
                 retryTarget?.userMsg ?? userMsg,
                 runCommentAttachmentsRef.current,
               );
-              const visualMarkOnlyAutoContinue =
-                terminalAutoContinueCommentAttachments.length > 0
-                && !hasElementScopedCommentAttachments(terminalAutoContinueCommentAttachments);
+              const terminalAutoContinueVisualFlags = visualAnnotationAutoContinueFlags(
+                terminalAutoContinueCommentAttachments,
+              );
               const canAutoContinue = shouldAutoContinueForIncompleteOutput({
                 runIsVisible: runIsVisible(),
                 autoContinueCount,
                 scopedCommentAttachmentCount: terminalAutoContinueCommentAttachments.length,
                 maxPerConversation: resolveAutoContinueMaxAttempts({
                   scopedCommentAttachmentCount: terminalAutoContinueCommentAttachments.length,
-                  visualMarkOnly: visualMarkOnlyAutoContinue,
+                  visualMarkOnly: terminalAutoContinueVisualFlags.visualMarkOnly,
                 }),
                 terminalPersistResultKind,
                 terminalPersistResultCode:
@@ -8058,7 +10065,7 @@ export function ProjectView({
                     ? terminalPersistResult.reason ?? null
                     : null,
                 hadIncompleteParsedArtifact,
-                shouldFailMissingSlideHtml,
+                shouldFailMissingSlideHtml: missingSlideDeliverableForAutoContinue,
                 shouldRouteScopedCommentEditToAutoContinue,
               });
 
@@ -8068,8 +10075,7 @@ export function ProjectView({
               // a skeleton outline deck here — that used to mark junk as succeeded
               // and skip auto-continue. If salvage misses, fall through to retry.
               const streamLooksLikeHtmlDeliverable =
-                /<!doctype\s+html|<html\b|<body\b|<section\b[^>]*\bslide\b|<artifact\b/i
-                  .test(rawFinalText);
+                htmlLooksLikeSlideDeliverableStream(rawFinalText);
               if (
                 slideOnlyMvp
                 && !producedHtmlToOpen
@@ -8094,9 +10100,69 @@ export function ProjectView({
                 });
                 emergencyRecovered = emergency.recovered;
                 emergencyProduced = emergency.produced;
-                if (emergency.htmlToOpen && runIsVisible()) {
-                  maybeArmTeamverPublishMenuAfterRunSuccess(project.id, emergency.htmlToOpen);
-                  requestOpenFile(emergency.htmlToOpen);
+                if (emergency.htmlToOpen) {
+                  nextFiles = await finalizeSlideOnlyDeckArtifacts(
+                    await refreshProjectFiles(),
+                    emergency.htmlToOpen,
+                  );
+                  if (runIsVisible()) {
+                    maybeArmTeamverPublishMenuAfterRunSuccess(project.id, emergency.htmlToOpen);
+                    requestSlideCountTopUpRef.current(emergency.htmlToOpen);
+                    requestOpenFile(emergency.htmlToOpen);
+                  }
+                }
+              }
+
+              // Absolute last-resort fallback: when auto-continue has burned
+              // through every retry AND stream salvage did not recover any
+              // authored HTML, synthesize a minimal placeholder deck from
+              // the outline signals already in the conversation (numbered
+              // outlines, bullet lists, Canvas source-brief `Visible
+              // headings: A / B / C` lines). This intentionally violates
+              // the regular "never synthesize a skeleton deck" rule so the
+              // user never lands on a raw "생성 실패" banner after a series
+              // of failed retries — but only after every earlier recovery
+              // has failed. The synth deck is marked with a distinct
+              // OUTLINE_DECK_FALLBACK_STATUS_CODE and comes with an
+              // "임시 슬라이드" notice so the user immediately knows to hit
+              // "다시 시도" for a completed deck.
+              let outlineFallbackRecovered = false;
+              let outlineFallbackProduced = produced;
+              if (
+                !emergencyRecovered
+                && !canAutoContinue
+                && slideOnlyMvp
+                && !producedHtmlToOpen
+                && terminalAutoContinueCommentAttachments.length === 0
+              ) {
+                const fallbackMessages = retryTarget
+                  ? [...historyBase, latestAssistantMsg]
+                  : [...historyBase, userMsg, latestAssistantMsg];
+                const outlineFallback = await attemptFinalOutlineDeckFallback({
+                  slideOnlyMvp,
+                  producedHtmlToOpen,
+                  scopedCommentAttachmentCount: terminalAutoContinueCommentAttachments.length,
+                  outlineMessages: fallbackMessages,
+                  finalText: rawFinalText,
+                  projectFiles: nextFiles,
+                  beforeFileNames,
+                  startedAt,
+                  persistArtifact,
+                  refreshProjectFiles,
+                  readProjectHtml,
+                  computeProducedFiles,
+                });
+                outlineFallbackRecovered = outlineFallback.recovered;
+                outlineFallbackProduced = outlineFallback.produced;
+                if (outlineFallback.htmlToOpen) {
+                  nextFiles = await finalizeSlideOnlyDeckArtifacts(
+                    await refreshProjectFiles(),
+                    outlineFallback.htmlToOpen,
+                  );
+                  if (runIsVisible()) {
+                    maybeArmTeamverPublishMenuAfterRunSuccess(project.id, outlineFallback.htmlToOpen);
+                    requestOpenFile(outlineFallback.htmlToOpen);
+                  }
                 }
               }
 
@@ -8104,13 +10170,32 @@ export function ProjectView({
                 const emergencyNotice = formatEmergencyDeckFallbackNotice();
                 updateAssistant((prev) => ({
                   ...appendWarningStatusEvent(
-                    prev,
+                    clearDurableDeliverableErrorsAfterRecovery(prev),
                     emergencyNotice,
                     EMERGENCY_DECK_FALLBACK_STATUS_CODE,
                   ),
                   producedFiles: emergencyProduced,
                   runStatus: resolveSucceededRunStatus(prev.runStatus),
                   resumable: false,
+                  endedAt: prev.endedAt ?? endedAt,
+                }));
+                updateConversationLatestRun('succeeded', endedAt);
+              } else if (outlineFallbackRecovered) {
+                // Outline-only fallback: mark the run as SUCCEEDED (never
+                // "실패") with a warning notice + resumable retry, so the
+                // user sees a saved deck instead of a hard failure card.
+                // Keep `resumable: true` so the failed-run retry dock still
+                // renders and users can regenerate a full deck.
+                const outlineNotice = formatOutlineDeckFallbackNotice();
+                updateAssistant((prev) => ({
+                  ...appendWarningStatusEvent(
+                    clearDurableDeliverableErrorsAfterRecovery(prev),
+                    outlineNotice,
+                    OUTLINE_DECK_FALLBACK_STATUS_CODE,
+                  ),
+                  producedFiles: outlineFallbackProduced,
+                  runStatus: resolveSucceededRunStatus(prev.runStatus),
+                  resumable: true,
                   endedAt: prev.endedAt ?? endedAt,
                 }));
                 updateConversationLatestRun('succeeded', endedAt);
@@ -8226,7 +10311,7 @@ export function ProjectView({
                   // partial HTML for the model to complete instead of writing
                   // from scratch.
                   const partialHtmlForAutoContinue =
-                    (bestArtifactSoFar?.html && !isIncompleteHtmlDocumentShell(bestArtifactSoFar.html)
+                    (bestArtifactSoFar?.html && isUsableDeckHtmlArtifact(bestArtifactSoFar.html)
                       ? bestArtifactSoFar.html
                       : parsedArtifact?.html)
                     ?? liveHtml
@@ -8257,11 +10342,16 @@ export function ProjectView({
                     || terminalPersistResult?.kind === 'scope-rejected'
                       ? terminalPersistResult.reason ?? null
                       : null;
-                  const autoContinuePrompt = resolveAutoContinuePrompt({
+                  const autoContinueVisualFlags = visualAnnotationAutoContinueFlags(
+                    autoContinueCommentAttachments,
+                  );
+                  const autoContinueOriginIsFill = isTemplateCloneContentFillPrompt(
+                    originatingUserMsg?.content,
+                  );
+                  const autoContinuePromptRaw = resolveAutoContinuePrompt({
                     commentAttachmentCount: autoContinueCommentAttachments.length,
-                    visualMarkOnly:
-                      autoContinueCommentAttachments.length > 0
-                      && !hasElementScopedCommentAttachments(autoContinueCommentAttachments),
+                    visualMarkOnly: autoContinueVisualFlags.visualMarkOnly,
+                    visualAnnotationEdit: autoContinueVisualFlags.visualAnnotationEdit,
                     scopedCommentEditFailureReason: scopedFailureReason,
                     scopedCommentContext,
                     scopedUserInstruction,
@@ -8271,31 +10361,34 @@ export function ProjectView({
                       truncatedByMaxTokens: runStopReason === 'max_tokens',
                       referenceFiles: collectSlideReferencePathsFromMessages(autoContinueMessages),
                       slideCountHint: extractRequestedSlideCountHintFromMessages(autoContinueMessages),
-                      existingDeckPath: resolvePrimaryDeckFilePath(
-                        projectFiles,
-                        project.metadata?.entryFile,
-                      ),
                       ...extractAutoContinueContextFromAssistant(latestAssistantMsg, {
                         partialHtml: partialHtmlForAutoContinue,
                         planOutline: rawFinalText,
                       }),
+                      existingDeckPath: autoContinueOriginIsFill
+                        ? null
+                        : resolvePrimaryDeckFilePath(
+                          projectFiles,
+                          project.metadata?.entryFile,
+                        ),
+                      templateCloneContentFill: autoContinueOriginIsFill,
                     },
                   });
-                  // Preserve the failed turn's `commentAttachments`
-                  // on the auto-continue call. Without this the retry
-                  // runs as an unscoped edit — the deck-patch /
-                  // full-deck scope guards go quiet (no
-                  // scopedAllowedSlideIndexes), the model rewrites
-                  // the whole deck at will, and the resulting
-                  // slide-1 replacement clobbers the entire 8-slide
-                  // deck as an accepted save. Piping the original
-                  // attachments back through keeps the scope block
-                  // intact across the retry.
+                  const autoContinuePrompt = autoContinueOriginIsFill
+                    ? ensureTemplateCloneContentFillContinuePrompt(autoContinuePromptRaw)
+                    : autoContinuePromptRaw;
+                  // Preserve comment scope + image/deck attachments on retry.
+                  // Without file attachments, image-embed contracts vanish and
+                  // the model regenerates a short greenfield deck (8→2).
+                  // Fill lineage: omit truncated Clone LOOK deck.html.
                   const started = sendNow(
                     autoContinuePrompt,
-                    [],
+                    chatAttachmentsForAutoContinueImageEmbed(originatingUserMsg, projectFilesRef.current.map((file) => String(file.path || file.name || "").trim()).filter(Boolean)),
                     autoContinueCommentAttachments,
-                    { entryFrom: AUTO_CONTINUE_ENTRY_FROM },
+                    {
+                      entryFrom: AUTO_CONTINUE_ENTRY_FROM,
+                      ...(autoContinueOriginIsFill ? { templateCloneContentFill: true } : {}),
+                    },
                   );
                   void Promise.resolve(started).then((ok) => {
                     if (ok === false) {
@@ -8337,6 +10430,8 @@ export function ProjectView({
                 return;
               }
               runPersistTargetFileRef.current = null;
+              runSkipDiscoveryBriefRef.current = false;
+              runSelectedDeckTemplateIdRef.current = null;
               runCommentAttachmentsRef.current = [];
               clearStreamingMarker(runConversationId);
               if (apiBackgroundRecoveryRef.current) {
@@ -8458,6 +10553,35 @@ export function ProjectView({
               // file list — otherwise an out-of-project Write (e.g. an
               // upstream repo edit) would spawn a permanent placeholder tab.
               void refreshProjectFiles().then(async (nextFiles) => {
+                // Canvas→Slide: delete root HTML that only copies a refs/
+                // source as soon as Write lands — do not wait for deck.html.
+                if (slideOnlyMvp) {
+                  const deletedLeak = await deleteRootHtmlReferenceLeakIfPresent({
+                    projectId: project.id,
+                    files: nextFiles,
+                    slideOnlyMvp: true,
+                    writtenPath: filePath,
+                    deleteFile: deleteProjectFile,
+                  });
+                  if (deletedLeak) {
+                    removeProjectFilesLocally([deletedLeak]);
+                    nextFiles = await refreshProjectFiles();
+                  } else {
+                    const writtenRel = nextFiles.find((file) => {
+                      const rel = (file.path ?? file.name).replace(/\\/g, '/');
+                      return (
+                        filePath === rel
+                        || (filePath.length > rel.length && filePath.endsWith(`/${rel}`))
+                      );
+                    });
+                    const deckRel = writtenRel
+                      ? (writtenRel.path?.trim() || writtenRel.name)
+                      : null;
+                    if (deckRel && isCanonicalDeckProjectPath(deckRel)) {
+                      nextFiles = await finalizeSlideOnlyDeckArtifacts(nextFiles, deckRel);
+                    }
+                  }
+                }
                 // A .jsx/.tsx loaded by a sibling HTML entry is a module of a
                 // multi-file React prototype, not a standalone page — don't
                 // strand the user on a dead-end preview tab. Issue #2744.
@@ -8532,11 +10656,11 @@ export function ProjectView({
               const effective = salvagedHtml && candidate
                 ? { ...candidate, html: salvagedHtml }
                 : candidate;
-              const candidateOk =
-                !!effective?.html && !isIncompleteHtmlDocumentShell(effective.html);
-              const bestOk =
-                !!bestArtifactSoFar?.html
-                && !isIncompleteHtmlDocumentShell(bestArtifactSoFar.html);
+              // Soft-salvaged decks count as usable even when the stricter
+              // incomplete-shell ratio still flags empty trailing placeholders.
+              const candidateOk = isUsableDeckHtmlArtifact(effective?.html)
+                || Boolean(salvagedHtml);
+              const bestOk = isUsableDeckHtmlArtifact(bestArtifactSoFar?.html);
               if (candidateOk && (!bestOk || (effective?.html?.length ?? 0) > (bestArtifactSoFar?.html?.length ?? 0))) {
                 bestArtifactSoFar = effective;
               } else if (!bestArtifactSoFar && effective) {
@@ -8590,6 +10714,30 @@ export function ProjectView({
         onDelta: (delta: string) => {
           streamedText += delta;
           textBuffer.appendContent(delta);
+          if (
+            !motifSvgDumpAbortArmed
+            && !headKitDumpAbortArmed
+            && shouldAbortStreamForMotifSvgDump({
+              streamedText,
+              templateCloneContentFill: isCloneContentFillTurn,
+              slideCountTopUp: isSlideCountTopUpSend,
+            })
+          ) {
+            motifSvgDumpAbortArmed = true;
+            controller.abort(FILL_MOTIF_SVG_DUMP_STOP_REASON);
+          } else if (
+            !motifSvgDumpAbortArmed
+            && !headKitDumpAbortArmed
+            && shouldAbortStreamForHeadOnlyKitDump({
+              streamedText,
+              templateCloneContentFill: isCloneContentFillTurn,
+              slideCountTopUp: isSlideCountTopUpSend,
+              slideOnlyDeck: slideOnlyMvp,
+            })
+          ) {
+            headKitDumpAbortArmed = true;
+            controller.abort(FILL_HEAD_KIT_DUMP_STOP_REASON);
+          }
         },
         onAgentEvent: (ev: AgentEvent) => {
           if (ev.kind === 'text') textBuffer.appendTextEvent(ev.text);
@@ -8614,7 +10762,7 @@ export function ProjectView({
             },
           }));
         },
-        onDone: (fullText = '') => {
+        onDone: (incomingText = '') => {
           // The daemon delivers onDone even for a canceled run, so a run
           // superseded by a "send now" interrupt can still land here and must
           // not apply its completion side effects over the replacement. A run
@@ -8631,6 +10779,18 @@ export function ProjectView({
           }
           textBuffer.flush();
           releaseOwnTextBuffer();
+          const fullText = motifSvgDumpAbortArmed
+            ? stripAbandonedMotifSvgDumpFromStreamedText(incomingText || streamedText)
+            : headKitDumpAbortArmed
+              ? stripAbandonedHeadKitDumpFromStreamedText(incomingText || streamedText)
+              : incomingText;
+          if (
+            (motifSvgDumpAbortArmed || headKitDumpAbortArmed)
+            && fullText !== (incomingText || streamedText)
+          ) {
+            streamedText = fullText;
+            rewriteLiveContent(fullText);
+          }
           for (const ev of parser.flush()) {
             if (ev.type === 'artifact:end') {
               parsedArtifact = parsedArtifact
@@ -8655,11 +10815,9 @@ export function ProjectView({
                 const effective = salvagedHtml && candidate
                   ? { ...candidate, html: salvagedHtml }
                   : candidate;
-                const candidateOk =
-                  !!effective?.html && !isIncompleteHtmlDocumentShell(effective.html);
-                const bestOk =
-                  !!bestArtifactSoFar?.html
-                  && !isIncompleteHtmlDocumentShell(bestArtifactSoFar.html);
+                const candidateOk = isUsableDeckHtmlArtifact(effective?.html)
+                  || Boolean(salvagedHtml);
+                const bestOk = isUsableDeckHtmlArtifact(bestArtifactSoFar?.html);
                 if (candidateOk && (!bestOk || (effective?.html?.length ?? 0) > (bestArtifactSoFar?.html?.length ?? 0))) {
                   bestArtifactSoFar = effective;
                 } else if (!bestArtifactSoFar && effective) {
@@ -8703,6 +10861,8 @@ export function ProjectView({
             );
             if (ownsCurrentRun) updateConversationLatestRun('failed', endedAt);
             runPersistTargetFileRef.current = null;
+            runSkipDiscoveryBriefRef.current = false;
+            runSelectedDeckTemplateIdRef.current = null;
             runCommentAttachmentsRef.current = [];
             void refreshProjectFiles();
             onProjectsRefresh();
@@ -8735,7 +10895,7 @@ export function ProjectView({
         },
         onError: (err: Error) => {
           const endedAt = Date.now();
-          const errorCode = extractProjectRunErrorCode(err);
+          const persisted = formatPersistedProjectRunError(err);
           const resumable = (err as Error & { resumable?: boolean }).resumable === true;
           // A run superseded by a "send now" interrupt can still surface a
           // late disconnect error (e.g. a canceled stream that lost its
@@ -8748,10 +10908,9 @@ export function ProjectView({
           releaseOwnTextBuffer();
           let finalizedAssistant = latestAssistantMsg;
           if (runMayFinalize) {
-            const detail = formatProjectRunErrorForUser(err);
-            if (runIsVisible()) setError(detail);
+            if (runIsVisible()) setError(persisted.userMessage);
             updateAssistant((prev) => {
-              const withError = attachPersistedChatError(prev, detail, errorCode);
+              const withError = attachPersistedChatError(prev, persisted.detail, persisted.code);
               finalizedAssistant = {
                 ...withError,
                 endedAt: withError.endedAt ?? endedAt,
@@ -8773,6 +10932,8 @@ export function ProjectView({
           );
           if (ownsCurrentRun) updateConversationLatestRun('failed', endedAt);
           runPersistTargetFileRef.current = null;
+          runSkipDiscoveryBriefRef.current = false;
+          runSelectedDeckTemplateIdRef.current = null;
           runCommentAttachmentsRef.current = [];
           void saveMessage(project.id, runConversationId, finalizedAssistant, {
             telemetryFinalized: true,
@@ -8845,8 +11006,10 @@ export function ProjectView({
           skillId: project.skillId ?? null,
           skillIds: Array.isArray(meta?.skillIds) ? meta.skillIds : [],
           context: runContext,
-          pluginInputs: meta?.pluginInputs,
+          pluginInputs: fillPluginInputs,
           designSystemId: meta?.designSystemId ?? project.designSystemId ?? null,
+          selectedDeckTemplateId: meta?.selectedDeckTemplateId ?? null,
+          selectedDeckTemplateTitle: meta?.selectedDeckTemplateTitle ?? null,
           attachments: runAttachments.map((a) => a.path),
           commentAttachments: runCommentAttachments,
           sessionMode: runSessionMode,
@@ -8981,7 +11144,7 @@ export function ProjectView({
               }),
             });
             if (memoryResponse.status === 401) {
-              console.debug('[teamver] pre-turn memory extraction skipped after daemon 401');
+              devLog.debug('[teamver] pre-turn memory extraction skipped after daemon 401');
             }
           } catch {
             // Best-effort: memory extraction must never block the
@@ -8991,41 +11154,122 @@ export function ProjectView({
         }
         const effectiveDesignSystemId = meta?.designSystemId ?? project.designSystemId ?? null;
         const effectiveSkillId = resolveDeckTemplateSkillId(project.metadata, meta);
+        const selectedDeckTemplateForTurn = selectedDeckTemplateMetadata(project.metadata, meta);
         let pluginBlock: string | undefined;
         let appliedSnapshotPluginId = meta?.appliedPluginSnapshot?.pluginId ?? null;
+        const pluginBlockRole =
+          selectedDeckTemplateForTurn && slideOnlyMvp
+            ? ('scenario-only' as const)
+            : ('primary' as const);
         if (meta?.appliedPluginSnapshot) {
-          pluginBlock = renderPluginBlock(meta.appliedPluginSnapshot);
+          pluginBlock = renderPluginBlock(meta.appliedPluginSnapshot, { role: pluginBlockRole });
         } else if (project.appliedPluginSnapshotId) {
           const snap = await fetchAppliedPluginSnapshot(project.appliedPluginSnapshotId);
           appliedSnapshotPluginId = snap?.pluginId ?? null;
-          if (snap) pluginBlock = renderPluginBlock(snap);
+          if (snap) pluginBlock = renderPluginBlock(snap, { role: pluginBlockRole });
+        }
+        if (isCloneContentFillTurn) {
+          const override = templateCloneFillSlideCountOverrideNotice(
+            fillSlideCountHint
+            ?? (
+              typeof fillPluginInputs?.slideCount === 'string'
+              || typeof fillPluginInputs?.slideCount === 'number'
+                ? fillPluginInputs.slideCount
+                : null
+            ),
+          );
+          if (override) {
+            pluginBlock = pluginBlock
+              ? `${pluginBlock.trimEnd()}\n\n${override}`
+              : override;
+          }
         }
         const pluginIdForLocalSkill = resolveScenarioPluginIdForLocalSkill(
           project.metadata,
           meta,
           appliedSnapshotPluginId,
         );
-        const systemPrompt = await composedSystemPrompt(
-          runSessionMode,
-          effectiveDesignSystemId,
-          effectiveSkillId,
-          pluginIdForLocalSkill,
-          pluginBlock ?? null,
-        );
-        const webFetchContexts = await fetchApiWebFetchContexts(userMsg.content);
-        const apiHistory = await historyWithApiAttachmentContext(
-          historyWithApiWebFetchContext(
-            historyWithCommentAttachmentContext(
-              historyWithWorkspaceContext(nextHistory, userMsg.id, runContext),
+        let systemPrompt: string;
+        let apiHistory: ChatMessage[];
+        try {
+          systemPrompt = await composedSystemPrompt(
+            runSessionMode,
+            effectiveDesignSystemId,
+            effectiveSkillId,
+            pluginIdForLocalSkill,
+            pluginBlock ?? null,
+            {
+              ...(meta?.selectedDeckTemplateId || selectedDeckTemplateForTurn
+                ? {
+                    selectedDeckTemplateId:
+                      meta?.selectedDeckTemplateId || selectedDeckTemplateForTurn?.id,
+                    selectedDeckTemplateTitle:
+                      meta?.selectedDeckTemplateTitle || selectedDeckTemplateForTurn?.title,
+                  }
+                : {}),
+              ...(resolveSlideOnlySkipDiscoveryBrief({
+                projectSkipDiscoveryBrief: project.metadata?.skipDiscoveryBrief === true,
+                projectKind: project.metadata?.kind ?? null,
+                selectedDeckTemplateId: selectedDeckTemplateForTurn?.id ?? null,
+                runSkipDiscoveryBrief: meta?.skipDiscoveryBrief === true,
+              })
+                ? { skipDiscoveryBrief: true }
+                : {}),
+            },
+            {
+              includeCommentEditPatchRule: runCommentAttachments.length > 0,
+              // Clone LOOK seed is not an "existing completed deck" — image embeds on
+              // fill must not flip system prompt into EXISTING_DECK edit / 「수정 반영 중」.
+              includeExistingDeckImageEditRule:
+                !isCloneContentFillTurn
+                && !isSlideCountTopUpSend
+                && (
+                  autoAttachedDeckPath != null
+                  || imageAttachmentPathsForSlideEmbed(effectiveAttachments).length > 0
+                ),
+              templateCloneContentFill: isCloneContentFillTurn,
+            },
+          );
+          const kitMissTemplateId = shouldNotifyTemplateVisualKitMiss({
+            selectedTemplateId: selectedDeckTemplateForTurn?.id,
+            systemPrompt,
+            slideCountTopUp: isSlideCountTopUpSend,
+            alreadyNotifiedIds: notifiedTemplateKitMissIdsRef.current,
+          });
+          if (kitMissTemplateId) {
+            notifiedTemplateKitMissIdsRef.current.add(kitMissTemplateId);
+            setProjectActionsToast({
+              message: embedUiLabel(
+                "Couldn't load this template's visual kit. Slides may not match the selected look.",
+                '템플릿 시각 키트를 불러오지 못했습니다. 선택한 룩과 다를 수 있습니다.',
+              ),
+              details: selectedDeckTemplateForTurn?.title?.trim() || kitMissTemplateId,
+            });
+          }
+          const webFetchContexts = await fetchApiWebFetchContexts(userMsg.content);
+          apiHistory = await historyWithApiAttachmentContext(
+            historyWithApiWebFetchContext(
+              historyWithCommentAttachmentContext(
+                historyWithWorkspaceContext(nextHistory, userMsg.id, runContext),
+              ),
+              userMsg.id,
+              webFetchContexts,
             ),
             userMsg.id,
-            webFetchContexts,
-          ),
-          userMsg.id,
-          project.id,
-          projectFiles,
-          { omitNativeImageAttachments: usesAnthropicProxy(config) },
-        );
+            project.id,
+            projectFiles,
+            { omitNativeImageAttachments: usesAnthropicProxy(config) },
+          );
+        } catch (err) {
+          const composeErr = err instanceof Error
+            ? err
+            : new Error(String(err ?? 'compose_failed'));
+          if (!(composeErr as Error & { code?: string }).code) {
+            (composeErr as Error & { code?: string }).code = 'AGENT_EXECUTION_FAILED';
+          }
+          handlers.onError(composeErr);
+          return true;
+        }
         pushEvent({ kind: 'status', label: 'requesting', detail: config.model });
         let accumulatedAssistantText = '';
         const streamStartedAt = Date.now();
@@ -9149,6 +11393,10 @@ export function ProjectView({
       onProjectsRefresh,
       onProjectChange,
       slideOnlyMvp,
+      finalizeSlideOnlyDeckArtifacts,
+      designSystems,
+      project.designSystemId,
+      project.metadata,
     ],
   );
 
@@ -9163,7 +11411,94 @@ export function ProjectView({
   const handleSendRef = useRef(handleSend);
   useLayoutEffect(() => {
     handleSendRef.current = handleSend;
-  }, [handleSend]);
+    requestSlideCountTopUpRef.current = (htmlPath) => {
+      void (async () => {
+        if (!htmlPath || !activeConversationId || !slideOnlyMvp) return;
+        if (runCommentAttachmentsRef.current.length > 0) return;
+        if (autoContinueTimerRef.current !== null || pendingAutoContinueConversationIdRef.current) {
+          return;
+        }
+        if (slideCountTopUpTimerRef.current !== null) return;
+        const html = await readProjectHtml(htmlPath);
+        if (!html) return;
+        const produced = countDeckSlideSections(html);
+        const conversationMessages = messagesRef.current;
+        if (findIncompleteSlideAssistantForRecovery(conversationMessages)) return;
+        const allowDefaultShortDeckTopUp =
+          runTemplateCloneContentFillRef.current
+          || (slideOnlyMvp && !runPersistTargetFileRef.current);
+        const requestedSpec = extractRequestedSlideCountSpecFromMessages(conversationMessages);
+        const requested = requestedSpec?.max ?? null;
+        const already = syncSlideCountTopUpCountFromMessages(
+          conversationSlideCountTopUpCountRef.current,
+          activeConversationId,
+          conversationMessages,
+        );
+        if (!shouldQueueSlideCountTopUp({
+          produced,
+          requested,
+          requestedMin: requestedSpec?.min,
+          defaultRequested: allowDefaultShortDeckTopUp ? 6 : undefined,
+          topUpCount: already,
+          commentAttachmentCount: runCommentAttachmentsRef.current.length,
+        })) {
+          return;
+        }
+        conversationSlideCountTopUpCountRef.current.set(activeConversationId, already + 1);
+        const scheduledProjectId = project.id;
+        const scheduledConversationId = activeConversationId;
+        pendingSlideCountTopUpConversationIdRef.current = scheduledConversationId;
+        slideCountTopUpTimerRef.current = window.setTimeout(() => {
+          slideCountTopUpTimerRef.current = null;
+          pendingSlideCountTopUpConversationIdRef.current = null;
+          if (project.id !== scheduledProjectId) {
+            rollbackSlideCountTopUpCount(
+              conversationSlideCountTopUpCountRef.current,
+              scheduledConversationId,
+            );
+            return;
+          }
+          if (messagesConversationIdRef.current !== scheduledConversationId) {
+            rollbackSlideCountTopUpCount(
+              conversationSlideCountTopUpCountRef.current,
+              scheduledConversationId,
+            );
+            return;
+          }
+          if (autoContinueTimerRef.current !== null) {
+            rollbackSlideCountTopUpCount(
+              conversationSlideCountTopUpCountRef.current,
+              scheduledConversationId,
+            );
+            return;
+          }
+          const sendNow = handleSendRef.current;
+          const topUpTarget = requested ?? (allowDefaultShortDeckTopUp ? 6 : null);
+          if (!sendNow || topUpTarget == null) {
+            rollbackSlideCountTopUpCount(
+              conversationSlideCountTopUpCountRef.current,
+              scheduledConversationId,
+            );
+            return;
+          }
+          const started = sendNow(
+            buildSlideCountTopUpPrompt({ produced, requested: topUpTarget }),
+            [],
+            [],
+            { entryFrom: SLIDE_COUNT_TOP_UP_ENTRY_FROM as ChatAnalyticsEntryFrom },
+          );
+          void Promise.resolve(started).then((ok) => {
+            if (ok === false) {
+              rollbackSlideCountTopUpCount(
+                conversationSlideCountTopUpCountRef.current,
+                scheduledConversationId,
+              );
+            }
+          });
+        }, 700);
+      })();
+    };
+  }, [handleSend, activeConversationId, project.id, readProjectHtml, slideOnlyMvp]);
 
   // Cancel every in-flight run for the current conversation (the user's own
   // streaming turn plus any reattached runs), mark their assistant messages
@@ -9194,7 +11529,7 @@ export function ProjectView({
           }
         })
         .catch((err) => {
-          console.warn('[teamver] explicit proxy stop active stream lookup failed', {
+          devLog.warn('[teamver] explicit proxy stop active stream lookup failed', {
             projectId: project.id,
             conversationId: conversationForStop,
             error: err,
@@ -9415,13 +11750,32 @@ export function ProjectView({
       // who clicks Continue after a scoped comment edit failed
       // sends the retry as an unscoped run — the deck-patch scope
       // guards go silent and the model can rewrite the whole deck.
+      const resumeOriginUser = findPrecedingUserMessage(
+        messagesRef.current,
+        assistantMessage.id,
+      );
       const resumeCommentAttachments = extractCommentAttachmentsForAutoContinue(
-        findPrecedingUserMessage(messagesRef.current, assistantMessage.id),
+        resumeOriginUser,
         runCommentAttachmentsRef.current,
       );
-      void handleSend(RESUME_CONTINUE_PROMPT, [], resumeCommentAttachments, {
-        entryFrom: 'resume_continue',
-      });
+      const resumeOriginIsFill = isTemplateCloneContentFillPrompt(resumeOriginUser?.content);
+      const resumePrompt = resumeOriginIsFill
+        ? ensureTemplateCloneContentFillContinuePrompt(RESUME_CONTINUE_PROMPT)
+        : RESUME_CONTINUE_PROMPT;
+      void handleSend(
+        resumePrompt,
+        chatAttachmentsForAutoContinueImageEmbed(
+          resumeOriginUser,
+          projectFilesRef.current
+            .map((file) => String(file.path || file.name || '').trim())
+            .filter(Boolean),
+        ),
+        resumeCommentAttachments,
+        {
+          entryFrom: 'resume_continue',
+          ...(resumeOriginIsFill ? { templateCloneContentFill: true } : {}),
+        },
+      );
     },
     [currentConversationActionDisabled, handleSend],
   );
@@ -9458,10 +11812,10 @@ export function ProjectView({
         // Surface the daemon-side reason so the user knows whether
         // the spawn failed because of missing osascript / unsupported
         // platform / etc. instead of silently swallowing it.
-        console.warn('[antigravity] oauth-launch failed:', result.error);
+        devLog.warn('[antigravity] oauth-launch failed:', result.error);
       }
     } catch (err) {
-      console.warn('[antigravity] oauth-launch threw:', err);
+      devLog.warn('[antigravity] oauth-launch threw:', err);
     }
   }, []);
   // Poll the AMR login status while a retry is armed, rather than only reacting
@@ -9523,7 +11877,10 @@ export function ProjectView({
       if (images.length > 0) {
         const result = await uploadProjectFiles(project.id, images);
         throwIfProjectCommentUploadIncomplete(result, images.length);
-        uploaded = result.uploaded;
+        const ready = await uploadedImagesReadableOnDisk(project.id, result.uploaded);
+        const staged = stageReadableUploadedAttachments(result.uploaded, ready);
+        uploaded = staged.staged;
+        await refreshProjectFiles().catch(() => undefined);
       }
       const queueBoardSend = currentConversationBusy;
       if (commentAttachments.length === 0) {
@@ -9555,7 +11912,7 @@ export function ProjectView({
       }
       return true;
     },
-    [handleSend, project.id, currentConversationQueueDisabled, currentConversationBusy],
+    [handleSend, project.id, currentConversationQueueDisabled, currentConversationBusy, refreshProjectFiles],
   );
   const commentQueueOnSend = currentConversationBusy && !currentConversationQueueDisabled;
 
@@ -10326,7 +12683,7 @@ export function ProjectView({
       // surfaces. `target_project_kind` derives from
       // `project.metadata.kind`.
       const target =
-        (projectKindToTracking(project.metadata?.kind ?? null, project.metadata?.videoModel) ?? 'unknown') as TrackingDesignSystemApplyTargetKind;
+        (projectListTrackingKind(project, { slideOnly: slideOnlyMvp }) ?? 'unknown') as TrackingDesignSystemApplyTargetKind;
       const picked = nextId
         ? designSystems.find((d) => d.id === nextId)
         : null;
@@ -10711,8 +13068,28 @@ export function ProjectView({
       /* sessionStorage may be unavailable; treat as manual flow. */
     }
     autoSendFirstMessageRef.current = isAutoSend;
-    autoSendSeedRef.current = isAutoSend ? (project.pendingPrompt ?? '') : '';
-    autoSendAttachmentsRef.current = isAutoSend ? readAutoSendAttachments(project.id) : [];
+    const fillQueuedAtMount =
+      isTemplateCloneContentFillQueued(project.id)
+      || (
+        project.metadata
+        && typeof project.metadata === 'object'
+        && (project.metadata as { templateCloneContentFillPending?: unknown })
+          .templateCloneContentFillPending === true
+      );
+    autoSendSeedRef.current = isAutoSend
+      ? resolveTemplateCloneAutoSendSeed({
+          queuedFillSeed: readQueuedAutoSendSeed(project.id),
+          pendingPrompt: project.pendingPrompt,
+          fillQueued: fillQueuedAtMount,
+        })
+      : '';
+    autoSendAttachmentsRef.current = isAutoSend
+      ? (
+        fillQueuedAtMount
+          ? withoutCanonicalDeckAttachments(readAutoSendAttachments(project.id))
+          : readAutoSendAttachments(project.id)
+      )
+      : [];
   }
   const [initialDraft, setInitialDraft] = useState<
     { projectId: string; value: string } | undefined
@@ -10915,18 +13292,34 @@ export function ProjectView({
     if (!flag) return;
     // Prefer the seed captured at mount (autoSendSeedRef) — it survives
     // even after onClearPendingPrompt wipes project.pendingPrompt on the
-    // server. Fall back to the live values for any edge case where the
-    // ref was not populated (e.g. sessionStorage error path).
-    const seed = (
-      autoSendSeedRef.current ||
-      (initialDraft?.projectId === project.id ? initialDraft.value : '') ||
-      project.pendingPrompt ||
-      ''
-    ).trim();
-    const attachments = autoSendAttachmentsRef.current ?? [];
+    // server. When a Clone content-fill is queued, the fill seed ALWAYS
+    // wins over the stale create-time pendingPrompt (full canvas run dump).
+    const queuedFillSeed = readQueuedAutoSendSeed(project.id);
+    const fillQueued =
+      isTemplateCloneContentFillQueued(project.id)
+      || isTemplateCloneContentFillPrompt(queuedFillSeed)
+      || isTemplateCloneContentFillPrompt(autoSendSeedRef.current)
+      || (
+        project.metadata
+        && typeof project.metadata === 'object'
+        && (project.metadata as { templateCloneContentFillPending?: unknown })
+          .templateCloneContentFillPending === true
+      );
+    const seed = resolveTemplateCloneAutoSendSeed({
+      queuedFillSeed:
+        autoSendSeedRef.current
+        || queuedFillSeed
+        || (initialDraft?.projectId === project.id ? initialDraft.value : ''),
+      pendingPrompt: project.pendingPrompt,
+      fillQueued,
+    }).trim();
+    const attachments = fillQueued
+      ? withoutCanonicalDeckAttachments(autoSendAttachmentsRef.current ?? [])
+      : (autoSendAttachmentsRef.current ?? []);
     if (!seed && attachments.length === 0) {
       autoSentRef.current = true;
       clearAutoSendSession(project.id);
+      clearTemplateCloneContentFillQueue(project.id);
       return;
     }
     autoSentRef.current = true;
@@ -10934,8 +13327,46 @@ export function ProjectView({
       markDesignSystemAuditAutoRepairEligible(project.id);
     }
     clearAutoSendSession(project.id);
+    clearTemplateCloneContentFillQueue(project.id);
     autoSendAttachmentsRef.current = [];
-    void handleSend(seed, attachments, []);
+    if (fillQueued) {
+      void patchProject(project.id, {
+        metadata: {
+          ...(project.metadata && typeof project.metadata === 'object' ? project.metadata : {}),
+          templateCloneContentFillPending: false,
+        },
+      });
+    }
+    // Home Canvas/Drive → create pins selectedDeckTemplate* on project
+    // metadata, but also pass them on this-turn meta so the first BYOK
+    // compose cannot lose the pick if React state is still settling.
+    const selected = selectedDeckTemplateMetadata(project.metadata);
+    const isFillSeed = fillQueued || isTemplateCloneContentFillPrompt(seed);
+    const fillSlideCountHint = extractTemplateCloneFillSlideCountHintFromPrompt(seed);
+    void handleSend(seed, attachments, [], {
+      skipDiscoveryBrief:
+        project.metadata?.skipDiscoveryBrief === true || Boolean(selected),
+      ...(isFillSeed
+        ? {
+            templateCloneContentFill: true,
+            pluginInputs: withTemplateCloneFillPluginInputs(
+              undefined,
+              fillSlideCountHint,
+            ),
+          }
+        : {}),
+      ...(selected
+        ? {
+            selectedDeckTemplateId: selected.id,
+            selectedDeckTemplateTitle: selected.title,
+            skillIds: [selected.id],
+            context: {
+              pluginIds: [CANVAS_CREATE_SLIDES_PLUGIN_ID],
+              skillIds: [selected.id],
+            },
+          }
+        : {}),
+    });
   }, [
     activeConversationId,
     messagesInitialized,
@@ -11055,7 +13486,7 @@ export function ProjectView({
               projectId={project.id}
               sessionMode={activeSessionMode}
               onSessionModeChange={handleActiveConversationSessionModeChange}
-              projectKindForTracking={projectKindToTracking(project.metadata?.kind, project.metadata?.videoModel)}
+              projectKindForTracking={projectListTrackingKind(project, { slideOnly: slideOnlyMvp })}
               projectFiles={projectFiles}
               activeProjectFileName={activeProjectFileName}
               hasActiveDesignSystem={!!project.designSystemId}
@@ -11063,6 +13494,9 @@ export function ProjectView({
               projectFileNames={projectFileNames}
               skills={chatComposerSkills}
               onEnsureProject={handleEnsureProject}
+              onProjectFilesMaybeChanged={() => {
+                void refreshWorkspaceItems().catch(() => undefined);
+              }}
               previewComments={previewComments}
               attachedComments={attachedComments}
               onAttachComment={attachPreviewComment}
@@ -11221,12 +13655,36 @@ export function ProjectView({
                 </span>
               )}
               designSystemPicker={(
-                <DesignSystemPicker
-                  designSystems={designSystems}
-                  selectedId={project.designSystemId ?? null}
-                  onChange={handleChangeDesignSystemId}
-                  onRequestDesignSystems={onDesignSystemsRefresh}
-                />
+                (() => {
+                  // Explicit visual template pin (Daisy Days etc.): show that
+                  // title instead of the scenario DS chip ("Simple Deck").
+                  const pinnedTemplate = selectedDeckTemplateMetadata(project.metadata);
+                  const pinnedLabel = formatSelectedDeckTemplateChipLabel(pinnedTemplate);
+                  if (
+                    slideOnlyMvp
+                    && pinnedTemplate
+                    && isExplicitCanvasSlideVisualTemplate({ id: pinnedTemplate.id })
+                    && pinnedLabel
+                  ) {
+                    return (
+                      <span
+                        className="staged-chip staged-chip--skill"
+                        data-testid="selected-deck-template-style-chip"
+                        title={pinnedLabel}
+                      >
+                        <span className="staged-name" title={pinnedLabel}>{pinnedLabel}</span>
+                      </span>
+                    );
+                  }
+                  return (
+                    <DesignSystemPicker
+                      designSystems={designSystems}
+                      selectedId={project.designSystemId ?? null}
+                      onChange={handleChangeDesignSystemId}
+                      onRequestDesignSystems={onDesignSystemsRefresh}
+                    />
+                  );
+                })()
               )}
             />
           ) : (
@@ -11257,7 +13715,7 @@ export function ProjectView({
         ) : null}
         <FileWorkspace
           projectId={project.id}
-          projectKind={projectKindToTracking(project.metadata?.kind, project.metadata?.videoModel) ?? 'prototype'}
+          projectKind={projectListTrackingKind(project, { slideOnly: slideOnlyMvp }) ?? (slideOnlyMvp ? 'slide_deck' : 'prototype')}
           projectDisplayName={project.name}
           rootDirName={designFilesRootLabel}
           reloading={false}
@@ -11318,6 +13776,7 @@ export function ProjectView({
           onWorkspaceContextsChange={handleWorkspaceContextsChange}
           messages={messages}
           artifactHtml={artifact?.html}
+          previewHealAttachmentPaths={previewHealAttachmentPaths}
           pendingArtifactRecovery={pendingRecoveryPreview}
           conversationError={error}
           onRetry={handleRetry}
@@ -11446,19 +13905,24 @@ export function findExistingArtifactProjectFile(
     const pointerFile = pointerTarget
       ? currentRunFiles.find((file) => file.name === pointerTarget || file.path === pointerTarget)
       : null;
-    if (pointerFile) return pointerFile;
+    if (pointerFile && !isTemplateCloneLookSeedFile(pointerFile)) return pointerFile;
   }
 
   const identifier = art.identifier || '';
   if (identifier) {
     const manifestMatches = currentRunFiles
       .filter((file) => file.artifactManifest?.metadata?.identifier === identifier)
+      .filter((file) => !isTemplateCloneLookSeedFile(file))
       .sort((a, b) => b.mtime - a.mtime);
     if (manifestMatches[0]) return manifestMatches[0];
   }
 
-  return currentRunFiles.find((file) => file.name === candidateFileName) ?? null;
+  const named = currentRunFiles.find((file) => file.name === candidateFileName) ?? null;
+  if (named && isTemplateCloneLookSeedFile(named)) return null;
+  return named;
 }
+
+export { isTemplateCloneLookSeedFile };
 
 export function selectPrimaryProjectFile(files: ProjectFile[]): ProjectFile | null {
   const candidates = files
@@ -11831,7 +14295,12 @@ export function shouldFailSlideRunForMissingHtmlDeliverable(options: {
 
   const artifactHtml = options.parsedArtifact?.html ?? options.liveHtml;
   if (artifactHtml) {
-    if (isIncompleteHtmlDocumentShell(artifactHtml)) return true;
+    if (
+      isIncompleteHtmlDocumentShell(artifactHtml)
+      && !isPersistableShortDeckDraftAfterHeal(artifactHtml)
+    ) {
+      return true;
+    }
     const validation = validateHtmlArtifact(artifactHtml);
     if (!validation.ok) return true;
     // Valid artifact streamed but nothing previewable on disk — fail so we
@@ -11847,16 +14316,45 @@ export function shouldFailSlideRunForMissingHtmlDeliverable(options: {
 
 const DOCTYPE_HTML_TAIL_RE = /<!doctype\s+html[\s\S]*/i;
 
-function artifactFromSalvagedHtml(html: string, base: Artifact): Artifact | null {
-  const salvaged = salvageTruncatedHtmlDocument(html);
+/** Write-tool same-turn HTML must already be a persistable deck, not a CSS shell. */
+function isReusableSameTurnDeckWrite(html: string | null | undefined): boolean {
+  const trimmed = String(html ?? '').trim();
+  if (!trimmed || !validateHtmlArtifact(trimmed).ok) return false;
   if (
-    salvaged
-    && !isIncompleteHtmlDocumentShell(salvaged)
-    && validateHtmlArtifact(salvaged).ok
+    isPersistableShortDeckDraft(trimmed)
+    || isPersistableShortDeckDraftAfterHeal(trimmed)
+    || isClosedSoftSalvageDeckHtml(trimmed)
   ) {
+    return true;
+  }
+  return !isIncompleteHtmlDocumentShell(trimmed);
+}
+
+function artifactFromSalvagedHtml(html: string, base: Artifact): Artifact | null {
+  const salvaged = salvageTruncatedHtmlDocument(html)
+    ?? salvageTemplateFillShellAsCoverDraft(html);
+  // Soft truncation salvage already quality-gated. Do not re-reject with the
+  // stricter incomplete-shell ratio (empty placeholders + 1–2 filled slides).
+  if (salvaged && validateHtmlArtifact(salvaged).ok) {
     return { ...base, html: salvaged };
   }
   return null;
+}
+
+/** True when HTML is strictly complete, or is a soft-salvaged truncated deck. */
+function isUsableDeckHtmlArtifact(html: string | null | undefined): boolean {
+  const trimmed = String(html ?? '').trim();
+  if (!trimmed || !validateHtmlArtifact(trimmed).ok) return false;
+  if (isPersistableShortDeckDraft(trimmed) || isPersistableShortDeckDraftAfterHeal(trimmed)) {
+    return true;
+  }
+  if (!isIncompleteHtmlDocumentShell(trimmed)) return true;
+  // Already-closed soft salvage returns null from salvageTruncated — still usable.
+  if (isClosedSoftSalvageDeckHtml(trimmed)) return true;
+  return Boolean(
+    salvageTruncatedHtmlDocument(trimmed)
+    ?? salvageTemplateFillShellAsCoverDraft(trimmed),
+  );
 }
 
 /** Pick the best HTML artifact candidate for terminal persist / auto-open. */

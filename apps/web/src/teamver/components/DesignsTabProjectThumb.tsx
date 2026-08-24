@@ -1,8 +1,10 @@
 import type { Project } from "../../types";
 import { useEffect } from "react";
+import { useTeamverBranding } from "../branding/TeamverBrandingProvider";
 import { useLazyProjectCover } from "../useLazyProjectCover";
 import type { ProjectCoverFile } from "../projectPreviewFile";
 import { ProjectCardHtmlCover } from "./ProjectCardHtmlCover";
+import { AuthenticatedProjectFileImage } from "../../components/AuthenticatedProjectFileImage";
 
 type Props = {
   project: Project;
@@ -12,7 +14,7 @@ type Props = {
   onCoverOverride?: (cover: ProjectCoverFile | null) => void;
 };
 
-/** DesignsTab grid card thumb — loads cover via cover-hints batch, then `/files` if needed. */
+/** DesignsTab grid card thumb — cover-hints first, `/files` if hints miss (visible only). */
 export function DesignsTabProjectThumb({
   project,
   liveCount = 0,
@@ -20,7 +22,11 @@ export function DesignsTabProjectThumb({
   className,
   onCoverOverride,
 }: Props) {
-  const { anchorRef, cover, override } = useLazyProjectCover(project, { deferUntilVisible: true });
+  const { slideOnlyMvp } = useTeamverBranding();
+  const { anchorRef, cover, override } = useLazyProjectCover(project, {
+    deferUntilVisible: true,
+    allowFilesFallback: true,
+  });
 
   useEffect(() => {
     onCoverOverride?.(override);
@@ -35,6 +41,8 @@ export function DesignsTabProjectThumb({
     .filter(Boolean)
     .join(" ");
 
+  const glyph = <span className="project-thumb-glyph">{cover.initial}</span>;
+
   return (
     <div
       ref={anchorRef}
@@ -42,17 +50,27 @@ export function DesignsTabProjectThumb({
       style={cover.style}
       aria-hidden
     >
-      {(cover.kind === "image" || cover.kind === "logo") && cover.src ? (
-        <img className="thumb-media" src={cover.src} alt="" loading="lazy" />
+      {(cover.kind === "image" || cover.kind === "logo") && cover.filePath ? (
+        <AuthenticatedProjectFileImage
+          projectId={project.id}
+          path={cover.filePath}
+          rev={cover.version}
+          className="thumb-media"
+          trustExists
+          failedFallback={glyph}
+        />
       ) : cover.kind === "video" && cover.src ? (
         <video className="thumb-media" src={cover.src} muted preload="metadata" playsInline />
       ) : cover.kind === "html" && cover.src ? (
         <ProjectCardHtmlCover
           src={cover.src}
-          deckCoverOnly={project.metadata?.kind === "deck"}
+          deckCoverOnly={slideOnlyMvp || project.metadata?.kind === "deck"}
+          // Parent useLazyProjectCover already defers until the card is near
+          // the viewport — a second IntersectionObserver only delayed /raw.
+          deferUntilVisible={false}
         />
       ) : (
-        <span className="project-thumb-glyph">{cover.initial}</span>
+        glyph
       )}
       {liveCount > 0 && liveCountLabel ? (
         <span className="design-live-count">{liveCountLabel}</span>

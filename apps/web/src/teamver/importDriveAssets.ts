@@ -17,6 +17,8 @@ export type TeamverDriveImportAsset = {
   filename?: string;
   destPath?: string;
   mimeType?: string;
+  /** Needed to re-fetch image thumbs for shared-drive assets after picker cache miss. */
+  sharedDriveId?: string | null;
 };
 
 export type TeamverDriveImportedAsset = {
@@ -54,7 +56,7 @@ export function formatDriveImportErrorForUser(code: string): string {
   const exact: Record<string, string> = {
     teamver_workspace_required: "Teamver 작업공간을 먼저 선택한 뒤 다시 시도하세요.",
     teamver_design_client_unavailable:
-      "teamver Design을 불러오는 중입니다 — 새로고침 후 다시 시도하세요.",
+      "teamver Slide을 불러오는 중입니다 — 새로고침 후 다시 시도하세요.",
     drive_import_failed: "Drive 가져오기에 실패했습니다 — 세션을 확인하고 다시 시도하세요.",
     drive_import_assets_required: "가져올 Drive 파일을 선택하세요.",
     drive_import_too_many_assets: "한 번에 가져올 수 있는 Drive 파일은 12개까지입니다.",
@@ -186,7 +188,21 @@ export async function importTeamverDriveAssets(
     const response = await withDesignBffCookieAuthRecovery(() =>
       client.http.post<DriveImportResponse>(
         `/projects/${encodeURIComponent(projectId)}/import-drive`,
-        { assets },
+        {
+          // sharedDriveId is FE-only (thumb refetch); BE schema does not accept it.
+          assets: assets.map((asset) => {
+            const body: {
+              assetId: string;
+              filename?: string;
+              destPath?: string;
+              mimeType?: string;
+            } = { assetId: asset.assetId };
+            if (asset.filename !== undefined) body.filename = asset.filename;
+            if (asset.destPath !== undefined) body.destPath = asset.destPath;
+            if (asset.mimeType !== undefined) body.mimeType = asset.mimeType;
+            return body;
+          }),
+        },
         {
           workspaceId,
           ...TEAMVER_BFF_REQUEST_OPTIONS,
@@ -215,14 +231,21 @@ function attachmentKindFromMime(mimeType: string): ChatAttachment["kind"] {
 export function driveImportedToChatAttachments(
   imported: TeamverDriveImportedAsset[],
 ): ChatAttachment[] {
-  return imported.map((item) => ({
-    path: item.path,
-    name: item.name,
-    kind: attachmentKindFromMime(item.mimeType || ""),
-    size: item.sizeBytes,
-    source: {
-      type: "teamver-drive",
-      assetId: item.assetId,
-    },
-  }));
+  return imported.map((item) => {
+    const path = String(item.path || "").trim();
+    // Identity for model prompts must be the on-disk path. BFF `name` can
+    // drift toward a display filename; using that taught models to emit
+    // `<img src="hero.jpeg">` without the `refs/drive/<timestamp>-` prefix.
+    const basename = path.split("/").filter(Boolean).pop() || path || item.name;
+    return {
+      path,
+      name: basename,
+      kind: attachmentKindFromMime(item.mimeType || ""),
+      size: item.sizeBytes,
+      source: {
+        type: "teamver-drive" as const,
+        assetId: item.assetId,
+      },
+    };
+  });
 }

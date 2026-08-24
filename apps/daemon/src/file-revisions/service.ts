@@ -11,7 +11,7 @@ import {
   commitRevisionWithSnapshotDurable,
   deleteFileRevisionsAfterSequenceDurable,
   ensureFileRevisionsHydrated,
-  pruneOldestFileRevisionsDurable,
+  overwriteHeadRevisionSnapshotDurable,
 } from './durable-store.js';
 import {
   deleteFileRevisionsAfterSequence,
@@ -20,7 +20,6 @@ import {
   getLatestFileRevision,
   insertFileRevision,
   listFileRevisions,
-  pruneOldestFileRevisions,
 } from './persistence.js';
 import {
   deleteRevisionSnapshots,
@@ -31,13 +30,32 @@ import {
 } from './store.js';
 import { usesPostgresRevisionSnapshots } from './snapshot-storage.js';
 import { withFileRevisionMutationLock } from './postgres-lock.js';
+import {
+  shouldCoalesceRevisionPush,
+} from './coalesce.js';
+import {
+  isFileRevisionRetentionPending,
+  registerRevisionDeferredSweep,
+  scheduleRevisionDeferredSweep,
+} from './deferred-sweep.js';
+import { assertRevisionSnapshotWithinAbsoluteLimit } from './quota.js';
+import {
+  gzipRevisionSnapshot,
+  resolveFullSnapshotInterval,
+  shouldForceFullSnapshot,
+} from './snapshot-codec.js';
+import { normalizeArtifactRuntimeImports } from '../artifact-runtime-compat.js';
 
 type WriteProjectFile = (
   projectsRoot: string,
   projectId: string,
   name: string,
   body: string | Buffer,
-  options?: { overwrite?: boolean; artifactManifest?: ArtifactManifest | null },
+  options?: {
+    overwrite?: boolean;
+    artifactManifest?: ArtifactManifest | null;
+    skipArtifactStubGuard?: boolean;
+  },
   metadata?: unknown,
 ) => Promise<ProjectFile>;
 
@@ -79,6 +97,13 @@ export function createFileRevisionService(deps: FileRevisionServiceDeps) {
   const { db, projectsRoot, writeProjectFile, resolveProjectDir } = deps;
   const snapshotContext: RevisionSnapshotStoreContext = { db };
   const postgresAuthority = usesPostgresRevisionSnapshots();
+  registerRevisionDeferredSweep({
+    db,
+    projectsRoot,
+    resolveProjectDir,
+    snapshotContext,
+    postgresAuthority,
+  });
 
   async function ensureHydrated(projectId: string, fileName: string): Promise<void> {
     if (!postgresAuthority) return;
@@ -112,13 +137,6 @@ export function createFileRevisionService(deps: FileRevisionServiceDeps) {
     await deleteRevisionSnapshots(projectDir, fileName, revisions.map((revision) => revision.id), snapshotContext);
   }
 
-  async function enforceRetention(projectId: string, fileName: string, projectDir: string): Promise<void> {
-    const pruned = postgresAuthority
-      ? await pruneOldestFileRevisionsDurable(db, projectId, fileName, FILE_REVISION_RETENTION_LIMIT)
-      : pruneOldestFileRevisions(db, projectId, fileName, FILE_REVISION_RETENTION_LIMIT);
-    await pruneSnapshots(projectDir, fileName, pruned);
-  }
-
   async function persistRevisionSnapshot(
     projectDir: string,
     fileName: string,
@@ -131,8 +149,9 @@ export function createFileRevisionService(deps: FileRevisionServiceDeps) {
       await removeRevisionSnapshotFiles(projectDir, fileName, revisionInput.id);
       return revision;
     }
+    const revision = insertFileRevision(db, revisionInput);
     await writeRevisionSnapshot(projectDir, fileName, revisionInput.id, content, options, snapshotContext);
-    return insertFileRevision(db, revisionInput);
+    return revision;
   }
 
   async function readRevisionSnapshotContent(
@@ -184,6 +203,12 @@ export function createFileRevisionService(deps: FileRevisionServiceDeps) {
         revisions,
         headRevisionId: head?.id ?? null,
         retentionLimit: FILE_REVISION_RETENTION_LIMIT,
+        retentionPending: isFileRevisionRetentionPending(
+          projectId,
+          fileName,
+          revisions.length,
+          FILE_REVISION_RETENTION_LIMIT,
+        ),
       };
     },
 
@@ -212,15 +237,30 @@ export function createFileRevisionService(deps: FileRevisionServiceDeps) {
       const {
         projectId,
         fileName,
-        content,
+        content: rawContent,
         source,
         label,
         artifactManifest = null,
         conversationId,
         assistantMessageId,
         truncateAfterSequence,
+        skipArtifactStubGuard = false,
         metadata,
       } = input;
+      // Normalize ONCE here so the bytes we hand to `writeProjectFile` and the
+      // bytes we persist as a revision snapshot are byte-identical. Before this
+      // fix the disk write ran `normalizeArtifactRuntimeImports` implicitly
+      // inside `writeProjectFile` while the snapshot store received the raw
+      // input `content`; on next entry the FE reconcile saw disk ≠ snapshot
+      // and fired a spurious "file was changed unexpectedly" conflict toast
+      // (undo/redo also got locked out until dismiss). Motion/framer-motion
+      // decks are the common trigger, but the pattern applies to any
+      // future write-side normalizer added to `writeProjectFile`.
+      const normalizedContent = coerceNormalizedContent(
+        fileName,
+        rawContent,
+      );
+      const content = normalizedContent;
       return withFileRevisionMutationLock(projectId, fileName, async () => {
         const projectDir = resolveProjectDir(projectsRoot, projectId, metadata);
         await ensureHydrated(projectId, fileName);
@@ -241,6 +281,7 @@ export function createFileRevisionService(deps: FileRevisionServiceDeps) {
             metadata,
             null,
           );
+          assertRevisionSnapshotWithinAbsoluteLimit(Buffer.byteLength(beforeContent, 'utf8'));
           const baselineId = randomUUID();
           const createdAt = Date.now();
           parent = await persistRevisionSnapshot(
@@ -262,6 +303,58 @@ export function createFileRevisionService(deps: FileRevisionServiceDeps) {
           );
         }
 
+        const contentBytes = Buffer.byteLength(content, 'utf8');
+        assertRevisionSnapshotWithinAbsoluteLimit(contentBytes);
+        const canCoalesce = truncateAfterSequence == null
+          && shouldCoalesceRevisionPush(parent, { source });
+
+        if (canCoalesce) {
+          const parentContent = parent.parentRevisionId
+            ? await readRevisionSnapshotContent(
+              projectDir,
+              projectId,
+              fileName,
+              parent.parentRevisionId,
+            )
+            : await readCurrentFileContentForRevision(
+              projectId,
+              fileName,
+              projectDir,
+              metadata,
+              parent,
+            );
+          const file = await writeProjectFile(
+            projectsRoot,
+            projectId,
+            fileName,
+            content,
+            {
+              overwrite: true,
+              artifactManifest,
+              ...(skipArtifactStubGuard ? { skipArtifactStubGuard: true } : {}),
+            },
+            metadata,
+          );
+          const createdAt = Date.now();
+          const revision = await overwriteHeadRevisionSnapshotDurable(
+            db,
+            projectDir,
+            fileName,
+            parent,
+            {
+              label,
+              byteSize: contentBytes,
+              createdAt,
+              content,
+              parentContent,
+              conversationId: conversationId ?? null,
+              assistantMessageId: assistantMessageId ?? null,
+            },
+          );
+          scheduleRevisionDeferredSweep();
+          return { revision, file };
+        }
+
         const sequence = parent.sequence + 1;
         const revisionId = randomUUID();
         const createdAt = Date.now();
@@ -279,7 +372,11 @@ export function createFileRevisionService(deps: FileRevisionServiceDeps) {
           projectId,
           fileName,
           content,
-          { overwrite: true, artifactManifest },
+          {
+            overwrite: true,
+            artifactManifest,
+            ...(skipArtifactStubGuard ? { skipArtifactStubGuard: true } : {}),
+          },
           metadata,
         );
 
@@ -302,7 +399,7 @@ export function createFileRevisionService(deps: FileRevisionServiceDeps) {
           content,
           { parentContent, sequence },
         );
-        await enforceRetention(projectId, fileName, projectDir);
+        scheduleRevisionDeferredSweep(projectId, fileName, metadata);
         return { revision, file };
       });
     },
@@ -322,11 +419,17 @@ export function createFileRevisionService(deps: FileRevisionServiceDeps) {
           revisionMetadataLookup(projectId, fileName),
           snapshotContext,
         );
+        // Pre-normalize so we write bytes that match what `writeProjectFile`
+        // would have written from the original push. If the snapshot itself
+        // was pushed via our normalize-first `pushRevision` above this is a
+        // no-op; the guard is here so legacy snapshots stored pre-normalize
+        // do not put disk out of sync with the current head after restore.
+        const normalizedContent = coerceNormalizedContent(fileName, content);
         const file = await writeProjectFile(
           projectsRoot,
           projectId,
           fileName,
-          content,
+          normalizedContent,
           { overwrite: true },
           metadata,
         );
@@ -334,6 +437,22 @@ export function createFileRevisionService(deps: FileRevisionServiceDeps) {
       });
     },
   };
+}
+
+/**
+ * Apply the same write-side transforms `writeProjectFile` runs so the bytes
+ * we persist as a revision snapshot stay byte-identical to the on-disk copy.
+ * Currently only `normalizeArtifactRuntimeImports` (Motion / framer-motion
+ * UMD script repair) mutates HTML bodies, but if a future write path adds
+ * another normalizer this helper is the single place to keep in sync.
+ */
+function coerceNormalizedContent(fileName: string, content: string): string {
+  const out = normalizeArtifactRuntimeImports(fileName, content);
+  if (typeof out === 'string') return out;
+  if (Buffer.isBuffer(out) || out instanceof Uint8Array) {
+    return Buffer.from(out).toString('utf8');
+  }
+  return content;
 }
 
 export function isFileRevisionSource(value: unknown): value is FileRevisionSource {

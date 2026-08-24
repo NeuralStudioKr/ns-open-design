@@ -36,6 +36,13 @@ export interface ChatRequest {
   // a single turn without binding the project to one of them.
   skillIds?: string[];
   designSystemId?: string | null;
+  /**
+   * Run-scoped deck template pin. Canvas/Drive → Slide may patch the project
+   * metadata and immediately start a daemon run; on multi-node deploys that
+   * metadata can lag. Keep the picked visual template on the run request too.
+   */
+  selectedDeckTemplateId?: string | null;
+  selectedDeckTemplateTitle?: string | null;
   attachments?: string[];
   commentAttachments?: ChatCommentAttachment[];
   model?: string | null;
@@ -45,6 +52,8 @@ export interface ChatRequest {
   research?: ResearchOptions;
   context?: RunContextSelection;
   appliedPluginSnapshotId?: string | null;
+  /** Run-scoped plugin inputs used by scenario/template launches. */
+  pluginInputs?: Record<string, unknown>;
   /**
    * Run-scoped media execution policy. Omitted means current Open Design
    * behavior: media generation is enabled and OD may execute its configured
@@ -84,7 +93,11 @@ export type ChatAnalyticsEntryFrom =
   // an artifact block). Distinct from `resume_continue` (manual button) so the
   // demo dashboard can measure how often the AUTOMATIC recovery fires and
   // whether it actually salvages the deliverable.
-  | 'auto_continue_incomplete_output';
+  | 'auto_continue_incomplete_output'
+  // After a closed short deck lands, append remaining slides up to the
+  // user-requested count (Home 1–15). Distinct from incomplete-output recovery
+  // so dashboards can tell "retry truncated turn" from "fill remaining slides".
+  | 'slide_count_top_up';
 
 export type ChatAnalyticsLengthBucket =
   | '0'
@@ -428,6 +441,9 @@ export type PersistedAgentEvent =
     }
   | { kind: 'raw'; line: string };
 
+/** Teamver slide-only: whether this assistant turn creates or edits a deck. */
+export type ChatSlideTurnKind = 'create' | 'edit';
+
 export interface ChatMessage {
   id: string;
   role: ChatRole;
@@ -454,6 +470,11 @@ export interface ChatMessage {
   producedFiles?: ProjectFile[];
   // Diff baseline so reattach can rebuild producedFiles after reload.
   preTurnFileNames?: string[];
+  /**
+   * Durable create vs edit label for Teamver slide completion copy.
+   * Set at send time; survives reload when patch artifacts are stripped.
+   */
+  slideTurnKind?: ChatSlideTurnKind;
   feedback?: ChatMessageFeedback;
   /**
    * Request-only marker for the final assistant-message persistence pass.

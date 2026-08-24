@@ -3,9 +3,13 @@ import type { ProjectFile } from './types';
 // Implicit attribution is based on project-file timing or pre/post file-list
 // diffs. User-created sketches can change during a run, but that does not make
 // them assistant output files unless a run records them explicitly.
+import { isUserAnnotationDrawingScreenshotPath } from './utils/projectFilePaths';
+
 export function isImplicitProducedFileCandidate(file: ProjectFile): boolean {
   const lowerPath = (file.path ?? file.name).toLowerCase();
-  return !lowerPath.endsWith('.sketch.json');
+  if (lowerPath.endsWith('.sketch.json')) return false;
+  if (isUserAnnotationDrawingScreenshotPath(file.path ?? file.name)) return false;
+  return true;
 }
 
 export function filterImplicitProducedFiles(files: readonly ProjectFile[]): ProjectFile[] {

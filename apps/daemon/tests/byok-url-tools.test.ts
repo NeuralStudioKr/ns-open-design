@@ -16,6 +16,29 @@ describe('fetchUrlContent', () => {
     });
   });
 
+  it('rejects Google Fonts css2 and stylesheet assets without fetching', async () => {
+    expect(await fetchUrlContent('https://fonts.googleapis.com/css2')).toEqual({
+      ok: false,
+      error: 'url is a stylesheet, font, or static asset, not a page',
+    });
+    expect(
+      await fetchUrlContent(
+        'https://fonts.googleapis.com/css2?family=Fredoka:wght@600&display=swap',
+      ),
+    ).toEqual({
+      ok: false,
+      error: 'url is a stylesheet, font, or static asset, not a page',
+    });
+    expect(await fetchUrlContent('https://example.com/theme.css')).toEqual({
+      ok: false,
+      error: 'url is a stylesheet, font, or static asset, not a page',
+    });
+    expect(await fetchUrlContent('https://cdn.jsdelivr.net/npm/foo')).toEqual({
+      ok: false,
+      error: 'url is a stylesheet, font, or static asset, not a page',
+    });
+  });
+
   it('blocks loopback URLs via SSRF guard', async () => {
     const result = await fetchUrlContent('http://127.0.0.1:41711/');
     expect(result.ok).toBe(false);
@@ -49,6 +72,38 @@ describe('fetchUrlContent', () => {
         }),
       }),
     );
+    vi.unstubAllGlobals();
+  });
+
+  it('rejects CSS Content-Type and raw @import bodies even on a page URL', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        new Response('@import url("https://fonts.googleapis.com/css2");', {
+          status: 200,
+          headers: { 'content-type': 'text/css' },
+        }),
+      ),
+    );
+    expect(await fetchUrlContent('https://example.com/brand')).toEqual({
+      ok: false,
+      error: 'response is a stylesheet, font, or static asset, not a page',
+    });
+    vi.unstubAllGlobals();
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        new Response('@font-face { font-family: Brand }', {
+          status: 200,
+          headers: { 'content-type': 'text/plain' },
+        }),
+      ),
+    );
+    expect(await fetchUrlContent('https://example.com/brand')).toEqual({
+      ok: false,
+      error: 'response is a stylesheet, font, or static asset, not a page',
+    });
     vi.unstubAllGlobals();
   });
 });

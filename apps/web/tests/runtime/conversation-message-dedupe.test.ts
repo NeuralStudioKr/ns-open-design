@@ -3,6 +3,7 @@ import type { ChatMessage } from "../../src/types";
 import { AUTO_CONTINUE_PROMPT_SENTINEL } from "../../src/runtime/resume";
 import {
   collapseEmptyAssistantShellsBeforeSuccessor,
+  DELIVERABLE_LIFECYCLE_STATUS_CODES,
   dedupeAssistantMessagesByRunId,
   dedupeConversationAssistantRows,
   isCollapsibleAssistantStub,
@@ -13,6 +14,14 @@ import {
   resolveLastAssistantMessageIndex,
   resolveLastSubstantiveAssistantMessageId,
 } from "../../src/runtime/conversation-message-dedupe";
+
+describe("DELIVERABLE_LIFECYCLE_STATUS_CODES", () => {
+  it("initializes without circular TDZ", () => {
+    expect(DELIVERABLE_LIFECYCLE_STATUS_CODES.has("outline_deck_fallback")).toBe(true);
+    expect(DELIVERABLE_LIFECYCLE_STATUS_CODES.has("emergency_deck_fallback")).toBe(true);
+    expect(DELIVERABLE_LIFECYCLE_STATUS_CODES.has("auto_continue_incomplete_output")).toBe(true);
+  });
+});
 
 describe("isEmptyAssistantShell", () => {
   it("treats header-only assistant rows as empty shells", () => {
@@ -72,6 +81,102 @@ describe("isEmptyAssistantShell", () => {
       events: [{ kind: "status", label: "error", detail: "boom" }],
     };
     expect(isEmptyAssistantShell(message)).toBe(false);
+  });
+
+  it("treats transient auto-continue / emergency-fallback status events as header-only noise", () => {
+    // User report 2026-08-13: succeeded rows that were auto-continued (or
+    // salvaged via emergency deck fallback) still carry a preserved
+    // status:error event with the transient code. Without this rule the row
+    // was NOT recognized as an empty shell, `isTerminalSucceededEmptyShellForDisplay`
+    // returned false, and the Teamver completion lead / row entirely
+    // disappeared after page re-entry when `producedFiles` was wiped.
+    const autoContinued: ChatMessage = {
+      id: "a-auto-continue",
+      role: "assistant",
+      content: "",
+      runStatus: "succeeded",
+      endedAt: 100,
+      events: [
+        { kind: "status", label: "requesting" },
+        {
+          kind: "status",
+          label: "error",
+          detail: "auto-continued after incomplete_output",
+          code: "auto_continue_incomplete_output",
+        },
+      ],
+    } as ChatMessage;
+    expect(isEmptyAssistantShell(autoContinued)).toBe(true);
+
+    const emergencySalvaged: ChatMessage = {
+      id: "a-emergency",
+      role: "assistant",
+      content: "",
+      runStatus: "succeeded",
+      endedAt: 100,
+      events: [
+        {
+          kind: "status",
+          label: "warning",
+          detail: "emergency deck fallback",
+          code: "emergency_deck_fallback",
+        },
+      ],
+    } as ChatMessage;
+    expect(isEmptyAssistantShell(emergencySalvaged)).toBe(true);
+
+    // A generic `status:error` without the transient code must still block
+    // empty-shell detection (that path anchors the durable error card).
+    const genericFailure: ChatMessage = {
+      id: "a-fatal",
+      role: "assistant",
+      content: "",
+      runStatus: "failed",
+      endedAt: 100,
+      events: [{ kind: "status", label: "error", detail: "boom", code: "incomplete_output" }],
+    } as ChatMessage;
+    expect(isEmptyAssistantShell(genericFailure)).toBe(false);
+  });
+
+  it("treats stale incomplete_output on succeeded rows as header-only noise", () => {
+    const succeededWithStaleIncomplete: ChatMessage = {
+      id: "a-succeeded-stale",
+      role: "assistant",
+      content: "",
+      runStatus: "succeeded",
+      endedAt: 100,
+      events: [
+        { kind: "status", label: "requesting" },
+        {
+          kind: "status",
+          label: "error",
+          detail: "truncated deliverable",
+          code: "incomplete_output",
+        },
+        {
+          kind: "status",
+          label: "error",
+          detail: "auto-continued",
+          code: "auto_continue_incomplete_output",
+        },
+      ],
+    } as ChatMessage;
+    expect(isEmptyAssistantShell(succeededWithStaleIncomplete)).toBe(true);
+  });
+
+  it("treats runtime model status events as header-only noise", () => {
+    const message: ChatMessage = {
+      id: "a-model-status",
+      role: "assistant",
+      content: "",
+      runStatus: "succeeded",
+      endedAt: 100,
+      events: [
+        { kind: "status", label: "requesting" },
+        { kind: "status", label: "model", detail: "claude-sonnet-4-5" },
+      ],
+    } as ChatMessage;
+    expect(isEmptyAssistantShell(message)).toBe(true);
   });
 
   it("does not treat canceled or resumable empty rows as shells", () => {

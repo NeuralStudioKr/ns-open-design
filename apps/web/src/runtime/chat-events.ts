@@ -1,7 +1,11 @@
 import type { AgentEvent, ChatMessage } from '../types';
-import { EMERGENCY_DECK_FALLBACK_STATUS_CODE } from '../artifacts/emergency-deck';
 import { reconcileUserCommentAttachments } from '../comments';
-import { AUTO_CONTINUE_STATUS_CODE } from './resume';
+import { recoverChatAttachmentsFromMentions } from '../utils/recoverChatAttachmentsFromMentions';
+import {
+  AUTO_CONTINUE_STATUS_CODE,
+  EMERGENCY_DECK_FALLBACK_STATUS_CODE,
+  OUTLINE_DECK_FALLBACK_STATUS_CODE,
+} from './deliverable-lifecycle-codes';
 
 function joinedTextFromEvents(events: AgentEvent[]): string {
   let out = '';
@@ -81,9 +85,10 @@ function hasPersistedRunErrorEvent(events: AgentEvent[]): boolean {
       event.kind === 'status'
       && event.label === 'error'
       && event.code !== AUTO_CONTINUE_STATUS_CODE
-      // Emergency draft salvage marks the run succeeded — do not flip it back
-      // to failed on reload just because the notice reused the status channel.
+      // Emergency / outline salvage marks the run succeeded — do not flip it
+      // back to failed on reload just because the notice reused the status channel.
       && event.code !== EMERGENCY_DECK_FALLBACK_STATUS_CODE
+      && event.code !== OUTLINE_DECK_FALLBACK_STATUS_CODE
       && Boolean(event.detail?.trim()),
   );
 }
@@ -93,8 +98,43 @@ function hasPersistedRunErrorEvent(events: AgentEvent[]): boolean {
  * Display-time sanitization stays in AssistantMessage; this only repairs
  * metadata gaps that would hide error cards after reload.
  */
+/**
+ * After emergency salvage marks a run succeeded, drop durable incomplete /
+ * auto-continue error events so reload cannot flip `succeeded` → `failed`
+ * via `reconcileChatMessageOnLoad`.
+ */
+function isDeliverableLifecycleErrorEvent(event: AgentEvent): boolean {
+  if (event.kind !== 'status' || event.label !== 'error') return false;
+  const code = event.code;
+  return (
+    code === 'incomplete_output'
+    || code === AUTO_CONTINUE_STATUS_CODE
+    || code === OUTLINE_DECK_FALLBACK_STATUS_CODE
+  );
+}
+
+/**
+ * Strip deliverable lifecycle `status:error` rows from a succeeded assistant
+ * message. Keeps salvage `warning` notices (emergency / outline) for banner
+ * rebuild while removing stale incomplete / auto-continue errors that block
+ * empty-shell completion leads after reload.
+ */
+export function clearDurableDeliverableErrorsAfterRecovery(
+  message: ChatMessage,
+): ChatMessage {
+  const events = message.events ?? [];
+  const nextEvents = events.filter((event) => !isDeliverableLifecycleErrorEvent(event));
+  if (nextEvents.length === events.length) return message;
+  return { ...message, events: nextEvents };
+}
+
 export function reconcileChatMessageOnLoad(message: ChatMessage): ChatMessage {
-  let reconciled = reconcileUserCommentAttachments(message);
+  let reconciled = recoverChatAttachmentsFromMentions(
+    reconcileUserCommentAttachments(message),
+  );
+  if (reconciled.runStatus === 'succeeded') {
+    reconciled = clearDurableDeliverableErrorsAfterRecovery(reconciled);
+  }
   const events = reconciled.events ?? [];
   if (!hasPersistedRunErrorEvent(events)) return reconciled;
   if (reconciled.runStatus === 'failed' || reconciled.runStatus === 'canceled') return reconciled;
@@ -109,6 +149,7 @@ function isTransientChatErrorCode(code: string | undefined): boolean {
   return (
     code === AUTO_CONTINUE_STATUS_CODE
     || code === EMERGENCY_DECK_FALLBACK_STATUS_CODE
+    || code === OUTLINE_DECK_FALLBACK_STATUS_CODE
   );
 }
 
@@ -151,10 +192,7 @@ export function attachPersistedChatError(
 ): ChatMessage {
   if (!detail?.trim()) return message;
   const withEvent = appendErrorStatusEvent(message, detail, code);
-  if (
-    code === AUTO_CONTINUE_STATUS_CODE
-    || code === EMERGENCY_DECK_FALLBACK_STATUS_CODE
-  ) {
+  if (isTransientChatErrorCode(code)) {
     return withEvent;
   }
   if (withEvent.runStatus === 'failed' || withEvent.runStatus === 'canceled') {

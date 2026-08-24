@@ -109,7 +109,7 @@ describe('buildActiveRunSummaries', () => {
     expect(summaries).toEqual([
       {
         projectId: 'p-deep',
-        projectName: 'teamver Design',
+        projectName: 'teamver Slide',
         status: 'running',
         count: 1,
         conversationId: 'conv-a',

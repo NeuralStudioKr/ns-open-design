@@ -100,17 +100,14 @@ async function postUsageEvent(
 
 function emitClientUsageDropMarker(stage: string, event: TeamverUsageEvent, err: unknown): void {
   try {
+    // Always-on ops marker (not silent in production). Do not include
+    // workspaceId / runId / token counts — those belong on the server metric.
     console.warn(
       JSON.stringify({
         metric: usageClientErrorMetric(err),
         stage,
         ts: Date.now(),
-        workspaceId: event.workspaceId,
-        runId: event.runId,
         runStatus: event.runStatus,
-        modelName: event.modelName,
-        inputTokens: event.inputTokens,
-        outputTokens: event.outputTokens,
         error: err instanceof Error ? err.message : String(err),
       }),
     );

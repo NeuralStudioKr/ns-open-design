@@ -79,6 +79,7 @@ describe('project preview containment routes', () => {
     expect(body.iframeSandbox).not.toContain('allow-same-origin');
     expect(body.csp).toContain('sandbox allow-scripts allow-forms');
     expect(body.csp).toContain("connect-src 'none'");
+    expect(body.csp).toContain('https://fonts.googleapis.com');
     expect(body.csp).not.toContain('allow-same-origin');
     expect(body.opaqueOrigin).toBe(true);
 
@@ -92,6 +93,8 @@ describe('project preview containment routes', () => {
     const csp = previewResponse.headers.get('content-security-policy') ?? '';
     expect(csp).toContain('sandbox allow-scripts allow-forms');
     expect(csp).toContain("connect-src 'none'");
+    expect(csp).toContain('https://fonts.googleapis.com');
+    expect(csp).toContain('https://fonts.gstatic.com');
     expect(csp).not.toContain('allow-same-origin');
     expect(await previewResponse.text()).toContain('<title>Preview</title>');
 

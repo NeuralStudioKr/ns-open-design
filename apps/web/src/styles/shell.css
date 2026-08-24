@@ -305,13 +305,9 @@
   flex: 0 0 auto;
   cursor: pointer;
 }
-.workspace-tab__close:focus-visible {
-  opacity: 1;
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
-}
 .workspace-tab:hover .workspace-tab__close,
-.workspace-tab.is-active .workspace-tab__close {
+.workspace-tab.is-active .workspace-tab__close,
+.workspace-tab:focus-within .workspace-tab__close {
   opacity: 1;
 }
 .workspace-tab__close:hover {

@@ -54,7 +54,21 @@ Contexts where the audience explicitly expects authority and precision — the h
 
 ## Workflow
 
-1. **Clone `example.html`** into the user's workspace as the working file.
+> **Teamver / API mode:** there is no filesystem clone step. Reproduce this
+> template with compact inline HTML (and one short body `<style>` / font
+> `@import` if needed). Match the `:root` tokens from `example.html`
+> (cream `#F5F0E6`, turquoise `#7ECDC0`, Fredoka One + Quicksand, 3px chunky
+> borders, offset shadows). Copy **Motif sprites** (complete daisy/star SVGs)
+> from the Template visual kit into corner `<div class="deco …">` wrappers —
+> do **not** fake the identity with flower/star emoji (🌼🌸⭐🌈). Emit
+> `<artifact type="deck" identifier="deck">` — never `type="text/html"`.
+> Do **not** fall back to a sparse Neutral Modern / slate `#0f172a` cover.
+
+1. **API / Teamver mode — do not clone files.** Bind the Template visual kit
+   + scaffold map (palette/fonts/Motif sprites/slide roles) and content-swap
+   Source text into those layouts. Never dump or rewrite a full `example.html`.
+   (Local tool runs with a filesystem may still open `example.html` as a
+   reference, but the deliverable must follow the kit contract.)
 2. **Replace placeholder content** with the user's real headlines, body copy,
    numbers, names, dates, and section labels. Match existing dimensions when
    swapping image placeholders.
@@ -77,9 +91,19 @@ Contexts where the audience explicitly expects authority and precision — the h
 Emit between `<artifact>` tags:
 
 ```
+<!-- Daemon / local skill runs may use type="text/html". -->
 <artifact identifier="zhangzara-daisy-days" type="text/html" title="Deck Title">
 <!doctype html>
 <html>...</html>
+</artifact>
+```
+
+Teamver slide-only API runs must use:
+
+```
+<artifact type="deck" identifier="deck">
+<!doctype html>
+<html lang="ko"><body>…filled slides with Daisy Days kit tokens…</body></html>
 </artifact>
 ```
 

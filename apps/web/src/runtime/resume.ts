@@ -1,6 +1,16 @@
 import type { ChatMessage } from '../types';
+import {
+  documentContainsSlideSection,
+  eachSlideHostOpenIndex,
+  shouldDiscardPartialHtmlForMotifSvgDump,
+} from '../artifacts/deck-html-content';
 import { salvageTruncatedHtmlDocument } from '../artifacts/recover';
 import { isIncompleteHtmlDocumentShell } from '../artifacts/validate';
+import {
+  TEMPLATE_CLONE_CONTENT_FILL_MARKER,
+  TEMPLATE_CLONE_CONTENT_FILL_TURN_MARKER,
+  templateCloneContentFillHardRules,
+} from '../teamver/templateCloneContentFill';
 import { COMPACT_DECK_SLIDE_COUNT_GUIDANCE } from './deckGuidance';
 
 // Canonical prompt sent by the "Continue the run" affordance on a resumable
@@ -89,6 +99,54 @@ const AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT_ESCALATED =
 const AUTO_CONTINUE_MAX_PARTIAL_HTML_EXCERPT = 4000;
 const AUTO_CONTINUE_MAX_PLAN_OUTLINE_EXCERPT = 2000;
 
+/**
+ * Prefer slide `<body>` (or salvaged closed HTML) over a CSS-heavy `<head>`
+ * prefix so auto-continue does not re-anchor the model on kit chrome.
+ */
+export function excerptPartialHtmlForAutoContinue(html: string): string {
+  const trimmed = html.replace(/^﻿/, '').trim();
+  if (!trimmed) return '';
+  if (shouldDiscardPartialHtmlForMotifSvgDump(trimmed)) return '';
+  const salvaged = salvageTruncatedHtmlDocument(trimmed);
+  const source = salvaged ?? trimmed;
+  const bodyIdx = source.search(/<body\b/i);
+  const fromBody = bodyIdx >= 0 ? source.slice(bodyIdx) : source;
+  if (fromBody.length <= AUTO_CONTINUE_MAX_PARTIAL_HTML_EXCERPT) {
+    return fromBody;
+  }
+  // Keep the tail (latest slides), not the head (kit CSS).
+  return fromBody.slice(-AUTO_CONTINUE_MAX_PARTIAL_HTML_EXCERPT);
+}
+
+const AUTO_CONTINUE_HEAD_ONLY_BODY_FIRST =
+  '\n\nCRITICAL: The previous turn burned its output budget on `<head>` / kit CSS '
+  + 'and never produced filled `<section class="slide">` bodies. '
+  + 'Do NOT regenerate Daisy Days / Zhangzara / Neutral chrome or large `<style>` blocks. '
+  + 'Emit BODY-FIRST: start the artifact with `<body>` (or the first `<section class="slide">`), '
+  + 'use only tiny inline style tokens, and fill every slide with real title + 2–4 bullets NOW. '
+  + 'Official look/Motif CSS is merged after save — do not stream `<head>` or example.html styles. '
+  + 'A compact static deck beats another CSS-only truncation.';
+
+const AUTO_CONTINUE_TEMPLATE_FILL_MIN_SLIDES =
+  '\n\nCRITICAL: Do not restart from `<head>` / kit CSS. Persist keeps a '
+  + '1–2 slide cover draft and hidden top-up appends — do not burn this turn '
+  + 'rewriting Daisy Days chrome. Emit BODY-FIRST slides (title + 2–4 bullets). '
+  + 'If you continue, APPEND more `<section class="slide">` (or `<div class="slide">`) '
+  + 'bodies. Official look/Motif CSS is merged after save.';
+
+const AUTO_CONTINUE_MOTIF_SVG_DUMP_ABANDON =
+  '\n\nCRITICAL: The previous turn dumped Motif `<svg>` path data before any cover `<h1>`. '
+  + 'ABANDON that large SVG. Do NOT continue path/`d=` data or fence the dump. '
+  + 'Restart BODY-FIRST with `<h1>` then lead `<p>`. Do not dump full SVG/style sprites, but do reuse compact kit motif/deco cues after title/body copy when the visual kit provides them. Never invent generic CSS circles.';
+
+function previewDiscardedHtmlShellForAutoContinue(html: string): string {
+  return html
+    .replace(/<style\b[^>]*>[\s\S]*$/i, '<style>…')
+    .replace(/<script\b[^>]*>[\s\S]*$/i, '<script>…')
+    .replace(/<svg\b[^>]*>[\s\S]*$/i, '<svg>…')
+    .slice(0, 160);
+}
+
 export type AutoContinuePromptContext = {
   /** 1-based attempt index for this automatic continue fire. */
   attempt: number;
@@ -101,19 +159,26 @@ export type AutoContinuePromptContext = {
   truncatedByMaxTokens?: boolean;
   /** Saved slide deck on disk from an earlier successful turn in this project. */
   existingDeckPath?: string | null;
+  /**
+   * Origin turn was Clone → AI content-fill. Keep CREATE/body-first and never
+   * re-attach cloned `deck.html` as an existing-deck edit (that restarts the
+   * `<head>` hang).
+   */
+  templateCloneContentFill?: boolean;
 };
 
-// Cap on automatic continue attempts inside a single conversation. Three
-// retries covers plan-only → partial shell → truncated head patterns
-// observed in Teamver embed API runs without burning unbounded tokens.
-// Manual retry stays available beyond the cap via the failed-run affordance.
-export const AUTO_CONTINUE_MAX_PER_CONVERSATION = 3;
+// Cap on automatic continue attempts inside a single conversation.
+//
+// Five retries covers plan-only → CSS-head truncation → body-first compact →
+// almost-complete-but-cut patterns on Teamver embed API runs. Bounded per
+// conversation; escalated wording after attempt 2; manual retry beyond cap.
+export const AUTO_CONTINUE_MAX_PER_CONVERSATION = 5;
 
-/** Scoped preview-comment edits salvage client-side first — two auto retries max. */
-export const AUTO_CONTINUE_MAX_SCOPED_COMMENT_EDIT = 2;
+/** Scoped preview-comment edits salvage client-side first — three auto retries max. */
+export const AUTO_CONTINUE_MAX_SCOPED_COMMENT_EDIT = 3;
 
 /** Visual-mark scoped edits (no DOM target id) get one extra retry. */
-export const AUTO_CONTINUE_MAX_SCOPED_VISUAL_MARK_EDIT = 3;
+export const AUTO_CONTINUE_MAX_SCOPED_VISUAL_MARK_EDIT = 4;
 
 export function resolveAutoContinueMaxAttempts(options: {
   scopedCommentAttachmentCount: number;
@@ -142,9 +207,29 @@ export function buildAutoContinueIncompleteOutputPrompt(
     );
   }
 
+  const partialRaw = context.partialHtml?.trim() ?? '';
+  const motifSvgDump = Boolean(partialRaw && shouldDiscardPartialHtmlForMotifSvgDump(partialRaw));
+  const partialSalvaged = partialRaw ? salvageTruncatedHtmlDocument(partialRaw) : null;
+  const partialSalvagedHasSlide = Boolean(
+    !motifSvgDump
+    && partialSalvaged
+    && documentContainsSlideSection(partialSalvaged),
+  );
+  // Only treat as empty shell when salvage cannot recover any slide copy.
+  // Contentful truncations (missing </html> but real slides) must NOT jump
+  // straight to FINAL RETRY — that discards useful partial HTML.
   const partialShellOnly = Boolean(
-    context.partialHtml?.trim()
-    && isIncompleteHtmlDocumentShell(context.partialHtml),
+    partialRaw
+    && isIncompleteHtmlDocumentShell(partialRaw)
+    && !partialSalvagedHasSlide,
+  );
+  const headWithoutBody = Boolean(
+    /<head\b/i.test(partialRaw) && !/<body\b/i.test(partialRaw),
+  );
+  const headOnlyHeavy = Boolean(
+    partialShellOnly
+    && !documentContainsSlideSection(partialRaw)
+    && (partialRaw.length >= 2048 || headWithoutBody),
   );
   // Head-only shells burn auto-continue slots without progress — escalate
   // immediately instead of waiting for attempt 2.
@@ -153,6 +238,32 @@ export function buildAutoContinueIncompleteOutputPrompt(
       ? AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT_ESCALATED
       : AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT,
   );
+  if (
+    headOnlyHeavy
+    || motifSvgDump
+    || context.templateCloneContentFill
+    || (context.truncatedByMaxTokens && partialShellOnly)
+  ) {
+    parts.push(AUTO_CONTINUE_HEAD_ONLY_BODY_FIRST);
+  }
+  if (motifSvgDump) {
+    parts.push(AUTO_CONTINUE_MOTIF_SVG_DUMP_ABANDON);
+  }
+  const partialSlideCount = eachSlideHostOpenIndex(partialRaw).length;
+  if (
+    context.templateCloneContentFill
+    || (partialSlideCount > 0 && partialSlideCount < 3)
+  ) {
+    parts.push(AUTO_CONTINUE_TEMPLATE_FILL_MIN_SLIDES);
+  }
+  if (context.templateCloneContentFill) {
+    parts.push(
+      `\n\n${TEMPLATE_CLONE_CONTENT_FILL_MARKER}\n${TEMPLATE_CLONE_CONTENT_FILL_TURN_MARKER}`,
+      'OVERRIDE: this is still the Clone content-fill CREATE — not an existing-deck edit.',
+      'Do not attach, read, or rewrite the cloned `deck.html`. Do not use "수정 반영 중".',
+      ...templateCloneContentFillHardRules(),
+    );
+  }
 
   const outline = context.planOutline?.trim();
   if (outline) {
@@ -164,7 +275,13 @@ export function buildAutoContinueIncompleteOutputPrompt(
 
   const referenceFiles = Array.from(
     new Set((context.referenceFiles ?? []).map((path) => path.trim()).filter(Boolean)),
-  ).slice(0, 12);
+  )
+    .filter((path) => {
+      if (!context.templateCloneContentFill) return true;
+      const base = path.split('/').pop() ?? path;
+      return !/^deck(?:[-_.].*)?\.html?$/i.test(base);
+    })
+    .slice(0, 12);
   if (referenceFiles.length > 0) {
     parts.push(
       '\n\n[이 대화에서 첨부된 참고 파일 — 필요하면 읽고 반영하되, 최종 산출물로 취급하지 마세요:]\n'
@@ -180,48 +297,62 @@ export function buildAutoContinueIncompleteOutputPrompt(
     );
   }
 
-  const existingDeckPath = context.existingDeckPath?.trim();
+  const existingDeckPath = context.templateCloneContentFill
+    ? ''
+    : context.existingDeckPath?.trim();
   if (existingDeckPath) {
     parts.push(
       `\n\n[이 프로젝트에 이미 저장된 슬라이드 덱: \`${existingDeckPath}\`. `
         + '직전 turn이 incomplete_output이어도 "완성된 덱이 없다"고 말하지 마세요. '
-        + '디스크의 덱을 기준으로 이어서 완성하거나 필요한 슬라이드만 deck-patch/deck artifact로 수정하세요.]',
+        + '디스크의 덱을 기준으로 이어서 완성하거나 필요한 슬라이드만 deck-patch로 수정하세요. '
+        + '첨부 이미지를 넣는 요청이면 전체 덱을 2~3장으로 새로 만들지 말고, '
+        + '대상 슬라이드 HTML을 복사한 뒤 `<img src="정확한경로">`만 삽입하는 deck-patch를 쓰세요. '
+        + '슬라이드 장수를 줄이는 것은 금지입니다.]',
     );
   }
 
-  let partial = context.partialHtml?.trim();
-  if (partial && isIncompleteHtmlDocumentShell(partial)) {
+  let partial = partialRaw;
+  if (motifSvgDump && partial) {
+    parts.push(
+      '\n\n[이전 HTML은 Motif `<svg>` 선두 덤프입니다 — path data를 이어 쓰지 말고 버리세요:]\n'
+        + previewDiscardedHtmlShellForAutoContinue(partial)
+        + '\n\n위 SVG dump를 복사하지 말고, `<h1>` + lead로 새 complete HTML deck artifact를 즉시 작성하세요. ('
+        + COMPACT_DECK_SLIDE_COUNT_GUIDANCE
+        + ')',
+    );
+  } else if (partial && isIncompleteHtmlDocumentShell(partial)) {
     // Truncated decks with real slide copy are still worth fencing so the
     // model can continue from the cut. Empty / SLOT-only shells must not be
     // re-fed — that anchors the next turn to the same blank deliverable.
-    const salvaged = salvageTruncatedHtmlDocument(partial);
-    if (salvaged) {
+    if (partialSalvagedHasSlide) {
+      const excerpt = excerptPartialHtmlForAutoContinue(partial);
       parts.push(
         '\n\n[이 대화에서 시작했지만 미완성인 HTML — 이어서 완성하거나 버리고 새 완전 덱을 한 번에 출력:]\n'
           + '```html\n'
-          + partial.slice(0, AUTO_CONTINUE_MAX_PARTIAL_HTML_EXCERPT)
+          + excerpt
           + '\n```',
       );
     } else {
       parts.push(
         '\n\n[이전 HTML은 빈 document shell / 미완성 덱에 불과합니다 — 이어 쓰지 말고 버리세요:]\n'
-          + partial.slice(0, 160)
+          + previewDiscardedHtmlShellForAutoContinue(partial)
           + '\n\n위 shell을 복사하지 말고, 새 complete HTML deck artifact를 즉시 작성하세요. ('
           + COMPACT_DECK_SLIDE_COUNT_GUIDANCE
           + ')',
       );
     }
   } else if (partial && partial.length >= 128) {
+    const excerpt = excerptPartialHtmlForAutoContinue(partial);
     parts.push(
       '\n\n[이 대화에서 시작했지만 미완성인 HTML — 이어서 완성하거나 버리고 새 완전 덱을 한 번에 출력:]\n'
         + '```html\n'
-        + partial.slice(0, AUTO_CONTINUE_MAX_PARTIAL_HTML_EXCERPT)
+        + excerpt
         + '\n```',
     );
   } else if (partial) {
     parts.push(
       '\n\n[이전 HTML은 빈 document shell에 불과합니다 — 이어 쓰지 말고 버리세요:]\n'
-        + partial.slice(0, 160)
+        + previewDiscardedHtmlShellForAutoContinue(partial)
         + '\n\n위 shell을 복사하지 말고, 새 complete HTML deck artifact를 즉시 작성하세요. ('
         + COMPACT_DECK_SLIDE_COUNT_GUIDANCE
         + ')',
@@ -239,7 +370,7 @@ export function buildAutoContinueIncompleteOutputPrompt(
 // 시도합니다" notice we drop into the assistant card just before the
 // automatic continue fires. Kept as a named export so tests and the assistant
 // message renderer can match against it without duplicating string literals.
-export const AUTO_CONTINUE_STATUS_CODE = 'auto_continue_incomplete_output';
+export { AUTO_CONTINUE_STATUS_CODE } from './deliverable-lifecycle-codes';
 
 // Analytics entry-from used by run_created / run_finished when the automatic
 // continue path is what kicked off a new run. Distinct from 'resume_continue'
@@ -249,6 +380,7 @@ export const AUTO_CONTINUE_ENTRY_FROM = 'auto_continue_incomplete_output';
 
 export type AutoContinuePersistResultKind =
   | 'skipped-incomplete'
+  | 'skipped-noop'
   | 'rejected'
   | 'save-failed'
   | 'persisted'
@@ -284,7 +416,6 @@ export function shouldAutoContinueForIncompleteOutput(options: {
     reason: string,
   ) => boolean;
 }): boolean {
-  if (!options.runIsVisible) return false;
   const max = options.maxPerConversation
     ?? (options.scopedCommentAttachmentCount && options.scopedCommentAttachmentCount > 0
       ? AUTO_CONTINUE_MAX_SCOPED_COMMENT_EDIT
@@ -292,19 +423,36 @@ export function shouldAutoContinueForIncompleteOutput(options: {
   if (options.autoContinueCount >= max) return false;
 
   const kind = options.terminalPersistResultKind;
-  if (kind === 'skipped-incomplete') return true;
-  if (
-    kind === 'scope-rejected'
-    && (options.scopedCommentAttachmentCount ?? 0) > 0
-    && options.shouldRouteScopedCommentEditToAutoContinue?.(
-      options.terminalPersistResultCode,
-      options.terminalPersistResultReason ?? '',
+  const contentIncomplete =
+    kind === 'skipped-incomplete'
+    || (
+      (kind === 'rejected' || kind === 'skipped-discovery-turn')
+      && (options.hadIncompleteParsedArtifact || options.shouldFailMissingSlideHtml)
     )
-  ) {
-    return true;
-  }
-  if (kind !== null) return false;
-  return options.hadIncompleteParsedArtifact || options.shouldFailMissingSlideHtml;
+    || (
+      kind === 'skipped-duplicate'
+      && (options.scopedCommentAttachmentCount ?? 0) > 0
+    )
+    || (
+      kind === 'scope-rejected'
+      && (options.scopedCommentAttachmentCount ?? 0) > 0
+      && Boolean(
+        options.shouldRouteScopedCommentEditToAutoContinue?.(
+          options.terminalPersistResultCode,
+          options.terminalPersistResultReason ?? '',
+        ),
+      )
+    )
+    || (
+      kind === null
+      && (options.hadIncompleteParsedArtifact || options.shouldFailMissingSlideHtml)
+    );
+
+  // Content-incomplete greenfield/truncated runs must still auto-continue in
+  // the background when the user briefly leaves the conversation — otherwise
+  // skipped-incomplete becomes a hard incomplete_output with no retry.
+  if (!options.runIsVisible && !contentIncomplete) return false;
+  return contentIncomplete;
 }
 
 /** True when a live local AbortController (or another conversation's stream)
@@ -389,8 +537,10 @@ export type ScopedCommentEditAutoContinueContext = {
   commentContext?: string | null;
   userInstruction?: string | null;
   concretePatchTemplate?: string | null;
-  /** Screenshot/draw visual marks have no DOM target id — deck-patch only. */
+  /** Screenshot/draw placement-only marks (heart icon, etc.) — deck-patch graft, not element-patch. */
   visualMarkOnly?: boolean;
+  /** Box tool or typed overlay note — edit real slide content, never decorative overlays. */
+  visualAnnotationEdit?: boolean;
 };
 
 function appendScopedCommentEditRetryContext(
@@ -464,6 +614,42 @@ function buildAutoContinueVisualMarkEditPrompt(
   return parts.join('\n');
 }
 
+function buildAutoContinueVisualAnnotationEditPrompt(
+  context: ScopedCommentEditAutoContinueContext,
+): string {
+  const attempt = Math.max(1, Math.floor(context.attempt));
+  const parts: string[] = [
+    AUTO_CONTINUE_PROMPT_SENTINEL,
+    attempt >= 2 ? '[FINAL RETRY] ' : '',
+    '직전 응답은 **박스/메모 시각 주석이 붙은 영역 편집** turn이었지만, 유효한 patch deliverable을 만들지 못했습니다.',
+    '장식용 overlay (`od-visual-mark-target`, 하트 SVG wrapper 등)를 추가하지 마세요. 디스크 deck.html의 실제 텍스트/스타일만 수정하세요.',
+    '전체 덱을 새로 쓰거나 `<artifact type="deck">` 전체 교체를 하지 마세요.',
+    '',
+    '이번 응답은 반드시 non-empty `<artifact type="element-patch" identifier="deck">` 하나만 출력하세요:',
+    '',
+    '<artifact type="element-patch" identifier="deck">',
+    '  <patch target-id="{real data-od-id from deck HTML}" slide-index="{slideIndex from attached-preview-comments}" kind="set-style">{"fontSize":"32px"}</patch>',
+    '</artifact>',
+    '',
+    '- `<attached-preview-comments>`의 `visual-mark-*` / synthetic id는 deck DOM에 없습니다 — 디스크 HTML에서 boxed `pagePosition` 영역과 겹치는 실제 `data-od-id`를 찾아 `target-id`에 넣으세요.',
+    '- `slide-index`는 주석의 slideIndex와 정확히 일치해야 합니다.',
+    '- 크기/색/강조 ("크게", "키워", font size): `kind="set-style"` JSON (`fontSize`, `fontWeight`, `color`). `currentText`는 그대로.',
+    '- 문구 교체: `kind="set-text"`에 새 문구만.',
+    '- 장식 overlay div 추가 금지 — 사용자가 명시적으로 도형/아이콘을 요청한 경우에만 예외.',
+    '- 빈 `<artifact type="element-patch">` 또는 patch 없는 wrapper는 금지.',
+    '',
+    '(English: visual annotation edit retry — resolve real element ids from the boxed region; emit element-patch style/text edits, not decorative overlays.)',
+  ];
+  appendScopedCommentEditRetryContext(parts, context);
+  if (attempt >= 3) {
+    parts.push(
+      '',
+      '[최종 시도] boxed 영역의 텍스트를 찾지 못하면 `<artifact type="deck-patch" identifier="deck">`에 해당 slide `<section>` 전체 HTML을 복사한 뒤 그 영역의 `font-size`/`style`만 조정하세요. overlay div 추가 금지.',
+    );
+  }
+  return parts.join('\n');
+}
+
 /**
  * Auto-continue prompt for scoped preview-comment edits. Unlike the
  * generic incomplete-output prompt (which demands a full
@@ -477,6 +663,9 @@ export function buildAutoContinueScopedCommentEditPrompt(
   const attempt = Math.max(1, Math.floor(context.attempt));
   if (context.visualMarkOnly) {
     return buildAutoContinueVisualMarkEditPrompt(context);
+  }
+  if (context.visualAnnotationEdit) {
+    return buildAutoContinueVisualAnnotationEditPrompt(context);
   }
   const parts: string[] = [
     AUTO_CONTINUE_PROMPT_SENTINEL,
@@ -519,6 +708,7 @@ export function resolveAutoContinuePrompt(options: {
   scopedUserInstruction?: string | null;
   concretePatchTemplate?: string | null;
   visualMarkOnly?: boolean;
+  visualAnnotationEdit?: boolean;
 }): string {
   if (options.commentAttachmentCount > 0) {
     return buildAutoContinueScopedCommentEditPrompt({
@@ -528,6 +718,7 @@ export function resolveAutoContinuePrompt(options: {
       userInstruction: options.scopedUserInstruction,
       concretePatchTemplate: options.concretePatchTemplate,
       visualMarkOnly: options.visualMarkOnly,
+      visualAnnotationEdit: options.visualAnnotationEdit,
     });
   }
   return buildAutoContinueIncompleteOutputPrompt(options.incompleteOutput);

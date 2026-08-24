@@ -411,7 +411,7 @@ export function mergeByokBackgroundRunSummaries<T extends {
     if (byProject.has(projectId)) continue;
     byProject.set(projectId, {
       projectId,
-      projectName: projectNameById.get(projectId) ?? "teamver Design",
+      projectName: projectNameById.get(projectId) ?? "teamver Slide",
       status: "running",
       count: 1,
       conversationId: active.conversationId,

@@ -20,15 +20,22 @@ vi.mock("../src/teamver/teamverDesignAccess", () => ({
 }));
 
 import {
+  clearProjectCoverCache,
   embedProjectCoverHintsOnly,
   prefetchProjectCoverHintsForProjects,
   projectNeedsCoverFileFetch,
   resetProjectCoverLoaderStateForTests,
   resolveProjectCoverFile,
   resolveProjectCoverFiles,
+  resolveProjectCoverOptionsForHomeSurface,
   resolveProjectCoverOptionsForListSurface,
   seedProjectCoverHints,
 } from "../src/teamver/projectCoverLoader";
+import {
+  htmlCoverCacheKey,
+  peekHtmlCoverCache,
+  seedHtmlCoverCache,
+} from "../src/teamver/htmlCoverCacheStore";
 import { isTeamverEmbedMode } from "../src/teamver/designApiBase";
 import { isTeamverEmbedDesignSurfaceEnabled } from "../src/teamver/teamverDesignAccess";
 import type { Project } from "../src/types";
@@ -58,24 +65,36 @@ describe("projectCoverLoader", () => {
     resetProjectCoverLoaderStateForTests();
   });
 
-  it("embed list surfaces default to hints-only cover resolve options", () => {
+  it("embed warm/list prefetch is hints-only; home visible rail keeps /files fallback", () => {
     vi.mocked(isTeamverEmbedMode).mockReturnValue(true);
     vi.mocked(isTeamverEmbedDesignSurfaceEnabled).mockReturnValue(true);
     expect(embedProjectCoverHintsOnly()).toBe(true);
     expect(resolveProjectCoverOptionsForListSurface()).toEqual({
       allowFilesFallback: false,
     });
+    // Home is bounded (HOME_RECENT_LIST_LIMIT) — always allow /files after hints miss.
+    expect(resolveProjectCoverOptionsForHomeSurface()).toEqual({
+      allowFilesFallback: true,
+    });
 
     vi.mocked(isTeamverEmbedMode).mockReturnValue(false);
     expect(embedProjectCoverHintsOnly()).toBe(false);
     expect(resolveProjectCoverOptionsForListSurface()).toEqual({});
+    expect(resolveProjectCoverOptionsForHomeSurface()).toEqual({
+      allowFilesFallback: true,
+    });
   });
 
-  it("skips fetch when metadata entryFile is present", async () => {
-    const deck = project({ metadata: { kind: "deck", entryFile: "index.html" } });
-    expect(projectNeedsCoverFileFetch(deck)).toBe(false);
-    await expect(resolveProjectCoverFile(deck)).resolves.toBeNull();
+  it("skips fetch when non-deck metadata entryFile is present", async () => {
+    const page = project({ metadata: { kind: "prototype", entryFile: "index.html" } });
+    expect(projectNeedsCoverFileFetch(page)).toBe(false);
+    await expect(resolveProjectCoverFile(page)).resolves.toBeNull();
     expect(fetchProjectFilesMock).not.toHaveBeenCalled();
+  });
+
+  it("still fetches cover-hints for deck entryFile (coverVersion cache-bust)", async () => {
+    const deck = project({ metadata: { kind: "deck", entryFile: "deck.html" } });
+    expect(projectNeedsCoverFileFetch(deck)).toBe(true);
   });
 
   it("fetches cover once and reuses cache", async () => {
@@ -265,6 +284,23 @@ describe("projectCoverLoader", () => {
     expect(fetchProjectFilesMock).toHaveBeenCalledTimes(1);
   });
 
+  it("seeds empty hint results so prefetch does not re-batch within TTL", async () => {
+    fetchCoverHintsMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({ hints: [] }),
+    });
+
+    const projects = [
+      project({ id: "p1", metadata: { kind: "deck" } }),
+      project({ id: "p2", metadata: { kind: "deck" } }),
+    ];
+
+    await prefetchProjectCoverHintsForProjects(projects);
+    await prefetchProjectCoverHintsForProjects(projects);
+
+    expect(fetchCoverHintsMock).toHaveBeenCalledTimes(1);
+  });
+
   it("replaces a cached hints-only miss when a later cover hint appears", async () => {
     vi.useFakeTimers();
     fetchCoverHintsMock.mockResolvedValueOnce({
@@ -352,5 +388,31 @@ describe("projectCoverLoader", () => {
     expect(fetchProjectFilesMock).not.toHaveBeenCalled();
 
     vi.useRealTimers();
+  });
+
+  it("clears cloned first-slide html cover srcDoc so fill can refetch deck.html", () => {
+    const cloneKey = htmlCoverCacheKey("deck", "/api/projects/p1/raw/deck.html");
+    const otherKey = htmlCoverCacheKey("deck", "/api/projects/p2/raw/deck.html");
+    seedHtmlCoverCache(cloneKey, "<html>TEMPLATE CLONE COVER</html>");
+    seedHtmlCoverCache(otherKey, "<html>other project</html>");
+    expect(peekHtmlCoverCache(cloneKey)).toContain("TEMPLATE CLONE COVER");
+
+    clearProjectCoverCache("p1");
+
+    expect(peekHtmlCoverCache(cloneKey)).toBeNull();
+    expect(peekHtmlCoverCache(otherKey)).toContain("other project");
+  });
+
+  it("notifies subscribers when cover cache is cleared (undo/list refresh)", async () => {
+    const { subscribeProjectCoverClear } = await import("../src/teamver/projectCoverLoader");
+    const seen: Array<string | null> = [];
+    const unsubscribe = subscribeProjectCoverClear((id) => {
+      seen.push(id);
+    });
+    clearProjectCoverCache("p1");
+    clearProjectCoverCache();
+    unsubscribe();
+    clearProjectCoverCache("p1");
+    expect(seen).toEqual(["p1", null]);
   });
 });

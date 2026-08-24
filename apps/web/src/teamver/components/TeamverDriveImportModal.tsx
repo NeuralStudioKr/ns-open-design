@@ -16,7 +16,11 @@ import {
   isDriveImageAsset,
 } from "../driveFileVisual";
 import { TeamverDriveDisplayFileName } from "./TeamverDriveDisplayFileName";
-import { fetchTeamverDriveImportThumbnails } from "../driveImportThumbnails";
+import { TeamverAttachChipVisual } from "./TeamverAttachChipVisual";
+import {
+  fetchTeamverDriveImportThumbnails,
+  type DriveImportThumbnailRequest,
+} from "../driveImportThumbnails";
 import {
   browseTeamverDriveImportPage,
   importRowMatchesScope,
@@ -108,6 +112,7 @@ function assetFromRow(row: TeamverDriveImportAssetRow): TeamverDriveImportAsset 
     assetId: row.assetId,
     filename: row.name,
     mimeType: row.mimeType,
+    sharedDriveId: row.sharedDriveId ?? null,
   };
 }
 
@@ -576,15 +581,32 @@ export function TeamverDriveImportModal({
 
   const thumbnailTargets = useMemo(() => {
     const seen = new Set<string>();
-    const items: TeamverDriveImportAssetRow[] = [];
+    const items: DriveImportThumbnailRequest[] = [];
+    const push = (assetId: string, name: string, mimeType?: string, sharedDriveId?: string | null) => {
+      if (seen.has(assetId)) return;
+      if (!isDriveImageAsset(name, mimeType)) return;
+      seen.add(assetId);
+      items.push({
+        assetId,
+        name,
+        mimeType,
+        sharedDriveId: sharedDriveId ?? null,
+      });
+    };
     for (const row of [...recentRows, ...browseAssetRows]) {
-      if (seen.has(row.assetId)) continue;
-      seen.add(row.assetId);
-      if (!isDriveImageAsset(row.name, row.mimeType)) continue;
-      items.push(row);
+      push(row.assetId, row.name, row.mimeType, row.sharedDriveId);
+    }
+    // Keep selected-chip thumbs alive after navigating away from the row (parity).
+    for (const asset of selectedAssets) {
+      push(
+        asset.assetId,
+        asset.filename?.trim() || asset.assetId,
+        asset.mimeType,
+        asset.sharedDriveId,
+      );
     }
     return items;
-  }, [browseAssetRows, recentRows]);
+  }, [browseAssetRows, recentRows, selectedAssets]);
 
   const canLoadMoreBrowse = browseHasMore && Boolean(browseNextCursor?.trim());
 
@@ -1161,29 +1183,46 @@ export function TeamverDriveImportModal({
 
         {selectedCount > 0 && !partialResult ? (
           <div className="teamver-drive-import-selected" data-testid="teamver-drive-import-selected">
-            {selectedAssets.map((asset) => (
-              <button
-                key={asset.assetId}
-                type="button"
-                className="teamver-drive-import-selected-chip"
-                disabled={confirming}
-                title={asset.filename ?? asset.assetId}
-                onClick={() => {
-                  setSelected((current) => {
-                    const next = new Map(current);
-                    next.delete(asset.assetId);
-                    return next;
-                  });
-                }}
-              >
-                <TeamverDriveDisplayFileName
-                  name={asset.filename ?? asset.assetId}
-                  className="teamver-drive-import-selected-name"
-                  title={asset.filename ?? asset.assetId}
-                />
-                <Icon name="close" size={12} />
-              </button>
-            ))}
+            {selectedAssets.map((asset) => {
+              const name = asset.filename?.trim() || asset.assetId;
+              const previewUrl = thumbUrls.get(asset.assetId) ?? null;
+              return (
+                <button
+                  key={asset.assetId}
+                  type="button"
+                  className="teamver-drive-import-selected-chip"
+                  disabled={confirming}
+                  title={name}
+                  aria-label={`${name} 선택 해제`}
+                  data-testid={`teamver-drive-import-selected-chip-${asset.assetId}`}
+                  data-asset-id={asset.assetId}
+                  onClick={() => {
+                    setSelected((current) => {
+                      const next = new Map(current);
+                      next.delete(asset.assetId);
+                      return next;
+                    });
+                  }}
+                >
+                  <TeamverAttachChipVisual
+                    name={name}
+                    mimeType={asset.mimeType}
+                    previewUrl={previewUrl}
+                    className="teamver-drive-import-selected-visual"
+                    iconClassName="teamver-drive-import-selected-visual--icon"
+                    thumbClassName="teamver-drive-import-selected-thumb"
+                    iconSize={12}
+                    testId="teamver-drive-import-selected-chip-icon"
+                  />
+                  <TeamverDriveDisplayFileName
+                    name={name}
+                    className="teamver-drive-import-selected-name"
+                    title={name}
+                  />
+                  <Icon name="close" size={12} />
+                </button>
+              );
+            })}
           </div>
         ) : null}
 

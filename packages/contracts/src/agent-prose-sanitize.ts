@@ -235,7 +235,10 @@ function isLikelyInternalMarkupLine(line: string): boolean {
   if (/^#deck-(?:stage|prev|next|idx)\b/i.test(trimmed)) return true;
   if (/^<h[1-6]\b/i.test(trimmed) && /\bstyle\s*=/i.test(trimmed)) return true;
   if (/^[\d.]+(?:px|em|rem)(?:\/[\d.]+)?">/i.test(trimmed)) return true;
-  if (/^@(?:page|media|keyframes|import)\b/.test(trimmed)) return true;
+  if (/^@(?:page|media|keyframes|import|font-face|supports|layer)\b/.test(trimmed)) return true;
+  if (/^(?:from|to|\d+%)\s*\{/.test(trimmed) && /transform|opacity|translate|rotate/i.test(trimmed)) {
+    return true;
+  }
   if (/^\.[a-zA-Z0-9_-]+(\s*::(?:before|after))?\s*\{/.test(trimmed)) {
     if (/1920px|1080px|box-sizing|overflow:\s*hidden|pointer-events:\s*none|grain/i.test(trimmed)) {
       return true;
@@ -291,10 +294,145 @@ const DECK_SLIDE_ORPHAN_ATTR_TAIL_RE =
   /-index\s*=\s*["']\d+["']\s+style\s*=\s*["'][\s\S]*?(?:>[\s\S]*)?$/i;
 const DECK_ORPHAN_STYLE_CLOSE_TAIL_RE =
   /\s+[\d.]+(?:px|em|rem|%|vh|vw)(?:\/[\d.]+)?">[\s\S]*$/i;
+/**
+ * Trailing styled inline chrome. Nested quotes inside `style="font-family:'X'"`
+ * must NOT use `[^"']*` (that stops at the first inner quote).
+ */
 const DECK_TRAILING_INLINE_MARKUP_RE =
-  /(?:\n|^)\s*<p\b[^>]*style\s*=\s*["'][^"']*(?:font|letter-spacing|margin)[^"']*["'][^>]*>[\s\S]*$/i;
+  /(?:\n|^)\s*<(?:p|span|div|strong|em|b|i|button|label)\b[^>]*\bstyle\s*=\s*["'][\s\S]*?(?:font|letter-spacing|margin|text-transform|display\s*:\s*flex)[\s\S]*$/i;
 const DECK_TRAILING_HEADING_MARKUP_RE =
   /(?:\n|^)\s*<h[1-6]\b[^>]*(?:style\s*=)?[^>]*>[\s\S]*$/i;
+const DECK_MOTIF_ABSOLUTE_DIV_TAIL_RE =
+  /<(?:div|span|header|footer|nav|img|aside)\b[^>]*\bstyle\s*=\s*["'][\s\S]*?position\s*:\s*(?:absolute|fixed)[\s\S]*$/i;
+const DECK_MOTIF_PILL_RADIUS_TAIL_RE =
+  /<(?:div|span|button)\b[^>]*\bstyle\s*=\s*["'][\s\S]*?border-radius\s*:\s*9999px[\s\S]*$/i;
+/**
+ * Daisy / Quicksand badge pills (`border-radius:20px` + box-shadow / font-family)
+ * — not covered by the Capsule `9999px` pill pattern.
+ */
+const DECK_MOTIF_STYLED_BADGE_TAIL_RE =
+  /<(?:div|span|button)\b[^>]*\bstyle\s*=\s*["'][\s\S]*?border-radius\s*:\s*\d+px[\s\S]*?(?:box-shadow|font-family|font-weight|padding)\s*:[\s\S]*$/i;
+/**
+ * Deck eyebrow / hero typography chrome (`font-family` + letter-spacing /
+ * text-transform / large display size) without border-radius — user report
+ * 2026-08-20 reload leak (`Barlow` + `Engineering Deep Dive`).
+ */
+const DECK_MOTIF_STYLED_TYPOGRAPHY_TAIL_RE =
+  /<(?:div|span|strong|em|b|p|h[1-6]|button|label)\b[^>]*\bstyle\s*=\s*["'][\s\S]*?font-family\s*:[\s\S]*?(?:letter-spacing|text-transform|font-size\s*:\s*\d{2,}px|font-weight\s*:\s*(?:[5-9]00|bold))[\s\S]*$/i;
+/** Orphan `</div><div style="flex:…">` layout shells after the opener was cut. */
+const DECK_ORPHAN_FLEX_LAYOUT_DIV_TAIL_RE =
+  /<\/div>\s*<div\b[^>]*\bstyle\s*=\s*["'][\s\S]*?(?:display\s*:\s*flex|flex\s*:|flex-direction|justify-content|gap\s*:)[\s\S]*$/i;
+/** Standalone flex/grid layout shells (no preceding `</div>` required). */
+const DECK_FLEX_OR_GRID_LAYOUT_TAIL_RE =
+  /<(?:div|section|header|footer|nav|main|article)\b[^>]*\bstyle\s*=\s*["'][\s\S]*?(?:display\s*:\s*(?:flex|grid)|flex-direction|grid-template|justify-content|align-items|gap\s*:\s*\d)[\s\S]*$/i;
+/** Full-bleed 1920×1080 slide frame without `class="slide"`. */
+const DECK_FULL_FRAME_SIZE_TAIL_RE =
+  /<(?:section|div|main|article)\b[^>]*\bstyle\s*=\s*["'][\s\S]*?(?:width\s*:\s*1920px|height\s*:\s*1080px)[\s\S]*$/i;
+/** `data-deck-*` / `data-slide-*` chrome. */
+const DECK_DATA_ATTR_TAIL_RE =
+  /<(?:div|section|main|article)\b[^>]*\bdata-(?:deck|slide)[\w-]*\s*=/i;
+/** %-positioned deco shells (relative/absolute). */
+const DECK_POSITIONED_PCT_TAIL_RE =
+  /<(?:div|span)\b[^>]*\bstyle\s*=\s*["'][\s\S]*?(?:(?:top|right|bottom|left)\s*:\s*[\d.]+%|(?:transform\s*:\s*translate)|(?:position\s*:\s*(?:relative|absolute|fixed)[\s\S]*?(?:top|left|right|bottom|inset)\s*:))[\s\S]*$/i;
+/** Table / list chrome with inline styles. */
+const DECK_TABLE_OR_LIST_TAIL_RE =
+  /<(?:table|ul|ol)\b[^>]*\bstyle\s*=\s*["'][\s\S]*$/i;
+/** Deck `<img … style|motif.svg>`. */
+const DECK_IMG_TAIL_RE =
+  /<img\b[^>]*(?:\bstyle\s*=|src\s*=\s*["'][^"']*(?:motif|deco|\.svg)|object-fit\s*:)[\s\S]*$/i;
+/** `<picture>` / `<source srcset>` media chrome. */
+const DECK_PICTURE_TAIL_RE =
+  /<(?:picture|source)\b[\s\S]*$/i;
+/** Video / canvas / iframe / object / embed deck chrome. */
+const DECK_MEDIA_EMBED_TAIL_RE =
+  /<(?:video|canvas|iframe|audio|object|embed)\b[^>]*(?:\bstyle\s*=|width\s*=\s*["']?1920|height\s*=\s*["']?1080|poster\s*=|object-fit|data\s*=|type\s*=\s*["']image\/)[\s\S]*$/i;
+/** `role="presentation"` / `aria-hidden` deco shells. */
+const DECK_A11Y_DECO_SHELL_TAIL_RE =
+  /<(?:div|span|section)\b[^>]*(?:\brole\s*=\s*["']presentation["']|\baria-hidden\s*=\s*["']true["'])[^>]*(?:\bstyle\s*=)?[\s\S]*$/i;
+/** Figure / figcaption chrome. */
+const DECK_FIGURE_TAIL_RE =
+  /<(?:figure|figcaption)\b[^>]*\bstyle\s*=\s*["'][\s\S]*$/i;
+/**
+ * Visual chrome styles that are never chat prose: gradients, clip-path,
+ * backdrop-filter (with or without border-radius).
+ */
+const DECK_VISUAL_EFFECT_STYLE_TAIL_RE =
+  /<(?:div|span|section|aside|header|footer)\b[^>]*\bstyle\s*=\s*["'][\s\S]*?(?:(?:linear|radial|conic)-gradient\s*\(|clip-path\s*:|(?:-webkit-)?backdrop-filter\s*:|mix-blend-mode\s*:|(?:-webkit-)?mask-image\s*:|filter\s*:\s*blur|aspect-ratio\s*:|background-image\s*:\s*url\s*\(\s*data:|box-shadow\s*:[\s\S]*border-radius\s*:|height\s*:\s*\d+px[\s\S]*width\s*:\s*\d+%|will-change\s*:|writing-mode\s*:|column-count\s*:)[\s\S]*$/i;
+/** Escaped inline style dumps (`style=\"font-family:…\"`). */
+const DECK_ESCAPED_STYLE_ATTR_TAIL_RE =
+  /(?:\n|^)\s*<(?:span|div|strong|em|p|h[1-6]|button)\b[^>]*\bstyle\s*=\s*\\["'][\s\S]*$/i;
+/** HTML-entity encoded deck tags (`&lt;span style=…&gt;`). */
+const DECK_HTML_ENTITY_TAG_TAIL_RE =
+  /(?:\n|^)\s*&lt;\/?(?:span|div|section|style|svg|h[1-6]|p|button)\b[\s\S]*$/i;
+/** Bare CSS dumps: class rules (incl. `.tag.inv`), pseudo, animation shorthand. */
+const DECK_BARE_CSS_MOTION_TAIL_RE =
+  /(?:\n|^)\s*(?:(?:\.[A-Za-z_-][\w-]*)+(?:::?(?:before|after))?\s*\{|animation\s*:[\s\S]*?(?:infinite|forwards|ease|linear)|transform-origin\s*:)[\s\S]*$/i;
+/**
+ * Compound / utility class CSS rule dumps that are never chat prose
+ * (`.tag.inv{border-color:rgba(…);color:\n#1c1c1c}`).
+ */
+const DECK_CLASS_RULE_CSS_TAIL_RE =
+  /(?:\n|^)\s*(?:\.[A-Za-z_-][\w-]*){1,6}\s*\{[\s\S]*?(?:(?:border(?:-color|-radius|-width)?|color|padding|margin|background|font|display|opacity)\s*:|rgba?\(|hsla?\(|#[0-9A-Fa-f]{3,8})[\s\S]*$/i;
+/** MathML / foreignObject leftovers. */
+const DECK_MATH_OR_FOREIGN_TAIL_RE =
+  /<(?:math|foreignObject|mi|mo|mn|mrow)\b[\s\S]*$/i;
+/** Landmark chrome (`header`/`footer`/`nav`). */
+const DECK_CHROME_LANDMARK_TAIL_RE =
+  /<(?:header|footer|nav|aside)\b[^>]*\bstyle\s*=\s*["'][\s\S]*$/i;
+/** Trailing orphan close-tag stacks (`</div></div></section>`). */
+const DECK_ORPHAN_CLOSE_TAGS_TAIL_RE =
+  /(?:\n|^)\s*(?:<\/(?:div|span|section|header|footer|nav|aside|main|article|h[1-6]|p|ul|ol|li|table|tr|td|th|button)+>\s*)+\s*$/i;
+/** Mid-message CSS custom-property dumps (`--bg:#…;--fg:#…`). */
+const DECK_CSS_CUSTOM_PROP_DUMP_TAIL_RE =
+  /(?:\n|^)\s*(?:--[\w-]+\s*:\s*[^;\n]+;\s*){2,}[\s\S]*$/i;
+/**
+ * `<br>`-stacked hero titles ending in `</h1>` without a clean opener.
+ * Hangul-glued forms (`제목 넣는 중CLOUD<br>…`) are handled by
+ * findTrailingSameLineDeckHtmlCut so the Hangul prefix is kept.
+ */
+const DECK_BR_STACKED_HEADING_TAIL_RE =
+  /(?:\n|^)(?![^\n]*[\uac00-\ud7af])[^\n]*<br\b[\s\S]*?<\/h[1-6]>/i;
+const DECK_CARD_STYLE_DIV_TAIL_RE =
+  /<(?:div|article)\b[^>]*\bclass\s*=\s*["'][^"']*\b(?:card|pill|chip|deco)[^"']*["'][^>]*\bstyle\s*=[\s\S]*$/i;
+const DECK_DECO_CLASS_TAIL_RE =
+  /<(?:div|span|svg|g|i)\b[^>]*\bclass\s*=\s*["'][^"']*\b(?:deco-|floating-pill|pixel-glitch|win-titlebar)[\s\S]*$/i;
+const DECK_MOTIF_SVG_TAIL_RE =
+  /<svg\b[^>]*(?:class\s*=\s*["'][^"']*\b(?:deco-|floating-pill)|viewBox\s*=|style\s*=\s*["'][^"']*position\s*:\s*absolute)[\s\S]*$/i;
+const DECK_MOTIF_PATH_TAIL_RE =
+  /<path\b[^>]*\bd\s*=\s*["'][\s\S]*$/i;
+/** Leftover Daisy SVG children after `<svg` was already consumed. */
+const DECK_MOTIF_SVG_PRIMITIVE_TAIL_RE =
+  /<(?:circle|rect|ellipse|polygon|polyline|line|g|defs|linearGradient|radialGradient|stop|use|text|tspan|foreignObject)\b/i;
+const DECK_MOTIF_SVG_CLOSE_TAIL_RE = /<\/svg\b/i;
+/** `<!-- Daisy motif TL -->` / layout comments (`<!-- Left: intro -->`) + following dump. */
+const DECK_MOTIF_HTML_COMMENT_TAIL_RE =
+  /(?:^|\n)\s*<!--[\s\S]*$/;
+/** Orphan deck `<li>…</li>` dumps (zhangzara/studio HTML body leaked into chat). */
+const DECK_ORPHAN_LI_DUMP_TAIL_RE =
+  /(?:^|\n)\s*<li\b[\s\S]*$/i;
+/** Bare / mismatched `<div>…</p>` chrome stacks (2+ bare divs or div/p mismatch). */
+const DECK_BARE_DIV_OR_MISMATCH_TAIL_RE =
+  /(?:^|\n)\s*(?:(?:<\/?div>\s*){2,}|(?:<div\b[^>]*>[\s\S]*?<\/p>))[\s\S]*$/i;
+const DECK_BROKEN_SECTION_CSS_DEBRIS_TAIL_RE =
+  /<\/(?:section|div)>\s*[-a-z]*weight\s*:[\s\S]*$/i;
+/**
+ * Truncated inline-style attribute debris that starts mid-declaration
+ * (`px;left:60px;…uppercase">Label</div>`) — common after mid-artifact abort
+ * when the leading `<div style="…` was already consumed by stripArtifact.
+ *
+ * Values may be quoted (`font-family:'Space Grotesk'`) or split across
+ * newlines (`color:\n#7ECDC0`). Require two declarations so a lone
+ * `color: red">` mention in prose is not chopped.
+ */
+const DECK_ORPHAN_MID_STYLE_ATTR_TAIL_RE =
+  /(?:^|\n)(?:(?:px|em|rem|%|vh|vw)\s*;\s*)?(?:[a-zA-Z-]+\s*:\s*[^;]*;?\s*){2,}[\s\S]*?["']\s*>[\s\S]*$/i;
+/**
+ * Truncated SVG `<style>` body (`none;stroke:…}.cls-3{…}</style>`) after the
+ * opening `<style>` / comment was already stripped. `</style>` is optional —
+ * reload can persist a cut mid-declaration without the closing tag.
+ */
+const DECK_ORPHAN_MID_SVG_CSS_STYLE_TAIL_RE =
+  /(?:^|\n)(?:(?:none|solid|inherit|round|butt|miter|bevel)\s*;\s*)?(?:(?:stroke(?:-[\w]+)?|fill|stroke-width|stroke-linecap|stroke-linejoin|stroke-miterlimit)\s*:[^;]*;?\s*){2,}[\s\S]*$/i;
 const DECK_SLIDE_PARTIAL_OPEN_TAG_RE =
   /<(?:section|div)\b[^>]*(?:\bclass\s*=\s*["'][^"']*\bslide\b|data-slide-index|data-slide\b)[^>]*>/i;
 
@@ -303,6 +441,22 @@ function isDeckSlidePartialTag(name: string, after: string): boolean {
   if (lower !== "section" && lower !== "div") return false;
   const tail = after.toLowerCase();
   return tail.includes("slide") || tail.includes("data-slide");
+}
+
+/** Incomplete open tags for deck chrome left after mid-scrub (`<span style="`). */
+function isDeckChromePartialTag(name: string, after: string): boolean {
+  const lower = name.toLowerCase();
+  if (
+    !/^(?:div|span|section|header|footer|nav|aside|main|article|table|tr|td|th|ul|ol|li|img|button|strong|em|b|i|p|h[1-6]|figure|figcaption|label|a|video|canvas|iframe|audio|picture|source|object|embed|math|foreignObject|link|meta)$/.test(
+      lower,
+    )
+  ) {
+    return false;
+  }
+  return (
+    /\b(?:style|class|data-(?:slide|deck)|src|href|srcset|poster|role|aria-hidden|rel|name|content|data)\s*=/i.test(after)
+    || /\b(?:style|class)\s*=\s*["']?\s*$/i.test(after)
+  );
 }
 
 function findTrailingSameLineDeckHtmlCut(line: string): number | null {
@@ -314,24 +468,125 @@ function findTrailingSameLineDeckHtmlCut(line: string): number | null {
     /^(.*?)(<(?:section|div)\b[^>]*(?:data-slide-index|\bclass\s*=\s*["'][^"']*\bslide\b)[^>]*)$/i,
   );
   if (open?.[1] !== undefined) return open[1].length;
+  // Hangul/CJK glued to stacked hero: `제목 넣는 중CLOUD<br>NATIVE</h1>`
+  const hangulBrHero = line.match(
+    /^(.*?[\uac00-\ud7af\u3000-\u9fff])\s*([A-Za-z][\s\S]*<br\b[\s\S]*<\/h[1-6]>)/u,
+  );
+  if (hangulBrHero?.[1] !== undefined) return hangulBrHero[1].length;
+  // Mid-word CSS join after Hangul/Latin: `슬라이드 추가 중ospace;font-size:…">Label</div>`
+  // (`ospace` = truncated `monospace`). Keep the human prefix.
+  // NEVER cut intact `… style="font-family:…"` tags — that left `<span style="`
+  // residues that later scrapers could not match (2026-08-21 regression).
+  // Fail fast when the line has no attr-close / tag-close — otherwise the
+  // reluctant `[\s\S]*?["']\s*>` backtracks into ReDoS on long CSS dumps.
+  if (/["']\s*>|<\/(?:div|span|p|h[1-6])\b|<br\b/i.test(line)) {
+    const midCss = line.match(
+      /^(.*?)((?:[a-z]{2,14};)?(?:[a-zA-Z-]+\s*:\s*[^;]*;){2,}[\s\S]*?["']\s*>[\s\S]*)$/i,
+    );
+    if (midCss?.[1] !== undefined && midCss[2]) {
+      const prefix = midCss[1];
+      const css = midCss[2];
+      const endsInStyleAttr = /\bstyle\s*=\s*["']\s*$/i.test(prefix);
+      const openTagPrefix = /<[a-z][\w:-]*\b[^>]*$/i.test(prefix);
+      const cjkGlue = /[\u3000-\u9fff\uac00-\ud7af]/u.test(prefix.slice(-12));
+      const midWordCssFrag = /^(?:[a-z]{2,14};)/i.test(css);
+      if (
+        !endsInStyleAttr
+        && !openTagPrefix
+        && (cjkGlue || midWordCssFrag)
+        && /(?:font-size|letter-spacing|text-transform|opacity|margin|font-family|line-height)\s*:/i.test(css)
+        && /(?:<\/(?:div|span|p|h[1-6])>|<br\b)/i.test(css)
+        && /[\p{L}\p{N}]/u.test(prefix.slice(-8))
+      ) {
+        return prefix.length;
+      }
+    }
+  }
+  // Broken attribute splice: `font-size:131 style="font-family:…`
+  const brokenAttr = line.match(
+    /^(.*?)((?:font-size|width|height|padding|margin)\s*:\s*[\d.]+)\s+style\s*=\s*["'][\s\S]*$/i,
+  );
+  if (brokenAttr?.[1] !== undefined) return brokenAttr[1].length;
   return null;
 }
 
 /** Drop truncated deck slide HTML leaked into chat prose (mid-artifact abort). */
 export function stripTrailingDeckHtmlMarkupLeak(input: string): string {
   if (!input) return input;
+  let cut: number | null = null;
   for (const re of [
     DECK_SLIDE_OPEN_TAG_TAIL_RE,
     DECK_SLIDE_ORPHAN_ATTR_TAIL_RE,
     DECK_ORPHAN_STYLE_CLOSE_TAIL_RE,
     DECK_TRAILING_HEADING_MARKUP_RE,
     DECK_TRAILING_INLINE_MARKUP_RE,
+    DECK_MOTIF_ABSOLUTE_DIV_TAIL_RE,
+    DECK_MOTIF_PILL_RADIUS_TAIL_RE,
+    DECK_MOTIF_STYLED_BADGE_TAIL_RE,
+    DECK_MOTIF_STYLED_TYPOGRAPHY_TAIL_RE,
+    DECK_ORPHAN_FLEX_LAYOUT_DIV_TAIL_RE,
+    DECK_FLEX_OR_GRID_LAYOUT_TAIL_RE,
+    DECK_FULL_FRAME_SIZE_TAIL_RE,
+    DECK_DATA_ATTR_TAIL_RE,
+    DECK_POSITIONED_PCT_TAIL_RE,
+    DECK_TABLE_OR_LIST_TAIL_RE,
+    DECK_IMG_TAIL_RE,
+    DECK_PICTURE_TAIL_RE,
+    DECK_MEDIA_EMBED_TAIL_RE,
+    DECK_A11Y_DECO_SHELL_TAIL_RE,
+    DECK_FIGURE_TAIL_RE,
+    DECK_VISUAL_EFFECT_STYLE_TAIL_RE,
+    DECK_ESCAPED_STYLE_ATTR_TAIL_RE,
+    DECK_HTML_ENTITY_TAG_TAIL_RE,
+    DECK_BARE_CSS_MOTION_TAIL_RE,
+    DECK_CLASS_RULE_CSS_TAIL_RE,
+    DECK_MATH_OR_FOREIGN_TAIL_RE,
+    DECK_CHROME_LANDMARK_TAIL_RE,
+    DECK_ORPHAN_CLOSE_TAGS_TAIL_RE,
+    DECK_CSS_CUSTOM_PROP_DUMP_TAIL_RE,
+    DECK_BR_STACKED_HEADING_TAIL_RE,
+    DECK_CARD_STYLE_DIV_TAIL_RE,
+    DECK_DECO_CLASS_TAIL_RE,
+    DECK_MOTIF_SVG_TAIL_RE,
+    DECK_MOTIF_PATH_TAIL_RE,
+    DECK_MOTIF_SVG_PRIMITIVE_TAIL_RE,
+    DECK_MOTIF_SVG_CLOSE_TAIL_RE,
+    DECK_MOTIF_HTML_COMMENT_TAIL_RE,
+    DECK_ORPHAN_LI_DUMP_TAIL_RE,
+    DECK_BARE_DIV_OR_MISMATCH_TAIL_RE,
+    DECK_BROKEN_SECTION_CSS_DEBRIS_TAIL_RE,
+    DECK_ORPHAN_MID_STYLE_ATTR_TAIL_RE,
+    DECK_ORPHAN_MID_SVG_CSS_STYLE_TAIL_RE,
   ]) {
+    // Fail-fast: mid-style attr scrapers ReDoS without `">` on long CSS dumps.
+    if (re === DECK_ORPHAN_MID_STYLE_ATTR_TAIL_RE && !/["']\s*>/.test(input)) {
+      continue;
+    }
     const match = re.exec(input);
-    if (!match || match.index === undefined) continue;
-    return input.slice(0, match.index).trimEnd();
+    if (match?.index === undefined) continue;
+    if (cut == null || match.index < cut) cut = match.index;
   }
-  return input;
+  // Same-line mid-word CSS / broken attr cuts — scan every line so reload
+  // debris glued to Hangul status text (`중ospace;font-size:…`) is chopped.
+  let offset = 0;
+  const lines = input.split("\n");
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i] ?? "";
+    const lineCut = findTrailingSameLineDeckHtmlCut(line);
+    if (lineCut != null) {
+      const abs = offset + lineCut;
+      if (cut == null || abs < cut) cut = abs;
+    }
+    offset += line.length + (i < lines.length - 1 ? 1 : 0);
+  }
+  if (cut == null) return input;
+  return input.slice(0, cut).trimEnd();
+}
+
+function findArtifactOpenIndex(input: string, from: number): number {
+  const slice = from > 0 ? input.slice(from) : input;
+  const match = /<artifact(?=[\s>/])/i.exec(slice);
+  return match?.index == null ? -1 : (from > 0 ? from : 0) + match.index;
 }
 
 function stripTrailingDeckHtmlMarkupLeakRespectingArtifacts(
@@ -342,7 +597,7 @@ function stripTrailingDeckHtmlMarkupLeakRespectingArtifacts(
   let result = "";
   let cursor = 0;
   while (cursor < input.length) {
-    const open = input.indexOf("<artifact", cursor);
+    const open = findArtifactOpenIndex(input, cursor);
     if (open === -1) {
       result += stripTrailingDeckHtmlMarkupLeak(input.slice(cursor));
       break;
@@ -539,6 +794,18 @@ function trailingDisplayProseStart(input: string, fromIndex: number): number {
   return offset;
 }
 
+/**
+ * True when an open artifact is a Teamver deck deliverable. Mid-stream
+ * max_tokens cuts often end on a slide text node (`Andiamo! (안디아모 =`) —
+ * that must NOT be promoted into the chat bubble as "user-facing prose".
+ * Broader `type="text/html"` artifacts still allow trailing summary promotion
+ * (BYOK pseudo-tool turns often leave a Korean status line after the body).
+ */
+function isOpenDeckDeliverableArtifactTag(openTag: string): boolean {
+  return /\btype\s*=\s*(?:"|')(?:deck|deck-patch)(?:"|')/i.test(openTag)
+    || /\bidentifier\s*=\s*(?:"|')(?:deck|slides?)(?:"|')/i.test(openTag);
+}
+
 /** Strip an unclosed `<artifact …>` block; preserve trailing user-facing prose after the body. */
 function stripTrailingOpenArtifact(
   input: string,
@@ -558,6 +825,11 @@ function stripTrailingOpenArtifact(
   const closeIdx = findCloseTag(input, openEnd, "</artifact>");
   if (closeIdx !== -1) {
     return { text: input, hadOpenInternalMarkup: false };
+  }
+  // Truncated deck bodies: drop from `<artifact` to EOF. Never promote slide
+  // copy / emoji chips that happen to look like chat prose.
+  if (isOpenDeckDeliverableArtifactTag(lastOpen[0] ?? "")) {
+    return { text: input.slice(0, openStart).trimEnd(), hadOpenInternalMarkup: true };
   }
   const proseStart = trailingDisplayProseStart(input, openEnd);
   if (proseStart === -1) {
@@ -617,6 +889,11 @@ const DECK_NAV_BODY_FINGERPRINTS = [
   `e\\.key\\s*===\\s*['"]ArrowRight['"]`,
   `document\\.addEventListener\\(['"]touchstart['"]`,
   `document\\.addEventListener\\(['"]wheel['"]`,
+  // Classic function(e) + half-screen click nav (no .slide / ArrowRight).
+  `clientX\\s*>\\s*window\\.innerWidth\\s*/\\s*2`,
+  `go\\s*\\(\\s*cur\\s*\\+\\s*1\\s*\\)`,
+  `document\\.addEventListener\\(['"]keydown['"]\\s*,\\s*function\\s*\\(`,
+  `document\\.addEventListener\\(['"]click['"]\\s*,\\s*function\\s*\\(`,
 ].join("|");
 
 /** Loose IIFE close: bare `})` OR full `})();`. */
@@ -670,6 +947,22 @@ const LEAKED_COMPACT_ARROW_NAV_TAIL_RE = new RegExp(
 /** `window.onkeydown = e => { if (e.key === 'ArrowRight') … }` glued into prose. */
 const LEAKED_WINDOW_ONKEYDOWN_NAV_RE = new RegExp(
   `(?:^|\\n|(?<=[.。!?…])\\s*)(?:window|document)\\.onkeydown\\s*=\\s*e\\s*=>\\s*\\{(?=[\\s\\S]{0,2000}?ArrowRight)[\\s\\S]{0,4000}?\\}\\s*;?`,
+  "gi",
+);
+
+/**
+ * Classic minified click/keyboard nav IIFE without `.slide` / ArrowRight:
+ * `(function(){ document.addEventListener('keydown',function(e){ …
+ * document.addEventListener('click',function(e){ if(e.clientX>window.innerWidth/2)go(cur+1); … })();`
+ */
+const LEAKED_COMPACT_CLASSIC_CLICK_NAV_IIFE_RE = new RegExp(
+  `(?:^|\\n|(?<=[.。!?…])\\s*)\\(\\s*function\\s*\\(\\s*\\)\\s*\\{(?=[\\s\\S]{0,6000}?(?:clientX\\s*>\\s*window\\.innerWidth\\s*/\\s*2|go\\s*\\(\\s*cur\\s*\\+\\s*1\\s*\\)|document\\.addEventListener\\(['"]keydown['"]\\s*,\\s*function\\s*\\())[\\s\\S]{0,20000}${DECK_IIFE_STRICT_CLOSE_TAIL}`,
+  "gi",
+);
+
+/** Truncated/completed classic keydown+click handler tail without an IIFE opener. */
+const LEAKED_COMPACT_CLASSIC_KEYDOWN_CLICK_NAV_TAIL_RE = new RegExp(
+  `(?:^|\\n|(?<=[.。!?…])\\s*)document\\.addEventListener\\(['"]keydown['"]\\s*,\\s*function\\s*\\(\\s*\\w*\\s*\\)\\s*\\{(?=[\\s\\S]{0,8000}?(?:clientX\\s*>\\s*window\\.innerWidth|go\\s*\\(\\s*cur))[\\s\\S]{0,16000}${DECK_IIFE_STRICT_CLOSE_TAIL}`,
   "gi",
 );
 
@@ -731,7 +1024,11 @@ const OPEN_DECK_NAV_SCRIPT_RE_LIST = [
   // Truncated compact nav: bare `document.addEventListener('keydown', e=>{…`
   // without deck-stage / querySelectorAll anchors (end_turn mid-script).
   // Allow same-line glue after sentence punctuation (`덱 완성. document…`).
-  /(?:^|\n|[.。!?…]\s*)document\.addEventListener\(['"]keydown['"]\s*,\s*(?:onKey|e\s*=>)/i,
+  /(?:^|\n|[.。!?…]\s*)document\.addEventListener\(['"]keydown['"]\s*,\s*(?:onKey|e\s*=>|function\s*\()/i,
+  // Classic function(e) click-to-advance nav (half-screen / go(cur±1)).
+  /(?:^|\n|[.。!?…]\s*)document\.addEventListener\(['"]click['"]\s*,\s*function\s*\(\s*\w*\s*\)\s*\{(?=[\s\S]{0,2000}?(?:clientX\s*>\s*window\.innerWidth|go\s*\(\s*cur))/i,
+  /(?:^|\n|[.。!?…]\s*)\(\s*function\s*\(\s*\)\s*\{(?=[\s\S]{0,4000}?document\.addEventListener\(['"]keydown['"]\s*,\s*function\s*\()/i,
+  /(?:^|\n|[.。!?…]\s*)\(\s*function\s*\(\s*\)\s*\{(?=[\s\S]{0,6000}?clientX\s*>\s*window\.innerWidth\s*\/\s*2)/i,
   /(?:^|\n|[.。!?…]\s*)(?:window|document)\.addEventListener\(['"](?:touchstart|touchend|wheel)['"]/i,
   /(?:^|\n|[.。!?…]\s*)(?:window|document)\.onkeydown\s*=\s*e\s*=>/i,
   /(?:^|\n)\s*if\s*\(\s*e\.key\s*===\s*['"]ArrowRight['"]\s*\|\|\s*e\.key\s*===\s*['"]ArrowDown['"]/i,
@@ -977,11 +1274,14 @@ function stripTrailingBareToolJson(
  */
 function findInlineDeckNavLeakStart(input: string): number {
   const patterns = [
-    /document\.addEventListener\s*\(\s*['"]keydown['"]\s*,\s*(?:onKey|e\s*=>)/i,
+    /document\.addEventListener\s*\(\s*['"]keydown['"]\s*,\s*(?:onKey|e\s*=>|function\s*\()/i,
+    /document\.addEventListener\s*\(\s*['"]click['"]\s*,\s*function\s*\(\s*\w*\s*\)\s*\{(?=[\s\S]{0,2000}?(?:clientX\s*>\s*window\.innerWidth|go\s*\(\s*cur))/i,
     /(?:window|document)\.addEventListener\s*\(\s*['"](?:touchstart|touchend|wheel)['"]/i,
     /(?:window|document)\.onkeydown\s*=\s*e\s*=>/i,
     /\(\s*\(\s*\)\s*=>\s*\{(?=[\s\S]{0,4000}?document\.querySelectorAll\(['"]\.slide['"]\))/i,
     /\(\s*function\s*\(\s*\)\s*\{(?=[\s\S]{0,4000}?document\.querySelectorAll\(['"]\.slide['"]\))/i,
+    /\(\s*function\s*\(\s*\)\s*\{(?=[\s\S]{0,4000}?document\.addEventListener\(['"]keydown['"]\s*,\s*function\s*\()/i,
+    /\(\s*function\s*\(\s*\)\s*\{(?=[\s\S]{0,6000}?clientX\s*>\s*window\.innerWidth\s*\/\s*2)/i,
     /(?:const|let|var)\s+slides\s*=\s*(?:Array\.prototype\.slice\.call\()?document\.querySelectorAll\(['"]\.slide['"]/i,
   ] as const;
   let best = -1;
@@ -1014,6 +1314,51 @@ function findOpenDeckNavScriptStart(input: string): number {
   const inline = findInlineDeckNavLeakStart(input);
   if (inline !== -1 && (best === -1 || inline < best)) best = inline;
   return best;
+}
+
+/**
+ * Last-resort deck-nav JS scrub. Pattern-specific open/closed matchers above
+ * can miss a dialect or lag a stale build; once prose contains both a nav
+ * listener and a slide-advance fingerprint, chop from the earliest JS opener
+ * so `(function(){ document.addEventListener('keydown',function(e){ …` never
+ * paints in chat.
+ */
+export function stripHardDeckNavJsFingerprints(input: string): string {
+  if (!input) return input;
+  const hasListener =
+    /addEventListener\s*\(\s*['"]keydown['"]/i.test(input)
+    || (
+      /addEventListener\s*\(\s*['"]click['"]/i.test(input)
+      && /clientX/i.test(input)
+    )
+    || /(?:window|document)\.onkeydown\s*=/i.test(input);
+  const hasAdvance =
+    /clientX\s*>\s*window\.innerWidth/i.test(input)
+    || /go\s*\(\s*cur\s*[+-]/i.test(input)
+    || /ArrowRight|ArrowLeft|ArrowDown|PageDown|PageUp/i.test(input)
+    || /querySelectorAll\s*\(\s*['"]\.slide['"]/i.test(input);
+  if (!hasListener || !hasAdvance) return input;
+
+  const starts: number[] = [];
+  const openStart = findOpenDeckNavScriptStart(input);
+  if (openStart !== -1) starts.push(openStart);
+  for (const pattern of [
+    /\(\s*function\s*\(\s*\)\s*\{/i,
+    /\(\s*\(\s*\)\s*=>\s*\{/i,
+    /document\.addEventListener\s*\(\s*['"](?:keydown|click)['"]/i,
+    /(?:window|document)\.onkeydown\s*=/i,
+    /(?:const|let|var)\s+slides\s*=\s*(?:Array\.prototype\.slice\.call\()?document\.querySelectorAll/i,
+    /function\s+go\s*\(\s*\w+\s*\)\s*\{/i,
+  ] as const) {
+    pattern.lastIndex = 0;
+    const match = pattern.exec(input);
+    if (match?.index !== undefined) starts.push(match.index);
+  }
+  if (starts.length === 0) {
+    // Fingerprints present but no opener — drop pure-JS blobs entirely.
+    return /^\s*(?:\(|document\.|function\s)/i.test(input) ? "" : input;
+  }
+  return input.slice(0, Math.min(...starts)).trimEnd();
 }
 
 function stripTrailingOpenDeckNavScript(
@@ -1176,6 +1521,8 @@ export function sanitizeLeakedAgentProse(
   out = out.replace(LEAKED_COMPACT_ARROW_DECK_NAV_IIFE_RE, "");
   out = out.replace(LEAKED_COMPACT_ARROW_NAV_TAIL_RE, "");
   out = out.replace(LEAKED_WINDOW_ONKEYDOWN_NAV_RE, "");
+  out = out.replace(LEAKED_COMPACT_CLASSIC_CLICK_NAV_IIFE_RE, "");
+  out = out.replace(LEAKED_COMPACT_CLASSIC_KEYDOWN_CLICK_NAV_TAIL_RE, "");
   out = out.replace(LEAKED_DECK_NAV_SCRIPT_STORE_RE, "");
   out = out.replace(LEAKED_DECK_NAV_SCRIPT_MANGLED_IIFE_RE, "");
   out = stripOrphanCloseTagFamilies(out, LEAKED_AGENT_PROSE_TAG_NAMES);
@@ -1477,6 +1824,9 @@ export function stripIncompleteTrailingMarkupToken(input: string): string {
   if (isDeckSlidePartialTag(rawName, after)) {
     return input.slice(0, lt).trimEnd();
   }
+  if (isDeckChromePartialTag(rawName, after)) {
+    return input.slice(0, lt).trimEnd();
+  }
   return input;
 }
 
@@ -1550,27 +1900,598 @@ export function sanitizeAssistantProseForDisplay(
   });
   // Debris scrub can leave a truncated tag name (`<link`); strip it now.
   text = stripIncompleteTrailingMarkupToken(text);
+  // Line-heuristic before any trailing `[\s\S]*$` CSS scrapers so Hangul
+  // after a mid-message `.tag.inv{…}` dump is preserved.
+  text = stripLeakedDeckCodeDebrisBlocksRespectingArtifacts(text, preservingArtifacts);
   const stripDeckCssTail =
     !streaming || !hasUnclosedTrailingArtifact(text);
   if (stripDeckCssTail) {
     text = stripTrailingDeckFrameworkCssLeak(text);
   }
+  // Kit `:root{--bg:#…}` dumps can appear mid-message (not only trailing).
+  // Never scrub inside preserved artifact bodies (live style tokens stay intact).
+  text = stripLeakedCssCustomPropertyBlocksRespectingArtifacts(text, preservingArtifacts);
+  text = stripLeakedDeckCodeDebrisBlocksRespectingArtifacts(text, preservingArtifacts);
   text = stripTrailingDeckHtmlMarkupLeakRespectingArtifacts(text, preservingArtifacts);
+  // Second heuristic pass: catch residues left after named scrapers
+  // (e.g. incomplete open tags / property continuations).
+  text = stripLeakedDeckCodeDebrisBlocksRespectingArtifacts(text, preservingArtifacts);
+  // Absolute residual pass: strip any remaining deck HTML comments/tags
+  // (single-line glued dumps, table rows, entity-encoded tags) so unknown
+  // dialects cannot re-enter the bubble after reload.
+  text = stripResidualDeckHtmlMarkupRespectingArtifacts(text, preservingArtifacts);
+  // Final incomplete open-tag chop — catches residues like `<span style="`
+  // left by an earlier mid-line cut that no longer matches typography regexes.
+  text = stripIncompleteTrailingMarkupToken(text);
+  // Absolute last pass: classic/minified click-nav and keydown advance must
+  // never survive a dialect miss or partial open-form match.
+  text = stripHardDeckNavJsFingerprints(text);
   return text;
 }
 
 /** Drop truncated deck stylesheet/CSS leaked into chat prose (mid-artifact abort). */
 export function stripTrailingDeckFrameworkCssLeak(input: string): string {
   if (!input) return input;
-  const match = /(?:^|\n\n|\n)((?:\.slide|(?:\.[A-Za-z_-][\w-]*|#[A-Za-z_-][\w-]*|h[1-6]|p|ul|li|body|section(?:\.[\w-]+)?)\s*\{)[\s\S]*)$/.exec(input);
+  const match = /(?:^|\n\n|\n)((?::root\s*\{|@(?:-webkit-)?(?:keyframes\s+[\w-]+|font-face)\s*\{|@(?:media|page|supports|layer)\b[^{]*\{|@import\s+(?:url\(|["'])|<style\b[^>]*>|(?:from|to|\d+%)\s*\{|(?:\.slide|(?:(?:\.[A-Za-z_-][\w-]*)+|#[A-Za-z_-][\w-]*|h[1-6]|p|ul|li|body|section(?:\.[\w-]+)?)\s*\{))[\s\S]*)$/i.exec(input);
   if (!match || match.index === undefined) return input;
   const tail = match[1] ?? "";
   const looksLikeDeckFramework =
     /width:\s*1920px|height:\s*1080px|box-sizing:\s*border-box|\.grain::after/i.test(tail)
-    || /<\/style>|<section\b[^>]*\bclass\s*=\s*["'][^"']*\bslide\b|<!--\s*SLIDE\b/i.test(tail)
-    || /^\.slide\s*\{[\s\S]*/.test(tail.trim());
+    || /<\/style>|<style\b|<section\b[^>]*\bclass\s*=\s*["'][^"']*\bslide\b|<!--\s*(?:SLIDE|Daisy|motif|deco)\b/i.test(tail)
+    || /^\.slide\s*\{[\s\S]*/.test(tail.trim())
+    || /\.deco-[\w-]+(?:\s*\{|::)/i.test(tail)
+    || /(?:^|\n)\s*animation\s*:/i.test(tail)
+    || /\.cls-\d+\s*\{/i.test(tail)
+    // Utility / compound class dumps (`.tag.inv{border-color:…}`)
+    || /(?:^|\n)\s*(?:\.[A-Za-z_-][\w-]*){1,6}\s*\{[\s\S]*(?:border(?:-color)?|color|padding|background|rgba?\(|#[0-9A-Fa-f]{3,8})/i.test(tail)
+    || /@keyframes\s+[\w-]+\s*\{/i.test(tail)
+    || /@font-face\b/i.test(tail)
+    || /@media\b/i.test(tail)
+    || /@import\s+(?:url\(|["'])/i.test(tail)
+    || /@page\b/i.test(tail)
+    || /@supports\b/i.test(tail)
+    || /@layer\b/i.test(tail)
+    || /(?:^|\n)(?:from|to|\d+%)\s*\{[\s\S]*(?:transform|opacity|translate|rotate)/i.test(tail)
+    || looksLikeLeakedCssCustomPropertyBlock(tail);
   if (!looksLikeDeckFramework) return input;
   return input.slice(0, match.index).trimEnd();
+}
+
+/**
+ * True when a single chat line is deck CSS/HTML chrome rather than prose.
+ * Used as a catch-all after named regex scrapers so unknown utility classes
+ * (`.tag.inv`, `.chip.on`, …) and multi-line `color:\n#hex}` splits cannot
+ * re-enter the bubble.
+ */
+export function looksLikeDeckCodeDebrisLine(line: string): boolean {
+  const trimmed = String(line ?? "").trim();
+  if (!trimmed) return false;
+
+  if (/^#{1,6}\s+\S/.test(trimmed)) return false;
+  if (/^(?:[-*+]|\d+[.)])\s+\S/.test(trimmed)) return false;
+
+  if (/^[}\]\uFF5D]+\s*$/u.test(trimmed)) return true;
+  if (/^(?:[}\]\uFF5D]\s*|<\/?(?:pre|code|div|span|p)>\s*)+$/iu.test(trimmed)) return true;
+  if (/^\}?\s*<\/pre>\s*\}?/i.test(trimmed) && !/[\uac00-\ud7af]{3,}/.test(trimmed)) {
+    return true;
+  }
+  if (
+    /^<[a-zA-Z][\w:-]{0,12}(?:\s|$)/.test(trimmed)
+    && !/>/.test(trimmed)
+    && (/(?:transition|transform|background|animation|opacity|cubic-bezier|filter|will-change)\b/i.test(trimmed)
+      || /[\uac00-\ud7af]/.test(trimmed))
+  ) {
+    return true;
+  }
+  if (looksLikeSoftCssDeclarationLine(trimmed)) return true;
+  if (/^cubic-bezier\s*\(/i.test(trimmed)) return true;
+  if (
+    /^[\d.]+(?:ms|s)\b/i.test(trimmed)
+    && /(?:ease|cubic-bezier|\(|,|;)/i.test(trimmed)
+  ) {
+    return true;
+  }
+  if (looksLikeDeckJsDebrisLine(trimmed)) return true;
+  if (/-->\s*$/.test(trimmed) && trimmed.length <= 80 && !/[\uac00-\ud7af]{8,}/.test(trimmed)) {
+    return true;
+  }
+
+  if (/^<!--/.test(trimmed) || /<!--[\s\S]*-->/.test(trimmed)) {
+    return true;
+  }
+  if (/^(?:<\/?div>\s*)+$/i.test(trimmed)) {
+    return true;
+  }
+  if (/^(?:[\w\s/·.\-]{1,40}|[\uac00-\ud7af\s/·.\-]{1,20})<\/(?:p|div|h[1-6]|span|li|ul|ol)>\s*$/iu.test(trimmed)) {
+    return true;
+  }
+  if (/^(?:<\/(?:div|span|section|header|footer|nav|aside|main|article|h[1-6]|p|ul|ol|li|table|tr|td|th|button|svg|style|script|pre|code)+>\s*)+$/i.test(trimmed)) {
+    return true;
+  }
+  if (
+    /^<\/?(?:div|li|ul|ol|p|span|section|header|footer|nav|aside|main|article|h[1-6]|strong|em|button|table|thead|tbody|tr|td|th|figure|figcaption|pre|code)\b/i.test(
+      trimmed,
+    )
+  ) {
+    return true;
+  }
+  if (
+    /(?:<!--|<(?:li|div|ul|ol|table|tr|td|th|section|pre)\b)/i.test(trimmed)
+    && /(?:-->|<\/(?:li|div|ul|ol|p|td|tr|th|section|pre)|<br\b)/i.test(trimmed)
+  ) {
+    return true;
+  }
+  if (/^#[0-9A-Fa-f]{3,8}\s*["']\s*>/.test(trimmed)) {
+    return true;
+  }
+  if (
+    /^(?:#[0-9A-Fa-f]{3,8}\s*;|(?:none|solid|inherit|px|em|rem|%)\s*;)/i.test(trimmed)
+    && /(?:[a-zA-Z-]+\s*:|<\/?[a-zA-Z]|["']\s*>)/.test(trimmed)
+  ) {
+    return true;
+  }
+  if (/^(?:#[0-9A-Fa-f]{3,8}\s*;\s*)?--[A-Za-z_][\w-]*\s*:/.test(trimmed)) {
+    return true;
+  }
+  if (/^#[0-9A-Fa-f]{3,8}\s*;\s*--[A-Za-z_]/.test(trimmed)) {
+    return true;
+  }
+  if (
+    /^<\/?[a-zA-Z][\w:-]*\b/.test(trimmed)
+    && /(?:\bstyle\s*=|\bclass\s*=|data-(?:slide|deck)|role\s*=\s*["']presentation|aria-hidden\s*=\s*["']true|<(?:svg|path|circle|rect|video|canvas|iframe|object|embed|picture|source|math|foreignObject)\b|<\/(?:div|section|span|svg|h[1-6]|style|pre)\b|<br\b)/i.test(
+      trimmed,
+    )
+  ) {
+    return true;
+  }
+  if (
+    /^(?:(?:\.[A-Za-z_-][\w-]*){1,8}|#[A-Za-z_-][\w-]*|@(?:keyframes|font-face|media|import|supports|layer|page)\b|:(?:root|from|to)\b|(?:from|to|\d+%)\s*\{)/i.test(
+      trimmed,
+    )
+  ) {
+    return true;
+  }
+  if (/^--[A-Za-z_][\w-]*\s*:/.test(trimmed) && /(?:#|rgba?\(|hsla?\()/i.test(trimmed)) {
+    return true;
+  }
+  if (
+    /^(?:-?[a-zA-Z]+(?:-[a-zA-Z0-9]+)*)\s*:\s*\S/.test(trimmed)
+    && /(?:rgba?\(|hsla?\(|#[0-9A-Fa-f]{3,8}|\d+(?:px|em|rem|%|vh|vw|ms|s)|border|padding|margin|font-|display\s*:|transform|opacity|background|filter|transition)/i.test(
+      trimmed,
+    )
+  ) {
+    return true;
+  }
+  const cssSignals = (trimmed.match(/[{};:\uFF5D]/gu) ?? []).length;
+  const hangul = (trimmed.match(/[\uac00-\ud7af]/g) ?? []).length;
+  if (cssSignals >= 3 && hangul < 2 && /[{}\uFF5D]/u.test(trimmed) && /:/.test(trimmed)) {
+    return true;
+  }
+  const htmlTags = (trimmed.match(/<\/?[a-zA-Z][\w:-]*\b/g) ?? []).length;
+  if (htmlTags >= 2 && /<\/?(?:li|div|ul|ol|p|span|strong|pre)\b/i.test(trimmed)) {
+    return true;
+  }
+  if (/^&lt;\/?[a-zA-Z]/.test(trimmed) && /(?:style\s*=|class\s*=|&gt;)/i.test(trimmed)) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Colon-less CSS property dumps (`background 200ms`, `filter blur(8px)`,
+ * `will-change transform`, `transition all 200ms`). Prefer shape over allowlist.
+ */
+export function looksLikeSoftCssDeclarationLine(line: string): boolean {
+  const trimmed = String(line ?? "").trim();
+  if (!trimmed || /:/.test(trimmed)) return false;
+  if (
+    !/^(?:-?(?:webkit|moz|ms)-)?[a-z][\w-]*(?:\s+[^\n:;{}]{1,64}){1,6};?\s*$/i.test(trimmed)
+  ) {
+    return false;
+  }
+  if (/[\uac00-\ud7af]/.test(trimmed)) return false;
+  const cssValueSignal =
+    /(?:\d+(?:\.\d+)?(?:px|em|rem|%|vh|vw|ms|s|deg|fr|ch)?\b|\b(?:ease(?:-in|-out|-in-out)?|linear|infinite|alternate|forwards|backwards|both|none|auto|inherit|initial|unset|cover|contain|blur|circle|ellipse|closest-side|farthest-side|all|transform|opacity|scroll|contents|fixed|absolute|relative|sticky|flex|grid|block|inline|row|column|wrap|nowrap|hidden|visible|solid|dashed|dotted)\b|rgba?\(|hsla?\(|#[0-9A-Fa-f]{3,8}\b|cubic-bezier\s*\(|linear-gradient\s*\(|matrix3d?\s*\(|(?:translate|scale|rotate|skew)[XYZxyz3d]?\s*(?:\(|$))/i;
+  if (cssValueSignal.test(trimmed)) return true;
+  const two = /^(?:-?(?:webkit|moz|ms)-)?([a-z][\w-]*)\s+([a-z0-9.#%()-][\w.#%()-]*)\s*;?\s*$/i.exec(
+    trimmed,
+  );
+  if (!two) return false;
+  const prop = (two[1] ?? "").toLowerCase();
+  return prop.includes("-")
+    || /^(?:opacity|transform|filter|transition|animation|display|position|overflow|float|clear|cursor|visibility|content|appearance|isolation|resize|left|right|top|bottom|width|height|margin|padding|border|color|background|outline|flex|grid|gap|order|scale|rotate|skew)$/i.test(
+      prop,
+    );
+}
+
+/** Hex / unit / brace-only continuations of a prior CSS dump line. */
+export function looksLikeDeckCssContinuationLine(line: string): boolean {
+  const trimmed = String(line ?? "").trim();
+  if (!trimmed) return false;
+  if (/^#[0-9A-Fa-f]{3,8}\s*;?\s*[}\uFF5D]?\s*$/u.test(trimmed)) return true;
+  if (/^#[0-9A-Fa-f]{3,8}\s*;\s*(?:--|[a-zA-Z-]+\s*:)/.test(trimmed)) return true;
+  if (/^rgba?\([^)]*\)\s*;?\s*[}\uFF5D]?\s*$/iu.test(trimmed)) return true;
+  if (/^[\d.]+(?:px|em|rem|%|vh|vw|ms|s)?\s*;?\s*[}\uFF5D]?\s*$/iu.test(trimmed)) return true;
+  if (/^[a-zA-Z-]+\s*:\s*[^;{]+;?\s*[}\uFF5D]?\s*$/u.test(trimmed)) return true;
+  if (/^--[A-Za-z_][\w-]*\s*:/.test(trimmed)) return true;
+  if (/^[}\]\uFF5D]+\s*$/u.test(trimmed)) return true;
+  if (/^cubic-bezier\s*\(/i.test(trimmed)) return true;
+  if (looksLikeSoftCssDeclarationLine(trimmed)) return true;
+  if (/^\);?\s*$/.test(trimmed)) return true;
+  if (/^[(){};,\s\uFF5D]+$/u.test(trimmed)) return true;
+  return false;
+}
+
+/** Web Animations / DOM / GSAP-ish scraps leaked from deck demos. */
+export function looksLikeDeckJsDebrisLine(line: string): boolean {
+  const trimmed = String(line ?? "").trim();
+  if (!trimmed) return false;
+  if (/\b(?:document|window)\.\w+\s*\(/.test(trimmed)) return true;
+  if (/\brequestAnimationFrame\s*\(/.test(trimmed)) return true;
+  if (/\bnew\s+(?:Animation|KeyframeEffect)\s*\(/.test(trimmed)) return true;
+  if (/\w+\.(?:animate|cancel|addEventListener|getAnimations)\s*\(/.test(trimmed)) return true;
+  if (/^(?:const|let|var)\s+\w+\s*=\s*(?:document\.|window\.|\w+\.(?:animate|querySelector))/.test(trimmed)) {
+    return true;
+  }
+  if (/\b(?:morphSVG|gsap|ScrollTrigger|KeyframeEffect)\b/i.test(trimmed)) return true;
+  if (/\bTrigger\s*,\s*timeline\b/i.test(trimmed)) return true;
+  if (/<\/pre>/i.test(trimmed) && /(?:animate|querySelector|morphSVG|timeline|const\s+\w+|addEventListener)/i.test(trimmed)) {
+    return true;
+  }
+  return false;
+}
+
+function lineOpensUnclosedCssBlock(line: string): boolean {
+  const open = (line.match(/[{([]/g) ?? []).length;
+  const close = (line.match(/[})\]]/g) ?? []).length;
+  return open > close;
+}
+
+/**
+ * Remove CSS/HTML chrome lines from assistant chat prose. Specific scrapers
+ * handle known dialects; this catch-all drops unknown utility-class dumps and
+ * multi-line color splits so they cannot paint the bubble after reload.
+ */
+export function stripLeakedDeckCodeDebrisBlocks(input: string): string {
+  if (!input) return input;
+  const lines = String(input).split("\n");
+  const kept: string[] = [];
+  let inCssContinuation = false;
+
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i] ?? "";
+    const trimmed = line.trim();
+    if (!trimmed) {
+      kept.push(line);
+      continue;
+    }
+
+    const inlineCut = cutInlineDeckHtmlPrefix(line);
+    if (inlineCut !== undefined) {
+      inCssContinuation = false;
+      if (inlineCut === null) {
+        while (kept.length > 0 && !(kept[kept.length - 1] ?? "").trim()) {
+          kept.pop();
+        }
+        continue;
+      }
+      kept.push(inlineCut);
+      continue;
+    }
+
+    const isDebris =
+      looksLikeDeckCodeDebrisLine(trimmed)
+      || (inCssContinuation && looksLikeDeckCssContinuationLine(trimmed));
+
+    if (isDebris) {
+      inCssContinuation =
+        lineOpensUnclosedCssBlock(trimmed)
+        || (inCssContinuation && !/[})\]\uFF5D]/u.test(trimmed));
+      while (kept.length > 0 && !(kept[kept.length - 1] ?? "").trim()) {
+        kept.pop();
+      }
+      continue;
+    }
+
+    inCssContinuation = false;
+    kept.push(line);
+  }
+
+  while (kept.length > 0 && !(kept[kept.length - 1] ?? "").trim()) {
+    kept.pop();
+  }
+  const collapsed: string[] = [];
+  for (const line of kept) {
+    if (!(line ?? "").trim()) {
+      if (collapsed.length === 0) continue;
+      if (!(collapsed[collapsed.length - 1] ?? "").trim()) continue;
+    }
+    collapsed.push(line);
+  }
+  return collapsed.join("\n").replace(/\n+$/g, "");
+}
+
+/**
+ * When Hangul/status prose is glued to a deck HTML/CSS/JS dump on the same
+ * line, keep the human prefix and drop the dump.
+ */
+function cutInlineDeckHtmlPrefix(line: string): string | null | undefined {
+  const leadScrap = /^(?:[\s}\]\uFF5D]+|<\/?(?:pre|code)(?:\s[^>]*)?>)+/iu.exec(line);
+  if (leadScrap) {
+    const rest = line.slice(leadScrap[0].length).trimStart();
+    if (
+      rest
+      && /[\uac00-\ud7af]/.test(rest)
+      && !looksLikeDeckCodeDebrisLine(rest)
+      && !looksLikeDeckJsDebrisLine(rest)
+    ) {
+      return rest;
+    }
+  }
+
+  const softCut =
+    /^(.*?)(\s+)(?=(?:-?(?:webkit|moz|ms)-)?[a-z][\w-]*(?:\s+[^\n:;{}]{1,64}){1,6};?\s*$|(?:document|window)\.\w+\s*\(|requestAnimationFrame\s*\(|cubic-bezier\s*\()/i.exec(
+      line,
+    );
+  if (softCut) {
+    const prefixRaw = softCut[1] ?? "";
+    const ticksBefore = (prefixRaw.match(/`/g) ?? []).length;
+    if (ticksBefore % 2 !== 1) {
+      const prefix = prefixRaw.trimEnd();
+      const dump = line.slice(prefixRaw.length).trimStart();
+      if (
+        prefix
+        && /[\p{L}\p{N}]/u.test(prefix)
+        && !looksLikeDeckCodeDebrisLine(prefix)
+        && (looksLikeSoftCssDeclarationLine(dump) || looksLikeDeckJsDebrisLine(dump) || /^cubic-bezier\s*\(/i.test(dump))
+      ) {
+        return prefix;
+      }
+    }
+  }
+
+  const match = /^(.*?)(\s*)(<!--|<(?:li|div|ul|ol|table|tr|td|th|section|pre)\b)/i.exec(line);
+  if (!match || match.index === undefined) return undefined;
+  const prefixRaw = match[1] ?? "";
+  const ticksBefore = (prefixRaw.match(/`/g) ?? []).length;
+  if (ticksBefore % 2 === 1) return undefined;
+  const prefix = prefixRaw.trimEnd();
+  const dump = line.slice(prefixRaw.length);
+  if (!prefix) return undefined;
+  if (looksLikeDeckCodeDebrisLine(prefix)) return undefined;
+  if (!/[\p{L}\p{N}]/u.test(prefix)) return undefined;
+  if (
+    !looksLikeDeckCodeDebrisLine(dump.trim())
+    && !/<!--|<\/(?:li|div|ul|ol|p|td|pre)|<li\b[^>]*>[\s\S]*<\/li>/i.test(dump)
+  ) {
+    return undefined;
+  }
+  return prefix;
+}
+
+/**
+ * Absolute last-pass: strip residual deck HTML comments/tags that line
+ * scrapers left (single-line glued dumps, table rows, entity-encoded tags).
+ */
+export function stripResidualDeckHtmlMarkupFromProse(input: string): string {
+  if (!input) return input;
+  let text = String(input);
+
+  const fences: string[] = [];
+  text = text.replace(/```[\s\S]*?```/g, (m) => {
+    fences.push(m);
+    return `\0FENCE${fences.length - 1}\0`;
+  });
+  const inlines: string[] = [];
+  text = text.replace(/`[^`\n]+`/g, (m) => {
+    inlines.push(m);
+    return `\0INLINE${inlines.length - 1}\0`;
+  });
+
+  text = text.replace(/<!--[\s\S]*?-->/g, "");
+  text = text.replace(/<!--[\s\S]*$/g, "");
+
+  const paired =
+    "li|ul|ol|div|section|header|footer|nav|aside|main|article|table|thead|tbody|tr|td|th|p|h[1-6]|span|strong|em|button|figure|figcaption|pre|code";
+  for (let pass = 0; pass < 5; pass += 1) {
+    const before = text;
+    text = text.replace(new RegExp(`<(${paired})\\b[^>]*>[\\s\\S]*?<\\/\\1>`, "gi"), "");
+    if (text === before) break;
+  }
+  text = text.replace(new RegExp(`<\\/?(?:${paired}|br)\\b[^>]*\\/?>`, "gi"), "");
+  text = text.replace(
+    /&lt;\/?(?:li|div|ul|ol|span|p|strong|section|table|tr|td|th|pre|code)\b[\s\S]*?(?:&gt;|>)/gi,
+    "",
+  );
+  text = text.replace(
+    /(?:^|\n)[^\n]*(?:dark|left|right|col\s*\d|layout|statement|registration|tips)\s*-->[^\n]*/gi,
+    "\n",
+  );
+  text = text.replace(/(?:^|\n)\s*[}\]\uFF5D]+\s*(?=\n|$)/gu, "\n");
+  text = text.replace(/\}?\s*<\/?pre\b[^>]*>\s*\}?/gi, "");
+
+  text = text.replace(/\0FENCE(\d+)\0/g, (_, i) => fences[Number(i)] ?? "");
+  text = text.replace(/\0INLINE(\d+)\0/g, (_, i) => inlines[Number(i)] ?? "");
+
+  return text.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trimEnd();
+}
+
+export function stripResidualDeckHtmlMarkupRespectingArtifacts(
+  input: string,
+  preserveArtifactBodies: boolean,
+): string {
+  if (!preserveArtifactBodies) return stripResidualDeckHtmlMarkupFromProse(input);
+  let result = "";
+  let cursor = 0;
+  while (cursor < input.length) {
+    const open = findArtifactOpenIndex(input, cursor);
+    if (open === -1) {
+      result += stripResidualDeckHtmlMarkupFromProse(input.slice(cursor));
+      break;
+    }
+    const prose = stripResidualDeckHtmlMarkupFromProse(input.slice(cursor, open));
+    result += prose;
+    if (
+      prose.length > 0
+      && !prose.endsWith("\n")
+      && open > cursor
+      && input[open - 1] === "\n"
+    ) {
+      result += "\n";
+    }
+    const gt = input.indexOf(">", open);
+    if (gt === -1) {
+      result += input.slice(open);
+      break;
+    }
+    const close = input.toLowerCase().indexOf("</artifact>", gt);
+    if (close === -1) {
+      result += input.slice(open);
+      break;
+    }
+    const end = close + "</artifact>".length;
+    result += input.slice(open, end);
+    cursor = end;
+  }
+  return result;
+}
+
+export function stripLeakedDeckCodeDebrisBlocksRespectingArtifacts(
+  input: string,
+  preserveArtifactBodies: boolean,
+): string {
+  if (!preserveArtifactBodies) return stripLeakedDeckCodeDebrisBlocks(input);
+  let result = "";
+  let cursor = 0;
+  while (cursor < input.length) {
+    const open = findArtifactOpenIndex(input, cursor);
+    if (open === -1) {
+      result += stripLeakedDeckCodeDebrisBlocks(input.slice(cursor));
+      break;
+    }
+    const prose = stripLeakedDeckCodeDebrisBlocks(input.slice(cursor, open));
+    result += prose;
+    // Re-insert the newline that commonly separates chat prose from `<artifact`
+    // when the line scrubber trimmed it off the prose slice.
+    if (
+      prose.length > 0
+      && !prose.endsWith("\n")
+      && open > cursor
+      && input[open - 1] === "\n"
+    ) {
+      result += "\n";
+    }
+    const gt = input.indexOf(">", open);
+    if (gt === -1) {
+      result += input.slice(open);
+      break;
+    }
+    const close = input.toLowerCase().indexOf("</artifact>", gt);
+    if (close === -1) {
+      result += input.slice(open);
+      break;
+    }
+    const end = close + "</artifact>".length;
+    result += input.slice(open, end);
+    cursor = end;
+  }
+  return result;
+}
+
+/**
+ * True for `:root{--bg:#…;--coral:#…}` (and multiline hex splits) that must
+ * never appear as chat copy — models often emit kit tokens before/without the
+ * deck artifact.
+ */
+function looksLikeLeakedCssCustomPropertyBlock(text: string): boolean {
+  const sample = String(text ?? "").trim();
+  if (!sample) return false;
+  if (!/^:root\b/i.test(sample) && !/--[a-zA-Z_][\w-]*\s*:/.test(sample)) return false;
+  const customProps = sample.match(/--[a-zA-Z_][\w-]*\s*:/g) ?? [];
+  if (customProps.length < 2) return false;
+  // Palette / surface dumps always carry hex (optionally split across lines).
+  const hexHits = sample.match(/#[0-9A-Fa-f]{3,8}\b/g) ?? [];
+  if (hexHits.length < 2 && !/--(?:bg|fg|ink|paper|surface|outline|coral|lime|sky)\b/i.test(sample)) {
+    return false;
+  }
+  // Reject if it still looks like normal prose with an incidental mention.
+  if (/[가-힣A-Za-z]{12,}/.test(sample.replace(/:root|var\(--[\w-]+\)|--[\w-]+/gi, " "))) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Strip standalone kit `:root { --token: #hex }` dumps anywhere in chat prose
+ * (not only trailing). Keeps real sentences; drops pure token blocks.
+ */
+export function stripLeakedCssCustomPropertyBlocks(input: string): string {
+  if (!input) return input;
+  let text = String(input);
+  // Compact or pretty `:root{--a:#…;--b:#…}` blocks (hex may wrap after `:`).
+  text = text.replace(
+    /(?:^|\n)\s*:root\s*\{[\s\S]*?\}/gi,
+    (block, offset) => (looksLikeLeakedCssCustomPropertyBlock(block) ? (offset > 0 ? "\n" : "") : block),
+  );
+  // Entire-message dump without a closing `}` yet (streaming / aborted style).
+  // Keep short Hangul/Latin prefixes (`초안.` / `Done.`) — only wipe when the
+  // residue after token/hex scrub has no real prose.
+  const residue = text
+    .replace(/:root|--[\w-]+|#[0-9A-Fa-f]+|var\([^)]*\)|[{};:,()\s]/gi, " ")
+    .trim();
+  if (
+    looksLikeLeakedCssCustomPropertyBlock(text)
+    && !/<[a-z]/i.test(text)
+    && !/[가-힣]{2,}/.test(residue)
+    && !/[A-Za-z]{3,}/.test(residue)
+  ) {
+    return "";
+  }
+  // Trailing / mid-message bare `--token:#hex;` dumps (no `:root{…}` wrapper).
+  text = text.replace(
+    /(?:\n|^)\s*(?:--[\w-]+\s*:\s*[^;\n]+;\s*){2,}[^\n]*/g,
+    (block, offset) => {
+      if (!looksLikeLeakedCssCustomPropertyBlock(block)) return block;
+      return offset > 0 ? "" : "";
+    },
+  );
+  text = text.replace(/\n{3,}/g, "\n\n");
+  // Do not trim — preserving a trailing `\n` before `<artifact` matters for
+  // streaming/history equality and monotonic chat growth.
+  if (!text.trim()) return "";
+  return text;
+}
+
+function stripLeakedCssCustomPropertyBlocksRespectingArtifacts(
+  input: string,
+  preserveArtifactBodies: boolean,
+): string {
+  if (!preserveArtifactBodies) return stripLeakedCssCustomPropertyBlocks(input);
+  let result = "";
+  let cursor = 0;
+  while (cursor < input.length) {
+    const open = input.indexOf("<artifact", cursor);
+    if (open === -1) {
+      result += stripLeakedCssCustomPropertyBlocks(input.slice(cursor));
+      break;
+    }
+    result += stripLeakedCssCustomPropertyBlocks(input.slice(cursor, open));
+    const gt = input.indexOf(">", open);
+    if (gt === -1) {
+      result += input.slice(open);
+      break;
+    }
+    const close = input.toLowerCase().indexOf("</artifact>", gt);
+    if (close === -1) {
+      // Open artifact: scrub prose before it, keep the open body untouched.
+      result += input.slice(open);
+      break;
+    }
+    const end = close + "</artifact>".length;
+    result += input.slice(open, end);
+    cursor = end;
+  }
+  return result;
 }
 
 /**
@@ -1579,7 +2500,9 @@ export function stripTrailingDeckFrameworkCssLeak(input: string): string {
  * tags across SSE boundaries.
  */
 export function createStreamingAssistantProseGuard(
-  options: Omit<SanitizeAssistantProseOptions, "streaming"> = {},
+  options: Omit<SanitizeAssistantProseOptions, "streaming"> & {
+    preserveOpenArtifact?: boolean;
+  } = {},
 ): {
   feed: (delta: string) => string;
   flush: () => string;

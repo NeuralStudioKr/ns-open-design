@@ -216,7 +216,7 @@ A. **아니요.** vendor 를 git에 포함하거나, CI에서 sync 후 코드만
 
 **Q. ECR 도입하면?**  
 A. CI에서 image build·push → EC2는 `docker compose pull` 만. vendor 는 **이미지 build 시** Dockerfile COPY 로 처리.  
-**설계 SSOT (2026-07-31):** [52-1 Docker 이미지 CI·ECR 배포 설계](./52-1_Docker_이미지_CI_ECR_배포_설계.md). 단기 EC2 빌드 가속은 [52-0](./52-0_Docker_배포_빌드_가속_현황.md).
+**설계 SSOT (2026-07-31):** [57-1 Docker 이미지 CI·ECR 배포 설계](./57-1_Docker_이미지_CI_ECR_배포_설계.md). 단기 EC2 빌드 가속은 [57-0](./57-0_Docker_배포_빌드_가속_현황.md).
 
 ---
 

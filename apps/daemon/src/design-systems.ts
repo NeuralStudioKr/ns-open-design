@@ -2325,7 +2325,7 @@ function upsertBlockquoteMeta(body: string, key: string, value: string): string 
 function buildDraftDesignSystemBody(input: UserDesignSystemInput & { title: string }): string {
   const category = cleanText(input.category) || 'Custom';
   const surface = input.surface ?? 'web';
-  const summary = cleanText(input.summary) || 'A user-authored design system for future Open Design projects.';
+  const summary = cleanText(input.summary) || 'A user-authored design system for future projects.';
   const sourceNotes = cleanText(input.sourceNotes);
   return `# ${input.title}
 
@@ -2494,7 +2494,7 @@ function renderSkill(input: {
   const skillName = slugify(input.title);
   return `---
 name: ${skillName}
-description: Use this skill when generating Open Design artifacts that should follow ${input.title}.
+description: Use this skill when generating design artifacts that should follow ${input.title}.
 user-invocable: true
 ---
 

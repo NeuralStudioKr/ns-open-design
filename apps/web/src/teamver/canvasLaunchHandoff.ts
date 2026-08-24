@@ -40,7 +40,8 @@ export function readTeamverCanvasLaunchHandoff(): TeamverCanvasLaunchHandoff | n
   const title = readOptionalParam(params, TITLE_PARAM, 80);
   const preview = readOptionalParam(params, PREVIEW_PARAM, 180);
   const threadTitle = readOptionalParam(params, THREAD_PARAM, 80);
-  const updatedAt = readOptionalParam(params, UPDATED_PARAM, 80) || revision;
+  // Do not fall back to revision — rev ids are not dates (modal used to echo them).
+  const updatedAt = readOptionalParam(params, UPDATED_PARAM, 80);
   const sectionsRaw = params.get(SECTIONS_PARAM)?.trim() ?? "";
   const sectionCountParsed = Number(sectionsRaw);
   const sectionCount =
@@ -123,6 +124,6 @@ export function mergeCanvasLaunchHandoffPreview(
     sectionCount: live.sectionCount ?? base.sectionCount,
     headings:
       live.headings && live.headings.length > 0 ? live.headings : base.headings,
-    updatedAt: live.updatedAt?.trim() || base.updatedAt || base.revision,
+    updatedAt: live.updatedAt?.trim() || base.updatedAt,
   };
 }

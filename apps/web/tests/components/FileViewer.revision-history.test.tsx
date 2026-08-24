@@ -54,4 +54,39 @@ describe('FileViewer revision history', () => {
     fireEvent.click(screen.getByTestId('file-revision-history-toggle'));
     expect(screen.getByTestId('file-revision-history-panel')).toBeTruthy();
   });
+
+  it('polls revision list while history is open and retention cleanup is pending', async () => {
+    const initialSource = heroSource();
+    const { fetchMock, getListCallCount } = createProjectFileRevisionFetchMock({
+      projectId: 'project-1',
+      fileName: 'deck.html',
+      initialSource,
+      initialRetentionPending: true,
+    });
+    vi.stubGlobal('fetch', vi.fn(fetchMock));
+
+    render(
+      <FileViewer
+        projectId="project-1"
+        projectKind="slide_deck"
+        file={htmlPreviewFile()}
+        liveHtml={initialSource}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(getListCallCount()).toBeGreaterThanOrEqual(1);
+    });
+
+    vi.useFakeTimers();
+    fireEvent.click(screen.getByTestId('file-revision-history-toggle'));
+    const countAfterOpen = getListCallCount();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4_100);
+    });
+
+    expect(getListCallCount()).toBeGreaterThan(countAfterOpen);
+    vi.useRealTimers();
+  });
 });

@@ -1,9 +1,15 @@
 import type { ChatMessage } from "../types";
 import { stripAllClosedArtifacts } from "../artifacts/strip";
+import { stripDeckInFlightStatusResidue } from "../teamver/deckDeliverableProse";
 import { assistantMessageTextBody, messageHasVisibleProse } from "./chat-events";
 import { isEmptyAssistantShell } from "./conversation-message-dedupe";
 import { deriveFileOps } from "./file-ops";
 import { isAutoContinueIncompleteOutputPrompt } from "./resume";
+import { isSlideCountTopUpPrompt } from "../teamver/slideCountTopUp";
+
+function isHiddenAutomationUserPrompt(content: string | null | undefined): boolean {
+  return isAutoContinueIncompleteOutputPrompt(content) || isSlideCountTopUpPrompt(content);
+}
 
 export type ChatMessageRenderContext = {
   streaming: boolean;
@@ -116,7 +122,7 @@ function findVisibleUserTurnStart(
     const previous = messages[index - 1];
     if (
       previous?.role === "user"
-      && !isAutoContinueIncompleteOutputPrompt(previous.content)
+      && !isHiddenAutomationUserPrompt(previous.content)
     ) {
       return index - 1;
     }
@@ -134,7 +140,7 @@ function findVisibleUserTurnEnd(
     const message = messages[index];
     if (
       message?.role === "user"
-      && !isAutoContinueIncompleteOutputPrompt(message.content)
+      && !isHiddenAutomationUserPrompt(message.content)
     ) {
       return index;
     }
@@ -196,7 +202,14 @@ function hasEmbedVisibleProseBody(message: ChatMessage): boolean {
   const stripped = stripAllClosedArtifacts(body)
     .replace(/<artifact\b[\s\S]*$/i, "")
     .trim();
-  return stripped.length > 0;
+  if (!stripped) return false;
+  // Settled runs: leftover in-flight status ("작성 중" / live-lead copy) must
+  // not count as visible prose — otherwise completed-artifact lead is blocked.
+  // Strip residue lines so long progressive explanations still count as visible.
+  if (assistantRunSucceeded(message)) {
+    return stripDeckInFlightStatusResidue(stripped).length > 0;
+  }
+  return true;
 }
 
 function assistantRunSucceeded(message: ChatMessage): boolean {
@@ -205,29 +218,85 @@ function assistantRunSucceeded(message: ChatMessage): boolean {
   return !message.runStatus && !!message.endedAt;
 }
 
-export function messageIndicatesDeckPatchArtifact(content: string): boolean {
-  if (/<artifact\b[^>]*\stype=["'](?:deck-patch|slide-patch)["']/i.test(content)) return true;
+const SLIDE_EDIT_ARTIFACT_TYPES = /^(?:deck-patch|slide-patch|element-patch)$/i;
+const SLIDE_EDIT_ARTIFACT_TYPE_ATTR =
+  /\btype\s*=\s*["']?(?:deck-patch|slide-patch|element-patch)\b/i;
+
+/**
+ * Primary Teamver deck filename convention — aligned with ProjectView
+ * `isCanonicalDeckFileName` (`deck.html`, `deck-2.html`, …).
+ */
+export function isPrimaryDeckFileName(name: string): boolean {
+  const base = (
+    String(name).replace(/\\/g, "/").split("/").filter(Boolean).pop() ?? String(name)
+  ).toLowerCase();
+  return /^deck(?:[-_.].*)?\.html?$/.test(base);
+}
+
+/**
+ * True when the assistant turn is delivering a structured slide *edit*
+ * artifact (not a full new deck). Accepts an optional live streaming type.
+ */
+export function messageIndicatesSlideEditArtifact(
+  content: string,
+  liveArtifactType?: string | null,
+): boolean {
+  if (liveArtifactType && SLIDE_EDIT_ARTIFACT_TYPES.test(liveArtifactType)) return true;
+  if (/<artifact\b[^>]*\stype=["'](?:deck-patch|slide-patch|element-patch)["']/i.test(content)) {
+    return true;
+  }
   const openIdx = content.search(/<artifact\b/i);
   if (openIdx === -1) return false;
   const gt = content.indexOf(">", openIdx);
   const partialTag = gt === -1 ? content.slice(openIdx) : content.slice(openIdx, gt + 1);
-  return /\btype\s*=\s*["']?(?:deck-patch|slide-patch)\b/i.test(partialTag);
+  return SLIDE_EDIT_ARTIFACT_TYPE_ATTR.test(partialTag);
 }
 
-function messageHasPreTurnHtmlDeliverable(message: ChatMessage): boolean {
-  return (message.preTurnFileNames ?? []).some((name) => /\.html?$/i.test(String(name)));
+/** @deprecated Prefer messageIndicatesSlideEditArtifact — kept for call-site compat. */
+export function messageIndicatesDeckPatchArtifact(content: string): boolean {
+  return messageIndicatesSlideEditArtifact(content);
+}
+
+function messageHasPreTurnPrimaryDeck(message: ChatMessage): boolean {
+  return (message.preTurnFileNames ?? []).some((name) => isPrimaryDeckFileName(String(name)));
+}
+
+/** Resolve durable create/edit label at send time (Teamver slide-only).
+ * Prefer an auto-attached canonical deck, else preTurn primary deck names.
+ * Template-clone content fill must stay "create" even when Clone already
+ * wrote a LOOK preview to deck.html (otherwise UI/system go edit-tone).
+ */
+export function resolveSlideTurnKindForSend(options: {
+  slideOnlyMvp: boolean;
+  preTurnFileNames: readonly string[];
+  existingDeckAttached?: boolean;
+  templateCloneContentFill?: boolean;
+}): "create" | "edit" | undefined {
+  if (!options.slideOnlyMvp) return undefined;
+  if (options.templateCloneContentFill) return "create";
+  if (options.existingDeckAttached) return "edit";
+  if (options.preTurnFileNames.some((name) => isPrimaryDeckFileName(String(name)))) {
+    return "edit";
+  }
+  return "create";
 }
 
 /**
  * Slide-edit completion copy after reload: persist sanitizer strips closed
- * `<artifact type="deck-patch">` tags, so body detection alone is not enough.
- * Prefer explicit deck-patch markers, else a pre-turn HTML baseline (in-place
- * edit of an existing deck).
+ * patch artifacts, so body detection alone is not enough.
+ *
+ * Prefer durable `slideTurnKind`, then patch markers, then pre-turn primary
+ * deck (`deck.html`) — never leftover non-deck HTML (about.html, notes.html).
  */
 export function messageLooksLikeSlideEditTurn(message: ChatMessage): boolean {
   const body = assistantMessageTextBody(message);
-  if (messageIndicatesDeckPatchArtifact(body)) return true;
-  return messageHasPreTurnHtmlDeliverable(message);
+  if (message.slideTurnKind === "edit") return true;
+  if (message.slideTurnKind === "create") {
+    // Model may still emit element-patch / deck-patch on a create-labeled send.
+    return messageIndicatesSlideEditArtifact(body);
+  }
+  if (messageIndicatesSlideEditArtifact(body)) return true;
+  return messageHasPreTurnPrimaryDeck(message);
 }
 
 /**
@@ -263,6 +332,11 @@ export function shouldSynthesizeTeamverCompletedArtifactLead(
 ): boolean {
   if (options.streaming || options.hasVisibleAssistantText) return false;
   if (!assistantRunSucceeded(message)) return false;
+  // Durable slide-turn label survives reload when artifact prose / producedFiles
+  // were stripped — keep the completion lead for every generation entry path.
+  if (message.slideTurnKind === "create" || message.slideTurnKind === "edit") {
+    return true;
+  }
   // Historical + auto-continue: any terminal succeeded empty shell keeps lead.
   if (isTerminalSucceededEmptyShellForDisplay(message)) return true;
   if ((message.producedFiles?.length ?? 0) > 0) return true;
@@ -320,28 +394,40 @@ export function shouldOmitMessageFromChatRender(
     return true;
   }
   if (message.role === "user") {
-    return isAutoContinueIncompleteOutputPrompt(message.content);
+    return isHiddenAutomationUserPrompt(message.content);
   }
   if (message.role !== "assistant") return false;
   if (isLiveStreamingAssistantTarget(message, ctx)) return false;
   if (isEmptyAssistantShell(message)) {
-    // Keep terminal succeeded shells that still anchor their visible user turn
-    // (historical completion leads). Drop same-turn shells superseded by a
-    // later assistant — those are collapsed at load, but omit is the safety net.
-    if (
-      isTerminalSucceededEmptyShellForDisplay(message)
-      && options?.messages
-      && typeof options.messageIndex === "number"
-      && isLastAssistantInVisibleUserTurn(options.messages, options.messageIndex)
-    ) {
+    if (isTerminalSucceededEmptyShellForDisplay(message)) {
+      // Drop same-turn shells superseded by a later assistant — collapsed at
+      // load, but omit is the safety net. Without index context, keep the shell
+      // so completion leads survive reload filtering.
+      if (
+        options?.messages
+        && typeof options.messageIndex === "number"
+        && !isLastAssistantInVisibleUserTurn(options.messages, options.messageIndex)
+      ) {
+        return true;
+      }
       return false;
     }
     return true;
   }
-  if (
-    ctx.hideAssistantThinkingDetails
-    && !hasEmbedVisibleAssistantBody(message)
-  ) {
+  if (ctx.hideAssistantThinkingDetails && !hasEmbedVisibleAssistantBody(message)) {
+    // Last-resort: succeeded slide turns must always reserve a row for the
+    // synthetic completion lead even when stale lifecycle events blocked
+    // empty-shell detection above.
+    if (
+      assistantRunSucceeded(message)
+      && message.endedAt !== undefined
+      && shouldSynthesizeTeamverCompletedArtifactLead(message, {
+        streaming: false,
+        hasVisibleAssistantText: false,
+      })
+    ) {
+      return false;
+    }
     return true;
   }
   return false;

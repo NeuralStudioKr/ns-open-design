@@ -353,6 +353,7 @@ const GATEWAY_API_PROTOCOLS = new Set<ApiProtocol>([
   'ollama',
   'senseaudio',
   'aihubmix',
+  'minimax',
 ]);
 
 // Providers whose live model fetch IS their full account catalogue, so the
@@ -588,6 +589,10 @@ const API_KEY_CONSOLE_LINKS: Record<ApiProtocol, { host: string; url: string }> 
   aihubmix: {
     host: 'aihubmix.com',
     url: 'https://aihubmix.com/?aff=JA1e',
+  },
+  minimax: {
+    host: 'platform.minimax.io',
+    url: 'https://platform.minimax.io/',
   },
 };
 

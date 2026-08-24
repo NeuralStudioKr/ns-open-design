@@ -42,6 +42,52 @@ describe("projectPreviewFile", () => {
     );
   });
 
+  it("prefers deck.html over newer Canvas HTML leaks under refs/ or root", () => {
+    const files = [
+      file({ name: "deck.html", kind: "html", mtime: 10 }),
+      file({
+        name: "refs/drive/canvas.html",
+        kind: "html",
+        mtime: 50,
+        path: "refs/drive/canvas.html",
+      }),
+      file({ name: "canvas.html", kind: "html", mtime: 99 }),
+      file({ name: "index.html", kind: "html", mtime: 80 }),
+    ];
+    // Root index.html matches refs basename? No refs/index — so without deck
+    // preference index could still win. Deck must win when present.
+    const cover = pickProjectCoverFile(project({ metadata: { kind: "deck" } }), files);
+    expect(cover).toEqual({ kind: "html", name: "deck.html" });
+  });
+
+  it("ignores refs/ and all root non-deck HTML when refs sources exist", () => {
+    const files = [
+      file({
+        name: "refs/drive/index.html",
+        kind: "html",
+        mtime: 99,
+        path: "refs/drive/index.html",
+      }),
+      file({ name: "index.html", kind: "html", mtime: 98 }),
+      file({ name: "about.html", kind: "html", mtime: 1 }),
+      file({ name: "deck.html", kind: "html", mtime: 10 }),
+    ];
+    const cover = pickProjectCoverFile(project({ metadata: { kind: "deck" } }), files);
+    expect(cover).toEqual({ kind: "html", name: "deck.html" });
+  });
+
+  it("does not short-circuit on a bad Canvas entryFile pin for deck projects", () => {
+    const files = [
+      file({ name: "deck.html", kind: "html", mtime: 10 }),
+      file({ name: "index.html", kind: "html", mtime: 99 }),
+    ];
+    const cover = pickProjectCoverFile(
+      project({ metadata: { kind: "deck", entryFile: "index.html", skipDiscoveryBrief: true } }),
+      files,
+    );
+    expect(cover).toEqual({ kind: "html", name: "deck.html" });
+  });
+
   it("uses entry html when cover override is absent", () => {
     expect(
       projectPreviewDeepLinkFileName(

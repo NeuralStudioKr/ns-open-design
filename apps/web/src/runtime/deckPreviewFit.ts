@@ -15,6 +15,11 @@ export type DeckPreviewFitOptions = {
    * host zoom does not reflow slide content or double-apply scale.
    */
   useLayoutBox?: boolean;
+  /**
+   * Called after posting `od:deck-nudge-fit` — tip remount remasure hook (487).
+   * Must stay side-effect light; deck fit itself does not depend on the result.
+   */
+  onAfterNudge?: () => void;
 };
 
 const DEFAULT_FIT_NUDGE_DELAYS_MS = [0, 50, 150, 400, 900, 1600, 2500, 4000, 6500] as const;
@@ -104,8 +109,11 @@ export function postDeckHostViewportToIframe(
 }
 
 /**
- * Keep posting until the iframe has a measurable box (or delays exhaust).
- * Generation-complete → liveHtml clear often mounts the iframe at 0×0 for a beat.
+ * Keep posting across the delay window while the iframe gains a measurable box.
+ * Generation-complete → liveHtml clear and Teamver prefix remounts often mount
+ * at 0×0, then swap the contentWindow. Stopping after the first successful post
+ * left the replacement iframe without a host viewport (black letterbox until
+ * toolbar refresh) — re-resolve the target on every tick like fit nudges.
  */
 export function schedulePostDeckHostViewportUntilSized(
   targetOrGet: DeckPreviewFitTargetResolver,
@@ -118,13 +126,12 @@ export function schedulePostDeckHostViewportUntilSized(
     : [...ZERO_SIZE_RETRY_DELAYS_MS];
   const options = Array.isArray(delaysMsOrOptions) ? maybeOptions : delaysMsOrOptions;
   let cancelled = false;
-  let posted = false;
   const timers: Array<ReturnType<typeof globalThis.setTimeout>> = [];
   for (const delay of delaysMs) {
     timers.push(
       globalThis.setTimeout(() => {
-        if (cancelled || posted) return;
-        posted = postDeckHostViewportToIframe(
+        if (cancelled) return;
+        postDeckHostViewportToIframe(
           resolveDeckPreviewFitTarget(targetOrGet),
           hostScale,
           options,
@@ -147,6 +154,7 @@ export function nudgeDeckPreviewFit(
   const target = resolveDeckPreviewFitTarget(targetOrGet);
   postDeckHostViewportToIframe(target, hostScale, options);
   target?.contentWindow?.postMessage({ type: 'od:deck-nudge-fit' }, '*');
+  options?.onAfterNudge?.();
 }
 
 /** Deck fit() often runs while the iframe is still 0×0; re-nudge through layout settles. */

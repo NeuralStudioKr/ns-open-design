@@ -233,6 +233,22 @@ export function defaultSlideOnlyDeckPluginInputs(topicHint?: string | null): Rec
   };
 }
 
+export function explicitSlideOnlyDeckTemplatePluginInputs(
+  templateTitle?: string | null,
+  templateId?: string | null,
+): Record<string, unknown> {
+  const title = templateTitle?.trim();
+  if (!title) return {};
+  return {
+    designSystem: title,
+    visualTemplate: title,
+    ...(templateId?.trim() ? { selectedDeckTemplateId: templateId.trim() } : {}),
+    selectedDeckTemplateTitle: title,
+    visualTemplatePolicy:
+      "The user explicitly picked this deck template. Its Template visual kit / preview HTML is the primary visual contract: preserve palette, typography, borders, and recognizable compact Decoration CSS / motif cues; do not fall back to a generic default look, dump a head/style/SVG shell, or substitute emoji ornaments.",
+  };
+}
+
 export function homeHeroChipsForGroup(
   group: ChipGroup,
   branding: Pick<TeamverBrandingConfig, "slideOnlyMvp">,
@@ -373,7 +389,8 @@ export function skillsForSlideOnlyMvp(
 /** Default Community facet when slide-only MVP filters the catalog to decks. */
 export const SLIDE_ONLY_COMMUNITY_FACET_SELECTION: FacetSelection = {
   category: "deck",
-  subcategory: null,
+  // Root gallery: land on Creative decks (크리에이티브 덱), not "All".
+  subcategory: "creative-decks",
 };
 
 /**

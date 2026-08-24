@@ -1,8 +1,26 @@
-import { repairArtifactDocumentHead } from '@open-design/contracts';
+import {
+  DECK_SLIDE_HOST_CSS_CLASS,
+  OFFICIAL_DECK_LOOK_STYLE_ATTR,
+  looksLikeDeckSlideHostAttrs,
+  looksLikeOfficialFullscreenPresenterDeck,
+} from '@open-design/contracts';
+import { repairArtifactDocumentHeadIfNeeded } from './artifact-document-head';
+
+function hasOfficialLookStyleAttr(html: string): boolean {
+  return new RegExp(`<style\\b[^>]*\\b${OFFICIAL_DECK_LOOK_STYLE_ATTR}\\b`, 'i').test(html);
+}
+
+export type WrapPreviewHtmlShellOptions = {
+  /** Caller already ran repair (or verified intact head) — skip the first repair pass. */
+  alreadyRepaired?: boolean;
+};
 
 /** Mirror buildSrcdoc's fragment wrap so preview detection matches iframe input. */
-export function wrapPreviewHtmlShell(html: string): string {
-  const repaired = repairArtifactDocumentHead(html);
+export function wrapPreviewHtmlShell(
+  html: string,
+  options?: WrapPreviewHtmlShellOptions,
+): string {
+  const repaired = options?.alreadyRepaired ? html : repairArtifactDocumentHeadIfNeeded(html);
   const head = repaired.trimStart().slice(0, 64).toLowerCase();
   const isFullDoc = head.startsWith('<!doctype') || head.startsWith('<html');
   if (isFullDoc) return repaired;
@@ -14,12 +32,15 @@ export function wrapPreviewHtmlShell(html: string): string {
   </head>
   <body>${repaired}</body>
 </html>`;
-  return repairArtifactDocumentHead(wrapped);
+  // Fragment wrap builds a fresh shell — intact-gated (charset+viewport already set).
+  return repairArtifactDocumentHeadIfNeeded(wrapped);
 }
 
 /** Same repaired + wrapped HTML buildSrcdoc and the host preview use for detection. */
 export function prepareCompactStackedDeckPreviewHtml(html: string): string {
-  return wrapPreviewHtmlShell(repairArtifactDocumentHead(html));
+  // Intact full docs skip the first repair (hot preview-detection path).
+  const repaired = repairArtifactDocumentHeadIfNeeded(html);
+  return wrapPreviewHtmlShell(repaired, { alreadyRepaired: true });
 }
 
 function extractCssBlocks(html: string): string {
@@ -42,12 +63,15 @@ function extractHtmlAttr(attrs: string, name: string): string {
   return match?.[2] ?? '';
 }
 
+function attrsLookLikeDeckSlide(attrs: string): boolean {
+  return looksLikeDeckSlideHostAttrs(attrs);
+}
+
 function extractSlideInlineStyles(html: string): string[] {
   const styles: string[] = [];
   for (const match of html.matchAll(/<(?:section|div|main|article)\b([^>]*)>/gi)) {
     const attrs = match[1] ?? '';
-    const className = extractHtmlAttr(attrs, 'class');
-    if (!/\bslide\b/i.test(className)) continue;
+    if (!attrsLookLikeDeckSlide(attrs)) continue;
     const style = extractHtmlAttr(attrs, 'style');
     if (style) styles.push(style);
   }
@@ -55,13 +79,17 @@ function extractSlideInlineStyles(html: string): string[] {
 }
 
 function countSlideElements(html: string): number {
-  return [...html.matchAll(/<(?:section|div|main|article)\b[^>]*\bclass\s*=\s*['"][^'"]*\bslide\b[^'"]*['"]/gi)].length;
+  let count = 0;
+  for (const match of html.matchAll(/<(?:section|div|main|article)\b([^>]*)>/gi)) {
+    if (attrsLookLikeDeckSlide(match[1] ?? '')) count += 1;
+  }
+  return count;
 }
 
 function looksLikeLegacyStyledBodyFirstDeck(html: string): boolean {
   if (countSlideElements(html) < 2) return false;
   if (extractSlideInlineStyles(html).length >= 2) return true;
-  return /\.slide\b[^{]*\{/i.test(extractCssBlocks(html));
+  return new RegExp(`${DECK_SLIDE_HOST_CSS_CLASS}[^{]*\\{`, 'i').test(extractCssBlocks(html));
 }
 
 /**
@@ -80,7 +108,7 @@ export function looksLikeAuthoredScrollNavigateDeck(html: string): boolean {
   if (/\.slide[^;\n]{0,120}\.scrollIntoView\s*\(/i.test(html)) return true;
   if (
     /scrollIntoView\s*\(\s*\{[^}]*behavior\s*:\s*['"]smooth['"]/i.test(html)
-    && /\.slide\b/i.test(html)
+    && new RegExp(DECK_SLIDE_HOST_CSS_CLASS, 'i').test(html)
     && countSlideElements(html) >= 2
   ) {
     return true;
@@ -95,13 +123,13 @@ export function looksLikeAuthoredScrollNavigateDeck(html: string): boolean {
 export function looksLikeAuthoredHorizontalSwipeDeck(html: string): boolean {
   if (!html) return false;
   if (/scroll-snap-type\s*:\s*x\b/i.test(html)) return true;
-  if (/\bflex\s*:\s*0\s+0\s+100vw\b/i.test(html)) return true;
 
   const css = extractCssBlocks(html);
   if (css) {
     if (/scroll-snap-type\s*:\s*x\b/i.test(css)) return true;
-    if (/\bflex\s*:\s*0\s+0\s+100vw\b/i.test(css)) return true;
-    if (/\.slide\b[^{]*\{[^}]*min-width\s*:\s*100vw\b/i.test(css)) return true;
+    if (new RegExp(`${DECK_SLIDE_HOST_CSS_CLASS}[^{]*\\{[^}]*min-width\\s*:\\s*100vw\\b`, 'i').test(css)) {
+      return true;
+    }
     const rowFlexWithHorizontalScroll =
       /(?:html\s*,\s*body|body|html)\s*\{[^}]*\bdisplay\s*:\s*flex\b[^}]*\boverflow-x\s*:\s*(?:auto|scroll|overlay)\b/i.test(css)
       || /(?:html\s*,\s*body|body|html)\s*\{[^}]*\boverflow-x\s*:\s*(?:auto|scroll|overlay)\b[^}]*\bdisplay\s*:\s*flex\b/i.test(css);
@@ -120,30 +148,58 @@ export function looksLikeAuthoredHorizontalSwipeDeck(html: string): boolean {
   return false;
 }
 
+function looksLikeNestedVerticalTranslateYDeck(html: string): boolean {
+  // 8-Bit Orbit: `#deck` is chrome only; pages live in `#slidesContainer`
+  // and the author script pages with translateY(-N00vh). That is not a
+  // compact horizontal `#deck` strip and must not letterbox / sibling-hide.
+  return (
+    /<(?:div|section)\b[^>]*(?:\bid\s*=\s*['"]slidesContainer['"]|\bclass\s*=\s*['"][^'"]*\bslides-container\b)/i.test(html)
+    && /translateY\s*\(\s*-?\$\{[^}]*\}\s*vh/i.test(html)
+  );
+}
+
+function looksLikeBareDeckViewportTrack(html: string): boolean {
+  if (!/<(?:div|section|main)\b[^>]*\bid\s*=\s*['"]deck['"]/i.test(html)) return false;
+  if (countSlideElements(html) < 2) return false;
+  if (looksLikeNestedVerticalTranslateYDeck(html)) return false;
+  const css = extractCssBlocks(html);
+  if (!css) return false;
+  const deckRule = css.match(/#deck\b[^{]*\{([^}]*)\}/i)?.[1] ?? '';
+  if (!/\bdisplay\s*:\s*flex\b/i.test(deckRule)) return false;
+  const slideRules = [...css.matchAll(new RegExp(`${DECK_SLIDE_HOST_CSS_CLASS}[^{]*\\{([^}]*)\\}`, 'gi'))]
+    .map((match) => match[1] ?? '')
+    .join('\n');
+  return (
+    /\bflex\s*:\s*0\s+0\s+100vw\b/i.test(slideRules)
+    || /\bwidth\s*:\s*100vw\b/i.test(slideRules)
+    || /\bheight\s*:\s*100(?:vh|dvh|svh|lvh)\b/i.test(slideRules)
+  );
+}
+
 function looksLikeSlideViewportSized(html: string): boolean {
   for (const style of extractSlideInlineStyles(html)) {
     if (/(?:min-)?height\s*:[^;]*100(?:vh|dvh|svh|lvh)/i.test(style)) return true;
     if (hasFixedCanvasSizing(style)) return true;
   }
   const css = extractCssBlocks(html);
-  if (/\.slide\b[^{]*\{[^}]*(?:min-)?height\s*:\s*100(?:vh|dvh|svh|lvh)/i.test(css)) return true;
-  for (const match of css.matchAll(/\.slide\b[^{]*\{([^}]*)\}/gi)) {
+  if (new RegExp(`${DECK_SLIDE_HOST_CSS_CLASS}[^{]*\\{[^}]*(?:min-)?height\\s*:\\s*100(?:vh|dvh|svh|lvh)`, 'i').test(css)) {
+    return true;
+  }
+  for (const match of css.matchAll(new RegExp(`${DECK_SLIDE_HOST_CSS_CLASS}[^{]*\\{([^}]*)\\}`, 'gi'))) {
     if (hasFixedCanvasSizing(match[1] ?? '')) return true;
   }
   return false;
 }
 
 function hasBodyFirstSlide(html: string): boolean {
-  if (
-    /<body\b[^>]*>(?:\s|<!--[\s\S]*?-->|<(?:header|nav)\b[^>]*>[\s\S]*?<\/(?:header|nav)>|<style\b[^>]*>[\s\S]*?<\/style>|<script\b[^>]*>[\s\S]*?<\/script>)*<(?:section|div|main|article)\b[^>]*\bclass\s*=\s*['"][^'"]*\bslide\b/i.test(
-      html,
-    )
-  ) {
-    return true;
+  const bodyMatch = /<body\b[^>]*>/i.exec(html);
+  if (bodyMatch) {
+    const body = html.slice((bodyMatch.index ?? 0) + bodyMatch[0].length);
+    for (const match of body.matchAll(/<(?:section|div|main|article)\b([^>]*)>/gi)) {
+      if (attrsLookLikeDeckSlide(match[1] ?? '')) return true;
+    }
   }
-  return /<body\b[^>]*>[\s\S]*<(?:div|section|main)\b[^>]*>[\s\S]*<(?:section|div)\b[^>]*\bclass\s*=\s*['"][^'"]*\bslide\b[\s\S]*<(?:section|div)\b[^>]*\bclass\s*=\s*['"][^'"]*\bslide\b/i.test(
-    html,
-  );
+  return false;
 }
 
 function looksLikeFrameworkDeckMarkup(html: string): boolean {
@@ -151,7 +207,8 @@ function looksLikeFrameworkDeckMarkup(html: string): boolean {
   // `.deck-shell` / `.deck-stage` class names that API compact decks
   // sometimes copy without the framework script or visibility CSS.
   if (/\bid\s*=\s*["']deck-stage["']/i.test(html)) return true;
-  if (/<div[^>]*\bid\s*=\s*['"](?:deck|deck-track)['"]/i.test(html)) return true;
+  if (/<deck-stage\b/i.test(html)) return true;
+  if (/<(?:div|section|main|article)[^>]*\bid\s*=\s*['"]deck-track['"]/i.test(html)) return true;
   return false;
 }
 
@@ -163,23 +220,41 @@ function looksLikeFrameworkDeckMarkup(html: string): boolean {
  */
 export function looksLikeCompactApiStackedDeck(html: string): boolean {
   if (!html) return false;
+  if (looksLikeNestedVerticalTranslateYDeck(html)) return false;
+  const deckViewportTrack = looksLikeBareDeckViewportTrack(html);
+  if (!deckViewportTrack && looksLikeOfficialFullscreenPresenterDeck(html)) return false;
   if (looksLikeFrameworkDeckMarkup(html)) return false;
   if (looksLikeAuthoredHorizontalSwipeDeck(html)) return false;
-  if (looksLikeAuthoredScrollNavigateDeck(html)) return false;
-  if (
+  // Official catalog presenters (no look-css marker) keep native 100% fill
+  // via looksLikeOfficialFullscreenPresenterDeck above. Compact body-first
+  // fills often copy a `.presentation` / `.deck` wrapper from templates —
+  // those MUST still letterbox. Otherwise `min-height:100vh` slides fill the
+  // tall preview panel as a portrait document with a vertical scrollbar.
+  const officialLookFill = hasOfficialLookStyleAttr(html);
+  const bodyFirst = hasBodyFirstSlide(html);
+  const viewportSized = looksLikeSlideViewportSized(html);
+  const legacyBodyFirst = looksLikeLegacyStyledBodyFirstDeck(html);
+  const compactBodyFirst = (bodyFirst && (viewportSized || legacyBodyFirst)) || deckViewportTrack;
+  if (looksLikeAuthoredScrollNavigateDeck(html) && !compactBodyFirst) return false;
+  const hasPresentationShell =
+    /<(?:div|section|main)\b[^>]*\bclass\s*=\s*['"][^'"]*\bpresentation\b/i.test(html);
+  const hasDeckShell =
     /<body\b[^>]*>[\s\S]*<(?:div|section)\b[^>]*\bclass\s*=\s*['"][^'"]*(?:^|\s)deck(?:\s|["']|$)/i.test(
       html,
-    )
-  ) {
+    );
+  // Non-compact presentation/deck shells (catalog-like, not body-first
+  // viewport pages) stay on native fill — but never block compactBodyFirst.
+  if (!officialLookFill && !compactBodyFirst && (hasPresentationShell || hasDeckShell)) {
     return false;
   }
-  if (!hasBodyFirstSlide(html)) return false;
-  if (looksLikeSlideViewportSized(html)) return true;
+  if (!bodyFirst && !deckViewportTrack) return false;
+  if (deckViewportTrack) return true;
+  if (viewportSized) return true;
   // Legacy Canvas/Drive → Slide decks can be body-first multi-slide HTML
   // without explicit 100vh or 1920×1080 sizing. Keep existing deliverables
   // recoverable in the host fixed-stage viewer instead of reflowing them as
   // generic HTML.
-  return looksLikeLegacyStyledBodyFirstDeck(html);
+  return legacyBodyFirst;
 }
 
 /** Host-side detection that matches buildSrcdoc's wrapped preview HTML. */
@@ -199,6 +274,88 @@ export function injectStackedDeckViewport(html: string): string {
   return html;
 }
 
+const COMPACT_STACKED_EXPORT_FIX_MARKER = 'data-od-compact-deck-export-fix';
+
+function compactStackedDeckExportCss(): string {
+  return `
+  <style ${COMPACT_STACKED_EXPORT_FIX_MARKER}>
+    /* PPT inches — never 1920px (@page px → ~20″ MediaBox at 96dpi). */
+    @page { size: 13.333333in 7.5in; margin: 0; }
+    html, body {
+      margin: 0 !important;
+      padding: 0 !important;
+      width: 1920px !important;
+      min-width: 1920px !important;
+      /* Do not paint #0b0c10 — preview already learned that a forced dark
+         letterbox reads as "template not applied". Keep the deck's own
+         body/paper background (cream, dark terminal, or unset). */
+    }
+    body { overflow-x: hidden !important; }
+    body > .slide,
+    body > * > .slide,
+    body > * > * > .slide {
+      position: relative !important;
+      inset: auto !important;
+      top: auto !important;
+      left: auto !important;
+      right: auto !important;
+      bottom: auto !important;
+      width: 1920px !important;
+      height: 1080px !important;
+      min-height: 1080px !important;
+      max-height: 1080px !important;
+      box-sizing: border-box !important;
+      margin: 0 auto !important;
+      overflow: visible !important;
+      page-break-after: always !important;
+      break-after: page !important;
+      flex: none !important;
+      transform: none !important;
+    }
+    body > .slide:last-child,
+    body > * > .slide:last-child,
+    body > * > * > .slide:last-child {
+      page-break-after: auto !important;
+      break-after: auto !important;
+    }
+    @media print {
+      html, body {
+        width: 1920px !important;
+        min-width: 1920px !important;
+      }
+      body > .slide,
+      body > * > .slide,
+      body > * > * > .slide {
+        width: 1920px !important;
+        height: 1080px !important;
+        min-height: 1080px !important;
+        max-height: 1080px !important;
+        overflow: visible !important;
+      }
+    }
+  </style>`;
+}
+
+/**
+ * Standalone downloads and daemon inline-render payloads do not go through
+ * the live preview bridge. Normalize compact body-first decks there too so
+ * `100vh`/document-flow fallback HTML exports as real 16:9 pages.
+ */
+export function normalizeCompactStackedDeckForExport(html: string, deck?: boolean): string {
+  if (!deck || !html || html.includes(COMPACT_STACKED_EXPORT_FIX_MARKER)) return html;
+  const prepared = prepareCompactStackedDeckPreviewHtml(html);
+  if (!looksLikeCompactApiStackedDeck(prepared)) return html;
+  const withViewport = injectStackedDeckViewport(html);
+  const css = compactStackedDeckExportCss();
+  if (/<\/head>/i.test(withViewport)) {
+    return withViewport.replace(/<\/head>/i, `${css}\n</head>`);
+  }
+  if (/<html\b/i.test(withViewport)) {
+    return withViewport.replace(/<body\b/i, `<head>${css}</head>\n<body`);
+  }
+  return `${css}\n${withViewport}`;
+}
+
 /** @internal test helper */
 export const compactStackedDeckTestHelpers = {
   SLIDE_VIEWPORT_RE,
@@ -209,4 +366,5 @@ export const compactStackedDeckTestHelpers = {
   hasFixedCanvasSizing,
   looksLikeSlideViewportSized,
   hasBodyFirstSlide,
+  compactStackedDeckExportCss,
 };

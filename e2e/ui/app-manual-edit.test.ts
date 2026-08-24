@@ -80,7 +80,7 @@ test('[P0] manual edit inspector previews and persists page and selected element
   });
   await expect(page.locator('.manual-edit-modal')).toContainText('PAGE');
   await expect(page.locator('.manual-edit-tabs')).toHaveCount(0);
-  await expect(page.locator('.manual-edit-layer-row')).toHaveCount(0);
+  await expect(page.getByTestId('manual-edit-layers-panel')).toHaveCount(0);
 
   await inspectorRow(page, 'Background').locator('input').fill('#eef2ff');
   await inspectorRow(page, 'Font').locator('select').selectOption('Georgia, serif');
@@ -217,6 +217,55 @@ test('[P1] manual edit drag-resize handle persists box width to source', async (
       const match = source.match(/data-od-id="resize-box"[^>]*style="[^"]*width:\s*(\d+)px/);
       if (!match) return false;
       return Number(match[1]) > 120;
+    })
+    .toBe(true);
+});
+
+test('[P1] manual edit drag-resize undo restores width in one step', async ({ page }) => {
+  test.setTimeout(60_000);
+  await routeMockAgents(page);
+  const projectId = await createProjectViaApi(page, 'Manual edit resize undo');
+  await seedHtmlArtifact(page, projectId, 'manual-edit-resize-undo.html', manualEditHtml());
+  await page.goto(`/projects/${projectId}/files/manual-edit-resize-undo.html`);
+  await openDesignFile(page, 'manual-edit-resize-undo.html');
+
+  const frame = artifactPreviewFrame(page);
+  await page.getByTestId('manual-edit-mode-toggle').click();
+  await selectPreviewElementThroughBridge(page, frame, '[data-od-id="resize-box"]', 'SIZE');
+
+  const handle = page.getByTestId('manual-edit-resize-handle-e');
+  const box = await handle.boundingBox();
+  expect(box).toBeTruthy();
+  const startX = box!.x + box!.width / 2;
+  const startY = box!.y + box!.height / 2;
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(startX + 100, startY, { steps: 8 });
+  await page.mouse.up();
+
+  await expect
+    .poll(async () => {
+      const resp = await page.request.get(`/api/projects/${projectId}/files/manual-edit-resize-undo.html`);
+      if (!resp.ok()) return false;
+      const source = await resp.text();
+      const match = source.match(/data-od-id="resize-box"[^>]*style="[^"]*width:\s*(\d+)px/);
+      return !!match && Number(match[1]) > 120;
+    })
+    .toBe(true);
+
+  const undo = page.getByTestId('file-viewer-undo');
+  await expect(undo).toBeEnabled({ timeout: 15_000 });
+  await undo.click();
+
+  await expect
+    .poll(async () => {
+      const resp = await page.request.get(`/api/projects/${projectId}/files/manual-edit-resize-undo.html`);
+      if (!resp.ok()) return false;
+      const source = await resp.text();
+      const match = source.match(/data-od-id="resize-box"[^>]*style="([^"]*)"/)?.[1] ?? '';
+      const width = Number(match.match(/width:\s*(-?\d+)px/)?.[1] ?? NaN);
+      // Undo should restore the seeded 120px width (or clear an injected wider width).
+      return !Number.isFinite(width) || width === 120;
     })
     .toBe(true);
 });
@@ -554,7 +603,7 @@ test('[P1] manual edit promote reveals POSITION Left/Top fields', async ({ page 
   await expect(page.locator('.manual-edit-modal .cc-row').filter({ hasText: 'Top' })).toHaveCount(1);
 });
 
-test('[P1] manual edit static target promote-on-drag writes absolute left/top', async ({ page }) => {
+test('[P1] manual edit static target promote-on-drag writes relative left/top', async ({ page }) => {
   test.setTimeout(60_000);
   await routeMockAgents(page);
   const projectId = await createProjectViaApi(page, 'Manual edit static promote');
@@ -570,7 +619,7 @@ test('[P1] manual edit static target promote-on-drag writes absolute left/top', 
   await expect(overlay).toBeVisible();
   await expect(overlay).toHaveAttribute('data-movable', 'true');
   await expect(page.getByTestId('manual-edit-position-hint')).toContainText(
-    'Drag to free this element (sets position: absolute).',
+    'Drag to offset this element (keeps it in flow).',
   );
   await expect(page.locator('.manual-edit-modal')).toContainText('POSITION');
   await expect(page.locator('.manual-edit-modal .cc-row').filter({ hasText: 'Left' })).toHaveCount(0);
@@ -591,10 +640,10 @@ test('[P1] manual edit static target promote-on-drag writes absolute left/top', 
       const source = await resp.text();
       const style = source.match(/data-od-id="resize-box"[^>]*style="([^"]*)"/)?.[1];
       if (!style) return false;
-      const hasAbsolute = /position:\s*absolute/.test(style);
+      const hasRelative = /position:\s*relative/.test(style);
       const left = Number(style.match(/left:\s*(-?\d+)px/)?.[1] ?? NaN);
       const top = Number(style.match(/top:\s*(-?\d+)px/)?.[1] ?? NaN);
-      return hasAbsolute && Number.isFinite(left) && Number.isFinite(top);
+      return hasRelative && Number.isFinite(left) && left >= 40 && Number.isFinite(top) && top >= 20;
     })
     .toBe(true);
 });
@@ -627,7 +676,7 @@ test('[P1] manual edit static promote undo restores pre-promote source', async (
       if (!resp.ok()) return false;
       const source = await resp.text();
       const style = source.match(/data-od-id="resize-box"[^>]*style="([^"]*)"/)?.[1];
-      return !!style && /position:\s*absolute/.test(style);
+      return !!style && /position:\s*relative/.test(style) && /\bleft\s*:/.test(style);
     })
     .toBe(true);
 
@@ -641,12 +690,12 @@ test('[P1] manual edit static promote undo restores pre-promote source', async (
       if (!resp.ok()) return false;
       const source = await resp.text();
       const style = source.match(/data-od-id="resize-box"[^>]*style="([^"]*)"/)?.[1] ?? '';
-      return !/position:\s*absolute/.test(style) && !/\bleft\s*:/.test(style);
+      return !/position:\s*relative/.test(style) && !/\bleft\s*:/.test(style);
     })
     .toBe(true);
 });
 
-test('[P1] manual edit static promote Escape leaves source without absolute', async ({ page }) => {
+test('[P1] manual edit static promote Escape leaves source without relative offset', async ({ page }) => {
   test.setTimeout(60_000);
   await routeMockAgents(page);
   const projectId = await createProjectViaApi(page, 'Manual edit static promote esc');
@@ -674,12 +723,12 @@ test('[P1] manual edit static promote Escape leaves source without absolute', as
       if (!resp.ok()) return false;
       const source = await resp.text();
       const style = source.match(/data-od-id="resize-box"[^>]*style="([^"]*)"/)?.[1] ?? '';
-      return !/position:\s*absolute/.test(style) && !/\bleft\s*:/.test(style);
+      return !/position:\s*relative/.test(style) && !/\bleft\s*:/.test(style);
     })
     .toBe(true);
 });
 
-test('[P1] manual edit relative promote uses layout coords not relative left', async ({ page }) => {
+test('[P1] manual edit relative move accumulates authored left (not layout coords)', async ({ page }) => {
   test.setTimeout(60_000);
   await routeMockAgents(page);
   const projectId = await createProjectViaApi(page, 'Manual edit relative promote');
@@ -708,11 +757,10 @@ test('[P1] manual edit relative promote uses layout coords not relative left', a
       if (!resp.ok()) return false;
       const source = await resp.text();
       const style = source.match(/data-od-id="relative-box"[^>]*style="([^"]*)"/)?.[1];
-      if (!style || !/position:\s*absolute/.test(style)) return false;
+      if (!style || !/position:\s*relative/.test(style)) return false;
       const left = Number(style.match(/left:\s*(-?\d+)px/)?.[1] ?? NaN);
-      // Layout start is ~margin(40)+relative(10)=50, +~48 drag ⇒ ≥80.
-      // Using style left:10 as start would land near 58 — that must fail.
-      return Number.isFinite(left) && left >= 80;
+      // Authored start left:10 + ~48 drag ⇒ ~58. Layout-based start (~50) would land ≥80.
+      return Number.isFinite(left) && left >= 50 && left < 75;
     })
     .toBe(true);
 });
@@ -727,25 +775,11 @@ test('[P1] manual edit W-resize keeps overlay aligned on nested absolute', async
 
   const frame = artifactPreviewFrame(page);
   await page.getByTestId('manual-edit-mode-toggle').click();
-  // Promote relative-box first so it becomes nested absolute under relative-host.
-  await selectPreviewElementThroughBridge(page, frame, '[data-od-id="relative-box"]', 'SIZE');
+  // Seeded nested absolute under relative-host (CB ≠ viewport) — no promote step.
+  await selectPreviewElementThroughBridge(page, frame, '[data-od-id="nested-abs-box"]', 'SIZE');
   const overlay = page.getByTestId('manual-edit-resize-overlay');
-  let box = await overlay.boundingBox();
-  expect(box).toBeTruthy();
-  await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(box!.x + box!.width / 2 + 24, box!.y + box!.height / 2 + 12, { steps: 6 });
-  await page.mouse.up();
+  await expect(overlay).toHaveAttribute('data-movable', 'true');
 
-  await expect
-    .poll(async () => {
-      const resp = await page.request.get(`/api/projects/${projectId}/files/manual-edit-nested-w-resize.html`);
-      if (!resp.ok()) return false;
-      return /data-od-id="relative-box"[^>]*style="[^"]*position:\s*absolute/.test(await resp.text());
-    })
-    .toBe(true);
-
-  await selectPreviewElementThroughBridge(page, frame, '[data-od-id="relative-box"]', 'SIZE');
   const handle = page.getByTestId('manual-edit-resize-handle-w');
   await expect(handle).toBeVisible();
   const handleBox = await handle.boundingBox();
@@ -758,7 +792,7 @@ test('[P1] manual edit W-resize keeps overlay aligned on nested absolute', async
     { steps: 6 },
   );
 
-  const midTarget = await frame.locator('[data-od-id="relative-box"]').boundingBox();
+  const midTarget = await frame.locator('[data-od-id="nested-abs-box"]').boundingBox();
   const midOverlay = await overlay.boundingBox();
   expect(midTarget).toBeTruthy();
   expect(midOverlay).toBeTruthy();
@@ -768,7 +802,7 @@ test('[P1] manual edit W-resize keeps overlay aligned on nested absolute', async
   await page.mouse.up();
 });
 
-test('[P1] manual edit post-promote re-drag keeps overlay aligned to nested CB', async ({ page }) => {
+test('[P1] manual edit nested absolute re-drag keeps overlay aligned to CB', async ({ page }) => {
   test.setTimeout(60_000);
   await routeMockAgents(page);
   const projectId = await createProjectViaApi(page, 'Manual edit promote re-drag');
@@ -778,49 +812,26 @@ test('[P1] manual edit post-promote re-drag keeps overlay aligned to nested CB',
 
   const frame = artifactPreviewFrame(page);
   await page.getByTestId('manual-edit-mode-toggle').click();
-  await selectPreviewElementThroughBridge(page, frame, '[data-od-id="relative-box"]', 'SIZE');
+  await selectPreviewElementThroughBridge(page, frame, '[data-od-id="nested-abs-box"]', 'SIZE');
 
   const overlay = page.getByTestId('manual-edit-resize-overlay');
   await expect(overlay).toHaveAttribute('data-movable', 'true');
 
-  // First drag: promote relative → absolute inside relative-host (CB ≠ viewport).
-  let box = await overlay.boundingBox();
-  expect(box).toBeTruthy();
-  await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(box!.x + box!.width / 2 + 40, box!.y + box!.height / 2 + 20, { steps: 8 });
-  await page.mouse.up();
-
-  await expect
-    .poll(async () => {
-      const resp = await page.request.get(`/api/projects/${projectId}/files/manual-edit-move-relative-redrag.html`);
-      if (!resp.ok()) return false;
-      const source = await resp.text();
-      return /data-od-id="relative-box"[^>]*style="[^"]*position:\s*absolute/.test(source);
-    })
-    .toBe(true);
-
-  // Exit + re-enter Edit so host reselects from bridge (post-promote absolute).
-  await page.getByTestId('manual-edit-mode-toggle').click();
-  await page.getByTestId('manual-edit-mode-toggle').click();
-  await selectPreviewElementThroughBridge(page, frame, '[data-od-id="relative-box"]', 'SIZE');
-  await expect(overlay).toHaveAttribute('data-movable', 'true');
-
-  const beforeTarget = await frame.locator('[data-od-id="relative-box"]').boundingBox();
+  const beforeTarget = await frame.locator('[data-od-id="nested-abs-box"]').boundingBox();
   const beforeOverlay = await overlay.boundingBox();
   expect(beforeTarget).toBeTruthy();
   expect(beforeOverlay).toBeTruthy();
   expect(Math.abs(beforeOverlay!.x - beforeTarget!.x)).toBeLessThan(12);
   expect(Math.abs(beforeOverlay!.y - beforeTarget!.y)).toBeLessThan(12);
 
-  // Second drag: overlay must stay glued to the element (not jump to CB left/top).
-  box = await overlay.boundingBox();
+  // Drag: overlay must stay glued to the element (not jump to CB left/top).
+  let box = await overlay.boundingBox();
   expect(box).toBeTruthy();
   await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
   await page.mouse.down();
   await page.mouse.move(box!.x + box!.width / 2 + 36, box!.y + box!.height / 2 + 18, { steps: 8 });
 
-  const midTarget = await frame.locator('[data-od-id="relative-box"]').boundingBox();
+  const midTarget = await frame.locator('[data-od-id="nested-abs-box"]').boundingBox();
   const midOverlay = await overlay.boundingBox();
   expect(midTarget).toBeTruthy();
   expect(midOverlay).toBeTruthy();
@@ -831,7 +842,7 @@ test('[P1] manual edit post-promote re-drag keeps overlay aligned to nested CB',
 
   await expect
     .poll(async () => {
-      const targetBox = await frame.locator('[data-od-id="relative-box"]').boundingBox();
+      const targetBox = await frame.locator('[data-od-id="nested-abs-box"]').boundingBox();
       const overlayBox = await overlay.boundingBox();
       if (!targetBox || !overlayBox) return false;
       return Math.abs(overlayBox.x - targetBox.x) < 12
@@ -892,6 +903,388 @@ test('[P1] manual edit body-drag stays aligned and persists at 75% zoom', async 
       return left >= 60 && top >= 40;
     })
     .toBe(true);
+});
+
+test('[P1] manual edit deck fit-scale resize keeps overlay size after pointerup', async ({ page }) => {
+  test.setTimeout(90_000);
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await routeMockAgents(page);
+  const projectId = await createProjectViaApi(page, 'Manual edit deck fit resize');
+  const fileName = 'manual-deck-fit-resize.html';
+  await seedDeckFitScaleArtifact(page, projectId, fileName);
+  await page.goto(`/projects/${projectId}/files/${fileName}`);
+  await openDesignFile(page, fileName);
+
+  const frame = artifactPreviewFrame(page);
+  await waitForDeckFitScaleReady(frame);
+  await expectDeckFitScaleActive(frame, '[data-od-id="deck-resize-box"]');
+  await expect(page.locator('.viewer-toolbar-zoom .zoom-trigger')).toHaveText('100%');
+
+  await page.getByTestId('manual-edit-mode-toggle').click();
+  await selectPreviewElementThroughBridge(page, frame, '[data-od-id="deck-resize-box"]', 'SIZE');
+  const overlay = page.getByTestId('manual-edit-resize-overlay');
+  await expect(overlay).toBeVisible();
+
+  const before = await overlay.boundingBox();
+  expect(before).toBeTruthy();
+  const handle = page.getByTestId('manual-edit-resize-handle-se');
+  const handleBox = await handle.boundingBox();
+  expect(handleBox).toBeTruthy();
+  const startX = handleBox!.x + handleBox!.width / 2;
+  const startY = handleBox!.y + handleBox!.height / 2;
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(startX - 60, startY - 30, { steps: 8 });
+  await page.mouse.up();
+
+  const mid = await overlay.boundingBox();
+  expect(mid).toBeTruthy();
+  expect(mid!.width).toBeLessThan(before!.width - 12);
+  expect(mid!.height).toBeLessThan(before!.height - 8);
+
+  await expect
+    .poll(async () => {
+      const resp = await page.request.get(`/api/projects/${projectId}/files/${fileName}`);
+      if (!resp.ok()) return false;
+      const source = await resp.text();
+      const style = source.match(/data-od-id="deck-resize-box"[^>]*style="([^"]*)"/)?.[1];
+      if (!style) return false;
+      const width = Number(style.match(/width:\s*(\d+)px/)?.[1] ?? NaN);
+      return Number.isFinite(width) && width > 0 && width < 220;
+    })
+    .toBe(true);
+
+  await expectOverlayBoxStable(overlay, { width: mid!.width, height: mid!.height });
+});
+
+test('[P1] manual edit deck fit-scale move keeps overlay position after pointerup', async ({ page }) => {
+  test.setTimeout(90_000);
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await routeMockAgents(page);
+  const projectId = await createProjectViaApi(page, 'Manual edit deck fit move');
+  const fileName = 'manual-deck-fit-move.html';
+  await seedDeckFitScaleArtifact(page, projectId, fileName);
+  await page.goto(`/projects/${projectId}/files/${fileName}`);
+  await openDesignFile(page, fileName);
+
+  const frame = artifactPreviewFrame(page);
+  await waitForDeckFitScaleReady(frame);
+  await expectDeckFitScaleActive(frame, '[data-od-id="deck-move-box"]');
+  await expect(page.locator('.viewer-toolbar-zoom .zoom-trigger')).toHaveText('100%');
+
+  await page.getByTestId('manual-edit-mode-toggle').click();
+  await selectPreviewElementThroughBridge(page, frame, '[data-od-id="deck-move-box"]', 'SIZE');
+  const overlay = page.getByTestId('manual-edit-resize-overlay');
+  await expect(overlay).toBeVisible();
+  await expect(overlay).toHaveAttribute('data-movable', 'true');
+
+  const before = await overlay.boundingBox();
+  expect(before).toBeTruthy();
+  const startX = before!.x + before!.width / 2;
+  const startY = before!.y + before!.height / 2;
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(startX + 56, startY + 28, { steps: 8 });
+  await page.mouse.up();
+
+  const mid = await overlay.boundingBox();
+  expect(mid).toBeTruthy();
+  expect(mid!.x).toBeGreaterThan(before!.x + 20);
+  expect(mid!.y).toBeGreaterThan(before!.y + 10);
+
+  await expect
+    .poll(async () => {
+      const resp = await page.request.get(`/api/projects/${projectId}/files/${fileName}`);
+      if (!resp.ok()) return false;
+      const source = await resp.text();
+      const style = source.match(/data-od-id="deck-move-box"[^>]*style="([^"]*)"/)?.[1];
+      if (!style) return false;
+      const left = Number(style.match(/left:\s*(\d+)px/)?.[1] ?? NaN);
+      const top = Number(style.match(/top:\s*(\d+)px/)?.[1] ?? NaN);
+      return Number.isFinite(left) && Number.isFinite(top) && left > 540 && top > 380;
+    })
+    .toBe(true);
+
+  await expectOverlayBoxStable(overlay, { x: mid!.x, y: mid!.y });
+});
+
+test('[P1] manual edit deck fit-scale resize undo restores width in one step', async ({ page }) => {
+  test.setTimeout(90_000);
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await routeMockAgents(page);
+  const projectId = await createProjectViaApi(page, 'Manual edit deck fit resize undo');
+  const fileName = 'manual-deck-fit-resize-undo.html';
+  await seedDeckFitScaleArtifact(page, projectId, fileName);
+  await page.goto(`/projects/${projectId}/files/${fileName}`);
+  await openDesignFile(page, fileName);
+
+  const frame = artifactPreviewFrame(page);
+  await waitForDeckFitScaleReady(frame);
+  await page.getByTestId('manual-edit-mode-toggle').click();
+  await selectPreviewElementThroughBridge(page, frame, '[data-od-id="deck-resize-box"]', 'SIZE');
+
+  const handle = page.getByTestId('manual-edit-resize-handle-se');
+  const box = await handle.boundingBox();
+  expect(box).toBeTruthy();
+  const startX = box!.x + box!.width / 2;
+  const startY = box!.y + box!.height / 2;
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(startX - 60, startY - 30, { steps: 8 });
+  await page.mouse.up();
+
+  await expect
+    .poll(async () => {
+      const resp = await page.request.get(`/api/projects/${projectId}/files/${fileName}`);
+      if (!resp.ok()) return false;
+      const source = await resp.text();
+      const width = Number(source.match(/data-od-id="deck-resize-box"[^>]*style="[^"]*width:\s*(\d+)px/)?.[1] ?? NaN);
+      return Number.isFinite(width) && width > 0 && width < 220;
+    })
+    .toBe(true);
+
+  const undo = page.getByTestId('file-viewer-undo');
+  await expect(undo).toBeEnabled({ timeout: 15_000 });
+  await undo.click();
+
+  await expect
+    .poll(async () => {
+      const resp = await page.request.get(`/api/projects/${projectId}/files/${fileName}`);
+      if (!resp.ok()) return false;
+      const source = await resp.text();
+      const width = Number(source.match(/data-od-id="deck-resize-box"[^>]*style="[^"]*width:\s*(\d+)px/)?.[1] ?? NaN);
+      return Number.isFinite(width) && width === 240;
+    })
+    .toBe(true);
+});
+
+test('[P1] manual edit deck fit-scale move undo restores left/top in one step', async ({ page }) => {
+  test.setTimeout(90_000);
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await routeMockAgents(page);
+  const projectId = await createProjectViaApi(page, 'Manual edit deck fit move undo');
+  const fileName = 'manual-deck-fit-move-undo.html';
+  await seedDeckFitScaleArtifact(page, projectId, fileName);
+  await page.goto(`/projects/${projectId}/files/${fileName}`);
+  await openDesignFile(page, fileName);
+
+  const frame = artifactPreviewFrame(page);
+  await waitForDeckFitScaleReady(frame);
+  await page.getByTestId('manual-edit-mode-toggle').click();
+  await selectPreviewElementThroughBridge(page, frame, '[data-od-id="deck-move-box"]', 'SIZE');
+
+  const overlay = page.getByTestId('manual-edit-resize-overlay');
+  const box = await overlay.boundingBox();
+  expect(box).toBeTruthy();
+  const startX = box!.x + box!.width / 2;
+  const startY = box!.y + box!.height / 2;
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(startX + 56, startY + 28, { steps: 8 });
+  await page.mouse.up();
+
+  await expect
+    .poll(async () => {
+      const resp = await page.request.get(`/api/projects/${projectId}/files/${fileName}`);
+      if (!resp.ok()) return false;
+      const source = await resp.text();
+      const style = source.match(/data-od-id="deck-move-box"[^>]*style="([^"]*)"/)?.[1];
+      if (!style) return false;
+      const left = Number(style.match(/left:\s*(\d+)px/)?.[1] ?? NaN);
+      const top = Number(style.match(/top:\s*(\d+)px/)?.[1] ?? NaN);
+      return left > 540 && top > 380;
+    })
+    .toBe(true);
+
+  const undo = page.getByTestId('file-viewer-undo');
+  await expect(undo).toBeEnabled({ timeout: 15_000 });
+  await undo.click();
+
+  await expect
+    .poll(async () => {
+      const resp = await page.request.get(`/api/projects/${projectId}/files/${fileName}`);
+      if (!resp.ok()) return false;
+      const source = await resp.text();
+      const style = source.match(/data-od-id="deck-move-box"[^>]*style="([^"]*)"/)?.[1];
+      if (!style) return false;
+      const left = Number(style.match(/left:\s*(\d+)px/)?.[1] ?? NaN);
+      const top = Number(style.match(/top:\s*(\d+)px/)?.[1] ?? NaN);
+      return left === 520 && top === 360;
+    })
+    .toBe(true);
+});
+
+test('[P1] manual edit multi-select applies batch color and undo rolls back in one step', async ({ page }) => {
+  test.setTimeout(60_000);
+  await routeMockAgents(page);
+  const projectId = await createProjectViaApi(page, 'Manual edit multi-select');
+  const fileName = 'manual-edit-multi-select.html';
+  await seedHtmlArtifact(page, projectId, fileName, manualEditHtml());
+  await page.goto(`/projects/${projectId}/files/${fileName}`);
+  await openDesignFile(page, fileName);
+
+  const frame = artifactPreviewFrame(page);
+  await page.getByTestId('manual-edit-mode-toggle').click();
+  await frame.locator('[data-od-id="hero-title"]').click();
+  await frame.locator('[data-od-id="cta"]').click({ modifiers: ['Shift'] });
+
+  await expect(page.locator('.manual-edit-modal')).toContainText('2 selected');
+  await expect(page.getByTestId('manual-edit-multi-select-overlay')).toBeVisible();
+  await expect(page.getByTestId('manual-edit-resize-overlay')).toHaveCount(0);
+  await expect(frame.locator('[data-od-id="hero-title"][data-od-edit-selected="true"]')).toHaveCount(1);
+  await expect(frame.locator('[data-od-id="cta"][data-od-edit-selected="true"]')).toHaveCount(1);
+
+  await inspectorSection(page, 'TYPOGRAPHY').locator('.cc-row').filter({ hasText: 'Color' }).locator('input').fill('#ef4444');
+  await inspectSaveButton(page).click({ force: true });
+  await expectFileSource(page, projectId, fileName, [
+    'data-od-id="hero-title"',
+    'color:',
+    'data-od-id="cta"',
+  ]);
+
+  const undo = page.getByTestId('file-viewer-undo');
+  await expect(undo).toBeEnabled({ timeout: 15_000 });
+  await undo.click();
+  await expect.poll(async () => {
+    const resp = await page.request.get(`/api/projects/${projectId}/files/${fileName}`);
+    if (!resp.ok()) return false;
+    const source = await resp.text();
+    return !source.includes('color: #ef4444') && !source.includes('color:#ef4444');
+  }).toBe(true);
+});
+
+test('[P1] manual edit multi-select group move applies same delta and undo rolls back in one step', async ({ page }) => {
+  test.setTimeout(60_000);
+  await routeMockAgents(page);
+  const projectId = await createProjectViaApi(page, 'Manual edit group move');
+  const fileName = 'manual-edit-group-move.html';
+  await seedHtmlArtifact(page, projectId, fileName, manualEditHtml());
+  await page.goto(`/projects/${projectId}/files/${fileName}`);
+  await openDesignFile(page, fileName);
+
+  const frame = artifactPreviewFrame(page);
+  await page.getByTestId('manual-edit-mode-toggle').click();
+  await frame.locator('[data-od-id="move-box"]').click();
+  await frame.locator('[data-od-id="nested-abs-box"]').click({ modifiers: ['Shift'] });
+
+  await expect(page.getByTestId('manual-edit-multi-select-overlay')).toBeVisible();
+  await expect(page.getByTestId('manual-edit-multi-select-overlay')).toHaveAttribute('data-movable', 'true');
+
+  const overlay = page.getByTestId('manual-edit-multi-select-overlay');
+  const box = await overlay.boundingBox();
+  expect(box).toBeTruthy();
+  const startX = box!.x + box!.width / 2;
+  const startY = box!.y + box!.height / 2;
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(startX + 48, startY + 24, { steps: 8 });
+  await page.mouse.up();
+
+  await expect
+    .poll(async () => {
+      const resp = await page.request.get(`/api/projects/${projectId}/files/${fileName}`);
+      if (!resp.ok()) return false;
+      const source = await resp.text();
+      const moveStyle = source.match(/data-od-id="move-box"[^>]*style="([^"]*)"/)?.[1];
+      const nestedStyle = source.match(/data-od-id="nested-abs-box"[^>]*style="([^"]*)"/)?.[1];
+      if (!moveStyle || !nestedStyle) return false;
+      const moveLeft = Number(moveStyle.match(/left:\s*(-?\d+)px/)?.[1] ?? NaN);
+      const moveTop = Number(moveStyle.match(/top:\s*(-?\d+)px/)?.[1] ?? NaN);
+      const nestedLeft = Number(nestedStyle.match(/left:\s*(-?\d+)px/)?.[1] ?? NaN);
+      const nestedTop = Number(nestedStyle.match(/top:\s*(-?\d+)px/)?.[1] ?? NaN);
+      return moveLeft >= 60 && moveTop >= 40 && nestedLeft >= 76 && nestedTop >= 36;
+    })
+    .toBe(true);
+
+  const undo = page.getByTestId('file-viewer-undo');
+  await expect(undo).toBeEnabled({ timeout: 15_000 });
+  await undo.click();
+  await expect
+    .poll(async () => {
+      const resp = await page.request.get(`/api/projects/${projectId}/files/${fileName}`);
+      if (!resp.ok()) return false;
+      const source = await resp.text();
+      const moveStyle = source.match(/data-od-id="move-box"[^>]*style="([^"]*)"/)?.[1];
+      const nestedStyle = source.match(/data-od-id="nested-abs-box"[^>]*style="([^"]*)"/)?.[1];
+      if (!moveStyle || !nestedStyle) return false;
+      const moveLeft = Number(moveStyle.match(/left:\s*(-?\d+)px/)?.[1] ?? NaN);
+      const moveTop = Number(moveStyle.match(/top:\s*(-?\d+)px/)?.[1] ?? NaN);
+      const nestedLeft = Number(nestedStyle.match(/left:\s*(-?\d+)px/)?.[1] ?? NaN);
+      const nestedTop = Number(nestedStyle.match(/top:\s*(-?\d+)px/)?.[1] ?? NaN);
+      return moveLeft === 24 && moveTop === 24 && nestedLeft === 40 && nestedTop === 20;
+    })
+    .toBe(true);
+});
+
+test('[P1] manual edit multi-select group resize scales both boxes and undo rolls back in one step', async ({ page }) => {
+  test.setTimeout(60_000);
+  await routeMockAgents(page);
+  const projectId = await createProjectViaApi(page, 'Manual edit group resize');
+  const fileName = 'manual-edit-group-resize.html';
+  await seedHtmlArtifact(page, projectId, fileName, manualEditHtml());
+  await page.goto(`/projects/${projectId}/files/${fileName}`);
+  await openDesignFile(page, fileName);
+
+  const frame = artifactPreviewFrame(page);
+  await page.getByTestId('manual-edit-mode-toggle').click();
+  await frame.locator('[data-od-id="move-box"]').click();
+  await frame.locator('[data-od-id="nested-abs-box"]').click({ modifiers: ['Shift'] });
+
+  const handle = page.getByTestId('manual-edit-multi-resize-handle-se');
+  const box = await handle.boundingBox();
+  expect(box).toBeTruthy();
+  await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box!.x + box!.width / 2 + 48, box!.y + box!.height / 2 + 24, { steps: 8 });
+  await page.mouse.up();
+
+  await expect
+    .poll(async () => {
+      const resp = await page.request.get(`/api/projects/${projectId}/files/${fileName}`);
+      if (!resp.ok()) return false;
+      const source = await resp.text();
+      const moveStyle = source.match(/data-od-id="move-box"[^>]*style="([^"]*)"/)?.[1];
+      const nestedStyle = source.match(/data-od-id="nested-abs-box"[^>]*style="([^"]*)"/)?.[1];
+      if (!moveStyle || !nestedStyle) return false;
+      const moveWidth = Number(moveStyle.match(/width:\s*(-?\d+)px/)?.[1] ?? NaN);
+      const nestedWidth = Number(nestedStyle.match(/width:\s*(-?\d+)px/)?.[1] ?? NaN);
+      return moveWidth >= 160 && nestedWidth >= 115;
+    })
+    .toBe(true);
+
+  const undo = page.getByTestId('file-viewer-undo');
+  await expect(undo).toBeEnabled({ timeout: 15_000 });
+  await undo.click();
+  await expect
+    .poll(async () => {
+      const resp = await page.request.get(`/api/projects/${projectId}/files/${fileName}`);
+      if (!resp.ok()) return false;
+      const source = await resp.text();
+      const moveStyle = source.match(/data-od-id="move-box"[^>]*style="([^"]*)"/)?.[1];
+      const nestedStyle = source.match(/data-od-id="nested-abs-box"[^>]*style="([^"]*)"/)?.[1];
+      if (!moveStyle || !nestedStyle) return false;
+      const moveWidth = Number(moveStyle.match(/width:\s*(-?\d+)px/)?.[1] ?? NaN);
+      const nestedWidth = Number(nestedStyle.match(/width:\s*(-?\d+)px/)?.[1] ?? NaN);
+      return moveWidth === 140 && nestedWidth === 100;
+    })
+    .toBe(true);
+});
+
+test('[P1] manual edit layer list supports ctrl additive multi-select', async ({ page }) => {
+  test.setTimeout(60_000);
+  await routeMockAgents(page);
+  const projectId = await createProjectViaApi(page, 'Manual edit layer mult');
+  const fileName = 'manual-edit-layer-mult.html';
+  await seedHtmlArtifact(page, projectId, fileName, manualEditHtml());
+  await page.goto(`/projects/${projectId}/files/${fileName}`);
+  await openDesignFile(page, fileName);
+
+  await page.getByTestId('manual-edit-mode-toggle').click();
+  await page.getByTestId('manual-edit-layers-toggle').click();
+  await expect(page.getByTestId('manual-edit-layers-panel')).toBeVisible();
+  await page.getByTestId('manual-edit-layer-row-hero-title').click();
+  await page.getByTestId('manual-edit-layer-row-cta').click({ modifiers: ['ControlOrMeta'] });
+  await expect(page.locator('.manual-edit-modal')).toContainText('2 selected');
 });
 
 test('[P1] manual edit body-drag undo restores left/top in one step', async ({ page }) => {
@@ -1406,6 +1799,65 @@ async function seedDeckArtifact(
   expect(resp.ok()).toBeTruthy();
 }
 
+async function seedDeckFitScaleArtifact(page: Page, projectId: string, fileName: string) {
+  const resp = await page.request.post(
+    `/api/projects/${projectId}/files`,
+    {
+      data: {
+        name: fileName,
+        content: manualEditDeckFitScaleHtml(),
+        artifactManifest: {
+          version: 1,
+          kind: 'deck',
+          title: 'Manual Edit Deck Fit Scale',
+          entry: fileName,
+          renderer: 'deck-html',
+          exports: ['html', 'pptx'],
+        },
+      },
+      timeout: 15_000,
+    },
+  );
+  expect(resp.ok()).toBeTruthy();
+}
+
+async function waitForDeckFitScaleReady(frame: ReturnType<Page['frameLocator']>) {
+  await expect(frame.locator('html[data-od-compact-stacked]')).toHaveCount(1, { timeout: 20_000 });
+  await expect(frame.locator('[data-od-id="deck-resize-box"]')).toBeVisible();
+  await expect(frame.locator('[data-od-id="deck-move-box"]')).toBeVisible();
+}
+
+async function expectDeckFitScaleActive(
+  frame: ReturnType<Page['frameLocator']>,
+  selector: string,
+) {
+  await expect.poll(async () => {
+    const ratio = await frame.locator(selector).evaluate((el) => {
+      const visual = el.getBoundingClientRect().width;
+      const layout = Number.parseFloat(getComputedStyle(el).width);
+      return layout > 0 ? visual / layout : 1;
+    });
+    return ratio < 0.85 && ratio > 0.2;
+  }).toBe(true);
+}
+
+async function expectOverlayBoxStable(
+  overlay: ReturnType<Page['getByTestId']>,
+  expected: { width?: number; height?: number; x?: number; y?: number },
+  tolerancePx = 8,
+) {
+  const assertNear = (actual: number, target: number) => Math.abs(actual - target) <= tolerancePx;
+  await expect.poll(async () => {
+    const box = await overlay.boundingBox();
+    if (!box) return false;
+    if (expected.width != null && !assertNear(box.width, expected.width)) return false;
+    if (expected.height != null && !assertNear(box.height, expected.height)) return false;
+    if (expected.x != null && !assertNear(box.x, expected.x)) return false;
+    if (expected.y != null && !assertNear(box.y, expected.y)) return false;
+    return true;
+  }, { timeout: 3_000, intervals: [50, 100, 150, 200] }).toBe(true);
+}
+
 async function openDesignFile(page: Page, fileName: string) {
   const preview = artifactPreview(page);
   try {
@@ -1501,9 +1953,43 @@ function manualEditHtml(): string {
       <div data-od-id="move-box" data-od-label="Move box" style="position:absolute;left:24px;top:24px;width:140px;height:90px;background:#93c5fd;">Move me</div>
       <div data-od-id="relative-host" data-od-label="Relative host" style="position:relative;width:280px;height:140px;margin-top:120px;border:1px solid #e5e5e5;">
         <div data-od-id="relative-box" data-od-label="Relative box" style="position:relative;left:10px;top:8px;margin-left:40px;width:100px;height:60px;background:#fca5a5;">Relative</div>
+        <div data-od-id="nested-abs-box" data-od-label="Nested abs" style="position:absolute;left:40px;top:20px;width:100px;height:60px;background:#86efac;">Nested abs</div>
       </div>
     </main>
   </body>
+</html>`;
+}
+
+function manualEditDeckFitScaleHtml(): string {
+  return `<!doctype html>
+<html lang="ko">
+<head>
+  <style>
+    body { margin: 0; background: #0f172a; }
+    .slide {
+      width: 1920px;
+      height: 1080px;
+      box-sizing: border-box;
+      position: relative;
+      overflow: hidden;
+      color: #fff;
+      padding: 48px;
+    }
+  </style>
+</head>
+<body>
+  <section class="slide" data-od-id="slide-1">
+    <h1>Deck fit-scale</h1>
+    <div data-od-id="deck-resize-box" data-od-label="Deck resize box"
+      style="position:absolute;left:200px;top:200px;width:240px;height:120px;background:#93c5fd;">
+      Resize
+    </div>
+    <div data-od-id="deck-move-box" data-od-label="Deck move box"
+      style="position:absolute;left:520px;top:360px;width:200px;height:100px;background:#fca5a5;">
+      Move
+    </div>
+  </section>
+</body>
 </html>`;
 }
 

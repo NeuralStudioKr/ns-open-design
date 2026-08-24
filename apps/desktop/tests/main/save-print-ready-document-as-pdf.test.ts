@@ -144,14 +144,14 @@ describe('savePrintReadyDocumentAsPdf', () => {
     await savePrintReadyDocumentAsPdf('<html></html>', 'nonce-deck', target, { deck: true });
 
     expect(calls).not.toContain('measurePageSize');
-    expect(printedWith).toEqual([
-      {
-        margins: { bottom: 0, left: 0, right: 0, top: 0 },
-        pageSize: { height: 7.5, width: 13.333333 },
-        preferCSSPageSize: true,
-        printBackground: true,
-      },
-    ]);
+    expect(printedWith).toHaveLength(1);
+    expect(printedWith[0]).toMatchObject({
+      margins: { bottom: 0, left: 0, right: 0, top: 0 },
+      pageSize: { height: 7.5, width: 13.333333 },
+      preferCSSPageSize: false,
+      printBackground: true,
+    });
+    expect(printedWith[0]?.scale).toBeCloseTo(2 / 3, 5);
   });
 
   test('does nothing when the user cancels the Save dialog', async () => {

@@ -7,6 +7,7 @@
  * Always parent-fetch (credentials / fetchTeamverDaemon) and mount srcDoc.
  */
 
+import { artifactFontStylesheetHttpsOrigins } from '@open-design/contracts';
 import { fetchTeamverDaemon } from '../teamver/teamverDaemonHeaders';
 
 export function isUnauthorizedHtmlBody(
@@ -160,6 +161,17 @@ function isScriptExecutionDirective(name: string): boolean {
   return name === 'script-src' || name === 'script-src-elem' || name === 'script-src-attr';
 }
 
+const SRCDOC_FONT_ORIGINS = artifactFontStylesheetHttpsOrigins();
+const SRCDOC_STYLE_FONT_HOSTS = SRCDOC_FONT_ORIGINS;
+const SRCDOC_FONT_FILE_HOSTS = SRCDOC_FONT_ORIGINS;
+
+function appendCspSources(sourceList: string, extras: readonly string[]): string {
+  return dedupeCspSourceTokens([
+    ...sourceList.trim().split(/\s+/).filter((token) => token.length > 0),
+    ...extras,
+  ]).join(' ');
+}
+
 function normalizeScriptSrcDirective(sourceList: string): string {
   const tokens = dedupeCspSourceTokens(
     sourceList
@@ -187,12 +199,41 @@ export function relaxCanvasMetaCspForSrcDocPreview(content: string): string {
   const directives = parseCspToDirectives(content)
     .filter((directive) => !isBaseUriNoneDirective(directive))
     .map((directive) => {
-      if (!isScriptExecutionDirective(directive.name)) return directive;
-      return {
-        ...directive,
-        value: normalizeScriptSrcDirective(directive.value),
-      };
+      if (isScriptExecutionDirective(directive.name)) {
+        return {
+          ...directive,
+          value: normalizeScriptSrcDirective(directive.value),
+        };
+      }
+      if (directive.name === 'style-src') {
+        return {
+          ...directive,
+          value: appendCspSources(directive.value, SRCDOC_STYLE_FONT_HOSTS),
+        };
+      }
+      if (directive.name === 'font-src') {
+        return {
+          ...directive,
+          value: appendCspSources(directive.value, SRCDOC_FONT_FILE_HOSTS),
+        };
+      }
+      return directive;
     });
+  const names = new Set(directives.map((directive) => directive.name));
+  // `default-src 'none'` with no font-src/style-src blocks Google Fonts even
+  // after we keep the @import / <link>. Add the allowlisted hosts.
+  if (names.has('default-src') && !names.has('style-src')) {
+    directives.push({
+      name: 'style-src',
+      value: appendCspSources("'unsafe-inline'", SRCDOC_STYLE_FONT_HOSTS),
+    });
+  }
+  if (names.has('default-src') && !names.has('font-src')) {
+    directives.push({
+      name: 'font-src',
+      value: appendCspSources("'self' data:", SRCDOC_FONT_FILE_HOSTS),
+    });
+  }
   return serializeCspDirectives(directives);
 }
 
@@ -266,6 +307,15 @@ export async function loadAuthenticatedHtmlSrcDoc(
       ?? (/(?:\/preview|\/example\/)/i.test(url)
         ? resolvePluginPreviewBaseHref(url)
         : new URL(url, typeof window !== 'undefined' ? window.location.href : 'http://localhost/').href);
+    // Multi-slide decks must isolate the first slide — same bleed class as
+    // ProjectCardHtmlCover. Dynamic import avoids a static cycle with
+    // htmlCoverSrcDoc → injectHtmlBaseHref (this module).
+    const { buildHtmlCoverSrcDoc, htmlLooksLikeMultiSlideDeck } = await import(
+      '../teamver/htmlCoverSrcDoc'
+    );
+    if (htmlLooksLikeMultiSlideDeck(text)) {
+      return { ok: true, srcDoc: buildHtmlCoverSrcDoc(text, baseHref) };
+    }
     return { ok: true, srcDoc: injectHtmlBaseHref(text, baseHref) };
   } catch {
     return { ok: false, reason: 'network' };

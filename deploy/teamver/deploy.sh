@@ -177,10 +177,12 @@ print_deploy_diagnostic() {
   echo "[Managed API / embed]"
   if [[ -n "$(_get_env_kv TEAMVER_OD_API_KEY)" ]]; then
     echo "  TEAMVER_OD_API_KEY: 설정됨 (runtime-config managed BYOK)"
+  elif [[ -n "$(_get_env_kv TEAMVER_MINIMAX_API_KEY)" || -n "$(_get_env_kv OD_MINIMAX_API_KEY)" || -n "$(_get_env_kv MINIMAX_API_KEY)" ]]; then
+    echo "  TEAMVER_MINIMAX_API_KEY: 설정됨 (runtime-config managed MiniMax)"
   elif [[ -n "$(_get_env_kv ANTHROPIC_API_KEY)" ]]; then
     echo "  ANTHROPIC_API_KEY: 설정됨 (daemon BYOK)"
   else
-    echo "  ⚠ TEAMVER_OD_API_KEY·ANTHROPIC_API_KEY 없음 — embed chat 비활성 가능"
+    echo "  ⚠ TEAMVER_OD_API_KEY·TEAMVER_MINIMAX_API_KEY·ANTHROPIC_API_KEY 없음 — embed chat 비활성 가능"
   fi
   echo "=========================================="
   echo ""

@@ -9,7 +9,7 @@ export function projectFilePathExists(
   projectFileNames: ReadonlySet<string> | undefined,
   path: string,
 ): boolean {
-  const trimmed = String(path || '').trim().replace(/\\/g, '/');
+  const trimmed = normalizeProjectFilePath(path);
   if (!trimmed) return false;
   if (!projectFileNames) {
     return !isEphemeralDrawingScreenshotPath(trimmed);
@@ -21,27 +21,70 @@ export function projectFilePathExists(
   // Do not treat `assets/a.png` as proof that `uploads/a.png` exists.
   if (hasDirectory) {
     for (const name of projectFileNames) {
-      const normalized = String(name || '').replace(/\\/g, '/');
+      const normalized = normalizeProjectFilePath(name);
       if (normalized === trimmed || normalized.endsWith(`/${trimmed}`)) return true;
     }
     return false;
   }
   if (projectFileNames.has(baseName)) return true;
   for (const name of projectFileNames) {
-    const normalized = String(name || '').replace(/\\/g, '/');
+    const normalized = normalizeProjectFilePath(name);
     if (normalized === baseName || normalized.endsWith(`/${baseName}`)) return true;
   }
   return false;
 }
 
+/** User annotation / draw screenshots — never assistant-produced deliverables. */
+export function isUserAnnotationDrawingScreenshotPath(path: string): boolean {
+  const baseName = projectFilePathBasename(path).toLowerCase();
+  if (!baseName.endsWith('.png')) return false;
+  if (/^drawing-\d{4}-\d{2}-\d{2}t[\d-]+z\.png$/i.test(baseName)) return true;
+  if (/^[a-z0-9]+-drawing-.*\.png$/i.test(baseName)) return true;
+  // Older / alternate visual-mark uploads (still GC'd independently of deliverables).
+  if (/^visual-mark[-_].*\.png$/i.test(baseName)) return true;
+  return false;
+}
+
 export function isEphemeralDrawingScreenshotPath(path: string): boolean {
-  const baseName = projectFilePathBasename(path);
-  return /^[a-z0-9]+-drawing-\d{4}-\d{2}-\d{2}T[\d-]+Z\.png$/i.test(baseName);
+  return isUserAnnotationDrawingScreenshotPath(path);
+}
+
+/** Normalize project-relative paths for compare (NFC + slash). */
+export function normalizeProjectFilePath(path: string): string {
+  const trimmed = String(path || '').trim().replace(/\\/g, '/');
+  if (!trimmed) return '';
+  try {
+    return trimmed.normalize('NFC');
+  } catch {
+    return trimmed;
+  }
+}
+
+/**
+ * macOS HFS+ / user-agent uploads can persist Hangul filenames in NFD form
+ * while our FE canonicalizes to NFC. The daemon `/raw/` path lookup is
+ * byte-exact — if the disk has one form and we request the other, we 404.
+ * Return the NFD variant when it differs from NFC so callers can probe both.
+ */
+export function projectFilePathToNfd(path: string): string {
+  const trimmed = String(path || '').trim().replace(/\\/g, '/');
+  if (!trimmed) return '';
+  try {
+    return trimmed.normalize('NFD');
+  } catch {
+    return trimmed;
+  }
 }
 
 export function projectFilePathBasename(path: string): string {
-  const trimmed = String(path || '').trim().replace(/\\/g, '/');
+  const trimmed = normalizeProjectFilePath(path);
   return trimmed.split('/').pop() || trimmed;
+}
+
+/** Raster/vector paths that must never be opened in the text viewer. */
+export function isRenderableImagePath(path: string): boolean {
+  const base = projectFilePathBasename(String(path || '').trim().toLowerCase());
+  return /\.(png|jpe?g|gif|webp|avif|bmp|svg)$/i.test(base);
 }
 
 /** Prefer daemon `path` when present; fall back to flat `name`. */
@@ -53,8 +96,8 @@ export function projectFileResolvedPath(file: { name: string; path?: string | nu
 
 /** Treat `uploads/foo.png` and bare `foo.png` as the same project file. */
 export function projectFilePathsReferToSameFile(a: string, b: string): boolean {
-  const left = String(a || '').trim().replace(/\\/g, '/');
-  const right = String(b || '').trim().replace(/\\/g, '/');
+  const left = normalizeProjectFilePath(a);
+  const right = normalizeProjectFilePath(b);
   if (!left || !right) return false;
   if (left === right) return true;
   return projectFilePathBasename(left) === projectFilePathBasename(right);
@@ -89,4 +132,29 @@ export function excludeAttachmentsBackedByVisualScreenshots<T extends { path: st
     if (!path) return false;
     return !projectFilePathsInclude(screenshotPaths, path);
   });
+}
+
+/** Fresh Drive (`refs/…`) or timestamped root uploads that /files may lag on. */
+export function isLikelyDurableUploadedImagePath(path: string): boolean {
+  const normalized = String(path || '').trim().replace(/\\/g, '/');
+  if (!normalized || !/\.(png|jpe?g|gif|webp|avif|svg)$/i.test(normalized)) return false;
+  if (normalized === 'refs' || normalized.startsWith('refs/')) return true;
+  const base = projectFilePathBasename(normalized);
+  return /^[a-z0-9]{6,12}-.+/i.test(base);
+}
+
+/**
+ * Whether a chat attachment chip should stay visible for this project file
+ * index. Ephemeral drawing screenshots remain index-gated so GC'd marks do not
+ * resurrect after refresh. Every other persisted message attachment is
+ * authoritative — `/files` lag must not hide Drive/local/board image chips
+ * (including non-timestamp names like `uploads/ref-memo.png`).
+ */
+export function chatAttachmentVisibleInProjectFiles(
+  projectFileNames: ReadonlySet<string> | undefined,
+  path: string,
+): boolean {
+  if (projectFilePathExists(projectFileNames, path)) return true;
+  if (isEphemeralDrawingScreenshotPath(path)) return false;
+  return true;
 }

@@ -81,7 +81,67 @@ describe('FileViewer revision re-entry', () => {
       />,
     );
 
-    await waitFor(() => expect(screen.getByTestId('file-viewer-undo').hasAttribute('disabled')).toBe(false));
+    await waitFor(() => expect(screen.getByTestId('file-viewer-redo').hasAttribute('disabled')).toBe(false));
+    expect(screen.getByTestId('file-viewer-undo').hasAttribute('disabled')).toBe(true);
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('keeps the restored revision cursor after unmount and remount', async () => {
+    const initialSource = heroSource();
+    const { fetchMock, getPersistedSource } = createProjectFileRevisionFetchMock({
+      projectId: 'project-1',
+      fileName: 'preview.html',
+      initialSource,
+    });
+    vi.stubGlobal('fetch', vi.fn(fetchMock));
+
+    const view = render(
+      <FileViewer
+        projectId="project-1"
+        projectKind="prototype"
+        file={htmlPreviewFile()}
+        liveHtml={initialSource}
+        filesRefreshKey={0}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId('manual-edit-mode-toggle'));
+    await selectManualEditTarget();
+
+    act(() => {
+      panelState.props?.onApplyPatch(
+        { kind: 'set-style', id: 'hero', styles: { color: '#ef4444' } },
+        'Style: Hero',
+      );
+    });
+    await waitFor(() => expect(getPersistedSource()).toContain('rgb(239, 68, 68)'));
+
+    const undo = await waitFor(() => {
+      const button = screen.getByTestId('file-viewer-undo');
+      if (button.hasAttribute('disabled')) throw new Error('undo still disabled');
+      return button;
+    });
+    await act(async () => {
+      fireEvent.click(undo);
+    });
+    await waitFor(() => expect(getPersistedSource()).toContain('#111111'));
+
+    view.unmount();
+
+    render(
+      <FileViewer
+        projectId="project-1"
+        projectKind="prototype"
+        file={htmlPreviewFile()}
+        liveHtml={initialSource}
+        filesRefreshKey={0}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('file-viewer-redo').hasAttribute('disabled')).toBe(false);
+    });
+    expect(screen.getByTestId('file-viewer-undo').hasAttribute('disabled')).toBe(true);
     expect(screen.queryByRole('alert')).toBeNull();
   });
 });

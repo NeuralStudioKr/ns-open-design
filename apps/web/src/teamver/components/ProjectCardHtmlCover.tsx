@@ -1,27 +1,64 @@
 import type { CSSProperties } from "react";
 import { useEffect, useRef, useState } from "react";
 
-import { injectHtmlBaseHref } from "../../runtime/authenticatedHtmlSrcDoc";
 import { isTeamverEmbedMode } from "../designApiBase";
+import {
+  buildHtmlCoverSrcDoc,
+  HTML_COVER_CANVAS_HEIGHT,
+  HTML_COVER_CANVAS_WIDTH,
+} from "../htmlCoverSrcDoc";
+import {
+  clearHtmlCoverCacheStoreForTests,
+  deleteHtmlCoverInflight,
+  getHtmlCoverInflight,
+  htmlCoverCacheKey,
+  peekHtmlCoverCache,
+  seedHtmlCoverCache,
+  setHtmlCoverInflight,
+} from "../htmlCoverCacheStore";
 import { fetchTeamverDaemon } from "../teamverDaemonHeaders";
 import {
   projectScopedPreviewUrl,
   resolveTeamverProjectPreviewPrefix,
 } from "../teamverProjectPreviewScope";
+import { subscribeProjectCoverClear } from "../projectCoverLoader";
 
-// Match Teamver slide canvas (canvasSlideLaunch / TEAMVER_SLIDE_CANVAS).
-// Older 1280×720 forced absolute-px decks to clip; scripts are stripped so
-// fit() never rescales inside the thumb iframe.
-const DECK_PREVIEW_WIDTH = 1920;
-const DECK_PREVIEW_HEIGHT = 1080;
+export {
+  buildHtmlCoverSrcDoc,
+  deckPreviewSrcDoc,
+  extractCoverSlideSections,
+  htmlLooksLikeMultiSlideDeck,
+  isolateFirstDeckSlideHtml,
+  pagePreviewSrcDoc,
+  type CoverSlideSection,
+} from "../htmlCoverSrcDoc";
 
-const htmlCoverCache = new Map<string, string>();
-const htmlCoverInflight = new Map<string, Promise<string>>();
+export {
+  htmlCoverCacheKey,
+  peekHtmlCoverCache,
+  seedHtmlCoverCache,
+} from "../htmlCoverCacheStore";
+
+const VIEWPORT_ROOT_MARGIN_PX = 160;
+
+function isNearViewport(node: Element): boolean {
+  const rect = node.getBoundingClientRect();
+  return (
+    rect.bottom >= -VIEWPORT_ROOT_MARGIN_PX &&
+    rect.top <= window.innerHeight + VIEWPORT_ROOT_MARGIN_PX
+  );
+}
 
 export type ProjectCardHtmlCoverProps = {
   src: string;
   /** Deck projects — first-slide layout CSS; prototypes use a simpler clip. */
   deckCoverOnly?: boolean;
+  /**
+   * When true (default in Teamver embed), wait until the card is near the
+   * viewport before fetching `/raw` + minting `preview-url`. Standalone OD
+   * still loads immediately so existing thumbnails keep painting.
+   */
+  deferUntilVisible?: boolean;
   iframeClassName?: string;
   deckFrameClassName?: string;
   deckIframeClassName?: string;
@@ -39,6 +76,7 @@ export type ProjectCardHtmlCoverProps = {
 export function ProjectCardHtmlCover({
   src,
   deckCoverOnly = false,
+  deferUntilVisible = isTeamverEmbedMode(),
   iframeClassName = "thumb-iframe",
   deckFrameClassName = "project-thumb-deck-frame",
   deckIframeClassName = "project-thumb-deck-iframe",
@@ -48,6 +86,7 @@ export function ProjectCardHtmlCover({
     <AuthenticatedHtmlCover
       src={src}
       mode={deckCoverOnly ? "deck" : "page"}
+      deferUntilVisible={deferUntilVisible}
       deckFrameClassName={deckFrameClassName}
       deckIframeClassName={deckIframeClassName || iframeClassName}
       deckLoadingClassName={deckLoadingClassName}
@@ -58,31 +97,101 @@ export function ProjectCardHtmlCover({
 function AuthenticatedHtmlCover({
   src,
   mode,
+  deferUntilVisible,
   deckFrameClassName,
   deckIframeClassName,
   deckLoadingClassName,
 }: {
   src: string;
   mode: "deck" | "page";
+  deferUntilVisible: boolean;
   deckFrameClassName: string;
   deckIframeClassName: string;
   deckLoadingClassName: string;
 }) {
   const frameRef = useRef<HTMLDivElement | null>(null);
-  const cacheKey = `${mode}:${src}`;
-  const [srcDoc, setSrcDoc] = useState<string | null>(() => htmlCoverCache.get(cacheKey) ?? null);
+  // Cache key keeps ?v=/coverVersion so deck edits bust stale first-slide
+  // srcDoc. Prefixed with builder version so logic bumps do not serve old thumbs.
+  const cacheKey = htmlCoverCacheKey(mode, src);
+  const [visible, setVisible] = useState(() => {
+    if (!deferUntilVisible) return true;
+    return peekHtmlCoverCache(cacheKey) != null;
+  });
+  const [srcDoc, setSrcDoc] = useState<string | null>(() => peekHtmlCoverCache(cacheKey));
   const [scale, setScale] = useState(1);
+  const [bustNonce, setBustNonce] = useState(0);
+  const coverProjectId = parseProjectRawUrl(src)?.projectId ?? null;
 
   useEffect(() => {
+    return subscribeProjectCoverClear((clearedId) => {
+      if (clearedId !== null && coverProjectId && clearedId !== coverProjectId) return;
+      setSrcDoc(null);
+      setBustNonce((value) => value + 1);
+    });
+  }, [coverProjectId]);
+
+  useEffect(() => {
+    if (!deferUntilVisible) {
+      setVisible(true);
+      return;
+    }
+    if (peekHtmlCoverCache(cacheKey)) {
+      setVisible(true);
+      return;
+    }
     let cancelled = false;
-    const cached = htmlCoverCache.get(cacheKey);
+    let observer: IntersectionObserver | null = null;
+    let raf = 0;
+    let attempts = 0;
+    const attach = () => {
+      if (cancelled) return;
+      const node = frameRef.current;
+      if (!node) {
+        // First paint can run the effect before the frame ref is committed.
+        // Retry a few frames instead of leaving visible=false forever.
+        attempts += 1;
+        if (attempts > 8) {
+          setVisible(true);
+          return;
+        }
+        raf = requestAnimationFrame(attach);
+        return;
+      }
+      if (typeof IntersectionObserver === "undefined" || isNearViewport(node)) {
+        setVisible(true);
+        return;
+      }
+      observer = new IntersectionObserver(
+        ([entry]) => {
+          if (!entry?.isIntersecting) return;
+          setVisible(true);
+          observer?.disconnect();
+        },
+        { rootMargin: `${VIEWPORT_ROOT_MARGIN_PX}px` },
+      );
+      observer.observe(node);
+    };
+    attach();
+    return () => {
+      cancelled = true;
+      if (raf) cancelAnimationFrame(raf);
+      observer?.disconnect();
+    };
+  }, [cacheKey, deferUntilVisible]);
+
+  useEffect(() => {
+    if (!visible) return;
+    let cancelled = false;
+    const cached = peekHtmlCoverCache(cacheKey);
     if (cached) {
       setSrcDoc(cached);
       return;
     }
-    setSrcDoc(null);
-    const abort = new AbortController();
-    loadHtmlCover(src, mode, abort.signal)
+    // Fetch by stable path (cacheKey). Do not depend on `src` query (`?v=` /
+    // updatedAt) — that aborted in-flight cover GETs on every project poll.
+    // loadHtmlCover shares inflight by cacheKey; unmount only skips setState.
+    const fetchSrc = src.split(/[?#]/u, 1)[0] ?? src;
+    loadHtmlCover(fetchSrc, mode, cacheKey)
       .then((next) => {
         if (!cancelled) setSrcDoc(next);
       })
@@ -91,9 +200,8 @@ function AuthenticatedHtmlCover({
       });
     return () => {
       cancelled = true;
-      abort.abort();
     };
-  }, [cacheKey, mode, src]);
+  }, [bustNonce, cacheKey, mode, visible]);
 
   useEffect(() => {
     const node = frameRef.current;
@@ -101,7 +209,7 @@ function AuthenticatedHtmlCover({
     const update = () => {
       const rect = node.getBoundingClientRect();
       if (rect.width <= 0 || rect.height <= 0) return;
-      setScale(Math.min(rect.width / DECK_PREVIEW_WIDTH, rect.height / DECK_PREVIEW_HEIGHT));
+      setScale(Math.min(rect.width / HTML_COVER_CANVAS_WIDTH, rect.height / HTML_COVER_CANVAS_HEIGHT));
     };
     update();
     if (typeof ResizeObserver === "undefined") {
@@ -129,8 +237,8 @@ function AuthenticatedHtmlCover({
           sandbox="allow-scripts"
           tabIndex={-1}
           style={{
-            width: DECK_PREVIEW_WIDTH,
-            height: DECK_PREVIEW_HEIGHT,
+            width: HTML_COVER_CANVAS_WIDTH,
+            height: HTML_COVER_CANVAS_HEIGHT,
             transform: `scale(${scale})`,
             transformOrigin: "0 0",
           }}
@@ -215,140 +323,51 @@ async function resolveCoverBaseHref(
 async function loadHtmlCover(
   src: string,
   mode: "deck" | "page",
-  signal?: AbortSignal,
+  cacheKeyOverride?: string,
 ): Promise<string> {
-  const cacheKey = `${mode}:${src}`;
-  const cached = htmlCoverCache.get(cacheKey);
+  // Always strip ?v= / cacheBust so remounts and project.updatedAt churn share
+  // one GET + one in-memory srcDoc. Callers pass path-only when possible.
+  const pathOnly = src.split(/[?#]/u, 1)[0] ?? src;
+  const cacheKey = cacheKeyOverride ?? htmlCoverCacheKey(mode, pathOnly);
+  const cached = peekHtmlCoverCache(cacheKey);
   if (cached) return cached;
 
-  // Do not share in-flight promises across cards: aborting one unmount must
-  // not cancel another card's cover fetch for the same URL.
-  const existing = !signal ? htmlCoverInflight.get(cacheKey) : undefined;
+  const existing = getHtmlCoverInflight(cacheKey);
   if (existing) return existing;
 
   const run = (async () => {
-    const res = await fetchTeamverDaemon(src, {
-      // Unique AbortSignal skips GET dedupe in fetchTeamverDaemon.
-      signal: signal ?? new AbortController().signal,
-    });
+    // No AbortSignal — allows fetchTeamverDaemon GET dedupe and lets sibling
+    // cards reuse the same in-flight response. Unmount only skips setState.
+    //
+    // `?inlineAssets=1` asks the daemon to rewrite `<img src>` / CSS `url(...)`
+    // relative refs into inline `data:` URIs before responding, so the sandbox
+    // iframe never has to make a subresource GET. Without this a Hangul NFC/NFD
+    // mismatch or a basename-only `<img src>` collapses the card thumb to
+    // alt-only text ("파일명만 보임"). Cache key stays path-only above so the
+    // cover cache still dedupes across cards.
+    const inlineUrl = appendInlineAssetsQuery(pathOnly);
+    const res = await fetchTeamverDaemon(inlineUrl);
     if (!res.ok) throw new Error(`Failed to load project cover: ${res.status}`);
     const html = await res.text();
-    const { href: baseHref, scoped } = await resolveCoverBaseHref(src, signal);
-    const parsed =
-      mode === "deck" ? deckPreviewSrcDoc(html, baseHref) : pagePreviewSrcDoc(html, baseHref);
-    // Never cache embed covers that fell back to /raw — next mount should retry.
-    if (scoped || !isTeamverEmbedMode()) {
-      htmlCoverCache.set(cacheKey, parsed);
-    }
+    const { href: baseHref } = await resolveCoverBaseHref(pathOnly);
+    const parsed = buildHtmlCoverSrcDoc(html, baseHref, { preferDeck: mode === "deck" });
+    seedHtmlCoverCache(cacheKey, parsed);
     return parsed;
   })().finally(() => {
-    htmlCoverInflight.delete(cacheKey);
+    deleteHtmlCoverInflight(cacheKey);
   });
 
-  if (!signal) htmlCoverInflight.set(cacheKey, run);
+  setHtmlCoverInflight(cacheKey, run);
   return run;
 }
 
-export function pagePreviewSrcDoc(html: string, sourceUrl: string): string {
-  const withoutScripts = stripHtmlScripts(html);
-  const style = `<style id="od-page-card-preview">
-    html,
-    body {
-      margin: 0 !important;
-      width: ${DECK_PREVIEW_WIDTH}px !important;
-      min-height: ${DECK_PREVIEW_HEIGHT}px !important;
-      overflow: hidden !important;
-    }
-  </style>`;
-  return injectPreviewHead(withoutScripts, sourceUrl, style);
-}
-
-export function deckPreviewSrcDoc(html: string, sourceUrl: string): string {
-  const withoutScripts = stripHtmlScripts(html);
-  const style = `<style id="od-deck-card-preview">
-    html,
-    body {
-      margin: 0 !important;
-      width: ${DECK_PREVIEW_WIDTH}px !important;
-      height: ${DECK_PREVIEW_HEIGHT}px !important;
-      overflow: hidden !important;
-    }
-    body {
-      display: block !important;
-      scroll-snap-type: none !important;
-    }
-    .slide,
-    section[data-slide],
-    section[data-screen-label] {
-      position: absolute !important;
-      inset: 0 !important;
-      width: ${DECK_PREVIEW_WIDTH}px !important;
-      height: ${DECK_PREVIEW_HEIGHT}px !important;
-      flex: none !important;
-      scroll-snap-align: none !important;
-    }
-    /* Sibling combinator: :first-of-type hides the real first .slide when a
-       preceding <section> sibling steals first-of-type. */
-    .slide ~ .slide,
-    section[data-slide] ~ section[data-slide],
-    section[data-screen-label] ~ section[data-screen-label],
-    .deck-counter,
-    .deck-controls,
-    .deck-hint,
-    .deck-page-controls,
-    .deck-pager,
-    .deck-progress,
-    .deck-nav,
-    .deck-navigation,
-    .page-controls,
-    .page-flip-controls,
-    .page-nav,
-    .page-navigation,
-    .pagination-control,
-    .pagination-controls,
-    #deck-prev,
-    #deck-next,
-    #deck-cur,
-    #deck-total,
-    [data-deck-controls],
-    [data-page-controls],
-    [data-pagination],
-    [aria-label="Previous slide"],
-    [aria-label="Next slide"],
-    [aria-label="Deck navigation"],
-    [aria-label="Page navigation"],
-    [aria-label="Pagination"],
-    nav[aria-label*="page" i],
-    nav[aria-label*="pagination" i] {
-      display: none !important;
-      visibility: hidden !important;
-      pointer-events: none !important;
-    }
-  </style>`;
-  return injectPreviewHead(withoutScripts, sourceUrl, style);
-}
-
-function injectPreviewHead(source: string, sourceUrl: string, style: string): string {
-  // Shared base inject also strips canvas CSP `base-uri 'none'` so srcDoc
-  // thumbs do not spam DevTools (see injectHtmlBaseHref).
-  return injectBefore(injectHtmlBaseHref(source, sourceUrl), "</head>", style);
-}
-
-function injectBefore(source: string, marker: string, addition: string): string {
-  const index = source.toLowerCase().lastIndexOf(marker);
-  if (index === -1) return `${addition}${source}`;
-  return `${source.slice(0, index)}${addition}${source.slice(index)}`;
-}
-
-/** Drop executable script tags so card thumbs stay CSS-only. */
-function stripHtmlScripts(html: string): string {
-  return html
-    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/giu, "")
-    .replace(/<script\b[^>]*\/>/giu, "");
+function appendInlineAssetsQuery(rawUrl: string): string {
+  const trimmed = String(rawUrl || "").trim();
+  if (!trimmed) return trimmed;
+  return `${trimmed}${trimmed.includes("?") ? "&" : "?"}inlineAssets=1`;
 }
 
 /** @internal vitest */
 export function clearProjectDeckCoverCacheForTests(): void {
-  htmlCoverCache.clear();
-  htmlCoverInflight.clear();
+  clearHtmlCoverCacheStoreForTests();
 }

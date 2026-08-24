@@ -1,7 +1,6 @@
 import type { Express, Request } from 'express';
-import {
-  PROJECT_EXPORT_MANIFEST_SCHEMA,
-} from '@open-design/contracts';
+import { PROJECT_EXPORT_MANIFEST_SCHEMA } from '@open-design/contracts';
+import { mergeOfficialTemplateLookForExport } from './official-deck-look-export.js';
 import fs from 'node:fs';
 import nodePath from 'node:path';
 import os from 'node:os';
@@ -60,6 +59,11 @@ import {
   putExportOffloadObject,
 } from './export-offload-store.js';
 import { readTeamverIdentityFromRequest } from './teamver-project-access.js';
+import {
+  buildDesktopPdfExportInput,
+  warmExportRelativeAssets,
+  type BuiltDesktopPdfExport,
+} from './pdf-export.js';
 
 export interface RegisterImportRoutesDeps extends RouteDeps<'db' | 'http' | 'uploads' | 'node' | 'ids' | 'paths' | 'imports' | 'auth' | 'projectStore' | 'conversations' | 'projectFiles' | 'validation'> {
   projectStorageHooks?: ProjectStorageAccessHooks | null;
@@ -143,6 +147,26 @@ export function readInlineHtmlFromBody(
   const raw = (body as Record<string, unknown>)['html'];
   if (typeof raw !== 'string') return null;
   return raw.trim().length > 0 ? raw : null;
+}
+
+/**
+ * Inline-HTML export skips full S3 sync-down so a transient `/access` deny
+ * cannot gate downloads. Still point-get relative imgs (refs/drive/, root
+ * uploads) into scratch with the caller's identity before Chromium fetches
+ * `/raw/…` without Teamver JWT headers.
+ */
+async function warmInlineExportAssets(
+  req: Request,
+  projectId: string,
+  html: string | undefined,
+  hooks: ProjectStorageAccessHooks | null | undefined,
+): Promise<void> {
+  if (!hooks || !html || !html.trim()) return;
+  await warmExportRelativeAssets({
+    html,
+    projectId,
+    ensureFileAvailable: (id, relpath) => hooks.ensureFileAvailable(req, id, relpath),
+  });
 }
 
 function wantsFreshExport(req: {
@@ -295,23 +319,9 @@ function exportOffloadPayloadForRequest(
   | { offloadEnabled: true; offloadKey?: string; offloadStatus: string; offloadReason?: string }
   | Record<string, never>
 > {
-  return exportOffloadPayloadForWorkspace({
-    workspaceId: resolveExportOffloadWorkspaceIdFromRequest(req),
-    projectId: String(req.params.id ?? ''),
-    outcome,
-  });
-}
-
-function exportOffloadPayloadForWorkspace(input: {
-  workspaceId: string | null;
-  projectId: string;
-  outcome: ExportCacheOutcome;
-}): Promise<
-  | { offloadEnabled: true; offloadKey?: string; offloadStatus: string; offloadReason?: string }
-  | Record<string, never>
-> {
   if (!isExportOffloadEnabled()) return Promise.resolve({});
-  if (!input.workspaceId) {
+  const workspaceId = resolveExportOffloadWorkspaceIdFromRequest(req);
+  if (!workspaceId) {
     return Promise.resolve({
       offloadEnabled: true,
       offloadStatus: 'skipped_missing_workspace',
@@ -319,10 +329,10 @@ function exportOffloadPayloadForWorkspace(input: {
     });
   }
   const offloadKey = buildExportOffloadObjectKey({
-    workspaceId: input.workspaceId,
-    projectId: input.projectId,
-    cacheKey: input.outcome.key,
-    filename: input.outcome.filename,
+    workspaceId,
+    projectId: String(req.params.id ?? ''),
+    cacheKey: outcome.key,
+    filename: outcome.filename,
   });
   return (async () => {
     let offloadStatus = 'skipped_no_payload';
@@ -331,20 +341,20 @@ function exportOffloadPayloadForWorkspace(input: {
       | Awaited<ReturnType<typeof putExportOffloadObject>>
       | Awaited<ReturnType<typeof putExportOffloadFileObject>>
       | null = null;
-    if (input.outcome.body !== undefined) {
+    if (outcome.body !== undefined) {
       result = await putExportOffloadObject({
         key: offloadKey,
-        body: input.outcome.body,
-        contentType: input.outcome.mime,
-        contentDisposition: attachmentDisposition(input.outcome.filename),
+        body: outcome.body,
+        contentType: outcome.mime,
+        contentDisposition: attachmentDisposition(outcome.filename),
       });
-    } else if (input.outcome.filePath) {
+    } else if (outcome.filePath) {
       result = await putExportOffloadFileObject({
         key: offloadKey,
-        filePath: input.outcome.filePath,
-        bytes: input.outcome.bytes,
-        contentType: input.outcome.mime,
-        contentDisposition: attachmentDisposition(input.outcome.filename),
+        filePath: outcome.filePath,
+        bytes: outcome.bytes,
+        contentType: outcome.mime,
+        contentDisposition: attachmentDisposition(outcome.filename),
       });
     }
     if (result) {
@@ -354,11 +364,11 @@ function exportOffloadPayloadForWorkspace(input: {
       console.info(
         JSON.stringify({
           metric: 'od_export_offload_put',
-          projectId: input.projectId,
+          projectId: req.params.id,
           status: result.status,
           ...(offloadReason ? { reason: offloadReason } : {}),
-          cache: input.outcome.cache,
-          bytes: input.outcome.bytes,
+          cache: outcome.cache,
+          bytes: outcome.bytes,
         }),
       );
     }
@@ -870,7 +880,9 @@ export function registerImportRoutes(app: Express, ctx: RegisterImportRoutesDeps
 
 }
 
-export interface RegisterProjectExportRoutesDeps extends RouteDeps<'db' | 'http' | 'paths' | 'projectStore' | 'exports' | 'projectFiles' | 'validation'> {}
+export interface RegisterProjectExportRoutesDeps extends RouteDeps<'db' | 'http' | 'paths' | 'projectStore' | 'exports' | 'projectFiles' | 'validation'> {
+  projectStorageHooks?: ProjectStorageAccessHooks | null;
+}
 
 export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectExportRoutesDeps) {
   const { db } = ctx;
@@ -882,15 +894,48 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
   const {
     buildProjectArchive,
     buildBatchArchive,
-    buildDesktopPdfExportInput,
     desktopPdfExporter,
     daemonUrlRef,
     sanitizeArchiveFilename,
   } = ctx.exports;
-  const exportRenderContext = (projectId: string) => ({
+  const projectStorageHooks = ctx.projectStorageHooks;
+
+  async function applyOfficialTemplateLookToBuilt(
+    projectId: string,
+    built: BuiltDesktopPdfExport,
+    body: Record<string, unknown> | undefined,
+  ) {
+    const project = getProject(db, projectId);
+    const templateId = typeof body?.templateId === 'string' ? body.templateId : null;
+    built.input.html = await mergeOfficialTemplateLookForExport({
+      db,
+      html: built.input.html,
+      metadata: project?.metadata,
+      templateId,
+    });
+    return built;
+  }
+
+  const exportRenderContext = (projectId: string, req?: Request) => ({
     daemonUrl: daemonUrlRef.current,
     projectId,
     projectsRoot: PROJECTS_DIR,
+    prepareBuilt: async (
+      built: BuiltDesktopPdfExport,
+      renderReq: { templateId?: string | null },
+    ) => {
+      await applyOfficialTemplateLookToBuilt(projectId, built, {
+        ...(renderReq.templateId ? { templateId: renderReq.templateId } : {}),
+      });
+      if (req) {
+        await warmInlineExportAssets(
+          req,
+          projectId,
+          built.input.html,
+          projectStorageHooks,
+        );
+      }
+    },
   });
   // Streams a ZIP of the project's on-disk tree so the "Download as .zip"
   // share menu can hand the user the actual files they uploaded — e.g. the
@@ -1091,6 +1136,7 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
         return sendApiError(res, 422, 'NO_SLIDES', 'PPTX export requires a slide deck');
       }
       const inlineHtml = readInlineHtmlFromBody(req.body);
+      const templateId = typeof req.body?.templateId === 'string' ? req.body.templateId : null;
       const job = createExportJob({
         projectId: req.params.id,
         format: exportFormat,
@@ -1106,13 +1152,14 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
           ...(typeof title === 'string' ? { title } : {}),
           ...(inlineHtml ? { inlineHtml } : {}),
           ...(wantsFreshExport(req) ? { fresh: true } : {}),
+          ...(templateId ? { templateId } : {}),
           ...(exportFormat === 'image'
             ? { image: { format: req.body?.format, slideIndex, width, height } }
             : {}),
           ...(exportFormat === 'pptx' ? { pptx: { editable: req.body?.editable } } : {}),
         },
         deps: {
-          renderContext: exportRenderContext,
+          renderContext: (projectId) => exportRenderContext(projectId, req),
           prepareOffloadPayload: (jobRequest, outcome) => exportOffloadPayloadForWorkspace({
             workspaceId: jobRequest.workspaceId,
             projectId: jobRequest.projectId,
@@ -1120,15 +1167,7 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
           }),
         },
       });
-      res.status(202).json({
-        jobId: job.id,
-        status: job.status,
-        statusUrl: exportJobStatusUrl(req.params.id, job.id),
-        eventsUrl: exportJobEventsUrl(req.params.id, job.id),
-        format: job.format,
-        createdAt: new Date(job.createdAt).toISOString(),
-        expiresAt: new Date(job.expiresAt).toISOString(),
-      });
+      res.status(202).json(serializeExportJob(req.params.id, job));
     } catch (err: unknown) {
       if (err instanceof ExportJobStoreFullError) {
         res.setHeader('Retry-After', '15');
@@ -1193,12 +1232,14 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
       }
       const ticket = wantsTicketDelivery(req.body);
       const inlineHtml = readInlineHtmlFromBody(req.body);
+      const templateId = typeof req.body?.templateId === 'string' ? req.body.templateId : null;
       const exportRequest = {
         fileName,
         deck: deck === true,
         ...(typeof title === 'string' ? { title } : {}),
         ...(inlineHtml ? { inlineHtml } : {}),
         ...(wantsFreshExport(req) ? { fresh: true } : {}),
+        ...(templateId ? { templateId } : {}),
       };
       if (typeof desktopPdfExporter === 'function') {
         const built = await buildDesktopPdfExportInput({
@@ -1210,11 +1251,13 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
           ...(exportRequest.title ? { title: exportRequest.title } : {}),
           ...(inlineHtml ? { inlineHtml } : {}),
         });
+        await applyOfficialTemplateLookToBuilt(req.params.id, built, req.body);
+        await warmInlineExportAssets(req, req.params.id, built.input.html, projectStorageHooks);
         const result = await desktopPdfExporter(built.input);
         res.json(result);
         return;
       }
-      const { outcome } = await renderPdfExportOutcome(exportRenderContext(req.params.id), exportRequest);
+      const { outcome } = await renderPdfExportOutcome(exportRenderContext(req.params.id, req), exportRequest);
       await respondExportPayload(res, {
         projectId: req.params.id,
         ...outcomeAsRespondPayload(outcome),
@@ -1234,7 +1277,8 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
       }
       const ticket = wantsTicketDelivery(req.body);
       const inlineHtml = readInlineHtmlFromBody(req.body);
-      const outcome = await renderImageExportOutcome(exportRenderContext(req.params.id), {
+      const templateId = typeof req.body?.templateId === 'string' ? req.body.templateId : null;
+      const outcome = await renderImageExportOutcome(exportRenderContext(req.params.id, req), {
         fileName,
         deck: deck === true,
         format,
@@ -1244,6 +1288,7 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
         ...(typeof title === 'string' ? { title } : {}),
         ...(inlineHtml ? { inlineHtml } : {}),
         ...(wantsFreshExport(req) ? { fresh: true } : {}),
+        ...(templateId ? { templateId } : {}),
       });
       await respondExportPayload(res, {
         projectId: req.params.id,
@@ -1267,13 +1312,15 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
       }
       const ticket = wantsTicketDelivery(req.body);
       const inlineHtml = readInlineHtmlFromBody(req.body);
-      const outcome = await renderPptxExportOutcome(exportRenderContext(req.params.id), {
+      const templateId = typeof req.body?.templateId === 'string' ? req.body.templateId : null;
+      const outcome = await renderPptxExportOutcome(exportRenderContext(req.params.id, req), {
         fileName,
         deck: true,
         editable: req.body?.editable,
         ...(typeof title === 'string' ? { title } : {}),
         ...(inlineHtml ? { inlineHtml } : {}),
         ...(wantsFreshExport(req) ? { fresh: true } : {}),
+        ...(templateId ? { templateId } : {}),
       });
       await respondExportPayload(res, {
         projectId: req.params.id,
@@ -1300,12 +1347,14 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
       }
       const ticket = wantsTicketDelivery(req.body);
       const inlineHtml = readInlineHtmlFromBody(req.body);
-      const outcome = await renderHtmlExportOutcome(exportRenderContext(req.params.id), {
+      const templateId = typeof req.body?.templateId === 'string' ? req.body.templateId : null;
+      const outcome = await renderHtmlExportOutcome(exportRenderContext(req.params.id, req), {
         fileName,
         deck: deck === true,
         ...(typeof title === 'string' ? { title } : {}),
         ...(inlineHtml ? { inlineHtml } : {}),
         ...(wantsFreshExport(req) ? { fresh: true } : {}),
+        ...(templateId ? { templateId } : {}),
       });
       await respondExportPayload(res, {
         projectId: req.params.id,
@@ -1326,12 +1375,14 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
       }
       const ticket = wantsTicketDelivery(req.body);
       const inlineHtml = readInlineHtmlFromBody(req.body);
-      const outcome = await renderZipExportOutcome(exportRenderContext(req.params.id), {
+      const templateId = typeof req.body?.templateId === 'string' ? req.body.templateId : null;
+      const outcome = await renderZipExportOutcome(exportRenderContext(req.params.id, req), {
         fileName,
         deck: deck === true,
         ...(typeof title === 'string' ? { title } : {}),
         ...(inlineHtml ? { inlineHtml } : {}),
         ...(wantsFreshExport(req) ? { fresh: true } : {}),
+        ...(templateId ? { templateId } : {}),
       });
       await respondExportPayload(res, {
         projectId: req.params.id,

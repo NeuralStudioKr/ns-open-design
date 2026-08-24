@@ -806,7 +806,7 @@ bash ./scripts/prune_docker_build_disk.sh        # 기본: 168h 이상 BuildKit 
 # 최후: docker builder prune -af   ← 다음 빌드 cold
 ```
 
-**다음 단계:** [52-1 CI·ECR 이미지 배포 설계](./52-1_Docker_이미지_CI_ECR_배포_설계.md) (미구현). 운영 요약은 본 절 · 상세 현황은 [52-0](./52-0_Docker_배포_빌드_가속_현황.md).
+**다음 단계:** [57-1 CI·ECR 이미지 배포 설계](./57-1_Docker_이미지_CI_ECR_배포_설계.md) (미구현). 운영 요약은 본 절 · 상세 현황은 [57-0](./57-0_Docker_배포_빌드_가속_현황.md).
 
 ---
 
@@ -814,7 +814,7 @@ bash ./scripts/prune_docker_build_disk.sh        # 기본: 168h 이상 BuildKit 
 
 | 날짜 | 내용 |
 |------|------|
-| 2026-07-31 | §10.12 Docker 빌드 가속 — [52-0](./52-0_Docker_배포_빌드_가속_현황.md) · 다음 단계 [52-1](./52-1_Docker_이미지_CI_ECR_배포_설계.md) |
+| 2026-07-31 | §10.12 Docker 빌드 가속 — [57-0](./57-0_Docker_배포_빌드_가속_현황.md) · 다음 단계 [57-1](./57-1_Docker_이미지_CI_ECR_배포_설계.md) |
 | 2026-07-13 | §10.11 nginx ALB apply 순서·default·empty peers·DaemonDb/RDS password 트러블슈팅 보강 |
 | 2026-07-08 | §10.9 `/api/*` 502 — `OD_DOCKER_PUBLISH_HOST=0.0.0.0` 트러블슈팅 |
 | 2026-07-08 | §10 EC2 부트스트랩·수동 복구 Runbook (D6 node2, `.env.staging`, od-data EBS, EIP quota) |

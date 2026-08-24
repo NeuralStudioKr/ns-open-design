@@ -110,16 +110,16 @@ describe('deck bridge — nested slide markup (#1530)', () => {
     const { win, parentPostMessage } = setupDeckBridge(`
       <style>
         html, body { margin: 0; overflow: hidden; }
-        #deck { display: flex; width: 300vw; transform: translateX(0); }
+        #deck-track { display: flex; width: 300vw; transform: translateX(0); }
         .slide { flex: 0 0 100vw; width: 100vw; height: 100vh; }
       </style>
-      <div id="deck">
+      <div id="deck-track">
         <section class="slide">One</section>
         <section class="slide">Two</section>
         <section class="slide">Three</section>
       </div>
     `);
-    const deck = win.document.getElementById('deck') as HTMLElement;
+    const deck = win.document.getElementById('deck-track') as HTMLElement;
 
     await new Promise<void>((resolve) => win.setTimeout(resolve, 350));
     postSlide(win, 'next');
@@ -134,10 +134,10 @@ describe('deck bridge — nested slide markup (#1530)', () => {
     const { win, parentPostMessage } = setupDeckBridge(`
       <style>
         html, body { margin: 0; overflow: hidden; }
-        #deck { display: flex; width: 300vw; transform: translateX(0); transition: transform 120ms ease; }
+        #deck-track { display: flex; width: 300vw; transform: translateX(0); transition: transform 120ms ease; }
         .slide { flex: 0 0 100vw; width: 100vw; height: 100vh; }
       </style>
-      <div id="deck">
+      <div id="deck-track">
         <section class="slide">One</section>
         <section class="slide">Two</section>
         <section class="slide">Three</section>
@@ -146,8 +146,8 @@ describe('deck bridge — nested slide markup (#1530)', () => {
     await new Promise<void>((resolve) => win.setTimeout(resolve, 350));
     expect(lastSlideState(parentPostMessage)).toMatchObject({ active: 0, count: 3 });
 
-    (win.document.getElementById('deck') as HTMLElement).style.transform = 'translateX(-100vw)';
-    win.document.getElementById('deck')?.dispatchEvent(new win.Event('transitionend', { bubbles: true }));
+    (win.document.getElementById('deck-track') as HTMLElement).style.transform = 'translateX(-100vw)';
+    win.document.getElementById('deck-track')?.dispatchEvent(new win.Event('transitionend', { bubbles: true }));
     await new Promise<void>((resolve) => win.setTimeout(resolve, 180));
 
     expect(lastSlideState(parentPostMessage)).toMatchObject({ active: 1, count: 3 });
@@ -157,11 +157,11 @@ describe('deck bridge — nested slide markup (#1530)', () => {
     const { win, parentPostMessage } = setupDeckBridge(`
       <style>
         html, body { margin: 0; overflow: hidden; }
-        #deck { display: flex; width: 2400px; transform: translate3d(0px, 0, 0); }
+        #deck-track { display: flex; width: 2400px; transform: translate3d(0px, 0, 0); }
         .slide { flex: 0 0 800px; width: 800px; height: 450px; }
         .dot.active { background: blue; }
       </style>
-      <div id="deck">
+      <div id="deck-track">
         <section class="slide">One</section>
         <section class="slide">Two</section>
         <section class="slide">Three</section>
@@ -175,7 +175,7 @@ describe('deck bridge — nested slide markup (#1530)', () => {
       <button id="deck-next" aria-label="Next">→</button>
       <script>
         var current = 0;
-        var track = document.getElementById('deck');
+        var track = document.getElementById('deck-track');
         var dots = Array.prototype.slice.call(document.querySelectorAll('.dot'));
         function paint() {
           track.style.transform = 'translate3d(' + (-current * 800) + 'px, 0, 0)';
@@ -206,7 +206,7 @@ describe('deck bridge — nested slide markup (#1530)', () => {
     postSlide(win, 'next');
     await new Promise<void>((resolve) => win.setTimeout(resolve, 350));
 
-    expect((win.document.getElementById('deck') as HTMLElement).style.transform)
+    expect((win.document.getElementById('deck-track') as HTMLElement).style.transform)
       .toBe('translate3d(-800px, 0, 0)');
     expect(win.document.querySelectorAll('.dot').item(1).classList.contains('active')).toBe(true);
     expect(lastSlideState(parentPostMessage)).toMatchObject({ active: 1, count: 3 });
@@ -325,17 +325,24 @@ describe('deck bridge — nested slide markup (#1530)', () => {
       `<section class="slide" style="min-height:100vh;padding:40px">Slide ${i + 1}</section>`,
     ).join('');
     const { win, parentPostMessage } = setupDeckBridge(slides);
-    await new Promise<void>((resolve) => win.setTimeout(resolve, 350));
+    Object.defineProperty(win.document.documentElement, 'clientWidth', { configurable: true, value: 800 });
+    Object.defineProperty(win.document.documentElement, 'clientHeight', { configurable: true, value: 600 });
+    win.dispatchEvent(new win.MessageEvent('message', {
+      data: { type: 'od:deck-host-viewport', width: 800, height: 600, scale: 1, layoutFit: false },
+    }));
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 450));
 
-    const slideEls = Array.from(win.document.querySelectorAll('.slide')) as HTMLElement[];
+    const slideEls = Array.from(win.document.querySelectorAll('#od-stacked-deck-stage > .slide, body > .slide')) as HTMLElement[];
+    expect(slideEls.length).toBe(3);
     expect(slideEls.filter((el) => el.style.display !== 'none').length).toBe(1);
     expect(lastSlideState(parentPostMessage)).toMatchObject({ active: 0, count: 3 });
 
     postSlide(win, 'next');
-    await new Promise<void>((resolve) => win.setTimeout(resolve, 350));
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 450));
 
-    expect(slideEls[1]?.style.display).not.toBe('none');
-    expect(slideEls[0]?.style.display).toBe('none');
+    const after = Array.from(win.document.querySelectorAll('#od-stacked-deck-stage > .slide, body > .slide')) as HTMLElement[];
+    expect(after[1]?.style.display).not.toBe('none');
+    expect(after[0]?.style.display).toBe('none');
     expect(lastSlideState(parentPostMessage)).toMatchObject({ active: 1, count: 3 });
   });
 
@@ -349,7 +356,10 @@ describe('deck bridge — nested slide markup (#1530)', () => {
     const { win } = setupDeckBridge(bodyHtml);
     Object.defineProperty(win.document.documentElement, 'clientWidth', { configurable: true, value: 960 });
     Object.defineProperty(win.document.documentElement, 'clientHeight', { configurable: true, value: 540 });
-    await new Promise<void>((resolve) => win.setTimeout(resolve, 50));
+    win.dispatchEvent(new win.MessageEvent('message', {
+      data: { type: 'od:deck-host-viewport', width: 960, height: 540, scale: 1, layoutFit: false },
+    }));
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 450));
 
     const stage = win.document.getElementById('od-stacked-deck-stage');
     expect(stage).toBeTruthy();
@@ -551,13 +561,20 @@ describe('deck bridge — nested slide markup (#1530)', () => {
     const slides = Array.from({ length: 2 }, (_, i) =>
       `<section class="slide" style="min-height:100vh;padding:40px">Slide ${i + 1}</section>`,
     ).join('');
-    const { win } = setupDeckBridge(slides);
+    const { win, parentPostMessage } = setupDeckBridge(slides);
     await new Promise<void>((resolve) => win.setTimeout(resolve, 450));
 
-    const wheel = new win.WheelEvent('wheel', { deltaY: 120, cancelable: true });
+    expect(lastSlideState(parentPostMessage)).toMatchObject({ active: 0, count: 2 });
+
+    const wheel = new win.WheelEvent('wheel', { deltaY: 120, cancelable: true, bubbles: true });
     const prevented = !win.document.dispatchEvent(wheel);
     expect(prevented).toBe(true);
     expect(win.document.documentElement.scrollTop).toBe(0);
+
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 350));
+    // Host owns wheel after compact letterbox — author goTo must not be the
+    // only driver (§0.93).
+    expect(lastSlideState(parentPostMessage)).toMatchObject({ active: 1, count: 2 });
   });
 
   it('advances compact stacked decks on ArrowRight inside the iframe', async () => {

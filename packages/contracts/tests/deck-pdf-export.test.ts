@@ -7,11 +7,21 @@ import {
   buildDeckHtmlExportScreenCss,
   buildDeckHtmlExportStaticRevealScript,
   buildDeckHtmlExportViewportScript,
+  buildStandaloneDeckHtmlDocument,
+  healDeckHtmlForStandaloneExport,
   injectDeckHtmlExportViewportScript,
   buildDeckHtmlExportFinalizeLayoutJs,
   injectDeckFlattenScript,
   patchArtifactDeckPrintCss,
   stripStaleDeckExportArtifacts,
+  buildDeckPdfPagePdfOptions,
+  buildDeckBrowserPrintScaleCss,
+  buildDeckPdfPageAtRule,
+  deckPdfPrintScale,
+  DECK_PDF_PAGE_WIDTH_IN,
+  DECK_PDF_PAGE_HEIGHT_IN,
+  DECK_HTML_EXPORT_FIT_PAD_PX,
+  DECK_CHROME_HIDE_SELECTOR,
 } from '../src/html/deckPdfExport.js';
 
 describe('stripStaleDeckExportArtifacts', () => {
@@ -79,6 +89,13 @@ describe('patchArtifactDeckPrintCss', () => {
     const out = patchArtifactDeckPrintCss(input);
     expect(out).toContain('background: var(--bg, var(--paper, var(--shell)) !important');
     expect(out).not.toContain('var(--shell, var(--bg)');
+  });
+
+  it('rewrites @page 1920px to PPT inches so MediaBox is not ~20″', () => {
+    const html = `<style>@media print { @page { size: 1920px 1080px; margin: 0; } }</style>`;
+    const out = patchArtifactDeckPrintCss(html);
+    expect(out).toContain(`size: ${DECK_PDF_PAGE_WIDTH_IN}in ${DECK_PDF_PAGE_HEIGHT_IN}in`);
+    expect(out).not.toMatch(/size:\s*1920px\s+1080px/);
   });
 
   it('cleans exported deck HTML polluted by prior headless snapshots', () => {
@@ -168,6 +185,39 @@ describe('buildDeckPrintCss', () => {
     expect(css).toContain('.slide.hero.dark::before');
     expect(css).toContain('display: block !important');
     expect(css).not.toMatch(/\n\s*flex-direction:\s*column\s*!important/);
+    // PPT inches — not 1920px (@page px → ~20″ MediaBox at 96dpi).
+    expect(css).toContain(`@page { size: ${DECK_PDF_PAGE_WIDTH_IN}in ${DECK_PDF_PAGE_HEIGHT_IN}in; margin: 0; }`);
+    expect(css).not.toMatch(/@page\s*\{\s*size:\s*1920px/);
+  });
+});
+
+describe('buildDeckPdfPagePdfOptions', () => {
+  it('uses PPT inch paper + scale so 1920 CSS px fits viewer 100%', () => {
+    const opts = buildDeckPdfPagePdfOptions();
+    expect(opts.preferCSSPageSize).toBe(false);
+    expect(opts.width).toBe(`${DECK_PDF_PAGE_WIDTH_IN}in`);
+    expect(opts.height).toBe(`${DECK_PDF_PAGE_HEIGHT_IN}in`);
+    expect(opts.scale).toBeCloseTo(2 / 3, 5);
+    expect(deckPdfPrintScale()).toBe(opts.scale);
+    expect(opts.width).not.toContain('px');
+  });
+
+  it('exposes shared @page inches and browser-only print zoom', () => {
+    expect(buildDeckPdfPageAtRule()).toBe(
+      `@page { size: ${DECK_PDF_PAGE_WIDTH_IN}in ${DECK_PDF_PAGE_HEIGHT_IN}in; margin: 0; }`,
+    );
+    const zoomCss = buildDeckBrowserPrintScaleCss();
+    expect(zoomCss).toContain('@media print');
+    expect(zoomCss).toMatch(/zoom:\s*0\.666/);
+  });
+});
+
+describe('DECK_CHROME_HIDE_SELECTOR', () => {
+  it('hides nav chrome but keeps Motif grain/crt overlays for export', () => {
+    expect(DECK_CHROME_HIDE_SELECTOR).toContain('#nav');
+    expect(DECK_CHROME_HIDE_SELECTOR).toContain('canvas.bg');
+    expect(DECK_CHROME_HIDE_SELECTOR).not.toContain('grain-overlay');
+    expect(DECK_CHROME_HIDE_SELECTOR).not.toContain('crt-overlay');
   });
 });
 
@@ -182,29 +232,117 @@ describe('buildDeckHtmlExportScreenCss', () => {
     expect(css).not.toContain('display: contents !important');
     expect(css).not.toContain('break-after: page !important');
     expect(css).not.toContain('@media print');
+    // Do not force display:block on slides — preserves Capsule flex centering.
+    expect(css).not.toMatch(
+      /\.slide[^{]*\{[^}]*display:\s*block\s*!important/,
+    );
     // Stage must keep template paper/::before grid (not forced transparent).
     expect(css).not.toMatch(
       /\.deck,\s*\.deck-stage[\s\S]{0,500}background:\s*transparent\s*!important/,
     );
+    expect(css).toMatch(/background:\s*var\(--bg,[^)]*var\(--paper/);
+    expect(css).not.toContain('background: var(--shell, #0a0c10)');
+    expect(css).not.toContain('box-shadow: 0 12px 48px');
+    expect(css).not.toMatch(/\.slide[^{]*\{[^}]*flex-direction:\s*column\s*!important/);
   });
 });
 
 describe('buildDeckHtmlExportStaticRevealScript', () => {
-  it('reveals inactive slides and hides deck chrome', () => {
+  it('reveals inactive slides and preserves flex without forcing block', () => {
     const script = buildDeckHtmlExportStaticRevealScript();
     expect(script).toContain("classList.add('active')");
     expect(script).toContain('.deck-counter');
+    expect(script).toContain('.nav-dots');
     expect(script).toContain("display', 'none', 'important'");
+    expect(script).toContain("removeProperty('display')");
+    expect(script).toContain("display === 'flex'");
+    expect(script).not.toContain("display', 'block', 'important'");
+  });
+});
+
+describe('buildStandaloneDeckHtmlDocument', () => {
+  it('heals Motif CSS and stacks all slides with paper-first screen CSS', () => {
+    const remnant =
+      "1,6..96,400..900&family=Space+Grotesk:wght@300;400;500;600;700&display=swap');";
+    const html = `<!doctype html><html><head><style>${remnant}
+:root{--bg:#F5F5F0;--coral:#E85D4E;--outline:#1E1E1E}
+.deco-pill{position:absolute;border-radius:9999px;border:2px solid var(--outline)}
+.slide{position:absolute;opacity:0}.slide.active{opacity:1}
+.nav-dots{position:fixed;bottom:12px}
+</style></head><body>
+<section class="slide active" style="width:1920px;height:1080px;background:radial-gradient(circle,#F5F5F0,#eee)"><div class="deco-pill" style="width:160px;height:60px;background:var(--coral)">Hi</div></section>
+<section class="slide" style="width:1920px;height:1080px;background:#F5F5F0"><h1>Two</h1></section>
+<div class="nav-dots">dots</div>
+</body></html>`;
+    const healed = healDeckHtmlForStandaloneExport(html);
+    expect(healed).toMatch(/\.deco-pill\{/);
+    expect(healed).not.toMatch(/display=swap/i);
+    const out = buildStandaloneDeckHtmlDocument(html);
+    expect(out).toContain('data-teamver-static-html-export-fallback');
+    expect(out).toContain('data-od-html-export-reveal');
+    expect(out).toContain('data-od-html-export-viewport');
+    expect(out).toContain('width=1920');
+    expect((out.match(/<meta[^>]+name=["']viewport["']/gi) ?? []).length).toBe(1);
+    expect(out).toMatch(/var\(--bg,\s*var\(--paper/);
+    expect(out).not.toContain('background: var(--shell, #0a0c10)');
+    expect(out).toContain('.nav-dots');
+    expect(out).not.toContain("display', 'block', 'important'");
+  });
+
+  it('emits a single design viewport meta (no duplicate width=1920 after heal)', () => {
+    const html = `<!doctype html><html><head>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+</head><body><section class="slide">One</section></body></html>`;
+    const out = buildStandaloneDeckHtmlDocument(html);
+    const metas = out.match(/<meta[^>]+name=["']viewport["'][^>]*>/gi) ?? [];
+    expect(metas).toHaveLength(1);
+    expect(metas[0]).toContain('width=1920');
+    expect(out).not.toContain('width=device-width');
+  });
+
+  it('relaxes persisted .slide surface bleed before Motif stylesheet heal', () => {
+    const html = `<!doctype html><html><head></head><body>
+<section class="slide slide-1">Cover</section>
+<style data-od-slide-surface-bleed="">html, body, .slide, section.slide { background: #F5F5F0 !important; color: #1A1A1A !important; }</style>
+<style>.deco-pill{position:absolute;border-radius:9999px}</style>
+</body></html>`;
+    const healed = healDeckHtmlForStandaloneExport(html);
+    expect(healed).toMatch(/html,\s*body\s*\{[^}]*background:\s*#F5F5F0/i);
+    expect(healed).not.toMatch(/html,\s*body,\s*\.slide,\s*section\.slide/i);
+    expect(healed).toMatch(/\.deco-pill\{/);
+  });
+
+  it('locks viewport to 1920 and upgrades official-look stacked canvas on heal', () => {
+    const html = `<!doctype html><html><head>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style data-od-official-look-css>
+.slide { position:absolute; inset:0; width:100%; height:100%; opacity:0; }
+/* stacked preview/export: keep Motif paint, do not hide non-active slides */
+html, body { overflow: visible !important; height: auto !important; }
+.slide, .slide.active, .slide.is-active {
+  opacity: 1 !important;
+  pointer-events: auto !important;
+}
+</style></head><body><section class="slide"><div class="deco-pill" style="top:12%;left:8%"></div></section></body></html>`;
+    const healed = healDeckHtmlForStandaloneExport(html);
+    expect(healed).toContain('content="width=1920, initial-scale=1, maximum-scale=1"');
+    expect(healed).not.toContain('width=device-width');
+    expect(healed).toContain('position: relative !important');
+    expect(healed).toContain('width: 1920px !important');
+    expect(healed).toContain('height: 1080px !important');
   });
 });
 
 describe('buildDeckHtmlExportViewportScript', () => {
-  it('sets --od-html-export-scale on load and resize', () => {
+  it('letterboxes W+H like preview with pad 32', () => {
     const script = buildDeckHtmlExportViewportScript();
     expect(script).toContain('--od-html-export-scale');
     expect(script).toContain('window.addEventListener(\'resize\'');
     expect(script).toContain('visualViewport');
     expect(script).toContain('1920');
+    expect(script).toContain('1080');
+    expect(script).toContain(String(DECK_HTML_EXPORT_FIT_PAD_PX));
+    expect(script).toContain('(vp.h - PAD) / SLIDE_H');
   });
 });
 
@@ -219,12 +357,14 @@ describe('injectDeckHtmlExportViewportScript', () => {
 });
 
 describe('buildDeckHtmlExportFinalizeLayoutJs', () => {
-  it('clears print-flatten inline sizing from html/body and slides', () => {
+  it('clears print-flatten inline sizing and locks viewport to 1920', () => {
     const script = buildDeckHtmlExportFinalizeLayoutJs();
     expect(script).toContain('removeProperty');
     expect(script).toContain('break-after');
     expect(script).toContain('meta[name="viewport"]');
     expect(script).toContain('--od-html-export-scale');
+    expect(script).toContain("content', 'width=1920'");
+    expect(script).not.toMatch(/setAttribute\('content',\s*'width=device-width/);
   });
 });
 

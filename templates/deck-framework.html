@@ -116,12 +116,12 @@
     /* Print / PDF stitching — every slide stacks top-to-bottom, one per
        page. The viewer's "Share → PDF" relies on this; do not remove. */
     @media print {
-      @page { size: 1920px 1080px; margin: 0; }
+      @page { size: 13.333333in 7.5in; margin: 0; }
       html, body {
         width: 1920px !important;
         height: auto !important;
         overflow: visible !important;
-        background: var(--shell, var(--bg, #fff)) !important;
+        background: var(--bg, var(--paper, var(--shell, #fff))) !important;
       }
       .deck-stage {
         position: static !important;

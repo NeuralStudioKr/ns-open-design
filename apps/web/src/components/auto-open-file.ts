@@ -156,23 +156,42 @@ function isHtmlPreviewFile(file: CandidateFile): boolean {
   return file.kind === 'html' || /\.html?$/i.test(path);
 }
 
+function isCanonicalDeckCandidate(file: CandidateFile): boolean {
+  const path = file.path ?? file.name;
+  const base = path.split(/[\\/]/u).filter(Boolean).pop() ?? path;
+  return /^deck(?:[-_.].*)?\.html?$/i.test(base);
+}
+
 export function selectAutoOpenProducedHtml(
   producedFiles: ReadonlyArray<CandidateFile>,
   options?: { projectFiles?: ReadonlyArray<CandidateFile> },
 ): string | null {
   const projectFiles = options?.projectFiles ?? producedFiles;
   let selected: CandidateFile | null = null;
+  let selectedDeck: CandidateFile | null = null;
   for (const file of producedFiles) {
     if (isEmbedSupportingProjectFile(file, { projectFiles })) continue;
     if (!isHtmlPreviewFile(file)) continue;
+    const nextMtime = typeof file.mtime === 'number' && Number.isFinite(file.mtime) ? file.mtime : 0;
+    if (isCanonicalDeckCandidate(file)) {
+      if (!selectedDeck) {
+        selectedDeck = file;
+      } else {
+        const selectedMtime =
+          typeof selectedDeck.mtime === 'number' && Number.isFinite(selectedDeck.mtime)
+            ? selectedDeck.mtime
+            : 0;
+        if (nextMtime >= selectedMtime) selectedDeck = file;
+      }
+    }
     if (!selected) {
       selected = file;
       continue;
     }
-    const nextMtime = typeof file.mtime === 'number' && Number.isFinite(file.mtime) ? file.mtime : 0;
     const selectedMtime =
       typeof selected.mtime === 'number' && Number.isFinite(selected.mtime) ? selected.mtime : 0;
     if (nextMtime >= selectedMtime) selected = file;
   }
-  return selected?.name ?? null;
+  // Teamver slide turns often Write a Canvas leak + deck; always prefer the deck.
+  return (selectedDeck ?? selected)?.name ?? null;
 }

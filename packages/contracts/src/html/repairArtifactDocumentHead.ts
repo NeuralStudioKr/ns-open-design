@@ -11,6 +11,10 @@ import {
   artifactCdnHostWithOptionalPathAlternation,
   artifactCdnHrefTokenAlternation,
 } from "./artifactCdnHosts.js";
+import {
+  countDeckSlideHostOpens,
+  findFirstDeckSlideHostIndex,
+} from "./deck-slide-class.js";
 
 /**
  * Repair common agent-emitted `<head>` corruption where a truncated viewport
@@ -56,8 +60,10 @@ const TRAILING_DOCUMENT_CLOSERS_RE = /((?:\s*<\/body\s*>)?(?:\s*<\/html\s*>)?)\s
 /** HTML that proves the model left a raw block and resumed document markup. */
 const STRUCTURAL_HTML_AFTER_RAW_RE =
   /<\/head\s*>|<body\b|<section\b|<div\b(?=[^>]*\b(?:class\s*=\s*["'][^"']*\b(?:slide|deck)|id\s*=\s*["']deck))/i;
-const SLIDE_MARKUP_RE =
-  /<(?:section|div)\b[^>]*\b(?:class\s*=\s*["'][^"']*\bslide\b|data-slide|id\s*=\s*["']deck)/i;
+function regionHasSlideOrDeckMarkup(region: string): boolean {
+  if (findFirstDeckSlideHostIndex(region) >= 0) return true;
+  return /<(?:section|div)\b[^>]*\bid\s*=\s*["']deck/i.test(region);
+}
 
 type RawBlockOpen = { index: number; tag: string; openEnd: number };
 
@@ -124,7 +130,7 @@ function stripOneTrailingUnclosedRawBlock(html: string): string {
   // Never cut through slide markup (unclosed head style that still embeds body).
   // `closeRawBlocksTruncatedBeforeStructuralHtml` should have closed those first;
   // if it could not, refuse to destroy slides.
-  if (SLIDE_MARKUP_RE.test(region) || /<body\b/i.test(region)) {
+  if (regionHasSlideOrDeckMarkup(region) || /<body\b/i.test(region)) {
     return html;
   }
 
@@ -295,20 +301,27 @@ export function stripIncompleteOpenTags(html: string): string {
 export function repairArtifactDocumentHead(html: string): string {
   if (!html) return html;
 
+  const keepSlideHosts = (before: string, after: string): string => {
+    const beforeSlides = countDeckSlideHostOpens(before);
+    if (beforeSlides <= 0) return after;
+    return countDeckSlideHostOpens(after) < beforeSlides ? before : after;
+  };
+
   let doc = stripIncompleteOpenTags(html);
-  doc = stripLeakedViewportFragments(doc);
-  doc = stripArtifactPreviewBodyTextLeaks(doc);
+  doc = keepSlideHosts(html, doc);
+  doc = keepSlideHosts(doc, stripLeakedViewportFragments(doc));
+  doc = keepSlideHosts(doc, stripArtifactPreviewBodyTextLeaks(doc));
   if (!/<head/i.test(doc)) {
     doc = repairMangledDeckFrameworkScript(doc);
-    return stripTrailingUnclosedRawBlocks(doc);
+    return keepSlideHosts(doc, stripTrailingUnclosedRawBlocks(doc));
   }
 
-  doc = doc.replace(
+  doc = keepSlideHosts(doc, doc.replace(
     CORRUPTED_HEAD_VIEWPORT_CAPTURE_RE,
     '<head$1>\n  <meta charset="utf-8" />\n  <meta name="viewport" content="width=device-width, initial-scale=$2" />',
-  );
+  ));
 
-  doc = doc.replace(/<head([^>]*)>([\s\S]*?)<\/head>/i, (_match, attrs, inner) => {
+  doc = keepSlideHosts(doc, doc.replace(/<head([^>]*)>([\s\S]*?)<\/head>/i, (_match, attrs, inner) => {
     let headInner = String(inner).replace(HEAD_VIEWPORT_FRAGMENT_RE, "");
     headInner = headInner.replace(HEAD_ORPHAN_VOID_FRAGMENT_RE, "");
     ARTIFACT_VIEWPORT_TEXT_LEAK_RE.lastIndex = 0;
@@ -323,10 +336,10 @@ export function repairArtifactDocumentHead(html: string): string {
       headInner = `${headInner}\n  <meta name="viewport" content="width=device-width, initial-scale=1" />`;
     }
     return `<head${attrs}>${headInner}</head>`;
-  });
+  }));
 
-  doc = stripLeakedViewportFragments(doc);
-  doc = stripArtifactPreviewBodyTextLeaks(doc);
-  doc = repairMangledDeckFrameworkScript(doc);
-  return stripTrailingUnclosedRawBlocks(doc);
+  doc = keepSlideHosts(doc, stripLeakedViewportFragments(doc));
+  doc = keepSlideHosts(doc, stripArtifactPreviewBodyTextLeaks(doc));
+  doc = keepSlideHosts(doc, repairMangledDeckFrameworkScript(doc));
+  return keepSlideHosts(doc, stripTrailingUnclosedRawBlocks(doc));
 }

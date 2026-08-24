@@ -20,6 +20,7 @@ from ..auth_context import AuthContext, require_auth, require_workspace_context
 from ..db.connection import get_async_session
 from ..db.crud import design_output_crud, design_project_crud
 from ..db.models import DesignOutput, DesignProject
+from ..db.models.base import utcnow
 from ..errors import ApiError, BadGatewayError, ForbiddenError, NotFoundError, UnauthorizedError
 from ..schemas.design_project import (
     CreateDesignProjectBody,
@@ -167,12 +168,17 @@ async def _resolve_existing_registry_row(
         current_title=row.title,
         incoming_title=title,
     )
-    if merged_title is not None:
-        row.title = merged_title
-        await db.flush()
-        await db.refresh(row)
-        return row, True
-    return row, False
+    # Idempotent re-register must NOT bump updated_at. Opening a project can
+    # race access→legacy POST /projects; touching here made Home show
+    # 「방금 전」 for a read-only open. Only real title upgrades (or
+    # reactivate above) advance the timestamp.
+    if merged_title is None:
+        return row, False
+    row.title = merged_title
+    row.updated_at = utcnow()
+    await db.flush()
+    await db.refresh(row)
+    return row, True
 
 
 async def _sync_daemon_scratch_for_od_project(

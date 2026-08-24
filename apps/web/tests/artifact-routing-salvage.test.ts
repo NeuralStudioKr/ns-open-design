@@ -54,6 +54,14 @@ describe('elementPatchBodyLooksLikeDeckPatch', () => {
     ).toBe(false);
   });
 
+  it('does not treat slide-counter chrome as a deck-patch body', () => {
+    expect(
+      elementPatchBodyLooksLikeDeckPatch(
+        '<section class="slide-counter">5 / 10</section>',
+      ),
+    ).toBe(false);
+  });
+
   it('does not match an empty or whitespace-only body', () => {
     expect(elementPatchBodyLooksLikeDeckPatch('')).toBe(false);
     expect(elementPatchBodyLooksLikeDeckPatch('   \n\t   ')).toBe(false);
@@ -93,6 +101,15 @@ describe('deckPatchBodyLooksLikeElementPatch', () => {
         '<section class="slide" data-slide-index="1"><h1>Deck</h1></section>',
       ),
     ).toBe(false);
+  });
+
+  it('treats chrome-only plus patch as the element-patch salvage case', () => {
+    expect(
+      deckPatchBodyLooksLikeElementPatch(
+        '<section class="slide-counter">5 / 10</section>'
+        + '<patch target-id="hero" slide-index="1" kind="set-text">New</patch>',
+      ),
+    ).toBe(true);
   });
 
   it('does not match empty, whitespace-only, or non-patch content', () => {

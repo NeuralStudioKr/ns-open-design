@@ -7,7 +7,8 @@
 
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Dialog, DialogDescription, DialogFooter, DialogTitle } from '@open-design/components';
-import { projectKindToTracking } from '@open-design/contracts/analytics';
+import { projectListTrackingKind } from '../teamver/projectListCardCategory';
+import { DesignSystemProjectTag, ProjectListCardTag } from '../teamver/components/ProjectListCardTag';
 import { useAnalytics } from '../analytics/provider';
 import { trackRecentProjectsClick } from '../analytics/events';
 import { useT } from '../i18n';
@@ -16,6 +17,7 @@ import { Icon } from './Icon';
 import { STATUS_LABEL_KEYS } from './DesignsTab';
 import { isDesignSystemProject, isPublishedDesignSystemProject } from './design-system-project';
 import { isTeamverEmbedMode } from '../teamver/designApiBase';
+import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
 import { TeamverLatestPublishChip } from '../teamver/components/TeamverLatestPublishChip';
 import { ProjectCardHtmlCover } from '../teamver/components/ProjectCardHtmlCover';
 import {
@@ -23,6 +25,7 @@ import {
   type ProjectCoverFile,
 } from '../teamver/projectPreviewFile';
 import { buildProjectCardCover } from '../teamver/projectCardCover';
+import { AuthenticatedProjectFileImage } from './AuthenticatedProjectFileImage';
 import { prefetchHomeProjectCovers } from '../teamver/prefetchHomeProjectCovers';
 import { homePublishChipPrefetchIds } from '../teamver/embedPublishChipProjects';
 import { prefetchLatestPublishSummaries } from '../teamver/latestPublishSummary';
@@ -67,6 +70,7 @@ export function RecentProjectsStrip({
   workspaceScopeKey,
 }: Props) {
   const t = useT();
+  const { slideOnlyMvp } = useTeamverBranding();
   const analytics = useAnalytics();
   const renameTitleId = useId();
   const confirmTitleId = useId();
@@ -94,22 +98,34 @@ export function RecentProjectsStrip({
   const [coverByProject, setCoverByProject] = useState<
     Record<string, ProjectCoverFile | null>
   >({});
+  /**
+   * Embed: wait for prefetch + preview/html batch warm before mounting
+   * ProjectCardHtmlCover — otherwise entryFile cards fire /raw before cache seed (0806-N08).
+   */
+  const [homeCoversReady, setHomeCoversReady] = useState(() => !isTeamverEmbedMode());
   const showOverflowMenu = Boolean(onRename || onDelete);
 
   useEffect(() => {
     setCoverByProject({});
+    setHomeCoversReady(!isTeamverEmbedMode());
   }, [workspaceScopeKey]);
 
   useEffect(() => {
     let cancelled = false;
     if (recent.length === 0) {
       setCoverByProject({});
+      setHomeCoversReady(true);
       return;
+    }
+
+    if (isTeamverEmbedMode()) {
+      setHomeCoversReady(false);
     }
 
     void prefetchHomeProjectCovers(recent).then((entries) => {
       if (cancelled) return;
       setCoverByProject(entries);
+      setHomeCoversReady(true);
     });
 
     return () => {
@@ -185,10 +201,7 @@ export function RecentProjectsStrip({
     project: Project,
     element: 'more' | 'rename' | 'delete',
   ) => {
-    const projectKind = projectKindToTracking(
-      project.metadata?.kind,
-      project.metadata?.videoModel,
-    );
+    const projectKind = projectListTrackingKind(project, { slideOnly: slideOnlyMvp });
     trackRecentProjectsClick(analytics.track, {
       page_name: 'home',
       area: 'recent_projects',
@@ -339,12 +352,16 @@ export function RecentProjectsStrip({
                   style={cover.style}
                   aria-hidden
                 >
-                  {(cover.kind === 'image' || cover.kind === 'logo') && cover.src ? (
-                    <img
+                  {(cover.kind === 'image' || cover.kind === 'logo') && cover.filePath ? (
+                    <AuthenticatedProjectFileImage
+                      projectId={project.id}
+                      path={cover.filePath}
+                      rev={cover.version}
                       className="recent-projects__thumb-media"
-                      src={cover.src}
-                      alt=""
-                      loading="lazy"
+                      trustExists
+                      failedFallback={
+                        <span className="recent-projects__card-glyph">{cover.initial}</span>
+                      }
                     />
                   ) : cover.kind === 'video' && cover.src ? (
                     <video
@@ -355,14 +372,21 @@ export function RecentProjectsStrip({
                       playsInline
                     />
                   ) : cover.kind === 'html' && cover.src ? (
-                    <ProjectCardHtmlCover
-                      src={cover.src}
-                      deckCoverOnly={project.metadata?.kind === 'deck'}
-                      iframeClassName="recent-projects__thumb-iframe"
-                      deckFrameClassName="recent-projects__deck-frame"
-                      deckIframeClassName="recent-projects__deck-iframe"
-                      deckLoadingClassName="recent-projects__deck-cover-loading"
-                    />
+                    homeCoversReady ? (
+                      <ProjectCardHtmlCover
+                        src={cover.src}
+                        deckCoverOnly={slideOnlyMvp || project.metadata?.kind === 'deck'}
+                        iframeClassName="recent-projects__thumb-iframe"
+                        deckFrameClassName="recent-projects__deck-frame"
+                        deckIframeClassName="recent-projects__deck-iframe"
+                        deckLoadingClassName="recent-projects__deck-cover-loading"
+                      />
+                    ) : (
+                      <span
+                        className="recent-projects__deck-cover-loading"
+                        aria-hidden
+                      />
+                    )
                   ) : (
                     <span className="recent-projects__card-glyph">{cover.initial}</span>
                   )}
@@ -372,7 +396,7 @@ export function RecentProjectsStrip({
                     {designSystemProject ? (
                       <DesignSystemProjectTag />
                     ) : (
-                      <ProjectTag category={projectCategory(project)} />
+                      <ProjectListCardTag project={project} />
                     )}
                   </div>
                   <div className="recent-projects__card-name">{project.name}</div>
@@ -506,35 +530,4 @@ function relativeTime(ts: number, t: ReturnType<typeof useT>): string {
   if (diff < day) return t('common.hoursAgo', { n: Math.floor(diff / hr) });
   if (diff < 7 * day) return t('common.daysAgo', { n: Math.floor(diff / day) });
   return new Date(ts).toLocaleDateString();
-}
-
-type ProjectCategory = 'prototype' | 'live-artifact' | 'slide' | 'media';
-
-function projectCategory(project: Project): ProjectCategory {
-  const meta = project.metadata;
-  if (meta?.intent === 'live-artifact' || project.skillId === 'live-artifact') {
-    return 'live-artifact';
-  }
-  if (meta?.kind === 'deck') return 'slide';
-  if (meta?.kind === 'image' || meta?.kind === 'video' || meta?.kind === 'audio') {
-    return 'media';
-  }
-  return 'prototype';
-}
-
-function ProjectTag({ category }: { category: ProjectCategory }) {
-  const t = useT();
-  const label =
-    category === 'live-artifact'
-      ? t('designs.tagLiveArtifact')
-      : category === 'slide'
-        ? t('designs.tagSlide')
-        : category === 'media'
-          ? t('designs.tagMedia')
-          : t('designs.tagPrototype');
-  return <span className={`design-card-tag tag-${category}`}>{label}</span>;
-}
-
-function DesignSystemProjectTag() {
-  return <span className="design-card-tag tag-design-system">Design System</span>;
 }

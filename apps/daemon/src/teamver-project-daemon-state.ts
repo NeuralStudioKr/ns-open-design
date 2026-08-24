@@ -219,7 +219,7 @@ export function applyTeamverProjectDaemonState(
       skillId: remoteProject.skillId,
       designSystemId: remoteProject.designSystemId,
       pendingPrompt: remoteProject.pendingPrompt ?? null,
-      metadata: remoteProject.metadata ?? { kind: 'prototype' },
+      metadata: remoteProject.metadata ?? { kind: 'deck' },
       customInstructions: remoteProject.customInstructions ?? null,
       createdAt: remoteProject.createdAt,
       updatedAt: remoteProject.updatedAt,

@@ -13,9 +13,9 @@ describe('manual edit history-confirm pin ordering', () => {
   it('does not pin the pre-edit baseSource before history confirm', () => {
     const start = fileViewerSource.indexOf('async function applyManualEdit(');
     expect(start).toBeGreaterThan(0);
-    const block = fileViewerSource.slice(start, start + 4200);
+    const block = fileViewerSource.slice(start, start + 4800);
     const confirmAt = block.indexOf('confirmManualEditHistorySource(');
-    const pinResultAt = block.indexOf('pinManualEditSavedSource(result.source)');
+    const pinResultAt = block.indexOf('pinManualEditSavedSource(contentToSave)');
     expect(confirmAt).toBeGreaterThan(0);
     expect(pinResultAt).toBeGreaterThan(confirmAt);
     // Premature pin of the pre-edit buffer would make history confirm always

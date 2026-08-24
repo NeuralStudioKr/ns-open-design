@@ -91,23 +91,38 @@ if ! grep -q 'preflight OK' <<< "$clean_out"; then
   exit 1
 fi
 
-# Staging embed — TEAMVER_OD_API_KEY 필수.
+# Staging embed — managed provider key 필수.
 NOKEY_ENV="$(mktemp)"
-grep -v '^TEAMVER_OD_API_KEY=' "$TMP_ENV" > "$NOKEY_ENV" || true
+grep -v -E '^(TEAMVER_OD_API_KEY|TEAMVER_MINIMAX_API_KEY|OD_MINIMAX_API_KEY|MINIMAX_API_KEY)=' "$TMP_ENV" > "$NOKEY_ENV" || true
 if bash "$SCRIPT" --staging --rds --env-file "$NOKEY_ENV" >/dev/null 2>&1; then
-  echo "❌ staging without TEAMVER_OD_API_KEY must fail preflight"
+  echo "❌ staging without managed provider key must fail preflight"
   rm -f "$NOKEY_ENV"
   exit 1
 fi
 nokey_out="$(bash "$SCRIPT" --staging --rds --env-file "$NOKEY_ENV" 2>&1 || true)"
-if ! grep -q 'TEAMVER_OD_API_KEY 필요' <<< "$nokey_out"; then
-  echo "❌ expected TEAMVER_OD_API_KEY staging gate message"
+if ! grep -q 'TEAMVER_OD_API_KEY 또는 TEAMVER_MINIMAX_API_KEY 필요' <<< "$nokey_out"; then
+  echo "❌ expected managed provider key staging gate message"
   echo "$nokey_out"
   rm -f "$NOKEY_ENV"
   exit 1
 fi
 rm -f "$NOKEY_ENV"
-echo "✓ staging TEAMVER_OD_API_KEY gate ok"
+echo "✓ staging managed provider key gate ok"
+
+MINIMAX_ENV="$(mktemp)"
+grep -v '^TEAMVER_OD_API_KEY=' "$TMP_ENV" > "$MINIMAX_ENV" || true
+{
+  echo 'TEAMVER_OD_API_PROTOCOL=minimax'
+  echo 'TEAMVER_MINIMAX_API_KEY=sk-cp-test-managed'
+} >> "$MINIMAX_ENV"
+if ! bash "$SCRIPT" --staging --rds --env-file "$MINIMAX_ENV" >/dev/null 2>&1; then
+  echo "❌ staging with TEAMVER_MINIMAX_API_KEY should pass managed provider preflight"
+  bash "$SCRIPT" --staging --rds --env-file "$MINIMAX_ENV" || true
+  rm -f "$MINIMAX_ENV"
+  exit 1
+fi
+rm -f "$MINIMAX_ENV"
+echo "✓ staging MiniMax managed key gate ok"
 
 GENERIC_COOKIE_ENV="$(mktemp)"
 sed 's/^DESIGN_BFF_SESSION_COOKIE_NAME=.*/DESIGN_BFF_SESSION_COOKIE_NAME=session/' "$TMP_ENV" > "$GENERIC_COOKIE_ENV"
@@ -405,9 +420,9 @@ PROD_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_ENV" "$PROD_DIR"' EXIT
 
 # 1) production baseline (LLM 키 없음) → fail.
-grep -v -E '^(TEAMVER_OD_API_KEY|ANTHROPIC_API_KEY|OPENAI_API_KEY)=' "$TMP_ENV" > "$PROD_DIR/.env.production"
+grep -v -E '^(TEAMVER_OD_API_KEY|TEAMVER_MINIMAX_API_KEY|OD_MINIMAX_API_KEY|MINIMAX_API_KEY|ANTHROPIC_API_KEY|OPENAI_API_KEY)=' "$TMP_ENV" > "$PROD_DIR/.env.production"
 nokey_out="$(bash "$SCRIPT" --rds --env-file "$PROD_DIR/.env.production" 2>&1 || true)"
-if ! grep -q 'TEAMVER_OD_API_KEY (managed) 또는 ANTHROPIC_API_KEY/OPENAI_API_KEY' <<< "$nokey_out"; then
+if ! grep -q 'TEAMVER_OD_API_KEY/TEAMVER_MINIMAX_API_KEY (managed) 또는 ANTHROPIC_API_KEY/OPENAI_API_KEY' <<< "$nokey_out"; then
   echo "❌ production w/o LLM keys must fail with managed/daemon LLM key guard"
   echo "$nokey_out"
   exit 1
@@ -462,10 +477,10 @@ if ! grep -q "OD_API_TOKEN 값에 'staging' 포함" <<< "$leak_out"; then
 fi
 echo "✓ validate_deploy_env production rejects staging-looking OD_API_TOKEN"
 
-# 4) staging stays warn-only on missing LLM key (production guard MUST NOT bleed
-#    into staging .env path).
+# 4) staging managed-key hard guard must stay separate from the production
+#    public chat gate message.
 NOKEY_STAGING="$(mktemp)"
-sed '/^TEAMVER_OD_API_KEY=/d; /^ANTHROPIC_API_KEY=/d; /^OPENAI_API_KEY=/d' "$TMP_ENV" > "$NOKEY_STAGING"
+sed '/^TEAMVER_OD_API_KEY=/d; /^TEAMVER_MINIMAX_API_KEY=/d; /^OD_MINIMAX_API_KEY=/d; /^MINIMAX_API_KEY=/d; /^ANTHROPIC_API_KEY=/d; /^OPENAI_API_KEY=/d' "$TMP_ENV" > "$NOKEY_STAGING"
 staging_out="$(bash "$SCRIPT" --staging --rds --env-file "$NOKEY_STAGING" 2>&1 || true)"
 if grep -q '공개 사용자 chat 게이트' <<< "$staging_out"; then
   echo "❌ staging must NOT trigger production LLM hard guard"

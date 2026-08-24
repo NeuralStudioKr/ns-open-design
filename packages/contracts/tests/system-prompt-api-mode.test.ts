@@ -125,6 +125,12 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).toMatch(/<artifact>/);
     });
 
+    it('does not brand the UI locale override as Open Design', () => {
+      const prompt = composeSystemPrompt({ streamFormat: 'plain', locale: 'ko' });
+      expect(prompt).toContain('The UI locale for this run is `ko`');
+      expect(prompt).not.toContain('Open Design UI locale');
+    });
+
     it('requires slide API runs to produce the deck artifact, not just a plan', () => {
       const prompt = composeSystemPrompt({
         streamFormat: 'plain',
@@ -132,7 +138,16 @@ describe('composeSystemPrompt — API mode (#313)', () => {
         mediaExecution: { mode: 'disabled' },
       });
 
-      expect(prompt).toContain('Teamver embed — slide deck scope only');
+      expect(prompt).toContain('Slide deck scope only');
+      expect(prompt).toContain('this workspace currently supports slides only');
+      expect(prompt).not.toContain('Open Design UI locale');
+      expect(prompt).not.toContain('teamver Slide currently supports');
+      expect(prompt).not.toContain('teamver Slide embed');
+      expect(prompt).not.toContain('Teamver Design');
+      expect(prompt).not.toContain('Teamver embed');
+      expect(prompt).not.toContain('## Teamver');
+      expect(prompt).not.toContain('# Teamver');
+      expect(prompt).toContain('This workspace is slide-only');
       expect(prompt).toContain('turn-1 quick brief');
       expect(prompt).toContain('UI-locale line');
       expect(prompt).toContain('Localize title');
@@ -143,25 +158,26 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).toContain('For slide deck / presentation / PPT requests in API mode');
       expect(prompt).toContain('the plan is not the deliverable');
       expect(prompt).toContain('include the complete HTML deck artifact in this same response');
-      expect(prompt).toContain('Teamver slide-only API deliverable rule');
+      expect(prompt).toContain('Slide-only API deliverable rule');
       expect(prompt).toContain('your same response MUST include exactly one complete `<artifact type="deck" identifier="deck">...</artifact>` block');
       expect(prompt).toContain('optional: one tiny user-visible UI-locale status sentence tailored to the brief');
       expect(prompt).toContain('optional: one tiny brief-specific UI-locale status sentence');
       expect(prompt).toContain('Stream promptly');
       expect(prompt).toContain('Do not wait silently');
       expect(prompt).toContain('Artifact-only is OK for speed/tokens');
-      expect(prompt).toContain('Never start a Teamver deck with `<artifact type="text/html"`');
+      expect(prompt).toContain('Never start a deck with `<artifact type="text/html"`');
       expect(prompt).not.toContain('Never open `<artifact type="deck">` until the complete deck is ready');
-      expect(prompt).toContain('Teamver API — deck framework emission override');
+      expect(prompt).toContain('API — deck framework emission override');
       expect(prompt).toContain('API compact contract');
       expect(prompt).toContain('<artifact type="deck" identifier="deck">');
-      expect(prompt).toContain('never `<head>`');
+      // Allow short kit <style>/<link>; still forbid empty/long head chrome.
+      expect(prompt).toMatch(/never an empty shell or long `<head>` chrome|Do not add `<head>`/);
+      expect(prompt).toContain('never font `@import`');
       expect(prompt).toContain('<body><section class="slide"');
       expect(prompt).not.toContain('Copy the canonical skeleton below as index.html');
-      // Ceiling grew by ~700 chars when the comment-edit patch contract
-      // landed; that contract cuts a 60–120s round-trip on one-element
-      // comment edits down to 2–8s, so the cost is worth it.
-      expect(prompt.length).toBeLessThan(20_500);
+      // Ceiling grew again for existing-deck image/surgical-edit rules so
+      // "put this image on page N" does not greenfield a 2-slide rewrite.
+      expect(prompt.length).toBeLessThan(27_000);
     });
 
     it('keeps compact deck for skill-seed projects without raw template copy workflow', () => {
@@ -175,11 +191,11 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       });
 
       expect(prompt).toContain('API compact contract');
-      expect(prompt).toContain('Teamver API — deck framework emission override');
+      expect(prompt).toContain('API — deck framework emission override');
       expect(prompt).toContain('Visual style reference');
       expect(prompt).toContain('API-safe skill summary only');
       expect(prompt).not.toContain('Read `assets/template.html`');
-      expect(prompt).not.toContain('Teamver API — skill seed override');
+      expect(prompt).not.toContain('API — skill seed override');
     });
 
     // Regression coverage for the unified ask-user flow: API/BYOK mode must
@@ -228,6 +244,8 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       const prompt = composeSystemPrompt({ streamFormat: 'plain', byokToolNames: byokTools });
       expect(prompt).toMatch(/API mode — BYOK tools available/i);
       expect(prompt).not.toMatch(/API mode — no tools available/i);
+      expect(prompt).toContain('You are running through the BYOK proxy.');
+      expect(prompt).not.toContain('Open Design BYOK');
     });
 
     it('lists wired BYOK tool names including web_fetch', () => {
@@ -235,6 +253,7 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).toContain('`web_fetch`');
       expect(prompt).toContain('`generate_image`');
       expect(prompt).toMatch(/call `web_fetch` with the absolute URL/i);
+      expect(prompt).toMatch(/Do not call `web_fetch` on fonts, CSS/i);
       expect(prompt).toMatch(/I can't read URLs/i);
       expect(prompt).toContain('<web-fetch-context>');
       expect(prompt).toContain('fetched URL text');
@@ -260,7 +279,7 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       // Slide-only runs use the dedicated lean composer (no BYOK tool list —
       // media is disabled and the deliverable is always an HTML deck).
       expect(prompt).toContain('unified streaming rule');
-      expect(prompt).toContain('Teamver slide-only API deliverable rule');
+      expect(prompt).toContain('Slide-only API deliverable rule');
       expect(prompt).toContain('your same response MUST include exactly one complete `<artifact type="deck" identifier="deck">...</artifact>` block');
       expect(prompt).not.toContain('API mode — BYOK tools available');
     });
@@ -331,11 +350,11 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).not.toContain('# OD core directives');
       expect(prompt).not.toContain('Artifact handoff');
       expect(prompt).not.toContain('Read `assets/template.html`');
-      // Budget guard for the lean slide-only API composer. Measured ~21.3k
-      // after comment-edit patch + compact layout vocabulary landed; those
-      // contracts cut 60–120s full-deck rewrites on one-element edits, so
-      // the cost is intentional. Keep a small headroom for copy tweaks.
-      expect(prompt.length).toBeLessThan(22_000);
+      // Budget guard for the lean slide-only API composer. Measured ~25k
+      // after existing-deck image embed + comment-edit patch contracts landed;
+      // those prevent 8→2 slide collapse / 60–120s full-deck rewrites, so the
+      // cost is intentional. Keep a small headroom for copy tweaks.
+      expect(prompt.length).toBeLessThan(27_000);
       expect(prompt.length).toBeGreaterThan(18_000);
     });
 
@@ -348,14 +367,15 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).toContain('unified streaming rule');
       expect(prompt).toContain('Turn 1');
       expect(prompt).toContain('question-form id="discovery"');
-      expect(prompt).toContain('never `<head>`');
+      expect(prompt).toContain('never an empty shell or long `<head>` chrome');
       expect(prompt).toContain('abandon that output');
       expect(prompt).toContain('API compact contract');
       expect(prompt).toContain('optional tiny UI-locale status sentence');
       expect(prompt).toContain('Artifact-only is OK for speed/tokens');
       expect(prompt).toContain('inline layout vocabulary');
       expect(prompt).toContain('split thesis, timeline, quote');
-      expect(prompt).toContain('template/design-system feel');
+      expect(prompt).toContain('Selected deck template look');
+      expect(prompt).toContain('secondary brand context only');
       expect(prompt).toContain('bind quick-brief answers');
       expect(prompt).toContain('Alternate light/dark');
       expect(prompt).not.toContain('assets/template.html');
@@ -368,7 +388,11 @@ describe('composeSystemPrompt — API mode (#313)', () => {
         metadata: { kind: 'deck', skipDiscoveryBrief: true },
       });
 
-      expect(prompt).toContain(SKIP_DISCOVERY_BRIEF_OVERRIDE);
+      // Teamver uses a dedicated skip-discovery block (no Site-ref exception
+      // that fights DIRECT_STREAMING's "do NOT emit question-form").
+      expect(prompt).toContain('Canvas → Slide / Drive → Slide / automated brief');
+      expect(prompt).not.toContain('Site-ref:');
+      expect(prompt).not.toContain('URL-only deck asks missing audience/purpose/tone/count/topics');
       expect(prompt).toContain('direct deck generation rule');
       expect(prompt).toContain('inline layout vocabulary');
       expect(prompt).toContain('optional tiny UI-locale status sentence');
@@ -377,9 +401,11 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).toContain('<artifact type="deck" identifier="deck">');
       expect(prompt).toContain('Never `type="text/html"`');
       expect(prompt).toContain('choose reasonable defaults and proceed without asking a discovery form');
-      expect(prompt).toContain('URL-only deck asks missing audience/purpose/tone/count/topics');
       expect(prompt).toContain('use 6-8 slides only if no Plugin inputs / user brief specifies a count');
       expect(prompt).toContain('omit unless requested');
+      expect(prompt).toContain('width:1920px;height:1080px');
+      expect(prompt).toContain('Stream promptly');
+      expect(prompt).not.toContain('until the complete filled deck is ready in one shot');
       expect(prompt).not.toContain('unified streaming rule');
       expect(prompt).not.toContain('Turn 1 (first user message, no prior form answers)');
       expect(prompt).not.toContain('unknown — ask');
@@ -447,8 +473,8 @@ describe('composeSystemPrompt — API mode (#313)', () => {
         prompt.indexOf('Slide deck — API compact contract'),
       );
       expect(prompt).not.toContain('Do not paste this exact headline');
-      // Ceiling grew by ~700 chars when the comment-edit patch contract landed.
-      expect(prompt.length).toBeLessThan(20_500);
+      // Ceiling grew for content-expansion + existing-deck image/surgical-edit rules + fill.
+      expect(prompt.length).toBeLessThan(27_000);
     });
 
     it('keeps quick brief available when a selected template supplies style but not content brief', () => {
@@ -472,7 +498,9 @@ describe('composeSystemPrompt — API mode (#313)', () => {
 
       expect(prompt).toContain('Selected template visual signature — Html Ppt Zhangzara Capsule');
       expect(prompt).toContain('Style only');
-      expect(prompt).toContain('ask quick brief first');
+      expect(prompt).toContain('content brief comes from the user message / Plugin inputs / discovery answers');
+      // Discovery still comes from Teamver turn-1 / unified rules — not from
+      // a conflicting "ask quick brief" line inside the visual signature.
       expect(prompt).toContain('unified streaming rule');
       expect(prompt).toContain('question-form id="discovery"');
       expect(prompt).not.toContain('direct deck generation rule');
@@ -496,8 +524,9 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).toContain('class/style cues: slide, terminal, scanline');
       expect(prompt).toContain('layout cues: display:grid, letter-spacing, text-transform');
       expect(prompt).toContain('Must match template palette');
-      expect(prompt).toContain('apply it with inline styles');
-      expect(prompt).toContain('do not merely describe it');
+      expect(prompt).toContain('match its visual kit');
+      expect(prompt).toContain('must not override the template look');
+      expect(prompt).toContain('do not merely describe the template');
       expect(prompt).toContain('Template is the visual contract');
       expect(prompt.indexOf('Selected design template visual signature — Html Ppt Hermes Cyber Terminal')).toBeLessThan(
         prompt.indexOf('Slide deck — API compact contract'),
@@ -505,8 +534,8 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt.indexOf('Visual style reference — Html Ppt Hermes Cyber Terminal')).toBeLessThan(
         prompt.indexOf('Slide deck — API compact contract'),
       );
-      // Ceiling grew by ~700 chars when the comment-edit patch contract landed.
-      expect(prompt.length).toBeLessThan(20_500);
+      // Ceiling grew for content-expansion + existing-deck image/surgical-edit rules + fill.
+      expect(prompt.length).toBeLessThan(27_000);
     });
 
     it('keeps richer visual template rules while stripping unavailable copy workflows', () => {
@@ -534,20 +563,61 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       );
       expect(prompt).not.toContain('Read assets/template.html and copy the skeleton');
       expect(prompt).not.toContain('Use references/layouts.md for exact slots');
-      // Ceiling grew by ~700 chars when the comment-edit patch contract landed.
-      expect(prompt.length).toBeLessThan(20_500);
+      // Ceiling grew for existing-deck image/surgical-edit rules.
+      expect(prompt.length).toBeLessThan(27_000);
     });
 
-    it('carries the comment-edit element-patch contract so scoped edits skip full deck rewrites', () => {
+    it('appends Motif-AFTER-title READ LAST on template clone fill turns', () => {
+      const prompt = composeTeamverSlideApiPrompt({
+        skillBody:
+          '## Template visual kit (from example.html)\n\n'
+          + '### Slide surface\n\n**background**: `#F5F0E6`\n\n'
+          + '### Motif sprites\n\n```html\n<svg viewBox="0 0 10 10"></svg>\n```\n',
+        skillName: 'Html Ppt Zhangzara Daisy Days',
+        metadata: {
+          kind: 'deck',
+          skipDiscoveryBrief: true,
+          selectedDeckTemplateId: 'example-html-ppt-zhangzara-daisy-days',
+        },
+        templateCloneContentFill: true,
+      });
+      expect(prompt).toContain('Template clone fill — Motif AFTER title');
+      expect(prompt).toMatch(/Motif CSS|kit Motif vocabulary|deco-pill|Decorations CSS/i);
+      expect(prompt).toMatch(/Never invent Motif geometry from another template family|no invented generic circles/i);
+      expect(prompt.indexOf('Template clone fill — Motif AFTER title')).toBeGreaterThan(
+        prompt.indexOf('Selected deck template visual — READ LAST'),
+      );
+      expect(prompt).toMatch(/Motif vocabulary REQUIRED|kit Motif AFTER title/i);
+      expect(prompt).toMatch(/Motif sprites \(capped for first content-fill/i);
+      expect(prompt).toMatch(/<svg\b/i);
+    });
+
+    it('omits comment-edit / existing-deck contracts on greenfield turns', () => {
+      const prompt = composeTeamverSlideApiPrompt({
+        skillBody: simpleDeckSkill,
+        skillName: 'simple-deck',
+        metadata: { kind: 'deck', skipDiscoveryBrief: true },
+      });
+      // Full READ LAST edit contracts are gated off; deliverable override may
+      // still mention patch types briefly for existing-deck anti-patterns.
+      expect(prompt).not.toContain('comment-edit patch');
+      expect(prompt).not.toContain('existing-deck image embed');
+      expect(prompt).not.toContain('Slide-only API — comment-edit patch');
+      expect(prompt).not.toContain('Slide-only API — existing-deck image embed');
+    });
+
+    it('carries the comment-edit element-patch contract when FE gates it on', () => {
       const unified = composeTeamverSlideApiPrompt({
         skillBody: simpleDeckSkill,
         skillName: 'simple-deck',
         metadata: { kind: 'deck' },
+        includeCommentEditPatchRule: true,
       });
       const direct = composeTeamverSlideApiPrompt({
         skillBody: simpleDeckSkill,
         skillName: 'simple-deck',
         metadata: { kind: 'deck', skipDiscoveryBrief: true },
+        includeCommentEditPatchRule: true,
       });
       for (const prompt of [unified, direct]) {
         expect(prompt).toContain('comment-edit patch');
@@ -557,6 +627,184 @@ describe('composeSystemPrompt — API mode (#313)', () => {
         expect(prompt).toContain('<artifact type="deck-patch"');
         expect(prompt).toContain('<artifact type="deck">');
       }
+    });
+
+    it('emits the FULL wrapped template body under Selected deck template (not the 18-line summary) when metadata pins selectedDeckTemplateId', () => {
+      // Regression: the previous compose called summarizeApiModeSkillBody
+      // for every skillBody in this dedicated Teamver slide-only API path
+      // — that helper strips lines matching copy/paste/read + reprioritizes
+      // + truncates to 18 lines. For Canvas → Slide runs the FE has
+      // already wrapped the picked template's SKILL.md body (with a
+      // `## Visual summary` block sourced from the SKILL.md frontmatter
+      // description) as skillBody, and the summarizer routinely dropped
+      // the palette / typography / motif spec. Result: the deck came back
+      // looking generic even though [selected-deck-template] logs said
+      // the body 'loaded'.
+      const wrappedSkillBody = [
+        '# Selected deck template guard',
+        '',
+        'Template: Html Ppt Hermes Cyber Terminal',
+        '',
+        '--- Template specification follows ---',
+        '',
+        '## Visual summary (from template frontmatter)',
+        '',
+        '暗终端 honest-review deck — #0a0c10 黑底 + 56px 赛博网格 + CRT 暗角 + 扫描线、`$` 命令行标题、薄荷绿 #7ed3a4 大字、JetBrains Mono、stroke-only 柱状图、blinking 光标。',
+        '',
+        '# HTML PPT · 암터미널 측평',
+        '',
+        '## How to author the deck',
+        '',
+        '1. Read the master skill first.',
+        '2. Start from templates/full-decks/hermes-cyber-terminal/ — copy index.html.',
+        '3. Bring the shared runtime: copy assets/base.css, assets/runtime.js.',
+      ].join('\n');
+      const prompt = composeTeamverSlideApiPrompt({
+        skillName: 'Html Ppt Hermes Cyber Terminal',
+        skillBody: wrappedSkillBody,
+        metadata: {
+          kind: 'deck',
+          skipDiscoveryBrief: true,
+          selectedDeckTemplateId: 'example-html-ppt-hermes-cyber-terminal',
+          selectedDeckTemplateTitle: 'Html Ppt Hermes Cyber Terminal',
+        },
+      });
+
+      // The dedicated `## Selected deck template` header replaces the
+      // generic `## Visual summary style reference` header when metadata
+      // pins a template — this is what tells the model 'this is the
+      // primary visual contract, match it exactly'.
+      expect(prompt).toContain('## Selected deck template — Html Ppt Hermes Cyber Terminal — MUST MATCH THIS VISUAL SPEC');
+      // The visual summary — including the CJK description — must survive
+      // verbatim so the model has the concrete palette / typography /
+      // motif spec to reproduce.
+      expect(prompt).toContain('## Visual summary (from template frontmatter)');
+      expect(prompt).toContain('#0a0c10');
+      expect(prompt).toContain('#7ed3a4');
+      expect(prompt).toContain('JetBrains Mono');
+      expect(prompt).toContain('赛博网格');
+      // The wrap guard prose survives verbatim (was dropped by the
+      // summarizer's 18-line ceiling).
+      expect(prompt).toContain('# Selected deck template guard');
+      expect(prompt).toContain('--- Template specification follows ---');
+      // Old summarized header must NOT appear when a template is pinned —
+      // otherwise the model sees two competing visual references.
+      expect(prompt).not.toContain('Visual style reference — Html Ppt Hermes Cyber Terminal');
+    });
+
+    it('falls back to the summarized `Visual style reference` header when no selectedDeckTemplateId is set (default scenario path)', () => {
+      // Default scenario body (simple-deck etc.) still runs through the
+      // summarizer — those bodies do contain 'copy assets/template.html'
+      // workflow noise that would confuse the API-mode model, so
+      // summarization is still the right default.
+      const prompt = composeTeamverSlideApiPrompt({
+        skillName: 'Simple Deck',
+        skillBody: 'Palette: navy #0a1930 with white text. Typography: elegant serif.',
+        metadata: { kind: 'deck', skipDiscoveryBrief: true },
+      });
+      expect(prompt).toContain('Visual style reference — Simple Deck');
+      expect(prompt).not.toContain('Selected deck template — Simple Deck');
+    });
+
+    it('keeps the FULL template body when Visual summary is present even if selectedDeckTemplateId is missing (metadata race)', () => {
+      // Canvas/Drive confirm patches project metadata then sends on the same
+      // tick. React `project.metadata` can still lack selectedDeckTemplateId
+      // while the FE has already loaded the template body (with the
+      // frontmatter visual summary prepended). Summarizing in that window
+      // is what made "템플릿 적용 안 됨" survive the metadata-only guard.
+      const wrappedSkillBody = [
+        '# Selected deck template guard',
+        '',
+        'Template: Html Ppt Hermes Cyber Terminal',
+        '',
+        '--- Template specification follows ---',
+        '',
+        '## Visual summary (from template frontmatter)',
+        '',
+        '暗终端 honest-review deck — #0a0c10 黑底 + 薄荷绿 #7ed3a4 + JetBrains Mono.',
+        '',
+        '# HTML PPT · hermes',
+      ].join('\n');
+      const prompt = composeTeamverSlideApiPrompt({
+        skillName: 'Html Ppt Hermes Cyber Terminal',
+        skillBody: wrappedSkillBody,
+        metadata: { kind: 'deck', skipDiscoveryBrief: true },
+      });
+      expect(prompt).toContain('## Selected deck template — Html Ppt Hermes Cyber Terminal — MUST MATCH THIS VISUAL SPEC');
+      expect(prompt).toContain('## Visual summary (from template frontmatter)');
+      expect(prompt).toContain('#0a0c10');
+      expect(prompt).toContain('#7ed3a4');
+      expect(prompt).not.toContain('Visual style reference — Html Ppt Hermes Cyber Terminal');
+    });
+
+    it('forces existing-deck image edits to preserve all slides via deck-patch when gated on', () => {
+      const unified = composeTeamverSlideApiPrompt({
+        skillBody: simpleDeckSkill,
+        skillName: 'simple-deck',
+        metadata: { kind: 'deck' },
+        includeExistingDeckImageEditRule: true,
+      });
+      const direct = composeTeamverSlideApiPrompt({
+        skillBody: simpleDeckSkill,
+        skillName: 'simple-deck',
+        metadata: { kind: 'deck', skipDiscoveryBrief: true },
+        includeExistingDeckImageEditRule: true,
+      });
+      for (const prompt of [unified, direct]) {
+        expect(prompt).toContain('existing-deck image embed');
+        expect(prompt).toContain('Existing-deck edits');
+        expect(prompt).toContain('NEVER reduce');
+        expect(prompt).toContain('do not turn an 8-slide deck into 2 slides');
+        expect(prompt).toContain('greenfield 2-slide wireframe');
+        expect(prompt).toContain('[Attached image embed]');
+        expect(prompt).toContain('[Existing deck edit]');
+      }
+    });
+
+    it('requires kit Motif vocabulary AFTER title on Clone content-fill turns', () => {
+      const kitBody = [
+        '# Selected deck template guard',
+        '',
+        '## Template visual kit (from example.html) — Daisy',
+        '',
+        '### Motif sprites (capped for first content-fill — AFTER title/lead only)',
+        '',
+        '```html',
+        '<svg viewBox="0 0 10 10"><circle cx="5" cy="5" r="4"/></svg>',
+        '```',
+        '',
+        '### Palette cues: #F5F0E6',
+      ].join('\n');
+      const fill = composeTeamverSlideApiPrompt({
+        skillName: 'Daisy Days',
+        skillBody: kitBody,
+        metadata: {
+          kind: 'deck',
+          skipDiscoveryBrief: true,
+          selectedDeckTemplateId: 'example-html-ppt-zhangzara-daisy-days',
+        },
+        templateCloneContentFill: true,
+      });
+      const normal = composeTeamverSlideApiPrompt({
+        skillName: 'Daisy Days',
+        skillBody: kitBody,
+        metadata: {
+          kind: 'deck',
+          skipDiscoveryBrief: true,
+          selectedDeckTemplateId: 'example-html-ppt-zhangzara-daisy-days',
+        },
+      });
+      expect(fill).toContain('READ LAST (first content-fill)');
+      expect(fill).toMatch(/Motif vocabulary \(required\)|kit Motif vocabulary/i);
+      expect(fill).toContain('kit Motif AFTER title');
+      expect(fill).not.toContain('OD-style CREATE');
+      expect(fill).toMatch(/Never invent Motif geometry from another template family|FORBIDDEN substitutes|no invented generic circles/i);
+      expect(fill).not.toContain('Copy Motif sprites verbatim');
+      expect(normal).not.toContain('Copy Motif sprites verbatim');
+      expect(normal).toContain('Motif budget');
+      expect(normal).toContain('paste at most ONE capped kit Motif sprite');
+      expect(fill).toMatch(/Motif `<svg>` is NOT required this turn/i);
+      expect(fill).toMatch(/produce 3 filled 1920×1080 slides/i);
     });
   });
 });

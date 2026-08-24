@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { devLog } from '../lib/devLog';
 import { useTeamverT } from '../teamver/branding/useTeamverT';
 import { copyToClipboard } from '../lib/copy-to-clipboard';
 import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
@@ -15,6 +16,7 @@ import { buildSrcdoc } from '../runtime/srcdoc';
 import { looksLikeCompactApiStackedDeckForPreview } from '../runtime/compact-api-stacked-deck';
 import { postDeckHostViewportToIframe, scheduleDeckPreviewFitNudges } from '../runtime/deckPreviewFit';
 import { Icon } from './Icon';
+import { embedUiLabel } from '../teamver/embedUiLabels';
 
 export interface PreviewView {
   id: string;
@@ -226,6 +228,9 @@ interface Props {
   // Social-share target for the active preview. Callers must pass an explicit
   // recipient-openable URL before the modal exposes copy/social actions.
   shareTarget?: PreviewShareTarget;
+  // Hide the entire Share trigger + popover (export/social/copy). Used by
+  // community/template detail while that menu is being redesigned.
+  hideShareMenu?: boolean;
   // Optional analytics callbacks. Fires when the user clicks the
   // chrome-level affordances (fullscreen, share trigger, sidebar
   // toggle). Callers wire these to their surface's tracking helper.
@@ -260,6 +265,7 @@ export function PreviewModal({
   primaryAction,
   headerExtras,
   shareTarget,
+  hideShareMenu = false,
   hideSidebarToggle = false,
   onFullscreenClick,
   onShareClick,
@@ -286,8 +292,20 @@ export function PreviewModal({
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(
     sidebar?.defaultOpen ?? false,
   );
+  const [slideState, setSlideState] = useState<{ active: number; count: number } | null>(
+    null,
+  );
   const templateShareRef = useRef<HTMLDivElement | null>(null);
   const primaryMenuRef = useRef<HTMLDivElement | null>(null);
+  const primaryCaretRef = useRef<HTMLButtonElement | null>(null);
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const previouslyFocusedRef = useRef<HTMLElement | null>(null);
+  const closePrimaryMenu = () => {
+    setPrimaryMenuOpen(false);
+    window.requestAnimationFrame(() => {
+      primaryCaretRef.current?.focus();
+    });
+  };
   const stageRef = useRef<HTMLDivElement | null>(null);
   const stageFrameRef = useRef<HTMLDivElement | null>(null);
   const previewIframeRef = useRef<HTMLIFrameElement | null>(null);
@@ -319,20 +337,72 @@ export function PreviewModal({
     onView?.(activeId);
   }, [activeId, onView]);
 
-  // Close on Escape. If we're in fullscreen, exit fullscreen first instead
-  // of dismissing the whole modal in one keystroke.
+  // Move focus into the dialog on open and restore it on close so Tab/AT
+  // do not linger on the gallery tile behind the modal.
+  useEffect(() => {
+    previouslyFocusedRef.current =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+    const id = window.setTimeout(() => {
+      closeButtonRef.current?.focus();
+    }, 0);
+    return () => {
+      window.clearTimeout(id);
+      const prev = previouslyFocusedRef.current;
+      if (prev && typeof prev.focus === 'function' && document.contains(prev)) {
+        prev.focus();
+      }
+    };
+  }, []);
+
+  // Close on Escape. Popovers → fullscreen → modal, one layer per keystroke.
+  // The sandboxed preview iframe swallows keydown once it has focus, so the
+  // srcdoc Escape bridge posts `od:preview-escape` and we reuse this path.
+  const dismissPreviewLayer = (e?: { preventDefault?: () => void }) => {
+    if (primaryMenuOpen) {
+      e?.preventDefault?.();
+      closePrimaryMenu();
+      return;
+    }
+    if (templateShareOpen) {
+      e?.preventDefault?.();
+      setTemplateShareOpen(false);
+      return;
+    }
+    if (fullscreen) {
+      e?.preventDefault?.();
+      // Match the chrome exit path — clear native fullscreen + React state.
+      if (document.fullscreenElement && document.exitFullscreen) {
+        document.exitFullscreen().catch(() => {});
+      }
+      setFullscreen(false);
+      return;
+    }
+    e?.preventDefault?.();
+    onClose();
+  };
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
-      if (fullscreen) {
-        setFullscreen(false);
-        return;
-      }
-      onClose();
+      dismissPreviewLayer(e);
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [onClose, fullscreen]);
+  }, [onClose, fullscreen, primaryMenuOpen, templateShareOpen]);
+
+  useEffect(() => {
+    const onMessage = (ev: MessageEvent) => {
+      const data = ev.data as { type?: string } | null;
+      if (!data || data.type !== 'od:preview-escape') return;
+      const win = previewIframeRef.current?.contentWindow;
+      if (!win || ev.source !== win) return;
+      dismissPreviewLayer();
+    };
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, [onClose, fullscreen, primaryMenuOpen, templateShareOpen]);
 
   // Mirror native fullscreen state into React. Without this, a user in
   // browser fullscreen has to press Esc twice: the first Esc exits the
@@ -359,38 +429,25 @@ export function PreviewModal({
         setTemplateShareOpen(false);
       }
     };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        setTemplateShareOpen(false);
-      }
-    };
     document.addEventListener('mousedown', onDoc);
-    document.addEventListener('keydown', onKey);
     return () => {
       document.removeEventListener('mousedown', onDoc);
-      document.removeEventListener('keydown', onKey);
     };
   }, [templateShareOpen]);
 
-  // Same outside-click / Escape dismissal for the primary-action split menu.
+  // Outside-click dismissal for the primary-action split menu (Escape is
+  // handled by the layered modal Escape effect above).
   useEffect(() => {
     if (!primaryMenuOpen) return;
     const onDoc = (e: MouseEvent) => {
       const target = e.target as Node;
       if (!primaryMenuRef.current?.contains(target)) {
-        setPrimaryMenuOpen(false);
-      }
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        setPrimaryMenuOpen(false);
+        closePrimaryMenu();
       }
     };
     document.addEventListener('mousedown', onDoc);
-    document.addEventListener('keydown', onKey);
     return () => {
       document.removeEventListener('mousedown', onDoc);
-      document.removeEventListener('keydown', onKey);
     };
   }, [primaryMenuOpen]);
 
@@ -472,6 +529,107 @@ export function PreviewModal({
     () => (activeHtml ? buildSrcdoc(activeHtml, { deck: activeDeck }) : ''),
     [activeHtml, activeDeck],
   );
+
+  function postSlide(action: 'next' | 'prev' | 'first' | 'last') {
+    const win = previewIframeRef.current?.contentWindow;
+    if (!win || !activeDeck) return;
+    win.postMessage({ type: 'od:slide', action }, '*');
+  }
+
+  function requestSlideState() {
+    const win = previewIframeRef.current?.contentWindow;
+    if (!win || !activeDeck) return;
+    win.postMessage({ type: 'od:slide-state-request' }, '*');
+  }
+
+  // Reset / listen for deck slide index from the srcdoc bridge (same contract as FileViewer).
+  useEffect(() => {
+    setSlideState(null);
+  }, [activeId, activeHtml, activeDeck]);
+
+  useEffect(() => {
+    if (!activeDeck || !activeHtml) return;
+    function onMessage(ev: MessageEvent) {
+      if (ev.source !== previewIframeRef.current?.contentWindow) return;
+      const data = ev.data as { type?: string; active?: number; count?: number } | null;
+      if (!data || data.type !== 'od:slide-state') return;
+      if (typeof data.active !== 'number' || typeof data.count !== 'number') return;
+      if (!Number.isFinite(data.active) || !Number.isFinite(data.count) || data.count < 1) return;
+      setSlideState({
+        active: Math.max(0, Math.min(data.count - 1, Math.floor(data.active))),
+        count: Math.floor(data.count),
+      });
+    }
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, [activeDeck, activeHtml, activeId, srcDoc]);
+
+  // Host ArrowLeft/Right for decks — iframe often lacks focus in the modal.
+  // Match the chrome button guards so keys cannot fire before slide-state
+  // arrives or past the first/last slide.
+  useEffect(() => {
+    if (!activeDeck || !activeHtml) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+      if (primaryMenuOpen || templateShareOpen) return;
+      if (slideState === null) return;
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.tagName === 'SELECT' ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+      if (e.key === 'ArrowRight' || e.key === 'PageDown') {
+        if (slideState.active >= slideState.count - 1) return;
+        e.preventDefault();
+        postSlide('next');
+      } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+        if (slideState.active <= 0) return;
+        e.preventDefault();
+        postSlide('prev');
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [activeDeck, activeHtml, activeId, slideState, primaryMenuOpen, templateShareOpen]);
+
+  // Keyboard navigation inside the Use caret menu (slide arrows stay idle
+  // while the menu is open — see effect above).
+  useEffect(() => {
+    if (!primaryMenuOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp' && e.key !== 'Home' && e.key !== 'End') {
+        return;
+      }
+      const root = primaryMenuRef.current;
+      if (!root) return;
+      const items = Array.from(
+        root.querySelectorAll<HTMLButtonElement>('[role="menuitem"]'),
+      ).filter((el) => !el.disabled);
+      if (!items.length) return;
+      e.preventDefault();
+      const active = document.activeElement;
+      const index = items.findIndex((el) => el === active);
+      let next = 0;
+      if (e.key === 'Home') next = 0;
+      else if (e.key === 'End') next = items.length - 1;
+      else if (e.key === 'ArrowDown') next = index < 0 ? 0 : (index + 1) % items.length;
+      else next = index < 0 ? items.length - 1 : (index - 1 + items.length) % items.length;
+      items[next]?.focus();
+    };
+    document.addEventListener('keydown', onKey);
+    // Focus the first item when the menu opens.
+    const first = primaryMenuRef.current?.querySelector<HTMLButtonElement>(
+      '[role="menuitem"]',
+    );
+    first?.focus();
+    return () => document.removeEventListener('keydown', onKey);
+  }, [primaryMenuOpen]);
+
   const exportTitle = exportTitleFor(activeView?.id ?? '');
   const canExportFiles = Boolean(activeHtml);
   const previewShareTitle = shareTarget?.title || exportTitle || title;
@@ -582,7 +740,8 @@ export function PreviewModal({
   }
 
   const showTabs = views.length > 1;
-  const showTemplateShareMenu = !isCustomView || Boolean(shareTarget?.url);
+  const showTemplateShareMenu =
+    !hideShareMenu && (!isCustomView || Boolean(shareTarget?.url));
   const canOpenTemplateShareMenu = canExportFiles || Boolean(previewShareUrl);
 
   return (
@@ -590,7 +749,7 @@ export function PreviewModal({
       className="ds-modal-backdrop"
       role="dialog"
       aria-modal="true"
-      aria-label={`${title} preview`}
+      aria-label={embedUiLabel(`${title} preview`, `${title} 미리보기`)}
     >
       <div
         className={`ds-modal ${fullscreen ? 'ds-modal-fullscreen' : ''}`}
@@ -603,6 +762,19 @@ export function PreviewModal({
                 <div className="ds-modal-subtitle">{subtitle}</div>
               ) : null}
             </div>
+            <button
+              type="button"
+              ref={closeButtonRef}
+              className="ds-modal-close"
+              onClick={onClose}
+              title={t('preview.closeTitle')}
+              aria-label={t('common.close')}
+              data-testid="preview-modal-close"
+            >
+              <Icon name="close" size={14} />
+            </button>
+          </div>
+          <div className="ds-modal-header-toolbar">
             {showTabs ? (
               <div className="ds-modal-tabs" role="tablist">
                 {views.map((v) => (
@@ -619,6 +791,53 @@ export function PreviewModal({
               </div>
             ) : null}
             <div className="ds-modal-actions">
+              {activeDeck && typeof activeHtml === 'string' ? (
+                <span
+                  className="deck-nav ds-modal-deck-nav"
+                  role="group"
+                  aria-label={t('fileViewer.slideNavAria')}
+                  data-testid="preview-modal-deck-nav"
+                >
+                  <button
+                    type="button"
+                    className="icon-only od-tooltip"
+                    onClick={() => postSlide('prev')}
+                    title={t('fileViewer.previousSlide')}
+                    data-tooltip={t('fileViewer.previousSlide')}
+                    data-tooltip-placement="bottom"
+                    aria-label={t('fileViewer.previousSlide')}
+                    data-testid="preview-modal-deck-prev"
+                    disabled={slideState === null || slideState.active <= 0}
+                  >
+                    <Icon
+                      name="chevron-right"
+                      size={20}
+                      style={{ transform: 'rotate(180deg)' }}
+                    />
+                  </button>
+                  <span className="deck-nav-counter" data-testid="preview-modal-deck-counter">
+                    {slideState
+                      ? `${slideState.active + 1} / ${slideState.count}`
+                      : '— / —'}
+                  </span>
+                  <button
+                    type="button"
+                    className="icon-only od-tooltip"
+                    onClick={() => postSlide('next')}
+                    title={t('fileViewer.nextSlide')}
+                    data-tooltip={t('fileViewer.nextSlide')}
+                    data-tooltip-placement="bottom"
+                    aria-label={t('fileViewer.nextSlide')}
+                    data-testid="preview-modal-deck-next"
+                    disabled={
+                      slideState === null ||
+                      slideState.active >= slideState.count - 1
+                    }
+                  >
+                    <Icon name="chevron-right" size={20} />
+                  </button>
+                </span>
+              ) : null}
               {primaryAction ? (
                 primaryAction.menu && primaryAction.menu.length > 0 ? (
                   <div
@@ -641,12 +860,25 @@ export function PreviewModal({
                     </button>
                     <button
                       type="button"
+                      ref={primaryCaretRef}
                       className="ds-modal-primary-action ds-modal-primary-action-caret"
-                      onClick={() => setPrimaryMenuOpen((v) => !v)}
+                      onClick={() =>
+                        setPrimaryMenuOpen((v) => {
+                          if (v) {
+                            window.requestAnimationFrame(() => {
+                              primaryCaretRef.current?.focus();
+                            });
+                          }
+                          return !v;
+                        })
+                      }
                       disabled={primaryAction.disabled || primaryAction.busy}
                       aria-haspopup="menu"
                       aria-expanded={primaryMenuOpen}
-                      aria-label={`More ways to ${primaryAction.label}`}
+                      aria-label={embedUiLabel(
+                        `More ways to ${primaryAction.label}`,
+                        `${primaryAction.label} 다른 방법`,
+                      )}
                       {...(primaryAction.testId
                         ? { 'data-testid': `${primaryAction.testId}-menu` }
                         : {})}
@@ -666,7 +898,7 @@ export function PreviewModal({
                             className="share-menu-item ds-modal-primary-action-option"
                             onMouseDown={(e) => e.preventDefault()}
                             onClick={() => {
-                              setPrimaryMenuOpen(false);
+                              closePrimaryMenu();
                               item.onClick();
                             }}
                             {...(item.testId
@@ -707,8 +939,11 @@ export function PreviewModal({
               ) : null}
               {sidebar ? (
                 <button
+                  type="button"
                   className={`ghost ${sidebarOpen ? 'is-active' : ''}${
-                    hideSidebarToggle ? ' ds-modal-sidebar-toggle--compact-only' : ''
+                    hideSidebarToggle
+                      ? ' ds-modal-sidebar-toggle--compact-only ds-modal-sidebar-toggle--icon'
+                      : ''
                   }`}
                   onClick={() => {
                     setSidebarOpen((v) => {
@@ -719,8 +954,35 @@ export function PreviewModal({
                   }}
                   aria-pressed={sidebarOpen}
                   title={sidebar.label}
+                  aria-label={sidebar.label}
                 >
-                  {sidebar.label}
+                  {hideSidebarToggle ? (
+                    <Icon
+                      name="panel-left"
+                      size={16}
+                      style={{ transform: 'scaleX(-1)' }}
+                      aria-hidden="true"
+                    />
+                  ) : (
+                    sidebar.label
+                  )}
+                </button>
+              ) : null}
+              {hideShareMenu && canExportFiles ? (
+                <button
+                  type="button"
+                  className="ghost icon-only od-tooltip"
+                  onClick={() => {
+                    onSharePopoverItemClick?.('open_in_new_tab');
+                    openInNewTab();
+                  }}
+                  title={t('preview.openInNewTab')}
+                  data-tooltip={t('preview.openInNewTab')}
+                  data-tooltip-placement="bottom"
+                  aria-label={t('preview.openInNewTab')}
+                  data-testid="preview-modal-open-in-new-tab"
+                >
+                  <Icon name="external-link" size={16} />
                 </button>
               ) : null}
               {showTemplateShareMenu ? (
@@ -937,11 +1199,11 @@ export function PreviewModal({
                                 if (snap) {
                                   exportAsImage(snap.dataUrl, exportTitle);
                                 } else {
-                                  console.warn('[PreviewModal] snapshot capture returned null');
+                                  devLog.warn('[PreviewModal] snapshot capture returned null');
                                   alert(t('common.exportImageFailed'));
                                 }
                               } catch (err) {
-                                console.warn('[PreviewModal] failed to convert snapshot:', err);
+                                devLog.warn('[PreviewModal] failed to convert snapshot:', err);
                                 alert(t('common.exportImageFailed'));
                               }
                             }}
@@ -974,15 +1236,6 @@ export function PreviewModal({
               ) : null}
               {headerExtras}
             </div>
-            <button
-              type="button"
-              className="ds-modal-close"
-              onClick={onClose}
-              title={t('preview.closeTitle')}
-              aria-label={t('common.close')}
-            >
-              <Icon name="close" size={14} />
-            </button>
           </div>
         </header>
         <div
@@ -1107,7 +1360,10 @@ export function PreviewModal({
                 <iframe
                   key={activeView?.id ?? 'view'}
                   ref={previewIframeRef}
-                  title={`${title} ${activeView?.label ?? ''}`}
+                  title={embedUiLabel(
+                    `${title} preview`,
+                    `${title} 미리보기`,
+                  )}
                   sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox"
                   srcDoc={srcDoc}
                   onLoad={(event) => {
@@ -1120,6 +1376,12 @@ export function PreviewModal({
                       activeCompactStackedDeck ? 1 : scale,
                       activeCompactStackedDeck ? { useLayoutBox: true } : { layoutFit: true },
                     );
+                    // Ask the deck bridge for active/count so the host chrome can enable.
+                    event.currentTarget.contentWindow?.postMessage(
+                      { type: 'od:slide-state-request' },
+                      '*',
+                    );
+                    window.setTimeout(() => requestSlideState(), 120);
                   }}
                 />
               </div>
@@ -1135,7 +1397,12 @@ export function PreviewModal({
                 title={t('preview.showSidebar', { label: sidebar.label })}
                 aria-label={t('preview.showSidebar', { label: sidebar.label })}
               >
-                <span aria-hidden="true">‹</span>
+                <Icon
+                  name="panel-left"
+                  size={16}
+                  style={{ transform: 'scaleX(-1)' }}
+                  aria-hidden="true"
+                />
               </button>
             ) : null}
           </div>
@@ -1151,7 +1418,7 @@ export function PreviewModal({
                 title={t('preview.hideSidebar', { label: sidebar.label })}
                 aria-label={t('preview.hideSidebar', { label: sidebar.label })}
               >
-                <span aria-hidden="true">›</span>
+                <Icon name="panel-left" size={16} aria-hidden="true" />
               </button>
               {sidebar.content}
             </aside>

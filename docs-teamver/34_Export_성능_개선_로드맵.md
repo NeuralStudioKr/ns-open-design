@@ -1035,6 +1035,7 @@ CloudWatch 대시보드 위젯:
 
 | 날짜 | 내용 |
 |------|------|
+| 2026-08-24 | ✅ 최신 `staging` 재병합 및 충돌 정리 — `feat/export-module-split`에 최신 staging을 merge하면서 `import-export-routes.ts`, `FileViewer.tsx`, `runtime/exports.ts` 충돌을 해소. route-local 렌더링으로 되돌아가지 않도록 `export-render-service`/`export-job-runner` 경로를 유지하고, 최신 staging의 공식 템플릿 look 보정·relative asset warm-up·PPTX 초과 안내·async progress UI를 함께 재적용. `@open-design/contracts` runtime이 `dist` entrypoint를 보므로 신규 helper 변경 후 contracts build 산출물도 갱신해야 함을 확인 |
 | 2026-08-03 | staging 최신 merge 검토 — `teamverViteEnv.ts` 충돌은 async export flag와 staging draw/manual-edit flags를 모두 보존해 해결. async export FE flag의 타입 선언, Docker build arg, daemon runtime env, staging/production env example을 추가해 `/export/jobs` rollout 시 BE/FE flag 불일치가 생기지 않도록 보강 |
 | 2026-08-03 | Export async runner 리뷰 보강 — job TTL 만료·잘못된 job id 등으로 `markExportJobRunning`이 실패하면 Chromium render를 시작하지 않고 skip warning 후 종료하도록 수정. 상태 저장소에 남지 않는 작업이 백그라운드에서 불필요하게 렌더링되는 edge case를 테스트로 고정 |
 | 2026-08-03 | Phase 3 staging 검증 체크리스트 추가 — async export flag를 BE/FE 함께 켜는 조건, 정상 deck PDF/PPTX/HTML/ZIP job flow, 41장 이상 PPTX 제한 메시지, S3 offload required 전환 전 관찰 포인트를 문서화. 상용 체크리스트의 async job 항목은 1차 구현 완료·staging 검증 대기로 갱신 |

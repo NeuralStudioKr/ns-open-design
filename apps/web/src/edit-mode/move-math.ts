@@ -17,6 +17,26 @@ export type MoveMathResult = {
   moved: boolean;
 };
 
+export function isInlineSvgTarget(
+  target: ManualEditTarget | null | undefined,
+): boolean {
+  return String(target?.tagName ?? '').toLowerCase() === 'svg';
+}
+
+/** Flow img/svg — promote to absolute + size lock (not relative offsets). */
+export function isFlowImagePromoteTarget(
+  target: ManualEditTarget | null | undefined,
+): boolean {
+  if (!baseMoveEligibility(target)) return false;
+  if (target!.kind !== 'image') return false;
+  if (isAnchoredCssPosition(target!.cssPosition)) return false;
+  const value = String(target!.cssPosition ?? 'static').toLowerCase();
+  return value === 'static' || value === 'relative';
+}
+
+/** @deprecated use isFlowImagePromoteTarget */
+export const isSvgPromoteTarget = isFlowImagePromoteTarget;
+
 export function canMoveTarget(
   target: ManualEditTarget | null | undefined,
   options?: { editMode?: boolean; inlineTextEditing?: boolean },
@@ -25,18 +45,31 @@ export function canMoveTarget(
   return isAnchoredCssPosition(target!.cssPosition);
 }
 
-/** Flow boxes that can be freed in-place (no re-parent) then moved — 53. */
+/** Flow boxes that can be offset in-place (no re-parent) then moved — 53. */
 export function canPromoteTarget(
   target: ManualEditTarget | null | undefined,
   options?: { editMode?: boolean; inlineTextEditing?: boolean },
 ): boolean {
   if (!baseMoveEligibility(target, options)) return false;
   if (isAnchoredCssPosition(target!.cssPosition)) return false;
-  // Images/SVGs stay in flow for resize-in-place; body drag must not promote→move.
-  // Absolute/fixed images still move via canMoveTarget.
-  if (target!.kind === 'image') return false;
+  // Flow images promote to absolute on body-drag (deck icons, hero logos).
+  // Absolute/fixed images still move via canMoveTarget. Text/link promote-on-drag
+  // is allowed — edge hit-slop + 2px threshold keep wrap-resize from becoming an
+  // accidental move; blocking promote made flow headlines undraggable.
+  // Sticky left/top are sticky insets, and absolute promotion depends on the
+  // scrollport containing block. That coordinate swap is too jump-prone for a
+  // drag gesture, so sticky stays non-movable until we have a dedicated path.
   const value = String(target!.cssPosition ?? 'static').toLowerCase();
-  return value === 'static' || value === 'relative' || value === 'sticky';
+  return value === 'static' || value === 'relative';
+}
+
+/** Sticky cannot use relative left/top (those are sticky insets). */
+export function isStickyPromoteTarget(
+  target: ManualEditTarget | null | undefined,
+): boolean {
+  if (!baseMoveEligibility(target)) return false;
+  if (isAnchoredCssPosition(target!.cssPosition)) return false;
+  return String(target!.cssPosition ?? '').toLowerCase() === 'sticky';
 }
 
 export function canMoveOrPromoteTarget(
@@ -61,14 +94,16 @@ function baseMoveEligibility(
 
 /**
  * Start left/top for a move/promote session.
- * Promote (flow) must prefer offsetParent / post-absolute CB coords — relative
- * `left`/`top` styles are deltas, not layout position (53 no-jump).
+ * Static/relative flow moves use authored relative `left`/`top` deltas — not
+ * layout positions (offsetLeft/rect would double-count flex/grid slots).
+ * Sticky uses bridge scrollport content coords (`offset*`) so absolute promote
+ * does not jump and further scrolling keeps the box with content.
  */
 export function startPositionFromTarget(target: ManualEditTarget): {
   startLeftPx: number;
   startTopPx: number;
 } {
-  if (canPromoteTarget(target)) {
+  if (isStickyPromoteTarget(target) || isFlowImagePromoteTarget(target)) {
     return {
       startLeftPx: Math.round(
         target.offsetLeft
@@ -80,6 +115,12 @@ export function startPositionFromTarget(target: ManualEditTarget): {
           ?? parseExplicitPx(target.styles.top)
           ?? target.rect.y,
       ),
+    };
+  }
+  if (canPromoteTarget(target)) {
+    return {
+      startLeftPx: Math.round(parseExplicitPx(target.styles.left) ?? 0),
+      startTopPx: Math.round(parseExplicitPx(target.styles.top) ?? 0),
     };
   }
   return {
@@ -141,28 +182,57 @@ export function movePreviewStyles(result: MoveMathResult): Partial<ManualEditSty
 }
 
 /**
- * In-place absolute promote + move styles (53). Keeps DOM parent; locks box size
- * and zeroes margin so flow exit does not collapse or double-offset.
+ * In-place flow offset + move styles (53).
+ * - static/relative: `position:relative` offsets — keeps layout slot so grouped
+ *   cards/flex items do not cause sibling reflow.
+ * - sticky: `position:absolute` + size lock against the scrollport CB (relative
+ *   left/top would collide with sticky insets).
  */
 export function promoteMoveStyles(
   startRect: ManualEditRect,
   result: MoveMathResult,
+  options?: {
+    layoutWidthPx?: number;
+    layoutHeightPx?: number;
+    cssPosition?: string;
+    svgPromote?: boolean;
+    imagePromote?: boolean;
+  },
 ): Partial<ManualEditStyles> {
-  const widthPx = Math.round(startRect.width);
-  const heightPx = Math.round(startRect.height);
+  const stickyPromote = String(options?.cssPosition ?? '').toLowerCase() === 'sticky';
+  const absolutePromote = stickyPromote || options?.imagePromote === true || options?.svgPromote === true;
+  if (absolutePromote) {
+    const widthPx = Math.round(
+      options?.layoutWidthPx && options.layoutWidthPx >= 1
+        ? options.layoutWidthPx
+        : startRect.width,
+    );
+    const heightPx = Math.round(
+      options?.layoutHeightPx && options.layoutHeightPx >= 1
+        ? options.layoutHeightPx
+        : startRect.height,
+    );
+    return {
+      position: 'absolute',
+      left: `${result.leftPx}px`,
+      top: `${result.topPx}px`,
+      width: `${widthPx}px`,
+      height: `${heightPx}px`,
+      maxWidth: 'none',
+      maxHeight: 'none',
+      margin: '0px',
+      marginTop: '0px',
+      marginRight: '0px',
+      marginBottom: '0px',
+      marginLeft: '0px',
+      right: '',
+      bottom: '',
+    };
+  }
   return {
-    position: 'absolute',
+    position: 'relative',
     left: `${result.leftPx}px`,
     top: `${result.topPx}px`,
-    width: `${widthPx}px`,
-    height: `${heightPx}px`,
-    maxWidth: 'none',
-    maxHeight: 'none',
-    margin: '0px',
-    marginTop: '0px',
-    marginRight: '0px',
-    marginBottom: '0px',
-    marginLeft: '0px',
     right: '',
     bottom: '',
   };
@@ -187,8 +257,8 @@ export function promoteMoveStylesBefore(target: ManualEditTarget): Partial<Manua
     top: cascadeRollbackStyle(target.styles.top),
     right: cascadeRollbackStyle(target.styles.right),
     bottom: cascadeRollbackStyle(target.styles.bottom),
-    // Size/margin: prefer restoring prior non-keyword values; empty clears
-    // promote-injected locks when the source had no real inline size.
+    // Size/margin: keep rollback coverage for older previews that may already
+    // have injected locks before the relative-offset move policy.
     width: cascadeRollbackStyle(target.styles.width),
     height: cascadeRollbackStyle(target.styles.height),
     maxWidth: cascadeRollbackStyle(target.styles.maxWidth),
@@ -251,7 +321,211 @@ export function viewportRectAfterMoveCommit(
   };
 }
 
+/**
+ * Convert a mid-gesture `promoteViewportDraft` origin into visual content coords
+ * for idle overlay compose.
+ *
+ * During drag, viewport = visualStart + **layout** Δ (host Δ / paint÷layout).
+ * Painting that hybrid with iframe `previewScale` (often ~1) jumps the box under
+ * deck fit-scale. Scale the layout Δ by visual/layout before writing `target.rect`.
+ */
+export function visualRectFromMoveViewportDraft(
+  startVisualRect: ManualEditRect,
+  viewport: { x: number; y: number },
+  layoutWidth: number,
+  layoutHeight: number,
+  nextVisualWidth: number,
+  nextVisualHeight: number,
+): ManualEditRect {
+  const ratioX = layoutWidth > 0 ? startVisualRect.width / layoutWidth : 1;
+  const ratioY = layoutHeight > 0 ? startVisualRect.height / layoutHeight : 1;
+  const layoutDx = viewport.x - startVisualRect.x;
+  const layoutDy = viewport.y - startVisualRect.y;
+  return {
+    x: Math.round(startVisualRect.x + layoutDx * ratioX),
+    y: Math.round(startVisualRect.y + layoutDy * ratioY),
+    width: nextVisualWidth,
+    height: nextVisualHeight,
+  };
+}
+
+/** Host-space paint box matching a visual content rect (post-commit seed). */
+export function hostPaintRectFromVisualContent(
+  visualRect: ManualEditRect,
+  hostScale: number,
+  hostOffset: { x: number; y: number },
+): ManualEditRect {
+  const scale = Number.isFinite(hostScale) && hostScale > 0 ? hostScale : 1;
+  return {
+    x: hostOffset.x + visualRect.x * scale,
+    y: hostOffset.y + visualRect.y * scale,
+    width: visualRect.width * scale,
+    height: visualRect.height * scale,
+  };
+}
+
+/**
+ * Translate a frozen start `hostPaintRect` by the visual content delta.
+ * Preserves letterbox/iframe offsets that `hostPaintRectFromVisualContent`
+ * can miss when React hostScale/offset lag the painted frame.
+ */
+export function hostPaintRectAfterVisualMove(
+  previousPaint: ManualEditRect,
+  previousVisual: ManualEditRect,
+  nextVisual: ManualEditRect,
+): ManualEditRect | null {
+  if (
+    previousPaint.width < 1
+    || previousPaint.height < 1
+    || previousVisual.width < 1
+    || previousVisual.height < 1
+  ) {
+    return null;
+  }
+  const sx = previousPaint.width / previousVisual.width;
+  const sy = previousPaint.height / previousVisual.height;
+  return {
+    x: previousPaint.x + (nextVisual.x - previousVisual.x) * sx,
+    y: previousPaint.y + (nextVisual.y - previousVisual.y) * sy,
+    width: nextVisual.width * sx,
+    height: nextVisual.height * sy,
+  };
+}
+
 /** Move commit must flush once → one Manual Edit history entry. */
 export function moveHistoryLabel(targetLabel: string): string {
   return `Move: ${targetLabel}`;
+}
+
+const GEOMETRY_MATCH_TOLERANCE_PX = 3;
+/** Idle od-edit-rect jumps beyond this floor are treated as bad remasures (not layout). */
+export const MANUAL_EDIT_IDLE_REMEASURE_WILD_JUMP_PX = 480;
+/** Large targets may move farther in one layout pass — scale threshold by box span. */
+export const MANUAL_EDIT_IDLE_REMEASURE_WILD_JUMP_SPAN_FACTOR = 1.5;
+
+/**
+ * Content-space wild-jump threshold: max(base floor, 1.5× larger side of `reference`).
+ * Keeps small elements strict while large slides tolerate bigger reflows.
+ *
+ * Do NOT multiply by host `previewScale`. `od-edit-rect` / target.rect are
+ * content-space; host chrome scaling belongs in `resolveManualEditChromeHostRect`.
+ * Scaling the threshold by previewScale would under-deny when scale < 1 and
+ * over-deny when scale > 1 while deltas stay in content px.
+ */
+export function manualEditIdleRemeasureWildJumpThresholdPx(
+  reference: Pick<ManualEditTarget, 'rect'>,
+  basePx = MANUAL_EDIT_IDLE_REMEASURE_WILD_JUMP_PX,
+  spanFactor = MANUAL_EDIT_IDLE_REMEASURE_WILD_JUMP_SPAN_FACTOR,
+): number {
+  const span = Math.max(reference.rect.width, reference.rect.height, 1);
+  const scaled = span * (Number.isFinite(spanFactor) && spanFactor > 0 ? spanFactor : 1.5);
+  const floor = Number.isFinite(basePx) && basePx > 0 ? basePx : MANUAL_EDIT_IDLE_REMEASURE_WILD_JUMP_PX;
+  return Math.max(floor, scaled);
+}
+
+/** Whether two manual-edit geometry snapshots are close enough to treat as the same box. */
+export function manualEditGeometryRoughlyMatches(
+  a: Pick<ManualEditTarget, 'rect' | 'layoutWidth' | 'layoutHeight'>,
+  b: Pick<ManualEditTarget, 'rect' | 'layoutWidth' | 'layoutHeight'>,
+  tolerancePx = GEOMETRY_MATCH_TOLERANCE_PX,
+): boolean {
+  const aLw = a.layoutWidth && a.layoutWidth >= 1 ? a.layoutWidth : a.rect.width;
+  const aLh = a.layoutHeight && a.layoutHeight >= 1 ? a.layoutHeight : a.rect.height;
+  const bLw = b.layoutWidth && b.layoutWidth >= 1 ? b.layoutWidth : b.rect.width;
+  const bLh = b.layoutHeight && b.layoutHeight >= 1 ? b.layoutHeight : b.rect.height;
+  return (
+    Math.abs(a.rect.x - b.rect.x) <= tolerancePx
+    && Math.abs(a.rect.y - b.rect.y) <= tolerancePx
+    && Math.abs(a.rect.width - b.rect.width) <= tolerancePx
+    && Math.abs(a.rect.height - b.rect.height) <= tolerancePx
+    && Math.abs(aLw - bLw) <= tolerancePx
+    && Math.abs(aLh - bLh) <= tolerancePx
+  );
+}
+
+/**
+ * Idle remasure wild-jump — center or size delta far beyond normal layout churn.
+ * Gesture/handoff paths own large intentional moves; idle rect must not teleport.
+ * Default threshold scales with the prior box span (see threshold helper).
+ */
+export function manualEditGeometryIsWildJump(
+  a: Pick<ManualEditTarget, 'rect'>,
+  b: Pick<ManualEditTarget, 'rect'>,
+  thresholdPx: number = manualEditIdleRemeasureWildJumpThresholdPx(a),
+): boolean {
+  const aCx = a.rect.x + a.rect.width / 2;
+  const aCy = a.rect.y + a.rect.height / 2;
+  const bCx = b.rect.x + b.rect.width / 2;
+  const bCy = b.rect.y + b.rect.height / 2;
+  return (
+    Math.abs(aCx - bCx) > thresholdPx
+    || Math.abs(aCy - bCy) > thresholdPx
+    || Math.abs(a.rect.width - b.rect.width) > thresholdPx
+    || Math.abs(a.rect.height - b.rect.height) > thresholdPx
+  );
+}
+
+/** True when idle host paint disagrees with target.rect compose (stale paint). */
+export function manualEditHostPaintRectStale(
+  hostPaintRect: ManualEditRect,
+  composedHostRect: ManualEditRect,
+  tolerancePx = GEOMETRY_MATCH_TOLERANCE_PX,
+): boolean {
+  const sizeMatches = (
+    Math.abs(hostPaintRect.width - composedHostRect.width) <= tolerancePx
+    && Math.abs(hostPaintRect.height - composedHostRect.height) <= tolerancePx
+  );
+  const positionMatches = (
+    Math.abs(hostPaintRect.x - composedHostRect.x) <= tolerancePx
+    && Math.abs(hostPaintRect.y - composedHostRect.y) <= tolerancePx
+  );
+  if (sizeMatches && positionMatches) return false;
+  const sizeDiffers = !sizeMatches;
+  const paintFitsWithinComposed = (
+    hostPaintRect.width <= composedHostRect.width + tolerancePx
+    && hostPaintRect.height <= composedHostRect.height + tolerancePx
+  );
+  // Letterboxed live paint shifts x/y while painting the same content at a
+  // smaller host scale — trust it. If stale paint is larger than the composed
+  // optimistic rect after resize, it leaves the selection box bigger than the
+  // actual element, so treat it as stale.
+  if (sizeDiffers && !positionMatches) return !paintFitsWithinComposed;
+  // Same origin, pre-gesture size (resize snap-back).
+  if (sizeDiffers && positionMatches) return true;
+  // Same size, pre-gesture position (move snap-back).
+  return !positionMatches;
+}
+
+/** Host rect for selection chrome / panel — skip stale paint, prefer composed. */
+export function resolveManualEditChromeHostRect(
+  targetRect: ManualEditRect,
+  previewScale: number,
+  hostOffset: { x: number; y: number },
+  hostPaintRect: ManualEditRect | null,
+  trustHostPaintDespiteStale = false,
+): ManualEditRect {
+  const scaled = {
+    x: targetRect.x * previewScale,
+    y: targetRect.y * previewScale,
+    width: targetRect.width * previewScale,
+    height: targetRect.height * previewScale,
+  };
+  const composedHostRect = {
+    x: hostOffset.x + scaled.x,
+    y: hostOffset.y + scaled.y,
+    width: scaled.width,
+    height: scaled.height,
+  };
+  if (
+    hostPaintRect
+    && hostPaintRect.width >= 1
+    && hostPaintRect.height >= 1
+    && (
+      trustHostPaintDespiteStale
+      || !manualEditHostPaintRectStale(hostPaintRect, composedHostRect)
+    )
+  ) {
+    return hostPaintRect;
+  }
+  return composedHostRect;
 }

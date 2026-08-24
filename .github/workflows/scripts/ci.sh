@@ -542,6 +542,10 @@ if [ "$mode" = "web" ] && [ "$install_exit_code" = "0" ]; then
   web_sidecar_build_seconds="$last_command_seconds"
   record_web_result "@open-design/web build:sidecar" "$web_sidecar_build_exit_code" "$web_sidecar_build_seconds"
 
+  # Tip remount smoke pin (506) — fail-fast before full web vitest.
+  run_ci_command "@open-design/web test:tip-remount-smoke" pnpm --filter @open-design/web test:tip-remount-smoke
+  record_web_result "@open-design/web test:tip-remount-smoke" "$last_command_exit_code" "$last_command_seconds"
+
   run_ci_command "@open-design/web test" pnpm --filter @open-design/web test
   web_test_exit_code="$last_command_exit_code"
   web_test_seconds="$last_command_seconds"

@@ -26,7 +26,7 @@ describe("TeamverBrandingHead", () => {
     process.env.VITE_TEAMVER_EMBED = "1";
     process.env.VITE_TEAMVER_SITE_URL = "https://stg-design.teamver.com";
     process.env.VITE_TEAMVER_OG_IMAGE_URL =
-      "https://stg-design.teamver.com/teamver/teamver-design-opengraph.png";
+      "https://stg-design.teamver.com/teamver/teamver-slide-opengraph.png";
 
     render(
       <TeamverBrandingProvider>
@@ -35,11 +35,11 @@ describe("TeamverBrandingHead", () => {
     );
 
     await waitFor(() => {
-      expect(document.title).toBe("teamver Design");
+      expect(document.title).toBe("teamver Slide");
       expect(linkHref("icon")).toBe("/teamver/Logo-icon.svg");
-      expect(metaContent('meta[property="og:title"]')).toBe("teamver | Design");
+      expect(metaContent('meta[property="og:title"]')).toBe("teamver | Slide");
       expect(metaContent('meta[property="og:image"]')).toBe(
-        "https://stg-design.teamver.com/teamver/teamver-design-opengraph.png",
+        "https://stg-design.teamver.com/teamver/teamver-slide-opengraph.png",
       );
       expect(metaContent('meta[name="twitter:card"]')).toBe("summary_large_image");
       expect(metaContent('meta[name="application-name"]')).toBe("teamver");

@@ -318,6 +318,8 @@ pnpm --filter @open-design/tools-pack build
 pnpm --filter @open-design/tools-serve build
 ```
 
+Prefer `pnpm --filter @open-design/web test` (or `pnpm --filter @open-design/web test -- <path>`) over `pnpm --filter @open-design/web exec vitest …`. The package `pretest` rebuilds `@open-design/contracts`; `exec vitest` skips that hook and can hit a stale contracts `dist` (undefined revision-cache budgets). `apps/web/tests/contracts-dist-freshness.test.ts` guards the export surface.
+
 ```bash
 pnpm tools-pack mac build --to all
 pnpm tools-pack mac install

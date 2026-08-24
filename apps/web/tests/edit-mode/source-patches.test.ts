@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { JSDOM } from 'jsdom';
 import {
@@ -14,7 +17,20 @@ import {
   resolveManualEditTargetReference,
   extractIdentityFromAttrSelectorId,
   isEphemeralGeneratedPathId,
+  sanitizeManualEditHtmlFragment,
+  sanitizeManualEditFullSource,
+  isSafeManualEditUrl,
+  isSafeManualEditUrlAttrValue,
+  isSafeManualEditRelativeOrFragmentUrl,
+  normalizeCssForSafetyScan,
+  coerceManualEditStyleValue,
+  readManualEditTargetSnapshot,
 } from '../../src/edit-mode/source-patches';
+
+const sourcePatchesSource = readFileSync(
+  join(dirname(fileURLToPath(import.meta.url)), '../../src/edit-mode/source-patches.ts'),
+  'utf8',
+);
 
 const baseSource = `<!doctype html>
 <html>
@@ -187,7 +203,8 @@ describe('manual edit source patches', () => {
         'Data-Od-Id': 'hijacked',
       },
     });
-    expect(result.ok, result.error).toBe(true);
+    // Protected identity attrs are all skipped → patch fails closed.
+    expect(result.ok).toBe(false);
     const attrs = readManualEditAttributes(result.source, '01 Cover');
     expect(attrs['data-slide-index']).toBe('0');
     expect(attrs['data-od-id']).toBe('01 Cover');
@@ -208,10 +225,11 @@ describe('manual edit source patches', () => {
       id: 'cta',
       attributes: { href: 'javascript:alert(1)', 'aria-label': 'ok' },
     });
-    expect(attrDenied.ok).toBe(true);
+    // Value-safety reject fails closed — safe siblings must not apply either (441).
+    expect(attrDenied.ok).toBe(false);
     const attrs = readManualEditAttributes(attrDenied.source, 'cta');
     expect(attrs.href).toBe('/start');
-    expect(attrs['aria-label']).toBe('ok');
+    expect(attrs['aria-label']).toBeUndefined();
   });
 
   it('coerces numeric set-style JSON instead of silently clearing properties', () => {
@@ -238,6 +256,57 @@ describe('manual edit source patches', () => {
     expect(styles.fontWeight).toBe('700');
   });
 
+  it('syncs svg width/height attributes when resizing via set-style', () => {
+    const source = '<main><svg data-od-id="logo" viewBox="0 0 400 400" width="420" height="420"></svg></main>';
+    const result = applyManualEditPatch(source, {
+      kind: 'set-style',
+      id: 'logo',
+      styles: { width: '360px', height: '360px', display: 'inline-block' },
+    });
+    expect(result.ok, result.error).toBe(true);
+    expect(result.source).toContain('width="360"');
+    expect(result.source).toContain('height="360"');
+    expect(result.source).toContain('width: 360px');
+    expect(result.source).toContain('height: 360px');
+  });
+
+  it('syncs lone svg child when resizing absolute graphic wrapper', () => {
+    const source = [
+      '<section class="slide">',
+      '<div data-od-source-path="path-0-1" style="position:absolute;left:855px;top:322px;width:775px;height:508px">',
+      '<svg data-od-source-path="path-0-1-0" viewBox="0 0 400 400" width="420" height="420"></svg>',
+      '</div></section>',
+    ].join('');
+    const result = applyManualEditPatch(source, {
+      kind: 'set-style',
+      id: 'path-0-1',
+      styles: { width: '600px', height: '400px' },
+    });
+    expect(result.ok, result.error).toBe(true);
+    expect(result.source).toContain('width: 600px');
+    expect(result.source).toContain('height: 400px');
+    expect(result.source).toContain('width="600"');
+    expect(result.source).toContain('height="400"');
+  });
+
+  it('persists move left/top on absolute graphic wrapper', () => {
+    const source = [
+      '<section class="slide">',
+      '<div data-od-source-path="path-0-1" style="position:absolute;left:855px;top:322px;width:775px;height:508px">',
+      '<svg data-od-source-path="path-0-1-0" viewBox="0 0 400 400" width="420" height="420"></svg>',
+      '</div></section>',
+    ].join('');
+    const result = applyManualEditPatch(source, {
+      kind: 'set-style',
+      id: 'path-0-1',
+      styles: { left: '900px', top: '350px' },
+    });
+    expect(result.ok, result.error).toBe(true);
+    expect(result.source).toContain('left: 900px');
+    expect(result.source).toContain('top: 350px');
+    expect(result.source).not.toContain('left: 855px');
+  });
+
   it('rejects srcset javascript, null-byte scheme bypass, and svg data URLs', () => {
     const source = [
       '<!doctype html><html><body>',
@@ -249,7 +318,7 @@ describe('manual edit source patches', () => {
       id: 'hero-image',
       attributes: { srcset: 'javascript:alert(1)' },
     });
-    expect(srcsetDenied.ok).toBe(true);
+    expect(srcsetDenied.ok).toBe(false);
     expect(readManualEditAttributes(srcsetDenied.source, 'hero-image').srcset).toBeUndefined();
 
     const nullByteDenied = applyManualEditPatch(source, {
@@ -257,7 +326,7 @@ describe('manual edit source patches', () => {
       id: 'hero-image',
       attributes: { src: 'java\u0000script:alert(1)' },
     });
-    expect(nullByteDenied.ok).toBe(true);
+    expect(nullByteDenied.ok).toBe(false);
     expect(readManualEditAttributes(nullByteDenied.source, 'hero-image').src).toBe('/old.png');
 
     const svgDenied = applyManualEditPatch(source, {
@@ -282,7 +351,7 @@ describe('manual edit source patches', () => {
       id: 'cta',
       attributes: { href: 'data: text/html,hi' },
     });
-    expect(spaced.ok).toBe(true);
+    expect(spaced.ok).toBe(false);
     expect(readManualEditAttributes(spaced.source, 'cta').href).toBe('/start');
 
     const formDenied = applyManualEditPatch(source, {
@@ -290,7 +359,7 @@ describe('manual edit source patches', () => {
       id: 'form',
       attributes: { action: 'javascript:alert(1)' },
     });
-    expect(formDenied.ok).toBe(true);
+    expect(formDenied.ok).toBe(false);
     expect(readManualEditAttributes(formDenied.source, 'form').action).toBeUndefined();
 
     const formactionDenied = applyManualEditPatch(source, {
@@ -298,7 +367,7 @@ describe('manual edit source patches', () => {
       id: 'submit',
       attributes: { formaction: 'javascript:alert(1)' },
     });
-    expect(formactionDenied.ok).toBe(true);
+    expect(formactionDenied.ok).toBe(false);
     expect(readManualEditAttributes(formactionDenied.source, 'submit').formaction).toBeUndefined();
 
     const posterDenied = applyManualEditPatch(source, {
@@ -306,7 +375,7 @@ describe('manual edit source patches', () => {
       id: 'clip',
       attributes: { poster: 'javascript:alert(1)' },
     });
-    expect(posterDenied.ok).toBe(true);
+    expect(posterDenied.ok).toBe(false);
     expect(readManualEditAttributes(posterDenied.source, 'clip').poster).toBe('/thumb.png');
   });
 
@@ -377,6 +446,22 @@ describe('manual edit source patches', () => {
     expect(html).not.toMatch(/onerror/i);
   });
 
+  it('strips namespaced on* handlers and unsafe namespaced URL attrs', () => {
+    const result = applyManualEditPatch(baseSource, {
+      kind: 'set-outer-html',
+      id: 'hero-image',
+      html: '<img data-od-id="hero-image" src="/ok.png" svg:onerror="alert(1)" foo:href="javascript:alert(2)" alt="x">',
+    });
+    expect(result.ok, result.error).toBe(true);
+    const html = readManualEditOuterHtml(result.source, 'hero-image');
+    expect(html).toContain('src="/ok.png"');
+    expect(html).not.toMatch(/onerror/i);
+    expect(html).not.toMatch(/javascript:/i);
+    expect(html).not.toMatch(/foo:href/i);
+    expect(sourcePatchesSource).toContain('manualEditLocalAttrName');
+    expect(sourcePatchesSource).toContain('Namespaced handlers');
+  });
+
   it('strips executable chrome tags nested in set-outer-html replacements', () => {
     const result = applyManualEditPatch(baseSource, {
       kind: 'set-outer-html',
@@ -406,7 +491,109 @@ describe('manual edit source patches', () => {
     expect(readManualEditOuterHtml(result.source, 'hero-title')).toContain('Original title');
   });
 
-  it('strips @import from salvaged style siblings before head inject', () => {
+  it('keeps Google Fonts <link> in head and strips other stylesheets', () => {
+    const html = [
+      '<!doctype html><html><head>',
+      '<link rel="preconnect" href="https://fonts.googleapis.com">',
+      '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>',
+      '<link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@0,6..96,400..900;1,6..96,400..900&family=Space+Grotesk:wght@400;700&display=swap" rel="stylesheet">',
+      '<link rel="stylesheet" href="https://evil.example/x.css">',
+      '</head><body><section class="slide"><span class="pill">x</span></section></body></html>',
+    ].join('');
+    const out = sanitizeManualEditFullSource(html);
+    expect(out).toContain('fonts.googleapis.com/css2?family=Bodoni+Moda');
+    expect(out).toContain('fonts.gstatic.com');
+    expect(out).not.toContain('evil.example');
+  });
+
+  it('keeps body-first Google Fonts <link> (kit emits after <body>) and strips evil body links', () => {
+    const html = [
+      '<!doctype html><html><head><meta charset="utf-8"/></head><body>',
+      '<link rel="preconnect" href="https://fonts.googleapis.com">',
+      '<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;700&display=swap" rel="stylesheet">',
+      '<link rel="stylesheet" href="https://evil.example/body.css">',
+      '<section class="slide"><h1>Cover</h1></section>',
+      '</body></html>',
+    ].join('');
+    const out = sanitizeManualEditFullSource(html);
+    expect(out).toContain('fonts.googleapis.com/css2?family=Space+Grotesk');
+    expect(out).toContain('fonts.googleapis.com');
+    expect(out).not.toContain('evil.example');
+  });
+
+  it('keeps official Motif sprite SVG (Pin #pin symbols) through persist sanitize', () => {
+    const html = [
+      '<!doctype html><html><head>',
+      '<svg data-od-official-motif-html width="0" height="0" aria-hidden="true">',
+      '<defs><symbol id="pin" viewBox="0 0 360 110"><path d="M1 1"/></symbol></defs>',
+      '</svg></head><body>',
+      '<section class="slide"><svg class="pin"><use href="#pin"/></svg></section>',
+      '</body></html>',
+    ].join('');
+    const out = sanitizeManualEditFullSource(html);
+    expect(out).toContain('data-od-official-motif-html');
+    expect(out).toContain('<symbol id="pin"');
+    expect(out).toContain('viewBox="0 0 360 110"');
+    expect(out).toMatch(/<use href="#pin"/);
+  });
+
+  it('keeps official template look CSS (Capsule grain data-svg) through persist sanitize', () => {
+    const html = [
+      '<!doctype html><html><head>',
+      '<style data-od-official-look-css>',
+      '.pill-coral{background:#E85D4E}',
+      '.grain-overlay{background-image:url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\'%3E%3C/svg%3E")}',
+      '</style></head><body><section class="slide"><span class="pill-coral">x</span></section></body></html>',
+    ].join('');
+    const out = sanitizeManualEditFullSource(html);
+    expect(out).toContain('data-od-official-look-css');
+    expect(out).toContain('.pill-coral{background:#E85D4E}');
+    expect(out).toContain('data:image/svg+xml');
+  });
+
+  it('keeps Google Fonts @import whose css2 URL contains semicolons (any Motif template)', () => {
+    const fontImport =
+      "@import url('https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@0,6..96,400..900;1,6..96,400..900&family=Space+Grotesk:wght@300;400;500;600;700&display=swap');";
+    const html = [
+      '<!doctype html><html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/></head>',
+      `<body><section class="slide"><style>${fontImport}`,
+      ':root{--coral:#E85D4E;--outline:#1E1E1E}',
+      '.pill{display:inline-flex;border-radius:9999px;border:2px solid var(--outline)}',
+      '.pill-coral{background:var(--coral);color:#fff}',
+      '.pin-1{position:absolute;width:40px;height:40px}',
+      '.hc-scanline{opacity:0.4}</style>',
+      '<span class="pill pill-coral">label</span><div class="pin-1"></div></section></body></html>',
+    ].join('');
+    const out = sanitizeManualEditFullSource(html);
+    expect(out).toContain("fonts.googleapis.com/css2?family=Bodoni+Moda");
+    expect(out).toContain('1,6..96,400..900');
+    expect(out).toContain('.pill{display:inline-flex');
+    expect(out).toContain('.pill-coral{background:var(--coral)');
+    expect(out).toContain('.pin-1{position:absolute');
+    expect(out).toContain('.hc-scanline{opacity:0.4}');
+    expect(out).not.toMatch(/<style>\s*1,6\.\.96/i);
+  });
+
+  it('strips leftover css2 @import debris and keeps Motif class rules (catalog-wide)', () => {
+    const html = [
+      '<!doctype html><html><body><section class="slide"><style>',
+      "1,6..96,400..900&family=Space+Grotesk:wght@300;400;500;600;700&display=swap');",
+      ':root{--coral:#E85D4E}',
+      '.pill{border-radius:9999px}',
+      '.petal{position:absolute}',
+      '.pin-big{width:48px}',
+      '</style><span class="pill">x</span></section></body></html>',
+    ].join('');
+    const out = sanitizeManualEditFullSource(html);
+    expect(out).not.toMatch(/1,6\.\.96/i);
+    expect(out).not.toContain("display=swap')");
+    expect(out).toContain(':root{--coral:#E85D4E}');
+    expect(out).toContain('.pill{border-radius:9999px}');
+    expect(out).toContain('.petal{position:absolute}');
+    expect(out).toContain('.pin-big{width:48px}');
+  });
+
+  it('still strips non-font @import from salvaged style siblings before head inject', () => {
     const result = applyManualEditPatch(baseSource, {
       kind: 'set-outer-html',
       id: 'hero-title',
@@ -419,6 +606,103 @@ describe('manual edit source patches', () => {
     expect(result.source).toContain('.hero-pop{color:#ef4444}');
     expect(result.source).not.toMatch(/@import/i);
     expect(result.source).not.toContain('evil.example');
+  });
+
+  it('strips CSS-escape and comment-smuggled @import from salvaged styles', () => {
+    const escaped = applyManualEditPatch(baseSource, {
+      kind: 'set-outer-html',
+      id: 'hero-title',
+      html: [
+        '<style>@\\69 mport url("https://evil.example/escaped.css"); .hero-pop{color:#111}</style>',
+        '<h1 class="hero-pop" data-od-id="hero-title">Original title</h1>',
+      ].join(''),
+    });
+    expect(escaped.ok, escaped.error).toBe(true);
+    expect(escaped.source).toContain('.hero-pop{color:#111}');
+    expect(escaped.source).not.toContain('evil.example');
+    expect(escaped.source).not.toMatch(/@import/i);
+
+    const commented = applyManualEditPatch(baseSource, {
+      kind: 'set-outer-html',
+      id: 'hero-title',
+      html: [
+        '<style>@im/**/port url("https://evil.example/comment.css"); .hero-pop{color:#222}</style>',
+        '<h1 class="hero-pop" data-od-id="hero-title">Original title</h1>',
+      ].join(''),
+    });
+    expect(commented.ok, commented.error).toBe(true);
+    expect(commented.source).toContain('.hero-pop{color:#222}');
+    expect(commented.source).not.toContain('evil.example');
+  });
+
+  it('ignores short ASCII UI labels like Done when scoring merge candidates', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<section class="slide" data-slide-index="0">',
+      '<button data-od-id="done-btn">Done</button>',
+      '<p data-od-id="note" data-od-edit="text">Remember this</p>',
+      '</section>',
+      '</body></html>',
+    ].join('');
+    const modelOutput = [
+      '<!doctype html><html><body>',
+      '<section class="slide" data-slide-index="0">',
+      '<button>Done</button>',
+      '<p>Updated note copy</p>',
+      '</section>',
+      '</body></html>',
+    ].join('');
+
+    const result = mergeManualEditTargetsFromSource(
+      source,
+      modelOutput,
+      ['note'],
+      { slideIndex: 0 },
+      [{
+        id: 'note',
+        currentText: 'Remember this',
+        // "Done" must not steal the pin onto the button; longer quoted phrase
+        // still guides the merge onto the paragraph.
+        instructionText: "change the text to 'Done' — write 'Updated note copy'",
+        htmlHint: '<p data-od-id="note">Remember this</p>',
+      }],
+    );
+
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    if (!result.ok) return;
+    expect(result.source).toContain('<p data-od-id="note" data-od-edit="text">Updated note copy</p>');
+    expect(result.source).toContain('<button data-od-id="done-btn">Done</button>');
+    expect(result.source).not.toMatch(/<button data-od-id="note"/);
+  });
+
+  it('strips nested identity attrs and refuses minting ids on path-only targets', () => {
+    const nested = applyManualEditPatch(baseSource, {
+      kind: 'set-outer-html',
+      id: 'hero-title',
+      html: '<h1 data-od-id="hero-title">Safe <a data-od-id="cta" href="/phish">link</a></h1>',
+    });
+    expect(nested.ok, nested.error).toBe(true);
+    const nestedHtml = readManualEditOuterHtml(nested.source, 'hero-title');
+    expect(nestedHtml).toContain('data-od-id="hero-title"');
+    expect(nestedHtml).toContain('href="/phish"');
+    expect(nestedHtml).not.toMatch(/<a[^>]*data-od-id="cta"/i);
+    // Original CTA identity must remain unique.
+    expect(readManualEditOuterHtml(nested.source, 'cta')).toContain('href="/start"');
+
+    const unlabeledSource = [
+      '<!doctype html><html><body>',
+      '<main><p>Path only copy</p><a data-od-id="cta" href="/start">Start</a></main>',
+      '</body></html>',
+    ].join('');
+    const minted = applyManualEditPatch(unlabeledSource, {
+      kind: 'set-outer-html',
+      id: 'path-0-0',
+      html: '<p data-od-id="cta">Hijacked</p>',
+    });
+    expect(minted.ok, minted.error).toBe(true);
+    expect(minted.source).toContain('>Hijacked</p>');
+    expect(minted.source).not.toMatch(/<p[^>]*data-od-id="cta"/i);
+    expect(readManualEditOuterHtml(minted.source, 'cta')).toContain('href="/start"');
   });
 
   it('ignores short quoted instruction terms when scoring merge candidates', () => {
@@ -481,6 +765,23 @@ describe('manual edit source patches', () => {
     expect(html).not.toMatch(/javascript/i);
   });
 
+  it('persists zIndex via set-style for positioned elements', () => {
+    const source = `<!doctype html>
+<html><body>
+  <main>
+    <div data-od-id="logo-wrap" style="position:absolute;left:100px;top:50px;width:200px;height:120px">Logo</div>
+  </main>
+</body></html>`;
+    const result = applyManualEditPatch(source, {
+      kind: 'set-style',
+      id: 'logo-wrap',
+      styles: { zIndex: '5' },
+    });
+    expect(result.ok, result.error).toBe(true);
+    const html = readManualEditOuterHtml(result.source, 'logo-wrap');
+    expect(html).toMatch(/z-index:\s*5/i);
+  });
+
   it('salvages set-outer-html when model emits style sibling + matching root', () => {
     // User-facing failure: deck_patch_merge_failed — Replacement HTML must
     // contain exactly one root element. Models often pair a <style> block
@@ -535,7 +836,306 @@ describe('manual edit source patches', () => {
     const source = '<!doctype html><html><body><h1 data-od-id="hero-title">Snapshot</h1></body></html>';
     const result = applyManualEditPatch(baseSource, { kind: 'set-full-source', source });
 
-    expect(result).toEqual({ ok: true, source });
+    expect(result.ok).toBe(true);
+    expect(result.source).toContain('<h1 data-od-id="hero-title">Snapshot</h1>');
+    expect(result.source).toMatch(/<!doctype html>/i);
+  });
+
+  it('sanitizes set-full-source so script/on* cannot ride undo snapshots', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<img src="x" onerror="alert(1)">',
+      '<script src="https://evil.example/x.js"></script>',
+      '<h1 data-od-id="hero-title">Snapshot</h1>',
+      '</body></html>',
+    ].join('');
+    const result = applyManualEditPatch(baseSource, { kind: 'set-full-source', source });
+    expect(result.ok).toBe(true);
+    expect(result.source).toContain('hero-title');
+    expect(result.source).not.toMatch(/<script\b/i);
+    expect(result.source).not.toMatch(/onerror/i);
+    expect(result.source).not.toContain('evil.example');
+  });
+
+  it('scrubs on*/unsafe style on html/head/body hosts in set-full-source', () => {
+    const source = [
+      '<!doctype html>',
+      '<html onclick="alert(1)">',
+      '<head style="background:url(javascript:alert(2))"></head>',
+      '<body onload="alert(3)" background="javascript:alert(4)">',
+      '<h1 data-od-id="hero-title">Snapshot</h1>',
+      '</body></html>',
+    ].join('');
+    const result = applyManualEditPatch(baseSource, { kind: 'set-full-source', source });
+    expect(result.ok).toBe(true);
+    expect(result.source).toContain('hero-title');
+    expect(result.source).not.toMatch(/onclick/i);
+    expect(result.source).not.toMatch(/onload/i);
+    expect(result.source).not.toMatch(/javascript/i);
+    expect(result.source).not.toMatch(/\bbackground=/i);
+  });
+
+  it('joins CSS backslash-newline continuations before scheme scrub', () => {
+    const inline = applyManualEditPatch(baseSource, {
+      kind: 'set-outer-html',
+      id: 'hero-title',
+      html: '<h1 data-od-id="hero-title" style="background:url(&quot;java\\\nscript:alert(1)&quot;);color:navy">Title</h1>',
+    });
+    expect(inline.ok, inline.error).toBe(true);
+    const inlineHtml = readManualEditOuterHtml(inline.source, 'hero-title');
+    expect(inlineHtml).not.toMatch(/javascript/i);
+    expect(inlineHtml).toContain('color:navy');
+
+    const imageSet = applyManualEditPatch(baseSource, {
+      kind: 'set-outer-html',
+      id: 'hero-title',
+      html: '<h1 data-od-id="hero-title" style="background:image-set(&quot;java\\\nscript:alert(1)&quot; 1x);color:teal">Title</h1>',
+    });
+    expect(imageSet.ok, imageSet.error).toBe(true);
+    expect(readManualEditOuterHtml(imageSet.source, 'hero-title')).not.toMatch(/javascript/i);
+  });
+
+  it('rejects external animateColor hrefs and strips discard nodes', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<svg data-od-id="mark"><circle id="c" r="2"></circle><g id="safe"><text>ok</text></g></svg>',
+      '</body></html>',
+    ].join('');
+    const result = applyManualEditPatch(source, {
+      kind: 'set-outer-html',
+      id: 'mark',
+      html: [
+        '<svg data-od-id="mark">',
+        '<circle id="c" r="2"></circle>',
+        '<g id="safe"><text>ok</text></g>',
+        '<animateColor href="https://evil.example/remote.svg#c" attributeName="fill" values="red;blue"></animateColor>',
+        '<animateColor href="#c" attributeName="fill" values="red;blue"></animateColor>',
+        '<discard href="#safe" begin="0s"></discard>',
+        '</svg>',
+      ].join(''),
+    });
+    expect(result.ok, result.error).toBe(true);
+    const html = readManualEditOuterHtml(result.source, 'mark');
+    expect(html).not.toContain('evil.example');
+    expect(html).not.toMatch(/<discard\b/i);
+    expect(html).toContain('href="#c"');
+    expect(html).toContain('id="safe"');
+  });
+
+  it('strips javascript: from longdesc and imagesrcset', () => {
+    const result = applyManualEditPatch(baseSource, {
+      kind: 'set-outer-html',
+      id: 'hero-image',
+      html: [
+        '<img data-od-id="hero-image" src="/safe.png" alt="ok"',
+        ' longdesc="javascript:alert(1)"',
+        ' imagesrcset="javascript:alert(2) 1x, /ok.png 2x">',
+      ].join(''),
+    });
+    expect(result.ok, result.error).toBe(true);
+    const html = readManualEditOuterHtml(result.source, 'hero-image');
+    expect(html).not.toMatch(/javascript/i);
+    expect(html).not.toMatch(/\blongdesc=/i);
+    expect(html).not.toMatch(/\bimagesrcset=/i);
+  });
+
+  it('rejects set-image on non-img hosts like script', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<script data-od-id="boot" src="/safe.js"></script>',
+      '<img data-od-id="hero-image" src="/old.png" alt="Old">',
+      '</body></html>',
+    ].join('');
+    const denied = applyManualEditPatch(source, {
+      kind: 'set-image',
+      id: 'boot',
+      src: 'https://evil.example/x.js',
+      alt: '',
+    });
+    expect(denied.ok).toBe(false);
+    expect(denied.source).toContain('src="/safe.js"');
+    expect(denied.source).not.toContain('evil.example');
+
+    const ok = applyManualEditPatch(source, {
+      kind: 'set-image',
+      id: 'hero-image',
+      src: '/new.png',
+      alt: 'New',
+    });
+    expect(ok.ok, ok.error).toBe(true);
+    expect(readManualEditFields(ok.source, 'hero-image').src).toBe('/new.png');
+  });
+
+  it('rejects set-link on link/base stylesheet hosts', () => {
+    const source = [
+      '<!doctype html><html><head>',
+      '<link data-od-id="theme" rel="stylesheet" href="/safe.css">',
+      '<base data-od-id="base" href="/">',
+      '</head><body>',
+      '<a data-od-id="cta" href="/start">Start</a>',
+      '</body></html>',
+    ].join('');
+    const linkDenied = applyManualEditPatch(source, {
+      kind: 'set-link',
+      id: 'theme',
+      text: '',
+      href: 'https://evil.example/x.css',
+    });
+    expect(linkDenied.ok).toBe(false);
+    expect(linkDenied.source).toContain('href="/safe.css"');
+
+    const baseDenied = applyManualEditPatch(source, {
+      kind: 'set-link',
+      id: 'base',
+      text: '',
+      href: 'https://evil.example/',
+    });
+    expect(baseDenied.ok).toBe(false);
+
+    const ok = applyManualEditPatch(source, {
+      kind: 'set-link',
+      id: 'cta',
+      text: 'Go',
+      href: '/next',
+    });
+    expect(ok.ok, ok.error).toBe(true);
+    expect(readManualEditFields(ok.source, 'cta').href).toBe('/next');
+  });
+
+  it('keeps SVG presentation url() same-document fragment only', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<svg data-od-id="mark"><rect width="10" height="10"></rect></svg>',
+      '</body></html>',
+    ].join('');
+    const result = applyManualEditPatch(source, {
+      kind: 'set-outer-html',
+      id: 'mark',
+      html: [
+        '<svg data-od-id="mark">',
+        '<rect width="10" height="10" filter="url(https://evil.example/f.svg#x)" fill="url(#ok)"></rect>',
+        '<animate attributeName="filter" to="url(https://evil.example/f.svg#x)"></animate>',
+        '<animate attributeName="fill" to="url(#ok)"></animate>',
+        '</svg>',
+      ].join(''),
+    });
+    expect(result.ok, result.error).toBe(true);
+    const html = readManualEditOuterHtml(result.source, 'mark');
+    expect(html).not.toContain('evil.example');
+    expect(html).toContain('fill="url(#ok)"');
+    expect(html).not.toMatch(/filter="url\(/i);
+  });
+
+  it('blocks set-attributes entirely on locked iframe/script hosts', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<iframe data-od-id="legacy" src="/safe.html"></iframe>',
+      '</body></html>',
+    ].join('');
+    const iframe = applyManualEditPatch(source, {
+      kind: 'set-attributes',
+      id: 'legacy',
+      attributes: { src: 'https://evil.example/frame.html' },
+    });
+    expect(iframe.ok).toBe(false);
+    expect(iframe.source).toContain('src="/safe.html"');
+    expect(iframe.source).not.toContain('evil.example');
+  });
+
+  it('rejects dangerous identity-matched set-outer-html roots', () => {
+    const result = applyManualEditPatch(baseSource, {
+      kind: 'set-outer-html',
+      id: 'hero-title',
+      html: [
+        '<script data-od-id="hero-title" src="https://evil.example/x.js"></script>',
+        '<h1>Fallback safe title</h1>',
+      ].join(''),
+    });
+    expect(result.ok, result.error).toBe(true);
+    const html = readManualEditOuterHtml(result.source, 'hero-title');
+    expect(html).not.toMatch(/<script\b/i);
+    expect(html).not.toContain('evil.example');
+    expect(result.source).not.toMatch(/<script\b/i);
+  });
+
+  it('rejects blob/file/about URL schemes on links', () => {
+    for (const href of ['blob:https://app.example/uuid', 'file:///etc/passwd', 'about:blank']) {
+      const denied = applyManualEditPatch(baseSource, {
+        kind: 'set-link',
+        id: 'cta',
+        text: 'Start',
+        href,
+      });
+      expect(denied.ok, href).toBe(false);
+      expect(readManualEditFields(baseSource, 'cta').href).toBe('/start');
+    }
+  });
+
+  it('rejects dangerous merge/graft replacement roots', () => {
+    const current = baseSource;
+    const next = baseSource.replace(
+      '<h1 data-od-id="hero-title">Original title</h1>',
+      '<script data-od-id="hero-title" src="https://evil.example/x.js"></script>',
+    );
+    const merged = mergeManualEditTargetsFromSource(current, next, ['hero-title']);
+    expect(merged.ok).toBe(false);
+    expect(merged.source).toContain('<h1 data-od-id="hero-title">Original title</h1>');
+    expect(merged.source).not.toMatch(/<script\b/i);
+
+    const grafted = graftPatchedTargetElementFromSource(current, next, 'hero-title');
+    expect(grafted.ok).toBe(false);
+    expect(grafted.source).toContain('<h1 data-od-id="hero-title">Original title</h1>');
+  });
+
+  it('strips handler/applet tags and http-equiv attributes from fragments', () => {
+    expect(
+      sanitizeManualEditHtmlFragment(
+        '<div><handler type="application/javascript">alert(1)</handler><span>ok</span></div>',
+      ),
+    ).toBe('<div><span>ok</span></div>');
+    expect(
+      sanitizeManualEditHtmlFragment(
+        '<div><meta http-equiv="refresh" content="0;url=https://evil.example">x</div>',
+      ),
+    ).toBe('<div>x</div>');
+
+    const attrs = applyManualEditPatch(baseSource, {
+      kind: 'set-attributes',
+      id: 'hero-title',
+      attributes: { 'http-equiv': 'refresh', title: 'ok' },
+    });
+    expect(attrs.ok, attrs.error).toBe(true);
+    expect(readManualEditAttributes(attrs.source, 'hero-title')['http-equiv']).toBeUndefined();
+    expect(readManualEditAttributes(attrs.source, 'hero-title').title).toBe('ok');
+  });
+
+  it('rejects chrome/resource extension URL schemes', () => {
+    for (const href of ['chrome://settings', 'resource://gre/modules/x.js', 'moz-extension://abc/x']) {
+      const denied = applyManualEditPatch(baseSource, {
+        kind: 'set-link',
+        id: 'cta',
+        text: 'Start',
+        href,
+      });
+      expect(denied.ok, href).toBe(false);
+    }
+  });
+
+  it('scrubs -o-link and remote filter urls from salvaged styles', () => {
+    const result = applyManualEditPatch(baseSource, {
+      kind: 'set-outer-html',
+      id: 'hero-title',
+      html: [
+        '<style>.hero-pop{-o-link:"javascript:alert(1)";filter:url(https://evil.example/f.svg#x);color:#444}</style>',
+        '<h1 class="hero-pop" data-od-id="hero-title">Original title</h1>',
+      ].join(''),
+    });
+    expect(result.ok, result.error).toBe(true);
+    expect(result.source).toContain('.hero-pop{');
+    expect(result.source).toContain('color:#444');
+    expect(result.source).not.toMatch(/-o-link/i);
+    expect(result.source).not.toContain('evil.example');
+    expect(result.source).not.toMatch(/javascript/i);
   });
 
   it('updates CSS tokens in style tags', () => {
@@ -543,6 +1143,1755 @@ describe('manual edit source patches', () => {
 
     expect(result.ok).toBe(true);
     expect(result.source).toContain('--brand: #f00;');
+  });
+
+  it('rejects set-token values that break out of the CSS declaration', () => {
+    const breakout = applyManualEditPatch(baseSource, {
+      kind: 'set-token',
+      token: '--brand',
+      value: 'red; } body{background:url(https://evil.example/x)} .x{color:',
+    });
+    expect(breakout.ok).toBe(false);
+    expect(breakout.source).toContain('--brand: #111;');
+    expect(breakout.source).not.toContain('evil.example');
+
+    const plainProp = applyManualEditPatch(baseSource, {
+      kind: 'set-token',
+      token: 'color',
+      value: 'red',
+    });
+    expect(plainProp.ok).toBe(false);
+  });
+
+  it('rejects set-token url() values and scrubs unsafe inline style urls', () => {
+    const tokenUrl = applyManualEditPatch(baseSource, {
+      kind: 'set-token',
+      token: '--brand',
+      value: 'url(https://evil.example/token.css)',
+    });
+    expect(tokenUrl.ok).toBe(false);
+    expect(tokenUrl.source).toContain('--brand: #111;');
+
+    const styled = applyManualEditPatch(baseSource, {
+      kind: 'set-outer-html',
+      id: 'hero-title',
+      html: '<h1 data-od-id="hero-title" style="background:url(javascript:alert(1));color:red">Title</h1>',
+    });
+    expect(styled.ok, styled.error).toBe(true);
+    const html = readManualEditOuterHtml(styled.source, 'hero-title');
+    expect(html).toContain('color:red');
+    expect(html).not.toMatch(/javascript/i);
+
+    const siblingJs = applyManualEditPatch(baseSource, {
+      kind: 'set-outer-html',
+      id: 'hero-title',
+      html: [
+        '<style>.hero-pop{background:url("javascript:alert(1)");color:#333}</style>',
+        '<h1 class="hero-pop" data-od-id="hero-title">Original title</h1>',
+      ].join(''),
+    });
+    expect(siblingJs.ok, siblingJs.error).toBe(true);
+    expect(siblingJs.source).toContain('.hero-pop{');
+    expect(siblingJs.source).not.toMatch(/javascript/i);
+  });
+
+  it('scrubs nested style tags in set-outer-html instead of dropping the host', () => {
+    const result = applyManualEditPatch(baseSource, {
+      kind: 'set-outer-html',
+      id: 'hero-title',
+      html: [
+        '<h1 data-od-id="hero-title">',
+        '<style>@import url("https://evil.example/x.css"); .x{color:red}</style>',
+        'Safe title',
+        '</h1>',
+      ].join(''),
+    });
+    expect(result.ok, result.error).toBe(true);
+    const html = readManualEditOuterHtml(result.source, 'hero-title');
+    expect(html).toContain('Safe title');
+    // Nested style hosts are scrub-kept so slide "stand out" edits survive.
+    expect(html).toContain('<style>');
+    expect(html).toContain('.x{color:red}');
+    expect(result.source).not.toContain('evil.example');
+    expect(result.source).not.toMatch(/@import/i);
+  });
+
+  it('strips SVG SMIL javascript: payloads on to/values attrs', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<svg data-od-id="mark"><a href="#x"><text>hi</text></a></svg>',
+      '</body></html>',
+    ].join('');
+    const result = applyManualEditPatch(source, {
+      kind: 'set-outer-html',
+      id: 'mark',
+      html: [
+        '<svg data-od-id="mark">',
+        '<a href="#safe"><text>hi</text>',
+        '<set attributeName="href" to="javascript:alert(4)"></set>',
+        '<animate attributeName="xlink:href" values="javascript:alert(5);#x"></animate>',
+        '</a></svg>',
+      ].join(''),
+    });
+    expect(result.ok, result.error).toBe(true);
+    const html = readManualEditOuterHtml(result.source, 'mark');
+    expect(html).toContain('href="#safe"');
+    expect(html).not.toMatch(/javascript:/i);
+    expect(html).not.toMatch(/\bto=["']javascript/i);
+    expect(html).not.toMatch(/values=["'][^"']*javascript/i);
+  });
+
+  it('removes SMIL nodes that assign on* handlers via attributeName', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<svg data-od-id="mark"><rect width="10" height="10"></rect></svg>',
+      '</body></html>',
+    ].join('');
+    const result = applyManualEditPatch(source, {
+      kind: 'set-outer-html',
+      id: 'mark',
+      html: [
+        '<svg data-od-id="mark">',
+        '<rect width="10" height="10">',
+        '<set attributeName="onclick" to="alert(1)"></set>',
+        '<animate attributeName="onmouseover" values="alert(2);alert(3)"></animate>',
+        '</rect></svg>',
+      ].join(''),
+    });
+    expect(result.ok, result.error).toBe(true);
+    const html = readManualEditOuterHtml(result.source, 'mark');
+    expect(html).not.toMatch(/attributeName=["']on/i);
+    expect(html).not.toMatch(/<set\b/i);
+    expect(html).not.toMatch(/<animate\b/i);
+  });
+
+  it('scrubs CSS-escape/comment javascript urls in inline style attrs', () => {
+    const escaped = applyManualEditPatch(baseSource, {
+      kind: 'set-outer-html',
+      id: 'hero-title',
+      html: '<h1 data-od-id="hero-title" style="background:url(\\6a avascript:alert(1));color:blue">Title</h1>',
+    });
+    expect(escaped.ok, escaped.error).toBe(true);
+    const escapedHtml = readManualEditOuterHtml(escaped.source, 'hero-title');
+    expect(escapedHtml).not.toMatch(/javascript/i);
+    expect(escapedHtml).toContain('color:blue');
+
+    const commented = applyManualEditPatch(baseSource, {
+      kind: 'set-outer-html',
+      id: 'hero-title',
+      html: '<h1 data-od-id="hero-title" style="background:url(/*x*/javascript:alert(1));color:green">Title</h1>',
+    });
+    expect(commented.ok, commented.error).toBe(true);
+    const commentedHtml = readManualEditOuterHtml(commented.source, 'hero-title');
+    expect(commentedHtml).not.toMatch(/javascript/i);
+    expect(commentedHtml).toContain('color:green');
+  });
+
+  it('rejects ZWSP-smuggled javascript: URLs in set-link', () => {
+    const denied = applyManualEditPatch(baseSource, {
+      kind: 'set-link',
+      id: 'cta',
+      text: 'Start',
+      href: 'java\u200bscript:alert(1)',
+    });
+    expect(denied.ok).toBe(false);
+    expect(readManualEditFields(baseSource, 'cta').href).toBe('/start');
+
+    const attrDenied = applyManualEditPatch(baseSource, {
+      kind: 'set-attributes',
+      id: 'cta',
+      attributes: { href: 'java\u200cscript:alert(1)' },
+    });
+    expect(attrDenied.ok).toBe(false);
+    expect(readManualEditAttributes(attrDenied.source, 'cta').href).toBe('/start');
+  });
+
+  it('scrubs ZWSP-smuggled javascript urls inside inline style url()', () => {
+    const result = applyManualEditPatch(baseSource, {
+      kind: 'set-outer-html',
+      id: 'hero-title',
+      html: '<h1 data-od-id="hero-title" style="background:url(\'java\u200bscript:alert(1)\');color:teal">Title</h1>',
+    });
+    expect(result.ok, result.error).toBe(true);
+    const html = readManualEditOuterHtml(result.source, 'hero-title');
+    expect(html).not.toMatch(/javascript/i);
+    expect(html).toContain('color:teal');
+  });
+
+  it('scrubs javascript urls in SVG presentation attrs like filter/fill', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<svg data-od-id="mark"><rect width="10" height="10"></rect></svg>',
+      '</body></html>',
+    ].join('');
+    const result = applyManualEditPatch(source, {
+      kind: 'set-outer-html',
+      id: 'mark',
+      html: [
+        '<svg data-od-id="mark">',
+        '<rect width="10" height="10" filter="url(javascript:alert(1))" fill="url(javascript:alert(2))" cursor="url(javascript:alert(3))"></rect>',
+        '</svg>',
+      ].join(''),
+    });
+    expect(result.ok, result.error).toBe(true);
+    const html = readManualEditOuterHtml(result.source, 'mark');
+    expect(html).not.toMatch(/javascript/i);
+    expect(html).not.toMatch(/\bfilter=["'][^"']*javascript/i);
+    expect(html).not.toMatch(/\bfill=["'][^"']*javascript/i);
+  });
+
+  it('rejects external feImage/mpath hrefs like use/image', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<svg data-od-id="mark"><filter id="f"><feImage href="#icon"></feImage></filter></svg>',
+      '</body></html>',
+    ].join('');
+    const result = applyManualEditPatch(source, {
+      kind: 'set-outer-html',
+      id: 'mark',
+      html: [
+        '<svg data-od-id="mark">',
+        '<filter id="f"><feImage href="https://evil.example/x.svg"></feImage></filter>',
+        '<path id="p"><animateMotion><mpath xlink:href="https://evil.example/path"></mpath></animateMotion></path>',
+        '<feImage href="#icon"></feImage>',
+        '</svg>',
+      ].join(''),
+    });
+    expect(result.ok, result.error).toBe(true);
+    const html = readManualEditOuterHtml(result.source, 'mark');
+    expect(html).not.toContain('evil.example');
+    expect(html).toContain('href="#icon"');
+  });
+
+  it('rejects set-attributes / set-text on script and iframe hosts', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<script data-od-id="boot" src="/ok.js"></script>',
+      '<iframe data-od-id="frame" src="/frame.html"></iframe>',
+      '</body></html>',
+    ].join('');
+    const script = applyManualEditPatch(source, {
+      kind: 'set-attributes',
+      id: 'boot',
+      attributes: { src: 'https://evil.example/x.js' },
+    });
+    expect(script.ok).toBe(false);
+    expect(script.source).toContain('src="/ok.js"');
+
+    const frame = applyManualEditPatch(source, {
+      kind: 'set-attributes',
+      id: 'frame',
+      attributes: { src: 'https://evil.example/frame.html' },
+    });
+    expect(frame.ok).toBe(false);
+    expect(frame.source).toContain('src="/frame.html"');
+
+    const text = applyManualEditPatch(source, {
+      kind: 'set-text',
+      id: 'boot',
+      value: 'alert(1)//',
+    });
+    expect(text.ok).toBe(false);
+    expect(text.source).not.toContain('alert(1)');
+  });
+
+  it('rejects set-attributes that would re-enable inert script hosts', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<script data-od-id="boot" type="application/json">{"x":1}</script>',
+      '</body></html>',
+    ].join('');
+    const clearType = applyManualEditPatch(source, {
+      kind: 'set-attributes',
+      id: 'boot',
+      attributes: { type: '' },
+    });
+    expect(clearType.ok).toBe(false);
+    expect(clearType.source).toContain('type="application/json"');
+
+    const moduleType = applyManualEditPatch(source, {
+      kind: 'set-attributes',
+      id: 'boot',
+      attributes: { type: 'module' },
+    });
+    expect(moduleType.ok).toBe(false);
+    expect(moduleType.source).toContain('type="application/json"');
+  });
+
+  it('refuses meta http-equiv/content mutations via set-attributes', () => {
+    const source = [
+      '<!doctype html><html><head>',
+      '<meta data-od-id="refresh" http-equiv="refresh" content="120">',
+      '</head><body></body></html>',
+    ].join('');
+    const result = applyManualEditPatch(source, {
+      kind: 'set-attributes',
+      id: 'refresh',
+      attributes: {
+        'http-equiv': 'refresh',
+        content: '0;url=javascript:alert(1)',
+      },
+    });
+    expect(result.ok).toBe(false);
+    expect(result.source).toContain('content="120"');
+    expect(result.source).not.toMatch(/javascript/i);
+  });
+
+  it('sanitizes scoped full-deck HTML payloads via sanitizeManualEditFullSource', () => {
+    const dirty = [
+      '<!doctype html><html><body>',
+      '<div data-od-id="hero"><img src="x" onerror="alert(1)">Safe</div>',
+      '<script>alert(2)</script>',
+      '</body></html>',
+    ].join('');
+    const clean = sanitizeManualEditFullSource(dirty);
+    expect(clean).toContain('Safe');
+    expect(clean).not.toMatch(/onerror/i);
+    expect(clean).not.toMatch(/<script\b/i);
+  });
+
+  it('fails closed with regex scrub when full-source parse returns null', () => {
+    // Avoid stubbing global DOMParser/document — that pollutes parallel suites.
+    expect(sourcePatchesSource).toContain('failClosedScrubHtmlWithoutParser');
+    expect(sourcePatchesSource).toContain(
+      'never re-persist unsanitized HTML when the parser is unavailable',
+    );
+    expect(sourcePatchesSource).toMatch(/if\s*\(\s*!doc\s*\)\s*return failClosedScrubHtmlWithoutParser/);
+  });
+
+  it('fails closed for fragment sanitize when parser body is unavailable', () => {
+    expect(sourcePatchesSource).toContain(
+      'if (!doc?.body) return failClosedScrubHtmlWithoutParser(trimmed)',
+    );
+  });
+
+  it('hardens failClosed scrub against javascript: URL attrs and dangerous tags', () => {
+    expect(sourcePatchesSource).toContain('annotation-xml');
+    expect(sourcePatchesSource).toContain('fencedframe');
+    expect(sourcePatchesSource).toMatch(/javascript\|vbscript/);
+    expect(sourcePatchesSource).toContain("'background'");
+    expect(sourcePatchesSource).toContain("'srcset'");
+    expect(sourcePatchesSource).toContain("'longdesc'");
+    // SMIL to/from/by/values + unquoted srcdoc parity with DOM walk.
+    expect(sourcePatchesSource).toContain("'to'");
+    expect(sourcePatchesSource).toContain("'from'");
+    expect(sourcePatchesSource).toContain("'by'");
+    expect(sourcePatchesSource).toContain("'values'");
+    expect(sourcePatchesSource).toContain('animate|animatemotion|animatetransform|set|animatecolor');
+    expect(sourcePatchesSource).toContain('.replace(/\\ssrcdoc\\s*=\\s*[^\\s>]+/gi, \'\')');
+    // behavior / http-equiv / presentation-attr parity with DOM walk.
+    expect(sourcePatchesSource).toContain('.replace(/\\sbehavior\\s*=');
+    expect(sourcePatchesSource).toContain('.replace(/\\shttp-equiv\\s*=');
+    expect(sourcePatchesSource).toContain("'color-profile'");
+    expect(sourcePatchesSource).toContain('presentationAttrs');
+    // Fail-closed URL/presentation via isSafe gates (ZWSP compact + presentation normalize).
+    expect(sourcePatchesSource).toContain('same gate as DOM isSafeManualEditUrlAttrValue');
+    expect(sourcePatchesSource).toContain('isSafeManualEditUrlAttrValue(attr, value) ? full : \'\'');
+    expect(sourcePatchesSource).toContain('Protocol-relative residual');
+    expect(sourcePatchesSource).toContain('same gate as DOM isSafeManualEditPresentationCssValue');
+    expect(sourcePatchesSource).toContain('isSafeManualEditPresentationCssValue(value) ? full : \'\'');
+    expect(sourcePatchesSource).toContain('options?.parsedDoc ?? parseSource(source)');
+    // Absolute action/formaction/ping residual (SMIL via isSafe; CSS color: not stripped).
+    expect(sourcePatchesSource).toContain('/\\s(?:action|formaction|ping)\\s*=');
+    expect(sourcePatchesSource).toContain('do not treat CSS');
+    expect(sourcePatchesSource).toContain('/\\s(?:action|formaction|ping|to|from|by|values)\\s*=');
+    expect(sourcePatchesSource).toContain('[\\s\\S]*?\\\\[\\s\\S]*?');
+    // values residual restored for defense-in-depth (comma/whitespace scheme smuggle).
+    expect(sourcePatchesSource).toContain('srcset|imagesrcset|archive|values');
+    expect(sourcePatchesSource).toContain('Include `values` again for defense-in-depth');
+    expect(sourcePatchesSource).toContain('manualEditLocalTagName');
+    expect(sourcePatchesSource).toContain('smilTag');
+    // SVG fragment-only href/xlink:href (use/image/… + isSafeManualEditSvgResourceRef).
+    expect(sourcePatchesSource).toContain('SVG paint/resource tags — fail closed');
+    expect(sourcePatchesSource).toContain("(?!#[^\\\\\\\\/:'\"]*)");
+    expect(sourcePatchesSource).toContain("'lineargradient', 'radialgradient', 'filter'");
+    expect(sourcePatchesSource).toContain('isSafeManualEditSvgResourceRef');
+    // General URL-attr backslash-authority deny (DOM isSafeManualEditUrl).
+    expect(sourcePatchesSource).toContain("if (compact.includes('\\\\')) return false;");
+    expect(sourcePatchesSource).toContain('Backslash-authority on general URL attrs');
+    // SMIL nav attributeName covers remaining MANUAL_EDIT_URL_ATTRS.
+    expect(sourcePatchesSource).toContain("'background'");
+    expect(sourcePatchesSource).toContain("'imagesrcset'");
+    expect(sourcePatchesSource).toContain("'usemap'");
+    expect(sourcePatchesSource).toContain('Align with MANUAL_EDIT_URL_ATTRS — SMIL can retarget');
+    // usemap fragment-only + unsafe #fragment parity with SVG helper.
+    expect(sourcePatchesSource).toContain("if (lower === 'usemap')");
+    expect(sourcePatchesSource).toContain('return isSafeManualEditSvgResourceRef(value)');
+    expect(sourcePatchesSource).toContain('usemap — same-document #fragment only');
+    expect(sourcePatchesSource).toContain('Unsafe #fragments');
+    expect(sourcePatchesSource).toContain('isSafeManualEditSmilNavValue(smilAttr, trimmed)');
+    expect(sourcePatchesSource).toContain('Unquoted unsafe usemap fragments');
+    expect(sourcePatchesSource).toContain('Unquoted unsafe SVG href/xlink:href fragments');
+    expect(sourcePatchesSource).toContain("lower === 'usemap' || lower === 'href' || lower === 'xlink:href'");
+    expect(sourcePatchesSource).toContain("lower === 'srcset' || lower === 'imagesrcset'");
+    expect(sourcePatchesSource).toContain('Multi-token ping — drop when ANY whitespace token');
+    expect(sourcePatchesSource).toContain('view-source');
+    expect(sourcePatchesSource).toContain('ms-appx(?:-web)?');
+  });
+
+  it('exposes single-document mutate/batch apply helpers', () => {
+    expect(sourcePatchesSource).toContain('export function applyManualEditPatches');
+    expect(sourcePatchesSource).toContain('export function applyManualEditPatchMutation');
+    expect(sourcePatchesSource).toContain('sanitizeManualEditDocumentInPlace');
+    expect(sourcePatchesSource).not.toMatch(/export function parseAbsoluteDomSlideSelector/);
+  });
+
+  it('reads selection snapshot in one parse and hardens failClosed style/entities', () => {
+    expect(sourcePatchesSource).toContain('export function readManualEditTargetSnapshot');
+    expect(sourcePatchesSource).toContain('decodeHtmlCharacterReferences(String(raw || \'\'))');
+    expect(sourcePatchesSource).toContain('.replace(/\\sstyle\\s*=');
+    const snap = readManualEditTargetSnapshot(baseSource, 'hero-title');
+    expect(snap.fields.text).toContain('Original title');
+    expect(snap.outerHtml).toContain('data-od-id="hero-title"');
+    expect(snap.styles).toBeTruthy();
+  });
+
+  it('scrubs remote backdrop-filter and cursor/clip-path urls from styles', () => {
+    const inline = applyManualEditPatch(baseSource, {
+      kind: 'set-outer-html',
+      id: 'hero-title',
+      html: [
+        '<h1 data-od-id="hero-title" style="',
+        'backdrop-filter:url(https://evil.example/f.svg#x);',
+        'cursor:url(https://evil.example/c.cur),auto;',
+        'clip-path:url(https://evil.example/clip.svg#x);',
+        'color:navy">Title</h1>',
+      ].join(''),
+    });
+    expect(inline.ok, inline.error).toBe(true);
+    const html = readManualEditOuterHtml(inline.source, 'hero-title');
+    expect(html).toContain('color:navy');
+    expect(html).not.toContain('evil.example');
+    expect(html).not.toMatch(/backdrop-filter/i);
+    expect(html).not.toMatch(/cursor:\s*url/i);
+    expect(html).not.toMatch(/clip-path/i);
+
+    const salvaged = applyManualEditPatch(baseSource, {
+      kind: 'set-outer-html',
+      id: 'hero-title',
+      html: [
+        '<style>.hero-pop{cursor:url(https://evil.example/c.cur),auto;color:#444}</style>',
+        '<h1 class="hero-pop" data-od-id="hero-title">Original title</h1>',
+      ].join(''),
+    });
+    expect(salvaged.ok, salvaged.error).toBe(true);
+    expect(salvaged.source).toContain('color:#444');
+    expect(salvaged.source).not.toContain('evil.example');
+  });
+
+  it('drops compound filter/backdrop-filter urls and preserves false-positive neighbors', () => {
+    const compound = sanitizeManualEditHtmlFragment(
+      '<div style="filter: blur(2px) url(https://evil.example/f.svg#x);backdrop-filter: blur(2px) url(https://evil.example/b.svg#x);color:red">x</div>',
+    );
+    expect(compound).toContain('color:red');
+    expect(compound).not.toContain('evil.example');
+    expect(compound).not.toMatch(/filter\s*:/i);
+
+    const blurOnly = sanitizeManualEditHtmlFragment(
+      '<div style="filter:blur(4px);color:red">x</div>',
+    );
+    expect(blurOnly).toContain('filter:blur(4px)');
+    expect(blurOnly).toContain('color:red');
+
+    // Must not chop `background-filter` into `background-`.
+    const falsePos = sanitizeManualEditHtmlFragment(
+      '<div style="background-filter:url(https://cdn.example/bg.svg#x);color:red">x</div>',
+    );
+    expect(falsePos).toContain('background-filter:url(https://cdn.example/bg.svg#x)');
+    expect(falsePos).toContain('color:red');
+    expect(falsePos).not.toMatch(/background-;/);
+
+    const fragOk = sanitizeManualEditHtmlFragment(
+      '<div style="filter:url(#ok);color:red">x</div>',
+    );
+    expect(fragOk).toContain('filter:url(#ok)');
+  });
+
+  it('rejects filter:var() and quoted presentation url() with paren smuggling', () => {
+    const viaVar = applyManualEditPatch(baseSource, {
+      kind: 'set-outer-html',
+      id: 'hero-title',
+      html: '<h1 data-od-id="hero-title" style="--f:url(https://evil.example/f.svg#x);filter:var(--f);color:navy">Title</h1>',
+    });
+    expect(viaVar.ok, viaVar.error).toBe(true);
+    const viaVarHtml = readManualEditOuterHtml(viaVar.source, 'hero-title');
+    expect(viaVarHtml).toContain('color:navy');
+    expect(viaVarHtml).not.toMatch(/filter\s*:\s*var/i);
+    // Custom prop for imagery may remain; filter:var must not.
+    expect(viaVarHtml).not.toMatch(/filter\s*:\s*url\(https/i);
+
+    const quoted = sanitizeManualEditHtmlFragment(
+      '<svg><rect filter="url(&quot;https://evil.example/a).svg#x&quot;)"></rect></svg>',
+    );
+    expect(quoted).not.toContain('evil.example');
+    expect(quoted).not.toMatch(/\bfilter=/i);
+  });
+
+  it('is idempotent for benign full-source decks with remote background-image', () => {
+    const once = sanitizeManualEditFullSource([
+      '<!doctype html><html><body>',
+      '<section class="slide" data-slide-index="0">',
+      '<div data-od-id="t" style="background-image:url(https://cdn.example/ok.png);color:blue">ok</div>',
+      '</section></body></html>',
+    ].join(''));
+    const twice = sanitizeManualEditFullSource(once);
+    expect(twice).toBe(once);
+    expect(once).toContain('data-od-id="t"');
+    expect(once).toContain('cdn.example/ok.png');
+    expect(once).toContain('color:blue');
+  });
+
+  it('validates ping as a whitespace-separated relative URL list', () => {
+    expect(isSafeManualEditUrlAttrValue('ping', '/ok')).toBe(true);
+    expect(isSafeManualEditUrlAttrValue('ping', '#local')).toBe(true);
+    expect(isSafeManualEditUrlAttrValue('ping', '/ok #local')).toBe(true);
+    expect(isSafeManualEditUrlAttrValue('ping', '/ok https://evil.example/p')).toBe(false);
+    expect(isSafeManualEditUrlAttrValue('ping', 'https://evil.example/p')).toBe(false);
+
+    expect(
+      sanitizeManualEditHtmlFragment(
+        '<a href="#ok" ping="/ok https://evil.example/p">x</a>',
+      ),
+    ).toBe('<a href="#ok">x</a>');
+    expect(
+      sanitizeManualEditHtmlFragment('<a href="#ok" ping="/ok #frag">x</a>'),
+    ).toBe('<a href="#ok" ping="/ok #frag">x</a>');
+  });
+
+  it('rejects backslash-authority relative URLs (UNC / IE-style)', () => {
+    expect(isSafeManualEditRelativeOrFragmentUrl('\\\\evil.example\\payload')).toBe(false);
+    expect(isSafeManualEditRelativeOrFragmentUrl('\\evil.example/x')).toBe(false);
+    expect(isSafeManualEditRelativeOrFragmentUrl('//cdn.example/x')).toBe(false);
+    expect(isSafeManualEditRelativeOrFragmentUrl('https://cdn.example/x')).toBe(false);
+    expect(isSafeManualEditRelativeOrFragmentUrl('/safe/path.png')).toBe(true);
+    expect(isSafeManualEditRelativeOrFragmentUrl('assets/photo.png')).toBe(true);
+    expect(isSafeManualEditRelativeOrFragmentUrl('#hero')).toBe(true);
+
+    expect(isSafeManualEditUrlAttrValue('action', '\\\\evil.example\\x')).toBe(false);
+    expect(isSafeManualEditUrlAttrValue('ping', '/ok \\\\evil.example\\x')).toBe(false);
+    // General URL attrs share the same backslash deny as relative-only.
+    expect(isSafeManualEditUrl('\\\\evil.example\\payload')).toBe(false);
+    expect(isSafeManualEditUrl('\\evil.example/x')).toBe(false);
+    expect(isSafeManualEditUrlAttrValue('href', '\\\\evil.example\\x')).toBe(false);
+    expect(isSafeManualEditUrlAttrValue('src', '\\evil.example/x')).toBe(false);
+    expect(isSafeManualEditUrl('/safe/path.png')).toBe(true);
+    // usemap is same-document #fragment only.
+    expect(isSafeManualEditUrlAttrValue('usemap', '#map1')).toBe(true);
+    expect(isSafeManualEditUrlAttrValue('usemap', 'https://evil.example/m')).toBe(false);
+    expect(isSafeManualEditUrlAttrValue('usemap', '#foo:bar')).toBe(false);
+    expect(isSafeManualEditUrlAttrValue('usemap', '#/x')).toBe(false);
+    // Browser/OS navigators — not deck media.
+    expect(isSafeManualEditUrl('view-source:https://evil.example')).toBe(false);
+    expect(isSafeManualEditUrl('ms-appx://evil')).toBe(false);
+    expect(isSafeManualEditUrl('ms-appx-web://evil')).toBe(false);
+    expect(isSafeManualEditUrl('https://cdn.example/a.png')).toBe(true);
+    // Cf / soft-hyphen smuggling — compactManualEditUrlForSchemeCheck.
+    expect(isSafeManualEditUrl('java\u200bscript:alert(1)')).toBe(false);
+    expect(isSafeManualEditUrl('java\u00adscript:alert(1)')).toBe(false);
+    expect(isSafeManualEditUrlAttrValue('href', 'java\u200bscript:alert(1)')).toBe(false);
+    // SMIL to/from absolute/proto tokens are relative/fragment only; CSS paints stay.
+    expect(isSafeManualEditUrlAttrValue('to', 'https://evil.example/phish')).toBe(false);
+    expect(isSafeManualEditUrlAttrValue('from', '//evil.example/x')).toBe(false);
+    expect(isSafeManualEditUrlAttrValue('to', '10')).toBe(true);
+    expect(isSafeManualEditUrlAttrValue('to', 'red')).toBe(true);
+    expect(isSafeManualEditUrlAttrValue('to', 'color:red')).toBe(true);
+    expect(isSafeManualEditUrlAttrValue('to', '#frag')).toBe(true);
+    expect(sourcePatchesSource).toContain('do not treat `color:` as a URL scheme');
+  });
+
+  it('failClosed strips ZWSP-smuggled javascript: URL attrs without DOMParser', () => {
+    Reflect.deleteProperty(globalThis, 'DOMParser');
+    const out = sanitizeManualEditFullSource(
+      '<!doctype html><html><body><a href="java\u200bscript:alert(1)">x</a>'
+      + '<img src="java\u00adscript:alert(2)"></body></html>',
+    );
+    expect(out.toLowerCase()).not.toContain('javascript');
+    expect(out).not.toMatch(/\shref\s*=/i);
+    expect(out).not.toMatch(/\ssrc\s*=/i);
+    expect(sourcePatchesSource).toContain('same gate as DOM isSafeManualEditUrlAttrValue');
+  });
+
+  it('failClosed values path uses isSafe (SMIL drop + CSS paint keep) without DOMParser', () => {
+    Reflect.deleteProperty(globalThis, 'DOMParser');
+    // SMIL nodes are failClosed-stripped entirely; values residual is isSafe-owned.
+    const smil = sanitizeManualEditFullSource([
+      '<!doctype html><html><body>',
+      '<animate attributeName="href" values="javascript:alert(1);#ok"></animate>',
+      '<set attributeName="xlink:href" values="https://evil.example/x;#f"></set>',
+      '<svg:animate attributeName="href" values="#ok, javascript:alert(9)"></svg:animate>',
+      '<p data-od-id="ok">safe</p>',
+      '</body></html>',
+    ].join(''));
+    expect(smil.toLowerCase()).not.toContain('animate');
+    expect(smil.toLowerCase()).not.toContain('<set');
+    expect(smil.toLowerCase()).not.toContain('javascript');
+    expect(smil).not.toContain('evil.example');
+    expect(smil).toContain('data-od-id="ok"');
+    // Bare CSS paints on SMIL-style attrs survive isSafe when not absolute schemes.
+    expect(isSafeManualEditUrlAttrValue('values', '0;color:red;10')).toBe(true);
+    expect(isSafeManualEditUrlAttrValue('values', 'javascript:alert(1);#x')).toBe(false);
+    expect(isSafeManualEditUrlAttrValue('values', 'https://evil.example/a;#x')).toBe(false);
+    // Mid-token smuggling — prefix-only isSafeManualEditUrl used to miss these.
+    expect(isSafeManualEditUrlAttrValue('values', '#ok, javascript:alert(1)')).toBe(false);
+    expect(isSafeManualEditUrlAttrValue('values', '#ok javascript:alert(1)')).toBe(false);
+    expect(sourcePatchesSource).toContain('Include `values` again for defense-in-depth');
+    // Namespaced on* — failClosed optional prefix before on[a-z]+.
+    const namespacedOn = sanitizeManualEditFullSource(
+      '<!doctype html><html><body><img src="/ok.png" svg:onerror="alert(9)"></body></html>',
+    );
+    expect(namespacedOn.toLowerCase()).not.toContain('onerror');
+    expect(namespacedOn).not.toContain('alert(9)');
+    expect(sourcePatchesSource).toContain('Optional namespace prefix (`svg:onerror`)');
+    // Namespaced presentation attrs — failClosed optional prefix before fill/stroke/….
+    const namespacedFill = sanitizeManualEditFullSource(
+      '<!doctype html><html><body><rect svg:fill="url(javascript:alert(1))" data-od-id="r" /></body></html>',
+    );
+    expect(namespacedFill.toLowerCase()).not.toContain('javascript');
+    expect(namespacedFill).not.toMatch(/svg:fill\s*=/i);
+    expect(sourcePatchesSource).toContain('Optional namespace prefix (`svg:fill`)');
+    // Namespaced clip-path / mask / filter — same presentation optional-prefix gate.
+    const namespacedClipMaskFilter = sanitizeManualEditFullSource(
+      '<!doctype html><html><body>'
+      + '<rect svg:clip-path="url(javascript:alert(8))" data-od-id="c" />'
+      + '<circle svg:mask="url(javascript:alert(9))" data-od-id="m" />'
+      + '<g svg:filter="url(javascript:alert(10))" data-od-id="f" />'
+      + '</body></html>',
+    );
+    expect(namespacedClipMaskFilter.toLowerCase()).not.toContain('javascript');
+    expect(namespacedClipMaskFilter).not.toMatch(/svg:clip-path\s*=/i);
+    expect(namespacedClipMaskFilter).not.toMatch(/svg:mask\s*=/i);
+    expect(namespacedClipMaskFilter).not.toMatch(/svg:filter\s*=/i);
+    // Namespaced marker-start / color-profile — longer presentation names.
+    const namespacedMarkerColorProfile = sanitizeManualEditFullSource(
+      '<!doctype html><html><body>'
+      + '<path svg:marker-start="url(javascript:alert(12))" data-od-id="p" />'
+      + '<rect svg:color-profile="url(javascript:alert(13))" data-od-id="r2" />'
+      + '</body></html>',
+    );
+    expect(namespacedMarkerColorProfile.toLowerCase()).not.toContain('javascript');
+    expect(namespacedMarkerColorProfile).not.toMatch(/svg:marker-start\s*=/i);
+    expect(namespacedMarkerColorProfile).not.toMatch(/svg:color-profile\s*=/i);
+    // Namespaced marker-mid / marker-end residual.
+    const namespacedMarkerMidEnd = sanitizeManualEditFullSource(
+      '<!doctype html><html><body>'
+      + '<path svg:marker-mid="url(javascript:alert(16))" data-od-id="pm" />'
+      + '<path svg:marker-end="url(javascript:alert(17))" data-od-id="pe" />'
+      + '</body></html>',
+    );
+    expect(namespacedMarkerMidEnd.toLowerCase()).not.toContain('javascript');
+    expect(namespacedMarkerMidEnd).not.toMatch(/svg:marker-mid\s*=/i);
+    expect(namespacedMarkerMidEnd).not.toMatch(/svg:marker-end\s*=/i);
+    // Namespaced cursor / stroke presentation residual.
+    const namespacedCursorStroke = sanitizeManualEditFullSource(
+      '<!doctype html><html><body>'
+      + '<rect svg:cursor="url(javascript:alert(18))" data-od-id="rc" />'
+      + '<path svg:stroke="url(javascript:alert(19))" data-od-id="ps" />'
+      + '</body></html>',
+    );
+    expect(namespacedCursorStroke.toLowerCase()).not.toContain('javascript');
+    expect(namespacedCursorStroke).not.toMatch(/svg:cursor\s*=/i);
+    expect(namespacedCursorStroke).not.toMatch(/svg:stroke\s*=/i);
+    // DOM fragment + set-attributes path — namespaced fill/mask local-name gate.
+    const domNamespacedFillMask = sanitizeManualEditHtmlFragment(
+      '<rect foo:fill="url(javascript:alert(20))" data-od-id="rf" />'
+      + '<circle bar:mask="url(javascript:alert(21))" data-od-id="cm" />',
+    );
+    expect(domNamespacedFillMask.toLowerCase()).not.toContain('javascript');
+    expect(domNamespacedFillMask).not.toMatch(/foo:fill\s*=/i);
+    expect(domNamespacedFillMask).not.toMatch(/bar:mask\s*=/i);
+    expect(sourcePatchesSource).toContain(
+      'MANUAL_EDIT_CSS_URL_PRESENTATION_ATTRS.has(local)',
+    );
+    // SMIL presentation paint uses the same SSOT Set as element attrs / failClosed.
+    expect(sourcePatchesSource).toContain(
+      'Presentation paint via SMIL attributeName — same SSOT as failClosed',
+    );
+    expect(sourcePatchesSource).toContain(
+      'MANUAL_EDIT_CSS_URL_PRESENTATION_ATTRS.has(smilAttr)',
+    );
+    expect(sourcePatchesSource).toMatch(/'color-profile'/);
+    // DOM walk also scrubs namespaced color-profile / marker-start.
+    const domNamespacedPresentation = sanitizeManualEditHtmlFragment(
+      '<path foo:marker-start="url(javascript:alert(14))" data-od-id="p2" />'
+      + '<rect bar:color-profile="url(javascript:alert(15))" data-od-id="r3" />',
+    );
+    expect(domNamespacedPresentation.toLowerCase()).not.toContain('javascript');
+    expect(domNamespacedPresentation).not.toMatch(/foo:marker-start\s*=/i);
+    expect(domNamespacedPresentation).not.toMatch(/bar:color-profile\s*=/i);
+    // failClosed presentation list ≡ DOM MANUAL_EDIT_CSS_URL_PRESENTATION_ATTRS.
+    expect(sourcePatchesSource).toContain('MANUAL_EDIT_CSS_URL_PRESENTATION_ATTR_NAMES_LONGER_FIRST');
+    expect(sourcePatchesSource).toContain(
+      "const presentationAttrs = MANUAL_EDIT_CSS_URL_PRESENTATION_ATTR_NAMES_LONGER_FIRST.join('|')",
+    );
+    expect(sourcePatchesSource).toContain(
+      'MANUAL_EDIT_CSS_URL_PRESENTATION_ATTR_NAMES_LONGER_FIRST,',
+    );
+    // Longer presentation names first (marker-start before marker; clip-path before clippath).
+    expect(sourcePatchesSource).toMatch(
+      /'marker-start',\s*'marker-mid',\s*'marker-end'[\s\S]*?'marker'/,
+    );
+    expect(sourcePatchesSource).toMatch(/'clip-path',\s*'clippath'/);
+    // Namespaced URL attrs — failClosed optional prefix before href/src/….
+    const namespacedHref = sanitizeManualEditFullSource(
+      '<!doctype html><html><body><a foo:href="javascript:alert(2)">x</a>'
+      + '<img bar:src="javascript:alert(3)"></body></html>',
+    );
+    expect(namespacedHref.toLowerCase()).not.toContain('javascript');
+    expect(namespacedHref).not.toMatch(/foo:href\s*=/i);
+    expect(namespacedHref).not.toMatch(/bar:src\s*=/i);
+    expect(sourcePatchesSource).toContain('Optional namespace prefix (`foo:href`)');
+    // Longer URL attr names first (`xlink:href` before `href`) for predictable capture.
+    expect(sourcePatchesSource).toMatch(
+      /'xlink:href',\s*'imagesrcset'[\s\S]*?'href',\s*'src',\s*'srcset'/,
+    );
+    // Namespaced srcset / ping residual.
+    const namespacedSrcsetPing = sanitizeManualEditFullSource(
+      '<!doctype html><html><body>'
+      + '<img foo:srcset="javascript:alert(4) 1x">'
+      + '<a foo:ping="javascript:alert(5)">x</a>'
+      + '</body></html>',
+    );
+    expect(namespacedSrcsetPing.toLowerCase()).not.toContain('javascript');
+    expect(namespacedSrcsetPing).not.toMatch(/foo:srcset\s*=/i);
+    expect(namespacedSrcsetPing).not.toMatch(/foo:ping\s*=/i);
+    // Namespaced imagesrcset / formaction — same optional-prefix URL gate.
+    const namespacedImageSrcsetFormaction = sanitizeManualEditFullSource(
+      '<!doctype html><html><body>'
+      + '<img foo:imagesrcset="javascript:alert(6) 1x">'
+      + '<button bar:formaction="javascript:alert(7)">x</button>'
+      + '</body></html>',
+    );
+    expect(namespacedImageSrcsetFormaction.toLowerCase()).not.toContain('javascript');
+    expect(namespacedImageSrcsetFormaction).not.toMatch(/foo:imagesrcset\s*=/i);
+    expect(namespacedImageSrcsetFormaction).not.toMatch(/bar:formaction\s*=/i);
+    // DOM walk — namespaced imagesrcset local-name gate (not failClosed-only).
+    expect(sourcePatchesSource).toContain("local === 'imagesrcset'");
+    expect(sourcePatchesSource).toContain("lower === 'imagesrcset'");
+    const domNamespacedImageSrcset = sanitizeManualEditHtmlFragment(
+      '<img foo:imagesrcset="javascript:alert(11) 1x" data-od-id="img" src="/ok.png">',
+    );
+    expect(domNamespacedImageSrcset.toLowerCase()).not.toContain('javascript');
+    expect(domNamespacedImageSrcset).not.toMatch(/foo:imagesrcset\s*=/i);
+    // failClosed URL list ≡ DOM MANUAL_EDIT_URL_ATTRS (longer-first SSOT).
+    expect(sourcePatchesSource).toContain('MANUAL_EDIT_URL_ATTR_NAMES_LONGER_FIRST');
+    expect(sourcePatchesSource).toContain(
+      "const urlAttrs = MANUAL_EDIT_URL_ATTR_NAMES_LONGER_FIRST.join('|')",
+    );
+    expect(sourcePatchesSource).toContain(
+      'const MANUAL_EDIT_URL_ATTRS = new Set<string>(MANUAL_EDIT_URL_ATTR_NAMES_LONGER_FIRST)',
+    );
+  });
+
+  it('rejects bare data:/blob: presentation paints and keeps named colors', () => {
+    expect(sanitizeManualEditHtmlFragment('<rect fill="data:image/svg+xml,<svg></svg>" data-od-id="a" />'))
+      .not.toContain('data:');
+    expect(sanitizeManualEditHtmlFragment('<rect fill="blob:https://x/1" data-od-id="a" />'))
+      .not.toContain('blob:');
+    expect(sanitizeManualEditHtmlFragment('<rect fill="red" data-od-id="a" />'))
+      .toContain('fill="red"');
+    // CSS-escape / comment-smuggled bare schemes — failClosed uses isSafe parity.
+    expect(sanitizeManualEditHtmlFragment('<rect fill="d\\61ta:image/svg+xml,<svg></svg>" data-od-id="a" />'))
+      .not.toMatch(/d\\61ta:|data:/i);
+    expect(sanitizeManualEditHtmlFragment('<rect fill="/**/data:image/svg+xml,<svg></svg>" data-od-id="a" />'))
+      .not.toContain('data:');
+    expect(sanitizeManualEditHtmlFragment(
+      '<rect fill=\'image-set("https://evil.example/a.png" 1x)\' data-od-id="a" />',
+    )).not.toContain('image-set');
+    expect(sanitizeManualEditHtmlFragment(
+      '<rect fill="-moz-binding:url(#x)" data-od-id="a" />',
+    )).not.toContain('-moz-binding');
+    expect(sourcePatchesSource).toContain('same gate as DOM isSafeManualEditPresentationCssValue');
+    expect(sourcePatchesSource).toContain('image-set / element / -moz-binding are never safe');
+    expect(sourcePatchesSource).toContain("^(?:javascript|vbscript|data|blob)\\s*:");
+  });
+
+  it('exports normalizeCssForSafetyScan for inspect escape parity', () => {
+    expect(normalizeCssForSafetyScan('url/**/(javascript:x)')).toBe('url(javascript:x)');
+    expect(sourcePatchesSource).toContain('export function normalizeCssForSafetyScan');
+  });
+
+  it('drops fencedframe, portal, webview, plaintext, and xmp hosts', () => {
+    // Keep the safe node before raw-text hosts — plaintext/xmp consume
+    // following siblings as character data in HTML parsers.
+    const html = [
+      '<!doctype html><html><body>',
+      '<p data-od-id="ok">safe</p>',
+      '<fencedframe src="https://evil.example/"></fencedframe>',
+      '<portal src="https://evil.example/"></portal>',
+      '<webview src="https://evil.example/"></webview>',
+      '<plaintext>raw<script>x()</script>',
+      '</body></html>',
+    ].join('');
+    const out = sanitizeManualEditFullSource(html);
+    expect(out.toLowerCase()).not.toContain('fencedframe');
+    expect(out.toLowerCase()).not.toContain('<portal');
+    expect(out.toLowerCase()).not.toContain('webview');
+    expect(out.toLowerCase()).not.toContain('plaintext');
+    expect(out).toContain('data-od-id="ok"');
+
+    expect(
+      sanitizeManualEditHtmlFragment(
+        '<div><fencedframe src="https://evil.example/"></fencedframe><span>ok</span></div>',
+      ),
+    ).toBe('<div><span>ok</span></div>');
+    expect(sanitizeManualEditHtmlFragment('<xmp><script>y()</script></xmp>')).not.toMatch(
+      /<xmp\b|<script\b/i,
+    );
+    expect(sanitizeManualEditHtmlFragment('<plaintext>raw</plaintext>')).not.toMatch(
+      /<plaintext\b/i,
+    );
+  });
+
+  it('rejects declaration breakout characters in coerced style values', () => {
+    expect(coerceManualEditStyleValue('color', 'red; background:url(javascript:alert(1))')).toBeNull();
+    expect(coerceManualEditStyleValue('color', '1px} body{color:red')).toBeNull();
+    expect(coerceManualEditStyleValue('color', 'red<script>')).toBeNull();
+    expect(coerceManualEditStyleValue('color', 'red\nblue')).toBeNull();
+    expect(coerceManualEditStyleValue('fontSize', '12')).toBe('12px');
+    expect(coerceManualEditStyleValue('color', 'navy')).toBe('navy');
+
+    const result = applyManualEditPatch(baseSource, {
+      kind: 'set-style',
+      id: 'hero-title',
+      styles: {
+        color: 'red; background:url(javascript:alert(1))',
+        fontSize: '18',
+      },
+    });
+    expect(result.ok, result.error).toBe(true);
+    const html = readManualEditOuterHtml(result.source, 'hero-title');
+    expect(html).toMatch(/font-size:\s*18px/i);
+    expect(html).not.toMatch(/javascript/i);
+    expect(html).not.toMatch(/background:\s*url/i);
+  });
+
+  it('strips onload from salvaged style siblings and full-source style hosts', () => {
+    const salvaged = applyManualEditPatch(baseSource, {
+      kind: 'set-outer-html',
+      id: 'hero-title',
+      html: [
+        '<style onload="alert(1)">.hero-pop{color:#444}</style>',
+        '<h1 class="hero-pop" data-od-id="hero-title">Original title</h1>',
+      ].join(''),
+    });
+    expect(salvaged.ok, salvaged.error).toBe(true);
+    expect(salvaged.source).toContain('.hero-pop{color:#444}');
+    expect(salvaged.source).not.toMatch(/onload/i);
+
+    const full = sanitizeManualEditFullSource([
+      '<!doctype html><html><head>',
+      '<style onload="alert(1)">body{color:red}</style>',
+      '</head><body><h1>ok</h1></body></html>',
+    ].join(''));
+    expect(full).toContain('body{color:red}');
+    expect(full).not.toMatch(/onload/i);
+  });
+
+  it('rejects set-attributes that retarget SMIL attributeName to on*', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<svg><rect><set data-od-id="anim" attributeName="x" to="1"></set></rect></svg>',
+      '</body></html>',
+    ].join('');
+    const result = applyManualEditPatch(source, {
+      kind: 'set-attributes',
+      id: 'anim',
+      attributes: { attributeName: 'onclick', to: 'alert(1)' },
+    });
+    expect(result.ok).toBe(false);
+    expect(result.source).toContain('attributeName="x"');
+    expect(result.source).not.toContain('onclick');
+  });
+
+  it('strips remote url() from marker and color-profile presentation attrs', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<svg data-od-id="mark"><path d="M0 0"></path></svg>',
+      '</body></html>',
+    ].join('');
+    const result = applyManualEditPatch(source, {
+      kind: 'set-outer-html',
+      id: 'mark',
+      html: [
+        '<svg data-od-id="mark">',
+        '<path d="M0 0" marker="url(https://evil.example/m.svg#x)"></path>',
+        '<image color-profile="url(https://evil.example/profile.icc)" href="#ok"></image>',
+        '</svg>',
+      ].join(''),
+    });
+    expect(result.ok, result.error).toBe(true);
+    const html = readManualEditOuterHtml(result.source, 'mark');
+    expect(html).not.toContain('evil.example');
+    expect(html).not.toMatch(/\bmarker=/i);
+    expect(html).not.toMatch(/color-profile=/i);
+  });
+
+  it('rejects remote href on SVG cursor resource tags', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<svg data-od-id="mark"><rect width="10" height="10"></rect></svg>',
+      '</body></html>',
+    ].join('');
+    const result = applyManualEditPatch(source, {
+      kind: 'set-outer-html',
+      id: 'mark',
+      html: [
+        '<svg data-od-id="mark">',
+        '<cursor id="c" href="https://evil.example/cursor.svg"></cursor>',
+        '<cursor id="local" href="#c"></cursor>',
+        '<rect cursor="url(#local)" width="10" height="10"></rect>',
+        '</svg>',
+      ].join(''),
+    });
+    expect(result.ok, result.error).toBe(true);
+    const html = readManualEditOuterHtml(result.source, 'mark');
+    expect(html).not.toContain('evil.example');
+    expect(html).toContain('href="#c"');
+  });
+
+  it('rejects absolute https form action/formaction phishing', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<form data-od-id="form" action="/submit"><button data-od-id="submit" formaction="/submit">Go</button></form>',
+      '</body></html>',
+    ].join('');
+    const form = applyManualEditPatch(source, {
+      kind: 'set-attributes',
+      id: 'form',
+      attributes: { action: 'https://evil.example/phish' },
+    });
+    expect(form.ok).toBe(false);
+    expect(readManualEditAttributes(form.source, 'form').action).toBe('/submit');
+
+    const button = applyManualEditPatch(source, {
+      kind: 'set-attributes',
+      id: 'submit',
+      attributes: { formaction: 'https://evil.example/phish' },
+    });
+    expect(button.ok).toBe(false);
+    expect(readManualEditAttributes(button.source, 'submit').formaction).toBe('/submit');
+
+    const outer = applyManualEditPatch(source, {
+      kind: 'set-outer-html',
+      id: 'form',
+      html: '<form data-od-id="form" action="https://evil.example/phish"><button>Go</button></form>',
+    });
+    expect(outer.ok, outer.error).toBe(true);
+    expect(readManualEditOuterHtml(outer.source, 'form')).not.toContain('evil.example');
+  });
+
+  it('scrubs IE/HTC behavior: bindings from inline and salvaged styles', () => {
+    const inline = applyManualEditPatch(baseSource, {
+      kind: 'set-outer-html',
+      id: 'hero-title',
+      html: '<h1 data-od-id="hero-title" style="behavior:url(evil.htc);color:navy">Title</h1>',
+    });
+    expect(inline.ok, inline.error).toBe(true);
+    const inlineHtml = readManualEditOuterHtml(inline.source, 'hero-title');
+    expect(inlineHtml).not.toMatch(/behavior/i);
+    expect(inlineHtml).toContain('color:navy');
+
+    const salvaged = applyManualEditPatch(baseSource, {
+      kind: 'set-outer-html',
+      id: 'hero-title',
+      html: [
+        '<style>.hero-pop{behavior:url(evil.htc);color:#444}</style>',
+        '<h1 class="hero-pop" data-od-id="hero-title">Original title</h1>',
+      ].join(''),
+    });
+    expect(salvaged.ok, salvaged.error).toBe(true);
+    expect(salvaged.source).toContain('.hero-pop{');
+    expect(salvaged.source).toContain('color:#444');
+    expect(salvaged.source).not.toMatch(/behavior/i);
+  });
+
+  it('strips HTML behavior attributes from fragments and set-attributes', () => {
+    expect(
+      sanitizeManualEditHtmlFragment('<div behavior="url(evil.htc)">safe</div>'),
+    ).toBe('<div>safe</div>');
+
+    const result = applyManualEditPatch(baseSource, {
+      kind: 'set-attributes',
+      id: 'hero-title',
+      attributes: { behavior: 'url(evil.htc)', title: 'ok' },
+    });
+    expect(result.ok, result.error).toBe(true);
+    const attrs = readManualEditAttributes(result.source, 'hero-title');
+    expect(attrs.behavior).toBeUndefined();
+    expect(attrs.title).toBe('ok');
+  });
+
+  it('rejects set-token values that hide url()/expression() behind CSS escapes', () => {
+    const escapedUrl = applyManualEditPatch(baseSource, {
+      kind: 'set-token',
+      token: '--brand',
+      value: '\\75rl(https://evil.example/x.png)',
+    });
+    expect(escapedUrl.ok).toBe(false);
+    expect(escapedUrl.source).toContain('--brand: #111;');
+    expect(escapedUrl.source).not.toContain('evil.example');
+
+    const escapedExpr = applyManualEditPatch(baseSource, {
+      kind: 'set-token',
+      token: '--brand',
+      value: '\\65xpression(alert(1))',
+    });
+    expect(escapedExpr.ok).toBe(false);
+    expect(escapedExpr.source).toContain('--brand: #111;');
+  });
+
+  it('removes SMIL nodes that target srcdoc or content', () => {
+    // iframe/meta roots are dropped entirely — exercise SMIL kill under a safe host.
+    const srcdoc = sanitizeManualEditHtmlFragment(
+      '<div><animate attributeName="srcdoc" to="<script>alert(1)</script>"></animate><span>ok</span></div>',
+    );
+    expect(srcdoc).toContain('<span>ok</span>');
+    expect(srcdoc).not.toMatch(/<animate\b/i);
+    expect(srcdoc).not.toMatch(/srcdoc/i);
+
+    const content = sanitizeManualEditHtmlFragment(
+      '<div><set attributeName="content" to="0;url=javascript:alert(1)"></set><span>ok</span></div>',
+    );
+    expect(content).toContain('<span>ok</span>');
+    expect(content).not.toMatch(/<set\b/i);
+    expect(content).not.toMatch(/javascript/i);
+  });
+
+  it('removes SMIL nodes that assign behavior or http-equiv', () => {
+    const behavior = sanitizeManualEditHtmlFragment(
+      '<div><set attributeName="behavior" to="url(evil.htc)"></set><span>ok</span></div>',
+    );
+    expect(behavior).toContain('<span>ok</span>');
+    expect(behavior).not.toMatch(/<set\b/i);
+    expect(behavior).not.toMatch(/behavior/i);
+
+    const httpEquiv = sanitizeManualEditHtmlFragment(
+      '<div><animate attributeName="http-equiv" to="refresh"></animate><span>ok</span></div>',
+    );
+    expect(httpEquiv).toContain('<span>ok</span>');
+    expect(httpEquiv).not.toMatch(/<animate\b/i);
+    expect(httpEquiv).not.toMatch(/http-equiv/i);
+  });
+
+  it('keeps ping on same-document relative or fragment targets only', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<a data-od-id="cta" href="#ok" ping="#local">Start</a>',
+      '</body></html>',
+    ].join('');
+    const denied = applyManualEditPatch(source, {
+      kind: 'set-attributes',
+      id: 'cta',
+      attributes: { ping: 'https://evil.example/track' },
+    });
+    expect(denied.ok).toBe(false);
+    expect(readManualEditAttributes(denied.source, 'cta').ping).toBe('#local');
+
+    const outer = applyManualEditPatch(source, {
+      kind: 'set-outer-html',
+      id: 'cta',
+      html: '<a data-od-id="cta" href="#ok" ping="https://evil.example/track">Start</a>',
+    });
+    expect(outer.ok, outer.error).toBe(true);
+    expect(readManualEditOuterHtml(outer.source, 'cta')).not.toContain('evil.example');
+    expect(readManualEditOuterHtml(outer.source, 'cta')).not.toMatch(/\bping=/i);
+
+    const ok = applyManualEditPatch(source, {
+      kind: 'set-attributes',
+      id: 'cta',
+      attributes: { ping: '/same-origin/track' },
+    });
+    expect(ok.ok, ok.error).toBe(true);
+    expect(readManualEditAttributes(ok.source, 'cta').ping).toBe('/same-origin/track');
+
+    expect(
+      sanitizeManualEditHtmlFragment('<a href="#ok" ping="#local">x</a>'),
+    ).toBe('<a href="#ok" ping="#local">x</a>');
+  });
+
+  it('removes SMIL nodes that retarget href to absolute https', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<svg data-od-id="mark"><a href="#safe"><text>hi</text></a></svg>',
+      '</body></html>',
+    ].join('');
+    const result = applyManualEditPatch(source, {
+      kind: 'set-outer-html',
+      id: 'mark',
+      html: [
+        '<svg data-od-id="mark">',
+        '<a href="#safe"><text>hi</text>',
+        '<set attributeName="href" to="https://evil.example/phish"></set>',
+        '</a></svg>',
+      ].join(''),
+    });
+    expect(result.ok, result.error).toBe(true);
+    const html = readManualEditOuterHtml(result.source, 'mark');
+    expect(html).toContain('href="#safe"');
+    expect(html).not.toContain('evil.example');
+    expect(html).not.toMatch(/<set\b/i);
+  });
+
+  it('rejects external animateMotion/animate hrefs', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<svg data-od-id="mark"><circle id="c" r="2"></circle></svg>',
+      '</body></html>',
+    ].join('');
+    const result = applyManualEditPatch(source, {
+      kind: 'set-outer-html',
+      id: 'mark',
+      html: [
+        '<svg data-od-id="mark">',
+        '<circle id="c" r="2"></circle>',
+        '<animateMotion path="M0,0 L10,10" href="https://evil.example/x.svg#c"></animateMotion>',
+        '<animate href="https://evil.example/x.svg#c" attributeName="r" to="4"></animate>',
+        '<animateMotion path="M0,0 L1,1" href="#c"></animateMotion>',
+        '</svg>',
+      ].join(''),
+    });
+    expect(result.ok, result.error).toBe(true);
+    const html = readManualEditOuterHtml(result.source, 'mark');
+    expect(html).not.toContain('evil.example');
+    expect(html).toContain('href="#c"');
+  });
+
+  it('sanitizeManualEditHtmlFragment strips nested script and on* handlers', () => {
+    const out = sanitizeManualEditHtmlFragment(
+      '<section class="slide"><h1 onclick="alert(1)">Hero</h1><script src="https://evil.example/x.js"></script></section>',
+    );
+    expect(out).toContain('<h1');
+    expect(out).toContain('Hero');
+    expect(out).not.toMatch(/onclick/i);
+    expect(out).not.toMatch(/<script\b/i);
+    expect(out).not.toContain('evil.example');
+  });
+
+  it('scrubs -webkit-image-set javascript strings from inline and salvaged styles', () => {
+    const inline = applyManualEditPatch(baseSource, {
+      kind: 'set-outer-html',
+      id: 'hero-title',
+      html: '<h1 data-od-id="hero-title" style="background:-webkit-image-set(&quot;javascript:alert(1)&quot; 1x);color:navy">Title</h1>',
+    });
+    expect(inline.ok, inline.error).toBe(true);
+    const inlineHtml = readManualEditOuterHtml(inline.source, 'hero-title');
+    expect(inlineHtml).not.toMatch(/javascript/i);
+    expect(inlineHtml).toContain('color:navy');
+
+    const salvaged = applyManualEditPatch(baseSource, {
+      kind: 'set-outer-html',
+      id: 'hero-title',
+      html: [
+        '<style>.hero-pop{background:image-set("javascript:alert(1)" 1x);color:#444}</style>',
+        '<h1 class="hero-pop" data-od-id="hero-title">Original title</h1>',
+      ].join(''),
+    });
+    expect(salvaged.ok, salvaged.error).toBe(true);
+    expect(salvaged.source).toContain('.hero-pop{');
+    expect(salvaged.source).not.toMatch(/javascript/i);
+  });
+
+  it('drops remote image()/image-set() on resource CSS props', () => {
+    const fragment = sanitizeManualEditHtmlFragment(
+      [
+        '<div style="',
+        'filter:image(&quot;https://evil.example/f.svg&quot;);',
+        'mask-image:image-set(&quot;https://evil.example/m.svg&quot; 1x);',
+        'color:red',
+        '">x</div>',
+      ].join(''),
+    );
+    expect(fragment).toContain('color:red');
+    expect(fragment).not.toContain('evil.example');
+    expect(fragment).not.toMatch(/filter\s*:/i);
+    expect(fragment).not.toMatch(/mask-image\s*:/i);
+
+    const salvaged = applyManualEditPatch(baseSource, {
+      kind: 'set-outer-html',
+      id: 'hero-title',
+      html: [
+        '<style>.hero-pop{backdrop-filter:image("https://evil.example/f.svg");color:#444}</style>',
+        '<h1 class="hero-pop" data-od-id="hero-title">Original title</h1>',
+      ].join(''),
+    });
+    expect(salvaged.ok, salvaged.error).toBe(true);
+    expect(salvaged.source).toContain('color:#444');
+    expect(salvaged.source).not.toContain('evil.example');
+  });
+
+  it('rejects set-token image()/image-set() and bare scheme strings', () => {
+    for (const value of [
+      'image("javascript:alert(1)")',
+      'image-set("javascript:alert(1)" 1x)',
+      'javascript:alert(1)',
+      'data:text/html,hi',
+    ]) {
+      const denied = applyManualEditPatch(baseSource, {
+        kind: 'set-token',
+        token: '--brand',
+        value,
+      });
+      expect(denied.ok, value).toBe(false);
+      expect(denied.source).toContain('--brand: #111;');
+    }
+  });
+
+  it('scrubs image("data:…") without leaving truncated SVG junk', () => {
+    const dataHtml = sanitizeManualEditHtmlFragment(
+      '<div style=\'background: image("data:text/html,<script>alert(1)</script>");color:navy\'>x</div>',
+    );
+    expect(dataHtml).toContain('color:navy');
+    expect(dataHtml).not.toMatch(/data:text\/html/i);
+    expect(dataHtml).not.toMatch(/<script\b/i);
+
+    const nestedParen = sanitizeManualEditHtmlFragment(
+      '<div style=\'background: -webkit-image-set("data:image/svg+xml,<svg onload=alert(1)></svg>" 1x);color:navy\'>x</div>',
+    );
+    expect(nestedParen).toContain('color:navy');
+    expect(nestedParen).not.toMatch(/onload/i);
+    expect(nestedParen).not.toMatch(/<\/svg>/i);
+    expect(nestedParen).not.toMatch(/data:image\/svg/i);
+  });
+
+  it('drops foreignObject and MathML annotation-xml HTML islands', () => {
+    const out = sanitizeManualEditFullSource([
+      '<!doctype html><html><body>',
+      '<p data-od-id="ok">safe</p>',
+      '<svg><foreignObject><form action="/api/secrets" method="post">',
+      '<input name="cookie"><button>Send</button></form></foreignObject></svg>',
+      '<math><annotation-xml encoding="text/html">',
+      '<form action="/login"><input name="password"><button>Go</button></form>',
+      '</annotation-xml></math>',
+      '</body></html>',
+    ].join(''));
+    expect(out).toContain('data-od-id="ok"');
+    expect(out.toLowerCase()).not.toContain('foreignobject');
+    expect(out.toLowerCase()).not.toContain('annotation-xml');
+    expect(out.toLowerCase()).not.toContain('<form');
+    expect(out).not.toContain('/api/secrets');
+  });
+
+  it('strips @font-face and @namespace from salvaged style siblings', () => {
+    const result = applyManualEditPatch(baseSource, {
+      kind: 'set-outer-html',
+      id: 'hero-title',
+      html: [
+        '<style>@namespace url(http://www.w3.org/1999/xhtml);@font-face{font-family:X;src:url(https://evil.example/x.woff2)}.hero-pop{color:#555}</style>',
+        '<h1 class="hero-pop" data-od-id="hero-title">Original title</h1>',
+      ].join(''),
+    });
+    expect(result.ok, result.error).toBe(true);
+    expect(result.source).toContain('.hero-pop{color:#555}');
+    expect(result.source).not.toMatch(/@namespace/i);
+    expect(result.source).not.toMatch(/@font-face/i);
+    expect(result.source).not.toContain('evil.example');
+  });
+
+  it('rejects external SVG use/image hrefs and keeps fragment refs', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<svg data-od-id="mark"><symbol id="icon"></symbol><use href="#icon"></use></svg>',
+      '</body></html>',
+    ].join('');
+    const result = applyManualEditPatch(source, {
+      kind: 'set-outer-html',
+      id: 'mark',
+      html: [
+        '<svg data-od-id="mark">',
+        '<symbol id="icon"></symbol>',
+        '<use href="https://evil.example/sprite.svg#icon"></use>',
+        '<use xlink:href="//evil.example/sprite.svg#icon"></use>',
+        '<use href="#icon"></use>',
+        '<image href="https://evil.example/x.png"></image>',
+        '</svg>',
+      ].join(''),
+    });
+    expect(result.ok, result.error).toBe(true);
+    const html = readManualEditOuterHtml(result.source, 'mark');
+    expect(html).toContain('href="#icon"');
+    expect(html).not.toContain('evil.example');
+    expect(html).not.toMatch(/<image[^>]+href=/i);
+  });
+
+  it('scrubs SMIL style animations that embed javascript urls', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<svg data-od-id="mark"><rect width="10" height="10"></rect></svg>',
+      '</body></html>',
+    ].join('');
+    const result = applyManualEditPatch(source, {
+      kind: 'set-outer-html',
+      id: 'mark',
+      html: [
+        '<svg data-od-id="mark">',
+        '<rect width="10" height="10">',
+        '<set attributeName="style" to="background:url(javascript:alert(1));color:red"></set>',
+        '</rect></svg>',
+      ].join(''),
+    });
+    expect(result.ok, result.error).toBe(true);
+    const html = readManualEditOuterHtml(result.source, 'mark');
+    expect(html).not.toMatch(/javascript/i);
+    // Either the set node is dropped or its to= value is scrubbed clean.
+    if (/<set\b/i.test(html)) {
+      expect(html).toMatch(/to=["'][^"']*color:red/i);
+      expect(html).not.toMatch(/to=["'][^"']*javascript/i);
+    }
+  });
+
+  it('rejects HTML character-reference javascript: URL bypasses', () => {
+    for (const href of [
+      '&#106;avascript:alert(1)',
+      'javascript&#58;alert(1)',
+      '&#x6a;avascript:alert(1)',
+    ]) {
+      const denied = applyManualEditPatch(baseSource, {
+        kind: 'set-link',
+        id: 'cta',
+        text: 'Start',
+        href,
+      });
+      expect(denied.ok, href).toBe(false);
+      expect(readManualEditFields(baseSource, 'cta').href).toBe('/start');
+    }
+  });
+
+  it('rejects named HTML-entity javascript: URL bypasses', () => {
+    for (const href of [
+      'javascript&colon;alert(1)',
+      'java&Tab;script:alert(1)',
+      'java&NewLine;script:alert(1)',
+      'java&shy;script:alert(1)',
+      'java&WJ;script:alert(1)',
+      'java&ZeroWidthSpace;script:alert(1)',
+      'java&hairsp;script:alert(1)',
+      'java&ThickSpace;script:alert(1)',
+    ]) {
+      const denied = applyManualEditPatch(baseSource, {
+        kind: 'set-link',
+        id: 'cta',
+        text: 'Start',
+        href,
+      });
+      expect(denied.ok, href).toBe(false);
+    }
+
+    expect(
+      sanitizeManualEditHtmlFragment('<a href="java&shy;script:alert(1)">x</a>'),
+    ).not.toMatch(/javascript|shy;script/i);
+
+    const formSource = [
+      '<!doctype html><html><body>',
+      '<button data-od-id="submit" formaction="/ok">Go</button>',
+      '</body></html>',
+    ].join('');
+    const formaction = applyManualEditPatch(formSource, {
+      kind: 'set-attributes',
+      id: 'submit',
+      attributes: { formaction: 'javascript&colon;alert(1)' },
+    });
+    // Unsafe URL attrs are skipped (patch may still ok); original must remain.
+    expect(formaction.source).toContain('formaction="/ok"');
+    expect(formaction.source).not.toMatch(/javascript/i);
+    expect(formaction.source).not.toContain('&colon;');
+  });
+
+  it('drops remote url() on border-image/shape-outside/list-style resource props', () => {
+    const fragment = sanitizeManualEditHtmlFragment(
+      [
+        '<div style="',
+        'border-image-source:url(https://evil.example/x.svg);',
+        'shape-outside:url(https://evil.example/s.svg);',
+        'list-style-image:url(https://evil.example/l.svg);',
+        'offset-path:url(https://evil.example/o.svg);',
+        'color:red',
+        '">x</div>',
+      ].join(''),
+    );
+    expect(fragment).toContain('color:red');
+    expect(fragment).not.toContain('evil.example');
+    expect(fragment).not.toMatch(/border-image/i);
+    expect(fragment).not.toMatch(/shape-outside/i);
+    expect(fragment).not.toMatch(/list-style/i);
+    expect(fragment).not.toMatch(/offset-path/i);
+
+    const viaVar = sanitizeManualEditHtmlFragment(
+      '<div style="border-image-source:var(--x);color:red">x</div>',
+    );
+    expect(viaVar).toContain('color:red');
+    expect(viaVar).not.toMatch(/border-image-source/i);
+  });
+
+  it('scrubs CSS element() from inline and salvaged styles', () => {
+    const inline = sanitizeManualEditHtmlFragment(
+      '<div style="background:element(#hero);color:red">x</div>',
+    );
+    expect(inline).toContain('color:red');
+    expect(inline).not.toMatch(/\belement\s*\(/i);
+
+    const salvaged = applyManualEditPatch(baseSource, {
+      kind: 'set-outer-html',
+      id: 'hero-title',
+      html: [
+        '<style>.hero-pop{background:element(#hero);color:#444}</style>',
+        '<h1 class="hero-pop" data-od-id="hero-title">Original title</h1>',
+      ].join(''),
+    });
+    expect(salvaged.ok, salvaged.error).toBe(true);
+    expect(salvaged.source).toContain('color:#444');
+    expect(salvaged.source).not.toMatch(/\belement\s*\(/i);
+  });
+
+  it('strips @counter-style and @page with remote urls from salvaged styles', () => {
+    const result = applyManualEditPatch(baseSource, {
+      kind: 'set-outer-html',
+      id: 'hero-title',
+      html: [
+        '<style>',
+        '@counter-style x{system:cyclic;symbols:url(https://evil.example/x.svg);suffix:" "}',
+        '@page{background:url(https://evil.example/p.svg)}',
+        '.hero-pop{color:#555}',
+        '</style>',
+        '<h1 class="hero-pop" data-od-id="hero-title">Original title</h1>',
+      ].join(''),
+    });
+    expect(result.ok, result.error).toBe(true);
+    expect(result.source).toContain('.hero-pop{color:#555}');
+    expect(result.source).not.toMatch(/@counter-style/i);
+    expect(result.source).not.toMatch(/@page\b/i);
+    expect(result.source).not.toContain('evil.example');
+  });
+
+  it('strips @counter-style when suffix strings contain closing braces', () => {
+    const result = applyManualEditPatch(baseSource, {
+      kind: 'set-outer-html',
+      id: 'hero-title',
+      html: [
+        '<style>',
+        '@counter-style x{system:cyclic;symbols:url(https://evil.example/x.svg);suffix:"}"}',
+        '.hero-pop{color:#555}',
+        '</style>',
+        '<h1 class="hero-pop" data-od-id="hero-title">Original title</h1>',
+      ].join(''),
+    });
+    expect(result.ok, result.error).toBe(true);
+    expect(result.source).toContain('.hero-pop{color:#555}');
+    expect(result.source).not.toMatch(/@counter-style/i);
+    expect(result.source).not.toContain('evil.example');
+  });
+
+  it('rejects set-attributes when every attribute is skipped as unsafe', () => {
+    const denied = applyManualEditPatch(baseSource, {
+      kind: 'set-attributes',
+      id: 'cta',
+      attributes: {
+        href: 'javascript:alert(1)',
+        onclick: 'alert(1)',
+      },
+    });
+    expect(denied.ok).toBe(false);
+    expect(denied.error).toMatch(/none of the requested attributes/i);
+    expect(readManualEditFields(denied.source, 'cta').href).toBe('/start');
+  });
+
+  it('scrubs element() with nested parentheses via quote-aware rewrite', () => {
+    const out = sanitizeManualEditHtmlFragment(
+      '<div style="background:element(#hero);filter:element(#x);color:navy">x</div>',
+    );
+    expect(out).toContain('color:navy');
+    expect(out).not.toMatch(/\belement\s*\(/i);
+  });
+
+  it('keeps scrubbed nested slide <style> instead of dropping the host', () => {
+    const fragment = sanitizeManualEditHtmlFragment([
+      '<section class="slide">',
+      '<style>.hero-pop{font-size:40px;color:#ef4444;background:url(javascript:alert(1))}</style>',
+      '<h1 class="hero-pop" data-od-id="hero-title">Title</h1>',
+      '</section>',
+    ].join(''));
+    expect(fragment).toContain('<style>');
+    expect(fragment).toContain('.hero-pop{');
+    expect(fragment).toContain('font-size:40px');
+    expect(fragment).toContain('color:#ef4444');
+    expect(fragment).not.toMatch(/javascript/i);
+    expect(fragment).toContain('data-od-id="hero-title"');
+
+    const full = sanitizeManualEditFullSource([
+      '<!doctype html><html><body>',
+      '<section class="slide">',
+      '<style>.hero-pop{color:#123456}</style>',
+      '<h1 class="hero-pop">Title</h1>',
+      '</section>',
+      '</body></html>',
+    ].join(''));
+    expect(full).toContain('<style>');
+    expect(full).toContain('.hero-pop{color:#123456}');
+  });
+
+  it('scrubs SMIL presentation values instead of boolean-only reject', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<svg data-od-id="mark"><rect>',
+      '<set data-od-id="anim" attributeName="filter" to="url(#ok) blur(1px)"></set>',
+      '</rect></svg>',
+      '</body></html>',
+    ].join('');
+    // Remote url in a compound presentation value — scrub/drop unsafe piece path.
+    const dirty = applyManualEditPatch(source, {
+      kind: 'set-outer-html',
+      id: 'mark',
+      html: [
+        '<svg data-od-id="mark"><rect>',
+        '<set data-od-id="anim" attributeName="filter" to="url(https://evil.example/f.svg#x)"></set>',
+        '</rect></svg>',
+      ].join(''),
+    });
+    expect(dirty.ok, dirty.error).toBe(true);
+    const html = readManualEditOuterHtml(dirty.source, 'mark');
+    expect(html).not.toContain('evil.example');
+  });
+
+  it('scrubs SMIL attributeName color-profile and marker-start remote urls', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<svg data-od-id="mark"><rect></rect></svg>',
+      '</body></html>',
+    ].join('');
+    const dirty = applyManualEditPatch(source, {
+      kind: 'set-outer-html',
+      id: 'mark',
+      html: [
+        '<svg data-od-id="mark"><rect>',
+        '<set attributeName="color-profile" to="url(https://evil.example/profile.icc)"></set>',
+        '<animate attributeName="marker-start" values="url(https://evil.example/m.svg#x);url(#ok)"></animate>',
+        '</rect></svg>',
+      ].join(''),
+    });
+    expect(dirty.ok, dirty.error).toBe(true);
+    const html = readManualEditOuterHtml(dirty.source, 'mark');
+    expect(html).not.toContain('evil.example');
+    expect(html.toLowerCase()).not.toMatch(/javascript/);
+  });
+
+  it('scrubs SMIL attributeName marker-mid and marker-end remote urls', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<svg data-od-id="mark"><path d="M0 0"></path></svg>',
+      '</body></html>',
+    ].join('');
+    const dirty = applyManualEditPatch(source, {
+      kind: 'set-outer-html',
+      id: 'mark',
+      html: [
+        '<svg data-od-id="mark"><path d="M0 0">',
+        '<set attributeName="marker-mid" to="url(https://evil.example/mid.svg#x)"></set>',
+        '<animate attributeName="marker-end" values="url(https://evil.example/end.svg#y);url(#ok)"></animate>',
+        '</path></svg>',
+      ].join(''),
+    });
+    expect(dirty.ok, dirty.error).toBe(true);
+    const html = readManualEditOuterHtml(dirty.source, 'mark');
+    expect(html).not.toContain('evil.example');
+  });
+
+  it('scrubs SMIL attributeName cursor and stroke remote urls', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<svg data-od-id="mark"><rect></rect></svg>',
+      '</body></html>',
+    ].join('');
+    const dirty = applyManualEditPatch(source, {
+      kind: 'set-outer-html',
+      id: 'mark',
+      html: [
+        '<svg data-od-id="mark"><rect>',
+        '<set attributeName="cursor" to="url(https://evil.example/c.svg#x)"></set>',
+        '<animate attributeName="stroke" values="url(https://evil.example/s.svg#y);red"></animate>',
+        '</rect></svg>',
+      ].join(''),
+    });
+    expect(dirty.ok, dirty.error).toBe(true);
+    const html = readManualEditOuterHtml(dirty.source, 'mark');
+    expect(html).not.toContain('evil.example');
+  });
+
+  it('scrubs SMIL attributeName poster/ping/usemap/formaction remote urls', () => {
+    // Nav URL SSOT is MANUAL_EDIT_SMIL_NAV_ATTR_NAMES — lock residual attrs (447).
+    const source = [
+      '<!doctype html><html><body>',
+      '<div data-od-id="host"><span>ok</span></div>',
+      '</body></html>',
+    ].join('');
+    const dirty = applyManualEditPatch(source, {
+      kind: 'set-outer-html',
+      id: 'host',
+      html: [
+        '<div data-od-id="host">',
+        '<video><set attributeName="poster" to="https://evil.example/p.png"></set></video>',
+        '<a><animate attributeName="ping" values="https://evil.example/p; /ok"></animate></a>',
+        '<img><set attributeName="usemap" to="https://evil.example/map"></set></img>',
+        '<button><animate attributeName="formaction" values="https://evil.example/phish;/ok"></animate></button>',
+        '<span>ok</span>',
+        '</div>',
+      ].join(''),
+    });
+    expect(dirty.ok, dirty.error).toBe(true);
+    const html = readManualEditOuterHtml(dirty.source, 'host');
+    expect(html).not.toContain('evil.example');
+    expect(html).toContain('<span>ok</span>');
+  });
+
+  it('scrubs SMIL attributeName cite/longdesc/archive/background remote urls', () => {
+    // Remaining MANUAL_EDIT_SMIL_NAV_ATTR_NAMES residuals (448).
+    const source = [
+      '<!doctype html><html><body>',
+      '<div data-od-id="host"><span>ok</span></div>',
+      '</body></html>',
+    ].join('');
+    const dirty = applyManualEditPatch(source, {
+      kind: 'set-outer-html',
+      id: 'host',
+      html: [
+        '<div data-od-id="host">',
+        '<blockquote><set attributeName="cite" to="https://evil.example/c"></set></blockquote>',
+        '<img><animate attributeName="longdesc" values="https://evil.example/l;/ok"></animate></img>',
+        '<object><set attributeName="archive" to="https://evil.example/a.jar /ok"></set></object>',
+        '<body><animate attributeName="background" values="https://evil.example/b.png;/ok"></animate></body>',
+        '<span>ok</span>',
+        '</div>',
+      ].join(''),
+    });
+    expect(dirty.ok, dirty.error).toBe(true);
+    const html = readManualEditOuterHtml(dirty.source, 'host');
+    expect(html).not.toContain('evil.example');
+    expect(html).toContain('<span>ok</span>');
+  });
+
+  it('scrubs SMIL attributeName dynsrc/lowsrc/manifest/codebase/classid/data remote urls', () => {
+    // Last MANUAL_EDIT_SMIL_NAV_ATTR_NAMES residuals (456).
+    const source = [
+      '<!doctype html><html><body>',
+      '<div data-od-id="host"><span>ok</span></div>',
+      '</body></html>',
+    ].join('');
+    const dirty = applyManualEditPatch(source, {
+      kind: 'set-outer-html',
+      id: 'host',
+      html: [
+        '<div data-od-id="host">',
+        '<img><set attributeName="dynsrc" to="https://evil.example/d.mp4"></set></img>',
+        '<img><animate attributeName="lowsrc" values="https://evil.example/lo.png;/ok"></animate></img>',
+        '<html><set attributeName="manifest" to="https://evil.example/app.cache"></set></html>',
+        '<object><animate attributeName="codebase" values="https://evil.example/cb;/ok"></animate></object>',
+        '<object><set attributeName="classid" to="https://evil.example/cl"></set></object>',
+        '<object><animate attributeName="data" values="https://evil.example/data.bin;/ok"></animate></object>',
+        '<span>ok</span>',
+        '</div>',
+      ].join(''),
+    });
+    expect(dirty.ok, dirty.error).toBe(true);
+    const html = readManualEditOuterHtml(dirty.source, 'host');
+    expect(html).not.toContain('evil.example');
+    expect(html).toContain('<span>ok</span>');
+  });
+
+  it('rejects namespaced fill/mask via set-attributes local-name gate', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<svg data-od-id="mark"><rect fill="red"></rect></svg>',
+      '</body></html>',
+    ].join('');
+    const fillDenied = applyManualEditPatch(source, {
+      kind: 'set-attributes',
+      id: 'mark',
+      attributes: { 'foo:fill': 'url(javascript:alert(1))' },
+    });
+    expect(fillDenied.ok).toBe(false);
+    const maskDenied = applyManualEditPatch(source, {
+      kind: 'set-attributes',
+      id: 'mark',
+      attributes: { 'bar:mask': 'url(javascript:alert(2))' },
+    });
+    expect(maskDenied.ok).toBe(false);
+    expect(source).toContain('fill="red"');
+  });
+
+  it('rejects mixed set-attributes when any value-safety check fails (all-or-nothing)', () => {
+    // Safe title must not land when a sibling presentation/URL value is evil (441).
+    const source = [
+      '<!doctype html><html><body>',
+      '<svg data-od-id="mark" title="keep"><rect fill="red"></rect></svg>',
+      '</body></html>',
+    ].join('');
+    const mixed = applyManualEditPatch(source, {
+      kind: 'set-attributes',
+      id: 'mark',
+      attributes: {
+        title: 'applied-if-partial',
+        'foo:fill': 'url(javascript:alert(1))',
+      },
+    });
+    expect(mixed.ok).toBe(false);
+    expect(mixed.error).toMatch(/none of the requested attributes/i);
+    const attrs = readManualEditAttributes(mixed.source, 'mark');
+    expect(attrs.title).toBe('keep');
+    expect(mixed.source).not.toContain('applied-if-partial');
+    expect(mixed.source.toLowerCase()).not.toContain('javascript');
+  });
+
+  it('rejects namespaced URL attrs via set-attributes local-name gate', () => {
+    // Sanitize/failClosed cover foo:href; set-attributes must fail closed too (445).
+    const source = [
+      '<!doctype html><html><body>',
+      '<a data-od-id="cta" href="/start" title="keep">Start</a>',
+      '<img data-od-id="img" src="/ok.png" alt="x">',
+      '<form data-od-id="form" action="/submit">',
+      '<button data-od-id="btn" formaction="/ok">Go</button>',
+      '</form>',
+      '</body></html>',
+    ].join('');
+    const cases: Array<{ id: string; attributes: Record<string, string> }> = [
+      { id: 'cta', attributes: { 'foo:href': 'javascript:alert(1)' } },
+      { id: 'img', attributes: { 'foo:src': 'javascript:alert(2)' } },
+      { id: 'img', attributes: { 'bar:srcset': 'javascript:alert(3) 1x' } },
+      { id: 'img', attributes: { 'foo:imagesrcset': 'javascript:alert(4) 1x' } },
+      { id: 'btn', attributes: { 'bar:formaction': 'javascript:alert(5)' } },
+      { id: 'cta', attributes: { 'foo:ping': 'javascript:alert(6)' } },
+      { id: 'form', attributes: { 'foo:action': 'javascript:alert(7)' } },
+    ];
+    for (const c of cases) {
+      const denied = applyManualEditPatch(source, {
+        kind: 'set-attributes',
+        id: c.id,
+        attributes: c.attributes,
+      });
+      expect(denied.ok, JSON.stringify(c.attributes)).toBe(false);
+      expect(denied.source.toLowerCase()).not.toContain('javascript');
+    }
+    const mixed = applyManualEditPatch(source, {
+      kind: 'set-attributes',
+      id: 'cta',
+      attributes: { 'foo:href': 'javascript:alert(8)', title: 'partial' },
+    });
+    expect(mixed.ok).toBe(false);
+    expect(readManualEditAttributes(mixed.source, 'cta').title).toBe('keep');
+    expect(mixed.source).not.toContain('partial');
+  });
+
+  it('does not drop whole style blocks for .javascript:hover selectors', () => {
+    const out = sanitizeManualEditHtmlFragment(
+      '<div><style>.javascript:hover{color:red}.btn{color:blue}</style><span>ok</span></div>',
+    );
+    expect(out).toContain('<style>');
+    expect(out).toContain('.javascript:hover{color:red}');
+    expect(out).toContain('.btn{color:blue}');
+    expect(out).toContain('<span>ok</span>');
+
+    const pathSeg = sanitizeManualEditHtmlFragment(
+      '<div style="background:url(/assets/javascript:docs.png);color:navy">x</div>',
+    );
+    expect(pathSeg).toContain('color:navy');
+    expect(pathSeg).toContain('/assets/javascript:docs.png');
   });
 
   it('preserves fragment-shaped HTML when saving patches', () => {
@@ -1032,6 +3381,47 @@ describe('manual edit source patches', () => {
     expect(result.source).toContain('<h1 data-od-id="title" data-od-edit="text">김이박</h1>');
     expect(result.source).toContain('<p data-od-id="body">본문</p>');
     expect(result.source).not.toContain('Unexpected sibling edit');
+  });
+
+  it('rejects scoped-position matches when a sibling insert shifts tags', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<section class="slide" data-slide-index="0">',
+      '<p data-od-id="note" data-od-edit="text">Remember this note</p>',
+      '</section>',
+      '</body></html>',
+    ].join('');
+    // Model inserts a button before the paragraph — path-0 would land on the
+    // button if position matching ignored tags.
+    const modelOutput = [
+      '<!doctype html><html><body>',
+      '<section class="slide" data-slide-index="0">',
+      '<button>Done</button>',
+      '<p>Remember this note — updated</p>',
+      '</section>',
+      '</body></html>',
+    ].join('');
+
+    const result = mergeManualEditTargetsFromSource(
+      source,
+      modelOutput,
+      ['note'],
+      { slideIndex: 0 },
+      [{
+        id: 'note',
+        currentText: 'Remember this note',
+        instructionText: "rewrite to 'Remember this note — updated'",
+        htmlHint: '<p data-od-id="note">Remember this note</p>',
+      }],
+    );
+
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    if (!result.ok) return;
+    // Position walk would have landed on <button>Done</button>; tag reject +
+    // text-hint must still graft the paragraph update onto the pinned note.
+    expect(result.source).toContain('<p data-od-id="note" data-od-edit="text">Remember this note — updated</p>');
+    expect(result.source).not.toMatch(/data-od-id="note"[^>]*>Done</i);
+    expect(result.source).not.toMatch(/<button[^>]*data-od-id="note"/i);
   });
 
   it('merges selected targets by instruction text when model output restructures the slide', () => {

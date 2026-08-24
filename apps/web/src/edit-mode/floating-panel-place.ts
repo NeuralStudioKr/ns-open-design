@@ -139,6 +139,99 @@ export function placeManualEditFloatingPanel(
   };
 }
 
+/**
+ * Keep left/top stable across selection geometry churn (resize/move previews).
+ * Width / maxHeight may still follow the canvas.
+ */
+export function withPinnedFloatingPanelPosition(
+  placed: FloatingPanelPlaceResult,
+  pinned: { left: number; top: number } | null | undefined,
+): FloatingPanelPlaceResult {
+  if (!pinned) return placed;
+  return {
+    ...placed,
+    left: pinned.left,
+    top: pinned.top,
+  };
+}
+
+/**
+ * Keep a pinned inspector on-canvas after zoom / viewport shrink.
+ * Uses a short height so collapsed titlebars are not pushed off the top.
+ */
+export function clampFloatingPanelPosition(
+  position: { left: number; top: number },
+  options: {
+    canvasWidth: number;
+    canvasHeight: number;
+    panelWidth?: number;
+    /** Height used only for top clamping (collapsed chrome ≈ 40). */
+    panelHeight?: number;
+    pad?: number;
+  },
+): { left: number; top: number } {
+  const panelWidth = options.panelWidth ?? DEFAULT_PANEL_WIDTH;
+  const panelHeight = options.panelHeight ?? 40;
+  const pad = options.pad ?? DEFAULT_PAD;
+  const canvasWidth = Math.max(panelWidth + pad * 2, options.canvasWidth);
+  const canvasHeight = Math.max(panelHeight + pad * 2, options.canvasHeight);
+  return {
+    left: Math.max(pad, Math.min(position.left, canvasWidth - panelWidth - pad)),
+    top: Math.max(pad, Math.min(position.top, canvasHeight - panelHeight - pad)),
+  };
+}
+
+/** Collapsed titlebar chrome height used for overlap / clamp while folded. */
+export const MANUAL_EDIT_PANEL_COLLAPSED_HEIGHT_PX = 40;
+
+/**
+ * Keep the current inspector position across selection changes unless it would
+ * cover the newly selected element (user request: stop the panel from jumping).
+ */
+export function shouldRepositionFloatingPanelForSelection(input: {
+  pinned: { left: number; top: number } | null | undefined;
+  target: FloatingPanelHostRect;
+  canvasWidth: number;
+  canvasHeight: number;
+  panelWidth?: number;
+  /** Use collapsed chrome height when the inspector is folded. */
+  panelHeight?: number;
+}): boolean {
+  if (!input.pinned) return true;
+  const panelWidth = input.panelWidth ?? DEFAULT_PANEL_WIDTH;
+  const panelHeight = input.panelHeight ?? DEFAULT_PREFERRED_HEIGHT;
+  const clamped = clampFloatingPanelPosition(input.pinned, {
+    canvasWidth: input.canvasWidth,
+    canvasHeight: input.canvasHeight,
+    panelWidth,
+    panelHeight,
+  });
+  return floatingPanelOverlapsTarget(
+    {
+      left: clamped.left,
+      top: clamped.top,
+      width: panelWidth,
+      height: panelHeight,
+    },
+    input.target,
+  );
+}
+
+export function floatingPanelOverlapsTarget(
+  panel: { left: number; top: number; width: number; height: number },
+  target: FloatingPanelHostRect,
+): boolean {
+  return overlapArea(
+    {
+      x: panel.left,
+      y: panel.top,
+      width: Math.max(0, panel.width),
+      height: Math.max(0, panel.height),
+    },
+    normalizeTarget(target),
+  ) > 0.5;
+}
+
 function normalizeTarget(rect: FloatingPanelHostRect): FloatingPanelHostRect {
   return {
     x: Number.isFinite(rect.x) ? rect.x : 0,

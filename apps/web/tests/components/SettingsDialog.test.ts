@@ -142,6 +142,17 @@ describe('SettingsDialog API protocol switching', () => {
     });
   });
 
+  it('loads MiniMax fixed-origin defaults on first visit', () => {
+    expect(switchApiProtocolConfig(baseConfig, 'minimax')).toMatchObject({
+      mode: 'api',
+      apiProtocol: 'minimax',
+      apiKey: '',
+      baseUrl: 'https://api.minimax.io/v1',
+      model: 'MiniMax-M3',
+      apiProviderBaseUrl: 'https://api.minimax.io/v1',
+    });
+  });
+
   it('keeps Azure API version in the Azure draft only', () => {
     const config: AppConfig = {
       ...baseConfig,

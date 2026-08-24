@@ -296,6 +296,7 @@ const MESSAGE_SELECT_COLS = `id, role, content, agent_id AS "agentId", agent_nam
             produced_files_json AS "producedFilesJson",
             feedback_json AS "feedbackJson",
             pre_turn_file_names_json AS "preTurnFileNamesJson",
+            slide_turn_kind AS "slideTurnKind",
             session_mode AS "sessionMode",
             run_context_json AS "runContextJson",
             applied_plugin_snapshot_json AS "appliedPluginSnapshotJson",
@@ -341,12 +342,13 @@ export async function pgUpsertMessage(pool: Pool, conversationId: string, m: DbR
               comment_attachments_json = COALESCE($11, comment_attachments_json),
               produced_files_json = COALESCE($12, produced_files_json), feedback_json = $13,
               pre_turn_file_names_json = COALESCE($14, pre_turn_file_names_json),
-              session_mode = $15, run_context_json = $16, applied_plugin_snapshot_json = $17,
+              slide_turn_kind = COALESCE($15, slide_turn_kind),
+              session_mode = $16, run_context_json = $17, applied_plugin_snapshot_json = $18,
               telemetry_finalized_at = CASE
-                WHEN $18 THEN COALESCE(telemetry_finalized_at, $19)
+                WHEN $19 THEN COALESCE(telemetry_finalized_at, $20)
                 ELSE telemetry_finalized_at
               END,
-              started_at = $20, ended_at = $21
+              started_at = $21, ended_at = $22
         WHERE id = $1`,
       [
         m.id,
@@ -363,6 +365,7 @@ export async function pgUpsertMessage(pool: Pool, conversationId: string, m: DbR
         m.producedFiles ? JSON.stringify(m.producedFiles) : null,
         m.feedback ? JSON.stringify(m.feedback) : null,
         m.preTurnFileNames ? JSON.stringify(m.preTurnFileNames) : null,
+        m.slideTurnKind === 'create' || m.slideTurnKind === 'edit' ? m.slideTurnKind : null,
         m.sessionMode ?? null,
         m.runContext ? JSON.stringify(m.runContext) : null,
         m.appliedPluginSnapshot ? JSON.stringify(m.appliedPluginSnapshot) : null,
@@ -385,10 +388,10 @@ export async function pgUpsertMessage(pool: Pool, conversationId: string, m: DbR
        (id, conversation_id, role, content, agent_id, agent_name,
         run_id, run_status, last_run_event_id, events_json,
         attachments_json, comment_attachments_json, produced_files_json,
-        feedback_json, pre_turn_file_names_json,
+        feedback_json, pre_turn_file_names_json, slide_turn_kind,
         session_mode, run_context_json, applied_plugin_snapshot_json,
         telemetry_finalized_at, started_at, ended_at, position, created_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)`,
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)`,
     [
       m.id,
       conversationId,
@@ -405,6 +408,7 @@ export async function pgUpsertMessage(pool: Pool, conversationId: string, m: DbR
       m.producedFiles ? JSON.stringify(m.producedFiles) : null,
       m.feedback ? JSON.stringify(m.feedback) : null,
       m.preTurnFileNames ? JSON.stringify(m.preTurnFileNames) : null,
+      m.slideTurnKind === 'create' || m.slideTurnKind === 'edit' ? m.slideTurnKind : null,
       m.sessionMode ?? null,
       m.runContext ? JSON.stringify(m.runContext) : null,
       m.appliedPluginSnapshot ? JSON.stringify(m.appliedPluginSnapshot) : null,

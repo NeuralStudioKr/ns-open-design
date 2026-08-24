@@ -2,9 +2,9 @@ import crypto from 'node:crypto';
 import path from 'node:path';
 
 import type { DesktopExportPdfInput } from '@open-design/sidecar-proto';
-import { repairArtifactDocumentHead } from '@open-design/contracts';
+import { healDeckHtmlForStandaloneExport } from '@open-design/contracts';
 
-import { readProjectFile } from './projects.js';
+import { listFiles, readProjectFile } from './projects.js';
 
 export interface BuildDesktopPdfExportInputOptions {
   daemonUrl: string;
@@ -47,7 +47,7 @@ export async function buildDesktopPdfExportInput(
 ): Promise<BuiltDesktopPdfExport> {
   const inline = typeof options.inlineHtml === 'string' ? options.inlineHtml : '';
   const useInline = inline.trim().length > 0;
-  const normalizedInline = useInline ? repairArtifactDocumentHead(inline) : '';
+  const normalizedInline = useInline ? healDeckHtmlForStandaloneExport(inline) : '';
   const source = useInline
     ? await resolveRenderableHtmlSource({
         html: normalizedInline,
@@ -63,8 +63,9 @@ export async function buildDesktopPdfExportInput(
           options.projectId,
           options.fileName,
         );
+        const healed = healDeckHtmlForStandaloneExport(file.buffer.toString('utf8'));
         return resolveRenderableHtmlSource({
-          html: file.buffer.toString('utf8'),
+          html: healed,
           fileName: options.fileName,
           fileMtimeMs: file.mtime,
           projectId: options.projectId,
@@ -72,13 +73,23 @@ export async function buildDesktopPdfExportInput(
           allowVersionedDistLookup: true,
         });
       })();
+  // Inline `<img src>` (+ CSS `url(...)`) images from local scratch so headless
+  // Chromium never has to fetch `/raw/` (which in Teamver-managed mode requires
+  // `X-Teamver-*` identity headers Chromium cannot mint). Falls back to leaving
+  // the relative src alone when the file is truly missing on disk / S3, so
+  // Chromium's own base-href fetch still gets a last-chance retry.
+  const inlinedHtml = await inlineProjectImagesFromScratch({
+    html: source.html,
+    projectId: options.projectId,
+    projectsRoot: options.projectsRoot,
+  });
   const title = displayTitle(options.title, options.fileName);
   return {
     input: {
       baseHref: rawBaseHref(options.daemonUrl, options.projectId, source.fileName),
       deck: options.deck === true,
       defaultFilename: `${safeFilename(title, 'artifact')}.pdf`,
-      html: source.html,
+      html: inlinedHtml,
       title,
     },
     source: {
@@ -86,6 +97,242 @@ export async function buildDesktopPdfExportInput(
       mtimeMs: source.mtimeMs,
     },
   };
+}
+
+const INLINE_IMAGE_EXT_MIME: Record<string, string> = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+  '.svg': 'image/svg+xml',
+  '.avif': 'image/avif',
+  '.bmp': 'image/bmp',
+  '.ico': 'image/x-icon',
+};
+
+const INLINE_IMAGE_MAX_BYTES = 4 * 1024 * 1024;
+/** Cap so a pathological deck cannot spawn hundreds of point-get reads. */
+const INLINE_IMAGE_MAX_UNIQUE = 32;
+
+function imageMimeForRelpath(relpath: string): string | null {
+  const dot = relpath.lastIndexOf('.');
+  if (dot < 0) return null;
+  return INLINE_IMAGE_EXT_MIME[relpath.slice(dot).toLowerCase()] ?? null;
+}
+
+/**
+ * Inline every image reference the export HTML can resolve to a local project
+ * file. Runs on the daemon side ahead of Chromium so subresource fetches
+ * inside headless Chromium never need to carry Teamver identity headers to
+ * `/raw/`. Preserves the relative `<img src>` when the file cannot be read so
+ * Chromium can still attempt a live fetch (last resort).
+ *
+ * Reused by the FE live-preview / `/raw` HTML routes so the browser inside the
+ * `srcdoc` iframe never has to make a subresource GET for `refs/drive/…` and
+ * Hangul filenames — a single byte-form mismatch in the `<img src>` used to
+ * degrade the preview into alt-only text (see the Aug 7 image-attachment
+ * regression audit).
+ */
+export async function inlineProjectImagesFromScratch(options: {
+  html: string;
+  projectId: string;
+  projectsRoot: string;
+  metadata?: unknown;
+}): Promise<string> {
+  const paths = collectRelativeProjectAssetPaths(options.html);
+  if (paths.length === 0) return options.html;
+  const dataByPath = new Map<string, string>();
+  let basenameFallback: BasenameFallback | null = null;
+  const missingBasenames: string[] = [];
+  await Promise.all(
+    paths.slice(0, INLINE_IMAGE_MAX_UNIQUE).map(async (relpath) => {
+      const mime = imageMimeForRelpath(relpath);
+      if (!mime) return;
+      try {
+        const file = await readProjectFile(
+          options.projectsRoot,
+          options.projectId,
+          relpath,
+          options.metadata,
+        );
+        if (!file.buffer || file.buffer.length === 0) return;
+        if (file.buffer.length > INLINE_IMAGE_MAX_BYTES) return;
+        dataByPath.set(relpath, `data:${mime};base64,${file.buffer.toString('base64')}`);
+      } catch {
+        // Missing / ENOENT / permission — queue a basename-suffix fallback.
+        // Models occasionally emit `<img src="민들레.png">` (bare) or
+        // `<img src="refs/drive/민들레.png">` (right dir, wrong-cased name)
+        // when the on-disk file is `refs/drive/msh9rso1-민들레.png`; without
+        // this the preview regresses to alt-only text (broken image icon +
+        // filename). We match by basename below so a wrong parent dir does
+        // not block the recovery.
+        missingBasenames.push(relpath);
+      }
+    }),
+  );
+  if (missingBasenames.length > 0) {
+    basenameFallback = await loadBasenameFallback(options).catch(() => null);
+    if (basenameFallback) {
+      await Promise.all(
+        missingBasenames.map(async (relpath) => {
+          const mime = imageMimeForRelpath(relpath);
+          if (!mime) return;
+          const resolved = basenameFallback!.resolve(relpath);
+          if (!resolved) return;
+          try {
+            const file = await readProjectFile(
+              options.projectsRoot,
+              options.projectId,
+              resolved,
+              options.metadata,
+            );
+            if (!file.buffer || file.buffer.length === 0) return;
+            if (file.buffer.length > INLINE_IMAGE_MAX_BYTES) return;
+            dataByPath.set(relpath, `data:${mime};base64,${file.buffer.toString('base64')}`);
+          } catch {
+            // Give up silently — same as the primary attempt.
+          }
+        }),
+      );
+    }
+  }
+  if (dataByPath.size === 0) return options.html;
+  return rewriteRelativeImageSrcs(options.html, dataByPath);
+}
+
+interface BasenameFallback {
+  resolve(basename: string): string | null;
+}
+
+/**
+ * Build a case-insensitive, Unicode-tolerant lookup from image basenames to
+ * their on-disk project-relative paths. Used only when the primary
+ * `readProjectFile` pass ENOENTs for basename-only `<img src>` refs.
+ */
+async function loadBasenameFallback(options: {
+  projectId: string;
+  projectsRoot: string;
+  metadata?: unknown;
+}): Promise<BasenameFallback | null> {
+  let files: Array<{ path?: string; name?: string; kind?: string }>;
+  try {
+    files = await listFiles(options.projectsRoot, options.projectId, {
+      metadata: options.metadata,
+    });
+  } catch {
+    return null;
+  }
+  // Newest-first (listFiles sorts by mtime desc) so recent uploads win any
+  // basename-suffix contest.
+  const byLowerBase = new Map<string, string>();
+  const bySuffixBase = new Map<string, string>();
+  for (const entry of files) {
+    const relpath = String(entry?.path ?? entry?.name ?? '').trim();
+    if (!relpath || !imageMimeForRelpath(relpath)) continue;
+    const base = relpath.split('/').pop() || relpath;
+    const lower = base.toLowerCase();
+    if (!byLowerBase.has(lower)) byLowerBase.set(lower, relpath);
+    // Suffix key: strip the `msXXXX-` id prefix (or any leading token followed
+    // by `-`) so a model-emitted `민들레.png` maps to `msh9rso1-민들레.png` on
+    // disk. Only files at the project root or under a single-level dir compete.
+    const stripped = base.replace(/^[a-z0-9]{4,12}-/i, '');
+    if (stripped && stripped !== base) {
+      const suffixKey = stripped.toLowerCase();
+      if (!bySuffixBase.has(suffixKey)) bySuffixBase.set(suffixKey, relpath);
+    }
+  }
+  if (byLowerBase.size === 0 && bySuffixBase.size === 0) return null;
+  const resolveOne = (requested: string): string | null => {
+    const trimmed = String(requested || '').trim();
+    if (!trimmed) return null;
+    // The caller may pass either a bare basename ("민들레.png") or a nested
+    // path ("refs/drive/민들레.png") when the on-disk file lives under a
+    // different parent. Reduce to basename before matching so we recover the
+    // real file either way.
+    const basename = trimmed.split('/').pop() || trimmed;
+    const nfc = safeNormalize(basename, 'NFC');
+    const nfd = safeNormalize(basename, 'NFD');
+    const candidates = [basename, nfc, nfd];
+    for (const cand of candidates) {
+      if (!cand) continue;
+      const lower = cand.toLowerCase();
+      const exact = byLowerBase.get(lower);
+      if (exact) return exact;
+    }
+    for (const cand of candidates) {
+      if (!cand) continue;
+      const suffix = bySuffixBase.get(cand.toLowerCase());
+      if (suffix) return suffix;
+    }
+    return null;
+  };
+  return { resolve: resolveOne };
+}
+
+function safeNormalize(value: string, form: 'NFC' | 'NFD'): string {
+  try {
+    return value.normalize(form);
+  } catch {
+    return value;
+  }
+}
+
+function rewriteRelativeImageSrcs(
+  html: string,
+  dataByPath: ReadonlyMap<string, string>,
+): string {
+  const resolveDataForAttr = (rawValue: string): string | null => {
+    const trimmed = String(rawValue || '').trim();
+    if (!trimmed) return null;
+    if (/^(?:https?:|data:|blob:|mailto:|tel:|#)/i.test(trimmed)) return null;
+    if (trimmed.startsWith('//')) return null;
+    const cleaned = trimmed.split(/[?#]/u, 1)[0]?.trim() ?? '';
+    if (!cleaned || cleaned.includes('..')) return null;
+    let normalized = cleaned.replace(/\\/g, '/');
+    if (normalized.startsWith('/')) {
+      if (normalized.startsWith('/api/')) return null;
+      normalized = normalized.replace(/^\/+/, '');
+    }
+    normalized = normalized.replace(/^\.\//, '');
+    if (dataByPath.has(normalized)) return dataByPath.get(normalized) ?? null;
+    // Percent-encoded variants (`msh…-%EC%84%9C%EB%B9%99…`) — decode once.
+    if (/%[0-9A-Fa-f]{2}/.test(normalized)) {
+      try {
+        const decoded = decodeURIComponent(normalized);
+        if (dataByPath.has(decoded)) return dataByPath.get(decoded) ?? null;
+      } catch {
+        // Leave the encoded form as-is.
+      }
+    }
+    return null;
+  };
+
+  let out = html.replace(
+    /(<img\b[^>]*?\bsrc\s*=\s*)(["'])([^"']+)\2/gi,
+    (full, prefix: string, quote: string, rawSrc: string) => {
+      const dataUrl = resolveDataForAttr(rawSrc);
+      if (!dataUrl) return full;
+      // Also drop srcset — it would re-fetch the original relative URL.
+      return `${prefix}${quote}${dataUrl}${quote}`;
+    },
+  );
+  // Drop srcset when the sibling src was rewritten to a data URI.
+  out = out.replace(
+    /(<img\b[^>]*?\bsrc\s*=\s*)(["'])(data:image\/[^"']+)\2([^>]*?)\bsrcset\s*=\s*(["'])[^"']*\5/gi,
+    (_full, prefix: string, quote: string, dataUrl: string, mid: string, _sq: string) =>
+      `${prefix}${quote}${dataUrl}${quote}${mid}`,
+  );
+  // CSS url(...) rewrites.
+  out = out.replace(
+    /(url\(\s*)(['"]?)([^'")]+)\2(\s*\))/gi,
+    (full, prefix: string, quote: string, rawSrc: string, suffix: string) => {
+      const dataUrl = resolveDataForAttr(rawSrc);
+      if (!dataUrl) return full;
+      return `${prefix}${quote}${dataUrl}${quote}${suffix}`;
+    },
+  );
+  return out;
 }
 
 /**
@@ -120,7 +367,7 @@ async function resolveRenderableHtmlSource(options: {
   if (!isViteDevHtmlEntry(options.html) || !options.allowVersionedDistLookup) {
     return {
       fileName: options.fileName,
-      html: repairArtifactDocumentHead(options.html),
+      html: healDeckHtmlForStandaloneExport(options.html),
       mtimeMs: options.fileMtimeMs,
     };
   }
@@ -130,13 +377,15 @@ async function resolveRenderableHtmlSource(options: {
     const dist = await readProjectFile(options.projectsRoot, options.projectId, distFileName);
     return {
       fileName: distFileName,
-      html: repairArtifactDocumentHead(rewriteViteDistRootAssetUrls(dist.buffer.toString('utf8'))),
+      html: healDeckHtmlForStandaloneExport(
+        rewriteViteDistRootAssetUrls(dist.buffer.toString('utf8')),
+      ),
       mtimeMs: dist.mtime,
     };
   } catch {
     return {
       fileName: options.fileName,
-      html: repairArtifactDocumentHead(options.html),
+      html: healDeckHtmlForStandaloneExport(options.html),
       mtimeMs: options.fileMtimeMs,
     };
   }
@@ -166,6 +415,74 @@ function rawBaseHref(daemonUrl: string, projectId: string, fileName: string): st
   const rawBase = `${daemonUrl.replace(/\/+$/, '')}/api/projects/${safeProjectId}/raw/`;
   if (!dir || dir === '.') return rawBase;
   return `${rawBase}${encodePathSegments(dir)}/`;
+}
+
+/**
+ * Collect project-relative asset paths referenced by export HTML so the
+ * daemon can point-get them into scratch before Chromium loads
+ * `/api/projects/:id/raw/…`. Inline-HTML export intentionally skips full
+ * sync-down (S3-prefix-free), but Drive/composer images under `refs/drive/`
+ * still need to be local for HTML/PDF/PPTX rendering.
+ */
+export function collectRelativeProjectAssetPaths(html: string): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  const push = (raw: string | undefined) => {
+    const value = String(raw || '').trim();
+    if (!value) return;
+    if (/^(?:https?:|data:|blob:|mailto:|tel:|#)/i.test(value)) return;
+    if (value.startsWith('//')) return;
+    // Drop query/hash — scratch paths are plain relpaths.
+    const cleaned = value.split(/[?#]/u, 1)[0]?.trim() ?? '';
+    if (!cleaned || cleaned.includes('..')) return;
+    let normalized = cleaned.replace(/\\/g, '/');
+    // Models sometimes emit `/refs/drive/…` — accept a single leading slash
+    // but never daemon `/api/…` routes.
+    if (normalized.startsWith('/')) {
+      if (normalized.startsWith('/api/')) return;
+      normalized = normalized.replace(/^\/+/, '');
+    }
+    if (!normalized || seen.has(normalized)) return;
+    seen.add(normalized);
+    out.push(normalized);
+  };
+  const attrRe = /\s(?:src|href)\s*=\s*(["'])([^"']+)\1/gi;
+  let match: RegExpExecArray | null;
+  while ((match = attrRe.exec(html)) !== null) {
+    push(match[2]);
+  }
+  const cssUrlRe = /url\(\s*(['"]?)([^'")]+)\1\s*\)/gi;
+  while ((match = cssUrlRe.exec(html)) !== null) {
+    push(match[2]);
+  }
+  // Cap — pathological docs must not fan out hundreds of S3 GETs.
+  return out.slice(0, 48);
+}
+
+export async function warmExportRelativeAssets(options: {
+  html: string;
+  projectId: string;
+  ensureFileAvailable?:
+    | ((projectId: string, relpath: string) => Promise<boolean>)
+    | null;
+}): Promise<string[]> {
+  const ensure = options.ensureFileAvailable;
+  if (!ensure) return [];
+  const paths = collectRelativeProjectAssetPaths(options.html);
+  if (paths.length === 0) return [];
+  const warmed: string[] = [];
+  await Promise.all(
+    paths.map(async (relpath) => {
+      try {
+        const ok = await ensure(options.projectId, relpath);
+        if (ok) warmed.push(relpath);
+      } catch {
+        // Soft-fail — Chromium /raw/ may still succeed if sync-down already
+        // populated scratch, and missing deleted assets must not abort export.
+      }
+    }),
+  );
+  return warmed;
 }
 
 function encodePathSegments(value: string): string {

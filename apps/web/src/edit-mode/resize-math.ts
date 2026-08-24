@@ -1,12 +1,20 @@
 import type { ManualEditKind, ManualEditRect, ManualEditStyles, ManualEditTarget } from './types';
 import {
   aspectLockForTarget,
+  canResizeTarget,
+  isDeckSlideRoot,
   MANUAL_EDIT_RESIZE_MIN_PX,
 } from './resize-eligibility';
 
 export type ResizeHandle = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw';
 
-export { aspectLockForTarget, MANUAL_EDIT_RESIZE_MIN_PX };
+// Single SSOT for eligibility — keep re-exports so move-math / tests stay stable.
+export {
+  aspectLockForTarget,
+  canResizeTarget,
+  isDeckSlideRoot,
+  MANUAL_EDIT_RESIZE_MIN_PX,
+};
 /** Ignore tiny handle jitter so a plain click does not flush a resize. */
 export const MANUAL_EDIT_RESIZE_MIN_DELTA_PX = 2;
 
@@ -242,13 +250,38 @@ export function startSizeFromTarget(target: ManualEditTarget): {
   // (grow drag → one-char-wide column). Fall back to rect when layout is absent
   // (older bridge messages / tests). Never prefer a smaller authored style px
   // (min-width / flex used size).
+  //
+  // Broken-image / not-yet-loaded <img>: both offsetWidth and getBoundingClientRect
+  // can collapse to 0 while `styles.width` still holds the authored px. Falling
+  // through to width=1 there gives a 1×1 resize overlay that jumps to any real
+  // dimension on the first drag delta — visually the "drag box weird" symptom.
+  // Recover the authored style px so the overlay starts at the same size the
+  // user sees for the intended slot.
+  const styleWidthPx = target.kind === 'image'
+    ? parseExplicitPx(target.styles.width)
+    : null;
+  const styleHeightPx = target.kind === 'image'
+    ? parseExplicitPx(target.styles.height)
+    : null;
+  const preferLayoutWidth =
+    target.layoutWidth && target.layoutWidth >= 1 ? target.layoutWidth : null;
+  const preferLayoutHeight =
+    target.layoutHeight && target.layoutHeight >= 1 ? target.layoutHeight : null;
+  const preferRectWidth = target.rect.width >= 1 ? target.rect.width : null;
+  const preferRectHeight = target.rect.height >= 1 ? target.rect.height : null;
   const widthPx = Math.round(Math.max(
     1,
-    target.layoutWidth && target.layoutWidth >= 1 ? target.layoutWidth : target.rect.width,
+    preferLayoutWidth
+      ?? preferRectWidth
+      ?? (styleWidthPx && styleWidthPx >= 1 ? styleWidthPx : 0)
+      ?? 0,
   ));
   const heightPx = Math.round(Math.max(
     1,
-    target.layoutHeight && target.layoutHeight >= 1 ? target.layoutHeight : target.rect.height,
+    preferLayoutHeight
+      ?? preferRectHeight
+      ?? (styleHeightPx && styleHeightPx >= 1 ? styleHeightPx : 0)
+      ?? 0,
   ));
   return { widthPx, heightPx };
 }
@@ -293,8 +326,12 @@ export function startAnchorFromTarget(target: ManualEditTarget): {
 
 export function resizeResultToStyles(
   result: ResizeMathResult,
+  target?: ManualEditTarget | null,
 ): Partial<ManualEditStyles> {
   const styles: Partial<ManualEditStyles> = {};
+  if ((result.touchedWidth || result.touchedHeight) && shouldPromoteInlineTargetForResize(target)) {
+    styles.display = 'inline-block';
+  }
   if (result.touchedWidth) {
     styles.width = `${result.widthPx}px`;
     // Responsive decks commonly ship `max-width: 100%` on images/cards.
@@ -316,33 +353,23 @@ export function resizeResultToStyles(
   return styles;
 }
 
+export function shouldPromoteInlineTargetForResize(
+  target: ManualEditTarget | null | undefined,
+): boolean {
+  if (!target) return false;
+  const authoredDisplay = String(target.styles.display ?? '').trim().toLowerCase();
+  if (authoredDisplay && authoredDisplay !== 'inline') return false;
+  const tag = target.tagName.toLowerCase();
+  if (tag === 'svg') return true;
+  if (tag === 'a' || tag === 'span' || tag === 'strong' || tag === 'em' || tag === 'b' || tag === 'i' || tag === 'small') {
+    return true;
+  }
+  return target.kind === 'link';
+}
+
 /** Resize commit must flush once → one Manual Edit history entry. */
 export function resizeHistoryLabel(targetLabel: string): string {
   return `Resize: ${targetLabel}`;
-}
-
-export function isDeckSlideRoot(target: ManualEditTarget): boolean {
-  const tag = target.tagName.toLowerCase();
-  const cls = ` ${target.className} `;
-  if (tag !== 'section' && tag !== 'div') return false;
-  if (/\bslide\b/.test(cls)) return true;
-  if (target.attributes['data-slide'] != null) return true;
-  if (target.attributes['data-slide-index'] != null) return true;
-  return false;
-}
-
-export function canResizeTarget(
-  target: ManualEditTarget | null | undefined,
-  options?: { inlineTextEditing?: boolean; editMode?: boolean },
-): boolean {
-  if (!target) return false;
-  if (options?.editMode === false) return false;
-  if (options?.inlineTextEditing) return false;
-  if (target.isHidden) return false;
-  if (target.kind === 'token') return false;
-  if (isDeckSlideRoot(target)) return false;
-  if (target.rect.width < 4 || target.rect.height < 4) return false;
-  return true;
 }
 
 export function cursorForResizeHandle(handle: ResizeHandle): string {
@@ -414,9 +441,13 @@ export function buildResizeSessionStart(
 export function resizeStylesForCommit(
   result: Pick<ResizeMathResult, 'widthPx' | 'heightPx'> & Partial<Pick<ResizeMathResult, 'touchedWidth' | 'touchedHeight'>>,
   handle: ResizeHandle,
+  target?: ManualEditTarget | null,
 ): Partial<ManualEditStyles> {
   const { signW, signH } = axisSigns(handle);
   const styles: Partial<ManualEditStyles> = {};
+  if ((signW !== 0 || signH !== 0 || result.touchedWidth || result.touchedHeight) && shouldPromoteInlineTargetForResize(target)) {
+    styles.display = 'inline-block';
+  }
   if (signW !== 0 || result.touchedWidth) {
     styles.width = `${result.widthPx}px`;
     styles.maxWidth = 'none';

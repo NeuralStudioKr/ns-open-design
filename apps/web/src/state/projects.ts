@@ -21,6 +21,7 @@ import type {
   TerminalSession,
 } from '@open-design/contracts';
 import { randomUUID } from '../utils/uuid';
+import { devLog } from '../lib/devLog';
 import type {
   AgentEvent,
   ChatMessage,
@@ -44,7 +45,12 @@ import {
   waitForTeamverRegistrySyncIfNeeded,
 } from '../teamver/projectRegistry';
 import { isTeamverEmbedMode } from '../teamver/designApiBase';
-import { isDesignAuthRefreshDeclined, refreshTeamverEmbedAuthBeforeMutating } from '../teamver/designBffClient';
+import {
+  clearDesignAuthRefreshDecline,
+  isDesignAuthRefreshDeclined,
+  isDesignAuthRefreshDeclineHard,
+  refreshTeamverEmbedAuthBeforeMutating,
+} from '../teamver/designBffClient';
 import { resolveTeamverBranding } from '../teamver/branding/config';
 import { pluginsForSlideOnlyMvp } from '../teamver/branding/slideOnlyMvpPolicy';
 import { isTeamverEmbedSessionAuthenticated } from '../teamver/teamverEmbedSession';
@@ -66,8 +72,10 @@ import {
 } from '../comments';
 import { reconcileChatMessageOnLoad } from '../runtime/chat-events';
 import { sanitizeChatMessageLeakedPseudoTool } from '../utils/sanitizeChatMessageLeakedPseudoTool';
-import { normalizePluginApiId } from '../plugins/pluginIds';
-
+import {
+  ensureDurableImageEmbedContract,
+  mergeImageMentionAttachments,
+} from '../utils/recoverChatAttachmentsFromMentions';
 function sanitizeChatMessageForPersist(message: ChatMessage): ChatMessage {
   const hideInternal = resolveTeamverBranding().hideAssistantThinkingDetails;
   const reconciled = reconcileUserCommentAttachments(message);
@@ -79,16 +87,44 @@ function sanitizeChatMessageForPersist(message: ChatMessage): ChatMessage {
   // echoes; for user turns that block is the durable recovery path when
   // `comment_attachments_json` is dropped by a partial upsert.
   if (reconciled.role !== 'user') return sanitized;
+  // Heal attachments_json from `@image` / embed-contract paths BEFORE stripping
+  // model-only suffixes — comment+image turns used to lose the embed block and
+  // leave empty attachments after refresh.
+  const healedAttachments = mergeImageMentionAttachments(
+    sanitized.attachments ?? reconciled.attachments,
+    reconciled.content ?? sanitized.content,
+  );
   const commentAttachments = hydrateQueryContextCommentAttachments(
     reconciled.commentAttachments ?? [],
     visibleCommentEditInstruction(sanitized.content ?? ''),
   );
-  if (commentAttachments.length === 0) return sanitized;
+  if (commentAttachments.length === 0) {
+    const withEmbed = ensureDurableImageEmbedContract(
+      sanitized.content ?? '',
+      healedAttachments,
+    );
+    if (
+      healedAttachments.length === (sanitized.attachments?.length ?? 0)
+      && withEmbed === (sanitized.content ?? '')
+    ) {
+      return sanitized;
+    }
+    return {
+      ...sanitized,
+      attachments: healedAttachments,
+      content: withEmbed,
+    };
+  }
   const visibleContent = visibleCommentEditInstruction(sanitized.content ?? '');
+  // Re-attach a durable embed recovery block after visibleCommentEditInstruction
+  // strips model-only suffixes — otherwise a later partial upsert that drops
+  // attachments_json cannot rebuild image chips / auto-continue vision.
+  const withEmbed = ensureDurableImageEmbedContract(visibleContent, healedAttachments);
   return {
     ...sanitized,
+    attachments: healedAttachments.length > 0 ? healedAttachments : sanitized.attachments,
     commentAttachments,
-    content: messageContentWithCommentAttachments(visibleContent, commentAttachments),
+    content: messageContentWithCommentAttachments(withEmbed, commentAttachments),
   };
 }
 export type { PluginInstallOutcome } from '@open-design/contracts';
@@ -205,17 +241,31 @@ async function fetchProjectsListWhenAuthenticated(url: string, init?: RequestIni
 }
 
 /** Plugin catalog GETs — skip when embed has no usable session; avoid raw fetch 401 spam. */
-async function fetchPluginsCatalog(url: string, init?: RequestInit): Promise<Response | null> {
-  if (
-    isTeamverEmbedMode()
-    && (!isTeamverEmbedSessionAuthenticated() || isDesignAuthRefreshDeclined())
-  ) {
-    return null;
+async function fetchPluginsCatalog(
+  url: string,
+  init?: RequestInit & {
+    /**
+     * User-gesture loads (Home chip click) may climb the embed auth recovery
+     * ladder. Background gallery/list calls keep `skipEmbedAuthRecovery`.
+     */
+    allowAuthRecovery?: boolean;
+  },
+): Promise<Response | null> {
+  const { allowAuthRecovery, ...requestInit } = init ?? {};
+  if (isTeamverEmbedMode()) {
+    if (!isTeamverEmbedSessionAuthenticated()) return null;
+    if (isDesignAuthRefreshDeclineHard()) return null;
+    if (isDesignAuthRefreshDeclined() && !allowAuthRecovery) return null;
+    // Soft sticky was often set by background catalog thumbs. Chip click is an
+    // explicit user gesture — clear soft decline so recovery GET is not
+    // fail-fasted / blocked by embedDaemonAuthRecoveryEnabled.
+    if (allowAuthRecovery && isDesignAuthRefreshDeclined()) {
+      clearDesignAuthRefreshDecline();
+    }
   }
   return fetchTeamverDaemon(url, {
-    ...init,
-    // Metadata only — do not climb refresh/probe ladders on every Home chip resolve.
-    skipEmbedAuthRecovery: true,
+    ...requestInit,
+    ...(allowAuthRecovery ? {} : { skipEmbedAuthRecovery: true }),
   });
 }
 
@@ -932,7 +982,7 @@ export async function saveMessage(
       const essentials = projectKeepaliveEssentials(savedMessage);
       const trimmedBody = JSON.stringify(essentials);
       const trimmedSize = byteLengthUtf8(trimmedBody);
-      console.warn(
+      devLog.warn(
         '[teamver] chat-save: keepalive payload exceeded 56KiB cap; retrying with essential fields only',
         {
           projectId,
@@ -951,7 +1001,7 @@ export async function saveMessage(
         // content field). Abandon the keepalive send and log — the
         // next visible session refresh triggers a full PUT via the
         // finalization effect in ProjectView.
-        console.warn(
+        devLog.warn(
           '[teamver] chat-save: essentials-only projection still over cap; skipping keepalive PUT',
           { projectId, conversationId, messageId: message.id },
         );
@@ -1005,7 +1055,7 @@ export async function saveMessage(
   }
 
   if (outcome.kind === 'error') {
-    console.warn('[teamver] chat-save: PUT threw', {
+    devLog.warn('[teamver] chat-save: PUT threw', {
       projectId,
       conversationId,
       messageId: message.id,
@@ -1016,7 +1066,7 @@ export async function saveMessage(
     return;
   }
   if (!outcome.ok) {
-    console.warn('[teamver] chat-save: PUT non-ok', {
+    devLog.warn('[teamver] chat-save: PUT non-ok', {
       projectId,
       conversationId,
       messageId: message.id,
@@ -1322,27 +1372,32 @@ export async function listPlugins(
 
 export async function getInstalledPlugin(
   pluginId: string,
-  options: Pick<ListPluginsOptions, 'includeHidden'> = {},
+  options: Pick<ListPluginsOptions, 'includeHidden'> & {
+    /**
+     * Targeted loads for an already-selected deck template must not re-apply
+     * the slide-only Chinese/catalog denylist. That filter is for pickers;
+     * applying it here returned null → ProjectView fell back to Simple Deck.
+     */
+    bypassSlideOnlyCatalogFilter?: boolean;
+    /**
+     * User-initiated chip/detail resolve — allow embed cookie refresh so a
+     * soft-sticky session does not surface as "plugin not installed".
+     */
+    allowAuthRecovery?: boolean;
+  } = {},
 ): Promise<InstalledPluginRecord | null> {
   const id = pluginId.trim();
   if (!id) return null;
   const slideOnly = isTeamverEmbedMode() && resolveTeamverBranding().slideOnlyMvp;
-  if (slideOnly) {
-    const listed = (await listPluginsPage({ mode: 'deck', limit: 48, includeHidden: true }))
-      .plugins
-      .find((plugin) => plugin.id === id || normalizePluginApiId(plugin.id) === id);
-    if (listed) {
-      const visible = pluginsForSlideOnlyMvp([listed], { slideOnlyMvp: true });
-      if (visible.length === 0) return null;
-      if (!options.includeHidden && !isVisiblePlugin(listed)) return null;
-      return listed;
-    }
-  }
+  // Prefer single-plugin GET. Avoid a second catalog fan-out (`limit=48`) on
+  // home boot when the community gallery already loaded `limit=24`.
   try {
-    const resp = await fetchPluginsCatalog(`/api/plugins/${encodeURIComponent(id)}`);
+    const resp = await fetchPluginsCatalog(`/api/plugins/${encodeURIComponent(id)}`, {
+      allowAuthRecovery: options.allowAuthRecovery === true,
+    });
     if (!resp?.ok) return null;
     const plugin = (await resp.json()) as InstalledPluginRecord;
-    if (slideOnly) {
+    if (slideOnly && !options.bypassSlideOnlyCatalogFilter) {
       const visible = pluginsForSlideOnlyMvp([plugin], { slideOnlyMvp: true });
       if (visible.length === 0) return null;
     }
@@ -2094,7 +2149,9 @@ export async function fetchAppliedPluginSnapshot(
   snapshotId: string,
 ): Promise<AppliedPluginSnapshot | null> {
   try {
-    const resp = await fetch(
+    // Teamver embed requires daemon identity headers — plain fetch 401s and
+    // silently dropped the chat plugin chip on project re-entry.
+    const resp = await fetchTeamverDaemon(
       `/api/applied-plugins/${encodeURIComponent(snapshotId)}`,
     );
     if (!resp.ok) return null;

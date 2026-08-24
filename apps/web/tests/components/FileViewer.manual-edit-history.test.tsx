@@ -96,7 +96,7 @@ describe('FileViewer manual edit history regressions', () => {
     await selectManualEditTarget();
 
     act(() => {
-      panelState.props?.onStyleChange?.('hero', { color: '#ef4444' }, 'Style: Hero');
+      panelState.props?.onStyleChange?.(['hero'], { color: '#ef4444' }, 'Style: Hero');
     });
     clickAgentTool('draw-overlay-toggle');
 

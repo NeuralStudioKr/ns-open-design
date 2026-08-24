@@ -36,9 +36,53 @@ export function usesPostgresRevisionSnapshots(
 }
 
 export function migrateFileRevisionSnapshots(db: Database.Database): void {
+  const tableSql = db.prepare(`
+    SELECT sql FROM sqlite_master
+    WHERE type = 'table' AND name = 'file_revision_snapshots'
+  `).get() as { sql?: string } | undefined;
+  const hasFk = typeof tableSql?.sql === 'string'
+    && tableSql.sql.includes('REFERENCES file_revisions');
+  if (!hasFk) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS file_revision_snapshots (
+        revision_id TEXT PRIMARY KEY,
+        compressed BLOB NOT NULL,
+        storage_bytes INTEGER NOT NULL
+      );
+    `);
+    const row = db.prepare(`SELECT count(*) AS c FROM file_revision_snapshots`).get() as { c: number };
+    if ((row?.c ?? 0) > 0) {
+      db.exec(`
+        DELETE FROM file_revision_snapshots
+        WHERE revision_id NOT IN (SELECT id FROM file_revisions);
+        CREATE TABLE file_revision_snapshots_fk (
+          revision_id TEXT PRIMARY KEY
+            REFERENCES file_revisions(id) ON DELETE CASCADE,
+          compressed BLOB NOT NULL,
+          storage_bytes INTEGER NOT NULL
+        );
+        INSERT INTO file_revision_snapshots_fk (revision_id, compressed, storage_bytes)
+        SELECT revision_id, compressed, storage_bytes FROM file_revision_snapshots;
+        DROP TABLE file_revision_snapshots;
+        ALTER TABLE file_revision_snapshots_fk RENAME TO file_revision_snapshots;
+      `);
+    } else {
+      db.exec(`DROP TABLE IF EXISTS file_revision_snapshots`);
+      db.exec(`
+        CREATE TABLE file_revision_snapshots (
+          revision_id TEXT PRIMARY KEY
+            REFERENCES file_revisions(id) ON DELETE CASCADE,
+          compressed BLOB NOT NULL,
+          storage_bytes INTEGER NOT NULL
+        );
+      `);
+    }
+    return;
+  }
   db.exec(`
     CREATE TABLE IF NOT EXISTS file_revision_snapshots (
-      revision_id TEXT PRIMARY KEY,
+      revision_id TEXT PRIMARY KEY
+        REFERENCES file_revisions(id) ON DELETE CASCADE,
       compressed BLOB NOT NULL,
       storage_bytes INTEGER NOT NULL
     );

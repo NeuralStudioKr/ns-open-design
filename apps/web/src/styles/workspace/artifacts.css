@@ -292,7 +292,10 @@
   margin: 0;
 }
 .settings-notify-card-hint {
-  margin: 16px 0 0;
+  margin: 8px 0 0;
+  color: var(--text-soft);
+  font-size: 12px;
+  line-height: 1.4;
 }
 .settings-about-version-left {
   display: flex;
@@ -650,7 +653,13 @@
   white-space: nowrap;
   flex-shrink: 0;
 }
-.section-head h3 { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.01em; }
+.section-head h3 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--text-strong);
+}
 .section-head .hint { margin-top: 2px; }
 .field { display: flex; flex-direction: column; gap: 4px; }
 .field-label { font-size: 12px; font-weight: 500; color: var(--text-muted); }
@@ -724,12 +733,12 @@
 .settings-language-tile-title {
   font-size: 13px;
   font-weight: 600;
-  color: var(--text);
+  color: var(--text-strong);
   overflow-wrap: anywhere;
 }
 .settings-language-tile-code {
   font-size: 11px;
-  color: var(--text-muted);
+  color: var(--text-soft);
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.02em;
 }
@@ -1679,9 +1688,16 @@
   background: var(--bg-panel);
 }
 .settings-byok-info-wrap:hover .settings-byok-info-tooltip,
+.settings-byok-info-wrap:focus-within .settings-byok-info-tooltip,
 .settings-byok-info-button:focus-visible + .settings-byok-info-tooltip {
   opacity: 1;
   transform: translate(-16px, 0);
+}
+@media (hover: none) {
+  .settings-byok-info-wrap:focus-within .settings-byok-info-tooltip {
+    opacity: 1;
+    transform: translate(-16px, 0);
+  }
 }
 .settings-section-byok .field-label {
   color: var(--text);
@@ -2375,7 +2391,8 @@
 .newproj-title {
   margin: 0;
   font-size: 13px;
-  font-weight: 550;
+  font-weight: 600;
+  color: var(--text-strong);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -2457,7 +2474,7 @@
 .newproj-label {
   font-size: 11.5px;
   color: var(--text-muted);
-  font-weight: 500;
+  font-weight: 550;
 }
 .newproj-media-options {
   display: flex;
@@ -2727,7 +2744,7 @@
 .newproj-footer {
   padding: 6px 24px 16px;
   font-size: 11px;
-  color: var(--text-muted);
+  color: var(--text-soft);
   text-align: center;
   flex: 0 0 auto;
   /* Sits a fixed, tight distance below the body card. Visible card→text

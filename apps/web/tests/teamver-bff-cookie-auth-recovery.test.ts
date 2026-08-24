@@ -25,6 +25,7 @@ vi.mock("../src/teamver/teamverAuthCookieHints", () => ({
 
 vi.mock("../src/teamver/teamverEmbedSession", () => ({
   isTeamverEmbedSessionAuthenticated: vi.fn(() => false),
+  setTeamverEmbedSessionAuthenticated: vi.fn(),
 }));
 
 vi.mock("../src/teamver/teamverAuthReturn", () => ({
@@ -452,9 +453,7 @@ describe("withDesignBffCookieAuthRecovery", () => {
       .mockResolvedValueOnce(refresh401())
       .mockResolvedValueOnce(sessionProbe401())
       .mockResolvedValueOnce(sessionProbe401())
-      .mockResolvedValueOnce(sessionJson(false))
-      // C1 sticky quiet path — dead probe, no ensure hydrate
-      .mockResolvedValueOnce(sessionProbe401());
+      .mockResolvedValueOnce(sessionJson(false));
     vi.stubGlobal("fetch", fetchMock);
 
     const {
@@ -468,6 +467,9 @@ describe("withDesignBffCookieAuthRecovery", () => {
 
     await expect(refreshDesignAuthCookie()).resolves.toBe(false);
     expect(isDesignAuthRefreshDeclined()).toBe(true);
+    const probesAfterSticky = fetchMock.mock.calls.filter((c) =>
+      String(c[0]).includes("/auth/session-probe"),
+    ).length;
     const sessionGetsBefore = fetchMock.mock.calls.filter((c) => {
       const url = String(c[0]);
       return url.includes("/auth/session") && !url.includes("session-probe");
@@ -479,23 +481,22 @@ describe("withDesignBffCookieAuthRecovery", () => {
       const url = String(c[0]);
       return url.includes("/auth/session") && !url.includes("session-probe");
     }).length;
-    // Dead probe: no ensure /auth/session hydrate and no recovery ladder.
     expect(sessionGetsAfter).toBe(sessionGetsBefore);
-    expect(fetchMock.mock.calls.some((c) => String(c[0]).includes("/auth/session-probe"))).toBe(true);
+    expect(
+      fetchMock.mock.calls.filter((c) => String(c[0]).includes("/auth/session-probe")),
+    ).toHaveLength(probesAfterSticky);
   });
 
   it("soft sticky quiet clears decline only after authenticated hydrate", async () => {
-    vi.useRealTimers();
+    vi.useFakeTimers();
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(refresh401())
       .mockResolvedValueOnce(sessionProbe401())
       .mockResolvedValueOnce(sessionProbe401())
       .mockResolvedValueOnce(sessionJson(false))
-      // Quiet: live probe then unauthenticated hydrate — sticky must remain.
       .mockResolvedValueOnce(sessionProbe204())
       .mockResolvedValueOnce(sessionJson(false))
-      // Quiet again: live probe + authenticated hydrate — soft clears.
       .mockResolvedValueOnce(sessionProbe204())
       .mockResolvedValueOnce(sessionJson(true));
     vi.stubGlobal("fetch", fetchMock);
@@ -509,20 +510,54 @@ describe("withDesignBffCookieAuthRecovery", () => {
     resetDesignAuthRefreshDeclinedForTests();
     vi.mocked(isTeamverEmbedSessionAuthenticated).mockReturnValue(true);
 
-    await expect(refreshDesignAuthCookie()).resolves.toBe(false);
+    const first = refreshDesignAuthCookie();
+    await vi.advanceTimersByTimeAsync(500);
+    await expect(first).resolves.toBe(false);
     expect(isDesignAuthRefreshDeclined()).toBe(true);
 
+    await expect(fetchDesignAuthSession({ force: true })).resolves.toBeNull();
+    expect(isDesignAuthRefreshDeclined()).toBe(true);
+
+    await vi.advanceTimersByTimeAsync(60_050);
     const failed = await fetchDesignAuthSession({ force: true });
     expect(failed?.authenticated).toBe(false);
     expect(isDesignAuthRefreshDeclined()).toBe(true);
-    const refreshCount = fetchMock.mock.calls.filter((c) =>
-      String(c[0]).includes("/auth/refresh"),
-    ).length;
-    expect(refreshCount).toBe(1);
+    expect(
+      fetchMock.mock.calls.filter((c) => String(c[0]).includes("/auth/refresh")),
+    ).toHaveLength(1);
 
+    await vi.advanceTimersByTimeAsync(60_050);
     const recovered = await fetchDesignAuthSession({ force: true });
     expect(recovered?.authenticated).toBe(true);
     expect(isDesignAuthRefreshDeclined()).toBe(false);
+    expect(
+      fetchMock.mock.calls.filter((c) => String(c[0]).includes("/auth/refresh")),
+    ).toHaveLength(1);
+  });
+
+  it("skips HA probe×2 after refresh 401 when session-probe is already known dead", async () => {
+    vi.useRealTimers();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(sessionProbe401())
+      .mockResolvedValueOnce(refresh401());
+    vi.stubGlobal("fetch", fetchMock);
+
+    const {
+      probeDesignBffSessionAuthenticated,
+      refreshDesignAuthCookie,
+      isDesignAuthRefreshDeclined,
+      resetDesignAuthRefreshDeclinedForTests,
+    } = await import("../src/teamver/designBffClient");
+    resetDesignAuthRefreshDeclinedForTests();
+    vi.mocked(isTeamverEmbedSessionAuthenticated).mockReturnValue(true);
+
+    await expect(probeDesignBffSessionAuthenticated()).resolves.toBe(false);
+    await expect(refreshDesignAuthCookie()).resolves.toBe(false);
+    expect(isDesignAuthRefreshDeclined()).toBe(true);
+    expect(
+      fetchMock.mock.calls.filter((c) => String(c[0]).includes("/auth/session-probe")),
+    ).toHaveLength(1);
     expect(
       fetchMock.mock.calls.filter((c) => String(c[0]).includes("/auth/refresh")),
     ).toHaveLength(1);

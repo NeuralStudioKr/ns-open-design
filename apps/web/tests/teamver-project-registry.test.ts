@@ -11,6 +11,7 @@ import {
   fetchTeamverProject,
   filterProjectsByTeamverRegistryIfNeeded,
   listTeamverRegisteredProjectIds,
+  listTeamverRegistryProjects,
   formatTeamverProjectRegistryErrorMessage,
   formatTeamverProjectAccessDeniedMessage,
   formatTeamverProjectNotFoundMessage,
@@ -620,6 +621,27 @@ describe('Teamver project registry access', () => {
     expect(readTeamverProjectS3Prefix('ws1', 'od-list-1')).toBe(
       'design/ws1/user_u1/proj_od-list-1/',
     );
+  });
+
+  it('coalesces concurrent registry list callers to one BFF GET', async () => {
+    vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(true);
+    let release!: (value: { projects: Array<{ odProjectId: string }> }) => void;
+    const gate = new Promise<{ projects: Array<{ odProjectId: string }> }>((resolve) => {
+      release = resolve;
+    });
+    const get = vi.fn(async () => gate);
+    vi.mocked(designBffClient.getDesignBffClient).mockReturnValue({
+      workspaceStore: { get: vi.fn(async () => 'ws1') },
+      http: { get },
+    } as unknown as ReturnType<typeof designBffClient.getDesignBffClient>);
+
+    const idsPromise = listTeamverRegisteredProjectIds();
+    const rowsPromise = listTeamverRegistryProjects();
+    release({ projects: [{ odProjectId: 'od-race-1' }] });
+
+    await expect(idsPromise).resolves.toEqual(new Set(['od-race-1']));
+    await expect(rowsPromise).resolves.toEqual([{ odProjectId: 'od-race-1' }]);
+    expect(get).toHaveBeenCalledTimes(1);
   });
 
   it('allows access outside embed mode', async () => {

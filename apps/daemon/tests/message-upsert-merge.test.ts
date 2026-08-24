@@ -155,6 +155,20 @@ describe('message-upsert-merge', () => {
     expect(durable.preTurnFileNames).toEqual(existing.preTurnFileNames);
   });
 
+  it('preserves slideTurnKind when a later PUT omits the field', () => {
+    const existing = {
+      id: 'a',
+      runStatus: 'succeeded',
+      slideTurnKind: 'edit' as const,
+    };
+    const incoming = {
+      id: 'a',
+      runStatus: 'succeeded',
+      content: '',
+    };
+    expect(mergeMessageUpsertPayload(existing, incoming).slideTurnKind).toBe('edit');
+  });
+
   it('keeps durable errors when a late append snapshot races ahead of an error upsert', () => {
     // appendMessageAgentEvent scheduled write A (text only) after client PUT B
     // already persisted status:error on PG — merge must keep the error.

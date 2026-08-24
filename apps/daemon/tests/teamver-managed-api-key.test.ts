@@ -5,9 +5,11 @@ import {
   MANAGED_KEY_UNAVAILABLE,
   proxyApiKeyFailureToErrorCode,
   PROXY_API_KEY_MISSING_ERROR_CODE,
+  PROXY_MINIMAX_API_KEY_MISSING_ERROR_CODE,
   resolveProxyStreamApiKey,
   resolveProxyStreamApiKeyDetailed,
   resolveTeamverManagedApiKeyFromEnv,
+  resolveTeamverManagedApiKeyFromEnvForProvider,
 } from '../src/teamver-managed-api-key.js';
 
 function mockReq(headers: Record<string, string> = {}): Request {
@@ -17,12 +19,15 @@ function mockReq(headers: Record<string, string> = {}): Request {
 describe('resolveTeamverManagedApiKeyFromEnv', () => {
   const prevOd = process.env.TEAMVER_OD_API_KEY;
   const prevAnthropic = process.env.ANTHROPIC_API_KEY;
+  const prevMiniMax = process.env.TEAMVER_MINIMAX_API_KEY;
 
   afterEach(() => {
     if (prevOd === undefined) delete process.env.TEAMVER_OD_API_KEY;
     else process.env.TEAMVER_OD_API_KEY = prevOd;
     if (prevAnthropic === undefined) delete process.env.ANTHROPIC_API_KEY;
     else process.env.ANTHROPIC_API_KEY = prevAnthropic;
+    if (prevMiniMax === undefined) delete process.env.TEAMVER_MINIMAX_API_KEY;
+    else process.env.TEAMVER_MINIMAX_API_KEY = prevMiniMax;
   });
 
   it('prefers TEAMVER_OD_API_KEY over ANTHROPIC_API_KEY', () => {
@@ -30,15 +35,28 @@ describe('resolveTeamverManagedApiKeyFromEnv', () => {
     process.env.ANTHROPIC_API_KEY = 'sk-fallback';
     expect(resolveTeamverManagedApiKeyFromEnv()).toBe('sk-managed');
   });
+
+  it('resolves MiniMax managed keys without reusing the Anthropic key', () => {
+    process.env.TEAMVER_OD_API_KEY = 'sk-ant-managed';
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-fallback';
+    process.env.TEAMVER_MINIMAX_API_KEY = 'sk-cp-managed';
+
+    expect(resolveTeamverManagedApiKeyFromEnvForProvider('minimax')).toBe('sk-cp-managed');
+    expect(resolveTeamverManagedApiKeyFromEnvForProvider('anthropic')).toBe('sk-ant-managed');
+  });
 });
 
 describe('resolveProxyStreamApiKey', () => {
   const prevDesignApi = process.env.TEAMVER_DESIGN_API_URL;
   const prevOd = process.env.TEAMVER_OD_API_KEY;
+  const prevMini = process.env.TEAMVER_MINIMAX_API_KEY;
+  const prevOdMini = process.env.OD_MINIMAX_API_KEY;
+  const prevRawMini = process.env.MINIMAX_API_KEY;
 
   beforeEach(() => {
     process.env.TEAMVER_DESIGN_API_URL = 'http://design-api:8000';
     process.env.TEAMVER_OD_API_KEY = 'sk-managed';
+    process.env.TEAMVER_MINIMAX_API_KEY = 'sk-cp-managed';
   });
 
   afterEach(() => {
@@ -46,6 +64,12 @@ describe('resolveProxyStreamApiKey', () => {
     else process.env.TEAMVER_DESIGN_API_URL = prevDesignApi;
     if (prevOd === undefined) delete process.env.TEAMVER_OD_API_KEY;
     else process.env.TEAMVER_OD_API_KEY = prevOd;
+    if (prevMini === undefined) delete process.env.TEAMVER_MINIMAX_API_KEY;
+    else process.env.TEAMVER_MINIMAX_API_KEY = prevMini;
+    if (prevOdMini === undefined) delete process.env.OD_MINIMAX_API_KEY;
+    else process.env.OD_MINIMAX_API_KEY = prevOdMini;
+    if (prevRawMini === undefined) delete process.env.MINIMAX_API_KEY;
+    else process.env.MINIMAX_API_KEY = prevRawMini;
   });
 
   it('returns client apiKey when provided', () => {
@@ -99,9 +123,52 @@ describe('resolveProxyStreamApiKey', () => {
     );
     expect(result.ok).toBe(false);
     if (result.ok) return;
-    expect(result.failure).toEqual({ reason: 'managed_key_env_missing' });
+    expect(result.failure).toEqual({ reason: 'managed_key_env_missing', provider: 'anthropic' });
     const mapped = proxyApiKeyFailureToErrorCode(result.failure);
     expect(mapped.code).toBe(PROXY_API_KEY_MISSING_ERROR_CODE);
+    expect(mapped.httpStatus).toBe(503);
+  });
+
+  it('resolves MiniMax managed key when provider=minimax', () => {
+    process.env.TEAMVER_MINIMAX_API_KEY = 'sk-minimax';
+    const key = resolveProxyStreamApiKey(
+      mockReq({
+        'x-teamver-user-id': 'user-1',
+        'x-workspace-id': 'ws-1',
+      }),
+      { useManagedApiKey: true },
+      { provider: 'minimax' },
+    );
+    expect(key).toBe('sk-minimax');
+  });
+
+  it('resolves MiniMax managed key when apiProtocol=minimax', () => {
+    const key = resolveProxyStreamApiKey(
+      mockReq({
+        'x-teamver-user-id': 'user-1',
+        'x-workspace-id': 'ws-1',
+      }),
+      { useManagedApiKey: true, apiProtocol: 'minimax' },
+    );
+    expect(key).toBe('sk-cp-managed');
+  });
+
+  it('maps MiniMax managed key failures to MINIMAX_API_KEY_MISSING', () => {
+    delete process.env.TEAMVER_MINIMAX_API_KEY;
+    delete process.env.OD_MINIMAX_API_KEY;
+    delete process.env.MINIMAX_API_KEY;
+    const result = resolveProxyStreamApiKeyDetailed(
+      mockReq({
+        'x-teamver-user-id': 'user-1',
+        'x-workspace-id': 'ws-1',
+      }),
+      { useManagedApiKey: true, apiProtocol: 'minimax' },
+    );
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.failure).toEqual({ reason: 'managed_key_env_missing', provider: 'minimax' });
+    const mapped = proxyApiKeyFailureToErrorCode(result.failure);
+    expect(mapped.code).toBe(PROXY_MINIMAX_API_KEY_MISSING_ERROR_CODE);
     expect(mapped.httpStatus).toBe(503);
   });
 

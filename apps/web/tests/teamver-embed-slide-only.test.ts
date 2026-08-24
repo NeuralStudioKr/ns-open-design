@@ -8,6 +8,7 @@ import {
   TEAMVER_EMBED_HIDDEN_DESIGN_TOOLBOX_ACTIONS,
   TEAMVER_EMBED_SLIDE_SCENARIO_PLUGIN_ID,
   defaultSlideOnlyDeckPluginInputs,
+  explicitSlideOnlyDeckTemplatePluginInputs,
   homeHeroChipsForGroup,
   inferSlideOnlyDeckVisualTemplateHint,
   visibleNewProjectTabs,
@@ -124,6 +125,21 @@ describe('Teamver embed slide-only MVP policy', () => {
     expect(inputs.visualTemplate).toContain('modern tech deck');
     expect(inputs.visualTemplatePolicy).toContain('do not fall back to a generic default look');
     expect(inputs.designSystem).toContain('auto-match the visual direction');
+
+    const explicit = explicitSlideOnlyDeckTemplatePluginInputs(
+      'Html Ppt Zhangzara Daisy Days',
+      'example-html-ppt-zhangzara-daisy-days',
+    );
+    expect(explicit).toMatchObject({
+      designSystem: 'Html Ppt Zhangzara Daisy Days',
+      visualTemplate: 'Html Ppt Zhangzara Daisy Days',
+      selectedDeckTemplateId: 'example-html-ppt-zhangzara-daisy-days',
+      selectedDeckTemplateTitle: 'Html Ppt Zhangzara Daisy Days',
+    });
+    expect(explicit.visualTemplatePolicy).toContain('Template visual kit');
+    expect(explicit.visualTemplatePolicy).toContain('compact Decoration CSS / motif cues');
+    expect(explicit.visualTemplatePolicy).toContain('dump a head/style/SVG shell');
+    expect(explicit.visualTemplatePolicy).toContain('do not fall back to a generic default look');
   });
 
   it('keeps auto visual matching deterministic and subordinate to explicit template picks', () => {
@@ -188,7 +204,7 @@ describe('Teamver embed slide-only MVP policy', () => {
     expect(block).toContain('selectedDeckTemplateTitle: selectedDeckTemplateTitle ?? undefined');
     expect(block).toContain('DEFAULT_UNSELECTED_SCENARIO_PLUGIN_ID');
     expect(block).toContain('skillId: resolvedSkillId');
-    expect(block).toContain('visualTemplate');
+    expect(block).toContain('explicitSlideOnlyDeckTemplatePluginInputs');
     expect(block).toContain('localizePluginTitle(locale, submittedActive.record)');
     expect(block).toContain('localizeSkillName(locale, activeSkill)');
   });
@@ -229,20 +245,25 @@ describe('Teamver embed slide-only MVP policy', () => {
     expect(projectView).toContain('shouldWrapSelectedTemplate');
     expect(projectView).toContain('primaryDeckSkillId');
     expect(projectView).toContain('wrapSelectedDeckTemplateSkillBody(skillBody!, title)');
-    expect(projectView).toContain("else if (skillBody?.trim() && skillMode === 'deck')");
+    expect(projectView).toContain('Do NOT wrap every deck skill as "user explicitly picked this template"');
     // Guard copy lives in the helper (not inlined in ProjectView).
     const helper = readSource('src/runtime/selected-deck-template.ts');
     expect(helper).toContain('Teamver selected deck template guard');
     expect(helper).toContain('primary visual contract');
-    expect(helper).toContain('use it only as secondary brand context');
+    expect(helper).toContain('use it only as secondary brand');
+    expect(helper).toContain('secondary brand');
   });
 
   it('loads selected deck template metadata when project skillId is intentionally empty', () => {
     const projectView = readSource('src/components/ProjectView.tsx');
-    expect(projectView).toContain('selectedDeckTemplateMetadata(project.metadata)');
+    expect(projectView).toContain('selectedDeckTemplateMetadata(');
+    expect(projectView).toContain('turnDeckTemplateMeta');
     expect(projectView).toContain('enrichChatSendMetaWithProjectDeckTemplate');
     expect(projectView).toContain('fetchPluginLocalSkill(selectedTemplate.id)');
     expect(projectView).toContain('Selected visual template');
+    const chatComposer = readSource('src/components/ChatComposer.tsx');
+    expect(chatComposer).toContain('selectedDeckTemplateId:');
+    expect(chatComposer).toContain('skipDiscoveryBrief: true');
   });
 
   it('wires slide-only gates into entry and composer surfaces', () => {
@@ -289,13 +310,18 @@ describe('Teamver embed slide-only MVP policy', () => {
     expect(projectView).toContain('normalizeSlideOnlyArtifactContractType');
     expect(projectView).toContain('preferDeck: slideOnlyMvp');
     expect(projectView).toContain("project.metadata?.kind === 'deck'");
-    expect(homeView).toContain('pluginIdsBoundToHomeHeroChips');
+    // Chip-bound detail is lazy (click/handoff) — no boot prefetch of
+    // example-simple-deck (0806-N09).
+    expect(homeView).not.toContain('pluginIdsBoundToHomeHeroChips');
+    expect(homeView).not.toContain('missingChipBoundPluginIds');
     expect(homeView).toContain('HOME_COMMUNITY_PLUGIN_PAGE_SIZE');
     expect(homeView).toContain('query: communityPluginQuery.trim()');
     expect(homeView).not.toContain('void listPlugins().then((rows) =>');
     expect(designTemplatesSection).toContain('fetchDesignTemplates(');
     expect(designTemplatesSection).toContain("branding.slideOnlyMvp ? { mode: 'deck', limit: 24 } : undefined");
     expect(chatComposer).toContain('embedAttachBlockReason');
+    expect(homeView).toContain('embedAttachBlockReason');
+    expect(homeView).toContain('preserveAttachments');
     expect(chatComposer).toContain('readTeamverCreateSlidesLaunchFromUrl()');
     expect(chatComposer).toContain('TeamverCanvasSlideLaunchModal');
     expect(chatComposer).toContain('setCanvasSlideLaunch(null)');
@@ -337,13 +363,11 @@ describe('Teamver embed slide-only MVP policy', () => {
   it("routes run failure chat status events through Korean formatter in embed", () => {
     const projectView = readSource("src/components/ProjectView.tsx");
     // Durable persist: attachPersistedChatError (status:error + failed) after
-    // formatProjectRunErrorForUser — not a bare appendErrorStatusEvent.
-    expect(projectView).toContain("attachPersistedChatError(prev, detail, errorCode)");
-    expect(projectView).toContain("attachPersistedChatError(prev, msg, errorCode)");
-    expect(projectView).toContain("formatProjectRunErrorForUser(err)");
-    expect(projectView).toMatch(
-      /const detail = formatProjectRunErrorForUser\(err\);[\s\S]{0,500}attachPersistedChatError\(prev, detail, errorCode\)/,
-    );
+    // formatPersistedProjectRunError — user copy + hidden raw stream error.
+    expect(projectView).toContain("formatPersistedProjectRunError(err)");
+    expect(projectView).toContain("attachPersistedChatError(prev, persisted.detail, persisted.code)");
+    expect(projectView).not.toContain("attachPersistedChatError(prev, detail, errorCode)");
+    expect(projectView).not.toContain("attachPersistedChatError(prev, msg, errorCode)");
   });
 
   it("minimizes supporting file streams and collapses design-file scaffolds in slide-only embed", () => {
@@ -357,6 +381,7 @@ describe('Teamver embed slide-only MVP policy', () => {
     expect(assistant).toContain("hideAssistantThinkingDetails && streaming");
     expect(designFiles).toContain("partitionEmbedDesignFileSections");
     expect(designFiles).toContain("designFiles.sectionSupporting");
+    expect(designFiles).toContain("setSupportingExpanded] = useState(true)");
     expect(autoOpen).toContain("shouldDeclineEmbedAutoOpen");
   });
 });

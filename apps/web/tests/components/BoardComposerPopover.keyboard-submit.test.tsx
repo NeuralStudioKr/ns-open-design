@@ -3,6 +3,14 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+vi.mock('../../src/teamver/designApiBase', () => ({
+  isTeamverEmbedMode: () => false,
+}));
+
+vi.mock('../../src/components/AuthenticatedProjectFileImage', () => ({
+  AuthenticatedProjectFileImage: () => <img data-testid="auth-project-image" alt="" />,
+}));
+
 import { BoardComposerPopover } from '../../src/components/BoardComposerPopover';
 import type { PreviewCommentSnapshot } from '../../src/comments';
 
@@ -24,20 +32,24 @@ const target: PreviewCommentSnapshot = {
 function renderPopover({
   onSaveComment = () => {},
   onSendBatch = () => {},
+  onAddDraft = () => {},
   sending = false,
   selectionKind = 'element',
   targetOverride = {},
   draft = 'Tighten this heading',
   existingImages = [],
+  projectId = 'project-1',
   bounds,
 }: {
   onSaveComment?: () => void;
   onSendBatch?: () => void;
+  onAddDraft?: () => void;
   sending?: boolean;
   selectionKind?: PreviewCommentSnapshot['selectionKind'];
   targetOverride?: Partial<PreviewCommentSnapshot>;
   draft?: string;
-  existingImages?: { url: string; name: string }[];
+  existingImages?: { path: string; name: string }[];
+  projectId?: string;
   bounds?: { width: number; height: number; scrollLeft?: number; scrollTop?: number };
 } = {}) {
   return render(
@@ -47,13 +59,14 @@ function renderPopover({
       draft={draft}
       notes={[]}
       onDraft={() => {}}
-      onAddDraft={() => {}}
+      onAddDraft={onAddDraft}
       onRemoveQueuedNote={() => {}}
       onClose={() => {}}
       onSaveComment={onSaveComment}
       onSendBatch={onSendBatch}
       onRemoveMember={() => {}}
       existingImages={existingImages}
+      projectId={projectId}
       sending={sending}
       t={((key: string) => String(key)) as never}
       bounds={bounds}
@@ -62,6 +75,16 @@ function renderPopover({
 }
 
 describe('BoardComposerPopover keyboard submit', () => {
+  it('queues element memos via add-note before send-to-chat', () => {
+    const onAddDraft = vi.fn();
+    renderPopover({ onAddDraft });
+
+    fireEvent.click(screen.getByTestId('comment-popover-add-note'));
+
+    expect(onAddDraft).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId('comment-popover-add-note')).toBeTruthy();
+  });
+
   it('saves an element comment with Enter and keeps Shift+Enter for multiline text', () => {
     const onSaveComment = vi.fn();
     renderPopover({ onSaveComment });
@@ -88,7 +111,7 @@ describe('BoardComposerPopover keyboard submit', () => {
     const onSendBatch = vi.fn();
     renderPopover({
       draft: '',
-      existingImages: [{ url: '/api/projects/project-1/raw/uploads/ref.png', name: 'ref.png' }],
+      existingImages: [{ path: 'uploads/ref.png', name: 'ref.png' }],
       onSaveComment,
       onSendBatch,
     });

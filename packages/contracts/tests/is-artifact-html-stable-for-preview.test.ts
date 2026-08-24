@@ -77,6 +77,15 @@ googleapis.com" />
     ).toBe(false);
   });
 
+  it("does not treat slide-counter chrome as a slide root when body is CDN debris", () => {
+    expect(
+      isArtifactHtmlStableForPreview(`<!doctype html><html><head><title>T</title></head><body>
+<div class="slide-counter">5 / 10</div>
+googleapis.com" />
+</body></html>`),
+    ).toBe(false);
+  });
+
   it("rejects complete documents with bare CDN host lines or truncated head tags in body", () => {
     expect(
       isArtifactHtmlStableForPreview(`<!doctype html><html><head><title>T</title></head><body>

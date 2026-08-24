@@ -6,7 +6,7 @@ type Props = {
   onDesignHome: () => void;
 };
 
-/** Embed project workspace — internal Design home vs external Teamver app. */
+/** Embed project workspace — internal Slide home vs external Teamver app. */
 export function TeamverWorkspaceEscapeBar({ onDesignHome }: Props) {
   const t = useTeamverT();
 

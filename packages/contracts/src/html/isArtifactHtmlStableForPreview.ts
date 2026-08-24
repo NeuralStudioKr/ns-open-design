@@ -3,6 +3,7 @@ import {
   ARTIFACT_BARE_CDN_HOST_LINE_RE,
   artifactCdnImportUrlTokenAlternation,
 } from "./artifactCdnHosts.js";
+import { findFirstDeckSlideHostIndex } from "./deck-slide-class.js";
 
 function countTagBalance(html: string, openRe: RegExp, closeRe: RegExp): boolean {
   const opens = (html.match(openRe) ?? []).length;
@@ -74,7 +75,8 @@ export function isArtifactHtmlStableForPreview(html: string): boolean {
     .trim();
   if (bodyWithoutBlocks.length > 0) {
     const hasSlideOrRoot =
-      /<(?:section|div)[^>]*(?:\bclass=["'][^"']*\bslide\b|data-slide|data-screen-label|deck-shell|deck-stage|\bid=["']deck)/i.test(
+      findFirstDeckSlideHostIndex(bodyWithoutBlocks) >= 0
+      || /<(?:section|div)[^>]*(?:deck-shell|deck-stage|\bid=["']deck)/i.test(
         bodyWithoutBlocks,
       )
       || /<(?:main|article|h1|h2|p|img|canvas)\b/i.test(bodyWithoutBlocks);

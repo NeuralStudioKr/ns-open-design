@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { rmSync } from 'node:fs';
 
@@ -14,9 +14,17 @@ import {
   importUserSkill,
   listSkillFiles,
   listSkills,
+  resetListSkillsCacheForTests,
   slugifySkillName,
   updateUserSkill,
 } from '../src/skills.js';
+
+beforeEach(() => {
+  resetListSkillsCacheForTests();
+});
+afterEach(() => {
+  resetListSkillsCacheForTests();
+});
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -75,6 +83,24 @@ function writeSkill(
 }
 
 describe('listSkills', () => {
+  it('reuses the TTL catalog cache for the same roots key', async () => {
+    const root = fresh();
+    try {
+      writeSkill(root, 'cached-a', { name: 'cached-a' });
+      const first = await listSkills(root);
+      expect(first.map((s) => s.id)).toEqual(['cached-a']);
+      // Disk mutation without invalidate would be invisible — prove TTL hit.
+      writeSkill(root, 'cached-b', { name: 'cached-b' });
+      const second = await listSkills(root);
+      expect(second.map((s) => s.id)).toEqual(['cached-a']);
+      resetListSkillsCacheForTests();
+      const third = await listSkills(root);
+      expect(third.map((s) => s.id).sort()).toEqual(['cached-a', 'cached-b']);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it('surfaces optional localized display metadata from SKILL.md frontmatter', async () => {
     const root = fresh();
     try {

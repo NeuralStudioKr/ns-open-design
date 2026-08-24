@@ -53,6 +53,11 @@ interface Props {
   title?: string;
   subtitle?: string;
   emptyMessage?: string;
+  /** Override search field placeholder (e.g. slide-only 「템플릿 검색」). */
+  searchPlaceholder?: string;
+  /** Override empty-state copy when filters/search yield zero rows. */
+  emptyFilteredMessage?: string;
+  emptyFilteredSearchMessage?: string;
   // 'gallery' renders each card as a minimal live example.html preview
   // tile (Community); 'rich' keeps the hover-overlay metadata card.
   cardLayout?: 'rich' | 'gallery';
@@ -86,6 +91,9 @@ export function PluginsHomeSection({
   title,
   subtitle,
   emptyMessage,
+  searchPlaceholder,
+  emptyFilteredMessage,
+  emptyFilteredSearchMessage,
   cardLayout = 'rich',
   hidePrimaryCategoryFacets = false,
   lockedFacetCategory = null,
@@ -239,6 +247,7 @@ export function PluginsHomeSection({
               query={displayQuery}
               onQueryChange={setQuery}
               hideCategoryPills={hidePrimaryCategoryFacets}
+              searchPlaceholder={searchPlaceholder}
             />
             {selection.category ? (
               <SubcategoryRow
@@ -253,8 +262,8 @@ export function PluginsHomeSection({
           {filtered.length === 0 ? (
             <div className="plugins-home__empty plugins-home__empty--filtered">
               {displayQuery.trim()
-                ? t('pluginsHome.emptyFilteredSearch')
-                : t('pluginsHome.emptyFiltered')}{' '}
+                ? (emptyFilteredSearchMessage ?? t('pluginsHome.emptyFilteredSearch'))
+                : (emptyFilteredMessage ?? t('pluginsHome.emptyFiltered'))}{' '}
               <button
                 type="button"
                 className="plugins-home__linkbtn"
@@ -265,7 +274,15 @@ export function PluginsHomeSection({
             </div>
           ) : (
             <div
-              className={`plugins-home__grid${cardLayout === 'gallery' ? ' plugins-home__grid--gallery' : ''}`}
+              className={[
+                'plugins-home__grid',
+                cardLayout === 'gallery' ? 'plugins-home__grid--gallery' : '',
+                cardLayout === 'gallery' && hidePrimaryCategoryFacets
+                  ? 'plugins-home__grid--deck'
+                  : '',
+              ]
+                .filter(Boolean)
+                .join(' ')}
               role="list"
             >
               {renderedPlugins.map((p) => (
@@ -324,6 +341,7 @@ interface CategoryRowProps {
   query: string;
   onQueryChange: (next: string) => void;
   hideCategoryPills?: boolean;
+  searchPlaceholder?: string;
 }
 
 // Single combined filter bar: an optional Saved override chip + category
@@ -342,6 +360,7 @@ function CategoryRow({
   query,
   onQueryChange,
   hideCategoryPills = false,
+  searchPlaceholder,
 }: CategoryRowProps) {
   const t = useT();
   // Keep search reachable even when every primary category was omitted
@@ -405,7 +424,11 @@ function CategoryRow({
       </div>
       ) : null}
       <div className="plugins-home__facet-tools">
-        <SearchInput value={query} onChange={onQueryChange} />
+        <SearchInput
+          value={query}
+          onChange={onQueryChange}
+          placeholder={searchPlaceholder}
+        />
       </div>
     </div>
   );
@@ -530,6 +553,7 @@ function pluginFacetLabel(slug: string, fallback: string, t: ReturnType<typeof u
 interface SearchInputProps {
   value: string;
   onChange: (next: string) => void;
+  placeholder?: string;
 }
 
 // Compact search field that lives in the section head. Search composes
@@ -538,7 +562,7 @@ interface SearchInputProps {
 // discarding the category context. We keep the UI a single text input
 // with an optional clear button so it sits inside the existing head
 // row without a heavyweight toolbar.
-function SearchInput({ value, onChange }: SearchInputProps) {
+function SearchInput({ value, onChange, placeholder }: SearchInputProps) {
   const t = useT();
   return (
     <div className="plugins-home__search">
@@ -548,7 +572,7 @@ function SearchInput({ value, onChange }: SearchInputProps) {
         className="plugins-home__search-input"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        placeholder={t('pluginsHome.searchPlaceholder')}
+        placeholder={placeholder ?? t('pluginsHome.searchPlaceholder')}
         aria-label={t('pluginsHome.searchAria')}
         data-testid="plugins-home-search"
         spellCheck={false}

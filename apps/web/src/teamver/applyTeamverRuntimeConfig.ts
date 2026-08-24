@@ -1,4 +1,5 @@
 import type { ApiProtocol, AppConfig } from "../types";
+import { FAST_MODEL_BY_PROTOCOL, resolveFixedOriginBaseUrl } from "../state/apiProtocols";
 import { pinTeamverExecutionConfig } from "./branding/pinnedExecutionConfig";
 import { fetchTeamverRuntimeConfig } from "./designBffClient";
 
@@ -20,6 +21,7 @@ const ALLOWED_PROTOCOLS: readonly ApiProtocol[] = [
   "ollama",
   "senseaudio",
   "aihubmix",
+  "minimax",
 ];
 
 function normalizeProtocol(raw: string | undefined): ApiProtocol | undefined {
@@ -38,12 +40,20 @@ export function mergeTeamverRuntimeConfigIntoAppConfig(
   if (!runtime.apiKeyConfigured) return config;
 
   const apiProtocol = normalizeProtocol(runtime.apiProtocol) ?? config.apiProtocol ?? "anthropic";
-  const baseUrl = runtime.baseUrl?.trim() || config.baseUrl;
-  const model = runtime.model?.trim() || config.model;
+  const baseUrl = resolveFixedOriginBaseUrl(apiProtocol, runtime.baseUrl?.trim() || config.baseUrl);
+  const model = runtime.model?.trim() || FAST_MODEL_BY_PROTOCOL[apiProtocol] || config.model;
 
   pinTeamverExecutionConfig({ apiProtocol, baseUrl, model, managedApiConfigured: true });
 
   const mode = "api";
+  const teamverManagedProvider =
+    apiProtocol === "minimax" || apiProtocol === "anthropic"
+      ? {
+          provider: apiProtocol as "anthropic" | "minimax",
+          configured: true as const,
+          source: "runtime-config" as const,
+        }
+      : config.teamverManagedProvider;
 
   if (
     !config.apiKey?.trim()
@@ -66,6 +76,7 @@ export function mergeTeamverRuntimeConfigIntoAppConfig(
     baseUrl,
     model,
     apiProtocolConfigs: {},
+    ...(teamverManagedProvider ? { teamverManagedProvider } : {}),
   };
 }
 

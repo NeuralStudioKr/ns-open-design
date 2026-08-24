@@ -1,4 +1,6 @@
 import type { FileRevision } from '@open-design/contracts';
+import { repairArtifactDocumentHeadIfNeeded } from './artifact-document-head';
+import { revisionSnapshotContentMatches } from './revision-content-match';
 import type { RevisionStackSnapshot } from './revision-stack';
 
 /** Disk content matches the snapshot stored for the active cursor revision. */
@@ -8,7 +10,7 @@ export function revisionCursorMatchesDisk(
   cursorSnapshotContent: string,
 ): boolean {
   if (!stack.cursorRevisionId) return true;
-  return diskContent === cursorSnapshotContent;
+  return revisionSnapshotContentMatches(diskContent, cursorSnapshotContent);
 }
 
 export function cursorRevisionFromStack(stack: RevisionStackSnapshot) {
@@ -23,11 +25,29 @@ export async function findRevisionMatchingDiskContent(
   resolveSnapshot: (revisionId: string) => Promise<string | null>,
   skipRevisionIds: ReadonlySet<string> = new Set(),
 ): Promise<FileRevision | null> {
+  const diskByteSize = utf8ByteLength(diskContent);
+  // One intact-gated repair for byte-size probe + content match.
+  const repairedDisk = repairArtifactDocumentHeadIfNeeded(diskContent);
+  const repairedDiskByteSize = utf8ByteLength(repairedDisk);
   for (let index = revisions.length - 1; index >= 0; index -= 1) {
     const revision = revisions[index]!;
     if (skipRevisionIds.has(revision.id)) continue;
+    if (
+      revision.byteSize > 0
+      && revision.byteSize !== diskByteSize
+      && revision.byteSize !== repairedDiskByteSize
+    ) {
+      continue;
+    }
     const snapshot = await resolveSnapshot(revision.id);
-    if (snapshot === diskContent) return revision;
+    if (revisionSnapshotContentMatches(snapshot, repairedDisk)) return revision;
   }
   return null;
+}
+
+function utf8ByteLength(value: string): number {
+  if (typeof TextEncoder !== 'undefined') {
+    return new TextEncoder().encode(value).length;
+  }
+  return value.length;
 }

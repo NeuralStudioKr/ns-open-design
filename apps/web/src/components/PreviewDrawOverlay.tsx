@@ -8,8 +8,13 @@ import type { PreviewVisualMarkKind } from '../types';
 import { requestPreviewSnapshot } from '../runtime/exports';
 import { isImeComposing } from '../utils/imeComposing';
 import { fitPngBlobForAnthropicProxy } from '../utils/annotationImage';
-import { isTeamverEmbedMode } from '../teamver/designApiBase';
+import { isPreviewSnapshotMostlyBlank } from '../utils/annotationSnapshotQuality';
 import { scaleBoundsToSlideCanvas } from '../utils/visualMarkPlacement';
+import {
+  ANNOTATION_CAPTURE_BUDGET_MS,
+  ANNOTATION_CAPTURE_FAST_FALLBACK_MS,
+  ANNOTATION_SLIDE_CONTEXT_CAPTURE_BUDGET_MS,
+} from '../utils/annotationCaptureBudget';
 
 interface Point { x: number; y: number }
 interface Stroke { points: Point[] }
@@ -79,10 +84,6 @@ const STROKE_COLOR = '#ff3b30';
 const STROKE_WIDTH = 4;
 const TARGET_COLOR = '#1677ff';
 const DRAW_HINT_STORAGE_KEY = 'open-design:annotation-draw-hint-dismissed';
-/** Max wait for a full compositor/iframe capture before marks-only or degraded send. */
-const ANNOTATION_CAPTURE_BUDGET_MS = 10_000;
-/** When ink/box marks exist, prefer marks-only over waiting for a slow full capture. */
-const ANNOTATION_CAPTURE_FAST_FALLBACK_MS = 3_000;
 const ANNOTATION_IFRAME_SNAPSHOT_TIMEOUTS_MS = [2_500, 3_000] as const;
 
 async function raceWithBudget<T>(promise: Promise<T>, budgetMs: number): Promise<T | null> {
@@ -153,7 +154,7 @@ export function PreviewDrawOverlay({
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [note, setNote] = useState('');
-  const [markTool, setMarkTool] = useState<MarkTool>('box');
+  const [markTool, setMarkTool] = useState<MarkTool>('pen');
   const strokesRef = useRef<Stroke[]>([]);
   const undoneStrokesRef = useRef<Stroke[]>([]);
   const drawingRef = useRef<Stroke | null>(null);
@@ -559,11 +560,16 @@ export function PreviewDrawOverlay({
   }
 
   function markKind(): PreviewVisualMarkKind | undefined {
+    const hasBoxMark = hasBox || Boolean(selectionBoxRef.current);
+    const hasStrokeInk = hasInk || strokesRef.current.length > 0;
     const hasTarget = Boolean(captureTarget);
-    const hasVisualMark = hasInk || hasBox;
-    if (hasTarget && hasVisualMark) return 'click+stroke';
+    if (hasTarget && (hasStrokeInk || hasBoxMark)) {
+      if (hasBoxMark && !hasStrokeInk) return 'click+box';
+      return 'click+stroke';
+    }
     if (hasTarget) return 'click';
-    if (hasVisualMark) return 'stroke';
+    if (hasBoxMark) return 'box';
+    if (hasStrokeInk) return 'stroke';
     return undefined;
   }
 
@@ -759,17 +765,45 @@ export function PreviewDrawOverlay({
     try {
       let file: File | null = null;
       let pinnedFrameRect: CaptureFrameRect | null = null;
+      let usedMarksOnlyFallback = false;
       if (shouldCapture) {
         let blob: Blob | null = null;
         pinnedFrameRect = snapshotFrameRect();
-        const marksOnlyPromise =
-          hasVisualMark || hasTarget ? compositeMarksOnly(pinnedFrameRect) : null;
-        const snap = await requestSnapshot(
-          marksOnlyPromise ? ANNOTATION_CAPTURE_FAST_FALLBACK_MS : ANNOTATION_CAPTURE_BUDGET_MS,
-        );
-        if (snap) blob = await compositeWithBackground(snap, pinnedFrameRect);
-        if (!blob && marksOnlyPromise) {
+        const hasTypedNote = Boolean(note.trim());
+        const hasBoxMark = hasBox || Boolean(selectionBoxRef.current);
+        // Memo/box annotations and note+mark combos need the slide in the PNG;
+        // racing marks-only at 7s was shipping white-background boxes while
+        // captureExportImageSnapshot was still waiting on draw-mode readiness.
+        const needsFullSlideCapture =
+          hasTarget ||
+          hasBoxMark ||
+          (hasInk && hasTypedNote);
+        const allowFastMarksOnlyFallback =
+          (hasVisualMark || hasTarget) && !needsFullSlideCapture;
+        const marksOnlyPromise = allowFastMarksOnlyFallback
+          ? compositeMarksOnly(pinnedFrameRect)
+          : null;
+        const captureBudgetMs = needsFullSlideCapture
+          ? ANNOTATION_SLIDE_CONTEXT_CAPTURE_BUDGET_MS
+          : marksOnlyPromise
+            ? ANNOTATION_CAPTURE_FAST_FALLBACK_MS
+            : ANNOTATION_CAPTURE_BUDGET_MS;
+        const snap = await requestSnapshot(captureBudgetMs);
+        let usableSnap = snap;
+        if (usableSnap && needsFullSlideCapture && await isPreviewSnapshotMostlyBlank(usableSnap)) {
+          usableSnap = null;
+        }
+        if (usableSnap) blob = await compositeWithBackground(usableSnap, pinnedFrameRect);
+        if (!blob && needsFullSlideCapture && (hasVisualMark || hasTarget)) {
+          // Typed notes and box marks carry placement via bounds — do not attach
+          // a misleading marks-only PNG that hides which slide region was marked.
+          if (!hasTypedNote && !hasBoxMark) {
+            blob = await compositeMarksOnly(pinnedFrameRect);
+            usedMarksOnlyFallback = Boolean(blob && blob.size > 0);
+          }
+        } else if (!blob && marksOnlyPromise) {
           blob = await marksOnlyPromise;
+          usedMarksOnlyFallback = Boolean(blob && blob.size > 0);
         }
         if (blob && blob.size > 0) {
           blob = await fitPngBlobForAnthropicProxy(blob);
@@ -803,7 +837,7 @@ export function PreviewDrawOverlay({
       const kind = markKind();
       const frameForBounds = pinnedFrameRect ?? snapshotFrameRect();
       let bounds = kind ? annotationBounds() : undefined;
-      if (bounds && frameForBounds && isTeamverEmbedMode()) {
+      if (bounds && frameForBounds) {
         bounds = scaleBoundsToSlideCanvas(bounds, frameForBounds);
       }
       const result = await new Promise<{ ok: boolean; message?: string }>((resolve) => {
@@ -839,7 +873,7 @@ export function PreviewDrawOverlay({
       }
       clearInk();
       // Degraded sends keep the user honest about what the agent received:
-      // the note went out, the pixels did not.
+      // the note went out, the pixels did not — or only marks landed on white.
       setCaptureWarning(
         sentWithoutScreenshot
           ? {
@@ -849,7 +883,12 @@ export function PreviewDrawOverlay({
                   ? t('chat.annotationSentTextOnly')
                   : t('chat.annotationSentWithoutScreenshot'),
             }
-          : null,
+          : usedMarksOnlyFallback
+            ? {
+                action,
+                message: t('chat.annotationSentMarksOnly'),
+              }
+            : null,
       );
       setNote('');
       setExtraFiles([]);
@@ -892,12 +931,14 @@ export function PreviewDrawOverlay({
   return (
     <div
       ref={wrapRef}
+      className={active ? 'preview-draw-overlay-wrap' : undefined}
       style={{
         position: 'absolute',
         inset: 0,
         width: '100%',
         height: '100%',
-        zIndex: 0,
+        zIndex: active ? 50 : 0,
+        pointerEvents: active ? 'none' : undefined,
       }}
     >
       {children}
@@ -921,18 +962,21 @@ export function PreviewDrawOverlay({
       {showCanvas ? (
         <canvas
           ref={canvasRef}
+          className="preview-draw-overlay-canvas"
+          data-testid="preview-draw-overlay-canvas"
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
           onPointerCancel={onPointerUp}
           onWheel={onCanvasWheel}
-          style={{
+            style={{
             position: 'absolute',
             inset: 0,
             pointerEvents: overlayPointer,
             cursor: active ? 'crosshair' : 'default',
             visibility: canvasHidden ? 'hidden' : 'visible',
-            zIndex: 80,
+            touchAction: active ? 'none' : undefined,
+            zIndex: 100,
           }}
         />
       ) : null}

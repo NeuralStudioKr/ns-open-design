@@ -99,7 +99,16 @@ async function drainPublishSummaryBatch(expectedGeneration: number): Promise<voi
 async function ensurePublishSummaryBatch(): Promise<void> {
   const generation = batchGeneration;
   if (!activeBatch) {
-    activeBatch = drainPublishSummaryBatch(generation).finally(() => {
+    // Microtask coalesce: home prefetch + chip mounts enqueue in the same
+    // tick; wait one microtask so the first HTTP snapshot includes all ids
+    // instead of draining a singleton batch then a second leftover batch.
+    activeBatch = (async () => {
+      await new Promise<void>((resolve) => {
+        queueMicrotask(() => resolve());
+      });
+      if (generation !== batchGeneration) return;
+      await drainPublishSummaryBatch(generation);
+    })().finally(() => {
       activeBatch = null;
     });
   }

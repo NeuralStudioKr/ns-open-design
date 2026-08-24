@@ -226,6 +226,39 @@ describe('POST /api/provider/models', () => {
     });
   });
 
+  it('lists MiniMax models through the normalized minimax.io /models endpoint', async () => {
+    const fetchMock = passThroughOrUpstream((url, init) => {
+      expect(url).toBe('https://api.minimax.io/v1/models');
+      expect((init?.headers as Record<string, string>).authorization).toBe(
+        'Bearer sk-cp-test',
+      );
+      return jsonResponse({
+        data: [
+          { id: 'MiniMax-M3', object: 'model' },
+          { id: 'MiniMax-M3', object: 'model' },
+        ],
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const res = await realFetch(`${baseUrl}/api/provider/models`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        protocol: 'minimax',
+        baseUrl: 'https://api.minimaxi.com/v1',
+        apiKey: 'sk-cp-test',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toMatchObject({
+      ok: true,
+      kind: 'success',
+      models: [{ id: 'MiniMax-M3', label: 'MiniMax-M3' }],
+    });
+  });
+
   it('routes provider model discovery through the live proxy dispatcher', async () => {
     const proxySpy = vi.spyOn(platform, 'resolveSystemProxyEnv').mockReturnValue({
       HTTP_PROXY: 'http://proxy.example.test:8080',
@@ -1661,6 +1694,41 @@ describe('POST /api/test/connection provider mode', () => {
     const body = (await res.json()) as Record<string, unknown>;
     expect(body.ok).toBe(false);
     expect(body.kind).toBe('auth_failed');
+  });
+
+  it('checks MiniMax chat completions without max_tokens', async () => {
+    vi.stubGlobal(
+      'fetch',
+      passThroughOrUpstream((url, init) => {
+        expect(url).toBe('https://api.minimax.io/v1/chat/completions');
+        const requestBody = JSON.parse(String(init?.body || '{}'));
+        expect(requestBody.model).toBe('MiniMax-M3');
+        expect(requestBody).not.toHaveProperty('max_tokens');
+        expect(requestBody.max_completion_tokens).toBeGreaterThan(0);
+        expect(requestBody.thinking).toEqual({ type: 'disabled' });
+        return jsonResponse({
+          choices: [{ message: { content: 'ok' }, finish_reason: 'stop' }],
+        });
+      }),
+    );
+
+    const res = await realFetch(`${baseUrl}/api/test/connection`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        mode: 'provider',
+        protocol: 'minimax',
+        baseUrl: 'https://api.minimaxi.chat/v1',
+        apiKey: 'sk-cp-test',
+        model: 'MiniMax-M3',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body.ok).toBe(true);
+    expect(body.kind).toBe('success');
+    expect(body.sample).toBe('ok');
   });
 
   it('normalizes Gemini model ids and base URLs in the provider smoke test', async () => {

@@ -5,7 +5,7 @@
 **비교 문서:** [50-2 Teamver Canvas vs Design Undo 비교](./50-2_Teamver_Canvas_vs_Design_Undo_비교.md)  
 **배포·검증 Runbook:** [50-4 staging 머지·배포·검증](./50-4_revision_staging_머지_배포_검증.md)  
 **브랜치:** `staging`  
-**최종 갱신:** 2026-07-31
+**최종 갱신:** 2026-08-04
 
 ---
 
@@ -116,8 +116,6 @@
 | Esc 취소 | [x] | disk/revision 불변 |
 | undo 1스텝 = resize 전체 | [x] | 기존 revision stack (50) |
 
-**Phase D (다음):** daemon snapshot chain 최적화
-
 ---
 
 ## Phase D — daemon snapshot chain 최적화
@@ -132,6 +130,27 @@
 
 ---
 
+## Phase E — chain-aware retention · deferred sweep · ops metrics (2026-08)
+
+| 항목 | 상태 | 비고 |
+|------|------|------|
+| `prune-chain.ts` chain-aware selection | [x] | checkpoint 보존 prune |
+| push 비동기 deferred sweep | [x] | `deferred-sweep.ts` — retention + compaction 단일 큐 |
+| `OD_FILE_REVISION_PUSH_PRUNE_MAX` | [x] | deferred 1패스 삭제 cap (기본 8) |
+| GC multi-pass uncapped retention | [x] | `enforceGlobalFileRevisionRetention` while 루프 |
+| infinite re-queue 방지 | [x] | `pruned > 0`일 때만 retention target 재스케줄 |
+| list API `retentionPending` | [x] | excess > 0 또는 count > limit |
+| History 패널 힌트 + i18n (19 locale) | [x] | `fileRevision.history.retentionPending` |
+| History 패널 poll (4s) | [x] | `FileViewer` — panel open + pending |
+| Prometheus gauge 7종 | [x] | §50-3 §6 — bytes/rows/deferred/GC |
+| stuck excess 운영 문서 | [x] | [50-3 §5.1.2](./50-3_revision_스냅샷_저장소_RDS_용량관리.md) |
+| Postgres durable prune integration test | [x] | `file-revisions-prune-chain-durable.integration.test.ts` |
+| Human verification (30+ push / 2-node) | [~] | `verify_file_revision_retention.sh --burst` · [50-4 §8](./50-4_revision_staging_머지_배포_검증.md) |
+
+**문서 SSOT:** [50-3](./50-3_revision_스냅샷_저장소_RDS_용량관리.md) §5~§6
+
+---
+
 ## 마무리 체크리스트
 
 | 항목 | 상태 |
@@ -142,7 +161,7 @@
 | daemon file-revisions tests | [x] |
 | nested markup (inline salvage + flattenNestedMarkup) | [x] |
 | revision content cache + reconcile skip + prefetch | [x] | `revision-content-cache.ts` — LRU 8 entries, 16MB/파일, 4MB/항목, prefetch `byteSize` skip |
-| `OD_FILE_REVISION_RETENTION_LIMIT` env | [x] | daemon `resolveFileRevisionRetentionLimit()` |
+| `OD_FILE_REVISION_RETENTION_LIMIT` env | [x] | daemon `resolveFileRevisionRetentionLimit()` — **권장** dev 30 · Teamver 20 ([50-3 §7.1](./50-3_revision_스냅샷_저장소_RDS_용량관리.md#71-스택-깊이-od_file_revision_retention_limit-권장값)) |
 | `OD_FILE_REVISION_SNAPSHOT_STORAGE` env | [x] | `postgres` (Teamver 기본) \| `sqlite` \| `files` — [50-3](./50-3_revision_스냅샷_저장소_RDS_용량관리.md) |
 | Postgres `file_revision_snapshots` BYTEA (schema v8) | [x] | `DAEMON_DB_POSTGRES_MIGRATION_V8` |
 | Postgres durable revision SSOT (멀티노드) | [x] | `durable-store.ts` — transactional commit, head+count hydrate, warm/GC |
@@ -150,6 +169,7 @@
 | 주기 GC + orphan 정리 | [x] | `file-revisions/gc.ts` · `OD_FILE_REVISION_GC_INTERVAL_MS` |
 | 프로젝트 삭제 시 BLOB 선삭제 | [x] | `deleteFileRevisionSnapshotsForProject` |
 | History panel retention hint | [x] | i18n `fileRevision.history.retentionHint` |
+| History `retentionPending` hint + poll | [x] | i18n + 4s poll when panel open |
 | List API `retentionLimit` → History 패널 | [x] | daemon list 응답, 하드코드 제거 |
 | 충돌 토스트는 head ≠ disk일 때만 | [x] | cursor만 어긋나면 조용히 reset |
 | undo/redo 비활성 tooltip | [x] | `fileRevision.undo.unavailableTooltip` |
@@ -171,6 +191,11 @@ pnpm --filter @open-design/daemon exec vitest run \
   tests/file-revisions-multinode.integration.test.ts \
   tests/file-revisions-durable-store.test.ts \
   tests/file-revisions-postgres-lock.test.ts \
+  tests/file-revisions-prune-chain-durable.integration.test.ts \
+  tests/file-revisions-prune-chain.test.ts \
+  tests/file-revisions-retention-sweep.test.ts \
+  tests/file-revisions-metrics.test.ts \
+  tests/file-revisions-maintenance.test.ts \
   tests/file-revisions.test.ts
 pnpm --filter @open-design/web test
 ```

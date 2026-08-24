@@ -46,12 +46,20 @@ export function teamverEmbedOverrides(
   // Project edit surface — strip OD product name from composer placeholders.
   overrides["chat.activeFilePlaceholder"] = "슬라이드 {file} 변경 요청…";
   overrides["chat.startTitle"] = "슬라이드 작업 시작";
+  overrides["chat.mode.design.solves"] =
+    "파일 생성, 워크스페이스 업데이트, 브리프를 슬라이드 결과물로 바꿀 때 사용합니다.";
+  overrides["chat.amrCard.switchBody"] =
+    "공식 AMR 모델 서비스로 전환하세요 — API 키 설정이 필요 없습니다. 로그인·인증·충전 후 이 작업이 자동으로 재시도됩니다.";
   overrides["fileViewer.loading"] = "슬라이드 미리보기 불러오는 중…";
   overrides["fileViewer.updatingPreview"] = "슬라이드 업데이트 반영 중…";
   overrides["chat.annotationSending"] = "채팅에 보내는 중…";
   overrides["fileViewer.previewUnavailable"] =
     "슬라이드 미리보기를 불러올 수 없습니다. 잠시 후 다시 시도하거나 채팅에서 생성 상태를 확인해 주세요.";
   overrides["chat.attachAria"] = "파일 첨부";
+  overrides["settings.designTemplatesLockedDeck"] =
+    "이 워크스페이스에서는 슬라이드 덱 템플릿이 항상 켜집니다";
+  overrides["homeHero.chip.createPluginHint"] =
+    "재사용 가능한 플러그인을 제작하여 내 플러그인에 추가하세요.";
   overrides["teamver.driveImport.attachFromMenu"] = "드라이브에서 가져오기";
   overrides["teamver.driveImport.pickHint"] = "클릭해 선택 · 더블클릭 또는 첨부 버튼으로 적용";
   return overrides;

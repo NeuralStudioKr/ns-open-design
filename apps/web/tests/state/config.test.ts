@@ -8,7 +8,9 @@ import {
   loadConfig,
   mergeDaemonConfig,
   mergeDaemonMediaProviders,
+  resetFetchDaemonConfigInflightForTests,
   saveConfig,
+  shouldSyncAppConfigPrefsToDaemon,
   shouldSyncLocalMediaProvidersToDaemon,
   syncComposioConfigToDaemon,
   syncConfigToDaemon,
@@ -69,6 +71,82 @@ describe('syncConfigToDaemon', () => {
   afterEach(() => {
     vi.restoreAllMocks();
     vi.stubGlobal('fetch', originalFetch);
+    resetFetchDaemonConfigInflightForTests();
+    store.clear();
+  });
+
+  it('skips PUT when prefs already match the daemon GET baseline', async () => {
+    resetFetchDaemonConfigInflightForTests();
+    store.clear();
+
+    const daemonPrefs = {
+      onboardingCompleted: false,
+      agentId: null,
+      agentModels: {},
+      agentCliEnv: {},
+      skillId: null,
+      designSystemId: null,
+      disabledSkills: undefined,
+      disabledDesignSystems: undefined,
+      orbit: { enabled: false, time: '08:00', templateSkillId: 'orbit-general' },
+      installationId: 'install-fixed',
+      telemetry: { metrics: true, content: true, artifactManifest: false },
+      privacyDecisionAt: 1_700_000_000_000,
+      customInstructions: null,
+      projectLocations: [],
+      defaultProjectLocationId: 'default',
+    };
+
+    expect(
+      shouldSyncAppConfigPrefsToDaemon(
+        {
+          ...DEFAULT_CONFIG,
+          ...daemonPrefs,
+          orbit: daemonPrefs.orbit,
+          telemetry: daemonPrefs.telemetry,
+        },
+        daemonPrefs,
+      ),
+    ).toBe(false);
+
+    const fetchMock = vi.fn(async () => new Response('{}', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await syncConfigToDaemon(
+      {
+        ...DEFAULT_CONFIG,
+        ...daemonPrefs,
+        orbit: daemonPrefs.orbit,
+        telemetry: daemonPrefs.telemetry,
+      },
+      { baselineDaemonPrefs: daemonPrefs },
+    );
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('still PUTs when merge mints an installationId the daemon lacks', async () => {
+    resetFetchDaemonConfigInflightForTests();
+    const daemonPrefs = {
+      onboardingCompleted: false,
+      agentId: null,
+      telemetry: { metrics: true, content: true, artifactManifest: false },
+    };
+    const fetchMock = vi.fn(async () => new Response('{}', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await syncConfigToDaemon(
+      {
+        ...DEFAULT_CONFIG,
+        installationId: 'minted-local-id',
+        telemetry: daemonPrefs.telemetry,
+        privacyDecisionAt: 1_700_000_000_000,
+      },
+      { baselineDaemonPrefs: daemonPrefs },
+    );
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({ method: 'PUT' });
   });
 
   it('syncs per-agent CLI env prefs to the daemon app config', async () => {

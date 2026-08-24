@@ -34,7 +34,11 @@ export function buildPluginUseMenu(
   record: InstalledPluginRecord,
   onUse: (record: InstalledPluginRecord, action: PluginUseAction) => void,
   t: TranslateUseMenu,
+  options?: { hideComposerSeed?: boolean },
 ): PreviewPrimaryActionMenuItem[] | undefined {
+  // slideOnly Home has no composer — "load example prompt into chat" is a
+  // leftover freeform path that now just duplicates 「템플릿 사용」.
+  if (options?.hideComposerSeed) return undefined;
   const hasQuery = Boolean(record.manifest?.od?.useCase?.query);
   if (!hasQuery) return undefined;
   return [

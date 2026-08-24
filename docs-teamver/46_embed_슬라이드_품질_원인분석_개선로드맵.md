@@ -2,7 +2,7 @@
 
 **작성:** 2026-07-22  
 **범위:** Teamver embed slide-only MVP (`staging`)  
-**관련 SSOT:** [40 OD upstream main 반영 검토](./40_OD_upstream_main_반영_검토.md) · [13 embed 슬라이드 MVP 기능게이트](./13_embed_슬라이드_MVP_기능게이트.md) · [29 BYOK api mode vs runs 아키텍처](./29_BYOK_api_mode_vs_runs_아키텍처.md) · **[47 body-first compact deck 검토·0716 이후 판단](./47_body-first_compact_deck_아키텍처_검토_및_0716이후_변경판단.md)** (의사결정·유지/롤백 SSOT)
+**관련 SSOT:** [40 OD upstream main 반영 검토](./40_OD_upstream_main_반영_검토.md) · [13 embed 슬라이드 MVP 기능게이트](./13_embed_슬라이드_MVP_기능게이트.md) · [29 BYOK api mode vs runs 아키텍처](./29_BYOK_api_mode_vs_runs_아키텍처.md) · **[47 body-first compact deck 검토·0716 이후 판단](./47_body-first_compact_deck_아키텍처_검토_및_0716이후_변경판단.md)** (의사결정·유지/롤백 SSOT) · **[60 Canvas→Slide 시스템 프롬프트·템플릿 적용](./60_Canvas_Slide_시스템_프롬프트_템플릿적용_개선.md)** (2026-08-10 템플릿 시각 소유권·compose 우선순위 SSOT)
 
 ---
 

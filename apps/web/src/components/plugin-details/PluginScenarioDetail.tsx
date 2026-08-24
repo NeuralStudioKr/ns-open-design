@@ -20,6 +20,7 @@ import { PluginPreviewHero } from './PluginPreviewHero';
 import { PluginMetaSections } from './PluginMetaSections';
 import { PluginShareMenu } from './PluginShareMenu';
 import { buildPluginUseMenu, pluginUsePrimaryAction } from './pluginUseMenu';
+import { resolveGalleryOdMode } from '../plugins-home/galleryOdMode';
 import type { PluginUseAction } from '../plugins-home/useActions';
 
 interface Props {
@@ -28,6 +29,7 @@ interface Props {
   onUse: (record: InstalledPluginRecord, action: PluginUseAction) => void;
   isApplying?: boolean;
   hideUseAction?: boolean;
+  hideComposerSeedActions?: boolean;
 }
 
 export function PluginScenarioDetail({
@@ -36,13 +38,16 @@ export function PluginScenarioDetail({
   onUse,
   isApplying,
   hideUseAction,
+  hideComposerSeedActions,
 }: Props) {
   const { t } = useI18n();
   const closeRef = useRef<HTMLButtonElement | null>(null);
   // The text/scenario fallback modal gets the same split "Use plugin /
   // Replicate this content" affordance as the HTML/design/media variants, so a
   // scenario plugin with an `od.useCase.query` still offers use-with-query.
-  const useMenu = buildPluginUseMenu(record, onUse, t);
+  const useMenu = buildPluginUseMenu(record, onUse, t, {
+    hideComposerSeed: hideComposerSeedActions,
+  });
   const [useMenuOpen, setUseMenuOpen] = useState(false);
   const useMenuRef = useRef<HTMLDivElement | null>(null);
 
@@ -132,6 +137,7 @@ export function PluginScenarioDetail({
               pluginId={record.id}
               pluginTitle={record.title}
               examples={examples}
+              preferDeckCover={resolveGalleryOdMode(record) === 'deck'}
             />
           ) : null}
 

@@ -10,6 +10,8 @@ vi.mock("../src/teamver/teamverDaemonHeaders", () => ({
 
 vi.mock("../src/providers/registry", () => ({
   fetchProjectFiles: (...args: unknown[]) => fetchProjectFilesMock(...args),
+  projectFileUrl: (projectId: string, filePath: string) =>
+    `/api/projects/${projectId}/files/${encodeURIComponent(filePath)}`,
 }));
 
 vi.mock("../src/teamver/designApiBase", () => ({
@@ -26,9 +28,15 @@ vi.mock("../src/teamver/latestPublishSummary", () => ({
 }));
 
 import { prefetchDesignsTabViewport } from "../src/teamver/prefetchDesignsTabViewport";
-import { prefetchHomeProjectCovers } from "../src/teamver/prefetchHomeProjectCovers";
+import {
+  __resetPrefetchHomeProjectCoversForTests,
+  prefetchHomeProjectCovers,
+} from "../src/teamver/prefetchHomeProjectCovers";
 import { resetProjectCoverLoaderStateForTests } from "../src/teamver/projectCoverLoader";
 import { isTeamverEmbedMode } from "../src/teamver/designApiBase";
+import { resetTeamverProjectPreviewScopeForTests } from "../src/teamver/teamverProjectPreviewScope";
+import { __resetWarmTeamverHtmlCoverCacheForTests } from "../src/teamver/warmTeamverHtmlCoverCache";
+import { clearHtmlCoverCacheStoreForTests } from "../src/teamver/htmlCoverCacheStore";
 import type { Project } from "../src/types";
 
 function project(id: string, updatedAt: number): Project {
@@ -42,6 +50,11 @@ function project(id: string, updatedAt: number): Project {
   };
 }
 
+function daemonCallsMatching(substr: string): number {
+  return fetchCoverHintsMock.mock.calls.filter((call) => String(call[0]).includes(substr))
+    .length;
+}
+
 describe("prefetch cover-hints coalesce (loop 358 · S-6)", () => {
   beforeEach(() => {
     fetchCoverHintsMock.mockReset();
@@ -51,10 +64,18 @@ describe("prefetch cover-hints coalesce (loop 358 · S-6)", () => {
     prefetchLatestPublishSummariesMock.mockReset();
     vi.mocked(isTeamverEmbedMode).mockReturnValue(true);
     resetProjectCoverLoaderStateForTests();
+    __resetPrefetchHomeProjectCoversForTests();
+    resetTeamverProjectPreviewScopeForTests();
+    __resetWarmTeamverHtmlCoverCacheForTests();
+    clearHtmlCoverCacheStoreForTests();
   });
 
   afterEach(() => {
     resetProjectCoverLoaderStateForTests();
+    __resetPrefetchHomeProjectCoversForTests();
+    resetTeamverProjectPreviewScopeForTests();
+    __resetWarmTeamverHtmlCoverCacheForTests();
+    clearHtmlCoverCacheStoreForTests();
   });
 
   it("warmEmbed-style parallel viewport + home prefetch coalesces cover-hints; home may use bounded /files", async () => {
@@ -76,7 +97,7 @@ describe("prefetch cover-hints coalesce (loop 358 · S-6)", () => {
       prefetchHomeProjectCovers(projects),
     ]);
 
-    expect(fetchCoverHintsMock).toHaveBeenCalledTimes(1);
+    expect(daemonCallsMatching("cover-hints")).toBe(1);
     expect(prefetchLatestPublishSummariesMock).toHaveBeenCalledTimes(1);
     // Home recent caps at HOME_RECENT_LIST_LIMIT (6); DesignsTab stays hints-only.
     expect(fetchProjectFilesMock).toHaveBeenCalledTimes(6);
@@ -98,7 +119,7 @@ describe("prefetch cover-hints coalesce (loop 358 · S-6)", () => {
 
     const covers = await prefetchHomeProjectCovers(projects);
 
-    expect(fetchCoverHintsMock).toHaveBeenCalledTimes(1);
+    expect(daemonCallsMatching("cover-hints")).toBe(1);
     expect(fetchProjectFilesMock).toHaveBeenCalledTimes(6);
     expect(covers["home-0"]).toEqual({
       kind: "html",
@@ -123,7 +144,7 @@ describe("prefetch cover-hints coalesce (loop 358 · S-6)", () => {
 
     const covers = await prefetchHomeProjectCovers(projects);
 
-    expect(fetchCoverHintsMock).toHaveBeenCalledTimes(1);
+    expect(daemonCallsMatching("cover-hints")).toBe(1);
     expect(fetchProjectFilesMock).toHaveBeenCalledTimes(6);
     expect(covers["home-standalone-0"]).toEqual({
       kind: "html",
@@ -135,27 +156,121 @@ describe("prefetch cover-hints coalesce (loop 358 · S-6)", () => {
     const projects = Array.from({ length: 6 }, (_, index) =>
       project(`hinted-${index}`, 100 - index),
     );
-    fetchCoverHintsMock.mockResolvedValue({
-      ok: true,
-      json: async () => ({
-        hints: projects.map((item) => ({
-          projectId: item.id,
-          entryFile: `${item.id}.html`,
-          coverKind: "html",
-          coverPath: `${item.id}.html`,
-          coverVersion: 100,
-        })),
-      }),
+    fetchCoverHintsMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("cover-hints")) {
+        return {
+          ok: true,
+          json: async () => ({
+            hints: projects.map((item) => ({
+              projectId: item.id,
+              entryFile: `${item.id}.html`,
+              coverKind: "html",
+              coverPath: `${item.id}.html`,
+              coverVersion: 100,
+            })),
+          }),
+        };
+      }
+      if (url.includes("preview-url-batch")) {
+        return {
+          ok: true,
+          json: async () => ({
+            results: projects.map((item) => ({
+              projectId: item.id,
+              ok: true,
+              url: `/api/projects/${item.id}/preview/scope/${item.id}.html`,
+              file: `${item.id}.html`,
+            })),
+          }),
+        };
+      }
+      if (url.includes("cover-html-batch")) {
+        return {
+          ok: true,
+          json: async () => ({
+            results: projects.map((item) => ({
+              projectId: item.id,
+              ok: true,
+              file: `${item.id}.html`,
+              html: `<!doctype html><html><body><section class="slide">${item.id}</section></body></html>`,
+            })),
+          }),
+        };
+      }
+      return { ok: true, json: async () => ({}) };
     });
 
     const covers = await prefetchHomeProjectCovers(projects);
 
-    expect(fetchCoverHintsMock).toHaveBeenCalledTimes(1);
+    expect(daemonCallsMatching("cover-hints")).toBe(1);
     expect(fetchProjectFilesMock).not.toHaveBeenCalled();
     expect(covers["hinted-0"]).toEqual({
       kind: "html",
       name: "hinted-0.html",
       version: 100,
     });
+  });
+
+  it("parallel home prefetch (warmEmbed + RecentStrip) POSTs preview-url/cover-html batch once each", async () => {
+    const projects = Array.from({ length: 4 }, (_, index) =>
+      project(`race-${index}`, 100 - index),
+    );
+    fetchCoverHintsMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("cover-hints")) {
+        return {
+          ok: true,
+          json: async () => ({
+            hints: projects.map((item) => ({
+              projectId: item.id,
+              entryFile: `${item.id}.html`,
+              coverKind: "html",
+              coverPath: `${item.id}.html`,
+              coverVersion: 1,
+            })),
+          }),
+        };
+      }
+      if (url.includes("preview-url-batch")) {
+        return {
+          ok: true,
+          json: async () => ({
+            results: projects.map((item) => ({
+              projectId: item.id,
+              ok: true,
+              url: `/api/projects/${item.id}/preview/scope/${item.id}.html`,
+              file: `${item.id}.html`,
+            })),
+          }),
+        };
+      }
+      if (url.includes("cover-html-batch")) {
+        return {
+          ok: true,
+          json: async () => ({
+            results: projects.map((item) => ({
+              projectId: item.id,
+              ok: true,
+              file: `${item.id}.html`,
+              html: `<!doctype html><html><body><section class="slide">${item.id}</section></body></html>`,
+            })),
+          }),
+        };
+      }
+      return { ok: true, json: async () => ({}) };
+    });
+
+    // Simulate App warmEmbed + RecentProjectsStrip racing on the same list.
+    await Promise.all([
+      prefetchHomeProjectCovers(projects),
+      prefetchHomeProjectCovers(projects),
+      prefetchHomeProjectCovers(projects),
+      prefetchHomeProjectCovers(projects),
+    ]);
+
+    expect(daemonCallsMatching("cover-hints")).toBe(1);
+    expect(daemonCallsMatching("preview-url-batch")).toBe(1);
+    expect(daemonCallsMatching("cover-html-batch")).toBe(1);
   });
 });

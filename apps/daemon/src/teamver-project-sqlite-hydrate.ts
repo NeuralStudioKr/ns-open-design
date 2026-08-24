@@ -102,7 +102,7 @@ export function hydrateTeamverProjectInSqlite(
       skillId: null,
       designSystemId: null,
       pendingPrompt: null,
-      metadata: { kind: 'prototype' },
+      metadata: { kind: 'deck' },
       customInstructions: null,
       createdAt,
       updatedAt,
@@ -145,17 +145,37 @@ export function createTeamverProjectSqliteHydrationMiddleware(
     const projectId = req.params.id;
     if (typeof projectId !== 'string' || !projectId.trim()) return next();
     if (isTeamverProjectCollectionRouteSlug(projectId)) return next();
+
+    // Shared Postgres warm must not depend on design-api. Create hashes by
+    // userId; later /files/.../revisions hash by projectId — cold peers need
+    // RDS before sync getProject / revision push.
+    if (isDaemonDbPostgres()) {
+      try {
+        await warmProjectFromPostgres(db, projectId);
+      } catch (err) {
+        console.warn(
+          JSON.stringify({
+            metric: 'teamver_project_sqlite_hydrate_pg_warm_failed',
+            projectId,
+            error: err instanceof Error ? err.message : String(err),
+          }),
+        );
+      }
+    }
+
     if (!isTeamverDesignManaged()) return next();
 
     const identity = readTeamverIdentityFromRequest(req);
     if (!identity && !isTrustedBackendCaller(req)) {
       return sendApiError(res, 401, 'UNAUTHORIZED', 'teamver identity headers required');
     }
-    if (!identity) return next();
+    if (!identity) {
+      if (!getProject(db, projectId)) return next();
+      await bestEffortMaterialize(projectStorageHooks, req, projectId);
+      return next();
+    }
 
-    if (isDaemonDbPostgres()) {
-      await warmProjectFromPostgres(db, projectId);
-    } else {
+    if (!isDaemonDbPostgres()) {
       await syncTeamverProjectDaemonStateFromRequest(
         db,
         projectStorageHooks,

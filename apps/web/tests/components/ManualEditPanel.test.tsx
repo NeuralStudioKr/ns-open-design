@@ -23,7 +23,7 @@ const target: ManualEditTarget = {
 };
 
 type OnDraftChange = (draft: ManualEditDraft) => void;
-type OnStyleChange = (id: string, styles: Partial<ManualEditStyles>, label: string) => void;
+type OnStyleChange = (ids: string[], styles: Partial<ManualEditStyles>, label: string) => void;
 type OnInvalidStyle = (id: string, keys: Array<keyof ManualEditStyles>) => void;
 type OnApplyPatch = (patch: ManualEditPatch, label: string) => void;
 type OnError = (message: string) => void;
@@ -84,6 +84,113 @@ describe('ManualEditPanel', () => {
 
     expect(host.querySelector('.manual-edit-drag-handle')).not.toBeNull();
     expect(host.querySelector('.manual-edit-drag-handle')?.getAttribute('aria-label')).toBe('Move edit panel');
+  });
+
+  it('collapses and expands the inspector body from the titlebar', () => {
+    renderPanel({ floatingStyle: { left: 20, top: 24, width: 320, maxHeight: 380 } });
+
+    const toggle = host.querySelector(
+      'button[aria-label="Collapse edit panel"]',
+    ) as HTMLButtonElement | null;
+    if (!toggle) throw new Error('Collapse toggle not found');
+
+    expect(host.querySelector('.manual-edit-scroll')).not.toBeNull();
+    expect(host.querySelector('.manual-edit-footer')).not.toBeNull();
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+
+    act(() => {
+      toggle.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    });
+
+    expect(host.querySelector('.manual-edit-right')?.classList.contains('manual-edit-collapsed')).toBe(true);
+    expect(host.querySelector('.manual-edit-scroll')).toBeNull();
+    expect(host.querySelector('.manual-edit-footer')).toBeNull();
+    expect(host.querySelector('.manual-edit-drag-handle')).not.toBeNull();
+    expect(host.querySelector('button[aria-label="Expand edit panel"]')?.getAttribute('aria-expanded')).toBe('false');
+
+    const expand = host.querySelector(
+      'button[aria-label="Expand edit panel"]',
+    ) as HTMLButtonElement | null;
+    if (!expand) throw new Error('Expand toggle not found');
+    act(() => {
+      expand.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    });
+
+    expect(host.querySelector('.manual-edit-scroll')?.textContent).toContain('TYPOGRAPHY');
+    expect(host.querySelector('.manual-edit-footer')).not.toBeNull();
+    expect(host.querySelector('.manual-edit-right')?.classList.contains('manual-edit-collapsed')).toBe(false);
+  });
+
+  it('keeps collapse sticky when the selected target changes', () => {
+    renderPanel({ floatingStyle: { left: 20, top: 24, width: 320, maxHeight: 380 } });
+    const toggle = host.querySelector(
+      'button[aria-label="Collapse edit panel"]',
+    ) as HTMLButtonElement | null;
+    if (!toggle) throw new Error('Collapse toggle not found');
+    act(() => {
+      toggle.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    });
+    expect(host.querySelector('.manual-edit-collapsed')).not.toBeNull();
+
+    const nextTarget = {
+      ...target,
+      id: 'other-title',
+      label: 'Other Title',
+      text: 'Other',
+      fields: { text: 'Other' },
+      attributes: { 'data-od-id': 'other-title' },
+      outerHtml: '<h1 data-od-id="other-title">Other</h1>',
+    };
+    act(() => {
+      root.render(
+        <ManualEditPanel
+          targets={[target, nextTarget]}
+          selectedTarget={nextTarget}
+          draft={{
+            ...emptyManualEditDraft('<html></html>'),
+            text: 'Other',
+            styles: emptyManualEditStyles(),
+            outerHtml: nextTarget.outerHtml,
+          }}
+          history={[]}
+          error={null}
+          canUndo={false}
+          canRedo={false}
+          onSelectTarget={vi.fn()}
+          onDraftChange={vi.fn()}
+          onStyleChange={vi.fn()}
+          onInvalidStyle={vi.fn()}
+          onApplyPatch={vi.fn()}
+          onError={vi.fn()}
+          onClearSelection={vi.fn()}
+          onCancelDraft={vi.fn()}
+          onSaveDraft={vi.fn()}
+          onUndo={vi.fn()}
+          onRedo={vi.fn()}
+          floatingStyle={{ left: 20, top: 24, width: 320, maxHeight: 380 }}
+        />,
+      );
+    });
+
+    expect(host.querySelector('.manual-edit-collapsed')).not.toBeNull();
+    expect(host.querySelector('.manual-edit-scroll')).toBeNull();
+  });
+
+  it('reports collapse changes to the host when controlled', () => {
+    const onCollapsedChange = vi.fn();
+    renderPanel({
+      floatingStyle: { left: 20, top: 24, width: 320, maxHeight: 380 },
+      collapsed: false,
+      onCollapsedChange,
+    });
+    const toggle = host.querySelector(
+      'button[aria-label="Collapse edit panel"]',
+    ) as HTMLButtonElement | null;
+    if (!toggle) throw new Error('Collapse toggle not found');
+    act(() => {
+      toggle.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    });
+    expect(onCollapsedChange).toHaveBeenCalledWith(true);
   });
 
   it('does not show page-level controls inside an element inspector', () => {
@@ -178,9 +285,9 @@ describe('ManualEditPanel', () => {
     expect(onDraftChange).toHaveBeenCalledWith(expect.objectContaining({
       styles: expect.objectContaining({ fontFamily: 'Georgia, serif' }),
     }));
-    expect(onStyleChange).toHaveBeenCalledWith('hero-title', { fontFamily: 'Georgia, serif' }, 'Style: Hero Title');
+    expect(onStyleChange).toHaveBeenCalledWith(['hero-title'], { fontFamily: 'Georgia, serif' }, 'Style: Hero Title');
     expect(onStyleChange).not.toHaveBeenCalledWith(
-      'hero-title',
+      ['hero-title'],
       expect.objectContaining({ fontSize: '32px', color: '#111111', paddingTop: '8px' }),
       'Style: Hero Title',
     );
@@ -225,9 +332,9 @@ describe('ManualEditPanel', () => {
       trackingDecrease.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
     });
 
-    expect(onStyleChange).toHaveBeenCalledWith('hero-title', { fontSize: '33px' }, 'Style: Hero Title');
-    expect(onStyleChange).toHaveBeenCalledWith('hero-title', { lineHeight: '1.5' }, 'Style: Hero Title');
-    expect(onStyleChange).toHaveBeenCalledWith('hero-title', { letterSpacing: '0px' }, 'Style: Hero Title');
+    expect(onStyleChange).toHaveBeenCalledWith(['hero-title'], { fontSize: '33px' }, 'Style: Hero Title');
+    expect(onStyleChange).toHaveBeenCalledWith(['hero-title'], { lineHeight: '1.5' }, 'Style: Hero Title');
+    expect(onStyleChange).toHaveBeenCalledWith(['hero-title'], { letterSpacing: '0px' }, 'Style: Hero Title');
     expect(host.textContent).not.toContain('Opacity');
     expect(host.textContent).not.toContain('Padding');
   });
@@ -285,6 +392,10 @@ describe('ManualEditPanel', () => {
       ok: true,
       styles: { fontSize: '', color: '' },
     });
+    expect(normalizeManualEditStyles({ zIndex: 'auto' }, { layoutEnabled: true })).toEqual({
+      ok: true,
+      styles: { zIndex: '' },
+    });
   });
 
   it('does not validate unchanged computed line-height values on blur', () => {
@@ -335,7 +446,7 @@ describe('ManualEditPanel', () => {
     });
 
     expect(onError).toHaveBeenCalledWith('');
-    expect(onStyleChange).toHaveBeenCalledWith('hero-title', { lineHeight: '49px' }, 'Style: Hero Title');
+    expect(onStyleChange).toHaveBeenCalledWith(['hero-title'], { lineHeight: '49px' }, 'Style: Hero Title');
   });
 
   it('does not persist unchanged page styles when no target is selected', () => {
@@ -370,14 +481,14 @@ describe('ManualEditPanel', () => {
       colorTile.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
     });
 
-    expect(onStyleChange).toHaveBeenCalledWith('__body__', { backgroundColor: '#3b82f6' }, 'Page styles');
+    expect(onStyleChange).toHaveBeenCalledWith(['__body__'], { backgroundColor: '#3b82f6' }, 'Page styles');
     expect(onStyleChange).not.toHaveBeenCalledWith(
-      '__body__',
+      ['__body__'],
       expect.objectContaining({ fontFamily: expect.any(String) }),
       'Page styles',
     );
     expect(onStyleChange).not.toHaveBeenCalledWith(
-      '__body__',
+      ['__body__'],
       expect.objectContaining({ fontSize: expect.any(String) }),
       'Page styles',
     );
@@ -395,14 +506,14 @@ describe('ManualEditPanel', () => {
       fontSelect.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
     });
 
-    expect(onStyleChange).toHaveBeenCalledWith('__body__', { fontFamily: 'Georgia, serif' }, 'Page styles');
+    expect(onStyleChange).toHaveBeenCalledWith(['__body__'], { fontFamily: 'Georgia, serif' }, 'Page styles');
     expect(onStyleChange).not.toHaveBeenCalledWith(
-      '__body__',
+      ['__body__'],
       expect.objectContaining({ backgroundColor: expect.any(String) }),
       'Page styles',
     );
     expect(onStyleChange).not.toHaveBeenCalledWith(
-      '__body__',
+      ['__body__'],
       expect.objectContaining({ fontSize: expect.any(String) }),
       'Page styles',
     );
@@ -431,9 +542,9 @@ describe('ManualEditPanel', () => {
       fontSelect.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
     });
 
-    expect(onStyleChange).toHaveBeenCalledWith('__body__', { fontFamily: '' }, 'Page styles');
+    expect(onStyleChange).toHaveBeenCalledWith(['__body__'], { fontFamily: '' }, 'Page styles');
     expect(onStyleChange).not.toHaveBeenCalledWith(
-      '__body__',
+      ['__body__'],
       expect.objectContaining({ backgroundColor: expect.any(String), fontFamily: expect.any(String) }),
       'Page styles',
     );
@@ -489,8 +600,8 @@ describe('ManualEditPanel', () => {
       directionSelect.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
     });
 
-    expect(onStyleChange).toHaveBeenCalledWith('hero-title', { gap: '9px' }, 'Style: Hero Title');
-    expect(onStyleChange).toHaveBeenCalledWith('hero-title', { flexDirection: 'column' }, 'Style: Hero Title');
+    expect(onStyleChange).toHaveBeenCalledWith(['hero-title'], { gap: '9px' }, 'Style: Hero Title');
+    expect(onStyleChange).toHaveBeenCalledWith(['hero-title'], { flexDirection: 'column' }, 'Style: Hero Title');
   });
 
   it('summarizes full-source history entries without rendering the full file', () => {
@@ -500,6 +611,33 @@ describe('ManualEditPanel', () => {
       JSON.stringify({ kind: 'set-full-source', bytes: source.length }),
     );
     expect(manualEditPatchSummary({ kind: 'set-full-source', source })).not.toContain('x'.repeat(100));
+  });
+
+  it('shows Left/Top for relative targets and a sticky promote hint for sticky', () => {
+    renderPanel({
+      selectedTarget: {
+        ...target,
+        cssPosition: 'relative',
+        styles: { ...emptyManualEditStyles(), left: '12px', top: '8px' },
+      },
+      styles: { ...emptyManualEditStyles(), left: '12px', top: '8px' },
+    });
+    expect(host.querySelector('[data-testid="manual-edit-position-hint"]')).toBeNull();
+    expect(sectionByTitle('POSITION').textContent).toContain('Left');
+    expect(sectionByTitle('POSITION').textContent).toContain('Top');
+
+    renderPanel({
+      selectedTarget: {
+        ...target,
+        cssPosition: 'sticky',
+      },
+    });
+    expect(host.querySelector('[data-testid="manual-edit-position-hint"]')?.textContent).toMatch(
+      /sticky/i,
+    );
+    expect(host.querySelector('[data-testid="manual-edit-position-hint"]')?.textContent).toMatch(
+      /absolute/i,
+    );
   });
 
   function sectionByTitle(title: string): HTMLElement {
@@ -524,6 +662,8 @@ describe('ManualEditPanel', () => {
     pageStylesEnabled = true,
     floatingStyle,
     onFloatingPositionChange,
+    collapsed,
+    onCollapsedChange,
   }: {
     onDraftChange?: OnDraftChange;
     onApplyPatch?: OnApplyPatch;
@@ -539,6 +679,8 @@ describe('ManualEditPanel', () => {
     pageStylesEnabled?: boolean;
     floatingStyle?: CSSProperties;
     onFloatingPositionChange?: (position: { left: number; top: number }) => void;
+    collapsed?: boolean;
+    onCollapsedChange?: (collapsed: boolean) => void;
   } = {}) {
     const draft = {
       ...emptyManualEditDraft('<html></html>'),
@@ -567,6 +709,8 @@ describe('ManualEditPanel', () => {
           onClearSelection={onClearSelection}
           onCancelDraft={onCancelDraft}
           onSaveDraft={onSaveDraft}
+          collapsed={collapsed}
+          onCollapsedChange={onCollapsedChange}
           onUndo={vi.fn<() => void>()}
           onRedo={vi.fn<() => void>()}
           floatingStyle={floatingStyle}

@@ -2,7 +2,7 @@ import { mkdir, rm, stat } from 'node:fs/promises';
 import path from 'node:path';
 import Database from 'better-sqlite3';
 import { afterEach, describe, expect, it } from 'vitest';
-import { migrateFileRevisions } from '../src/file-revisions/persistence.js';
+import { migrateFileRevisions, insertFileRevision } from '../src/file-revisions/persistence.js';
 import {
   deleteRevisionSnapshot,
   readRevisionSnapshot,
@@ -28,12 +28,27 @@ function openTestDb(): Database.Database {
   return db;
 }
 
+function seedRevision(db: Database.Database, id: string, sequence: number): void {
+  insertFileRevision(db, {
+    id,
+    projectId: 'proj-1',
+    fileName: 'deck.html',
+    parentRevisionId: null,
+    sequence,
+    createdAt: sequence,
+    byteSize: 10,
+    source: 'import',
+    label: `v${sequence}`,
+  });
+}
+
 describe('file-revisions sqlite snapshot storage', () => {
   it('stores snapshots in daemon DB and removes .od/revisions files', async () => {
     const projectDir = path.join(ROOT, 'project');
     await mkdir(projectDir, { recursive: true });
     const db = openTestDb();
     const context = { db, storage: 'sqlite' as const };
+    seedRevision(db, 'rev-1', 1);
 
     await writeRevisionSnapshot(projectDir, 'deck.html', 'rev-1', '<html>v1</html>', {
       parentContent: null,
@@ -81,6 +96,7 @@ describe('file-revisions sqlite snapshot storage', () => {
     await mkdir(projectDir, { recursive: true });
     const db = openTestDb();
     const context = { db, storage: 'sqlite' as const };
+    seedRevision(db, 'rev-del', 1);
     await writeRevisionSnapshot(projectDir, 'deck.html', 'rev-del', '<html>gone</html>', {
       parentContent: null,
       sequence: 1,

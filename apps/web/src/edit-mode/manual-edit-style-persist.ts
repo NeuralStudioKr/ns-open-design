@@ -34,6 +34,67 @@ export function shouldFlushManualEditStylesOnTargetBoundary(
 }
 
 /**
+ * Geometry gestures pause autosave so mid-drag writes do not race remasure.
+ * A non-force flush that returns success while paused is a silent no-op — exit /
+ * dismiss / selection-boundary callers must pass `{ force: true }` or pending
+ * drafts are dropped when edit mode tears down.
+ */
+export function shouldSkipManualEditStyleFlushWhilePaused(
+  paused: boolean,
+  options?: { force?: boolean },
+): boolean {
+  return paused && !options?.force;
+}
+
+/** Re-selecting the same element must keep a user/auto-pinned inspector. */
+export function shouldResetManualEditPanelPinOnSelect(
+  previousTargetId: string | null | undefined,
+  nextTargetId: string,
+): boolean {
+  return previousTargetId !== nextTargetId;
+}
+
+export type ManualEditPendingStyleLike = {
+  id: string;
+  targetIds?: string[];
+  perTargetStyles?: Record<string, Partial<ManualEditStyles>>;
+  styles: Partial<ManualEditStyles>;
+};
+
+export type ManualEditPendingStyleEntry = {
+  id: string;
+  styles: Partial<ManualEditStyles>;
+};
+
+export function manualEditPendingStyleEntries(
+  pending: ManualEditPendingStyleLike,
+): ManualEditPendingStyleEntry[] {
+  if (pending.perTargetStyles) {
+    return Object.entries(pending.perTargetStyles).map(([id, styles]) => ({ id, styles }));
+  }
+  const ids = pending.targetIds ?? [pending.id];
+  return ids.map((id) => ({ id, styles: pending.styles }));
+}
+
+export function manualEditPendingAffectedIds(
+  pending: ManualEditPendingStyleLike,
+): string[] {
+  if (pending.perTargetStyles) {
+    return Object.keys(pending.perTargetStyles);
+  }
+  return [...(pending.targetIds ?? [pending.id])];
+}
+
+export function manualEditPendingHasStyleDraft(
+  pending: ManualEditPendingStyleLike,
+): boolean {
+  if (pending.perTargetStyles) {
+    return Object.keys(pending.perTargetStyles).length > 0;
+  }
+  return Object.keys(pending.styles).length > 0;
+}
+
+/**
  * After a failed flush that cleared `pending` before apply, put it back unless
  * the user already queued a newer draft during the in-flight write.
  */

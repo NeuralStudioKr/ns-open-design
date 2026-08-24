@@ -22,6 +22,6 @@ describe('annotationImage', () => {
     const bytes = new Uint8Array([137, 80, 78, 71]);
     await expect(
       downscaleImageBytesForAnthropicProxy(bytes, 'image/png', MAX_ANTHROPIC_PROXY_IMAGE_BYTES),
-    ).resolves.toBe(bytes);
+    ).resolves.toStrictEqual(bytes);
   });
 });

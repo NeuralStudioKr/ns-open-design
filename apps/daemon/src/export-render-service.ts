@@ -1,9 +1,7 @@
 import JSZip from 'jszip';
 import {
-  buildDeckHtmlExportScreenCss,
-  buildDeckHtmlExportStaticRevealScript,
-  injectDeckHtmlExportViewportScript,
-  patchArtifactDeckPrintCss,
+  buildStandaloneDeckHtmlDocument,
+  healDeckHtmlForStandaloneExport,
 } from '@open-design/contracts';
 
 import { buildScreenshotPptx } from './deck-export.js';
@@ -30,6 +28,7 @@ export type ExportRenderServiceContext = {
   daemonUrl: string;
   projectId: string;
   projectsRoot: string;
+  prepareBuilt?: (built: BuiltDesktopPdfExport, req: ExportRenderRequest) => Promise<void>;
 };
 
 export type ExportRenderRequest = {
@@ -38,6 +37,7 @@ export type ExportRenderRequest = {
   deck?: boolean;
   inlineHtml?: string | null;
   fresh?: boolean;
+  templateId?: string | null;
 };
 
 export type ImageExportRenderRequest = ExportRenderRequest & {
@@ -55,7 +55,7 @@ async function buildExportInput(
   ctx: ExportRenderServiceContext,
   req: ExportRenderRequest,
 ): Promise<BuiltDesktopPdfExport> {
-  return buildDesktopPdfExportInput({
+  const built = await buildDesktopPdfExportInput({
     daemonUrl: ctx.daemonUrl,
     deck: req.deck === true,
     fileName: req.fileName,
@@ -64,48 +64,17 @@ async function buildExportInput(
     ...(typeof req.title === 'string' ? { title: req.title } : {}),
     ...(req.inlineHtml ? { inlineHtml: req.inlineHtml } : {}),
   });
+  await ctx.prepareBuilt?.(built, req);
+  return built;
 }
 
 function baseExportFilename(built: BuiltDesktopPdfExport): string {
   return built.input.defaultFilename.replace(/\.pdf$/i, '') || 'artifact';
 }
 
-function injectExportSnippetIntoHead(html: string, snippet: string): string {
-  if (!snippet) return html;
-  if (/<\/head\s*>/i.test(html)) {
-    return html.replace(/<\/head\s*>/i, `${snippet}</head>`);
-  }
-  if (/<html(?:\s[^>]*)?>/i.test(html)) {
-    return html.replace(/<html(?:\s[^>]*)?>/i, (match) => `${match}<head>${snippet}</head>`);
-  }
-  return `${snippet}${html}`;
-}
-
-function injectExportSnippetBeforeBodyClose(html: string, snippet: string): string {
-  if (!snippet) return html;
-  if (/<\/body\s*>/i.test(html)) {
-    return html.replace(/<\/body\s*>/i, `${snippet}</body>`);
-  }
-  return `${html}${snippet}`;
-}
-
 export function buildStaticHtmlExportFallback(input: { html: string; deck?: boolean }): string {
-  if (input.deck !== true) return input.html;
-  const cleaned = patchArtifactDeckPrintCss(input.html);
-  const style = `<style data-teamver-static-html-export-fallback>
-html, body {
-  margin: 0 !important;
-  scrollbar-width: none !important;
-  -webkit-print-color-adjust: exact !important;
-  print-color-adjust: exact !important;
-}
-*::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }
-${buildDeckHtmlExportScreenCss()}
-</style>`;
-  const revealScript = `<script data-od-html-export-reveal>${buildDeckHtmlExportStaticRevealScript()}</script>`;
-  const withHead = injectExportSnippetIntoHead(cleaned, style);
-  const withReveal = injectExportSnippetBeforeBodyClose(withHead, revealScript);
-  return injectDeckHtmlExportViewportScript(withReveal);
+  if (input.deck !== true) return healDeckHtmlForStandaloneExport(input.html);
+  return buildStandaloneDeckHtmlDocument(input.html);
 }
 
 export async function renderPdfExportOutcome(

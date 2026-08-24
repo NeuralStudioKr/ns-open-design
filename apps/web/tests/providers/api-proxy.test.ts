@@ -459,6 +459,15 @@ describe('buildProxyMessages', () => {
     ]);
   });
 
+  it('recovers vision candidates from @image mentions when attachments were dropped', () => {
+    const candidates = anthropicImageCandidatesFromMessage({
+      role: 'user',
+      content: '이 이미지 넣어줘 @msh9rso1-서빙하는-금붕어.webp',
+      attachments: [],
+    });
+    expect(candidates.map((item) => item.path)).toEqual(['msh9rso1-서빙하는-금붕어.webp']);
+  });
+
   it('filters image candidates against the project file index', () => {
     const candidates = filterAnthropicImageCandidatesByProjectFiles(
       [
@@ -469,6 +478,22 @@ describe('buildProxyMessages', () => {
       new Set(['deck.html']),
     );
     expect(candidates).toEqual([{ path: 'deck.html', name: 'deck.html' }]);
+  });
+
+  it('keeps fresh Drive/local upload images when /files index is still stale', () => {
+    const candidates = filterAnthropicImageCandidatesByProjectFiles(
+      [
+        { path: 'refs/drive/msh5lhfh-hero.png', name: 'msh5lhfh-hero.png' },
+        { path: 'msh9y0i9-local.jpeg', name: 'msh9y0i9-local.jpeg' },
+        { path: 'ms8hq9qu-drawing-2026-07-31T05-17-03-125Z.png', name: 'mark.png' },
+      ],
+      'project-1',
+      new Set(['deck.html']),
+    );
+    expect(candidates.map((item) => item.path)).toEqual([
+      'refs/drive/msh5lhfh-hero.png',
+      'msh9y0i9-local.jpeg',
+    ]);
   });
 
   it('keeps a text fallback when a supported Anthropic image cannot be read', async () => {
@@ -1071,5 +1096,69 @@ describe('streamProxyEndpoint soft-retry gates', () => {
     const err = onError.mock.calls[0]?.[0] as Error & { retryable?: boolean };
     expect(err.retryable).toBe(false);
     expect(fetch).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('streamProxyEndpoint Motif-SVG dump abort', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it('calls onDone (not silent abort) and POSTs /api/proxy/abort', async () => {
+    const { FILL_MOTIF_SVG_DUMP_STOP_REASON } = await import(
+      '../../src/providers/proxyAbort'
+    );
+    const abortController = new AbortController();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo) => {
+        const url = String(input);
+        if (url.includes('/api/proxy/abort')) {
+          return { ok: true, json: async () => ({ aborted: true }) };
+        }
+        return {
+          ok: true,
+          headers: {
+            get: (name: string) =>
+              name.toLowerCase() === 'x-stream-id' ? 'stream-fill-1' : null,
+          },
+          body: new ReadableStream({
+            start(controller) {
+              controller.enqueue(
+                new TextEncoder().encode(
+                  'event: delta\ndata: {"delta":"<artifact type=\\"deck\\"><svg"}\n\n',
+                ),
+              );
+            },
+          }),
+        };
+      }),
+    );
+
+    const onDone = vi.fn();
+    const onError = vi.fn();
+    await streamProxyEndpoint(
+      '/api/proxy/anthropic/stream',
+      {
+        apiKey: 'test-api-key',
+        baseUrl: 'https://anthropic.example',
+        model: 'claude-sonnet-4-5',
+      } as any,
+      'System',
+      [{ id: 'm1', role: 'user', content: 'hi', createdAt: 1 }],
+      abortController.signal,
+      {
+        onDelta: () => {
+          abortController.abort(FILL_MOTIF_SVG_DUMP_STOP_REASON);
+        },
+        onDone,
+        onError,
+      },
+    );
+
+    expect(onDone).toHaveBeenCalled();
+    expect(String(onDone.mock.calls[0]?.[0] ?? '')).toContain('<svg');
+    expect(onError).not.toHaveBeenCalled();
   });
 });

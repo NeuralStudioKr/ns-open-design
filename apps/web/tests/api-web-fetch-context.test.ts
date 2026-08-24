@@ -8,6 +8,39 @@ import {
 import type { ChatMessage } from '../src/types';
 
 describe('api web fetch context', () => {
+  it('does not treat Google Fonts css2 or stylesheet assets as web-fetch targets', () => {
+    expect(
+      extractPublicHttpUrls(
+        [
+          "Daisy kit @import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@600&display=swap');",
+          'https://fonts.googleapis.com/css2',
+          'fonts.gstatic.com/s/fredoka/v1.woff2',
+          '그리고 https://teamver.com 도 참고해줘.',
+        ].join(' '),
+      ),
+    ).toEqual(['https://teamver.com/']);
+    expect(extractPublicHttpUrls('https://example.com/theme.css')).toEqual([]);
+    expect(extractPublicHttpUrls('https://fonts.googleapis.com/css2')).toEqual([]);
+  });
+
+  it('does not extract @import / link / url() assets even on unknown hosts', () => {
+    expect(
+      extractPublicHttpUrls(
+        [
+          "@import url('https://brand.example.com/webfonts');",
+          '<link rel="stylesheet" href="https://brand.example.com/tokens">',
+          '그리고 https://teamver.com 도 참고해줘.',
+        ].join(' '),
+      ),
+    ).toEqual(['https://teamver.com/']);
+    expect(extractPublicHttpUrls('background: url(https://cdn.example.com/hero)')).toEqual([]);
+  });
+
+  it('does not treat kit CDN hosts as pages', () => {
+    expect(extractPublicHttpUrls('https://cdn.jsdelivr.net/npm/foo 참고')).toEqual([]);
+    expect(extractPublicHttpUrls('unpkg.com/react 보고 만들어줘')).toEqual([]);
+  });
+
   it('extracts at most three public http urls from a prompt', () => {
     expect(
       extractPublicHttpUrls(
@@ -51,7 +84,9 @@ describe('api web fetch context', () => {
     ]);
 
     expect(context).toContain('<web-fetch-context>');
-    expect(context).toContain('Teamver Design already fetched');
+    expect(context).toContain('The public URL(s) mentioned in this user turn were already fetched');
+    expect(context).not.toContain('teamver Slide');
+    expect(context).not.toContain('Open Design');
     expect(context).toContain('Do not say the URL is inaccessible unless its status is failed.');
     expect(context).toContain('Professional team profile builder');
     expect(context).toContain('</web-fetch-context>');

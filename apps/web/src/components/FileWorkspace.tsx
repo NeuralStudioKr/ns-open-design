@@ -7,6 +7,7 @@ import {
   type DragEvent as ReactDragEvent,
   type ReactNode,
 } from 'react';
+import { devLog } from '../lib/devLog';
 import { Button } from '@open-design/components';
 import type { TrackingProjectKind } from '@open-design/contracts/analytics';
 import { useAnalytics } from '../analytics/provider';
@@ -19,6 +20,8 @@ import {
 import { deriveUploadCohort } from '../analytics/upload-tracking';
 import { useTeamverT } from '../teamver/branding/useTeamverT';
 import { isTeamverEmbedMode } from '../teamver/designApiBase';
+import { TEAMVER_EMBED_PASSIVE_AUTH_RECOVERED_EVENT } from '../teamver/teamverEmbedPassiveAuth';
+import { subscribeTeamverEmbedSessionChanged } from '../teamver/teamverEmbedSession';
 import { embedUiLabel } from '../teamver/embedUiLabels';
 import { formatProjectArtifactSaveFailedError } from '../teamver/projectErrorMessages';
 import {
@@ -42,10 +45,19 @@ import {
   uploadProjectFiles,
   writeProjectTextFileDetailed,
 } from '../providers/registry';
+import { projectFileResolvedPath } from '../utils/projectFilePaths';
+import { prepareMemoryOnlySlidePreviewSrcDoc } from '../utils/prepareMemoryOnlySlidePreviewSrcDoc';
+import {
+  invalidateTeamverProjectPreviewPrefix,
+  peekTeamverProjectPreviewPrefix,
+  resolveTeamverProjectPreviewPrefix,
+} from '../teamver/teamverProjectPreviewScope';
+import { resolveSrcDocPreviewMountKey } from './file-viewer-render-mode';
 import { deriveFileOps, type FileOpEntry } from '../runtime/file-ops';
 import { latestTodosFromEvents, type TodoItem } from '../runtime/todos';
 import { deliverableSlideNavForActiveFile, isSlideNavDeliverableNow } from '../runtime/slide-nav';
 import { buildSrcdoc } from '../runtime/srcdoc';
+import { repairArtifactDocumentHeadIfNeeded } from '../runtime/artifact-document-head';
 import {
   type AgentEvent,
   type AgentInfo,
@@ -74,7 +86,6 @@ import {
 import type { ChatSessionMode, WorkspaceContextItem } from '@open-design/contracts';
 import {
   isArtifactHtmlStableForPreview,
-  repairArtifactDocumentHead,
 } from '@open-design/contracts';
 import { createTerminal, killTerminal } from '../state/projects';
 import type { QuestionForm } from '../artifacts/question-form';
@@ -83,7 +94,7 @@ import { DesignBrowserPanel, labelFromUrl, type BrowserPageInfo } from './Design
 import type { PluginFolderAgentAction } from './design-files/pluginFolderActions';
 import { designSystemGithubEvidenceState, repoConnectCopy } from './design-system-github-evidence';
 import { APP_CHROME_FILE_ACTIONS_ID } from './AppChromeHeader';
-import { FileViewer, LiveArtifactViewer } from './FileViewer';
+import { FileViewer, LiveArtifactViewer, rememberStablePreviewSource } from './FileViewer';
 import {
   findProjectFileByTabName,
   previewFileMatchesTab,
@@ -210,6 +221,12 @@ interface Props {
   onWorkspaceContextsChange?: (contexts: WorkspaceContextItem[]) => void;
   messages?: ChatMessage[];
   artifactHtml?: string | null;
+  /**
+   * Image/file paths from the active (or latest) chat turn. Unioned into the
+   * preview heal index so wrong model `<img src>` still resolves when `/files`
+   * lags behind a composer upload.
+   */
+  previewHealAttachmentPaths?: readonly string[];
   // Session-scoped fallback preview. Populated by ProjectView when a run's
   // HTML artifact could not be persisted (daemon 401 mid-run) — carries the
   // exact bytes so the workspace can render an iframe instead of an empty
@@ -457,6 +474,7 @@ export function FileWorkspace({
   onWorkspaceContextsChange,
   messages = [],
   artifactHtml = null,
+  previewHealAttachmentPaths = [],
   pendingArtifactRecovery = null,
   conversationId,
   headerActions,
@@ -1128,7 +1146,11 @@ export function FileWorkspace({
           error: result.error,
         }),
       );
-      console.warn('Project upload had failures', result.failed);
+      devLog.warn('Project upload had failures', {
+        failedCount,
+        uploadedCount,
+        error: result.error,
+      });
       trackFileUploadResult(analytics.track, {
         page_name: 'file_manager',
         area: 'file_manager',
@@ -1617,6 +1639,19 @@ export function FileWorkspace({
     fileName: string | null;
     reason: 'session' | 'streaming' | 'disk-bootstrap';
   } | null>(() => {
+    // Design Files / Design System / Questions / browser tabs never host the
+    // memory-only iframe — do not mint preview-url with sentinel tab ids.
+    if (
+      activeTab === DESIGN_FILES_TAB
+      || activeTab === DESIGN_SYSTEM_TAB
+      || activeTab === QUESTIONS_TAB
+      || isBrowserTabId(activeTab)
+      || isSideChatTabId(activeTab)
+      || isTerminalTabId(activeTab)
+      || isLiveArtifactTabId(activeTab)
+    ) {
+      return null;
+    }
     if (
       pendingArtifactRecovery?.html
       && previewFileMatchesTab({ name: pendingArtifactRecovery.fileName }, activeTab)
@@ -1646,7 +1681,8 @@ export function FileWorkspace({
     ) {
       return {
         html: artifactHtml,
-        fileName: preferredPreviewFile ?? (activeTab || 'deck.html'),
+        // Prefer a real artifact name — never a workspace sentinel tab id.
+        fileName: preferredPreviewFile?.trim() || 'deck.html',
         reason: 'streaming',
       };
     }
@@ -1660,6 +1696,179 @@ export function FileWorkspace({
     artifactHtml,
     preferredPreviewFile,
   ]);
+
+  const previewHealPaths = useMemo(() => {
+    const fromFiles = visibleFiles
+      .map((entry) => String(entry.path || entry.name || '').trim())
+      .filter(Boolean);
+    const fromAttachments = previewHealAttachmentPaths
+      .map((path) => String(path || '').trim())
+      .filter(Boolean);
+    return Array.from(new Set([...fromFiles, ...fromAttachments]));
+  }, [previewHealAttachmentPaths, visibleFiles]);
+
+  const teamverEmbedPreviewMode = isTeamverEmbedMode();
+  const [memoryPreviewPrefix, setMemoryPreviewPrefix] = useState<string | null>(() =>
+    peekTeamverProjectPreviewPrefix(projectId),
+  );
+  const [memoryPreviewPrefixSettled, setMemoryPreviewPrefixSettled] = useState(
+    () => !teamverEmbedPreviewMode || peekTeamverProjectPreviewPrefix(projectId) != null,
+  );
+  const [memoryAuthRecoveryNonce, setMemoryAuthRecoveryNonce] = useState(0);
+  const lastProcessedMemoryAuthNonceRef = useRef(0);
+
+  useEffect(() => {
+    if (!teamverEmbedPreviewMode) return;
+    let coalesceScheduled = false;
+    const bump = () => {
+      if (coalesceScheduled) return;
+      coalesceScheduled = true;
+      queueMicrotask(() => {
+        coalesceScheduled = false;
+        setMemoryAuthRecoveryNonce((value) => value + 1);
+      });
+    };
+    window.addEventListener(TEAMVER_EMBED_PASSIVE_AUTH_RECOVERED_EVENT, bump);
+    const unsubscribe = subscribeTeamverEmbedSessionChanged(({ authenticated }) => {
+      // Includes forceEvent reaffirm (explicit 「다시 시도」) while already true.
+      if (authenticated) bump();
+    });
+    return () => {
+      window.removeEventListener(TEAMVER_EMBED_PASSIVE_AUTH_RECOVERED_EVENT, bump);
+      unsubscribe();
+    };
+  }, [teamverEmbedPreviewMode]);
+
+  useEffect(() => {
+    if (!memoryOnlyPreview) return;
+    if (!teamverEmbedPreviewMode) {
+      setMemoryPreviewPrefix(null);
+      setMemoryPreviewPrefixSettled(true);
+      return;
+    }
+    let cancelled = false;
+    let backgroundRetryTimer: ReturnType<typeof setTimeout> | null = null;
+    let fastRetryDelayTimer: ReturnType<typeof setTimeout> | null = null;
+    let settleFastRetryDelay: (() => void) | null = null;
+    const authRemintRequested =
+      memoryAuthRecoveryNonce > lastProcessedMemoryAuthNonceRef.current;
+    if (authRemintRequested) {
+      lastProcessedMemoryAuthNonceRef.current = memoryAuthRecoveryNonce;
+      invalidateTeamverProjectPreviewPrefix(projectId);
+      setMemoryPreviewPrefix(null);
+      setMemoryPreviewPrefixSettled(false);
+    } else {
+      const cached = peekTeamverProjectPreviewPrefix(projectId);
+      if (cached) {
+        setMemoryPreviewPrefix(cached);
+        setMemoryPreviewPrefixSettled(true);
+        return;
+      }
+    }
+    setMemoryPreviewPrefix(null);
+    setMemoryPreviewPrefixSettled(false);
+    const retryDelaysMs = [0, 400, 1_200, 2_500] as const;
+    const adoptPrefix = (resolved: string) => {
+      if (cancelled) return;
+      setMemoryPreviewPrefix(resolved);
+      setMemoryPreviewPrefixSettled(true);
+    };
+    const mintOnce = async (): Promise<string | null> => {
+      const peeked = peekTeamverProjectPreviewPrefix(projectId);
+      if (peeked) return peeked;
+      return resolveTeamverProjectPreviewPrefix(
+        projectId,
+        memoryOnlyPreview.fileName ?? 'deck.html',
+      );
+    };
+    const scheduleBackgroundRemint = (delayMs: number) => {
+      backgroundRetryTimer = setTimeout(() => {
+        backgroundRetryTimer = null;
+        if (cancelled) return;
+        void (async () => {
+          const resolved = await mintOnce();
+          if (cancelled) return;
+          if (resolved) {
+            adoptPrefix(resolved);
+            return;
+          }
+          scheduleBackgroundRemint(Math.min(Math.round(delayMs * 1.5), 15_000));
+        })();
+      }, delayMs);
+    };
+    void (async () => {
+      for (let attempt = 0; attempt < retryDelaysMs.length; attempt += 1) {
+        if (cancelled) return;
+        const delay = retryDelaysMs[attempt] ?? 0;
+        if (delay > 0) {
+          await new Promise<void>((settle) => {
+            settleFastRetryDelay = settle;
+            fastRetryDelayTimer = setTimeout(() => {
+              fastRetryDelayTimer = null;
+              settleFastRetryDelay = null;
+              settle();
+            }, delay);
+          });
+          settleFastRetryDelay = null;
+          if (cancelled) return;
+        }
+        const resolved = await mintOnce();
+        if (cancelled) return;
+        if (resolved) {
+          adoptPrefix(resolved);
+          return;
+        }
+      }
+      // Keep unsettled so we never paint relative imgs without a scoped base.
+      // Soft background remint recovers late auth/warm seeds without refresh.
+      if (!cancelled) {
+        setMemoryPreviewPrefix(null);
+        setMemoryPreviewPrefixSettled(false);
+        scheduleBackgroundRemint(2_500);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      if (backgroundRetryTimer != null) clearTimeout(backgroundRetryTimer);
+      if (fastRetryDelayTimer != null) {
+        clearTimeout(fastRetryDelayTimer);
+        fastRetryDelayTimer = null;
+      }
+      settleFastRetryDelay?.();
+    };
+  }, [memoryAuthRecoveryNonce, memoryOnlyPreview, projectId, teamverEmbedPreviewMode]);
+
+  const memoryOnlyPreviewSrcDoc = useMemo(() => {
+    if (!memoryOnlyPreview) return '';
+    // Teamver embed: never paint without a real scoped base — otherwise
+    // relative composer/Drive images resolve against about:srcdoc (alt-only).
+    if (teamverEmbedPreviewMode && (!memoryPreviewPrefixSettled || !memoryPreviewPrefix)) {
+      return '';
+    }
+    return prepareMemoryOnlySlidePreviewSrcDoc({
+      html: memoryOnlyPreview.html,
+      projectId,
+      fileName: memoryOnlyPreview.fileName,
+      projectFilePaths: previewHealPaths,
+      preferredAttachmentPaths: previewHealAttachmentPaths,
+      teamverEmbedMode: teamverEmbedPreviewMode,
+      embedPreviewPrefix: memoryPreviewPrefix,
+    });
+  }, [
+    memoryOnlyPreview,
+    memoryPreviewPrefix,
+    memoryPreviewPrefixSettled,
+    previewHealAttachmentPaths,
+    previewHealPaths,
+    projectId,
+    teamverEmbedPreviewMode,
+  ]);
+  const memoryOnlyPreviewMountKey = resolveSrcDocPreviewMountKey({
+    transportResetKey: 0,
+    teamverEmbedMode: teamverEmbedPreviewMode,
+    embedPreviewPrefix: memoryPreviewPrefix,
+    embedPreviewPrefixSettled: memoryPreviewPrefixSettled,
+  });
 
   // Pending ghost tabs: the file list can lag behind a deep-linked tab or a
   // chat chip open. Poll raw GET directly so preview does not strand on
@@ -1690,11 +1899,13 @@ export function FileWorkspace({
           scheduleRetry(400);
           return;
         }
-        const repaired = repairArtifactDocumentHead(text);
+        const repaired = repairArtifactDocumentHeadIfNeeded(text);
         if (!isArtifactHtmlStableForPreview(repaired)) {
           scheduleRetry(1_200);
           return;
         }
+        // Seed the module preview cache so FileViewer remount skips a cold GET.
+        rememberStablePreviewSource(projectId, activeTab, repaired);
         setPendingTabDiskHtml({ tab: activeTab, html: repaired });
       });
     };
@@ -2544,11 +2755,14 @@ export function FileWorkspace({
           />
         ) : resolvedPreviewFile ? (
           <FileViewer
+            key={`${projectId}\0${resolvedPreviewFile.name}`}
             projectId={projectId}
             projectKind={projectKind}
             projectDisplayName={projectDisplayName}
             file={resolvedPreviewFile}
             filesRefreshKey={filesRefreshKey}
+            projectFilePaths={previewHealPaths}
+            preferredAttachmentPaths={previewHealAttachmentPaths}
             isDeck={isDeck}
             onExportAsPptx={onExportAsPptx}
             streaming={previewStreaming ?? false}
@@ -2594,9 +2808,11 @@ export function FileWorkspace({
             ) : null}
             <div className="viewer-memory-preview__frame-host">
               <iframe
-                key={memoryOnlyPreview.fileName ?? 'memory-preview'}
+                // Hold→paint must remount (prefix in key). In-place srcDoc
+                // updates strand deck fit the same way as FileViewer.
+                key={`${memoryOnlyPreview.fileName ?? 'memory-preview'}:${memoryOnlyPreviewMountKey}`}
                 className="viewer-memory-preview__frame"
-                srcDoc={memoryOnlyPreview.html}
+                srcDoc={memoryOnlyPreviewSrcDoc || undefined}
                 sandbox="allow-scripts"
                 title={memoryOnlyPreview.fileName ?? 'preview'}
               />
@@ -4072,7 +4288,7 @@ function designSystemSectionRunningNotice(
   activity: DesignSystemSectionActivity,
 ): string {
   if (activity.phase === 'reading') {
-    return `Open Design is reading ${section.title} context for this section.`;
+    return `Reading ${section.title} context for this section.`;
   }
   return `${designSystemSectionPhaseLabel(section, activity)} now.`;
 }
@@ -4170,10 +4386,11 @@ function DesignSystemInlinePreview({
   return (
     <AuthenticatedProjectFileImage
       projectId={projectId}
-      path={file.name}
-      alt={file.name}
+      path={projectFileResolvedPath(file)}
+      alt=""
       rev={Math.round(file.mtime)}
       trustExists
+      allowBackgroundRetry
     />
   );
 }

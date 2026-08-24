@@ -29,6 +29,7 @@ export type ExportJobRunnerRequest = {
   title?: string;
   inlineHtml?: string;
   fresh?: boolean;
+  templateId?: string | null;
   image?: {
     format?: unknown;
     slideIndex?: unknown;
@@ -111,6 +112,7 @@ export async function runExportJobInBackground(input: {
       ...(request.title ? { title: request.title } : {}),
       ...(request.inlineHtml ? { inlineHtml: request.inlineHtml } : {}),
       ...(request.fresh ? { fresh: true } : {}),
+      ...(request.templateId ? { templateId: request.templateId } : {}),
     };
     if (request.format === 'pdf') {
       outcome = (await renderers.pdf(deps.renderContext(request.projectId), baseRequest)).outcome;

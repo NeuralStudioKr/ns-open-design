@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { CanvasSlideTemplatePicker } from "../src/teamver/components/CanvasSlideTemplatePicker";
 import type { TeamverCanvasSlideTemplateOption } from "../src/teamver/canvasSlideLaunch";
+import { embedUiLabel } from "../src/teamver/embedUiLabels";
 
 // PreviewSurface pulls in IntersectionObserver + iframe machinery that jsdom
 // does not implement; the picker's contract for our tests is "did we mount a
@@ -109,7 +110,7 @@ describe("CanvasSlideTemplatePicker", () => {
     expect(onSelect).toHaveBeenCalled();
   });
 
-  it("filters cards by search query and falls back to the first visible option", () => {
+  it("filters cards by search query without rewriting an explicit selection", () => {
     const onSelect = vi.fn();
     render(
       <CanvasSlideTemplatePicker
@@ -129,9 +130,9 @@ describe("CanvasSlideTemplatePicker", () => {
     expect(
       screen.getByTestId("teamver-canvas-slide-launch-template-card-html-ppt-cobalt-grid"),
     ).toBeTruthy();
-    // The previously selected id was filtered out → picker asked the parent to
-    // fall back to the only visible card.
-    expect(onSelect).toHaveBeenCalledWith("html-ppt-cobalt-grid");
+    // Search filter must NOT reset the parent selection to the first visible
+    // card — that race snapped Canvas → Slide picks back to 기본.
+    expect(onSelect).not.toHaveBeenCalled();
   });
 
   it("announces the filtered count via a polite aria-live region", () => {
@@ -154,7 +155,7 @@ describe("CanvasSlideTemplatePicker", () => {
     expect(live.textContent).toContain("1");
 
     fireEvent.change(search, { target: { value: "zzz-no-match" } });
-    expect(live.textContent).toContain("검색 결과 없음");
+    expect(live.textContent).toContain(embedUiLabel("No search results", "검색 결과 없음"));
   });
 
   it("clears the search when the user clicks the empty-state reset button", () => {
@@ -170,7 +171,9 @@ describe("CanvasSlideTemplatePicker", () => {
     const search = screen.getByTestId("teamver-canvas-slide-launch-template-search") as HTMLInputElement;
     fireEvent.change(search, { target: { value: "zzz-no-match" } });
     const empty = screen.getByTestId("teamver-canvas-slide-launch-template-empty");
-    expect(empty.textContent).toContain("검색어와 일치하는 템플릿이 없습니다.");
+    expect(empty.textContent).toContain(
+      embedUiLabel("No templates match this search.", "검색어와 일치하는 템플릿이 없습니다."),
+    );
 
     fireEvent.click(
       screen.getByTestId("teamver-canvas-slide-launch-template-empty-clear"),
@@ -217,6 +220,8 @@ describe("CanvasSlideTemplatePicker", () => {
 
     const single = screen.getByTestId("teamver-canvas-slide-launch-template");
     expect(single.getAttribute("role")).not.toBe("radiogroup");
-    expect(single.textContent).toContain("기본 슬라이드 템플릿");
+    expect(single.textContent).toContain(
+      embedUiLabel("Default slide template", "기본 슬라이드 템플릿"),
+    );
   });
 });

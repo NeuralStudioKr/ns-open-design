@@ -3,6 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyManualEditPreviewStylesToDocument,
+  measureManualEditContentPageBounds,
   measureManualEditTargetContentRect,
   measureManualEditTargetHostRect,
 } from '../../src/edit-mode/manual-edit-host-preview';
@@ -26,6 +27,34 @@ describe('manual edit host preview fallback', () => {
     expect(el.style.getPropertyPriority('font-size')).toBe('important');
     expect(el.style.getPropertyValue('font-size')).toBe('32px');
     expect(el.style.getPropertyValue('color')).toBe('rgb(0, 0, 255)');
+  });
+
+  it('ignores non-allowlisted preview style keys', () => {
+    const doc = makeDoc('<main data-od-id="hero">Hero</main>');
+    const ok = applyManualEditPreviewStylesToDocument(doc, 'hero', {
+      fontSize: '28px',
+      backgroundImage: 'url(https://evil.example/x.png)',
+      behavior: 'url(#xss)',
+    } as Partial<import('../../src/edit-mode/types').ManualEditStyles>);
+    const el = doc.querySelector('[data-od-id="hero"]') as HTMLElement;
+
+    expect(ok).toBe(true);
+    expect(el.style.getPropertyValue('font-size')).toBe('28px');
+    expect(el.style.getPropertyValue('background-image')).toBe('');
+    expect(el.style.getPropertyValue('behavior')).toBe('');
+  });
+
+  it('coerces unitless length strings so preview matches persist', () => {
+    const doc = makeDoc('<main data-od-id="hero">Hero</main>');
+    const ok = applyManualEditPreviewStylesToDocument(doc, 'hero', {
+      fontSize: '32',
+      fontWeight: '700',
+    });
+    const el = doc.querySelector('[data-od-id="hero"]') as HTMLElement;
+
+    expect(ok).toBe(true);
+    expect(el.style.getPropertyValue('font-size')).toBe('32px');
+    expect(el.style.getPropertyValue('font-weight')).toBe('700');
   });
 
   it('removes empty style values instead of writing them', () => {
@@ -147,5 +176,27 @@ describe('manual edit host preview fallback', () => {
     });
     frame.remove();
     host.remove();
+  });
+
+  it('measures iframe content page bounds from design-canvas when present', () => {
+    const frame = document.createElement('iframe');
+    document.body.appendChild(frame);
+    const doc = frame.contentDocument!;
+    const canvas = doc.createElement('div');
+    canvas.className = 'design-canvas';
+    doc.body.appendChild(canvas);
+    canvas.getBoundingClientRect = () => ({
+      x: 0, y: 0, width: 960, height: 540,
+      top: 0, left: 0, right: 960, bottom: 540,
+      toJSON: () => ({}),
+    }) as DOMRect;
+
+    expect(measureManualEditContentPageBounds(frame)).toEqual({
+      x: 0,
+      y: 0,
+      width: 960,
+      height: 540,
+    });
+    frame.remove();
   });
 });

@@ -9,6 +9,7 @@
 
 import { describe, expect, it } from 'vitest';
 import type { InstalledPluginRecord } from '@open-design/contracts';
+import { shouldPreferBakedGalleryClip } from '../../src/components/plugins-home/galleryOdMode';
 import { inferPluginPreview } from '../../src/components/plugins-home/preview';
 
 interface MakeArgs {
@@ -194,6 +195,29 @@ describe('inferPluginPreview', () => {
     expect(out.poster).toBe('/api/plugin-previews/commercial-deck/current/poster.jpg');
     expect(out.videoUrl).toBe('/api/plugin-previews/commercial-deck/current/preview.mp4');
     expect(out.loopHoldMs).toBe(2500);
+  });
+
+  it('keeps official html-ppt decks on the live 1920 cover even when a bake exists', () => {
+    const record = make({
+      id: 'example-html-ppt-zhangzara-8-bit-orbit',
+      tags: ['html-ppt'],
+      preview: { type: 'html', entry: './example.html' },
+      bakedPreview: {
+        poster: '/api/plugin-previews/orbit/poster.jpg',
+        video: '/api/plugin-previews/orbit/preview.mp4',
+        holdMs: 2500,
+      },
+    });
+    expect(shouldPreferBakedGalleryClip(record)).toBe(false);
+    const gallery = inferPluginPreview(record, {
+      preferBaked: shouldPreferBakedGalleryClip(record),
+    });
+    expect(gallery.kind).toBe('html');
+    if (gallery.kind !== 'html') return;
+    expect(gallery.src).toBe('/api/plugins/example-html-ppt-zhangzara-8-bit-orbit/preview');
+
+    const homeHero = inferPluginPreview(record, { preferBaked: true });
+    expect(homeHero.kind).toBe('media');
   });
 
   it('falls back to live HTML for commercial slide templates without a baked preview', () => {

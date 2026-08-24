@@ -133,6 +133,7 @@ describe('parseSlideCountPhrase', () => {
     expect(parseSlideCountPhrase('10장 슬라이드')).toContain('정확히 10장');
     expect(parseSlideCountPhrase('8~10장')).toContain('정확히 10장');
     expect(parseSlideCountPhrase('10-15 pages')).toContain('정확히 15장');
+    expect(parseSlideCountPhrase('20장')).toBeNull();
   });
 });
 
@@ -274,9 +275,12 @@ describe('findIncompleteSlideAssistantForRecovery', () => {
 
 describe('canFireAutoContinueForConversation', () => {
   it('allows attempts below the cap', () => {
+    // Bumped cap from 3 to 5 so Canvas → Slide launches get enough auto
+    // retries before surfacing the failure banner; still bounded per
+    // conversation and beaten by the manual retry affordance.
     expect(canFireAutoContinueForConversation(0)).toBe(true);
-    expect(canFireAutoContinueForConversation(2)).toBe(true);
-    expect(canFireAutoContinueForConversation(3)).toBe(false);
+    expect(canFireAutoContinueForConversation(4)).toBe(true);
+    expect(canFireAutoContinueForConversation(5)).toBe(false);
   });
 });
 
@@ -291,6 +295,16 @@ describe('verifySlideProducedHtmlDeliverable', () => {
     await expect(
       verifySlideProducedHtmlDeliverable('deck.html', async () => INCOMPLETE_SHELL),
     ).resolves.toBeNull();
+  });
+
+  it('accepts a one-slide instruction-copy cover after heading heal', async () => {
+    const parrotCover =
+      '<!doctype html><html lang="ko"><body>'
+      + '<section class="slide"><h1>expo에 대해서 설명하는 피피티 만들어줘</h1></section>'
+      + '</body></html>';
+    await expect(
+      verifySlideProducedHtmlDeliverable('deck.html', async () => parrotCover),
+    ).resolves.toBe('deck.html');
   });
 });
 

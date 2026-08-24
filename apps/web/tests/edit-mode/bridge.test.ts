@@ -4,11 +4,13 @@ import {
   MANUAL_EDIT_DISCOVERY_SELECTOR,
   buildManualEditBridge,
   buildManualEditBridgeStyle,
+  isDeckSlideRootElement,
   isMeaningfulManualEditElement,
   isManualEditHostNode,
   isSourceMappableManualEditElement,
   manualEditDomPathForElement,
   manualEditStableIdForElement,
+  resolveGraphicContainerTarget,
 } from '../../src/edit-mode/bridge';
 
 describe('manual edit bridge target normalization', () => {
@@ -54,6 +56,123 @@ describe('manual edit bridge target normalization', () => {
     expect(isMeaningfulManualEditElement(title, { width: 80, height: 24 })).toBe(true);
     expect(isMeaningfulManualEditElement(title, { width: 3, height: 24 })).toBe(false);
     expect(isMeaningfulManualEditElement(script, { width: 80, height: 24 })).toBe(false);
+  });
+
+  it('resolveGraphicContainerTarget redirects deck cover svg to absolute wrapper', () => {
+    const dom = new JSDOM(`
+      <section class="slide" data-screen-label="01 Cover">
+        <div data-od-source-path="path-0-1" style="position:absolute;left:855px;top:322px;width:775px;height:508px;display:flex;align-items:center;justify-content:center;pointer-events:none">
+          <svg data-od-source-path="path-0-1-0" viewBox="0 0 400 400" width="420" height="420">
+            <circle cx="200" cy="200" r="16" fill="#818cf8"></circle>
+            <text x="200" y="207">NS</text>
+          </svg>
+        </div>
+      </section>
+    `);
+    const wrap = dom.window.document.querySelector('div')!;
+    const svg = dom.window.document.querySelector('svg')!;
+    const circle = dom.window.document.querySelector('circle')!;
+
+    expect(isDeckSlideRootElement(dom.window.document.querySelector('section')!)).toBe(true);
+    expect(resolveGraphicContainerTarget(svg)).toBe(wrap);
+    expect(resolveGraphicContainerTarget(circle)).toBe(circle);
+    expect(resolveGraphicContainerTarget(wrap)).toBe(wrap);
+
+    dom.window.close();
+  });
+
+  it('selects absolute graphic wrapper (not inner svg) for deck cover icons', () => {
+    const dom = new JSDOM(
+      `<section class="slide" data-screen-label="01 Cover">
+        <div data-od-source-path="path-0-1" style="position:absolute;left:855px;top:322px;width:775px;height:508px;display:flex;align-items:center;justify-content:center;pointer-events:none">
+          <svg data-od-source-path="path-0-1-0" viewBox="0 0 400 400" width="420" height="420">
+            <circle cx="200" cy="200" r="16" fill="#818cf8"></circle>
+            <text x="200" y="207">NS</text>
+          </svg>
+        </div>
+      </section>${buildManualEditBridge(true)}`,
+      { runScripts: 'dangerously', url: 'http://localhost' },
+    );
+    const posts: Array<{ type?: string; target?: { id?: string; kind?: string; tagName?: string; rect?: { width: number; height: number }; styles?: Record<string, string> } }> = [];
+    const wrap = dom.window.document.querySelector('div')!;
+    const svg = dom.window.document.querySelector('svg')!;
+    const circle = dom.window.document.querySelector('circle')!;
+    wrap.getBoundingClientRect = () => ({
+      x: 855, y: 322, width: 775, height: 508,
+      top: 322, right: 1630, bottom: 830, left: 855,
+      toJSON: () => ({}),
+    } as DOMRect);
+    svg.getBoundingClientRect = () => ({
+      x: 1032, y: 366, width: 420, height: 420,
+      top: 366, right: 1452, bottom: 786, left: 1032,
+      toJSON: () => ({}),
+    } as DOMRect);
+    circle.getBoundingClientRect = svg.getBoundingClientRect;
+    dom.window.parent.postMessage = ((message: unknown) => {
+      posts.push(message as typeof posts[number]);
+    }) as typeof dom.window.parent.postMessage;
+
+    dom.window.dispatchEvent(new dom.window.MessageEvent('message', {
+      data: { type: 'od-edit-mode', enabled: true },
+    }));
+
+    circle.dispatchEvent(new dom.window.MouseEvent('click', {
+      bubbles: true,
+      cancelable: true,
+      clientX: 1100,
+      clientY: 420,
+    }));
+
+    const select = posts.find((message) => message.type === 'od-edit-select');
+    expect(select?.target?.tagName).toBe('div');
+    expect(select?.target?.kind).toBe('container');
+    expect(select?.target?.id).toBe('path-0-1');
+    expect(select?.target?.styles?.position).toBe('absolute');
+    expect(select?.target?.styles?.left).toBe('855px');
+    expect(select?.target?.styles?.top).toBe('322px');
+    expect(select?.target?.rect).toMatchObject({ width: 775, height: 508 });
+
+    dom.window.close();
+  });
+
+  it('lists absolute graphic wrapper in od-edit-targets but not inner svg', async () => {
+    const posts: Array<{ type?: string; targets?: Array<{ id: string; tagName?: string }> }> = [];
+    const dom = new JSDOM(
+      `<section class="slide" data-screen-label="01 Cover">
+        <div data-od-source-path="path-0-1" style="position:absolute;left:855px;top:322px;width:775px;height:508px;display:flex;pointer-events:none">
+          <svg data-od-source-path="path-0-1-0" width="420" height="420"><circle cx="200" cy="200" r="16" /></svg>
+        </div>
+      </section>${buildManualEditBridge(true)}`,
+      { runScripts: 'dangerously', url: 'http://localhost' },
+    );
+    const wrap = dom.window.document.querySelector('div')!;
+    const svg = dom.window.document.querySelector('svg')!;
+    wrap.getBoundingClientRect = () => ({
+      x: 855, y: 322, width: 775, height: 508,
+      top: 322, right: 1630, bottom: 830, left: 855,
+      toJSON: () => ({}),
+    } as DOMRect);
+    svg.getBoundingClientRect = () => ({
+      x: 1032, y: 366, width: 420, height: 420,
+      top: 366, right: 1452, bottom: 786, left: 1032,
+      toJSON: () => ({}),
+    } as DOMRect);
+    dom.window.parent.postMessage = ((message: unknown) => {
+      posts.push(message as typeof posts[number]);
+    }) as typeof dom.window.parent.postMessage;
+
+    dom.window.dispatchEvent(new dom.window.MessageEvent('message', {
+      data: { type: 'od-edit-mode', enabled: true },
+    }));
+    await new Promise((resolve) => dom.window.setTimeout(resolve, 0));
+
+    const targetsMessage = posts.find((message) => message.type === 'od-edit-targets');
+    const ids = targetsMessage?.targets?.map((item) => item.id) ?? [];
+    expect(ids).toContain('path-0-1');
+    expect(ids).not.toContain('path-0-1-0');
+    expect(wrap.getAttribute('data-od-edit-graphic-wrapper')).toBe('true');
+
+    dom.window.close();
   });
 
   it('includes svg in discovery so logos are not selected as parent containers', () => {
@@ -102,6 +221,91 @@ describe('manual edit bridge target normalization', () => {
     expect(select?.target?.rect).toMatchObject({ width: 32, height: 32 });
 
     dom.window.close();
+  });
+
+  it('selects img elements annotated with data-screen-label only', () => {
+    const dom = new JSDOM(
+      `<main>
+        <div data-od-id="hero-card" style="width:400px;height:200px;padding:24px">
+          <img data-screen-label="mindmap-logo" src="logo.svg" alt="Logo" width="120" height="120" />
+        </div>
+      </main>${buildManualEditBridge(true)}`,
+      { runScripts: 'dangerously', url: 'http://localhost' },
+    );
+    const posts: Array<{ type?: string; target?: { id?: string; kind?: string; tagName?: string } }> = [];
+    const wrap = dom.window.document.querySelector('div')!;
+    const img = dom.window.document.querySelector('img')!;
+    wrap.getBoundingClientRect = () => ({
+      x: 0, y: 0, width: 400, height: 200,
+      top: 0, right: 400, bottom: 200, left: 0,
+      toJSON: () => ({}),
+    } as DOMRect);
+    img.getBoundingClientRect = () => ({
+      x: 24, y: 24, width: 120, height: 120,
+      top: 24, right: 144, bottom: 144, left: 24,
+      toJSON: () => ({}),
+    } as DOMRect);
+    dom.window.parent.postMessage = ((message: unknown) => {
+      posts.push(message as typeof posts[number]);
+    }) as typeof dom.window.parent.postMessage;
+
+    dom.window.dispatchEvent(new dom.window.MessageEvent('message', {
+      data: { type: 'od-edit-mode', enabled: true },
+    }));
+
+    img.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true, clientX: 80, clientY: 80 }));
+
+    const select = posts.find((message) => message.type === 'od-edit-select');
+    expect(select?.target?.tagName).toBe('img');
+    expect(select?.target?.kind).toBe('image');
+    expect(select?.target?.id).toBe('mindmap-logo');
+
+    dom.window.close();
+  });
+
+  it('selects svg with pointer-events:none when edit mode re-enables hit testing', () => {
+    const dom = new JSDOM(
+      `<main>
+        <div data-od-id="diagram-wrap" style="width:400px;height:200px">
+          <svg data-screen-label="mindmap-svg" width="160" height="160" style="pointer-events:none">
+            <circle cx="80" cy="80" r="40" fill="#2563eb" />
+          </svg>
+        </div>
+      </main>${buildManualEditBridge(true)}`,
+      { runScripts: 'dangerously', url: 'http://localhost' },
+    );
+    const posts: Array<{ type?: string; target?: { id?: string; kind?: string; tagName?: string } }> = [];
+    const svg = dom.window.document.querySelector('svg')!;
+    const circle = dom.window.document.querySelector('circle')!;
+    svg.getBoundingClientRect = () => ({
+      x: 20, y: 20, width: 160, height: 160,
+      top: 20, right: 180, bottom: 180, left: 20,
+      toJSON: () => ({}),
+    } as DOMRect);
+    circle.getBoundingClientRect = svg.getBoundingClientRect;
+    dom.window.parent.postMessage = ((message: unknown) => {
+      posts.push(message as typeof posts[number]);
+    }) as typeof dom.window.parent.postMessage;
+
+    dom.window.dispatchEvent(new dom.window.MessageEvent('message', {
+      data: { type: 'od-edit-mode', enabled: true },
+    }));
+
+    circle.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true, clientX: 80, clientY: 80 }));
+
+    const select = posts.find((message) => message.type === 'od-edit-select');
+    expect(select?.target?.tagName).toBe('svg');
+    expect(select?.target?.kind).toBe('image');
+    expect(select?.target?.id).toBe('mindmap-svg');
+
+    dom.window.close();
+  });
+
+  it('treats data-screen-label as source-mappable for manual edit discovery', () => {
+    const dom = new JSDOM('<main><img data-screen-label="logo" src="x.svg" alt="x" /></main>');
+    const img = dom.window.document.querySelector('img')!;
+    expect(isSourceMappableManualEditElement(img)).toBe(true);
+    expect(manualEditStableIdForElement(img)).toBe('logo');
   });
 
   it('keeps source-mappable display:none targets available for the layers panel', async () => {
@@ -312,10 +516,10 @@ describe('manual edit bridge target normalization', () => {
   it('omits selected outerHTML from bulk target posts but includes it for selected targets', () => {
     const bridge = buildManualEditBridge(true);
 
-    expect(bridge).toContain('targets.push(targetFrom(nodes[i], false))');
+    expect(bridge).toContain('targets.push(targetFrom(resolved, false))');
     expect(bridge).toContain("target: targetFrom(el, true)");
-    expect(bridge).toContain('if (!isSourceMappable(nodes[i])) continue;');
-    expect(bridge).toContain('return el;');
+    expect(bridge).toContain('if (!isSourceMappable(node)) continue;');
+    expect(bridge).toContain('resolveGraphicContainerTarget(node)');
     expect(bridge).not.toContain('if (isPrimaryTarget(el)) return el;');
   });
 
@@ -371,6 +575,59 @@ describe('manual edit bridge target normalization', () => {
     expect(hero.style.getPropertyPriority('font-size')).toBe('important');
     expect(hero.style.getPropertyPriority('color')).toBe('important');
     expect(hero.style.getPropertyValue('font-size')).toBe('42px');
+
+    dom.window.close();
+  });
+
+  it('ignores non-allowlisted keys in od-edit-preview-style', () => {
+    const dom = new JSDOM(
+      `<main><h1 data-od-id="hero">Hero</h1></main>${buildManualEditBridge(true)}`,
+      { runScripts: 'dangerously', url: 'http://localhost' },
+    );
+    const hero = dom.window.document.querySelector('[data-od-id="hero"]') as HTMLElement;
+
+    dom.window.dispatchEvent(new dom.window.MessageEvent('message', {
+      data: {
+        type: 'od-edit-preview-style',
+        id: 'hero',
+        styles: {
+          fontSize: '30px',
+          backgroundImage: 'url(https://evil.example/x.png)',
+          behavior: 'url(#xss)',
+        },
+        version: 3,
+      },
+    }));
+
+    expect(hero.style.getPropertyValue('font-size')).toBe('30px');
+    expect(hero.style.getPropertyValue('background-image')).toBe('');
+    expect(hero.style.getPropertyValue('behavior')).toBe('');
+
+    dom.window.close();
+  });
+
+  it('coerces unitless preview lengths to px like persist', () => {
+    const bridge = buildManualEditBridge(true);
+    expect(bridge).toContain('coercePreviewStyleValue');
+    expect(bridge).toContain("trimmed + 'px'");
+
+    const dom = new JSDOM(
+      `<main><h1 data-od-id="hero">Hero</h1></main>${bridge}`,
+      { runScripts: 'dangerously', url: 'http://localhost' },
+    );
+    const hero = dom.window.document.querySelector('[data-od-id="hero"]') as HTMLElement;
+
+    dom.window.dispatchEvent(new dom.window.MessageEvent('message', {
+      data: {
+        type: 'od-edit-preview-style',
+        id: 'hero',
+        styles: { fontSize: '32', fontWeight: '700' },
+        version: 4,
+      },
+    }));
+
+    expect(hero.style.getPropertyValue('font-size')).toBe('32px');
+    expect(hero.style.getPropertyValue('font-weight')).toBe('700');
 
     dom.window.close();
   });
@@ -464,6 +721,7 @@ describe('manual edit bridge target normalization', () => {
     expect(css).toContain('[data-od-source-path] [data-od-source-path] { outline-color: transparent; }');
     expect(css).toContain('[data-od-edit-selected][data-od-edit-host-chrome]');
     expect(css).toContain('outline: none !important');
+    expect(css).toContain('pointer-events: none !important');
   });
 
   it('marks hostChrome selection so iframe outline can yield to the overlay', () => {
@@ -488,6 +746,22 @@ describe('manual edit bridge target normalization', () => {
     dom.window.close();
   });
 
+  it('starts contenteditable from host od-edit-start-text-edit (overlay dblclick)', () => {
+    const dom = new JSDOM(
+      `<main><h1 data-od-id="title">Title</h1></main>${buildManualEditBridge(true)}`,
+      { runScripts: 'dangerously', url: 'http://localhost' },
+    );
+    const title = dom.window.document.querySelector('[data-od-id="title"]')!;
+
+    dom.window.dispatchEvent(new dom.window.MessageEvent('message', {
+      data: { type: 'od-edit-start-text-edit', id: 'title' },
+    }));
+    expect(title.getAttribute('contenteditable')).toBe('plaintext-only');
+    expect(title.getAttribute('data-od-editing')).toBe('true');
+
+    dom.window.close();
+  });
+
   it('marks flex/grid targets as layout containers', () => {
     const bridge = buildManualEditBridge(true);
 
@@ -495,7 +769,54 @@ describe('manual edit bridge target normalization', () => {
     expect(bridge).toContain("display.indexOf('flex') >= 0 || display.indexOf('grid') >= 0");
   });
 
-  it('turns text targets into inline editors and commits changed text', () => {
+  it('marks multiple runtime selected targets from ids payload', () => {
+    const dom = new JSDOM(
+      `<main>
+        <h1 data-od-id="title">Title</h1>
+        <p data-od-id="body">Body</p>
+      </main>${buildManualEditBridge(true)}`,
+      { runScripts: 'dangerously', url: 'http://localhost' },
+    );
+    const title = dom.window.document.querySelector('[data-od-id="title"]')!;
+    const body = dom.window.document.querySelector('[data-od-id="body"]')!;
+
+    dom.window.dispatchEvent(new dom.window.MessageEvent('message', {
+      data: { type: 'od-edit-selected-target', ids: ['title', 'body'], primaryId: 'body' },
+    }));
+    expect(title.getAttribute('data-od-edit-selected')).toBe('true');
+    expect(body.getAttribute('data-od-edit-selected')).toBe('true');
+    expect(body.getAttribute('data-od-edit-primary')).toBe('true');
+    expect(title.hasAttribute('data-od-edit-primary')).toBe(false);
+
+    dom.window.close();
+  });
+
+  it('posts additive selection when shift-clicking a target', () => {
+    const dom = new JSDOM(
+      `<main><h1 data-od-id="title">Title</h1></main>${buildManualEditBridge(true)}`,
+      { runScripts: 'dangerously', url: 'http://localhost' },
+    );
+    const title = dom.window.document.querySelector('[data-od-id="title"]') as HTMLElement;
+    const postMessage = vi.spyOn(dom.window.parent, 'postMessage');
+
+    title.dispatchEvent(new dom.window.MouseEvent('click', {
+      bubbles: true,
+      cancelable: true,
+      shiftKey: true,
+      clientX: 8,
+      clientY: 8,
+    }));
+
+    expect(postMessage).toHaveBeenCalledWith({
+      type: 'od-edit-select',
+      target: expect.objectContaining({ id: 'title', kind: 'text' }),
+      additive: true,
+    }, '*');
+
+    dom.window.close();
+  });
+
+  it('single-clicks text to select without entering inline edit (resize stays available)', () => {
     const dom = new JSDOM(
       `<main><h1 data-od-id="title">Original title</h1></main>${buildManualEditBridge(true)}`,
       { runScripts: 'dangerously', url: 'http://localhost' },
@@ -509,15 +830,49 @@ describe('manual edit bridge target normalization', () => {
       clientX: 8,
       clientY: 8,
     }));
-    expect(title.getAttribute('contenteditable')).toBe('plaintext-only');
-    expect(title.getAttribute('data-od-editing')).toBe('true');
+
+    expect(title.hasAttribute('contenteditable')).toBe(false);
+    expect(title.hasAttribute('data-od-editing')).toBe(false);
     expect(postMessage).toHaveBeenCalledWith({
       type: 'od-edit-select',
       target: expect.objectContaining({
         id: 'title',
         kind: 'text',
       }),
+      additive: false,
     }, '*');
+    expect(postMessage).not.toHaveBeenCalledWith(expect.objectContaining({
+      type: 'od-edit-text-active',
+      active: true,
+    }), '*');
+
+    dom.window.close();
+  });
+
+  it('double-clicks text targets into inline editors and commits changed text', () => {
+    const dom = new JSDOM(
+      `<main><h1 data-od-id="title">Original title</h1></main>${buildManualEditBridge(true)}`,
+      { runScripts: 'dangerously', url: 'http://localhost' },
+    );
+    const title = dom.window.document.querySelector('[data-od-id="title"]') as HTMLElement;
+    const postMessage = vi.spyOn(dom.window.parent, 'postMessage');
+
+    title.dispatchEvent(new dom.window.MouseEvent('dblclick', {
+      bubbles: true,
+      cancelable: true,
+      clientX: 8,
+      clientY: 8,
+    }));
+    expect(title.getAttribute('contenteditable')).toBe('plaintext-only');
+    expect(title.getAttribute('data-od-editing')).toBe('true');
+    expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'od-edit-select',
+      target: expect.objectContaining({
+        id: 'title',
+        kind: 'text',
+      }),
+      additive: false,
+    }), '*');
 
     title.textContent = 'Edited title';
     title.dispatchEvent(new dom.window.FocusEvent('blur', { bubbles: false }));
@@ -563,7 +918,7 @@ describe('manual edit bridge target normalization', () => {
     const title = dom.window.document.querySelector('[data-od-id="title"]') as HTMLElement;
     const postMessage = vi.spyOn(dom.window.parent, 'postMessage');
 
-    title.dispatchEvent(new dom.window.MouseEvent('click', {
+    title.dispatchEvent(new dom.window.MouseEvent('dblclick', {
       bubbles: true,
       cancelable: true,
       clientX: 8,
@@ -588,7 +943,7 @@ describe('manual edit bridge target normalization', () => {
     const title = dom.window.document.querySelector('[data-od-id="title"]') as HTMLElement;
     const postMessage = vi.spyOn(dom.window.parent, 'postMessage');
 
-    title.dispatchEvent(new dom.window.MouseEvent('click', {
+    title.dispatchEvent(new dom.window.MouseEvent('dblclick', {
       bubbles: true,
       cancelable: true,
     }));
@@ -613,7 +968,7 @@ describe('manual edit bridge target normalization', () => {
     const body = dom.window.document.querySelector('[data-od-id="body"]') as HTMLElement;
     const postMessage = vi.spyOn(dom.window.parent, 'postMessage');
 
-    body.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true }));
+    body.dispatchEvent(new dom.window.MouseEvent('dblclick', { bubbles: true, cancelable: true }));
     body.dispatchEvent(new dom.window.KeyboardEvent('keydown', {
       bubbles: true,
       cancelable: true,
@@ -638,7 +993,7 @@ describe('manual edit bridge target normalization', () => {
     const body = dom.window.document.querySelector('[data-od-id="body"]') as HTMLElement;
     const postMessage = vi.spyOn(dom.window.parent, 'postMessage');
 
-    body.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true }));
+    body.dispatchEvent(new dom.window.MouseEvent('dblclick', { bubbles: true, cancelable: true }));
     body.textContent = 'Draft body';
     body.dispatchEvent(new dom.window.KeyboardEvent('keydown', {
       bubbles: true,
@@ -844,6 +1199,261 @@ describe('manual edit bridge target normalization', () => {
     expect(rectMsg?.ok).toBe(true);
     expect(rectMsg?.target?.offsetLeft).toBe(40);
     expect(rectMsg?.target?.offsetTop).toBe(60);
+
+    dom.window.close();
+  });
+
+  it('sticky inside static scrollport: offset* use scrollport content coords (not outer CB)', () => {
+    const posts: Array<{
+      type?: string;
+      id?: string;
+      ok?: boolean;
+      target?: {
+        offsetLeft?: number;
+        offsetTop?: number;
+        stickyScrollportId?: string;
+        cssPosition?: string;
+      };
+    }> = [];
+    const dom = new JSDOM(
+      `<main>
+        <div id="cb" style="position:relative">
+          <div id="sp" data-od-id="scrollport" style="overflow:auto;position:static;height:200px">
+            <div style="height:120px"></div>
+            <div data-od-id="sticky" style="position:sticky;top:0;width:100px;height:40px">S</div>
+            <div style="height:400px"></div>
+          </div>
+        </div>
+      </main>${buildManualEditBridge(true)}`,
+      { runScripts: 'dangerously', url: 'http://localhost' },
+    );
+    const cb = dom.window.document.getElementById('cb')!;
+    const sp = dom.window.document.getElementById('sp')!;
+    const sticky = dom.window.document.querySelector('[data-od-id="sticky"]') as HTMLElement;
+
+    cb.getBoundingClientRect = () => ({
+      x: 0, y: 0, width: 400, height: 600,
+      top: 0, right: 400, bottom: 600, left: 0,
+      toJSON: () => ({}),
+    } as DOMRect);
+    Object.defineProperty(cb, 'clientLeft', { value: 0 });
+    Object.defineProperty(cb, 'clientTop', { value: 0 });
+    Object.defineProperty(cb, 'scrollLeft', { value: 0 });
+    Object.defineProperty(cb, 'scrollTop', { value: 0 });
+
+    sp.getBoundingClientRect = () => ({
+      x: 0, y: 0, width: 400, height: 200,
+      top: 0, right: 400, bottom: 200, left: 0,
+      toJSON: () => ({}),
+    } as DOMRect);
+    Object.defineProperty(sp, 'clientLeft', { value: 0 });
+    Object.defineProperty(sp, 'clientTop', { value: 10 });
+    Object.defineProperty(sp, 'scrollLeft', { value: 0 });
+    Object.defineProperty(sp, 'scrollTop', { value: 150 });
+
+    // Stuck sticky: visual top ≈ scrollport padding edge (clientTop).
+    sticky.getBoundingClientRect = () => ({
+      x: 0, y: 10, width: 100, height: 40,
+      top: 10, right: 100, bottom: 50, left: 0,
+      toJSON: () => ({}),
+    } as DOMRect);
+
+    const realGetComputed = dom.window.getComputedStyle.bind(dom.window);
+    dom.window.getComputedStyle = ((el: Element) => {
+      const style = realGetComputed(el);
+      if (el === sp) {
+        return new Proxy(style, {
+          get(target, prop) {
+            if (prop === 'position') return 'static';
+            if (prop === 'overflow' || prop === 'overflowY') return 'auto';
+            if (prop === 'overflowX') return 'visible';
+            return Reflect.get(target, prop);
+          },
+        }) as CSSStyleDeclaration;
+      }
+      if (el === sticky) {
+        return new Proxy(style, {
+          get(target, prop) {
+            if (prop === 'position') return 'sticky';
+            return Reflect.get(target, prop);
+          },
+        }) as CSSStyleDeclaration;
+      }
+      if (el === cb) {
+        return new Proxy(style, {
+          get(target, prop) {
+            if (prop === 'position') return 'relative';
+            return Reflect.get(target, prop);
+          },
+        }) as CSSStyleDeclaration;
+      }
+      return style;
+    }) as typeof dom.window.getComputedStyle;
+
+    dom.window.parent.postMessage = ((message: unknown) => {
+      posts.push(message as typeof posts[number]);
+    }) as typeof dom.window.parent.postMessage;
+
+    dom.window.dispatchEvent(new dom.window.MessageEvent('message', {
+      data: { type: 'od-edit-remeasure', id: 'sticky' },
+    }));
+
+    const rectMsg = posts.find((p) => p.type === 'od-edit-rect');
+    // Content coords vs scrollport: top = 10 - 0 - 10 + 150 = 150 (not outer CB 10).
+    expect(rectMsg?.ok).toBe(true);
+    expect(rectMsg?.target?.cssPosition).toBe('sticky');
+    expect(rectMsg?.target?.offsetLeft).toBe(0);
+    expect(rectMsg?.target?.offsetTop).toBe(150);
+    expect(rectMsg?.target?.stickyScrollportId).toBe('scrollport');
+
+    dom.window.close();
+  });
+
+  it('sticky promote preview pins static scrollport as position:relative', () => {
+    const posts: Array<{ type?: string; ok?: boolean }> = [];
+    const dom = new JSDOM(
+      `<main>
+        <div id="sp" data-od-id="scrollport" style="overflow:auto;position:static;height:200px">
+          <div data-od-id="sticky" style="position:sticky;top:0">S</div>
+        </div>
+      </main>${buildManualEditBridge(true)}`,
+      { runScripts: 'dangerously', url: 'http://localhost' },
+    );
+    const sp = dom.window.document.getElementById('sp')!;
+    const sticky = dom.window.document.querySelector('[data-od-id="sticky"]') as HTMLElement;
+    const realGetComputed = dom.window.getComputedStyle.bind(dom.window);
+    dom.window.getComputedStyle = ((el: Element) => {
+      const style = realGetComputed(el);
+      if (el === sp) {
+        return new Proxy(style, {
+          get(target, prop) {
+            if (prop === 'position') {
+              return sp.style.position || 'static';
+            }
+            if (prop === 'overflow' || prop === 'overflowY') return 'auto';
+            return Reflect.get(target, prop);
+          },
+        }) as CSSStyleDeclaration;
+      }
+      if (el === sticky) {
+        return new Proxy(style, {
+          get(target, prop) {
+            if (prop === 'position') {
+              return sticky.style.position || 'sticky';
+            }
+            return Reflect.get(target, prop);
+          },
+        }) as CSSStyleDeclaration;
+      }
+      return style;
+    }) as typeof dom.window.getComputedStyle;
+
+    dom.window.parent.postMessage = ((message: unknown) => {
+      posts.push(message as typeof posts[number]);
+    }) as typeof dom.window.parent.postMessage;
+
+    dom.window.dispatchEvent(new dom.window.MessageEvent('message', {
+      data: {
+        type: 'od-edit-preview-style',
+        id: 'sticky',
+        version: 1,
+        styles: { position: 'absolute', left: '0px', top: '150px' },
+      },
+    }));
+
+    expect(posts.some((p) => p.type === 'od-edit-preview-style-applied' && p.ok)).toBe(true);
+    expect(sp.style.getPropertyValue('position')).toBe('relative');
+    expect(sp.getAttribute('data-od-sticky-scrollport-cb')).toBe('1');
+
+    dom.window.close();
+  });
+
+  it('includes stack metadata on positioned targets', async () => {
+    const posts: Array<{
+      type?: string;
+      targets?: Array<{
+        id: string;
+        stackZ?: number;
+        siblingIndex?: number;
+        parentKey?: string;
+        parentStackZ?: number;
+        parentSiblingIndex?: number;
+      }>;
+    }> = [];
+    const dom = new JSDOM(
+      `<main>
+        <section data-od-source-path="path-0-0">
+          <div data-od-source-path="path-0-0-0" style="position:absolute;left:0;top:0;width:40px;height:40px;z-index:3"></div>
+          <div data-od-source-path="path-0-0-1" style="position:absolute;left:10px;top:10px;width:40px;height:40px"></div>
+        </section>
+      </main>${buildManualEditBridge(true)}`,
+      { runScripts: 'dangerously', url: 'http://localhost' },
+    );
+    const section = dom.window.document.querySelector('section')!;
+    const front = dom.window.document.querySelector('[data-od-source-path="path-0-0-0"]') as HTMLElement;
+    const back = dom.window.document.querySelector('[data-od-source-path="path-0-0-1"]') as HTMLElement;
+    for (const el of [section, front, back]) {
+      el.getBoundingClientRect = () => ({
+        x: 0, y: 0, width: 40, height: 40,
+        top: 0, right: 40, bottom: 40, left: 0,
+        toJSON: () => ({}),
+      } as DOMRect);
+    }
+    dom.window.parent.postMessage = ((message: unknown) => {
+      posts.push(message as typeof posts[number]);
+    }) as typeof dom.window.parent.postMessage;
+
+    dom.window.dispatchEvent(new dom.window.MessageEvent('message', {
+      data: { type: 'od-edit-mode', enabled: true },
+    }));
+    await new Promise((resolve) => dom.window.setTimeout(resolve, 0));
+
+    const frontTarget = posts
+      .find((message) => message.type === 'od-edit-targets')
+      ?.targets
+      ?.find((target) => target.id === 'path-0-0-0');
+    const backTarget = posts
+      .find((message) => message.type === 'od-edit-targets')
+      ?.targets
+      ?.find((target) => target.id === 'path-0-0-1');
+    expect(frontTarget?.stackZ).toBe(3);
+    expect(frontTarget?.siblingIndex).toBe(0);
+    expect(frontTarget?.parentKey).toBe('path-0-0');
+    expect(backTarget?.stackZ).toBe(0);
+    expect(backTarget?.siblingIndex).toBe(1);
+
+    dom.window.close();
+  });
+
+  it('refreshes target catalog when host posts od-edit-refresh-targets', async () => {
+    const posts: Array<{ type?: string }> = [];
+    const dom = new JSDOM(
+      `<main><p data-od-source-path="path-0-0">Hello</p></main>${buildManualEditBridge(true)}`,
+      { runScripts: 'dangerously', url: 'http://localhost' },
+    );
+    const paragraph = dom.window.document.querySelector('p')!;
+    paragraph.getBoundingClientRect = () => ({
+      x: 0, y: 0, width: 80, height: 24,
+      top: 0, right: 80, bottom: 24, left: 0,
+      toJSON: () => ({}),
+    } as DOMRect);
+    dom.window.parent.postMessage = ((message: unknown) => {
+      posts.push(message as { type?: string });
+    }) as typeof dom.window.parent.postMessage;
+
+    dom.window.dispatchEvent(new dom.window.MessageEvent('message', {
+      data: { type: 'od-edit-mode', enabled: true },
+    }));
+    await new Promise((resolve) => dom.window.setTimeout(resolve, 0));
+    const before = posts.filter((message) => message.type === 'od-edit-targets').length;
+
+    dom.window.dispatchEvent(new dom.window.MessageEvent('message', {
+      data: { type: 'od-edit-refresh-targets' },
+    }));
+    await new Promise((resolve) => dom.window.setTimeout(resolve, 0));
+
+    const after = posts.filter((message) => message.type === 'od-edit-targets').length;
+    expect(after).toBe(before + 1);
 
     dom.window.close();
   });

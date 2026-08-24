@@ -352,6 +352,12 @@
   opacity: 1;
   pointer-events: auto;
 }
+@media (hover: none) {
+  .pet-codex-adopt-btn:not(.active) {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
 
 /* Slash-command popover in the chat composer */
 
@@ -1095,8 +1101,10 @@
 }
 .library-empty-title {
   margin: 0;
+  font-size: 18px;
   font-weight: 600;
-  color: var(--text);
+  letter-spacing: -0.01em;
+  color: var(--text-strong);
 }
 .library-empty-hint {
   margin: 0;

@@ -106,13 +106,32 @@ class Settings(BaseModel):
     design_model_prices_json: str = os.getenv("DESIGN_MODEL_PRICES_JSON", "")
 
     # Embed managed API mode — server env only (never VITE_* / git)
-    teamver_od_api_protocol: str = os.getenv("TEAMVER_OD_API_PROTOCOL", "anthropic")
+    # Empty means "inherit TEAMVER_DESIGN_DEFAULT_PROVIDER when set".
+    teamver_od_api_protocol: str = os.getenv("TEAMVER_OD_API_PROTOCOL", "")
+    teamver_design_default_provider: str = os.getenv("TEAMVER_DESIGN_DEFAULT_PROVIDER", "")
     teamver_od_api_base_url: str = os.getenv(
         "TEAMVER_OD_API_BASE_URL", "https://api.anthropic.com"
     )
     teamver_od_api_model: str = os.getenv("TEAMVER_OD_API_MODEL", "claude-sonnet-4-6")
     teamver_od_api_key: str = os.getenv("TEAMVER_OD_API_KEY", "")
     teamver_od_anthropic_api_key: str = os.getenv("ANTHROPIC_API_KEY", "")
+    # MiniMax managed canary — design-api never needs the secret for runtime-config;
+    # TEAMVER_MINIMAX_CONFIGURED (or optional key presence) proves daemon is wired.
+    teamver_minimax_configured: bool = Field(
+        default_factory=lambda: _env_bool("TEAMVER_MINIMAX_CONFIGURED", default=False)
+    )
+    teamver_minimax_enabled: bool = Field(
+        default_factory=lambda: _env_bool("TEAMVER_MINIMAX_ENABLED", default=False)
+    )
+    teamver_minimax_api_key: str = os.getenv("TEAMVER_MINIMAX_API_KEY", "")
+    od_minimax_api_key: str = os.getenv("OD_MINIMAX_API_KEY", "")
+    minimax_api_key: str = os.getenv("MINIMAX_API_KEY", "")
+    teamver_minimax_base_url: str = os.getenv(
+        "TEAMVER_MINIMAX_BASE_URL", "https://api.minimax.io/v1"
+    )
+    teamver_minimax_chat_model: str = os.getenv(
+        "TEAMVER_MINIMAX_CHAT_MODEL", "MiniMax-M3"
+    )
 
     cors_origins: str = os.getenv("CORS_ORIGINS", "")
     cors_teamver_subdomain_regex: bool = Field(
@@ -177,8 +196,29 @@ class Settings(BaseModel):
             )
         if not (self.teamver_main_login_url or "").strip():
             raise ValueError(f"TEAMVER_MAIN_LOGIN_URL is required in {deploy_env}")
-        if not self.teamver_od_api_key.strip():
+        has_managed_od_key = bool(self.teamver_od_api_key.strip())
+        has_managed_minimax_key = bool(
+            self.teamver_minimax_api_key.strip()
+            or self.od_minimax_api_key.strip()
+            or self.minimax_api_key.strip()
+        )
+        protocol = (
+            (self.teamver_od_api_protocol or self.teamver_design_default_provider or "")
+            .strip()
+            .lower()
+        )
+        minimax_ok = self.teamver_minimax_configured or has_managed_minimax_key
+        if protocol == "minimax":
+            if not minimax_ok:
+                raise ValueError(
+                    f"TEAMVER_MINIMAX_API_KEY is required in {deploy_env} when MiniMax is the default provider"
+                )
+        elif not has_managed_od_key:
             raise ValueError(f"TEAMVER_OD_API_KEY is required in {deploy_env}")
+        if not (has_managed_od_key or has_managed_minimax_key):
+            raise ValueError(
+                f"TEAMVER_OD_API_KEY or TEAMVER_MINIMAX_API_KEY is required in {deploy_env}"
+            )
         registry_configured = all(
             value.strip()
             for value in (

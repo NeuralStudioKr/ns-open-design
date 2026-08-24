@@ -15,6 +15,7 @@
   overflow: visible;
 }
 .viewer-toolbar {
+  --viewer-toolbar-height: 44px;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -24,7 +25,7 @@
   font-size: 12.5px;
   color: var(--text-muted);
   gap: 8px;
-  min-height: 44px;
+  min-height: var(--viewer-toolbar-height);
   flex-shrink: 0;
 }
 .viewer-toolbar-left { display: inline-flex; align-items: center; gap: 8px; }
@@ -1201,6 +1202,21 @@
 .preview-viewport:not(.preview-viewport-desktop).preview-draw-active {
   padding-bottom: 84px;
 }
+/* Let the draw canvas receive pointer events — iframes underneath steal ink otherwise. */
+.preview-draw-active .artifact-preview-transport-stack,
+.preview-draw-active .artifact-preview-transport-stack iframe {
+  pointer-events: none !important;
+  z-index: 1;
+}
+.preview-draw-active .preview-draw-overlay-wrap {
+  z-index: 50;
+}
+/* Let the draw overlay receive ink — canvas must sit above siblings. */
+.preview-draw-active .preview-draw-overlay-canvas {
+  pointer-events: auto !important;
+  touch-action: none;
+  z-index: 100;
+}
 .comment-overlay-layer {
   position: absolute;
   inset: 0;
@@ -1522,11 +1538,24 @@
   background: var(--bg-subtle);
   cursor: zoom-in;
 }
-.comment-popover-image-thumb img {
+.comment-popover-image-thumb img,
+.comment-popover-image-thumb .authenticated-project-file-image-loading,
+.comment-popover-image-thumb .authenticated-project-file-image-failed {
   width: 100%;
   height: 100%;
   object-fit: cover;
   display: block;
+}
+.comment-popover-image-thumb .authenticated-project-file-image-loading {
+  min-width: 48px;
+  min-height: 48px;
+}
+.comment-popover-image-thumb .authenticated-project-file-image-failed {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 48px;
+  min-height: 48px;
 }
 .comment-popover-image-remove {
   position: absolute;

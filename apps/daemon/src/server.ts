@@ -16,6 +16,8 @@ import net from 'node:net';
 import {
   defaultScenarioPluginIdForProjectMetadata,
   sanitizeAssistantProseForDisplay,
+  stripRemoteCssImportsQuoteAware,
+  attrsLookLikeDeckOrTemplateSlideHost,
   type OpenDesignDiscordPresenceResponse,
   type OpenDesignGithubLatestReleaseResponse,
   type OpenDesignGithubRepoResponse,
@@ -193,6 +195,7 @@ import {
   readPluginLockfile,
   registerBuiltInAtomWorkers,
   registerBundledPlugins,
+  ensureBundledPluginRegistered,
   registryRootsForDataDir,
   restoreProjectSnapshotLink,
   resolvePluginSnapshot,
@@ -207,6 +210,7 @@ import {
   searchInstalledPlugins,
 } from './plugins/index.js';
 import { startFileRevisionGc } from './file-revisions/gc.js';
+import { updateFileRevisionMetrics } from './file-revisions/metrics.js';
 import {
   filterPluginsExcludingChinesePrimaryDeck,
   isExcludedChinesePrimaryDeckPlugin,
@@ -304,7 +308,7 @@ import {
   teamverDesignApiBaseUrl,
 } from './teamver-project-access.js';
 import { createTeamverProjectSqliteHydrationMiddleware } from './teamver-project-sqlite-hydrate.js';
-import { resolveTeamverManagedApiKeyFromEnv } from './teamver-managed-api-key.js';
+import { resolveTeamverManagedApiKeyFromEnvForProvider } from './teamver-managed-api-key.js';
 import type { TeamverRequestIdentity } from './teamver-project-access.js';
 import { registerTeamverDesignBffProxy } from './teamver-design-bff-proxy.js';
 import {
@@ -525,6 +529,7 @@ import {
   listLatestProjectRunStatuses,
   listLatestProjectRunStatusesAsync,
   listMessages,
+  listMessagesAsync,
   listPreviewComments,
   listProjects,
   listRoutines,
@@ -1028,7 +1033,7 @@ export function normalizeCommentAttachments(input) {
         screenshotPath: selectionKind === 'visual' ? screenshotPath : undefined,
         markKind: selectionKind === 'visual' ? markKind : undefined,
         intent: selectionKind === 'visual'
-          ? intent || visualAnnotationIntent(markKind)
+          ? intent || visualAnnotationIntent(markKind, comment)
           : undefined,
         imageAttachments: imageAttachments.length > 0 ? imageAttachments : undefined,
         commentContext,
@@ -1072,7 +1077,7 @@ export function renderCommentAttachmentHint(commentAttachments) {
       lines.push(
         `screenshot: ${item.screenshotPath}`,
         `markKind: ${item.markKind || 'stroke'}`,
-        `intent: ${item.intent || visualAnnotationIntent(item.markKind || 'stroke')}`,
+        `intent: ${item.intent || visualAnnotationIntent(item.markKind || 'stroke', item.comment)}`,
       );
       if (item.selector) lines.push(`selector: ${item.selector}`);
     } else {
@@ -1129,18 +1134,30 @@ function imageOnlyCommentFallback(count) {
 
 function normalizeVisualMarkKind(value) {
   return value === 'click' || value === 'click+stroke' || value === 'stroke'
+    || value === 'box' || value === 'click+box'
     ? value
     : 'stroke';
 }
 
-function visualAnnotationIntent(markKind) {
+function visualAnnotationIntent(markKind, userNote) {
+  const note = cleanString(userNote);
+  let base;
   if (markKind === 'click') {
-    return 'The screenshot has a blue focus box around the picked element; modify that picked part first.';
+    base = 'The screenshot has a blue focus box around the picked element; modify that picked part first.';
+  } else if (markKind === 'click+box') {
+    base =
+      'The screenshot has a blue focus box around the picked element and a red selection box; the red box outlines the region the user wants changed.';
+  } else if (markKind === 'click+stroke') {
+    base = 'The screenshot has a blue focus box and red strokes; together they identify the part the user wants changed.';
+  } else if (markKind === 'box') {
+    base =
+      'The screenshot has a red selection box that outlines the region the user wants changed. Treat the box as the intended target area—not decoration.';
+  } else {
+    base =
+      'The screenshot has red strokes that identify the visual region the user wants changed. Treat the drawn ink as the intended shape or placement guide—not decoration. ADD the requested shape/icon inside that region; do NOT delete or clear the rest of the slide.';
   }
-  if (markKind === 'click+stroke') {
-    return 'The screenshot has a blue focus box and red strokes; together they identify the part the user wants changed.';
-  }
-  return 'The screenshot has red strokes that identify the visual region the user wants changed.';
+  if (!note) return base;
+  return `User request from the annotation note: "${note}". ${base}`;
 }
 
 function compactString(value, max) {
@@ -3649,19 +3666,24 @@ function emitTeamverManagedKeyBootMarker() {
   const designApiUrl = teamverDesignApiBaseUrl();
   // Non-managed daemons (desktop, OSS, dev) don't need the managed key.
   if (!designApiUrl) return;
-  const hasManagedKey = Boolean(resolveTeamverManagedApiKeyFromEnv());
+  const rawProvider = (process.env.TEAMVER_DESIGN_DEFAULT_PROVIDER ?? '').trim().toLowerCase();
+  const provider = rawProvider === 'minimax' ? 'minimax' : 'anthropic';
+  const hasManagedKey = Boolean(resolveTeamverManagedApiKeyFromEnvForProvider(provider));
   const payload = {
     metric: 'teamver_managed_api_key_boot',
     ts: Date.now(),
     managedMode: true,
+    provider,
     hasManagedKey,
     designApiConfigured: true,
     ...(hasManagedKey
       ? {}
       : {
           hint:
-            'TEAMVER_OD_API_KEY (and/or ANTHROPIC_API_KEY) is missing from the daemon env. '
-            + 'embed BYOK proxy runs will fail with MANAGED_API_KEY_MISSING. '
+            (provider === 'minimax'
+              ? 'TEAMVER_MINIMAX_API_KEY (or OD_MINIMAX_API_KEY / MINIMAX_API_KEY) is missing from the daemon env. '
+              : 'TEAMVER_OD_API_KEY (and/or ANTHROPIC_API_KEY) is missing from the daemon env. ')
+            + `embed BYOK proxy runs will fail with ${provider === 'minimax' ? 'MINIMAX_API_KEY_MISSING' : 'MANAGED_API_KEY_MISSING'}. `
             + 'Update deploy/teamver/.env.{staging,production} + restart the open-design-daemon container.',
         }),
   };
@@ -5676,14 +5698,21 @@ export async function startServer({
     ),
     sqliteDbFile: path.join(RUNTIME_DATA_DIR, 'app.sqlite'),
   });
-  void fileRevisionGc.sweep().then((result) => {
+  void fileRevisionGc.sweep().then(async (result) => {
     if (
       result.orphanSnapshotsRemoved > 0
       || result.retentionRevisionsPruned > 0
+      || result.globalBudgetRevisionsPruned > 0
       || result.orphanFilesRemoved > 0
       || result.vacuum
     ) {
       console.info('[file-revisions] GC startup sweep', result);
+    }
+    try {
+      const stats = await fileRevisionGc.stats();
+      updateFileRevisionMetrics(stats);
+    } catch (err) {
+      console.warn(`[file-revisions] GC startup metrics failed: ${(err as Error)?.message ?? err}`);
     }
   }).catch((err) => {
     console.warn(`[file-revisions] GC startup sweep failed: ${(err)?.message ?? err}`);
@@ -6689,6 +6718,7 @@ export async function startServer({
     updateConversation,
     deleteConversation,
     listMessages,
+    listMessagesAsync,
     upsertMessage,
     listPreviewComments,
     upsertPreviewComment,
@@ -7039,6 +7069,7 @@ export async function startServer({
     exports: projectExportDeps,
     projectFiles: projectFileDeps,
     validation: validationDeps,
+    projectStorageHooks,
   });
   registerProjectFileRoutes(app, {
     db,
@@ -7051,7 +7082,22 @@ export async function startServer({
     documents: { buildDocumentPreview },
     artifacts: artifactDeps,
     projectPreviewScopes,
+    conversations: conversationDeps,
+    ids: idDeps,
     projectStorageHooks,
+    ensureBundledPluginForClone: async (pluginId) => {
+      const registered = await ensureBundledPluginRegistered({
+        db,
+        bundledRoot: BUNDLED_PLUGINS_DIR,
+        pluginId,
+        marketplaceProvenance: {
+          sourceMarketplaceId: OFFICIAL_MARKETPLACE_ID,
+          marketplaceTrust: 'official',
+          entryNamePrefix: 'open-design',
+        },
+      });
+      return registered ? { id: registered.id } : null;
+    },
   });
 
   registerMediaRoutes(app, {
@@ -7120,14 +7166,20 @@ export async function startServer({
   // ---- Conversations --------------------------------------------------------
 
   app.get('/api/projects/:id/conversations', async (req, res) => {
-    if (!getProject(db, req.params.id)) {
+    const conversationProject = getProjectAsync
+      ? await getProjectAsync(db, req.params.id)
+      : getProject(db, req.params.id);
+    if (!conversationProject) {
       return res.status(404).json({ error: 'project not found' });
     }
     res.json({ conversations: await listConversationsAsync(db, req.params.id) });
   });
 
-  app.post('/api/projects/:id/conversations', (req, res) => {
-    if (!getProject(db, req.params.id)) {
+  app.post('/api/projects/:id/conversations', async (req, res) => {
+    const conversationProject = getProjectAsync
+      ? await getProjectAsync(db, req.params.id)
+      : getProject(db, req.params.id);
+    if (!conversationProject) {
       return res.status(404).json({ error: 'project not found' });
     }
     const { title, seedFromConversationId, forkAfterMessageId } = req.body || {};
@@ -7905,7 +7957,25 @@ export async function startServer({
 
   app.get('/api/plugins/:id', async (req, res) => {
     try {
-      const plugin = getInstalledPlugin(db, req.params.id);
+      let plugin = getInstalledPluginForRoute(req.params.id);
+      if (!plugin) {
+        // Boot walk can miss a row (fresh volume race, prune after a
+        // transient parse fail, HA sqlite drift). Re-hydrate from the
+        // image's plugins/_official tree before 404 — Home chip binds
+        // (example-simple-deck) depend on this GET.
+        const routeId = String(req.params.id ?? '').trim();
+        const normalized = normalizedPluginRouteId(routeId) || routeId;
+        plugin = await ensureBundledPluginRegistered({
+          db,
+          bundledRoot: BUNDLED_PLUGINS_DIR,
+          pluginId: normalized,
+          marketplaceProvenance: {
+            sourceMarketplaceId: OFFICIAL_MARKETPLACE_ID,
+            marketplaceTrust: 'official',
+            entryNamePrefix: 'open-design',
+          },
+        });
+      }
       if (!plugin) return res.status(404).json({ error: 'plugin not found' });
       if (
         isExcludedChinesePrimaryDeckPlugin(plugin, readExcludeChineseDeckTemplatesFromEnv())
@@ -8772,6 +8842,19 @@ export async function startServer({
       if (byNormalizedId) return byNormalizedId;
     }
 
+    // Bare folder id ↔ bundled `example-<folder>` install id
+    // (Daisy Days: html-ppt-zhangzara-daisy-days ↔ example-html-ppt-zhangzara-daisy-days).
+    const aliasBase = normalized || id;
+    if (aliasBase) {
+      const alias = aliasBase.startsWith('example-')
+        ? aliasBase.slice('example-'.length)
+        : `example-${aliasBase}`;
+      if (alias && alias !== id && alias !== normalized) {
+        const byAlias = getInstalledPlugin(db, alias);
+        if (byAlias) return byAlias;
+      }
+    }
+
     try {
       const byEntry = db.prepare(
         `SELECT id FROM installed_plugins WHERE source_marketplace_entry_name = ?`,
@@ -8851,15 +8934,8 @@ export async function startServer({
     return html.replace(
       /<style\b([^>]*)>([\s\S]*?)<\/style>/gi,
       (match, attrs, css) => {
-        let stripped = false;
-        const nextCss = String(css).replace(
-          /@import\s+(?:url\(\s*)?(["']?)https?:\/\/[^"')\s;]+(?:\1\s*\))?[^;]*;?/gi,
-          () => {
-            stripped = true;
-            return '/* od stripped external css import */';
-          },
-        );
-        return stripped ? `<style${attrs}>${nextCss}</style>` : match;
+        const next = stripRemoteCssImportsQuoteAware(String(css));
+        return next.stripped ? `<style${attrs}>${next.css}</style>` : match;
       },
     );
   }
@@ -9091,6 +9167,234 @@ export async function startServer({
     }
     return found;
   }
+
+  const PLUGIN_PREVIEW_BATCH_MAX_ITEMS = 24;
+  const PLUGIN_PREVIEW_BATCH_MAX_BYTES = 2_500_000;
+
+  function stripPluginPreviewScriptsForThumbnail(html: string): string {
+    return String(html ?? '')
+      .replace(/<script\b[\s\S]*?<\/script\s*>/gi, '')
+      .replace(/<noscript\b[\s\S]*?<\/noscript\s*>/gi, '');
+  }
+
+  function findMatchingElementEnd(html: string, openStart: number, tagName: string): number {
+    const openEnd = html.indexOf('>', openStart);
+    if (openEnd < 0) return -1;
+    const tag = tagName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const tokenRe = new RegExp(`<\\/?${tag}\\b(?:[^>"']|"[^"]*"|'[^']*')*>`, 'gi');
+    tokenRe.lastIndex = openStart;
+    let depth = 0;
+    let match: RegExpExecArray | null;
+    while ((match = tokenRe.exec(html)) !== null) {
+      const token = match[0] ?? '';
+      if (/^<\//.test(token)) {
+        depth -= 1;
+        if (depth <= 0) return tokenRe.lastIndex;
+      } else if (!/\/\s*>$/.test(token)) {
+        depth += 1;
+      }
+    }
+    return -1;
+  }
+
+  function listPluginPreviewSlideHostSpans(html: string): Array<{ start: number; end: number }> {
+    const source = String(html ?? '');
+    const openRe = /<(section|div|main|article)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
+    const spans: Array<{ start: number; end: number }> = [];
+    let match: RegExpExecArray | null;
+    while ((match = openRe.exec(source)) !== null) {
+      const tagName = match[1] ?? '';
+      const attrs = match[2] ?? '';
+      if (!attrsLookLikeDeckOrTemplateSlideHost(attrs)) continue;
+      const end = findMatchingElementEnd(source, match.index, tagName);
+      if (end > match.index) spans.push({ start: match.index, end });
+    }
+    return spans;
+  }
+
+  function compactPluginPreviewHtmlForThumbnail(html: string): string {
+    const withoutScripts = stripPluginPreviewScriptsForThumbnail(html);
+    const spans = listPluginPreviewSlideHostSpans(withoutScripts);
+    if (spans.length <= 1) return withoutScripts;
+
+    const first = spans[0];
+    let compact = withoutScripts;
+    for (let i = spans.length - 1; i >= 1; i -= 1) {
+      const span = spans[i];
+      if (!span) continue;
+      // If a future template nests another host-like element inside the first
+      // page, keep it. Thumbnail compaction only removes sibling pages.
+      if (first && span.start >= first.start && span.end <= first.end) continue;
+      compact = `${compact.slice(0, span.start)}${compact.slice(span.end)}`;
+    }
+    return compact.length > 0 && compact.length < withoutScripts.length ? compact : withoutScripts;
+  }
+
+  type PluginPreviewBatchTarget =
+    | { kind: 'preview'; pluginId: string }
+    | { kind: 'example'; pluginId: string; name: string };
+
+  function parsePluginPreviewBatchUrl(raw: unknown): PluginPreviewBatchTarget | null {
+    if (typeof raw !== 'string') return null;
+    const pathOnly = raw.split(/[?#]/u, 1)[0] ?? '';
+    const previewMatch = /^\/api\/plugins\/([^/]+)\/preview$/u.exec(pathOnly);
+    try {
+      if (previewMatch?.[1]) {
+        return { kind: 'preview', pluginId: decodeURIComponent(previewMatch[1]) };
+      }
+      const exampleMatch = /^\/api\/plugins\/([^/]+)\/example\/([^/]+)$/u.exec(pathOnly);
+      if (exampleMatch?.[1] && exampleMatch[2]) {
+        return {
+          kind: 'example',
+          pluginId: decodeURIComponent(exampleMatch[1]),
+          name: decodeURIComponent(exampleMatch[2]),
+        };
+      }
+    } catch {
+      return null;
+    }
+    return null;
+  }
+
+  async function renderPluginSandboxedHtmlForBatch(
+    target: PluginPreviewBatchTarget,
+  ): Promise<{ status: number; body: string; contentType: string }> {
+    let statusCode = 200;
+    let contentType = 'text/plain; charset=utf-8';
+    let body = '';
+    const headers: Record<string, string> = {};
+    const req = {
+      params:
+        target.kind === 'example'
+          ? { id: target.pluginId, name: target.name }
+          : { id: target.pluginId },
+      headers: {},
+    };
+    const res = {
+      setHeader(name: string, value: unknown) {
+        headers[name.toLowerCase()] = String(value);
+        if (name.toLowerCase() === 'content-type') contentType = String(value);
+        return res;
+      },
+      status(code: number) {
+        statusCode = code;
+        return res;
+      },
+      json(value: unknown) {
+        contentType = 'application/json; charset=utf-8';
+        body = JSON.stringify(value);
+        return res;
+      },
+      send(value: unknown) {
+        if (Buffer.isBuffer(value)) body = value.toString('utf8');
+        else body = String(value ?? '');
+        contentType = headers['content-type'] ?? contentType;
+        return res;
+      },
+      end(value?: unknown) {
+        if (value != null) body = String(value);
+        return res;
+      },
+    };
+
+    if (target.kind === 'preview') {
+      await servePluginSandboxedHtml(req, res, async (plugin) => {
+        const curated = collectPluginPreviewCandidates(plugin);
+        const fsPath = (plugin as { fsPath?: unknown }).fsPath;
+        if (typeof fsPath !== 'string') return curated;
+        const discovered = await discoverPluginHtmlAssets(fsPath);
+        const seen = new Set(curated);
+        for (const rel of discovered) {
+          if (!seen.has(rel)) curated.push(rel);
+        }
+        return curated;
+      });
+      return { status: statusCode, body, contentType };
+    }
+
+    if (!target.name || /[\\/\0]|\.\./.test(target.name)) {
+      return {
+        status: 400,
+        body: JSON.stringify({ error: 'invalid example name' }),
+        contentType: 'application/json; charset=utf-8',
+      };
+    }
+    await servePluginSandboxedHtml(req, res, async (plugin) => {
+      const examples = ((plugin as { manifest?: { od?: { useCase?: { exampleOutputs?: Array<{ path?: unknown; title?: unknown }> } } } })
+        .manifest?.od?.useCase?.exampleOutputs ?? []) as Array<{ path?: unknown; title?: unknown }>;
+      const match = examples.find((e) => {
+        if (!e || typeof e.path !== 'string') return false;
+        const segments = e.path.split(/[\\/]/).filter(Boolean);
+        const base = segments[segments.length - 1] ?? '';
+        const baseStem = base.replace(/\.[^.]+$/, '');
+        const parent = segments.length >= 2 ? segments[segments.length - 2] : null;
+        const candidates = [base, baseStem, parent].filter((s): s is string => !!s);
+        if (typeof e.title === 'string') candidates.push(e.title);
+        return candidates.includes(target.name);
+      });
+      if (match && typeof match.path === 'string') return [match.path];
+      return [
+        `examples/${target.name}/index.html`,
+        `examples/${target.name}.html`,
+      ];
+    });
+    return { status: statusCode, body, contentType };
+  }
+
+  app.post('/api/plugins/preview-batch', async (req, res) => {
+    const rawUrls = Array.isArray(req.body?.urls) ? req.body.urls : [];
+    const thumbnailMode = req.body?.mode === 'thumbnail';
+    const urls = Array.from(
+      new Set(rawUrls.filter((url): url is string => typeof url === 'string')),
+    ).slice(0, PLUGIN_PREVIEW_BATCH_MAX_ITEMS);
+    let totalBytes = 0;
+    const results: Array<{
+      url: string;
+      ok: boolean;
+      status: number;
+      html?: string;
+      contentType?: string;
+      error?: string;
+    }> = [];
+    for (const url of urls) {
+      const target = parsePluginPreviewBatchUrl(url);
+      if (!target) {
+        results.push({ url, ok: false, status: 400, error: 'invalid preview url' });
+        continue;
+      }
+      try {
+        const rendered = await renderPluginSandboxedHtmlForBatch(target);
+        if (rendered.status < 200 || rendered.status >= 300) {
+          results.push({
+            url,
+            ok: false,
+            status: rendered.status,
+            error: rendered.body.slice(0, 300),
+          });
+          continue;
+        }
+        const responseBody = thumbnailMode
+          ? compactPluginPreviewHtmlForThumbnail(rendered.body)
+          : rendered.body;
+        totalBytes += Buffer.byteLength(responseBody, 'utf8');
+        if (totalBytes > PLUGIN_PREVIEW_BATCH_MAX_BYTES) {
+          results.push({ url, ok: false, status: 413, error: 'preview batch too large' });
+          continue;
+        }
+        results.push({
+          url,
+          ok: true,
+          status: rendered.status,
+          html: responseBody,
+          contentType: rendered.contentType,
+        });
+      } catch (error) {
+        results.push({ url, ok: false, status: 500, error: String(error) });
+      }
+    }
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ results });
+  });
 
   app.get('/api/plugins/:id/preview', async (req, res) => {
     await servePluginSandboxedHtml(req, res, async (plugin) => {
@@ -10338,7 +10642,7 @@ export async function startServer({
         projectId,
         artifactId: req.params.artifactId,
       });
-      updateProject(db, projectId, {});
+      updateProject(db, projectId, { updatedAt: Date.now() });
       emitLiveArtifactEvent({ projectId }, 'deleted', existing.artifact);
       res.json({ ok: true });
     } catch (err) {
@@ -11715,6 +12019,8 @@ export async function startServer({
     skillId,
     skillIds,
     designSystemId,
+    selectedDeckTemplateId,
+    selectedDeckTemplateTitle,
     streamFormat,
     locale,
     sessionMode,
@@ -11722,10 +12028,32 @@ export async function startServer({
     appliedPluginSnapshotId,
     mediaExecution,
   }) => {
-    const project =
-      typeof projectId === 'string' && projectId
-        ? getProject(db, projectId)
-        : null;
+    // Multi-node Teamver / Postgres-backed deploys: `getProject` returns
+    // cache-only in Postgres mode. If the create request landed on Node A
+    // (populating that cache with the freshly-inserted project metadata,
+    // including `selectedDeckTemplateId`) and the run request lands on Node
+    // B (cold cache), the sync lookup returns null → metadata is invisible
+    // → selectedDeckTemplate goes unset → the picked Canvas → Slide
+    // template is silently dropped and the deck comes back looking like
+    // the default scenario body. Awaiting `getProjectAsync` here does the
+    // Postgres round-trip on cache miss and populates the local cache so
+    // downstream sync callers see the row too.
+    //
+    // Belt-and-suspenders: fall back to the sync cache lookup if the async
+    // path throws (e.g. Postgres pool degraded mid-run). Compose runs on
+    // every turn and must never turn a transient DB blip into an
+    // incomplete_output that also silently drops the selected template.
+    let project: Awaited<ReturnType<typeof getProjectAsync>> | null = null;
+    if (typeof projectId === 'string' && projectId) {
+      try {
+        project = await getProjectAsync(db, projectId);
+      } catch (err) {
+        console.warn(
+          `[compose] getProjectAsync failed for ${projectId}, falling back to sync cache: ${err?.message ?? err}`,
+        );
+        project = getProject(db, projectId);
+      }
+    }
     const effectiveSkillId =
       typeof skillId === 'string' && skillId ? skillId : project?.skillId;
     const effectiveDesignSystemId =
@@ -11797,7 +12125,17 @@ export async function startServer({
     };
     // Read early so ad-hoc skill composition can skip the visual template
     // (it becomes the primary body below) without losing other skillIds.
-    const selectedDeckTemplate = readSelectedDeckTemplateFromMetadata(metadata);
+    const selectedDeckTemplateFromRun =
+      typeof selectedDeckTemplateId === 'string' && selectedDeckTemplateId.trim()
+        ? {
+            id: selectedDeckTemplateId.trim(),
+            ...(typeof selectedDeckTemplateTitle === 'string' && selectedDeckTemplateTitle.trim()
+              ? { title: selectedDeckTemplateTitle.trim() }
+              : {}),
+          }
+        : null;
+    const selectedDeckTemplate =
+      selectedDeckTemplateFromRun ?? readSelectedDeckTemplateFromMetadata(metadata);
 
     if (effectiveSkillId) {
       // Span both functional skills and design templates so a project
@@ -11939,6 +12277,7 @@ export async function startServer({
 
     if (selectedDeckTemplate) {
       let templateBody: string | null = null;
+      let templateSource: 'skill' | 'design-template' | 'plugin-local' | null = null;
       try {
         // Mirror web/API order: skill-like / design-template body first, then
         // community plugin local SKILL.md. Metadata-only design-template picks
@@ -11947,6 +12286,9 @@ export async function startServer({
         const templateSkill = findSkillById(allSkills, selectedDeckTemplate.id);
         if (templateSkill?.body?.trim()) {
           templateBody = templateSkill.body;
+          templateSource = templateSkill.source === 'user'
+            ? 'skill'
+            : (templateSkill.mode === 'deck' ? 'design-template' : 'skill');
           registerSkillDir(templateSkill.dir);
           if (!activeSkillDir) activeSkillDir = templateSkill.dir;
           registerPrimarySkillMode(templateSkill.mode ?? 'deck');
@@ -11956,14 +12298,37 @@ export async function startServer({
             const local = await loadPluginLocalSkill(plugin);
             if (local?.body?.trim()) {
               templateBody = local.body;
+              templateSource = 'plugin-local';
               registerSkillDir(local.dir);
               if (!activeSkillDir) activeSkillDir = local.dir;
+            } else {
+              console.warn(
+                `[selected-deck-template] plugin ${selectedDeckTemplate.id} found in installed_plugins but SKILL.md body is empty / unreadable — falling back to title stub`,
+              );
             }
+          } else {
+            // No global skill / design-template row AND no installed plugin
+            // matches this id. On multi-node deploys this used to hit here
+            // because the cache-only getProject race dropped metadata; the
+            // async fallback above closes that. Log so a real missing id
+            // (e.g. template was uninstalled after the user picked it) is
+            // visible in ops logs instead of degrading silently.
+            console.warn(
+              `[selected-deck-template] id ${selectedDeckTemplate.id} not found in skills/design-templates/installed_plugins — deck will use title stub only (visual template will look generic)`,
+            );
           }
         }
       } catch (err) {
         console.warn(
           `[plugins] selectedDeckTemplate load failed: ${err?.message ?? err}`,
+        );
+      }
+      if (templateBody && templateSource) {
+        // Positive signal so ops can grep for the successful template load
+        // path alongside the negative signals above. Cheap: fires once per
+        // run, and only when a template was actually picked.
+        console.log(
+          `[selected-deck-template] loaded id=${selectedDeckTemplate.id} via=${templateSource} bytes=${templateBody.length}`,
         );
       }
       const preferred = preferSelectedDeckTemplateSkill({
@@ -12046,7 +12411,10 @@ export async function startServer({
     let designSystemImportMode;
     let designSystemCraftApplies = [];
     let designSystemCraftExemptions = [];
-    if (effectiveDesignSystemId) {
+    const omitDesignSystemForSelectedTemplate =
+      Boolean(selectedDeckTemplate)
+      && (metadata?.kind === 'deck' || skillMode === 'deck');
+    if (effectiveDesignSystemId && !omitDesignSystemForSelectedTemplate) {
       let systems = await listAllDesignSystems();
       let summary = systems.find((s) => s.id === effectiveDesignSystemId);
       if (summary?.source === 'user') {
@@ -12197,7 +12565,13 @@ export async function startServer({
     ) {
       try {
         const snap = getSnapshot(db, appliedPluginSnapshotId);
-        if (snap) pluginBlock = pluginPromptBlock(snap);
+        // Mirror web BYOK: when a Canvas→Slide visual template is selected,
+        // the applied scenario plugin must not claim visual ownership.
+        if (snap) {
+          pluginBlock = pluginPromptBlock(snap, {
+            role: selectedDeckTemplate ? 'scenario-only' : 'primary',
+          });
+        }
       } catch (err) {
         console.warn(
           `[plugins] pluginBlock build failed: ${err?.message ?? err}`,
@@ -12776,6 +13150,8 @@ export async function startServer({
         skillId,
         skillIds,
         designSystemId,
+        selectedDeckTemplateId,
+        selectedDeckTemplateTitle,
         streamFormat: def?.streamFormat ?? 'plain',
         locale,
         sessionMode: runSessionMode,
@@ -16969,6 +17345,9 @@ export async function startServer({
       } catch {
         // never block boot on observability
       }
+      // Warm design-template catalog so the first home GET hits TTL cache
+      // instead of scanning ~100 SKILL.md files on the critical path (N05).
+      void listAllDesignTemplates().catch(() => undefined);
       server.once('listening', () => {
         // Widen the between-request idle window so kept-alive sockets
         // belonging to chat/SSE clients survive the gaps between bursts.

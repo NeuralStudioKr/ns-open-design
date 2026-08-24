@@ -122,7 +122,7 @@ describe('listPlugins', () => {
     brandingSpy.mockRestore();
   });
 
-  it('uses the deck catalog instead of plugin detail in embed slide-only mode', async () => {
+  it('uses plugin detail GET in embed slide-only mode (no catalog fan-out)', async () => {
     const designApiBase = await import('../../src/teamver/designApiBase');
     const branding = await import('../../src/teamver/branding/config');
     const embedSession = await import('../../src/teamver/teamverEmbedSession');
@@ -135,9 +135,9 @@ describe('listPlugins', () => {
       manifest: { od: { mode: 'deck' } },
     };
     const fetchMock = vi.fn<typeof fetch>(async (input) => {
-      expect(String(input)).not.toBe('/api/plugins/example-simple-deck');
+      expect(String(input)).toBe('/api/plugins/example-simple-deck');
       return new Response(
-        JSON.stringify({ plugins: [plugin] }),
+        JSON.stringify(plugin),
         { status: 200, headers: { 'content-type': 'application/json' } },
       );
     });
@@ -145,7 +145,10 @@ describe('listPlugins', () => {
 
     await expect(getInstalledPlugin('example-simple-deck', { includeHidden: true })).resolves.toEqual(plugin);
 
-    expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/plugins?mode=deck&limit=48');
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/plugins/example-simple-deck');
+    expect(
+      fetchMock.mock.calls.some((call) => String(call[0]).includes('/api/plugins?mode=deck')),
+    ).toBe(false);
     embedSpy.mockRestore();
     sessionSpy.mockRestore();
     brandingSpy.mockRestore();
@@ -281,6 +284,60 @@ describe('getInstalledPlugin', () => {
     const plugin = await getInstalledPlugin('example-guizang-ppt');
 
     expect(plugin).toBeNull();
+    embedSpy.mockRestore();
+    sessionSpy.mockRestore();
+    brandingSpy.mockRestore();
+  });
+
+  it('loads a catalog-filtered plugin when bypassSlideOnlyCatalogFilter is set (selected-template compose)', async () => {
+    const designApiBase = await import('../../src/teamver/designApiBase');
+    const branding = await import('../../src/teamver/branding/config');
+    const embedSession = await import('../../src/teamver/teamverEmbedSession');
+    const embedSpy = vi.spyOn(designApiBase, 'isTeamverEmbedMode').mockReturnValue(true);
+    const sessionSpy = vi.spyOn(embedSession, 'isTeamverEmbedSessionAuthenticated').mockReturnValue(true);
+    const brandingSpy = vi.spyOn(branding, 'resolveTeamverBranding').mockReturnValue({ slideOnlyMvp: true } as never);
+    vi.stubGlobal('fetch', vi.fn<typeof fetch>(async () => new Response(
+      JSON.stringify({
+        id: 'example-guizang-ppt',
+        title: 'Guizang PPT',
+        manifest: { od: { mode: 'deck' } },
+      }),
+      { status: 200, headers: { 'content-type': 'application/json' } },
+    )));
+
+    const plugin = await getInstalledPlugin('example-guizang-ppt', {
+      includeHidden: true,
+      bypassSlideOnlyCatalogFilter: true,
+    });
+
+    expect(plugin?.id).toBe('example-guizang-ppt');
+    embedSpy.mockRestore();
+    sessionSpy.mockRestore();
+    brandingSpy.mockRestore();
+  });
+
+  it('keeps scenario generators when bypassSlideOnlyCatalogFilter is set (home chip bind)', async () => {
+    const designApiBase = await import('../../src/teamver/designApiBase');
+    const branding = await import('../../src/teamver/branding/config');
+    const embedSession = await import('../../src/teamver/teamverEmbedSession');
+    const embedSpy = vi.spyOn(designApiBase, 'isTeamverEmbedMode').mockReturnValue(true);
+    const sessionSpy = vi.spyOn(embedSession, 'isTeamverEmbedSessionAuthenticated').mockReturnValue(true);
+    const brandingSpy = vi.spyOn(branding, 'resolveTeamverBranding').mockReturnValue({ slideOnlyMvp: true } as never);
+    vi.stubGlobal('fetch', vi.fn<typeof fetch>(async () => new Response(
+      JSON.stringify({
+        id: 'example-simple-deck',
+        title: 'Simple Deck',
+        manifest: { od: { mode: 'deck' } },
+      }),
+      { status: 200, headers: { 'content-type': 'application/json' } },
+    )));
+
+    const plugin = await getInstalledPlugin('example-simple-deck', {
+      bypassSlideOnlyCatalogFilter: true,
+      allowAuthRecovery: true,
+    });
+
+    expect(plugin?.id).toBe('example-simple-deck');
     embedSpy.mockRestore();
     sessionSpy.mockRestore();
     brandingSpy.mockRestore();
@@ -743,6 +800,71 @@ describe('conversation daemon auth', () => {
     expect(payload.commentAttachments).toHaveLength(1);
     expect(payload.content).toContain('<attached-preview-comments>');
     expect(payload.content).toContain('hero-title');
+    fetchDaemonSpy.mockRestore();
+  });
+
+  it('saveMessage heals image attachments and keeps embed contract on comment+image turns', async () => {
+    let capturedBody = '';
+    const fetchDaemonSpy = vi.spyOn(
+      await import('../../src/teamver/teamverDaemonHeaders'),
+      'fetchTeamverDaemon',
+    ).mockImplementation(async (_url, init) => {
+      capturedBody = String(init?.body ?? '');
+      return new Response('{}', { status: 200 });
+    });
+    const { commentsToAttachments, messageContentWithCommentAttachments } = await import('../../src/comments');
+    const { saveMessage } = await import('../../src/state/projects');
+    const commentAttachments = commentsToAttachments([
+      {
+        id: 'c1',
+        projectId: 'project-1',
+        conversationId: 'conv-1',
+        filePath: 'deck.html',
+        elementId: 'hero-title',
+        selector: '[data-od-id="hero-title"]',
+        label: 'h2',
+        text: 'Title',
+        position: { x: 1, y: 2, width: 3, height: 4 },
+        htmlHint: '<h2>',
+        note: '이미지 넣어',
+        status: 'open',
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ]);
+    // Visible content keeps @mention; full model prompt had an embed that
+    // visibleCommentEditInstruction would strip — persist must heal both.
+    const content = messageContentWithCommentAttachments(
+      [
+        '이 이미지 넣어줘 @msh9rso1-서빙하는-금붕어.webp',
+        '',
+        '[Attached image embed]',
+        '- <img src="refs/drive/msh9rso1-서빙하는-금붕어.webp" alt="">',
+      ].join('\n'),
+      commentAttachments,
+    );
+
+    await saveMessage('project-1', 'conv-1', {
+      id: 'msg-user-comment-image',
+      role: 'user',
+      content,
+      createdAt: Date.now(),
+      commentAttachments,
+      // Simulate partial upsert that dropped attachments_json.
+      attachments: [],
+    });
+
+    const payload = JSON.parse(capturedBody) as {
+      content?: string;
+      attachments?: Array<{ path?: string }>;
+      commentAttachments?: unknown[];
+    };
+    expect(payload.commentAttachments).toHaveLength(1);
+    expect(payload.attachments?.some((item) =>
+      String(item.path ?? '').includes('msh9rso1-서빙하는-금붕어.webp'),
+    )).toBe(true);
+    expect(payload.content).toContain('[Attached image embed]');
+    expect(payload.content).toContain('<attached-preview-comments>');
     fetchDaemonSpy.mockRestore();
   });
 

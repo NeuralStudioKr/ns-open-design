@@ -26,7 +26,7 @@ describe("chat-message-render", () => {
     expect(shouldOmitMessageFromChatRender(message, embedCtx)).toBe(true);
   });
 
-  it("omits succeeded empty shells when called without turn context", () => {
+  it("keeps terminal succeeded empty shells when called without turn context", () => {
     const shell: ChatMessage = {
       id: "a-shell",
       role: "assistant",
@@ -35,8 +35,9 @@ describe("chat-message-render", () => {
       endedAt: 2,
       events: [{ kind: "status", label: "requesting" }],
     };
-    // Standalone omit (no messages/index) cannot prove turn-anchor status.
-    expect(shouldOmitMessageFromChatRender(shell, embedCtx)).toBe(true);
+    // Reload paths may filter a single row before turn index is wired — still
+    // reserve the completion lead instead of dropping the whole assistant row.
+    expect(shouldOmitMessageFromChatRender(shell, embedCtx)).toBe(false);
     expect(hasEmbedVisibleAssistantBody(shell)).toBe(true);
   });
 
@@ -146,6 +147,82 @@ describe("chat-message-render", () => {
       runStatus: "succeeded",
       endedAt: 2,
     };
+    expect(hasEmbedVisibleAssistantBody(message)).toBe(true);
+    expect(shouldOmitMessageFromChatRender(message, embedCtx)).toBe(false);
+  });
+
+  it("keeps completion-lead visibility after reload when a preserved auto-continue error survives on a succeeded shell", () => {
+    // User report 2026-08-13: after auto-continue, the succeeded assistant row
+    // still carries a transient `status: error` code (`auto_continue_incomplete_output`
+    // or `emergency_deck_fallback`). Persist sanitizer had already stripped
+    // the closed artifact from `content`, and a later shell PUT wiped
+    // `producedFiles`. Because the transient error event was not treated as
+    // "header-only noise", `isEmptyAssistantShell` returned false, the
+    // completion lead was never synthesized, and `AssistantMessage`
+    // early-returned null on Teamver embed — the whole assistant row
+    // disappeared on page re-entry.
+    const user: ChatMessage = { id: "u1", role: "user", content: "make deck", createdAt: 1 };
+    const message: ChatMessage = {
+      id: "a-auto-continue-survivor",
+      role: "assistant",
+      content: "",
+      runStatus: "succeeded",
+      endedAt: 200,
+      startedAt: 100,
+      createdAt: 100,
+      events: [
+        { kind: "status", label: "requesting" },
+        {
+          kind: "status",
+          label: "error",
+          detail: "auto-continued after truncated deliverable",
+          code: "auto_continue_incomplete_output",
+        },
+      ],
+    } as ChatMessage;
+    expect(hasEmbedVisibleAssistantBody(message)).toBe(true);
+    expect(
+      shouldOmitMessageFromChatRender(message, embedCtx, {
+        messages: [user, message],
+        messageIndex: 1,
+      }),
+    ).toBe(false);
+
+    const emergencyMessage: ChatMessage = {
+      ...message,
+      id: "a-emergency-salvage",
+      events: [
+        { kind: "status", label: "requesting" },
+        {
+          kind: "status",
+          label: "warning",
+          detail: "emergency deck fallback",
+          code: "emergency_deck_fallback",
+        },
+      ],
+    };
+    expect(hasEmbedVisibleAssistantBody(emergencyMessage)).toBe(true);
+    expect(
+      shouldOmitMessageFromChatRender(emergencyMessage, embedCtx, {
+        messages: [user, emergencyMessage],
+        messageIndex: 1,
+      }),
+    ).toBe(false);
+  });
+
+  it("keeps completion-lead visibility when slideTurnKind survives reload without producedFiles", () => {
+    const message: ChatMessage = {
+      id: "a-create-label",
+      role: "assistant",
+      content: "",
+      runStatus: "succeeded",
+      endedAt: 2,
+      slideTurnKind: "create",
+      events: [
+        { kind: "status", label: "requesting" },
+        { kind: "status", label: "model", detail: "claude-sonnet-4-5" },
+      ],
+    } as ChatMessage;
     expect(hasEmbedVisibleAssistantBody(message)).toBe(true);
     expect(shouldOmitMessageFromChatRender(message, embedCtx)).toBe(false);
   });

@@ -1,7 +1,7 @@
 import type { Artifact, ChatMessage } from '../types';
 import { validateHtmlArtifact } from './validate';
 
-export const EMERGENCY_DECK_FALLBACK_STATUS_CODE = 'emergency_deck_fallback';
+export { EMERGENCY_DECK_FALLBACK_STATUS_CODE } from '../runtime/deliverable-lifecycle-codes';
 
 export type EmergencySlide = {
   title: string;
@@ -40,9 +40,65 @@ export function looksLikeSlideOutline(text: string): boolean {
   return extractSlideOutlineItems(text).length >= 3;
 }
 
+const CANVAS_SOURCE_HEADINGS_MARKER_RE =
+  /(?:Visible headings|Canvas headings|Source headings)\s*[:：]\s*/i;
+
+/**
+ * Trailing Canvas / Drive brief fields sometimes land on the same compacted
+ * line as `Visible headings:` (run prompt used to collapse newlines). Stop
+ * the payload before those so "Source preview: …" is not treated as a title.
+ */
+const CANVAS_SOURCE_HEADINGS_PAYLOAD_STOP_RE =
+  /\s+(?:Source preview|Canvas title|Canvas sections|Drive source(?: file| MIME)?|Drive asset id)\s*[:：]/i;
+
+/**
+ * Split a Canvas / Drive source brief "Visible headings: A / B / C" payload
+ * into slide title candidates. The Canvas one-confirm compose collapses the
+ * page's `<h1>`/`<h2>` list into a single ` / `-separated string; when the
+ * agent never emits a usable HTML deck, those headings are our best (and
+ * often only) outline signal for a graceful fallback deck.
+ */
+function parseCanvasSourceHeadingPayload(payload: string): EmergencySlide[] {
+  const cleaned = payload.replace(CANVAS_SOURCE_HEADINGS_PAYLOAD_STOP_RE, '\n').split('\n')[0]?.trim()
+    ?? '';
+  if (!cleaned) return [];
+  // Match `canvasCreateSlidesSourceBrief` which joins with " / ". Split ONLY
+  // on " / " (spaces around slash) so headings that contain a middle-dot,
+  // pipe, or bullet inside a single title (e.g. "지리 · 기본정보") stay whole.
+  const parts = cleaned
+    .split(/\s+\/\s+/)
+    .map(cleanSlideTitle)
+    .filter((title) => title.length > 1 && !looksLikeProgressOrFragmentTopic(title))
+    .slice(0, 12);
+  return parts.map((title) => ({ title }));
+}
+
+function extractCanvasSourceHeadingSlides(line: string): EmergencySlide[] {
+  const match = line.match(
+    /^\s*(?:Visible headings|Canvas headings|Source headings)\s*[:：]\s*(.+)$/i,
+  );
+  const payload = match?.[1]?.trim();
+  if (!payload) return [];
+  return parseCanvasSourceHeadingPayload(payload);
+}
+
+/**
+ * Recover Canvas headings even when the source brief was whitespace-collapsed
+ * into one line (`Canvas title: … Visible headings: A / B / C Source preview:`).
+ * Line-anchored extractors miss that shape and outline fallback used to fail
+ * after incomplete-html-document-shell.
+ */
+function extractCanvasSourceHeadingSlidesFromText(text: string): EmergencySlide[] {
+  const match = CANVAS_SOURCE_HEADINGS_MARKER_RE.exec(text);
+  if (!match || match.index == null) return [];
+  const payload = text.slice(match.index + match[0].length);
+  return parseCanvasSourceHeadingPayload(payload);
+}
+
 /** Parse slide titles from assistant plan/outline prose. */
 export function extractSlideOutlineItems(text: string): EmergencySlide[] {
-  const lines = String(text || '').split(/\r?\n/);
+  const source = String(text || '');
+  const lines = source.split(/\r?\n/);
   const slides: EmergencySlide[] = [];
   let inOutlineSection = false;
 
@@ -52,6 +108,16 @@ export function extractSlideOutlineItems(text: string): EmergencySlide[] {
     if (ARTIFACT_OR_FORM_RE.test(line)) break;
     if (OUTLINE_SECTION_RE.test(line)) {
       inOutlineSection = true;
+      continue;
+    }
+
+    // Canvas / Drive source brief always ships an inline
+    // "Visible headings: A / B / C" line — treat those as slide-title
+    // candidates so the emergency fallback can build a deck out of them
+    // even when the assistant never produced HTML or a numbered outline.
+    const canvasHeadings = extractCanvasSourceHeadingSlides(line);
+    if (canvasHeadings.length >= 2) {
+      slides.push(...canvasHeadings);
       continue;
     }
 
@@ -68,6 +134,15 @@ export function extractSlideOutlineItems(text: string): EmergencySlide[] {
         const title = cleanSlideTitle(bullet[1]);
         if (title.length > 1) slides.push({ title });
       }
+    }
+  }
+
+  // Compacted Canvas→Slide prompts put "Visible headings:" mid-line. If the
+  // per-line pass found nothing usable, recover from the full text once.
+  if (slides.length < 3) {
+    const compacted = extractCanvasSourceHeadingSlidesFromText(source);
+    if (compacted.length >= 2) {
+      slides.push(...compacted);
     }
   }
 
@@ -201,11 +276,13 @@ export function buildEmergencySlideDeckFromOutline(
 <html lang="${lang}">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=1920, initial-scale=1, maximum-scale=1" />
   <title>${escapeHtml(deckTitle)}</title>
   <style>
-    html, body { margin: 0; background: #0b0c10; color: #1c1b1a; font: 18px/1.5 system-ui, sans-serif; }
-    .slide { min-height: 100vh; padding: 64px 72px; box-sizing: border-box; background: #fff; page-break-after: always; }
+    @page { size: 13.333333in 7.5in; margin: 0; }
+    html, body { margin: 0; width: 1920px; background: #0b0c10; color: #1c1b1a; font: 18px/1.5 system-ui, sans-serif; }
+    .slide { width: 1920px; height: 1080px; padding: 96px 112px; box-sizing: border-box; background: #fff; overflow: hidden; page-break-after: always; break-after: page; }
+    .slide:last-child { page-break-after: auto; break-after: auto; }
     .slide h1 { font-size: 48px; margin: 0 0 16px; line-height: 1.1; }
     .slide p, .slide li { font-size: 20px; max-width: 48rem; }
     .slide ul { margin: 12px 0 0; padding-left: 1.25rem; }

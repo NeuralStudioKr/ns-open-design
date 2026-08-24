@@ -21,10 +21,25 @@ describe('buildStaticHtmlExportFallback', () => {
     expect(fallback.indexOf('data-teamver-static-html-export-fallback')).toBeLessThan(fallback.indexOf('</head>'));
   });
 
-  it('leaves non-deck HTML unchanged', () => {
+  it('leaves non-deck HTML healed but without deck screen/reveal chrome', () => {
     const html = '<!doctype html><p>Plain artifact</p>';
+    const out = buildStaticHtmlExportFallback({ deck: false, html });
+    expect(out).toContain('Plain artifact');
+    expect(out).not.toContain('data-teamver-static-html-export-fallback');
+    expect(out).not.toContain('data-od-html-export-reveal');
+  });
 
-    expect(buildStaticHtmlExportFallback({ deck: false, html })).toBe(html);
+  it('heals Motif-killing @import remnants on deck fallback', () => {
+    const remnant =
+      "1,6..96,400..900&family=Space+Grotesk:wght@300;400;500;600;700&display=swap');";
+    const html = `<!doctype html><html><head><style>${remnant}
+:root{--bg:#F5F5F0}.deco-pill{border-radius:9999px}
+</style></head><body><section class="slide">One</section></body></html>`;
+    const fallback = buildStaticHtmlExportFallback({ deck: true, html });
+    expect(fallback).toMatch(/\.deco-pill\{/);
+    expect(fallback).not.toMatch(/display=swap/i);
+    expect(fallback).toMatch(/var\(--bg,\s*var\(--paper/);
+    expect(fallback).not.toContain("flex-direction', 'column'");
   });
 });
 

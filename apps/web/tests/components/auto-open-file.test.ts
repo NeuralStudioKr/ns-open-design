@@ -160,7 +160,7 @@ describe('decideAutoOpenAfterWrite', () => {
     expect(result).toEqual({ shouldOpen: false, fileName: null });
   });
 
-  it('still auto-opens html deliverables in slide-only embed', () => {
+  it('still auto-opens html deliverables in slide-only embed when no refs source exists', () => {
     const result = decideAutoOpenAfterWrite(
       'index.html',
       [{ name: 'index.html', path: 'index.html' }],
@@ -180,6 +180,30 @@ describe('decideAutoOpenAfterWrite', () => {
       { branding: { slideOnlyMvp: true } },
     );
     expect(result).toEqual({ shouldOpen: false, fileName: null });
+  });
+
+  it('declines root index.html when any refs HTML exists even if basenames differ', () => {
+    const result = decideAutoOpenAfterWrite(
+      'index.html',
+      [
+        { name: 'index.html', path: 'index.html' },
+        { name: 'refs/drive/canvas-rev-9.html', path: 'refs/drive/canvas-rev-9.html' },
+      ],
+      { branding: { slideOnlyMvp: true } },
+    );
+    expect(result).toEqual({ shouldOpen: false, fileName: null });
+  });
+
+  it('still auto-opens deck.html when refs HTML sources exist', () => {
+    const result = decideAutoOpenAfterWrite(
+      'deck.html',
+      [
+        { name: 'deck.html', path: 'deck.html' },
+        { name: 'refs/drive/canvas-rev-9.html', path: 'refs/drive/canvas-rev-9.html' },
+      ],
+      { branding: { slideOnlyMvp: true } },
+    );
+    expect(result).toEqual({ shouldOpen: true, fileName: 'deck.html' });
   });
 });
 
@@ -225,6 +249,14 @@ describe('selectAutoOpenProducedHtml', () => {
       { projectFiles },
     );
 
+    expect(result).toBe('deck.html');
+  });
+
+  it('prefers deck.html over a newer non-deck html even when both are deliverables', () => {
+    const result = selectAutoOpenProducedHtml([
+      { name: 'deck.html', path: 'deck.html', kind: 'html', mtime: 10 },
+      { name: 'summary.html', path: 'summary.html', kind: 'html', mtime: 99 },
+    ]);
     expect(result).toBe('deck.html');
   });
 

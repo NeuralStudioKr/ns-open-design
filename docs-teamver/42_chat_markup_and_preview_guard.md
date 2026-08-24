@@ -2,6 +2,20 @@
 
 **판단 시점:** 2026-07-20 현재.
 
+## 2026-08-21 추가: deck CSS/HTML debris line heuristic
+
+- 사용자 재진입/완료 후 채팅 bubble에 `.tag.inv{…}`, `.chip.on{…}`, `#2D2D2D">Internal Team</span>`, `#1E1E1E;display:flex;…` 같은 템플릿 CSS/HTML 조각이 남는 경로를 보강했다.
+- contracts SSOT에 `stripLeakedDeckCodeDebrisBlocksRespectingArtifacts`를 추가해 artifact 내부는 보존하고, artifact 밖 CSS/HTML debris line만 제거한다.
+- named regex로 특정 템플릿 조각을 하나씩 막지 않고, line-level heuristic으로 compound utility class, custom prop, hex continuation, orphan close tag, deck-ish HTML chrome을 처리한다.
+- 단, `# 다음 단계`, `- 차트 추가`, CSS 조각 앞뒤의 한국어 일반 prose는 유지한다. 기존 “숨김 우선” 때문에 자연어까지 사라지는 회귀를 막기 위한 정책이다.
+- web bundle은 `@open-design/contracts` dist가 stale일 수 있어 `internalAgentMarkup.ts`에 동일 목적의 display-only fallback을 둔다.
+- web fallback도 multi-line CSS continuation 상태를 유지한다. 예: `.tag.inv{color:` 다음 줄의 `#1c1c1c}`이 contracts dist stale 상황에서도 남지 않아야 한다.
+- 회귀 테스트:
+  - `packages/contracts/tests/deck-code-debris-heuristic.test.ts`
+  - `packages/contracts/tests/chat-leak-probe*.test.ts`
+  - `packages/contracts/tests/agent-prose-sanitize.test.ts`
+  - `apps/web/tests/internal-agent-markup.test.ts`
+
 ## 2026-07-28 추가: Run Error 카드 위치 정책
 
 - persisted assistant `events[].label === "error"`에서 만든 run error diagnostic 카드는 **채팅 맨 아래 전역 슬롯이 아니라, 해당 실패 assistant 메시지 바로 아래**에 표시한다.

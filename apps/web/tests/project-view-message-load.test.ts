@@ -132,14 +132,28 @@ describe("ProjectView message loading", () => {
     expect(source.slice(streamStart, streamStart + 3200)).toContain("projectId: project.id");
   });
 
+  it("does not inject Open Design branding into workspace-context prompt blocks", () => {
+    const source = readSource("src/components/ProjectView.tsx");
+    const start = source.indexOf("function historyWithWorkspaceContext(");
+    expect(start).toBeGreaterThan(0);
+    const block = source.slice(start, start + 1200);
+
+    expect(block).toContain("<active-workspace-context>");
+    expect(block).toContain("The currently focused workspace tab is the default context for this turn.");
+    expect(block).not.toContain("Open Design selected the currently focused workspace tab");
+  });
+
   it("passes Teamver slide-only media policy into API-mode system prompts", () => {
     const source = readSource("src/components/ProjectView.tsx");
-    const start = source.indexOf("return composeSystemPrompt({");
+    const start = source.indexOf("const composeMetadata: ProjectMetadata = metadataForTeamverSlideOnlyPrompt({");
     expect(start).toBeGreaterThan(0);
-    const block = source.slice(start, start + 1800);
+    const block = source.slice(start, start + 2200);
 
-    expect(block).toContain("mediaExecution: mediaExecutionPolicyForProjectMetadata(project.metadata");
+    // composeMetadata merges this-turn Canvas/Drive template pins so the
+    // first send is not stuck on stale React project.metadata.
+    expect(block).toContain("mediaExecution: mediaExecutionPolicyForProjectMetadata(composeMetadata");
     expect(block).toContain("slideOnlyMvp");
+    expect(block).toContain("mode: slideOnlyMvp ? 'disabled' : 'enabled'");
     expect(block).toContain("streamFormat: config.mode === 'api' ? 'plain' : undefined");
   });
 
@@ -164,24 +178,32 @@ describe("ProjectView message loading", () => {
     const source = readSource("src/components/ProjectView.tsx");
     const signature = source.indexOf("skillIdOverride?: string | null");
     expect(signature).toBeGreaterThan(0);
-    const composeBlock = source.slice(signature, signature + 5600);
+    const composeBlock = source.slice(signature, signature + 16000);
 
     expect(composeBlock).toContain("const effectiveSkillId = skillIdOverride ?? project.skillId");
     expect(composeBlock).toContain("skills.find((s) => s.id === effectiveSkillId)");
     expect(composeBlock).toContain("await fetchDesignTemplate(effectiveSkillId)");
-    expect(composeBlock).toContain("selectedDeckTemplateMetadata(project.metadata)");
+    expect(composeBlock).toContain("selectedDeckTemplateMetadata(");
+    expect(composeBlock).toContain("turnDeckTemplateMeta");
+    expect(composeBlock).toContain("composeMetadata");
     expect(composeBlock).toContain("primaryDeckSkillId");
     expect(composeBlock).toContain("pluginIdForLocalSkill !== primaryDeckSkillId");
     expect(composeBlock).toContain("secondaryScenarioSkillBody");
+    expect(composeBlock).toContain("omitSecondaryScenarioForSelectedTemplate");
     expect(composeBlock).toContain("shouldWrapSelectedTemplate");
     expect(composeBlock).toContain("await fetchPluginLocalSkill(pluginIdForLocalSkill)");
+    expect(composeBlock).toContain("fetchPluginLocalSkill(selectedTemplate.id)");
 
     const callStart = source.indexOf("const effectiveSkillId = resolveDeckTemplateSkillId(project.metadata, meta)");
     expect(callStart).toBeGreaterThan(0);
-    const callBlock = source.slice(callStart, callStart + 1200);
+    const callBlock = source.slice(callStart, callStart + 4000);
     expect(callBlock).toContain("resolveDeckTemplateSkillId(project.metadata, meta)");
     expect(callBlock).toContain("resolveScenarioPluginIdForLocalSkill(");
     expect(callBlock).toContain("composedSystemPrompt(");
+    expect(callBlock).toContain("selectedDeckTemplateForTurn");
+    expect(callBlock).toContain("scenario-only");
+    expect(callBlock).toContain("meta?.selectedDeckTemplateId || selectedDeckTemplateForTurn");
+    expect(callBlock).toContain("skipDiscoveryBrief: true");
   });
 
   it("passes design templates into the project chat composer skill picker", () => {
@@ -270,10 +292,11 @@ describe("ProjectView message loading", () => {
     // preservation block. Keep just enough head-room; the block
     // still asserts the same ordering contract, only over slightly
     // more source.
-    const block = source.slice(start, start + 11000);
+    const block = source.slice(start, start + 14000);
 
     expect(block).toContain("attachAutoContinueIncompleteOutputNotice(");
     expect(block).toContain("syncAutoContinueCountFromMessages(");
+    expect(block).toContain("syncSlideCountTopUpCountFromMessages(");
     expect(block).toContain("findIncompleteSlideAssistantForRecovery(");
     expect(block).toContain("pendingAutoContinueConversationIdRef.current === activeConversationId");
     expect(block).toContain("attemptEmergencySlideDeckRecovery(");
@@ -332,6 +355,203 @@ describe("ProjectView message loading", () => {
     );
   });
 
+  it("sanitizes every HTML artifact persist once at the terminal write gate", () => {
+    const source = readSource("src/components/ProjectView.tsx");
+    const persistStart = source.indexOf("const persistArtifact = useCallback");
+    expect(persistStart).toBeGreaterThan(0);
+    const persistBlock = source.slice(persistStart, persistStart + 40000);
+    // Terminal scrub after salvage/repair/stabilize — not 2–4× early passes.
+    expect(persistBlock).toContain("htmlBody = sanitizeManualEditFullSource(htmlBody)");
+    expect(persistBlock).toContain("mergeOfficialLookCssForTemplate");
+    expect(persistBlock).toContain("firstOfficialDeckTemplateId");
+    expect(persistBlock).toContain("runSelectedDeckTemplateIdRef.current");
+    expect(persistBlock).toContain("Single terminal scrub after salvage/repair/stabilize");
+    // Look/Motif merge before surface bleed so cream !important cannot win
+    // over official dark identity or Motif washes.
+    expect(persistBlock).toMatch(
+      /mergeOfficialLookCssForTemplate[\s\S]{0,240}repairDeckSlideSurfaceBleed/,
+    );
+    expect(persistBlock).toContain('collapseAdjacentDuplicateDeckSiblings');
+    expect(persistBlock).toMatch(
+      /collapseAdjacentDuplicateDeckSiblings[\s\S]{0,400}pinDeckSlidesToFixedCanvas/,
+    );
+    expect(persistBlock).not.toMatch(
+      /repairDeckSlideSurfaceBleed\([\s\S]{0,200}mergeOfficialLookCssForTemplate/,
+    );
+    // Must not reintroduce early full-source scrubs on recovered/scoped decks.
+    expect(persistBlock).not.toContain(
+      "html: sanitizeManualEditFullSource(recoveredHtml)",
+    );
+    expect(persistBlock).not.toContain(
+      "html: sanitizeManualEditFullSource(artifactToPersist.html)",
+    );
+    expect(persistBlock).not.toMatch(
+      /artifactType\s*===\s*['"]deck['"][\s\S]{0,240}sanitizeManualEditFullSource/,
+    );
+  });
+
+  it("does not restamp element-patch edit contract onto slide-count top-up sends", () => {
+    const source = readSource("src/components/ProjectView.tsx");
+    expect(source).toContain("autoAttachedDeckPath && !isSlideCountTopUpSend");
+    expect(source).toContain("Title-first, then at most ONE capped kit Motif sprite");
+    expect(source).not.toContain("Skip Motif SVG paste this turn");
+  });
+
+  it("merges official look CSS on Write-tool and recovered disk HTML paths", () => {
+    const source = readSource("src/components/ProjectView.tsx");
+    expect(source).toContain("findSameTurnHtmlWriteForRecoveredArtifact");
+    expect(source).toMatch(
+      /sameTurnHtmlWrite[\s\S]{0,800}mergeOfficialLookCssForTemplate/,
+    );
+    expect(source).toMatch(
+      /recoveredExistingArtifact[\s\S]{0,800}mergeOfficialLookCssForTemplate/,
+    );
+  });
+
+  it("rejects scoped edits that sanitize down to a no-op instead of auto-continuing", () => {
+    const source = readSource("src/components/ProjectView.tsx");
+    const persistStart = source.indexOf("const persistArtifact = useCallback");
+    expect(persistStart).toBeGreaterThan(0);
+    const persistBlock = source.slice(persistStart, persistStart + 40000);
+    expect(persistBlock).toContain("htmlBodyBeforeSanitize");
+    expect(persistBlock).toContain("scoped edit scrubbed to no-op");
+    expect(persistBlock).toContain(
+      "scoped comment edit only contained unsafe markup that was scrubbed",
+    );
+    expect(persistBlock).toContain("kind: 'rejected'");
+  });
+
+  it("reuses one disk HTML fetch and skips double visual-mark stabilize", () => {
+    const source = readSource("src/components/ProjectView.tsx");
+    const persistStart = source.indexOf("const persistArtifact = useCallback");
+    expect(persistStart).toBeGreaterThan(0);
+    const persistBlock = source.slice(persistStart, persistStart + 40000);
+    expect(persistBlock).toContain("const readDiskHtml = async");
+    expect(persistBlock).toContain("diskHtmlForTarget");
+    expect(persistBlock).toContain("currentHtml: diskHtmlForTarget");
+    expect(persistBlock).toContain("visualMarksAlreadyStabilized");
+    expect(persistBlock).toContain("kind: 'skipped-noop'");
+    expect(persistBlock).toContain("!visualMarksAlreadyStabilized");
+  });
+
+  it("threads currentHtml into merge helpers and stabilizes element-patch visual marks", () => {
+    const source = readSource("src/components/ProjectView.tsx");
+    const elementStart = source.indexOf("async function tryApplyElementPatchesAgainstCurrentDeck");
+    expect(elementStart).toBeGreaterThan(0);
+    const elementBlock = source.slice(elementStart, elementStart + 6500);
+    expect(elementBlock).toContain("currentHtml?: string | null");
+    // Element-patch folds through finalize (intent + stabilize + conditional scrub).
+    expect(elementBlock).toContain("finalizeScopedDeckMergeHtml({");
+    expect(elementBlock).toContain("alreadySanitized: true");
+    expect(elementBlock).toContain("currentSlides: input.currentSlides");
+    expect(elementBlock).toContain("mergedSlides");
+    const deckStart = source.indexOf("async function tryApplyDeckPatchAgainstCurrentDeck");
+    expect(deckStart).toBeGreaterThan(0);
+    const deckBlock = source.slice(deckStart, deckStart + 4500);
+    expect(deckBlock).toContain("currentHtml?: string | null");
+    // Parse-fail fallbacks reuse persist sections (graft / template / element).
+    expect(deckBlock).toContain("currentSlides: input.currentSlides");
+    expect(deckBlock).toContain("graftVisualMarksIntoDeckHtml(currentHtml, input.commentAttachments, {");
+    expect(source).not.toContain("function scopedCommentSlideIndexes(");
+    const guardStart = source.indexOf("async function fullDeckEditStaysInsideCommentScope");
+    expect(guardStart).toBeGreaterThan(0);
+    const guardBlock = source.slice(guardStart, guardStart + 5500);
+    expect(guardBlock).toContain("beforeSlides");
+    expect(guardBlock).toContain("afterSlides");
+    expect(guardBlock).toContain("diffDeckSlideIndexes(currentHtml, input.nextHtml, {");
+    // Full-deck guard: one nextHtml parse → mask clone + intent.
+    expect(guardBlock).toContain("const nextDoc = parseManualEditSource(input.nextHtml)");
+    expect(guardBlock).toContain("nextDoc.cloneNode(true)");
+    expect(guardBlock).toMatch(/parsedDoc:\s*nextDoc/);
+    const salvageStart = source.indexOf("async function trySalvageScopedFullDeckRewrite");
+    expect(salvageStart).toBeGreaterThan(0);
+    const salvageBlock = source.slice(salvageStart, salvageStart + 2500);
+    expect(salvageBlock).toContain("currentSlides?: readonly");
+    expect(salvageBlock).toContain("patchedSlides");
+    expect(salvageBlock).toContain("finalizeScopedDeckMergeHtml({");
+    expect(salvageBlock).toContain("mergedSlides: scoped.sections");
+    expect(salvageBlock).toContain("patchedSlides?: readonly");
+    expect(source).toContain("beforeSlides: persistCommentSections");
+    expect(source).toContain("currentSlides: persistCommentSections");
+    expect(source).toContain("patchedSlides: scopeResult.afterSlides");
+    expect(source).toContain("repairDeckSlideSurfaceBleed(");
+    expect(source).toContain("repairArtifactStyleSheets(");
+    expect(source).toContain("repairArtifactDocumentHeadIfNeeded(artifactToPersist.html)");
+    expect(source).toContain("stabilizeVisualMarkDeckHtml(");
+    expect(source).toMatch(
+      /stabilizeVisualMarkDeckHtml\(\s*currentDeckHtml,\s*htmlBody,\s*persistCommentAttachments,\s*\{/,
+    );
+  });
+
+  it("sanitizes FileViewer manual-edit saves before revision push", () => {
+    const source = readSource("src/components/FileViewer.tsx");
+    expect(source).toContain("contentToSave");
+    expect(source).toContain("sanitize: isManualEditFullHtmlDocument(baseSource)");
+    expect(source).toContain("captureTargetSnapshot: patch.kind === 'set-style'");
+    expect(source).toContain("captureTargetSnapshots: true");
+    expect(source).toContain("parseManualEditSource(baseSource)");
+    expect(source).toContain("reconcileManualEditDraftAfterNoOpFlush");
+    expect(source).toContain("One Document for all batch ops + per-id snapshots for reconcile");
+    expect(source).toContain("One Document for snapshot + multi-select inspector merge");
+    expect(source).toContain("contentUnchanged");
+    expect(source).toContain("const contentToSave = result.source");
+    expect(source).toContain("setSource(contentToSave)");
+    expect(source).toContain("pinManualEditSavedSource(contentToSave)");
+    expect(source).toContain("setRevisionContentCache(projectId, file.name, saved.revision.id, contentToSave)");
+    expect(source).toContain("readManualEditTargetSnapshot");
+    expect(source).toContain("manualEditHistoryConfirmCanSkipDiskFetch");
+    expect(source).toContain("result.targetSnapshot");
+  });
+
+  it("batches element-patch apply and scoped comment mask on one Document", () => {
+    const elementSource = readSource("src/artifacts/element-patch.ts");
+    expect(elementSource).toContain("applyManualEditPatchMutation");
+    expect(elementSource).toContain("parseManualEditSource(html)");
+    expect(elementSource).toContain("serializeManualEditSource(doc, html)");
+    expect(elementSource).toContain("sanitizeManualEditDocumentInPlace(doc)");
+    const viewSource = readSource("src/components/ProjectView.tsx");
+    expect(viewSource).toContain("maskManualEditTargetsOnDocument");
+    expect(viewSource).toContain("parseManualEditSource(source)");
+    expect(viewSource).toContain("attachmentMergeHint(attachment)");
+    expect(viewSource).toContain("Visual / id-less comments have nothing to mask");
+    expect(viewSource).toContain("patchHtmlAlreadySanitized");
+    expect(viewSource).toContain("!patchHtmlAlreadySanitized");
+    expect(viewSource).toContain("resolvePersistCommentScope");
+    expect(viewSource).toContain("Group by deck path so one reconcileCommentScopeForPersist");
+    expect(viewSource).toContain("finalizeScopedDeckMergeHtml");
+    expect(viewSource).toContain("reconcileCommentScopeForPersist");
+    expect(viewSource).toContain("patchHtmlAlreadySanitized = true");
+    expect(viewSource).toContain(
+      "Prefer the same one-pass persist-scope walk used elsewhere",
+    );
+    const deckSource = readSource("src/edit-mode/scoped-deck-patch.ts");
+    expect(deckSource).toContain("sanitizeManualEditFullSource(repairedHtml)");
+    expect(deckSource).toContain("extractDeckBodyContent");
+    expect(deckSource).toContain("reconcileCommentAttachmentForDeck(deckHtml, attachment, parsedDoc");
+    expect(deckSource).toContain("options?.sanitize === false");
+    expect(deckSource).toContain("idBearingDocs");
+    expect(deckSource).toContain("finalizeScopedDeckMergeHtml");
+    expect(deckSource).toContain("sanitizeManualEditDocumentInPlace(parsedDoc)");
+    expect(deckSource).toContain("listChangedDeckSlideIndexesFromSections");
+    expect(deckSource).toContain("sameHtml");
+    expect(deckSource).toContain("querySelector('.od-visual-mark-target')");
+    expect(deckSource).toContain("One section materialization for all attachments");
+    expect(deckSource).toContain("currentSlides: sections");
+    expect(deckSource).toContain("One section materialization for text-verify + label conflict");
+    expect(deckSource).toContain("sharedCurrentSlides");
+    expect(deckSource).toContain("sharedPatchedSlides");
+    expect(deckSource).toContain("patchedSlides: sharedPatchedSlides");
+    expect(deckSource).toContain("mergedSlides: scoped.sections");
+    expect(deckSource).toContain("sections: nextSlides");
+    expect(deckSource).toContain("any comment scope");
+    expect(deckSource).toContain("alreadySanitized?: boolean");
+    expect(deckSource).toContain("mergedSlides?: readonly { outerHtml: string }[]");
+    expect(deckSource).toContain("allPatchesVerified");
+    expect(deckSource).toContain("refreshSectionsIfNeeded");
+    expect(viewSource).toContain("persistCommentSections");
+    expect(viewSource).toContain("currentSlides: persistCommentSections");
+  });
+
   it("does not finalize an incomplete HTML artifact shell as a successful run", () => {
     const source = readSource("src/components/ProjectView.tsx");
     const persistStart = source.indexOf("const persistArtifact = useCallback");
@@ -343,12 +563,18 @@ describe("ProjectView message loading", () => {
     // deck-patch → auto-continue routing widened the prelude further, then
     // 16000 for the client-side artifact-regression pre-write guard, then
     // 18000 when the empty-element-patch → auto-continue routing
-    // (without client-side fast-path salvage) landed.
-    const persistBlock = source.slice(persistStart, persistStart + 18000);
+    // (without client-side fast-path salvage) landed, then 24000 for
+    // readDiskHtml cache + visualMarksAlreadyStabilized + skipped-noop,
+    // then 28000 for official template look CSS merge on persist,
+    // then 40000 for cover-draft salvage + persistable short-draft trust.
+    const persistBlock = source.slice(persistStart, persistStart + 40000);
 
     expect(persistBlock).toContain("Promise<ArtifactPersistResult>");
     expect(persistBlock).toContain("preferDeck: slideOnlyMvp");
     expect(persistBlock).toContain("isIncompleteHtmlDocumentShell(artifactToPersist.html)");
+    expect(persistBlock).toContain("isPersistableShortDeckDraft(artifactToPersist.html)");
+    expect(persistBlock).toContain("salvageTemplateFillShellAsCoverDraft(artifactToPersist.html,");
+    expect(persistBlock).toContain("deriveDeckCoverTitleFromBrief(");
     expect(persistBlock).toContain("kind: 'skipped-incomplete'");
     // deck-patch interceptor must run BEFORE the incomplete-shell / validate
     // gates so partial patches never get rejected as "not a full document".
@@ -362,7 +588,7 @@ describe("ProjectView message loading", () => {
     // must stay quiet so they do not contradict the automatic-continue notice.
     expect(persistBlock).toContain("formatProjectArtifactRejectedError(");
     const shellStart = source.indexOf(
-      "if (isIncompleteHtmlDocumentShell(artifactToPersist.html))",
+      "isIncompleteHtmlDocumentShell(artifactToPersist.html)",
       persistStart,
     );
     expect(shellStart).toBeGreaterThan(persistStart);
@@ -373,18 +599,19 @@ describe("ProjectView message loading", () => {
 
     const autoOpenStart = source.indexOf("const scheduleStreamRunHtmlAutoOpen");
     expect(autoOpenStart).toBeGreaterThan(0);
-    const autoOpenBlock = source.slice(autoOpenStart, autoOpenStart + 24000);
+    const autoOpenBlock = source.slice(autoOpenStart, autoOpenStart + 60000);
 
     expect(autoOpenBlock).toContain("const rawFinalText = streamedText || fullText || latestAssistantMsg.content || ''");
     expect(autoOpenBlock).toContain("const persistResult = await persistArtifact(");
-    expect(autoOpenBlock).toContain("terminalArtifactPersistFailed = shouldFailRunForArtifactPersistResult(persistResult)");
+    expect(autoOpenBlock).toContain("terminalArtifactPersistFailed = shouldFailRunForArtifactPersistResult(");
+    expect(autoOpenBlock).toContain("isReusableSameTurnDeckWrite(diskPeek)");
     // deliverableError fallback now feeds the persist-result kind through
     // so the "결과물이 생성되지 않았습니다" banner in a copied bug report
     // includes `terminalPersistResultKind=<kind>` (or `no-artifact` for
     // null). Previously the fallback was a bare no-arg call and future
     // reports could not distinguish "model returned nothing" from
     // "persist returned skipped-incomplete" without browser console.
-    expect(autoOpenBlock).toContain("formatProjectRunDeliverableMissingError({");
+    expect(autoOpenBlock).toContain("formatProjectRunDeliverableMissingError()");
     expect(autoOpenBlock).toContain("kind: terminalPersistResult?.kind ?? null,");
     expect(autoOpenBlock).toContain("terminalPersistResult?.kind === 'rejected'");
     expect(autoOpenBlock).toContain("resolveTerminalArtifactToPersist(");
@@ -440,7 +667,9 @@ describe("ProjectView message loading", () => {
     expect(autoOpenBlock).toContain("messagesConversationIdRef.current === scheduledConversationId");
     expect(autoOpenBlock).toContain("clearStreamingMarker(scheduledConversationId)");
     expect(autoOpenBlock).toContain("targetConversationId: scheduledConversationId");
-    expect(source).toContain("meta?.entryFrom === AUTO_CONTINUE_ENTRY_FROM && !abortRef.current");
+    expect(source).toContain("meta?.entryFrom === AUTO_CONTINUE_ENTRY_FROM");
+    expect(source).toContain("meta?.entryFrom === SLIDE_COUNT_TOP_UP_ENTRY_FROM");
+    expect(source).toContain("!abortRef.current");
     // Keep this path quiet in production DevTools. The user-facing assistant
     // status event is the observable signal; console noise made previous demo
     // failures look scarier than they were.
@@ -459,7 +688,7 @@ describe("ProjectView message loading", () => {
     // Keep this window broad enough for the prompt preparation block above
     // the auto-continue counter reset; this test asserts the ordering contract,
     // not an exact source distance.
-    const handleSendBlock = source.slice(handleSendStart, handleSendStart + 9600);
+    const handleSendBlock = source.slice(handleSendStart, handleSendStart + 28000);
     expect(handleSendBlock).toContain("isAutoContinueIncompleteOutputPrompt(prompt)");
     expect(handleSendBlock).toContain("conversationAutoContinueCountRef.current.set(runConversationId, 0)");
     expect(handleSendBlock).toContain("scopedCommentAttachments.length > 0");
@@ -530,7 +759,7 @@ describe("ProjectView message loading", () => {
     // is the mirror of the existing element-patch → deck-patch route.
     const deckPatchStart = source.indexOf("async function tryApplyDeckPatchAgainstCurrentDeck");
     expect(deckPatchStart).toBeGreaterThan(0);
-    const deckPatchBlock = source.slice(deckPatchStart, deckPatchStart + 2400);
+    const deckPatchBlock = source.slice(deckPatchStart, deckPatchStart + 10000);
     expect(deckPatchBlock).toContain("deckPatchBodyLooksLikeElementPatch(input.patchBody)");
     expect(deckPatchBlock).toContain("[deck-patch] body looks like element-patch — falling back");
     expect(deckPatchBlock).toContain("tryApplyElementPatchesAgainstCurrentDeck({");
@@ -540,7 +769,7 @@ describe("ProjectView message loading", () => {
     // empty element-patch policy.
     const persistStart = source.indexOf("const persistArtifact = useCallback");
     expect(persistStart).toBeGreaterThan(0);
-    const persistBlock = source.slice(persistStart, persistStart + 14000);
+    const persistBlock = source.slice(persistStart, persistStart + 40000);
     expect(persistBlock).toContain(
       "isDeckPatchEmptyBody(art.html ?? '', merged.reason)",
     );
@@ -824,6 +1053,8 @@ describe("ProjectView message loading", () => {
     expect(source).toContain("function findClientArtifactRegression");
     expect(source).toContain("ARTIFACT_REGRESSION_MIN_PRIOR_BYTES");
     expect(source).toContain("ARTIFACT_REGRESSION_MIN_RATIO");
+    expect(source).toContain("incomingCompactDraft");
+    expect(source).toContain("priorHtml");
     expect(source).toContain("blocked placeholder artifact regression before save");
     expect(source).toContain("kind: 'artifact-regression'");
     expect(source).toContain("? 'artifact_regression'");
@@ -832,6 +1063,8 @@ describe("ProjectView message loading", () => {
   it("skips low-substance deck artifacts before marking slide generation complete", () => {
     const source = readSource("src/components/ProjectView.tsx");
     expect(source).toContain("isLowSubstanceSlideDeckArtifact");
+    expect(source).toContain("deckSlideHeadingsLookLikeFailedGenerate");
+    expect(source).toContain("failedGenerateHeadings");
     expect(source).toContain("normalizedArtifactType === 'deck'");
     expect(source).toContain("reason: 'low-substance deck artifact'");
     expect(source).toContain("kind: 'skipped-incomplete'");
@@ -870,7 +1103,7 @@ describe("ProjectView message loading", () => {
       /runStatus === 'failed'[\s\S]{0,200}window\.setTimeout\(\(\) => \{[\s\S]{0,120}scheduleConversationMessageRefresh/,
     );
     expect(source).toContain("applyTerminalRunStatusToAssistant");
-    expect(source).toContain("attachPersistedChatError(prev, detail, errorCode)");
-    expect(source).toContain("attachPersistedChatError(prev, msg, errorCode)");
+    expect(source).toContain("formatPersistedProjectRunError(err)");
+    expect(source).toContain("attachPersistedChatError(prev, persisted.detail, persisted.code)");
   });
 });

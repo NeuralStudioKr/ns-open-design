@@ -15,6 +15,12 @@
  * after every navigation so the host can render its own counter / dots.
  * The host can also request an immediate snapshot via:
  *   { type: 'od:slide-state-request' }
+ *
+ * Preview srcdocs (not export documents) also inject an Escape bridge.
+ * Sandboxed preview iframes omit allow-same-origin, so a focused iframe
+ * swallows keydown and the host never sees Escape. The bridge posts:
+ *   { type: 'od:preview-escape' }
+ * unless the user is typing in an input / textarea / contenteditable.
  */
 import {
   buildManualEditBridge,
@@ -22,7 +28,16 @@ import {
   MANUAL_EDIT_DISCOVERY_SELECTOR,
   MANUAL_EDIT_SOURCE_PATH_ATTR,
 } from '../edit-mode/bridge';
-import { buildArtifactPreviewDomLeakGuardScript, repairArtifactDocumentHead } from '@open-design/contracts';
+import {
+  buildArtifactPreviewDomLeakGuardScript,
+  repairArtifactDocumentHead,
+  repairArtifactStyleSheets,
+  injectStackedCanvasNeutralizeForLetterbox,
+  lockStackedDeckCanvasForPreview,
+  looksLikeOfficialFullscreenPresenterDeck,
+  collapseAdjacentDuplicateDeckSiblings,
+  pinDeckSlidesToFixedCanvas,
+} from '@open-design/contracts';
 import { stripConflictingSrcDocCspBaseUri } from './authenticatedHtmlSrcDoc';
 import {
   injectStackedDeckViewport,
@@ -100,16 +115,98 @@ export function buildRedirectLoopBlockedDoc(): string {
 </html>`;
 }
 
+/**
+ * Cheap gate: skip od-id / source-path annotation when OD-authored HTML already
+ * carries them on structural opens. Imported HTML without annotations still
+ * pays the DOMParser walk. Conservative — any bare section/main open forces annotate.
+ */
+function shouldAnnotatePreviewEditTargets(html: string, sourcePaths: boolean): boolean {
+  if (!/data-od-id=/i.test(html)) return true;
+  if (sourcePaths && !/data-od-source-path=/i.test(html)) return true;
+  const structuralOpens = html.match(/<(?:section|main)\b[^>]*>/gi) ?? [];
+  if (structuralOpens.length === 0) return true;
+  for (const tag of structuralOpens) {
+    if (!/data-od-id=/i.test(tag) && !/data-screen-label=/i.test(tag)) return true;
+  }
+  return false;
+}
+
+export {
+  artifactDocumentHeadLooksIntact,
+  repairArtifactDocumentHeadIfNeeded,
+} from './artifact-document-head';
+import { repairArtifactDocumentHeadIfNeeded } from './artifact-document-head';
+import {
+  inferDeckSlidePaperSurface,
+  repairDeckSlideSurfaceBleed,
+} from '../artifacts/deck-slide-surface';
+import { relaxPersistedDeckSlideSurfaceBleed } from '@open-design/contracts';
+
 export function buildSrcdoc(
   html: string,
   options: SrcdocOptions = {}
 ): string {
-  const repaired = stripConflictingSrcDocCspBaseUri(repairArtifactDocumentHead(html));
-  const wrapped = wrapPreviewHtmlShell(repaired);
-  const withOdIds = annotateMissingOdIds(wrapped);
-  const withSourcePaths = options.editBridge ? annotateManualEditSourcePaths(withOdIds) : withOdIds;
-  const withBase = options.baseHref ? injectBaseHref(withSourcePaths, options.baseHref) : withSourcePaths;
-  const withShim = injectSandboxShim(withBase);
+  // Match cover thumbs: relax flattened `.slide` bleed so official Motif /
+  // identity dark washes can paint, then re-letterbox html/body only.
+  const repairedHead = repairDeckSlideSurfaceBleed(
+    relaxPersistedDeckSlideSurfaceBleed(
+      repairArtifactStyleSheets(
+        repairArtifactDocumentHeadIfNeeded(html),
+      ),
+    ),
+  );
+  // Detect compact stacked BEFORE canvas pin — pin rewrites 100vh → 1920×1080
+  // and would flip authored scroll / root-scroll decks onto the letterbox path.
+  const detectionBase = wrapPreviewHtmlShell(repairedHead, { alreadyRepaired: true });
+  const compactStackedDeck = options.deck
+    ? looksLikeCompactApiStackedDeck(detectionBase)
+    : false;
+  // Dual-classified Studio/Grove `#deck` catalogs are still "official
+  // presenters" for merge semantics, but compact letterbox must force pin +
+  // LOOK_NEUTRALIZE after lockStacked (which strips neutralize on presenters).
+  const compactLetterboxOfficialPresenter = compactStackedDeck
+    && looksLikeOfficialFullscreenPresenterDeck(repairedHead);
+  // Compact MiniMax fills sometimes echo the last heading/paragraph/badge.
+  // Collapse twins for preview only on stacked API decks — catalog presenters
+  // keep authored decorative repeats.
+  const previewSource = compactStackedDeck
+    ? collapseAdjacentDuplicateDeckSiblings(repairedHead)
+    : repairedHead;
+  const pinForCompact = (html: string) => (
+    compactStackedDeck
+      ? pinDeckSlidesToFixedCanvas(html, { force: compactLetterboxOfficialPresenter })
+      : html
+  );
+  const healCompactLetterbox = (html: string) => {
+    const locked = lockStackedDeckCanvasForPreview(pinForCompact(html));
+    return compactLetterboxOfficialPresenter
+      ? injectStackedCanvasNeutralizeForLetterbox(locked)
+      : locked;
+  };
+  // Deck preview/export: compact fills lock to a 1920×1080 canvas.
+  // Official catalog presenters keep iframe-relative 100% fill — except the
+  // dual-classified `#deck` viewport strips above (§0.70 / §0.93).
+  const deckCanvasReady = options.deck
+    ? (compactStackedDeck ? healCompactLetterbox(previewSource) : lockStackedDeckCanvasForPreview(repairedHead))
+    : repairedHead;
+  const repaired = stripConflictingSrcDocCspBaseUri(deckCanvasReady);
+  // alreadyRepaired: avoid wrapPreviewHtmlShell re-running repair on full docs.
+  // Fragment wraps inject a fresh device-width shell — re-lock after wrap for
+  // compact fills only (official presenters stay device-width).
+  const wrappedRaw = wrapPreviewHtmlShell(repaired, { alreadyRepaired: true });
+  const wrapped = options.deck
+    ? (compactStackedDeck ? healCompactLetterbox(wrappedRaw) : lockStackedDeckCanvasForPreview(wrappedRaw))
+    : wrappedRaw;
+  // Export docs skip od-id / source-path annotation (no selection/edit bridges).
+  // OD-authored decks that already carry annotations skip the DOMParser walk.
+  const sourcePaths = Boolean(options.editBridge);
+  const withAnnotations = options.exportDocument
+    || !shouldAnnotatePreviewEditTargets(wrapped, sourcePaths)
+    ? wrapped
+    : annotatePreviewEditTargets(wrapped, { sourcePaths });
+  const withBase = options.baseHref ? injectBaseHref(withAnnotations, options.baseHref) : withAnnotations;
+  const withImageRetry = injectPreviewImageRetryBridge(withBase);
+  const withShim = injectSandboxShim(withImageRetry);
   const withRedirectGuard = options.exportDocument
     ? withShim
     : injectPreviewRedirectGuard(withShim, {
@@ -122,7 +219,6 @@ export function buildSrcdoc(
   if (options.exportDocument) {
     return withArtifactGuard;
   }
-  const compactStackedDeck = options.deck ? looksLikeCompactApiStackedDeck(wrapped) : false;
   const withStackedViewport = compactStackedDeck
     ? injectStackedDeckViewport(withArtifactGuard)
     : withArtifactGuard;
@@ -152,7 +248,11 @@ export function buildSrcdoc(
   // it to a per-call option would force iframe srcdoc regeneration (and a
   // visible flash) every time the host toggle flips.
   const withTweaks = injectTweaksBridge(withEdit);
-  return injectSrcdocTransportActivationBridge(injectSnapshotBridge(withTweaks));
+  // Escape must leave the opaque sandbox — host PreviewModal cannot attach
+  // to iframe.contentWindow without allow-same-origin.
+  return injectPreviewEscapeBridge(
+    injectSrcdocTransportActivationBridge(injectSnapshotBridge(withTweaks)),
+  );
 }
 
 /**
@@ -297,7 +397,7 @@ function injectSnapshotBridge(doc: string): string {
     var styles = cloneRoot.querySelectorAll('style');
     for (var st = 0; st < styles.length; st++) {
       styles[st].textContent = (styles[st].textContent || '')
-        .replace(/@import[^;]+;/gi, '')
+        .replace(/@import\\s+(?:url\\s*\\(\\s*(?:\"[^\"]*\"|'[^']*'|[^'\")\\s]+)\\s*\\)|(?:\"[^\"]*\"|'[^']*'))[^;]*;?/gi, '')
         .replace(/@font-face\\s*\\{[^}]*\\}/gi, '');
     }
   }
@@ -898,15 +998,19 @@ function injectPaletteBridge(
   return injectBeforeBodyEnd(doc, script);
 }
 
+function annotateManualEditSourcePathsOnDocument(parsed: Document): void {
+  parsed.body.querySelectorAll(MANUAL_EDIT_DISCOVERY_SELECTOR).forEach((el) => {
+    if (el.hasAttribute(MANUAL_EDIT_SOURCE_PATH_ATTR)) return;
+    const path = sourcePathForElement(el);
+    if (path) el.setAttribute(MANUAL_EDIT_SOURCE_PATH_ATTR, path);
+  });
+}
+
 function annotateManualEditSourcePaths(doc: string): string {
   if (typeof DOMParser === 'undefined') return doc;
   try {
     const parsed = new DOMParser().parseFromString(doc, 'text/html');
-    parsed.body.querySelectorAll(MANUAL_EDIT_DISCOVERY_SELECTOR).forEach((el) => {
-      if (el.hasAttribute(MANUAL_EDIT_SOURCE_PATH_ATTR)) return;
-      const path = sourcePathForElement(el);
-      if (path) el.setAttribute(MANUAL_EDIT_SOURCE_PATH_ATTR, path);
-    });
+    annotateManualEditSourcePathsOnDocument(parsed);
     return serializeHtmlDocument(parsed);
   } catch {
     return doc;
@@ -937,45 +1041,68 @@ function serializeHtmlDocument(doc: Document): string {
  * generated outside of Open Design and therefore carries no OD-specific
  * annotations.
  */
+function annotateMissingOdIdsOnDocument(parsed: Document): void {
+  // Only target divs that are direct children of semantic containers or body;
+  // deeply nested layout divs (e.g. flex/grid wrappers) create noise in the
+  // selection bridge without adding meaningful pickable targets.
+  const selector = [
+    'section', 'article', 'header', 'footer', 'nav', 'main', 'aside',
+    'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+    'button', 'a', 'img', 'svg', '[id]',
+    'body > div[class]', 'body > div[id]',
+    'section > div[class]', 'section > div[id]',
+    'article > div[class]', 'article > div[id]',
+    'main > div[class]', 'main > div[id]',
+    'header > div[class]', 'header > div[id]',
+    'footer > div[class]', 'footer > div[id]',
+    'nav > div[class]', 'nav > div[id]',
+    'aside > div[class]', 'aside > div[id]',
+    '[id] > div[class]', '[id] > div[id]',
+    // Deck slide icons / positioned chrome often ship as bare <div style="...">.
+    'section.slide > div[style]', 'section[class~="slide"] > div[style]',
+  ].join(', ');
+  const skipTags = new Set(['script', 'style', 'template', 'noscript', 'iframe', 'object', 'embed']);
+  const skipDeckChrome = (el: Element): boolean => {
+    const id = el.id;
+    if (id === 'deck-stage' || id === 'od-stacked-deck-stage' || id === 'deck' || id === 'deck-track') {
+      return true;
+    }
+    return el.classList.contains('deck-shell') || el.classList.contains('deck-stage');
+  };
+  let fallbackIndex = 0;
+  parsed.body.querySelectorAll(selector).forEach((el) => {
+    if (el.hasAttribute('data-od-id') || el.hasAttribute('data-screen-label')) return;
+    const tag = el.tagName.toLowerCase();
+    if (skipTags.has(tag)) return;
+    if (skipDeckChrome(el)) return;
+    const path = sourcePathForElement(el);
+    el.setAttribute('data-od-id', path || `od-${tag}-${fallbackIndex++}`);
+  });
+}
+
 function annotateMissingOdIds(doc: string): string {
   if (typeof DOMParser === 'undefined') return doc;
   try {
     const parsed = new DOMParser().parseFromString(doc, 'text/html');
-    // Only target divs that are direct children of semantic containers or body;
-    // deeply nested layout divs (e.g. flex/grid wrappers) create noise in the
-    // selection bridge without adding meaningful pickable targets.
-    const selector = [
-      'section', 'article', 'header', 'footer', 'nav', 'main', 'aside',
-      'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-      'button', 'a', 'img', 'svg', '[id]',
-      'body > div[class]', 'body > div[id]',
-      'section > div[class]', 'section > div[id]',
-      'article > div[class]', 'article > div[id]',
-      'main > div[class]', 'main > div[id]',
-      'header > div[class]', 'header > div[id]',
-      'footer > div[class]', 'footer > div[id]',
-      'nav > div[class]', 'nav > div[id]',
-      'aside > div[class]', 'aside > div[id]',
-      '[id] > div[class]', '[id] > div[id]',
-    ].join(', ');
-    const skipTags = new Set(['script', 'style', 'template', 'noscript', 'iframe', 'object', 'embed']);
-    const skipDeckChrome = (el: Element): boolean => {
-      const tag = el.tagName.toLowerCase();
-      const id = el.id;
-      if (id === 'deck-stage' || id === 'od-stacked-deck-stage' || id === 'deck' || id === 'deck-track') {
-        return true;
-      }
-      return el.classList.contains('deck-shell') || el.classList.contains('deck-stage');
-    };
-    let fallbackIndex = 0;
-    parsed.body.querySelectorAll(selector).forEach((el) => {
-      if (el.hasAttribute('data-od-id') || el.hasAttribute('data-screen-label')) return;
-      const tag = el.tagName.toLowerCase();
-      if (skipTags.has(tag)) return;
-      if (skipDeckChrome(el)) return;
-      const path = sourcePathForElement(el);
-      el.setAttribute('data-od-id', path || `od-${tag}-${fallbackIndex++}`);
-    });
+    annotateMissingOdIdsOnDocument(parsed);
+    return serializeHtmlDocument(parsed);
+  } catch {
+    return doc;
+  }
+}
+
+/** Fold od-id + optional source-path annotation into one DOMParser pass. */
+function annotatePreviewEditTargets(
+  doc: string,
+  options: { sourcePaths: boolean },
+): string {
+  if (typeof DOMParser === 'undefined') return doc;
+  try {
+    const parsed = new DOMParser().parseFromString(doc, 'text/html');
+    annotateMissingOdIdsOnDocument(parsed);
+    if (options.sourcePaths) {
+      annotateManualEditSourcePathsOnDocument(parsed);
+    }
     return serializeHtmlDocument(parsed);
   } catch {
     return doc;
@@ -1127,6 +1254,183 @@ function injectSandboxShim(doc: string): string {
   if (/<body[^>]*>/i.test(doc))
     return doc.replace(/<body[^>]*>/i, (m) => `${m}${shim}`);
   return shim + doc;
+}
+
+/**
+ * Retry failed project-relative image loads inside the deck iframe.
+ *
+ * Composer / Drive-imported images the model embeds as
+ * `<img src="refs/drive/…">` can race against:
+ *   - S3 sync-down on the serving pod (file uploaded on a different pod).
+ *   - Teamver preview-scope prefix minting (fail-open first paint has no
+ *     `<base href>`, so the first fetch resolves against the parent doc URL
+ *     and 404s until the deck srcdoc rebuilds with a real base).
+ *
+ * Without retry the user sees the browser's broken-image placeholder + alt
+ * text (visually "the slide only has the image title") even after the file
+ * becomes reachable a moment later. This helper listens for `error` on any
+ * `<img>` with a same-origin / relative src and retries with a cache-bust up
+ * to a few times, spaced to cover S3 lag and prefix retry cadence.
+ */
+function injectPreviewImageRetryBridge(doc: string): string {
+  const script = `<script data-od-preview-image-retry>(function(){
+  var MAX_RETRIES = 3;
+  var RETRY_DELAYS_MS = [400, 1200, 3000];
+  var STATE = new WeakMap();
+  function hasScopedBase(){
+    try {
+      var base = document.querySelector('base[href]');
+      if (!base) return false;
+      var href = base.getAttribute('href') || '';
+      if (!href || href === 'about:blank') return false;
+      // Relative project assets need a project-scoped /raw/ or /preview/ base.
+      return /\\/(?:raw|preview)\\//.test(href) || href.indexOf('/api/projects/') === 0;
+    } catch (_) { return false; }
+  }
+  function shouldRetry(img){
+    // Without <base href> relative src resolves against about:srcdoc — burn
+    // the retry budget only after a scoped base is present (S3 lag case).
+    if (!hasScopedBase()) return false;
+    var raw = img.getAttribute('src');
+    if (!raw) return false;
+    var trimmed = String(raw).trim();
+    if (!trimmed) return false;
+    if (/^(?:data:|blob:|about:|javascript:)/i.test(trimmed)) return false;
+    if (/^https?:/i.test(trimmed)) {
+      try {
+        var abs = new URL(trimmed, location.href);
+        return abs.origin === location.origin;
+      } catch (_) { return false; }
+    }
+    return true;
+  }
+  function bump(url, nonce){
+    var sep = url.indexOf('?') >= 0 ? '&' : '?';
+    return url + sep + '_odr=' + nonce;
+  }
+  function unicodeVariants(url){
+    // Try alternate NFC / NFD forms after byte-exact same-URL retries fail.
+    // Hangul filenames uploaded from macOS often persist in one Unicode form
+    // while the HTML references the other — swapping fixes preview 404s
+    // without a page reload.
+    var out = [];
+    if (!url) return out;
+    try { var nfc = url.normalize('NFC'); if (nfc !== url) out.push(nfc); } catch (_) {}
+    try { var nfd = url.normalize('NFD'); if (nfd !== url && out.indexOf(nfd) < 0) out.push(nfd); } catch (_) {}
+    return out;
+  }
+  function retry(img){
+    if (!img || !img.isConnected) return;
+    if (!shouldRetry(img)) return;
+    var state = STATE.get(img);
+    if (!state) {
+      var original = img.getAttribute('src') || '';
+      // Strip prior _odr cache-bust so we retry from the clean project path.
+      original = original.replace(/([?&])_odr=[^&]*/g, '$1').replace(/[?&]$/, '');
+      state = { original: original, attempts: 0, variants: null, variantIndex: -1 };
+      STATE.set(img, state);
+    }
+    if (state.attempts >= MAX_RETRIES) {
+      // After same-URL budget is spent, try one Unicode variant (NFC↔NFD) as
+      // a last-ditch swap for Hangul filename mismatches.
+      if (state.variants === null) state.variants = unicodeVariants(state.original);
+      state.variantIndex += 1;
+      if (state.variantIndex >= state.variants.length) return;
+      var swap = state.variants[state.variantIndex];
+      setTimeout(function(){
+        if (!img.isConnected) return;
+        if (!hasScopedBase()) return;
+        try {
+          img.src = bump(swap, 'u' + state.variantIndex + '-' + Date.now());
+        } catch (_) {}
+      }, 400);
+      return;
+    }
+    var delay = RETRY_DELAYS_MS[state.attempts] || 3000;
+    state.attempts += 1;
+    setTimeout(function(){
+      if (!img.isConnected) return;
+      if (!hasScopedBase()) return;
+      var complete = img.complete && img.naturalWidth > 0;
+      if (complete) return;
+      try {
+        img.src = bump(state.original, 'r' + state.attempts + '-' + Date.now());
+      } catch (_) {}
+    }, delay);
+  }
+  function onError(event){
+    var img = event && event.target;
+    if (!img || img.tagName !== 'IMG') return;
+    retry(img);
+  }
+  document.addEventListener('error', onError, true);
+  try {
+    var mo = new MutationObserver(function(mutations){
+      for (var i = 0; i < mutations.length; i++) {
+        var added = mutations[i].addedNodes;
+        for (var j = 0; j < added.length; j++) {
+          var node = added[j];
+          if (!node || node.nodeType !== 1) continue;
+          if (node.tagName === 'IMG') {
+            if (node.complete && node.naturalWidth === 0) retry(node);
+          } else if (node.querySelectorAll) {
+            var imgs = node.querySelectorAll('img');
+            for (var k = 0; k < imgs.length; k++) {
+              var img = imgs[k];
+              if (img.complete && img.naturalWidth === 0) retry(img);
+            }
+          }
+        }
+      }
+    });
+    mo.observe(document.documentElement, { childList: true, subtree: true });
+  } catch (_) {}
+})();</script>`;
+  if (/<head[^>]*>/i.test(doc))
+    return doc.replace(/<head[^>]*>/i, (m) => `${m}${script}`);
+  if (/<body[^>]*>/i.test(doc))
+    return doc.replace(/<body[^>]*>/i, (m) => `${m}${script}`);
+  return script + doc;
+}
+
+export const PREVIEW_ESCAPE_MESSAGE = 'od:preview-escape';
+
+/**
+ * When a sandboxed preview iframe has keyboard focus, Escape never reaches
+ * the parent document. Post a host message so PreviewModal can dismiss
+ * popovers → fullscreen → the modal, one layer per keystroke.
+ */
+function injectPreviewEscapeBridge(doc: string): string {
+  const script = `<script data-od-preview-escape-bridge>(function(){
+  function isTypingTarget(el){
+    if (!el) return false;
+    var tag = el.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable) return true;
+    if (el.closest) {
+      if (el.closest('[data-od-editing="true"]')) return true;
+      if (el.closest('[contenteditable]:not([contenteditable="false"])')) return true;
+    }
+    return false;
+  }
+  window.addEventListener('keydown', function(e){
+    if (!e || (e.key !== 'Escape' && e.key !== 'Esc')) return;
+    if (e.altKey || e.ctrlKey || e.metaKey) return;
+    if (isTypingTarget(e.target)) return;
+    if (document.querySelector && document.querySelector('[data-od-editing="true"]')) return;
+    e.preventDefault();
+    e.stopPropagation();
+    try {
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage({ type: ${JSON.stringify(PREVIEW_ESCAPE_MESSAGE)} }, '*');
+      }
+    } catch (_) {}
+  }, true);
+})();</script>`;
+  if (/<head[^>]*>/i.test(doc))
+    return doc.replace(/<head[^>]*>/i, (m) => `${m}${script}`);
+  if (/<body[^>]*>/i.test(doc))
+    return doc.replace(/<body[^>]*>/i, (m) => `${m}${script}`);
+  return script + doc;
 }
 
 function injectPreviewFocusGuard(doc: string): string {
@@ -1435,7 +1739,25 @@ function injectSelectionBridge(
   // Reject any value that could break out of a 'prop: value' declaration:
   // semicolons (extra declarations), braces (close the rule), angle
   // brackets (close the <style> tag), and newlines (defense in depth).
-  var UNSAFE_VALUE = /[;{}<>\\n\\r]/;
+  // Mirror HOST_UNSAFE_INSPECT_VALUE — block url()/expression()/javascript:/….
+  var UNSAFE_VALUE = /[;{}<>\\n\\r]|url\\s*\\(|expression\\s*\\(|image-set\\s*\\(|element\\s*\\(|-moz-binding|javascript\\s*:|vbscript\\s*:|data\\s*:/i;
+  function normalizeInspectCssValue(css){
+    var text = String(css || '');
+    text = text.replace(/\\/\\*[\\s\\S]*?\\*\\//g, '');
+    text = text.replace(/\\\\(?:\\r\\n|[\\n\\r\\f])/g, '');
+    text = text.replace(/\\\\([0-9a-fA-F]{1,6})(\\r\\n|[ \\t\\r\\n\\f])?/g, function(_m, hex){
+      var code = parseInt(hex, 16);
+      if (!isFinite(code) || code < 0 || code > 0x10ffff) return '';
+      try { return String.fromCodePoint(code); } catch (_e) { return ''; }
+    });
+    text = text.replace(/\\\\(.)/g, '$1');
+    return text;
+  }
+  function inspectValueUnsafe(v){
+    var trimmed = String(v || '').trim();
+    if (!trimmed) return false;
+    return UNSAFE_VALUE.test(normalizeInspectCssValue(trimmed));
+  }
   function active(){ return commentEnabled || inspectEnabled; }
   function deckSlideIndexForPayload(anchorEl){
     // Prefer the slide that actually contains the clicked element. The
@@ -1536,7 +1858,7 @@ function injectSelectionBridge(
         var name = raw.slice(0, colon).trim().toLowerCase();
         if (!Object.prototype.hasOwnProperty.call(ALLOWED_PROPS, name)) continue;
         var value = raw.slice(colon + 1).replace(/!important/i, '').trim();
-        if (!value || UNSAFE_VALUE.test(value)) continue;
+        if (!value || inspectValueUnsafe(value)) continue;
         props[name] = value;
       }
       if (Object.keys(props).length) {
@@ -1953,7 +2275,7 @@ function meaningfulDomFallbackTarget(el) {
     var safeSelector = safeSelectorFor(elementId, selector);
     if (!safeSelector) return;
     var v = (value == null) ? '' : String(value).trim();
-    if (v && UNSAFE_VALUE.test(v)) return;
+    if (v && inspectValueUnsafe(v)) return;
     var entry = overrides[elementId];
     if (!entry) {
       entry = { selector: safeSelector, props: Object.create(null) };
@@ -2058,7 +2380,7 @@ function meaningfulDomFallbackTarget(el) {
           var rawValue = entry.props[pkeys[p]];
           if (rawValue == null) continue;
           var v = String(rawValue).trim();
-          if (!v || UNSAFE_VALUE.test(v)) continue;
+          if (!v || inspectValueUnsafe(v)) continue;
           clean[name] = v;
         }
         if (Object.keys(clean).length) overrides[id] = { selector: safeSelector, props: clean };
@@ -2284,6 +2606,13 @@ html[data-od-inspect-mode] body iframe { pointer-events: none !important; }
 // the scaled stage lands ~1000px off-screen and the user sees a mostly-
 // black preview with a sliver of slide content in the top-left. Skip the
 // override whenever the framework's marker id is present.
+function sanitizeStackedStagePaper(value: string | null | undefined): string | null {
+  const raw = String(value ?? '').trim();
+  if (!raw || raw.length > 160) return null;
+  if (/[<>]|<\/style/i.test(raw)) return null;
+  return raw.replace(/[;\n\r]/g, ' ').trim() || null;
+}
+
 function injectDeckBridge(
   doc: string,
   initialSlideIndex = 0,
@@ -2292,8 +2621,17 @@ function injectDeckBridge(
   const safeInitialSlideIndex = Number.isFinite(initialSlideIndex)
     ? Math.max(0, Math.floor(initialSlideIndex))
     : 0;
-  const isFrameworkDeck = /\bid\s*=\s*["']deck-stage["']/i.test(doc);
+  const isFrameworkDeck = /\bid\s*=\s*["']deck-stage["']/i.test(doc)
+    || /<deck-stage\b/i.test(doc);
   const isCompactStackedDeck = compactStackedDeck;
+  const stagePaper = sanitizeStackedStagePaper(
+    inferDeckSlidePaperSurface(doc)?.background,
+  );
+  // Catalog presenters hide inactive pages with author CSS (opacity or
+  // display:none + .active). Host `display:none !important` survives
+  // native `#nextBtn` class toggles, so later pages report the right
+  // index but paint only the body background. Do not collapse any
+  // non-compact / non-framework deck. Compact letterbox fills still hide.
   const legacyDeckFix = isFrameworkDeck
     ? ''
     : `<style data-od-deck-fix>
@@ -2319,15 +2657,23 @@ body > .slide:not(.active):not(.is-active):not(.current) {
     : '';
   const compactStackedDeckFix = isCompactStackedDeck
     ? `<style data-od-deck-stacked-fix>
+/* Stage chrome vs slide paper (§1.03).
+   Earlier we left html/body background alone so cream decks filled the
+   whole iframe (avoiding a near-black #0b0c10 letterbox that read as
+   "template not applied"). That made PPT gutters the same color as the
+   1920×1080 slide — users could not see the 16:9 frame.
+   Paint a neutral stage chrome on html/body (not #0b0c10, not paper) and
+   keep author / bleed paper on \`.slide\` only. Attribute selectors beat
+   \`[data-od-slide-surface-bleed]\` element rules. */
 html[data-od-compact-stacked],
 html[data-od-compact-stacked] body {
   width: 100% !important;
   height: 100% !important;
-  background: #0b0c10 !important;
   margin: 0 !important;
   overflow: hidden !important;
   overscroll-behavior: none !important;
   touch-action: none !important;
+  background: #17181d !important;
 }
 html[data-od-compact-stacked] body {
   position: relative !important;
@@ -2343,6 +2689,9 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
   height: 1080px;
   margin: 0;
   transform-origin: center center;
+  /* Soft edge so cream slides read as a card on the stage chrome. */
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06);
+  ${stagePaper ? `background: ${stagePaper};` : ''}
 }
 #od-stacked-deck-stage > .slide {
   box-sizing: border-box !important;
@@ -2354,11 +2703,9 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
   position: absolute !important;
   top: 0 !important;
   left: 0 !important;
-  overflow: hidden !important;
+  /* Motif-safe — overflow:hidden re-clips Daisy/Graphify hangs after pin heal (§0.76). */
+  overflow: visible !important;
   display: none !important;
-  flex-direction: column;
-  justify-content: center;
-  align-items: stretch;
 }
 </style>`
     : '';
@@ -2389,8 +2736,27 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
   function frameworkDeckStage() {
     return document.getElementById('deck-stage');
   }
+  function webComponentDeckStage() {
+    try { return document.querySelector('deck-stage'); }
+    catch (_) { return null; }
+  }
   function stackedDeckStage() {
     return document.getElementById('od-stacked-deck-stage');
+  }
+  function isSlideHostTag(el) {
+    var tag = String(el.tagName || '').toLowerCase();
+    return tag === 'section' || tag === 'div' || tag === 'main' || tag === 'article';
+  }
+  function isStackedSlideParent(el) {
+    var parent = el && el.parentElement;
+    if (!parent) return false;
+    if (String(parent.tagName || '').toLowerCase() === 'body') return true;
+    if (parent.id === 'od-stacked-deck-stage') return true;
+    return !!(parent.classList && (
+      parent.classList.contains('presentation')
+      || parent.classList.contains('deck')
+      || parent.classList.contains('deck-shell')
+    ));
   }
   function isStackedSlideCandidate(el) {
     if (!el || el.nodeType !== 1) return false;
@@ -2398,8 +2764,17 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     if (el.closest && el.closest('header, nav, #od-stacked-deck-stage')) return false;
     // Only skip slides owned by the real framework / transform-track hosts.
     // Decorative deck-shell wrappers without #deck-stage must still hoist.
-    if (el.closest && el.closest('#deck-stage, #deck, #deck-track')) return false;
-    return !!(el.classList && el.classList.contains('slide'));
+    // <deck-stage> (custom element) is a presenter — do not hoist its children.
+    if (el.closest && el.closest('#deck-stage, #deck-track, deck-stage')) return false;
+    if (el.classList && (el.classList.contains('slide') || el.classList.contains('deck-slide') || el.classList.contains('ppt-slide'))) {
+      return true;
+    }
+    if (!isSlideHostTag(el)) return false;
+    if (el.hasAttribute && el.hasAttribute('data-screen-label')) {
+      var label = String(el.getAttribute('data-screen-label') || '');
+      return /^\d{2}(?:\s|$)/.test(label) || isStackedSlideParent(el);
+    }
+    return false;
   }
   function slidesFromElementChildren(container) {
     var out = [];
@@ -2411,7 +2786,7 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     return out;
   }
   function stackedSlideNodes() {
-    var direct = document.querySelectorAll('body > .slide');
+    var direct = document.querySelectorAll('body > .slide, body > .deck-slide, body > .ppt-slide, body > [data-screen-label]');
     if (direct.length) return direct;
     if (!document.body) return direct;
     var children = document.body.children;
@@ -2421,7 +2796,7 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
       if (el.id === 'od-stacked-deck-stage') continue;
       var tag = String(el.tagName || '').toLowerCase();
       if (tag === 'header' || tag === 'nav' || tag === 'style' || tag === 'script') continue;
-      if (el.classList && el.classList.contains('slide')) continue;
+      if (isStackedSlideCandidate(el)) continue;
       var wrapped = slidesFromElementChildren(el);
       if (wrapped.length >= 2) return wrapped;
       if (wrapped.length === 0 && el.children.length === 1) {
@@ -2433,7 +2808,7 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
       }
     }
     if (!frameworkDeckStage()) {
-      var all = document.querySelectorAll('body .slide');
+      var all = document.querySelectorAll('body .slide, body .deck-slide, body .ppt-slide, body [data-screen-label]');
       var list = [];
       for (var a = 0; a < all.length; a++) {
         if (isStackedSlideCandidate(all[a])) list.push(all[a]);
@@ -2445,6 +2820,7 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
   function shouldUseStackedDeckStage() {
     if (!compactStackedDeckEnabled) return false;
     if (frameworkDeckStage()) return false;
+    if (webComponentDeckStage()) return false;
     if (stackedDeckStage()) return true;
     var direct = stackedSlideNodes();
     if (!direct.length) return false;
@@ -2459,7 +2835,8 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     } catch (_) {}
     var list = [];
     for (var d = 0; d < direct.length; d++) list.push(direct[d]);
-    if (transformTrack(list)) return false;
+    var track = transformTrack(list);
+    if (track && track.id !== 'deck') return false;
     var stackedViewport = false;
     function hasFixedCanvasSizingText(value) {
       var text = String(value || '');
@@ -2504,14 +2881,21 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     return stackedViewport;
   }
   var stackedDeckStageHoistInFlight = false;
-  function moveSlidesIntoStackedStage(stage, slideList) {
+  function moveSlidesIntoStackedStage(stage, slideList, revealAfterMove) {
     if (!stage || !slideList || !slideList.length) return;
+    var target = activeIndex(slides());
+    if (target < 0) target = Math.max(0, Math.min(slideList.length - 1, initialSlideIndex));
     for (var i = 0; i < slideList.length; i++) {
       var slide = slideList[i];
       if (!slide || !slide.parentNode) continue;
+      try {
+        if (slide.classList && !slide.classList.contains('slide')) slide.classList.add('slide');
+      } catch (_) {}
       if (slide.parentNode === stage) continue;
       try { stage.appendChild(slide); } catch (_) {}
     }
+    if (revealAfterMove === false) lockAllStackedSlideAxes(stage);
+    else forceRevealSlide(target);
   }
   function bodyDirectChildAncestor(node, body) {
     var cur = node;
@@ -2542,13 +2926,13 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
       if (el.id === 'od-stacked-deck-stage') continue;
       var tag = String(el.tagName || '').toLowerCase();
       if (tag === 'header' || tag === 'nav' || tag === 'style' || tag === 'script') continue;
-      if (el.querySelector && el.querySelector('.slide')) continue;
+      if (el.querySelector && el.querySelector('.slide, .deck-slide, .ppt-slide, [data-screen-label]')) continue;
       var peel = el;
       while (peel && peel !== body && peel !== stage && peel.children && peel.children.length === 1) {
         var only = peel.children[0];
         if (!only || only.nodeType !== 1) break;
-        if (only.classList && only.classList.contains('slide')) break;
-        if (only.querySelector && only.querySelector('.slide')) break;
+        if (isStackedSlideCandidate(only)) break;
+        if (only.querySelector && only.querySelector('.slide, .deck-slide, .ppt-slide, [data-screen-label]')) break;
         var onlyHasElement = false;
         for (var k = 0; k < only.childNodes.length; k++) {
           if (only.childNodes[k].nodeType === 1) { onlyHasElement = true; break; }
@@ -2581,7 +2965,10 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     var existing = stackedDeckStage();
     var slideList = stackedSlideNodes();
     if (existing) {
-      if (slideList.length) moveSlidesIntoStackedStage(existing, slideList);
+      if (slideList.length) {
+        snapshotAuthoredStackedSlideStyles(slideList);
+        moveSlidesIntoStackedStage(existing, slideList);
+      } else lockAllStackedSlideAxes(existing);
       return existing;
     }
     if (!slideList.length) return null;
@@ -2591,6 +2978,7 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     if (!first || !first.parentNode) return null;
     var hostStage = first.closest ? first.closest('#od-stacked-deck-stage') : null;
     if (hostStage) {
+      snapshotAuthoredStackedSlideStyles(slideList);
       moveSlidesIntoStackedStage(hostStage, slideList);
       return hostStage;
     }
@@ -2600,6 +2988,7 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     try {
       existing = stackedDeckStage();
       if (existing) {
+        snapshotAuthoredStackedSlideStyles(slideList);
         moveSlidesIntoStackedStage(existing, slideList);
         return existing;
       }
@@ -2630,7 +3019,14 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
         try { insertParent.appendChild(stage); } catch (__) { return stackedDeckStage(); }
       }
 
-      moveSlidesIntoStackedStage(stage, slideList);
+      // Snapshot stylesheet display:grid *before* slides enter the stage —
+      // od-stacked-deck-stage > .slide { display:none } would otherwise
+      // make getComputedStyle report none and lockStackedSlideAxis would
+      // freeze flex over Studio grid layouts (§0.93).
+      snapshotAuthoredStackedSlideStyles(slideList);
+      moveSlidesIntoStackedStage(stage, slideList, false);
+      // Freeze authored inline styles before forceReveal writes display:none.
+      snapshotAuthoredStackedSlideStyles(slideList);
 
       if (ref && ref !== stage && ref.parentNode === body) {
         removeEmptyBodyDirectWrapper(body, ref, stage);
@@ -2639,6 +3035,7 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
 
       existing = stackedDeckStage();
       if (existing && existing !== stage) {
+        snapshotAuthoredStackedSlideStyles(slideList);
         moveSlidesIntoStackedStage(existing, slideList);
         try { if (stage.parentNode) stage.parentNode.removeChild(stage); } catch (_) {}
         return existing;
@@ -2770,9 +3167,9 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     // fall back to all .slide only when nothing structured matched, so
     // freeform decks that nest slides under an extra wrapper still report
     // the real count instead of leaving the host counter at 1 / 0.
-    var structured = document.querySelectorAll('.deck > .slide, .deck-stage > .slide, .deck-shell > .slide, #od-stacked-deck-stage > .slide, body > .slide');
+    var structured = document.querySelectorAll('.deck > .slide, .deck > [data-screen-label], .deck-stage > .slide, .deck-stage > [data-screen-label], deck-stage > .slide, deck-stage > [data-screen-label], .deck-shell > .slide, .deck-shell > [data-screen-label], #od-stacked-deck-stage > .slide, #od-stacked-deck-stage > [data-screen-label], body > .slide, body > .deck-slide, body > .ppt-slide, body > [data-screen-label]');
     if (structured.length) return structured;
-    return document.querySelectorAll('.slide');
+    return document.querySelectorAll('.slide, .deck-slide, .ppt-slide, [data-screen-label]');
   }
   function scrollOverflow(el){
     if (!el) return 0;
@@ -2851,6 +3248,12 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     }
     return false;
   }
+  function findActiveByDeckAttr(list){
+    for (var i=0; i<list.length; i++) {
+      if (list[i].hasAttribute && list[i].hasAttribute('data-deck-active')) return i;
+    }
+    return -1;
+  }
   function findActiveByClass(list){
     for (var i=0; i<list.length; i++) {
       var cl = list[i].classList;
@@ -2869,6 +3272,8 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
   }
   function activeIndex(list){
     if (!list || !list.length) return 0;
+    var byDeckAttr = findActiveByDeckAttr(list);
+    if (byDeckAttr >= 0) return byDeckAttr;
     if (stackedDeckStage()) {
       var stackedByClass = findActiveByClass(list);
       if (stackedByClass >= 0) return stackedByClass;
@@ -2880,12 +3285,12 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
       var w = Math.max(1, window.innerWidth);
       return Math.max(0, Math.min(list.length - 1, Math.round(maxScrollLeft() / w)));
     }
-    var byPagination = activeIndexFromPagination(list);
-    if (byPagination >= 0) return byPagination;
     var byTransform = activeIndexFromTransform(list);
     if (byTransform >= 0) return byTransform;
     var byClass = findActiveByClass(list);
     if (byClass >= 0) return byClass;
+    var byPagination = activeIndexFromPagination(list);
+    if (byPagination >= 0) return byPagination;
     var byVis = findActiveByVisibility(list);
     if (byVis >= 0) return byVis;
     return 0;
@@ -2929,6 +3334,10 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     return false;
   }
   function canSetActive(list){
+    // <deck-stage> hides inactive slides via ::slotted([data-deck-active]).
+    // Mutating .active / display:none blanks the white canvas and leaves
+    // the real active attribute on slide 1.
+    if (webComponentDeckStage()) return false;
     // A bare active-class marker is not enough to prove the host can drive the
     // deck by class mutation alone. Many generated decks keep that marker in
     // sync for counters / dots but move the visible slide via a translated
@@ -2955,8 +3364,9 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
         continue;
       }
       // Framework decks drive slides via active-class toggles on #deck-stage
-      // children, not by translating the stage itself.
-      if (node.id === 'deck-stage') {
+      // children, not by translating the stage itself. <deck-stage> uses
+      // data-deck-active in shadow CSS — do not treat it as a translate track.
+      if (node.id === 'deck-stage' || String(node.tagName || '').toLowerCase() === 'deck-stage') {
         node = node.parentElement;
         continue;
       }
@@ -2968,6 +3378,13 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
         var style = window.getComputedStyle(node);
         var computedTransform = style.transform || '';
         var hasComputedTransform = !!(computedTransform && computedTransform !== 'none');
+        var flexDir = String(style.flexDirection || '').toLowerCase();
+        // Stacked letterbox neutralize forces #deck to column — do not treat as
+        // horizontal translate track (Studio/Grove/Signal fills).
+        if (flexDir === 'column' || flexDir === 'column-reverse') {
+          node = node.parentElement;
+          continue;
+        }
         if (
           directSlides >= list.length &&
           (
@@ -2985,9 +3402,28 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     }
     return null;
   }
+  function transformTrackAxis(track, list){
+    var raw = '';
+    try { raw = (track && track.style && track.style.transform) || ''; } catch (_) {}
+    if (/translateY\\s*\\(/i.test(raw) && !/translateX\\s*\\(/i.test(raw)) return 'y';
+    if (/translate3d\\s*\\(\\s*0(?:px)?\\s*,/i.test(raw)) return 'y';
+    if (/translateX\\s*\\(/i.test(raw) && !/translateY\\s*\\(/i.test(raw)) return 'x';
+    if (list && list.length >= 2) {
+      try {
+        var a = list[0];
+        var b = list[1];
+        var dy = (b.offsetTop || 0) - (a.offsetTop || 0);
+        var dx = (b.offsetLeft || 0) - (a.offsetLeft || 0);
+        if (dy > Math.max(40, (a.offsetHeight || 0) * 0.4) && Math.abs(dx) < 16) return 'y';
+        if (dx > Math.max(40, (a.offsetWidth || 0) * 0.4) && Math.abs(dy) < 16) return 'x';
+      } catch (_) {}
+    }
+    return 'x';
+  }
   function activeIndexFromTransform(list){
     var track = transformTrack(list);
     if (!track) return -1;
+    var axis = transformTrackAxis(track, list);
     var raw = track.style.transform || '';
     if (!raw) {
       try {
@@ -2995,8 +3431,18 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
       } catch (_) {}
     }
     if (!raw || raw === 'none') return -1;
+    var matchY = raw.match(/translateY\\(\\s*(-?[0-9.]+)\\s*(vh|%|px)?/i);
+    if (axis === 'y' && matchY) {
+      var valueY = parseFloat(matchY[1]);
+      if (!Number.isFinite(valueY)) return -1;
+      var unitY = matchY[2] || 'px';
+      var stepY = unitY === 'px'
+        ? Math.max(1, track.clientHeight / list.length, window.innerHeight)
+        : 100;
+      return Math.max(0, Math.min(list.length - 1, Math.round(Math.abs(valueY) / stepY)));
+    }
     var match = raw.match(/translate(?:3d|X)?\\(\\s*(-?[0-9.]+)\\s*(vw|%|px)?/i);
-    if (match) {
+    if (axis !== 'y' && match) {
       var value = parseFloat(match[1]);
       if (!Number.isFinite(value)) return -1;
       var unit = match[2] || 'px';
@@ -3009,7 +3455,12 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     if (matrix) {
       var parts = matrix[1].split(',').map(function(part){ return parseFloat(String(part).trim()); });
       var tx = parts.length === 16 ? parts[12] : parts.length >= 6 ? parts[4] : NaN;
-      if (Number.isFinite(tx)) {
+      var ty = parts.length === 16 ? parts[13] : parts.length >= 6 ? parts[5] : NaN;
+      if (axis === 'y' && Number.isFinite(ty)) {
+        var stepPy = Math.max(1, window.innerHeight, track.clientHeight / list.length);
+        return Math.max(0, Math.min(list.length - 1, Math.round(Math.abs(ty) / stepPy)));
+      }
+      if (axis !== 'y' && Number.isFinite(tx)) {
         var stepPx = Math.max(1, window.innerWidth, track.clientWidth / list.length);
         return Math.max(0, Math.min(list.length - 1, Math.round(Math.abs(tx) / stepPx)));
       }
@@ -3054,6 +3505,24 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
       return false;
     }
   }
+  function paginationDataSlideIsOneBased(count){
+    var nodes;
+    try {
+      nodes = document.querySelectorAll('.nav-dot, .nav-dots [data-slide], .dots [data-slide]');
+    } catch (_) {
+      return false;
+    }
+    var values = [];
+    for (var i = 0; i < nodes.length; i++) {
+      if (!nodes[i] || (nodes[i].classList && nodes[i].classList.contains('slide'))) continue;
+      var n = parseInt(nodes[i].getAttribute && nodes[i].getAttribute('data-slide'), 10);
+      if (Number.isFinite(n)) values.push(n);
+    }
+    if (values.length < 2) return false;
+    var min = Math.min.apply(null, values);
+    var max = Math.max.apply(null, values);
+    return min === 1 && max === count;
+  }
   function controlIndex(node, count){
     var attrs = ['data-slide-index', 'data-slide', 'data-index', 'aria-posinset'];
     for (var i=0; i<attrs.length; i++) {
@@ -3062,6 +3531,7 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
       var n = parseInt(raw, 10);
       if (!Number.isFinite(n)) continue;
       var index = attrs[i] === 'aria-posinset' ? n - 1 : n;
+      if (attrs[i] === 'data-slide' && paginationDataSlideIsOneBased(count)) index = n - 1;
       if (index >= 0 && index < count) return index;
     }
     return -1;
@@ -3093,29 +3563,110 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     }
     return -1;
   }
+  function clearInlineSlideHide(el){
+    if (!el || !el.style) return;
+    el.style.removeProperty('display');
+    el.style.removeProperty('pointer-events');
+    el.style.removeProperty('visibility');
+  }
+  function releaseHostSlideCollapse(list){
+    if (!list) return;
+    for (var i = 0; i < list.length; i++) clearInlineSlideHide(list[i]);
+  }
+  function hostMustNotCollapseSlides(){
+    if (frameworkDeckStage() || webComponentDeckStage()) return false;
+    if (compactStackedDeckEnabled || stackedDeckStage()) return false;
+    return true;
+  }
+  function syncPaginationControls(target, count){
+    try {
+      var groups = [
+        document.querySelectorAll('#nav-dots > *'),
+        document.querySelectorAll('.nav-dots > *'),
+        document.querySelectorAll('.dots > *'),
+        document.querySelectorAll('[data-deck-dots] > *'),
+        document.querySelectorAll('.pagination > *')
+      ];
+      for (var g=0; g<groups.length; g++) {
+        var nodes = groups[g];
+        if (!nodes || nodes.length < count) continue;
+        for (var i=0; i<count; i++) {
+          var node = nodes[i];
+          if (!node || !node.classList) continue;
+          var on = i === target;
+          node.classList.toggle('is-active', on);
+          node.classList.toggle('active', on);
+          node.classList.toggle('current', on);
+          if (on) node.setAttribute('aria-current', 'true');
+          else node.removeAttribute('aria-current');
+        }
+      }
+    } catch (_) {}
+  }
+  function syncTransformStripActive(list, target){
+    if (!list || !list.length) return;
+    var activeClass = activeClassName(list);
+    for (var k=0; k<list.length; k++) {
+      // Prior forceReveal/setActive may have collapsed the strip with
+      // display:none !important — clear so translateX(-N00vw) still lands
+      // on a real slide (Grove / horizontal #deck).
+      clearInlineSlideHide(list[k]);
+      if (list[k].classList) {
+        list[k].classList.remove('active', 'is-active', 'current');
+        if (k === target) list[k].classList.add(activeClass);
+      }
+    }
+    syncPaginationControls(target, list.length);
+  }
   function transformGo(i){
     var list = slides();
     var track = transformTrack(list);
     if (!track || track.id === 'od-stacked-deck-stage') return false;
     var target = Math.max(0, Math.min(list.length - 1, i));
-    var unit = /translateX\\(\\s*-?[0-9.]+\\s*%\\s*\\)/i.test(track.style.transform || '') ? '%' : 'vw';
-    track.style.transform = 'translateX(' + (-target * 100) + unit + ')';
+    var axis = transformTrackAxis(track, list);
+    if (axis === 'y') {
+      // 8-Bit Orbit / vertical slides-container: native JS uses
+      // translateY(-N00vh). Overwriting that with translateX paints an
+      // empty body background while the counter still advances.
+      var unitY = /translateY\\(\\s*-?[0-9.]+\\s*%\\s*\\)/i.test(track.style.transform || '') ? '%' : 'vh';
+      track.style.transform = 'translateY(' + (-target * 100) + unitY + ')';
+    } else {
+      var unit = /translateX\\(\\s*-?[0-9.]+\\s*%\\s*\\)/i.test(track.style.transform || '') ? '%' : 'vw';
+      track.style.transform = 'translateX(' + (-target * 100) + unit + ')';
+    }
+    syncTransformStripActive(list, target);
     updateDeckChrome(target, list.length);
     report();
+    nudgeDeckFit();
     return true;
   }
   var hostNativeClickInFlight = false;
-  function nativeControlMatches(node, action){
-    if (!node) return false;
-    var text = [
+  function nativeControlChrome(node){
+    return [
       node.id,
       node.className,
       node.getAttribute && node.getAttribute('aria-label'),
-      node.getAttribute && node.getAttribute('title'),
-      node.textContent
+      node.getAttribute && node.getAttribute('title')
     ].join(' ').toLowerCase();
-    if (action === 'next') return /\\bnext\\b|다음|→|›|>|right|forward/.test(text);
-    if (action === 'prev') return /\\bprev\\b|\\bprevious\\b|이전|←|‹|<|left|back/.test(text);
+  }
+  function nativeControlLooksLikeNav(chrome){
+    return /nextbtn|prevbtn|nav-btn|nav-arrow|nav-dot|deck-next|deck-prev|page-next|page-prev|pagination|pager|arrow/.test(chrome)
+      || /\\b(next|prev|previous|slide)\\b/.test(chrome);
+  }
+  function nativeControlMatches(node, action){
+    if (!node) return false;
+    // Chrome only — never scan textContent. Product-launch CTAs like
+    // "Pre-order Halo v2 →" used to swallow host next and stay on page 1.
+    var chrome = nativeControlChrome(node);
+    var glyph = String(node.textContent || '');
+    if (action === 'next') {
+      if (/nextbtn|deck-next|page-next/.test(chrome) || /\\bnext\\b|다음|forward/.test(chrome)) return true;
+      return nativeControlLooksLikeNav(chrome) && /→|›|»|▶|►/.test(glyph);
+    }
+    if (action === 'prev') {
+      if (/prevbtn|deck-prev|page-prev/.test(chrome) || /\\bprev\\b|\\bprevious\\b|이전/.test(chrome)) return true;
+      return nativeControlLooksLikeNav(chrome) && /←|‹|«|◀|◄/.test(glyph);
+    }
     return false;
   }
   function clickableControls(){
@@ -3152,6 +3703,19 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
       }
     }
     if (!clicked) return false;
+    // Dead onclick / content CTA: do not consume the host next. Fall through
+    // to setActive / forceReveal / goTo so every catalog dialect can move.
+    if (activeIndex(slides()) === before) return false;
+    if (compactStackedDeckEnabled) {
+      // Compact letterbox CSS hides inactive pages on the stacked stage.
+      // Releasing inline hide unmasks every page or lets that rule hide
+      // the newly active one.
+      forceRevealSlide(activeIndex(slides()));
+    } else {
+      // Native driver only flipped .active — drop host display:none so the
+      // newly marked page can paint (Playful / Block-frame / framework nextBtn).
+      releaseHostSlideCollapse(slides());
+    }
     setTimeout(report, 80);
     setTimeout(report, 220);
     setTimeout(function(){
@@ -3179,15 +3743,137 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     if (total) total.textContent = pad2(count);
     if (prev) prev.toggleAttribute('disabled', i <= 0);
     if (next) next.toggleAttribute('disabled', i >= count - 1);
+    var page = document.getElementById('current');
+    if (page) page.textContent = pad2(i + 1);
+    var dots = document.querySelectorAll('.nav-dot');
+    if (dots.length === count) {
+      for (var d = 0; d < dots.length; d++) {
+        if (!dots[d].classList) continue;
+        var on = d === i;
+        dots[d].classList.toggle('active', on);
+        dots[d].classList.toggle('is-active', on);
+      }
+    }
+  }
+  function lockStackedSlideAxis(el) {
+    if (!el || !el.style) return;
+    // Neutralize sets flex-direction:unset so 16:9 splits that only set
+    // display:flex stay row; Motif-only slides then fall to row+top and
+    // each page looks like a different canvas. Snapshot the authored
+    // style once — later reveal writes display:flex and must not be
+    // re-read as an implicit row split.
+    // Don't freeze a post-hide snapshot (display:none) as authored axis.
+    if (!el.hasAttribute('data-od-authored-style')) {
+      var liveStyle = el.getAttribute('style') || '';
+      if (!/(?:^|;)\s*display\s*:\s*none\b/i.test(liveStyle)) {
+        el.setAttribute('data-od-authored-style', liveStyle);
+      }
+    }
+    // Studio/Grove slides use stylesheet display:grid (not inline). Capture
+    // computed display once while the slide is still painted (§0.93).
+    // Do NOT snapshot computed flex-direction — browsers default to row and
+    // that would skip the Motif column+center path for bare flex slides.
+    if (!el.hasAttribute('data-od-authored-display')) {
+      try {
+        var snapCs = window.getComputedStyle(el);
+        var snapDisplay = String(snapCs.display || '').toLowerCase();
+        if (snapDisplay && snapDisplay !== 'none') {
+          el.setAttribute('data-od-authored-display', snapDisplay);
+        }
+      } catch (_) {}
+    }
+    var authoredStyle = String(el.getAttribute('data-od-authored-style') || '');
+    var authoredDisplayMatch = /(?:^|;)\s*display\s*:\s*([^;!]+)/i.exec(authoredStyle);
+    var authoredDisplay = authoredDisplayMatch ? String(authoredDisplayMatch[1] || '').trim().toLowerCase() : '';
+    // Computed snapshot is only for stylesheet grid (Studio). Do not promote
+    // computed flex — that would skip the Motif column+center fallback.
+    if (!authoredDisplay) {
+      var snapDisplay = String(el.getAttribute('data-od-authored-display') || '').toLowerCase();
+      if (snapDisplay === 'grid' || snapDisplay === 'inline-grid') {
+        authoredDisplay = snapDisplay;
+      }
+    }
+    var authoredDirMatch = /(?:^|;)\s*flex-direction\s*:\s*([^;!]+)/i.exec(authoredStyle);
+    var authoredDir = authoredDirMatch ? String(authoredDirMatch[1] || '').trim().toLowerCase() : '';
+    var className = String(el.className || '');
+    el.style.setProperty(
+      'display',
+      authoredDisplay === 'grid' || authoredDisplay === 'inline-grid' ? authoredDisplay : 'flex',
+      'important',
+    );
+    if (authoredDisplay === 'grid' || authoredDisplay === 'inline-grid') return;
+    if (authoredDir) {
+      el.style.setProperty('flex-direction', authoredDir, 'important');
+      return;
+    }
+    if (authoredDisplay === 'flex' || authoredDisplay === 'inline-flex') {
+      el.style.setProperty('flex-direction', 'row', 'important');
+      return;
+    }
+    el.style.setProperty('flex-direction', 'column', 'important');
+    if (
+      !/(?:^|;)\s*justify-content\s*:/i.test(authoredStyle)
+      && !/(?:^|\\s)slide-\\d+(?:\\s|$)/.test(className)
+    ) {
+      el.style.setProperty('justify-content', 'center', 'important');
+    }
+  }
+  function snapshotAuthoredStackedSlideStyles(list) {
+    if (!list || !list.length) return;
+    for (var i = 0; i < list.length; i++) {
+      var el = list[i];
+      if (!el) continue;
+      if (!el.hasAttribute('data-od-authored-style')) {
+        var style = el.getAttribute('style') || '';
+        if (!/(?:^|;)\s*display\s*:\s*none\b/i.test(style)) {
+          el.setAttribute('data-od-authored-style', style);
+        }
+      }
+      // Only freeze stylesheet grid — flex defaults must not poison Motif axis.
+      if (!el.hasAttribute('data-od-authored-display')) {
+        try {
+          var cs = window.getComputedStyle(el);
+          var display = String(cs.display || '').toLowerCase();
+          if (display === 'grid' || display === 'inline-grid') {
+            el.setAttribute('data-od-authored-display', display);
+          }
+        } catch (_) {}
+      }
+    }
+  }
+  function lockAllStackedSlideAxes(stage) {
+    if (!stage || !stage.children) return;
+    for (var i = 0; i < stage.children.length; i++) {
+      var child = stage.children[i];
+      if (!child || !child.classList || !child.classList.contains('slide')) continue;
+      // Chase/re-hoist must not undo forceReveal's display:none on inactive pages.
+      if (child.style && child.style.display === 'none') continue;
+      lockStackedSlideAxis(child);
+    }
   }
   function setSlideDisplayed(el, visible) {
     if (!el || !el.style) return;
+    if (hostMustNotCollapseSlides()) {
+      // Author .active / opacity-stack / display:flex owns paint. Always
+      // clear a prior host hide so restoreInitialSlide cannot trap later
+      // native next on Playful, Block-frame, Cobalt, Retro Zine, …
+      clearInlineSlideHide(el);
+      if (visible && el.removeAttribute) el.removeAttribute('hidden');
+      return;
+    }
     var parent = el.parentElement;
     var stacked = !!(parent && (parent.id === 'od-stacked-deck-stage' || parent.getAttribute('data-od-stacked-deck-stage') !== null));
+    // Horizontal translate strips keep every slide in document flow.
+    // Collapsing siblings with display:none shortens the track so
+    // translateX(-N00vw) paints empty canvas (community Grove templates).
+    if (!stacked && transformTrack(slides())) {
+      clearInlineSlideHide(el);
+      return;
+    }
     if (visible) {
       if (stacked) {
-        // Stacked stage owns layout — force a flex box onto the active slide.
-        el.style.setProperty('display', 'flex', 'important');
+        // Must re-apply flex after display:none !important on the previous turn.
+        lockStackedSlideAxis(el);
       } else {
         // Framework / class-toggle decks: clear any previous hide so author
         // .active / variant classes (flex/grid/block) control layout.
@@ -3238,6 +3924,7 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     return true;
   }
   function forceRevealSlide(i){
+    if (webComponentDeckStage()) return false;
     var list = slides();
     if (!list.length) return false;
     var target = Math.max(0, Math.min(list.length - 1, i));
@@ -3270,6 +3957,11 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
   function repairOverlappingSlides(preferredIndex) {
     var list = slides();
     if (list.length < 2) return false;
+    // Translate-strip decks intentionally keep all slides painted in a
+    // row; "many visible" is not overlap. forceReveal would collapse the
+    // strip and break host/native page turns.
+    if (webComponentDeckStage()) return false;
+    if (transformTrack(list)) return false;
     if (countVisibleSlides(list) <= 1) return false;
     var target = typeof preferredIndex === 'number'
       ? Math.max(0, Math.min(list.length - 1, preferredIndex))
@@ -3303,11 +3995,29 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     if (action === 'last') return list.length - 1;
     return i;
   }
+  function webComponentDeckGo(target){
+    var stage = webComponentDeckStage();
+    if (!stage) return false;
+    if (typeof stage.goTo === 'function') {
+      try { stage.goTo(target); }
+      catch (_) { return false; }
+      report();
+      return true;
+    }
+    var list = slides();
+    for (var k = 0; k < list.length; k++) {
+      if (k === target) list[k].setAttribute('data-deck-active', '');
+      else list[k].removeAttribute('data-deck-active');
+    }
+    report();
+    return true;
+  }
   function go(action){
     var list = slides();
     if (!list.length) return;
     var target = Math.max(0, Math.min(list.length - 1, targetFor(action, list)));
     if (target !== activeIndex(list)) resetDeckPan();
+    if (webComponentDeckGo(target)) return;
     if (compactStackedDeckNavigationReady()) {
       if (forceRevealSlide(target)) return;
     }
@@ -3318,7 +4028,7 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
       return;
     }
     if (canSetActive(list) && setActive(target)) return;
-    if (!transformTrack(list) && forceRevealSlide(target)) return;
+    if (!webComponentDeckStage() && !transformTrack(list) && forceRevealSlide(target)) return;
     if (action === 'next') dispatchKey('ArrowRight');
     else if (action === 'prev') dispatchKey('ArrowLeft');
     else if (action === 'first') dispatchKey('Home');
@@ -3331,6 +4041,7 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     var target = Math.max(0, Math.min(list.length - 1, i));
     var prev = activeIndex(list);
     if (target !== prev) resetDeckPan();
+    if (webComponentDeckGo(target)) return;
     if (compactStackedDeckNavigationReady()) {
       if (forceRevealSlide(target)) return;
     }
@@ -3338,7 +4049,7 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     if (transformGo(target)) return;
     if (isScrollDeck()) { scrollGo(target); return; }
     if (canSetActive(list) && setActive(target)) return;
-    if (!transformTrack(list) && forceRevealSlide(target)) return;
+    if (!webComponentDeckStage() && !transformTrack(list) && forceRevealSlide(target)) return;
     var current = activeIndex(list);
     var diff = target - current;
     if (!diff) { report(); return; }
@@ -3443,11 +4154,12 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
       }
     }
     if (document.querySelector && document.querySelector('[data-od-editing="true"]')) return;
-    if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') {
+    var verticalTrack = transformTrackAxis(transformTrack(slides()), slides()) === 'y';
+    if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ' || (verticalTrack && e.key === 'ArrowDown')) {
       e.preventDefault();
       e.stopImmediatePropagation();
       go('next');
-    } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+    } else if (e.key === 'ArrowLeft' || e.key === 'PageUp' || (verticalTrack && e.key === 'ArrowUp')) {
       e.preventDefault();
       e.stopImmediatePropagation();
       go('prev');
@@ -3466,6 +4178,11 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
   // can no longer post od:slide, so handle presenter keys inside the bridge
   // for every deck shape — not only compact stacked decks.
   document.addEventListener('keydown', onDeckBridgeKeydown, true);
+  // Compact letterbox must own od:slide. Catalogs like kami-deck /
+  // open-design-landing-deck register a bubble message listener that
+  // stopImmediatePropagation + only toggles .active/translateX — fine for
+  // native strips, but after stacked hoist host display:none never updates
+  // and the marked-active page stays hidden (§0.93).
   window.addEventListener('message', function(ev){
     var data = ev && ev.data;
     if (!data) return;
@@ -3485,10 +4202,13 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     if (data.type === 'od:deck-pan-reset') { resetDeckPan(); return; }
     if (data.type === 'od:slide-state-request') { report(); return; }
     if (data.type !== 'od:slide') return;
+    if (compactStackedDeckEnabled && ev && typeof ev.stopImmediatePropagation === 'function') {
+      ev.stopImmediatePropagation();
+    }
     hostSlideNavigationSeen = true;
     if (data.action === 'go' && typeof data.index === 'number') gotoIndex(data.index);
     else go(data.action);
-  });
+  }, true);
   function ownDeckButton(id, action){
     var btn = document.getElementById(id);
     if (!btn || btn.__odDeckOwned) return;
@@ -3525,6 +4245,9 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     if (!compactStackedDeckEnabled) return;
     ensureStackedDeckStage();
     var list = slides();
+    // Capture authored inline styles before the first display:none hide so
+    // 16:9 split slides that only set display:flex keep row on reveal.
+    snapshotAuthoredStackedSlideStyles(list);
     if (list.length) {
       var target = Math.max(0, Math.min(list.length - 1, initialSlideIndex));
       forceRevealSlide(target);
@@ -3612,12 +4335,64 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
   else window.addEventListener('load', chaseFirstLayout);
   if (compactStackedDeckEnabled || frameworkDeckStage()) requestHostDeckViewport();
   if (compactStackedDeckEnabled) {
+    var wheelNavCooldown = false;
     document.addEventListener('wheel', function(e) {
       e.preventDefault();
+      // Own wheel nav — author Studio/Grove goTo + translateX desyncs from
+      // host display:none after stacked hoist (§0.93).
+      e.stopImmediatePropagation();
+      if (wheelNavCooldown) return;
+      var dy = Number(e.deltaY || 0);
+      var dx = Number(e.deltaX || 0);
+      if (!Number.isFinite(dy)) dy = 0;
+      if (!Number.isFinite(dx)) dx = 0;
+      if (Math.abs(dy) < 8 && Math.abs(dx) < 8) return;
+      wheelNavCooldown = true;
+      setTimeout(function() { wheelNavCooldown = false; }, 420);
+      if (dy > 0 || dx > 0) go('next');
+      else go('prev');
     }, { passive: false, capture: true });
     document.addEventListener('touchmove', function(e) {
       if (e.cancelable) e.preventDefault();
     }, { passive: false, capture: true });
+    var compactTouchStartX = null;
+    var compactTouchStartY = null;
+    document.addEventListener('touchstart', function(e) {
+      if (!e.touches || !e.touches[0]) return;
+      compactTouchStartX = e.touches[0].clientX;
+      compactTouchStartY = e.touches[0].clientY;
+    }, { capture: true, passive: true });
+    document.addEventListener('touchend', function(e) {
+      if (compactTouchStartX == null) return;
+      var touch = e.changedTouches && e.changedTouches[0];
+      var startX = compactTouchStartX;
+      var startY = compactTouchStartY;
+      compactTouchStartX = null;
+      compactTouchStartY = null;
+      if (!touch) return;
+      var dx = startX - touch.clientX;
+      var dy = startY - touch.clientY;
+      if (!(Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 40)) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      if (dx > 0) go('next');
+      else go('prev');
+    }, { capture: true, passive: false });
+    document.addEventListener('click', function(e) {
+      if (hostNativeClickInFlight) return;
+      var node = e.target;
+      if (!node || !node.closest) return;
+      var dot = node.closest('.nav-dot, #nav-dots > *, .nav-dots > *, [data-deck-dots] > *, .dots > *, .pagination > *');
+      if (!dot) return;
+      var list = slides();
+      if (!list.length) return;
+      var idx = controlIndex(dot, list.length);
+      if (idx < 0) idx = indexWithinControlGroup(dot, list.length);
+      if (idx < 0) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      gotoIndex(idx);
+    }, true);
   }
   // Re-nudge whenever the iframe itself is resized by the host (e.g.
   // user toggles zoom, resizes the chat sidebar, exits Present).
@@ -3635,6 +4410,15 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     if (!list.length) { setTimeout(observeSlides, 150); return; }
     try {
       var mo = new MutationObserver(function(){
+        if (compactStackedDeckEnabled) {
+          var list = slides();
+          var marked = findActiveByClass(list);
+          if (marked >= 0 && list[marked] && list[marked].style && (
+            list[marked].style.display === 'none' || list[marked].style.visibility === 'hidden'
+          )) {
+            forceRevealSlide(marked);
+          }
+        }
         clearTimeout(window.__odReportT2);
         window.__odReportT2 = setTimeout(report, 60);
       });

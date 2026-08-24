@@ -103,6 +103,79 @@ export interface ProjectPreviewUrlResponse {
   opaqueOrigin: true;
 }
 
+/** Batch mint for home / list HTML covers — one POST instead of N GETs. */
+export interface ProjectPreviewUrlBatchItem {
+  projectId: string;
+  /** Optional entry path; daemon falls back to metadata.entryFile / index.html. */
+  file?: string;
+}
+
+export interface ProjectPreviewUrlBatchRequest {
+  items: ProjectPreviewUrlBatchItem[];
+}
+
+export type ProjectPreviewUrlBatchResult =
+  | {
+      projectId: string;
+      ok: true;
+      url: string;
+      file: string;
+    }
+  | {
+      projectId: string;
+      ok: false;
+    };
+
+export interface ProjectPreviewUrlBatchResponse {
+  results: ProjectPreviewUrlBatchResult[];
+}
+
+/** Batch first-slide HTML for home / list card covers — one POST instead of N /raw. */
+export interface ProjectCoverHtmlBatchItem {
+  projectId: string;
+  file?: string;
+}
+
+export interface ProjectCoverHtmlBatchRequest {
+  items: ProjectCoverHtmlBatchItem[];
+}
+
+export type ProjectCoverHtmlBatchResult =
+  | {
+      projectId: string;
+      ok: true;
+      html: string;
+      file: string;
+    }
+  | {
+      projectId: string;
+      ok: false;
+    };
+
+export interface ProjectCoverHtmlBatchResponse {
+  results: ProjectCoverHtmlBatchResult[];
+}
+
+/**
+ * Session-gated S3 GET mint for a single project file.
+ * Browser uses `url` directly (img/open); falls back to `rawUrl` when disabled.
+ */
+export type ProjectFilePresignedGetResponse =
+  | {
+      status: 'ready';
+      path: string;
+      url: string;
+      expiresInSec: number;
+      expiresAt: string;
+      rawUrl: string;
+    }
+  | {
+      status: 'disabled';
+      path: string;
+      rawUrl: string;
+      reason: string;
+    };
+
 export interface ProjectFileResponse {
   file: ProjectFile;
 }

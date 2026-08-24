@@ -3,8 +3,12 @@ import { PROMOTE_MOVE_STYLE_KEYS } from '../../src/edit-mode/move-math';
 import {
   keyedManualEditStyleRollback,
   manualEditGestureRollbackKeys,
+  manualEditPendingAffectedIds,
+  manualEditPendingStyleEntries,
   restoreManualEditPendingStyleAfterFailedFlush,
   shouldFlushManualEditStylesOnTargetBoundary,
+  shouldResetManualEditPanelPinOnSelect,
+  shouldSkipManualEditStyleFlushWhilePaused,
   waitForManualEditSaveIdle,
 } from '../../src/edit-mode/manual-edit-style-persist';
 
@@ -19,6 +23,18 @@ describe('manual edit style persist boundary', () => {
 
   it('flushes when clearing selection while a draft is pending', () => {
     expect(shouldFlushManualEditStylesOnTargetBoundary('hero', null)).toBe(true);
+  });
+
+  it('skips soft flush while geometry gestures pause autosave', () => {
+    expect(shouldSkipManualEditStyleFlushWhilePaused(true)).toBe(true);
+    expect(shouldSkipManualEditStyleFlushWhilePaused(true, { force: true })).toBe(false);
+    expect(shouldSkipManualEditStyleFlushWhilePaused(false)).toBe(false);
+  });
+
+  it('resets the floating panel pin only when the selected id changes', () => {
+    expect(shouldResetManualEditPanelPinOnSelect('hero', 'cta')).toBe(true);
+    expect(shouldResetManualEditPanelPinOnSelect('hero', 'hero')).toBe(false);
+    expect(shouldResetManualEditPanelPinOnSelect(null, 'hero')).toBe(true);
   });
 
   it('restores the flushed draft after a failed save when nothing newer was queued', () => {
@@ -107,5 +123,21 @@ describe('manual edit style persist boundary', () => {
       top: '',
       position: '',
     });
+  });
+
+  it('expands per-target pending style entries for cancel/reconcile', () => {
+    const pending = {
+      id: 'b',
+      perTargetStyles: {
+        a: { zIndex: '2', position: 'relative' },
+        b: { zIndex: '3' },
+      },
+      styles: {},
+    };
+    expect(manualEditPendingStyleEntries(pending)).toEqual([
+      { id: 'a', styles: { zIndex: '2', position: 'relative' } },
+      { id: 'b', styles: { zIndex: '3' } },
+    ]);
+    expect(manualEditPendingAffectedIds(pending)).toEqual(['a', 'b']);
   });
 });

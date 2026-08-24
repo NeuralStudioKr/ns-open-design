@@ -478,13 +478,28 @@ describe('composeSystemPrompt', () => {
       expect(prompt).not.toContain('- `github` (github)');
     });
 
+    it('treats stale prototype metadata as a deck when media execution is disabled', () => {
+      const prompt = composeSystemPrompt({
+        metadata: { kind: 'prototype' } as any,
+        mediaExecution: { mode: 'disabled' },
+      });
+
+      expect(prompt).toContain('- **kind**: deck');
+      expect(prompt).toContain('- **slideCount**:');
+      expect(prompt).toContain('Slide deck scope only');
+      expect(prompt).not.toContain('screen-file-first rule');
+      expect(prompt).not.toContain('- **fidelity**:');
+    });
+
     it('injects slide-only scope for deck runs when media execution is disabled', () => {
       const prompt = composeSystemPrompt({
         metadata: { kind: 'deck' },
         mediaExecution: { mode: 'disabled' },
       });
 
-      expect(prompt).toContain('Teamver embed — slide deck scope only');
+      expect(prompt).toContain('Slide deck scope only');
+      expect(prompt).toContain('this workspace currently supports **slides only**');
+      expect(prompt).not.toContain('Teamver Design');
       expect(prompt).not.toContain('## Media generation (if asked)');
     });
 
@@ -594,7 +609,7 @@ describe('composeSystemPrompt', () => {
         });
 
         expect(prompt).not.toContain('Discovery / question-form override (slide-only mode)');
-        expect(prompt).not.toContain('Teamver embed — slide deck scope only');
+        expect(prompt).not.toContain('Slide deck scope only');
       });
     });
 
@@ -609,7 +624,8 @@ describe('composeSystemPrompt', () => {
 
       expect(prompt).toContain('## External MCP servers — already authenticated');
       expect(prompt).toContain('`external-media`');
-      expect(systemPrompt).toContain('Open Design-owned media execution is **disabled for this run**');
+      expect(systemPrompt).toContain('built-in media execution is disabled for this run');
+      expect(systemPrompt).not.toContain('Open Design-owned');
       expect(systemPrompt).not.toContain('External MCP servers — already authenticated');
     });
   });
