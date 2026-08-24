@@ -14524,7 +14524,6 @@ function HtmlViewer({
         presentMenuOpen,
         zoomMenuOpen,
         agentToolsOpen,
-        shareMenuOpen,
         deployMenuOpen,
         downloadMenuOpen,
         inTabPresent,
@@ -14534,7 +14533,6 @@ function HtmlViewer({
       else if (action === 'close-zoom-menu') setZoomMenuOpen(false);
       else if (action === 'close-artifact-tools') closeArtifactToolMenus();
       else if (action === 'close-share-menus') {
-        setShareMenuOpen(false);
         setDeployMenuOpen(false);
         setDownloadMenuOpen(false);
       } else if (action === 'exit-in-tab-present') setInTabPresent(false);
@@ -14547,7 +14545,6 @@ function HtmlViewer({
     presentMenuOpen,
     zoomMenuOpen,
     agentToolsOpen,
-    shareMenuOpen,
     deployMenuOpen,
     downloadMenuOpen,
     inTabPresent,

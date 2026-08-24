@@ -6,7 +6,8 @@ export type FileViewerEscapeChrome = {
   presentMenuOpen: boolean;
   zoomMenuOpen: boolean;
   agentToolsOpen: boolean;
-  shareMenuOpen: boolean;
+  /** React-module viewer only. HtmlViewer folds share into deploy/download. */
+  shareMenuOpen?: boolean;
   deployMenuOpen: boolean;
   downloadMenuOpen: boolean;
   inTabPresent: boolean;
