@@ -238,8 +238,12 @@ describe('HtmlSurface authenticated srcDoc', () => {
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledTimes(1);
     });
-    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body ?? '{}')) as { urls?: string[] };
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body ?? '{}')) as {
+      urls?: string[];
+      mode?: string;
+    };
     expect(body.urls).toHaveLength(cards.length);
+    expect(body.mode).toBe('thumbnail');
     expect(peak).toBeLessThanOrEqual(limit);
   });
 

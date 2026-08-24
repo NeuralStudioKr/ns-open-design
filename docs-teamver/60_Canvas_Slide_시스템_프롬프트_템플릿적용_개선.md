@@ -115,6 +115,18 @@
 - [x] batch 실패 시 기존 단건 GET으로 fallback, 404 negative cache/auth refresh suppression/session cache 유지
 - [x] 회귀 테스트: `plugins-home-html-surface.test.tsx`, `plugins-preview-fallback.test.ts`
 
+### 1.03 2026-08-24 — 템플릿 카드 batch response body 축소
+
+현재 시점 기준 판단: §1.02 batch는 **요청 수**를 줄였지만, 각 item의 HTML body는 기존 단건 preview와 동일하게 전체 문서를 내려줬다. 카드 썸네일은 첫 화면만 필요하므로, multi-slide template의 모든 slide와 presenter script까지 batch body에 포함되면 네트워크 payload, JSON parse, `srcDoc` cache 메모리가 불필요하게 커진다.
+
+구현 현황:
+
+- [x] web `HtmlSurface` batch 요청에 `mode: "thumbnail"` 추가
+- [x] daemon `preview-batch` thumbnail mode는 sandbox/fallback 결과 HTML에서 `<script>/<noscript>`를 제거하고 첫 slide host만 유지
+- [x] 단건 `/api/plugins/:id/preview`, `/example/:name`, batch 기본 mode는 기존 full HTML 유지 — 상세 preview/modal/download 동작에 영향 없음
+- [x] sibling slide 제거는 `attrsLookLikeDeckOrTemplateSlideHost` SSOT를 사용해 `slide-chrome`류 오탐을 피함
+- [x] 회귀 테스트: `plugins-home-html-surface.test.tsx`, `plugins-preview-fallback.test.ts`
+
 ### 0.98 2026-08-21 — 루트 갤러리 템플릿 썸네일 1920 캔버스 스케일
 
 커버 isolation 이후 루트 community 갤러리의 360% iframe 레시피가 1920×1080 캔버스를 좌상단 crop 했다. 피커와 같은 `100cqw / 1920` 스케일로 맞추고, mode 누락 html-ppt도 `data-od-mode="deck"`을 유지한다.

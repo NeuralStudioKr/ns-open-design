@@ -220,7 +220,7 @@ function schedulePluginPreviewBatch(): void {
         const res = await fetchTeamverDaemon('/api/plugins/preview-batch', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ urls: uniqueUrls }),
+          body: JSON.stringify({ urls: uniqueUrls, mode: 'thumbnail' }),
           skipEmbedAuthRecovery: true,
           skipEmbedUnauthorizedNotify: true,
           skipTeamverWorkspaceHeaders: true,

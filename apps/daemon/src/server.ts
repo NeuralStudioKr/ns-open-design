@@ -17,6 +17,7 @@ import {
   defaultScenarioPluginIdForProjectMetadata,
   sanitizeAssistantProseForDisplay,
   stripRemoteCssImportsQuoteAware,
+  attrsLookLikeDeckOrTemplateSlideHost,
   type OpenDesignDiscordPresenceResponse,
   type OpenDesignGithubLatestReleaseResponse,
   type OpenDesignGithubRepoResponse,
@@ -9170,6 +9171,65 @@ export async function startServer({
   const PLUGIN_PREVIEW_BATCH_MAX_ITEMS = 24;
   const PLUGIN_PREVIEW_BATCH_MAX_BYTES = 2_500_000;
 
+  function stripPluginPreviewScriptsForThumbnail(html: string): string {
+    return String(html ?? '')
+      .replace(/<script\b[\s\S]*?<\/script\s*>/gi, '')
+      .replace(/<noscript\b[\s\S]*?<\/noscript\s*>/gi, '');
+  }
+
+  function findMatchingElementEnd(html: string, openStart: number, tagName: string): number {
+    const openEnd = html.indexOf('>', openStart);
+    if (openEnd < 0) return -1;
+    const tag = tagName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const tokenRe = new RegExp(`<\\/?${tag}\\b(?:[^>"']|"[^"]*"|'[^']*')*>`, 'gi');
+    tokenRe.lastIndex = openStart;
+    let depth = 0;
+    let match: RegExpExecArray | null;
+    while ((match = tokenRe.exec(html)) !== null) {
+      const token = match[0] ?? '';
+      if (/^<\//.test(token)) {
+        depth -= 1;
+        if (depth <= 0) return tokenRe.lastIndex;
+      } else if (!/\/\s*>$/.test(token)) {
+        depth += 1;
+      }
+    }
+    return -1;
+  }
+
+  function listPluginPreviewSlideHostSpans(html: string): Array<{ start: number; end: number }> {
+    const source = String(html ?? '');
+    const openRe = /<(section|div|main|article)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
+    const spans: Array<{ start: number; end: number }> = [];
+    let match: RegExpExecArray | null;
+    while ((match = openRe.exec(source)) !== null) {
+      const tagName = match[1] ?? '';
+      const attrs = match[2] ?? '';
+      if (!attrsLookLikeDeckOrTemplateSlideHost(attrs)) continue;
+      const end = findMatchingElementEnd(source, match.index, tagName);
+      if (end > match.index) spans.push({ start: match.index, end });
+    }
+    return spans;
+  }
+
+  function compactPluginPreviewHtmlForThumbnail(html: string): string {
+    const withoutScripts = stripPluginPreviewScriptsForThumbnail(html);
+    const spans = listPluginPreviewSlideHostSpans(withoutScripts);
+    if (spans.length <= 1) return withoutScripts;
+
+    const first = spans[0];
+    let compact = withoutScripts;
+    for (let i = spans.length - 1; i >= 1; i -= 1) {
+      const span = spans[i];
+      if (!span) continue;
+      // If a future template nests another host-like element inside the first
+      // page, keep it. Thumbnail compaction only removes sibling pages.
+      if (first && span.start >= first.start && span.end <= first.end) continue;
+      compact = `${compact.slice(0, span.start)}${compact.slice(span.end)}`;
+    }
+    return compact.length > 0 && compact.length < withoutScripts.length ? compact : withoutScripts;
+  }
+
   type PluginPreviewBatchTarget =
     | { kind: 'preview'; pluginId: string }
     | { kind: 'example'; pluginId: string; name: string };
@@ -9283,6 +9343,7 @@ export async function startServer({
 
   app.post('/api/plugins/preview-batch', async (req, res) => {
     const rawUrls = Array.isArray(req.body?.urls) ? req.body.urls : [];
+    const thumbnailMode = req.body?.mode === 'thumbnail';
     const urls = Array.from(
       new Set(rawUrls.filter((url): url is string => typeof url === 'string')),
     ).slice(0, PLUGIN_PREVIEW_BATCH_MAX_ITEMS);
@@ -9312,7 +9373,10 @@ export async function startServer({
           });
           continue;
         }
-        totalBytes += Buffer.byteLength(rendered.body, 'utf8');
+        const responseBody = thumbnailMode
+          ? compactPluginPreviewHtmlForThumbnail(rendered.body)
+          : rendered.body;
+        totalBytes += Buffer.byteLength(responseBody, 'utf8');
         if (totalBytes > PLUGIN_PREVIEW_BATCH_MAX_BYTES) {
           results.push({ url, ok: false, status: 413, error: 'preview batch too large' });
           continue;
@@ -9321,7 +9385,7 @@ export async function startServer({
           url,
           ok: true,
           status: rendered.status,
-          html: rendered.body,
+          html: responseBody,
           contentType: rendered.contentType,
         });
       } catch (error) {
