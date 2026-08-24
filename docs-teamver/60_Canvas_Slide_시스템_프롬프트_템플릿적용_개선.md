@@ -32,6 +32,17 @@
 | scaffold로 갑자기 바꾸면? | **안 됨.** kit hard cutover 금지. full HTML scaffold도 기본 inject 하지 않음 |
 | 1장짜리 템플릿 결과가 저장되는가? | **제품 경로는 첫 fill 3장.** 잘리면 제목 있는 1장은 저장하고 top-up이 덧붙인다. 제목 없는 빈 셸만 미완성으로 차단. 사용자가 1장을 명시한 경우도 허용 |
 
+### 1.05 2026-08-24 — 템플릿 미리보기 모달 ESC 닫기
+
+카탈로그 템플릿 PreviewModal은 부모 document에서 Escape를 듣지만, 샌드박스 iframe이 포커스를 가져가면 keydown이 호스트에 전달되지 않는다. `allow-same-origin`을 열지 않고 iframe → `od:preview-escape` → 같은 레이어 dismiss로 닫는다.
+
+구현 현황:
+
+- [x] preview srcdoc Escape 브리지 (`data-od-preview-escape-bridge`) — export 문서 제외
+- [x] 입력/textarea/contenteditable/`data-od-editing`에서는 post하지 않음
+- [x] PreviewModal: iframe Escape를 메뉴 → 공유 → fullscreen → close 순으로 재사용
+- [x] 회귀 테스트: `srcdoc-preview-escape-bridge` · `preview-modal-escape`
+
 ### 0.99 2026-08-21 — 루트 갤러리 썸네일 포커스·비율 잔여 구멍
 
 §0.98 이후에도 `content-visibility` intrinsic, `mode: html` html-ppt, slide-only 그리드 전체, 상세 hero 100%×380px가 같은 crop/포커스 계열을 남겼다.
