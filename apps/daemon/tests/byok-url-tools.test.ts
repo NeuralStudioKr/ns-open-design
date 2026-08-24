@@ -16,6 +16,25 @@ describe('fetchUrlContent', () => {
     });
   });
 
+  it('rejects Google Fonts css2 and stylesheet assets without fetching', async () => {
+    expect(await fetchUrlContent('https://fonts.googleapis.com/css2')).toEqual({
+      ok: false,
+      error: 'url is a stylesheet or font asset, not a page',
+    });
+    expect(
+      await fetchUrlContent(
+        'https://fonts.googleapis.com/css2?family=Fredoka:wght@600&display=swap',
+      ),
+    ).toEqual({
+      ok: false,
+      error: 'url is a stylesheet or font asset, not a page',
+    });
+    expect(await fetchUrlContent('https://example.com/theme.css')).toEqual({
+      ok: false,
+      error: 'url is a stylesheet or font asset, not a page',
+    });
+  });
+
   it('blocks loopback URLs via SSRF guard', async () => {
     const result = await fetchUrlContent('http://127.0.0.1:41711/');
     expect(result.ok).toBe(false);
