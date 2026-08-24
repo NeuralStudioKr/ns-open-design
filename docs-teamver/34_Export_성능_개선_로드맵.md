@@ -1035,6 +1035,7 @@ CloudWatch 대시보드 위젯:
 
 | 날짜 | 내용 |
 |------|------|
+| 2026-08-24 | ✅ Export module split 회귀 테스트 fixture 정합성 보강 — web export 테스트의 `URL` mock이 `new URL(...)` 생성자를 깨뜨려 browser-print fallback/HTML·ZIP fallback 경로가 실제 브라우저와 다르게 실패하던 문제를 수정. 최신 standalone export 보정(`data-od-compact-deck-export-fix`, fixed 16:9 canvas style)으로 인해 snapshot HTML에 inline style이 붙는 정상 동작을 테스트가 허용하도록 갱신. `apps/web` export/runtime env 테스트 112 passed, daemon async export route 테스트 4 passed(로컬 서버 bind 권한 필요)로 확인 |
 | 2026-08-24 | ✅ 최신 `staging` 재병합 및 충돌 정리 — `feat/export-module-split`에 최신 staging을 merge하면서 `import-export-routes.ts`, `FileViewer.tsx`, `runtime/exports.ts` 충돌을 해소. route-local 렌더링으로 되돌아가지 않도록 `export-render-service`/`export-job-runner` 경로를 유지하고, 최신 staging의 공식 템플릿 look 보정·relative asset warm-up·PPTX 초과 안내·async progress UI를 함께 재적용. `@open-design/contracts` runtime이 `dist` entrypoint를 보므로 신규 helper 변경 후 contracts build 산출물도 갱신해야 함을 확인 |
 | 2026-08-03 | staging 최신 merge 검토 — `teamverViteEnv.ts` 충돌은 async export flag와 staging draw/manual-edit flags를 모두 보존해 해결. async export FE flag의 타입 선언, Docker build arg, daemon runtime env, staging/production env example을 추가해 `/export/jobs` rollout 시 BE/FE flag 불일치가 생기지 않도록 보강 |
 | 2026-08-03 | Export async runner 리뷰 보강 — job TTL 만료·잘못된 job id 등으로 `markExportJobRunning`이 실패하면 Chromium render를 시작하지 않고 skip warning 후 종료하도록 수정. 상태 저장소에 남지 않는 작업이 백그라운드에서 불필요하게 렌더링되는 edge case를 테스트로 고정 |

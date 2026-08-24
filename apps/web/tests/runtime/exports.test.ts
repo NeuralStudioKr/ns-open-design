@@ -35,6 +35,23 @@ function mockResponse(headers: Record<string, string>): Response {
   return { headers: new Headers(headers) } as Response;
 }
 
+const NativeURL = globalThis.URL;
+
+function stubBrowserURL(
+  createObjectURL: (blob: Blob) => string = () => 'blob:test',
+  revokeObjectURL: () => void = () => {},
+): void {
+  class MockURL extends NativeURL {
+    static createObjectURL = vi.fn(createObjectURL);
+    static revokeObjectURL = vi.fn(revokeObjectURL);
+  }
+  vi.stubGlobal('URL', MockURL);
+}
+
+function expectSlideMarkup(html: string, text: string): void {
+  expect(html).toMatch(new RegExp(`<section class="slide"[^>]*>${text}</section>`));
+}
+
 const exportsSource = readFileSync(
   join(dirname(fileURLToPath(import.meta.url)), '../../src/runtime/exports.ts'),
   'utf8',
@@ -464,12 +481,9 @@ describe('exportProjectAsPdf', () => {
     const fallback = vi.fn();
     let capturedBlob: Blob | undefined;
     let capturedFilename: string | undefined;
-    vi.stubGlobal('URL', {
-      createObjectURL: (blob: Blob) => {
-        capturedBlob = blob;
-        return 'blob:pdf';
-      },
-      revokeObjectURL: vi.fn(),
+    stubBrowserURL((blob: Blob) => {
+      capturedBlob = blob;
+      return 'blob:pdf';
     });
     vi.stubGlobal('document', {
       body: {
@@ -544,10 +558,7 @@ describe('exportProjectAsPdf', () => {
       setTimeout: (fn: () => void) => fn(),
     });
     vi.stubGlobal('document', { baseURI: 'https://stg-design.teamver.com/' });
-    vi.stubGlobal('URL', {
-      createObjectURL: vi.fn(() => 'blob:pdf'),
-      revokeObjectURL: vi.fn(),
-    });
+    stubBrowserURL(() => 'blob:pdf');
     vi.stubGlobal('fetch', vi.fn(async () =>
       new Response(JSON.stringify({
         error: {
@@ -592,10 +603,7 @@ describe('exportProjectAsPdf', () => {
       setTimeout: (fn: () => void) => fn(),
     });
     vi.stubGlobal('document', { baseURI: 'https://stg-design.teamver.com/' });
-    vi.stubGlobal('URL', {
-      createObjectURL: vi.fn(() => 'blob:pdf'),
-      revokeObjectURL: vi.fn(),
-    });
+    stubBrowserURL(() => 'blob:pdf');
     vi.stubGlobal('fetch', vi.fn(async () =>
       new Response(JSON.stringify({
         error: {
@@ -683,12 +691,9 @@ describe('exportProjectAsPdf', () => {
     vi.stubGlobal('document', {
       baseURI: 'https://stg-design.teamver.com/',
     });
-    vi.stubGlobal('URL', {
-      createObjectURL: vi.fn((blob: Blob) => {
-        capturedBlob = blob;
-        return 'blob:pdf';
-      }),
-      revokeObjectURL: vi.fn(),
+    stubBrowserURL((blob: Blob) => {
+      capturedBlob = blob;
+      return 'blob:pdf';
     });
     vi.stubGlobal('fetch', vi.fn(async (url: string) => {
       if (url === '/api/projects/proj-1/export/deck/index.html?inline=1') {
@@ -717,7 +722,7 @@ describe('exportProjectAsPdf', () => {
     const printedDoc = await capturedBlob!.text();
     expect(printedDoc).not.toContain('sandbox="allow-scripts allow-modals"');
     expect(printedDoc).toContain('data-deck-print="injected"');
-    expect(printedDoc).toContain('<main class="slide">inlined deck</main>');
+    expect(printedDoc).toMatch(/<main class="slide"[^>]*>inlined deck<\/main>/);
   });
 
   it('forwards htmlSnapshot to the daemon so the export bypasses tenant-storage resolution', async () => {
@@ -747,7 +752,7 @@ describe('exportProjectAsPdf', () => {
       expect(body.delivery).toBe('ticket');
       expect(body.fileName).toBe('deck/index.html');
       expect(body.title).toBe('Seed Deck');
-      expect(body.html).toContain('<section class="slide">Snapshot</section>');
+      expectSlideMarkup(body.html, 'Snapshot');
       expect(body.html).not.toContain('flex-direction: column !important');
     } finally {
       restoreHost();
@@ -803,12 +808,9 @@ describe('exportProjectAsPdf', () => {
       setTimeout: (fn: () => void) => fn(),
     });
     vi.stubGlobal('document', { baseURI: 'https://stg-design.teamver.com/' });
-    vi.stubGlobal('URL', {
-      createObjectURL: vi.fn((blob: Blob) => {
-        capturedBlob = blob;
-        return 'blob:pdf';
-      }),
-      revokeObjectURL: vi.fn(),
+    stubBrowserURL((blob: Blob) => {
+      capturedBlob = blob;
+      return 'blob:pdf';
     });
     const fetchMock = vi.fn(async () =>
       new Response(
@@ -858,12 +860,9 @@ describe('exportProjectAsPdf', () => {
       setTimeout: (fn: () => void) => fn(),
     });
     vi.stubGlobal('document', { baseURI: 'https://stg-design.teamver.com/' });
-    vi.stubGlobal('URL', {
-      createObjectURL: vi.fn((blob: Blob) => {
-        capturedBlob = blob;
-        return 'blob:pdf';
-      }),
-      revokeObjectURL: vi.fn(),
+    stubBrowserURL((blob: Blob) => {
+      capturedBlob = blob;
+      return 'blob:pdf';
     });
     const fetchMock = vi.fn(async (url: string) => {
       if (url.endsWith('/export/pdf')) {
@@ -900,7 +899,7 @@ describe('exportProjectAsPdf', () => {
     }
     expect(capturedBlob).toBeDefined();
     const printedDoc = await capturedBlob!.text();
-    expect(printedDoc).toContain('<section class="slide">Snapshot</section>');
+    expectSlideMarkup(printedDoc, 'Snapshot');
   });
 
   it('retries when the daemon reports teamver_project_s3_prefix_required and eventually succeeds', async () => {
@@ -1243,12 +1242,9 @@ describe('exportProjectAsHtml', () => {
     capturedFilename = undefined;
     capturedHref = undefined;
     clickCount = 0;
-    vi.stubGlobal('URL', {
-      createObjectURL: (blob: Blob) => {
-        capturedBlob = blob;
-        return 'blob:test';
-      },
-      revokeObjectURL: () => {},
+    stubBrowserURL((blob: Blob) => {
+      capturedBlob = blob;
+      return 'blob:test';
     });
     vi.stubGlobal('document', {
       createElement: () => {
@@ -1703,12 +1699,9 @@ describe('exportProjectAsZip', () => {
   beforeEach(() => {
     capturedBlob = undefined;
     capturedFilename = undefined;
-    vi.stubGlobal('URL', {
-      createObjectURL: (blob: Blob) => {
-        capturedBlob = blob;
-        return 'blob:test';
-      },
-      revokeObjectURL: () => {},
+    stubBrowserURL((blob: Blob) => {
+      capturedBlob = blob;
+      return 'blob:test';
     });
     vi.stubGlobal('document', {
       createElement: () => {
@@ -1814,12 +1807,9 @@ describe('exportProjectAsPptx', () => {
   beforeEach(() => {
     capturedBlob = undefined;
     capturedFilename = undefined;
-    vi.stubGlobal('URL', {
-      createObjectURL: (blob: Blob) => {
-        capturedBlob = blob;
-        return 'blob:test';
-      },
-      revokeObjectURL: () => {},
+    stubBrowserURL((blob: Blob) => {
+      capturedBlob = blob;
+      return 'blob:test';
     });
     vi.stubGlobal('document', {
       createElement: () => {
@@ -1877,7 +1867,7 @@ describe('exportProjectAsPptx', () => {
       fileName: 'deck/index.html',
       title: 'Seed Deck',
     });
-    expect(requestBody.html).toContain('<section class="slide">A</section>');
+    expectSlideMarkup(requestBody.html, 'A');
     expect(capturedBlob?.size).toBe(4);
     expect(capturedFilename).toBe('Seed-Deck.pptx');
   });
@@ -1959,12 +1949,9 @@ describe('exportAsMd', () => {
   beforeEach(() => {
     capturedBlob = undefined;
     capturedFilename = undefined;
-    vi.stubGlobal('URL', {
-      createObjectURL: (blob: Blob) => {
-        capturedBlob = blob;
-        return 'blob:test';
-      },
-      revokeObjectURL: () => {},
+    stubBrowserURL((blob: Blob) => {
+      capturedBlob = blob;
+      return 'blob:test';
     });
     vi.stubGlobal('document', {
       createElement: () => {
@@ -2032,14 +2019,11 @@ describe('sandboxed preview Blob exports', () => {
     openCalls = [];
     blobUrlCounter = 0;
     mockWin = { opener: {}, location: { href: '' } };
-    vi.stubGlobal('URL', {
-      createObjectURL: (blob: Blob) => {
-        capturedBlobs.push(blob);
-        capturedBlob = blob;
-        blobUrlCounter += 1;
-        return `blob:test-${blobUrlCounter}`;
-      },
-      revokeObjectURL: vi.fn(),
+    stubBrowserURL((blob: Blob) => {
+      capturedBlobs.push(blob);
+      capturedBlob = blob;
+      blobUrlCounter += 1;
+      return `blob:test-${blobUrlCounter}`;
     });
     vi.stubGlobal('window', {
       location: {
@@ -2572,7 +2556,7 @@ describe('exportAsImage', () => {
     clickMock = vi.fn();
     createObjectURLMock = vi.fn(() => 'blob:mock-url');
     anchors = [];
-    vi.stubGlobal('URL', { createObjectURL: createObjectURLMock, revokeObjectURL: vi.fn() });
+    stubBrowserURL(createObjectURLMock);
     vi.stubGlobal('document', {
       createElement: () => {
         const el = { href: '', download: '', click: clickMock };
