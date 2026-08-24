@@ -4569,6 +4569,7 @@ function StagedRunContexts({
         const localPreview = attachmentPreviewUrl?.(a) ?? null;
         const canPreview = a.kind === 'image' && Boolean(projectId || localPreview);
         const embed = isTeamverEmbedMode();
+        const fileIconName = driveImportAssetIconName(a.name);
         return (
           <div key={a.path} className={`staged-chip staged-${a.kind}`}>
             <span
@@ -4613,9 +4614,9 @@ function StagedRunContexts({
                   className="staged-icon"
                   aria-hidden
                   data-testid="chat-staged-file-icon"
-                  data-icon={driveImportAssetIconName(a.name)}
+                  data-icon={fileIconName}
                 >
-                  <Icon name={driveImportAssetIconName(a.name)} size={13} />
+                  <Icon name={fileIconName} size={13} />
                 </span>
                 <TeamverDriveDisplayFileName
                   name={a.name}
