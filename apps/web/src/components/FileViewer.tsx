@@ -750,22 +750,31 @@ function previewSourceCacheKey(projectId: string, fileName: string): string {
 }
 
 function readCachedPreviewSource(projectId: string, fileName: string): string | null {
-  const cached = htmlPreviewSourceCache.get(previewSourceCacheKey(projectId, fileName));
-  if (!cached?.trim()) return null;
-  const repaired = repairArtifactDocumentHeadIfNeeded(cached);
-  return isArtifactHtmlStableForPreview(repaired) ? repaired : null;
+  try {
+    const cached = htmlPreviewSourceCache.get(previewSourceCacheKey(projectId, fileName));
+    if (!cached?.trim()) return null;
+    const repaired = repairArtifactDocumentHeadIfNeeded(cached);
+    return isArtifactHtmlStableForPreview(repaired) ? repaired : null;
+  } catch (err) {
+    console.error('[HtmlViewer] readCachedPreviewSource failed', fileName, err);
+    return null;
+  }
 }
 
 /** Cache stable preview HTML for remount / pending-tab bootstrap (module-level). */
 export function rememberStablePreviewSource(projectId: string, fileName: string, source: string | null | undefined) {
-  if (!source?.trim()) return;
-  const repaired = repairArtifactDocumentHeadIfNeeded(source);
-  if (!isArtifactHtmlStableForPreview(repaired)) return;
-  const key = previewSourceCacheKey(projectId, fileName);
-  htmlPreviewSourceCache.set(key, repaired);
-  if (htmlPreviewSourceCache.size > MAX_CACHED_PREVIEW_SOURCES) {
-    const oldest = htmlPreviewSourceCache.keys().next().value;
-    if (oldest != null) htmlPreviewSourceCache.delete(oldest);
+  try {
+    if (!source?.trim()) return;
+    const repaired = repairArtifactDocumentHeadIfNeeded(source);
+    if (!isArtifactHtmlStableForPreview(repaired)) return;
+    const key = previewSourceCacheKey(projectId, fileName);
+    htmlPreviewSourceCache.set(key, repaired);
+    if (htmlPreviewSourceCache.size > MAX_CACHED_PREVIEW_SOURCES) {
+      const oldest = htmlPreviewSourceCache.keys().next().value;
+      if (oldest != null) htmlPreviewSourceCache.delete(oldest);
+    }
+  } catch (err) {
+    console.error('[HtmlViewer] rememberStablePreviewSource failed', fileName, err);
   }
 }
 
@@ -5461,11 +5470,17 @@ function HtmlViewer({
   const [sourceHtmlCopied, setSourceHtmlCopied] = useState(false);
   const sourceHtmlCopyEnabled = isTeamverSourceHtmlCopyEnabled();
   // One intact-gated repair for liveHtml init (was 3× ungated repair on mount).
+  // Must never throw on deep-link first paint — error.tsx takes the whole route.
   const initialLiveHtmlRepaired = liveHtml == null
     ? null
     : (() => {
-      const repaired = repairArtifactDocumentHeadIfNeeded(liveHtml);
-      return isArtifactHtmlStableForPreview(repaired) ? repaired : null;
+      try {
+        const repaired = repairArtifactDocumentHeadIfNeeded(liveHtml);
+        return isArtifactHtmlStableForPreview(repaired) ? repaired : null;
+      } catch (err) {
+        console.error('[HtmlViewer] initialLiveHtmlRepaired failed', file.name, err);
+        return null;
+      }
     })();
   const [source, setSource] = useState<string | null>(() => initialLiveHtmlRepaired);
   const [sourceLoadFailed, setSourceLoadFailed] = useState(false);
@@ -6895,25 +6910,35 @@ function HtmlViewer({
   // never surface and the deck becomes a static, unnavigable preview.
   const looksLikeDeck = useMemo(() => {
     if (!source) return false;
-    return htmlLooksLikeNavigableDeckPreview(source);
-  }, [source]);
+    try {
+      return htmlLooksLikeNavigableDeckPreview(source);
+    } catch (err) {
+      console.error('[HtmlViewer] looksLikeDeck failed', file.name, err);
+      return false;
+    }
+  }, [source, file.name]);
   const effectiveDeck = isDeck || looksLikeDeck;
   const rawLivePreviewSource = inlinedSource ?? source;
   const livePreviewSource = useMemo(() => {
     if (!rawLivePreviewSource) return rawLivePreviewSource;
-    const healPaths = Array.from(
-      new Set([
-        ...(projectFilePaths ?? []).map((path) => String(path || '').trim()).filter(Boolean),
-        ...(preferredAttachmentPaths ?? [])
-          .map((path) => String(path || '').trim())
-          .filter(Boolean),
-      ]),
-    );
-    if (healPaths.length === 0) return rawLivePreviewSource;
-    return rewriteAttachmentImageSrcs(rawLivePreviewSource, healPaths, {
-      preferredPaths: preferredAttachmentPaths,
-    });
-  }, [preferredAttachmentPaths, projectFilePaths, rawLivePreviewSource]);
+    try {
+      const healPaths = Array.from(
+        new Set([
+          ...(projectFilePaths ?? []).map((path) => String(path || '').trim()).filter(Boolean),
+          ...(preferredAttachmentPaths ?? [])
+            .map((path) => String(path || '').trim())
+            .filter(Boolean),
+        ]),
+      );
+      if (healPaths.length === 0) return rawLivePreviewSource;
+      return rewriteAttachmentImageSrcs(rawLivePreviewSource, healPaths, {
+        preferredPaths: preferredAttachmentPaths,
+      });
+    } catch (err) {
+      console.error('[HtmlViewer] livePreviewSource heal failed', file.name, err);
+      return rawLivePreviewSource;
+    }
+  }, [preferredAttachmentPaths, projectFilePaths, rawLivePreviewSource, file.name]);
   // Display-only official look merge + Motif remmerge. Compact fills stream
   // without look CSS; persist merges after save. Preview used to stay Neutral
   // until disk write.

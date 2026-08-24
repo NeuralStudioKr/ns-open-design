@@ -9,6 +9,8 @@
  *
  * Budgets: pathological / deeply nested / huge decks must never hang or
  * throw into React (project deep-link → error.tsx). Prefer no-op over crash.
+ * Preview callers should pass the tighter `COLLAPSE_PREVIEW_*` caps so
+ * first-paint srcdoc stays responsive.
  */
 
 const COLLAPSIBLE_TAGS = new Set([
@@ -59,6 +61,20 @@ export const COLLAPSE_MAX_DEPTH = 48;
  * unclosed / bail with remainder as raw (no throw, no infinite loop).
  */
 export const COLLAPSE_MAX_STEPS = 100_000;
+
+/**
+ * Preview / buildSrcdoc caps — keep first-paint responsive on large MiniMax
+ * decks. Persist / export keep the full defaults above.
+ */
+export const COLLAPSE_PREVIEW_MAX_INPUT_CHARS = 750_000;
+export const COLLAPSE_PREVIEW_MAX_DEPTH = 32;
+export const COLLAPSE_PREVIEW_MAX_STEPS = 8_000;
+
+export type CollapseAdjacentDuplicateOptions = {
+  maxInputChars?: number;
+  maxDepth?: number;
+  maxSteps?: number;
+};
 
 const OPEN_TAG_RE = /^<([a-zA-Z][\w:-]*)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/;
 
@@ -223,14 +239,19 @@ function serialize(nodes: HtmlNode[]): string {
   )).join('');
 }
 
-function collapseTree(html: string, depth: number, budget: StepBudget): string {
-  if (depth > COLLAPSE_MAX_DEPTH) return html;
+function collapseTree(
+  html: string,
+  depth: number,
+  budget: StepBudget,
+  maxDepth: number,
+): string {
+  if (depth > maxDepth) return html;
   if (budget.left <= 0) return html;
   const nodes = parseTopLevel(html, budget);
   const rebuilt: HtmlNode[] = [];
   for (const node of nodes) {
     const next: HtmlNode = node.kind === 'element'
-      ? { ...node, inner: collapseTree(node.inner, depth + 1, budget) }
+      ? { ...node, inner: collapseTree(node.inner, depth + 1, budget, maxDepth) }
       : node;
     const previous = lastSignificantNode(rebuilt);
     if (
@@ -249,13 +270,19 @@ function collapseTree(html: string, depth: number, budget: StepBudget): string {
  * Drop immediately-adjacent sibling copies of the same heading / paragraph /
  * badge. No-ops (same string) when the document has no such twins.
  */
-export function collapseAdjacentDuplicateDeckSiblings(html: string): string {
+export function collapseAdjacentDuplicateDeckSiblings(
+  html: string,
+  options?: CollapseAdjacentDuplicateOptions,
+): string {
   const source = String(html ?? '');
   if (!source) return source;
-  if (source.length > COLLAPSE_MAX_INPUT_CHARS) return source;
+  const maxInputChars = options?.maxInputChars ?? COLLAPSE_MAX_INPUT_CHARS;
+  const maxDepth = options?.maxDepth ?? COLLAPSE_MAX_DEPTH;
+  const maxSteps = options?.maxSteps ?? COLLAPSE_MAX_STEPS;
+  if (source.length > maxInputChars) return source;
   try {
-    const budget: StepBudget = { left: COLLAPSE_MAX_STEPS };
-    const collapsed = collapseTree(source, 0, budget);
+    const budget: StepBudget = { left: maxSteps };
+    const collapsed = collapseTree(source, 0, budget, maxDepth);
     return collapsed === source ? source : collapsed;
   } catch {
     // Pathological / truncated decks must not take down preview (error.tsx).

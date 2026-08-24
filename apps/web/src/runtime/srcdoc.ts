@@ -36,6 +36,9 @@ import {
   lockStackedDeckCanvasForPreview,
   looksLikeOfficialFullscreenPresenterDeck,
   collapseAdjacentDuplicateDeckSiblings,
+  COLLAPSE_PREVIEW_MAX_DEPTH,
+  COLLAPSE_PREVIEW_MAX_INPUT_CHARS,
+  COLLAPSE_PREVIEW_MAX_STEPS,
   pinDeckSlidesToFixedCanvas,
 } from '@open-design/contracts';
 import { stripConflictingSrcDocCspBaseUri } from './authenticatedHtmlSrcDoc';
@@ -187,7 +190,11 @@ function buildSrcdocUnsafe(
   let previewSource = repairedHead;
   if (compactStackedDeck) {
     try {
-      previewSource = collapseAdjacentDuplicateDeckSiblings(repairedHead);
+      previewSource = collapseAdjacentDuplicateDeckSiblings(repairedHead, {
+        maxInputChars: COLLAPSE_PREVIEW_MAX_INPUT_CHARS,
+        maxDepth: COLLAPSE_PREVIEW_MAX_DEPTH,
+        maxSteps: COLLAPSE_PREVIEW_MAX_STEPS,
+      });
     } catch (err) {
       console.error('[buildSrcdoc] collapseAdjacentDuplicateDeckSiblings failed', err);
       previewSource = repairedHead;

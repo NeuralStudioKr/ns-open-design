@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest';
 
 import {
   COLLAPSE_MAX_INPUT_CHARS,
+  COLLAPSE_PREVIEW_MAX_DEPTH,
+  COLLAPSE_PREVIEW_MAX_INPUT_CHARS,
+  COLLAPSE_PREVIEW_MAX_STEPS,
   collapseAdjacentDuplicateDeckSiblings,
 } from '../src/html/collapse-adjacent-duplicate-siblings.js';
 import { healDeckHtmlForStandaloneExport } from '../src/html/deckPdfExport.js';
@@ -130,5 +133,34 @@ describe('collapseAdjacentDuplicateDeckSiblings', () => {
     expect(Date.now() - started).toBeLessThan(2_000);
     expect(typeof out).toBe('string');
     expect(out.length).toBeGreaterThan(0);
+  });
+
+  it('preview budget skips collapse sooner than persist default', () => {
+    const padding = 'x'.repeat(COLLAPSE_PREVIEW_MAX_INPUT_CHARS + 1);
+    const html = `<p>a</p><p>a</p>${padding}`;
+    expect(html.length).toBeGreaterThan(COLLAPSE_PREVIEW_MAX_INPUT_CHARS);
+    expect(html.length).toBeLessThan(COLLAPSE_MAX_INPUT_CHARS);
+    const preview = collapseAdjacentDuplicateDeckSiblings(html, {
+      maxInputChars: COLLAPSE_PREVIEW_MAX_INPUT_CHARS,
+      maxDepth: COLLAPSE_PREVIEW_MAX_DEPTH,
+      maxSteps: COLLAPSE_PREVIEW_MAX_STEPS,
+    });
+    expect(preview).toBe(html);
+    const persist = collapseAdjacentDuplicateDeckSiblings('<p>alpha</p><p>alpha</p>');
+    expect(persist.match(/<p>/g)).toHaveLength(1);
+  });
+
+  it('preview step budget returns quickly without hanging', () => {
+    const opens = Array.from({ length: 500 }, (_, i) => `<div id="n${i}">`).join('');
+    const closes = Array.from({ length: 500 }, () => '</div>').join('');
+    const html = `${opens}<p>dup</p><p>dup</p>${closes}`;
+    const started = Date.now();
+    const out = collapseAdjacentDuplicateDeckSiblings(html, {
+      maxInputChars: COLLAPSE_PREVIEW_MAX_INPUT_CHARS,
+      maxDepth: COLLAPSE_PREVIEW_MAX_DEPTH,
+      maxSteps: COLLAPSE_PREVIEW_MAX_STEPS,
+    });
+    expect(Date.now() - started).toBeLessThan(1_000);
+    expect(out).toContain('dup');
   });
 });
