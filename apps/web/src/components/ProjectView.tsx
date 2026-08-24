@@ -2868,6 +2868,7 @@ export function findClientArtifactRegression(input: {
   if (priorSize < ARTIFACT_REGRESSION_MIN_PRIOR_BYTES) return null;
   const priorHtml = String(input.priorHtml ?? '').trim();
   const incomingCompactDraft = isPersistableShortDeckDraft(input.htmlBody)
+    || isPersistableShortDeckDraftAfterHeal(input.htmlBody)
     || (
       isClosedSoftSalvageDeckHtml(input.htmlBody)
       && countDeckSlideSections(input.htmlBody) <= 3
@@ -2879,6 +2880,7 @@ export function findClientArtifactRegression(input: {
     if (
       priorCount <= 3
       || isPersistableShortDeckDraft(priorHtml)
+      || isPersistableShortDeckDraftAfterHeal(priorHtml)
       || isLowSubstanceSlideDeckArtifact(priorHtml)
     ) {
       return null;
