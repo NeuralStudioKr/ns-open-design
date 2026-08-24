@@ -20,6 +20,7 @@ import type {
   WebFetchBackendResult,
   WebFetchToolResult,
 } from './backend.js';
+import { looksLikeWebFetchStylesheetText } from '@open-design/contracts';
 import { isWebFetchPageUrl } from './page-url.js';
 import { resolveWebFetchBackend } from './select.js';
 import type { WebFetchBackendPair } from './select.js';
@@ -168,6 +169,10 @@ function logWebFetchCall(ctx: WebFetchCallLog, result: WebFetchToolResult): void
   }
 }
 
+function isHtmlHint(isHtml: boolean | undefined, rawText: string): boolean {
+  return isHtml === true || (isHtml === undefined && /^\s*<(!doctype|html)/i.test(rawText));
+}
+
 /**
  * Fetch a public http(s) URL and return its content as plain text.
  * SSRF-guarded, size-capped, time-bounded. Never throws — all
@@ -304,9 +309,16 @@ async function runBackend(
   }
 
   const rawText = raw.text ?? '';
-  const isHtml =
-    raw.isHtml === true ||
-    (raw.isHtml === undefined && /^\s*<(!doctype|html)/i.test(rawText));
+  if (!isHtmlHint(raw.isHtml, rawText) && looksLikeWebFetchStylesheetText(rawText)) {
+    return {
+      result: {
+        ok: false,
+        error: 'response is a stylesheet, font, or static asset, not a page',
+      },
+      ...hopsOut,
+    };
+  }
+  const isHtml = isHtmlHint(raw.isHtml, rawText);
   const stripped: StrippedHtml = isHtml
     ? htmlToText(rawText)
     : { text: rawText.trim() };

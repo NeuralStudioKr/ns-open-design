@@ -23,6 +23,7 @@
 //     domains often terminate on a different hostname. Safety is
 //     enforced by per-hop SSRF, not same-origin.
 
+import { isWebFetchPageContentType } from '@open-design/contracts';
 import { assertExternalAssetUrl } from '../connectionTest.js';
 import { MAX_TEXT_BYTES, USER_AGENT } from './core.js';
 import type { WebFetchBackend, WebFetchBackendCtx, WebFetchBackendResult } from './backend.js';
@@ -224,6 +225,13 @@ async function nativeFetch(ctx: WebFetchBackendCtx): Promise<WebFetchBackendResu
     if (!bodyResult.ok) return { ok: false, error: bodyResult.error, hops };
 
     const contentType = (response.headers.get('content-type') ?? '').toLowerCase();
+    if (!isWebFetchPageContentType(contentType)) {
+      return {
+        ok: false,
+        error: 'response is a stylesheet, font, or static asset, not a page',
+        hops,
+      };
+    }
     const text = bodyResult.body.toString('utf8');
     const isHtml = contentType.includes('html') || /^\s*<(!doctype|html)/i.test(text);
 

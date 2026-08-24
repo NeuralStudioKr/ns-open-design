@@ -3,6 +3,7 @@ import {
   isWebFetchAssetUrlContext,
   isWebFetchPageContentType,
   isWebFetchPageUrl,
+  looksLikeWebFetchStylesheetText,
 } from '../src/web-fetch-page-url';
 
 describe('isWebFetchPageUrl', () => {
@@ -61,6 +62,14 @@ describe('isWebFetchPageContentType', () => {
     expect(isWebFetchPageContentType('font/woff2')).toBe(false);
     expect(isWebFetchPageContentType('image/png')).toBe(false);
     expect(isWebFetchPageContentType('application/javascript')).toBe(false);
+  });
+
+  it('detects raw stylesheet bodies', () => {
+    expect(looksLikeWebFetchStylesheetText('@import url("https://fonts.googleapis.com/css2");')).toBe(
+      true,
+    );
+    expect(looksLikeWebFetchStylesheetText('@font-face { font-family: X }')).toBe(true);
+    expect(looksLikeWebFetchStylesheetText('<!doctype html><title>Hi</title>')).toBe(false);
   });
 
   it('allows html and unknown/empty types', () => {

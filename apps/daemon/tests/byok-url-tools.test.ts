@@ -74,4 +74,36 @@ describe('fetchUrlContent', () => {
     );
     vi.unstubAllGlobals();
   });
+
+  it('rejects CSS Content-Type and raw @import bodies even on a page URL', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        new Response('@import url("https://fonts.googleapis.com/css2");', {
+          status: 200,
+          headers: { 'content-type': 'text/css' },
+        }),
+      ),
+    );
+    expect(await fetchUrlContent('https://example.com/brand')).toEqual({
+      ok: false,
+      error: 'response is a stylesheet, font, or static asset, not a page',
+    });
+    vi.unstubAllGlobals();
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        new Response('@font-face { font-family: Brand }', {
+          status: 200,
+          headers: { 'content-type': 'text/plain' },
+        }),
+      ),
+    );
+    expect(await fetchUrlContent('https://example.com/brand')).toEqual({
+      ok: false,
+      error: 'response is a stylesheet, font, or static asset, not a page',
+    });
+    vi.unstubAllGlobals();
+  });
 });

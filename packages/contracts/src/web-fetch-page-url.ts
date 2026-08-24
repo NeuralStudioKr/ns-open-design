@@ -64,6 +64,11 @@ export function isWebFetchAssetUrlContext(source: string, matchIndex: number): b
   return false;
 }
 
+/** Raw CSS body when Content-Type is missing or wrong. */
+export function looksLikeWebFetchStylesheetText(text: string): boolean {
+  return /^(@charset\b|@import\b|@font-face\b)/i.test(String(text || '').trim());
+}
+
 /** After fetch: stylesheets / fonts / media / JS are not page text. */
 export function isWebFetchPageContentType(contentType: string): boolean {
   const type = String(contentType || '').split(';')[0]?.trim() ?? '';
