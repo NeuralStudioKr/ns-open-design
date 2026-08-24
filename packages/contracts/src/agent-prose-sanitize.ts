@@ -243,6 +243,30 @@ function lineIsChatProseProtocolMarkup(line: string): boolean {
   return Boolean(match?.[1] && isChatProseProtocolTagName(match[1]));
 }
 
+function looksLikeIncompleteHtmlOpenLine(line: string): boolean {
+  const trimmed = String(line ?? "").trim();
+  if (!trimmed || lineIsChatProseProtocolMarkup(trimmed)) return false;
+  return /^<\/?[A-Za-z][\w:-]*\b[^>]*$/.test(trimmed) && !/>/.test(trimmed);
+}
+
+function looksLikeHtmlAttrContinuationLine(line: string): boolean {
+  const trimmed = String(line ?? "").trim();
+  if (!trimmed || lineIsChatProseProtocolMarkup(trimmed)) return false;
+  if (/^<https?:\/\//i.test(trimmed)) return false;
+  if (/^(?:[\w:-]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>"']+)\s*)+\/?>/.test(trimmed)) return true;
+  if (/^[\w:-]+\s*=\s*["'][^"']*$/.test(trimmed)) return true;
+  if (/^[\w:-]+\s*=/.test(trimmed) && /<\/?[A-Za-z]/.test(trimmed)) return true;
+  return false;
+}
+
+function looksLikeBrStackedHeadingLine(line: string): boolean {
+  const trimmed = String(line ?? "").trim();
+  if (!/<br\b/i.test(trimmed) || trimmed.length > 80 || /[.!?。…?]/.test(trimmed)) {
+    return false;
+  }
+  return /^(?:[\p{L}\p{N}\s/·.\-]*<br\s*\/?>\s*)+[\p{L}\p{N}\s/·.\-]*$/u.test(trimmed);
+}
+
 function isLikelyInternalMarkupLine(line: string): boolean {
   const trimmed = line.trim();
   if (!trimmed) return false;
@@ -531,6 +555,28 @@ function findTrailingSameLineDeckHtmlCut(line: string): number | null {
     /^(.*?)((?:font-size|width|height|padding|margin)\s*:\s*[\d.]+)\s+style\s*=\s*["'][\s\S]*$/i,
   );
   if (brokenAttr?.[1] !== undefined) return brokenAttr[1].length;
+  const gluedCss = line.match(
+    /^(.*?[\uac00-\ud7af])((?:[a-zA-Z-]+\s*:\s*[^;]+;){1,}[a-zA-Z-]+\s*:\s*[^;]+;?)\s*$/u,
+  );
+  if (
+    gluedCss?.[1] !== undefined
+    && /(?:font-size|letter-spacing|font-family|text-transform|opacity|margin|padding|line-height|color)\s*:/i.test(
+      gluedCss[2] ?? "",
+    )
+  ) {
+    return gluedCss[1].length;
+  }
+  const voidSlash = /^(.*?)(?:\s+\/>)\s*$/.exec(line);
+  if (voidSlash?.[1] !== undefined && /[\p{L}\p{N}.。…]$/u.test(voidSlash[1].trimEnd())) {
+    return voidSlash[1].trimEnd().length;
+  }
+  const attrTail =
+    /^(.*?)(?:\s+["']?\s*(?:class|id|style|role|aria-[\w-]+)\s*=\s*["'][^"']*["']\s*)$/i.exec(
+      line,
+    );
+  if (attrTail?.[1] !== undefined && /[\p{L}\p{N}.。…]$/u.test(attrTail[1].trimEnd())) {
+    return attrTail[1].trimEnd().length;
+  }
   return null;
 }
 
@@ -1995,6 +2041,11 @@ export function looksLikeDeckCodeDebrisLine(line: string): boolean {
   if (/^(?:[-*+]|\d+[.)])\s+\S/.test(trimmed)) return false;
   if (/^<https?:\/\//i.test(trimmed)) return false;
   if (lineIsChatProseProtocolMarkup(trimmed)) return false;
+  if (/^<\?(?:xml\b|[\w:-]+)/i.test(trimmed) || /^<!\[CDATA\[/.test(trimmed)) return true;
+  if (looksLikeBrStackedHeadingLine(trimmed)) return true;
+  if (looksLikeHtmlAttrContinuationLine(trimmed)) return true;
+  if (/^&amp;lt;\/?[A-Za-z]/.test(trimmed)) return true;
+  if (/^rgba?\([^)]*\)\s*;\s*[a-zA-Z-]+\s*:/.test(trimmed)) return true;
 
   if (/^[}\]\uFF5D]+\s*$/u.test(trimmed)) return true;
   if (/^(?:[}\]\uFF5D]\s*|<\/?(?:pre|code|div|span|p)>\s*)+$/iu.test(trimmed)) return true;
@@ -2146,6 +2197,7 @@ export function looksLikeDeckCssContinuationLine(line: string): boolean {
   if (/^#[0-9A-Fa-f]{3,8}\s*;?\s*[}\uFF5D]?\s*$/u.test(trimmed)) return true;
   if (/^#[0-9A-Fa-f]{3,8}\s*;\s*(?:--|[a-zA-Z-]+\s*:)/.test(trimmed)) return true;
   if (/^rgba?\([^)]*\)\s*;?\s*[}\uFF5D]?\s*$/iu.test(trimmed)) return true;
+  if (/^rgba?\([^)]*\)\s*;\s*[a-zA-Z-]+\s*:/.test(trimmed)) return true;
   if (/^[\d.]+(?:px|em|rem|%|vh|vw|ms|s)?\s*;?\s*[}\uFF5D]?\s*$/iu.test(trimmed)) return true;
   if (/^[a-zA-Z-]+\s*:\s*[^;{]+;?\s*[}\uFF5D]?\s*$/u.test(trimmed)) return true;
   if (/^--[A-Za-z_][\w-]*\s*:/.test(trimmed)) return true;
@@ -2192,6 +2244,7 @@ export function stripLeakedDeckCodeDebrisBlocks(input: string): string {
   const lines = String(input).split("\n");
   const kept: string[] = [];
   let inCssContinuation = false;
+  let inHtmlAttrContinuation = false;
 
   for (let i = 0; i < lines.length; i += 1) {
     const line = lines[i] ?? "";
@@ -2200,6 +2253,12 @@ export function stripLeakedDeckCodeDebrisBlocks(input: string): string {
       kept.push(line);
       continue;
     }
+
+    if (inHtmlAttrContinuation && looksLikeHtmlAttrContinuationLine(trimmed)) {
+      if (/>/.test(trimmed)) inHtmlAttrContinuation = false;
+      continue;
+    }
+    inHtmlAttrContinuation = false;
 
     const inlineCut = cutInlineDeckHtmlPrefix(line);
     if (inlineCut !== undefined) {
@@ -2222,6 +2281,7 @@ export function stripLeakedDeckCodeDebrisBlocks(input: string): string {
       inCssContinuation =
         lineOpensUnclosedCssBlock(trimmed)
         || (inCssContinuation && !/[})\]\uFF5D]/u.test(trimmed));
+      inHtmlAttrContinuation = looksLikeIncompleteHtmlOpenLine(trimmed);
       while (kept.length > 0 && !(kept[kept.length - 1] ?? "").trim()) {
         kept.pop();
       }
@@ -2332,6 +2392,15 @@ export function stripResidualDeckHtmlMarkupFromProse(input: string): string {
   text = text.replace(/<!--[\s\S]*?-->/g, "");
   text = text.replace(/<!--[\s\S]*$/g, "");
   text = text.replace(/<!doctype\b[^>]*>/gi, "");
+  text = text.replace(/<\?[\w:-]+[\s\S]*?\?>/g, "");
+  text = text.replace(/<!\[CDATA\[[\s\S]*?\]\]>/g, "");
+  text = text.replace(/<!\[CDATA\[[\s\S]*$/g, "");
+  text = text.replace(/&amp;lt;\/?[A-Za-z][\w:-]*[\s\S]*?(?:&amp;gt;|&gt;|>)/gi, "");
+  text = text.replace(
+    /(?:^|\n)\s*(?:[\w:-]+\s*=\s*(?:"[^"]*"|'[^']*')\s*)+\/?>[^\n]*/g,
+    "\n",
+  );
+  text = text.replace(/[ \t]+\/>/g, "");
 
   const notProtocol = `(?!\\/?(?:${CHAT_PROSE_PROTOCOL_TAG_ALT}|https?)\\b)`;
   const htmlName = "[A-Za-z][\\w:-]*";

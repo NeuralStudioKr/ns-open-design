@@ -471,4 +471,20 @@ describe("sanitizeChatMessageLeakedPseudoTool (expanded)", () => {
     expect(withForm).toContain('<question-form id="discovery">');
     expect(withForm).toContain("질문");
   });
+
+  it("hard-strips xml / split-tag / attr-tail leftovers via web display last-pass", () => {
+    expect(
+      sanitizeAssistantProseForDisplay(`<?xml version="1.0"?>\n<svg></svg>`, {
+        stripCodeFences: true,
+      }),
+    ).toBe("");
+    expect(
+      sanitizeAssistantProseForDisplay(`진행.\n<div\nclass="slide">본문</div>`, {
+        stripCodeFences: true,
+      }),
+    ).toBe("진행.");
+    expect(
+      sanitizeAssistantProseForDisplay(`초안. class="card pill"`, { stripCodeFences: true }),
+    ).toBe("초안.");
+  });
 });
