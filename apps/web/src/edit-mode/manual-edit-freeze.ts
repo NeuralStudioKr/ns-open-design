@@ -10,7 +10,7 @@
  * from the latest live/saved source.
  *
  * ---------------------------------------------------------------------------
- * Tip remount index (555) — user-perception sequences & key constants
+ * Tip remount index (558) — user-perception sequences & key constants
  * ---------------------------------------------------------------------------
  * Post-protect: TIP_REMOUNT_POST_PROTECT_SEQUENCE
  *   sticky-clear → soft-land → exit-latch → absorb → post-absorb-quiet → live
@@ -32,16 +32,17 @@
  * Selection commit: hostPaintRectForManualEditSelectionCommit (546).
  * Multi commit: shouldRefreshHostPaintOnManualEditSelectionCommit also
  *   refreshes primary during tip/paint-sync so union measure warms (552).
- * Multi sibling seed: shouldSeedTipRemountMemberLastHostRectsOnMultiCommit (555).
+ * Multi sibling seed: shouldSeedTipRemountMemberLastHostRectsOnMultiCommit (555);
+ *   one rAF retry when iframe/layout not ready (558).
  * Refresh miss: resolveTipRemountRefreshMissAction — last-good → retain →
  *   force-keep → clear (549/550). Selection-commit last-good feeds the same
  *   last-good branch on the following refresh.
  * Overlay paint: resolveTipRemountHostPaintRectResult — live seed + last-good
- *   fallback in one entry (553/556).
+ *   fallback in one entry (553/556); apply-last-good matches Result (559).
  * Intentional nulls (5): mode-exit / no-id / refresh(!id) / unprotected miss /
  *   clear-selection.
  * Walk fixtures: apps/web/tests/edit-mode/tip-remount-sequence-fixtures.ts (547).
- * Checklist: docs-teamver/49_tip_remount_체감_체크리스트_500-557.md (554/557).
+ * Checklist: docs-teamver/49_tip_remount_체감_체크리스트_500-560.md (557/560).
  * Do not retune fit delays / latch / soft-land without a tip-remount loop note.
  */
 export function shouldClearManualEditFrozenSourceOnModeChange(
@@ -1432,6 +1433,33 @@ export function shouldSeedTipRemountMemberLastHostRectsOnMultiCommit(
 }
 
 /**
+ * Multi sibling last-good seed missed some members (iframe/layout not ready) —
+ * schedule one rAF retry while tip/paint-sync is still armed (558).
+ */
+export function shouldRetryTipRemountMemberLastHostRectSeed(
+  memberCount: number,
+  seededCount: number,
+  tipRemountChromeSessionLive: boolean,
+  paintSyncHoldArmed: boolean,
+  alreadyRetried: boolean,
+): boolean {
+  if (alreadyRetried) return false;
+  if (!(tipRemountChromeSessionLive || paintSyncHoldArmed)) return false;
+  if (memberCount < 2) return false;
+  return seededCount < memberCount;
+}
+
+/**
+ * Cancel a pending multi-member last-good seed rAF when tip clears or a newer
+ * selection arms (558) — same shape as sync-measure retry cancel (463).
+ */
+export function shouldCancelTipRemountMemberLastHostRectSeedRetry(
+  pendingRaf: boolean,
+): boolean {
+  return pendingRaf;
+}
+
+/**
  * Overlay chrome paint when live measure is missing (553).
  * Shares last-good reuse with resolveTipRemountRefreshMissAction's
  * apply-last-good branch — overlays have no React "current" to retain.
@@ -1522,6 +1550,42 @@ export function resolveTipRemountRefreshMissAction(
   }
   if (force) return 'keep-force';
   return 'clear';
+}
+
+/**
+ * Refresh-miss apply-last-good must resolve the same rect as overlay Result
+ * when live paint is missing — one last-good source (559).
+ */
+export function tipRemountApplyLastGoodMatchesHostPaintResult(
+  tipRemountChromeSessionLive: boolean,
+  paintSyncHoldArmed: boolean,
+  lastGood: TipRemountHostPaintRect | null,
+): boolean {
+  const action = resolveTipRemountRefreshMissAction(
+    tipRemountChromeSessionLive,
+    paintSyncHoldArmed,
+    lastGood != null,
+    false,
+    false,
+  );
+  const { paint } = resolveTipRemountHostPaintRectResult(
+    tipRemountChromeSessionLive,
+    paintSyncHoldArmed,
+    null,
+    lastGood,
+  );
+  if (action === 'apply-last-good') {
+    return Boolean(
+      paint
+      && lastGood
+      && paint.x === lastGood.x
+      && paint.y === lastGood.y
+      && paint.width === lastGood.width
+      && paint.height === lastGood.height,
+    );
+  }
+  // Outside tip/paint-sync (or no last-good): both must leave paint empty.
+  return paint == null;
 }
 
 /**

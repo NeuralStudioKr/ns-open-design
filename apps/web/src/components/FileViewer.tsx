@@ -413,7 +413,10 @@ import {
   shouldRefreshHostPaintOnManualEditSelectionCommit,
   resolveTipRemountHostPaintRectResult,
   shouldSeedTipRemountMemberLastHostRectsOnMultiCommit,
+  shouldRetryTipRemountMemberLastHostRectSeed,
+  shouldCancelTipRemountMemberLastHostRectSeedRetry,
   resolveTipRemountRefreshMissAction,
+  tipRemountApplyLastGoodMatchesHostPaintResult,
   shouldClearTipRemountLastHostRectCache,
   shouldTrustTipRemountHostPaintDespiteComposedStale,
   shouldArmTipRemountPaintSyncHold,
@@ -5770,6 +5773,8 @@ function HtmlViewer({
   const tipRemasureOnDeckNudgeRef = useRef<() => void>(() => {});
   /** Pending onLoad sync measure rAF retry — cancel on grace clear (463). */
   const manualEditTipRemountSyncRetryRafRef = useRef<number | null>(null);
+  /** Pending multi-member last-good seed rAF retry — cancel on tip clear (558). */
+  const manualEditTipMemberSeedRetryRafRef = useRef<number | null>(null);
   /** Inert resize/multi chrome until tip remasure applies tip geometry (455/458). */
   const [manualEditTipRemountChromeSuppressed, setManualEditTipRemountChromeSuppressed] = useState(false);
   const manualEditTipRemountChromeSuppressedRef = useRef(false);
@@ -8529,17 +8534,56 @@ function HtmlViewer({
   /**
    * Tip/paint-sync multi commit: measure every selected member and seed
    * last-good so union chrome miss can reuse per-id boxes (555).
+   * Returns how many members seeded — drives one rAF retry (558).
    */
-  function seedTipRemountMemberLastHostRectsForSelection(ids: readonly string[]) {
+  function seedTipRemountMemberLastHostRectsForSelection(ids: readonly string[]): number {
     const frame = iframeRef.current;
     const workspace = manualEditWorkspaceRef.current;
-    if (!frame || !workspace) return;
+    if (!frame || !workspace) return 0;
+    let seeded = 0;
     for (const id of ids) {
       const paint = measureManualEditTargetHostRect(frame, workspace, id);
       if (paint && paint.width >= 1 && paint.height >= 1) {
         manualEditTipLastHostRectByIdRef.current.set(id, { ...paint });
+        seeded += 1;
       }
     }
+    return seeded;
+  }
+
+  function cancelTipRemountMemberLastHostRectSeedRetry() {
+    if (shouldCancelTipRemountMemberLastHostRectSeedRetry(
+      manualEditTipMemberSeedRetryRafRef.current != null,
+    )) {
+      window.cancelAnimationFrame(manualEditTipMemberSeedRetryRafRef.current!);
+      manualEditTipMemberSeedRetryRafRef.current = null;
+    }
+  }
+
+  function scheduleTipRemountMemberLastHostRectSeedRetry(ids: readonly string[]) {
+    cancelTipRemountMemberLastHostRectSeedRetry();
+    const expectedIds = ids.slice();
+    manualEditTipMemberSeedRetryRafRef.current = requestAnimationFrame(() => {
+      manualEditTipMemberSeedRetryRafRef.current = null;
+      const tipSessionLive = tipRemountChromeSessionLiveNow();
+      const paintSyncHold = manualEditTipPaintSyncHoldRef.current;
+      if (!shouldSeedTipRemountMemberLastHostRectsOnMultiCommit(
+        expectedIds.length,
+        tipSessionLive,
+        paintSyncHold,
+      )) {
+        return;
+      }
+      const currentIds = selectedManualEditTargetIdsRef.current;
+      if (
+        currentIds.length !== expectedIds.length
+        || expectedIds.some((id, i) => currentIds[i] !== id)
+      ) {
+        return;
+      }
+      // One retry only — alreadyRetried implied by this callback (558).
+      seedTipRemountMemberLastHostRectsForSelection(expectedIds);
+    });
   }
 
   /**
@@ -9029,6 +9073,7 @@ function HtmlViewer({
         window.cancelAnimationFrame(manualEditTipSiblingRetryRafRef.current);
         manualEditTipSiblingRetryRafRef.current = null;
       }
+      cancelTipRemountMemberLastHostRectSeedRetry();
     }
     manualEditTipRemountGeometryGraceIdRef.current = null;
     manualEditTipRemountGeometryGraceUntilRef.current = 0;
@@ -10772,6 +10817,7 @@ function HtmlViewer({
             window.cancelAnimationFrame(manualEditTipSiblingRetryRafRef.current);
             manualEditTipSiblingRetryRafRef.current = null;
           }
+          cancelTipRemountMemberLastHostRectSeedRetry();
           manualEditTipChromePointerHoverRef.current = false;
         }
         const softLandActive = shouldRetainTipSyncedIdentityDuringPostStickySoftLand(
@@ -12858,7 +12904,16 @@ function HtmlViewer({
       tipSessionLive,
       paintSyncHold,
     )) {
-      seedTipRemountMemberLastHostRectsForSelection(nextIds);
+      const seeded = seedTipRemountMemberLastHostRectsForSelection(nextIds);
+      if (shouldRetryTipRemountMemberLastHostRectSeed(
+        nextIds.length,
+        seeded,
+        tipSessionLive,
+        paintSyncHold,
+        false,
+      )) {
+        scheduleTipRemountMemberLastHostRectSeedRetry(nextIds);
+      }
     }
     if (nextTargets.length === 1) {
       const snapshot = readManualEditTargetSnapshot(base, primary.id, {}, parsedDoc);

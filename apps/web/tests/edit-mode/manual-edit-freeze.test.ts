@@ -69,6 +69,9 @@ import {
   resolveTipRemountOverlayHostPaintRect,
   resolveTipRemountHostPaintRectResult,
   shouldSeedTipRemountMemberLastHostRectsOnMultiCommit,
+  shouldRetryTipRemountMemberLastHostRectSeed,
+  shouldCancelTipRemountMemberLastHostRectSeedRetry,
+  tipRemountApplyLastGoodMatchesHostPaintResult,
   resolveTipRemountRefreshMissAction,
   shouldClearTipRemountLastHostRectCache,
   shouldTrustTipRemountHostPaintDespiteComposedStale,
@@ -429,6 +432,12 @@ describe('manual edit freeze reset', () => {
     expect(shouldSeedTipRemountMemberLastHostRectsOnMultiCommit(2, true, false)).toBe(true);
     expect(shouldSeedTipRemountMemberLastHostRectsOnMultiCommit(2, false, false)).toBe(false);
     expect(shouldSeedTipRemountMemberLastHostRectsOnMultiCommit(1, true, false)).toBe(false);
+    expect(shouldRetryTipRemountMemberLastHostRectSeed(2, 0, true, false, false)).toBe(true);
+    expect(shouldRetryTipRemountMemberLastHostRectSeed(2, 2, true, false, false)).toBe(false);
+    expect(shouldRetryTipRemountMemberLastHostRectSeed(2, 1, true, false, true)).toBe(false);
+    expect(shouldRetryTipRemountMemberLastHostRectSeed(2, 0, false, false, false)).toBe(false);
+    expect(shouldCancelTipRemountMemberLastHostRectSeedRetry(true)).toBe(true);
+    expect(shouldCancelTipRemountMemberLastHostRectSeedRetry(false)).toBe(false);
     expect(resolveTipRemountOverlayHostPaintRect(
       true, false, null, { x: 1, y: 2, width: 3, height: 4 },
     )).toEqual({ x: 1, y: 2, width: 3, height: 4 });
@@ -450,9 +459,15 @@ describe('manual edit freeze reset', () => {
       paint: { x: 1, y: 2, width: 3, height: 4 },
       seedLastGood: null,
     });
-    // Overlay last-good path matches refresh-miss apply-last-good (553)
+    // Overlay last-good path matches refresh-miss apply-last-good (553/559)
     expect(resolveTipRemountRefreshMissAction(true, false, true, false, false))
       .toBe('apply-last-good');
+    expect(tipRemountApplyLastGoodMatchesHostPaintResult(
+      true, false, { x: 1, y: 2, width: 3, height: 4 },
+    )).toBe(true);
+    expect(tipRemountApplyLastGoodMatchesHostPaintResult(false, false, {
+      x: 1, y: 2, width: 3, height: 4,
+    })).toBe(true);
     expect(shouldClearTipRemountLastHostRectCache(false, false, false)).toBe(true);
     expect(shouldClearTipRemountLastHostRectCache(true, false, false)).toBe(false);
     expect(shouldClearTipRemountLastHostRectCache(false, true, false)).toBe(false);
