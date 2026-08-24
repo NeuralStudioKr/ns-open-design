@@ -3331,9 +3331,28 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     }
     return null;
   }
+  function transformTrackAxis(track, list){
+    var raw = '';
+    try { raw = (track && track.style && track.style.transform) || ''; } catch (_) {}
+    if (/translateY\\s*\\(/i.test(raw) && !/translateX\\s*\\(/i.test(raw)) return 'y';
+    if (/translate3d\\s*\\(\\s*0(?:px)?\\s*,/i.test(raw)) return 'y';
+    if (/translateX\\s*\\(/i.test(raw) && !/translateY\\s*\\(/i.test(raw)) return 'x';
+    if (list && list.length >= 2) {
+      try {
+        var a = list[0];
+        var b = list[1];
+        var dy = (b.offsetTop || 0) - (a.offsetTop || 0);
+        var dx = (b.offsetLeft || 0) - (a.offsetLeft || 0);
+        if (dy > Math.max(40, (a.offsetHeight || 0) * 0.4) && Math.abs(dx) < 16) return 'y';
+        if (dx > Math.max(40, (a.offsetWidth || 0) * 0.4) && Math.abs(dy) < 16) return 'x';
+      } catch (_) {}
+    }
+    return 'x';
+  }
   function activeIndexFromTransform(list){
     var track = transformTrack(list);
     if (!track) return -1;
+    var axis = transformTrackAxis(track, list);
     var raw = track.style.transform || '';
     if (!raw) {
       try {
@@ -3341,8 +3360,18 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
       } catch (_) {}
     }
     if (!raw || raw === 'none') return -1;
+    var matchY = raw.match(/translateY\\(\\s*(-?[0-9.]+)\\s*(vh|%|px)?/i);
+    if (axis === 'y' && matchY) {
+      var valueY = parseFloat(matchY[1]);
+      if (!Number.isFinite(valueY)) return -1;
+      var unitY = matchY[2] || 'px';
+      var stepY = unitY === 'px'
+        ? Math.max(1, track.clientHeight / list.length, window.innerHeight)
+        : 100;
+      return Math.max(0, Math.min(list.length - 1, Math.round(Math.abs(valueY) / stepY)));
+    }
     var match = raw.match(/translate(?:3d|X)?\\(\\s*(-?[0-9.]+)\\s*(vw|%|px)?/i);
-    if (match) {
+    if (axis !== 'y' && match) {
       var value = parseFloat(match[1]);
       if (!Number.isFinite(value)) return -1;
       var unit = match[2] || 'px';
@@ -3355,7 +3384,12 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     if (matrix) {
       var parts = matrix[1].split(',').map(function(part){ return parseFloat(String(part).trim()); });
       var tx = parts.length === 16 ? parts[12] : parts.length >= 6 ? parts[4] : NaN;
-      if (Number.isFinite(tx)) {
+      var ty = parts.length === 16 ? parts[13] : parts.length >= 6 ? parts[5] : NaN;
+      if (axis === 'y' && Number.isFinite(ty)) {
+        var stepPy = Math.max(1, window.innerHeight, track.clientHeight / list.length);
+        return Math.max(0, Math.min(list.length - 1, Math.round(Math.abs(ty) / stepPy)));
+      }
+      if (axis !== 'y' && Number.isFinite(tx)) {
         var stepPx = Math.max(1, window.innerWidth, track.clientWidth / list.length);
         return Math.max(0, Math.min(list.length - 1, Math.round(Math.abs(tx) / stepPx)));
       }
@@ -3518,8 +3552,17 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     var track = transformTrack(list);
     if (!track || track.id === 'od-stacked-deck-stage') return false;
     var target = Math.max(0, Math.min(list.length - 1, i));
-    var unit = /translateX\\(\\s*-?[0-9.]+\\s*%\\s*\\)/i.test(track.style.transform || '') ? '%' : 'vw';
-    track.style.transform = 'translateX(' + (-target * 100) + unit + ')';
+    var axis = transformTrackAxis(track, list);
+    if (axis === 'y') {
+      // 8-Bit Orbit / vertical slides-container: native JS uses
+      // translateY(-N00vh). Overwriting that with translateX paints an
+      // empty body background while the counter still advances.
+      var unitY = /translateY\\(\\s*-?[0-9.]+\\s*%\\s*\\)/i.test(track.style.transform || '') ? '%' : 'vh';
+      track.style.transform = 'translateY(' + (-target * 100) + unitY + ')';
+    } else {
+      var unit = /translateX\\(\\s*-?[0-9.]+\\s*%\\s*\\)/i.test(track.style.transform || '') ? '%' : 'vw';
+      track.style.transform = 'translateX(' + (-target * 100) + unit + ')';
+    }
     syncTransformStripActive(list, target);
     updateDeckChrome(target, list.length);
     report();

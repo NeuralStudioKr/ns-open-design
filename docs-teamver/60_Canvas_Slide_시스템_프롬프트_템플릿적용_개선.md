@@ -32,6 +32,17 @@
 | scaffold로 갑자기 바꾸면? | **안 됨.** kit hard cutover 금지. full HTML scaffold도 기본 inject 하지 않음 |
 | 1장짜리 템플릿 결과가 저장되는가? | **제품 경로는 첫 fill 3장.** 잘리면 제목 있는 1장은 저장하고 top-up이 덧붙인다. 제목 없는 빈 셸만 미완성으로 차단. 사용자가 1장을 명시한 경우도 허용 |
 
+### 1.00 2026-08-24 — 세로 translateY 템플릿 미리보기 빈 페이지
+
+8-Bit Orbit처럼 `slides-container`를 `translateY(-N00vh)`로 넘기는 공식 템플릿은 호스트 Next가 `translateX`로 덮어 빈 캔버스가 된다.
+
+구현 현황:
+
+- [x] `transformTrackAxis` — translateY / 세로 스택이면 Y축 유지
+- [x] `transformGo` · `activeIndexFromTransform` Y 단위(vh/%/px) + matrix ty
+- [x] 가로 `#deck-track` translateX 회귀 유지
+- [x] 8-Bit Orbit vertical red spec
+
 ### 0.99 2026-08-21 — 루트 갤러리 썸네일 포커스·비율 잔여 구멍
 
 §0.98 이후에도 `content-visibility` intrinsic, `mode: html` html-ppt, slide-only 그리드 전체, 상세 hero 100%×380px가 같은 crop/포커스 계열을 남겼다.
