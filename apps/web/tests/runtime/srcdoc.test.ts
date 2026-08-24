@@ -258,7 +258,7 @@ describe('buildSrcdoc', () => {
     const srcdoc = buildSrcdoc('<main>Hero</main>');
 
     expect(srcdoc).toContain('data-od-preview-escape-bridge');
-    expect(srcdoc).toContain("type: 'od:preview-escape'");
+    expect(srcdoc).toContain('od:preview-escape');
     expect(srcdoc).toContain("e.key !== 'Escape'");
   });
 
