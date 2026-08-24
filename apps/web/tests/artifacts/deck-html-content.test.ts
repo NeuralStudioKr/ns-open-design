@@ -144,6 +144,14 @@ describe("deck-html-content", () => {
     expect(isPersistableShortDeckDraft(healedShort)).toBe(true);
     expect(isPersistableShortDeckDraftAfterHeal(shortParrot, "expo에 대해서 설명하는 피피티 만들어줘")).toBe(true);
     expect(isPersistableShortDeckDraftAfterHeal(shortParrot)).toBe(true);
+    const titleOnlyParrot =
+      '<!doctype html><html lang="ko"><body>'
+      + '<section class="slide"><h1>슬라이드 만들어줘</h1></section>'
+      + '</body></html>';
+    expect(isPersistableShortDeckDraft(titleOnlyParrot)).toBe(false);
+    expect(isPersistableShortDeckDraftAfterHeal(titleOnlyParrot)).toBe(true);
+    expect(isDeckStatusProseOnlyBody(titleOnlyParrot)).toBe(false);
+    expect(isIncompleteHtmlDocumentShell(titleOnlyParrot)).toBe(false);
     const parrotThree =
       '<!doctype html><html lang="ko"><body>'
       + '<section class="slide"><h1>시장 기회 PPT 만들어줘</h1><p>국내 SaaS 전환이 가속화되고 있습니다.</p></section>'

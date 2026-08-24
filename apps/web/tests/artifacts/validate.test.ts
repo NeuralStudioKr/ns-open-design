@@ -191,6 +191,22 @@ describe('validateHtmlArtifact', () => {
     expect(isLowSubstanceSlideDeckArtifact(hung)).toBe(true);
   });
 
+  it('does not treat a healable short instruction-copy cover as an empty shell', () => {
+    const shortParrot =
+      '<!doctype html><html lang="ko"><body>'
+      + '<section class="slide"><h1>슬라이드 만들어줘</h1></section>'
+      + '</body></html>';
+    expect(validateHtmlArtifact(shortParrot).ok).toBe(true);
+    expect(isIncompleteHtmlDocumentShell(shortParrot)).toBe(false);
+    expect(isLowSubstanceSlideDeckArtifact(shortParrot)).toBe(true);
+
+    const emptySlide =
+      '<!doctype html><html lang="ko"><body>'
+      + '<section class="slide"></section>'
+      + '</body></html>';
+    expect(isIncompleteHtmlDocumentShell(emptySlide)).toBe(true);
+  });
+
   it('does not classify compact MiniMax 3-slide Korean drafts as low-substance', () => {
     const compact =
       '<!doctype html><html lang="ko"><body>'

@@ -588,6 +588,7 @@ export function isDeckStatusProseOnlyBody(html: string): boolean {
   if (documentContainsSlideSection(withoutComments)) {
     // 1–2 slide titled covers are first-fill drafts, not status prose (§0.76).
     if (isPersistableShortDeckDraft(withoutComments)) return false;
+    if (isPersistableShortDeckDraftAfterHeal(withoutComments)) return false;
     return !meetsMinimumDeckDeliverableQuality(html);
   }
   const bodyMatch = /<body\b[^>]*>([\s\S]*)<\/body>/i.exec(withoutComments);

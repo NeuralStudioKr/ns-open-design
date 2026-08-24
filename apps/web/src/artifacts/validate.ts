@@ -47,6 +47,7 @@ import {
   hasSalvageableDeckSlideContent,
   isDeckStatusProseOnlyBody,
   isPersistableShortDeckDraft,
+  isPersistableShortDeckDraftAfterHeal,
   meetsMinimumDeckDeliverableQuality,
 } from './deck-html-content';
 
@@ -184,6 +185,10 @@ function isEffectivelyEmptyHtmlBody(html: string): boolean {
     // use isClosedSoftSalvageDeckHtml trust without writing low-substance decks
     // that skip the low-substance gate (§0.76).
     if (isPersistableShortDeckDraft(withoutComments)) return false;
+    // Persist heals "만들어줘" covers before the short-draft gate. Resume /
+    // terminal resolve / emergency salvage still see raw HTML — treat the
+    // same 1–3 slide instruction-copy draft as contentful after that heal.
+    if (isPersistableShortDeckDraftAfterHeal(withoutComments)) return false;
     if (!meetsMinimumDeckDeliverableQuality(withoutComments)) return true;
   }
   const bodyMatch = /<body\b[^>]*>([\s\S]*)<\/body>/i.exec(withoutComments);
