@@ -227,6 +227,11 @@ function collapseTree(html: string): string {
 export function collapseAdjacentDuplicateDeckSiblings(html: string): string {
   const source = String(html ?? '');
   if (!source) return source;
-  const collapsed = collapseTree(source);
-  return collapsed === source ? source : collapsed;
+  try {
+    const collapsed = collapseTree(source);
+    return collapsed === source ? source : collapsed;
+  } catch {
+    // Pathological / truncated decks must not take down preview (error.tsx).
+    return source;
+  }
 }

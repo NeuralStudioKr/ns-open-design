@@ -168,10 +168,17 @@ export function buildSrcdoc(
     && looksLikeOfficialFullscreenPresenterDeck(repairedHead);
   // Compact MiniMax fills sometimes echo the last heading/paragraph/badge.
   // Collapse twins for preview only on stacked API decks — catalog presenters
-  // keep authored decorative repeats.
-  const previewSource = compactStackedDeck
-    ? collapseAdjacentDuplicateDeckSiblings(repairedHead)
-    : repairedHead;
+  // keep authored decorative repeats. Never throw into the React tree —
+  // a pathological deck must degrade to unrepaired HTML, not error.tsx.
+  let previewSource = repairedHead;
+  if (compactStackedDeck) {
+    try {
+      previewSource = collapseAdjacentDuplicateDeckSiblings(repairedHead);
+    } catch (err) {
+      console.error('[buildSrcdoc] collapseAdjacentDuplicateDeckSiblings failed', err);
+      previewSource = repairedHead;
+    }
+  }
   const pinForCompact = (html: string) => (
     compactStackedDeck
       ? pinDeckSlidesToFixedCanvas(html, { force: compactLetterboxOfficialPresenter })

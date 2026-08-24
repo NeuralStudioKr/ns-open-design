@@ -7358,19 +7358,24 @@ function HtmlViewer({
       if (teamverEmbedPreviewMode && (!embedPreviewPrefixSettled || !embedPreviewPrefix)) {
         return '';
       }
-      return redirectLoopBlocked
-        ? buildRedirectLoopBlockedDoc()
-        : previewSource
-          ? buildSrcdoc(previewSource, {
-            deck: effectiveDeck,
-            baseHref: srcDocBaseHref,
-            initialSlideIndex: htmlPreviewSlideState.get(previewStateKey)?.active ?? 0,
-            selectionBridge: true,
-            editBridge: manualEditRequiresSrcDoc,
-            paletteBridge: false,
-            previewFocusGuard: true,
-          })
-          : '';
+      if (redirectLoopBlocked) return buildRedirectLoopBlockedDoc();
+      if (!previewSource) return '';
+      try {
+        return buildSrcdoc(previewSource, {
+          deck: effectiveDeck,
+          baseHref: srcDocBaseHref,
+          initialSlideIndex: htmlPreviewSlideState.get(previewStateKey)?.active ?? 0,
+          selectionBridge: true,
+          editBridge: manualEditRequiresSrcDoc,
+          paletteBridge: false,
+          previewFocusGuard: true,
+        });
+      } catch (err) {
+        // Deep-link /files/deck.html mounts FileViewer on first paint — a throw
+        // here takes down the whole project route via app/error.tsx.
+        console.error('[HtmlViewer] buildSrcdoc failed', file.name, err);
+        return '';
+      }
     },
     [
       redirectLoopBlocked,
@@ -7382,6 +7387,7 @@ function HtmlViewer({
       teamverEmbedPreviewMode,
       embedPreviewPrefix,
       embedPreviewPrefixSettled,
+      file.name,
     ],
   );
   const lazySrcDocTransport = useMemo(() => buildLazySrcdocTransport(), []);

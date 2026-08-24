@@ -737,13 +737,18 @@ function AssistantMessageImpl({
     !!onContinueRemainingTasks;
   const canFork = !streaming && !!onForkFromMessage;
   const copyMarkdown = useMemo(() => {
-    const raw = message.content.trim();
+    const raw = String(message.content ?? '').trim();
     if (!raw) return undefined;
     // Copy must match display scrub — raw persist can still hold Daisy/SVG debris.
-    const cleaned = sanitizeAssistantProseForDisplay(raw, {
-      stripCodeFences: hideAssistantThinkingDetails,
-    }).trim();
-    return cleaned.length > 0 ? cleaned : undefined;
+    try {
+      const cleaned = sanitizeAssistantProseForDisplay(raw, {
+        stripCodeFences: hideAssistantThinkingDetails,
+      }).trim();
+      return cleaned.length > 0 ? cleaned : undefined;
+    } catch (err) {
+      console.error('[AssistantMessage] sanitize copyMarkdown failed', err);
+      return raw.length > 0 ? raw : undefined;
+    }
   }, [hideAssistantThinkingDetails, message.content]);
   const showFeedback =
     !!onFeedback &&
@@ -2212,11 +2217,16 @@ function ProseBlock({
   const cleaned = useMemo(() => {
     const stripped = stripAllClosedArtifacts(text);
     const base = hideRecoveredHtmlFallback ? stripRecoveredHtmlFallbackForDisplay(stripped, text) : stripped;
-    return sanitizeAssistantProseForDisplay(base, {
-      streaming,
-      // Display-only strip; artifact recovery keeps raw fences in ProjectView buffers.
-      stripCodeFences: hideStreamingCodeFences || hideAssistantThinkingDetails,
-    });
+    try {
+      return sanitizeAssistantProseForDisplay(base, {
+        streaming,
+        // Display-only strip; artifact recovery keeps raw fences in ProjectView buffers.
+        stripCodeFences: hideStreamingCodeFences || hideAssistantThinkingDetails,
+      });
+    } catch (err) {
+      console.error('[AssistantMessage] sanitize prose failed', err);
+      return base;
+    }
   }, [hideAssistantThinkingDetails, hideRecoveredHtmlFallback, hideStreamingCodeFences, streaming, text]);
   // While the latest turn is still streaming a not-yet-closed question-form,
   // drop the partial `<question-form>{…` markup from the prose so the chat
@@ -3103,8 +3113,8 @@ function suppressDuplicateQuestionForms(blocks: Block[]): Block[] {
     const nextText = segments
       .map((segment) => {
         if (segment.kind === "text") return segment.text;
-        const formKey = segment.form.id.trim().toLowerCase();
-        if (seenFormIds.has(formKey)) {
+        const formKey = String(segment.form?.id ?? '').trim().toLowerCase();
+        if (!formKey || seenFormIds.has(formKey)) {
           changed = true;
           return "";
         }

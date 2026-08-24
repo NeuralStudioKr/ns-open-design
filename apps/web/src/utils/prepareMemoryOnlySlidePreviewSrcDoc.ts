@@ -61,10 +61,15 @@ export function prepareMemoryOnlySlidePreviewSrcDoc(options: {
     projectId: options.projectId,
     fileName,
   });
-  return buildSrcdoc(healed, {
-    deck: looksLikeDeckHtml(healed),
-    baseHref,
-    selectionBridge: false,
-    previewFocusGuard: true,
-  });
+  try {
+    return buildSrcdoc(healed, {
+      deck: looksLikeDeckHtml(healed),
+      baseHref,
+      selectionBridge: false,
+      previewFocusGuard: true,
+    });
+  } catch (err) {
+    console.error('[prepareMemoryOnlySlidePreviewSrcDoc] buildSrcdoc failed', fileName, err);
+    return healed;
+  }
 }
