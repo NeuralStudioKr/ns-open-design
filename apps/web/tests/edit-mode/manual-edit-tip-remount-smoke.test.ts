@@ -43,6 +43,8 @@ import {
   hostPaintRectForManualEditSelectionCommit,
   shouldRefreshHostPaintOnManualEditSelectionCommit,
   resolveTipRemountOverlayHostPaintRect,
+  resolveTipRemountHostPaintRectResult,
+  shouldSeedTipRemountMemberLastHostRectsOnMultiCommit,
   resolveTipRemountRefreshMissAction,
   shouldClearTipRemountLastHostRectCache,
   shouldTrustTipRemountHostPaintDespiteComposedStale,
@@ -99,16 +101,20 @@ describe('manual-edit tip remount smoke (500/501/506)', () => {
     expect(webPackageJson).toContain('manual-edit-tip-post-protect-chrome-cross-walk.test.ts');
     expect(webPackageJson).toContain('manual-edit-tip-deck-nudge-follow-chrome-race.test.ts');
     expect(freezeSource).not.toContain('spendTipPostSoftLandExitLatch');
-    expect(freezeSource).toContain('Tip remount index (552)');
+    expect(freezeSource).toContain('Tip remount index (555)');
     expect(freezeSource).toContain('docs-teamver/49_tip_remount');
     expect(freezeSource).toContain('hostPaintRectForManualEditSelectionCommit');
     expect(freezeSource).toContain('resolveTipRemountRefreshMissAction');
     expect(freezeSource).toContain('resolveTipRemountOverlayHostPaintRect');
+    expect(freezeSource).toContain('resolveTipRemountHostPaintRectResult');
     expect(freezeSource).toContain('shouldRefreshHostPaintOnManualEditSelectionCommit');
+    expect(freezeSource).toContain('shouldSeedTipRemountMemberLastHostRectsOnMultiCommit');
     expect(fileViewer).toContain('hostPaintRectForManualEditSelectionCommit');
     expect(fileViewer).toContain('resolveTipRemountRefreshMissAction');
-    expect(fileViewer).toContain('resolveTipRemountOverlayHostPaintRect');
+    expect(fileViewer).toContain('resolveTipRemountHostPaintRectResult');
     expect(fileViewer).toContain('shouldRefreshHostPaintOnManualEditSelectionCommit');
+    expect(fileViewer).toContain('shouldSeedTipRemountMemberLastHostRectsOnMultiCommit');
+    expect(fileViewer).toContain('seedTipRemountMemberLastHostRectsForSelection');
     expect(fileViewer).toContain('clearTipPostSoftLandExitLatch');
     expect(fileViewer).not.toContain('spendTipPostSoftLandExitLatch');
     const sequenceFixtures = readFileSync(
@@ -217,7 +223,7 @@ describe('manual-edit tip remount smoke (500/501/506)', () => {
 
   it('reuses last host rect on tip remount measure miss (521/523)', () => {
     expect(shouldReuseLastHostRectOnTipRemountMeasureMiss(true, false, true)).toBe(true);
-    expect(fileViewer).toContain('resolveTipRemountOverlayHostPaintRect');
+    expect(fileViewer).toContain('resolveTipRemountHostPaintRectResult');
     expect(fileViewer).toContain('manualEditTipLastHostRectByIdRef');
     expect(fileViewer).toContain('resolveTipRemountHostPaintRect');
   });
@@ -289,7 +295,30 @@ describe('manual-edit tip remount smoke (500/501/506)', () => {
       .toEqual(lastGood);
     expect(resolveTipRemountRefreshMissAction(true, false, true, false, false))
       .toBe('apply-last-good');
-    expect(fileViewer).toContain('resolveTipRemountOverlayHostPaintRect');
+    expect(fileViewer).toContain('resolveTipRemountHostPaintRectResult');
+  });
+
+  it('seeds sibling last-good on multi tip selection commit (555)', () => {
+    expect(shouldSeedTipRemountMemberLastHostRectsOnMultiCommit(2, true, false)).toBe(true);
+    expect(shouldSeedTipRemountMemberLastHostRectsOnMultiCommit(2, false, false)).toBe(false);
+    expect(fileViewer).toContain('shouldSeedTipRemountMemberLastHostRectsOnMultiCommit');
+    expect(fileViewer).toContain('seedTipRemountMemberLastHostRectsForSelection');
+  });
+
+  it('uses single host-paint entry with live seed (556)', () => {
+    expect(resolveTipRemountHostPaintRectResult(
+      true, false, { x: 1, y: 2, width: 3, height: 4 }, null,
+    )).toEqual({
+      paint: { x: 1, y: 2, width: 3, height: 4 },
+      seedLastGood: { x: 1, y: 2, width: 3, height: 4 },
+    });
+    expect(resolveTipRemountHostPaintRectResult(
+      true, false, null, { x: 5, y: 6, width: 7, height: 8 },
+    )).toEqual({
+      paint: { x: 5, y: 6, width: 7, height: 8 },
+      seedLastGood: null,
+    });
+    expect(fileViewer).toContain('resolveTipRemountHostPaintRectResult');
   });
 
   it('clears tip last-good host rect cache when session idle (524)', () => {
@@ -405,7 +434,7 @@ describe('manual-edit tip remount smoke (500/501/506)', () => {
     expect(fileViewer).toContain('manualEditTipLastHostRectByIdRef');
     expect(fileViewer).toContain('shouldArmTipRemountChromeUnlockPointerGate');
     expect(fileViewer).toContain('shouldClearTipRemountLastHostRectCache');
-    expect(fileViewer).toContain('resolveTipRemountOverlayHostPaintRect');
+    expect(fileViewer).toContain('resolveTipRemountHostPaintRectResult');
   });
 
   it('catch-up host metrics when follow remasure is throttled (517)', () => {

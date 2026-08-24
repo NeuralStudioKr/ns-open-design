@@ -318,12 +318,13 @@ describe('FileViewer revision tip advance after undo', () => {
     expect(fileViewer).toContain('shouldRetryTipRemountSiblingMeasure');
     expect(fileViewer).toContain('shouldReplaceDeferredTipRemountGeometryPayload');
     expect(fileViewer).toContain('shouldArmTipRemountChromeUnlockPointerGate');
-    expect(fileViewer).toContain('resolveTipRemountOverlayHostPaintRect');
+    expect(fileViewer).toContain('resolveTipRemountHostPaintRectResult');
     expect(fileViewer).toContain('resolveTipRemountRefreshMissAction');
     expect(fileViewer).toContain('shouldSeedTipRemountLastHostRectFromLivePaint');
     expect(fileViewer).toContain('shouldApplyTipRemountLastHostRectOnLayoutPaintMiss');
     expect(fileViewer).toContain('hostPaintRectForManualEditSelectionCommit');
     expect(fileViewer).toContain('shouldRefreshHostPaintOnManualEditSelectionCommit');
+    expect(fileViewer).toContain('shouldSeedTipRemountMemberLastHostRectsOnMultiCommit');
     expect(fileViewer).toContain('shouldClearTipRemountLastHostRectCache');
     expect(fileViewer).toContain('shouldFlushDeferredTipRemountGeometryBeforeUnlockGateClear');
     expect(fileViewer).toContain('shouldTrustTipRemountHostPaintDespiteComposedStale');

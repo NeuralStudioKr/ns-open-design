@@ -67,6 +67,8 @@ import {
   hostPaintRectForManualEditSelectionCommit,
   shouldRefreshHostPaintOnManualEditSelectionCommit,
   resolveTipRemountOverlayHostPaintRect,
+  resolveTipRemountHostPaintRectResult,
+  shouldSeedTipRemountMemberLastHostRectsOnMultiCommit,
   resolveTipRemountRefreshMissAction,
   shouldClearTipRemountLastHostRectCache,
   shouldTrustTipRemountHostPaintDespiteComposedStale,
@@ -424,6 +426,9 @@ describe('manual edit freeze reset', () => {
     expect(shouldRefreshHostPaintOnManualEditSelectionCommit(2, false, false)).toBe(false);
     expect(shouldRefreshHostPaintOnManualEditSelectionCommit(2, true, false)).toBe(true);
     expect(shouldRefreshHostPaintOnManualEditSelectionCommit(3, false, true)).toBe(true);
+    expect(shouldSeedTipRemountMemberLastHostRectsOnMultiCommit(2, true, false)).toBe(true);
+    expect(shouldSeedTipRemountMemberLastHostRectsOnMultiCommit(2, false, false)).toBe(false);
+    expect(shouldSeedTipRemountMemberLastHostRectsOnMultiCommit(1, true, false)).toBe(false);
     expect(resolveTipRemountOverlayHostPaintRect(
       true, false, null, { x: 1, y: 2, width: 3, height: 4 },
     )).toEqual({ x: 1, y: 2, width: 3, height: 4 });
@@ -433,6 +438,18 @@ describe('manual edit freeze reset', () => {
     expect(resolveTipRemountOverlayHostPaintRect(
       true, false, { x: 9, y: 8, width: 7, height: 6 }, { x: 1, y: 2, width: 3, height: 4 },
     )).toEqual({ x: 9, y: 8, width: 7, height: 6 });
+    expect(resolveTipRemountHostPaintRectResult(
+      true, false, { x: 9, y: 8, width: 7, height: 6 }, { x: 1, y: 2, width: 3, height: 4 },
+    )).toEqual({
+      paint: { x: 9, y: 8, width: 7, height: 6 },
+      seedLastGood: { x: 9, y: 8, width: 7, height: 6 },
+    });
+    expect(resolveTipRemountHostPaintRectResult(
+      true, false, null, { x: 1, y: 2, width: 3, height: 4 },
+    )).toEqual({
+      paint: { x: 1, y: 2, width: 3, height: 4 },
+      seedLastGood: null,
+    });
     // Overlay last-good path matches refresh-miss apply-last-good (553)
     expect(resolveTipRemountRefreshMissAction(true, false, true, false, false))
       .toBe('apply-last-good');

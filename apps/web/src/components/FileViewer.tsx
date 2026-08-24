@@ -408,7 +408,8 @@ import {
   shouldApplyTipRemountLastHostRectOnLayoutPaintMiss,
   hostPaintRectForManualEditSelectionCommit,
   shouldRefreshHostPaintOnManualEditSelectionCommit,
-  resolveTipRemountOverlayHostPaintRect,
+  resolveTipRemountHostPaintRectResult,
+  shouldSeedTipRemountMemberLastHostRectsOnMultiCommit,
   resolveTipRemountRefreshMissAction,
   shouldClearTipRemountLastHostRectCache,
   shouldTrustTipRemountHostPaintDespiteComposedStale,
@@ -8440,23 +8441,42 @@ function HtmlViewer({
     }
   }
 
-  /** Resolve host paint for chrome — tip session reuses last-good on miss (521/523/538/553). */
+  /** Resolve host paint for chrome — live seed + last-good fallback (521/553/556). */
   function resolveTipRemountHostPaintRect(
     id: string | null | undefined,
     paint: ManualEditRect | null,
   ): ManualEditRect | null {
-    if (paint && paint.width >= 1 && paint.height >= 1) {
-      if (id) manualEditTipLastHostRectByIdRef.current.set(id, { ...paint });
-      return paint;
+    if (!id) {
+      if (paint && paint.width >= 1 && paint.height >= 1) return paint;
+      return null;
     }
-    if (!id) return null;
     const lastGood = manualEditTipLastHostRectByIdRef.current.get(id) ?? null;
-    return resolveTipRemountOverlayHostPaintRect(
+    const { paint: resolved, seedLastGood } = resolveTipRemountHostPaintRectResult(
       tipRemountChromeSessionLiveNow(),
       manualEditTipPaintSyncHoldRef.current,
-      null,
+      paint,
       lastGood,
     );
+    if (seedLastGood) {
+      manualEditTipLastHostRectByIdRef.current.set(id, seedLastGood);
+    }
+    return resolved;
+  }
+
+  /**
+   * Tip/paint-sync multi commit: measure every selected member and seed
+   * last-good so union chrome miss can reuse per-id boxes (555).
+   */
+  function seedTipRemountMemberLastHostRectsForSelection(ids: readonly string[]) {
+    const frame = iframeRef.current;
+    const workspace = manualEditWorkspaceRef.current;
+    if (!frame || !workspace) return;
+    for (const id of ids) {
+      const paint = measureManualEditTargetHostRect(frame, workspace, id);
+      if (paint && paint.width >= 1 && paint.height >= 1) {
+        manualEditTipLastHostRectByIdRef.current.set(id, { ...paint });
+      }
+    }
   }
 
   /**
@@ -12768,6 +12788,14 @@ function HtmlViewer({
       paintSyncHold,
     )) {
       refreshManualEditHostPaintRect(primary.id);
+    }
+    // Multi tip/paint-sync: seed last-good for every member, not just primary (555).
+    if (shouldSeedTipRemountMemberLastHostRectsOnMultiCommit(
+      nextTargets.length,
+      tipSessionLive,
+      paintSyncHold,
+    )) {
+      seedTipRemountMemberLastHostRectsForSelection(nextIds);
     }
     if (nextTargets.length === 1) {
       const snapshot = readManualEditTargetSnapshot(base, primary.id, {}, parsedDoc);

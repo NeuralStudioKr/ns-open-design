@@ -1,7 +1,7 @@
-# Tip remount 체감 체크리스트 (500–554)
+# Tip remount 체감 체크리스트 (500–557)
 
 Manual Edit tip-yield → remount → chrome interactive 경로의 **사용자 체감** 회귀 체크리스트입니다.  
-헬퍼/시퀀스 SSOT는 `apps/web/src/edit-mode/manual-edit-freeze.ts` 상단 **Tip remount index (552)** 와 아래 상수입니다.
+헬퍼/시퀀스 SSOT는 `apps/web/src/edit-mode/manual-edit-freeze.ts` 상단 **Tip remount index (555)** 와 아래 상수입니다.
 
 | 시퀀스 | 상수 |
 |--------|------|
@@ -43,9 +43,11 @@ CI fail-fast: `pnpm --filter @open-design/web test:tip-remount-smoke`
 - [ ] layout-effect miss + current empty → last-good apply (543)
 - [ ] selection commit이 tip/paint-sync 중 unconditional null 대신 primary last-good (546)
 - [ ] multi selection commit도 tip/paint-sync 중 primary refresh (552)
+- [ ] multi tip commit이 멤버별 last-good를 seed (555)
 - [ ] refresh miss 해석 순서: last-good → retain → force-keep → clear (549/550)
 - [ ] selection-commit last-good가 이어지는 refresh miss에서 apply-last-good로 연결 (549/550)
-- [ ] overlay `resolveTipRemountOverlayHostPaintRect` last-good가 refresh-miss apply-last-good와 일치 (553)
+- [ ] overlay last-good가 refresh-miss apply-last-good와 일치 (553)
+- [ ] `resolveTipRemountHostPaintRectResult` 단일 진입으로 live seed + last-good (556)
 - [ ] mode-exit / no-id / clear-selection / unprotected refresh miss null은 의도적 clear 5곳 (546 audit)
 - [ ] geom-epoch bump는 hold 중 defer → hold clear 시 flush (533)
 - [ ] immediate epoch bump는 deferred flag clear (542 double-bump 방지)
@@ -70,14 +72,14 @@ CI fail-fast: `pnpm --filter @open-design/web test:tip-remount-smoke`
 
 | 파일 | 범위 |
 |------|------|
-| `manual-edit-tip-remount-smoke.test.ts` | wiring 핀 500–553 |
+| `manual-edit-tip-remount-smoke.test.ts` | wiring 핀 500–556 |
 | `tip-remount-sequence-fixtures.ts` | soft-land×chrome 공유 walk (547) |
 | `manual-edit-tip-soft-land-absorb-sequence.test.ts` | post-protect walk |
 | `manual-edit-tip-chrome-release-sequence.test.ts` | chrome helper walk |
 | `manual-edit-tip-post-protect-chrome-cross-walk.test.ts` | 교차 walk (544) |
 | `manual-edit-tip-deck-nudge-follow-chrome-race.test.ts` | follow/chrome race |
 
-인간 UI §A–E 스모크는 namespaced runtime 2개로 별도 확인 (554 note).
+인간 UI §A–E 스모크는 namespaced runtime 2개로 별도 확인 (557 note).
 
 ---
 
@@ -93,6 +95,6 @@ CI fail-fast: `pnpm --filter @open-design/web test:tip-remount-smoke`
 | 543–545 | layout last-good seed/miss, cross walk, checklist |
 | 546–548 | selection-commit last-good, shared walk fixtures, checklist rename |
 | 549–551 | refresh-miss action order, selection×force 교집합 핀, checklist 500–551 |
-| 552–554 | multi commit tip refresh, overlay/refresh-miss align, checklist 500–554 |
+| 552–554 | multi commit tip refresh, overlay/refresh-miss align, checklist 500–557 |
 
 문서 갱신 시 `docs-teamver/00_구현_내역_누적.md` 최상단에도 한 줄을 남깁니다.
