@@ -30,6 +30,18 @@ export function looksLikeDeckGalleryIdentity(
 }
 
 /**
+ * 16:9 thumbs (Community deck grid, plus-menu, Canvas picker) must not
+ * prefer the 1.31 baked hover-pan clip — that clip letterboxes inside
+ * the 1920 isolation frame. HomeHero tiles stay on `preferBaked: true`
+ * because those presets are still 1.31.
+ */
+export function shouldPreferBakedGalleryClip(
+  record: Pick<InstalledPluginRecord, 'id' | 'manifest'>,
+): boolean {
+  return !looksLikeDeckGalleryIdentity(record);
+}
+
+/**
  * Gallery / plus-menu thumbs key 16:9 isolation framing off `data-od-mode="deck"`.
  * Official catalog skills set `manifest.od.mode`, but community html-ppt rows
  * sometimes omit it or ship `mode: html`. Without the deck attribute they fall

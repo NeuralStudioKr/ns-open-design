@@ -23,6 +23,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react"
 import { useI18n } from "../../i18n";
 import { Icon } from "../../components/Icon";
 import { inferPluginPreview } from "../../components/plugins-home/preview";
+import { shouldPreferBakedGalleryClip } from "../../components/plugins-home/galleryOdMode";
 import { PreviewSurface } from "../../components/plugins-home/cards/PreviewSurface";
 import { localizePluginDescription } from "../../components/plugins-home/localization";
 import { CANVAS_CREATE_SLIDES_PLUGIN_ID, type TeamverCanvasSlideTemplateOption } from "../canvasSlideLaunch";
@@ -333,11 +334,13 @@ function extractCardTags(option: TeamverCanvasSlideTemplateOption): string[] {
 function CanvasSlideTemplateCard({ option, selected, disabled, onSelect }: CardProps) {
   const record = option.record ?? null;
   const { locale } = useI18n();
-  // Baked hover-pan clip when available (Home gallery convention); otherwise
-  // fall back to the real example.html iframe or a text tile via
-  // `PreviewSurface`.
+  // Non-deck records may use a baked hover-pan clip. Deck identity stays
+  // on the isolated 1920 example.html cover so 1.31 bakes do not letterbox
+  // the 16:9 picker frame.
   const preview = useMemo(
-    () => (record ? inferPluginPreview(record, { preferBaked: true }) : null),
+    () => (record
+      ? inferPluginPreview(record, { preferBaked: shouldPreferBakedGalleryClip(record) })
+      : null),
     [record],
   );
   const eager = shouldEagerLoadCommunityPluginPreviews();

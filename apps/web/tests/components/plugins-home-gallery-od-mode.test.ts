@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { InstalledPluginRecord } from '@open-design/contracts';
-import { resolveGalleryOdMode } from '../../src/components/plugins-home/galleryOdMode';
+import {
+  resolveGalleryOdMode,
+  shouldPreferBakedGalleryClip,
+} from '../../src/components/plugins-home/galleryOdMode';
 
 function record(
   partial: Partial<InstalledPluginRecord> & {
@@ -67,6 +70,33 @@ describe('resolveGalleryOdMode', () => {
         }),
       ),
     ).toBe('deck');
+  });
+
+  it('skips 1.31 baked clips on 16:9 deck thumbs', () => {
+    expect(
+      shouldPreferBakedGalleryClip(
+        record({
+          id: 'example-html-ppt-zhangzara-8-bit-orbit',
+          manifest: { tags: ['html-ppt'] } as InstalledPluginRecord['manifest'],
+        }),
+      ),
+    ).toBe(false);
+    expect(
+      shouldPreferBakedGalleryClip(
+        record({
+          id: 'image-template-poster',
+          manifest: { tags: ['image'] } as InstalledPluginRecord['manifest'],
+        }),
+      ),
+    ).toBe(true);
+    expect(
+      shouldPreferBakedGalleryClip(
+        record({
+          id: 'commercial-deck',
+          manifest: { tags: ['commercial-slide-agent'] } as InstalledPluginRecord['manifest'],
+        }),
+      ),
+    ).toBe(true);
   });
 
   it('does not invent a mode for unrelated plugins', () => {

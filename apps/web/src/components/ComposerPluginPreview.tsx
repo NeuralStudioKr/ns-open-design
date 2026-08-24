@@ -26,7 +26,7 @@ import {
   localizePluginDescription,
   localizePluginTitle,
 } from './plugins-home/localization';
-import { resolveGalleryOdMode } from './plugins-home/galleryOdMode';
+import { resolveGalleryOdMode, shouldPreferBakedGalleryClip } from './plugins-home/galleryOdMode';
 import { inferPluginPreview } from './plugins-home/preview';
 import { TrustBadge } from './TrustBadge';
 
@@ -80,7 +80,9 @@ export function ComposerPluginPreview({
   const t = useT();
   const teamverEmbed = isTeamverEmbedMode();
   const preview = useMemo(
-    () => inferPluginPreview(record, { preferBaked: true }),
+    () => inferPluginPreview(record, {
+      preferBaked: shouldPreferBakedGalleryClip(record),
+    }),
     [record],
   );
   const title = teamverEmbed
