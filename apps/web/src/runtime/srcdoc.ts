@@ -129,7 +129,10 @@ export {
   repairArtifactDocumentHeadIfNeeded,
 } from './artifact-document-head';
 import { repairArtifactDocumentHeadIfNeeded } from './artifact-document-head';
-import { repairDeckSlideSurfaceBleed } from '../artifacts/deck-slide-surface';
+import {
+  inferDeckSlidePaperSurface,
+  repairDeckSlideSurfaceBleed,
+} from '../artifacts/deck-slide-surface';
 import { relaxPersistedDeckSlideSurfaceBleed } from '@open-design/contracts';
 
 export function buildSrcdoc(
@@ -2546,6 +2549,13 @@ html[data-od-inspect-mode] body iframe { pointer-events: none !important; }
 // the scaled stage lands ~1000px off-screen and the user sees a mostly-
 // black preview with a sliver of slide content in the top-left. Skip the
 // override whenever the framework's marker id is present.
+function sanitizeStackedStagePaper(value: string | null | undefined): string | null {
+  const raw = String(value ?? '').trim();
+  if (!raw || raw.length > 160) return null;
+  if (/[<>]|<\/style/i.test(raw)) return null;
+  return raw.replace(/[;\n\r]/g, ' ').trim() || null;
+}
+
 function injectDeckBridge(
   doc: string,
   initialSlideIndex = 0,
@@ -2557,6 +2567,9 @@ function injectDeckBridge(
   const isFrameworkDeck = /\bid\s*=\s*["']deck-stage["']/i.test(doc)
     || /<deck-stage\b/i.test(doc);
   const isCompactStackedDeck = compactStackedDeck;
+  const stagePaper = sanitizeStackedStagePaper(
+    inferDeckSlidePaperSurface(doc)?.background,
+  );
   // Catalog presenters hide inactive pages with author CSS (opacity or
   // display:none + .active). Host `display:none !important` survives
   // native `#nextBtn` class toggles, so later pages report the right
@@ -2621,6 +2634,7 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
   transform-origin: center center;
   /* Soft edge so cream slides read as a card on the stage chrome. */
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06);
+  ${stagePaper ? `background: ${stagePaper};` : ''}
 }
 #od-stacked-deck-stage > .slide {
   box-sizing: border-box !important;

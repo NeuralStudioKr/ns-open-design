@@ -44,6 +44,20 @@ describe('deck-slide-surface', () => {
     expect(repairDeckSlideSurfaceBleed(html)).toContain('#F5F0E6');
   });
 
+  it('promotes paper onto labeled Neutral hosts that omit class=slide (§1.04)', () => {
+    const html = `<!doctype html><html><head><style>
+:root{--cream:#F5F0E6;--text-dark:#2D2D2D}
+html, body { margin:0; background:#ffffff; }
+</style></head>
+<body>
+<section class="s1" data-screen-label="01 Cover"><h1>Cover</h1></section>
+</body></html>`;
+    const repaired = repairDeckSlideSurfaceBleed(html);
+    expect(repaired).toContain('data-od-slide-surface-bleed');
+    expect(repaired).toContain('[data-screen-label]');
+    expect(repaired).toMatch(/background:\s*#F5F0E6/i);
+  });
+
   it('does not rewrite when html/body/slide already share non-white paper', () => {
     const html = `<!doctype html><html><head><style>
 html, body, .slide { background:#F5F0E6; color:#2D2D2D; }

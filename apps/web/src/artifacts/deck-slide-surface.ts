@@ -1,4 +1,7 @@
-import { repairArtifactStyleSheets } from '@open-design/contracts';
+import {
+  attrsLookLikeDeckOrTemplateSlideHost,
+  repairArtifactStyleSheets,
+} from '@open-design/contracts';
 
 /**
  * Preview letterbox / inner-paper bleed repair.
@@ -201,7 +204,7 @@ export function deckHasPerSlideSurfacePaint(html: string): boolean {
 function surfaceBleedSelectors(preserveSlidePaint: boolean): string {
   return preserveSlidePaint
     ? 'html, body'
-    : 'html, body, .slide, section.slide';
+    : 'html, body, .slide, section.slide, [data-screen-label], .deck-slide, .ppt-slide';
 }
 
 function renderSurfaceBleedStyle(paper: DeckSlidePaperSurface, preserveSlidePaint: boolean): string {
@@ -485,7 +488,7 @@ export function repairDeckSlideSurfaceBleed(html: string): string {
   let hasSlide = false;
   let openMatch: RegExpExecArray | null;
   while ((openMatch = TAG_OPEN_RE.exec(source)) !== null) {
-    if (elementHasExactSlideClass(openMatch[2] ?? '')) {
+    if (attrsLookLikeDeckOrTemplateSlideHost(openMatch[2] ?? '')) {
       hasSlide = true;
       break;
     }
