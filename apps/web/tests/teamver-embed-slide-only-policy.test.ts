@@ -6,6 +6,7 @@ import {
   pluginsForSlideOnlyMvp,
   shouldHideCommunityPrimaryFacets,
   shouldShowHomeCommunityGallery,
+  skillsForSlideOnlyMvp,
   SLIDE_ONLY_COMMUNITY_FACET_SELECTION,
 } from '../src/teamver/branding/slideOnlyMvpPolicy';
 import { embedBlockedComposerSlashReason, embedSlideOnlyOutboundBlockReason } from '../src/teamver/branding/embedSlideOnlyOutboundGuard';
@@ -25,6 +26,37 @@ describe('embed slide-only plugin policy', () => {
     expect(
       pluginsForSlideOnlyMvp([deck, video] as never[], { slideOnlyMvp: true }).map((p) => p.id),
     ).toEqual(['deck-1']);
+  });
+
+  it('hides the html-ppt prompt scaffold from slide-only Community lists', () => {
+    const scaffold = {
+      id: 'example-html-ppt',
+      title: 'Html Ppt',
+      manifest: { name: 'example-html-ppt', version: '0.1.0', od: { mode: 'deck' } },
+    };
+    const child = {
+      id: 'example-html-ppt-zhangzara-studio',
+      title: 'Html Ppt Studio',
+      manifest: {
+        name: 'example-html-ppt-zhangzara-studio',
+        version: '0.1.0',
+        od: { mode: 'deck' },
+      },
+    };
+    expect(
+      pluginsForSlideOnlyMvp([scaffold, child] as never[], { slideOnlyMvp: true }).map(
+        (plugin) => plugin.id,
+      ),
+    ).toEqual(['example-html-ppt-zhangzara-studio']);
+    expect(
+      skillsForSlideOnlyMvp(
+        [
+          { id: 'html-ppt', name: 'html-ppt', mode: 'deck', triggers: [] },
+          { id: 'html-ppt-studio', name: 'html-ppt-studio', mode: 'deck', triggers: [] },
+        ] as never[],
+        { slideOnlyMvp: true },
+      ).map((skill) => skill.id),
+    ).toEqual(['html-ppt-studio']);
   });
 
   it('defaults slide-only Community browsing to Creative decks', () => {

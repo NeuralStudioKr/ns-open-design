@@ -432,6 +432,29 @@ describe("canvasSlideLaunch", () => {
     expect(options.some((option) => option.id === "some-image-tool")).toBe(false);
   });
 
+  it("hides the html-ppt prompt scaffold from the canvas template picker", () => {
+    const scaffold = {
+      id: "example-html-ppt",
+      title: "Html Ppt",
+      manifest: { name: "example-html-ppt", title: "Html Ppt", od: { mode: "deck" } },
+    } as unknown as InstalledPluginRecord;
+    const child = {
+      id: "example-html-ppt-zhangzara-studio",
+      title: "Html Ppt Studio",
+      manifest: {
+        name: "example-html-ppt-zhangzara-studio",
+        title: "Html Ppt Studio",
+        od: { mode: "deck" },
+      },
+    } as unknown as InstalledPluginRecord;
+
+    const options = canvasSlideTemplateOptions([scaffold, child], "ko");
+    expect(options.some((option) => option.id === "example-html-ppt")).toBe(false);
+    expect(options.some((option) => option.id === "example-html-ppt-zhangzara-studio")).toBe(
+      true,
+    );
+  });
+
   it("threads userInstruction through plugin inputs when provided", () => {
     const inputs = canvasCreateSlidesPluginInputs(
       "Topic",

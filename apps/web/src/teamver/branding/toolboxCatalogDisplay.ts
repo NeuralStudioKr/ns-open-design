@@ -21,6 +21,31 @@ const HIDDEN_TOOLBOX_SKILL_IDS = new Set([
   "open-design-landing",
 ]);
 
+/**
+ * Official html-ppt meta skill (`plugins/_official/examples/html-ppt`).
+ * It is a prompt/SKILL scaffold, not a visual deck template. Match the last
+ * path segment only so child templates (`example-html-ppt-zhangzara-*`) stay
+ * visible.
+ */
+const HIDDEN_PROMPT_SCAFFOLD_RESOURCE_IDS = new Set(["example-html-ppt", "html-ppt"]);
+
+export function isTeamverHiddenPromptScaffoldResourceId(
+  id: string | null | undefined,
+): boolean {
+  const last =
+    String(id ?? "")
+      .split("/")
+      .filter(Boolean)
+      .at(-1)
+      ?.trim()
+      .toLowerCase() ?? "";
+  return HIDDEN_PROMPT_SCAFFOLD_RESOURCE_IDS.has(last);
+}
+
+function isExactHtmlPptScaffoldTitle(title: string | null | undefined): boolean {
+  return title?.trim().replace(/\s+/g, " ").toLowerCase() === "html ppt";
+}
+
 const OPEN_SLIDE_LABEL_RE = /Open[- ]?Slide/gi;
 
 /** OD product/skill slugs — not repo paths like `nexu-io/open-design` or `ns-open-design`. */
@@ -63,7 +88,16 @@ export function shouldHideTeamverToolboxPlugin(
   plugin: InstalledPluginRecord,
   locale: Locale,
 ): boolean {
+  if (
+    isTeamverHiddenPromptScaffoldResourceId(plugin.id) ||
+    isTeamverHiddenPromptScaffoldResourceId(plugin.manifest?.name)
+  ) {
+    return true;
+  }
   const title = localizePluginTitle(locale, plugin);
+  if (isExactHtmlPptScaffoldTitle(title) || isExactHtmlPptScaffoldTitle(plugin.title)) {
+    return true;
+  }
   const subtitle = localizePluginDescription(locale, plugin) || plugin.id;
   return isOpenDesignBrandedToolboxResource(
     [
@@ -83,7 +117,16 @@ export function shouldHideTeamverToolboxSkill(
   skill: SkillSummary,
   locale: Locale,
 ): boolean {
+  if (
+    isTeamverHiddenPromptScaffoldResourceId(skill.id) ||
+    isTeamverHiddenPromptScaffoldResourceId(skill.name)
+  ) {
+    return true;
+  }
   const title = localizeSkillName(locale, skill);
+  if (isExactHtmlPptScaffoldTitle(title) || isExactHtmlPptScaffoldTitle(skill.name)) {
+    return true;
+  }
   const subtitle = localizeSkillDescription(locale, skill);
   return isOpenDesignBrandedToolboxResource(
     [skill.id, skill.name, title, subtitle],
