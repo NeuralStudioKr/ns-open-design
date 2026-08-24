@@ -10,7 +10,7 @@
  * from the latest live/saved source.
  *
  * ---------------------------------------------------------------------------
- * Tip remount index (549) — user-perception sequences & key constants
+ * Tip remount index (552) — user-perception sequences & key constants
  * ---------------------------------------------------------------------------
  * Post-protect: TIP_REMOUNT_POST_PROTECT_SEQUENCE
  *   sticky-clear → soft-land → exit-latch → absorb → post-absorb-quiet → live
@@ -30,13 +30,17 @@
  * Soft-land catalogs: TIP_POST_STICKY_SOFT_LAND_CATALOGS (2) — intentional.
  * Layout paint: seed/apply last-good during tip session or paint-sync hold (543).
  * Selection commit: hostPaintRectForManualEditSelectionCommit (546).
+ * Multi commit: shouldRefreshHostPaintOnManualEditSelectionCommit also
+ *   refreshes primary during tip/paint-sync so union measure warms (552).
  * Refresh miss: resolveTipRemountRefreshMissAction — last-good → retain →
  *   force-keep → clear (549/550). Selection-commit last-good feeds the same
  *   last-good branch on the following refresh.
+ * Overlay paint: resolveTipRemountOverlayHostPaintRect shares last-good reuse
+ *   with the refresh-miss apply-last-good branch (553).
  * Intentional nulls (5): mode-exit / no-id / refresh(!id) / unprotected miss /
  *   clear-selection.
  * Walk fixtures: apps/web/tests/edit-mode/tip-remount-sequence-fixtures.ts (547).
- * Checklist: docs-teamver/49_tip_remount_체감_체크리스트_500-551.md (548/551).
+ * Checklist: docs-teamver/49_tip_remount_체감_체크리스트_500-554.md (551/554).
  * Do not retune fit delays / latch / soft-land without a tip-remount loop note.
  */
 export function shouldClearManualEditFrozenSourceOnModeChange(
@@ -1393,6 +1397,46 @@ export function hostPaintRectForManualEditSelectionCommit(
 ): TipRemountHostPaintRect | null {
   if (tipRemountChromeSessionLive || paintSyncHoldArmed) {
     return lastGoodForPrimary;
+  }
+  return null;
+}
+
+/**
+ * After selection commit, refresh primary host paint.
+ * Single always refreshes. Multi also refreshes during tip/paint-sync so
+ * last-good cache + host metrics warm before union chrome measures (552).
+ */
+export function shouldRefreshHostPaintOnManualEditSelectionCommit(
+  selectedCount: number,
+  tipRemountChromeSessionLive: boolean,
+  paintSyncHoldArmed: boolean,
+): boolean {
+  if (selectedCount === 1) return true;
+  return selectedCount >= 2
+    && (tipRemountChromeSessionLive || paintSyncHoldArmed);
+}
+
+/**
+ * Overlay chrome paint when live measure is missing (553).
+ * Shares last-good reuse with resolveTipRemountRefreshMissAction's
+ * apply-last-good branch — overlays have no React "current" to retain.
+ */
+export function resolveTipRemountOverlayHostPaintRect(
+  tipRemountChromeSessionLive: boolean,
+  paintSyncHoldArmed: boolean,
+  livePaint: TipRemountHostPaintRect | null,
+  lastGood: TipRemountHostPaintRect | null,
+): TipRemountHostPaintRect | null {
+  if (livePaint && livePaint.width >= 1 && livePaint.height >= 1) {
+    return livePaint;
+  }
+  if (shouldReuseLastHostRectOnTipRemountMeasureMiss(
+    tipRemountChromeSessionLive,
+    false,
+    lastGood != null,
+    paintSyncHoldArmed,
+  )) {
+    return lastGood;
   }
   return null;
 }

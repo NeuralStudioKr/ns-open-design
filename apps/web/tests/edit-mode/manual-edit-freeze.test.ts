@@ -65,6 +65,8 @@ import {
   shouldSeedTipRemountLastHostRectFromLivePaint,
   shouldApplyTipRemountLastHostRectOnLayoutPaintMiss,
   hostPaintRectForManualEditSelectionCommit,
+  shouldRefreshHostPaintOnManualEditSelectionCommit,
+  resolveTipRemountOverlayHostPaintRect,
   resolveTipRemountRefreshMissAction,
   shouldClearTipRemountLastHostRectCache,
   shouldTrustTipRemountHostPaintDespiteComposedStale,
@@ -417,6 +419,22 @@ describe('manual edit freeze reset', () => {
       true, false, { x: 1, y: 2, width: 3, height: 4 },
     )).toEqual({ x: 1, y: 2, width: 3, height: 4 });
     expect(resolveTipRemountRefreshMissAction(true, false, true, true, true))
+      .toBe('apply-last-good');
+    expect(shouldRefreshHostPaintOnManualEditSelectionCommit(1, false, false)).toBe(true);
+    expect(shouldRefreshHostPaintOnManualEditSelectionCommit(2, false, false)).toBe(false);
+    expect(shouldRefreshHostPaintOnManualEditSelectionCommit(2, true, false)).toBe(true);
+    expect(shouldRefreshHostPaintOnManualEditSelectionCommit(3, false, true)).toBe(true);
+    expect(resolveTipRemountOverlayHostPaintRect(
+      true, false, null, { x: 1, y: 2, width: 3, height: 4 },
+    )).toEqual({ x: 1, y: 2, width: 3, height: 4 });
+    expect(resolveTipRemountOverlayHostPaintRect(
+      false, false, null, { x: 1, y: 2, width: 3, height: 4 },
+    )).toBeNull();
+    expect(resolveTipRemountOverlayHostPaintRect(
+      true, false, { x: 9, y: 8, width: 7, height: 6 }, { x: 1, y: 2, width: 3, height: 4 },
+    )).toEqual({ x: 9, y: 8, width: 7, height: 6 });
+    // Overlay last-good path matches refresh-miss apply-last-good (553)
+    expect(resolveTipRemountRefreshMissAction(true, false, true, false, false))
       .toBe('apply-last-good');
     expect(shouldClearTipRemountLastHostRectCache(false, false, false)).toBe(true);
     expect(shouldClearTipRemountLastHostRectCache(true, false, false)).toBe(false);

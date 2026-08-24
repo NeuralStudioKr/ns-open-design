@@ -404,10 +404,11 @@ import {
   TIP_REMOUNT_POST_UNLOCK_QUIET_TIMEOUT_MS,
   shouldArmTipRemountChromeUnlockPointerGate,
   shouldDisableManualEditChromeForTipRemountUnlockGate,
-  shouldReuseLastHostRectOnTipRemountMeasureMiss,
   shouldSeedTipRemountLastHostRectFromLivePaint,
   shouldApplyTipRemountLastHostRectOnLayoutPaintMiss,
   hostPaintRectForManualEditSelectionCommit,
+  shouldRefreshHostPaintOnManualEditSelectionCommit,
+  resolveTipRemountOverlayHostPaintRect,
   resolveTipRemountRefreshMissAction,
   shouldClearTipRemountLastHostRectCache,
   shouldTrustTipRemountHostPaintDespiteComposedStale,
@@ -8431,7 +8432,7 @@ function HtmlViewer({
     }
   }
 
-  /** Resolve host paint for chrome — tip session reuses last-good on miss (521/523/538). */
+  /** Resolve host paint for chrome — tip session reuses last-good on miss (521/523/538/553). */
   function resolveTipRemountHostPaintRect(
     id: string | null | undefined,
     paint: ManualEditRect | null,
@@ -8442,15 +8443,12 @@ function HtmlViewer({
     }
     if (!id) return null;
     const lastGood = manualEditTipLastHostRectByIdRef.current.get(id) ?? null;
-    if (shouldReuseLastHostRectOnTipRemountMeasureMiss(
+    return resolveTipRemountOverlayHostPaintRect(
       tipRemountChromeSessionLiveNow(),
-      false,
-      lastGood != null,
       manualEditTipPaintSyncHoldRef.current,
-    )) {
-      return lastGood;
-    }
-    return null;
+      null,
+      lastGood,
+    );
   }
 
   /**
@@ -12747,13 +12745,23 @@ function HtmlViewer({
     setSelectedManualEditTarget(primary);
     // Tip/paint-sync: seed last-good for next primary instead of unconditional
     // null — refresh early-return or multi commit must not flash hybrid (546).
+    const tipSessionLive = tipRemountChromeSessionLiveNow();
+    const paintSyncHold = manualEditTipPaintSyncHoldRef.current;
     setManualEditHostPaintRect(hostPaintRectForManualEditSelectionCommit(
-      tipRemountChromeSessionLiveNow(),
-      manualEditTipPaintSyncHoldRef.current,
+      tipSessionLive,
+      paintSyncHold,
       manualEditTipLastHostRectByIdRef.current.get(primary.id) ?? null,
     ));
-    if (nextTargets.length === 1) {
+    // Single always; multi during tip/paint-sync warms last-good + host metrics
+    // before union chrome measures (552).
+    if (shouldRefreshHostPaintOnManualEditSelectionCommit(
+      nextTargets.length,
+      tipSessionLive,
+      paintSyncHold,
+    )) {
       refreshManualEditHostPaintRect(primary.id);
+    }
+    if (nextTargets.length === 1) {
       const snapshot = readManualEditTargetSnapshot(base, primary.id, {}, parsedDoc);
       setManualEditMixedStyleKeys(new Set());
       setManualEditDraft({

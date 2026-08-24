@@ -41,6 +41,8 @@ import {
   shouldSeedTipRemountLastHostRectFromLivePaint,
   shouldApplyTipRemountLastHostRectOnLayoutPaintMiss,
   hostPaintRectForManualEditSelectionCommit,
+  shouldRefreshHostPaintOnManualEditSelectionCommit,
+  resolveTipRemountOverlayHostPaintRect,
   resolveTipRemountRefreshMissAction,
   shouldClearTipRemountLastHostRectCache,
   shouldTrustTipRemountHostPaintDespiteComposedStale,
@@ -97,12 +99,16 @@ describe('manual-edit tip remount smoke (500/501/506)', () => {
     expect(webPackageJson).toContain('manual-edit-tip-post-protect-chrome-cross-walk.test.ts');
     expect(webPackageJson).toContain('manual-edit-tip-deck-nudge-follow-chrome-race.test.ts');
     expect(freezeSource).not.toContain('spendTipPostSoftLandExitLatch');
-    expect(freezeSource).toContain('Tip remount index (549)');
+    expect(freezeSource).toContain('Tip remount index (552)');
     expect(freezeSource).toContain('docs-teamver/49_tip_remount');
     expect(freezeSource).toContain('hostPaintRectForManualEditSelectionCommit');
     expect(freezeSource).toContain('resolveTipRemountRefreshMissAction');
+    expect(freezeSource).toContain('resolveTipRemountOverlayHostPaintRect');
+    expect(freezeSource).toContain('shouldRefreshHostPaintOnManualEditSelectionCommit');
     expect(fileViewer).toContain('hostPaintRectForManualEditSelectionCommit');
     expect(fileViewer).toContain('resolveTipRemountRefreshMissAction');
+    expect(fileViewer).toContain('resolveTipRemountOverlayHostPaintRect');
+    expect(fileViewer).toContain('shouldRefreshHostPaintOnManualEditSelectionCommit');
     expect(fileViewer).toContain('clearTipPostSoftLandExitLatch');
     expect(fileViewer).not.toContain('spendTipPostSoftLandExitLatch');
     const sequenceFixtures = readFileSync(
@@ -211,7 +217,7 @@ describe('manual-edit tip remount smoke (500/501/506)', () => {
 
   it('reuses last host rect on tip remount measure miss (521/523)', () => {
     expect(shouldReuseLastHostRectOnTipRemountMeasureMiss(true, false, true)).toBe(true);
-    expect(fileViewer).toContain('shouldReuseLastHostRectOnTipRemountMeasureMiss');
+    expect(fileViewer).toContain('resolveTipRemountOverlayHostPaintRect');
     expect(fileViewer).toContain('manualEditTipLastHostRectByIdRef');
     expect(fileViewer).toContain('resolveTipRemountHostPaintRect');
   });
@@ -268,6 +274,22 @@ describe('manual-edit tip remount smoke (500/501/506)', () => {
       .toBe('apply-last-good');
     expect(fileViewer).toContain('resolveTipRemountRefreshMissAction');
     expect(fileViewer).toContain("missAction === 'apply-last-good'");
+  });
+
+  it('refreshes multi selection primary during tip/paint-sync (552)', () => {
+    expect(shouldRefreshHostPaintOnManualEditSelectionCommit(1, false, false)).toBe(true);
+    expect(shouldRefreshHostPaintOnManualEditSelectionCommit(2, true, false)).toBe(true);
+    expect(shouldRefreshHostPaintOnManualEditSelectionCommit(2, false, false)).toBe(false);
+    expect(fileViewer).toContain('shouldRefreshHostPaintOnManualEditSelectionCommit');
+  });
+
+  it('aligns overlay host paint last-good with refresh-miss apply-last-good (553)', () => {
+    const lastGood = { x: 1, y: 2, width: 30, height: 40 };
+    expect(resolveTipRemountOverlayHostPaintRect(true, false, null, lastGood))
+      .toEqual(lastGood);
+    expect(resolveTipRemountRefreshMissAction(true, false, true, false, false))
+      .toBe('apply-last-good');
+    expect(fileViewer).toContain('resolveTipRemountOverlayHostPaintRect');
   });
 
   it('clears tip last-good host rect cache when session idle (524)', () => {
@@ -383,7 +405,7 @@ describe('manual-edit tip remount smoke (500/501/506)', () => {
     expect(fileViewer).toContain('manualEditTipLastHostRectByIdRef');
     expect(fileViewer).toContain('shouldArmTipRemountChromeUnlockPointerGate');
     expect(fileViewer).toContain('shouldClearTipRemountLastHostRectCache');
-    expect(fileViewer).toContain('shouldReuseLastHostRectOnTipRemountMeasureMiss');
+    expect(fileViewer).toContain('resolveTipRemountOverlayHostPaintRect');
   });
 
   it('catch-up host metrics when follow remasure is throttled (517)', () => {
