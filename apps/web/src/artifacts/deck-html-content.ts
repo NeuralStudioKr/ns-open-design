@@ -4,6 +4,7 @@ import {
   htmlLooksLikeSlideDeliverableStream,
   indexOfFirstDeckSlideHost,
   looksLikeDeckSlideHostAttrs,
+  healInstructionCopyCoverHeading,
   looksLikeInstructionCopy,
   looksLikeTemplateMarketingTitle,
 } from '@open-design/contracts';
@@ -430,6 +431,21 @@ export function isPersistableShortDeckDraft(html: string): boolean {
   const titled = inners.filter(slideInnerHasPersistableDraftCopy);
   if (inners.length <= 2) return titled.length >= 1;
   return titled.length >= 2;
+}
+
+/** Same gate persist uses after `healInstructionCopyCoverHeading`. */
+export function isPersistableShortDeckDraftAfterHeal(
+  html: string,
+  brief?: string | null,
+  deckTitle?: string | null,
+): boolean {
+  if (isPersistableShortDeckDraft(html)) return true;
+  const healed = healInstructionCopyCoverHeading(
+    html,
+    String(brief ?? ''),
+    deckTitle || '슬라이드',
+  );
+  return healed !== html && isPersistableShortDeckDraft(healed);
 }
 
 /**

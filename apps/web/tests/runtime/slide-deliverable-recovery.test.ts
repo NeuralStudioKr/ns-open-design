@@ -296,6 +296,16 @@ describe('verifySlideProducedHtmlDeliverable', () => {
       verifySlideProducedHtmlDeliverable('deck.html', async () => INCOMPLETE_SHELL),
     ).resolves.toBeNull();
   });
+
+  it('accepts a one-slide instruction-copy cover after heading heal', async () => {
+    const parrotCover =
+      '<!doctype html><html lang="ko"><body>'
+      + '<section class="slide"><h1>expo에 대해서 설명하는 피피티 만들어줘</h1></section>'
+      + '</body></html>';
+    await expect(
+      verifySlideProducedHtmlDeliverable('deck.html', async () => parrotCover),
+    ).resolves.toBe('deck.html');
+  });
 });
 
 describe('resolveSlideProducedHtmlToOpen', () => {

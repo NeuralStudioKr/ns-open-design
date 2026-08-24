@@ -8,6 +8,7 @@ import {
   isClosedSoftSalvageDeckHtml,
   isDeckStatusProseOnlyBody,
   isPersistableShortDeckDraft,
+  isPersistableShortDeckDraftAfterHeal,
   deckArtifactStartsWithMotifSvgDump,
   deckSlideHeadingsLookLikeFailedGenerate,
   shouldAbortStreamForHeadOnlyKitDump,
@@ -141,6 +142,11 @@ describe("deck-html-content", () => {
     );
     expect(deckSlideHeadingsLookLikeFailedGenerate(healedShort)).toBe(false);
     expect(isPersistableShortDeckDraft(healedShort)).toBe(true);
+    expect(isPersistableShortDeckDraftAfterHeal(shortParrot, "expo에 대해서 설명하는 피피티 만들어줘")).toBe(true);
+    expect(isPersistableShortDeckDraftAfterHeal(shortParrot)).toBe(true);
+    expect(isPersistableShortDeckDraftAfterHeal(
+      '<!doctype html><html><body><section class="slide"></section></body></html>',
+    )).toBe(false);
   });
 
   it("flags Motif SVG dumps that start before the cover heading", () => {

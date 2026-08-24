@@ -69,6 +69,7 @@ import {
   deckSlideHeadingsLookLikeFailedGenerate,
   isClosedSoftSalvageDeckHtml,
   isPersistableShortDeckDraft,
+  isPersistableShortDeckDraftAfterHeal,
   shouldAbortStreamForHeadOnlyKitDump,
   shouldAbortStreamForMotifSvgDump,
   stripAbandonedHeadKitDumpFromStreamedText,
@@ -7867,8 +7868,13 @@ export function ProjectView({
                     try {
                       const diskHtml = await readProjectHtml(recoveredExistingArtifact.name);
                       if (diskHtml) {
-                        const withLook = await mergeOfficialLookCssForTemplate(
+                        const withHeadings = healInstructionCopyCoverHeading(
                           diskHtml,
+                          runVisiblePromptRef.current || '',
+                          project.name,
+                        );
+                        const withLook = await mergeOfficialLookCssForTemplate(
+                          withHeadings,
                           firstOfficialDeckTemplateId(
                             runSelectedDeckTemplateIdRef.current,
                             selectedDeckTemplateMetadata(project.metadata)?.id,
@@ -9837,8 +9843,13 @@ export function ProjectView({
                 try {
                   const diskHtml = await readProjectHtml(sameTurnHtmlWrite.name);
                   if (diskHtml) {
-                    const withLook = await mergeOfficialLookCssForTemplate(
+                    const withHeadings = healInstructionCopyCoverHeading(
                       diskHtml,
+                      runVisiblePromptRef.current || '',
+                      project.name,
+                    );
+                    const withLook = await mergeOfficialLookCssForTemplate(
+                      withHeadings,
                       firstOfficialDeckTemplateId(
                         runSelectedDeckTemplateIdRef.current,
                         selectedDeckTemplateMetadata(project.metadata)?.id,
@@ -14284,7 +14295,12 @@ export function shouldFailSlideRunForMissingHtmlDeliverable(options: {
 
   const artifactHtml = options.parsedArtifact?.html ?? options.liveHtml;
   if (artifactHtml) {
-    if (isIncompleteHtmlDocumentShell(artifactHtml)) return true;
+    if (
+      isIncompleteHtmlDocumentShell(artifactHtml)
+      && !isPersistableShortDeckDraftAfterHeal(artifactHtml)
+    ) {
+      return true;
+    }
     const validation = validateHtmlArtifact(artifactHtml);
     if (!validation.ok) return true;
     // Valid artifact streamed but nothing previewable on disk — fail so we
@@ -14304,7 +14320,13 @@ const DOCTYPE_HTML_TAIL_RE = /<!doctype\s+html[\s\S]*/i;
 function isReusableSameTurnDeckWrite(html: string | null | undefined): boolean {
   const trimmed = String(html ?? '').trim();
   if (!trimmed || !validateHtmlArtifact(trimmed).ok) return false;
-  if (isPersistableShortDeckDraft(trimmed) || isClosedSoftSalvageDeckHtml(trimmed)) return true;
+  if (
+    isPersistableShortDeckDraft(trimmed)
+    || isPersistableShortDeckDraftAfterHeal(trimmed)
+    || isClosedSoftSalvageDeckHtml(trimmed)
+  ) {
+    return true;
+  }
   return !isIncompleteHtmlDocumentShell(trimmed);
 }
 
@@ -14323,7 +14345,9 @@ function artifactFromSalvagedHtml(html: string, base: Artifact): Artifact | null
 function isUsableDeckHtmlArtifact(html: string | null | undefined): boolean {
   const trimmed = String(html ?? '').trim();
   if (!trimmed || !validateHtmlArtifact(trimmed).ok) return false;
-  if (isPersistableShortDeckDraft(trimmed)) return true;
+  if (isPersistableShortDeckDraft(trimmed) || isPersistableShortDeckDraftAfterHeal(trimmed)) {
+    return true;
+  }
   if (!isIncompleteHtmlDocumentShell(trimmed)) return true;
   // Already-closed soft salvage returns null from salvageTruncated — still usable.
   if (isClosedSoftSalvageDeckHtml(trimmed)) return true;
