@@ -22,6 +22,19 @@ import { PluginShareMenu } from './PluginShareMenu';
 import { buildPluginUseMenu, pluginUsePrimaryAction } from './pluginUseMenu';
 import { resolveGalleryOdMode } from '../plugins-home/galleryOdMode';
 import type { PluginUseAction } from '../plugins-home/useActions';
+import { useTeamverBranding } from '../../teamver/branding/TeamverBrandingProvider';
+import { teamverEndUserPluginMetaOmit } from '../../teamver/branding/pluginDetailDisplay';
+
+const TEAMVER_HIDDEN_DETAIL_TAGS = new Set([
+  'new-generation',
+  'scenario',
+  'bundled',
+  'example',
+  'first-party',
+  'deck',
+  'marketing',
+  'web',
+]);
 
 interface Props {
   record: InstalledPluginRecord;
@@ -41,6 +54,7 @@ export function PluginScenarioDetail({
   hideComposerSeedActions,
 }: Props) {
   const { t } = useI18n();
+  const { slideOnlyMvp } = useTeamverBranding();
   const closeRef = useRef<HTMLButtonElement | null>(null);
   // The text/scenario fallback modal gets the same split "Use plugin /
   // Replicate this content" affordance as the HTML/design/media variants, so a
@@ -80,7 +94,9 @@ export function PluginScenarioDetail({
     () => (od.useCase?.exampleOutputs ?? []) as Array<{ path: string; title?: string }>,
     [od.useCase?.exampleOutputs],
   );
-  const tags = manifest.tags ?? [];
+  const tags = (manifest.tags ?? []).filter((tag) =>
+    slideOnlyMvp ? !TEAMVER_HIDDEN_DETAIL_TAGS.has(tag.trim().toLowerCase()) : true,
+  );
 
   return (
     <Dialog
@@ -141,7 +157,10 @@ export function PluginScenarioDetail({
             />
           ) : null}
 
-          <PluginMetaSections record={record} />
+          <PluginMetaSections
+            record={record}
+            omit={teamverEndUserPluginMetaOmit({ slideOnlyMvp })}
+          />
         </div>
 
         <footer className="plugin-details-modal__foot">

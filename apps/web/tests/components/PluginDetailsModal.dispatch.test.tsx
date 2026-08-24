@@ -163,9 +163,9 @@ describe('PluginDetailsModal dispatch', () => {
     expect(html).toContain('ds-modal');
     expect(html).toContain('ds-modal-primary-action');
     expect(html).toContain('plugin-details-use-live-dashboard');
-    // Share stays available via the unified template share menu; the
-    // redundant inline "More" plugin-share menu was removed.
-    expect(html).toContain('template-share-menu');
+    // Share is temporarily hidden until the template export/share menu
+    // is redesigned. The inline "More" plugin-share menu stays gone.
+    expect(html).not.toContain('template-share-menu');
     expect(html).not.toContain('plugin-share-live-dashboard');
   });
 
@@ -223,7 +223,7 @@ describe('PluginDetailsModal dispatch', () => {
     );
 
     expect(html).toContain('plugin-details-use-outside-chat');
-    expect(html).toContain('Use plugin');
+    expect(html).toContain('Use template');
   });
 
   it('offers the use/use-with-query split menu in the scenario fallback when the plugin has a query', () => {
@@ -308,6 +308,31 @@ describe('PluginDetailsModal common metadata coverage', () => {
     // rendering its meta sections inline.
     expect(html).toContain('ds-modal-stage-handle is-expand');
     expect(html).not.toContain('plugin-meta-sections');
+  });
+
+  it('hides example query and context bundles for Teamver end-user inspectors', () => {
+    const html = renderToStaticMarkup(
+      <I18nProvider>
+        <PluginMetaSections
+          record={pluginWithMeta({
+            id: 'html-ppt-scaffold',
+            query: 'Use html-ppt to create a 12-page HTML PPT.',
+            designSystemRef: './SKILL.md',
+          })}
+          omit={{ query: true, advanced: true }}
+          compact
+          heading="템플릿 정보"
+          variant="minimal"
+        />
+      </I18nProvider>,
+    );
+    expect(html).toContain('템플릿 정보');
+    expect(html).not.toContain('Example query');
+    expect(html).not.toContain('Use html-ppt to create a 12-page HTML PPT.');
+    expect(html).not.toContain('Context bundles');
+    expect(html).not.toContain('./SKILL.md');
+    expect(html).not.toContain('Developer details');
+    expect(html).not.toContain('Source');
   });
 
   it('minimal meta variant keeps example query inline and tucks dev detail behind a disclosure', () => {

@@ -26,6 +26,8 @@ import { PluginMetaSections } from './PluginMetaSections';
 import { buildPluginShareUrl, PluginShareMenu } from './PluginShareMenu';
 import { buildPluginUseMenu, pluginUsePrimaryAction } from './pluginUseMenu';
 import type { PluginUseAction } from '../plugins-home/useActions';
+import { useTeamverBranding } from '../../teamver/branding/TeamverBrandingProvider';
+import { teamverEndUserPluginMetaOmit } from '../../teamver/branding/pluginDetailDisplay';
 
 interface Props {
   record: InstalledPluginRecord;
@@ -93,6 +95,7 @@ export function PluginMediaDetail({
   onSharePopoverItemClick,
 }: Props) {
   const t = useT();
+  const { slideOnlyMvp } = useTeamverBranding();
   const [copied, setCopied] = useState(false);
 
   const manifest: PluginManifest = record.manifest ?? ({} as PluginManifest);
@@ -190,7 +193,7 @@ export function PluginMediaDetail({
   // / source provenance are part of the same scroll column.
   const sidebar = (
     <div className="plugin-info-pane plugin-media-sidebar">
-      {query ? (
+      {query && !slideOnlyMvp ? (
         <section className="plugin-media-sidebar__prompt">
           <header className="plugin-media-sidebar__prompt-head">
             <span className="plugin-media-sidebar__prompt-label">
@@ -212,7 +215,10 @@ export function PluginMediaDetail({
       ) : null}
       <PluginMetaSections
         record={record}
-        omit={{ description: true, query: true }}
+        omit={teamverEndUserPluginMetaOmit(
+          { slideOnlyMvp },
+          { description: true, query: true },
+        )}
         compact
         heading="Plugin info"
       />

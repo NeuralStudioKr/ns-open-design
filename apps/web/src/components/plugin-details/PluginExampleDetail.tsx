@@ -20,6 +20,8 @@ import { PluginMetaSections } from './PluginMetaSections';
 import { buildPluginUseMenu, pluginUsePrimaryAction } from './pluginUseMenu';
 import type { PluginUseAction } from '../plugins-home/useActions';
 import { embedUiLabel } from '../../teamver/embedUiLabels';
+import { useTeamverBranding } from '../../teamver/branding/TeamverBrandingProvider';
+import { teamverEndUserPluginMetaOmit } from '../../teamver/branding/pluginDetailDisplay';
 
 interface Props {
   record: InstalledPluginRecord;
@@ -45,6 +47,7 @@ export function PluginExampleDetail({
   onSharePopoverItemClick,
 }: Props) {
   const { t, locale } = useI18n();
+  const { slideOnlyMvp } = useTeamverBranding();
   const localizedTitle = localizePluginTitle(locale, record);
   const [html, setHtml] = useState<string | null | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
@@ -173,6 +176,7 @@ export function PluginExampleDetail({
           <div className="plugin-info-pane">
             <PluginMetaSections
               record={record}
+              omit={teamverEndUserPluginMetaOmit({ slideOnlyMvp })}
               compact
               heading={infoLabel}
               variant="minimal"

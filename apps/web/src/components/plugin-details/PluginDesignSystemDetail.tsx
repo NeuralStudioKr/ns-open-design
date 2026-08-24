@@ -32,6 +32,8 @@ import { buildPluginShareUrl, PluginShareMenu } from './PluginShareMenu';
 import { PluginMetaSections } from './PluginMetaSections';
 import { buildPluginUseMenu, pluginUsePrimaryAction } from './pluginUseMenu';
 import type { PluginUseAction } from '../plugins-home/useActions';
+import { useTeamverBranding } from '../../teamver/branding/TeamverBrandingProvider';
+import { teamverEndUserPluginMetaOmit } from '../../teamver/branding/pluginDetailDisplay';
 
 interface Props {
   record: InstalledPluginRecord;
@@ -81,6 +83,7 @@ export function PluginDesignSystemDetail({
   onSharePopoverItemClick,
 }: Props) {
   const { t, locale } = useI18n();
+  const { slideOnlyMvp } = useTeamverBranding();
   const localizedTitle = localizePluginTitle(locale, record);
   const localizedDescription = localizePluginDescription(locale, record);
   const dsRef = designSystemRef(record);
@@ -263,22 +266,24 @@ export function PluginDesignSystemDetail({
             <div className="plugin-info-pane">
               <PluginMetaSections
                 record={record}
-                omit={{ description: true }}
+                omit={teamverEndUserPluginMetaOmit({ slideOnlyMvp }, { description: true })}
                 compact
                 heading="Plugin info"
               />
             </div>
-            <section className="plugin-design-sidebar__spec">
-              <div className="plugin-design-sidebar__spec-head">
-                <h3>DESIGN.md</h3>
-                <span>{assetPath.replace(/^\.\//, '')}</span>
-              </div>
-              <DesignSpecView
-                source={specBody}
-                loadingLabel={t('ds.specLoading')}
-                emptyLabel={t('preview.errorBody')}
-              />
-            </section>
+            {slideOnlyMvp ? null : (
+              <section className="plugin-design-sidebar__spec">
+                <div className="plugin-design-sidebar__spec-head">
+                  <h3>DESIGN.md</h3>
+                  <span>{assetPath.replace(/^\.\//, '')}</span>
+                </div>
+                <DesignSpecView
+                  source={specBody}
+                  loadingLabel={t('ds.specLoading')}
+                  emptyLabel={t('preview.errorBody')}
+                />
+              </section>
+            )}
           </div>
         ),
       }}
