@@ -62,6 +62,8 @@ import {
   shouldDisableManualEditChromeForTipRemountUnlockGate,
   shouldReuseLastHostRectOnTipRemountMeasureMiss,
   shouldRetainCurrentHostPaintOnTipRemountPaintMiss,
+  shouldSeedTipRemountLastHostRectFromLivePaint,
+  shouldApplyTipRemountLastHostRectOnLayoutPaintMiss,
   shouldClearTipRemountLastHostRectCache,
   shouldTrustTipRemountHostPaintDespiteComposedStale,
   shouldOmitComposedMembersFromTipRemountPartialUnion,
@@ -371,6 +373,21 @@ describe('manual edit freeze reset', () => {
     expect(shouldRetainCurrentHostPaintOnTipRemountPaintMiss(true, false, true)).toBe(true);
     expect(shouldRetainCurrentHostPaintOnTipRemountPaintMiss(true, true, true)).toBe(false);
     expect(shouldRetainCurrentHostPaintOnTipRemountPaintMiss(false, false, true)).toBe(false);
+    expect(shouldSeedTipRemountLastHostRectFromLivePaint(true, false, true)).toBe(true);
+    expect(shouldSeedTipRemountLastHostRectFromLivePaint(false, true, true)).toBe(true);
+    expect(shouldSeedTipRemountLastHostRectFromLivePaint(false, false, true)).toBe(false);
+    expect(shouldApplyTipRemountLastHostRectOnLayoutPaintMiss(
+      true, false, false, false, true,
+    )).toBe(true);
+    expect(shouldApplyTipRemountLastHostRectOnLayoutPaintMiss(
+      false, true, false, false, true,
+    )).toBe(true);
+    expect(shouldApplyTipRemountLastHostRectOnLayoutPaintMiss(
+      true, false, false, true, true,
+    )).toBe(false);
+    expect(shouldApplyTipRemountLastHostRectOnLayoutPaintMiss(
+      false, false, false, false, true,
+    )).toBe(false);
     expect(shouldClearTipRemountLastHostRectCache(false, false, false)).toBe(true);
     expect(shouldClearTipRemountLastHostRectCache(true, false, false)).toBe(false);
     expect(shouldClearTipRemountLastHostRectCache(false, true, false)).toBe(false);

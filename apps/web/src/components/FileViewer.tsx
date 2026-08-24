@@ -402,6 +402,8 @@ import {
   shouldDisableManualEditChromeForTipRemountUnlockGate,
   shouldReuseLastHostRectOnTipRemountMeasureMiss,
   shouldRetainCurrentHostPaintOnTipRemountPaintMiss,
+  shouldSeedTipRemountLastHostRectFromLivePaint,
+  shouldApplyTipRemountLastHostRectOnLayoutPaintMiss,
   shouldClearTipRemountLastHostRectCache,
   shouldTrustTipRemountHostPaintDespiteComposedStale,
   shouldArmTipRemountPaintSyncHold,
@@ -10143,7 +10145,17 @@ function HtmlViewer({
         return true;
       }
       const paint = measureManualEditTargetHostRect(frame, workspace, selectedId);
-      if (paint && paint.width >= 1 && paint.height >= 1) {
+      const paintOk = Boolean(paint && paint.width >= 1 && paint.height >= 1);
+      const tipSessionLive = tipRemountChromeSessionLiveNow();
+      const paintSyncHold = manualEditTipPaintSyncHoldRef.current;
+      if (paintOk && paint) {
+        if (shouldSeedTipRemountLastHostRectFromLivePaint(
+          tipSessionLive,
+          paintSyncHold,
+          true,
+        )) {
+          manualEditTipLastHostRectByIdRef.current.set(selectedId, { ...paint });
+        }
         setManualEditHostPaintRect((prev) => (
           prev
           && Math.abs(prev.x - paint.x) < 0.5
@@ -10155,9 +10167,24 @@ function HtmlViewer({
         ));
       } else {
         // Failed measure is often a transient iframe remount after move flush.
-        // Nulling here forces hybrid/visual compose and flashes the box; keep
-        // the last good paint until a successful measure or selection clear.
-        // Selection switches clear paint via the `!selectedId` branch / select path.
+        // Tip remount / paint-sync: prefer last-good when current is empty (543).
+        const currentOk = Boolean(
+          manualEditHostPaintRectRef.current
+          && manualEditHostPaintRectRef.current.width >= 1
+          && manualEditHostPaintRectRef.current.height >= 1,
+        );
+        const lastGood = manualEditTipLastHostRectByIdRef.current.get(selectedId) ?? null;
+        if (shouldApplyTipRemountLastHostRectOnLayoutPaintMiss(
+          tipSessionLive,
+          paintSyncHold,
+          false,
+          currentOk,
+          lastGood != null,
+        ) && lastGood) {
+          setManualEditHostPaintRect(lastGood);
+        }
+        // Otherwise keep the last good paint until a successful measure or
+        // selection clear — nulling forces hybrid compose and flashes the box.
       }
       const measured = measureManualEditTargetContentRect(frame, selectedId);
       if (!measured || measured.rect.width < 1 || measured.rect.height < 1) return true;

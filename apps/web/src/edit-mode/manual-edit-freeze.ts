@@ -28,6 +28,8 @@
  *   TIP_REMOUNT_FIT_SETTLE_LATCH_MS (1700)
  *   TIP_REMOUNT_DECK_NUDGE_FOLLOW_MS / TIP_REMOUNT_POST_UNLOCK_QUIET_TIMEOUT_MS
  * Soft-land catalogs: TIP_POST_STICKY_SOFT_LAND_CATALOGS (2) — intentional.
+ * Layout paint: seed/apply last-good during tip session or paint-sync hold (543).
+ * Checklist: docs-teamver/49_tip_remount_체감_체크리스트_500-542.md (545).
  * Do not retune fit delays / latch / soft-land without a tip-remount loop note.
  */
 export function shouldClearManualEditFrozenSourceOnModeChange(
@@ -1327,6 +1329,35 @@ export function shouldRetainCurrentHostPaintOnTipRemountPaintMiss(
   hasCurrentHostPaint: boolean,
 ): boolean {
   return paintSyncHoldArmed && !measuredPaintOk && hasCurrentHostPaint;
+}
+
+/**
+ * Layout-effect live paint success during tip remount / paint-sync must seed
+ * last-good — otherwise a later miss has nothing to reuse (543).
+ */
+export function shouldSeedTipRemountLastHostRectFromLivePaint(
+  tipRemountChromeSessionLive: boolean,
+  paintSyncHoldArmed: boolean,
+  measuredPaintOk: boolean,
+): boolean {
+  return measuredPaintOk && (tipRemountChromeSessionLive || paintSyncHoldArmed);
+}
+
+/**
+ * Layout-effect paint miss during tip remount / paint-sync: apply last-good
+ * when current host paint is empty (543). Distinct from retain-current (538).
+ */
+export function shouldApplyTipRemountLastHostRectOnLayoutPaintMiss(
+  tipRemountChromeSessionLive: boolean,
+  paintSyncHoldArmed: boolean,
+  measuredPaintOk: boolean,
+  hasCurrentHostPaint: boolean,
+  hasLastGoodHostRect: boolean,
+): boolean {
+  return !measuredPaintOk
+    && !hasCurrentHostPaint
+    && hasLastGoodHostRect
+    && (tipRemountChromeSessionLive || paintSyncHoldArmed);
 }
 
 /**

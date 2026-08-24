@@ -38,6 +38,8 @@ import {
   shouldDisableManualEditChromeForTipRemountUnlockGate,
   shouldReuseLastHostRectOnTipRemountMeasureMiss,
   shouldRetainCurrentHostPaintOnTipRemountPaintMiss,
+  shouldSeedTipRemountLastHostRectFromLivePaint,
+  shouldApplyTipRemountLastHostRectOnLayoutPaintMiss,
   shouldClearTipRemountLastHostRectCache,
   shouldTrustTipRemountHostPaintDespiteComposedStale,
   shouldOmitComposedMembersFromTipRemountPartialUnion,
@@ -90,9 +92,11 @@ describe('manual-edit tip remount smoke (500/501/506)', () => {
     expect(webPackageJson).toContain('manual-edit-tip-remount-smoke.test.ts');
     expect(webPackageJson).toContain('manual-edit-tip-soft-land-absorb-sequence.test.ts');
     expect(webPackageJson).toContain('manual-edit-tip-chrome-release-sequence.test.ts');
+    expect(webPackageJson).toContain('manual-edit-tip-post-protect-chrome-cross-walk.test.ts');
     expect(webPackageJson).toContain('manual-edit-tip-deck-nudge-follow-chrome-race.test.ts');
     expect(freezeSource).not.toContain('spendTipPostSoftLandExitLatch');
     expect(freezeSource).toContain('Tip remount index (539)');
+    expect(freezeSource).toContain('docs-teamver/49_tip_remount');
     expect(fileViewer).toContain('clearTipPostSoftLandExitLatch');
     expect(fileViewer).not.toContain('spendTipPostSoftLandExitLatch');
   });
@@ -204,6 +208,15 @@ describe('manual-edit tip remount smoke (500/501/506)', () => {
     expect(shouldRetainCurrentHostPaintOnTipRemountPaintMiss(true, false, true)).toBe(true);
     expect(shouldReuseLastHostRectOnTipRemountMeasureMiss(false, false, true, true)).toBe(true);
     expect(fileViewer).toContain('shouldRetainCurrentHostPaintOnTipRemountPaintMiss');
+  });
+
+  it('seeds and applies last-good from layout-effect tip paint (543)', () => {
+    expect(shouldSeedTipRemountLastHostRectFromLivePaint(true, false, true)).toBe(true);
+    expect(shouldApplyTipRemountLastHostRectOnLayoutPaintMiss(
+      false, true, false, false, true,
+    )).toBe(true);
+    expect(fileViewer).toContain('shouldSeedTipRemountLastHostRectFromLivePaint');
+    expect(fileViewer).toContain('shouldApplyTipRemountLastHostRectOnLayoutPaintMiss');
   });
 
   it('clears tip last-good host rect cache when session idle (524)', () => {
