@@ -219,6 +219,30 @@ const HEAD_SKELETON_TAG_NAMES = [
   "noscript",
 ] as const;
 
+/**
+ * Host-parsed markup that must survive residual HTML scrub so the
+ * Questions banner / live artifact / prompt-injection chip can parse it.
+ */
+const CHAT_PROSE_PROTOCOL_TAG_NAMES = [
+  "artifact",
+  "question-form",
+  "ask-question",
+  "system-reminder",
+] as const;
+
+const CHAT_PROSE_PROTOCOL_TAG_ALT = CHAT_PROSE_PROTOCOL_TAG_NAMES.join("|");
+
+function isChatProseProtocolTagName(name: string): boolean {
+  const lower = name.toLowerCase();
+  return (CHAT_PROSE_PROTOCOL_TAG_NAMES as readonly string[]).includes(lower);
+}
+
+function lineIsChatProseProtocolMarkup(line: string): boolean {
+  const trimmed = String(line ?? "").trim();
+  const match = /^<\/?([A-Za-z][\w:-]*)\b/.exec(trimmed);
+  return Boolean(match?.[1] && isChatProseProtocolTagName(match[1]));
+}
+
 function isLikelyInternalMarkupLine(line: string): boolean {
   const trimmed = line.trim();
   if (!trimmed) return false;
@@ -1969,6 +1993,8 @@ export function looksLikeDeckCodeDebrisLine(line: string): boolean {
 
   if (/^#{1,6}\s+\S/.test(trimmed)) return false;
   if (/^(?:[-*+]|\d+[.)])\s+\S/.test(trimmed)) return false;
+  if (/^<https?:\/\//i.test(trimmed)) return false;
+  if (lineIsChatProseProtocolMarkup(trimmed)) return false;
 
   if (/^[}\]\uFF5D]+\s*$/u.test(trimmed)) return true;
   if (/^(?:[}\]\uFF5D]\s*|<\/?(?:pre|code|div|span|p)>\s*)+$/iu.test(trimmed)) return true;
@@ -2074,6 +2100,13 @@ export function looksLikeDeckCodeDebrisLine(line: string): boolean {
   if (/^&lt;\/?[a-zA-Z]/.test(trimmed) && /(?:style\s*=|class\s*=|&gt;)/i.test(trimmed)) {
     return true;
   }
+  if (
+    /^<\/?([A-Za-z][\w:-]*)\b/.test(trimmed)
+    && !lineIsChatProseProtocolMarkup(trimmed)
+    && !/^<https?:\/\//i.test(trimmed)
+  ) {
+    return true;
+  }
   return false;
 }
 
@@ -2084,15 +2117,17 @@ export function looksLikeDeckCodeDebrisLine(line: string): boolean {
 export function looksLikeSoftCssDeclarationLine(line: string): boolean {
   const trimmed = String(line ?? "").trim();
   if (!trimmed || /:/.test(trimmed)) return false;
-  if (
-    !/^(?:-?(?:webkit|moz|ms)-)?[a-z][\w-]*(?:\s+[^\n:;{}]{1,64}){1,6};?\s*$/i.test(trimmed)
-  ) {
-    return false;
-  }
+  const shaped =
+    /^(?:-?(?:webkit|moz|ms)-)?[a-z][\w-]*((?:\s+[^\n:;{}]{1,64}){1,6});?\s*$/i.exec(
+      trimmed,
+    );
+  if (!shaped) return false;
   if (/[\uac00-\ud7af]/.test(trimmed)) return false;
   const cssValueSignal =
     /(?:\d+(?:\.\d+)?(?:px|em|rem|%|vh|vw|ms|s|deg|fr|ch)?\b|\b(?:ease(?:-in|-out|-in-out)?|linear|infinite|alternate|forwards|backwards|both|none|auto|inherit|initial|unset|cover|contain|blur|circle|ellipse|closest-side|farthest-side|all|transform|opacity|scroll|contents|fixed|absolute|relative|sticky|flex|grid|block|inline|row|column|wrap|nowrap|hidden|visible|solid|dashed|dotted)\b|rgba?\(|hsla?\(|#[0-9A-Fa-f]{3,8}\b|cubic-bezier\s*\(|linear-gradient\s*\(|matrix3d?\s*\(|(?:translate|scale|rotate|skew)[XYZxyz3d]?\s*(?:\(|$))/i;
-  if (cssValueSignal.test(trimmed)) return true;
+  // Score the value tokens only — "Visible intro" must not trip on the
+  // property-shaped first word matching a CSS keyword.
+  if (cssValueSignal.test(shaped[1] ?? "")) return true;
   const two = /^(?:-?(?:webkit|moz|ms)-)?([a-z][\w-]*)\s+([a-z0-9.#%()-][\w.#%()-]*)\s*;?\s*$/i.exec(
     trimmed,
   );
@@ -2250,7 +2285,10 @@ function cutInlineDeckHtmlPrefix(line: string): string | null | undefined {
     }
   }
 
-  const match = /^(.*?)(\s*)(<!--|<(?:li|div|ul|ol|table|tr|td|th|section|pre)\b)/i.exec(line);
+  const match = new RegExp(
+    `^(.*?)(\\s*)(<!--|<(?!\\/?(?:${CHAT_PROSE_PROTOCOL_TAG_ALT}|https?|br|wbr)\\b)[A-Za-z][\\w:-]*(?:\\s|\\/?>))`,
+    "i",
+  ).exec(line);
   if (!match || match.index === undefined) return undefined;
   const prefixRaw = match[1] ?? "";
   const ticksBefore = (prefixRaw.match(/`/g) ?? []).length;
@@ -2262,7 +2300,10 @@ function cutInlineDeckHtmlPrefix(line: string): string | null | undefined {
   if (!/[\p{L}\p{N}]/u.test(prefix)) return undefined;
   if (
     !looksLikeDeckCodeDebrisLine(dump.trim())
-    && !/<!--|<\/(?:li|div|ul|ol|p|td|pre)|<li\b[^>]*>[\s\S]*<\/li>/i.test(dump)
+    && !new RegExp(
+      `<!--|<\\/(?!${CHAT_PROSE_PROTOCOL_TAG_ALT}\\b)[A-Za-z][\\w:-]*\\b|<(?!\\/?(?:${CHAT_PROSE_PROTOCOL_TAG_ALT}|https?)\\b)[A-Za-z][\\w:-]*\\b[^>]*>[\\s\\S]*<\\/`,
+      "i",
+    ).test(dump)
   ) {
     return undefined;
   }
@@ -2290,17 +2331,24 @@ export function stripResidualDeckHtmlMarkupFromProse(input: string): string {
 
   text = text.replace(/<!--[\s\S]*?-->/g, "");
   text = text.replace(/<!--[\s\S]*$/g, "");
+  text = text.replace(/<!doctype\b[^>]*>/gi, "");
 
-  const paired =
-    "li|ul|ol|div|section|header|footer|nav|aside|main|article|table|thead|tbody|tr|td|th|p|h[1-6]|span|strong|em|button|figure|figcaption|pre|code";
-  for (let pass = 0; pass < 5; pass += 1) {
+  const notProtocol = `(?!\\/?(?:${CHAT_PROSE_PROTOCOL_TAG_ALT}|https?)\\b)`;
+  const htmlName = "[A-Za-z][\\w:-]*";
+  for (let pass = 0; pass < 6; pass += 1) {
     const before = text;
-    text = text.replace(new RegExp(`<(${paired})\\b[^>]*>[\\s\\S]*?<\\/\\1>`, "gi"), "");
+    text = text.replace(
+      new RegExp(`<${notProtocol}(${htmlName})\\b[^>]*>[\\s\\S]*?<\\/\\1>`, "gi"),
+      "",
+    );
     if (text === before) break;
   }
-  text = text.replace(new RegExp(`<\\/?(?:${paired}|br)\\b[^>]*\\/?>`, "gi"), "");
+  text = text.replace(new RegExp(`<\\/?${notProtocol}${htmlName}\\b[^>]*\\/?>`, "gi"), "");
   text = text.replace(
-    /&lt;\/?(?:li|div|ul|ol|span|p|strong|section|table|tr|td|th|pre|code)\b[\s\S]*?(?:&gt;|>)/gi,
+    new RegExp(
+      `&lt;\\/?(?!${CHAT_PROSE_PROTOCOL_TAG_ALT}\\b)${htmlName}\\b[\\s\\S]*?(?:&gt;|>)`,
+      "gi",
+    ),
     "",
   );
   text = text.replace(

@@ -452,4 +452,23 @@ describe("sanitizeChatMessageLeakedPseudoTool (expanded)", () => {
       text: "슬라이드 초안을 준비했습니다.",
     });
   });
+
+  it("hard-strips unknown HTML tags via web display last-pass", () => {
+    expect(
+      sanitizeAssistantProseForDisplay(`초안. <a href="https://x.test">링크</a>`, {
+        stripCodeFences: true,
+      }),
+    ).toBe("초안.");
+    expect(
+      sanitizeAssistantProseForDisplay(`<slide-counter>3 / 8</slide-counter>`, {
+        stripCodeFences: true,
+      }),
+    ).toBe("");
+    const withForm = sanitizeAssistantProseForDisplay(
+      `질문\n<question-form id="discovery">{"questions":[{"id":"1"}]}</question-form>`,
+      { stripCodeFences: true },
+    );
+    expect(withForm).toContain('<question-form id="discovery">');
+    expect(withForm).toContain("질문");
+  });
 });
