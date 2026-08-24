@@ -1,6 +1,7 @@
 /**
  * Tip remount soft-land → absorb → quiet → live sequence (507/509)
  * and od-edit-targets selection-ids clear of follow (508).
+ * Initial soft-land state comes from tip-remount-sequence-fixtures (547).
  */
 import { describe, expect, it } from 'vitest';
 import {
@@ -13,7 +14,6 @@ import {
   shouldArmTipPostExitLatchMixedAbsorb,
   shouldArmTipPostExitLatchMixedAbsorbOnSoftLandEarlyExit,
   shouldArmTipPostSoftLandExitLatch,
-  shouldArmTipPostStickySoftLand,
   shouldClearManualEditSelectionOnEmptyOdEditTargets,
   shouldClearTipPostProtectOnOdEditTargetsSelectionIdsChange,
   shouldEarlyExitTipPostStickySoftLand,
@@ -27,29 +27,28 @@ import {
   shouldTreatPostExitAbsorbAsTipProtect,
   tipRemountPostProtectArmed,
 } from '../../src/edit-mode/manual-edit-freeze';
-
-type TipPostProtectState = {
-  softLandRemaining: number;
-  exitLatch: boolean;
-  absorb: boolean;
-  quiet: boolean;
-  followUntilMs: number;
-};
-
-function armSoftLandFromStickyClear(): TipPostProtectState {
-  expect(shouldArmTipPostStickySoftLand(true)).toBe(true);
-  return {
-    softLandRemaining: TIP_POST_STICKY_SOFT_LAND_CATALOGS,
-    exitLatch: false,
-    absorb: false,
-    quiet: false,
-    followUntilMs: 7_000,
-  };
-}
+import {
+  advanceTipPostProtectToLive,
+  createTipPostProtectSoftLandState,
+} from './tip-remount-sequence-fixtures';
 
 describe('manual-edit tip soft-land→absorb sequence (507/509)', () => {
+  it('shared fixture advances soft-land → live without leftover protect', () => {
+    const live = advanceTipPostProtectToLive(createTipPostProtectSoftLandState());
+    expect(live.softLandRemaining).toBe(0);
+    expect(live.exitLatch).toBe(false);
+    expect(live.absorb).toBe(false);
+    expect(live.quiet).toBe(false);
+    expect(tipRemountPostProtectArmed({
+      softLandRemaining: live.softLandRemaining,
+      exitLatch: live.exitLatch,
+      absorb: live.absorb,
+      postAbsorbQuiet: live.quiet,
+    })).toBe(false);
+  });
+
   it('walks soft-land → exit latch → absorb → quiet → live', () => {
-    let state = armSoftLandFromStickyClear();
+    let state = createTipPostProtectSoftLandState();
     expect(state.softLandRemaining).toBe(2);
     expect(tipRemountPostProtectArmed({
       softLandRemaining: state.softLandRemaining,
@@ -125,7 +124,7 @@ describe('manual-edit tip soft-land→absorb sequence (507/509)', () => {
   });
 
   it('early-exits soft-land into absorb then quiet', () => {
-    let state = armSoftLandFromStickyClear();
+    let state = createTipPostProtectSoftLandState();
     const softLandAtEntry = state.softLandRemaining;
     expect(shouldEarlyExitTipPostStickySoftLand(
       softLandAtEntry, false, 'id-fp:same', 'id-fp:same',

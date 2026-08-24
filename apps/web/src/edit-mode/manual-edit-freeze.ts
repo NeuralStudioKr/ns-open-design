@@ -10,7 +10,7 @@
  * from the latest live/saved source.
  *
  * ---------------------------------------------------------------------------
- * Tip remount index (539) — user-perception sequences & key constants
+ * Tip remount index (546) — user-perception sequences & key constants
  * ---------------------------------------------------------------------------
  * Post-protect: TIP_REMOUNT_POST_PROTECT_SEQUENCE
  *   sticky-clear → soft-land → exit-latch → absorb → post-absorb-quiet → live
@@ -29,7 +29,12 @@
  *   TIP_REMOUNT_DECK_NUDGE_FOLLOW_MS / TIP_REMOUNT_POST_UNLOCK_QUIET_TIMEOUT_MS
  * Soft-land catalogs: TIP_POST_STICKY_SOFT_LAND_CATALOGS (2) — intentional.
  * Layout paint: seed/apply last-good during tip session or paint-sync hold (543).
- * Checklist: docs-teamver/49_tip_remount_체감_체크리스트_500-542.md (545).
+ * Selection commit: hostPaintRectForManualEditSelectionCommit (546).
+ * Refresh miss retain: tip session OR paint-sync (538/546).
+ * Intentional nulls (5): mode-exit / no-id / refresh(!id) / unprotected miss /
+ *   clear-selection.
+ * Walk fixtures: apps/web/tests/edit-mode/tip-remount-sequence-fixtures.ts (547).
+ * Checklist: docs-teamver/49_tip_remount_체감_체크리스트_500-548.md (545/548).
  * Do not retune fit delays / latch / soft-land without a tip-remount loop note.
  */
 export function shouldClearManualEditFrozenSourceOnModeChange(
@@ -1320,15 +1325,18 @@ export function shouldReuseLastHostRectOnTipRemountMeasureMiss(
 }
 
 /**
- * Paint-sync hold: keep the current host paint when a forced remasure misses
- * and there is no last-good yet — avoid single-overlay null flash (538).
+ * Tip remount / paint-sync: keep the current host paint when a remasure misses
+ * and there is no last-good yet — avoid single-overlay null flash (538/546).
  */
 export function shouldRetainCurrentHostPaintOnTipRemountPaintMiss(
   paintSyncHoldArmed: boolean,
   measuredPaintOk: boolean,
   hasCurrentHostPaint: boolean,
+  tipRemountChromeSessionLive = false,
 ): boolean {
-  return paintSyncHoldArmed && !measuredPaintOk && hasCurrentHostPaint;
+  return (paintSyncHoldArmed || tipRemountChromeSessionLive)
+    && !measuredPaintOk
+    && hasCurrentHostPaint;
 }
 
 /**
@@ -1358,6 +1366,33 @@ export function shouldApplyTipRemountLastHostRectOnLayoutPaintMiss(
     && !hasCurrentHostPaint
     && hasLastGoodHostRect
     && (tipRemountChromeSessionLive || paintSyncHoldArmed);
+}
+
+export type TipRemountHostPaintRect = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+/**
+ * Selection commit used to always null host paint before refresh. During tip
+ * remount / paint-sync, prefer next-primary last-good so refresh early-return
+ * or multi-select commit does not flash hybrid compose (546).
+ *
+ * Intentional null sites (do not route through this helper): mode-exit,
+ * layout sync with no selectedId, clearManualEditTargetSelection, and
+ * refreshManualEditHostPaintRect(!id / unprotected miss).
+ */
+export function hostPaintRectForManualEditSelectionCommit(
+  tipRemountChromeSessionLive: boolean,
+  paintSyncHoldArmed: boolean,
+  lastGoodForPrimary: TipRemountHostPaintRect | null,
+): TipRemountHostPaintRect | null {
+  if (tipRemountChromeSessionLive || paintSyncHoldArmed) {
+    return lastGoodForPrimary;
+  }
+  return null;
 }
 
 /**

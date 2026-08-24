@@ -404,6 +404,7 @@ import {
   shouldRetainCurrentHostPaintOnTipRemountPaintMiss,
   shouldSeedTipRemountLastHostRectFromLivePaint,
   shouldApplyTipRemountLastHostRectOnLayoutPaintMiss,
+  hostPaintRectForManualEditSelectionCommit,
   shouldClearTipRemountLastHostRectCache,
   shouldTrustTipRemountHostPaintDespiteComposedStale,
   shouldArmTipRemountPaintSyncHold,
@@ -11707,10 +11708,12 @@ function HtmlViewer({
           && manualEditHostPaintRectRef.current.width >= 1
           && manualEditHostPaintRectRef.current.height >= 1,
         ),
+        tipRemountChromeSessionLiveNow(),
       )) {
-        // Paint-sync hold: keep current box instead of nulling (538).
+        // Tip session / paint-sync: keep current box instead of nulling (538/546).
       } else if (!options?.force) {
-        // Keep optimistic seed on failed measure — nulling flashes hybrid compose.
+        // Non-tip unprotected miss without force: clear for hybrid recompose.
+        // force=true keeps current (gesture/handoff optimistic seed).
         setManualEditHostPaintRect(null);
       }
     }
@@ -12727,7 +12730,13 @@ function HtmlViewer({
       manualEditTargetsIdentityFingerprint(nextTargets);
     setSelectedManualEditTargetIds(nextIds);
     setSelectedManualEditTarget(primary);
-    setManualEditHostPaintRect(null);
+    // Tip/paint-sync: seed last-good for next primary instead of unconditional
+    // null — refresh early-return or multi commit must not flash hybrid (546).
+    setManualEditHostPaintRect(hostPaintRectForManualEditSelectionCommit(
+      tipRemountChromeSessionLiveNow(),
+      manualEditTipPaintSyncHoldRef.current,
+      manualEditTipLastHostRectByIdRef.current.get(primary.id) ?? null,
+    ));
     if (nextTargets.length === 1) {
       refreshManualEditHostPaintRect(primary.id);
       const snapshot = readManualEditTargetSnapshot(base, primary.id, {}, parsedDoc);

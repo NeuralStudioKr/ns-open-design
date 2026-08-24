@@ -64,6 +64,7 @@ import {
   shouldRetainCurrentHostPaintOnTipRemountPaintMiss,
   shouldSeedTipRemountLastHostRectFromLivePaint,
   shouldApplyTipRemountLastHostRectOnLayoutPaintMiss,
+  hostPaintRectForManualEditSelectionCommit,
   shouldClearTipRemountLastHostRectCache,
   shouldTrustTipRemountHostPaintDespiteComposedStale,
   shouldOmitComposedMembersFromTipRemountPartialUnion,
@@ -373,6 +374,8 @@ describe('manual edit freeze reset', () => {
     expect(shouldRetainCurrentHostPaintOnTipRemountPaintMiss(true, false, true)).toBe(true);
     expect(shouldRetainCurrentHostPaintOnTipRemountPaintMiss(true, true, true)).toBe(false);
     expect(shouldRetainCurrentHostPaintOnTipRemountPaintMiss(false, false, true)).toBe(false);
+    expect(shouldRetainCurrentHostPaintOnTipRemountPaintMiss(false, false, true, true)).toBe(true);
+    expect(shouldRetainCurrentHostPaintOnTipRemountPaintMiss(false, false, false, true)).toBe(false);
     expect(shouldSeedTipRemountLastHostRectFromLivePaint(true, false, true)).toBe(true);
     expect(shouldSeedTipRemountLastHostRectFromLivePaint(false, true, true)).toBe(true);
     expect(shouldSeedTipRemountLastHostRectFromLivePaint(false, false, true)).toBe(false);
@@ -388,6 +391,16 @@ describe('manual edit freeze reset', () => {
     expect(shouldApplyTipRemountLastHostRectOnLayoutPaintMiss(
       false, false, false, false, true,
     )).toBe(false);
+    expect(hostPaintRectForManualEditSelectionCommit(
+      false, false, { x: 1, y: 2, width: 3, height: 4 },
+    )).toBeNull();
+    expect(hostPaintRectForManualEditSelectionCommit(
+      true, false, { x: 1, y: 2, width: 3, height: 4 },
+    )).toEqual({ x: 1, y: 2, width: 3, height: 4 });
+    expect(hostPaintRectForManualEditSelectionCommit(
+      false, true, { x: 1, y: 2, width: 3, height: 4 },
+    )).toEqual({ x: 1, y: 2, width: 3, height: 4 });
+    expect(hostPaintRectForManualEditSelectionCommit(true, false, null)).toBeNull();
     expect(shouldClearTipRemountLastHostRectCache(false, false, false)).toBe(true);
     expect(shouldClearTipRemountLastHostRectCache(true, false, false)).toBe(false);
     expect(shouldClearTipRemountLastHostRectCache(false, true, false)).toBe(false);
