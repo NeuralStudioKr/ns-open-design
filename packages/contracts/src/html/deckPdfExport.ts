@@ -103,7 +103,9 @@ export function healDeckHtmlForStandaloneExport(html: string): string {
     ),
   );
   // Pin 100vh / missing-size slides to 1920×1080 before neutralize + viewport lock.
-  const pinned = pinDeckSlidesToFixedCanvas(repaired);
+  // Export/download is not catalog preview: even when official presenter CSS is
+  // present, the deliverable must be fixed-canvas and keep every slide.
+  const pinned = pinDeckSlidesToFixedCanvas(repaired, { force: true });
   return lockDeckDesignViewportMeta(ensureOfficialLookStackedCanvasNeutralize(pinned));
 }
 

@@ -54,6 +54,20 @@
 - [x] stage `box-shadow`로 cream 카드 가장자리 가독성
 - [x] `compact-api-stacked-deck` 회귀 — cream full-bleed 금지
 
+### 1.04 2026-08-24 — 대표 템플릿 생성 결과 fixture 가드
+
+현재 시점 기준 판단: Studio / Daisy Days / Capsule 계열 문제는 prompt 문구만 보강하면 충분하지 않다. 모델 산출물이 실제로 저장·다운로드 경로를 통과할 때 **대표 motif/look paint가 남고, 1920×1080 canvas가 유지되고, slide count가 줄지 않는지**를 고정해야 한다. 특히 Studio처럼 official look CSS가 body에 병합된 결과는 head/body cleanup이 첫 slide host를 link/head debris로 오인하면 `deck.html`은 저장돼도 첫 장이 깨지거나 export에서 slide count가 줄어들 수 있다.
+
+구현 현황:
+
+- [x] `deck-template-look-css.test.ts`에 Studio / Daisy Days / Capsule compact generated-result fixture 추가
+- [x] official look/motif merge 이후 slide count `>=3` 및 merge 전후 count 유지 검증
+- [x] standalone HTML export까지 통과시켜 slide count 유지, `width=1920` viewport, 1920×1080 neutralize 검증
+- [x] 대표 motif/look paint 검증 — Studio yellow/black typography token, Daisy inline SVG/deco, Capsule pill/deco
+- [x] `repairArtifactDocumentHead` cleanup pass가 정상 slide host 개수를 줄이면 해당 pass만 롤백하도록 방어
+- [x] standalone export heal은 공식 presenter CSS가 있어도 export/download 경로에서는 fixed-canvas pin을 강제
+- [x] 회귀 테스트: `deck-template-look-css.test.ts`, `deck-fixed-canvas.test.ts`, `repair-artifact-document-head.test.ts`
+
 ### 1.00 2026-08-21 — Motif 생략 방지와 SVG 덤프 방지를 분리
 
 현재 시점 기준 판단: Daisy Days / Capsule / Studio 계열에서 “템플릿 대표 SVG·CSS·도형을 못 쓴다”는 증상은 모델이 기존 `Motif SVG is NOT required` / `Motif <svg> 금지` 문구를 **대표 장식 전체 생략 허용**으로 해석할 여지가 있었기 때문이다. 실제 목표는 full `example.html` / 대형 SVG sprite / `<head>` 선두 덤프를 막는 것이지, 템플릿 정체성 자체를 빼는 것이 아니다.
@@ -1855,6 +1869,7 @@ User-message 쪽 `[Existing deck edit]` / `<attached-preview-comments>` 주입�
 
 | 날짜 | 내용 |
 |------|------|
+| 2026-08-24 | §1.04 — Studio/Daisy/Capsule 대표 생성 결과 fixture 가드. official look/motif merge + standalone export에서 motif/look paint, 1920×1080 fixed canvas, slide count 보존 검증. head/body cleanup이 첫 slide host를 삭제하지 않도록 slide host count guard 추가. |
 | 2026-08-10 | 초안 — Daisy Days Neutral 덮어쓰기 RCA · compose SSOT · 3커밋 타임라인 · 회귀 검토 · 검증 체크리스트 |
 | 2026-08-10 | 후속 — edit-contract FE gate · Zhangzara×31 Teamver 노트 · kit asset 5xx retry |
 | 2026-08-10 | 핫픽스 — turn-1 truncated HTML을 discovery skip하지 않음; Canvas skipDiscovery persist 레이스 방어 |

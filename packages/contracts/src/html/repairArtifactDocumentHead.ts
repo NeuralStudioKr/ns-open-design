@@ -11,7 +11,10 @@ import {
   artifactCdnHostWithOptionalPathAlternation,
   artifactCdnHrefTokenAlternation,
 } from "./artifactCdnHosts.js";
-import { findFirstDeckSlideHostIndex } from "./deck-slide-class.js";
+import {
+  countDeckSlideHostOpens,
+  findFirstDeckSlideHostIndex,
+} from "./deck-slide-class.js";
 
 /**
  * Repair common agent-emitted `<head>` corruption where a truncated viewport
@@ -298,20 +301,27 @@ export function stripIncompleteOpenTags(html: string): string {
 export function repairArtifactDocumentHead(html: string): string {
   if (!html) return html;
 
+  const keepSlideHosts = (before: string, after: string): string => {
+    const beforeSlides = countDeckSlideHostOpens(before);
+    if (beforeSlides <= 0) return after;
+    return countDeckSlideHostOpens(after) < beforeSlides ? before : after;
+  };
+
   let doc = stripIncompleteOpenTags(html);
-  doc = stripLeakedViewportFragments(doc);
-  doc = stripArtifactPreviewBodyTextLeaks(doc);
+  doc = keepSlideHosts(html, doc);
+  doc = keepSlideHosts(doc, stripLeakedViewportFragments(doc));
+  doc = keepSlideHosts(doc, stripArtifactPreviewBodyTextLeaks(doc));
   if (!/<head/i.test(doc)) {
     doc = repairMangledDeckFrameworkScript(doc);
-    return stripTrailingUnclosedRawBlocks(doc);
+    return keepSlideHosts(doc, stripTrailingUnclosedRawBlocks(doc));
   }
 
-  doc = doc.replace(
+  doc = keepSlideHosts(doc, doc.replace(
     CORRUPTED_HEAD_VIEWPORT_CAPTURE_RE,
     '<head$1>\n  <meta charset="utf-8" />\n  <meta name="viewport" content="width=device-width, initial-scale=$2" />',
-  );
+  ));
 
-  doc = doc.replace(/<head([^>]*)>([\s\S]*?)<\/head>/i, (_match, attrs, inner) => {
+  doc = keepSlideHosts(doc, doc.replace(/<head([^>]*)>([\s\S]*?)<\/head>/i, (_match, attrs, inner) => {
     let headInner = String(inner).replace(HEAD_VIEWPORT_FRAGMENT_RE, "");
     headInner = headInner.replace(HEAD_ORPHAN_VOID_FRAGMENT_RE, "");
     ARTIFACT_VIEWPORT_TEXT_LEAK_RE.lastIndex = 0;
@@ -326,10 +336,10 @@ export function repairArtifactDocumentHead(html: string): string {
       headInner = `${headInner}\n  <meta name="viewport" content="width=device-width, initial-scale=1" />`;
     }
     return `<head${attrs}>${headInner}</head>`;
-  });
+  }));
 
-  doc = stripLeakedViewportFragments(doc);
-  doc = stripArtifactPreviewBodyTextLeaks(doc);
-  doc = repairMangledDeckFrameworkScript(doc);
-  return stripTrailingUnclosedRawBlocks(doc);
+  doc = keepSlideHosts(doc, stripLeakedViewportFragments(doc));
+  doc = keepSlideHosts(doc, stripArtifactPreviewBodyTextLeaks(doc));
+  doc = keepSlideHosts(doc, repairMangledDeckFrameworkScript(doc));
+  return keepSlideHosts(doc, stripTrailingUnclosedRawBlocks(doc));
 }
