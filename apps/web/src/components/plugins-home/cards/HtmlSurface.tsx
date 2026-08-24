@@ -66,7 +66,7 @@ const PREVIEW_FETCH_CONCURRENCY = 3;
 /** Coalesce same-frame visible card preview requests into one daemon call. */
 const PREVIEW_BATCH_DELAY_MS = 24;
 const PREVIEW_BATCH_MAX_ITEMS = 24;
-const SESSION_PREVIEW_PREFIX = 'od:plugin-preview:v2:';
+const SESSION_PREVIEW_PREFIX = 'od:plugin-preview:v3:';
 const SESSION_PREVIEW_MAX_ENTRY_CHARS = 180_000;
 const SESSION_PREVIEW_MAX_ENTRIES = 16;
 
