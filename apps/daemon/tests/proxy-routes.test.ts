@@ -2289,6 +2289,8 @@ describe('API proxy routes', () => {
     expect(upstreamChatBodies).toHaveLength(1);
     expect(upstreamChatBodies[0]).not.toHaveProperty('max_tokens');
     expect(upstreamChatBodies[0]).not.toHaveProperty('stream_options');
+    expect(upstreamChatBodies[0].max_completion_tokens).toBeGreaterThanOrEqual(32000);
+    expect(upstreamChatBodies[0].thinking).toEqual({ type: 'disabled' });
     expect(upstreamChatBodies[0].tools.map((tool: any) => tool.function.name)).toEqual(['web_fetch']);
   });
 

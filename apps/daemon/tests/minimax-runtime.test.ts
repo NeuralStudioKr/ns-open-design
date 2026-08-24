@@ -7,6 +7,8 @@ import {
   normalizeMiniMaxBaseUrl,
   resolveMiniMaxBaseUrl,
   resolveMiniMaxChatModel,
+  resolveMiniMaxMaxCompletionTokens,
+  resolveMiniMaxThinkingType,
   resolveMiniMaxToolLoopLimit,
   resolveTeamverMiniMaxApiKeyFromEnv,
   shouldOmitMaxTokens,
@@ -21,6 +23,8 @@ describe('minimax-runtime', () => {
     TEAMVER_MINIMAX_BASE_URL: process.env.TEAMVER_MINIMAX_BASE_URL,
     TEAMVER_MINIMAX_CHAT_MODEL: process.env.TEAMVER_MINIMAX_CHAT_MODEL,
     TEAMVER_AI_TOOL_LOOP_LIMIT: process.env.TEAMVER_AI_TOOL_LOOP_LIMIT,
+    TEAMVER_MINIMAX_MAX_COMPLETION_TOKENS: process.env.TEAMVER_MINIMAX_MAX_COMPLETION_TOKENS,
+    TEAMVER_MINIMAX_THINKING: process.env.TEAMVER_MINIMAX_THINKING,
   };
 
   afterEach(() => {
@@ -75,5 +79,20 @@ describe('minimax-runtime', () => {
 
     process.env.TEAMVER_AI_TOOL_LOOP_LIMIT = '99';
     expect(resolveMiniMaxToolLoopLimit()).toBe(3);
+  });
+
+  it('sends a deck-safe max_completion_tokens floor instead of omitting output caps', () => {
+    delete process.env.TEAMVER_MINIMAX_MAX_COMPLETION_TOKENS;
+    expect(resolveMiniMaxMaxCompletionTokens()).toBe(131_072);
+    expect(resolveMiniMaxMaxCompletionTokens(4096)).toBe(32_000);
+    process.env.TEAMVER_MINIMAX_MAX_COMPLETION_TOKENS = '65536';
+    expect(resolveMiniMaxMaxCompletionTokens()).toBe(65_536);
+  });
+
+  it('defaults MiniMax thinking to disabled so deck HTML is not starved', () => {
+    delete process.env.TEAMVER_MINIMAX_THINKING;
+    expect(resolveMiniMaxThinkingType()).toBe('disabled');
+    process.env.TEAMVER_MINIMAX_THINKING = 'adaptive';
+    expect(resolveMiniMaxThinkingType()).toBe('adaptive');
   });
 });

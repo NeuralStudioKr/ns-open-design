@@ -67,7 +67,9 @@ import {
 } from './proxy-error-classification.js';
 import {
   MINIMAX_DEFAULT_BASE_URL,
+  buildMiniMaxThinkingParam,
   normalizeMiniMaxBaseUrl,
+  resolveMiniMaxMaxCompletionTokens,
   resolveMiniMaxToolLoopLimit,
 } from './minimax-runtime.js';
 
@@ -2040,6 +2042,9 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
      */
     routeByModel?: boolean;
     omitMaxTokens?: boolean;
+    /** MiniMax-M3: send `max_completion_tokens` while omitting legacy `max_tokens`. */
+    maxCompletionTokens?: number;
+    thinking?: { type: 'disabled' | 'adaptive' };
     includeUsage?: boolean;
     maxToolLoops?: number;
   }
@@ -2196,6 +2201,12 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       if (!opts.omitMaxTokens) {
         payload.max_tokens =
           typeof maxTokens === 'number' && maxTokens > 0 ? maxTokens : 8192;
+      }
+      if (typeof opts.maxCompletionTokens === 'number' && opts.maxCompletionTokens > 0) {
+        payload.max_completion_tokens = opts.maxCompletionTokens;
+      }
+      if (opts.thinking) {
+        payload.thinking = opts.thinking;
       }
       if (opts.includeUsage !== false) {
         // OpenAI-compatible endpoints omit usage in streaming responses
@@ -3099,6 +3110,8 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
     runSpeech: async () => ({ ok: false, error: 'speech generation is not enabled for MiniMax chat yet' }),
     runWebFetch: executeWebFetch,
     omitMaxTokens: true,
+    maxCompletionTokens: resolveMiniMaxMaxCompletionTokens(),
+    ...buildMiniMaxThinkingParam(),
     includeUsage: false,
     maxToolLoops: resolveMiniMaxToolLoopLimit(),
   });
