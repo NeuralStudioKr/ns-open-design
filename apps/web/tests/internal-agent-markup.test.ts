@@ -132,6 +132,12 @@ describe("internalAgentMarkup", () => {
       expect(
         sanitizeAssistantProseForDisplay(`초안.\n">:'Zilla Slab',`, { streaming }),
       ).toBe("초안.");
+      expect(
+        sanitizeAssistantProseForDisplay(`초안.\n">Syft로 CycloneDX/SPDX 생성`, { streaming }),
+      ).toBe("초안.");
+      expect(
+        sanitizeAssistantProseForDisplay(`슬라이드 추가 중Caveat',cursive;">`, { streaming }),
+      ).toBe("슬라이드 추가 중");
     }
   });
 

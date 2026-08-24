@@ -609,7 +609,7 @@ function isDeckChromePartialTag(name: string, after: string): boolean {
  * The dump often starts with a font name leftover, not `property:`.
  */
 function findHangulGluedStyleDumpCut(line: string): number | null {
-  const match = /^(.*[\uac00-\ud7af\u3000-\u9fff])([\s\S]+)$/u.exec(line);
+  const match = /^(.*[\uac00-\ud7af\u3000-\u9fff][.\u3002…]?)([\s\S]+)$/u.exec(line);
   if (!match?.[1] || !match[2] || match[2].length < 8) return null;
   const prefix = match[1];
   const dump = match[2];
@@ -617,11 +617,49 @@ function findHangulGluedStyleDumpCut(line: string): number | null {
   const decls = dump.match(/[a-zA-Z-]+\s*:\s*[^;\n]{1,96};/g) ?? [];
   const fontStack = /(?:cursive|sans-serif|serif|monospace|fantasy|system-ui)\s*;/i.test(dump);
   const styleClose = /["']\s*>/.test(dump);
-  const fontName = /(?:Caveat|Zilla|Quicksand|Fredoka|Grotesk|Barlow|Instrument|Plex|Inter|Geist)/i.test(
+  const fontName = /(?:Caveat|Zilla|Quicksand|Fredoka|Grotesk|Barlow|Instrument|Plex|Inter|Geist|Playfair|Pretendard|Noto)/i.test(
     dump,
   );
-  if (decls.length >= 2 && (styleClose || fontStack || fontName)) return prefix.length;
+  const fontLeftover =
+    /^(?:['"][A-Za-z][\w\s]+['"]|[A-Za-z][\w\s]{0,24}['"])\s*,\s*(?:cursive|sans-serif|serif|monospace)/i.test(
+      dump,
+    );
+  if (decls.length >= 2 && (styleClose || fontStack || fontName || fontLeftover)) {
+    return prefix.length;
+  }
   if (fontStack && decls.length >= 1) return prefix.length;
+  if ((fontStack || fontName || fontLeftover) && styleClose) return prefix.length;
+  if (fontName && fontStack) return prefix.length;
+  if (fontLeftover && (fontStack || styleClose || decls.length >= 1)) return prefix.length;
+  return null;
+}
+
+/**
+ * Latin/Hangul prose glued to `Caveat',cursive;font-size:…">` when midCss
+ * matches the whole line as CSS (empty prefix) and would otherwise keep it.
+ */
+function findFontStackDumpIndex(line: string): number | null {
+  // Prefer a CamelCase font leftover after prose (`slideCaveat',cursive;`)
+  // so `Adding slideCaveat'` does not match from column 0.
+  const re =
+    /[A-Z][A-Za-z]{1,23}['"]\s*,\s*(?:cursive|sans-serif|serif|monospace|fantasy|system-ui)\s*;/g;
+  let match: RegExpExecArray | null = re.exec(line);
+  while (match) {
+    if (match.index > 0) {
+      const prefix = line.slice(0, match.index);
+      if (
+        /[\p{L}\p{N}]/u.test(prefix)
+        && !/\bstyle\s*=\s*["']\s*$/i.test(prefix)
+        && !/<[a-z][\w:-]*\b[^>]*$/i.test(prefix)
+      ) {
+        const dump = line.slice(match.index);
+        if (/(?:[a-zA-Z-]+\s*:\s*[^;]*;){1,}|["']\s*>/.test(dump)) {
+          return match.index;
+        }
+      }
+    }
+    match = re.exec(line);
+  }
   return null;
 }
 
@@ -644,6 +682,8 @@ function findTrailingSameLineDeckHtmlCut(line: string): number | null {
   // midCss would otherwise keep `Caveat',` as the human prefix.
   const hangulStyleGlue = findHangulGluedStyleDumpCut(line);
   if (hangulStyleGlue != null) return hangulStyleGlue;
+  const fontStackDump = findFontStackDumpIndex(line);
+  if (fontStackDump != null) return fontStackDump;
   // Mid-word CSS join after Hangul/Latin: `슬라이드 추가 중ospace;font-size:…">Label</div>`
   // (`ospace` = truncated `monospace`). Keep the human prefix.
   // NEVER cut intact `… style="font-family:…"` tags — that left `<span style="`
@@ -2319,17 +2359,45 @@ export function looksLikeDeckCodeDebrisLine(line: string): boolean {
   if (/^#(?:[0-9A-Fa-f]{3,8})\s*\)\s*;\s*[a-zA-Z-]+\s*:/.test(trimmed)) {
     return true;
   }
-  // Quoted attribute closer leaking a font stack: `">:'Zilla Slab',`.
-  if (
-    /^["']\s*>/.test(trimmed)
-    && /(?:[a-zA-Z-]+\s*:|['"]?[A-Za-z][\w\s]*['"]?\s*,|(?:Slab|Serif|Sans|Caveat|cursive|Grotesk|Zilla))/i.test(trimmed)
-  ) {
+  // Style-attribute closer leftover: `">Syft로…` / `">Observability` / `"> 5px 0`.
+  if (/^["']\s*>/.test(trimmed)) {
     return true;
   }
   if (
     /^:['"][A-Za-z]/.test(trimmed)
-    && /(?:Slab|Serif|Sans|Caveat|Grotesk|Quicksand|Fredoka|Zilla)/i.test(trimmed)
+    && /(?:Slab|Serif|Sans|Caveat|Grotesk|Quicksand|Fredoka|Zilla|Playfair|cursive)/i.test(trimmed)
   ) {
+    return true;
+  }
+  // Bare font-stack leftover: `'Zilla Slab',cursive;` / `Caveat',cursive;font-size:`.
+  // Unquoted names cannot include spaces — otherwise `Adding slideCaveat'` is
+  // treated as a stack and the human prefix is dropped.
+  if (
+    /^(?:['"][A-Za-z][\w\s]{0,24}['"]|[A-Za-z][\w]{0,24}['"])\s*,\s*(?:cursive|sans-serif|serif|monospace|fantasy|system-ui)\s*;/i.test(
+      trimmed,
+    )
+  ) {
+    return true;
+  }
+  if (/^(?:hsla?|hwb|lch|oklch|lab|color|light-dark)\s*\([^)]*\)\s*;\s*[a-zA-Z-]+\s*:/.test(trimmed)) {
+    return true;
+  }
+  if (/^var\s*\(\s*--[^)]+\)\s*;\s*[a-zA-Z-]+\s*:/.test(trimmed)) {
+    return true;
+  }
+  if (/^currentColor\s*;\s*[a-zA-Z-]+\s*:/i.test(trimmed)) {
+    return true;
+  }
+  if (/^(?:deg|turn|rad|grad)\s*,\s*#(?:[0-9A-Fa-f]{3,8})/.test(trimmed)) {
+    return true;
+  }
+  if (/^#[0-9A-Fa-f]{3,8}\s*;?\s*$/.test(trimmed)) {
+    return true;
+  }
+  if (/^[0-9A-Fa-f]{3,8}\s*,\s*$/.test(trimmed)) {
+    return true;
+  }
+  if (/^[\d.]+(?:px|em|rem)\s+(?:solid|dashed|dotted)\s*$/i.test(trimmed)) {
     return true;
   }
   if (
@@ -2422,6 +2490,11 @@ export function looksLikeDeckCssContinuationLine(line: string): boolean {
   if (/^[\d.]+(?:px|em|rem|%)\s+[\d.]+\s*;?\s*$/i.test(trimmed)) return true;
   // Split hex list residue: `9c9,`.
   if (/^[0-9A-Fa-f]{3,8}\s*,\s*$/.test(trimmed)) return true;
+  if (/^["']\s*>/.test(trimmed)) return true;
+  if (/^(?:hsla?|hwb|lch|oklch)\s*\(/.test(trimmed)) return true;
+  if (/^var\s*\(\s*--/.test(trimmed)) return true;
+  if (/^currentColor\s*;/i.test(trimmed)) return true;
+  if (/^(?:deg|turn|rad|grad)\s*,/.test(trimmed)) return true;
   if (/^[a-zA-Z-]+\s*:\s*[^;{]+;?\s*[}\uFF5D]?\s*$/u.test(trimmed)) return true;
   if (/^--[A-Za-z_][\w-]*\s*:/.test(trimmed)) return true;
   if (/^[}\]\uFF5D]+\s*$/u.test(trimmed)) return true;
