@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import { pluginPreviewSrcDoc } from "../../src/runtime/authenticatedHtmlSrcDoc";
 import {
+  CATALOG_COVER_ENTRANCE_REVEAL_CSS,
   deckPreviewSrcDoc,
   extractCoverSlideSections,
   htmlLooksLikeMultiSlideDeck,
@@ -295,6 +296,32 @@ describe("ProjectCardHtmlCover srcDoc builders", () => {
     expect(thumb).toMatch(/(?:^|[\s"'])is-active(?:[\s"']|$)/);
     expect(thumb).toContain(".slides-container");
     expect(thumb).toContain("[data-anim]");
+  });
+
+  it("neutralizes anim-* fill-mode both so official entrance covers are not the from-keyframe", () => {
+    const html = `<html><head><style>
+@keyframes kf-fade-up{from{opacity:0;transform:translateY(32px)}to{opacity:1;transform:none}}
+.anim-fade-up{animation:kf-fade-up .7s ease both}
+.anim-stagger-list > *{opacity:0;animation:kf-fade-up .65s ease both}
+[data-anim]{opacity:0}
+.slide.is-active [data-anim="reveal-right"]{animation-name:kRevealRight;animation-fill-mode:forwards}
+@keyframes kRevealRight{from{clip-path:inset(0 100% 0 0)}to{clip-path:inset(0 0 0 0)}}
+</style></head><body>
+<section class="slide">
+  <h1 class="anim-fade-up">Solo founders</h1>
+  <p data-anim="reveal-right">Lead</p>
+  <ul class="anim-stagger-list"><li>One</li><li>Two</li></ul>
+</section>
+</body></html>`;
+    const thumb = pluginCatalogPreviewSrcDoc(html, "/api/plugins/example-html-ppt-pitch-deck/preview");
+    expect(thumb).toContain("Solo founders");
+    expect(CATALOG_COVER_ENTRANCE_REVEAL_CSS).toContain('[class*="anim-"]');
+    expect(CATALOG_COVER_ENTRANCE_REVEAL_CSS).toContain(".anim-stagger-list > *");
+    expect(CATALOG_COVER_ENTRANCE_REVEAL_CSS).toMatch(/clip-path:\s*none\s*!important/);
+    expect(thumb).toContain('[class*="anim-"]');
+    expect(thumb).toContain(".anim-stagger-list > *");
+    expect(thumb).toMatch(/clip-path:\s*none\s*!important/);
+    expect(thumb).toMatch(/animation-fill-mode:\s*none\s*!important/);
   });
 
   it("isolates creative-mode sections that are not class=slide", () => {
