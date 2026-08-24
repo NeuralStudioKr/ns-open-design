@@ -27,7 +27,10 @@ import { buildPluginShareUrl, PluginShareMenu } from './PluginShareMenu';
 import { buildPluginUseMenu, pluginUsePrimaryAction } from './pluginUseMenu';
 import type { PluginUseAction } from '../plugins-home/useActions';
 import { useTeamverBranding } from '../../teamver/branding/TeamverBrandingProvider';
-import { teamverEndUserPluginMetaOmit } from '../../teamver/branding/pluginDetailDisplay';
+import {
+  shouldHideTeamverPluginDeveloperChrome,
+  teamverEndUserPluginMetaOmit,
+} from '../../teamver/branding/pluginDetailDisplay';
 
 interface Props {
   record: InstalledPluginRecord;
@@ -255,6 +258,7 @@ export function PluginMediaDetail({
               hideComposerSeed: hideComposerSeedActions,
             }),
           }}
+      hideShareMenu={shouldHideTeamverPluginDeveloperChrome({ slideOnlyMvp })}
       headerExtras={<PluginShareMenu record={record} variant="inline" />}
       onSharePopoverItemClick={onSharePopoverItemClick}
     />

@@ -23,7 +23,10 @@ import { buildPluginUseMenu, pluginUsePrimaryAction } from './pluginUseMenu';
 import { resolveGalleryOdMode } from '../plugins-home/galleryOdMode';
 import type { PluginUseAction } from '../plugins-home/useActions';
 import { useTeamverBranding } from '../../teamver/branding/TeamverBrandingProvider';
-import { teamverEndUserPluginMetaOmit } from '../../teamver/branding/pluginDetailDisplay';
+import {
+  shouldHideTeamverPluginDeveloperChrome,
+  teamverEndUserPluginMetaOmit,
+} from '../../teamver/branding/pluginDetailDisplay';
 
 const TEAMVER_HIDDEN_DETAIL_TAGS = new Set([
   'new-generation',
@@ -114,23 +117,39 @@ export function PluginScenarioDetail({
           <div className="plugin-details-modal__head-titles">
             <div className="plugin-details-modal__head-row">
               <h2 className="plugin-details-modal__title">{record.title}</h2>
-              <TrustBadge trust={record.trust} />
+              {shouldHideTeamverPluginDeveloperChrome({ slideOnlyMvp }) ? null : (
+                <TrustBadge trust={record.trust} />
+              )}
             </div>
-            <div className="plugin-details-modal__meta">
-              <span>v{record.version}</span>
-              {od.taskKind ? <span>· {od.taskKind}</span> : null}
-              {od.kind ? <span>· {od.kind}</span> : null}
-              <span>· {record.sourceKind}</span>
-              {tags.length > 0 ? (
-                <span className="plugin-details-modal__meta-tags">
-                  {tags.slice(0, 4).map((tag) => (
-                    <span key={tag} className="plugin-details-modal__tag">
-                      {tag}
-                    </span>
-                  ))}
-                </span>
-              ) : null}
-            </div>
+            {shouldHideTeamverPluginDeveloperChrome({ slideOnlyMvp }) ? (
+              tags.length > 0 ? (
+                <div className="plugin-details-modal__meta">
+                  <span className="plugin-details-modal__meta-tags">
+                    {tags.slice(0, 4).map((tag) => (
+                      <span key={tag} className="plugin-details-modal__tag">
+                        {tag}
+                      </span>
+                    ))}
+                  </span>
+                </div>
+              ) : null
+            ) : (
+              <div className="plugin-details-modal__meta">
+                <span>v{record.version}</span>
+                {od.taskKind ? <span>· {od.taskKind}</span> : null}
+                {od.kind ? <span>· {od.kind}</span> : null}
+                <span>· {record.sourceKind}</span>
+                {tags.length > 0 ? (
+                  <span className="plugin-details-modal__meta-tags">
+                    {tags.slice(0, 4).map((tag) => (
+                      <span key={tag} className="plugin-details-modal__tag">
+                        {tag}
+                      </span>
+                    ))}
+                  </span>
+                ) : null}
+              </div>
+            )}
           </div>
           <div className="plugin-details-modal__head-actions">
             <PluginShareMenu record={record} variant="default" />

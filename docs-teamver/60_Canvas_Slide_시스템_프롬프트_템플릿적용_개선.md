@@ -32,6 +32,19 @@
 | scaffold로 갑자기 바꾸면? | **안 됨.** kit hard cutover 금지. full HTML scaffold도 기본 inject 하지 않음 |
 | 1장짜리 템플릿 결과가 저장되는가? | **제품 경로는 첫 fill 3장.** 잘리면 제목 있는 1장은 저장하고 top-up이 덧붙인다. 제목 없는 빈 셸만 미완성으로 차단. 사용자가 1장을 명시한 경우도 허용 |
 
+### 1.17 2026-08-24 — Teamver 상세에서 설치 명령·버전/kind 메타 숨김
+
+§1.16은 예시 프롬프트와 context bundle을 가렸다. 시나리오/미디어/디자인시스템 상세에는 여전히 `od plugin install`, marketplace, `v0.1.0 · scenario · bundled`가 남는다. 룩 피커에는 제목·소개·작성자만 둔다.
+
+구현 현황:
+
+- [x] `shouldHideTeamverPluginDeveloperChrome` — slide-only면 개발자 share/provenance 숨김
+- [x] PluginShareMenu · Media/DesignSystem hideShareMenu · 시나리오 헤더
+- [x] PluginMetaSections heading-meta는 `omit.advanced`와 같이 숨김
+- [x] 회귀: plugin-detail-display helper · PluginMetaSections omit
+- [ ] HomeHero 프리셋 매직 스케일 — slide-only 비노출, 후속
+- [ ] 비덱 갤러리 hover-pan / live-artifact 250% — 프로토타입 경로, 후속
+
 ### 1.16 2026-08-24 — Teamver 상세에서 예시 프롬프트·context bundle 숨김
 
 Html Ppt 스캐폴드는 목록에서 뺐지만, 남은 템플릿 상세에도 `useCase.query`와 SKILL.md / CSS / MD 경로가 그대로 보인다. Teamver slide-only는 룩 피커이므로 소개·작성자만 두고 생성기 프롬프트와 매니페스트 내부를 숨긴다. Apply 동작은 그대로.

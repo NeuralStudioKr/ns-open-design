@@ -333,6 +333,8 @@ describe('PluginDetailsModal common metadata coverage', () => {
     expect(html).not.toContain('./SKILL.md');
     expect(html).not.toContain('Developer details');
     expect(html).not.toContain('Source');
+    expect(html).not.toContain('plugin-meta-sections__heading-meta');
+    expect(html).not.toContain('bundled');
   });
 
   it('minimal meta variant keeps example query inline and tucks dev detail behind a disclosure', () => {

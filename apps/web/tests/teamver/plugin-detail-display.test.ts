@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { teamverEndUserPluginMetaOmit } from "../../src/teamver/branding/pluginDetailDisplay";
+import {
+  shouldHideTeamverPluginDeveloperChrome,
+  teamverEndUserPluginMetaOmit,
+} from "../../src/teamver/branding/pluginDetailDisplay";
 
 describe("teamverEndUserPluginMetaOmit", () => {
   it("leaves standalone OD inspectors unchanged", () => {
@@ -22,5 +25,10 @@ describe("teamverEndUserPluginMetaOmit", () => {
       query: true,
       advanced: true,
     });
+  });
+
+  it("hides install/marketplace share chrome only in slide-only", () => {
+    expect(shouldHideTeamverPluginDeveloperChrome({ slideOnlyMvp: false })).toBe(false);
+    expect(shouldHideTeamverPluginDeveloperChrome({ slideOnlyMvp: true })).toBe(true);
   });
 });

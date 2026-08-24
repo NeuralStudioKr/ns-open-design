@@ -160,17 +160,19 @@ export function PluginMetaSections({
       {heading ? (
         <header className="plugin-meta-sections__heading">
           <h3>{heading}</h3>
-          <span className="plugin-meta-sections__heading-meta">
-            <span>v{record.version}</span>
-            <span>·</span>
-            <TrustBadge trust={record.trust} />
-            {record.sourceKind ? (
-              <>
-                <span>·</span>
-                <span>{record.sourceKind}</span>
-              </>
-            ) : null}
-          </span>
+          {showAdvanced ? (
+            <span className="plugin-meta-sections__heading-meta">
+              <span>v{record.version}</span>
+              <span>·</span>
+              <TrustBadge trust={record.trust} />
+              {record.sourceKind ? (
+                <>
+                  <span>·</span>
+                  <span>{record.sourceKind}</span>
+                </>
+              ) : null}
+            </span>
+          ) : null}
         </header>
       ) : null}
       {!omit?.byline && hasAuthorBlock ? (

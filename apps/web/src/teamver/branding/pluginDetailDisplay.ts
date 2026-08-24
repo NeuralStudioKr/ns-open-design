@@ -14,3 +14,10 @@ export function teamverEndUserPluginMetaOmit(
   if (!branding.slideOnlyMvp) return { ...extra };
   return { ...extra, query: true, advanced: true };
 }
+
+/** Install command / marketplace / plugin-id share is generator chrome. */
+export function shouldHideTeamverPluginDeveloperChrome(
+  branding: Pick<TeamverBrandingConfig, "slideOnlyMvp">,
+): boolean {
+  return branding.slideOnlyMvp === true;
+}
