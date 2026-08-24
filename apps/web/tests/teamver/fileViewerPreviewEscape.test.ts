@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import {
   applyFileViewerPreviewEscapeAction,
   resolveFileViewerPreviewEscapeAction,
+  runFileViewerPreviewMessageHandler,
 } from '../../src/teamver/fileViewerPreviewEscape';
 
 const closed: Parameters<typeof resolveFileViewerPreviewEscapeAction>[0] = {
@@ -46,6 +47,38 @@ describe('FileViewer HtmlViewer escape wiring', () => {
     expect(escapeBlock).not.toMatch(/\bshareMenuOpen\b/);
     expect(htmlViewer).not.toMatch(/setShareMenuOpen\(/);
     expect(htmlViewer).toMatch(/preview escape failed/);
+  });
+});
+
+describe('runFileViewerPreviewMessageHandler', () => {
+  it('swallows a leftover throw so the embed tree stays up', () => {
+    expect(() => {
+      runFileViewerPreviewMessageHandler('slide-state', () => {
+        throw new ReferenceError('shareMenuOpen is not defined');
+      });
+    }).not.toThrow();
+  });
+
+  it('runs a healthy handler', () => {
+    let ran = false;
+    runFileViewerPreviewMessageHandler('slide-state', () => {
+      ran = true;
+    });
+    expect(ran).toBe(true);
+  });
+});
+
+describe('FileViewer HtmlViewer preview message guards', () => {
+  it('guards slide-state, comment, and inspect iframe handlers', () => {
+    const source = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), '../../src/components/FileViewer.tsx'),
+      'utf8',
+    );
+    const htmlViewer = source.slice(source.indexOf('function HtmlViewer('));
+    expect(htmlViewer).toContain("runFileViewerPreviewMessageHandler('slide-state'");
+    expect(htmlViewer).toContain("runFileViewerPreviewMessageHandler('comment-targets'");
+    expect(htmlViewer).toContain("runFileViewerPreviewMessageHandler('comment-overlay'");
+    expect(htmlViewer).toContain("runFileViewerPreviewMessageHandler('inspect-target'");
   });
 });
 

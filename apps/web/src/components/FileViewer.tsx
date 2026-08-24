@@ -160,6 +160,7 @@ import {
   PREVIEW_ESCAPE_MESSAGE,
   applyFileViewerPreviewEscapeAction,
   resolveFileViewerPreviewEscapeAction,
+  runFileViewerPreviewMessageHandler,
 } from '../teamver/fileViewerPreviewEscape';
 import { repairArtifactDocumentHeadIfNeeded } from '../runtime/artifact-document-head';
 import {
@@ -7777,16 +7778,18 @@ function HtmlViewer({
     }
     setSlideState(htmlPreviewSlideState.get(previewStateKey) ?? null);
     function onMessage(ev: MessageEvent) {
-      if (!isOurPreviewIframeSource(ev.source)) return;
-      if (!isActivePreviewIframeSource(ev.source)) return;
-      const data = ev?.data as
-        | { type?: string; active?: number; count?: number }
-        | null;
-      if (!data || data.type !== 'od:slide-state') return;
-      if (typeof data.active !== 'number' || typeof data.count !== 'number') return;
-      const next = { active: data.active, count: data.count };
-      setSlideStateCached(previewStateKey, next);
-      setSlideState(next);
+      runFileViewerPreviewMessageHandler('slide-state', () => {
+        if (!isOurPreviewIframeSource(ev.source)) return;
+        if (!isActivePreviewIframeSource(ev.source)) return;
+        const data = ev?.data as
+          | { type?: string; active?: number; count?: number }
+          | null;
+        if (!data || data.type !== 'od:slide-state') return;
+        if (typeof data.active !== 'number' || typeof data.count !== 'number') return;
+        const next = { active: data.active, count: data.count };
+        setSlideStateCached(previewStateKey, next);
+        setSlideState(next);
+      });
     }
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
@@ -9574,42 +9577,44 @@ function HtmlViewer({
       return;
     }
     function onMessage(ev: MessageEvent) {
-      if (!isOurPreviewIframeSource(ev.source)) return;
-      const data = ev.data as
-        | {
-            type?: string;
-            targets?: Array<Partial<PreviewCommentSnapshot>>;
-          }
-        | null;
-      if (data?.type !== 'od:comment-targets' || !Array.isArray(data.targets)) return;
-      const next = new Map<string, PreviewCommentSnapshot>();
-      data.targets.forEach((item) => {
-        const elementId = String(item?.elementId || '');
-        if (!elementId) return;
-        const position = {
-          x: clampBridgeCoordinate(item?.position?.x),
-          y: clampBridgeCoordinate(item?.position?.y),
-          width: clampBridgeCoordinate(item?.position?.width),
-          height: clampBridgeCoordinate(item?.position?.height),
-        };
-        if (!isValidCommentOverlayPosition(position)) return;
-        next.set(elementId, {
-          filePath: file.name,
-          elementId,
-          selector: String(item?.selector || ''),
-          label: String(item?.label || ''),
-          text: String(item?.text || ''),
-          position,
-          htmlHint: String(item?.htmlHint || ''),
-          style: normalizeAnnotationStyle(item?.style),
-          selectionKind: 'element',
-          memberCount: undefined,
-          ...(typeof item?.slideIndex === 'number' ? { slideIndex: item.slideIndex } : {}),
+      runFileViewerPreviewMessageHandler('comment-targets', () => {
+        if (!isOurPreviewIframeSource(ev.source)) return;
+        const data = ev.data as
+          | {
+              type?: string;
+              targets?: Array<Partial<PreviewCommentSnapshot>>;
+            }
+          | null;
+        if (data?.type !== 'od:comment-targets' || !Array.isArray(data.targets)) return;
+        const next = new Map<string, PreviewCommentSnapshot>();
+        data.targets.forEach((item) => {
+          const elementId = String(item?.elementId || '');
+          if (!elementId) return;
+          const position = {
+            x: clampBridgeCoordinate(item?.position?.x),
+            y: clampBridgeCoordinate(item?.position?.y),
+            width: clampBridgeCoordinate(item?.position?.width),
+            height: clampBridgeCoordinate(item?.position?.height),
+          };
+          if (!isValidCommentOverlayPosition(position)) return;
+          next.set(elementId, {
+            filePath: file.name,
+            elementId,
+            selector: String(item?.selector || ''),
+            label: String(item?.label || ''),
+            text: String(item?.text || ''),
+            position,
+            htmlHint: String(item?.htmlHint || ''),
+            style: normalizeAnnotationStyle(item?.style),
+            selectionKind: 'element',
+            memberCount: undefined,
+            ...(typeof item?.slideIndex === 'number' ? { slideIndex: item.slideIndex } : {}),
+          });
         });
+        setLiveCommentTargets((current) => (
+          liveCommentTargetMapsEqual(current, next) ? current : next
+        ));
       });
-      setLiveCommentTargets((current) => (
-        liveCommentTargetMapsEqual(current, next) ? current : next
-      ));
     }
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
@@ -10509,6 +10514,7 @@ function HtmlViewer({
       return snapshot;
     };
     function onMessage(ev: MessageEvent) {
+      runFileViewerPreviewMessageHandler('comment-overlay', () => {
       if (!isOurPreviewIframeSource(ev.source)) return;
       const data = ev.data as (Partial<PreviewCommentSnapshot> & {
         type?: string;
@@ -10655,6 +10661,7 @@ function HtmlViewer({
         setActiveCommentExistingAttachments([]);
         setStrokePoints([]);
       }
+      });
     }
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
@@ -13817,37 +13824,39 @@ function HtmlViewer({
   useEffect(() => {
     if (!inspectMode) return;
     function onMessage(ev: MessageEvent) {
-      if (!isOurPreviewIframeSource(ev.source)) return;
-      const data = ev.data as
-        | {
-            type?: string;
-            elementId?: string;
-            selector?: string;
-            label?: string;
-            text?: string;
-            style?: InspectStyleSnapshot;
-            clickedDescendant?: Partial<InspectClickedDescendant>;
-          }
-        | null;
-      if (!data || data.type !== 'od:comment-target') return;
-      if (!data.elementId || !data.selector) return;
-      const clickedDescendant =
-        data.clickedDescendant && typeof data.clickedDescendant === 'object'
-          ? {
-              label: String(data.clickedDescendant.label || ''),
-              text: String(data.clickedDescendant.text || ''),
+      runFileViewerPreviewMessageHandler('inspect-target', () => {
+        if (!isOurPreviewIframeSource(ev.source)) return;
+        const data = ev.data as
+          | {
+              type?: string;
+              elementId?: string;
+              selector?: string;
+              label?: string;
+              text?: string;
+              style?: InspectStyleSnapshot;
+              clickedDescendant?: Partial<InspectClickedDescendant>;
             }
-          : null;
-      setActiveInspectTarget({
-        elementId: String(data.elementId),
-        selector: String(data.selector),
-        label: String(data.label || ''),
-        text: String(data.text || ''),
-        style: data.style && typeof data.style === 'object' ? data.style : {},
-        ...(clickedDescendant ? { clickedDescendant } : {}),
+          | null;
+        if (!data || data.type !== 'od:comment-target') return;
+        if (!data.elementId || !data.selector) return;
+        const clickedDescendant =
+          data.clickedDescendant && typeof data.clickedDescendant === 'object'
+            ? {
+                label: String(data.clickedDescendant.label || ''),
+                text: String(data.clickedDescendant.text || ''),
+              }
+            : null;
+        setActiveInspectTarget({
+          elementId: String(data.elementId),
+          selector: String(data.selector),
+          label: String(data.label || ''),
+          text: String(data.text || ''),
+          style: data.style && typeof data.style === 'object' ? data.style : {},
+          ...(clickedDescendant ? { clickedDescendant } : {}),
+        });
+        setInspectError(null);
+        setInspectSavedAt(null);
       });
-      setInspectError(null);
-      setInspectSavedAt(null);
     }
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);

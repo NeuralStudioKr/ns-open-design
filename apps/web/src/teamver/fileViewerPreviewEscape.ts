@@ -59,3 +59,18 @@ export function applyFileViewerPreviewEscapeAction(
   else if (action === 'exit-in-tab-present') setters.exitInTabPresent();
   else if (action === 'close-deploy-modal') setters.closeDeployModal();
 }
+
+/**
+ * Iframe `message` handlers run in a layout/effect. A leftover identifier
+ * or malformed payload throw must not take down the Teamver embed boundary.
+ */
+export function runFileViewerPreviewMessageHandler(
+  label: string,
+  run: () => void,
+): void {
+  try {
+    run();
+  } catch (err) {
+    console.error(`[HtmlViewer] preview ${label} failed`, err);
+  }
+}
