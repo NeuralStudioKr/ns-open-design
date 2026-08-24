@@ -47,6 +47,8 @@ import {
   shouldSeedTipRemountMemberLastHostRectsOnMultiCommit,
   shouldRetryTipRemountMemberLastHostRectSeed,
   tipRemountApplyLastGoodMatchesHostPaintResult,
+  shouldApplyTipRemountMemberLastHostRectSeedRetry,
+  expectedTipRemountUnionPaintBearingCount,
   resolveTipRemountRefreshMissAction,
   shouldClearTipRemountLastHostRectCache,
   shouldTrustTipRemountHostPaintDespiteComposedStale,
@@ -103,7 +105,7 @@ describe('manual-edit tip remount smoke (500/501/506)', () => {
     expect(webPackageJson).toContain('manual-edit-tip-post-protect-chrome-cross-walk.test.ts');
     expect(webPackageJson).toContain('manual-edit-tip-deck-nudge-follow-chrome-race.test.ts');
     expect(freezeSource).not.toContain('spendTipPostSoftLandExitLatch');
-    expect(freezeSource).toContain('Tip remount index (558)');
+    expect(freezeSource).toContain('Tip remount index (563)');
     expect(freezeSource).toContain('docs-teamver/49_tip_remount');
     expect(freezeSource).toContain('hostPaintRectForManualEditSelectionCommit');
     expect(freezeSource).toContain('resolveTipRemountRefreshMissAction');
@@ -112,6 +114,8 @@ describe('manual-edit tip remount smoke (500/501/506)', () => {
     expect(freezeSource).toContain('shouldRefreshHostPaintOnManualEditSelectionCommit');
     expect(freezeSource).toContain('shouldSeedTipRemountMemberLastHostRectsOnMultiCommit');
     expect(freezeSource).toContain('shouldRetryTipRemountMemberLastHostRectSeed');
+    expect(freezeSource).toContain('shouldApplyTipRemountMemberLastHostRectSeedRetry');
+    expect(freezeSource).toContain('expectedTipRemountUnionPaintBearingCount');
     expect(freezeSource).toContain('tipRemountApplyLastGoodMatchesHostPaintResult');
     expect(fileViewer).toContain('hostPaintRectForManualEditSelectionCommit');
     expect(fileViewer).toContain('resolveTipRemountRefreshMissAction');
@@ -119,8 +123,13 @@ describe('manual-edit tip remount smoke (500/501/506)', () => {
     expect(fileViewer).toContain('shouldRefreshHostPaintOnManualEditSelectionCommit');
     expect(fileViewer).toContain('shouldSeedTipRemountMemberLastHostRectsOnMultiCommit');
     expect(fileViewer).toContain('shouldRetryTipRemountMemberLastHostRectSeed');
+    expect(fileViewer).toContain('shouldApplyTipRemountMemberLastHostRectSeedRetry');
+    expect(fileViewer).toContain('expectedTipRemountUnionPaintBearingCount');
     expect(fileViewer).toContain('seedTipRemountMemberLastHostRectsForSelection');
     expect(fileViewer).toContain('scheduleTipRemountMemberLastHostRectSeedRetry');
+    expect(fileViewer).toContain('tipRemountSeededLastGoodCount');
+    expect(multiOverlay).toContain('expectedTipRemountUnionPaintBearingCount');
+    expect(multiOverlay).toContain('tipRemountSeededLastGoodCount');
     expect(fileViewer).toContain('clearTipPostSoftLandExitLatch');
     expect(fileViewer).not.toContain('spendTipPostSoftLandExitLatch');
     const sequenceFixtures = readFileSync(
@@ -317,6 +326,22 @@ describe('manual-edit tip remount smoke (500/501/506)', () => {
     expect(fileViewer).toContain('shouldRetryTipRemountMemberLastHostRectSeed');
     expect(fileViewer).toContain('scheduleTipRemountMemberLastHostRectSeedRetry');
     expect(fileViewer).toContain('cancelTipRemountMemberLastHostRectSeedRetry');
+  });
+
+  it('applies seed retry only when selection ids unchanged (561)', () => {
+    expect(shouldApplyTipRemountMemberLastHostRectSeedRetry(['a', 'b'], ['a', 'b'])).toBe(true);
+    expect(shouldApplyTipRemountMemberLastHostRectSeedRetry(['a', 'b'], ['a', 'c'])).toBe(false);
+    expect(shouldApplyTipRemountMemberLastHostRectSeedRetry(['a', 'b'], ['a'])).toBe(false);
+    expect(fileViewer).toContain('shouldApplyTipRemountMemberLastHostRectSeedRetry');
+  });
+
+  it('floors union paintBearingCount from sibling seed during tip/paint-sync (562)', () => {
+    expect(expectedTipRemountUnionPaintBearingCount(true, false, 3, 2, 1)).toBe(2);
+    expect(expectedTipRemountUnionPaintBearingCount(false, true, 3, 2, 0)).toBe(2);
+    expect(expectedTipRemountUnionPaintBearingCount(false, false, 3, 2, 1)).toBe(1);
+    expect(expectedTipRemountUnionPaintBearingCount(true, false, 2, 2, 2)).toBe(2);
+    expect(multiOverlay).toContain('expectedTipRemountUnionPaintBearingCount');
+    expect(fileViewer).toContain('tipRemountSeededLastGoodCount');
   });
 
   it('uses single host-paint entry with live seed (556)', () => {

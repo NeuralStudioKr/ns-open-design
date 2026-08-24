@@ -10,7 +10,7 @@
  * from the latest live/saved source.
  *
  * ---------------------------------------------------------------------------
- * Tip remount index (558) — user-perception sequences & key constants
+ * Tip remount index (563) — user-perception sequences & key constants
  * ---------------------------------------------------------------------------
  * Post-protect: TIP_REMOUNT_POST_PROTECT_SEQUENCE
  *   sticky-clear → soft-land → exit-latch → absorb → post-absorb-quiet → live
@@ -33,7 +33,10 @@
  * Multi commit: shouldRefreshHostPaintOnManualEditSelectionCommit also
  *   refreshes primary during tip/paint-sync so union measure warms (552).
  * Multi sibling seed: shouldSeedTipRemountMemberLastHostRectsOnMultiCommit (555);
- *   one rAF retry when iframe/layout not ready (558).
+ *   one rAF retry when iframe/layout not ready (558);
+ *   retry only when selection ids unchanged (561).
+ * Seed → union: expectedTipRemountUnionPaintBearingCount floors
+ *   paintBearingCount during tip/paint-sync (562).
  * Refresh miss: resolveTipRemountRefreshMissAction — last-good → retain →
  *   force-keep → clear (549/550). Selection-commit last-good feeds the same
  *   last-good branch on the following refresh.
@@ -42,7 +45,7 @@
  * Intentional nulls (5): mode-exit / no-id / refresh(!id) / unprotected miss /
  *   clear-selection.
  * Walk fixtures: apps/web/tests/edit-mode/tip-remount-sequence-fixtures.ts (547).
- * Checklist: docs-teamver/49_tip_remount_체감_체크리스트_500-560.md (557/560).
+ * Checklist: docs-teamver/49_tip_remount_체감_체크리스트_500-563.md (563).
  * Do not retune fit delays / latch / soft-land without a tip-remount loop note.
  */
 export function shouldClearManualEditFrozenSourceOnModeChange(
@@ -1457,6 +1460,38 @@ export function shouldCancelTipRemountMemberLastHostRectSeedRetry(
   pendingRaf: boolean,
 ): boolean {
   return pendingRaf;
+}
+
+/**
+ * Seed-retry rAF must only apply when selection membership (order + ids) is
+ * unchanged since schedule — drop stale retries after selection churn (561).
+ */
+export function shouldApplyTipRemountMemberLastHostRectSeedRetry(
+  expectedIds: readonly string[],
+  currentIds: readonly string[],
+): boolean {
+  if (expectedIds.length !== currentIds.length) return false;
+  return expectedIds.every((id, index) => currentIds[index] === id);
+}
+
+/**
+ * Tip/paint-sync: union measureHostRect reuses last-good on miss, so
+ * paintBearingCount is at least the seeded member count (562).
+ */
+export function expectedTipRemountUnionPaintBearingCount(
+  tipRemountChromeSessionLive: boolean,
+  paintSyncHoldArmed: boolean,
+  memberCount: number,
+  seededLastGoodCount: number,
+  livePaintBearingCount: number,
+): number {
+  if (!(tipRemountChromeSessionLive || paintSyncHoldArmed)) {
+    return livePaintBearingCount;
+  }
+  return Math.min(
+    memberCount,
+    Math.max(livePaintBearingCount, seededLastGoodCount),
+  );
 }
 
 /**

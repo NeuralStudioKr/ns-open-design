@@ -416,6 +416,8 @@ import {
   shouldSeedTipRemountMemberLastHostRectsOnMultiCommit,
   shouldRetryTipRemountMemberLastHostRectSeed,
   shouldCancelTipRemountMemberLastHostRectSeedRetry,
+  shouldApplyTipRemountMemberLastHostRectSeedRetry,
+  expectedTipRemountUnionPaintBearingCount,
   resolveTipRemountRefreshMissAction,
   tipRemountApplyLastGoodMatchesHostPaintResult,
   shouldClearTipRemountLastHostRectCache,
@@ -8584,10 +8586,7 @@ function HtmlViewer({
         return;
       }
       const currentIds = selectedManualEditTargetIdsRef.current;
-      if (
-        currentIds.length !== expectedIds.length
-        || expectedIds.some((id, i) => currentIds[i] !== id)
-      ) {
+      if (!shouldApplyTipRemountMemberLastHostRectSeedRetry(expectedIds, currentIds)) {
         return;
       }
       // One retry only — alreadyRetried implied by this callback (558).
@@ -16140,6 +16139,13 @@ function HtmlViewer({
           manualEditTipPaintSyncHold,
         )}
         stabilizePartialPaintUnion={tipRemountChromeSessionLiveNow()}
+        tipRemountPaintSyncHoldArmed={manualEditTipPaintSyncHold}
+        tipRemountSeededLastGoodCount={selectedManualEditTargetIds.reduce(
+          (count, id) => (
+            manualEditTipLastHostRectByIdRef.current.has(id) ? count + 1 : count
+          ),
+          0,
+        )}
         movable={manualEditGroupMoveEnabled}
         resizable={manualEditGroupResizeEnabled}
         // Tip-remount: keep multi chrome mounted inert at last union rect (458).

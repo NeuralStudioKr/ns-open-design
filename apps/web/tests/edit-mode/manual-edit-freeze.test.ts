@@ -71,6 +71,8 @@ import {
   shouldSeedTipRemountMemberLastHostRectsOnMultiCommit,
   shouldRetryTipRemountMemberLastHostRectSeed,
   shouldCancelTipRemountMemberLastHostRectSeedRetry,
+  shouldApplyTipRemountMemberLastHostRectSeedRetry,
+  expectedTipRemountUnionPaintBearingCount,
   tipRemountApplyLastGoodMatchesHostPaintResult,
   resolveTipRemountRefreshMissAction,
   shouldClearTipRemountLastHostRectCache,
@@ -438,6 +440,13 @@ describe('manual edit freeze reset', () => {
     expect(shouldRetryTipRemountMemberLastHostRectSeed(2, 0, false, false, false)).toBe(false);
     expect(shouldCancelTipRemountMemberLastHostRectSeedRetry(true)).toBe(true);
     expect(shouldCancelTipRemountMemberLastHostRectSeedRetry(false)).toBe(false);
+    expect(shouldApplyTipRemountMemberLastHostRectSeedRetry(['a', 'b'], ['a', 'b'])).toBe(true);
+    expect(shouldApplyTipRemountMemberLastHostRectSeedRetry(['a', 'b'], ['b', 'a'])).toBe(false);
+    expect(shouldApplyTipRemountMemberLastHostRectSeedRetry(['a'], ['a', 'b'])).toBe(false);
+    expect(expectedTipRemountUnionPaintBearingCount(true, false, 3, 2, 1)).toBe(2);
+    expect(expectedTipRemountUnionPaintBearingCount(false, true, 3, 3, 0)).toBe(3);
+    expect(expectedTipRemountUnionPaintBearingCount(false, false, 3, 2, 1)).toBe(1);
+    expect(expectedTipRemountUnionPaintBearingCount(true, false, 2, 5, 1)).toBe(2);
     expect(resolveTipRemountOverlayHostPaintRect(
       true, false, null, { x: 1, y: 2, width: 3, height: 4 },
     )).toEqual({ x: 1, y: 2, width: 3, height: 4 });
