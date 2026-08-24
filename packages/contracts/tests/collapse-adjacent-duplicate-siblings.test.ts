@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import { collapseAdjacentDuplicateDeckSiblings } from '../src/html/collapse-adjacent-duplicate-siblings.js';
+import {
+  COLLAPSE_MAX_INPUT_CHARS,
+  collapseAdjacentDuplicateDeckSiblings,
+} from '../src/html/collapse-adjacent-duplicate-siblings.js';
 import { healDeckHtmlForStandaloneExport } from '../src/html/deckPdfExport.js';
 
 const MINIMAX_ECHO_SLIDE = `
@@ -98,5 +101,34 @@ describe('collapseAdjacentDuplicateDeckSiblings', () => {
     const exported = healDeckHtmlForStandaloneExport(html);
     expect(exported.match(/<h2>/g)).toHaveLength(1);
     expect(exported.match(/<p>/g)).toHaveLength(1);
+  });
+
+  it('does not throw on deeply nested markup (depth budget)', () => {
+    let nested = '<h2>twin</h2><h2>twin</h2>';
+    for (let i = 0; i < 80; i += 1) {
+      nested = `<div>${nested}</div>`;
+    }
+    expect(() => collapseAdjacentDuplicateDeckSiblings(nested)).not.toThrow();
+    const out = collapseAdjacentDuplicateDeckSiblings(nested);
+    expect(out).toContain('twin');
+  });
+
+  it('skips collapse for oversized input (size budget)', () => {
+    const html = `<p>a</p><p>a</p>${'x'.repeat(COLLAPSE_MAX_INPUT_CHARS)}`;
+    expect(html.length).toBeGreaterThan(COLLAPSE_MAX_INPUT_CHARS);
+    const started = Date.now();
+    const out = collapseAdjacentDuplicateDeckSiblings(html);
+    expect(Date.now() - started).toBeLessThan(500);
+    expect(out).toBe(html);
+  });
+
+  it('returns quickly on unclosed open-tag spam (step budget)', () => {
+    const opens = Array.from({ length: 2_000 }, (_, i) => `<span id="n${i}">`).join('');
+    const html = `${opens}<p>dup</p><p>dup</p>`;
+    const started = Date.now();
+    const out = collapseAdjacentDuplicateDeckSiblings(html);
+    expect(Date.now() - started).toBeLessThan(2_000);
+    expect(typeof out).toBe('string');
+    expect(out.length).toBeGreaterThan(0);
   });
 });

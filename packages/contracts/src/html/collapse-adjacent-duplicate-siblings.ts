@@ -6,6 +6,9 @@
  * Non-adjacent repeats stay (intentional grid cells). Decorative punctuation
  * dots and empty spans stay. Structural hosts (section/div/li) are never
  * merged — only phrasing tags.
+ *
+ * Budgets: pathological / deeply nested / huge decks must never hang or
+ * throw into React (project deep-link → error.tsx). Prefer no-op over crash.
  */
 
 const COLLAPSIBLE_TAGS = new Set([
@@ -47,6 +50,16 @@ const VOID_TAGS = new Set([
 
 const PROTECTED_TAGS = new Set(['script', 'style', 'textarea', 'noscript']);
 
+/** Skip collapse on oversized decks — preview still loads unrepaired HTML. */
+export const COLLAPSE_MAX_INPUT_CHARS = 2_500_000;
+/** Deep DOM nests: return subtree unchanged past this depth. */
+export const COLLAPSE_MAX_DEPTH = 48;
+/**
+ * Shared step budget for parse + findMatchingClose. Exhaustion → treat as
+ * unclosed / bail with remainder as raw (no throw, no infinite loop).
+ */
+export const COLLAPSE_MAX_STEPS = 100_000;
+
 const OPEN_TAG_RE = /^<([a-zA-Z][\w:-]*)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/;
 
 type RawNode = { kind: 'raw'; value: string };
@@ -59,16 +72,21 @@ type ElementNode = {
 };
 type HtmlNode = RawNode | ElementNode;
 
+type StepBudget = { left: number };
+
 function findMatchingClose(
   html: string,
   openEnd: number,
   tag: string,
+  budget: StepBudget,
 ): { innerEnd: number; closeEnd: number } | null {
   const openRe = new RegExp(`<${tag}\\b(?:[^>"']|"[^"]*"|'[^']*')*>`, 'gi');
   const closeRe = new RegExp(`<\\/${tag}\\s*>`, 'gi');
   let depth = 1;
   let cursor = openEnd;
   while (cursor < html.length && depth > 0) {
+    if (budget.left <= 0) return null;
+    budget.left -= 1;
     openRe.lastIndex = cursor;
     closeRe.lastIndex = cursor;
     const nextOpen = openRe.exec(html);
@@ -114,10 +132,15 @@ function isWhitespaceOnly(value: string): boolean {
   return /^\s*$/.test(value);
 }
 
-function parseTopLevel(html: string): HtmlNode[] {
+function parseTopLevel(html: string, budget: StepBudget): HtmlNode[] {
   const nodes: HtmlNode[] = [];
   let cursor = 0;
   while (cursor < html.length) {
+    if (budget.left <= 0) {
+      nodes.push({ kind: 'raw', value: html.slice(cursor) });
+      break;
+    }
+    budget.left -= 1;
     const lt = html.indexOf('<', cursor);
     if (lt === -1) {
       nodes.push({ kind: 'raw', value: html.slice(cursor) });
@@ -154,7 +177,7 @@ function parseTopLevel(html: string): HtmlNode[] {
       cursor = openEnd;
       continue;
     }
-    const closed = findMatchingClose(html, openEnd, tag);
+    const closed = findMatchingClose(html, openEnd, tag, budget);
     if (!closed) {
       nodes.push({ kind: 'raw', value: html.slice(lt) });
       break;
@@ -200,12 +223,14 @@ function serialize(nodes: HtmlNode[]): string {
   )).join('');
 }
 
-function collapseTree(html: string): string {
-  const nodes = parseTopLevel(html);
+function collapseTree(html: string, depth: number, budget: StepBudget): string {
+  if (depth > COLLAPSE_MAX_DEPTH) return html;
+  if (budget.left <= 0) return html;
+  const nodes = parseTopLevel(html, budget);
   const rebuilt: HtmlNode[] = [];
   for (const node of nodes) {
     const next: HtmlNode = node.kind === 'element'
-      ? { ...node, inner: collapseTree(node.inner) }
+      ? { ...node, inner: collapseTree(node.inner, depth + 1, budget) }
       : node;
     const previous = lastSignificantNode(rebuilt);
     if (
@@ -227,8 +252,10 @@ function collapseTree(html: string): string {
 export function collapseAdjacentDuplicateDeckSiblings(html: string): string {
   const source = String(html ?? '');
   if (!source) return source;
+  if (source.length > COLLAPSE_MAX_INPUT_CHARS) return source;
   try {
-    const collapsed = collapseTree(source);
+    const budget: StepBudget = { left: COLLAPSE_MAX_STEPS };
+    const collapsed = collapseTree(source, 0, budget);
     return collapsed === source ? source : collapsed;
   } catch {
     // Pathological / truncated decks must not take down preview (error.tsx).

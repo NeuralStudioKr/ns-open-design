@@ -4364,9 +4364,14 @@ function DesignSystemInlinePreview({
       }
       const inlinedHtml = await inlineDesignSystemPreviewRelativeAssets(html, projectId, file.name);
       if (cancelled) return;
-      setSrcDoc(buildSrcdoc(inlinedHtml, {
-        baseHref: projectRawUrl(projectId, baseDirForDesignSystemPreviewFile(file.name)),
-      }));
+      try {
+        setSrcDoc(buildSrcdoc(inlinedHtml, {
+          baseHref: projectRawUrl(projectId, baseDirForDesignSystemPreviewFile(file.name)),
+        }));
+      } catch (err) {
+        console.error('[FileWorkspace] buildSrcdoc failed', file.name, err);
+        setSrcDoc('');
+      }
       setSrcDocReady(true);
     });
     return () => {

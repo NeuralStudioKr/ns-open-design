@@ -450,52 +450,57 @@ function hasVisibleAssistantTextOutput(
     isSlideEditTurn?: boolean;
   },
 ): boolean {
-  const stripped = stripAllClosedArtifacts(text);
-  const base = hideRecoveredHtmlFallback ? stripRecoveredHtmlFallbackForDisplay(stripped, text) : stripped;
-  const cleaned = sanitizeAssistantProseForDisplay(base, {
-    streaming,
-    // Display-only: strip fences even in slide-only MVP. Live artifact parsers
-    // keep raw fences via ProjectView buffers (`!slideOnlyMvp` there).
-    stripCodeFences: hideStreamingCodeFences || hideAssistantThinkingDetails,
-  });
-  const { text: visibleText, hadOpenForm } = streaming
-    ? stripTrailingOpenQuestionForm(cleaned)
-    : { text: cleaned, hadOpenForm: false };
-  if (hadOpenForm) return true;
-  const { head, live } = streaming ? splitStreamingArtifact(visibleText) : { head: visibleText, live: null };
-  const raw = splitOnQuestionForms(head);
-  const slideOnlyGate = slideOnlyMvp || teamverEmbedEnabled;
-  if (slideOnlyGate) {
-    const resolved = resolveSlideOnlyQuestionFormFromContent(
-      head,
-      { slideOnlyMvp, enabled: teamverEmbedEnabled },
-      { locale },
-    );
-    if (resolved.usedFallback && resolved.form) return true;
-  }
-  const hasVisibleHead = raw.some((seg) => {
-    if (seg.kind === "form") return true;
-    const visibleSegmentText = stripUserVisibleQuestionFormProtocolText(seg.text);
-    if (visibleSegmentText.includes(INVALID_QUESTION_FORM_FALLBACK)) return false;
-    const settledText = !streaming && slideOnlyGate
-      ? stripDeckInFlightStatusResidue(visibleSegmentText)
-      : visibleSegmentText;
-    if (
-      shouldHideDeckCreateCompletionProseOnEditTurn({
-        text: settledText,
-        isSlideEditTurn,
-        teamverSlideUi: slideOnlyGate,
-      })
-    ) {
-      return false;
+  try {
+    const stripped = stripAllClosedArtifacts(text);
+    const base = hideRecoveredHtmlFallback ? stripRecoveredHtmlFallbackForDisplay(stripped, text) : stripped;
+    const cleaned = sanitizeAssistantProseForDisplay(base, {
+      streaming,
+      // Display-only: strip fences even in slide-only MVP. Live artifact parsers
+      // keep raw fences via ProjectView buffers (`!slideOnlyMvp` there).
+      stripCodeFences: hideStreamingCodeFences || hideAssistantThinkingDetails,
+    });
+    const { text: visibleText, hadOpenForm } = streaming
+      ? stripTrailingOpenQuestionForm(cleaned)
+      : { text: cleaned, hadOpenForm: false };
+    if (hadOpenForm) return true;
+    const { head, live } = streaming ? splitStreamingArtifact(visibleText) : { head: visibleText, live: null };
+    const raw = splitOnQuestionForms(head);
+    const slideOnlyGate = slideOnlyMvp || teamverEmbedEnabled;
+    if (slideOnlyGate) {
+      const resolved = resolveSlideOnlyQuestionFormFromContent(
+        head,
+        { slideOnlyMvp, enabled: teamverEmbedEnabled },
+        { locale },
+      );
+      if (resolved.usedFallback && resolved.form) return true;
     }
-    return settledText.trim().length > 0;
-  });
-  // Premature deck completion lines are hidden only in ProseBlock while streaming
-  // with an open artifact (`shouldHidePrematureDeckCompletionProse`) — not here.
-  // Live artifact progress still counts as visible activity for the footer.
-  if (live) return true;
-  return hasVisibleHead;
+    const hasVisibleHead = raw.some((seg) => {
+      if (seg.kind === "form") return true;
+      const visibleSegmentText = stripUserVisibleQuestionFormProtocolText(seg.text);
+      if (visibleSegmentText.includes(INVALID_QUESTION_FORM_FALLBACK)) return false;
+      const settledText = !streaming && slideOnlyGate
+        ? stripDeckInFlightStatusResidue(visibleSegmentText)
+        : visibleSegmentText;
+      if (
+        shouldHideDeckCreateCompletionProseOnEditTurn({
+          text: settledText,
+          isSlideEditTurn,
+          teamverSlideUi: slideOnlyGate,
+        })
+      ) {
+        return false;
+      }
+      return settledText.trim().length > 0;
+    });
+    // Premature deck completion lines are hidden only in ProseBlock while streaming
+    // with an open artifact (`shouldHidePrematureDeckCompletionProse`) — not here.
+    // Live artifact progress still counts as visible activity for the footer.
+    if (live) return true;
+    return hasVisibleHead;
+  } catch (err) {
+    console.error('[AssistantMessage] hasVisibleAssistantTextOutput failed', err);
+    return String(text ?? '').trim().length > 0;
+  }
 }
 
 /**
@@ -3087,10 +3092,15 @@ function stripInternalMarkupFromProseBlocks(
 ): Block[] {
   return blocks.map((block) => {
     if (block.kind !== "text" && block.kind !== "thinking") return block;
-    return {
-      ...block,
-      text: sanitizeAssistantProseForDisplay(block.text, { streaming, stripCodeFences }),
-    };
+    try {
+      return {
+        ...block,
+        text: sanitizeAssistantProseForDisplay(block.text, { streaming, stripCodeFences }),
+      };
+    } catch (err) {
+      console.error('[AssistantMessage] stripInternalMarkupFromProseBlocks failed', err);
+      return block;
+    }
   });
 }
 

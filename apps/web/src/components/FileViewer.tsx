@@ -6951,8 +6951,16 @@ function HtmlViewer({
     ? manualEditFrozenSource
     : (officialLookHealedPreview ?? livePreviewSource);
   const compactApiStackedDeck = useMemo(
-    () => (previewSource != null && looksLikeCompactApiStackedDeckForPreview(previewSource)),
-    [previewSource],
+    () => {
+      if (previewSource == null) return false;
+      try {
+        return looksLikeCompactApiStackedDeckForPreview(previewSource);
+      } catch (err) {
+        console.error('[HtmlViewer] compact deck classify failed', file.name, err);
+        return false;
+      }
+    },
+    [previewSource, file.name],
   );
   compactApiStackedDeckRef.current = compactApiStackedDeck;
   const frameworkDeckPreview = useMemo(
@@ -12860,15 +12868,21 @@ function HtmlViewer({
 
   function activateManualEditPreviewHtml(html: string) {
     if (useUrlLoadPreview) return;
-    const activated = buildSrcdoc(html, {
-      deck: effectiveDeck,
-      baseHref: srcDocBaseHref,
-      initialSlideIndex: htmlPreviewSlideState.get(previewStateKey)?.active ?? 0,
-      selectionBridge: true,
-      editBridge: manualEditRequiresSrcDoc,
-      paletteBridge: false,
-      previewFocusGuard: true,
-    });
+    let activated: string;
+    try {
+      activated = buildSrcdoc(html, {
+        deck: effectiveDeck,
+        baseHref: srcDocBaseHref,
+        initialSlideIndex: htmlPreviewSlideState.get(previewStateKey)?.active ?? 0,
+        selectionBridge: true,
+        editBridge: manualEditRequiresSrcDoc,
+        paletteBridge: false,
+        previewFocusGuard: true,
+      });
+    } catch (err) {
+      console.error('[HtmlViewer] activateManualEditPreviewHtml buildSrcdoc failed', err);
+      return;
+    }
     for (const win of slideMessageTargets()) {
       win.postMessage({ type: 'od:srcdoc-transport-activate', html: activated }, '*');
     }
