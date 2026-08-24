@@ -254,6 +254,14 @@ describe('buildSrcdoc', () => {
     );
   });
 
+  it('injects an Escape bridge so focused preview iframes can close the host modal', () => {
+    const srcdoc = buildSrcdoc('<main>Hero</main>');
+
+    expect(srcdoc).toContain('data-od-preview-escape-bridge');
+    expect(srcdoc).toContain("type: 'od:preview-escape'");
+    expect(srcdoc).toContain("e.key !== 'Escape'");
+  });
+
   it('only uses directly mutable slide conventions for setActive support', () => {
     const srcdoc = buildSrcdoc(
       '<section class="slide">One</section><section class="slide">Two</section>',
@@ -610,6 +618,7 @@ describe('buildSrcdoc', () => {
     Reflect.deleteProperty(globalThis, 'DOMParser');
     expect(srcdoc).not.toContain('data-od-id=');
     expect(srcdoc).not.toContain('data-od-preview-redirect-guard');
+    expect(srcdoc).not.toContain('data-od-preview-escape-bridge');
   });
 
   it('skips annotate when structural opens already carry data-od-id', () => {

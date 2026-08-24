@@ -1975,6 +1975,7 @@ describe('sandboxed preview Blob exports', () => {
     expect(doc).not.toContain('data-od-snapshot-bridge');
     expect(doc).not.toContain('data-od-tweaks-bridge');
     expect(doc).not.toContain('data-od-deck-bridge');
+    expect(doc).not.toContain('data-od-preview-escape-bridge');
     expect(doc).toContain('data-od-preview-artifact-guard');
   });
 

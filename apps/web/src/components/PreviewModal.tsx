@@ -357,33 +357,51 @@ export function PreviewModal({
   }, []);
 
   // Close on Escape. Popovers → fullscreen → modal, one layer per keystroke.
+  // The sandboxed preview iframe swallows keydown once it has focus, so the
+  // srcdoc Escape bridge posts `od:preview-escape` and we reuse this path.
+  const dismissPreviewLayer = (e?: { preventDefault?: () => void }) => {
+    if (primaryMenuOpen) {
+      e?.preventDefault?.();
+      closePrimaryMenu();
+      return;
+    }
+    if (templateShareOpen) {
+      e?.preventDefault?.();
+      setTemplateShareOpen(false);
+      return;
+    }
+    if (fullscreen) {
+      e?.preventDefault?.();
+      // Match the chrome exit path — clear native fullscreen + React state.
+      if (document.fullscreenElement && document.exitFullscreen) {
+        document.exitFullscreen().catch(() => {});
+      }
+      setFullscreen(false);
+      return;
+    }
+    e?.preventDefault?.();
+    onClose();
+  };
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
-      if (primaryMenuOpen) {
-        e.preventDefault();
-        closePrimaryMenu();
-        return;
-      }
-      if (templateShareOpen) {
-        e.preventDefault();
-        setTemplateShareOpen(false);
-        return;
-      }
-      if (fullscreen) {
-        e.preventDefault();
-        // Match the chrome exit path — clear native fullscreen + React state.
-        if (document.fullscreenElement && document.exitFullscreen) {
-          document.exitFullscreen().catch(() => {});
-        }
-        setFullscreen(false);
-        return;
-      }
-      e.preventDefault();
-      onClose();
+      dismissPreviewLayer(e);
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
+  }, [onClose, fullscreen, primaryMenuOpen, templateShareOpen]);
+
+  useEffect(() => {
+    const onMessage = (ev: MessageEvent) => {
+      const data = ev.data as { type?: string } | null;
+      if (!data || data.type !== 'od:preview-escape') return;
+      const win = previewIframeRef.current?.contentWindow;
+      if (!win || ev.source !== win) return;
+      dismissPreviewLayer();
+    };
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
   }, [onClose, fullscreen, primaryMenuOpen, templateShareOpen]);
 
   // Mirror native fullscreen state into React. Without this, a user in

@@ -25,6 +25,7 @@ describe('PreviewModal sandbox isolation', () => {
     expect(markup).toContain('sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox"');
     expect(markup).not.toContain('allow-same-origin');
     expect(markup).toContain('srcDoc=');
+    expect(markup).toContain('od:preview-escape');
   });
 
   it('keeps deck srcdoc handling for deck preview views', () => {
