@@ -159,6 +159,7 @@ import {
   htmlLooksLikeSlideDeliverableStream,
   metadataForTeamverSlideOnlyPrompt,
   firstOfficialDeckTemplateId,
+  collapseAdjacentDuplicateDeckSiblings,
   pinDeckSlidesToFixedCanvas,
   renderPluginBlock,
   repairArtifactStyleSheets,
@@ -5427,6 +5428,9 @@ export function ProjectView({
         // does not win over official dark identity (Hermes) or Motif washes.
         htmlBody = await mergeOfficialLookCssForTemplate(htmlBody, persistTemplateId);
         htmlBody = repairDeckSlideSurfaceBleed(htmlBody);
+        // MiniMax rewrite-echo: drop adjacent twin headings/paragraphs/badges
+        // before the 16:9 pin so deck.html never stores stacked copy.
+        htmlBody = collapseAdjacentDuplicateDeckSiblings(htmlBody);
         // Pin every .slide to 1920×1080 so 100vh / presentation-wrapper fills
         // cannot stretch into a tall portrait preview panel (§0.70).
         htmlBody = pinDeckSlidesToFixedCanvas(htmlBody);
@@ -7850,7 +7854,9 @@ export function ProjectView({
                           ),
                         );
                         const withSurface = repairDeckSlideSurfaceBleed(withLook);
-                        const withCanvas = pinDeckSlidesToFixedCanvas(withSurface);
+                        const withCanvas = pinDeckSlidesToFixedCanvas(
+                          collapseAdjacentDuplicateDeckSiblings(withSurface),
+                        );
                         const attachmentPaths = runAttachmentsRef.current
                           .map((attachment) => attachment.path.trim())
                           .filter(Boolean);
@@ -9818,7 +9824,9 @@ export function ProjectView({
                       ),
                     );
                     const withSurface = repairDeckSlideSurfaceBleed(withLook);
-                    const withCanvas = pinDeckSlidesToFixedCanvas(withSurface);
+                    const withCanvas = pinDeckSlidesToFixedCanvas(
+                      collapseAdjacentDuplicateDeckSiblings(withSurface),
+                    );
                     const attachmentPaths = runAttachmentsRef.current
                       .map((attachment) => attachment.path.trim())
                       .filter(Boolean);

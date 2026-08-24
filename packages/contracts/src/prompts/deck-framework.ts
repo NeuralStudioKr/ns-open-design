@@ -568,6 +568,10 @@ Quality bar: match slide count; each slide needs a distinct role. The deck must 
 export const COMPACT_DECK_SLIDE_COUNT_GUIDANCE =
   'Honor an explicit user slide count in the user message / [User instruction] first; then Plugin inputs slideCount / Project metadata / quick-brief `scale`; use 6–8 slides only when none is specified.';
 
+/** MiniMax (and any rewrite-last-block model) must not echo a finished heading/paragraph/badge. */
+export const DECK_NO_ADJACENT_DUPLICATE_COPY_RULE =
+  'Never emit the same heading, paragraph, or badge twice in a row as adjacent sibling tags — each sibling must add new copy.';
+
 export const DECK_FRAMEWORK_DIRECTIVE_COMPACT = `# Slide deck — API compact contract (overrides the long skeleton copy workflow)
 
 You are in API mode. **Do NOT paste/recreate a large framework skeleton.** Do NOT spend tokens on \`<head>\`, big \`<style>\`, scale JS, print CSS, chrome counters, keyboard handlers, or comments first.
@@ -586,6 +590,7 @@ Rules:
 5. Vary slide layouts using the inline layout vocabulary below — do not repeat the same padding/background/composition on every slide.
 6. Preserve the Selected deck template look (design system is secondary brand context only): palette, typography mood, density, accent treatment, and slide rhythm must be recognizable even in compact inline HTML.
 7. For user-attached images, use exact project-relative paths in \`<img src="...">\`; never invent remote URLs or data: URIs.
+8. ${DECK_NO_ADJACENT_DUPLICATE_COPY_RULE}
 
 ${DECK_COMPACT_INLINE_LAYOUT_VOCABULARY}
 `;
@@ -619,6 +624,7 @@ Rules:
 5. **Layout vocabulary, not shell copy.** Treat the Template scaffold map as a *catalog* of the template's available layouts (cover, welcome, weekly-grid, timeline, three-column, chart, quote, team, closing …). Pick the layouts whose role fits your user brief's actual content, reuse the same role across multiple slides when appropriate, and skip roles whose semantic doesn't fit (e.g. don't force weekly-grid onto a sales pitch, don't force timeline onto a static explainer). Slide count = user brief / Plugin \`slideCount\` / auto default 6–8 — **NOT** the template's natural shell count. Do not flatten every slide into the same cover composition.
 6. **Hard visual rule (kit-driven visual, brief-driven structure):** the kit + scaffold map provide the *visual vocabulary* (palette, fonts, borders, shadows, compact motif/deco cues, layout roles). Slide count/order/composition come from the user brief. Preserve surface colors, wrappers, card treatment, and motif language, but choose roles by brief — NOT the template shell. Never start a slide with Motif \`<svg>\`: first write title + lead, then kit Motif. When Motif sprites lists a capped kit SVG (Daisy flowers etc.), paste that ONE sprite AFTER title (may be ~2KB — exempt from the ~800-char Motif-budget); empty \`.deco\` shells without child SVG and tiny CSS dots are not substitutes. Skip only if a Motif-before-title \`<svg><style>\` hang is already underway. Never substitute OD terracotta \`#c96442\`, Neutral \`#0f172a\`, Inter/Noto-only covers, emoji ornaments, or invented motifs.
 7. When the user attaches images, include \`<img src="exact-project-relative-path" …>\` using attachment paths.
+8. ${DECK_NO_ADJACENT_DUPLICATE_COPY_RULE}
 
 ${DECK_COMPACT_INLINE_LAYOUT_VOCABULARY_FOR_SELECTED_TEMPLATE}
 `;
@@ -645,7 +651,7 @@ In-place HTML edits are unavailable in this API run — so regenerate content wi
 
 **Motif (after title):** Motif \`<svg>\` is NOT required this turn — official Motif CSS/SVG is merged after save. Optional tiny kit Motif CSS classes AFTER title/lead are OK. Finish 3 closed slides this turn. FORBIDDEN: Motif \`<svg>\` this turn; Motif \`<svg>\` before cover title; multi-KB \`<svg><style>\` dumps; Motif geometry from another template family; generic circles/stars as substitutes; inventing Capsule coral pills when the kit Motif is petals/blobs/pins/pixel/scanlines; inventing tiny corner flower SVGs / emoji daisies / 12–48px butter circles.
 
-**FORBIDDEN this turn:** Motif \`<svg>\` before cover title, multi-KB Motif/Layout dumps, long \`<head>\`, Neutral \`#0f172a\`, terracotta \`#c96442\`, emoji ornament rows, generic CSS circles when the kit has Motif CSS/sprites, invented tiny Daisy lookalikes, parroting the user brief as slide titles.
+**FORBIDDEN this turn:** Motif \`<svg>\` before cover title, multi-KB Motif/Layout dumps, long \`<head>\`, Neutral \`#0f172a\`, terracotta \`#c96442\`, emoji ornament rows, generic CSS circles when the kit has Motif CSS/sprites, invented tiny Daisy lookalikes, parroting the user brief as slide titles, adjacent duplicate headings/paragraphs/badges.
 
 **Allowed look:** kit palette hex + fonts + kit Motif vocabulary AFTER title + capped Layout CSS from the kit. Use scaffold map as layout role names.
 

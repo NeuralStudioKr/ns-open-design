@@ -251,6 +251,26 @@ describe('looksLikeCompactApiStackedDeck', () => {
     expect(srcdoc).toContain('[data-screen-label]');
   });
 
+  it('collapses MiniMax adjacent heading/paragraph/badge twins in compact preview', () => {
+    const html = [
+      '<!doctype html><html lang="ko"><body>',
+      '<section class="slide" style="width:1920px;height:1080px">',
+      '<h2>시장 기회</h2><h2>시장 기회</h2>',
+      '<p>국내 SaaS 전환이 가속화되고 있습니다.</p>',
+      '<p>국내 SaaS 전환이 가속화되고 있습니다.</p>',
+      '<span class="badge">B2B</span><span class="badge">B2B</span><span class="badge">Growth</span>',
+      '</section>',
+      '<section class="slide" style="width:1920px;height:1080px"><h2>다음</h2></section>',
+      '</body></html>',
+    ].join('');
+    expect(looksLikeCompactApiStackedDeck(html)).toBe(true);
+    const srcdoc = buildSrcdoc(html, { deck: true });
+    expect(srcdoc.match(/<h2>시장 기회<\/h2>/g)).toHaveLength(1);
+    expect(srcdoc.match(/국내 SaaS 전환이 가속화되고 있습니다\./g)).toHaveLength(1);
+    expect(srcdoc.match(/class="badge">B2B</g)).toHaveLength(1);
+    expect(srcdoc).toContain('Growth');
+  });
+
   it('matches slides wrapped in a single body child container', () => {
     const html = [
       '<!doctype html><html><body>',

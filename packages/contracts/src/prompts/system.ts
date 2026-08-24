@@ -1369,7 +1369,7 @@ const TEAMVER_SLIDE_API_UNIFIED_STREAMING_RULE = `# Slide-only API — unified s
 
 **Content expansion:** ${SLIDE_DECK_CONTENT_EXPANSION_INSTRUCTION}
 
-**Forbidden on deck turns:** outlines, plans, TodoWrite, \`[读取 template.html]\`, SLOT comments, a second artifact, stopping after \`<head>\`, announcing a brand-new draft on an edit turn, parroting the user brief as slide titles/body, or announcing completion without the requested slide count (prefer 3 this turn + top-up when unspecified; 6–8 only as the final target).
+**Forbidden on deck turns:** outlines, plans, TodoWrite, \`[读取 template.html]\`, SLOT comments, a second artifact, stopping after \`<head>\`, announcing a brand-new draft on an edit turn, parroting the user brief as slide titles/body, emitting the same heading/paragraph/badge twice in a row, or announcing completion without the requested slide count (prefer 3 this turn + top-up when unspecified; 6–8 only as the final target).
 
 If you already started \`<head>\` by mistake, **abandon that output** and restart the artifact with \`<body><section class="slide">\` content immediately.`;
 
@@ -1446,7 +1446,7 @@ Your successful response is optional tiny UI-locale status sentence + **exactly 
 
 ${SLIDE_DECK_CONTENT_EXPANSION_EXAMPLE}
 
-**Forbidden:** "바로 만들어 드리겠습니다" / "I'll make it" promise-only replies, question-form, outlines, plans, TodoWrite, \`[读取 template.html]\`, SLOT comments, a second artifact, stopping after \`<head>\`, parroting the user brief as slide titles/body, announcing completion without the requested slide count (prefer 3 this turn + top-up when unspecified; 6–8 only as the final target), or repeating the same layout/background/composition on every slide. Preserve the Selected deck template look (design system is secondary brand context only) and vary layouts per the compact inline layout vocabulary.`;
+**Forbidden:** "바로 만들어 드리겠습니다" / "I'll make it" promise-only replies, question-form, outlines, plans, TodoWrite, \`[读取 template.html]\`, SLOT comments, a second artifact, stopping after \`<head>\`, parroting the user brief as slide titles/body, emitting the same heading/paragraph/badge twice in a row, announcing completion without the requested slide count (prefer 3 this turn + top-up when unspecified; 6–8 only as the final target), or repeating the same layout/background/composition on every slide. Preserve the Selected deck template look (design system is secondary brand context only) and vary layouts per the compact inline layout vocabulary.`;
 
 /**
  * Final visual authority when Canvas → Slide (or equivalent) pinned a template.

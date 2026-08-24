@@ -15,6 +15,15 @@ describe('DECK_FRAMEWORK_DIRECTIVE_COMPACT', () => {
     expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT).toContain('Plugin inputs');
     expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT).toContain('use 6–8 slides only when none is specified');
     expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT).toContain('do not repeat the same padding/background/composition');
+    expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT).toContain(
+      'Never emit the same heading, paragraph, or badge twice in a row',
+    );
+    expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_SELECTED_TEMPLATE).toContain(
+      'Never emit the same heading, paragraph, or badge twice in a row',
+    );
+    expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_TEMPLATE_FILL).toContain(
+      'adjacent duplicate headings/paragraphs/badges',
+    );
     expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT).toContain('Selected deck template look');
     expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT).toContain('secondary brand context only');
     expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT).toContain('do not** copy literally');

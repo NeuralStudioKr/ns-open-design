@@ -371,6 +371,10 @@ describe("ProjectView message loading", () => {
     expect(persistBlock).toMatch(
       /mergeOfficialLookCssForTemplate[\s\S]{0,240}repairDeckSlideSurfaceBleed/,
     );
+    expect(persistBlock).toContain('collapseAdjacentDuplicateDeckSiblings');
+    expect(persistBlock).toMatch(
+      /collapseAdjacentDuplicateDeckSiblings[\s\S]{0,400}pinDeckSlidesToFixedCanvas/,
+    );
     expect(persistBlock).not.toMatch(
       /repairDeckSlideSurfaceBleed\([\s\S]{0,200}mergeOfficialLookCssForTemplate/,
     );

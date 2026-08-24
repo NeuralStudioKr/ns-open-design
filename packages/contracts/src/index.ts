@@ -62,6 +62,7 @@ export * from './html/isArtifactHtmlStableForPreview.js';
 export * from './html/deckPdfExport.js';
 export * from './html/deck-template-look-css.js';
 export * from './html/deck-fixed-canvas.js';
+export * from './html/collapse-adjacent-duplicate-siblings.js';
 export * from './html/deck-slide-class.js';
 export * from './analytics/events.js';
 export * from './analytics/public-params.js';

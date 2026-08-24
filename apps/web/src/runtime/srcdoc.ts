@@ -35,6 +35,7 @@ import {
   injectStackedCanvasNeutralizeForLetterbox,
   lockStackedDeckCanvasForPreview,
   looksLikeOfficialFullscreenPresenterDeck,
+  collapseAdjacentDuplicateDeckSiblings,
   pinDeckSlidesToFixedCanvas,
 } from '@open-design/contracts';
 import { stripConflictingSrcDocCspBaseUri } from './authenticatedHtmlSrcDoc';
@@ -165,6 +166,12 @@ export function buildSrcdoc(
   // LOOK_NEUTRALIZE after lockStacked (which strips neutralize on presenters).
   const compactLetterboxOfficialPresenter = compactStackedDeck
     && looksLikeOfficialFullscreenPresenterDeck(repairedHead);
+  // Compact MiniMax fills sometimes echo the last heading/paragraph/badge.
+  // Collapse twins for preview only on stacked API decks — catalog presenters
+  // keep authored decorative repeats.
+  const previewSource = compactStackedDeck
+    ? collapseAdjacentDuplicateDeckSiblings(repairedHead)
+    : repairedHead;
   const pinForCompact = (html: string) => (
     compactStackedDeck
       ? pinDeckSlidesToFixedCanvas(html, { force: compactLetterboxOfficialPresenter })
@@ -180,7 +187,7 @@ export function buildSrcdoc(
   // Official catalog presenters keep iframe-relative 100% fill — except the
   // dual-classified `#deck` viewport strips above (§0.70 / §0.93).
   const deckCanvasReady = options.deck
-    ? (compactStackedDeck ? healCompactLetterbox(repairedHead) : lockStackedDeckCanvasForPreview(repairedHead))
+    ? (compactStackedDeck ? healCompactLetterbox(previewSource) : lockStackedDeckCanvasForPreview(repairedHead))
     : repairedHead;
   const repaired = stripConflictingSrcDocCspBaseUri(deckCanvasReady);
   // alreadyRepaired: avoid wrapPreviewHtmlShell re-running repair on full docs.
