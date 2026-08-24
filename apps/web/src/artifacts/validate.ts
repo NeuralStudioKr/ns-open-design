@@ -167,12 +167,10 @@ export function isLowSubstanceSlideDeckArtifact(content: string): boolean {
     return true;
   }
 
-  // A multi-slide deck with only a few words across all slides is almost
-  // always a placeholder shell, even if it has enough tags/CSS to pass the
-  // structural HTML validator.
-  if (slideCount >= 3 && bodyText.length < Math.max(90, slideCount * 24)) {
-    return true;
-  }
+  // Compact API first-fill is 3 short Korean slides (title + lead). The
+  // salvage/minimum bar already rejected empty shells — do not add a second
+  // 90-char body-text floor that turns MiniMax 3-slide drafts into
+  // incomplete_output / low-substance.
 
   return false;
 }

@@ -2842,12 +2842,14 @@ function countDeckSlideSections(html: string): number {
   return countAppendableDeckSlides(html);
 }
 
-function findClientArtifactRegression(input: {
+export function findClientArtifactRegression(input: {
   fileName: string;
   htmlBody: string;
   projectFiles: readonly ProjectFile[];
   /** Clone LOOK → fill intentionally replaces a large CSS/SVG seed with a compact deck. */
   allowCompactReplacement?: boolean;
+  /** On-disk HTML for the same file, when already loaded this persist. */
+  priorHtml?: string | null;
 }): { fileName: string; priorSize: number; newSize: number; reason: string } | null {
   if (input.allowCompactReplacement) return null;
   const fileName = input.fileName.trim();
@@ -2863,6 +2865,24 @@ function findClientArtifactRegression(input: {
     ? prior.size
     : 0;
   if (priorSize < ARTIFACT_REGRESSION_MIN_PRIOR_BYTES) return null;
+  const priorHtml = String(input.priorHtml ?? '').trim();
+  const incomingCompactDraft = isPersistableShortDeckDraft(input.htmlBody)
+    || (
+      isClosedSoftSalvageDeckHtml(input.htmlBody)
+      && countDeckSlideSections(input.htmlBody) <= 3
+    );
+  if (incomingCompactDraft && priorHtml) {
+    const priorCount = countDeckSlideSections(priorHtml);
+    // MiniMax 3-this-turn retries must replace a thin prior draft. Keep the
+    // byte-size guard when the on-disk deck is already a full multi-slide file.
+    if (
+      priorCount <= 3
+      || isPersistableShortDeckDraft(priorHtml)
+      || isLowSubstanceSlideDeckArtifact(priorHtml)
+    ) {
+      return null;
+    }
+  }
   if (newSize >= priorSize * ARTIFACT_REGRESSION_MIN_RATIO) return null;
   return {
     fileName,
@@ -5515,11 +5535,13 @@ export function ProjectView({
                 designSystemId: project.designSystemId,
               },
             });
+      const priorDiskHtml = ext === '.html' ? await readDiskHtml(fileName) : null;
       const regression = findClientArtifactRegression({
         fileName,
         htmlBody,
         projectFiles: currentProjectFiles,
         allowCompactReplacement: runTemplateCloneContentFillRef.current,
+        priorHtml: priorDiskHtml,
       });
       if (regression) {
         devLog.warn('[teamver] blocked placeholder artifact regression before save', {
@@ -5556,7 +5578,7 @@ export function ProjectView({
       // use strict mode so soft shrink (8→6) is also rejected.
       if (ext === '.html') {
         try {
-          const priorHtml = await readDiskHtml(fileName);
+          const priorHtml = priorDiskHtml ?? await readDiskHtml(fileName);
           const runImagePaths = imageAttachmentPathsForSlideEmbed(runAttachmentsRef.current);
           const strictSlideCount =
             persistCommentAttachments.length > 0

@@ -383,6 +383,13 @@ export function meetsMinimumDeckDeliverableQuality(html: string): boolean {
     return totalText >= MIN_TWO_SLIDE_TOTAL_TEXT;
   }
 
+  // Compact API first-fill is 3 titled slides this turn (top-up appends).
+  // Korean title+lead copy is often 36–80 chars — do not require the 64-char
+  // 4+ slide bar or MiniMax closed drafts fail as low-substance.
+  if (totalSlides === 3) {
+    return totalText >= MIN_TWO_SLIDE_TOTAL_TEXT;
+  }
+
   if (totalText < MIN_MULTI_SLIDE_TOTAL_TEXT) return false;
 
   if (totalSlides >= 4) {
@@ -402,23 +409,27 @@ export function meetsMinimumDeckDeliverableQuality(html: string): boolean {
  * ≥12 chars / a `<p>`). Top-up appends the rest — do not flash
  * incomplete_output over a titled cover.
  */
+function slideInnerHasPersistableDraftCopy(innerHtml: string): boolean {
+  if (slideSectionInnerLooksLikeStatusOnly(innerHtml)) return false;
+  const text = visibleTextFromHtmlFragment(innerHtml);
+  if (text.length < 2) return false;
+  // Reject outline labels ("발표 개요") but allow short real titles ("AI").
+  if (GENERIC_OUTLINE_HEADING_RE.test(text)) return false;
+  return true;
+}
+
 export function isPersistableShortDeckDraft(html: string): boolean {
   const withoutComments = html.replace(/<!--[\s\S]*?-->/g, "");
   if (!documentContainsSlideSection(withoutComments)) return false;
   if (deckArtifactStartsWithMotifSvgDump(withoutComments)) return false;
   if (deckSlideHeadingsLookLikeFailedGenerate(withoutComments)) return false;
   const inners = listSlideSectionInners(withoutComments);
-  // First-fill cover drafts are 1–2 slides; multi-slide sparse shells stay on
-  // the soft-salvage / incomplete trust path instead.
-  if (inners.length === 0 || inners.length > 2) return false;
-  return inners.some((inner) => {
-    if (slideSectionInnerLooksLikeStatusOnly(inner)) return false;
-    const text = visibleTextFromHtmlFragment(inner);
-    if (text.length < 2) return false;
-    // Reject outline labels ("발표 개요") but allow short real titles ("AI").
-    if (GENERIC_OUTLINE_HEADING_RE.test(text)) return false;
-    return true;
-  });
+  // Compact API first-fill is 1–3 titled slides (top-up appends the rest).
+  // Sparse 4+ shells stay on the soft-salvage / incomplete trust path.
+  if (inners.length === 0 || inners.length > 3) return false;
+  const titled = inners.filter(slideInnerHasPersistableDraftCopy);
+  if (inners.length <= 2) return titled.length >= 1;
+  return titled.length >= 2;
 }
 
 /**

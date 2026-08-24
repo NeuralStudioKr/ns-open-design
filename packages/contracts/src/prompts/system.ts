@@ -1364,7 +1364,7 @@ const TEAMVER_SLIDE_API_UNIFIED_STREAMING_RULE = `# Slide-only API — unified s
 **How to stream the deck (non-negotiable on turn 2+):**
 1. Emit the status sentence first, then open the artifact early. Never \`type="text/html"\`.
 2. First bytes inside a full deck artifact: \`<!doctype html><html><body>\` then immediately a titled \`<section class="slide">\` with real copy. Kit font \`<link>\` / short body \`<style>\` only AFTER slide 1 — never \`<head>\` / long CSS / Motif first.
-3. ${COMPACT_DECK_SLIDE_COUNT_GUIDANCE} Write one filled \`<section class="slide">\` per requested slide. If a Selected deck template is active, match its visual kit (palette/fonts/density) with inline styles or one short body \`<style>\` after slide 1 — design system is brand context only and must not override the template look; do not merely describe the template.
+3. ${COMPACT_DECK_SLIDE_COUNT_GUIDANCE} Write one filled \`<section class="slide">\` per requested slide. Each slide needs a heading AND a \`<p>\`/\`<li>\` sentence — title-only slides fail persist. If an on-disk deck is attached, keep at least that slide count (do not rewrite an 8-slide deck as 3). If a Selected deck template is active, match its visual kit (palette/fonts/density) with inline styles or one short body \`<style>\` after slide 1 — design system is brand context only and must not override the template look; do not merely describe the template.
 4. Close with \`</body></html></artifact>\` (or the matching patch close) in this same turn.
 
 **Content expansion:** ${SLIDE_DECK_CONTENT_EXPANSION_INSTRUCTION}

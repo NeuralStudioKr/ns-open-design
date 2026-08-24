@@ -584,7 +584,7 @@ Required wireframe only (structural — **do not** copy literally; use varied la
 
 Rules:
 1. On deck-delivery turns, optional: one tiny brief-specific UI-locale status sentence, then start the artifact. Artifact-only is OK for speed/tokens. No generic promise-only line. On quick-brief/question-form turns, do not emit an artifact.
-2. Every \`<section class="slide">\` must contain real text (title + body or bullets). Empty sections or \`<!-- SLOT -->\` comments are failures.
+2. Every \`<section class="slide">\` must contain real text (title + a \`<p>\` or \`<li>\` sentence). Title-only sections and parroting the user "만들어줘" request as a heading are failures. Empty sections or \`<!-- SLOT -->\` comments are failures.
 3. ${COMPACT_DECK_SLIDE_COUNT_GUIDANCE} Prefer a complete compact deck over a giant framework. Do not add \`<head>\`, \`<style>\`, keyboard nav, transform scale scripts, or print CSS in API mode.
 4. The artifact MUST end with \`</html>\` and \`</artifact>\` in this turn. A short static deck is better than a beautiful truncated \`<head>\`.
 5. Vary slide layouts using the inline layout vocabulary below — do not repeat the same padding/background/composition on every slide.
@@ -618,7 +618,7 @@ Fallback wireframe ONLY when neither kit nor scaffold map is usable (structure o
 
 Rules:
 1. On deck-delivery turns, optional: one tiny brief-specific UI-locale status sentence, then start the artifact. Artifact-only is OK for speed/tokens.
-2. Every \`<section class="slide">\` must contain real text. Empty sections or \`<!-- SLOT -->\` comments are failures.
+2. Every \`<section class="slide">\` must contain real text (title + a \`<p>\` or \`<li>\` sentence). Title-only sections and parroting the user "만들어줘" request as a heading are failures. Empty sections or \`<!-- SLOT -->\` comments are failures.
 3. ${COMPACT_DECK_SLIDE_COUNT_GUIDANCE} Prefer a complete deck over a perfect-but-truncated shell.
 4. The artifact MUST end with \`</html>\` and \`</artifact>\` in this turn. Complete deck beats perfect motif fidelity; a shell-only document is a failure.
 5. **Layout vocabulary, not shell copy.** Treat the Template scaffold map as a *catalog* of the template's available layouts (cover, welcome, weekly-grid, timeline, three-column, chart, quote, team, closing …). Pick the layouts whose role fits your user brief's actual content, reuse the same role across multiple slides when appropriate, and skip roles whose semantic doesn't fit (e.g. don't force weekly-grid onto a sales pitch, don't force timeline onto a static explainer). Slide count = user brief / Plugin \`slideCount\` / auto default 6–8 — **NOT** the template's natural shell count. Do not flatten every slide into the same cover composition.

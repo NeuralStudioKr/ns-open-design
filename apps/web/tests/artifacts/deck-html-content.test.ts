@@ -41,6 +41,27 @@ describe("deck-html-content", () => {
     expect(hasSalvageableDeckSlideContent(html)).toBe(false);
   });
 
+  it("treats a compact 3-slide MiniMax first-fill as a persistable draft", () => {
+    const html =
+      '<!doctype html><html lang="ko"><body>'
+      + '<section class="slide"><h1>시장 기회</h1></section>'
+      + '<section class="slide"><h2>도입 장벽</h2><p>보안 검토가 병목입니다.</p></section>'
+      + '<section class="slide"><h2>다음 단계</h2></section>'
+      + '</body></html>';
+    expect(isPersistableShortDeckDraft(html)).toBe(true);
+    expect(isIncompleteHtmlDocumentShell(html)).toBe(false);
+  });
+
+  it("does not treat a 3-slide outline/status shell as a persistable draft", () => {
+    const html =
+      '<!doctype html><html lang="ko"><body>'
+      + '<section class="slide"><h2>발표 개요</h2></section>'
+      + '<section class="slide"><h2>목차</h2></section>'
+      + '<section class="slide"><h2>만들고 있어요</h2></section>'
+      + '</body></html>';
+    expect(isPersistableShortDeckDraft(html)).toBe(false);
+  });
+
   it("treats a short titled one-slide cover as a persistable draft", () => {
     const html =
       '<!doctype html><html><body><section class="slide"><h1>AI</h1></section></body></html>';

@@ -191,6 +191,17 @@ describe('validateHtmlArtifact', () => {
     expect(isLowSubstanceSlideDeckArtifact(hung)).toBe(true);
   });
 
+  it('does not classify compact MiniMax 3-slide Korean drafts as low-substance', () => {
+    const compact =
+      '<!doctype html><html lang="ko"><body>'
+      + '<section class="slide"><h2>시장 기회</h2><p>국내 SaaS 전환이 가속화되고 있습니다.</p></section>'
+      + '<section class="slide"><h2>도입 장벽</h2><p>보안 검토와 기존 툴 교체가 가장 큰 병목입니다.</p></section>'
+      + '<section class="slide"><h2>다음 단계</h2><p>파일럿 팀부터 90일 안에 성과를 검증하세요.</p></section>'
+      + '</body></html>';
+    expect(validateHtmlArtifact(compact).ok).toBe(true);
+    expect(isLowSubstanceSlideDeckArtifact(compact)).toBe(false);
+  });
+
   it('does not classify concise real decks as low-substance', () => {
     const real =
       '<!doctype html><html lang="ko"><head><meta charset="utf-8"><style>'

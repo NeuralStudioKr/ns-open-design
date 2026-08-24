@@ -28,6 +28,8 @@ describe('DECK_FRAMEWORK_DIRECTIVE_COMPACT', () => {
     expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT).toContain('secondary brand context only');
     expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT).toContain('do not** copy literally');
     expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT).toContain('Do not add `<head>`');
+    expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT).toContain('Title-only sections');
+    expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_SELECTED_TEMPLATE).toContain('Title-only sections');
   });
 
   it('uses a three-slide wireframe so one-slide covers are not modeled as complete', () => {
