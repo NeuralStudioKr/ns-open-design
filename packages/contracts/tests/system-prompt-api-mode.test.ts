@@ -253,6 +253,7 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).toContain('`web_fetch`');
       expect(prompt).toContain('`generate_image`');
       expect(prompt).toMatch(/call `web_fetch` with the absolute URL/i);
+      expect(prompt).toMatch(/Do not call `web_fetch` on fonts, CSS/i);
       expect(prompt).toMatch(/I can't read URLs/i);
       expect(prompt).toContain('<web-fetch-context>');
       expect(prompt).toContain('fetched URL text');
