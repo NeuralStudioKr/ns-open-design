@@ -17,6 +17,7 @@ import type {
 import type { TeamverBrandingConfig } from "./config";
 import { isSlideRelatedDesignTemplate, isRenderableDesignTemplate } from "./designTemplateVisibility";
 import { isEmbedHiddenChinesePrimaryDeckTemplate, readOdContentLocale } from "./embedChineseDeckTemplatePolicy";
+import { isTeamverHiddenPromptScaffoldResourceId } from "./toolboxCatalogDisplay";
 
 /** Home hero chip ids hidden in embed slide-only MVP. */
 export const TEAMVER_EMBED_HIDDEN_HOME_HERO_CHIP_IDS = new Set([
@@ -345,6 +346,8 @@ export function pluginsForSlideOnlyMvp(
   return plugins.filter(
     (plugin) =>
       isSlideRelatedPlugin(plugin) &&
+      !isTeamverHiddenPromptScaffoldResourceId(plugin.id) &&
+      !isTeamverHiddenPromptScaffoldResourceId(plugin.manifest?.name) &&
       !isEmbedHiddenChinesePrimaryDeckTemplate(
         { id: plugin.id, contentLocale: readOdContentLocale(plugin.manifest?.od) },
         branding,
@@ -376,6 +379,12 @@ export function skillsForSlideOnlyMvp(
 ): SkillSummary[] {
   if (!branding.slideOnlyMvp) return [...skills];
   return skills.filter((skill) => {
+    if (
+      isTeamverHiddenPromptScaffoldResourceId(skill.id) ||
+      isTeamverHiddenPromptScaffoldResourceId(skill.name)
+    ) {
+      return false;
+    }
     if (isRenderableDesignTemplate(skill)) {
       return (
         isSlideRelatedDesignTemplate(skill) &&

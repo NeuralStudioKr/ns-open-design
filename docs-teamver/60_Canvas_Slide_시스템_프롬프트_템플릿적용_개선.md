@@ -32,6 +32,19 @@
 | scaffold로 갑자기 바꾸면? | **안 됨.** kit hard cutover 금지. full HTML scaffold도 기본 inject 하지 않음 |
 | 1장짜리 템플릿 결과가 저장되는가? | **제품 경로는 첫 fill 3장.** 잘리면 제목 있는 1장은 저장하고 top-up이 덧붙인다. 제목 없는 빈 셸만 미완성으로 차단. 사용자가 1장을 명시한 경우도 허용 |
 
+### 1.14 2026-08-24 — Html Ppt 메타 스킬을 목록에서 숨김
+
+`example-html-ppt` / `html-ppt`는 시각 템플릿이 아니라 예시 프롬프트·SKILL.md·context bundle을 그대로 보여주는 스캐폴드다. Community / Canvas 피커 / toolbox에 올리면 내부 프롬프트가 노출된다.
+
+구현 현황:
+
+- [x] `isTeamverHiddenPromptScaffoldResourceId` — 마지막 path segment만 `example-html-ppt` / `html-ppt` 매칭
+- [x] Community `pluginsForSlideOnlyMvp` · skills · toolbox · Canvas picker에서 숨김
+- [x] 자식 시각 템플릿 `example-html-ppt-zhangzara-*` / Hermes 등은 유지
+- [x] 회귀: toolbox-catalog-display · slide-only policy · canvas picker
+- [ ] HomeHero 프리셋 매직 스케일 — slide-only 비노출, 후속
+- [ ] 비덱 갤러리 hover-pan / live-artifact 250% — 프로토타입 경로, 후속
+
 ### 1.13 2026-08-24 — thumbnail batch 1장 커버가 빈 카드로 남는 문제
 
 §1.11 이후 bake를 건너뛴 덱 카드는 preview-batch `thumbnail` HTML을 받는다. 형제 슬라이드가 이미 없어서 `htmlLooksLikeMultiSlideDeck`이 false가 되고, Studio `[data-anim]` / Soft Editorial·Stencil `<deck-stage>` 커버가 투명·높이 0으로 남는다.
