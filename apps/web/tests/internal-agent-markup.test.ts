@@ -488,6 +488,17 @@ describe("sanitizeChatMessageLeakedPseudoTool (expanded)", () => {
     ).toBe("초안.");
   });
 
+  it("hard-strips incomplete 3+ letter tags and framework attr leftovers via web display last-pass", () => {
+    expect(sanitizeAssistantProseForDisplay(`초안. <div`, { stripCodeFences: true })).toBe("초안.");
+    expect(sanitizeAssistantProseForDisplay(`초안. @click="next()"`, { stripCodeFences: true })).toBe(
+      "초안.",
+    );
+    expect(
+      sanitizeAssistantProseForDisplay(`초안.\nrgba(245,240,230,0.8)`, { stripCodeFences: true }),
+    ).toBe("초안.");
+    expect(sanitizeAssistantProseForDisplay("Text <p", { stripCodeFences: true })).toBe("Text <p");
+  });
+
   it("hard-strips fullwidth tags / css-fn / event-attr leftovers via web display last-pass", () => {
     expect(
       sanitizeAssistantProseForDisplay(`진행.\n＜div class="slide"＞본문＜/div＞`, {
