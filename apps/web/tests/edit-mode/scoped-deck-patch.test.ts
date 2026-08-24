@@ -26,7 +26,7 @@ import {
 } from '../../src/artifacts/deck-patch';
 import { parseElementPatch } from '../../src/artifacts/element-patch';
 import type { ChatCommentAttachment } from '../../src/types';
-import { buildVisualAnnotationAttachment } from '../../src/comments';
+import { buildVisualAnnotationAttachment, buildConcreteElementPatchTemplate } from '../../src/comments';
 import { sanitizeManualEditFullSource } from '../../src/edit-mode/source-patches';
 
 const CURRENT_HTML = `<!doctype html><html><body>
@@ -166,6 +166,49 @@ describe('reconcileCommentAttachmentElementId', () => {
     const reconciled = reconcileCommentAttachmentElementId(CURRENT_HTML, domAttachment);
     expect(reconciled.elementId).toBe('path-1-2');
     expect(reconciled.slideIndex).toBe(1);
+  });
+
+  it('maps box annotation pagePosition to overlapping data-od-id on disk', () => {
+    const deck = `<!doctype html><html><body>
+<section class="slide" data-slide-index="0"><h1>Intro</h1></section>
+<section class="slide" data-slide-index="1" style="position:relative;width:1920px;height:1080px">
+  <h1 data-od-id="title-1" style="position:absolute;left:100px;top:80px;width:400px;height:60px">Big Title</h1>
+  <p data-od-id="body-1" style="position:absolute;left:100px;top:200px;width:600px;height:120px">Body text here</p>
+</section>
+</body></html>`;
+    const visual = buildVisualAnnotationAttachment({
+      order: 1,
+      screenshotPath: 'drawing-1.png',
+      markKind: 'box',
+      note: '이 글씨들 더 크게',
+      bounds: { x: 90, y: 190, width: 620, height: 140 },
+      slideIndex: 1,
+    });
+    const reconciled = reconcileCommentAttachmentElementId(deck, visual);
+    expect(reconciled.elementId).toBe('body-1');
+    expect(reconciled.selector).toBe('[data-od-id="body-1"]');
+    expect(reconciled.currentText).toContain('Body text');
+  });
+
+  it('reconcile scope enables concrete element-patch templates for box edits', () => {
+    const deck = `<!doctype html><html><body>
+<section class="slide" data-slide-index="0"><h1>Intro</h1></section>
+<section class="slide" data-slide-index="1" style="position:relative;width:1920px;height:1080px">
+  <p data-od-id="body-1" style="position:absolute;left:100px;top:200px;width:600px;height:120px">Body text here</p>
+</section>
+</body></html>`;
+    const visual = buildVisualAnnotationAttachment({
+      order: 1,
+      screenshotPath: 'drawing-1.png',
+      markKind: 'box',
+      note: '이 글씨들 더 크게',
+      bounds: { x: 90, y: 190, width: 620, height: 140 },
+      slideIndex: 1,
+    });
+    const scope = reconcileCommentScopeForPersist(deck, [visual]);
+    const template = buildConcreteElementPatchTemplate(scope.attachments);
+    expect(template).toContain('target-id="body-1"');
+    expect(template).toContain('slide-index="1"');
   });
 });
 

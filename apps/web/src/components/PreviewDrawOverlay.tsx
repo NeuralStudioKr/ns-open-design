@@ -9,7 +9,6 @@ import { requestPreviewSnapshot } from '../runtime/exports';
 import { isImeComposing } from '../utils/imeComposing';
 import { fitPngBlobForAnthropicProxy } from '../utils/annotationImage';
 import { isPreviewSnapshotMostlyBlank } from '../utils/annotationSnapshotQuality';
-import { isTeamverEmbedMode } from '../teamver/designApiBase';
 import { scaleBoundsToSlideCanvas } from '../utils/visualMarkPlacement';
 import {
   ANNOTATION_CAPTURE_BUDGET_MS,
@@ -838,7 +837,7 @@ export function PreviewDrawOverlay({
       const kind = markKind();
       const frameForBounds = pinnedFrameRect ?? snapshotFrameRect();
       let bounds = kind ? annotationBounds() : undefined;
-      if (bounds && frameForBounds && isTeamverEmbedMode()) {
+      if (bounds && frameForBounds) {
         bounds = scaleBoundsToSlideCanvas(bounds, frameForBounds);
       }
       const result = await new Promise<{ ok: boolean; message?: string }>((resolve) => {
