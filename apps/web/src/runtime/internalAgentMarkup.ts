@@ -88,7 +88,11 @@ const DECK_MOTIF_SVG_PRIMITIVE_TAIL_RE =
   /<(?:circle|rect|ellipse|polygon|polyline|line|g|defs|linearGradient|radialGradient|stop|use|text|tspan|foreignObject)\b/i;
 const DECK_MOTIF_SVG_CLOSE_TAIL_RE = /<\/svg\b/i;
 const DECK_MOTIF_HTML_COMMENT_TAIL_RE =
-  /<!--\s*(?:Daisy|motif|deco|SLIDE|slide)\b[\s\S]*$/i;
+  /(?:^|\n)\s*<!--[\s\S]*$/;
+const DECK_ORPHAN_LI_DUMP_TAIL_RE =
+  /(?:^|\n)\s*<li\b[\s\S]*$/i;
+const DECK_BARE_DIV_OR_MISMATCH_TAIL_RE =
+  /(?:^|\n)\s*(?:(?:<\/?div>\s*){2,}|(?:<div\b[^>]*>[\s\S]*?<\/p>))[\s\S]*$/i;
 const DECK_BROKEN_SECTION_CSS_DEBRIS_TAIL_RE =
   /<\/(?:section|div)>\s*[-a-z]*weight\s*:[\s\S]*$/i;
 /** Mid-attribute style debris, including quoted font-family / flex props. */
@@ -196,6 +200,8 @@ function stripLeakedDeckMotifHtmlTail(input: string): string {
     DECK_MOTIF_SVG_PRIMITIVE_TAIL_RE,
     DECK_MOTIF_SVG_CLOSE_TAIL_RE,
     DECK_MOTIF_HTML_COMMENT_TAIL_RE,
+    DECK_ORPHAN_LI_DUMP_TAIL_RE,
+    DECK_BARE_DIV_OR_MISMATCH_TAIL_RE,
     DECK_BROKEN_SECTION_CSS_DEBRIS_TAIL_RE,
     DECK_ORPHAN_MID_STYLE_ATTR_TAIL_RE,
     DECK_ORPHAN_MID_SVG_CSS_STYLE_TAIL_RE,
@@ -266,7 +272,21 @@ function looksLikeDeckCodeDebrisLineFallback(line: string): boolean {
   if (!trimmed) return false;
   if (/^#{1,6}\s+\S/.test(trimmed)) return false;
   if (/^(?:[-*+]|\d+[.)])\s+\S/.test(trimmed)) return false;
+  if (/^<!--/.test(trimmed) || /-->\s*$/.test(trimmed) || /<!--[\s\S]*-->/.test(trimmed)) {
+    return true;
+  }
+  if (/^(?:<\/?div>\s*)+$/i.test(trimmed)) return true;
+  if (/^(?:[\w\s/·.\-]{1,40}|[\uac00-\ud7af\s/·.\-]{1,20})<\/(?:p|div|h[1-6]|span|li|ul|ol)>\s*$/iu.test(trimmed)) {
+    return true;
+  }
   if (/^(?:<\/(?:div|span|section|header|footer|nav|aside|main|article|h[1-6]|p|ul|ol|li|table|tr|td|th|button|svg|style|script)+>\s*)+$/i.test(trimmed)) {
+    return true;
+  }
+  if (
+    /^<\/?(?:div|li|ul|ol|p|span|section|header|footer|nav|aside|main|article|h[1-6]|strong|em|button)\b/i.test(
+      trimmed,
+    )
+  ) {
     return true;
   }
   if (
@@ -293,7 +313,10 @@ function looksLikeDeckCodeDebrisLineFallback(line: string): boolean {
   }
   const cssSignals = (trimmed.match(/[{};:]/g) ?? []).length;
   const hangul = (trimmed.match(/[\uac00-\ud7af]/g) ?? []).length;
-  return cssSignals >= 3 && hangul < 2 && /[{}]/.test(trimmed) && /:/.test(trimmed);
+  if (cssSignals >= 3 && hangul < 2 && /[{}]/.test(trimmed) && /:/.test(trimmed)) return true;
+  const htmlTags = (trimmed.match(/<\/?[a-zA-Z][\w:-]*\b/g) ?? []).length;
+  if (htmlTags >= 2 && /<\/?(?:li|div|ul|ol|p|span|strong)\b/i.test(trimmed)) return true;
+  return false;
 }
 
 function looksLikeDeckCssContinuationLineFallback(line: string): boolean {

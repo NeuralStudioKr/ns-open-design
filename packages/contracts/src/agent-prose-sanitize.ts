@@ -404,9 +404,15 @@ const DECK_MOTIF_PATH_TAIL_RE =
 const DECK_MOTIF_SVG_PRIMITIVE_TAIL_RE =
   /<(?:circle|rect|ellipse|polygon|polyline|line|g|defs|linearGradient|radialGradient|stop|use|text|tspan|foreignObject)\b/i;
 const DECK_MOTIF_SVG_CLOSE_TAIL_RE = /<\/svg\b/i;
-/** `<!-- Daisy motif TL -->` (and siblings) plus any CSS that follows. */
+/** `<!-- Daisy motif TL -->` / layout comments (`<!-- Left: intro -->`) + following dump. */
 const DECK_MOTIF_HTML_COMMENT_TAIL_RE =
-  /<!--\s*(?:Daisy|motif|deco|SLIDE|slide)\b[\s\S]*$/i;
+  /(?:^|\n)\s*<!--[\s\S]*$/;
+/** Orphan deck `<li>…</li>` dumps (zhangzara/studio HTML body leaked into chat). */
+const DECK_ORPHAN_LI_DUMP_TAIL_RE =
+  /(?:^|\n)\s*<li\b[\s\S]*$/i;
+/** Bare / mismatched `<div>…</p>` chrome stacks (2+ bare divs or div/p mismatch). */
+const DECK_BARE_DIV_OR_MISMATCH_TAIL_RE =
+  /(?:^|\n)\s*(?:(?:<\/?div>\s*){2,}|(?:<div\b[^>]*>[\s\S]*?<\/p>))[\s\S]*$/i;
 const DECK_BROKEN_SECTION_CSS_DEBRIS_TAIL_RE =
   /<\/(?:section|div)>\s*[-a-z]*weight\s*:[\s\S]*$/i;
 /**
@@ -546,6 +552,8 @@ export function stripTrailingDeckHtmlMarkupLeak(input: string): string {
     DECK_MOTIF_SVG_PRIMITIVE_TAIL_RE,
     DECK_MOTIF_SVG_CLOSE_TAIL_RE,
     DECK_MOTIF_HTML_COMMENT_TAIL_RE,
+    DECK_ORPHAN_LI_DUMP_TAIL_RE,
+    DECK_BARE_DIV_OR_MISMATCH_TAIL_RE,
     DECK_BROKEN_SECTION_CSS_DEBRIS_TAIL_RE,
     DECK_ORPHAN_MID_STYLE_ATTR_TAIL_RE,
     DECK_ORPHAN_MID_SVG_CSS_STYLE_TAIL_RE,
@@ -1957,11 +1965,31 @@ export function looksLikeDeckCodeDebrisLine(line: string): boolean {
 
   // Markdown ATX headings (`# Title`) are prose — not CSS id selectors.
   if (/^#{1,6}\s+\S/.test(trimmed)) return false;
-  // Numbered / bulleted list prose.
+  // Numbered / bulleted list prose (markdown) — not HTML `<li>`.
   if (/^(?:[-*+]|\d+[.)])\s+\S/.test(trimmed)) return false;
 
+  // HTML comments / truncated comment tails (`용 & 다음 단계 (dark) -->`).
+  if (/^<!--/.test(trimmed) || /-->\s*$/.test(trimmed) || /<!--[\s\S]*-->/.test(trimmed)) {
+    return true;
+  }
+  // Bare open/close div stacks (`<div>`, `<div> <div>`).
+  if (/^(?:<\/?div>\s*)+$/i.test(trimmed)) {
+    return true;
+  }
+  // Orphan close after short Latin/label (`LEVEL</p>`, `2급</p>`).
+  if (/^(?:[\w\s/·.\-]{1,40}|[\uac00-\ud7af\s/·.\-]{1,20})<\/(?:p|div|h[1-6]|span|li|ul|ol)>\s*$/iu.test(trimmed)) {
+    return true;
+  }
   // Orphan close-tag stacks (incl. `</style>` left after body scrub).
   if (/^(?:<\/(?:div|span|section|header|footer|nav|aside|main|article|h[1-6]|p|ul|ol|li|table|tr|td|th|button|svg|style|script)+>\s*)+$/i.test(trimmed)) {
+    return true;
+  }
+  // Deck body dumps: `<li>…</li>`, mismatched `<div>…</p>`, bare structural tags.
+  if (
+    /^<\/?(?:div|li|ul|ol|p|span|section|header|footer|nav|aside|main|article|h[1-6]|strong|em|button)\b/i.test(
+      trimmed,
+    )
+  ) {
     return true;
   }
   // Mid-attribute / truncated style debris (`#2D2D2D;border-radius:…` or
@@ -1982,7 +2010,7 @@ export function looksLikeDeckCodeDebrisLine(line: string): boolean {
   if (/^#[0-9A-Fa-f]{3,8}\s*;\s*--[A-Za-z_]/.test(trimmed)) {
     return true;
   }
-  // HTML chrome with deck-ish attrs / tags.
+  // HTML chrome with deck-ish attrs / tags (style=/class=/svg/…).
   if (
     /^<\/?[a-zA-Z][\w:-]*\b/.test(trimmed)
     && /(?:\bstyle\s*=|\bclass\s*=|data-(?:slide|deck)|role\s*=\s*["']presentation|aria-hidden\s*=\s*["']true|<(?:svg|path|circle|rect|video|canvas|iframe|object|embed|picture|source|math|foreignObject)\b|<\/(?:div|section|span|svg|h[1-6]|style)\b|<br\b)/i.test(
@@ -2016,6 +2044,11 @@ export function looksLikeDeckCodeDebrisLine(line: string): boolean {
   const cssSignals = (trimmed.match(/[{};:]/g) ?? []).length;
   const hangul = (trimmed.match(/[\uac00-\ud7af]/g) ?? []).length;
   if (cssSignals >= 3 && hangul < 2 && /[{}]/.test(trimmed) && /:/.test(trimmed)) {
+    return true;
+  }
+  // HTML tag density — deck body chrome without a named opener.
+  const htmlTags = (trimmed.match(/<\/?[a-zA-Z][\w:-]*\b/g) ?? []).length;
+  if (htmlTags >= 2 && /<\/?(?:li|div|ul|ol|p|span|strong)\b/i.test(trimmed)) {
     return true;
   }
   // HTML-entity encoded tags.
@@ -2098,14 +2131,9 @@ export function stripLeakedDeckCodeDebrisBlocks(input: string): string {
     collapsed.push(line);
   }
   let out = collapsed.join("\n");
-  // Preserve a single trailing newline when the source had one so
-  // artifact-respecting concatenation (`prose\n` + `<artifact`) stays intact.
-  if (/\n$/.test(input)) {
-    out = `${out.replace(/\n+$/g, "")}\n`;
-  } else {
-    out = out.replace(/\n+$/g, "");
-  }
-  return out;
+  // Never leave a dangling trailing newline on display prose — artifact
+  // boundaries re-insert `\n` in the respecting-artifacts wrapper when needed.
+  return out.replace(/\n+$/g, "");
 }
 
 export function stripLeakedDeckCodeDebrisBlocksRespectingArtifacts(
@@ -2121,7 +2149,18 @@ export function stripLeakedDeckCodeDebrisBlocksRespectingArtifacts(
       result += stripLeakedDeckCodeDebrisBlocks(input.slice(cursor));
       break;
     }
-    result += stripLeakedDeckCodeDebrisBlocks(input.slice(cursor, open));
+    const prose = stripLeakedDeckCodeDebrisBlocks(input.slice(cursor, open));
+    result += prose;
+    // Re-insert the newline that commonly separates chat prose from `<artifact`
+    // when the line scrubber trimmed it off the prose slice.
+    if (
+      prose.length > 0
+      && !prose.endsWith("\n")
+      && open > cursor
+      && input[open - 1] === "\n"
+    ) {
+      result += "\n";
+    }
     const gt = input.indexOf(">", open);
     if (gt === -1) {
       result += input.slice(open);
