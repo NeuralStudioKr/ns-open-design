@@ -10,7 +10,7 @@
  * from the latest live/saved source.
  *
  * ---------------------------------------------------------------------------
- * Tip remount index (546) — user-perception sequences & key constants
+ * Tip remount index (549) — user-perception sequences & key constants
  * ---------------------------------------------------------------------------
  * Post-protect: TIP_REMOUNT_POST_PROTECT_SEQUENCE
  *   sticky-clear → soft-land → exit-latch → absorb → post-absorb-quiet → live
@@ -30,11 +30,13 @@
  * Soft-land catalogs: TIP_POST_STICKY_SOFT_LAND_CATALOGS (2) — intentional.
  * Layout paint: seed/apply last-good during tip session or paint-sync hold (543).
  * Selection commit: hostPaintRectForManualEditSelectionCommit (546).
- * Refresh miss retain: tip session OR paint-sync (538/546).
+ * Refresh miss: resolveTipRemountRefreshMissAction — last-good → retain →
+ *   force-keep → clear (549/550). Selection-commit last-good feeds the same
+ *   last-good branch on the following refresh.
  * Intentional nulls (5): mode-exit / no-id / refresh(!id) / unprotected miss /
  *   clear-selection.
  * Walk fixtures: apps/web/tests/edit-mode/tip-remount-sequence-fixtures.ts (547).
- * Checklist: docs-teamver/49_tip_remount_체감_체크리스트_500-548.md (545/548).
+ * Checklist: docs-teamver/49_tip_remount_체감_체크리스트_500-551.md (548/551).
  * Do not retune fit delays / latch / soft-land without a tip-remount loop note.
  */
 export function shouldClearManualEditFrozenSourceOnModeChange(
@@ -1393,6 +1395,48 @@ export function hostPaintRectForManualEditSelectionCommit(
     return lastGoodForPrimary;
   }
   return null;
+}
+
+/**
+ * Refresh miss action after measure fails (549/550).
+ * Order is intentional and must not reorder:
+ *   1. apply-last-good — tip/paint-sync reuse (521/523), including last-good
+ *      just seeded by selection commit (546)
+ *   2. retain-current — tip session or paint-sync with a live box (538/546)
+ *   3. keep-force — force remasure keeps optimistic seed (gesture/handoff)
+ *   4. clear — non-tip unprotected miss
+ */
+export type TipRemountRefreshMissAction =
+  | 'apply-last-good'
+  | 'retain-current'
+  | 'keep-force'
+  | 'clear';
+
+export function resolveTipRemountRefreshMissAction(
+  tipRemountChromeSessionLive: boolean,
+  paintSyncHoldArmed: boolean,
+  hasLastGoodHostRect: boolean,
+  hasCurrentHostPaint: boolean,
+  force: boolean,
+): TipRemountRefreshMissAction {
+  if (shouldReuseLastHostRectOnTipRemountMeasureMiss(
+    tipRemountChromeSessionLive,
+    false,
+    hasLastGoodHostRect,
+    paintSyncHoldArmed,
+  )) {
+    return 'apply-last-good';
+  }
+  if (shouldRetainCurrentHostPaintOnTipRemountPaintMiss(
+    paintSyncHoldArmed,
+    false,
+    hasCurrentHostPaint,
+    tipRemountChromeSessionLive,
+  )) {
+    return 'retain-current';
+  }
+  if (force) return 'keep-force';
+  return 'clear';
 }
 
 /**

@@ -401,10 +401,10 @@ import {
   shouldArmTipRemountChromeUnlockPointerGate,
   shouldDisableManualEditChromeForTipRemountUnlockGate,
   shouldReuseLastHostRectOnTipRemountMeasureMiss,
-  shouldRetainCurrentHostPaintOnTipRemountPaintMiss,
   shouldSeedTipRemountLastHostRectFromLivePaint,
   shouldApplyTipRemountLastHostRectOnLayoutPaintMiss,
   hostPaintRectForManualEditSelectionCommit,
+  resolveTipRemountRefreshMissAction,
   shouldClearTipRemountLastHostRectCache,
   shouldTrustTipRemountHostPaintDespiteComposedStale,
   shouldArmTipRemountPaintSyncHold,
@@ -11697,23 +11697,28 @@ function HtmlViewer({
       manualEditTipLastHostRectByIdRef.current.set(id, { ...paint });
       setManualEditHostPaintRect(paint);
     } else {
-      const fallback = resolveTipRemountHostPaintRect(id, null);
-      if (fallback) {
-        setManualEditHostPaintRect(fallback);
-      } else if (shouldRetainCurrentHostPaintOnTipRemountPaintMiss(
-        manualEditTipPaintSyncHoldRef.current,
-        false,
-        Boolean(
-          manualEditHostPaintRectRef.current
-          && manualEditHostPaintRectRef.current.width >= 1
-          && manualEditHostPaintRectRef.current.height >= 1,
-        ),
-        tipRemountChromeSessionLiveNow(),
-      )) {
-        // Tip session / paint-sync: keep current box instead of nulling (538/546).
-      } else if (!options?.force) {
-        // Non-tip unprotected miss without force: clear for hybrid recompose.
-        // force=true keeps current (gesture/handoff optimistic seed).
+      const tipSessionLive = tipRemountChromeSessionLiveNow();
+      const paintSyncHold = manualEditTipPaintSyncHoldRef.current;
+      const lastGood = manualEditTipLastHostRectByIdRef.current.get(id) ?? null;
+      const hasCurrent = Boolean(
+        manualEditHostPaintRectRef.current
+        && manualEditHostPaintRectRef.current.width >= 1
+        && manualEditHostPaintRectRef.current.height >= 1,
+      );
+      // Miss order: last-good → retain → force-keep → clear (549/550).
+      // Selection-commit last-good (546) lands in the apply-last-good branch.
+      const missAction = resolveTipRemountRefreshMissAction(
+        tipSessionLive,
+        paintSyncHold,
+        lastGood != null,
+        hasCurrent,
+        Boolean(options?.force),
+      );
+      if (missAction === 'apply-last-good' && lastGood) {
+        setManualEditHostPaintRect(lastGood);
+      } else if (missAction === 'retain-current' || missAction === 'keep-force') {
+        // Keep current box — tip/paint-sync retain or force optimistic seed.
+      } else if (missAction === 'clear') {
         setManualEditHostPaintRect(null);
       }
     }

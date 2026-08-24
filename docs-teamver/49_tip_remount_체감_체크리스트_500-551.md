@@ -1,7 +1,7 @@
-# Tip remount 체감 체크리스트 (500–548)
+# Tip remount 체감 체크리스트 (500–551)
 
 Manual Edit tip-yield → remount → chrome interactive 경로의 **사용자 체감** 회귀 체크리스트입니다.  
-헬퍼/시퀀스 SSOT는 `apps/web/src/edit-mode/manual-edit-freeze.ts` 상단 **Tip remount index (546)** 와 아래 상수입니다.
+헬퍼/시퀀스 SSOT는 `apps/web/src/edit-mode/manual-edit-freeze.ts` 상단 **Tip remount index (549)** 와 아래 상수입니다.
 
 | 시퀀스 | 상수 |
 |--------|------|
@@ -42,7 +42,8 @@ CI fail-fast: `pnpm --filter @open-design/web test:tip-remount-smoke`
 - [ ] layout-effect live paint가 tip session/hold 중 last-good seed (543)
 - [ ] layout-effect miss + current empty → last-good apply (543)
 - [ ] selection commit이 tip/paint-sync 중 unconditional null 대신 primary last-good (546)
-- [ ] refresh miss retain이 tip session **또는** paint-sync에서 current 유지 (538/546)
+- [ ] refresh miss 해석 순서: last-good → retain → force-keep → clear (549/550)
+- [ ] selection-commit last-good가 이어지는 refresh miss에서 apply-last-good로 연결 (549/550)
 - [ ] mode-exit / no-id / clear-selection / unprotected refresh miss null은 의도적 clear 5곳 (546 audit)
 - [ ] geom-epoch bump는 hold 중 defer → hold clear 시 flush (533)
 - [ ] immediate epoch bump는 deferred flag clear (542 double-bump 방지)
@@ -67,7 +68,7 @@ CI fail-fast: `pnpm --filter @open-design/web test:tip-remount-smoke`
 
 | 파일 | 범위 |
 |------|------|
-| `manual-edit-tip-remount-smoke.test.ts` | wiring 핀 500–546 |
+| `manual-edit-tip-remount-smoke.test.ts` | wiring 핀 500–550 |
 | `tip-remount-sequence-fixtures.ts` | soft-land×chrome 공유 walk (547) |
 | `manual-edit-tip-soft-land-absorb-sequence.test.ts` | post-protect walk |
 | `manual-edit-tip-chrome-release-sequence.test.ts` | chrome helper walk |
@@ -86,6 +87,7 @@ CI fail-fast: `pnpm --filter @open-design/web test:tip-remount-smoke`
 | 531–539 | quiet force-spend, min-size latch, epoch/paint order, token cancel, latch clear, sequences, walk, null guard, index |
 | 540–542 | paint∥pointer tracks, latch membership, grace→paint-sync release |
 | 543–545 | layout last-good seed/miss, cross walk, checklist |
-| 546–548 | selection-commit last-good, shared walk fixtures, checklist 500–548 |
+| 546–548 | selection-commit last-good, shared walk fixtures, checklist rename |
+| 549–551 | refresh-miss action order, selection×force 교집합 핀, checklist 500–551 |
 
 문서 갱신 시 `docs-teamver/00_구현_내역_누적.md` 최상단에도 한 줄을 남깁니다.

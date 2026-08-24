@@ -65,6 +65,7 @@ import {
   shouldSeedTipRemountLastHostRectFromLivePaint,
   shouldApplyTipRemountLastHostRectOnLayoutPaintMiss,
   hostPaintRectForManualEditSelectionCommit,
+  resolveTipRemountRefreshMissAction,
   shouldClearTipRemountLastHostRectCache,
   shouldTrustTipRemountHostPaintDespiteComposedStale,
   shouldOmitComposedMembersFromTipRemountPartialUnion,
@@ -401,6 +402,22 @@ describe('manual edit freeze reset', () => {
       false, true, { x: 1, y: 2, width: 3, height: 4 },
     )).toEqual({ x: 1, y: 2, width: 3, height: 4 });
     expect(hostPaintRectForManualEditSelectionCommit(true, false, null)).toBeNull();
+    expect(resolveTipRemountRefreshMissAction(true, false, true, false, false))
+      .toBe('apply-last-good');
+    expect(resolveTipRemountRefreshMissAction(true, false, false, true, false))
+      .toBe('retain-current');
+    expect(resolveTipRemountRefreshMissAction(false, true, false, true, false))
+      .toBe('retain-current');
+    expect(resolveTipRemountRefreshMissAction(false, false, false, true, true))
+      .toBe('keep-force');
+    expect(resolveTipRemountRefreshMissAction(false, false, false, false, false))
+      .toBe('clear');
+    // Selection-commit last-good then refresh miss → same apply-last-good (549/550)
+    expect(hostPaintRectForManualEditSelectionCommit(
+      true, false, { x: 1, y: 2, width: 3, height: 4 },
+    )).toEqual({ x: 1, y: 2, width: 3, height: 4 });
+    expect(resolveTipRemountRefreshMissAction(true, false, true, true, true))
+      .toBe('apply-last-good');
     expect(shouldClearTipRemountLastHostRectCache(false, false, false)).toBe(true);
     expect(shouldClearTipRemountLastHostRectCache(true, false, false)).toBe(false);
     expect(shouldClearTipRemountLastHostRectCache(false, true, false)).toBe(false);
