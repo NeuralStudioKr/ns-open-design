@@ -15,6 +15,12 @@
  * after every navigation so the host can render its own counter / dots.
  * The host can also request an immediate snapshot via:
  *   { type: 'od:slide-state-request' }
+ *
+ * Preview srcdocs (not export documents) also inject an Escape bridge.
+ * Sandboxed preview iframes omit allow-same-origin, so a focused iframe
+ * swallows keydown and the host never sees Escape. The bridge posts:
+ *   { type: 'od:preview-escape' }
+ * unless the user is typing in an input / textarea / contenteditable.
  */
 import {
   buildManualEditBridge,
@@ -129,7 +135,10 @@ export {
   repairArtifactDocumentHeadIfNeeded,
 } from './artifact-document-head';
 import { repairArtifactDocumentHeadIfNeeded } from './artifact-document-head';
-import { repairDeckSlideSurfaceBleed } from '../artifacts/deck-slide-surface';
+import {
+  inferDeckSlidePaperSurface,
+  repairDeckSlideSurfaceBleed,
+} from '../artifacts/deck-slide-surface';
 import { relaxPersistedDeckSlideSurfaceBleed } from '@open-design/contracts';
 
 export function buildSrcdoc(
@@ -232,7 +241,11 @@ export function buildSrcdoc(
   // it to a per-call option would force iframe srcdoc regeneration (and a
   // visible flash) every time the host toggle flips.
   const withTweaks = injectTweaksBridge(withEdit);
-  return injectSrcdocTransportActivationBridge(injectSnapshotBridge(withTweaks));
+  // Escape must leave the opaque sandbox — host PreviewModal cannot attach
+  // to iframe.contentWindow without allow-same-origin.
+  return injectPreviewEscapeBridge(
+    injectSrcdocTransportActivationBridge(injectSnapshotBridge(withTweaks)),
+  );
 }
 
 /**
@@ -1365,6 +1378,46 @@ function injectPreviewImageRetryBridge(doc: string): string {
     });
     mo.observe(document.documentElement, { childList: true, subtree: true });
   } catch (_) {}
+})();</script>`;
+  if (/<head[^>]*>/i.test(doc))
+    return doc.replace(/<head[^>]*>/i, (m) => `${m}${script}`);
+  if (/<body[^>]*>/i.test(doc))
+    return doc.replace(/<body[^>]*>/i, (m) => `${m}${script}`);
+  return script + doc;
+}
+
+export const PREVIEW_ESCAPE_MESSAGE = 'od:preview-escape';
+
+/**
+ * When a sandboxed preview iframe has keyboard focus, Escape never reaches
+ * the parent document. Post a host message so PreviewModal can dismiss
+ * popovers → fullscreen → the modal, one layer per keystroke.
+ */
+function injectPreviewEscapeBridge(doc: string): string {
+  const script = `<script data-od-preview-escape-bridge>(function(){
+  function isTypingTarget(el){
+    if (!el) return false;
+    var tag = el.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable) return true;
+    if (el.closest) {
+      if (el.closest('[data-od-editing="true"]')) return true;
+      if (el.closest('[contenteditable]:not([contenteditable="false"])')) return true;
+    }
+    return false;
+  }
+  window.addEventListener('keydown', function(e){
+    if (!e || (e.key !== 'Escape' && e.key !== 'Esc')) return;
+    if (e.altKey || e.ctrlKey || e.metaKey) return;
+    if (isTypingTarget(e.target)) return;
+    if (document.querySelector && document.querySelector('[data-od-editing="true"]')) return;
+    e.preventDefault();
+    e.stopPropagation();
+    try {
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage({ type: ${JSON.stringify(PREVIEW_ESCAPE_MESSAGE)} }, '*');
+      }
+    } catch (_) {}
+  }, true);
 })();</script>`;
   if (/<head[^>]*>/i.test(doc))
     return doc.replace(/<head[^>]*>/i, (m) => `${m}${script}`);
@@ -2546,6 +2599,13 @@ html[data-od-inspect-mode] body iframe { pointer-events: none !important; }
 // the scaled stage lands ~1000px off-screen and the user sees a mostly-
 // black preview with a sliver of slide content in the top-left. Skip the
 // override whenever the framework's marker id is present.
+function sanitizeStackedStagePaper(value: string | null | undefined): string | null {
+  const raw = String(value ?? '').trim();
+  if (!raw || raw.length > 160) return null;
+  if (/[<>]|<\/style/i.test(raw)) return null;
+  return raw.replace(/[;\n\r]/g, ' ').trim() || null;
+}
+
 function injectDeckBridge(
   doc: string,
   initialSlideIndex = 0,
@@ -2557,6 +2617,9 @@ function injectDeckBridge(
   const isFrameworkDeck = /\bid\s*=\s*["']deck-stage["']/i.test(doc)
     || /<deck-stage\b/i.test(doc);
   const isCompactStackedDeck = compactStackedDeck;
+  const stagePaper = sanitizeStackedStagePaper(
+    inferDeckSlidePaperSurface(doc)?.background,
+  );
   // Catalog presenters hide inactive pages with author CSS (opacity or
   // display:none + .active). Host `display:none !important` survives
   // native `#nextBtn` class toggles, so later pages report the right
@@ -2621,6 +2684,7 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
   transform-origin: center center;
   /* Soft edge so cream slides read as a card on the stage chrome. */
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06);
+  ${stagePaper ? `background: ${stagePaper};` : ''}
 }
 #od-stacked-deck-stage > .slide {
   box-sizing: border-box !important;

@@ -4,6 +4,7 @@ import {
   OFFICIAL_DECK_MOTIF_HTML_ATTR,
   rewriteCssImportsForPersist,
 } from '@open-design/contracts';
+import { normalizePagePositionToSlideCanvas, type PlacementRect } from '../utils/visualMarkPlacement';
 import { emptyManualEditStyles, MANUAL_EDIT_STYLE_PROPS, type ManualEditFields, type ManualEditPatch, type ManualEditStyles } from './types';
 
 export interface ManualEditPatchResult {
@@ -36,6 +37,8 @@ export interface ManualEditMergeTargetHint {
   htmlHint?: string;
   /** Captured CSS selector from the comment click (may be absolute or slide-relative). */
   selector?: string;
+  /** Screenshot annotation box in slide-canvas pixels (1920×1080) or 0–1 fractions. */
+  pagePosition?: { x: number; y: number; width: number; height: number };
 }
 
 export interface ManualEditSourceScope {
@@ -1065,6 +1068,171 @@ function findElementByHint(
     }
   }
   return best && best.score >= 80 ? best.element : null;
+}
+
+function parseInlinePxFromStyle(style: string, prop: string): number | null {
+  const match = new RegExp(`(?:^|;|\\s)${prop}\\s*:\\s*(-?[\\d.]+)\\s*px`, 'i').exec(style);
+  if (!match) return null;
+  const value = Number(match[1]);
+  return Number.isFinite(value) ? value : null;
+}
+
+function parseInlineFontSizePx(style: string): number | null {
+  const px = parseInlinePxFromStyle(style, 'font-size');
+  if (px != null) return px;
+  const match = /(?:^|;|\s)font-size\s*:\s*([\d.]+)(?:\s*px)?/i.exec(style);
+  if (!match) return null;
+  const value = Number(match[1]);
+  return Number.isFinite(value) ? value : null;
+}
+
+function isPositionedInlineStyle(style: string): boolean {
+  return /(?:^|;|\s)position\s*:\s*(absolute|fixed)/i.test(style);
+}
+
+/**
+ * Best-effort slide-canvas bbox from inline `style` on absolute-positioned deck nodes.
+ * Decks without explicit geometry return null (caller skips overlap scoring).
+ */
+function estimateElementPlacementRect(element: Element, slideRoot: Element): PlacementRect | null {
+  let offsetX = 0;
+  let offsetY = 0;
+  let width: number | null = null;
+  let height: number | null = null;
+  let fontSize: number | null = null;
+  const chain: Element[] = [];
+  let cursor: Element | null = element;
+  while (cursor && cursor !== slideRoot.parentElement) {
+    chain.unshift(cursor);
+    cursor = cursor.parentElement;
+  }
+  for (const node of chain) {
+    const style = node.getAttribute('style') || '';
+    if (isPositionedInlineStyle(style)) {
+      const left = parseInlinePxFromStyle(style, 'left');
+      const top = parseInlinePxFromStyle(style, 'top');
+      if (left != null) offsetX = left;
+      if (top != null) offsetY = top;
+    }
+    const nodeWidth = parseInlinePxFromStyle(style, 'width');
+    const nodeHeight = parseInlinePxFromStyle(style, 'height');
+    if (nodeWidth != null) width = nodeWidth;
+    if (nodeHeight != null) height = nodeHeight;
+    const fs = parseInlineFontSizePx(style);
+    if (fs != null) fontSize = fs;
+  }
+  if (width == null || height == null) {
+    const text = normalizeTextForCandidate(element.textContent || '');
+    const fs = fontSize ?? 28;
+    if (width == null) {
+      width = text
+        ? Math.max(48, Math.min(720, Math.round(text.length * fs * 0.55)))
+        : 120;
+    }
+    if (height == null) {
+      height = Math.max(24, Math.round(fs * 1.35));
+    }
+  }
+  if (width <= 0 || height <= 0) return null;
+  const hasExplicitPosition =
+    offsetX !== 0
+    || offsetY !== 0
+    || chain.some((node) => isPositionedInlineStyle(node.getAttribute('style') || ''));
+  if (!hasExplicitPosition) return null;
+  return { x: offsetX, y: offsetY, width, height };
+}
+
+function placementRectIntersectionArea(a: PlacementRect, b: PlacementRect): number {
+  const left = Math.max(a.x, b.x);
+  const top = Math.max(a.y, b.y);
+  const right = Math.min(a.x + a.width, b.x + b.width);
+  const bottom = Math.min(a.y + a.height, b.y + b.height);
+  if (right <= left || bottom <= top) return 0;
+  return (right - left) * (bottom - top);
+}
+
+function placementRectCenter(rect: PlacementRect): { x: number; y: number } {
+  return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+}
+
+function pointInsidePlacementRect(point: { x: number; y: number }, rect: PlacementRect): boolean {
+  return (
+    point.x >= rect.x
+    && point.y >= rect.y
+    && point.x <= rect.x + rect.width
+    && point.y <= rect.y + rect.height
+  );
+}
+
+function isPagePositionOverlapCandidate(element: Element): boolean {
+  if (!element.getAttribute('data-od-id')
+    && !element.getAttribute('data-od-source-path')
+    && !element.getAttribute('data-screen-label')) {
+    return false;
+  }
+  const tag = element.tagName.toLowerCase();
+  if (['html', 'head', 'body', 'style', 'script', 'svg', 'section'].includes(tag)) return false;
+  return isReasonableTextReplacementCandidate(element) || ['h1', 'h2', 'h3', 'h4', 'p', 'span', 'li'].includes(tag);
+}
+
+/**
+ * Map a screenshot annotation box to the best overlapping editable element inside
+ * a scoped slide. Uses inline absolute geometry — flow-layout slides may not match.
+ */
+export function findElementByPagePositionOverlap(
+  doc: Document,
+  scope: ManualEditSourceScope,
+  pagePosition: { x: number; y: number; width: number; height: number },
+): Element | null {
+  const root = findScopedRoot(doc, scope);
+  if (!root) return null;
+  const slideRoot = root.nodeType === 9 ? doc.body : root as Element;
+  const markRect = normalizePagePositionToSlideCanvas(pagePosition);
+  if (markRect.width <= 0 || markRect.height <= 0) return null;
+  const markCenter = placementRectCenter(markRect);
+  const candidates = Array.from(slideRoot.querySelectorAll('*'))
+    .filter((candidate) => isPagePositionOverlapCandidate(candidate));
+  let best: { element: Element; score: number; area: number } | null = null;
+  for (const candidate of candidates) {
+    const elementRect = estimateElementPlacementRect(candidate, slideRoot);
+    if (!elementRect) continue;
+    const intersection = placementRectIntersectionArea(markRect, elementRect);
+    const overlapRatio = intersection / Math.max(1, markRect.width * markRect.height);
+    const centerInside = pointInsidePlacementRect(markCenter, elementRect);
+    let score = overlapRatio * 100;
+    if (centerInside) score += 40;
+    if (score <= 0) continue;
+    const area = elementRect.width * elementRect.height;
+    if (
+      !best
+      || score > best.score
+      || (score === best.score && area < best.area)
+    ) {
+      best = { element: candidate, score, area };
+    }
+  }
+  return best && best.score >= 25 ? best.element : null;
+}
+
+/** Resolve stable target id for a boxed visual annotation region. */
+export function resolveManualEditTargetReferenceByPagePosition(
+  source: string,
+  scope: ManualEditSourceScope,
+  pagePosition: { x: number; y: number; width: number; height: number },
+  parsedDoc?: Document | null,
+): string | null {
+  const doc = parsedDoc ?? parseSource(source);
+  if (!doc) return null;
+  const target = findElementByPagePositionOverlap(doc, scope, pagePosition);
+  if (!target) return null;
+  const candidateId = (
+    target.getAttribute('data-od-id')
+    || target.getAttribute('data-od-source-path')
+    || target.getAttribute('data-screen-label')
+    || ''
+  ).trim();
+  if (!candidateId) return null;
+  return resolveManualEditTargetReference(source, candidateId, scope, undefined, doc);
 }
 
 /**

@@ -2411,7 +2411,9 @@ function stripLeakedCssCustomPropertyBlocksRespectingArtifacts(
  * tags across SSE boundaries.
  */
 export function createStreamingAssistantProseGuard(
-  options: Omit<SanitizeAssistantProseOptions, "streaming"> = {},
+  options: Omit<SanitizeAssistantProseOptions, "streaming"> & {
+    preserveOpenArtifact?: boolean;
+  } = {},
 ): {
   feed: (delta: string) => string;
   flush: () => string;

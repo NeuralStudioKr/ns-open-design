@@ -41,6 +41,7 @@ import {
   shouldSeedTipRemountLastHostRectFromLivePaint,
   shouldApplyTipRemountLastHostRectOnLayoutPaintMiss,
   hostPaintRectForManualEditSelectionCommit,
+  resolveTipRemountRefreshMissAction,
   shouldClearTipRemountLastHostRectCache,
   shouldTrustTipRemountHostPaintDespiteComposedStale,
   shouldOmitComposedMembersFromTipRemountPartialUnion,
@@ -96,10 +97,12 @@ describe('manual-edit tip remount smoke (500/501/506)', () => {
     expect(webPackageJson).toContain('manual-edit-tip-post-protect-chrome-cross-walk.test.ts');
     expect(webPackageJson).toContain('manual-edit-tip-deck-nudge-follow-chrome-race.test.ts');
     expect(freezeSource).not.toContain('spendTipPostSoftLandExitLatch');
-    expect(freezeSource).toContain('Tip remount index (546)');
+    expect(freezeSource).toContain('Tip remount index (549)');
     expect(freezeSource).toContain('docs-teamver/49_tip_remount');
     expect(freezeSource).toContain('hostPaintRectForManualEditSelectionCommit');
+    expect(freezeSource).toContain('resolveTipRemountRefreshMissAction');
     expect(fileViewer).toContain('hostPaintRectForManualEditSelectionCommit');
+    expect(fileViewer).toContain('resolveTipRemountRefreshMissAction');
     expect(fileViewer).toContain('clearTipPostSoftLandExitLatch');
     expect(fileViewer).not.toContain('spendTipPostSoftLandExitLatch');
     const sequenceFixtures = readFileSync(
@@ -216,7 +219,10 @@ describe('manual-edit tip remount smoke (500/501/506)', () => {
   it('retains current host paint on miss during paint-sync hold (538)', () => {
     expect(shouldRetainCurrentHostPaintOnTipRemountPaintMiss(true, false, true)).toBe(true);
     expect(shouldReuseLastHostRectOnTipRemountMeasureMiss(false, false, true, true)).toBe(true);
-    expect(fileViewer).toContain('shouldRetainCurrentHostPaintOnTipRemountPaintMiss');
+    // FileViewer routes retain through resolveTipRemountRefreshMissAction (549).
+    expect(resolveTipRemountRefreshMissAction(false, true, false, true, false))
+      .toBe('retain-current');
+    expect(fileViewer).toContain('resolveTipRemountRefreshMissAction');
   });
 
   it('seeds and applies last-good from layout-effect tip paint (543)', () => {
@@ -242,9 +248,26 @@ describe('manual-edit tip remount smoke (500/501/506)', () => {
     expect(shouldRetainCurrentHostPaintOnTipRemountPaintMiss(false, false, true, true))
       .toBe(true);
     expect(fileViewer).toContain('hostPaintRectForManualEditSelectionCommit');
-    expect(fileViewer).toMatch(
-      /shouldRetainCurrentHostPaintOnTipRemountPaintMiss\(\s*manualEditTipPaintSyncHoldRef\.current[\s\S]*?tipRemountChromeSessionLiveNow\(\)/,
+  });
+
+  it('pins refresh-miss order: last-good → retain → force-keep → clear (549/550)', () => {
+    expect(resolveTipRemountRefreshMissAction(true, false, true, true, true))
+      .toBe('apply-last-good');
+    expect(resolveTipRemountRefreshMissAction(true, false, false, true, true))
+      .toBe('retain-current');
+    expect(resolveTipRemountRefreshMissAction(false, false, false, true, true))
+      .toBe('keep-force');
+    expect(resolveTipRemountRefreshMissAction(false, false, false, false, false))
+      .toBe('clear');
+    // Selection-commit seed then refresh miss stays on last-good, not force-keep.
+    const seeded = hostPaintRectForManualEditSelectionCommit(
+      true, false, { x: 5, y: 6, width: 7, height: 8 },
     );
+    expect(seeded).not.toBeNull();
+    expect(resolveTipRemountRefreshMissAction(true, false, true, true, true))
+      .toBe('apply-last-good');
+    expect(fileViewer).toContain('resolveTipRemountRefreshMissAction');
+    expect(fileViewer).toContain("missAction === 'apply-last-good'");
   });
 
   it('clears tip last-good host rect cache when session idle (524)', () => {

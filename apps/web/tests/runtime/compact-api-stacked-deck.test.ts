@@ -221,11 +221,34 @@ describe('looksLikeCompactApiStackedDeck', () => {
       /html\[data-od-compact-stacked\][\s\S]*?background:\s*#0b0c10/,
     );
     expect(srcdoc).not.toMatch(
-      /html\[data-od-compact-stacked\][\s\S]*?background:\s*#F5F0E6/i,
+      /html\[data-od-compact-stacked\](?:(?!#od-stacked-deck-stage)[\s\S])*background:\s*#F5F0E6/i,
     );
     // Slide paper stays on the 1920×1080 stage children / author rules.
     expect(srcdoc).toMatch(/\.slide[^{]*\{[^}]*background:\s*#F5F0E6/i);
     expect(srcdoc).toContain('#od-stacked-deck-stage');
+    expect(srcdoc).toMatch(
+      /#od-stacked-deck-stage\s*\{[^}]*background:\s*#F5F0E6/i,
+    );
+  });
+
+  it('paints inferred paper on the 16:9 stage when only body has cream (§1.04)', () => {
+    const html = [
+      '<!doctype html><html lang="ko"><head><style>',
+      'html, body { margin: 0; background: #F5F0E6; color: #2D2D2D; }',
+      '</style></head><body>',
+      '<section class="s1" data-screen-label="01 Cover" style="width:1920px;height:1080px"><h1>Cover</h1></section>',
+      '<section class="s2" data-screen-label="02 Body" style="width:1920px;height:1080px"><h2>Agenda</h2></section>',
+      '</body></html>',
+    ].join('');
+    expect(looksLikeCompactApiStackedDeck(html)).toBe(true);
+    const srcdoc = buildSrcdoc(html, { deck: true });
+    expect(srcdoc).toMatch(
+      /html\[data-od-compact-stacked\][\s\S]*?background:\s*#17181d\s*!important/,
+    );
+    expect(srcdoc).toMatch(
+      /#od-stacked-deck-stage\s*\{[^}]*background:\s*#F5F0E6/i,
+    );
+    expect(srcdoc).toContain('[data-screen-label]');
   });
 
   it('matches slides wrapped in a single body child container', () => {

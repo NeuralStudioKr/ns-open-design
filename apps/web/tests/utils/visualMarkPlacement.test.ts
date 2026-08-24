@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   fittedSlideContentRect,
+  normalizePagePositionToSlideCanvas,
   scaleBoundsToSlideCanvas,
   TEAMVER_SLIDE_CANVAS,
 } from '../../src/utils/visualMarkPlacement';
@@ -26,5 +27,17 @@ describe('scaleBoundsToSlideCanvas', () => {
       { width: 800, height: 540 },
     );
     expect(scaled).toEqual({ x: 0, y: 0, width: 1920, height: 1080 });
+  });
+});
+
+describe('normalizePagePositionToSlideCanvas', () => {
+  it('scales 0–1 fractions to slide canvas pixels', () => {
+    expect(normalizePagePositionToSlideCanvas({ x: 0.1, y: 0.2, width: 0.3, height: 0.15 }))
+      .toEqual({ x: 192, y: 216, width: 576, height: 162 });
+  });
+
+  it('keeps pixel coordinates when values are already large', () => {
+    expect(normalizePagePositionToSlideCanvas({ x: 100, y: 200, width: 400, height: 80 }))
+      .toEqual({ x: 100, y: 200, width: 400, height: 80 });
   });
 });

@@ -31,6 +31,7 @@ import {
   listLocalStylesheetHrefs,
   resolveSiblingAssetPath,
 } from '../src/template-visual-kit';
+import { OFFICIAL_TEMPLATE_GENERATED_DECK_FIXTURES } from './fixtures/official-template-generated-decks';
 
 const CAPSULE_EXAMPLE = `<!doctype html><html><head>
 <link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@0,6..96,400..900&family=Space+Grotesk:wght@400;700&display=swap" rel="stylesheet">
@@ -112,6 +113,10 @@ function listOfficialDeckExamplePaths(): string[] {
     out.push(examplePath);
   }
   return out.sort((a, b) => a.localeCompare(b));
+}
+
+function countSlideSections(html: string): number {
+  return (html.match(/<section\b[^>]*\bclass\s*=\s*["'][^"']*\bslide\b/gi) ?? []).length;
 }
 
 describe('official deck look CSS merge', () => {
@@ -423,6 +428,61 @@ html, body { overflow: visible !important; height: auto !important; }
 
     expect(failures, failures.join('\n')).toEqual([]);
   }, 60_000);
+
+  it('keeps representative generated deck snapshots on fixed canvas with official Motif paint', () => {
+    const failures: string[] = [];
+    for (const fixture of OFFICIAL_TEMPLATE_GENERATED_DECK_FIXTURES) {
+      const official = loadOfficialLookSource(join(EXAMPLES_DIR, fixture.folder, 'example.html'));
+      const assets = extractOfficialDeckLookAssets(official);
+      if (!assets) {
+        failures.push(`${fixture.folder}: no official assets extracted`);
+        continue;
+      }
+      const beforeCount = countSlideSections(fixture.html);
+      const merged = mergeOfficialDeckLookCss(fixture.html, assets);
+      const afterCount = countSlideSections(merged);
+      const standalone = buildStandaloneDeckHtmlDocument(healDeckHtmlForStandaloneExport(merged));
+      const standaloneCount = countSlideSections(standalone);
+      const lookCss = [...merged.matchAll(/<style\b[^>]*data-od-official-look-css[^>]*>([\s\S]*?)<\/style>/gi)]
+        .map((m) => m[1] ?? '')
+        .join('\n');
+
+      if (beforeCount < 3) failures.push(`${fixture.folder}: fixture has only ${beforeCount} slide(s)`);
+      if (afterCount !== beforeCount) {
+        failures.push(`${fixture.folder}: merge changed slide count ${beforeCount} -> ${afterCount}`);
+      }
+      if (standaloneCount !== beforeCount) {
+        failures.push(`${fixture.folder}: standalone changed slide count ${beforeCount} -> ${standaloneCount}`);
+      }
+      if (!merged.includes(OFFICIAL_DECK_LOOK_STYLE_ATTR)) {
+        failures.push(`${fixture.folder}: missing official look style marker`);
+      }
+      if (!fixture.motif.test(merged)) {
+        failures.push(`${fixture.folder}: missing representative Motif / look paint (${fixture.label})`);
+      }
+      if (!/width:\s*1920px\s*!important/i.test(lookCss)) {
+        failures.push(`${fixture.folder}: missing stacked 1920px neutralize`);
+      }
+      if (!/height:\s*1080px\s*!important/i.test(lookCss)) {
+        failures.push(`${fixture.folder}: missing stacked 1080px neutralize`);
+      }
+      if (!/position:\s*relative\s*!important/i.test(lookCss)) {
+        failures.push(`${fixture.folder}: missing relative slide neutralize`);
+      }
+      if (!/opacity:\s*1\s*!important/i.test(lookCss)) {
+        failures.push(`${fixture.folder}: missing opacity neutralize`);
+      }
+      if (!/content="width=1920, initial-scale=1, maximum-scale=1"/i.test(standalone)) {
+        failures.push(`${fixture.folder}: standalone export missing fixed design viewport`);
+      }
+      for (const requiredText of ['Cover', '03']) {
+        if (!merged.includes(requiredText)) {
+          failures.push(`${fixture.folder}: content marker ${requiredText} dropped`);
+        }
+      }
+    }
+    expect(failures, failures.join('\n')).toEqual([]);
+  });
 
   it('injects Pin #pin symbols into compact fill that only has <use href="#pin">', () => {
     const official = loadOfficialLookSource(join(EXAMPLES_DIR, 'html-ppt-zhangzara-pin-and-paper/example.html'));

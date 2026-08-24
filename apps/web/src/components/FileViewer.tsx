@@ -154,6 +154,10 @@ import {
   canActivateSrcDocTransport,
   PREVIEW_REDIRECT_LOOP_MESSAGE,
 } from '../runtime/srcdoc';
+import {
+  PREVIEW_ESCAPE_MESSAGE,
+  resolveFileViewerPreviewEscapeAction,
+} from '../teamver/fileViewerPreviewEscape';
 import { repairArtifactDocumentHeadIfNeeded } from '../runtime/artifact-document-head';
 import {
   clearActiveRevisionSequence,
@@ -401,10 +405,10 @@ import {
   shouldArmTipRemountChromeUnlockPointerGate,
   shouldDisableManualEditChromeForTipRemountUnlockGate,
   shouldReuseLastHostRectOnTipRemountMeasureMiss,
-  shouldRetainCurrentHostPaintOnTipRemountPaintMiss,
   shouldSeedTipRemountLastHostRectFromLivePaint,
   shouldApplyTipRemountLastHostRectOnLayoutPaintMiss,
   hostPaintRectForManualEditSelectionCommit,
+  resolveTipRemountRefreshMissAction,
   shouldClearTipRemountLastHostRectCache,
   shouldTrustTipRemountHostPaintDespiteComposedStale,
   shouldArmTipRemountPaintSyncHold,
@@ -11697,23 +11701,28 @@ function HtmlViewer({
       manualEditTipLastHostRectByIdRef.current.set(id, { ...paint });
       setManualEditHostPaintRect(paint);
     } else {
-      const fallback = resolveTipRemountHostPaintRect(id, null);
-      if (fallback) {
-        setManualEditHostPaintRect(fallback);
-      } else if (shouldRetainCurrentHostPaintOnTipRemountPaintMiss(
-        manualEditTipPaintSyncHoldRef.current,
-        false,
-        Boolean(
-          manualEditHostPaintRectRef.current
-          && manualEditHostPaintRectRef.current.width >= 1
-          && manualEditHostPaintRectRef.current.height >= 1,
-        ),
-        tipRemountChromeSessionLiveNow(),
-      )) {
-        // Tip session / paint-sync: keep current box instead of nulling (538/546).
-      } else if (!options?.force) {
-        // Non-tip unprotected miss without force: clear for hybrid recompose.
-        // force=true keeps current (gesture/handoff optimistic seed).
+      const tipSessionLive = tipRemountChromeSessionLiveNow();
+      const paintSyncHold = manualEditTipPaintSyncHoldRef.current;
+      const lastGood = manualEditTipLastHostRectByIdRef.current.get(id) ?? null;
+      const hasCurrent = Boolean(
+        manualEditHostPaintRectRef.current
+        && manualEditHostPaintRectRef.current.width >= 1
+        && manualEditHostPaintRectRef.current.height >= 1,
+      );
+      // Miss order: last-good → retain → force-keep → clear (549/550).
+      // Selection-commit last-good (546) lands in the apply-last-good branch.
+      const missAction = resolveTipRemountRefreshMissAction(
+        tipSessionLive,
+        paintSyncHold,
+        lastGood != null,
+        hasCurrent,
+        Boolean(options?.force),
+      );
+      if (missAction === 'apply-last-good' && lastGood) {
+        setManualEditHostPaintRect(lastGood);
+      } else if (missAction === 'retain-current' || missAction === 'keep-force') {
+        // Keep current box — tip/paint-sync retain or force optimistic seed.
+      } else if (missAction === 'clear') {
         setManualEditHostPaintRect(null);
       }
     }
@@ -14424,6 +14433,46 @@ function HtmlViewer({
   function closeArtifactToolMenus() {
     setAgentToolsOpen(false);
   }
+
+  useEffect(() => {
+    function onMessage(ev: MessageEvent) {
+      if (!isOurPreviewIframeSource(ev.source)) return;
+      const data = ev.data as { type?: string } | null;
+      if (data?.type !== PREVIEW_ESCAPE_MESSAGE) return;
+      const action = resolveFileViewerPreviewEscapeAction({
+        presentMenuOpen,
+        zoomMenuOpen,
+        agentToolsOpen,
+        shareMenuOpen,
+        deployMenuOpen,
+        downloadMenuOpen,
+        inTabPresent,
+        deployModalOpen,
+      });
+      if (action === 'close-present-menu') setPresentMenuOpen(false);
+      else if (action === 'close-zoom-menu') setZoomMenuOpen(false);
+      else if (action === 'close-artifact-tools') closeArtifactToolMenus();
+      else if (action === 'close-share-menus') {
+        setShareMenuOpen(false);
+        setDeployMenuOpen(false);
+        setDownloadMenuOpen(false);
+      } else if (action === 'exit-in-tab-present') setInTabPresent(false);
+      else if (action === 'close-deploy-modal') closeDeployModal();
+    }
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, [
+    isOurPreviewIframeSource,
+    presentMenuOpen,
+    zoomMenuOpen,
+    agentToolsOpen,
+    shareMenuOpen,
+    deployMenuOpen,
+    downloadMenuOpen,
+    inTabPresent,
+    deployModalOpen,
+    closeDeployModal,
+  ]);
 
   function activateDrawTool() {
     fireArtifactToolbarClick('draw');

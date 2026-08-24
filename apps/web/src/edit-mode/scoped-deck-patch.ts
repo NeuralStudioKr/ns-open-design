@@ -21,6 +21,7 @@ import {
   buildClientVisualMarkFallbackInnerMarkup,
   buildVisualMarkDeckPatchInnerMarkup,
   shouldClientGraftVisualMarkWithoutAi,
+  hasUserTypedVisualAnnotationRequest,
 } from '../comments';
 import { validateCommentEditIntentRespected, targetTextContentPreserved } from './comment-edit-intent';
 import {
@@ -29,7 +30,10 @@ import {
   mergeManualEditTargetsFromSource,
   parseManualEditSource,
   readScopedCommentTargetText,
+  readManualEditTargetSnapshot,
   resolveManualEditTargetReference,
+  resolveManualEditTargetReferenceByPagePosition,
+  isSyntheticVisualMarkTargetId,
   sanitizeManualEditDocumentInPlace,
   sanitizeManualEditFullSource,
   sanitizeManualEditHtmlFragment,
@@ -691,12 +695,34 @@ export function attachmentMergeHint(
   instructionText?: string;
   htmlHint?: string;
   selector?: string;
+  pagePosition?: { x: number; y: number; width: number; height: number };
 } {
   return {
     currentText: attachment.currentText,
     instructionText: scopedCommentInstructionText(attachment, instructionText),
     htmlHint: attachment.htmlHint,
     selector: attachment.selector,
+    pagePosition: attachment.pagePosition,
+  };
+}
+
+function enrichVisualAnnotationFromResolvedTarget(
+  deckHtml: string,
+  attachment: ChatCommentAttachment,
+  resolvedId: string,
+  slideIndex: number,
+  parsedDoc?: Document | null,
+): ChatCommentAttachment {
+  const snapshot = readManualEditTargetSnapshot(deckHtml, resolvedId, { slideIndex }, parsedDoc);
+  const text = String(snapshot.fields.text || '').replace(/\s+/g, ' ').trim();
+  const outer = snapshot.outerHtml.trim();
+  return {
+    ...attachment,
+    elementId: resolvedId,
+    selector: `[data-od-id="${resolvedId}"]`,
+    label: attachment.label || resolvedId,
+    currentText: text.length > 160 ? `${text.slice(0, 157)}...` : text,
+    htmlHint: outer.length > 180 ? `${outer.slice(0, 177)}...` : outer,
   };
 }
 
@@ -1463,7 +1489,8 @@ export function reconcileCommentAttachmentElementId(
     ...scopedCommentElementIds(slideReconciled),
   ]
     .map((id) => String(id || '').trim())
-    .filter(Boolean);
+    .filter(Boolean)
+    .filter((id) => !isSyntheticVisualMarkTargetId(id));
   for (const candidate of [...new Set(candidates)]) {
     const resolved = resolveManualEditTargetReference(
       deckHtml,
@@ -1475,7 +1502,11 @@ export function reconcileCommentAttachmentElementId(
     if (resolved && !resolved.startsWith('dom:') && resolved !== slideReconciled.elementId) {
       return { ...slideReconciled, elementId: resolved };
     }
-    if (resolved && !resolved.startsWith('dom:')) {
+    if (
+      resolved
+      && !resolved.startsWith('dom:')
+      && !isSyntheticVisualMarkTargetId(slideReconciled.elementId)
+    ) {
       return slideReconciled;
     }
   }
@@ -1488,6 +1519,31 @@ export function reconcileCommentAttachmentElementId(
   );
   if (hintOnly && !hintOnly.startsWith('dom:')) {
     return { ...slideReconciled, elementId: hintOnly };
+  }
+  if (
+    isSyntheticVisualMarkTargetId(slideReconciled.elementId)
+    && hasUserTypedVisualAnnotationRequest(slideReconciled)
+    && slideReconciled.pagePosition
+  ) {
+    const boundsResolved = resolveManualEditTargetReferenceByPagePosition(
+      deckHtml,
+      { slideIndex },
+      slideReconciled.pagePosition,
+      parsedDoc,
+    );
+    if (boundsResolved && !boundsResolved.startsWith('dom:')) {
+      devLog.info('[comment-reconcile] mapped visual annotation box to deck element', {
+        elementId: boundsResolved,
+        slideIndex,
+      });
+      return enrichVisualAnnotationFromResolvedTarget(
+        deckHtml,
+        slideReconciled,
+        boundsResolved,
+        slideIndex,
+        parsedDoc,
+      );
+    }
   }
   return slideReconciled;
 }

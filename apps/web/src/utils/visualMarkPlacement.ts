@@ -50,3 +50,35 @@ export function scaleBoundsToSlideCanvas(
     height: Math.max(1, Math.round(bounds.height * sy)),
   };
 }
+
+/**
+ * Normalize preview attachment `pagePosition` to slide-canvas pixels.
+ * Overlay captures may store frame pixels (large values) or 0–1 fractions.
+ */
+export function normalizePagePositionToSlideCanvas(
+  position: PlacementRect,
+  slideCanvas: { width: number; height: number } = TEAMVER_SLIDE_CANVAS,
+): PlacementRect {
+  const x = Number(position.x);
+  const y = Number(position.y);
+  const width = Number(position.width);
+  const height = Number(position.height);
+  if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(width) || !Number.isFinite(height)) {
+    return { x: 0, y: 0, width: 0, height: 0 };
+  }
+  const max = Math.max(Math.abs(x), Math.abs(y), Math.abs(width), Math.abs(height));
+  if (max > 0 && max <= 1.5) {
+    return {
+      x: Math.round(x * slideCanvas.width),
+      y: Math.round(y * slideCanvas.height),
+      width: Math.max(1, Math.round(width * slideCanvas.width)),
+      height: Math.max(1, Math.round(height * slideCanvas.height)),
+    };
+  }
+  return {
+    x: Math.round(x),
+    y: Math.round(y),
+    width: Math.max(1, Math.round(width)),
+    height: Math.max(1, Math.round(height)),
+  };
+}

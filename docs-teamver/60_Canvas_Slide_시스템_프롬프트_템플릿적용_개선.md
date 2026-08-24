@@ -32,6 +32,17 @@
 | scaffold로 갑자기 바꾸면? | **안 됨.** kit hard cutover 금지. full HTML scaffold도 기본 inject 하지 않음 |
 | 1장짜리 템플릿 결과가 저장되는가? | **제품 경로는 첫 fill 3장.** 잘리면 제목 있는 1장은 저장하고 top-up이 덧붙인다. 제목 없는 빈 셸만 미완성으로 차단. 사용자가 1장을 명시한 경우도 허용 |
 
+### 1.05 2026-08-24 — 템플릿 미리보기 모달 ESC 닫기
+
+카탈로그 템플릿 PreviewModal은 부모 document에서 Escape를 듣지만, 샌드박스 iframe이 포커스를 가져가면 keydown이 호스트에 전달되지 않는다. `allow-same-origin`을 열지 않고 iframe → `od:preview-escape` → 같은 레이어 dismiss로 닫는다.
+
+구현 현황:
+
+- [x] preview srcdoc Escape 브리지 (`data-od-preview-escape-bridge`) — export 문서 제외
+- [x] 입력/textarea/contenteditable/`data-od-editing`에서는 post하지 않음
+- [x] PreviewModal: iframe Escape를 메뉴 → 공유 → fullscreen → close 순으로 재사용
+- [x] 회귀 테스트: `srcdoc-preview-escape-bridge` · `preview-modal-escape`
+
 ### 0.99 2026-08-21 — 루트 갤러리 썸네일 포커스·비율 잔여 구멍
 
 §0.98 이후에도 `content-visibility` intrinsic, `mode: html` html-ppt, slide-only 그리드 전체, 상세 hero 100%×380px가 같은 crop/포커스 계열을 남겼다.
@@ -53,6 +64,22 @@
 - [x] 1920×1080 `.slide` / bleed paper는 stage 위에만 유지
 - [x] stage `box-shadow`로 cream 카드 가장자리 가독성
 - [x] `compact-api-stacked-deck` 회귀 — cream full-bleed 금지
+
+### 1.04 2026-08-24 — 대표 템플릿 생성 결과 fixture 가드
+
+현재 시점 기준 판단: Studio / Daisy Days / Capsule 계열 문제는 prompt 문구만 보강하면 충분하지 않다. 모델 산출물이 실제로 저장·다운로드 경로를 통과할 때 **대표 motif/look paint가 남고, 1920×1080 canvas가 유지되고, slide count가 줄지 않는지**를 고정해야 한다. 특히 Studio처럼 official look CSS가 body에 병합된 결과는 head/body cleanup이 첫 slide host를 link/head debris로 오인하면 `deck.html`은 저장돼도 첫 장이 깨지거나 export에서 slide count가 줄어들 수 있다.
+
+구현 현황:
+
+- [x] `deck-template-look-css.test.ts`에 Studio / Broadside / Signal / Daisy Days / Capsule compact generated-result fixture 추가
+- [x] generated-result fixture는 `tests/fixtures/official-template-generated-decks.ts`로 분리해 실제 샘플 추가/검토가 쉬운 형태로 관리
+- [x] official look/motif merge 이후 slide count `>=3` 및 merge 전후 count 유지 검증
+- [x] standalone HTML export까지 통과시켜 slide count 유지, `width=1920` viewport, 1920×1080 neutralize 검증
+- [x] 대표 motif/look paint 검증 — Studio yellow/black typography token, Daisy inline SVG/deco, Capsule pill/deco
+- [x] `repairArtifactDocumentHead` cleanup pass가 정상 slide host 개수를 줄이면 해당 pass만 롤백하도록 방어
+- [x] standalone export heal은 공식 presenter CSS가 있어도 export/download 경로에서는 fixed-canvas pin을 강제
+- [x] contracts typecheck drift 정리 — streaming guard `preserveOpenArtifact` 옵션 타입, template scaffold metadata `kind: 'deck'`
+- [x] 회귀 테스트: `deck-template-look-css.test.ts`, `deck-fixed-canvas.test.ts`, `repair-artifact-document-head.test.ts`, `agent-prose-sanitize.test.ts`, `template-scaffold.test.ts`
 
 ### 1.00 2026-08-21 — Motif 생략 방지와 SVG 덤프 방지를 분리
 
@@ -86,6 +113,18 @@
 - [x] batch item은 기존 단건 `/preview`/`/example/:name`의 fallback chain, asset rewrite, sandbox HTML 처리 재사용
 - [x] web `HtmlSurface`는 batch 가능한 plugin preview URL을 24ms 동안 모아 한 번에 요청
 - [x] batch 실패 시 기존 단건 GET으로 fallback, 404 negative cache/auth refresh suppression/session cache 유지
+- [x] 회귀 테스트: `plugins-home-html-surface.test.tsx`, `plugins-preview-fallback.test.ts`
+
+### 1.03 2026-08-24 — 템플릿 카드 batch response body 축소
+
+현재 시점 기준 판단: §1.02 batch는 **요청 수**를 줄였지만, 각 item의 HTML body는 기존 단건 preview와 동일하게 전체 문서를 내려줬다. 카드 썸네일은 첫 화면만 필요하므로, multi-slide template의 모든 slide와 presenter script까지 batch body에 포함되면 네트워크 payload, JSON parse, `srcDoc` cache 메모리가 불필요하게 커진다.
+
+구현 현황:
+
+- [x] web `HtmlSurface` batch 요청에 `mode: "thumbnail"` 추가
+- [x] daemon `preview-batch` thumbnail mode는 sandbox/fallback 결과 HTML에서 `<script>/<noscript>`를 제거하고 첫 slide host만 유지
+- [x] 단건 `/api/plugins/:id/preview`, `/example/:name`, batch 기본 mode는 기존 full HTML 유지 — 상세 preview/modal/download 동작에 영향 없음
+- [x] sibling slide 제거는 `attrsLookLikeDeckOrTemplateSlideHost` SSOT를 사용해 `slide-chrome`류 오탐을 피함
 - [x] 회귀 테스트: `plugins-home-html-surface.test.tsx`, `plugins-preview-fallback.test.ts`
 
 ### 0.98 2026-08-21 — 루트 갤러리 템플릿 썸네일 1920 캔버스 스케일
@@ -1855,6 +1894,7 @@ User-message 쪽 `[Existing deck edit]` / `<attached-preview-comments>` 주입�
 
 | 날짜 | 내용 |
 |------|------|
+| 2026-08-24 | §1.04 — Studio/Daisy/Capsule 대표 생성 결과 fixture 가드. official look/motif merge + standalone export에서 motif/look paint, 1920×1080 fixed canvas, slide count 보존 검증. head/body cleanup이 첫 slide host를 삭제하지 않도록 slide host count guard 추가. |
 | 2026-08-10 | 초안 — Daisy Days Neutral 덮어쓰기 RCA · compose SSOT · 3커밋 타임라인 · 회귀 검토 · 검증 체크리스트 |
 | 2026-08-10 | 후속 — edit-contract FE gate · Zhangzara×31 Teamver 노트 · kit asset 5xx retry |
 | 2026-08-10 | 핫픽스 — turn-1 truncated HTML을 discovery skip하지 않음; Canvas skipDiscovery persist 레이스 방어 |

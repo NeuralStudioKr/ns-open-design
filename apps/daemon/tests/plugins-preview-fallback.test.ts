@@ -67,7 +67,10 @@ beforeEach(async () => {
   );
   await writeFile(
     path.join(folder, 'assets', 'example-slides.html'),
-    '<section class="slide hero dark"><p>fallback body via assets</p></section>',
+    [
+      '<section class="slide hero dark"><p>fallback body via assets</p><script>window.__fixturePreviewScript = true;</script></section>',
+      '<section class="slide appendix"><p>second slide should stay in full preview only</p></section>',
+    ].join('\n'),
   );
   await writeFile(
     path.join(folder, 'open-design.json'),
@@ -127,6 +130,7 @@ describe('GET /api/plugins/:id/preview — fallback chain', () => {
     const body = await resp.text();
     expect(body).toContain('<main id="deck">');
     expect(body).toContain('fallback body via assets');
+    expect(body).toContain('second slide should stay in full preview only');
     expect(body).toContain('Preview fallback fixture | Open Design Example');
   });
 
@@ -146,6 +150,27 @@ describe('GET /api/plugins/:id/preview — fallback chain', () => {
     expect(payload.results?.[0]).toMatchObject({ url: previewUrl, ok: true, status: 200 });
     expect(payload.results?.[0]?.html).toContain('<main id="deck">');
     expect(payload.results?.[0]?.html).toContain('fallback body via assets');
+    expect(payload.results?.[0]?.html).toContain('second slide should stay in full preview only');
     expect(payload.results?.[1]).toMatchObject({ url: missingUrl, ok: false, status: 404 });
+  });
+
+  it('can return compact thumbnail HTML without sibling slides or scripts', async () => {
+    const previewUrl = `/api/plugins/${PLUGIN_ID}/preview`;
+    const resp = await fetch(`${baseUrl}/api/plugins/preview-batch`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ urls: [previewUrl], mode: 'thumbnail' }),
+    });
+    expect(resp.status).toBe(200);
+    const payload = (await resp.json()) as {
+      results?: Array<{ url: string; ok: boolean; status: number; html?: string }>;
+    };
+    expect(payload.results).toHaveLength(1);
+    const html = payload.results?.[0]?.html ?? '';
+    expect(payload.results?.[0]).toMatchObject({ url: previewUrl, ok: true, status: 200 });
+    expect(html).toContain('<main id="deck">');
+    expect(html).toContain('fallback body via assets');
+    expect(html).not.toContain('second slide should stay in full preview only');
+    expect(html).not.toContain('<script>');
   });
 });
