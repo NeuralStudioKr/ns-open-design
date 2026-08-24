@@ -1916,6 +1916,10 @@ export function sanitizeAssistantProseForDisplay(
   // Second heuristic pass: catch residues left after named scrapers
   // (e.g. incomplete open tags / property continuations).
   text = stripLeakedDeckCodeDebrisBlocksRespectingArtifacts(text, preservingArtifacts);
+  // Absolute residual pass: strip any remaining deck HTML comments/tags
+  // (single-line glued dumps, table rows, entity-encoded tags) so unknown
+  // dialects cannot re-enter the bubble after reload.
+  text = stripResidualDeckHtmlMarkupRespectingArtifacts(text, preservingArtifacts);
   // Final incomplete open-tag chop — catches residues like `<span style="`
   // left by an earlier mid-line cut that no longer matches typography regexes.
   text = stripIncompleteTrailingMarkupToken(text);
@@ -1986,9 +1990,16 @@ export function looksLikeDeckCodeDebrisLine(line: string): boolean {
   }
   // Deck body dumps: `<li>…</li>`, mismatched `<div>…</p>`, bare structural tags.
   if (
-    /^<\/?(?:div|li|ul|ol|p|span|section|header|footer|nav|aside|main|article|h[1-6]|strong|em|button)\b/i.test(
+    /^<\/?(?:div|li|ul|ol|p|span|section|header|footer|nav|aside|main|article|h[1-6]|strong|em|button|table|thead|tbody|tr|td|th|figure|figcaption)\b/i.test(
       trimmed,
     )
+  ) {
+    return true;
+  }
+  // Hangul/status glued to deck tags on the same line.
+  if (
+    /(?:<!--|<(?:li|div|ul|ol|table|tr|td|th|section)\b)/i.test(trimmed)
+    && /(?:-->|<\/(?:li|div|ul|ol|p|td|tr|th|section)|<br\b)/i.test(trimmed)
   ) {
     return true;
   }
@@ -2093,9 +2104,20 @@ export function stripLeakedDeckCodeDebrisBlocks(input: string): string {
     const line = lines[i] ?? "";
     const trimmed = line.trim();
     if (!trimmed) {
-      // Defer blank lines — drop trailing blanks at the end; keep mid gaps
-      // only when followed by kept prose (handled when flushing).
       kept.push(line);
+      continue;
+    }
+
+    const inlineCut = cutInlineDeckHtmlPrefix(line);
+    if (inlineCut !== undefined) {
+      inCssContinuation = false;
+      if (inlineCut === null) {
+        while (kept.length > 0 && !(kept[kept.length - 1] ?? "").trim()) {
+          kept.pop();
+        }
+        continue;
+      }
+      kept.push(inlineCut);
       continue;
     }
 
@@ -2107,7 +2129,6 @@ export function stripLeakedDeckCodeDebrisBlocks(input: string): string {
       inCssContinuation =
         lineOpensUnclosedCssBlock(trimmed)
         || (inCssContinuation && !trimmed.includes("}"));
-      // Drop trailing blanks that only separated debris from prior prose.
       while (kept.length > 0 && !(kept[kept.length - 1] ?? "").trim()) {
         kept.pop();
       }
@@ -2121,7 +2142,6 @@ export function stripLeakedDeckCodeDebrisBlocks(input: string): string {
   while (kept.length > 0 && !(kept[kept.length - 1] ?? "").trim()) {
     kept.pop();
   }
-  // Collapse runs of blank lines introduced by debris removal.
   const collapsed: string[] = [];
   for (const line of kept) {
     if (!(line ?? "").trim()) {
@@ -2130,10 +2150,121 @@ export function stripLeakedDeckCodeDebrisBlocks(input: string): string {
     }
     collapsed.push(line);
   }
-  let out = collapsed.join("\n");
-  // Never leave a dangling trailing newline on display prose — artifact
-  // boundaries re-insert `\n` in the respecting-artifacts wrapper when needed.
-  return out.replace(/\n+$/g, "");
+  return collapsed.join("\n").replace(/\n+$/g, "");
+}
+
+/**
+ * When Hangul/status prose is glued to a deck HTML dump on the same line
+ * (`초안. <li>…` / `진행 <!-- Left -->`), keep the human prefix and drop the
+ * dump. Returns `undefined` when no inline cut applies, `null` to drop the
+ * whole line, or the kept prefix string.
+ */
+function cutInlineDeckHtmlPrefix(line: string): string | null | undefined {
+  const match = /^(.*?)(\s*)(<!--|<(?:li|div|ul|ol|table|tr|td|th|section)\b)/i.exec(line);
+  if (!match || match.index === undefined) return undefined;
+  const prefixRaw = match[1] ?? "";
+  // Do not cut inside inline code spans (`…`).
+  const ticksBefore = (prefixRaw.match(/`/g) ?? []).length;
+  if (ticksBefore % 2 === 1) return undefined;
+  const prefix = prefixRaw.trimEnd();
+  const dump = line.slice(prefixRaw.length);
+  if (!prefix) return undefined;
+  if (looksLikeDeckCodeDebrisLine(prefix)) return undefined;
+  if (!/[\p{L}\p{N}]/u.test(prefix)) return undefined;
+  if (
+    !looksLikeDeckCodeDebrisLine(dump.trim())
+    && !/<!--|<\/(?:li|div|ul|ol|p|td)|<li\b[^>]*>[\s\S]*<\/li>/i.test(dump)
+  ) {
+    return undefined;
+  }
+  return prefix;
+}
+
+/**
+ * Absolute last-pass: strip residual deck HTML comments/tags that line
+ * scrapers left (single-line glued dumps, table rows, entity-encoded tags).
+ * Never runs inside preserved artifact bodies.
+ */
+export function stripResidualDeckHtmlMarkupFromProse(input: string): string {
+  if (!input) return input;
+  let text = String(input);
+
+  const fences: string[] = [];
+  text = text.replace(/```[\s\S]*?```/g, (m) => {
+    fences.push(m);
+    return `\0FENCE${fences.length - 1}\0`;
+  });
+  const inlines: string[] = [];
+  text = text.replace(/`[^`\n]+`/g, (m) => {
+    inlines.push(m);
+    return `\0INLINE${inlines.length - 1}\0`;
+  });
+
+  text = text.replace(/<!--[\s\S]*?-->/g, "");
+  text = text.replace(/<!--[\s\S]*$/g, "");
+
+  const paired =
+    "li|ul|ol|div|section|header|footer|nav|aside|main|article|table|thead|tbody|tr|td|th|p|h[1-6]|span|strong|em|button|figure|figcaption";
+  for (let pass = 0; pass < 5; pass += 1) {
+    const before = text;
+    text = text.replace(new RegExp(`<(${paired})\\b[^>]*>[\\s\\S]*?<\\/\\1>`, "gi"), "");
+    if (text === before) break;
+  }
+  text = text.replace(new RegExp(`<\\/?(?:${paired}|br)\\b[^>]*\\/?>`, "gi"), "");
+  text = text.replace(
+    /&lt;\/?(?:li|div|ul|ol|span|p|strong|section|table|tr|td|th)\b[\s\S]*?(?:&gt;|>)/gi,
+    "",
+  );
+  // Truncated layout-comment tails without an opener.
+  text = text.replace(
+    /(?:^|\n)[^\n]*(?:dark|left|right|col\s*\d|layout|statement|registration|tips)\s*-->[^\n]*/gi,
+    "\n",
+  );
+
+  text = text.replace(/\0FENCE(\d+)\0/g, (_, i) => fences[Number(i)] ?? "");
+  text = text.replace(/\0INLINE(\d+)\0/g, (_, i) => inlines[Number(i)] ?? "");
+
+  return text.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trimEnd();
+}
+
+export function stripResidualDeckHtmlMarkupRespectingArtifacts(
+  input: string,
+  preserveArtifactBodies: boolean,
+): string {
+  if (!preserveArtifactBodies) return stripResidualDeckHtmlMarkupFromProse(input);
+  let result = "";
+  let cursor = 0;
+  while (cursor < input.length) {
+    const open = findArtifactOpenIndex(input, cursor);
+    if (open === -1) {
+      result += stripResidualDeckHtmlMarkupFromProse(input.slice(cursor));
+      break;
+    }
+    const prose = stripResidualDeckHtmlMarkupFromProse(input.slice(cursor, open));
+    result += prose;
+    if (
+      prose.length > 0
+      && !prose.endsWith("\n")
+      && open > cursor
+      && input[open - 1] === "\n"
+    ) {
+      result += "\n";
+    }
+    const gt = input.indexOf(">", open);
+    if (gt === -1) {
+      result += input.slice(open);
+      break;
+    }
+    const close = input.toLowerCase().indexOf("</artifact>", gt);
+    if (close === -1) {
+      result += input.slice(open);
+      break;
+    }
+    const end = close + "</artifact>".length;
+    result += input.slice(open, end);
+    cursor = end;
+  }
+  return result;
 }
 
 export function stripLeakedDeckCodeDebrisBlocksRespectingArtifacts(

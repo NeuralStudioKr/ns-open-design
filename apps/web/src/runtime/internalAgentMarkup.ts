@@ -17,6 +17,7 @@ import {
   stripHardDeckNavJsFingerprints,
   stripIncompleteTrailingMarkupToken,
   stripLeakedDeckCodeDebrisBlocksRespectingArtifacts,
+  stripResidualDeckHtmlMarkupRespectingArtifacts,
   type SanitizeAssistantProseOptions,
 } from "@open-design/contracts";
 
@@ -283,9 +284,15 @@ function looksLikeDeckCodeDebrisLineFallback(line: string): boolean {
     return true;
   }
   if (
-    /^<\/?(?:div|li|ul|ol|p|span|section|header|footer|nav|aside|main|article|h[1-6]|strong|em|button)\b/i.test(
+    /^<\/?(?:div|li|ul|ol|p|span|section|header|footer|nav|aside|main|article|h[1-6]|strong|em|button|table|thead|tbody|tr|td|th|figure|figcaption)\b/i.test(
       trimmed,
     )
+  ) {
+    return true;
+  }
+  if (
+    /(?:<!--|<(?:li|div|ul|ol|table|tr|td|th|section)\b)/i.test(trimmed)
+    && /(?:-->|<\/(?:li|div|ul|ol|p|td|tr|th|section)|<br\b)/i.test(trimmed)
   ) {
     return true;
   }
@@ -424,12 +431,16 @@ export function sanitizeAssistantProseForDisplay(
     stripHardDeckNavJsFingerprints(fromContracts),
     preservingArtifacts,
   );
+  const afterHeuristic = stripLeakedDeckCodeDebrisBlocksForDisplayFallback(
+    stripLeakedDeckCodeDebrisBlocksRespectingArtifacts(
+      afterMotif,
+      preservingArtifacts,
+    ),
+    preservingArtifacts,
+  );
   return stripIncompleteTrailingMarkupToken(
-    stripLeakedDeckCodeDebrisBlocksForDisplayFallback(
-      stripLeakedDeckCodeDebrisBlocksRespectingArtifacts(
-        afterMotif,
-        preservingArtifacts,
-      ),
+    stripResidualDeckHtmlMarkupRespectingArtifacts(
+      afterHeuristic,
       preservingArtifacts,
     ),
   );
