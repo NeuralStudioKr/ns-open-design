@@ -154,6 +154,10 @@ import {
   canActivateSrcDocTransport,
   PREVIEW_REDIRECT_LOOP_MESSAGE,
 } from '../runtime/srcdoc';
+import {
+  PREVIEW_ESCAPE_MESSAGE,
+  resolveFileViewerPreviewEscapeAction,
+} from '../teamver/fileViewerPreviewEscape';
 import { repairArtifactDocumentHeadIfNeeded } from '../runtime/artifact-document-head';
 import {
   clearActiveRevisionSequence,
@@ -14429,6 +14433,46 @@ function HtmlViewer({
   function closeArtifactToolMenus() {
     setAgentToolsOpen(false);
   }
+
+  useEffect(() => {
+    function onMessage(ev: MessageEvent) {
+      if (!isOurPreviewIframeSource(ev.source)) return;
+      const data = ev.data as { type?: string } | null;
+      if (data?.type !== PREVIEW_ESCAPE_MESSAGE) return;
+      const action = resolveFileViewerPreviewEscapeAction({
+        presentMenuOpen,
+        zoomMenuOpen,
+        agentToolsOpen,
+        shareMenuOpen,
+        deployMenuOpen,
+        downloadMenuOpen,
+        inTabPresent,
+        deployModalOpen,
+      });
+      if (action === 'close-present-menu') setPresentMenuOpen(false);
+      else if (action === 'close-zoom-menu') setZoomMenuOpen(false);
+      else if (action === 'close-artifact-tools') closeArtifactToolMenus();
+      else if (action === 'close-share-menus') {
+        setShareMenuOpen(false);
+        setDeployMenuOpen(false);
+        setDownloadMenuOpen(false);
+      } else if (action === 'exit-in-tab-present') setInTabPresent(false);
+      else if (action === 'close-deploy-modal') closeDeployModal();
+    }
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, [
+    isOurPreviewIframeSource,
+    presentMenuOpen,
+    zoomMenuOpen,
+    agentToolsOpen,
+    shareMenuOpen,
+    deployMenuOpen,
+    downloadMenuOpen,
+    inTabPresent,
+    deployModalOpen,
+    closeDeployModal,
+  ]);
 
   function activateDrawTool() {
     fireArtifactToolbarClick('draw');
