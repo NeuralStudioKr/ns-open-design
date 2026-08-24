@@ -264,7 +264,11 @@ function stripLeakedDeckMotifHtmlTail(input: string): string {
         || /^(?:hsla?|hwb|lch|oklch)\s*\([^)]*\)\s*;\s*[a-zA-Z-]+\s*:/.test(trimmed)
         || /^var\s*\(\s*--[^)]+\)\s*;\s*[a-zA-Z-]+\s*:/.test(trimmed)
         || /^currentColor\s*;\s*[a-zA-Z-]+\s*:/i.test(trimmed)
-        || /^(?:deg|turn|rad|grad)\s*,\s*#(?:[0-9A-Fa-f]{3,8})/.test(trimmed))
+        || /^(?:deg|turn|rad|grad)\s*,\s*#(?:[0-9A-Fa-f]{3,8})/.test(trimmed)
+        || /^url\(\s*['"]?(?:https?:|\/)/i.test(trimmed)
+        || /^format\(\s*['"](?:woff2?|truetype|opentype)/i.test(trimmed)
+        || /^local\(\s*['"]?[A-Za-z]/.test(trimmed)
+        || /^fit-content\s*\(/i.test(trimmed))
     ) {
       continue;
     }

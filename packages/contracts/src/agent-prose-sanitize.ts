@@ -323,13 +323,19 @@ function looksLikeCssFunctionDebrisLine(line: string): boolean {
   if (/^data:image\//i.test(trimmed)) return true;
   if (/^rgba?\s*\(/i.test(trimmed)) return true;
   if (/^url\(\s*#/i.test(trimmed)) return true;
+  if (/^url\(\s*['"]?(?:https?:|\/|\.\/|\.\.\/)/i.test(trimmed)) return true;
+  if (/^url\(\s*['"][^'"]+\.(?:woff2?|ttf|otf|eot)(?:\?|#|['")])?/i.test(trimmed)) return true;
+  if (/^format\(\s*['"](?:woff2?|truetype|opentype|embedded-opentype|svg)['"]/i.test(trimmed)) {
+    return true;
+  }
+  if (/^local\(\s*['"]?[A-Za-z]/.test(trimmed)) return true;
+  if (/^(?:calc|clamp|min|max|minmax|repeat|fit-content)\s*\(/i.test(trimmed)) return true;
   if (/^light-dark\s*\(/i.test(trimmed)) return true;
   if (/^image-set\s*\(/i.test(trimmed)) return true;
   if (/^env\s*\(\s*safe-area/i.test(trimmed)) return true;
   if (/^steps\s*\(\s*\d+/i.test(trimmed)) return true;
   if (/^cross-fade\s*\(/i.test(trimmed)) return true;
   if (/^device-cmyk\s*\(/i.test(trimmed)) return true;
-  if (/^(?:calc|clamp|min|max|minmax|repeat)\s*\(/i.test(trimmed)) return true;
   if (
     /^(?:translate(?:3d|[XYZ])?|rotate(?:[XYZ]|3d)?|scale(?:3d|[XYZ])?|skew(?:[XY])?|matrix(?:3d)?|perspective)\s*\(/i.test(
       trimmed,
@@ -772,7 +778,7 @@ function findTrailingSameLineDeckHtmlCut(line: string): number | null {
   ) {
     return scssDump[1].trimEnd().length;
   }
-  const cssDump = /^(.*?)(?:\s+)(?=(?:(?:repeating-)?(?:linear|radial|conic)-gradient|rgba?|hsla?|light-dark|image-set|cross-fade|device-cmyk)\b|\/\*)/i.exec(
+  const cssDump = /^(.*?)(?:\s+)(?=(?:(?:repeating-)?(?:linear|radial|conic)-gradient|rgba?|hsla?|light-dark|image-set|cross-fade|device-cmyk|url|format|local|fit-content|calc|clamp)\b|\/\*)/i.exec(
     line,
   );
   if (cssDump?.[1] !== undefined && /[\p{L}\p{N}.。…]$/u.test(cssDump[1].trimEnd())) {

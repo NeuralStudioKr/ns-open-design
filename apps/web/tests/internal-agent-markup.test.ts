@@ -138,6 +138,12 @@ describe("internalAgentMarkup", () => {
       expect(
         sanitizeAssistantProseForDisplay(`슬라이드 추가 중Caveat',cursive;">`, { streaming }),
       ).toBe("슬라이드 추가 중");
+      expect(
+        sanitizeAssistantProseForDisplay(
+          `진행.\nurl('https://fonts.gstatic.com/s/caveat/v1.woff2') format('woff2');`,
+          { streaming },
+        ),
+      ).toBe("진행.");
     }
   });
 
