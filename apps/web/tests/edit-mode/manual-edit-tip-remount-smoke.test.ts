@@ -228,14 +228,23 @@ describe('manual-edit tip remount smoke (500/501/506)', () => {
     expect(fileViewer).toContain('shouldApplyTipRemountLastHostRectOnLayoutPaintMiss');
   });
 
-  it('seeds last-good on selection commit during tip/paint-sync (546)', () => {
+  it('audits hostPaint null sites; tip retain + selection-commit last-good (546)', () => {
+    // Intentional nulls: mode-exit, no-selectedId, refresh(!id), unprotected
+    // refresh miss, clear-selection. Selection commit must not be among them.
+    const nullCalls = fileViewer.match(/setManualEditHostPaintRect\(null\)/g) ?? [];
+    expect(nullCalls).toHaveLength(5);
     expect(hostPaintRectForManualEditSelectionCommit(
       true, false, { x: 10, y: 20, width: 30, height: 40 },
     )).toEqual({ x: 10, y: 20, width: 30, height: 40 });
     expect(hostPaintRectForManualEditSelectionCommit(false, false, {
       x: 10, y: 20, width: 30, height: 40,
     })).toBeNull();
+    expect(shouldRetainCurrentHostPaintOnTipRemountPaintMiss(false, false, true, true))
+      .toBe(true);
     expect(fileViewer).toContain('hostPaintRectForManualEditSelectionCommit');
+    expect(fileViewer).toMatch(
+      /shouldRetainCurrentHostPaintOnTipRemountPaintMiss\(\s*manualEditTipPaintSyncHoldRef\.current[\s\S]*?tipRemountChromeSessionLiveNow\(\)/,
+    );
   });
 
   it('clears tip last-good host rect cache when session idle (524)', () => {

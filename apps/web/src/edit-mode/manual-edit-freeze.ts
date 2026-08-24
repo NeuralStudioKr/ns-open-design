@@ -29,9 +29,10 @@
  *   TIP_REMOUNT_DECK_NUDGE_FOLLOW_MS / TIP_REMOUNT_POST_UNLOCK_QUIET_TIMEOUT_MS
  * Soft-land catalogs: TIP_POST_STICKY_SOFT_LAND_CATALOGS (2) — intentional.
  * Layout paint: seed/apply last-good during tip session or paint-sync hold (543).
- * Selection commit: hostPaintRectForManualEditSelectionCommit (546) — other
- *   setManualEditHostPaintRect(null) paths (mode-exit / no-id / clear-selection /
- *   refresh miss) stay intentional clears.
+ * Selection commit: hostPaintRectForManualEditSelectionCommit (546).
+ * Refresh miss retain: tip session OR paint-sync (538/546).
+ * Intentional nulls (5): mode-exit / no-id / refresh(!id) / unprotected miss /
+ *   clear-selection.
  * Walk fixtures: apps/web/tests/edit-mode/tip-remount-sequence-fixtures.ts (547).
  * Checklist: docs-teamver/49_tip_remount_체감_체크리스트_500-548.md (545/548).
  * Do not retune fit delays / latch / soft-land without a tip-remount loop note.
@@ -1324,15 +1325,18 @@ export function shouldReuseLastHostRectOnTipRemountMeasureMiss(
 }
 
 /**
- * Paint-sync hold: keep the current host paint when a forced remasure misses
- * and there is no last-good yet — avoid single-overlay null flash (538).
+ * Tip remount / paint-sync: keep the current host paint when a remasure misses
+ * and there is no last-good yet — avoid single-overlay null flash (538/546).
  */
 export function shouldRetainCurrentHostPaintOnTipRemountPaintMiss(
   paintSyncHoldArmed: boolean,
   measuredPaintOk: boolean,
   hasCurrentHostPaint: boolean,
+  tipRemountChromeSessionLive = false,
 ): boolean {
-  return paintSyncHoldArmed && !measuredPaintOk && hasCurrentHostPaint;
+  return (paintSyncHoldArmed || tipRemountChromeSessionLive)
+    && !measuredPaintOk
+    && hasCurrentHostPaint;
 }
 
 /**

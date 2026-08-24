@@ -374,6 +374,8 @@ describe('manual edit freeze reset', () => {
     expect(shouldRetainCurrentHostPaintOnTipRemountPaintMiss(true, false, true)).toBe(true);
     expect(shouldRetainCurrentHostPaintOnTipRemountPaintMiss(true, true, true)).toBe(false);
     expect(shouldRetainCurrentHostPaintOnTipRemountPaintMiss(false, false, true)).toBe(false);
+    expect(shouldRetainCurrentHostPaintOnTipRemountPaintMiss(false, false, true, true)).toBe(true);
+    expect(shouldRetainCurrentHostPaintOnTipRemountPaintMiss(false, false, false, true)).toBe(false);
     expect(shouldSeedTipRemountLastHostRectFromLivePaint(true, false, true)).toBe(true);
     expect(shouldSeedTipRemountLastHostRectFromLivePaint(false, true, true)).toBe(true);
     expect(shouldSeedTipRemountLastHostRectFromLivePaint(false, false, true)).toBe(false);

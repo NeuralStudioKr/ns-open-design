@@ -11708,10 +11708,12 @@ function HtmlViewer({
           && manualEditHostPaintRectRef.current.width >= 1
           && manualEditHostPaintRectRef.current.height >= 1,
         ),
+        tipRemountChromeSessionLiveNow(),
       )) {
-        // Paint-sync hold: keep current box instead of nulling (538).
+        // Tip session / paint-sync: keep current box instead of nulling (538/546).
       } else if (!options?.force) {
-        // Keep optimistic seed on failed measure — nulling flashes hybrid compose.
+        // Non-tip unprotected miss without force: clear for hybrid recompose.
+        // force=true keeps current (gesture/handoff optimistic seed).
         setManualEditHostPaintRect(null);
       }
     }
