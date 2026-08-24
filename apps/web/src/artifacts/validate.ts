@@ -141,6 +141,24 @@ export function isIncompleteHtmlDocumentShell(content: string): boolean {
 }
 
 /**
+ * Terminal restore / resolve: keep a closed healable 1–3 slide "만들어줘"
+ * cover instead of swapping it for an older bestArtifact. Truncation
+ * (no `</html>` above the structural floor) still restores / salvages.
+ */
+export function isIncompleteParsedDeckForBestArtifactRestore(html: string | null | undefined): boolean {
+  const trimmed = String(html ?? '').replace(/^﻿/, '').trim();
+  if (!trimmed) return false;
+  if (!isIncompleteHtmlDocumentShell(trimmed)) return false;
+  if (
+    isPersistableShortDeckDraftAfterHeal(trimmed)
+    && HAS_HTML_CLOSE_RE.test(trimmed)
+  ) {
+    return false;
+  }
+  return true;
+}
+
+/**
  * Detect a "successful" deck artifact that is structurally HTML but is still a
  * progress/placeholder deliverable, e.g. a 1KB deck with six slides and only
  * "을 만들고 있어요 / 발표 개요 / error" visible. This is intentionally kept

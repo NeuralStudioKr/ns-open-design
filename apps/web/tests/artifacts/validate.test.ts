@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   isIncompleteHtmlDocumentShell,
+  isIncompleteParsedDeckForBestArtifactRestore,
   isLowSubstanceSlideDeckArtifact,
   validateHtmlArtifact,
 } from '../../src/artifacts/validate';
@@ -205,6 +206,11 @@ describe('validateHtmlArtifact', () => {
       + '<section class="slide"></section>'
       + '</body></html>';
     expect(isIncompleteHtmlDocumentShell(emptySlide)).toBe(true);
+    expect(isIncompleteParsedDeckForBestArtifactRestore(shortParrot)).toBe(false);
+    expect(isIncompleteParsedDeckForBestArtifactRestore(emptySlide)).toBe(true);
+    const truncatedHealable = `${shortParrot.replace('</html>', '')}${'<!-- kit -->'.repeat(20)}`;
+    expect(truncatedHealable.length).toBeGreaterThan(128);
+    expect(isIncompleteParsedDeckForBestArtifactRestore(truncatedHealable)).toBe(true);
   });
 
   it('does not classify compact MiniMax 3-slide Korean drafts as low-substance', () => {

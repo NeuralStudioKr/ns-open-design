@@ -282,6 +282,24 @@ describe("resolveTerminalArtifactToPersist", () => {
     expect(resolved?.html).toContain("<h1>신입사원 온보딩</h1>");
     expect(resolved?.html).toContain("</html>");
   });
+
+  it("keeps a closed healable instruction-copy cover instead of a later empty standalone", () => {
+    const parrot =
+      '<!doctype html><html lang="ko"><body>'
+      + '<section class="slide"><h1>슬라이드 만들어줘</h1></section>'
+      + '</body></html>';
+    const resolved = resolveTerminalArtifactToPersist(
+      { identifier: 'deck', artifactType: 'deck', title: 'deck', html: parrot },
+      `done\n<!doctype html><html><body></body></html>`,
+      () => ({
+        identifier: 'empty',
+        artifactType: 'deck',
+        title: 'empty',
+        html: '<!doctype html><html><body></body></html>',
+      }),
+    );
+    expect(resolved?.html).toContain('슬라이드 만들어줘');
+  });
 });
 
 describe("projectFileFromPersistedHtmlFallback", () => {

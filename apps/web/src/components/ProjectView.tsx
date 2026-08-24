@@ -7,6 +7,7 @@ import type { ArtifactManifest } from '../artifacts/types';
 import { resolveHtmlPointerArtifactTarget } from '../artifacts/pointer';
 import {
   isIncompleteHtmlDocumentShell,
+  isIncompleteParsedDeckForBestArtifactRestore,
   isLowSubstanceSlideDeckArtifact,
   validateHtmlArtifact,
 } from '../artifacts/validate';
@@ -9807,7 +9808,8 @@ export function ProjectView({
             let terminalPersistResultKind: ArtifactPersistResult['kind'] | null = null;
             let terminalPersistResult: ArtifactPersistResult | null = null;
             const hadIncompleteParsedArtifact = Boolean(
-              parsedArtifact?.html && isIncompleteHtmlDocumentShell(parsedArtifact.html),
+              parsedArtifact?.html
+              && isIncompleteParsedDeckForBestArtifactRestore(parsedArtifact.html),
             );
 
             // If the live parsedArtifact ended up incomplete (e.g. the model
@@ -14379,7 +14381,7 @@ export function resolveTerminalArtifactToPersist(
   const parsed = parsedArtifact?.html ? parsedArtifact : null;
   const doctypeTail = finalText.match(DOCTYPE_HTML_TAIL_RE)?.[0] ?? null;
 
-  if (parsed?.html && isIncompleteHtmlDocumentShell(parsed.html)) {
+  if (parsed?.html && isIncompleteParsedDeckForBestArtifactRestore(parsed.html)) {
     const salvagedParsed = artifactFromSalvagedHtml(parsed.html, parsed);
     if (salvagedParsed) return salvagedParsed;
     if (
