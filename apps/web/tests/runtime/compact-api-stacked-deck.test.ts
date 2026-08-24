@@ -846,6 +846,20 @@ cur=n;
     expect(String(stage?.style.transform || '')).toBe(firstTransform);
   });
 
+  it('does not letterbox 8-Bit Orbit vertical slides-container as a #deck viewport strip', () => {
+    const official = readFileSync(
+      resolve(repoRoot, 'plugins/_official/examples/html-ppt-zhangzara-8-bit-orbit/example.html'),
+      'utf8',
+    );
+    expect(official).toMatch(/id=["']slidesContainer["']/i);
+    expect(official).toMatch(/translateY\(-\$\{currentSlide \* 100\}vh\)/);
+    expect(looksLikeCompactApiStackedDeck(official)).toBe(false);
+    expect(looksLikeCompactApiStackedDeckForPreview(official)).toBe(false);
+    const srcdoc = buildSrcdoc(official, { deck: true });
+    expect(srcdoc).not.toContain('data-od-compact-stacked');
+    expect(srcdoc).toContain('function transformTrackAxis');
+  });
+
   it('does not letterbox Zhangzara <deck-stage> catalogs as compact stacked decks', () => {
     const official = readFileSync(
       resolve(repoRoot, 'plugins/_official/examples/html-ppt-zhangzara-pink-script/example.html'),

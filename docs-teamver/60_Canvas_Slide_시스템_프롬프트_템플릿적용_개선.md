@@ -32,6 +32,19 @@
 | scaffold로 갑자기 바꾸면? | **안 됨.** kit hard cutover 금지. full HTML scaffold도 기본 inject 하지 않음 |
 | 1장짜리 템플릿 결과가 저장되는가? | **제품 경로는 첫 fill 3장.** 잘리면 제목 있는 1장은 저장하고 top-up이 덧붙인다. 제목 없는 빈 셸만 미완성으로 차단. 사용자가 1장을 명시한 경우도 허용 |
 
+### 1.08 2026-08-24 — 템플릿 썸네일·미리보기 전면 검토
+
+슬라이드 전용 갤러리·피커·히어로·프로젝트 커버는 1920×1080 `cqw`로 맞춰져 있다. 남은 큰 구멍은 라이브 PreviewModal: 8-Bit Orbit처럼 `#slidesContainer { translateY(-N00vh) }`를 호스트가 `translateX`로 덮으면 페이지 이동 후 빈 캔버스가 된다.
+
+구현 현황:
+
+- [x] `transformTrackAxis` — translateY / 세로 스택이면 Y축 유지, Grove translateX 회귀 유지
+- [x] 중첩 `#slidesContainer` + 저자 `translateY(-${…}vh)` 는 `#deck` compact viewport-strip에서 제외
+- [x] Y축에서만 ArrowDown/Up을 호스트 next/prev에 연결
+- [x] 회귀: `srcdoc-deck-bridge-transform-driven` · compact 8-Bit Orbit · gallery picker 1920 lock
+- [ ] HomeHero 프리셋 매직 스케일 — slide-only 비노출, 후속
+- [ ] 비덱 갤러리 hover-pan / live-artifact 250% — 프로토타입 경로, 후속
+
 ### 1.05 2026-08-24 — 템플릿 미리보기 모달 ESC 닫기
 
 카탈로그 템플릿 PreviewModal은 부모 document에서 Escape를 듣지만, 샌드박스 iframe이 포커스를 가져가면 keydown이 호스트에 전달되지 않는다. `allow-same-origin`을 열지 않고 iframe → `od:preview-escape` → 같은 레이어 dismiss로 닫는다.
