@@ -91,6 +91,7 @@ describe('composeTeamverSlideApiPrompt with scaffold', () => {
       designSystemBody: '# Neutral\nNo ornament.',
       designSystemTitle: 'Neutral Modern',
       metadata: {
+        kind: 'deck',
         selectedDeckTemplateId: 'html-ppt-zhangzara-daisy-days',
         selectedDeckTemplateTitle: 'Html Ppt Zhangzara Daisy Days',
         skipDiscoveryBrief: true,

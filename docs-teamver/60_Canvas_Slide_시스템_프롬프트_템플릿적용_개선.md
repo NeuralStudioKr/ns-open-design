@@ -60,13 +60,15 @@
 
 구현 현황:
 
-- [x] `deck-template-look-css.test.ts`에 Studio / Daisy Days / Capsule compact generated-result fixture 추가
+- [x] `deck-template-look-css.test.ts`에 Studio / Broadside / Signal / Daisy Days / Capsule compact generated-result fixture 추가
+- [x] generated-result fixture는 `tests/fixtures/official-template-generated-decks.ts`로 분리해 실제 샘플 추가/검토가 쉬운 형태로 관리
 - [x] official look/motif merge 이후 slide count `>=3` 및 merge 전후 count 유지 검증
 - [x] standalone HTML export까지 통과시켜 slide count 유지, `width=1920` viewport, 1920×1080 neutralize 검증
 - [x] 대표 motif/look paint 검증 — Studio yellow/black typography token, Daisy inline SVG/deco, Capsule pill/deco
 - [x] `repairArtifactDocumentHead` cleanup pass가 정상 slide host 개수를 줄이면 해당 pass만 롤백하도록 방어
 - [x] standalone export heal은 공식 presenter CSS가 있어도 export/download 경로에서는 fixed-canvas pin을 강제
-- [x] 회귀 테스트: `deck-template-look-css.test.ts`, `deck-fixed-canvas.test.ts`, `repair-artifact-document-head.test.ts`
+- [x] contracts typecheck drift 정리 — streaming guard `preserveOpenArtifact` 옵션 타입, template scaffold metadata `kind: 'deck'`
+- [x] 회귀 테스트: `deck-template-look-css.test.ts`, `deck-fixed-canvas.test.ts`, `repair-artifact-document-head.test.ts`, `agent-prose-sanitize.test.ts`, `template-scaffold.test.ts`
 
 ### 1.00 2026-08-21 — Motif 생략 방지와 SVG 덤프 방지를 분리
 
