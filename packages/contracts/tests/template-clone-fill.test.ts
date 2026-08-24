@@ -317,6 +317,27 @@ describe('sanitizeTemplateCloneDeckTitle', () => {
     )).toContain('<h1>Expo SDK 개요</h1>');
   });
 
+  it('heals later host headings so majority marketing copy does not fail persist', () => {
+    const html = [
+      '<!doctype html><html><body>',
+      '<section class="slide" data-screen-label="01 Cover"><h1>expo에 대해서 설명하는 피피티 만들어줘</h1><p>시니어</p></section>',
+      '<section class="slide" data-screen-label="02 Agenda"><h2>Html Ppt Zhangzara Daisy Days</h2><p>Router와 EAS</p></section>',
+      '<section class="slide"><h2>만들어줘</h2><p>Managed workflow vs prebuild</p></section>',
+      '<section class="slide"><h2>Expo SDK 개요</h2><p>keep me</p></section>',
+      '</body></html>',
+    ].join('');
+    const healed = healInstructionCopyCoverHeading(
+      html,
+      'expo에 대해서 설명하는 피피티 만들어줘. 시니어 개발자 레벨.',
+    );
+    expect(healed).toContain('<h1>expo</h1>');
+    expect(healed).toContain('<h2>Agenda</h2>');
+    expect(healed).toContain('<h2>Managed workflow vs prebuild</h2>');
+    expect(healed).toContain('<h2>Expo SDK 개요</h2>');
+    expect(healed).not.toContain('만들어줘');
+    expect(healed).not.toContain('Daisy Days');
+  });
+
   it('derives a cover title from a 만들어줘 brief instead of Daisy chrome', () => {
     expect(
       deriveDeckCoverTitleFromBrief(

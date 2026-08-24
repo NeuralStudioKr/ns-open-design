@@ -639,10 +639,49 @@ export function deriveDeckCoverTitleFromBrief(
   return deriveTitleFromBrief(brief, deckTitle);
 }
 
+function visibleHeadingText(inner: string): string {
+  return inner.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function headingLooksLikeFailedGenerate(visible: string): boolean {
+  return looksLikeInstructionCopy(visible) || looksLikeTemplateMarketingTitle(visible);
+}
+
+function screenLabelRoleTitle(attrs: string): string | null {
+  const raw = /\bdata-screen-label\s*=\s*(['"])([^'"]*)\1/i.exec(attrs)?.[2]?.trim() ?? '';
+  const role = raw.replace(/^\d{2}\s+/, '').trim();
+  if (!role || headingLooksLikeFailedGenerate(role)) return null;
+  return cleanCloneTitle(role).slice(0, 60) || null;
+}
+
+function firstParagraphTitle(body: string): string | null {
+  const inner = /<p\b[^>]*>([\s\S]*?)<\/p>/i.exec(body)?.[1];
+  if (!inner) return null;
+  const visible = visibleHeadingText(inner);
+  if (visible.length < 2 || headingLooksLikeFailedGenerate(visible)) return null;
+  return cleanCloneTitle(visible).slice(0, 60) || null;
+}
+
+function replaceFirstFailedHeading(fragment: string, title: string): string {
+  const headingRe = /<h([1-3])\b([^>]*)>([\s\S]*?)<\/h\1>/i;
+  const match = headingRe.exec(fragment);
+  const inner = match?.[3];
+  const level = match?.[1];
+  if (!match || inner == null || level == null) return fragment;
+  const visible = visibleHeadingText(inner);
+  if (!headingLooksLikeFailedGenerate(visible)) return fragment;
+  const attrs = match[2] ?? '';
+  return (
+    fragment.slice(0, match.index)
+    + `<h${level}${attrs}>${escapeHtml(title)}</h${level}>`
+    + fragment.slice(match.index + match[0].length)
+  );
+}
+
 /**
- * Persist heal: first cover heading that still parrots "만들어줘" / template
- * marketing is rewritten from the user brief so a complete deck is not
- * skipped as a failed generate.
+ * Persist heal: cover *and* later host headings that still parrot "만들어줘"
+ * / template marketing are rewritten so a complete deck is not skipped as a
+ * failed generate (majority-heading gate).
  */
 export function healInstructionCopyCoverHeading(
   html: string,
@@ -650,25 +689,40 @@ export function healInstructionCopyCoverHeading(
   deckTitle?: string | null,
 ): string {
   const dest = String(html ?? '');
-  const replacement = sanitizeTemplateCloneDeckTitle(
+  const coverTitle = sanitizeTemplateCloneDeckTitle(
     deriveDeckCoverTitleFromBrief(brief, deckTitle),
   );
-  if (!replacement || !dest.trim()) return dest;
-  const headingRe = /<h([1-3])\b([^>]*)>([\s\S]*?)<\/h\1>/i;
-  const match = headingRe.exec(dest);
-  const inner = match?.[3];
-  const level = match?.[1];
-  if (!match || inner == null || level == null) return dest;
-  const attrs = match[2] ?? '';
-  const visible = inner.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-  if (!looksLikeInstructionCopy(visible) && !looksLikeTemplateMarketingTitle(visible)) {
-    return dest;
+  if (!coverTitle || !dest.trim()) return dest;
+
+  const shells = listTemplateCloneSlideShells(dest);
+  if (shells.length === 0) {
+    return replaceFirstFailedHeading(dest, coverTitle);
   }
-  return (
-    dest.slice(0, match.index)
-    + `<h${level}${attrs}>${escapeHtml(replacement)}</h${level}>`
-    + dest.slice(match.index + match[0].length)
-  );
+
+  let cursor = 0;
+  const spans: { start: number; end: number; index: number }[] = [];
+  for (let i = 0; i < shells.length; i += 1) {
+    const full = shells[i]!.full;
+    const at = dest.indexOf(full, cursor);
+    if (at < 0) continue;
+    spans.push({ start: at, end: at + full.length, index: i });
+    cursor = at + full.length;
+  }
+
+  let next = dest;
+  for (let s = spans.length - 1; s >= 0; s -= 1) {
+    const span = spans[s]!;
+    const shell = shells[span.index]!;
+    const title = span.index === 0
+      ? coverTitle
+      : screenLabelRoleTitle(shell.attrs)
+        || firstParagraphTitle(shell.body)
+        || `${coverTitle} ${span.index + 1}`;
+    const rewritten = replaceFirstFailedHeading(shell.full, title);
+    if (rewritten === shell.full) continue;
+    next = next.slice(0, span.start) + rewritten + next.slice(span.end);
+  }
+  return next;
 }
 
 /**
