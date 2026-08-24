@@ -1705,6 +1705,7 @@ describe('POST /api/test/connection provider mode', () => {
         expect(requestBody.model).toBe('MiniMax-M3');
         expect(requestBody).not.toHaveProperty('max_tokens');
         expect(requestBody.max_completion_tokens).toBeGreaterThan(0);
+        expect(requestBody.thinking).toEqual({ type: 'disabled' });
         return jsonResponse({
           choices: [{ message: { content: 'ok' }, finish_reason: 'stop' }],
         });

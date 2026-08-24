@@ -3,6 +3,11 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   MINIMAX_DEFAULT_BASE_URL,
   MINIMAX_DEFAULT_CHAT_MODEL,
+  MINIMAX_M3_MAX_COMPLETION_TOKENS,
+  MINIMAX_M3_RECOMMENDED_MAX_COMPLETION_TOKENS,
+  MINIMAX_M3_RECOMMENDED_TEMPERATURE,
+  MINIMAX_M3_RECOMMENDED_TOP_P,
+  buildMiniMaxChatCompletionExtras,
   isMiniMaxChatTarget,
   normalizeMiniMaxBaseUrl,
   resolveMiniMaxBaseUrl,
@@ -25,6 +30,9 @@ describe('minimax-runtime', () => {
     TEAMVER_AI_TOOL_LOOP_LIMIT: process.env.TEAMVER_AI_TOOL_LOOP_LIMIT,
     TEAMVER_MINIMAX_MAX_COMPLETION_TOKENS: process.env.TEAMVER_MINIMAX_MAX_COMPLETION_TOKENS,
     TEAMVER_MINIMAX_THINKING: process.env.TEAMVER_MINIMAX_THINKING,
+    TEAMVER_MINIMAX_TEMPERATURE: process.env.TEAMVER_MINIMAX_TEMPERATURE,
+    TEAMVER_MINIMAX_TOP_P: process.env.TEAMVER_MINIMAX_TOP_P,
+    TEAMVER_MINIMAX_SERVICE_TIER: process.env.TEAMVER_MINIMAX_SERVICE_TIER,
   };
 
   afterEach(() => {
@@ -81,12 +89,17 @@ describe('minimax-runtime', () => {
     expect(resolveMiniMaxToolLoopLimit()).toBe(3);
   });
 
-  it('sends a deck-safe max_completion_tokens floor instead of omitting output caps', () => {
+  it('sends the official MiniMax-M3 recommended output cap and clamps to 32K–512K', () => {
     delete process.env.TEAMVER_MINIMAX_MAX_COMPLETION_TOKENS;
-    expect(resolveMiniMaxMaxCompletionTokens()).toBe(131_072);
+    expect(resolveMiniMaxMaxCompletionTokens()).toBe(MINIMAX_M3_RECOMMENDED_MAX_COMPLETION_TOKENS);
     expect(resolveMiniMaxMaxCompletionTokens(4096)).toBe(32_000);
+    expect(resolveMiniMaxMaxCompletionTokens(600_000)).toBe(MINIMAX_M3_MAX_COMPLETION_TOKENS);
     process.env.TEAMVER_MINIMAX_MAX_COMPLETION_TOKENS = '65536';
     expect(resolveMiniMaxMaxCompletionTokens()).toBe(65_536);
+    process.env.TEAMVER_MINIMAX_MAX_COMPLETION_TOKENS = '1024';
+    expect(resolveMiniMaxMaxCompletionTokens()).toBe(32_000);
+    process.env.TEAMVER_MINIMAX_MAX_COMPLETION_TOKENS = '999999';
+    expect(resolveMiniMaxMaxCompletionTokens()).toBe(MINIMAX_M3_MAX_COMPLETION_TOKENS);
   });
 
   it('defaults MiniMax thinking to disabled so deck HTML is not starved', () => {
@@ -94,5 +107,32 @@ describe('minimax-runtime', () => {
     expect(resolveMiniMaxThinkingType()).toBe('disabled');
     process.env.TEAMVER_MINIMAX_THINKING = 'adaptive';
     expect(resolveMiniMaxThinkingType()).toBe('adaptive');
+    process.env.TEAMVER_MINIMAX_THINKING = 'enabled';
+    expect(resolveMiniMaxThinkingType()).toBe('adaptive');
+  });
+
+  it('builds official MiniMax-M3 extras: recommended sampling, usage, no think leak', () => {
+    delete process.env.TEAMVER_MINIMAX_THINKING;
+    delete process.env.TEAMVER_MINIMAX_TEMPERATURE;
+    delete process.env.TEAMVER_MINIMAX_TOP_P;
+    delete process.env.TEAMVER_MINIMAX_SERVICE_TIER;
+    process.env.TEAMVER_MINIMAX_TEMPERATURE = '';
+    process.env.TEAMVER_MINIMAX_TOP_P = '  ';
+    const extras = buildMiniMaxChatCompletionExtras();
+    expect(extras.max_completion_tokens).toBe(MINIMAX_M3_RECOMMENDED_MAX_COMPLETION_TOKENS);
+    expect(extras.thinking).toEqual({ type: 'disabled' });
+    expect(extras.temperature).toBe(MINIMAX_M3_RECOMMENDED_TEMPERATURE);
+    expect(extras.top_p).toBe(MINIMAX_M3_RECOMMENDED_TOP_P);
+    expect(extras.stream_options).toEqual({ include_usage: true });
+    expect(extras).not.toHaveProperty('reasoning_split');
+    expect(extras).not.toHaveProperty('service_tier');
+
+    process.env.TEAMVER_MINIMAX_THINKING = 'adaptive';
+    process.env.TEAMVER_MINIMAX_SERVICE_TIER = 'priority';
+    const thinkingOn = buildMiniMaxChatCompletionExtras({ includeUsage: false });
+    expect(thinkingOn.thinking).toEqual({ type: 'adaptive' });
+    expect(thinkingOn.reasoning_split).toBe(true);
+    expect(thinkingOn.service_tier).toBe('priority');
+    expect(thinkingOn).not.toHaveProperty('stream_options');
   });
 });

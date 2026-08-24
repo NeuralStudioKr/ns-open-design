@@ -67,9 +67,8 @@ import {
 } from './proxy-error-classification.js';
 import {
   MINIMAX_DEFAULT_BASE_URL,
-  buildMiniMaxThinkingParam,
+  buildMiniMaxChatCompletionExtras,
   normalizeMiniMaxBaseUrl,
-  resolveMiniMaxMaxCompletionTokens,
   resolveMiniMaxToolLoopLimit,
 } from './minimax-runtime.js';
 
@@ -2198,21 +2197,27 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         tools: opts.tools,
         tool_choice: 'auto',
       };
-      if (!opts.omitMaxTokens) {
-        payload.max_tokens =
-          typeof maxTokens === 'number' && maxTokens > 0 ? maxTokens : 8192;
-      }
-      if (typeof opts.maxCompletionTokens === 'number' && opts.maxCompletionTokens > 0) {
-        payload.max_completion_tokens = opts.maxCompletionTokens;
-      }
-      if (opts.thinking) {
-        payload.thinking = opts.thinking;
-      }
-      if (opts.includeUsage !== false) {
-        // OpenAI-compatible endpoints omit usage in streaming responses
-        // unless this is set. MiniMax-M3 is kept conservative for P0 and
-        // omits this extension until the wire compatibility is verified.
-        payload.stream_options = { include_usage: true };
+      if (opts.providerId === 'minimax') {
+        Object.assign(payload, buildMiniMaxChatCompletionExtras({
+          requestedMaxCompletionTokens:
+            typeof maxTokens === 'number' && maxTokens > 0 ? maxTokens : null,
+        }));
+      } else {
+        if (!opts.omitMaxTokens) {
+          payload.max_tokens =
+            typeof maxTokens === 'number' && maxTokens > 0 ? maxTokens : 8192;
+        }
+        if (typeof opts.maxCompletionTokens === 'number' && opts.maxCompletionTokens > 0) {
+          payload.max_completion_tokens = opts.maxCompletionTokens;
+        }
+        if (opts.thinking) {
+          payload.thinking = opts.thinking;
+        }
+        if (opts.includeUsage !== false) {
+          // OpenAI-compatible endpoints omit usage in streaming responses
+          // unless this is set.
+          payload.stream_options = { include_usage: true };
+        }
       }
       const response = await fetch(url, {
         ...toolCtx.requestInit,
@@ -3110,9 +3115,6 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
     runSpeech: async () => ({ ok: false, error: 'speech generation is not enabled for MiniMax chat yet' }),
     runWebFetch: executeWebFetch,
     omitMaxTokens: true,
-    maxCompletionTokens: resolveMiniMaxMaxCompletionTokens(),
-    ...buildMiniMaxThinkingParam(),
-    includeUsage: false,
     maxToolLoops: resolveMiniMaxToolLoopLimit(),
   });
 

@@ -2250,7 +2250,7 @@ describe('API proxy routes', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('streams MiniMax chat with web_fetch only and omits max_tokens extensions', async () => {
+  it('streams MiniMax chat with official M3 extras and omits legacy max_tokens', async () => {
     const upstreamChatBodies: any[] = [];
     const fetchMock = vi.fn(async (input: FetchInput, init?: FetchInit) => {
       const url = String(input);
@@ -2288,9 +2288,12 @@ describe('API proxy routes', () => {
     expect(body).toContain('event: end');
     expect(upstreamChatBodies).toHaveLength(1);
     expect(upstreamChatBodies[0]).not.toHaveProperty('max_tokens');
-    expect(upstreamChatBodies[0]).not.toHaveProperty('stream_options');
-    expect(upstreamChatBodies[0].max_completion_tokens).toBeGreaterThanOrEqual(32000);
+    expect(upstreamChatBodies[0].stream_options).toEqual({ include_usage: true });
+    expect(upstreamChatBodies[0].max_completion_tokens).toBe(131072);
     expect(upstreamChatBodies[0].thinking).toEqual({ type: 'disabled' });
+    expect(upstreamChatBodies[0].temperature).toBe(1);
+    expect(upstreamChatBodies[0].top_p).toBe(0.95);
+    expect(upstreamChatBodies[0]).not.toHaveProperty('reasoning_split');
     expect(upstreamChatBodies[0].tools.map((tool: any) => tool.function.name)).toEqual(['web_fetch']);
   });
 

@@ -527,20 +527,28 @@ MiniMax upstream:
   "messages": [],
   "stream": true,
   "tools": [],
-  "tool_choice": "auto"
+  "tool_choice": "auto",
+  "max_completion_tokens": 131072,
+  "thinking": { "type": "disabled" },
+  "temperature": 1,
+  "top_p": 0.95,
+  "stream_options": { "include_usage": true }
 }
 ```
 
 보내지 않을 것:
 
-- `max_tokens`
+- `max_tokens` (deprecated — M3는 `max_completion_tokens`)
 - FE에서 온 empty `apiKey`
 - Teamver identity headers
+- `thinking` 생략 (OpenAI-compat에서 생략=adaptive ON)
 
-선택:
+공식 권장:
 
-- `temperature`: 초기에는 현행 default 사용
-- `top_p`: MiniMax 품질 테스트 후 결정
+- `max_completion_tokens`: M3 131072 (128K), 최대 524288 (512K)
+- `temperature`: 1.0 (range [0, 2])
+- `top_p`: M3 0.95
+- deck HTML은 `thinking: disabled` — thinking은 출력 예산을 먹고 `<think>`가 content에 섞일 수 있음
 
 ### 7.4 response events
 
@@ -1694,7 +1702,7 @@ MiniMax P0 구현 완료 조건:
   - `/api/proxy/minimax/stream` route 추가
   - MiniMax route는 OpenAI-compatible SSE/tool-loop factory를 사용하되 MiniMax provider hint를 강제해 `TEAMVER_MINIMAX_API_KEY` 계열 env key를 사용
   - legacy MiniMax baseUrl을 canonical `https://api.minimax.io/v1`로 정규화
-  - MiniMax-M3 요청에서 `max_tokens`, `stream_options` 생략
+  - MiniMax-M3 요청에서 legacy `max_tokens` 생략. 공식 extras: `max_completion_tokens` 131072(최대 524288), `thinking: disabled`, `temperature` 1, `top_p` 0.95, `stream_options.include_usage`
   - MiniMax tool loop cap은 `resolveMiniMaxToolLoopLimit()`로 제한
 - `apps/daemon/src/byok-tools.ts`
   - `web_fetch` schema를 export하고 MiniMax P0 tool list를 `web_fetch` 단독으로 분리
@@ -1747,7 +1755,7 @@ MiniMax P0 구현 완료 조건:
   - MiniMax env 누락 시 `MINIMAX_API_KEY_MISSING`
 - `apps/daemon/tests/proxy-routes.test.ts`
   - `/api/proxy/minimax/stream`이 MiniMax canonical endpoint로 SSE를 중계
-  - MiniMax request에 `max_tokens`/`stream_options`를 보내지 않음
+  - MiniMax request에 `max_tokens`를 보내지 않음. 공식 `max_completion_tokens` / `thinking` / sampling / `stream_options.include_usage` 검증
   - MiniMax tool list가 `web_fetch` 단독인지 검증
   - body에 `apiProtocol`이 없어도 MiniMax route는 Anthropic managed key가 아니라 MiniMax managed key를 사용
 - `apps/daemon/tests/connection-test.test.ts`

@@ -1105,7 +1105,10 @@ function buildProviderCall(input: ProviderTestRequest): ProviderCallShape {
         body: {
           model,
           ...(shouldOmitMiniMaxMaxTokens(model, normalizedBase)
-            ? { max_completion_tokens: PROVIDER_MAX_TOKENS }
+            ? {
+              max_completion_tokens: PROVIDER_MAX_TOKENS,
+              thinking: { type: 'disabled' as const },
+            }
             : buildOpenAIChatTokenParam(model, PROVIDER_MAX_TOKENS)),
           messages: [{ role: 'user', content: SMOKE_PROMPT }],
           stream: false,
