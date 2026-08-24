@@ -1363,7 +1363,7 @@ const TEAMVER_SLIDE_API_UNIFIED_STREAMING_RULE = `# Slide-only API — unified s
 
 **How to stream the deck (non-negotiable on turn 2+):**
 1. Emit the status sentence first, then open the artifact early. Never \`type="text/html"\`.
-2. First bytes inside a full deck artifact: \`<!doctype html><html><body>\` then immediately a titled \`<section class="slide">\` with real copy. Kit font \`<link>\` / short body \`<style>\` only AFTER slide 1 — never \`<head>\` / long CSS / Motif first.
+2. First bytes inside a full deck artifact: \`<!doctype html><html><body>\` then immediately a titled \`<section class="slide">\` with real copy. Kit font \`<link>\` / short body \`<style>\` only AFTER slide 1 — never an empty shell or long \`<head>\` chrome; never font \`@import\` inside Motif \`<style>\`; never Motif-first.
 3. ${COMPACT_DECK_SLIDE_COUNT_GUIDANCE} Write one filled \`<section class="slide">\` per requested slide. Each slide needs a heading AND a \`<p>\`/\`<li>\` sentence — title-only slides fail persist. If an on-disk deck is attached, keep at least that slide count (do not rewrite an 8-slide deck as 3). If a Selected deck template is active, match its visual kit (palette/fonts/density) with inline styles or one short body \`<style>\` after slide 1 — design system is brand context only and must not override the template look; do not merely describe the template.
 4. Close with \`</body></html></artifact>\` (or the matching patch close) in this same turn.
 
@@ -1438,7 +1438,7 @@ Your successful response is optional tiny UI-locale status sentence + **exactly 
 
 **How to stream the deck (non-negotiable):**
 1. Emit the status sentence first, then open \`<artifact type="deck">\` early. Never \`type="text/html"\`.
-2. First bytes inside artifact: \`<!doctype html><html><body>\` then immediately a titled \`<section class="slide">\` with real copy. Kit font \`<link>\` / short body \`<style>\` only AFTER slide 1 — never \`<head>\` / long CSS / Motif first.
+2. First bytes inside artifact: \`<!doctype html><html><body>\` then immediately a titled \`<section class="slide">\` with real copy. Kit font \`<link>\` / short body \`<style>\` only AFTER slide 1 — never an empty shell or long \`<head>\` chrome; never font \`@import\` inside Motif \`<style>\`; never Motif-first.
 3. ${COMPACT_DECK_SLIDE_COUNT_GUIDANCE} Write one filled \`<section class="slide">\` per requested slide. **Every slide MUST be a fixed 1920×1080 canvas** — use inline \`style="width:1920px;height:1080px;box-sizing:border-box;position:relative;..."\` on every \`<section class="slide">\`. Do NOT use \`width:100vw\`, \`height:100vh\`, \`min-height:100vh\`, or scroll-snap presenter-mode plumbing — those come from the template's \`example.html\` presenter and make the deck stretch/reflow with the browser instead of matching PPT aspect ratio (16:9). If a Selected deck template is active, match its visual kit (palette/fonts/density) with inline styles or one short body \`<style>\` — but keep width/height/positioning fixed regardless of what the template's own preview HTML shows. Design system is brand context only and must not override the template look; do not merely describe the template.
 4. Close with \`</body></html></artifact>\` in this same turn.
 
@@ -1498,7 +1498,7 @@ This is the first content fill after a LOOK seed (create with kit Motif vocabula
 - Bind kit palette hex + fonts + Slide surface on \`html\`/\`body\` AND every \`.slide\` **edge-to-edge** (full 1920×1080). FORBIDDEN: white outer slide + inner cream paper panel that leaves white top/bottom bands. White title cards on cream paper are OK.
 - Title-first: cover must have a real \`h1\`/\`h2\` title + lead BEFORE any Motif decoration.
 - **Layout (required when kit has Layout CSS / scaffold roles):** reuse capped Layout CSS + scaffold roles. Do NOT flatten every slide into one centered flex title column when the kit ships grids/splits/cards.
-- **Motif vocabulary:** REQUIRE 1–2 kit Motif CSS/deco classes AFTER title/lead when the kit lists Decorations / Motif classes. Motif \`<svg>\` is NOT required this turn (official Motif is merged after save). Prefer finishing 3 closed slides over Motif SVG dumps.
+- **Motif vocabulary:** REQUIRE 1–2 kit Motif CSS/deco classes AFTER title when Decorations are listed. Motif \`<svg>\` NOT required (official Motif merged after save).
 - **Named Motif fidelity:** do not invent a different motif family. Persist paints official Daisy/Capsule/Terminal Motif after save — do not draw lookalikes this turn.
 - **FORBIDDEN substitutes:** Motif \`<svg>\` this turn; Motif shapes from another template family; generic CSS circles; inventing Capsule coral pills when the kit Motif is petals/blobs/pins/pixel/scanlines; emoji ornament rows; Motif \`<svg>\` before cover title; multi-KB \`<svg><style>\` dumps; Neutral \`#0f172a\`; terracotta \`#c96442\`.
 - Slide count THIS TURN: honor an explicit small count (1–2) if the user asked for it. Otherwise produce 3 filled 1920×1080 slides and close the artifact. Hidden top-up appends more. Never close \`</html></artifact>\` after a single cover.
@@ -1701,7 +1701,7 @@ export function composeTeamverSlideApiPrompt({
           'Hard requirements (first content-fill — kit Motif AFTER title):\n'
           + '- Bind kit palette hex + fonts + Slide surface on html/body AND every `.slide` edge-to-edge (no white outer + inner cream panel).\n'
           + '- Title-first body: cover title + lead BEFORE any decoration. Close `</artifact>` this turn with 3 slides.\n'
-          + '- REQUIRE 1–2 kit Motif CSS/deco classes AFTER title when the kit lists Decorations. Motif `<svg>` is NOT required this turn (official Motif is merged after save). FORBIDDEN: Motif `<svg>` this turn; Motif geometry from another template family; inventing generic CSS circles; inventing Capsule coral pills when kit Motif is petals/blobs/pins/pixel; omitting all kit Motif CSS cues.\n'
+          + '- REQUIRE 1–2 kit Motif CSS/deco classes AFTER title when Decorations are listed. Motif `<svg>` NOT required (merged after save). FORBIDDEN: Motif SVG dumps; foreign Motif geometry; generic circles; omitting all Motif CSS cues.\n'
           + '- Layout REQUIRED from capped Layout CSS + scaffold roles when present — do not flatten every slide into one centered flex title column.\n'
           + '- Prefer 3 slides this turn unless the user asked for an exact small count. Hidden top-up appends more. No Neutral `#0f172a` / terracotta `#c96442`.\n'
           + '- Do not dump or rewrite a full example.html. Never open Motif `<svg>` or a long `<head>` this turn.\n\n'

@@ -323,23 +323,17 @@ html,body{background:var(--cream);color:var(--text-dark)}
     const daisySlim = slimTemplateVisualKitForFill(daisyKit);
     expect(daisySlim).toContain('#F5F0E6');
     expect(daisySlim).toMatch(/Motif sprites \(capped for first content-fill/i);
-    expect(daisySlim).toMatch(/<svg\b/i);
-    // Identity daisy (butter center) should survive the fill cap when present in kit.
-    if (/#fcdf6c/i.test(daisyKit)) {
-      expect(daisySlim).toMatch(/#fcdf6c/i);
-    }
-    expect(daisySlim).toMatch(/Motif `<svg>` is NOT required this turn|OPTIONAL identity reference/i);
+    expect(daisySlim).not.toMatch(/```html[\s\S]*?<svg\s/i);
+    expect(daisySlim).not.toMatch(/<svg\s[^>]*viewBox/i);
     expect(daisySlim).toMatch(/REQUIRE 1–2 kit Motif CSS\/deco|1–2 `\.deco-daisy-\*`/i);
+    expect(daisySlim).toMatch(/Motif `<svg>` is NOT required this turn|official Motif merged after save/i);
     expect(daisySlim).not.toMatch(/Optional tiny kit Motif CSS/i);
-    expect(daisySlim).toMatch(/Motif geometry:\s*\*\*kit Motif SVG sprites\*\*/i);
     expect(daisySlim).not.toMatch(/REQUIRED after cover title\/lead:\s*paste exactly ONE/i);
     expect(daisySlim).not.toMatch(/Motif sprites \(omitted for first content-fill/i);
     expect(daisySlim).not.toMatch(/ZERO Motif|Motif SVG paste is DISABLED/i);
-    expect(daisySlim).toMatch(/Daisy placement recipe/i);
-    const daisySnippets = /Motif HTML snippets[\s\S]*?```html\n([\s\S]*?)```/i.exec(daisySlim)?.[1] ?? '';
-    expect(daisySnippets).toMatch(/deco-daisy/i);
-    expect(daisySlim).toMatch(/official Motif merge|leave empty|NOT required this turn/i);
-    expect(daisySnippets).not.toMatch(/deco-rainbow[\s\S]*deco-star|deco-star[\s\S]*deco-rainbow/i);
+    expect(daisySlim).toMatch(/deco-daisy/i);
+    expect(daisySlim).toMatch(/official Motif merge|NOT required this turn/i);
+    expect(daisySlim).toMatch(/Motif geometry:\s*\*\*kit Motif SVG sprites\*\*/i);
 
     const capsuleHtml = await readFile(
       new URL(
@@ -470,8 +464,10 @@ html,body{background:var(--cream);color:var(--text-dark)}
     expect(slim).toMatch(/title cue: pin \/ paper \/ cork|stamp\/tape\/pin|pin-/i);
     expect(slim).toMatch(/Decorations CSS|pin-|cork|post-it|\.tape/i);
     expect(slim).not.toMatch(/Example capsule \(AFTER title\)/i);
-    // Fill cap must keep the #pin <symbol> defs sheet — not chart polylines.
-    expect(slim).toMatch(/<symbol[^>]*\bid=["']pin["']/i);
+    // Fill turns defer Motif SVG bodies — keep pin class vocabulary only.
+    expect(slim).toMatch(/Motif class vocabulary:|\.pin-|stamp\/tape\/pin/i);
+    expect(slim).not.toMatch(/```html[\s\S]*?<svg\s/i);
+    expect(slim).not.toMatch(/<svg\s[^>]*viewBox/i);
     expect(slim).not.toMatch(/<polyline\b/i);
   });
 

@@ -1986,65 +1986,26 @@ export function appendTemplateVisualKit(skillBody: string, kit: string | null | 
  * Layout CSS is capped (not omitted). First-slide cues stay omitted.
  */
 function capMotifSpritesSectionForFill(section: string): string {
-  const svgs = [...section.matchAll(/```html\s*([\s\S]*?)```/gi)]
-    .map((match) => (match[1] ?? '').trim())
-    .filter((svg) => /^<svg\b/i.test(svg) && svg.length >= 80 && svg.length <= 2_400);
-  const looksLikeDaisy =
-    /deco-daisy|#F5F0E6|#fcdf6c|daisy days|flower/i.test(section)
-    || /#fcdf6c/i.test(svgs.join('\n'));
-  const identityScore = (svg: string) => {
-    // Prefer real daisy (butter center) over rainbow/star when kit has daisy cues.
-    if (/#fcdf6c/i.test(svg) && (looksLikeDaisy || /path/i.test(svg))) return 0;
-    if (looksLikeDaisy && /#fcdf6c/i.test(svg)) return 0;
-    // Pin-and-Paper / symbol Motif: keep defs sheets that define #pin (not chart polylines).
-    if (/#pin\b|<symbol\b[^>]*\bid\s*=\s*["']pin|bg-cork|\.pin-/i.test(svg)) return 0;
-    if (/<symbol\b/i.test(svg) && /<(?:use|path)\b/i.test(svg)) return 1;
-    if (/width\s*=\s*["']0["']|height\s*=\s*["']0["']/i.test(svg)) {
-      // Hidden defs sheets are Motif identity when they declare symbols; otherwise demote.
-      if (/<defs\b|<symbol\b|#pin\b/i.test(svg)) return 1;
-      return 9;
-    }
-    // Chart/noise SVGs are not Motif for pin/cork kits.
-    if (/<polyline\b|<filter\b[^>]*\bid\s*=\s*["']n["']/i.test(svg) && !/#pin\b|<symbol\b/i.test(svg)) {
-      return 8;
-    }
-    if (/#f8635f|#fde366|#8de3b7|#85c5fe|rainbow/i.test(svg)) return looksLikeDaisy ? 5 : 1;
-    if (/viewbox="0 0 100 98/i.test(svg) || /\bstar\b/i.test(svg)) return 2;
-    if (/\bpin\b|#pin|doodle|stamp/i.test(svg)) return 3;
-    return 4;
-  };
-  const ranked = [...svgs].sort((a, b) => {
-    const delta = identityScore(a) - identityScore(b);
-    if (delta !== 0) return delta;
-    return b.length - a.length;
-  });
-  const kept: string[] = [];
-  let used = 0;
-  for (const svg of ranked) {
-    if (kept.length >= 1) break;
-    if (used + svg.length > 2_200) continue;
-    kept.push(svg);
-    used += svg.length;
-  }
+  const looksLikeDaisy = /deco-daisy|#F5F0E6|#fcdf6c|daisy days|flower/i.test(section);
   const lines = [
     '### Motif sprites (capped for first content-fill — AFTER title/lead only)',
     '',
-    'OPTIONAL identity reference only — Motif `<svg>` is NOT required this turn (official Motif CSS/SVG is merged after save). Do NOT paste Motif sprites or multi-KB dumps this turn. Finish 3 titled slides. Never invent tiny corner flowers / emoji / generic circles.',
+    'Identity reference only — Motif `<svg>` is NOT required this turn (official Motif merged after save). Do NOT paste Motif sprites this turn. REQUIRE 1–2 kit Motif CSS/deco classes AFTER title. Never invent tiny corner flowers / emoji / generic circles.',
     '',
   ];
-  if (kept.length > 0) {
-    if (looksLikeDaisy) {
-      lines.push(
-        'Daisy placement recipe (for Motif-merge identity — do not hand-draw this turn): official wrappers are `.deco-daisy-tl` / `.deco-daisy-tr` / `.deco-daisy-bl` / `.deco-daisy-br`. Star/rainbow/circle accents are secondary and do not satisfy Daisy identity by themselves.',
-        '',
-      );
-    }
-    for (const svg of kept) {
-      lines.push('```html', svg, '```', '');
-    }
+  if (looksLikeDaisy) {
+    lines.push(
+      'Daisy: use 1–2 `.deco-daisy-*` class shells AFTER title (may stay empty). Official Motif merge paints 4-corner flowers after save.',
+      '',
+    );
+  } else if (/deco-|pill-|petal|blob|pin-|doodle|post-it|xp-blob|gd-orb/i.test(section)) {
+    lines.push(
+      `Motif class vocabulary: ${formatMotifVocabularyGuidance(section)}. Emit those classes as empty absolute shells — no SVG body this turn.`,
+      '',
+    );
   } else {
     lines.push(
-      `No compact Motif SVG survived the fill cap. Use **Decorations CSS** Motif vocabulary below (${formatMotifVocabularyGuidance(section)}). Do NOT invent generic CSS circles as Motif substitutes.`,
+      `No Motif class list in this kit section — follow **Decorations CSS** Motif vocabulary below (${formatMotifVocabularyGuidance(section)}).`,
       '',
     );
   }
@@ -2100,7 +2061,7 @@ function capDecorationsCssSectionForFill(section: string): string {
     '### Decorations CSS (capped for first content-fill — paste AFTER slide 1)',
     '',
     `REQUIRED Motif vocabulary from this kit: ${vocab}. Do NOT invent generic CSS circles / emoji ornaments as substitutes.`,
-    'Motif density: REQUIRE 1–2 kit Motif CSS/deco classes AFTER title/lead when Decorations list Motif classes. Finish 3 titled slides this turn. Motif `<svg>` is NOT required (official Motif is merged after save).',
+    'Motif density: REQUIRE 1–2 Motif CSS/deco classes AFTER title when listed. Motif `<svg>` NOT required (merged after save).',
     ...(shouldAttachMotifGeometryGuidance(geometryKind)
       ? [formatMotifGeometryGuidanceForFill(geometryKind)]
       : []),
@@ -2226,7 +2187,7 @@ export function slimTemplateVisualKitForFill(skillBody: string): string {
   }
   next = next.replace(
     /- Motif (?:MUST be copied from|language comes from)[\s\S]*?(?=\n- |\n### |\n## |$)/g,
-    '- Motif vocabulary is REQUIRED from Decorations CSS Motif classes listed in this kit — include 1–2 Motif CSS/deco classes AFTER title (Motif `<svg>` is NOT required this turn — official Motif is merged after save). Never invent generic CSS circles or emoji ornaments.\n',
+    '- Motif vocabulary REQUIRED: 1–2 Motif CSS/deco classes AFTER title (Motif `<svg>` NOT required — merged after save). No generic circles.\n',
   );
   next = next.replace(
     /4\.\s*\*\*Motif\/density:\*\*[^\n]*/gi,

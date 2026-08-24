@@ -32,6 +32,19 @@
 | scaffold로 갑자기 바꾸면? | **안 됨.** kit hard cutover 금지. full HTML scaffold도 기본 inject 하지 않음 |
 | 1장짜리 템플릿 결과가 저장되는가? | **제품 경로는 첫 fill 3장.** 잘리면 제목 있는 1장은 저장하고 top-up이 덧붙인다. 제목 없는 빈 셸만 미완성으로 차단. 사용자가 1장을 명시한 경우도 허용 |
 
+### 1.29 2026-08-24 — 슬라이드 API 프롬프트 예산 정리
+
+lean compose가 27k를 넘고 Daisy fill은 ~43k였다. Motif CSS cue / type-lock / content-expansion이 kit SVG 본문·중복 REQUIRE에 묻혔고, streaming body-first의 `empty shell` / `font @import` 문구도 빠졌다.
+
+구현 현황:
+
+- [x] unified/direct streaming — `never an empty shell or long <head> chrome` · `never font @import`
+- [x] Motif REQUIRE 문장 압축 (framework / READ LAST / hard rules)
+- [x] fill kit Motif sprites — SVG 본문 제거, 클래스 어휘만
+- [x] lean ceiling 29k · Daisy fill pin <42k
+- [ ] READ LAST Final-authority 단일 블록 — 후속
+- [ ] HomeHero magic scale — slide-only 비노출, 후속
+
 ### 1.21 2026-08-24 — 스트리밍 중에도 stable 스냅샷 official-look heal
 
 §0.76은 FileViewer가 `streaming`이면 look heal을 전부 건너뛰었다. compact fill은 룩 CSS를 스트리밍하지 않으므로, 생성 중 미리보기가 Neutral/Quicksand로 남고 §1.18 type-lock·Motif도 persist 뒤에야 보였다.
@@ -2035,6 +2048,7 @@ User-message 쪽 `[Existing deck edit]` / `<attached-preview-comments>` 주입�
 
 | 날짜 | 내용 |
 |------|------|
+| 2026-08-24 | §1.29 — slide API prompt budget: restore body-first phrases · trim Motif REQUIRE · strip fill Motif SVG bodies · lean ceiling 29k.
 | 2026-08-24 | §1.21 — streaming official-look heal for stable live snapshots (debounce · source-match · templateId cache). Generation preview no longer waits for persist. |
 | 2026-08-24 | §1.18 — Studio/Broadside/Signal/Vellum compact type-lock. Resolve `--f-*` + `.display`/`.h1` onto semantic headings; tighten generated-deck fixtures to require type-lock face. |
 | 2026-08-24 | §1.04 — Studio/Daisy/Capsule 대표 생성 결과 fixture 가드. official look/motif merge + standalone export에서 motif/look paint, 1920×1080 fixed canvas, slide count 보존 검증. head/body cleanup이 첫 slide host를 삭제하지 않도록 slide host count guard 추가. |

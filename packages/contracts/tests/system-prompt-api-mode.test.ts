@@ -177,7 +177,7 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).not.toContain('Copy the canonical skeleton below as index.html');
       // Ceiling grew again for existing-deck image/surgical-edit rules so
       // "put this image on page N" does not greenfield a 2-slide rewrite.
-      expect(prompt.length).toBeLessThan(27_000);
+      expect(prompt.length).toBeLessThan(29_000);
     });
 
     it('keeps compact deck for skill-seed projects without raw template copy workflow', () => {
@@ -350,11 +350,9 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).not.toContain('# OD core directives');
       expect(prompt).not.toContain('Artifact handoff');
       expect(prompt).not.toContain('Read `assets/template.html`');
-      // Budget guard for the lean slide-only API composer. Measured ~25k
-      // after existing-deck image embed + comment-edit patch contracts landed;
-      // those prevent 8→2 slide collapse / 60–120s full-deck rewrites, so the
-      // cost is intentional. Keep a small headroom for copy tweaks.
-      expect(prompt.length).toBeLessThan(27_000);
+      // Budget guard for the lean slide-only API composer. Measured ~28k after
+      // body-first chrome restore + Motif CSS cue rules; keep headroom for copy tweaks.
+      expect(prompt.length).toBeLessThan(29_000);
       expect(prompt.length).toBeGreaterThan(18_000);
     });
 
@@ -474,7 +472,7 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       );
       expect(prompt).not.toContain('Do not paste this exact headline');
       // Ceiling grew for content-expansion + existing-deck image/surgical-edit rules + fill.
-      expect(prompt.length).toBeLessThan(27_000);
+      expect(prompt.length).toBeLessThan(29_000);
     });
 
     it('keeps quick brief available when a selected template supplies style but not content brief', () => {
@@ -535,7 +533,7 @@ describe('composeSystemPrompt — API mode (#313)', () => {
         prompt.indexOf('Slide deck — API compact contract'),
       );
       // Ceiling grew for content-expansion + existing-deck image/surgical-edit rules + fill.
-      expect(prompt.length).toBeLessThan(27_000);
+      expect(prompt.length).toBeLessThan(29_000);
     });
 
     it('keeps richer visual template rules while stripping unavailable copy workflows', () => {
@@ -564,7 +562,7 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).not.toContain('Read assets/template.html and copy the skeleton');
       expect(prompt).not.toContain('Use references/layouts.md for exact slots');
       // Ceiling grew for existing-deck image/surgical-edit rules.
-      expect(prompt.length).toBeLessThan(27_000);
+      expect(prompt.length).toBeLessThan(29_000);
     });
 
     it('appends Motif-AFTER-title READ LAST on template clone fill turns', () => {
@@ -806,6 +804,10 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(fill).toMatch(/Motif `<svg>` is NOT required this turn/i);
       expect(fill).toMatch(/REQUIRE 1–2 kit Motif CSS\/deco classes/i);
       expect(fill).toMatch(/produce 3 filled 1920×1080 slides/i);
+      // Fill kits must not re-inject Motif SVG bodies (persist remmerge paints them).
+      expect(fill).not.toMatch(/```html[\s\S]*?<svg\s/i);
+      expect(fill).not.toMatch(/<svg\s[^>]*viewBox/i);
+      expect(fill.length).toBeLessThan(42_000);
     });
   });
 });
