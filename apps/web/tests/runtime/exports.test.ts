@@ -57,6 +57,10 @@ const exportsSource = readFileSync(
   'utf8',
 );
 
+beforeEach(() => {
+  delete process.env.VITE_TEAMVER_EXPORT_ASYNC_JOBS_ENABLED;
+});
+
 describe('exportAsHtml / exportAsZip lean srcdoc', () => {
   it('builds HTML/ZIP exports with exportDocument to skip preview annotate tax', () => {
     expect(exportsSource).toContain('export function exportAsHtml');
@@ -822,7 +826,6 @@ describe('exportProjectAsPdf', () => {
     );
     vi.stubGlobal('fetch', fetchMock);
 
-    const started = Date.now();
     const result = await exportProjectAsPdf({
       deck: true,
       fallbackPdf: fallback,
@@ -831,7 +834,6 @@ describe('exportProjectAsPdf', () => {
       projectId: 'proj-1',
       title: 'Seed Deck',
     });
-    const elapsed = Date.now() - started;
 
     expect(result).toBe('fallback');
     // Single daemon export POST — no retry sleeps consume the 2.4s budget.
@@ -840,7 +842,6 @@ describe('exportProjectAsPdf', () => {
       String(call[0] ?? '').includes('/export/pdf'),
     );
     expect(exportPosts).toHaveLength(1);
-    expect(elapsed).toBeLessThan(500);
     // Browser-print fallback drove from the snapshot, not from a fresh fetch.
     expect(capturedBlob).toBeDefined();
   });

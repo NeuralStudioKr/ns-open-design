@@ -58,6 +58,17 @@ const STATIC_TEAMVER_VITE_ENV: Record<string, string | undefined> = {
 };
 
 export function readTeamverViteEnv(key: string): string | undefined {
+  if (
+    typeof process !== "undefined" &&
+    process.env.VITEST &&
+    key === "VITE_TEAMVER_EXPORT_ASYNC_JOBS_ENABLED"
+  ) {
+    const fromProcess = process.env[key];
+    return typeof fromProcess === "string" && fromProcess.trim()
+      ? fromProcess.trim()
+      : undefined;
+  }
+
   const fromStatic = STATIC_TEAMVER_VITE_ENV[key];
   if (typeof fromStatic === "string" && fromStatic.trim()) {
     return fromStatic.trim();
