@@ -97,7 +97,7 @@ beforeEach(async () => {
   server = started.server;
   baseUrl = started.url;
   await bootInstall(folder);
-});
+}, 30_000);
 
 afterEach(async () => {
   await new Promise((resolve, reject) => {
@@ -114,7 +114,7 @@ afterEach(async () => {
     // ignore
   }
   await rm(pluginRoot, { recursive: true, force: true });
-});
+}, 30_000);
 
 describe('GET /api/plugins/:id/preview — fallback chain', () => {
   it('assembles example-slides fragments with the sibling template when the declared entry is missing', async () => {
@@ -128,5 +128,24 @@ describe('GET /api/plugins/:id/preview — fallback chain', () => {
     expect(body).toContain('<main id="deck">');
     expect(body).toContain('fallback body via assets');
     expect(body).toContain('Preview fallback fixture | Open Design Example');
+  });
+
+  it('batches plugin preview HTML with the same fallback chain', async () => {
+    const previewUrl = `/api/plugins/${PLUGIN_ID}/preview`;
+    const missingUrl = '/api/plugins/does-not-exist/preview';
+    const resp = await fetch(`${baseUrl}/api/plugins/preview-batch`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ urls: [previewUrl, missingUrl] }),
+    });
+    expect(resp.status).toBe(200);
+    const payload = (await resp.json()) as {
+      results?: Array<{ url: string; ok: boolean; status: number; html?: string }>;
+    };
+    expect(payload.results).toHaveLength(2);
+    expect(payload.results?.[0]).toMatchObject({ url: previewUrl, ok: true, status: 200 });
+    expect(payload.results?.[0]?.html).toContain('<main id="deck">');
+    expect(payload.results?.[0]?.html).toContain('fallback body via assets');
+    expect(payload.results?.[1]).toMatchObject({ url: missingUrl, ok: false, status: 404 });
   });
 });

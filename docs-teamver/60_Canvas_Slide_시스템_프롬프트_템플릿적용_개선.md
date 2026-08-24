@@ -76,6 +76,18 @@
 - [x] `canvasSlideLaunch.ts`: 선택 템플릿 visual contract에서 `Motif SVG is optional` 제거, small complete snippets 허용 + huge dump 금지로 정렬
 - [x] 회귀 테스트: `resume.test.ts`, `slideCountTopUp.test.ts`, `teamver-canvas-slide-launch.test.ts`
 
+### 1.02 2026-08-24 — 템플릿 카드 HTML preview batch load
+
+현재 시점 기준 판단: 커뮤니티/템플릿 목록은 baked preview(`data/plugin-previews/manifest.json`)가 있으면 이미 정적 커버를 우선 사용한다. 남는 병목은 baked preview가 없거나 예제 HTML을 직접 보여줘야 하는 카드들이 보이는 순간마다 `/api/plugins/:id/preview` 또는 `/api/plugins/:id/example/:name`를 각각 호출하는 경로다. 전체 템플릿을 선로드하면 초기 부하가 커지므로, **visible/near-visible 카드만 짧은 coalesce window로 묶는 batch 방식**이 가장 안전하다.
+
+구현 현황:
+
+- [x] daemon `POST /api/plugins/preview-batch` 추가 — 최대 24개 URL, 총 2.5MB cap
+- [x] batch item은 기존 단건 `/preview`/`/example/:name`의 fallback chain, asset rewrite, sandbox HTML 처리 재사용
+- [x] web `HtmlSurface`는 batch 가능한 plugin preview URL을 24ms 동안 모아 한 번에 요청
+- [x] batch 실패 시 기존 단건 GET으로 fallback, 404 negative cache/auth refresh suppression/session cache 유지
+- [x] 회귀 테스트: `plugins-home-html-surface.test.tsx`, `plugins-preview-fallback.test.ts`
+
 ### 0.98 2026-08-21 — 루트 갤러리 템플릿 썸네일 1920 캔버스 스케일
 
 커버 isolation 이후 루트 community 갤러리의 360% iframe 레시피가 1920×1080 캔버스를 좌상단 crop 했다. 피커와 같은 `100cqw / 1920` 스케일로 맞추고, mode 누락 html-ppt도 `data-od-mode="deck"`을 유지한다.

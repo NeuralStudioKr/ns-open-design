@@ -63,14 +63,23 @@ type LoadState = 'idle' | 'loading' | 'ok' | 'unreachable';
 const PREVIEW_CACHE_LIMIT = 256;
 /** Cap concurrent `/preview` GETs so a viewport of cards cannot stampede the daemon. */
 const PREVIEW_FETCH_CONCURRENCY = 3;
+/** Coalesce same-frame visible card preview requests into one daemon call. */
+const PREVIEW_BATCH_DELAY_MS = 24;
+const PREVIEW_BATCH_MAX_ITEMS = 24;
 const SESSION_PREVIEW_PREFIX = 'od:plugin-preview:v1:';
 const SESSION_PREVIEW_MAX_ENTRY_CHARS = 180_000;
 const SESSION_PREVIEW_MAX_ENTRIES = 16;
 
 const previewHtmlCache = new Map<string, string>();
 const previewInflight = new Map<string, Promise<string>>();
+const previewBatchQueue: Array<{
+  url: string;
+  resolve: (html: string) => void;
+  reject: (error: unknown) => void;
+}> = [];
 let previewFetchActive = 0;
 const previewFetchWaiters: Array<() => void> = [];
+let previewBatchTimer: ReturnType<typeof setTimeout> | null = null;
 
 function rememberPreviewHtml(url: string, html: string): void {
   previewHtmlCache.delete(url);
@@ -154,6 +163,124 @@ async function withPreviewFetchSlot<T>(run: () => Promise<T>): Promise<T> {
   }
 }
 
+function isBatchablePluginPreviewUrl(url: string): boolean {
+  return (
+    /^\/api\/plugins\/[^/?#]+\/preview$/u.test(url) ||
+    /^\/api\/plugins\/[^/?#]+\/example\/[^/?#]+$/u.test(url)
+  );
+}
+
+async function fetchSinglePluginPreviewHtml(cacheKey: string): Promise<string> {
+  const res = await fetchTeamverDaemon(cacheKey, {
+    method: 'GET',
+    // Plugin preview thumbs are non-critical, retryable UI. Do not make a
+    // card fetch wake Teamver auth/session refresh, active-workspace reads,
+    // or the embed passive-auth / soft-sticky ladder — a viewport of 401s
+    // used to poison later detail-modal `/preview` fetches.
+    skipEmbedAuthRecovery: true,
+    skipEmbedUnauthorizedNotify: true,
+    skipTeamverWorkspaceHeaders: true,
+  });
+  if (!res.ok) {
+    // Only sticky-cache missing assets. Auth failures must remain retryable
+    // after cookie recovery / soft sticky clear.
+    if (res.status === 404) rememberUnreachable(cacheKey);
+    throw new Error(`plugin_preview_http_${res.status}`);
+  }
+  const text = await res.text();
+  const contentType = res.headers.get('content-type');
+  if (isUnauthorizedHtmlBody(text, contentType) || !looksLikeHtmlDocument(text)) {
+    throw new Error('plugin_preview_not_html');
+  }
+  const srcDoc = pluginCatalogPreviewSrcDoc(text, cacheKey);
+  rememberPreviewHtml(cacheKey, srcDoc);
+  return srcDoc;
+}
+
+function schedulePluginPreviewBatch(): void {
+  if (previewBatchTimer) return;
+  previewBatchTimer = setTimeout(() => {
+    previewBatchTimer = null;
+    const batch = previewBatchQueue.splice(0, PREVIEW_BATCH_MAX_ITEMS);
+    if (previewBatchQueue.length > 0) schedulePluginPreviewBatch();
+    if (batch.length === 0) return;
+    if (batch.length === 1) {
+      const [item] = batch;
+      if (item) {
+        withPreviewFetchSlot(() => fetchSinglePluginPreviewHtml(item.url))
+          .then(item.resolve)
+          .catch(item.reject);
+      }
+      return;
+    }
+
+    const uniqueUrls = Array.from(new Set(batch.map((entry) => entry.url)));
+    withPreviewFetchSlot(async () => {
+      try {
+        const res = await fetchTeamverDaemon('/api/plugins/preview-batch', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ urls: uniqueUrls }),
+          skipEmbedAuthRecovery: true,
+          skipEmbedUnauthorizedNotify: true,
+          skipTeamverWorkspaceHeaders: true,
+        });
+        if (!res.ok) throw new Error(`plugin_preview_batch_http_${res.status}`);
+        const payload = (await res.json()) as {
+          results?: Array<{
+            url?: unknown;
+            ok?: unknown;
+            html?: unknown;
+            status?: unknown;
+          }>;
+        };
+        const byUrl = new Map(
+          (payload.results ?? [])
+            .filter((row) => typeof row.url === 'string')
+            .map((row) => [String(row.url), row]),
+        );
+
+        for (const item of batch) {
+          const row = byUrl.get(item.url);
+          const status = typeof row?.status === 'number' ? row.status : 0;
+          if (!row?.ok || typeof row.html !== 'string') {
+            if (status === 404) rememberUnreachable(item.url);
+            item.reject(new Error(`plugin_preview_batch_item_${status || 'failed'}`));
+            continue;
+          }
+          if (isUnauthorizedHtmlBody(row.html, 'text/html') || !looksLikeHtmlDocument(row.html)) {
+            item.reject(new Error('plugin_preview_not_html'));
+            continue;
+          }
+          const srcDoc = pluginCatalogPreviewSrcDoc(row.html, item.url);
+          rememberPreviewHtml(item.url, srcDoc);
+          item.resolve(srcDoc);
+        }
+      } catch (error) {
+        for (const item of batch) {
+          try {
+            item.resolve(await fetchSinglePluginPreviewHtml(item.url));
+          } catch (itemError) {
+            item.reject(itemError);
+          }
+        }
+      }
+    }).catch((error) => {
+      for (const item of batch) item.reject(error);
+    });
+  }, PREVIEW_BATCH_DELAY_MS);
+}
+
+async function loadPluginPreviewHtmlViaBatch(cacheKey: string): Promise<string> {
+  if (!isBatchablePluginPreviewUrl(cacheKey)) {
+    return withPreviewFetchSlot(() => fetchSinglePluginPreviewHtml(cacheKey));
+  }
+  return new Promise<string>((resolve, reject) => {
+    previewBatchQueue.push({ url: cacheKey, resolve, reject });
+    schedulePluginPreviewBatch();
+  });
+}
+
 // Re-export helpers for existing tests / callers.
 export {
   isUnauthorizedHtmlBody as isPluginPreviewUnauthorizedBody,
@@ -186,32 +313,7 @@ async function loadPluginPreviewHtml(url: string): Promise<string> {
   const existing = previewInflight.get(cacheKey);
   if (existing) return existing;
 
-  const run = withPreviewFetchSlot(async () => {
-    const res = await fetchTeamverDaemon(cacheKey, {
-      method: 'GET',
-      // Plugin preview thumbs are non-critical, retryable UI. Do not make a
-      // card fetch wake Teamver auth/session refresh, active-workspace reads,
-      // or the embed passive-auth / soft-sticky ladder — a viewport of 401s
-      // used to poison later detail-modal `/preview` fetches.
-      skipEmbedAuthRecovery: true,
-      skipEmbedUnauthorizedNotify: true,
-      skipTeamverWorkspaceHeaders: true,
-    });
-    if (!res.ok) {
-      // Only sticky-cache missing assets. Auth failures must remain retryable
-      // after cookie recovery / soft sticky clear.
-      if (res.status === 404) rememberUnreachable(cacheKey);
-      throw new Error(`plugin_preview_http_${res.status}`);
-    }
-    const text = await res.text();
-    const contentType = res.headers.get('content-type');
-    if (isUnauthorizedHtmlBody(text, contentType) || !looksLikeHtmlDocument(text)) {
-      throw new Error('plugin_preview_not_html');
-    }
-    const srcDoc = pluginCatalogPreviewSrcDoc(text, cacheKey);
-    rememberPreviewHtml(cacheKey, srcDoc);
-    return srcDoc;
-  }).finally(() => {
+  const run = loadPluginPreviewHtmlViaBatch(cacheKey).finally(() => {
     previewInflight.delete(cacheKey);
   });
 
@@ -511,6 +613,11 @@ export function __resetHtmlSurfaceProbeCacheForTests(): void {
 export function __clearHtmlSurfaceMemoryCacheForTests(): void {
   previewHtmlCache.clear();
   previewInflight.clear();
+  previewBatchQueue.length = 0;
+  if (previewBatchTimer) {
+    clearTimeout(previewBatchTimer);
+    previewBatchTimer = null;
+  }
   previewFetchActive = 0;
   previewFetchWaiters.length = 0;
 }
@@ -518,6 +625,11 @@ export function __clearHtmlSurfaceMemoryCacheForTests(): void {
 /** @internal vitest */
 export function __pluginPreviewFetchConcurrencyForTests(): number {
   return PREVIEW_FETCH_CONCURRENCY;
+}
+
+/** @internal vitest */
+export function __pluginPreviewBatchMaxItemsForTests(): number {
+  return PREVIEW_BATCH_MAX_ITEMS;
 }
 
 export function __htmlSurfaceProbeCacheSizeForTests(): number {

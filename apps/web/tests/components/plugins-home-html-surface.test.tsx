@@ -15,6 +15,7 @@ import {
   HtmlSurface,
   __clearHtmlSurfaceMemoryCacheForTests,
   __htmlSurfaceProbeCacheSizeForTests,
+  __pluginPreviewBatchMaxItemsForTests,
   __pluginPreviewFetchConcurrencyForTests,
   __resetHtmlSurfaceProbeCacheForTests,
   isPluginPreviewUnauthorizedBody,
@@ -42,6 +43,26 @@ function htmlResponse(html = SAMPLE_HTML): Response {
     text: async () => html,
     clone() {
       return htmlResponse(html);
+    },
+  } as unknown as Response;
+}
+
+function batchHtmlResponse(urls: string[]): Response {
+  return {
+    ok: true,
+    status: 200,
+    headers: { get: (name: string) => (name.toLowerCase() === 'content-type' ? 'application/json' : null) },
+    json: async () => ({
+      results: urls.map((url) => ({
+        url,
+        ok: true,
+        status: 200,
+        html: SAMPLE_HTML,
+        contentType: 'text/html; charset=utf-8',
+      })),
+    }),
+    clone() {
+      return batchHtmlResponse(urls);
     },
   } as unknown as Response;
 }
@@ -136,6 +157,7 @@ describe('HtmlSurface authenticated srcDoc', () => {
     // Shared inflight / no per-card AbortSignal (N07 cover pattern).
     expect(source).toContain('pluginPreviewCacheKey');
     expect(source).not.toMatch(/loadPluginPreviewHtml\([^)]*abort\.signal/);
+    expect(source).toContain("fetchTeamverDaemon('/api/plugins/preview-batch'");
     expect(source).toContain("pluginCatalogPreviewSrcDoc");
     expect(source).not.toMatch(/const srcDoc = pluginPreviewSrcDoc\(text, cacheKey\)/);
   });
@@ -179,22 +201,21 @@ describe('HtmlSurface authenticated srcDoc', () => {
     );
   });
 
-  it('caps concurrent plugin preview GETs to avoid daemon stampede', async () => {
+  it('batches visible plugin preview GETs to avoid daemon stampede', async () => {
     const limit = __pluginPreviewFetchConcurrencyForTests();
     expect(limit).toBe(3);
+    expect(__pluginPreviewBatchMaxItemsForTests()).toBe(24);
     let inFlight = 0;
     let peak = 0;
-    const releasers: Array<() => void> = [];
     const fetchMock = vi.fn().mockImplementation(
-      () =>
-        new Promise<Response>((resolve) => {
-          inFlight += 1;
-          peak = Math.max(peak, inFlight);
-          releasers.push(() => {
-            inFlight -= 1;
-            resolve(htmlResponse());
-          });
-        }),
+      async (url: string, init?: RequestInit) => {
+        expect(url).toBe('/api/plugins/preview-batch');
+        const parsed = JSON.parse(String(init?.body ?? '{}')) as { urls?: string[] };
+        inFlight += 1;
+        peak = Math.max(peak, inFlight);
+        inFlight -= 1;
+        return batchHtmlResponse(parsed.urls ?? []);
+      },
     );
     vi.stubGlobal('fetch', fetchMock);
 
@@ -215,19 +236,11 @@ describe('HtmlSurface authenticated srcDoc', () => {
     }
 
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledTimes(limit);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
     });
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body ?? '{}')) as { urls?: string[] };
+    expect(body.urls).toHaveLength(cards.length);
     expect(peak).toBeLessThanOrEqual(limit);
-
-    // Release first wave so queued cards can proceed.
-    for (const release of releasers.splice(0, limit)) release();
-    await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledTimes(cards.length);
-    });
-    for (const release of releasers) release();
-    await waitFor(() => {
-      expect(peak).toBeLessThanOrEqual(limit);
-    });
   });
 
   it('reuses sessionStorage preview HTML without a second network GET', async () => {

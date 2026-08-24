@@ -9162,6 +9162,171 @@ export async function startServer({
     return found;
   }
 
+  const PLUGIN_PREVIEW_BATCH_MAX_ITEMS = 24;
+  const PLUGIN_PREVIEW_BATCH_MAX_BYTES = 2_500_000;
+
+  type PluginPreviewBatchTarget =
+    | { kind: 'preview'; pluginId: string }
+    | { kind: 'example'; pluginId: string; name: string };
+
+  function parsePluginPreviewBatchUrl(raw: unknown): PluginPreviewBatchTarget | null {
+    if (typeof raw !== 'string') return null;
+    const pathOnly = raw.split(/[?#]/u, 1)[0] ?? '';
+    const previewMatch = /^\/api\/plugins\/([^/]+)\/preview$/u.exec(pathOnly);
+    try {
+      if (previewMatch?.[1]) {
+        return { kind: 'preview', pluginId: decodeURIComponent(previewMatch[1]) };
+      }
+      const exampleMatch = /^\/api\/plugins\/([^/]+)\/example\/([^/]+)$/u.exec(pathOnly);
+      if (exampleMatch?.[1] && exampleMatch[2]) {
+        return {
+          kind: 'example',
+          pluginId: decodeURIComponent(exampleMatch[1]),
+          name: decodeURIComponent(exampleMatch[2]),
+        };
+      }
+    } catch {
+      return null;
+    }
+    return null;
+  }
+
+  async function renderPluginSandboxedHtmlForBatch(
+    target: PluginPreviewBatchTarget,
+  ): Promise<{ status: number; body: string; contentType: string }> {
+    let statusCode = 200;
+    let contentType = 'text/plain; charset=utf-8';
+    let body = '';
+    const headers: Record<string, string> = {};
+    const req = {
+      params:
+        target.kind === 'example'
+          ? { id: target.pluginId, name: target.name }
+          : { id: target.pluginId },
+      headers: {},
+    };
+    const res = {
+      setHeader(name: string, value: unknown) {
+        headers[name.toLowerCase()] = String(value);
+        if (name.toLowerCase() === 'content-type') contentType = String(value);
+        return res;
+      },
+      status(code: number) {
+        statusCode = code;
+        return res;
+      },
+      json(value: unknown) {
+        contentType = 'application/json; charset=utf-8';
+        body = JSON.stringify(value);
+        return res;
+      },
+      send(value: unknown) {
+        if (Buffer.isBuffer(value)) body = value.toString('utf8');
+        else body = String(value ?? '');
+        contentType = headers['content-type'] ?? contentType;
+        return res;
+      },
+      end(value?: unknown) {
+        if (value != null) body = String(value);
+        return res;
+      },
+    };
+
+    if (target.kind === 'preview') {
+      await servePluginSandboxedHtml(req, res, async (plugin) => {
+        const curated = collectPluginPreviewCandidates(plugin);
+        const fsPath = (plugin as { fsPath?: unknown }).fsPath;
+        if (typeof fsPath !== 'string') return curated;
+        const discovered = await discoverPluginHtmlAssets(fsPath);
+        const seen = new Set(curated);
+        for (const rel of discovered) {
+          if (!seen.has(rel)) curated.push(rel);
+        }
+        return curated;
+      });
+      return { status: statusCode, body, contentType };
+    }
+
+    if (!target.name || /[\\/\0]|\.\./.test(target.name)) {
+      return {
+        status: 400,
+        body: JSON.stringify({ error: 'invalid example name' }),
+        contentType: 'application/json; charset=utf-8',
+      };
+    }
+    await servePluginSandboxedHtml(req, res, async (plugin) => {
+      const examples = ((plugin as { manifest?: { od?: { useCase?: { exampleOutputs?: Array<{ path?: unknown; title?: unknown }> } } } })
+        .manifest?.od?.useCase?.exampleOutputs ?? []) as Array<{ path?: unknown; title?: unknown }>;
+      const match = examples.find((e) => {
+        if (!e || typeof e.path !== 'string') return false;
+        const segments = e.path.split(/[\\/]/).filter(Boolean);
+        const base = segments[segments.length - 1] ?? '';
+        const baseStem = base.replace(/\.[^.]+$/, '');
+        const parent = segments.length >= 2 ? segments[segments.length - 2] : null;
+        const candidates = [base, baseStem, parent].filter((s): s is string => !!s);
+        if (typeof e.title === 'string') candidates.push(e.title);
+        return candidates.includes(target.name);
+      });
+      if (match && typeof match.path === 'string') return [match.path];
+      return [
+        `examples/${target.name}/index.html`,
+        `examples/${target.name}.html`,
+      ];
+    });
+    return { status: statusCode, body, contentType };
+  }
+
+  app.post('/api/plugins/preview-batch', async (req, res) => {
+    const rawUrls = Array.isArray(req.body?.urls) ? req.body.urls : [];
+    const urls = Array.from(
+      new Set(rawUrls.filter((url): url is string => typeof url === 'string')),
+    ).slice(0, PLUGIN_PREVIEW_BATCH_MAX_ITEMS);
+    let totalBytes = 0;
+    const results: Array<{
+      url: string;
+      ok: boolean;
+      status: number;
+      html?: string;
+      contentType?: string;
+      error?: string;
+    }> = [];
+    for (const url of urls) {
+      const target = parsePluginPreviewBatchUrl(url);
+      if (!target) {
+        results.push({ url, ok: false, status: 400, error: 'invalid preview url' });
+        continue;
+      }
+      try {
+        const rendered = await renderPluginSandboxedHtmlForBatch(target);
+        if (rendered.status < 200 || rendered.status >= 300) {
+          results.push({
+            url,
+            ok: false,
+            status: rendered.status,
+            error: rendered.body.slice(0, 300),
+          });
+          continue;
+        }
+        totalBytes += Buffer.byteLength(rendered.body, 'utf8');
+        if (totalBytes > PLUGIN_PREVIEW_BATCH_MAX_BYTES) {
+          results.push({ url, ok: false, status: 413, error: 'preview batch too large' });
+          continue;
+        }
+        results.push({
+          url,
+          ok: true,
+          status: rendered.status,
+          html: rendered.body,
+          contentType: rendered.contentType,
+        });
+      } catch (error) {
+        results.push({ url, ok: false, status: 500, error: String(error) });
+      }
+    }
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ results });
+  });
+
   app.get('/api/plugins/:id/preview', async (req, res) => {
     await servePluginSandboxedHtml(req, res, async (plugin) => {
       const curated = collectPluginPreviewCandidates(plugin);
