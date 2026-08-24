@@ -338,6 +338,29 @@ describe('sanitizeTemplateCloneDeckTitle', () => {
     expect(healed).not.toContain('Daisy Days');
   });
 
+  it('heals mixed section/div hosts and every failed heading in a slide', () => {
+    const html = [
+      '<!doctype html><html><body>',
+      '<section class="slide"><h3>Daisy Days</h3><h1>expo에 대해서 설명하는 피피티 만들어줘</h1></section>',
+      '<div class="slide"><h2>Html Ppt Zhangzara Daisy Days</h2>',
+      '<p>This body dump is far too long to become a heading because persist would look noisy and cut mid thought.</p></div>',
+      '<section class="s1" data-screen-label="03 Close"><h2>만들어줘</h2></section>',
+      '</body></html>',
+    ].join('');
+    const healed = healInstructionCopyCoverHeading(
+      html,
+      'expo에 대해서 설명하는 피피티 만들어줘',
+    );
+    expect(healed).toContain('<h3>expo</h3>');
+    expect(healed).toContain('<h1>expo</h1>');
+    expect(healed).toContain('<h2>개요</h2>');
+    expect(healed).toContain('<h2>Close</h2>');
+    expect(healed).not.toContain('만들어줘');
+    expect(healed).not.toContain('Daisy Days');
+    expect(healed).not.toMatch(/<h2>This body dump/);
+    expect(healed).not.toMatch(/<h2>expo 2/);
+  });
+
   it('derives a cover title from a 만들어줘 brief instead of Daisy chrome', () => {
     expect(
       deriveDeckCoverTitleFromBrief(

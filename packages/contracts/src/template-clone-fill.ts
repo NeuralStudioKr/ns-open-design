@@ -647,41 +647,99 @@ function headingLooksLikeFailedGenerate(visible: string): boolean {
   return looksLikeInstructionCopy(visible) || looksLikeTemplateMarketingTitle(visible);
 }
 
+const GENERIC_HEAL_TITLE_RE =
+  /^(?:발표\s*개요|overview|agenda|목차|구성|intro|title\s*slide|cover|표지|contents|table\s*of\s*contents)$/i;
+
+function usableHealTitle(
+  visible: string,
+  options?: { allowGenericRole?: boolean },
+): string | null {
+  const title = cleanCloneTitle(visible);
+  if (title.length < 2 || title.length > 48) return null;
+  if (headingLooksLikeFailedGenerate(title)) return null;
+  if (!options?.allowGenericRole && GENERIC_HEAL_TITLE_RE.test(title)) return null;
+  return title;
+}
+
 function screenLabelRoleTitle(attrs: string): string | null {
   const raw = /\bdata-screen-label\s*=\s*(['"])([^'"]*)\1/i.exec(attrs)?.[2]?.trim() ?? '';
   const role = raw.replace(/^\d{2}\s+/, '').trim();
-  if (!role || headingLooksLikeFailedGenerate(role)) return null;
-  return cleanCloneTitle(role).slice(0, 60) || null;
+  return role ? usableHealTitle(role, { allowGenericRole: true }) : null;
 }
 
 function firstParagraphTitle(body: string): string | null {
   const inner = /<p\b[^>]*>([\s\S]*?)<\/p>/i.exec(body)?.[1];
   if (!inner) return null;
   const visible = visibleHeadingText(inner);
-  if (visible.length < 2 || headingLooksLikeFailedGenerate(visible)) return null;
-  return cleanCloneTitle(visible).slice(0, 60) || null;
+  const sentence = visible.split(/(?<=[.!?。])\s+/)[0]?.trim() ?? visible;
+  if (sentence.length > 48) return null;
+  return usableHealTitle(sentence);
 }
 
-function replaceFirstFailedHeading(fragment: string, title: string): string {
-  const headingRe = /<h([1-3])\b([^>]*)>([\s\S]*?)<\/h\1>/i;
-  const match = headingRe.exec(fragment);
-  const inner = match?.[3];
-  const level = match?.[1];
-  if (!match || inner == null || level == null) return fragment;
-  const visible = visibleHeadingText(inner);
-  if (!headingLooksLikeFailedGenerate(visible)) return fragment;
-  const attrs = match[2] ?? '';
-  return (
-    fragment.slice(0, match.index)
-    + `<h${level}${attrs}>${escapeHtml(title)}</h${level}>`
-    + fragment.slice(match.index + match[0].length)
-  );
+function roleFallbackTitle(
+  attrs: string,
+  body: string,
+  coverTitle: string,
+  index: number,
+): string {
+  const role = classifyTemplateCloneShellRole({ attrs, body });
+  if (role === 'cover' || index === 0) return coverTitle;
+  if (role === 'stat') return '핵심 수치';
+  if (role === 'quote') return '인용';
+  if (role === 'team') return '팀';
+  if (role === 'process' || role === 'timeline') return '진행';
+  if (role === 'closing') return '다음 단계';
+  if (role === 'cards') return '핵심 포인트';
+  if (index === 1) return '개요';
+  if (index === 2) return '핵심 포인트';
+  return '다음 단계';
+}
+
+function replaceFailedHeadings(fragment: string, title: string): string {
+  const headingRe = /<h([1-3])\b([^>]*)>([\s\S]*?)<\/h\1>/gi;
+  return fragment.replace(headingRe, (full, level, attrs, inner) => {
+    const visible = visibleHeadingText(String(inner ?? ''));
+    if (!headingLooksLikeFailedGenerate(visible)) return full;
+    return `<h${level}${attrs ?? ''}>${escapeHtml(title)}</h${level}>`;
+  });
+}
+
+type HealHostSpan = {
+  attrs: string;
+  bodyStart: number;
+  bodyEnd: number;
+};
+
+/** Section *and* div hosts in document order — clone shells are section-XOR-div. */
+function listHealSlideHostSpans(html: string): HealHostSpan[] {
+  const openRe = /<(section|div|main|article)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
+  const opens: { tag: string; attrs: string; start: number; openEnd: number }[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = openRe.exec(html)) !== null) {
+    if (!attrsLookLikeDeckOrTemplateSlideHost(match[2] ?? '')) continue;
+    opens.push({
+      tag: (match[1] ?? 'section').toLowerCase(),
+      attrs: match[2] ?? '',
+      start: match.index,
+      openEnd: match.index + match[0].length,
+    });
+  }
+  return opens.map((open, i) => {
+    const limit = i + 1 < opens.length ? opens[i + 1]!.start : html.length;
+    const chunk = html.slice(open.openEnd, limit);
+    const close = new RegExp(`</${open.tag}\\s*>`, 'i').exec(chunk);
+    return {
+      attrs: open.attrs,
+      bodyStart: open.openEnd,
+      bodyEnd: close ? open.openEnd + close.index : limit,
+    };
+  });
 }
 
 /**
- * Persist heal: cover *and* later host headings that still parrot "만들어줘"
- * / template marketing are rewritten so a complete deck is not skipped as a
- * failed generate (majority-heading gate).
+ * Persist heal: every host heading that still parrots "만들어줘" / template
+ * marketing is rewritten so the majority-heading gate does not skip a
+ * complete deck. Walks section *and* div hosts (clone shell list is XOR).
  */
 export function healInstructionCopyCoverHeading(
   html: string,
@@ -694,33 +752,23 @@ export function healInstructionCopyCoverHeading(
   );
   if (!coverTitle || !dest.trim()) return dest;
 
-  const shells = listTemplateCloneSlideShells(dest);
-  if (shells.length === 0) {
-    return replaceFirstFailedHeading(dest, coverTitle);
-  }
-
-  let cursor = 0;
-  const spans: { start: number; end: number; index: number }[] = [];
-  for (let i = 0; i < shells.length; i += 1) {
-    const full = shells[i]!.full;
-    const at = dest.indexOf(full, cursor);
-    if (at < 0) continue;
-    spans.push({ start: at, end: at + full.length, index: i });
-    cursor = at + full.length;
+  const spans = listHealSlideHostSpans(dest);
+  if (spans.length === 0) {
+    return replaceFailedHeadings(dest, coverTitle);
   }
 
   let next = dest;
-  for (let s = spans.length - 1; s >= 0; s -= 1) {
-    const span = spans[s]!;
-    const shell = shells[span.index]!;
-    const title = span.index === 0
+  for (let i = spans.length - 1; i >= 0; i -= 1) {
+    const span = spans[i]!;
+    const body = next.slice(span.bodyStart, span.bodyEnd);
+    const title = i === 0
       ? coverTitle
-      : screenLabelRoleTitle(shell.attrs)
-        || firstParagraphTitle(shell.body)
-        || `${coverTitle} ${span.index + 1}`;
-    const rewritten = replaceFirstFailedHeading(shell.full, title);
-    if (rewritten === shell.full) continue;
-    next = next.slice(0, span.start) + rewritten + next.slice(span.end);
+      : screenLabelRoleTitle(span.attrs)
+        || firstParagraphTitle(body)
+        || roleFallbackTitle(span.attrs, body, coverTitle, i);
+    const rewritten = replaceFailedHeadings(body, title);
+    if (rewritten === body) continue;
+    next = next.slice(0, span.bodyStart) + rewritten + next.slice(span.bodyEnd);
   }
   return next;
 }

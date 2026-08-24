@@ -22,6 +22,7 @@ import {
   normalizeBodyFirstHtmlDocument,
   salvageTruncatedHtmlDocument,
 } from "../../src/artifacts/recover";
+import { healInstructionCopyCoverHeading } from "@open-design/contracts";
 import { isIncompleteHtmlDocumentShell } from "../../src/artifacts/validate";
 
 describe("deck-html-content", () => {
@@ -108,6 +109,17 @@ describe("deck-html-content", () => {
       + "<section class=\"slide\"><h1>EAS Build</h1><p>cloud builds and Submit</p></section>"
       + "</body></html>";
     expect(deckSlideHeadingsLookLikeFailedGenerate(real)).toBe(false);
+    const shortParrot =
+      "<!doctype html><html lang=\"ko\"><body>"
+      + "<section class=\"slide\"><h1>expo에 대해서 설명하는 피피티 만들어줘</h1></section>"
+      + "</body></html>";
+    expect(isPersistableShortDeckDraft(shortParrot)).toBe(false);
+    const healedShort = healInstructionCopyCoverHeading(
+      shortParrot,
+      "expo에 대해서 설명하는 피피티 만들어줘",
+    );
+    expect(deckSlideHeadingsLookLikeFailedGenerate(healedShort)).toBe(false);
+    expect(isPersistableShortDeckDraft(healedShort)).toBe(true);
   });
 
   it("flags Motif SVG dumps that start before the cover heading", () => {

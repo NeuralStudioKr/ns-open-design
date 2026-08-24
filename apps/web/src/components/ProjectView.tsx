@@ -5281,6 +5281,21 @@ export function ProjectView({
         // closed soft-quality decks so strict incomplete/low-substance cannot
         // throw away the same previewable HTML. 1-slide titled covers also
         // persist so top-up can append instead of incomplete_output.
+        const normalizedArtifactType = normalizeSlideOnlyArtifactContractType(
+          artifactToPersist.artifactType,
+          slideOnlyMvp,
+        );
+        // Heal instruction/marketing titles *before* the short-draft / incomplete
+        // gates. A 1-slide "만들어줘" cover used to fail persistable-short and
+        // skip as incomplete-html-document-shell, so top-up never ran.
+        artifactToPersist = {
+          ...artifactToPersist,
+          html: healInstructionCopyCoverHeading(
+            artifactToPersist.html,
+            runVisiblePromptRef.current || '',
+            project.name,
+          ),
+        };
         const trustSoftTruncationSalvage =
           Boolean(salvaged)
           || isClosedSoftSalvageDeckHtml(artifactToPersist.html)
@@ -5303,20 +5318,6 @@ export function ProjectView({
             reason: 'incomplete-html-document-shell',
           };
         }
-        const normalizedArtifactType = normalizeSlideOnlyArtifactContractType(
-          artifactToPersist.artifactType,
-          slideOnlyMvp,
-        );
-        // Soft salvage may keep a previewable truncated deck, but never a
-        // "만들어줘" / template-marketing cover — that is a failed generate.
-        artifactToPersist = {
-          ...artifactToPersist,
-          html: healInstructionCopyCoverHeading(
-            artifactToPersist.html,
-            runVisiblePromptRef.current || '',
-            project.name,
-          ),
-        };
         const failedGenerateHeadings =
           normalizedArtifactType === 'deck'
           && (
