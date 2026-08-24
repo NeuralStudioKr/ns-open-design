@@ -353,6 +353,7 @@ const GATEWAY_API_PROTOCOLS = new Set<ApiProtocol>([
   'ollama',
   'senseaudio',
   'aihubmix',
+  'minimax',
 ]);
 
 // Providers whose live model fetch IS their full account catalogue, so the

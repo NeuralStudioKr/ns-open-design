@@ -104,6 +104,7 @@ flag "TEAMVER_API_BASE_URL" "${TEAMVER_API_BASE_URL:-}"
 flag "TEAMVER_INTERNAL_API_KEY" "$([[ -n "${TEAMVER_INTERNAL_API_KEY:-}" ]] && echo set || true)"
 flag "TEAMVER_OD_API_KEY" "$([[ -n "${TEAMVER_OD_API_KEY:-}" ]] && echo set || true)"
 flag "ANTHROPIC_API_KEY" "$([[ -n "${ANTHROPIC_API_KEY:-}" ]] && echo set || true)"
+flag "TEAMVER_MINIMAX_API_KEY" "$([[ -n "${TEAMVER_MINIMAX_API_KEY:-}" || -n "${OD_MINIMAX_API_KEY:-}" || -n "${MINIMAX_API_KEY:-}" ]] && echo set || true)"
 flag "OD_API_TOKEN" "$([[ -n "${OD_API_TOKEN:-}" ]] && echo set || true)"
 if [[ -n "${TEAMVER_DESIGN_API_URL:-}" ]]; then
   flag "embed local-folder gates" "enabled (daemon rejects linkedDirs/import)"

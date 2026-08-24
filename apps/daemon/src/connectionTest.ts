@@ -74,6 +74,11 @@ import {
 } from '@open-design/contracts/api/connectionTest';
 import { googleGenerateContentUrl } from './google-models.js';
 import { resolveAmrProfile } from './integrations/vela.js';
+import {
+  MINIMAX_DEFAULT_BASE_URL,
+  normalizeMiniMaxBaseUrl,
+  shouldOmitMiniMaxMaxTokens,
+} from './minimax-runtime.js';
 
 export { validateBaseUrl } from '@open-design/contracts/api/connectionTest';
 
@@ -748,7 +753,7 @@ function inspectProviderCompletion(
   const obj = data && typeof data === 'object' ? data as Record<string, unknown> : null;
   if (!obj) return { valid: false };
 
-  if (protocol === 'openai' || protocol === 'azure' || protocol === 'senseaudio' || protocol === 'aihubmix') {
+  if (protocol === 'openai' || protocol === 'azure' || protocol === 'senseaudio' || protocol === 'aihubmix' || protocol === 'minimax') {
     const responseModel = typeof obj.model === 'string' ? obj.model : '';
     if (
       // AIHubMix is omitted from the strict response-model check (like Azure):
@@ -1089,6 +1094,25 @@ function buildProviderCall(input: ProviderTestRequest): ProviderCallShape {
         },
         extractText: extractOpenAIMessageText,
       };
+    case 'minimax': {
+      const normalizedBase = normalizeMiniMaxBaseUrl(baseUrl || MINIMAX_DEFAULT_BASE_URL);
+      return {
+        url: appendVersionedApiPath(normalizedBase, '/chat/completions'),
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${apiKey}`,
+        },
+        body: {
+          model,
+          ...(shouldOmitMiniMaxMaxTokens(model, normalizedBase)
+            ? {}
+            : buildOpenAIChatTokenParam(model, PROVIDER_MAX_TOKENS)),
+          messages: [{ role: 'user', content: SMOKE_PROMPT }],
+          stream: false,
+        },
+        extractText: extractOpenAIMessageText,
+      };
+    }
     case 'openai':
     case 'senseaudio':
       // SenseAudio is wire-compatible with OpenAI (POST /v1/chat/completions,

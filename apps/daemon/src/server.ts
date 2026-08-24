@@ -307,7 +307,7 @@ import {
   teamverDesignApiBaseUrl,
 } from './teamver-project-access.js';
 import { createTeamverProjectSqliteHydrationMiddleware } from './teamver-project-sqlite-hydrate.js';
-import { resolveTeamverManagedApiKeyFromEnv } from './teamver-managed-api-key.js';
+import { resolveTeamverManagedApiKeyFromEnvForProvider } from './teamver-managed-api-key.js';
 import type { TeamverRequestIdentity } from './teamver-project-access.js';
 import { registerTeamverDesignBffProxy } from './teamver-design-bff-proxy.js';
 import {
@@ -3665,19 +3665,24 @@ function emitTeamverManagedKeyBootMarker() {
   const designApiUrl = teamverDesignApiBaseUrl();
   // Non-managed daemons (desktop, OSS, dev) don't need the managed key.
   if (!designApiUrl) return;
-  const hasManagedKey = Boolean(resolveTeamverManagedApiKeyFromEnv());
+  const rawProvider = (process.env.TEAMVER_DESIGN_DEFAULT_PROVIDER ?? '').trim().toLowerCase();
+  const provider = rawProvider === 'minimax' ? 'minimax' : 'anthropic';
+  const hasManagedKey = Boolean(resolveTeamverManagedApiKeyFromEnvForProvider(provider));
   const payload = {
     metric: 'teamver_managed_api_key_boot',
     ts: Date.now(),
     managedMode: true,
+    provider,
     hasManagedKey,
     designApiConfigured: true,
     ...(hasManagedKey
       ? {}
       : {
           hint:
-            'TEAMVER_OD_API_KEY (and/or ANTHROPIC_API_KEY) is missing from the daemon env. '
-            + 'embed BYOK proxy runs will fail with MANAGED_API_KEY_MISSING. '
+            (provider === 'minimax'
+              ? 'TEAMVER_MINIMAX_API_KEY (or OD_MINIMAX_API_KEY / MINIMAX_API_KEY) is missing from the daemon env. '
+              : 'TEAMVER_OD_API_KEY (and/or ANTHROPIC_API_KEY) is missing from the daemon env. ')
+            + `embed BYOK proxy runs will fail with ${provider === 'minimax' ? 'MINIMAX_API_KEY_MISSING' : 'MANAGED_API_KEY_MISSING'}. `
             + 'Update deploy/teamver/.env.{staging,production} + restart the open-design-daemon container.',
         }),
   };

@@ -65,6 +65,8 @@ fi
 
 # Parent-shell exports must not shadow the selected env file (CI, operator exports, tests).
 unset TEAMVER_OD_API_KEY ANTHROPIC_API_KEY OPENAI_API_KEY \
+  TEAMVER_DESIGN_DEFAULT_PROVIDER TEAMVER_MINIMAX_API_KEY OD_MINIMAX_API_KEY MINIMAX_API_KEY \
+  TEAMVER_MINIMAX_BASE_URL TEAMVER_MINIMAX_CHAT_MODEL \
   OD_API_TOKEN TEAMVER_JWT_SECRET TEAMVER_INTERNAL_API_KEY \
   TEAMVER_API_BASE_URL TEAMVER_DESIGN_API_URL \
   OD_PROJECT_STORAGE OD_S3_BUCKET OD_S3_REGION AWS_REGION \
@@ -225,18 +227,22 @@ if [[ "$http_timeout" =~ ^[0-9]+([.][0-9]+)?$ && "$long_timeout" =~ ^[0-9]+([.][
   fi
 fi
 
-if [[ -z "${TEAMVER_OD_API_KEY:-}" && -z "${ANTHROPIC_API_KEY:-}" && -z "${TEAMVER_MINIMAX_API_KEY:-}" ]]; then
+has_minimax_managed_key=false
+if [[ -n "${TEAMVER_MINIMAX_API_KEY:-}" || -n "${OD_MINIMAX_API_KEY:-}" || -n "${MINIMAX_API_KEY:-}" ]]; then
+  has_minimax_managed_key=true
+fi
+
+if [[ -z "${TEAMVER_OD_API_KEY:-}" && -z "${ANTHROPIC_API_KEY:-}" && "$has_minimax_managed_key" != true ]]; then
   warn "TEAMVER_OD_API_KEY·ANTHROPIC_API_KEY·TEAMVER_MINIMAX_API_KEY 모두 없음 — embed managed API/chat 비활성 (BYOK만)"
 fi
 
 # MiniMax canary — default provider/protocol is minimax → daemon MiniMax key required.
-_default_provider="$(echo "${TEAMVER_DESIGN_DEFAULT_PROVIDER:-}${TEAMVER_OD_API_PROTOCOL:-}" | tr '[:upper:]' '[:lower:]')"
 _wants_minimax=false
 if [[ "${TEAMVER_DESIGN_DEFAULT_PROVIDER:-}" == "minimax" || "${TEAMVER_OD_API_PROTOCOL:-}" == "minimax" ]]; then
   _wants_minimax=true
 fi
 if [[ "$_wants_minimax" == true ]]; then
-  if [[ -z "${TEAMVER_MINIMAX_API_KEY:-}" && -z "${OD_MINIMAX_API_KEY:-}" && -z "${MINIMAX_API_KEY:-}" ]]; then
+  if [[ "$has_minimax_managed_key" != true ]]; then
     fail "MiniMax default provider: TEAMVER_MINIMAX_API_KEY (or OD_MINIMAX_API_KEY/MINIMAX_API_KEY) 필요 — daemon managed MiniMax"
   fi
 fi
@@ -245,11 +251,11 @@ fi
 # Anthropic path: TEAMVER_OD_API_KEY. MiniMax path: TEAMVER_MINIMAX_* (+ CONFIGURED 권장).
 if [[ "$ENV_FILE" == ".env.staging" ]]; then
   if [[ "$_wants_minimax" == true ]]; then
-    if [[ "${TEAMVER_MINIMAX_CONFIGURED:-0}" != "1" && -z "${TEAMVER_MINIMAX_API_KEY:-}" ]]; then
+    if [[ "${TEAMVER_MINIMAX_CONFIGURED:-0}" != "1" && "$has_minimax_managed_key" != true ]]; then
       warn "staging MiniMax: TEAMVER_MINIMAX_CONFIGURED=1 권장 (design-api runtime-config configured=true)"
     fi
-  elif [[ -z "${TEAMVER_OD_API_KEY:-}" ]]; then
-    fail "staging embed: TEAMVER_OD_API_KEY 필요 — /api/v1/runtime-config configured=true (사용자 Settings BYOK 비활성)"
+  elif [[ -z "${TEAMVER_OD_API_KEY:-}" && "$has_minimax_managed_key" != true ]]; then
+    fail "staging embed: TEAMVER_OD_API_KEY 또는 TEAMVER_MINIMAX_API_KEY 필요 — /api/v1/runtime-config configured=true (사용자 Settings BYOK 비활성)"
   fi
 fi
 
@@ -260,12 +266,12 @@ fi
 # Staging/dev 는 warn 만 유지해 개발 마찰을 줄인다.
 # ---------------------------------------------------------------------------
 if [[ "$ENV_FILE" == ".env.production" ]]; then
-  # G7 — managed API (TEAMVER_OD_API_KEY) 또는 daemon LLM key (ANTHROPIC/OPENAI)
+  # G7 — managed API (TEAMVER_OD_API_KEY/TEAMVER_MINIMAX_API_KEY) 또는 daemon LLM key (ANTHROPIC/OPENAI)
   # 둘 다 누락이면 embed 가 BYOK 만 가능 → public 사용자가 키 없이 chat 불가.
   has_managed_key=false
   has_daemon_llm=false
   [[ -n "${TEAMVER_OD_API_KEY:-}" ]] && has_managed_key=true
-  [[ -n "${TEAMVER_MINIMAX_API_KEY:-}" || -n "${OD_MINIMAX_API_KEY:-}" || -n "${MINIMAX_API_KEY:-}" ]] && has_managed_key=true
+  [[ "$has_minimax_managed_key" == true ]] && has_managed_key=true
   if [[ -n "${ANTHROPIC_API_KEY:-}" || -n "${OPENAI_API_KEY:-}" ]]; then
     has_daemon_llm=true
   fi

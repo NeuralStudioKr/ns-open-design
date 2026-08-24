@@ -263,20 +263,16 @@ export const BYOK_CHAT_TOOL_NAMES: readonly string[] = [
   'generate_speech',
   'generate_video',
 ];
-
-/** MiniMax P0 — chat + web_fetch only (54 / 54-1). Speech/video stay off. */
-export const MINIMAX_BYOK_CHAT_TOOL_NAMES: readonly string[] = [
-  'web_fetch',
-];
+export const MINIMAX_BYOK_CHAT_TOOL_NAMES: readonly string[] = ['web_fetch'];
 
 export function byokChatToolNamesForProtocol(
   protocol: ApiProtocol | undefined,
 ): readonly string[] | undefined {
-  if (protocol === 'senseaudio' || protocol === 'aihubmix') {
-    return BYOK_CHAT_TOOL_NAMES;
-  }
   if (protocol === 'minimax') {
     return MINIMAX_BYOK_CHAT_TOOL_NAMES;
+  }
+  if (protocol === 'senseaudio' || protocol === 'aihubmix') {
+    return BYOK_CHAT_TOOL_NAMES;
   }
   return undefined;
 }

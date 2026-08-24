@@ -1,11 +1,16 @@
 import { afterEach, describe, expect, it } from 'vitest';
 
 import {
+  MINIMAX_DEFAULT_BASE_URL,
+  MINIMAX_DEFAULT_CHAT_MODEL,
   isMiniMaxChatTarget,
+  normalizeMiniMaxBaseUrl,
   resolveMiniMaxBaseUrl,
   resolveMiniMaxChatModel,
+  resolveMiniMaxToolLoopLimit,
   resolveTeamverMiniMaxApiKeyFromEnv,
   shouldOmitMaxTokens,
+  shouldOmitMiniMaxMaxTokens,
 } from '../src/minimax-runtime.js';
 
 describe('minimax-runtime', () => {
@@ -15,6 +20,7 @@ describe('minimax-runtime', () => {
     MINIMAX_API_KEY: process.env.MINIMAX_API_KEY,
     TEAMVER_MINIMAX_BASE_URL: process.env.TEAMVER_MINIMAX_BASE_URL,
     TEAMVER_MINIMAX_CHAT_MODEL: process.env.TEAMVER_MINIMAX_CHAT_MODEL,
+    TEAMVER_AI_TOOL_LOOP_LIMIT: process.env.TEAMVER_AI_TOOL_LOOP_LIMIT,
   };
 
   afterEach(() => {
@@ -40,21 +46,34 @@ describe('minimax-runtime', () => {
     expect(resolveTeamverMiniMaxApiKeyFromEnv()).toBe('sk-raw');
   });
 
-  it('defaults base URL and normalizes minimaxi.com typo domain', () => {
+  it('defaults base URL and normalizes legacy MiniMax gateway hostnames', () => {
     delete process.env.TEAMVER_MINIMAX_BASE_URL;
-    expect(resolveMiniMaxBaseUrl()).toBe('https://api.minimax.io/v1');
+    expect(resolveMiniMaxBaseUrl()).toBe(MINIMAX_DEFAULT_BASE_URL);
+    expect(normalizeMiniMaxBaseUrl('https://api.minimaxi.com/v1/')).toBe(MINIMAX_DEFAULT_BASE_URL);
+    expect(normalizeMiniMaxBaseUrl('https://api.minimaxi.chat/v1/')).toBe(MINIMAX_DEFAULT_BASE_URL);
     process.env.TEAMVER_MINIMAX_BASE_URL = 'https://api.minimaxi.com/v1';
     expect(resolveMiniMaxBaseUrl()).toBe('https://api.minimax.io/v1');
   });
 
   it('defaults chat model to MiniMax-M3', () => {
     delete process.env.TEAMVER_MINIMAX_CHAT_MODEL;
-    expect(resolveMiniMaxChatModel()).toBe('MiniMax-M3');
+    expect(resolveMiniMaxChatModel()).toBe(MINIMAX_DEFAULT_CHAT_MODEL);
   });
 
-  it('omits max_tokens for MiniMax chat targets', () => {
+  it('detects MiniMax chat targets and max_tokens omission', () => {
+    expect(isMiniMaxChatTarget('MiniMax-M3', '')).toBe(true);
+    expect(isMiniMaxChatTarget('other-model', 'https://api.minimax.io/v1')).toBe(true);
     expect(shouldOmitMaxTokens('MiniMax-M3')).toBe(true);
+    expect(shouldOmitMiniMaxMaxTokens('MiniMax-M3')).toBe(true);
     expect(shouldOmitMaxTokens('claude-sonnet-4-6')).toBe(false);
-    expect(isMiniMaxChatTarget('x', 'https://api.minimax.io/v1')).toBe(true);
+    expect(shouldOmitMiniMaxMaxTokens('claude-sonnet-4-5', 'https://api.anthropic.com')).toBe(false);
+  });
+
+  it('caps tool loop limit to a conservative range', () => {
+    process.env.TEAMVER_AI_TOOL_LOOP_LIMIT = '5';
+    expect(resolveMiniMaxToolLoopLimit()).toBe(5);
+
+    process.env.TEAMVER_AI_TOOL_LOOP_LIMIT = '99';
+    expect(resolveMiniMaxToolLoopLimit()).toBe(3);
   });
 });

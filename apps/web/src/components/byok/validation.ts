@@ -296,6 +296,7 @@ function validateApiKeyShape(
 function detectByokApiKeyProtocol(apiKey: string): ApiProtocol | null {
   if (apiKey.startsWith('sk-ant-')) return 'anthropic';
   if (isGoogleGeminiApiKeyShape(apiKey)) return 'google';
+  if (apiKey.startsWith('sk-cp-')) return 'minimax';
   if (apiKey.startsWith('sk-')) return 'openai';
   return null;
 }

@@ -117,6 +117,35 @@ describe("teamver embed execution config lock", () => {
     expect(locked.model).toBe("claude-sonnet-4-6");
   });
 
+  it("pins MiniMax managed runtime without inheriting Anthropic origin or model", () => {
+    const merged = mergeTeamverRuntimeConfigIntoAppConfig(
+      {
+        ...DEFAULT_CONFIG,
+        mode: "api",
+        apiProtocol: "anthropic",
+        baseUrl: "https://api.anthropic.com",
+        model: "claude-sonnet-4-6",
+        apiKey: "sk-stale-local",
+      },
+      {
+        configured: true,
+        apiKeyConfigured: true,
+        apiProtocol: "minimax",
+      },
+    );
+
+    expect(merged.apiProtocol).toBe("minimax");
+    expect(merged.baseUrl).toBe("https://api.minimax.io/v1");
+    expect(merged.model).toBe("MiniMax-M3");
+    expect(merged.apiKey).toBe("");
+
+    const locked = applyTeamverEmbedConfigLockIfNeeded(merged);
+    expect(locked.apiProtocol).toBe("minimax");
+    expect(locked.baseUrl).toBe("https://api.minimax.io/v1");
+    expect(locked.model).toBe("MiniMax-M3");
+    expect(locked.apiKeyConfigured).toBe(true);
+  });
+
   it("auto-acknowledges OD privacy and opts out of OD telemetry sharing", () => {
     const locked = applyTeamverEmbedConfigLockIfNeeded({
       ...DEFAULT_CONFIG,

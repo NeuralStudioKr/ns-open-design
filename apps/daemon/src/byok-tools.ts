@@ -183,7 +183,7 @@ const ASPECT_TO_SIZE: Record<string, string> = {
  * in markdown — the chat UI already renders markdown images inline,
  * so no client-side wiring is required for the bytes to show up.
  */
-const BYOK_WEB_FETCH_TOOL = {
+export const BYOK_WEB_FETCH_TOOL = {
   type: 'function' as const,
   function: {
     name: 'web_fetch',
@@ -198,6 +198,8 @@ const BYOK_WEB_FETCH_TOOL = {
     },
   },
 };
+
+export const BYOK_MINIMAX_TOOLS = [BYOK_WEB_FETCH_TOOL];
 
 export const BYOK_SENSEAUDIO_TOOLS = [
   BYOK_WEB_FETCH_TOOL,

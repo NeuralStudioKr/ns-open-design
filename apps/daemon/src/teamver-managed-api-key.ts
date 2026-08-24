@@ -4,16 +4,18 @@ import {
   isTeamverDesignManaged,
   readTeamverIdentityFromRequest,
 } from './teamver-project-access.js';
-import { resolveTeamverMiniMaxApiKeyFromEnv } from './minimax-runtime.js';
+import {
+  MINIMAX_PROVIDER_ID,
+  resolveTeamverMiniMaxApiKeyFromEnv,
+} from './minimax-runtime.js';
 
-export type ManagedProviderId = 'anthropic' | 'minimax';
+export type ManagedProviderId = 'anthropic' | typeof MINIMAX_PROVIDER_ID;
+export type TeamverManagedProviderId = ManagedProviderId;
 
 export function resolveTeamverManagedApiKeyFromEnvForProvider(
-  provider: ManagedProviderId,
+  provider: ManagedProviderId = 'anthropic',
 ): string {
-  if (provider === 'minimax') {
-    return resolveTeamverMiniMaxApiKeyFromEnv();
-  }
+  if (provider === MINIMAX_PROVIDER_ID) return resolveTeamverMiniMaxApiKeyFromEnv();
   return (
     (process.env.TEAMVER_OD_API_KEY ?? '').trim()
     || (process.env.ANTHROPIC_API_KEY ?? '').trim()
@@ -42,6 +44,13 @@ export type ProxyApiKeyResolution =
   | { ok: true; apiKey: string; source: 'client' | 'managed'; provider?: ManagedProviderId }
   | { ok: false; failure: ProxyApiKeyResolutionFailure };
 
+function providerFromProxyBody(
+  body: { apiProtocol?: unknown },
+  fallback: ManagedProviderId,
+): ManagedProviderId {
+  return body.apiProtocol === MINIMAX_PROVIDER_ID ? MINIMAX_PROVIDER_ID : fallback;
+}
+
 function wantsManagedProxyKey(
   req: Request,
   body: { apiKey?: unknown; useManagedApiKey?: unknown },
@@ -59,10 +68,10 @@ function wantsManagedProxyKey(
 /** Detailed resolver — preferred for new code so the route can emit a specific error. */
 export function resolveProxyStreamApiKeyDetailed(
   req: Request,
-  body: { apiKey?: unknown; useManagedApiKey?: unknown },
-  opts?: { provider?: ManagedProviderId },
+  body: { apiKey?: unknown; useManagedApiKey?: unknown; apiProtocol?: unknown },
+  opts: { provider?: ManagedProviderId } = {},
 ): ProxyApiKeyResolution {
-  const provider: ManagedProviderId = opts?.provider ?? 'anthropic';
+  const provider = providerFromProxyBody(body, opts.provider ?? 'anthropic');
   const clientKey = typeof body.apiKey === 'string' ? body.apiKey.trim() : '';
   if (clientKey) return { ok: true, apiKey: clientKey, source: 'client', provider };
 
@@ -90,8 +99,8 @@ export function resolveProxyStreamApiKeyDetailed(
 /** Resolve BYOK proxy apiKey — client key or authenticated embed managed key. */
 export function resolveProxyStreamApiKey(
   req: Request,
-  body: { apiKey?: unknown; useManagedApiKey?: unknown },
-  opts?: { provider?: ManagedProviderId },
+  body: { apiKey?: unknown; useManagedApiKey?: unknown; apiProtocol?: unknown },
+  opts: { provider?: ManagedProviderId } = {},
 ): string | null {
   const result = resolveProxyStreamApiKeyDetailed(req, body, opts);
   return result.ok ? result.apiKey : null;
@@ -123,14 +132,16 @@ function emitManagedProxyKeyInferredMarker(req: Request, provider: ManagedProvid
 function emitManagedApiKeyMissingMarker(req: Request, provider: ManagedProviderId): void {
   try {
     const payload = {
-      metric: 'teamver_managed_provider_key_missing',
-      provider,
+      metric: provider === MINIMAX_PROVIDER_ID
+        ? 'teamver_managed_minimax_key_missing'
+        : 'teamver_managed_api_key_missing',
       ts: Date.now(),
+      provider,
       workspaceId: firstHeader(req.headers['x-teamver-workspace-id'])
         || firstHeader(req.headers['x-workspace-id']) || null,
       userId: firstHeader(req.headers['x-teamver-user-id']) || null,
       route: typeof req.path === 'string' ? req.path : null,
-      hint: provider === 'minimax'
+      hint: provider === MINIMAX_PROVIDER_ID
         ? 'TEAMVER_MINIMAX_API_KEY (or OD_MINIMAX_API_KEY / MINIMAX_API_KEY) missing from open-design-daemon env.'
         : 'TEAMVER_OD_API_KEY (and/or ANTHROPIC_API_KEY) missing from open-design-daemon env; '
           + 'rebuild + redeploy with the latest .env.{staging,production}.',
@@ -161,9 +172,11 @@ export const PROXY_MINIMAX_API_KEY_MISSING_MESSAGE =
 
 export function proxyApiKeyFailureToErrorCode(
   failure: ProxyApiKeyResolutionFailure,
+  options: { provider?: TeamverManagedProviderId } = {},
 ): { httpStatus: number; code: string; message: string } {
   if (failure.reason === 'managed_key_env_missing') {
-    if (failure.provider === 'minimax') {
+    const provider = failure.provider ?? options.provider ?? 'anthropic';
+    if (provider === MINIMAX_PROVIDER_ID) {
       return {
         httpStatus: 503,
         code: PROXY_MINIMAX_API_KEY_MISSING_ERROR_CODE,

@@ -18,6 +18,7 @@ import { streamMessageOllama } from './ollama-compatible';
 import { isOpenAICompatible, streamMessageOpenAI } from './openai-compatible';
 import { streamMessageSenseAudio } from './senseaudio-compatible';
 import { streamMessageAIHubMix } from './aihubmix-compatible';
+import { streamMessageMiniMax } from './minimax-compatible';
 import { usesAnthropicProxy } from '../utils/apiProtocol';
 import { shouldFinalizeAbortedStreamAsIncomplete } from './proxyAbort';
 
@@ -80,6 +81,9 @@ export async function streamMessage(
   }
   if (cfg.apiProtocol === 'aihubmix') {
     return streamMessageAIHubMix(cfg, system, history, signal, handlers, context);
+  }
+  if (cfg.apiProtocol === 'minimax') {
+    return streamMessageMiniMax(cfg, system, history, signal, handlers, context);
   }
   if (cfg.apiProtocol === 'openai' || (!cfg.apiProtocol && isOpenAICompatible(cfg.model, cfg.baseUrl))) {
     return streamMessageOpenAI(cfg, system, history, signal, handlers, context);

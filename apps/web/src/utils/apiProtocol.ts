@@ -48,6 +48,7 @@ export function usesAnthropicProxy(cfg: AppConfig): boolean {
     cfg.apiProtocol === 'google' ||
     cfg.apiProtocol === 'senseaudio' ||
     cfg.apiProtocol === 'aihubmix' ||
+    cfg.apiProtocol === 'minimax' ||
     cfg.apiProtocol === 'openai'
   ) {
     return false;

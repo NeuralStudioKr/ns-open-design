@@ -1,4 +1,5 @@
 import type { ApiProtocol, AppConfig } from "../types";
+import { FAST_MODEL_BY_PROTOCOL, resolveFixedOriginBaseUrl } from "../state/apiProtocols";
 import { pinTeamverExecutionConfig } from "./branding/pinnedExecutionConfig";
 import { fetchTeamverRuntimeConfig } from "./designBffClient";
 
@@ -39,8 +40,8 @@ export function mergeTeamverRuntimeConfigIntoAppConfig(
   if (!runtime.apiKeyConfigured) return config;
 
   const apiProtocol = normalizeProtocol(runtime.apiProtocol) ?? config.apiProtocol ?? "anthropic";
-  const baseUrl = runtime.baseUrl?.trim() || config.baseUrl;
-  const model = runtime.model?.trim() || config.model;
+  const baseUrl = resolveFixedOriginBaseUrl(apiProtocol, runtime.baseUrl?.trim() || config.baseUrl);
+  const model = runtime.model?.trim() || FAST_MODEL_BY_PROTOCOL[apiProtocol] || config.model;
 
   pinTeamverExecutionConfig({ apiProtocol, baseUrl, model, managedApiConfigured: true });
 

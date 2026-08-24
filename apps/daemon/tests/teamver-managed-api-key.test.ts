@@ -9,6 +9,7 @@ import {
   resolveProxyStreamApiKey,
   resolveProxyStreamApiKeyDetailed,
   resolveTeamverManagedApiKeyFromEnv,
+  resolveTeamverManagedApiKeyFromEnvForProvider,
 } from '../src/teamver-managed-api-key.js';
 
 function mockReq(headers: Record<string, string> = {}): Request {
@@ -18,18 +19,30 @@ function mockReq(headers: Record<string, string> = {}): Request {
 describe('resolveTeamverManagedApiKeyFromEnv', () => {
   const prevOd = process.env.TEAMVER_OD_API_KEY;
   const prevAnthropic = process.env.ANTHROPIC_API_KEY;
+  const prevMiniMax = process.env.TEAMVER_MINIMAX_API_KEY;
 
   afterEach(() => {
     if (prevOd === undefined) delete process.env.TEAMVER_OD_API_KEY;
     else process.env.TEAMVER_OD_API_KEY = prevOd;
     if (prevAnthropic === undefined) delete process.env.ANTHROPIC_API_KEY;
     else process.env.ANTHROPIC_API_KEY = prevAnthropic;
+    if (prevMiniMax === undefined) delete process.env.TEAMVER_MINIMAX_API_KEY;
+    else process.env.TEAMVER_MINIMAX_API_KEY = prevMiniMax;
   });
 
   it('prefers TEAMVER_OD_API_KEY over ANTHROPIC_API_KEY', () => {
     process.env.TEAMVER_OD_API_KEY = 'sk-managed';
     process.env.ANTHROPIC_API_KEY = 'sk-fallback';
     expect(resolveTeamverManagedApiKeyFromEnv()).toBe('sk-managed');
+  });
+
+  it('resolves MiniMax managed keys without reusing the Anthropic key', () => {
+    process.env.TEAMVER_OD_API_KEY = 'sk-ant-managed';
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-fallback';
+    process.env.TEAMVER_MINIMAX_API_KEY = 'sk-cp-managed';
+
+    expect(resolveTeamverManagedApiKeyFromEnvForProvider('minimax')).toBe('sk-cp-managed');
+    expect(resolveTeamverManagedApiKeyFromEnvForProvider('anthropic')).toBe('sk-ant-managed');
   });
 });
 
@@ -43,6 +56,7 @@ describe('resolveProxyStreamApiKey', () => {
   beforeEach(() => {
     process.env.TEAMVER_DESIGN_API_URL = 'http://design-api:8000';
     process.env.TEAMVER_OD_API_KEY = 'sk-managed';
+    process.env.TEAMVER_MINIMAX_API_KEY = 'sk-cp-managed';
   });
 
   afterEach(() => {
@@ -128,7 +142,18 @@ describe('resolveProxyStreamApiKey', () => {
     expect(key).toBe('sk-minimax');
   });
 
-  it('surfaces MINIMAX_API_KEY_MISSING when MiniMax env is empty', () => {
+  it('resolves MiniMax managed key when apiProtocol=minimax', () => {
+    const key = resolveProxyStreamApiKey(
+      mockReq({
+        'x-teamver-user-id': 'user-1',
+        'x-workspace-id': 'ws-1',
+      }),
+      { useManagedApiKey: true, apiProtocol: 'minimax' },
+    );
+    expect(key).toBe('sk-cp-managed');
+  });
+
+  it('maps MiniMax managed key failures to MINIMAX_API_KEY_MISSING', () => {
     delete process.env.TEAMVER_MINIMAX_API_KEY;
     delete process.env.OD_MINIMAX_API_KEY;
     delete process.env.MINIMAX_API_KEY;
@@ -137,8 +162,7 @@ describe('resolveProxyStreamApiKey', () => {
         'x-teamver-user-id': 'user-1',
         'x-workspace-id': 'ws-1',
       }),
-      { useManagedApiKey: true },
-      { provider: 'minimax' },
+      { useManagedApiKey: true, apiProtocol: 'minimax' },
     );
     expect(result.ok).toBe(false);
     if (result.ok) return;

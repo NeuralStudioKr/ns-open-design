@@ -34,6 +34,14 @@ def test_staging_accepts_complete_hosted_credentials() -> None:
     assert hosted_settings().deploy_env == "staging"
 
 
+def test_staging_accepts_minimax_managed_key_without_teamver_od_key() -> None:
+    assert hosted_settings(
+        teamver_od_api_key="",
+        teamver_od_api_protocol="minimax",
+        teamver_minimax_api_key="sk-cp-managed",
+    ).teamver_od_api_protocol == "minimax"
+
+
 def test_staging_rejects_hs256_secret() -> None:
     with pytest.raises(ValidationError, match="TEAMVER_JWT_SECRET is forbidden"):
         hosted_settings(teamver_jwt_secret="legacy-secret")
@@ -53,7 +61,7 @@ def test_staging_rejects_empty_bff_session_cookie_name() -> None:
     ("field", "message"),
     [
         ("teamver_internal_api_key", "TEAMVER_INTERNAL_API_KEY"),
-        ("teamver_od_api_key", "TEAMVER_OD_API_KEY"),
+        ("teamver_od_api_key", "TEAMVER_OD_API_KEY or TEAMVER_MINIMAX_API_KEY"),
     ],
 )
 def test_hosted_rejects_missing_runtime_credentials(field: str, message: str) -> None:

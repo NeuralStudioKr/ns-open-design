@@ -35,6 +35,7 @@ Env overrides:
   OD_PROJECT_STORAGE (optional — deps config.project_storage 일치 검증)
   SMOKE_REQUIRE_OD_STORAGE (optional — checks.od_storage!=ok 이면 fail; OD_PROJECT_STORAGE=s3 일 때도 동일)
   SMOKE_REQUIRE_MANAGED_API (optional — staging cookie runtime-config configured=false 이면 fail; default 1)
+  SMOKE_EXPECT_MINIMAX (optional — runtime-config apiProtocol=minimax + MiniMax-M3/baseUrl 검증)
 EOF
 }
 
@@ -615,8 +616,45 @@ if [[ -n "${TEAMVER_COOKIE:-}" ]]; then
       if [[ "$managed_ok" == "1" ]]; then
         echo "✓ runtime-config configured=true (embed managed API)"
         pass=$((pass + 1))
+        runtime_protocol="$(echo "$runtime_json" | python3 -c "import json,sys; d=json.load(sys.stdin); print((d.get('apiProtocol') or '').strip())" 2>/dev/null || echo "")"
+        if [[ -n "$runtime_protocol" ]]; then
+          echo "✓ runtime-config apiProtocol=${runtime_protocol}"
+          pass=$((pass + 1))
+        else
+          echo "○ runtime-config apiProtocol missing"
+        fi
+        if echo "$runtime_json" | grep -Eq '"apiKey"|"maskedApiKey"|"keyPrefix"|"authorization"'; then
+          echo "✗ runtime-config leaked API key material (apiKey/maskedApiKey/keyPrefix/authorization)"
+          fail=$((fail + 1))
+        else
+          echo "✓ runtime-config does not expose API key material"
+          pass=$((pass + 1))
+        fi
+        if [[ "${SMOKE_EXPECT_MINIMAX:-0}" == "1" ]]; then
+          if [[ "$runtime_protocol" == "minimax" ]]; then
+            runtime_model="$(echo "$runtime_json" | python3 -c "import json,sys; d=json.load(sys.stdin); print((d.get('model') or '').strip())" 2>/dev/null || echo "")"
+            runtime_base="$(echo "$runtime_json" | python3 -c "import json,sys; d=json.load(sys.stdin); print((d.get('baseUrl') or '').strip())" 2>/dev/null || echo "")"
+            if [[ "$runtime_model" == MiniMax-M3* ]]; then
+              echo "✓ runtime-config model=${runtime_model} (MiniMax canary)"
+              pass=$((pass + 1))
+            else
+              echo "✗ runtime-config model=${runtime_model:-<empty>} (expected MiniMax-M3*)"
+              fail=$((fail + 1))
+            fi
+            if [[ "$runtime_base" == https://api.minimax.io/v1* ]]; then
+              echo "✓ runtime-config baseUrl=${runtime_base}"
+              pass=$((pass + 1))
+            else
+              echo "✗ runtime-config baseUrl=${runtime_base:-<empty>} (expected https://api.minimax.io/v1)"
+              fail=$((fail + 1))
+            fi
+          else
+            echo "✗ runtime-config apiProtocol=${runtime_protocol:-<empty>} (SMOKE_EXPECT_MINIMAX=1)"
+            fail=$((fail + 1))
+          fi
+        fi
       elif [[ "$ENV_LABEL" == "staging" && "${SMOKE_REQUIRE_MANAGED_API:-1}" == "1" ]]; then
-        echo "✗ runtime-config configured=false — TEAMVER_OD_API_KEY 미주입? (embed chat 불가)"
+        echo "✗ runtime-config configured=false — managed provider key 미주입? (TEAMVER_OD_API_KEY 또는 TEAMVER_MINIMAX_API_KEY, embed chat 불가)"
         fail=$((fail + 1))
       else
         echo "○ runtime-config configured=false"
