@@ -488,6 +488,23 @@ describe("sanitizeChatMessageLeakedPseudoTool (expanded)", () => {
     ).toBe("초안.");
   });
 
+  it("hard-strips hex-escape / angular / cssom leftovers via web display last-pass", () => {
+    expect(
+      sanitizeAssistantProseForDisplay(`진행.\n\\x3cdiv class="x"\\x3e`, { stripCodeFences: true }),
+    ).toBe("진행.");
+    expect(
+      sanitizeAssistantProseForDisplay(`초안. (click)="next()"`, { stripCodeFences: true }),
+    ).toBe("초안.");
+    expect(
+      sanitizeAssistantProseForDisplay(`초안. rgb(245,240,230)`, { stripCodeFences: true }),
+    ).toBe("초안.");
+    expect(
+      sanitizeAssistantProseForDisplay(`진행.\nnew DOMParser().parseFromString(html, 'text/html')`, {
+        stripCodeFences: true,
+      }),
+    ).toBe("진행.");
+  });
+
   it("hard-strips incomplete 3+ letter tags and framework attr leftovers via web display last-pass", () => {
     expect(sanitizeAssistantProseForDisplay(`초안. <div`, { stripCodeFences: true })).toBe("초안.");
     expect(sanitizeAssistantProseForDisplay(`초안. @click="next()"`, { stripCodeFences: true })).toBe(

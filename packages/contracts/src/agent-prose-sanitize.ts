@@ -232,6 +232,9 @@ const CHAT_PROSE_PROTOCOL_TAG_NAMES = [
 
 const CHAT_PROSE_PROTOCOL_TAG_ALT = CHAT_PROSE_PROTOCOL_TAG_NAMES.join("|");
 
+const DECK_HTML_ATTR_TAIL_NAMES =
+  "class|id|style|role|aria-[\\w-]+|data-[\\w-]+|xmlns(?::[\\w-]+)?|viewBox|d|srcset|sizes|tabindex|src|href|className|xlink:href|stroke(?:-width|-linecap|-linejoin|-miterlimit)?|fill|on[a-z]+\\$?|points|clip-path|srcdoc|sandbox|transform|v-[\\w-]+|:class|:key|:style|@[\\w.-]+|on:[a-z]+|hx-[\\w-]+|x-[\\w-]+|colspan|rowspan|loading|decoding|fetchpriority|crossorigin|integrity|poster|usemap|formaction|referrerpolicy|nonce|marker-start|marker-end|marker-mid|paint-order|vector-effect|gradientUnits|stop-color|stop-opacity|stdDeviation|cx|cy|r|rx|ry";
+
 function isChatProseProtocolTagName(name: string): boolean {
   const lower = name.toLowerCase();
   return (CHAT_PROSE_PROTOCOL_TAG_NAMES as readonly string[]).includes(lower);
@@ -277,7 +280,7 @@ function looksLikeHtmlAttrDumpLine(line: string): boolean {
   if (!trimmed || lineIsChatProseProtocolMarkup(trimmed)) return false;
   if (/^<https?:\/\//i.test(trimmed)) return false;
   if (
-    /^(?:xmlns(?::[\w-]+)?|viewBox|preserveAspectRatio|srcset|sizes|tabindex|clip-rule|fill-rule|xlink:href|stroke(?:-width|-linecap|-linejoin|-miterlimit)?|className|on[a-z]+|points|clip-path|srcdoc|sandbox|v-[\w-]+|:class|:key|:style|@[a-z]+|on:[a-z]+)\s*=/i.test(
+    new RegExp(`^(?:${DECK_HTML_ATTR_TAIL_NAMES}|preserveAspectRatio|clip-rule|fill-rule)\\s*=`, "i").test(
       trimmed,
     )
   ) {
@@ -286,6 +289,13 @@ function looksLikeHtmlAttrDumpLine(line: string): boolean {
   if (/^d\s*=\s*["'][MmLlHhVvCcSsQqTtAaZz]/.test(trimmed)) return true;
   if (/^transform\s*=\s*["'](?:translate|scale|rotate|matrix|skew)/i.test(trimmed)) return true;
   if (/^style=\{\{/.test(trimmed)) return true;
+  if (/^(?:\([\w.-]+\)|\[[\w.-]+\]|\*ng[\w]+)\s*=/.test(trimmed)) return true;
+  if (/^(?:as|type|media)\s*=\s*["']?(?:font|text\/|image\/|video\/|audio\/|print|screen|all|\()/i.test(trimmed)) {
+    return true;
+  }
+  if (/^(?:(?:cx|cy|r|rx|ry|x|y|x1|y1|x2|y2|dx|dy|offset)\s*=\s*["']?[\d.]+["']?\s*){2,}$/i.test(trimmed)) {
+    return true;
+  }
   if (
     /^(?:class|id|style|className)\s*=\s*[^\s<>]+$/.test(trimmed)
     && !/[\uac00-\ud7af]{4,}/.test(trimmed)
@@ -313,6 +323,12 @@ function looksLikeCssFunctionDebrisLine(line: string): boolean {
   if (/^data:image\//i.test(trimmed)) return true;
   if (/^rgba?\s*\(/i.test(trimmed)) return true;
   if (/^url\(\s*#/i.test(trimmed)) return true;
+  if (/^light-dark\s*\(/i.test(trimmed)) return true;
+  if (/^image-set\s*\(/i.test(trimmed)) return true;
+  if (/^env\s*\(\s*safe-area/i.test(trimmed)) return true;
+  if (/^steps\s*\(\s*\d+/i.test(trimmed)) return true;
+  if (/^cross-fade\s*\(/i.test(trimmed)) return true;
+  if (/^device-cmyk\s*\(/i.test(trimmed)) return true;
   if (/^(?:calc|clamp|min|max|minmax|repeat)\s*\(/i.test(trimmed)) return true;
   if (
     /^(?:translate(?:3d|[XYZ])?|rotate(?:[XYZ]|3d)?|scale(?:3d|[XYZ])?|skew(?:[XY])?|matrix(?:3d)?|perspective)\s*\(/i.test(
@@ -331,7 +347,7 @@ function looksLikeTailwindArbitraryDebrisLine(line: string): boolean {
   if (/[{};<>]/.test(trimmed)) return false;
   const tokens = trimmed.split(/\s+/);
   const arbitrary = tokens.filter((token) =>
-    /^(?:[a-z]{1,12}-)?(?:w|h|min-w|min-h|max-w|max-h|bg|text|border|p|px|py|m|mx|my|gap|top|left|right|bottom|inset)-\[/.test(
+    /^(?:[a-z]{1,12}-)?(?:w|h|min-w|min-h|max-w|max-h|bg|text|border|p|px|py|m|mx|my|gap|top|left|right|bottom|inset|from|to|via)-\[/.test(
       token,
     ),
   );
@@ -650,10 +666,10 @@ function findTrailingSameLineDeckHtmlCut(line: string): number | null {
   if (voidSlash?.[1] !== undefined && /[\p{L}\p{N}.。…]$/u.test(voidSlash[1].trimEnd())) {
     return voidSlash[1].trimEnd().length;
   }
-  const attrTail =
-    /^(.*?)(?:\s+["']?\s*(?:class|id|style|role|aria-[\w-]+|data-[\w-]+|xmlns(?::[\w-]+)?|viewBox|d|srcset|sizes|tabindex|src|href|className|xlink:href|stroke(?:-width|-linecap|-linejoin|-miterlimit)?|on[a-z]+|points|clip-path|srcdoc|sandbox|transform|v-[\w-]+|:class|:key|:style|@[a-z]+|on:[a-z]+)\s*=\s*(?:"[^"]*"|'[^']*'|\{[^}]*\}|[^\s>"']+))+\s*$/i.exec(
-      line,
-    );
+  const attrTail = new RegExp(
+    `^(.*?)(?:\\s+["']?\\s*(?:${DECK_HTML_ATTR_TAIL_NAMES}|\\([\\w.-]+\\)|\\[[\\w.-]+\\]|\\*ng[\\w]+)\\s*=\\s*(?:"[^"]*"|'[^']*'|\\{[^}]*\\}|[^\\s>"']+))+\\s*$`,
+    "i",
+  ).exec(line);
   if (attrTail?.[1] !== undefined && /[\p{L}\p{N}.。…]$/u.test(attrTail[1].trimEnd())) {
     return attrTail[1].trimEnd().length;
   }
@@ -665,6 +681,36 @@ function findTrailingSameLineDeckHtmlCut(line: string): number | null {
   const reactStyle = /^(.*?)(?:\s+style=\{\{[\s\S]*\}\})\s*$/.exec(line);
   if (reactStyle?.[1] !== undefined && /[\p{L}\p{N}.。…]$/u.test(reactStyle[1].trimEnd())) {
     return reactStyle[1].trimEnd().length;
+  }
+  const boolAttr = /^(.*?)(?:\s+(?:playsinline|muted|autoplay|loop|controls|default|defer|async|nomodule))\s*$/i.exec(
+    line,
+  );
+  if (boolAttr?.[1] !== undefined && /[\p{L}\p{N}.。…]$/u.test(boolAttr[1].trimEnd())) {
+    return boolAttr[1].trimEnd().length;
+  }
+  const mimeAttr =
+    /^(.*?)(?:\s+(?:as|type|media)\s*=\s*["']?(?:font|text\/|image\/|video\/|audio\/|print|screen|all|\())/i.exec(
+      line,
+    );
+  if (mimeAttr?.[1] !== undefined && /[\p{L}\p{N}.。…]$/u.test(mimeAttr[1].trimEnd())) {
+    return mimeAttr[1].trimEnd().length;
+  }
+  const scssDump = /^(.*?)(?:\s+)(\$[a-zA-Z_-][\w-]*\s*:)/.exec(line);
+  if (
+    scssDump?.[1] !== undefined
+    && /[\p{L}\p{N}.。…]$/u.test(scssDump[1].trimEnd())
+    && /(?:#|rgba?\(|hsla?\(|px|em|rem|%)/.test(line.slice(scssDump[1].length))
+  ) {
+    return scssDump[1].trimEnd().length;
+  }
+  const cssDump = /^(.*?)(?:\s+)(?=(?:(?:repeating-)?(?:linear|radial|conic)-gradient|rgba?|hsla?|light-dark|image-set|cross-fade|device-cmyk)\b|\/\*)/i.exec(
+    line,
+  );
+  if (cssDump?.[1] !== undefined && /[\p{L}\p{N}.。…]$/u.test(cssDump[1].trimEnd())) {
+    const dump = line.slice(cssDump[1].length).trim();
+    if (looksLikeCssFunctionDebrisLine(dump) || /^\/\*/.test(dump)) {
+      return cssDump[1].trimEnd().length;
+    }
   }
   return null;
 }
@@ -1969,7 +2015,14 @@ export function stripIncompleteTrailingMarkupToken(input: string): string {
   if (after.includes(">")) return input;
 
   // Bare `<` / `<!` / `<!DOCTYPE…` / `</` prefixes mid-stream.
-  if (after === "" || after === "/" || after === "!" || /^\/?!?(?:DOCTYPE\s*html?)?$/i.test(after)) {
+  if (
+    after === ""
+    || after === "/"
+    || after === "!"
+    || after === "?"
+    || /^\/?!?(?:DOCTYPE\s*html?)?$/i.test(after)
+    || /^\?/.test(after)
+  ) {
     return input.slice(0, lt).trimEnd();
   }
 
@@ -2151,6 +2204,9 @@ export function looksLikeDeckCodeDebrisLine(line: string): boolean {
     return true;
   }
   if (/^!important\s*;?\s*$/i.test(trimmed)) return true;
+  if (/^\$[a-zA-Z_-][\w-]*\s*:/.test(trimmed) && /(?:#|rgba?\(|hsla?\(|px|em|rem|%)/.test(trimmed)) {
+    return true;
+  }
   if (/^!\[[^\]]*\]\(\s*data:image\//i.test(trimmed)) return true;
   if (looksLikeBrStackedHeadingLine(trimmed)) return true;
   if (looksLikeHtmlAttrDumpLine(trimmed)) return true;
@@ -2246,7 +2302,7 @@ export function looksLikeDeckCodeDebrisLine(line: string): boolean {
   }
   if (
     /^(?:-?[a-zA-Z]+(?:-[a-zA-Z0-9]+)*)\s*:\s*\S/.test(trimmed)
-    && /(?:rgba?\(|hsla?\(|#[0-9A-Fa-f]{3,8}|\d+(?:px|em|rem|%|vh|vw|ms|s)|border|padding|margin|font-|display\s*:|transform|opacity|background|filter|transition|content\s*:|aspect-ratio\s*:|color-scheme\s*:|\\[Aa]|!important)/i.test(
+    && /(?:rgba?\(|hsla?\(|#[0-9A-Fa-f]{3,8}|\d+(?:px|em|rem|%|vh|vw|ms|s)|border|padding|margin|font-|display\s*:|transform|opacity|background|filter|transition|content\s*:|aspect-ratio\s*:|color-scheme\s*:|unicode-range\s*:|font-display\s*:|view-transition-name\s*:|anchor-name\s*:|position-anchor\s*:|interpolate-size\s*:|offset-path\s*:|mask-image\s*:|contain\s*:|isolation\s*:|mix-blend-mode\s*:|\\[Aa]|!important)/i.test(
       trimmed,
     )
   ) {
@@ -2342,6 +2398,21 @@ export function looksLikeDeckJsDebrisLine(line: string): boolean {
     return true;
   }
   if (/\.style\.(?:cssText|setProperty)\s*[=(]/.test(trimmed)) return true;
+  if (/\bDOMParser\b/.test(trimmed)) return true;
+  if (/\.createContextualFragment\s*\(/.test(trimmed)) return true;
+  if (/\badoptedStyleSheets\b/.test(trimmed)) return true;
+  if (/\b(?:new\s+)?CSSStyleSheet\b/.test(trimmed)) return true;
+  if (/\.replaceSync\s*\(/.test(trimmed)) return true;
+  if (/\.setAttributeNS\s*\(/.test(trimmed)) return true;
+  if (/\.srcdoc\s*=/.test(trimmed)) return true;
+  if (/\bgetComputedStyle\s*\(/.test(trimmed)) return true;
+  if (/\.scrollIntoView\s*\(/.test(trimmed)) return true;
+  if (/\.dataset\.\w+\s*=/.test(trimmed)) return true;
+  if (/\.insertAdjacentText\s*\(/.test(trimmed)) return true;
+  if (/\.removeChild\s*\(/.test(trimmed)) return true;
+  if (/\.(?:before|after)\s*\(/.test(trimmed)) return true;
+  if (/\bstyled\.\w+/.test(trimmed)) return true;
+  if (/\bcss\s*`/.test(trimmed)) return true;
   if (/^(?:querySelector(?:All)?|getElementById|getElementsBy(?:ClassName|TagName)|closest)\s*\(/.test(trimmed)) {
     return true;
   }
@@ -2475,7 +2546,7 @@ function cutInlineDeckHtmlPrefix(line: string): string | null | undefined {
   }
 
   const match = new RegExp(
-    `^(.*?)(\\s*)(<!--|<[?][\\w:-]+|<!\\[(?:CDATA\\[|if\\b|endif\\])|<(?!\\/?(?:${CHAT_PROSE_PROTOCOL_TAG_ALT}|https?|br|wbr)\\b)([A-Za-z][\\w:-]*)(?:\\s|\\/?>|$))`,
+    `^(.*?)(\\s*)(<!--|<[?][\\w:-]*|<!\\[(?:CDATA\\[|if\\b|endif\\])|<(?!\\/?(?:${CHAT_PROSE_PROTOCOL_TAG_ALT}|https?|br|wbr)\\b)([A-Za-z][\\w:-]*)(?:\\s|\\/?>|$))`,
     "i",
   ).exec(line);
   if (!match || match.index === undefined) return undefined;
@@ -2532,6 +2603,12 @@ export function stripResidualDeckHtmlMarkupFromProse(input: string): string {
   text = text.replace(/\\u003e/gi, ">");
   text = text.replace(/%3c/gi, "<");
   text = text.replace(/%3e/gi, ">");
+  text = text.replace(/\\x3c/gi, "<");
+  text = text.replace(/\\x3e/gi, ">");
+  text = text.replace(/\\u\{0*3c\}/gi, "<");
+  text = text.replace(/\\u\{0*3e\}/gi, ">");
+  text = text.replace(/\\074/g, "<");
+  text = text.replace(/\\076/g, ">");
   text = text.replace(/\uFF1C/g, "<");
   text = text.replace(/\uFF1E/g, ">");
   text = text.replace(/<!--[\s\S]*?-->/g, "");
