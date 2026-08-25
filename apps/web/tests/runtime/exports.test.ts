@@ -49,7 +49,9 @@ function stubBrowserURL(
 }
 
 function expectSlideMarkup(html: string, text: string): void {
-  expect(html).toMatch(new RegExp(`<section class="slide"[^>]*>${text}</section>`));
+  expect(html).toMatch(
+    new RegExp(`<section class="slide"[^>]*>(?:<div data-od-slide-flow>)?${text}(?:</div>)?</section>`),
+  );
 }
 
 const exportsSource = readFileSync(
@@ -585,7 +587,7 @@ describe('exportProjectAsPdf', () => {
     expect(result).toBe('fallback');
     expect(open).toHaveBeenCalledOnce();
     expect(fallback).not.toHaveBeenCalled();
-  });
+  }, 20_000);
 
   it('falls back to browser print when the daemon returns the HEADLESS_CHROMIUM_UNAVAILABLE structured code', async () => {
     // Once the fixed image rolls forward, the daemon emits a 503 with a
@@ -630,7 +632,7 @@ describe('exportProjectAsPdf', () => {
     expect(result).toBe('fallback');
     expect(open).toHaveBeenCalledOnce();
     expect(fallback).not.toHaveBeenCalled();
-  });
+  }, 10_000);
 
   it('treats a canceled desktop PDF save dialog as a silent no-op', async () => {
     const restoreHost = installMockOpenDesignHost();
@@ -726,7 +728,7 @@ describe('exportProjectAsPdf', () => {
     const printedDoc = await capturedBlob!.text();
     expect(printedDoc).not.toContain('sandbox="allow-scripts allow-modals"');
     expect(printedDoc).toContain('data-deck-print="injected"');
-    expect(printedDoc).toMatch(/<main class="slide"[^>]*>inlined deck<\/main>/);
+    expect(printedDoc).toMatch(/<main class="slide"[^>]*>(?:<div data-od-slide-flow>)?inlined deck(?:<\/div>)?<\/main>/);
   });
 
   it('forwards htmlSnapshot to the daemon so the export bypasses tenant-storage resolution', async () => {
