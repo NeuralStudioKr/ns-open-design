@@ -228,6 +228,21 @@ describe('runtime/resume shell/no-HTML recovery constants', () => {
     expect(prompt).not.toContain('이어 쓰지 말고 버리세요');
   });
 
+  it('does not tell the model to discard a truncated deck that already has slide copy', () => {
+    const partial =
+      '<!doctype html><html lang="ko"><body>'
+      + '<section class="slide"><h1>시장 기회</h1><p>국내 SaaS 전환이 가속화되고 있습니다.</p></section>'
+      + '<section class="slide"><h2>체크리스트</h2><ul><li>한 줄</li></ul></section>';
+    const prompt = buildAutoContinueIncompleteOutputPrompt({
+      attempt: 1,
+      partialHtml: partial,
+    });
+    expect(prompt).toContain('버리지 말고');
+    expect(prompt).toContain('시장 기회');
+    expect(prompt).not.toMatch(/버리고 새 완전 덱/);
+    expect(prompt).not.toContain('이어 쓰지 말고 버리세요');
+  });
+
   it('does not tell the model to discard a closed 3-slide MiniMax cover with one titled slide', () => {
     const draft =
       '<!doctype html><html lang="ko"><body>'

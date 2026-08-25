@@ -353,4 +353,13 @@ describe("salvageTemplateFillShellAsCoverDraft", () => {
 <section class="slide"><h1>기업 AI 도입 효과</h1><p>개요 설명입니다.</p></section>`;
     expect(salvageTemplateFillShellAsCoverDraft(truncated)).toBeNull();
   });
+
+  it("does not invent a cover from SLOT-only slide hosts", () => {
+    const slotOnly = `<!doctype html><html><head><meta charset="utf-8"><title>Deck</title></head><body>
+<section class="slide"><!-- SLOT: slide 1 content --></section>`;
+    expect(salvageTemplateFillShellAsCoverDraft(slotOnly, {
+      fallbackTitle: "슬라이드",
+      lastResortTitle: "슬라이드 초안",
+    })).toBeNull();
+  });
 });

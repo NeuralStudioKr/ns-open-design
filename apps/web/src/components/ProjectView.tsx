@@ -14342,6 +14342,7 @@ function isUsableDeckHtmlArtifact(html: string | null | undefined): boolean {
   if (isPersistableShortDeckDraft(trimmed) || isPersistableShortDeckDraftAfterHeal(trimmed)) {
     return true;
   }
+  if (isLowSubstanceSlideDeckArtifact(trimmed)) return false;
   if (!isIncompleteHtmlDocumentShell(trimmed)) return true;
   // Already-closed soft salvage returns null from salvageTruncated — still usable.
   if (isClosedSoftSalvageDeckHtml(trimmed)) return true;
