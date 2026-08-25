@@ -17,8 +17,10 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | chat leftover: APPENDIX/TABLE/TOPIC/TRACK/PANEL/CARD/BEAT/LESSON/CLIP/ROUND/PASS/NOTE | ☑ round33 |
 | chat leftover: QUOTE/ASIDE/CALL/HINT/FAQ/LAB/DEMO/DRILL/INDEX/TOC/MAP/BRIEF | ☑ round34 |
 | chat leftover: HOOK/OUTRO/AGENDA/COVER/TAKEAWAY/QNA/TIP/EXAMPLE … | ☑ round35 |
+| chat leftover: OVERVIEW/PROBLEM/KPI/CTA/ROADMAP/COMPARE … | ☑ round36 |
 | soft-CSS: oklab / color() continuation debris | ☑ round32 |
 | soft-CSS: light-dark / device-cmyk continuation debris | ☑ round34 |
+| soft-CSS: standalone `prop: value;` after Hangul status | ☑ round36 |
 | persist: `li` + `hsl()` invented frame | ☑ |
 | persist: `figure` comma/space hsl 프레임 | ☑ |
 | persist: overlay `05 / CHECKLIST` span | ☑ |
@@ -30,6 +32,7 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | persist: device-cmyk · light-dark invented frames | ☑ round34 |
 | persist: coral/tomato/rebeccapurple/gold … named frames | ☑ round35 |
 | persist: main/blockquote/nav/ul/ol/dl kit bind hosts | ☑ round35 |
+| persist: firebrick/orangered/khaki/slategray … named frames | ☑ round36 |
 | 16:9 inner clip · kit card bind | ☑ |
 | top-up 재진입 재호출 + 내부 프롬프트 노출 | ☑ 센티널+autoOpen; 루프9 reattach 차단 · leftover 숨김 |
 | first-fill 3장 강제 → 요청 1–6장 한 턴 | ☑ 루프9 |
@@ -43,7 +46,15 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | think 태그 / 내부 마크업 필터 | ☑ 기존 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (round35 / 루프12)
+## 이번 루프 (round36 / 루프13)
+
+1. chat — OVERVIEW/PROBLEM/KPI/CTA/ROADMAP/COMPARE 등 피치 덱 역할 트랙 숨김
+2. debris — Hangul 없는 단독 `prop: value;` CSS 선언 줄 스크럽
+3. persist — firebrick/orangered/khaki/slategray 등 named 1–2px 프레임을 kit 카드로 바인딩
+
+**검증:** contracts chat-leak-probe-round36 · round35 · round34 · round29 · round28 · deck-fixed-canvas
+
+## 직전 루프 (round35 / 루프12)
 
 1. chat — HOOK/OUTRO/AGENDA/COVER/TAKEAWAY/QNA/TIP/EXAMPLE 등 역할 트랙 숨김
 2. persist — coral/tomato/rebeccapurple/gold 등 named 1–2px 프레임을 kit 카드로 바인딩
