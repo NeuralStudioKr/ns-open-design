@@ -140,4 +140,39 @@ describe("chat leak / persist probe round 40 (TOOLTIP/CALLOUT · vh/vw padding)"
     expect(pinned).toMatch(/border:1px solid var\(--border\)/);
     expect(pinned.match(/class="[^"]*\binfo-card\b/g)?.length).toBeGreaterThanOrEqual(3);
   });
+
+  it("keeps Hangul status (including 초안./진행.) when CSS/JS dump fallback fires", () => {
+    expect(
+      sanitizeAssistantProseForDisplay(
+        [
+          "전체 폰트를 2배로 키운 풀 덱으로 다시 만들게요.",
+          ".tag{font-size:26px;font-weight:600}",
+          "</style>",
+        ].join("\n"),
+        { stripCodeFences: true },
+      ),
+    ).toBe("전체 폰트를 2배로 키운 풀 덱으로 다시 만들게요.");
+    expect(
+      sanitizeAssistantProseForDisplay("덱을 구성합니다.\n\n.deco-daisy svg{width:100%}", {
+        stripCodeFences: true,
+      }),
+    ).toBe("덱을 구성합니다.");
+    expect(
+      sanitizeAssistantProseForDisplay("초안.\nurl(data:image/svg+xml;base64,PHN2Zy)", {
+        stripCodeFences: true,
+      }),
+    ).toBe("초안.");
+    expect(
+      sanitizeAssistantProseForDisplay(
+        `진행.\nel.innerHTML = '<section class="slide">x</section>'`,
+        { stripCodeFences: true },
+      ),
+    ).toBe("진행.");
+    expect(
+      sanitizeAssistantProseForDisplay(
+        "슬라이드 초안을 준비했습니다.\n\npx;left:60px;font-size:28px;color:#7ECDC0",
+        { stripCodeFences: true },
+      ),
+    ).toBe("슬라이드 초안을 준비했습니다.");
+  });
 });

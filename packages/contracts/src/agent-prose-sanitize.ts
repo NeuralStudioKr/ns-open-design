@@ -2471,6 +2471,8 @@ function findHangulGluedTagStrippedSlideBodyCut(line: string): number | null {
   if (!/^[\uac00-\ud7af\u3000-\u9fff]/.test(line)) return null;
   // Only cut when the prefix looks like a status (`…추가 중`), never when the
   // dump itself is Hangul-titled (`반응형 UIvideo…` must drop entirely).
+  // Prefer the longest status (`완료됨.` over `완료` inside `완료됨.TRACK`).
+  let best: number | null = null;
   for (let i = 1; i < line.length - 23; i += 1) {
     const prev = line[i - 1]!;
     if (!/[\uac00-\ud7af\u3000-\u9fff]/.test(prev)) continue;
@@ -2491,19 +2493,29 @@ function findHangulGluedTagStrippedSlideBodyCut(line: string): number | null {
       const openerDump =
         /^(?:html|body|head|section|article|main)\s*>/i.test(dump)
         || /^<!doctype\b/i.test(dump);
-      return openerDump ? i : cut;
+      best = openerDump ? i : cut;
     }
   }
-  return null;
+  return best;
 }
 
 /** True when a Hangul prefix is a real status phrase, not a 1-char crumb (`다`). */
 function isMeaningfulHangulStatusPrefix(prefix: string): boolean {
-  const p = String(prefix ?? "").trim().replace(/[.\u3002…]+$/u, "");
+  const raw = String(prefix ?? "").trim();
+  const p = raw.replace(/[.\u3002…]+$/u, "");
   if (!p) return false;
   if (/(?:추가|작업|완료|진행|생성|수정).{0,6}[중됨요다]$/u.test(p)) return true;
   if (p.length >= 3 && /[중됨요다]$/u.test(p)) return true;
-  return false;
+  // Short chat status (`초안.` / `진행.` / `요약.` / `질문`) — 2 syllables.
+  if (
+    p.length >= 2
+    && p.length <= 6
+    && /[.\u3002…]/.test(raw)
+    && /^[\uac00-\ud7af\s]+$/u.test(p)
+  ) {
+    return true;
+  }
+  return /^(?:초안|진행|요약|질문|완료|준비)$/u.test(p);
 }
 
 function stripOrphanArtifactCloserDump(input: string): string {
@@ -2609,12 +2621,28 @@ function looksLikeCssOrHtmlDebrisRemainder(text: string): boolean {
 /** Keep `슬라이드 추가 중` when it is glued to leftover CSS/HTML on the same line. */
 function leadingHangulStatusFromDump(text: string): string {
   const trimmed = String(text ?? "").trim();
+  const firstLine = trimmed.split("\n")[0]?.trim() ?? "";
+  if (
+    firstLine
+    && firstLine.length < 160
+    && !looksLikeTagStrippedSlideBodyDump(firstLine)
+    && !looksLikeTagStrippedSlideBody(firstLine)
+    && isMeaningfulHangulStatusPrefix(firstLine)
+  ) {
+    return firstLine;
+  }
   const glued = /^((?:[\uac00-\ud7af\u3000-\u9fff]|[\s.,!?…·])+)(?=[A-Za-z#<"'`]|(?:html|body|head|section|article|main)\s*>|--[\w-]+)/u.exec(
     trimmed,
   );
   const prefix = glued?.[1]?.trim() ?? "";
   if (prefix && !looksLikeTagStrippedSlideBodyDump(prefix) && isMeaningfulHangulStatusPrefix(prefix)) {
-    return prefix.replace(/[.\u3002…]+$/u, "").trimEnd();
+    const after = trimmed.slice(trimmed.indexOf(prefix) + prefix.length).trimStart();
+    const openerDump =
+      /^(?:html|body|head|section|article|main)\s*>/i.test(after)
+      || /^<!doctype\b/i.test(after);
+    return openerDump
+      ? prefix.replace(/[.\u3002…]+$/u, "").trimEnd()
+      : prefix.replace(/[\s]+$/u, "");
   }
   return "";
 }
