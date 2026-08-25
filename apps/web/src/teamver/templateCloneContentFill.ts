@@ -456,7 +456,8 @@ export function queueTemplateCloneContentFill(options: {
   const projectId = options.projectId.trim();
   if (!projectId || !options.seed.trim()) return;
   try {
-    window.sessionStorage.setItem(`od:auto-send-first:${projectId}`, '1');
+    // Do NOT set od:auto-send-first here — App/create owns that flag so
+    // suppressAutoSendForFailedDriveImport (and similar) cannot be bypassed.
     window.sessionStorage.setItem(autoSendSeedStorageKey(projectId), options.seed);
     window.sessionStorage.setItem(templateCloneContentFillFlagKey(projectId), '1');
     const attachments = withoutCanonicalDeckAttachments(options.attachments);

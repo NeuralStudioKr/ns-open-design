@@ -139,6 +139,7 @@ import {
 import { rememberTeamverProjectConversation } from './teamver/teamverProjectConversationMemory';
 import {
   buildTemplateCloneContentFillSeed,
+  clearTemplateCloneContentFillQueue,
   queueTemplateCloneContentFill,
   withoutCanonicalDeckAttachments,
 } from './teamver/templateCloneContentFill';
@@ -2875,6 +2876,18 @@ function AppInner() {
       // structure turn (no source attach → Neutral look risk).
       const suppressAutoSendForFailedDriveImport =
         pendingDriveAssets.length > 0 && !homeDriveImportSucceeded;
+      if (suppressAutoSendForFailedDriveImport) {
+        // queueTemplateCloneContentFill may have run above — drop fill + any
+        // residual auto-send so Neutral structure turns never fire without source.
+        clearTemplateCloneContentFillQueue(result.project.id);
+        queuedFillSeed = null;
+        try {
+          window.sessionStorage.removeItem(`od:auto-send-first:${result.project.id}`);
+          window.sessionStorage.removeItem(`od:auto-send-attachments:${result.project.id}`);
+        } catch {
+          /* ignore */
+        }
+      }
       if (
         !workingDirHandoffFailed &&
         !canvasImportFailed &&

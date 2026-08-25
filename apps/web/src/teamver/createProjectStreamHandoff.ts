@@ -13,6 +13,8 @@ type TemplateCloneResult = {
 };
 
 const pendingTemplateClone = new Map<string, Promise<TemplateCloneResult | null>>();
+/** Settled Clone results stay briefly so late waiters still observe completion. */
+const settledTemplateClone = new Map<string, TemplateCloneResult | null>();
 
 export function writeCreateConversationHandoff(
   projectId: string,
@@ -28,7 +30,18 @@ export function writeCreateConversationHandoff(
   }
 }
 
-/** Read+clear — ProjectView conversations effect consumes once. */
+/** Read without clearing — safe for useState initializers / StrictMode. */
+export function peekCreateConversationHandoff(projectId: string): string | null {
+  const id = projectId.trim();
+  if (!id || typeof window === "undefined") return null;
+  try {
+    return window.sessionStorage.getItem(CONVERSATION_KEY(id))?.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+/** Read+clear — ProjectView conversations effect consumes once after seeding. */
 export function takeCreateConversationHandoff(projectId: string): string | null {
   const id = projectId.trim();
   if (!id || typeof window === "undefined") return null;
@@ -48,12 +61,22 @@ export function setPendingTemplateClone(
 ): void {
   const id = projectId.trim();
   if (!id) return;
+  settledTemplateClone.delete(id);
   pendingTemplateClone.set(id, pending);
-  void pending.finally(() => {
-    if (pendingTemplateClone.get(id) === pending) {
-      pendingTemplateClone.delete(id);
-    }
-  });
+  void pending
+    .then((result) => {
+      settledTemplateClone.set(id, result);
+      return result;
+    })
+    .catch(() => {
+      settledTemplateClone.set(id, null);
+      return null;
+    })
+    .finally(() => {
+      if (pendingTemplateClone.get(id) === pending) {
+        pendingTemplateClone.delete(id);
+      }
+    });
 }
 
 /** Auto-send waits so fill does not race an in-flight Clone seed. */
@@ -63,15 +86,21 @@ export async function waitPendingTemplateClone(
   const id = projectId.trim();
   if (!id) return null;
   const pending = pendingTemplateClone.get(id);
-  if (!pending) return null;
-  try {
-    return await pending;
-  } catch {
-    return null;
+  if (pending) {
+    try {
+      return await pending;
+    } catch {
+      return settledTemplateClone.has(id) ? settledTemplateClone.get(id)! : null;
+    }
   }
+  if (settledTemplateClone.has(id)) {
+    return settledTemplateClone.get(id)!;
+  }
+  return null;
 }
 
 /** @internal vitest */
 export function resetCreateProjectStreamHandoffForTests(): void {
   pendingTemplateClone.clear();
+  settledTemplateClone.clear();
 }

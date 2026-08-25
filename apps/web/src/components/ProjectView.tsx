@@ -209,6 +209,7 @@ import {
   historyHasTemplateCloneContentFill,
   isTemplateCloneContentFillPrompt,
   isTemplateCloneContentFillQueued,
+  queueTemplateCloneContentFill,
   readQueuedAutoSendSeed,
   resolveTemplateCloneAutoSendSeed,
   templateCloneContentFillHardRules,
@@ -423,6 +424,7 @@ import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider'
 import { isTeamverEmbedMode } from '../teamver/designApiBase';
 import { waitForTeamverEmbedBoot, isTeamverEmbedBootComplete } from '../teamver/teamverEmbedBoot';
 import {
+  peekCreateConversationHandoff,
   takeCreateConversationHandoff,
   waitPendingTemplateClone,
 } from '../teamver/createProjectStreamHandoff';
@@ -3045,7 +3047,18 @@ export function ProjectView({
   }, [analytics.track, project.id]);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(
-    null,
+    () => {
+      // First paint must not be null when create/navigate already has a cid —
+      // URL sync would otherwise replace the route with conversationId:null and
+      // strip `/conversations/:cid`, re-running the list effect after handoff
+      // was consumed (auto-send flag burned, no stream).
+      const routed =
+        typeof routeConversationId === 'string' ? routeConversationId.trim() : '';
+      if (routed) return routed;
+      const remembered = readRememberedTeamverProjectConversation(project.id);
+      if (remembered) return remembered;
+      return peekCreateConversationHandoff(project.id);
+    },
   );
   const activeConversation = useMemo(
     () => conversations.find((conversation) => conversation.id === activeConversationId) ?? null,
@@ -3081,6 +3094,11 @@ export function ProjectView({
   // wipes both — leaving the daemon's run with no client-side message to
   // attach the runId to.
   const [messagesInitialized, setMessagesInitialized] = useState(false);
+  // Create→stream ownership — declared early so the messages effect can
+  // preserve placeholders without racing a later auto-send effect.
+  const autoSentRef = useRef(false);
+  const autoSendInFlightRef = useRef(false);
+  const [autoSendRetryNonce, setAutoSendRetryNonce] = useState(0);
   const [previewComments, setPreviewComments] = useState<PreviewComment[]>([]);
   // Mirror so the send-now interrupt path can read the current statuses
   // synchronously without re-creating its callback on every comment change.
@@ -3816,8 +3834,21 @@ export function ProjectView({
   // dropped), create one on the fly.
   useEffect(() => {
     let cancelled = false;
+    const handedOffId =
+      takeCreateConversationHandoff(project.id)
+      || (typeof routeConversationId === 'string' ? routeConversationId.trim() : '')
+      || readRememberedTeamverProjectConversation(project.id)
+      || '';
     setConversations([]);
-    setActiveConversationId(null);
+    // Do NOT clear activeConversationId to null when create/navigate already
+    // seeded a cid — that races URL sync (strip /conversations/:cid) and
+    // burns auto-send before the first stream.
+    if (!handedOffId) {
+      setActiveConversationId(null);
+    }
+    autoSentRef.current = false;
+    autoSendInFlightRef.current = false;
+    setAutoSendRetryNonce(0);
     setMessagesConversationId(null);
     setFailedMessagesConversationId(null);
     setMessageLoadRetryNonce(0);
@@ -3863,10 +3894,6 @@ export function ProjectView({
       }
       throw lastError;
     };
-    const handedOffId =
-      takeCreateConversationHandoff(project.id)
-      || (typeof routeConversationId === 'string' ? routeConversationId.trim() : '')
-      || '';
     let usedHandoff = false;
     if (handedOffId) {
       usedHandoff = true;
@@ -3943,7 +3970,10 @@ export function ProjectView({
     return () => {
       cancelled = true;
     };
-  }, [project.id, conversationLoadRetryNonce, routeConversationId]);
+    // routeConversationId is NOT a dep: URL flicker (null replace) must not
+    // full-reset conversations after create handoff was consumed. Deep-link
+    // switches use the dedicated route-sync effect below.
+  }, [project.id, conversationLoadRetryNonce]);
 
   useEffect(() => {
     if (!activeConversationId) return;
@@ -4001,22 +4031,36 @@ export function ProjectView({
       return;
     }
     // Reset the initialized flag so auto-send waits for the new
-    // conversation's DB read to settle before checking messages.length.
-    setMessagesInitialized(false);
+    // conversation's DB read to settle before checking messages.length —
+    // unless create auto-send / stream already owns this conversation.
+    const preserveCreateAutoSend =
+      autoSendInFlightRef.current
+      || autoSentRef.current
+      || (
+        Boolean(streamingConversationIdRef.current)
+        && streamingConversationIdRef.current === activeConversationId
+      );
     let cancelled = false;
-    setMessages([]);
-    setPreviewComments([]);
-    setAttachedComments([]);
-    setArtifact(null);
-    setMessagesConversationId(null);
-    setFailedMessagesConversationId(null);
-    setStreaming(false);
-    streamingConversationIdRef.current = null;
-    setStreamingConversationId(null);
-    savedArtifactRef.current = null;
-    pendingWritesRef.current.clear();
-    if (messagesConversationIdRef.current !== activeConversationId) {
-      messagesConversationIdRef.current = null;
+    if (!preserveCreateAutoSend) {
+      setMessagesInitialized(false);
+      setMessages([]);
+      setPreviewComments([]);
+      setAttachedComments([]);
+      setArtifact(null);
+      setMessagesConversationId(null);
+      setFailedMessagesConversationId(null);
+      setStreaming(false);
+      streamingConversationIdRef.current = null;
+      setStreamingConversationId(null);
+      savedArtifactRef.current = null;
+      pendingWritesRef.current.clear();
+      if (messagesConversationIdRef.current !== activeConversationId) {
+        messagesConversationIdRef.current = null;
+      }
+    } else {
+      messagesConversationIdRef.current = activeConversationId;
+      setMessagesConversationId(activeConversationId);
+      setFailedMessagesConversationId(null);
     }
     (async () => {
       const safeFetchPreviewComments = async () => {
@@ -4090,9 +4134,22 @@ export function ProjectView({
           sanitizePersistedAssistantChatMessage,
         );
         const autoSendOwnsLocal =
-          freshAutoSend
-          && (autoSentRef.current || Boolean(streamingConversationIdRef.current));
-        if (autoSendOwnsLocal) {
+          preserveCreateAutoSend
+          || autoSendInFlightRef.current
+          || autoSentRef.current
+          || (
+            freshAutoSend
+            && (
+              Boolean(streamingConversationIdRef.current)
+              || messagesRef.current.length > 0
+            )
+          );
+        if (
+          (preserveCreateAutoSend || freshAutoSend || autoSendInFlightRef.current || autoSentRef.current)
+          && mergedMessages.length === 0
+        ) {
+          // Keep empty or in-flight auto-send placeholders; never clobber.
+        } else if (autoSendOwnsLocal) {
           if (mergedMessages.length > 0) {
             setMessages(mergedMessages);
           }
@@ -4395,15 +4452,30 @@ export function ProjectView({
       } catch (err) {
         if (cancelled) return;
         const message = formatProjectConversationErrorForUser(err, formatProjectMessagesLoadError());
-        setMessages([]);
+        // Preserve conversation target for create auto-send: clearing the ref
+        // makes handleSend early-return (messagesConversationIdRef mismatch)
+        // after waitPendingTemplateClone, burning the auto-send flag with no stream.
+        const keepAutoSendTarget =
+          preserveCreateAutoSend
+          || freshAutoSend
+          || autoSentRef.current
+          || autoSendInFlightRef.current;
+        if (!keepAutoSendTarget) {
+          setMessages([]);
+          messagesConversationIdRef.current = null;
+          setMessagesConversationId(null);
+        } else if (activeConversationId) {
+          messagesConversationIdRef.current = activeConversationId;
+          setMessagesConversationId(activeConversationId);
+        }
         setPreviewComments([]);
         setAttachedComments([]);
-        setArtifact(null);
+        if (!keepAutoSendTarget) {
+          setArtifact(null);
+          savedArtifactRef.current = null;
+          pendingWritesRef.current.clear();
+        }
         setError(message);
-        savedArtifactRef.current = null;
-        pendingWritesRef.current.clear();
-        messagesConversationIdRef.current = null;
-        setMessagesConversationId(null);
         setFailedMessagesConversationId(activeConversationId);
         setMessagesInitialized(true);
       }
@@ -6247,8 +6319,19 @@ export function ProjectView({
       : null;
     const nextKey = `${activeConversationId ?? ''}:${target ?? ''}`;
     if (nextKey === lastSyncedRouteKeyRef.current) return;
-    lastSyncedRouteKeyRef.current = nextKey;
-    lastSyncedConversationIdRef.current = activeConversationId;
+    // Never replace the URL with conversationId:null while hydration is still
+    // landing — that strips `/conversations/:cid` from create navigate and
+    // races auto-send (handoff already consumed). Prefer route cid when state
+    // has not caught up yet.
+    const conversationIdForUrl =
+      activeConversationId
+      ?? (typeof routeConversationId === 'string' && routeConversationId.trim()
+        ? routeConversationId.trim()
+        : null);
+    if (!conversationIdForUrl && !target) return;
+    if (!conversationIdForUrl && routeConversationId) return;
+    lastSyncedRouteKeyRef.current = `${conversationIdForUrl ?? ''}:${target ?? ''}`;
+    lastSyncedConversationIdRef.current = conversationIdForUrl;
     // PerishCode + Codex P1 on PR #1508: the prior version of this
     // sync stripped any `/conversations/:cid` segment from the URL as
     // soon as a tab became active, which regressed the deep-link
@@ -6261,12 +6344,12 @@ export function ProjectView({
       {
         kind: 'project',
         projectId: project.id,
-        conversationId: activeConversationId,
+        conversationId: conversationIdForUrl,
         fileName: target,
       },
       { replace: true },
     );
-  }, [openTabsState.active, projectFileNames, project.id, activeConversationId]);
+  }, [openTabsState.active, projectFileNames, project.id, activeConversationId, routeConversationId]);
 
   const handleEnsureProject = useCallback(async (): Promise<string | null> => {
     return project.id;
@@ -13432,9 +13515,8 @@ export function ProjectView({
   // We gate on `messages.length === 0` so a refresh after the run is
   // mid-flight never double-fires; the sessionStorage flag is cleared
   // immediately after the first dispatch.
-  const autoSentRef = useRef(false);
   useEffect(() => {
-    if (autoSentRef.current) return;
+    if (autoSentRef.current || autoSendInFlightRef.current) return;
     if (!activeConversationId) return;
     // Wait for the initial listMessages DB read to land. Without this gate
     // the auto-send fires before the in-flight DB response, which then
@@ -13483,53 +13565,81 @@ export function ProjectView({
       clearTemplateCloneContentFillQueue(project.id);
       return;
     }
-    autoSentRef.current = true;
+    // Cross-remount lock (StrictMode): clear the session flag early, but do
+    // NOT set autoSentRef until handleSend succeeds — otherwise a false
+    // return after waitPendingTemplateClone permanently skips the first stream.
+    autoSendInFlightRef.current = true;
+    clearAutoSendSession(project.id);
     if (isDesignSystemWorkspaceMetadata(project.metadata)) {
       markDesignSystemAuditAutoRepairEligible(project.id);
     }
-    clearAutoSendSession(project.id);
-    clearTemplateCloneContentFillQueue(project.id);
-    autoSendAttachmentsRef.current = [];
-    if (fillQueued) {
-      void patchProject(project.id, {
-        metadata: {
-          ...(project.metadata && typeof project.metadata === 'object' ? project.metadata : {}),
-          templateCloneContentFillPending: false,
-        },
-      });
-    }
-    // Home Canvas/Drive → create pins selectedDeckTemplate* on project
-    // metadata, but also pass them on this-turn meta so the first BYOK
-    // compose cannot lose the pick if React state is still settling.
     const selected = selectedDeckTemplateMetadata(project.metadata);
     const isFillSeed = fillQueued || isTemplateCloneContentFillPrompt(seed);
     const fillSlideCountHint = extractTemplateCloneFillSlideCountHintFromPrompt(seed);
+    const conversationIdAtStart = activeConversationId;
     void (async () => {
       await waitPendingTemplateClone(project.id);
-      void handleSend(seed, attachments, [], {
-      skipDiscoveryBrief:
-        project.metadata?.skipDiscoveryBrief === true || Boolean(selected),
-      ...(isFillSeed
-        ? {
-            templateCloneContentFill: true,
-            pluginInputs: withTemplateCloneFillPluginInputs(
-              undefined,
-              fillSlideCountHint,
-            ),
-          }
-        : {}),
-      ...(selected
-        ? {
-            selectedDeckTemplateId: selected.id,
-            selectedDeckTemplateTitle: selected.title,
-            skillIds: [selected.id],
-            context: {
-              pluginIds: [CANVAS_CREATE_SLIDES_PLUGIN_ID],
+      if (
+        messagesConversationIdRef.current !== conversationIdAtStart
+        && conversationIdAtStart
+      ) {
+        messagesConversationIdRef.current = conversationIdAtStart;
+        setMessagesConversationId(conversationIdAtStart);
+      }
+      const ok = await handleSend(seed, attachments, [], {
+        skipDiscoveryBrief:
+          project.metadata?.skipDiscoveryBrief === true || Boolean(selected),
+        ...(isFillSeed
+          ? {
+              templateCloneContentFill: true,
+              pluginInputs: withTemplateCloneFillPluginInputs(
+                undefined,
+                fillSlideCountHint,
+              ),
+            }
+          : {}),
+        ...(selected
+          ? {
+              selectedDeckTemplateId: selected.id,
+              selectedDeckTemplateTitle: selected.title,
               skillIds: [selected.id],
-            },
-          }
-        : {}),
-    });
+              context: {
+                pluginIds: [CANVAS_CREATE_SLIDES_PLUGIN_ID],
+                skillIds: [selected.id],
+              },
+            }
+          : {}),
+      });
+      if (ok === false) {
+        autoSendInFlightRef.current = false;
+        try {
+          window.sessionStorage.setItem(autoSendFirstMessageKey(project.id), '1');
+        } catch {
+          /* ignore */
+        }
+        if (fillQueued && seed) {
+          queueTemplateCloneContentFill({
+            projectId: project.id,
+            seed,
+            attachments,
+          });
+        }
+        // Re-arm the effect — flag restore alone does not change deps.
+        setAutoSendRetryNonce((value) => value + 1);
+        return;
+      }
+      autoSentRef.current = true;
+      autoSendInFlightRef.current = false;
+      clearTemplateCloneContentFillQueue(project.id);
+      autoSendAttachmentsRef.current = [];
+      if (fillQueued) {
+        void patchProject(project.id, {
+          metadata: {
+            ...(project.metadata && typeof project.metadata === 'object' ? project.metadata : {}),
+            templateCloneContentFillPending: false,
+          },
+        });
+      }
     })();
   }, [
     activeConversationId,
@@ -13541,6 +13651,7 @@ export function ProjectView({
     initialDraft,
     project.pendingPrompt,
     handleSend,
+    autoSendRetryNonce,
   ]);
 
   // Wire the Critique Theater drop-in mount into the project workspace.
