@@ -665,6 +665,12 @@ function findHangulGluedStyleDumpCut(line: string): number | null {
   if (/^(?:from|to|\d+%)\s*\{/.test(dump)) return prefix.length;
   if (/^--[A-Za-z_][\w-]*\s*[:{]/.test(dump)) return prefix.length;
   if (looksLikeCssFunctionDebrisLine(dump)) return prefix.length;
+  if (/^\$[a-zA-Z_-][\w-]*\s*:/.test(dump) && /(?:#|rgba?\(|hsla?\(|px|em|rem|%)/.test(dump)) {
+    return prefix.length;
+  }
+  if (/^(?:document|window)\.\w+/.test(dump)) return prefix.length;
+  if (dump.length >= 6 && looksLikeDeckCodeDebrisLine(dump)) return prefix.length;
+  if (dump.length >= 6 && looksLikeTailwindArbitraryDebrisLine(dump)) return prefix.length;
   if (dump.length < 8) return null;
   const decls = dump.match(/[a-zA-Z-]+\s*:\s*[^;\n]{1,96};/g) ?? [];
   const fontStack = /(?:cursive|sans-serif|serif|monospace|fantasy|system-ui)\s*;/i.test(dump);
@@ -2586,6 +2592,9 @@ export function looksLikeDeckCssContinuationLine(line: string): boolean {
 export function looksLikeDeckJsDebrisLine(line: string): boolean {
   const trimmed = String(line ?? "").trim();
   if (!trimmed) return false;
+  // Hangul/CJK status glued to JS (`슬라이드 추가 중document.querySelector`)
+  // is a prefix+dump line — keep the status and let hangul glue cut the dump.
+  if (/^[\uac00-\ud7af\u3000-\u9fff]/.test(trimmed)) return false;
   if (/\b(?:document|window)\.\w+\s*\(/.test(trimmed)) return true;
   if (/\brequestAnimationFrame\s*\(/.test(trimmed)) return true;
   if (/\bnew\s+(?:Animation|KeyframeEffect)\s*\(/.test(trimmed)) return true;

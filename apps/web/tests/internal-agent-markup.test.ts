@@ -200,6 +200,20 @@ describe("internalAgentMarkup", () => {
           streaming,
         }),
       ).toBe("진행.");
+      expect(
+        sanitizeAssistantProseForDisplay(
+          `슬라이드 추가 중mix-blend-mode: multiply; isolation: isolate;`,
+          { streaming },
+        ),
+      ).toBe("슬라이드 추가 중");
+      expect(
+        sanitizeAssistantProseForDisplay(`슬라이드 추가 중document.querySelector('.slide')`, {
+          streaming,
+        }),
+      ).toBe("슬라이드 추가 중");
+      expect(
+        sanitizeAssistantProseForDisplay(`슬라이드 추가 중$ink: #2d2a26;`, { streaming }),
+      ).toBe("슬라이드 추가 중");
     }
   });
 

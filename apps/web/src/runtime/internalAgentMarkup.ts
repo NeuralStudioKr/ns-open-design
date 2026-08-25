@@ -148,6 +148,23 @@ function findHangulGluedStyleDumpCut(line: string): number | null {
     return prefix.length;
   }
   if (/^if\s*\(\s*style\s*\(/i.test(dump)) return prefix.length;
+  if (/^\$[a-zA-Z_-][\w-]*\s*:/.test(dump) && /(?:#|rgba?\(|hsla?\(|px|em|rem|%)/.test(dump)) {
+    return prefix.length;
+  }
+  if (/^(?:document|window)\.\w+/.test(dump)) return prefix.length;
+  if (
+    /^(?:-?[a-z][\w-]*)\s*:\s*\S/i.test(dump)
+    && (dump.match(/[a-zA-Z-]+\s*:\s*[^;\n]{1,96};/g) ?? []).length >= 2
+    && !/[\uac00-\ud7af]{3,}/.test(dump)
+  ) {
+    return prefix.length;
+  }
+  if (
+    /^(?:[a-z]{1,12}-)?(?:w|h|min-w|min-h|max-w|max-h|bg|text|border)-\[/.test(dump)
+    && /1920|1080|#[0-9A-Fa-f]{3,8}/.test(dump)
+  ) {
+    return prefix.length;
+  }
   if (dump.length < 8) return null;
   const decls = dump.match(/[a-zA-Z-]+\s*:\s*[^;\n]{1,96};/g) ?? [];
   const fontStack = /(?:cursive|sans-serif|serif|monospace|fantasy|system-ui)\s*;/i.test(dump);
@@ -309,7 +326,12 @@ function stripLeakedDeckMotifHtmlTail(input: string): string {
         || /^gradientTransform\s*=/i.test(trimmed)
         || /^in\s*=\s*["']Source/i.test(trimmed)
         || /^result\s*=\s*["']goo["']/i.test(trimmed)
-        || /^CSS\.supports\s*\(/.test(trimmed))
+        || /^CSS\.supports\s*\(/.test(trimmed)
+        || /^\$[a-zA-Z_-][\w-]*\s*:/.test(trimmed)
+        || /^(?:document|window)\.\w+/.test(trimmed)
+        || /^(?:mix-blend-mode|offset-path|anchor-name|position-anchor|view-transition-name|interpolate-size|mask-image|isolation|contain)\s*:/i.test(
+          trimmed,
+        ))
     ) {
       continue;
     }
