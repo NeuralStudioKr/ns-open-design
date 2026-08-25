@@ -22,6 +22,8 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | chat leftover: LAYOUT/HERO/NAV/BADGE/ICON/FIGURE … | ☑ round37 |
 | chat leftover: GALLERY/MODAL/TAB/FORM/BUTTON/WIDGET … | ☑ round38 |
 | chat leftover: AVATAR/CHIP/DROPDOWN/DASHBOARD/CANVAS … | ☑ round39 |
+| chat leftover: TOOLTIP/POPOVER/DRAWER/SKELETON/PAGINATION … | ☑ round40 |
+| leftover APPEND가 producedFiles 있어도 말풍선에 남음 | ☑ 루프18 |
 | soft-CSS: oklab / color() continuation debris | ☑ round32 |
 | soft-CSS: light-dark / device-cmyk continuation debris | ☑ round34 |
 | soft-CSS: standalone `prop: value;` after Hangul status | ☑ round36 |
@@ -40,6 +42,7 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | persist: card-like p/span/h2–h4 (≥12px padding) kit bind · thin accent keep | ☑ round37 |
 | persist: card-like rem/em padding (≥0.75rem) kit bind | ☑ round38 |
 | persist: card-like % (≥4%) · ch (≥2ch) padding kit bind | ☑ round39 |
+| persist: card-like vh/vw (≥3) padding kit bind | ☑ round40 |
 | 16:9 inner clip · kit card bind | ☑ |
 | top-up 재진입 재호출 + 내부 프롬프트 노출 | ☑ 센티널+autoOpen; 루프9 reattach 차단 · leftover 숨김 |
 | first-fill 3장 강제 → 요청 1–6장 한 턴 | ☑ 루프9 |
@@ -55,7 +58,16 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | think 태그 / 내부 마크업 필터 | ☑ 기존 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (round39 / 루프17)
+## 이번 루프 (round40 / 루프18)
+
+1. leftover slide-count APPEND는 본문에서 지우고, `producedFiles`가 있으면 행만 유지
+2. fail-closed sanitizer는 짧은 한글 완료 문장 유지
+3. chat — TOOLTIP/POPOVER/DRAWER/SKELETON/PAGINATION 등 오버레이 트랙 숨김
+4. persist — card-like padding에 ≥3vh/vw 추가
+
+**검증:** chat-leak-probe-round40 · chat-message-render · chat-events-display · sanitize-persisted-assistant-fail-closed · deck-fixed-canvas
+
+## 직전 루프 (round39 / 루프17)
 
 1. chat — AVATAR/CHIP/DROPDOWN/DASHBOARD/CANVAS 등 컨트롤·대시보드 트랙 숨김
 2. persist — card-like padding에 ≥4% · ≥2ch 추가 (thin `2%`/`1.5ch` 유지)
