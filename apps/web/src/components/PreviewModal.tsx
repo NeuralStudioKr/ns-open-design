@@ -15,6 +15,7 @@ import {
 import { buildSrcdoc } from '../runtime/srcdoc';
 import { looksLikeCompactApiStackedDeckForPreview } from '../runtime/compact-api-stacked-deck';
 import { postDeckHostViewportToIframe, scheduleDeckPreviewFitNudges } from '../runtime/deckPreviewFit';
+import { runFileViewerPreviewMessageHandler } from '../teamver/fileViewerPreviewEscape';
 import { Icon } from './Icon';
 import { embedUiLabel } from '../teamver/embedUiLabels';
 
@@ -394,11 +395,13 @@ export function PreviewModal({
 
   useEffect(() => {
     const onMessage = (ev: MessageEvent) => {
-      const data = ev.data as { type?: string } | null;
-      if (!data || data.type !== 'od:preview-escape') return;
-      const win = previewIframeRef.current?.contentWindow;
-      if (!win || ev.source !== win) return;
-      dismissPreviewLayer();
+      runFileViewerPreviewMessageHandler('preview-modal-escape', () => {
+        const data = ev.data as { type?: string } | null;
+        if (!data || data.type !== 'od:preview-escape') return;
+        const win = previewIframeRef.current?.contentWindow;
+        if (!win || ev.source !== win) return;
+        dismissPreviewLayer();
+      });
     };
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
@@ -566,14 +569,16 @@ export function PreviewModal({
   useEffect(() => {
     if (!activeDeck || !activeHtml) return;
     function onMessage(ev: MessageEvent) {
-      if (ev.source !== previewIframeRef.current?.contentWindow) return;
-      const data = ev.data as { type?: string; active?: number; count?: number } | null;
-      if (!data || data.type !== 'od:slide-state') return;
-      if (typeof data.active !== 'number' || typeof data.count !== 'number') return;
-      if (!Number.isFinite(data.active) || !Number.isFinite(data.count) || data.count < 1) return;
-      setSlideState({
-        active: Math.max(0, Math.min(data.count - 1, Math.floor(data.active))),
-        count: Math.floor(data.count),
+      runFileViewerPreviewMessageHandler('preview-modal-slide-state', () => {
+        if (ev.source !== previewIframeRef.current?.contentWindow) return;
+        const data = ev.data as { type?: string; active?: number; count?: number } | null;
+        if (!data || data.type !== 'od:slide-state') return;
+        if (typeof data.active !== 'number' || typeof data.count !== 'number') return;
+        if (!Number.isFinite(data.active) || !Number.isFinite(data.count) || data.count < 1) return;
+        setSlideState({
+          active: Math.max(0, Math.min(data.count - 1, Math.floor(data.active))),
+          count: Math.floor(data.count),
+        });
       });
     }
     window.addEventListener('message', onMessage);
@@ -702,10 +707,12 @@ export function PreviewModal({
   useEffect(() => {
     if (!activeCompactStackedDeck || !activeHtml) return;
     function onDeckViewportRequest(ev: MessageEvent) {
-      if (ev.source !== previewIframeRef.current?.contentWindow) return;
-      const data = ev.data as { type?: string } | null;
-      if (!data || data.type !== 'od:deck-host-viewport-request') return;
-      postDeckHostViewportToIframe(previewIframeRef.current, 1, { useLayoutBox: true });
+      runFileViewerPreviewMessageHandler('preview-modal-deck-host-viewport', () => {
+        if (ev.source !== previewIframeRef.current?.contentWindow) return;
+        const data = ev.data as { type?: string } | null;
+        if (!data || data.type !== 'od:deck-host-viewport-request') return;
+        postDeckHostViewportToIframe(previewIframeRef.current, 1, { useLayoutBox: true });
+      });
     }
     window.addEventListener('message', onDeckViewportRequest);
     return () => window.removeEventListener('message', onDeckViewportRequest);

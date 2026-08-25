@@ -1166,19 +1166,23 @@ function McpOAuthControl({ serverId }: { serverId: string }) {
   // payload shape before reacting to it.
   useEffect(() => {
     function onMessage(ev: MessageEvent) {
-      const data = ev.data;
-      if (!data || typeof data !== 'object') return;
-      if (data.type !== 'mcp-oauth') return;
-      if (data.serverId && data.serverId !== serverId) return;
-      if (data.ok) {
-        setError(null);
-        setPendingAuthUrl(null);
-        void refresh();
-      } else if (typeof data.message === 'string') {
-        setError(data.message);
+      try {
+        const data = ev.data;
+        if (!data || typeof data !== 'object') return;
+        if (data.type !== 'mcp-oauth') return;
+        if (data.serverId && data.serverId !== serverId) return;
+        if (data.ok) {
+          setError(null);
+          setPendingAuthUrl(null);
+          void refresh();
+        } else if (typeof data.message === 'string') {
+          setError(data.message);
+        }
+        setBusy('idle');
+        stopPoll();
+      } catch (err) {
+        console.error('[McpClientSection] mcp-oauth callback failed', err);
       }
-      setBusy('idle');
-      stopPoll();
     }
     window.addEventListener('message', onMessage);
     let bc: BroadcastChannel | null = null;

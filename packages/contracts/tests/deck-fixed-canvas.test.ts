@@ -145,6 +145,22 @@ describe('pinDeckSlidesToFixedCanvas', () => {
     expect(pinned).not.toMatch(/class="slide"[^>]*overflow:\s*hidden/);
   });
 
+  it('strips absolute div index badges but keeps in-flow slide-chrome', () => {
+    const html = [
+      '<section class="slide" style="width:1920px;height:1080px">',
+      '<div style="position:absolute;top:24px;left:40px">05 / CHECKLIST</div>',
+      '<div class="index-badge" style="position:absolute;top:24px;right:40px">06 / SUMMARY</div>',
+      '<div class="slide-chrome">01 / Studio</div>',
+      '<div class="info-card">Card body</div>',
+      '</section>',
+    ].join('');
+    const pinned = pinDeckSlidesToFixedCanvas(html);
+    expect(pinned).not.toContain('05 / CHECKLIST');
+    expect(pinned).not.toContain('06 / SUMMARY');
+    expect(pinned).toContain('01 / Studio');
+    expect(pinned).toContain('Card body');
+  });
+
   it('does not wrap display:grid slide children into a flow clip', () => {
     const html = [
       '<section class="slide" style="width:1920px;height:1080px;display:grid;grid-template-columns:1fr 1fr">',

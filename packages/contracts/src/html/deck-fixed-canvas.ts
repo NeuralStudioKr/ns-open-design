@@ -441,6 +441,17 @@ function mapSlideInners(
   return out;
 }
 
+function isFloatingIndexBadgeHost(tag: string, attrs: string): boolean {
+  if (/^(span|small|label|em|strong|b|i)$/i.test(tag)) return true;
+  // MiniMax often parks "05 / CHECKLIST" on absolute `div`/`p` chrome.
+  // Keep in-flow template chrome like `.slide-chrome` / `01 / Studio`.
+  if (!/^(div|p)$/i.test(tag)) return false;
+  if (/\bslide-chrome\b/i.test(attrs)) return false;
+  const style = extractStyleAttr(attrs);
+  if (/position\s*:\s*absolute/i.test(style)) return true;
+  return /\b(?:badge|index|overlay|page-label|slide-label|kicker)\b/i.test(attrs);
+}
+
 function stripFloatingIndexBadgesInSpan(inner: string): string {
   const segs = listTopLevelSegments(inner);
   let next = inner;
@@ -449,7 +460,7 @@ function stripFloatingIndexBadgesInSpan(inner: string): string {
     const raw = next.slice(seg.start, seg.end);
     const open = openTagOf(raw);
     if (!open) continue;
-    if (!/^(span|small|label|em|strong|b|i)$/i.test(open.tag)) continue;
+    if (!isFloatingIndexBadgeHost(open.tag, open.attrs)) continue;
     if (isMotifOrDecoAttrs(open.attrs) || isContentFooterHost(open.attrs)) continue;
     if (!INDEX_BADGE_TEXT_RE.test(innerTextOf(raw))) continue;
     next = `${next.slice(0, seg.start)}${next.slice(seg.end)}`;
