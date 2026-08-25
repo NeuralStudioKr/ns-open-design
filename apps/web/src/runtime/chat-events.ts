@@ -1,4 +1,7 @@
-import { looksLikeTagStrippedSlideBodyDump } from '@open-design/contracts';
+import {
+  looksLikeSlideCountTopUpLeftover,
+  looksLikeTagStrippedSlideBodyDump,
+} from '@open-design/contracts';
 import type { AgentEvent, ChatMessage } from '../types';
 import { reconcileUserCommentAttachments } from '../comments';
 import { recoverChatAttachmentsFromMentions } from '../utils/recoverChatAttachmentsFromMentions';
@@ -53,14 +56,28 @@ export function assistantEventsForDisplay(message: Pick<ChatMessage, 'content' |
     return [{ kind: 'text', text: contentRaw }, ...tail];
   }
 
+  // Hidden top-up leftover must not win over a short completion status
+  // (or an empty body that lets the synthetic lead render).
+  if (looksLikeSlideCountTopUpLeftover(fromEvents) && !looksLikeSlideCountTopUpLeftover(content)) {
+    const tail = events.filter((event) => event.kind !== 'text');
+    return content
+      ? [{ kind: 'text', text: contentRaw }, ...tail]
+      : tail;
+  }
+  if (looksLikeSlideCountTopUpLeftover(content) && !looksLikeSlideCountTopUpLeftover(fromEvents) && hasVisibleTextEvent) {
+    return events;
+  }
+
   // Reload: persist may keep tag-stripped slide copy in events while content
   // is already the short completion status. Prefer the clean content.
   if (
     content
     && fromEvents.length > content.length
     && !looksLikeReloadedSlideBodyDump(content)
+    && !looksLikeSlideCountTopUpLeftover(content)
     && (
       looksLikeReloadedSlideBodyDump(fromEvents)
+      || looksLikeSlideCountTopUpLeftover(fromEvents)
       || (
         looksLikeShortHangulCompletionStatus(content)
         && !looksLikeShortHangulCompletionStatus(fromEvents)

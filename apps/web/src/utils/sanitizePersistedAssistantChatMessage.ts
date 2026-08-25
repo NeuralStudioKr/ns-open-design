@@ -16,6 +16,20 @@ export function sanitizePersistedAssistantChatMessage(message: ChatMessage): Cha
     return sanitizeChatMessageLeakedPseudoTool(message, { stripCodeFences: true });
   } catch (err) {
     console.error('[sanitizePersistedAssistantChatMessage] failed', message.id, err);
+    const content = String(message.content ?? '').trim();
+    // Keep a short Hangul completion status; wipe dumps that would re-paint
+    // leftover slide copy after a sanitizer throw.
+    if (
+      content
+      && content.length <= 160
+      && /[\uac00-\ud7af]/.test(content)
+      && !/<(?:artifact|html|body|question-form|ask-question)\b/i.test(content)
+    ) {
+      const events = (message.events ?? []).filter(
+        (event) => event.kind !== 'text' && event.kind !== 'thinking',
+      );
+      return { ...message, content, events };
+    }
     const events = (message.events ?? []).filter(
       (event) => event.kind !== 'text' && event.kind !== 'thinking',
     );

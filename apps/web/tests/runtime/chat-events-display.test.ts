@@ -149,6 +149,22 @@ describe('assistantEventsForDisplay', () => {
     ).toBe('슬라이드 작업이 완료되었습니다.');
   });
 
+  it('prefers clean Hangul content over leftover slide-count APPEND events', () => {
+    const leftover = [
+      'The',
+      'Keep',
+      'APPEND',
+      'This is an explicit slide-count expansion — not a redesign.',
+      'Do NOT rewrite the saved deck. Emit ONLY the new `',
+    ].join('\n');
+    const resolved = assistantEventsForDisplay({
+      content: '슬라이드 작업이 완료되었습니다.',
+      events: [{ kind: 'text', text: leftover }],
+    });
+    expect(resolved[0]).toEqual({ kind: 'text', text: '슬라이드 작업이 완료되었습니다.' });
+    expect(JSON.stringify(resolved)).not.toContain('APPEND');
+  });
+
   it('prefers clean content when reload events keep HOOK/SCREEN leftover chrome', () => {
     const leak =
       'HOOK 01 · OPEN반응형 UIvideo·svg에일 HTML/CSS, 미디어 쿼리로 유동 재배치. SCREEN 2 · HOME 유지보수 단일 경로.';

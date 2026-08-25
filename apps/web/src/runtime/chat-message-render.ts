@@ -399,10 +399,13 @@ export function shouldOmitMessageFromChatRender(
   if (message.role !== "assistant") return false;
   // Persist/HTML strip can move the hidden APPEND prompt onto the assistant
   // row as "The / Keep / APPEND / This is an explicit slide-count expansion".
+  // Keep the row when producedFiles exist so the completion lead can render;
+  // leftover-only rows (no files, no closed artifact) stay hidden.
+  const leftoverBody = assistantMessageTextBody(message);
   if (
-    isSlideCountTopUpPrompt(message.content)
+    (isSlideCountTopUpPrompt(message.content) || isSlideCountTopUpPrompt(leftoverBody))
     && (message.producedFiles?.length ?? 0) === 0
-    && !messageHasSubstantiveClosedArtifact(assistantMessageTextBody(message))
+    && !messageHasSubstantiveClosedArtifact(leftoverBody)
   ) {
     return true;
   }

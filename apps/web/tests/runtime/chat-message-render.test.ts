@@ -39,6 +39,26 @@ describe("chat-message-render", () => {
     }, embedCtx)).toBe(true);
   });
 
+  it("keeps leftover top-up assistant rows that already produced a deck", () => {
+    const leftover = [
+      "The",
+      "Keep",
+      "APPEND",
+      "This is an explicit slide-count expansion — not a redesign.",
+      "Do NOT rewrite the saved deck. Emit ONLY the new `",
+    ].join("\n");
+    const message: ChatMessage = {
+      id: "a-topup-files",
+      role: "assistant",
+      content: leftover,
+      runStatus: "succeeded",
+      endedAt: 2,
+      producedFiles: [{ name: "deck.html", size: 1200, mtime: 1, kind: "html", mime: "text/html" }],
+    };
+    expect(shouldOmitMessageFromChatRender(message, embedCtx)).toBe(false);
+    expect(hasEmbedVisibleAssistantBody(message)).toBe(true);
+  });
+
   it("omits auto-continue user prompts", () => {
     const message: ChatMessage = {
       id: "u-auto",

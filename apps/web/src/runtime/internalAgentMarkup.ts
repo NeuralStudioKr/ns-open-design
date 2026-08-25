@@ -465,7 +465,18 @@ export function sanitizeAssistantProseForDisplay(
     return stripTagStrippedSlideBodyDumpForDisplay(afterResidual, preservingArtifacts);
   } catch (err) {
     // Fail closed: a sanitizer throw must not paint raw deck HTML in the bubble.
+    // Keep a short Hangul completion status so reload does not wipe "완료되었습니다".
     console.error("[internalAgentMarkup] sanitizeAssistantProseForDisplay failed", err);
+    const raw = String(input ?? "").trim();
+    if (
+      raw
+      && raw.length <= 160
+      && /[\uac00-\ud7af]/.test(raw)
+      && !/<(?:artifact|html|body|question-form|ask-question)\b/i.test(raw)
+      && !looksLikeTagStrippedSlideBodyDump(raw)
+    ) {
+      return raw;
+    }
     return "";
   }
 }
