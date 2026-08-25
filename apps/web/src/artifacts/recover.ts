@@ -134,6 +134,7 @@ export function recoverHtmlDocumentFromMarkdownFence(sourceText: string | null |
  */
 export function recoverBestHtmlDocumentFromText(
   sourceText: string | null | undefined,
+  healContext?: { brief?: string | null; deckTitle?: string | null },
 ): string | null {
   const text = String(sourceText || '');
   if (!text.trim()) return null;
@@ -149,13 +150,13 @@ export function recoverBestHtmlDocumentFromText(
   const standalone = recoverStandaloneHtmlDocument(text);
   if (standalone) candidates.push(standalone);
 
-  collectCompleteHtmlDocumentsFromText(text, candidates);
+  collectCompleteHtmlDocumentsFromText(text, candidates, healContext);
 
   const withoutArtifacts = text
     .replace(/<artifact\b[\s\S]*?<\/artifact>/gi, '')
     .replace(/<artifact\b[\s\S]*$/i, '');
 
-  collectCompleteHtmlDocumentsFromText(withoutArtifacts, candidates);
+  collectCompleteHtmlDocumentsFromText(withoutArtifacts, candidates, healContext);
 
   // Truncated doctype decks (max_tokens mid-stream) never match the complete
   // document collectors above — close them when they already have real slides.
@@ -183,14 +184,18 @@ function collectTruncatedHtmlDocumentsFromText(sourceText: string, candidates: s
   }
 }
 
-function collectCompleteHtmlDocumentsFromText(sourceText: string, candidates: string[]): void {
+function collectCompleteHtmlDocumentsFromText(
+  sourceText: string,
+  candidates: string[],
+  healContext?: { brief?: string | null; deckTitle?: string | null },
+): void {
   const addCandidate = (candidate: string) => {
     const normalized = candidate.replace(/^﻿/, '').trim();
     if (/<\/?artifact\b/i.test(normalized)) return;
     if (!validateHtmlArtifact(normalized).ok) return;
     // Include closed soft-salvage decks (strict incomplete ratio still fails).
     if (
-      !isIncompleteHtmlDocumentShell(normalized)
+      !isIncompleteHtmlDocumentShell(normalized, healContext?.brief, healContext?.deckTitle)
       || isClosedSoftSalvageDeckHtml(normalized)
     ) {
       candidates.push(normalized);

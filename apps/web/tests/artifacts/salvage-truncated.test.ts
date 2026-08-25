@@ -357,6 +357,10 @@ describe("salvageTemplateFillShellAsCoverDraft", () => {
     expect(recoverBestHtmlDocumentFromText(`작성 중\n${shortParrot}`)).toContain(
       '슬라이드 만들어줘',
     );
+    expect(recoverBestHtmlDocumentFromText(`작성 중\n${shortParrot}`, {
+      brief: '슬라이드 만들어줘',
+      deckTitle: '슬라이드',
+    })).toContain('슬라이드 만들어줘');
   });
 
   it("does not replace a truncation that already has slide copy", () => {

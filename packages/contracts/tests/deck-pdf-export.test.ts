@@ -167,6 +167,16 @@ describe('buildDeckSlideExportLayoutHelperJs', () => {
     expect(js).toMatch(/if\s*\(\s*preserveSlideFlexLayout\(slide\)\s*\)\s*return/);
   });
 
+  it('preserves fixed-canvas flow roots before generic print layout rewrites', () => {
+    const js = buildDeckSlideExportLayoutHelperJs();
+    expect(js).toContain('preserveSlideFlowRoot');
+    expect(js).toContain("slide.querySelector(':scope > [data-od-slide-flow]')");
+    expect(js).toContain("set(flowRoot, 'position', 'absolute')");
+    expect(js).toContain("set(flowRoot, 'inset', '0')");
+    expect(js).toContain("set(flowRoot, 'overflow', 'hidden')");
+    expect(js).toMatch(/if\s*\(\s*preserveSlideFlowRoot\(slide\)\s*\)\s*return[\s\S]*?var coverContent/);
+  });
+
   it('emits syntactically valid browser layout helper JS', () => {
     const js = buildDeckSlideExportLayoutHelperJs();
     const set = () => {};

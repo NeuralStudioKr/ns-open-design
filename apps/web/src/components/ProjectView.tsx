@@ -6118,7 +6118,10 @@ export function ProjectView({
   }, [project.id, requestOpenFile]);
 
   const artifactFromStandaloneHtml = useCallback((sourceText: string): Artifact | null => {
-    const html = recoverBestHtmlDocumentFromText(sourceText);
+    const html = recoverBestHtmlDocumentFromText(sourceText, {
+      brief: runVisiblePromptRef.current || '',
+      deckTitle: project.name || '슬라이드',
+    });
     if (!html) return null;
     return {
       identifier: 'response',
@@ -6126,7 +6129,7 @@ export function ProjectView({
       title: 'Response',
       html,
     };
-  }, []);
+  }, [project.name]);
 
   // Set of project file names that the chat surface uses to decide whether
   // a tool card's path is openable as a tab. Recomputed on every file-list

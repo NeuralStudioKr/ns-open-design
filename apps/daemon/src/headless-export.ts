@@ -7,6 +7,7 @@ import type { DesktopExportPdfInput } from '@open-design/sidecar-proto';
 import {
   repairArtifactDocumentHead,
   buildArtifactPreviewDomLeakStripScript,
+  healDeckHtmlForStandaloneExport,
   patchArtifactDeckPrintCss,
   buildDeckSlideExportLayoutHelperJs,
   buildDeckFlattenCssRules as buildSharedDeckFlattenCssRules,
@@ -1870,7 +1871,7 @@ export { deckScreenshotClip as deckScreenshotClipRect };
 
 function buildDeckExportBaseHtml(input: DesktopExportPdfInput): string {
   let doc = patchArtifactDeckPrintCss(
-    repairArtifactDocumentHead(withBaseHref(input.html, input.baseHref || '')),
+    healDeckHtmlForStandaloneExport(withBaseHref(input.html, input.baseHref || '')),
   );
   doc = injectTitle(doc, input.title);
   return doc;

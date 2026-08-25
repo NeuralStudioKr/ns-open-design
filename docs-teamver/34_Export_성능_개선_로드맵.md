@@ -13,6 +13,13 @@
 > **중기(Phase 2):** presigned GET offload + publish/download 공유 캐시.  
 > **장기(Phase 3):** async export job (대형 deck).
 
+### 0.1 2026-08-25 렌더링 일치 보강
+
+- ✅ PDF/HTML/PPTX 다운로드와 프로젝트 목록 썸네일이 preview panel과 다른 위치·비율로 보일 수 있는 flow-root 불일치를 보정했다.
+- ✅ `data-od-slide-flow` 래퍼는 export flatten 단계에서도 preview와 같은 absolute 1920×1080 flow-root로 보존한다.
+- ✅ daemon headless deck export base는 contracts `healDeckHtmlForStandaloneExport`를 사용해 PDF/HTML/PPTX snapshot 준비 기준을 통일한다.
+- 배포 후 확인: 같은 deck 프로젝트에서 preview panel, 프로젝트 목록 썸네일, PDF, HTML/ZIP의 `index.html`, editable PPTX 첫 장 위치·비율을 비교한다.
+
 ---
 
 ## 1. 왜 Export만 문제인가

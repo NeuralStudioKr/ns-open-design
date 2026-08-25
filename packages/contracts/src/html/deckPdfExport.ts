@@ -589,6 +589,34 @@ export function buildDeckSlideExportLayoutHelperJs(): string {
           }
         });
       }
+      function preserveSlideFlowRoot(slide) {
+        var flowRoot = slide.querySelector(':scope > [data-od-slide-flow]');
+        if (!flowRoot) return false;
+        var cs = window.getComputedStyle(flowRoot);
+        set(flowRoot, 'position', 'absolute');
+        set(flowRoot, 'inset', '0');
+        set(flowRoot, 'width', '100%');
+        set(flowRoot, 'height', '100%');
+        set(flowRoot, 'min-height', '0');
+        set(flowRoot, 'max-height', '100%');
+        set(flowRoot, 'box-sizing', 'border-box');
+        set(flowRoot, 'overflow', 'hidden');
+        if (cs.display === 'grid') {
+          set(flowRoot, 'display', 'grid');
+          if (cs.gridTemplateColumns !== 'none') set(flowRoot, 'grid-template-columns', cs.gridTemplateColumns);
+          if (cs.gridTemplateRows !== 'none') set(flowRoot, 'grid-template-rows', cs.gridTemplateRows);
+          if (cs.gap && cs.gap !== 'normal') set(flowRoot, 'gap', cs.gap);
+        } else {
+          set(flowRoot, 'display', 'flex');
+          set(flowRoot, 'flex-direction', cs.flexDirection || 'column');
+          set(flowRoot, 'align-items', cs.alignItems || 'stretch');
+          if (cs.justifyContent && cs.justifyContent !== 'normal') set(flowRoot, 'justify-content', cs.justifyContent);
+          if (cs.gap && cs.gap !== 'normal' && cs.gap !== '0px') set(flowRoot, 'gap', cs.gap);
+        }
+        preserveNestedLayouts(flowRoot);
+        preserveNestedLayouts(slide);
+        return true;
+      }
       function applyLayoutToElement(el) {
         var children = contentChildren(el);
         var computed = window.getComputedStyle(el);
@@ -677,6 +705,7 @@ export function buildDeckSlideExportLayoutHelperJs(): string {
         });
       }
       function applySlideExportLayout(slide) {
+        if (preserveSlideFlowRoot(slide)) return;
         var coverContent = slide.querySelector(':scope > .cover-content');
         var rightPanel = slide.querySelector(':scope > .cover-right-panel');
         if (coverContent && rightPanel) {

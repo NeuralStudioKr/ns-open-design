@@ -658,6 +658,20 @@ describe('buildDeckPrintCss', () => {
     expect(source).toContain("el.style.setProperty('hyphens', 'none', 'important')");
   });
 
+  it('prepares deck PDF/HTML/PPTX from the shared standalone export healing path', () => {
+    const source = fs.readFileSync(
+      path.join(__dirname, '..', 'src', 'headless-export.ts'),
+      'utf8',
+    );
+    const baseHtmlBlock = source.slice(
+      source.indexOf('function buildDeckExportBaseHtml'),
+      source.indexOf('function buildDeckExportHtml'),
+    );
+    expect(source).toContain('healDeckHtmlForStandaloneExport');
+    expect(baseHtmlBlock).toContain('healDeckHtmlForStandaloneExport(withBaseHref');
+    expect(baseHtmlBlock).toContain('patchArtifactDeckPrintCss');
+  });
+
   it('keeps PPTX downloads editable by default and screenshot-based only when opted out', () => {
     const routeSource = fs.readFileSync(
       path.join(__dirname, '..', 'src', 'import-export-routes.ts'),

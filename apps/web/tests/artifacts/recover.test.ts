@@ -170,4 +170,16 @@ describe('recoverBestHtmlDocumentFromText', () => {
 
     expect(recoverBestHtmlDocumentFromText(source)).toBe(html);
   });
+
+  it('keeps a closed healable instruction-copy cover when persist heal context is passed', () => {
+    const parrot =
+      '<!doctype html><html lang="ko"><body>'
+      + '<section class="slide"><h1>슬라이드 만들어줘</h1></section>'
+      + '</body></html>';
+    expect(recoverBestHtmlDocumentFromText(`작성 중\n${parrot}`)).toContain('슬라이드 만들어줘');
+    expect(recoverBestHtmlDocumentFromText(`작성 중\n${parrot}`, {
+      brief: '슬라이드 만들어줘',
+      deckTitle: '슬라이드',
+    })).toContain('슬라이드 만들어줘');
+  });
 });
