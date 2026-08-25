@@ -622,6 +622,8 @@ describe("ProjectView message loading", () => {
     expect(autoOpenBlock).toContain("kind: terminalPersistResult?.kind ?? null,");
     expect(autoOpenBlock).toContain("terminalPersistResult?.kind === 'rejected'");
     expect(autoOpenBlock).toContain("resolveTerminalArtifactToPersist(");
+    expect(autoOpenBlock).toContain("isUsableDeckHtmlArtifact(");
+    expect(autoOpenBlock).toContain("isIncompleteParsedDeckForBestArtifactRestore(");
     expect(autoOpenBlock).toContain("rawFinalText,\n              artifactFromStandaloneHtml");
     expect(autoOpenBlock).toContain("finalText: rawFinalText");
     expect(autoOpenBlock).toContain("terminalPersistResult = persistResult");

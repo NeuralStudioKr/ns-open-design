@@ -2876,7 +2876,7 @@ export function findClientArtifactRegression(input: {
         input.healBrief,
         input.healTitle,
       )
-      || isLowSubstanceSlideDeckArtifact(priorHtml)
+      || isLowSubstanceSlideDeckArtifact(priorHtml, input.healBrief, input.healTitle)
     ) {
       return null;
     }
@@ -5423,7 +5423,11 @@ export function ProjectView({
           || (
             !trustSoftTruncationSalvage
             && normalizedArtifactType === 'deck'
-            && isLowSubstanceSlideDeckArtifact(artifactToPersist.html)
+            && isLowSubstanceSlideDeckArtifact(
+              artifactToPersist.html,
+              persistHealBrief,
+              persistHealTitle,
+            )
           )
         ) {
           return {
@@ -9896,7 +9900,11 @@ export function ProjectView({
             let terminalPersistResult: ArtifactPersistResult | null = null;
             const hadIncompleteParsedArtifact = Boolean(
               parsedArtifact?.html
-              && isIncompleteParsedDeckForBestArtifactRestore(parsedArtifact.html),
+              && isIncompleteParsedDeckForBestArtifactRestore(
+                parsedArtifact.html,
+                runVisiblePromptRef.current || '',
+                project.name || '슬라이드',
+              ),
             );
 
             // If the live parsedArtifact ended up incomplete (e.g. the model
@@ -9909,7 +9917,11 @@ export function ProjectView({
             const effectiveParsedArtifact: Artifact | null =
               hadIncompleteParsedArtifact
                 && bestArtifactSoFar?.html
-                && isUsableDeckHtmlArtifact(bestArtifactSoFar.html)
+                && isUsableDeckHtmlArtifact(
+                  bestArtifactSoFar.html,
+                  runVisiblePromptRef.current || '',
+                  project.name || '슬라이드',
+                )
                 ? bestArtifactSoFar
                 : parsedArtifact;
 
@@ -9917,6 +9929,10 @@ export function ProjectView({
               effectiveParsedArtifact,
               rawFinalText,
               artifactFromStandaloneHtml,
+              {
+                brief: runVisiblePromptRef.current || '',
+                deckTitle: project.name || '슬라이드',
+              },
             );
             if (artifactToPersist?.html) {
               const producedBeforeFallback = computeProducedFiles(beforeFileNames, nextFiles) ?? [];
@@ -10426,7 +10442,11 @@ export function ProjectView({
                   // partial HTML for the model to complete instead of writing
                   // from scratch.
                   const partialHtmlForAutoContinue =
-                    (bestArtifactSoFar?.html && isUsableDeckHtmlArtifact(bestArtifactSoFar.html)
+                    (bestArtifactSoFar?.html && isUsableDeckHtmlArtifact(
+                      bestArtifactSoFar.html,
+                      runVisiblePromptRef.current || '',
+                      project.name || '슬라이드',
+                    )
                       ? bestArtifactSoFar.html
                       : parsedArtifact?.html)
                     ?? liveHtml
@@ -10775,9 +10795,17 @@ export function ProjectView({
                 : candidate;
               // Soft-salvaged decks count as usable even when the stricter
               // incomplete-shell ratio still flags empty trailing placeholders.
-              const candidateOk = isUsableDeckHtmlArtifact(effective?.html)
+              const candidateOk = isUsableDeckHtmlArtifact(
+                effective?.html,
+                runVisiblePromptRef.current || '',
+                project.name || '슬라이드',
+              )
                 || Boolean(salvagedHtml);
-              const bestOk = isUsableDeckHtmlArtifact(bestArtifactSoFar?.html);
+              const bestOk = isUsableDeckHtmlArtifact(
+                bestArtifactSoFar?.html,
+                runVisiblePromptRef.current || '',
+                project.name || '슬라이드',
+              );
               if (candidateOk && (!bestOk || (effective?.html?.length ?? 0) > (bestArtifactSoFar?.html?.length ?? 0))) {
                 bestArtifactSoFar = effective;
               } else if (!bestArtifactSoFar && effective) {
@@ -10932,9 +10960,17 @@ export function ProjectView({
                 const effective = salvagedHtml && candidate
                   ? { ...candidate, html: salvagedHtml }
                   : candidate;
-                const candidateOk = isUsableDeckHtmlArtifact(effective?.html)
+                const candidateOk = isUsableDeckHtmlArtifact(
+                  effective?.html,
+                  runVisiblePromptRef.current || '',
+                  project.name || '슬라이드',
+                )
                   || Boolean(salvagedHtml);
-                const bestOk = isUsableDeckHtmlArtifact(bestArtifactSoFar?.html);
+                const bestOk = isUsableDeckHtmlArtifact(
+                  bestArtifactSoFar?.html,
+                  runVisiblePromptRef.current || '',
+                  project.name || '슬라이드',
+                );
                 if (candidateOk && (!bestOk || (effective?.html?.length ?? 0) > (bestArtifactSoFar?.html?.length ?? 0))) {
                   bestArtifactSoFar = effective;
                 } else if (!bestArtifactSoFar && effective) {
@@ -14471,13 +14507,20 @@ function artifactFromSalvagedHtml(html: string, base: Artifact): Artifact | null
 }
 
 /** True when HTML is strictly complete, or is a soft-salvaged truncated deck. */
-function isUsableDeckHtmlArtifact(html: string | null | undefined): boolean {
+function isUsableDeckHtmlArtifact(
+  html: string | null | undefined,
+  brief?: string | null,
+  deckTitle?: string | null,
+): boolean {
   const trimmed = String(html ?? '').trim();
   if (!trimmed || !validateHtmlArtifact(trimmed).ok) return false;
-  if (isPersistableShortDeckDraft(trimmed) || isPersistableShortDeckDraftAfterHeal(trimmed)) {
+  if (
+    isPersistableShortDeckDraft(trimmed)
+    || isPersistableShortDeckDraftAfterHeal(trimmed, brief, deckTitle || '슬라이드')
+  ) {
     return true;
   }
-  if (isLowSubstanceSlideDeckArtifact(trimmed)) return false;
+  if (isLowSubstanceSlideDeckArtifact(trimmed, brief, deckTitle)) return false;
   if (!isIncompleteHtmlDocumentShell(trimmed)) return true;
   // Already-closed soft salvage returns null from salvageTruncated — still usable.
   if (isClosedSoftSalvageDeckHtml(trimmed)) return true;
@@ -14495,12 +14538,20 @@ export function resolveTerminalArtifactToPersist(
   parsedArtifact: Artifact | null,
   finalText: string,
   fromStandalone: (sourceText: string) => Artifact | null,
+  healContext?: { brief?: string | null; deckTitle?: string | null },
 ): Artifact | null {
   const standalone = fromStandalone(finalText);
   const parsed = parsedArtifact?.html ? parsedArtifact : null;
   const doctypeTail = finalText.match(DOCTYPE_HTML_TAIL_RE)?.[0] ?? null;
 
-  if (parsed?.html && isIncompleteParsedDeckForBestArtifactRestore(parsed.html)) {
+  if (
+    parsed?.html
+    && isIncompleteParsedDeckForBestArtifactRestore(
+      parsed.html,
+      healContext?.brief,
+      healContext?.deckTitle || '슬라이드',
+    )
+  ) {
     const salvagedParsed = artifactFromSalvagedHtml(parsed.html, parsed);
     if (salvagedParsed) return salvagedParsed;
     if (

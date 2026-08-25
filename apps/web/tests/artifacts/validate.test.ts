@@ -171,6 +171,11 @@ describe('validateHtmlArtifact', () => {
       + '</body></html>';
     expect(validateHtmlArtifact(parrot).ok).toBe(true);
     expect(isLowSubstanceSlideDeckArtifact(parrot)).toBe(false);
+    expect(isLowSubstanceSlideDeckArtifact(
+      parrot,
+      'expo에 대해서 설명하는 피피티 만들어줘',
+      '슬라이드',
+    )).toBe(false);
 
     const marketing =
       '<!doctype html><html lang="ko"><body>'
@@ -207,6 +212,11 @@ describe('validateHtmlArtifact', () => {
       + '</body></html>';
     expect(isIncompleteHtmlDocumentShell(emptySlide)).toBe(true);
     expect(isIncompleteParsedDeckForBestArtifactRestore(shortParrot)).toBe(false);
+    expect(isIncompleteParsedDeckForBestArtifactRestore(
+      shortParrot,
+      '슬라이드 만들어줘',
+      '슬라이드',
+    )).toBe(false);
     expect(isIncompleteParsedDeckForBestArtifactRestore(emptySlide)).toBe(true);
     const truncatedHealable = `${shortParrot.replace('</html>', '')}${'<!-- kit -->'.repeat(20)}`;
     expect(truncatedHealable.length).toBeGreaterThan(128);

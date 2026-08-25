@@ -145,12 +145,16 @@ export function isIncompleteHtmlDocumentShell(content: string): boolean {
  * cover instead of swapping it for an older bestArtifact. Truncation
  * (no `</html>` above the structural floor) still restores / salvages.
  */
-export function isIncompleteParsedDeckForBestArtifactRestore(html: string | null | undefined): boolean {
+export function isIncompleteParsedDeckForBestArtifactRestore(
+  html: string | null | undefined,
+  brief?: string | null,
+  deckTitle?: string | null,
+): boolean {
   const trimmed = String(html ?? '').replace(/^﻿/, '').trim();
   if (!trimmed) return false;
   if (!isIncompleteHtmlDocumentShell(trimmed)) return false;
   if (
-    isPersistableShortDeckDraftAfterHeal(trimmed)
+    isPersistableShortDeckDraftAfterHeal(trimmed, brief, deckTitle || '슬라이드')
     && HAS_HTML_CLOSE_RE.test(trimmed)
   ) {
     return false;
@@ -165,7 +169,11 @@ export function isIncompleteParsedDeckForBestArtifactRestore(html: string | null
  * separate from `validateHtmlArtifact()` because short but real non-deck HTML
  * snippets can still be valid; Teamver slide-only runs need the stronger gate.
  */
-export function isLowSubstanceSlideDeckArtifact(content: string): boolean {
+export function isLowSubstanceSlideDeckArtifact(
+  content: string,
+  brief?: string | null,
+  deckTitle?: string | null,
+): boolean {
   const trimmed = content.replace(/^﻿/, '').trim();
   if (trimmed.length === 0 || !STARTS_WITH_DOCUMENT_RE.test(trimmed)) return false;
   const slideCount = countSlideLikeSections(trimmed);
@@ -175,7 +183,7 @@ export function isLowSubstanceSlideDeckArtifact(content: string): boolean {
   // Persist heals instruction/marketing covers before this gate. Resume /
   // regression / terminal callers still see raw HTML — do not flag the same
   // 1–3 slide AfterHeal draft as low-substance (§1.33 leftover).
-  if (isPersistableShortDeckDraftAfterHeal(trimmed)) return false;
+  if (isPersistableShortDeckDraftAfterHeal(trimmed, brief, deckTitle || '슬라이드')) return false;
   if (!hasSalvageableDeckSlideContent(trimmed)) return true;
 
   const bodyText = visibleHtmlBodyText(trimmed);
