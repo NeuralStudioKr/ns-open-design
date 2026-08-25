@@ -24,6 +24,7 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | chat leftover: AVATAR/CHIP/DROPDOWN/DASHBOARD/CANVAS … | ☑ round39 |
 | chat leftover: TOOLTIP/CALLOUT/COMMENT/LOGO/SKELETON/PAGINATION … | ☑ round40 |
 | leftover APPEND가 producedFiles 있어도 말풍선에 남음 | ☑ 루프18 |
+| dump fallback이 `초안.`/`진행.`/한글 완료 문장을 지움 | ☑ 루프19 |
 | soft-CSS: oklab / color() continuation debris | ☑ round32 |
 | soft-CSS: light-dark / device-cmyk continuation debris | ☑ round34 |
 | soft-CSS: standalone `prop: value;` after Hangul status | ☑ round36 |
@@ -59,7 +60,15 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | think 태그 / 내부 마크업 필터 | ☑ 기존 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (round40 / 루프18)
+## 이번 루프 (루프19)
+
+1. dump fallback은 첫 줄 한글 상태를 마침표 포함 유지 (`초안.`/`진행.` 포함)
+2. 같은 줄 glue-cut은 가장 긴 상태 접두어 (`완료됨.` > `완료`)
+3. opener dump만 마침표 제거
+
+**검증:** chat-leak-probe-round40 · round26 · round24 · round10 · agent-prose-sanitize
+
+## 직전 루프 (round40 / 루프18)
 
 1. leftover slide-count APPEND는 본문에서 지우고, `producedFiles`가 있으면 행만 유지
 2. fail-closed sanitizer는 짧은 한글 완료 문장 유지
