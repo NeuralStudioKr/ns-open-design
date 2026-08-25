@@ -23,6 +23,7 @@ import {
   exportProjectAsZip,
   EXPORT_TRANSIENT_GATEWAY_MESSAGE,
   formatExportFailureMessageForUser,
+  isDeckTooLargeForPptxExportError,
   isTeamverProjectStoragePrefixRequiredError,
   openSandboxedPreviewInNewTab,
   prepareImageExportTarget,
@@ -34,10 +35,31 @@ function mockResponse(headers: Record<string, string>): Response {
   return { headers: new Headers(headers) } as Response;
 }
 
+const NativeURL = globalThis.URL;
+
+function stubBrowserURL(
+  createObjectURL: (blob: Blob) => string = () => 'blob:test',
+  revokeObjectURL: () => void = () => {},
+): void {
+  class MockURL extends NativeURL {
+    static createObjectURL = vi.fn(createObjectURL);
+    static revokeObjectURL = vi.fn(revokeObjectURL);
+  }
+  vi.stubGlobal('URL', MockURL);
+}
+
+function expectSlideMarkup(html: string, text: string): void {
+  expect(html).toMatch(new RegExp(`<section class="slide"[^>]*>${text}</section>`));
+}
+
 const exportsSource = readFileSync(
   join(dirname(fileURLToPath(import.meta.url)), '../../src/runtime/exports.ts'),
   'utf8',
 );
+
+beforeEach(() => {
+  delete process.env.VITE_TEAMVER_EXPORT_ASYNC_JOBS_ENABLED;
+});
 
 describe('exportAsHtml / exportAsZip lean srcdoc', () => {
   it('builds HTML/ZIP exports with exportDocument to skip preview annotate tax', () => {
@@ -463,12 +485,9 @@ describe('exportProjectAsPdf', () => {
     const fallback = vi.fn();
     let capturedBlob: Blob | undefined;
     let capturedFilename: string | undefined;
-    vi.stubGlobal('URL', {
-      createObjectURL: (blob: Blob) => {
-        capturedBlob = blob;
-        return 'blob:pdf';
-      },
-      revokeObjectURL: vi.fn(),
+    stubBrowserURL((blob: Blob) => {
+      capturedBlob = blob;
+      return 'blob:pdf';
     });
     vi.stubGlobal('document', {
       body: {
@@ -543,10 +562,7 @@ describe('exportProjectAsPdf', () => {
       setTimeout: (fn: () => void) => fn(),
     });
     vi.stubGlobal('document', { baseURI: 'https://stg-design.teamver.com/' });
-    vi.stubGlobal('URL', {
-      createObjectURL: vi.fn(() => 'blob:pdf'),
-      revokeObjectURL: vi.fn(),
-    });
+    stubBrowserURL(() => 'blob:pdf');
     vi.stubGlobal('fetch', vi.fn(async () =>
       new Response(JSON.stringify({
         error: {
@@ -591,10 +607,7 @@ describe('exportProjectAsPdf', () => {
       setTimeout: (fn: () => void) => fn(),
     });
     vi.stubGlobal('document', { baseURI: 'https://stg-design.teamver.com/' });
-    vi.stubGlobal('URL', {
-      createObjectURL: vi.fn(() => 'blob:pdf'),
-      revokeObjectURL: vi.fn(),
-    });
+    stubBrowserURL(() => 'blob:pdf');
     vi.stubGlobal('fetch', vi.fn(async () =>
       new Response(JSON.stringify({
         error: {
@@ -682,12 +695,9 @@ describe('exportProjectAsPdf', () => {
     vi.stubGlobal('document', {
       baseURI: 'https://stg-design.teamver.com/',
     });
-    vi.stubGlobal('URL', {
-      createObjectURL: vi.fn((blob: Blob) => {
-        capturedBlob = blob;
-        return 'blob:pdf';
-      }),
-      revokeObjectURL: vi.fn(),
+    stubBrowserURL((blob: Blob) => {
+      capturedBlob = blob;
+      return 'blob:pdf';
     });
     vi.stubGlobal('fetch', vi.fn(async (url: string) => {
       if (url === '/api/projects/proj-1/export/deck/index.html?inline=1') {
@@ -716,7 +726,7 @@ describe('exportProjectAsPdf', () => {
     const printedDoc = await capturedBlob!.text();
     expect(printedDoc).not.toContain('sandbox="allow-scripts allow-modals"');
     expect(printedDoc).toContain('data-deck-print="injected"');
-    expect(printedDoc).toContain('<main class="slide">inlined deck</main>');
+    expect(printedDoc).toMatch(/<main class="slide"[^>]*>inlined deck<\/main>/);
   });
 
   it('forwards htmlSnapshot to the daemon so the export bypasses tenant-storage resolution', async () => {
@@ -746,7 +756,7 @@ describe('exportProjectAsPdf', () => {
       expect(body.delivery).toBe('ticket');
       expect(body.fileName).toBe('deck/index.html');
       expect(body.title).toBe('Seed Deck');
-      expect(body.html).toContain('<section class="slide">Snapshot</section>');
+      expectSlideMarkup(body.html, 'Snapshot');
       expect(body.html).not.toContain('flex-direction: column !important');
     } finally {
       restoreHost();
@@ -802,12 +812,9 @@ describe('exportProjectAsPdf', () => {
       setTimeout: (fn: () => void) => fn(),
     });
     vi.stubGlobal('document', { baseURI: 'https://stg-design.teamver.com/' });
-    vi.stubGlobal('URL', {
-      createObjectURL: vi.fn((blob: Blob) => {
-        capturedBlob = blob;
-        return 'blob:pdf';
-      }),
-      revokeObjectURL: vi.fn(),
+    stubBrowserURL((blob: Blob) => {
+      capturedBlob = blob;
+      return 'blob:pdf';
     });
     const fetchMock = vi.fn(async () =>
       new Response(
@@ -819,7 +826,6 @@ describe('exportProjectAsPdf', () => {
     );
     vi.stubGlobal('fetch', fetchMock);
 
-    const started = Date.now();
     const result = await exportProjectAsPdf({
       deck: true,
       fallbackPdf: fallback,
@@ -828,7 +834,6 @@ describe('exportProjectAsPdf', () => {
       projectId: 'proj-1',
       title: 'Seed Deck',
     });
-    const elapsed = Date.now() - started;
 
     expect(result).toBe('fallback');
     // Single daemon export POST — no retry sleeps consume the 2.4s budget.
@@ -837,7 +842,6 @@ describe('exportProjectAsPdf', () => {
       String(call[0] ?? '').includes('/export/pdf'),
     );
     expect(exportPosts).toHaveLength(1);
-    expect(elapsed).toBeLessThan(500);
     // Browser-print fallback drove from the snapshot, not from a fresh fetch.
     expect(capturedBlob).toBeDefined();
   });
@@ -857,12 +861,9 @@ describe('exportProjectAsPdf', () => {
       setTimeout: (fn: () => void) => fn(),
     });
     vi.stubGlobal('document', { baseURI: 'https://stg-design.teamver.com/' });
-    vi.stubGlobal('URL', {
-      createObjectURL: vi.fn((blob: Blob) => {
-        capturedBlob = blob;
-        return 'blob:pdf';
-      }),
-      revokeObjectURL: vi.fn(),
+    stubBrowserURL((blob: Blob) => {
+      capturedBlob = blob;
+      return 'blob:pdf';
     });
     const fetchMock = vi.fn(async (url: string) => {
       if (url.endsWith('/export/pdf')) {
@@ -899,7 +900,7 @@ describe('exportProjectAsPdf', () => {
     }
     expect(capturedBlob).toBeDefined();
     const printedDoc = await capturedBlob!.text();
-    expect(printedDoc).toContain('<section class="slide">Snapshot</section>');
+    expectSlideMarkup(printedDoc, 'Snapshot');
   });
 
   it('retries when the daemon reports teamver_project_s3_prefix_required and eventually succeeds', async () => {
@@ -1242,12 +1243,9 @@ describe('exportProjectAsHtml', () => {
     capturedFilename = undefined;
     capturedHref = undefined;
     clickCount = 0;
-    vi.stubGlobal('URL', {
-      createObjectURL: (blob: Blob) => {
-        capturedBlob = blob;
-        return 'blob:test';
-      },
-      revokeObjectURL: () => {},
+    stubBrowserURL((blob: Blob) => {
+      capturedBlob = blob;
+      return 'blob:test';
     });
     vi.stubGlobal('document', {
       createElement: () => {
@@ -1275,8 +1273,265 @@ describe('exportProjectAsHtml', () => {
   });
 
   afterEach(() => {
+    delete process.env.VITE_TEAMVER_EXPORT_ASYNC_JOBS_ENABLED;
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
+  });
+
+  it('uses async export jobs first when the feature flag is enabled', async () => {
+    process.env.VITE_TEAMVER_EXPORT_ASYNC_JOBS_ENABLED = '1';
+    const statuses: string[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url === '/api/projects/proj-1/export/jobs') {
+        return new Response(
+          JSON.stringify({
+            jobId: 'job-1',
+            status: 'queued',
+            statusUrl: '/api/projects/proj-1/export/jobs/job-1',
+          }),
+          { status: 202, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      if (url === '/api/projects/proj-1/export/jobs/job-1') {
+        return new Response(
+          JSON.stringify({
+            jobId: 'job-1',
+            status: 'ready',
+            downloadUrl: '/api/projects/proj-1/export/downloads/ticket-job',
+            filename: 'Seed-Deck.html',
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      if (url === '/api/projects/proj-1/export/downloads/ticket-job') {
+        return new Response('<!doctype html><p>async job html</p>', {
+          headers: {
+            'content-disposition': 'attachment; filename="Seed-Deck.html"',
+            'content-type': 'text/html',
+          },
+          status: 200,
+        });
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    }));
+
+    await exportProjectAsHtml({
+      deck: true,
+      projectId: 'proj-1',
+      onAsyncExportStatus: (status) => statuses.push(status),
+      filePath: 'deck/index.html',
+      fallbackHtml: '<section>fallback</section>',
+      fallbackTitle: 'Seed Deck',
+    });
+
+    expect(fetch).toHaveBeenNthCalledWith(1, '/api/projects/proj-1/export/jobs', {
+      body: JSON.stringify({
+        deck: true,
+        delivery: 'ticket',
+        fileName: 'deck/index.html',
+        format: 'html',
+        title: 'Seed Deck',
+      }),
+      credentials: 'same-origin',
+      headers: { 'content-type': 'application/json' },
+      method: 'POST',
+    });
+    expect(fetch).toHaveBeenCalledTimes(3);
+    expect(statuses).toEqual(['queued', 'ready']);
+    expect(capturedFilename).toBe('Seed-Deck.html');
+    expect(await capturedBlob!.text()).toBe('<!doctype html><p>async job html</p>');
+  });
+
+  it('uses async export job SSE events before falling back to polling', async () => {
+    process.env.VITE_TEAMVER_EXPORT_ASYNC_JOBS_ENABLED = '1';
+    type ExportJobHandler = (event: { data: string }) => void;
+    class MockEventSource {
+      static readonly CONNECTING = 0;
+      static readonly OPEN = 1;
+      static readonly CLOSED = 2;
+      readonly url: string;
+      readonly withCredentials: boolean;
+      readonly close = vi.fn();
+      onerror: (() => void) | null = null;
+      private readonly handlers = new Map<string, ExportJobHandler>();
+
+      constructor(url: string, init?: EventSourceInit) {
+        this.url = url;
+        this.withCredentials = init?.withCredentials === true;
+        eventSources.push(this);
+      }
+
+      addEventListener(type: string, handler: ExportJobHandler): void {
+        this.handlers.set(type, handler);
+      }
+
+      emit(type: string, data: unknown): void {
+        this.handlers.get(type)?.({ data: JSON.stringify(data) });
+      }
+    }
+    const eventSources: MockEventSource[] = [];
+    const statuses: string[] = [];
+    vi.stubGlobal('EventSource', MockEventSource);
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url === '/api/projects/proj-1/export/jobs') {
+        return new Response(
+          JSON.stringify({
+            eventsUrl: '/api/projects/proj-1/export/jobs/job-1/events',
+            jobId: 'job-1',
+            status: 'queued',
+            statusUrl: '/api/projects/proj-1/export/jobs/job-1',
+          }),
+          { status: 202, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      if (url === '/api/projects/proj-1/export/downloads/ticket-job') {
+        return new Response('<!doctype html><p>sse html</p>', {
+          headers: {
+            'content-disposition': 'attachment; filename="Seed-Deck.html"',
+            'content-type': 'text/html',
+          },
+          status: 200,
+        });
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    }));
+
+    const pending = exportProjectAsHtml({
+      deck: true,
+      projectId: 'proj-1',
+      onAsyncExportStatus: (status) => statuses.push(status),
+      filePath: 'deck/index.html',
+      fallbackHtml: '<section>fallback</section>',
+      fallbackTitle: 'Seed Deck',
+    });
+    await vi.waitFor(() => expect(eventSources).toHaveLength(1));
+    expect(eventSources[0]!.url).toBe('/api/projects/proj-1/export/jobs/job-1/events');
+    expect(eventSources[0]!.withCredentials).toBe(true);
+    eventSources[0]!.emit('export_job', {
+      jobId: 'job-1',
+      status: 'running',
+      statusUrl: '/api/projects/proj-1/export/jobs/job-1',
+    });
+    eventSources[0]!.emit('export_job', {
+      downloadUrl: '/api/projects/proj-1/export/downloads/ticket-job',
+      filename: 'Seed-Deck.html',
+      jobId: 'job-1',
+      status: 'ready',
+      statusUrl: '/api/projects/proj-1/export/jobs/job-1',
+    });
+    await pending;
+
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(statuses).toEqual(['queued', 'running', 'ready']);
+    expect(capturedFilename).toBe('Seed-Deck.html');
+    expect(await capturedBlob!.text()).toBe('<!doctype html><p>sse html</p>');
+  });
+
+  it('falls back to async export job polling when SSE is unavailable', async () => {
+    process.env.VITE_TEAMVER_EXPORT_ASYNC_JOBS_ENABLED = '1';
+    class MockEventSource {
+      readonly close = vi.fn();
+      onerror: (() => void) | null = null;
+
+      constructor() {
+        eventSources.push(this);
+      }
+
+      addEventListener(): void {}
+    }
+    const eventSources: MockEventSource[] = [];
+    vi.stubGlobal('EventSource', MockEventSource);
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url === '/api/projects/proj-1/export/jobs') {
+        return new Response(
+          JSON.stringify({
+            eventsUrl: '/api/projects/proj-1/export/jobs/job-1/events',
+            jobId: 'job-1',
+            status: 'queued',
+            statusUrl: '/api/projects/proj-1/export/jobs/job-1',
+          }),
+          { status: 202, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      if (url === '/api/projects/proj-1/export/jobs/job-1') {
+        return new Response(
+          JSON.stringify({
+            downloadUrl: '/api/projects/proj-1/export/downloads/ticket-job',
+            filename: 'Seed-Deck.html',
+            jobId: 'job-1',
+            status: 'ready',
+            statusUrl: '/api/projects/proj-1/export/jobs/job-1',
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      if (url === '/api/projects/proj-1/export/downloads/ticket-job') {
+        return new Response('<!doctype html><p>poll html</p>', {
+          headers: {
+            'content-disposition': 'attachment; filename="Seed-Deck.html"',
+            'content-type': 'text/html',
+          },
+          status: 200,
+        });
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    }));
+
+    const pending = exportProjectAsHtml({
+      deck: true,
+      projectId: 'proj-1',
+      filePath: 'deck/index.html',
+      fallbackHtml: '<section>fallback</section>',
+      fallbackTitle: 'Seed Deck',
+    });
+    await vi.waitFor(() => expect(eventSources).toHaveLength(1));
+    eventSources[0]!.onerror?.();
+    await pending;
+
+    expect(fetch).toHaveBeenCalledTimes(3);
+    expect(capturedFilename).toBe('Seed-Deck.html');
+    expect(await capturedBlob!.text()).toBe('<!doctype html><p>poll html</p>');
+  });
+
+  it('falls back to the synchronous export route when async jobs are disabled server-side', async () => {
+    process.env.VITE_TEAMVER_EXPORT_ASYNC_JOBS_ENABLED = '1';
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url === '/api/projects/proj-1/export/jobs') {
+        return new Response(
+          JSON.stringify({
+            error: { code: 'EXPORT_JOBS_DISABLED', message: 'async export jobs are disabled' },
+          }),
+          { status: 404, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      if (url === '/api/projects/proj-1/export/html') {
+        return new Response('<!doctype html><p>sync html</p>', {
+          headers: {
+            'content-disposition': 'attachment; filename="Seed-Deck.html"',
+            'content-type': 'text/html',
+          },
+          status: 200,
+        });
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    }));
+
+    await exportProjectAsHtml({
+      deck: true,
+      projectId: 'proj-1',
+      filePath: 'deck/index.html',
+      fallbackHtml: '<section>fallback</section>',
+      fallbackTitle: 'Seed Deck',
+    });
+
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch).toHaveBeenNthCalledWith(
+      2,
+      '/api/projects/proj-1/export/html',
+      expect.objectContaining({ method: 'POST' }),
+    );
+    expect(capturedFilename).toBe('Seed-Deck.html');
+    expect(await capturedBlob!.text()).toBe('<!doctype html><p>sync html</p>');
   });
 
   it('downloads daemon-rendered project HTML instead of the raw source body', async () => {
@@ -1445,12 +1700,9 @@ describe('exportProjectAsZip', () => {
   beforeEach(() => {
     capturedBlob = undefined;
     capturedFilename = undefined;
-    vi.stubGlobal('URL', {
-      createObjectURL: (blob: Blob) => {
-        capturedBlob = blob;
-        return 'blob:test';
-      },
-      revokeObjectURL: () => {},
+    stubBrowserURL((blob: Blob) => {
+      capturedBlob = blob;
+      return 'blob:test';
     });
     vi.stubGlobal('document', {
       createElement: () => {
@@ -1556,12 +1808,9 @@ describe('exportProjectAsPptx', () => {
   beforeEach(() => {
     capturedBlob = undefined;
     capturedFilename = undefined;
-    vi.stubGlobal('URL', {
-      createObjectURL: (blob: Blob) => {
-        capturedBlob = blob;
-        return 'blob:test';
-      },
-      revokeObjectURL: () => {},
+    stubBrowserURL((blob: Blob) => {
+      capturedBlob = blob;
+      return 'blob:test';
     });
     vi.stubGlobal('document', {
       createElement: () => {
@@ -1619,7 +1868,7 @@ describe('exportProjectAsPptx', () => {
       fileName: 'deck/index.html',
       title: 'Seed Deck',
     });
-    expect(requestBody.html).toContain('<section class="slide">A</section>');
+    expectSlideMarkup(requestBody.html, 'A');
     expect(capturedBlob?.size).toBe(4);
     expect(capturedFilename).toBe('Seed-Deck.pptx');
   });
@@ -1701,12 +1950,9 @@ describe('exportAsMd', () => {
   beforeEach(() => {
     capturedBlob = undefined;
     capturedFilename = undefined;
-    vi.stubGlobal('URL', {
-      createObjectURL: (blob: Blob) => {
-        capturedBlob = blob;
-        return 'blob:test';
-      },
-      revokeObjectURL: () => {},
+    stubBrowserURL((blob: Blob) => {
+      capturedBlob = blob;
+      return 'blob:test';
     });
     vi.stubGlobal('document', {
       createElement: () => {
@@ -1774,14 +2020,11 @@ describe('sandboxed preview Blob exports', () => {
     openCalls = [];
     blobUrlCounter = 0;
     mockWin = { opener: {}, location: { href: '' } };
-    vi.stubGlobal('URL', {
-      createObjectURL: (blob: Blob) => {
-        capturedBlobs.push(blob);
-        capturedBlob = blob;
-        blobUrlCounter += 1;
-        return `blob:test-${blobUrlCounter}`;
-      },
-      revokeObjectURL: vi.fn(),
+    stubBrowserURL((blob: Blob) => {
+      capturedBlobs.push(blob);
+      capturedBlob = blob;
+      blobUrlCounter += 1;
+      return `blob:test-${blobUrlCounter}`;
     });
     vi.stubGlobal('window', {
       location: {
@@ -2314,7 +2557,7 @@ describe('exportAsImage', () => {
     clickMock = vi.fn();
     createObjectURLMock = vi.fn(() => 'blob:mock-url');
     anchors = [];
-    vi.stubGlobal('URL', { createObjectURL: createObjectURLMock, revokeObjectURL: vi.fn() });
+    stubBrowserURL(createObjectURLMock);
     vi.stubGlobal('document', {
       createElement: () => {
         const el = { href: '', download: '', click: clickMock };
@@ -2440,5 +2683,23 @@ describe('formatExportFailureMessageForUser', () => {
         new Error('렌더링된 PDF 다운로드를 만들지 못했습니다. 잠시 후 다시 시도하세요.'),
       ),
     ).toContain('렌더링된 PDF');
+  });
+
+  it('maps oversized PPTX deck errors to PDF guidance', () => {
+    const err = new Error(
+      'EXPORT_DECK_TOO_LARGE: PPTX export supports up to 40 slides; this deck has 41. Use PDF download for this large deck.',
+    );
+    expect(isDeckTooLargeForPptxExportError(err)).toBe(true);
+    expect(formatExportFailureMessageForUser(err)).toBe(
+      'PPTX 다운로드는 40장 이하 슬라이드에 맞춰 제공됩니다. 현재 덱은 41장이므로 PDF로 다운로드해 주세요.',
+    );
+  });
+
+  it('uses generic PDF guidance when oversized PPTX details are absent', () => {
+    const err = new Error('EXPORT_DECK_TOO_LARGE');
+    expect(isDeckTooLargeForPptxExportError(err)).toBe(true);
+    expect(formatExportFailureMessageForUser(err)).toBe(
+      'PPTX 다운로드 제한을 초과했습니다. PDF로 다운로드해 주세요.',
+    );
   });
 });

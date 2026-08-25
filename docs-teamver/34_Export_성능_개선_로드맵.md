@@ -58,17 +58,19 @@ raw는 “파일 복사”에 가깝고, export는 **매번 미니 빌드 파이
 
 **문제:** `fetch` + `blob()`은 브라우저가 **응답 body 전체를 JS heap에 복제**한다. 20MB PDF면 FE만 20MB+ (GC 전까지).
 
-### 2.2 daemon — `apps/daemon/src/import-export-routes.ts`
+### 2.2 daemon — route + render service
 
 ```text
-POST /export/html  → buildDesktopPdfExportInput → renderHeadlessHtmlSnapshot → res.send(Buffer)
-POST /export/zip   → renderHeadlessHtmlSnapshot → JSZip.generateAsync(nodebuffer) → res.send
-POST /export/pdf   → renderHeadlessPdf → res.send(pdf Buffer)
-POST /export/image → renderHeadlessImage → res.send
+POST /export/html  → import-export-routes → export-render-service → renderHeadlessHtmlSnapshot
+POST /export/zip   → import-export-routes → export-render-service → renderHeadlessHtmlSnapshot + JSZip
+POST /export/pdf   → import-export-routes → export-render-service → renderHeadlessPdf
+POST /export/image → import-export-routes → export-render-service → renderHeadlessImage
+POST /export/pptx  → import-export-routes → export-render-service → renderHeadlessEditablePptx
 ```
 
 - HTML/ZIP은 **동일 headless snapshot**을 공유 (ZIP = snapshot 1파일 압축).
-- 응답은 **스트리밍 없이** `res.send(Buffer)` — nginx·FE까지 **한 덩어리**.
+- route는 요청 검증·ticket/offload 응답만 담당하고, rendered export 생성과 cache descriptor 구성은 `apps/daemon/src/export-render-service.ts`가 담당한다.
+- ticket을 사용하지 않는 legacy 응답은 `res.send(Buffer)` 또는 cache file stream이며, Teamver 다운로드/Drive publish는 ticket + native/S3 offload 경로가 기본이다.
 
 ### 2.3 headless — `apps/daemon/src/headless-export.ts`
 
@@ -393,11 +395,11 @@ FE: window.location = url  OR  <a href download>
 ### 9.2 설계 스케치
 
 ```text
-POST /export/jobs  { format, fileName, deck }
-  → 202 { jobId, status: "queued" }
+POST /export/jobs  { format, fileName, deck, delivery: "ticket" }
+  → 202 { jobId, status: "queued", statusUrl }
 
 GET /export/jobs/:jobId
-  → { status: "running"|"ready"|"failed", downloadUrl?, error? }
+  → { status: "queued"|"running"|"ready"|"failed", downloadUrl?, error? }
 
 Worker (daemon sidecar or queue consumer):
   Chromium render → S3 exports/ → status=ready
@@ -405,7 +407,41 @@ Worker (daemon sidecar or queue consumer):
 
 **FE:** FileViewer spinner + poll / SSE. 완료 시 presigned GET (Phase 2).
 
-**Job store:** RDS `design_export_jobs` 또는 Redis (TTL).
+**1차 구현:** daemon in-memory TTL store + feature flag (`OD_EXPORT_ASYNC_JOBS_ENABLED=1`) — route timeout 회피 검증용.
+**상용 확장:** RDS `design_export_jobs` 또는 Redis (TTL) + dedicated worker.
+
+### 9.3 Staging 검증 체크리스트 (async export + 대형 PPTX)
+
+**feature flag는 BE/FE를 같이 켜서 검증한다.** daemon만 켜면 FE가 sync export를 계속 사용하고, FE만 켜면 `/export/jobs`가 `EXPORT_JOBS_DISABLED`로 떨어진 뒤 sync fallback을 탄다.
+
+```bash
+OD_EXPORT_ASYNC_JOBS_ENABLED=1
+VITE_TEAMVER_EXPORT_ASYNC_JOBS_ENABLED=1
+OD_EXPORT_PPTX_MAX_SLIDES=40
+OD_EXPORT_OFFLOAD_ENABLED=1
+OD_EXPORT_OFFLOAD_REQUIRED=0
+```
+
+**정상 deck (40장 이하):**
+
+1. PDF/PPTX/HTML/ZIP 다운로드를 각각 1회 실행한다.
+2. Network에서 `POST /api/projects/{id}/export/jobs`가 `202`를 반환하는지 확인한다.
+3. `GET /api/projects/{id}/export/jobs/{jobId}/events`가 연결되거나, 프록시/SSE 실패 시 `GET /api/projects/{id}/export/jobs/{jobId}` polling으로 fallback하는지 확인한다.
+4. ready 이후 `downloadUrl=/api/projects/{id}/export/downloads/{token}`가 열리고, token GET은 native download로 이어지는지 확인한다.
+5. 두 번째 동일 다운로드는 daemon 로그 `od_export_done`의 `cache=hit-local` 또는 `hit-memo` 비율이 올라가는지 확인한다.
+
+**대형 deck (41장 이상):**
+
+1. PPTX 다운로드는 `EXPORT_DECK_TOO_LARGE`로 실패해야 한다.
+2. 사용자 메시지는 “PPTX 다운로드는 40장 이하…, 현재 덱은 41장…, PDF로 다운로드” 형태로 제한 사유를 설명해야 한다.
+3. 실패 토스트의 `PDF 다운로드` 액션 또는 메뉴의 PDF 다운로드는 정상 성공해야 한다.
+4. 같은 대형 deck에서 PPTX 실패가 반복되어도 Chromium queue가 장시간 점유되지 않아야 한다.
+
+**offload/cache 관찰 포인트:**
+
+- `OD_EXPORT_OFFLOAD_REQUIRED=0`에서는 S3 offload 실패가 있어도 download stream fallback으로 사용자 다운로드가 막히지 않아야 한다.
+- `OD_EXPORT_OFFLOAD_REQUIRED=1`은 S3 IAM/HEAD/PUT 검증이 끝난 뒤에만 켠다. 켠 상태에서 offload ticket 준비 실패 시 `EXPORT_OFFLOAD_UNAVAILABLE`이 맞다.
+- presigned redirect 성공 시 ticket GET은 `302`를 반환하고, `X-OD-Export-Delivery-Mode=redirect`가 보인다. stream fallback이면 `200`과 `deliveryMode=stream`이 정상이다.
 
 ---
 
@@ -481,9 +517,19 @@ staging 배포 후 같은 프로젝트·같은 파일·같은 export 옵션으�
 
 ### Backlog — Phase 3
 
-- async job API + FileViewer UX
-- dedicated export worker (Chromium isolate)
-- deck slide count soft cap + “대형 deck은 PDF만” UX
+- ✅ route/render service split — async job/worker가 HTTP route 없이 동일 render 함수를 호출할 수 있는 진입점 확보
+- ✅ async job API skeleton — `OD_EXPORT_ASYNC_JOBS_ENABLED=1`일 때 daemon in-memory job store + `POST/GET /export/jobs` 계약 제공
+- ✅ FE async job polling opt-in — `VITE_TEAMVER_EXPORT_ASYNC_JOBS_ENABLED=1`일 때 PDF/PPTX/HTML/ZIP 다운로드가 `/export/jobs`를 먼저 사용하고, 서버 disabled 시 기존 sync ticket 경로로 fallback
+- ✅ FE async job progress feedback — `/export/jobs` queued/running/ready 상태를 다운로드 loading toast에 반영해 긴 export에서도 클릭·요청 진행 상태가 끊겨 보이지 않도록 보강
+- ✅ async job SSE feed — `GET /export/jobs/:jobId/events`가 status JSON과 동일한 `export_job` 이벤트를 송신해 polling보다 빠른 진행 상태 반영을 준비
+- ✅ FE async job SSE first — job 생성 응답에 `eventsUrl`이 있으면 EventSource로 ready/failed를 먼저 수신하고, SSE unavailable/timeout 시 기존 polling으로 fallback
+- ✅ FE polling fallback backoff — SSE를 사용할 수 없는 브라우저/프록시 환경에서는 status polling으로 복구하되, 반복 대기 중에는 interval을 점진 확대해 daemon 호출량을 제한
+- ✅ FileViewer UX polish — async export 진행 중 우측 하단 progress panel을 표시하고 성공/실패/취소 시 자동 해제
+- ✅ deck slide count soft cap — PPTX export는 `OD_EXPORT_PPTX_MAX_SLIDES`를 초과하면 `EXPORT_DECK_TOO_LARGE`로 차단하고 PDF 다운로드를 유도
+- ✅ large-deck PDF fallback action — `EXPORT_DECK_TOO_LARGE` 발생 시 FE 토스트에서 PDF 다운로드 액션을 제공
+- ✅ export job runner module split — async job 실행 상태 전환·render 선택·download ticket 등록을 route 밖 `export-job-runner.ts`로 분리해 별도 worker/sidecar가 재사용할 실행 계약 확보
+- dedicated export worker process (Chromium isolate)
+- ✅ “대형 deck은 PDF만” 정책 문구 polish — PPTX 제한 초과를 “오래 걸릴 수 있음”이 아니라 “N장 제한 초과, PDF 다운로드 권장”으로 명확히 안내
 
 ---
 
@@ -546,6 +592,11 @@ staging 배포 후 같은 프로젝트·같은 파일·같은 export 옵션으�
 | `OD_EXPORT_MAX_CONCURRENT` | **`4`** | **`6`** (피크 **`8`**) | 동시 headless render 슬롯 |
 | `OD_EXPORT_BROWSER_POOL_SIZE` | **`2`** | **`3`** | warm browser 수 (≤ concurrent) |
 | `OD_EXPORT_QUEUE_MAX` | **`32`** | **`64`** | 초과 시 503 + retry-after (OOM 방지) |
+| `OD_EXPORT_PPTX_MAX_SLIDES` | **`40`** | **`40`** | PPTX 변환 soft cap. `0`이면 해제, 초과 시 PDF 유도 |
+| `OD_EXPORT_ASYNC_JOBS_ENABLED` | `0` → 실험 시 `1` | `0` | Phase 3 async export job API flag (`/export/jobs`) |
+| `OD_EXPORT_JOB_TTL_SEC` | `900` | `900` | in-memory async job status TTL (60~86400 clamp) |
+| `OD_EXPORT_JOB_MAX_ENTRIES` | `128` | `128` | daemon process당 job status 상한 (8~1024 clamp) |
+| `VITE_TEAMVER_EXPORT_ASYNC_JOBS_ENABLED` | `0` → 실험 시 `1` | `0` | FE가 PDF/PPTX/HTML/ZIP 다운로드에서 async job API를 우선 사용 |
 | `OD_EXPORT_CACHE_ENABLED` | `1` (Phase 1 후) | **`1`** | S3 artifact cache |
 | `OD_EXPORT_CACHE_TTL_SEC` | `604800` | `604800` | exports/ lifecycle hint |
 | `OD_EXPORT_OFFLOAD_ENABLED` | `1` (staging 검증) | `0` → 안정화 후 `1` | presigned GET/offload rollout flag |
@@ -624,7 +675,7 @@ embed/Drive 품질 SSOT가 **headless flatten snapshot**이다. Vite dist·deck 
 | 5b | Publish stream (design-api RAM 이중화 제거) — §20.4 | P1 (오픈 직후) | ✅ daemon ticket stream + capped bytes fallback + failure classification |
 | 6 | FE native download (blob 이중 메모리 제거) | P1 | ✅ Phase 0 (ticket + GET) |
 | 7 | `OD_EXPORT_QUEUE_MAX` 초과 시 503 UX | P2 | ✅ Phase 0 (503 + `ExportQueueFullError`) |
-| 8 | async job (30s+ deck) | P2 | ⏳ |
+| 8 | async job (30s+ deck) | P2 | ✅ 1차 in-memory/SSE/polling 구현 — staging flag 검증 필요 |
 
 **용량 산식 (rough):**
 
@@ -984,6 +1035,25 @@ CloudWatch 대시보드 위젯:
 
 | 날짜 | 내용 |
 |------|------|
+| 2026-08-24 | ✅ Async export flag 테스트 격리 보강 — shell/build 환경에서 `VITE_TEAMVER_EXPORT_ASYNC_JOBS_ENABLED=1`이 켜진 채 Vitest를 실행하면 static env capture 때문에 sync export fixture까지 `/export/jobs` 경로를 타던 문제를 수정. Vitest 런타임에서는 async export flag만 현재 `process.env`를 우선해 테스트별 ON/OFF가 격리되도록 하고, export 테스트는 기본 flag off로 초기화. `teamver_project_s3_prefix_required` snapshot fallback 테스트는 wall-clock threshold 대신 export POST 1회 계약으로 고정해 병렬 실행 부하에 흔들리지 않게 정리. flag OFF/ON 양쪽 `pnpm exec vitest run -c vitest.config.ts tests/runtime/exports.test.ts tests/teamver-client-build-env.test.ts` 112 passed |
+| 2026-08-24 | ✅ Export module split 회귀 테스트 fixture 정합성 보강 — web export 테스트의 `URL` mock이 `new URL(...)` 생성자를 깨뜨려 browser-print fallback/HTML·ZIP fallback 경로가 실제 브라우저와 다르게 실패하던 문제를 수정. 최신 standalone export 보정(`data-od-compact-deck-export-fix`, fixed 16:9 canvas style)으로 인해 snapshot HTML에 inline style이 붙는 정상 동작을 테스트가 허용하도록 갱신. `apps/web` export/runtime env 테스트 112 passed, daemon async export route 테스트 4 passed(로컬 서버 bind 권한 필요)로 확인 |
+| 2026-08-24 | ✅ 최신 `staging` 재병합 및 충돌 정리 — `feat/export-module-split`에 최신 staging을 merge하면서 `import-export-routes.ts`, `FileViewer.tsx`, `runtime/exports.ts` 충돌을 해소. route-local 렌더링으로 되돌아가지 않도록 `export-render-service`/`export-job-runner` 경로를 유지하고, 최신 staging의 공식 템플릿 look 보정·relative asset warm-up·PPTX 초과 안내·async progress UI를 함께 재적용. `@open-design/contracts` runtime이 `dist` entrypoint를 보므로 신규 helper 변경 후 contracts build 산출물도 갱신해야 함을 확인 |
+| 2026-08-03 | staging 최신 merge 검토 — `teamverViteEnv.ts` 충돌은 async export flag와 staging draw/manual-edit flags를 모두 보존해 해결. async export FE flag의 타입 선언, Docker build arg, daemon runtime env, staging/production env example을 추가해 `/export/jobs` rollout 시 BE/FE flag 불일치가 생기지 않도록 보강 |
+| 2026-08-03 | Export async runner 리뷰 보강 — job TTL 만료·잘못된 job id 등으로 `markExportJobRunning`이 실패하면 Chromium render를 시작하지 않고 skip warning 후 종료하도록 수정. 상태 저장소에 남지 않는 작업이 백그라운드에서 불필요하게 렌더링되는 edge case를 테스트로 고정 |
+| 2026-08-03 | Phase 3 staging 검증 체크리스트 추가 — async export flag를 BE/FE 함께 켜는 조건, 정상 deck PDF/PPTX/HTML/ZIP job flow, 41장 이상 PPTX 제한 메시지, S3 offload required 전환 전 관찰 포인트를 문서화. 상용 체크리스트의 async job 항목은 1차 구현 완료·staging 검증 대기로 갱신 |
+| 2026-08-03 | 대형 PPTX 정책 문구 정리 — `EXPORT_DECK_TOO_LARGE` 사용자 메시지를 “PPTX 변환이 오래 걸릴 수 있음”에서 “PPTX 다운로드는 제한 장수 이하 제공, 현재 덱은 제한 초과이므로 PDF 다운로드”로 변경. daemon error message도 대형 덱용 PDF 다운로드 안내로 맞추고, 상세 장수 파싱 및 generic fallback 테스트를 추가 |
+| 2026-08-03 | Export async job runner 모듈 분리 — `import-export-routes.ts` 내부 background 실행 함수를 `export-job-runner.ts`로 분리. route는 요청 검증·job 생성·URL 응답에 집중하고, runner는 렌더 선택·offload 요구 검증·download ticket 저장·job 상태 전환을 담당하도록 경계를 정리. 별도 Chromium worker 프로세스 전환 전에도 동일 실행 계약을 테스트할 수 있게 함 |
+| 2026-08-03 | 대형 PPTX 초과 시 PDF 대체 액션 추가 — web runtime이 `EXPORT_DECK_TOO_LARGE`를 안정적으로 판별하고 사용자 메시지를 PDF 안내로 매핑. FileViewer PPTX 다운로드 실패 토스트에는 기존 PDF export 경로를 재사용하는 `PDF 다운로드` 액션을 제공해 큰 deck에서도 사용자가 다시 메뉴를 찾지 않고 바로 PDF로 받을 수 있게 함 |
+| 2026-08-03 | PPTX slide count soft cap 추가 — daemon PPTX export가 `OD_EXPORT_PPTX_MAX_SLIDES`(기본 40, 0이면 해제)를 초과하는 deck을 `EXPORT_DECK_TOO_LARGE`로 차단. editable/screenshot PPTX 양쪽 headless 경로에 동일 적용하고, async job 실패 코드도 안정적으로 내려가도록 보강. compose/env 예시와 운영 ENV 표 갱신 |
+| 2026-08-03 | FileViewer async export progress panel 추가 — async export job 상태 callback을 토스트뿐 아니라 우측 하단 고정 progress panel에도 반영. 메뉴가 닫힌 뒤에도 PDF/PPTX/HTML/ZIP 다운로드 준비 상태가 보이며, export 성공/실패/취소 시 해당 format의 progress state를 정리해 stale 진행 표시가 남지 않도록 함 |
+| 2026-07-31 | FE async export polling fallback 부하 완화 — SSE unavailable/error 시 기존 status polling으로 복구하는 테스트를 추가하고, polling 대기 interval을 1.2s에서 최대 5s까지 점진 확대하도록 변경해 긴 export 작업 중 `/export/jobs/:jobId` 호출량을 줄임 |
+| 2026-07-31 | FE async export SSE 우선 연결 — web export runtime이 job 생성 응답의 `eventsUrl`을 EventSource로 구독해 `export_job` ready/failed를 먼저 처리하고, EventSource 미지원·오류·timeout 시 기존 status polling으로 fallback하도록 보강. 상태 callback은 de-dupe해 loading toast가 같은 상태로 반복 갱신되지 않도록 함 |
+| 2026-07-31 | Async export SSE feed 추가 — daemon export job store에 상태 transition subscriber를 추가하고, `GET /api/projects/:id/export/jobs/:jobId/events`에서 `export_job` SSE 이벤트로 queued/running/ready/failed snapshot을 송신하도록 구현. `POST /export/jobs` 응답에는 `eventsUrl`을 포함해 FE가 SSE 우선·polling fallback 구조로 넘어갈 수 있게 준비 |
+| 2026-07-31 | FE async export job opt-in 연결 — `VITE_TEAMVER_EXPORT_ASYNC_JOBS_ENABLED=1`이면 PDF/PPTX/HTML/ZIP 다운로드가 `/export/jobs` 생성 → status polling → ready ticket download를 사용. daemon이 `EXPORT_JOBS_DISABLED`를 반환하면 기존 sync `/export/{format}` ticket 경로로 자동 fallback해 배포 flag 불일치 시에도 사용자 다운로드가 막히지 않도록 함 |
+| 2026-07-31 | FE async export 진행 표시 보강 — web export runtime이 async job `queued/running/ready` 상태 callback을 노출하고, FileViewer 다운로드 UI가 해당 상태를 loading toast로 계속 표시하도록 연결. async job 경로 테스트에 status callback 검증을 추가해 대형 deck export 중 사용자가 요청 진행 여부를 더 명확히 알 수 있게 함 |
+| 2026-07-31 | Async export job API 스켈레톤 추가 — `OD_EXPORT_ASYNC_JOBS_ENABLED=1`일 때 `POST /api/projects/:id/export/jobs`가 202 job을 만들고 background에서 `export-render-service`를 실행, `GET /api/projects/:id/export/jobs/:jobId`가 queued/running/ready/failed와 ticket `downloadUrl`을 반환. 기본 off로 배포 리스크를 낮추고, in-memory TTL/max entry guard로 daemon 누적 부하를 제한 |
+| 2026-07-31 | Export 모듈 분리 착수 — PDF/image/PPTX/HTML/ZIP rendered export 생성·cache descriptor 구성을 `export-render-service.ts`로 분리. `import-export-routes.ts`는 검증·ticket/offload 응답만 담당하도록 축소해 Phase 3 async job/dedicated worker가 route를 거치지 않고 같은 render 함수를 재사용할 수 있게 준비. desktop PDF exporter 예외 경로는 기존 호환을 위해 route에 유지하고, non-desktop PDF의 중복 입력 생성을 제거 |
+| 2026-07-31 | Export presigned GET 테스트 계약 갱신 — 한글/비ASCII 파일명 S3 `SignatureDoesNotMatch` 방지를 위해 presign query에는 `response-content-*`를 싣지 않고, PUT 시 저장된 object metadata(Content-Disposition/Type)를 다운로드 계약으로 사용함을 테스트에 반영 |
 | 2026-07-23 | Editable PPTX 작은 텍스트 줄바꿈 보정 — dom-to-pptx 변환 후 작은 pill/tag/email/짧은 metric 텍스트가 한 글자씩 줄바꿈되는 케이스 확인. editable 변환 직전 short no-wrap 요소를 감지해 `white-space: nowrap`, `word-break: keep-all`, `hyphens: none`, 여유 width/min-width를 강제. cache namespace를 `pptx-editable-dom-v3`로 올려 기존 깨진 PPTX cache 재사용 방지 |
 | 2026-07-23 | Export 다운로드 파일명 프로젝트명 우선 복구 — FE `resolveExportDownloadTitle()`이 project title이 `Design` 같은 generic 값이면 artifact slug를 우선해 `ai-adoption-deck.pptx`처럼 저장될 수 있었다. 다운로드 title은 프로젝트명이 존재하면 항상 프로젝트명을 사용하도록 복원. export cache hit도 과거 meta filename을 재사용하지 않고 현재 descriptor filename(project title 기반)을 응답하도록 고정 |
 | 2026-07-16 | Export offload 한글 파일명 복구 — S3 SigV4 충돌을 피하려고 presign 쿼리에 ASCII `filename=`만 넣으면 프로젝트명이 `_`로 저장됨. PUT 시 객체에 RFC 5987 `Content-Disposition`(+`Content-Type`)을 저장하고 presign에서는 `response-content-disposition`을 제거. HEAD로 disposition 일치 시 PUT skip, 구 객체(메타 없음)는 다음 export에서 한 번 재업로드 |

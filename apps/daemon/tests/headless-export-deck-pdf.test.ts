@@ -15,16 +15,46 @@ import {
   chromiumRuntimePaths,
   DECK_CHROME_HIDE_SELECTOR,
   DECK_WRAPPER_SELECTOR,
+  DeckSlideCountLimitError,
   ensureChromiumRuntimeDirs,
   imageScreenshotOptions,
   isHeadlessChromiumUnavailableError,
   logChromiumAvailabilityAtBoot,
   patchArtifactDeckPrintBackground,
   resolveExportTimeoutMs,
+  resolvePptxMaxSlides,
   resolvePlaywrightChromiumExecutable,
   resolvePlaywrightChromiumExecutables,
   warmupHeadlessChromiumAtBoot,
 } from '../src/headless-export.js';
+
+describe('PPTX slide count cap', () => {
+  it('defaults to 40 slides and can be disabled with 0', () => {
+    const previous = process.env.OD_EXPORT_PPTX_MAX_SLIDES;
+    try {
+      delete process.env.OD_EXPORT_PPTX_MAX_SLIDES;
+      expect(resolvePptxMaxSlides()).toBe(40);
+
+      process.env.OD_EXPORT_PPTX_MAX_SLIDES = '0';
+      expect(resolvePptxMaxSlides()).toBe(0);
+
+      process.env.OD_EXPORT_PPTX_MAX_SLIDES = '120';
+      expect(resolvePptxMaxSlides()).toBe(120);
+
+      process.env.OD_EXPORT_PPTX_MAX_SLIDES = 'nope';
+      expect(resolvePptxMaxSlides()).toBe(40);
+    } finally {
+      if (previous === undefined) delete process.env.OD_EXPORT_PPTX_MAX_SLIDES;
+      else process.env.OD_EXPORT_PPTX_MAX_SLIDES = previous;
+    }
+  });
+
+  it('surfaces a stable error code for oversized PPTX decks', () => {
+    const err = new DeckSlideCountLimitError(41, 40);
+    expect(err.code).toBe('EXPORT_DECK_TOO_LARGE');
+    expect(err.message).toContain('Use PDF download for this large deck');
+  });
+});
 
 describe('chromiumExecutableCandidates', () => {
   it('includes OD_EXPORT_CHROMIUM_PATH and common Linux paths', () => {
@@ -629,18 +659,27 @@ describe('buildDeckPrintCss', () => {
   });
 
   it('keeps PPTX downloads editable by default and screenshot-based only when opted out', () => {
-    const source = fs.readFileSync(
+    const routeSource = fs.readFileSync(
       path.join(__dirname, '..', 'src', 'import-export-routes.ts'),
       'utf8',
     );
-    const pptxBlock = source.slice(
-      source.indexOf("app.post('/api/projects/:id/export/pptx'"),
-      source.indexOf("app.post('/api/projects/:id/export/html'"),
+    const serviceSource = fs.readFileSync(
+      path.join(__dirname, '..', 'src', 'export-render-service.ts'),
+      'utf8',
     );
-    expect(pptxBlock).toContain('renderHeadlessEditablePptx');
-    expect(pptxBlock).toContain('req.body?.editable !== false');
-    expect(pptxBlock).toContain('pptx-editable-dom-v3');
-    expect(pptxBlock).toContain('buildScreenshotPptx');
+    const routePptxBlock = routeSource.slice(
+      routeSource.indexOf("app.post('/api/projects/:id/export/pptx'"),
+      routeSource.indexOf("app.post('/api/projects/:id/export/html'"),
+    );
+    const servicePptxBlock = serviceSource.slice(
+      serviceSource.indexOf('export async function renderPptxExportOutcome'),
+      serviceSource.indexOf('export async function renderHtmlExportOutcome'),
+    );
+    expect(routePptxBlock).toContain('editable: req.body?.editable');
+    expect(servicePptxBlock).toContain('renderHeadlessEditablePptx');
+    expect(servicePptxBlock).toContain('req.editable !== false');
+    expect(servicePptxBlock).toContain('pptx-editable-dom-v3');
+    expect(servicePptxBlock).toContain('buildScreenshotPptx');
   });
 });
 

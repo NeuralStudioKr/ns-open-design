@@ -323,11 +323,11 @@ export function buildDeckHtmlExportStaticRevealScript(): string {
     var computed = window.getComputedStyle(el);
     if (computed.display === 'none') {
       // Still hidden (template used display:none without :not(.active)).
-      el.style.setProperty('display', 'flex', 'important');
-      el.style.setProperty('flex-direction', 'column', 'important');
+      el.style.setProperty("display", "flex", "important");
+      el.style.setProperty("flex-direction", "column", "important");
     } else if (computed.display === 'flex' || computed.display === 'inline-flex') {
-      el.style.setProperty('display', 'flex', 'important');
-      el.style.setProperty('flex-direction', computed.flexDirection || 'column', 'important');
+      el.style.setProperty("display", "flex", "important");
+      el.style.setProperty("flex-direction", computed.flexDirection || "column", "important");
       if (computed.justifyContent && computed.justifyContent !== 'normal') {
         el.style.setProperty('justify-content', computed.justifyContent, 'important');
       }

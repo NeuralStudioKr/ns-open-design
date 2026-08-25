@@ -127,6 +127,7 @@ import {
   exportProjectAsPptx,
   exportProjectAsZip,
   formatExportFailureMessageForUser,
+  isDeckTooLargeForPptxExportError,
   // TEMP: used by commented-out screenshot toolbar handler
   // copyImageDataUrlToClipboard,
   exportReactComponentAsHtml,
@@ -136,6 +137,7 @@ import {
   openSandboxedPreviewInNewTab,
   prepareImageExportTarget,
   requestPreviewSnapshot,
+  type AsyncExportProgressStatus,
   type ImageExportFormat,
 } from '../runtime/exports';
 import { copyToClipboard } from '../lib/copy-to-clipboard';
@@ -1606,6 +1608,10 @@ interface Props {
 }
 
 type ExportToastTranslate = (key: keyof Dict, vars?: Record<string, string | number>) => string;
+type AsyncExportProgressPanelState = {
+  format: ShareExportFormat;
+  message: string;
+};
 
 function exportInProgressToastMessage(format: ShareExportFormat, t: ExportToastTranslate): string {
   switch (format) {
@@ -1617,6 +1623,34 @@ function exportInProgressToastMessage(format: ShareExportFormat, t: ExportToastT
       return t('fileViewer.exportZipInProgress');
     default:
       return t('fileViewer.exportInProgress');
+  }
+}
+
+function asyncExportProgressToastMessage(
+  format: ShareExportFormat,
+  status: AsyncExportProgressStatus,
+  t: ExportToastTranslate,
+): string {
+  if (status === 'queued' || status === 'ready') return t('fileViewer.exportInProgress');
+  return exportInProgressToastMessage(format, t);
+}
+
+function exportFormatLabel(format: ShareExportFormat): string {
+  switch (format) {
+    case 'pdf':
+      return 'PDF';
+    case 'pptx':
+      return 'PPTX';
+    case 'html':
+      return 'HTML';
+    case 'zip':
+      return 'ZIP';
+    case 'image':
+      return 'IMAGE';
+    case 'markdown':
+      return 'Markdown';
+    default:
+      return 'Export';
   }
 }
 
@@ -5298,6 +5332,14 @@ function HtmlViewer({
     const showExportFailureToast = (err: unknown) => {
       if (!toastFormats.has(format)) return;
       notifyTeamverEmbedAuthFailureIfNeeded(err, 'daemon');
+      if (format === 'pptx' && isDeckTooLargeForPptxExportError(err)) {
+        setExportToast({
+          message: '슬라이드가 너무 많아 PPTX 다운로드를 만들 수 없습니다. PDF 다운로드를 사용해 주세요.',
+          tone: 'error',
+          ttlMs: 9000,
+        });
+        return;
+      }
       const message = formatExportFailureMessageForUser(
         err,
         '다운로드를 만들지 못했습니다. 잠시 후 다시 시도하세요.',
@@ -5367,13 +5409,16 @@ function HtmlViewer({
                 if (result === 'cancelled') {
                   finish('cancelled');
                   if (toastFormats.has(format)) setExportToast(null);
+                  setAsyncExportProgress((current) => current?.format === format ? null : current);
                   return;
                 }
                 finish('success');
+                setAsyncExportProgress((current) => current?.format === format ? null : current);
                 showResultToast(result);
               },
               (err) => {
                 finish('failed', err instanceof Error ? err.name : 'UNKNOWN');
+                setAsyncExportProgress((current) => current?.format === format ? null : current);
                 showExportFailureToast(err);
               },
             );
@@ -5381,13 +5426,16 @@ function HtmlViewer({
           if (out === 'cancelled') {
             finish('cancelled');
             if (toastFormats.has(format)) setExportToast(null);
+            setAsyncExportProgress((current) => current?.format === format ? null : current);
             return;
           }
           finish('success');
+          setAsyncExportProgress((current) => current?.format === format ? null : current);
           showResultToast(out);
         }
       } catch (err) {
         finish('failed', err instanceof Error ? err.name : 'UNKNOWN');
+        setAsyncExportProgress((current) => current?.format === format ? null : current);
         showExportFailureToast(err);
       }
     };
@@ -5403,6 +5451,20 @@ function HtmlViewer({
     } else {
       window.setTimeout(runExport, 0);
     }
+  };
+  const showAsyncExportProgress = (format: ShareExportFormat) => (
+    status: AsyncExportProgressStatus,
+  ) => {
+    const message = asyncExportProgressToastMessage(format, status, t);
+    setAsyncExportProgress({
+      format,
+      message,
+    });
+    setExportToast({
+      message,
+      tone: 'loading',
+      ttlMs: 0,
+    });
   };
   // P0 helpers — keep the artifact_id + artifact_kind derivation in one place
   // so each per-button onClick stays a one-liner. We compute lazily inside the
@@ -6262,6 +6324,8 @@ function HtmlViewer({
       ttlMs?: number;
     } | null
   >(null);
+  const [asyncExportProgress, setAsyncExportProgress] =
+    useState<AsyncExportProgressPanelState | null>(null);
   const [shareLinkFeedback, setShareLinkFeedback] = useState<'copied' | 'failed' | null>(null);
   const [shareGuideToast, setShareGuideToast] = useState<string | null>(null);
   const [selectedSideCommentIds, setSelectedSideCommentIds] = useState<Set<string>>(() => new Set());
@@ -16949,6 +17013,7 @@ function HtmlViewer({
 	                      filePath: file.name,
 	                      fresh: options?.fresh,
 	                      htmlSnapshot: livePreviewSource ?? source ?? lastStablePreviewSourceRef.current ?? null,
+	                      onAsyncExportStatus: showAsyncExportProgress('pdf'),
 	                      projectId,
 	                      requireRenderedExport: isTeamverEmbedMode(),
 	                      title: exportTitle,
@@ -16959,6 +17024,7 @@ function HtmlViewer({
                       filePath: file.name,
                       title: exportTitle,
                       htmlSnapshot: livePreviewSource ?? source ?? lastStablePreviewSourceRef.current ?? null,
+                      onAsyncExportStatus: showAsyncExportProgress('pptx'),
                       requireRenderedExport: isTeamverEmbedMode(),
                     })}
 	                    exportHtml={() => exportProjectAsHtml({
@@ -16968,6 +17034,7 @@ function HtmlViewer({
 	                      fallbackHtml: livePreviewSource ?? source ?? lastStablePreviewSourceRef.current ?? '',
 	                      fallbackTitle: exportTitle,
 	                      htmlSnapshot: livePreviewSource ?? source ?? lastStablePreviewSourceRef.current ?? null,
+	                      onAsyncExportStatus: showAsyncExportProgress('html'),
 	                      requireRenderedExport: isTeamverEmbedMode(),
 	                    })}
 	                    exportZip={() => exportProjectAsZip({
@@ -16977,6 +17044,7 @@ function HtmlViewer({
 	                      fallbackHtml: livePreviewSource ?? source ?? lastStablePreviewSourceRef.current ?? '',
 	                      fallbackTitle: exportTitle,
 	                      htmlSnapshot: livePreviewSource ?? source ?? lastStablePreviewSourceRef.current ?? null,
+	                      onAsyncExportStatus: showAsyncExportProgress('zip'),
 	                      requireRenderedExport: isTeamverEmbedMode(),
 	                    })}
                     exportMarkdown={() => exportAsMd(
@@ -17366,6 +17434,24 @@ function HtmlViewer({
                       placement="top"
                       onDismiss={() => setExportToast(null)}
                     />,
+                    document.body,
+                  )
+                : null}
+              {asyncExportProgress
+                ? createPortal(
+                    <div className="async-export-progress-panel" role="status" aria-live="polite">
+                      <div className="async-export-progress-row">
+                        <span className="async-export-progress-spinner" aria-hidden="true" />
+                        <div className="async-export-progress-copy">
+                          <span className="async-export-progress-title">
+                            {exportFormatLabel(asyncExportProgress.format)} {t('fileViewer.download')}
+                          </span>
+                          <span className="async-export-progress-message">
+                            {asyncExportProgress.message}
+                          </span>
+                        </div>
+                      </div>
+                    </div>,
                     document.body,
                   )
                 : null}

@@ -24,6 +24,7 @@ services:
         VITE_TEAMVER_SITE_URL: ${VITE_TEAMVER_SITE_URL:-https://design.teamver.com}
         # Legacy bake arg — PPTX is always on in web; value ignored.
         VITE_TEAMVER_PPTX_EXPORT_ENABLE: ${VITE_TEAMVER_PPTX_EXPORT_ENABLE:-true}
+        VITE_TEAMVER_EXPORT_ASYNC_JOBS_ENABLED: ${VITE_TEAMVER_EXPORT_ASYNC_JOBS_ENABLED:-}
         VITE_TEAMVER_DRAW_ANNOTATION_ENABLE: ${VITE_TEAMVER_DRAW_ANNOTATION_ENABLE:-}
         VITE_TEAMVER_SOURCE_HTML_COPY_ENABLE: ${VITE_TEAMVER_SOURCE_HTML_COPY_ENABLE:-}
         VITE_TEAMVER_MANUAL_EDIT_BOX_DRAG_ENABLE: ${VITE_TEAMVER_MANUAL_EDIT_BOX_DRAG_ENABLE:-}
@@ -90,6 +91,8 @@ services:
       OD_EXPORT_BOOT_PREWARM_COUNT: ${OD_EXPORT_BOOT_PREWARM_COUNT:-1}
       OD_EXPORT_QUEUE_MAX: ${OD_EXPORT_QUEUE_MAX:-32}
       OD_EXPORT_TICKET_TTL_SEC: ${OD_EXPORT_TICKET_TTL_SEC:-300}
+      OD_EXPORT_PPTX_MAX_SLIDES: ${OD_EXPORT_PPTX_MAX_SLIDES:-40}
+      OD_EXPORT_ASYNC_JOBS_ENABLED: ${OD_EXPORT_ASYNC_JOBS_ENABLED:-0}
       # Export artifact cache (Phase 1a — docs-teamver/34 §20). code default ON.
       # 0/false/off/no 로만 명시적 disable. memo (RAM LRU) + local (EBS
       # od-data/.od-export-cache) 2-tier. cache 키에 entryFile mtime 포함이라
@@ -308,7 +311,6 @@ services:
     depends_on:
       design-db:
         condition: service_healthy
-        required: false
     # Multi-worker uvicorn 에서 워커 하나가 event-loop hang 이면 docker
     # restart 로 회복 가능해야 한다. wget/curl 은 python:slim 에 기본
     # 없음 → Python one-liner (표준 라이브러리 urllib) 사용.

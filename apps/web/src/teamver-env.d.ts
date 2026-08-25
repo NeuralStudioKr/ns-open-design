@@ -18,6 +18,7 @@ interface ImportMetaEnv {
   readonly VITE_TEAMVER_HERO_SUBTITLE?: string;
   /** @deprecated PPTX export is always on; bake-time value ignored. */
   readonly VITE_TEAMVER_PPTX_EXPORT_ENABLE?: string;
+  readonly VITE_TEAMVER_EXPORT_ASYNC_JOBS_ENABLED?: string;
   readonly VITE_TEAMVER_DRAW_ANNOTATION_ENABLE?: string;
   /** Staging HTML source-tab copy. Off in prod embed unless =1. */
   readonly VITE_TEAMVER_SOURCE_HTML_COPY_ENABLE?: string;
