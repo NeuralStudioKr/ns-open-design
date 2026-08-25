@@ -3101,6 +3101,9 @@ export function ProjectView({
   const autoSendInFlightRef = useRef(false);
   const lastCreateAutoSendProjectIdRef = useRef<string | null>(null);
   const [autoSendRetryNonce, setAutoSendRetryNonce] = useState(0);
+  // Cap create auto-send retries (cid/ref mismatch, transient busy race).
+  // Unbounded nonce spin can hammer stream / queue drains.
+  const MAX_CREATE_AUTO_SEND_RETRIES = 5;
   const [previewComments, setPreviewComments] = useState<PreviewComment[]>([]);
   // Mirror so the send-now interrupt path can read the current statuses
   // synchronously without re-creating its callback on every comment change.
@@ -3860,16 +3863,23 @@ export function ProjectView({
       autoSentRef.current = false;
       autoSendInFlightRef.current = false;
     }
-    setMessagesConversationId(null);
-    setFailedMessagesConversationId(null);
+    // Same preserve contract as messages effect: create auto-send placeholders
+    // / in-flight stream must not be wiped when conversations re-load (auth
+    // retry nonce, StrictMode) while still on this project.
+    const preserveCreateAutoSendMessages =
+      autoSendInFlightRef.current || autoSentRef.current;
+    if (!preserveCreateAutoSendMessages) {
+      setMessagesConversationId(null);
+      setFailedMessagesConversationId(null);
+      setMessages([]);
+      setPreviewComments([]);
+      setAttachedComments([]);
+      setStreaming(false);
+      streamingConversationIdRef.current = null;
+      setStreamingConversationId(null);
+    }
     setMessageLoadRetryNonce(0);
     setConversationLoadError(null);
-    setMessages([]);
-    setPreviewComments([]);
-    setAttachedComments([]);
-    setStreaming(false);
-    streamingConversationIdRef.current = null;
-    setStreamingConversationId(null);
     setError(null);
     setAudioVoiceOptionsError(null);
     setArtifact(null);
@@ -13673,59 +13683,86 @@ export function ProjectView({
             }
           : {}),
       });
+      // Latch success even if StrictMode cleanup set cancelled — otherwise
+      // remount restores the flag and fires a second first stream.
+      if (ok !== false) {
+        autoSentRef.current = true;
+        autoSendInFlightRef.current = false;
+        clearTemplateCloneContentFillQueue(project.id);
+        autoSendAttachmentsRef.current = [];
+        if (fillQueued) {
+          void patchProject(project.id, {
+            metadata: {
+              ...(project.metadata && typeof project.metadata === 'object' ? project.metadata : {}),
+              templateCloneContentFillPending: false,
+            },
+          });
+        }
+        return;
+      }
       if (cancelled) {
         return;
       }
-      if (ok === false) {
-        autoSendInFlightRef.current = false;
-        // embed blocked permanently — do not restore flag / spin.
-        if (embedSubmitDisabled) {
-          autoSentRef.current = true;
-          clearAutoSendSession(project.id);
-          clearTemplateCloneContentFillQueue(project.id);
-          return;
-        }
-        try {
-          window.sessionStorage.setItem(autoSendFirstMessageKey(project.id), '1');
-          if (attachments.length > 0) {
-            window.sessionStorage.setItem(
-              autoSendAttachmentsKey(project.id),
-              JSON.stringify(attachments),
-            );
-          }
-        } catch {
-          /* ignore */
-        }
-        if (fillQueued && seed) {
-          queueTemplateCloneContentFill({
-            projectId: project.id,
-            seed,
-            attachments,
-          });
-        }
-        // Re-arm the effect — flag restore alone does not change deps.
-        setAutoSendRetryNonce((value) => value + 1);
+      autoSendInFlightRef.current = false;
+      // embed blocked permanently — do not restore flag / spin.
+      if (embedSubmitDisabled) {
+        autoSentRef.current = true;
+        clearAutoSendSession(project.id);
+        clearTemplateCloneContentFillQueue(project.id);
         return;
       }
-      autoSentRef.current = true;
-      autoSendInFlightRef.current = false;
-      clearTemplateCloneContentFillQueue(project.id);
-      autoSendAttachmentsRef.current = [];
-      if (fillQueued) {
-        void patchProject(project.id, {
-          metadata: {
-            ...(project.metadata && typeof project.metadata === 'object' ? project.metadata : {}),
-            templateCloneContentFillPending: false,
-          },
+      // A live stream already owns this conversation (first StrictMode send
+      // won the race). Latch — do not retry into a duplicate stream.
+      if (
+        abortRef.current
+        || (
+          Boolean(streamingConversationIdRef.current)
+          && streamingConversationIdRef.current === conversationIdAtStart
+        )
+      ) {
+        autoSentRef.current = true;
+        clearAutoSendSession(project.id);
+        clearTemplateCloneContentFillQueue(project.id);
+        return;
+      }
+      if (autoSendRetryNonce >= MAX_CREATE_AUTO_SEND_RETRIES) {
+        autoSentRef.current = true;
+        clearAutoSendSession(project.id);
+        clearTemplateCloneContentFillQueue(project.id);
+        return;
+      }
+      try {
+        window.sessionStorage.setItem(autoSendFirstMessageKey(project.id), '1');
+        if (attachments.length > 0) {
+          window.sessionStorage.setItem(
+            autoSendAttachmentsKey(project.id),
+            JSON.stringify(attachments),
+          );
+        }
+      } catch {
+        /* ignore */
+      }
+      if (fillQueued && seed) {
+        queueTemplateCloneContentFill({
+          projectId: project.id,
+          seed,
+          attachments,
         });
       }
+      // Re-arm the effect — flag restore alone does not change deps.
+      setAutoSendRetryNonce((value) => value + 1);
     })();
     return () => {
       cancelled = true;
       // StrictMode remount: release in-flight + restore flag so the second
-      // effect can dispatch. Completed sends already set autoSentRef.
+      // effect can dispatch — unless handleSend already owns a live abort
+      // (restoring would double the first stream). Completed sends latch
+      // autoSentRef even when cancelled.
       if (!autoSentRef.current && autoSendInFlightRef.current) {
         autoSendInFlightRef.current = false;
+        if (abortRef.current) {
+          return;
+        }
         try {
           window.sessionStorage.setItem(autoSendFirstMessageKey(project.id), '1');
           if (attachments.length > 0) {

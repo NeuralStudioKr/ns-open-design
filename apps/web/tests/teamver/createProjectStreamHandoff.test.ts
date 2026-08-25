@@ -1,4 +1,6 @@
 /** @vitest-environment jsdom */
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
@@ -9,6 +11,12 @@ import {
   waitPendingTemplateClone,
   writeCreateConversationHandoff,
 } from "../../src/teamver/createProjectStreamHandoff";
+
+const ROOT = resolve(__dirname, "../..");
+
+function readWebSource(path: string): string {
+  return readFileSync(resolve(ROOT, path), "utf8");
+}
 
 describe("createProjectStreamHandoff", () => {
   afterEach(() => {
@@ -54,5 +62,31 @@ describe("createProjectStreamHandoff", () => {
       ok: true,
       fileName: "deck.html",
     });
+  });
+});
+
+describe("create→stream source guards", () => {
+  it("plugin-share create mirrors Home handoff + route conversationId", () => {
+    const app = readWebSource("src/App.tsx");
+    const start = app.indexOf("const handleCreatePluginShareProject");
+    expect(start).toBeGreaterThan(-1);
+    const block = app.slice(start, app.indexOf("const handleImportClaudeDesign", start));
+    expect(block).toContain("writeCreateConversationHandoff(project.id, outcome.conversationId)");
+    expect(block).toContain(
+      "rememberTeamverProjectConversation(project.id, outcome.conversationId.trim())",
+    );
+    expect(block).toContain("conversationId: outcome.conversationId.trim()");
+    expect(block).toContain("od:auto-send-first:");
+  });
+
+  it("conversations effect preserves messages during create auto-send", () => {
+    const projectView = readWebSource("src/components/ProjectView.tsx");
+    expect(projectView).toContain("preserveCreateAutoSendMessages");
+    expect(projectView).toContain("MAX_CREATE_AUTO_SEND_RETRIES");
+    expect(projectView).toContain("bypassBusyForHomeCreateAutoSend");
+    // Success latches before cancelled early-return (StrictMode double stream).
+    expect(projectView).toContain(
+      "Latch success even if StrictMode cleanup set cancelled",
+    );
   });
 });

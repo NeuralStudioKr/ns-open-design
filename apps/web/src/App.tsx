@@ -3001,6 +3001,13 @@ function AppInner() {
           }
         : outcome.project;
       rememberLocalProject(project.id);
+      // Mirror Home create: handoff + remember + route cid so ProjectView
+      // seeds conversation before listConversations and auto-send can fire
+      // without waiting on a null→create race (URL sync strip / late stream).
+      if (typeof outcome.conversationId === 'string' && outcome.conversationId.trim()) {
+        writeCreateConversationHandoff(project.id, outcome.conversationId);
+        rememberTeamverProjectConversation(project.id, outcome.conversationId.trim());
+      }
       setProjects((curr) => [
         project,
         ...curr.filter((p) => p.id !== project.id),
@@ -3009,6 +3016,9 @@ function AppInner() {
         kind: 'project',
         projectId: project.id,
         fileName: null,
+        ...(typeof outcome.conversationId === 'string' && outcome.conversationId.trim()
+          ? { conversationId: outcome.conversationId.trim() }
+          : {}),
       });
       return outcome;
     },
