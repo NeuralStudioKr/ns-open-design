@@ -7694,32 +7694,35 @@ function HtmlViewer({
 
   useEffect(() => {
     function onMessage(ev: MessageEvent) {
-      if (!isOurPreviewIframeSource(ev.source)) return;
-      if (!isActivePreviewIframeSource(ev.source)) return;
-      const data = ev.data as {
-        type?: string;
-        frameLeft?: number;
-        frameTop?: number;
-        canvasLeft?: number;
-        canvasTop?: number;
-      } | null;
-      if (!data || data.type !== 'od:preview-scroll') return;
-      if (previewScrollRestoreRef.current && Number(data.canvasLeft || 0) === 0 && Number(data.canvasTop || 0) === 0) return;
-      if (
-        previewScrollPositionRef.current.canvasLeft !== 0 ||
-        previewScrollPositionRef.current.canvasTop !== 0
-      ) {
-        const isInitialZeroReport = Number(data.canvasLeft || 0) === 0 && Number(data.canvasTop || 0) === 0;
-        if (isInitialZeroReport && Date.now() - previewScrollRequestAtRef.current < 1200) return;
-      }
-      previewScrollPositionRef.current = {
-        frameLeft: Number(data.frameLeft || 0),
-        frameTop: Number(data.frameTop || 0),
-        canvasLeft: Number(data.canvasLeft || 0),
-        canvasTop: Number(data.canvasTop || 0),
-      };
+      runFileViewerPreviewMessageHandler('preview-scroll', () => {
+        if (!isOurPreviewIframeSource(ev.source)) return;
+        if (!isActivePreviewIframeSource(ev.source)) return;
+        const data = ev.data as {
+          type?: string;
+          frameLeft?: number;
+          frameTop?: number;
+          canvasLeft?: number;
+          canvasTop?: number;
+        } | null;
+        if (!data || data.type !== 'od:preview-scroll') return;
+        if (previewScrollRestoreRef.current && Number(data.canvasLeft || 0) === 0 && Number(data.canvasTop || 0) === 0) return;
+        if (
+          previewScrollPositionRef.current.canvasLeft !== 0 ||
+          previewScrollPositionRef.current.canvasTop !== 0
+        ) {
+          const isInitialZeroReport = Number(data.canvasLeft || 0) === 0 && Number(data.canvasTop || 0) === 0;
+          if (isInitialZeroReport && Date.now() - previewScrollRequestAtRef.current < 1200) return;
+        }
+        previewScrollPositionRef.current = {
+          frameLeft: Number(data.frameLeft || 0),
+          frameTop: Number(data.frameTop || 0),
+          canvasLeft: Number(data.canvasLeft || 0),
+          canvasTop: Number(data.canvasTop || 0),
+        };
+      });
     }
     function onRestoreRequest(ev: MessageEvent) {
+      runFileViewerPreviewMessageHandler('preview-scroll-request', () => {
       if (!isOurPreviewIframeSource(ev.source)) return;
       if (!isActivePreviewIframeSource(ev.source)) return;
       const data = ev.data as { type?: string } | null;
@@ -7739,8 +7742,10 @@ function HtmlViewer({
         canvasLeft: scroll.canvasLeft,
         canvasTop: scroll.canvasTop,
       }, '*');
+      });
     }
     function onDcViewportMessage(ev: MessageEvent) {
+      runFileViewerPreviewMessageHandler('dc-viewport', () => {
       if (!isOurPreviewIframeSource(ev.source)) return;
       if (!isActivePreviewIframeSource(ev.source)) return;
       const data = ev.data as {
@@ -7771,6 +7776,7 @@ function HtmlViewer({
           ...dcViewportRef.current,
         }, '*');
       }
+      });
     }
     window.addEventListener('message', onMessage);
     window.addEventListener('message', onRestoreRequest);
@@ -7810,6 +7816,7 @@ function HtmlViewer({
     if (!deckHostViewportFitActive || mode !== 'preview') return;
     let cancelZeroSizeRetry: (() => void) | null = null;
     function onDeckViewportRequest(ev: MessageEvent) {
+      runFileViewerPreviewMessageHandler('deck-host-viewport', () => {
       // Accept any of our preview iframes — during liveHtml→disk srcDoc churn
       // iframeRef can lag the requesting contentWindow by a tick, and the
       // strict active-ref check used to drop the request (black letterbox until
@@ -7854,6 +7861,7 @@ function HtmlViewer({
         [0, 32, 80, 160, 320, 640, 1_200, 2_400],
         deckPreviewFitOptions,
       );
+      });
     }
     window.addEventListener('message', onDeckViewportRequest);
     return () => {
