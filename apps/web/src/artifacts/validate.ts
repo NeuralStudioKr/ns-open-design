@@ -47,6 +47,7 @@ import {
   hasSalvageableDeckSlideContent,
   isDeckStatusProseOnlyBody,
   isPersistableShortDeckDraft,
+  isPersistableShortDeckDraftAfterHeal,
   meetsMinimumDeckDeliverableQuality,
 } from './deck-html-content';
 
@@ -140,6 +141,24 @@ export function isIncompleteHtmlDocumentShell(content: string): boolean {
 }
 
 /**
+ * Terminal restore / resolve: keep a closed healable 1–3 slide "만들어줘"
+ * cover instead of swapping it for an older bestArtifact. Truncation
+ * (no `</html>` above the structural floor) still restores / salvages.
+ */
+export function isIncompleteParsedDeckForBestArtifactRestore(html: string | null | undefined): boolean {
+  const trimmed = String(html ?? '').replace(/^﻿/, '').trim();
+  if (!trimmed) return false;
+  if (!isIncompleteHtmlDocumentShell(trimmed)) return false;
+  if (
+    isPersistableShortDeckDraftAfterHeal(trimmed)
+    && HAS_HTML_CLOSE_RE.test(trimmed)
+  ) {
+    return false;
+  }
+  return true;
+}
+
+/**
  * Detect a "successful" deck artifact that is structurally HTML but is still a
  * progress/placeholder deliverable, e.g. a 1KB deck with six slides and only
  * "을 만들고 있어요 / 발표 개요 / error" visible. This is intentionally kept
@@ -184,6 +203,10 @@ function isEffectivelyEmptyHtmlBody(html: string): boolean {
     // use isClosedSoftSalvageDeckHtml trust without writing low-substance decks
     // that skip the low-substance gate (§0.76).
     if (isPersistableShortDeckDraft(withoutComments)) return false;
+    // Persist heals "만들어줘" covers before the short-draft gate. Resume /
+    // terminal resolve / emergency salvage still see raw HTML — treat the
+    // same 1–3 slide instruction-copy draft as contentful after that heal.
+    if (isPersistableShortDeckDraftAfterHeal(withoutComments)) return false;
     if (!meetsMinimumDeckDeliverableQuality(withoutComments)) return true;
   }
   const bodyMatch = /<body\b[^>]*>([\s\S]*)<\/body>/i.exec(withoutComments);

@@ -16,8 +16,8 @@ describe("sanitizeChatMessageLeakedPseudoTool", () => {
     };
 
     const sanitized = sanitizeChatMessageLeakedPseudoTool(message);
-    expect(sanitized.content).toBe("Hi\n");
-    expect(sanitized.events?.[0]).toEqual({ kind: "text", text: "Plan\n" });
+    expect(sanitized.content).toBe("Hi");
+    expect(sanitized.events?.[0]).toEqual({ kind: "text", text: "Plan" });
     expect(sanitized.events?.[1]).toEqual({ kind: "status", label: "running" });
   });
 

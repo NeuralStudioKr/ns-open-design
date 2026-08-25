@@ -520,13 +520,29 @@ export function PreviewModal({
   const activeUnavailable = activeView?.unavailable ?? null;
   const activeDeck = activeView?.deck ?? false;
   const activeCompactStackedDeck = useMemo(
-    () => Boolean(activeHtml && activeDeck && looksLikeCompactApiStackedDeckForPreview(activeHtml)),
+    () => {
+      if (!activeHtml || !activeDeck) return false;
+      try {
+        return looksLikeCompactApiStackedDeckForPreview(activeHtml);
+      } catch (err) {
+        console.error('[PreviewModal] compact deck classify failed', err);
+        return false;
+      }
+    },
     [activeHtml, activeDeck],
   );
   const effectiveDesignWidth = activeCompactStackedDeck ? 1920 : designWidth;
   const isCustomView = activeCustom !== null && activeCustom !== undefined;
   const srcDoc = useMemo(
-    () => (activeHtml ? buildSrcdoc(activeHtml, { deck: activeDeck }) : ''),
+    () => {
+      if (!activeHtml) return '';
+      try {
+        return buildSrcdoc(activeHtml, { deck: activeDeck });
+      } catch (err) {
+        console.error('[PreviewModal] buildSrcdoc failed', err);
+        return '';
+      }
+    },
     [activeHtml, activeDeck],
   );
 

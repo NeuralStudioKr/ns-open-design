@@ -10,7 +10,11 @@ function baseDirFor(fileName: string): string {
 }
 
 function looksLikeDeckHtml(html: string): boolean {
-  return htmlLooksLikeNavigableDeckPreview(html);
+  try {
+    return htmlLooksLikeNavigableDeckPreview(html);
+  } catch {
+    return false;
+  }
 }
 
 function resolveMemoryPreviewBaseHref(options: {
@@ -43,28 +47,45 @@ export function prepareMemoryOnlySlidePreviewSrcDoc(options: {
   teamverEmbedMode: boolean;
   embedPreviewPrefix: string | null;
 }): string {
+  const rawHtml = String(options.html ?? '');
   const fileName = (options.fileName || 'deck.html').trim() || 'deck.html';
-  const healPaths = Array.from(
-    new Set([
-      ...options.projectFilePaths.map((path) => String(path || '').trim()).filter(Boolean),
-      ...(options.preferredAttachmentPaths ?? [])
-        .map((path) => String(path || '').trim())
-        .filter(Boolean),
-    ]),
-  );
-  const healed = rewriteAttachmentImageSrcs(options.html, healPaths, {
-    preferredPaths: options.preferredAttachmentPaths,
-  });
-  const baseHref = resolveMemoryPreviewBaseHref({
-    teamverEmbedMode: options.teamverEmbedMode,
-    embedPreviewPrefix: options.embedPreviewPrefix,
-    projectId: options.projectId,
-    fileName,
-  });
-  return buildSrcdoc(healed, {
-    deck: looksLikeDeckHtml(healed),
-    baseHref,
-    selectionBridge: false,
-    previewFocusGuard: true,
-  });
+  try {
+    const healPaths = Array.from(
+      new Set([
+        ...options.projectFilePaths.map((path) => String(path || '').trim()).filter(Boolean),
+        ...(options.preferredAttachmentPaths ?? [])
+          .map((path) => String(path || '').trim())
+          .filter(Boolean),
+      ]),
+    );
+    let healed = rawHtml;
+    try {
+      healed = rewriteAttachmentImageSrcs(rawHtml, healPaths, {
+        preferredPaths: options.preferredAttachmentPaths,
+      });
+    } catch (err) {
+      console.error('[prepareMemoryOnlySlidePreviewSrcDoc] rewriteAttachmentImageSrcs failed', fileName, err);
+      healed = rawHtml;
+    }
+    const baseHref = resolveMemoryPreviewBaseHref({
+      teamverEmbedMode: options.teamverEmbedMode,
+      embedPreviewPrefix: options.embedPreviewPrefix,
+      projectId: options.projectId,
+      fileName,
+    });
+    try {
+      return buildSrcdoc(healed, {
+        deck: looksLikeDeckHtml(healed),
+        baseHref,
+        selectionBridge: false,
+        previewFocusGuard: true,
+      });
+    } catch (err) {
+      console.error('[prepareMemoryOnlySlidePreviewSrcDoc] buildSrcdoc failed', fileName, err);
+      return healed;
+    }
+  } catch (err) {
+    console.error('[prepareMemoryOnlySlidePreviewSrcDoc] failed', fileName, err);
+    return rawHtml;
+  }
 }

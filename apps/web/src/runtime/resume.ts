@@ -2,6 +2,8 @@ import type { ChatMessage } from '../types';
 import {
   documentContainsSlideSection,
   eachSlideHostOpenIndex,
+  isPersistableShortDeckDraft,
+  isPersistableShortDeckDraftAfterHeal,
   shouldDiscardPartialHtmlForMotifSvgDump,
 } from '../artifacts/deck-html-content';
 import { salvageTruncatedHtmlDocument } from '../artifacts/recover';
@@ -113,6 +115,18 @@ export function excerptPartialHtmlForAutoContinue(html: string): string {
   }
   // Keep the tail (latest slides), not the head (kit CSS).
   return fromBody.slice(-AUTO_CONTINUE_MAX_PARTIAL_HTML_EXCERPT);
+}
+
+const HAS_HTML_CLOSE_RE = /<\/html\s*>/i;
+
+/** Closed 1–3 slide cover persist already accepts — including healed "만들어줘". */
+export function isClosedPersistableCoverDraft(html: string): boolean {
+  const trimmed = String(html ?? '').replace(/^﻿/, '').trim();
+  if (!trimmed || !HAS_HTML_CLOSE_RE.test(trimmed)) return false;
+  return (
+    isPersistableShortDeckDraft(trimmed)
+    || isPersistableShortDeckDraftAfterHeal(trimmed)
+  );
 }
 
 const AUTO_CONTINUE_HEAD_ONLY_BODY_FIRST =
@@ -320,6 +334,16 @@ export function buildAutoContinueIncompleteOutputPrompt(
         + '\n\n위 SVG dump를 복사하지 말고, `<h1>` + lead로 새 complete HTML deck artifact를 즉시 작성하세요. ('
         + COMPACT_DECK_SLIDE_COUNT_GUIDANCE
         + ')',
+    );
+  } else if (partial && isClosedPersistableCoverDraft(partial)) {
+    // Persist + top-up own a closed 1–3 slide cover (including healed
+    // "만들어줘"). Do not tell the model it is incomplete or to throw it away.
+    const excerpt = excerptPartialHtmlForAutoContinue(partial);
+    parts.push(
+      '\n\n[이 대화의 HTML은 닫힌 커버 초안입니다 — 버리지 말고 이어서 장만 추가하세요:]\n'
+        + '```html\n'
+        + excerpt
+        + '\n```',
     );
   } else if (partial && isIncompleteHtmlDocumentShell(partial)) {
     // Truncated decks with real slide copy are still worth fencing so the

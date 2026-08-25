@@ -219,6 +219,185 @@ const HEAD_SKELETON_TAG_NAMES = [
   "noscript",
 ] as const;
 
+/**
+ * Host-parsed markup that must survive residual HTML scrub so the
+ * Questions banner / live artifact / prompt-injection chip can parse it.
+ */
+const CHAT_PROSE_PROTOCOL_TAG_NAMES = [
+  "artifact",
+  "question-form",
+  "ask-question",
+  "system-reminder",
+] as const;
+
+const CHAT_PROSE_PROTOCOL_TAG_ALT = CHAT_PROSE_PROTOCOL_TAG_NAMES.join("|");
+
+const DECK_HTML_ATTR_TAIL_NAMES =
+  "class|id|style|role|aria-[\\w-]+|data-[\\w-]+|xmlns(?::[\\w-]+)?|viewBox|d|srcset|sizes|tabindex|src|href|className|xlink:href|stroke(?:-width|-linecap|-linejoin|-miterlimit)?|fill|on[a-z]+\\$?|points|clip-path|srcdoc|sandbox|transform|v-[\\w-]+|:class|:key|:style|@[\\w.-]+|on:[a-z]+|hx-[\\w-]+|x-[\\w-]+|colspan|rowspan|loading|decoding|fetchpriority|crossorigin|integrity|poster|usemap|formaction|referrerpolicy|nonce|marker-start|marker-end|marker-mid|paint-order|vector-effect|gradientUnits|stop-color|stop-opacity|stdDeviation|cx|cy|r|rx|ry";
+
+function isChatProseProtocolTagName(name: string): boolean {
+  const lower = name.toLowerCase();
+  return (CHAT_PROSE_PROTOCOL_TAG_NAMES as readonly string[]).includes(lower);
+}
+
+function lineIsChatProseProtocolMarkup(line: string): boolean {
+  const trimmed = String(line ?? "").trim();
+  const match = /^<\/?([A-Za-z][\w:-]*)\b/.exec(trimmed);
+  return Boolean(match?.[1] && isChatProseProtocolTagName(match[1]));
+}
+
+/**
+ * 1–2 letter tags without attrs stay while streaming (`Text <p`, `Text <a`).
+ * `h1`–`h6` / list / table tags are deck chrome even at two letters.
+ */
+function isShortStreamingHtmlPrefix(name: string): boolean {
+  const lower = String(name ?? "").toLowerCase();
+  if (!lower) return false;
+  if (isChatProseProtocolTagName(lower) || /^(?:https?|br|wbr)$/.test(lower)) return true;
+  if (/^(?:h[1-6]|li|ul|ol|td|th|tr)$/.test(lower)) return false;
+  return lower.length <= 2;
+}
+
+function looksLikeIncompleteHtmlOpenLine(line: string): boolean {
+  const trimmed = String(line ?? "").trim();
+  if (!trimmed || lineIsChatProseProtocolMarkup(trimmed)) return false;
+  return /^<\/?[A-Za-z][\w:-]*\b[^>]*$/.test(trimmed) && !/>/.test(trimmed);
+}
+
+function looksLikeHtmlAttrContinuationLine(line: string): boolean {
+  const trimmed = String(line ?? "").trim();
+  if (!trimmed || lineIsChatProseProtocolMarkup(trimmed)) return false;
+  if (/^<https?:\/\//i.test(trimmed)) return false;
+  if (/^(?:[\w:-]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>"']+)\s*)+\/?>/.test(trimmed)) return true;
+  if (/^[\w:-]+\s*=\s*["'][^"']*$/.test(trimmed)) return true;
+  if (/^[\w:-]+\s*=/.test(trimmed) && /<\/?[A-Za-z]/.test(trimmed)) return true;
+  return false;
+}
+
+/** Standalone SVG/XML/HTML attribute dumps left after the opener was cut. */
+function looksLikeHtmlAttrDumpLine(line: string): boolean {
+  const trimmed = String(line ?? "").trim();
+  if (!trimmed || lineIsChatProseProtocolMarkup(trimmed)) return false;
+  if (/^<https?:\/\//i.test(trimmed)) return false;
+  if (
+    new RegExp(`^(?:${DECK_HTML_ATTR_TAIL_NAMES}|preserveAspectRatio|clip-rule|fill-rule)\\s*=`, "i").test(
+      trimmed,
+    )
+  ) {
+    return true;
+  }
+  if (/^d\s*=\s*["'][MmLlHhVvCcSsQqTtAaZz]/.test(trimmed)) return true;
+  if (/^transform\s*=\s*["'](?:translate|scale|rotate|matrix|skew)/i.test(trimmed)) return true;
+  if (/^values\s*=\s*["'][\d.\s-]+/.test(trimmed)) return true;
+  if (/^gradientTransform\s*=/i.test(trimmed)) return true;
+  if (/^in\s*=\s*["']Source/i.test(trimmed)) return true;
+  if (/^result\s*=\s*["']goo["']/i.test(trimmed)) return true;
+  if (/^style=\{\{/.test(trimmed)) return true;
+  if (/^(?:\([\w.-]+\)|\[[\w.-]+\]|\*ng[\w]+)\s*=/.test(trimmed)) return true;
+  if (/^(?:as|type|media)\s*=\s*["']?(?:font|text\/|image\/|video\/|audio\/|print|screen|all|\()/i.test(trimmed)) {
+    return true;
+  }
+  if (/^(?:(?:cx|cy|r|rx|ry|x|y|x1|y1|x2|y2|dx|dy|offset)\s*=\s*["']?[\d.]+["']?\s*){2,}$/i.test(trimmed)) {
+    return true;
+  }
+  if (
+    /^(?:class|id|style|className)\s*=\s*[^\s<>]+$/.test(trimmed)
+    && !/[\uac00-\ud7af]{4,}/.test(trimmed)
+  ) {
+    return true;
+  }
+  if (
+    /^(?:[\w:-]+\s*=\s*(?:"[^"]*"|'[^']*')\s*){1,12}$/.test(trimmed)
+    && /(?:xmlns|viewBox|class|style|data-|aria-|srcset|tabindex|role)\b/i.test(trimmed)
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/** Whole-line CSS function leftovers (`linear-gradient(…)`, `var(--bg)`). */
+function looksLikeCssFunctionDebrisLine(line: string): boolean {
+  const trimmed = String(line ?? "").trim();
+  if (!trimmed || /[\uac00-\ud7af]{3,}/.test(trimmed)) return false;
+  if (/^(?:repeating-)?(?:linear|radial|conic)-gradient\s*\(/i.test(trimmed)) return true;
+  if (/^var\(\s*--[\w-]+\s*(?:,[^)]*)?\)\s*;?\s*$/i.test(trimmed)) return true;
+  if (/^(?:oklch|oklab|hwb|lab|lch|color-mix)\s*\(/i.test(trimmed)) return true;
+  if (/^hsla?\s*\(\s*[\d.]+(?:[\s,/%\d.]+)+\)\s*;?\s*$/i.test(trimmed)) return true;
+  if (/^url\(\s*data:/i.test(trimmed)) return true;
+  if (/^data:image\//i.test(trimmed)) return true;
+  if (/^rgba?\s*\(/i.test(trimmed)) return true;
+  if (/^url\(\s*#/i.test(trimmed)) return true;
+  if (/^url\(\s*['"]?(?:https?:|\/|\.\/|\.\.\/)/i.test(trimmed)) return true;
+  if (/^url\(\s*['"][^'"]+\.(?:woff2?|ttf|otf|eot)(?:\?|#|['")])?/i.test(trimmed)) return true;
+  if (/^format\(\s*['"](?:woff2?|truetype|opentype|embedded-opentype|svg)['"]/i.test(trimmed)) {
+    return true;
+  }
+  if (/^local\(\s*['"]?[A-Za-z]/.test(trimmed)) return true;
+  if (/^tech\(\s*[\w-]+/i.test(trimmed)) return true;
+  if (/^(?:calc|clamp|min|max|minmax|repeat|fit-content)\s*\(/i.test(trimmed)) return true;
+  if (
+    /^(?:blur|drop-shadow|grayscale|brightness|contrast|saturate|sepia|hue-rotate|invert|opacity)\s*\(/i.test(
+      trimmed,
+    )
+  ) {
+    return true;
+  }
+  if (/^(?:circle|ellipse|inset|xywh|rect|polygon|path|superellipse)\s*\(/i.test(trimmed)) {
+    return true;
+  }
+  if (/^(?:paint|contrast-color|palette-mix|linear|abs|sign|mod|rem|round|hypot|pow|sqrt)\s*\(/i.test(trimmed)) {
+    return true;
+  }
+  if (/^var\(\s*--(?:font|ff|display|sans|serif|mono|hand)[\w-]*/i.test(trimmed)) return true;
+  if (/^image\s*\(/i.test(trimmed)) return true;
+  if (/^element\s*\(\s*#/i.test(trimmed)) return true;
+  if (/^anchor(?:-size)?\s*\(/i.test(trimmed)) return true;
+  if (/^color\s*\(\s*(?:display-p3|srgb|srgb-linear|a98-rgb|prophoto-rgb|rec2020|xyz)/i.test(trimmed)) {
+    return true;
+  }
+  if (/^light-dark\s*\(/i.test(trimmed)) return true;
+  if (/^image-set\s*\(/i.test(trimmed)) return true;
+  if (/^env\s*\(\s*safe-area/i.test(trimmed)) return true;
+  if (/^steps\s*\(\s*\d+/i.test(trimmed)) return true;
+  if (/^cross-fade\s*\(/i.test(trimmed)) return true;
+  if (/^device-cmyk\s*\(/i.test(trimmed)) return true;
+  if (/^(?:calc-size|scroll|view|ray|attr|counter|sibling-index|sibling-count|cubic-bezier)\s*\(/i.test(trimmed)) {
+    return true;
+  }
+  if (/^if\s*\(\s*style\s*\(/i.test(trimmed)) return true;
+  if (
+    /^(?:translate(?:3d|[XYZ])?|rotate(?:[XYZ]|3d)?|scale(?:3d|[XYZ])?|skew(?:[XY])?|matrix(?:3d)?|perspective)\s*\(/i.test(
+      trimmed,
+    )
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/** Tailwind arbitrary size/color dumps (`bg-[#F5F0E6] w-[1920px]`). */
+function looksLikeTailwindArbitraryDebrisLine(line: string): boolean {
+  const trimmed = String(line ?? "").trim();
+  if (!trimmed || /[\uac00-\ud7af]{3,}/.test(trimmed)) return false;
+  if (/[{};<>]/.test(trimmed)) return false;
+  const tokens = trimmed.split(/\s+/);
+  const arbitrary = tokens.filter((token) =>
+    /^(?:[a-z]{1,12}-)?(?:w|h|min-w|min-h|max-w|max-h|bg|text|border|p|px|py|m|mx|my|gap|top|left|right|bottom|inset|from|to|via)-\[/.test(
+      token,
+    ),
+  );
+  if (arbitrary.length >= 2) return true;
+  return arbitrary.length >= 1 && /1920|1080|#[0-9A-Fa-f]{3,8}/.test(trimmed);
+}
+
+function looksLikeBrStackedHeadingLine(line: string): boolean {
+  const trimmed = String(line ?? "").trim();
+  if (!/<br\b/i.test(trimmed) || trimmed.length > 80 || /[.!?。…?]/.test(trimmed)) {
+    return false;
+  }
+  return /^(?:[\p{L}\p{N}\s/·.\-]*<br\s*\/?>\s*)+[\p{L}\p{N}\s/·.\-]*$/u.test(trimmed);
+}
+
 function isLikelyInternalMarkupLine(line: string): boolean {
   const trimmed = line.trim();
   if (!trimmed) return false;
@@ -235,7 +414,13 @@ function isLikelyInternalMarkupLine(line: string): boolean {
   if (/^#deck-(?:stage|prev|next|idx)\b/i.test(trimmed)) return true;
   if (/^<h[1-6]\b/i.test(trimmed) && /\bstyle\s*=/i.test(trimmed)) return true;
   if (/^[\d.]+(?:px|em|rem)(?:\/[\d.]+)?">/i.test(trimmed)) return true;
-  if (/^@(?:page|media|keyframes|import|font-face|supports|layer)\b/.test(trimmed)) return true;
+  if (
+    /^@(?:page|media|keyframes|import|font-face|supports|layer|container|scope|property|starting-style|charset|counter-style)\b/.test(
+      trimmed,
+    )
+  ) {
+    return true;
+  }
   if (/^(?:from|to|\d+%)\s*\{/.test(trimmed) && /transform|opacity|translate|rotate/i.test(trimmed)) {
     return true;
   }
@@ -425,7 +610,7 @@ const DECK_BROKEN_SECTION_CSS_DEBRIS_TAIL_RE =
  * `color: red">` mention in prose is not chopped.
  */
 const DECK_ORPHAN_MID_STYLE_ATTR_TAIL_RE =
-  /(?:^|\n)(?:(?:px|em|rem|%|vh|vw)\s*;\s*)?(?:[a-zA-Z-]+\s*:\s*[^;]*;?\s*){2,}[\s\S]*?["']\s*>[\s\S]*$/i;
+  /(?:^|\n)(?:(?:px|em|rem|%|vh|vw|#(?:[0-9A-Fa-f]{3,8}))\s*;\s*)?(?:[a-zA-Z-]+\s*:\s*[^;]*;?\s*){2,}[\s\S]*?["']\s*>[\s\S]*$/i;
 /**
  * Truncated SVG `<style>` body (`none;stroke:…}.cls-3{…}</style>`) after the
  * opening `<style>` / comment was already stripped. `</style>` is optional —
@@ -459,6 +644,87 @@ function isDeckChromePartialTag(name: string, after: string): boolean {
   );
 }
 
+/**
+ * Hangul/CJK status glued to a truncated font-family / mid-style dump:
+ * `슬라이드 추가 중Caveat',cursive;font-size:23px;…">`.
+ * The dump often starts with a font name leftover, not `property:`.
+ */
+function findHangulGluedStyleDumpCut(line: string): number | null {
+  const match = /^(.*[\uac00-\ud7af\u3000-\u9fff][.\u3002…]?)([\s\S]+)$/u.exec(line);
+  if (!match?.[1] || !match[2]) return null;
+  const prefix = match[1];
+  const dump = match[2];
+  if (/\s$/.test(prefix) || dump.length < 4) return null;
+  if (
+    /^@(?:import|font-face|supports|layer|keyframes|media|charset|container|scope|property|starting-style|page|counter-style)\b/i.test(
+      dump,
+    )
+  ) {
+    return prefix.length;
+  }
+  if (/^(?:from|to|\d+%)\s*\{/.test(dump)) return prefix.length;
+  if (/^--[A-Za-z_][\w-]*\s*[:{]/.test(dump)) return prefix.length;
+  if (looksLikeCssFunctionDebrisLine(dump)) return prefix.length;
+  if (/^\$[a-zA-Z_-][\w-]*\s*:/.test(dump) && /(?:#|rgba?\(|hsla?\(|px|em|rem|%)/.test(dump)) {
+    return prefix.length;
+  }
+  if (/^(?:document|window)\.\w+/.test(dump)) return prefix.length;
+  if (dump.length >= 6 && looksLikeDeckCodeDebrisLine(dump)) return prefix.length;
+  if (dump.length >= 6 && looksLikeTailwindArbitraryDebrisLine(dump)) return prefix.length;
+  if (dump.length < 8) return null;
+  const decls = dump.match(/[a-zA-Z-]+\s*:\s*[^;\n]{1,96};/g) ?? [];
+  const fontStack = /(?:cursive|sans-serif|serif|monospace|fantasy|system-ui)\s*;/i.test(dump);
+  const styleClose = /["']\s*>/.test(dump);
+  const fontName = /(?:Caveat|Zilla|Quicksand|Fredoka|Grotesk|Barlow|Instrument|Plex|Inter|Geist|Playfair|Pretendard|Noto)/i.test(
+    dump,
+  );
+  const fontLeftover =
+    /^(?:['"][A-Za-z][\w\s]+['"]|[A-Za-z][\w\s]{0,24}['"])\s*,\s*(?:cursive|sans-serif|serif|monospace)/i.test(
+      dump,
+    );
+  if (decls.length >= 2 && (styleClose || fontStack || fontName || fontLeftover)) {
+    return prefix.length;
+  }
+  if (fontStack && decls.length >= 1) return prefix.length;
+  if ((fontStack || fontName || fontLeftover) && styleClose) return prefix.length;
+  if (fontName && fontStack) return prefix.length;
+  if (fontLeftover && (fontStack || styleClose || decls.length >= 1)) return prefix.length;
+  // @font-face body glued to status: `중url('…woff2')` / `중src: url(` / `중local(`.
+  if (/^(?:url|local|format|tech)\s*\(|^src\s*:\s*(?:url|local|tech)\s*\(|^@font-face\b/i.test(dump)) {
+    return prefix.length;
+  }
+  return null;
+}
+
+/**
+ * Latin/Hangul prose glued to `Caveat',cursive;font-size:…">` when midCss
+ * matches the whole line as CSS (empty prefix) and would otherwise keep it.
+ */
+function findFontStackDumpIndex(line: string): number | null {
+  // Prefer a CamelCase font leftover after prose (`slideCaveat',cursive;`)
+  // so `Adding slideCaveat'` does not match from column 0.
+  const re =
+    /[A-Z][A-Za-z]{1,23}['"]\s*,\s*(?:cursive|sans-serif|serif|monospace|fantasy|system-ui)\s*;/g;
+  let match: RegExpExecArray | null = re.exec(line);
+  while (match) {
+    if (match.index > 0) {
+      const prefix = line.slice(0, match.index);
+      if (
+        /[\p{L}\p{N}]/u.test(prefix)
+        && !/\bstyle\s*=\s*["']\s*$/i.test(prefix)
+        && !/<[a-z][\w:-]*\b[^>]*$/i.test(prefix)
+      ) {
+        const dump = line.slice(match.index);
+        if (/(?:[a-zA-Z-]+\s*:\s*[^;]*;){1,}|["']\s*>/.test(dump)) {
+          return match.index;
+        }
+      }
+    }
+    match = re.exec(line);
+  }
+  return null;
+}
+
 function findTrailingSameLineDeckHtmlCut(line: string): number | null {
   const orphan = line.match(/^(.*?)(-index\s*=\s*["']\d+["']\s+style\s*=.*)$/i);
   if (orphan?.[1] !== undefined) return orphan[1].length;
@@ -473,6 +739,13 @@ function findTrailingSameLineDeckHtmlCut(line: string): number | null {
     /^(.*?[\uac00-\ud7af\u3000-\u9fff])\s*([A-Za-z][\s\S]*<br\b[\s\S]*<\/h[1-6]>)/u,
   );
   if (hangulBrHero?.[1] !== undefined) return hangulBrHero[1].length;
+  // Hangul/CJK glued to a truncated font-family leftover:
+  // `슬라이드 추가 중Caveat',cursive;font-size:…">`. Run before midCss —
+  // midCss would otherwise keep `Caveat',` as the human prefix.
+  const hangulStyleGlue = findHangulGluedStyleDumpCut(line);
+  if (hangulStyleGlue != null) return hangulStyleGlue;
+  const fontStackDump = findFontStackDumpIndex(line);
+  if (fontStackDump != null) return fontStackDump;
   // Mid-word CSS join after Hangul/Latin: `슬라이드 추가 중ospace;font-size:…">Label</div>`
   // (`ospace` = truncated `monospace`). Keep the human prefix.
   // NEVER cut intact `… style="font-family:…"` tags — that left `<span style="`
@@ -481,23 +754,25 @@ function findTrailingSameLineDeckHtmlCut(line: string): number | null {
   // reluctant `[\s\S]*?["']\s*>` backtracks into ReDoS on long CSS dumps.
   if (/["']\s*>|<\/(?:div|span|p|h[1-6])\b|<br\b/i.test(line)) {
     const midCss = line.match(
-      /^(.*?)((?:[a-z]{2,14};)?(?:[a-zA-Z-]+\s*:\s*[^;]*;){2,}[\s\S]*?["']\s*>[\s\S]*)$/i,
+      /^(.*?)((?:[A-Za-z][\w\s]{0,24}['"]\s*,\s*)?(?:[a-z]{2,14};)?(?:[a-zA-Z-]+\s*:\s*[^;]*;){2,}[\s\S]*?["']\s*>[\s\S]*)$/i,
     );
     if (midCss?.[1] !== undefined && midCss[2]) {
-      const prefix = midCss[1];
+      let prefix = midCss[1];
       const css = midCss[2];
       const endsInStyleAttr = /\bstyle\s*=\s*["']\s*$/i.test(prefix);
       const openTagPrefix = /<[a-z][\w:-]*\b[^>]*$/i.test(prefix);
       const cjkGlue = /[\u3000-\u9fff\uac00-\ud7af]/u.test(prefix.slice(-12));
-      const midWordCssFrag = /^(?:[a-z]{2,14};)/i.test(css);
+      const midWordCssFrag =
+        /^(?:[A-Za-z][\w\s]{0,24}['"]\s*,\s*)?(?:[a-z]{2,14};)/i.test(css);
       if (
         !endsInStyleAttr
         && !openTagPrefix
         && (cjkGlue || midWordCssFrag)
         && /(?:font-size|letter-spacing|text-transform|opacity|margin|font-family|line-height)\s*:/i.test(css)
-        && /(?:<\/(?:div|span|p|h[1-6])>|<br\b)/i.test(css)
+        && (/(?:<\/(?:div|span|p|h[1-6])>|<br\b)/i.test(css) || /["']\s*>/.test(css))
         && /[\p{L}\p{N}]/u.test(prefix.slice(-8))
       ) {
+        prefix = prefix.replace(/[A-Za-z][\w\s]{0,24}['"]\s*,\s*$/u, "");
         return prefix.length;
       }
     }
@@ -507,6 +782,67 @@ function findTrailingSameLineDeckHtmlCut(line: string): number | null {
     /^(.*?)((?:font-size|width|height|padding|margin)\s*:\s*[\d.]+)\s+style\s*=\s*["'][\s\S]*$/i,
   );
   if (brokenAttr?.[1] !== undefined) return brokenAttr[1].length;
+  const gluedCss = line.match(
+    /^(.*?[\uac00-\ud7af])((?:[a-zA-Z-]+\s*:\s*[^;]+;){1,}[a-zA-Z-]+\s*:\s*[^;]+;?)\s*$/u,
+  );
+  if (
+    gluedCss?.[1] !== undefined
+    && /(?:font-size|letter-spacing|font-family|text-transform|opacity|margin|padding|line-height|color)\s*:/i.test(
+      gluedCss[2] ?? "",
+    )
+  ) {
+    return gluedCss[1].length;
+  }
+  const voidSlash = /^(.*?(?:[.。…]|\s))(?:\s*\/\s*>)\s*$/u.exec(line);
+  if (voidSlash?.[1] !== undefined && /[\p{L}\p{N}.。…]$/u.test(voidSlash[1].trimEnd())) {
+    return voidSlash[1].trimEnd().length;
+  }
+  const attrTail = new RegExp(
+    `^(.*?)(?:\\s+["']?\\s*(?:${DECK_HTML_ATTR_TAIL_NAMES}|\\([\\w.-]+\\)|\\[[\\w.-]+\\]|\\*ng[\\w]+)\\s*=\\s*(?:"[^"]*"|'[^']*'|\\{[^}]*\\}|[^\\s>"']+))+\\s*$`,
+    "i",
+  ).exec(line);
+  if (attrTail?.[1] !== undefined && /[\p{L}\p{N}.。…]$/u.test(attrTail[1].trimEnd())) {
+    return attrTail[1].trimEnd().length;
+  }
+  const mixedQuote =
+    /^(.*?)(?:\s+(?:class|id|style|className)\s*=\s*(?:"[^"\n]*'|'[^'\n]*"))\s*$/i.exec(line);
+  if (mixedQuote?.[1] !== undefined && /[\p{L}\p{N}.。…]$/u.test(mixedQuote[1].trimEnd())) {
+    return mixedQuote[1].trimEnd().length;
+  }
+  const reactStyle = /^(.*?)(?:\s+style=\{\{[\s\S]*\}\})\s*$/.exec(line);
+  if (reactStyle?.[1] !== undefined && /[\p{L}\p{N}.。…]$/u.test(reactStyle[1].trimEnd())) {
+    return reactStyle[1].trimEnd().length;
+  }
+  const boolAttr = /^(.*?)(?:\s+(?:playsinline|muted|autoplay|loop|controls|default|defer|async|nomodule))\s*$/i.exec(
+    line,
+  );
+  if (boolAttr?.[1] !== undefined && /[\p{L}\p{N}.。…]$/u.test(boolAttr[1].trimEnd())) {
+    return boolAttr[1].trimEnd().length;
+  }
+  const mimeAttr =
+    /^(.*?)(?:\s+(?:as|type|media)\s*=\s*["']?(?:font|text\/|image\/|video\/|audio\/|print|screen|all|\())/i.exec(
+      line,
+    );
+  if (mimeAttr?.[1] !== undefined && /[\p{L}\p{N}.。…]$/u.test(mimeAttr[1].trimEnd())) {
+    return mimeAttr[1].trimEnd().length;
+  }
+  const scssDump = /^(.*?)(?:\s+)(\$[a-zA-Z_-][\w-]*\s*:)/.exec(line);
+  if (
+    scssDump?.[1] !== undefined
+    && /[\p{L}\p{N}.。…]$/u.test(scssDump[1].trimEnd())
+    && /(?:#|rgba?\(|hsla?\(|px|em|rem|%)/.test(line.slice(scssDump[1].length))
+  ) {
+    return scssDump[1].trimEnd().length;
+  }
+  const cssDump = /^(.*?)(?:\s+)(?=(?:(?:repeating-)?(?:linear|radial|conic)-gradient|rgba?|hsla?|light-dark|image-set|cross-fade|device-cmyk|url|format|local|fit-content|calc|clamp)\b|\/\*)/i.exec(
+    line,
+  );
+  if (cssDump?.[1] !== undefined && /[\p{L}\p{N}.。…]$/u.test(cssDump[1].trimEnd())) {
+    const dump = line.slice(cssDump[1].length).trim();
+    if (looksLikeCssFunctionDebrisLine(dump) || /^\/\*/.test(dump)) {
+      return cssDump[1].trimEnd().length;
+    }
+  }
   return null;
 }
 
@@ -1810,7 +2146,14 @@ export function stripIncompleteTrailingMarkupToken(input: string): string {
   if (after.includes(">")) return input;
 
   // Bare `<` / `<!` / `<!DOCTYPE…` / `</` prefixes mid-stream.
-  if (after === "" || after === "/" || after === "!" || /^\/?!?(?:DOCTYPE\s*html?)?$/i.test(after)) {
+  if (
+    after === ""
+    || after === "/"
+    || after === "!"
+    || after === "?"
+    || /^\/?!?(?:DOCTYPE\s*html?)?$/i.test(after)
+    || /^\?/.test(after)
+  ) {
     return input.slice(0, lt).trimEnd();
   }
 
@@ -1825,6 +2168,9 @@ export function stripIncompleteTrailingMarkupToken(input: string): string {
     return input.slice(0, lt).trimEnd();
   }
   if (isDeckChromePartialTag(rawName, after)) {
+    return input.slice(0, lt).trimEnd();
+  }
+  if (!isShortStreamingHtmlPrefix(rawName)) {
     return input.slice(0, lt).trimEnd();
   }
   return input;
@@ -1969,6 +2315,37 @@ export function looksLikeDeckCodeDebrisLine(line: string): boolean {
 
   if (/^#{1,6}\s+\S/.test(trimmed)) return false;
   if (/^(?:[-*+]|\d+[.)])\s+\S/.test(trimmed)) return false;
+  if (/^<https?:\/\//i.test(trimmed)) return false;
+  if (lineIsChatProseProtocolMarkup(trimmed)) return false;
+  if (/^<\?(?:xml\b|[\w:-]+)/i.test(trimmed) || /^<!\[CDATA\[/.test(trimmed)) return true;
+  if (/^<!\[(?:if\b|endif)/i.test(trimmed)) return true;
+  if (/^\{\{[#/][\w.-]+/.test(trimmed)) return true;
+  if (/^<%[=#@-]/.test(trimmed)) return true;
+  if (/^\{#(?:each|if|await|key)\b/.test(trimmed)) return true;
+  if (/^\{\/(?:each|if|await|key)\}/.test(trimmed)) return true;
+  if (/^\{%\s*(?:for|if|endif|endfor|assign|set|block)\b/.test(trimmed)) return true;
+  if (/^\]\]>\s*$/.test(trimmed)) return true;
+  if (/^\/\*[\s\S]*\*\/\s*$/.test(trimmed) && trimmed.length <= 120) return true;
+  if (
+    /^\/\*/.test(trimmed)
+    && !/\*\//.test(trimmed)
+    && trimmed.length <= 120
+    && !/[\uac00-\ud7af]{6,}/.test(trimmed)
+  ) {
+    return true;
+  }
+  if (/^!important\s*;?\s*$/i.test(trimmed)) return true;
+  if (/^\$[a-zA-Z_-][\w-]*\s*:/.test(trimmed) && /(?:#|rgba?\(|hsla?\(|px|em|rem|%)/.test(trimmed)) {
+    return true;
+  }
+  if (/^!\[[^\]]*\]\(\s*data:image\//i.test(trimmed)) return true;
+  if (looksLikeBrStackedHeadingLine(trimmed)) return true;
+  if (looksLikeHtmlAttrDumpLine(trimmed)) return true;
+  if (looksLikeCssFunctionDebrisLine(trimmed)) return true;
+  if (looksLikeTailwindArbitraryDebrisLine(trimmed)) return true;
+  if (looksLikeHtmlAttrContinuationLine(trimmed)) return true;
+  if (/^&amp;lt;\/?[A-Za-z]/.test(trimmed)) return true;
+  if (/^rgba?\([^)]*\)\s*;\s*[a-zA-Z-]+\s*:/.test(trimmed)) return true;
 
   if (/^[}\]\uFF5D]+\s*$/u.test(trimmed)) return true;
   if (/^(?:[}\]\uFF5D]\s*|<\/?(?:pre|code|div|span|p)>\s*)+$/iu.test(trimmed)) return true;
@@ -2036,6 +2413,55 @@ export function looksLikeDeckCodeDebrisLine(line: string): boolean {
   if (/^#[0-9A-Fa-f]{3,8}\s*;\s*--[A-Za-z_]/.test(trimmed)) {
     return true;
   }
+  // Mid-style hex dump: `#2d2a26;padding:28px;transform:…">`.
+  if (/^#(?:[0-9A-Fa-f]{3,8})\s*;\s*[a-zA-Z-]+\s*:/.test(trimmed)) {
+    return true;
+  }
+  // Split gradient token: `9c9,#ff9f9f);border:2px solid`.
+  if (/^#(?:[0-9A-Fa-f]{3,8})\s*\)\s*;\s*[a-zA-Z-]+\s*:/.test(trimmed)) {
+    return true;
+  }
+  // Style-attribute closer leftover: `">Syft로…` / `">Observability` / `"> 5px 0`.
+  if (/^["']\s*>/.test(trimmed)) {
+    return true;
+  }
+  if (
+    /^:['"][A-Za-z]/.test(trimmed)
+    && /(?:Slab|Serif|Sans|Caveat|Grotesk|Quicksand|Fredoka|Zilla|Playfair|cursive)/i.test(trimmed)
+  ) {
+    return true;
+  }
+  // Bare font-stack leftover: `'Zilla Slab',cursive;` / `Caveat',cursive;font-size:`.
+  // Unquoted names cannot include spaces — otherwise `Adding slideCaveat'` is
+  // treated as a stack and the human prefix is dropped.
+  if (
+    /^(?:['"][A-Za-z][\w\s]{0,24}['"]|[A-Za-z][\w]{0,24}['"])\s*,\s*(?:cursive|sans-serif|serif|monospace|fantasy|system-ui)\s*;/i.test(
+      trimmed,
+    )
+  ) {
+    return true;
+  }
+  if (/^(?:hsla?|hwb|lch|oklch|lab|color|light-dark)\s*\([^)]*\)\s*;\s*[a-zA-Z-]+\s*:/.test(trimmed)) {
+    return true;
+  }
+  if (/^var\s*\(\s*--[^)]+\)\s*;\s*[a-zA-Z-]+\s*:/.test(trimmed)) {
+    return true;
+  }
+  if (/^currentColor\s*;\s*[a-zA-Z-]+\s*:/i.test(trimmed)) {
+    return true;
+  }
+  if (/^(?:deg|turn|rad|grad)\s*,\s*#(?:[0-9A-Fa-f]{3,8})/.test(trimmed)) {
+    return true;
+  }
+  if (/^#[0-9A-Fa-f]{3,8}\s*;?\s*$/.test(trimmed)) {
+    return true;
+  }
+  if (/^[0-9A-Fa-f]{3,8}\s*,\s*$/.test(trimmed)) {
+    return true;
+  }
+  if (/^[\d.]+(?:px|em|rem)\s+(?:solid|dashed|dotted)\s*$/i.test(trimmed)) {
+    return true;
+  }
   if (
     /^<\/?[a-zA-Z][\w:-]*\b/.test(trimmed)
     && /(?:\bstyle\s*=|\bclass\s*=|data-(?:slide|deck)|role\s*=\s*["']presentation|aria-hidden\s*=\s*["']true|<(?:svg|path|circle|rect|video|canvas|iframe|object|embed|picture|source|math|foreignObject)\b|<\/(?:div|section|span|svg|h[1-6]|style|pre)\b|<br\b)/i.test(
@@ -2045,7 +2471,7 @@ export function looksLikeDeckCodeDebrisLine(line: string): boolean {
     return true;
   }
   if (
-    /^(?:(?:\.[A-Za-z_-][\w-]*){1,8}|#[A-Za-z_-][\w-]*|@(?:keyframes|font-face|media|import|supports|layer|page)\b|:(?:root|from|to)\b|(?:from|to|\d+%)\s*\{)/i.test(
+    /^(?:(?:\.[A-Za-z_-][\w-]*){1,8}|#[A-Za-z_-][\w-]*|@(?:keyframes|font-face|media|import|supports|layer|page|charset|namespace|property|scope|starting-style|container|counter-style)\b|:(?:root|from|to)\b|(?:from|to|\d+%)\s*\{)/i.test(
       trimmed,
     )
   ) {
@@ -2056,7 +2482,28 @@ export function looksLikeDeckCodeDebrisLine(line: string): boolean {
   }
   if (
     /^(?:-?[a-zA-Z]+(?:-[a-zA-Z0-9]+)*)\s*:\s*\S/.test(trimmed)
-    && /(?:rgba?\(|hsla?\(|#[0-9A-Fa-f]{3,8}|\d+(?:px|em|rem|%|vh|vw|ms|s)|border|padding|margin|font-|display\s*:|transform|opacity|background|filter|transition)/i.test(
+    && /(?:rgba?\(|hsla?\(|#[0-9A-Fa-f]{3,8}|\d+(?:px|em|rem|%|vh|vw|cqw|cqh|cqi|cqb|ms|s)|border|padding|margin|font-|display\s*:|transform|opacity|background|filter|transition|content\s*:|aspect-ratio\s*:|color-scheme\s*:|unicode-range\s*:|font-display\s*:|view-transition-name\s*:|anchor-name\s*:|position-anchor\s*:|interpolate-size\s*:|offset-path\s*:|mask-image\s*:|contain\s*:|isolation\s*:|mix-blend-mode\s*:|url\s*\(|format\s*\(|local\s*\(|tech\s*\(|woff2?|\\[Aa]|!important)/i.test(
+      trimmed,
+    )
+  ) {
+    return true;
+  }
+  if (/^src\s*:\s*(?:url|local|tech)\s*\(/i.test(trimmed)) return true;
+  if (/^U\+[0-9A-Fa-f]{1,6}\b/.test(trimmed)) return true;
+  if (/^[A-Za-z0-9._/-]+\.woff2?\b/i.test(trimmed)) return true;
+  if (/^from-font\s*;?\s*$/i.test(trimmed)) return true;
+  if (
+    /^(?:-?(?:webkit|moz|ms)-)?[a-z][\w-]*-[a-z][\w-]*\s*:\s*\S/i.test(trimmed)
+    && !/[\uac00-\ud7af]/.test(trimmed)
+    && (/;\s*$/.test(trimmed)
+      || /(?:url\s*\(|var\s*\(|#[0-9A-Fa-f]{3,8}|\d+(?:px|em|rem|%|vh|vw|cqw)|--[\w-]+)/.test(trimmed))
+  ) {
+    return true;
+  }
+  if (
+    !/[\uac00-\ud7af]/.test(trimmed)
+    && /^(?:[a-z][\w-]*\s*:\s*[^;]+;\s*){2,}$/i.test(trimmed)
+    && /(?:--|url\s*\(|var\s*\(|#[0-9A-Fa-f]{3,8}|\d+(?:px|em|rem|%|vh|vw|cqw)|timeline|wrap|sizing|font-)/i.test(
       trimmed,
     )
   ) {
@@ -2074,6 +2521,13 @@ export function looksLikeDeckCodeDebrisLine(line: string): boolean {
   if (/^&lt;\/?[a-zA-Z]/.test(trimmed) && /(?:style\s*=|class\s*=|&gt;)/i.test(trimmed)) {
     return true;
   }
+  if (
+    /^<\/?([A-Za-z][\w:-]*)\b/.test(trimmed)
+    && !lineIsChatProseProtocolMarkup(trimmed)
+    && !/^<https?:\/\//i.test(trimmed)
+  ) {
+    return true;
+  }
   return false;
 }
 
@@ -2084,15 +2538,17 @@ export function looksLikeDeckCodeDebrisLine(line: string): boolean {
 export function looksLikeSoftCssDeclarationLine(line: string): boolean {
   const trimmed = String(line ?? "").trim();
   if (!trimmed || /:/.test(trimmed)) return false;
-  if (
-    !/^(?:-?(?:webkit|moz|ms)-)?[a-z][\w-]*(?:\s+[^\n:;{}]{1,64}){1,6};?\s*$/i.test(trimmed)
-  ) {
-    return false;
-  }
+  const shaped =
+    /^(?:-?(?:webkit|moz|ms)-)?[a-z][\w-]*((?:\s+[^\n:;{}]{1,64}){1,6});?\s*$/i.exec(
+      trimmed,
+    );
+  if (!shaped) return false;
   if (/[\uac00-\ud7af]/.test(trimmed)) return false;
   const cssValueSignal =
     /(?:\d+(?:\.\d+)?(?:px|em|rem|%|vh|vw|ms|s|deg|fr|ch)?\b|\b(?:ease(?:-in|-out|-in-out)?|linear|infinite|alternate|forwards|backwards|both|none|auto|inherit|initial|unset|cover|contain|blur|circle|ellipse|closest-side|farthest-side|all|transform|opacity|scroll|contents|fixed|absolute|relative|sticky|flex|grid|block|inline|row|column|wrap|nowrap|hidden|visible|solid|dashed|dotted)\b|rgba?\(|hsla?\(|#[0-9A-Fa-f]{3,8}\b|cubic-bezier\s*\(|linear-gradient\s*\(|matrix3d?\s*\(|(?:translate|scale|rotate|skew)[XYZxyz3d]?\s*(?:\(|$))/i;
-  if (cssValueSignal.test(trimmed)) return true;
+  // Score the value tokens only — "Visible intro" must not trip on the
+  // property-shaped first word matching a CSS keyword.
+  if (cssValueSignal.test(shaped[1] ?? "")) return true;
   const two = /^(?:-?(?:webkit|moz|ms)-)?([a-z][\w-]*)\s+([a-z0-9.#%()-][\w.#%()-]*)\s*;?\s*$/i.exec(
     trimmed,
   );
@@ -2111,7 +2567,17 @@ export function looksLikeDeckCssContinuationLine(line: string): boolean {
   if (/^#[0-9A-Fa-f]{3,8}\s*;?\s*[}\uFF5D]?\s*$/u.test(trimmed)) return true;
   if (/^#[0-9A-Fa-f]{3,8}\s*;\s*(?:--|[a-zA-Z-]+\s*:)/.test(trimmed)) return true;
   if (/^rgba?\([^)]*\)\s*;?\s*[}\uFF5D]?\s*$/iu.test(trimmed)) return true;
+  if (/^rgba?\([^)]*\)\s*;\s*[a-zA-Z-]+\s*:/.test(trimmed)) return true;
   if (/^[\d.]+(?:px|em|rem|%|vh|vw|ms|s)?\s*;?\s*[}\uFF5D]?\s*$/iu.test(trimmed)) return true;
+  // Split box-shadow / spacing residue: `5px 0`.
+  if (/^[\d.]+(?:px|em|rem|%)\s+[\d.]+\s*;?\s*$/i.test(trimmed)) return true;
+  // Split hex list residue: `9c9,`.
+  if (/^[0-9A-Fa-f]{3,8}\s*,\s*$/.test(trimmed)) return true;
+  if (/^["']\s*>/.test(trimmed)) return true;
+  if (/^(?:hsla?|hwb|lch|oklch)\s*\(/.test(trimmed)) return true;
+  if (/^var\s*\(\s*--/.test(trimmed)) return true;
+  if (/^currentColor\s*;/i.test(trimmed)) return true;
+  if (/^(?:deg|turn|rad|grad)\s*,/.test(trimmed)) return true;
   if (/^[a-zA-Z-]+\s*:\s*[^;{]+;?\s*[}\uFF5D]?\s*$/u.test(trimmed)) return true;
   if (/^--[A-Za-z_][\w-]*\s*:/.test(trimmed)) return true;
   if (/^[}\]\uFF5D]+\s*$/u.test(trimmed)) return true;
@@ -2126,14 +2592,49 @@ export function looksLikeDeckCssContinuationLine(line: string): boolean {
 export function looksLikeDeckJsDebrisLine(line: string): boolean {
   const trimmed = String(line ?? "").trim();
   if (!trimmed) return false;
+  // Hangul/CJK status glued to JS (`슬라이드 추가 중document.querySelector`)
+  // is a prefix+dump line — keep the status and let hangul glue cut the dump.
+  if (/^[\uac00-\ud7af\u3000-\u9fff]/.test(trimmed)) return false;
   if (/\b(?:document|window)\.\w+\s*\(/.test(trimmed)) return true;
   if (/\brequestAnimationFrame\s*\(/.test(trimmed)) return true;
   if (/\bnew\s+(?:Animation|KeyframeEffect)\s*\(/.test(trimmed)) return true;
+  if (/\.(?:innerHTML|outerHTML)\s*=/.test(trimmed)) return true;
+  if (/\.insertAdjacentHTML\s*\(/.test(trimmed)) return true;
+  if (/\.classList\.(?:add|remove|toggle|replace)\s*\(/.test(trimmed)) return true;
+  if (/\.setAttribute\s*\(/.test(trimmed)) return true;
+  if (/\.className\s*=/.test(trimmed)) return true;
+  if (
+    /\.(?:appendChild|prepend|replaceChildren|replaceWith|insertBefore|insertAdjacentElement|removeAttribute|toggleAttribute)\s*\(/.test(
+      trimmed,
+    )
+  ) {
+    return true;
+  }
+  if (/\.style\.(?:cssText|setProperty)\s*[=(]/.test(trimmed)) return true;
+  if (/\bDOMParser\b/.test(trimmed)) return true;
+  if (/\.createContextualFragment\s*\(/.test(trimmed)) return true;
+  if (/\badoptedStyleSheets\b/.test(trimmed)) return true;
+  if (/\b(?:new\s+)?CSSStyleSheet\b/.test(trimmed)) return true;
+  if (/\.replaceSync\s*\(/.test(trimmed)) return true;
+  if (/\.setAttributeNS\s*\(/.test(trimmed)) return true;
+  if (/\.srcdoc\s*=/.test(trimmed)) return true;
+  if (/\bgetComputedStyle\s*\(/.test(trimmed)) return true;
+  if (/\.scrollIntoView\s*\(/.test(trimmed)) return true;
+  if (/\.dataset\.\w+\s*=/.test(trimmed)) return true;
+  if (/\.insertAdjacentText\s*\(/.test(trimmed)) return true;
+  if (/\.removeChild\s*\(/.test(trimmed)) return true;
+  if (/\.(?:before|after)\s*\(/.test(trimmed)) return true;
+  if (/\bstyled\.\w+/.test(trimmed)) return true;
+  if (/\bcss\s*`/.test(trimmed)) return true;
+  if (/^(?:querySelector(?:All)?|getElementById|getElementsBy(?:ClassName|TagName)|closest)\s*\(/.test(trimmed)) {
+    return true;
+  }
   if (/\w+\.(?:animate|cancel|addEventListener|getAnimations)\s*\(/.test(trimmed)) return true;
   if (/^(?:const|let|var)\s+\w+\s*=\s*(?:document\.|window\.|\w+\.(?:animate|querySelector))/.test(trimmed)) {
     return true;
   }
   if (/\b(?:morphSVG|gsap|ScrollTrigger|KeyframeEffect)\b/i.test(trimmed)) return true;
+  if (/^CSS\.supports\s*\(/.test(trimmed)) return true;
   if (/\bTrigger\s*,\s*timeline\b/i.test(trimmed)) return true;
   if (/<\/pre>/i.test(trimmed) && /(?:animate|querySelector|morphSVG|timeline|const\s+\w+|addEventListener)/i.test(trimmed)) {
     return true;
@@ -2157,6 +2658,7 @@ export function stripLeakedDeckCodeDebrisBlocks(input: string): string {
   const lines = String(input).split("\n");
   const kept: string[] = [];
   let inCssContinuation = false;
+  let inHtmlAttrContinuation = false;
 
   for (let i = 0; i < lines.length; i += 1) {
     const line = lines[i] ?? "";
@@ -2165,6 +2667,12 @@ export function stripLeakedDeckCodeDebrisBlocks(input: string): string {
       kept.push(line);
       continue;
     }
+
+    if (inHtmlAttrContinuation && looksLikeHtmlAttrContinuationLine(trimmed)) {
+      if (/>/.test(trimmed)) inHtmlAttrContinuation = false;
+      continue;
+    }
+    inHtmlAttrContinuation = false;
 
     const inlineCut = cutInlineDeckHtmlPrefix(line);
     if (inlineCut !== undefined) {
@@ -2187,6 +2695,7 @@ export function stripLeakedDeckCodeDebrisBlocks(input: string): string {
       inCssContinuation =
         lineOpensUnclosedCssBlock(trimmed)
         || (inCssContinuation && !/[})\]\uFF5D]/u.test(trimmed));
+      inHtmlAttrContinuation = looksLikeIncompleteHtmlOpenLine(trimmed);
       while (kept.length > 0 && !(kept[kept.length - 1] ?? "").trim()) {
         kept.pop();
       }
@@ -2230,7 +2739,7 @@ function cutInlineDeckHtmlPrefix(line: string): string | null | undefined {
   }
 
   const softCut =
-    /^(.*?)(\s+)(?=(?:-?(?:webkit|moz|ms)-)?[a-z][\w-]*(?:\s+[^\n:;{}]{1,64}){1,6};?\s*$|(?:document|window)\.\w+\s*\(|requestAnimationFrame\s*\(|cubic-bezier\s*\()/i.exec(
+    /^(.*?)(\s+)(?=(?:-?(?:webkit|moz|ms)-)?[a-z][\w-]*(?:\s+[^\n:;{}]{1,64}){1,6};?\s*$|(?:document|window)\.\w+\s*\(|requestAnimationFrame\s*\(|cubic-bezier\s*\(|\w+\.(?:innerHTML|outerHTML|insertAdjacentHTML|classList)\b)/i.exec(
       line,
     );
   if (softCut) {
@@ -2250,8 +2759,13 @@ function cutInlineDeckHtmlPrefix(line: string): string | null | undefined {
     }
   }
 
-  const match = /^(.*?)(\s*)(<!--|<(?:li|div|ul|ol|table|tr|td|th|section|pre)\b)/i.exec(line);
+  const match = new RegExp(
+    `^(.*?)(\\s*)(<!--|<[?][\\w:-]*|<!\\[(?:CDATA\\[|if\\b|endif\\])|<(?!\\/?(?:${CHAT_PROSE_PROTOCOL_TAG_ALT}|https?|br|wbr)\\b)([A-Za-z][\\w:-]*)(?:\\s|\\/?>|$))`,
+    "i",
+  ).exec(line);
   if (!match || match.index === undefined) return undefined;
+  const tagName = match[4];
+  if (tagName && isShortStreamingHtmlPrefix(tagName)) return undefined;
   const prefixRaw = match[1] ?? "";
   const ticksBefore = (prefixRaw.match(/`/g) ?? []).length;
   if (ticksBefore % 2 === 1) return undefined;
@@ -2262,7 +2776,10 @@ function cutInlineDeckHtmlPrefix(line: string): string | null | undefined {
   if (!/[\p{L}\p{N}]/u.test(prefix)) return undefined;
   if (
     !looksLikeDeckCodeDebrisLine(dump.trim())
-    && !/<!--|<\/(?:li|div|ul|ol|p|td|pre)|<li\b[^>]*>[\s\S]*<\/li>/i.test(dump)
+    && !new RegExp(
+      `<!--|<\\/(?!${CHAT_PROSE_PROTOCOL_TAG_ALT}\\b)[A-Za-z][\\w:-]*\\b|<(?!\\/?(?:${CHAT_PROSE_PROTOCOL_TAG_ALT}|https?)\\b)[A-Za-z][\\w:-]*\\b[^>]*>[\\s\\S]*<\\/`,
+      "i",
+    ).test(dump)
   ) {
     return undefined;
   }
@@ -2288,19 +2805,60 @@ export function stripResidualDeckHtmlMarkupFromProse(input: string): string {
     return `\0INLINE${inlines.length - 1}\0`;
   });
 
+  text = text.replace(/[\u200B-\u200D\uFEFF]/g, "");
+  // Normalize encoded / fullwidth angle brackets before PI and tag scrapers.
+  text = text.replace(/&(?:amp;)+lt;/gi, "<");
+  text = text.replace(/&(?:amp;)+gt;/gi, ">");
+  text = text.replace(/&#0*60;/g, "<");
+  text = text.replace(/&#0*62;/g, ">");
+  text = text.replace(/&#x0*3c;/gi, "<");
+  text = text.replace(/&#x0*3e;/gi, ">");
+  text = text.replace(/\\u003c/gi, "<");
+  text = text.replace(/\\u003e/gi, ">");
+  text = text.replace(/%3c/gi, "<");
+  text = text.replace(/%3e/gi, ">");
+  text = text.replace(/\\x3c/gi, "<");
+  text = text.replace(/\\x3e/gi, ">");
+  text = text.replace(/\\u\{0*3c\}/gi, "<");
+  text = text.replace(/\\u\{0*3e\}/gi, ">");
+  text = text.replace(/\\074/g, "<");
+  text = text.replace(/\\076/g, ">");
+  text = text.replace(/\uFF1C/g, "<");
+  text = text.replace(/\uFF1E/g, ">");
   text = text.replace(/<!--[\s\S]*?-->/g, "");
   text = text.replace(/<!--[\s\S]*$/g, "");
+  text = text.replace(/<!doctype\b[^>]*>/gi, "");
+  text = text.replace(/<\?[\w:-]+[^\n]*\?>/g, "");
+  text = text.replace(/<\?[\w:-]+[^\n]*$/g, "");
+  text = text.replace(/<!\[CDATA\[[\s\S]*?\]\]>/g, "");
+  text = text.replace(/<!\[CDATA\[[\s\S]*$/g, "");
+  text = text.replace(/<!\[if\b[\s\S]*?\]>/gi, "");
+  text = text.replace(/<!\[endif\]>/gi, "");
+  text = text.replace(/^\s*]]>\s*$/gm, "");
+  text = text.replace(/!\[[^\]]*\]\(\s*data:image\/[^)]+\)/gi, "");
+  text = text.replace(/&amp;lt;\/?[A-Za-z][\w:-]*[\s\S]*?(?:&amp;gt;|&gt;|>)/gi, "");
+  text = text.replace(
+    /(?:^|\n)\s*(?:[\w:-]+\s*=\s*(?:"[^"]*"|'[^']*')\s*)+\/?>[^\n]*/g,
+    "\n",
+  );
+  text = text.replace(/[ \t]+\/>/g, "");
 
-  const paired =
-    "li|ul|ol|div|section|header|footer|nav|aside|main|article|table|thead|tbody|tr|td|th|p|h[1-6]|span|strong|em|button|figure|figcaption|pre|code";
-  for (let pass = 0; pass < 5; pass += 1) {
+  const notProtocol = `(?!\\/?(?:${CHAT_PROSE_PROTOCOL_TAG_ALT}|https?)\\b)`;
+  const htmlName = "[A-Za-z][\\w:-]*";
+  for (let pass = 0; pass < 6; pass += 1) {
     const before = text;
-    text = text.replace(new RegExp(`<(${paired})\\b[^>]*>[\\s\\S]*?<\\/\\1>`, "gi"), "");
+    text = text.replace(
+      new RegExp(`<${notProtocol}(${htmlName})\\b[^>]*>[\\s\\S]*?<\\/\\1>`, "gi"),
+      "",
+    );
     if (text === before) break;
   }
-  text = text.replace(new RegExp(`<\\/?(?:${paired}|br)\\b[^>]*\\/?>`, "gi"), "");
+  text = text.replace(new RegExp(`<\\/?${notProtocol}${htmlName}\\b[^>]*\\/?>`, "gi"), "");
   text = text.replace(
-    /&lt;\/?(?:li|div|ul|ol|span|p|strong|section|table|tr|td|th|pre|code)\b[\s\S]*?(?:&gt;|>)/gi,
+    new RegExp(
+      `&lt;\\/?(?!${CHAT_PROSE_PROTOCOL_TAG_ALT}\\b)${htmlName}\\b[\\s\\S]*?(?:&gt;|>)`,
+      "gi",
+    ),
     "",
   );
   text = text.replace(

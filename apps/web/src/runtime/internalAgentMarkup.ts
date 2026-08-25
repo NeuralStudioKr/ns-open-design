@@ -98,7 +98,7 @@ const DECK_BROKEN_SECTION_CSS_DEBRIS_TAIL_RE =
   /<\/(?:section|div)>\s*[-a-z]*weight\s*:[\s\S]*$/i;
 /** Mid-attribute style debris, including quoted font-family / flex props. */
 const DECK_ORPHAN_MID_STYLE_ATTR_TAIL_RE =
-  /(?:^|\n)(?:(?:px|em|rem|%|vh|vw)\s*;\s*)?(?:[a-zA-Z-]+\s*:\s*[^;]*;?\s*){2,}[\s\S]*?["']\s*>[\s\S]*$/i;
+  /(?:^|\n)(?:(?:px|em|rem|%|vh|vw|#(?:[0-9A-Fa-f]{3,8}))\s*;\s*)?(?:[a-zA-Z-]+\s*:\s*[^;]*;?\s*){2,}[\s\S]*?["']\s*>[\s\S]*$/i;
 /** Truncated SVG style body: `none;stroke:…` (with or without `</style>`). */
 const DECK_ORPHAN_MID_SVG_CSS_STYLE_TAIL_RE =
   /(?:^|\n)(?:(?:none|solid|inherit|round|butt|miter|bevel)\s*;\s*)?(?:(?:stroke(?:-[\w]+)?|fill|stroke-width|stroke-linecap|stroke-linejoin|stroke-miterlimit)\s*:[^;]*;?\s*){2,}[\s\S]*$/i;
@@ -125,33 +125,95 @@ function looksLikeLeakedDeckFrameworkCss(tail: string): boolean {
   );
 }
 
+function findHangulGluedStyleDumpCut(line: string): number | null {
+  const match = /^(.*[\uac00-\ud7af\u3000-\u9fff][.\u3002…]?)([\s\S]+)$/u.exec(line);
+  if (!match?.[1] || !match[2]) return null;
+  const prefix = match[1];
+  const dump = match[2];
+  if (/\s$/.test(prefix) || dump.length < 4) return null;
+  if (
+    /^@(?:import|font-face|supports|layer|keyframes|media|charset|container|scope|property|starting-style|page|counter-style)\b/i.test(
+      dump,
+    )
+  ) {
+    return prefix.length;
+  }
+  if (/^(?:from|to|\d+%)\s*\{/.test(dump)) return prefix.length;
+  if (/^--[A-Za-z_][\w-]*\s*[:{]/.test(dump)) return prefix.length;
+  if (
+    /^(?:url|local|format|tech|blur|drop-shadow|circle|ellipse|inset|polygon|path|image|element|anchor|anchor-size|color|calc-size|scroll|view|ray|attr|counter|sibling-index|sibling-count|cubic-bezier)\s*\(/i.test(
+      dump,
+    )
+  ) {
+    return prefix.length;
+  }
+  if (/^if\s*\(\s*style\s*\(/i.test(dump)) return prefix.length;
+  if (/^\$[a-zA-Z_-][\w-]*\s*:/.test(dump) && /(?:#|rgba?\(|hsla?\(|px|em|rem|%)/.test(dump)) {
+    return prefix.length;
+  }
+  if (/^(?:document|window)\.\w+/.test(dump)) return prefix.length;
+  if (
+    /^(?:-?[a-z][\w-]*)\s*:\s*\S/i.test(dump)
+    && (dump.match(/[a-zA-Z-]+\s*:\s*[^;\n]{1,96};/g) ?? []).length >= 2
+    && !/[\uac00-\ud7af]{3,}/.test(dump)
+  ) {
+    return prefix.length;
+  }
+  if (
+    /^(?:[a-z]{1,12}-)?(?:w|h|min-w|min-h|max-w|max-h|bg|text|border)-\[/.test(dump)
+    && /1920|1080|#[0-9A-Fa-f]{3,8}/.test(dump)
+  ) {
+    return prefix.length;
+  }
+  if (dump.length < 8) return null;
+  const decls = dump.match(/[a-zA-Z-]+\s*:\s*[^;\n]{1,96};/g) ?? [];
+  const fontStack = /(?:cursive|sans-serif|serif|monospace|fantasy|system-ui)\s*;/i.test(dump);
+  const styleClose = /["']\s*>/.test(dump);
+  const fontLeftover =
+    /^(?:['"][A-Za-z][\w\s]+['"]|[A-Za-z][\w\s]{0,24}['"])\s*,\s*(?:cursive|sans-serif|serif|monospace)/i.test(
+      dump,
+    );
+  if (decls.length >= 2 && (styleClose || fontStack || fontLeftover)) return prefix.length;
+  if (fontStack && decls.length >= 1) return prefix.length;
+  if ((fontStack || fontLeftover) && styleClose) return prefix.length;
+  if (fontLeftover && (fontStack || styleClose || decls.length >= 1)) return prefix.length;
+  if (/^(?:url|local|format|tech)\s*\(|^src\s*:\s*(?:url|local|tech)\s*\(|^@font-face\b/i.test(dump)) {
+    return prefix.length;
+  }
+  return null;
+}
+
 function findTrailingSameLineDeckHtmlCut(line: string): number | null {
   // Hangul/CJK glued to stacked hero: `제목 넣는 중CLOUD<br>NATIVE</h1>`
   const hangulBrHero = line.match(
     /^(.*?[\uac00-\ud7af\u3000-\u9fff])\s*([A-Za-z][\s\S]*<br\b[\s\S]*<\/h[1-6]>)/u,
   );
   if (hangulBrHero?.[1] !== undefined) return hangulBrHero[1].length;
+  const hangulStyleGlue = findHangulGluedStyleDumpCut(line);
+  if (hangulStyleGlue != null) return hangulStyleGlue;
   // Same guards as contracts SSOT — never carve intact `style="…"` tags down
   // to `<span style="` residues. Fail fast without attr-close to avoid ReDoS.
   if (/["']\s*>|<\/(?:div|span|p|h[1-6])\b|<br\b/i.test(line)) {
     const midCss = line.match(
-      /^(.*?)((?:[a-z]{2,14};)?(?:[a-zA-Z-]+\s*:\s*[^;]*;){2,}[\s\S]*?["']\s*>[\s\S]*)$/i,
+      /^(.*?)((?:[A-Za-z][\w\s]{0,24}['"]\s*,\s*)?(?:[a-z]{2,14};)?(?:[a-zA-Z-]+\s*:\s*[^;]*;){2,}[\s\S]*?["']\s*>[\s\S]*)$/i,
     );
     if (midCss?.[1] !== undefined && midCss[2]) {
-      const prefix = midCss[1];
+      let prefix = midCss[1];
       const css = midCss[2];
       const endsInStyleAttr = /\bstyle\s*=\s*["']\s*$/i.test(prefix);
       const openTagPrefix = /<[a-z][\w:-]*\b[^>]*$/i.test(prefix);
       const cjkGlue = /[\u3000-\u9fff\uac00-\ud7af]/u.test(prefix.slice(-12));
-      const midWordCssFrag = /^(?:[a-z]{2,14};)/i.test(css);
+      const midWordCssFrag =
+        /^(?:[A-Za-z][\w\s]{0,24}['"]\s*,\s*)?(?:[a-z]{2,14};)/i.test(css);
       if (
         !endsInStyleAttr
         && !openTagPrefix
         && (cjkGlue || midWordCssFrag)
         && /(?:font-size|letter-spacing|text-transform|opacity|margin|font-family|line-height)\s*:/i.test(css)
-        && /(?:<\/(?:div|span|p|h[1-6])>|<br\b)/i.test(css)
+        && (/(?:<\/(?:div|span|p|h[1-6])>|<br\b)/i.test(css) || /["']\s*>/.test(css))
         && /[\p{L}\p{N}]/u.test(prefix.slice(-8))
       ) {
+        prefix = prefix.replace(/[A-Za-z][\w\s]{0,24}['"]\s*,\s*$/u, "");
         return prefix.length;
       }
     }
@@ -222,12 +284,60 @@ function stripLeakedDeckMotifHtmlTail(input: string): string {
     }
     offset += line.length + (i < lines.length - 1 ? 1 : 0);
   }
-  if (cut != null) return input.slice(0, cut).trimEnd();
+  if (cut != null) input = input.slice(0, cut).trimEnd();
   const css = DECK_FRAMEWORK_CSS_TAIL_RE.exec(input);
   if (css?.index !== undefined && looksLikeLeakedDeckFrameworkCss(css[1] ?? "")) {
-    return input.slice(0, css.index).trimEnd();
+    input = input.slice(0, css.index).trimEnd();
   }
-  return input;
+  // Stale-dist belt for the Caveat/Zilla dump family: closer + font-stack lines.
+  const kept: string[] = [];
+  for (const line of input.split("\n")) {
+    const trimmed = line.trim();
+    if (
+      trimmed
+      && (/^["']\s*>/.test(trimmed)
+        || /^(?:['"][A-Za-z][\w\s]{0,24}['"]|[A-Za-z][\w]{0,24}['"])\s*,\s*(?:cursive|sans-serif|serif|monospace)/i.test(
+          trimmed,
+        )
+        || /^(?:hsla?|hwb|lch|oklch)\s*\([^)]*\)\s*;\s*[a-zA-Z-]+\s*:/.test(trimmed)
+        || /^var\s*\(\s*--[^)]+\)\s*;\s*[a-zA-Z-]+\s*:/.test(trimmed)
+        || /^currentColor\s*;\s*[a-zA-Z-]+\s*:/i.test(trimmed)
+        || /^(?:deg|turn|rad|grad)\s*,\s*#(?:[0-9A-Fa-f]{3,8})/.test(trimmed)
+        || /^url\(\s*['"]?(?:https?:|\/)/i.test(trimmed)
+        || /^format\(\s*['"](?:woff2?|truetype|opentype)/i.test(trimmed)
+        || /^local\(\s*['"]?[A-Za-z]/.test(trimmed)
+        || /^fit-content\s*\(/i.test(trimmed)
+        || /^src\s*:\s*(?:url|local|tech)\s*\(/i.test(trimmed)
+        || /^tech\(\s*[\w-]+/i.test(trimmed)
+        || /^U\+[0-9A-Fa-f]{1,6}\b/.test(trimmed)
+        || /^[A-Za-z0-9._/-]+\.woff2?\b/i.test(trimmed)
+        || /^(?:blur|drop-shadow|circle|ellipse|inset|polygon|path)\s*\(/i.test(trimmed)
+        || /^var\(\s*--(?:font|display|sans|serif|mono|hand)/i.test(trimmed)
+        || /^(?:image|element|anchor|anchor-size|color|calc-size|scroll|view|ray|attr|counter|sibling-index|sibling-count|cubic-bezier)\s*\(/i.test(
+          trimmed,
+        )
+        || /^if\s*\(\s*style\s*\(/i.test(trimmed)
+        || /^@(?:import|font-face|supports|layer|keyframes|container|scope|property|starting-style|page|counter-style)\b/i.test(
+          trimmed,
+        )
+        || /^(?:from|to|\d+%)\s*\{/.test(trimmed)
+        || /^--[A-Za-z_][\w-]*\s*[:{]/.test(trimmed)
+        || /^values\s*=\s*["'][\d.\s-]+/.test(trimmed)
+        || /^gradientTransform\s*=/i.test(trimmed)
+        || /^in\s*=\s*["']Source/i.test(trimmed)
+        || /^result\s*=\s*["']goo["']/i.test(trimmed)
+        || /^CSS\.supports\s*\(/.test(trimmed)
+        || /^\$[a-zA-Z_-][\w-]*\s*:/.test(trimmed)
+        || /^(?:document|window)\.\w+/.test(trimmed)
+        || /^(?:mix-blend-mode|offset-path|anchor-name|position-anchor|view-transition-name|interpolate-size|mask-image|isolation|contain)\s*:/i.test(
+          trimmed,
+        ))
+    ) {
+      continue;
+    }
+    kept.push(line);
+  }
+  return kept.join("\n").replace(/\n{3,}/g, "\n\n").trimEnd();
 }
 
 function findArtifactOpenIndex(input: string, from: number): number {
@@ -290,28 +400,34 @@ export function sanitizeAssistantProseForDisplay(
   input: string,
   options: SanitizeAssistantProseOptions = {},
 ): string {
-  const fromContracts = sanitizeAssistantProseForDisplayContracts(input, options);
-  const preservingArtifacts =
-    options.streaming === true || options.preserveClosedArtifact === true;
-  // Stale-dist safety: re-run heuristic debris strip + motif last-pass even if
-  // contracts dist is older than this web bundle.
-  const afterMotif = stripLeakedDeckMotifHtmlForDisplay(
-    stripHardDeckNavJsFingerprints(fromContracts),
-    preservingArtifacts,
-  );
-  const afterHeuristic = stripLeakedDeckCodeDebrisBlocksForDisplayFallback(
-    stripLeakedDeckCodeDebrisBlocksRespectingArtifacts(
-      afterMotif,
+  try {
+    const fromContracts = sanitizeAssistantProseForDisplayContracts(input, options);
+    const preservingArtifacts =
+      options.streaming === true || options.preserveClosedArtifact === true;
+    // Stale-dist safety: re-run heuristic debris strip + motif last-pass even if
+    // contracts dist is older than this web bundle.
+    const afterMotif = stripLeakedDeckMotifHtmlForDisplay(
+      stripHardDeckNavJsFingerprints(fromContracts),
       preservingArtifacts,
-    ),
-    preservingArtifacts,
-  );
-  return stripIncompleteTrailingMarkupToken(
-    stripResidualDeckHtmlMarkupRespectingArtifacts(
-      afterHeuristic,
+    );
+    const afterHeuristic = stripLeakedDeckCodeDebrisBlocksForDisplayFallback(
+      stripLeakedDeckCodeDebrisBlocksRespectingArtifacts(
+        afterMotif,
+        preservingArtifacts,
+      ),
       preservingArtifacts,
-    ),
-  );
+    );
+    return stripIncompleteTrailingMarkupToken(
+      stripResidualDeckHtmlMarkupRespectingArtifacts(
+        afterHeuristic,
+        preservingArtifacts,
+      ),
+    );
+  } catch (err) {
+    // Fail closed: a sanitizer throw must not paint raw deck HTML in the bubble.
+    console.error("[internalAgentMarkup] sanitizeAssistantProseForDisplay failed", err);
+    return "";
+  }
 }
 
 /**

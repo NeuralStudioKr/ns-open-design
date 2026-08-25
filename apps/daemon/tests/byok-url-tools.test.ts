@@ -1,6 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { fetchUrlContent } from '../src/byok-url-tools.js';
+import { WEB_FETCH_ASSET_SKIP_TEXT } from '../src/web-fetch/core.js';
+
+const KIT_ASSET_SKIP = {
+  ok: true,
+  title: '(kit asset — not a page)',
+  text: WEB_FETCH_ASSET_SKIP_TEXT,
+} as const;
 
 describe('fetchUrlContent', () => {
   it('rejects missing and non-http(s) URLs without fetching', async () => {
@@ -16,27 +23,15 @@ describe('fetchUrlContent', () => {
     });
   });
 
-  it('rejects Google Fonts css2 and stylesheet assets without fetching', async () => {
-    expect(await fetchUrlContent('https://fonts.googleapis.com/css2')).toEqual({
-      ok: false,
-      error: 'url is a stylesheet, font, or static asset, not a page',
-    });
+  it('skips Google Fonts css2 and stylesheet assets without fetching or 400ing', async () => {
+    expect(await fetchUrlContent('https://fonts.googleapis.com/css2')).toEqual(KIT_ASSET_SKIP);
     expect(
       await fetchUrlContent(
         'https://fonts.googleapis.com/css2?family=Fredoka:wght@600&display=swap',
       ),
-    ).toEqual({
-      ok: false,
-      error: 'url is a stylesheet, font, or static asset, not a page',
-    });
-    expect(await fetchUrlContent('https://example.com/theme.css')).toEqual({
-      ok: false,
-      error: 'url is a stylesheet, font, or static asset, not a page',
-    });
-    expect(await fetchUrlContent('https://cdn.jsdelivr.net/npm/foo')).toEqual({
-      ok: false,
-      error: 'url is a stylesheet, font, or static asset, not a page',
-    });
+    ).toEqual(KIT_ASSET_SKIP);
+    expect(await fetchUrlContent('https://example.com/theme.css')).toEqual(KIT_ASSET_SKIP);
+    expect(await fetchUrlContent('https://cdn.jsdelivr.net/npm/foo')).toEqual(KIT_ASSET_SKIP);
   });
 
   it('blocks loopback URLs via SSRF guard', async () => {
@@ -75,7 +70,7 @@ describe('fetchUrlContent', () => {
     vi.unstubAllGlobals();
   });
 
-  it('rejects CSS Content-Type and raw @import bodies even on a page URL', async () => {
+  it('skips CSS Content-Type and raw @import bodies even on a page URL', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async () =>
@@ -85,10 +80,7 @@ describe('fetchUrlContent', () => {
         }),
       ),
     );
-    expect(await fetchUrlContent('https://example.com/brand')).toEqual({
-      ok: false,
-      error: 'response is a stylesheet, font, or static asset, not a page',
-    });
+    expect(await fetchUrlContent('https://example.com/brand')).toEqual(KIT_ASSET_SKIP);
     vi.unstubAllGlobals();
 
     vi.stubGlobal(
@@ -100,10 +92,7 @@ describe('fetchUrlContent', () => {
         }),
       ),
     );
-    expect(await fetchUrlContent('https://example.com/brand')).toEqual({
-      ok: false,
-      error: 'response is a stylesheet, font, or static asset, not a page',
-    });
+    expect(await fetchUrlContent('https://example.com/brand')).toEqual(KIT_ASSET_SKIP);
     vi.unstubAllGlobals();
   });
 });

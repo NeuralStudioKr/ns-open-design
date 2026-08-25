@@ -32,6 +32,7 @@ import {
   shouldClearTipRemountPartialUnionMinSizeLatch,
   tipRemountPartialUnionLatchMemberKey,
   shouldInvalidateTipRemountPartialUnionLatchOnMembershipChange,
+  expectedTipRemountUnionPaintBearingCount,
 } from '../edit-mode/manual-edit-freeze';
 import {
   RESIZE_HANDLES,
@@ -69,6 +70,17 @@ export type ManualEditMultiSelectOverlayProps = {
    * members from partial-paint union (529/532).
    */
   stabilizePartialPaintUnion?: boolean;
+  /**
+   * Paint-sync hold armed — with tip session floors union paintBearingCount
+   * from sibling last-good seed count (562).
+   */
+  tipRemountPaintSyncHoldArmed?: boolean;
+  /**
+   * How many selected members already have last-good boxes seeded (555/558).
+   * Floors paintBearingCount during tip/paint-sync so partial-union omit does
+   * not treat seeded siblings as composed-only (562).
+   */
+  tipRemountSeededLastGoodCount?: number;
   /** Tip remount: track pointer over chrome so late geometry apply can defer (516). */
   onChromePointerHoverChange?: (hovering: boolean) => void;
   draftMemberRects?: Record<string, ManualEditRect> | null;
@@ -156,6 +168,8 @@ function unionHostRect(
   trustHostPaintDespiteStale = false,
   stabilizePartialPaintUnion = false,
   previousUnion: ManualEditRect | null = null,
+  tipRemountPaintSyncHoldArmed = false,
+  tipRemountSeededLastGoodCount = 0,
 ): {
   rect: ManualEditRect | null;
   paintBearingCount: number;
@@ -167,7 +181,15 @@ function unionHostRect(
     const paintOk = Boolean(paint && paint.width >= 1 && paint.height >= 1);
     return { target, contentRect, paint, paintOk };
   });
-  const paintBearingCount = members.filter((m) => m.paintOk).length;
+  const livePaintBearingCount = members.filter((m) => m.paintOk).length;
+  // Tip/paint-sync: seed count floors bearing so omit/latch see seeded siblings (562).
+  const paintBearingCount = expectedTipRemountUnionPaintBearingCount(
+    stabilizePartialPaintUnion,
+    tipRemountPaintSyncHoldArmed,
+    targets.length,
+    tipRemountSeededLastGoodCount,
+    livePaintBearingCount,
+  );
   const omitComposed = shouldOmitComposedMembersFromTipRemountPartialUnion(
     stabilizePartialPaintUnion,
     targets.length,
@@ -268,6 +290,8 @@ export function ManualEditMultiSelectOverlay({
   disabled = false,
   trustHostPaintDespiteStale = false,
   stabilizePartialPaintUnion = false,
+  tipRemountPaintSyncHoldArmed = false,
+  tipRemountSeededLastGoodCount = 0,
   onChromePointerHoverChange,
   draftMemberRects = null,
   onGroupMovePreview,
@@ -500,6 +524,8 @@ export function ManualEditMultiSelectOverlay({
     trustHostPaintDespiteStale,
     stabilizePartialPaintUnion,
     tipRemountPartialUnionLatchRef.current,
+    tipRemountPaintSyncHoldArmed,
+    tipRemountSeededLastGoodCount,
   );
   const hostRect = unionResult.rect;
   // Full paint / zero paint / session end — drop expanded partial envelope (535/541).

@@ -5,7 +5,11 @@ import {
   EMERGENCY_DECK_FALLBACK_STATUS_CODE,
   buildEmergencyArtifactFromMessages,
 } from '../artifacts/emergency-deck';
-import { isClosedSoftSalvageDeckHtml, isPersistableShortDeckDraft } from '../artifacts/deck-html-content';
+import {
+  isClosedSoftSalvageDeckHtml,
+  isPersistableShortDeckDraft,
+  isPersistableShortDeckDraftAfterHeal,
+} from '../artifacts/deck-html-content';
 import { recoverBestHtmlDocumentFromText } from '../artifacts/recover';
 import { isIncompleteHtmlDocumentShell, validateHtmlArtifact } from '../artifacts/validate';
 import { resolveLastSubstantiveAssistantMessageId } from './conversation-message-dedupe';
@@ -199,6 +203,7 @@ export async function verifySlideProducedHtmlDeliverable(
   if (isIncompleteHtmlDocumentShell(html)
     && !isClosedSoftSalvageDeckHtml(html)
     && !isPersistableShortDeckDraft(html)
+    && !isPersistableShortDeckDraftAfterHeal(html)
   ) {
     return null;
   }

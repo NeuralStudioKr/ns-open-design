@@ -337,6 +337,17 @@ describe("salvageTemplateFillShellAsCoverDraft", () => {
     expect(draft).toContain('class="slide"');
   });
 
+  it("keeps a closed healable instruction-copy cover as a recover candidate", () => {
+    const shortParrot =
+      '<!doctype html><html lang="ko"><body>'
+      + '<section class="slide"><h1>슬라이드 만들어줘</h1></section>'
+      + '</body></html>';
+    expect(isIncompleteHtmlDocumentShell(shortParrot)).toBe(false);
+    expect(recoverBestHtmlDocumentFromText(`작성 중\n${shortParrot}`)).toContain(
+      '슬라이드 만들어줘',
+    );
+  });
+
   it("does not replace a truncation that already has slide copy", () => {
     const truncated = `<!doctype html><html><body>
 <section class="slide"><h1>기업 AI 도입 효과</h1><p>개요 설명입니다.</p></section>`;

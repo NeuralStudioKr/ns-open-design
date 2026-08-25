@@ -6,7 +6,8 @@ export type FileViewerEscapeChrome = {
   presentMenuOpen: boolean;
   zoomMenuOpen: boolean;
   agentToolsOpen: boolean;
-  shareMenuOpen: boolean;
+  /** React-module viewer only. HtmlViewer folds share into deploy/download. */
+  shareMenuOpen?: boolean;
   deployMenuOpen: boolean;
   downloadMenuOpen: boolean;
   inTabPresent: boolean;
@@ -35,4 +36,41 @@ export function resolveFileViewerPreviewEscapeAction(
   if (chrome.inTabPresent) return 'exit-in-tab-present';
   if (chrome.deployModalOpen) return 'close-deploy-modal';
   return 'noop';
+}
+
+export type FileViewerEscapeSetters = {
+  closePresentMenu: () => void;
+  closeZoomMenu: () => void;
+  closeArtifactTools: () => void;
+  closeShareMenus: () => void;
+  exitInTabPresent: () => void;
+  closeDeployModal: () => void;
+};
+
+/** Apply one Escape layer. Callers must wrap this so a setter throw cannot kill the tree. */
+export function applyFileViewerPreviewEscapeAction(
+  action: FileViewerEscapeAction,
+  setters: FileViewerEscapeSetters,
+): void {
+  if (action === 'close-present-menu') setters.closePresentMenu();
+  else if (action === 'close-zoom-menu') setters.closeZoomMenu();
+  else if (action === 'close-artifact-tools') setters.closeArtifactTools();
+  else if (action === 'close-share-menus') setters.closeShareMenus();
+  else if (action === 'exit-in-tab-present') setters.exitInTabPresent();
+  else if (action === 'close-deploy-modal') setters.closeDeployModal();
+}
+
+/**
+ * Iframe `message` handlers run in a layout/effect. A leftover identifier
+ * or malformed payload throw must not take down the Teamver embed boundary.
+ */
+export function runFileViewerPreviewMessageHandler(
+  label: string,
+  run: () => void,
+): void {
+  try {
+    run();
+  } catch (err) {
+    console.error(`[HtmlViewer] preview ${label} failed`, err);
+  }
 }

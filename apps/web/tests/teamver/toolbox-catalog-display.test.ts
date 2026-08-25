@@ -5,7 +5,9 @@ import type { InstalledPluginRecord, SkillSummary } from "@open-design/contracts
 import {
   applyTeamverCatalogDisplayText,
   isOpenDesignBrandedToolboxResource,
+  isTeamverHiddenPromptScaffoldResourceId,
   shouldHideTeamverToolboxPlugin,
+  shouldHideTeamverToolboxSkill,
   teamverToolboxPluginTitle,
 } from "../../src/teamver/branding/toolboxCatalogDisplay";
 
@@ -78,6 +80,63 @@ describe("Teamver toolbox catalog display", () => {
     expect(applyTeamverCatalogDisplayText("Open-Slide 1920 Canvas Deck")).toBe(
       "teamver Slide 1920 Canvas Deck",
     );
+  });
+
+  it("hides the html-ppt prompt scaffold but keeps visual child templates", () => {
+    expect(isTeamverHiddenPromptScaffoldResourceId("example-html-ppt")).toBe(true);
+    expect(isTeamverHiddenPromptScaffoldResourceId("html-ppt")).toBe(true);
+    expect(
+      isTeamverHiddenPromptScaffoldResourceId(
+        "github:nexu-io/open-design@main/plugins/_official/examples/html-ppt",
+      ),
+    ).toBe(true);
+    expect(isTeamverHiddenPromptScaffoldResourceId("example-html-ppt-zhangzara-studio")).toBe(
+      false,
+    );
+    expect(isTeamverHiddenPromptScaffoldResourceId("Html Ppt Hermes Cyber Terminal")).toBe(
+      false,
+    );
+
+    expect(
+      shouldHideTeamverToolboxPlugin(
+        pluginFixture({
+          id: "example-html-ppt",
+          title: "Html Ppt",
+          manifest: {
+            name: "example-html-ppt",
+            title: "Html Ppt",
+            tags: ["deck", "example"],
+          },
+        }),
+        "ko",
+      ),
+    ).toBe(true);
+    expect(
+      shouldHideTeamverToolboxPlugin(
+        pluginFixture({
+          id: "example-html-ppt-zhangzara-studio",
+          title: "Html Ppt Studio",
+          manifest: {
+            name: "example-html-ppt-zhangzara-studio",
+            title: "Html Ppt Studio",
+            tags: ["deck"],
+          },
+        }),
+        "ko",
+      ),
+    ).toBe(false);
+    expect(
+      shouldHideTeamverToolboxSkill(
+        {
+          id: "html-ppt",
+          name: "html-ppt",
+          description: "HTML PPT Studio skill",
+          mode: "deck",
+          triggers: [],
+        } as SkillSummary,
+        "ko",
+      ),
+    ).toBe(true);
   });
 
   it("hides Open Design skills from the toolbox", () => {

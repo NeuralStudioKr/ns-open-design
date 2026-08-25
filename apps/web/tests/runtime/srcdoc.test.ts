@@ -635,4 +635,14 @@ describe('buildSrcdoc', () => {
     // No fallback od-* ids injected for already-annotated structural opens.
     expect(srcdoc).not.toMatch(/data-od-id="od-/);
   });
+
+  it('never throws on pathological compact deck input (deep-link safety)', () => {
+    let nested = '<section class="slide" style="width:1920px;height:1080px"><h2>a</h2><h2>a</h2></section>';
+    for (let i = 0; i < 60; i += 1) nested = `<div class="wrap">${nested}</div>`;
+    const html = `<!doctype html><html><body>${nested}</body></html>`;
+    expect(() => buildSrcdoc(html, { deck: true })).not.toThrow();
+    const doc = buildSrcdoc(html, { deck: true });
+    expect(doc.toLowerCase()).toContain('<!doctype');
+    expect(doc.length).toBeGreaterThan(32);
+  });
 });

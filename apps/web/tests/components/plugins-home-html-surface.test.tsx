@@ -281,7 +281,7 @@ describe('HtmlSurface authenticated srcDoc', () => {
     unmount();
     __clearHtmlSurfaceMemoryCacheForTests();
     expect(
-      sessionStorage.getItem('od:plugin-preview:v2:/api/plugins/example-html-ppt/preview'),
+      sessionStorage.getItem('od:plugin-preview:v3:/api/plugins/example-html-ppt/preview'),
     ).toBeTruthy();
     render(
       <HtmlSurface
@@ -340,9 +340,11 @@ describe('HtmlSurface authenticated srcDoc', () => {
         const iframe = container.querySelector('iframe');
         expect(iframe).toBeTruthy();
         expect(iframe?.getAttribute('src')).toBeNull();
-        expect(iframe?.getAttribute('srcdoc') || (iframe as HTMLIFrameElement).srcdoc).toContain(
-          '<div class="slide">hi</div>',
-        );
+        const srcDoc =
+          iframe?.getAttribute('srcdoc') || (iframe as HTMLIFrameElement).srcdoc || '';
+        expect(srcDoc).toContain('>hi</div>');
+        expect(srcDoc).toMatch(/\bslide\b/);
+        expect(srcDoc).toContain('data-deck-active');
       },
       { timeout: 2000 },
     );

@@ -8,6 +8,7 @@ import {
   isClosedSoftSalvageDeckHtml,
   isDeckStatusProseOnlyBody,
   isPersistableShortDeckDraft,
+  isPersistableShortDeckDraftAfterHeal,
   deckArtifactStartsWithMotifSvgDump,
   deckSlideHeadingsLookLikeFailedGenerate,
   shouldAbortStreamForHeadOnlyKitDump,
@@ -141,6 +142,27 @@ describe("deck-html-content", () => {
     );
     expect(deckSlideHeadingsLookLikeFailedGenerate(healedShort)).toBe(false);
     expect(isPersistableShortDeckDraft(healedShort)).toBe(true);
+    expect(isPersistableShortDeckDraftAfterHeal(shortParrot, "expo에 대해서 설명하는 피피티 만들어줘")).toBe(true);
+    expect(isPersistableShortDeckDraftAfterHeal(shortParrot)).toBe(true);
+    const titleOnlyParrot =
+      '<!doctype html><html lang="ko"><body>'
+      + '<section class="slide"><h1>슬라이드 만들어줘</h1></section>'
+      + '</body></html>';
+    expect(isPersistableShortDeckDraft(titleOnlyParrot)).toBe(false);
+    expect(isPersistableShortDeckDraftAfterHeal(titleOnlyParrot)).toBe(true);
+    expect(isDeckStatusProseOnlyBody(titleOnlyParrot)).toBe(false);
+    expect(isIncompleteHtmlDocumentShell(titleOnlyParrot)).toBe(false);
+    const parrotThree =
+      '<!doctype html><html lang="ko"><body>'
+      + '<section class="slide"><h1>시장 기회 PPT 만들어줘</h1><p>국내 SaaS 전환이 가속화되고 있습니다.</p></section>'
+      + '<section class="slide"><h2>도입 장벽 슬라이드 만들어줘</h2><p>보안 검토가 병목입니다.</p></section>'
+      + '<section class="slide"><h2>다음 단계 피피티 만들어줘</h2><p>파일럿으로 검증하세요.</p></section>'
+      + '</body></html>';
+    expect(isPersistableShortDeckDraft(parrotThree)).toBe(false);
+    expect(isPersistableShortDeckDraftAfterHeal(parrotThree)).toBe(true);
+    expect(isPersistableShortDeckDraftAfterHeal(
+      '<!doctype html><html><body><section class="slide"></section></body></html>',
+    )).toBe(false);
   });
 
   it("flags Motif SVG dumps that start before the cover heading", () => {

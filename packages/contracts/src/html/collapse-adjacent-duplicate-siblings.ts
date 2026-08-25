@@ -6,6 +6,11 @@
  * Non-adjacent repeats stay (intentional grid cells). Decorative punctuation
  * dots and empty spans stay. Structural hosts (section/div/li) are never
  * merged — only phrasing tags.
+ *
+ * Budgets: pathological / deeply nested / huge decks must never hang or
+ * throw into React (project deep-link → error.tsx). Prefer no-op over crash.
+ * Preview callers should pass the tighter `COLLAPSE_PREVIEW_*` caps so
+ * first-paint srcdoc stays responsive.
  */
 
 const COLLAPSIBLE_TAGS = new Set([
@@ -47,6 +52,30 @@ const VOID_TAGS = new Set([
 
 const PROTECTED_TAGS = new Set(['script', 'style', 'textarea', 'noscript']);
 
+/** Skip collapse on oversized decks — preview still loads unrepaired HTML. */
+export const COLLAPSE_MAX_INPUT_CHARS = 2_500_000;
+/** Deep DOM nests: return subtree unchanged past this depth. */
+export const COLLAPSE_MAX_DEPTH = 48;
+/**
+ * Shared step budget for parse + findMatchingClose. Exhaustion → treat as
+ * unclosed / bail with remainder as raw (no throw, no infinite loop).
+ */
+export const COLLAPSE_MAX_STEPS = 100_000;
+
+/**
+ * Preview / buildSrcdoc caps — keep first-paint responsive on large MiniMax
+ * decks. Persist / export keep the full defaults above.
+ */
+export const COLLAPSE_PREVIEW_MAX_INPUT_CHARS = 750_000;
+export const COLLAPSE_PREVIEW_MAX_DEPTH = 32;
+export const COLLAPSE_PREVIEW_MAX_STEPS = 8_000;
+
+export type CollapseAdjacentDuplicateOptions = {
+  maxInputChars?: number;
+  maxDepth?: number;
+  maxSteps?: number;
+};
+
 const OPEN_TAG_RE = /^<([a-zA-Z][\w:-]*)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/;
 
 type RawNode = { kind: 'raw'; value: string };
@@ -59,16 +88,21 @@ type ElementNode = {
 };
 type HtmlNode = RawNode | ElementNode;
 
+type StepBudget = { left: number };
+
 function findMatchingClose(
   html: string,
   openEnd: number,
   tag: string,
+  budget: StepBudget,
 ): { innerEnd: number; closeEnd: number } | null {
   const openRe = new RegExp(`<${tag}\\b(?:[^>"']|"[^"]*"|'[^']*')*>`, 'gi');
   const closeRe = new RegExp(`<\\/${tag}\\s*>`, 'gi');
   let depth = 1;
   let cursor = openEnd;
   while (cursor < html.length && depth > 0) {
+    if (budget.left <= 0) return null;
+    budget.left -= 1;
     openRe.lastIndex = cursor;
     closeRe.lastIndex = cursor;
     const nextOpen = openRe.exec(html);
@@ -114,10 +148,15 @@ function isWhitespaceOnly(value: string): boolean {
   return /^\s*$/.test(value);
 }
 
-function parseTopLevel(html: string): HtmlNode[] {
+function parseTopLevel(html: string, budget: StepBudget): HtmlNode[] {
   const nodes: HtmlNode[] = [];
   let cursor = 0;
   while (cursor < html.length) {
+    if (budget.left <= 0) {
+      nodes.push({ kind: 'raw', value: html.slice(cursor) });
+      break;
+    }
+    budget.left -= 1;
     const lt = html.indexOf('<', cursor);
     if (lt === -1) {
       nodes.push({ kind: 'raw', value: html.slice(cursor) });
@@ -154,7 +193,7 @@ function parseTopLevel(html: string): HtmlNode[] {
       cursor = openEnd;
       continue;
     }
-    const closed = findMatchingClose(html, openEnd, tag);
+    const closed = findMatchingClose(html, openEnd, tag, budget);
     if (!closed) {
       nodes.push({ kind: 'raw', value: html.slice(lt) });
       break;
@@ -200,12 +239,19 @@ function serialize(nodes: HtmlNode[]): string {
   )).join('');
 }
 
-function collapseTree(html: string): string {
-  const nodes = parseTopLevel(html);
+function collapseTree(
+  html: string,
+  depth: number,
+  budget: StepBudget,
+  maxDepth: number,
+): string {
+  if (depth > maxDepth) return html;
+  if (budget.left <= 0) return html;
+  const nodes = parseTopLevel(html, budget);
   const rebuilt: HtmlNode[] = [];
   for (const node of nodes) {
     const next: HtmlNode = node.kind === 'element'
-      ? { ...node, inner: collapseTree(node.inner) }
+      ? { ...node, inner: collapseTree(node.inner, depth + 1, budget, maxDepth) }
       : node;
     const previous = lastSignificantNode(rebuilt);
     if (
@@ -224,9 +270,22 @@ function collapseTree(html: string): string {
  * Drop immediately-adjacent sibling copies of the same heading / paragraph /
  * badge. No-ops (same string) when the document has no such twins.
  */
-export function collapseAdjacentDuplicateDeckSiblings(html: string): string {
+export function collapseAdjacentDuplicateDeckSiblings(
+  html: string,
+  options?: CollapseAdjacentDuplicateOptions,
+): string {
   const source = String(html ?? '');
   if (!source) return source;
-  const collapsed = collapseTree(source);
-  return collapsed === source ? source : collapsed;
+  const maxInputChars = options?.maxInputChars ?? COLLAPSE_MAX_INPUT_CHARS;
+  const maxDepth = options?.maxDepth ?? COLLAPSE_MAX_DEPTH;
+  const maxSteps = options?.maxSteps ?? COLLAPSE_MAX_STEPS;
+  if (source.length > maxInputChars) return source;
+  try {
+    const budget: StepBudget = { left: maxSteps };
+    const collapsed = collapseTree(source, 0, budget, maxDepth);
+    return collapsed === source ? source : collapsed;
+  } catch {
+    // Pathological / truncated decks must not take down preview (error.tsx).
+    return source;
+  }
 }

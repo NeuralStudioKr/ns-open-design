@@ -1,6 +1,7 @@
 import {
   deckHtmlHasMotifOutsideCanvasHang,
   firstOfficialDeckTemplateId,
+  isArtifactHtmlStableForPreview,
   looksLikeDeckSlideHostAttrs,
   OFFICIAL_DECK_LOOK_STYLE_ATTR,
 } from '@open-design/contracts';
@@ -52,6 +53,75 @@ export function deckHtmlNeedsOfficialLookPreviewHeal(html: string): boolean {
   return !OFFICIAL_LOOK_STYLE_RE.test(dest);
 }
 
+/** Debounce streaming look heals so token-stable snapshots do not thrash srcDoc. */
+export const OFFICIAL_LOOK_STREAMING_HEAL_DEBOUNCE_MS = 400;
+
+/**
+ * Gate for FileViewer live preview look heal (§1.21).
+ * §0.76 skipped all streaming heals; generation then looked Neutral until
+ * persist. Allow heal once the painted snapshot is stable enough — live
+ * preview already holds incomplete shells on last-stable, so this only
+ * runs on closed documents that still lack the look sheet / Motif remmerge.
+ */
+export function shouldApplyOfficialLookPreviewHeal(
+  html: string,
+  options?: { streaming?: boolean },
+): boolean {
+  const dest = String(html ?? '');
+  if (!dest.trim() || !deckHtmlNeedsOfficialLookPreviewHeal(dest)) return false;
+  if (options?.streaming && !isArtifactHtmlStableForPreview(dest)) return false;
+  return true;
+}
+
+/** Prefer healed HTML only when it was produced for this exact live source. */
+export function pickOfficialLookHealedPreviewSource(options: {
+  livePreviewSource: string | null | undefined;
+  healedPreview: string | null | undefined;
+  healedForSource: string | null | undefined;
+}): string | null {
+  const live = options.livePreviewSource ?? null;
+  if (!live) return null;
+  const healed = options.healedPreview ?? null;
+  if (healed && options.healedForSource === live) return healed;
+  return live;
+}
+
+const projectTemplateIdCache = new Map<string, string | null>();
+
+/** Test helper — clear project→templateId memo between cases. */
+export function clearOfficialLookPreviewTemplateIdCache(): void {
+  projectTemplateIdCache.clear();
+}
+
+async function resolveProjectDeckTemplateId(projectId: string): Promise<string | null> {
+  const id = String(projectId ?? '').trim();
+  if (!id) return null;
+  if (projectTemplateIdCache.has(id)) return projectTemplateIdCache.get(id) ?? null;
+  try {
+    const resp = await fetchTeamverDaemon(`/api/projects/${encodeURIComponent(id)}`);
+    if (!resp.ok) {
+      projectTemplateIdCache.set(id, null);
+      return null;
+    }
+    const json = (await resp.json()) as {
+      metadata?: {
+        selectedDeckTemplateId?: string;
+        skillIds?: unknown;
+        context?: { skillIds?: unknown };
+      };
+    };
+    const templateId = firstOfficialDeckTemplateId(
+      json.metadata?.selectedDeckTemplateId,
+      json.metadata?.skillIds,
+      json.metadata?.context?.skillIds,
+    );
+    projectTemplateIdCache.set(id, templateId);
+    return templateId;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Preview-only official look / Motif remmerge (same template resolve as
  * HTML export fallback). Does not write disk — callers keep the healed
@@ -65,20 +135,7 @@ export async function healOfficialLookForDeckPreview(
   const id = String(projectId ?? '').trim();
   if (!dest.trim() || !id || !deckHtmlNeedsOfficialLookPreviewHeal(dest)) return dest;
   try {
-    const resp = await fetchTeamverDaemon(`/api/projects/${encodeURIComponent(id)}`);
-    if (!resp.ok) return dest;
-    const json = (await resp.json()) as {
-      metadata?: {
-        selectedDeckTemplateId?: string;
-        skillIds?: unknown;
-        context?: { skillIds?: unknown };
-      };
-    };
-    const templateId = firstOfficialDeckTemplateId(
-      json.metadata?.selectedDeckTemplateId,
-      json.metadata?.skillIds,
-      json.metadata?.context?.skillIds,
-    );
+    const templateId = await resolveProjectDeckTemplateId(id);
     if (!templateId) return dest;
     return mergeOfficialLookCssForTemplate(dest, templateId);
   } catch {

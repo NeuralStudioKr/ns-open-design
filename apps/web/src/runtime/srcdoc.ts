@@ -36,6 +36,9 @@ import {
   lockStackedDeckCanvasForPreview,
   looksLikeOfficialFullscreenPresenterDeck,
   collapseAdjacentDuplicateDeckSiblings,
+  COLLAPSE_PREVIEW_MAX_DEPTH,
+  COLLAPSE_PREVIEW_MAX_INPUT_CHARS,
+  COLLAPSE_PREVIEW_MAX_STEPS,
   pinDeckSlidesToFixedCanvas,
 } from '@open-design/contracts';
 import { stripConflictingSrcDocCspBaseUri } from './authenticatedHtmlSrcDoc';
@@ -142,9 +145,23 @@ import {
 } from '../artifacts/deck-slide-surface';
 import { relaxPersistedDeckSlideSurfaceBleed } from '@open-design/contracts';
 
-export function buildSrcdoc(
+/**
+ * Last-resort iframe document when the full preview pipeline throws.
+ * Must never throw — deep-link `/files/deck.html` mounts on first paint.
+ */
+function buildSrcdocDegraded(html: string, options: SrcdocOptions): string {
+  try {
+    const shell = wrapPreviewHtmlShell(String(html ?? ''));
+    const withBase = options.baseHref ? injectBaseHref(shell, options.baseHref) : shell;
+    return injectPreviewEscapeBridge(injectSandboxShim(withBase));
+  } catch {
+    return `<!doctype html><html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/></head><body><p style="font:14px/1.45 system-ui;padding:1.5rem;color:#1a1a1a">미리보기를 구성하지 못했습니다. 새로고침 후 다시 시도해 주세요.</p></body></html>`;
+  }
+}
+
+function buildSrcdocUnsafe(
   html: string,
-  options: SrcdocOptions = {}
+  options: SrcdocOptions = {},
 ): string {
   // Match cover thumbs: relax flattened `.slide` bleed so official Motif /
   // identity dark washes can paint, then re-letterbox html/body only.
@@ -168,10 +185,21 @@ export function buildSrcdoc(
     && looksLikeOfficialFullscreenPresenterDeck(repairedHead);
   // Compact MiniMax fills sometimes echo the last heading/paragraph/badge.
   // Collapse twins for preview only on stacked API decks — catalog presenters
-  // keep authored decorative repeats.
-  const previewSource = compactStackedDeck
-    ? collapseAdjacentDuplicateDeckSiblings(repairedHead)
-    : repairedHead;
+  // keep authored decorative repeats. Never throw into the React tree —
+  // a pathological deck must degrade to unrepaired HTML, not error.tsx.
+  let previewSource = repairedHead;
+  if (compactStackedDeck) {
+    try {
+      previewSource = collapseAdjacentDuplicateDeckSiblings(repairedHead, {
+        maxInputChars: COLLAPSE_PREVIEW_MAX_INPUT_CHARS,
+        maxDepth: COLLAPSE_PREVIEW_MAX_DEPTH,
+        maxSteps: COLLAPSE_PREVIEW_MAX_STEPS,
+      });
+    } catch (err) {
+      console.error('[buildSrcdoc] collapseAdjacentDuplicateDeckSiblings failed', err);
+      previewSource = repairedHead;
+    }
+  }
   const pinForCompact = (html: string) => (
     compactStackedDeck
       ? pinDeckSlidesToFixedCanvas(html, { force: compactLetterboxOfficialPresenter })
@@ -253,6 +281,23 @@ export function buildSrcdoc(
   return injectPreviewEscapeBridge(
     injectSrcdocTransportActivationBridge(injectSnapshotBridge(withTweaks)),
   );
+}
+
+/**
+ * Build the iframe srcdoc for deck / HTML preview.
+ * Outer try/catch: any repair / compact / collapse / inject failure must
+ * degrade — never throw into React (project deep-link → app/error.tsx).
+ */
+export function buildSrcdoc(
+  html: string,
+  options: SrcdocOptions = {},
+): string {
+  try {
+    return buildSrcdocUnsafe(html, options);
+  } catch (err) {
+    console.error('[buildSrcdoc] failed; using degraded shell', err);
+    return buildSrcdocDegraded(html, options);
+  }
 }
 
 /**

@@ -177,7 +177,7 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).not.toContain('Copy the canonical skeleton below as index.html');
       // Ceiling grew again for existing-deck image/surgical-edit rules so
       // "put this image on page N" does not greenfield a 2-slide rewrite.
-      expect(prompt.length).toBeLessThan(27_000);
+      expect(prompt.length).toBeLessThan(29_000);
     });
 
     it('keeps compact deck for skill-seed projects without raw template copy workflow', () => {
@@ -350,11 +350,9 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).not.toContain('# OD core directives');
       expect(prompt).not.toContain('Artifact handoff');
       expect(prompt).not.toContain('Read `assets/template.html`');
-      // Budget guard for the lean slide-only API composer. Measured ~25k
-      // after existing-deck image embed + comment-edit patch contracts landed;
-      // those prevent 8→2 slide collapse / 60–120s full-deck rewrites, so the
-      // cost is intentional. Keep a small headroom for copy tweaks.
-      expect(prompt.length).toBeLessThan(27_000);
+      // Budget guard for the lean slide-only API composer. Measured ~28k after
+      // body-first chrome restore + Motif CSS cue rules; keep headroom for copy tweaks.
+      expect(prompt.length).toBeLessThan(29_000);
       expect(prompt.length).toBeGreaterThan(18_000);
     });
 
@@ -474,7 +472,7 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       );
       expect(prompt).not.toContain('Do not paste this exact headline');
       // Ceiling grew for content-expansion + existing-deck image/surgical-edit rules + fill.
-      expect(prompt.length).toBeLessThan(27_000);
+      expect(prompt.length).toBeLessThan(29_000);
     });
 
     it('keeps quick brief available when a selected template supplies style but not content brief', () => {
@@ -535,7 +533,7 @@ describe('composeSystemPrompt — API mode (#313)', () => {
         prompt.indexOf('Slide deck — API compact contract'),
       );
       // Ceiling grew for content-expansion + existing-deck image/surgical-edit rules + fill.
-      expect(prompt.length).toBeLessThan(27_000);
+      expect(prompt.length).toBeLessThan(29_000);
     });
 
     it('keeps richer visual template rules while stripping unavailable copy workflows', () => {
@@ -564,10 +562,10 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).not.toContain('Read assets/template.html and copy the skeleton');
       expect(prompt).not.toContain('Use references/layouts.md for exact slots');
       // Ceiling grew for existing-deck image/surgical-edit rules.
-      expect(prompt.length).toBeLessThan(27_000);
+      expect(prompt.length).toBeLessThan(29_000);
     });
 
-    it('appends Motif-AFTER-title READ LAST on template clone fill turns', () => {
+    it('appends a single Final authority READ LAST on template clone fill turns', () => {
       const prompt = composeTeamverSlideApiPrompt({
         skillBody:
           '## Template visual kit (from example.html)\n\n'
@@ -581,15 +579,20 @@ describe('composeSystemPrompt — API mode (#313)', () => {
         },
         templateCloneContentFill: true,
       });
-      expect(prompt).toContain('Template clone fill — Motif AFTER title');
+      expect(prompt).toContain('# Final authority (READ LAST)');
+      expect(prompt.match(/# Final authority \(READ LAST\)/g)?.length).toBe(1);
+      expect(prompt).toContain('## Selected template — first content-fill');
+      expect(prompt).not.toContain('Template clone fill — Motif AFTER title');
+      expect(prompt).not.toContain('Selected deck template visual — READ LAST');
+      expect(prompt).not.toContain('direct deck generation rule (READ LAST');
       expect(prompt).toMatch(/Motif CSS|kit Motif vocabulary|deco-pill|Decorations CSS/i);
-      expect(prompt).toMatch(/Never invent Motif geometry from another template family|no invented generic circles/i);
-      expect(prompt.indexOf('Template clone fill — Motif AFTER title')).toBeGreaterThan(
-        prompt.indexOf('Selected deck template visual — READ LAST'),
-      );
+      expect(prompt).toMatch(/Never invent Motif geometry from another template family|no invented generic circles|FORBIDDEN substitutes/i);
       expect(prompt).toMatch(/Motif vocabulary REQUIRED|kit Motif AFTER title/i);
       expect(prompt).toMatch(/Motif sprites \(capped for first content-fill/i);
       expect(prompt).toMatch(/<svg\b/i);
+      expect(prompt.indexOf('# Final authority (READ LAST)')).toBeGreaterThan(
+        prompt.indexOf('Slide deck — API compact contract'),
+      );
     });
 
     it('omits comment-edit / existing-deck contracts on greenfield turns', () => {
@@ -794,7 +797,9 @@ describe('composeSystemPrompt — API mode (#313)', () => {
           selectedDeckTemplateId: 'example-html-ppt-zhangzara-daisy-days',
         },
       });
-      expect(fill).toContain('READ LAST (first content-fill)');
+      expect(fill).toContain('# Final authority (READ LAST)');
+      expect(fill).toContain('## Selected template — first content-fill');
+      expect(fill).not.toContain('READ LAST (first content-fill)');
       expect(fill).toMatch(/Motif vocabulary \(required\)|kit Motif vocabulary/i);
       expect(fill).toContain('kit Motif AFTER title');
       expect(fill).not.toContain('OD-style CREATE');
@@ -804,7 +809,12 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(normal).toContain('Motif budget');
       expect(normal).toContain('paste at most ONE capped kit Motif sprite');
       expect(fill).toMatch(/Motif `<svg>` is NOT required this turn/i);
+      expect(fill).toMatch(/REQUIRE 1–2 kit Motif CSS\/deco classes/i);
       expect(fill).toMatch(/produce 3 filled 1920×1080 slides/i);
+      // Fill kits must not re-inject Motif SVG bodies (persist remmerge paints them).
+      expect(fill).not.toMatch(/```html[\s\S]*?<svg\s/i);
+      expect(fill).not.toMatch(/<svg\s[^>]*viewBox/i);
+      expect(fill.length).toBeLessThan(42_000);
     });
   });
 });

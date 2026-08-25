@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   isIncompleteHtmlDocumentShell,
+  isIncompleteParsedDeckForBestArtifactRestore,
   isLowSubstanceSlideDeckArtifact,
   validateHtmlArtifact,
 } from '../../src/artifacts/validate';
@@ -189,6 +190,27 @@ describe('validateHtmlArtifact', () => {
       + '<section class="slide"><h1>개요</h1><p>내용을 작성하세요</p></section>'
       + '</body></html>';
     expect(isLowSubstanceSlideDeckArtifact(hung)).toBe(true);
+  });
+
+  it('does not treat a healable short instruction-copy cover as an empty shell', () => {
+    const shortParrot =
+      '<!doctype html><html lang="ko"><body>'
+      + '<section class="slide"><h1>슬라이드 만들어줘</h1></section>'
+      + '</body></html>';
+    expect(validateHtmlArtifact(shortParrot).ok).toBe(true);
+    expect(isIncompleteHtmlDocumentShell(shortParrot)).toBe(false);
+    expect(isLowSubstanceSlideDeckArtifact(shortParrot)).toBe(true);
+
+    const emptySlide =
+      '<!doctype html><html lang="ko"><body>'
+      + '<section class="slide"></section>'
+      + '</body></html>';
+    expect(isIncompleteHtmlDocumentShell(emptySlide)).toBe(true);
+    expect(isIncompleteParsedDeckForBestArtifactRestore(shortParrot)).toBe(false);
+    expect(isIncompleteParsedDeckForBestArtifactRestore(emptySlide)).toBe(true);
+    const truncatedHealable = `${shortParrot.replace('</html>', '')}${'<!-- kit -->'.repeat(20)}`;
+    expect(truncatedHealable.length).toBeGreaterThan(128);
+    expect(isIncompleteParsedDeckForBestArtifactRestore(truncatedHealable)).toBe(true);
   });
 
   it('does not classify compact MiniMax 3-slide Korean drafts as low-substance', () => {

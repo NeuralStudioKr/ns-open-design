@@ -20,6 +20,13 @@ const fullEight = [
   '</body></html>',
 ].join('');
 
+const parrotThree =
+  '<!doctype html><html lang="ko"><body>'
+  + '<section class="slide"><h1>시장 기회 PPT 만들어줘</h1><p>국내 SaaS 전환이 가속화되고 있습니다.</p></section>'
+  + '<section class="slide"><h2>도입 장벽 슬라이드 만들어줘</h2><p>보안 검토가 병목입니다.</p></section>'
+  + '<section class="slide"><h2>다음 단계 피피티 만들어줘</h2><p>파일럿으로 검증하세요.</p></section>'
+  + '</body></html>';
+
 describe('shouldFailRunForArtifactPersistResult', () => {
   it('treats skipped-duplicate as failure for scoped comment edits', () => {
     expect(
@@ -59,6 +66,17 @@ describe('shouldFailRunForArtifactPersistResult', () => {
     ).toBeNull();
   });
 
+  it('allows a healable 3-slide instruction-copy draft to replace a thin prior', () => {
+    expect(
+      findClientArtifactRegression({
+        fileName: 'deck.html',
+        htmlBody: parrotThree,
+        priorHtml: compactThree,
+        projectFiles: [{ name: 'deck.html', path: 'deck.html', size: 12_000 } as never],
+      }),
+    ).toBeNull();
+  });
+
   it('still blocks a 3-slide rewrite of a full 8-slide deck', () => {
     const blocked = findClientArtifactRegression({
       fileName: 'deck.html',
@@ -68,6 +86,16 @@ describe('shouldFailRunForArtifactPersistResult', () => {
     });
     expect(blocked).not.toBeNull();
     expect(blocked?.newSize).toBeLessThan(blocked?.priorSize ?? 0);
+  });
+
+  it('still blocks a healable 3-slide instruction-copy rewrite of a full 8-slide deck', () => {
+    const blocked = findClientArtifactRegression({
+      fileName: 'deck.html',
+      htmlBody: parrotThree,
+      priorHtml: fullEight,
+      projectFiles: [{ name: 'deck.html', path: 'deck.html', size: 40_000 } as never],
+    });
+    expect(blocked).not.toBeNull();
   });
 
   it('does not fail skipped-noop (avoids auto-continue churn)', () => {

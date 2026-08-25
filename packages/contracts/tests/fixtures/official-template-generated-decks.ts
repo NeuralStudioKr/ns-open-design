@@ -9,7 +9,9 @@ export const OFFICIAL_TEMPLATE_GENERATED_DECK_FIXTURES: OfficialTemplateGenerate
   {
     folder: 'html-ppt-zhangzara-studio',
     label: 'Studio agency yellow/black chrome',
-    motif: /(?:#f5d200|--c-bg-light|font-family:[^;}]*Barlow|letter-spacing:\s*0\.1em)/i,
+    // Require compact type-lock (not merely --f-display in :root) so Neutral Quicksand
+    // headings cannot pass via token presence alone (§1.18).
+    motif: /od-compact-type-lock[\s\S]*\.slide :is\(h1[\s\S]*?font-family:[^}]*Barlow/i,
     html: `<!doctype html><html lang="ko"><body style="margin:0">
 <section class="slide dark" data-screen-label="01 Cover" style="width:1920px;height:1080px;box-sizing:border-box;position:relative;padding:96px 104px;background:#1c1c1c;color:#f5d200">
   <p class="studio-kicker" style="letter-spacing:.18em;font-weight:700">SENIOR ENGINEERING TRACK</p>
@@ -29,7 +31,7 @@ export const OFFICIAL_TEMPLATE_GENERATED_DECK_FIXTURES: OfficialTemplateGenerate
   {
     folder: 'html-ppt-zhangzara-broadside',
     label: 'Broadside orange environment and massive Barlow type',
-    motif: /(?:#e85d26|--c-bg-orange|font-family:[^;}]*Barlow|--sz-display:\s*13vw)/i,
+    motif: /od-compact-type-lock[\s\S]*\.slide :is\(h1[\s\S]*?font-family:[^}]*Barlow/i,
     html: `<!doctype html><html lang="ko"><body style="margin:0">
 <section class="slide orange" data-screen-label="01 Cover" style="width:1920px;height:1080px;box-sizing:border-box;position:relative;padding:96px 104px;background:#e85d26;color:#111111">
   <p style="font-size:28px;letter-spacing:.16em;font-weight:800">PLATFORM MODERNIZATION</p>
@@ -49,7 +51,7 @@ export const OFFICIAL_TEMPLATE_GENERATED_DECK_FIXTURES: OfficialTemplateGenerate
   {
     folder: 'html-ppt-zhangzara-signal',
     label: 'Signal editorial navy/cream serif signal',
-    motif: /(?:#1c2644|#f0ece3|Source Serif 4|--c-accent:\s*#c8a870)/i,
+    motif: /od-compact-type-lock[\s\S]*\.slide :is\(h1[\s\S]*?font-family:[^}]*Source Serif 4/i,
     html: `<!doctype html><html lang="ko"><body style="margin:0">
 <section class="slide dark" data-screen-label="01 Cover" style="width:1920px;height:1080px;box-sizing:border-box;position:relative;padding:96px 120px;background:#1c2644;color:#e2dcd0">
   <p style="font-size:24px;letter-spacing:.18em;color:#c8a870">MARKET SIGNAL REPORT</p>

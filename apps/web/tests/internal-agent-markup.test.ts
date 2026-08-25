@@ -119,6 +119,104 @@ describe("internalAgentMarkup", () => {
     }
   });
 
+  it("hard-strips Hangul glued to a truncated Caveat / Zilla mid-style dump", () => {
+    const userLeak = [
+      "슬라이드 추가 중Caveat',cursive;font-size:23px;line-height:1.75;margin:0;padding-left:20px;\"> 5px 0 ",
+      "#2d2a26;padding:28px;transform:rotate(0.6deg);\">Syft로 CycloneDX/SPDX 생성, Grype로 CVE 스캔SLSA Level 3: hermetic build + 검증 가능한 출처9c9,",
+      "#ff9f9f);border:2px solid ",
+      "#2d2a26;box-shadow:4px 5px 0 ",
+      "#2d2a26;padding:28px;transform:rotate(-0.4deg);\">:'Zilla Slab',",
+    ].join("\n");
+    for (const streaming of [true, false]) {
+      expect(sanitizeAssistantProseForDisplay(userLeak, { streaming })).toBe("슬라이드 추가 중");
+      expect(
+        sanitizeAssistantProseForDisplay(`초안.\n">:'Zilla Slab',`, { streaming }),
+      ).toBe("초안.");
+      expect(
+        sanitizeAssistantProseForDisplay(`초안.\n">Syft로 CycloneDX/SPDX 생성`, { streaming }),
+      ).toBe("초안.");
+      expect(
+        sanitizeAssistantProseForDisplay(`슬라이드 추가 중Caveat',cursive;">`, { streaming }),
+      ).toBe("슬라이드 추가 중");
+      expect(
+        sanitizeAssistantProseForDisplay(
+          `진행.\nurl('https://fonts.gstatic.com/s/caveat/v1.woff2') format('woff2');`,
+          { streaming },
+        ),
+      ).toBe("진행.");
+      expect(
+        sanitizeAssistantProseForDisplay(
+          `진행.\nsrc: url('https://fonts.gstatic.com/s/caveat/v22.woff2') format('woff2');`,
+          { streaming },
+        ),
+      ).toBe("진행.");
+      expect(
+        sanitizeAssistantProseForDisplay(
+          `슬라이드 추가 중url('https://fonts.gstatic.com/s/caveat/v1.woff2') format('woff2');`,
+          { streaming },
+        ),
+      ).toBe("슬라이드 추가 중");
+      expect(
+        sanitizeAssistantProseForDisplay(
+          `슬라이드 추가 중@import url('https://fonts.googleapis.com/css2?family=Caveat');`,
+          { streaming },
+        ),
+      ).toBe("슬라이드 추가 중");
+      expect(
+        sanitizeAssistantProseForDisplay(`슬라이드 추가 중from { transform: rotate(0deg) }`, {
+          streaming,
+        }),
+      ).toBe("슬라이드 추가 중");
+      expect(
+        sanitizeAssistantProseForDisplay(
+          `슬라이드 추가 중@container slide (min-width: 800px) { .x { color: red } }`,
+          { streaming },
+        ),
+      ).toBe("슬라이드 추가 중");
+      expect(
+        sanitizeAssistantProseForDisplay(`슬라이드 추가 중--bg:#2d2a26;--fg:#fff;`, {
+          streaming,
+        }),
+      ).toBe("슬라이드 추가 중");
+      expect(
+        sanitizeAssistantProseForDisplay(`슬라이드 추가 중cubic-bezier(0.23, 1, 0.32, 1);`, {
+          streaming,
+        }),
+      ).toBe("슬라이드 추가 중");
+      expect(
+        sanitizeAssistantProseForDisplay(`진행.\nanchor-size(--dot width);`, { streaming }),
+      ).toBe("진행.");
+      expect(
+        sanitizeAssistantProseForDisplay(`진행.\ncalc-size(auto, size + 12px);`, { streaming }),
+      ).toBe("진행.");
+      expect(
+        sanitizeAssistantProseForDisplay(
+          `진행.\nCSS.supports('color', 'color-mix(in srgb, red, blue)')`,
+          { streaming },
+        ),
+      ).toBe("진행.");
+      expect(
+        sanitizeAssistantProseForDisplay(`진행.\nin="SourceGraphic" result="goo"`, {
+          streaming,
+        }),
+      ).toBe("진행.");
+      expect(
+        sanitizeAssistantProseForDisplay(
+          `슬라이드 추가 중mix-blend-mode: multiply; isolation: isolate;`,
+          { streaming },
+        ),
+      ).toBe("슬라이드 추가 중");
+      expect(
+        sanitizeAssistantProseForDisplay(`슬라이드 추가 중document.querySelector('.slide')`, {
+          streaming,
+        }),
+      ).toBe("슬라이드 추가 중");
+      expect(
+        sanitizeAssistantProseForDisplay(`슬라이드 추가 중$ink: #2d2a26;`, { streaming }),
+      ).toBe("슬라이드 추가 중");
+    }
+  });
+
   it("hard-strips deck chrome family via web last-pass (flex/landmarks/closers)", () => {
     for (const streaming of [true, false]) {
       expect(
@@ -451,5 +549,108 @@ describe("sanitizeChatMessageLeakedPseudoTool (expanded)", () => {
       kind: "text",
       text: "슬라이드 초안을 준비했습니다.",
     });
+  });
+
+  it("hard-strips unknown HTML tags via web display last-pass", () => {
+    expect(
+      sanitizeAssistantProseForDisplay(`초안. <a href="https://x.test">링크</a>`, {
+        stripCodeFences: true,
+      }),
+    ).toBe("초안.");
+    expect(
+      sanitizeAssistantProseForDisplay(`<slide-counter>3 / 8</slide-counter>`, {
+        stripCodeFences: true,
+      }),
+    ).toBe("");
+    const withForm = sanitizeAssistantProseForDisplay(
+      `질문\n<question-form id="discovery">{"questions":[{"id":"1"}]}</question-form>`,
+      { stripCodeFences: true },
+    );
+    expect(withForm).toContain('<question-form id="discovery">');
+    expect(withForm).toContain("질문");
+  });
+
+  it("hard-strips xml / split-tag / attr-tail leftovers via web display last-pass", () => {
+    expect(
+      sanitizeAssistantProseForDisplay(`<?xml version="1.0"?>\n<svg></svg>`, {
+        stripCodeFences: true,
+      }),
+    ).toBe("");
+    expect(
+      sanitizeAssistantProseForDisplay(`진행.\n<div\nclass="slide">본문</div>`, {
+        stripCodeFences: true,
+      }),
+    ).toBe("진행.");
+    expect(
+      sanitizeAssistantProseForDisplay(`초안. class="card pill"`, { stripCodeFences: true }),
+    ).toBe("초안.");
+  });
+
+  it("hard-strips hex-escape / angular / cssom leftovers via web display last-pass", () => {
+    expect(
+      sanitizeAssistantProseForDisplay(`진행.\n\\x3cdiv class="x"\\x3e`, { stripCodeFences: true }),
+    ).toBe("진행.");
+    expect(
+      sanitizeAssistantProseForDisplay(`초안. (click)="next()"`, { stripCodeFences: true }),
+    ).toBe("초안.");
+    expect(
+      sanitizeAssistantProseForDisplay(`초안. rgb(245,240,230)`, { stripCodeFences: true }),
+    ).toBe("초안.");
+    expect(
+      sanitizeAssistantProseForDisplay(`진행.\nnew DOMParser().parseFromString(html, 'text/html')`, {
+        stripCodeFences: true,
+      }),
+    ).toBe("진행.");
+  });
+
+  it("hard-strips incomplete 3+ letter tags and framework attr leftovers via web display last-pass", () => {
+    expect(sanitizeAssistantProseForDisplay(`초안. <div`, { stripCodeFences: true })).toBe("초안.");
+    expect(sanitizeAssistantProseForDisplay(`초안. @click="next()"`, { stripCodeFences: true })).toBe(
+      "초안.",
+    );
+    expect(
+      sanitizeAssistantProseForDisplay(`초안.\nrgba(245,240,230,0.8)`, { stripCodeFences: true }),
+    ).toBe("초안.");
+    expect(sanitizeAssistantProseForDisplay("Text <p", { stripCodeFences: true })).toBe("Text <p");
+  });
+
+  it("hard-strips fullwidth tags / css-fn / event-attr leftovers via web display last-pass", () => {
+    expect(
+      sanitizeAssistantProseForDisplay(`진행.\n＜div class="slide"＞본문＜/div＞`, {
+        stripCodeFences: true,
+      }),
+    ).toBe("진행.");
+    expect(
+      sanitizeAssistantProseForDisplay(`초안.\ncalc(100% - 48px)`, { stripCodeFences: true }),
+    ).toBe("초안.");
+    expect(
+      sanitizeAssistantProseForDisplay(`초안. onclick="next()"`, { stripCodeFences: true }),
+    ).toBe("초안.");
+    expect(
+      sanitizeAssistantProseForDisplay(`진행.\nquerySelector('.slide')`, { stripCodeFences: true }),
+    ).toBe("진행.");
+  });
+
+  it("hard-strips encoded tags / svg attr / css-fn leftovers via web display last-pass", () => {
+    expect(
+      sanitizeAssistantProseForDisplay(`진행.\n&#60;div class="slide"&#62;본문&#60;/div&#62;`, {
+        stripCodeFences: true,
+      }),
+    ).toBe("진행.");
+    expect(
+      sanitizeAssistantProseForDisplay(`초안. xmlns="http://www.w3.org/2000/svg"`, {
+        stripCodeFences: true,
+      }),
+    ).toBe("초안.");
+    expect(
+      sanitizeAssistantProseForDisplay(`초안.\nlinear-gradient(90deg,#F5F0E6,#fff)`, {
+        stripCodeFences: true,
+      }),
+    ).toBe("초안.");
+    expect(
+      sanitizeAssistantProseForDisplay(`진행.\nel.innerHTML = '<section class="slide">x</section>'`, {
+        stripCodeFences: true,
+      }),
+    ).toBe("진행.");
   });
 });

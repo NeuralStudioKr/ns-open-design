@@ -4,6 +4,7 @@ import {
   htmlLooksLikeSlideDeliverableStream,
   indexOfFirstDeckSlideHost,
   looksLikeDeckSlideHostAttrs,
+  healInstructionCopyCoverHeading,
   looksLikeInstructionCopy,
   looksLikeTemplateMarketingTitle,
 } from '@open-design/contracts';
@@ -432,6 +433,21 @@ export function isPersistableShortDeckDraft(html: string): boolean {
   return titled.length >= 2;
 }
 
+/** Same gate persist uses after `healInstructionCopyCoverHeading`. */
+export function isPersistableShortDeckDraftAfterHeal(
+  html: string,
+  brief?: string | null,
+  deckTitle?: string | null,
+): boolean {
+  if (isPersistableShortDeckDraft(html)) return true;
+  const healed = healInstructionCopyCoverHeading(
+    html,
+    String(brief ?? ''),
+    deckTitle || '슬라이드',
+  );
+  return healed !== html && isPersistableShortDeckDraft(healed);
+}
+
 /**
  * Deck salvage/persist gates: refuse prose-only bodies and status sentences
  * that never reached real `<section class="slide">` content.
@@ -572,6 +588,7 @@ export function isDeckStatusProseOnlyBody(html: string): boolean {
   if (documentContainsSlideSection(withoutComments)) {
     // 1–2 slide titled covers are first-fill drafts, not status prose (§0.76).
     if (isPersistableShortDeckDraft(withoutComments)) return false;
+    if (isPersistableShortDeckDraftAfterHeal(withoutComments)) return false;
     return !meetsMinimumDeckDeliverableQuality(html);
   }
   const bodyMatch = /<body\b[^>]*>([\s\S]*)<\/body>/i.exec(withoutComments);

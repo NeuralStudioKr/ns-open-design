@@ -21,8 +21,15 @@ export default function Error({
   const [autoReloading] = useState(() => maybeReloadOnChunkError(error));
 
   useEffect(() => {
+    // Surface digest/message for staging triage (error.tsx hides the stack).
+    console.error('[teamver embed error boundary]', {
+      name: error?.name,
+      message: error?.message,
+      digest: error?.digest,
+      chunk: isChunkLoadError(error),
+    });
     if (!autoReloading) return;
-  }, [autoReloading]);
+  }, [autoReloading, error]);
 
   if (autoReloading) {
     return (

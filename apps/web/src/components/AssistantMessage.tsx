@@ -450,52 +450,57 @@ function hasVisibleAssistantTextOutput(
     isSlideEditTurn?: boolean;
   },
 ): boolean {
-  const stripped = stripAllClosedArtifacts(text);
-  const base = hideRecoveredHtmlFallback ? stripRecoveredHtmlFallbackForDisplay(stripped, text) : stripped;
-  const cleaned = sanitizeAssistantProseForDisplay(base, {
-    streaming,
-    // Display-only: strip fences even in slide-only MVP. Live artifact parsers
-    // keep raw fences via ProjectView buffers (`!slideOnlyMvp` there).
-    stripCodeFences: hideStreamingCodeFences || hideAssistantThinkingDetails,
-  });
-  const { text: visibleText, hadOpenForm } = streaming
-    ? stripTrailingOpenQuestionForm(cleaned)
-    : { text: cleaned, hadOpenForm: false };
-  if (hadOpenForm) return true;
-  const { head, live } = streaming ? splitStreamingArtifact(visibleText) : { head: visibleText, live: null };
-  const raw = splitOnQuestionForms(head);
-  const slideOnlyGate = slideOnlyMvp || teamverEmbedEnabled;
-  if (slideOnlyGate) {
-    const resolved = resolveSlideOnlyQuestionFormFromContent(
-      head,
-      { slideOnlyMvp, enabled: teamverEmbedEnabled },
-      { locale },
-    );
-    if (resolved.usedFallback && resolved.form) return true;
-  }
-  const hasVisibleHead = raw.some((seg) => {
-    if (seg.kind === "form") return true;
-    const visibleSegmentText = stripUserVisibleQuestionFormProtocolText(seg.text);
-    if (visibleSegmentText.includes(INVALID_QUESTION_FORM_FALLBACK)) return false;
-    const settledText = !streaming && slideOnlyGate
-      ? stripDeckInFlightStatusResidue(visibleSegmentText)
-      : visibleSegmentText;
-    if (
-      shouldHideDeckCreateCompletionProseOnEditTurn({
-        text: settledText,
-        isSlideEditTurn,
-        teamverSlideUi: slideOnlyGate,
-      })
-    ) {
-      return false;
+  try {
+    const stripped = stripAllClosedArtifacts(text);
+    const base = hideRecoveredHtmlFallback ? stripRecoveredHtmlFallbackForDisplay(stripped, text) : stripped;
+    const cleaned = sanitizeAssistantProseForDisplay(base, {
+      streaming,
+      // Display-only: strip fences even in slide-only MVP. Live artifact parsers
+      // keep raw fences via ProjectView buffers (`!slideOnlyMvp` there).
+      stripCodeFences: hideStreamingCodeFences || hideAssistantThinkingDetails,
+    });
+    const { text: visibleText, hadOpenForm } = streaming
+      ? stripTrailingOpenQuestionForm(cleaned)
+      : { text: cleaned, hadOpenForm: false };
+    if (hadOpenForm) return true;
+    const { head, live } = streaming ? splitStreamingArtifact(visibleText) : { head: visibleText, live: null };
+    const raw = splitOnQuestionForms(head);
+    const slideOnlyGate = slideOnlyMvp || teamverEmbedEnabled;
+    if (slideOnlyGate) {
+      const resolved = resolveSlideOnlyQuestionFormFromContent(
+        head,
+        { slideOnlyMvp, enabled: teamverEmbedEnabled },
+        { locale },
+      );
+      if (resolved.usedFallback && resolved.form) return true;
     }
-    return settledText.trim().length > 0;
-  });
-  // Premature deck completion lines are hidden only in ProseBlock while streaming
-  // with an open artifact (`shouldHidePrematureDeckCompletionProse`) — not here.
-  // Live artifact progress still counts as visible activity for the footer.
-  if (live) return true;
-  return hasVisibleHead;
+    const hasVisibleHead = raw.some((seg) => {
+      if (seg.kind === "form") return true;
+      const visibleSegmentText = stripUserVisibleQuestionFormProtocolText(seg.text);
+      if (visibleSegmentText.includes(INVALID_QUESTION_FORM_FALLBACK)) return false;
+      const settledText = !streaming && slideOnlyGate
+        ? stripDeckInFlightStatusResidue(visibleSegmentText)
+        : visibleSegmentText;
+      if (
+        shouldHideDeckCreateCompletionProseOnEditTurn({
+          text: settledText,
+          isSlideEditTurn,
+          teamverSlideUi: slideOnlyGate,
+        })
+      ) {
+        return false;
+      }
+      return settledText.trim().length > 0;
+    });
+    // Premature deck completion lines are hidden only in ProseBlock while streaming
+    // with an open artifact (`shouldHidePrematureDeckCompletionProse`) — not here.
+    // Live artifact progress still counts as visible activity for the footer.
+    if (live) return true;
+    return hasVisibleHead;
+  } catch (err) {
+    console.error('[AssistantMessage] hasVisibleAssistantTextOutput failed', err);
+    return String(text ?? '').trim().length > 0;
+  }
 }
 
 /**
@@ -737,13 +742,18 @@ function AssistantMessageImpl({
     !!onContinueRemainingTasks;
   const canFork = !streaming && !!onForkFromMessage;
   const copyMarkdown = useMemo(() => {
-    const raw = message.content.trim();
+    const raw = String(message.content ?? '').trim();
     if (!raw) return undefined;
     // Copy must match display scrub — raw persist can still hold Daisy/SVG debris.
-    const cleaned = sanitizeAssistantProseForDisplay(raw, {
-      stripCodeFences: hideAssistantThinkingDetails,
-    }).trim();
-    return cleaned.length > 0 ? cleaned : undefined;
+    try {
+      const cleaned = sanitizeAssistantProseForDisplay(raw, {
+        stripCodeFences: hideAssistantThinkingDetails,
+      }).trim();
+      return cleaned.length > 0 ? cleaned : undefined;
+    } catch (err) {
+      console.error('[AssistantMessage] sanitize copyMarkdown failed', err);
+      return undefined;
+    }
   }, [hideAssistantThinkingDetails, message.content]);
   const showFeedback =
     !!onFeedback &&
@@ -2210,13 +2220,23 @@ function ProseBlock({
   const { locale } = useI18n();
   const { slideOnlyMvp, hideAssistantThinkingDetails, enabled: teamverEmbedEnabled } = useTeamverBranding();
   const cleaned = useMemo(() => {
-    const stripped = stripAllClosedArtifacts(text);
-    const base = hideRecoveredHtmlFallback ? stripRecoveredHtmlFallbackForDisplay(stripped, text) : stripped;
-    return sanitizeAssistantProseForDisplay(base, {
-      streaming,
-      // Display-only strip; artifact recovery keeps raw fences in ProjectView buffers.
-      stripCodeFences: hideStreamingCodeFences || hideAssistantThinkingDetails,
-    });
+    try {
+      const stripped = stripAllClosedArtifacts(text);
+      const base = hideRecoveredHtmlFallback ? stripRecoveredHtmlFallbackForDisplay(stripped, text) : stripped;
+      try {
+        return sanitizeAssistantProseForDisplay(base, {
+          streaming,
+          // Display-only strip; artifact recovery keeps raw fences in ProjectView buffers.
+          stripCodeFences: hideStreamingCodeFences || hideAssistantThinkingDetails,
+        });
+      } catch (err) {
+        console.error('[AssistantMessage] sanitize prose failed', err);
+        return "";
+      }
+    } catch (err) {
+      console.error('[AssistantMessage] prose strip failed', err);
+      return String(text ?? '');
+    }
   }, [hideAssistantThinkingDetails, hideRecoveredHtmlFallback, hideStreamingCodeFences, streaming, text]);
   // While the latest turn is still streaming a not-yet-closed question-form,
   // drop the partial `<question-form>{…` markup from the prose so the chat
@@ -3077,10 +3097,15 @@ function stripInternalMarkupFromProseBlocks(
 ): Block[] {
   return blocks.map((block) => {
     if (block.kind !== "text" && block.kind !== "thinking") return block;
-    return {
-      ...block,
-      text: sanitizeAssistantProseForDisplay(block.text, { streaming, stripCodeFences }),
-    };
+    try {
+      return {
+        ...block,
+        text: sanitizeAssistantProseForDisplay(block.text, { streaming, stripCodeFences }),
+      };
+    } catch (err) {
+      console.error('[AssistantMessage] stripInternalMarkupFromProseBlocks failed', err);
+      return { ...block, text: "" };
+    }
   });
 }
 
@@ -3103,8 +3128,8 @@ function suppressDuplicateQuestionForms(blocks: Block[]): Block[] {
     const nextText = segments
       .map((segment) => {
         if (segment.kind === "text") return segment.text;
-        const formKey = segment.form.id.trim().toLowerCase();
-        if (seenFormIds.has(formKey)) {
+        const formKey = String(segment.form?.id ?? '').trim().toLowerCase();
+        if (!formKey || seenFormIds.has(formKey)) {
           changed = true;
           return "";
         }

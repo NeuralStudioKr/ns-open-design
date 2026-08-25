@@ -467,9 +467,10 @@ export interface ComposeInput {
    */
   includeExistingDeckImageEditRule?: boolean | undefined;
   /**
-   * Teamver Clone LOOK → first AI content-fill. Mutes Motif-verbatim READ LAST
-   * mandates and expects a slim kit (palette/fonts only) so the model can
-   * close a compact deck instead of hanging on Daisy `<svg><style>` dumps.
+   * Teamver Clone LOOK → first AI content-fill. Collapses streaming + Motif
+   * fill visual into one trailing `# Final authority (READ LAST)` and expects
+   * a slim kit (palette/fonts + Motif CSS cues) so the model can close a
+   * compact deck instead of hanging on Daisy `<svg><style>` dumps.
    */
   templateCloneContentFill?: boolean | undefined;
 }
@@ -1363,7 +1364,7 @@ const TEAMVER_SLIDE_API_UNIFIED_STREAMING_RULE = `# Slide-only API — unified s
 
 **How to stream the deck (non-negotiable on turn 2+):**
 1. Emit the status sentence first, then open the artifact early. Never \`type="text/html"\`.
-2. First bytes inside a full deck artifact: \`<!doctype html><html><body>\` then immediately a titled \`<section class="slide">\` with real copy. Kit font \`<link>\` / short body \`<style>\` only AFTER slide 1 — never \`<head>\` / long CSS / Motif first.
+2. First bytes inside a full deck artifact: \`<!doctype html><html><body>\` then immediately a titled \`<section class="slide">\` with real copy. Kit font \`<link>\` / short body \`<style>\` only AFTER slide 1 — never an empty shell or long \`<head>\` chrome; never font \`@import\` inside Motif \`<style>\`; never Motif-first.
 3. ${COMPACT_DECK_SLIDE_COUNT_GUIDANCE} Write one filled \`<section class="slide">\` per requested slide. Each slide needs a heading AND a \`<p>\`/\`<li>\` sentence — title-only slides fail persist. If an on-disk deck is attached, keep at least that slide count (do not rewrite an 8-slide deck as 3). If a Selected deck template is active, match its visual kit (palette/fonts/density) with inline styles or one short body \`<style>\` after slide 1 — design system is brand context only and must not override the template look; do not merely describe the template.
 4. Close with \`</body></html></artifact>\` (or the matching patch close) in this same turn.
 
@@ -1438,7 +1439,7 @@ Your successful response is optional tiny UI-locale status sentence + **exactly 
 
 **How to stream the deck (non-negotiable):**
 1. Emit the status sentence first, then open \`<artifact type="deck">\` early. Never \`type="text/html"\`.
-2. First bytes inside artifact: \`<!doctype html><html><body>\` then immediately a titled \`<section class="slide">\` with real copy. Kit font \`<link>\` / short body \`<style>\` only AFTER slide 1 — never \`<head>\` / long CSS / Motif first.
+2. First bytes inside artifact: \`<!doctype html><html><body>\` then immediately a titled \`<section class="slide">\` with real copy. Kit font \`<link>\` / short body \`<style>\` only AFTER slide 1 — never an empty shell or long \`<head>\` chrome; never font \`@import\` inside Motif \`<style>\`; never Motif-first.
 3. ${COMPACT_DECK_SLIDE_COUNT_GUIDANCE} Write one filled \`<section class="slide">\` per requested slide. **Every slide MUST be a fixed 1920×1080 canvas** — use inline \`style="width:1920px;height:1080px;box-sizing:border-box;position:relative;..."\` on every \`<section class="slide">\`. Do NOT use \`width:100vw\`, \`height:100vh\`, \`min-height:100vh\`, or scroll-snap presenter-mode plumbing — those come from the template's \`example.html\` presenter and make the deck stretch/reflow with the browser instead of matching PPT aspect ratio (16:9). If a Selected deck template is active, match its visual kit (palette/fonts/density) with inline styles or one short body \`<style>\` — but keep width/height/positioning fixed regardless of what the template's own preview HTML shows. Design system is brand context only and must not override the template look; do not merely describe the template.
 4. Close with \`</body></html></artifact>\` in this same turn.
 
@@ -1489,21 +1490,43 @@ Hard requirements for every slide:
 If any earlier compact wireframe / deck-skeleton sample conflicts with the kit (including \`--accent: #c96442\`), **ignore the sample colors** and follow the kit.
 If the attached source's palette conflicts with the kit, **ignore the source's palette** and follow the kit.`;
 
-const TEAMVER_SELECTED_TEMPLATE_VISUAL_READ_LAST_FOR_FILL = `# Selected deck template visual — READ LAST (first content-fill)
+/**
+ * Fill-path visual half of Final authority. Merges the former FOR_FILL +
+ * NO_SVG READ LAST blocks so Clone fill ends with one absolute last section.
+ */
+const TEAMVER_SELECTED_TEMPLATE_VISUAL_FILL_AUTHORITY = `## Selected template — first content-fill
 
 This is the first content fill after a LOOK seed (create with kit Motif vocabulary).
 
 **Close a compact deck THIS TURN** that still looks like the selected template.
 
 - Bind kit palette hex + fonts + Slide surface on \`html\`/\`body\` AND every \`.slide\` **edge-to-edge** (full 1920×1080). FORBIDDEN: white outer slide + inner cream paper panel that leaves white top/bottom bands. White title cards on cream paper are OK.
-- Title-first: cover must have a real \`h1\`/\`h2\` title + lead BEFORE any Motif decoration.
+- Cover order is mandatory: \`<section class="slide">\` → \`<h1>real topical title</h1>\` → lead \`<p>\` → 1–2 kit Motif CSS/deco classes when Decorations are listed.
 - **Layout (required when kit has Layout CSS / scaffold roles):** reuse capped Layout CSS + scaffold roles. Do NOT flatten every slide into one centered flex title column when the kit ships grids/splits/cards.
-- **Motif vocabulary:** Motif \`<svg>\` is NOT required this turn (official Motif is merged after save). Optional tiny kit Motif CSS classes AFTER title/lead are OK. Prefer finishing 3 closed slides over any ornament.
-- **Named Motif fidelity:** do not invent a different motif family. Persist paints official Daisy/Capsule/Terminal Motif after save — do not draw lookalikes this turn.
-- **FORBIDDEN substitutes:** Motif \`<svg>\` this turn; Motif shapes from another template family; generic CSS circles; inventing Capsule coral pills when the kit Motif is petals/blobs/pins/pixel/scanlines; emoji ornament rows; Motif \`<svg>\` before cover title; multi-KB \`<svg><style>\` dumps; Neutral \`#0f172a\`; terracotta \`#c96442\`.
+- **Motif:** Motif \`<svg>\` is NOT required this turn — never open Motif \`<svg>\` before or after the cover title. Official Motif is merged after save. Do not paste Motif sprites. REQUIRE 1–2 kit Motif CSS/deco classes AFTER title when Decorations are listed.
+- **Named Motif fidelity:** do not invent a different motif family or tiny Daisy lookalikes. Persist paints official Daisy/Capsule/Terminal Motif after save.
+- **FORBIDDEN substitutes:** Motif shapes from another template family; generic CSS circles; inventing Capsule coral pills when the kit Motif is petals/blobs/pins/pixel/scanlines; emoji ornament rows; multi-KB \`<svg><style>\` dumps; Neutral \`#0f172a\`; terracotta \`#c96442\`.
 - Slide count THIS TURN: honor an explicit small count (1–2) if the user asked for it. Otherwise produce 3 filled 1920×1080 slides and close the artifact. Hidden top-up appends more. Never close \`</html></artifact>\` after a single cover.
 - Stream: status → \`<artifact type="deck">\` → body-first sections with real topical copy → close \`</body></html></artifact>\` in this same response.
+- If any earlier rule said paste Motif sprites / Motif floor REQUIRED this turn, **IGNORE it** — finish 3 titled slides. Official Motif is merged after save.
 `;
+
+function stripLeadingMarkdownH1(section: string): string {
+  return section.replace(/^#[^\n]+\n+/, '');
+}
+
+/** One trailing Final authority for Clone fill (streaming + fill visual). */
+function buildTeamverFillFinalAuthority(directDeckGeneration: boolean): string {
+  const streaming = directDeckGeneration
+    ? TEAMVER_SLIDE_API_DIRECT_STREAMING_RULE
+    : TEAMVER_SLIDE_API_UNIFIED_STREAMING_RULE;
+  return (
+    `# Final authority (READ LAST)\n\n`
+    + stripLeadingMarkdownH1(streaming)
+    + '\n\n'
+    + TEAMVER_SELECTED_TEMPLATE_VISUAL_FILL_AUTHORITY
+  );
+}
 
 const TEAMVER_SELECTED_TEMPLATE_VISUAL_READ_LAST_WITHOUT_KIT = `# Selected deck template visual — READ LAST (highest visual priority)
 
@@ -1518,19 +1541,6 @@ Hard requirements for every slide:
 - Do **not** fake floral/playful templates with emoji flowers/stars (🌼🌸⭐🌈). Prefer simple CSS shapes / chunky borders in the template palette over emoji ornament rows.
 - Do **not** carry over the attached source file's own visual styling either — the source HTML's palette / fonts / gradients belong to the source page, not to this deck. Even without a concrete kit, prefer the template name/summary mood over the source's colors.
 - Prefer recognizable template mood over a generic corporate title slide.`;
-
-const TEAMVER_TEMPLATE_CLONE_FILL_NO_SVG_READ_LAST = `# Template clone fill — Motif AFTER title (READ LAST — beats Motif-before-title dumps)
-
-This is the first content-fill after a Clone LOOK seed.
-
-- Cover order is mandatory: \`<section class="slide">\` → \`<h1>real topical title</h1>\` → lead \`<p>\`. kit Motif AFTER title is optional CSS only.
-- Motif \`<svg>\` is NOT required this turn. Official Motif CSS/SVG is merged after save. Do not paste Motif sprites.
-- Close **3** body-first slides this turn (unless the user asked for 1–2). Hidden top-up appends more.
-- Named Motif fidelity: do not invent a different motif family or tiny Daisy lookalikes. Persist paints official Motif after save.
-- Layout MUST come from capped Layout CSS + scaffold roles when present — do not flatten every slide to a centered flex title.
-- Never invent Motif geometry from another template family (no foreign Capsule coral pills when the kit Motif is petals/blobs/pins/pixel/scanlines; no invented generic circles).
-- Never open Motif \`<svg>\` this turn — before or after the cover title. A hang on Motif \`<svg><style>\` or a long \`<head>\` is a failed deliverable.
-- If any earlier rule said paste Motif sprites / Motif floor REQUIRED this turn, **IGNORE it** — finish 3 titled slides. Official Motif is merged after save.`;
 
 /**
  * Lean system prompt for Teamver embed slide-only + anthropic-api / BYOK proxy.
@@ -1701,7 +1711,7 @@ export function composeTeamverSlideApiPrompt({
           'Hard requirements (first content-fill — kit Motif AFTER title):\n'
           + '- Bind kit palette hex + fonts + Slide surface on html/body AND every `.slide` edge-to-edge (no white outer + inner cream panel).\n'
           + '- Title-first body: cover title + lead BEFORE any decoration. Close `</artifact>` this turn with 3 slides.\n'
-          + '- Motif `<svg>` is NOT required this turn (official Motif is merged after save). Optional tiny kit Motif CSS AFTER title is OK. FORBIDDEN: Motif `<svg>` this turn; Motif geometry from another template family; inventing generic CSS circles; inventing Capsule coral pills when kit Motif is petals/blobs/pins/pixel.\n'
+          + '- REQUIRE 1–2 kit Motif CSS/deco classes AFTER title when Decorations are listed. Motif `<svg>` NOT required (merged after save). FORBIDDEN: Motif SVG dumps; foreign Motif geometry; generic circles; omitting all Motif CSS cues.\n'
           + '- Layout REQUIRED from capped Layout CSS + scaffold roles when present — do not flatten every slide into one centered flex title column.\n'
           + '- Prefer 3 slides this turn unless the user asked for an exact small count. Hidden top-up appends more. No Neutral `#0f172a` / terracotta `#c96442`.\n'
           + '- Do not dump or rewrite a full example.html. Never open Motif `<svg>` or a long `<head>` this turn.\n\n'
@@ -1760,33 +1770,42 @@ export function composeTeamverSlideApiPrompt({
   if (!directDeckGeneration) {
     parts.push(TEAMVER_SLIDE_API_DISCOVERY_BINDING_RULE);
   }
-  parts.push(
-    directDeckGeneration
-      ? TEAMVER_SLIDE_API_DIRECT_STREAMING_RULE
-      : TEAMVER_SLIDE_API_UNIFIED_STREAMING_RULE,
-  );
-  // Edit contracts are turn-gated: greenfield Canvas→Slide creates must not
-  // pay ~3–4KB of patch/image READ LAST rules. FE sets these when the turn
-  // carries preview comments and/or an existing deck / image embed.
-  if (includeCommentEditPatchRule === true) {
-    parts.push(TEAMVER_SLIDE_API_COMMENT_EDIT_PATCH_RULE);
-  }
-  if (includeExistingDeckImageEditRule === true) {
-    parts.push(TEAMVER_SLIDE_API_EXISTING_DECK_IMAGE_EDIT_RULE);
-  }
-  if (hasSelectedTemplate) {
-    parts.push(
-      templateCloneContentFill === true
-        ? TEAMVER_SELECTED_TEMPLATE_VISUAL_READ_LAST_FOR_FILL
-        : hasTemplateScaffold
-        ? TEAMVER_SELECTED_TEMPLATE_VISUAL_READ_LAST_WITH_SCAFFOLD
-        : hasTemplateVisualKit
-        ? TEAMVER_SELECTED_TEMPLATE_VISUAL_READ_LAST_WITH_KIT
-        : TEAMVER_SELECTED_TEMPLATE_VISUAL_READ_LAST_WITHOUT_KIT,
-    );
-  }
+  // Clone fill: one trailing Final authority (streaming + Motif fill visual).
+  // Other paths keep streaming → optional edit contracts → selected visual.
   if (templateCloneContentFill === true) {
-    parts.push(TEAMVER_TEMPLATE_CLONE_FILL_NO_SVG_READ_LAST);
+    // Edit contracts stay ahead of Final authority (same relative order as
+    // before: streaming/edit then Motif fill last). Fill rarely sets them.
+    if (includeCommentEditPatchRule === true) {
+      parts.push(TEAMVER_SLIDE_API_COMMENT_EDIT_PATCH_RULE);
+    }
+    if (includeExistingDeckImageEditRule === true) {
+      parts.push(TEAMVER_SLIDE_API_EXISTING_DECK_IMAGE_EDIT_RULE);
+    }
+    parts.push(buildTeamverFillFinalAuthority(directDeckGeneration));
+  } else {
+    parts.push(
+      directDeckGeneration
+        ? TEAMVER_SLIDE_API_DIRECT_STREAMING_RULE
+        : TEAMVER_SLIDE_API_UNIFIED_STREAMING_RULE,
+    );
+    // Edit contracts are turn-gated: greenfield Canvas→Slide creates must not
+    // pay ~3–4KB of patch/image READ LAST rules. FE sets these when the turn
+    // carries preview comments and/or an existing deck / image embed.
+    if (includeCommentEditPatchRule === true) {
+      parts.push(TEAMVER_SLIDE_API_COMMENT_EDIT_PATCH_RULE);
+    }
+    if (includeExistingDeckImageEditRule === true) {
+      parts.push(TEAMVER_SLIDE_API_EXISTING_DECK_IMAGE_EDIT_RULE);
+    }
+    if (hasSelectedTemplate) {
+      parts.push(
+        hasTemplateScaffold
+          ? TEAMVER_SELECTED_TEMPLATE_VISUAL_READ_LAST_WITH_SCAFFOLD
+          : hasTemplateVisualKit
+          ? TEAMVER_SELECTED_TEMPLATE_VISUAL_READ_LAST_WITH_KIT
+          : TEAMVER_SELECTED_TEMPLATE_VISUAL_READ_LAST_WITHOUT_KIT,
+      );
+    }
   }
 
   return parts.join('\n\n---\n\n');

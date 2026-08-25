@@ -10,7 +10,7 @@
  * from the latest live/saved source.
  *
  * ---------------------------------------------------------------------------
- * Tip remount index (549) — user-perception sequences & key constants
+ * Tip remount index (569) — user-perception sequences & key constants
  * ---------------------------------------------------------------------------
  * Post-protect: TIP_REMOUNT_POST_PROTECT_SEQUENCE
  *   sticky-clear → soft-land → exit-latch → absorb → post-absorb-quiet → live
@@ -30,13 +30,26 @@
  * Soft-land catalogs: TIP_POST_STICKY_SOFT_LAND_CATALOGS (2) — intentional.
  * Layout paint: seed/apply last-good during tip session or paint-sync hold (543).
  * Selection commit: hostPaintRectForManualEditSelectionCommit (546).
+ * Multi commit: shouldRefreshHostPaintOnManualEditSelectionCommit also
+ *   refreshes primary during tip/paint-sync so union measure warms (552).
+ * Multi sibling seed: shouldSeedTipRemountMemberLastHostRectsOnMultiCommit (555);
+ *   one rAF retry when iframe/layout not ready (558);
+ *   retry only when selection ids unchanged (561);
+ *   cancel pending retry on selection clear/boundary (564);
+ *   retry that newly seeds must refresh multi chrome/geom (567).
+ * Seed → union: expectedTipRemountUnionPaintBearingCount floors
+ *   paintBearingCount during tip/paint-sync (562);
+ *   countTipRemountSeededLastGoodForSelection feeds the floor (568).
+ * Last-good cache: prune to selected ids on tip/paint-sync commit (565).
  * Refresh miss: resolveTipRemountRefreshMissAction — last-good → retain →
  *   force-keep → clear (549/550). Selection-commit last-good feeds the same
  *   last-good branch on the following refresh.
+ * Overlay paint: resolveTipRemountHostPaintRectResult — live seed + last-good
+ *   fallback in one entry (553/556); apply-last-good matches Result (559).
  * Intentional nulls (5): mode-exit / no-id / refresh(!id) / unprotected miss /
  *   clear-selection.
  * Walk fixtures: apps/web/tests/edit-mode/tip-remount-sequence-fixtures.ts (547).
- * Checklist: docs-teamver/49_tip_remount_체감_체크리스트_500-551.md (548/551).
+ * Checklist: docs-teamver/49_tip_remount_체감_체크리스트_500-569.md (569).
  * Do not retune fit delays / latch / soft-land without a tip-remount loop note.
  */
 export function shouldClearManualEditFrozenSourceOnModeChange(
@@ -1398,6 +1411,215 @@ export function hostPaintRectForManualEditSelectionCommit(
 }
 
 /**
+ * After selection commit, refresh primary host paint.
+ * Single always refreshes. Multi also refreshes during tip/paint-sync so
+ * last-good cache + host metrics warm before union chrome measures (552).
+ */
+export function shouldRefreshHostPaintOnManualEditSelectionCommit(
+  selectedCount: number,
+  tipRemountChromeSessionLive: boolean,
+  paintSyncHoldArmed: boolean,
+): boolean {
+  if (selectedCount === 1) return true;
+  return selectedCount >= 2
+    && (tipRemountChromeSessionLive || paintSyncHoldArmed);
+}
+
+/**
+ * Multi selection commit during tip/paint-sync: measure and seed last-good for
+ * every selected member so union measureHostRect miss can reuse per-id boxes
+ * (not only primary) on the first overlay paint (555).
+ */
+export function shouldSeedTipRemountMemberLastHostRectsOnMultiCommit(
+  selectedCount: number,
+  tipRemountChromeSessionLive: boolean,
+  paintSyncHoldArmed: boolean,
+): boolean {
+  return selectedCount >= 2
+    && (tipRemountChromeSessionLive || paintSyncHoldArmed);
+}
+
+/**
+ * Multi sibling last-good seed missed some members (iframe/layout not ready) —
+ * schedule one rAF retry while tip/paint-sync is still armed (558).
+ */
+export function shouldRetryTipRemountMemberLastHostRectSeed(
+  memberCount: number,
+  seededCount: number,
+  tipRemountChromeSessionLive: boolean,
+  paintSyncHoldArmed: boolean,
+  alreadyRetried: boolean,
+): boolean {
+  if (alreadyRetried) return false;
+  if (!(tipRemountChromeSessionLive || paintSyncHoldArmed)) return false;
+  if (memberCount < 2) return false;
+  return seededCount < memberCount;
+}
+
+/**
+ * Cancel a pending multi-member last-good seed rAF when tip clears or a newer
+ * selection arms (558) — same shape as sync-measure retry cancel (463).
+ */
+export function shouldCancelTipRemountMemberLastHostRectSeedRetry(
+  pendingRaf: boolean,
+): boolean {
+  return pendingRaf;
+}
+
+/**
+ * Selection clear / id-set change must drop a pending sibling seed retry —
+ * otherwise clear→reselect same ids can apply a stale rAF seed (564).
+ * Complements shouldApplyTipRemountMemberLastHostRectSeedRetry (561).
+ */
+export function shouldCancelTipRemountMemberLastHostRectSeedRetryOnSelectionBoundary(
+  pendingRaf: boolean,
+  selectionBoundaryChanged: boolean,
+): boolean {
+  return pendingRaf && selectionBoundaryChanged;
+}
+
+/**
+ * Seed-retry rAF must only apply when selection membership (order + ids) is
+ * unchanged since schedule — drop stale retries after selection churn (561).
+ */
+export function shouldApplyTipRemountMemberLastHostRectSeedRetry(
+  expectedIds: readonly string[],
+  currentIds: readonly string[],
+): boolean {
+  if (expectedIds.length !== currentIds.length) return false;
+  return expectedIds.every((id, index) => currentIds[index] === id);
+}
+
+/**
+ * Tip/paint-sync: union measureHostRect reuses last-good on miss, so
+ * paintBearingCount is at least the seeded member count (562).
+ */
+export function expectedTipRemountUnionPaintBearingCount(
+  tipRemountChromeSessionLive: boolean,
+  paintSyncHoldArmed: boolean,
+  memberCount: number,
+  seededLastGoodCount: number,
+  livePaintBearingCount: number,
+): number {
+  if (!(tipRemountChromeSessionLive || paintSyncHoldArmed)) {
+    return livePaintBearingCount;
+  }
+  return Math.min(
+    memberCount,
+    Math.max(livePaintBearingCount, seededLastGoodCount),
+  );
+}
+
+/**
+ * Tip/paint-sync selection commit: drop last-good boxes for ids no longer in
+ * the selected set so union seed floor / overlay reuse cannot see ghosts (565).
+ */
+export function shouldPruneTipRemountMemberLastHostRectsOnSelectionCommit(
+  tipRemountChromeSessionLive: boolean,
+  paintSyncHoldArmed: boolean,
+): boolean {
+  return tipRemountChromeSessionLive || paintSyncHoldArmed;
+}
+
+/**
+ * Keep only selected-id last-good entries; returns how many keys were removed.
+ */
+export function pruneTipRemountMemberLastHostRectsToSelection(
+  cache: Map<string, TipRemountHostPaintRect>,
+  selectedIds: readonly string[],
+): number {
+  const keep = new Set(selectedIds);
+  let removed = 0;
+  for (const id of [...cache.keys()]) {
+    if (!keep.has(id)) {
+      cache.delete(id);
+      removed += 1;
+    }
+  }
+  return removed;
+}
+
+/**
+ * Count selected members that already hold a valid last-good box — feeds union
+ * paintBearingCount floor and seed-retry before/after diffs (568).
+ */
+export function countTipRemountSeededLastGoodForSelection(
+  cache: ReadonlyMap<string, TipRemountHostPaintRect>,
+  selectedIds: readonly string[],
+): number {
+  let count = 0;
+  for (const id of selectedIds) {
+    const rect = cache.get(id);
+    if (rect && rect.width >= 1 && rect.height >= 1) count += 1;
+  }
+  return count;
+}
+
+/**
+ * Sibling seed rAF that newly fills last-good must refresh multi chrome —
+ * cache writes alone do not re-render the overlay / seed floor prop (567).
+ */
+export function shouldRefreshTipRemountChromeAfterMemberLastHostRectSeedRetry(
+  tipRemountChromeSessionLive: boolean,
+  paintSyncHoldArmed: boolean,
+  newlySeededCount: number,
+): boolean {
+  return newlySeededCount > 0
+    && (tipRemountChromeSessionLive || paintSyncHoldArmed);
+}
+
+/**
+ * Overlay chrome paint when live measure is missing (553).
+ * Shares last-good reuse with resolveTipRemountRefreshMissAction's
+ * apply-last-good branch — overlays have no React "current" to retain.
+ */
+export function resolveTipRemountOverlayHostPaintRect(
+  tipRemountChromeSessionLive: boolean,
+  paintSyncHoldArmed: boolean,
+  livePaint: TipRemountHostPaintRect | null,
+  lastGood: TipRemountHostPaintRect | null,
+): TipRemountHostPaintRect | null {
+  if (livePaint && livePaint.width >= 1 && livePaint.height >= 1) {
+    return livePaint;
+  }
+  if (shouldReuseLastHostRectOnTipRemountMeasureMiss(
+    tipRemountChromeSessionLive,
+    false,
+    lastGood != null,
+    paintSyncHoldArmed,
+  )) {
+    return lastGood;
+  }
+  return null;
+}
+
+/**
+ * Single entry for overlay/chrome host paint (556): resolve live or last-good
+ * and report whether the live paint should seed the tip last-good cache.
+ */
+export function resolveTipRemountHostPaintRectResult(
+  tipRemountChromeSessionLive: boolean,
+  paintSyncHoldArmed: boolean,
+  livePaint: TipRemountHostPaintRect | null,
+  lastGood: TipRemountHostPaintRect | null,
+): {
+  paint: TipRemountHostPaintRect | null;
+  seedLastGood: TipRemountHostPaintRect | null;
+} {
+  const liveOk = Boolean(livePaint && livePaint.width >= 1 && livePaint.height >= 1);
+  const paint = resolveTipRemountOverlayHostPaintRect(
+    tipRemountChromeSessionLive,
+    paintSyncHoldArmed,
+    livePaint,
+    lastGood,
+  );
+  return {
+    paint,
+    seedLastGood: liveOk && livePaint ? { ...livePaint } : null,
+  };
+}
+
+/**
  * Refresh miss action after measure fails (549/550).
  * Order is intentional and must not reorder:
  *   1. apply-last-good — tip/paint-sync reuse (521/523), including last-good
@@ -1437,6 +1659,42 @@ export function resolveTipRemountRefreshMissAction(
   }
   if (force) return 'keep-force';
   return 'clear';
+}
+
+/**
+ * Refresh-miss apply-last-good must resolve the same rect as overlay Result
+ * when live paint is missing — one last-good source (559).
+ */
+export function tipRemountApplyLastGoodMatchesHostPaintResult(
+  tipRemountChromeSessionLive: boolean,
+  paintSyncHoldArmed: boolean,
+  lastGood: TipRemountHostPaintRect | null,
+): boolean {
+  const action = resolveTipRemountRefreshMissAction(
+    tipRemountChromeSessionLive,
+    paintSyncHoldArmed,
+    lastGood != null,
+    false,
+    false,
+  );
+  const { paint } = resolveTipRemountHostPaintRectResult(
+    tipRemountChromeSessionLive,
+    paintSyncHoldArmed,
+    null,
+    lastGood,
+  );
+  if (action === 'apply-last-good') {
+    return Boolean(
+      paint
+      && lastGood
+      && paint.x === lastGood.x
+      && paint.y === lastGood.y
+      && paint.width === lastGood.width
+      && paint.height === lastGood.height,
+    );
+  }
+  // Outside tip/paint-sync (or no last-good): both must leave paint empty.
+  return paint == null;
 }
 
 /**

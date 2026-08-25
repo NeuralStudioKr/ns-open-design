@@ -65,6 +65,20 @@ import {
   shouldSeedTipRemountLastHostRectFromLivePaint,
   shouldApplyTipRemountLastHostRectOnLayoutPaintMiss,
   hostPaintRectForManualEditSelectionCommit,
+  shouldRefreshHostPaintOnManualEditSelectionCommit,
+  resolveTipRemountOverlayHostPaintRect,
+  resolveTipRemountHostPaintRectResult,
+  shouldSeedTipRemountMemberLastHostRectsOnMultiCommit,
+  shouldRetryTipRemountMemberLastHostRectSeed,
+  shouldCancelTipRemountMemberLastHostRectSeedRetry,
+  shouldCancelTipRemountMemberLastHostRectSeedRetryOnSelectionBoundary,
+  shouldApplyTipRemountMemberLastHostRectSeedRetry,
+  expectedTipRemountUnionPaintBearingCount,
+  shouldPruneTipRemountMemberLastHostRectsOnSelectionCommit,
+  pruneTipRemountMemberLastHostRectsToSelection,
+  countTipRemountSeededLastGoodForSelection,
+  shouldRefreshTipRemountChromeAfterMemberLastHostRectSeedRetry,
+  tipRemountApplyLastGoodMatchesHostPaintResult,
   resolveTipRemountRefreshMissAction,
   shouldClearTipRemountLastHostRectCache,
   shouldTrustTipRemountHostPaintDespiteComposedStale,
@@ -418,6 +432,77 @@ describe('manual edit freeze reset', () => {
     )).toEqual({ x: 1, y: 2, width: 3, height: 4 });
     expect(resolveTipRemountRefreshMissAction(true, false, true, true, true))
       .toBe('apply-last-good');
+    expect(shouldRefreshHostPaintOnManualEditSelectionCommit(1, false, false)).toBe(true);
+    expect(shouldRefreshHostPaintOnManualEditSelectionCommit(2, false, false)).toBe(false);
+    expect(shouldRefreshHostPaintOnManualEditSelectionCommit(2, true, false)).toBe(true);
+    expect(shouldRefreshHostPaintOnManualEditSelectionCommit(3, false, true)).toBe(true);
+    expect(shouldSeedTipRemountMemberLastHostRectsOnMultiCommit(2, true, false)).toBe(true);
+    expect(shouldSeedTipRemountMemberLastHostRectsOnMultiCommit(2, false, false)).toBe(false);
+    expect(shouldSeedTipRemountMemberLastHostRectsOnMultiCommit(1, true, false)).toBe(false);
+    expect(shouldRetryTipRemountMemberLastHostRectSeed(2, 0, true, false, false)).toBe(true);
+    expect(shouldRetryTipRemountMemberLastHostRectSeed(2, 2, true, false, false)).toBe(false);
+    expect(shouldRetryTipRemountMemberLastHostRectSeed(2, 1, true, false, true)).toBe(false);
+    expect(shouldRetryTipRemountMemberLastHostRectSeed(2, 0, false, false, false)).toBe(false);
+    expect(shouldCancelTipRemountMemberLastHostRectSeedRetry(true)).toBe(true);
+    expect(shouldCancelTipRemountMemberLastHostRectSeedRetry(false)).toBe(false);
+    expect(shouldCancelTipRemountMemberLastHostRectSeedRetryOnSelectionBoundary(true, true)).toBe(true);
+    expect(shouldCancelTipRemountMemberLastHostRectSeedRetryOnSelectionBoundary(true, false)).toBe(false);
+    expect(shouldCancelTipRemountMemberLastHostRectSeedRetryOnSelectionBoundary(false, true)).toBe(false);
+    expect(shouldApplyTipRemountMemberLastHostRectSeedRetry(['a', 'b'], ['a', 'b'])).toBe(true);
+    expect(shouldApplyTipRemountMemberLastHostRectSeedRetry(['a', 'b'], ['b', 'a'])).toBe(false);
+    expect(shouldApplyTipRemountMemberLastHostRectSeedRetry(['a'], ['a', 'b'])).toBe(false);
+    expect(expectedTipRemountUnionPaintBearingCount(true, false, 3, 2, 1)).toBe(2);
+    expect(expectedTipRemountUnionPaintBearingCount(false, true, 3, 3, 0)).toBe(3);
+    expect(expectedTipRemountUnionPaintBearingCount(false, false, 3, 2, 1)).toBe(1);
+    expect(expectedTipRemountUnionPaintBearingCount(true, false, 2, 5, 1)).toBe(2);
+    expect(shouldPruneTipRemountMemberLastHostRectsOnSelectionCommit(true, false)).toBe(true);
+    expect(shouldPruneTipRemountMemberLastHostRectsOnSelectionCommit(false, false)).toBe(false);
+    const pruneCache = new Map([
+      ['x', { x: 1, y: 2, width: 3, height: 4 }],
+      ['y', { x: 5, y: 6, width: 7, height: 8 }],
+    ]);
+    expect(pruneTipRemountMemberLastHostRectsToSelection(pruneCache, ['y'])).toBe(1);
+    expect(pruneCache.has('x')).toBe(false);
+    expect(pruneCache.has('y')).toBe(true);
+    expect(countTipRemountSeededLastGoodForSelection(
+      new Map([
+        ['y', { x: 5, y: 6, width: 7, height: 8 }],
+        ['z', { x: 0, y: 0, width: 0, height: 1 }],
+      ]),
+      ['y', 'z'],
+    )).toBe(1);
+    expect(shouldRefreshTipRemountChromeAfterMemberLastHostRectSeedRetry(true, false, 1)).toBe(true);
+    expect(shouldRefreshTipRemountChromeAfterMemberLastHostRectSeedRetry(true, false, 0)).toBe(false);
+    expect(resolveTipRemountOverlayHostPaintRect(
+      true, false, null, { x: 1, y: 2, width: 3, height: 4 },
+    )).toEqual({ x: 1, y: 2, width: 3, height: 4 });
+    expect(resolveTipRemountOverlayHostPaintRect(
+      false, false, null, { x: 1, y: 2, width: 3, height: 4 },
+    )).toBeNull();
+    expect(resolveTipRemountOverlayHostPaintRect(
+      true, false, { x: 9, y: 8, width: 7, height: 6 }, { x: 1, y: 2, width: 3, height: 4 },
+    )).toEqual({ x: 9, y: 8, width: 7, height: 6 });
+    expect(resolveTipRemountHostPaintRectResult(
+      true, false, { x: 9, y: 8, width: 7, height: 6 }, { x: 1, y: 2, width: 3, height: 4 },
+    )).toEqual({
+      paint: { x: 9, y: 8, width: 7, height: 6 },
+      seedLastGood: { x: 9, y: 8, width: 7, height: 6 },
+    });
+    expect(resolveTipRemountHostPaintRectResult(
+      true, false, null, { x: 1, y: 2, width: 3, height: 4 },
+    )).toEqual({
+      paint: { x: 1, y: 2, width: 3, height: 4 },
+      seedLastGood: null,
+    });
+    // Overlay last-good path matches refresh-miss apply-last-good (553/559)
+    expect(resolveTipRemountRefreshMissAction(true, false, true, false, false))
+      .toBe('apply-last-good');
+    expect(tipRemountApplyLastGoodMatchesHostPaintResult(
+      true, false, { x: 1, y: 2, width: 3, height: 4 },
+    )).toBe(true);
+    expect(tipRemountApplyLastGoodMatchesHostPaintResult(false, false, {
+      x: 1, y: 2, width: 3, height: 4,
+    })).toBe(true);
     expect(shouldClearTipRemountLastHostRectCache(false, false, false)).toBe(true);
     expect(shouldClearTipRemountLastHostRectCache(true, false, false)).toBe(false);
     expect(shouldClearTipRemountLastHostRectCache(false, true, false)).toBe(false);

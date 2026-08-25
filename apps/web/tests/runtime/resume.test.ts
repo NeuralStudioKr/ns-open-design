@@ -10,6 +10,7 @@ import {
   RESUME_CONTINUE_PROMPT,
   buildAutoContinueIncompleteOutputPrompt,
   buildAutoContinueScopedCommentEditPrompt,
+  isClosedPersistableCoverDraft,
   excerptPartialHtmlForAutoContinue,
   extractAutoContinueContextFromAssistant,
   isAutoContinueIncompleteOutputPrompt,
@@ -208,6 +209,23 @@ describe('runtime/resume shell/no-HTML recovery constants', () => {
     expect(prompt).toContain('Official look/Motif CSS is merged after save');
     expect(prompt).not.toContain('디스크의 덱을 기준으로');
     expect(prompt).not.toContain('이미 저장된 슬라이드 덱');
+  });
+
+  it('does not tell the model to discard a closed healable cover', () => {
+    const parrot =
+      '<!doctype html><html lang="ko"><body>'
+      + '<section class="slide"><h1>슬라이드 만들어줘</h1></section>'
+      + '</body></html>';
+    expect(isClosedPersistableCoverDraft(parrot)).toBe(true);
+    const prompt = buildAutoContinueIncompleteOutputPrompt({
+      attempt: 1,
+      partialHtml: parrot,
+    });
+    expect(prompt).toContain('닫힌 커버 초안');
+    expect(prompt).toContain('버리지 말고');
+    expect(prompt).toContain('슬라이드 만들어줘');
+    expect(prompt).not.toMatch(/버리고 새 완전 덱/);
+    expect(prompt).not.toContain('이어 쓰지 말고 버리세요');
   });
 
   it('does not treat a one-slide closed cover as a finished template fill', () => {

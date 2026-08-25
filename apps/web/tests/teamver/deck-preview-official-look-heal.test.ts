@@ -2,9 +2,13 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  clearOfficialLookPreviewTemplateIdCache,
   deckHtmlNeedsOfficialLookPreviewHeal,
   deckHtmlNeedsOfficialMotifRemerge,
   healOfficialLookForDeckPreview,
+  OFFICIAL_LOOK_STREAMING_HEAL_DEBOUNCE_MS,
+  pickOfficialLookHealedPreviewSource,
+  shouldApplyOfficialLookPreviewHeal,
 } from '../../src/teamver/deckPreviewOfficialLookHeal';
 
 vi.mock('../../src/teamver/teamverDaemonHeaders', () => ({
@@ -109,9 +113,51 @@ describe('deckHtmlNeedsOfficialLookPreviewHeal', () => {
   });
 });
 
+describe('shouldApplyOfficialLookPreviewHeal (§1.21 streaming)', () => {
+  it('heals stable compact fills while streaming', () => {
+    expect(shouldApplyOfficialLookPreviewHeal(COMPACT_CAPSULE_FILL, { streaming: true })).toBe(true);
+    expect(shouldApplyOfficialLookPreviewHeal(COMPACT_CAPSULE_FILL, { streaming: false })).toBe(true);
+  });
+
+  it('skips unstable / open shells while streaming', () => {
+    const openShell = '<!doctype html><html><body><section class="slide"><h1>Cover';
+    expect(deckHtmlNeedsOfficialLookPreviewHeal(openShell)).toBe(true);
+    expect(shouldApplyOfficialLookPreviewHeal(openShell, { streaming: true })).toBe(false);
+    expect(shouldApplyOfficialLookPreviewHeal(openShell, { streaming: false })).toBe(true);
+  });
+
+  it('skips when look sheet is already present', () => {
+    const persisted = `${COMPACT_CAPSULE_FILL}<style data-od-official-look-css>.pill{}</style>`;
+    expect(shouldApplyOfficialLookPreviewHeal(persisted, { streaming: true })).toBe(false);
+  });
+});
+
+describe('pickOfficialLookHealedPreviewSource', () => {
+  it('uses healed HTML only for the exact live source that produced it', () => {
+    const live = COMPACT_CAPSULE_FILL;
+    const healed = `${live}<style data-od-official-look-css></style>`;
+    expect(pickOfficialLookHealedPreviewSource({
+      livePreviewSource: live,
+      healedPreview: healed,
+      healedForSource: live,
+    })).toBe(healed);
+    expect(pickOfficialLookHealedPreviewSource({
+      livePreviewSource: `${live}<section class="slide"><h2>New</h2></section>`,
+      healedPreview: healed,
+      healedForSource: live,
+    })).toContain('New');
+    expect(pickOfficialLookHealedPreviewSource({
+      livePreviewSource: `${live}<section class="slide"><h2>New</h2></section>`,
+      healedPreview: healed,
+      healedForSource: live,
+    })).not.toContain('data-od-official-look-css');
+  });
+});
+
 describe('healOfficialLookForDeckPreview', () => {
   afterEach(() => {
     vi.clearAllMocks();
+    clearOfficialLookPreviewTemplateIdCache();
   });
 
   it('merges official look onto a compact fill when the project has a template', async () => {
@@ -131,6 +177,18 @@ describe('healOfficialLookForDeckPreview', () => {
     expect(healed).toContain('.pill-coral');
   });
 
+  it('reuses cached project templateId across heals', async () => {
+    const { fetchTeamverDaemon } = await import('../../src/teamver/teamverDaemonHeaders');
+    vi.mocked(fetchTeamverDaemon).mockResolvedValue({
+      ok: true,
+      json: async () => ({ metadata: { selectedDeckTemplateId: 'html-ppt-zhangzara-studio' } }),
+    } as Response);
+
+    await healOfficialLookForDeckPreview(COMPACT_CAPSULE_FILL, 'proj-cache');
+    await healOfficialLookForDeckPreview(COMPACT_CAPSULE_FILL, 'proj-cache');
+    expect(fetchTeamverDaemon).toHaveBeenCalledTimes(1);
+  });
+
   it('does not fetch when the persist look sheet is already present', async () => {
     const { fetchTeamverDaemon } = await import('../../src/teamver/teamverDaemonHeaders');
     const persisted = `${COMPACT_CAPSULE_FILL}<style data-od-official-look-css>.pill-coral{}</style>`;
@@ -141,10 +199,13 @@ describe('healOfficialLookForDeckPreview', () => {
 });
 
 describe('FileViewer preview heal gate', () => {
-  it('wires live preview through official-look heal, not Motif-only remmerge', () => {
+  it('wires live preview through streaming-aware official-look heal (§1.21)', () => {
     const source = readFileSync(resolve(import.meta.dirname, '../../src/components/FileViewer.tsx'), 'utf8');
-    expect(source).toContain('deckHtmlNeedsOfficialLookPreviewHeal');
+    expect(source).toContain('shouldApplyOfficialLookPreviewHeal');
     expect(source).toContain('healOfficialLookForDeckPreview');
-    expect(source).not.toMatch(/deckHtmlNeedsOfficialMotifRemerge\(livePreviewSource\)/);
+    expect(source).toContain('pickOfficialLookHealedPreviewSource');
+    expect(source).toContain('OFFICIAL_LOOK_STREAMING_HEAL_DEBOUNCE_MS');
+    expect(source).not.toMatch(/if\s*\(\s*streaming\s*\|\|\s*manualEditMode/);
+    expect(OFFICIAL_LOOK_STREAMING_HEAL_DEBOUNCE_MS).toBeGreaterThanOrEqual(250);
   });
 });

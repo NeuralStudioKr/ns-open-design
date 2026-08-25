@@ -218,8 +218,20 @@ function looksLikeFrameworkDeckMarkup(html: string): boolean {
  * their native layout path. Styled vertical decks (Creative Mode, etc.) are
  * included when they still use stacked body > .slide markup.
  */
+/** Skip compact heuristics on pathological sizes — prefer native layout path. */
+const COMPACT_DETECT_MAX_CHARS = 8_000_000;
+
 export function looksLikeCompactApiStackedDeck(html: string): boolean {
   if (!html) return false;
+  if (html.length > COMPACT_DETECT_MAX_CHARS) return false;
+  try {
+    return looksLikeCompactApiStackedDeckUnsafe(html);
+  } catch {
+    return false;
+  }
+}
+
+function looksLikeCompactApiStackedDeckUnsafe(html: string): boolean {
   if (looksLikeNestedVerticalTranslateYDeck(html)) return false;
   const deckViewportTrack = looksLikeBareDeckViewportTrack(html);
   if (!deckViewportTrack && looksLikeOfficialFullscreenPresenterDeck(html)) return false;
@@ -238,10 +250,10 @@ export function looksLikeCompactApiStackedDeck(html: string): boolean {
   if (looksLikeAuthoredScrollNavigateDeck(html) && !compactBodyFirst) return false;
   const hasPresentationShell =
     /<(?:div|section|main)\b[^>]*\bclass\s*=\s*['"][^'"]*\bpresentation\b/i.test(html);
+  // Avoid `<body>[\s\S]*…deck` — catastrophic backtracking on large decks.
   const hasDeckShell =
-    /<body\b[^>]*>[\s\S]*<(?:div|section)\b[^>]*\bclass\s*=\s*['"][^'"]*(?:^|\s)deck(?:\s|["']|$)/i.test(
-      html,
-    );
+    /<body\b/i.test(html)
+    && /<(?:div|section)\b[^>]*\bclass\s*=\s*['"][^'"]*(?:^|\s)deck(?:\s|["']|$)/i.test(html);
   // Non-compact presentation/deck shells (catalog-like, not body-first
   // viewport pages) stay on native fill — but never block compactBodyFirst.
   if (!officialLookFill && !compactBodyFirst && (hasPresentationShell || hasDeckShell)) {
@@ -259,7 +271,12 @@ export function looksLikeCompactApiStackedDeck(html: string): boolean {
 
 /** Host-side detection that matches buildSrcdoc's wrapped preview HTML. */
 export function looksLikeCompactApiStackedDeckForPreview(html: string): boolean {
-  return looksLikeCompactApiStackedDeck(prepareCompactStackedDeckPreviewHtml(html));
+  try {
+    return looksLikeCompactApiStackedDeck(prepareCompactStackedDeckPreviewHtml(html));
+  } catch {
+    // Classification must never take down FileViewer / PreviewModal render.
+    return false;
+  }
 }
 
 /** Lock vw/vh math to the 1920×1080 letterbox canvas inside the iframe. */

@@ -41,7 +41,19 @@ export function stripCommentsForArtifactTagBalance(html: string): string {
  * visible body text until the closing tags arrive — hold the iframe on the
  * last stable snapshot instead of painting `googleapis.com" />` alone.
  */
+const ARTIFACT_STABLE_PREVIEW_MAX_CHARS = 8_000_000;
+
 export function isArtifactHtmlStableForPreview(html: string): boolean {
+  try {
+    return isArtifactHtmlStableForPreviewUnsafe(html);
+  } catch {
+    // Deep-link remount / cache must never throw into FileViewer render.
+    return false;
+  }
+}
+
+function isArtifactHtmlStableForPreviewUnsafe(html: string): boolean {
+  if (!html || html.length > ARTIFACT_STABLE_PREVIEW_MAX_CHARS) return false;
   const trimmed = html.trim();
   if (!trimmed) return false;
 

@@ -844,7 +844,7 @@ function formatMotifGeometryGuidance(kind: MotifGeometryKind): string {
 /** First-fill Motif-defer: keep geometry identity, but do not require Motif SVG paste. */
 function formatMotifGeometryGuidanceForFill(kind: MotifGeometryKind): string {
   if (kind === 'svg-sprite') {
-    return 'Motif geometry: **kit Motif SVG sprites** — Motif `<svg>` is NOT required this turn (official Motif is merged after save). Optional tiny kit Motif CSS classes AFTER title are OK. Never invent tiny corner flowers / emoji / generic circles.';
+    return 'Motif geometry: **kit Motif SVG sprites** — REQUIRE 1–2 kit Motif CSS/deco class shells AFTER title when listed. Motif `<svg>` is NOT required this turn (official Motif is merged after save). Never invent tiny corner flowers / emoji / generic circles.';
   }
   return formatMotifGeometryGuidance(kind);
 }
@@ -1986,65 +1986,26 @@ export function appendTemplateVisualKit(skillBody: string, kit: string | null | 
  * Layout CSS is capped (not omitted). First-slide cues stay omitted.
  */
 function capMotifSpritesSectionForFill(section: string): string {
-  const svgs = [...section.matchAll(/```html\s*([\s\S]*?)```/gi)]
-    .map((match) => (match[1] ?? '').trim())
-    .filter((svg) => /^<svg\b/i.test(svg) && svg.length >= 80 && svg.length <= 2_400);
-  const looksLikeDaisy =
-    /deco-daisy|#F5F0E6|#fcdf6c|daisy days|flower/i.test(section)
-    || /#fcdf6c/i.test(svgs.join('\n'));
-  const identityScore = (svg: string) => {
-    // Prefer real daisy (butter center) over rainbow/star when kit has daisy cues.
-    if (/#fcdf6c/i.test(svg) && (looksLikeDaisy || /path/i.test(svg))) return 0;
-    if (looksLikeDaisy && /#fcdf6c/i.test(svg)) return 0;
-    // Pin-and-Paper / symbol Motif: keep defs sheets that define #pin (not chart polylines).
-    if (/#pin\b|<symbol\b[^>]*\bid\s*=\s*["']pin|bg-cork|\.pin-/i.test(svg)) return 0;
-    if (/<symbol\b/i.test(svg) && /<(?:use|path)\b/i.test(svg)) return 1;
-    if (/width\s*=\s*["']0["']|height\s*=\s*["']0["']/i.test(svg)) {
-      // Hidden defs sheets are Motif identity when they declare symbols; otherwise demote.
-      if (/<defs\b|<symbol\b|#pin\b/i.test(svg)) return 1;
-      return 9;
-    }
-    // Chart/noise SVGs are not Motif for pin/cork kits.
-    if (/<polyline\b|<filter\b[^>]*\bid\s*=\s*["']n["']/i.test(svg) && !/#pin\b|<symbol\b/i.test(svg)) {
-      return 8;
-    }
-    if (/#f8635f|#fde366|#8de3b7|#85c5fe|rainbow/i.test(svg)) return looksLikeDaisy ? 5 : 1;
-    if (/viewbox="0 0 100 98/i.test(svg) || /\bstar\b/i.test(svg)) return 2;
-    if (/\bpin\b|#pin|doodle|stamp/i.test(svg)) return 3;
-    return 4;
-  };
-  const ranked = [...svgs].sort((a, b) => {
-    const delta = identityScore(a) - identityScore(b);
-    if (delta !== 0) return delta;
-    return b.length - a.length;
-  });
-  const kept: string[] = [];
-  let used = 0;
-  for (const svg of ranked) {
-    if (kept.length >= 1) break;
-    if (used + svg.length > 2_200) continue;
-    kept.push(svg);
-    used += svg.length;
-  }
+  const looksLikeDaisy = /deco-daisy|#F5F0E6|#fcdf6c|daisy days|flower/i.test(section);
   const lines = [
     '### Motif sprites (capped for first content-fill — AFTER title/lead only)',
     '',
-    'OPTIONAL identity reference only — Motif `<svg>` is NOT required this turn (official Motif CSS/SVG is merged after save). Do NOT paste Motif sprites or multi-KB dumps this turn. Finish 3 titled slides. Never invent tiny corner flowers / emoji / generic circles.',
+    'Identity reference only — Motif `<svg>` is NOT required this turn (official Motif merged after save). Do NOT paste Motif sprites this turn. REQUIRE 1–2 kit Motif CSS/deco classes AFTER title. Never invent tiny corner flowers / emoji / generic circles.',
     '',
   ];
-  if (kept.length > 0) {
-    if (looksLikeDaisy) {
-      lines.push(
-        'Daisy placement recipe (for Motif-merge identity — do not hand-draw this turn): official wrappers are `.deco-daisy-tl` / `.deco-daisy-tr` / `.deco-daisy-bl` / `.deco-daisy-br`. Star/rainbow/circle accents are secondary and do not satisfy Daisy identity by themselves.',
-        '',
-      );
-    }
-    for (const svg of kept) {
-      lines.push('```html', svg, '```', '');
-    }
+  if (looksLikeDaisy) {
+    lines.push(
+      'Daisy: use 1–2 `.deco-daisy-*` class shells AFTER title (may stay empty). Official Motif merge paints 4-corner flowers after save.',
+      '',
+    );
+  } else if (/deco-|pill-|petal|blob|pin-|doodle|post-it|xp-blob|gd-orb/i.test(section)) {
+    lines.push(
+      `Motif class vocabulary: ${formatMotifVocabularyGuidance(section)}. Emit those classes as empty absolute shells — no SVG body this turn.`,
+      '',
+    );
   } else {
     lines.push(
-      `No compact Motif SVG survived the fill cap. Use **Decorations CSS** Motif vocabulary below (${formatMotifVocabularyGuidance(section)}). Do NOT invent generic CSS circles as Motif substitutes.`,
+      `No Motif class list in this kit section — follow **Decorations CSS** Motif vocabulary below (${formatMotifVocabularyGuidance(section)}).`,
       '',
     );
   }
@@ -2100,7 +2061,7 @@ function capDecorationsCssSectionForFill(section: string): string {
     '### Decorations CSS (capped for first content-fill — paste AFTER slide 1)',
     '',
     `REQUIRED Motif vocabulary from this kit: ${vocab}. Do NOT invent generic CSS circles / emoji ornaments as substitutes.`,
-    'Motif density: finish 3 titled slides this turn. Motif `<svg>` is NOT required (official Motif is merged after save). Optional tiny kit Motif CSS classes AFTER title/lead are OK when scaffold lists `deco=…`.',
+    'Motif density: REQUIRE 1–2 Motif CSS/deco classes AFTER title when listed. Motif `<svg>` NOT required (merged after save).',
     ...(shouldAttachMotifGeometryGuidance(geometryKind)
       ? [formatMotifGeometryGuidanceForFill(geometryKind)]
       : []),
@@ -2121,7 +2082,7 @@ function capDecorationsCssSectionForFill(section: string): string {
     }
   } else if (geometryKind === 'svg-sprite') {
     lines.push(
-      'Daisy Motif this turn: title + lead only (or optional empty `.deco-daisy-*` shell). Official Motif merge paints 4-corner flowers after save. Tiny CSS dots / invented 12–48px flower SVGs are not Daisy Motif.',
+      'Daisy Motif this turn: title + lead + 1–2 `.deco-daisy-*` class shells (may stay empty). Official Motif merge paints 4-corner flowers after save. Tiny CSS dots / invented 12–48px flower SVGs are not Daisy Motif.',
     );
   } else if (geometryKind === 'oblong-capsule' || hasCapsuleMotifSignal(pickedCss) || hasCapsuleMotifSignal(section)) {
     lines.push(
@@ -2226,11 +2187,11 @@ export function slimTemplateVisualKitForFill(skillBody: string): string {
   }
   next = next.replace(
     /- Motif (?:MUST be copied from|language comes from)[\s\S]*?(?=\n- |\n### |\n## |$)/g,
-    '- Motif vocabulary is REQUIRED from Decorations CSS Motif classes listed in this kit (Motif `<svg>` is NOT required this turn — official Motif is merged after save). Never invent generic CSS circles or emoji ornaments.\n',
+    '- Motif vocabulary REQUIRED: 1–2 Motif CSS/deco classes AFTER title (Motif `<svg>` NOT required — merged after save). No generic circles.\n',
   );
   next = next.replace(
     /4\.\s*\*\*Motif\/density:\*\*[^\n]*/gi,
-    '4. **Motif/density:** Motif `<svg>` is NOT required this turn (official Motif is merged after save). Optional tiny kit Motif CSS from Decorations AFTER title — never generic circles.',
+    '4. **Motif/density:** REQUIRE 1–2 kit Motif CSS/deco classes AFTER title when Decorations list Motif classes. Motif `<svg>` is NOT required this turn (official Motif is merged after save) — never generic circles.',
   );
   next = next.replace(
     /treat its\s+CSS tokens, fonts, (?:Motif sprites|compact motif\/deco cues)[^\n]*/gi,
@@ -2238,19 +2199,19 @@ export function slimTemplateVisualKitForFill(skillBody: string): string {
   );
   next = next.replace(
     /The cover MUST (?:show the provided daisy SVG motif|use kit cream\/ink \+ CSS-shape decoration)[^\n]*/gi,
-    'The cover MUST use kit surface + titled copy (Motif SVG deferred; optional Motif CSS classes only) — not generic circles.',
+    'The cover MUST use kit surface + titled copy + 1–2 kit Motif CSS/deco classes (Motif SVG deferred) — not generic circles.',
   );
   next = next.replace(
     /when Motif sprites \/ Decorations CSS are present[^\n]*/gi,
-    'when Motif sprites / Decorations CSS are present, prefer Motif CSS classes this turn (Motif SVG deferred to persist merge) — never plain circle substitutes.',
+    'when Motif sprites / Decorations CSS are present, REQUIRE 1–2 Motif CSS/deco classes this turn (Motif SVG deferred to persist merge) — never plain circle substitutes.',
   );
   next = next.replace(
     /<!-- (?:use Motif sprites SVG inside \.deco|optional Motif sprite AFTER title\/lead|kit Motif: sprite AFTER title[^>]*) -->/gi,
-    '<!-- kit Motif: official Motif merged after save — optional Motif CSS class only; not a generic circle -->',
+    '<!-- kit Motif: official Motif merged after save — require 1–2 Motif CSS/deco classes; not a generic circle -->',
   );
   next = next.replace(
     /<!-- paste capped Motif sprite here -->/gi,
-    '<!-- official Motif merged after save — leave empty or Motif CSS only -->',
+    '<!-- official Motif merged after save — Motif CSS/deco class required; SVG deferred -->',
   );
   next = next.replace(
     /On first Clone content-fill:[^\n]*/gi,
@@ -2258,15 +2219,15 @@ export function slimTemplateVisualKitForFill(skillBody: string): string {
   );
   next = next.replace(
     /If Motif sprites are present[^\n]*/gi,
-    'If Motif sprites are present, treat them as identity reference only — Motif SVG is NOT required this turn; use kit Motif CSS classes instead of generic circles.',
+    'If Motif sprites are present, treat them as identity reference only — Motif SVG is NOT required this turn; REQUIRE 1–2 kit Motif CSS/deco classes instead of generic circles.',
   );
   next = next.replace(
     /Motif SVG paste is DISABLED[^\n]*/gi,
-    'Motif `<svg>` is NOT required this turn (official Motif merged after save). Use Decorations Motif CSS — no generic circles.',
+    'Motif `<svg>` is NOT required this turn (official Motif merged after save). REQUIRE 1–2 Decorations Motif CSS/deco classes — no generic circles.',
   );
   next = next.replace(
     /Do not (?:copy|paste) Motif SVGs on this fill turn[^\n]*/gi,
-    'Do not paste Motif SVGs this turn — official Motif is merged after save; use kit Motif CSS from Decorations.',
+    'Do not paste Motif SVGs this turn — official Motif is merged after save; REQUIRE 1–2 kit Motif CSS/deco classes from Decorations.',
   );
   next = next.replace(
     /Do not paste sprites on this fill turn\.?/gi,
@@ -2274,11 +2235,11 @@ export function slimTemplateVisualKitForFill(skillBody: string): string {
   );
   next = next.replace(
     /Motif SVG vocabulary is omitted this fill turn[^\n]*/gi,
-    'Motif `<svg>` is NOT required this turn — use kit Motif CSS, not generic circles.',
+    'Motif `<svg>` is NOT required this turn — REQUIRE 1–2 kit Motif CSS/deco classes, not generic circles.',
   );
   next = next.replace(
     /Prefer kit cream\/ink \+ CSS-shape daisy accents[^\n]*/gi,
-    'Prefer titled slides + kit Motif CSS cues (Motif SVG deferred) — not generic circles.',
+    'Prefer titled slides + 1–2 kit Motif CSS cues (Motif SVG deferred) — not generic circles.',
   );
   next = next.replace(
     /Every slide should use kit palette \+ fonts; Motif SVGs are deferred[^\n]*/gi,
@@ -2290,11 +2251,11 @@ export function slimTemplateVisualKitForFill(skillBody: string): string {
   );
   next = next.replace(
     /decorate with CSS\/`\.deco` only — Motif sprites are deferred this fill turn\.?/gi,
-    'decorate with kit Motif CSS only — Motif SVG is deferred to persist merge.',
+    'decorate with 1–2 kit Motif CSS/deco classes — Motif SVG is deferred to persist merge.',
   );
   next = next.replace(
     /use at most one short (?:complete )?(?:sprite|snippet)[^\n]*/gi,
-    'use optional tiny kit Motif CSS classes AFTER title/lead (Motif SVG deferred to persist merge).',
+    'REQUIRE 1–2 kit Motif CSS/deco classes AFTER title/lead (Motif SVG deferred to persist merge).',
   );
   return next;
 }

@@ -32,6 +32,135 @@
 | scaffold로 갑자기 바꾸면? | **안 됨.** kit hard cutover 금지. full HTML scaffold도 기본 inject 하지 않음 |
 | 1장짜리 템플릿 결과가 저장되는가? | **제품 경로는 첫 fill 3장.** 잘리면 제목 있는 1장은 저장하고 top-up이 덧붙인다. 제목 없는 빈 셸만 미완성으로 차단. 사용자가 1장을 명시한 경우도 허용 |
 
+### 1.30 2026-08-24 — Clone fill Final authority 단일 READ LAST
+
+Daisy Clone fill 끝이 streaming · FOR_FILL · NO_SVG 세 개의 “READ LAST”로 갈라져 Motif/body-first가 삼중 중복됐다 (§8.2 / §12 P2).
+
+구현 현황:
+
+- [x] fill 턴 `# Final authority (READ LAST)` = streaming 본문 + Motif fill visual (FOR_FILL+NO_SVG 병합)
+- [x] create 경로 WITH_KIT / WITHOUT_KIT / scaffold visual READ LAST 유지
+- [x] 회귀: system-prompt-api-mode (단일 Final authority) · selected-template-compose · compact · kit · quality
+- [ ] create/edit 경로까지 Final authority 단일화 — 후속
+- [ ] HomeHero magic scale — slide-only 비노출, 후속
+
+### 1.29 2026-08-24 — 슬라이드 API 프롬프트 예산 정리
+
+lean compose가 27k를 넘고 Daisy fill은 ~43k였다. Motif CSS cue / type-lock / content-expansion이 kit SVG 본문·중복 REQUIRE에 묻혔고, streaming body-first의 `empty shell` / `font @import` 문구도 빠졌다.
+
+구현 현황:
+
+- [x] unified/direct streaming — `never an empty shell or long <head> chrome` · `never font @import`
+- [x] Motif REQUIRE 문장 압축 (framework / READ LAST / hard rules)
+- [x] fill kit Motif sprites — SVG 본문 제거, 클래스 어휘만
+- [x] lean ceiling 29k · Daisy fill pin <42k
+- [x] READ LAST Final-authority 단일 블록 — fill 경로 §1.30
+- [ ] HomeHero magic scale — slide-only 비노출, 후속
+
+### 1.21 2026-08-24 — 스트리밍 중에도 stable 스냅샷 official-look heal
+
+§0.76은 FileViewer가 `streaming`이면 look heal을 전부 건너뛰었다. compact fill은 룩 CSS를 스트리밍하지 않으므로, 생성 중 미리보기가 Neutral/Quicksand로 남고 §1.18 type-lock·Motif도 persist 뒤에야 보였다.
+
+**수정:** `shouldApplyOfficialLookPreviewHeal` — streaming이어도 `isArtifactHtmlStableForPreview`인 스냅샷은 display-only heal. 400ms debounce · project templateId 캐시 · healed는 **동일 live source**에만 적용(장수 증가 시 옛 healed로 sticky되지 않음). 디스크는 쓰지 않음.
+
+구현 현황:
+
+- [x] streaming + stable → heal (open shell은 계속 skip)
+- [x] `pickOfficialLookHealedPreviewSource` source-match gate
+- [x] FileViewer wiring · debounce · templateId memo
+- [x] 회귀: `deck-preview-official-look-heal`
+
+### 1.22 2026-08-24 — fill 턴 Motif CSS cue 1–2개 강제
+
+Motif-defer가 Motif **SVG**를 금지하면서 Decorations **CSS**까지 Optional로 남겨 Capsule/Daisy 등이 title-only sparse fill이 됐다. Clone user brief는 이미 1–2 cue를 요구했는데 framework / READ LAST / slim kit는 Optional이었다.
+
+**수정:** SSOT를 **REQUIRE 1–2 kit Motif CSS/deco classes AFTER title when Decorations are listed**로 통일. Motif `<svg>` / multi-KB dump는 계속 금지. Daisy는 `.deco-daisy-*` 셸 1–2개.
+
+구현 현황:
+
+- [x] `DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_TEMPLATE_FILL`
+- [x] `TEAMVER_SELECTED_TEMPLATE_VISUAL_READ_LAST_FOR_FILL` · clone fill hard rules · NO_SVG READ LAST
+- [x] `slimTemplateVisualKitForFill` / `capDecorationsCssSectionForFill`
+- [x] 회귀: deck-framework-compact · template-visual-kit · system-prompt Clone fill
+
+### 1.18 2026-08-24 — Studio-family compact type-lock (utility / `--f-*`)
+
+§0.65 Pink Script type-lock은 `html,body` + `.script` / bare `h1`만 봤다. Studio / Broadside / Signal / Vellum은 디스플레이 페이스를 **`.display` / `.h1` + `:root --f-display|--f-heading|--f-body`**에만 두고 bare heading에는 붙이지 않는다. compact fill의 semantic `<h1>`/`<h2>`는 Neutral Quicksand로 남고 palette만 템플릿처럼 보였다. 추가로 Studio ZONE box comment가 naive `{…}` split의 셀렉터에 붙어 `:root` / `.display` 매칭이 실패했다.
+
+구현 현황:
+
+- [x] 셀렉터 comment-strip 후 `--f-*` / `--font-*` resolve + `.display`/`.h1`/`.h2`/`.body` 추출
+- [x] heading lock selector에 `.display, .h1, .h2` 포함 (body=display 동일해도 emit)
+- [x] Pink Script Instrument 회귀 유지
+- [x] Studio/Broadside/Signal fixture motif = type-lock heading face (token 존재만으로 통과 금지)
+- [x] live preview streaming 중 official-look heal — §1.21
+- [x] fill prompt에 kit Motif CSS cue 1–2개 강제 — §1.22
+
+### 1.17 2026-08-24 — Teamver 상세에서 설치 명령·버전/kind 메타 숨김
+
+§1.16은 예시 프롬프트와 context bundle을 가렸다. 시나리오/미디어/디자인시스템 상세에는 여전히 `od plugin install`, marketplace, `v0.1.0 · scenario · bundled`가 남는다. 룩 피커에는 제목·소개·작성자만 둔다.
+
+구현 현황:
+
+- [x] `shouldHideTeamverPluginDeveloperChrome` — slide-only면 개발자 share/provenance 숨김
+- [x] PluginShareMenu · Media/DesignSystem hideShareMenu · 시나리오 헤더
+- [x] PluginMetaSections heading-meta는 `omit.advanced`와 같이 숨김
+- [x] 회귀: plugin-detail-display helper · PluginMetaSections omit
+- [ ] HomeHero 프리셋 매직 스케일 — slide-only 비노출, 후속
+- [ ] 비덱 갤러리 hover-pan / live-artifact 250% — 프로토타입 경로, 후속
+
+
+### 1.16 2026-08-24 — Teamver 상세에서 예시 프롬프트·context bundle 숨김
+
+Html Ppt 스캐폴드는 목록에서 뺐지만, 남은 템플릿 상세에도 `useCase.query`와 SKILL.md / CSS / MD 경로가 그대로 보인다. Teamver slide-only는 룩 피커이므로 소개·작성자만 두고 생성기 프롬프트와 매니페스트 내부를 숨긴다. Apply 동작은 그대로.
+
+구현 현황:
+
+- [x] `teamverEndUserPluginMetaOmit` — slide-only면 `query` + `advanced` omit
+- [x] PluginExample / Scenario / DesignSystem / Media 상세 배선
+- [x] slide-only DesignSystem 상세에서 DESIGN.md 스펙 숨김
+- [x] 회귀: PluginMetaSections omit · plugin-detail-display helper
+- [ ] HomeHero 프리셋 매직 스케일 — slide-only 비노출, 후속
+- [ ] 비덱 갤러리 hover-pan / live-artifact 250% — 프로토타입 경로, 후속
+
+### 1.15 2026-08-24 — 등장 애니메이션 커버가 목록에서 비거나 일부만 보임
+
+§1.13은 `[data-anim]`을 `.slide.is-active` 하에서만 켰다. 공식 html-ppt는 `.anim-fade-up` 등에 `animation-fill-mode: both`를 써서 from-keyframe(opacity 0 / clip-path / width 0)이 즉시 적용된다. 카탈로그 iframe은 그 애니메이션을 거의 재생하지 않아 제목·리스트가 빈 채로 남는다.
+
+구현 현황:
+
+- [x] `CATALOG_COVER_ENTRANCE_REVEAL_CSS` — `[data-anim]` · `[class*="anim-"]` · stagger · typewriter 를 정적 표시로 고정
+- [x] 회귀: anim-fade-up / stagger / reveal-right 커버 픽스처
+- [x] jsdom computed opacity — compacted Studio · Pitch Deck
+- [x] preview session cache `v3` — 옛 빈 커버 srcDoc 재사용 방지
+- [ ] HomeHero 프리셋 매직 스케일 — slide-only 비노출, 후속
+- [ ] 비덱 갤러리 hover-pan / live-artifact 250% — 프로토타입 경로, 후속
+
+### 1.14 2026-08-24 — Html Ppt 메타 스킬을 목록에서 숨김
+
+`example-html-ppt` / `html-ppt`는 시각 템플릿이 아니라 예시 프롬프트·SKILL.md·context bundle을 그대로 보여주는 스캐폴드다. Community / Canvas 피커 / toolbox에 올리면 내부 프롬프트가 노출된다.
+
+구현 현황:
+
+- [x] `isTeamverHiddenPromptScaffoldResourceId` — 마지막 path segment만 `example-html-ppt` / `html-ppt` 매칭
+- [x] Community `pluginsForSlideOnlyMvp` · skills · toolbox · Canvas picker에서 숨김
+- [x] 자식 시각 템플릿 `example-html-ppt-zhangzara-*` / Hermes 등은 유지
+- [x] 회귀: toolbox-catalog-display · slide-only policy · canvas picker
+- [ ] HomeHero 프리셋 매직 스케일 — slide-only 비노출, 후속
+- [ ] 비덱 갤러리 hover-pan / live-artifact 250% — 프로토타입 경로, 후속
+
+
+### 1.13 2026-08-24 — thumbnail batch 1장 커버가 빈 카드로 남는 문제
+
+§1.11 이후 bake를 건너뛴 덱 카드는 preview-batch `thumbnail` HTML을 받는다. 형제 슬라이드가 이미 없어서 `htmlLooksLikeMultiSlideDeck`이 false가 되고, Studio `[data-anim]` / Soft Editorial·Stencil `<deck-stage>` 커버가 투명·높이 0으로 남는다.
+
+구현 현황:
+
+- [x] `pluginCatalogPreviewSrcDoc` — 슬라이드 호스트 ≥1이면 `preferDeck` 커버 isolation
+- [x] 회귀: compacted Studio / Soft Editorial / Stencil catalog thumbs
+- [ ] HomeHero 프리셋 매직 스케일 — slide-only 비노출, 후속
+- [ ] 비덱 갤러리 hover-pan / live-artifact 250% — 프로토타입 경로, 후속
+
 ### 1.11 2026-08-24 — 덱 16:9 썸네일은 baked 1.31 클립을 건너뜀
 
 Community / Canvas 피커 / plus-menu는 1920×1080 `cqw`인데, 공식 html-ppt bake는 1.31 비율 슬라이드 워크다. `preferBaked: true`가 그 영상을 먼저 쓰면 16:9 프레임에 옆 여백이 생긴다.
@@ -1765,7 +1894,7 @@ Free-text 파서 (`parseExplicitSlideCountFromText`):
 | 항목 | 심각도 | 메모 |
 |------|--------|------|
 | greenfield에 edit 계약 bloat | P1 토큰 | 턴 플래그 gating 필요 (`hasPreviewComments` 등) |
-| 여러 “READ LAST” 공존 | P2 | 장기적으로 Final authority 섹션 통합 |
+| 여러 “READ LAST” 공존 | P2 | **부분 완료** — Clone fill은 §1.30 Final authority 단일화. create/edit 경로는 후속 |
 | auto Length → 항상 6–8 | P2 | 유저 장수 있으면면 override됨 |
 | kit fetch 실패 UX | P2 | **완료** — 선택 템플릿 kit heading 없으면 toast 1회 |
 | lean path에서 `byokToolNames` 무시 | P2 | URL-only embed 지원 여부는 제품 결정 |
@@ -1896,7 +2025,7 @@ daemon 로컬 skill 워크플로 잔재다. Daisy Days에는 Teamver API 노트�
 | P0 | 잘린 HTML 자동 보완(salvage) — mid-slide close · soft quality · persist 신뢰 | **완료** — `closeUnclosedSlideSectionsForSalvage` + truncation soft bar + salvage 재거부 제거 |
 | P0 | soft re-reject · `kind:deck` discovery 회귀 · emergency UI/order · doctype poison | **완료** — 다회 감사 핫픽스 (`isClosedSoftSalvageDeckHtml` 등) |
 | P0 | `skipped-incomplete` hard fail (CSS/title truncation · AC head fence · 비가시) | **완료** — title salvage · body excerpt · BODY-FIRST · AC cap 4 · background AC |
-| P2 | READ LAST 통합 / Final authority 섹션 | 미착수 |
+| P2 | READ LAST 통합 / Final authority 섹션 | **부분 완료** — Clone fill §1.30 (`# Final authority (READ LAST)`). create/edit 후속 |
 | P2 | kit fetch 실패 UX(사용자 알림) | **완료** — 선택 템플릿 kit heading 없으면 toast 1회 (`shouldNotifyTemplateVisualKitMiss`) |
 | P0 | motif 구현 — kit에 작은 complete SVG sprite + `.deco` CSS · emoji 대체 금지 | **완료** — `extractTemplateVisualKitFromHtml` 재작성 + READ LAST/vocab/SKILL |
 | P2 | motif 구현 힌트 · Google Fonts `@import` 레시피 일반화 | **부분 완료** — kit에 `@import` 레시피 + Motif sprites; 추가 템플릿별 튜닝은 후속 |
@@ -1931,6 +2060,10 @@ User-message 쪽 `[Existing deck edit]` / `<attached-preview-comments>` 주입�
 
 | 날짜 | 내용 |
 |------|------|
+| 2026-08-24 | §1.30 — Clone fill collapses streaming + Motif fill visual into one `# Final authority (READ LAST)`. |
+| 2026-08-24 | §1.29 — slide API prompt budget: restore body-first phrases · trim Motif REQUIRE · strip fill Motif SVG bodies · lean ceiling 29k.
+| 2026-08-24 | §1.21 — streaming official-look heal for stable live snapshots (debounce · source-match · templateId cache). Generation preview no longer waits for persist. |
+| 2026-08-24 | §1.18 — Studio/Broadside/Signal/Vellum compact type-lock. Resolve `--f-*` + `.display`/`.h1` onto semantic headings; tighten generated-deck fixtures to require type-lock face. |
 | 2026-08-24 | §1.04 — Studio/Daisy/Capsule 대표 생성 결과 fixture 가드. official look/motif merge + standalone export에서 motif/look paint, 1920×1080 fixed canvas, slide count 보존 검증. head/body cleanup이 첫 slide host를 삭제하지 않도록 slide host count guard 추가. |
 | 2026-08-10 | 초안 — Daisy Days Neutral 덮어쓰기 RCA · compose SSOT · 3커밋 타임라인 · 회귀 검토 · 검증 체크리스트 |
 | 2026-08-10 | 후속 — edit-contract FE gate · Zhangzara×31 Teamver 노트 · kit asset 5xx retry |

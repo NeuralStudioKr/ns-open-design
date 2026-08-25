@@ -9,6 +9,7 @@ import { COMPACT_DECK_SLIDE_COUNT_GUIDANCE } from "../runtime/deckGuidance";
 import { SLIDE_COUNT_REQUEST_MAX } from "./slideCountTopUp";
 import { listPluginsPage } from "../state/projects";
 import { resolveSlideOnlyCreatePluginId } from "./branding/slideOnlyMvpPolicy";
+import { isTeamverHiddenPromptScaffoldResourceId } from "./branding/toolboxCatalogDisplay";
 import type { TeamverDriveImportAsset } from "./importDriveAssets";
 import {
   readTeamverDriveLaunchHandoff,
@@ -793,6 +794,12 @@ export function canvasSlideTemplateOptions(
     const id = plugin.id?.trim();
     if (!id || seen.has(id)) continue;
     if (plugin.manifest?.od?.mode !== "deck") continue;
+    if (
+      isTeamverHiddenPromptScaffoldResourceId(id) ||
+      isTeamverHiddenPromptScaffoldResourceId(plugin.manifest?.name)
+    ) {
+      continue;
+    }
     seen.add(id);
     // Attach the record so the picker can render the plugin's example.html
     // preview / pre-baked hover-pan clip (visual template selection, not a

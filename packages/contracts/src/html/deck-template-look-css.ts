@@ -1942,8 +1942,16 @@ export function rewriteOfficialLookHostSlideSelectors(css: string): string {
 
 const COMPACT_TYPE_LOCK_MARK = 'od-compact-type-lock';
 
+/** Strip CSS block comments so naive rule selectors match :root / .display. */
+function stripCssComments(text: string): string {
+  return String(text ?? '').replace(/\/\*[\s\S]*?\*\//g, ' ');
+}
+
 function splitLookSelectors(text: string): string[] {
-  return text.split(',').map((part) => part.trim()).filter(Boolean);
+  return stripCssComments(text)
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean);
 }
 
 function officialSlideRuleHasFontFamily(css: string): boolean {
@@ -1958,32 +1966,118 @@ function officialSlideRuleHasFontFamily(css: string): boolean {
   return false;
 }
 
-function extractOfficialTypeFaces(css: string): { body: string | null; display: string | null } {
+/** Collect Studio-family font custom properties (--f-* / --font-*) from look CSS. */
+function extractOfficialFontCustomProperties(css: string): Map<string, string> {
+  const out = new Map<string, string>();
   const rules = [...String(css ?? '').matchAll(/([^{}@][^{]*)\{([^}]+)\}/g)];
+  for (const rule of rules) {
+    const selParts = splitLookSelectors(rule[1] ?? '');
+    // :root / html / body — Studio ZONE box comments prefix `:root` in the
+    // naive selector capture, so comment-strip before matching (§1.18).
+    const isDocTokens = selParts.some(
+      (part) => /^(?::root|html|body|html\s+body)$/i.test(part) || /^:root\b/i.test(part),
+    );
+    if (!isDocTokens) continue;
+    const body = String(rule[2] ?? '');
+    for (const match of body.matchAll(/--([a-z0-9-]+)\s*:\s*([^;]+)/gi)) {
+      const name = match[1]?.trim().toLowerCase();
+      const value = match[2]?.trim();
+      if (!name || !value) continue;
+      if (!/^(?:f-|font-)/i.test(name)) continue;
+      out.set(name, value.length > 180 ? value.slice(0, 180) : value);
+    }
+  }
+  // Fallback: token scan when :root was missed (nested braces / atypical hosts).
+  if (out.size === 0) {
+    for (const match of String(css ?? '').matchAll(/--((?:f|font)-[a-z0-9-]+)\s*:\s*([^;]+)/gi)) {
+      const name = match[1]?.trim().toLowerCase();
+      const value = match[2]?.trim();
+      if (!name || !value) continue;
+      out.set(name, value.length > 180 ? value.slice(0, 180) : value);
+    }
+  }
+  return out;
+}
+
+function resolveOfficialFontFamilyValue(
+  raw: string | null | undefined,
+  customProps: Map<string, string>,
+): string | null {
+  const trimmed = String(raw ?? '').replace(/\s+/g, ' ').trim();
+  if (!trimmed) return null;
+  const varMatch = /^var\(\s*--([a-z0-9-]+)\s*(?:,\s*([^)]+))?\)\s*$/i.exec(trimmed);
+  if (!varMatch) return trimmed.length > 180 ? trimmed.slice(0, 180) : trimmed;
+  const key = varMatch[1]?.trim().toLowerCase() ?? '';
+  const resolved = customProps.get(key)?.trim();
+  if (resolved) return resolved.length > 180 ? resolved.slice(0, 180) : resolved;
+  const fallback = varMatch[2]?.trim();
+  return fallback ? (fallback.length > 180 ? fallback.slice(0, 180) : fallback) : null;
+}
+
+/**
+ * Official Studio/Broadside/Signal put faces on utility classes (`.display`,
+ * `.h1`) + `--f-*` tokens — not bare `html,body` / `h1`. Compact fills emit
+ * semantic `<h1>`/`<h2>`, so Pink Script–style type-lock must resolve those
+ * utilities/vars onto `.slide` headings (§1.18).
+ */
+function extractOfficialTypeFaces(css: string): { body: string | null; display: string | null } {
+  const source = String(css ?? '');
+  const customProps = extractOfficialFontCustomProperties(source);
+  const rules = [...source.matchAll(/([^{}@][^{]*)\{([^}]+)\}/g)];
   const read = (test: (part: string) => boolean): string | null => {
     for (const rule of rules) {
       if (!splitLookSelectors(rule[1] ?? '').some(test)) continue;
       const ff = /(?:^|;)\s*font-family\s*:\s*([^;]+)/i.exec(rule[2] ?? '')?.[1]?.trim();
-      if (ff) return ff.length > 180 ? ff.slice(0, 180) : ff;
+      const resolved = resolveOfficialFontFamilyValue(ff, customProps);
+      if (resolved) return resolved;
     }
     return null;
   };
-  const body = read((part) => /^(?:html|body)$/i.test(part) || /^html\s+body$/i.test(part));
+  const body =
+    read((part) => /^(?:html|body)$/i.test(part) || /^html\s+body$/i.test(part))
+    ?? read((part) => /^\.body$/i.test(part))
+    ?? read((part) => /^\.lead$/i.test(part))
+    ?? read((part) => /^\.text$/i.test(part))
+    ?? resolveOfficialFontFamilyValue(
+      customProps.has('f-body')
+        ? `var(--f-body)`
+        : customProps.has('font-body')
+          ? `var(--font-body)`
+          : null,
+      customProps,
+    );
   const display =
     read((part) => /^\.script$/i.test(part))
+    ?? read((part) => /^\.display$/i.test(part))
+    ?? read((part) => /^\.h1$/i.test(part))
+    ?? read((part) => /^\.h2$/i.test(part))
     ?? read((part) => /^h1$/i.test(part))
-    ?? read((part) => /^\.title$/i.test(part));
+    ?? read((part) => /^\.title$/i.test(part))
+    ?? resolveOfficialFontFamilyValue(
+      customProps.has('f-display')
+        ? `var(--f-display)`
+        : customProps.has('f-heading')
+          ? `var(--f-heading)`
+          : customProps.has('font-display')
+            ? `var(--font-display)`
+            : null,
+      customProps,
+    );
   const norm = (value: string | null) => value?.replace(/\s+/g, ' ').trim() ?? '';
   return {
     body,
-    display: display && norm(display) !== norm(body) ? display : null,
+    // Prefer an explicit display face even when it matches body (Barlow both) —
+    // still emit heading lock so weight/cascade targets stay clear when we
+    // later attach size rules. Duplicate family is fine.
+    display: display && norm(display) ? display : null,
   };
 }
 
 /**
  * Compact fills set `.slide { font-family: Quicksand }` (or similar) which
  * beats official `html,body` fonts. Official display faces stay on `.script`
- * / `.s-cover .title`. Copy body + display faces onto compact `.slide`.
+ * / `.s-cover .title` / Studio `.display`/`.h1`. Copy body + display faces
+ * onto compact `.slide` and semantic headings.
  */
 export function appendCompactOfficialTypeLock(css: string): string {
   const src = String(css ?? '');
@@ -1996,7 +2090,7 @@ export function appendCompactOfficialTypeLock(css: string): string {
     rules.push(`html, body, section.slide, .slide { font-family: ${faces.body}; }`);
   }
   if (faces.display) {
-    rules.push(`.slide :is(h1, h2, h3, .title) { font-family: ${faces.display}; }`);
+    rules.push(`.slide :is(h1, h2, h3, .title, .display, .h1, .h2) { font-family: ${faces.display}; }`);
   }
   return `${src.trimEnd()}\n${rules.join('\n')}\n`;
 }

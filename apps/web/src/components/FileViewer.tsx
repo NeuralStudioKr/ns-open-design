@@ -47,8 +47,10 @@ import {
 import { isTeamverPptxExportEnabled } from '../teamver/pptxExportEnable';
 import { isTeamverSourceHtmlCopyEnabled } from '../teamver/sourceHtmlCopyEnable';
 import {
-  deckHtmlNeedsOfficialLookPreviewHeal,
   healOfficialLookForDeckPreview,
+  OFFICIAL_LOOK_STREAMING_HEAL_DEBOUNCE_MS,
+  pickOfficialLookHealedPreviewSource,
+  shouldApplyOfficialLookPreviewHeal,
 } from '../teamver/deckPreviewOfficialLookHeal';
 import { beginTeamverEmbedActiveWork, endTeamverEmbedActiveWork } from '../teamver/teamverEmbedActiveWork';
 import { fetchTeamverDaemon } from '../teamver/teamverDaemonHeaders';
@@ -156,7 +158,9 @@ import {
 } from '../runtime/srcdoc';
 import {
   PREVIEW_ESCAPE_MESSAGE,
+  applyFileViewerPreviewEscapeAction,
   resolveFileViewerPreviewEscapeAction,
+  runFileViewerPreviewMessageHandler,
 } from '../teamver/fileViewerPreviewEscape';
 import { repairArtifactDocumentHeadIfNeeded } from '../runtime/artifact-document-head';
 import {
@@ -404,11 +408,23 @@ import {
   TIP_REMOUNT_POST_UNLOCK_QUIET_TIMEOUT_MS,
   shouldArmTipRemountChromeUnlockPointerGate,
   shouldDisableManualEditChromeForTipRemountUnlockGate,
-  shouldReuseLastHostRectOnTipRemountMeasureMiss,
   shouldSeedTipRemountLastHostRectFromLivePaint,
   shouldApplyTipRemountLastHostRectOnLayoutPaintMiss,
   hostPaintRectForManualEditSelectionCommit,
+  shouldRefreshHostPaintOnManualEditSelectionCommit,
+  resolveTipRemountHostPaintRectResult,
+  shouldSeedTipRemountMemberLastHostRectsOnMultiCommit,
+  shouldRetryTipRemountMemberLastHostRectSeed,
+  shouldCancelTipRemountMemberLastHostRectSeedRetry,
+  shouldCancelTipRemountMemberLastHostRectSeedRetryOnSelectionBoundary,
+  shouldApplyTipRemountMemberLastHostRectSeedRetry,
+  expectedTipRemountUnionPaintBearingCount,
+  shouldPruneTipRemountMemberLastHostRectsOnSelectionCommit,
+  pruneTipRemountMemberLastHostRectsToSelection,
+  countTipRemountSeededLastGoodForSelection,
+  shouldRefreshTipRemountChromeAfterMemberLastHostRectSeedRetry,
   resolveTipRemountRefreshMissAction,
+  tipRemountApplyLastGoodMatchesHostPaintResult,
   shouldClearTipRemountLastHostRectCache,
   shouldTrustTipRemountHostPaintDespiteComposedStale,
   shouldArmTipRemountPaintSyncHold,
@@ -748,22 +764,31 @@ function previewSourceCacheKey(projectId: string, fileName: string): string {
 }
 
 function readCachedPreviewSource(projectId: string, fileName: string): string | null {
-  const cached = htmlPreviewSourceCache.get(previewSourceCacheKey(projectId, fileName));
-  if (!cached?.trim()) return null;
-  const repaired = repairArtifactDocumentHeadIfNeeded(cached);
-  return isArtifactHtmlStableForPreview(repaired) ? repaired : null;
+  try {
+    const cached = htmlPreviewSourceCache.get(previewSourceCacheKey(projectId, fileName));
+    if (!cached?.trim()) return null;
+    const repaired = repairArtifactDocumentHeadIfNeeded(cached);
+    return isArtifactHtmlStableForPreview(repaired) ? repaired : null;
+  } catch (err) {
+    console.error('[HtmlViewer] readCachedPreviewSource failed', fileName, err);
+    return null;
+  }
 }
 
 /** Cache stable preview HTML for remount / pending-tab bootstrap (module-level). */
 export function rememberStablePreviewSource(projectId: string, fileName: string, source: string | null | undefined) {
-  if (!source?.trim()) return;
-  const repaired = repairArtifactDocumentHeadIfNeeded(source);
-  if (!isArtifactHtmlStableForPreview(repaired)) return;
-  const key = previewSourceCacheKey(projectId, fileName);
-  htmlPreviewSourceCache.set(key, repaired);
-  if (htmlPreviewSourceCache.size > MAX_CACHED_PREVIEW_SOURCES) {
-    const oldest = htmlPreviewSourceCache.keys().next().value;
-    if (oldest != null) htmlPreviewSourceCache.delete(oldest);
+  try {
+    if (!source?.trim()) return;
+    const repaired = repairArtifactDocumentHeadIfNeeded(source);
+    if (!isArtifactHtmlStableForPreview(repaired)) return;
+    const key = previewSourceCacheKey(projectId, fileName);
+    htmlPreviewSourceCache.set(key, repaired);
+    if (htmlPreviewSourceCache.size > MAX_CACHED_PREVIEW_SOURCES) {
+      const oldest = htmlPreviewSourceCache.keys().next().value;
+      if (oldest != null) htmlPreviewSourceCache.delete(oldest);
+    }
+  } catch (err) {
+    console.error('[HtmlViewer] rememberStablePreviewSource failed', fileName, err);
   }
 }
 
@@ -4799,16 +4824,20 @@ function acceptPreviewHtmlCandidate(
   lastStableRef: { current: string | null },
 ): string | null {
   if (candidate == null) return null;
-  const repaired = repairArtifactDocumentHeadIfNeeded(candidate);
-  if (isArtifactHtmlStableForPreview(repaired)) {
-    // Repair can theoretically close/strip into a slide-less shell that still
-    // tag-balances. Never pin that as last-stable when the candidate itself
-    // still carried deck slides — keep the previous good frame instead.
-    if (sourceHasDeckSlideMarkup(candidate) && !hasSalvageableDeckSlideContent(repaired)) {
-      return lastStableRef.current;
+  try {
+    const repaired = repairArtifactDocumentHeadIfNeeded(candidate);
+    if (isArtifactHtmlStableForPreview(repaired)) {
+      // Repair can theoretically close/strip into a slide-less shell that still
+      // tag-balances. Never pin that as last-stable when the candidate itself
+      // still carried deck slides — keep the previous good frame instead.
+      if (sourceHasDeckSlideMarkup(candidate) && !hasSalvageableDeckSlideContent(repaired)) {
+        return lastStableRef.current;
+      }
+      lastStableRef.current = repaired;
+      return repaired;
     }
-    lastStableRef.current = repaired;
-    return repaired;
+  } catch (err) {
+    console.error('[HtmlViewer] acceptPreviewHtmlCandidate failed', err);
   }
   // Prefer the last stable frame over painting leak debris / unbalanced tags.
   return lastStableRef.current;
@@ -5459,11 +5488,17 @@ function HtmlViewer({
   const [sourceHtmlCopied, setSourceHtmlCopied] = useState(false);
   const sourceHtmlCopyEnabled = isTeamverSourceHtmlCopyEnabled();
   // One intact-gated repair for liveHtml init (was 3× ungated repair on mount).
+  // Must never throw on deep-link first paint — error.tsx takes the whole route.
   const initialLiveHtmlRepaired = liveHtml == null
     ? null
     : (() => {
-      const repaired = repairArtifactDocumentHeadIfNeeded(liveHtml);
-      return isArtifactHtmlStableForPreview(repaired) ? repaired : null;
+      try {
+        const repaired = repairArtifactDocumentHeadIfNeeded(liveHtml);
+        return isArtifactHtmlStableForPreview(repaired) ? repaired : null;
+      } catch (err) {
+        console.error('[HtmlViewer] initialLiveHtmlRepaired failed', file.name, err);
+        return null;
+      }
     })();
   const [source, setSource] = useState<string | null>(() => initialLiveHtmlRepaired);
   const [sourceLoadFailed, setSourceLoadFailed] = useState(false);
@@ -5746,6 +5781,8 @@ function HtmlViewer({
   const tipRemasureOnDeckNudgeRef = useRef<() => void>(() => {});
   /** Pending onLoad sync measure rAF retry — cancel on grace clear (463). */
   const manualEditTipRemountSyncRetryRafRef = useRef<number | null>(null);
+  /** Pending multi-member last-good seed rAF retry — cancel on tip clear (558). */
+  const manualEditTipMemberSeedRetryRafRef = useRef<number | null>(null);
   /** Inert resize/multi chrome until tip remasure applies tip geometry (455/458). */
   const [manualEditTipRemountChromeSuppressed, setManualEditTipRemountChromeSuppressed] = useState(false);
   const manualEditTipRemountChromeSuppressedRef = useRef(false);
@@ -6893,38 +6930,75 @@ function HtmlViewer({
   // never surface and the deck becomes a static, unnavigable preview.
   const looksLikeDeck = useMemo(() => {
     if (!source) return false;
-    return htmlLooksLikeNavigableDeckPreview(source);
-  }, [source]);
+    try {
+      return htmlLooksLikeNavigableDeckPreview(source);
+    } catch (err) {
+      console.error('[HtmlViewer] looksLikeDeck failed', file.name, err);
+      return false;
+    }
+  }, [source, file.name]);
   const effectiveDeck = isDeck || looksLikeDeck;
   const rawLivePreviewSource = inlinedSource ?? source;
   const livePreviewSource = useMemo(() => {
     if (!rawLivePreviewSource) return rawLivePreviewSource;
-    const healPaths = Array.from(
-      new Set([
-        ...(projectFilePaths ?? []).map((path) => String(path || '').trim()).filter(Boolean),
-        ...(preferredAttachmentPaths ?? [])
-          .map((path) => String(path || '').trim())
-          .filter(Boolean),
-      ]),
-    );
-    if (healPaths.length === 0) return rawLivePreviewSource;
-    return rewriteAttachmentImageSrcs(rawLivePreviewSource, healPaths, {
-      preferredPaths: preferredAttachmentPaths,
-    });
-  }, [preferredAttachmentPaths, projectFilePaths, rawLivePreviewSource]);
+    try {
+      const healPaths = Array.from(
+        new Set([
+          ...(projectFilePaths ?? []).map((path) => String(path || '').trim()).filter(Boolean),
+          ...(preferredAttachmentPaths ?? [])
+            .map((path) => String(path || '').trim())
+            .filter(Boolean),
+        ]),
+      );
+      if (healPaths.length === 0) return rawLivePreviewSource;
+      return rewriteAttachmentImageSrcs(rawLivePreviewSource, healPaths, {
+        preferredPaths: preferredAttachmentPaths,
+      });
+    } catch (err) {
+      console.error('[HtmlViewer] livePreviewSource heal failed', file.name, err);
+      return rawLivePreviewSource;
+    }
+  }, [preferredAttachmentPaths, projectFilePaths, rawLivePreviewSource, file.name]);
   // Display-only official look merge + Motif remmerge. Compact fills stream
-  // without look CSS; persist merges after save. Preview used to stay Neutral
-  // until disk write.
+  // without look CSS; persist merges after save. §1.21 also heals stable
+  // streaming snapshots so generation no longer looks Neutral until disk write.
   const [officialLookHealedPreview, setOfficialLookHealedPreview] = useState<string | null>(null);
+  const [officialLookHealedForSource, setOfficialLookHealedForSource] = useState<string | null>(null);
   useEffect(() => {
-    setOfficialLookHealedPreview(null);
-    if (streaming || manualEditMode || !effectiveDeck || !projectId) return;
-    if (!livePreviewSource || !deckHtmlNeedsOfficialLookPreviewHeal(livePreviewSource)) return;
+    if (manualEditMode || !effectiveDeck || !projectId) {
+      setOfficialLookHealedPreview(null);
+      setOfficialLookHealedForSource(null);
+      return;
+    }
+    if (
+      !livePreviewSource
+      || !shouldApplyOfficialLookPreviewHeal(livePreviewSource, { streaming })
+    ) {
+      setOfficialLookHealedPreview(null);
+      setOfficialLookHealedForSource(null);
+      return;
+    }
     let cancelled = false;
-    void healOfficialLookForDeckPreview(livePreviewSource, projectId).then((healed) => {
-      if (cancelled) return;
-      if (healed && healed !== livePreviewSource) setOfficialLookHealedPreview(healed);
-    });
+    const run = () => {
+      void healOfficialLookForDeckPreview(livePreviewSource, projectId).then((healed) => {
+        if (cancelled) return;
+        if (healed && healed !== livePreviewSource) {
+          setOfficialLookHealedPreview(healed);
+          setOfficialLookHealedForSource(livePreviewSource);
+        } else {
+          setOfficialLookHealedPreview(null);
+          setOfficialLookHealedForSource(null);
+        }
+      });
+    };
+    if (streaming) {
+      const timer = window.setTimeout(run, OFFICIAL_LOOK_STREAMING_HEAL_DEBOUNCE_MS);
+      return () => {
+        cancelled = true;
+        window.clearTimeout(timer);
+      };
+    }
+    run();
     return () => {
       cancelled = true;
     };
@@ -6948,10 +7022,22 @@ function HtmlViewer({
   }, [manualEditMode, manualEditFrozenSource, livePreviewSource]);
   const previewSource = (manualEditMode && manualEditFrozenSource !== null)
     ? manualEditFrozenSource
-    : (officialLookHealedPreview ?? livePreviewSource);
+    : pickOfficialLookHealedPreviewSource({
+      livePreviewSource,
+      healedPreview: officialLookHealedPreview,
+      healedForSource: officialLookHealedForSource,
+    });
   const compactApiStackedDeck = useMemo(
-    () => (previewSource != null && looksLikeCompactApiStackedDeckForPreview(previewSource)),
-    [previewSource],
+    () => {
+      if (previewSource == null) return false;
+      try {
+        return looksLikeCompactApiStackedDeckForPreview(previewSource);
+      } catch (err) {
+        console.error('[HtmlViewer] compact deck classify failed', file.name, err);
+        return false;
+      }
+    },
+    [previewSource, file.name],
   );
   compactApiStackedDeckRef.current = compactApiStackedDeck;
   const frameworkDeckPreview = useMemo(
@@ -7358,19 +7444,24 @@ function HtmlViewer({
       if (teamverEmbedPreviewMode && (!embedPreviewPrefixSettled || !embedPreviewPrefix)) {
         return '';
       }
-      return redirectLoopBlocked
-        ? buildRedirectLoopBlockedDoc()
-        : previewSource
-          ? buildSrcdoc(previewSource, {
-            deck: effectiveDeck,
-            baseHref: srcDocBaseHref,
-            initialSlideIndex: htmlPreviewSlideState.get(previewStateKey)?.active ?? 0,
-            selectionBridge: true,
-            editBridge: manualEditRequiresSrcDoc,
-            paletteBridge: false,
-            previewFocusGuard: true,
-          })
-          : '';
+      if (redirectLoopBlocked) return buildRedirectLoopBlockedDoc();
+      if (!previewSource) return '';
+      try {
+        return buildSrcdoc(previewSource, {
+          deck: effectiveDeck,
+          baseHref: srcDocBaseHref,
+          initialSlideIndex: htmlPreviewSlideState.get(previewStateKey)?.active ?? 0,
+          selectionBridge: true,
+          editBridge: manualEditRequiresSrcDoc,
+          paletteBridge: false,
+          previewFocusGuard: true,
+        });
+      } catch (err) {
+        // Deep-link /files/deck.html mounts FileViewer on first paint — a throw
+        // here takes down the whole project route via app/error.tsx.
+        console.error('[HtmlViewer] buildSrcdoc failed', file.name, err);
+        return '';
+      }
     },
     [
       redirectLoopBlocked,
@@ -7382,6 +7473,7 @@ function HtmlViewer({
       teamverEmbedPreviewMode,
       embedPreviewPrefix,
       embedPreviewPrefixSettled,
+      file.name,
     ],
   );
   const lazySrcDocTransport = useMemo(() => buildLazySrcdocTransport(), []);
@@ -7483,32 +7575,38 @@ function HtmlViewer({
   // 536-byte body.
   useEffect(() => {
     function onMessage(ev: MessageEvent) {
-      if (ev.source !== srcDocPreviewIframeRef.current?.contentWindow) return;
-      const data = ev.data as { type?: string } | null;
-      if (data?.type !== 'od:srcdoc-transport-ready') return;
-      setSrcDocShellReady(true);
+      runFileViewerPreviewMessageHandler('srcdoc-ready', () => {
+        if (ev.source !== srcDocPreviewIframeRef.current?.contentWindow) return;
+        const data = ev.data as { type?: string } | null;
+        if (data?.type !== 'od:srcdoc-transport-ready') return;
+        setSrcDocShellReady(true);
+      });
     }
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
   }, []);
   useEffect(() => {
     function onMessage(ev: MessageEvent) {
-      if (ev.source !== srcDocPreviewIframeRef.current?.contentWindow) return;
-      const data = ev.data as { type?: string } | null;
-      if (data?.type !== PREVIEW_REDIRECT_LOOP_MESSAGE) return;
-      setRedirectLoopBlocked(true);
+      runFileViewerPreviewMessageHandler('redirect-loop', () => {
+        if (ev.source !== srcDocPreviewIframeRef.current?.contentWindow) return;
+        const data = ev.data as { type?: string } | null;
+        if (data?.type !== PREVIEW_REDIRECT_LOOP_MESSAGE) return;
+        setRedirectLoopBlocked(true);
+      });
     }
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
   }, []);
   useEffect(() => {
     function onMessage(ev: MessageEvent) {
-      const frame = urlPreviewIframeRef.current;
-      if (ev.source !== frame?.contentWindow) return;
-      if (frame.getAttribute('src') === 'about:blank') return;
-      const data = ev.data as { type?: string } | null;
-      if (data?.type !== 'od:url-selection-bridge-ready') return;
-      setUrlSelectionBridgeReady(true);
+      runFileViewerPreviewMessageHandler('url-bridge-ready', () => {
+        const frame = urlPreviewIframeRef.current;
+        if (ev.source !== frame?.contentWindow) return;
+        if (frame.getAttribute('src') === 'about:blank') return;
+        const data = ev.data as { type?: string } | null;
+        if (data?.type !== 'od:url-selection-bridge-ready') return;
+        setUrlSelectionBridgeReady(true);
+      });
     }
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
@@ -7598,32 +7696,35 @@ function HtmlViewer({
 
   useEffect(() => {
     function onMessage(ev: MessageEvent) {
-      if (!isOurPreviewIframeSource(ev.source)) return;
-      if (!isActivePreviewIframeSource(ev.source)) return;
-      const data = ev.data as {
-        type?: string;
-        frameLeft?: number;
-        frameTop?: number;
-        canvasLeft?: number;
-        canvasTop?: number;
-      } | null;
-      if (!data || data.type !== 'od:preview-scroll') return;
-      if (previewScrollRestoreRef.current && Number(data.canvasLeft || 0) === 0 && Number(data.canvasTop || 0) === 0) return;
-      if (
-        previewScrollPositionRef.current.canvasLeft !== 0 ||
-        previewScrollPositionRef.current.canvasTop !== 0
-      ) {
-        const isInitialZeroReport = Number(data.canvasLeft || 0) === 0 && Number(data.canvasTop || 0) === 0;
-        if (isInitialZeroReport && Date.now() - previewScrollRequestAtRef.current < 1200) return;
-      }
-      previewScrollPositionRef.current = {
-        frameLeft: Number(data.frameLeft || 0),
-        frameTop: Number(data.frameTop || 0),
-        canvasLeft: Number(data.canvasLeft || 0),
-        canvasTop: Number(data.canvasTop || 0),
-      };
+      runFileViewerPreviewMessageHandler('preview-scroll', () => {
+        if (!isOurPreviewIframeSource(ev.source)) return;
+        if (!isActivePreviewIframeSource(ev.source)) return;
+        const data = ev.data as {
+          type?: string;
+          frameLeft?: number;
+          frameTop?: number;
+          canvasLeft?: number;
+          canvasTop?: number;
+        } | null;
+        if (!data || data.type !== 'od:preview-scroll') return;
+        if (previewScrollRestoreRef.current && Number(data.canvasLeft || 0) === 0 && Number(data.canvasTop || 0) === 0) return;
+        if (
+          previewScrollPositionRef.current.canvasLeft !== 0 ||
+          previewScrollPositionRef.current.canvasTop !== 0
+        ) {
+          const isInitialZeroReport = Number(data.canvasLeft || 0) === 0 && Number(data.canvasTop || 0) === 0;
+          if (isInitialZeroReport && Date.now() - previewScrollRequestAtRef.current < 1200) return;
+        }
+        previewScrollPositionRef.current = {
+          frameLeft: Number(data.frameLeft || 0),
+          frameTop: Number(data.frameTop || 0),
+          canvasLeft: Number(data.canvasLeft || 0),
+          canvasTop: Number(data.canvasTop || 0),
+        };
+      });
     }
     function onRestoreRequest(ev: MessageEvent) {
+      runFileViewerPreviewMessageHandler('preview-scroll-request', () => {
       if (!isOurPreviewIframeSource(ev.source)) return;
       if (!isActivePreviewIframeSource(ev.source)) return;
       const data = ev.data as { type?: string } | null;
@@ -7643,8 +7744,10 @@ function HtmlViewer({
         canvasLeft: scroll.canvasLeft,
         canvasTop: scroll.canvasTop,
       }, '*');
+      });
     }
     function onDcViewportMessage(ev: MessageEvent) {
+      runFileViewerPreviewMessageHandler('dc-viewport', () => {
       if (!isOurPreviewIframeSource(ev.source)) return;
       if (!isActivePreviewIframeSource(ev.source)) return;
       const data = ev.data as {
@@ -7675,6 +7778,7 @@ function HtmlViewer({
           ...dcViewportRef.current,
         }, '*');
       }
+      });
     }
     window.addEventListener('message', onMessage);
     window.addEventListener('message', onRestoreRequest);
@@ -7693,16 +7797,18 @@ function HtmlViewer({
     }
     setSlideState(htmlPreviewSlideState.get(previewStateKey) ?? null);
     function onMessage(ev: MessageEvent) {
-      if (!isOurPreviewIframeSource(ev.source)) return;
-      if (!isActivePreviewIframeSource(ev.source)) return;
-      const data = ev?.data as
-        | { type?: string; active?: number; count?: number }
-        | null;
-      if (!data || data.type !== 'od:slide-state') return;
-      if (typeof data.active !== 'number' || typeof data.count !== 'number') return;
-      const next = { active: data.active, count: data.count };
-      setSlideStateCached(previewStateKey, next);
-      setSlideState(next);
+      runFileViewerPreviewMessageHandler('slide-state', () => {
+        if (!isOurPreviewIframeSource(ev.source)) return;
+        if (!isActivePreviewIframeSource(ev.source)) return;
+        const data = ev?.data as
+          | { type?: string; active?: number; count?: number }
+          | null;
+        if (!data || data.type !== 'od:slide-state') return;
+        if (typeof data.active !== 'number' || typeof data.count !== 'number') return;
+        const next = { active: data.active, count: data.count };
+        setSlideStateCached(previewStateKey, next);
+        setSlideState(next);
+      });
     }
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
@@ -7712,6 +7818,7 @@ function HtmlViewer({
     if (!deckHostViewportFitActive || mode !== 'preview') return;
     let cancelZeroSizeRetry: (() => void) | null = null;
     function onDeckViewportRequest(ev: MessageEvent) {
+      runFileViewerPreviewMessageHandler('deck-host-viewport', () => {
       // Accept any of our preview iframes — during liveHtml→disk srcDoc churn
       // iframeRef can lag the requesting contentWindow by a tick, and the
       // strict active-ref check used to drop the request (black letterbox until
@@ -7756,6 +7863,7 @@ function HtmlViewer({
         [0, 32, 80, 160, 320, 640, 1_200, 2_400],
         deckPreviewFitOptions,
       );
+      });
     }
     window.addEventListener('message', onDeckViewportRequest);
     return () => {
@@ -8425,26 +8533,109 @@ function HtmlViewer({
     }
   }
 
-  /** Resolve host paint for chrome — tip session reuses last-good on miss (521/523/538). */
+  /** Resolve host paint for chrome — live seed + last-good fallback (521/553/556). */
   function resolveTipRemountHostPaintRect(
     id: string | null | undefined,
     paint: ManualEditRect | null,
   ): ManualEditRect | null {
-    if (paint && paint.width >= 1 && paint.height >= 1) {
-      if (id) manualEditTipLastHostRectByIdRef.current.set(id, { ...paint });
-      return paint;
+    if (!id) {
+      if (paint && paint.width >= 1 && paint.height >= 1) return paint;
+      return null;
     }
-    if (!id) return null;
     const lastGood = manualEditTipLastHostRectByIdRef.current.get(id) ?? null;
-    if (shouldReuseLastHostRectOnTipRemountMeasureMiss(
+    const { paint: resolved, seedLastGood } = resolveTipRemountHostPaintRectResult(
       tipRemountChromeSessionLiveNow(),
-      false,
-      lastGood != null,
       manualEditTipPaintSyncHoldRef.current,
-    )) {
-      return lastGood;
+      paint,
+      lastGood,
+    );
+    if (seedLastGood) {
+      manualEditTipLastHostRectByIdRef.current.set(id, seedLastGood);
     }
-    return null;
+    return resolved;
+  }
+
+  /**
+   * Tip/paint-sync multi commit: measure every selected member and seed
+   * last-good so union chrome miss can reuse per-id boxes (555).
+   * Returns how many members seeded — drives one rAF retry (558).
+   */
+  function seedTipRemountMemberLastHostRectsForSelection(ids: readonly string[]): number {
+    const frame = iframeRef.current;
+    const workspace = manualEditWorkspaceRef.current;
+    if (!frame || !workspace) return 0;
+    let seeded = 0;
+    for (const id of ids) {
+      const paint = measureManualEditTargetHostRect(frame, workspace, id);
+      if (paint && paint.width >= 1 && paint.height >= 1) {
+        manualEditTipLastHostRectByIdRef.current.set(id, { ...paint });
+        seeded += 1;
+      }
+    }
+    return seeded;
+  }
+
+  function cancelTipRemountMemberLastHostRectSeedRetry(
+    selectionBoundaryChanged?: boolean,
+  ) {
+    const pending = manualEditTipMemberSeedRetryRafRef.current != null;
+    const shouldCancel = selectionBoundaryChanged === undefined
+      ? shouldCancelTipRemountMemberLastHostRectSeedRetry(pending)
+      : shouldCancelTipRemountMemberLastHostRectSeedRetryOnSelectionBoundary(
+        pending,
+        selectionBoundaryChanged,
+      );
+    if (shouldCancel) {
+      window.cancelAnimationFrame(manualEditTipMemberSeedRetryRafRef.current!);
+      manualEditTipMemberSeedRetryRafRef.current = null;
+    }
+  }
+
+  function scheduleTipRemountMemberLastHostRectSeedRetry(ids: readonly string[]) {
+    cancelTipRemountMemberLastHostRectSeedRetry();
+    const expectedIds = ids.slice();
+    manualEditTipMemberSeedRetryRafRef.current = requestAnimationFrame(() => {
+      manualEditTipMemberSeedRetryRafRef.current = null;
+      const tipSessionLive = tipRemountChromeSessionLiveNow();
+      const paintSyncHold = manualEditTipPaintSyncHoldRef.current;
+      if (!shouldSeedTipRemountMemberLastHostRectsOnMultiCommit(
+        expectedIds.length,
+        tipSessionLive,
+        paintSyncHold,
+      )) {
+        return;
+      }
+      const currentIds = selectedManualEditTargetIdsRef.current;
+      if (!shouldApplyTipRemountMemberLastHostRectSeedRetry(expectedIds, currentIds)) {
+        return;
+      }
+      // One retry only — alreadyRetried implied by this callback (558).
+      const seededBefore = countTipRemountSeededLastGoodForSelection(
+        manualEditTipLastHostRectByIdRef.current,
+        expectedIds,
+      );
+      seedTipRemountMemberLastHostRectsForSelection(expectedIds);
+      const seededAfter = countTipRemountSeededLastGoodForSelection(
+        manualEditTipLastHostRectByIdRef.current,
+        expectedIds,
+      );
+      // Ref cache alone does not re-render overlay / seed floor prop (567).
+      if (shouldRefreshTipRemountChromeAfterMemberLastHostRectSeedRetry(
+        tipSessionLive,
+        paintSyncHold,
+        seededAfter - seededBefore,
+      )) {
+        if (shouldDeferTipRemountGeomEpochBumpForPaintSync(
+          paintSyncHold,
+          false,
+        )) {
+          manualEditTipDeferredGeomEpochBumpRef.current = true;
+        } else {
+          manualEditTipDeferredGeomEpochBumpRef.current = false;
+          setManualEditGeomEpoch((n) => n + 1);
+        }
+      }
+    });
   }
 
   /**
@@ -8934,6 +9125,7 @@ function HtmlViewer({
         window.cancelAnimationFrame(manualEditTipSiblingRetryRafRef.current);
         manualEditTipSiblingRetryRafRef.current = null;
       }
+      cancelTipRemountMemberLastHostRectSeedRetry();
     }
     manualEditTipRemountGeometryGraceIdRef.current = null;
     manualEditTipRemountGeometryGraceUntilRef.current = 0;
@@ -9434,42 +9626,44 @@ function HtmlViewer({
       return;
     }
     function onMessage(ev: MessageEvent) {
-      if (!isOurPreviewIframeSource(ev.source)) return;
-      const data = ev.data as
-        | {
-            type?: string;
-            targets?: Array<Partial<PreviewCommentSnapshot>>;
-          }
-        | null;
-      if (data?.type !== 'od:comment-targets' || !Array.isArray(data.targets)) return;
-      const next = new Map<string, PreviewCommentSnapshot>();
-      data.targets.forEach((item) => {
-        const elementId = String(item?.elementId || '');
-        if (!elementId) return;
-        const position = {
-          x: clampBridgeCoordinate(item?.position?.x),
-          y: clampBridgeCoordinate(item?.position?.y),
-          width: clampBridgeCoordinate(item?.position?.width),
-          height: clampBridgeCoordinate(item?.position?.height),
-        };
-        if (!isValidCommentOverlayPosition(position)) return;
-        next.set(elementId, {
-          filePath: file.name,
-          elementId,
-          selector: String(item?.selector || ''),
-          label: String(item?.label || ''),
-          text: String(item?.text || ''),
-          position,
-          htmlHint: String(item?.htmlHint || ''),
-          style: normalizeAnnotationStyle(item?.style),
-          selectionKind: 'element',
-          memberCount: undefined,
-          ...(typeof item?.slideIndex === 'number' ? { slideIndex: item.slideIndex } : {}),
+      runFileViewerPreviewMessageHandler('comment-targets', () => {
+        if (!isOurPreviewIframeSource(ev.source)) return;
+        const data = ev.data as
+          | {
+              type?: string;
+              targets?: Array<Partial<PreviewCommentSnapshot>>;
+            }
+          | null;
+        if (data?.type !== 'od:comment-targets' || !Array.isArray(data.targets)) return;
+        const next = new Map<string, PreviewCommentSnapshot>();
+        data.targets.forEach((item) => {
+          const elementId = String(item?.elementId || '');
+          if (!elementId) return;
+          const position = {
+            x: clampBridgeCoordinate(item?.position?.x),
+            y: clampBridgeCoordinate(item?.position?.y),
+            width: clampBridgeCoordinate(item?.position?.width),
+            height: clampBridgeCoordinate(item?.position?.height),
+          };
+          if (!isValidCommentOverlayPosition(position)) return;
+          next.set(elementId, {
+            filePath: file.name,
+            elementId,
+            selector: String(item?.selector || ''),
+            label: String(item?.label || ''),
+            text: String(item?.text || ''),
+            position,
+            htmlHint: String(item?.htmlHint || ''),
+            style: normalizeAnnotationStyle(item?.style),
+            selectionKind: 'element',
+            memberCount: undefined,
+            ...(typeof item?.slideIndex === 'number' ? { slideIndex: item.slideIndex } : {}),
+          });
         });
+        setLiveCommentTargets((current) => (
+          liveCommentTargetMapsEqual(current, next) ? current : next
+        ));
       });
-      setLiveCommentTargets((current) => (
-        liveCommentTargetMapsEqual(current, next) ? current : next
-      ));
     }
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
@@ -10369,6 +10563,7 @@ function HtmlViewer({
       return snapshot;
     };
     function onMessage(ev: MessageEvent) {
+      runFileViewerPreviewMessageHandler('comment-overlay', () => {
       if (!isOurPreviewIframeSource(ev.source)) return;
       const data = ev.data as (Partial<PreviewCommentSnapshot> & {
         type?: string;
@@ -10515,6 +10710,7 @@ function HtmlViewer({
         setActiveCommentExistingAttachments([]);
         setStrokePoints([]);
       }
+      });
     }
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
@@ -10677,6 +10873,7 @@ function HtmlViewer({
             window.cancelAnimationFrame(manualEditTipSiblingRetryRafRef.current);
             manualEditTipSiblingRetryRafRef.current = null;
           }
+          cancelTipRemountMemberLastHostRectSeedRetry();
           manualEditTipChromePointerHoverRef.current = false;
         }
         const softLandActive = shouldRetainTipSyncedIdentityDuringPostStickySoftLand(
@@ -12729,6 +12926,8 @@ function HtmlViewer({
     const base = sourceRef.current ?? '';
     // One Document for snapshot + multi-select inspector merge.
     const parsedDoc = parseManualEditSource(base);
+    // Drop stale sibling seed retry before membership mutates (564).
+    cancelTipRemountMemberLastHostRectSeedRetry(true);
     clearManualEditTipRemountGeometryGraceIfNeeded(primary.id);
     selectedManualEditTargetIdRef.current = primary.id;
     selectedManualEditTargetRef.current = primary;
@@ -12741,13 +12940,50 @@ function HtmlViewer({
     setSelectedManualEditTarget(primary);
     // Tip/paint-sync: seed last-good for next primary instead of unconditional
     // null — refresh early-return or multi commit must not flash hybrid (546).
+    const tipSessionLive = tipRemountChromeSessionLiveNow();
+    const paintSyncHold = manualEditTipPaintSyncHoldRef.current;
+    // Drop deselected last-good so seed floor / overlay cannot reuse ghosts (565).
+    if (shouldPruneTipRemountMemberLastHostRectsOnSelectionCommit(
+      tipSessionLive,
+      paintSyncHold,
+    )) {
+      pruneTipRemountMemberLastHostRectsToSelection(
+        manualEditTipLastHostRectByIdRef.current,
+        nextIds,
+      );
+    }
     setManualEditHostPaintRect(hostPaintRectForManualEditSelectionCommit(
-      tipRemountChromeSessionLiveNow(),
-      manualEditTipPaintSyncHoldRef.current,
+      tipSessionLive,
+      paintSyncHold,
       manualEditTipLastHostRectByIdRef.current.get(primary.id) ?? null,
     ));
-    if (nextTargets.length === 1) {
+    // Single always; multi during tip/paint-sync warms last-good + host metrics
+    // before union chrome measures (552).
+    if (shouldRefreshHostPaintOnManualEditSelectionCommit(
+      nextTargets.length,
+      tipSessionLive,
+      paintSyncHold,
+    )) {
       refreshManualEditHostPaintRect(primary.id);
+    }
+    // Multi tip/paint-sync: seed last-good for every member, not just primary (555).
+    if (shouldSeedTipRemountMemberLastHostRectsOnMultiCommit(
+      nextTargets.length,
+      tipSessionLive,
+      paintSyncHold,
+    )) {
+      const seeded = seedTipRemountMemberLastHostRectsForSelection(nextIds);
+      if (shouldRetryTipRemountMemberLastHostRectSeed(
+        nextIds.length,
+        seeded,
+        tipSessionLive,
+        paintSyncHold,
+        false,
+      )) {
+        scheduleTipRemountMemberLastHostRectSeedRetry(nextIds);
+      }
+    }
+    if (nextTargets.length === 1) {
       const snapshot = readManualEditTargetSnapshot(base, primary.id, {}, parsedDoc);
       setManualEditMixedStyleKeys(new Set());
       setManualEditDraft({
@@ -12802,6 +13038,17 @@ function HtmlViewer({
     }
     // Clear tip-remount grace with selection clear (overlay residual).
     clearManualEditTipRemountGeometryGraceIfNeeded(null);
+    // clear→reselect same ids must not apply a stale sibling seed rAF (564).
+    cancelTipRemountMemberLastHostRectSeedRetry(true);
+    if (shouldPruneTipRemountMemberLastHostRectsOnSelectionCommit(
+      tipRemountChromeSessionLiveNow(),
+      manualEditTipPaintSyncHoldRef.current,
+    )) {
+      pruneTipRemountMemberLastHostRectsToSelection(
+        manualEditTipLastHostRectByIdRef.current,
+        [],
+      );
+    }
     selectedManualEditTargetIdRef.current = null;
     selectedManualEditTargetRef.current = null;
     selectedManualEditTargetIdsRef.current = [];
@@ -12846,15 +13093,21 @@ function HtmlViewer({
 
   function activateManualEditPreviewHtml(html: string) {
     if (useUrlLoadPreview) return;
-    const activated = buildSrcdoc(html, {
-      deck: effectiveDeck,
-      baseHref: srcDocBaseHref,
-      initialSlideIndex: htmlPreviewSlideState.get(previewStateKey)?.active ?? 0,
-      selectionBridge: true,
-      editBridge: manualEditRequiresSrcDoc,
-      paletteBridge: false,
-      previewFocusGuard: true,
-    });
+    let activated: string;
+    try {
+      activated = buildSrcdoc(html, {
+        deck: effectiveDeck,
+        baseHref: srcDocBaseHref,
+        initialSlideIndex: htmlPreviewSlideState.get(previewStateKey)?.active ?? 0,
+        selectionBridge: true,
+        editBridge: manualEditRequiresSrcDoc,
+        paletteBridge: false,
+        previewFocusGuard: true,
+      });
+    } catch (err) {
+      console.error('[HtmlViewer] activateManualEditPreviewHtml buildSrcdoc failed', err);
+      return;
+    }
     for (const win of slideMessageTargets()) {
       win.postMessage({ type: 'od:srcdoc-transport-activate', html: activated }, '*');
     }
@@ -13043,6 +13296,16 @@ function HtmlViewer({
         });
         if (remainingIds.length === 0) {
           clearManualEditTipRemountGeometryGraceIfNeeded(null);
+          cancelTipRemountMemberLastHostRectSeedRetry(true);
+          if (shouldPruneTipRemountMemberLastHostRectsOnSelectionCommit(
+            tipRemountChromeSessionLiveNow(),
+            manualEditTipPaintSyncHoldRef.current,
+          )) {
+            pruneTipRemountMemberLastHostRectsToSelection(
+              manualEditTipLastHostRectByIdRef.current,
+              [],
+            );
+          }
           selectedManualEditTargetIdRef.current = null;
           selectedManualEditTargetRef.current = null;
           selectedManualEditTargetIdsRef.current = [];
@@ -13060,6 +13323,16 @@ function HtmlViewer({
           const nextIds = refreshed.map((item) => item.id);
           const primary = refreshed[refreshed.length - 1]!;
           clearManualEditTipRemountGeometryGraceIfNeeded(primary.id);
+          cancelTipRemountMemberLastHostRectSeedRetry(true);
+          if (shouldPruneTipRemountMemberLastHostRectsOnSelectionCommit(
+            tipRemountChromeSessionLiveNow(),
+            manualEditTipPaintSyncHoldRef.current,
+          )) {
+            pruneTipRemountMemberLastHostRectsToSelection(
+              manualEditTipLastHostRectByIdRef.current,
+              nextIds,
+            );
+          }
           selectedManualEditTargetIdRef.current = primary.id;
           selectedManualEditTargetRef.current = primary;
           selectedManualEditTargetIdsRef.current = nextIds;
@@ -13643,37 +13916,39 @@ function HtmlViewer({
   useEffect(() => {
     if (!inspectMode) return;
     function onMessage(ev: MessageEvent) {
-      if (!isOurPreviewIframeSource(ev.source)) return;
-      const data = ev.data as
-        | {
-            type?: string;
-            elementId?: string;
-            selector?: string;
-            label?: string;
-            text?: string;
-            style?: InspectStyleSnapshot;
-            clickedDescendant?: Partial<InspectClickedDescendant>;
-          }
-        | null;
-      if (!data || data.type !== 'od:comment-target') return;
-      if (!data.elementId || !data.selector) return;
-      const clickedDescendant =
-        data.clickedDescendant && typeof data.clickedDescendant === 'object'
-          ? {
-              label: String(data.clickedDescendant.label || ''),
-              text: String(data.clickedDescendant.text || ''),
+      runFileViewerPreviewMessageHandler('inspect-target', () => {
+        if (!isOurPreviewIframeSource(ev.source)) return;
+        const data = ev.data as
+          | {
+              type?: string;
+              elementId?: string;
+              selector?: string;
+              label?: string;
+              text?: string;
+              style?: InspectStyleSnapshot;
+              clickedDescendant?: Partial<InspectClickedDescendant>;
             }
-          : null;
-      setActiveInspectTarget({
-        elementId: String(data.elementId),
-        selector: String(data.selector),
-        label: String(data.label || ''),
-        text: String(data.text || ''),
-        style: data.style && typeof data.style === 'object' ? data.style : {},
-        ...(clickedDescendant ? { clickedDescendant } : {}),
+          | null;
+        if (!data || data.type !== 'od:comment-target') return;
+        if (!data.elementId || !data.selector) return;
+        const clickedDescendant =
+          data.clickedDescendant && typeof data.clickedDescendant === 'object'
+            ? {
+                label: String(data.clickedDescendant.label || ''),
+                text: String(data.clickedDescendant.text || ''),
+              }
+            : null;
+        setActiveInspectTarget({
+          elementId: String(data.elementId),
+          selector: String(data.selector),
+          label: String(data.label || ''),
+          text: String(data.text || ''),
+          style: data.style && typeof data.style === 'object' ? data.style : {},
+          ...(clickedDescendant ? { clickedDescendant } : {}),
+        });
+        setInspectError(null);
+        setInspectSavedAt(null);
       });
-      setInspectError(null);
-      setInspectSavedAt(null);
     }
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
@@ -14436,28 +14711,35 @@ function HtmlViewer({
 
   useEffect(() => {
     function onMessage(ev: MessageEvent) {
-      if (!isOurPreviewIframeSource(ev.source)) return;
-      const data = ev.data as { type?: string } | null;
-      if (data?.type !== PREVIEW_ESCAPE_MESSAGE) return;
-      const action = resolveFileViewerPreviewEscapeAction({
-        presentMenuOpen,
-        zoomMenuOpen,
-        agentToolsOpen,
-        shareMenuOpen,
-        deployMenuOpen,
-        downloadMenuOpen,
-        inTabPresent,
-        deployModalOpen,
-      });
-      if (action === 'close-present-menu') setPresentMenuOpen(false);
-      else if (action === 'close-zoom-menu') setZoomMenuOpen(false);
-      else if (action === 'close-artifact-tools') closeArtifactToolMenus();
-      else if (action === 'close-share-menus') {
-        setShareMenuOpen(false);
-        setDeployMenuOpen(false);
-        setDownloadMenuOpen(false);
-      } else if (action === 'exit-in-tab-present') setInTabPresent(false);
-      else if (action === 'close-deploy-modal') closeDeployModal();
+      try {
+        if (!isOurPreviewIframeSource(ev.source)) return;
+        const data = ev.data as { type?: string } | null;
+        if (data?.type !== PREVIEW_ESCAPE_MESSAGE) return;
+        const action = resolveFileViewerPreviewEscapeAction({
+          presentMenuOpen,
+          zoomMenuOpen,
+          agentToolsOpen,
+          deployMenuOpen,
+          downloadMenuOpen,
+          inTabPresent,
+          deployModalOpen,
+        });
+        applyFileViewerPreviewEscapeAction(action, {
+          closePresentMenu: () => setPresentMenuOpen(false),
+          closeZoomMenu: () => setZoomMenuOpen(false),
+          closeArtifactTools: closeArtifactToolMenus,
+          closeShareMenus: () => {
+            setDeployMenuOpen(false);
+            setDownloadMenuOpen(false);
+          },
+          exitInTabPresent: () => setInTabPresent(false),
+          closeDeployModal,
+        });
+      } catch (err) {
+        // Escape is dismiss-only. A leftover identifier / setter throw must
+        // not take down the Teamver embed error boundary (shareMenuOpen §1.20).
+        console.error('[HtmlViewer] preview escape failed', err);
+      }
     }
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
@@ -14466,7 +14748,6 @@ function HtmlViewer({
     presentMenuOpen,
     zoomMenuOpen,
     agentToolsOpen,
-    shareMenuOpen,
     deployMenuOpen,
     downloadMenuOpen,
     inTabPresent,
@@ -15407,11 +15688,15 @@ function HtmlViewer({
   const boardAvailable = mode === 'preview' && source !== null;
   const showPreviewToolbarControls = mode === 'preview';
   const showPreviewViewportControls = showPreviewToolbarControls && !effectiveDeck;
-  const liveHtmlUnstableForPreview = Boolean(
-    streaming
-    && liveHtml?.trim()
-    && !isArtifactHtmlStableForPreview(repairArtifactDocumentHeadIfNeeded(liveHtml)),
-  );
+  const liveHtmlUnstableForPreview = (() => {
+    if (!streaming || !liveHtml?.trim()) return false;
+    try {
+      return !isArtifactHtmlStableForPreview(repairArtifactDocumentHeadIfNeeded(liveHtml));
+    } catch (err) {
+      console.error('[HtmlViewer] liveHtmlUnstableForPreview failed', err);
+      return false;
+    }
+  })();
   const showStreamingAwaitingLiveHtml = Boolean(streaming && !liveHtml?.trim());
   // Empty branch used to never render the veil (it lived under source !== null).
   // Do not gate on !sourceLoadFailed — mid-stream incomplete disk used to flip
@@ -15941,6 +16226,11 @@ function HtmlViewer({
           manualEditTipPaintSyncHold,
         )}
         stabilizePartialPaintUnion={tipRemountChromeSessionLiveNow()}
+        tipRemountPaintSyncHoldArmed={manualEditTipPaintSyncHold}
+        tipRemountSeededLastGoodCount={countTipRemountSeededLastGoodForSelection(
+          manualEditTipLastHostRectByIdRef.current,
+          selectedManualEditTargetIds,
+        )}
         movable={manualEditGroupMoveEnabled}
         resizable={manualEditGroupResizeEnabled}
         // Tip-remount: keep multi chrome mounted inert at last union rect (458).

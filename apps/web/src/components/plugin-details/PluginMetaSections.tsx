@@ -44,6 +44,8 @@ export interface PluginMetaOmit {
   query?: boolean;
   inputs?: boolean;
   byline?: boolean;
+  /** Hide inputs / context bundles / workflow / source and the rest. */
+  advanced?: boolean;
 }
 
 interface ContextRef {
@@ -149,6 +151,7 @@ export function PluginMetaSections({
   const showDescription = !omit?.description && Boolean(description);
   const showQuery = !omit?.query && Boolean(query);
   const showInputs = !omit?.inputs && inputs.length > 0;
+  const showAdvanced = omit?.advanced !== true;
 
   const wrapperClass = `plugin-meta-sections${compact ? ' is-compact' : ''}`;
 
@@ -157,17 +160,19 @@ export function PluginMetaSections({
       {heading ? (
         <header className="plugin-meta-sections__heading">
           <h3>{heading}</h3>
-          <span className="plugin-meta-sections__heading-meta">
-            <span>v{record.version}</span>
-            <span>·</span>
-            <TrustBadge trust={record.trust} />
-            {record.sourceKind ? (
-              <>
-                <span>·</span>
-                <span>{record.sourceKind}</span>
-              </>
-            ) : null}
-          </span>
+          {showAdvanced ? (
+            <span className="plugin-meta-sections__heading-meta">
+              <span>v{record.version}</span>
+              <span>·</span>
+              <TrustBadge trust={record.trust} />
+              {record.sourceKind ? (
+                <>
+                  <span>·</span>
+                  <span>{record.sourceKind}</span>
+                </>
+              ) : null}
+            </span>
+          ) : null}
         </header>
       ) : null}
       {!omit?.byline && hasAuthorBlock ? (
@@ -253,7 +258,7 @@ export function PluginMetaSections({
         </Section>
       ) : null}
 
-      {((advanced) =>
+      {showAdvanced ? ((advanced) =>
         variant === 'minimal' ? (
           <details
             className="plugin-meta-sections__advanced"
@@ -610,7 +615,7 @@ export function PluginMetaSections({
         </dl>
       </Section>
         </>,
-      )}
+      ) : null}
     </div>
   );
 }

@@ -22,6 +22,8 @@ import { useT } from '../../i18n';
 import { copyToClipboard } from '../../lib/copy-to-clipboard';
 import { derivePluginSourceLinks } from '../../runtime/plugin-source';
 import { pluginShareUrl } from '@open-design/contracts';
+import { useTeamverBranding } from '../../teamver/branding/TeamverBrandingProvider';
+import { shouldHideTeamverPluginDeveloperChrome } from '../../teamver/branding/pluginDetailDisplay';
 
 const PUBLIC_OPEN_DESIGN_MARKETPLACE_ID = 'official';
 const PUBLIC_COMMUNITY_MARKETPLACE_ID = 'community';
@@ -110,6 +112,7 @@ function buildMarkdownBadge(record: InstalledPluginRecord, url: string): string 
 
 export function PluginShareMenu({ record, variant = 'default' }: Props) {
   const t = useT();
+  const branding = useTeamverBranding();
   const [open, setOpen] = useState(false);
   const [copyFeedback, setCopyFeedback] = useState<{
     key: string;
@@ -136,6 +139,8 @@ export function PluginShareMenu({ record, variant = 'default' }: Props) {
       document.removeEventListener('keydown', onKey);
     };
   }, [open]);
+
+  if (shouldHideTeamverPluginDeveloperChrome(branding)) return null;
 
   async function copyPluginShareText(text: string, key: string) {
     if (!text) return;

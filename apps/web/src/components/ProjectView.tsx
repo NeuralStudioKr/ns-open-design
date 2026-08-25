@@ -7,6 +7,7 @@ import type { ArtifactManifest } from '../artifacts/types';
 import { resolveHtmlPointerArtifactTarget } from '../artifacts/pointer';
 import {
   isIncompleteHtmlDocumentShell,
+  isIncompleteParsedDeckForBestArtifactRestore,
   isLowSubstanceSlideDeckArtifact,
   validateHtmlArtifact,
 } from '../artifacts/validate';
@@ -69,6 +70,7 @@ import {
   deckSlideHeadingsLookLikeFailedGenerate,
   isClosedSoftSalvageDeckHtml,
   isPersistableShortDeckDraft,
+  isPersistableShortDeckDraftAfterHeal,
   shouldAbortStreamForHeadOnlyKitDump,
   shouldAbortStreamForMotifSvgDump,
   stripAbandonedHeadKitDumpFromStreamedText,
@@ -822,23 +824,33 @@ export function mergeServerMessagesIntoConversation(
  */
 export function sanitizePersistedAssistantChatMessage(message: ChatMessage): ChatMessage {
   if (message.role !== 'assistant') return message;
-  const content = message.content ?? '';
-  const nextContent = sanitizeAssistantProseForDisplay(content, { stripCodeFences: true });
-  let eventsChanged = false;
-  const nextEvents = message.events?.map((event) => {
-    if (event.kind !== 'text' && event.kind !== 'thinking') return event;
-    const text = typeof event.text === 'string' ? event.text : '';
-    const cleaned = sanitizeAssistantProseForDisplay(text, { stripCodeFences: true });
-    if (cleaned === text) return event;
-    eventsChanged = true;
-    return { ...event, text: cleaned };
-  });
-  if (nextContent === content && !eventsChanged) return message;
-  return {
-    ...message,
-    content: nextContent,
-    ...(nextEvents ? { events: nextEvents } : {}),
-  };
+  try {
+    const content = message.content ?? '';
+    const nextContent = sanitizeAssistantProseForDisplay(content, { stripCodeFences: true });
+    let eventsChanged = false;
+    const nextEvents = message.events?.map((event) => {
+      if (event.kind !== 'text' && event.kind !== 'thinking') return event;
+      const text = typeof event.text === 'string' ? event.text : '';
+      let cleaned = text;
+      try {
+        cleaned = sanitizeAssistantProseForDisplay(text, { stripCodeFences: true });
+      } catch {
+        cleaned = '';
+      }
+      if (cleaned === text) return event;
+      eventsChanged = true;
+      return { ...event, text: cleaned };
+    });
+    if (nextContent === content && !eventsChanged) return message;
+    return {
+      ...message,
+      content: nextContent,
+      ...(nextEvents ? { events: nextEvents } : {}),
+    };
+  } catch (err) {
+    console.error('[ProjectView] sanitizePersistedAssistantChatMessage failed', message.id, err);
+    return message;
+  }
 }
 
 function synthesizeAssistantMessageForActiveRun(run: {
@@ -2868,6 +2880,7 @@ export function findClientArtifactRegression(input: {
   if (priorSize < ARTIFACT_REGRESSION_MIN_PRIOR_BYTES) return null;
   const priorHtml = String(input.priorHtml ?? '').trim();
   const incomingCompactDraft = isPersistableShortDeckDraft(input.htmlBody)
+    || isPersistableShortDeckDraftAfterHeal(input.htmlBody)
     || (
       isClosedSoftSalvageDeckHtml(input.htmlBody)
       && countDeckSlideSections(input.htmlBody) <= 3
@@ -2879,6 +2892,7 @@ export function findClientArtifactRegression(input: {
     if (
       priorCount <= 3
       || isPersistableShortDeckDraft(priorHtml)
+      || isPersistableShortDeckDraftAfterHeal(priorHtml)
       || isLowSubstanceSlideDeckArtifact(priorHtml)
     ) {
       return null;
@@ -7869,8 +7883,13 @@ export function ProjectView({
                     try {
                       const diskHtml = await readProjectHtml(recoveredExistingArtifact.name);
                       if (diskHtml) {
-                        const withLook = await mergeOfficialLookCssForTemplate(
+                        const withHeadings = healInstructionCopyCoverHeading(
                           diskHtml,
+                          runVisiblePromptRef.current || '',
+                          project.name,
+                        );
+                        const withLook = await mergeOfficialLookCssForTemplate(
+                          withHeadings,
                           firstOfficialDeckTemplateId(
                             runSelectedDeckTemplateIdRef.current,
                             selectedDeckTemplateMetadata(project.metadata)?.id,
@@ -9791,7 +9810,8 @@ export function ProjectView({
             let terminalPersistResultKind: ArtifactPersistResult['kind'] | null = null;
             let terminalPersistResult: ArtifactPersistResult | null = null;
             const hadIncompleteParsedArtifact = Boolean(
-              parsedArtifact?.html && isIncompleteHtmlDocumentShell(parsedArtifact.html),
+              parsedArtifact?.html
+              && isIncompleteParsedDeckForBestArtifactRestore(parsedArtifact.html),
             );
 
             // If the live parsedArtifact ended up incomplete (e.g. the model
@@ -9839,8 +9859,13 @@ export function ProjectView({
                 try {
                   const diskHtml = await readProjectHtml(sameTurnHtmlWrite.name);
                   if (diskHtml) {
-                    const withLook = await mergeOfficialLookCssForTemplate(
+                    const withHeadings = healInstructionCopyCoverHeading(
                       diskHtml,
+                      runVisiblePromptRef.current || '',
+                      project.name,
+                    );
+                    const withLook = await mergeOfficialLookCssForTemplate(
+                      withHeadings,
                       firstOfficialDeckTemplateId(
                         runSelectedDeckTemplateIdRef.current,
                         selectedDeckTemplateMetadata(project.metadata)?.id,
@@ -14286,7 +14311,12 @@ export function shouldFailSlideRunForMissingHtmlDeliverable(options: {
 
   const artifactHtml = options.parsedArtifact?.html ?? options.liveHtml;
   if (artifactHtml) {
-    if (isIncompleteHtmlDocumentShell(artifactHtml)) return true;
+    if (
+      isIncompleteHtmlDocumentShell(artifactHtml)
+      && !isPersistableShortDeckDraftAfterHeal(artifactHtml)
+    ) {
+      return true;
+    }
     const validation = validateHtmlArtifact(artifactHtml);
     if (!validation.ok) return true;
     // Valid artifact streamed but nothing previewable on disk — fail so we
@@ -14306,7 +14336,13 @@ const DOCTYPE_HTML_TAIL_RE = /<!doctype\s+html[\s\S]*/i;
 function isReusableSameTurnDeckWrite(html: string | null | undefined): boolean {
   const trimmed = String(html ?? '').trim();
   if (!trimmed || !validateHtmlArtifact(trimmed).ok) return false;
-  if (isPersistableShortDeckDraft(trimmed) || isClosedSoftSalvageDeckHtml(trimmed)) return true;
+  if (
+    isPersistableShortDeckDraft(trimmed)
+    || isPersistableShortDeckDraftAfterHeal(trimmed)
+    || isClosedSoftSalvageDeckHtml(trimmed)
+  ) {
+    return true;
+  }
   return !isIncompleteHtmlDocumentShell(trimmed);
 }
 
@@ -14327,7 +14363,9 @@ function artifactFromSalvagedHtml(html: string, base: Artifact): Artifact | null
 function isUsableDeckHtmlArtifact(html: string | null | undefined): boolean {
   const trimmed = String(html ?? '').trim();
   if (!trimmed || !validateHtmlArtifact(trimmed).ok) return false;
-  if (isPersistableShortDeckDraft(trimmed)) return true;
+  if (isPersistableShortDeckDraft(trimmed) || isPersistableShortDeckDraftAfterHeal(trimmed)) {
+    return true;
+  }
   if (!isIncompleteHtmlDocumentShell(trimmed)) return true;
   // Already-closed soft salvage returns null from salvageTruncated — still usable.
   if (isClosedSoftSalvageDeckHtml(trimmed)) return true;
@@ -14349,7 +14387,7 @@ export function resolveTerminalArtifactToPersist(
   const parsed = parsedArtifact?.html ? parsedArtifact : null;
   const doctypeTail = finalText.match(DOCTYPE_HTML_TAIL_RE)?.[0] ?? null;
 
-  if (parsed?.html && isIncompleteHtmlDocumentShell(parsed.html)) {
+  if (parsed?.html && isIncompleteParsedDeckForBestArtifactRestore(parsed.html)) {
     const salvagedParsed = artifactFromSalvagedHtml(parsed.html, parsed);
     if (salvagedParsed) return salvagedParsed;
     if (
