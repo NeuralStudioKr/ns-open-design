@@ -581,15 +581,19 @@ export function ConnectorsBrowser({
   // dev URLs (different ports) keep working.
   useEffect(() => {
     function onMessage(event: MessageEvent) {
-      const data = event.data;
-      if (
-        !data ||
-        typeof data !== 'object' ||
-        (data as { type?: unknown }).type !== CONNECTOR_CALLBACK_MESSAGE_TYPE
-      )
-        return;
-      if (!isTrustedConnectorCallbackOrigin(event.origin)) return;
-      void reloadConnectorStatuses();
+      try {
+        const data = event.data;
+        if (
+          !data ||
+          typeof data !== 'object' ||
+          (data as { type?: unknown }).type !== CONNECTOR_CALLBACK_MESSAGE_TYPE
+        )
+          return;
+        if (!isTrustedConnectorCallbackOrigin(event.origin)) return;
+        void reloadConnectorStatuses();
+      } catch (err) {
+        console.error('[ConnectorsBrowser] connector callback failed', err);
+      }
     }
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);

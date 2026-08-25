@@ -453,11 +453,15 @@ export function DesignSystemCreationFlow({
   useEffect(() => {
     if (!composioConfigured) return undefined;
     function handleConnectorMessage(event: MessageEvent) {
-      const data = event.data;
-      if (!data || typeof data !== 'object') return;
-      if ((data as { type?: unknown }).type !== CONNECTOR_CALLBACK_MESSAGE_TYPE) return;
-      if (!isTrustedConnectorCallbackOrigin(event.origin)) return;
-      void refreshGithubConnector();
+      try {
+        const data = event.data;
+        if (!data || typeof data !== 'object') return;
+        if ((data as { type?: unknown }).type !== CONNECTOR_CALLBACK_MESSAGE_TYPE) return;
+        if (!isTrustedConnectorCallbackOrigin(event.origin)) return;
+        void refreshGithubConnector();
+      } catch (err) {
+        console.error('[DesignSystemFlow] connector callback failed', err);
+      }
     }
     function handleFocus() {
       void refreshGithubConnector();

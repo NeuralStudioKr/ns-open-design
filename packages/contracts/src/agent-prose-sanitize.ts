@@ -2322,7 +2322,7 @@ const TAG_STRIPPED_LEFTOVER_CLOSER_RE =
 const TAG_STRIPPED_LEFTOVER_CHROME_RE =
   /(?:data-slide-index|prefers-reduced-motion|axe-core|FRONT-END TRACK|LECTURE\s+\d+|font-size\s*:|mix-blend-mode\s*:|offset-path\s*:|<!doctype\s+html)/i;
 const TAG_STRIPPED_HANGUL_LATIN_GLUE_RE =
-  /[\uac00-\ud7af][A-Za-z]|[A-Za-z][\uac00-\ud7af]/;
+  /[\uac00-\ud7af][\s·•./:_-]*[A-Za-z]|[A-Za-z][\s·•./:_-]*[\uac00-\ud7af]/;
 
 /**
  * Tag-stripped slide copy left after reload (`html>…</artifact>`, `body>…`,
@@ -2351,16 +2351,18 @@ export function looksLikeTagStrippedSlideBodyDump(text: string): boolean {
   if (hasCloser && (hasOpener || hasDoctype || hasChrome)) return true;
   if (hasChrome && hasGlue && raw.length >= 40) return true;
   if (
-    /^(?:section|div|main|article|header|footer)\b[^<\n]{0,96}>/i.test(raw)
+    /^(?:section|div|main|article|header|footer|aside|body|nav|p|h[1-6]|ul|ol|li)\b[^<\n]{0,96}>/i.test(
+      raw,
+    )
     && /(?:\bslide\b|class\s*=)/i.test(raw)
   ) {
     return true;
   }
-  // Round 23: Hangul-titled leftovers without leftover tags / lecture tokens.
+  // Round 23/25: Hangul-titled leftovers without leftover tags / lecture tokens.
   if (
-    raw.length >= 40
+    raw.length >= 24
     && hasGlue
-    && /(?:TRACK|HTML|CSS|SEO|\bsvg\b|\bvideo\b|critical)/i.test(raw)
+    && /(?:TRACK|HTML|CSS|SEO|\bsvg\b|\bvideo\b|critical|LECTURE|COVER)/i.test(raw)
   ) {
     return true;
   }
@@ -2381,7 +2383,18 @@ function looksLikeTagStrippedSlideBody(line: string): boolean {
   if (/^#{1,6}\s+\S/.test(trimmed)) return false;
   if (/^(?:[-*+]|\d+[.)])\s+\S/.test(trimmed)) return false;
   if (lineIsChatProseProtocolMarkup(trimmed)) return false;
+  // Status+dump on one line (`완료됨.TRACK…`) must keep the status — the
+  // glue cut in findTrailingSameLine / orphan strip owns the chop. Treating
+  // the whole line as dump would wipe the Hangul status in the debris pass.
+  if (
+    /^[\uac00-\ud7af\u3000-\u9fff]/.test(trimmed)
+    && findHangulGluedTagStrippedSlideBodyCut(trimmed) != null
+  ) {
+    return false;
+  }
   if (/^(?:html|body|head|section|article|main)\s*>/i.test(trimmed)) return true;
+  // Soft-CSS inline cuts can leave `WD ·` after chopping at `LECTURE 01`.
+  if (/^WD\s*·\s*$/i.test(trimmed)) return true;
   if (
     /(?:prefers-reduced-motion|axe-core|data-slide-index|FRONT-END TRACK|LECTURE\s+\d+)/i.test(
       trimmed,
@@ -2389,19 +2402,21 @@ function looksLikeTagStrippedSlideBody(line: string): boolean {
   ) {
     return true;
   }
-  // Incomplete opener leftovers: `section class=slide>COVER…`
+  // Incomplete opener leftovers: `section class=slide>COVER…` / `aside class=slide>`
   if (
-    /^(?:section|div|main|article|header|footer)\b[^<\n]{0,96}>/i.test(trimmed)
+    /^(?:section|div|main|article|header|footer|aside|body|nav|p|h[1-6]|ul|ol|li)\b[^<\n]{0,96}>/i.test(
+      trimmed,
+    )
     && /(?:\bslide\b|class\s*=)/i.test(trimmed)
   ) {
     return true;
   }
   const hangulLatinGlue = TAG_STRIPPED_HANGUL_LATIN_GLUE_RE.test(trimmed);
   const techCue =
-    /(?:TRACK|HTML|CSS|SEO|\bsvg\b|\bvideo\b|critical|axe-core|prefers-reduced-motion|LECTURE)/i.test(
+    /(?:TRACK|HTML|CSS|SEO|\bsvg\b|\bvideo\b|critical|axe-core|prefers-reduced-motion|LECTURE|COVER)/i.test(
       trimmed,
     );
-  return trimmed.length >= 40 && hangulLatinGlue && techCue;
+  return trimmed.length >= 24 && hangulLatinGlue && techCue;
 }
 
 /** Status glued to a Hangul-titled slide dump (`슬라이드 추가 중반응형 UIvideo…`). */
@@ -2417,9 +2432,11 @@ function findHangulGluedTagStrippedSlideBodyCut(line: string): number | null {
     if (/[.\u3002…]/.test(line[i] ?? "")) cut = i + 1;
     if (cut >= line.length - 23) continue;
     if (/\s/.test(line[cut - 1] ?? "")) continue;
-    const prefix = line.slice(0, cut);
-    if (!/(?:추가|작업|완료|진행|생성|수정).{0,6}[중됨요다]$/u.test(prefix)
-      && !/[중됨]$/u.test(prefix)) {
+    // Status check ignores the trailing period we skipped into the dump
+    // (`완료됨.TRACK…` → prefix `완료됨`, not `완료됨.`).
+    const prefixForStatus = line.slice(0, i);
+    if (!/(?:추가|작업|완료|진행|생성|수정).{0,6}[중됨요다]$/u.test(prefixForStatus)
+      && !/[중됨]$/u.test(prefixForStatus)) {
       continue;
     }
     const dump = line.slice(cut);
@@ -2486,7 +2503,7 @@ function stripOrphanArtifactCloserDump(input: string): string {
 
 function looksLikeTagStrippedSlideBodyBlock(text: string): boolean {
   const trimmed = String(text ?? "").replace(/<\/artifact\s*>/gi, "").trim();
-  if (trimmed.length < 40) return false;
+  if (trimmed.length < 24) return false;
   return looksLikeTagStrippedSlideBody(trimmed) || looksLikeTagStrippedSlideBodyDump(trimmed);
 }
 
@@ -2801,10 +2818,14 @@ export function looksLikeSoftCssDeclarationLine(line: string): boolean {
     );
   if (!shaped) return false;
   if (/[\uac00-\ud7af]/.test(trimmed)) return false;
+  // ALL-CAPS first token (`LECTURE 01 · FRONT-END…`) is slide chrome, not CSS.
+  const propToken = /^(?:-?(?:webkit|moz|ms)-)?([A-Za-z][\w-]*)/.exec(trimmed)?.[1] ?? "";
+  if (propToken.length >= 3 && propToken === propToken.toUpperCase()) return false;
   const cssValueSignal =
-    /(?:\d+(?:\.\d+)?(?:px|em|rem|%|vh|vw|ms|s|deg|fr|ch)?\b|\b(?:ease(?:-in|-out|-in-out)?|linear|infinite|alternate|forwards|backwards|both|none|auto|inherit|initial|unset|cover|contain|blur|circle|ellipse|closest-side|farthest-side|all|transform|opacity|scroll|contents|fixed|absolute|relative|sticky|flex|grid|block|inline|row|column|wrap|nowrap|hidden|visible|solid|dashed|dotted)\b|rgba?\(|hsla?\(|#[0-9A-Fa-f]{3,8}\b|cubic-bezier\s*\(|linear-gradient\s*\(|matrix3d?\s*\(|(?:translate|scale|rotate|skew)[XYZxyz3d]?\s*(?:\(|$))/i;
+    /(?:\d+(?:\.\d+)?(?:px|em|rem|%|vh|vw|ms|s|deg|fr|ch)\b|\b(?:ease(?:-in|-out|-in-out)?|linear|infinite|alternate|forwards|backwards|both|none|auto|inherit|initial|unset|cover|contain|blur|circle|ellipse|closest-side|farthest-side|all|transform|opacity|scroll|contents|fixed|absolute|relative|sticky|flex|grid|block|inline|row|column|wrap|nowrap|hidden|visible|solid|dashed|dotted)\b|rgba?\(|hsla?\(|#[0-9A-Fa-f]{3,8}\b|cubic-bezier\s*\(|linear-gradient\s*\(|matrix3d?\s*\(|(?:translate|scale|rotate|skew)[XYZxyz3d]?\s*(?:\(|$))/i;
   // Score the value tokens only — "Visible intro" must not trip on the
-  // property-shaped first word matching a CSS keyword.
+  // property-shaped first word matching a CSS keyword. Bare `01` without a
+  // unit must not cut `WD · LECTURE 01 · …` into a `WD ·` leftover.
   if (cssValueSignal.test(shaped[1] ?? "")) return true;
   const two = /^(?:-?(?:webkit|moz|ms)-)?([a-z][\w-]*)\s+([a-z0-9.#%()-][\w.#%()-]*)\s*;?\s*$/i.exec(
     trimmed,

@@ -1128,11 +1128,15 @@ export function MemorySection({
 
   useEffect(() => {
     function onMessage(event: MessageEvent) {
-      const data = event.data;
-      if (!data || typeof data !== 'object') return;
-      if ((data as { type?: unknown }).type !== CONNECTOR_CALLBACK_MESSAGE_TYPE) return;
-      if (!isTrustedConnectorCallbackOrigin(event.origin)) return;
-      void refreshMemoryConnectorStatuses();
+      try {
+        const data = event.data;
+        if (!data || typeof data !== 'object') return;
+        if ((data as { type?: unknown }).type !== CONNECTOR_CALLBACK_MESSAGE_TYPE) return;
+        if (!isTrustedConnectorCallbackOrigin(event.origin)) return;
+        void refreshMemoryConnectorStatuses();
+      } catch (err) {
+        console.error('[MemorySection] connector callback failed', err);
+      }
     }
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
