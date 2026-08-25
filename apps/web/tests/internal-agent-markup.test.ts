@@ -167,6 +167,39 @@ describe("internalAgentMarkup", () => {
           streaming,
         }),
       ).toBe("슬라이드 추가 중");
+      expect(
+        sanitizeAssistantProseForDisplay(
+          `슬라이드 추가 중@container slide (min-width: 800px) { .x { color: red } }`,
+          { streaming },
+        ),
+      ).toBe("슬라이드 추가 중");
+      expect(
+        sanitizeAssistantProseForDisplay(`슬라이드 추가 중--bg:#2d2a26;--fg:#fff;`, {
+          streaming,
+        }),
+      ).toBe("슬라이드 추가 중");
+      expect(
+        sanitizeAssistantProseForDisplay(`슬라이드 추가 중cubic-bezier(0.23, 1, 0.32, 1);`, {
+          streaming,
+        }),
+      ).toBe("슬라이드 추가 중");
+      expect(
+        sanitizeAssistantProseForDisplay(`진행.\nanchor-size(--dot width);`, { streaming }),
+      ).toBe("진행.");
+      expect(
+        sanitizeAssistantProseForDisplay(`진행.\ncalc-size(auto, size + 12px);`, { streaming }),
+      ).toBe("진행.");
+      expect(
+        sanitizeAssistantProseForDisplay(
+          `진행.\nCSS.supports('color', 'color-mix(in srgb, red, blue)')`,
+          { streaming },
+        ),
+      ).toBe("진행.");
+      expect(
+        sanitizeAssistantProseForDisplay(`진행.\nin="SourceGraphic" result="goo"`, {
+          streaming,
+        }),
+      ).toBe("진행.");
     }
   });
 

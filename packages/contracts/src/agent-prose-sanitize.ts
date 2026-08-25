@@ -288,6 +288,10 @@ function looksLikeHtmlAttrDumpLine(line: string): boolean {
   }
   if (/^d\s*=\s*["'][MmLlHhVvCcSsQqTtAaZz]/.test(trimmed)) return true;
   if (/^transform\s*=\s*["'](?:translate|scale|rotate|matrix|skew)/i.test(trimmed)) return true;
+  if (/^values\s*=\s*["'][\d.\s-]+/.test(trimmed)) return true;
+  if (/^gradientTransform\s*=/i.test(trimmed)) return true;
+  if (/^in\s*=\s*["']Source/i.test(trimmed)) return true;
+  if (/^result\s*=\s*["']goo["']/i.test(trimmed)) return true;
   if (/^style=\{\{/.test(trimmed)) return true;
   if (/^(?:\([\w.-]+\)|\[[\w.-]+\]|\*ng[\w]+)\s*=/.test(trimmed)) return true;
   if (/^(?:as|type|media)\s*=\s*["']?(?:font|text\/|image\/|video\/|audio\/|print|screen|all|\()/i.test(trimmed)) {
@@ -347,7 +351,7 @@ function looksLikeCssFunctionDebrisLine(line: string): boolean {
   if (/^var\(\s*--(?:font|ff|display|sans|serif|mono|hand)[\w-]*/i.test(trimmed)) return true;
   if (/^image\s*\(/i.test(trimmed)) return true;
   if (/^element\s*\(\s*#/i.test(trimmed)) return true;
-  if (/^anchor\s*\(\s*--/i.test(trimmed)) return true;
+  if (/^anchor(?:-size)?\s*\(/i.test(trimmed)) return true;
   if (/^color\s*\(\s*(?:display-p3|srgb|srgb-linear|a98-rgb|prophoto-rgb|rec2020|xyz)/i.test(trimmed)) {
     return true;
   }
@@ -357,6 +361,10 @@ function looksLikeCssFunctionDebrisLine(line: string): boolean {
   if (/^steps\s*\(\s*\d+/i.test(trimmed)) return true;
   if (/^cross-fade\s*\(/i.test(trimmed)) return true;
   if (/^device-cmyk\s*\(/i.test(trimmed)) return true;
+  if (/^(?:calc-size|scroll|view|ray|attr|counter|sibling-index|sibling-count|cubic-bezier)\s*\(/i.test(trimmed)) {
+    return true;
+  }
+  if (/^if\s*\(\s*style\s*\(/i.test(trimmed)) return true;
   if (
     /^(?:translate(?:3d|[XYZ])?|rotate(?:[XYZ]|3d)?|scale(?:3d|[XYZ])?|skew(?:[XY])?|matrix(?:3d)?|perspective)\s*\(/i.test(
       trimmed,
@@ -406,7 +414,13 @@ function isLikelyInternalMarkupLine(line: string): boolean {
   if (/^#deck-(?:stage|prev|next|idx)\b/i.test(trimmed)) return true;
   if (/^<h[1-6]\b/i.test(trimmed) && /\bstyle\s*=/i.test(trimmed)) return true;
   if (/^[\d.]+(?:px|em|rem)(?:\/[\d.]+)?">/i.test(trimmed)) return true;
-  if (/^@(?:page|media|keyframes|import|font-face|supports|layer)\b/.test(trimmed)) return true;
+  if (
+    /^@(?:page|media|keyframes|import|font-face|supports|layer|container|scope|property|starting-style|charset|counter-style)\b/.test(
+      trimmed,
+    )
+  ) {
+    return true;
+  }
   if (/^(?:from|to|\d+%)\s*\{/.test(trimmed) && /transform|opacity|translate|rotate/i.test(trimmed)) {
     return true;
   }
@@ -641,10 +655,15 @@ function findHangulGluedStyleDumpCut(line: string): number | null {
   const prefix = match[1];
   const dump = match[2];
   if (/\s$/.test(prefix) || dump.length < 4) return null;
-  if (/^@(?:import|font-face|supports|layer|keyframes|media|charset)\b/i.test(dump)) {
+  if (
+    /^@(?:import|font-face|supports|layer|keyframes|media|charset|container|scope|property|starting-style|page|counter-style)\b/i.test(
+      dump,
+    )
+  ) {
     return prefix.length;
   }
   if (/^(?:from|to|\d+%)\s*\{/.test(dump)) return prefix.length;
+  if (/^--[A-Za-z_][\w-]*\s*[:{]/.test(dump)) return prefix.length;
   if (looksLikeCssFunctionDebrisLine(dump)) return prefix.length;
   if (dump.length < 8) return null;
   const decls = dump.match(/[a-zA-Z-]+\s*:\s*[^;\n]{1,96};/g) ?? [];
@@ -2606,6 +2625,7 @@ export function looksLikeDeckJsDebrisLine(line: string): boolean {
     return true;
   }
   if (/\b(?:morphSVG|gsap|ScrollTrigger|KeyframeEffect)\b/i.test(trimmed)) return true;
+  if (/^CSS\.supports\s*\(/.test(trimmed)) return true;
   if (/\bTrigger\s*,\s*timeline\b/i.test(trimmed)) return true;
   if (/<\/pre>/i.test(trimmed) && /(?:animate|querySelector|morphSVG|timeline|const\s+\w+|addEventListener)/i.test(trimmed)) {
     return true;

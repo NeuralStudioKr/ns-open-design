@@ -131,13 +131,23 @@ function findHangulGluedStyleDumpCut(line: string): number | null {
   const prefix = match[1];
   const dump = match[2];
   if (/\s$/.test(prefix) || dump.length < 4) return null;
-  if (/^@(?:import|font-face|supports|layer|keyframes|media|charset)\b/i.test(dump)) {
+  if (
+    /^@(?:import|font-face|supports|layer|keyframes|media|charset|container|scope|property|starting-style|page|counter-style)\b/i.test(
+      dump,
+    )
+  ) {
     return prefix.length;
   }
   if (/^(?:from|to|\d+%)\s*\{/.test(dump)) return prefix.length;
-  if (/^(?:url|local|format|tech|blur|drop-shadow|circle|ellipse|inset|polygon|path|image|element|anchor|color)\s*\(/i.test(dump)) {
+  if (/^--[A-Za-z_][\w-]*\s*[:{]/.test(dump)) return prefix.length;
+  if (
+    /^(?:url|local|format|tech|blur|drop-shadow|circle|ellipse|inset|polygon|path|image|element|anchor|anchor-size|color|calc-size|scroll|view|ray|attr|counter|sibling-index|sibling-count|cubic-bezier)\s*\(/i.test(
+      dump,
+    )
+  ) {
     return prefix.length;
   }
+  if (/^if\s*\(\s*style\s*\(/i.test(dump)) return prefix.length;
   if (dump.length < 8) return null;
   const decls = dump.match(/[a-zA-Z-]+\s*:\s*[^;\n]{1,96};/g) ?? [];
   const fontStack = /(?:cursive|sans-serif|serif|monospace|fantasy|system-ui)\s*;/i.test(dump);
@@ -286,9 +296,20 @@ function stripLeakedDeckMotifHtmlTail(input: string): string {
         || /^[A-Za-z0-9._/-]+\.woff2?\b/i.test(trimmed)
         || /^(?:blur|drop-shadow|circle|ellipse|inset|polygon|path)\s*\(/i.test(trimmed)
         || /^var\(\s*--(?:font|display|sans|serif|mono|hand)/i.test(trimmed)
-        || /^(?:image|element|anchor|color)\s*\(/i.test(trimmed)
-        || /^@(?:import|font-face|supports|layer|keyframes)\b/i.test(trimmed)
-        || /^(?:from|to|\d+%)\s*\{/.test(trimmed))
+        || /^(?:image|element|anchor|anchor-size|color|calc-size|scroll|view|ray|attr|counter|sibling-index|sibling-count|cubic-bezier)\s*\(/i.test(
+          trimmed,
+        )
+        || /^if\s*\(\s*style\s*\(/i.test(trimmed)
+        || /^@(?:import|font-face|supports|layer|keyframes|container|scope|property|starting-style|page|counter-style)\b/i.test(
+          trimmed,
+        )
+        || /^(?:from|to|\d+%)\s*\{/.test(trimmed)
+        || /^--[A-Za-z_][\w-]*\s*[:{]/.test(trimmed)
+        || /^values\s*=\s*["'][\d.\s-]+/.test(trimmed)
+        || /^gradientTransform\s*=/i.test(trimmed)
+        || /^in\s*=\s*["']Source/i.test(trimmed)
+        || /^result\s*=\s*["']goo["']/i.test(trimmed)
+        || /^CSS\.supports\s*\(/.test(trimmed))
     ) {
       continue;
     }
