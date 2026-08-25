@@ -156,6 +156,17 @@ describe("internalAgentMarkup", () => {
           { streaming },
         ),
       ).toBe("슬라이드 추가 중");
+      expect(
+        sanitizeAssistantProseForDisplay(
+          `슬라이드 추가 중@import url('https://fonts.googleapis.com/css2?family=Caveat');`,
+          { streaming },
+        ),
+      ).toBe("슬라이드 추가 중");
+      expect(
+        sanitizeAssistantProseForDisplay(`슬라이드 추가 중from { transform: rotate(0deg) }`, {
+          streaming,
+        }),
+      ).toBe("슬라이드 추가 중");
     }
   });
 

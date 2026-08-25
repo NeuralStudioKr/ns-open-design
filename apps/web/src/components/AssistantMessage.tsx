@@ -752,7 +752,7 @@ function AssistantMessageImpl({
       return cleaned.length > 0 ? cleaned : undefined;
     } catch (err) {
       console.error('[AssistantMessage] sanitize copyMarkdown failed', err);
-      return raw.length > 0 ? raw : undefined;
+      return undefined;
     }
   }, [hideAssistantThinkingDetails, message.content]);
   const showFeedback =
@@ -2231,7 +2231,7 @@ function ProseBlock({
         });
       } catch (err) {
         console.error('[AssistantMessage] sanitize prose failed', err);
-        return base;
+        return "";
       }
     } catch (err) {
       console.error('[AssistantMessage] prose strip failed', err);
@@ -3104,7 +3104,7 @@ function stripInternalMarkupFromProseBlocks(
       };
     } catch (err) {
       console.error('[AssistantMessage] stripInternalMarkupFromProseBlocks failed', err);
-      return block;
+      return { ...block, text: "" };
     }
   });
 }

@@ -127,10 +127,18 @@ function looksLikeLeakedDeckFrameworkCss(tail: string): boolean {
 
 function findHangulGluedStyleDumpCut(line: string): number | null {
   const match = /^(.*[\uac00-\ud7af\u3000-\u9fff][.\u3002…]?)([\s\S]+)$/u.exec(line);
-  if (!match?.[1] || !match[2] || match[2].length < 8) return null;
+  if (!match?.[1] || !match[2]) return null;
   const prefix = match[1];
   const dump = match[2];
-  if (/\s$/.test(prefix)) return null;
+  if (/\s$/.test(prefix) || dump.length < 4) return null;
+  if (/^@(?:import|font-face|supports|layer|keyframes|media|charset)\b/i.test(dump)) {
+    return prefix.length;
+  }
+  if (/^(?:from|to|\d+%)\s*\{/.test(dump)) return prefix.length;
+  if (/^(?:url|local|format|tech|blur|drop-shadow|circle|ellipse|inset|polygon|path|image|element|anchor|color)\s*\(/i.test(dump)) {
+    return prefix.length;
+  }
+  if (dump.length < 8) return null;
   const decls = dump.match(/[a-zA-Z-]+\s*:\s*[^;\n]{1,96};/g) ?? [];
   const fontStack = /(?:cursive|sans-serif|serif|monospace|fantasy|system-ui)\s*;/i.test(dump);
   const styleClose = /["']\s*>/.test(dump);
@@ -277,7 +285,10 @@ function stripLeakedDeckMotifHtmlTail(input: string): string {
         || /^U\+[0-9A-Fa-f]{1,6}\b/.test(trimmed)
         || /^[A-Za-z0-9._/-]+\.woff2?\b/i.test(trimmed)
         || /^(?:blur|drop-shadow|circle|ellipse|inset|polygon|path)\s*\(/i.test(trimmed)
-        || /^var\(\s*--(?:font|display|sans|serif|mono|hand)/i.test(trimmed))
+        || /^var\(\s*--(?:font|display|sans|serif|mono|hand)/i.test(trimmed)
+        || /^(?:image|element|anchor|color)\s*\(/i.test(trimmed)
+        || /^@(?:import|font-face|supports|layer|keyframes)\b/i.test(trimmed)
+        || /^(?:from|to|\d+%)\s*\{/.test(trimmed))
     ) {
       continue;
     }
@@ -346,28 +357,34 @@ export function sanitizeAssistantProseForDisplay(
   input: string,
   options: SanitizeAssistantProseOptions = {},
 ): string {
-  const fromContracts = sanitizeAssistantProseForDisplayContracts(input, options);
-  const preservingArtifacts =
-    options.streaming === true || options.preserveClosedArtifact === true;
-  // Stale-dist safety: re-run heuristic debris strip + motif last-pass even if
-  // contracts dist is older than this web bundle.
-  const afterMotif = stripLeakedDeckMotifHtmlForDisplay(
-    stripHardDeckNavJsFingerprints(fromContracts),
-    preservingArtifacts,
-  );
-  const afterHeuristic = stripLeakedDeckCodeDebrisBlocksForDisplayFallback(
-    stripLeakedDeckCodeDebrisBlocksRespectingArtifacts(
-      afterMotif,
+  try {
+    const fromContracts = sanitizeAssistantProseForDisplayContracts(input, options);
+    const preservingArtifacts =
+      options.streaming === true || options.preserveClosedArtifact === true;
+    // Stale-dist safety: re-run heuristic debris strip + motif last-pass even if
+    // contracts dist is older than this web bundle.
+    const afterMotif = stripLeakedDeckMotifHtmlForDisplay(
+      stripHardDeckNavJsFingerprints(fromContracts),
       preservingArtifacts,
-    ),
-    preservingArtifacts,
-  );
-  return stripIncompleteTrailingMarkupToken(
-    stripResidualDeckHtmlMarkupRespectingArtifacts(
-      afterHeuristic,
+    );
+    const afterHeuristic = stripLeakedDeckCodeDebrisBlocksForDisplayFallback(
+      stripLeakedDeckCodeDebrisBlocksRespectingArtifacts(
+        afterMotif,
+        preservingArtifacts,
+      ),
       preservingArtifacts,
-    ),
-  );
+    );
+    return stripIncompleteTrailingMarkupToken(
+      stripResidualDeckHtmlMarkupRespectingArtifacts(
+        afterHeuristic,
+        preservingArtifacts,
+      ),
+    );
+  } catch (err) {
+    // Fail closed: a sanitizer throw must not paint raw deck HTML in the bubble.
+    console.error("[internalAgentMarkup] sanitizeAssistantProseForDisplay failed", err);
+    return "";
+  }
 }
 
 /**

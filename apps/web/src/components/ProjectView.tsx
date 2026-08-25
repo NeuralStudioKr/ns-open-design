@@ -834,7 +834,7 @@ export function sanitizePersistedAssistantChatMessage(message: ChatMessage): Cha
       try {
         cleaned = sanitizeAssistantProseForDisplay(text, { stripCodeFences: true });
       } catch {
-        cleaned = text;
+        cleaned = '';
       }
       if (cleaned === text) return event;
       eventsChanged = true;

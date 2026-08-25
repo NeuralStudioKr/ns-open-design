@@ -345,6 +345,12 @@ function looksLikeCssFunctionDebrisLine(line: string): boolean {
     return true;
   }
   if (/^var\(\s*--(?:font|ff|display|sans|serif|mono|hand)[\w-]*/i.test(trimmed)) return true;
+  if (/^image\s*\(/i.test(trimmed)) return true;
+  if (/^element\s*\(\s*#/i.test(trimmed)) return true;
+  if (/^anchor\s*\(\s*--/i.test(trimmed)) return true;
+  if (/^color\s*\(\s*(?:display-p3|srgb|srgb-linear|a98-rgb|prophoto-rgb|rec2020|xyz)/i.test(trimmed)) {
+    return true;
+  }
   if (/^light-dark\s*\(/i.test(trimmed)) return true;
   if (/^image-set\s*\(/i.test(trimmed)) return true;
   if (/^env\s*\(\s*safe-area/i.test(trimmed)) return true;
@@ -631,10 +637,16 @@ function isDeckChromePartialTag(name: string, after: string): boolean {
  */
 function findHangulGluedStyleDumpCut(line: string): number | null {
   const match = /^(.*[\uac00-\ud7af\u3000-\u9fff][.\u3002…]?)([\s\S]+)$/u.exec(line);
-  if (!match?.[1] || !match[2] || match[2].length < 8) return null;
+  if (!match?.[1] || !match[2]) return null;
   const prefix = match[1];
   const dump = match[2];
-  if (/\s$/.test(prefix)) return null;
+  if (/\s$/.test(prefix) || dump.length < 4) return null;
+  if (/^@(?:import|font-face|supports|layer|keyframes|media|charset)\b/i.test(dump)) {
+    return prefix.length;
+  }
+  if (/^(?:from|to|\d+%)\s*\{/.test(dump)) return prefix.length;
+  if (looksLikeCssFunctionDebrisLine(dump)) return prefix.length;
+  if (dump.length < 8) return null;
   const decls = dump.match(/[a-zA-Z-]+\s*:\s*[^;\n]{1,96};/g) ?? [];
   const fontStack = /(?:cursive|sans-serif|serif|monospace|fantasy|system-ui)\s*;/i.test(dump);
   const styleClose = /["']\s*>/.test(dump);
