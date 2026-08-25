@@ -343,7 +343,10 @@ export function recoverEmergencyDeckHtmlFromStream(options: {
   healTitle?: string | null;
 }): string | null {
   for (const text of collectEmergencyHtmlSalvageTexts(options)) {
-    const recovered = recoverBestHtmlDocumentFromText(text);
+    const recovered = recoverBestHtmlDocumentFromText(text, {
+      brief: options.healBrief,
+      deckTitle: options.healTitle,
+    });
     if (!recovered || !validateHtmlArtifact(recovered).ok) continue;
     // Soft-salvaged sparse decks may still trip the strict incomplete shell
     // ratio — accept them for emergency persist the same way as live salvage.
