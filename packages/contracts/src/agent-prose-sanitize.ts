@@ -664,6 +664,7 @@ function findHangulGluedStyleDumpCut(line: string): number | null {
   }
   if (/^(?:from|to|\d+%)\s*\{/.test(dump)) return prefix.length;
   if (/^--[A-Za-z_][\w-]*\s*[:{]/.test(dump)) return prefix.length;
+  if (/^html\s*>/i.test(dump)) return prefix.length;
   if (looksLikeCssFunctionDebrisLine(dump)) return prefix.length;
   if (/^\$[a-zA-Z_-][\w-]*\s*:/.test(dump) && /(?:#|rgba?\(|hsla?\(|px|em|rem|%)/.test(dump)) {
     return prefix.length;
@@ -2272,6 +2273,9 @@ export function sanitizeAssistantProseForDisplay(
   // Absolute last pass: classic/minified click-nav and keydown advance must
   // never survive a dialect miss or partial open-form match.
   text = stripHardDeckNavJsFingerprints(text);
+  // Reload/cold-load: persist often stores a tag-stripped artifact tail
+  // (`html>WD · LECTURE…</artifact>`) after the open `<artifact` was lost.
+  text = stripOrphanArtifactCloserDumpRespectingArtifacts(text, preservingArtifacts);
   return text;
 }
 
@@ -2301,6 +2305,120 @@ export function stripTrailingDeckFrameworkCssLeak(input: string): string {
     || looksLikeLeakedCssCustomPropertyBlock(tail);
   if (!looksLikeDeckFramework) return input;
   return input.slice(0, match.index).trimEnd();
+}
+
+/**
+ * Tag-stripped slide copy left after reload (`html>WD · LECTURE…</artifact>`).
+ * Live streaming hides the intact `<artifact>` block; persist/cold-load often
+ * keeps only the inner text nodes plus an orphan closer.
+ */
+function looksLikeTagStrippedSlideBody(line: string): boolean {
+  const trimmed = String(line ?? "").trim().replace(/<\/artifact\s*>/gi, "").trim();
+  if (!trimmed) return true;
+  if (/^#{1,6}\s+\S/.test(trimmed)) return false;
+  if (/^(?:[-*+]|\d+[.)])\s+\S/.test(trimmed)) return false;
+  if (lineIsChatProseProtocolMarkup(trimmed)) return false;
+  // Status glued to a dump (`슬라이드 추가 중html>…`) — keep the prefix.
+  if (/^[\uac00-\ud7af\u3000-\u9fff]/.test(trimmed)) return false;
+  if (/^html\s*>/i.test(trimmed)) return true;
+  if (
+    /(?:prefers-reduced-motion|axe-core|data-slide-index|FRONT-END TRACK|LECTURE\s+\d+)/i.test(
+      trimmed,
+    )
+  ) {
+    return true;
+  }
+  return (
+    trimmed.length >= 40
+    && /[\uac00-\ud7af][A-Za-z]|[A-Za-z][\uac00-\ud7af]/.test(trimmed)
+    && /(?:TRACK|HTML|CSS|SEO|\bsvg\b|\bvideo\b|critical)/i.test(trimmed)
+  );
+}
+
+function stripOrphanArtifactCloserDump(input: string): string {
+  if (!input) return input;
+  let text = String(input);
+  if (/<artifact\b/i.test(text)) {
+    text = text.replace(/<artifact\b[\s\S]*?<\/artifact\s*>/gi, "");
+  }
+  text = text.replace(/(?:^|\n)[^\S\n]*html\s*>[\s\S]*?(?:<\/artifact\s*>|$)/gi, "\n");
+  text = text.replace(
+    /([\uac00-\ud7af\u3000-\u9fff])html\s*>[\s\S]*?(?:<\/artifact\s*>|$)/gi,
+    "$1",
+  );
+  text = text.replace(/<\/artifact\s*>/gi, "");
+  const kept = text.split("\n").filter((line) => {
+    const trimmed = line.trim();
+    if (!trimmed) return true;
+    return !looksLikeTagStrippedSlideBody(trimmed);
+  });
+  text = kept.join("\n").replace(/\n{3,}/g, "\n\n").trimEnd();
+  // Persist often drops `html>` from the first chunk, leaving a Hangul-titled
+  // slide body (`반응형 UIvideo·svg…prefers-reduced-motion`) as one blob.
+  if (looksLikeTagStrippedSlideBodyBlock(text)) {
+    const withoutDump = text.split("\n").filter((line) => {
+      const trimmed = line.trim();
+      if (!trimmed) return true;
+      return !looksLikeTagStrippedSlideBodyBlock(trimmed)
+        && !/(?:prefers-reduced-motion|axe-core|FRONT-END TRACK|LECTURE\s+\d+|html\s*>)/i.test(
+          trimmed,
+        );
+    });
+    text = withoutDump.join("\n").replace(/\n{3,}/g, "\n\n").trimEnd();
+    if (looksLikeTagStrippedSlideBodyBlock(text)) return "";
+  }
+  return text;
+}
+
+function looksLikeTagStrippedSlideBodyBlock(text: string): boolean {
+  const trimmed = String(text ?? "").replace(/<\/artifact\s*>/gi, "").trim();
+  if (trimmed.length < 40) return false;
+  if (
+    !/(?:prefers-reduced-motion|axe-core|FRONT-END TRACK|LECTURE\s+\d+)/i.test(trimmed)
+  ) {
+    return false;
+  }
+  return /[A-Za-z][\uac00-\ud7af]|[\uac00-\ud7af][A-Za-z]/.test(trimmed);
+}
+
+function stripOrphanArtifactCloserDumpRespectingArtifacts(
+  input: string,
+  preserveArtifactBodies: boolean,
+): string {
+  if (!input) return input;
+  if (!preserveArtifactBodies) return stripOrphanArtifactCloserDump(input);
+  let result = "";
+  let cursor = 0;
+  while (cursor < input.length) {
+    const open = findArtifactOpenIndex(input, cursor);
+    if (open === -1) {
+      result += stripOrphanArtifactCloserDump(input.slice(cursor));
+      break;
+    }
+    const prose = stripOrphanArtifactCloserDump(input.slice(cursor, open));
+    result += prose;
+    if (
+      prose.length > 0
+      && !prose.endsWith("\n")
+      && open > cursor
+      && input[open - 1] === "\n"
+    ) {
+      result += "\n";
+    }
+    const gt = input.indexOf(">", open);
+    if (gt === -1) {
+      result += input.slice(open);
+      break;
+    }
+    const close = input.toLowerCase().indexOf("</artifact>", gt);
+    if (close === -1) {
+      result += input.slice(open);
+      break;
+    }
+    result += input.slice(open, close + "</artifact>".length);
+    cursor = close + "</artifact>".length;
+  }
+  return result;
 }
 
 /**
@@ -2342,6 +2460,8 @@ export function looksLikeDeckCodeDebrisLine(line: string): boolean {
   if (looksLikeBrStackedHeadingLine(trimmed)) return true;
   if (looksLikeHtmlAttrDumpLine(trimmed)) return true;
   if (looksLikeCssFunctionDebrisLine(trimmed)) return true;
+  if (/^html\s*>/i.test(trimmed)) return true;
+  if (looksLikeTagStrippedSlideBody(trimmed)) return true;
   if (looksLikeTailwindArbitraryDebrisLine(trimmed)) return true;
   if (looksLikeHtmlAttrContinuationLine(trimmed)) return true;
   if (/^&amp;lt;\/?[A-Za-z]/.test(trimmed)) return true;

@@ -575,6 +575,7 @@ describe("ProjectView message loading", () => {
     expect(persistBlock).toContain("isPersistableShortDeckDraft(artifactToPersist.html)");
     expect(persistBlock).toContain("salvageTemplateFillShellAsCoverDraft(artifactToPersist.html,");
     expect(persistBlock).toContain("deriveDeckCoverTitleFromBrief(");
+    expect(persistBlock).toContain("project.name || '슬라이드'");
     expect(persistBlock).toContain("lastResortTitle: LAST_RESORT_DECK_COVER_TITLE");
     expect(persistBlock).toContain("kind: 'skipped-incomplete'");
     // deck-patch interceptor must run BEFORE the incomplete-shell / validate
@@ -1069,6 +1070,8 @@ describe("ProjectView message loading", () => {
     expect(source).toContain("normalizedArtifactType === 'deck'");
     expect(source).toContain("reason: 'low-substance deck artifact'");
     expect(source).toContain("kind: 'skipped-incomplete'");
+    expect(source).toContain("project.name || '슬라이드'");
+    expect(source).toContain("isPersistableShortDeckDraftAfterHeal");
   });
 
   it("waits for embed boot and retries stuck message loads on re-entry", () => {

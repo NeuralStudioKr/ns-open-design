@@ -7984,10 +7984,12 @@ function HtmlViewer({
     let cancelled = false;
     let stackedReady = !compactApiStackedDeck;
     const onReady = (ev: MessageEvent) => {
-      if (!isOurPreviewIframeSource(ev.source)) return;
-      const data = ev.data as { type?: string } | null;
-      if (data?.type !== 'od:stacked-deck-ready') return;
-      stackedReady = true;
+      runFileViewerPreviewMessageHandler('stacked-deck-ready', () => {
+        if (!isOurPreviewIframeSource(ev.source)) return;
+        const data = ev.data as { type?: string } | null;
+        if (data?.type !== 'od:stacked-deck-ready') return;
+        stackedReady = true;
+      });
     };
     window.addEventListener('message', onReady);
 
@@ -10786,6 +10788,7 @@ function HtmlViewer({
       return;
     }
     function onMessage(ev: MessageEvent) {
+      runFileViewerPreviewMessageHandler('od-edit-bridge', () => {
       if (!isOurPreviewIframeSource(ev.source)) return;
       const data = ev.data as ManualEditBridgeMessage | null;
       if (!data?.type) return;
@@ -11589,6 +11592,7 @@ function HtmlViewer({
         }
         return;
       }
+      });
     }
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);

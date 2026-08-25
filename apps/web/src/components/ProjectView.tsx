@@ -824,32 +824,17 @@ export function mergeServerMessagesIntoConversation(
  */
 export function sanitizePersistedAssistantChatMessage(message: ChatMessage): ChatMessage {
   if (message.role !== 'assistant') return message;
+  // In-flight rows still carry open <question-form> / <artifact> tails that
+  // live display hides. Do not rewrite them on merge/reload.
+  if (isActiveRunStatus(message.runStatus)) return message;
   try {
-    const content = message.content ?? '';
-    const nextContent = sanitizeAssistantProseForDisplay(content, { stripCodeFences: true });
-    let eventsChanged = false;
-    const nextEvents = message.events?.map((event) => {
-      if (event.kind !== 'text' && event.kind !== 'thinking') return event;
-      const text = typeof event.text === 'string' ? event.text : '';
-      let cleaned = text;
-      try {
-        cleaned = sanitizeAssistantProseForDisplay(text, { stripCodeFences: true });
-      } catch {
-        cleaned = '';
-      }
-      if (cleaned === text) return event;
-      eventsChanged = true;
-      return { ...event, text: cleaned };
-    });
-    if (nextContent === content && !eventsChanged) return message;
-    return {
-      ...message,
-      content: nextContent,
-      ...(nextEvents ? { events: nextEvents } : {}),
-    };
+    return sanitizeChatMessageLeakedPseudoTool(message, { stripCodeFences: true });
   } catch (err) {
     console.error('[ProjectView] sanitizePersistedAssistantChatMessage failed', message.id, err);
-    return message;
+    const events = (message.events ?? []).filter(
+      (event) => event.kind !== 'text' && event.kind !== 'thinking',
+    );
+    return { ...message, content: '', ...(events.length ? { events } : { events: [] }) };
   }
 }
 
@@ -5272,7 +5257,7 @@ export function ProjectView({
         // thrown away and the user only sees incomplete_output.
         const coverFallbackTitle = deriveDeckCoverTitleFromBrief(
           runVisiblePromptRef.current || '',
-          project.name,
+          project.name || '슬라이드',
         );
         const incomingBeforeSalvage = artifactToPersist.html;
         const salvaged = salvageTruncatedHtmlDocument(artifactToPersist.html)
@@ -5330,13 +5315,20 @@ export function ProjectView({
           html: healInstructionCopyCoverHeading(
             artifactToPersist.html,
             runVisiblePromptRef.current || '',
-            project.name,
+            project.name || '슬라이드',
           ),
         };
+        const persistHealBrief = runVisiblePromptRef.current || '';
+        const persistHealTitle = project.name || '슬라이드';
         const trustSoftTruncationSalvage =
           Boolean(salvaged)
           || isClosedSoftSalvageDeckHtml(artifactToPersist.html)
-          || isPersistableShortDeckDraft(artifactToPersist.html);
+          || isPersistableShortDeckDraft(artifactToPersist.html)
+          || isPersistableShortDeckDraftAfterHeal(
+            artifactToPersist.html,
+            persistHealBrief,
+            persistHealTitle,
+          );
         // Empty scaffolds can pass the 64-char length gate once a charset
         // meta is present — still skip silently so we never write phantoms
         // or flash 「저장을 거부했습니다」 during deck generation.
@@ -7886,7 +7878,7 @@ export function ProjectView({
                         const withHeadings = healInstructionCopyCoverHeading(
                           diskHtml,
                           runVisiblePromptRef.current || '',
-                          project.name,
+                          project.name || '슬라이드',
                         );
                         const withLook = await mergeOfficialLookCssForTemplate(
                           withHeadings,
@@ -9862,7 +9854,7 @@ export function ProjectView({
                     const withHeadings = healInstructionCopyCoverHeading(
                       diskHtml,
                       runVisiblePromptRef.current || '',
-                      project.name,
+                      project.name || '슬라이드',
                     );
                     const withLook = await mergeOfficialLookCssForTemplate(
                       withHeadings,
@@ -14349,6 +14341,7 @@ function isReusableSameTurnDeckWrite(html: string | null | undefined): boolean {
 function artifactFromSalvagedHtml(html: string, base: Artifact): Artifact | null {
   const salvaged = salvageTruncatedHtmlDocument(html)
     ?? salvageTemplateFillShellAsCoverDraft(html, {
+      fallbackTitle: '슬라이드',
       lastResortTitle: LAST_RESORT_DECK_COVER_TITLE,
     });
   // Soft truncation salvage already quality-gated. Do not re-reject with the
@@ -14372,6 +14365,7 @@ function isUsableDeckHtmlArtifact(html: string | null | undefined): boolean {
   return Boolean(
     salvageTruncatedHtmlDocument(trimmed)
     ?? salvageTemplateFillShellAsCoverDraft(trimmed, {
+      fallbackTitle: '슬라이드',
       lastResortTitle: LAST_RESORT_DECK_COVER_TITLE,
     }),
   );

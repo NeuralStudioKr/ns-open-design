@@ -161,7 +161,7 @@ describe('validateHtmlArtifact', () => {
     expect(isLowSubstanceSlideDeckArtifact(broken)).toBe(true);
   });
 
-  it('classifies instruction-parroting covers as low-substance even with SVG chrome', () => {
+  it('does not treat AfterHeal-able instruction/marketing covers as low-substance', () => {
     const parrot =
       '<!doctype html><html lang="ko"><head><meta charset="utf-8"></head><body>'
       + '<section class="slide"><h1>expo에 대해서 설명하는 피피티 만들어줘</h1>'
@@ -170,7 +170,7 @@ describe('validateHtmlArtifact', () => {
       + '<section class="slide"><h1>다음 단계</h1><p>EAS Build로 배포하세요.</p></section>'
       + '</body></html>';
     expect(validateHtmlArtifact(parrot).ok).toBe(true);
-    expect(isLowSubstanceSlideDeckArtifact(parrot)).toBe(true);
+    expect(isLowSubstanceSlideDeckArtifact(parrot)).toBe(false);
 
     const marketing =
       '<!doctype html><html lang="ko"><body>'
@@ -178,7 +178,7 @@ describe('validateHtmlArtifact', () => {
       + '<section class="slide"><h1>개요</h1><p>템플릿 소개 문장입니다.</p></section>'
       + '<section class="slide"><h1>마무리</h1><p>감사합니다.</p></section>'
       + '</body></html>';
-    expect(isLowSubstanceSlideDeckArtifact(marketing)).toBe(true);
+    expect(isLowSubstanceSlideDeckArtifact(marketing)).toBe(false);
   });
 
   it('classifies Motif-SVG-before-title hangs as low-substance', () => {
@@ -199,7 +199,7 @@ describe('validateHtmlArtifact', () => {
       + '</body></html>';
     expect(validateHtmlArtifact(shortParrot).ok).toBe(true);
     expect(isIncompleteHtmlDocumentShell(shortParrot)).toBe(false);
-    expect(isLowSubstanceSlideDeckArtifact(shortParrot)).toBe(true);
+    expect(isLowSubstanceSlideDeckArtifact(shortParrot)).toBe(false);
 
     const emptySlide =
       '<!doctype html><html lang="ko"><body>'

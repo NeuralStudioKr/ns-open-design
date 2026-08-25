@@ -86,6 +86,8 @@ describe('FileViewer HtmlViewer preview message guards', () => {
     expect(htmlViewer).toContain("runFileViewerPreviewMessageHandler('comment-targets'");
     expect(htmlViewer).toContain("runFileViewerPreviewMessageHandler('comment-overlay'");
     expect(htmlViewer).toContain("runFileViewerPreviewMessageHandler('inspect-target'");
+    expect(htmlViewer).toContain("runFileViewerPreviewMessageHandler('od-edit-bridge'");
+    expect(htmlViewer).toContain("runFileViewerPreviewMessageHandler('stacked-deck-ready'");
   });
 });
 

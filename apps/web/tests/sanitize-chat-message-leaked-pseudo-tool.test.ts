@@ -315,4 +315,31 @@ describe("sanitizeChatMessageLeakedPseudoTool", () => {
     expect(sanitized.content).not.toContain("innerWidth");
     expect(JSON.stringify(sanitized.events)).not.toContain("addEventListener");
   });
+
+  it("joins reload leftover slide-body events so completion status stays and the dump drops", () => {
+    const leak =
+      "html>WD · LECTURE 01 · FRONT-END TRACK반응형 UIvideo·svg에일 HTML/CSS, 미디어 쿼리로 유동 재배치. 유지보수 단일 경로, SEO 유리, 초기 비용 낮음.능·접 90, axe-core0 critical, prefers-reduced-motion 대응.</artifact>";
+    const hangulTitled =
+      "WD · LECTURE 01 · FRONT-END TRACK반응형 UIvideo·svg에일 HTML/CSS, 미디어 쿼리로 유동 재배치. 유지보수 단일 경로, SEO 유리, 초기 비용 낮음.능·접 90, axe-core0 critical, prefers-reduced-motion 대응.";
+    const message: ChatMessage = {
+      id: "m-reload-lecture",
+      role: "assistant",
+      content: "슬라이드 작업이 완료되었습니다.",
+      events: [
+        { kind: "text", text: "슬라이드 작업이 완료되었습니다." },
+        { kind: "tool_use", id: "w1", name: "Write", input: {} },
+        { kind: "text", text: leak },
+        { kind: "text", text: hangulTitled },
+      ],
+    };
+    const sanitized = sanitizeChatMessageLeakedPseudoTool(message, { stripCodeFences: true });
+    expect(sanitized.content).toBe("슬라이드 작업이 완료되었습니다.");
+    expect(sanitized.content).not.toContain("LECTURE");
+    expect(JSON.stringify(sanitized.events)).not.toContain("LECTURE");
+    expect(JSON.stringify(sanitized.events)).not.toContain("html>");
+    expect(JSON.stringify(sanitized.events)).not.toContain("</artifact>");
+    expect(sanitized.events?.some((event) => event.kind === "text" && event.text.includes("완료"))).toBe(
+      true,
+    );
+  });
 });

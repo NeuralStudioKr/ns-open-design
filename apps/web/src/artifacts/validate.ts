@@ -170,14 +170,17 @@ export function isLowSubstanceSlideDeckArtifact(content: string): boolean {
   if (trimmed.length === 0 || !STARTS_WITH_DOCUMENT_RE.test(trimmed)) return false;
   const slideCount = countSlideLikeSections(trimmed);
   if (slideCount === 0) return false;
+  // Motif-first hangs stay low-substance even if a later heal would retitle.
+  if (deckArtifactStartsWithMotifSvgDump(trimmed)) return true;
+  // Persist heals instruction/marketing covers before this gate. Resume /
+  // regression / terminal callers still see raw HTML — do not flag the same
+  // 1–3 slide AfterHeal draft as low-substance (§1.33 leftover).
+  if (isPersistableShortDeckDraftAfterHeal(trimmed)) return false;
   if (!hasSalvageableDeckSlideContent(trimmed)) return true;
 
   const bodyText = visibleHtmlBodyText(trimmed);
   const withoutNoise = stripHtmlNoise(trimmed);
   if (deckSlideHeadingsLookLikeFailedGenerate(trimmed)) {
-    return true;
-  }
-  if (deckArtifactStartsWithMotifSvgDump(trimmed)) {
     return true;
   }
   if (MEDIA_OR_REPLACED_CONTENT_RE.test(withoutNoise)) return false;
