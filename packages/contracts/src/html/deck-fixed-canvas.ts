@@ -598,7 +598,7 @@ function looksLikeFakeOutlineStyle(style: string): boolean {
 /**
  * Body `p`/`span`/`h2–h4` often carry 1–2px accent borders. Only treat them as
  * MiniMax "card" frames when padding looks card-like (≥12px, ≥0.75rem/em,
- * ≥4%, or ≥2ch).
+ * ≥4%, ≥2ch, or ≥2vh/vw).
  */
 function looksLikeCardLikePadding(style: string): boolean {
   const source = String(style ?? '');
@@ -619,6 +619,10 @@ function looksLikeCardLikePadding(style: string): boolean {
       return true;
     }
     if (/(?:^|[\s/])(?:[2-9]|[1-9]\d+)(?:\.\d+)?ch\b/i.test(value)) {
+      return true;
+    }
+    // Viewport units — ≥2vh/vw reads as card padding; 1vh/1.5vw stay accents.
+    if (/(?:^|[\s/])(?:[2-9]|[1-9]\d+)(?:\.\d+)?(?:vh|vw|vmin|vmax)\b/i.test(value)) {
       return true;
     }
   }
