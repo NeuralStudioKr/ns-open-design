@@ -11,6 +11,8 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 |------|------|
 | chat leftover: WD/SLIDE 짧은 트랙 크롬 | ☑ round27–28 |
 | chat leftover: PAGE/SEC/LECTURE · bullet/hyphen · middle-dot 배지 | ☑ round29 |
+| chat leftover: CHAPTER 트랙 · 한 자리 `5 / CHECKLIST` | ☑ round30 |
+| persist: `li` + `hsl()` invented frame | ☑ |
 | persist: overlay `05 / CHECKLIST` span | ☑ |
 | persist: 카드 안 중첩 배지 · h2/header · `position:fixed` · `05 · LABEL` | ☑ |
 | persist: navy/indigo/cyan 1–2px fake outline | ☑ |
@@ -23,10 +25,10 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | think 태그 / 내부 마크업 필터 | ☑ 기존 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (round29)
+## 이번 루프 (round30)
 
-1. chat — `PAGE 01 · COVER` / `SEC 02 · AGENDA` / `LECTURE · 01` / `WD • OUTRO` / `WD - INTRO` / `05 · CHECKLIST` 숨김
-2. persist — hex/rgb/rgba/`0 0 0 1–2px` ring을 kit 카드로 바인딩. `var(--border)` 유지
-3. persist — 카드 안 중첩 배지와 heading/fixed 호스트 제거. `.slide-chrome` 유지
+1. chat — `CHAPTER 01 · COVER` / `5 / CHECKLIST` / `5 · SUMMARY` 숨김
+2. persist — 한 자리 overlay 배지 제거. `.slide-chrome` 유지
+3. persist — `<li>` hsl/hex 1–2px 프레임을 kit 카드로 바인딩
 
-**검증:** contracts chat-leak-probe-round29 · round28 · deck-fixed-canvas · keep-list
+**검증:** contracts chat-leak-probe-round30 · round29 · deck-fixed-canvas

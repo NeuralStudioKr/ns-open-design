@@ -240,6 +240,24 @@ describe('pinDeckSlidesToFixedCanvas', () => {
     expect(pinned.match(/class="[^"]*\binfo-card\b/g)?.length).toBeGreaterThanOrEqual(4);
   });
 
+  it('binds MiniMax li/hsl invented frames to official kit card classes', () => {
+    const html = [
+      '<!doctype html><html><body>',
+      '<section class="slide" style="width:1920px;height:1080px">',
+      '<ul>',
+      '<li style="border:2px solid hsl(239 84% 67%);padding:16px">HSL card</li>',
+      '<li style="border:2px solid #7c3aed;padding:16px">Hex li</li>',
+      '</ul>',
+      '</section>',
+      '<style data-od-official-look-css>.info-card{border:var(--border-width) solid var(--border)}</style>',
+      '</body></html>',
+    ].join('');
+    const pinned = pinDeckSlidesToFixedCanvas(html);
+    expect(pinned).not.toMatch(/hsl\(239/);
+    expect(pinned).not.toMatch(/#7c3aed/);
+    expect(pinned.match(/class="[^"]*\binfo-card\b/g)?.length).toBeGreaterThanOrEqual(2);
+  });
+
   it('strips nested and heading MiniMax index badges', () => {
     const html = [
       '<section class="slide" style="width:1920px;height:1080px">',
@@ -247,6 +265,7 @@ describe('pinDeckSlidesToFixedCanvas', () => {
       '<span style="position:absolute;top:12px;right:16px">05 / CHECKLIST</span>',
       '<h2 style="position:absolute;top:20px;left:24px">06 · SUMMARY</h2>',
       '<header style="position:fixed;top:16px;right:24px">07 / OUTRO</header>',
+      '<span style="position:absolute;top:8px;left:8px">5 / CHECKLIST</span>',
       '<p>Viewport matrix</p>',
       '</div>',
       '<div class="slide-chrome">01 / Studio</div>',
@@ -256,6 +275,7 @@ describe('pinDeckSlidesToFixedCanvas', () => {
     expect(pinned).not.toContain('05 / CHECKLIST');
     expect(pinned).not.toContain('06 · SUMMARY');
     expect(pinned).not.toContain('07 / OUTRO');
+    expect(pinned).not.toContain('5 / CHECKLIST');
     expect(pinned).toContain('01 / Studio');
     expect(pinned).toContain('Viewport matrix');
   });
