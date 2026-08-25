@@ -312,15 +312,17 @@ function outcomeAsRespondPayload(
   };
 }
 
-function exportOffloadPayloadForRequest(
-  req: Request,
-  outcome: ExportCacheOutcome,
-): Promise<
+type ExportOffloadPayloadResult =
   | { offloadEnabled: true; offloadKey?: string; offloadStatus: string; offloadReason?: string }
-  | Record<string, never>
-> {
+  | Record<string, never>;
+
+function exportOffloadPayloadForWorkspace(args: {
+  workspaceId: string | null | undefined;
+  projectId: string;
+  outcome: ExportCacheOutcome;
+}): Promise<ExportOffloadPayloadResult> {
   if (!isExportOffloadEnabled()) return Promise.resolve({});
-  const workspaceId = resolveExportOffloadWorkspaceIdFromRequest(req);
+  const workspaceId = typeof args.workspaceId === 'string' ? args.workspaceId.trim() : '';
   if (!workspaceId) {
     return Promise.resolve({
       offloadEnabled: true,
@@ -330,9 +332,9 @@ function exportOffloadPayloadForRequest(
   }
   const offloadKey = buildExportOffloadObjectKey({
     workspaceId,
-    projectId: String(req.params.id ?? ''),
-    cacheKey: outcome.key,
-    filename: outcome.filename,
+    projectId: args.projectId,
+    cacheKey: args.outcome.key,
+    filename: args.outcome.filename,
   });
   return (async () => {
     let offloadStatus = 'skipped_no_payload';
@@ -341,20 +343,20 @@ function exportOffloadPayloadForRequest(
       | Awaited<ReturnType<typeof putExportOffloadObject>>
       | Awaited<ReturnType<typeof putExportOffloadFileObject>>
       | null = null;
-    if (outcome.body !== undefined) {
+    if (args.outcome.body !== undefined) {
       result = await putExportOffloadObject({
         key: offloadKey,
-        body: outcome.body,
-        contentType: outcome.mime,
-        contentDisposition: attachmentDisposition(outcome.filename),
+        body: args.outcome.body,
+        contentType: args.outcome.mime,
+        contentDisposition: attachmentDisposition(args.outcome.filename),
       });
-    } else if (outcome.filePath) {
+    } else if (args.outcome.filePath) {
       result = await putExportOffloadFileObject({
         key: offloadKey,
-        filePath: outcome.filePath,
-        bytes: outcome.bytes,
-        contentType: outcome.mime,
-        contentDisposition: attachmentDisposition(outcome.filename),
+        filePath: args.outcome.filePath,
+        bytes: args.outcome.bytes,
+        contentType: args.outcome.mime,
+        contentDisposition: attachmentDisposition(args.outcome.filename),
       });
     }
     if (result) {
@@ -364,11 +366,11 @@ function exportOffloadPayloadForRequest(
       console.info(
         JSON.stringify({
           metric: 'od_export_offload_put',
-          projectId: req.params.id,
+          projectId: args.projectId,
           status: result.status,
           ...(offloadReason ? { reason: offloadReason } : {}),
-          cache: outcome.cache,
-          bytes: outcome.bytes,
+          cache: args.outcome.cache,
+          bytes: args.outcome.bytes,
         }),
       );
     }
@@ -379,6 +381,17 @@ function exportOffloadPayloadForRequest(
       ...(offloadReason ? { offloadReason } : {}),
     };
   })();
+}
+
+function exportOffloadPayloadForRequest(
+  req: Request,
+  outcome: ExportCacheOutcome,
+): Promise<ExportOffloadPayloadResult> {
+  return exportOffloadPayloadForWorkspace({
+    workspaceId: resolveExportOffloadWorkspaceIdFromRequest(req),
+    projectId: String(req.params.id ?? ''),
+    outcome,
+  });
 }
 
 function handleExportRouteError(
