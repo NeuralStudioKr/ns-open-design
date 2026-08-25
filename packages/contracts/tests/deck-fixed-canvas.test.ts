@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 import {
   DECK_FIXED_CANVAS_PIN_ATTR,
+  DECK_SLIDE_FLOW_ATTR,
   htmlHasDeckSlideHost,
   htmlLooksLikeNavigableDeckPreview,
   htmlLooksLikeSlideDeliverableStream,
@@ -136,11 +137,37 @@ describe('pinDeckSlidesToFixedCanvas', () => {
     ].join('');
     const pinned = pinDeckSlidesToFixedCanvas(html);
     expect(pinned).toMatch(/class="card"[^>]*position:relative/);
-    expect(pinned).toContain('>05 / CHECKLIST</span>');
-    expect(pinned).toMatch(/<span style="position:relative"/);
-    expect(pinned).not.toMatch(/<span style="[^"]*top:120px/);
+    expect(pinned).not.toContain('05 / CHECKLIST');
+    expect(pinned).toMatch(/<div data-od-slide-flow><div class="card"/);
+    expect(pinned).toMatch(/<\/div><div class="deco-daisy"/);
     expect(pinned).toMatch(/class="deco-daisy"[^>]*position:absolute/);
     expect(pinned).toMatch(/contain:\s*layout size/);
+    expect(pinned).not.toMatch(/class="slide"[^>]*overflow:\s*hidden/);
+  });
+
+  it('does not wrap display:grid slide children into a flow clip', () => {
+    const html = [
+      '<section class="slide" style="width:1920px;height:1080px;display:grid;grid-template-columns:1fr 1fr">',
+      '<div class="card">Left</div><div class="card">Right</div>',
+      '</section>',
+    ].join('');
+    const pinned = pinDeckSlidesToFixedCanvas(html);
+    expect(pinned).not.toMatch(/<div\s+data-od-slide-flow\b/);
+  });
+
+  it('binds MiniMax navy/blue outline boxes to official kit card classes', () => {
+    const html = [
+      '<!doctype html><html><body>',
+      '<section class="slide" style="width:1920px;height:1080px">',
+      '<div style="border:2px solid #2563eb;padding:24px">Viewport matrix</div>',
+      '</section>',
+      '<style data-od-official-look-css>.info-card{border:var(--border-width) solid var(--border)}</style>',
+      '</body></html>',
+    ].join('');
+    const pinned = pinDeckSlidesToFixedCanvas(html);
+    expect(pinned).toMatch(/class="[^"]*\binfo-card\b/);
+    expect(pinned).not.toMatch(/border:2px solid #2563eb/);
+    expect(pinned).toContain(DECK_SLIDE_FLOW_ATTR);
   });
 
   it('is idempotent for the injected style tag', () => {
@@ -162,9 +189,8 @@ describe('pinDeckSlidesToFixedCanvas', () => {
     ].join('');
     const pinned = pinDeckSlidesToFixedCanvas(html);
     expect(pinned).toMatch(/\.slide,[\s\S]*\{[^}]*overflow:\s*visible\s*!important/i);
-    expect(pinned).not.toMatch(
-      new RegExp(`${DECK_FIXED_CANVAS_PIN_ATTR}[^>]*>[\\s\\S]*overflow:\\s*hidden`, 'i'),
-    );
+    expect(pinned).not.toMatch(/\.slide\s*\{[^}]*overflow:\s*hidden/i);
+    expect(pinned).toMatch(/\[data-od-slide-flow\][\s\S]*overflow:\s*hidden/);
   });
 
   it('force-pins official #deck catalog presenters for compact letterbox (§0.93)', () => {

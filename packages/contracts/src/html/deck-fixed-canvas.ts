@@ -13,6 +13,7 @@ import {
 import { looksLikeOfficialFullscreenPresenterDeck } from './deck-template-look-css.js';
 
 export const DECK_FIXED_CANVAS_PIN_ATTR = 'data-od-deck-fixed-canvas-pin';
+export const DECK_SLIDE_FLOW_ATTR = 'data-od-slide-flow';
 
 const SLIDE_OPEN_RE =
   /<(section|div|main|article)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
@@ -42,6 +43,26 @@ article[data-screen-label] {
 }
 /* Absolute bottom footers collide with centered lead under flex justify. */
 .slide > :is(.slide-footer, .slide-meta, .kicker-footer, .footer):not([class*="deco"]):not([class*="motif"]) {
+  position: relative !important;
+  inset: auto !important;
+  top: auto !important;
+  right: auto !important;
+  bottom: auto !important;
+  left: auto !important;
+  margin-top: auto !important;
+}
+/* Clip MiniMax overflow inside the padded 16:9 box. Motif stays a sibling. */
+.slide > [data-od-slide-flow] {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  overflow: hidden;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.slide > [data-od-slide-flow] > :is(.slide-footer, .slide-meta, .kicker-footer, .footer):not([class*="deco"]):not([class*="motif"]) {
   position: relative !important;
   inset: auto !important;
   top: auto !important;
@@ -256,8 +277,14 @@ function flowAbsoluteNonMotifStyle(style: string): string | null {
   return next;
 }
 
-function listPinnedSlideInnerSpans(html: string): { start: number; end: number }[] {
-  const opens: { start: number; openEnd: number; tag: string }[] = [];
+type SlideInnerSpan = {
+  start: number;
+  end: number;
+  hostAttrs: string;
+};
+
+function listPinnedSlideInnerSpans(html: string): SlideInnerSpan[] {
+  const opens: { start: number; openEnd: number; tag: string; hostAttrs: string }[] = [];
   SLIDE_OPEN_RE.lastIndex = 0;
   let match: RegExpExecArray | null;
   while ((match = SLIDE_OPEN_RE.exec(html)) !== null) {
@@ -266,6 +293,7 @@ function listPinnedSlideInnerSpans(html: string): { start: number; end: number }
       start: match.index,
       openEnd: match.index + match[0].length,
       tag: (match[1] ?? 'section').toLowerCase(),
+      hostAttrs: match[2] ?? '',
     });
   }
   return opens.map((open, i) => {
@@ -275,6 +303,7 @@ function listPinnedSlideInnerSpans(html: string): { start: number; end: number }
     return {
       start: open.openEnd,
       end: close ? open.openEnd + close.index : limit,
+      hostAttrs: open.hostAttrs,
     };
   });
 }
@@ -315,6 +344,240 @@ export function flowAbsoluteNonMotifSlideContent(html: string): string {
   return out;
 }
 
+const VOID_TAGS = new Set([
+  'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta',
+  'source', 'track', 'wbr',
+]);
+
+const INDEX_BADGE_TEXT_RE =
+  /^\d{2}\s*\/\s*[A-Za-z가-힣][A-Za-z가-힣\s-]{1,20}$/;
+
+const KIT_CARD_TOKEN_RE = /\b(?:info-card|stat-card|card)\b/i;
+const FAKE_OUTLINE_COLOR_RE =
+  /#(?:0f172a|1e293b|111827|0b1220|1d4ed8|2563eb|3b82f6|1e40af|1e3a8a|172554|1e3a5f|0000ff|00f\b)|(?:\bnavy\b|\broyalblue\b|\bmediumblue\b)/i;
+const SPLIT_LAYOUT_RE = /\bsplit-(?:left|right|pane|top|bottom)\b/i;
+
+function findMatchingClose(html: string, from: number, tag: string): number {
+  const safe = tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const token = new RegExp(
+    `<(?:(/)\\s*)?${safe}\\b((?:[^>"']|"[^"]*"|'[^']*')*)>`,
+    'gi',
+  );
+  token.lastIndex = from;
+  let depth = 1;
+  let match: RegExpExecArray | null;
+  while ((match = token.exec(html)) !== null) {
+    const selfClose = /\/\s*$/.test(match[2] ?? '');
+    if (match[1]) depth -= 1;
+    else if (!selfClose) depth += 1;
+    if (depth === 0) return match.index + match[0].length;
+  }
+  return html.length;
+}
+
+function listTopLevelSegments(html: string): { start: number; end: number }[] {
+  const segs: { start: number; end: number }[] = [];
+  let i = 0;
+  while (i < html.length) {
+    if (html.startsWith('<!--', i)) {
+      const end = html.indexOf('-->', i);
+      const close = end < 0 ? html.length : end + 3;
+      segs.push({ start: i, end: close });
+      i = close;
+      continue;
+    }
+    if (html.charAt(i) !== '<') {
+      const next = html.indexOf('<', i);
+      const end = next < 0 ? html.length : next;
+      segs.push({ start: i, end });
+      i = end;
+      continue;
+    }
+    const open = /^<([a-zA-Z][\w-]*)\b((?:[^>"']|"[^"]*"|'[^']*')*)(\/)?>/.exec(html.slice(i));
+    if (!open) {
+      i += 1;
+      continue;
+    }
+    const tag = (open[1] ?? 'div').toLowerCase();
+    const selfClose = Boolean(open[3]) || VOID_TAGS.has(tag);
+    if (selfClose) {
+      segs.push({ start: i, end: i + open[0].length });
+      i += open[0].length;
+      continue;
+    }
+    const end = findMatchingClose(html, i + open[0].length, tag);
+    segs.push({ start: i, end });
+    i = end;
+  }
+  return segs;
+}
+
+function openTagOf(segment: string): { tag: string; attrs: string } | null {
+  const open = /^<([a-zA-Z][\w-]*)\b((?:[^>"']|"[^"]*"|'[^']*')*)/.exec(segment);
+  if (!open) return null;
+  return { tag: open[1] ?? '', attrs: open[2] ?? '' };
+}
+
+function innerTextOf(segment: string): string {
+  return segment.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+}
+
+function mapSlideInners(
+  html: string,
+  rewrite: (inner: string, span: SlideInnerSpan) => string,
+): string {
+  const source = String(html ?? '');
+  const spans = listPinnedSlideInnerSpans(source);
+  if (spans.length === 0) return source;
+  let out = source;
+  for (let i = spans.length - 1; i >= 0; i -= 1) {
+    const span = spans[i]!;
+    const inner = out.slice(span.start, span.end);
+    const next = rewrite(inner, span);
+    if (next !== inner) {
+      out = `${out.slice(0, span.start)}${next}${out.slice(span.end)}`;
+    }
+  }
+  return out;
+}
+
+function stripFloatingIndexBadgesInSpan(inner: string): string {
+  const segs = listTopLevelSegments(inner);
+  let next = inner;
+  for (let i = segs.length - 1; i >= 0; i -= 1) {
+    const seg = segs[i]!;
+    const raw = next.slice(seg.start, seg.end);
+    const open = openTagOf(raw);
+    if (!open) continue;
+    if (!/^(span|small|label|em|strong|b|i)$/i.test(open.tag)) continue;
+    if (isMotifOrDecoAttrs(open.attrs) || isContentFooterHost(open.attrs)) continue;
+    if (!INDEX_BADGE_TEXT_RE.test(innerTextOf(raw))) continue;
+    next = `${next.slice(0, seg.start)}${next.slice(seg.end)}`;
+  }
+  return next;
+}
+
+/**
+ * MiniMax parks "05 / CHECKLIST" as a sibling overlay. After absolute→flow
+ * the badge sits between cards. Drop those chrome labels only.
+ */
+export function stripFloatingDeckIndexBadges(html: string): string {
+  return mapSlideInners(html, (inner) => stripFloatingIndexBadgesInSpan(inner));
+}
+
+function shouldSkipSlideFlowWrap(inner: string, hostAttrs: string): boolean {
+  if (new RegExp(`\\b${DECK_SLIDE_FLOW_ATTR}\\b`, 'i').test(inner)) return true;
+  if (SPLIT_LAYOUT_RE.test(inner)) return true;
+  const style = extractStyleAttr(hostAttrs);
+  return /display\s*:\s*grid/i.test(style);
+}
+
+function wrapNonMotifInSpan(inner: string, hostAttrs: string): string {
+  if (shouldSkipSlideFlowWrap(inner, hostAttrs)) return inner;
+  const segs = listTopLevelSegments(inner);
+  if (segs.length === 0) return inner;
+  let out = '';
+  let pending = '';
+  const flushPending = () => {
+    if (!pending.trim()) {
+      out += pending;
+      pending = '';
+      return;
+    }
+    out += `<div ${DECK_SLIDE_FLOW_ATTR}>${pending}</div>`;
+    pending = '';
+  };
+  for (const seg of segs) {
+    const raw = inner.slice(seg.start, seg.end);
+    const open = openTagOf(raw);
+    if (open && isMotifOrDecoAttrs(open.attrs)) {
+      flushPending();
+      out += raw;
+      continue;
+    }
+    pending += raw;
+  }
+  flushPending();
+  return out;
+}
+
+/**
+ * Clip overflowing MiniMax copy inside the padded 16:9 box. Motif/deco
+ * corners stay siblings so `overflow:hidden` never lands on `.slide`.
+ */
+export function wrapNonMotifSlideFlow(html: string): string {
+  return mapSlideInners(html, (inner, span) => wrapNonMotifInSpan(inner, span.hostAttrs));
+}
+
+function looksLikeFakeOutlineStyle(style: string): boolean {
+  const source = String(style ?? '');
+  if (!/(?:^|;)\s*(?:border|outline)(?:-width|-color|-style)?\s*:/i.test(source)) return false;
+  if (!/\b(?:1px|2px)\b/i.test(source)) return false;
+  return FAKE_OUTLINE_COLOR_RE.test(source);
+}
+
+function stripFakeOutlineStyle(style: string): string {
+  return String(style ?? '')
+    .replace(/(?:^|;)\s*(?:border|outline)(?:-width|-color|-style)?\s*:[^;]*/gi, ';')
+    .replace(/;;+/g, ';')
+    .replace(/^;|;$/g, '')
+    .trim();
+}
+
+function addClassToken(attrs: string, token: string): string {
+  if (/\bclass\s*=/i.test(attrs)) {
+    return attrs.replace(
+      /\bclass\s*=\s*(['"])([\s\S]*?)\1/i,
+      (_m, q: string, cls: string) => `class=${q}${String(cls).trim()} ${token}${q}`,
+    );
+  }
+  const trimmed = attrs.trimEnd();
+  const spacer = trimmed.length > 0 && !/\s$/.test(attrs) ? ' ' : '';
+  return `${attrs}${spacer}class="${token}"`;
+}
+
+function pickOfficialKitCardClass(html: string): string | null {
+  if (!/data-od-official-look-css/i.test(html)) return null;
+  const bodies = [...String(html).matchAll(
+    /<style\b[^>]*\bdata-od-official-look-css\b[^>]*>([\s\S]*?)<\/style>/gi,
+  )].map((match) => match[1] ?? '').join('\n');
+  if (/\.info-card\s*\{/.test(bodies)) return 'info-card';
+  if (/\.card\s*\{/.test(bodies)) return 'card';
+  return null;
+}
+
+const KIT_CARD_OPEN_RE =
+  /<(div|aside|article|section)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
+
+function bindFakeOutlineCardsInSpan(html: string, cardClass: string): string {
+  return html.replace(KIT_CARD_OPEN_RE, (open, _tag: string, attrs: string) => {
+    if (isSlideHost(attrs) || isMotifOrDecoAttrs(attrs) || isContentFooterHost(attrs)) {
+      return open;
+    }
+    const style = extractStyleAttr(attrs);
+    if (!looksLikeFakeOutlineStyle(style)) return open;
+    let nextAttrs = KIT_CARD_TOKEN_RE.test(extractClassAttr(attrs))
+      ? attrs
+      : addClassToken(attrs, cardClass);
+    nextAttrs = nextAttrs.replace(
+      /\bstyle\s*=\s*(['"])([\s\S]*?)\1/i,
+      (_m, q: string, current: string) => `style=${q}${stripFakeOutlineStyle(current)}${q}`,
+    );
+    return open.replace(attrs, nextAttrs);
+  });
+}
+
+/**
+ * Official look CSS already defines `.info-card` / `.card`. MiniMax inline
+ * 1–2px navy/blue outlines win over those rules — strip the fake frame and
+ * bind the kit class so persist can show the selected template.
+ */
+export function bindFakeOutlineCardsToOfficialKit(html: string): string {
+  const cardClass = pickOfficialKitCardClass(html);
+  if (!cardClass) return String(html ?? '');
+  return mapSlideInners(html, (inner) => bindFakeOutlineCardsInSpan(inner, cardClass));
+}
+
 function injectFixedCanvasStyle(html: string): string {
   const pinRe = new RegExp(
     `(<style\\b[^>]*\\b${DECK_FIXED_CANVAS_PIN_ATTR}\\b[^>]*>)([\\s\\S]*?)(<\\/style>)`,
@@ -326,9 +589,10 @@ function injectFixedCanvasStyle(html: string): string {
     // Upgrade pre-§0.73 pin sheets that still force overflow:hidden (§0.76)
     // and pre-contain sheets that let overflowing MiniMax grids grow the stage.
     if (
-      /overflow\s*:\s*(?:hidden|clip)/i.test(body)
+      /\.slide\s*\{[^}]*overflow\s*:\s*(?:hidden|clip)/i.test(body)
       || !/overflow\s*:\s*visible/i.test(body)
       || !/contain\s*:\s*layout/i.test(body)
+      || !/data-od-slide-flow/i.test(body)
     ) {
       return html.replace(pinRe, `$1\n${FIXED_CANVAS_CSS}\n$3`);
     }
@@ -377,7 +641,10 @@ export function pinDeckSlidesToFixedCanvas(
   // force-pinned for export / letterbox. MiniMax compact fills — including
   // after official-look CSS merge — still need overlapping card/label flow.
   if (!looksLikeOfficialFullscreenPresenterDeck(source)) {
+    out = stripFloatingDeckIndexBadges(out);
     out = flowAbsoluteNonMotifSlideContent(out);
+    out = bindFakeOutlineCardsToOfficialKit(out);
+    out = wrapNonMotifSlideFlow(out);
   }
   out = injectFixedCanvasStyle(out);
   return out;

@@ -75,6 +75,10 @@ describe('DECK_FRAMEWORK_DIRECTIVE_COMPACT', () => {
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY_FOR_SELECTED_TEMPLATE).toContain(
       'position:absolute',
     );
+    expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('overlay index badges');
+    expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY_FOR_SELECTED_TEMPLATE).toContain(
+      'overlay index badges',
+    );
     // Samples must not teach viewport sizing (ban prose may still name 100vh).
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).not.toMatch(
       /style="[^"]*min-height:100vh/,

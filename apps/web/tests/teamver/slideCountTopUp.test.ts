@@ -175,6 +175,7 @@ describe("slideCountTopUp", () => {
     expect(prompt).toContain("lightweight motif/deco vocabulary");
     expect(prompt).toContain("at most 3 next steps");
     expect(prompt).toContain("outlined rectangles");
+    expect(prompt).toContain("05 / CHECKLIST");
     expect(prompt).not.toContain("Motif SVG is NOT required");
   });
 

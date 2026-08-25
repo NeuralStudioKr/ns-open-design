@@ -506,7 +506,7 @@ Each slide is a **fixed 1920×1080** canvas (16:9). Every host must be \`<sectio
 
 **Density (every slide):** one idea only. Cover = eyebrow + headline + one lead — no stat column and no metadata footer on the same canvas. Three metrics = three Big-stat slides. Never headline + subtitle + stats + footer together; split instead of shrinking type. Closing / checklist slides are title + at most 3 next steps — never a 5-row numbered grid plus a side card on one 1920×1080 canvas.
 
-**Canvas fit:** flow content must stay inside the padded 1920×1080 box. Overlapping \`position:absolute\` labels (a "05 / CHECKLIST" badge sitting inside card 02) are a failed deliverable — keep labels in normal flow inside their own card.
+**Canvas fit:** flow content must stay inside the padded 1920×1080 box. Overlapping \`position:absolute\` labels (a "05 / CHECKLIST" badge sitting inside card 02) are a failed deliverable — keep labels in normal flow inside their own card. Never emit overlay index badges such as "05 / CHECKLIST" as sibling labels.
 
 Do not invent one identical white box for every slide. Pick the closest layout below and vary **background color**, **padding**, **composition**, and **density** across slides (alternate light/dark surfaces — never 3+ identical slides in a row). A good deck should look like a designed presentation, not a web article split into full-screen rows.
 
@@ -550,7 +550,7 @@ Each slide is a **fixed 1920×1080** canvas: every host must be \`<section class
 
 **Density (every slide):** one idea only. Cover = eyebrow + headline + one lead — no stat column and no metadata footer on the same canvas. Three metrics = three Big-stat slides. Never headline + subtitle + stats + footer together; split instead of shrinking type. Closing / checklist slides are title + at most 3 next steps — never a 5-row numbered grid plus a side card on one 1920×1080 canvas.
 
-**Canvas fit:** flow content must stay inside the padded 1920×1080 box. Overlapping \`position:absolute\` labels (a "05 / CHECKLIST" badge sitting inside card 02) are a failed deliverable — keep labels in normal flow inside their own card.
+**Canvas fit:** flow content must stay inside the padded 1920×1080 box. Overlapping \`position:absolute\` labels (a "05 / CHECKLIST" badge sitting inside card 02) are a failed deliverable — keep labels in normal flow inside their own card. Never emit overlay index badges such as "05 / CHECKLIST" as sibling labels.
 
 **Colors, fonts, borders, shadows, and decorative density MUST come from the Selected deck template / Template visual kit above.** Do not invent a slate/navy corporate palette. Forbidden fallbacks when a kit is present: \`#0f172a\`, \`#1e293b\`, \`#111827\`, \`#f8fafc\` + Inter-only sparse covers.
 
