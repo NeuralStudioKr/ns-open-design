@@ -1,14 +1,9 @@
 import type { Express, Request } from 'express';
-import {
-  PROJECT_EXPORT_MANIFEST_SCHEMA,
-  buildStandaloneDeckHtmlDocument,
-  healDeckHtmlForStandaloneExport,
-} from '@open-design/contracts';
+import { PROJECT_EXPORT_MANIFEST_SCHEMA } from '@open-design/contracts';
 import { mergeOfficialTemplateLookForExport } from './official-deck-look-export.js';
 import fs from 'node:fs';
 import nodePath from 'node:path';
 import os from 'node:os';
-import JSZip from 'jszip';
 import type { RouteDeps } from './server-context.js';
 import { isBlocked as isBlockedSystemDir } from './linked-dirs.js';
 import {
@@ -22,15 +17,9 @@ import { parseOrchestratorWorkspace } from './workspace-contract.js';
 import type { ProjectStorageAccessHooks } from './storage/lazy-project-materialization.js';
 import { isTeamverDesignManaged } from './teamver-project-access.js';
 import {
+  DeckSlideCountLimitError,
   isHeadlessChromiumUnavailableExportError,
-  renderHeadlessHtmlSnapshot,
-  renderHeadlessDeckImages,
-  renderHeadlessEditablePptx,
-  renderHeadlessImage,
-  renderHeadlessPdf,
-  type HeadlessImageFormat,
 } from './headless-export.js';
-import { buildScreenshotPptx } from './deck-export.js';
 import { ExportQueueFullError } from './export-runtime.js';
 import {
   claimExportDownload,
@@ -40,10 +29,25 @@ import {
   wantsTicketDelivery,
 } from './export-download-store.js';
 import {
-  exportCacheDescriptor,
-  runCachedExport,
   type ExportCacheOutcome,
 } from './export-cache-runtime.js';
+import {
+  ExportJobStoreFullError,
+  createExportJob,
+  isExportAsyncJobsEnabled,
+  resolveExportJob,
+  subscribeExportJob,
+  type ExportJobFormat,
+  type ExportJobSnapshot,
+} from './export-job-store.js';
+import { runExportJobInBackground } from './export-job-runner.js';
+import {
+  renderHtmlExportOutcome,
+  renderImageExportOutcome,
+  renderPdfExportOutcome,
+  renderPptxExportOutcome,
+  renderZipExportOutcome,
+} from './export-render-service.js';
 import {
   buildExportOffloadObjectKey,
   isExportOffloadEnabled,
@@ -55,7 +59,11 @@ import {
   putExportOffloadObject,
 } from './export-offload-store.js';
 import { readTeamverIdentityFromRequest } from './teamver-project-access.js';
-import { warmExportRelativeAssets } from './pdf-export.js';
+import {
+  buildDesktopPdfExportInput,
+  warmExportRelativeAssets,
+  type BuiltDesktopPdfExport,
+} from './pdf-export.js';
 
 export interface RegisterImportRoutesDeps extends RouteDeps<'db' | 'http' | 'uploads' | 'node' | 'ids' | 'paths' | 'imports' | 'auth' | 'projectStore' | 'conversations' | 'projectFiles' | 'validation'> {
   projectStorageHooks?: ProjectStorageAccessHooks | null;
@@ -176,6 +184,16 @@ function wantsFreshExport(req: {
     if (raw === true || raw === '1' || raw === 'true') return true;
   }
   return false;
+}
+
+function parseExportJobFormat(raw: unknown): ExportJobFormat | null {
+  return raw === 'pdf'
+    || raw === 'html'
+    || raw === 'zip'
+    || raw === 'image'
+    || raw === 'pptx'
+    ? raw
+    : null;
 }
 
 async function respondExportPayload(
@@ -403,30 +421,45 @@ function handleExportRouteError(
   sendApiError(res, 500, 'EXPORT_FAILED', reason);
 }
 
-function injectExportSnippetIntoHead(html: string, snippet: string): string {
-  if (!snippet) return html;
-  if (/<\/head\s*>/i.test(html)) {
-    return html.replace(/<\/head\s*>/i, `${snippet}</head>`);
-  }
-  if (/<html(?:\s[^>]*)?>/i.test(html)) {
-    return html.replace(/<html(?:\s[^>]*)?>/i, (match) => `${match}<head>${snippet}</head>`);
-  }
-  return `${snippet}${html}`;
+function exportJobStatusUrl(projectId: string, jobId: string): string {
+  return `/api/projects/${encodeURIComponent(projectId)}/export/jobs/${encodeURIComponent(jobId)}`;
 }
 
-function injectExportSnippetBeforeBodyClose(html: string, snippet: string): string {
-  if (!snippet) return html;
-  if (/<\/body\s*>/i.test(html)) {
-    return html.replace(/<\/body\s*>/i, `${snippet}</body>`);
-  }
-  return `${html}${snippet}`;
+function exportJobEventsUrl(projectId: string, jobId: string): string {
+  return `${exportJobStatusUrl(projectId, jobId)}/events`;
 }
 
-export function buildStaticHtmlExportFallback(input: { html: string; deck?: boolean }): string {
-  if (input.deck !== true) return healDeckHtmlForStandaloneExport(input.html);
-  return buildStandaloneDeckHtmlDocument(input.html);
+function serializeExportJob(projectId: string, job: ExportJobSnapshot): Record<string, unknown> {
+  return {
+    jobId: job.id,
+    status: job.status,
+    statusUrl: exportJobStatusUrl(projectId, job.id),
+    eventsUrl: exportJobEventsUrl(projectId, job.id),
+    format: job.format,
+    createdAt: new Date(job.createdAt).toISOString(),
+    updatedAt: new Date(job.updatedAt).toISOString(),
+    expiresAt: new Date(job.expiresAt).toISOString(),
+    ...(job.startedAt !== undefined ? { startedAt: new Date(job.startedAt).toISOString() } : {}),
+    ...(job.completedAt !== undefined ? { completedAt: new Date(job.completedAt).toISOString() } : {}),
+    ...(job.result
+      ? {
+          downloadUrl: job.result.downloadUrl,
+          filename: job.result.filename,
+          mime: job.result.mime,
+          bytes: job.result.bytes,
+          sizeBytes: job.result.bytes,
+          cache: job.result.cache,
+          deliveryMode: job.result.deliveryMode,
+          ...(job.result.offloadStatus ? { offloadStatus: job.result.offloadStatus } : {}),
+          ...(job.result.offloadReason ? { offloadReason: job.result.offloadReason } : {}),
+          ...(job.result.expiresAt ? { downloadExpiresAt: new Date(job.result.expiresAt).toISOString() } : {}),
+        }
+      : {}),
+    ...(job.error ? { error: job.error } : {}),
+  };
 }
 
+export { buildStaticHtmlExportFallback } from './export-render-service.js';
 export { isHeadlessChromiumUnavailableExportError } from './headless-export.js';
 
 export function registerImportRoutes(app: Express, ctx: RegisterImportRoutesDeps) {
@@ -853,7 +886,7 @@ export interface RegisterProjectExportRoutesDeps extends RouteDeps<'db' | 'http'
 
 export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectExportRoutesDeps) {
   const { db } = ctx;
-  const { sendApiError } = ctx.http;
+  const { createSseResponse, sendApiError } = ctx.http;
   const { PROJECTS_DIR } = ctx.paths;
   const { getProject } = ctx.projectStore;
   const { listFiles, readProjectFile, resolveProjectFilePath } = ctx.projectFiles;
@@ -861,7 +894,6 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
   const {
     buildProjectArchive,
     buildBatchArchive,
-    buildDesktopPdfExportInput,
     desktopPdfExporter,
     daemonUrlRef,
     sanitizeArchiveFilename,
@@ -870,7 +902,7 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
 
   async function applyOfficialTemplateLookToBuilt(
     projectId: string,
-    built: Awaited<ReturnType<typeof buildDesktopPdfExportInput>>,
+    built: BuiltDesktopPdfExport,
     body: Record<string, unknown> | undefined,
   ) {
     const project = getProject(db, projectId);
@@ -883,6 +915,28 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
     });
     return built;
   }
+
+  const exportRenderContext = (projectId: string, req?: Request) => ({
+    daemonUrl: daemonUrlRef.current,
+    projectId,
+    projectsRoot: PROJECTS_DIR,
+    prepareBuilt: async (
+      built: BuiltDesktopPdfExport,
+      renderReq: { templateId?: string | null },
+    ) => {
+      await applyOfficialTemplateLookToBuilt(projectId, built, {
+        ...(renderReq.templateId ? { templateId: renderReq.templateId } : {}),
+      });
+      if (req) {
+        await warmInlineExportAssets(
+          req,
+          projectId,
+          built.input.html,
+          projectStorageHooks,
+        );
+      }
+    },
+  });
   // Streams a ZIP of the project's on-disk tree so the "Download as .zip"
   // share menu can hand the user the actual files they uploaded — e.g. the
   // imported `ui-design/` folder — instead of a one-file snapshot of the
@@ -1062,6 +1116,114 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
     }
   });
 
+  app.post('/api/projects/:id/export/jobs', async (req, res) => {
+    try {
+      if (!isExportAsyncJobsEnabled()) {
+        return sendApiError(res, 404, 'EXPORT_JOBS_DISABLED', 'async export jobs are disabled');
+      }
+      if (!isSafeId(req.params.id)) {
+        return sendApiError(res, 400, 'BAD_REQUEST', 'invalid project id');
+      }
+      const { fileName, title, deck, format, slideIndex, width, height } = req.body || {};
+      const exportFormat = parseExportJobFormat(format);
+      if (!exportFormat) {
+        return sendApiError(res, 400, 'BAD_REQUEST', 'format must be pdf, html, zip, image, or pptx');
+      }
+      if (typeof fileName !== 'string' || fileName.length === 0) {
+        return sendApiError(res, 400, 'BAD_REQUEST', 'fileName required');
+      }
+      if (exportFormat === 'pptx' && deck !== true) {
+        return sendApiError(res, 422, 'NO_SLIDES', 'PPTX export requires a slide deck');
+      }
+      const inlineHtml = readInlineHtmlFromBody(req.body);
+      const templateId = typeof req.body?.templateId === 'string' ? req.body.templateId : null;
+      const job = createExportJob({
+        projectId: req.params.id,
+        format: exportFormat,
+      });
+      void runExportJobInBackground({
+        request: {
+          jobId: job.id,
+          projectId: req.params.id,
+          workspaceId: resolveExportOffloadWorkspaceIdFromRequest(req),
+          format: exportFormat,
+          fileName,
+          deck: exportFormat === 'pptx' ? true : deck === true,
+          ...(typeof title === 'string' ? { title } : {}),
+          ...(inlineHtml ? { inlineHtml } : {}),
+          ...(wantsFreshExport(req) ? { fresh: true } : {}),
+          ...(templateId ? { templateId } : {}),
+          ...(exportFormat === 'image'
+            ? { image: { format: req.body?.format, slideIndex, width, height } }
+            : {}),
+          ...(exportFormat === 'pptx' ? { pptx: { editable: req.body?.editable } } : {}),
+        },
+        deps: {
+          renderContext: (projectId) => exportRenderContext(projectId, req),
+          prepareOffloadPayload: (jobRequest, outcome) => exportOffloadPayloadForWorkspace({
+            workspaceId: jobRequest.workspaceId,
+            projectId: jobRequest.projectId,
+            outcome,
+          }),
+        },
+      });
+      res.status(202).json(serializeExportJob(req.params.id, job));
+    } catch (err: unknown) {
+      if (err instanceof ExportJobStoreFullError) {
+        res.setHeader('Retry-After', '15');
+        return sendApiError(res, 503, err.code, err.message);
+      }
+      handleExportRouteError(res, sendApiError, 'export/jobs', req.params.id, err);
+    }
+  });
+
+  app.get('/api/projects/:id/export/jobs/:jobId', async (req, res) => {
+    try {
+      if (!isExportAsyncJobsEnabled()) {
+        return sendApiError(res, 404, 'EXPORT_JOBS_DISABLED', 'async export jobs are disabled');
+      }
+      if (!isSafeId(req.params.id)) {
+        return sendApiError(res, 400, 'BAD_REQUEST', 'invalid project id');
+      }
+      const job = resolveExportJob(req.params.id, req.params.jobId);
+      if (!job) {
+        return sendApiError(res, 404, 'EXPORT_JOB_NOT_FOUND', 'export job not found or expired');
+      }
+      res.json(serializeExportJob(req.params.id, job));
+    } catch (err: unknown) {
+      handleExportRouteError(res, sendApiError, 'export/jobs/status', req.params.id, err);
+    }
+  });
+
+  app.get('/api/projects/:id/export/jobs/:jobId/events', async (req, res) => {
+    try {
+      if (!isExportAsyncJobsEnabled()) {
+        return sendApiError(res, 404, 'EXPORT_JOBS_DISABLED', 'async export jobs are disabled');
+      }
+      if (!isSafeId(req.params.id)) {
+        return sendApiError(res, 400, 'BAD_REQUEST', 'invalid project id');
+      }
+      const initial = resolveExportJob(req.params.id, req.params.jobId);
+      if (!initial) {
+        return sendApiError(res, 404, 'EXPORT_JOB_NOT_FOUND', 'export job not found or expired');
+      }
+      const sse = createSseResponse(res);
+      let sequence = 0;
+      const sendJob = (job: ExportJobSnapshot) => {
+        sequence += 1;
+        sse.send('export_job', serializeExportJob(req.params.id, job), sequence);
+        if (job.status === 'ready' || job.status === 'failed') {
+          sse.end();
+        }
+      };
+      const unsubscribe = subscribeExportJob(req.params.id, req.params.jobId, sendJob);
+      res.on('close', unsubscribe);
+      sendJob(initial);
+    } catch (err: unknown) {
+      handleExportRouteError(res, sendApiError, 'export/jobs/events', req.params.id, err);
+    }
+  });
+
   app.post('/api/projects/:id/export/pdf', async (req, res) => {
     try {
       const { fileName, title, deck } = req.body || {};
@@ -1070,51 +1232,32 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
       }
       const ticket = wantsTicketDelivery(req.body);
       const inlineHtml = readInlineHtmlFromBody(req.body);
-      const built = await buildDesktopPdfExportInput({
-        daemonUrl: daemonUrlRef.current,
-        deck: deck === true,
+      const templateId = typeof req.body?.templateId === 'string' ? req.body.templateId : null;
+      const exportRequest = {
         fileName,
-        projectId: req.params.id,
-        projectsRoot: PROJECTS_DIR,
-        title: typeof title === 'string' ? title : undefined,
+        deck: deck === true,
+        ...(typeof title === 'string' ? { title } : {}),
         ...(inlineHtml ? { inlineHtml } : {}),
-      });
-      await applyOfficialTemplateLookToBuilt(req.params.id, built, req.body);
-      await warmInlineExportAssets(
-        req,
-        req.params.id,
-        built.input.html,
-        projectStorageHooks,
-      );
+        ...(wantsFreshExport(req) ? { fresh: true } : {}),
+        ...(templateId ? { templateId } : {}),
+      };
       if (typeof desktopPdfExporter === 'function') {
+        const built = await buildDesktopPdfExportInput({
+          daemonUrl: daemonUrlRef.current,
+          deck: exportRequest.deck,
+          fileName,
+          projectId: req.params.id,
+          projectsRoot: PROJECTS_DIR,
+          ...(exportRequest.title ? { title: exportRequest.title } : {}),
+          ...(inlineHtml ? { inlineHtml } : {}),
+        });
+        await applyOfficialTemplateLookToBuilt(req.params.id, built, req.body);
+        await warmInlineExportAssets(req, req.params.id, built.input.html, projectStorageHooks);
         const result = await desktopPdfExporter(built.input);
         res.json(result);
         return;
       }
-      const outcome = await runCachedExport(
-        { format: 'pdf', deck: deck === true, projectId: req.params.id },
-        exportCacheDescriptor({
-          projectId: req.params.id,
-          sourceRelPath: built.source.relPath,
-          sourceMtimeMs: built.source.mtimeMs,
-          format: 'pdf',
-          deck: deck === true,
-          filename: built.input.defaultFilename,
-          mime: 'application/pdf',
-        }),
-        async () => {
-          const pdf = await renderHeadlessPdf(
-            { input: built.input },
-            { projectId: req.params.id },
-          );
-          return {
-            body: pdf,
-            filename: built.input.defaultFilename,
-            mime: 'application/pdf',
-          };
-        },
-        { fresh: wantsFreshExport(req) },
-      );
+      const { outcome } = await renderPdfExportOutcome(exportRenderContext(req.params.id, req), exportRequest);
       await respondExportPayload(res, {
         projectId: req.params.id,
         ...outcomeAsRespondPayload(outcome),
@@ -1133,65 +1276,20 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
         return sendApiError(res, 400, 'BAD_REQUEST', 'fileName required');
       }
       const ticket = wantsTicketDelivery(req.body);
-      const imageFormat: HeadlessImageFormat =
-        format === 'jpeg' || format === 'jpg'
-          ? 'jpeg'
-          : format === 'webp'
-            ? 'webp'
-            : 'png';
-      const cacheFormat: 'png' | 'jpeg' | 'webp' = imageFormat;
       const inlineHtml = readInlineHtmlFromBody(req.body);
-      const built = await buildDesktopPdfExportInput({
-        daemonUrl: daemonUrlRef.current,
-        deck: deck === true,
+      const templateId = typeof req.body?.templateId === 'string' ? req.body.templateId : null;
+      const outcome = await renderImageExportOutcome(exportRenderContext(req.params.id, req), {
         fileName,
-        projectId: req.params.id,
-        projectsRoot: PROJECTS_DIR,
-        title: typeof title === 'string' ? title : undefined,
+        deck: deck === true,
+        format,
+        slideIndex,
+        width,
+        height,
+        ...(typeof title === 'string' ? { title } : {}),
         ...(inlineHtml ? { inlineHtml } : {}),
+        ...(wantsFreshExport(req) ? { fresh: true } : {}),
+        ...(templateId ? { templateId } : {}),
       });
-      await applyOfficialTemplateLookToBuilt(req.params.id, built, req.body);
-      await warmInlineExportAssets(
-        req,
-        req.params.id,
-        built.input.html,
-        projectStorageHooks,
-      );
-      const extension =
-        imageFormat === 'jpeg' ? 'jpg' : imageFormat === 'webp' ? 'webp' : 'png';
-      const base = built.input.defaultFilename.replace(/\.pdf$/i, '') || 'artifact';
-      const mime =
-        imageFormat === 'jpeg'
-          ? 'image/jpeg'
-          : imageFormat === 'webp'
-            ? 'image/webp'
-            : 'image/png';
-      const outcome = await runCachedExport(
-        { format: 'image', deck: deck === true, projectId: req.params.id },
-        exportCacheDescriptor({
-          projectId: req.params.id,
-          sourceRelPath: built.source.relPath,
-          sourceMtimeMs: built.source.mtimeMs,
-          format: cacheFormat,
-          deck: deck === true,
-          ...(typeof slideIndex === 'number' ? { slideIndex } : {}),
-          ...(deck === true ? { codeVersion: 'deck-screenshot-screen-v2' } : {}),
-          filename: `${base}.${extension}`,
-          mime,
-        }),
-        async () => {
-          const imageOptions = {
-            input: built.input,
-            imageFormat,
-            ...(typeof slideIndex === 'number' ? { slideIndex } : {}),
-            ...(typeof width === 'number' ? { width } : {}),
-            ...(typeof height === 'number' ? { height } : {}),
-          };
-          const image = await renderHeadlessImage(imageOptions, { projectId: req.params.id });
-          return { body: image, filename: `${base}.${extension}`, mime };
-        },
-        { fresh: wantsFreshExport(req) },
-      );
       await respondExportPayload(res, {
         projectId: req.params.id,
         ...outcomeAsRespondPayload(outcome),
@@ -1214,58 +1312,16 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
       }
       const ticket = wantsTicketDelivery(req.body);
       const inlineHtml = readInlineHtmlFromBody(req.body);
-      const built = await buildDesktopPdfExportInput({
-        daemonUrl: daemonUrlRef.current,
-        deck: true,
+      const templateId = typeof req.body?.templateId === 'string' ? req.body.templateId : null;
+      const outcome = await renderPptxExportOutcome(exportRenderContext(req.params.id, req), {
         fileName,
-        projectId: req.params.id,
-        projectsRoot: PROJECTS_DIR,
-        title: typeof title === 'string' ? title : undefined,
+        deck: true,
+        editable: req.body?.editable,
+        ...(typeof title === 'string' ? { title } : {}),
         ...(inlineHtml ? { inlineHtml } : {}),
+        ...(wantsFreshExport(req) ? { fresh: true } : {}),
+        ...(templateId ? { templateId } : {}),
       });
-      await applyOfficialTemplateLookToBuilt(req.params.id, built, req.body);
-      await warmInlineExportAssets(
-        req,
-        req.params.id,
-        built.input.html,
-        projectStorageHooks,
-      );
-      const base = built.input.defaultFilename.replace(/\.pdf$/i, '') || 'artifact';
-      const filename = `${base}.pptx`;
-      const mime = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
-      const editable = req.body?.editable !== false;
-      const outcome = await runCachedExport(
-        { format: 'pptx', deck: true, projectId: req.params.id },
-        exportCacheDescriptor({
-          projectId: req.params.id,
-          sourceRelPath: built.source.relPath,
-          sourceMtimeMs: built.source.mtimeMs,
-          format: 'pptx',
-          deck: true,
-          codeVersion: editable ? 'pptx-editable-dom-v3' : 'pptx-screen-ooxml-v4',
-          filename,
-          mime,
-        }),
-        async () => {
-          if (editable) {
-            const pptx = await renderHeadlessEditablePptx(
-              { input: built.input },
-              { projectId: req.params.id },
-            );
-            return { body: pptx, filename, mime };
-          }
-          const rendered = await renderHeadlessDeckImages(
-            { input: built.input, imageFormat: 'png' },
-            { projectId: req.params.id },
-          );
-          const pptx = await buildScreenshotPptx(rendered.images, {
-            title: built.input.title,
-            aspect: rendered.aspect,
-          });
-          return { body: pptx, filename, mime };
-        },
-        { fresh: wantsFreshExport(req) },
-      );
       await respondExportPayload(res, {
         projectId: req.params.id,
         ...outcomeAsRespondPayload(outcome),
@@ -1275,6 +1331,9 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
     } catch (err: unknown) {
       if (String((err as Error)?.message || err).toLowerCase().includes('no slides')) {
         return sendApiError(res, 422, 'NO_SLIDES', 'PPTX export requires at least one slide');
+      }
+      if (err instanceof DeckSlideCountLimitError) {
+        return sendApiError(res, 422, err.code, err.message);
       }
       handleExportRouteError(res, sendApiError, 'export/pptx', req.params.id, err);
     }
@@ -1288,57 +1347,15 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
       }
       const ticket = wantsTicketDelivery(req.body);
       const inlineHtml = readInlineHtmlFromBody(req.body);
-      const built = await buildDesktopPdfExportInput({
-        daemonUrl: daemonUrlRef.current,
-        deck: deck === true,
+      const templateId = typeof req.body?.templateId === 'string' ? req.body.templateId : null;
+      const outcome = await renderHtmlExportOutcome(exportRenderContext(req.params.id, req), {
         fileName,
-        projectId: req.params.id,
-        projectsRoot: PROJECTS_DIR,
-        title: typeof title === 'string' ? title : undefined,
+        deck: deck === true,
+        ...(typeof title === 'string' ? { title } : {}),
         ...(inlineHtml ? { inlineHtml } : {}),
+        ...(wantsFreshExport(req) ? { fresh: true } : {}),
+        ...(templateId ? { templateId } : {}),
       });
-      await applyOfficialTemplateLookToBuilt(req.params.id, built, req.body);
-      await warmInlineExportAssets(
-        req,
-        req.params.id,
-        built.input.html,
-        projectStorageHooks,
-      );
-      const base = built.input.defaultFilename.replace(/\.pdf$/i, '') || 'artifact';
-      const outcome = await runCachedExport(
-        { format: 'html', deck: deck === true, projectId: req.params.id },
-        exportCacheDescriptor({
-          projectId: req.params.id,
-          sourceRelPath: built.source.relPath,
-          sourceMtimeMs: built.source.mtimeMs,
-          format: 'html',
-          deck: deck === true,
-          filename: `${base}.html`,
-          mime: 'text/html; charset=utf-8',
-        }),
-        async () => {
-          let html: string;
-          try {
-            html = await renderHeadlessHtmlSnapshot(
-              { input: built.input },
-              { projectId: req.params.id },
-            );
-          } catch (err) {
-            if (!isHeadlessChromiumUnavailableExportError(err)) throw err;
-            console.warn('[export/html] headless Chromium unavailable; serving static HTML fallback', {
-              projectId: req.params.id,
-              fileName,
-            });
-            html = buildStaticHtmlExportFallback(built.input);
-          }
-          return {
-            body: html,
-            filename: `${base}.html`,
-            mime: 'text/html; charset=utf-8',
-          };
-        },
-        { fresh: wantsFreshExport(req) },
-      );
       await respondExportPayload(res, {
         projectId: req.params.id,
         ...outcomeAsRespondPayload(outcome),
@@ -1358,60 +1375,15 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
       }
       const ticket = wantsTicketDelivery(req.body);
       const inlineHtml = readInlineHtmlFromBody(req.body);
-      const built = await buildDesktopPdfExportInput({
-        daemonUrl: daemonUrlRef.current,
-        deck: deck === true,
+      const templateId = typeof req.body?.templateId === 'string' ? req.body.templateId : null;
+      const outcome = await renderZipExportOutcome(exportRenderContext(req.params.id, req), {
         fileName,
-        projectId: req.params.id,
-        projectsRoot: PROJECTS_DIR,
-        title: typeof title === 'string' ? title : undefined,
+        deck: deck === true,
+        ...(typeof title === 'string' ? { title } : {}),
         ...(inlineHtml ? { inlineHtml } : {}),
+        ...(wantsFreshExport(req) ? { fresh: true } : {}),
+        ...(templateId ? { templateId } : {}),
       });
-      await applyOfficialTemplateLookToBuilt(req.params.id, built, req.body);
-      await warmInlineExportAssets(
-        req,
-        req.params.id,
-        built.input.html,
-        projectStorageHooks,
-      );
-      const base = built.input.defaultFilename.replace(/\.pdf$/i, '') || 'artifact';
-      const outcome = await runCachedExport(
-        { format: 'zip', deck: deck === true, projectId: req.params.id },
-        exportCacheDescriptor({
-          projectId: req.params.id,
-          sourceRelPath: built.source.relPath,
-          sourceMtimeMs: built.source.mtimeMs,
-          format: 'zip',
-          deck: deck === true,
-          filename: `${base}.zip`,
-          mime: 'application/zip',
-        }),
-        async () => {
-          let html: string;
-          try {
-            html = await renderHeadlessHtmlSnapshot(
-              { input: built.input },
-              { projectId: req.params.id, format: 'zip' },
-            );
-          } catch (err) {
-            if (!isHeadlessChromiumUnavailableExportError(err)) throw err;
-            console.warn('[export/zip] headless Chromium unavailable; packaging static HTML fallback', {
-              projectId: req.params.id,
-              fileName,
-            });
-            html = buildStaticHtmlExportFallback(built.input);
-          }
-          const zip = new JSZip();
-          zip.file('index.html', html, { date: new Date(0), binary: false });
-          const buffer = await zip.generateAsync({
-            type: 'nodebuffer',
-            compression: 'DEFLATE',
-            compressionOptions: { level: 6 },
-          });
-          return { body: buffer, filename: `${base}.zip`, mime: 'application/zip' };
-        },
-        { fresh: wantsFreshExport(req) },
-      );
       await respondExportPayload(res, {
         projectId: req.params.id,
         ...outcomeAsRespondPayload(outcome),

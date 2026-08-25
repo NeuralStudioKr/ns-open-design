@@ -94,6 +94,33 @@ export function resolveExportTimeoutMs(): number {
   return Math.max(1_000, parsed);
 }
 
+export class DeckSlideCountLimitError extends Error {
+  readonly code = 'EXPORT_DECK_TOO_LARGE';
+
+  constructor(
+    readonly slideCount: number,
+    readonly maxSlides: number,
+  ) {
+    super(`PPTX export supports up to ${maxSlides} slides; this deck has ${slideCount}. Use PDF download for this large deck.`);
+    this.name = 'DeckSlideCountLimitError';
+  }
+}
+
+export function resolvePptxMaxSlides(): number {
+  const raw = (process.env.OD_EXPORT_PPTX_MAX_SLIDES ?? '').trim();
+  if (!raw) return 40;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed)) return 40;
+  return Math.max(0, parsed);
+}
+
+function assertPptxSlideCountWithinLimit(slideCount: number): void {
+  const maxSlides = resolvePptxMaxSlides();
+  if (maxSlides > 0 && slideCount > maxSlides) {
+    throw new DeckSlideCountLimitError(slideCount, maxSlides);
+  }
+}
+
 const EXPORT_TIMEOUT_MS = resolveExportTimeoutMs();
 const DECK_WIDTH = 1920;
 const DECK_HEIGHT = 1080;
@@ -524,6 +551,7 @@ export async function renderHeadlessDeckImages(
         if (slideCount <= 0) {
           throw new Error('no slides to export');
         }
+        assertPptxSlideCountWithinLimit(slideCount);
 
         const images: HeadlessDeckSlideImage[] = [];
         for (let index = 0; index < slideCount; index += 1) {
@@ -567,6 +595,7 @@ export async function renderHeadlessEditablePptx(
         if (slideCount <= 0) {
           throw new Error('no slides to export');
         }
+        assertPptxSlideCountWithinLimit(slideCount);
         await page.addScriptTag({ content: loadDomToPptxBundle() });
         const out = await evaluateInPage<{ b64?: string; error?: string }>(
           page,

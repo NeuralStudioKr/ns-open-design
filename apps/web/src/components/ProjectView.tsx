@@ -5329,14 +5329,20 @@ export function ProjectView({
             reason: 'incomplete-html-document-shell',
           };
         }
+        const motifSvgDump =
+          normalizedArtifactType === 'deck'
+          && deckArtifactStartsWithMotifSvgDump(artifactToPersist.html);
         const failedGenerateHeadings =
           normalizedArtifactType === 'deck'
-          && (
-            deckSlideHeadingsLookLikeFailedGenerate(artifactToPersist.html)
-            || deckArtifactStartsWithMotifSvgDump(artifactToPersist.html)
+          && deckSlideHeadingsLookLikeFailedGenerate(artifactToPersist.html)
+          && !isPersistableShortDeckDraftAfterHeal(
+            artifactToPersist.html,
+            persistHealBrief,
+            persistHealTitle,
           );
         if (
-          failedGenerateHeadings
+          motifSvgDump
+          || failedGenerateHeadings
           || (
             !trustSoftTruncationSalvage
             && normalizedArtifactType === 'deck'

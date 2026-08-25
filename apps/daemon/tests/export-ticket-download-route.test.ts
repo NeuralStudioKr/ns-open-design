@@ -120,8 +120,11 @@ describe('GET /api/projects/:id/export/downloads/:token', () => {
       expect(url.origin).toBe('https://teamver-design-data.s3.ap-northeast-2.amazonaws.com');
       expect(url.pathname).toBe('/teamver/exports/ws/proj/hash.pdf');
       expect(url.searchParams.get('X-Amz-Expires')).toBe('120');
-      expect(url.searchParams.get('response-content-disposition')).toContain('Seed Deck.pdf');
-      expect(url.searchParams.get('response-content-type')).toBe('application/pdf');
+      // Filename and content type are stored as S3 object metadata at PUT time.
+      // Putting RFC 5987 Content-Disposition into the signed query causes S3
+      // SignatureDoesNotMatch for non-ASCII filenames.
+      expect(url.searchParams.has('response-content-disposition')).toBe(false);
+      expect(url.searchParams.has('response-content-type')).toBe(false);
 
       const expired = await fetch(`${started.url}${stored.url}`, { redirect: 'manual' });
       expect(expired.status).toBe(404);

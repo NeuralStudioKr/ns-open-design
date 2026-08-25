@@ -197,6 +197,8 @@ const nextConfig: NextConfig = {
     VITE_TEAMVER_DRIVE_PUBLISH_FOLDER_ID: process.env.VITE_TEAMVER_DRIVE_PUBLISH_FOLDER_ID ?? '',
     VITE_TEAMVER_DRIVE_PUBLISH_SHARED_DRIVE_ID:
       process.env.VITE_TEAMVER_DRIVE_PUBLISH_SHARED_DRIVE_ID ?? '',
+    VITE_TEAMVER_EXPORT_ASYNC_JOBS_ENABLED:
+      process.env.VITE_TEAMVER_EXPORT_ASYNC_JOBS_ENABLED ?? '',
   },
   // Emit browser sourcemaps so packaged-runtime exceptions can be symbolicated
   // by PostHog. `tools/pack/src/web-sourcemaps.ts` runs after `next build`
