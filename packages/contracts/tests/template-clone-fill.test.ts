@@ -293,7 +293,12 @@ describe('sanitizeTemplateCloneDeckTitle', () => {
     expect(sanitizeTemplateCloneDeckTitle('Html Ppt Zhangzara Daisy Days')).toBeNull();
     expect(looksLikeInstructionCopy('[Deliverable instruction] Build a deck')).toBe(true);
     expect(looksLikeTemplateMarketingTitle('Html Ppt Zhangzara Daisy Days')).toBe(true);
+    expect(looksLikeTemplateMarketingTitle('Presentation')).toBe(true);
+    expect(looksLikeTemplateMarketingTitle('Slide')).toBe(true);
+    expect(looksLikeTemplateMarketingTitle('Presentation Skills')).toBe(false);
+    expect(sanitizeTemplateCloneDeckTitle('Presentation')).toBeNull();
     expect(looksLikeTemplateMarketingTitle('Expo for Senior Engineers')).toBe(false);
+    expect(deriveDeckCoverTitleFromBrief('', 'Presentation')).toBe('슬라이드');
     expect(sanitizeTemplateCloneDeckTitle('Expo SDK 개요')).toBe('Expo SDK 개요');
   });
 

@@ -530,9 +530,10 @@ function cleanCloneTitle(title: string): string {
 }
 
 export function looksLikeTemplateMarketingTitle(title: string): boolean {
+  const trimmed = title.trim();
   return /html\s*ppt|daisy days|simple deck|zhangzara|cheerful presentation|template for/i.test(
-    title,
-  );
+    trimmed,
+  ) || /^(?:presentation(?:\s+template)?|slide)$/i.test(trimmed);
 }
 
 function extractUserFacingBrief(text: string): string {
