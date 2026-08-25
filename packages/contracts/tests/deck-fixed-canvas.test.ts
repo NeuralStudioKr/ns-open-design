@@ -170,6 +170,43 @@ describe('pinDeckSlidesToFixedCanvas', () => {
     expect(pinned).toContain(DECK_SLIDE_FLOW_ATTR);
   });
 
+  it('strips Neutral navy/cream inline slide paint when official look CSS is present', () => {
+    const html = [
+      '<!doctype html><html><body>',
+      '<section class="slide" style="width:1920px;height:1080px;background:linear-gradient(#1e293b 0 38%, #f3efe4 38%);color:#f8fafc">',
+      '<h1>커버</h1>',
+      '</section>',
+      '<style data-od-official-look-css>.slide{background:#F5F0E6;color:#2D2D2D}.info-card{border:4px solid #111}</style>',
+      '</body></html>',
+    ].join('');
+    const pinned = pinDeckSlidesToFixedCanvas(html);
+    expect(pinned).not.toMatch(/class="slide"[^>]*#1e293b/);
+    expect(pinned).not.toMatch(/class="slide"[^>]*#f3efe4/);
+    expect(pinned).not.toMatch(/class="slide"[^>]*#f8fafc/);
+    expect(pinned).toContain('data-od-official-look-css');
+  });
+
+  it('does not flow catalog #deck shells after official-look CSS is merged', () => {
+    const html = [
+      '<!doctype html><html><head><style>',
+      '.slide { position:absolute; width:100%; height:100%; opacity:0 }',
+      '.slide.active { opacity:1 }',
+      '</style></head><body>',
+      '<div id="deck">',
+      '<section class="slide active" style="width:100vw;height:100vh">',
+      '<div class="split-card" style="position:absolute;top:80px;left:80px">Keep me</div>',
+      '</section>',
+      '<section class="slide">Body</section>',
+      '</div>',
+      '<style data-od-official-look-css>.slide{background:#111}</style>',
+      '</body></html>',
+    ].join('');
+    const pinned = pinDeckSlidesToFixedCanvas(html, { force: true });
+    expect(pinned).toMatch(/class="split-card"[^>]*position:absolute/);
+    expect(pinned).toContain('top:80px');
+    expect(pinned).not.toMatch(/<div\s+data-od-slide-flow\b/);
+  });
+
   it('is idempotent for the injected style tag', () => {
     const once = pinDeckSlidesToFixedCanvas(
       '<body><section class="slide" style="min-height:100vh">A</section></body>',

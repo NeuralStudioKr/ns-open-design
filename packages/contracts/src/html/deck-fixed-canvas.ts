@@ -472,6 +472,17 @@ function shouldSkipSlideFlowWrap(inner: string, hostAttrs: string): boolean {
   return /display\s*:\s*grid/i.test(style);
 }
 
+function wrapFlowOpenTag(hostAttrs: string): string {
+  const style = extractStyleAttr(hostAttrs);
+  const justify = /justify-content\s*:\s*([^;]+)/i.exec(style)?.[1]?.trim();
+  const align = /align-items\s*:\s*([^;]+)/i.exec(style)?.[1]?.trim();
+  const parts: string[] = [];
+  if (justify) parts.push(`justify-content:${justify}`);
+  if (align) parts.push(`align-items:${align}`);
+  const styleAttr = parts.length > 0 ? ` style="${parts.join(';')}"` : '';
+  return `<div ${DECK_SLIDE_FLOW_ATTR}${styleAttr}>`;
+}
+
 function wrapNonMotifInSpan(inner: string, hostAttrs: string): string {
   if (shouldSkipSlideFlowWrap(inner, hostAttrs)) return inner;
   const segs = listTopLevelSegments(inner);
@@ -484,7 +495,7 @@ function wrapNonMotifInSpan(inner: string, hostAttrs: string): string {
       pending = '';
       return;
     }
-    out += `<div ${DECK_SLIDE_FLOW_ATTR}>${pending}</div>`;
+    out += `${wrapFlowOpenTag(hostAttrs)}${pending}</div>`;
     pending = '';
   };
   for (const seg of segs) {
@@ -608,6 +619,63 @@ function injectFixedCanvasStyle(html: string): string {
   return `${tag}\n${html}`;
 }
 
+const NEUTRAL_FALLBACK_PAINT_RE =
+  /#(?:0f172a|1e293b|111827|0b1220|f8fafc|f1f5f9)(?![0-9a-f])/i;
+const KIT_IDENTITY_SLIDE_CLASS_RE =
+  /\b(?:tpl-|theme-|slide-red|s-cover|s-body|scanlines|hermes)\b/i;
+
+function looksLikeCatalogPresenterShell(html: string): boolean {
+  return (
+    /<div\b[^>]*\bid\s*=\s*["']deck(?:-track)?["']/i.test(html)
+    || /<(?:div|section)\b[^>]*\bclass\s*=\s*['"][^'"]*\bslide-deck\b/i.test(html)
+    || /<(?:div|section)\b[^>]*\bclass\s*=\s*['"][^'"]*\bpresentation\b/i.test(html)
+  );
+}
+
+function shouldApplyCompactCanvasHeals(html: string): boolean {
+  if (looksLikeOfficialFullscreenPresenterDeck(html)) return false;
+  if (looksLikeCatalogPresenterShell(html)) return false;
+  return true;
+}
+
+function stripNeutralFallbackHostStyle(style: string): string | null {
+  const source = String(style ?? '');
+  if (!NEUTRAL_FALLBACK_PAINT_RE.test(source)) return null;
+  const next = source
+    .replace(/(?:^|;)\s*background(?:-color|-image)?\s*:[^;]*/gi, (decl) => (
+      NEUTRAL_FALLBACK_PAINT_RE.test(decl) ? ';' : decl
+    ))
+    .replace(/(?:^|;)\s*color\s*:[^;]*/gi, (decl) => (
+      NEUTRAL_FALLBACK_PAINT_RE.test(decl) ? ';' : decl
+    ))
+    .replace(/;;+/g, ';')
+    .replace(/^;|;$/g, '')
+    .trim();
+  return next;
+}
+
+/**
+ * MiniMax compact samples paint `#0f172a` / cream gradients inline. Those
+ * beat official look `.slide { background: var(--paper) }` after merge.
+ */
+export function stripNeutralFallbackSlidePaint(html: string): string {
+  const source = String(html ?? '');
+  if (!/\bdata-od-official-look-css\b/i.test(source)) return source;
+  return source.replace(SLIDE_OPEN_RE, (open, _tag: string, attrs: string) => {
+    if (!isSlideHost(attrs)) return open;
+    if (KIT_IDENTITY_SLIDE_CLASS_RE.test(extractClassAttr(attrs))) return open;
+    if (!/\bstyle\s*=/i.test(attrs)) return open;
+    const nextAttrs = attrs.replace(
+      /\bstyle\s*=\s*(['"])([\s\S]*?)\1/i,
+      (_m, q: string, style: string) => {
+        const next = stripNeutralFallbackHostStyle(style);
+        return next == null ? `style=${q}${style}${q}` : `style=${q}${next}${q}`;
+      },
+    );
+    return open.replace(attrs, nextAttrs);
+  });
+}
+
 export type PinDeckSlidesToFixedCanvasOptions = {
   /**
    * Compact letterbox path: pin even when the HTML is still classified as an
@@ -637,10 +705,12 @@ export function pinDeckSlidesToFixedCanvas(
     return pinSlideOpenTag(open, attrs);
   });
   out = flowAbsoluteSlideFooters(out);
-  // Official catalog presenters keep authored inline absolute layouts when
-  // force-pinned for export / letterbox. MiniMax compact fills — including
-  // after official-look CSS merge — still need overlapping card/label flow.
-  if (!looksLikeOfficialFullscreenPresenterDeck(source)) {
+  // MiniMax compact / body-first fills need overlapping-card flow.
+  // Catalog `#deck` / `.presentation` shells keep authored absolute layouts
+  // even after official-look CSS merge (look attr would otherwise flip
+  // looksLikeOfficialFullscreenPresenterDeck to false).
+  if (shouldApplyCompactCanvasHeals(source)) {
+    out = stripNeutralFallbackSlidePaint(out);
     out = stripFloatingDeckIndexBadges(out);
     out = flowAbsoluteNonMotifSlideContent(out);
     out = bindFakeOutlineCardsToOfficialKit(out);

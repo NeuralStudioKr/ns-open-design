@@ -1695,8 +1695,11 @@ function mergeCssMotifSeeds(dest: string, seeds: string[]): string {
     return ensureSlideMotifRoleClass(out, seeds);
   }
 
+  const last = slides.length - 1;
   const nextSlides = slides.map((slide, index) => {
-    if (index > 1) return slide.html;
+    // Cover, second body, and closing — MiniMax compact fills skip motif
+    // on slides 3+ when seeds only land on index 0–1.
+    if (index > 1 && index !== last) return slide.html;
     if (destHasMotifIdentityProof(slide.html, seeds)) return slide.html;
     return insertMotifIntoSlide(slide.html, pack);
   });

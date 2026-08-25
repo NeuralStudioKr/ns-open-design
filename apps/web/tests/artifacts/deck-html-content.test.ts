@@ -53,6 +53,17 @@ describe("deck-html-content", () => {
     expect(isIncompleteHtmlDocumentShell(html)).toBe(false);
   });
 
+  it("treats a 3-slide MiniMax draft with only one titled slide as persistable", () => {
+    const html =
+      '<!doctype html><html lang="ko"><body>'
+      + '<section class="slide"><h1>시장 기회</h1><p>국내 SaaS 전환이 가속화되고 있습니다.</p></section>'
+      + '<section class="slide"></section>'
+      + '<section class="slide"></section>'
+      + '</body></html>';
+    expect(isPersistableShortDeckDraft(html)).toBe(true);
+    expect(isIncompleteHtmlDocumentShell(html)).toBe(false);
+  });
+
   it("does not treat a 3-slide outline/status shell as a persistable draft", () => {
     const html =
       '<!doctype html><html lang="ko"><body>'

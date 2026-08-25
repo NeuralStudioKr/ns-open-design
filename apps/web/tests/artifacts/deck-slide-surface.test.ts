@@ -111,6 +111,22 @@ html, body, .slide, section.slide { background: #F5F0E6 !important; color: #2D2D
     );
   });
 
+  it('flattens MiniMax Neutral navy/cream gradients once official look CSS is present', () => {
+    const html = `<!doctype html><html><head>
+<style data-od-official-look-css>
+:root{--bg:#F5F0E6;--fg:#2D2D2D}
+.slide{background:var(--bg);color:var(--fg)}
+</style>
+</head>
+<body style="margin:0">
+<section class="slide" style="width:1920px;height:1080px;background:linear-gradient(#1e293b 0 38%, #f3efe4 38%);color:#f8fafc">
+<h1>커버</h1>
+</section>
+</body></html>`;
+    const repaired = repairDeckSlideSurfaceBleed(html);
+    expect(repaired).toMatch(/html,\s*body,\s*\.slide[\s\S]*background:\s*#F5F0E6\s*!important/i);
+  });
+
   it('does not flatten Capsule radial-gradient slides with a --bg paper token', () => {
     const html = `<!doctype html><html><head><style>
 :root{--bg:#F5F5F0;--fg:#1A1A1A}
