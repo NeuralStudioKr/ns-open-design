@@ -49,6 +49,9 @@ import {
   tipRemountApplyLastGoodMatchesHostPaintResult,
   shouldApplyTipRemountMemberLastHostRectSeedRetry,
   expectedTipRemountUnionPaintBearingCount,
+  shouldCancelTipRemountMemberLastHostRectSeedRetryOnSelectionBoundary,
+  shouldPruneTipRemountMemberLastHostRectsOnSelectionCommit,
+  pruneTipRemountMemberLastHostRectsToSelection,
   resolveTipRemountRefreshMissAction,
   shouldClearTipRemountLastHostRectCache,
   shouldTrustTipRemountHostPaintDespiteComposedStale,
@@ -105,7 +108,7 @@ describe('manual-edit tip remount smoke (500/501/506)', () => {
     expect(webPackageJson).toContain('manual-edit-tip-post-protect-chrome-cross-walk.test.ts');
     expect(webPackageJson).toContain('manual-edit-tip-deck-nudge-follow-chrome-race.test.ts');
     expect(freezeSource).not.toContain('spendTipPostSoftLandExitLatch');
-    expect(freezeSource).toContain('Tip remount index (563)');
+    expect(freezeSource).toContain('Tip remount index (566)');
     expect(freezeSource).toContain('docs-teamver/49_tip_remount');
     expect(freezeSource).toContain('hostPaintRectForManualEditSelectionCommit');
     expect(freezeSource).toContain('resolveTipRemountRefreshMissAction');
@@ -115,7 +118,10 @@ describe('manual-edit tip remount smoke (500/501/506)', () => {
     expect(freezeSource).toContain('shouldSeedTipRemountMemberLastHostRectsOnMultiCommit');
     expect(freezeSource).toContain('shouldRetryTipRemountMemberLastHostRectSeed');
     expect(freezeSource).toContain('shouldApplyTipRemountMemberLastHostRectSeedRetry');
+    expect(freezeSource).toContain('shouldCancelTipRemountMemberLastHostRectSeedRetryOnSelectionBoundary');
     expect(freezeSource).toContain('expectedTipRemountUnionPaintBearingCount');
+    expect(freezeSource).toContain('shouldPruneTipRemountMemberLastHostRectsOnSelectionCommit');
+    expect(freezeSource).toContain('pruneTipRemountMemberLastHostRectsToSelection');
     expect(freezeSource).toContain('tipRemountApplyLastGoodMatchesHostPaintResult');
     expect(fileViewer).toContain('hostPaintRectForManualEditSelectionCommit');
     expect(fileViewer).toContain('resolveTipRemountRefreshMissAction');
@@ -124,7 +130,10 @@ describe('manual-edit tip remount smoke (500/501/506)', () => {
     expect(fileViewer).toContain('shouldSeedTipRemountMemberLastHostRectsOnMultiCommit');
     expect(fileViewer).toContain('shouldRetryTipRemountMemberLastHostRectSeed');
     expect(fileViewer).toContain('shouldApplyTipRemountMemberLastHostRectSeedRetry');
+    expect(fileViewer).toContain('shouldCancelTipRemountMemberLastHostRectSeedRetryOnSelectionBoundary');
     expect(fileViewer).toContain('expectedTipRemountUnionPaintBearingCount');
+    expect(fileViewer).toContain('shouldPruneTipRemountMemberLastHostRectsOnSelectionCommit');
+    expect(fileViewer).toContain('pruneTipRemountMemberLastHostRectsToSelection');
     expect(fileViewer).toContain('seedTipRemountMemberLastHostRectsForSelection');
     expect(fileViewer).toContain('scheduleTipRemountMemberLastHostRectSeedRetry');
     expect(fileViewer).toContain('tipRemountSeededLastGoodCount');
@@ -342,6 +351,28 @@ describe('manual-edit tip remount smoke (500/501/506)', () => {
     expect(expectedTipRemountUnionPaintBearingCount(true, false, 2, 2, 2)).toBe(2);
     expect(multiOverlay).toContain('expectedTipRemountUnionPaintBearingCount');
     expect(fileViewer).toContain('tipRemountSeededLastGoodCount');
+  });
+
+  it('cancels pending sibling seed retry on selection boundary (564)', () => {
+    expect(shouldCancelTipRemountMemberLastHostRectSeedRetryOnSelectionBoundary(true, true)).toBe(true);
+    expect(shouldCancelTipRemountMemberLastHostRectSeedRetryOnSelectionBoundary(true, false)).toBe(false);
+    expect(shouldCancelTipRemountMemberLastHostRectSeedRetryOnSelectionBoundary(false, true)).toBe(false);
+    expect(fileViewer).toContain('shouldCancelTipRemountMemberLastHostRectSeedRetryOnSelectionBoundary');
+    expect(fileViewer).toContain('cancelTipRemountMemberLastHostRectSeedRetry(true)');
+  });
+
+  it('prunes last-good cache to selected ids on tip/paint-sync commit (565)', () => {
+    expect(shouldPruneTipRemountMemberLastHostRectsOnSelectionCommit(true, false)).toBe(true);
+    expect(shouldPruneTipRemountMemberLastHostRectsOnSelectionCommit(false, true)).toBe(true);
+    expect(shouldPruneTipRemountMemberLastHostRectsOnSelectionCommit(false, false)).toBe(false);
+    const cache = new Map([
+      ['a', { x: 0, y: 0, width: 1, height: 1 }],
+      ['b', { x: 0, y: 0, width: 1, height: 1 }],
+      ['c', { x: 0, y: 0, width: 1, height: 1 }],
+    ]);
+    expect(pruneTipRemountMemberLastHostRectsToSelection(cache, ['a', 'c'])).toBe(1);
+    expect([...cache.keys()].sort()).toEqual(['a', 'c']);
+    expect(fileViewer).toContain('pruneTipRemountMemberLastHostRectsToSelection');
   });
 
   it('uses single host-paint entry with live seed (556)', () => {

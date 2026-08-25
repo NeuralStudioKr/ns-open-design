@@ -1,7 +1,7 @@
-# Tip remount 체감 체크리스트 (500–563)
+# Tip remount 체감 체크리스트 (500–566)
 
 Manual Edit tip-yield → remount → chrome interactive 경로의 **사용자 체감** 회귀 체크리스트입니다.  
-헬퍼/시퀀스 SSOT는 `apps/web/src/edit-mode/manual-edit-freeze.ts` 상단 **Tip remount index (563)** 와 아래 상수입니다.
+헬퍼/시퀀스 SSOT는 `apps/web/src/edit-mode/manual-edit-freeze.ts` 상단 **Tip remount index (566)** 와 아래 상수입니다.
 
 | 시퀀스 | 상수 |
 |--------|------|
@@ -46,6 +46,8 @@ CI fail-fast: `pnpm --filter @open-design/web test:tip-remount-smoke`
 - [ ] multi tip commit이 멤버별 last-good를 seed (555)
 - [ ] sibling seed incomplete 시 1회 rAF retry (558)
 - [ ] seed retry는 selection id fingerprint 불변일 때만 apply (561)
+- [ ] selection clear/commit/remove boundary에서 pending seed retry cancel (564)
+- [ ] tip/paint-sync commit 시 last-good cache를 선택 집합으로 prune (565)
 - [ ] tip/paint-sync 중 union `paintBearingCount`가 sibling seed count로 floor (562)
 - [ ] refresh miss 해석 순서: last-good → retain → force-keep → clear (549/550)
 - [ ] selection-commit last-good가 이어지는 refresh miss에서 apply-last-good로 연결 (549/550)
@@ -75,7 +77,7 @@ CI fail-fast: `pnpm --filter @open-design/web test:tip-remount-smoke`
 
 | 파일 | 범위 |
 |------|------|
-| `manual-edit-tip-remount-smoke.test.ts` | wiring 핀 500–562 |
+| `manual-edit-tip-remount-smoke.test.ts` | wiring 핀 500–565 |
 | `tip-remount-sequence-fixtures.ts` | soft-land×chrome 공유 walk (547) |
 | `manual-edit-tip-soft-land-absorb-sequence.test.ts` | post-protect walk |
 | `manual-edit-tip-chrome-release-sequence.test.ts` | chrome helper walk |
@@ -102,5 +104,6 @@ CI fail-fast: `pnpm --filter @open-design/web test:tip-remount-smoke`
 | 555–557 | multi sibling last-good seed, host-paint Result, checklist |
 | 558–560 | sibling seed rAF retry, apply-last-good↔Result, checklist 500–560 |
 | 561–563 | seed retry id gate, seed→union paintBearingCount floor, checklist 500–563 |
+| 564–566 | selection-boundary seed cancel, last-good prune-to-selection, checklist 500–566 |
 
 문서 갱신 시 `docs-teamver/00_구현_내역_누적.md` 최상단에도 한 줄을 남깁니다.

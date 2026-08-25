@@ -71,8 +71,11 @@ import {
   shouldSeedTipRemountMemberLastHostRectsOnMultiCommit,
   shouldRetryTipRemountMemberLastHostRectSeed,
   shouldCancelTipRemountMemberLastHostRectSeedRetry,
+  shouldCancelTipRemountMemberLastHostRectSeedRetryOnSelectionBoundary,
   shouldApplyTipRemountMemberLastHostRectSeedRetry,
   expectedTipRemountUnionPaintBearingCount,
+  shouldPruneTipRemountMemberLastHostRectsOnSelectionCommit,
+  pruneTipRemountMemberLastHostRectsToSelection,
   tipRemountApplyLastGoodMatchesHostPaintResult,
   resolveTipRemountRefreshMissAction,
   shouldClearTipRemountLastHostRectCache,
@@ -440,6 +443,9 @@ describe('manual edit freeze reset', () => {
     expect(shouldRetryTipRemountMemberLastHostRectSeed(2, 0, false, false, false)).toBe(false);
     expect(shouldCancelTipRemountMemberLastHostRectSeedRetry(true)).toBe(true);
     expect(shouldCancelTipRemountMemberLastHostRectSeedRetry(false)).toBe(false);
+    expect(shouldCancelTipRemountMemberLastHostRectSeedRetryOnSelectionBoundary(true, true)).toBe(true);
+    expect(shouldCancelTipRemountMemberLastHostRectSeedRetryOnSelectionBoundary(true, false)).toBe(false);
+    expect(shouldCancelTipRemountMemberLastHostRectSeedRetryOnSelectionBoundary(false, true)).toBe(false);
     expect(shouldApplyTipRemountMemberLastHostRectSeedRetry(['a', 'b'], ['a', 'b'])).toBe(true);
     expect(shouldApplyTipRemountMemberLastHostRectSeedRetry(['a', 'b'], ['b', 'a'])).toBe(false);
     expect(shouldApplyTipRemountMemberLastHostRectSeedRetry(['a'], ['a', 'b'])).toBe(false);
@@ -447,6 +453,15 @@ describe('manual edit freeze reset', () => {
     expect(expectedTipRemountUnionPaintBearingCount(false, true, 3, 3, 0)).toBe(3);
     expect(expectedTipRemountUnionPaintBearingCount(false, false, 3, 2, 1)).toBe(1);
     expect(expectedTipRemountUnionPaintBearingCount(true, false, 2, 5, 1)).toBe(2);
+    expect(shouldPruneTipRemountMemberLastHostRectsOnSelectionCommit(true, false)).toBe(true);
+    expect(shouldPruneTipRemountMemberLastHostRectsOnSelectionCommit(false, false)).toBe(false);
+    const pruneCache = new Map([
+      ['x', { x: 1, y: 2, width: 3, height: 4 }],
+      ['y', { x: 5, y: 6, width: 7, height: 8 }],
+    ]);
+    expect(pruneTipRemountMemberLastHostRectsToSelection(pruneCache, ['y'])).toBe(1);
+    expect(pruneCache.has('x')).toBe(false);
+    expect(pruneCache.has('y')).toBe(true);
     expect(resolveTipRemountOverlayHostPaintRect(
       true, false, null, { x: 1, y: 2, width: 3, height: 4 },
     )).toEqual({ x: 1, y: 2, width: 3, height: 4 });

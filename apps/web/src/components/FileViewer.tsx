@@ -416,8 +416,11 @@ import {
   shouldSeedTipRemountMemberLastHostRectsOnMultiCommit,
   shouldRetryTipRemountMemberLastHostRectSeed,
   shouldCancelTipRemountMemberLastHostRectSeedRetry,
+  shouldCancelTipRemountMemberLastHostRectSeedRetryOnSelectionBoundary,
   shouldApplyTipRemountMemberLastHostRectSeedRetry,
   expectedTipRemountUnionPaintBearingCount,
+  shouldPruneTipRemountMemberLastHostRectsOnSelectionCommit,
+  pruneTipRemountMemberLastHostRectsToSelection,
   resolveTipRemountRefreshMissAction,
   tipRemountApplyLastGoodMatchesHostPaintResult,
   shouldClearTipRemountLastHostRectCache,
@@ -8562,10 +8565,17 @@ function HtmlViewer({
     return seeded;
   }
 
-  function cancelTipRemountMemberLastHostRectSeedRetry() {
-    if (shouldCancelTipRemountMemberLastHostRectSeedRetry(
-      manualEditTipMemberSeedRetryRafRef.current != null,
-    )) {
+  function cancelTipRemountMemberLastHostRectSeedRetry(
+    selectionBoundaryChanged?: boolean,
+  ) {
+    const pending = manualEditTipMemberSeedRetryRafRef.current != null;
+    const shouldCancel = selectionBoundaryChanged === undefined
+      ? shouldCancelTipRemountMemberLastHostRectSeedRetry(pending)
+      : shouldCancelTipRemountMemberLastHostRectSeedRetryOnSelectionBoundary(
+        pending,
+        selectionBoundaryChanged,
+      );
+    if (shouldCancel) {
       window.cancelAnimationFrame(manualEditTipMemberSeedRetryRafRef.current!);
       manualEditTipMemberSeedRetryRafRef.current = null;
     }
@@ -12882,6 +12892,8 @@ function HtmlViewer({
     const base = sourceRef.current ?? '';
     // One Document for snapshot + multi-select inspector merge.
     const parsedDoc = parseManualEditSource(base);
+    // Drop stale sibling seed retry before membership mutates (564).
+    cancelTipRemountMemberLastHostRectSeedRetry(true);
     clearManualEditTipRemountGeometryGraceIfNeeded(primary.id);
     selectedManualEditTargetIdRef.current = primary.id;
     selectedManualEditTargetRef.current = primary;
@@ -12896,6 +12908,16 @@ function HtmlViewer({
     // null — refresh early-return or multi commit must not flash hybrid (546).
     const tipSessionLive = tipRemountChromeSessionLiveNow();
     const paintSyncHold = manualEditTipPaintSyncHoldRef.current;
+    // Drop deselected last-good so seed floor / overlay cannot reuse ghosts (565).
+    if (shouldPruneTipRemountMemberLastHostRectsOnSelectionCommit(
+      tipSessionLive,
+      paintSyncHold,
+    )) {
+      pruneTipRemountMemberLastHostRectsToSelection(
+        manualEditTipLastHostRectByIdRef.current,
+        nextIds,
+      );
+    }
     setManualEditHostPaintRect(hostPaintRectForManualEditSelectionCommit(
       tipSessionLive,
       paintSyncHold,
@@ -12982,6 +13004,17 @@ function HtmlViewer({
     }
     // Clear tip-remount grace with selection clear (overlay residual).
     clearManualEditTipRemountGeometryGraceIfNeeded(null);
+    // clear→reselect same ids must not apply a stale sibling seed rAF (564).
+    cancelTipRemountMemberLastHostRectSeedRetry(true);
+    if (shouldPruneTipRemountMemberLastHostRectsOnSelectionCommit(
+      tipRemountChromeSessionLiveNow(),
+      manualEditTipPaintSyncHoldRef.current,
+    )) {
+      pruneTipRemountMemberLastHostRectsToSelection(
+        manualEditTipLastHostRectByIdRef.current,
+        [],
+      );
+    }
     selectedManualEditTargetIdRef.current = null;
     selectedManualEditTargetRef.current = null;
     selectedManualEditTargetIdsRef.current = [];
@@ -13229,6 +13262,16 @@ function HtmlViewer({
         });
         if (remainingIds.length === 0) {
           clearManualEditTipRemountGeometryGraceIfNeeded(null);
+          cancelTipRemountMemberLastHostRectSeedRetry(true);
+          if (shouldPruneTipRemountMemberLastHostRectsOnSelectionCommit(
+            tipRemountChromeSessionLiveNow(),
+            manualEditTipPaintSyncHoldRef.current,
+          )) {
+            pruneTipRemountMemberLastHostRectsToSelection(
+              manualEditTipLastHostRectByIdRef.current,
+              [],
+            );
+          }
           selectedManualEditTargetIdRef.current = null;
           selectedManualEditTargetRef.current = null;
           selectedManualEditTargetIdsRef.current = [];
@@ -13246,6 +13289,16 @@ function HtmlViewer({
           const nextIds = refreshed.map((item) => item.id);
           const primary = refreshed[refreshed.length - 1]!;
           clearManualEditTipRemountGeometryGraceIfNeeded(primary.id);
+          cancelTipRemountMemberLastHostRectSeedRetry(true);
+          if (shouldPruneTipRemountMemberLastHostRectsOnSelectionCommit(
+            tipRemountChromeSessionLiveNow(),
+            manualEditTipPaintSyncHoldRef.current,
+          )) {
+            pruneTipRemountMemberLastHostRectsToSelection(
+              manualEditTipLastHostRectByIdRef.current,
+              nextIds,
+            );
+          }
           selectedManualEditTargetIdRef.current = primary.id;
           selectedManualEditTargetRef.current = primary;
           selectedManualEditTargetIdsRef.current = nextIds;

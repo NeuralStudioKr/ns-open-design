@@ -10,7 +10,7 @@
  * from the latest live/saved source.
  *
  * ---------------------------------------------------------------------------
- * Tip remount index (563) — user-perception sequences & key constants
+ * Tip remount index (566) — user-perception sequences & key constants
  * ---------------------------------------------------------------------------
  * Post-protect: TIP_REMOUNT_POST_PROTECT_SEQUENCE
  *   sticky-clear → soft-land → exit-latch → absorb → post-absorb-quiet → live
@@ -34,9 +34,11 @@
  *   refreshes primary during tip/paint-sync so union measure warms (552).
  * Multi sibling seed: shouldSeedTipRemountMemberLastHostRectsOnMultiCommit (555);
  *   one rAF retry when iframe/layout not ready (558);
- *   retry only when selection ids unchanged (561).
+ *   retry only when selection ids unchanged (561);
+ *   cancel pending retry on selection clear/boundary (564).
  * Seed → union: expectedTipRemountUnionPaintBearingCount floors
  *   paintBearingCount during tip/paint-sync (562).
+ * Last-good cache: prune to selected ids on tip/paint-sync commit (565).
  * Refresh miss: resolveTipRemountRefreshMissAction — last-good → retain →
  *   force-keep → clear (549/550). Selection-commit last-good feeds the same
  *   last-good branch on the following refresh.
@@ -45,7 +47,7 @@
  * Intentional nulls (5): mode-exit / no-id / refresh(!id) / unprotected miss /
  *   clear-selection.
  * Walk fixtures: apps/web/tests/edit-mode/tip-remount-sequence-fixtures.ts (547).
- * Checklist: docs-teamver/49_tip_remount_체감_체크리스트_500-563.md (563).
+ * Checklist: docs-teamver/49_tip_remount_체감_체크리스트_500-566.md (566).
  * Do not retune fit delays / latch / soft-land without a tip-remount loop note.
  */
 export function shouldClearManualEditFrozenSourceOnModeChange(
@@ -1463,6 +1465,18 @@ export function shouldCancelTipRemountMemberLastHostRectSeedRetry(
 }
 
 /**
+ * Selection clear / id-set change must drop a pending sibling seed retry —
+ * otherwise clear→reselect same ids can apply a stale rAF seed (564).
+ * Complements shouldApplyTipRemountMemberLastHostRectSeedRetry (561).
+ */
+export function shouldCancelTipRemountMemberLastHostRectSeedRetryOnSelectionBoundary(
+  pendingRaf: boolean,
+  selectionBoundaryChanged: boolean,
+): boolean {
+  return pendingRaf && selectionBoundaryChanged;
+}
+
+/**
  * Seed-retry rAF must only apply when selection membership (order + ids) is
  * unchanged since schedule — drop stale retries after selection churn (561).
  */
@@ -1492,6 +1506,35 @@ export function expectedTipRemountUnionPaintBearingCount(
     memberCount,
     Math.max(livePaintBearingCount, seededLastGoodCount),
   );
+}
+
+/**
+ * Tip/paint-sync selection commit: drop last-good boxes for ids no longer in
+ * the selected set so union seed floor / overlay reuse cannot see ghosts (565).
+ */
+export function shouldPruneTipRemountMemberLastHostRectsOnSelectionCommit(
+  tipRemountChromeSessionLive: boolean,
+  paintSyncHoldArmed: boolean,
+): boolean {
+  return tipRemountChromeSessionLive || paintSyncHoldArmed;
+}
+
+/**
+ * Keep only selected-id last-good entries; returns how many keys were removed.
+ */
+export function pruneTipRemountMemberLastHostRectsToSelection(
+  cache: Map<string, TipRemountHostPaintRect>,
+  selectedIds: readonly string[],
+): number {
+  const keep = new Set(selectedIds);
+  let removed = 0;
+  for (const id of [...cache.keys()]) {
+    if (!keep.has(id)) {
+      cache.delete(id);
+      removed += 1;
+    }
+  }
+  return removed;
 }
 
 /**
