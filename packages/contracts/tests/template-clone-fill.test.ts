@@ -373,6 +373,9 @@ describe('sanitizeTemplateCloneDeckTitle', () => {
         'AI 트렌드 발표자료를 만들어줘\n\n[Deliverable instruction]\nIgnore this.',
       ),
     ).toMatch(/AI 트렌드/);
+    expect(deriveDeckCoverTitleFromBrief('')).toBe('슬라이드');
+    expect(deriveDeckCoverTitleFromBrief('슬라이드 만들어줘')).toBe('슬라이드');
+    expect(deriveDeckCoverTitleFromBrief('만들어줘', '만들어줘')).toBe('슬라이드');
   });
 
   it('does not synthesize marketing titles when the brief is only a template name', () => {
@@ -388,7 +391,7 @@ describe('sanitizeTemplateCloneDeckTitle', () => {
       slides,
       { title: 'Html Ppt Zhangzara Daisy Days' },
     );
-    expect(cloned).toMatch(/<h1[^>]*>Presentation<\/h1>/);
+    expect(cloned).toMatch(/<h1[^>]*>슬라이드<\/h1>/);
     expect(cloned).not.toContain('Html Ppt Zhangzara Daisy Days');
     expect(cloned).not.toContain('Daisy Days');
   });
