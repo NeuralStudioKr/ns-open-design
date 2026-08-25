@@ -339,13 +339,18 @@ export function collectEmergencyHtmlSalvageTexts(options: {
 export function recoverEmergencyDeckHtmlFromStream(options: {
   finalText?: string | null;
   outlineMessages?: readonly ChatMessage[];
+  healBrief?: string | null;
+  healTitle?: string | null;
 }): string | null {
   for (const text of collectEmergencyHtmlSalvageTexts(options)) {
     const recovered = recoverBestHtmlDocumentFromText(text);
     if (!recovered || !validateHtmlArtifact(recovered).ok) continue;
     // Soft-salvaged sparse decks may still trip the strict incomplete shell
     // ratio — accept them for emergency persist the same way as live salvage.
-    if (!isIncompleteHtmlDocumentShell(recovered) || isClosedSoftSalvageDeckHtml(recovered)) {
+    if (
+      !isIncompleteHtmlDocumentShell(recovered, options.healBrief, options.healTitle)
+      || isClosedSoftSalvageDeckHtml(recovered)
+    ) {
       return recovered;
     }
   }
@@ -392,6 +397,8 @@ export async function attemptEmergencySlideDeckRecovery(options: {
   const recoveredHtml = recoverEmergencyDeckHtmlFromStream({
     finalText: options.finalText,
     outlineMessages: options.outlineMessages,
+    healBrief: options.healBrief,
+    healTitle: options.healTitle,
   });
   if (!recoveredHtml) {
     return { recovered: false, produced: [], htmlToOpen: null };

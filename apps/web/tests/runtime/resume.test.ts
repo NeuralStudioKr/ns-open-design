@@ -191,6 +191,10 @@ describe('runtime/resume shell/no-HTML recovery constants', () => {
     });
     expect(prompt).toContain('BODY-FIRST');
     expect(prompt).toContain('Do NOT regenerate');
+    expect(prompt).toContain('Cover = eyebrow + headline + one lead');
+    expect(prompt).toContain('no stats/footer');
+    expect(prompt).toContain('One idea per slide');
+    expect(prompt).toContain('커버는 eyebrow·제목·리드 한 줄만');
   });
 
   it('keeps Clone content-fill CREATE contract on auto-continue', () => {
@@ -206,6 +210,8 @@ describe('runtime/resume shell/no-HTML recovery constants', () => {
     expect(prompt).toContain('NEVER "수정 반영 중"');
     expect(prompt).toContain('Do not restart from `<head>`');
     expect(prompt).toContain('1–6 slide first-fill draft');
+    expect(prompt).toContain('cover: eyebrow + headline + lead');
+    expect(prompt).toContain('one idea each');
     expect(prompt).toContain('Official look/Motif CSS is merged after save');
     expect(prompt).not.toContain('디스크의 덱을 기준으로');
     expect(prompt).not.toContain('이미 저장된 슬라이드 덱');

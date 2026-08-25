@@ -64,7 +64,8 @@ export const AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT =
   `${FIRST_FILL_SLIDE_COUNT_GUIDANCE} ` +
   '7장 이상은 hidden top-up이 이어 붙입니다. ' +
   `외부 파일 참조, 프레임워크 스켈레톤 복사, SLOT 주석, 추가 툴 호출 없이 이 한 번의 응답에서 ${FIRST_FILL_SLIDE_COUNT_THIS_TURN}장을 완결지어야 합니다. ` +
-  '각 슬라이드는 제목과 2~4개의 실제 문장/불릿을 가져야 하며 빈 `<head>`나 빈 `<body>`로 끝내면 안 됩니다. ' +
+  '커버는 eyebrow·제목·리드 한 줄만(통계 칸·메타 footer 금지). 본문 장은 제목과 2~4개 불릿(한 아이디어). ' +
+  '한 장에 제목+부제+통계+footer를 같이 넣지 마세요. 빈 `<head>`나 빈 `<body>`로 끝내면 안 됩니다. ' +
   '(English: Use ONLY this conversation in this project. Do not continue any other project. ' +
   `The previous turn in THIS chat produced no usable slide deck — emit ${FIRST_FILL_SLIDE_COUNT_THIS_TURN} body-first slides ` +
   'inside a single artifact starting at body or the first section.slide. ' +
@@ -94,7 +95,8 @@ const AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT_ESCALATED =
   // persist can finish instead of another incomplete-html-document-shell.
   `이번 턴은 정확히 ${FIRST_FILL_SLIDE_COUNT_THIS_TURN}장의 body-first 슬라이드를 닫으세요. 7장 이상 전체 재작성은 금지입니다. ` +
   `${FIRST_FILL_SLIDE_COUNT_GUIDANCE} ` +
-  '각 슬라이드에는 SLOT 주석이 아니라 실제 텍스트 콘텐츠(제목·본문·목록)가 반드시 들어가야 합니다. ' +
+  '각 슬라이드에는 SLOT 주석이 아니라 실제 텍스트가 들어가야 합니다. ' +
+  '커버는 eyebrow·제목·리드만, 본문은 제목+2~4불릿, 한 장에 통계+footer를 같이 넣지 마세요. ' +
   '이 대화의 Plugin inputs·quick-brief 답변·선택 템플릿 맥락을 유지하고, 새 질문으로 되돌아가지 마세요. ' +
   '인라인 CSS는 최소한만 쓰고, 필요하면 프레임워크 스크립트를 생략해도 좋습니다 — 빈 덱보다 스크롤로 넘기는 정적 덱이 낫습니다. ' +
   '`<!-- SLOT: ... -->` 형태의 주석 자리표시자를 그대로 남기는 것은 금지입니다. ' +
@@ -145,7 +147,8 @@ const AUTO_CONTINUE_HEAD_ONLY_BODY_FIRST =
   + 'and never produced filled `<section class="slide">` bodies. '
   + 'Do NOT regenerate Daisy Days / Zhangzara / Neutral chrome or large `<style>` blocks. '
   + 'Emit BODY-FIRST: start the artifact with `<body>` (or the first `<section class="slide">`), '
-  + 'use only tiny inline style tokens, and fill every slide with real title + 2–4 bullets NOW. '
+  + 'use only tiny inline style tokens. Cover = eyebrow + headline + one lead (no stats/footer). '
+  + 'Body slides = title + 2–4 bullets. One idea per slide. '
   + 'Official look/Motif CSS is merged after save — do not stream `<head>` or example.html styles. '
   + `Close exactly ${FIRST_FILL_SLIDE_COUNT_THIS_TURN} body-first slides this turn. Hidden top-up only for 7+. `
   + 'A compact static deck beats another CSS-only truncation.';
@@ -153,7 +156,8 @@ const AUTO_CONTINUE_HEAD_ONLY_BODY_FIRST =
 const AUTO_CONTINUE_TEMPLATE_FILL_MIN_SLIDES =
   '\n\nCRITICAL: Do not restart from `<head>` / kit CSS. Persist keeps a '
   + `1–${FIRST_FILL_SLIDE_COUNT_THIS_TURN} slide first-fill draft and hidden top-up only for 7+ — do not burn this turn `
-  + 'rewriting Daisy Days chrome. Emit BODY-FIRST slides (title + 2–4 bullets). '
+  + 'rewriting Daisy Days chrome. Emit BODY-FIRST slides '
+  + '(cover: eyebrow + headline + lead; body: title + 2–4 bullets; one idea each). '
   + 'If you continue, APPEND more `<section class="slide">` (or `<div class="slide">`) '
   + 'bodies. Official look/Motif CSS is merged after save.';
 

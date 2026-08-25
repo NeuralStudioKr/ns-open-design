@@ -382,6 +382,11 @@ describe('recoverEmergencyDeckHtmlFromStream', () => {
     expect(recoverEmergencyDeckHtmlFromStream({
       finalText: `작성 중\n${shortParrot}`,
     })).toContain('슬라이드 만들어줘');
+    expect(recoverEmergencyDeckHtmlFromStream({
+      finalText: `작성 중\n${shortParrot}`,
+      healBrief: '슬라이드 만들어줘',
+      healTitle: '슬라이드',
+    })).toContain('슬라이드 만들어줘');
   });
 });
 
