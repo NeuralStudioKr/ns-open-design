@@ -1684,22 +1684,16 @@ function ensureSlideMotifRoleClass(dest: string, seeds: string[]): string {
 function mergeCssMotifSeeds(dest: string, seeds: string[]): string {
   if (!dest || seeds.length === 0) return dest;
   let out = dest;
-  if (destHasMotifIdentityProof(out, seeds)) {
-    return ensureSlideMotifRoleClass(out, seeds);
-  }
-
   const pack = seeds.slice(0, 2).join('\n');
   const slides = listSlideBlocks(out);
   if (slides.length === 0) {
-    out = insertAfterOpenBody(out, pack);
+    if (!destHasMotifIdentityProof(out, seeds)) {
+      out = insertAfterOpenBody(out, pack);
+    }
     return ensureSlideMotifRoleClass(out, seeds);
   }
 
-  const last = slides.length - 1;
-  const nextSlides = slides.map((slide, index) => {
-    // Cover, second body, and closing — MiniMax compact fills skip motif
-    // on slides 3+ when seeds only land on index 0–1.
-    if (index > 1 && index !== last) return slide.html;
+  const nextSlides = slides.map((slide) => {
     if (destHasMotifIdentityProof(slide.html, seeds)) return slide.html;
     return insertMotifIntoSlide(slide.html, pack);
   });

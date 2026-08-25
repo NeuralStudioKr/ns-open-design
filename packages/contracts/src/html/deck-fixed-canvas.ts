@@ -443,13 +443,11 @@ function mapSlideInners(
 
 function isFloatingIndexBadgeHost(tag: string, attrs: string): boolean {
   if (/^(span|small|label|em|strong|b|i)$/i.test(tag)) return true;
-  // MiniMax often parks "05 / CHECKLIST" on absolute `div`/`p` chrome.
-  // Keep in-flow template chrome like `.slide-chrome` / `01 / Studio`.
+  // MiniMax parks "05 / CHECKLIST" on absolute chrome, then as in-flow
+  // `div`/`p` after absolute→flow. Keep `.slide-chrome` / `01 / Studio`.
   if (!/^(div|p)$/i.test(tag)) return false;
   if (/\bslide-chrome\b/i.test(attrs)) return false;
-  const style = extractStyleAttr(attrs);
-  if (/position\s*:\s*absolute/i.test(style)) return true;
-  return /\b(?:badge|index|overlay|page-label|slide-label|kicker)\b/i.test(attrs);
+  return true;
 }
 
 function stripFloatingIndexBadgesInSpan(inner: string): string {
@@ -476,26 +474,44 @@ export function stripFloatingDeckIndexBadges(html: string): string {
   return mapSlideInners(html, (inner) => stripFloatingIndexBadgesInSpan(inner));
 }
 
-function shouldSkipSlideFlowWrap(inner: string, hostAttrs: string): boolean {
+function shouldSkipSlideFlowWrap(inner: string): boolean {
   if (new RegExp(`\\b${DECK_SLIDE_FLOW_ATTR}\\b`, 'i').test(inner)) return true;
   if (SPLIT_LAYOUT_RE.test(inner)) return true;
-  const style = extractStyleAttr(hostAttrs);
-  return /display\s*:\s*grid/i.test(style);
+  return false;
 }
+
+const FLOW_COPIED_STYLE_PROPS = [
+  'display',
+  'justify-content',
+  'align-items',
+  'align-content',
+  'justify-items',
+  'gap',
+  'row-gap',
+  'column-gap',
+  'grid-template-columns',
+  'grid-template-rows',
+  'grid-template-areas',
+  'grid-auto-flow',
+  'grid-auto-rows',
+  'grid-auto-columns',
+] as const;
 
 function wrapFlowOpenTag(hostAttrs: string): string {
   const style = extractStyleAttr(hostAttrs);
-  const justify = /justify-content\s*:\s*([^;]+)/i.exec(style)?.[1]?.trim();
-  const align = /align-items\s*:\s*([^;]+)/i.exec(style)?.[1]?.trim();
   const parts: string[] = [];
-  if (justify) parts.push(`justify-content:${justify}`);
-  if (align) parts.push(`align-items:${align}`);
+  for (const prop of FLOW_COPIED_STYLE_PROPS) {
+    const escaped = prop.replace(/-/g, '\\-');
+    const value = new RegExp(`(?:^|;)\\s*${escaped}\\s*:\\s*([^;]+)`, 'i')
+      .exec(style)?.[1]?.trim();
+    if (value) parts.push(`${prop}:${value}`);
+  }
   const styleAttr = parts.length > 0 ? ` style="${parts.join(';')}"` : '';
   return `<div ${DECK_SLIDE_FLOW_ATTR}${styleAttr}>`;
 }
 
 function wrapNonMotifInSpan(inner: string, hostAttrs: string): string {
-  if (shouldSkipSlideFlowWrap(inner, hostAttrs)) return inner;
+  if (shouldSkipSlideFlowWrap(inner)) return inner;
   const segs = listTopLevelSegments(inner);
   if (segs.length === 0) return inner;
   let out = '';
@@ -531,11 +547,23 @@ export function wrapNonMotifSlideFlow(html: string): string {
   return mapSlideInners(html, (inner, span) => wrapNonMotifInSpan(inner, span.hostAttrs));
 }
 
+function expandCssColorTokens(style: string): string {
+  return String(style ?? '').replace(
+    /rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})(?:\s*,\s*[\d.]+)?\s*\)/gi,
+    (_m, r: string, g: string, b: string) => {
+      const hex = [r, g, b]
+        .map((n) => Math.max(0, Math.min(255, Number(n))).toString(16).padStart(2, '0'))
+        .join('');
+      return `#${hex}`;
+    },
+  );
+}
+
 function looksLikeFakeOutlineStyle(style: string): boolean {
   const source = String(style ?? '');
   if (!/(?:^|;)\s*(?:border|outline)(?:-width|-color|-style)?\s*:/i.test(source)) return false;
   if (!/\b(?:1px|2px)\b/i.test(source)) return false;
-  return FAKE_OUTLINE_COLOR_RE.test(source);
+  return FAKE_OUTLINE_COLOR_RE.test(expandCssColorTokens(source));
 }
 
 function stripFakeOutlineStyle(style: string): string {
@@ -665,14 +693,52 @@ function stripNeutralFallbackHostStyle(style: string): string | null {
   return next;
 }
 
+function looksLikeFullBleedSurface(style: string): boolean {
+  const source = String(style ?? '');
+  if (!source.trim()) return false;
+  if (/position\s*:\s*absolute/i.test(source) && /\binset\s*:\s*0\b/i.test(source)) {
+    return true;
+  }
+  const fullSize = /(?:^|;)\s*width\s*:\s*100(?:%|vw)\b/i.test(source)
+    && /(?:^|;)\s*height\s*:\s*100(?:%|vh)\b/i.test(source);
+  if (!fullSize) return false;
+  return /position\s*:\s*absolute/i.test(source)
+    || /(?:^|;)\s*top\s*:\s*0(?:px)?\b/i.test(source);
+}
+
+function stripNeutralFallbackInnerPaint(inner: string): string {
+  const segs = listTopLevelSegments(inner);
+  let next = inner;
+  for (let i = segs.length - 1; i >= 0; i -= 1) {
+    const seg = segs[i]!;
+    const raw = next.slice(seg.start, seg.end);
+    const open = openTagOf(raw);
+    if (!open) continue;
+    if (isMotifOrDecoAttrs(open.attrs) || isContentFooterHost(open.attrs)) continue;
+    if (KIT_IDENTITY_SLIDE_CLASS_RE.test(extractClassAttr(open.attrs))) continue;
+    const style = extractStyleAttr(open.attrs);
+    if (!looksLikeFullBleedSurface(style)) continue;
+    const stripped = stripNeutralFallbackHostStyle(style);
+    if (stripped == null) continue;
+    const nextRaw = raw.replace(
+      /\bstyle\s*=\s*(['"])([\s\S]*?)\1/i,
+      (_m, q: string) => `style=${q}${stripped}${q}`,
+    );
+    next = `${next.slice(0, seg.start)}${nextRaw}${next.slice(seg.end)}`;
+  }
+  return next;
+}
+
 /**
  * MiniMax compact samples paint `#0f172a` / cream gradients inline. Those
  * beat official look `.slide { background: var(--paper) }` after merge.
+ * Full-bleed inner panels are stripped the same way — host-only strip
+ * leaves an overlay that still hides official paper.
  */
 export function stripNeutralFallbackSlidePaint(html: string): string {
   const source = String(html ?? '');
   if (!/\bdata-od-official-look-css\b/i.test(source)) return source;
-  return source.replace(SLIDE_OPEN_RE, (open, _tag: string, attrs: string) => {
+  const hosts = source.replace(SLIDE_OPEN_RE, (open, _tag: string, attrs: string) => {
     if (!isSlideHost(attrs)) return open;
     if (KIT_IDENTITY_SLIDE_CLASS_RE.test(extractClassAttr(attrs))) return open;
     if (!/\bstyle\s*=/i.test(attrs)) return open;
@@ -685,6 +751,7 @@ export function stripNeutralFallbackSlidePaint(html: string): string {
     );
     return open.replace(attrs, nextAttrs);
   });
+  return mapSlideInners(hosts, (inner) => stripNeutralFallbackInnerPaint(inner));
 }
 
 export type PinDeckSlidesToFixedCanvasOptions = {

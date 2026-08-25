@@ -161,14 +161,32 @@ describe('pinDeckSlidesToFixedCanvas', () => {
     expect(pinned).toContain('Card body');
   });
 
-  it('does not wrap display:grid slide children into a flow clip', () => {
+  it('strips in-flow MiniMax index badge paragraphs after absolute-to-flow', () => {
+    const html = [
+      '<section class="slide" style="width:1920px;height:1080px">',
+      '<p>05 / CHECKLIST</p>',
+      '<div class="slide-chrome">01 / Studio</div>',
+      '<div class="info-card">Card body</div>',
+      '</section>',
+    ].join('');
+    const pinned = pinDeckSlidesToFixedCanvas(html);
+    expect(pinned).not.toContain('05 / CHECKLIST');
+    expect(pinned).toContain('01 / Studio');
+    expect(pinned).toContain('Card body');
+  });
+
+  it('wraps display:grid slide children with a grid-preserving flow clip', () => {
     const html = [
       '<section class="slide" style="width:1920px;height:1080px;display:grid;grid-template-columns:1fr 1fr">',
       '<div class="card">Left</div><div class="card">Right</div>',
       '</section>',
     ].join('');
     const pinned = pinDeckSlidesToFixedCanvas(html);
-    expect(pinned).not.toMatch(/<div\s+data-od-slide-flow\b/);
+    expect(pinned).toMatch(
+      /<div data-od-slide-flow style="display:grid;grid-template-columns:1fr 1fr">/,
+    );
+    expect(pinned).toContain('<div class="card">Left</div>');
+    expect(pinned).not.toMatch(/class="slide"[^>]*overflow:\s*hidden/);
   });
 
   it('binds MiniMax navy/blue outline boxes to official kit card classes', () => {
@@ -199,6 +217,25 @@ describe('pinDeckSlidesToFixedCanvas', () => {
     expect(pinned).not.toMatch(/class="slide"[^>]*#1e293b/);
     expect(pinned).not.toMatch(/class="slide"[^>]*#f3efe4/);
     expect(pinned).not.toMatch(/class="slide"[^>]*#f8fafc/);
+    expect(pinned).toContain('data-od-official-look-css');
+  });
+
+  it('strips Neutral paint from full-bleed inner overlays when official look CSS is present', () => {
+    const html = [
+      '<!doctype html><html><body>',
+      '<section class="slide" style="width:1920px;height:1080px">',
+      '<div style="position:absolute;inset:0;background:linear-gradient(#0f172a,#1e293b);color:#f8fafc">',
+      '<h1>커버</h1>',
+      '</div>',
+      '</section>',
+      '<style data-od-official-look-css>.slide{background:#F5F0E6;color:#2D2D2D}</style>',
+      '</body></html>',
+    ].join('');
+    const pinned = pinDeckSlidesToFixedCanvas(html);
+    expect(pinned).not.toMatch(/#0f172a/);
+    expect(pinned).not.toMatch(/#1e293b/);
+    expect(pinned).not.toMatch(/#f8fafc/);
+    expect(pinned).toContain('커버');
     expect(pinned).toContain('data-od-official-look-css');
   });
 
@@ -251,6 +288,20 @@ describe('pinDeckSlidesToFixedCanvas', () => {
     expect(pinned).toMatch(/class="[^"]*\binfo-card\b/);
     expect(pinned).not.toMatch(/#06b6d4/);
     expect(pinned).not.toMatch(/#0ea5e9/);
+  });
+
+  it('binds MiniMax rgb() outline boxes to official kit card classes', () => {
+    const html = [
+      '<!doctype html><html><body>',
+      '<section class="slide" style="width:1920px;height:1080px">',
+      '<div style="border:2px solid rgb(79, 70, 229);padding:24px">Indigo rgb frame</div>',
+      '</section>',
+      '<style data-od-official-look-css>.card{box-shadow:var(--shadow)}</style>',
+      '</body></html>',
+    ].join('');
+    const pinned = pinDeckSlidesToFixedCanvas(html);
+    expect(pinned).toMatch(/class="[^"]*\bcard\b/);
+    expect(pinned).not.toMatch(/rgb\(79,\s*70,\s*229\)/);
   });
 
   it('is idempotent for the injected style tag', () => {

@@ -1462,6 +1462,8 @@ html, body { overflow: visible !important; height: auto !important; }
     const closes = [...merged.matchAll(/<section class="slide"[\s\S]*?<\/section>/gi)].map((m) => m[0] ?? '');
     expect(closes).toHaveLength(4);
     expect(closes[0]).toMatch(/\bhc-scanlines\b/i);
+    expect(closes[1]).toMatch(/\bhc-scanlines\b/i);
+    expect(closes[2]).toMatch(/\bhc-scanlines\b/i);
     expect(closes[3]).toMatch(/\bhc-scanlines\b/i);
   });
 
