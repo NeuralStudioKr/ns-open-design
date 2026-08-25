@@ -308,9 +308,9 @@ services:
       TEAMVER_OD_API_MODEL: ${TEAMVER_OD_API_MODEL:-}
     ports:
       - "127.0.0.1:${BE_PORT:-16000}:8000"
-    depends_on:
-      design-db:
-        condition: service_healthy
+    # design-db 는 profiles: [local-db]. --rds 시 depends_on 이 있으면 Compose가
+    # "undefined service design-db" 로 실패하고, required:false 는 구버전
+    # Compose 스키마에서 거절된다. local-db는 deploy.sh SERVICES에 design-db를 포함.
     # Multi-worker uvicorn 에서 워커 하나가 event-loop hang 이면 docker
     # restart 로 회복 가능해야 한다. wget/curl 은 python:slim 에 기본
     # 없음 → Python one-liner (표준 라이브러리 urllib) 사용.
