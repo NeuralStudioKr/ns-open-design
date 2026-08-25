@@ -368,7 +368,7 @@ export type SalvageCoverDraftOptions = {
 };
 
 /** Persist last-resort when brief/project titles are instruction or unusable chrome. */
-export const LAST_RESORT_DECK_COVER_TITLE = '슬라이드 초안';
+export const LAST_RESORT_DECK_COVER_TITLE = '슬라이드';
 
 /**
  * Head-only / kit-CSS shells never reached a slide. Persist used to skip

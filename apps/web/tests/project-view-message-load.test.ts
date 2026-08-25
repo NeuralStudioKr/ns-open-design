@@ -1058,6 +1058,8 @@ describe("ProjectView message loading", () => {
     expect(source).toContain("ARTIFACT_REGRESSION_MIN_PRIOR_BYTES");
     expect(source).toContain("ARTIFACT_REGRESSION_MIN_RATIO");
     expect(source).toContain("incomingCompactDraft");
+    expect(source).toContain("healBrief: runVisiblePromptRef.current || ''");
+    expect(source).toContain("healTitle: project.name || '슬라이드'");
     expect(source).toContain("priorHtml");
     expect(source).toContain("blocked placeholder artifact regression before save");
     expect(source).toContain("kind: 'artifact-regression'");

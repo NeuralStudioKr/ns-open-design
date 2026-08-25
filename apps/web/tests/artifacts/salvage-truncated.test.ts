@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   normalizeBodyFirstHtmlDocument,
   recoverBestHtmlDocumentFromText,
+  LAST_RESORT_DECK_COVER_TITLE,
   salvageTemplateFillShellAsCoverDraft,
   salvageTruncatedHtmlDocument,
 } from "../../src/artifacts/recover";
@@ -335,6 +336,12 @@ describe("salvageTemplateFillShellAsCoverDraft", () => {
     });
     expect(draft).toContain("<h1>슬라이드 초안</h1>");
     expect(draft).toContain('class="slide"');
+    expect(LAST_RESORT_DECK_COVER_TITLE).toBe("슬라이드");
+    const aligned = salvageTemplateFillShellAsCoverDraft(shell, {
+      fallbackTitle: "만들어줘",
+      lastResortTitle: LAST_RESORT_DECK_COVER_TITLE,
+    });
+    expect(aligned).toContain("<h1>슬라이드</h1>");
   });
 
   it("keeps a closed healable instruction-copy cover as a recover candidate", () => {

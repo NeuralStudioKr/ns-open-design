@@ -2835,6 +2835,9 @@ export function findClientArtifactRegression(input: {
   allowCompactReplacement?: boolean;
   /** On-disk HTML for the same file, when already loaded this persist. */
   priorHtml?: string | null;
+  /** Same brief/title persist heal uses so AfterHeal matches the write path. */
+  healBrief?: string | null;
+  healTitle?: string | null;
 }): { fileName: string; priorSize: number; newSize: number; reason: string } | null {
   if (input.allowCompactReplacement) return null;
   const fileName = input.fileName.trim();
@@ -2852,7 +2855,11 @@ export function findClientArtifactRegression(input: {
   if (priorSize < ARTIFACT_REGRESSION_MIN_PRIOR_BYTES) return null;
   const priorHtml = String(input.priorHtml ?? '').trim();
   const incomingCompactDraft = isPersistableShortDeckDraft(input.htmlBody)
-    || isPersistableShortDeckDraftAfterHeal(input.htmlBody)
+    || isPersistableShortDeckDraftAfterHeal(
+      input.htmlBody,
+      input.healBrief,
+      input.healTitle,
+    )
     || (
       isClosedSoftSalvageDeckHtml(input.htmlBody)
       && countDeckSlideSections(input.htmlBody) <= 3
@@ -2864,7 +2871,11 @@ export function findClientArtifactRegression(input: {
     if (
       priorCount <= 3
       || isPersistableShortDeckDraft(priorHtml)
-      || isPersistableShortDeckDraftAfterHeal(priorHtml)
+      || isPersistableShortDeckDraftAfterHeal(
+        priorHtml,
+        input.healBrief,
+        input.healTitle,
+      )
       || isLowSubstanceSlideDeckArtifact(priorHtml)
     ) {
       return null;
@@ -5600,6 +5611,8 @@ export function ProjectView({
         projectFiles: currentProjectFiles,
         allowCompactReplacement: runTemplateCloneContentFillRef.current,
         priorHtml: priorDiskHtml,
+        healBrief: runVisiblePromptRef.current || '',
+        healTitle: project.name || '슬라이드',
       });
       if (regression) {
         devLog.warn('[teamver] blocked placeholder artifact regression before save', {
