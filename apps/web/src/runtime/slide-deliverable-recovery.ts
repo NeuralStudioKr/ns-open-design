@@ -225,11 +225,16 @@ export async function resolveSlideProducedHtmlToOpen(
   producedHtmlToOpen: string | null,
   persistResult: ArtifactPersistResult | null | undefined,
   readProjectHtml: (name: string) => Promise<string | null>,
+  healContext?: { brief?: string | null; deckTitle?: string | null },
 ): Promise<string | null> {
   if (!producedHtmlToOpen) {
     return isEmergencyArtifactPersistSuccess(persistResult) ? persistResult!.fileName : null;
   }
-  const verified = await verifySlideProducedHtmlDeliverable(producedHtmlToOpen, readProjectHtml);
+  const verified = await verifySlideProducedHtmlDeliverable(
+    producedHtmlToOpen,
+    readProjectHtml,
+    healContext,
+  );
   if (verified) return verified;
   return isEmergencyArtifactPersistSuccess(persistResult) ? persistResult!.fileName : null;
 }
@@ -352,6 +357,8 @@ export async function attemptEmergencySlideDeckRecovery(options: {
   scopedCommentAttachmentCount?: number;
   outlineMessages: readonly ChatMessage[];
   finalText?: string | null;
+  healBrief?: string | null;
+  healTitle?: string | null;
   projectFiles: readonly ProjectFile[];
   beforeFileNames: ReadonlySet<string> | readonly string[];
   startedAt: number;
@@ -409,7 +416,11 @@ export async function attemptEmergencySlideDeckRecovery(options: {
   let htmlToOpen: string | null = selectAutoOpenProducedHtml(produced, { projectFiles: nextFiles })
     ?? emergencyPersist?.fileName
     ?? null;
-  const verifiedHtmlToOpen = await verifySlideProducedHtmlDeliverable(htmlToOpen, options.readProjectHtml);
+  const verifiedHtmlToOpen = await verifySlideProducedHtmlDeliverable(
+    htmlToOpen,
+    options.readProjectHtml,
+    { brief: options.healBrief, deckTitle: options.healTitle || '슬라이드' },
+  );
   // Salvaged HTML already passed validateHtmlArtifact before persist. In S3 /
   // registry-backed staging, refresh/read can lag the successful write by a
   // beat; treating that as unrecovered drops the user into incomplete_output
@@ -469,6 +480,8 @@ export async function attemptFinalOutlineDeckFallback(options: {
   scopedCommentAttachmentCount?: number;
   outlineMessages: readonly ChatMessage[];
   finalText?: string | null;
+  healBrief?: string | null;
+  healTitle?: string | null;
   projectFiles: readonly ProjectFile[];
   beforeFileNames: ReadonlySet<string> | readonly string[];
   startedAt: number;
@@ -516,7 +529,11 @@ export async function attemptFinalOutlineDeckFallback(options: {
   let htmlToOpen: string | null = selectAutoOpenProducedHtml(produced, { projectFiles: nextFiles })
     ?? emergencyPersist?.fileName
     ?? null;
-  const verifiedHtmlToOpen = await verifySlideProducedHtmlDeliverable(htmlToOpen, options.readProjectHtml);
+  const verifiedHtmlToOpen = await verifySlideProducedHtmlDeliverable(
+    htmlToOpen,
+    options.readProjectHtml,
+    { brief: options.healBrief, deckTitle: options.healTitle || '슬라이드' },
+  );
   htmlToOpen = verifiedHtmlToOpen ?? emergencyPersist?.fileName ?? null;
   if (
     htmlToOpen

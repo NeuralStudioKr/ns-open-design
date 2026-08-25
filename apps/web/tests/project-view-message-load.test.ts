@@ -608,7 +608,10 @@ describe("ProjectView message loading", () => {
     expect(autoOpenBlock).toContain("const rawFinalText = streamedText || fullText || latestAssistantMsg.content || ''");
     expect(autoOpenBlock).toContain("const persistResult = await persistArtifact(");
     expect(autoOpenBlock).toContain("terminalArtifactPersistFailed = shouldFailRunForArtifactPersistResult(");
-    expect(autoOpenBlock).toContain("isReusableSameTurnDeckWrite(diskPeek)");
+    expect(autoOpenBlock).toContain("isReusableSameTurnDeckWrite(");
+    expect(autoOpenBlock).toContain("diskPeek");
+    expect(autoOpenBlock).toContain("healBrief: runVisiblePromptRef.current || ''");
+    expect(autoOpenBlock).toContain("healTitle: project.name || '슬라이드'");
     // deliverableError fallback now feeds the persist-result kind through
     // so the "결과물이 생성되지 않았습니다" banner in a copied bug report
     // includes `terminalPersistResultKind=<kind>` (or `no-artifact` for
@@ -633,6 +636,8 @@ describe("ProjectView message loading", () => {
     expect(autoOpenBlock).toContain("isLatestTerminalAutoOpen");
     expect(autoOpenBlock).toContain("shouldFailSlideRunForMissingHtmlDeliverable(");
     expect(autoOpenBlock).toContain("resolveSlideProducedHtmlToOpen(");
+    expect(autoOpenBlock).toContain("deckTitle: project.name || '슬라이드'");
+    expect(autoOpenBlock).toContain("healBrief: runVisiblePromptRef.current || ''");
     expect(autoOpenBlock).toContain("runStatus: 'failed'");
     expect(autoOpenBlock).toContain("resumable: true");
     expect(autoOpenBlock).toContain("updateConversationLatestRun('failed'");

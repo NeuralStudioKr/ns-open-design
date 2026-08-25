@@ -306,6 +306,16 @@ describe('verifySlideProducedHtmlDeliverable', () => {
     await expect(
       verifySlideProducedHtmlDeliverable('deck.html', async () => parrotCover),
     ).resolves.toBe('deck.html');
+    await expect(
+      verifySlideProducedHtmlDeliverable(
+        'deck.html',
+        async () => parrotCover,
+        {
+          brief: 'expo에 대해서 설명하는 피피티 만들어줘',
+          deckTitle: '슬라이드',
+        },
+      ),
+    ).resolves.toBe('deck.html');
   });
 
   it('returns null for Motif-SVG-before-title hangs', async () => {

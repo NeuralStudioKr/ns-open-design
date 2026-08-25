@@ -217,9 +217,12 @@ describe('runtime/resume shell/no-HTML recovery constants', () => {
       + '<section class="slide"><h1>슬라이드 만들어줘</h1></section>'
       + '</body></html>';
     expect(isClosedPersistableCoverDraft(parrot)).toBe(true);
+    expect(isClosedPersistableCoverDraft(parrot, '슬라이드 만들어줘', '슬라이드')).toBe(true);
     const prompt = buildAutoContinueIncompleteOutputPrompt({
       attempt: 1,
       partialHtml: parrot,
+      healBrief: '슬라이드 만들어줘',
+      healTitle: '슬라이드',
     });
     expect(prompt).toContain('닫힌 커버 초안');
     expect(prompt).toContain('버리지 말고');

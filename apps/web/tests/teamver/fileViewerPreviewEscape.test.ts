@@ -46,7 +46,7 @@ describe('FileViewer HtmlViewer escape wiring', () => {
     expect(escapeBlock).toContain('deployMenuOpen');
     expect(escapeBlock).not.toMatch(/\bshareMenuOpen\b/);
     expect(htmlViewer).not.toMatch(/setShareMenuOpen\(/);
-    expect(htmlViewer).toMatch(/preview escape failed/);
+    expect(htmlViewer).toContain("runFileViewerPreviewMessageHandler('preview escape'");
   });
 });
 
@@ -97,6 +97,7 @@ describe('FileViewer HtmlViewer preview message guards', () => {
     expect(htmlViewer).toContain("runFileViewerPreviewMessageHandler('inspect-target'");
     expect(htmlViewer).toContain("runFileViewerPreviewMessageHandler('od-edit-bridge'");
     expect(htmlViewer).toContain("runFileViewerPreviewMessageHandler('stacked-deck-ready'");
+    expect(htmlViewer).toContain("runFileViewerPreviewMessageHandler('preview escape'");
   });
 });
 
