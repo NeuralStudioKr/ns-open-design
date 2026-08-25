@@ -23,6 +23,10 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | PreviewModal/connector message 가드 | ☑ |
 | cover 제목 `Presentation` → `슬라이드` | ☑ |
 | MiniMax head-only incomplete-html-document-shell | ☑ 1차 |
+| persist: Neutral 호스트/inner overlay 페인트 · 3장 1타이틀 · catalog heal skip | ☑ 루프5 |
+| persist: grid flow clip · in-flow badge · CSS motif 전 장 | ☑ 루프5 |
+| auto-continue: 슬라이드 카피 있는 truncated HTML 보존 · SLOT cover 거부 | ☑ 루프5 |
+| persist: heading type-lock · inline Quicksand strip · low-substance verify | ☑ 루프8 |
 | think 태그 / 내부 마크업 필터 | ☑ 기존 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
@@ -32,3 +36,11 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 2. chat — `PART 01 · OUTRO` / `CHAPTER 1 · COVER` 유지 확인
 
 **검증:** contracts chat-leak-probe-round31 · round30 · deck-fixed-canvas
+
+## 이번 루프 (루프8)
+
+1. type-lock — `.slide { font-family }`가 있어도 display heading lock 유지
+2. persist — official look 있을 때 slide 호스트 inline `font-family` 제거
+3. verify — Motif-SVG hang / low-substance disk HTML 거부
+
+**검증:** deck-template-look-css · deck-fixed-canvas · slide-deliverable-recovery
