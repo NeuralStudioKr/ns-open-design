@@ -229,6 +229,39 @@ describe('pinDeckSlidesToFixedCanvas', () => {
     expect(pinned).toContain('class="split-bottom"');
   });
 
+  it('copies authored flex-direction:row so two-column fills do not stack', () => {
+    const html = [
+      '<section class="slide" style="width:1920px;height:1080px;display:flex;flex-direction:row;gap:40px;padding:80px">',
+      '<div class="card">Left pane</div>',
+      '<div class="card">Right pane</div>',
+      '</section>',
+    ].join('');
+    const pinned = pinDeckSlidesToFixedCanvas(html);
+    expect(pinned).toMatch(
+      /<div data-od-slide-flow style="display:flex;flex-direction:row;gap:40px;padding:80px">/,
+    );
+    expect(pinned).toContain('Left pane');
+    expect(pinned).toContain('Right pane');
+    expect(pinned).not.toMatch(/class="slide"[^>]*overflow:\s*hidden/);
+  });
+
+  it('keeps col-left/col-right on one row inside the clip', () => {
+    const html = [
+      '<section class="slide slide-2" style="width:1920px;height:1080px;padding:64px">',
+      '<div class="col-left"><h2>개요</h2><p>왼쪽</p></div>',
+      '<div class="col-right"><div class="card">오른쪽</div></div>',
+      '</section>',
+    ].join('');
+    const pinned = pinDeckSlidesToFixedCanvas(html);
+    expect(pinned).toMatch(
+      /<div data-od-slide-flow style="padding:64px;display:flex;flex-direction:row">/,
+    );
+    expect(pinned).toContain('class="col-left"');
+    expect(pinned).toContain('class="col-right"');
+    expect(pinned).toMatch(/\[data-od-slide-flow\]:has\(\.col-left\):has\(\.col-right\)/);
+    expect(pinned.match(/<section\b/g)?.length).toBe(1);
+  });
+
   it('binds MiniMax navy/blue outline boxes to official kit card classes', () => {
     const html = [
       '<!doctype html><html><body>',

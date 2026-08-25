@@ -65,7 +65,9 @@ article[data-screen-label] {
 /* Split panes stay on one axis inside the clip. Do not force a column. */
 .slide > [data-od-slide-flow]:has(.split-left),
 .slide > [data-od-slide-flow]:has(.split-right),
-.slide > [data-od-slide-flow]:has(.split-pane) {
+.slide > [data-od-slide-flow]:has(.split-pane),
+.slide > [data-od-slide-flow]:has(.col-left):has(.col-right),
+.slide > [data-od-slide-flow]:has(.left-col):has(.right-col) {
   flex-direction: row;
   align-items: stretch;
 }
@@ -371,6 +373,12 @@ const EXPLICIT_PAINT_COLOR_RE =
 const FAKE_RING_SHADOW_RE = /(?:^|;)\s*box-shadow\s*:[^;]*\b0\s+0\s+0\s+(?:1px|2px)\b[^;]*/i;
 const SPLIT_ROW_LAYOUT_RE = /\bsplit-(?:left|right|pane)\b/i;
 const SPLIT_COL_LAYOUT_RE = /\bsplit-(?:top|bottom)\b/i;
+const COL_LEFT_RE = /\b(?:col-left|left-col)\b/i;
+const COL_RIGHT_RE = /\b(?:col-right|right-col)\b/i;
+
+function looksLikeSiblingColumnRow(inner: string): boolean {
+  return SPLIT_ROW_LAYOUT_RE.test(inner) || (COL_LEFT_RE.test(inner) && COL_RIGHT_RE.test(inner));
+}
 
 function findMatchingClose(html: string, from: number, tag: string): number {
   const safe = tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -520,6 +528,9 @@ function shouldSkipSlideFlowWrap(inner: string): boolean {
 
 const FLOW_COPIED_STYLE_PROPS = [
   'display',
+  'flex-direction',
+  'flex-wrap',
+  'flex-flow',
   'justify-content',
   'align-items',
   'align-content',
@@ -552,10 +563,10 @@ function wrapFlowOpenTag(hostAttrs: string, inner = ''): string {
   const hasDisplay = parts.some((part) => /^display:/i.test(part));
   const hasDirection = parts.some((part) => /^flex-direction:/i.test(part));
   const isGrid = parts.some((part) => /^display:\s*grid\b/i.test(part));
-  if (SPLIT_ROW_LAYOUT_RE.test(inner) && !hasDisplay) {
+  if (looksLikeSiblingColumnRow(inner) && !hasDisplay) {
     parts.push('display:flex');
   }
-  if (SPLIT_ROW_LAYOUT_RE.test(inner) && !hasDirection && !isGrid) {
+  if (looksLikeSiblingColumnRow(inner) && !hasDirection && !isGrid) {
     parts.push('flex-direction:row');
   }
   if (SPLIT_COL_LAYOUT_RE.test(inner) && !SPLIT_ROW_LAYOUT_RE.test(inner) && !hasDirection && !isGrid) {
@@ -740,6 +751,7 @@ function injectFixedCanvasStyle(html: string): string {
       || !/contain\s*:\s*layout/i.test(body)
       || !/data-od-slide-flow/i.test(body)
       || !/:has\(\.split-left\)/i.test(body)
+      || !/:has\(\.col-left\)/i.test(body)
     ) {
       return html.replace(pinRe, `$1\n${FIXED_CANVAS_CSS}\n$3`);
     }
