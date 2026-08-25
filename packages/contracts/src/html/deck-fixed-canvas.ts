@@ -355,7 +355,7 @@ const INDEX_BADGE_TEXT_RE =
 const KIT_CARD_TOKEN_RE = /\b(?:info-card|stat-card|card)\b/i;
 const KIT_SAFE_FRAME_COLOR_RE = /\b(?:var\s*\(|currentColor|inherit|transparent)\b/i;
 const EXPLICIT_PAINT_COLOR_RE =
-  /#(?:[0-9a-f]{3,8})\b|\b(?:rgba?|hsla?|hwb|oklch|oklab|lch|lab|color-mix|color)\s*\(|\b(?:navy|royalblue|mediumblue|indigo|skyblue|teal|cyan|blue|darkblue|purple|violet|fuchsia|magenta|crimson|emerald|amber|lime|rose|orange|pink)\b/i;
+  /#(?:[0-9a-f]{3,8})\b|\b(?:rgba?|hsla?|hwb|oklch|oklab|lch|lab|color-mix|color|light-dark|device-cmyk)\s*\(|\b(?:navy|royalblue|mediumblue|indigo|skyblue|teal|cyan|blue|darkblue|purple|violet|fuchsia|magenta|crimson|emerald|amber|lime|rose|orange|pink)\b/i;
 const FAKE_RING_SHADOW_RE = /(?:^|;)\s*box-shadow\s*:[^;]*\b0\s+0\s+0\s+(?:1px|2px)\b[^;]*/i;
 const SPLIT_LAYOUT_RE = /\bsplit-(?:left|right|pane|top|bottom)\b/i;
 
