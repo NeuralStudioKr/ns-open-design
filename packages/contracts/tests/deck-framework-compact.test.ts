@@ -68,6 +68,13 @@ describe('DECK_FRAMEWORK_DIRECTIVE_COMPACT', () => {
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('data-screen-label="03 Stat"');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('data-screen-label="05 Close"');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY_FOR_SELECTED_TEMPLATE).toContain('one idea only');
+    expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('at most 3 next steps');
+    expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY_FOR_SELECTED_TEMPLATE).toContain(
+      'Kit cards, not fake frames',
+    );
+    expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY_FOR_SELECTED_TEMPLATE).toContain(
+      'position:absolute',
+    );
     // Samples must not teach viewport sizing (ban prose may still name 100vh).
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).not.toMatch(
       /style="[^"]*min-height:100vh/,

@@ -38,6 +38,7 @@ article[data-screen-label] {
   max-height: 1080px !important;
   box-sizing: border-box !important;
   overflow: visible !important;
+  contain: layout size;
 }
 /* Absolute bottom footers collide with centered lead under flex justify. */
 .slide > :is(.slide-footer, .slide-meta, .kicker-footer, .footer):not([class*="deco"]):not([class*="motif"]) {
@@ -232,6 +233,88 @@ function flowAbsoluteSlideFooters(html: string): string {
   });
 }
 
+const MOTIF_OR_DECO_CLASS_RE =
+  /deco|motif|petal|blob|pill|doodle|pin-|scanline|grain|sunglow|ribbon|pixel-|hc-|gd-orb|xp-blob|post-it|stamp|tape|corner-bracket|ts-stripe|zigzag|hero-shot|card-deco|title-accent|closing-accent|mini-note|floating-pills|cover-blob|geo-decoration|cover-decoration/i;
+
+const ABS_FLOW_OPEN_RE =
+  /<(div|span|p|h[1-6]|section|article|aside|header|footer|small|label)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
+
+function isMotifOrDecoAttrs(attrs: string): boolean {
+  if (/\bdata-od-official-motif-html\b/i.test(attrs)) return true;
+  return MOTIF_OR_DECO_CLASS_RE.test(extractClassAttr(attrs));
+}
+
+function flowAbsoluteNonMotifStyle(style: string): string | null {
+  const source = String(style ?? '');
+  if (!/position\s*:\s*absolute/i.test(source)) return null;
+  const next = source
+    .replace(/position\s*:\s*absolute/gi, 'position:relative')
+    .replace(/(?:^|;)\s*(?:top|right|bottom|left|inset)\s*:[^;]*/gi, ';')
+    .replace(/;;+/g, ';')
+    .replace(/^;|;$/g, '')
+    .trim();
+  return next;
+}
+
+function listPinnedSlideInnerSpans(html: string): { start: number; end: number }[] {
+  const opens: { start: number; openEnd: number; tag: string }[] = [];
+  SLIDE_OPEN_RE.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = SLIDE_OPEN_RE.exec(html)) !== null) {
+    if (!isSlideHost(match[2] ?? '')) continue;
+    opens.push({
+      start: match.index,
+      openEnd: match.index + match[0].length,
+      tag: (match[1] ?? 'section').toLowerCase(),
+    });
+  }
+  return opens.map((open, i) => {
+    const limit = i + 1 < opens.length ? opens[i + 1]!.start : html.length;
+    const chunk = html.slice(open.openEnd, limit);
+    const close = new RegExp(`</${open.tag}\\s*>`, 'i').exec(chunk);
+    return {
+      start: open.openEnd,
+      end: close ? open.openEnd + close.index : limit,
+    };
+  });
+}
+
+function flowAbsoluteNonMotifInSpan(html: string): string {
+  return html.replace(ABS_FLOW_OPEN_RE, (open, _tag: string, attrs: string) => {
+    if (isMotifOrDecoAttrs(attrs)) return open;
+    if (!/\bstyle\s*=/i.test(attrs)) return open;
+    const nextAttrs = attrs.replace(
+      /\bstyle\s*=\s*(['"])([\s\S]*?)\1/i,
+      (_m, q: string, style: string) => {
+        const next = flowAbsoluteNonMotifStyle(style);
+        return next == null ? `style=${q}${style}${q}` : `style=${q}${next}${q}`;
+      },
+    );
+    return open.replace(attrs, nextAttrs);
+  });
+}
+
+/**
+ * MiniMax compact fills park labels/cards with `position:absolute`, so
+ * "05 / CHECKLIST" lands inside card 02 and the 16:9 canvas looks broken.
+ * Motif/deco corners stay absolute. Everything else returns to document flow.
+ */
+export function flowAbsoluteNonMotifSlideContent(html: string): string {
+  const source = String(html ?? '');
+  const spans = listPinnedSlideInnerSpans(source);
+  if (spans.length === 0) return source;
+  let out = source;
+  for (let i = spans.length - 1; i >= 0; i -= 1) {
+    const span = spans[i]!;
+    const inner = out.slice(span.start, span.end);
+    const next = flowAbsoluteNonMotifInSpan(inner);
+    if (next !== inner) {
+      out = `${out.slice(0, span.start)}${next}${out.slice(span.end)}`;
+    }
+  }
+  return out;
+}
+
 function injectFixedCanvasStyle(html: string): string {
   const pinRe = new RegExp(
     `(<style\\b[^>]*\\b${DECK_FIXED_CANVAS_PIN_ATTR}\\b[^>]*>)([\\s\\S]*?)(<\\/style>)`,
@@ -240,10 +323,12 @@ function injectFixedCanvasStyle(html: string): string {
   const existing = pinRe.exec(html);
   if (existing) {
     const body = existing[2] ?? '';
-    // Upgrade pre-§0.73 pin sheets that still force overflow:hidden (§0.76).
+    // Upgrade pre-§0.73 pin sheets that still force overflow:hidden (§0.76)
+    // and pre-contain sheets that let overflowing MiniMax grids grow the stage.
     if (
       /overflow\s*:\s*(?:hidden|clip)/i.test(body)
       || !/overflow\s*:\s*visible/i.test(body)
+      || !/contain\s*:\s*layout/i.test(body)
     ) {
       return html.replace(pinRe, `$1\n${FIXED_CANVAS_CSS}\n$3`);
     }
@@ -288,6 +373,12 @@ export function pinDeckSlidesToFixedCanvas(
     return pinSlideOpenTag(open, attrs);
   });
   out = flowAbsoluteSlideFooters(out);
+  // Official catalog presenters keep authored inline absolute layouts when
+  // force-pinned for export / letterbox. MiniMax compact fills — including
+  // after official-look CSS merge — still need overlapping card/label flow.
+  if (!looksLikeOfficialFullscreenPresenterDeck(source)) {
+    out = flowAbsoluteNonMotifSlideContent(out);
+  }
   out = injectFixedCanvasStyle(out);
   return out;
 }

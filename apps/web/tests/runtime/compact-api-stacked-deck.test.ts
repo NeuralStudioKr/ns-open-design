@@ -1049,6 +1049,7 @@ cur=n;
     expect(out).toContain('width=1920, initial-scale=1, maximum-scale=1');
     expect(out).toContain('width: 1920px !important');
     expect(out).toContain('height: 1080px !important');
+    expect(out).toContain('contain: layout size');
     expect(out).not.toContain('data-od-deck-bridge');
     expect(out).not.toMatch(/html,\s*body\s*\{[^}]*background:\s*#0b0c10/);
   });

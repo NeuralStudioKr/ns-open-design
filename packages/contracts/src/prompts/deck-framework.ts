@@ -504,7 +504,9 @@ export const DECK_COMPACT_INLINE_LAYOUT_VOCABULARY = `# Compact API — inline l
 
 Each slide is a **fixed 1920×1080** canvas (16:9). Every host must be \`<section class="slide" data-screen-label="NN Title">\` — never omit \`class="slide"\`. Inline \`width:1920px;height:1080px;box-sizing:border-box\` on every slide. Never use \`min-height:100vh\`, \`height:100vh\`, \`width:100vw\`, or scroll-snap presenter sizing — those stretch into the tall preview panel and break PPT aspect ratio. Do not put \`overflow:hidden\` on the slide host — it clips Motif corners and colliding subtitle/footer. Motif/decoration corners must stay **inside** the canvas (\`top/left/right/bottom: 0\` or positive inset) — never negative offsets that get clipped. Keep footers in flex flow (\`margin-top:auto\`), never \`position:absolute; bottom:…\`. Use large presentation typography, fill the canvas, and center content vertically with flex plus generous padding (64–96px).
 
-**Density (every slide):** one idea only. Cover = eyebrow + headline + one lead — no stat column and no metadata footer on the same canvas. Three metrics = three Big-stat slides. Never headline + subtitle + stats + footer together; split instead of shrinking type.
+**Density (every slide):** one idea only. Cover = eyebrow + headline + one lead — no stat column and no metadata footer on the same canvas. Three metrics = three Big-stat slides. Never headline + subtitle + stats + footer together; split instead of shrinking type. Closing / checklist slides are title + at most 3 next steps — never a 5-row numbered grid plus a side card on one 1920×1080 canvas.
+
+**Canvas fit:** flow content must stay inside the padded 1920×1080 box. Overlapping \`position:absolute\` labels (a "05 / CHECKLIST" badge sitting inside card 02) are a failed deliverable — keep labels in normal flow inside their own card.
 
 Do not invent one identical white box for every slide. Pick the closest layout below and vary **background color**, **padding**, **composition**, and **density** across slides (alternate light/dark surfaces — never 3+ identical slides in a row). A good deck should look like a designed presentation, not a web article split into full-screen rows.
 
@@ -546,9 +548,13 @@ export const DECK_COMPACT_INLINE_LAYOUT_VOCABULARY_FOR_SELECTED_TEMPLATE = `# Co
 
 Each slide is a **fixed 1920×1080** canvas: every host must be \`<section class="slide" data-screen-label="NN Title">\` (never omit \`class="slide"\`); inline \`width:1920px;height:1080px;box-sizing:border-box\`; avoid viewport-only \`min-height:100vh\` and slide-host \`overflow:hidden\`. Motif corners must stay inside the canvas (no negative top/left/right/bottom). Keep footers in flex flow, not absolute bottom. Use large presentation typography and fill the canvas.
 
-**Density (every slide):** one idea only. Cover = eyebrow + headline + one lead — no stat column and no metadata footer on the same canvas. Three metrics = three Big-stat slides. Never headline + subtitle + stats + footer together; split instead of shrinking type.
+**Density (every slide):** one idea only. Cover = eyebrow + headline + one lead — no stat column and no metadata footer on the same canvas. Three metrics = three Big-stat slides. Never headline + subtitle + stats + footer together; split instead of shrinking type. Closing / checklist slides are title + at most 3 next steps — never a 5-row numbered grid plus a side card on one 1920×1080 canvas.
+
+**Canvas fit:** flow content must stay inside the padded 1920×1080 box. Overlapping \`position:absolute\` labels (a "05 / CHECKLIST" badge sitting inside card 02) are a failed deliverable — keep labels in normal flow inside their own card.
 
 **Colors, fonts, borders, shadows, and decorative density MUST come from the Selected deck template / Template visual kit above.** Do not invent a slate/navy corporate palette. Forbidden fallbacks when a kit is present: \`#0f172a\`, \`#1e293b\`, \`#111827\`, \`#f8fafc\` + Inter-only sparse covers.
+
+**Kit cards, not fake frames:** do not invent 1–2px navy/blue outlined rectangles as a substitute template. Bind kit card/list/timeline classes and kit border/shadow tokens, plus at least one compact kit motif/deco cue per slide after the title.
 
 Do not invent one identical empty box for every slide. Pick the closest role below and vary **composition** and **density** (never 3+ identical slides in a row). Bind kit tokens into inline styles / short body \`<style>\`.
 

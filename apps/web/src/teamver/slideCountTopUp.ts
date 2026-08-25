@@ -238,6 +238,8 @@ export function buildSlideCountTopUpPrompt(input: {
     "Emit ONLY the new `<section class=\"slide\">` blocks (body-first). Persist appends them after the saved slides.",
     "Each new slide MUST be a complete closed `<section class=\"slide\" …>…</section>` with real title + body. Unclosed fragments are discarded.",
     "Each new slide: fixed 1920×1080 canvas, box-sizing:border-box, overflow:visible, Motif-safe padding (~56px 72px).",
+    "One idea per slide. Closing/checklist slides: title + at most 3 next steps. Never a 5-row numbered grid plus a side card. No overlapping position:absolute labels.",
+    "Reuse the saved deck's kit card/list/timeline classes — do not invent 1–2px navy/blue outlined rectangles.",
     "Do not dump full Motif SVG/style sprites. Reuse the existing deck's lightweight motif/deco vocabulary after title/body copy when the saved deck exposes it; do not invent tiny corner flowers or off-template Capsule pills.",
     "Do not use element-patch. Do not start over from a short new deck.",
     "Increasing the slide count is required. Never reduce it.",

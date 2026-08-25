@@ -173,6 +173,8 @@ describe("slideCountTopUp", () => {
     expect(prompt).toMatch(/NEVER "수정 반영 중"/);
     expect(prompt).not.toContain("[Template clone content fill]");
     expect(prompt).toContain("lightweight motif/deco vocabulary");
+    expect(prompt).toContain("at most 3 next steps");
+    expect(prompt).toContain("outlined rectangles");
     expect(prompt).not.toContain("Motif SVG is NOT required");
   });
 

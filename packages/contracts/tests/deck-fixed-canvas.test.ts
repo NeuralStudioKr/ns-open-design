@@ -12,6 +12,7 @@ import {
   looksLikeDeckSlideHostAttrs,
   pinDeckSlidesToFixedCanvas,
 } from '../src/html/deck-fixed-canvas.js';
+import { looksLikeOfficialFullscreenPresenterDeck } from '../src/html/deck-template-look-css.js';
 import {
   attrsLookLikeDeckOrTemplateSlideHost,
   classAttrHasDeckSlideToken,
@@ -120,6 +121,26 @@ describe('pinDeckSlidesToFixedCanvas', () => {
     expect(pinned).toMatch(/class="footer"[^>]*margin-top:auto/);
     expect(pinned).not.toMatch(/class="footer"[^>]*position:absolute/);
     expect(pinned).not.toMatch(/class="footer"[^>]*bottom:48px/);
+    expect(pinned).toMatch(/contain:\s*layout size/);
+  });
+
+  it('flows MiniMax absolute labels so they cannot sit inside another card', () => {
+    const html = [
+      '<!doctype html><html><body>',
+      '<section class="slide" style="width:1920px;height:1080px">',
+      '<div class="card" style="position:absolute;top:80px;left:80px;width:800px">02 Viewport</div>',
+      '<span style="position:absolute;top:120px;left:420px">05 / CHECKLIST</span>',
+      '<div class="deco-daisy" style="position:absolute;top:0;right:0">motif</div>',
+      '</section>',
+      '</body></html>',
+    ].join('');
+    const pinned = pinDeckSlidesToFixedCanvas(html);
+    expect(pinned).toMatch(/class="card"[^>]*position:relative/);
+    expect(pinned).toContain('>05 / CHECKLIST</span>');
+    expect(pinned).toMatch(/<span style="position:relative"/);
+    expect(pinned).not.toMatch(/<span style="[^"]*top:120px/);
+    expect(pinned).toMatch(/class="deco-daisy"[^>]*position:absolute/);
+    expect(pinned).toMatch(/contain:\s*layout size/);
   });
 
   it('is idempotent for the injected style tag', () => {
@@ -153,6 +174,26 @@ describe('pinDeckSlidesToFixedCanvas', () => {
     expect(forced).toContain(DECK_FIXED_CANVAS_PIN_ATTR);
     expect(forced).toMatch(/\.slide,[\s\S]*\{[^}]*width:\s*1920px\s*!important/i);
     expect(forced).toMatch(/overflow:\s*visible\s*!important/i);
+  });
+
+  it('does not flow authored absolute cards on official presenters even when force-pinning', () => {
+    const html = [
+      '<!doctype html><html><head><style>',
+      '.slide { position:absolute; width:100%; height:100%; opacity:0 }',
+      '.slide.active { opacity:1 }',
+      '</style></head><body>',
+      '<div id="deck">',
+      '<section class="slide active" style="width:100vw;height:100vh">',
+      '<div class="split-card" style="position:absolute;top:80px;left:80px">Keep me</div>',
+      '</section>',
+      '<section class="slide">Body</section>',
+      '</div></body></html>',
+    ].join('');
+    expect(looksLikeOfficialFullscreenPresenterDeck(html)).toBe(true);
+    const forced = pinDeckSlidesToFixedCanvas(html, { force: true });
+    expect(forced).toMatch(/class="split-card"[^>]*position:absolute/);
+    expect(forced).toContain('top:80px');
+    expect(forced).toContain(DECK_FIXED_CANVAS_PIN_ATTR);
   });
 });
 

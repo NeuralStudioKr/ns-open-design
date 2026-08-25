@@ -324,6 +324,7 @@ function compactStackedDeckExportCss(): string {
       box-sizing: border-box !important;
       margin: 0 auto !important;
       overflow: visible !important;
+      contain: layout size;
       page-break-after: always !important;
       break-after: page !important;
       flex: none !important;
