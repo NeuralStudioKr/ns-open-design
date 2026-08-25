@@ -34,22 +34,18 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | think 태그 / 내부 마크업 필터 | ☑ 기존 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (round32)
+## 이번 루프 (round32 / 루프9)
 
 1. chat — UNIT/STEP/MODULE/SECTION/ACT/SCENE/PHASE/EPISODE/BLOCK/FRAME/SESSION 트랙 숨김
 2. soft-CSS — oklab/lab/color() debris 줄 스크럽
 3. persist — oklch/oklab/lab/lch/color/color-mix + emerald/amber 1–2px 프레임을 kit 카드로 바인딩
 
-<<<<<<< HEAD
-**검증:** contracts chat-leak-probe-round31 · round30 · deck-fixed-canvas
+**검증:** contracts chat-leak-probe-round32 · round31 · round30 · deck-fixed-canvas
 
-## 이번 루프 (루프8)
+## 직전 루프 (루프8)
 
 1. type-lock — `.slide { font-family }`가 있어도 display heading lock 유지
 2. persist — official look 있을 때 slide 호스트 inline `font-family` 제거
 3. verify — Motif-SVG hang / low-substance disk HTML 거부
 
 **검증:** deck-template-look-css · deck-fixed-canvas · slide-deliverable-recovery
-=======
-**검증:** contracts chat-leak-probe-round32 · round31 · round30 · deck-fixed-canvas
->>>>>>> d1c13160b (docs(teamver): record loop8 round32 MiniMax scrub)
