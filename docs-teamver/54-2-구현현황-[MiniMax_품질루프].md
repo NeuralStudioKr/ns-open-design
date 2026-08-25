@@ -16,6 +16,7 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | chat leftover: UNIT/STEP/MODULE/SECTION · ACT/SCENE/PHASE · EPISODE/BLOCK/FRAME/SESSION | ☑ round32 |
 | chat leftover: APPENDIX/TABLE/TOPIC/TRACK/PANEL/CARD/BEAT/LESSON/CLIP/ROUND/PASS/NOTE | ☑ round33 |
 | chat leftover: QUOTE/ASIDE/CALL/HINT/FAQ/LAB/DEMO/DRILL/INDEX/TOC/MAP/BRIEF | ☑ round34 |
+| chat leftover: HOOK/SCREEN/GOAL/TASK/CASE/WORKSHOP/DECK/MOTIF | ☑ round35 |
 | soft-CSS: oklab / color() continuation debris | ☑ round32 |
 | soft-CSS: light-dark / device-cmyk continuation debris | ☑ round34 |
 | persist: `li` + `hsl()` invented frame | ☑ |
@@ -30,6 +31,8 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | 16:9 inner clip · kit card bind | ☑ |
 | top-up 재진입 재호출 + 내부 프롬프트 노출 | ☑ 센티널+autoOpen; 루프9 reattach 차단 · leftover 숨김 |
 | first-fill 3장 강제 → 요청 1–6장 한 턴 | ☑ 루프9 |
+| auto-continue / streaming rule / short-draft 캡 3장 잔여 | ☑ 루프12 |
+| 스트리밍 official look — 첫 닫힌 슬라이드에서 heal | ☑ 루프12 |
 | PreviewModal/connector message 가드 | ☑ |
 | cover 제목 `Presentation` → `슬라이드` | ☑ |
 | MiniMax head-only incomplete-html-document-shell | ☑ 1차 |
@@ -40,7 +43,16 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | think 태그 / 내부 마크업 필터 | ☑ 기존 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (round34 / 루프11)
+## 이번 루프 (round35 / 루프12)
+
+1. auto-continue · 시스템 streaming rule · persist short-draft/regression을 first-fill 6장에 맞춤
+2. chat — HOOK/SCREEN/GOAL/TASK/CASE/WORKSHOP/DECK/MOTIF 트랙 숨김
+3. 스트리밍 preview — 제목 있는 슬라이드가 닫히면 official look heal (`</html>` 대기 없음)
+4. verify/resolve에 persist heal brief/title 전달
+
+**검증:** resume · deck-html-content · persist-result · chat-leak-probe-round35 · chat-events-display · deck-preview-official-look-heal · system-prompt-api-mode
+
+## 직전 루프 (round34 / 루프11)
 
 1. chat — QUOTE/ASIDE/CALL/HINT/FAQ/LAB/DEMO/DRILL/INDEX/TOC/MAP/BRIEF 트랙 숨김
 2. soft-CSS — light-dark/device-cmyk debris 줄 스크럽
