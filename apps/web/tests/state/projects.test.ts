@@ -868,6 +868,35 @@ describe('conversation daemon auth', () => {
     fetchDaemonSpy.mockRestore();
   });
 
+  it('saveMessage keeps slide-count top-up user prompts unsanitized', async () => {
+    let capturedBody = '';
+    const fetchDaemonSpy = vi.spyOn(
+      await import('../../src/teamver/teamverDaemonHeaders'),
+      'fetchTeamverDaemon',
+    ).mockImplementation(async (_url, init) => {
+      capturedBody = String(init?.body ?? '');
+      return new Response('{}', { status: 200 });
+    });
+    const { SLIDE_COUNT_TOP_UP_PROMPT_SENTINEL, buildSlideCountTopUpPrompt } = await import(
+      '../../src/teamver/slideCountTopUp'
+    );
+    const { saveMessage } = await import('../../src/state/projects');
+    const content = buildSlideCountTopUpPrompt({ produced: 3, requested: 6 });
+
+    await saveMessage('project-1', 'conv-1', {
+      id: 'msg-top-up',
+      role: 'user',
+      content,
+      createdAt: Date.now(),
+    });
+
+    const payload = JSON.parse(capturedBody) as { content?: string };
+    expect(payload.content).toBe(content);
+    expect(payload.content).toContain(SLIDE_COUNT_TOP_UP_PROMPT_SENTINEL);
+    expect(payload.content).toContain('<section class="slide">');
+    fetchDaemonSpy.mockRestore();
+  });
+
   it('saveMessage keepalive trims heavy fields but preserves error status events', async () => {
     let capturedBody = '';
     const fetchDaemonSpy = vi.spyOn(

@@ -66,6 +66,15 @@ describe('runFileViewerPreviewMessageHandler', () => {
     });
     expect(ran).toBe(true);
   });
+
+  it('logs under a generic [preview] label (FileViewer and PreviewModal share it)', () => {
+    const source = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), '../../src/teamver/fileViewerPreviewEscape.ts'),
+      'utf8',
+    );
+    expect(source).toContain('[preview]');
+    expect(source).not.toContain('[HtmlViewer] preview');
+  });
 });
 
 describe('FileViewer HtmlViewer preview message guards', () => {

@@ -86,10 +86,12 @@ describe("ProjectView message loading", () => {
 
     const autoOpenStart = source.indexOf("const autoOpenRecoveredHtmlOutput = useCallback");
     expect(autoOpenStart).toBeGreaterThan(0);
-    const autoOpenBlock = source.slice(autoOpenStart, autoOpenStart + 1700);
+    const autoOpenBlock = source.slice(autoOpenStart, autoOpenStart + 2800);
     expect(autoOpenBlock).toContain("selectAutoOpenProducedHtml(produced, { projectFiles: filesSnapshot })");
     expect(autoOpenBlock).toContain("selectTouchedHtmlOutputFromEvents(message.events, filesSnapshot");
     expect(autoOpenBlock).toContain("branding: { slideOnlyMvp }");
+    expect(autoOpenBlock).toContain("requestOpenFile(htmlToOpen)");
+    expect(autoOpenBlock).not.toContain("requestSlideCountTopUpRef.current(htmlToOpen)");
 
     const fallbackUses = source.match(/selectTouchedHtmlOutputFromEvents\(/g) ?? [];
     expect(fallbackUses.length).toBeGreaterThanOrEqual(4);

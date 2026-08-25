@@ -354,7 +354,7 @@ const INDEX_BADGE_TEXT_RE =
 
 const KIT_CARD_TOKEN_RE = /\b(?:info-card|stat-card|card)\b/i;
 const FAKE_OUTLINE_COLOR_RE =
-  /#(?:0f172a|1e293b|111827|0b1220|1d4ed8|2563eb|3b82f6|1e40af|1e3a8a|172554|1e3a5f|0000ff|00f\b)|(?:\bnavy\b|\broyalblue\b|\bmediumblue\b)/i;
+  /#(?:0f172a|1e293b|111827|0b1220|1d4ed8|2563eb|3b82f6|1e40af|1e3a8a|172554|1e3a5f|4f46e5|6366f1|4338ca|312e81|0ea5e9|0284c7|06b6d4|0891b2|0000ff|00f\b)|(?:\bnavy\b|\broyalblue\b|\bmediumblue\b|\bindigo\b|\bskyblue\b|\bteal\b|\bcyan\b)/i;
 const SPLIT_LAYOUT_RE = /\bsplit-(?:left|right|pane|top|bottom)\b/i;
 
 function findMatchingClose(html: string, from: number, tag: string): number {

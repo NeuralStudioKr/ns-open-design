@@ -7,8 +7,14 @@ export const SLIDE_COUNT_REQUEST_MAX = 15;
 /**
  * Hidden user-turn prefix so ChatPane can hide slide-count top-up loops
  * (same pattern as auto-continue incomplete-output).
+ *
+ * Use a non-HTML token — persist prose sanitize strips `<!-- … -->` comments
+ * and then the bubble reappears on reload as leftover English/HTML debris.
  */
-export const SLIDE_COUNT_TOP_UP_PROMPT_SENTINEL = "<!--od:slide_count_top_up-->";
+export const SLIDE_COUNT_TOP_UP_PROMPT_SENTINEL = "[od:slide_count_top_up]";
+export const SLIDE_COUNT_TOP_UP_PROMPT_SENTINEL_LEGACY = "<!--od:slide_count_top_up-->";
+const SLIDE_COUNT_TOP_UP_PROMPT_FINGERPRINT_RE =
+  /\[od:slide_count_top_up\]|<!--od:slide_count_top_up-->|this is an explicit slide-count expansion|append only new slides/i;
 
 /** Analytics `entry_from` for the append loop — not incomplete-output recovery. */
 export const SLIDE_COUNT_TOP_UP_ENTRY_FROM = "slide_count_top_up";
@@ -25,7 +31,16 @@ const SLIDE_COUNT_FORM_LABEL_RE =
 
 export function isSlideCountTopUpPrompt(content: string | null | undefined): boolean {
   const text = (content ?? "").trimStart();
-  return text.startsWith(SLIDE_COUNT_TOP_UP_PROMPT_SENTINEL);
+  if (!text) return false;
+  if (
+    text.startsWith(SLIDE_COUNT_TOP_UP_PROMPT_SENTINEL)
+    || text.startsWith(SLIDE_COUNT_TOP_UP_PROMPT_SENTINEL_LEGACY)
+  ) {
+    return true;
+  }
+  // Persist sanitize can drop the HTML-comment sentinel and most tags, leaving
+  // "This is an explicit slide-count expansion" / "APPEND only new slides".
+  return SLIDE_COUNT_TOP_UP_PROMPT_FINGERPRINT_RE.test(text);
 }
 
 /** User follow-up that wants more pages — not a title/color surgical edit. */

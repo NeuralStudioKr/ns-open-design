@@ -4147,7 +4147,6 @@ export function ProjectView({
                   emergency.htmlToOpen,
                 );
                 maybeArmTeamverPublishMenuAfterRunSuccess(project.id, emergency.htmlToOpen);
-                requestSlideCountTopUpRef.current(emergency.htmlToOpen);
                 requestOpenFile(emergency.htmlToOpen);
                 return;
               }
@@ -6698,7 +6697,9 @@ export function ProjectView({
       }
       htmlAutoOpenClaimedRef.current.add(assistantMessageId);
       maybeArmTeamverPublishMenuAfterRunSuccess(project.id, htmlToOpen);
-      requestSlideCountTopUpRef.current(htmlToOpen);
+      // Recovery / hard reload only re-opens the saved deck. Queuing a
+      // slide-count top-up here re-fired the hidden APPEND prompt after the
+      // user already finished (sentinel often stripped, so the cap reset).
       requestOpenFile(htmlToOpen);
       if (!message.producedFiles?.length && produced.length > 0) {
         updateMessageById(
@@ -8542,7 +8543,6 @@ export function ProjectView({
               emergency.htmlToOpen,
             );
             maybeArmTeamverPublishMenuAfterRunSuccess(project.id, emergency.htmlToOpen);
-            requestSlideCountTopUpRef.current(emergency.htmlToOpen);
             requestOpenFile(emergency.htmlToOpen);
             finishRecovery();
             return;
