@@ -237,6 +237,22 @@ describe('pinDeckSlidesToFixedCanvas', () => {
     expect(pinned).not.toMatch(/border:2px solid #4f46e5/);
   });
 
+  it('binds MiniMax cyan/sky outline boxes to official kit card classes', () => {
+    const html = [
+      '<!doctype html><html><body>',
+      '<section class="slide" style="width:1920px;height:1080px">',
+      '<div style="outline:2px solid #06b6d4;padding:24px">Cyan frame</div>',
+      '<div style="border:1px solid #0ea5e9;padding:16px">Sky frame</div>',
+      '</section>',
+      '<style data-od-official-look-css>.info-card{border:1px solid var(--border)}</style>',
+      '</body></html>',
+    ].join('');
+    const pinned = pinDeckSlidesToFixedCanvas(html);
+    expect(pinned).toMatch(/class="[^"]*\binfo-card\b/);
+    expect(pinned).not.toMatch(/#06b6d4/);
+    expect(pinned).not.toMatch(/#0ea5e9/);
+  });
+
   it('is idempotent for the injected style tag', () => {
     const once = pinDeckSlidesToFixedCanvas(
       '<body><section class="slide" style="min-height:100vh">A</section></body>',

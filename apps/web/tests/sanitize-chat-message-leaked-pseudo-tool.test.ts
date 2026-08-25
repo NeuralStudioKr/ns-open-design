@@ -396,4 +396,23 @@ describe("sanitizePersistedAssistantChatMessage", () => {
     };
     expect(sanitizePersistedAssistantChatMessage(inflight)).toBe(inflight);
   });
+
+  it("scrubs short WD · OUTRO / index-badge chrome on persist reload (round 28)", () => {
+    const settled: ChatMessage = {
+      id: "m-short-chrome",
+      role: "assistant",
+      content: "슬라이드 작업이 완료되었습니다.\nWD · OUTRO\n02 / AGENDA",
+      createdAt: 1,
+      runStatus: "succeeded",
+      events: [
+        { kind: "text", text: "슬라이드 작업이 완료되었습니다." },
+        { kind: "text", text: "WD · OUTRO" },
+        { kind: "text", text: "02 / AGENDA" },
+      ],
+    };
+    const cleaned = sanitizePersistedAssistantChatMessage(settled);
+    expect(cleaned.content).toBe("슬라이드 작업이 완료되었습니다.");
+    expect(JSON.stringify(cleaned.events)).not.toContain("OUTRO");
+    expect(JSON.stringify(cleaned.events)).not.toContain("AGENDA");
+  });
 });
