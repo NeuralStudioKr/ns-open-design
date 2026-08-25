@@ -82,6 +82,24 @@ export function peekTeamverProjectPreviewPrefix(projectId: string): string | nul
 }
 
 /**
+ * Fire-and-forget mint so create→navigate / deep-link hydrate can seed
+ * `prefixByProject` before FileViewer mounts. Soft-fails on 401/network —
+ * HtmlViewer still remints with its existing retry schedule.
+ */
+export function warmTeamverProjectPreviewPrefixSoon(
+  projectId: string,
+  entryFile?: string | null,
+): void {
+  if (!isTeamverEmbedMode()) return;
+  const id = projectId.trim();
+  if (!id) return;
+  if (peekTeamverProjectPreviewPrefix(id)) return;
+  void resolveTeamverProjectPreviewPrefix(id, entryFile ?? "deck.html").catch(() => {
+    // Soft-fail — FileViewer effect remints.
+  });
+}
+
+/**
  * Embed-only — mint (or reuse) a daemon preview scope prefix so sandboxed
  * iframe subresources load without nginx session auth_request.
  */

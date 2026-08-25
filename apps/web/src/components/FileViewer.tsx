@@ -6853,7 +6853,13 @@ function HtmlViewer({
     // Debounce refresh-key churn so soft-sticky auth recovery can finish a
     // raw GET before the next files poll aborts it (sticky loading). Keep
     // ≤ ProjectView coalesce maxWait (250) so write storms cannot starve.
-    debounceTimer = setTimeout(runFetch, HTML_PREVIEW_DISK_FETCH_DEBOUNCE_MS);
+    // Cold first paint (no source yet) skips debounce — deep-link / create
+    // navigate should not wait an extra 200ms before /raw starts.
+    const coldFirstPaint = sourceRef.current == null && !hasLiveHtml;
+    debounceTimer = setTimeout(
+      runFetch,
+      coldFirstPaint ? 0 : HTML_PREVIEW_DISK_FETCH_DEBOUNCE_MS,
+    );
 
     return () => {
       cancelled = true;

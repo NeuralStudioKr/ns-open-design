@@ -170,6 +170,7 @@ import {
 import { armTeamverPublishMenuOnProjectOpen } from './teamver/teamverPostRunNavigation';
 import { prefetchDesignsTabViewport } from './teamver/prefetchDesignsTabViewport';
 import { warmEmbedProjectListCaches } from './teamver/warmEmbedProjectListCaches';
+import { warmTeamverProjectPreviewPrefixSoon } from './teamver/teamverProjectPreviewScope';
 import {
   mergeProjectIntoList,
   mergeRecentProjectsIntoList,
@@ -2919,6 +2920,12 @@ function AppInner() {
           ...curr.filter((p) => p.id !== projectForNav.id),
         ]);
       });
+      // Overlap preview-url mint with ProjectView mount so FileViewer can peek
+      // a cached prefix (srcDoc hold) instead of waiting for post-mount remint.
+      warmTeamverProjectPreviewPrefixSoon(
+        projectForNav.id,
+        seededDeckFileName ?? 'deck.html',
+      );
       const projectRoute = {
         kind: 'project',
         projectId: projectForNav.id,
@@ -3734,6 +3741,9 @@ function AppInner() {
     if (!isTeamverEmbedMode() && !projects.length && !daemonLive) return;
     if (projects.some((p) => p.id === route.projectId)) return;
     let cancelled = false;
+    // Start preview-url mint in parallel with registry/getProject so FileViewer
+    // mount (after hydrate) can peek a warm prefix instead of serial remint.
+    warmTeamverProjectPreviewPrefixSoon(route.projectId, route.fileName ?? 'deck.html');
     (async () => {
       try {
         await ensureTeamverProjectRegisteredById(route.projectId);

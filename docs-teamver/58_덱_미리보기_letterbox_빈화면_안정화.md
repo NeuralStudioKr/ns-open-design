@@ -59,6 +59,8 @@
 | UX | `FileViewer.tsx` | source 있는데 prefix hold 중 → loading veil (`artifact-preview-prefix-settle-veil`) |
 | fit recovery | `FileViewer.tsx` / `deckPreviewFit.ts` | untilSized · ResizeObserver · visibility/pageshow (기존 유지) |
 | base href | `file-viewer-render-mode.ts` | `about:blank`를 srcDoc base로 쓰지 않음 |
+| **early warm (2026-08-25)** | `teamverProjectPreviewScope.ts` · `App.tsx` · `warmEmbedProjectListCaches.ts` | create/deep-link/list에서 `/preview-url`을 FileViewer mount **전** fire-and-forget — hold 창 축소. **hold/fail-open 제거 금지 유지** |
+| cold disk debounce | `FileViewer.tsx` | first paint(`source==null && !hasLiveHtml`) debounce **0**; refresh churn만 200ms |
 
 ### 2026-08-10 재발 차단 + 다회 검토 보강
 
@@ -106,3 +108,5 @@ cd apps/web && npx vitest run \
 1. staging §4 smoke
 2. [44](./44_preview_scope_fallback_안정화.md) preview-url 실패율 모니터링
 3. memory-only preview(`FileWorkspace`)도 동일 mount-key 패턴 적용 여부 점검
+4. ~~create/deep-link early preview-url warm + cold disk debounce 0~~ — **2026-08-25 반영** ([00](./00_구현_내역_누적.md))
+5. Daemon lazy S3 materialize(cold scratch)는 별 슬라이스 — FE warm만으로는 TTFB 전부 제거 불가
