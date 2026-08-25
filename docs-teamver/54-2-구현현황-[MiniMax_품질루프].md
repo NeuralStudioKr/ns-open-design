@@ -25,6 +25,7 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | chat leftover: TOOLTIP/CALLOUT/COMMENT/LOGO/SKELETON/PAGINATION … | ☑ round40 |
 | leftover APPEND가 producedFiles 있어도 말풍선에 남음 | ☑ 루프18 |
 | dump fallback이 `초안.`/`진행.`/한글 완료 문장을 지움 | ☑ 루프19 |
+| split-* 마감/체크리스트가 inner clip을 건너뛰어 16:9 overflow | ☑ 루프20 |
 | soft-CSS: oklab / color() continuation debris | ☑ round32 |
 | soft-CSS: light-dark / device-cmyk continuation debris | ☑ round34 |
 | soft-CSS: standalone `prop: value;` after Hangul status | ☑ round36 |
@@ -60,7 +61,15 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | think 태그 / 내부 마크업 필터 | ☑ 기존 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프19)
+## 이번 루프 (루프20)
+
+1. split-* 슬라이드도 `[data-od-slide-flow]` clip — Motif sibling, `.slide` overflow 없음
+2. split-left/right는 row, split-top/bottom은 column. 호스트 padding/gap/grid 복사
+3. persist-split 없음
+
+**검증:** deck-fixed-canvas · deck-template-look-css · deck-pdf-export
+
+## 직전 루프 (루프19)
 
 1. dump fallback은 첫 줄 한글 상태를 마침표 포함 유지 (`초안.`/`진행.` 포함)
 2. 같은 줄 glue-cut은 가장 긴 상태 접두어 (`완료됨.` > `완료`)
