@@ -168,6 +168,17 @@ describe("deck-html-content", () => {
       + "<section class=\"slide\"><h1>expo에 대해서 설명하는 피피티 만들어줘</h1></section>"
       + "</body></html>";
     expect(isPersistableShortDeckDraft(shortParrot)).toBe(false);
+    const streamingStatusSix =
+      '<!doctype html><html lang="ko"><body>'
+      + '<section class="slide"><h1>을 만들고 있어요</h1><p>발표 개요</p></section>'
+      + '<section class="slide"></section>'
+      + '<section class="slide"></section>'
+      + '<section class="slide"></section>'
+      + '<section class="slide"></section>'
+      + '<section class="slide"><p>error</p></section>'
+      + '</body></html>';
+    expect(isPersistableShortDeckDraft(streamingStatusSix)).toBe(false);
+    expect(isDeckStatusProseOnlyBody(streamingStatusSix)).toBe(true);
     const healedShort = healInstructionCopyCoverHeading(
       shortParrot,
       "expo에 대해서 설명하는 피피티 만들어줘",

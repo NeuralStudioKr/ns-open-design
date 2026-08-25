@@ -431,6 +431,10 @@ export function isPersistableShortDeckDraft(html: string): boolean {
   // Compact API first-fill is 1–6 titled slides (top-up only for 7+).
   // Sparse 7+ shells stay on the soft-salvage / incomplete trust path.
   if (inners.length === 0 || inners.length > FIRST_FILL_SLIDE_COUNT_THIS_TURN) return false;
+  const firstText = inners[0] ? visibleTextFromHtmlFragment(inners[0]) : '';
+  // Streaming "을 만들고 있어요" covers are not first-fill drafts even when a
+  // later empty/`error` slide would satisfy titled>=1 under the 6-slide cap.
+  if (firstText && slideSectionInnerLooksLikeStatusOnly(inners[0]!)) return false;
   const titled = inners.filter(slideInnerHasPersistableDraftCopy);
   // MiniMax compact first-fill often lands cover + two empty placeholders.
   // One persistable titled slide is enough — hidden top-up appends the rest.
@@ -594,6 +598,14 @@ export function isDeckStatusProseOnlyBody(
 ): boolean {
   const withoutComments = html.replace(/<!--[\s\S]*?-->/g, "");
   if (documentContainsSlideSection(withoutComments)) {
+    const firstInner = listSlideSectionInners(withoutComments)[0];
+    const firstText = firstInner ? visibleTextFromHtmlFragment(firstInner) : '';
+    // Streaming "을 만들고 있어요" covers stay status prose even when a later
+    // empty/`error` slide makes the 1–6 first-fill short-draft cap fire.
+    // Empty first placeholders are not status — compact fill may title later slides.
+    if (firstText && firstInner && slideSectionInnerLooksLikeStatusOnly(firstInner)) {
+      return true;
+    }
     // 1–2 slide titled covers are first-fill drafts, not status prose (§0.76).
     if (isPersistableShortDeckDraft(withoutComments)) return false;
     if (isPersistableShortDeckDraftAfterHeal(withoutComments, brief, deckTitle || '슬라이드')) {
