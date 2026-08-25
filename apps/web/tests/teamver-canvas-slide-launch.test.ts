@@ -870,6 +870,8 @@ describe("canvasSlideLaunch", () => {
     expect(projectView).not.toMatch(
       /artifactFromSalvagedHtml[\s\S]{0,900}resolveDeckHtmlForIncompleteShellPersist/,
     );
+    expect(projectView).toContain("title: coverTitle || '슬라이드'");
+    expect(projectView).not.toContain("title: 'Response'");
   });
 
   it("does not optimistic-bump project updatedAt when pinning entryFile on open", () => {

@@ -252,6 +252,23 @@ describe("resolveTerminalArtifactToPersist", () => {
     const resolved = resolveTerminalArtifactToPersist(null, finalText, () => null);
     expect(resolved?.html).toContain("<h1>AI 도입 효과</h1>");
     expect(resolved?.html).toContain("</html>");
+    expect(resolved?.title).toBe("슬라이드");
+  });
+
+  it("titles salvaged doctype tails from persist heal brief/title", () => {
+    const finalText =
+      "좋아요. 바로 작성합니다.\n"
+      + '<artifact type="text/html" identifier="deck">\n'
+      + '<!doctype html><html><head><meta charset="utf-8"><title>Deck</title></head><body>'
+      + '<section class="slide"><h1>AI 도입 효과</h1><p>업무 생산성과 비용 절감을 설명합니다.</p></section>';
+
+    const resolved = resolveTerminalArtifactToPersist(null, finalText, () => null, {
+      brief: "기업 AI 도입 효과를 설명하는 피피티 만들어줘",
+      deckTitle: "슬라이드 만들어줘",
+    });
+    expect(resolved?.html).toContain("<h1>AI 도입 효과</h1>");
+    expect(resolved?.title).toBe("기업 AI 도입 효과");
+    expect(resolved?.title).not.toBe("Response");
   });
 
   it("does not salvage SLOT-only doctype tails as successful artifacts", () => {

@@ -6132,15 +6132,18 @@ export function ProjectView({
   }, [project.id, requestOpenFile]);
 
   const artifactFromStandaloneHtml = useCallback((sourceText: string): Artifact | null => {
+    const brief = runVisiblePromptRef.current || '';
+    const deckTitle = project.name || '슬라이드';
     const html = recoverBestHtmlDocumentFromText(sourceText, {
-      brief: runVisiblePromptRef.current || '',
-      deckTitle: project.name || '슬라이드',
+      brief,
+      deckTitle,
     });
     if (!html) return null;
+    const coverTitle = deriveDeckCoverTitleFromBrief(brief, deckTitle);
     return {
       identifier: 'response',
       artifactType: 'deck',
-      title: 'Response',
+      title: coverTitle || '슬라이드',
       html,
     };
   }, [project.name]);
@@ -14844,10 +14847,14 @@ export function resolveTerminalArtifactToPersist(
     return standalone;
   }
   if (doctypeTail) {
+    const coverTitle = deriveDeckCoverTitleFromBrief(
+      healContext?.brief || '',
+      healContext?.deckTitle || '슬라이드',
+    );
     const base: Artifact = {
       identifier: 'response',
       artifactType: 'deck',
-      title: 'Response',
+      title: coverTitle || '슬라이드',
       html: doctypeTail,
     };
     const salvagedText = artifactFromSalvagedHtml(
