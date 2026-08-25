@@ -597,7 +597,8 @@ function looksLikeFakeOutlineStyle(style: string): boolean {
 
 /**
  * Body `p`/`span`/`h2–h4` often carry 1–2px accent borders. Only treat them as
- * MiniMax "card" frames when padding looks card-like (≥12px or ≥0.75rem/em).
+ * MiniMax "card" frames when padding looks card-like (≥12px, ≥0.75rem/em,
+ * ≥4%, or ≥2ch).
  */
 function looksLikeCardLikePadding(style: string): boolean {
   const source = String(style ?? '');
@@ -610,6 +611,14 @@ function looksLikeCardLikePadding(style: string): boolean {
     }
     // 0.75rem / 1rem / 12em-scale card padding MiniMax sometimes emits.
     if (/(?:^|[\s/])(?:0\.(?:7[5-9]|[8-9]\d*)|[1-9]\d*(?:\.\d+)?)(?:rem|em)\b/i.test(value)) {
+      return true;
+    }
+    // Percent / ch card padding (thin accents stay under 4% / 2ch).
+    // No trailing `\b` after `%` — `%` is non-word so `\b` never matches EOS.
+    if (/(?:^|[\s/])(?:[4-9]|[1-9]\d+)(?:\.\d+)?%(?:\s|$|[;/])/i.test(value)) {
+      return true;
+    }
+    if (/(?:^|[\s/])(?:[2-9]|[1-9]\d+)(?:\.\d+)?ch\b/i.test(value)) {
       return true;
     }
   }
