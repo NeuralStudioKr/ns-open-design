@@ -350,7 +350,7 @@ const VOID_TAGS = new Set([
 ]);
 
 const INDEX_BADGE_TEXT_RE =
-  /^\d{2}\s*[\/·•]\s*[A-Za-z가-힣][A-Za-z가-힣\s-]{1,20}$/;
+  /^\d{1,2}\s*[\/·•]\s*[A-Za-z가-힣][A-Za-z가-힣\s-]{1,20}$/;
 
 const KIT_CARD_TOKEN_RE = /\b(?:info-card|stat-card|card)\b/i;
 const KIT_SAFE_FRAME_COLOR_RE = /\b(?:var\s*\(|currentColor|inherit|transparent)\b/i;
@@ -627,7 +627,7 @@ function pickOfficialKitCardClass(html: string): string | null {
 }
 
 const KIT_CARD_OPEN_RE =
-  /<(div|aside|article|section)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
+  /<(div|aside|article|section|li|figure)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
 
 function bindFakeOutlineCardsInSpan(html: string, cardClass: string): string {
   return html.replace(KIT_CARD_OPEN_RE, (open, _tag: string, attrs: string) => {
