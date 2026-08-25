@@ -22,7 +22,7 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | chat leftover: LAYOUT/HERO/NAV/BADGE/ICON/FIGURE … | ☑ round37 |
 | chat leftover: GALLERY/MODAL/TAB/FORM/BUTTON/WIDGET … | ☑ round38 |
 | chat leftover: AVATAR/CHIP/DROPDOWN/DASHBOARD/CANVAS … | ☑ round39 |
-| chat leftover: TOOLTIP/POPOVER/DRAWER/SKELETON/PAGINATION … | ☑ round40 |
+| chat leftover: TOOLTIP/CALLOUT/COMMENT/LOGO/SKELETON/PAGINATION … | ☑ round40 |
 | leftover APPEND가 producedFiles 있어도 말풍선에 남음 | ☑ 루프18 |
 | soft-CSS: oklab / color() continuation debris | ☑ round32 |
 | soft-CSS: light-dark / device-cmyk continuation debris | ☑ round34 |
@@ -42,7 +42,7 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | persist: card-like p/span/h2–h4 (≥12px padding) kit bind · thin accent keep | ☑ round37 |
 | persist: card-like rem/em padding (≥0.75rem) kit bind | ☑ round38 |
 | persist: card-like % (≥4%) · ch (≥2ch) padding kit bind | ☑ round39 |
-| persist: card-like vh/vw (≥3) padding kit bind | ☑ round40 |
+| persist: card-like vh/vw/vmin/vmax/dvh (≥2) padding kit bind | ☑ round40 |
 | 16:9 inner clip · kit card bind | ☑ |
 | top-up 재진입 재호출 + 내부 프롬프트 노출 | ☑ 센티널+autoOpen; 루프9 reattach 차단 · leftover 숨김 |
 | first-fill 3장 강제 → 요청 1–6장 한 턴 | ☑ 루프9 |
@@ -51,6 +51,7 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | PreviewModal/connector message 가드 | ☑ |
 | cover 제목 `Presentation` → `슬라이드` | ☑ |
 | MiniMax head-only incomplete-html-document-shell | ☑ 1차 |
+| MiniMax `<body>`+미종료 `<style>` kit → incomplete-html-document-shell | ☑ 2차 |
 | persist: Neutral 호스트/inner overlay 페인트 · 3장 1타이틀 · catalog heal skip | ☑ 루프5 |
 | persist: grid flow clip · in-flow badge · CSS motif 전 장 | ☑ 루프5 |
 | auto-continue: 슬라이드 카피 있는 truncated HTML 보존 · SLOT cover 거부 | ☑ 루프5 |
@@ -62,10 +63,17 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 1. leftover slide-count APPEND는 본문에서 지우고, `producedFiles`가 있으면 행만 유지
 2. fail-closed sanitizer는 짧은 한글 완료 문장 유지
-3. chat — TOOLTIP/POPOVER/DRAWER/SKELETON/PAGINATION 등 오버레이 트랙 숨김
-4. persist — card-like padding에 ≥3vh/vw 추가
+3. chat — TOOLTIP/CALLOUT/COMMENT/LOGO/SKELETON/PAGINATION 등 오버레이·브랜드 트랙 숨김
+4. persist — card-like padding에 ≥2vh/vw/vmin/vmax/dvh 추가 (thin `1vh`/`1.5vw` 유지)
 
 **검증:** chat-leak-probe-round40 · chat-message-render · chat-events-display · sanitize-persisted-assistant-fail-closed · deck-fixed-canvas
+
+## 직전 루프 (incomplete-shell 2차)
+
+1. persist — MiniMax가 `<body>` 다음 미종료 `<style>` 키트를 800자 덤프하면 CSS가 본문으로 잡혀 커버 초안이 스킵되고, prepare가 스타일을 지운 뒤 truncation salvage도 null → `incomplete-html-document-shell`
+2. persist — 불완전 셸 skip 직전에 최후 1920 커버를 강제 저장
+
+**검증:** salvage-truncated body+unclosed style · tiny doctype · CSS-comment fake slide · project-view persist last-resort
 
 ## 직전 루프 (round39 / 루프17)
 

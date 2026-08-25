@@ -80,6 +80,7 @@ import {
   LAST_RESORT_DECK_COVER_TITLE,
   recoverBestHtmlDocumentFromText,
   recoverHtmlArtifactFromPrecedingDocument,
+  resolveDeckHtmlForIncompleteShellPersist,
   salvageTemplateFillShellAsCoverDraft,
   salvageTruncatedHtmlDocument,
 } from '../artifacts/recover';
@@ -5458,6 +5459,32 @@ export function ProjectView({
         };
         const persistHealBrief = runVisiblePromptRef.current || '';
         const persistHealTitle = project.name || '슬라이드';
+        // Truncation salvage can close a CSS-only / unclosed-`<style>` dump
+        // and still look like an incomplete shell. Kit CSS in `<body>` also
+        // blocks cover draft (text looks salvageable). Replace those with a
+        // last-resort 1920 cover so MiniMax head-kit aborts persist + top-up
+        // instead of skipped-incomplete / incomplete-html-document-shell.
+        if (
+          !runSlideCountTopUpRef.current
+          && isIncompleteHtmlDocumentShell(artifactToPersist.html)
+          && !isPersistableShortDeckDraft(artifactToPersist.html)
+          && !isPersistableShortDeckDraftAfterHeal(
+            artifactToPersist.html,
+            persistHealBrief,
+            persistHealTitle,
+          )
+        ) {
+          const lastResortCover = resolveDeckHtmlForIncompleteShellPersist(
+            artifactToPersist.html,
+            {
+              fallbackTitle: coverFallbackTitle,
+              lastResortTitle: LAST_RESORT_DECK_COVER_TITLE,
+            },
+          );
+          if (lastResortCover) {
+            artifactToPersist = { ...artifactToPersist, html: lastResortCover };
+          }
+        }
         const trustSoftTruncationSalvage =
           Boolean(salvaged)
           || isClosedSoftSalvageDeckHtml(artifactToPersist.html)
@@ -14620,8 +14647,22 @@ function isReusableSameTurnDeckWrite(
 }
 
 function artifactFromSalvagedHtml(html: string, base: Artifact): Artifact | null {
-  const salvaged = salvageTruncatedHtmlDocument(html)
+  const truncated = salvageTruncatedHtmlDocument(html);
+  const usableTruncated =
+    truncated
+    && validateHtmlArtifact(truncated).ok
+    && (
+      !isIncompleteHtmlDocumentShell(truncated)
+      || isPersistableShortDeckDraft(truncated)
+    )
+      ? truncated
+      : null;
+  const salvaged = usableTruncated
     ?? salvageTemplateFillShellAsCoverDraft(html, {
+      fallbackTitle: '슬라이드',
+      lastResortTitle: LAST_RESORT_DECK_COVER_TITLE,
+    })
+    ?? resolveDeckHtmlForIncompleteShellPersist(html, {
       fallbackTitle: '슬라이드',
       lastResortTitle: LAST_RESORT_DECK_COVER_TITLE,
     });
@@ -14654,6 +14695,10 @@ function isUsableDeckHtmlArtifact(
   return Boolean(
     salvageTruncatedHtmlDocument(trimmed)
     ?? salvageTemplateFillShellAsCoverDraft(trimmed, {
+      fallbackTitle: '슬라이드',
+      lastResortTitle: LAST_RESORT_DECK_COVER_TITLE,
+    })
+    ?? resolveDeckHtmlForIncompleteShellPersist(trimmed, {
       fallbackTitle: '슬라이드',
       lastResortTitle: LAST_RESORT_DECK_COVER_TITLE,
     }),
