@@ -795,7 +795,9 @@ describe("canvasSlideLaunch", () => {
     expect(fillSrc).toContain("large SVG sprites this turn");
     expect(fillSrc).toContain("compact template-identifying motif/deco cues");
     expect(projectView).not.toMatch(/lastResortTitle:\s*[\s\S]{0,120}'초안'/);
-    expect(projectView).toContain("fallbackTitle: '슬라이드'");
+    expect(projectView).toContain("deriveDeckCoverTitleFromBrief(brief || '', deckTitle || '슬라이드')");
+    expect(projectView).toContain("coverTitle || '슬라이드'");
+    expect(projectView).toContain("lastResortTitle: LAST_RESORT_DECK_COVER_TITLE");
     expect(fillSrc).toContain("SLIDE_DECK_CONTENT_EXPANSION_INSTRUCTION");
     expect(fillSrc).toContain("BRIEF/TOPIC");
     const tabsBar = readWebSource("src/components/WorkspaceTabsBar.tsx");
@@ -857,6 +859,17 @@ describe("canvasSlideLaunch", () => {
     expect(cloneSrc).toContain("skipArtifactPublicationGuard: true");
     expect(projectView).not.toContain("Clone already wrote deck.html");
     expect(projectView).not.toContain("templateClonedDeckSeeded === true");
+  });
+
+  it("derives salvage cover titles from persist heal brief/title", () => {
+    const projectView = readWebSource("src/components/ProjectView.tsx");
+    expect(projectView).toContain("function artifactFromSalvagedHtml");
+    expect(projectView).toContain("deriveDeckCoverTitleFromBrief(brief || '', deckTitle || '슬라이드')");
+    expect(projectView).toContain("coverTitle || '슬라이드'");
+    expect(projectView).toContain("lastResortTitle: LAST_RESORT_DECK_COVER_TITLE");
+    expect(projectView).not.toMatch(
+      /artifactFromSalvagedHtml[\s\S]{0,900}resolveDeckHtmlForIncompleteShellPersist/,
+    );
   });
 
   it("does not optimistic-bump project updatedAt when pinning entryFile on open", () => {

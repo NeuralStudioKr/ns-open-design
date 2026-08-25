@@ -631,6 +631,8 @@ describe("ProjectView message loading", () => {
     expect(autoOpenBlock).toContain("rawFinalText,\n              artifactFromStandaloneHtml");
     expect(source).toContain("recoverBestHtmlDocumentFromText(sourceText,");
     expect(source).toContain("deckTitle: project.name || '슬라이드'");
+    expect(source).toContain("function artifactFromSalvagedHtml");
+    expect(source).toContain("deriveDeckCoverTitleFromBrief(brief || '', deckTitle || '슬라이드')");
     expect(autoOpenBlock).toContain("finalText: rawFinalText");
     expect(autoOpenBlock).toContain("terminalPersistResult = persistResult");
     expect(autoOpenBlock).toContain("formatProjectArtifactSaveFailedError(terminalPersistResult.fileName");

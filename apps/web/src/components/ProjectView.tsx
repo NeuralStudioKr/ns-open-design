@@ -5476,7 +5476,11 @@ export function ProjectView({
         // instead of skipped-incomplete / incomplete-html-document-shell.
         if (
           !runSlideCountTopUpRef.current
-          && isIncompleteHtmlDocumentShell(artifactToPersist.html)
+          && isIncompleteHtmlDocumentShell(
+            artifactToPersist.html,
+            persistHealBrief,
+            persistHealTitle,
+          )
           && !isPersistableShortDeckDraft(artifactToPersist.html)
           && !isPersistableShortDeckDraftAfterHeal(
             artifactToPersist.html,
@@ -14718,24 +14722,27 @@ function isReusableSameTurnDeckWrite(
   return !isIncompleteHtmlDocumentShell(trimmed, brief, deckTitle);
 }
 
-function artifactFromSalvagedHtml(html: string, base: Artifact): Artifact | null {
+function artifactFromSalvagedHtml(
+  html: string,
+  base: Artifact,
+  brief?: string | null,
+  deckTitle?: string | null,
+): Artifact | null {
+  const coverTitle = deriveDeckCoverTitleFromBrief(brief || '', deckTitle || '슬라이드');
   const truncated = salvageTruncatedHtmlDocument(html);
   const usableTruncated =
     truncated
     && validateHtmlArtifact(truncated).ok
     && (
-      !isIncompleteHtmlDocumentShell(truncated)
+      !isIncompleteHtmlDocumentShell(truncated, brief, deckTitle || '슬라이드')
       || isPersistableShortDeckDraft(truncated)
+      || isPersistableShortDeckDraftAfterHeal(truncated, brief, deckTitle || '슬라이드')
     )
       ? truncated
       : null;
   const salvaged = usableTruncated
     ?? salvageTemplateFillShellAsCoverDraft(html, {
-      fallbackTitle: '슬라이드',
-      lastResortTitle: LAST_RESORT_DECK_COVER_TITLE,
-    })
-    ?? resolveDeckHtmlForIncompleteShellPersist(html, {
-      fallbackTitle: '슬라이드',
+      fallbackTitle: coverTitle || '슬라이드',
       lastResortTitle: LAST_RESORT_DECK_COVER_TITLE,
     });
   // Soft truncation salvage already quality-gated. Do not re-reject with the
@@ -14764,14 +14771,11 @@ function isUsableDeckHtmlArtifact(
   if (!isIncompleteHtmlDocumentShell(trimmed, brief, deckTitle)) return true;
   // Already-closed soft salvage returns null from salvageTruncated — still usable.
   if (isClosedSoftSalvageDeckHtml(trimmed)) return true;
+  const coverTitle = deriveDeckCoverTitleFromBrief(brief || '', deckTitle || '슬라이드');
   return Boolean(
     salvageTruncatedHtmlDocument(trimmed)
     ?? salvageTemplateFillShellAsCoverDraft(trimmed, {
-      fallbackTitle: '슬라이드',
-      lastResortTitle: LAST_RESORT_DECK_COVER_TITLE,
-    })
-    ?? resolveDeckHtmlForIncompleteShellPersist(trimmed, {
-      fallbackTitle: '슬라이드',
+      fallbackTitle: coverTitle || '슬라이드',
       lastResortTitle: LAST_RESORT_DECK_COVER_TITLE,
     }),
   );
@@ -14796,7 +14800,12 @@ export function resolveTerminalArtifactToPersist(
       healContext?.deckTitle || '슬라이드',
     )
   ) {
-    const salvagedParsed = artifactFromSalvagedHtml(parsed.html, parsed);
+    const salvagedParsed = artifactFromSalvagedHtml(
+      parsed.html,
+      parsed,
+      healContext?.brief,
+      healContext?.deckTitle,
+    );
     if (salvagedParsed) return salvagedParsed;
     if (
       standalone?.html
@@ -14812,7 +14821,12 @@ export function resolveTerminalArtifactToPersist(
     // Unclosed artifact body often lands in assistant text after parser.flush();
     // salvage the doctype tail when the live parsed shell is empty/truncated.
     if (doctypeTail) {
-      const salvagedText = artifactFromSalvagedHtml(doctypeTail, parsed);
+      const salvagedText = artifactFromSalvagedHtml(
+        doctypeTail,
+        parsed,
+        healContext?.brief,
+        healContext?.deckTitle,
+      );
       if (salvagedText) return salvagedText;
     }
     return parsed;
@@ -14836,7 +14850,12 @@ export function resolveTerminalArtifactToPersist(
       title: 'Response',
       html: doctypeTail,
     };
-    const salvagedText = artifactFromSalvagedHtml(doctypeTail, base);
+    const salvagedText = artifactFromSalvagedHtml(
+      doctypeTail,
+      base,
+      healContext?.brief,
+      healContext?.deckTitle,
+    );
     if (salvagedText) return salvagedText;
   }
   return standalone;
