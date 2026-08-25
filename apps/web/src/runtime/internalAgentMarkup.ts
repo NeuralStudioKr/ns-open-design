@@ -12,6 +12,7 @@ export {
 } from "@open-design/contracts";
 
 import {
+  looksLikeTagStrippedSlideBodyDump,
   sanitizeAssistantProseForDisplay as sanitizeAssistantProseForDisplayContracts,
   sanitizeLeakedAgentProse,
   stripHardDeckNavJsFingerprints,
@@ -112,6 +113,41 @@ const DECK_FRAMEWORK_CSS_TAIL_RE =
  * stays in the web bundle so a stale `@open-design/contracts` dist cannot
  * re-paint `position:absolute` pills or `</section>-weight:` debris in chat.
  */
+/**
+ * Stale-dist last pass for tag-stripped slide leftovers (`html>…`, `body>…`,
+ * orphan `</artifact>`). Contracts SSOT already drops these; this copy stays
+ * in the web bundle so a stale dist cannot re-paint leftover slide copy.
+ */
+function stripTagStrippedSlideBodyDumpForDisplay(
+  input: string,
+  preserveArtifactBodies: boolean,
+): string {
+  if (!input) return input;
+  if (preserveArtifactBodies) return input;
+  let text = input.replace(
+    /(?:^|\n)[^\S\n]*(?:html|body|head|section|article|main)\s*>[\s\S]*?(?:<\/(?:artifact|html|body|head|section|article|main)\s*>|$)/gi,
+    "\n",
+  );
+  text = text.replace(
+    /([\uac00-\ud7af\u3000-\u9fff])[.\u3002…]?\s*(?:html|body|head|section|article|main)\s*>[\s\S]*?(?:<\/(?:artifact|html|body|head|section|article|main)\s*>|$)/gi,
+    "$1",
+  );
+  text = text.replace(/<\/artifact\s*>/gi, "");
+  text = text.replace(/\n{3,}/g, "\n\n").trimEnd();
+  if (!looksLikeTagStrippedSlideBodyDump(text)) return text;
+  const glued = /^((?:[\uac00-\ud7af\u3000-\u9fff]|[\s.,!?…·])+)(?=[A-Za-z#<"'`]|(?:html|body|head|section|article|main)\s*>)/u.exec(
+    text.trim(),
+  );
+  const prefix = glued?.[1]?.trim() ?? "";
+  if (
+    prefix
+    && (/(?:추가|작업|완료|진행|생성|수정).{0,6}[중됨요다]$/u.test(prefix) || /[중됨]$/u.test(prefix))
+  ) {
+    return prefix;
+  }
+  return "";
+}
+
 function looksLikeLeakedDeckFrameworkCss(tail: string): boolean {
   return (
     /width:\s*1920px|height:\s*1080px|box-sizing:\s*border-box|\.grain::after/i.test(tail)
@@ -420,12 +456,13 @@ export function sanitizeAssistantProseForDisplay(
       ),
       preservingArtifacts,
     );
-    return stripIncompleteTrailingMarkupToken(
+    const afterResidual = stripIncompleteTrailingMarkupToken(
       stripResidualDeckHtmlMarkupRespectingArtifacts(
         afterHeuristic,
         preservingArtifacts,
       ),
     );
+    return stripTagStrippedSlideBodyDumpForDisplay(afterResidual, preservingArtifacts);
   } catch (err) {
     // Fail closed: a sanitizer throw must not paint raw deck HTML in the bubble.
     console.error("[internalAgentMarkup] sanitizeAssistantProseForDisplay failed", err);

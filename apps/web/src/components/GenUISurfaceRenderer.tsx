@@ -912,14 +912,18 @@ function SandboxedComponentSurface({
 
   useEffect(() => {
     function onMessage(ev: MessageEvent) {
-      // We don't have an origin check the iframe can pass (it's served
-      // sandboxed). Filter on shape + the surface id we expect.
-      if (!ev.data || typeof ev.data !== 'object') return;
-      const env = ev.data as { kind?: string; surfaceId?: string; value?: unknown };
-      if (env.kind !== 'genui:respond') return;
-      if (env.surfaceId !== surfaceId) return;
-      setBusy(true);
-      void Promise.resolve(onAnswered(env.value)).finally(() => setBusy(false));
+      try {
+        // We don't have an origin check the iframe can pass (it's served
+        // sandboxed). Filter on shape + the surface id we expect.
+        if (!ev.data || typeof ev.data !== 'object') return;
+        const env = ev.data as { kind?: string; surfaceId?: string; value?: unknown };
+        if (env.kind !== 'genui:respond') return;
+        if (env.surfaceId !== surfaceId) return;
+        setBusy(true);
+        void Promise.resolve(onAnswered(env.value)).finally(() => setBusy(false));
+      } catch (err) {
+        console.error('[GenUISurfaceRenderer] genui:respond failed', err);
+      }
     }
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);

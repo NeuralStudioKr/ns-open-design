@@ -428,7 +428,7 @@ export function buildTemplateClonedDeckHtml(
   const deckTitle =
     sanitizeTemplateCloneDeckTitle(options.title)
     || cleanedSlides[0]?.title
-    || 'Presentation';
+    || '슬라이드';
 
   let workingSlides: TemplateCloneSlideContent[];
   if (cleanedSlides.length > 0) {
@@ -590,9 +590,9 @@ function deriveTitleFromBrief(brief: string, deckTitle?: string | null): string 
   ) {
     title = aboutTopic && !looksLikeTemplateMarketingTitle(aboutTopic)
       ? aboutTopic
-      : 'Presentation';
+      : '슬라이드';
   }
-  return cleanCloneTitle(title).slice(0, 60) || 'Presentation';
+  return cleanCloneTitle(title).slice(0, 60) || '슬라이드';
 }
 
 export function looksLikeInstructionCopy(text: string): boolean {

@@ -3100,7 +3100,10 @@ function stripInternalMarkupFromProseBlocks(
     try {
       return {
         ...block,
-        text: sanitizeAssistantProseForDisplay(block.text, { streaming, stripCodeFences }),
+        text: sanitizeAssistantProseForDisplay(stripAllClosedArtifacts(block.text), {
+          streaming,
+          stripCodeFences,
+        }),
       };
     } catch (err) {
       console.error('[AssistantMessage] stripInternalMarkupFromProseBlocks failed', err);

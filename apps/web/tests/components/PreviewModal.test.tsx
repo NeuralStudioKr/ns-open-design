@@ -1,9 +1,12 @@
 import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
 import { PreviewModal } from '../../src/components/PreviewModal';
+
+const here = dirname(fileURLToPath(import.meta.url));
 
 describe('PreviewModal sandbox isolation', () => {
   it('renders generated previews without same-origin sandbox access', () => {
@@ -245,5 +248,16 @@ describe('PreviewModal sandbox isolation', () => {
 
     expect(markup).toContain('allow-popups');
     expect(markup).toContain('allow-popups-to-escape-sandbox');
+  });
+});
+
+describe('PreviewModal preview message guards', () => {
+  it('wraps escape / slide-state / deck-host-viewport handlers', () => {
+    const source = readFileSync(join(here, '../../src/components/PreviewModal.tsx'), 'utf8');
+    expect(source).toContain("runFileViewerPreviewMessageHandler('preview-modal-escape'");
+    expect(source).toContain("runFileViewerPreviewMessageHandler('preview-modal-slide-state'");
+    expect(source).toContain(
+      "runFileViewerPreviewMessageHandler('preview-modal-deck-host-viewport'",
+    );
   });
 });

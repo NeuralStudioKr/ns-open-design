@@ -232,6 +232,12 @@ describe("internalAgentMarkup", () => {
           { streaming },
         ),
       ).toBe("슬라이드 추가 중");
+      expect(
+        sanitizeAssistantProseForDisplay(
+          `body>WD · INTRO반응형 UI 유지보수 단일 경로, SEO 유리. font-size:2rem</body>`,
+          { streaming },
+        ),
+      ).toBe("");
     }
   });
 

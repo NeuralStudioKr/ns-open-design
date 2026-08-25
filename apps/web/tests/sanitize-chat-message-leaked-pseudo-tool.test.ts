@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { ChatMessage } from "../src/types";
 import { sanitizeChatMessageLeakedPseudoTool } from "../src/utils/sanitizeChatMessageLeakedPseudoTool";
+import { sanitizePersistedAssistantChatMessage } from "../src/utils/sanitizePersistedAssistantChatMessage";
 
 describe("sanitizeChatMessageLeakedPseudoTool", () => {
   it("strips pseudo-tool XML from content and text events", () => {
@@ -341,5 +342,58 @@ describe("sanitizeChatMessageLeakedPseudoTool", () => {
     expect(sanitized.events?.some((event) => event.kind === "text" && event.text.includes("완료"))).toBe(
       true,
     );
+  });
+
+  it("joins leftover body> events that have no lecture / axe-core tokens", () => {
+    const leak =
+      "body>WD · INTRO반응형 UI 유지보수 단일 경로, SEO 유리. font-size:2rem color:#111</body>";
+    const message: ChatMessage = {
+      id: "m-reload-body",
+      role: "assistant",
+      content: "슬라이드 작업이 완료되었습니다.",
+      events: [
+        { kind: "text", text: "슬라이드 작업이 완료되었습니다." },
+        { kind: "tool_use", id: "w1", name: "Write", input: {} },
+        { kind: "text", text: leak },
+      ],
+    };
+    const sanitized = sanitizeChatMessageLeakedPseudoTool(message, { stripCodeFences: true });
+    expect(sanitized.content).toBe("슬라이드 작업이 완료되었습니다.");
+    expect(JSON.stringify(sanitized.events)).not.toContain("body>");
+    expect(JSON.stringify(sanitized.events)).not.toContain("font-size:2rem");
+  });
+});
+
+describe("sanitizePersistedAssistantChatMessage", () => {
+  it("scrubs leftover body> events on settled rows and leaves in-flight question-form", () => {
+    const leak =
+      "body>WD · INTRO반응형 UI 유지보수 단일 경로, SEO 유리. font-size:2rem color:#111</body>";
+    const settled: ChatMessage = {
+      id: "m-settled",
+      role: "assistant",
+      content: "슬라이드 작업이 완료되었습니다.",
+      createdAt: 1,
+      runStatus: "succeeded",
+      events: [
+        { kind: "text", text: "슬라이드 작업이 완료되었습니다." },
+        { kind: "tool_use", id: "w1", name: "Write", input: {} },
+        { kind: "text", text: leak },
+      ],
+    };
+    const cleaned = sanitizePersistedAssistantChatMessage(settled);
+    expect(cleaned.content).toBe("슬라이드 작업이 완료되었습니다.");
+    expect(JSON.stringify(cleaned.events)).not.toContain("body>");
+
+    const inflight: ChatMessage = {
+      id: "m-run",
+      role: "assistant",
+      content: 'Planning…\n<question-form id="discovery">{"questions":[',
+      createdAt: 1,
+      runStatus: "running",
+      events: [
+        { kind: "text", text: 'Planning…\n<question-form id="discovery">{"questions":[' },
+      ],
+    };
+    expect(sanitizePersistedAssistantChatMessage(inflight)).toBe(inflight);
   });
 });
