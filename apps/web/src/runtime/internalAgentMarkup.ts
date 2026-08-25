@@ -142,6 +142,9 @@ function findHangulGluedStyleDumpCut(line: string): number | null {
   if (fontStack && decls.length >= 1) return prefix.length;
   if ((fontStack || fontLeftover) && styleClose) return prefix.length;
   if (fontLeftover && (fontStack || styleClose || decls.length >= 1)) return prefix.length;
+  if (/^(?:url|local|format|tech)\s*\(|^src\s*:\s*(?:url|local|tech)\s*\(|^@font-face\b/i.test(dump)) {
+    return prefix.length;
+  }
   return null;
 }
 
@@ -268,7 +271,13 @@ function stripLeakedDeckMotifHtmlTail(input: string): string {
         || /^url\(\s*['"]?(?:https?:|\/)/i.test(trimmed)
         || /^format\(\s*['"](?:woff2?|truetype|opentype)/i.test(trimmed)
         || /^local\(\s*['"]?[A-Za-z]/.test(trimmed)
-        || /^fit-content\s*\(/i.test(trimmed))
+        || /^fit-content\s*\(/i.test(trimmed)
+        || /^src\s*:\s*(?:url|local|tech)\s*\(/i.test(trimmed)
+        || /^tech\(\s*[\w-]+/i.test(trimmed)
+        || /^U\+[0-9A-Fa-f]{1,6}\b/.test(trimmed)
+        || /^[A-Za-z0-9._/-]+\.woff2?\b/i.test(trimmed)
+        || /^(?:blur|drop-shadow|circle|ellipse|inset|polygon|path)\s*\(/i.test(trimmed)
+        || /^var\(\s*--(?:font|display|sans|serif|mono|hand)/i.test(trimmed))
     ) {
       continue;
     }

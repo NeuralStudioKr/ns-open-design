@@ -144,6 +144,18 @@ describe("internalAgentMarkup", () => {
           { streaming },
         ),
       ).toBe("진행.");
+      expect(
+        sanitizeAssistantProseForDisplay(
+          `진행.\nsrc: url('https://fonts.gstatic.com/s/caveat/v22.woff2') format('woff2');`,
+          { streaming },
+        ),
+      ).toBe("진행.");
+      expect(
+        sanitizeAssistantProseForDisplay(
+          `슬라이드 추가 중url('https://fonts.gstatic.com/s/caveat/v1.woff2') format('woff2');`,
+          { streaming },
+        ),
+      ).toBe("슬라이드 추가 중");
     }
   });
 

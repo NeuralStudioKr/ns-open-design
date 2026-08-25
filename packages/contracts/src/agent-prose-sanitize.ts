@@ -329,7 +329,22 @@ function looksLikeCssFunctionDebrisLine(line: string): boolean {
     return true;
   }
   if (/^local\(\s*['"]?[A-Za-z]/.test(trimmed)) return true;
+  if (/^tech\(\s*[\w-]+/i.test(trimmed)) return true;
   if (/^(?:calc|clamp|min|max|minmax|repeat|fit-content)\s*\(/i.test(trimmed)) return true;
+  if (
+    /^(?:blur|drop-shadow|grayscale|brightness|contrast|saturate|sepia|hue-rotate|invert|opacity)\s*\(/i.test(
+      trimmed,
+    )
+  ) {
+    return true;
+  }
+  if (/^(?:circle|ellipse|inset|xywh|rect|polygon|path|superellipse)\s*\(/i.test(trimmed)) {
+    return true;
+  }
+  if (/^(?:paint|contrast-color|palette-mix|linear|abs|sign|mod|rem|round|hypot|pow|sqrt)\s*\(/i.test(trimmed)) {
+    return true;
+  }
+  if (/^var\(\s*--(?:font|ff|display|sans|serif|mono|hand)[\w-]*/i.test(trimmed)) return true;
   if (/^light-dark\s*\(/i.test(trimmed)) return true;
   if (/^image-set\s*\(/i.test(trimmed)) return true;
   if (/^env\s*\(\s*safe-area/i.test(trimmed)) return true;
@@ -637,6 +652,10 @@ function findHangulGluedStyleDumpCut(line: string): number | null {
   if ((fontStack || fontName || fontLeftover) && styleClose) return prefix.length;
   if (fontName && fontStack) return prefix.length;
   if (fontLeftover && (fontStack || styleClose || decls.length >= 1)) return prefix.length;
+  // @font-face body glued to status: `중url('…woff2')` / `중src: url(` / `중local(`.
+  if (/^(?:url|local|format|tech)\s*\(|^src\s*:\s*(?:url|local|tech)\s*\(|^@font-face\b/i.test(dump)) {
+    return prefix.length;
+  }
   return null;
 }
 
@@ -2426,7 +2445,28 @@ export function looksLikeDeckCodeDebrisLine(line: string): boolean {
   }
   if (
     /^(?:-?[a-zA-Z]+(?:-[a-zA-Z0-9]+)*)\s*:\s*\S/.test(trimmed)
-    && /(?:rgba?\(|hsla?\(|#[0-9A-Fa-f]{3,8}|\d+(?:px|em|rem|%|vh|vw|ms|s)|border|padding|margin|font-|display\s*:|transform|opacity|background|filter|transition|content\s*:|aspect-ratio\s*:|color-scheme\s*:|unicode-range\s*:|font-display\s*:|view-transition-name\s*:|anchor-name\s*:|position-anchor\s*:|interpolate-size\s*:|offset-path\s*:|mask-image\s*:|contain\s*:|isolation\s*:|mix-blend-mode\s*:|\\[Aa]|!important)/i.test(
+    && /(?:rgba?\(|hsla?\(|#[0-9A-Fa-f]{3,8}|\d+(?:px|em|rem|%|vh|vw|cqw|cqh|cqi|cqb|ms|s)|border|padding|margin|font-|display\s*:|transform|opacity|background|filter|transition|content\s*:|aspect-ratio\s*:|color-scheme\s*:|unicode-range\s*:|font-display\s*:|view-transition-name\s*:|anchor-name\s*:|position-anchor\s*:|interpolate-size\s*:|offset-path\s*:|mask-image\s*:|contain\s*:|isolation\s*:|mix-blend-mode\s*:|url\s*\(|format\s*\(|local\s*\(|tech\s*\(|woff2?|\\[Aa]|!important)/i.test(
+      trimmed,
+    )
+  ) {
+    return true;
+  }
+  if (/^src\s*:\s*(?:url|local|tech)\s*\(/i.test(trimmed)) return true;
+  if (/^U\+[0-9A-Fa-f]{1,6}\b/.test(trimmed)) return true;
+  if (/^[A-Za-z0-9._/-]+\.woff2?\b/i.test(trimmed)) return true;
+  if (/^from-font\s*;?\s*$/i.test(trimmed)) return true;
+  if (
+    /^(?:-?(?:webkit|moz|ms)-)?[a-z][\w-]*-[a-z][\w-]*\s*:\s*\S/i.test(trimmed)
+    && !/[\uac00-\ud7af]/.test(trimmed)
+    && (/;\s*$/.test(trimmed)
+      || /(?:url\s*\(|var\s*\(|#[0-9A-Fa-f]{3,8}|\d+(?:px|em|rem|%|vh|vw|cqw)|--[\w-]+)/.test(trimmed))
+  ) {
+    return true;
+  }
+  if (
+    !/[\uac00-\ud7af]/.test(trimmed)
+    && /^(?:[a-z][\w-]*\s*:\s*[^;]+;\s*){2,}$/i.test(trimmed)
+    && /(?:--|url\s*\(|var\s*\(|#[0-9A-Fa-f]{3,8}|\d+(?:px|em|rem|%|vh|vw|cqw)|timeline|wrap|sizing|font-)/i.test(
       trimmed,
     )
   ) {
