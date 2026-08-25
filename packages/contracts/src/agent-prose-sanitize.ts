@@ -2432,20 +2432,32 @@ function findHangulGluedTagStrippedSlideBodyCut(line: string): number | null {
     if (/[.\u3002…]/.test(line[i] ?? "")) cut = i + 1;
     if (cut >= line.length - 23) continue;
     if (/\s/.test(line[cut - 1] ?? "")) continue;
-    // Status check ignores the trailing period we skipped into the dump
-    // (`완료됨.TRACK…` → prefix `완료됨`, not `완료됨.`).
     const prefixForStatus = line.slice(0, i);
-    if (!/(?:추가|작업|완료|진행|생성|수정).{0,6}[중됨요다]$/u.test(prefixForStatus)
-      && !/[중됨]$/u.test(prefixForStatus)) {
+    if (!isMeaningfulHangulStatusPrefix(prefixForStatus)) {
       continue;
     }
     const dump = line.slice(cut);
-    if (!/^[\uac00-\ud7afA-Za-z]/.test(dump)) continue;
+    if (!/^[\uac00-\ud7afA-Za-z<!]/.test(dump)) continue;
     if (looksLikeTagStrippedSlideBody(dump) || looksLikeTagStrippedSlideBodyDump(dump)) {
-      return cut;
+      // Opener leftovers (`body>` / `<!doctype`) drop the glue period
+      // (`완료되었습니다.body>` → keep status without `.`). Latin TRACK dumps
+      // keep it (`완료됨.TRACK…` → `완료됨.`).
+      const openerDump =
+        /^(?:html|body|head|section|article|main)\s*>/i.test(dump)
+        || /^<!doctype\b/i.test(dump);
+      return openerDump ? i : cut;
     }
   }
   return null;
+}
+
+/** True when a Hangul prefix is a real status phrase, not a 1-char crumb (`다`). */
+function isMeaningfulHangulStatusPrefix(prefix: string): boolean {
+  const p = String(prefix ?? "").trim().replace(/[.\u3002…]+$/u, "");
+  if (!p) return false;
+  if (/(?:추가|작업|완료|진행|생성|수정).{0,6}[중됨요다]$/u.test(p)) return true;
+  if (p.length >= 3 && /[중됨요다]$/u.test(p)) return true;
+  return false;
 }
 
 function stripOrphanArtifactCloserDump(input: string): string {
@@ -2458,9 +2470,31 @@ function stripOrphanArtifactCloserDump(input: string): string {
     /(?:^|\n)[^\S\n]*(?:html|body|head|section|article|main)\s*>[\s\S]*?(?:<\/(?:artifact|html|body|head|section|article|main)\s*>|$)/gi,
     "\n",
   );
+  // Lone Hangul crumb + opener (`다.body>…`) — must not use the status-expand
+  // path below, which would keep `중` from `슬라이드 추가 중body>`.
   text = text.replace(
-    /([\uac00-\ud7af\u3000-\u9fff])[.\u3002…]?\s*(?:html|body|head|section|article|main)\s*>[\s\S]*?(?:<\/(?:artifact|html|body|head|section|article|main)\s*>|$)/gi,
-    "$1",
+    /(?:^|\n)[^\S\n]*[\uac00-\ud7af\u3000-\u9fff]{1,2}[.\u3002…]?\s*(?:html|body|head|section|article|main)\s*>[\s\S]*?(?:<\/(?:artifact|html|body|head|section|article|main)\s*>|$)/gi,
+    "\n",
+  );
+  text = text.replace(
+    /([\uac00-\ud7af\u3000-\u9fff]+)[.\u3002…]?\s*(?:html|body|head|section|article|main)\s*>[\s\S]*?(?:<\/(?:artifact|html|body|head|section|article|main)\s*>|$)/gi,
+    (match, hangulPrefix: string) => {
+      // Only chop when this Hangul run alone is a status (`완료되었습니다`).
+      // Short tails like `중` in `슬라이드 추가 중body>` stay for glue-cut.
+      if (!isMeaningfulHangulStatusPrefix(hangulPrefix)) return match;
+      return hangulPrefix;
+    },
+  );
+  text = text.replace(
+    /(?:^|\n)[^\S\n]*[\uac00-\ud7af\u3000-\u9fff]{1,2}[.\u3002…]?\s*<!doctype\s+html[\s\S]*?(?:<\/(?:artifact|html|body)\s*>|$)/gi,
+    "\n",
+  );
+  text = text.replace(
+    /([\uac00-\ud7af\u3000-\u9fff]+)[.\u3002…]?\s*<!doctype\s+html[\s\S]*?(?:<\/(?:artifact|html|body)\s*>|$)/gi,
+    (match, hangulPrefix: string) => {
+      if (!isMeaningfulHangulStatusPrefix(hangulPrefix)) return match;
+      return hangulPrefix;
+    },
   );
   text = text.replace(
     /(?:^|\n)[^\S\n]*<!doctype\s+html[\s\S]*?(?:<\/(?:artifact|html|body)\s*>|$)/gi,
@@ -2469,11 +2503,19 @@ function stripOrphanArtifactCloserDump(input: string): string {
   text = text.replace(/<\/artifact\s*>/gi, "");
   const kept = text.split("\n").map((line) => {
     const glued = findHangulGluedTagStrippedSlideBodyCut(line);
-    if (glued != null) return line.slice(0, glued);
+    if (glued != null) {
+      const prefix = line.slice(0, glued);
+      return isMeaningfulHangulStatusPrefix(prefix) || prefix.trim().length >= 4
+        ? prefix
+        : "";
+    }
     return line;
   }).filter((line) => {
     const trimmed = line.trim();
     if (!trimmed) return true;
+    // Drop lone Hangul crumbs (`다` / `중.`) left after opener cuts — never
+    // 2-syllable prose like `요약.` / `질문`.
+    if (/^[\uac00-\ud7af\u3000-\u9fff][.\u3002…]?$/u.test(trimmed)) return false;
     return !looksLikeTagStrippedSlideBody(trimmed);
   });
   text = kept.join("\n").replace(/\n{3,}/g, "\n\n").trimEnd();
@@ -2525,12 +2567,8 @@ function leadingHangulStatusFromDump(text: string): string {
     trimmed,
   );
   const prefix = glued?.[1]?.trim() ?? "";
-  if (
-    prefix
-    && !looksLikeTagStrippedSlideBodyDump(prefix)
-    && (/(?:추가|작업|완료|진행|생성|수정).{0,6}[중됨요다]$/u.test(prefix) || /[중됨]$/u.test(prefix))
-  ) {
-    return prefix;
+  if (prefix && !looksLikeTagStrippedSlideBodyDump(prefix) && isMeaningfulHangulStatusPrefix(prefix)) {
+    return prefix.replace(/[.\u3002…]+$/u, "").trimEnd();
   }
   return "";
 }

@@ -30,6 +30,18 @@ describe('connector OAuth callback origin', () => {
     expect(isTrustedConnectorCallbackOrigin('https://example.com', 'http://127.0.0.1:60809')).toBe(false);
     expect(isTrustedConnectorCallbackOrigin('file://callback', 'http://127.0.0.1:60809')).toBe(false);
   });
+
+  it('guards EntryView connector postMessage so a throw cannot take down the tree', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { dirname, join } = await import('node:path');
+    const { fileURLToPath } = await import('node:url');
+    const source = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), '../../src/components/EntryView.tsx'),
+      'utf8',
+    );
+    expect(source).toContain('[EntryView] connector callback failed');
+    expect(source).toMatch(/function onMessage\(event: MessageEvent\) \{\s*try \{/);
+  });
 });
 
 describe('connector display sorting', () => {

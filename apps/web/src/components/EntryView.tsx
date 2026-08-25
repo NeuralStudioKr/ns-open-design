@@ -318,10 +318,14 @@ export function EntryView({
   useEffect(() => {
     if (!shouldFetchConnectorCatalog()) return;
     function onMessage(event: MessageEvent) {
-      const data = event.data;
-      if (!data || typeof data !== 'object' || (data as { type?: unknown }).type !== CONNECTOR_CALLBACK_MESSAGE_TYPE) return;
-      if (!isTrustedConnectorCallbackOrigin(event.origin)) return;
-      void reloadConnectorCatalog({ refreshDiscovery: true });
+      try {
+        const data = event.data;
+        if (!data || typeof data !== 'object' || (data as { type?: unknown }).type !== CONNECTOR_CALLBACK_MESSAGE_TYPE) return;
+        if (!isTrustedConnectorCallbackOrigin(event.origin)) return;
+        void reloadConnectorCatalog({ refreshDiscovery: true });
+      } catch (err) {
+        console.error('[EntryView] connector callback failed', err);
+      }
     }
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
