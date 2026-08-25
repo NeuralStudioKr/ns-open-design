@@ -214,6 +214,12 @@ describe("internalAgentMarkup", () => {
       expect(
         sanitizeAssistantProseForDisplay(`슬라이드 추가 중$ink: #2d2a26;`, { streaming }),
       ).toBe("슬라이드 추가 중");
+      expect(
+        sanitizeAssistantProseForDisplay(
+          `html>WD · LECTURE 01 · FRONT-END TRACK반응형 UIaxe-core0 critical, prefers-reduced-motion 대응.</artifact>`,
+          { streaming },
+        ),
+      ).toBe("");
     }
   });
 

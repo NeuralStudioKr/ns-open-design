@@ -140,6 +140,7 @@ function findHangulGluedStyleDumpCut(line: string): number | null {
   }
   if (/^(?:from|to|\d+%)\s*\{/.test(dump)) return prefix.length;
   if (/^--[A-Za-z_][\w-]*\s*[:{]/.test(dump)) return prefix.length;
+  if (/^html\s*>/i.test(dump)) return prefix.length;
   if (
     /^(?:url|local|format|tech|blur|drop-shadow|circle|ellipse|inset|polygon|path|image|element|anchor|anchor-size|color|calc-size|scroll|view|ray|attr|counter|sibling-index|sibling-count|cubic-bezier)\s*\(/i.test(
       dump,
@@ -331,7 +332,9 @@ function stripLeakedDeckMotifHtmlTail(input: string): string {
         || /^(?:document|window)\.\w+/.test(trimmed)
         || /^(?:mix-blend-mode|offset-path|anchor-name|position-anchor|view-transition-name|interpolate-size|mask-image|isolation|contain)\s*:/i.test(
           trimmed,
-        ))
+        )
+        || /^html\s*>/i.test(trimmed)
+        || /<\/artifact\s*>/i.test(trimmed))
     ) {
       continue;
     }
