@@ -7,6 +7,7 @@ import {
   createLazyProjectMaterializationMiddleware,
   createProjectStorageAccessHooks,
   parseExplicitProjectFileDeleteRelpath,
+  parseMaterializationEntryRelpath,
 } from '../src/storage/lazy-project-materialization.js';
 import { TeamverTenantStorageResolutionError } from '../src/storage/teamver-project-storage-meta.js';
 import { MaterializingProjectStorage } from '../src/storage/materializing-project-storage.js';
@@ -19,6 +20,7 @@ function mockReq(
   path: string,
   projectId = 'p1',
   body?: Record<string, unknown>,
+  query?: Record<string, unknown>,
 ): Request {
   return {
     method,
@@ -26,6 +28,7 @@ function mockReq(
     params: { id: projectId },
     headers: {},
     body: body ?? {},
+    query: query ?? {},
   } as unknown as Request;
 }
 
@@ -858,6 +861,86 @@ describe('createLazyProjectMaterializationMiddleware', () => {
       await new Promise((r) => setTimeout(r, 0));
       expect(persist).toHaveBeenCalled();
     }
+  });
+});
+
+describe('parseMaterializationEntryRelpath', () => {
+  it('parses raw, scoped preview, and preview-url entry files', () => {
+    expect(parseMaterializationEntryRelpath('/raw/deck.html')).toBe('deck.html');
+    expect(parseMaterializationEntryRelpath('/api/projects/p1/raw/refs/a.png'))
+      .toBe('refs/a.png');
+    expect(parseMaterializationEntryRelpath('/preview/scope1/deck.html'))
+      .toBe('deck.html');
+    expect(parseMaterializationEntryRelpath('/preview-url', { file: 'cover.html' }))
+      .toBe('cover.html');
+    expect(parseMaterializationEntryRelpath('/preview-url')).toBe('deck.html');
+    expect(parseMaterializationEntryRelpath('/files')).toBeNull();
+  });
+});
+
+describe('createLazyProjectMaterializationMiddleware entry point-get fast path', () => {
+  it('skips awaiting full ensureMaterialized when /raw entry point-get fills', async () => {
+    const layout = resolveProjectStorageLayout({ OD_PROJECT_STORAGE: 's3' }, '/data');
+    const storage = new MaterializingProjectStorage(
+      new LocalProjectStorage('/tmp/scratch'),
+      new LocalProjectStorage('/tmp/remote'),
+    );
+    const hooks = createProjectStorageAccessHooks(
+      createProjectMaterializationRuntime(layout, storage),
+    );
+    const pointGet = vi.spyOn(hooks!, 'ensureFileAvailable').mockResolvedValue(true);
+    const ensure = vi.spyOn(hooks!, 'ensureMaterialized').mockResolvedValue(undefined);
+    const middleware = createLazyProjectMaterializationMiddleware(hooks, vi.fn());
+    const next = vi.fn();
+
+    await middleware(mockReq('GET', '/raw/deck.html'), mockRes(), next);
+
+    expect(pointGet).toHaveBeenCalledWith(expect.anything(), 'p1', 'deck.html');
+    expect(next).toHaveBeenCalled();
+    // Full sync is fire-and-forget — do not block first paint on it.
+    await new Promise((r) => setTimeout(r, 0));
+    expect(ensure).toHaveBeenCalled();
+  });
+
+  it('falls back to ensureMaterialized when point-get misses', async () => {
+    const layout = resolveProjectStorageLayout({ OD_PROJECT_STORAGE: 's3' }, '/data');
+    const storage = new MaterializingProjectStorage(
+      new LocalProjectStorage('/tmp/scratch'),
+      new LocalProjectStorage('/tmp/remote'),
+    );
+    const hooks = createProjectStorageAccessHooks(
+      createProjectMaterializationRuntime(layout, storage),
+    );
+    vi.spyOn(hooks!, 'ensureFileAvailable').mockResolvedValue(false);
+    const ensure = vi.spyOn(hooks!, 'ensureMaterialized').mockResolvedValue(undefined);
+    const middleware = createLazyProjectMaterializationMiddleware(hooks, vi.fn());
+    const next = vi.fn();
+
+    await middleware(mockReq('GET', '/preview-url', 'p1', undefined, { file: 'deck.html' }), mockRes(), next);
+
+    expect(ensure).toHaveBeenCalled();
+    expect(next).toHaveBeenCalled();
+  });
+
+  it('keeps /files on the full ensureMaterialized path', async () => {
+    const layout = resolveProjectStorageLayout({ OD_PROJECT_STORAGE: 's3' }, '/data');
+    const storage = new MaterializingProjectStorage(
+      new LocalProjectStorage('/tmp/scratch'),
+      new LocalProjectStorage('/tmp/remote'),
+    );
+    const hooks = createProjectStorageAccessHooks(
+      createProjectMaterializationRuntime(layout, storage),
+    );
+    const pointGet = vi.spyOn(hooks!, 'ensureFileAvailable').mockResolvedValue(true);
+    const ensure = vi.spyOn(hooks!, 'ensureMaterialized').mockResolvedValue(undefined);
+    const middleware = createLazyProjectMaterializationMiddleware(hooks, vi.fn());
+    const next = vi.fn();
+
+    await middleware(mockReq('GET', '/files'), mockRes(), next);
+
+    expect(pointGet).not.toHaveBeenCalled();
+    expect(ensure).toHaveBeenCalled();
+    expect(next).toHaveBeenCalled();
   });
 });
 

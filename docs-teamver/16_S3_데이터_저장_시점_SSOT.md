@@ -396,7 +396,17 @@ cryptographically random UUID 이며 발급된 session 외부로 새지 않지�
 **TTL:** `OD_PROJECT_LAZY_SYNC_TTL_MS` (staging example **60000** = 60초).  
 같은 프로젝트 GET이 TTL 안이면 **sync-down skip** (scratch 캐시 사용).
 
----
+### 6.1 Entry point-get fast path (2026-08-25)
+
+Cold scratch에서 `/raw/*` · `/preview/:scope/*` · `/preview-url` GET이 **전체 sync-down**을 기다리면 딥링크 첫 paint가 수 초 막힌다.
+
+| 경로 | 동작 |
+|------|------|
+| entry 파일 있음 (`parseMaterializationEntryRelpath`) | `ensureFileAvailable` (S3 point-get) 성공 시 **즉시 next** + 백그라운드 `ensureMaterialized` |
+| point-get miss / `/files` 등 목록 | 기존처럼 `ensureMaterialized` await |
+| 메트릭 | `od_s3_lazy_entry_point_get_fast_path` (`OD_S3_SYNC_UP_METRICS=1`) |
+
+코드: `lazy-project-materialization.ts` middleware GET 분기.
 
 ## 6.5 Idle scratch evict — sync-up 보장 (S3 SSOT 가드)
 

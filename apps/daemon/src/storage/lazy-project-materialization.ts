@@ -217,6 +217,52 @@ export function parseExplicitProjectFileDeleteRelpath(pathname: string): string 
   return null;
 }
 
+function decodeRelpathSegment(raw: string): string {
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return raw;
+  }
+}
+
+/**
+ * Entry file for cold-scratch GET fast-path. When present, middleware can
+ * point-get this single object and proceed without awaiting a full project
+ * sync-down (background fill still runs for sibling assets).
+ */
+export function parseMaterializationEntryRelpath(
+  pathname: string,
+  query?: unknown,
+): string | null {
+  const path = String(pathname ?? '');
+  const rawMatch =
+    path.match(/^\/raw\/(.+)$/u)
+    ?? path.match(/^\/api\/projects\/[^/]+\/raw\/(.+)$/u);
+  if (rawMatch?.[1]) return decodeRelpathSegment(rawMatch[1]);
+
+  const previewMatch =
+    path.match(/^\/preview\/[^/]+\/(.+)$/u)
+    ?? path.match(/^\/api\/projects\/[^/]+\/preview\/[^/]+\/(.+)$/u);
+  if (previewMatch?.[1]) return decodeRelpathSegment(previewMatch[1]);
+
+  if (
+    /^\/preview-url\/?$/u.test(path)
+    || /^\/api\/projects\/[^/]+\/preview-url\/?$/u.test(path)
+  ) {
+    const fileRaw =
+      query && typeof query === 'object'
+        ? (query as Record<string, unknown>).file
+        : undefined;
+    if (typeof fileRaw === 'string' && fileRaw.trim()) {
+      const cleaned = fileRaw.trim().split(/[?#]/u, 1)[0]?.trim() ?? '';
+      if (cleaned) return cleaned;
+    }
+    // Deep-link / FE warm default — matches warmTeamverProjectPreviewPrefixSoon.
+    return 'deck.html';
+  }
+  return null;
+}
+
 /**
  * Export/archive routes are semantically read-only even though POST is used
  * (they never mutate the project — they just render existing scratch bytes
@@ -910,6 +956,33 @@ export function createLazyProjectMaterializationMiddleware(
 
     if (req.method === 'GET' || req.method === 'HEAD') {
       try {
+        // Cold scratch: full sync-down of a large project can take seconds and
+        // blocks first paint. For entry-file reads (/raw, /preview, preview-url)
+        // point-get the requested object first, then fill the rest in background.
+        const entryRelpath = parseMaterializationEntryRelpath(
+          req.path,
+          (req as { query?: unknown }).query,
+        );
+        if (entryRelpath) {
+          const filled = await hooks.ensureFileAvailable(req, projectId, entryRelpath);
+          if (filled) {
+            void hooks.ensureMaterialized(req, projectId).catch((err) => {
+              console.warn(
+                `[project-materialization] background sync-down after point-get ${projectId}:`,
+                err instanceof Error ? err.message : err,
+              );
+            });
+            if (process.env.OD_S3_SYNC_UP_METRICS === '1') {
+              console.info(JSON.stringify({
+                metric: 'od_s3_lazy_entry_point_get_fast_path',
+                projectId,
+                path: req.path,
+                entry: entryRelpath,
+              }));
+            }
+            return next();
+          }
+        }
         await hooks.ensureMaterialized(req, projectId);
       } catch (err) {
         const softContinue = await handleError(err);

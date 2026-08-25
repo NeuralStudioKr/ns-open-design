@@ -109,4 +109,4 @@ cd apps/web && npx vitest run \
 2. [44](./44_preview_scope_fallback_안정화.md) preview-url 실패율 모니터링
 3. memory-only preview(`FileWorkspace`)도 동일 mount-key 패턴 적용 여부 점검
 4. ~~create/deep-link early preview-url warm + cold disk debounce 0~~ — **2026-08-25 반영** ([00](./00_구현_내역_누적.md))
-5. Daemon lazy S3 materialize(cold scratch)는 별 슬라이스 — FE warm만으로는 TTFB 전부 제거 불가
+5. ~~Daemon lazy S3 materialize(cold scratch) entry point-get fast path~~ — **2026-08-25 반영** ([16](./16_S3_데이터_저장_시점_SSOT.md) §6.1)
