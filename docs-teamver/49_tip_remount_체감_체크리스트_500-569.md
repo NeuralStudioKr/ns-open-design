@@ -1,7 +1,7 @@
-# Tip remount 체감 체크리스트 (500–566)
+# Tip remount 체감 체크리스트 (500–569)
 
 Manual Edit tip-yield → remount → chrome interactive 경로의 **사용자 체감** 회귀 체크리스트입니다.  
-헬퍼/시퀀스 SSOT는 `apps/web/src/edit-mode/manual-edit-freeze.ts` 상단 **Tip remount index (566)** 와 아래 상수입니다.
+헬퍼/시퀀스 SSOT는 `apps/web/src/edit-mode/manual-edit-freeze.ts` 상단 **Tip remount index (569)** 와 아래 상수입니다.
 
 | 시퀀스 | 상수 |
 |--------|------|
@@ -49,6 +49,8 @@ CI fail-fast: `pnpm --filter @open-design/web test:tip-remount-smoke`
 - [ ] selection clear/commit/remove boundary에서 pending seed retry cancel (564)
 - [ ] tip/paint-sync commit 시 last-good cache를 선택 집합으로 prune (565)
 - [ ] tip/paint-sync 중 union `paintBearingCount`가 sibling seed count로 floor (562)
+- [ ] seed floor는 valid last-good만 count (568)
+- [ ] sibling seed retry가 새로 seed하면 multi chrome/geom refresh (567)
 - [ ] refresh miss 해석 순서: last-good → retain → force-keep → clear (549/550)
 - [ ] selection-commit last-good가 이어지는 refresh miss에서 apply-last-good로 연결 (549/550)
 - [ ] overlay last-good가 refresh-miss apply-last-good와 일치 (553/559)
@@ -77,14 +79,30 @@ CI fail-fast: `pnpm --filter @open-design/web test:tip-remount-smoke`
 
 | 파일 | 범위 |
 |------|------|
-| `manual-edit-tip-remount-smoke.test.ts` | wiring 핀 500–565 |
+| `manual-edit-tip-remount-smoke.test.ts` | wiring 핀 500–568 |
 | `tip-remount-sequence-fixtures.ts` | soft-land×chrome 공유 walk (547) |
 | `manual-edit-tip-soft-land-absorb-sequence.test.ts` | post-protect walk |
 | `manual-edit-tip-chrome-release-sequence.test.ts` | chrome helper walk |
 | `manual-edit-tip-post-protect-chrome-cross-walk.test.ts` | 교차 walk (544) |
 | `manual-edit-tip-deck-nudge-follow-chrome-race.test.ts` | follow/chrome race |
 
-인간 UI §A–E 스모크는 namespaced runtime 2개로 별도 확인 (560 note).
+### 인간 UI §A–E (namespaced runtime 2개)
+
+GUI 머신에서 tip-yield → remount 체감을 눈으로 확인한다 (560 note / 569).
+
+```bash
+# A: 기준(staging tip-remount 포함) vs B: 비교 브랜치/빌드
+pnpm tools-dev --namespace tip-a run web --daemon-port 17456 --web-port 17573
+pnpm tools-dev --namespace tip-b run web --daemon-port 17466 --web-port 17583
+```
+
+절차 요약:
+1. 같은 HTML artifact를 두 namespace에 열고 Manual Edit 진입
+2. tip-yield(에이전트 패치 또는 mock replay) 후 multi-select로 §C seed/union 경로 관찰
+3. §A soft-land → absorb, §B chrome inert→release, §D unlock, §E deck nudge를 순서대로 체크
+4. 깜빡임/union shrink-grow/clear→재선택 stale가 있으면 새 루프 번호로 red spec
+
+Cloud/headless에서는 CI smoke·walk가 대체 게이트이며, 인간 §A–E는 GUI에서만 닫는다.
 
 ---
 
@@ -105,5 +123,6 @@ CI fail-fast: `pnpm --filter @open-design/web test:tip-remount-smoke`
 | 558–560 | sibling seed rAF retry, apply-last-good↔Result, checklist 500–560 |
 | 561–563 | seed retry id gate, seed→union paintBearingCount floor, checklist 500–563 |
 | 564–566 | selection-boundary seed cancel, last-good prune-to-selection, checklist 500–566 |
+| 567–569 | seed-retry chrome refresh, valid seed count helper, checklist 500–569 + 인간 UI 절차 |
 
 문서 갱신 시 `docs-teamver/00_구현_내역_누적.md` 최상단에도 한 줄을 남깁니다.

@@ -421,6 +421,8 @@ import {
   expectedTipRemountUnionPaintBearingCount,
   shouldPruneTipRemountMemberLastHostRectsOnSelectionCommit,
   pruneTipRemountMemberLastHostRectsToSelection,
+  countTipRemountSeededLastGoodForSelection,
+  shouldRefreshTipRemountChromeAfterMemberLastHostRectSeedRetry,
   resolveTipRemountRefreshMissAction,
   tipRemountApplyLastGoodMatchesHostPaintResult,
   shouldClearTipRemountLastHostRectCache,
@@ -8608,7 +8610,31 @@ function HtmlViewer({
         return;
       }
       // One retry only — alreadyRetried implied by this callback (558).
+      const seededBefore = countTipRemountSeededLastGoodForSelection(
+        manualEditTipLastHostRectByIdRef.current,
+        expectedIds,
+      );
       seedTipRemountMemberLastHostRectsForSelection(expectedIds);
+      const seededAfter = countTipRemountSeededLastGoodForSelection(
+        manualEditTipLastHostRectByIdRef.current,
+        expectedIds,
+      );
+      // Ref cache alone does not re-render overlay / seed floor prop (567).
+      if (shouldRefreshTipRemountChromeAfterMemberLastHostRectSeedRetry(
+        tipSessionLive,
+        paintSyncHold,
+        seededAfter - seededBefore,
+      )) {
+        if (shouldDeferTipRemountGeomEpochBumpForPaintSync(
+          paintSyncHold,
+          false,
+        )) {
+          manualEditTipDeferredGeomEpochBumpRef.current = true;
+        } else {
+          manualEditTipDeferredGeomEpochBumpRef.current = false;
+          setManualEditGeomEpoch((n) => n + 1);
+        }
+      }
     });
   }
 
@@ -16201,11 +16227,9 @@ function HtmlViewer({
         )}
         stabilizePartialPaintUnion={tipRemountChromeSessionLiveNow()}
         tipRemountPaintSyncHoldArmed={manualEditTipPaintSyncHold}
-        tipRemountSeededLastGoodCount={selectedManualEditTargetIds.reduce(
-          (count, id) => (
-            manualEditTipLastHostRectByIdRef.current.has(id) ? count + 1 : count
-          ),
-          0,
+        tipRemountSeededLastGoodCount={countTipRemountSeededLastGoodForSelection(
+          manualEditTipLastHostRectByIdRef.current,
+          selectedManualEditTargetIds,
         )}
         movable={manualEditGroupMoveEnabled}
         resizable={manualEditGroupResizeEnabled}

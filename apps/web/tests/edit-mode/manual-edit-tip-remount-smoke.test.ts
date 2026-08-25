@@ -52,6 +52,8 @@ import {
   shouldCancelTipRemountMemberLastHostRectSeedRetryOnSelectionBoundary,
   shouldPruneTipRemountMemberLastHostRectsOnSelectionCommit,
   pruneTipRemountMemberLastHostRectsToSelection,
+  countTipRemountSeededLastGoodForSelection,
+  shouldRefreshTipRemountChromeAfterMemberLastHostRectSeedRetry,
   resolveTipRemountRefreshMissAction,
   shouldClearTipRemountLastHostRectCache,
   shouldTrustTipRemountHostPaintDespiteComposedStale,
@@ -108,7 +110,7 @@ describe('manual-edit tip remount smoke (500/501/506)', () => {
     expect(webPackageJson).toContain('manual-edit-tip-post-protect-chrome-cross-walk.test.ts');
     expect(webPackageJson).toContain('manual-edit-tip-deck-nudge-follow-chrome-race.test.ts');
     expect(freezeSource).not.toContain('spendTipPostSoftLandExitLatch');
-    expect(freezeSource).toContain('Tip remount index (566)');
+    expect(freezeSource).toContain('Tip remount index (569)');
     expect(freezeSource).toContain('docs-teamver/49_tip_remount');
     expect(freezeSource).toContain('hostPaintRectForManualEditSelectionCommit');
     expect(freezeSource).toContain('resolveTipRemountRefreshMissAction');
@@ -122,6 +124,8 @@ describe('manual-edit tip remount smoke (500/501/506)', () => {
     expect(freezeSource).toContain('expectedTipRemountUnionPaintBearingCount');
     expect(freezeSource).toContain('shouldPruneTipRemountMemberLastHostRectsOnSelectionCommit');
     expect(freezeSource).toContain('pruneTipRemountMemberLastHostRectsToSelection');
+    expect(freezeSource).toContain('countTipRemountSeededLastGoodForSelection');
+    expect(freezeSource).toContain('shouldRefreshTipRemountChromeAfterMemberLastHostRectSeedRetry');
     expect(freezeSource).toContain('tipRemountApplyLastGoodMatchesHostPaintResult');
     expect(fileViewer).toContain('hostPaintRectForManualEditSelectionCommit');
     expect(fileViewer).toContain('resolveTipRemountRefreshMissAction');
@@ -134,6 +138,8 @@ describe('manual-edit tip remount smoke (500/501/506)', () => {
     expect(fileViewer).toContain('expectedTipRemountUnionPaintBearingCount');
     expect(fileViewer).toContain('shouldPruneTipRemountMemberLastHostRectsOnSelectionCommit');
     expect(fileViewer).toContain('pruneTipRemountMemberLastHostRectsToSelection');
+    expect(fileViewer).toContain('countTipRemountSeededLastGoodForSelection');
+    expect(fileViewer).toContain('shouldRefreshTipRemountChromeAfterMemberLastHostRectSeedRetry');
     expect(fileViewer).toContain('seedTipRemountMemberLastHostRectsForSelection');
     expect(fileViewer).toContain('scheduleTipRemountMemberLastHostRectSeedRetry');
     expect(fileViewer).toContain('tipRemountSeededLastGoodCount');
@@ -373,6 +379,26 @@ describe('manual-edit tip remount smoke (500/501/506)', () => {
     expect(pruneTipRemountMemberLastHostRectsToSelection(cache, ['a', 'c'])).toBe(1);
     expect([...cache.keys()].sort()).toEqual(['a', 'c']);
     expect(fileViewer).toContain('pruneTipRemountMemberLastHostRectsToSelection');
+  });
+
+  it('counts only valid last-good boxes for the seed floor (568)', () => {
+    const cache = new Map([
+      ['a', { x: 0, y: 0, width: 2, height: 2 }],
+      ['b', { x: 0, y: 0, width: 0, height: 2 }],
+      ['c', { x: 0, y: 0, width: 3, height: 3 }],
+    ]);
+    expect(countTipRemountSeededLastGoodForSelection(cache, ['a', 'b', 'c'])).toBe(2);
+    expect(countTipRemountSeededLastGoodForSelection(cache, ['b'])).toBe(0);
+    expect(fileViewer).toContain('countTipRemountSeededLastGoodForSelection');
+  });
+
+  it('refreshes multi chrome after sibling seed retry newly fills last-good (567)', () => {
+    expect(shouldRefreshTipRemountChromeAfterMemberLastHostRectSeedRetry(true, false, 1)).toBe(true);
+    expect(shouldRefreshTipRemountChromeAfterMemberLastHostRectSeedRetry(false, true, 2)).toBe(true);
+    expect(shouldRefreshTipRemountChromeAfterMemberLastHostRectSeedRetry(true, false, 0)).toBe(false);
+    expect(shouldRefreshTipRemountChromeAfterMemberLastHostRectSeedRetry(false, false, 1)).toBe(false);
+    expect(fileViewer).toContain('shouldRefreshTipRemountChromeAfterMemberLastHostRectSeedRetry');
+    expect(fileViewer).toContain('setManualEditGeomEpoch');
   });
 
   it('uses single host-paint entry with live seed (556)', () => {

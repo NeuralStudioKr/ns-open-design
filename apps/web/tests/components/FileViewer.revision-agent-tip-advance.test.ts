@@ -330,6 +330,8 @@ describe('FileViewer revision tip advance after undo', () => {
     expect(fileViewer).toContain('expectedTipRemountUnionPaintBearingCount');
     expect(fileViewer).toContain('shouldCancelTipRemountMemberLastHostRectSeedRetryOnSelectionBoundary');
     expect(fileViewer).toContain('pruneTipRemountMemberLastHostRectsToSelection');
+    expect(fileViewer).toContain('countTipRemountSeededLastGoodForSelection');
+    expect(fileViewer).toContain('shouldRefreshTipRemountChromeAfterMemberLastHostRectSeedRetry');
     expect(fileViewer).toContain('tipRemountSeededLastGoodCount');
     expect(fileViewer).toContain('resolveTipRemountHostPaintRectResult');
     expect(fileViewer).toContain('shouldClearTipRemountLastHostRectCache');

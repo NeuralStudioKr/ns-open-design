@@ -10,7 +10,7 @@
  * from the latest live/saved source.
  *
  * ---------------------------------------------------------------------------
- * Tip remount index (566) — user-perception sequences & key constants
+ * Tip remount index (569) — user-perception sequences & key constants
  * ---------------------------------------------------------------------------
  * Post-protect: TIP_REMOUNT_POST_PROTECT_SEQUENCE
  *   sticky-clear → soft-land → exit-latch → absorb → post-absorb-quiet → live
@@ -35,9 +35,11 @@
  * Multi sibling seed: shouldSeedTipRemountMemberLastHostRectsOnMultiCommit (555);
  *   one rAF retry when iframe/layout not ready (558);
  *   retry only when selection ids unchanged (561);
- *   cancel pending retry on selection clear/boundary (564).
+ *   cancel pending retry on selection clear/boundary (564);
+ *   retry that newly seeds must refresh multi chrome/geom (567).
  * Seed → union: expectedTipRemountUnionPaintBearingCount floors
- *   paintBearingCount during tip/paint-sync (562).
+ *   paintBearingCount during tip/paint-sync (562);
+ *   countTipRemountSeededLastGoodForSelection feeds the floor (568).
  * Last-good cache: prune to selected ids on tip/paint-sync commit (565).
  * Refresh miss: resolveTipRemountRefreshMissAction — last-good → retain →
  *   force-keep → clear (549/550). Selection-commit last-good feeds the same
@@ -47,7 +49,7 @@
  * Intentional nulls (5): mode-exit / no-id / refresh(!id) / unprotected miss /
  *   clear-selection.
  * Walk fixtures: apps/web/tests/edit-mode/tip-remount-sequence-fixtures.ts (547).
- * Checklist: docs-teamver/49_tip_remount_체감_체크리스트_500-566.md (566).
+ * Checklist: docs-teamver/49_tip_remount_체감_체크리스트_500-569.md (569).
  * Do not retune fit delays / latch / soft-land without a tip-remount loop note.
  */
 export function shouldClearManualEditFrozenSourceOnModeChange(
@@ -1535,6 +1537,35 @@ export function pruneTipRemountMemberLastHostRectsToSelection(
     }
   }
   return removed;
+}
+
+/**
+ * Count selected members that already hold a valid last-good box — feeds union
+ * paintBearingCount floor and seed-retry before/after diffs (568).
+ */
+export function countTipRemountSeededLastGoodForSelection(
+  cache: ReadonlyMap<string, TipRemountHostPaintRect>,
+  selectedIds: readonly string[],
+): number {
+  let count = 0;
+  for (const id of selectedIds) {
+    const rect = cache.get(id);
+    if (rect && rect.width >= 1 && rect.height >= 1) count += 1;
+  }
+  return count;
+}
+
+/**
+ * Sibling seed rAF that newly fills last-good must refresh multi chrome —
+ * cache writes alone do not re-render the overlay / seed floor prop (567).
+ */
+export function shouldRefreshTipRemountChromeAfterMemberLastHostRectSeedRetry(
+  tipRemountChromeSessionLive: boolean,
+  paintSyncHoldArmed: boolean,
+  newlySeededCount: number,
+): boolean {
+  return newlySeededCount > 0
+    && (tipRemountChromeSessionLive || paintSyncHoldArmed);
 }
 
 /**

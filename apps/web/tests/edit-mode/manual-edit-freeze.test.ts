@@ -76,6 +76,8 @@ import {
   expectedTipRemountUnionPaintBearingCount,
   shouldPruneTipRemountMemberLastHostRectsOnSelectionCommit,
   pruneTipRemountMemberLastHostRectsToSelection,
+  countTipRemountSeededLastGoodForSelection,
+  shouldRefreshTipRemountChromeAfterMemberLastHostRectSeedRetry,
   tipRemountApplyLastGoodMatchesHostPaintResult,
   resolveTipRemountRefreshMissAction,
   shouldClearTipRemountLastHostRectCache,
@@ -462,6 +464,15 @@ describe('manual edit freeze reset', () => {
     expect(pruneTipRemountMemberLastHostRectsToSelection(pruneCache, ['y'])).toBe(1);
     expect(pruneCache.has('x')).toBe(false);
     expect(pruneCache.has('y')).toBe(true);
+    expect(countTipRemountSeededLastGoodForSelection(
+      new Map([
+        ['y', { x: 5, y: 6, width: 7, height: 8 }],
+        ['z', { x: 0, y: 0, width: 0, height: 1 }],
+      ]),
+      ['y', 'z'],
+    )).toBe(1);
+    expect(shouldRefreshTipRemountChromeAfterMemberLastHostRectSeedRetry(true, false, 1)).toBe(true);
+    expect(shouldRefreshTipRemountChromeAfterMemberLastHostRectSeedRetry(true, false, 0)).toBe(false);
     expect(resolveTipRemountOverlayHostPaintRect(
       true, false, null, { x: 1, y: 2, width: 3, height: 4 },
     )).toEqual({ x: 1, y: 2, width: 3, height: 4 });
