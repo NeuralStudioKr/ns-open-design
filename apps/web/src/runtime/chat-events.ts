@@ -52,7 +52,32 @@ export function assistantEventsForDisplay(message: Pick<ChatMessage, 'content' |
     return [{ kind: 'text', text: contentRaw }, ...tail];
   }
 
+  // Reload: persist may keep tag-stripped slide copy in events while content
+  // is already the short completion status. Prefer the clean content.
+  if (
+    content
+    && fromEvents.length > content.length
+    && looksLikeReloadedSlideBodyDump(fromEvents)
+    && !looksLikeReloadedSlideBodyDump(content)
+  ) {
+    const tail = events.filter((event) => event.kind !== 'text');
+    return [{ kind: 'text', text: contentRaw }, ...tail];
+  }
+
   return events;
+}
+
+function looksLikeReloadedSlideBodyDump(text: string): boolean {
+  const trimmed = String(text ?? '').trim();
+  if (trimmed.length < 40) return false;
+  if (
+    !/(?:prefers-reduced-motion|axe-core|FRONT-END TRACK|LECTURE\s+\d+|<\/artifact\s*>|html\s*>)/i.test(
+      trimmed,
+    )
+  ) {
+    return false;
+  }
+  return /[A-Za-z][\uac00-\ud7af]|[\uac00-\ud7af][A-Za-z]/.test(trimmed);
 }
 
 /** Longest assistant prose body for gates that must match what the chat UI shows. */

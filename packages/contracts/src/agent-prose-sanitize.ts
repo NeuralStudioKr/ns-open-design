@@ -2352,7 +2352,33 @@ function stripOrphanArtifactCloserDump(input: string): string {
     if (!trimmed) return true;
     return !looksLikeTagStrippedSlideBody(trimmed);
   });
-  return kept.join("\n").replace(/\n{3,}/g, "\n\n").trimEnd();
+  text = kept.join("\n").replace(/\n{3,}/g, "\n\n").trimEnd();
+  // Persist often drops `html>` from the first chunk, leaving a Hangul-titled
+  // slide body (`반응형 UIvideo·svg…prefers-reduced-motion`) as one blob.
+  if (looksLikeTagStrippedSlideBodyBlock(text)) {
+    const withoutDump = text.split("\n").filter((line) => {
+      const trimmed = line.trim();
+      if (!trimmed) return true;
+      return !looksLikeTagStrippedSlideBodyBlock(trimmed)
+        && !/(?:prefers-reduced-motion|axe-core|FRONT-END TRACK|LECTURE\s+\d+|html\s*>)/i.test(
+          trimmed,
+        );
+    });
+    text = withoutDump.join("\n").replace(/\n{3,}/g, "\n\n").trimEnd();
+    if (looksLikeTagStrippedSlideBodyBlock(text)) return "";
+  }
+  return text;
+}
+
+function looksLikeTagStrippedSlideBodyBlock(text: string): boolean {
+  const trimmed = String(text ?? "").replace(/<\/artifact\s*>/gi, "").trim();
+  if (trimmed.length < 40) return false;
+  if (
+    !/(?:prefers-reduced-motion|axe-core|FRONT-END TRACK|LECTURE\s+\d+)/i.test(trimmed)
+  ) {
+    return false;
+  }
+  return /[A-Za-z][\uac00-\ud7af]|[\uac00-\ud7af][A-Za-z]/.test(trimmed);
 }
 
 function stripOrphanArtifactCloserDumpRespectingArtifacts(

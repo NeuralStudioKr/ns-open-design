@@ -824,32 +824,17 @@ export function mergeServerMessagesIntoConversation(
  */
 export function sanitizePersistedAssistantChatMessage(message: ChatMessage): ChatMessage {
   if (message.role !== 'assistant') return message;
+  // In-flight rows still carry open <question-form> / <artifact> tails that
+  // live display hides. Do not rewrite them on merge/reload.
+  if (isActiveRunStatus(message.runStatus)) return message;
   try {
-    const content = message.content ?? '';
-    const nextContent = sanitizeAssistantProseForDisplay(content, { stripCodeFences: true });
-    let eventsChanged = false;
-    const nextEvents = message.events?.map((event) => {
-      if (event.kind !== 'text' && event.kind !== 'thinking') return event;
-      const text = typeof event.text === 'string' ? event.text : '';
-      let cleaned = text;
-      try {
-        cleaned = sanitizeAssistantProseForDisplay(text, { stripCodeFences: true });
-      } catch {
-        cleaned = '';
-      }
-      if (cleaned === text) return event;
-      eventsChanged = true;
-      return { ...event, text: cleaned };
-    });
-    if (nextContent === content && !eventsChanged) return message;
-    return {
-      ...message,
-      content: nextContent,
-      ...(nextEvents ? { events: nextEvents } : {}),
-    };
+    return sanitizeChatMessageLeakedPseudoTool(message, { stripCodeFences: true });
   } catch (err) {
     console.error('[ProjectView] sanitizePersistedAssistantChatMessage failed', message.id, err);
-    return message;
+    const events = (message.events ?? []).filter(
+      (event) => event.kind !== 'text' && event.kind !== 'thinking',
+    );
+    return { ...message, content: '', ...(events.length ? { events } : { events: [] }) };
   }
 }
 

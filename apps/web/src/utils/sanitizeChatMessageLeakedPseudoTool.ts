@@ -20,11 +20,42 @@ function dropEmptyProseEvents(events: AgentEvent[]): AgentEvent[] {
   });
 }
 
+function replaceJoinedTextEvents(events: AgentEvent[], cleanedText: string): AgentEvent[] {
+  let placed = false;
+  const next: AgentEvent[] = [];
+  for (const event of events) {
+    if (event.kind !== "text") {
+      next.push(event);
+      continue;
+    }
+    if (!placed && cleanedText.trim()) {
+      next.push({ kind: "text", text: cleanedText });
+      placed = true;
+    }
+  }
+  if (!placed && cleanedText.trim()) {
+    next.unshift({ kind: "text", text: cleanedText });
+  }
+  return next;
+}
+
+function sanitizeDisplayText(
+  text: string,
+  options: Pick<SanitizeChatMessageOptions, "stripCodeFences" | "streaming">,
+): string {
+  return sanitizeAssistantProseForDisplay(stripAllClosedArtifacts(text), {
+    stripCodeFences: options.stripCodeFences,
+    streaming: options.streaming,
+  });
+}
+
 export type SanitizeChatMessageOptions = {
   /** Hide ```html/js fences (Teamver embed). */
   stripCodeFences?: boolean;
   /** Drop structured thinking events entirely (Teamver embed). */
   dropThinkingEvents?: boolean;
+  /** Keep open question-form / artifact tails (in-flight merge). */
+  streaming?: boolean;
 };
 
 /** Strip leaked CLI pseudo-tool XML from persisted assistant/user message bodies. */
@@ -35,30 +66,49 @@ export function sanitizeChatMessageLeakedPseudoTool(
   let changed = false;
 
   const content = message.content ?? "";
-  const nextContent = sanitizeAssistantProseForDisplay(stripAllClosedArtifacts(content), {
-    stripCodeFences: options.stripCodeFences,
-  });
+  const nextContent = sanitizeDisplayText(content, options);
   if (nextContent !== content) changed = true;
 
   let nextEvents = message.events;
   if (message.events?.length) {
-    const mapped = message.events
-      .map((event) => {
-        if (options.dropThinkingEvents && event.kind === "thinking") {
+    const prepared: AgentEvent[] = [];
+    const textParts: string[] = [];
+    for (const event of message.events) {
+      if (options.dropThinkingEvents && event.kind === "thinking") {
+        changed = true;
+        continue;
+      }
+      if (event.kind === "thinking" && typeof event.text === "string") {
+        const text = sanitizeDisplayText(event.text, options);
+        if (!text.trim()) {
           changed = true;
-          return null;
+          continue;
         }
-        if ((event.kind === "text" || event.kind === "thinking") && typeof event.text === "string") {
-          const text = sanitizeAssistantProseForDisplay(stripAllClosedArtifacts(event.text), {
-            stripCodeFences: options.stripCodeFences,
-          });
-          if (text === event.text) return event;
+        if (text !== event.text) {
           changed = true;
-          return { ...event, text };
+          prepared.push({ ...event, text });
+        } else {
+          prepared.push(event);
         }
-        return event;
-      })
-      .filter((event): event is AgentEvent => event != null);
+        continue;
+      }
+      if (event.kind === "text" && typeof event.text === "string") {
+        textParts.push(event.text);
+        prepared.push(event);
+        continue;
+      }
+      prepared.push(event);
+    }
+
+    const joined = textParts.join("");
+    const cleanedJoined = sanitizeDisplayText(joined, options);
+    const eventText = cleanedJoined.trim() ? cleanedJoined : nextContent;
+    let mapped = prepared;
+    if (textParts.length > 1 || eventText !== joined) {
+      mapped = replaceJoinedTextEvents(prepared, eventText);
+      if (mapped !== prepared) changed = true;
+    }
+
     const filtered = dropEmptyProseEvents(mapped);
     if (
       filtered.length !== message.events.length
@@ -80,9 +130,7 @@ export function sanitizeChatMessageLeakedPseudoTool(
       .map((event) => event.text)
       .join("");
     if (joinedText !== nextContent) {
-      const sanitizedJoined = sanitizeAssistantProseForDisplay(stripAllClosedArtifacts(joinedText), {
-        stripCodeFences: options.stripCodeFences,
-      });
+      const sanitizedJoined = sanitizeDisplayText(joinedText, options);
       if (
         sanitizedJoined === nextContent
         || sanitizedJoined.trimEnd() === nextContent.trimEnd()

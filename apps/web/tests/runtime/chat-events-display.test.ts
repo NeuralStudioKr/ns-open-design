@@ -102,6 +102,21 @@ describe('assistantEventsForDisplay', () => {
     expect(resolved).toHaveLength(1);
   });
 
+  it('prefers clean content when reload events keep a tag-stripped slide body', () => {
+    const leak =
+      'html>WD · LECTURE 01 · FRONT-END TRACK반응형 UIvideo·svg에일 HTML/CSS, 미디어 쿼리로 유동 재배치. 유지보수 단일 경로, SEO 유리, 초기 비용 낮음.능·접 90, axe-core0 critical, prefers-reduced-motion 대응.</artifact>';
+    const events: ChatMessage['events'] = [
+      { kind: 'text', text: leak },
+      { kind: 'tool_use', id: 'w1', name: 'Write', input: {} },
+    ];
+    const resolved = assistantEventsForDisplay({
+      content: '슬라이드 작업이 완료되었습니다.',
+      events,
+    });
+    expect(resolved[0]).toEqual({ kind: 'text', text: '슬라이드 작업이 완료되었습니다.' });
+    expect(JSON.stringify(resolved)).not.toContain('LECTURE');
+  });
+
   it('keeps interleaved tool events when content is longer than joined text', () => {
     const events: ChatMessage['events'] = [
       { kind: 'text', text: 'Planning…' },

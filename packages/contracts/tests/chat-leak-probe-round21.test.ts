@@ -19,6 +19,12 @@ describe("chat leak probe round 21 (reload html> artifact tail)", () => {
     expect(
       sanitizeAssistantProseForDisplay(`슬라이드 추가 중${RELOAD_LEAK}`, { stripCodeFences: true }),
     ).toBe("슬라이드 추가 중");
+    expect(
+      sanitizeAssistantProseForDisplay(
+        "WD · LECTURE 01 · FRONT-END TRACK반응형 UIvideo·svg에일 HTML/CSS, 미디어 쿼리로 유동 재배치. 유지보수 단일 경로, SEO 유리, 초기 비용 낮음.능·접 90, axe-core0 critical, prefers-reduced-motion 대응.",
+        { stripCodeFences: true },
+      ),
+    ).toBe("");
   });
 
   it("still strips a well-formed closed artifact from history display", () => {
