@@ -3099,6 +3099,7 @@ export function ProjectView({
   // preserve placeholders without racing a later auto-send effect.
   const autoSentRef = useRef(false);
   const autoSendInFlightRef = useRef(false);
+  const lastCreateAutoSendProjectIdRef = useRef<string | null>(null);
   const [autoSendRetryNonce, setAutoSendRetryNonce] = useState(0);
   const [previewComments, setPreviewComments] = useState<PreviewComment[]>([]);
   // Mirror so the send-now interrupt path can read the current statuses
@@ -3847,9 +3848,18 @@ export function ProjectView({
     if (!handedOffId) {
       setActiveConversationId(null);
     }
-    autoSentRef.current = false;
-    autoSendInFlightRef.current = false;
-    setAutoSendRetryNonce(0);
+    // Auth/visibility conversationLoadRetryNonce must NOT clear in-flight
+    // create auto-send locks (Clone wait → handleSend). Only reset on project switch.
+    const projectSwitched = lastCreateAutoSendProjectIdRef.current !== project.id;
+    lastCreateAutoSendProjectIdRef.current = project.id;
+    if (projectSwitched) {
+      autoSentRef.current = false;
+      autoSendInFlightRef.current = false;
+      setAutoSendRetryNonce(0);
+    } else if (!autoSendInFlightRef.current && !autoSentRef.current) {
+      autoSentRef.current = false;
+      autoSendInFlightRef.current = false;
+    }
     setMessagesConversationId(null);
     setFailedMessagesConversationId(null);
     setMessageLoadRetryNonce(0);
@@ -9582,7 +9592,16 @@ export function ProjectView({
           || meta?.entryFrom === SLIDE_COUNT_TOP_UP_ENTRY_FROM)
         && !abortRef.current;
       const bypassBusyForQueuedDrain = meta?.drainQueuedSend === true;
-      if (currentConversationBusy && !bypassBusyForAutoContinue && !bypassBusyForQueuedDrain) {
+      // Home create auto-send: never queue+false — that pairs with retry nonce
+      // and drains a duplicate first stream. Fresh create has no real prior run.
+      const bypassBusyForHomeCreateAutoSend =
+        meta?.entryFrom === 'new_project' && !abortRef.current;
+      if (
+        currentConversationBusy
+        && !bypassBusyForAutoContinue
+        && !bypassBusyForQueuedDrain
+        && !bypassBusyForHomeCreateAutoSend
+      ) {
         queueChatSendForCurrentConversation({
           conversationId: activeConversationId,
           prompt: modelPrompt,
@@ -13556,6 +13575,8 @@ export function ProjectView({
     if (!messagesInitialized) return;
     if (streaming) return;
     if (messages.length > 0) return;
+    // Permanent gate — do not spin retryNonce while embed submit is blocked.
+    if (embedSubmitDisabled) return;
     let flag: string | null = null;
     try {
       flag = window.sessionStorage.getItem(autoSendFirstMessageKey(project.id));
@@ -13607,8 +13628,12 @@ export function ProjectView({
     const isFillSeed = fillQueued || isTemplateCloneContentFillPrompt(seed);
     const fillSlideCountHint = extractTemplateCloneFillSlideCountHintFromPrompt(seed);
     const conversationIdAtStart = activeConversationId;
+    let cancelled = false;
     void (async () => {
       await waitPendingTemplateClone(project.id);
+      if (cancelled) {
+        return;
+      }
       if (
         messagesConversationIdRef.current !== conversationIdAtStart
         && conversationIdAtStart
@@ -13617,6 +13642,7 @@ export function ProjectView({
         setMessagesConversationId(conversationIdAtStart);
       }
       const ok = await handleSend(seed, attachments, [], {
+        entryFrom: 'new_project',
         skipDiscoveryBrief:
           project.metadata?.skipDiscoveryBrief === true || Boolean(selected),
         ...(isFillSeed
@@ -13640,10 +13666,26 @@ export function ProjectView({
             }
           : {}),
       });
+      if (cancelled) {
+        return;
+      }
       if (ok === false) {
         autoSendInFlightRef.current = false;
+        // embed blocked permanently — do not restore flag / spin.
+        if (embedSubmitDisabled) {
+          autoSentRef.current = true;
+          clearAutoSendSession(project.id);
+          clearTemplateCloneContentFillQueue(project.id);
+          return;
+        }
         try {
           window.sessionStorage.setItem(autoSendFirstMessageKey(project.id), '1');
+          if (attachments.length > 0) {
+            window.sessionStorage.setItem(
+              autoSendAttachmentsKey(project.id),
+              JSON.stringify(attachments),
+            );
+          }
         } catch {
           /* ignore */
         }
@@ -13671,6 +13713,32 @@ export function ProjectView({
         });
       }
     })();
+    return () => {
+      cancelled = true;
+      // StrictMode remount: release in-flight + restore flag so the second
+      // effect can dispatch. Completed sends already set autoSentRef.
+      if (!autoSentRef.current && autoSendInFlightRef.current) {
+        autoSendInFlightRef.current = false;
+        try {
+          window.sessionStorage.setItem(autoSendFirstMessageKey(project.id), '1');
+          if (attachments.length > 0) {
+            window.sessionStorage.setItem(
+              autoSendAttachmentsKey(project.id),
+              JSON.stringify(attachments),
+            );
+          }
+        } catch {
+          /* ignore */
+        }
+        if (fillQueued && seed) {
+          queueTemplateCloneContentFill({
+            projectId: project.id,
+            seed,
+            attachments,
+          });
+        }
+      }
+    };
   }, [
     activeConversationId,
     messagesInitialized,
@@ -13682,6 +13750,7 @@ export function ProjectView({
     project.pendingPrompt,
     handleSend,
     autoSendRetryNonce,
+    embedSubmitDisabled,
   ]);
 
   // Wire the Critique Theater drop-in mount into the project workspace.

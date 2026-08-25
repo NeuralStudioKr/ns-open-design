@@ -376,6 +376,8 @@ describe('templateCloneContentFill', () => {
       });
       expect(store.get('od:auto-send-attachments:proj-fill')).toContain('notes.pdf');
       expect(store.get('od:auto-send-attachments:proj-fill')).not.toContain('deck.html');
+      // App/create owns od:auto-send-first — fill queue must not bypass Drive suppress.
+      expect(store.get('od:auto-send-first:proj-fill')).toBeUndefined();
     } finally {
       if (prev) (globalThis as { window?: unknown }).window = prev;
       else delete (globalThis as { window?: unknown }).window;

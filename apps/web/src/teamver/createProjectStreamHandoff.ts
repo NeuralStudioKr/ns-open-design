@@ -15,6 +15,7 @@ type TemplateCloneResult = {
 const pendingTemplateClone = new Map<string, Promise<TemplateCloneResult | null>>();
 /** Settled Clone results stay briefly so late waiters still observe completion. */
 const settledTemplateClone = new Map<string, TemplateCloneResult | null>();
+const settledClearTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 export function writeCreateConversationHandoff(
   projectId: string,
@@ -76,6 +77,21 @@ export function setPendingTemplateClone(
       if (pendingTemplateClone.get(id) === pending) {
         pendingTemplateClone.delete(id);
       }
+      // Drop settled result after a short window so late waiters still see it
+      // without retaining project ids for the whole session.
+      const clearSettled = () => {
+        settledClearTimers.delete(id);
+        if (!pendingTemplateClone.has(id)) {
+          settledTemplateClone.delete(id);
+        }
+      };
+      if (typeof globalThis.setTimeout === "function" && !process.env.VITEST) {
+        const prevTimer = settledClearTimers.get(id);
+        if (prevTimer !== undefined) globalThis.clearTimeout(prevTimer);
+        settledClearTimers.set(id, globalThis.setTimeout(clearSettled, 60_000));
+      } else {
+        // Tests: keep settled until resetCreateProjectStreamHandoffForTests().
+      }
     });
 }
 
@@ -103,4 +119,8 @@ export async function waitPendingTemplateClone(
 export function resetCreateProjectStreamHandoffForTests(): void {
   pendingTemplateClone.clear();
   settledTemplateClone.clear();
+  for (const timer of settledClearTimers.values()) {
+    globalThis.clearTimeout(timer);
+  }
+  settledClearTimers.clear();
 }

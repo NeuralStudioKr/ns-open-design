@@ -494,6 +494,7 @@ export function clearTemplateCloneContentFillQueue(projectId: string): void {
   try {
     window.sessionStorage.removeItem(templateCloneContentFillFlagKey(projectId));
     window.sessionStorage.removeItem(autoSendSeedStorageKey(projectId));
+    window.sessionStorage.removeItem(`od:auto-send-attachments:${projectId}`);
   } catch {
     /* ignore */
   }

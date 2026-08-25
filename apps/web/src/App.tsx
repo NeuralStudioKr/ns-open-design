@@ -2883,7 +2883,6 @@ function AppInner() {
         queuedFillSeed = null;
         try {
           window.sessionStorage.removeItem(`od:auto-send-first:${result.project.id}`);
-          window.sessionStorage.removeItem(`od:auto-send-attachments:${result.project.id}`);
         } catch {
           /* ignore */
         }
