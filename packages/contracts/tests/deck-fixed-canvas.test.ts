@@ -220,6 +220,21 @@ describe('pinDeckSlidesToFixedCanvas', () => {
     expect(pinned).toContain('data-od-official-look-css');
   });
 
+  it('strips Neutral inline slide font-family when official look CSS is present', () => {
+    const html = [
+      '<!doctype html><html><body>',
+      '<section class="slide" style="width:1920px;height:1080px;font-family:Quicksand,sans-serif">',
+      '<h1>커버</h1>',
+      '</section>',
+      '<style data-od-official-look-css>.slide{font-family:Inter}.slide h1{font-family:"Instrument Serif"}</style>',
+      '</body></html>',
+    ].join('');
+    const pinned = pinDeckSlidesToFixedCanvas(html);
+    expect(pinned).not.toMatch(/class="slide"[^>]*Quicksand/);
+    expect(pinned).toContain('data-od-official-look-css');
+    expect(pinned).toContain('커버');
+  });
+
   it('strips Neutral paint from full-bleed inner overlays when official look CSS is present', () => {
     const html = [
       '<!doctype html><html><body>',

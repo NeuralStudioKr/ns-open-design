@@ -2079,16 +2079,19 @@ function extractOfficialTypeFaces(css: string): { body: string | null; display: 
 export function appendCompactOfficialTypeLock(css: string): string {
   const src = String(css ?? '');
   if (src.includes(COMPACT_TYPE_LOCK_MARK)) return src;
-  if (officialSlideRuleHasFontFamily(src)) return src;
   const faces = extractOfficialTypeFaces(src);
   if (!faces.body && !faces.display) return src;
+  const hasSlideFont = officialSlideRuleHasFontFamily(src);
   const rules: string[] = [`/* ${COMPACT_TYPE_LOCK_MARK} */`];
-  if (faces.body) {
+  // A body/slide font already in look CSS must not skip heading lock —
+  // MiniMax compact fills use semantic <h1> and inherit Neutral faces.
+  if (faces.body && !hasSlideFont) {
     rules.push(`html, body, section.slide, .slide { font-family: ${faces.body}; }`);
   }
   if (faces.display) {
     rules.push(`.slide :is(h1, h2, h3, .title, .display, .h1, .h2) { font-family: ${faces.display}; }`);
   }
+  if (rules.length === 1) return src;
   return `${src.trimEnd()}\n${rules.join('\n')}\n`;
 }
 

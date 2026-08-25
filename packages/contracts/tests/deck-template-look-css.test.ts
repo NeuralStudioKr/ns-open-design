@@ -598,6 +598,19 @@ html, body { overflow: visible !important; height: auto !important; }
     expect(twice).toBe(merged);
   });
 
+  it('still locks display headings when look CSS already has a .slide font-family', () => {
+    const css = [
+      ':root { --f-display: "Instrument Serif", serif; --f-body: Inter, sans-serif; }',
+      '.slide { font-family: Inter, sans-serif; }',
+      '.display, .h1 { font-family: var(--f-display); }',
+    ].join('\n');
+    const locked = appendCompactOfficialTypeLock(css);
+    expect(locked).toMatch(/od-compact-type-lock/);
+    expect(locked).toMatch(
+      /\.slide :is\(h1,\s*h2,\s*h3,\s*\.title,\s*\.display,\s*\.h1,\s*\.h2\)\s*\{[^}]*Instrument Serif/i,
+    );
+  });
+
   it('locks Studio-family utility/token faces onto compact semantic headings (§1.18)', () => {
     const creamFill = `<!doctype html><html lang="ko"><head><meta charset="utf-8"></head><body>
 <style>.slide{background:#111;color:#eee;font-family:Quicksand,sans-serif}</style>

@@ -784,6 +784,33 @@ export function stripNeutralFallbackSlidePaint(html: string): string {
   return mapSlideInners(hosts, (inner) => stripNeutralFallbackInnerPaint(inner));
 }
 
+/**
+ * Official look CSS owns type. MiniMax inline `font-family` on slide hosts
+ * (Quicksand / Neutral samples) beats heading lock after merge.
+ */
+export function stripInlineSlideTypeOnOfficialLook(html: string): string {
+  const source = String(html ?? '');
+  if (!/\bdata-od-official-look-css\b/i.test(source)) return source;
+  return source.replace(SLIDE_OPEN_RE, (open, _tag: string, attrs: string) => {
+    if (!isSlideHost(attrs)) return open;
+    if (KIT_IDENTITY_SLIDE_CLASS_RE.test(extractClassAttr(attrs))) return open;
+    const style = extractStyleAttr(attrs);
+    if (!/(?:^|;)\s*font-family\s*:/i.test(style)) return open;
+    const nextAttrs = attrs.replace(
+      /\bstyle\s*=\s*(['"])([\s\S]*?)\1/i,
+      (_m, q: string, current: string) => {
+        const next = String(current)
+          .replace(/(?:^|;)\s*font-family\s*:[^;]*/gi, ';')
+          .replace(/;;+/g, ';')
+          .replace(/^;|;$/g, '')
+          .trim();
+        return `style=${q}${next}${q}`;
+      },
+    );
+    return open.replace(attrs, nextAttrs);
+  });
+}
+
 export type PinDeckSlidesToFixedCanvasOptions = {
   /**
    * Compact letterbox path: pin even when the HTML is still classified as an
@@ -819,6 +846,7 @@ export function pinDeckSlidesToFixedCanvas(
   // looksLikeOfficialFullscreenPresenterDeck to false).
   if (shouldApplyCompactCanvasHeals(source)) {
     out = stripNeutralFallbackSlidePaint(out);
+    out = stripInlineSlideTypeOnOfficialLook(out);
     out = stripFloatingDeckIndexBadges(out);
     out = flowAbsoluteNonMotifSlideContent(out);
     out = bindFakeOutlineCardsToOfficialKit(out);
