@@ -126,6 +126,16 @@ describe('shouldApplyOfficialLookPreviewHeal (§1.21 streaming)', () => {
     expect(shouldApplyOfficialLookPreviewHeal(openShell, { streaming: false })).toBe(true);
   });
 
+  it('heals once the first titled slide host is closed, even without </html>', () => {
+    const firstSlideClosed = [
+      '<!doctype html><html><body>',
+      '<section class="slide"><h1>Cover</h1><p>Lead copy.</p></section>',
+      '<section class="slide"><h2>Agenda',
+    ].join('');
+    expect(deckHtmlNeedsOfficialLookPreviewHeal(firstSlideClosed)).toBe(true);
+    expect(shouldApplyOfficialLookPreviewHeal(firstSlideClosed, { streaming: true })).toBe(true);
+  });
+
   it('skips when look sheet is already present', () => {
     const persisted = `${COMPACT_CAPSULE_FILL}<style data-od-official-look-css>.pill{}</style>`;
     expect(shouldApplyOfficialLookPreviewHeal(persisted, { streaming: true })).toBe(false);

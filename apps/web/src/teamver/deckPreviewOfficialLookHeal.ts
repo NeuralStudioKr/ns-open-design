@@ -57,11 +57,42 @@ export function deckHtmlNeedsOfficialLookPreviewHeal(html: string): boolean {
 export const OFFICIAL_LOOK_STREAMING_HEAL_DEBOUNCE_MS = 400;
 
 /**
+ * Streaming look heal may run before `</body></html>` once at least one
+ * titled slide host is closed. Mid-heading truncations stay Neutral.
+ */
+function htmlHasClosedTitledSlideHost(html: string): boolean {
+  const dest = String(html ?? '');
+  const re = /<(section|div|main|article)\b((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)<\/\1>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(dest)) !== null) {
+    const attrs = match[2] ?? '';
+    if (
+      !looksLikeDeckSlideHostAttrs(attrs)
+      && !/\bdata-screen-label\s*=/.test(attrs)
+    ) {
+      continue;
+    }
+    if (/<h[1-6]\b[^>]*>[\s\S]*?<\/h[1-6]>/i.test(match[3] ?? '')) return true;
+  }
+  return false;
+}
+
+function streamingSnapshotReadyForOfficialLookHeal(html: string): boolean {
+  if (isArtifactHtmlStableForPreview(html)) return true;
+  if (!htmlHasClosedTitledSlideHost(html)) return false;
+  const styleOpens = (html.match(/<style\b/gi) ?? []).length;
+  const styleCloses = (html.match(/<\/style>/gi) ?? []).length;
+  if (styleOpens > styleCloses) return false;
+  const scriptOpens = (html.match(/<script\b/gi) ?? []).length;
+  const scriptCloses = (html.match(/<\/script>/gi) ?? []).length;
+  return scriptOpens <= scriptCloses;
+}
+
+/**
  * Gate for FileViewer live preview look heal (§1.21).
  * §0.76 skipped all streaming heals; generation then looked Neutral until
- * persist. Allow heal once the painted snapshot is stable enough — live
- * preview already holds incomplete shells on last-stable, so this only
- * runs on closed documents that still lack the look sheet / Motif remmerge.
+ * persist. Allow heal once a titled slide host is closed — do not wait for
+ * the full `</body></html>` if look CSS / Motif remmerge is still missing.
  */
 export function shouldApplyOfficialLookPreviewHeal(
   html: string,
@@ -69,7 +100,7 @@ export function shouldApplyOfficialLookPreviewHeal(
 ): boolean {
   const dest = String(html ?? '');
   if (!dest.trim() || !deckHtmlNeedsOfficialLookPreviewHeal(dest)) return false;
-  if (options?.streaming && !isArtifactHtmlStableForPreview(dest)) return false;
+  if (options?.streaming && !streamingSnapshotReadyForOfficialLookHeal(dest)) return false;
   return true;
 }
 
