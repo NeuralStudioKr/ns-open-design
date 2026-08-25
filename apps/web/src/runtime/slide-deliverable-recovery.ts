@@ -11,7 +11,11 @@ import {
   isPersistableShortDeckDraftAfterHeal,
 } from '../artifacts/deck-html-content';
 import { recoverBestHtmlDocumentFromText } from '../artifacts/recover';
-import { isIncompleteHtmlDocumentShell, validateHtmlArtifact } from '../artifacts/validate';
+import {
+  isIncompleteHtmlDocumentShell,
+  isLowSubstanceSlideDeckArtifact,
+  validateHtmlArtifact,
+} from '../artifacts/validate';
 import { resolveLastSubstantiveAssistantMessageId } from './conversation-message-dedupe';
 import {
   AUTO_CONTINUE_MAX_PER_CONVERSATION,
@@ -212,6 +216,7 @@ export async function verifySlideProducedHtmlDeliverable(
   ) {
     return null;
   }
+  if (isLowSubstanceSlideDeckArtifact(html)) return null;
   return fileName;
 }
 

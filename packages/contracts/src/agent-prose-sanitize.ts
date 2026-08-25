@@ -2320,9 +2320,9 @@ const TAG_STRIPPED_LEFTOVER_OPENER_RE =
 const TAG_STRIPPED_LEFTOVER_CLOSER_RE =
   /<\/(?:artifact|html|body|head|section|article|main)\s*>/i;
 const TAG_STRIPPED_LEFTOVER_CHROME_RE =
-  /(?:data-slide-index|prefers-reduced-motion|axe-core|FRONT-END TRACK|LECTURE\s+\d+|WD\s*[·•\-–—]\s*[A-Z][A-Z0-9_-]{1,24}|INTRO\s*[·•\-–—]\s*FRONT-END|\b(?:SLIDE|PAGE|SEC|CHAPTER|CH|PART|LECTURE)\s*\d{1,2}\s*[·•\-–—]|font-size\s*:|mix-blend-mode\s*:|offset-path\s*:|<!doctype\s+html)/i;
+  /(?:data-slide-index|prefers-reduced-motion|axe-core|FRONT-END TRACK|LECTURE\s+\d+|WD\s*[·•\-–—]\s*[A-Z][A-Z0-9_-]{1,24}|INTRO\s*[·•\-–—]\s*FRONT-END|\b(?:SLIDE|PAGE|SEC|CHAPTER|CH|PART|LECTURE|UNIT|STEP|MODULE|SECTION|ACT|SCENE|PHASE|EPISODE|BLOCK|FRAME|SESSION|WEEK|DAY|SEG|APPENDIX|TABLE|TOPIC|TRACK|PANEL|CARD|BEAT|LESSON|CLIP|ROUND|PASS|NOTE)\s*(?:\d{1,2}|[A-Z])\s*[·•\-–—]|font-size\s*:|mix-blend-mode\s*:|offset-path\s*:|<!doctype\s+html)/i;
 const SHORT_DECK_TRACK_CHROME_RE =
-  /^(?:WD|SLIDE|PAGE|SEC|CHAPTER|CH|PART|LECTURE)\s*(?:\d{1,2}\s*)?[·•\-–—]\s*[A-Z0-9][A-Z0-9_-]{0,24}\b/i;
+  /^(?:WD|SLIDE|PAGE|SEC|CHAPTER|CH|PART|LECTURE|UNIT|STEP|MODULE|SECTION|ACT|SCENE|PHASE|EPISODE|BLOCK|FRAME|SESSION|WEEK|DAY|SEG|APPENDIX|TABLE|TOPIC|TRACK|PANEL|CARD|BEAT|LESSON|CLIP|ROUND|PASS|NOTE)\s*(?:\d{1,2}|[A-Z])?\s*[·•\-–—]\s*[A-Z0-9][A-Z0-9_-]{0,24}\b/i;
 const SHORT_DECK_INDEX_BADGE_RE =
   /^\d{1,2}\s*[\/·•]\s*[A-Za-z가-힣][A-Za-z가-힣\s-]{1,20}$/u;
 const TAG_STRIPPED_HANGUL_LATIN_GLUE_RE =
@@ -2899,7 +2899,7 @@ export function looksLikeDeckCssContinuationLine(line: string): boolean {
   // Split hex list residue: `9c9,`.
   if (/^[0-9A-Fa-f]{3,8}\s*,\s*$/.test(trimmed)) return true;
   if (/^["']\s*>/.test(trimmed)) return true;
-  if (/^(?:hsla?|hwb|lch|oklch)\s*\(/.test(trimmed)) return true;
+  if (/^(?:hsla?|hwb|lch|oklch|oklab|lab|color)\s*\(/.test(trimmed)) return true;
   if (/^var\s*\(\s*--/.test(trimmed)) return true;
   if (/^currentColor\s*;/i.test(trimmed)) return true;
   if (/^(?:deg|turn|rad|grad)\s*,/.test(trimmed)) return true;

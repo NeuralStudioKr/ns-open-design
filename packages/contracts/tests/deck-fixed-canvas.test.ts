@@ -220,6 +220,21 @@ describe('pinDeckSlidesToFixedCanvas', () => {
     expect(pinned).toContain('data-od-official-look-css');
   });
 
+  it('strips Neutral inline slide font-family when official look CSS is present', () => {
+    const html = [
+      '<!doctype html><html><body>',
+      '<section class="slide" style="width:1920px;height:1080px;font-family:Quicksand,sans-serif">',
+      '<h1>커버</h1>',
+      '</section>',
+      '<style data-od-official-look-css>.slide{font-family:Inter}.slide h1{font-family:"Instrument Serif"}</style>',
+      '</body></html>',
+    ].join('');
+    const pinned = pinDeckSlidesToFixedCanvas(html);
+    expect(pinned).not.toMatch(/class="slide"[^>]*Quicksand/);
+    expect(pinned).toContain('data-od-official-look-css');
+    expect(pinned).toContain('커버');
+  });
+
   it('strips Neutral paint from full-bleed inner overlays when official look CSS is present', () => {
     const html = [
       '<!doctype html><html><body>',
@@ -344,6 +359,36 @@ describe('pinDeckSlidesToFixedCanvas', () => {
     expect(pinned).not.toMatch(/hsl\(239/);
     expect(pinned).not.toMatch(/#7c3aed/);
     expect(pinned.match(/class="[^"]*\binfo-card\b/g)?.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('binds oklch/oklab/lab/lch/color and named emerald/amber invented frames', () => {
+    const html = [
+      '<!doctype html><html><body>',
+      '<section class="slide" style="width:1920px;height:1080px">',
+      '<div style="border:2px solid oklch(0.7 0.2 300);padding:16px">oklch</div>',
+      '<li style="border:2px solid oklab(0.6 0.1 0.05);padding:16px">oklab li</li>',
+      '<div style="border:1px solid color(display-p3 0.2 0.5 0.9);padding:16px">color()</div>',
+      '<div style="border:2px solid lab(50% 40 30);padding:16px">lab</div>',
+      '<div style="border:2px solid lch(50% 40 30);padding:16px">lch</div>',
+      '<div style="border:2px solid color-mix(in oklab, blue 40%, white);padding:16px">mix</div>',
+      '<div style="border:2px solid emerald;padding:16px">emerald</div>',
+      '<div style="border:2px solid amber;padding:16px">amber</div>',
+      '<div style="border:1px solid var(--border);padding:16px">Keep kit token</div>',
+      '</section>',
+      '<style data-od-official-look-css>.info-card{border:1px solid var(--border)}</style>',
+      '</body></html>',
+    ].join('');
+    const pinned = pinDeckSlidesToFixedCanvas(html);
+    expect(pinned).not.toMatch(/solid\s+oklch\(/i);
+    expect(pinned).not.toMatch(/solid\s+oklab\(/i);
+    expect(pinned).not.toMatch(/solid\s+color\(/i);
+    expect(pinned).not.toMatch(/solid\s+lab\(/i);
+    expect(pinned).not.toMatch(/solid\s+lch\(/i);
+    expect(pinned).not.toMatch(/solid\s+color-mix\(/i);
+    expect(pinned).not.toMatch(/border:2px solid emerald/);
+    expect(pinned).not.toMatch(/border:2px solid amber/);
+    expect(pinned).toMatch(/border:1px solid var\(--border\)/);
+    expect(pinned.match(/class="[^"]*\binfo-card\b/g)?.length).toBeGreaterThanOrEqual(7);
   });
 
   it('strips nested and heading MiniMax index badges', () => {

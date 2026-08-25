@@ -307,6 +307,19 @@ describe('verifySlideProducedHtmlDeliverable', () => {
       verifySlideProducedHtmlDeliverable('deck.html', async () => parrotCover),
     ).resolves.toBe('deck.html');
   });
+
+  it('returns null for Motif-SVG-before-title hangs', async () => {
+    const hung =
+      '<!doctype html><html lang="ko"><body style="margin:0;background:#F5F0E6">'
+      + '<section class="slide slide-title" style="width:1920px;height:1080px">'
+      + '<div><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 150 150">'
+      + '<style>.cls-0{fill:#FFFFFF}</style></svg></div></section>'
+      + '<section class="slide"><h1>개요</h1><p>내용을 작성하세요</p></section>'
+      + '</body></html>';
+    await expect(
+      verifySlideProducedHtmlDeliverable('deck.html', async () => hung),
+    ).resolves.toBeNull();
+  });
 });
 
 describe('resolveSlideProducedHtmlToOpen', () => {
