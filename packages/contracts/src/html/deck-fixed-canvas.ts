@@ -350,11 +350,13 @@ const VOID_TAGS = new Set([
 ]);
 
 const INDEX_BADGE_TEXT_RE =
-  /^\d{2}\s*\/\s*[A-Za-z가-힣][A-Za-z가-힣\s-]{1,20}$/;
+  /^\d{2}\s*[\/·•]\s*[A-Za-z가-힣][A-Za-z가-힣\s-]{1,20}$/;
 
 const KIT_CARD_TOKEN_RE = /\b(?:info-card|stat-card|card)\b/i;
-const FAKE_OUTLINE_COLOR_RE =
-  /#(?:0f172a|1e293b|111827|0b1220|1d4ed8|2563eb|3b82f6|1e40af|1e3a8a|172554|1e3a5f|4f46e5|6366f1|4338ca|312e81|0ea5e9|0284c7|06b6d4|0891b2|0000ff|00f\b)|(?:\bnavy\b|\broyalblue\b|\bmediumblue\b|\bindigo\b|\bskyblue\b|\bteal\b|\bcyan\b)/i;
+const KIT_SAFE_FRAME_COLOR_RE = /\b(?:var\s*\(|currentColor|inherit|transparent)\b/i;
+const EXPLICIT_PAINT_COLOR_RE =
+  /#(?:[0-9a-f]{3,8})\b|\b(?:rgba?|hsla?)\s*\(|\b(?:navy|royalblue|mediumblue|indigo|skyblue|teal|cyan|blue|darkblue|purple|violet|fuchsia|magenta|crimson)\b/i;
+const FAKE_RING_SHADOW_RE = /(?:^|;)\s*box-shadow\s*:[^;]*\b0\s+0\s+0\s+(?:1px|2px)\b[^;]*/i;
 const SPLIT_LAYOUT_RE = /\bsplit-(?:left|right|pane|top|bottom)\b/i;
 
 function findMatchingClose(html: string, from: number, tag: string): number {
@@ -442,14 +444,21 @@ function mapSlideInners(
 }
 
 function isFloatingIndexBadgeHost(tag: string, attrs: string): boolean {
-  if (/^(span|small|label|em|strong|b|i)$/i.test(tag)) return true;
-  // MiniMax often parks "05 / CHECKLIST" on absolute `div`/`p` chrome.
-  // Keep in-flow template chrome like `.slide-chrome` / `01 / Studio`.
-  if (!/^(div|p)$/i.test(tag)) return false;
   if (/\bslide-chrome\b/i.test(attrs)) return false;
+  if (/^(span|small|label|em|strong|b|i)$/i.test(tag)) return true;
+  // MiniMax parks "05 / CHECKLIST" on absolute/fixed `div`/`p`/`h*`/`header`.
+  if (!/^(div|p|h[1-6]|header)$/i.test(tag)) return false;
   const style = extractStyleAttr(attrs);
-  if (/position\s*:\s*absolute/i.test(style)) return true;
+  if (/position\s*:\s*(?:absolute|fixed)/i.test(style)) return true;
   return /\b(?:badge|index|overlay|page-label|slide-label|kicker)\b/i.test(attrs);
+}
+
+function rewriteElementInner(raw: string, nextInner: string): string | null {
+  const openEnd = raw.indexOf(">");
+  if (openEnd < 0) return null;
+  const close = /<\/[a-zA-Z][\w-]*\s*>\s*$/.exec(raw);
+  if (!close || close.index <= openEnd) return null;
+  return `${raw.slice(0, openEnd + 1)}${nextInner}${raw.slice(close.index)}`;
 }
 
 function stripFloatingIndexBadgesInSpan(inner: string): string {
@@ -460,10 +469,24 @@ function stripFloatingIndexBadgesInSpan(inner: string): string {
     const raw = next.slice(seg.start, seg.end);
     const open = openTagOf(raw);
     if (!open) continue;
-    if (!isFloatingIndexBadgeHost(open.tag, open.attrs)) continue;
     if (isMotifOrDecoAttrs(open.attrs) || isContentFooterHost(open.attrs)) continue;
-    if (!INDEX_BADGE_TEXT_RE.test(innerTextOf(raw))) continue;
-    next = `${next.slice(0, seg.start)}${next.slice(seg.end)}`;
+    if (/\bslide-chrome\b/i.test(open.attrs)) continue;
+    if (
+      isFloatingIndexBadgeHost(open.tag, open.attrs)
+      && INDEX_BADGE_TEXT_RE.test(innerTextOf(raw))
+    ) {
+      next = `${next.slice(0, seg.start)}${next.slice(seg.end)}`;
+      continue;
+    }
+    const openEnd = raw.indexOf(">");
+    const close = /<\/[a-zA-Z][\w-]*\s*>\s*$/.exec(raw);
+    if (openEnd < 0 || !close || close.index <= openEnd) continue;
+    const child = raw.slice(openEnd + 1, close.index);
+    const strippedChild = stripFloatingIndexBadgesInSpan(child);
+    if (strippedChild === child) continue;
+    const rebuilt = rewriteElementInner(raw, strippedChild);
+    if (!rebuilt) continue;
+    next = `${next.slice(0, seg.start)}${rebuilt}${next.slice(seg.end)}`;
   }
   return next;
 }
@@ -520,18 +543,33 @@ export function wrapNonMotifSlideFlow(html: string): string {
   return mapSlideInners(html, (inner, span) => wrapNonMotifInSpan(inner, span.hostAttrs));
 }
 
+function collectFrameDeclarations(style: string): string {
+  const source = String(style ?? "");
+  const parts: string[] = [];
+  const lineRe = /(?:^|;)\s*(?:border|outline)(?:-width|-color|-style)?\s*:[^;]*/gi;
+  let match: RegExpExecArray | null;
+  while ((match = lineRe.exec(source)) !== null) parts.push(match[0]);
+  FAKE_RING_SHADOW_RE.lastIndex = 0;
+  const ring = FAKE_RING_SHADOW_RE.exec(source);
+  if (ring) parts.push(ring[0]);
+  return parts.join(";");
+}
+
 function looksLikeFakeOutlineStyle(style: string): boolean {
-  const source = String(style ?? '');
-  if (!/(?:^|;)\s*(?:border|outline)(?:-width|-color|-style)?\s*:/i.test(source)) return false;
-  if (!/\b(?:1px|2px)\b/i.test(source)) return false;
-  return FAKE_OUTLINE_COLOR_RE.test(source);
+  const frames = collectFrameDeclarations(style);
+  if (!frames || !/\b(?:1px|2px)\b/i.test(frames)) return false;
+  if (KIT_SAFE_FRAME_COLOR_RE.test(frames) && !EXPLICIT_PAINT_COLOR_RE.test(frames)) {
+    return false;
+  }
+  return EXPLICIT_PAINT_COLOR_RE.test(frames);
 }
 
 function stripFakeOutlineStyle(style: string): string {
-  return String(style ?? '')
-    .replace(/(?:^|;)\s*(?:border|outline)(?:-width|-color|-style)?\s*:[^;]*/gi, ';')
-    .replace(/;;+/g, ';')
-    .replace(/^;|;$/g, '')
+  return String(style ?? "")
+    .replace(/(?:^|;)\s*(?:border|outline)(?:-width|-color|-style)?\s*:[^;]*/gi, ";")
+    .replace(FAKE_RING_SHADOW_RE, ";")
+    .replace(/;;+/g, ";")
+    .replace(/^;|;$/g, "")
     .trim();
 }
 
