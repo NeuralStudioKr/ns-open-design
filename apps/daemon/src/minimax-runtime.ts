@@ -1,3 +1,5 @@
+import { messagesHaveWebFetchPageUrl } from '@open-design/contracts';
+
 /**
  * Teamver MiniMax managed-provider runtime helpers (daemon-side).
  */
@@ -201,4 +203,27 @@ export function resolveMiniMaxToolLoopLimit(): number {
 
 export function resolveDesignDefaultProvider(): 'minimax' | 'anthropic' | string {
   return (process.env.TEAMVER_DESIGN_DEFAULT_PROVIDER ?? '').trim().toLowerCase() || 'anthropic';
+}
+
+function messageLooksLikeToolLoopTurn(
+  message: { role?: unknown; tool_calls?: unknown } | null | undefined,
+): boolean {
+  if (!message) return false;
+  if (message.role === 'tool') return true;
+  return Array.isArray(message.tool_calls) && message.tool_calls.length > 0;
+}
+
+/**
+ * MiniMax is tool-hungry: `web_fetch` on a greenfield deck turn burns the
+ * first completion on kit font/CSS URLs and the HTML artifact never closes.
+ * Enable the tool only when the user/system text has a real page URL, or
+ * when we are already inside a tool-result follow-up.
+ */
+export function minimaxTurnShouldEnableWebFetch(
+  messages: ReadonlyArray<{ role?: unknown; content?: unknown; tool_calls?: unknown }> | null | undefined,
+  systemPrompt?: string | null,
+): boolean {
+  const list = messages ?? [];
+  if (list.some((message) => messageLooksLikeToolLoopTurn(message))) return true;
+  return messagesHaveWebFetchPageUrl(list, systemPrompt);
 }

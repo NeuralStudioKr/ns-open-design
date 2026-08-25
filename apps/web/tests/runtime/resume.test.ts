@@ -51,7 +51,7 @@ describe('runtime/resume shell/no-HTML recovery constants', () => {
     expect(AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT).toMatch(/이 대화\(현재 프로젝트\)/);
     expect(AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT).toMatch(/다른 프로젝트/);
     expect(AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT).toMatch(/artifact type="deck"/);
-    expect(AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT).toMatch(/Never use `type="text\/html"`/);
+    expect(AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT).toMatch(/Never use type="text\/html"/);
     expect(AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT).toMatch(/Do not continue any other project/i);
     expect(AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT).toMatch(/Plugin inputs/);
     expect(AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT).toMatch(/quick-brief/);
@@ -257,10 +257,11 @@ describe('runtime/resume shell/no-HTML recovery constants', () => {
       partialHtml: shell,
       planOutline: '슬라이드 구성:\n01 표지\n02 핵심 요약',
     });
-    expect(prompt).toContain('FINAL RETRY');
+    expect(prompt).not.toContain('FINAL RETRY');
+    expect(prompt).toContain('BODY-FIRST');
+    expect(prompt).toContain('3장의 body-first');
     expect(prompt).toContain('빈 document shell');
     expect(prompt).toContain('위 shell을 복사하지 말고');
-    expect(prompt).toContain('새 complete HTML deck artifact');
     expect(prompt).not.toContain('```html');
     expect(prompt).not.toContain('.deco-daisy{position:absolute');
   });
@@ -364,13 +365,15 @@ describe('runtime/resume shell/no-HTML recovery constants', () => {
     expect(prompt).toMatch(/token limit|max_tokens/i);
   });
 
-  it('escalates immediately when the prior partial HTML was a head-only shell', () => {
+  it('keeps compact body-first recovery when the prior partial HTML was a head-only shell', () => {
     const shell = '<!doctype html>\n<html lang="ko">\n<head>';
     const prompt = buildAutoContinueIncompleteOutputPrompt({
       attempt: 1,
       partialHtml: shell,
     });
-    expect(prompt).toContain('FINAL RETRY');
+    expect(prompt).not.toContain('FINAL RETRY');
+    expect(prompt).toContain('BODY-FIRST');
+    expect(prompt).toContain('3장의 body-first');
     expect(prompt).not.toContain('```html');
   });
 

@@ -23,6 +23,62 @@ function hostLooksLikeDesignAssetCdn(host: string): boolean {
   return false;
 }
 
+const PROMPT_PAGE_URL_RE = /\b(?:https?:\/\/|www\.)[^\s<>"'`]+/gi;
+
+function normalizePromptPageUrl(raw: string): string | null {
+  const trimmed = String(raw || '').replace(/[.,;:!?)]+$/g, '').trim();
+  if (!trimmed) return null;
+  const href = /^www\./i.test(trimmed) ? `https://${trimmed}` : trimmed;
+  try {
+    const parsed = new URL(href);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
+    return parsed.href;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * True when prompt / message text names a real HTML page (not kit CSS / fonts).
+ * MiniMax first-fill uses this to keep `web_fetch` off unless the user gave a page.
+ */
+export function textHasWebFetchPageUrl(text: string): boolean {
+  const source = String(text || '');
+  if (!source) return false;
+  for (const match of source.matchAll(PROMPT_PAGE_URL_RE)) {
+    if (isWebFetchAssetUrlContext(source, match.index ?? 0)) continue;
+    const href = normalizePromptPageUrl(match[0]);
+    if (href && isWebFetchPageUrl(href)) return true;
+  }
+  return false;
+}
+
+function collectMessageText(content: unknown): string {
+  if (typeof content === 'string') return content;
+  if (!Array.isArray(content)) return '';
+  return content
+    .map((part) => {
+      if (typeof part === 'string') return part;
+      if (part && typeof part === 'object' && typeof (part as { text?: unknown }).text === 'string') {
+        return (part as { text: string }).text;
+      }
+      return '';
+    })
+    .join('\n');
+}
+
+/** Scan chat messages (and optional system prompt) for a real page URL. */
+export function messagesHaveWebFetchPageUrl(
+  messages: ReadonlyArray<{ content?: unknown }> | null | undefined,
+  systemPrompt?: string | null,
+): boolean {
+  if (textHasWebFetchPageUrl(String(systemPrompt ?? ''))) return true;
+  for (const message of messages ?? []) {
+    if (textHasWebFetchPageUrl(collectMessageText(message?.content))) return true;
+  }
+  return false;
+}
+
 /** Page URLs only — kit `@import` / Google Fonts css2 / CDN assets are not targets. */
 export function isWebFetchPageUrl(href: string): boolean {
   let parsed: URL;

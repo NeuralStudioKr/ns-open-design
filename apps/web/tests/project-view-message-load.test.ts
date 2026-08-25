@@ -575,6 +575,7 @@ describe("ProjectView message loading", () => {
     expect(persistBlock).toContain("isPersistableShortDeckDraft(artifactToPersist.html)");
     expect(persistBlock).toContain("salvageTemplateFillShellAsCoverDraft(artifactToPersist.html,");
     expect(persistBlock).toContain("deriveDeckCoverTitleFromBrief(");
+    expect(persistBlock).toContain("lastResortTitle: LAST_RESORT_DECK_COVER_TITLE");
     expect(persistBlock).toContain("kind: 'skipped-incomplete'");
     // deck-patch interceptor must run BEFORE the incomplete-shell / validate
     // gates so partial patches never get rejected as "not a full document".

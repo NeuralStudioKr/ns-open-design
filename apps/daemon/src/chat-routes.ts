@@ -68,6 +68,7 @@ import {
 import {
   MINIMAX_DEFAULT_BASE_URL,
   buildMiniMaxChatCompletionExtras,
+  minimaxTurnShouldEnableWebFetch,
   normalizeMiniMaxBaseUrl,
   resolveMiniMaxToolLoopLimit,
 } from './minimax-runtime.js';
@@ -2202,6 +2203,10 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
           requestedMaxCompletionTokens:
             typeof maxTokens === 'number' && maxTokens > 0 ? maxTokens : null,
         }));
+        if (!minimaxTurnShouldEnableWebFetch(messagesForTurn, systemPrompt)) {
+          delete payload.tools;
+          payload.tool_choice = 'none';
+        }
       } else {
         if (!opts.omitMaxTokens) {
           payload.max_tokens =

@@ -18,6 +18,7 @@ import {
   resolveTeamverMiniMaxApiKeyFromEnv,
   shouldOmitMaxTokens,
   shouldOmitMiniMaxMaxTokens,
+  minimaxTurnShouldEnableWebFetch,
 } from '../src/minimax-runtime.js';
 
 describe('minimax-runtime', () => {
@@ -134,5 +135,27 @@ describe('minimax-runtime', () => {
     expect(thinkingOn.reasoning_split).toBe(true);
     expect(thinkingOn.service_tier).toBe('priority');
     expect(thinkingOn).not.toHaveProperty('stream_options');
+  });
+
+  it('enables MiniMax web_fetch only for real page URLs or tool-loop follow-ups', () => {
+    expect(minimaxTurnShouldEnableWebFetch([{ role: 'user', content: '슬라이드 만들어줘' }])).toBe(
+      false,
+    );
+    expect(
+      minimaxTurnShouldEnableWebFetch(
+        [{ role: 'user', content: 'hello' }],
+        "@import url('https://fonts.googleapis.com/css2?family=Fredoka');",
+      ),
+    ).toBe(false);
+    expect(
+      minimaxTurnShouldEnableWebFetch([
+        { role: 'user', content: 'www.teamver.com 참고해서 슬라이드 만들어줘' },
+      ]),
+    ).toBe(true);
+    expect(
+      minimaxTurnShouldEnableWebFetch([
+        { role: 'tool', content: 'page text' },
+      ]),
+    ).toBe(true);
   });
 });

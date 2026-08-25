@@ -51,17 +51,16 @@ export const AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT =
   '직전 응답이 완성된 HTML 슬라이드 덱을 남기지 못했습니다 (빈 뼈대만 있음). ' +
   '계획을 다시 설명하거나 사용자에게 재확인하지 말고, ' +
   '이 대화에 이미 있는 요청·목차·Plugin inputs·quick-brief 답변만 사용해 완성된 HTML 슬라이드 덱을 즉시 출력하세요. ' +
-  '출력 형식은 반드시 하나의 `<artifact type="deck" identifier="...">...</artifact>` ' +
-  '블록이며, 그 내부에 `<!doctype html>`부터 `</html>`까지 자체 완결형(self-contained) HTML이 들어가야 합니다. ' +
-  '외부 파일 참조, 프레임워크 스켈레톤 복사, SLOT 주석, 추가 툴 호출 없이 이 한 번의 응답에서 덱을 완결지어야 합니다. ' +
-  `길게 만들다가 끊기지 않도록 간결한 HTML 덱으로 작성하세요. (${COMPACT_DECK_SLIDE_COUNT_GUIDANCE}) ` +
+  '출력 형식은 반드시 하나의 `<artifact type="deck" identifier="...">...</artifact>` 블록입니다. ' +
+  '아티팩트는 `<body>` 또는 첫 `<section class="slide">`로 시작하세요. `<head>` / 긴 `<style>` / kit CSS를 먼저 쓰면 실패입니다. ' +
+  '이번 턴은 정확히 3장의 body-first 슬라이드를 닫고 `</body></html></artifact>`로 끝내세요. ' +
+  '6~8장 전체를 이 턴에 쓰지 마세요 — hidden top-up이 이어 붙입니다. ' +
+  '외부 파일 참조, 프레임워크 스켈레톤 복사, SLOT 주석, 추가 툴 호출 없이 이 한 번의 응답에서 3장을 완결지어야 합니다. ' +
   '각 슬라이드는 제목과 2~4개의 실제 문장/불릿을 가져야 하며 빈 `<head>`나 빈 `<body>`로 끝내면 안 됩니다. ' +
-  `이 대화에 슬라이드 분량이 없다면 ${COMPACT_DECK_SLIDE_COUNT_GUIDANCE.toLowerCase()} ` +
-  '분량 미지정 시 임원 대상 6~8슬라이드 표준 구성으로 즉시 채워서 완성하세요. ' +
   '(English: Use ONLY this conversation in this project. Do not continue any other project. ' +
-  'The previous turn in THIS chat produced no usable slide deck — emit one complete self-contained ' +
-  `deck inside a single \`<artifact type="deck">...</artifact>\` block now (${COMPACT_DECK_SLIDE_COUNT_GUIDANCE}), ` +
-  'with no planning, no framework skeleton, no SLOT comments, and no tool calls. Never use `type="text/html"`.)';
+  'The previous turn in THIS chat produced no usable slide deck — emit 3 body-first slides ' +
+  'inside a single artifact starting at body or the first section.slide. ' +
+  'No head/kit CSS first, no 6-8 slide rewrite, no planning, no tool calls. Never use type="text/html".)';
 
 /** True when a user-message body is the automatic-continue recovery prompt. */
 export function isAutoContinueIncompleteOutputPrompt(content: string | null | undefined): boolean {
@@ -81,19 +80,17 @@ const AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT_ESCALATED =
   '다른 프로젝트·다른 대화의 슬라이드를 이어 쓰지 마세요. ' +
   '이번 응답은 반드시 `<artifact type="deck" identifier="...">`로 시작해서 `</artifact>`로 끝나야 합니다. `type="text/html"`은 금지입니다. ' +
   '인사, 사과, 계획, 목차 나열, "만들겠습니다" 약속, question-form은 금지입니다. ' +
-  '응답 전체가 하나의 완전한 `<!doctype html>…</html>` 덱이어야 합니다. ' +
+  '응답은 `<body>` 또는 첫 `<section class="slide">`로 시작하세요. `<head>` / kit CSS 선출력은 금지입니다. ' +
   // Token-budget escape hatch: previous full-scope attempts likely died at
-  // max_tokens mid-artifact. Cut inline styles/scripts and slide count to
-  // fit inside the output budget so at least a minimal previewable deck
-  // lands. Deleting the framework <script> is acceptable here since the
-  // deliverable-missing failure is worse than a static (non-navigable) deck.
-  '실제 슬라이드는 6장 이상이면 되고, ' +
+  // max_tokens mid-head. Close 3 body-first slides this turn so persist +
+  // hidden top-up can finish instead of another incomplete-html-document-shell.
+  '이번 턴은 정확히 3장의 body-first 슬라이드를 닫으세요. 6~8장 전체 재작성은 금지입니다. ' +
   '각 슬라이드에는 SLOT 주석이 아니라 실제 텍스트 콘텐츠(제목·본문·목록)가 반드시 들어가야 합니다. ' +
   '이 대화의 Plugin inputs·quick-brief 답변·선택 템플릿 맥락을 유지하고, 새 질문으로 되돌아가지 마세요. ' +
   '인라인 CSS는 최소한만 쓰고, 필요하면 프레임워크 스크립트를 생략해도 좋습니다 — 빈 덱보다 스크롤로 넘기는 정적 덱이 낫습니다. ' +
   '`<!-- SLOT: ... -->` 형태의 주석 자리표시자를 그대로 남기는 것은 금지입니다. ' +
-  '(English: Output ONE complete HTML deck artifact — no prose. ' +
-  'At least 6 slides, real text in every <section class="slide"> (never the SLOT comment). ' +
+  '(English: Output 3 body-first slides in ONE artifact — no prose, no `<head>` first. ' +
+  'Real text in every <section class="slide"> (never the SLOT comment). ' +
   'Minimize inline CSS; skip the framework <script> if needed — a static deck beats an empty artifact.)';
 
 const AUTO_CONTINUE_MAX_PARTIAL_HTML_EXCERPT = 4000;
@@ -125,6 +122,7 @@ const AUTO_CONTINUE_HEAD_ONLY_BODY_FIRST =
   + 'Emit BODY-FIRST: start the artifact with `<body>` (or the first `<section class="slide">`), '
   + 'use only tiny inline style tokens, and fill every slide with real title + 2–4 bullets NOW. '
   + 'Official look/Motif CSS is merged after save — do not stream `<head>` or example.html styles. '
+  + 'Close exactly 3 body-first slides this turn. Hidden top-up appends more. '
   + 'A compact static deck beats another CSS-only truncation.';
 
 const AUTO_CONTINUE_TEMPLATE_FILL_MIN_SLIDES =
@@ -231,15 +229,18 @@ export function buildAutoContinueIncompleteOutputPrompt(
     && !documentContainsSlideSection(partialRaw)
     && (partialRaw.length >= 2048 || headWithoutBody),
   );
-  // Head-only shells burn auto-continue slots without progress — escalate
-  // immediately instead of waiting for attempt 2.
+  // Head-only / empty shells must stay on the compact 3-slide body-first
+  // contract. Escalating those to FINAL RETRY (historically "6+ slides +
+  // complete <!doctype html>") made MiniMax dump `<head>` again and fail
+  // as incomplete-html-document-shell twice in a row.
   parts.push(
-    attempt >= 2 || partialShellOnly
+    attempt >= 2 && !partialShellOnly
       ? AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT_ESCALATED
       : AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT,
   );
   if (
     headOnlyHeavy
+    || partialShellOnly
     || motifSvgDump
     || context.templateCloneContentFill
     || (context.truncatedByMaxTokens && partialShellOnly)

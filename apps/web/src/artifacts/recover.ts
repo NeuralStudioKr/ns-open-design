@@ -367,6 +367,9 @@ export type SalvageCoverDraftOptions = {
   lastResortTitle?: string | null;
 };
 
+/** Persist last-resort when brief/project titles are instruction or "Presentation". */
+export const LAST_RESORT_DECK_COVER_TITLE = '슬라이드 초안';
+
 /**
  * Head-only / kit-CSS shells never reached a slide. Persist used to skip
  * those as `incomplete-html-document-shell` → `incomplete_output`. Prefer
@@ -388,7 +391,8 @@ export function salvageTemplateFillShellAsCoverDraft(
   const fromHtml = visibleHeadingCandidate(trimmed);
   const fallback = decodeBasicHtmlEntities(String(options?.fallbackTitle ?? '').trim());
   const lastResort = decodeBasicHtmlEntities(String(options?.lastResortTitle ?? '').trim());
-  const heading = [fromHtml, fallback, lastResort].find((title) => !isUnusableCoverTitle(title));
+  const heading = [fromHtml, fallback].find((title) => !isUnusableCoverTitle(title))
+    || (lastResort.length >= 2 ? lastResort : '');
   if (!heading) return null;
 
   return build1920CoverDraftHtml(heading);

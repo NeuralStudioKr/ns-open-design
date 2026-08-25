@@ -2295,6 +2295,46 @@ describe('API proxy routes', () => {
     expect(upstreamChatBodies[0].top_p).toBe(0.95);
     expect(upstreamChatBodies[0]).not.toHaveProperty('reasoning_split');
     expect(upstreamChatBodies[0].tools.map((tool: any) => tool.function.name)).toEqual(['web_fetch']);
+    expect(upstreamChatBodies[0].tool_choice).toBe('auto');
+  });
+
+  it('omits MiniMax web_fetch on greenfield turns without a page URL', async () => {
+    const upstreamChatBodies: any[] = [];
+    const fetchMock = vi.fn(async (input: FetchInput, init?: FetchInit) => {
+      const url = String(input);
+      if (url.startsWith(baseUrl)) return realFetch(input, init);
+      if (url === 'https://api.minimax.io/v1/chat/completions') {
+        upstreamChatBodies.push(JSON.parse(String(init?.body || '{}')));
+        return sseResponse([
+          'data: {"choices":[{"index":0,"delta":{"content":"no tools"}}]}',
+          '',
+          'data: {"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}',
+          '',
+          'data: [DONE]',
+          '',
+        ].join('\n'));
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const res = await realFetch(`${baseUrl}/api/proxy/minimax/stream`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        baseUrl: 'https://api.minimax.io/v1',
+        apiKey: 'sk-cp-test',
+        projectId: 'test-project',
+        model: 'MiniMax-M3',
+        messages: [{ role: 'user', content: '온보딩 슬라이드 만들어줘' }],
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    await expect(res.text()).resolves.toContain('no tools');
+    expect(upstreamChatBodies).toHaveLength(1);
+    expect(upstreamChatBodies[0].tools).toBeUndefined();
+    expect(upstreamChatBodies[0].tool_choice).toBe('none');
   });
 
   it('forces the MiniMax managed key on the MiniMax proxy route even when apiProtocol is omitted', async () => {

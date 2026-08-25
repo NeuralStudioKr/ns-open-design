@@ -326,6 +326,17 @@ describe("salvageTemplateFillShellAsCoverDraft", () => {
     expect(chrome).toContain("<h1>초안</h1>");
   });
 
+  it("uses lastResort even when brief/chrome titles are unusable", () => {
+    const shell = `<!doctype html><html><head><title>Daisy Days — Presentation Template</title>
+<style>.deco{position:absolute}</style></head><body>`;
+    const draft = salvageTemplateFillShellAsCoverDraft(shell, {
+      fallbackTitle: "슬라이드 만들어줘",
+      lastResortTitle: "슬라이드 초안",
+    });
+    expect(draft).toContain("<h1>슬라이드 초안</h1>");
+    expect(draft).toContain('class="slide"');
+  });
+
   it("does not replace a truncation that already has slide copy", () => {
     const truncated = `<!doctype html><html><body>
 <section class="slide"><h1>기업 AI 도입 효과</h1><p>개요 설명입니다.</p></section>`;

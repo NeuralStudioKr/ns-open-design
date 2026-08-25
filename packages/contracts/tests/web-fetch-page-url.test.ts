@@ -4,6 +4,8 @@ import {
   isWebFetchPageContentType,
   isWebFetchPageUrl,
   looksLikeWebFetchStylesheetText,
+  messagesHaveWebFetchPageUrl,
+  textHasWebFetchPageUrl,
 } from '../src/web-fetch-page-url';
 
 describe('isWebFetchPageUrl', () => {
@@ -53,6 +55,33 @@ describe('isWebFetchAssetUrlContext', () => {
 
     const anchor = 'See <a href="https://teamver.com">the site</a>';
     expect(isWebFetchAssetUrlContext(anchor, anchor.indexOf('https://'))).toBe(false);
+  });
+});
+
+describe('textHasWebFetchPageUrl', () => {
+  it('detects user page URLs including www hosts', () => {
+    expect(textHasWebFetchPageUrl('www.teamver.com 참고해서 슬라이드 만들어줘')).toBe(true);
+    expect(textHasWebFetchPageUrl('https://teamver.com/about 보고 만들어줘')).toBe(true);
+  });
+
+  it('ignores kit font/CSS URLs in system prompt text', () => {
+    expect(
+      textHasWebFetchPageUrl("@import url('https://fonts.googleapis.com/css2?family=Fredoka');"),
+    ).toBe(false);
+    expect(textHasWebFetchPageUrl('https://fonts.googleapis.com/css2')).toBe(false);
+    expect(textHasWebFetchPageUrl('슬라이드 만들어줘')).toBe(false);
+  });
+
+  it('scans chat messages but not kit-only system prompts', () => {
+    expect(
+      messagesHaveWebFetchPageUrl(
+        [{ content: 'hello' }],
+        "@import url('https://fonts.googleapis.com/css2?family=Fredoka');",
+      ),
+    ).toBe(false);
+    expect(
+      messagesHaveWebFetchPageUrl([{ content: 'https://teamver.com 참고' }], ''),
+    ).toBe(true);
   });
 });
 

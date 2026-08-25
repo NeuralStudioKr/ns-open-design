@@ -75,6 +75,7 @@ import {
   stripAbandonedMotifSvgDumpFromStreamedText,
 } from '../artifacts/deck-html-content';
 import {
+  LAST_RESORT_DECK_COVER_TITLE,
   recoverBestHtmlDocumentFromText,
   recoverHtmlArtifactFromPrecedingDocument,
   salvageTemplateFillShellAsCoverDraft,
@@ -5266,6 +5267,7 @@ export function ProjectView({
               ? null
               : salvageTemplateFillShellAsCoverDraft(artifactToPersist.html, {
                 fallbackTitle: coverFallbackTitle,
+                lastResortTitle: LAST_RESORT_DECK_COVER_TITLE,
               })
           );
         if (salvaged) {
@@ -14310,7 +14312,9 @@ function isReusableSameTurnDeckWrite(html: string | null | undefined): boolean {
 
 function artifactFromSalvagedHtml(html: string, base: Artifact): Artifact | null {
   const salvaged = salvageTruncatedHtmlDocument(html)
-    ?? salvageTemplateFillShellAsCoverDraft(html);
+    ?? salvageTemplateFillShellAsCoverDraft(html, {
+      lastResortTitle: LAST_RESORT_DECK_COVER_TITLE,
+    });
   // Soft truncation salvage already quality-gated. Do not re-reject with the
   // stricter incomplete-shell ratio (empty placeholders + 1–2 filled slides).
   if (salvaged && validateHtmlArtifact(salvaged).ok) {
@@ -14329,7 +14333,9 @@ function isUsableDeckHtmlArtifact(html: string | null | undefined): boolean {
   if (isClosedSoftSalvageDeckHtml(trimmed)) return true;
   return Boolean(
     salvageTruncatedHtmlDocument(trimmed)
-    ?? salvageTemplateFillShellAsCoverDraft(trimmed),
+    ?? salvageTemplateFillShellAsCoverDraft(trimmed, {
+      lastResortTitle: LAST_RESORT_DECK_COVER_TITLE,
+    }),
   );
 }
 
