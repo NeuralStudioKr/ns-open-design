@@ -1,3 +1,4 @@
+import { looksLikeTagStrippedSlideBodyDump } from '@open-design/contracts';
 import type { AgentEvent, ChatMessage } from '../types';
 import { reconcileUserCommentAttachments } from '../comments';
 import { recoverChatAttachmentsFromMentions } from '../utils/recoverChatAttachmentsFromMentions';
@@ -67,21 +68,27 @@ export function assistantEventsForDisplay(message: Pick<ChatMessage, 'content' |
   return events;
 }
 
+function looksLikeShortHangulCompletionStatus(text: string): boolean {
+  const trimmed = String(text ?? '').trim();
+  if (!trimmed || trimmed.length > 160) return false;
+  if (looksLikeTagStrippedSlideBodyDump(trimmed)) return false;
+  if (/<(?:artifact|html|body|question-form|ask-question)\b/i.test(trimmed)) return false;
+  return /[\uac00-\ud7af]/.test(trimmed);
+}
+
 function looksLikeReloadedSlideBodyDump(text: string): boolean {
   const trimmed = String(text ?? '').trim();
+  if (looksLikeTagStrippedSlideBodyDump(trimmed)) return true;
   if (trimmed.length < 40) return false;
+  if (looksLikeShortHangulCompletionStatus(trimmed)) return false;
   if (
-    /(?:prefers-reduced-motion|axe-core|FRONT-END TRACK|LECTURE\s+\d+|<\/artifact\s*>|html\s*>)/i.test(
-      trimmed,
-    )
-    && /[A-Za-z][\uac00-\ud7af]|[\uac00-\ud7af][A-Za-z]/.test(trimmed)
+    /[\uac00-\ud7af][A-Za-z]|[A-Za-z][\uac00-\ud7af]/.test(trimmed)
+    && /(?:TRACK|HTML|CSS|SEO|\bsvg\b|\bvideo\b|critical)/i.test(trimmed)
   ) {
     return true;
   }
-  // Round 23: Hangul-titled dumps without LECTURE/axe fingerprints.
-  return (
-    /[\uac00-\ud7af][A-Za-z]|[A-Za-z][\uac00-\ud7af]/.test(trimmed)
-    && /(?:TRACK|HTML|CSS|SEO|\bsvg\b|\bvideo\b|critical)/i.test(trimmed)
+  return /(?:<\/(?:artifact|html|body)\s*>|(?:html|body|head|section)\s*>|<!doctype\s+html)/i.test(
+    trimmed,
   );
 }
 

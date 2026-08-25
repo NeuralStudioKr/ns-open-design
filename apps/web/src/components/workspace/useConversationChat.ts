@@ -12,6 +12,7 @@ import {
   resolveRetryTarget,
   resolveSucceededRunStatus,
 } from '../ProjectView';
+import { sanitizePersistedAssistantChatMessage } from '../../utils/sanitizePersistedAssistantChatMessage';
 import type {
   AgentEvent,
   AgentInfo,
@@ -107,7 +108,9 @@ export function useConversationChat(
       try {
         const list = await listMessages(projectId, conversationId);
         if (cancelled) return;
-        setMessages(dedupeConversationAssistantRows(list));
+        setMessages(
+          dedupeConversationAssistantRows(list.map(sanitizePersistedAssistantChatMessage)),
+        );
         setError(null);
       } catch (err) {
         if (cancelled) return;

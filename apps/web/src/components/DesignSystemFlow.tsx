@@ -33,6 +33,7 @@ import {
   saveTabs,
 } from '../state/projects';
 import { appendErrorStatusEvent } from '../runtime/chat-events';
+import { sanitizePersistedAssistantChatMessage } from '../utils/sanitizePersistedAssistantChatMessage';
 import {
   buildDesignSystemPackageAuditRepairPrompt,
   summarizeDesignSystemPackageAudit,
@@ -1124,7 +1125,7 @@ export function DesignSystemDetailView({
     void listMessages(workspaceProjectId, activeConversationId).then(
       (messages) => {
         if (cancelled) return;
-        setProjectChatMessages(messages);
+        setProjectChatMessages(messages.map(sanitizePersistedAssistantChatMessage));
       },
       () => {
         if (cancelled) return;

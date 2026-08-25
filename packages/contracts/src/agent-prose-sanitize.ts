@@ -2246,6 +2246,10 @@ export function sanitizeAssistantProseForDisplay(
   // never keeps CDN `<script>` / `<link>` while streaming; closed + open
   // artifact bodies keep their stylesheets for the live HTML panel.
   const preservingArtifacts = streaming || options.preserveClosedArtifact === true;
+  // Tag-stripped leftover (`html>`, `body>`, `<!doctype html>…`) must run
+  // before prose HTML debris eats the doctype/html wrappers and leaves a
+  // Hangul slide title in the bubble.
+  text = stripOrphanArtifactCloserDumpRespectingArtifacts(text, preservingArtifacts);
   text = stripChatProseHtmlDebris(text, {
     preserveArtifactBodies: preservingArtifacts,
   });
@@ -2311,6 +2315,58 @@ export function stripTrailingDeckFrameworkCssLeak(input: string): string {
   return input.slice(0, match.index).trimEnd();
 }
 
+const TAG_STRIPPED_LEFTOVER_OPENER_RE =
+  /(?:^|[\n\uac00-\ud7af\u3000-\u9fff][.\u3002…]?\s*)(?:html|body|head|section|article|main)\s*>/i;
+const TAG_STRIPPED_LEFTOVER_CLOSER_RE =
+  /<\/(?:artifact|html|body|head|section|article|main)\s*>/i;
+const TAG_STRIPPED_LEFTOVER_CHROME_RE =
+  /(?:data-slide-index|prefers-reduced-motion|axe-core|FRONT-END TRACK|LECTURE\s+\d+|font-size\s*:|mix-blend-mode\s*:|offset-path\s*:|<!doctype\s+html)/i;
+const TAG_STRIPPED_HANGUL_LATIN_GLUE_RE =
+  /[\uac00-\ud7af][A-Za-z]|[A-Za-z][\uac00-\ud7af]/;
+
+/**
+ * Tag-stripped slide copy left after reload (`html>…</artifact>`, `body>…`,
+ * Hangul-titled lecture blobs). Shape-based — not one lecture's copy.
+ *
+ * Intact `<artifact>` / `<question-form>` are handled elsewhere. This is the
+ * leftover after the open tag was lost.
+ */
+export function looksLikeTagStrippedSlideBodyDump(text: string): boolean {
+  const raw = String(text ?? "").trim();
+  if (!raw) return false;
+  if (/<(?:question-form|ask-question)\b/i.test(raw)) return false;
+  if (/<artifact\b/i.test(raw)) return false;
+  if (lineIsChatProseProtocolMarkup(raw)) return false;
+  if (/^#{1,6}\s+\S/.test(raw) && raw.length < 80) return false;
+  if (/^(?:[-*+]|\d+[.)])\s+\S/.test(raw) && raw.length < 80) return false;
+
+  const hasOpener = TAG_STRIPPED_LEFTOVER_OPENER_RE.test(raw);
+  const hasCloser = TAG_STRIPPED_LEFTOVER_CLOSER_RE.test(raw);
+  const hasDoctype = /(?:^|\n)\s*<!doctype\s+html/i.test(raw);
+  const hasChrome = TAG_STRIPPED_LEFTOVER_CHROME_RE.test(raw);
+  const hasGlue = TAG_STRIPPED_HANGUL_LATIN_GLUE_RE.test(raw);
+
+  if (hasOpener && (hasCloser || hasGlue || hasChrome || raw.length >= 40)) return true;
+  if (hasDoctype && (hasCloser || hasOpener || hasGlue || hasChrome)) return true;
+  if (hasCloser && (hasOpener || hasDoctype || hasChrome)) return true;
+  if (hasChrome && hasGlue && raw.length >= 40) return true;
+  if (
+    /^(?:section|div|main|article|header|footer)\b[^<\n]{0,96}>/i.test(raw)
+    && /(?:\bslide\b|class\s*=)/i.test(raw)
+  ) {
+    return true;
+  }
+  // Round 23: Hangul-titled leftovers without leftover tags / lecture tokens.
+  if (
+    raw.length >= 40
+    && hasGlue
+    && /(?:TRACK|HTML|CSS|SEO|\bsvg\b|\bvideo\b|critical)/i.test(raw)
+  ) {
+    return true;
+  }
+  return false;
+}
+
 /**
  * Tag-stripped slide copy left after reload (`html>WD · LECTURE…</artifact>`).
  * Live streaming hides the intact `<artifact>` block; persist/cold-load often
@@ -2325,7 +2381,7 @@ function looksLikeTagStrippedSlideBody(line: string): boolean {
   if (/^#{1,6}\s+\S/.test(trimmed)) return false;
   if (/^(?:[-*+]|\d+[.)])\s+\S/.test(trimmed)) return false;
   if (lineIsChatProseProtocolMarkup(trimmed)) return false;
-  if (/^html\s*>/i.test(trimmed)) return true;
+  if (/^(?:html|body|head|section|article|main)\s*>/i.test(trimmed)) return true;
   if (
     /(?:prefers-reduced-motion|axe-core|data-slide-index|FRONT-END TRACK|LECTURE\s+\d+)/i.test(
       trimmed,
@@ -2340,7 +2396,7 @@ function looksLikeTagStrippedSlideBody(line: string): boolean {
   ) {
     return true;
   }
-  const hangulLatinGlue = /[\uac00-\ud7af][A-Za-z]|[A-Za-z][\uac00-\ud7af]/.test(trimmed);
+  const hangulLatinGlue = TAG_STRIPPED_HANGUL_LATIN_GLUE_RE.test(trimmed);
   const techCue =
     /(?:TRACK|HTML|CSS|SEO|\bsvg\b|\bvideo\b|critical|axe-core|prefers-reduced-motion|LECTURE)/i.test(
       trimmed,
@@ -2368,7 +2424,9 @@ function findHangulGluedTagStrippedSlideBodyCut(line: string): number | null {
     }
     const dump = line.slice(cut);
     if (!/^[\uac00-\ud7afA-Za-z]/.test(dump)) continue;
-    if (looksLikeTagStrippedSlideBody(dump)) return cut;
+    if (looksLikeTagStrippedSlideBody(dump) || looksLikeTagStrippedSlideBodyDump(dump)) {
+      return cut;
+    }
   }
   return null;
 }
@@ -2379,10 +2437,17 @@ function stripOrphanArtifactCloserDump(input: string): string {
   if (/<artifact\b/i.test(text)) {
     text = text.replace(/<artifact\b[\s\S]*?<\/artifact\s*>/gi, "");
   }
-  text = text.replace(/(?:^|\n)[^\S\n]*html\s*>[\s\S]*?(?:<\/artifact\s*>|$)/gi, "\n");
   text = text.replace(
-    /([\uac00-\ud7af\u3000-\u9fff])html\s*>[\s\S]*?(?:<\/artifact\s*>|$)/gi,
+    /(?:^|\n)[^\S\n]*(?:html|body|head|section|article|main)\s*>[\s\S]*?(?:<\/(?:artifact|html|body|head|section|article|main)\s*>|$)/gi,
+    "\n",
+  );
+  text = text.replace(
+    /([\uac00-\ud7af\u3000-\u9fff])[.\u3002…]?\s*(?:html|body|head|section|article|main)\s*>[\s\S]*?(?:<\/(?:artifact|html|body|head|section|article|main)\s*>|$)/gi,
     "$1",
+  );
+  text = text.replace(
+    /(?:^|\n)[^\S\n]*<!doctype\s+html[\s\S]*?(?:<\/(?:artifact|html|body)\s*>|$)/gi,
+    "\n",
   );
   text = text.replace(/<\/artifact\s*>/gi, "");
   const kept = text.split("\n").map((line) => {
@@ -2397,17 +2462,24 @@ function stripOrphanArtifactCloserDump(input: string): string {
   text = kept.join("\n").replace(/\n{3,}/g, "\n\n").trimEnd();
   // Persist often drops `html>` from the first chunk, leaving a Hangul-titled
   // slide body (`반응형 UIvideo·svg…SEO`) as one blob.
-  if (looksLikeTagStrippedSlideBodyBlock(text)) {
+  if (looksLikeTagStrippedSlideBodyDump(text) || looksLikeTagStrippedSlideBodyBlock(text)) {
+    const status = leadingHangulStatusFromDump(text);
     const withoutDump = text.split("\n").filter((line) => {
       const trimmed = line.trim();
       if (!trimmed) return true;
-      return !looksLikeTagStrippedSlideBodyBlock(trimmed)
-        && !/(?:prefers-reduced-motion|axe-core|FRONT-END TRACK|LECTURE\s+\d+|html\s*>)/i.test(
-          trimmed,
-        );
+      return !looksLikeTagStrippedSlideBodyDump(trimmed)
+        && !looksLikeTagStrippedSlideBody(trimmed);
     });
     text = withoutDump.join("\n").replace(/\n{3,}/g, "\n\n").trimEnd();
-    if (looksLikeTagStrippedSlideBodyBlock(text)) return "";
+    if (
+      !text.trim()
+      || looksLikeTagStrippedSlideBodyDump(text)
+      || looksLikeTagStrippedSlideBodyBlock(text)
+      || looksLikeCssOrHtmlDebrisRemainder(text)
+    ) {
+      return status;
+    }
+    if (status && !text.startsWith(status)) return `${status}\n${text}`.trim();
   }
   return text;
 }
@@ -2415,7 +2487,35 @@ function stripOrphanArtifactCloserDump(input: string): string {
 function looksLikeTagStrippedSlideBodyBlock(text: string): boolean {
   const trimmed = String(text ?? "").replace(/<\/artifact\s*>/gi, "").trim();
   if (trimmed.length < 40) return false;
-  return looksLikeTagStrippedSlideBody(trimmed);
+  return looksLikeTagStrippedSlideBody(trimmed) || looksLikeTagStrippedSlideBodyDump(trimmed);
+}
+
+function looksLikeCssOrHtmlDebrisRemainder(text: string): boolean {
+  const trimmed = String(text ?? "").trim();
+  if (!trimmed) return true;
+  if (/^#(?:[0-9A-Fa-f]{3,8})\b/.test(trimmed)) return true;
+  if (/^(?:font-size|padding|margin|transform|box-shadow|border|line-height)\s*:/.test(trimmed)) {
+    return true;
+  }
+  if (/^['"]:[A-Za-z]/.test(trimmed)) return true;
+  return false;
+}
+
+/** Keep `슬라이드 추가 중` when it is glued to leftover CSS/HTML on the same line. */
+function leadingHangulStatusFromDump(text: string): string {
+  const trimmed = String(text ?? "").trim();
+  const glued = /^((?:[\uac00-\ud7af\u3000-\u9fff]|[\s.,!?…·])+)(?=[A-Za-z#<"'`]|(?:html|body|head|section|article|main)\s*>|--[\w-]+)/u.exec(
+    trimmed,
+  );
+  const prefix = glued?.[1]?.trim() ?? "";
+  if (
+    prefix
+    && !looksLikeTagStrippedSlideBodyDump(prefix)
+    && (/(?:추가|작업|완료|진행|생성|수정).{0,6}[중됨요다]$/u.test(prefix) || /[중됨]$/u.test(prefix))
+  ) {
+    return prefix;
+  }
+  return "";
 }
 
 function stripOrphanArtifactCloserDumpRespectingArtifacts(

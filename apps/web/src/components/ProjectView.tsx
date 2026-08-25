@@ -524,6 +524,7 @@ import {
   sanitizeChatMessageLeakedPseudoTool,
   type SanitizeChatMessageOptions,
 } from '../utils/sanitizeChatMessageLeakedPseudoTool';
+import { sanitizePersistedAssistantChatMessage } from '../utils/sanitizePersistedAssistantChatMessage';
 import { sanitizeAssistantProseForDisplay } from '../runtime/internalAgentMarkup';
 import {
   dedupeConversationAssistantRows,
@@ -818,25 +819,7 @@ export function mergeServerMessagesIntoConversation(
   return dedupeConversationAssistantRows(orderConversationMessages(merged, current));
 }
 
-/**
- * Cold-load / soft-refresh: scrub deck HTML debris that was persisted before
- * display last-pass (or mid-`</style>` truncations) so reload matches live chat.
- */
-export function sanitizePersistedAssistantChatMessage(message: ChatMessage): ChatMessage {
-  if (message.role !== 'assistant') return message;
-  // In-flight rows still carry open <question-form> / <artifact> tails that
-  // live display hides. Do not rewrite them on merge/reload.
-  if (isActiveRunStatus(message.runStatus)) return message;
-  try {
-    return sanitizeChatMessageLeakedPseudoTool(message, { stripCodeFences: true });
-  } catch (err) {
-    console.error('[ProjectView] sanitizePersistedAssistantChatMessage failed', message.id, err);
-    const events = (message.events ?? []).filter(
-      (event) => event.kind !== 'text' && event.kind !== 'thinking',
-    );
-    return { ...message, content: '', ...(events.length ? { events } : { events: [] }) };
-  }
-}
+export { sanitizePersistedAssistantChatMessage } from '../utils/sanitizePersistedAssistantChatMessage';
 
 function synthesizeAssistantMessageForActiveRun(run: {
   id?: string | null;

@@ -128,6 +128,39 @@ describe('assistantEventsForDisplay', () => {
     expect(JSON.stringify(resolved)).not.toContain('SEO');
   });
 
+  it('prefers clean content for leftover body>/section> dumps without lecture tokens', () => {
+    const leak =
+      'body>WD · INTRO반응형 UI 유지보수 단일 경로, SEO 유리. font-size:2rem color:#111</body>';
+    const resolved = assistantEventsForDisplay({
+      content: '슬라이드 작업이 완료되었습니다.',
+      events: [
+        { kind: 'text', text: leak },
+        { kind: 'tool_use', id: 'w1', name: 'Write', input: {} },
+      ],
+    });
+    expect(resolved[0]).toEqual({ kind: 'text', text: '슬라이드 작업이 완료되었습니다.' });
+    expect(JSON.stringify(resolved)).not.toContain('font-size:2rem');
+    expect(JSON.stringify(resolved)).not.toContain('body>');
+    expect(
+      assistantMessageTextBody({
+        content: '슬라이드 작업이 완료되었습니다.',
+        events: [{ kind: 'text', text: leak }],
+      }),
+    ).toBe('슬라이드 작업이 완료되었습니다.');
+  });
+
+  it('keeps longer intended Hangul prose in events over a short status', () => {
+    const events: ChatMessage['events'] = [
+      { kind: 'text', text: '슬라이드 추가 중\n차트 축 라벨을 확인하세요' },
+    ];
+    expect(
+      assistantEventsForDisplay({
+        content: '슬라이드 추가 중',
+        events,
+      }),
+    ).toBe(events);
+  });
+
   it('keeps interleaved tool events when content is longer than joined text', () => {
     const events: ChatMessage['events'] = [
       { kind: 'text', text: 'Planning…' },
