@@ -573,7 +573,10 @@ describe("ProjectView message loading", () => {
 
     expect(persistBlock).toContain("Promise<ArtifactPersistResult>");
     expect(persistBlock).toContain("preferDeck: slideOnlyMvp");
-    expect(persistBlock).toContain("isIncompleteHtmlDocumentShell(artifactToPersist.html)");
+    expect(persistBlock).toContain("isIncompleteHtmlDocumentShell(");
+    expect(persistBlock).toContain("artifactToPersist.html");
+    expect(persistBlock).toContain("persistHealBrief");
+    expect(persistBlock).toContain("persistHealTitle");
     expect(persistBlock).toContain("isPersistableShortDeckDraft(artifactToPersist.html)");
     expect(persistBlock).toContain("salvageTemplateFillShellAsCoverDraft(artifactToPersist.html,");
     expect(persistBlock).toContain("deriveDeckCoverTitleFromBrief(");
@@ -592,11 +595,11 @@ describe("ProjectView message loading", () => {
     // must stay quiet so they do not contradict the automatic-continue notice.
     expect(persistBlock).toContain("formatProjectArtifactRejectedError(");
     const shellStart = source.indexOf(
-      "isIncompleteHtmlDocumentShell(artifactToPersist.html)",
+      "!trustSoftTruncationSalvage\n          && isIncompleteHtmlDocumentShell(",
       persistStart,
     );
     expect(shellStart).toBeGreaterThan(persistStart);
-    const shellBlock = source.slice(shellStart, shellStart + 520);
+    const shellBlock = source.slice(shellStart, shellStart + 900);
     expect(shellBlock).toContain("kind: 'skipped-incomplete'");
     expect(shellBlock).not.toContain("setError(");
     expect(shellBlock).not.toContain("formatProjectArtifactRejectedError(");

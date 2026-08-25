@@ -4995,7 +4995,11 @@ export function ProjectView({
             hasArtifactHtml: artifactHtml.length > 0,
             hasCompleteHtmlArtifact: Boolean(
               artifactHtml
-                && !isIncompleteHtmlDocumentShell(art.html)
+                && !isIncompleteHtmlDocumentShell(
+                  art.html,
+                  runVisiblePromptRef.current || '',
+                  project.name || '슬라이드',
+                )
                 && validateHtmlArtifact(art.html).ok,
             ),
           })
@@ -5396,7 +5400,11 @@ export function ProjectView({
         // or flash 「저장을 거부했습니다」 during deck generation.
         if (
           !trustSoftTruncationSalvage
-          && isIncompleteHtmlDocumentShell(artifactToPersist.html)
+          && isIncompleteHtmlDocumentShell(
+            artifactToPersist.html,
+            persistHealBrief,
+            persistHealTitle,
+          )
         ) {
           // Quiet skip — do NOT setError here. The terminal auto-open path
           // owns user-facing messaging (deliverable-missing banner and/or
@@ -14454,7 +14462,11 @@ export function shouldFailSlideRunForMissingHtmlDeliverable(options: {
   const artifactHtml = options.parsedArtifact?.html ?? options.liveHtml;
   if (artifactHtml) {
     if (
-      isIncompleteHtmlDocumentShell(artifactHtml)
+      isIncompleteHtmlDocumentShell(
+        artifactHtml,
+        options.healBrief,
+        options.healTitle || '슬라이드',
+      )
       && !isPersistableShortDeckDraftAfterHeal(
         artifactHtml,
         options.healBrief,
@@ -14493,7 +14505,7 @@ function isReusableSameTurnDeckWrite(
   ) {
     return true;
   }
-  return !isIncompleteHtmlDocumentShell(trimmed);
+  return !isIncompleteHtmlDocumentShell(trimmed, brief, deckTitle);
 }
 
 function artifactFromSalvagedHtml(html: string, base: Artifact): Artifact | null {
@@ -14525,7 +14537,7 @@ function isUsableDeckHtmlArtifact(
     return true;
   }
   if (isLowSubstanceSlideDeckArtifact(trimmed, brief, deckTitle)) return false;
-  if (!isIncompleteHtmlDocumentShell(trimmed)) return true;
+  if (!isIncompleteHtmlDocumentShell(trimmed, brief, deckTitle)) return true;
   // Already-closed soft salvage returns null from salvageTruncated — still usable.
   if (isClosedSoftSalvageDeckHtml(trimmed)) return true;
   return Boolean(
@@ -14560,7 +14572,11 @@ export function resolveTerminalArtifactToPersist(
     if (salvagedParsed) return salvagedParsed;
     if (
       standalone?.html
-      && !isIncompleteHtmlDocumentShell(standalone.html)
+      && !isIncompleteHtmlDocumentShell(
+        standalone.html,
+        healContext?.brief,
+        healContext?.deckTitle,
+      )
       && validateHtmlArtifact(standalone.html).ok
     ) {
       return standalone;
@@ -14576,7 +14592,11 @@ export function resolveTerminalArtifactToPersist(
   if (parsed?.html) return parsed;
   if (
     standalone?.html
-    && !isIncompleteHtmlDocumentShell(standalone.html)
+    && !isIncompleteHtmlDocumentShell(
+      standalone.html,
+      healContext?.brief,
+      healContext?.deckTitle,
+    )
     && validateHtmlArtifact(standalone.html).ok
   ) {
     return standalone;

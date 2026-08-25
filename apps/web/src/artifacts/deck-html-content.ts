@@ -587,12 +587,18 @@ export function closeUnclosedSlideSectionsForSalvage(html: string): string {
   return out;
 }
 
-export function isDeckStatusProseOnlyBody(html: string): boolean {
+export function isDeckStatusProseOnlyBody(
+  html: string,
+  brief?: string | null,
+  deckTitle?: string | null,
+): boolean {
   const withoutComments = html.replace(/<!--[\s\S]*?-->/g, "");
   if (documentContainsSlideSection(withoutComments)) {
     // 1–2 slide titled covers are first-fill drafts, not status prose (§0.76).
     if (isPersistableShortDeckDraft(withoutComments)) return false;
-    if (isPersistableShortDeckDraftAfterHeal(withoutComments)) return false;
+    if (isPersistableShortDeckDraftAfterHeal(withoutComments, brief, deckTitle || '슬라이드')) {
+      return false;
+    }
     return !meetsMinimumDeckDeliverableQuality(html);
   }
   const bodyMatch = /<body\b[^>]*>([\s\S]*)<\/body>/i.exec(withoutComments);

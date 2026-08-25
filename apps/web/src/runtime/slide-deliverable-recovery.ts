@@ -205,7 +205,7 @@ export async function verifySlideProducedHtmlDeliverable(
   const html = await readProjectHtml(fileName);
   if (!html) return null;
   if (!validateHtmlArtifact(html).ok) return null;
-  if (isIncompleteHtmlDocumentShell(html)
+  if (isIncompleteHtmlDocumentShell(html, healContext?.brief, healContext?.deckTitle)
     && !isClosedSoftSalvageDeckHtml(html)
     && !isPersistableShortDeckDraft(html)
     && !isPersistableShortDeckDraftAfterHeal(

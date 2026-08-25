@@ -246,7 +246,7 @@ export function buildAutoContinueIncompleteOutputPrompt(
   // straight to FINAL RETRY — that discards useful partial HTML.
   const partialShellOnly = Boolean(
     partialRaw
-    && isIncompleteHtmlDocumentShell(partialRaw)
+    && isIncompleteHtmlDocumentShell(partialRaw, context.healBrief, context.healTitle)
     && !partialSalvagedHasSlide,
   );
   const headWithoutBody = Boolean(
@@ -359,7 +359,7 @@ export function buildAutoContinueIncompleteOutputPrompt(
         + excerpt
         + '\n```',
     );
-  } else if (partial && isIncompleteHtmlDocumentShell(partial)) {
+  } else if (partial && isIncompleteHtmlDocumentShell(partial, context.healBrief, context.healTitle)) {
     // Truncated decks with real slide copy are still worth fencing so the
     // model can continue from the cut. Empty / SLOT-only shells must not be
     // re-fed — that anchors the next turn to the same blank deliverable.

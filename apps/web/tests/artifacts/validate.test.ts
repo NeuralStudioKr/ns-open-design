@@ -204,6 +204,7 @@ describe('validateHtmlArtifact', () => {
       + '</body></html>';
     expect(validateHtmlArtifact(shortParrot).ok).toBe(true);
     expect(isIncompleteHtmlDocumentShell(shortParrot)).toBe(false);
+    expect(isIncompleteHtmlDocumentShell(shortParrot, '슬라이드 만들어줘', '슬라이드')).toBe(false);
     expect(isLowSubstanceSlideDeckArtifact(shortParrot)).toBe(false);
 
     const emptySlide =

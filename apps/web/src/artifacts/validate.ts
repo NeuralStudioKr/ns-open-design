@@ -121,7 +121,11 @@ const HAS_HTML_CLOSE_RE = /<\/html\s*>/i;
  *      bodies — previously skipped the emptiness check above 2KB and
  *      persisted as a "successful" blank white deck.
  */
-export function isIncompleteHtmlDocumentShell(content: string): boolean {
+export function isIncompleteHtmlDocumentShell(
+  content: string,
+  brief?: string | null,
+  deckTitle?: string | null,
+): boolean {
   const trimmed = content.replace(/^﻿/, '').trim();
   if (trimmed.length === 0) return false;
   if (!STARTS_WITH_DOCUMENT_RE.test(trimmed)) return false;
@@ -137,7 +141,7 @@ export function isIncompleteHtmlDocumentShell(content: string): boolean {
   }
   // Always run the emptiness / SLOT check — size alone never proves the
   // body has previewable content (large CSS + empty slides was a demo bug).
-  return isEffectivelyEmptyHtmlBody(trimmed);
+  return isEffectivelyEmptyHtmlBody(trimmed, brief, deckTitle);
 }
 
 /**
@@ -152,7 +156,7 @@ export function isIncompleteParsedDeckForBestArtifactRestore(
 ): boolean {
   const trimmed = String(html ?? '').replace(/^﻿/, '').trim();
   if (!trimmed) return false;
-  if (!isIncompleteHtmlDocumentShell(trimmed)) return false;
+  if (!isIncompleteHtmlDocumentShell(trimmed, brief, deckTitle)) return false;
   if (
     isPersistableShortDeckDraftAfterHeal(trimmed, brief, deckTitle || '슬라이드')
     && HAS_HTML_CLOSE_RE.test(trimmed)
@@ -205,8 +209,12 @@ export function isLowSubstanceSlideDeckArtifact(
   return false;
 }
 
-function isEffectivelyEmptyHtmlBody(html: string): boolean {
-  if (isDeckStatusProseOnlyBody(html)) return true;
+function isEffectivelyEmptyHtmlBody(
+  html: string,
+  brief?: string | null,
+  deckTitle?: string | null,
+): boolean {
+  if (isDeckStatusProseOnlyBody(html, brief, deckTitle)) return true;
   const withoutComments = html.replace(/<!--[\s\S]*?-->/g, '');
   if (documentContainsSlideSection(withoutComments)) {
     // 1–2 slide titled covers are not empty shells — persist + top-up own them.
@@ -217,7 +225,9 @@ function isEffectivelyEmptyHtmlBody(html: string): boolean {
     // Persist heals "만들어줘" covers before the short-draft gate. Resume /
     // terminal resolve / emergency salvage still see raw HTML — treat the
     // same 1–3 slide instruction-copy draft as contentful after that heal.
-    if (isPersistableShortDeckDraftAfterHeal(withoutComments)) return false;
+    if (isPersistableShortDeckDraftAfterHeal(withoutComments, brief, deckTitle || '슬라이드')) {
+      return false;
+    }
     if (!meetsMinimumDeckDeliverableQuality(withoutComments)) return true;
   }
   const bodyMatch = /<body\b[^>]*>([\s\S]*)<\/body>/i.exec(withoutComments);
