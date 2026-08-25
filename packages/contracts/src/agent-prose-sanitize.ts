@@ -2320,7 +2320,11 @@ const TAG_STRIPPED_LEFTOVER_OPENER_RE =
 const TAG_STRIPPED_LEFTOVER_CLOSER_RE =
   /<\/(?:artifact|html|body|head|section|article|main)\s*>/i;
 const TAG_STRIPPED_LEFTOVER_CHROME_RE =
-  /(?:data-slide-index|prefers-reduced-motion|axe-core|FRONT-END TRACK|LECTURE\s+\d+|WD\s*·\s*[A-Z][A-Z0-9_-]{1,24}|INTRO\s*·\s*FRONT-END|SLIDE\s*\d{1,2}\s*·|font-size\s*:|mix-blend-mode\s*:|offset-path\s*:|<!doctype\s+html)/i;
+  /(?:data-slide-index|prefers-reduced-motion|axe-core|FRONT-END TRACK|LECTURE\s+\d+|WD\s*[·•\-–—]\s*[A-Z][A-Z0-9_-]{1,24}|INTRO\s*[·•\-–—]\s*FRONT-END|\b(?:SLIDE|PAGE|SEC|CH|PART|LECTURE)\s*\d{1,2}\s*[·•\-–—]|font-size\s*:|mix-blend-mode\s*:|offset-path\s*:|<!doctype\s+html)/i;
+const SHORT_DECK_TRACK_CHROME_RE =
+  /^(?:WD|SLIDE|PAGE|SEC|CH|PART|LECTURE)\s*(?:\d{1,2}\s*)?[·•\-–—]\s*[A-Z0-9][A-Z0-9_-]{0,24}\b/i;
+const SHORT_DECK_INDEX_BADGE_RE =
+  /^\d{2}\s*[\/·•]\s*[A-Za-z가-힣][A-Za-z가-힣\s-]{1,20}$/u;
 const TAG_STRIPPED_HANGUL_LATIN_GLUE_RE =
   /[\uac00-\ud7af][\s·•./:_-]*[A-Za-z]|[A-Za-z][\s·•./:_-]*[\uac00-\ud7af]/;
 
@@ -2394,15 +2398,12 @@ function looksLikeTagStrippedSlideBody(line: string): boolean {
   }
   if (/^(?:html|body|head|section|article|main)\s*>/i.test(trimmed)) return true;
   // Soft-CSS inline cuts can leave `WD ·` after chopping at `LECTURE 01`.
-  if (/^WD\s*·\s*$/i.test(trimmed)) return true;
-  // Short track chrome without a long body (`WD · INTRO` / `WD · OUTRO`).
-  if (/^WD\s*·\s*[A-Z][A-Z0-9_-]{1,24}\b/.test(trimmed) && trimmed.length <= 48) return true;
-  if (/^INTRO\s*·\s*FRONT-END\b/i.test(trimmed)) return true;
-  if (/^SLIDE\s*\d{1,2}\s*·\s*[A-Z][A-Z0-9_-]{1,24}\b/i.test(trimmed) && trimmed.length <= 48) {
-    return true;
-  }
-  // Index-badge chrome lines (`05 / CHECKLIST`, `02 / AGENDA`).
-  if (/^\d{2}\s*\/\s*[A-Za-z가-힣][A-Za-z가-힣\s-]{1,20}$/u.test(trimmed)) return true;
+  if (/^WD\s*[·•\-–—]\s*$/i.test(trimmed)) return true;
+  // Short track chrome (`WD · OUTRO`, `PAGE 01 · COVER`, `WD - INTRO`).
+  if (SHORT_DECK_TRACK_CHROME_RE.test(trimmed) && trimmed.length <= 48) return true;
+  if (/^INTRO\s*[·•\-–—]\s*FRONT-END\b/i.test(trimmed)) return true;
+  // Index-badge chrome (`05 / CHECKLIST`, `05 · CHECKLIST`, `05/CHECKLIST`).
+  if (SHORT_DECK_INDEX_BADGE_RE.test(trimmed)) return true;
   if (
     /(?:prefers-reduced-motion|axe-core|data-slide-index|FRONT-END TRACK|LECTURE\s+\d+)/i.test(
       trimmed,

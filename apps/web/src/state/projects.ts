@@ -71,6 +71,8 @@ import {
   visibleCommentEditInstruction,
 } from '../comments';
 import { reconcileChatMessageOnLoad } from '../runtime/chat-events';
+import { isAutoContinueIncompleteOutputPrompt } from '../runtime/resume';
+import { isSlideCountTopUpPrompt } from '../teamver/slideCountTopUp';
 import { sanitizeChatMessageLeakedPseudoTool } from '../utils/sanitizeChatMessageLeakedPseudoTool';
 import {
   ensureDurableImageEmbedContract,
@@ -79,6 +81,19 @@ import {
 function sanitizeChatMessageForPersist(message: ChatMessage): ChatMessage {
   const hideInternal = resolveTeamverBranding().hideAssistantThinkingDetails;
   const reconciled = reconcileUserCommentAttachments(message);
+  // Hidden automation user turns (auto-continue / slide-count top-up) must
+  // keep their sentinel + model-facing HTML. Prose sanitize strips comments
+  // and `<section>` tags, which un-hides the prompt on reload and resets the
+  // top-up attempt counter so refresh queues another generation.
+  if (
+    reconciled.role === "user"
+    && (
+      isAutoContinueIncompleteOutputPrompt(reconciled.content)
+      || isSlideCountTopUpPrompt(reconciled.content)
+    )
+  ) {
+    return reconciled;
+  }
   const sanitized = sanitizeChatMessageLeakedPseudoTool(reconciled, {
     stripCodeFences: hideInternal,
     dropThinkingEvents: hideInternal,

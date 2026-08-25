@@ -304,6 +304,50 @@ describe('pinDeckSlidesToFixedCanvas', () => {
     expect(pinned).not.toMatch(/rgb\(79,\s*70,\s*229\)/);
   });
 
+  it('binds invented 1–2px frames regardless of MiniMax color dialect', () => {
+    const html = [
+      '<!doctype html><html><body>',
+      '<section class="slide" style="width:1920px;height:1080px">',
+      '<div style="border:2px solid #7c3aed;padding:24px">Violet rgb-hex</div>',
+      '<div style="border:2px solid rgb(37, 99, 235);padding:16px">Blue rgb()</div>',
+      '<div style="outline:1px solid rgba(79, 70, 229, 0.9);padding:16px">Indigo rgba()</div>',
+      '<div style="border:2px solid blue;padding:16px">Named blue</div>',
+      '<div style="box-shadow:0 0 0 2px #10b981;padding:16px">Emerald ring</div>',
+      '<div style="border:1px solid var(--border);padding:16px">Keep kit token</div>',
+      '</section>',
+      '<style data-od-official-look-css>.info-card{border:var(--border-width) solid var(--border)}</style>',
+      '</body></html>',
+    ].join('');
+    const pinned = pinDeckSlidesToFixedCanvas(html);
+    expect(pinned).not.toMatch(/#7c3aed/);
+    expect(pinned).not.toMatch(/rgb\(37,\s*99,\s*235\)/);
+    expect(pinned).not.toMatch(/rgba\(79,\s*70,\s*229/);
+    expect(pinned).not.toMatch(/box-shadow:0 0 0 2px #10b981/);
+    expect(pinned).not.toMatch(/border:2px solid blue/);
+    expect(pinned).toMatch(/border:1px solid var\(--border\)/);
+    expect(pinned.match(/class="[^"]*\binfo-card\b/g)?.length).toBeGreaterThanOrEqual(4);
+  });
+
+  it('strips nested and heading MiniMax index badges', () => {
+    const html = [
+      '<section class="slide" style="width:1920px;height:1080px">',
+      '<div class="card" style="position:relative">',
+      '<span style="position:absolute;top:12px;right:16px">05 / CHECKLIST</span>',
+      '<h2 style="position:absolute;top:20px;left:24px">06 · SUMMARY</h2>',
+      '<header style="position:fixed;top:16px;right:24px">07 / OUTRO</header>',
+      '<p>Viewport matrix</p>',
+      '</div>',
+      '<div class="slide-chrome">01 / Studio</div>',
+      '</section>',
+    ].join('');
+    const pinned = pinDeckSlidesToFixedCanvas(html);
+    expect(pinned).not.toContain('05 / CHECKLIST');
+    expect(pinned).not.toContain('06 · SUMMARY');
+    expect(pinned).not.toContain('07 / OUTRO');
+    expect(pinned).toContain('01 / Studio');
+    expect(pinned).toContain('Viewport matrix');
+  });
+
   it('is idempotent for the injected style tag', () => {
     const once = pinDeckSlidesToFixedCanvas(
       '<body><section class="slide" style="min-height:100vh">A</section></body>',

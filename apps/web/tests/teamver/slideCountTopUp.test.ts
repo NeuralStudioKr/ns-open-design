@@ -3,8 +3,11 @@ import type { ChatMessage } from "../../src/types";
 import {
   SLIDE_COUNT_REQUEST_MAX,
   SLIDE_COUNT_TOP_UP_PROMPT_SENTINEL,
+  SLIDE_COUNT_TOP_UP_PROMPT_SENTINEL_LEGACY,
   buildSlideCountTopUpPrompt,
+  isSlideCountTopUpPrompt,
   extractRequestedSlideCountSpecFromMessages,
+  countSlideCountTopUpAttemptsInConversation,
   extractRequestedSlideCountTargetFromMessages,
   looksLikeSlideCountExpansionRequest,
   parseSlideCountSpec,
@@ -160,6 +163,29 @@ describe("slideCountTopUp", () => {
       defaultRequested: 6,
       topUpCount: 0,
     })).toBe(false);
+  });
+
+  it("recognizes sanitized leftover top-up prompts so reload can hide and count them", () => {
+    const garbled = [
+      "The",
+      "The",
+      "Keep",
+      "APPEND",
+      "This is an explicit slide-count expansion — not a redesign and not an incomplete-output retry.",
+      "Do NOT rewrite the saved deck. Do NOT emit ``, Motif ``, or copy existing slides.",
+      "Emit ONLY the new `",
+    ].join("\n");
+    expect(isSlideCountTopUpPrompt(garbled)).toBe(true);
+    expect(isSlideCountTopUpPrompt(`${SLIDE_COUNT_TOP_UP_PROMPT_SENTINEL_LEGACY}\nAPPEND only new slides`)).toBe(
+      true,
+    );
+    expect(isSlideCountTopUpPrompt("다음 장 더 만들어줘")).toBe(false);
+    expect(
+      countSlideCountTopUpAttemptsInConversation([
+        userMessage("u1", "온보딩 슬라이드 만들어줘"),
+        userMessage("u2", garbled),
+      ]),
+    ).toBe(1);
   });
 
   it("asks the model to append a batch instead of rewriting the deck", () => {
