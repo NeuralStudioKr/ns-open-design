@@ -256,9 +256,9 @@ function visibleHtmlBodyText(html: string): string {
 
 function stripHtmlNoise(fragment: string): string {
   return fragment
-    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '')
-    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, '')
-    .replace(/<noscript\b[^>]*>[\s\S]*?<\/noscript>/gi, '');
+    .replace(/<script\b[^>]*>[\s\S]*?(?:<\/script>|$)/gi, '')
+    .replace(/<style\b[^>]*>[\s\S]*?(?:<\/style>|$)/gi, '')
+    .replace(/<noscript\b[^>]*>[\s\S]*?(?:<\/noscript>|$)/gi, '');
 }
 
 function visibleTextFromHtmlFragment(fragment: string): string {

@@ -1,14 +1,18 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  LAST_RESORT_DECK_COVER_TITLE,
   normalizeBodyFirstHtmlDocument,
   recoverBestHtmlDocumentFromText,
-  LAST_RESORT_DECK_COVER_TITLE,
+  resolveDeckHtmlForIncompleteShellPersist,
   salvageTemplateFillShellAsCoverDraft,
   salvageTruncatedHtmlDocument,
 } from "../../src/artifacts/recover";
 import { isIncompleteHtmlDocumentShell } from "../../src/artifacts/validate";
-import { isClosedSoftSalvageDeckHtml } from "../../src/artifacts/deck-html-content";
+import {
+  isClosedSoftSalvageDeckHtml,
+  isPersistableShortDeckDraft,
+} from "../../src/artifacts/deck-html-content";
 
 describe("salvageTruncatedHtmlDocument", () => {
   it("closes a truncated deck that already has real slide sections", () => {
@@ -368,5 +372,92 @@ describe("salvageTemplateFillShellAsCoverDraft", () => {
       fallbackTitle: "슬라이드",
       lastResortTitle: "슬라이드 초안",
     })).toBeNull();
+  });
+});
+
+function persistPipelineDecision(html: string): {
+  kind: "saved" | "skipped-incomplete";
+  html?: string;
+} {
+  const salvaged = salvageTruncatedHtmlDocument(html)
+    ?? salvageTemplateFillShellAsCoverDraft(html, {
+      fallbackTitle: "슬라이드 만들어줘",
+      lastResortTitle: LAST_RESORT_DECK_COVER_TITLE,
+    });
+  let next = salvaged ?? html;
+  if (
+    isIncompleteHtmlDocumentShell(next)
+    && !isPersistableShortDeckDraft(next)
+  ) {
+    const lastResort = resolveDeckHtmlForIncompleteShellPersist(next, {
+      fallbackTitle: "슬라이드 만들어줘",
+      lastResortTitle: LAST_RESORT_DECK_COVER_TITLE,
+    });
+    if (lastResort) next = lastResort;
+  }
+  const trust =
+    Boolean(salvaged)
+    || isClosedSoftSalvageDeckHtml(next)
+    || isPersistableShortDeckDraft(next);
+  if (!trust && isIncompleteHtmlDocumentShell(next)) {
+    return { kind: "skipped-incomplete" };
+  }
+  return { kind: "saved", html: next };
+}
+
+describe("resolveDeckHtmlForIncompleteShellPersist", () => {
+  const kitRules =
+    "/* Daisy motif — 1:1 on 1920×1080. Do not stretch. Pack into unused corners. */\n"
+    + ":root{--bg:#111;--fg:#f4f0e6;--accent:#fcdf6c}\n"
+    + ".slide{width:1920px;height:1080px;position:relative;overflow:hidden}\n"
+    + ".deco-daisy{position:absolute;inset:auto 64px 64px auto}\n"
+    + "/* Official look. Each slide surface is 1920 by 1080. */\n"
+    + ".card{border:1px solid #fff;padding:24px}\n";
+  const kit = kitRules.repeat(8);
+
+  it("persists a last-resort cover when MiniMax dumps kit CSS after <body>", () => {
+    const dump =
+      '<!doctype html><html lang="ko"><head><meta charset="utf-8"/>'
+      + "<title>Daisy Days — Presentation Template</title></head><body>\n<style>\n"
+      + kit;
+    expect(dump.length).toBeGreaterThan(800);
+    expect(isIncompleteHtmlDocumentShell(dump)).toBe(true);
+    // Unclosed <style> used to look like body copy, so cover draft returned
+    // null and persist skipped as incomplete-html-document-shell.
+    const cover = salvageTemplateFillShellAsCoverDraft(dump, {
+      fallbackTitle: "슬라이드 만들어줘",
+      lastResortTitle: LAST_RESORT_DECK_COVER_TITLE,
+    });
+    const persisted = persistPipelineDecision(dump);
+    expect(persisted.kind).toBe("saved");
+    expect(persisted.html).toContain(`<h1>${LAST_RESORT_DECK_COVER_TITLE}</h1>`);
+    expect(persisted.html).toContain("width:1920px");
+    expect(isIncompleteHtmlDocumentShell(persisted.html ?? "")).toBe(false);
+    expect(isPersistableShortDeckDraft(persisted.html ?? "")).toBe(true);
+    expect(cover ?? resolveDeckHtmlForIncompleteShellPersist(dump, {
+      lastResortTitle: LAST_RESORT_DECK_COVER_TITLE,
+    })).toContain(LAST_RESORT_DECK_COVER_TITLE);
+  });
+
+  it("persists a last-resort cover for a tiny aborted doctype shell", () => {
+    const tiny = "<!doctype html><html>";
+    expect(salvageTemplateFillShellAsCoverDraft(tiny, {
+      lastResortTitle: LAST_RESORT_DECK_COVER_TITLE,
+    })).toBeNull();
+    const persisted = persistPipelineDecision(tiny);
+    expect(persisted.kind).toBe("saved");
+    expect(persisted.html).toContain(`<h1>${LAST_RESORT_DECK_COVER_TITLE}</h1>`);
+  });
+
+  it("does not close a CSS-comment fake slide as a deliverable deck", () => {
+    const dump =
+      '<!doctype html><html lang="ko"><head><title>Daisy Days</title><style>\n'
+      + "/* Official look. Each <section class=\"slide\"> is 1920 by 1080. */\n"
+      + kit;
+    expect(salvageTruncatedHtmlDocument(dump)).toBeNull();
+    const persisted = persistPipelineDecision(dump);
+    expect(persisted.kind).toBe("saved");
+    expect(persisted.html).toContain(`<h1>${LAST_RESORT_DECK_COVER_TITLE}</h1>`);
+    expect(persisted.html).not.toContain(":root{--bg:#111");
   });
 });

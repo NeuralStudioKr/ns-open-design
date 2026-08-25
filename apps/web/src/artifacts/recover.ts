@@ -370,6 +370,15 @@ export type SalvageCoverDraftOptions = {
 /** Persist last-resort when brief/project titles are instruction or unusable chrome. */
 export const LAST_RESORT_DECK_COVER_TITLE = '슬라이드';
 
+/** Always-on 1920 cover when head-only salvage cannot read a document shell. */
+export function buildLastResortCoverDraft(title?: string | null): string | null {
+  const heading = decodeBasicHtmlEntities(String(title ?? '').trim());
+  const usable = heading.length >= 2 && !isUnusableCoverTitle(heading)
+    ? heading
+    : LAST_RESORT_DECK_COVER_TITLE;
+  return build1920CoverDraftHtml(usable);
+}
+
 /**
  * Head-only / kit-CSS shells never reached a slide. Persist used to skip
  * those as `incomplete-html-document-shell` → `incomplete_output`. Prefer
@@ -399,4 +408,24 @@ export function salvageTemplateFillShellAsCoverDraft(
   if (!heading) return null;
 
   return build1920CoverDraftHtml(heading);
+}
+
+/**
+ * Persist last mile for MiniMax/BYOK head-kit aborts. Cover draft returns
+ * null when unclosed `<style>` CSS looks like body copy, or the fragment is
+ * shorter than 24 chars. Always emit a 1920 cover so top-up can append
+ * instead of `skipped-incomplete` / `incomplete-html-document-shell`.
+ */
+export function resolveDeckHtmlForIncompleteShellPersist(
+  html: string,
+  options?: SalvageCoverDraftOptions,
+): string | null {
+  const cover = salvageTemplateFillShellAsCoverDraft(html, {
+    fallbackTitle: options?.fallbackTitle,
+    lastResortTitle: options?.lastResortTitle || LAST_RESORT_DECK_COVER_TITLE,
+  });
+  if (cover) return cover;
+  return buildLastResortCoverDraft(
+    options?.lastResortTitle || options?.fallbackTitle || LAST_RESORT_DECK_COVER_TITLE,
+  );
 }

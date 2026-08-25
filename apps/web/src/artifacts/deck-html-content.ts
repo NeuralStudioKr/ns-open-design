@@ -26,6 +26,20 @@ type SlideHostBlock = {
   end: number;
 };
 
+function styleScriptRanges(html: string): Array<[number, number]> {
+  const ranges: Array<[number, number]> = [];
+  const re = /<(script|style)\b[^>]*>[\s\S]*?(?:<\/\1>|$)/gi;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(html)) !== null) {
+    ranges.push([match.index, match.index + match[0].length]);
+  }
+  return ranges;
+}
+
+function indexInsideRanges(index: number, ranges: ReadonlyArray<[number, number]>): boolean {
+  return ranges.some(([start, end]) => index >= start && index < end);
+}
+
 /**
  * Official catalog hosts are `<section class="slide">` *or* `<div class="slide">`
  * (Bold Poster, retro-windows, many html-ppt decks). Chrome like `.slide-inner`
@@ -33,6 +47,7 @@ type SlideHostBlock = {
  */
 function extractSlideHostBlocks(html: string): SlideHostBlock[] {
   const raw: SlideHostBlock[] = [];
+  const chromeRanges = styleScriptRanges(html);
   const openRe = new RegExp(SLIDE_HOST_OPEN_RE.source, "gi");
   let searchFrom = 0;
   while (searchFrom < html.length) {
@@ -43,7 +58,7 @@ function extractSlideHostBlocks(html: string): SlideHostBlock[] {
     const attrs = openMatch[2] ?? "";
     const openStart = openMatch.index;
     const openEnd = openStart + openMatch[0].length;
-    if (!attrsLookLikeSlideHost(attrs)) {
+    if (indexInsideRanges(openStart, chromeRanges) || !attrsLookLikeSlideHost(attrs)) {
       searchFrom = openEnd;
       continue;
     }
@@ -104,10 +119,16 @@ export function startsWithSlideHost(html: string): boolean {
 
 export function eachSlideHostOpenIndex(html: string): number[] {
   const indexes: number[] = [];
+  const chromeRanges = styleScriptRanges(html);
   const openRe = new RegExp(SLIDE_HOST_OPEN_RE.source, "gi");
   let match: RegExpExecArray | null;
   while ((match = openRe.exec(html)) !== null) {
-    if (attrsLookLikeSlideHost(match[2] ?? "")) indexes.push(match.index);
+    if (
+      !indexInsideRanges(match.index, chromeRanges)
+      && attrsLookLikeSlideHost(match[2] ?? "")
+    ) {
+      indexes.push(match.index);
+    }
   }
   return indexes;
 }
@@ -129,11 +150,16 @@ const MIN_TWO_SLIDE_TOTAL_TEXT = 36;
 const MIN_MULTI_SLIDE_TOTAL_TEXT = 64;
 const MIN_FILLED_SLIDE_RATIO = 0.34;
 
-function visibleTextFromHtmlFragment(html: string): string {
-  return html
+/** Drop comments and style/script so kit CSS cannot look like slide copy. */
+export function stripDeckNonContentBlocks(html: string): string {
+  return String(html ?? "")
     .replace(/<!--[\s\S]*?-->/g, "")
-    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "")
-    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, "")
+    .replace(/<script\b[^>]*>[\s\S]*?(?:<\/script>|$)/gi, "")
+    .replace(/<style\b[^>]*>[\s\S]*?(?:<\/style>|$)/gi, "");
+}
+
+function visibleTextFromHtmlFragment(html: string): string {
+  return stripDeckNonContentBlocks(html)
     .replace(/<[^>]+>/g, " ")
     .replace(/&nbsp;/gi, " ")
     .replace(/\s+/g, " ")
@@ -330,7 +356,25 @@ function slideInnerHasVisibleCopy(innerHtml: string): boolean {
   return visibleTextFromHtmlFragment(innerHtml).length >= 2;
 }
 
+/** Kit CSS promoted out of an unclosed `<style>` is not slide copy. */
+function slideInnerLooksLikeStylesheetDump(innerHtml: string): boolean {
+  const heading = visibleTextFromHtmlFragment(
+    /<h[1-3]\b[^>]*>([\s\S]*?)<\/h[1-3]>/i.exec(innerHtml)?.[1] ?? "",
+  );
+  if (
+    heading.length >= 2
+    && !/^[\.#@]/.test(heading)
+    && !/[{};]/.test(heading)
+  ) {
+    return false;
+  }
+  return /:root\s*\{|\.slide\s*\{|--(?:bg|fg|accent)\s*:|@media\b|Daisy motif/i.test(
+    innerHtml,
+  );
+}
+
 function slideInnerHasDeliverableCopy(innerHtml: string): boolean {
+  if (slideInnerLooksLikeStylesheetDump(innerHtml)) return false;
   if (slideSectionInnerLooksLikeStatusOnly(innerHtml)) return false;
   if (isGenericOutlineOnlySlide(innerHtml)) return false;
   // Motif SVG / img without a title or lead is not deliverable copy — treating
@@ -414,6 +458,7 @@ export function meetsMinimumDeckDeliverableQuality(html: string): boolean {
  * incomplete_output over a titled cover.
  */
 function slideInnerHasPersistableDraftCopy(innerHtml: string): boolean {
+  if (slideInnerLooksLikeStylesheetDump(innerHtml)) return false;
   if (slideSectionInnerLooksLikeStatusOnly(innerHtml)) return false;
   const text = visibleTextFromHtmlFragment(innerHtml);
   if (text.length < 2) return false;
@@ -461,9 +506,9 @@ export function isPersistableShortDeckDraftAfterHeal(
  * that never reached real `<section class="slide">` content.
  */
 export function hasSalvageableDeckSlideContent(html: string): boolean {
-  const withoutComments = html.replace(/<!--[\s\S]*?-->/g, "");
+  const withoutComments = stripDeckNonContentBlocks(html);
   if (documentContainsSlideSection(withoutComments)) {
-    return meetsMinimumDeckDeliverableQuality(html);
+    return meetsMinimumDeckDeliverableQuality(withoutComments);
   }
   const bodyInner = /<body\b[^>]*>([\s\S]*?)(?:<\/body>|$)/i.exec(withoutComments)?.[1]
     ?? '';
@@ -504,6 +549,7 @@ export function isClosedSoftSalvageDeckHtml(html: string): boolean {
  * generic outline-only headings ("표지" / "발표 개요") that are not a deck.
  */
 function slideInnerHasTruncationSalvageCopy(innerHtml: string): boolean {
+  if (slideInnerLooksLikeStylesheetDump(innerHtml)) return false;
   if (slideSectionInnerLooksLikeStatusOnly(innerHtml)) return false;
   if (HAS_MEDIA_CONTENT_RE.test(innerHtml)) {
     return slideInnerHasVisibleCopy(innerHtml);
@@ -522,7 +568,7 @@ function slideInnerHasTruncationSalvageCopy(innerHtml: string): boolean {
  * still use `meetsMinimumDeckDeliverableQuality`.
  */
 export function meetsTruncationSalvageQuality(html: string): boolean {
-  const withoutComments = html.replace(/<!--[\s\S]*?-->/g, "");
+  const withoutComments = stripDeckNonContentBlocks(html);
   if (!documentContainsSlideSection(withoutComments)) {
     return hasSalvageableDeckSlideContent(html);
   }
