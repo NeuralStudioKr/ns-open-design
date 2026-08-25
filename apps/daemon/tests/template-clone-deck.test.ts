@@ -157,7 +157,7 @@ describe('seedTemplateClonedDeckOnServer', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     const deck = written.get('deck.html') ?? '';
-    expect(deck).toMatch(/<h1[^>]*>Presentation<\/h1>/);
+    expect(deck).toMatch(/<h1[^>]*>슬라이드<\/h1>/);
     expect(deck).not.toContain('Html Ppt Zhangzara Daisy Days');
     expect(deck).not.toContain('첨부한 자료를 바탕으로');
     expect(deck).not.toContain('만들어줘');

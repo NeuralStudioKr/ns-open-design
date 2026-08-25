@@ -366,7 +366,7 @@ export async function seedTemplateClonedDeckOnServer(
   const deckTitle =
     sanitizeTemplateCloneDeckTitle(slides[0]?.title)
     || sanitizeTemplateCloneDeckTitle(input.deckTitle)
-    || 'Presentation';
+    || '슬라이드';
   // Content length wins. Only pass maxSlides when the user explicitly hinted
   // a count — never pad to the template's demo page count (discouraged).
   const cloned = buildTemplateClonedDeckHtml(loaded.html, slides, {
