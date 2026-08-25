@@ -149,6 +149,17 @@ describe('assistantEventsForDisplay', () => {
     ).toBe('슬라이드 작업이 완료되었습니다.');
   });
 
+  it('prefers clean content when reload events keep HOOK/SCREEN leftover chrome', () => {
+    const leak =
+      'HOOK 01 · OPEN반응형 UIvideo·svg에일 HTML/CSS, 미디어 쿼리로 유동 재배치. SCREEN 2 · HOME 유지보수 단일 경로.';
+    const resolved = assistantEventsForDisplay({
+      content: '슬라이드 작업이 완료되었습니다.',
+      events: [{ kind: 'text', text: leak }],
+    });
+    expect(resolved[0]).toEqual({ kind: 'text', text: '슬라이드 작업이 완료되었습니다.' });
+    expect(JSON.stringify(resolved)).not.toContain('HOOK');
+  });
+
   it('keeps longer intended Hangul prose in events over a short status', () => {
     const events: ChatMessage['events'] = [
       { kind: 'text', text: '슬라이드 추가 중\n차트 축 라벨을 확인하세요' },

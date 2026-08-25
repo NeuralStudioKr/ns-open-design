@@ -58,8 +58,15 @@ export function assistantEventsForDisplay(message: Pick<ChatMessage, 'content' |
   if (
     content
     && fromEvents.length > content.length
-    && looksLikeReloadedSlideBodyDump(fromEvents)
     && !looksLikeReloadedSlideBodyDump(content)
+    && (
+      looksLikeReloadedSlideBodyDump(fromEvents)
+      || (
+        looksLikeShortHangulCompletionStatus(content)
+        && !looksLikeShortHangulCompletionStatus(fromEvents)
+        && looksLikeLeftoverDeckChrome(fromEvents)
+      )
+    )
   ) {
     const tail = events.filter((event) => event.kind !== 'text');
     return [{ kind: 'text', text: contentRaw }, ...tail];
@@ -76,6 +83,12 @@ function looksLikeShortHangulCompletionStatus(text: string): boolean {
   return /[\uac00-\ud7af]/.test(trimmed);
 }
 
+function looksLikeLeftoverDeckChrome(text: string): boolean {
+  return /(?:HOOK|SCREEN|GOAL|TASK|CASE|WORKSHOP|DECK|MOTIF|TRACK|LECTURE|SLIDE|PAGE)\s*(?:\d{1,2}|[A-Z])?\s*[·•\-–—]/i.test(
+    String(text ?? ''),
+  );
+}
+
 function looksLikeReloadedSlideBodyDump(text: string): boolean {
   const trimmed = String(text ?? '').trim();
   if (looksLikeTagStrippedSlideBodyDump(trimmed)) return true;
@@ -83,7 +96,7 @@ function looksLikeReloadedSlideBodyDump(text: string): boolean {
   if (looksLikeShortHangulCompletionStatus(trimmed)) return false;
   if (
     /[\uac00-\ud7af][A-Za-z]|[A-Za-z][\uac00-\ud7af]/.test(trimmed)
-    && /(?:TRACK|HTML|CSS|SEO|\bsvg\b|\bvideo\b|critical)/i.test(trimmed)
+    && /(?:TRACK|HTML|CSS|SEO|\bsvg\b|\bvideo\b|critical|HOOK|SCREEN|GOAL|TASK|CASE|WORKSHOP|DECK|MOTIF)/i.test(trimmed)
   ) {
     return true;
   }
