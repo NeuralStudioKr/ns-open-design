@@ -19,7 +19,8 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | persist: navy/indigo/cyan 1–2px fake outline | ☑ |
 | persist: 색 방언 무관 1–2px 프레임 + `box-shadow` ring · kit `var(--border)` 유지 | ☑ |
 | 16:9 inner clip · kit card bind | ☑ |
-| top-up 재진입 재호출 + 내부 프롬프트 노출 | ☑ |
+| top-up 재진입 재호출 + 내부 프롬프트 노출 | ☑ 센티널+autoOpen; 루프9 reattach 차단 · leftover 숨김 |
+| first-fill 3장 강제 → 요청 1–6장 한 턴 | ☑ 루프9 |
 | PreviewModal/connector message 가드 | ☑ |
 | cover 제목 `Presentation` → `슬라이드` | ☑ |
 | MiniMax head-only incomplete-html-document-shell | ☑ 1차 |
@@ -44,3 +45,11 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 3. verify — Motif-SVG hang / low-substance disk HTML 거부
 
 **검증:** deck-template-look-css · deck-fixed-canvas · slide-deliverable-recovery
+
+## 이번 루프 (루프9)
+
+1. first-fill THIS TURN을 3장 고정에서 요청 1–6장(미지정 6)으로 변경
+2. reattach/reload는 hidden APPEND를 다시 큐하지 않음
+3. sanitized leftover(`The / Keep / APPEND`)를 user·assistant 행에서 숨김
+
+**검증:** templateCloneContentFill · slideCountTopUp · chat-message-render · deck-framework-compact

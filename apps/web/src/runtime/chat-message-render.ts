@@ -397,6 +397,15 @@ export function shouldOmitMessageFromChatRender(
     return isHiddenAutomationUserPrompt(message.content);
   }
   if (message.role !== "assistant") return false;
+  // Persist/HTML strip can move the hidden APPEND prompt onto the assistant
+  // row as "The / Keep / APPEND / This is an explicit slide-count expansion".
+  if (
+    isSlideCountTopUpPrompt(message.content)
+    && (message.producedFiles?.length ?? 0) === 0
+    && !messageHasSubstantiveClosedArtifact(assistantMessageTextBody(message))
+  ) {
+    return true;
+  }
   if (isLiveStreamingAssistantTarget(message, ctx)) return false;
   if (isEmptyAssistantShell(message)) {
     if (isTerminalSucceededEmptyShellForDisplay(message)) {

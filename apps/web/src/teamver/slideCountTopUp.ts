@@ -14,7 +14,7 @@ export const SLIDE_COUNT_REQUEST_MAX = 15;
 export const SLIDE_COUNT_TOP_UP_PROMPT_SENTINEL = "[od:slide_count_top_up]";
 export const SLIDE_COUNT_TOP_UP_PROMPT_SENTINEL_LEGACY = "<!--od:slide_count_top_up-->";
 const SLIDE_COUNT_TOP_UP_PROMPT_FINGERPRINT_RE =
-  /\[od:slide_count_top_up\]|<!--od:slide_count_top_up-->|this is an explicit slide-count expansion|append only new slides/i;
+  /\[od:slide_count_top_up\]|<!--od:slide_count_top_up-->|this is an explicit slide-count expansion|append only new slides|closed\s+\d+-slide\s+deliverable|do not rewrite the saved deck|emit only the new|keep slides 1[–-]/i;
 
 /** Analytics `entry_from` for the append loop — not incomplete-output recovery. */
 export const SLIDE_COUNT_TOP_UP_ENTRY_FROM = "slide_count_top_up";

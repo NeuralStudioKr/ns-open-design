@@ -17,6 +17,28 @@ const embedCtx = {
 };
 
 describe("chat-message-render", () => {
+  it("omits sanitized slide-count top-up leftovers on user and assistant rows", () => {
+    const leftover = [
+      "The",
+      "The",
+      "Keep",
+      "APPEND",
+      "This is an explicit slide-count expansion — not a redesign and not an incomplete-output retry.",
+      "Do NOT rewrite the saved deck. Do NOT emit ``, Motif ``, or copy existing slides.",
+      "Emit ONLY the new `",
+    ].join("\n");
+    expect(shouldOmitMessageFromChatRender({
+      id: "u-topup",
+      role: "user",
+      content: leftover,
+    }, embedCtx)).toBe(true);
+    expect(shouldOmitMessageFromChatRender({
+      id: "a-topup",
+      role: "assistant",
+      content: leftover,
+    }, embedCtx)).toBe(true);
+  });
+
   it("omits auto-continue user prompts", () => {
     const message: ChatMessage = {
       id: "u-auto",

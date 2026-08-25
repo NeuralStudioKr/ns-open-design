@@ -7996,7 +7996,9 @@ export function ProjectView({
                 );
                 if (producedHtmlToOpen && claimHtmlAutoOpenForMessage()) {
                   maybeArmTeamverPublishMenuAfterRunSuccess(project.id, producedHtmlToOpen);
-                  requestSlideCountTopUpRef.current(producedHtmlToOpen);
+                  // Reattach / reload replay must not queue another hidden
+                  // APPEND. Live handleSend terminal auto-open owns first-fill
+                  // top-up; refresh after 6 slides used to re-send the prompt.
                   requestOpenFile(producedHtmlToOpen);
                 }
                 if (produced.length > 0) {

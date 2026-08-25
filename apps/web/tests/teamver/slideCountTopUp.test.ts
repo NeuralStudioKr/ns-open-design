@@ -179,6 +179,14 @@ describe("slideCountTopUp", () => {
     expect(isSlideCountTopUpPrompt(`${SLIDE_COUNT_TOP_UP_PROMPT_SENTINEL_LEGACY}\nAPPEND only new slides`)).toBe(
       true,
     );
+    expect(isSlideCountTopUpPrompt([
+      "The",
+      "The",
+      "Keep",
+      "APPEND",
+      "Do NOT rewrite the saved deck. Do NOT emit ``, Motif ``, or copy existing slides.",
+      "Emit ONLY the new `",
+    ].join("\n"))).toBe(true);
     expect(isSlideCountTopUpPrompt("다음 장 더 만들어줘")).toBe(false);
     expect(
       countSlideCountTopUpAttemptsInConversation([

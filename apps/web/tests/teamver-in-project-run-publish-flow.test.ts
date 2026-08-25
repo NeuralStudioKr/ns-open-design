@@ -15,6 +15,7 @@ describe("embed in-project run success publish flow (loop 403)", () => {
 
     expect(projectView).toContain("maybeArmTeamverPublishMenuAfterRunSuccess");
     expect(projectView).toContain("requestSlideCountTopUpRef.current(producedHtmlToOpen)");
+    expect(projectView).toContain("Reattach / reload replay must not queue another hidden");
     expect(projectView).toMatch(
       /maybeArmTeamverPublishMenuAfterRunSuccess[\s\S]*?requestOpenFile\(producedHtmlToOpen\)/,
     );
