@@ -1069,6 +1069,8 @@ describe("ProjectView message loading", () => {
     expect(source).toContain("normalizedArtifactType === 'deck'");
     expect(source).toContain("reason: 'low-substance deck artifact'");
     expect(source).toContain("kind: 'skipped-incomplete'");
+    expect(source).toContain("project.name || '슬라이드'");
+    expect(source).toContain("isPersistableShortDeckDraftAfterHeal");
   });
 
   it("waits for embed boot and retries stuck message loads on re-entry", () => {

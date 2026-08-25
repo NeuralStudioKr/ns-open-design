@@ -5330,13 +5330,20 @@ export function ProjectView({
           html: healInstructionCopyCoverHeading(
             artifactToPersist.html,
             runVisiblePromptRef.current || '',
-            project.name,
+            project.name || '슬라이드',
           ),
         };
+        const persistHealBrief = runVisiblePromptRef.current || '';
+        const persistHealTitle = project.name || '슬라이드';
         const trustSoftTruncationSalvage =
           Boolean(salvaged)
           || isClosedSoftSalvageDeckHtml(artifactToPersist.html)
-          || isPersistableShortDeckDraft(artifactToPersist.html);
+          || isPersistableShortDeckDraft(artifactToPersist.html)
+          || isPersistableShortDeckDraftAfterHeal(
+            artifactToPersist.html,
+            persistHealBrief,
+            persistHealTitle,
+          );
         // Empty scaffolds can pass the 64-char length gate once a charset
         // meta is present — still skip silently so we never write phantoms
         // or flash 「저장을 거부했습니다」 during deck generation.
@@ -7886,7 +7893,7 @@ export function ProjectView({
                         const withHeadings = healInstructionCopyCoverHeading(
                           diskHtml,
                           runVisiblePromptRef.current || '',
-                          project.name,
+                          project.name || '슬라이드',
                         );
                         const withLook = await mergeOfficialLookCssForTemplate(
                           withHeadings,
@@ -9862,7 +9869,7 @@ export function ProjectView({
                     const withHeadings = healInstructionCopyCoverHeading(
                       diskHtml,
                       runVisiblePromptRef.current || '',
-                      project.name,
+                      project.name || '슬라이드',
                     );
                     const withLook = await mergeOfficialLookCssForTemplate(
                       withHeadings,
