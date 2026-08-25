@@ -1069,6 +1069,7 @@ describe("ProjectView message loading", () => {
     expect(source).toContain("isLowSubstanceSlideDeckArtifact");
     expect(source).toContain("deckSlideHeadingsLookLikeFailedGenerate");
     expect(source).toContain("failedGenerateHeadings");
+    expect(source).toContain("motifSvgDump");
     expect(source).toContain("normalizedArtifactType === 'deck'");
     expect(source).toContain("reason: 'low-substance deck artifact'");
     expect(source).toContain("kind: 'skipped-incomplete'");
