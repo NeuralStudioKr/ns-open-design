@@ -71,13 +71,18 @@ function looksLikeReloadedSlideBodyDump(text: string): boolean {
   const trimmed = String(text ?? '').trim();
   if (trimmed.length < 40) return false;
   if (
-    !/(?:prefers-reduced-motion|axe-core|FRONT-END TRACK|LECTURE\s+\d+|<\/artifact\s*>|html\s*>)/i.test(
+    /(?:prefers-reduced-motion|axe-core|FRONT-END TRACK|LECTURE\s+\d+|<\/artifact\s*>|html\s*>)/i.test(
       trimmed,
     )
+    && /[A-Za-z][\uac00-\ud7af]|[\uac00-\ud7af][A-Za-z]/.test(trimmed)
   ) {
-    return false;
+    return true;
   }
-  return /[A-Za-z][\uac00-\ud7af]|[\uac00-\ud7af][A-Za-z]/.test(trimmed);
+  // Round 23: Hangul-titled dumps without LECTURE/axe fingerprints.
+  return (
+    /[\uac00-\ud7af][A-Za-z]|[A-Za-z][\uac00-\ud7af]/.test(trimmed)
+    && /(?:TRACK|HTML|CSS|SEO|\bsvg\b|\bvideo\b|critical)/i.test(trimmed)
+  );
 }
 
 /** Longest assistant prose body for gates that must match what the chat UI shows. */

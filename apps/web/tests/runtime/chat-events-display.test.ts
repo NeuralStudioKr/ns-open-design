@@ -117,6 +117,17 @@ describe('assistantEventsForDisplay', () => {
     expect(JSON.stringify(resolved)).not.toContain('LECTURE');
   });
 
+  it('prefers clean content when reload events keep a Hangul-titled slide body (round 23)', () => {
+    const leak =
+      '반응형 UIvideo·svg에일 HTML/CSS, 미디어 쿼리로 유동 재배치. 유지보수 단일 경로, SEO 유리, 초기 비용 낮음.';
+    const resolved = assistantEventsForDisplay({
+      content: '슬라이드 작업이 완료되었습니다.',
+      events: [{ kind: 'text', text: leak }],
+    });
+    expect(resolved[0]).toEqual({ kind: 'text', text: '슬라이드 작업이 완료되었습니다.' });
+    expect(JSON.stringify(resolved)).not.toContain('SEO');
+  });
+
   it('keeps interleaved tool events when content is longer than joined text', () => {
     const events: ChatMessage['events'] = [
       { kind: 'text', text: 'Planning…' },

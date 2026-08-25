@@ -745,6 +745,10 @@ function findTrailingSameLineDeckHtmlCut(line: string): number | null {
   // midCss would otherwise keep `Caveat',` as the human prefix.
   const hangulStyleGlue = findHangulGluedStyleDumpCut(line);
   if (hangulStyleGlue != null) return hangulStyleGlue;
+  // Hangul status glued to a tag-stripped slide body (round 23). Must run
+  // before the whole-line debris filter drops the status with the dump.
+  const hangulSlideBodyGlue = findHangulGluedTagStrippedSlideBodyCut(line);
+  if (hangulSlideBodyGlue != null) return hangulSlideBodyGlue;
   const fontStackDump = findFontStackDumpIndex(line);
   if (fontStackDump != null) return fontStackDump;
   // Mid-word CSS join after Hangul/Latin: `슬라이드 추가 중ospace;font-size:…">Label</div>`
@@ -2311,6 +2315,9 @@ export function stripTrailingDeckFrameworkCssLeak(input: string): string {
  * Tag-stripped slide copy left after reload (`html>WD · LECTURE…</artifact>`).
  * Live streaming hides the intact `<artifact>` block; persist/cold-load often
  * keeps only the inner text nodes plus an orphan closer.
+ *
+ * Round 23: Hangul-titled dumps (`반응형 UIvideo·svg…SEO`) must also match —
+ * they used to early-return false because status lines also start with Hangul.
  */
 function looksLikeTagStrippedSlideBody(line: string): boolean {
   const trimmed = String(line ?? "").trim().replace(/<\/artifact\s*>/gi, "").trim();
@@ -2318,8 +2325,6 @@ function looksLikeTagStrippedSlideBody(line: string): boolean {
   if (/^#{1,6}\s+\S/.test(trimmed)) return false;
   if (/^(?:[-*+]|\d+[.)])\s+\S/.test(trimmed)) return false;
   if (lineIsChatProseProtocolMarkup(trimmed)) return false;
-  // Status glued to a dump (`슬라이드 추가 중html>…`) — keep the prefix.
-  if (/^[\uac00-\ud7af\u3000-\u9fff]/.test(trimmed)) return false;
   if (/^html\s*>/i.test(trimmed)) return true;
   if (
     /(?:prefers-reduced-motion|axe-core|data-slide-index|FRONT-END TRACK|LECTURE\s+\d+)/i.test(
@@ -2328,11 +2333,44 @@ function looksLikeTagStrippedSlideBody(line: string): boolean {
   ) {
     return true;
   }
-  return (
-    trimmed.length >= 40
-    && /[\uac00-\ud7af][A-Za-z]|[A-Za-z][\uac00-\ud7af]/.test(trimmed)
-    && /(?:TRACK|HTML|CSS|SEO|\bsvg\b|\bvideo\b|critical)/i.test(trimmed)
-  );
+  // Incomplete opener leftovers: `section class=slide>COVER…`
+  if (
+    /^(?:section|div|main|article|header|footer)\b[^<\n]{0,96}>/i.test(trimmed)
+    && /(?:\bslide\b|class\s*=)/i.test(trimmed)
+  ) {
+    return true;
+  }
+  const hangulLatinGlue = /[\uac00-\ud7af][A-Za-z]|[A-Za-z][\uac00-\ud7af]/.test(trimmed);
+  const techCue =
+    /(?:TRACK|HTML|CSS|SEO|\bsvg\b|\bvideo\b|critical|axe-core|prefers-reduced-motion|LECTURE)/i.test(
+      trimmed,
+    );
+  return trimmed.length >= 40 && hangulLatinGlue && techCue;
+}
+
+/** Status glued to a Hangul-titled slide dump (`슬라이드 추가 중반응형 UIvideo…`). */
+function findHangulGluedTagStrippedSlideBodyCut(line: string): number | null {
+  if (!line || line.length < 28) return null;
+  if (!/^[\uac00-\ud7af\u3000-\u9fff]/.test(line)) return null;
+  // Only cut when the prefix looks like a status (`…추가 중`), never when the
+  // dump itself is Hangul-titled (`반응형 UIvideo…` must drop entirely).
+  for (let i = 1; i < line.length - 23; i += 1) {
+    const prev = line[i - 1]!;
+    if (!/[\uac00-\ud7af\u3000-\u9fff]/.test(prev)) continue;
+    let cut = i;
+    if (/[.\u3002…]/.test(line[i] ?? "")) cut = i + 1;
+    if (cut >= line.length - 23) continue;
+    if (/\s/.test(line[cut - 1] ?? "")) continue;
+    const prefix = line.slice(0, cut);
+    if (!/(?:추가|작업|완료|진행|생성|수정).{0,6}[중됨요다]$/u.test(prefix)
+      && !/[중됨]$/u.test(prefix)) {
+      continue;
+    }
+    const dump = line.slice(cut);
+    if (!/^[\uac00-\ud7afA-Za-z]/.test(dump)) continue;
+    if (looksLikeTagStrippedSlideBody(dump)) return cut;
+  }
+  return null;
 }
 
 function stripOrphanArtifactCloserDump(input: string): string {
@@ -2347,14 +2385,18 @@ function stripOrphanArtifactCloserDump(input: string): string {
     "$1",
   );
   text = text.replace(/<\/artifact\s*>/gi, "");
-  const kept = text.split("\n").filter((line) => {
+  const kept = text.split("\n").map((line) => {
+    const glued = findHangulGluedTagStrippedSlideBodyCut(line);
+    if (glued != null) return line.slice(0, glued);
+    return line;
+  }).filter((line) => {
     const trimmed = line.trim();
     if (!trimmed) return true;
     return !looksLikeTagStrippedSlideBody(trimmed);
   });
   text = kept.join("\n").replace(/\n{3,}/g, "\n\n").trimEnd();
   // Persist often drops `html>` from the first chunk, leaving a Hangul-titled
-  // slide body (`반응형 UIvideo·svg…prefers-reduced-motion`) as one blob.
+  // slide body (`반응형 UIvideo·svg…SEO`) as one blob.
   if (looksLikeTagStrippedSlideBodyBlock(text)) {
     const withoutDump = text.split("\n").filter((line) => {
       const trimmed = line.trim();
@@ -2373,12 +2415,7 @@ function stripOrphanArtifactCloserDump(input: string): string {
 function looksLikeTagStrippedSlideBodyBlock(text: string): boolean {
   const trimmed = String(text ?? "").replace(/<\/artifact\s*>/gi, "").trim();
   if (trimmed.length < 40) return false;
-  if (
-    !/(?:prefers-reduced-motion|axe-core|FRONT-END TRACK|LECTURE\s+\d+)/i.test(trimmed)
-  ) {
-    return false;
-  }
-  return /[A-Za-z][\uac00-\ud7af]|[\uac00-\ud7af][A-Za-z]/.test(trimmed);
+  return looksLikeTagStrippedSlideBody(trimmed);
 }
 
 function stripOrphanArtifactCloserDumpRespectingArtifacts(

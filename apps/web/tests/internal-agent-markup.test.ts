@@ -220,6 +220,18 @@ describe("internalAgentMarkup", () => {
           { streaming },
         ),
       ).toBe("");
+      expect(
+        sanitizeAssistantProseForDisplay(
+          `반응형 UIvideo·svg에일 HTML/CSS, 미디어 쿼리로 유동 재배치. SEO 유리, 초기 비용 낮음.`,
+          { streaming },
+        ),
+      ).toBe("");
+      expect(
+        sanitizeAssistantProseForDisplay(
+          `슬라이드 추가 중반응형 UIvideo·svg에일 HTML/CSS, SEO 유리, 초기 비용 낮음.`,
+          { streaming },
+        ),
+      ).toBe("슬라이드 추가 중");
     }
   });
 
