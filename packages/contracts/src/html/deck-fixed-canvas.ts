@@ -596,7 +596,7 @@ function pickOfficialKitCardClass(html: string): string | null {
 }
 
 const KIT_CARD_OPEN_RE =
-  /<(div|aside|article|section|li)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
+  /<(div|aside|article|section|li|figure)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
 
 function bindFakeOutlineCardsInSpan(html: string, cardClass: string): string {
   return html.replace(KIT_CARD_OPEN_RE, (open, _tag: string, attrs: string) => {
