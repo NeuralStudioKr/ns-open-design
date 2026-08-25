@@ -43,9 +43,28 @@ function isWhiteOrEmptyBackground(value: string | null | undefined): boolean {
   return WHITE_OR_EMPTY_RE.test(trimmed);
 }
 
+/** Compact Neutral samples MiniMax copies even when official look CSS is present. */
+const NEUTRAL_FALLBACK_PAINT_RE =
+  /#(?:0f172a|1e293b|111827|0b1220|f8fafc|f1f5f9)(?![0-9a-f])/i;
+
+function isNeutralFallbackPaint(value: string | null | undefined): boolean {
+  return NEUTRAL_FALLBACK_PAINT_RE.test(String(value ?? ''));
+}
+
+function htmlHasOfficialLookCss(html: string): boolean {
+  return /\bdata-od-official-look-css\b/i.test(html);
+}
+
 /** Radial washes / images must not be flattened by paper-token !important. */
-function isDecorativeBackground(value: string | null | undefined): boolean {
-  return /gradient\s*\(|\burl\s*\(|image-set\s*\(/i.test(String(value ?? ''));
+function isDecorativeBackground(
+  value: string | null | undefined,
+  officialLook = false,
+): boolean {
+  const raw = String(value ?? '');
+  if (!/gradient\s*\(|\burl\s*\(|image-set\s*\(/i.test(raw)) return false;
+  // Official look + Neutral navy/cream gradient is MiniMax fallback, not Motif.
+  if (officialLook && isNeutralFallbackPaint(raw)) return false;
+  return true;
 }
 
 /**
@@ -170,9 +189,15 @@ function collectInlineSlideBackgrounds(html: string): string[] {
 
 /** True when any non-generic slide role/variant paints its own background. */
 export function deckHasPerSlideSurfacePaint(html: string): boolean {
+  const officialLook = htmlHasOfficialLookCss(html);
   const inlines = collectInlineSlideBackgrounds(html);
-  if (inlines.some((background) => isDecorativeBackground(background))) return true;
-  if (new Set(inlines).size >= 2) return true;
+  const meaningful = officialLook
+    ? inlines.filter((background) => !isNeutralFallbackPaint(background))
+    : inlines;
+  if (meaningful.some((background) => isDecorativeBackground(background, officialLook))) {
+    return true;
+  }
+  if (new Set(meaningful).size >= 2) return true;
   const extras = collectSlideHostExtraClasses(html);
   const sheets = collectAuthorStyleSheetTexts(html);
   if (!sheets.trim()) return false;
@@ -496,9 +521,14 @@ export function repairDeckSlideSurfaceBleed(html: string): string {
   if (!hasSlide) return source;
 
   const paper = inferDeckSlidePaperSurface(source);
+  const officialLook = htmlHasOfficialLookCss(source);
+  const slideBackground = extractSlideBackground(source);
   const preserveSlidePaint =
-    isDecorativeBackground(extractSlideBackground(source))
-    || deckHasPerSlideSurfacePaint(source);
+    !(officialLook && isNeutralFallbackPaint(slideBackground))
+    && (
+      isDecorativeBackground(slideBackground, officialLook)
+      || deckHasPerSlideSurfacePaint(source)
+    );
   const hasBleed = new RegExp(`\\b${SURFACE_STYLE_ATTR}\\b`, 'i').test(source);
 
   if (hasBleed) {

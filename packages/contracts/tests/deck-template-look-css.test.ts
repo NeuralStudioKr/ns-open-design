@@ -1449,6 +1449,24 @@ html, body { overflow: visible !important; height: auto !important; }
     expect(twice).toBe(merged);
   });
 
+  it('injects Hermes Motif seeds onto the closing slide of a 4-slide compact fill', () => {
+    const official = loadOfficialLookSource(join(EXAMPLES_DIR, 'html-ppt-hermes-cyber-terminal/example.html'));
+    const assets = extractOfficialDeckLookAssets(official)!;
+    const four = `<!doctype html><html lang="ko"><body>
+<section class="slide"><h1>Cover</h1></section>
+<section class="slide"><h2>Two</h2></section>
+<section class="slide"><h2>Three</h2></section>
+<section class="slide"><h2>Close</h2></section>
+</body></html>`;
+    const merged = mergeOfficialDeckLookCss(four, assets);
+    const closes = [...merged.matchAll(/<section class="slide"[\s\S]*?<\/section>/gi)].map((m) => m[0] ?? '');
+    expect(closes).toHaveLength(4);
+    expect(closes[0]).toMatch(/\bhc-scanlines\b/i);
+    expect(closes[1]).toMatch(/\bhc-scanlines\b/i);
+    expect(closes[2]).toMatch(/\bhc-scanlines\b/i);
+    expect(closes[3]).toMatch(/\bhc-scanlines\b/i);
+  });
+
   it('injects Capsule grain-overlay host from official example.html', () => {
     const official = loadOfficialLookSource(join(EXAMPLES_DIR, 'html-ppt-zhangzara-capsule/example.html'));
     const assets = extractOfficialDeckLookAssets(official)!;

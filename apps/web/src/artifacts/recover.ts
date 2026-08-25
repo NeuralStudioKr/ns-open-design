@@ -387,6 +387,9 @@ export function salvageTemplateFillShellAsCoverDraft(
   if (hasTruncationSalvageableContent(trimmed) || hasSalvageableSlideContent(trimmed)) {
     return null;
   }
+  // Head-only / kit-CSS shells never reached a slide. Empty / SLOT hosts
+  // already did — inventing a last-resort cover would mark those as success.
+  if (eachSlideHostOpenIndex(trimmed).length > 0) return null;
 
   const fromHtml = visibleHeadingCandidate(trimmed);
   const fallback = decodeBasicHtmlEntities(String(options?.fallbackTitle ?? '').trim());

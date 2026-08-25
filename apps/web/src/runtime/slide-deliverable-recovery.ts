@@ -195,6 +195,7 @@ export function syncAutoContinueCountFromMessages(
 export async function verifySlideProducedHtmlDeliverable(
   fileName: string | null,
   readProjectHtml: (name: string) => Promise<string | null>,
+  healContext?: { brief?: string | null; deckTitle?: string | null },
 ): Promise<string | null> {
   if (!fileName) return null;
   const html = await readProjectHtml(fileName);
@@ -203,7 +204,11 @@ export async function verifySlideProducedHtmlDeliverable(
   if (isIncompleteHtmlDocumentShell(html)
     && !isClosedSoftSalvageDeckHtml(html)
     && !isPersistableShortDeckDraft(html)
-    && !isPersistableShortDeckDraftAfterHeal(html)
+    && !isPersistableShortDeckDraftAfterHeal(
+      html,
+      healContext?.brief,
+      healContext?.deckTitle || '슬라이드',
+    )
   ) {
     return null;
   }

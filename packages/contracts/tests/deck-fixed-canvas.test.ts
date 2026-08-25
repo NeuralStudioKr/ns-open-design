@@ -161,14 +161,32 @@ describe('pinDeckSlidesToFixedCanvas', () => {
     expect(pinned).toContain('Card body');
   });
 
-  it('does not wrap display:grid slide children into a flow clip', () => {
+  it('strips in-flow MiniMax index badge paragraphs after absolute-to-flow', () => {
+    const html = [
+      '<section class="slide" style="width:1920px;height:1080px">',
+      '<p>05 / CHECKLIST</p>',
+      '<div class="slide-chrome">01 / Studio</div>',
+      '<div class="info-card">Card body</div>',
+      '</section>',
+    ].join('');
+    const pinned = pinDeckSlidesToFixedCanvas(html);
+    expect(pinned).not.toContain('05 / CHECKLIST');
+    expect(pinned).toContain('01 / Studio');
+    expect(pinned).toContain('Card body');
+  });
+
+  it('wraps display:grid slide children with a grid-preserving flow clip', () => {
     const html = [
       '<section class="slide" style="width:1920px;height:1080px;display:grid;grid-template-columns:1fr 1fr">',
       '<div class="card">Left</div><div class="card">Right</div>',
       '</section>',
     ].join('');
     const pinned = pinDeckSlidesToFixedCanvas(html);
-    expect(pinned).not.toMatch(/<div\s+data-od-slide-flow\b/);
+    expect(pinned).toMatch(
+      /<div data-od-slide-flow style="display:grid;grid-template-columns:1fr 1fr">/,
+    );
+    expect(pinned).toContain('<div class="card">Left</div>');
+    expect(pinned).not.toMatch(/class="slide"[^>]*overflow:\s*hidden/);
   });
 
   it('binds MiniMax navy/blue outline boxes to official kit card classes', () => {
@@ -184,6 +202,62 @@ describe('pinDeckSlidesToFixedCanvas', () => {
     expect(pinned).toMatch(/class="[^"]*\binfo-card\b/);
     expect(pinned).not.toMatch(/border:2px solid #2563eb/);
     expect(pinned).toContain(DECK_SLIDE_FLOW_ATTR);
+  });
+
+  it('strips Neutral navy/cream inline slide paint when official look CSS is present', () => {
+    const html = [
+      '<!doctype html><html><body>',
+      '<section class="slide" style="width:1920px;height:1080px;background:linear-gradient(#1e293b 0 38%, #f3efe4 38%);color:#f8fafc">',
+      '<h1>커버</h1>',
+      '</section>',
+      '<style data-od-official-look-css>.slide{background:#F5F0E6;color:#2D2D2D}.info-card{border:4px solid #111}</style>',
+      '</body></html>',
+    ].join('');
+    const pinned = pinDeckSlidesToFixedCanvas(html);
+    expect(pinned).not.toMatch(/class="slide"[^>]*#1e293b/);
+    expect(pinned).not.toMatch(/class="slide"[^>]*#f3efe4/);
+    expect(pinned).not.toMatch(/class="slide"[^>]*#f8fafc/);
+    expect(pinned).toContain('data-od-official-look-css');
+  });
+
+  it('strips Neutral paint from full-bleed inner overlays when official look CSS is present', () => {
+    const html = [
+      '<!doctype html><html><body>',
+      '<section class="slide" style="width:1920px;height:1080px">',
+      '<div style="position:absolute;inset:0;background:linear-gradient(#0f172a,#1e293b);color:#f8fafc">',
+      '<h1>커버</h1>',
+      '</div>',
+      '</section>',
+      '<style data-od-official-look-css>.slide{background:#F5F0E6;color:#2D2D2D}</style>',
+      '</body></html>',
+    ].join('');
+    const pinned = pinDeckSlidesToFixedCanvas(html);
+    expect(pinned).not.toMatch(/#0f172a/);
+    expect(pinned).not.toMatch(/#1e293b/);
+    expect(pinned).not.toMatch(/#f8fafc/);
+    expect(pinned).toContain('커버');
+    expect(pinned).toContain('data-od-official-look-css');
+  });
+
+  it('does not flow catalog #deck shells after official-look CSS is merged', () => {
+    const html = [
+      '<!doctype html><html><head><style>',
+      '.slide { position:absolute; width:100%; height:100%; opacity:0 }',
+      '.slide.active { opacity:1 }',
+      '</style></head><body>',
+      '<div id="deck">',
+      '<section class="slide active" style="width:100vw;height:100vh">',
+      '<div class="split-card" style="position:absolute;top:80px;left:80px">Keep me</div>',
+      '</section>',
+      '<section class="slide">Body</section>',
+      '</div>',
+      '<style data-od-official-look-css>.slide{background:#111}</style>',
+      '</body></html>',
+    ].join('');
+    const pinned = pinDeckSlidesToFixedCanvas(html, { force: true });
+    expect(pinned).toMatch(/class="split-card"[^>]*position:absolute/);
+    expect(pinned).toContain('top:80px');
+    expect(pinned).not.toMatch(/<div\s+data-od-slide-flow\b/);
   });
 
   it('binds MiniMax indigo outline boxes to official kit card classes', () => {
@@ -214,6 +288,84 @@ describe('pinDeckSlidesToFixedCanvas', () => {
     expect(pinned).toMatch(/class="[^"]*\binfo-card\b/);
     expect(pinned).not.toMatch(/#06b6d4/);
     expect(pinned).not.toMatch(/#0ea5e9/);
+  });
+
+  it('binds MiniMax rgb() outline boxes to official kit card classes', () => {
+    const html = [
+      '<!doctype html><html><body>',
+      '<section class="slide" style="width:1920px;height:1080px">',
+      '<div style="border:2px solid rgb(79, 70, 229);padding:24px">Indigo rgb frame</div>',
+      '</section>',
+      '<style data-od-official-look-css>.card{box-shadow:var(--shadow)}</style>',
+      '</body></html>',
+    ].join('');
+    const pinned = pinDeckSlidesToFixedCanvas(html);
+    expect(pinned).toMatch(/class="[^"]*\bcard\b/);
+    expect(pinned).not.toMatch(/rgb\(79,\s*70,\s*229\)/);
+  });
+
+  it('binds invented 1–2px frames regardless of MiniMax color dialect', () => {
+    const html = [
+      '<!doctype html><html><body>',
+      '<section class="slide" style="width:1920px;height:1080px">',
+      '<div style="border:2px solid #7c3aed;padding:24px">Violet rgb-hex</div>',
+      '<div style="border:2px solid rgb(37, 99, 235);padding:16px">Blue rgb()</div>',
+      '<div style="outline:1px solid rgba(79, 70, 229, 0.9);padding:16px">Indigo rgba()</div>',
+      '<div style="border:2px solid blue;padding:16px">Named blue</div>',
+      '<div style="box-shadow:0 0 0 2px #10b981;padding:16px">Emerald ring</div>',
+      '<div style="border:1px solid var(--border);padding:16px">Keep kit token</div>',
+      '</section>',
+      '<style data-od-official-look-css>.info-card{border:var(--border-width) solid var(--border)}</style>',
+      '</body></html>',
+    ].join('');
+    const pinned = pinDeckSlidesToFixedCanvas(html);
+    expect(pinned).not.toMatch(/#7c3aed/);
+    expect(pinned).not.toMatch(/rgb\(37,\s*99,\s*235\)/);
+    expect(pinned).not.toMatch(/rgba\(79,\s*70,\s*229/);
+    expect(pinned).not.toMatch(/box-shadow:0 0 0 2px #10b981/);
+    expect(pinned).not.toMatch(/border:2px solid blue/);
+    expect(pinned).toMatch(/border:1px solid var\(--border\)/);
+    expect(pinned.match(/class="[^"]*\binfo-card\b/g)?.length).toBeGreaterThanOrEqual(4);
+  });
+
+  it('binds MiniMax li/hsl invented frames to official kit card classes', () => {
+    const html = [
+      '<!doctype html><html><body>',
+      '<section class="slide" style="width:1920px;height:1080px">',
+      '<ul>',
+      '<li style="border:2px solid hsl(239 84% 67%);padding:16px">HSL card</li>',
+      '<li style="border:2px solid #7c3aed;padding:16px">Hex li</li>',
+      '</ul>',
+      '</section>',
+      '<style data-od-official-look-css>.info-card{border:var(--border-width) solid var(--border)}</style>',
+      '</body></html>',
+    ].join('');
+    const pinned = pinDeckSlidesToFixedCanvas(html);
+    expect(pinned).not.toMatch(/hsl\(239/);
+    expect(pinned).not.toMatch(/#7c3aed/);
+    expect(pinned.match(/class="[^"]*\binfo-card\b/g)?.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('strips nested and heading MiniMax index badges', () => {
+    const html = [
+      '<section class="slide" style="width:1920px;height:1080px">',
+      '<div class="card" style="position:relative">',
+      '<span style="position:absolute;top:12px;right:16px">05 / CHECKLIST</span>',
+      '<h2 style="position:absolute;top:20px;left:24px">06 · SUMMARY</h2>',
+      '<header style="position:fixed;top:16px;right:24px">07 / OUTRO</header>',
+      '<span style="position:absolute;top:8px;left:8px">5 / CHECKLIST</span>',
+      '<p>Viewport matrix</p>',
+      '</div>',
+      '<div class="slide-chrome">01 / Studio</div>',
+      '</section>',
+    ].join('');
+    const pinned = pinDeckSlidesToFixedCanvas(html);
+    expect(pinned).not.toContain('05 / CHECKLIST');
+    expect(pinned).not.toContain('06 · SUMMARY');
+    expect(pinned).not.toContain('07 / OUTRO');
+    expect(pinned).not.toContain('5 / CHECKLIST');
+    expect(pinned).toContain('01 / Studio');
+    expect(pinned).toContain('Viewport matrix');
   });
 
   it('is idempotent for the injected style tag', () => {

@@ -1684,19 +1684,16 @@ function ensureSlideMotifRoleClass(dest: string, seeds: string[]): string {
 function mergeCssMotifSeeds(dest: string, seeds: string[]): string {
   if (!dest || seeds.length === 0) return dest;
   let out = dest;
-  if (destHasMotifIdentityProof(out, seeds)) {
-    return ensureSlideMotifRoleClass(out, seeds);
-  }
-
   const pack = seeds.slice(0, 2).join('\n');
   const slides = listSlideBlocks(out);
   if (slides.length === 0) {
-    out = insertAfterOpenBody(out, pack);
+    if (!destHasMotifIdentityProof(out, seeds)) {
+      out = insertAfterOpenBody(out, pack);
+    }
     return ensureSlideMotifRoleClass(out, seeds);
   }
 
-  const nextSlides = slides.map((slide, index) => {
-    if (index > 1) return slide.html;
+  const nextSlides = slides.map((slide) => {
     if (destHasMotifIdentityProof(slide.html, seeds)) return slide.html;
     return insertMotifIntoSlide(slide.html, pack);
   });

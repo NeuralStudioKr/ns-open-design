@@ -352,7 +352,7 @@ export function buildAutoContinueIncompleteOutputPrompt(
     if (partialSalvagedHasSlide) {
       const excerpt = excerptPartialHtmlForAutoContinue(partial);
       parts.push(
-        '\n\n[이 대화에서 시작했지만 미완성인 HTML — 이어서 완성하거나 버리고 새 완전 덱을 한 번에 출력:]\n'
+        '\n\n[이 대화에서 시작했지만 미완성인 HTML — 버리지 말고 이어서만 완성하세요:]\n'
           + '```html\n'
           + excerpt
           + '\n```',
@@ -368,11 +368,14 @@ export function buildAutoContinueIncompleteOutputPrompt(
     }
   } else if (partial && partial.length >= 128) {
     const excerpt = excerptPartialHtmlForAutoContinue(partial);
+    const keepPartial = documentContainsSlideSection(partial);
     parts.push(
-      '\n\n[이 대화에서 시작했지만 미완성인 HTML — 이어서 완성하거나 버리고 새 완전 덱을 한 번에 출력:]\n'
-        + '```html\n'
-        + excerpt
-        + '\n```',
+      (keepPartial
+        ? '\n\n[이 대화에서 시작했지만 미완성인 HTML — 버리지 말고 이어서만 완성하세요:]\n'
+        : '\n\n[이 대화에서 시작했지만 미완성인 HTML — 이어서 완성하거나 버리고 새 완전 덱을 한 번에 출력:]\n')
+          + '```html\n'
+          + excerpt
+          + '\n```',
     );
   } else if (partial) {
     parts.push(

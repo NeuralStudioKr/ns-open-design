@@ -429,8 +429,9 @@ export function isPersistableShortDeckDraft(html: string): boolean {
   // Sparse 4+ shells stay on the soft-salvage / incomplete trust path.
   if (inners.length === 0 || inners.length > 3) return false;
   const titled = inners.filter(slideInnerHasPersistableDraftCopy);
-  if (inners.length <= 2) return titled.length >= 1;
-  return titled.length >= 2;
+  // MiniMax compact first-fill often lands cover + two empty placeholders.
+  // One persistable titled slide is enough — hidden top-up appends the rest.
+  return titled.length >= 1;
 }
 
 /** Same gate persist uses after `healInstructionCopyCoverHeading`. */
