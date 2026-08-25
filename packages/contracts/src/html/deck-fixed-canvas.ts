@@ -595,6 +595,22 @@ function looksLikeFakeOutlineStyle(style: string): boolean {
   return EXPLICIT_PAINT_COLOR_RE.test(frames);
 }
 
+/**
+ * Body `p`/`span`/`h2–h4` often carry 1–2px accent borders. Only treat them as
+ * MiniMax "card" frames when padding looks card-like (≥12px on any side).
+ */
+function looksLikeCardLikePadding(style: string): boolean {
+  const source = String(style ?? '');
+  const padRe = /(?:^|;)\s*padding(?:-(?:top|right|bottom|left))?\s*:\s*([^;]+)/gi;
+  let match: RegExpExecArray | null;
+  while ((match = padRe.exec(source)) !== null) {
+    if (/(?:^|[\s/])(?:1[2-9]|[2-9]\d|\d{3,})(?:\.\d+)?px\b/i.test(match[1] ?? '')) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function stripFakeOutlineStyle(style: string): string {
   return String(style ?? "")
     .replace(/(?:^|;)\s*(?:border|outline)(?:-width|-color|-style)?\s*:[^;]*/gi, ";")
@@ -627,15 +643,19 @@ function pickOfficialKitCardClass(html: string): string | null {
 }
 
 const KIT_CARD_OPEN_RE =
-  /<(div|aside|article|section|li|figure|main|header|footer|blockquote|nav|ul|ol|dl|dt|dd)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
+  /<(div|aside|article|section|li|figure|main|header|footer|blockquote|nav|ul|ol|dl|dt|dd|p|span|h[2-4]|figcaption|caption)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
+const SELECTIVE_KIT_CARD_TAGS_RE = /^(?:p|span|h[2-4]|figcaption|caption)$/i;
 
 function bindFakeOutlineCardsInSpan(html: string, cardClass: string): string {
-  return html.replace(KIT_CARD_OPEN_RE, (open, _tag: string, attrs: string) => {
+  return html.replace(KIT_CARD_OPEN_RE, (open, tag: string, attrs: string) => {
     if (isSlideHost(attrs) || isMotifOrDecoAttrs(attrs) || isContentFooterHost(attrs)) {
       return open;
     }
     const style = extractStyleAttr(attrs);
     if (!looksLikeFakeOutlineStyle(style)) return open;
+    if (SELECTIVE_KIT_CARD_TAGS_RE.test(tag) && !looksLikeCardLikePadding(style)) {
+      return open;
+    }
     let nextAttrs = KIT_CARD_TOKEN_RE.test(extractClassAttr(attrs))
       ? attrs
       : addClassToken(attrs, cardClass);
