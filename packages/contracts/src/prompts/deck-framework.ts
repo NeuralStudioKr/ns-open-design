@@ -574,6 +574,16 @@ Quality bar: match slide count; each slide needs a distinct role. The deck must 
 export const COMPACT_DECK_SLIDE_COUNT_GUIDANCE =
   'Honor an explicit user slide count in the user message / [User instruction] first; then Plugin inputs slideCount / Project metadata / quick-brief `scale`; use 6–8 slides only when none is specified.';
 
+/**
+ * MiniMax used to be told "close 3 this turn, hidden top-up appends".
+ * Official look/Motif now merge after save, so a 5–6 page brief can finish
+ * in one body-first turn like Claude. Top-up remains only for 7+ or a short miss.
+ */
+export const COMPACT_FIRST_FILL_SLIDE_COUNT_THIS_TURN = 6;
+
+export const COMPACT_FIRST_FILL_SLIDE_COUNT_GUIDANCE =
+  'Slide count THIS TURN: honor an explicit user count of 1–6. If the user asked for 7 or more, close 6 complete body-first slides this turn and hidden top-up appends the rest. If unspecified, close 6 this turn. Never close after a single cover.';
+
 /** MiniMax (and any rewrite-last-block model) must not echo a finished heading/paragraph/badge. */
 export const DECK_NO_ADJACENT_DUPLICATE_COPY_RULE =
   'Never emit the same heading, paragraph, or badge twice in a row as adjacent sibling tags — each sibling must add new copy.';
@@ -648,7 +658,7 @@ In-place HTML edits are unavailable in this API run — so regenerate content wi
 **Body / title-first (non-negotiable):**
 1. Status sentence → open \`<artifact type="deck" identifier="deck">\`.
 2. First bytes: \`<!doctype html><html lang="ko"><body style="margin:0;background:<kit surface hex>;color:<kit ink hex>"><section class="slide" style="width:1920px;height:1080px;box-sizing:border-box;padding:56px 72px;background:<kit surface hex>;color:<kit ink hex>;…">\` with a real \`h1\`/\`h2\` title + lead **before any decoration**.
-3. Slide count THIS TURN: honor an explicit small count (1–2) if the user asked for it. Otherwise produce **3** filled slides and close the artifact. Hidden top-up appends more. Never close after a single cover. Motif \`<svg>\` is NOT required this turn (official Motif is merged after save).
+3. ${COMPACT_FIRST_FILL_SLIDE_COUNT_GUIDANCE} Motif \`<svg>\` is NOT required this turn (official Motif is merged after save).
 4. Close \`</body></html></artifact>\` in this same response.
 
 **Full-bleed surface:** kit Slide surface must paint \`html\`/\`body\` AND every \`.slide\` edge-to-edge. FORBIDDEN: white outer canvas with an inner cream paper panel (white top/bottom bands). White title cards on cream paper are OK.

@@ -4,4 +4,8 @@
  * string ("If the user did not ask…") drifted from Plugin-input slideCount
  * language and fought quick-settings mapping.
  */
-export { COMPACT_DECK_SLIDE_COUNT_GUIDANCE } from '@open-design/contracts';
+export {
+  COMPACT_DECK_SLIDE_COUNT_GUIDANCE,
+  COMPACT_FIRST_FILL_SLIDE_COUNT_GUIDANCE,
+  COMPACT_FIRST_FILL_SLIDE_COUNT_THIS_TURN,
+} from '@open-design/contracts';

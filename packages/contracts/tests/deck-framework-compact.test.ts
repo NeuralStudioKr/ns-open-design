@@ -157,8 +157,11 @@ describe('DECK_FRAMEWORK_DIRECTIVE_COMPACT', () => {
     ).toBeGreaterThanOrEqual(3);
   });
 
-  it('template-fill compact contract asks for 3 slides and defers Motif SVG', () => {
-    expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_TEMPLATE_FILL).toContain(
+  it('template-fill compact contract asks for up to 6 slides this turn and defers Motif SVG', () => {
+    expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_TEMPLATE_FILL).toMatch(
+      /honor an explicit user count of 1–6/i,
+    );
+    expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_TEMPLATE_FILL).not.toContain(
       'produce **3** filled slides',
     );
     expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_TEMPLATE_FILL).toMatch(

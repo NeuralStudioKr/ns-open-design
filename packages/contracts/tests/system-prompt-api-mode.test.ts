@@ -810,7 +810,8 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(normal).toContain('paste at most ONE capped kit Motif sprite');
       expect(fill).toMatch(/Motif `<svg>` is NOT required this turn/i);
       expect(fill).toMatch(/REQUIRE 1–2 kit Motif CSS\/deco classes/i);
-      expect(fill).toMatch(/produce 3 filled 1920×1080 slides/i);
+      expect(fill).toMatch(/honor an explicit user count of 1–6/i);
+      expect(fill).not.toMatch(/produce 3 filled 1920×1080 slides/i);
       // Fill kits must not re-inject Motif SVG bodies (persist remmerge paints them).
       expect(fill).not.toMatch(/```html[\s\S]*?<svg\s/i);
       expect(fill).not.toMatch(/<svg\s[^>]*viewBox/i);

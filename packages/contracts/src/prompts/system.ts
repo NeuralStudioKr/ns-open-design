@@ -40,6 +40,7 @@ import {
   DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_SELECTED_TEMPLATE,
   DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_TEMPLATE_FILL,
   COMPACT_DECK_SLIDE_COUNT_GUIDANCE,
+  COMPACT_FIRST_FILL_SLIDE_COUNT_GUIDANCE,
 } from './deck-framework.js';
 import {
   SLIDE_DECK_CONTENT_EXPANSION_EXAMPLE,
@@ -1506,9 +1507,9 @@ This is the first content fill after a LOOK seed (create with kit Motif vocabula
 - **Motif:** Motif \`<svg>\` is NOT required this turn — never open Motif \`<svg>\` before or after the cover title. Official Motif is merged after save. Do not paste Motif sprites. REQUIRE 1–2 kit Motif CSS/deco classes AFTER title when Decorations are listed.
 - **Named Motif fidelity:** do not invent a different motif family or tiny Daisy lookalikes. Persist paints official Daisy/Capsule/Terminal Motif after save.
 - **FORBIDDEN substitutes:** Motif shapes from another template family; generic CSS circles; inventing Capsule coral pills when the kit Motif is petals/blobs/pins/pixel/scanlines; emoji ornament rows; multi-KB \`<svg><style>\` dumps; Neutral \`#0f172a\`; terracotta \`#c96442\`.
-- Slide count THIS TURN: honor an explicit small count (1–2) if the user asked for it. Otherwise produce 3 filled 1920×1080 slides and close the artifact. Hidden top-up appends more. Never close \`</html></artifact>\` after a single cover.
+- ${COMPACT_FIRST_FILL_SLIDE_COUNT_GUIDANCE} Never close \`</html></artifact>\` after a single cover.
 - Stream: status → \`<artifact type="deck">\` → body-first sections with real topical copy → close \`</body></html></artifact>\` in this same response.
-- If any earlier rule said paste Motif sprites / Motif floor REQUIRED this turn, **IGNORE it** — finish 3 titled slides. Official Motif is merged after save.
+- If any earlier rule said paste Motif sprites / Motif floor REQUIRED this turn, **IGNORE it** — finish the THIS TURN slide count. Official Motif is merged after save.
 `;
 
 function stripLeadingMarkdownH1(section: string): string {
@@ -1710,10 +1711,10 @@ export function composeTeamverSlideApiPrompt({
         ? (
           'Hard requirements (first content-fill — kit Motif AFTER title):\n'
           + '- Bind kit palette hex + fonts + Slide surface on html/body AND every `.slide` edge-to-edge (no white outer + inner cream panel).\n'
-          + '- Title-first body: cover title + lead BEFORE any decoration. Close `</artifact>` this turn with 3 slides.\n'
+          + '- Title-first body: cover title + lead BEFORE any decoration. Close `</artifact>` this turn with the requested count (up to 6).\n'
           + '- REQUIRE 1–2 kit Motif CSS/deco classes AFTER title when Decorations are listed. Motif `<svg>` NOT required (merged after save). FORBIDDEN: Motif SVG dumps; foreign Motif geometry; generic circles; omitting all Motif CSS cues.\n'
           + '- Layout REQUIRED from capped Layout CSS + scaffold roles when present — do not flatten every slide into one centered flex title column.\n'
-          + '- Prefer 3 slides this turn unless the user asked for an exact small count. Hidden top-up appends more. No Neutral `#0f172a` / terracotta `#c96442`.\n'
+          + `- ${COMPACT_FIRST_FILL_SLIDE_COUNT_GUIDANCE} No Neutral \`#0f172a\` / terracotta \`#c96442\`.\n`
           + '- Do not dump or rewrite a full example.html. Never open Motif `<svg>` or a long `<head>` this turn.\n\n'
         )
         : hasTemplateScaffold

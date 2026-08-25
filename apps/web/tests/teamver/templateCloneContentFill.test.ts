@@ -51,7 +51,7 @@ describe('templateCloneContentFill', () => {
     expect(seed).toMatch(/first 800 characters after `<artifact`/i);
     expect(seed).toMatch(/Motif vocabulary OVERRIDE/i);
     expect(seed).toMatch(/Slide count THIS TURN/i);
-    expect(seed).toMatch(/default 3-slide outline/i);
+    expect(seed).toMatch(/default 6-slide outline/i);
     expect(seed).toMatch(/Named motif cue/i);
     expect(seed).toMatch(/compact template-identifying motif|kit motif family|deco-pill|Decorations CSS/i);
     expect(seed).toMatch(/generic CSS circles/i);
@@ -72,15 +72,15 @@ describe('templateCloneContentFill', () => {
     )).toBe('expo');
   });
 
-  it('adds a default 3-slide hint when no explicit count is provided', () => {
+  it('adds a default 6-slide hint when no explicit count is provided', () => {
     const seed = buildTemplateCloneContentFillSeed({
       userInstruction: 'monorepo에 대해서 설명하는 피피티 만들어줘. 시니어 개발자 레벨.',
       templateTitle: 'Html Ppt Zhangzara Daisy Days',
     });
     expect(seed).toContain(
-      'Slide count hint: 3 (default for first template fill; close 3 complete slides this turn. Hidden top-up appends more.)',
+      'Slide count hint: 6 (default for first template fill; close 6 complete slides this turn.)',
     );
-    expect(seed).toMatch(/close exactly 3 complete body-first slides/i);
+    expect(seed).toMatch(/honor an explicit user count of 1–6/i);
     expect(seed).not.toMatch(/persist rejects 1–2/i);
     expect(seed).toMatch(/large SVG sprites|full Motif sprite dumps/i);
     expect(seed).toMatch(/compact template-identifying motif\/deco cues/i);
@@ -109,7 +109,7 @@ describe('templateCloneContentFill', () => {
       templateTitle: 'Html Ppt Zhangzara Daisy Days',
     });
     expect(seed).toContain('User requested slide count: 8.');
-    expect(seed).toContain('Slide count hint: 3 (stability cap for first template fill).');
+    expect(seed).toContain('Slide count hint: 6 (stability cap for first template fill).');
   });
 
   it('records a typed 5-page brief instead of the auto 6-8 quick-length range', () => {
@@ -120,7 +120,7 @@ describe('templateCloneContentFill', () => {
     });
     expect(seed).toContain('User requested slide count: 5.');
     expect(seed).not.toContain('User requested slide count: 6-8.');
-    expect(seed).toContain('Slide count hint: 3 (stability cap for first template fill).');
+    expect(seed).toContain('Slide count hint: 5.');
   });
 
   it('fallback fill copy does not claim 첨부한 자료 or 요청한 내용 when topic is missing', () => {
@@ -207,7 +207,7 @@ describe('templateCloneContentFill', () => {
       slideCountHint: '8-10',
     });
     expect(seed).toContain(TEMPLATE_CLONE_CONTENT_FILL_MARKER);
-    expect(seed).toContain('Slide count hint: 3 (stability cap for first template fill)');
+    expect(seed).toContain('Slide count hint: 6 (stability cap for first template fill)');
     expect(seed).toContain('시니어 개발자');
     expect(seed).not.toContain('[Deliverable instruction]');
     expect(seed).not.toContain('[Selected slide template priority]');
@@ -215,18 +215,17 @@ describe('templateCloneContentFill', () => {
 
   it('caps template-fill slide count hints unless the user explicitly requests an exact count', () => {
     expect(normalizeTemplateCloneFillSlideCountHint('5-6')).toBe(
-      '3 (stability cap for first template fill)',
+      '6 (stability cap for first template fill)',
     );
     expect(normalizeTemplateCloneFillSlideCountHint('8-10')).toBe(
-      '3 (stability cap for first template fill)',
+      '6 (stability cap for first template fill)',
     );
     expect(normalizeTemplateCloneFillSlideCountHint('12-15')).toBe(
-      '3 (stability cap for first template fill)',
+      '6 (stability cap for first template fill)',
     );
-    expect(normalizeTemplateCloneFillSlideCountHint('4')).toBe(
-      '3 (stability cap for first template fill)',
-    );
+    expect(normalizeTemplateCloneFillSlideCountHint('4')).toBe('4');
     expect(normalizeTemplateCloneFillSlideCountHint('3')).toBe('3');
+    expect(normalizeTemplateCloneFillSlideCountHint('5')).toBe('5');
     expect(normalizeTemplateCloneFillSlideCountHint('정확히 10')).toBe('10');
     expect(normalizeTemplateCloneFillSlideCountHint('정확히 1')).toBe('1');
   });
@@ -236,10 +235,10 @@ describe('templateCloneContentFill', () => {
       withTemplateCloneFillPluginInputs({ slideCount: '12-15', topic: 'expo' }, '12-15'),
     ).toMatchObject({
       topic: 'expo',
-      slideCount: '3 (stability cap for first template fill)',
+      slideCount: '6 (stability cap for first template fill)',
     });
     expect(templateCloneFillSlideCountOverrideNotice('8-10')).toContain(
-      '3 (stability cap for first template fill)',
+      '6 (stability cap for first template fill)',
     );
   });
 

@@ -24,6 +24,11 @@ import {
 } from './slideCreateBoilerplate';
 import { isSlideCountRangeHint, parseSlideCountTarget } from './slideCountTopUp';
 
+/** Keep local — contracts barrel can be undefined during web test init. */
+const FIRST_FILL_SLIDE_COUNT_THIS_TURN = 6;
+const FIRST_FILL_SLIDE_COUNT_GUIDANCE =
+  'Slide count THIS TURN: honor an explicit user count of 1–6. If the user asked for 7 or more, close 6 complete body-first slides this turn and hidden top-up appends the rest. If unspecified, close 6 this turn. Never close after a single cover.';
+
 /** Keep local — importing canvasSlideLaunch here caused circular init of expansion consts. */
 const SLIDE_DECK_QUALITY_BAR_INSTRUCTION =
   'Quality bar: each non-divider slide needs a headline, takeaway, and concrete support (specific bullets, metrics, examples, risks, actions, timeline, comparison, or decision criteria). '
@@ -244,23 +249,23 @@ export function templateCloneContentFillHardRules(): string[] {
     '- Strict body-first contract: start the artifact body exactly like `<!doctype html><html lang="ko"><body><section class="slide" ...>`.',
     '- `<head>` is FORBIDDEN on this fill turn. Do not emit `<head>`, `<title>`, meta tags, or a style prelude before slide 1.',
     '- The first 800 characters after `<artifact` MUST include `<body` and one complete `<section class="slide">` with real topical copy (cover title + lead).',
-    '- Slide count THIS TURN: honor an explicit small count (1–2) if the user asked for it. Otherwise close exactly 3 complete body-first slides and `</html></artifact>`. Hidden top-up appends the rest of the user request (5–6 / 8 / 12…). Never spend this turn on `<head>` or full Motif sprite dumps. Do not stop after a single cover.',
+    `- ${FIRST_FILL_SLIDE_COUNT_GUIDANCE} Close \`</html></artifact>\` this turn. Hidden top-up appends only when the user asked for 7+. Never spend this turn on \`<head>\` or full Motif sprite dumps.`,
     '- Official look/Motif CSS/SVG is merged after save. Do not stream `<head>`, a full example.html stylesheet, or large SVG sprites this turn. Still include 1–2 compact template-identifying motif/deco cues per slide when the visual kit provides them.',
-    '- If the brief is only a topic, use this default 3-slide outline: cover, why it matters / key concepts, next steps. Adapt labels to the topic and audience.',
+    `- If the brief is only a topic, use a default ${FIRST_FILL_SLIDE_COUNT_THIS_TURN}-slide outline (cover, why it matters, key concepts, evidence, next steps, close). Adapt labels to the topic and audience.`,
     '- Motif vocabulary OVERRIDE: Title-first always. Use the selected kit motif family after cover `<h1>`/`<h2>` + lead: compact existing classes, small complete inline snippets, or deco HTML from the kit. Keep slide padding (~56–80px) and put titles in normal flow (not under absolute Motif corners). FORBIDDEN this turn: Motif `<svg>` before title copy, multi-KB sprite dumps, inventing generic CSS circles / tiny corner dots / fake 12–48px flower SVGs / emoji daisies, Capsule coral pills when the kit Motif is petals/flowers/blobs/pins/pixel/scanlines, empty `.deco` shells. If you already started an SVG-before-title dump, abandon it and restart with `<h1>`.',
-    '- Named motif cue: do not invent a different motif family and do not omit recognizable kit identity entirely. Finish 3 titled slides first, but each slide should carry at least one lightweight kit-specific motif/deco cue when the visual kit exposes one.',
+    `- Named motif cue: do not invent a different motif family and do not omit recognizable kit identity entirely. Finish the THIS TURN slide count first, but each slide should carry at least one lightweight kit-specific motif/deco cue when the visual kit exposes one.`,
     '- Layout OVERRIDE: reuse capped Layout CSS + scaffold roles when present. FORBIDDEN: flattening every slide into one centered flex title column when the kit ships grids/splits/cards.',
     '- Full-bleed surface: bind kit Slide surface hex on `html`/`body` AND every `<section class="slide" style="…background:<kit surface>…">` edge-to-edge for the full 1920×1080 canvas. Prefer the kit identity surface (e.g. `--hc-bg` / cream / paper) — never substitute Neutral white/`#0f172a` when the kit names a surface. FORBIDDEN: white/default outer slide with an inner cream "paper" panel that leaves white bands at top/bottom. White title cards ON cream paper are OK.',
     '- Keep `<style>` very short (kit tokens + fonts only, ideally under ~1KB) and place it after slide 1 or omit it in favor of inline styles. Never dump the whole template stylesheet.',
-    '- Fill REAL topical titles/body (no "…", no "만들어줘", no create-slides boilerplate). Brief/Quick settings are the eventual target — this turn still closes 3. Hidden top-up appends the rest. Never copy the template demo page lineup.',
-    '- Prefer finishing a closed 3-slide `</artifact>` this turn over any Motif fidelity. A complete compact 3-slide deck beats a truncated SVG/CSS shell.',
+    `- Fill REAL topical titles/body (no "…", no "만들어줘", no create-slides boilerplate). Brief/Quick settings are the eventual target — this turn still closes up to ${FIRST_FILL_SLIDE_COUNT_THIS_TURN}. Hidden top-up appends only 7+. Never copy the template demo page lineup.`,
+    `- Prefer finishing a closed ${FIRST_FILL_SLIDE_COUNT_THIS_TURN}-slide \`</artifact>\` this turn over any Motif fidelity. A complete compact deck beats a truncated SVG/CSS shell.`,
     '- Honor stated audience/level (e.g. 시니어 개발자 = architecture/internals/trade-offs, not a beginner intro).',
     '- Each body slide needs a real title plus 2–4 concrete bullets or a real paragraph. No "핵심 메시지를 정리합니다" filler.',
   ];
 }
 
 const FIRST_FILL_SLIDE_COUNT_STABILITY_CAP =
-  '3 (stability cap for first template fill)';
+  `${FIRST_FILL_SLIDE_COUNT_THIS_TURN} (stability cap for first template fill)`;
 
 export function normalizeTemplateCloneFillSlideCountHint(input: string | number | null | undefined): string | null {
   const raw = String(input ?? '').trim();
@@ -282,7 +287,7 @@ export function normalizeTemplateCloneFillSlideCountHint(input: string | number 
   const single = raw.match(/^(\d{1,2})$/)?.[1];
   if (single) {
     const n = Number(single);
-    if (n <= 3) return String(n);
+    if (n <= FIRST_FILL_SLIDE_COUNT_THIS_TURN) return String(n);
     return FIRST_FILL_SLIDE_COUNT_STABILITY_CAP;
   }
   return raw;
@@ -388,7 +393,9 @@ export function buildTemplateCloneContentFillSeed(options: {
   if (slideCountHint) {
     parts.push(`Slide count hint: ${slideCountHint}.`);
   } else {
-    parts.push('Slide count hint: 3 (default for first template fill; close 3 complete slides this turn. Hidden top-up appends more.)');
+    parts.push(
+      `Slide count hint: ${FIRST_FILL_SLIDE_COUNT_THIS_TURN} (default for first template fill; close ${FIRST_FILL_SLIDE_COUNT_THIS_TURN} complete slides this turn.)`,
+    );
   }
   if (brief) {
     parts.push('', '[Source brief]', brief);
