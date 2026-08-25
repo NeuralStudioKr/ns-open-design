@@ -14,6 +14,7 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | chat leftover: CHAPTER 트랙 · 한 자리 `5 / CHECKLIST` | ☑ round30 |
 | chat leftover: PART 트랙 · figure hsl | ☑ round31 |
 | chat leftover: UNIT/STEP/MODULE/SECTION · ACT/SCENE/PHASE · EPISODE/BLOCK/FRAME/SESSION | ☑ round32 |
+| chat leftover: APPENDIX/TABLE/TOPIC/TRACK/PANEL/CARD/BEAT/LESSON/CLIP/ROUND/PASS/NOTE | ☑ round33 |
 | soft-CSS: oklab / color() continuation debris | ☑ round32 |
 | persist: `li` + `hsl()` invented frame | ☑ |
 | persist: `figure` comma/space hsl 프레임 | ☑ |
@@ -22,6 +23,7 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | persist: navy/indigo/cyan 1–2px fake outline | ☑ |
 | persist: 색 방언 무관 1–2px 프레임 + `box-shadow` ring · kit `var(--border)` 유지 | ☑ |
 | persist: oklch/oklab/lab/lch/color/color-mix · emerald/amber named frames | ☑ round32 |
+| persist: `hwb()` invented frames · outline oklch | ☑ round33 |
 | 16:9 inner clip · kit card bind | ☑ |
 | top-up 재진입 재호출 + 내부 프롬프트 노출 | ☑ |
 | PreviewModal/connector message 가드 | ☑ |
@@ -34,7 +36,14 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | think 태그 / 내부 마크업 필터 | ☑ 기존 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (round32 / 루프9)
+## 이번 루프 (round33 / 루프10)
+
+1. chat — APPENDIX/TABLE/TOPIC/TRACK/PANEL/CARD/BEAT/LESSON/CLIP/ROUND/PASS/NOTE 트랙 숨김
+2. persist — `hwb()` 1–2px 프레임을 kit 카드로 바인딩 (outline oklch 회귀)
+
+**검증:** contracts chat-leak-probe-round33 · round32 · round31 · round30 · round28 · deck-fixed-canvas
+
+## 직전 루프 (round32 / 루프9)
 
 1. chat — UNIT/STEP/MODULE/SECTION/ACT/SCENE/PHASE/EPISODE/BLOCK/FRAME/SESSION 트랙 숨김
 2. soft-CSS — oklab/lab/color() debris 줄 스크럽
