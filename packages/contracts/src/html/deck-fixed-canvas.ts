@@ -62,6 +62,18 @@ article[data-screen-label] {
   flex-direction: column;
   min-height: 0;
 }
+/* Split panes stay on one axis inside the clip. Do not force a column. */
+.slide > [data-od-slide-flow]:has(.split-left),
+.slide > [data-od-slide-flow]:has(.split-right),
+.slide > [data-od-slide-flow]:has(.split-pane) {
+  flex-direction: row;
+  align-items: stretch;
+}
+.slide > [data-od-slide-flow]:has(.split-top),
+.slide > [data-od-slide-flow]:has(.split-bottom) {
+  flex-direction: column;
+  align-items: stretch;
+}
 .slide > [data-od-slide-flow] > :is(.slide-footer, .slide-meta, .kicker-footer, .footer):not([class*="deco"]):not([class*="motif"]) {
   position: relative !important;
   inset: auto !important;
@@ -357,7 +369,8 @@ const KIT_SAFE_FRAME_COLOR_RE = /\b(?:var\s*\(|currentColor|inherit|transparent)
 const EXPLICIT_PAINT_COLOR_RE =
   /#(?:[0-9a-f]{3,8})\b|\b(?:rgba?|hsla?|hwb|oklch|oklab|lch|lab|color-mix|color|light-dark|device-cmyk)\s*\(|\b(?:navy|royalblue|mediumblue|indigo|skyblue|teal|cyan|blue|darkblue|purple|violet|fuchsia|magenta|crimson|emerald|amber|lime|rose|orange|pink|coral|tomato|chocolate|rebeccapurple|deepskyblue|mediumvioletred|slateblue|darkorchid|turquoise|gold|salmon|orchid|hotpink|dodgerblue|steelblue|seagreen|darkcyan|cadetblue|firebrick|indianred|lightcoral|darksalmon|lightsalmon|orangered|darkorange|peachpuff|khaki|moccasin|wheat|burlywood|tan|rosybrown|sienna|saddlebrown|peru|darkgoldenrod|goldenrod|lavender|thistle|plum|mediumorchid|blueviolet|darkviolet|mediumpurple|mediumslateblue|slategray|dimgray)\b/i;
 const FAKE_RING_SHADOW_RE = /(?:^|;)\s*box-shadow\s*:[^;]*\b0\s+0\s+0\s+(?:1px|2px)\b[^;]*/i;
-const SPLIT_LAYOUT_RE = /\bsplit-(?:left|right|pane|top|bottom)\b/i;
+const SPLIT_ROW_LAYOUT_RE = /\bsplit-(?:left|right|pane)\b/i;
+const SPLIT_COL_LAYOUT_RE = /\bsplit-(?:top|bottom)\b/i;
 
 function findMatchingClose(html: string, from: number, tag: string): number {
   const safe = tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -502,9 +515,7 @@ export function stripFloatingDeckIndexBadges(html: string): string {
 }
 
 function shouldSkipSlideFlowWrap(inner: string): boolean {
-  if (new RegExp(`\\b${DECK_SLIDE_FLOW_ATTR}\\b`, 'i').test(inner)) return true;
-  if (SPLIT_LAYOUT_RE.test(inner)) return true;
-  return false;
+  return new RegExp(`\\b${DECK_SLIDE_FLOW_ATTR}\\b`, 'i').test(inner);
 }
 
 const FLOW_COPIED_STYLE_PROPS = [
@@ -522,9 +533,14 @@ const FLOW_COPIED_STYLE_PROPS = [
   'grid-auto-flow',
   'grid-auto-rows',
   'grid-auto-columns',
+  'padding',
+  'padding-top',
+  'padding-right',
+  'padding-bottom',
+  'padding-left',
 ] as const;
 
-function wrapFlowOpenTag(hostAttrs: string): string {
+function wrapFlowOpenTag(hostAttrs: string, inner = ''): string {
   const style = extractStyleAttr(hostAttrs);
   const parts: string[] = [];
   for (const prop of FLOW_COPIED_STYLE_PROPS) {
@@ -532,6 +548,18 @@ function wrapFlowOpenTag(hostAttrs: string): string {
     const value = new RegExp(`(?:^|;)\\s*${escaped}\\s*:\\s*([^;]+)`, 'i')
       .exec(style)?.[1]?.trim();
     if (value) parts.push(`${prop}:${value}`);
+  }
+  const hasDisplay = parts.some((part) => /^display:/i.test(part));
+  const hasDirection = parts.some((part) => /^flex-direction:/i.test(part));
+  const isGrid = parts.some((part) => /^display:\s*grid\b/i.test(part));
+  if (SPLIT_ROW_LAYOUT_RE.test(inner) && !hasDisplay) {
+    parts.push('display:flex');
+  }
+  if (SPLIT_ROW_LAYOUT_RE.test(inner) && !hasDirection && !isGrid) {
+    parts.push('flex-direction:row');
+  }
+  if (SPLIT_COL_LAYOUT_RE.test(inner) && !SPLIT_ROW_LAYOUT_RE.test(inner) && !hasDirection && !isGrid) {
+    parts.push('flex-direction:column');
   }
   const styleAttr = parts.length > 0 ? ` style="${parts.join(';')}"` : '';
   return `<div ${DECK_SLIDE_FLOW_ATTR}${styleAttr}>`;
@@ -549,7 +577,7 @@ function wrapNonMotifInSpan(inner: string, hostAttrs: string): string {
       pending = '';
       return;
     }
-    out += `${wrapFlowOpenTag(hostAttrs)}${pending}</div>`;
+    out += `${wrapFlowOpenTag(hostAttrs, inner)}${pending}</div>`;
     pending = '';
   };
   for (const seg of segs) {
@@ -711,6 +739,7 @@ function injectFixedCanvasStyle(html: string): string {
       || !/overflow\s*:\s*visible/i.test(body)
       || !/contain\s*:\s*layout/i.test(body)
       || !/data-od-slide-flow/i.test(body)
+      || !/:has\(\.split-left\)/i.test(body)
     ) {
       return html.replace(pinRe, `$1\n${FIXED_CANVAS_CSS}\n$3`);
     }

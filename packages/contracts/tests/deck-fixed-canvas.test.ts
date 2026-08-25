@@ -189,6 +189,46 @@ describe('pinDeckSlidesToFixedCanvas', () => {
     expect(pinned).not.toMatch(/class="slide"[^>]*overflow:\s*hidden/);
   });
 
+  it('clips split-left/right checklists inside the flow wrap without persist-split', () => {
+    const html = [
+      '<section class="slide" style="width:1920px;height:1080px;display:flex;gap:48px;padding:72px">',
+      '<div class="deco-daisy" data-od-official-motif-html>motif</div>',
+      '<div class="split-left"><h2>다음 단계</h2><ol>',
+      '<li>One</li><li>Two</li><li>Three</li><li>Four</li><li>Five</li>',
+      '</ol></div>',
+      '<div class="split-right"><div class="card">Side</div></div>',
+      '</section>',
+    ].join('');
+    const pinned = pinDeckSlidesToFixedCanvas(html);
+    expect(pinned).toMatch(
+      /<div data-od-slide-flow style="display:flex;gap:48px;padding:72px;flex-direction:row">/,
+    );
+    expect(pinned).toContain('class="split-left"');
+    expect(pinned).toContain('class="split-right"');
+    expect(pinned).toMatch(/Five<\/li>/);
+    expect(pinned).toMatch(/<div class="deco-daisy"[^>]*>motif<\/div><div data-od-slide-flow\b/);
+    expect(pinned).not.toMatch(/<div data-od-slide-flow\b[^>]*>[\s\S]*deco-daisy/);
+    expect(pinned).not.toMatch(/class="slide"[^>]*overflow:\s*hidden/);
+    expect(pinned).toMatch(/\[data-od-slide-flow\][\s\S]*overflow:\s*hidden/);
+    expect(pinned).toMatch(/\[data-od-slide-flow\]:has\(\.split-left\)/);
+    expect(pinned.match(/<section\b/g)?.length).toBe(1);
+  });
+
+  it('keeps split-top/bottom on a column axis inside the clip', () => {
+    const html = [
+      '<section class="slide" style="width:1920px;height:1080px;padding:64px">',
+      '<div class="split-top"><h2>위</h2></div>',
+      '<div class="split-bottom"><p>아래</p></div>',
+      '</section>',
+    ].join('');
+    const pinned = pinDeckSlidesToFixedCanvas(html);
+    expect(pinned).toMatch(
+      /<div data-od-slide-flow style="padding:64px;flex-direction:column">/,
+    );
+    expect(pinned).toContain('class="split-top"');
+    expect(pinned).toContain('class="split-bottom"');
+  });
+
   it('binds MiniMax navy/blue outline boxes to official kit card classes', () => {
     const html = [
       '<!doctype html><html><body>',
