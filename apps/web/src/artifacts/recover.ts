@@ -367,7 +367,7 @@ export type SalvageCoverDraftOptions = {
   lastResortTitle?: string | null;
 };
 
-/** Persist last-resort when brief/project titles are instruction or "Presentation". */
+/** Persist last-resort when brief/project titles are instruction or unusable chrome. */
 export const LAST_RESORT_DECK_COVER_TITLE = '슬라이드 초안';
 
 /**
