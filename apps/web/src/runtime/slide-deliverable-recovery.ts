@@ -216,7 +216,9 @@ export async function verifySlideProducedHtmlDeliverable(
   ) {
     return null;
   }
-  if (isLowSubstanceSlideDeckArtifact(html)) return null;
+  if (isLowSubstanceSlideDeckArtifact(html, healContext?.brief, healContext?.deckTitle)) {
+    return null;
+  }
   return fileName;
 }
 
