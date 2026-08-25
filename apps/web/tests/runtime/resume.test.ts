@@ -205,7 +205,7 @@ describe('runtime/resume shell/no-HTML recovery constants', () => {
     expect(prompt).toContain('BODY-FIRST');
     expect(prompt).toContain('NEVER "수정 반영 중"');
     expect(prompt).toContain('Do not restart from `<head>`');
-    expect(prompt).toContain('1–2 slide cover draft');
+    expect(prompt).toContain('1–6 slide first-fill draft');
     expect(prompt).toContain('Official look/Motif CSS is merged after save');
     expect(prompt).not.toContain('디스크의 덱을 기준으로');
     expect(prompt).not.toContain('이미 저장된 슬라이드 덱');
@@ -267,7 +267,7 @@ describe('runtime/resume shell/no-HTML recovery constants', () => {
         '<!doctype html><html><body><section class="slide"><h1>Cover only</h1><p>Lead.</p></section></body></html>',
     });
     expect(prompt).toContain('Do not restart from `<head>`');
-    expect(prompt).toContain('1–2 slide cover draft');
+    expect(prompt).toContain('1–6 slide first-fill draft');
     expect(prompt).toContain('<h1>Cover only</h1>');
   });
 
@@ -308,7 +308,7 @@ describe('runtime/resume shell/no-HTML recovery constants', () => {
     });
     expect(prompt).not.toContain('FINAL RETRY');
     expect(prompt).toContain('BODY-FIRST');
-    expect(prompt).toContain('3장의 body-first');
+    expect(prompt).toContain('6장의 body-first');
     expect(prompt).toContain('빈 document shell');
     expect(prompt).toContain('위 shell을 복사하지 말고');
     expect(prompt).not.toContain('```html');
@@ -422,7 +422,7 @@ describe('runtime/resume shell/no-HTML recovery constants', () => {
     });
     expect(prompt).not.toContain('FINAL RETRY');
     expect(prompt).toContain('BODY-FIRST');
-    expect(prompt).toContain('3장의 body-first');
+    expect(prompt).toContain('6장의 body-first');
     expect(prompt).not.toContain('```html');
   });
 

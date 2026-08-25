@@ -366,6 +366,9 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).toContain('Turn 1');
       expect(prompt).toContain('question-form id="discovery"');
       expect(prompt).toContain('never an empty shell or long `<head>` chrome');
+      expect(prompt).toContain('at least 6 filled');
+      expect(prompt).toContain('honor an explicit user count of 1–6');
+      expect(prompt).not.toContain('prefer 3 this turn');
       expect(prompt).toContain('abandon that output');
       expect(prompt).toContain('API compact contract');
       expect(prompt).toContain('optional tiny UI-locale status sentence');

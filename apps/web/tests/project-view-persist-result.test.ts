@@ -55,6 +55,23 @@ describe('shouldFailRunForArtifactPersistResult', () => {
     ).toBe(true);
   });
 
+  it('allows a MiniMax 6-slide first-fill to replace a thin prior draft', () => {
+    const compactSix =
+      '<!doctype html><html lang="ko"><body>'
+      + Array.from({ length: 6 }, (_, i) =>
+        `<section class="slide"><h2>슬라이드 ${i + 1}</h2><p>본문입니다.</p></section>`,
+      ).join('')
+      + '</body></html>';
+    expect(
+      findClientArtifactRegression({
+        fileName: 'deck.html',
+        htmlBody: compactSix,
+        priorHtml: compactThree,
+        projectFiles: [{ name: 'deck.html', path: 'deck.html', size: 12_000 } as never],
+      }),
+    ).toBeNull();
+  });
+
   it('allows a MiniMax 3-slide draft to replace a thin prior draft', () => {
     expect(
       findClientArtifactRegression({

@@ -42,6 +42,27 @@ describe("deck-html-content", () => {
     expect(hasSalvageableDeckSlideContent(html)).toBe(false);
   });
 
+  it("treats a compact 6-slide MiniMax first-fill as a persistable draft", () => {
+    const html =
+      '<!doctype html><html lang="ko"><body>'
+      + Array.from({ length: 6 }, (_, i) =>
+        `<section class="slide"><h2>슬라이드 ${i + 1}</h2><p>본문입니다.</p></section>`,
+      ).join('')
+      + '</body></html>';
+    expect(isPersistableShortDeckDraft(html)).toBe(true);
+    expect(isIncompleteHtmlDocumentShell(html)).toBe(false);
+  });
+
+  it("does not treat a 7-slide sparse shell as a short persistable draft", () => {
+    const html =
+      '<!doctype html><html lang="ko"><body>'
+      + Array.from({ length: 7 }, (_, i) =>
+        `<section class="slide"><h2>슬라이드 ${i + 1}</h2></section>`,
+      ).join('')
+      + '</body></html>';
+    expect(isPersistableShortDeckDraft(html)).toBe(false);
+  });
+
   it("treats a compact 3-slide MiniMax first-fill as a persistable draft", () => {
     const html =
       '<!doctype html><html lang="ko"><body>'
@@ -356,7 +377,7 @@ describe("deck-html-content", () => {
     expect(hasSalvageableDeckSlideContent(html)).toBe(false);
   });
 
-  it("rejects sparse multi-slide decks with only one filled slide", () => {
+  it("rejects sparse multi-slide decks past the first-fill short-draft cap", () => {
     const html =
       "<!doctype html><html lang=\"ko\"><body>"
       + "<section class=\"slide\"><h1>Neural Studio</h1><p>회사 소개 슬라이드입니다.</p></section>"
@@ -365,8 +386,10 @@ describe("deck-html-content", () => {
       + "<section class=\"slide\"></section>"
       + "<section class=\"slide\"></section>"
       + "<section class=\"slide\"></section>"
+      + "<section class=\"slide\"></section>"
       + "</body></html>";
     expect(meetsMinimumDeckDeliverableQuality(html)).toBe(false);
+    expect(isPersistableShortDeckDraft(html)).toBe(false);
     expect(isIncompleteHtmlDocumentShell(html)).toBe(true);
     // Truncation salvage may still keep the strong slide for preview.
     expect(meetsTruncationSalvageQuality(html)).toBe(true);
@@ -390,9 +413,12 @@ describe("deck-html-content", () => {
       + "<section class=\"slide\"></section>"
       + "<section class=\"slide\"></section>"
       + "<section class=\"slide\"></section>"
+      + "<section class=\"slide\"></section>"
+      + "<section class=\"slide\"></section>"
       + "</body></html>";
     expect(meetsMinimumDeckDeliverableQuality(html)).toBe(false);
-    // Multi-slide sparse still trips the shell predicate; persist trusts soft.
+    expect(isPersistableShortDeckDraft(html)).toBe(false);
+    // Over-cap sparse still trips the shell predicate; persist trusts soft.
     expect(isIncompleteHtmlDocumentShell(html)).toBe(true);
     expect(isClosedSoftSalvageDeckHtml(html)).toBe(true);
   });

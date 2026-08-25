@@ -225,11 +225,16 @@ export async function resolveSlideProducedHtmlToOpen(
   producedHtmlToOpen: string | null,
   persistResult: ArtifactPersistResult | null | undefined,
   readProjectHtml: (name: string) => Promise<string | null>,
+  healContext?: { brief?: string | null; deckTitle?: string | null },
 ): Promise<string | null> {
   if (!producedHtmlToOpen) {
     return isEmergencyArtifactPersistSuccess(persistResult) ? persistResult!.fileName : null;
   }
-  const verified = await verifySlideProducedHtmlDeliverable(producedHtmlToOpen, readProjectHtml);
+  const verified = await verifySlideProducedHtmlDeliverable(
+    producedHtmlToOpen,
+    readProjectHtml,
+    healContext,
+  );
   if (verified) return verified;
   return isEmergencyArtifactPersistSuccess(persistResult) ? persistResult!.fileName : null;
 }

@@ -296,6 +296,9 @@ import {
   shouldAutoContinueForIncompleteOutput,
 } from '../runtime/resume';
 import { COMPACT_DECK_SLIDE_COUNT_GUIDANCE } from '../runtime/deckGuidance';
+
+/** Local copy — contracts-barrel re-export is undefined at web-test init. */
+const FIRST_FILL_SLIDE_COUNT_THIS_TURN = 6;
 import {
   extractCommentAttachmentsForAutoContinue,
   findPrecedingUserMessage,
@@ -2862,14 +2865,14 @@ export function findClientArtifactRegression(input: {
     )
     || (
       isClosedSoftSalvageDeckHtml(input.htmlBody)
-      && countDeckSlideSections(input.htmlBody) <= 3
+      && countDeckSlideSections(input.htmlBody) <= FIRST_FILL_SLIDE_COUNT_THIS_TURN
     );
   if (incomingCompactDraft && priorHtml) {
     const priorCount = countDeckSlideSections(priorHtml);
-    // MiniMax 3-this-turn retries must replace a thin prior draft. Keep the
+    // MiniMax first-fill retries must replace a thin prior draft. Keep the
     // byte-size guard when the on-disk deck is already a full multi-slide file.
     if (
-      priorCount <= 3
+      priorCount <= FIRST_FILL_SLIDE_COUNT_THIS_TURN
       || isPersistableShortDeckDraft(priorHtml)
       || isPersistableShortDeckDraftAfterHeal(
         priorHtml,
@@ -6762,12 +6765,19 @@ export function ProjectView({
             htmlToOpen,
             null,
             readProjectHtml,
+            {
+              brief: runVisiblePromptRef.current || '',
+              deckTitle: project.name || '슬라이드',
+            },
           );
         }
         if (!htmlToOpen) {
           const deckPath = resolveCanonicalDeckEntryPath(filesSnapshot);
           if (deckPath) {
-            htmlToOpen = await verifySlideProducedHtmlDeliverable(deckPath, readProjectHtml);
+            htmlToOpen = await verifySlideProducedHtmlDeliverable(deckPath, readProjectHtml, {
+              brief: runVisiblePromptRef.current || '',
+              deckTitle: project.name || '슬라이드',
+            });
           }
         }
         if (!htmlToOpen) continue;
@@ -6795,6 +6805,7 @@ export function ProjectView({
     return false;
   }, [
     project.id,
+    project.name,
     readProjectHtml,
     requestOpenFile,
     slideOnlyMvp,
@@ -8059,6 +8070,10 @@ export function ProjectView({
                     producedHtmlToOpen,
                     replayPersistResult,
                     readProjectHtml,
+                    {
+                      brief: runVisiblePromptRef.current || '',
+                      deckTitle: project.name || '슬라이드',
+                    },
                   );
                   nextFiles = await finalizeSlideOnlyDeckArtifacts(
                     nextFiles,
@@ -10013,6 +10028,10 @@ export function ProjectView({
                 producedHtmlToOpen,
                 terminalPersistResult,
                 readProjectHtml,
+                {
+                  brief: runVisiblePromptRef.current || '',
+                  deckTitle: project.name || '슬라이드',
+                },
               );
               nextFiles = await finalizeSlideOnlyDeckArtifacts(
                 nextFiles,

@@ -9,6 +9,9 @@ import {
   looksLikeTemplateMarketingTitle,
 } from '@open-design/contracts';
 
+/** Local copy — importing this from the contracts barrel is undefined at web-test init. */
+const FIRST_FILL_SLIDE_COUNT_THIS_TURN = 6;
+
 const SLIDE_HOST_OPEN_RE = /<(section|div|main|article)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
 
 /** Official catalog hosts plus cover dialects (`data-slide` / `data-slide-index`). */
@@ -425,9 +428,9 @@ export function isPersistableShortDeckDraft(html: string): boolean {
   if (deckArtifactStartsWithMotifSvgDump(withoutComments)) return false;
   if (deckSlideHeadingsLookLikeFailedGenerate(withoutComments)) return false;
   const inners = listSlideSectionInners(withoutComments);
-  // Compact API first-fill is 1–3 titled slides (top-up appends the rest).
-  // Sparse 4+ shells stay on the soft-salvage / incomplete trust path.
-  if (inners.length === 0 || inners.length > 3) return false;
+  // Compact API first-fill is 1–6 titled slides (top-up only for 7+).
+  // Sparse 7+ shells stay on the soft-salvage / incomplete trust path.
+  if (inners.length === 0 || inners.length > FIRST_FILL_SLIDE_COUNT_THIS_TURN) return false;
   const titled = inners.filter(slideInnerHasPersistableDraftCopy);
   // MiniMax compact first-fill often lands cover + two empty placeholders.
   // One persistable titled slide is enough — hidden top-up appends the rest.

@@ -15,6 +15,11 @@ import {
 } from '../teamver/templateCloneContentFill';
 import { COMPACT_DECK_SLIDE_COUNT_GUIDANCE } from './deckGuidance';
 
+/** Local copies — contracts-barrel re-exports are undefined at resume module init. */
+const FIRST_FILL_SLIDE_COUNT_THIS_TURN = 6;
+const FIRST_FILL_SLIDE_COUNT_GUIDANCE =
+  'Slide count THIS TURN: honor an explicit user count of 1–6. If the user asked for 7 or more, close 6 complete body-first slides this turn and hidden top-up appends the rest. If unspecified, close 6 this turn. Never close after a single cover.';
+
 // Canonical prompt sent by the "Continue the run" affordance on a resumable
 // failed run. The daemon resumes the persisted CLI session for this
 // (conversation, agent) and seeds only this turn (skipTranscript), so the agent
@@ -55,14 +60,15 @@ export const AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT =
   '이 대화에 이미 있는 요청·목차·Plugin inputs·quick-brief 답변만 사용해 완성된 HTML 슬라이드 덱을 즉시 출력하세요. ' +
   '출력 형식은 반드시 하나의 `<artifact type="deck" identifier="...">...</artifact>` 블록입니다. ' +
   '아티팩트는 `<body>` 또는 첫 `<section class="slide">`로 시작하세요. `<head>` / 긴 `<style>` / kit CSS를 먼저 쓰면 실패입니다. ' +
-  '이번 턴은 정확히 3장의 body-first 슬라이드를 닫고 `</body></html></artifact>`로 끝내세요. ' +
-  '6~8장 전체를 이 턴에 쓰지 마세요 — hidden top-up이 이어 붙입니다. ' +
-  '외부 파일 참조, 프레임워크 스켈레톤 복사, SLOT 주석, 추가 툴 호출 없이 이 한 번의 응답에서 3장을 완결지어야 합니다. ' +
+  `이번 턴은 정확히 ${FIRST_FILL_SLIDE_COUNT_THIS_TURN}장의 body-first 슬라이드를 닫고 \`</body></html></artifact>\`로 끝내세요. ` +
+  `${FIRST_FILL_SLIDE_COUNT_GUIDANCE} ` +
+  '7장 이상은 hidden top-up이 이어 붙입니다. ' +
+  `외부 파일 참조, 프레임워크 스켈레톤 복사, SLOT 주석, 추가 툴 호출 없이 이 한 번의 응답에서 ${FIRST_FILL_SLIDE_COUNT_THIS_TURN}장을 완결지어야 합니다. ` +
   '각 슬라이드는 제목과 2~4개의 실제 문장/불릿을 가져야 하며 빈 `<head>`나 빈 `<body>`로 끝내면 안 됩니다. ' +
   '(English: Use ONLY this conversation in this project. Do not continue any other project. ' +
-  'The previous turn in THIS chat produced no usable slide deck — emit 3 body-first slides ' +
+  `The previous turn in THIS chat produced no usable slide deck — emit ${FIRST_FILL_SLIDE_COUNT_THIS_TURN} body-first slides ` +
   'inside a single artifact starting at body or the first section.slide. ' +
-  'No head/kit CSS first, no 6-8 slide rewrite, no planning, no tool calls. Never use type="text/html".)';
+  'No head/kit CSS first, no planning, no tool calls. Never use type="text/html".)';
 
 /** True when a user-message body is the automatic-continue recovery prompt. */
 export function isAutoContinueIncompleteOutputPrompt(content: string | null | undefined): boolean {
@@ -84,14 +90,15 @@ const AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT_ESCALATED =
   '인사, 사과, 계획, 목차 나열, "만들겠습니다" 약속, question-form은 금지입니다. ' +
   '응답은 `<body>` 또는 첫 `<section class="slide">`로 시작하세요. `<head>` / kit CSS 선출력은 금지입니다. ' +
   // Token-budget escape hatch: previous full-scope attempts likely died at
-  // max_tokens mid-head. Close 3 body-first slides this turn so persist +
-  // hidden top-up can finish instead of another incomplete-html-document-shell.
-  '이번 턴은 정확히 3장의 body-first 슬라이드를 닫으세요. 6~8장 전체 재작성은 금지입니다. ' +
+  // max_tokens mid-head. Close the first-fill body-first count this turn so
+  // persist can finish instead of another incomplete-html-document-shell.
+  `이번 턴은 정확히 ${FIRST_FILL_SLIDE_COUNT_THIS_TURN}장의 body-first 슬라이드를 닫으세요. 7장 이상 전체 재작성은 금지입니다. ` +
+  `${FIRST_FILL_SLIDE_COUNT_GUIDANCE} ` +
   '각 슬라이드에는 SLOT 주석이 아니라 실제 텍스트 콘텐츠(제목·본문·목록)가 반드시 들어가야 합니다. ' +
   '이 대화의 Plugin inputs·quick-brief 답변·선택 템플릿 맥락을 유지하고, 새 질문으로 되돌아가지 마세요. ' +
   '인라인 CSS는 최소한만 쓰고, 필요하면 프레임워크 스크립트를 생략해도 좋습니다 — 빈 덱보다 스크롤로 넘기는 정적 덱이 낫습니다. ' +
   '`<!-- SLOT: ... -->` 형태의 주석 자리표시자를 그대로 남기는 것은 금지입니다. ' +
-  '(English: Output 3 body-first slides in ONE artifact — no prose, no `<head>` first. ' +
+  `(English: Output ${FIRST_FILL_SLIDE_COUNT_THIS_TURN} body-first slides in ONE artifact — no prose, no \`<head>\` first. ` +
   'Real text in every <section class="slide"> (never the SLOT comment). ' +
   'Minimize inline CSS; skip the framework <script> if needed — a static deck beats an empty artifact.)';
 
@@ -119,7 +126,7 @@ export function excerptPartialHtmlForAutoContinue(html: string): string {
 
 const HAS_HTML_CLOSE_RE = /<\/html\s*>/i;
 
-/** Closed 1–3 slide cover persist already accepts — including healed "만들어줘". */
+/** Closed 1–6 slide first-fill persist already accepts — including healed "만들어줘". */
 export function isClosedPersistableCoverDraft(html: string): boolean {
   const trimmed = String(html ?? '').replace(/^﻿/, '').trim();
   if (!trimmed || !HAS_HTML_CLOSE_RE.test(trimmed)) return false;
@@ -136,12 +143,12 @@ const AUTO_CONTINUE_HEAD_ONLY_BODY_FIRST =
   + 'Emit BODY-FIRST: start the artifact with `<body>` (or the first `<section class="slide">`), '
   + 'use only tiny inline style tokens, and fill every slide with real title + 2–4 bullets NOW. '
   + 'Official look/Motif CSS is merged after save — do not stream `<head>` or example.html styles. '
-  + 'Close exactly 3 body-first slides this turn. Hidden top-up appends more. '
+  + `Close exactly ${FIRST_FILL_SLIDE_COUNT_THIS_TURN} body-first slides this turn. Hidden top-up only for 7+. `
   + 'A compact static deck beats another CSS-only truncation.';
 
 const AUTO_CONTINUE_TEMPLATE_FILL_MIN_SLIDES =
   '\n\nCRITICAL: Do not restart from `<head>` / kit CSS. Persist keeps a '
-  + '1–2 slide cover draft and hidden top-up appends — do not burn this turn '
+  + `1–${FIRST_FILL_SLIDE_COUNT_THIS_TURN} slide first-fill draft and hidden top-up only for 7+ — do not burn this turn `
   + 'rewriting Daisy Days chrome. Emit BODY-FIRST slides (title + 2–4 bullets). '
   + 'If you continue, APPEND more `<section class="slide">` (or `<div class="slide">`) '
   + 'bodies. Official look/Motif CSS is merged after save.';
@@ -243,7 +250,7 @@ export function buildAutoContinueIncompleteOutputPrompt(
     && !documentContainsSlideSection(partialRaw)
     && (partialRaw.length >= 2048 || headWithoutBody),
   );
-  // Head-only / empty shells must stay on the compact 3-slide body-first
+  // Head-only / empty shells must stay on the compact first-fill body-first
   // contract. Escalating those to FINAL RETRY (historically "6+ slides +
   // complete <!doctype html>") made MiniMax dump `<head>` again and fail
   // as incomplete-html-document-shell twice in a row.
@@ -267,7 +274,7 @@ export function buildAutoContinueIncompleteOutputPrompt(
   const partialSlideCount = eachSlideHostOpenIndex(partialRaw).length;
   if (
     context.templateCloneContentFill
-    || (partialSlideCount > 0 && partialSlideCount < 3)
+    || (partialSlideCount > 0 && partialSlideCount < FIRST_FILL_SLIDE_COUNT_THIS_TURN)
   ) {
     parts.push(AUTO_CONTINUE_TEMPLATE_FILL_MIN_SLIDES);
   }
