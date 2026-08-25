@@ -794,6 +794,7 @@ describe("canvasSlideLaunch", () => {
     expect(fillSrc).toContain("large SVG sprites this turn");
     expect(fillSrc).toContain("compact template-identifying motif/deco cues");
     expect(projectView).not.toMatch(/lastResortTitle:\s*[\s\S]{0,120}'초안'/);
+    expect(projectView).toContain("fallbackTitle: '슬라이드'");
     expect(fillSrc).toContain("SLIDE_DECK_CONTENT_EXPANSION_INSTRUCTION");
     expect(fillSrc).toContain("BRIEF/TOPIC");
     const tabsBar = readWebSource("src/components/WorkspaceTabsBar.tsx");

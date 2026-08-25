@@ -14341,6 +14341,7 @@ function isReusableSameTurnDeckWrite(html: string | null | undefined): boolean {
 function artifactFromSalvagedHtml(html: string, base: Artifact): Artifact | null {
   const salvaged = salvageTruncatedHtmlDocument(html)
     ?? salvageTemplateFillShellAsCoverDraft(html, {
+      fallbackTitle: '슬라이드',
       lastResortTitle: LAST_RESORT_DECK_COVER_TITLE,
     });
   // Soft truncation salvage already quality-gated. Do not re-reject with the
@@ -14364,6 +14365,7 @@ function isUsableDeckHtmlArtifact(html: string | null | undefined): boolean {
   return Boolean(
     salvageTruncatedHtmlDocument(trimmed)
     ?? salvageTemplateFillShellAsCoverDraft(trimmed, {
+      fallbackTitle: '슬라이드',
       lastResortTitle: LAST_RESORT_DECK_COVER_TITLE,
     }),
   );
