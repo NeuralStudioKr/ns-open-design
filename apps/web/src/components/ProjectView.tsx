@@ -418,7 +418,11 @@ import { EntrySettingsMenu } from './EntrySettingsMenu';
 import { HandoffButton } from './HandoffButton';
 import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
 import { isTeamverEmbedMode } from '../teamver/designApiBase';
-import { waitForTeamverEmbedBoot } from '../teamver/teamverEmbedBoot';
+import { waitForTeamverEmbedBoot, isTeamverEmbedBootComplete } from '../teamver/teamverEmbedBoot';
+import {
+  takeCreateConversationHandoff,
+  waitPendingTemplateClone,
+} from '../teamver/createProjectStreamHandoff';
 import { registerTeamverProjectIfNeeded } from '../teamver/projectRegistry';
 import {
   refreshDesignAuthCookie,
@@ -3816,7 +3820,7 @@ export function ProjectView({
     savedArtifactRef.current = null;
     pendingWritesRef.current.clear();
     const loadConversationsWithRetry = async () => {
-      if (isTeamverEmbedMode()) {
+      if (isTeamverEmbedMode() && !isTeamverEmbedBootComplete()) {
         await waitForTeamverEmbedBoot();
       }
       let lastError: unknown;
@@ -3845,11 +3849,35 @@ export function ProjectView({
       }
       throw lastError;
     };
+    const handedOffId =
+      takeCreateConversationHandoff(project.id)
+      || (typeof routeConversationId === 'string' ? routeConversationId.trim() : '')
+      || '';
+    let usedHandoff = false;
+    if (handedOffId) {
+      usedHandoff = true;
+      const now = Date.now();
+      setConversations([
+        {
+          id: handedOffId,
+          projectId: project.id,
+          title: null,
+          createdAt: now,
+          updatedAt: now,
+          messageCount: 0,
+        },
+      ]);
+      setActiveConversationId(handedOffId);
+      rememberTeamverProjectConversation(project.id, handedOffId);
+    }
     (async () => {
       try {
         const list = await loadConversationsWithRetry();
         if (cancelled) return;
         if (list.length === 0) {
+          if (usedHandoff && handedOffId) {
+            return;
+          }
           const fresh = await createConversation(project.id);
           if (cancelled) return;
           if (fresh) {
@@ -3868,20 +3896,29 @@ export function ProjectView({
           const routedMatch = routeConversationId
             ? list.find((c) => c.id === routeConversationId) ?? null
             : null;
+          const handedOffMatch = handedOffId
+            ? list.find((c) => c.id === handedOffId) ?? null
+            : null;
           const rememberedId = readRememberedTeamverProjectConversation(project.id);
           const rememberedMatch = rememberedId
             ? list.find((c) => c.id === rememberedId) ?? null
             : null;
           const nextActiveId = routedMatch
             ? routedMatch.id
-            : rememberedMatch
-              ? rememberedMatch.id
-              : list[0]!.id;
+            : handedOffMatch
+              ? handedOffMatch.id
+              : rememberedMatch
+                ? rememberedMatch.id
+                : list[0]!.id;
           setActiveConversationId(nextActiveId);
           rememberTeamverProjectConversation(project.id, nextActiveId);
         }
       } catch (err) {
         if (cancelled) return;
+        if (usedHandoff && handedOffId) {
+          devLog.warn('[project] conversation list refresh failed after create handoff', err);
+          return;
+        }
         const message = formatProjectConversationErrorForUser(err, formatProjectConversationListError());
         setConversations([]);
         setActiveConversationId(null);
@@ -3892,7 +3929,7 @@ export function ProjectView({
     return () => {
       cancelled = true;
     };
-  }, [project.id, conversationLoadRetryNonce]);
+  }, [project.id, conversationLoadRetryNonce, routeConversationId]);
 
   useEffect(() => {
     if (!activeConversationId) return;
@@ -3986,7 +4023,7 @@ export function ProjectView({
         }
       };
       const loadMessagesWithRetry = async () => {
-        if (isTeamverEmbedMode()) {
+        if (isTeamverEmbedMode() && !isTeamverEmbedBootComplete()) {
           await waitForTeamverEmbedBoot();
         }
         let lastError: unknown;
@@ -4018,13 +4055,36 @@ export function ProjectView({
         }
         throw lastError;
       };
+      let freshAutoSend = false;
+      try {
+        freshAutoSend =
+          window.sessionStorage.getItem(autoSendFirstMessageKey(project.id)) === '1';
+      } catch {
+        freshAutoSend = false;
+      }
+      if (freshAutoSend) {
+        setMessages([]);
+        setMessagesInitialized(true);
+        messagesConversationIdRef.current = activeConversationId;
+        setMessagesConversationId(activeConversationId);
+        setFailedMessagesConversationId(null);
+      }
       try {
         const [list, comments, activeRuns] = await loadMessagesWithRetry();
         if (cancelled) return;
         const mergedMessages = mergeActiveRunsIntoMessages(list, activeRuns).map(
           sanitizePersistedAssistantChatMessage,
         );
-        setMessages(mergedMessages);
+        const autoSendOwnsLocal =
+          freshAutoSend
+          && (autoSentRef.current || Boolean(streamingConversationIdRef.current));
+        if (autoSendOwnsLocal) {
+          if (mergedMessages.length > 0) {
+            setMessages(mergedMessages);
+          }
+        } else {
+          setMessages(mergedMessages);
+        }
         setMessagesInitialized(true);
         if (activeRuns.length > 0) {
           setReattachNonce((value) => value + 1);
@@ -4034,10 +4094,12 @@ export function ProjectView({
         // just-deleted memo while the daemon DELETE is still in flight.
         setPreviewComments(filterLocallyDeletedPreviewComments(comments));
         setAttachedComments([]);
-        setArtifact(null);
+        if (!autoSendOwnsLocal) {
+          setArtifact(null);
+          savedArtifactRef.current = null;
+          pendingWritesRef.current.clear();
+        }
         setError(null);
-        savedArtifactRef.current = null;
-        pendingWritesRef.current.clear();
         messagesConversationIdRef.current = activeConversationId;
         setMessagesConversationId(activeConversationId);
         setFailedMessagesConversationId(null);
@@ -4645,7 +4707,7 @@ export function ProjectView({
   }, []);
 
   const refreshProjectFiles = useCallback(async (): Promise<ProjectFile[]> => {
-    if (isTeamverEmbedMode()) {
+    if (isTeamverEmbedMode() && !isTeamverEmbedBootComplete()) {
       await waitForTeamverEmbedBoot();
     }
     const next = await fetchProjectFiles(project.id);
@@ -11128,8 +11190,7 @@ export function ProjectView({
               }
             : undefined;
         if (userText.length > 0) {
-          try {
-            const memoryResponse = await fetchTeamverDaemon('/api/memory/extract', {
+          void fetchTeamverDaemon('/api/memory/extract', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               teamverProjectId: project.id,
@@ -11141,15 +11202,12 @@ export function ProjectView({
                 conversationId: runConversationId,
                 chatProvider: byokChatProvider,
               }),
-            });
+            }).then((memoryResponse) => {
             if (memoryResponse.status === 401) {
               devLog.debug('[teamver] pre-turn memory extraction skipped after daemon 401');
-            }
-          } catch {
-            // Best-effort: memory extraction must never block the
-            // chat. The daemon's SSE bus will catch up the Memory tab
-            // on the next event.
-          }
+            }}).catch(() => {
+            // Best-effort: memory extraction must never block the chat.
+          });
         }
         const effectiveDesignSystemId = meta?.designSystemId ?? project.designSystemId ?? null;
         const effectiveSkillId = resolveDeckTemplateSkillId(project.metadata, meta);
@@ -13342,7 +13400,9 @@ export function ProjectView({
     const selected = selectedDeckTemplateMetadata(project.metadata);
     const isFillSeed = fillQueued || isTemplateCloneContentFillPrompt(seed);
     const fillSlideCountHint = extractTemplateCloneFillSlideCountHintFromPrompt(seed);
-    void handleSend(seed, attachments, [], {
+    void (async () => {
+      await waitPendingTemplateClone(project.id);
+      void handleSend(seed, attachments, [], {
       skipDiscoveryBrief:
         project.metadata?.skipDiscoveryBrief === true || Boolean(selected),
       ...(isFillSeed
@@ -13366,6 +13426,7 @@ export function ProjectView({
           }
         : {}),
     });
+    })();
   }, [
     activeConversationId,
     messagesInitialized,

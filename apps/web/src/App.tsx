@@ -133,6 +133,11 @@ import {
 } from './teamver/canvasSlideLaunch';
 import { seedTemplateClonedDeck } from './teamver/seedTemplateClonedDeck';
 import {
+  writeCreateConversationHandoff,
+  setPendingTemplateClone,
+} from './teamver/createProjectStreamHandoff';
+import { rememberTeamverProjectConversation } from './teamver/teamverProjectConversationMemory';
+import {
   buildTemplateCloneContentFillSeed,
   queueTemplateCloneContentFill,
   withoutCanonicalDeckAttachments,
@@ -2668,25 +2673,6 @@ function AppInner() {
                 ? input.metadata.selectedDeckTemplateTitle.trim()
                 : '';
             const userFacingRequest = extractUserFacingCreateRequest(derivedPendingPrompt);
-            const seeded = await seedTemplateClonedDeck({
-              projectId: result.project.id,
-              pluginId: selectedDeckTemplateId,
-              templateTitle: templateTitle || selectedDeckTemplateId,
-              sourceBrief,
-              userInstruction: userFacingRequest || null,
-              deckTitle:
-                sanitizeTemplateCloneDeckTitle(pendingCanvasHandoff.title)
-                || sanitizeTemplateCloneDeckTitle(pendingCanvasHandoff.threadTitle)
-                || (isUsableDeckCoverTitle(result.project.name)
-                  ? sanitizeTemplateCloneDeckTitle(result.project.name)
-                  : null)
-                || sanitizeTemplateCloneDeckTitle(
-                  summarizeProjectNameFromUserTurn(derivedPendingPrompt ?? ''),
-                )
-                || sanitizeTemplateCloneDeckTitle(userFacingRequest.split('\n')[0])
-                || null,
-              slideCountHint: slideCountHintFromInputs,
-            });
             queuedFillSeed = buildTemplateCloneContentFillSeed({
               userInstruction: userFacingRequest || null,
               sourceBrief,
@@ -2700,20 +2686,45 @@ function AppInner() {
               seed: queuedFillSeed,
               attachments: firstMessageAttachments,
             });
-            if (seeded.ok) {
-              seededDeckFileName = seeded.fileName;
-              preservedFilledDeck = seeded.preservedFilled === true;
-            } else {
-              // Clone LOOK seed failed — still run kit-driven CREATE fill so
-              // the first turn is not a Neutral/instruction dump.
-              devLog.warn(
-                'Home Canvas template clone seed failed; continuing with selected-template AI fill',
-                seeded,
-              );
-              setWorkingDirError(
-                '템플릿 미리보기 준비에 실패했습니다. 선택한 템플릿 컨텍스트로 슬라이드 생성을 계속합니다.',
-              );
-            }
+            // Navigate without awaiting Clone; auto-send waits via waitPendingTemplateClone.
+            setPendingTemplateClone(
+              result.project.id,
+              seedTemplateClonedDeck({
+                projectId: result.project.id,
+                pluginId: selectedDeckTemplateId,
+                templateTitle: templateTitle || selectedDeckTemplateId,
+                sourceBrief,
+                userInstruction: userFacingRequest || null,
+                deckTitle:
+                  sanitizeTemplateCloneDeckTitle(pendingCanvasHandoff.title)
+                  || sanitizeTemplateCloneDeckTitle(pendingCanvasHandoff.threadTitle)
+                  || (isUsableDeckCoverTitle(result.project.name)
+                    ? sanitizeTemplateCloneDeckTitle(result.project.name)
+                    : null)
+                  || sanitizeTemplateCloneDeckTitle(
+                    summarizeProjectNameFromUserTurn(derivedPendingPrompt ?? ''),
+                  )
+                  || sanitizeTemplateCloneDeckTitle(userFacingRequest.split('\n')[0])
+                  || null,
+                slideCountHint: slideCountHintFromInputs,
+              }).then((seeded) => {
+                if (seeded.ok) {
+                  seededDeckFileName = seeded.fileName;
+                  preservedFilledDeck = seeded.preservedFilled === true;
+                } else {
+                  // Clone LOOK seed failed — still run kit-driven CREATE fill so
+                  // the first turn is not a Neutral/instruction dump.
+                  devLog.warn(
+                    'Home Canvas template clone seed failed; continuing with selected-template AI fill',
+                    seeded,
+                  );
+                  setWorkingDirError(
+                    '템플릿 미리보기 준비에 실패했습니다. 선택한 템플릿 컨텍스트로 슬라이드 생성을 계속합니다.',
+                  );
+                }
+                return seeded;
+              }),
+            );
           }
           // Drop URL handoff once import succeeded so ProjectView does not
           // re-open one-confirm while auto-send is queued.
@@ -2799,15 +2810,6 @@ function AppInner() {
           || sanitizeTemplateCloneDeckTitle(userFacingRequest.split('\n')[0])
           || sanitizeTemplateCloneDeckTitle(homeDriveSourceAsset?.filename)
           || null;
-        const seeded = await seedTemplateClonedDeck({
-          projectId: result.project.id,
-          pluginId: selectedDeckTemplateId,
-          templateTitle: templateTitle || selectedDeckTemplateId,
-          sourceBrief,
-          userInstruction: userFacingRequest || null,
-          deckTitle: clonedDeckCoverTitle,
-          slideCountHint: slideCountHintFromInputs,
-        });
         queuedFillSeed = buildTemplateCloneContentFillSeed({
           userInstruction: userFacingRequest || null,
           sourceBrief,
@@ -2821,18 +2823,33 @@ function AppInner() {
           seed: queuedFillSeed,
           attachments: firstMessageAttachments,
         });
-        if (seeded.ok) {
-          seededDeckFileName = seeded.fileName;
-          preservedFilledDeck = seeded.preservedFilled === true;
-        } else {
-          devLog.warn(
-            'Home template clone seed failed; continuing with selected-template AI fill',
-            seeded,
-          );
-          setWorkingDirError(
-            '템플릿 미리보기 준비에 실패했습니다. 선택한 템플릿 컨텍스트로 슬라이드 생성을 계속합니다.',
-          );
-        }
+        // Navigate without awaiting Clone; auto-send waits via waitPendingTemplateClone.
+        setPendingTemplateClone(
+          result.project.id,
+          seedTemplateClonedDeck({
+            projectId: result.project.id,
+            pluginId: selectedDeckTemplateId,
+            templateTitle: templateTitle || selectedDeckTemplateId,
+            sourceBrief,
+            userInstruction: userFacingRequest || null,
+            deckTitle: clonedDeckCoverTitle,
+            slideCountHint: slideCountHintFromInputs,
+          }).then((seeded) => {
+            if (seeded.ok) {
+              seededDeckFileName = seeded.fileName;
+              preservedFilledDeck = seeded.preservedFilled === true;
+            } else {
+              devLog.warn(
+                'Home template clone seed failed; continuing with selected-template AI fill',
+                seeded,
+              );
+              setWorkingDirError(
+                '템플릿 미리보기 준비에 실패했습니다. 선택한 템플릿 컨텍스트로 슬라이드 생성을 계속합니다.',
+              );
+            }
+            return seeded;
+          }),
+        );
       }
       trackProjectCreateResult(
         analytics.track,
@@ -2905,7 +2922,7 @@ function AppInner() {
               ...(project.metadata && typeof project.metadata === 'object'
                 ? project.metadata
                 : {}),
-              templateClonedDeckSeeded: Boolean(seededDeckFileName) && !preservedFilledDeck,
+              templateClonedDeckSeeded: !preservedFilledDeck,
               templateCloneContentFillPending: true,
               ...(selectedDeckTemplateId
                 ? { selectedDeckTemplateId }
@@ -2914,6 +2931,10 @@ function AppInner() {
           }
         : project;
       rememberLocalProject(projectForNav.id);
+      if (typeof result.conversationId === 'string' && result.conversationId.trim()) {
+        writeCreateConversationHandoff(projectForNav.id, result.conversationId);
+        rememberTeamverProjectConversation(projectForNav.id, result.conversationId.trim());
+      }
       flushSync(() => {
         setProjects((curr) => [
           projectForNav,
@@ -2922,14 +2943,18 @@ function AppInner() {
       });
       // Overlap preview-url mint with ProjectView mount so FileViewer can peek
       // a cached prefix (srcDoc hold) instead of waiting for post-mount remint.
+      const navDeckFile = seededDeckFileName ?? (queuedFillSeed ? 'deck.html' : null);
       warmTeamverProjectPreviewPrefixSoon(
         projectForNav.id,
-        seededDeckFileName ?? 'deck.html',
+        navDeckFile ?? 'deck.html',
       );
       const projectRoute = {
         kind: 'project',
         projectId: projectForNav.id,
-        fileName: seededDeckFileName,
+        fileName: navDeckFile,
+        ...(typeof result.conversationId === 'string' && result.conversationId.trim()
+          ? { conversationId: result.conversationId.trim() }
+          : {}),
       } as const;
       if (!hideWorkspaceTabsBar) {
         openWorkspaceTab(projectRoute);
