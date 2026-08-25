@@ -5272,7 +5272,7 @@ export function ProjectView({
         // thrown away and the user only sees incomplete_output.
         const coverFallbackTitle = deriveDeckCoverTitleFromBrief(
           runVisiblePromptRef.current || '',
-          project.name,
+          project.name || '슬라이드',
         );
         const incomingBeforeSalvage = artifactToPersist.html;
         const salvaged = salvageTruncatedHtmlDocument(artifactToPersist.html)
