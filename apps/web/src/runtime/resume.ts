@@ -127,12 +127,16 @@ export function excerptPartialHtmlForAutoContinue(html: string): string {
 const HAS_HTML_CLOSE_RE = /<\/html\s*>/i;
 
 /** Closed 1–6 slide first-fill persist already accepts — including healed "만들어줘". */
-export function isClosedPersistableCoverDraft(html: string): boolean {
+export function isClosedPersistableCoverDraft(
+  html: string,
+  brief?: string | null,
+  deckTitle?: string | null,
+): boolean {
   const trimmed = String(html ?? '').replace(/^﻿/, '').trim();
   if (!trimmed || !HAS_HTML_CLOSE_RE.test(trimmed)) return false;
   return (
     isPersistableShortDeckDraft(trimmed)
-    || isPersistableShortDeckDraftAfterHeal(trimmed)
+    || isPersistableShortDeckDraftAfterHeal(trimmed, brief, deckTitle || '슬라이드')
   );
 }
 
@@ -184,6 +188,9 @@ export type AutoContinuePromptContext = {
    * `<head>` hang).
    */
   templateCloneContentFill?: boolean;
+  /** Same brief/title persist heal uses so AfterHeal matches the write path. */
+  healBrief?: string | null;
+  healTitle?: string | null;
 };
 
 // Cap on automatic continue attempts inside a single conversation.
@@ -342,7 +349,7 @@ export function buildAutoContinueIncompleteOutputPrompt(
         + COMPACT_DECK_SLIDE_COUNT_GUIDANCE
         + ')',
     );
-  } else if (partial && isClosedPersistableCoverDraft(partial)) {
+  } else if (partial && isClosedPersistableCoverDraft(partial, context.healBrief, context.healTitle)) {
     // Persist + top-up own a closed 1–3 slide cover (including healed
     // "만들어줘"). Do not tell the model it is incomplete or to throw it away.
     const excerpt = excerptPartialHtmlForAutoContinue(partial);

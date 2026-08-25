@@ -14785,7 +14785,7 @@ function HtmlViewer({
 
   useEffect(() => {
     function onMessage(ev: MessageEvent) {
-      try {
+      runFileViewerPreviewMessageHandler('preview escape', () => {
         if (!isOurPreviewIframeSource(ev.source)) return;
         const data = ev.data as { type?: string } | null;
         if (data?.type !== PREVIEW_ESCAPE_MESSAGE) return;
@@ -14809,11 +14809,7 @@ function HtmlViewer({
           exitInTabPresent: () => setInTabPresent(false),
           closeDeployModal,
         });
-      } catch (err) {
-        // Escape is dismiss-only. A leftover identifier / setter throw must
-        // not take down the Teamver embed error boundary (shareMenuOpen §1.20).
-        console.error('[HtmlViewer] preview escape failed', err);
-      }
+      });
     }
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);

@@ -4188,6 +4188,8 @@ export function ProjectView({
                 scopedCommentAttachmentCount: recoveryCommentAttachments.length,
                 outlineMessages: mergedMessages.slice(0, incompleteIndex + 1),
                 finalText: incompleteAssistant.content,
+                healBrief: runVisiblePromptRef.current || '',
+                healTitle: project.name || '슬라이드',
                 projectFiles: filesForRecovery,
                 beforeFileNames,
                 startedAt: incompleteAssistant.startedAt ?? incompleteAssistant.createdAt ?? Date.now(),
@@ -4358,6 +4360,8 @@ export function ProjectView({
                       project.metadata?.entryFile,
                     ),
                   templateCloneContentFill: autoContinueOriginIsFill,
+                  healBrief: runVisiblePromptRef.current || '',
+                  healTitle: project.name || '슬라이드',
                 },
               });
               const autoContinuePrompt = autoContinueOriginIsFill
@@ -6774,10 +6778,14 @@ export function ProjectView({
         if (!htmlToOpen) {
           const deckPath = resolveCanonicalDeckEntryPath(filesSnapshot);
           if (deckPath) {
-            htmlToOpen = await verifySlideProducedHtmlDeliverable(deckPath, readProjectHtml, {
-              brief: runVisiblePromptRef.current || '',
-              deckTitle: project.name || '슬라이드',
-            });
+            htmlToOpen = await verifySlideProducedHtmlDeliverable(
+              deckPath,
+              readProjectHtml,
+              {
+                brief: runVisiblePromptRef.current || '',
+                deckTitle: project.name || '슬라이드',
+              },
+            );
           }
         }
         if (!htmlToOpen) continue;
@@ -7942,7 +7950,11 @@ export function ProjectView({
                   }
                   if (recoveredExistingArtifact) {
                     const recoveredDisk = await readProjectHtml(recoveredExistingArtifact.name);
-                    if (!isReusableSameTurnDeckWrite(recoveredDisk)) {
+                    if (!isReusableSameTurnDeckWrite(
+                      recoveredDisk,
+                      runVisiblePromptRef.current || '',
+                      project.name || '슬라이드',
+                    )) {
                       recoveredExistingArtifact = null;
                     }
                   }
@@ -8606,6 +8618,8 @@ export function ProjectView({
             scopedCommentAttachmentCount: recoveryCommentAttachments.length,
             outlineMessages: mergedMessages.slice(0, incompleteIndex + 1),
             finalText: incompleteAssistant.content,
+            healBrief: runVisiblePromptRef.current || '',
+            healTitle: project.name || '슬라이드',
             projectFiles: nextFiles,
             beforeFileNames,
             startedAt: incompleteAssistant.startedAt ?? incompleteAssistant.createdAt ?? Date.now(),
@@ -8770,6 +8784,8 @@ export function ProjectView({
                     project.metadata?.entryFile,
                   ),
                 templateCloneContentFill: autoContinueOriginIsFill,
+                healBrief: runVisiblePromptRef.current || '',
+                healTitle: project.name || '슬라이드',
               },
             });
             const autoContinuePrompt = autoContinueOriginIsFill
@@ -9923,7 +9939,11 @@ export function ProjectView({
               );
               if (reuseSameTurnWrite && sameTurnHtmlWrite) {
                 const diskPeek = await readProjectHtml(sameTurnHtmlWrite.name);
-                reuseSameTurnWrite = isReusableSameTurnDeckWrite(diskPeek);
+                reuseSameTurnWrite = isReusableSameTurnDeckWrite(
+                  diskPeek,
+                  runVisiblePromptRef.current || '',
+                  project.name || '슬라이드',
+                );
               }
               if (reuseSameTurnWrite && sameTurnHtmlWrite) {
                 savedArtifactRef.current = sameTurnHtmlWrite.name;
@@ -10055,6 +10075,8 @@ export function ProjectView({
               liveHtml,
               finalText: rawFinalText,
               terminalArtifactPersistFailed,
+              healBrief: runVisiblePromptRef.current || '',
+              healTitle: project.name || '슬라이드',
             });
             if (shouldFailMissingSlideHtml) {
               terminalArtifactPersistFailed = true;
@@ -10183,6 +10205,8 @@ export function ProjectView({
                   scopedCommentAttachmentCount: terminalAutoContinueCommentAttachments.length,
                   outlineMessages,
                   finalText: rawFinalText,
+                  healBrief: runVisiblePromptRef.current || '',
+                  healTitle: project.name || '슬라이드',
                   projectFiles: nextFiles,
                   beforeFileNames,
                   startedAt,
@@ -10237,6 +10261,8 @@ export function ProjectView({
                   scopedCommentAttachmentCount: terminalAutoContinueCommentAttachments.length,
                   outlineMessages: fallbackMessages,
                   finalText: rawFinalText,
+                  healBrief: runVisiblePromptRef.current || '',
+                  healTitle: project.name || '슬라이드',
                   projectFiles: nextFiles,
                   beforeFileNames,
                   startedAt,
@@ -10465,6 +10491,8 @@ export function ProjectView({
                           project.metadata?.entryFile,
                         ),
                       templateCloneContentFill: autoContinueOriginIsFill,
+                      healBrief: runVisiblePromptRef.current || '',
+                      healTitle: project.name || '슬라이드',
                     },
                   });
                   const autoContinuePrompt = autoContinueOriginIsFill
@@ -14377,6 +14405,8 @@ export function shouldFailSlideRunForMissingHtmlDeliverable(options: {
   liveHtml: string;
   finalText: string;
   terminalArtifactPersistFailed: boolean;
+  healBrief?: string | null;
+  healTitle?: string | null;
 }): boolean {
   // When persist already failed (skipped-incomplete / rejected / save-failed),
   // the caller has already set terminalArtifactPersistFailed — don't double
@@ -14389,7 +14419,11 @@ export function shouldFailSlideRunForMissingHtmlDeliverable(options: {
   if (artifactHtml) {
     if (
       isIncompleteHtmlDocumentShell(artifactHtml)
-      && !isPersistableShortDeckDraftAfterHeal(artifactHtml)
+      && !isPersistableShortDeckDraftAfterHeal(
+        artifactHtml,
+        options.healBrief,
+        options.healTitle || '슬라이드',
+      )
     ) {
       return true;
     }
@@ -14409,12 +14443,16 @@ export function shouldFailSlideRunForMissingHtmlDeliverable(options: {
 const DOCTYPE_HTML_TAIL_RE = /<!doctype\s+html[\s\S]*/i;
 
 /** Write-tool same-turn HTML must already be a persistable deck, not a CSS shell. */
-function isReusableSameTurnDeckWrite(html: string | null | undefined): boolean {
+function isReusableSameTurnDeckWrite(
+  html: string | null | undefined,
+  brief?: string | null,
+  deckTitle?: string | null,
+): boolean {
   const trimmed = String(html ?? '').trim();
   if (!trimmed || !validateHtmlArtifact(trimmed).ok) return false;
   if (
     isPersistableShortDeckDraft(trimmed)
-    || isPersistableShortDeckDraftAfterHeal(trimmed)
+    || isPersistableShortDeckDraftAfterHeal(trimmed, brief, deckTitle || '슬라이드')
     || isClosedSoftSalvageDeckHtml(trimmed)
   ) {
     return true;
