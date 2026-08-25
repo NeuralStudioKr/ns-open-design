@@ -2320,7 +2320,7 @@ const TAG_STRIPPED_LEFTOVER_OPENER_RE =
 const TAG_STRIPPED_LEFTOVER_CLOSER_RE =
   /<\/(?:artifact|html|body|head|section|article|main)\s*>/i;
 const TAG_STRIPPED_LEFTOVER_CHROME_RE =
-  /(?:data-slide-index|prefers-reduced-motion|axe-core|FRONT-END TRACK|LECTURE\s+\d+|font-size\s*:|mix-blend-mode\s*:|offset-path\s*:|<!doctype\s+html)/i;
+  /(?:data-slide-index|prefers-reduced-motion|axe-core|FRONT-END TRACK|LECTURE\s+\d+|WD\s*·\s*(?:INTRO|COVER|TRACK|LECTURE)|INTRO\s*·\s*FRONT-END|font-size\s*:|mix-blend-mode\s*:|offset-path\s*:|<!doctype\s+html)/i;
 const TAG_STRIPPED_HANGUL_LATIN_GLUE_RE =
   /[\uac00-\ud7af][\s·•./:_-]*[A-Za-z]|[A-Za-z][\s·•./:_-]*[\uac00-\ud7af]/;
 
@@ -2395,6 +2395,12 @@ function looksLikeTagStrippedSlideBody(line: string): boolean {
   if (/^(?:html|body|head|section|article|main)\s*>/i.test(trimmed)) return true;
   // Soft-CSS inline cuts can leave `WD ·` after chopping at `LECTURE 01`.
   if (/^WD\s*·\s*$/i.test(trimmed)) return true;
+  // Short track chrome without long body (`WD · INTRO` / `WD · TRACK`).
+  if (/^WD\s*·\s*(?:INTRO|COVER|TRACK|LECTURE)\b/i.test(trimmed)) return true;
+  if (/^INTRO\s*·\s*FRONT-END\b/i.test(trimmed)) return true;
+  if (/^\d{2}\s*\/\s*(?:INTRO|COVER|TRACK|CHECKLIST|SUMMARY|LECTURE)\b/i.test(trimmed)) {
+    return true;
+  }
   if (
     /(?:prefers-reduced-motion|axe-core|data-slide-index|FRONT-END TRACK|LECTURE\s+\d+)/i.test(
       trimmed,

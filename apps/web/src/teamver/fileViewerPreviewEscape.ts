@@ -71,6 +71,6 @@ export function runFileViewerPreviewMessageHandler(
   try {
     run();
   } catch (err) {
-    console.error(`[HtmlViewer] preview ${label} failed`, err);
+    console.error(`[preview] ${label} failed`, err);
   }
 }

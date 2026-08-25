@@ -186,6 +186,20 @@ describe('pinDeckSlidesToFixedCanvas', () => {
     expect(pinned).toContain(DECK_SLIDE_FLOW_ATTR);
   });
 
+  it('binds MiniMax indigo outline boxes to official kit card classes', () => {
+    const html = [
+      '<!doctype html><html><body>',
+      '<section class="slide" style="width:1920px;height:1080px">',
+      '<div style="border:2px solid #4f46e5;padding:24px">Indigo frame</div>',
+      '</section>',
+      '<style data-od-official-look-css>.card{box-shadow:var(--shadow)}</style>',
+      '</body></html>',
+    ].join('');
+    const pinned = pinDeckSlidesToFixedCanvas(html);
+    expect(pinned).toMatch(/class="[^"]*\bcard\b/);
+    expect(pinned).not.toMatch(/border:2px solid #4f46e5/);
+  });
+
   it('is idempotent for the injected style tag', () => {
     const once = pinDeckSlidesToFixedCanvas(
       '<body><section class="slide" style="min-height:100vh">A</section></body>',
