@@ -148,7 +148,7 @@ describe('shouldFailRunForArtifactPersistResult', () => {
   });
 
   it('allows a compact topical fill to replace a scrubbed IB catalog shell', () => {
-    const pad = `/* ${'ib-chassis '.repeat(400)} */`;
+    const pad = `/* ${'ib-chassis '.repeat(500)} */`;
     const scrubbedIb = [
       '<!doctype html><html><head><style>',
       pad,

@@ -679,7 +679,7 @@ const GENERIC_CLONE_HEADING_RE = /개요|핵심 포인트|다음 단계|Overview
  */
 export function looksLikeCatalogSwipeShell(html: string): boolean {
   const dest = String(html ?? '');
-  if (!dest || dest.length < 8_000) return false;
+  if (!dest || dest.length < 4_000) return false;
   if (!CATALOG_SWIPE_STAGE_RE.test(dest)) return false;
   const hasVw =
     /min-width\s*:\s*100vw/i.test(dest)
