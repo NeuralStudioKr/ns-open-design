@@ -104,6 +104,10 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | persist: border-radius · grid-column/row flow | ☑ round73 |
 | persist: cursor/scrollbar/text-edge flow | ☑ round74 |
 | persist: font-variant/text-orientation flow | ☑ round75 |
+| persist: padding-block/inline ic kit · font-synthesis-* | ☑ 루프74–75 / round91–92 |
+| persist: text-size-adjust · text-wrap-mode/style | ☑ 루프76 / round93 |
+| persist: initial-letter-* · math-shift · hyphenate-lines | ☑ 루프77 / round94 |
+| persist: rt/rp/rtc kit · ascent/size-adjust · forced-colors | ☑ 루프78 / round95 |
 | clone: IB pitch-book 데모 카피가 한국어 brief에 남음 | ☑ 루프57 |
 | preview: #stage 1920px 스트립이 100vw로만 살짝 이동 | ☑ 루프57 |
 | persist: 카탈로그 예제 leftover를 filled로 저장 | ☑ |
@@ -127,7 +131,17 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | think 태그 / 내부 마크업 필터 | ☑ 기존 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (leftover open/top-up)
+## 이번 루프 (루프74–78 / round91–95)
+
+1. persist — `padding-block`/`padding-inline`(+start/end) ≥1ic/ric kit bind
+2. persist — `font-synthesis-weight/style/small-caps/position` flow
+3. persist — `text-size-adjust` · `-webkit-text-size-adjust` · `text-wrap-mode/style`
+4. persist — `initial-letter-align/wrap` · `math-shift` · `hyphenate-limit-lines`
+5. persist — selective `rt`/`rp`/`rtc` kit · `ascent/descent/line-gap/size-adjust` · `forced-colors-adjust` · `font-display`
+
+**검증:** chat-leak-probe-round91–95
+
+## 직전 루프 (leftover open/top-up)
 
 1. verify / usable / seed recover — leftover catalog example은 미리보기·LOOK seed 복구로 쓰지 않음
 2. top-up — leftover prior에 append하지 않음. incoming leftover는 skip

@@ -822,8 +822,17 @@ const FLOW_COPIED_STYLE_PROPS = [  'display',
   'font-feature-settings',
   'font-palette',
   'font-synthesis',
+  'font-synthesis-weight',
+  'font-synthesis-style',
+  'font-synthesis-small-caps',
+  'font-synthesis-position',
   'font-kerning',
   'font-size-adjust',
+  'font-display',
+  'ascent-override',
+  'descent-override',
+  'line-gap-override',
+  'size-adjust',
   'line-height',
   'line-height-step',
   'letter-spacing',
@@ -832,6 +841,10 @@ const FLOW_COPIED_STYLE_PROPS = [  'display',
   'text-align-last',
   'text-indent',
   'text-wrap',
+  'text-wrap-mode',
+  'text-wrap-style',
+  'text-size-adjust',
+  '-webkit-text-size-adjust',
   'text-overflow',
   'text-transform',
   'text-decoration',
@@ -851,9 +864,12 @@ const FLOW_COPIED_STYLE_PROPS = [  'display',
   'leading-trim',
   'margin-trim',
   'initial-letter',
+  'initial-letter-align',
+  'initial-letter-wrap',
   'hyphenate-character',
   'hyphenate-limit-chars',
   'hyphenate-limit-last',
+  'hyphenate-limit-lines',
   'hyphenate-limit-zone',
   'line-break',
   'wrap-after',
@@ -948,7 +964,9 @@ const FLOW_COPIED_STYLE_PROPS = [  'display',
   'text-underline-position',
   'text-decoration-skip-ink',
   'math-style',
+  'math-shift',
   'math-depth',
+  'forced-colors-adjust',
   'masonry-auto-flow',
   'align-tracks',
   'justify-tracks',
@@ -1086,10 +1104,12 @@ function looksLikeFakeOutlineStyle(style: string): boolean {
  * MiniMax "card" frames when padding looks card-like (≥12px, ≥0.75rem/em,
  * ≥4%, ≥2ch, ≥2vh/vw/vmin/vmax/dvh, ≥2cqw/cqh/cqi/cqb, ≥1ic · ≥2lh/cap/ex/vb/vi,
  * or print-ish ≥8pt / ≥4mm / ≥0.4cm / ≥0.15in / ≥1pc).
+ * Logical `padding-block` / `padding-inline` (+ start/end) count the same (루프74).
  */
 function looksLikeCardLikePadding(style: string): boolean {
   const source = String(style ?? '');
-  const padRe = /(?:^|;)\s*padding(?:-(?:top|right|bottom|left))?\s*:\s*([^;]+)/gi;
+  const padRe =
+    /(?:^|;)\s*padding(?:-(?:top|right|bottom|left|block|inline)(?:-(?:start|end))?)?\s*:\s*([^;]+)/gi;
   let match: RegExpExecArray | null;
   while ((match = padRe.exec(source)) !== null) {
     const value = match[1] ?? '';
@@ -1176,9 +1196,9 @@ function pickOfficialKitCardClass(html: string): string | null {
 }
 
 const KIT_CARD_OPEN_RE =
-  /<(div|aside|article|section|li|figure|main|header|footer|blockquote|nav|ul|ol|dl|dt|dd|p|span|h[1-6]|figcaption|caption|details|summary|label|output|fieldset|legend|dialog|menu|mark|time|cite|q|small|abbr|kbd|samp|dfn|table|thead|tbody|tfoot|tr|td|th|address|hgroup|search|data|meter|progress|ruby|form|optgroup|option|datalist|math|mrow|semantics)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
+  /<(div|aside|article|section|li|figure|main|header|footer|blockquote|nav|ul|ol|dl|dt|dd|p|span|h[1-6]|figcaption|caption|details|summary|label|output|fieldset|legend|dialog|menu|mark|time|cite|q|small|abbr|kbd|samp|dfn|table|thead|tbody|tfoot|tr|td|th|address|hgroup|search|data|meter|progress|ruby|rtc|rt|rp|form|optgroup|option|datalist|math|mrow|semantics)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
 const SELECTIVE_KIT_CARD_TAGS_RE =
-  /^(?:p|span|h[1-6]|figcaption|caption|details|summary|label|output|fieldset|legend|dialog|menu|mark|time|cite|q|small|abbr|kbd|samp|dfn|table|thead|tbody|tfoot|tr|td|th|data|meter|progress|ruby|optgroup|option|datalist|math|mrow|semantics)$/i;
+  /^(?:p|span|h[1-6]|figcaption|caption|details|summary|label|output|fieldset|legend|dialog|menu|mark|time|cite|q|small|abbr|kbd|samp|dfn|table|thead|tbody|tfoot|tr|td|th|data|meter|progress|ruby|rtc|rt|rp|optgroup|option|datalist|math|mrow|semantics)$/i;
 
 function bindFakeOutlineCardsInSpan(html: string, cardClass: string): string {
   return html.replace(KIT_CARD_OPEN_RE, (open, tag: string, attrs: string) => {
