@@ -121,6 +121,7 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | preview: #stage 1920px 스트립이 100vw로만 살짝 이동 | ☑ 루프57 |
 | persist: 카탈로그 예제 leftover를 filled로 저장 | ☑ |
 | leftover가 persist skip 후에도 미리보기로 열림 · top-up append | ☑ |
+| leftover IB가 artifact_regression으로 토픽 fill을 막음 | ☑ |
 | preview: liveHtml/raw example이 Hartfield를 그대로 그림 | ☑ 루프119 |
 | preview: 1920px #stage next가 native 100vw로 첫 장만 밀림 | ☑ 루프119 |
 | persist: leftover catalog를 skip만 하고 저장하지 않음 | ☑ 루프119 |
@@ -144,7 +145,15 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | think 태그 / 내부 마크업 필터 | ☑ 기존 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프119)
+## 이번 루프 (leftover IB artifact_regression)
+
+1. persist — leftover catalog / demo prior는 compact 토픽 fill로 교체 허용
+2. persist — byte·장수 regression + daemon stub-guard를 leftover prior에서 건너뜀
+3. 진짜 8장 사용자 덱 → 3장 축소는 그대로 차단
+
+**검증:** project-view-persist-result leftover IB · findClientSlideCountRegression leftover
+
+## 직전 루프 (루프119)
 
 1. clone — leftover Hartfield/DCF는 한국어 brief(띄어쓴 한글 포함)에서 재클론
 2. preview — `buildSrcdoc`이 leftover catalog를 스크럽. FileViewer/memory-only가 last user brief를 넘김. 갤러리(brief 없음)는 원본 유지

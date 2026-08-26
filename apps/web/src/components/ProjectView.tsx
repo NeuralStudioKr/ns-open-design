@@ -170,6 +170,7 @@ import {
   renderPluginBlock,
   repairArtifactStyleSheets,
   slimTemplateVisualKitForFill,
+  looksLikeLeftoverTemplateDemoDeck,
   type AudioVoiceOption,
   type MemorySystemPromptResponse,
   type ResearchOptions,
@@ -2830,6 +2831,22 @@ export function shouldFailRunForArtifactPersistResult(
 const ARTIFACT_REGRESSION_MIN_PRIOR_BYTES = 8192;
 const ARTIFACT_REGRESSION_MIN_RATIO = 0.35;
 
+/**
+ * Catalog leftover / template demo on disk is not a user deliverable.
+ * Compact topic fills must be allowed to replace it (byte + slide-count).
+ */
+export function priorDeckAllowsCompactReplacement(
+  priorHtml: string | null | undefined,
+  brief?: string | null,
+): boolean {
+  const html = String(priorHtml ?? '').trim();
+  if (!html) return false;
+  return (
+    deckLooksLikeUnfilledCatalogExample(html, brief)
+    || looksLikeLeftoverTemplateDemoDeck(html)
+  );
+}
+
 function countDeckSlideSections(html: string): number {
   // Same hosts as top-up append (`section|div.slide`). Section-only counts
   // made Capsule fills look empty so hidden top-up never scheduled.
@@ -2849,6 +2866,7 @@ export function findClientArtifactRegression(input: {
   healTitle?: string | null;
 }): { fileName: string; priorSize: number; newSize: number; reason: string } | null {
   if (input.allowCompactReplacement) return null;
+  if (priorDeckAllowsCompactReplacement(input.priorHtml, input.healBrief)) return null;
   const fileName = input.fileName.trim();
   if (!fileName.toLowerCase().endsWith('.html')) return null;
   const newSize = new Blob([input.htmlBody]).size;
@@ -2914,8 +2932,11 @@ export function findClientSlideCountRegression(input: {
   strict?: boolean;
   /** Clone fill replaces a multi-slide LOOK seed with a capped content deck. */
   allowSlideCountReduction?: boolean;
+  /** Same brief leftover-catalog detection uses on persist. */
+  healBrief?: string | null;
 }): { fileName: string; priorCount: number; newCount: number; reason: string } | null {
   if (input.allowSlideCountReduction) return null;
+  if (priorDeckAllowsCompactReplacement(input.priorHtml, input.healBrief)) return null;
   const fileName = input.fileName.trim();
   if (!fileName.toLowerCase().endsWith('.html')) return null;
   const priorHtml = input.priorHtml?.trim();
@@ -5805,11 +5826,17 @@ export function ProjectView({
               },
             });
       const priorDiskHtml = ext === '.html' ? await readDiskHtml(fileName) : null;
+      const allowReplaceSeedOrLeftover =
+        runTemplateCloneContentFillRef.current
+        || priorDeckAllowsCompactReplacement(
+          priorDiskHtml,
+          runVisiblePromptRef.current || '',
+        );
       const regression = findClientArtifactRegression({
         fileName,
         htmlBody,
         projectFiles: currentProjectFiles,
-        allowCompactReplacement: runTemplateCloneContentFillRef.current,
+        allowCompactReplacement: allowReplaceSeedOrLeftover,
         priorHtml: priorDiskHtml,
         healBrief: runVisiblePromptRef.current || '',
         healTitle: project.name || '슬라이드',
@@ -5860,7 +5887,8 @@ export function ProjectView({
             htmlBody,
             priorHtml,
             strict: strictSlideCount,
-            allowSlideCountReduction: runTemplateCloneContentFillRef.current,
+            allowSlideCountReduction: allowReplaceSeedOrLeftover,
+            healBrief: runVisiblePromptRef.current || '',
           });
           if (slideRegression) {
             devLog.warn('[teamver] blocked slide-count collapse before save', {
@@ -5905,7 +5933,7 @@ export function ProjectView({
             // Clone LOOK seeds a large template; fill replaces it with a
             // compact content deck. Client already skips the local regression
             // check — daemon stub-guard must match or ARTIFACT_REGRESSION fires.
-            ...(runTemplateCloneContentFillRef.current
+            ...(allowReplaceSeedOrLeftover
               ? { skipArtifactStubGuard: true }
               : {}),
           },
@@ -5916,7 +5944,7 @@ export function ProjectView({
           htmlBody,
           {
             artifactManifest: manifest ?? undefined,
-            ...(runTemplateCloneContentFillRef.current
+            ...(allowReplaceSeedOrLeftover
               ? { skipArtifactStubGuard: true }
               : {}),
           },

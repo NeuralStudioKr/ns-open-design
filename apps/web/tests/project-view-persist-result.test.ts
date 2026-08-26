@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import {
   findClientArtifactRegression,
+  findClientSlideCountRegression,
+  priorDeckAllowsCompactReplacement,
   shouldFailRunForArtifactPersistResult,
 } from '../src/components/ProjectView';
 
@@ -113,6 +115,36 @@ describe('shouldFailRunForArtifactPersistResult', () => {
       projectFiles: [{ name: 'deck.html', path: 'deck.html', size: 40_000 } as never],
     });
     expect(blocked).not.toBeNull();
+  });
+
+  it('allows a compact topical fill to replace leftover IB catalog example', () => {
+    const leftoverIb = [
+      '<!doctype html><html><body>',
+      ...Array.from({ length: 10 }, (_, i) =>
+        `<section class="slide"><h2>SECTION ${i + 1} · DCF</h2>`
+        + '<p>Hartfield &amp; Co. WACC (base) Implied EV for NorthPeak Industries.</p></section>',
+      ),
+      '</body></html>',
+    ].join('');
+    const brief = '영어 회화 표현 공부 팁, 예시에 대한 발표자료 만들어줘';
+    expect(priorDeckAllowsCompactReplacement(leftoverIb, brief)).toBe(true);
+    expect(
+      findClientArtifactRegression({
+        fileName: 'deck.html',
+        htmlBody: compactThree,
+        priorHtml: leftoverIb,
+        healBrief: brief,
+        projectFiles: [{ name: 'deck.html', path: 'deck.html', size: 35_000 } as never],
+      }),
+    ).toBeNull();
+    expect(
+      findClientSlideCountRegression({
+        fileName: 'deck.html',
+        htmlBody: compactThree,
+        priorHtml: leftoverIb,
+        healBrief: brief,
+      }),
+    ).toBeNull();
   });
 
   it('does not fail skipped-noop (avoids auto-continue churn)', () => {

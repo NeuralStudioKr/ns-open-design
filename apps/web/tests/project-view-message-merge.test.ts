@@ -90,7 +90,7 @@ describe("promptWithSlideAttachmentDeliverableInstruction", () => {
     expect(prompt).toContain("[Deliverable instruction]");
     expect(prompt).toContain("refs/drive/deck-brief.md");
     expect(prompt).toContain('`<artifact type="deck" identifier="deck">`');
-    expect(prompt).toContain("deck.html");
+    expect(prompt).toContain("The host persists it automatically");
     expect(prompt).toContain("requested slide count");
     expect(prompt).not.toMatch(/1920|nav, and print/i);
     expect(stripUserVisibleQuestionFormProtocolText(prompt)).toBe("발표 대본 참고해서 ppt 디자인 해줘");
@@ -376,6 +376,27 @@ describe("findClientSlideCountRegression", () => {
         strict: true,
       }),
     ).toMatchObject({ priorCount: 8, newCount: 6 });
+  });
+
+  it("allows leftover IB catalog example to shrink to a topical fill", () => {
+    const leftoverIb = Array.from(
+      { length: 10 },
+      (_, i) =>
+        `<section class="slide"><h2>SECTION ${i + 1} · DCF</h2>`
+        + "<p>Hartfield &amp; Co. WACC (base) Implied EV.</p></section>",
+    ).join("\n");
+    const filled = Array.from(
+      { length: 6 },
+      (_, i) => `<section class="slide"><h2>영어 회화 ${i + 1}</h2><p>표현 예시입니다.</p></section>`,
+    ).join("\n");
+    expect(
+      findClientSlideCountRegression({
+        fileName: "deck.html",
+        htmlBody: filled,
+        priorHtml: leftoverIb,
+        healBrief: "영어 회화 표현 공부 팁, 예시에 대한 발표자료 만들어줘",
+      }),
+    ).toBeNull();
   });
 
   it("allows intentional slide-count reduction on Template Clone fill turns", () => {
