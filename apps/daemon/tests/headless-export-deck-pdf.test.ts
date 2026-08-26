@@ -672,6 +672,20 @@ describe('buildDeckPrintCss', () => {
     expect(baseHtmlBlock).toContain('patchArtifactDeckPrintCss');
   });
 
+  it('busts deck download caches when the shared layout renderer changes', () => {
+    const source = fs.readFileSync(
+      path.join(__dirname, '..', 'src', 'export-render-service.ts'),
+      'utf8',
+    );
+    expect(source).toContain("DECK_LAYOUT_RENDER_CACHE_VERSION = 'deck-layout-preview-parity-v1'");
+    expect(source).toContain("`${DECK_LAYOUT_RENDER_CACHE_VERSION}:pdf-v1`");
+    expect(source).toContain("`${DECK_LAYOUT_RENDER_CACHE_VERSION}:html-v1`");
+    expect(source).toContain("`${DECK_LAYOUT_RENDER_CACHE_VERSION}:zip-v1`");
+    expect(source).toContain('DECK_PPTX_EDITABLE_RENDER_CACHE_VERSION');
+    expect(source).toContain('DECK_PPTX_SCREEN_RENDER_CACHE_VERSION');
+    expect(source).not.toContain('pptx-editable-dom-v3');
+  });
+
   it('keeps PPTX downloads editable by default and screenshot-based only when opted out', () => {
     const routeSource = fs.readFileSync(
       path.join(__dirname, '..', 'src', 'import-export-routes.ts'),
@@ -692,7 +706,7 @@ describe('buildDeckPrintCss', () => {
     expect(routePptxBlock).toContain('editable: req.body?.editable');
     expect(servicePptxBlock).toContain('renderHeadlessEditablePptx');
     expect(servicePptxBlock).toContain('req.editable !== false');
-    expect(servicePptxBlock).toContain('pptx-editable-dom-v3');
+    expect(servicePptxBlock).toContain('DECK_PPTX_EDITABLE_RENDER_CACHE_VERSION');
     expect(servicePptxBlock).toContain('buildScreenshotPptx');
   });
 });
