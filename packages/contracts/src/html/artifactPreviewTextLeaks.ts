@@ -369,8 +369,13 @@ const CLOSED_BODY_SCRIPT_OR_STYLE_RE = /<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi
 const MANGLED_DECK_FRAMEWORK_SCRIPT_OPEN_RE =
   /(<script\b[^>]*>)(\s*)var slides = Array\.prototype\.slice\.call\(document\.querySelectorAll\(['"]\.slide['"]\)\);/gi;
 
+const LEAKED_SLIDE_COUNT_TOP_UP_RE =
+  /\[od:slide_count_top_up\]|<!--\s*od:slide_count_top_up\s*-->/gi;
+
 function stripLeakedPreviewTextFromUnprotectedHtml(text: string): string {
   let out = text;
+  LEAKED_SLIDE_COUNT_TOP_UP_RE.lastIndex = 0;
+  out = out.replace(LEAKED_SLIDE_COUNT_TOP_UP_RE, "");
   out = stripPreviewTextLeakMatches(out, LEAKED_DECK_STYLE_TEXT_RE);
   out = stripPreviewTextLeakMatches(out, LEAKED_DECK_CSS_SECTION_RE);
   out = stripPreviewTextLeakMatches(out, LEAKED_DECK_CSS_RULE_BLOCK_RE);

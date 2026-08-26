@@ -41,6 +41,8 @@ import {
   COLLAPSE_PREVIEW_MAX_STEPS,
   pinDeckSlidesToFixedCanvas,
   scrubLeftoverCatalogExampleHtml,
+  stripHostProtocolLeakFromDeckHtml,
+  stripLeftoverMotifDemoCopy,
 } from '@open-design/contracts';
 import { stripConflictingSrcDocCspBaseUri } from './authenticatedHtmlSrcDoc';
 import {
@@ -173,11 +175,23 @@ function buildSrcdocUnsafe(
 ): string {
   if (options.deck && !options.exportDocument) {
     try {
+      html = stripHostProtocolLeakFromDeckHtml(html);
+    } catch (_) {
+      /* keep authored HTML */
+    }
+    try {
       html = scrubLeftoverCatalogExampleHtml(html, options.userBrief, {
         allowEmptyBrief: options.scrubLeftoverCatalog === true,
       });
     } catch (_) {
       /* keep authored HTML */
+    }
+    if (options.userBrief || options.scrubLeftoverCatalog === true) {
+      try {
+        html = stripLeftoverMotifDemoCopy(html);
+      } catch (_) {
+        /* keep authored HTML */
+      }
     }
   }
   // Match cover thumbs: relax flattened `.slide` bleed so official Motif /

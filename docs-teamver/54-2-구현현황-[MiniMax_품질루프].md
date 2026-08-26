@@ -129,6 +129,9 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | preview: liveHtml/raw example이 Hartfield를 그대로 그림 | ☑ 루프119 |
 | preview: 1920px #stage next가 native 100vw로 첫 장만 밀림 | ☑ 루프119 |
 | persist: leftover catalog를 skip만 하고 저장하지 않음 | ☑ 루프119 |
+| preview: `[od:slide_count_top_up]`이 슬라이드 본문으로 보임 | ☑ |
+| persist: Motif bind가 Hartfield stamp를 다시 넣음 | ☑ |
+| persist: 커버 제목 `슬라이드`가 brief를 무시 | ☑ |
 | preview: brief 없는 FileViewer가 raw IB leftover를 그대로 그림 | ☑ 루프135 |
 | preview: 인슬라이드 #next가 native 100vw로 첫 장만 밀림 | ☑ 루프135 |
 | API-mode "save this as deck.html" 유출로 덱이 안 생김 | ☑ |
@@ -151,7 +154,15 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | think 태그 / 내부 마크업 필터 | ☑ 기존 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (IB #stage 첫 장 밀림 · 스크럽 leftover)
+## 이번 루프 (top-up 센티널 · motif Hartfield · 커버 슬라이드)
+
+1. persist/preview — `[od:slide_count_top_up]`·빈 `<artifact>`를 덱 HTML에서 제거. liveHtml도 동일
+2. persist/preview — Motif `.who` leftover Hartfield 비움. 갤러리 example은 유지
+3. heal — 커버 `<h1>슬라이드</h1>`를 brief 주제로 교체
+
+**검증:** template-clone-fill sentinel/Hartfield/슬라이드 heal · srcdoc sentinel strip
+
+## 직전 루프 (IB #stage 첫 장 밀림 · 스크럽 leftover)
 
 1. preview — `#stage` 수평 스트립은 stacked hoist/`forceReveal`보다 px `transformGo`를 먼저
 2. preview — `data-od-deck-fixed-canvas-pin`만 있어도 스텝은 1920px. native `100vw` next는 클릭하지 않음

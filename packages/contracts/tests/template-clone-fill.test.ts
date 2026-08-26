@@ -23,6 +23,8 @@ import {
   deriveDeckCoverTitleFromBrief,
   healInstructionCopyCoverHeading,
   isGenericDeckArtifactTitle,
+  sanitizePersistedDeckHostLeaks,
+  stripHostProtocolLeakFromDeckHtml,
 } from '../src/template-clone-fill.js';
 
 describe('buildTemplateClonedDeckHtml', () => {
@@ -411,8 +413,33 @@ describe('sanitizeTemplateCloneDeckTitle', () => {
     expect(isGenericDeckArtifactTitle('Deck')).toBe(true);
     expect(isGenericDeckArtifactTitle('Presentation')).toBe(true);
     expect(isGenericDeckArtifactTitle('발표 자료')).toBe(true);
-    expect(isGenericDeckArtifactTitle('슬라이드')).toBe(false);
+    expect(isGenericDeckArtifactTitle('슬라이드')).toBe(true);
     expect(isGenericDeckArtifactTitle('기업 AI 도입 효과')).toBe(false);
+  });
+
+  it('strips top-up sentinels, empty artifact tags, and leftover motif Hartfield', () => {
+    const leaked = [
+      '<section class="slide"><h1>[od:slide_count_top_up]</h1>',
+      '<artifact type="deck" identifier="deck"></artifact>',
+      '<div class="who" data-od-official-motif-html>Hartfield &amp; Co. — Industrials</div>',
+      '<p>영어 회화</p></section>',
+    ].join('');
+    const cleaned = sanitizePersistedDeckHostLeaks(leaked);
+    expect(cleaned).not.toMatch(/od:slide_count_top_up/i);
+    expect(cleaned).not.toMatch(/<artifact\b/i);
+    expect(cleaned).not.toMatch(/Hartfield/i);
+    expect(cleaned).toContain('영어 회화');
+    expect(stripHostProtocolLeakFromDeckHtml('[od:slide_count_top_up]\n<section class="slide">x</section>'))
+      .not.toMatch(/od:slide_count_top_up/i);
+  });
+
+  it('heals a generic 슬라이드 cover heading from the user brief', () => {
+    const healed = healInstructionCopyCoverHeading(
+      '<section class="slide"><h1>슬라이드</h1><p>초안</p></section>',
+      '영어 회화 표현 공부 팁, 예시에 대한 발표자료 만들어줘',
+    );
+    expect(healed).not.toMatch(/<h1>슬라이드<\/h1>/);
+    expect(healed).toMatch(/영어 회화/);
   });
 
   it('does not synthesize marketing titles when the brief is only a template name', () => {

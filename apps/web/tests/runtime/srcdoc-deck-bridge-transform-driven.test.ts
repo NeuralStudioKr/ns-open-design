@@ -433,6 +433,16 @@ describe('deck bridge - transform-driven decks', () => {
     }
   });
 
+  it('strips a leaked top-up sentinel from preview without wiping catalog copy', async () => {
+    const srcdoc = buildSrcdoc(
+      '<!doctype html><html><body>[od:slide_count_top_up]<section class="slide"><h1>영어 회화</h1></section></body></html>',
+      { deck: true },
+    );
+    const visible = srcdoc.replace(/<style[\s\S]*?<\/style>/gi, '').replace(/<script[\s\S]*?<\/script>/gi, '');
+    expect(visible).not.toMatch(/od:slide_count_top_up/i);
+    expect(visible).toContain('영어 회화');
+  });
+
   it('leaves a catalog example intact when no user brief is provided', async () => {
     const html = await readFile(
       new URL(

@@ -306,6 +306,43 @@ export function stripDeckLevelDemoChrome(html: string): string {
   );
 }
 
+const HOST_TOP_UP_SENTINEL_RE = /\[od:slide_count_top_up\]|<!--\s*od:slide_count_top_up\s*-->/gi;
+const HOST_TOP_UP_INSTRUCTION_LINE_RE =
+  /(?:The current deck is a CLOSED \d+-slide deliverable|This is an explicit slide-count expansion|APPEND only new slides|Do NOT rewrite the saved deck|Emit ONLY the new)[^\n<]*/gi;
+const EMPTY_NESTED_ARTIFACT_RE = /<artifact\b[^>]*>\s*<\/artifact>/gi;
+const LEFTOVER_MOTIF_COPY_RE =
+  /Hartfield|NorthPeak Industries|Filebase|Project Atlas|WACC\s*\(/i;
+
+/** Hidden top-up / artifact protocol the model copies into deck.html. */
+export function stripHostProtocolLeakFromDeckHtml(html: string): string {
+  let out = String(html ?? '');
+  if (!out) return out;
+  out = out.replace(HOST_TOP_UP_SENTINEL_RE, '');
+  out = out.replace(HOST_TOP_UP_INSTRUCTION_LINE_RE, '');
+  out = out.replace(EMPTY_NESTED_ARTIFACT_RE, '');
+  return out;
+}
+
+/**
+ * Motif bind can re-inject IB stamp copy (`Hartfield & Co.`) after the
+ * leftover persist gate. Empty the text; keep the deco shell.
+ */
+export function stripLeftoverMotifDemoCopy(html: string): string {
+  return String(html ?? '').replace(
+    /<(div|span|p|b)\b([^>]*\bclass\s*=\s*["'][^"']*\b(?:who|det|lab)\b[^"']*["'][^>]*)>([\s\S]*?)<\/\1>/gi,
+    (full, tag: string, attrs: string, inner: string) => (
+      LEFTOVER_MOTIF_COPY_RE.test(inner) || LEFTOVER_MOTIF_COPY_RE.test(full)
+        ? `<${tag}${attrs}></${tag}>`
+        : full
+    ),
+  );
+}
+
+/** Persist/preview: protocol leaks + leftover motif demo copy. */
+export function sanitizePersistedDeckHostLeaks(html: string): string {
+  return stripLeftoverMotifDemoCopy(stripHostProtocolLeakFromDeckHtml(html));
+}
+
 function stripLeftoverTemplateDemoCopy(html: string): string {
   let next = String(html ?? '');
   for (const className of [
@@ -910,7 +947,7 @@ export function deriveDeckCoverTitleFromBrief(
 
 /** Parser / emergency defaults that must not land in the persist manifest. */
 export function isGenericDeckArtifactTitle(title: string | null | undefined): boolean {
-  return /^(?:response|deck|untitled|artifact|slide|presentation|발표\s*자료)$/i.test(
+  return /^(?:response|deck|untitled|artifact|slide|slides?|presentation|발표\s*자료|슬라이드)$/i.test(
     String(title ?? '').trim(),
   );
 }
@@ -920,7 +957,9 @@ function visibleHeadingText(inner: string): string {
 }
 
 function headingLooksLikeFailedGenerate(visible: string): boolean {
-  return looksLikeInstructionCopy(visible) || looksLikeTemplateMarketingTitle(visible);
+  return looksLikeInstructionCopy(visible)
+    || looksLikeTemplateMarketingTitle(visible)
+    || isGenericDeckArtifactTitle(visible);
 }
 
 const GENERIC_HEAL_TITLE_RE =

@@ -172,6 +172,7 @@ import {
   slimTemplateVisualKitForFill,
   looksLikeLeftoverTemplateDemoDeck,
   looksLikeScrubbedCatalogExampleShell,
+  sanitizePersistedDeckHostLeaks,
   type AudioVoiceOption,
   type MemorySystemPromptResponse,
   type ResearchOptions,
@@ -5747,6 +5748,9 @@ export function ProjectView({
         // Pin every .slide to 1920×1080 so 100vh / presentation-wrapper fills
         // cannot stretch into a tall portrait preview panel (§0.70).
         htmlBody = pinDeckSlidesToFixedCanvas(htmlBody);
+        // Motif bind can re-inject Hartfield stamps after the leftover gate.
+        // Top-up sentinels / empty <artifact> tags must never persist as copy.
+        htmlBody = sanitizePersistedDeckHostLeaks(htmlBody);
       }
       if (ext === '.html' && persistCommentAttachments.length > 0) {
         const currentScopedHtml = await readDiskHtml(fileName);
@@ -8218,8 +8222,10 @@ export function ProjectView({
                           ),
                         );
                         const withSurface = repairDeckSlideSurfaceBleed(withLook);
-                        const withCanvas = pinDeckSlidesToFixedCanvas(
-                          collapseAdjacentDuplicateDeckSiblings(withSurface),
+                        const withCanvas = sanitizePersistedDeckHostLeaks(
+                          pinDeckSlidesToFixedCanvas(
+                            collapseAdjacentDuplicateDeckSiblings(withSurface),
+                          ),
                         );
                         const attachmentPaths = runAttachmentsRef.current
                           .map((attachment) => attachment.path.trim())
@@ -10228,8 +10234,10 @@ export function ProjectView({
                       ),
                     );
                     const withSurface = repairDeckSlideSurfaceBleed(withLook);
-                    const withCanvas = pinDeckSlidesToFixedCanvas(
-                      collapseAdjacentDuplicateDeckSiblings(withSurface),
+                    const withCanvas = sanitizePersistedDeckHostLeaks(
+                      pinDeckSlidesToFixedCanvas(
+                        collapseAdjacentDuplicateDeckSiblings(withSurface),
+                      ),
                     );
                     const attachmentPaths = runAttachmentsRef.current
                       .map((attachment) => attachment.path.trim())

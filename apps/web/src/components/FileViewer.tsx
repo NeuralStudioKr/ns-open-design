@@ -9,6 +9,7 @@ import {
   htmlLooksLikeNavigableDeckPreview,
   OPEN_DESIGN_GITHUB_REPO_URL,
   isArtifactHtmlStableForPreview,
+  sanitizePersistedDeckHostLeaks,
   type SocialShareRequest,
   type SocialShareResponse,
 } from '@open-design/contracts';
@@ -4863,6 +4864,7 @@ function acceptPreviewHtmlCandidate(
 ): string | null {
   if (candidate == null) return null;
   try {
+    candidate = sanitizePersistedDeckHostLeaks(candidate);
     const repaired = repairArtifactDocumentHeadIfNeeded(candidate);
     if (isArtifactHtmlStableForPreview(repaired)) {
       // Repair can theoretically close/strip into a slide-less shell that still
