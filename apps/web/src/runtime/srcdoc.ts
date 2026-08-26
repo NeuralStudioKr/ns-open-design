@@ -40,6 +40,7 @@ import {
   COLLAPSE_PREVIEW_MAX_INPUT_CHARS,
   COLLAPSE_PREVIEW_MAX_STEPS,
   pinDeckSlidesToFixedCanvas,
+  scrubLeftoverCatalogExampleHtml,
 } from '@open-design/contracts';
 import { stripConflictingSrcDocCspBaseUri } from './authenticatedHtmlSrcDoc';
 import {
@@ -63,6 +64,8 @@ export type SrcdocOptions = {
   previewFocusGuard?: boolean;
   /** Lean document for PDF/browser export — omits preview-only bridges. */
   exportDocument?: boolean;
+  /** User brief so leftover catalog examples can be scrubbed in preview. */
+  userBrief?: string | null;
 };
 
 export const PREVIEW_REDIRECT_GUARD_MAX_HOPS = 15;
@@ -163,6 +166,13 @@ function buildSrcdocUnsafe(
   html: string,
   options: SrcdocOptions = {},
 ): string {
+  if (options.deck && !options.exportDocument) {
+    try {
+      html = scrubLeftoverCatalogExampleHtml(html, options.userBrief);
+    } catch (_) {
+      /* keep authored HTML */
+    }
+  }
   // Match cover thumbs: relax flattened `.slide` bleed so official Motif /
   // identity dark washes can paint, then re-letterbox html/body only.
   const repairedHead = repairDeckSlideSurfaceBleed(
@@ -4161,6 +4171,12 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .stage > .slide {
     if (compactStackedDeckNavigationReady()) {
       if (forceRevealSlide(target)) return;
     }
+    // #stage / 1920px strips: native catalog scripts use translateX(-N*100vw)
+    // which only nudges a pinned canvas. Drive the strip in px first.
+    var pxTrack = transformTrack(list);
+    var pxAxis = pxTrack ? transformTrackAxis(pxTrack, list) : 'x';
+    var pxStep = pxTrack ? transformSlideStepPx(list, pxTrack, pxAxis) : 0;
+    if (pxStep > 0 && transformGo(target)) return;
     if (clickNativeControl(action, target)) return;
     if (transformGo(target)) return;
     if (isScrollDeck()) {
@@ -4185,6 +4201,10 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .stage > .slide {
     if (compactStackedDeckNavigationReady()) {
       if (forceRevealSlide(target)) return;
     }
+    var pxTrackGo = transformTrack(list);
+    var pxAxisGo = pxTrackGo ? transformTrackAxis(pxTrackGo, list) : 'x';
+    var pxStepGo = pxTrackGo ? transformSlideStepPx(list, pxTrackGo, pxAxisGo) : 0;
+    if (pxStepGo > 0 && transformGo(target)) return;
     if (clickNativeControl('go', target)) return;
     if (transformGo(target)) return;
     if (isScrollDeck()) { scrollGo(target); return; }

@@ -1,5 +1,6 @@
 // @vitest-environment node
 
+import { readFile } from 'node:fs/promises';
 import { describe, expect, it, vi } from 'vitest';
 import { JSDOM } from 'jsdom';
 import { buildSrcdoc } from '../../src/runtime/srcdoc';
@@ -369,5 +370,60 @@ describe('deck bridge - transform-driven decks', () => {
     await new Promise<void>((resolve) => win.setTimeout(resolve, 40));
     expect(win.document.getElementById('now')?.textContent).toBe('02');
     expect(win.document.getElementById('total')?.textContent).toBe('03');
+  });
+
+  it('leaves a catalog example intact when no user brief is provided', async () => {
+    const html = await readFile(
+      new URL(
+        '../../../../plugins/_official/examples/ib-pitch-book/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const srcdoc = buildSrcdoc(html, { deck: true });
+    expect(srcdoc).toMatch(/Hartfield/i);
+  });
+
+  it('scrubs leftover IB example.html in preview and advances by slide width', async () => {
+    const html = await readFile(
+      new URL(
+        '../../../../plugins/_official/examples/ib-pitch-book/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const brief = '영어 회화 표현 공부 팁, 예시에 대한 발표자료 만들어줘';
+    const srcdoc = buildSrcdoc(html, { deck: true, userBrief: brief });
+    const visible = srcdoc.replace(/<style[\s\S]*?<\/style>/gi, '');
+    expect(visible).not.toMatch(/Hartfield/i);
+    expect(srcdoc).not.toMatch(/WACC \(base\)/i);
+    expect(srcdoc).not.toMatch(/A discounted-cash-flow that/i);
+    const script = extractDeckBridgeScript(srcdoc);
+    const dom = new JSDOM(srcdoc, { runScripts: 'outside-only', pretendToBeVisual: true });
+    const win = dom.window;
+    Object.defineProperty(win, 'parent', {
+      configurable: true,
+      value: { postMessage: vi.fn() },
+    });
+    Object.defineProperty(win, 'innerWidth', { configurable: true, value: 800 });
+    Object.defineProperty(win, 'innerHeight', { configurable: true, value: 600 });
+    const slides = Array.from(win.document.querySelectorAll<HTMLElement>('#stage > .slide, .slide'));
+    slides.forEach((slide) => {
+      Object.defineProperty(slide, 'offsetWidth', { configurable: true, value: 1920 });
+      Object.defineProperty(slide, 'offsetHeight', { configurable: true, value: 1080 });
+    });
+    const evaluate = new win.Function(script);
+    evaluate.call(win);
+    win.dispatchEvent(new win.MessageEvent('message', {
+      data: { type: 'od:slide', action: 'next' },
+    }));
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 120));
+    const stage = win.document.getElementById('stage') as HTMLElement | null;
+    const stacked = win.document.getElementById('od-stacked-deck-stage');
+    if (!stacked) {
+      expect(stage?.style.transform).toBe('translateX(-1920px)');
+      expect(stage?.style.transform).not.toContain('100vw');
+    }
+    expect(win.document.getElementById('now')?.textContent).toBe('02');
   });
 });
