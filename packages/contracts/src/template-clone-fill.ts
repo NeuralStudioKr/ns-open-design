@@ -257,6 +257,64 @@ function replaceFirstTagText(html: string, tag: string, text: string): string {
   ));
 }
 
+function isPlaceholderCloneBody(body?: string): boolean {
+  const text = String(body ?? '').trim();
+  if (!text) return true;
+  return text.split(/\r?\n/).every((line) => /^(?:…|\.{3}|⋯|\s)*$/u.test(line.trim()));
+}
+
+function headingLooksLikeDemoSentence(inner: string): boolean {
+  const plain = String(inner ?? '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  if (plain.length >= 24 || /\bthat\b|[.。]\s*$/i.test(plain)) return true;
+  // Cover-style `Project <em>Atlas</em>` — first-run swap would leave English.
+  return /<(?:em|i)\b/i.test(inner) && /[A-Za-z]{3,}/.test(plain);
+}
+
+/** Full heading swap when the shell is a demo sentence (`A DCF that …`). */
+function replaceHeadingText(html: string, tag: string, text: string): string {
+  const re = new RegExp(`(<${tag}\\b[^>]*>)([\\s\\S]*?)(<\\/${tag}>)`, 'i');
+  if (!re.test(html)) return html;
+  return html.replace(re, (_match, open: string, inner: string, close: string) => {
+    if (headingLooksLikeDemoSentence(inner)) {
+      return `${open}${escapeHtml(text)}${close}`;
+    }
+    return `${open}${replaceFirstTextRun(inner, text)}${close}`;
+  });
+}
+
+function stripClassBlocks(html: string, className: string): string {
+  const re = new RegExp(
+    `<(div|span|p|header|footer|small|strong|em|i)\\b([^>]*\\bclass\\s*=\\s*["'][^"']*\\b${className}\\b[^"']*["'][^>]*)>[\\s\\S]*?<\\/\\1>`,
+    'gi',
+  );
+  return html.replace(re, '');
+}
+
+function stripLeftoverTemplateDemoCopy(html: string): string {
+  let next = String(html ?? '');
+  for (const className of [
+    'brand',
+    'eyebrow',
+    'body-text',
+    'subhead',
+    'lede',
+    'pull',
+    'who',
+    'ribbon',
+    'marque',
+    'row',
+    'meta',
+  ]) {
+    next = stripClassBlocks(next, className);
+  }
+  next = next.replace(/<table\b[^>]*>[\s\S]*?<\/table>/gi, '');
+  next = next.replace(
+    /<(footer)\b([^>]*\bclass\s*=\s*["'][^"']*\bfoot\b[^"']*["'][^>]*)>[\s\S]*?<\/\1>/gi,
+    '',
+  );
+  return next;
+}
+
 function replaceListItems(html: string, lines: string[]): string {
   if (lines.length === 0) return html;
   const listMatch = /<ul\b[^>]*>[\s\S]*?<\/ul>/i.exec(html)
@@ -295,23 +353,37 @@ function fillSlideShell(
     : [];
 
   if (/<h1\b/i.test(body)) {
-    body = replaceFirstTagText(body, 'h1', title);
+    body = replaceHeadingText(body, 'h1', title);
   } else if (/<h2\b/i.test(body)) {
-    body = replaceFirstTagText(body, 'h2', title);
+    body = replaceHeadingText(body, 'h2', title);
   } else if (/<h3\b/i.test(body)) {
-    body = replaceFirstTagText(body, 'h3', title);
+    body = replaceHeadingText(body, 'h3', title);
   }
+
+  const placeholderBody = isPlaceholderCloneBody(bodyText);
 
   // Always clear template marketing subtitle when we own this shell's title.
   if (/<p\b[^>]*class\s*=\s*["'][^"']*subtitle/i.test(body)) {
-    const subtitle = bodyLines[0] || bodyText || '';
+    const subtitle = placeholderBody ? '' : (bodyLines[0] || bodyText || '');
     body = body.replace(
       /(<p\b[^>]*class\s*=\s*["'][^"']*subtitle[^"']*["'][^>]*>)([\s\S]*?)(<\/p>)/i,
       `$1${escapeHtml(subtitle)}$3`,
     );
   }
 
-  if (bodyLines.length > 0 && /<[uo]l\b/i.test(body)) {
+  if (placeholderBody) {
+    // Ellipsis placeholders must not land in the first N list items and
+    // leave the rest of the template TOC / finance copy intact.
+    if (/<[uo]l\b/i.test(body)) {
+      const existingCount = [...body.matchAll(/<li\b/gi)].length;
+      if (existingCount > 0) {
+        body = replaceListItems(body, Array.from({ length: existingCount }, () => ''));
+      }
+    } else if (/<p\b/i.test(body)) {
+      body = replaceFirstTagText(body, 'p', '');
+    }
+    body = stripLeftoverTemplateDemoCopy(body);
+  } else if (bodyLines.length > 0 && /<[uo]l\b/i.test(body)) {
     body = replaceListItems(body, bodyLines);
   } else if (bodyLines[0] || bodyText) {
     const paragraph = bodyLines[0] || bodyText;
@@ -433,7 +505,11 @@ export function buildTemplateClonedDeckHtml(
   let workingSlides: TemplateCloneSlideContent[];
   if (cleanedSlides.length > 0) {
     workingSlides = cleanedSlides.slice(0, 20);
-    if (hint != null && hint > workingSlides.length) {
+    if (
+      hint != null
+      && hint > workingSlides.length
+      && !workingSlides.every((slide) => isPlaceholderCloneBody(slide.body))
+    ) {
       while (workingSlides.length < hint) {
         const n = workingSlides.length + 1;
         workingSlides.push({

@@ -425,4 +425,29 @@ describe('sanitizeTemplateCloneDeckTitle', () => {
     expect(shells[0]?.body).toContain('Cover');
     expect(shells[1]?.body).toContain('Body');
   });
+
+  it('does not keep IB pitch-book finance copy on a Korean conversation brief', async () => {
+    const html = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/ib-pitch-book/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const slides = resolveTemplateCloneSlidesFromBrief({
+      userInstruction: '영어 회화 표현 공부 팁, 예시에 대한 발표자료 만들어줘',
+    });
+    const cloned = buildTemplateClonedDeckHtml(html, slides, {
+      title: slides[0]?.title,
+      maxSlides: 10,
+    });
+    expect(cloned).toBeTruthy();
+    expect(listTemplateCloneSlideShells(cloned!).length).toBe(slides.length);
+    expect(cloned).not.toMatch(/Hartfield/i);
+    expect(cloned).not.toMatch(/Revenue CAGR/i);
+    expect(cloned).not.toMatch(/Section 5\s*·\s*DCF/i);
+    expect(cloned).not.toMatch(/A discounted-cash-flow that/i);
+    expect(cloned).not.toMatch(/WACC \(base\)/i);
+    expect(cloned).toMatch(/영어 회화|개요|핵심 포인트/);
+  });
 });
