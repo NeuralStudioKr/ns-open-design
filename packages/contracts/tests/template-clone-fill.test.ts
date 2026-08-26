@@ -27,6 +27,7 @@ import {
   salvageMalformedMiniMaxSlideMarkup,
   stripEmptyOfficialMotifInstances,
   stripHostProtocolLeakFromDeckHtml,
+  stripNonSlotWrappers,
 } from '../src/template-clone-fill.js';
 import { hoistDeckHostStylesToHead } from '../src/html/deck-template-look-css.js';
 
@@ -714,5 +715,37 @@ describe('sanitizeTemplateCloneDeckTitle', () => {
       '영어 회화 표현 공부 팁, 예시에 대한 발표자료 만들어줘',
     )).toBe(true);
     expect(looksLikeCatalogSwipeShell('<section class="slide"><h1>개요</h1></section>')).toBe(false);
+  });
+});
+
+describe('stripNonSlotWrappers (0826-N01 F4)', () => {
+  it('drops unknown card wrappers that are not on any class list', () => {
+    const html = [
+      '<h2>영어 회화</h2>',
+      '<div class="weird-unknown-grid">',
+      '<div class="weird-card">Option A leftover</div>',
+      '<div class="weird-card">Option B leftover</div>',
+      '</div>',
+      '<ul><li></li><li></li></ul>',
+    ].join('');
+    const next = stripNonSlotWrappers(html);
+    expect(next).toContain('<h2>영어 회화</h2>');
+    expect(next).toContain('<ul>');
+    expect(next).not.toMatch(/weird-unknown-grid|weird-card|Option A/);
+  });
+
+  it('keeps layout ancestors of the first heading', () => {
+    const html = [
+      '<div class="slide-inner">',
+      '<div class="body">',
+      '<div><h2>Title</h2></div>',
+      '<div class="kpi-grid"><div class="kpi">14.8x</div></div>',
+      '</div></div>',
+    ].join('');
+    const next = stripNonSlotWrappers(html);
+    expect(next).toContain('slide-inner');
+    expect(next).toContain('class="body"');
+    expect(next).toContain('<h2>Title</h2>');
+    expect(next).not.toMatch(/kpi-grid|14\.8/);
   });
 });
