@@ -117,6 +117,8 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | persist: thin bdi keep · fill+path · starting-style · closure | ☑ 루프99–103 / round116–120 |
 | persist: webkit-mask/filter/transform · print-color · pre kit | ☑ 루프104–113 / round121–130 |
 | chat/persist: colon/pipe chrome · thin pre · combo/closure | ☑ 루프114–118 / round131–135 |
+| persist: webkit-animation · hyphens/columns · text-security/drag | ☑ 루프120–124 / round136–140 |
+| chat/persist: slash chrome · @function · reflect/locale · combo | ☑ 루프125–134 / round141–150 |
 | clone: IB pitch-book 데모 카피가 한국어 brief에 남음 | ☑ 루프57 |
 | preview: #stage 1920px 스트립이 100vw로만 살짝 이동 | ☑ 루프57 |
 | persist: 카탈로그 예제 leftover를 filled로 저장 | ☑ |
