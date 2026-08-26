@@ -680,6 +680,10 @@ const FLOW_COPIED_STYLE_PROPS = [
   'font-optical-sizing',
   'font-variation-settings',
   'font-feature-settings',
+  'font-palette',
+  'font-synthesis',
+  'font-kerning',
+  'font-size-adjust',
   'line-height',
   'letter-spacing',
   'word-spacing',
@@ -691,12 +695,20 @@ const FLOW_COPIED_STYLE_PROPS = [
   'text-transform',
   'text-decoration',
   'text-shadow',
+  'text-justify',
   'text-box-trim',
   'text-box-edge',
   'text-spacing-trim',
   'initial-letter',
   'hyphenate-character',
   'hyphenate-limit-chars',
+  'hyphenate-limit-last',
+  'line-break',
+  'wrap-after',
+  'wrap-before',
+  'wrap-inside',
+  'box-snap',
+  'scroll-initial-target',
   'white-space',
   'white-space-collapse',
   'hyphens',
@@ -971,9 +983,9 @@ function pickOfficialKitCardClass(html: string): string | null {
 }
 
 const KIT_CARD_OPEN_RE =
-  /<(div|aside|article|section|li|figure|main|header|footer|blockquote|nav|ul|ol|dl|dt|dd|p|span|h[1-6]|figcaption|caption|details|summary|label|output|fieldset|legend|dialog|menu|mark|time|cite|q|small|abbr|kbd|samp|dfn|table|thead|tbody|tfoot|tr|td|th|address|hgroup|search|data|meter|progress|ruby)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
+  /<(div|aside|article|section|li|figure|main|header|footer|blockquote|nav|ul|ol|dl|dt|dd|p|span|h[1-6]|figcaption|caption|details|summary|label|output|fieldset|legend|dialog|menu|mark|time|cite|q|small|abbr|kbd|samp|dfn|table|thead|tbody|tfoot|tr|td|th|address|hgroup|search|data|meter|progress|ruby|form|optgroup|option|datalist)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
 const SELECTIVE_KIT_CARD_TAGS_RE =
-  /^(?:p|span|h[1-6]|figcaption|caption|details|summary|label|output|fieldset|legend|dialog|menu|mark|time|cite|q|small|abbr|kbd|samp|dfn|table|thead|tbody|tfoot|tr|td|th|data|meter|progress|ruby)$/i;
+  /^(?:p|span|h[1-6]|figcaption|caption|details|summary|label|output|fieldset|legend|dialog|menu|mark|time|cite|q|small|abbr|kbd|samp|dfn|table|thead|tbody|tfoot|tr|td|th|data|meter|progress|ruby|optgroup|option|datalist)$/i;
 
 function bindFakeOutlineCardsInSpan(html: string, cardClass: string): string {
   return html.replace(KIT_CARD_OPEN_RE, (open, tag: string, attrs: string) => {
