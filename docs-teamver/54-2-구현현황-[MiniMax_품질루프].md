@@ -129,6 +129,8 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | chat/persist: @namespace · @font-feature-values · invent-frame · closure | ☑ 루프200–209 / round202–210 |
 | persist: border-radius longhands · epub · clip-path · mask-box-image | ☑ 루프210–214 / round211–215 |
 | persist: word-break · hyphenate · moz/ms select/transform · @charset | ☑ 루프215–224 / round216–225 |
+| persist: ms-flex/grid · moz-background/columns · margin-collapse | ☑ 루프225–229 / round226–230 |
+| persist: moz-user · ms-scroll/wrap · @view-transition · closure | ☑ 루프230–239 / round231–240 |
 | clone: IB pitch-book 데모 카피가 한국어 brief에 남음 | ☑ 루프57 |
 | preview: #stage 1920px 스트립이 100vw로만 살짝 이동 | ☑ 루프57 |
 | persist: 카탈로그 예제 leftover를 filled로 저장 | ☑ |
@@ -164,7 +166,16 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | think 태그 / 내부 마크업 필터 | ☑ 기존 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프210–224 / round211–225)
+## 이번 루프 (루프225–239 / round226–240)
+
+1. persist — `-ms-flex*`/`-ms-order` · `-ms-grid*` · `-moz-background-*` · `-moz-column*`
+2. persist — `-webkit-margin-*-collapse`/`-webkit-rtl-ordering` · `-moz-user-*`/`-moz-print-color-adjust`
+3. persist — `-ms-touch-action`/`-ms-text-overflow`/`-ms-scroll*`/`-ms-wrap*`/`-ms-block-progression`
+4. chat — `@view-transition` harden · invent-frame negative · set31–33 combo/closure (`box-shadow` 보류)
+
+**검증:** chat-leak-probe-round226–240
+
+## 직전 루프 (루프210–224 / round211–225)
 
 1. persist — `-webkit-border-*-radius` · `-webkit-text-orientation`/`-epub-*` · `-webkit-clip-path` · `-webkit-image-rendering` · `-webkit-mask-box-image*`
 2. persist — `-webkit-word-break`/`text-decorations-in-effect`/`line-box-contain` · hyphenate-limit last/zone
