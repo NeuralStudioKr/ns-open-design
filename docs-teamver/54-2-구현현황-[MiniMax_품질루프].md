@@ -27,6 +27,7 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | chat leftover: RIBBON/WATERMARK/SCRIM/DIVIDER/CONTAINER … | ☑ round42 |
 | chat leftover: BLEED/PARALLAX/DRAFT/TODO … | ☑ round43 |
 | chat leftover: LETTERBOX/ZINDEX/SVG/GLITCH … | ☑ round44 |
+| chat leftover: SPARKLINE/DROPCAP/FUNNEL/GLOSSARY … | ☑ round45 |
 | leftover APPEND가 producedFiles 있어도 말풍선에 남음 | ☑ 루프18 |
 | dump fallback이 `초안.`/`진행.`/한글 완료 문장을 지움 | ☑ 루프19 |
 | split-* 마감/체크리스트가 inner clip을 건너뛰어 16:9 overflow | ☑ 루프20 |
@@ -70,7 +71,14 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | think 태그 / 내부 마크업 필터 | ☑ 기존 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프25 / round44)
+## 이번 루프 (루프26 / round45)
+
+1. chat — SPARKLINE/DROPCAP/FUNNEL/GLOSSARY 등 타이포·차트·인쇄·콜아웃 트랙 숨김
+2. 본문형 `FUNNEL 지표…`는 유지
+
+**검증:** chat-leak-probe-round45 · round44 · round40
+
+## 직전 루프 (루프25 / round44)
 
 1. chat — LETTERBOX/ZINDEX/SVG/GLITCH 등 필름·CSS·그래픽 트랙 숨김
 2. persist — cite/q/kbd/samp/small/abbr/dfn은 card-like padding일 때만 kit bind
