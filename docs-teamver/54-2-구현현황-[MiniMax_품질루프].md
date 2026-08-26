@@ -34,6 +34,7 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | chat leftover: ACTIONBAR/EMPTYSTATE/DATAGRID … | ☑ round49 |
 | chat leftover: DRAGDROP/HITAREA/IFRAME … | ☑ round50 |
 | chat leftover: *BTN/*CTRL/*STATE 접미사 캐치올 | ☑ round51 |
+| chat leftover: VIEW/HOST/PANEL/CARD … 접미사 확장 | ☑ round52 |
 | leftover APPEND가 producedFiles 있어도 말풍선에 남음 | ☑ 루프18 |
 | dump fallback이 `초안.`/`진행.`/한글 완료 문장을 지움 | ☑ 루프19 |
 | split-* 마감/체크리스트가 inner clip을 건너뛰어 16:9 overflow | ☑ 루프20 |
@@ -65,6 +66,7 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | persist: table/td/th selective kit bind (svg keep) | ☑ round48 |
 | persist: column-count/place-items/flex-grow/writing-mode flow 복사 | ☑ round49 |
 | persist: container-type/name/container flow 복사 | ☑ round51 |
+| persist: scroll-snap/isolation/contain/user-select flow 복사 | ☑ round52 |
 | 16:9 inner clip · kit card bind | ☑ |
 | top-up 재진입 재호출 + 내부 프롬프트 노출 | ☑ 센티널+autoOpen; 루프9 reattach 차단 · leftover 숨김 |
 | first-fill 3장 강제 → 요청 1–6장 한 턴 | ☑ 루프9 |
@@ -81,7 +83,14 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | think 태그 / 내부 마크업 필터 | ☑ 기존 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프32 / round51)
+## 이번 루프 (루프33 / round52)
+
+1. chat — VIEW/HOST/PANEL/CARD 등 접미사 캐치올 확장 (`{0,28}`)
+2. persist — scroll-snap/isolation/contain/user-select 등 flow 복사
+
+**검증:** chat-leak-probe-round52 · round51 · round50 · deck-fixed-canvas
+
+## 직전 루프 (루프32 / round51)
 
 1. chat — `*BTN`/`*CTRL`/`*STATE` 접미사 leftover 캐치올 (토큰 나열 없이)
 2. persist — container-type/name/container flow 복사

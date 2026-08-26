@@ -40,8 +40,8 @@ describe("chat leak / persist probe round 51 (suffix BTN/CTRL/STATE · container
       }),
     ).toBe("ZOOMCTRL 설정을 먼저 확인하세요.");
     expect(looksLikeDeckCodeDebrisLine("IDLESTATE 값을 줄임")).toBe(false);
-    // Not a BTN/CTRL/STATE suffix — still needs the enumerated list / other rules.
-    expect(looksLikeDeckCodeDebrisLine("ABCVIEW 1 · X")).toBe(false);
+    // TRACK-format prose without a chrome suffix still passes through.
+    expect(looksLikeDeckCodeDebrisLine("FOOQUUX 1 · X")).toBe(false);
   });
 
   it("copies container-type / container-name into slide flow", () => {
