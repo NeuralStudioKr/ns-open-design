@@ -385,10 +385,16 @@ const BROKEN_EMPTY_ATTR_OPEN_RE = /<([a-zA-Z][\w-]*)=""(?=[\s>])/g;
 const BROKEN_EMPTY_ATTR_CLOSE_RE = /<\/([a-zA-Z][\w-]*)="">/g;
 const LEAKED_LABEL_AFTER_TITLE_RE =
   /(<div\b[^>]*>)([^<]*·\s*([^<]{1,48}))<\/div>\s*·\s*\3\s*<\/div>/gi;
+const LEAKED_LABEL_AFTER_CLOSE_RE =
+  /<\/(div|p|span)>\s*·\s*[^<>]{1,48}<\/\1>/gi;
+const PREMATURE_AUTO_AUTO_1FR_CARD_RE =
+  /(<div\b[^>]*grid-template-rows:\s*auto\s+auto\s+1fr[^>]*>)([\s\S]*?<\/div>\s*<div\b[^>]*>[\s\S]*?<\/div>)\s*<\/div>\s*(<div\b[^>]*>[\s\S]*?<\/div>)\s*<\/div>/gi;
+const EARLY_NUMBERED_OL_CLOSE_RE =
+  /<\/ol>(\s*<\/div>)((?:\s*<li\b[^>]*grid-template-columns:\s*64px[\s\S]*?<\/li>)+)/gi;
 /**
- * MiniMax often emits `<p="">` and leaked `· Label` twins after a title
- * already closed. Restore those tags only — do not rewrite copy or
- * reparent catalog lists.
+ * MiniMax often emits `<p="">`, leaked `· Label` twins, a card `</div>`
+ * before the body, or `</ol>` after step 01. Restore those tags only —
+ * do not rewrite copy or reparent catalog TOC lists.
  */
 export function salvageMalformedMiniMaxSlideMarkup(html: string): string {
   let next = String(html ?? '');
@@ -396,6 +402,9 @@ export function salvageMalformedMiniMaxSlideMarkup(html: string): string {
   next = next.replace(BROKEN_EMPTY_ATTR_OPEN_RE, '<$1');
   next = next.replace(BROKEN_EMPTY_ATTR_CLOSE_RE, '</$1>');
   next = next.replace(LEAKED_LABEL_AFTER_TITLE_RE, '$1$2</div>');
+  next = next.replace(LEAKED_LABEL_AFTER_CLOSE_RE, '</$1>');
+  next = next.replace(PREMATURE_AUTO_AUTO_1FR_CARD_RE, '$1$2$3</div>');
+  next = next.replace(EARLY_NUMBERED_OL_CLOSE_RE, '$2</ol>$1');
   return next;
 }
 
@@ -415,13 +424,28 @@ function officialMotifVisibleText(block: string): string {
  * Empty Motif ribbon/stamp shells still paint (accent bar / card) after
  * leftover wipe. Drop nodes that have no visible text or SVG.
  */
+function openHasExactClass(open: string, name: string): boolean {
+  const raw = /\bclass\s*=\s*(['"])([\s\S]*?)\1/i.exec(open)?.[2] ?? '';
+  return raw.trim().split(/\s+/).some((token) => token.toLowerCase() === name.toLowerCase());
+}
+
 export function stripEmptyOfficialMotifInstances(html: string): string {
   let out = String(html ?? '');
-  if (!out || !/\bdata-od-official-motif-html\b/i.test(out)) return out;
-  const openRe = /<(div|span)\b[^>]*\bdata-od-official-motif-html\b[^>]*>/gi;
+  if (!out) return out;
+  if (
+    !/\bdata-od-official-motif-html\b/i.test(out)
+    && !/\bclass\s*=\s*["'][^"']*\b(?:ribbon|stamp)\b/i.test(out)
+  ) {
+    return out;
+  }
+  const openRe = /<(div|span)\b[^>]*>/gi;
   const spans: Array<{ start: number; end: number }> = [];
   let match: RegExpExecArray | null;
   while ((match = openRe.exec(out)) !== null) {
+    const open = match[0] ?? '';
+    const isMotif = /\bdata-od-official-motif-html\b/i.test(open);
+    const isTextChrome = openHasExactClass(open, 'ribbon') || openHasExactClass(open, 'stamp');
+    if (!isMotif && !isTextChrome) continue;
     const start = match.index;
     const tag = match[1] ?? 'div';
     const rest = out.slice(start);

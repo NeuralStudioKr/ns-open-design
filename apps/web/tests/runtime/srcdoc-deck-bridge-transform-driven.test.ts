@@ -449,6 +449,23 @@ describe('deck bridge - transform-driven decks', () => {
     expect(visible).toContain('영어 회화');
   });
 
+  it('salvages MiniMax markup and empty ribbons even without a user brief', () => {
+    const html = [
+      '<!doctype html><html><head></head><body>',
+      '<section class="slide"><span class="ribbon"></span>',
+      '<p="">알면서도 말하지 못하는 간극입니다.</p="">',
+      '<div style="grid-template-rows:auto auto 1fr">',
+      '<div>Step 01</div><div>상황 8개 선정</div></div>',
+      '<div>각 상황마다 표현 5~7개만 채웁니다.</div></div>',
+      '</section></body></html>',
+    ].join('');
+    const srcdoc = buildSrcdoc(html, { deck: true });
+    expect(srcdoc).toContain('<p>알면서도 말하지 못하는 간극입니다.</p>');
+    expect(srcdoc).not.toMatch(/<\/p="">/);
+    expect(srcdoc).toContain('각 상황마다 표현 5~7개만 채웁니다.');
+    expect(srcdoc).not.toMatch(/<span[^>]*class="ribbon"[^>]*>\s*<\/span>/);
+  });
+
   it('heals a stub cover and moves look CSS out from between slides', () => {
     const brief = '영어 회화 표현 공부 팁, 예시에 대한 발표자료 만들어줘';
     const html = [

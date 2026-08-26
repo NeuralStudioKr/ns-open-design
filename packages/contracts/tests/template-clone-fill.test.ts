@@ -495,6 +495,54 @@ describe('sanitizeTemplateCloneDeckTitle', () => {
     expect(healed).not.toMatch(/slide-title/);
   });
 
+  it('reparents MiniMax auto-auto-1fr cards and 64px step lists', () => {
+    const card = [
+      '<div style="grid-template-rows:auto auto 1fr;background:var(--paper-warm)">',
+      '<div>Step 01</div>',
+      '<div style="font-weight:700">상황 8개 선정</div>',
+      '</div>',
+      '<div>내가 자주 겪는 상황을 8개 적고</div>',
+      '</div>',
+    ].join('');
+    const salvagedCard = salvageMalformedMiniMaxSlideMarkup(card);
+    expect(salvagedCard).toContain('상황 8개 선정');
+    expect(salvagedCard).toContain('내가 자주 겪는 상황을 8개 적고');
+    expect(salvagedCard.match(/<\/div>/g)?.length).toBe(4);
+
+    const list = [
+      '<ol>',
+      '<li style="display:grid;grid-template-columns:64px 1fr"><div>01</div><div>청각 입력</div></li>',
+      '</ol></div>',
+      '<li style="display:grid;grid-template-columns:64px 1fr"><div>02</div><div>따라 말하기</div></li>',
+      '<li style="display:grid;grid-template-columns:64px 1fr"><div>03</div><div>혼잣말 변환</div></li>',
+    ].join('');
+    const salvagedList = salvageMalformedMiniMaxSlideMarkup(list);
+    expect(salvagedList).toMatch(/01[\s\S]*02[\s\S]*03[\s\S]*<\/ol>/);
+    expect(salvagedList).not.toMatch(/<\/ol><\/div><li/);
+  });
+
+  it('strips empty class-only ribbon shells without Motif attrs', () => {
+    const html = '<section class="slide"><span class="ribbon"></span><h1>개요</h1></section>';
+    const cleaned = stripEmptyOfficialMotifInstances(html);
+    expect(cleaned).not.toMatch(/class="ribbon"/);
+    expect(cleaned).toContain('<h1>개요</h1>');
+  });
+
+  it('does not reparent leftover IB catalog lists or drop Hartfield chrome', async () => {
+    const html = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/ib-pitch-book/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const salvaged = salvageMalformedMiniMaxSlideMarkup(html);
+    expect(salvaged).toMatch(/Hartfield/i);
+    expect(salvaged).toMatch(/id=["']now["']/);
+    expect(salvaged).toContain('WACC');
+    expect(salvaged).toMatch(/<ol[\s\S]*<\/ol>/);
+  });
+
   it('drops empty official Motif ribbon and stamp shells', () => {
     const html = [
       '<section class="slide">',

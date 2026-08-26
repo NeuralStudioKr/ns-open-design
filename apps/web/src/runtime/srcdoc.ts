@@ -197,16 +197,16 @@ function buildSrcdocUnsafe(
       } catch (_) {
         /* keep authored HTML */
       }
-      try {
-        html = salvageMalformedMiniMaxSlideMarkup(html);
-      } catch (_) {
-        /* keep authored HTML */
-      }
-      try {
-        html = stripEmptyOfficialMotifInstances(html);
-      } catch (_) {
-        /* keep authored HTML */
-      }
+    }
+    try {
+      html = salvageMalformedMiniMaxSlideMarkup(html);
+    } catch (_) {
+      /* keep authored HTML */
+    }
+    try {
+      html = stripEmptyOfficialMotifInstances(html);
+    } catch (_) {
+      /* keep authored HTML */
     }
     try {
       html = hoistDeckHostStylesToHead(html);

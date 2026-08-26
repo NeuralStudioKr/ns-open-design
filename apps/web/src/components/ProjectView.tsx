@@ -5742,6 +5742,7 @@ export function ProjectView({
         // Look/Motif/fonts first, then surface bleed — so cream !important
         // does not win over official dark identity (Hermes) or Motif washes.
         htmlBody = await mergeOfficialLookCssForTemplate(htmlBody, persistTemplateId);
+        htmlBody = sanitizePersistedDeckHostLeaks(htmlBody);
         htmlBody = healOfficialMagazineLayoutDensity(
           htmlBody,
           runVisiblePromptRef.current || '',
@@ -8226,8 +8227,9 @@ export function ProjectView({
                             project.metadata?.selectedDeckTemplateId,
                           ),
                         );
+                        const withSalvage = sanitizePersistedDeckHostLeaks(withLook);
                         const withMagazine = healOfficialMagazineLayoutDensity(
-                          withLook,
+                          withSalvage,
                           runVisiblePromptRef.current || '',
                         );
                         const withSurface = repairDeckSlideSurfaceBleed(withMagazine);
@@ -10242,8 +10244,9 @@ export function ProjectView({
                         project.metadata?.selectedDeckTemplateId,
                       ),
                     );
+                    const withSalvage = sanitizePersistedDeckHostLeaks(withLook);
                     const withMagazine = healOfficialMagazineLayoutDensity(
-                      withLook,
+                      withSalvage,
                       runVisiblePromptRef.current || '',
                     );
                     const withSurface = repairDeckSlideSurfaceBleed(withMagazine);

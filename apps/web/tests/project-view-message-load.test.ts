@@ -371,7 +371,7 @@ describe("ProjectView message loading", () => {
     // Look/Motif merge before surface bleed so cream !important cannot win
     // over official dark identity or Motif washes.
     expect(persistBlock).toMatch(
-      /mergeOfficialLookCssForTemplate[\s\S]{0,400}healOfficialMagazineLayoutDensity[\s\S]{0,240}repairDeckSlideSurfaceBleed/,
+      /mergeOfficialLookCssForTemplate[\s\S]{0,480}sanitizePersistedDeckHostLeaks[\s\S]{0,240}healOfficialMagazineLayoutDensity[\s\S]{0,240}repairDeckSlideSurfaceBleed/,
     );
     expect(persistBlock).toContain('collapseAdjacentDuplicateDeckSiblings');
     expect(persistBlock).toMatch(

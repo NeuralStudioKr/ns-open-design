@@ -157,6 +157,9 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | persist/preview: look CSS가 1–2장 사이에 끼어 표지 밀집도가 깨짐 | ☑ follow-up |
 | persist/preview: MiniMax `<p="">` · 유출 `· Label` | ☑ follow-up |
 | preview: Motif `span.ribbon`이 relative stretch로 빨간 줄 | ☑ follow-up |
+| persist/preview: MiniMax 카드 `</div>` 조기 마감 · 64px step `</ol>` | ☑ 루프138 |
+| persist/preview: 클래스만 있는 빈 `.ribbon` 빨간 칩 | ☑ 루프138 |
+| FileViewer/export: magazine/salvage 미적용 | ☑ 루프138 |
 | API-mode "save this as deck.html" 유출로 덱이 안 생김 | ☑ |
 | clone: demo-banner/TOC/stat-quote 잔여 · #total 불일치 | ☑ 루프58 |
 | preview: #slideCounter 고정 · hoist가 chrome 삭제 | ☑ 루프58 |
@@ -177,7 +180,16 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | think 태그 / 내부 마크업 필터 | ☑ 기존 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프137)
+## 이번 루프 (루프138)
+
+1. persist/preview — MiniMax `auto auto 1fr` 카드 · 64px step `</ol>` · 유출 `· Label` 복구 (IB TOC 유지)
+2. persist/preview — 클래스만 있는 빈 `.ribbon`/`.stamp` 제거. srcdoc은 brief 없이도 salvage
+3. FileViewer accept · standalone export — salvage 후 magazine
+4. persist — salvage를 magazine 힐 앞에 두어 표지 메타가 뒤 장 제목을 읽게 함
+
+**검증:** template-clone-fill card/ol/IB leftover · srcdoc brief-less salvage · deck-pdf-export · FileViewer source
+
+## 직전 루프 (루프137)
 
 1. heal — IB 매거진은 official `h1.display`(조각 시트 포함) 또는 `.cover .ribbon`+`.cover-meta`+`.mast`. Daisy `.slide-inner`는 오탐 아님
 2. heal — 커버 카피는 brief/후속 장 제목. 회화·쉐도잉·In context 발명 금지
