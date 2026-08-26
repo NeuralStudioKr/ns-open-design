@@ -529,6 +529,7 @@ export async function attemptFinalOutlineDeckFallback(options: {
   const outlineArtifact = buildEmergencyArtifactFromMessages(
     options.outlineMessages,
     options.finalText,
+    { brief: options.healBrief, deckTitle: options.healTitle },
   );
   if (!outlineArtifact) {
     return { recovered: false, produced: [], htmlToOpen: null };

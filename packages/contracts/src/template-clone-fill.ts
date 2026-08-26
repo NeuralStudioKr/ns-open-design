@@ -778,7 +778,9 @@ export function deriveDeckCoverTitleFromBrief(
 
 /** Parser / emergency defaults that must not land in the persist manifest. */
 export function isGenericDeckArtifactTitle(title: string | null | undefined): boolean {
-  return /^(?:response|deck|untitled|artifact|slide)$/i.test(String(title ?? '').trim());
+  return /^(?:response|deck|untitled|artifact|slide|presentation|발표\s*자료)$/i.test(
+    String(title ?? '').trim(),
+  );
 }
 
 function visibleHeadingText(inner: string): string {

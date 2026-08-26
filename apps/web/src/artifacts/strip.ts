@@ -1,3 +1,4 @@
+import { isGenericDeckArtifactTitle } from '@open-design/contracts';
 import { computeSkipRanges, isRealArtifactOpenAt, rangeContains, type Range } from './markdown-context';
 import {
   recoverHtmlArtifactFromPrecedingDocument,
@@ -9,10 +10,10 @@ const OPEN = '<artifact';
 const CLOSE = '</artifact>';
 const HTML_FENCE_RE = /```(?:html|HTML)\s*\n([\s\S]*?)\n```/g;
 
-/** Same generic English titles `isGenericDeckArtifactTitle` rejects at persist. */
+/** Same generic titles `isGenericDeckArtifactTitle` rejects at persist. */
 function previewArtifactTitle(raw: string | null | undefined): string {
   const title = String(raw ?? '').trim();
-  if (!title || /^(?:response|deck|untitled|artifact|slide)$/i.test(title)) return '슬라이드';
+  if (!title || isGenericDeckArtifactTitle(title)) return '슬라이드';
   return title;
 }
 

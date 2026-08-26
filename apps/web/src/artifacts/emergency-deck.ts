@@ -1,3 +1,7 @@
+import {
+  deriveDeckCoverTitleFromBrief,
+  isGenericDeckArtifactTitle,
+} from '@open-design/contracts';
 import type { Artifact, ChatMessage } from '../types';
 import { validateHtmlArtifact } from './validate';
 
@@ -263,7 +267,7 @@ export function buildEmergencySlideDeckFromOutline(
   if (slides.length < 3) return null;
 
   const lang = options?.lang || (/[가-힣]/.test(source) ? 'ko' : 'en');
-  const topic = options?.deckTitle?.trim() || inferTopicFromText(source) || (lang === 'ko' ? '발표 자료' : 'Presentation');
+  const topic = options?.deckTitle?.trim() || inferTopicFromText(source) || '슬라이드';
   const deckTitle = options?.deckTitle?.trim() || slides[0]?.title || topic;
   const sections = slides
     .map((slide) => {
@@ -324,21 +328,42 @@ export function collectSlideOutlineFromMessages(
   return chunks.join('\n\n');
 }
 
+function resolveOutlinePersistTitle(
+  inferred: string | null | undefined,
+  brief?: string | null,
+  deckTitle?: string | null,
+): string {
+  const named = String(inferred ?? '').trim();
+  if (
+    named
+    && !isGenericDeckArtifactTitle(named)
+    && !/^(?:presentation|발표\s*자료)$/i.test(named)
+  ) {
+    return named;
+  }
+  return deriveDeckCoverTitleFromBrief(brief || '', deckTitle || '슬라이드') || '슬라이드';
+}
+
 /** Build a persistable emergency artifact from conversation outline prose. */
 export function buildEmergencyArtifactFromMessages(
   messages: readonly ChatMessage[],
   finalText?: string | null,
+  heal?: { brief?: string | null; deckTitle?: string | null },
 ): Artifact | null {
   const outline = [collectSlideOutlineFromMessages(messages), finalText?.trim() ?? '']
     .filter(Boolean)
     .join('\n\n');
-  const deckTitle = inferDeckTitleFromMessages(messages) || undefined;
-  const html = buildEmergencySlideDeckFromOutline(outline, { deckTitle });
+  const persistTitle = resolveOutlinePersistTitle(
+    inferDeckTitleFromMessages(messages),
+    heal?.brief,
+    heal?.deckTitle,
+  );
+  const html = buildEmergencySlideDeckFromOutline(outline, { deckTitle: persistTitle });
   if (!html) return null;
   return {
     identifier: 'deck',
     artifactType: 'deck',
-    title: deckTitle || '슬라이드',
+    title: persistTitle,
     html,
   };
 }

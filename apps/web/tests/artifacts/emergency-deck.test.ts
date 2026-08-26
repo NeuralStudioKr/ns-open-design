@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   buildEmergencyArtifactFromMessages,
@@ -153,5 +155,52 @@ describe('buildEmergencyArtifactFromMessages', () => {
     ] as ChatMessage[];
 
     expect(buildEmergencyArtifactFromMessages(messages)).toBeNull();
+  });
+
+  it('titles outline persist from heal brief when the conversation has no topic', () => {
+    const messages = [
+      {
+        id: 'u1',
+        role: 'user',
+        content: '[Deliverable instruction]\nContinue the deck.',
+        createdAt: 1,
+      },
+      {
+        id: 'a1',
+        role: 'assistant',
+        content: '슬라이드 구성:\n01 시장\n02 전략\n03 실행',
+        createdAt: 2,
+      },
+    ] as ChatMessage[];
+    const art = buildEmergencyArtifactFromMessages(messages, null, {
+      brief: 'AI 트렌드 발표자료를 만들어줘',
+      deckTitle: 'Html Ppt Zhangzara Daisy Days',
+    });
+    expect(art?.title).toMatch(/AI 트렌드/);
+    expect(art?.html).toContain('<title>');
+    expect(art?.html).not.toContain('Presentation');
+  });
+});
+
+describe('outline last-resort title fallback', () => {
+  it('does not use English Presentation or 발표 자료 as the HTML title', () => {
+    const html = buildEmergencySlideDeckFromOutline('1. Intro\n2. Body\n3. Close');
+    expect(html).toContain('<title>Intro</title>');
+    expect(html).not.toContain('Presentation');
+    expect(html).not.toContain('발표 자료');
+  });
+
+  it('passes heal brief/title into outline last-resort persist', () => {
+    const recovery = readFileSync(
+      resolve(__dirname, '../../src/runtime/slide-deliverable-recovery.ts'),
+      'utf8',
+    );
+    expect(recovery).toContain('brief: options.healBrief, deckTitle: options.healTitle');
+    const source = readFileSync(
+      resolve(__dirname, '../../src/artifacts/emergency-deck.ts'),
+      'utf8',
+    );
+    expect(source).not.toContain("'Presentation'");
+    expect(source).toContain("|| '슬라이드'");
   });
 });

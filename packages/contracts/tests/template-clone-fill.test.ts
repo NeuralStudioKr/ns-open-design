@@ -394,6 +394,8 @@ describe('sanitizeTemplateCloneDeckTitle', () => {
     expect(isGenericDeckArtifactTitle('Response')).toBe(true);
     expect(isGenericDeckArtifactTitle('deck')).toBe(true);
     expect(isGenericDeckArtifactTitle('Deck')).toBe(true);
+    expect(isGenericDeckArtifactTitle('Presentation')).toBe(true);
+    expect(isGenericDeckArtifactTitle('발표 자료')).toBe(true);
     expect(isGenericDeckArtifactTitle('슬라이드')).toBe(false);
     expect(isGenericDeckArtifactTitle('기업 AI 도입 효과')).toBe(false);
   });
