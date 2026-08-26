@@ -241,4 +241,90 @@ describe('deck bridge - transform-driven decks', () => {
     }
     expect(win.document.getElementById('now')?.textContent).toBe('02');
   });
+
+  it('uses authored 1920px width when offsetWidth matches a narrower iframe', async () => {
+    const bodyHtml = `
+      <style>
+        html, body { margin: 0; }
+        #stage { display: flex; width: 5760px; transition: none; }
+        .slide { flex: 0 0 1920px; width: 1920px; height: 1080px; }
+      </style>
+      <div class="deck" id="deck">
+        <div id="stage">
+          <section class="slide" style="width:1920px;height:1080px">One</section>
+          <section class="slide" style="width:1920px;height:1080px">Two</section>
+          <section class="slide" style="width:1920px;height:1080px">Three</section>
+        </div>
+      </div>
+    `;
+    const srcdoc = buildSrcdoc(`<!doctype html><html><body>${bodyHtml}</body></html>`, {
+      deck: true,
+    });
+    const script = extractDeckBridgeScript(srcdoc);
+    const dom = new JSDOM(`<!doctype html><html><body>${bodyHtml}</body></html>`, {
+      runScripts: 'outside-only',
+      pretendToBeVisual: true,
+    });
+    const win = dom.window;
+    Object.defineProperty(win, 'parent', {
+      configurable: true,
+      value: { postMessage: vi.fn() },
+    });
+    Object.defineProperty(win, 'innerWidth', { configurable: true, value: 800 });
+    Object.defineProperty(win, 'innerHeight', { configurable: true, value: 600 });
+    const slides = Array.from(win.document.querySelectorAll<HTMLElement>('#stage > .slide'));
+    slides.forEach((slide) => {
+      Object.defineProperty(slide, 'offsetWidth', { configurable: true, value: 800 });
+      Object.defineProperty(slide, 'offsetHeight', { configurable: true, value: 600 });
+    });
+    const evaluate = new win.Function(script);
+    evaluate.call(win);
+    win.dispatchEvent(new win.MessageEvent('message', {
+      data: { type: 'od:slide', action: 'next' },
+    }));
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 80));
+    const stage = win.document.getElementById('stage') as HTMLElement | null;
+    const stacked = win.document.getElementById('od-stacked-deck-stage');
+    if (!stacked) {
+      expect(stage?.style.transform).toBe('translateX(-1920px)');
+    }
+  });
+
+  it('syncs #slideCounter and #counter when the host advances', async () => {
+    const bodyHtml = `
+      <style>
+        html, body { margin: 0; height: 100%; }
+        .slide { width: 100%; height: 100vh; }
+        .slide:not(.active) { display: none; }
+      </style>
+      <div class="slide-counter" id="slideCounter">01 / 03</div>
+      <div class="counter" id="counter">01 / 03</div>
+      <div id="progress" style="width:33%"></div>
+      <section class="slide active">One</section>
+      <section class="slide">Two</section>
+      <section class="slide">Three</section>
+    `;
+    const srcdoc = buildSrcdoc(`<!doctype html><html><body>${bodyHtml}</body></html>`, {
+      deck: true,
+    });
+    const script = extractDeckBridgeScript(srcdoc);
+    const dom = new JSDOM(`<!doctype html><html><body>${bodyHtml}</body></html>`, {
+      runScripts: 'outside-only',
+      pretendToBeVisual: true,
+    });
+    const win = dom.window;
+    Object.defineProperty(win, 'parent', {
+      configurable: true,
+      value: { postMessage: vi.fn() },
+    });
+    const evaluate = new win.Function(script);
+    evaluate.call(win);
+    win.dispatchEvent(new win.MessageEvent('message', {
+      data: { type: 'od:slide', action: 'next' },
+    }));
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 80));
+    expect(win.document.getElementById('slideCounter')?.textContent).toBe('02 / 03');
+    expect(win.document.getElementById('counter')?.textContent).toBe('02 / 03');
+    expect(String((win.document.getElementById('progress') as HTMLElement | null)?.style.width ?? '')).toMatch(/^66\.6/);
+  });
 });

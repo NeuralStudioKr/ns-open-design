@@ -2982,6 +2982,25 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .stage > .slide {
       var el = children[i];
       if (!el || el === stage) continue;
       if (el.id === 'od-stacked-deck-stage') continue;
+      var chromeId = String(el.id || '');
+      if (
+        chromeId === 'slideCounter'
+        || chromeId === 'counter'
+        || chromeId === 'progress'
+        || chromeId === 'progressBar'
+        || chromeId === 'now'
+        || chromeId === 'total'
+        || chromeId === 'deck-cur'
+        || chromeId === 'deck-total'
+        || chromeId === 'current'
+      ) continue;
+      if (el.classList && (
+        el.classList.contains('slide-counter')
+        || el.classList.contains('counter')
+        || el.classList.contains('chrome')
+        || el.classList.contains('progress')
+        || el.classList.contains('hint')
+      )) continue;
       var tag = String(el.tagName || '').toLowerCase();
       if (tag === 'header' || tag === 'nav' || tag === 'style' || tag === 'script') continue;
       if (el.querySelector && el.querySelector('.slide, .deck-slide, .ppt-slide, [data-screen-label]')) continue;
@@ -3225,7 +3244,7 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .stage > .slide {
     // fall back to all .slide only when nothing structured matched, so
     // freeform decks that nest slides under an extra wrapper still report
     // the real count instead of leaving the host counter at 1 / 0.
-    var structured = document.querySelectorAll('.deck > .slide, .deck > [data-screen-label], .deck-stage > .slide, .deck-stage > [data-screen-label], deck-stage > .slide, deck-stage > [data-screen-label], .deck-shell > .slide, .deck-shell > [data-screen-label], #od-stacked-deck-stage > .slide, #od-stacked-deck-stage > [data-screen-label], body > .slide, body > .deck-slide, body > .ppt-slide, body > [data-screen-label]');
+    var structured = document.querySelectorAll('.deck > .slide, .deck > [data-screen-label], .deck-stage > .slide, .deck-stage > [data-screen-label], deck-stage > .slide, deck-stage > [data-screen-label], .deck-shell > .slide, .deck-shell > [data-screen-label], #od-stacked-deck-stage > .slide, #od-stacked-deck-stage > [data-screen-label], #stage > .slide, .stage > .slide, #slides > .slide, #slidesContainer > .slide, .slides-container > .slide, body > .slide, body > .deck-slide, body > .ppt-slide, body > [data-screen-label]');
     if (structured.length) return structured;
     return document.querySelectorAll('.slide, .deck-slide, .ppt-slide, [data-screen-label]');
   }
@@ -3688,8 +3707,18 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .stage > .slide {
       // empty body background while the counter still advances.
       var stepY = 0;
       try {
-        var h = list[0] && list[0].offsetHeight ? list[0].offsetHeight : 0;
-        if (h >= 600 && Math.abs(h - (window.innerHeight || 0)) > 48) stepY = h;
+        var firstY = list[0];
+        var h = firstY && firstY.offsetHeight ? firstY.offsetHeight : 0;
+        var authoredY = 0;
+        if (firstY) {
+          var styleY = String(firstY.getAttribute && firstY.getAttribute('style') || '');
+          var authoredMatchY = styleY.match(/height\\s*:\\s*(\\d+(?:\\.\\d+)?)px/i);
+          if (authoredMatchY) authoredY = parseFloat(authoredMatchY[1]);
+        }
+        var stepCandidateY = Math.max(h, authoredY);
+        if (stepCandidateY >= 600 && Math.abs(stepCandidateY - (window.innerHeight || 0)) > 48) {
+          stepY = stepCandidateY;
+        }
       } catch (_) {}
       if (stepY > 0) {
         track.style.transform = 'translateY(' + (-target * stepY) + 'px)';
@@ -3700,8 +3729,18 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .stage > .slide {
     } else {
       var stepX = 0;
       try {
-        var w = list[0] && list[0].offsetWidth ? list[0].offsetWidth : 0;
-        if (w >= 600 && Math.abs(w - (window.innerWidth || 0)) > 48) stepX = w;
+        var firstX = list[0];
+        var w = firstX && firstX.offsetWidth ? firstX.offsetWidth : 0;
+        var authoredX = 0;
+        if (firstX) {
+          var styleX = String(firstX.getAttribute && firstX.getAttribute('style') || '');
+          var authoredMatchX = styleX.match(/width\\s*:\\s*(\\d+(?:\\.\\d+)?)px/i);
+          if (authoredMatchX) authoredX = parseFloat(authoredMatchX[1]);
+        }
+        var stepCandidateX = Math.max(w, authoredX);
+        if (stepCandidateX >= 600 && Math.abs(stepCandidateX - (window.innerWidth || 0)) > 48) {
+          stepX = stepCandidateX;
+        }
       } catch (_) {}
       if (stepX > 0) {
         track.style.transform = 'translateX(' + (-target * stepX) + 'px)';
@@ -3825,6 +3864,18 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .stage > .slide {
     for (var t = 0; t < totalAlts.length; t++) totalAlts[t].textContent = pad2(count);
     var page = document.getElementById('current');
     if (page) page.textContent = pad2(i + 1);
+    var chromeLabel = pad2(i + 1) + ' / ' + pad2(count);
+    var chromeLoose = String(i + 1) + ' / ' + String(count);
+    var counters = document.querySelectorAll('#slideCounter, #counter, .slide-counter');
+    for (var c = 0; c < counters.length; c++) {
+      var prior = String(counters[c].textContent || '');
+      counters[c].textContent = /0\\d/.test(prior) ? chromeLabel : chromeLoose;
+    }
+    var barWidth = count ? (((i + 1) / count) * 100) + '%' : '0%';
+    var bars = document.querySelectorAll('#progress, #progressBar');
+    for (var b = 0; b < bars.length; b++) {
+      if (bars[b].style) bars[b].style.width = barWidth;
+    }
     var dots = document.querySelectorAll('.nav-dot');
     if (dots.length === count) {
       for (var d = 0; d < dots.length; d++) {
@@ -4144,6 +4195,7 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .stage > .slide {
       var list = slides();
       var i = activeIndex(list);
       var count = list.length;
+      updateDeckChrome(i, count);
       var progressWidth = count ? ((i + 1) / count * 100) + '%' : '0';
       window.parent.postMessage({
         type: 'od:slide-state',
