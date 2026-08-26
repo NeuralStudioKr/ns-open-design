@@ -101,6 +101,7 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | persist: scroll-padding-top · overflow-block flow 복사 | ☑ round70 |
 | persist: margin/inset longhand · outline/border-block flow | ☑ round71 |
 | persist: background/transform/transition/animation flow | ☑ round72 |
+| persist: border-radius · grid-column/row flow | ☑ round73 |
 | 16:9 inner clip · kit card bind | ☑ |
 | top-up 재진입 재호출 + 내부 프롬프트 노출 | ☑ 센티널+autoOpen; 루프9 reattach 차단 · leftover 숨김 |
 | first-fill 3장 강제 → 요청 1–6장 한 턴 | ☑ 루프9 |
@@ -117,7 +118,13 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | think 태그 / 내부 마크업 필터 | ☑ 기존 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프53 / round72)
+## 이번 루프 (루프54 / round73)
+
+1. persist — border-radius · grid-column/row flow 복사
+
+**검증:** chat-leak-probe-round73 · round72 · deck-fixed-canvas
+
+## 직전 루프 (루프53 / round72)
 
 1. persist — background/transform/transition/animation/offset flow 복사
 
