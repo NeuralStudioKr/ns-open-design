@@ -327,4 +327,47 @@ describe('deck bridge - transform-driven decks', () => {
     expect(win.document.getElementById('counter')?.textContent).toBe('02 / 03');
     expect(String((win.document.getElementById('progress') as HTMLElement | null)?.style.width ?? '')).toMatch(/^66\.6/);
   });
+
+  it('syncs in-deck #now/#total from report even without transformGo', async () => {
+    const bodyHtml = `
+      <div class="deck" id="deck">
+        <div class="chrome"><span id="now">01</span> / <span id="total">10</span></div>
+        <div id="stage">
+          <section class="slide">One</section>
+          <section class="slide">Two</section>
+          <section class="slide">Three</section>
+        </div>
+      </div>
+    `;
+    const srcdoc = buildSrcdoc(`<!doctype html><html><body>${bodyHtml}</body></html>`, {
+      deck: true,
+    });
+    expect(srcdoc).toMatch(/updateDeckChrome\(i,\s*count\)/);
+    const script = extractDeckBridgeScript(srcdoc);
+    const dom = new JSDOM(`<!doctype html><html><body>${bodyHtml}</body></html>`, {
+      runScripts: 'outside-only',
+      pretendToBeVisual: true,
+    });
+    const win = dom.window;
+    Object.defineProperty(win, 'parent', {
+      configurable: true,
+      value: { postMessage: vi.fn() },
+    });
+    const stage = win.document.getElementById('stage') as HTMLElement;
+    stage.style.transform = 'translateX(-1920px)';
+    const slides = Array.from(win.document.querySelectorAll<HTMLElement>('#stage > .slide'));
+    slides.forEach((slide) => {
+      Object.defineProperty(slide, 'offsetWidth', { configurable: true, value: 1920 });
+    });
+    Object.defineProperty(stage, 'scrollWidth', { configurable: true, value: 5760 });
+    Object.defineProperty(stage, 'offsetWidth', { configurable: true, value: 5760 });
+    Object.defineProperty(stage, 'clientWidth', { configurable: true, value: 5760 });
+    new win.Function(script).call(win);
+    win.dispatchEvent(new win.MessageEvent('message', {
+      data: { type: 'od:slide-state-request' },
+    }));
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 40));
+    expect(win.document.getElementById('now')?.textContent).toBe('02');
+    expect(win.document.getElementById('total')?.textContent).toBe('03');
+  });
 });

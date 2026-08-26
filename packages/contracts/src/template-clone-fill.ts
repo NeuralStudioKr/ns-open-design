@@ -438,6 +438,11 @@ function fillSlideShell(
     body = replaceFirstTagText(body, 'p', '');
   }
 
+  // Partial heading swaps must not keep IB/finance demo chrome/tables.
+  if (/Hartfield|NorthPeak|WACC\s*\(\s*base\s*\)|Implied EV|Demo-data notice/i.test(body)) {
+    body = stripLeftoverTemplateDemoCopy(body);
+  }
+
   // Force Teamver fixed canvas size even when template used vw/vh or had
   // a pre-existing inline style that would otherwise win over CSS overrides.
   let attrs = shell.attrs;

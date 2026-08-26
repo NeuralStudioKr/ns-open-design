@@ -5435,7 +5435,30 @@ export function ProjectView({
         }
         if (runSlideCountTopUpRef.current) {
           const priorHtml = await readDiskHtml(fileName);
-          if (priorHtml) {
+          const topUpBrief = runVisiblePromptRef.current || '';
+          if (
+            priorHtml
+            && deckLooksLikeUnfilledCatalogExample(priorHtml, topUpBrief)
+          ) {
+            // Do not append onto catalog leftover. Incoming replaces when it
+            // is topical; leftover incoming stays a quiet incomplete skip.
+            if (
+              deckLooksLikeUnfilledCatalogExample(
+                incomingBeforeSalvage,
+                topUpBrief,
+              )
+              || deckLooksLikeUnfilledCatalogExample(
+                artifactToPersist.html,
+                topUpBrief,
+              )
+            ) {
+              return {
+                kind: 'skipped-incomplete',
+                fileName,
+                reason: 'unfilled-catalog-example',
+              };
+            }
+          } else if (priorHtml) {
             const merged =
               appendIncomingSlidesOntoExistingDeck(priorHtml, incomingBeforeSalvage)
               ?? appendIncomingSlidesOntoExistingDeck(
@@ -14821,6 +14844,7 @@ function isUsableDeckHtmlArtifact(
 ): boolean {
   const trimmed = String(html ?? '').trim();
   if (!trimmed || !validateHtmlArtifact(trimmed).ok) return false;
+  if (deckLooksLikeUnfilledCatalogExample(trimmed, brief)) return false;
   if (
     isPersistableShortDeckDraft(trimmed)
     || isPersistableShortDeckDraftAfterHeal(trimmed, brief, deckTitle || '슬라이드')

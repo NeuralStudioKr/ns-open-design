@@ -7,6 +7,7 @@
  * triggers the endpoint — BYOK Messages API has no Clone tool for the model.
  */
 
+import { deckLooksLikeUnfilledCatalogExample } from '../artifacts/deck-html-content';
 import { fetchProjectFileText } from '../providers/registry';
 import { getProject } from '../state/projects';
 import { fetchTeamverDaemon } from './teamverDaemonHeaders';
@@ -57,13 +58,16 @@ export async function recoverExistingTemplateClonedDeck(
   if (!id) return null;
 
   let deckExists = false;
+  let deckHtml = '';
   try {
-    const deckHtml = await fetchProjectFileText(id, 'deck.html', { cache: 'no-store' });
+    deckHtml = await fetchProjectFileText(id, 'deck.html', { cache: 'no-store' }) ?? '';
     deckExists = Boolean(deckHtml && deckHtml.trim().length > 200);
   } catch {
     deckExists = false;
   }
   if (!deckExists) return null;
+  // A leftover catalog example is not a successful LOOK seed — re-clone.
+  if (deckLooksLikeUnfilledCatalogExample(deckHtml)) return null;
 
   try {
     const text = await fetchProjectFileText(id, 'deck.html.artifact.json', {

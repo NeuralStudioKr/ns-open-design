@@ -343,6 +343,8 @@ const CATALOG_EXAMPLE_FINGERPRINTS = [
   /fictional\s+illustrative\s+placeholders/i,
   /WACC\s*\(\s*base\s*\)/i,
   /Implied\s+(?:EV|equity value)/i,
+  /Revenue CAGR/i,
+  /SECTION\s+\d+\s*[·•]\s*DCF/i,
 ];
 
 /**

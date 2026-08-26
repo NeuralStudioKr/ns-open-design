@@ -7,6 +7,7 @@ import {
   buildEmergencyArtifactFromMessages,
 } from '../artifacts/emergency-deck';
 import {
+  deckLooksLikeUnfilledCatalogExample,
   isClosedSoftSalvageDeckHtml,
   isPersistableShortDeckDraft,
   isPersistableShortDeckDraftAfterHeal,
@@ -218,6 +219,9 @@ export async function verifySlideProducedHtmlDeliverable(
     return null;
   }
   if (isLowSubstanceSlideDeckArtifact(html, healContext?.brief, healContext?.deckTitle)) {
+    return null;
+  }
+  if (deckLooksLikeUnfilledCatalogExample(html, healContext?.brief)) {
     return null;
   }
   return fileName;

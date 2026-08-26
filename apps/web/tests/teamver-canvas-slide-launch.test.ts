@@ -649,6 +649,7 @@ describe("canvasSlideLaunch", () => {
     expect(appCloneSeedBlock).not.toContain("pendingPrompt: null");
     expect(appCloneSeedBlock).not.toContain("pendingPrompt: undefined");
     expect(seeder).toContain("recoverExistingTemplateClonedDeck");
+    expect(seeder).toContain("deckLooksLikeUnfilledCatalogExample");
     expect(seeder).toContain("templateClonedDeckSeeded");
     expect(home).toContain("resolveSlideOnlyDeckTemplateSkillId(active?.record)");
     expect(home).toContain("templateForRun");

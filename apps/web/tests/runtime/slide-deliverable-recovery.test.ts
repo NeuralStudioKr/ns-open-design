@@ -318,6 +318,24 @@ describe('verifySlideProducedHtmlDeliverable', () => {
     ).resolves.toBe('deck.html');
   });
 
+  it('returns null for leftover ib-pitch-book catalog examples', async () => {
+    const leftover =
+      '<!doctype html><html><body>'
+      + '<section class="slide"><h1>A discounted-cash-flow that 영어 회화 표현 공부 팁</h1>'
+      + '<p>Hartfield &amp; Co.</p><p>WACC (base)</p><p>Implied EV</p>'
+      + '</section></body></html>';
+    await expect(
+      verifySlideProducedHtmlDeliverable(
+        'deck.html',
+        async () => leftover,
+        {
+          brief: '영어 회화 표현 공부 팁, 예시에 대한 발표자료 만들어줘',
+          deckTitle: '슬라이드',
+        },
+      ),
+    ).resolves.toBeNull();
+  });
+
   it('returns null for Motif-SVG-before-title hangs', async () => {
     const hung =
       '<!doctype html><html lang="ko"><body style="margin:0;background:#F5F0E6">'

@@ -1094,6 +1094,8 @@ describe("ProjectView message loading", () => {
     expect(source).toContain("deckLooksLikeUnfilledCatalogExample");
     expect(source).toContain("leftoverCatalogExample");
     expect(source).toContain("unfilled-catalog-example");
+    expect(source).toContain("Do not append onto catalog leftover");
+    expect(source).toContain("if (deckLooksLikeUnfilledCatalogExample(trimmed, brief)) return false");
     expect(source).toContain("motifSvgDump");
     expect(source).toContain("normalizedArtifactType === 'deck'");
     expect(source).toContain("'low-substance deck artifact'");

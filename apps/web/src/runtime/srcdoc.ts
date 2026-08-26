@@ -3244,7 +3244,7 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .stage > .slide {
     // fall back to all .slide only when nothing structured matched, so
     // freeform decks that nest slides under an extra wrapper still report
     // the real count instead of leaving the host counter at 1 / 0.
-    var structured = document.querySelectorAll('.deck > .slide, .deck > [data-screen-label], .deck-stage > .slide, .deck-stage > [data-screen-label], deck-stage > .slide, deck-stage > [data-screen-label], .deck-shell > .slide, .deck-shell > [data-screen-label], #od-stacked-deck-stage > .slide, #od-stacked-deck-stage > [data-screen-label], #stage > .slide, .stage > .slide, #slides > .slide, #slidesContainer > .slide, .slides-container > .slide, body > .slide, body > .deck-slide, body > .ppt-slide, body > [data-screen-label]');
+    var structured = document.querySelectorAll('.deck > .slide, .deck > [data-screen-label], .deck #stage > .slide, .deck .stage > .slide, .deck-stage > .slide, .deck-stage > [data-screen-label], deck-stage > .slide, deck-stage > [data-screen-label], .deck-shell > .slide, .deck-shell > [data-screen-label], #od-stacked-deck-stage > .slide, #od-stacked-deck-stage > [data-screen-label], #stage > .slide, .stage > .slide, #slides > .slide, #slidesContainer > .slide, .slides-container > .slide, body > .slide, body > .deck-slide, body > .ppt-slide, body > [data-screen-label]');
     if (structured.length) return structured;
     return document.querySelectorAll('.slide, .deck-slide, .ppt-slide, [data-screen-label]');
   }
@@ -3514,7 +3514,7 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .stage > .slide {
       if (!Number.isFinite(valueY)) return -1;
       var unitY = matchY[2] || 'px';
       var stepY = unitY === 'px'
-        ? Math.max(1, track.clientHeight / list.length, window.innerHeight)
+        ? Math.max(1, transformSlideStepPx(list, track, 'y') || track.clientHeight / list.length)
         : 100;
       return Math.max(0, Math.min(list.length - 1, Math.round(Math.abs(valueY) / stepY)));
     }
@@ -3524,7 +3524,7 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .stage > .slide {
       if (!Number.isFinite(value)) return -1;
       var unit = match[2] || 'px';
       var step = unit === 'px'
-        ? Math.max(1, track.clientWidth / list.length, window.innerWidth)
+        ? Math.max(1, transformSlideStepPx(list, track, 'x') || track.clientWidth / list.length)
         : 100;
       return Math.max(0, Math.min(list.length - 1, Math.round(Math.abs(value) / step)));
     }
@@ -3534,11 +3534,11 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .stage > .slide {
       var tx = parts.length === 16 ? parts[12] : parts.length >= 6 ? parts[4] : NaN;
       var ty = parts.length === 16 ? parts[13] : parts.length >= 6 ? parts[5] : NaN;
       if (axis === 'y' && Number.isFinite(ty)) {
-        var stepPy = Math.max(1, window.innerHeight, track.clientHeight / list.length);
+        var stepPy = Math.max(1, transformSlideStepPx(list, track, 'y') || track.clientHeight / list.length);
         return Math.max(0, Math.min(list.length - 1, Math.round(Math.abs(ty) / stepPy)));
       }
       if (axis !== 'y' && Number.isFinite(tx)) {
-        var stepPx = Math.max(1, window.innerWidth, track.clientWidth / list.length);
+        var stepPx = Math.max(1, transformSlideStepPx(list, track, 'x') || track.clientWidth / list.length);
         return Math.max(0, Math.min(list.length - 1, Math.round(Math.abs(tx) / stepPx)));
       }
     }
@@ -3695,6 +3695,43 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .stage > .slide {
     }
     syncPaginationControls(target, list.length);
   }
+  function transformSlideStepPx(list, track, axis){
+    var first = list && list[0];
+    var size = 0;
+    try {
+      if (first) {
+        size = axis === 'y'
+          ? (first.offsetHeight || first.getBoundingClientRect().height || 0)
+          : (first.offsetWidth || first.getBoundingClientRect().width || 0);
+        if (!(size > 0)) {
+          var computed = window.getComputedStyle(first);
+          size = axis === 'y'
+            ? (parseFloat(computed.minHeight) || parseFloat(computed.height) || 0)
+            : (parseFloat(computed.minWidth) || parseFloat(computed.width) || 0);
+        }
+        var authoredStyle = String(first.getAttribute && first.getAttribute('style') || '');
+        var authoredMatch = authoredStyle.match(
+          axis === 'y' ? /height\\s*:\\s*(\\d+(?:\\.\\d+)?)px/i : /width\\s*:\\s*(\\d+(?:\\.\\d+)?)px/i,
+        );
+        if (authoredMatch) size = Math.max(size, parseFloat(authoredMatch[1]));
+      }
+    } catch (_) {}
+    try {
+      var trackSize = track
+        ? (axis === 'y'
+          ? (track.scrollHeight || track.offsetHeight || 0)
+          : (track.scrollWidth || track.offsetWidth || 0))
+        : 0;
+      if (list && list.length >= 2 && trackSize > 0) {
+        size = Math.max(size, trackSize / list.length);
+      }
+    } catch (_) {}
+    var viewport = axis === 'y' ? (window.innerHeight || 0) : (window.innerWidth || 0);
+    if (size >= 600 && Math.abs(size - viewport) > 48) return size;
+    // Pinned 1920 canvas can still report iframe-sized offsetWidth.
+    if (size >= 1600) return size;
+    return 0;
+  }
   function transformGo(i){
     var list = slides();
     var track = transformTrack(list);
@@ -3705,21 +3742,7 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .stage > .slide {
       // 8-Bit Orbit / vertical slides-container: native JS uses
       // translateY(-N00vh). Overwriting that with translateX paints an
       // empty body background while the counter still advances.
-      var stepY = 0;
-      try {
-        var firstY = list[0];
-        var h = firstY && firstY.offsetHeight ? firstY.offsetHeight : 0;
-        var authoredY = 0;
-        if (firstY) {
-          var styleY = String(firstY.getAttribute && firstY.getAttribute('style') || '');
-          var authoredMatchY = styleY.match(/height\\s*:\\s*(\\d+(?:\\.\\d+)?)px/i);
-          if (authoredMatchY) authoredY = parseFloat(authoredMatchY[1]);
-        }
-        var stepCandidateY = Math.max(h, authoredY);
-        if (stepCandidateY >= 600 && Math.abs(stepCandidateY - (window.innerHeight || 0)) > 48) {
-          stepY = stepCandidateY;
-        }
-      } catch (_) {}
+      var stepY = transformSlideStepPx(list, track, 'y');
       if (stepY > 0) {
         track.style.transform = 'translateY(' + (-target * stepY) + 'px)';
       } else {
@@ -3727,21 +3750,7 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .stage > .slide {
         track.style.transform = 'translateY(' + (-target * 100) + unitY + ')';
       }
     } else {
-      var stepX = 0;
-      try {
-        var firstX = list[0];
-        var w = firstX && firstX.offsetWidth ? firstX.offsetWidth : 0;
-        var authoredX = 0;
-        if (firstX) {
-          var styleX = String(firstX.getAttribute && firstX.getAttribute('style') || '');
-          var authoredMatchX = styleX.match(/width\\s*:\\s*(\\d+(?:\\.\\d+)?)px/i);
-          if (authoredMatchX) authoredX = parseFloat(authoredMatchX[1]);
-        }
-        var stepCandidateX = Math.max(w, authoredX);
-        if (stepCandidateX >= 600 && Math.abs(stepCandidateX - (window.innerWidth || 0)) > 48) {
-          stepX = stepCandidateX;
-        }
-      } catch (_) {}
+      var stepX = transformSlideStepPx(list, track, 'x');
       if (stepX > 0) {
         track.style.transform = 'translateX(' + (-target * stepX) + 'px)';
       } else {
