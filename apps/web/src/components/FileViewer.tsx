@@ -121,6 +121,7 @@ import {
   exportAsJsx,
   exportAsMd,
   exportAsPdf,
+  exportPreviewSnapshotsAsPdf,
   exportProjectImageBlob,
   resolveExportDownloadTitle,
   exportProjectAsHtml,
@@ -140,6 +141,7 @@ import {
   requestPreviewSnapshot,
   type AsyncExportProgressStatus,
   type ImageExportFormat,
+  type PreviewSnapshot,
 } from '../runtime/exports';
 import { copyToClipboard } from '../lib/copy-to-clipboard';
 import { isMacPlatform } from '../utils/platform';
@@ -15372,6 +15374,54 @@ function HtmlViewer({
     useUrlLoadPreview,
   ]);
 
+  const exportDeckPreviewSnapshotsAsPdf = useCallback(async (): Promise<boolean> => {
+    if (!effectiveDeck) return false;
+    const iframe = resolveActiveDeckPreviewIframe();
+    const win = iframe?.contentWindow;
+    if (!iframe || !win) return false;
+    const cached = htmlPreviewSlideState.get(previewStateKey);
+    const count = slideState?.count ?? cached?.count ?? 0;
+    if (!Number.isFinite(count) || count <= 0) return false;
+    if (count > 80) return false;
+    const boundedCount = Math.floor(count);
+    const originalActive = Math.max(0, Math.min(
+      slideState?.active ?? cached?.active ?? 0,
+      boundedCount - 1,
+    ));
+    const snapshots: PreviewSnapshot[] = [];
+    const goToSlide = async (index: number) => {
+      const next = { active: index, count: boundedCount };
+      setSlideStateCached(previewStateKey, next);
+      setSlideState(next);
+      win.postMessage({ type: 'od:slide', action: 'go', index }, '*');
+      await waitForAnimationFrame();
+      await waitForAnimationFrame();
+      await ensureDeckSlideSyncedForSnapshot(iframe);
+      await waitForAnimationFrame();
+    };
+    try {
+      for (let index = 0; index < boundedCount; index += 1) {
+        await goToSlide(index);
+        const snapshot = await requestPreviewSnapshotWithRetry(iframe, [2000, 4000, 6000]);
+        if (!snapshot) throw new Error(`preview snapshot failed for slide ${index + 1}`);
+        snapshots.push(snapshot);
+      }
+      await exportPreviewSnapshotsAsPdf(snapshots, exportTitle);
+      return true;
+    } finally {
+      await goToSlide(originalActive).catch(() => {});
+      resetDeckPreviewPan(iframe);
+    }
+  }, [
+    effectiveDeck,
+    ensureDeckSlideSyncedForSnapshot,
+    exportTitle,
+    previewStateKey,
+    resolveActiveDeckPreviewIframe,
+    slideState?.active,
+    slideState?.count,
+  ]);
+
   // TEMP: toolbar screenshot UI is commented out — keep handler for re-enable.
   // const handleCopyScreenshot = useCallback(async () => {
   //   if (screenshotInFlightRef.current) return;
@@ -17044,21 +17094,30 @@ function HtmlViewer({
                     onOpenImageExport={openImageExportModal}
                     onOpenSaveAsTemplate={openSaveAsTemplateModal}
                     fireShareExport={fireShareExport}
-	                    exportPdf={(options) => exportProjectAsPdf({
-	                      deck: effectiveDeck,
-	                      fallbackPdf: () => exportAsPdf(
-                        livePreviewSource ?? source ?? lastStablePreviewSourceRef.current ?? '',
-                        exportTitle,
-                        { deck: effectiveDeck },
-                      ),
-	                      filePath: file.name,
-	                      fresh: options?.fresh,
-	                      htmlSnapshot: livePreviewSource ?? source ?? lastStablePreviewSourceRef.current ?? null,
-	                      onAsyncExportStatus: showAsyncExportProgress('pdf'),
-	                      projectId,
-	                      requireRenderedExport: isTeamverEmbedMode(),
-	                      title: exportTitle,
-	                    })}
+                    exportPdf={async (options) => {
+                      if (effectiveDeck && options?.fresh !== true) {
+                        try {
+                          if (await exportDeckPreviewSnapshotsAsPdf()) return 'desktop';
+                        } catch (err) {
+                          devLog.warn('[exportDeckPreviewSnapshotsAsPdf] falling back to daemon PDF:', err);
+                        }
+                      }
+                      return exportProjectAsPdf({
+                        deck: effectiveDeck,
+                        fallbackPdf: () => exportAsPdf(
+                          livePreviewSource ?? source ?? lastStablePreviewSourceRef.current ?? '',
+                          exportTitle,
+                          { deck: effectiveDeck },
+                        ),
+                        filePath: file.name,
+                        fresh: options?.fresh,
+                        htmlSnapshot: livePreviewSource ?? source ?? lastStablePreviewSourceRef.current ?? null,
+                        onAsyncExportStatus: showAsyncExportProgress('pdf'),
+                        projectId,
+                        requireRenderedExport: isTeamverEmbedMode(),
+                        title: exportTitle,
+                      });
+                    }}
                     exportPptx={() => exportProjectAsPptx({
                       deck: effectiveDeck,
                       projectId,

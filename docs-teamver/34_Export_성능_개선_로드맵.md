@@ -54,6 +54,13 @@
 - 원인: §0.5에서 daemon PDF 준비 모드를 preview로 분리했지만, FE payload와 daemon input builder가 이미 inline HTML을 standalone healing해 버려 실제 PDF 캡처 입력은 여전히 preview panel과 달랐다.
 - 유지 범위: HTML/ZIP/PPTX/image export는 기존 standalone 안정화 경로를 유지한다. 이번 변경은 deck PDF visual fidelity 전용이다.
 
+### 0.7 2026-08-26 deck PDF preview-pixel 우선 다운로드
+
+- ✅ 일반 deck PDF 다운로드는 현재 미리보기 iframe의 snapshot bridge를 슬라이드별로 순회 캡처해, 같은 픽셀을 JPEG PDF로 조립하는 client 우선 경로를 사용한다.
+- ✅ preview-pixel 경로가 실패하거나 deck이 80장을 초과하면 기존 daemon rendered PDF로 fallback한다. Shift+클릭 “새로 생성”도 기존 daemon/cache 경로를 유지한다.
+- 적용 이유: daemon이 preview HTML을 다시 로드해도 FE `buildSrcdoc()`의 host viewport/fit/stacked deck bridge가 적용된 최종 픽셀과 달라질 수 있다. 현재 보이는 iframe을 직접 캡처하면 preview panel과 다운로드 PDF 사이에 별도 렌더러가 끼지 않는다.
+- 부하 관리: 일반 PDF 다운로드는 서버 Chromium queue/S3 offload를 사용하지 않으므로 서버 부하를 줄인다. 대형 deck·캡처 실패·강제 fresh 요청만 기존 서버 경로로 처리한다.
+
 ---
 
 ## 1. 왜 Export만 문제인가
