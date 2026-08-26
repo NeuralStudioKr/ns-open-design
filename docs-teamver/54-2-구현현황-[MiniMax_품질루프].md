@@ -47,6 +47,7 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | chat leftover: KEYVISUAL/TOKENS/THEME … | ☑ round62 |
 | chat leftover: WIRE/SPRINT/USABILITY … | ☑ round63 |
 | chat leftover: generic ALLCAPS `FOOXYZ 1 · XYZ` | ☑ round64 |
+| chat leftover: 2글자 ALLCAPS `UX 2 · RESEARCH` | ☑ round68 |
 | chat leftover: @custom-media/@stylistic | ☑ round65 |
 | chat leftover: @custom-selector/@view-transition | ☑ round66 |
 | leftover APPEND가 producedFiles 있어도 말풍선에 남음 | ☑ 루프18 |
@@ -95,6 +96,7 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | persist: address/hgroup/search · data/meter kit bind | ☑ round65 |
 | persist: corner-shape/text-box/anchor-center flow 복사 | ☑ round66 |
 | persist: form kit · font-palette/wrap flow 복사 | ☑ round67 |
+| persist: caret-animation/text-spacing flow 복사 | ☑ round68 |
 | 16:9 inner clip · kit card bind | ☑ |
 | top-up 재진입 재호출 + 내부 프롬프트 노출 | ☑ 센티널+autoOpen; 루프9 reattach 차단 · leftover 숨김 |
 | first-fill 3장 강제 → 요청 1–6장 한 턴 | ☑ 루프9 |
@@ -111,7 +113,14 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | think 태그 / 내부 마크업 필터 | ☑ 기존 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프48 / round67)
+## 이번 루프 (루프49 / round68)
+
+1. chat — 2글자 ALLCAPS track (`UX 2 · RESEARCH`) 캐치올
+2. persist — caret-animation/text-spacing flow 복사
+
+**검증:** chat-leak-probe-round68 · round64 · deck-fixed-canvas
+
+## 직전 루프 (루프48 / round67)
 
 1. persist — form kit bind · font-palette/wrap flow 복사
 

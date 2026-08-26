@@ -806,6 +806,13 @@ const FLOW_COPIED_STYLE_PROPS = [
   'corner-bottom-left-shape',
   'corner-bottom-right-shape',
   'border-shape',
+  'caret-animation',
+  'text-spacing',
+  'text-autospace',
+  'baseline-shift',
+  'color-interpolation',
+  'color-rendering',
+  'image-resolution',
 ] as const;
 
 function wrapFlowOpenTag(hostAttrs: string, inner = ''): string {
