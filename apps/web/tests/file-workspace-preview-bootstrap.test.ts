@@ -37,8 +37,10 @@ describe("FileWorkspace preview bootstrap", () => {
     expect(source).not.toMatch(
       /pendingPreviewTab \? \([\s\S]*fileViewer\.previewUnavailable/,
     );
-    // Memory-only iframe key is fileName only — srcDoc updates prefix in place.
-    expect(source).toContain("key={memoryOnlyPreview.fileName ?? 'memory-preview'}");
+    // Hold→paint remounts via prefix in the iframe key (same as FileViewer).
+    expect(source).toContain(
+      "key={`${memoryOnlyPreview.fileName ?? 'memory-preview'}:${memoryOnlyPreviewMountKey}`}",
+    );
     expect(source).not.toMatch(
       /key=\{`\$\{memoryOnlyPreview\.fileName[^`]*memoryPreviewPrefix/,
     );
@@ -47,12 +49,15 @@ describe("FileWorkspace preview bootstrap", () => {
   it("keeps liveHtml after streaming ends until artifact html is cleared", () => {
     const source = readSource("src/components/FileWorkspace.tsx");
     expect(source).toContain("liveHtml={artifactHtml?.trim() ? artifactHtml : undefined}");
+    expect(source).toContain("userBrief={previewUserBrief}");
+    expect(source).toContain("lastVisibleUserBrief(messages)");
     expect(source).not.toContain("liveHtml={streaming && artifactHtml ? artifactHtml : undefined}");
   });
 
   it("heals attachment image srcs and injects base href for memory-only preview", () => {
     const source = readSource("src/components/FileWorkspace.tsx");
     expect(source).toContain("prepareMemoryOnlySlidePreviewSrcDoc");
+    expect(source).toContain("userBrief: previewUserBrief");
     expect(source).toContain("previewHealAttachmentPaths");
     expect(source).toContain("memoryOnlyPreviewSrcDoc");
     expect(source).not.toMatch(

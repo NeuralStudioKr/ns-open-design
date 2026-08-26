@@ -109,6 +109,13 @@ describe("FileViewer streaming slide preview", () => {
     expect(source).toMatch(/<HtmlViewer\s+key=\{`\$\{projectId\}\\0\$\{file\.name\}`\}/);
   });
 
+  it("passes the user brief into deck srcdoc so leftover catalog examples can be scrubbed", () => {
+    const source = readSource("src/components/FileViewer.tsx");
+    expect(source).toContain("userBrief?: string | null");
+    expect(source).toMatch(/buildSrcdoc\(previewSource, \{[\s\S]*?userBrief,/);
+    expect(source).toMatch(/buildSrcdoc\(html, \{[\s\S]*?userBrief,/);
+  });
+
   it("gates live iframe updates on repaired html stability during streaming", () => {
     const source = readSource("src/components/FileViewer.tsx");
 
@@ -170,7 +177,9 @@ describe("FileViewer streaming slide preview", () => {
     expect(source).not.toMatch(
       /hasLiveHtml,\s*\n\s*liveHtmlPaintsPreview,\s*\n\s*streaming,/,
     );
-    expect(source).toMatch(/setTimeout\(runFetch, HTML_PREVIEW_DISK_FETCH_DEBOUNCE_MS\)/);
+    expect(source).toMatch(
+      /setTimeout\(\s*runFetch,\s*coldFirstPaint \? 0 : HTML_PREVIEW_DISK_FETCH_DEBOUNCE_MS,?\s*\)/,
+    );
   });
 
   it("refuses to pin slide-less repaired shells as last-stable preview", () => {

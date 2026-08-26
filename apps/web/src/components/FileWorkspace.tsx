@@ -121,6 +121,17 @@ import {
 } from './sketch-model';
 import { AnimatePresence } from 'motion/react';
 import type { ChatMessage } from '../types';
+import { stripUserVisibleUserMessageText } from '../comments';
+
+function lastVisibleUserBrief(messages: readonly ChatMessage[]): string {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const message = messages[i];
+    if (message?.role !== 'user') continue;
+    const brief = stripUserVisibleUserMessageText(message.content).trim();
+    if (brief) return brief;
+  }
+  return '';
+}
 
 interface Props {
   projectId: string;
@@ -1629,6 +1640,7 @@ export function FileWorkspace({
   }, [pendingPreviewTab, activeTab, visibleFiles]);
 
   const resolvedPreviewFile = previewFile ?? stalePreviewBootstrapFile;
+  const previewUserBrief = useMemo(() => lastVisibleUserBrief(messages), [messages]);
 
   // Memory-only preview fallback:
   // 1) session stash after daemon-401 (stable HTML, survives hard refresh)
@@ -1853,6 +1865,7 @@ export function FileWorkspace({
       preferredAttachmentPaths: previewHealAttachmentPaths,
       teamverEmbedMode: teamverEmbedPreviewMode,
       embedPreviewPrefix: memoryPreviewPrefix,
+      userBrief: previewUserBrief,
     });
   }, [
     memoryOnlyPreview,
@@ -1860,6 +1873,7 @@ export function FileWorkspace({
     memoryPreviewPrefixSettled,
     previewHealAttachmentPaths,
     previewHealPaths,
+    previewUserBrief,
     projectId,
     teamverEmbedPreviewMode,
   ]);
@@ -2792,6 +2806,7 @@ export function FileWorkspace({
               slideNavDeliverableNonce,
             )}
             liveHtml={artifactHtml?.trim() ? artifactHtml : undefined}
+            userBrief={previewUserBrief}
           />
         ) : memoryOnlyPreview ? (
           // Memory-only fallback for daemon-401 recovery OR leave/re-entry

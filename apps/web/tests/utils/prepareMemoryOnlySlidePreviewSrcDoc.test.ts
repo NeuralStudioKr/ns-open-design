@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { prepareMemoryOnlySlidePreviewSrcDoc } from '../../src/utils/prepareMemoryOnlySlidePreviewSrcDoc';
 
@@ -64,6 +66,25 @@ describe('prepareMemoryOnlySlidePreviewSrcDoc', () => {
       embedPreviewPrefix: null,
     });
     expect(srcDoc).not.toContain('data-od-deck-bridge');
+  });
+
+  it('scrubs leftover IB catalog copy when the user brief is a different topic', () => {
+    const html = readFileSync(
+      resolve(import.meta.dirname, '../../../../plugins/_official/examples/ib-pitch-book/example.html'),
+      'utf8',
+    );
+    const srcDoc = prepareMemoryOnlySlidePreviewSrcDoc({
+      html,
+      projectId: 'project-1',
+      fileName: 'deck.html',
+      projectFilePaths: [],
+      teamverEmbedMode: false,
+      embedPreviewPrefix: null,
+      userBrief: '영어 회화 표현 공부 팁, 예시에 대한 발표자료 만들어줘',
+    });
+    const visible = srcDoc.replace(/<style[\s\S]*?<\/style>/gi, '');
+    expect(visible).not.toMatch(/Hartfield/i);
+    expect(srcDoc).not.toMatch(/WACC \(base\)/i);
   });
 
   it('enables the deck bridge for a real slide host', () => {

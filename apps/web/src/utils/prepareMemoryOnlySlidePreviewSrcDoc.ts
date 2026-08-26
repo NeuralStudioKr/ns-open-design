@@ -46,6 +46,7 @@ export function prepareMemoryOnlySlidePreviewSrcDoc(options: {
   preferredAttachmentPaths?: readonly string[];
   teamverEmbedMode: boolean;
   embedPreviewPrefix: string | null;
+  userBrief?: string | null;
 }): string {
   const rawHtml = String(options.html ?? '');
   const fileName = (options.fileName || 'deck.html').trim() || 'deck.html';
@@ -79,6 +80,7 @@ export function prepareMemoryOnlySlidePreviewSrcDoc(options: {
         baseHref,
         selectionBridge: false,
         previewFocusGuard: true,
+        userBrief: options.userBrief,
       });
     } catch (err) {
       console.error('[prepareMemoryOnlySlidePreviewSrcDoc] buildSrcdoc failed', fileName, err);

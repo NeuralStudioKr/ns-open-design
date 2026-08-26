@@ -1575,6 +1575,8 @@ interface Props {
   projectDisplayName?: string;
   file: ProjectFile;
   liveHtml?: string;
+  /** Last user-facing brief so leftover catalog examples can be scrubbed in preview. */
+  userBrief?: string | null;
   filesRefreshKey?: number;
   isDeck?: boolean;
   onExportAsPptx?: ((fileName: string) => void) | undefined;
@@ -1679,6 +1681,7 @@ export function FileViewer({
   projectDisplayName,
   file,
   liveHtml,
+  userBrief,
   filesRefreshKey = 0,
   isDeck,
   onExportAsPptx,
@@ -1728,6 +1731,7 @@ export function FileViewer({
         projectDisplayName={projectDisplayName}
         file={file}
         liveHtml={liveHtml}
+        userBrief={userBrief}
         filesRefreshKey={filesRefreshKey}
         projectFilePaths={projectFilePaths}
         preferredAttachmentPaths={preferredAttachmentPaths}
@@ -5257,6 +5261,7 @@ function HtmlViewer({
   projectDisplayName,
   file,
   liveHtml,
+  userBrief,
   filesRefreshKey = 0,
   projectFilePaths,
   preferredAttachmentPaths,
@@ -5281,6 +5286,7 @@ function HtmlViewer({
   projectDisplayName?: string;
   file: ProjectFile;
   liveHtml?: string;
+  userBrief?: string | null;
   filesRefreshKey?: number;
   projectFilePaths?: readonly string[];
   preferredAttachmentPaths?: readonly string[];
@@ -7557,6 +7563,7 @@ function HtmlViewer({
           editBridge: manualEditRequiresSrcDoc,
           paletteBridge: false,
           previewFocusGuard: true,
+          userBrief,
         });
       } catch (err) {
         // Deep-link /files/deck.html mounts FileViewer on first paint — a throw
@@ -7576,6 +7583,7 @@ function HtmlViewer({
       embedPreviewPrefix,
       embedPreviewPrefixSettled,
       file.name,
+      userBrief,
     ],
   );
   const lazySrcDocTransport = useMemo(() => buildLazySrcdocTransport(), []);
@@ -13209,6 +13217,7 @@ function HtmlViewer({
         editBridge: manualEditRequiresSrcDoc,
         paletteBridge: false,
         previewFocusGuard: true,
+        userBrief,
       });
     } catch (err) {
       console.error('[HtmlViewer] activateManualEditPreviewHtml buildSrcdoc failed', err);
