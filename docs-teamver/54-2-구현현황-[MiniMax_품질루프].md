@@ -32,6 +32,7 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | chat leftover: TOCENTRY/HASHTAG/DOWNLOADBTN … | ☑ round47 |
 | chat leftover: ICONBTN/SEGMENT/COMMANDPALETTE … | ☑ round48 |
 | chat leftover: ACTIONBAR/EMPTYSTATE/DATAGRID … | ☑ round49 |
+| chat leftover: DRAGDROP/HITAREA/IFRAME … | ☑ round50 |
 | leftover APPEND가 producedFiles 있어도 말풍선에 남음 | ☑ 루프18 |
 | dump fallback이 `초안.`/`진행.`/한글 완료 문장을 지움 | ☑ 루프19 |
 | split-* 마감/체크리스트가 inner clip을 건너뛰어 16:9 overflow | ☑ 루프20 |
@@ -78,7 +79,14 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | think 태그 / 내부 마크업 필터 | ☑ 기존 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프30 / round49)
+## 이번 루프 (루프31 / round50)
+
+1. chat — DRAGDROP/HITAREA/IFRAME 등 제스처·박스·호스트 트랙 숨김
+2. persist — `grid:` 단축 · `justify-self` flow 복사 스펙 고정
+
+**검증:** chat-leak-probe-round50 · round49 · deck-fixed-canvas
+
+## 직전 루프 (루프30 / round49)
 
 1. persist — flow wrap이 column-count/columns/place-items/flex-grow/writing-mode 복사
 2. chat — ACTIONBAR/EMPTYSTATE/DATAGRID 등 바·상태·그리드 트랙 숨김
