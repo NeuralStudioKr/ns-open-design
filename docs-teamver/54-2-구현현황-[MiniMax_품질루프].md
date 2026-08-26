@@ -117,6 +117,8 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | persist: thin bdi keep · fill+path · starting-style · closure | ☑ 루프99–103 / round116–120 |
 | persist: webkit-mask/filter/transform · print-color · pre kit | ☑ 루프104–113 / round121–130 |
 | chat/persist: colon/pipe chrome · thin pre · combo/closure | ☑ 루프114–118 / round131–135 |
+| persist: webkit-animation · hyphens/columns · text-security/drag | ☑ 루프120–124 / round136–140 |
+| chat/persist: slash chrome · @function · reflect/locale · combo | ☑ 루프125–134 / round141–150 |
 | clone: IB pitch-book 데모 카피가 한국어 brief에 남음 | ☑ 루프57 |
 | preview: #stage 1920px 스트립이 100vw로만 살짝 이동 | ☑ 루프57 |
 | persist: 카탈로그 예제 leftover를 filled로 저장 | ☑ |
@@ -125,8 +127,8 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | preview: liveHtml/raw example이 Hartfield를 그대로 그림 | ☑ 루프119 |
 | preview: 1920px #stage next가 native 100vw로 첫 장만 밀림 | ☑ 루프119 |
 | persist: leftover catalog를 skip만 하고 저장하지 않음 | ☑ 루프119 |
-| preview: brief 없는 FileViewer가 raw IB leftover를 그대로 그림 | ☑ 루프120 |
-| preview: 인슬라이드 #next가 native 100vw로 첫 장만 밀림 | ☑ 루프120 |
+| preview: brief 없는 FileViewer가 raw IB leftover를 그대로 그림 | ☑ 루프135 |
+| preview: 인슬라이드 #next가 native 100vw로 첫 장만 밀림 | ☑ 루프135 |
 | API-mode "save this as deck.html" 유출로 덱이 안 생김 | ☑ |
 | clone: demo-banner/TOC/stat-quote 잔여 · #total 불일치 | ☑ 루프58 |
 | preview: #slideCounter 고정 · hoist가 chrome 삭제 | ☑ 루프58 |
@@ -147,7 +149,7 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | think 태그 / 내부 마크업 필터 | ☑ 기존 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프120)
+## 이번 루프 (루프135)
 
 1. preview — 프로젝트 FileViewer/memory-only는 leftover catalog를 brief 없이도 스크럽. 갤러리는 원본 유지
 2. clone — 템플릿 칩 `pitch book`만으로는 Hartfield를 유지하지 않음
@@ -155,6 +157,16 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 4. persist — leftover scrub에 `allowEmptyBrief`
 
 **검증:** template-clone-fill empty-brief/chip · srcdoc project scrub · IB #next 1920px · memory-only leftover
+
+## 직전 루프 (루프120–134 / round136–150)
+
+1. persist — `-webkit-animation*` (shorthand + longhands)
+2. persist — `-webkit-hyphens` · `-webkit-column-rule/span/width/fill`
+3. persist — `-webkit-text-security` · `-webkit-user-drag`/`user-drag` · box-reflect · locale · ruby-position
+4. chat — ALLCAPS generic `/`·`／` separators · `@function` opacity dump
+5. flow/chat — set13–15 combo·closure 회귀 (`box-shadow` 계속 보류)
+
+**검증:** chat-leak-probe-round136–150
 
 ## 직전 루프 (leftover IB artifact_regression)
 
