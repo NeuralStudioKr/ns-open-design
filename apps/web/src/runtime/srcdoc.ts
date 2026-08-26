@@ -2752,6 +2752,11 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
   overflow: visible !important;
   display: none !important;
 }
+html[data-od-compact-stacked] .deck > .chrome,
+html[data-od-compact-stacked] .presentation > .chrome,
+html[data-od-compact-stacked] #deck > .chrome {
+  display: none !important;
+}
 </style>`
     : '';
   const styleFix = `${compactStackedBoot}${legacyDeckFix}${inactiveSlideHideFix}${compactStackedDeckFix}`;
@@ -3676,8 +3681,26 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
       var unitY = /translateY\\(\\s*-?[0-9.]+\\s*%\\s*\\)/i.test(track.style.transform || '') ? '%' : 'vh';
       track.style.transform = 'translateY(' + (-target * 100) + unitY + ')';
     } else {
-      var unit = /translateX\\(\\s*-?[0-9.]+\\s*%\\s*\\)/i.test(track.style.transform || '') ? '%' : 'vw';
-      track.style.transform = 'translateX(' + (-target * 100) + unit + ')';
+      var firstSlide = list[0];
+      var slideW = 0;
+      try {
+        slideW = firstSlide
+          ? (firstSlide.offsetWidth || firstSlide.getBoundingClientRect().width || 0)
+          : 0;
+        if (!(slideW > 0) && firstSlide) {
+          var computed = window.getComputedStyle(firstSlide);
+          slideW = parseFloat(computed.minWidth) || parseFloat(computed.width) || 0;
+        }
+      } catch (_) {}
+      var viewportW = window.innerWidth || 0;
+      // Persist pin / look CSS makes hosts 1920px while author JS still uses
+      // 100vw (iframe width). Stepping by vw only nudges the first page.
+      if (slideW > viewportW * 1.15) {
+        track.style.transform = 'translateX(' + (-target * slideW) + 'px)';
+      } else {
+        var unit = /translateX\\(\\s*-?[0-9.]+\\s*%\\s*\\)/i.test(track.style.transform || '') ? '%' : 'vw';
+        track.style.transform = 'translateX(' + (-target * 100) + unit + ')';
+      }
     }
     syncTransformStripActive(list, target);
     updateDeckChrome(target, list.length);

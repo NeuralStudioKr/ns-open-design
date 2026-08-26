@@ -158,7 +158,36 @@ function looksLikeNestedVerticalTranslateYDeck(html: string): boolean {
   );
 }
 
+/**
+ * ib-pitch-book and similar: `.stage` / `#stage` is a horizontal flex strip
+ * driven by `translateX(-${i*100}vw)`. After persist pins slides to 1920px,
+ * 100vw is the preview iframe width — host next only nudges the first page.
+ * Letterbox these like Zhangzara `#deck` tracks.
+ */
+export function looksLikeStageTranslateXViewportDeck(html: string): boolean {
+  if (!html) return false;
+  if (countSlideElements(html) < 2) return false;
+  const hasStage =
+    /<(?:div|section)\b[^>]*(?:\bid\s*=\s*['"]stage['"]|\bclass\s*=\s*['"][^'"]*\bstage\b)/i.test(
+      html,
+    );
+  if (!hasStage) return false;
+  if (
+    /translateX\s*\(\s*-\s*\$\{\s*[\w.]+\s*\*\s*100\s*\}\s*vw\s*\)/i.test(html)
+    || /translateX\s*\(\s*-\s*\$\{[^}]*\}\s*vw\s*\)/i.test(html)
+    || /style\.transform\s*=\s*[`'"][^`'"]*translateX\(\s*-\s*\$\{/i.test(html)
+  ) {
+    return true;
+  }
+  const css = extractCssBlocks(html);
+  return new RegExp(
+    `${DECK_SLIDE_HOST_CSS_CLASS}[^{]*\\{[^}]*(?:min-width|width)\\s*:\\s*100vw`,
+    'i',
+  ).test(css);
+}
+
 function looksLikeBareDeckViewportTrack(html: string): boolean {
+  if (looksLikeStageTranslateXViewportDeck(html)) return true;
   if (!/<(?:div|section|main)\b[^>]*\bid\s*=\s*['"]deck['"]/i.test(html)) return false;
   if (countSlideElements(html) < 2) return false;
   if (looksLikeNestedVerticalTranslateYDeck(html)) return false;
@@ -236,7 +265,9 @@ function looksLikeCompactApiStackedDeckUnsafe(html: string): boolean {
   const deckViewportTrack = looksLikeBareDeckViewportTrack(html);
   if (!deckViewportTrack && looksLikeOfficialFullscreenPresenterDeck(html)) return false;
   if (looksLikeFrameworkDeckMarkup(html)) return false;
-  if (looksLikeAuthoredHorizontalSwipeDeck(html)) return false;
+  // `#deck` / `.stage` viewport tracks also match min-width:100vw swipe.
+  // Keep letterbox — native 100vw transform fights the 1920 pin.
+  if (looksLikeAuthoredHorizontalSwipeDeck(html) && !deckViewportTrack) return false;
   // Official catalog presenters (no look-css marker) keep native 100% fill
   // via looksLikeOfficialFullscreenPresenterDeck above. Compact body-first
   // fills often copy a `.presentation` / `.deck` wrapper from templates —

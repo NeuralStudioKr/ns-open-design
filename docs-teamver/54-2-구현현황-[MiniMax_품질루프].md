@@ -49,6 +49,7 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | cover 제목 `Presentation` → `슬라이드` | ☑ |
 | MiniMax head-only incomplete-html-document-shell | ☑ 1차 |
 | MiniMax `<body>`+미종료 `<style>` kit → incomplete-html-document-shell | ☑ 2차 |
+| ib-pitch-book 예제 leftover persist · `.stage` 100vw 페이지 밀림 | ☑ |
 | persist: Neutral 호스트/inner overlay 페인트 · 3장 1타이틀 · catalog heal skip | ☑ 루프5 |
 | persist: grid flow clip · in-flow badge · CSS motif 전 장 | ☑ 루프5 |
 | auto-continue: 슬라이드 카피 있는 truncated HTML 보존 · SLOT cover 거부 | ☑ 루프5 |
@@ -56,7 +57,14 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | think 태그 / 내부 마크업 필터 | ☑ 기존 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (incomplete-shell 2차)
+## 이번 루프 (ib-pitch-book leftover · 100vw nav)
+
+1. persist — 사용자 브리프와 다른 Hartfield/DCF 예제를 `unfilled-catalog-example`로 거절
+2. preview — `.stage` translateX(-N00vw)를 compact letterbox. 1920 핀 후 vw 스텝 금지
+
+**검증:** compact-api-stacked-deck ib-pitch-book · srcdoc px step · leftover catalog example
+
+## 직전 루프 (incomplete-shell 2차)
 
 1. persist — MiniMax가 `<body>` 다음 미종료 `<style>` 키트를 800자 덤프하면 CSS가 본문으로 잡혀 커버 초안이 스킵되고, prepare가 스타일을 지운 뒤 truncation salvage도 null → `incomplete-html-document-shell`
 2. persist — 불완전 셸 skip 직전에 최후 1920 커버를 강제 저장

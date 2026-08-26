@@ -11,6 +11,7 @@ import {
   looksLikeAuthoredHorizontalSwipeDeck,
   looksLikeAuthoredScrollNavigateDeck,
   looksLikeCompactApiStackedDeck,
+  looksLikeStageTranslateXViewportDeck,
   looksLikeCompactApiStackedDeckForPreview,
   normalizeCompactStackedDeckForExport,
   wrapPreviewHtmlShell,
@@ -656,6 +657,21 @@ describe('looksLikeCompactApiStackedDeck', () => {
       expect(srcdoc, templateName).toContain('data-od-authored-display');
       expect(srcdoc, templateName).toContain('stopImmediatePropagation');
     }
+  });
+
+  it('letterboxes ib-pitch-book .stage translateX(-N00vw) strips for Teamver preview', () => {
+    const html = readFileSync(
+      resolve(repoRoot, 'design-templates/ib-pitch-book/example.html'),
+      'utf8',
+    );
+    expect(looksLikeStageTranslateXViewportDeck(html)).toBe(true);
+    expect(looksLikeCompactApiStackedDeck(html)).toBe(true);
+    const srcdoc = buildSrcdoc(html, { deck: true });
+    expect(srcdoc).toContain('data-od-deck-stacked-fix');
+    expect(srcdoc).toContain('content="width=1920, initial-scale=1, maximum-scale=1"');
+    expect(srcdoc).toContain('#od-stacked-deck-stage');
+    expect(srcdoc).toContain('data-od-deck-fixed-canvas-pin');
+    expect(srcdoc).toMatch(/\.deck\s*>\s*\.chrome[\s\S]*display:\s*none\s*!important/i);
   });
 
   it('hoists Zhangzara Studio #deck strips into host-controlled stacked navigation', { timeout: 15_000 }, async () => {

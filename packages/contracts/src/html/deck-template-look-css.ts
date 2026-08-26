@@ -153,6 +153,10 @@ section[data-screen-label], main[data-screen-label], article[data-screen-label] 
   position: relative !important;
   z-index: 2 !important;
 }
+/* In-deck 01/10 chrome (ib-pitch-book .chrome) fights host 3/9 nav. */
+.deck > .chrome, .presentation > .chrome, #deck > .chrome {
+  display: none !important;
+}
 `;
 
 const LOOK_NEUTRALIZE_TAIL_RE =

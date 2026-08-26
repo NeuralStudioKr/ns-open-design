@@ -335,6 +335,45 @@ export function deckSlideHeadingsLookLikeFailedGenerate(html: string): boolean {
   return bad >= Math.ceil(headings.length / 2);
 }
 
+/** Official example.html demo copy that must not survive a user-brief fill. */
+const CATALOG_EXAMPLE_FINGERPRINTS: readonly RegExp[] = [
+  /Hartfield\s*(?:&|&amp;)\s*Co/i,
+  /NorthPeak\s+Industries/i,
+  /Project\s+Atlas/i,
+  /Demo-data\s+notice/i,
+  /fictional\s+illustrative\s+placeholders/i,
+  /WACC\s*\(\s*base\s*\)/i,
+  /Implied\s+(?:EV|equity value)/i,
+];
+
+/**
+ * True when the deck is still the catalog example (ib-pitch-book Hartfield /
+ * DCF tables) while the user brief is a different topic. Persist used to
+ * stamp `templateCloneContentFilled` on that leftover and host nav then
+ * fought the example's `translateX(-N00vw)` chrome.
+ */
+export function deckLooksLikeUnfilledCatalogExample(
+  html: string,
+  brief?: string | null,
+): boolean {
+  const dest = String(html ?? "");
+  const prompt = String(brief ?? "");
+  if (!dest) return false;
+  let hits = 0;
+  let namedInBrief = 0;
+  for (const re of CATALOG_EXAMPLE_FINGERPRINTS) {
+    if (re.test(dest)) hits += 1;
+    if (re.test(prompt)) namedInBrief += 1;
+  }
+  if (hits >= 2 && namedInBrief < 2) return true;
+  const mixedFinanceHeading =
+    /discounted-cash-flow|WACC|EBITDA|Implied EV/i.test(dest)
+    && /[가-힣]{4,}/.test(dest)
+    && /[가-힣]{4,}/.test(prompt)
+    && !/WACC|EBITDA|Hartfield|NorthPeak|DCF|피치/i.test(prompt);
+  return mixedFinanceHeading;
+}
+
 export function slideSectionInnerLooksLikeStatusOnly(innerHtml: string): boolean {
   const text = visibleTextFromHtmlFragment(innerHtml);
   if (!text) return true;

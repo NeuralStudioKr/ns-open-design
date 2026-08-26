@@ -187,4 +187,52 @@ describe('deck bridge - transform-driven decks', () => {
       .filter((message) => message?.type === 'od:slide-state');
     expect(slideStates.at(-1)).toMatchObject({ active: 1, count: 3 });
   });
+
+  it('steps pinned 1920 slides by pixel width instead of iframe 100vw', async () => {
+    const bodyHtml = `
+      <style>
+        html, body { margin: 0; }
+        .stage { display: flex; width: 5760px; }
+        .slide { width: 1920px; min-width: 1920px; height: 1080px; flex: 0 0 1920px; }
+      </style>
+      <div class="stage" id="stage">
+        <section class="slide">One</section>
+        <section class="slide">Two</section>
+        <section class="slide">Three</section>
+      </div>
+    `;
+    const srcdoc = buildSrcdoc(`<!doctype html><html><body>${bodyHtml}</body></html>`, {
+      deck: true,
+    });
+    const script = extractDeckBridgeScript(srcdoc);
+    const dom = new JSDOM(`<!doctype html><html><body>${bodyHtml}</body></html>`, {
+      runScripts: 'outside-only',
+      pretendToBeVisual: true,
+    });
+    const win = dom.window;
+    Object.defineProperty(win, 'parent', {
+      configurable: true,
+      value: { postMessage: vi.fn() },
+    });
+    Object.defineProperty(win, 'innerWidth', { configurable: true, value: 800 });
+    const slides = Array.from(win.document.querySelectorAll<HTMLElement>('.slide'));
+    slides.forEach((slide) => {
+      Object.defineProperty(slide, 'offsetWidth', { configurable: true, value: 1920 });
+      slide.getBoundingClientRect = () => ({
+        x: 0, y: 0, top: 0, left: 0, right: 1920, bottom: 1080,
+        width: 1920, height: 1080, toJSON() { return {}; },
+      });
+    });
+    const track = win.document.getElementById('stage') as HTMLElement;
+    track.style.transform = 'translateX(0vw)';
+    new win.Function(script).call(win);
+
+    win.dispatchEvent(new win.MessageEvent('message', {
+      data: { type: 'od:slide', action: 'next' },
+    }));
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 40));
+
+    expect(track.style.transform).toBe('translateX(-1920px)');
+    expect(track.style.transform).not.toBe('translateX(-100vw)');
+  });
 });
