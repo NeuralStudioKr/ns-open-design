@@ -643,6 +643,7 @@ describe('buildDeckPrintCss', () => {
     );
     expect(pdfBlock).toContain('renderHeadlessDeckScreenshotPdf');
     expect(pdfBlock).toContain("imageFormat: 'jpeg'");
+    expect(pdfBlock).toContain("deckPrepareMode: 'preview'");
     expect(pdfBlock).toContain('buildDeckImagePdf(rendered.images)');
     expect(pdfBlock.indexOf('renderHeadlessDeckScreenshotPdf')).toBeLessThan(
       pdfBlock.indexOf('page.pdf'),
@@ -711,7 +712,7 @@ describe('buildDeckPrintCss', () => {
     expect(source).toContain("el.style.setProperty('hyphens', 'none', 'important')");
   });
 
-  it('prepares deck PDF/HTML/PPTX from the shared standalone export healing path', () => {
+  it('prepares deck HTML/PPTX from standalone healing but deck PDF from preview HTML', () => {
     const source = fs.readFileSync(
       path.join(__dirname, '..', 'src', 'headless-export.ts'),
       'utf8',
@@ -723,6 +724,8 @@ describe('buildDeckPrintCss', () => {
     expect(source).toContain('healDeckHtmlForStandaloneExport');
     expect(baseHtmlBlock).toContain('healDeckHtmlForStandaloneExport(withBaseHref');
     expect(baseHtmlBlock).toContain('patchArtifactDeckPrintCss');
+    expect(source).toContain('function buildDeckPreviewHtml');
+    expect(source).toContain('buildDeckPreviewHtml(options.input)');
   });
 
   it('busts deck download caches when the shared layout renderer changes', () => {
@@ -730,7 +733,7 @@ describe('buildDeckPrintCss', () => {
       path.join(__dirname, '..', 'src', 'export-render-service.ts'),
       'utf8',
     );
-    expect(source).toContain("DECK_LAYOUT_RENDER_CACHE_VERSION = 'deck-layout-preview-parity-v3'");
+    expect(source).toContain("DECK_LAYOUT_RENDER_CACHE_VERSION = 'deck-layout-preview-parity-v4'");
     expect(source).toContain("`${DECK_LAYOUT_RENDER_CACHE_VERSION}:pdf-v1`");
     expect(source).toContain("`${DECK_LAYOUT_RENDER_CACHE_VERSION}:html-v1`");
     expect(source).toContain("`${DECK_LAYOUT_RENDER_CACHE_VERSION}:zip-v1`");

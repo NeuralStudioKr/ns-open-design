@@ -44,6 +44,7 @@ export interface HeadlessExportOptions {
   slideIndex?: number;
   width?: number;
   height?: number;
+  deckPrepareMode?: 'html' | 'preview';
 }
 
 export interface HeadlessDeckSlideImage {
@@ -465,7 +466,7 @@ export async function renderHeadlessDeckScreenshotPdf(
   meta: Partial<ExportJobMeta> = {},
 ): Promise<Buffer> {
   const rendered = await renderHeadlessDeckImages(
-    { ...options, imageFormat: 'jpeg' },
+    { ...options, imageFormat: 'jpeg', deckPrepareMode: 'preview' },
     { format: 'pdf', ...meta },
   );
   return buildDeckImagePdf(rendered.images);
@@ -680,7 +681,7 @@ export async function renderHeadlessDeckImages(
     async (browser) => {
       const page = await preparePage(browser, options, {
         deviceScaleFactor: IMAGE_DEVICE_SCALE_FACTOR,
-        deckPrepareMode: 'html',
+        deckPrepareMode: options.deckPrepareMode ?? 'html',
       });
       try {
         await waitForPrintableContent(page);
@@ -1087,7 +1088,7 @@ async function evaluateInPage<T>(
 async function preparePage(
   browser: Browser,
   options: HeadlessExportOptions,
-  pageOptions: { deviceScaleFactor?: number; deckPrepareMode?: 'pdf' | 'html' } = {},
+  pageOptions: { deviceScaleFactor?: number; deckPrepareMode?: 'pdf' | 'html' | 'preview' } = {},
 ): Promise<Page> {
   const page = await browser.newPage({
     viewport: {
@@ -1099,9 +1100,11 @@ async function preparePage(
   page.setDefaultTimeout(EXPORT_TIMEOUT_MS);
   page.setDefaultNavigationTimeout(EXPORT_TIMEOUT_MS);
   const html = options.input.deck
-    ? pageOptions.deckPrepareMode === 'html'
-      ? buildDeckExportHtml(options.input)
-      : buildPrintableHtml(options.input)
+    ? pageOptions.deckPrepareMode === 'preview'
+      ? buildDeckPreviewHtml(options.input)
+      : pageOptions.deckPrepareMode === 'html'
+        ? buildDeckExportHtml(options.input)
+        : buildPrintableHtml(options.input)
     : repairArtifactDocumentHead(withBaseHref(options.input.html, options.input.baseHref || ''));
   // `load` (not `domcontentloaded`) ensures the deck framework's `fit()` /
   // scripts and stylesheets have run before we flatten slides for print.
@@ -2025,6 +2028,13 @@ function buildDeckExportBaseHtml(input: DesktopExportPdfInput): string {
 
 function buildDeckExportHtml(input: DesktopExportPdfInput): string {
   return buildDeckExportBaseHtml(input);
+}
+
+function buildDeckPreviewHtml(input: DesktopExportPdfInput): string {
+  return injectTitle(
+    repairArtifactDocumentHead(withBaseHref(input.html, input.baseHref || '')),
+    input.title,
+  );
 }
 
 function buildPrintableHtml(input: DesktopExportPdfInput): string {
