@@ -632,6 +632,52 @@ describe('buildDeckPrintCss', () => {
     expect(pptxBlock).toContain("deckPrepareMode: 'html'");
   });
 
+  it('routes explicit deck PDF downloads through the preview screenshot pipeline', () => {
+    const source = fs.readFileSync(
+      path.join(__dirname, '..', 'src', 'headless-export.ts'),
+      'utf8',
+    );
+    const pdfBlock = source.slice(
+      source.indexOf('export async function renderHeadlessPdf'),
+      source.indexOf('function deckPdfOptions'),
+    );
+    expect(pdfBlock).toContain('renderHeadlessDeckScreenshotPdf');
+    expect(pdfBlock).toContain("imageFormat: 'jpeg'");
+    expect(pdfBlock).toContain('buildDeckImagePdf(rendered.images)');
+    expect(pdfBlock.indexOf('renderHeadlessDeckScreenshotPdf')).toBeLessThan(
+      pdfBlock.indexOf('page.pdf'),
+    );
+  });
+
+  it('builds deck screenshot PDFs as 16:9 image pages', async () => {
+    const { buildDeckImagePdfForTests, readJpegDimensionsForTests } = await import('../src/headless-export.js');
+    const jpeg3840 = Buffer.from([
+      0xff, 0xd8,
+      0xff, 0xc0,
+      0x00, 0x11,
+      0x08,
+      0x08, 0x70,
+      0x0f, 0x00,
+      0x03,
+      0x01, 0x11, 0x00,
+      0x02, 0x11, 0x00,
+      0x03, 0x11, 0x00,
+      0xff, 0xd9,
+    ]);
+    expect(readJpegDimensionsForTests(jpeg3840)).toEqual({ width: 3840, height: 2160 });
+    const pdf = buildDeckImagePdfForTests([
+      { buffer: jpeg3840, jpeg: true },
+      { buffer: jpeg3840, jpeg: true },
+    ]);
+    const text = pdf.toString('binary');
+    expect(text.startsWith('%PDF-1.4')).toBe(true);
+    expect(text).toContain('/Type /Pages /Count 2');
+    expect(text).toContain('/MediaBox [0 0 960 540]');
+    expect(text).toContain('/Width 3840 /Height 2160');
+    expect(text).toContain('/Subtype /Image');
+    expect(text).toContain('/Filter /DCTDecode');
+  });
+
   it('does not force deck screenshot slides into a flex column layout', () => {
     const source = fs.readFileSync(
       path.join(__dirname, '..', 'src', 'headless-export.ts'),
@@ -684,7 +730,7 @@ describe('buildDeckPrintCss', () => {
       path.join(__dirname, '..', 'src', 'export-render-service.ts'),
       'utf8',
     );
-    expect(source).toContain("DECK_LAYOUT_RENDER_CACHE_VERSION = 'deck-layout-preview-parity-v2'");
+    expect(source).toContain("DECK_LAYOUT_RENDER_CACHE_VERSION = 'deck-layout-preview-parity-v3'");
     expect(source).toContain("`${DECK_LAYOUT_RENDER_CACHE_VERSION}:pdf-v1`");
     expect(source).toContain("`${DECK_LAYOUT_RENDER_CACHE_VERSION}:html-v1`");
     expect(source).toContain("`${DECK_LAYOUT_RENDER_CACHE_VERSION}:zip-v1`");

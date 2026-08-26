@@ -418,8 +418,11 @@ export async function renderHeadlessPdf(
   options: HeadlessExportOptions,
   meta: Partial<ExportJobMeta> = {},
 ): Promise<Buffer> {
+  if (options.input.deck === true) {
+    return renderHeadlessDeckScreenshotPdf(options, meta);
+  }
   return runHeadlessExportJob(
-    { format: 'pdf', deck: options.input.deck === true, ...meta },
+    { format: 'pdf', deck: false, ...meta },
     async (browser) => {
       const page = await preparePage(browser, options);
       try {
@@ -427,7 +430,7 @@ export async function renderHeadlessPdf(
         await stripLeakedArtifactTextFromPage(page);
         // Drive publish historically passed deck:false for kind:html decks.
         // Auto-detect slide stages so PDF still flattens to 1920×1080.
-        let deck = options.input.deck === true;
+        let deck = false;
         if (!deck) {
           deck = await pageLooksLikeDeckExport(page);
           if (deck) {
@@ -456,6 +459,144 @@ export async function renderHeadlessPdf(
     },
   );
 }
+
+export async function renderHeadlessDeckScreenshotPdf(
+  options: HeadlessExportOptions,
+  meta: Partial<ExportJobMeta> = {},
+): Promise<Buffer> {
+  const rendered = await renderHeadlessDeckImages(
+    { ...options, imageFormat: 'jpeg' },
+    { format: 'pdf', ...meta },
+  );
+  return buildDeckImagePdf(rendered.images);
+}
+
+function buildDeckImagePdf(images: HeadlessDeckSlideImage[]): Buffer {
+  if (images.length <= 0) {
+    throw new Error('no slides to export');
+  }
+  const pageWidthPt = 13.333333333333334 * 72;
+  const pageHeightPt = 7.5 * 72;
+  const objects = new Map<number, Buffer>();
+  const pageObjects: number[] = [];
+  let nextObjectId = 1;
+  const reserveObject = () => nextObjectId++;
+  const writeObject = (id: number, body: Buffer | string) => {
+    objects.set(id, Buffer.isBuffer(body) ? body : Buffer.from(body, 'binary'));
+  };
+  const catalogObject = reserveObject();
+  const pagesObject = reserveObject();
+
+  images.forEach((image, index) => {
+    if (!image.jpeg) {
+      throw new Error('deck PDF requires JPEG slide captures');
+    }
+    const dimensions = readJpegDimensions(image.buffer) ?? { width: 1920, height: 1080 };
+    const imageObject = reserveObject();
+    const contentObject = reserveObject();
+    const pageObject = reserveObject();
+    const imageName = `/Im${index + 1}`;
+    const content = `q\n${pageWidthPt} 0 0 ${pageHeightPt} 0 0 cm\n${imageName} Do\nQ\n`;
+    writeObject(
+      imageObject,
+      Buffer.concat([
+        Buffer.from(
+          `<< /Type /XObject /Subtype /Image /Width ${dimensions.width} /Height ${dimensions.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${image.buffer.length} >>\nstream\n`,
+          'binary',
+        ),
+        image.buffer,
+        Buffer.from('\nendstream', 'binary'),
+      ]),
+    );
+    writeObject(contentObject, `<< /Length ${Buffer.byteLength(content, 'binary')} >>\nstream\n${content}endstream`);
+    writeObject(
+      pageObject,
+      `<< /Type /Page /Parent ${pagesObject} 0 R /MediaBox [0 0 ${pageWidthPt} ${pageHeightPt}] /Resources << /XObject << ${imageName} ${imageObject} 0 R >> >> /Contents ${contentObject} 0 R >>`,
+    );
+    pageObjects.push(pageObject);
+  });
+
+  writeObject(catalogObject, `<< /Type /Catalog /Pages ${pagesObject} 0 R >>`);
+  writeObject(
+    pagesObject,
+    `<< /Type /Pages /Count ${pageObjects.length} /Kids [${pageObjects.map((id) => `${id} 0 R`).join(' ')}] >>`,
+  );
+
+  const pdfHeader = Buffer.from('%PDF-1.4\n%\xE2\xE3\xCF\xD3\n', 'binary');
+  const chunks: Buffer[] = [pdfHeader];
+  const offsets = new Map<number, number>();
+  let byteOffset = pdfHeader.length;
+  for (let id = 1; id < nextObjectId; id += 1) {
+    const body = objects.get(id);
+    if (!body) {
+      throw new Error(`missing PDF object ${id}`);
+    }
+    offsets.set(id, byteOffset);
+    const objectHeader = Buffer.from(`${id} 0 obj\n`, 'binary');
+    const objectFooter = Buffer.from('\nendobj\n', 'binary');
+    chunks.push(objectHeader, body, objectFooter);
+    byteOffset += objectHeader.length + body.length + objectFooter.length;
+  }
+  const xrefOffset = byteOffset;
+  const xrefLines = ['xref', `0 ${nextObjectId}`, '0000000000 65535 f '];
+  for (let id = 1; id < nextObjectId; id += 1) {
+    xrefLines.push(`${String(offsets.get(id) ?? 0).padStart(10, '0')} 00000 n `);
+  }
+  chunks.push(
+    Buffer.from(
+      `${xrefLines.join('\n')}\ntrailer\n<< /Size ${nextObjectId} /Root ${catalogObject} 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`,
+      'binary',
+    ),
+  );
+  return Buffer.concat(chunks);
+}
+
+export const buildDeckImagePdfForTests = buildDeckImagePdf;
+
+function readJpegDimensions(buffer: Buffer): { width: number; height: number } | null {
+  if (buffer.length < 4 || buffer.readUInt8(0) !== 0xff || buffer.readUInt8(1) !== 0xd8) {
+    return null;
+  }
+  let offset = 2;
+  while (offset + 9 < buffer.length) {
+    if (buffer.readUInt8(offset) !== 0xff) {
+      offset += 1;
+      continue;
+    }
+    const marker = buffer.readUInt8(offset + 1);
+    offset += 2;
+    if (marker === 0xd9 || marker === 0xda) {
+      return null;
+    }
+    if (offset + 2 > buffer.length) {
+      return null;
+    }
+    const segmentLength = buffer.readUInt16BE(offset);
+    if (segmentLength < 2 || offset + segmentLength > buffer.length) {
+      return null;
+    }
+    if (
+      (marker >= 0xc0 && marker <= 0xc3)
+      || (marker >= 0xc5 && marker <= 0xc7)
+      || (marker >= 0xc9 && marker <= 0xcb)
+      || (marker >= 0xcd && marker <= 0xcf)
+    ) {
+      if (segmentLength < 7) {
+        return null;
+      }
+      const height = buffer.readUInt16BE(offset + 3);
+      const width = buffer.readUInt16BE(offset + 5);
+      if (width > 0 && height > 0) {
+        return { width, height };
+      }
+      return null;
+    }
+    offset += segmentLength;
+  }
+  return null;
+}
+
+export const readJpegDimensionsForTests = readJpegDimensions;
 
 function deckPdfOptions(deck: boolean, _slideCount: number) {
   const base = {
@@ -555,15 +696,16 @@ export async function renderHeadlessDeckImages(
         assertPptxSlideCountWithinLimit(slideCount);
 
         const images: HeadlessDeckSlideImage[] = [];
+        const imageFormat = options.imageFormat ?? 'png';
         for (let index = 0; index < slideCount; index += 1) {
           await revealDeckSlideForScreenshot(page, index);
           await waitForPrintableContent(page);
           const image = await page.screenshot({
-            ...imageScreenshotOptions('png'),
+            ...imageScreenshotOptions(imageFormat),
             clip: deckScreenshotClip(),
             timeout: EXPORT_TIMEOUT_MS,
           });
-          images.push({ buffer: Buffer.from(image), jpeg: false });
+          images.push({ buffer: Buffer.from(image), jpeg: imageFormat === 'jpeg' });
         }
         return { images, aspect: DECK_WIDTH / DECK_HEIGHT };
       } finally {

@@ -22,8 +22,8 @@
 
 ### 0.2 2026-08-26 다운로드 cache bust 보강
 
-- ✅ 전역 export cache 기본값을 `v51`로 올리고, staging/production env pin도 `v51`로 갱신했다.
-- ✅ deck PDF/HTML/ZIP/image/PPTX는 `deck-layout-preview-parity-v2:*` 포맷별 namespace를 명시해 renderer 수정 후 기존 broken cache가 hit되지 않게 했다.
+- ✅ 전역 export cache 기본값을 `v52`로 올리고, staging/production env pin도 `v52`로 갱신했다.
+- ✅ deck PDF/HTML/ZIP/image/PPTX는 `deck-layout-preview-parity-v3:*` 포맷별 namespace를 명시해 renderer 수정 후 기존 broken cache가 hit되지 않게 했다.
 - 원인 후보: 2026-08-25 layout fix 후에도 운영 env가 `OD_EXPORT_CACHE_VERSION=v3`으로 고정되어 있으면 같은 source/mtime의 예전 PDF/HTML/PPTX cache가 계속 재사용될 수 있다.
 - 배포 직후 첫 다운로드 응답은 `cache=miss`가 정상이다. 이후 같은 파일 반복 다운로드는 새 namespace 기준 `hit-memo|hit-local`이면 정상이다.
 
@@ -33,6 +33,13 @@
 - ✅ PDF/browser flatten, daemon PDF, editable PPTX, image screenshot 준비 경로는 `el.closest(slideSelector)`로 슬라이드 내부 `.stage`/wrapper를 보존한다.
 - 원인 후보: 생성 HTML에서 `.stage`가 슬라이드 내부 콘텐츠 정렬·여백 박스로 쓰이면, 기존 export가 이를 `display: contents` 또는 1920×1080 wrapper로 바꿔 preview panel보다 콘텐츠가 좌상단으로 밀릴 수 있었다.
 - 회귀 가드: contracts/daemon 테스트에서 `body > .stage` 사용과 내부 wrapper skip을 검증한다.
+
+### 0.4 2026-08-26 deck PDF screen-capture 전환
+
+- ✅ deck PDF 다운로드는 Chromium `page.pdf` print 경로 대신 preview screenshot 경로를 사용해 각 슬라이드를 1920×1080 JPEG로 캡처한 뒤 16:9 PDF 페이지로 조립한다.
+- 적용 이유: `page.pdf`는 `@media print`, CSS px→inch 변환, page box scaling을 거치므로 preview panel과 위치·비율이 어긋날 수 있다. screen screenshot 경로는 사용자가 보는 slide frame을 그대로 캡처해 PDF/preview parity가 높다.
+- 트레이드오프: PDF 텍스트 선택/검색성보다 visual fidelity를 우선한다. editable 산출물이 필요하면 기존 editable PPTX 다운로드 경로를 사용한다.
+- 부하 관리: 기존 export queue, browser pool, cache/offload 정책을 그대로 통과한다. 같은 파일 반복 요청은 `deck-layout-preview-parity-v3:pdf-v1` cache hit로 Chromium 재렌더를 피해야 한다.
 
 ---
 
