@@ -3,6 +3,7 @@ import {
   countDeckSlideHostOpens,
   DECK_SLIDE_HOST_CSS_CLASS,
 } from './deck-slide-class.js';
+import { stripEmptyOfficialTextChromeMotifs } from './heal-official-magazine-layout.js';
 
 /**
  * Compact BYOK fill is forbidden from dumping the official example.html
@@ -63,7 +64,20 @@ const CSS_MOTIF_SEED_CLASS_RE =
   /\b(?:deco-pill|pill-(?:coral|lime|lavender|sky|violet|yellow|peach|mint|white)|petals?|cover-blob|blob|xp-blob|hc-scanlines|hc-grid|post-it|pixel-(?:glitch|particles|corners|stack)|doodle|scribble|win-titlebar|cover-decoration|geo-decoration|zigzag-deco|sunglow|ts-stripe(?:-b)?|corner-bracket|deco-green-circle|deco-pink-rect|deco-yellow-bar|deco-dots|hero-shot|ribbons?|rib)\b/i;
 /** Content chrome that must never count as Motif paint / seeds. */
 const MOTIF_CONTENT_CHROME_RE =
-  /\b(?:stat-bar|pill-accent|pill-academic|pill-divider|pixel-label|pixel-hero-text|pixel-chart|pixel-btn|pixel-face|pixel-avatar|quote-container|diagram-canvas|title-pill|header-pill|orbit-pill)\b/i;
+  /\b(?:stat-bar|pill-accent|pill-academic|pill-divider|pixel-label|pixel-hero-text|pixel-chart|pixel-btn|pixel-face|pixel-avatar|quote-container|diagram-canvas|title-pill|header-pill|orbit-pill|agent-stamp|demo-banner|demo-pill)\b/i;
+
+/** IB magazine `.ribbon` is a text pill — not Sakura `.ribbons`/`.rib`. */
+function isIbMagazineTextChromeClass(classAttr: string): boolean {
+  const tokens = classTokens(classAttr).map((token) => token.toLowerCase());
+  return tokens.includes('ribbon') && !tokens.includes('ribbons') && !tokens.includes('rib');
+}
+
+function isIbMagazineTextStampBlock(classAttr: string, block: string): boolean {
+  const tokens = classTokens(classAttr).map((token) => token.toLowerCase());
+  if (!tokens.includes('stamp') || tokens.includes('rsvp-stamp')) return false;
+  if (/<svg\b/i.test(block)) return false;
+  return true;
+}
 
 /** Layout/chrome classes compact fill routinely emits — not proof of official look. */
 const GENERIC_LOOK_PROOF_CLASS_RE =
@@ -149,7 +163,7 @@ section[data-screen-label], main[data-screen-label], article[data-screen-label] 
   position: relative !important;
   z-index: 2 !important;
 }
-.slide > div:not([data-od-official-motif-html]):not(.deco):not([class*="deco-"]):not(.floating-pills):not(.petals):not(.gd-ambient):not(.pixel-glitch):not(.scanlines):not(.grain):not(.hc-scanlines):not(.hc-grid):not(.sunglow):not(.cover-blob):not([class*="cover-blob"]):not(.geo-decoration):not([class*="gd-orb"]):not(.xp-blob):not([class*="xp-blob"]):not([class*="post-it"]):not(.pin):not([class^="pin-"]):not([class*=" pin-"]):not([class*="doodle"]):not([class*="petal"]):not([class*="stamp"]):not([class*="tape"]):not([class*="pill"]):not([class*="corner-bracket"]):not([class*="ts-stripe"]):not([class*="zigzag"]):not(.ribbon):not(.ribbons):not(.rib):not([class*="ribbon"]):not([class^="win-"]):not([class*=" win-"]):not(.shape):not([class*="pixel-"]):not([class^="hc-"]):not([class*=" hc-"]):not([class*="title-accent"]):not([class*="closing-accent"]):not(.mini-note):not(.hero-shot):not([class*="card-deco"]) {
+.slide > div:not([data-od-slide-flow]):not([data-od-official-motif-html]):not(.deco):not([class*="deco-"]):not(.floating-pills):not(.petals):not(.gd-ambient):not(.pixel-glitch):not(.scanlines):not(.grain):not(.hc-scanlines):not(.hc-grid):not(.sunglow):not(.cover-blob):not([class*="cover-blob"]):not(.geo-decoration):not([class*="gd-orb"]):not(.xp-blob):not([class*="xp-blob"]):not([class*="post-it"]):not(.pin):not([class^="pin-"]):not([class*=" pin-"]):not([class*="doodle"]):not([class*="petal"]):not([class*="stamp"]):not([class*="tape"]):not([class*="pill"]):not([class*="corner-bracket"]):not([class*="ts-stripe"]):not([class*="zigzag"]):not(.ribbon):not(.ribbons):not(.rib):not([class*="ribbon"]):not([class^="win-"]):not([class*=" win-"]):not(.shape):not([class*="pixel-"]):not([class^="hc-"]):not([class*=" hc-"]):not([class*="title-accent"]):not([class*="closing-accent"]):not(.mini-note):not(.hero-shot):not([class*="card-deco"]) {
   position: relative !important;
   z-index: 2 !important;
 }
@@ -301,6 +315,8 @@ function officialLookCssLooksCurrent(css: string): boolean {
     // §0.83 neutralize: size labeled section hosts; never bare [data-slide] nav dots.
     && /section\[data-screen-label\]/i.test(css)
     && !/\[data-slide\],\s*\[data-screen-label\]/i.test(css)
+    // Flow clip wrapper must stay absolute; relative + copied padding doubles inset.
+    && /:not\(\[data-od-slide-flow\]\)/i.test(css)
   );
 }
 
@@ -339,6 +355,7 @@ export function hasOfficialLookStackedCanvasNeutralizeProof(html: string): boole
     && /height\s*:\s*1080px\s*!important/i.test(dest)
     && /\.slide\s*>\s*:is\(h1/i.test(dest)
     && /z-index\s*:\s*2\s*!important/i.test(dest)
+    && /:not\(\[data-od-slide-flow\]\)/i.test(dest)
   );
 }
 
@@ -744,6 +761,7 @@ function extractVisibleMotifInstances(html: string): string[] {
     const primary = motifPrimaryClass(className);
     if (!primary) continue;
     if (MOTIF_CONTENT_CHROME_RE.test(className)) continue;
+    if (isIbMagazineTextChromeClass(className)) continue;
     if (/^pixel-(?:btn|label|hero-text|chart|bar|hbar|avatar|landscape|face)/i.test(primary)) continue;
     if (/^win-(?:body|btn|buttons|icon|title-left)$/i.test(primary)) continue;
     if (/\bpill\b/i.test(className) && !/\bdeco-pill\b/i.test(className) && !CAPSULE_PILL_COLOR_RE.test(className)) {
@@ -758,6 +776,7 @@ function extractVisibleMotifInstances(html: string): string[] {
       raw = extractBalancedElement(html, start);
     }
     if (!raw || raw.length > 8_000) continue;
+    if (isIbMagazineTextStampBlock(className, raw)) continue;
     if (/<symbol\b/i.test(raw) && /width\s*=\s*(?:"0"|'0'|0)/i.test(raw)) continue;
     const svgMatch = /<svg\b[\s\S]*?<\/svg>/i.exec(raw);
     if (svgMatch && svgMatch[0].length < 40) continue;
@@ -771,6 +790,9 @@ function extractVisibleMotifInstances(html: string): string[] {
     if (primary === 'win-window' && raw.length > 800) continue;
     if (!svgMatch && !isMotifClusterClass(primary) && raw.length > 1_200) continue;
     let cleaned = stripMotifSampleText(raw);
+    if (isIbMagazineTextChromeClass(className)) continue;
+    const emptied = cleaned.replace(/<[^>]+>/g, '').trim();
+    if (!/<svg\b/i.test(cleaned) && !emptied && /^(?:ribbon|stamp)$/i.test(primary)) continue;
     if (/\bpixel-particles\b/i.test(className)) cleaned = enrichEmptyPixelParticles(cleaned);
     const openMatch = /^<([a-zA-Z][\w-]*)\b([^>]*)>/.exec(cleaned);
     if (!openMatch) continue;
@@ -1529,7 +1551,9 @@ function extractCssMotifSeeds(html: string): string[] {
     if (!CSS_MOTIF_SEED_CLASS_RE.test(cls)) continue;
     if (/\b(?:petals?|deco-pill|hc-scanlines|xp-blob|cover-blob|pixel-glitch|pixel-particles|pixel-corners)\b/i.test(cls)) continue;
     if (MOTIF_CONTENT_CHROME_RE.test(cls)) continue;
+    if (isIbMagazineTextChromeClass(cls)) continue;
     const block = extractBalancedElement(source, genericMatch.index) ?? open;
+    if (isIbMagazineTextStampBlock(cls, block)) continue;
     if (!block || block.length < 12 || block.length > 800) continue;
     const innerText = block.replace(/<[^>]+>/g, '').trim();
     if (innerText.length > 24) continue;
@@ -2090,6 +2114,7 @@ export function appendCompactOfficialTypeLock(css: string): string {
   }
   if (faces.display) {
     rules.push(`.slide :is(h1, h2, h3, .title, .display, .h1, .h2) { font-family: ${faces.display}; }`);
+    rules.push(`.slide.slide-title h1:not(.display), .slide.cover h1:not(.display) { font-family: ${faces.display}; font-size: 72px; line-height: 1.05; letter-spacing: -0.02em; }`);
   }
   if (rules.length === 1) return src;
   return `${src.trimEnd()}\n${rules.join('\n')}\n`;
@@ -2273,7 +2298,7 @@ export function mergeOfficialDeckMotifHtml(
   assets: OfficialDeckLookAssets | null | undefined,
 ): string {
   const dest = String(html ?? '');
-  if (!dest || !(assets?.motifHtml?.length)) return dest;
+  if (!dest || !(assets?.motifHtml?.length)) return stripEmptyOfficialTextChromeMotifs(dest);
 
   const visible = assets.motifHtml.filter(isVisibleMotifInstanceBlock);
   const cssSeeds = assets.motifHtml.filter(isCssMotifSeedBlock);
@@ -2307,7 +2332,7 @@ export function mergeOfficialDeckMotifHtml(
   } else {
     out = ensureSlideMotifRoleClass(out, visible);
   }
-  return out;
+  return stripEmptyOfficialTextChromeMotifs(out);
 }
 
 export function mergeOfficialDeckLookCss(
@@ -2343,7 +2368,9 @@ export function mergeOfficialDeckLookCss(
   }
 
   return lockDeckDesignViewportMeta(
-    ensureOfficialLookStackedCanvasNeutralize(mergeOfficialDeckMotifHtml(out, assets)),
+    ensureOfficialLookStackedCanvasNeutralize(
+      stripEmptyOfficialTextChromeMotifs(mergeOfficialDeckMotifHtml(out, assets)),
+    ),
   );
 }
 
@@ -2354,6 +2381,7 @@ function officialLookHasCurrentNeutralize(html: string): boolean {
     html.includes(OFFICIAL_LOOK_STACKED_NEUTRALIZE_MARKER)
     && /flex-direction:\s*column/.test(html)
     && /flex-direction:\s*unset/.test(html)
+    && /:not\(\[data-od-slide-flow\]\)/i.test(html)
   );
 }
 

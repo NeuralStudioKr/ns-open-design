@@ -40,6 +40,7 @@ import {
   COLLAPSE_PREVIEW_MAX_INPUT_CHARS,
   COLLAPSE_PREVIEW_MAX_STEPS,
   pinDeckSlidesToFixedCanvas,
+  healOfficialMagazineLayoutDensity,
   scrubLeftoverCatalogExampleHtml,
   stripHostProtocolLeakFromDeckHtml,
   stripLeftoverMotifDemoCopy,
@@ -192,6 +193,11 @@ function buildSrcdocUnsafe(
       } catch (_) {
         /* keep authored HTML */
       }
+    }
+    try {
+      html = healOfficialMagazineLayoutDensity(html, options.userBrief);
+    } catch (_) {
+      /* keep authored HTML */
     }
   }
   // Match cover thumbs: relax flattened `.slide` bleed so official Motif /

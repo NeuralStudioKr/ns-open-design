@@ -999,13 +999,13 @@ function deriveTitleFromBrief(brief: string, deckTitle?: string | null): string 
   const first = brief.split(/\r?\n/).map((line) => line.trim()).find(Boolean) || brief;
   // "expo에 대해서 설명하는 피피티 만들어줘" → topic before 설명/피피티/만들어
   const aboutTopic = first.match(
-    /^(.+?)\s*(?:에\s*대해(?:서)?|에\s*관한)\s*(?:설명하는\s*)?(?:발표\s*자료|피피티|PPT|슬라이드|덱|프레젠테이션)/i,
+    /^(.+?)\s*(?:에\s*대해(?:서)?|에\s*대한|에\s*관한)\s*(?:설명하는\s*)?(?:발표\s*자료|피피티|PPT|슬라이드|덱|프레젠테이션)/i,
   )?.[1]?.trim();
   let title = aboutTopic || first
     .replace(/^(?:please\s+)?(?:make|create|build|write)\s+(?:me\s+)?(?:a|an|the)?\s*/i, '')
     .replace(/\s+(?:slides?|deck|presentation)\s*\.?$/i, '')
     .replace(
-      /\s*(?:에\s*대해(?:서)?|에\s*관한)?\s*(?:설명하는\s*)?(?:발표\s*자료|피피티|PPT|슬라이드|덱|프레젠테이션)?\s*(?:을|를)?\s*(?:만들어|작성|생성|설명해?).*$/i,
+      /\s*(?:에\s*대해(?:서)?|에\s*대한|에\s*관한)?\s*(?:설명하는\s*)?(?:발표\s*자료|피피티|PPT|슬라이드|덱|프레젠테이션)?\s*(?:을|를)?\s*(?:만들어|작성|생성|설명해?).*$/i,
       '',
     )
     .replace(/^(?:슬라이드|발표자료|덱)\s*/i, '')

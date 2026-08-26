@@ -140,6 +140,9 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | persist: 커버 제목 `슬라이드`가 brief를 무시 | ☑ |
 | preview: brief 없는 FileViewer가 raw IB leftover를 그대로 그림 | ☑ 루프135 |
 | preview: 인슬라이드 #next가 native 100vw로 첫 장만 밀림 | ☑ 루프135 |
+| persist/preview: IB 표지가 빈 빨간 리본+잘린 h1로 남음 | ☑ 루프136 |
+| persist: empty `.ribbon`/`.stamp` Motif가 밀집도를 깨뜨림 | ☑ 루프136 |
+| preview: `[data-od-slide-flow]`가 neutralize relative로 이중 패딩 | ☑ 루프136 |
 | API-mode "save this as deck.html" 유출로 덱이 안 생김 | ☑ |
 | clone: demo-banner/TOC/stat-quote 잔여 · #total 불일치 | ☑ 루프58 |
 | preview: #slideCounter 고정 · hoist가 chrome 삭제 | ☑ 루프58 |
@@ -160,7 +163,16 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | think 태그 / 내부 마크업 필터 | ☑ 기존 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프180–194 / round181–195)
+## 이번 루프 (루프136)
+
+1. persist/preview — 빈 IB `.ribbon`/`.stamp` Motif 껍데기를 주입하지 않고 제거
+2. persist/preview — 제목만 있는 IB 표지를 `h1.display` + ribbon + cover-meta 매거진 커버로 복구
+3. neutralize — `[data-od-slide-flow]`는 absolute clip을 유지해 이중 패딩을 막음
+4. first-fill — `</p="">` · 유출 `· Small talk</div>` 마크업 복구
+
+**검증:** heal-official-magazine-layout · deck-template-look-css · template-clone-fill
+
+## 직전 루프 (루프180–194 / round181–195)
 
 1. persist — `-webkit-perspective-origin` · `-webkit-transform-origin/style`
 2. persist — `-webkit-font-size-adjust` · `-webkit-writing-mode` · `-webkit-text-combine*`

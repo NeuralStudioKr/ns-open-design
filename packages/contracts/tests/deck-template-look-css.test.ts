@@ -947,6 +947,7 @@ html, body { overflow: visible !important; height: auto !important; }
     expect(LOOK_NEUTRALIZE_CSS).toMatch(/:not\(\[class\^="pin-"\]\)/);
     expect(LOOK_NEUTRALIZE_CSS).not.toMatch(/:not\(\[class\*="pin"\]\)/);
     expect(LOOK_NEUTRALIZE_CSS).toMatch(/:not\(\.ribbon\)/);
+    expect(LOOK_NEUTRALIZE_CSS).toMatch(/:not\(\[data-od-slide-flow\]\)/);
     expect(LOOK_NEUTRALIZE_CSS).toMatch(/:not\(\[class\^="win-"\]\)/);
     expect(LOOK_NEUTRALIZE_CSS).toMatch(/:not\(\[class\*="pixel-"\]\)/);
     expect(LOOK_NEUTRALIZE_CSS).toMatch(/section\[data-screen-label\]/);

@@ -160,6 +160,7 @@ import {
   composeSystemPrompt,
   deriveDeckCoverTitleFromBrief,
   healInstructionCopyCoverHeading,
+  healOfficialMagazineLayoutDensity,
   scrubLeftoverCatalogExampleHtml,
   htmlHasDeckSlideHost,
   htmlLooksLikeSlideDeliverableStream,
@@ -5741,6 +5742,10 @@ export function ProjectView({
         // Look/Motif/fonts first, then surface bleed — so cream !important
         // does not win over official dark identity (Hermes) or Motif washes.
         htmlBody = await mergeOfficialLookCssForTemplate(htmlBody, persistTemplateId);
+        htmlBody = healOfficialMagazineLayoutDensity(
+          htmlBody,
+          runVisiblePromptRef.current || '',
+        );
         htmlBody = repairDeckSlideSurfaceBleed(htmlBody);
         // MiniMax rewrite-echo: drop adjacent twin headings/paragraphs/badges
         // before the 16:9 pin so deck.html never stores stacked copy.
@@ -8221,7 +8226,11 @@ export function ProjectView({
                             project.metadata?.selectedDeckTemplateId,
                           ),
                         );
-                        const withSurface = repairDeckSlideSurfaceBleed(withLook);
+                        const withMagazine = healOfficialMagazineLayoutDensity(
+                          withLook,
+                          runVisiblePromptRef.current || '',
+                        );
+                        const withSurface = repairDeckSlideSurfaceBleed(withMagazine);
                         const withCanvas = sanitizePersistedDeckHostLeaks(
                           pinDeckSlidesToFixedCanvas(
                             collapseAdjacentDuplicateDeckSiblings(withSurface),
@@ -10233,7 +10242,11 @@ export function ProjectView({
                         project.metadata?.selectedDeckTemplateId,
                       ),
                     );
-                    const withSurface = repairDeckSlideSurfaceBleed(withLook);
+                    const withMagazine = healOfficialMagazineLayoutDensity(
+                      withLook,
+                      runVisiblePromptRef.current || '',
+                    );
+                    const withSurface = repairDeckSlideSurfaceBleed(withMagazine);
                     const withCanvas = sanitizePersistedDeckHostLeaks(
                       pinDeckSlidesToFixedCanvas(
                         collapseAdjacentDuplicateDeckSiblings(withSurface),
