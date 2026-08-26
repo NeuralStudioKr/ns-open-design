@@ -38,6 +38,7 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | chat leftover: MODAL/CHART/IMAGE/VIDEO … 접미사 확장 | ☑ round53 |
 | chat leftover: HERO/KPI/COVER/SECTION … 접미사 확장 | ☑ round54 |
 | chat leftover: BRIEF/SOLUTION/LAB/BEAT … 접미사 확장 | ☑ round55 |
+| chat leftover: WEEK/CHAPTER/SLIDE/FINALE … 접미사 · @font-palette-values | ☑ round56 |
 | leftover APPEND가 producedFiles 있어도 말풍선에 남음 | ☑ 루프18 |
 | dump fallback이 `초안.`/`진행.`/한글 완료 문장을 지움 | ☑ 루프19 |
 | split-* 마감/체크리스트가 inner clip을 건너뛰어 16:9 overflow | ☑ 루프20 |
@@ -73,6 +74,7 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | persist: perspective/will-change/scroll-margin/print-color-adjust flow 복사 | ☑ round53 |
 | persist: position/aspect-ratio/background/view-transition flow 복사 | ☑ round54 |
 | persist: overflow/offset-path/view-timeline/margin flow 복사 | ☑ round55 |
+| persist: font/text-align/color flow 복사 | ☑ round56 |
 | 16:9 inner clip · kit card bind | ☑ |
 | top-up 재진입 재호출 + 내부 프롬프트 노출 | ☑ 센티널+autoOpen; 루프9 reattach 차단 · leftover 숨김 |
 | first-fill 3장 강제 → 요청 1–6장 한 턴 | ☑ 루프9 |
@@ -89,7 +91,14 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | think 태그 / 내부 마크업 필터 | ☑ 기존 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프36 / round55)
+## 이번 루프 (루프37 / round56)
+
+1. chat — WEEK/CHAPTER/SLIDE 접미사 · `@font-palette-values`/`@property` 스크럽
+2. persist — font/text-align/color flow 복사
+
+**검증:** chat-leak-probe-round56 · round55 · deck-fixed-canvas
+
+## 직전 루프 (루프36 / round55)
 
 1. chat — BRIEF/SOLUTION/LAB/BEAT 등 피치 역할 접미사 캐치올
 2. persist — overflow/offset-path/view-timeline/margin flow 복사 · props 중복 제거
