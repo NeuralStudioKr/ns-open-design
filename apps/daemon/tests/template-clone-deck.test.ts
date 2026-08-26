@@ -55,6 +55,7 @@ describe('seedTemplateClonedDeckOnServer', () => {
     });
 
     const written = new Map<string, string>();
+    let manifestTitle = '';
     const result = await seedTemplateClonedDeckOnServer(
       {
         db,
@@ -65,8 +66,10 @@ describe('seedTemplateClonedDeckOnServer', () => {
           await mkdir(dir, { recursive: true });
           return dir;
         },
-        writeProjectFile: async (_root, _id, name, body) => {
+        writeProjectFile: async (_root, _id, name, body, options) => {
           written.set(name, typeof body === 'string' ? body : body.toString('utf8'));
+          const title = (options?.artifactManifest as { title?: string } | undefined)?.title;
+          if (title) manifestTitle = title;
           return { name };
         },
       },
@@ -92,6 +95,8 @@ describe('seedTemplateClonedDeckOnServer', () => {
     // Template base must stay on plugin FS — never land in user-visible refs/.
     expect(written.has('refs/template-base.html')).toBe(false);
     expect([...written.keys()]).toEqual(['deck.html']);
+    expect(manifestTitle).toBe('분기 전략');
+    expect(manifestTitle).not.toBe('Html Ppt Zhangzara Daisy Days');
   });
 
   it('never uses marketing or instruction copy as the cloned cover title', async () => {
@@ -130,6 +135,7 @@ describe('seedTemplateClonedDeckOnServer', () => {
     });
 
     const written = new Map<string, string>();
+    let manifest: { title?: string; metadata?: { selectedDeckTemplateTitle?: string } } | null = null;
     const result = await seedTemplateClonedDeckOnServer(
       {
         db,
@@ -140,8 +146,11 @@ describe('seedTemplateClonedDeckOnServer', () => {
           await mkdir(dir, { recursive: true });
           return dir;
         },
-        writeProjectFile: async (_root, _id, name, body) => {
+        writeProjectFile: async (_root, _id, name, body, options) => {
           written.set(name, typeof body === 'string' ? body : body.toString('utf8'));
+          if (options?.artifactManifest && typeof options.artifactManifest === 'object') {
+            manifest = options.artifactManifest as typeof manifest;
+          }
           return { name };
         },
       },
@@ -161,6 +170,9 @@ describe('seedTemplateClonedDeckOnServer', () => {
     expect(deck).not.toContain('Html Ppt Zhangzara Daisy Days');
     expect(deck).not.toContain('첨부한 자료를 바탕으로');
     expect(deck).not.toContain('만들어줘');
+    expect(manifest?.title).toBe('슬라이드');
+    expect(manifest?.title).not.toBe('Html Ppt Zhangzara Daisy Days');
+    expect(manifest?.metadata?.selectedDeckTemplateTitle).toBe('Html Ppt Zhangzara Daisy Days');
   });
 
   it('resolves bare skill id to example- installed plugin id', async () => {

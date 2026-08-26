@@ -214,12 +214,13 @@ export function shouldPreserveFilledDeckOverCloneReseed(
 function buildDeckArtifactManifest(input: {
   pluginId: string;
   templateTitle: string;
+  deckTitle?: string | null;
 }): Record<string, unknown> {
   const now = new Date().toISOString();
   return {
     version: 1,
     kind: 'deck',
-    title: input.templateTitle || 'deck',
+    title: sanitizeTemplateCloneDeckTitle(input.deckTitle) || '슬라이드',
     entry: 'deck.html',
     renderer: 'deck-html',
     status: 'complete',
@@ -429,6 +430,7 @@ export async function seedTemplateClonedDeckOnServer(
         artifactManifest: buildDeckArtifactManifest({
           pluginId: loaded.templateId,
           templateTitle,
+          deckTitle,
         }),
       },
       deps.metadata,

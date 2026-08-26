@@ -857,6 +857,8 @@ describe("canvasSlideLaunch", () => {
     );
     expect(cloneSrc).toContain("skipArtifactStubGuard: true");
     expect(cloneSrc).toContain("skipArtifactPublicationGuard: true");
+    expect(cloneSrc).toContain("title: sanitizeTemplateCloneDeckTitle(input.deckTitle) || '슬라이드'");
+    expect(cloneSrc).not.toContain("title: input.templateTitle || 'deck'");
     expect(projectView).not.toContain("Clone already wrote deck.html");
     expect(projectView).not.toContain("templateClonedDeckSeeded === true");
   });
@@ -875,6 +877,16 @@ describe("canvasSlideLaunch", () => {
     expect(projectView).toContain("isGenericDeckArtifactTitle(rawTitle)");
     expect(projectView).toContain("title: project.name || '슬라이드'");
     expect(projectView).not.toContain("title: project.name || 'deck'");
+  });
+
+  it("titles Clone LOOK manifests from sanitized deckTitle not template marketing", () => {
+    const cloneSrc = readFileSync(
+      resolve(__dirname, "../../daemon/src/template-clone-deck.ts"),
+      "utf8",
+    );
+    expect(cloneSrc).toContain("title: sanitizeTemplateCloneDeckTitle(input.deckTitle) || '슬라이드'");
+    expect(cloneSrc).not.toContain("title: input.templateTitle || 'deck'");
+    expect(cloneSrc).toContain("selectedDeckTemplateTitle: input.templateTitle");
   });
 
   it("does not optimistic-bump project updatedAt when pinning entryFile on open", () => {
