@@ -595,6 +595,9 @@ describe("ProjectView message loading", () => {
     // Validation refusals still surface a refusal banner; incomplete shells
     // must stay quiet so they do not contradict the automatic-continue notice.
     expect(persistBlock).toContain("formatProjectArtifactRejectedError(");
+    expect(persistBlock).toContain("persistDisplayTitle");
+    expect(persistBlock).toContain("resolvePersistDeckDisplayTitle(");
+    expect(persistBlock).not.toContain("art.identifier || art.title || 'untitled'");
     const shellStart = source.indexOf(
       "!trustSoftTruncationSalvage\n          && isIncompleteHtmlDocumentShell(",
       persistStart,
