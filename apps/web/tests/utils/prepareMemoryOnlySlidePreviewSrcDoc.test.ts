@@ -68,6 +68,23 @@ describe('prepareMemoryOnlySlidePreviewSrcDoc', () => {
     expect(srcDoc).not.toContain('data-od-deck-bridge');
   });
 
+  it('scrubs leftover IB catalog copy in project preview even without a user brief', () => {
+    const html = readFileSync(
+      resolve(import.meta.dirname, '../../../../plugins/_official/examples/ib-pitch-book/example.html'),
+      'utf8',
+    );
+    const srcDoc = prepareMemoryOnlySlidePreviewSrcDoc({
+      html,
+      projectId: 'project-1',
+      fileName: 'deck.html',
+      projectFilePaths: [],
+      teamverEmbedMode: false,
+      embedPreviewPrefix: null,
+    });
+    const visible = srcDoc.replace(/<style[\s\S]*?<\/style>/gi, '');
+    expect(visible).not.toMatch(/Hartfield/i);
+  });
+
   it('scrubs leftover IB catalog copy when the user brief is a different topic', () => {
     const html = readFileSync(
       resolve(import.meta.dirname, '../../../../plugins/_official/examples/ib-pitch-book/example.html'),

@@ -113,7 +113,9 @@ describe("FileViewer streaming slide preview", () => {
     const source = readSource("src/components/FileViewer.tsx");
     expect(source).toContain("userBrief?: string | null");
     expect(source).toMatch(/buildSrcdoc\(previewSource, \{[\s\S]*?userBrief,/);
+    expect(source).toMatch(/buildSrcdoc\(previewSource, \{[\s\S]*?scrubLeftoverCatalog: true/);
     expect(source).toMatch(/buildSrcdoc\(html, \{[\s\S]*?userBrief,/);
+    expect(source).toMatch(/buildSrcdoc\(html, \{[\s\S]*?scrubLeftoverCatalog: true/);
   });
 
   it("gates live iframe updates on repaired html stability during streaming", () => {

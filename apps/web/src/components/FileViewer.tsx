@@ -7564,6 +7564,7 @@ function HtmlViewer({
           paletteBridge: false,
           previewFocusGuard: true,
           userBrief,
+          scrubLeftoverCatalog: true,
         });
       } catch (err) {
         // Deep-link /files/deck.html mounts FileViewer on first paint — a throw
@@ -13218,6 +13219,7 @@ function HtmlViewer({
         paletteBridge: false,
         previewFocusGuard: true,
         userBrief,
+        scrubLeftoverCatalog: true,
       });
     } catch (err) {
       console.error('[HtmlViewer] activateManualEditPreviewHtml buildSrcdoc failed', err);

@@ -81,6 +81,7 @@ export function prepareMemoryOnlySlidePreviewSrcDoc(options: {
         selectionBridge: false,
         previewFocusGuard: true,
         userBrief: options.userBrief,
+        scrubLeftoverCatalog: true,
       });
     } catch (err) {
       console.error('[prepareMemoryOnlySlidePreviewSrcDoc] buildSrcdoc failed', fileName, err);

@@ -372,6 +372,67 @@ describe('deck bridge - transform-driven decks', () => {
     expect(win.document.getElementById('total')?.textContent).toBe('03');
   });
 
+  it('scrubs leftover IB in project preview even without a user brief', async () => {
+    const html = await readFile(
+      new URL(
+        '../../../../plugins/_official/examples/ib-pitch-book/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const srcdoc = buildSrcdoc(html, { deck: true, scrubLeftoverCatalog: true });
+    const visible = srcdoc.replace(/<style[\s\S]*?<\/style>/gi, '');
+    expect(visible).not.toMatch(/Hartfield/i);
+    expect(srcdoc).not.toMatch(/WACC \(base\)/i);
+  });
+
+  it('drives leftover IB in-slide #next by 1920px instead of 100vw', async () => {
+    const html = await readFile(
+      new URL(
+        '../../../../plugins/_official/examples/ib-pitch-book/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const srcdoc = buildSrcdoc(html, { deck: true });
+    expect(srcdoc).toMatch(/Hartfield/i);
+    const script = extractDeckBridgeScript(srcdoc);
+    const dom = new JSDOM(srcdoc, { runScripts: 'outside-only', pretendToBeVisual: true });
+    const win = dom.window;
+    Object.defineProperty(win, 'parent', {
+      configurable: true,
+      value: { postMessage: vi.fn() },
+    });
+    Object.defineProperty(win, 'innerWidth', { configurable: true, value: 800 });
+    Object.defineProperty(win, 'innerHeight', { configurable: true, value: 600 });
+    const slides = Array.from(win.document.querySelectorAll<HTMLElement>('#stage > .slide, .slide'));
+    slides.forEach((slide) => {
+      Object.defineProperty(slide, 'offsetWidth', { configurable: true, value: 800 });
+      Object.defineProperty(slide, 'offsetHeight', { configurable: true, value: 600 });
+    });
+    const evaluate = new win.Function(script);
+    evaluate.call(win);
+    expect(script).toContain('bindNativeStripButtons');
+    const next = win.document.getElementById('next') as HTMLElement | null;
+    expect(next).toBeTruthy();
+    win.dispatchEvent(new win.MessageEvent('message', {
+      data: { type: 'od:slide', action: 'next' },
+    }));
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 80));
+    const stage = win.document.getElementById('stage') as HTMLElement | null;
+    const stacked = win.document.getElementById('od-stacked-deck-stage');
+    if (!stacked) {
+      expect(stage?.style.transform).toBe('translateX(-1920px)');
+      expect(stage?.style.transform).not.toContain('100vw');
+    }
+    expect(win.document.getElementById('now')?.textContent).toBe('02');
+    if (next && !stacked) {
+      next.click();
+      await new Promise<void>((resolve) => win.setTimeout(resolve, 40));
+      expect(stage?.style.transform).toBe('translateX(-3840px)');
+    }
+  });
+
   it('leaves a catalog example intact when no user brief is provided', async () => {
     const html = await readFile(
       new URL(

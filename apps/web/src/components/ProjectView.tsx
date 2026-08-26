@@ -5613,6 +5613,7 @@ export function ProjectView({
           const scrubbed = scrubLeftoverCatalogExampleHtml(
             artifactToPersist.html,
             persistHealBrief,
+            { allowEmptyBrief: true },
           );
           if (
             scrubbed

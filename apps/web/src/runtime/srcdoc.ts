@@ -66,6 +66,11 @@ export type SrcdocOptions = {
   exportDocument?: boolean;
   /** User brief so leftover catalog examples can be scrubbed in preview. */
   userBrief?: string | null;
+  /**
+   * Project FileViewer / memory-only: scrub leftover catalog examples even
+   * when `userBrief` is still empty. Gallery ExamplesTab must leave this off.
+   */
+  scrubLeftoverCatalog?: boolean;
 };
 
 export const PREVIEW_REDIRECT_GUARD_MAX_HOPS = 15;
@@ -168,7 +173,9 @@ function buildSrcdocUnsafe(
 ): string {
   if (options.deck && !options.exportDocument) {
     try {
-      html = scrubLeftoverCatalogExampleHtml(html, options.userBrief);
+      html = scrubLeftoverCatalogExampleHtml(html, options.userBrief, {
+        allowEmptyBrief: options.scrubLeftoverCatalog === true,
+      });
     } catch (_) {
       /* keep authored HTML */
     }
@@ -3740,6 +3747,13 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .stage > .slide {
     if (size >= 600 && Math.abs(size - viewport) > 48) return size;
     // Pinned 1920 canvas can still report iframe-sized offsetWidth.
     if (size >= 1600) return size;
+    try {
+      var isStage = !!(track && (
+        track.id === 'stage'
+        || (track.classList && track.classList.contains('stage'))
+      ));
+      if (isStage && axis === 'x') return 1920;
+    } catch (_) {}
     return 0;
   }
   function transformGo(i){
@@ -4339,6 +4353,34 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .stage > .slide {
   // can no longer post od:slide, so handle presenter keys inside the bridge
   // for every deck shape — not only compact stacked decks.
   document.addEventListener('keydown', onDeckBridgeKeydown, true);
+  function bindNativeStripButtons(){
+    ['prev', 'next'].forEach(function(id){
+      var el = document.getElementById(id);
+      if (!el || el.getAttribute('data-od-px-strip') === '1') return;
+      el.setAttribute('data-od-px-strip', '1');
+      el.addEventListener('click', function(e){
+        if (hostNativeClickInFlight) return;
+        try { e.preventDefault(); e.stopImmediatePropagation(); } catch (_) {}
+        go(id === 'next' ? 'next' : 'prev');
+      }, true);
+    });
+  }
+  bindNativeStripButtons();
+  document.addEventListener('click', function(e){
+    if (hostNativeClickInFlight) return;
+    var node = e && e.target;
+    var id = '';
+    try {
+      while (node && node !== document) {
+        id = String(node.id || '').toLowerCase();
+        if (id === 'next' || id === 'prev') break;
+        node = node.parentElement;
+      }
+    } catch (_) { return; }
+    if (id !== 'next' && id !== 'prev') return;
+    try { e.preventDefault(); e.stopImmediatePropagation(); } catch (_) {}
+    go(id === 'next' ? 'next' : 'prev');
+  }, true);
   // Compact letterbox must own od:slide. Catalogs like kami-deck /
   // open-design-landing-deck register a bubble message listener that
   // stopImmediatePropagation + only toggles .active/translateX — fine for
