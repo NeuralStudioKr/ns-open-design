@@ -284,10 +284,26 @@ function replaceHeadingText(html: string, tag: string, text: string): string {
 
 function stripClassBlocks(html: string, className: string): string {
   const re = new RegExp(
-    `<(div|span|p|header|footer|small|strong|em|i)\\b([^>]*\\bclass\\s*=\\s*["'][^"']*\\b${className}\\b[^"']*["'][^>]*)>[\\s\\S]*?<\\/\\1>`,
+    `<(div|span|p|header|footer|small|strong|em|i|blockquote|figure|figcaption|aside)\\b([^>]*\\bclass\\s*=\\s*["'][^"']*\\b${className}\\b[^"']*["'][^>]*)>[\\s\\S]*?<\\/\\1>`,
     'gi',
   );
   return html.replace(re, '');
+}
+
+function emptyClassInners(html: string, className: string): string {
+  const re = new RegExp(
+    `(<(div|span|p)\\b[^>]*\\bclass\\s*=\\s*["'][^"']*\\b${className}\\b[^"']*["'][^>]*>)[\\s\\S]*?(<\\/\\2>)`,
+    'gi',
+  );
+  return html.replace(re, '$1$3');
+}
+
+/** Deck chrome outside slide shells — demo disclaimer, pitch-agent stamp. */
+export function stripDeckLevelDemoChrome(html: string): string {
+  return String(html ?? '').replace(
+    /<(div|aside|p|header|section)\b([^>]*\bclass\s*=\s*["'][^"']*\b(?:demo-banner|agent-stamp|demo-pill)\b[^"']*["'][^>]*)>[\s\S]*?<\/\1>/gi,
+    '',
+  );
 }
 
 function stripLeftoverTemplateDemoCopy(html: string): string {
@@ -304,6 +320,14 @@ function stripLeftoverTemplateDemoCopy(html: string): string {
     'marque',
     'row',
     'meta',
+    'demo-pill',
+    'demo-banner',
+    'agent-stamp',
+    'quote-author',
+    'kicker',
+    'cover-meta',
+    'grid-3',
+    'criteria',
   ]) {
     next = stripClassBlocks(next, className);
   }
@@ -328,6 +352,9 @@ function replaceListItems(html: string, lines: string[]): string {
     const attrs = existingItems[index]?.[1] ?? existingItems[0]?.[1] ?? '';
     const priorInner = existingItems[index]?.[2] ?? '';
     if (priorInner && /<[a-zA-Z]/.test(priorInner)) {
+      if (!String(line).trim()) {
+        return `<li${attrs}></li>`;
+      }
       return `<li${attrs}>${replaceFirstTextRun(priorInner, line)}</li>`;
     }
     return `<li${attrs}>${escapeHtml(line)}</li>`;
@@ -383,6 +410,16 @@ function fillSlideShell(
       body = replaceFirstTagText(body, 'p', '');
     }
     body = stripLeftoverTemplateDemoCopy(body);
+    body = emptyClassInners(body, 'number');
+    body = emptyClassInners(body, 'caption');
+    body = emptyClassInners(body, 'quote-text');
+    body = emptyClassInners(body, 'quote-author');
+    if (!/<h[1-3]\b/i.test(shell.body)) {
+      body = body.replace(
+        /(<[^>]*\bclass\s*=\s*["'][^"']*\b(?:quote-text|number|caption)\b[^"']*["'][^>]*>)(<\/)/i,
+        `$1${escapeHtml(title)}$2`,
+      );
+    }
   } else if (bodyLines.length > 0 && /<[uo]l\b/i.test(body)) {
     body = replaceListItems(body, bodyLines);
   } else if (bodyLines[0] || bodyText) {
@@ -564,9 +601,18 @@ export function buildTemplateClonedDeckHtml(
   }
 
   out = replaceDocumentTitle(out, deckTitle);
+  out = stripDeckLevelDemoChrome(out);
+  out = syncClonedDeckChromeCount(out, filled.length);
   out = normalizeTemplateCssForFixedCanvas(out);
   out = injectTeamverSizeStyle(out);
   return out.trim() || null;
+}
+
+function syncClonedDeckChromeCount(html: string, count: number): string {
+  const padded = String(Math.max(1, count)).padStart(2, '0');
+  return String(html ?? '')
+    .replace(/(<[^>]*\bid\s*=\s*["']total["'][^>]*>)[\s\S]*?(<\/)/i, `$1${padded}$2`)
+    .replace(/(<[^>]*\bid\s*=\s*["']deck-total["'][^>]*>)[\s\S]*?(<\/)/i, `$1${padded}$2`);
 }
 
 /** Parse a slide-count hint like "6-8" / "10" into a concrete target. */
@@ -605,9 +651,18 @@ function cleanCloneTitle(title: string): string {
   return title.replace(/^["'`]|["'`]$/g, '').replace(/\s+/g, ' ').trim();
 }
 
+/** Dense template sample lexicon that must not lock a LOOK seed over a clean re-clone. */
+export function looksLikeLeftoverTemplateDemoDeck(html: string): boolean {
+  const text = String(html ?? '');
+  if (!text.trim()) return false;
+  return /Hartfield|NorthPeak Industries|WACC\s*\(|Revenue CAGR|Filebase|Northwind Studios|Daisy Days|The bandwidth bill is the bug|Project Atlas/i.test(
+    text,
+  );
+}
+
 export function looksLikeTemplateMarketingTitle(title: string): boolean {
   const trimmed = title.trim();
-  return /html\s*ppt|daisy days|simple deck|zhangzara|cheerful presentation|template for/i.test(
+  return /html\s*ppt|daisy days|simple deck|zhangzara|cheerful presentation|template for|hartfield|northpeak|filebase|project atlas|northwind studios/i.test(
     trimmed,
   ) || /^(?:presentation(?:\s+template)?|slide)$/i.test(trimmed);
 }
@@ -852,7 +907,7 @@ export function healInstructionCopyCoverHeading(
     if (rewritten === body) continue;
     next = next.slice(0, span.bodyStart) + rewritten + next.slice(span.bodyEnd);
   }
-  return next;
+  return stripDeckLevelDemoChrome(next);
 }
 
 /**
