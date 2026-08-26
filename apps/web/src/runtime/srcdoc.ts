@@ -1445,7 +1445,7 @@ export const PREVIEW_ESCAPE_MESSAGE = 'od:preview-escape';
  * the parent document. Post a host message so PreviewModal can dismiss
  * popovers → fullscreen → the modal, one layer per keystroke.
  */
-function injectPreviewEscapeBridge(doc: string): string {
+export function injectPreviewEscapeBridge(doc: string): string {
   const script = `<script data-od-preview-escape-bridge>(function(){
   function isTypingTarget(el){
     if (!el) return false;

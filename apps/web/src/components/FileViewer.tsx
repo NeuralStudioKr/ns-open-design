@@ -4893,6 +4893,7 @@ function ReactComponentViewer({
   const [reloadKey, setReloadKey] = useState(0);
   const [shareMenuOpen, setShareMenuOpen] = useState(false);
   const shareRef = useRef<HTMLDivElement | null>(null);
+  const previewIframeRef = useRef<HTMLIFrameElement | null>(null);
   // HTML entries that load this file as a Babel module. `null` = still
   // checking; `[]` = standalone artifact; non-empty = a module of a
   // multi-file React prototype, which has no standalone preview. Issue #2744.
@@ -4961,6 +4962,36 @@ function ReactComponentViewer({
       document.removeEventListener('mousedown', onDocClick);
       document.removeEventListener('keydown', onKey);
     };
+  }, [shareMenuOpen]);
+
+  useEffect(() => {
+    function onMessage(ev: MessageEvent) {
+      runFileViewerPreviewMessageHandler('preview escape', () => {
+        if (ev.source !== previewIframeRef.current?.contentWindow) return;
+        const data = ev.data as { type?: string } | null;
+        if (data?.type !== PREVIEW_ESCAPE_MESSAGE) return;
+        const action = resolveFileViewerPreviewEscapeAction({
+          presentMenuOpen: false,
+          zoomMenuOpen: false,
+          agentToolsOpen: false,
+          shareMenuOpen,
+          deployMenuOpen: false,
+          downloadMenuOpen: false,
+          inTabPresent: false,
+          deployModalOpen: false,
+        });
+        applyFileViewerPreviewEscapeAction(action, {
+          closePresentMenu: () => {},
+          closeZoomMenu: () => {},
+          closeArtifactTools: () => {},
+          closeShareMenus: () => setShareMenuOpen(false),
+          exitInTabPresent: () => {},
+          closeDeployModal: () => {},
+        });
+      });
+    }
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
   }, [shareMenuOpen]);
 
   const exportTitle = file.name.replace(/\.(jsx|tsx)$/i, '') || file.name;
@@ -5112,6 +5143,7 @@ function ReactComponentViewer({
         ) : mode === 'preview' ? (
           <PreviewDrawOverlay>
             <iframe
+              ref={previewIframeRef}
               data-testid="react-component-preview-frame"
               title={file.name}
               sandbox="allow-scripts allow-downloads"

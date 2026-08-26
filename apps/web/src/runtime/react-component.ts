@@ -1,3 +1,5 @@
+import { injectPreviewEscapeBridge } from './srcdoc';
+
 interface ReactComponentSrcdocOptions {
   title: string;
 }
@@ -13,7 +15,7 @@ export function buildReactComponentSrcdoc(
   const prepared = prepareReactComponentSource(source);
   const safeTitle = escapeHtml(title || 'React component');
   const sourceJson = JSON.stringify(prepared);
-  return `<!doctype html>
+  return injectPreviewEscapeBridge(`<!doctype html>
 <html>
   <head>
     <meta charset="utf-8" />
@@ -88,7 +90,7 @@ export function buildReactComponentSrcdoc(
       })();
     </script>
   </body>
-</html>`;
+</html>`);
 }
 
 export function prepareReactComponentSource(source: string): string {

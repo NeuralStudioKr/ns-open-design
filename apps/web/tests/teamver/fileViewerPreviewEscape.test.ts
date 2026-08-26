@@ -33,6 +33,23 @@ describe('resolveFileViewerPreviewEscapeAction', () => {
   });
 });
 
+describe('FileViewer ReactComponentViewer escape wiring', () => {
+  it('closes the share menu from iframe Escape without reading HtmlViewer state', () => {
+    const source = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), '../../src/components/FileViewer.tsx'),
+      'utf8',
+    );
+    const reactViewer = source.slice(
+      source.indexOf('function ReactComponentViewer('),
+      source.indexOf('function BinaryViewer('),
+    );
+    expect(reactViewer).toContain("runFileViewerPreviewMessageHandler('preview escape'");
+    expect(reactViewer).toContain('shareMenuOpen');
+    expect(reactViewer).toContain('setShareMenuOpen(false)');
+    expect(reactViewer).toContain('previewIframeRef');
+  });
+});
+
 describe('FileViewer HtmlViewer escape wiring', () => {
   it('does not read an undeclared shareMenuOpen in HtmlViewer', () => {
     const source = readFileSync(

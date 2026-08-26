@@ -57,5 +57,7 @@ describe('buildReactComponentSrcdoc', () => {
     expect(doc).toContain('artifact.tsx');
     expect(doc).toContain('sandboxed iframe');
     expect(doc).toContain('(0, eval)(compiled)');
+    expect(doc).toContain('od:preview-escape');
+    expect(doc).toContain('data-od-preview-escape-bridge');
   });
 });
