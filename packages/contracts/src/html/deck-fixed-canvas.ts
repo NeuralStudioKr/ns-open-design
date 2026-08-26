@@ -723,6 +723,23 @@ const FLOW_COPIED_STYLE_PROPS = [
   'image-orientation',
   'content',
   'quotes',
+  'all',
+  'caret-shape',
+  'field-sizing',
+  'interpolate-size',
+  'reading-flow',
+  'reading-order',
+  'ruby-align',
+  'ruby-position',
+  'text-emphasis',
+  'text-emphasis-color',
+  'text-emphasis-position',
+  'text-emphasis-style',
+  'text-underline-offset',
+  'text-underline-position',
+  'text-decoration-skip-ink',
+  'math-style',
+  'math-depth',
 ] as const;
 
 function wrapFlowOpenTag(hostAttrs: string, inner = ''): string {
