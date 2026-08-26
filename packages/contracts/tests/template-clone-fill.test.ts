@@ -7,8 +7,10 @@ import {
   inferTemplateCloneContentRole,
   listTemplateCloneSlideShells,
   looksLikeInstructionCopy,
+  catalogExampleShouldBeScrubbed,
   looksLikeLeftoverTemplateDemoDeck,
   looksLikeTemplateMarketingTitle,
+  scrubLeftoverCatalogExampleHtml,
   normalizeTemplateCssForFixedCanvas,
   pickTemplateShellsForContent,
   resolveTemplateCloneSlideCountHint,
@@ -500,5 +502,29 @@ describe('sanitizeTemplateCloneDeckTitle', () => {
     );
     expect(healed).not.toMatch(/demo-banner|Fictional illustrative|pitch-agent/i);
     expect(healed).toContain('영어 회화');
+  });
+
+  it('scrubs a leftover IB catalog example when the brief is a Korean topic', async () => {
+    const html = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/ib-pitch-book/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const brief = '영어 회화 표현 공부 팁, 예시에 대한 발표자료 만들어줘';
+    expect(catalogExampleShouldBeScrubbed(html, brief)).toBe(true);
+    expect(catalogExampleShouldBeScrubbed(html, null)).toBe(false);
+    const mixed = html.replace(
+      'A discounted-cash-flow that <em>does the work</em>.',
+      'A discounted-cash-flow that 영어 회화 표현 공부 팁, 예시에 · 6.',
+    );
+    expect(catalogExampleShouldBeScrubbed(mixed, brief)).toBe(true);
+    expect(catalogExampleShouldBeScrubbed(mixed, null)).toBe(true);
+    const scrubbed = scrubLeftoverCatalogExampleHtml(mixed, brief);
+    expect(scrubbed).not.toMatch(/Hartfield/i);
+    expect(scrubbed).not.toMatch(/WACC \(base\)/i);
+    expect(scrubbed).not.toMatch(/A discounted-cash-flow that/i);
+    expect(scrubbed).toMatch(/영어 회화|개요|핵심 포인트/);
   });
 });

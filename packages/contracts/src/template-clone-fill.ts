@@ -665,6 +665,54 @@ export function looksLikeLeftoverTemplateDemoDeck(html: string): boolean {
   );
 }
 
+function hasHangulTopic(text: string): boolean {
+  return ((String(text ?? '').match(/[가-힣]/g) ?? []).length >= 4);
+}
+
+export function catalogExampleShouldBeScrubbed(
+  html: string,
+  brief?: string | null,
+): boolean {
+  const dest = String(html ?? '');
+  if (!looksLikeLeftoverTemplateDemoDeck(dest)) return false;
+  const prompt = String(brief ?? '');
+  const promptNamesCatalog = /Hartfield|NorthPeak|WACC|Filebase|Daisy Days|피치북|pitch book/i.test(prompt);
+  const promptHasHangul = hasHangulTopic(prompt);
+  if (promptNamesCatalog && !promptHasHangul) return false;
+  if (promptHasHangul || hasHangulTopic(dest)) return true;
+  if (prompt && !promptNamesCatalog) return true;
+  return false;
+}
+
+/**
+ * Rebuild a leftover catalog example (Hartfield/DCF/Filebase) as a topic
+ * clone so preview/persist never keep finance demo copy on a different brief.
+ */
+export function scrubLeftoverCatalogExampleHtml(
+  html: string,
+  brief?: string | null,
+): string {
+  const dest = String(html ?? '');
+  if (!catalogExampleShouldBeScrubbed(dest, brief)) return dest;
+  const fromBrief = resolveTemplateCloneSlidesFromBrief({
+    userInstruction: brief ?? '',
+  });
+  const hangul = dest.match(/[가-힣][가-힣\s,]{3,80}/)?.[0]?.trim();
+  const title = fromBrief[0]?.title || hangul || '슬라이드';
+  const slides = fromBrief.length > 0
+    ? fromBrief
+    : [
+      { title, body: '…' },
+      { title: '개요', body: '…' },
+      { title: '핵심 포인트', body: '…\n…\n…' },
+      { title: '다음 단계', body: '…' },
+    ];
+  return buildTemplateClonedDeckHtml(dest, slides, {
+    title,
+    maxSlides: slides.length,
+  }) || dest;
+}
+
 export function looksLikeTemplateMarketingTitle(title: string): boolean {
   const trimmed = title.trim();
   return /html\s*ppt|daisy days|simple deck|zhangzara|cheerful presentation|template for|hartfield|northpeak|filebase|project atlas|northwind studios/i.test(
