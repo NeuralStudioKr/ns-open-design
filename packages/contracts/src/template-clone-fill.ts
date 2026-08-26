@@ -665,6 +665,52 @@ export function looksLikeLeftoverTemplateDemoDeck(html: string): boolean {
   );
 }
 
+const CATALOG_SWIPE_STAGE_RE =
+  /<(?:div|section)\b[^>]*(?:\bid\s*=\s*["']stage["']|\bclass\s*=\s*["'][^"']*\bstage\b)/i;
+const CATALOG_SWIPE_CHROME_RE =
+  /id\s*=\s*["']now["'][\s\S]{0,800}id\s*=\s*["']total["']|id\s*=\s*["']total["'][\s\S]{0,800}id\s*=\s*["']now["']/i;
+const CATALOG_SWIPE_VW_SCRIPT_RE =
+  /translateX\s*\(\s*[`'"]-\$\{[^}]*100\s*vw|translateX\(`-\$\{i\*100\}vw`\)/i;
+const GENERIC_CLONE_HEADING_RE = /개요|핵심 포인트|다음 단계|Overview|Key points|Next steps/i;
+
+/**
+ * IB pitch-book / catalog swipe chassis after demo copy was wiped.
+ * Hartfield fingerprints are gone, but #stage + 100vw script + chrome remain.
+ */
+export function looksLikeCatalogSwipeShell(html: string): boolean {
+  const dest = String(html ?? '');
+  if (!dest || dest.length < 8_000) return false;
+  if (!CATALOG_SWIPE_STAGE_RE.test(dest)) return false;
+  const hasVw =
+    /min-width\s*:\s*100vw/i.test(dest)
+    || /data-od-deck-fixed-canvas-pin/i.test(dest)
+    || CATALOG_SWIPE_VW_SCRIPT_RE.test(dest);
+  if (!hasVw) return false;
+  if (!CATALOG_SWIPE_CHROME_RE.test(dest) && !CATALOG_SWIPE_VW_SCRIPT_RE.test(dest)) {
+    return false;
+  }
+  const slides = dest.match(/<(?:section|div)\b[^>]*\bclass\s*=\s*["'][^"']*\bslide\b/gi);
+  return (slides?.length ?? 0) >= 6;
+}
+
+/**
+ * Scrubbed leftover catalog: IB chassis plus placeholder clone copy.
+ * Must not lock the next topical fill behind artifact_regression.
+ */
+export function looksLikeScrubbedCatalogExampleShell(
+  html: string,
+  brief?: string | null,
+): boolean {
+  const dest = String(html ?? '');
+  if (!looksLikeCatalogSwipeShell(dest)) return false;
+  if (looksLikeLeftoverTemplateDemoDeck(dest)) return true;
+  const prompt = String(brief ?? '');
+  const promptNamesCatalog = /Hartfield|NorthPeak|WACC|Filebase|Daisy Days|피치북|pitch book/i.test(prompt);
+  if (promptNamesCatalog && !hasHangulTopic(prompt)) return false;
+  const ellipsis = (dest.match(/[…]|\.{3}/g) ?? []).length;
+  return ellipsis >= 3 && GENERIC_CLONE_HEADING_RE.test(dest);
+}
+
 function hasHangulTopic(text: string): boolean {
   return ((String(text ?? '').match(/[가-힣]/g) ?? []).length >= 4);
 }

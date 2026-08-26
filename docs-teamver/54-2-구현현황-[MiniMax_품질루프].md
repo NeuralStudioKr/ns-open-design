@@ -124,6 +124,8 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | persist: 카탈로그 예제 leftover를 filled로 저장 | ☑ |
 | leftover가 persist skip 후에도 미리보기로 열림 · top-up append | ☑ |
 | leftover IB가 artifact_regression으로 토픽 fill을 막음 | ☑ |
+| preview: #stage next가 첫 장만 밀림 (핀 전용·stacked 선점) | ☑ |
+| persist: 스크럽된 IB 껍데기가 다시 regression | ☑ |
 | preview: liveHtml/raw example이 Hartfield를 그대로 그림 | ☑ 루프119 |
 | preview: 1920px #stage next가 native 100vw로 첫 장만 밀림 | ☑ 루프119 |
 | persist: leftover catalog를 skip만 하고 저장하지 않음 | ☑ 루프119 |
@@ -149,7 +151,15 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | think 태그 / 내부 마크업 필터 | ☑ 기존 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프135)
+## 이번 루프 (IB #stage 첫 장 밀림 · 스크럽 leftover)
+
+1. preview — `#stage` 수평 스트립은 stacked hoist/`forceReveal`보다 px `transformGo`를 먼저
+2. preview — `data-od-deck-fixed-canvas-pin`만 있어도 스텝은 1920px. native `100vw` next는 클릭하지 않음
+3. persist — Hartfield를 지운 IB 껍데기+placeholder는 compact 토픽 fill로 교체 허용
+
+**검증:** srcdoc pin-only IB 1920 next · persist scrubbed IB shell · catalog swipe shell
+
+## 직전 루프 (루프135)
 
 1. preview — 프로젝트 FileViewer/memory-only는 leftover catalog를 brief 없이도 스크럽. 갤러리는 원본 유지
 2. clone — 템플릿 칩 `pitch book`만으로는 Hartfield를 유지하지 않음

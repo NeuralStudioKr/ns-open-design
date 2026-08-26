@@ -147,6 +147,45 @@ describe('shouldFailRunForArtifactPersistResult', () => {
     ).toBeNull();
   });
 
+  it('allows a compact topical fill to replace a scrubbed IB catalog shell', () => {
+    const pad = `/* ${'ib-chassis '.repeat(400)} */`;
+    const scrubbedIb = [
+      '<!doctype html><html><head><style>',
+      pad,
+      '.slide { min-width:100vw; height:100vh } #stage { display:flex }',
+      '</style></head><body>',
+      '<div class="deck" id="deck">',
+      '<div class="chrome"><span id="now">01</span> / <span id="total">10</span></div>',
+      '<div class="stage" id="stage">',
+      ...Array.from({ length: 10 }, (_, i) => {
+        const title = i === 0 ? '영어 회화' : i === 1 ? '개요' : i === 2 ? '핵심 포인트' : '다음 단계';
+        return `<section class="slide"><h2>${title}</h2><p>…</p></section>`;
+      }),
+      '</div></div>',
+      '<script>stage.style.transform = `translateX(-${i*100}vw)`</script>',
+      '</body></html>',
+    ].join('');
+    const brief = '영어 회화 표현 공부 팁, 예시에 대한 발표자료 만들어줘';
+    expect(priorDeckAllowsCompactReplacement(scrubbedIb, brief)).toBe(true);
+    expect(
+      findClientArtifactRegression({
+        fileName: 'deck.html',
+        htmlBody: compactThree,
+        priorHtml: scrubbedIb,
+        healBrief: brief,
+        projectFiles: [{ name: 'deck.html', path: 'deck.html', size: 32_000 } as never],
+      }),
+    ).toBeNull();
+    expect(
+      findClientSlideCountRegression({
+        fileName: 'deck.html',
+        htmlBody: compactThree,
+        priorHtml: scrubbedIb,
+        healBrief: brief,
+      }),
+    ).toBeNull();
+  });
+
   it('does not fail skipped-noop (avoids auto-continue churn)', () => {
     expect(
       shouldFailRunForArtifactPersistResult(

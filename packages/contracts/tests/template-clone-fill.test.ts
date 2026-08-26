@@ -10,6 +10,8 @@ import {
   catalogExampleShouldBeScrubbed,
   looksLikeLeakedApiModeFilesystemProse,
   looksLikeLeftoverTemplateDemoDeck,
+  looksLikeCatalogSwipeShell,
+  looksLikeScrubbedCatalogExampleShell,
   stripLeakedApiModeFilesystemProse,
   looksLikeTemplateMarketingTitle,
   scrubLeftoverCatalogExampleHtml,
@@ -316,6 +318,29 @@ describe('sanitizeTemplateCloneDeckTitle', () => {
     expect(looksLikeTemplateMarketingTitle('Filebase · Series B')).toBe(true);
     expect(looksLikeLeftoverTemplateDemoDeck('<p>Hartfield &amp; Co. WACC (base)</p>')).toBe(true);
     expect(looksLikeLeftoverTemplateDemoDeck('<section class="slide"><h1>개요</h1></section>')).toBe(false);
+    const scrubbedIb = [
+      '<!doctype html><html><head><style>',
+      `/* ${'ib-chassis '.repeat(400)} */`,
+      '.slide { min-width:100vw; height:100vh } #stage { display:flex }',
+      '</style></head><body>',
+      '<div class="deck" id="deck">',
+      '<div class="chrome"><span id="now">01</span> / <span id="total">10</span></div>',
+      '<div class="stage" id="stage">',
+      ...Array.from({ length: 8 }, (_, i) => {
+        const title = i === 0 ? '영어 회화' : i === 1 ? '개요' : '핵심 포인트';
+        return `<section class="slide"><h2>${title}</h2><p>…</p></section>`;
+      }),
+      '</div></div>',
+      '<script>stage.style.transform = `translateX(-${i*100}vw)`</script>',
+      '</body></html>',
+    ].join('');
+    expect(looksLikeLeftoverTemplateDemoDeck(scrubbedIb)).toBe(false);
+    expect(looksLikeCatalogSwipeShell(scrubbedIb)).toBe(true);
+    expect(looksLikeScrubbedCatalogExampleShell(
+      scrubbedIb,
+      '영어 회화 표현 공부 팁, 예시에 대한 발표자료 만들어줘',
+    )).toBe(true);
+    expect(looksLikeCatalogSwipeShell('<section class="slide"><h1>개요</h1></section>')).toBe(false);
     expect(sanitizeTemplateCloneDeckTitle('Presentation')).toBeNull();
     expect(looksLikeTemplateMarketingTitle('Expo for Senior Engineers')).toBe(false);
     expect(deriveDeckCoverTitleFromBrief('', 'Presentation')).toBe('슬라이드');

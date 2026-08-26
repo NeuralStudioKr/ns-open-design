@@ -2904,6 +2904,7 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .stage > .slide {
     var list = [];
     for (var d = 0; d < direct.length; d++) list.push(direct[d]);
     var track = transformTrack(list);
+    if (isHorizontalStageTrack(track)) return false;
     if (
       track
       && track.id !== 'deck'
@@ -3048,6 +3049,7 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .stage > .slide {
   }
   function compactStackedDeckNavigationReady() {
     if (!compactStackedDeckEnabled) return false;
+    if (isHorizontalStageTrack(transformTrack(slides()))) return false;
     if (stackedDeckStage()) return true;
     if (!shouldUseStackedDeckStage()) return false;
     return !!ensureStackedDeckStage();
@@ -3473,6 +3475,12 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .stage > .slide {
         var computedTransform = style.transform || '';
         var hasComputedTransform = !!(computedTransform && computedTransform !== 'none');
         var flexDir = String(style.flexDirection || '').toLowerCase();
+        var isStageTrack = node.id === 'stage'
+          || (node.classList && node.classList.contains('stage'));
+        // IB #stage is a horizontal translate strip even when neutralize
+        // reports flex-direction:column on #deck. Skipping it here leaves
+        // host next on native translateX(-100vw) against a 1920 canvas.
+        if (isStageTrack && directSlides >= 2) return node;
         // Stacked letterbox neutralize forces #deck to column — do not treat as
         // horizontal translate track (Studio/Grove/Signal fills).
         if (flexDir === 'column' || flexDir === 'column-reverse') {
@@ -3712,25 +3720,49 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .stage > .slide {
     }
     syncPaginationControls(target, list.length);
   }
+  function isHorizontalStageTrack(track){
+    if (!track) return false;
+    return track.id === 'stage' || !!(track.classList && track.classList.contains('stage'));
+  }
+  function authoredFixedCanvasPx(){
+    try {
+      var pins = document.querySelectorAll('style[data-od-deck-fixed-canvas-pin]');
+      for (var p = 0; p < pins.length; p++) {
+        if (/width\\s*:\\s*1920px/i.test(String(pins[p].textContent || ''))) return 1920;
+      }
+    } catch (_) {}
+    try {
+      if (/width\\s*:\\s*1920px\\s*!important/i.test(String(document.documentElement.innerHTML || ''))) {
+        return 1920;
+      }
+    } catch (_) {}
+    return 0;
+  }
   function transformSlideStepPx(list, track, axis){
     var first = list && list[0];
     var size = 0;
+    var viewport = axis === 'y' ? (window.innerHeight || 0) : (window.innerWidth || 0);
+    var pinPx = axis === 'x' ? authoredFixedCanvasPx() : 0;
     try {
       if (first) {
-        size = axis === 'y'
+        var laidOut = axis === 'y'
           ? (first.offsetHeight || first.getBoundingClientRect().height || 0)
           : (first.offsetWidth || first.getBoundingClientRect().width || 0);
-        if (!(size > 0)) {
+        size = laidOut;
+        try {
           var computed = window.getComputedStyle(first);
-          size = axis === 'y'
+          var computedPx = axis === 'y'
             ? (parseFloat(computed.minHeight) || parseFloat(computed.height) || 0)
             : (parseFloat(computed.minWidth) || parseFloat(computed.width) || 0);
-        }
+          if (computedPx >= 1600) size = Math.max(size, computedPx);
+        } catch (_) {}
         var authoredStyle = String(first.getAttribute && first.getAttribute('style') || '');
         var authoredMatch = authoredStyle.match(
           axis === 'y' ? /height\\s*:\\s*(\\d+(?:\\.\\d+)?)px/i : /width\\s*:\\s*(\\d+(?:\\.\\d+)?)px/i,
         );
         if (authoredMatch) size = Math.max(size, parseFloat(authoredMatch[1]));
+        if (pinPx >= 1600 && Math.abs(laidOut - viewport) <= 48) size = Math.max(size, pinPx);
+        if (pinPx >= 1600) size = Math.max(size, pinPx);
       }
     } catch (_) {}
     try {
@@ -3740,20 +3772,16 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .stage > .slide {
           : (track.scrollWidth || track.offsetWidth || 0))
         : 0;
       if (list && list.length >= 2 && trackSize > 0) {
-        size = Math.max(size, trackSize / list.length);
+        var per = trackSize / list.length;
+        if (!(pinPx >= 1600 && Math.abs(per - viewport) <= 48)) {
+          size = Math.max(size, per);
+        }
       }
     } catch (_) {}
-    var viewport = axis === 'y' ? (window.innerHeight || 0) : (window.innerWidth || 0);
+    if (pinPx >= 1600 && (size < 1600 || Math.abs(size - viewport) <= 48)) return pinPx;
     if (size >= 600 && Math.abs(size - viewport) > 48) return size;
-    // Pinned 1920 canvas can still report iframe-sized offsetWidth.
     if (size >= 1600) return size;
-    try {
-      var isStage = !!(track && (
-        track.id === 'stage'
-        || (track.classList && track.classList.contains('stage'))
-      ));
-      if (isStage && axis === 'x') return 1920;
-    } catch (_) {}
+    if (isHorizontalStageTrack(track) && axis === 'x') return pinPx >= 1600 ? pinPx : 1920;
     return 0;
   }
   function transformGo(i){
@@ -3775,6 +3803,9 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .stage > .slide {
       }
     } else {
       var stepX = transformSlideStepPx(list, track, 'x');
+      if (stepX <= 0 && isHorizontalStageTrack(track)) {
+        stepX = authoredFixedCanvasPx() || 1920;
+      }
       if (stepX > 0) {
         track.style.transform = 'translateX(' + (-target * stepX) + 'px)';
       } else {
@@ -4182,16 +4213,17 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .stage > .slide {
     var target = Math.max(0, Math.min(list.length - 1, targetFor(action, list)));
     if (target !== activeIndex(list)) resetDeckPan();
     if (webComponentDeckGo(target)) return;
-    if (compactStackedDeckNavigationReady()) {
+    // #stage strips first — compact forceReveal + native 100vw only nudge page 1
+    // when the canvas is pinned to 1920 and the iframe is ~800 wide.
+    var pxTrack = transformTrack(list);
+    if (isHorizontalStageTrack(pxTrack) && transformGo(target)) return;
+    if (!isHorizontalStageTrack(pxTrack) && compactStackedDeckNavigationReady()) {
       if (forceRevealSlide(target)) return;
     }
-    // #stage / 1920px strips: native catalog scripts use translateX(-N*100vw)
-    // which only nudges a pinned canvas. Drive the strip in px first.
-    var pxTrack = transformTrack(list);
     var pxAxis = pxTrack ? transformTrackAxis(pxTrack, list) : 'x';
     var pxStep = pxTrack ? transformSlideStepPx(list, pxTrack, pxAxis) : 0;
     if (pxStep > 0 && transformGo(target)) return;
-    if (clickNativeControl(action, target)) return;
+    if (!isHorizontalStageTrack(pxTrack) && clickNativeControl(action, target)) return;
     if (transformGo(target)) return;
     if (isScrollDeck()) {
       scrollGo(target);
@@ -4212,14 +4244,15 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .stage > .slide {
     var prev = activeIndex(list);
     if (target !== prev) resetDeckPan();
     if (webComponentDeckGo(target)) return;
-    if (compactStackedDeckNavigationReady()) {
+    var pxTrackGo = transformTrack(list);
+    if (isHorizontalStageTrack(pxTrackGo) && transformGo(target)) return;
+    if (!isHorizontalStageTrack(pxTrackGo) && compactStackedDeckNavigationReady()) {
       if (forceRevealSlide(target)) return;
     }
-    var pxTrackGo = transformTrack(list);
     var pxAxisGo = pxTrackGo ? transformTrackAxis(pxTrackGo, list) : 'x';
     var pxStepGo = pxTrackGo ? transformSlideStepPx(list, pxTrackGo, pxAxisGo) : 0;
     if (pxStepGo > 0 && transformGo(target)) return;
-    if (clickNativeControl('go', target)) return;
+    if (!isHorizontalStageTrack(pxTrackGo) && clickNativeControl('go', target)) return;
     if (transformGo(target)) return;
     if (isScrollDeck()) { scrollGo(target); return; }
     if (canSetActive(list) && setActive(target)) return;

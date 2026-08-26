@@ -171,6 +171,7 @@ import {
   repairArtifactStyleSheets,
   slimTemplateVisualKitForFill,
   looksLikeLeftoverTemplateDemoDeck,
+  looksLikeScrubbedCatalogExampleShell,
   type AudioVoiceOption,
   type MemorySystemPromptResponse,
   type ResearchOptions,
@@ -2844,6 +2845,7 @@ export function priorDeckAllowsCompactReplacement(
   return (
     deckLooksLikeUnfilledCatalogExample(html, brief)
     || looksLikeLeftoverTemplateDemoDeck(html)
+    || looksLikeScrubbedCatalogExampleShell(html, brief)
   );
 }
 
