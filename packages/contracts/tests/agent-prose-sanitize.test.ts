@@ -32,6 +32,13 @@ describe("agent-prose-sanitize SSOT", () => {
     expect(sanitizeAssistantProseForDisplay(input)).toBe("슬라이드 구성 계획:");
   });
 
+  it("strips leaked API-mode save-this-as-deck.html host instructions", () => {
+    const leak =
+      "Since this workspace is in API mode without filesystem write tools, here is the complete deck HTML. You can save this as deck.html and it will render as a self-contained slide deck.";
+    expect(sanitizeLeakedAgentProse(leak)).toBe("");
+    expect(sanitizeAssistantProseForDisplay(`작성 중.\n\n${leak}`)).toBe("작성 중.");
+  });
+
   it("strips trailing open answer_operator while streaming", () => {
     const input = "Working…\n<answer_operator>\n<task_analysis>\nPlan:";
     const { text, hadOpenInternalMarkup } = stripTrailingOpenInternalMarkup(input);

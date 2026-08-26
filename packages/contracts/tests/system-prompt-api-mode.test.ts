@@ -382,6 +382,19 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).not.toContain('assets/template.html');
     });
 
+    it('does not tell the model to ask the user to save deck.html', () => {
+      const prompt = composeTeamverSlideApiPrompt({
+        skillBody: simpleDeckSkill,
+        skillName: 'simple-deck',
+        metadata: { kind: 'deck', skipDiscoveryBrief: true },
+      });
+      expect(prompt).not.toMatch(/filesystem write tools/i);
+      expect(prompt).not.toMatch(/save this as deck\.html/i);
+      expect(prompt).toContain('Never tell the user to save a file');
+      expect(prompt).toContain('<artifact type="deck" identifier="deck">');
+      expect(prompt).toContain('The host persists the closed artifact automatically');
+    });
+
     it('uses direct deck generation when discovery is intentionally skipped', () => {
       const prompt = composeTeamverSlideApiPrompt({
         skillBody: simpleDeckSkill,

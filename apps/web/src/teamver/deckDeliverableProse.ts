@@ -1,3 +1,5 @@
+import { looksLikeLeakedApiModeFilesystemProse } from '@open-design/contracts';
+
 const DECK_INTENT_RE =
   /\b(deck|slide|slides|presentation|ppt|keynote|html)\b|(?:슬라이드|발표\s*자료|프레젠테이션|피피티|덱)|\d+\s*슬라이드/i;
 
@@ -46,6 +48,7 @@ export function looksLikePrematureDeckCompletionProse(text: string): boolean {
 export function looksLikeDeckDeliverablePromiseProse(text: string): boolean {
   const trimmed = text.trim();
   if (!trimmed) return false;
+  if (looksLikeLeakedApiModeFilesystemProse(trimmed)) return true;
   return looksLikeDeckCompletionClaimProse(trimmed) || looksLikeDeckFuturePromiseProse(trimmed);
 }
 

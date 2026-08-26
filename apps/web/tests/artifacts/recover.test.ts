@@ -182,4 +182,16 @@ describe('recoverBestHtmlDocumentFromText', () => {
       deckTitle: '슬라이드',
     })).toContain('슬라이드 만들어줘');
   });
+
+  it('recovers fenced HTML after leaked API-mode save-this-as-deck prose', () => {
+    const source = [
+      'Since this workspace is in API mode without filesystem write tools, here is the complete deck HTML. You can save this as deck.html and it will render as a self-contained slide deck.',
+      '',
+      '```html',
+      completeHtml,
+      '```',
+    ].join('\n');
+    expect(recoverHtmlDocumentFromMarkdownFence(source)).toBe(completeHtml);
+    expect(recoverBestHtmlDocumentFromText(source)).toBe(completeHtml);
+  });
 });

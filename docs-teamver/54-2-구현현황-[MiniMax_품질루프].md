@@ -124,6 +124,7 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | preview: liveHtml/raw example이 Hartfield를 그대로 그림 | ☑ 루프119 |
 | preview: 1920px #stage next가 native 100vw로 첫 장만 밀림 | ☑ 루프119 |
 | persist: leftover catalog를 skip만 하고 저장하지 않음 | ☑ 루프119 |
+| API-mode "save this as deck.html" 유출로 덱이 안 생김 | ☑ |
 | clone: demo-banner/TOC/stat-quote 잔여 · #total 불일치 | ☑ 루프58 |
 | preview: #slideCounter 고정 · hoist가 chrome 삭제 | ☑ 루프58 |
 | daemon: leftover 데모 시드가 재클론을 막음 | ☑ 루프58 |
@@ -151,6 +152,14 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 4. persist — leftover catalog는 skip 대신 스크럽 후 저장
 
 **검증:** template-clone-fill IB scrub · srcdoc leftover+1920px next · memory-only leftover · FileViewer/FileWorkspace brief 핀
+
+## 직전 루프 (API-mode save-as-deck 유출)
+
+1. 프롬프트 — filesystem write / save-this-as-deck 문장 제거. 호스트 persist만 지시
+2. chat — 유출 문장 sanitize. fenced HTML은 말풍선에서 제거
+3. persist — standalone recover identifier=`deck`. HTML 없는 유출 문장은 미완료
+
+**검증:** system-prompt-api-mode · agent-prose-sanitize · recover/strip · deck-deliverable-prose
 
 ## 직전 루프 (루프104–118 / round121–135)
 

@@ -69,7 +69,7 @@ Out of scope: standalone image, video, audio, prototype pages, live artifacts, d
 
 For every slide deck creation or edit request, the turn is successful only if it leaves a previewable HTML deck in the project workspace.
 
-- In API mode there are no filesystem write tools, so the normal deliverable path is exactly one complete \`<artifact type="deck">\` block whose body starts with \`<!doctype html>\` and contains the full standalone deck document. This workspace supports deck artifacts only; never use \`type="text/html"\` for the artifact contract.
+- The host persists the closed artifact automatically. Emit exactly one complete \`<artifact type="deck" identifier="deck">\` block whose body starts with \`<!doctype html>\` and contains the full standalone deck document. This workspace supports deck artifacts only; never use \`type="text/html"\` for the artifact contract. Never tell the user to save a file.
 - Do not finish a slide request with only a plan, outline, promise, summary, filename pointer, partial HTML head, or truncated deck navigation script.
 - If you cannot create or update the HTML deck, say that plainly instead of reporting completion.
 - Stream promptly: emit a brief UI-locale status sentence, open one \`<artifact type="deck">\`, then write filled slides. Do not wait silently while drafting the whole deck. A truncated artifact is still rejected, so close it in this turn.
@@ -798,7 +798,7 @@ const TEAMVER_SLIDE_ONLY_API_DELIVERABLE_OVERRIDE = `
 
 When the user asks for a slide deck, presentation, PPT, pitch deck, or slide edit, do not treat a plan/outline/progress note as a valid final answer.
 
-If the request contains enough information to proceed, your same response MUST include exactly one complete \`<artifact type="deck" identifier="deck">...</artifact>\` block. The artifact type must be \`deck\` (never \`text/html\`); the identifier MUST be \`deck\` so the file persists as \`deck.html\`. Never copy or save an attached Canvas/Drive source HTML from \`refs/...\` into the project root. The artifact body must start with \`<!doctype html>\` and end with \`</html>\`; it must be a self-contained slide deck that can be previewed immediately.
+If the request contains enough information to proceed, your same response MUST include exactly one complete \`<artifact type="deck" identifier="deck">...</artifact>\` block. The artifact type must be \`deck\` (never \`text/html\`); the identifier MUST be \`deck\`. The host writes that artifact into the workspace automatically — never tell the user to save a file. Never copy or save an attached Canvas/Drive source HTML from \`refs/...\` into the project root. The artifact body must start with \`<!doctype html>\` and end with \`</html>\`.
 
 Before the artifact, optional: one tiny user-visible UI-locale status sentence tailored to the brief — **present or future tense only**. For a **new** deck: e.g. "작성 중", "making your deck". For a **follow-up edit** of an existing deck: e.g. "수정 반영 중", "Applying your edits" — never imply a brand-new draft ("초안 생성", "creating the deck"). Never past tense or completion claims ("만들었", "완성", "done", "created", "생성되었습니다") until the artifact is fully closed. Then start the artifact immediately. Artifact-only is OK for speed/tokens. Do not use a generic promise-only line, a slide outline, a task list, or a partial HTML head. If information is truly missing, ask one concise \`<question-form>\` instead of claiming completion.
 
@@ -808,6 +808,7 @@ Before the artifact, optional: one tiny user-visible UI-locale status sentence t
 - ❌ Closing the artifact after only \`<!doctype html><html lang="en"><head>…</head></html>\` with an empty \`<body>\` (or no body at all). The body MUST include at least two \`<section class="slide">\` blocks with visible copy.
 - ❌ Emitting a second \`<artifact type="deck">\` block **after** a full deck. The web UI persists the last artifact of the turn; an empty follow-up shell silently overwrites the real deck. Ship exactly one artifact per turn.
 - ❌ Announcing the deck as done (\"완료\", \"완성했습니다\", \"here it is\", etc.) in the prose while the artifact body is empty or shell-only. If you cannot finish the deck this turn, say so plainly instead — a partial artifact + confident prose is the worst outcome for the user.
+- ❌ Telling the user to save, copy, or download a file, or dumping HTML outside \`<artifact>\`. The host persists the artifact automatically.
 
 **Minimum body contract:** each \`<section class="slide">\` MUST contain at least one real text node whose \`textContent.trim()\` is non-empty and is NOT the SLOT comment. If your response ends without meeting this bar, retry inside the same turn instead of emitting.
 
@@ -861,6 +862,7 @@ Every later instruction in this prompt that tells you to "call TodoWrite", "run 
 - Pseudo-tool markup such as \`<todo-list>...</todo-list>\`, \`<tool-call>\`, or invented XML wrappers around a plan.
 - Fake-protocol prose such as \`[读取 template.html ...]\`, \`[读取 layouts.md ...]\`, \`[正在调用 TodoWrite ...]\`, or any \`[doing X]\` placeholder narrating a tool you cannot run.
 - Statements like "I'll call TodoWrite to track this" or "let me read the skill file first" — there is no TodoWrite and no Read in this run.
+- Telling the user to save, copy, or download a file. The host persists \`<artifact type="deck" identifier="deck">\` automatically. Never dump HTML outside that tag.
 
 **Allowed output:**
 - Plain chat prose to the user (in their language). State your plan as prose — a short numbered list in markdown is fine; it just must not be wrapped in \`<todo-list>\` or claim to be a tool call.
@@ -887,6 +889,7 @@ You are running through the BYOK proxy. The following tools ARE wired through to
 - Pseudo-tool markup such as \`<todo-list>...</todo-list>\`, \`<tool-call>\`, or invented XML wrappers around a plan.
 - Fake-protocol prose such as \`[读取 template.html ...]\`, \`[读取 layouts.md ...]\`, \`[正在调用 TodoWrite ...]\`, or any \`[doing X]\` placeholder narrating a tool you cannot run.
 - Statements like "I can't read URLs" or "I cannot access the web" — the \`web_fetch\` tool above CAN, when the user gives you a public http(s) URL.
+- Telling the user to save, copy, or download a file. The host persists \`<artifact type="deck" identifier="deck">\` automatically.
 
 **Allowed output:**
 - Plain chat prose to the user (in their language). State your plan as prose — a short numbered list in markdown is fine; it just must not be wrapped in \`<todo-list>\` or claim to be a tool call.
@@ -1299,7 +1302,7 @@ function deriveApiModePreflight(skillBody: string): string {
   return (
     ' **API-mode pre-flight (overrides the skill\'s Read/copy workflow):** '
     + 'Do NOT Read or paste `assets/template.html` / `references/layouts.md` — '
-    + 'no filesystem tools are available in this run. Infer layout intent from '
+    + 'do not Read those files in this run. Infer layout intent from '
     + 'the skill body text only, then emit ONE compact filled HTML deck artifact '
     + 'in this same response (' + COMPACT_DECK_SLIDE_COUNT_GUIDANCE.toLowerCase() + ', real copy in every '
     + '`<section class="slide">`, no SLOT comments, no verbatim skeleton paste, '
