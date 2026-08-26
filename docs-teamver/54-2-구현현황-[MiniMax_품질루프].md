@@ -179,7 +179,7 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 1. persist/preview — 슬라이드 사이 official look CSS를 문서 끝으로 이동
 2. persist/preview — `<p="">` · 유출 `· Label` 복구 (카탈로그 목록은 유지)
 3. neutralize — Motif `span.ribbon`은 relative stretch 제외
-4. preview — srcdoc에서 heading-heal을 돌리지 않아 leftover IB `#now`를 유지
+4. preview — srcdoc에서 heading-heal을 돌리지 않아 leftover IB 카탈로그 `#now`를 유지
 
 **검증:** template-clone-fill stub cover/salvage · look-css hoist · srcdoc stub cover
 

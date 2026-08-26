@@ -29,10 +29,10 @@ function visibleText(html: string): string {
 function looksLikeOfficialMagazineLook(html: string): boolean {
   const dest = String(html ?? '');
   if (!/\bdata-od-official-look-css\b/i.test(dest)) return false;
-  return (
-    /h1\.display|\.cover\s+\.ribbon|\.slide-inner\s*\{/i.test(dest)
-    && /--accent\s*:/i.test(dest)
-  );
+  // Streaming look-heal can park a fragment sheet (`h1.display` only)
+  // before tokens such as `--accent` land. The official attr + magazine
+  // selectors are enough to restore a stub cover.
+  return /h1\.display|\.cover\s+\.ribbon|\.slide-inner\s*\{/i.test(dest);
 }
 
 type SlideSpan = {
