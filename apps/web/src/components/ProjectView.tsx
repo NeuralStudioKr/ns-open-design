@@ -67,6 +67,7 @@ import {
 } from '../artifacts/pendingWriteRecovery';
 import {
   deckArtifactStartsWithMotifSvgDump,
+  deckLooksLikeUnfilledCatalogExample,
   deckSlideHeadingsLookLikeFailedGenerate,
   isClosedSoftSalvageDeckHtml,
   isPersistableShortDeckDraft,
@@ -5557,9 +5558,16 @@ export function ProjectView({
             persistHealBrief,
             persistHealTitle,
           );
+        const leftoverCatalogExample =
+          normalizedArtifactType === 'deck'
+          && deckLooksLikeUnfilledCatalogExample(
+            artifactToPersist.html,
+            persistHealBrief,
+          );
         if (
           motifSvgDump
           || failedGenerateHeadings
+          || leftoverCatalogExample
           || (
             !trustSoftTruncationSalvage
             && normalizedArtifactType === 'deck'
@@ -5573,7 +5581,9 @@ export function ProjectView({
           return {
             kind: 'skipped-incomplete',
             fileName,
-            reason: 'low-substance deck artifact',
+            reason: leftoverCatalogExample
+              ? 'unfilled-catalog-example'
+              : 'low-substance deck artifact',
           };
         }
         const validation = validateHtmlArtifact(artifactToPersist.html);

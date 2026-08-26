@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -10,6 +12,7 @@ import {
   isPersistableShortDeckDraft,
   isPersistableShortDeckDraftAfterHeal,
   deckArtifactStartsWithMotifSvgDump,
+  deckLooksLikeUnfilledCatalogExample,
   deckSlideHeadingsLookLikeFailedGenerate,
   shouldAbortStreamForHeadOnlyKitDump,
   shouldAbortStreamForMotifSvgDump,
@@ -498,6 +501,42 @@ describe("deck-html-content", () => {
       + "</body></html>";
     expect(meetsMinimumDeckDeliverableQuality(html)).toBe(true);
     expect(isIncompleteHtmlDocumentShell(html)).toBe(false);
+  });
+
+  it("flags ib-pitch-book Hartfield leftover when the brief is a different topic", () => {
+    const leftover =
+      '<!doctype html><html><body>'
+      + '<section class="slide"><h1>A discounted-cash-flow that 영어 회화 표현 공부 팁, 예시에 · 6.</h1>'
+      + '<p>Hartfield &amp; Co.</p><p>WACC (base)</p><p>Implied EV</p>'
+      + '</section></body></html>';
+    expect(
+      deckLooksLikeUnfilledCatalogExample(
+        leftover,
+        '영어 회화 표현 공부 팁, 예시에 대한 발표자료 만들어줘',
+      ),
+    ).toBe(true);
+    expect(
+      deckLooksLikeUnfilledCatalogExample(
+        leftover,
+        'Hartfield & Co. NorthPeak Industries WACC pitch',
+      ),
+    ).toBe(false);
+    const example = readFileSync(
+      resolve(import.meta.dirname, "../../../../design-templates/ib-pitch-book/example.html"),
+      "utf8",
+    );
+    expect(
+      deckLooksLikeUnfilledCatalogExample(
+        example,
+        "영어 회화 표현 공부 팁, 예시에 대한 발표자료 만들어줘",
+      ),
+    ).toBe(true);
+    expect(
+      deckLooksLikeUnfilledCatalogExample(
+        example,
+        "Hartfield & Co. NorthPeak Industries WACC pitch",
+      ),
+    ).toBe(false);
   });
 });
 
