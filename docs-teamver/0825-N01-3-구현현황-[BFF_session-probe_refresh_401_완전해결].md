@@ -25,7 +25,7 @@
 | **45-1** | FR-11·12 | ☑ | pin · reconcile · logout bridge |
 | **G** | FR-8 | ☑ | BE `/auth/session` `main_sso_status` |
 | **H** | FR-9 | ☑ | FE server-status reconcile |
-| **I** | FR-10 | ☑ | reconcile pause · session-before-ladder (refresh path) |
+| **I** | FR-10 | ☑ | reconcile pause · session gate in `fetchDesignAuthSession` · focus `force` when authenticated |
 | **L** | FR-13 | ☐ | 크로스탭 broadcast |
 | **M** | FR-14 | ☐ | quiet probe (선택) |
 | **N** | FR-15 | ☐ | back-channel logout (선택) |
@@ -45,7 +45,7 @@
 
 | 항목 | 결과 |
 |------|------|
-| vitest cookie-auth-recovery (+ session · runtime-config) | ☑ 52 pass |
+| vitest cookie-auth-recovery (+ session · SSO · embed-auth-flow) | ☑ 54 pass |
 | S1/S2 staging 수동 | ☐ |
 | S8–S11 (Plan A) | ☐ |
 | S4 HA 2노드 | ☐ |
@@ -63,6 +63,7 @@
 
 | 일시 (KST) | 내용 |
 |------------|------|
+| 2026-08-26 16:10 | Plan A 검토 2차 — session fetch 중앙 reconcile gate · focus fresh session · vitest |
 | 2026-08-26 16:05 | Plan A 구현 — G~I 코드·테스트 · BE `main_sso_status` · FE reconcile |
 | 2026-08-26 15:45 | Plan A 개정 — G~I 재정의 · 45-1 ☑ · epoch 보류 |
 | 2026-08-26 11:35 | Phase 2 통합 설계 — epoch 중심 (폐기) |

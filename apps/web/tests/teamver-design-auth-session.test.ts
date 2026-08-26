@@ -53,6 +53,13 @@ vi.mock("@teamver/app-sdk", () => ({
   },
 }));
 
+const maybeReconcileMainSsoMock = vi.fn(async () => false);
+
+vi.mock("../src/teamver/teamverMainSsoUserReconcile", () => ({
+  maybeReconcileMainSsoWithDesignSession: (...args: unknown[]) =>
+    maybeReconcileMainSsoMock(...args),
+}));
+
 import { isTeamverEmbedSessionAuthenticated } from "../src/teamver/teamverEmbedSession";
 import { hasProbableTeamverAuthCookie } from "../src/teamver/teamverAuthCookieHints";
 
@@ -73,6 +80,8 @@ async function forceBareAuthCookieHints(): Promise<void> {
 describe("fetchDesignAuthSession", () => {
   afterEach(async () => {
     getMock.mockReset();
+    maybeReconcileMainSsoMock.mockReset();
+    maybeReconcileMainSsoMock.mockResolvedValue(false);
     vi.unstubAllGlobals();
     sessionStorage.clear();
     document.cookie = "";
@@ -109,6 +118,27 @@ describe("fetchDesignAuthSession", () => {
 
     expect(fetchMock).not.toHaveBeenCalled();
     expect(session?.authenticated).toBe(false);
+    expect(maybeReconcileMainSsoMock).not.toHaveBeenCalled();
+  });
+
+  it("gates authenticated session when Main SSO reconcile triggers recovery", async () => {
+    maybeReconcileMainSsoMock.mockResolvedValueOnce(true);
+    getMock.mockResolvedValue({
+      authenticated: true,
+      mainSsoStatus: "mismatch",
+      user: { userId: "user-a" },
+      workspaces: [],
+    });
+
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { fetchDesignAuthSession } = await import("../src/teamver/designBffClient");
+    const session = await fetchDesignAuthSession({ force: true });
+
+    expect(maybeReconcileMainSsoMock).toHaveBeenCalledTimes(1);
+    expect(session?.authenticated).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("retries session probe after refresh declines when a sibling may have set cookies", async () => {
@@ -402,15 +432,9 @@ describe("fetchDesignAuthSession", () => {
     expect(first?.authenticated).toBe(true);
 
     const second = fetchDesignAuthSession({ force: true });
+    const rejection = expect(second).rejects.toMatchObject({ status: 401 });
     await vi.runAllTimersAsync();
-    let rejected: unknown;
-    try {
-      await second;
-    } catch (err) {
-      rejected = err;
-    }
-    expect(rejected).toMatchObject({ status: 401 });
-    await Promise.resolve();
+    await rejection;
     resetDesignAuthSessionCacheForTests();
     vi.useRealTimers();
   });

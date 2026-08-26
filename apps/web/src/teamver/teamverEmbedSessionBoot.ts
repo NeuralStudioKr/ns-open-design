@@ -37,7 +37,7 @@ import {
 } from "./embedAuthSnapshot";
 import { consumeTeamverAuthReturnPending } from "./teamverAuthReturn";
 import { shouldDeferEmbedLoginRedirect } from "./teamverEmbedAuthNavigation";
-import { maybeReconcileMainSsoWithDesignSession } from "./teamverMainSsoUserReconcile";
+import { wasMainSsoMismatchRecoverAttemptedRecently } from "./mainSsoMismatchRecovery";
 
 export type TeamverEmbedSessionBootDeps = {
   isCancelled: () => boolean;
@@ -79,12 +79,15 @@ export async function runTeamverEmbedSessionBoot(
     let activeWorkspaceId: string | null = null;
     const detailRoute = deps.readDetailRoute();
 
-    if (session?.authenticated) {
-      if (await maybeReconcileMainSsoWithDesignSession(session)) {
-        unlockBootIfNeeded(deps.isCancelled);
-        return null;
-      }
+    if (
+      !session?.authenticated
+      && wasMainSsoMismatchRecoverAttemptedRecently()
+    ) {
+      unlockBootIfNeeded(deps.isCancelled);
+      return null;
+    }
 
+    if (session?.authenticated) {
       // Nginx live check BEFORE announcing authenticated. Setting the embed
       // flag first raced App session-changed → runtime-config probe×2 while
       // boot still ran refresh HA (refresh + probe×2) — staging 401 storm.

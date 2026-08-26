@@ -46,7 +46,7 @@ import {
 import { readUserImageUrl } from "./teamverEmbedVisuals";
 import { snapshotFromWorkspace } from "./teamverDesignAccess";
 import { syncAllDaemonProjectsToRegistry } from "./projectRegistry";
-import { maybeReconcileMainSsoWithDesignSession } from "./teamverMainSsoUserReconcile";
+import { wasMainSsoMismatchRecoverAttemptedRecently } from "./mainSsoMismatchRecovery";
 import {
   redirectToDesignLoginIfBffMissing,
   shouldClearEmbedSessionOnUnauthenticated,
@@ -310,6 +310,13 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
       }
 
       const session = await fetchDesignAuthSession({ force, resetRefreshState });
+      if (
+        !session?.authenticated
+        && wasMainSsoMismatchRecoverAttemptedRecently()
+      ) {
+        setState((prev) => ({ ...prev, loading: false }));
+        return "not_authenticated";
+      }
       if (!session) {
         const hadPriorAuthenticatedUi =
           hadEmbedSession() || stateRef.current.authenticated;
@@ -381,11 +388,6 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
           loading: false,
           error: "not_authenticated",
         });
-        return "not_authenticated";
-      }
-
-      if (await maybeReconcileMainSsoWithDesignSession(session)) {
-        setState((prev) => ({ ...prev, loading: false }));
         return "not_authenticated";
       }
 
@@ -569,7 +571,12 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
     lastFocusSessionRefreshAtRef.current = now;
     focusRefreshTimerRef.current = setTimeout(() => {
       focusRefreshTimerRef.current = null;
-      void refresh(resolveEmbedFocusSessionOptions(focusSignals));
+      void refresh(
+        resolveEmbedFocusSessionOptions(focusSignals, {
+          embedAuthenticated:
+            stateRef.current.authenticated || isTeamverEmbedSessionAuthenticated(),
+        }),
+      );
     }, FOCUS_SESSION_REFRESH_MS);
   }, [refresh]);
 

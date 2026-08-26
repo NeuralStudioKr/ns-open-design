@@ -81,6 +81,7 @@ export type EmbedFocusSessionRefreshOptions = FetchDesignAuthSessionOptions & {
 /** useTeamverEmbed scheduled refresh — pass resetRefreshState only on auth-return once. */
 export function resolveEmbedFocusSessionOptions(
   signals: EmbedFocusRecoverySignals,
+  options?: { embedAuthenticated?: boolean },
 ): EmbedFocusSessionRefreshOptions {
   if (signals.authReturnNavigation) {
     // Still force + reset sticky decline, but keep the banner quiet — boot already
@@ -88,6 +89,11 @@ export function resolveEmbedFocusSessionOptions(
     return { force: true, resetRefreshState: true, silent: true };
   }
   if (signals.cookieHintAppeared || signals.pageshowPersisted) {
+    return { force: true, resetRefreshState: false, silent: true };
+  }
+  // Plan A (0825-N01): authenticated embed must re-fetch session for server
+  // main_sso_status — 60s cache alone cannot detect Main account switch.
+  if (options?.embedAuthenticated) {
     return { force: true, resetRefreshState: false, silent: true };
   }
   return { force: false, resetRefreshState: false, silent: true };

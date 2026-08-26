@@ -1,142 +1,44 @@
-// @vitest-environment jsdom
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
-import {
-  resolveEmbedBootSessionOptions,
-  resolveEmbedFocusSessionOptions,
-  shouldClearEmbedSessionOnUnauthenticated,
-  shouldResetEmbedRefreshDeclineOnFocus,
-} from "../src/teamver/teamverEmbedAuthFlow";
-import { TEAMVER_AUTH_RETURN_PENDING_KEY } from "../src/teamver/teamverAuthReturn";
+import { resolveEmbedFocusSessionOptions } from "../src/teamver/teamverEmbedAuthFlow";
 
-describe("teamverEmbedAuthFlow", () => {
-  beforeEach(() => {
-    sessionStorage.clear();
-    Object.defineProperty(document, "referrer", {
-      configurable: true,
-      value: "",
-      writable: true,
-    });
-  });
+const baseSignals = {
+  cookieHintAppeared: false,
+  pageshowPersisted: false,
+  authReturnNavigation: false,
+};
 
-  afterEach(() => {
-    sessionStorage.clear();
-  });
-
-  it("boot opts into auth recovery when sign-in return pending", () => {
-    sessionStorage.setItem(TEAMVER_AUTH_RETURN_PENDING_KEY, String(Date.now()));
-    expect(resolveEmbedBootSessionOptions()).toEqual({
+describe("resolveEmbedFocusSessionOptions", () => {
+  it("forces session re-fetch when embed is authenticated (Plan A SSO check)", () => {
+    expect(
+      resolveEmbedFocusSessionOptions(baseSignals, { embedAuthenticated: true }),
+    ).toEqual({
       force: true,
-      resetRefreshState: true,
+      resetRefreshState: false,
+      silent: true,
     });
   });
 
-  it("boot stays routine when not an auth return navigation", () => {
-    expect(resolveEmbedBootSessionOptions()).toEqual({
+  it("keeps cache-friendly fetch for cold unauthenticated embed", () => {
+    expect(
+      resolveEmbedFocusSessionOptions(baseSignals, { embedAuthenticated: false }),
+    ).toEqual({
       force: false,
       resetRefreshState: false,
-    });
-  });
-
-  it("does not reset refresh decline on routine focus", () => {
-    expect(
-      shouldResetEmbedRefreshDeclineOnFocus({
-        cookieHintAppeared: false,
-        pageshowPersisted: false,
-        authReturnNavigation: false,
-      }),
-    ).toBe(false);
-    expect(
-      resolveEmbedFocusSessionOptions({
-        cookieHintAppeared: false,
-        pageshowPersisted: false,
-        authReturnNavigation: false,
-      }),
-    ).toEqual({ force: false, resetRefreshState: false, silent: true });
-  });
-
-  it("forces a silent probe on bfcache restore without resetting refresh decline", () => {
-    const signals = {
-      cookieHintAppeared: false,
-      pageshowPersisted: true,
-      authReturnNavigation: false,
-    };
-    expect(shouldResetEmbedRefreshDeclineOnFocus(signals)).toBe(false);
-    expect(resolveEmbedFocusSessionOptions(signals)).toEqual({
-      force: true,
-      resetRefreshState: false,
       silent: true,
     });
   });
 
-  it("does not reset refresh decline on Main cookie hint alone", () => {
+  it("auth-return still resets sticky decline", () => {
     expect(
-      shouldResetEmbedRefreshDeclineOnFocus({
-        cookieHintAppeared: true,
-        pageshowPersisted: false,
-        authReturnNavigation: false,
-      }),
-    ).toBe(false);
-    expect(
-      resolveEmbedFocusSessionOptions({
-        cookieHintAppeared: true,
-        pageshowPersisted: false,
-        authReturnNavigation: false,
-      }),
-    ).toEqual({ force: true, resetRefreshState: false, silent: true });
-  });
-
-  it("resets refresh decline on auth return with quiet recovery", () => {
-    const authReturn = {
-      cookieHintAppeared: false,
-      pageshowPersisted: false,
-      authReturnNavigation: true,
-    };
-    expect(shouldResetEmbedRefreshDeclineOnFocus(authReturn)).toBe(true);
-    expect(resolveEmbedFocusSessionOptions(authReturn)).toEqual({
+      resolveEmbedFocusSessionOptions(
+        { ...baseSignals, authReturnNavigation: true },
+        { embedAuthenticated: false },
+      ),
+    ).toEqual({
       force: true,
       resetRefreshState: true,
       silent: true,
     });
-  });
-
-  it("keeps embed session on transient unauthenticated refresh with prior BFF UI", () => {
-    expect(
-      shouldClearEmbedSessionOnUnauthenticated({
-        resetRefreshState: false,
-        hadPriorAuthenticatedUi: true,
-        cookieHint: false,
-      }),
-    ).toBe(false);
-  });
-
-  it("clears embed session on cold boot even when Main cookie hint is visible", () => {
-    expect(
-      shouldClearEmbedSessionOnUnauthenticated({
-        resetRefreshState: false,
-        hadPriorAuthenticatedUi: false,
-        cookieHint: true,
-      }),
-    ).toBe(true);
-  });
-
-  it("clears embed session on explicit auth recovery that stays unauthenticated", () => {
-    expect(
-      shouldClearEmbedSessionOnUnauthenticated({
-        resetRefreshState: true,
-        hadPriorAuthenticatedUi: true,
-        cookieHint: true,
-      }),
-    ).toBe(true);
-  });
-
-  it("clears embed session on cold boot without prior session", () => {
-    expect(
-      shouldClearEmbedSessionOnUnauthenticated({
-        resetRefreshState: false,
-        hadPriorAuthenticatedUi: false,
-        cookieHint: false,
-      }),
-    ).toBe(true);
   });
 });

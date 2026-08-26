@@ -38,6 +38,7 @@ import {
   noteTeamverNetworkBackoff,
   shouldSkipTeamverNetworkCalls,
 } from "./teamverBrowserNetwork";
+import { maybeReconcileMainSsoWithDesignSession } from "./teamverMainSsoUserReconcile";
 
 /** Post–app-sdk shape (`snakeToCamelDeep` on `/auth/session`). */
 export type DesignAuthSessionUser = {
@@ -1342,6 +1343,27 @@ async function loadDesignAuthSessionOnce(): Promise<DesignAuthSession | null> {
   return session;
 }
 
+/**
+ * Plan A (0825-N01): every authenticated session read reconciles Main SSO
+ * before callers apply UI / auth ladders — avoids refresh/probe storms on mismatch.
+ */
+async function gateDesignAuthSessionForMainSso(
+  session: DesignAuthSession | null,
+): Promise<DesignAuthSession | null> {
+  if (!session?.authenticated) return session;
+  if (await maybeReconcileMainSsoWithDesignSession(session)) {
+    invalidateDesignAuthSessionCache();
+    return { ...session, authenticated: false };
+  }
+  return session;
+}
+
+function finalizeDesignAuthSessionFetch(
+  promise: Promise<DesignAuthSession | null>,
+): Promise<DesignAuthSession | null> {
+  return promise.then((session) => gateDesignAuthSessionForMainSso(session));
+}
+
 export async function fetchDesignAuthSession(
   options?: FetchDesignAuthSessionOptions,
 ): Promise<DesignAuthSession | null> {
@@ -1350,7 +1372,7 @@ export async function fetchDesignAuthSession(
 
   if (shouldSkipTeamverNetworkCalls()) {
     const stale = peekAuthenticatedSessionCache(STALE_SESSION_GRACE_MS);
-    if (stale) return stale;
+    if (stale) return gateDesignAuthSessionForMainSso(stale);
     return cachedSession?.value ?? null;
   }
 
@@ -1367,7 +1389,7 @@ export async function fetchDesignAuthSession(
   // keeps decline.
   if (authRefreshDeclinedForSession) {
     if (inFlightSession) {
-      return inFlightSession;
+      return finalizeDesignAuthSessionFetch(inFlightSession);
     }
     const runStickyQuiet = async (): Promise<DesignAuthSession | null> => {
       try {
@@ -1413,10 +1435,12 @@ export async function fetchDesignAuthSession(
         throw err;
       }
     };
-    inFlightSession = runStickyQuiet().finally(() => {
-      inFlightSession = null;
-      setAuthRecoveryRefreshActive(false);
-    });
+    inFlightSession = finalizeDesignAuthSessionFetch(
+      runStickyQuiet().finally(() => {
+        inFlightSession = null;
+        setAuthRecoveryRefreshActive(false);
+      }),
+    );
     return inFlightSession;
   }
 
@@ -1426,7 +1450,7 @@ export async function fetchDesignAuthSession(
       await inFlightSession.catch(() => null);
     }
   } else if (inFlightSession) {
-    return inFlightSession;
+    return finalizeDesignAuthSessionFetch(inFlightSession);
   }
 
   if (
@@ -1434,7 +1458,7 @@ export async function fetchDesignAuthSession(
     cachedSession &&
     Date.now() - cachedSession.at < SESSION_CACHE_MS
   ) {
-    return cachedSession.value;
+    return gateDesignAuthSessionForMainSso(cachedSession.value);
   }
 
   const run = async (): Promise<DesignAuthSession | null> => {
@@ -1455,10 +1479,12 @@ export async function fetchDesignAuthSession(
     }
   };
 
-  inFlightSession = run().finally(() => {
-    inFlightSession = null;
-    setAuthRecoveryRefreshActive(false);
-  });
+  inFlightSession = finalizeDesignAuthSessionFetch(
+    run().finally(() => {
+      inFlightSession = null;
+      setAuthRecoveryRefreshActive(false);
+    }),
+  );
   return inFlightSession;
 }
 
