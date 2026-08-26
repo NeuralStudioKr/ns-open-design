@@ -112,6 +112,9 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | persist: page/marks/shape-inside/calc-size | ☑ 루프83 / round100 |
 | persist: SVG fill/stroke · speak/user-modify · thin pad keep | ☑ 루프84–87 / round101–104 |
 | persist: set5 combo 회귀 | ☑ 루프88 / round105 |
+| persist: font-smooth · bdi/del/sub kit · SVG path · app-region | ☑ 루프89–93 / round106–110 |
+| persist: webkit text-stroke/clip/box-orient · fullwidth · | ☑ 루프94–98 / round111–115 |
+| persist: thin bdi keep · fill+path · starting-style · closure | ☑ 루프99–103 / round116–120 |
 | clone: IB pitch-book 데모 카피가 한국어 brief에 남음 | ☑ 루프57 |
 | preview: #stage 1920px 스트립이 100vw로만 살짝 이동 | ☑ 루프57 |
 | persist: 카탈로그 예제 leftover를 filled로 저장 | ☑ |
