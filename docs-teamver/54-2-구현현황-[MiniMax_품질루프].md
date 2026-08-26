@@ -125,6 +125,8 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | preview: liveHtml/raw example이 Hartfield를 그대로 그림 | ☑ 루프119 |
 | preview: 1920px #stage next가 native 100vw로 첫 장만 밀림 | ☑ 루프119 |
 | persist: leftover catalog를 skip만 하고 저장하지 않음 | ☑ 루프119 |
+| preview: brief 없는 FileViewer가 raw IB leftover를 그대로 그림 | ☑ 루프120 |
+| preview: 인슬라이드 #next가 native 100vw로 첫 장만 밀림 | ☑ 루프120 |
 | API-mode "save this as deck.html" 유출로 덱이 안 생김 | ☑ |
 | clone: demo-banner/TOC/stat-quote 잔여 · #total 불일치 | ☑ 루프58 |
 | preview: #slideCounter 고정 · hoist가 chrome 삭제 | ☑ 루프58 |
@@ -145,7 +147,16 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | think 태그 / 내부 마크업 필터 | ☑ 기존 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (leftover IB artifact_regression)
+## 이번 루프 (루프120)
+
+1. preview — 프로젝트 FileViewer/memory-only는 leftover catalog를 brief 없이도 스크럽. 갤러리는 원본 유지
+2. clone — 템플릿 칩 `pitch book`만으로는 Hartfield를 유지하지 않음
+3. preview — `#stage` 스트립은 iframe 폭과 같아도 1920px step. 인슬라이드 `#next`/`#prev`는 native 100vw를 가로챔
+4. persist — leftover scrub에 `allowEmptyBrief`
+
+**검증:** template-clone-fill empty-brief/chip · srcdoc project scrub · IB #next 1920px · memory-only leftover
+
+## 직전 루프 (leftover IB artifact_regression)
 
 1. persist — leftover catalog / demo prior는 compact 토픽 fill로 교체 허용
 2. persist — byte·장수 regression + daemon stub-guard를 leftover prior에서 건너뜀
