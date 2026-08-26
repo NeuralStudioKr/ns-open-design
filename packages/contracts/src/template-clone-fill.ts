@@ -283,11 +283,45 @@ function replaceHeadingText(html: string, tag: string, text: string): string {
 }
 
 function stripClassBlocks(html: string, className: string): string {
-  const re = new RegExp(
-    `<(div|span|p|header|footer|small|strong|em|i|blockquote|figure|figcaption|aside)\\b([^>]*\\bclass\\s*=\\s*["'][^"']*\\b${className}\\b[^"']*["'][^>]*)>[\\s\\S]*?<\\/\\1>`,
+  const openTagRe = new RegExp(
+    `<(div|span|p|header|footer|small|strong|em|i|blockquote|figure|figcaption|aside)\\b([^>]*\\bclass\\s*=\\s*["'][^"']*\\b${className}\\b[^"']*["'][^>]*)>`,
     'gi',
   );
-  return html.replace(re, '');
+  let out = html;
+  let guard = 500;
+  while (guard > 0) {
+    guard -= 1;
+    const match = openTagRe.exec(out);
+    if (!match) break;
+    const tag = (match[1] ?? '').toLowerCase();
+    const openStart = match.index;
+    const openEnd = openStart + match[0].length;
+    // Depth-count same-tag nesting so `<div class="alt">…<div>…</div>…</div>`
+    // strips the whole outer block. The previous non-greedy regex used to
+    // close on the very first `</div>` and leave dangling tag soup behind
+    // (that soup then defeated `<div class="stage">` hoist heuristics
+    // downstream — see 0826-N01-2 §F1-a note).
+    const nested = new RegExp(`<\\/?${tag}\\b[^>]*>`, 'gi');
+    nested.lastIndex = openEnd;
+    let depth = 1;
+    let closeEnd = -1;
+    let inner: RegExpExecArray | null;
+    while ((inner = nested.exec(out)) !== null) {
+      if (inner[0]!.startsWith('</')) {
+        depth -= 1;
+        if (depth === 0) {
+          closeEnd = inner.index + inner[0]!.length;
+          break;
+        }
+      } else if (!inner[0]!.endsWith('/>')) {
+        depth += 1;
+      }
+    }
+    if (closeEnd < 0) break;
+    out = out.slice(0, openStart) + out.slice(closeEnd);
+    openTagRe.lastIndex = openStart;
+  }
+  return out;
 }
 
 function emptyClassInners(html: string, className: string): string {
@@ -346,6 +380,7 @@ export function sanitizePersistedDeckHostLeaks(html: string): string {
 function stripLeftoverTemplateDemoCopy(html: string): string {
   let next = String(html ?? '');
   for (const className of [
+    // Small typographic chrome (short demo bylines / captions / brand tags).
     'brand',
     'eyebrow',
     'body-text',
@@ -365,6 +400,25 @@ function stripLeftoverTemplateDemoCopy(html: string): string {
     'cover-meta',
     'grid-3',
     'criteria',
+    // ib-pitch-book (and other IB / finance decks) — card / timeline /
+    // stamp / chart wrappers that would otherwise render as visible
+    // "Options A/B/C/D" cards, 7-row demo timeline, and "engagement team"
+    // stamps even when the AI never filled a bullet in.
+    // Placeholder Clone bodies have no bullets to preserve, so removing
+    // the entire wrapper (depth-aware) is safe.
+    'alts-grid',
+    'alt',
+    'next',
+    'step',
+    'stamp',
+    'dcf-asm',
+    'kpi-grid',
+    'ff-chart',
+    'ff-track',
+    'ff-tick',
+    'ff-axis',
+    'ff-row',
+    'market-cols',
   ]) {
     next = stripClassBlocks(next, className);
   }
@@ -646,8 +700,102 @@ export function buildTemplateClonedDeckHtml(
   out = stripDeckLevelDemoChrome(out);
   out = syncClonedDeckChromeCount(out, filled.length);
   out = normalizeTemplateCssForFixedCanvas(out);
+  // After native scripts are stripped a `<div class="stage" style="display:flex;
+  // transition:transform">` wrapper is dead weight: the host bridge sees no
+  // known horizontal-swipe fingerprint, falls through to compact-stacked
+  // detection, and (because the wrapper sits between `.deck` and `.slide`)
+  // stacked navigation can end up translating the flex track instead of
+  // toggling `display` on the real slide. Hoisting the slides up so they are
+  // direct children of `<body>` restores the shape
+  // `looksLikeCompactApiStackedDeck` expects (see 0826-N01-2 §F1-b).
+  out = hoistCloneSlidesOutOfFlexTrack(out);
   out = injectTeamverSizeStyle(out);
   return out.trim() || null;
+}
+
+/**
+ * Unwrap flex-row / presenter shell wrappers so `<section class="slide">`
+ * blocks become direct children of `<body>`:
+ *   1. `<div class="stage" style="display:flex; transition:transform">` — the
+ *      horizontal-swipe flex track (and its aliases `.deck-stage`,
+ *      `.slides-container`, `.deck-track`). Native scripts are already gone;
+ *      leaving the wrapper in confuses host-bridge deck detection and can
+ *      trap nav as a small `translateX` "nudge".
+ *   2. `<div class="deck" id="deck">` — the letterbox shell. After the flex
+ *      track is hoisted, this shell contains only slides + inert prev/next
+ *      chrome (buttons are dead links after `stripScriptsAndNav`). The
+ *      `id="deck"` alone makes classifiers treat the output as an "official
+ *      presenter" and refuses the compact-stacked path.
+ *
+ * Safety: only hoist when the wrapper's only element children are
+ * `<section class="slide">` blocks (after stripping inert prev/next chrome).
+ * Otherwise the wrapper may carry authored chrome we must not lose.
+ */
+function hoistCloneSlidesOutOfFlexTrack(html: string): string {
+  let out = String(html ?? '');
+  if (!out) return out;
+  const passes: RegExp[] = [
+    /<div\b[^>]*(?:\bclass\s*=\s*(["'])[^"'<>]*\b(?:stage|deck-stage|slides-container|deck-track)\b[^"'<>]*\1|\bid\s*=\s*(["'])(?:stage|deck-stage|slides-container|deck-track)\2)[^>]*>/i,
+    /<div\b[^>]*(?:\bclass\s*=\s*(["'])[^"'<>]*\bdeck\b[^"'<>]*\1|\bid\s*=\s*(["'])deck\2)[^>]*>/i,
+  ];
+  for (const wrapperOpenRe of passes) {
+    out = unwrapSlideOnlyContainer(out, wrapperOpenRe);
+  }
+  return out;
+}
+
+function unwrapSlideOnlyContainer(source: string, wrapperOpenRe: RegExp): string {
+  const openMatch = wrapperOpenRe.exec(source);
+  if (!openMatch || openMatch.index == null) return source;
+
+  const openStart = openMatch.index;
+  const openEnd = openStart + openMatch[0].length;
+
+  const tagRe = /<\/?div\b[^>]*>/gi;
+  tagRe.lastIndex = openEnd;
+  let depth = 1;
+  let closeStart = -1;
+  let closeEnd = -1;
+  let m: RegExpExecArray | null;
+  while ((m = tagRe.exec(source)) !== null) {
+    if (m[0]!.startsWith('</')) {
+      depth -= 1;
+      if (depth === 0) {
+        closeStart = m.index;
+        closeEnd = m.index + m[0]!.length;
+        break;
+      }
+    } else if (!m[0]!.endsWith('/>')) {
+      depth += 1;
+    }
+  }
+  if (closeStart < 0) return source;
+
+  const inner = source.slice(openEnd, closeStart);
+  const fullSlideRe =
+    /<section\b[^>]*\bclass\s*=\s*["'][^"']*\bslide\b[^"']*["'][^>]*>[\s\S]*?<\/section\s*>/gi;
+  const slideBlocks = inner.match(fullSlideRe) ?? [];
+  if (slideBlocks.length < 2) return source;
+
+  // Ignore native prev/next/counter chrome wrappers when deciding whether
+  // the container is "slide-only" — those are dead links after
+  // `stripScriptsAndNav`. Depth-strip them so we don't leak the raw counter
+  // text or the button HTML into `<body>` after unwrap.
+  const chromeStripped = stripSlideNavChromeBlocks(inner);
+  const residue = chromeStripped
+    .replace(fullSlideRe, '')
+    .replace(/<!--[\s\S]*?-->/g, '');
+  if (/<[a-zA-Z]/.test(residue)) return source;
+
+  return `${source.slice(0, openStart)}${chromeStripped}${source.slice(closeEnd)}`;
+}
+
+function stripSlideNavChromeBlocks(html: string): string {
+  let out = String(html ?? '');
+  for (const className of ['chrome', 'deck-nav', 'slide-counter', 'nav-dots']) {
+    out = stripClassBlocks(out, className);
+  }
+  return out;
 }
 
 function syncClonedDeckChromeCount(html: string, count: number): string {

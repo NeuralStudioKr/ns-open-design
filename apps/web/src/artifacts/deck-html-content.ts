@@ -345,6 +345,22 @@ const CATALOG_EXAMPLE_FINGERPRINTS = [
   /Implied\s+(?:EV|equity value)/i,
   /Revenue CAGR/i,
   /SECTION\s+\d+\s*[·•]\s*DCF/i,
+  // ib-pitch-book Clone LOOK-seed leftovers that survive text-run wipe.
+  // These are unusual enough to almost never appear in a legitimate brief
+  // (a real IB brief still hits `namedInBrief` via `Hartfield|WACC|피치북`
+  // so the `namedInBrief < 2` guard below keeps the false-positive rate
+  // negligible — see 0826-N01-2 §F2).
+  /Board approval\s*(?:&|&amp;)\s*engagement letter execution/i,
+  /Management presentation,\s*CIM,\s*financial model finalized/i,
+  /Confidential outreach,\s*NDAs,\s*first-round process letter/i,
+  /Antitrust review on top-\d+\s*strategics/i,
+  /Strategic premium\s*~?\$?\s*\d+(?:\.\d+)?[BbMm]?\s*in synergies/i,
+  /Sponsor-led recap/i,
+  /Continue as standalone public company/i,
+  /Synthetic Open Design demo dataset/i,
+  /open-design v[\d.]+\s*·\s*skill:\s*pitch-agent/i,
+  /skill:\s*pitch-agent\s*·\s*vertical:\s*investment-banking/i,
+  /ib-check-deck\s*\(\s*pass\s*\)/i,
 ];
 
 /**

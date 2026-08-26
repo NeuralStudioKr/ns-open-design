@@ -504,7 +504,13 @@ describe('sanitizeTemplateCloneDeckTitle', () => {
     expect(cloned).not.toMatch(/Selection criteria/i);
     expect(cloned).not.toMatch(/Fictional illustrative sample/i);
     expect(cloned).toMatch(/영어 회화|개요|핵심 포인트/);
-    expect(cloned).toMatch(/id="total">0?4</);
+    // 0826-N01 hoist strips the native `<div class="chrome">` prev/next/
+    // counter shell (dead after `stripScriptsAndNav` and blocks compact-
+    // stacked classification). The host deck viewer supplies its own chrome
+    // now, so `id="total"` counter mutation is no longer part of the
+    // Clone contract.
+    expect(cloned).not.toMatch(/id="total"/i);
+    expect(cloned).not.toMatch(/<div\b[^>]*\bclass\s*=\s*['"][^'"]*\bchrome\b/i);
   });
 
   it('does not keep simple-deck Filebase / Northwind demo copy on a Korean brief', async () => {
