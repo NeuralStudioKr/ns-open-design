@@ -669,19 +669,30 @@ function hasHangulTopic(text: string): boolean {
   return ((String(text ?? '').match(/[가-힣]/g) ?? []).length >= 4);
 }
 
+export type CatalogExampleScrubOptions = {
+  /**
+   * Project preview/persist: leftover demo copy is never a deliverable, even
+   * when the last user message has not loaded yet. Gallery callers omit this
+   * so `example.html` stays intact.
+   */
+  allowEmptyBrief?: boolean;
+};
+
 export function catalogExampleShouldBeScrubbed(
   html: string,
   brief?: string | null,
+  options?: CatalogExampleScrubOptions,
 ): boolean {
   const dest = String(html ?? '');
   if (!looksLikeLeftoverTemplateDemoDeck(dest)) return false;
   const prompt = String(brief ?? '');
-  const promptNamesCatalog = /Hartfield|NorthPeak|WACC|Filebase|Daisy Days|피치북|pitch book/i.test(prompt);
+  // Template chip names ("ib pitch book") are not a request to keep Hartfield.
+  const promptNamesCatalog = /Hartfield|NorthPeak|WACC|Filebase|Daisy Days/i.test(prompt);
   const promptHasHangul = hasHangulTopic(prompt);
   if (promptNamesCatalog && !promptHasHangul) return false;
   if (promptHasHangul || hasHangulTopic(dest)) return true;
   if (prompt && !promptNamesCatalog) return true;
-  return false;
+  return options?.allowEmptyBrief === true;
 }
 
 /**
@@ -691,9 +702,10 @@ export function catalogExampleShouldBeScrubbed(
 export function scrubLeftoverCatalogExampleHtml(
   html: string,
   brief?: string | null,
+  options?: CatalogExampleScrubOptions,
 ): string {
   const dest = String(html ?? '');
-  if (!catalogExampleShouldBeScrubbed(dest, brief)) return dest;
+  if (!catalogExampleShouldBeScrubbed(dest, brief, options)) return dest;
   const fromBrief = resolveTemplateCloneSlidesFromBrief({
     userInstruction: brief ?? '',
   });

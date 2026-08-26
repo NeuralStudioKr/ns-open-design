@@ -526,6 +526,9 @@ describe('sanitizeTemplateCloneDeckTitle', () => {
     const brief = '영어 회화 표현 공부 팁, 예시에 대한 발표자료 만들어줘';
     expect(catalogExampleShouldBeScrubbed(html, brief)).toBe(true);
     expect(catalogExampleShouldBeScrubbed(html, null)).toBe(false);
+    expect(catalogExampleShouldBeScrubbed(html, null, { allowEmptyBrief: true })).toBe(true);
+    expect(catalogExampleShouldBeScrubbed(html, 'ib pitch book | deck')).toBe(true);
+    expect(catalogExampleShouldBeScrubbed(html, 'Hartfield & Co. WACC review')).toBe(false);
     const mixed = html.replace(
       'A discounted-cash-flow that <em>does the work</em>.',
       'A discounted-cash-flow that 영어 회화 표현 공부 팁, 예시에 · 6.',
