@@ -524,6 +524,28 @@ describe('shouldPreserveFilledDeckOverCloneReseed', () => {
     expect(shouldPreserveFilledDeckOverCloneReseed('', incomingClone)).toBe(false);
   });
 
+  it('lets a clean re-clone replace leftover template demo copy', () => {
+    const contaminated = `<!doctype html><html><head><title>Hartfield pitch</title></head><body>
+      <section class="slide"><h1>Hartfield &amp; Co.</h1><p>WACC (base) 9.00% · Revenue CAGR +6.4% for NorthPeak Industries. ${'x'.repeat(800)}</p></section>
+      <section class="slide"><h1>Section 5 · DCF</h1><p>Implied EV $2,920M and Project Atlas discussion materials.</p></section>
+      <section class="slide"><h1>Appendix</h1><p>Fictional illustrative sample for Open Design demonstration only.</p></section>
+    </body></html>`;
+    const clean = `<!doctype html><html><body>
+      <section class="slide"><h1>영어 회화 표현 공부 팁</h1><p>개요</p></section>
+    </body></html>`;
+    expect(shouldPreserveFilledDeckOverCloneReseed(contaminated, clean)).toBe(false);
+    expect(
+      shouldPreserveFilledDeckOverCloneReseed(contaminated, clean, {
+        templateClonedDeckSeeded: true,
+      }),
+    ).toBe(false);
+    expect(
+      shouldPreserveFilledDeckOverCloneReseed(contaminated, clean, {
+        templateCloneContentFilled: true,
+      }),
+    ).toBe(true);
+  });
+
   it('does not let a stale Clone seed stamp overwrite filled HTML', () => {
     expect(
       shouldPreserveFilledDeckOverCloneReseed(

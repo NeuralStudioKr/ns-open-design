@@ -12,6 +12,7 @@ import type Database from 'better-sqlite3';
 import {
   attrsLookLikeDeckOrTemplateSlideHost,
   buildTemplateClonedDeckHtml,
+  looksLikeLeftoverTemplateDemoDeck,
   pickPluginPreviewHtmlPath,
   resolveTemplateCloneSlideCountHint,
   resolveTemplateCloneSlidesFromBrief,
@@ -208,6 +209,12 @@ export function shouldPreserveFilledDeckOverCloneReseed(
   const flags = readMetaFlag(metadata, artifactManifest);
   if (flags.filled) return true;
   if (deckComparableTextLooksLikeSameClone(existing, incoming)) return false;
+  if (
+    looksLikeLeftoverTemplateDemoDeck(existing)
+    && !looksLikeLeftoverTemplateDemoDeck(incoming)
+  ) {
+    return false;
+  }
   return true;
 }
 
