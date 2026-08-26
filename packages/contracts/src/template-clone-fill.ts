@@ -640,6 +640,11 @@ export function deriveDeckCoverTitleFromBrief(
   return deriveTitleFromBrief(brief, deckTitle);
 }
 
+/** Parser / emergency defaults that must not land in the persist manifest. */
+export function isGenericDeckArtifactTitle(title: string | null | undefined): boolean {
+  return /^(?:response|deck|untitled|artifact|slide)$/i.test(String(title ?? '').trim());
+}
+
 function visibleHeadingText(inner: string): string {
   return inner.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
 }

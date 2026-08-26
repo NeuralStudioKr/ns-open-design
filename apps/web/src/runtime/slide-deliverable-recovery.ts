@@ -1,3 +1,4 @@
+import { deriveDeckCoverTitleFromBrief } from '@open-design/contracts';
 import type { Artifact, ChatMessage, ProjectFile } from '../types';
 import { selectAutoOpenProducedHtml } from '../components/auto-open-file';
 import type { computeProducedFiles as computeProducedFilesFn } from '../produced-files';
@@ -409,7 +410,10 @@ export async function attemptEmergencySlideDeckRecovery(options: {
   const emergencyArtifact = {
     identifier: 'deck',
     artifactType: 'deck',
-    title: 'deck',
+    title: deriveDeckCoverTitleFromBrief(
+      options.healBrief || '',
+      options.healTitle || '슬라이드',
+    ) || '슬라이드',
     html: recoveredHtml,
   } satisfies Artifact;
 

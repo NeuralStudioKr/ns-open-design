@@ -15,6 +15,7 @@ import {
   sanitizeTemplateCloneDeckTitle,
   deriveDeckCoverTitleFromBrief,
   healInstructionCopyCoverHeading,
+  isGenericDeckArtifactTitle,
 } from '../src/template-clone-fill.js';
 
 describe('buildTemplateClonedDeckHtml', () => {
@@ -381,6 +382,14 @@ describe('sanitizeTemplateCloneDeckTitle', () => {
     expect(deriveDeckCoverTitleFromBrief('')).toBe('슬라이드');
     expect(deriveDeckCoverTitleFromBrief('슬라이드 만들어줘')).toBe('슬라이드');
     expect(deriveDeckCoverTitleFromBrief('만들어줘', '만들어줘')).toBe('슬라이드');
+  });
+
+  it('treats parser/emergency English titles as generic', () => {
+    expect(isGenericDeckArtifactTitle('Response')).toBe(true);
+    expect(isGenericDeckArtifactTitle('deck')).toBe(true);
+    expect(isGenericDeckArtifactTitle('Deck')).toBe(true);
+    expect(isGenericDeckArtifactTitle('슬라이드')).toBe(false);
+    expect(isGenericDeckArtifactTitle('기업 AI 도입 효과')).toBe(false);
   });
 
   it('does not synthesize marketing titles when the brief is only a template name', () => {

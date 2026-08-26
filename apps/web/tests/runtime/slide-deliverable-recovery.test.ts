@@ -457,6 +457,34 @@ describe('attemptEmergencySlideDeckRecovery', () => {
     expect(persistArtifact).not.toHaveBeenCalled();
   });
 
+  it('titles emergency persist artifacts from persist heal brief/title', async () => {
+    const persistArtifact = vi.fn(async (art: { title?: string }) => {
+      expect(art.title).toBe('기업 AI 도입 효과');
+      expect(art.title).not.toBe('deck');
+      return { kind: 'persisted' as const, fileName: 'deck.html' };
+    });
+    const result = await attemptEmergencySlideDeckRecovery({
+      slideOnlyMvp: true,
+      producedHtmlToOpen: null,
+      outlineMessages: [
+        { id: 'u1', role: 'user', content: '기업 AI 도입 효과를 설명하는 피피티 만들어줘', createdAt: 1 },
+        { id: 'a1', role: 'assistant', content: VALID_DECK, createdAt: 2 },
+      ],
+      finalText: VALID_DECK,
+      healBrief: '기업 AI 도입 효과를 설명하는 피피티 만들어줘',
+      healTitle: '슬라이드 만들어줘',
+      projectFiles: [],
+      beforeFileNames: [],
+      startedAt: 1,
+      persistArtifact,
+      refreshProjectFiles: async () => [],
+      readProjectHtml: async () => null,
+      computeProducedFiles: () => [],
+    });
+    expect(result.recovered).toBe(true);
+    expect(persistArtifact).toHaveBeenCalled();
+  });
+
   it('trusts a successful HTML salvage persist even when immediate read verification lags', async () => {
     const html = [
       '<!doctype html><html lang="ko"><body>',

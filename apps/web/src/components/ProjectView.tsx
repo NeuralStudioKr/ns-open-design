@@ -158,6 +158,7 @@ import { useCoalescedCallback } from '../hooks/useCoalescedCallback';
 import {
   composeSystemPrompt,
   deriveDeckCoverTitleFromBrief,
+  isGenericDeckArtifactTitle,
   healInstructionCopyCoverHeading,
   htmlHasDeckSlideHost,
   htmlLooksLikeSlideDeliverableStream,
@@ -4857,7 +4858,7 @@ export function ProjectView({
               skipArtifactStubGuard: true,
               artifactManifest: createArtifactManifest({
                 entry: 'deck.html',
-                title: project.name || 'deck',
+                title: project.name || '슬라이드',
                 artifactType: 'deck',
                 preferDeck: true,
                 sourceSkillId: project.skillId ?? undefined,
@@ -5582,7 +5583,14 @@ export function ProjectView({
           return { kind: 'rejected', fileName, reason: validation.reason };
         }
       }
-      const title = art.title || art.identifier || fileName;
+      const rawTitle = art.title || art.identifier || fileName;
+      const derivedPersistTitle = deriveDeckCoverTitleFromBrief(
+        runVisiblePromptRef.current || '',
+        project.name || '슬라이드',
+      );
+      const title = isGenericDeckArtifactTitle(rawTitle)
+        ? (derivedPersistTitle || '슬라이드')
+        : rawTitle;
       let htmlBody =
         ext === '.html'
           ? repairArtifactStyleSheets(
@@ -8157,7 +8165,7 @@ export function ProjectView({
                               skipArtifactStubGuard: true,
                               artifactManifest: createArtifactManifest({
                                 entry: recoveredExistingArtifact.name,
-                                title: project.name || 'deck',
+                                title: project.name || '슬라이드',
                                 artifactType: 'deck',
                                 preferDeck: slideOnlyMvp,
                                 sourceSkillId: project.skillId ?? undefined,
@@ -10167,7 +10175,7 @@ export function ProjectView({
                           skipArtifactStubGuard: true,
                           artifactManifest: createArtifactManifest({
                             entry: sameTurnHtmlWrite.name,
-                            title: project.name || 'deck',
+                            title: project.name || '슬라이드',
                             artifactType: 'deck',
                             preferDeck: slideOnlyMvp,
                             sourceSkillId: project.skillId ?? undefined,

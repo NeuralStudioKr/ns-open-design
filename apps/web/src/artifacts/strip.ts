@@ -9,6 +9,13 @@ const OPEN = '<artifact';
 const CLOSE = '</artifact>';
 const HTML_FENCE_RE = /```(?:html|HTML)\s*\n([\s\S]*?)\n```/g;
 
+/** Same generic English titles `isGenericDeckArtifactTitle` rejects at persist. */
+function previewArtifactTitle(raw: string | null | undefined): string {
+  const title = String(raw ?? '').trim();
+  if (!title || /^(?:response|deck|untitled|artifact|slide)$/i.test(title)) return '슬라이드';
+  return title;
+}
+
 type MarkdownFenceRange = {
   start: number;
   end: number;
@@ -429,7 +436,7 @@ function extractClosedArtifactPreview(content: string): {
         best = {
           identifier: (attrs['identifier'] ?? '').trim() || 'deck',
           artifactType: artifactType.trim() || 'deck',
-          title: (attrs['title'] ?? '').trim() || 'Deck',
+          title: previewArtifactTitle(attrs['title']),
           html,
         };
       }
@@ -458,7 +465,7 @@ export function artifactPreviewFromInFlightContent(content: string): {
       return {
         identifier: live.identifier.trim() || 'deck',
         artifactType: live.artifactType.trim() || 'deck',
-        title: live.title.trim() || 'Deck',
+        title: previewArtifactTitle(live.title),
         html: live.content,
       };
     }
@@ -470,7 +477,7 @@ export function artifactPreviewFromInFlightContent(content: string): {
     return {
       identifier: 'deck',
       artifactType: 'deck',
-      title: 'Deck',
+      title: previewArtifactTitle(null),
       html: standalone,
     };
   }

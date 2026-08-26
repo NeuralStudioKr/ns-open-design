@@ -257,8 +257,20 @@ describe('artifactPreviewFromInFlightContent', () => {
     expect(artifactPreviewFromInFlightContent(completeHtml)).toMatchObject({
       artifactType: 'deck',
       identifier: 'deck',
+      title: '슬라이드',
       html: completeHtml,
     });
+  });
+
+  it('replaces generic English Deck/Response titles with the persist heal fallback', () => {
+    const content =
+      `<artifact type="deck" identifier="deck" title="Deck">${completeHtml}</artifact>`;
+    expect(artifactPreviewFromInFlightContent(content)).toMatchObject({
+      title: '슬라이드',
+    });
+    expect(artifactPreviewFromInFlightContent(
+      `<artifact type="deck" identifier="deck" title="Response">${completeHtml}</artifact>`,
+    )).toMatchObject({ title: '슬라이드' });
   });
 
   it('returns null when the assistant row has no open artifact', () => {

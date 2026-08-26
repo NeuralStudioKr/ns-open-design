@@ -338,7 +338,7 @@ export function buildEmergencyArtifactFromMessages(
   return {
     identifier: 'deck',
     artifactType: 'deck',
-    title: 'deck',
+    title: deckTitle || '슬라이드',
     html,
   };
 }
