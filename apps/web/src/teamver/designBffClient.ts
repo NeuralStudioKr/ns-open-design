@@ -292,6 +292,62 @@ function noteSessionProbeKnownAlive(): void {
   runtimeConfigAuthBlocked = false;
 }
 
+/** @internal vitest / FR-1 — parse BFF auth error `code` or string `detail`. */
+export function extractDesignAuthErrorCode(bodyText: string): string {
+  const raw = (bodyText || "").trim();
+  if (!raw) return "";
+  try {
+    const parsed = JSON.parse(raw) as {
+      code?: unknown;
+      detail?: unknown;
+      error?: unknown;
+    };
+    if (typeof parsed.code === "string" && parsed.code.trim()) {
+      return parsed.code.trim();
+    }
+    if (typeof parsed.detail === "string" && parsed.detail.trim()) {
+      return parsed.detail.trim();
+    }
+    if (
+      parsed.detail
+      && typeof parsed.detail === "object"
+      && typeof (parsed.detail as { code?: unknown }).code === "string"
+    ) {
+      const nested = (parsed.detail as { code: string }).code.trim();
+      if (nested) return nested;
+    }
+    if (typeof parsed.error === "string" && parsed.error.trim()) {
+      return parsed.error.trim();
+    }
+  } catch {
+    /* non-JSON body — fall through */
+  }
+  return "";
+}
+
+/**
+ * FR-1 — refresh/probe 401 that must NOT enter HA_RECOVERING (probe×2).
+ * `refresh_failed` (or unknown + cookie hint) stays HA-eligible.
+ */
+export function isDefinitiveAuthRefreshDead(
+  status: number,
+  bodyText: string,
+): boolean {
+  if (status !== 401) return false;
+  if (sessionProbeKnownDeadUntil > Date.now()) return true;
+  const code = extractDesignAuthErrorCode(bodyText).toLowerCase();
+  if (code === "session_missing" || code === "session_cookie_invalid") {
+    return true;
+  }
+  if (
+    (code === "session_expired" || code.includes("session_expired"))
+    && !hasProbableTeamverAuthCookie()
+  ) {
+    return true;
+  }
+  return false;
+}
+
 async function probeDesignBffSessionAlive(options?: {
   /** Sticky recovery ladders may probe after soft decline. */
   bypassDeclineGate?: boolean;
@@ -581,10 +637,19 @@ export function shouldPreserveEmbedCatalogOnAuthDecline(): boolean {
 
 function shouldAttemptCookieRefresh(): boolean {
   if (authRefreshDeclinedForSession) return false;
+  // FR-2: known-dead negative cache — do not POST refresh (HA already ruled out).
+  if (sessionProbeKnownDeadUntil > Date.now()) return false;
   if (isBootstrapAuthMode()) {
     return authRecoveryRefreshActive || isTeamverEmbedSessionAuthenticated();
   }
-  if (hasProbableTeamverAuthCookie() || isTeamverEmbedSessionAuthenticated()) return true;
+  if (hasProbableTeamverAuthCookie() || isTeamverEmbedSessionAuthenticated()) {
+    return true;
+  }
+  // FR-2: embed cold / cookie absent / no session memory — refresh 0
+  // (S1). Standalone keeps a single bare attempt.
+  if (isTeamverEmbedMode() && !authRecoveryRefreshActive) {
+    return false;
+  }
   return !unauthenticatedRefreshAttempted;
 }
 
@@ -846,7 +911,25 @@ export async function refreshDesignAuthCookie(
       authRefreshPostSuppressedUntil = 0;
     }
 
-    if (!shouldAttemptCookieRefresh()) return false;
+    if (!shouldAttemptCookieRefresh()) {
+      // FR-2: cookie-absent embed / known-dead — do not POST. Still soft-sticky
+      // so recovery callers stop looping 401 without a decline latch.
+      if (
+        !authRefreshDeclinedForSession
+        && (
+          sessionProbeKnownDeadUntil > Date.now()
+          || (
+            isTeamverEmbedMode()
+            && !hasProbableTeamverAuthCookie()
+            && !isTeamverEmbedSessionAuthenticated()
+            && !authRecoveryRefreshActive
+          )
+        )
+      ) {
+        markAuthRefreshDeclined("soft");
+      }
+      return false;
+    }
 
     const isBareAttempt =
       !isTeamverEmbedSessionAuthenticated() &&
@@ -865,6 +948,18 @@ export async function refreshDesignAuthCookie(
     if (bffResult.status === 401) {
       // HA sibling recovery only when nginx is not already known dead in this tab.
       if (sessionProbeKnownDeadUntil > Date.now()) {
+        markAuthRefreshDeclined("soft");
+        if (isOrphanTeamverJwtAuthFailure(bffResult.status, bffResult.bodyText)) {
+          devLog.info(
+            '[teamver] auth: orphan JWT detected on BFF refresh; clearing Main BE cookie',
+            { status: bffResult.status },
+          );
+          void clearOrphanTeamverAuthCookies();
+        }
+        return false;
+      }
+      // FR-1: definitive dead body → soft sticky without HA probe×2 / ensure.
+      if (isDefinitiveAuthRefreshDead(bffResult.status, bffResult.bodyText)) {
         markAuthRefreshDeclined("soft");
         if (isOrphanTeamverJwtAuthFailure(bffResult.status, bffResult.bodyText)) {
           devLog.info(

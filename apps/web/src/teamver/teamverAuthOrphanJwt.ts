@@ -18,6 +18,14 @@ export function isOrphanTeamverJwtAuthFailure(status: number, bodyText: string):
 
 /** Clear HttpOnly `.teamver.com` cookie via Main BE logout (best-effort). */
 export async function clearOrphanTeamverAuthCookies(): Promise<void> {
+  // Pause BFF ladder before Main logout fetch — otherwise parallel refresh/probe
+  // can still fire while cookies are being cleared (FR-3).
+  try {
+    const { pauseDesignBffAuthDuringTransition } = await import("./designBffClient");
+    pauseDesignBffAuthDuringTransition();
+  } catch {
+    /* ignore — designBffClient may be unavailable in non-web contexts */
+  }
   const base = resolveTeamverMainApiBaseUrl().replace(/\/+$/, "");
   try {
     await fetch(`${base}/api/auth/logout`, {

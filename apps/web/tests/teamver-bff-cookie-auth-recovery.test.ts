@@ -39,13 +39,23 @@ import {
   resetDesignAuthRefreshDeclinedForTests,
   withDesignBffCookieAuthRecovery,
 } from "../src/teamver/designBffClient";
+import { hasProbableTeamverAuthCookie } from "../src/teamver/teamverAuthCookieHints";
 import { isTeamverEmbedSessionAuthenticated } from "../src/teamver/teamverEmbedSession";
 
-function refresh401(): Response {
-  return new Response(JSON.stringify({ detail: "session_expired" }), {
+function refresh401(body?: Record<string, unknown>): Response {
+  return new Response(JSON.stringify(body ?? { detail: "session_expired" }), {
     status: 401,
     headers: { "Content-Type": "application/json" },
   });
+}
+
+/** HA-eligible refresh failure (sibling may still have a live cookie). */
+function refresh401HaRace(): Response {
+  return refresh401({ code: "refresh_failed", detail: "refresh_failed" });
+}
+
+function refresh401SessionMissing(): Response {
+  return refresh401({ code: "session_missing", message: "No session cookie" });
 }
 
 function sessionJson(authenticated: boolean): Response {
@@ -142,7 +152,7 @@ describe("withDesignBffCookieAuthRecovery", () => {
     // After refresh 401 + probe misses → soft sticky. No delayed sibling GET.
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce(refresh401())
+      .mockResolvedValueOnce(refresh401HaRace())
       .mockResolvedValueOnce(sessionProbe401())
       .mockResolvedValueOnce(sessionProbe401())
       .mockResolvedValueOnce(sessionJson(false)); // ensure inside refresh
@@ -164,7 +174,7 @@ describe("withDesignBffCookieAuthRecovery", () => {
     vi.useRealTimers();
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce(refresh401())
+      .mockResolvedValueOnce(refresh401HaRace())
       .mockResolvedValueOnce(sessionProbe204())
       .mockResolvedValueOnce(sessionProbe204());
     vi.stubGlobal("fetch", fetchMock);
@@ -173,6 +183,7 @@ describe("withDesignBffCookieAuthRecovery", () => {
       await import("../src/teamver/designBffClient");
     resetDesignAuthRefreshDeclinedForTests();
     vi.mocked(isTeamverEmbedSessionAuthenticated).mockReturnValue(true);
+    vi.mocked(hasProbableTeamverAuthCookie).mockReturnValue(true);
 
     await expect(refreshDesignAuthCookie()).resolves.toBe(true);
     expect(isDesignAuthRefreshDeclined()).toBe(false);
@@ -184,7 +195,7 @@ describe("withDesignBffCookieAuthRecovery", () => {
   it("soft-sticky recovery clears only after ensure+probe+hydrate", async () => {
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce(refresh401())
+      .mockResolvedValueOnce(refresh401HaRace())
       .mockResolvedValueOnce(sessionProbe401())
       .mockResolvedValueOnce(sessionProbe401())
       .mockResolvedValueOnce(sessionJson(false))
@@ -221,7 +232,7 @@ describe("withDesignBffCookieAuthRecovery", () => {
   it("soft sticky stays when ensure is live but nginx probe is dead", async () => {
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce(refresh401())
+      .mockResolvedValueOnce(refresh401HaRace())
       .mockResolvedValueOnce(sessionProbe401())
       .mockResolvedValueOnce(sessionProbe401())
       .mockResolvedValueOnce(sessionJson(false))
@@ -248,7 +259,7 @@ describe("withDesignBffCookieAuthRecovery", () => {
   it("soft-sticky force-POSTs refresh after cooldown when ensure also fails", async () => {
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce(refresh401())
+      .mockResolvedValueOnce(refresh401HaRace())
       .mockResolvedValueOnce(sessionProbe401())
       .mockResolvedValueOnce(sessionProbe401())
       .mockResolvedValueOnce(sessionJson(false))
@@ -279,7 +290,7 @@ describe("withDesignBffCookieAuthRecovery", () => {
   it("soft-sticky skips immediate force-POST after decline (cooldown seed)", async () => {
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce(refresh401())
+      .mockResolvedValueOnce(refresh401HaRace())
       .mockResolvedValueOnce(sessionProbe401())
       .mockResolvedValueOnce(sessionProbe401())
       .mockResolvedValueOnce(sessionJson(false));
@@ -344,7 +355,7 @@ describe("withDesignBffCookieAuthRecovery", () => {
     const fetchMock = vi
       .fn()
       // First refresh: 401 + probe/probe/ensure miss → soft sticky (seeds cooldown)
-      .mockResolvedValueOnce(refresh401())
+      .mockResolvedValueOnce(refresh401HaRace())
       .mockResolvedValueOnce(sessionProbe401())
       .mockResolvedValueOnce(sessionProbe401())
       .mockResolvedValueOnce(sessionJson(false))
@@ -408,7 +419,7 @@ describe("withDesignBffCookieAuthRecovery", () => {
     vi.useRealTimers();
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce(refresh401())
+      .mockResolvedValueOnce(refresh401HaRace())
       .mockResolvedValueOnce(sessionProbe401())
       .mockResolvedValueOnce(sessionProbe401())
       .mockResolvedValueOnce(sessionJson(false));
@@ -450,7 +461,7 @@ describe("withDesignBffCookieAuthRecovery", () => {
     vi.useRealTimers();
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce(refresh401())
+      .mockResolvedValueOnce(refresh401HaRace())
       .mockResolvedValueOnce(sessionProbe401())
       .mockResolvedValueOnce(sessionProbe401())
       .mockResolvedValueOnce(sessionJson(false));
@@ -491,7 +502,7 @@ describe("withDesignBffCookieAuthRecovery", () => {
     vi.useFakeTimers();
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce(refresh401())
+      .mockResolvedValueOnce(refresh401HaRace())
       .mockResolvedValueOnce(sessionProbe401())
       .mockResolvedValueOnce(sessionProbe401())
       .mockResolvedValueOnce(sessionJson(false))
@@ -539,8 +550,7 @@ describe("withDesignBffCookieAuthRecovery", () => {
     vi.useRealTimers();
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce(sessionProbe401())
-      .mockResolvedValueOnce(refresh401());
+      .mockResolvedValueOnce(sessionProbe401());
     vi.stubGlobal("fetch", fetchMock);
 
     const {
@@ -553,6 +563,7 @@ describe("withDesignBffCookieAuthRecovery", () => {
     vi.mocked(isTeamverEmbedSessionAuthenticated).mockReturnValue(true);
 
     await expect(probeDesignBffSessionAuthenticated()).resolves.toBe(false);
+    // FR-2: known-dead → no refresh POST (and therefore no HA probe×2).
     await expect(refreshDesignAuthCookie()).resolves.toBe(false);
     expect(isDesignAuthRefreshDeclined()).toBe(true);
     expect(
@@ -560,7 +571,55 @@ describe("withDesignBffCookieAuthRecovery", () => {
     ).toHaveLength(1);
     expect(
       fetchMock.mock.calls.filter((c) => String(c[0]).includes("/auth/refresh")),
+    ).toHaveLength(0);
+  });
+
+  it("FR-1: refresh 401 session_missing skips HA probe×2", async () => {
+    vi.useRealTimers();
+    const fetchMock = vi.fn().mockResolvedValueOnce(refresh401SessionMissing());
+    vi.stubGlobal("fetch", fetchMock);
+
+    const {
+      refreshDesignAuthCookie,
+      isDesignAuthRefreshDeclined,
+      resetDesignAuthRefreshDeclinedForTests,
+      isDefinitiveAuthRefreshDead,
+    } = await import("../src/teamver/designBffClient");
+    resetDesignAuthRefreshDeclinedForTests();
+    vi.mocked(isTeamverEmbedSessionAuthenticated).mockReturnValue(true);
+    vi.mocked(hasProbableTeamverAuthCookie).mockReturnValue(false);
+
+    expect(
+      isDefinitiveAuthRefreshDead(401, JSON.stringify({ code: "session_missing" })),
+    ).toBe(true);
+
+    await expect(refreshDesignAuthCookie()).resolves.toBe(false);
+    expect(isDesignAuthRefreshDeclined()).toBe(true);
+    expect(
+      fetchMock.mock.calls.filter((c) => String(c[0]).includes("/auth/refresh")),
     ).toHaveLength(1);
+    expect(
+      fetchMock.mock.calls.filter((c) => String(c[0]).includes("/auth/session-probe")),
+    ).toHaveLength(0);
+  });
+
+  it("FR-2: embed cold (no cookie, not authenticated) soft-stickies without refresh POST", async () => {
+    vi.useRealTimers();
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const {
+      refreshDesignAuthCookie,
+      isDesignAuthRefreshDeclined,
+      resetDesignAuthRefreshDeclinedForTests,
+    } = await import("../src/teamver/designBffClient");
+    resetDesignAuthRefreshDeclinedForTests();
+    vi.mocked(isTeamverEmbedSessionAuthenticated).mockReturnValue(false);
+    vi.mocked(hasProbableTeamverAuthCookie).mockReturnValue(false);
+
+    await expect(refreshDesignAuthCookie()).resolves.toBe(false);
+    expect(isDesignAuthRefreshDeclined()).toBe(true);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
 
@@ -573,7 +632,7 @@ describe("shouldSkipTeamverBffAuthCalls", () => {
   it("skips BFF ladders for soft sticky as well as hard sticky", async () => {
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce(refresh401())
+      .mockResolvedValueOnce(refresh401HaRace())
       .mockResolvedValueOnce(sessionProbe401())
       .mockResolvedValueOnce(sessionProbe401())
       .mockResolvedValueOnce(sessionJson(false));

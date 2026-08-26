@@ -7,6 +7,7 @@ import {
   isDesignAuthRefreshDeclineHard,
   isDesignAuthRefreshDeclined,
   isTeamverRuntimeConfigAuthBlocked,
+  pauseDesignBffAuthDuringTransition,
   probeDesignBffSessionAuthenticated,
   refreshDesignAuthCookie,
   resetDesignAuthBareRefreshAttempt,
@@ -322,6 +323,7 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
         ) {
           // Definitive dead session after escalate/reset — stop 401 spam.
           consumeTeamverAuthReturnPending();
+          pauseDesignBffAuthDuringTransition();
           await clearTeamverEmbedSessionState();
           redirectToDesignLoginIfBffMissing({
             returnTo: resolveEmbedAuthReturnPath(
@@ -368,6 +370,7 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
         // Definitive unauthenticated — drop the auth-return defer shield so
         // redirectToDesignLoginIfBffMissing is not a no-op.
         consumeTeamverAuthReturnPending();
+        pauseDesignBffAuthDuringTransition();
         await clearTeamverEmbedSessionState();
         redirectToDesignLoginIfBffMissing({
           returnTo: resolveEmbedAuthReturnPath(
@@ -482,6 +485,7 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
           }
           // Clear session memory before sticky reset — prepareDesignAuthSessionReload
           // first left a race that re-opened refresh ladders when redirect deferred.
+          pauseDesignBffAuthDuringTransition();
           await clearTeamverEmbedSessionState();
           redirectToTeamverLoginPreservingRoute({
             returnTo:
@@ -762,6 +766,7 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
       // before logout and races authenticated-looking UI back into refresh ladders
       // when login redirect is deferred. Sticky clear belongs to auth-return /
       // explicit 「다시 시도」.
+      pauseDesignBffAuthDuringTransition();
       await clearTeamverEmbedSessionState();
       redirectToDesignLoginIfBffMissing({
         returnTo: resolveEmbedAuthReturnPath(
