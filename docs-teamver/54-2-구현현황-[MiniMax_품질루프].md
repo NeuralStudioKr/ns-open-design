@@ -147,7 +147,17 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | think 태그 / 내부 마크업 필터 | ☑ 기존 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (leftover IB artifact_regression)
+## 이번 루프 (루프120–134 / round136–150)
+
+1. persist — `-webkit-animation*` (shorthand + longhands)
+2. persist — `-webkit-hyphens` · `-webkit-column-rule/span/width/fill`
+3. persist — `-webkit-text-security` · `-webkit-user-drag`/`user-drag` · box-reflect · locale · ruby-position
+4. chat — ALLCAPS generic `/`·`／` separators · `@function` opacity dump
+5. flow/chat — set13–15 combo·closure 회귀 (`box-shadow` 계속 보류)
+
+**검증:** chat-leak-probe-round136–150
+
+## 직전 루프 (leftover IB artifact_regression)
 
 1. persist — leftover catalog / demo prior는 compact 토픽 fill로 교체 허용
 2. persist — byte·장수 regression + daemon stub-guard를 leftover prior에서 건너뜀
