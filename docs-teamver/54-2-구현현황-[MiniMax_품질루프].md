@@ -121,6 +121,8 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | chat/persist: slash chrome · @function · reflect/locale · combo | ☑ 루프125–134 / round141–150 |
 | persist: webkit-box-* · font-feature · logical sizes | ☑ 루프150–154 / round151–155 |
 | persist: border-image · text-zoom · marquee · @nest · closure | ☑ 루프155–164 / round156–165 |
+| persist: touch-callout · decoration-break · background vendor | ☑ 루프165–169 / round166–170 |
+| persist: column-break · hyphenate · margin/padding/border logical | ☑ 루프170–179 / round171–180 |
 | clone: IB pitch-book 데모 카피가 한국어 brief에 남음 | ☑ 루프57 |
 | preview: #stage 1920px 스트립이 100vw로만 살짝 이동 | ☑ 루프57 |
 | persist: 카탈로그 예제 leftover를 filled로 저장 | ☑ |
@@ -156,7 +158,17 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | think 태그 / 내부 마크업 필터 | ☑ 기존 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프150–164 / round151–165)
+## 이번 루프 (루프165–179 / round166–180)
+
+1. persist — `-webkit-touch-callout` · `-webkit-nbsp-mode` · `-webkit-line-break`
+2. persist — `-webkit-box-decoration-break` · `-webkit-mask-source-type`
+3. persist — `-webkit-background-origin/size/composite` · `-webkit-user-modify`
+4. persist — `-webkit-column-break-*` · `-webkit-hyphenate-*` · margin/padding/border before/after/start/end
+5. chat — `@color-profile` opacity dump · FOO separator keep · set19–21 combo/closure (`box-shadow` 보류)
+
+**검증:** chat-leak-probe-round166–180
+
+## 직전 루프 (루프150–164 / round151–165)
 
 1. persist — `-webkit-box-pack/align/flex/ordinal-group/lines`
 2. persist — `-webkit-font-feature-settings` · `-webkit-font-variant-ligatures`
