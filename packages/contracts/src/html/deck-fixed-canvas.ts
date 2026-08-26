@@ -758,6 +758,16 @@ const FLOW_COPIED_STYLE_PROPS = [
   'text-decoration-skip-ink',
   'math-style',
   'math-depth',
+  'masonry-auto-flow',
+  'align-tracks',
+  'justify-tracks',
+  'max-lines',
+  'continue',
+  'baseline-source',
+  'dominant-baseline',
+  'alignment-baseline',
+  'paint-order',
+  'vector-effect',
 ] as const;
 
 function wrapFlowOpenTag(hostAttrs: string, inner = ''): string {
