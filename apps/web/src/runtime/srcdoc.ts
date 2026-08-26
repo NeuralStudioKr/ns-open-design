@@ -45,6 +45,9 @@ import {
   stripHostProtocolLeakFromDeckHtml,
   stripLeftoverMotifDemoCopy,
   hoistCloneSlidesOutOfFlexTrack,
+  salvageMalformedMiniMaxSlideMarkup,
+  stripEmptyOfficialMotifInstances,
+  hoistDeckHostStylesToHead,
 } from '@open-design/contracts';
 import { stripConflictingSrcDocCspBaseUri } from './authenticatedHtmlSrcDoc';
 import {
@@ -194,6 +197,21 @@ function buildSrcdocUnsafe(
       } catch (_) {
         /* keep authored HTML */
       }
+      try {
+        html = salvageMalformedMiniMaxSlideMarkup(html);
+      } catch (_) {
+        /* keep authored HTML */
+      }
+      try {
+        html = stripEmptyOfficialMotifInstances(html);
+      } catch (_) {
+        /* keep authored HTML */
+      }
+    }
+    try {
+      html = hoistDeckHostStylesToHead(html);
+    } catch (_) {
+      /* keep authored HTML */
     }
     try {
       html = healOfficialMagazineLayoutDensity(html, options.userBrief);

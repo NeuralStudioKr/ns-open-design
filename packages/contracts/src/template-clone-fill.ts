@@ -374,7 +374,86 @@ export function stripLeftoverMotifDemoCopy(html: string): string {
 
 /** Persist/preview: protocol leaks + leftover motif demo copy. */
 export function sanitizePersistedDeckHostLeaks(html: string): string {
-  return stripLeftoverMotifDemoCopy(stripHostProtocolLeakFromDeckHtml(html));
+  return stripEmptyOfficialMotifInstances(
+    salvageMalformedMiniMaxSlideMarkup(
+      stripLeftoverMotifDemoCopy(stripHostProtocolLeakFromDeckHtml(html)),
+    ),
+  );
+}
+
+const BROKEN_EMPTY_ATTR_OPEN_RE = /<([a-zA-Z][\w-]*)=""(?=[\s>])/g;
+const BROKEN_EMPTY_ATTR_CLOSE_RE = /<\/([a-zA-Z][\w-]*)="">/g;
+const LEAKED_LABEL_AFTER_TITLE_RE =
+  /(<div\b[^>]*>)([^<]*·\s*([^<]{1,48}))<\/div>\s*·\s*\3\s*<\/div>/gi;
+/**
+ * MiniMax often emits `<p="">` and leaked `· Label` twins after a title
+ * already closed. Restore those tags only — do not rewrite copy or
+ * reparent catalog lists.
+ */
+export function salvageMalformedMiniMaxSlideMarkup(html: string): string {
+  let next = String(html ?? '');
+  if (!next) return next;
+  next = next.replace(BROKEN_EMPTY_ATTR_OPEN_RE, '<$1');
+  next = next.replace(BROKEN_EMPTY_ATTR_CLOSE_RE, '</$1>');
+  next = next.replace(LEAKED_LABEL_AFTER_TITLE_RE, '$1$2</div>');
+  return next;
+}
+
+function officialMotifVisibleText(block: string): string {
+  return String(block ?? '')
+    .replace(/<script\b[\s\S]*?<\/script>/gi, '')
+    .replace(/<style\b[\s\S]*?<\/style>/gi, '')
+    .replace(/<svg\b[\s\S]*?<\/svg>/gi, ' SVG ')
+    .replace(/<br\s*\/?>/gi, '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Empty Motif ribbon/stamp shells still paint (accent bar / card) after
+ * leftover wipe. Drop nodes that have no visible text or SVG.
+ */
+export function stripEmptyOfficialMotifInstances(html: string): string {
+  let out = String(html ?? '');
+  if (!out || !/\bdata-od-official-motif-html\b/i.test(out)) return out;
+  const openRe = /<(div|span)\b[^>]*\bdata-od-official-motif-html\b[^>]*>/gi;
+  const spans: Array<{ start: number; end: number }> = [];
+  let match: RegExpExecArray | null;
+  while ((match = openRe.exec(out)) !== null) {
+    const start = match.index;
+    const tag = match[1] ?? 'div';
+    const rest = out.slice(start);
+    const selfClose = /^<[^>]*\/\s*>/.test(rest);
+    if (selfClose) {
+      const end = start + (rest.match(/^<[^>]*>/)?.[0].length ?? match[0].length);
+      spans.push({ start, end });
+      continue;
+    }
+    let depth = 1;
+    const tokenRe = new RegExp(`<${tag}\\b[^>]*>|</${tag}\\s*>`, 'gi');
+    tokenRe.lastIndex = match[0].length;
+    let token: RegExpExecArray | null;
+    let end = -1;
+    while ((token = tokenRe.exec(rest)) !== null) {
+      if (token[0].startsWith('</')) depth -= 1;
+      else if (!/\/\s*>$/.test(token[0])) depth += 1;
+      if (depth === 0) {
+        end = start + token.index + token[0].length;
+        break;
+      }
+    }
+    if (end > start) spans.push({ start, end });
+  }
+  for (let i = spans.length - 1; i >= 0; i -= 1) {
+    const span = spans[i]!;
+    const block = out.slice(span.start, span.end);
+    if (officialMotifVisibleText(block).length >= 2) continue;
+    if (/<svg\b/i.test(block) && block.length > 80) continue;
+    out = `${out.slice(0, span.start)}${out.slice(span.end)}`;
+  }
+  return out;
 }
 
 function stripLeftoverTemplateDemoCopy(html: string): string {
@@ -1168,6 +1247,8 @@ function replaceFailedHeadings(fragment: string, title: string): string {
 }
 
 type HealHostSpan = {
+  tag: string;
+  start: number;
   attrs: string;
   bodyStart: number;
   bodyEnd: number;
@@ -1192,6 +1273,8 @@ function listHealSlideHostSpans(html: string): HealHostSpan[] {
     const chunk = html.slice(open.openEnd, limit);
     const close = new RegExp(`</${open.tag}\\s*>`, 'i').exec(chunk);
     return {
+      tag: open.tag,
+      start: open.start,
       attrs: open.attrs,
       bodyStart: open.openEnd,
       bodyEnd: close ? open.openEnd + close.index : limit,
@@ -1233,7 +1316,143 @@ export function healInstructionCopyCoverHeading(
     if (rewritten === body) continue;
     next = next.slice(0, span.bodyStart) + rewritten + next.slice(span.bodyEnd);
   }
-  return stripDeckLevelDemoChrome(next);
+  return healSparseDeckCoverLayout(stripDeckLevelDemoChrome(next), brief, deckTitle);
+}
+
+function stripTagsToText(html: string): string {
+  return String(html ?? '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function bodyWithoutMotif(body: string): string {
+  return String(body ?? '')
+    .replace(/<(div|span)\b[^>]*\bdata-od-official-motif-html\b[\s\S]*?<\/\1>/gi, '')
+    .replace(/<style\b[\s\S]*?<\/style>/gi, '');
+}
+
+function looksLikeStubCoverSlide(attrs: string, body: string): boolean {
+  if (/<h1[^>]*\bdisplay\b/i.test(body)) return false;
+  if (/\b(?:cover-meta|subhead|slide-inner|mast)\b/i.test(body)) return false;
+  if (/\bcover\b/i.test(attrs) && /\bdisplay\b/i.test(body)) return false;
+  const content = bodyWithoutMotif(body);
+  if (/<(?:p|ul|ol|table|aside)\b/i.test(content)) return false;
+  const text = stripTagsToText(content);
+  const headings = content.match(/<h[1-3]\b/gi) ?? [];
+  if (!(text.length > 0 && text.length < 80 && headings.length <= 1)) return false;
+  const centered = /justify-content:\s*center/i.test(attrs) || /\bslide-title\b/i.test(attrs);
+  const emptyMotif = /<(?:div|span)\b[^>]*\bdata-od-official-motif-html\b[^>]*>\s*<\/(?:div|span)>/i.test(body);
+  const h1 = firstMatchText(content, /<h1\b[^>]*>([\s\S]*?)<\/h1>/i);
+  const truncatedBrief = h1.length >= 2
+    && (/(?:에|이|를|은|는)$/.test(h1) || headingLooksLikeFailedGenerate(h1));
+  // A real one-line cover title ("Expo SDK 개요") must stay. Rebuild only
+  // host salvage chrome or a brief-truncated heading.
+  return centered || emptyMotif || truncatedBrief;
+}
+
+function firstMatchText(html: string, re: RegExp): string {
+  const match = re.exec(html);
+  return match ? stripTagsToText(match[1] ?? '') : '';
+}
+
+function collectCoverMetaRows(bodies: string[]): Array<{ k: string; v: string }> {
+  const rows: Array<{ k: string; v: string }> = [];
+  for (const body of bodies) {
+    const eyebrow = firstMatchText(
+      body,
+      /<(?:div|p|span)\b[^>]*(?:class=["'][^"']*\beyebrow\b[^"']*["']|letter-spacing:\s*0\.[12]em[^>]*text-transform:\s*uppercase)[^>]*>([\s\S]*?)<\/(?:div|p|span)>/i,
+    );
+    const heading = firstMatchText(body, /<h2\b[^>]*>([\s\S]*?)<\/h2>/i);
+    if (eyebrow && heading) {
+      rows.push({ k: eyebrow.slice(0, 40), v: heading.slice(0, 72) });
+    }
+    if (rows.length >= 3) break;
+  }
+  return rows;
+}
+
+function formatCoverDisplayTitle(title: string): string {
+  const escaped = escapeHtml(title);
+  const parts = title.split(/,\s+/);
+  if (parts.length === 2 && parts[0]!.length >= 6 && parts[1]!.length >= 4) {
+    return `${escapeHtml(parts[0]!)}<br>${escapeHtml(parts[1]!)}`;
+  }
+  return escaped;
+}
+
+/**
+ * Host salvage / compact-sample covers are a single centered `<h1>` plus an
+ * empty Motif ribbon. Rebuild an IB-density cover from the brief and later
+ * slide headings so page 1 is not a cream void.
+ */
+export function healSparseDeckCoverLayout(
+  html: string,
+  brief: string,
+  deckTitle?: string | null,
+): string {
+  const dest = String(html ?? '');
+  const coverTitle = sanitizeTemplateCloneDeckTitle(
+    deriveDeckCoverTitleFromBrief(brief, deckTitle),
+  );
+  if (!coverTitle || isGenericDeckArtifactTitle(coverTitle) || !dest.trim()) return dest;
+
+  const spans = listHealSlideHostSpans(dest);
+  if (spans.length === 0) return dest;
+  const first = spans[0]!;
+  const firstBody = dest.slice(first.bodyStart, first.bodyEnd);
+  if (!looksLikeStubCoverSlide(first.attrs, firstBody)) return dest;
+
+  const laterBodies = spans.slice(1).map((span) => dest.slice(span.bodyStart, span.bodyEnd));
+  const subhead = laterBodies
+    .map((body) => firstMatchText(body, /<h2\b[^>]*>([\s\S]*?)<\/h2>/i))
+    .find((text) => text.length >= 4)
+    ?? '';
+  const ribbon = laterBodies
+    .map((body) => firstMatchText(
+      body,
+      /<(?:header|div)\b[^>]*letter-spacing:\s*0\.2[12]em[^>]*>([\s\S]*?)<\/(?:header|div)>/i,
+    ))
+    .find((text) => text.length >= 2)
+    ?? 'Study Notes';
+  const meta = collectCoverMetaRows(laterBodies);
+  const metaHtml = meta.length > 0
+    ? meta.map((row) => (
+      `<div class="row"><div class="k">${escapeHtml(row.k)}</div>`
+      + `<div class="v">${escapeHtml(row.v)}</div></div>`
+    )).join('')
+    : (
+      `<div class="row"><div class="k">Brief</div>`
+      + `<div class="v">${escapeHtml(coverTitle)}</div></div>`
+    );
+
+  const cover = [
+    '<section class="slide cover" style="width:1920px;height:1080px;box-sizing:border-box;',
+    'overflow:visible;position:relative;background:var(--paper);color:var(--ink);',
+    'padding:56px 72px 48px;border-top:6px solid var(--ink);',
+    'display:grid;grid-template-rows:auto 1fr auto">',
+    '<header class="mast" style="display:flex;justify-content:space-between;align-items:baseline;',
+    'padding-bottom:14px;border-bottom:1px solid var(--rule)">',
+    `<span class="brand">${escapeHtml(ribbon)}</span>`,
+    '</header>',
+    '<div class="body" style="display:grid;grid-template-columns:1.3fr 1fr;gap:48px;',
+    'align-items:end;padding:24px 0 16px">',
+    '<div>',
+    `<span class="ribbon">${escapeHtml(ribbon)}</span>`,
+    `<h1 class="display">${formatCoverDisplayTitle(coverTitle)}</h1>`,
+    subhead
+      ? `<p class="subhead">${escapeHtml(subhead)}</p>`
+      : '',
+    '</div>',
+    `<aside class="cover-meta">${metaHtml}</aside>`,
+    '</div>',
+    '<footer class="foot" style="display:flex;justify-content:space-between;align-items:center;',
+    'padding-top:14px;border-top:1px solid var(--rule)">',
+    `<span class="conf">${escapeHtml(coverTitle)}</span>`,
+    '</footer>',
+    '</section>',
+  ].join('');
+
+  const close = dest.slice(first.bodyEnd).match(new RegExp(`^</${first.tag}\\s*>`, 'i'));
+  const end = first.bodyEnd + (close?.[0].length ?? 0);
+  return `${dest.slice(0, first.start)}${cover}${dest.slice(end)}`;
 }
 
 /**

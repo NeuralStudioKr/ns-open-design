@@ -159,7 +159,8 @@ section[data-screen-label], main[data-screen-label], article[data-screen-label] 
 .slide > .title-box, .slide > .main-title, .slide > .title-pill,
 .slide > .content, .slide > .slide-inner, .slide > .slide-body,
 .slide > .copy, .slide > .text, .slide > .lead, .slide > .welcome-frame,
-.slide > .card, .slide > .badge, .slide > span {
+.slide > .card, .slide > .badge,
+.slide > span:not([data-od-official-motif-html]):not(.ribbon):not(.ribbons):not(.rib):not(.stamp) {
   position: relative !important;
   z-index: 2 !important;
 }
@@ -851,6 +852,21 @@ function isVisibleMotifInstanceBlock(block: string): boolean {
   return Boolean(motifPrimaryClass(className));
 }
 
+/**
+ * IB `.ribbon` / `.stamp` are content chips (Confidential / firm name), not
+ * Sakura deco. Injecting them empty (or with leftover copy) paints a red bar.
+ */
+function isCatalogTextChipMotif(block: string): boolean {
+  const open = /^<[^>]+>/.exec(block)?.[0] ?? block;
+  const className = classAttrValue(open);
+  if (!/\b(?:ribbons?|rib|stamp)\b/i.test(className)) return false;
+  if (/<svg\b/i.test(block)) return false;
+  if (/\bstyle\s*=\s*["'][^"']*(?:width|height)\s*:\s*(?:[1-9]\d{1,}|[3-9]\d)/i.test(open)) {
+    return false;
+  }
+  return true;
+}
+
 function svgBlocksContainDaisyIdentity(html: string): boolean {
   // Official Daisy paint = flower wrapper + substantial SVG with butter center.
   // A lone `#fcdf6c` stroke/rect chart must NOT count (false-positive skip).
@@ -1032,6 +1048,11 @@ function destHasInstancePaint(dest: string, block: string): boolean {
   }
   if (/<svg\b/i.test(block)) {
     return destHasExactClassToken(dest, primary) && /<svg\b/i.test(dest);
+  }
+  // IB `.ribbon` / `.stamp` chips with no copy are not Motif paint — they
+  // become a stretched accent bar once neutralize forces `position:relative`.
+  if (/^(?:ribbons?|rib|stamp)$/i.test(primary)) {
+    return cssMotifElementHasPaint(dest, primary);
   }
   // Empty CSS Motif shells (bare `.deco-pill`) are not paint.
   if (/deco-pill|xp-blob|cover-blob|gd-orb|post-it|pixel-particles|pixel-corners|sunglow|zigzag|corner-bracket|deco-green|ts-stripe|win-titlebar/i.test(primary)) {
@@ -1347,7 +1368,8 @@ function motifFallbackCss(officialCss: string, instances: string[]): string {
     '.slide > :is(h1,h2,h3,p,ul,ol,blockquote,figure,table),',
     '.slide > .title-box,.slide > .main-title,.slide > .title-pill,',
     '.slide > .content,.slide > .slide-inner,.slide > .slide-body,',
-    '.slide > .copy,.slide > .text,.slide > .lead,.slide > .welcome-frame,.slide > .card,.slide > .badge,.slide > span{',
+    '.slide > .copy,.slide > .text,.slide > .lead,.slide > .welcome-frame,.slide > .card,.slide > .badge,',
+    '.slide > span:not([data-od-official-motif-html]):not(.ribbon):not(.ribbons):not(.rib):not(.stamp){',
     'position:relative !important;z-index:2 !important;',
     '}',
   ].join('');
@@ -2274,7 +2296,9 @@ export function deckHtmlHasOfficialMotifHtml(
   const dest = String(html ?? '');
   if (!dest || !(assets.motifHtml?.length)) return !(assets.motifHtml?.length);
 
-  const visible = assets.motifHtml.filter(isVisibleMotifInstanceBlock);
+  const visible = assets.motifHtml
+    .filter(isVisibleMotifInstanceBlock)
+    .filter((block) => !isCatalogTextChipMotif(block));
   const cssSeeds = assets.motifHtml.filter(isCssMotifSeedBlock);
   const sheetsAndHosts = assets.motifHtml.filter((block) => !isMotifIdentitySeedBlock(block));
 
@@ -2300,7 +2324,9 @@ export function mergeOfficialDeckMotifHtml(
   const dest = String(html ?? '');
   if (!dest || !(assets?.motifHtml?.length)) return stripEmptyOfficialTextChromeMotifs(dest);
 
-  const visible = assets.motifHtml.filter(isVisibleMotifInstanceBlock);
+  const visible = assets.motifHtml
+    .filter(isVisibleMotifInstanceBlock)
+    .filter((block) => !isCatalogTextChipMotif(block));
   const cssSeeds = assets.motifHtml.filter(isCssMotifSeedBlock);
   const sheetsAndHosts = assets.motifHtml.filter((block) => !isMotifIdentitySeedBlock(block));
 
@@ -2357,6 +2383,9 @@ export function mergeOfficialDeckLookCss(
       out = insertBeforeCloseHeadOrOpenBody(out, missingFonts.join('\n'));
     }
     if (style) {
+      // Body-first compact fills keep the sheet at </body> so official
+      // tokens win over later cream `.slide` rules. Head insert is for
+      // documents that already have a head shell and no trailing author CSS.
       out = looksLikeBodyFirstSlideDeck(out)
         ? insertBeforeCloseBody(out, style)
         : insertBeforeCloseHeadOrOpenBody(out, style);
@@ -2367,11 +2396,61 @@ export function mergeOfficialDeckLookCss(
     out = replaceOfficialLookNeutralizeBlock(out);
   }
 
-  return lockDeckDesignViewportMeta(
-    ensureOfficialLookStackedCanvasNeutralize(
-      stripEmptyOfficialTextChromeMotifs(mergeOfficialDeckMotifHtml(out, assets)),
+  return hoistDeckHostStylesToHead(
+    lockDeckDesignViewportMeta(
+      ensureOfficialLookStackedCanvasNeutralize(
+        stripEmptyOfficialTextChromeMotifs(mergeOfficialDeckMotifHtml(out, assets)),
+      ),
     ),
   );
+}
+
+const DECK_HOST_STYLE_ATTR_RE =
+  /data-od-(?:official-look-css|official-motif-deco-css|slide-surface-bleed|deck-fixed-canvas-pin|stacked-canvas-neutralize)/i;
+
+/**
+ * Streaming look-heal can park `<style data-od-official-look-css>` between
+ * the first slide and the rest. Leave sheets already in `<head>` or at
+ * `</body>` (cascade: official tokens must stay after compact cream rules).
+ * Only lift mid-body host styles to the document end.
+ */
+export function hoistDeckHostStylesToHead(html: string): string {
+  const dest = String(html ?? '');
+  if (!dest.trim()) return dest;
+  const styleRe = /<style\b[^>]*>[\s\S]*?<\/style>/gi;
+  const matches = [...dest.matchAll(styleRe)];
+  const headEnd = /<\/head\s*>/i.exec(dest)?.index ?? -1;
+  const firstSlide = indexOfFirstBodySlide(dest);
+  const toMove = matches.filter((match) => {
+    if (!DECK_HOST_STYLE_ATTR_RE.test(match[0] ?? '')) return false;
+    const at = match.index ?? 0;
+    if (headEnd >= 0 && at < headEnd) return false;
+    if (firstSlide >= 0 && at < firstSlide) return false;
+    const after = dest.slice(at + match[0].length);
+    // Already at the tail (only closers / whitespace follow) — keep cascade.
+    if (!/<section\b|<div\b[^>]*\bclass\s*=\s*["'][^"']*\bslide\b/i.test(after)) {
+      return false;
+    }
+    return true;
+  });
+  if (toMove.length === 0) return dest;
+
+  let out = dest;
+  for (let i = toMove.length - 1; i >= 0; i -= 1) {
+    const match = toMove[i]!;
+    const start = match.index ?? 0;
+    out = `${out.slice(0, start)}${out.slice(start + match[0].length)}`;
+  }
+  const snippet = toMove.map((match) => match[0]).join('\n');
+  return insertBeforeCloseBody(out, snippet);
+}
+
+function indexOfFirstBodySlide(html: string): number {
+  const body = /<body\b[^>]*>/i.exec(html);
+  const from = body ? (body.index ?? 0) + body[0].length : 0;
+  const rest = html.slice(from);
+  const slide = /<(?:section|div|main|article)\b[^>]*\b(?:class\s*=\s*["'][^"']*\bslide\b|data-screen-label\s*=)/i.exec(rest);
+  return slide ? from + slide.index : -1;
 }
 
 function officialLookHasCurrentNeutralize(html: string): boolean {

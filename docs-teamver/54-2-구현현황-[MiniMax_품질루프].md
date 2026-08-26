@@ -151,6 +151,9 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | persist/preview: IB 표지가 빈 빨간 리본+잘린 h1로 남음 | ☑ 루프136 |
 | persist: empty `.ribbon`/`.stamp` Motif가 밀집도를 깨뜨림 | ☑ 루프136 |
 | preview: `[data-od-slide-flow]`가 neutralize relative로 이중 패딩 | ☑ 루프136 |
+| persist/preview: look CSS가 1–2장 사이에 끼어 표지 밀집도가 깨짐 | ☑ follow-up |
+| persist/preview: MiniMax `<p="">` · 유출 `· Label` | ☑ follow-up |
+| preview: Motif `span.ribbon`이 relative stretch로 빨간 줄 | ☑ follow-up |
 | API-mode "save this as deck.html" 유출로 덱이 안 생김 | ☑ |
 | clone: demo-banner/TOC/stat-quote 잔여 · #total 불일치 | ☑ 루프58 |
 | preview: #slideCounter 고정 · hoist가 chrome 삭제 | ☑ 루프58 |
@@ -171,7 +174,16 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | think 태그 / 내부 마크업 필터 | ☑ 기존 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프136)
+## 이번 루프 (표지 밀도 follow-up: look CSS hoist · MiniMax 태그)
+
+1. persist/preview — 슬라이드 사이 official look CSS를 문서 끝으로 이동
+2. persist/preview — `<p="">` · 유출 `· Label` 복구 (카탈로그 목록은 유지)
+3. neutralize — Motif `span.ribbon`은 relative stretch 제외
+4. preview — srcdoc에서 heading-heal을 돌리지 않아 leftover IB `#now`를 유지
+
+**검증:** template-clone-fill stub cover/salvage · look-css hoist · srcdoc stub cover
+
+## 직전 루프 (루프136)
 
 1. persist/preview — 빈 IB `.ribbon`/`.stamp` Motif 껍데기를 주입하지 않고 제거
 2. persist/preview — 제목만 있는 IB 표지를 `h1.display` + ribbon + cover-meta 매거진 커버로 복구

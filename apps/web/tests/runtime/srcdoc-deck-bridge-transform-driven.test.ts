@@ -449,6 +449,29 @@ describe('deck bridge - transform-driven decks', () => {
     expect(visible).toContain('영어 회화');
   });
 
+  it('heals a stub cover and moves look CSS out from between slides', () => {
+    const brief = '영어 회화 표현 공부 팁, 예시에 대한 발표자료 만들어줘';
+    const html = [
+      '<!doctype html><html><head></head><body>',
+      '<section class="slide slide-title" style="display:flex;justify-content:center;padding:80px 88px">',
+      '<span data-od-official-motif-html class="ribbon"></span>',
+      '<h1>영어 회화 표현 공부 팁, 예시에</h1>',
+      '</section>',
+      '<style data-od-official-look-css>.cover h1.display{font-size:96px}</style>',
+      '<section class="slide"><div class="eyebrow">Why It Matters</div>',
+      '<h2>문법으로 외운 회화는 왜 입에서 안 나올까</h2></section>',
+      '</body></html>',
+    ].join('');
+    const srcdoc = buildSrcdoc(html, { deck: true, userBrief: brief });
+    const lookAt = srcdoc.indexOf('data-od-official-look-css');
+    const secondAt = srcdoc.indexOf('Why It Matters');
+    expect(lookAt).toBeGreaterThan(-1);
+    expect(lookAt).toBeGreaterThan(secondAt);
+    expect(srcdoc).toMatch(/h1 class="display"/);
+    expect(srcdoc).toMatch(/cover-meta/);
+    expect(srcdoc).not.toMatch(/<span[^>]*data-od-official-motif-html[^>]*>\s*<\/span>/);
+  });
+
   it('leaves a catalog example intact when no user brief is provided', async () => {
     const html = await readFile(
       new URL(

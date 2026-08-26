@@ -16,6 +16,7 @@ import {
   ensureOfficialLookStackedCanvasNeutralize,
   extractOfficialDeckLookAssets,
   firstOfficialDeckTemplateId,
+  hoistDeckHostStylesToHead,
   appendCompactOfficialTypeLock,
   injectStackedCanvasNeutralizeForLetterbox,
   listOfficialLookProofClasses,
@@ -948,6 +949,9 @@ html, body { overflow: visible !important; height: auto !important; }
     expect(LOOK_NEUTRALIZE_CSS).not.toMatch(/:not\(\[class\*="pin"\]\)/);
     expect(LOOK_NEUTRALIZE_CSS).toMatch(/:not\(\.ribbon\)/);
     expect(LOOK_NEUTRALIZE_CSS).toMatch(/:not\(\[data-od-slide-flow\]\)/);
+    expect(LOOK_NEUTRALIZE_CSS).toMatch(
+      /span:not\(\[data-od-official-motif-html\]\):not\(\.ribbon\)/,
+    );
     expect(LOOK_NEUTRALIZE_CSS).toMatch(/:not\(\[class\^="win-"\]\)/);
     expect(LOOK_NEUTRALIZE_CSS).toMatch(/:not\(\[class\*="pixel-"\]\)/);
     expect(LOOK_NEUTRALIZE_CSS).toMatch(/section\[data-screen-label\]/);
@@ -1263,6 +1267,24 @@ html, body { overflow: visible !important; height: auto !important; }
     const merged = mergeOfficialDeckLookCss(poisoned, assets);
     expect(merged).toMatch(/<style[^>]*\bdata-od-official-look-css\b/i);
     expect(merged).toContain('Topic');
+  });
+
+  it('hoists official look CSS that landed between slides to the document end', () => {
+    const html = [
+      '<!doctype html><html><head></head><body>',
+      '<section class="slide"><h1>Cover</h1></section>',
+      '<style data-od-official-look-css>.cover h1.display{font-size:96px}</style>',
+      '<section class="slide"><h2>Body</h2></section>',
+      '</body></html>',
+    ].join('');
+    const hoisted = hoistDeckHostStylesToHead(html);
+    const lookAt = hoisted.indexOf('data-od-official-look-css');
+    const coverAt = hoisted.indexOf('<h1>Cover</h1>');
+    const bodyAt = hoisted.indexOf('<h2>Body</h2>');
+    expect(lookAt).toBeGreaterThan(bodyAt);
+    expect(lookAt).toBeGreaterThan(coverAt);
+    expect(hoisted).toContain('<h1>Cover</h1>');
+    expect(hoisted).toContain('<h2>Body</h2>');
   });
 
   it('fills empty Daisy star shells with star SVG, not butter flower SVG', () => {
