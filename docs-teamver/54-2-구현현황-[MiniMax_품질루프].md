@@ -119,6 +119,8 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | chat/persist: colon/pipe chrome · thin pre · combo/closure | ☑ 루프114–118 / round131–135 |
 | persist: webkit-animation · hyphens/columns · text-security/drag | ☑ 루프120–124 / round136–140 |
 | chat/persist: slash chrome · @function · reflect/locale · combo | ☑ 루프125–134 / round141–150 |
+| persist: webkit-box-* · font-feature · logical sizes | ☑ 루프150–154 / round151–155 |
+| persist: border-image · text-zoom · marquee · @nest · closure | ☑ 루프155–164 / round156–165 |
 | clone: IB pitch-book 데모 카피가 한국어 brief에 남음 | ☑ 루프57 |
 | preview: #stage 1920px 스트립이 100vw로만 살짝 이동 | ☑ 루프57 |
 | persist: 카탈로그 예제 leftover를 filled로 저장 | ☑ |
@@ -154,7 +156,17 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | think 태그 / 내부 마크업 필터 | ☑ 기존 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (top-up 센티널 · motif Hartfield · 커버 슬라이드)
+## 이번 루프 (루프150–164 / round151–165)
+
+1. persist — `-webkit-box-pack/align/flex/ordinal-group/lines`
+2. persist — `-webkit-font-feature-settings` · `-webkit-font-variant-ligatures`
+3. persist — `-webkit-logical-*` · `-webkit-border-image*`
+4. persist — `-webkit-text-zoom` · `-webkit-marquee*`
+5. chat — `@nest` opacity dump · FOO separator keep · set16–18 combo/closure (`box-shadow` 보류)
+
+**검증:** chat-leak-probe-round151–165
+
+## 직전 루프 (top-up 센티널 · motif Hartfield · 커버 슬라이드)
 
 1. persist/preview — `[od:slide_count_top_up]`·빈 `<artifact>`를 덱 HTML에서 제거. liveHtml도 동일
 2. persist/preview — Motif `.who` leftover Hartfield 비움. 갤러리 example은 유지
