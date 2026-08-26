@@ -127,6 +127,8 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | chat/persist: @document · FOO keep · set22–24 combo/closure | ☑ 루프190–194 / round191–195 |
 | persist: transition delay/timing · text-emphasis · box-sizing · border-spacing | ☑ 루프195–199 / round196–201 |
 | chat/persist: @namespace · @font-feature-values · invent-frame · closure | ☑ 루프200–209 / round202–210 |
+| persist: border-radius longhands · epub · clip-path · mask-box-image | ☑ 루프210–214 / round211–215 |
+| persist: word-break · hyphenate · moz/ms select/transform · @charset | ☑ 루프215–224 / round216–225 |
 | clone: IB pitch-book 데모 카피가 한국어 brief에 남음 | ☑ 루프57 |
 | preview: #stage 1920px 스트립이 100vw로만 살짝 이동 | ☑ 루프57 |
 | persist: 카탈로그 예제 leftover를 filled로 저장 | ☑ |
@@ -162,7 +164,16 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | think 태그 / 내부 마크업 필터 | ☑ 기존 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프195–209 / round196–210)
+## 이번 루프 (루프210–224 / round211–225)
+
+1. persist — `-webkit-border-*-radius` · `-webkit-text-orientation`/`-epub-*` · `-webkit-clip-path` · `-webkit-image-rendering` · `-webkit-mask-box-image*`
+2. persist — `-webkit-word-break`/`text-decorations-in-effect`/`line-box-contain` · hyphenate-limit last/zone
+3. persist — `-moz`/`-ms` appearance · user-select · text-size-adjust · transform/origin · backface · overflow-style · word-wrap/`-o-text-overflow`/`-moz-tab-size`
+4. chat — `@charset` opacity dump · invent-frame negative · set28–30 combo/closure (`box-shadow` 보류)
+
+**검증:** chat-leak-probe-round211–225
+
+## 직전 루프 (루프195–209 / round196–210)
 
 1. persist — `-webkit-transition-delay` · `-webkit-transition-timing-function`
 2. persist — `-webkit-text-emphasis*` · `-webkit-box-sizing` · `-webkit-border-*-spacing`
