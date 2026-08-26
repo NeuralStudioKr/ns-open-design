@@ -731,7 +731,7 @@ export function buildTemplateClonedDeckHtml(
  * `<section class="slide">` blocks (after stripping inert prev/next chrome).
  * Otherwise the wrapper may carry authored chrome we must not lose.
  */
-function hoistCloneSlidesOutOfFlexTrack(html: string): string {
+export function hoistCloneSlidesOutOfFlexTrack(html: string): string {
   let out = String(html ?? '');
   if (!out) return out;
   const passes: RegExp[] = [

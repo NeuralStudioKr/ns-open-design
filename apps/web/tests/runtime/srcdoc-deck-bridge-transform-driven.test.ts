@@ -236,6 +236,8 @@ describe('deck bridge - transform-driven decks', () => {
     const stacked = win.document.getElementById('od-stacked-deck-stage');
     if (stacked) {
       expect(stacked.querySelectorAll('.slide').length).toBeGreaterThanOrEqual(2);
+    } else if (slides[0]?.style.display === 'none') {
+      expect(slides[1]?.style.display).not.toBe('none');
     } else {
       expect(stage?.style.transform).toBe('translateX(-1920px)');
       expect(stage?.style.transform).not.toContain('100vw');
@@ -286,7 +288,11 @@ describe('deck bridge - transform-driven decks', () => {
     await new Promise<void>((resolve) => win.setTimeout(resolve, 80));
     const stage = win.document.getElementById('stage') as HTMLElement | null;
     const stacked = win.document.getElementById('od-stacked-deck-stage');
-    if (!stacked) {
+    if (stacked) {
+      expect(stacked.querySelectorAll('.slide').length).toBeGreaterThanOrEqual(2);
+    } else if (slides[0]?.style.display === 'none') {
+      expect(slides[1]?.style.display).not.toBe('none');
+    } else {
       expect(stage?.style.transform).toBe('translateX(-1920px)');
     }
   });
@@ -489,13 +495,14 @@ describe('deck bridge - transform-driven decks', () => {
       data: { type: 'od:slide', action: 'next' },
     }));
     await new Promise<void>((resolve) => win.setTimeout(resolve, 120));
-    const stage = win.document.getElementById('stage') as HTMLElement | null;
-    const stacked = win.document.getElementById('od-stacked-deck-stage');
-    if (!stacked) {
-      expect(stage?.style.transform).toBe('translateX(-1920px)');
-      expect(stage?.style.transform).not.toContain('100vw');
-    }
-    expect(win.document.getElementById('now')?.textContent).toBe('02');
+    // 0826-N01 F3: leftover Clone HTML (no author script) is hoisted out of
+    // `#stage`, so host next uses display toggle — not translateX(-1920px)
+    // which only nudged page 1 inside an 800px iframe.
+    expect(win.document.getElementById('stage')).toBeNull();
+    const after = Array.from(win.document.querySelectorAll<HTMLElement>('.slide'));
+    expect(after.length).toBeGreaterThanOrEqual(2);
+    expect(after[0]?.style.display === 'none' || after[0]?.classList.contains('active') === false).toBe(true);
+    expect(after[1]?.style.display !== 'none').toBe(true);
   });
 
   it('pages a pin-only IB #stage strip by 1920px when offsetWidth matches the iframe', async () => {
