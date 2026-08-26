@@ -637,7 +637,7 @@ function looksLikeFakeOutlineStyle(style: string): boolean {
 /**
  * Body `p`/`span`/`h2–h4` often carry 1–2px accent borders. Only treat them as
  * MiniMax "card" frames when padding looks card-like (≥12px, ≥0.75rem/em,
- * ≥4%, ≥2ch, ≥2vh/vw/vmin/vmax/dvh, or ≥2cqw/cqh/cqi/cqb).
+ * ≥4%, ≥2ch, ≥2vh/vw/vmin/vmax/dvh, ≥2cqw/cqh/cqi/cqb, or ≥2lh/cap/ex/ic/vb/vi).
  */
 function looksLikeCardLikePadding(style: string): boolean {
   const source = String(style ?? '');
@@ -666,6 +666,11 @@ function looksLikeCardLikePadding(style: string): boolean {
     }
     // Container query units — ≥2cqw/cqh/cqi/cqb; 1cqw stays accent.
     if (/(?:^|[\s/])(?:[2-9]|[1-9]\d+)(?:\.\d+)?(?:cqw|cqh|cqi|cqb|cqmin|cqmax)\b/i.test(value)) {
+      return true;
+    }
+    // Font-relative / logical units — ≥2lh/rlh/cap/ex/ic/vb/vi (루프23).
+    // Thin 1lh / 1.5ex accents stay unbound.
+    if (/(?:^|[\s/])(?:[2-9]|[1-9]\d+)(?:\.\d+)?(?:lh|rlh|cap|rcap|ex|rex|ic|ric|vb|vi|svb|svi|lvb|lvi|dvb|dvi)\b/i.test(value)) {
       return true;
     }
   }
@@ -704,8 +709,9 @@ function pickOfficialKitCardClass(html: string): string | null {
 }
 
 const KIT_CARD_OPEN_RE =
-  /<(div|aside|article|section|li|figure|main|header|footer|blockquote|nav|ul|ol|dl|dt|dd|p|span|h[2-4]|figcaption|caption|details|summary|label|output)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
-const SELECTIVE_KIT_CARD_TAGS_RE = /^(?:p|span|h[2-4]|figcaption|caption|details|summary|label|output)$/i;
+  /<(div|aside|article|section|li|figure|main|header|footer|blockquote|nav|ul|ol|dl|dt|dd|p|span|h[2-4]|figcaption|caption|details|summary|label|output|fieldset|legend|dialog|menu)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
+const SELECTIVE_KIT_CARD_TAGS_RE =
+  /^(?:p|span|h[2-4]|figcaption|caption|details|summary|label|output|fieldset|legend|dialog|menu)$/i;
 
 function bindFakeOutlineCardsInSpan(html: string, cardClass: string): string {
   return html.replace(KIT_CARD_OPEN_RE, (open, tag: string, attrs: string) => {
