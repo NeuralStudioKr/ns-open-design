@@ -8,6 +8,7 @@ import {
   LOOK_NEUTRALIZE_CSS,
   mergeOfficialDeckLookCss,
 } from '../src/html/deck-template-look-css';
+import { healDeckHtmlForStandaloneExport } from '../src/html/deckPdfExport';
 import {
   healOfficialMagazineLayoutDensity,
   healSparseOfficialMagazineCover,
@@ -73,9 +74,15 @@ describe('heal official magazine layout density', () => {
     expect(healed).toMatch(/class="cover-meta"/);
     expect(healed).toMatch(/문법으로 외운 회화/);
     expect(healed).not.toMatch(/Hartfield|NorthPeak|WACC/i);
+    expect(healed).not.toMatch(/English Speaking Tips|쉐도잉 루틴|In context/i);
+    expect(healed).not.toMatch(/Study Notes/i);
+    expect(healed).toMatch(/학습 노트/);
     expect(healed).not.toMatch(/<\/p="">/);
     expect(healed).not.toMatch(/<\/div>\s*·\s*Small talk/);
     expect(healed).toMatch(/첫 만남 · Small talk/);
+    expect(healed).not.toMatch(
+      /<section\b[^>]*\bcover\b[^>]*style="[^"]*\bdisplay\s*:\s*flex/i,
+    );
   });
 
   it('strips empty official ribbon/stamp shells and repairs first-fill tags', () => {
@@ -88,6 +95,59 @@ describe('heal official magazine layout density', () => {
     expect(repaired).toMatch(/<\/p>/);
     expect(repaired).not.toMatch(/<\/div>\s*·\s*Small talk/);
     expect(repaired).toMatch(/첫 만남 · Small talk/);
+    expect(repairCompactFirstFillMarkup(
+      '<div>의견 표현 · Agree / Disagree · Agree / Disagree</div>',
+    )).toBe('<div>의견 표현 · Agree / Disagree</div>');
+    expect(repairCompactFirstFillMarkup(
+      '<div>첫 만남 · Small talk</div> · Small talk<section class="slide">',
+    )).toBe('<div>첫 만남 · Small talk</div><section class="slide">');
+    expect(stripEmptyOfficialTextChromeMotifs(
+      '<div class="demo-banner"></div><span class="demo-pill">  </span><h2>Keep</h2>',
+    )).toBe('<h2>Keep</h2>');
+  });
+
+  it('does not rewrite Daisy, Studio, or weekly-update sparse covers into IB magazine chrome', () => {
+    const daisy = join(
+      dirname(fileURLToPath(import.meta.url)),
+      '../../../plugins/_official/examples/html-ppt-zhangzara-daisy-days/example.html',
+    );
+    const weekly = join(
+      dirname(fileURLToPath(import.meta.url)),
+      '../../../plugins/_official/examples/weekly-update/example.html',
+    );
+    const studio = join(
+      dirname(fileURLToPath(import.meta.url)),
+      '../../../plugins/_official/examples/html-ppt-zhangzara-studio/example.html',
+    );
+    const sparse = `<!doctype html><html lang="ko"><body>
+<section class="slide slide-title" style="width:1920px;height:1080px">
+<h1>Linux Internals for Senior Engineers</h1></section>
+<section class="slide"><h2>Body</h2><p>Keep this page.</p></section>
+</body></html>`;
+    for (const examplePath of [daisy, weekly, studio]) {
+      const assets = extractOfficialDeckLookAssets(readFileSync(examplePath, 'utf8'));
+      const merged = mergeOfficialDeckLookCss(sparse, assets);
+      const healed = healOfficialMagazineLayoutDensity(merged, 'Linux internals explainer');
+      expect(healed, examplePath).toContain('Linux Internals for Senior Engineers');
+      expect(healed, examplePath).not.toMatch(/English Speaking|학습 노트|쉐도잉/i);
+      expect(healed, examplePath).not.toMatch(/<h1 class="display">/);
+    }
+  });
+
+  it('uses later slide titles instead of inventing topic copy', () => {
+    const official = readFileSync(IB_EXAMPLE, 'utf8');
+    const assets = extractOfficialDeckLookAssets(official);
+    const expo = `<!doctype html><html lang="ko"><body>
+<section class="slide slide-title" style="width:1920px;height:1080px"><h1>expo 소개</h1></section>
+<section class="slide"><h2>설치</h2><p>SDK를 설치합니다.</p></section>
+</body></html>`;
+    const healed = healOfficialMagazineLayoutDensity(
+      mergeOfficialDeckLookCss(expo, assets),
+      'expo에 대해서 설명하는 피피티 만들어줘',
+    );
+    expect(healed).toMatch(/expo/i);
+    expect(healed).toMatch(/설치/);
+    expect(healed).not.toMatch(/쉐도잉|English Speaking Tips|회화 표현/i);
   });
 
   it('does not rebuild a dense official IB cover', () => {
@@ -111,5 +171,18 @@ describe('heal official magazine layout density', () => {
     expect(pinned).toMatch(/data-od-slide-flow/);
     expect(pinned).toMatch(/:not\(\[data-od-slide-flow\]\)/);
     expect(pinned).toMatch(/<h1 class="display">/);
+  });
+
+  it('standalone export heals a sparse IB cover without inventing topic copy', () => {
+    const official = readFileSync(IB_EXAMPLE, 'utf8');
+    const assets = extractOfficialDeckLookAssets(official);
+    const merged = mergeOfficialDeckLookCss(SPARSE_COVER, assets);
+    const exported = healDeckHtmlForStandaloneExport(merged);
+    expect(exported).toMatch(/<h1 class="display">/);
+    expect(exported).toMatch(/영어 회화 표현/);
+    expect(exported).toMatch(/문법으로 외운 회화/);
+    expect(exported).not.toMatch(/English Speaking Tips|쉐도잉|In context/i);
+    expect(exported).not.toMatch(/<\/p="">/);
+    expect(exported).toMatch(/:not\(\[data-od-slide-flow\]\)/);
   });
 });

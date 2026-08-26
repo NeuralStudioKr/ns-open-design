@@ -566,4 +566,31 @@ describe('deck bridge - transform-driven decks', () => {
     expect(stage.style.transform).not.toContain('100vw');
     expect(win.document.getElementById('now')?.textContent).toBe('02');
   });
+
+  it('heals a sparse IB magazine cover in preview without inventing topic copy', () => {
+    const html = `<!doctype html><html lang="ko"><head>
+<style data-od-official-look-css>
+h1.display { font-size: 72px; }
+.cover .ribbon { background: #c00; }
+.cover-meta { border-left: 2px solid; }
+.mast { display: flex; }
+</style>
+</head><body>
+<section class="slide slide-title" style="width:1920px;height:1080px;display:flex;justify-content:center;padding:80px 88px">
+<span class="ribbon"></span>
+<h1>영어 회화 표현 공부 팁, 예시에</h1>
+</section>
+<section class="slide"><h2>문법으로 외운 회화는 왜 입에서 안 나올까</h2><p="">본문</p=""></section>
+</body></html>`;
+    const srcdoc = buildSrcdoc(html, {
+      deck: true,
+      userBrief: '영어 회화 표현 공부 팁, 예시에 대한 발표자료 만들어줘',
+    });
+    expect(srcdoc).toMatch(/<h1 class="display">/);
+    expect(srcdoc).toMatch(/영어 회화 표현/);
+    expect(srcdoc).toMatch(/문법으로 외운 회화/);
+    expect(srcdoc).toMatch(/학습 노트/);
+    expect(srcdoc).not.toMatch(/English Speaking Tips|쉐도잉|In context/i);
+    expect(srcdoc).not.toMatch(/<\/p="">/);
+  });
 });

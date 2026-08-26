@@ -26,12 +26,25 @@ function visibleText(html: string): string {
     .trim();
 }
 
+function officialLookCssText(html: string): string {
+  return [...String(html ?? '').matchAll(
+    /<style\b[^>]*\bdata-od-official-look-css\b[^>]*>([\s\S]*?)<\/style>/gi,
+  )].map((match) => match[1] ?? '').join('\n');
+}
+
+/**
+ * IB pitch-book magazine kit only. `.slide-inner` + `--accent` is common
+ * (weekly-update, Studio, Daisy) and must not rebuild those covers.
+ */
 function looksLikeOfficialMagazineLook(html: string): boolean {
   const dest = String(html ?? '');
   if (!/\bdata-od-official-look-css\b/i.test(dest)) return false;
+  const css = officialLookCssText(dest) || dest;
   return (
-    /h1\.display|\.cover\s+\.ribbon|\.slide-inner\s*\{/i.test(dest)
-    && /--accent\s*:/i.test(dest)
+    /h1\.display/i.test(css)
+    && /\.cover\s+\.ribbon/i.test(css)
+    && /\.cover-meta/i.test(css)
+    && /\.mast\s*\{/i.test(css)
   );
 }
 
@@ -111,10 +124,13 @@ export function stripEmptyOfficialTextChromeMotifs(html: string): string {
   let match: RegExpExecArray | null;
   while ((match = openRe.exec(out)) !== null) {
     const open = match[0] ?? '';
-    if (!/\bdata-od-official-motif-html\b/i.test(open) && !hasExactClass(open, 'ribbon') && !hasExactClass(open, 'stamp')) {
-      continue;
-    }
-    if (!hasExactClass(open, 'ribbon') && !hasExactClass(open, 'stamp')) continue;
+    const textChrome = hasExactClass(open, 'ribbon')
+      || hasExactClass(open, 'stamp')
+      || hasExactClass(open, 'agent-stamp')
+      || hasExactClass(open, 'demo-banner')
+      || hasExactClass(open, 'demo-pill');
+    if (!/\bdata-od-official-motif-html\b/i.test(open) && !textChrome) continue;
+    if (!textChrome) continue;
     starts.push(match.index);
   }
   for (let i = starts.length - 1; i >= 0; i -= 1) {
@@ -135,8 +151,13 @@ export function stripEmptyOfficialTextChromeMotifs(html: string): string {
 export function repairCompactFirstFillMarkup(html: string): string {
   return String(html ?? '')
     .replace(/<\/(p|div|span|h[1-6]|li|ul|ol)\s*=\s*["'][^"']*["']\s*>/gi, '</$1>')
-    .replace(/<(p|div|span|h[1-6])\s*=\s*["'][^"']*["']\s*>/gi, '<$1>')
-    .replace(/<\/(div|p|span)>\s*·\s*[^<>]{1,48}<\/\1>/gi, '</$1>');
+    .replace(/<(p|div|span|h[1-6]|li|ul|ol)\s*=\s*["'][^"']*["']\s*>/gi, '<$1>')
+    .replace(/<\/(div|p|span)>\s*·\s*[^<>]{1,48}<\/\1>/gi, '</$1>')
+    // "…</div> · Small talk" with no extra close tag
+    .replace(/<\/(div|p|span)>\s*·\s*[^<>\n]{1,48}(?=<|$)/gi, '</$1>')
+    // "의견 표현 · Agree / Disagree · Agree / Disagree"
+    .replace(/(\s*·\s*)([^·<\n]{2,40})\s*·\s*\2/gi, '$1$2')
+    .replace(/([^·<\n]{2,40})\s*·\s*\1(?=\s*(?:·|<|$))/gi, '$1');
 }
 
 function polishCoverTitle(raw: string): string {
@@ -195,6 +216,10 @@ function slimCoverHostStyle(attrs: string): string {
       const next = String(style)
         .replace(/(?:^|;)\s*padding(?:-(?:top|right|bottom|left))?\s*:[^;]*/gi, ';')
         .replace(/(?:^|;)\s*justify-content\s*:[^;]*/gi, ';')
+        .replace(/(?:^|;)\s*align-items\s*:[^;]*/gi, ';')
+        .replace(/(?:^|;)\s*flex-direction\s*:[^;]*/gi, ';')
+        .replace(/(?:^|;)\s*display\s*:[^;]*/gi, ';')
+        .replace(/(?:^|;)\s*gap\s*:[^;]*/gi, ';')
         .replace(/;;+/g, ';')
         .replace(/^;|;$/g, '')
         .trim();
@@ -219,30 +244,42 @@ function formatDisplayTitle(title: string): string {
   return escapeHtml(title);
 }
 
+function brandFromTitle(title: string): { brand: string; accent: string } {
+  const parts = title.split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) {
+    return { brand: escapeHtml(parts[0]!), accent: escapeHtml(parts.slice(1, 3).join(' ')) };
+  }
+  const raw = title.slice(0, 24) || 'Notes';
+  return { brand: escapeHtml(raw), accent: '' };
+}
+
+function genericMetaRows(slideCount: number): string[] {
+  const pool = ['개요', '핵심 포인트', '다음 단계'];
+  const needed = Math.min(3, Math.max(1, slideCount - 1));
+  return pool.slice(0, needed);
+}
+
 function buildMagazineCoverInner(
   title: string,
   laterTitles: string[],
   slideCount: number,
 ): string {
-  const ribbon = laterTitles[0]
-    ? 'Study notes · In context'
-    : 'Speaking · Chunking · Practice';
-  const subhead = laterTitles[0]
-    ? laterTitles[0]
-    : '상황 단위로 외우고, 입에 붙는 표현으로 바꿔 쓰는 방법';
-  const metaRows = (laterTitles.length > 0 ? laterTitles : [
-    '문법으로 외운 회화가 입에서 안 나오는 이유',
-    '상황 묶음(chunk)으로 통째 외우기',
-    '하루 20분 쉐도잉 루틴',
-  ]).slice(0, 4);
+  const hangul = /[가-힣]/.test(title);
+  const ribbon = hangul ? '학습 노트' : 'Working notes';
+  const notesLabel = hangul ? '학습 노트' : 'Notes';
+  const slidesLabel = hangul ? '슬라이드' : 'slides';
+  const subhead = laterTitles[0] || (hangul ? '핵심 내용을 한 장에 정리합니다' : 'Key points for this discussion');
+  const metaRows = (laterTitles.length > 0 ? laterTitles : genericMetaRows(slideCount)).slice(0, 4);
+  const { brand, accent } = brandFromTitle(title);
+  const brandHtml = accent ? `${brand} <i>${accent}</i>` : brand;
   const rows = metaRows.map((label, index) => (
     `<div class="row"><span class="k">${escapeHtml(String(index + 1).padStart(2, '0'))}</span><span class="v">${escapeHtml(label)}</span></div>`
   )).join('\n        ');
   return `
   <div class="slide-inner">
     <header class="mast">
-      <div class="brand">English Speaking <i>Tips</i></div>
-      <div class="meta"><span>Study Notes</span><span>Conversation</span></div>
+      <div class="brand">${brandHtml}</div>
+      <div class="meta"><span>${notesLabel}</span><span>${escapeHtml(String(slideCount).padStart(2, '0'))} ${slidesLabel}</span></div>
     </header>
     <div class="body">
       <div>
@@ -255,7 +292,7 @@ function buildMagazineCoverInner(
       </div>
     </div>
     <footer class="foot">
-      <span class="conf">English Speaking Tips</span>
+      <span class="conf">${escapeHtml(title.slice(0, 40) || 'Notes')}</span>
       <span>01 / ${String(slideCount).padStart(2, '0')}</span>
     </footer>
   </div>`;

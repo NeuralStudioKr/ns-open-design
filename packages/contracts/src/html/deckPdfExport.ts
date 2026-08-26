@@ -14,6 +14,7 @@ import {
 } from './deck-template-look-css.js';
 import { collapseAdjacentDuplicateDeckSiblings } from './collapse-adjacent-duplicate-siblings.js';
 import { pinDeckSlidesToFixedCanvas } from './deck-fixed-canvas.js';
+import { healOfficialMagazineLayoutDensity } from './heal-official-magazine-layout.js';
 
 export const DECK_SLIDE_SELECTOR =
   '.slide, section.slide, .deck-slide, .ppt-slide, section[data-screen-label], main[data-screen-label], article[data-screen-label]';
@@ -116,7 +117,9 @@ export function healDeckHtmlForStandaloneExport(html: string): string {
   // Export/download is not catalog preview: even when official presenter CSS is
   // present, the deliverable must be fixed-canvas and keep every slide.
   const pinned = pinDeckSlidesToFixedCanvas(
-    collapseAdjacentDuplicateDeckSiblings(repaired),
+    collapseAdjacentDuplicateDeckSiblings(
+      healOfficialMagazineLayoutDensity(repaired),
+    ),
     { force: true },
   );
   return lockDeckDesignViewportMeta(ensureOfficialLookStackedCanvasNeutralize(pinned));

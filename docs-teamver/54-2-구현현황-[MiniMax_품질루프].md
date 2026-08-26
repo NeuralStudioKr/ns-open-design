@@ -151,6 +151,9 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | persist/preview: IB 표지가 빈 빨간 리본+잘린 h1로 남음 | ☑ 루프136 |
 | persist: empty `.ribbon`/`.stamp` Motif가 밀집도를 깨뜨림 | ☑ 루프136 |
 | preview: `[data-od-slide-flow]`가 neutralize relative로 이중 패딩 | ☑ 루프136 |
+| heal: Daisy/weekly/Studio를 IB 매거진으로 오탐 | ☑ 루프137 |
+| heal: 커버에 회화/쉐도잉 토픽 카피를 발명 | ☑ 루프137 |
+| export: standalone가 성긴 IB 표지를 그대로 내보냄 | ☑ 루프137 |
 | API-mode "save this as deck.html" 유출로 덱이 안 생김 | ☑ |
 | clone: demo-banner/TOC/stat-quote 잔여 · #total 불일치 | ☑ 루프58 |
 | preview: #slideCounter 고정 · hoist가 chrome 삭제 | ☑ 루프58 |
@@ -171,7 +174,16 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | think 태그 / 내부 마크업 필터 | ☑ 기존 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프136)
+## 이번 루프 (루프137)
+
+1. heal — IB 매거진은 `h1.display`+`.cover .ribbon`+`.cover-meta`+`.mast` 네 토큰이 있을 때만
+2. heal — 커버 카피는 brief/후속 장 제목. 회화·쉐도잉·In context 발명 금지
+3. export/preview — standalone heal과 preview look merge 뒤에도 동일 복구
+4. first-fill — 중복 bilingual `·` · 빈 demo-banner/pill · 커버 인라인 flex 제거
+
+**검증:** heal-official-magazine-layout Daisy/Studio/expo · srcdoc sparse cover · standalone export
+
+## 직전 루프 (루프136)
 
 1. persist/preview — 빈 IB `.ribbon`/`.stamp` Motif 껍데기를 주입하지 않고 제거
 2. persist/preview — 제목만 있는 IB 표지를 `h1.display` + ribbon + cover-meta 매거진 커버로 복구
