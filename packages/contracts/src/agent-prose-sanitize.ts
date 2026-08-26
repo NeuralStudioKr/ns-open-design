@@ -2327,7 +2327,7 @@ function stripSlideCountTopUpLeftover(input: string): string {
 /** Drop truncated deck stylesheet/CSS leaked into chat prose (mid-artifact abort). */
 export function stripTrailingDeckFrameworkCssLeak(input: string): string {
   if (!input) return input;
-  const match = /(?:^|\n\n|\n)((?::root\s*\{|@(?:-webkit-)?(?:keyframes\s+[\w-]+|font-face|font-palette-values\b[^{]*|font-feature-values\b[^{]*)\s*\{|@(?:media|page|supports|layer|scope|container|property|counter-style|starting-style|scroll-timeline|view-timeline|position-try|function|namespace|color-profile|document|nest|annotation|custom-media|custom-selector|stylistic|view-transition)\b[^{]*\{|@import\s+(?:url\(|["'])|<style\b[^>]*>|(?:from|to|\d+%)\s*\{|(?:\.slide|(?:(?:\.[A-Za-z_-][\w-]*)+|#[A-Za-z_-][\w-]*|h[1-6]|p|ul|li|body|section(?:\.[\w-]+)?)\s*\{))[\s\S]*)$/i.exec(input);
+  const match = /(?:^|\n\n|\n)((?::root\s*\{|@(?:-webkit-)?(?:keyframes\s+[\w-]+|font-face|font-palette-values\b[^{]*|font-feature-values\b[^{]*)\s*\{|@(?:media|page|supports|layer|scope|container|property|counter-style|starting-style|scroll-timeline|view-timeline|position-try|function|namespace|color-profile|document|nest|annotation|custom-media|custom-selector|stylistic|view-transition|scroll-state)\b[^{]*\{|@import\s+(?:url\(|["'])|<style\b[^>]*>|(?:from|to|\d+%)\s*\{|(?:\.slide|(?:(?:\.[A-Za-z_-][\w-]*)+|#[A-Za-z_-][\w-]*|h[1-6]|p|ul|li|body|section(?:\.[\w-]+)?)\s*\{))[\s\S]*)$/i.exec(input);
   if (!match || match.index === undefined) return input;
   const tail = match[1] ?? "";
   const looksLikeDeckFramework =
@@ -2790,7 +2790,7 @@ export function looksLikeDeckCodeDebrisLine(line: string): boolean {
   }
   if (looksLikeSoftCssDeclarationLine(trimmed)) return true;
   // At-rule dumps MiniMax leaves after Hangul status (`@font-palette-values --p {`).
-  if (/^@(?:font-palette-values|font-feature-values|font-face|property|scope|container|layer|supports|media|page|keyframes|counter-style|starting-style|scroll-timeline|view-timeline|position-try|function|namespace|color-profile|document|nest|annotation|custom-media|custom-selector|stylistic|view-transition)\b/i.test(trimmed)) {
+  if (/^@(?:font-palette-values|font-feature-values|font-face|property|scope|container|layer|supports|media|page|keyframes|counter-style|starting-style|scroll-timeline|view-timeline|position-try|function|namespace|color-profile|document|nest|annotation|custom-media|custom-selector|stylistic|view-transition|scroll-state)\b/i.test(trimmed)) {
     return true;
   }
   // Standalone `color: tomato;` / `margin: 0;` prop dumps (continuation RE

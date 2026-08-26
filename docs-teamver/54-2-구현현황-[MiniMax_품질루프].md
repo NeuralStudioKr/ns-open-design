@@ -126,7 +126,38 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | think 태그 / 내부 마크업 필터 | ☑ 기존 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프58)
+## 이번 루프 (루프63 / round80)
+
+1. persist — padding ≥1ic kit bind
+
+**검증:** chat-leak-probe-round80
+
+## 직전 루프 (루프62 / round79)
+
+1. persist — brown/snow named invent frames
+
+**검증:** chat-leak-probe-round79
+
+## 직전 루프 (루프61 / round78)
+
+1. chat — `@scroll-state` 스크럽
+
+**검증:** chat-leak-probe-round78
+
+## 직전 루프 (루프60 / round77)
+
+1. persist — counter/contain-intrinsic/content/quotes flow
+
+**검증:** chat-leak-probe-round77
+
+## 직전 루프 (루프59 / round76)
+
+1. persist — border-image flow
+
+**검증:** chat-leak-probe-round76
+
+## 직전 루프 (루프58)
+
 
 1. clone — demo-banner/TOC/simple-deck 잔여 삭제. `#total` 동기화. persist heal도 demo chrome 제거
 2. preview — `#slideCounter`/`#counter` 동기화. authored 1920px translate. hoist prune이 chrome 유지

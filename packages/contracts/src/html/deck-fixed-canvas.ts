@@ -369,7 +369,7 @@ const INDEX_BADGE_TEXT_RE =
 const KIT_CARD_TOKEN_RE = /\b(?:info-card|stat-card|card)\b/i;
 const KIT_SAFE_FRAME_COLOR_RE = /\b(?:var\s*\(|currentColor|inherit|transparent)\b/i;
 const EXPLICIT_PAINT_COLOR_RE =
-  /#(?:[0-9a-f]{3,8})\b|\b(?:rgba?|hsla?|hwb|oklch|oklab|lch|lab|color-mix|color|light-dark|device-cmyk)\s*\(|\b(?:navy|royalblue|mediumblue|indigo|skyblue|teal|cyan|blue|darkblue|purple|violet|fuchsia|magenta|crimson|emerald|amber|lime|limegreen|rose|orange|pink|coral|tomato|chocolate|rebeccapurple|deepskyblue|mediumvioletred|slateblue|darkorchid|turquoise|gold|salmon|orchid|hotpink|dodgerblue|steelblue|seagreen|darkcyan|cadetblue|firebrick|indianred|lightcoral|darksalmon|lightsalmon|orangered|darkorange|peachpuff|khaki|moccasin|wheat|burlywood|tan|rosybrown|sienna|saddlebrown|peru|darkgoldenrod|goldenrod|lavender|thistle|plum|mediumorchid|blueviolet|darkviolet|mediumpurple|mediumslateblue|slategray|dimgray|aliceblue|antiquewhite|aquamarine|azure|beige|bisque|blanchedalmond|blueviolet|chartreuse|cornflowerblue|cornsilk|crimson|darkgray|darkgrey|darkgreen|darkkhaki|darkmagenta|darkolivegreen|darkred|darkseagreen|darkslateblue|darkslategray|darkslategrey|darkturquoise|deeppink|floralwhite|forestgreen|gainsboro|ghostwhite|greenyellow|honeydew|ivory|lavenderblush|lawngreen|lemonchiffon|lightblue|lightcyan|lightgoldenrodyellow|lightgray|lightgrey|lightgreen|lightpink|lightseagreen|lightskyblue|lightslategray|lightslategrey|lightsteelblue|lightyellow|linen|maroon|mediumaquamarine|mediumseagreen|mediumspringgreen|mediumturquoise|midnightblue|mintcream|mistyrose|navajowhite|oldlace|olive|olivedrab|palegoldenrod|palegreen|paleturquoise|palevioletred|papayawhip|powderblue|seashell|silver|springgreen|teal|whitesmoke|yellow|yellowgreen|aqua|fuchsia|gray|grey|green|red|white|black)\b/i;
+  /#(?:[0-9a-f]{3,8})\b|\b(?:rgba?|hsla?|hwb|oklch|oklab|lch|lab|color-mix|color|light-dark|device-cmyk)\s*\(|\b(?:navy|royalblue|mediumblue|indigo|skyblue|teal|cyan|blue|darkblue|purple|violet|fuchsia|magenta|crimson|emerald|amber|lime|limegreen|rose|orange|pink|coral|tomato|chocolate|rebeccapurple|deepskyblue|mediumvioletred|slateblue|darkorchid|turquoise|gold|salmon|orchid|hotpink|dodgerblue|steelblue|seagreen|darkcyan|cadetblue|firebrick|indianred|lightcoral|darksalmon|lightsalmon|orangered|darkorange|peachpuff|khaki|moccasin|wheat|burlywood|tan|rosybrown|sienna|saddlebrown|peru|darkgoldenrod|goldenrod|lavender|thistle|plum|mediumorchid|blueviolet|darkviolet|mediumpurple|mediumslateblue|slategray|dimgray|aliceblue|antiquewhite|aquamarine|azure|beige|bisque|blanchedalmond|blueviolet|chartreuse|cornflowerblue|cornsilk|crimson|darkgray|darkgrey|darkgreen|darkkhaki|darkmagenta|darkolivegreen|darkred|darkseagreen|darkslateblue|darkslategray|darkslategrey|darkturquoise|deeppink|floralwhite|forestgreen|gainsboro|ghostwhite|greenyellow|honeydew|ivory|lavenderblush|lawngreen|lemonchiffon|lightblue|lightcyan|lightgoldenrodyellow|lightgray|lightgrey|lightgreen|lightpink|lightseagreen|lightskyblue|lightslategray|lightslategrey|lightsteelblue|lightyellow|linen|maroon|mediumaquamarine|mediumseagreen|mediumspringgreen|mediumturquoise|midnightblue|mintcream|mistyrose|navajowhite|oldlace|olive|olivedrab|palegoldenrod|palegreen|paleturquoise|palevioletred|papayawhip|powderblue|seashell|silver|springgreen|teal|whitesmoke|snow|brown|sandybrown|dimgrey|slategrey|yellow|yellowgreen|aqua|fuchsia|gray|grey|green|red|white|black)\b/i;
 const FAKE_RING_SHADOW_RE = /(?:^|;)\s*box-shadow\s*:[^;]*\b0\s+0\s+0\s+(?:1px|2px)\b[^;]*/i;
 const SPLIT_ROW_LAYOUT_RE = /\bsplit-(?:left|right|pane)\b/i;
 const SPLIT_COL_LAYOUT_RE = /\bsplit-(?:top|bottom)\b/i;
@@ -622,6 +622,61 @@ const FLOW_COPIED_STYLE_PROPS = [  'display',
   'overflow-inline',
   'block-overflow',
   'contain-intrinsic-size',
+  'contain-intrinsic-width',
+  'contain-intrinsic-height',
+  'contain-intrinsic-block-size',
+  'contain-intrinsic-inline-size',
+  'border-image',
+  'border-image-source',
+  'border-image-slice',
+  'border-image-width',
+  'border-image-outset',
+  'border-image-repeat',
+  'border-collapse',
+  'counter-reset',
+  'counter-increment',
+  'counter-set',
+  'mask',
+  'mask-border-source',
+  'mask-border-mode',
+  'mask-border-slice',
+  'mask-border-width',
+  'mask-border-outset',
+  'mask-border-repeat',
+  'stroke-dasharray',
+  'stroke-dashoffset',
+  'stroke-linecap',
+  'stroke-linejoin',
+  'stroke-miterlimit',
+  'fill-rule',
+  'clip-rule',
+  'color-interpolation-filters',
+  'lighting-color',
+  'flood-color',
+  'flood-opacity',
+  'stop-color',
+  'stop-opacity',
+  'marker',
+  'marker-start',
+  'marker-mid',
+  'marker-end',
+  'text-anchor',
+  'kerning',
+  'glyph-orientation-vertical',
+  'nav-up',
+  'nav-down',
+  'nav-left',
+  'nav-right',
+  'spatial-navigation-action',
+  'spatial-navigation-contain',
+  'input-security',
+  'bookmark-level',
+  'bookmark-label',
+  'bookmark-state',
+  'string-set',
+  'running',
+  'footnote-display',
+  'footnote-policy',
   'user-select',
   'touch-action',
   'pointer-events',
@@ -1029,7 +1084,7 @@ function looksLikeFakeOutlineStyle(style: string): boolean {
 /**
  * Body `p`/`span`/`h2–h4` often carry 1–2px accent borders. Only treat them as
  * MiniMax "card" frames when padding looks card-like (≥12px, ≥0.75rem/em,
- * ≥4%, ≥2ch, ≥2vh/vw/vmin/vmax/dvh, ≥2cqw/cqh/cqi/cqb, ≥2lh/cap/ex/ic/vb/vi,
+ * ≥4%, ≥2ch, ≥2vh/vw/vmin/vmax/dvh, ≥2cqw/cqh/cqi/cqb, ≥1ic · ≥2lh/cap/ex/vb/vi,
  * or print-ish ≥8pt / ≥4mm / ≥0.4cm / ≥0.15in / ≥1pc).
  */
 function looksLikeCardLikePadding(style: string): boolean {
@@ -1061,9 +1116,12 @@ function looksLikeCardLikePadding(style: string): boolean {
     if (/(?:^|[\s/])(?:[2-9]|[1-9]\d+)(?:\.\d+)?(?:cqw|cqh|cqi|cqb|cqmin|cqmax)\b/i.test(value)) {
       return true;
     }
-    // Font-relative / logical units — ≥2lh/rlh/cap/ex/ic/vb/vi (루프23).
-    // Thin 1lh / 1.5ex accents stay unbound.
-    if (/(?:^|[\s/])(?:[2-9]|[1-9]\d+)(?:\.\d+)?(?:lh|rlh|cap|rcap|ex|rex|ic|ric|vb|vi|svb|svi|lvb|lvi|dvb|dvi)\b/i.test(value)) {
+    // Font-relative / logical units — ≥2lh/rlh/cap/ex/vb/vi (루프23).
+    // Thin 1lh / 1.5ex accents stay unbound. ≥1ic binds MiniMax ic cards (루프63).
+    if (/(?:^|[\s/])(?:[1-9]\d*(?:\.\d+)?)(?:ic|ric)\b/i.test(value)) {
+      return true;
+    }
+    if (/(?:^|[\s/])(?:[2-9]|[1-9]\d+)(?:\.\d+)?(?:lh|rlh|cap|rcap|ex|rex|vb|vi|svb|svi|lvb|lvi|dvb|dvi)\b/i.test(value)) {
       return true;
     }
     // Absolute print units — ~12px floor (루프24). Thin 2pt / 1mm stay accents.
