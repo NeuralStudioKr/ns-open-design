@@ -111,4 +111,30 @@ JSON에서 `code` 또는 `detail`(string) / `detail.code` 추출. 실패 시 `""
 
 | 일시 (KST) | 내용 |
 |------------|------|
+| 2026-08-26 11:00 | 슬라이스 D/E — ensureDesignAuthLadder · 계측 · FR-7 |
 | 2026-08-26 10:40 | 초안 — FR-1~3 파일·분기·테스트 |
+
+---
+
+## 8. 슬라이스 D — FR-4 (래핑만)
+
+`ensureDesignAuthLadder(reason, { mode, allowSoftForcePost, bypassNegativeCache })`
+
+| reason | 호출부 |
+|--------|--------|
+| `boot` | `teamverEmbedSessionBoot` |
+| `daemon_401` | `teamverDaemonHeaders` |
+| `drive_recover` | `driveApi.recoverDriveAuthSession` |
+| `passive` | `teamverEmbedPassiveAuth` |
+| `project_view` | ProjectView conversation/messages 401 복구 |
+| `workspace` | `setActiveTeamverWorkspace` |
+| `c1_escalate` / `soft_force` | `useTeamverEmbed` |
+
+내부 `refreshDesignAuthCookie` HA ladder는 그대로 — 외부만 단일 진입.
+
+## 9. 슬라이스 E — FR-5·7
+
+- FR-5: `devLog.info('[teamver] auth-ladder', { reason, phase, code, probeCount, stats })` + 탭 통계 `getDesignAuthLadderTabStats`
+- FR-7: [36](./36_BFF_auth_refresh_401_정리.md)에 「확정 dead → HA probe 금지」 절 · vitest FR-4/5
+
+**FR-6 quiet probe:** 이번 루프 제외.

@@ -621,6 +621,33 @@ describe("withDesignBffCookieAuthRecovery", () => {
     expect(isDesignAuthRefreshDeclined()).toBe(true);
     expect(fetchMock).not.toHaveBeenCalled();
   });
+
+  it("FR-4/5: ensureDesignAuthLadder tags reason and counts definitive-dead skip", async () => {
+    vi.useRealTimers();
+    const fetchMock = vi.fn().mockResolvedValueOnce(refresh401SessionMissing());
+    vi.stubGlobal("fetch", fetchMock);
+
+    const {
+      ensureDesignAuthLadder,
+      getDesignAuthLadderTabStats,
+      isDesignAuthRefreshDeclined,
+      resetDesignAuthRefreshDeclinedForTests,
+    } = await import("../src/teamver/designBffClient");
+    resetDesignAuthRefreshDeclinedForTests();
+    vi.mocked(isTeamverEmbedSessionAuthenticated).mockReturnValue(true);
+    vi.mocked(hasProbableTeamverAuthCookie).mockReturnValue(false);
+
+    await expect(ensureDesignAuthLadder("daemon_401")).resolves.toBe(false);
+    expect(isDesignAuthRefreshDeclined()).toBe(true);
+    const stats = getDesignAuthLadderTabStats();
+    expect(stats.refreshAttempts).toBe(1);
+    expect(stats.refresh401).toBe(1);
+    expect(stats.definitiveDeadSkips).toBe(1);
+    expect(stats.haRecoveries).toBe(0);
+    expect(
+      fetchMock.mock.calls.filter((c) => String(c[0]).includes("/auth/session-probe")),
+    ).toHaveLength(0);
+  });
 });
 
 describe("shouldSkipTeamverBffAuthCalls", () => {

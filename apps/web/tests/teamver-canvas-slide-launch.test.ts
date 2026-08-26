@@ -874,7 +874,8 @@ describe("canvasSlideLaunch", () => {
     );
     expect(projectView).toContain("title: coverTitle || '슬라이드'");
     expect(projectView).not.toContain("title: 'Response'");
-    expect(projectView).toContain("isGenericDeckArtifactTitle(rawTitle)");
+    expect(projectView).toContain("resolvePersistDeckDisplayTitle(");
+    expect(projectView).toContain("formatProjectArtifactRejectedError(\n              persistDisplayTitle,");
     expect(projectView).toContain("title: project.name || '슬라이드'");
     expect(projectView).not.toContain("title: project.name || 'deck'");
   });

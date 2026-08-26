@@ -73,6 +73,9 @@ describe("project conversation error messages", () => {
     expect(formatProjectArtifactRejectedError("deck.html", "missing doctype")).toContain(
       "저장을 거부",
     );
+    expect(formatProjectArtifactRejectedError("   ", "missing doctype")).toContain(
+      '슬라이드 파일 "슬라이드"',
+    );
     expect(formatProjectArtifactCommentScopeRejectedError()).toContain("댓글 대상 밖");
     // With a detail arg the message must append the concrete
     // pipeline reason so bug reports include the failure code + reason

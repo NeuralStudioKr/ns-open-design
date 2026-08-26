@@ -99,8 +99,13 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | persist: caret-animation/text-spacing flow 복사 | ☑ round68 |
 | persist: math kit · scroll-padding/margin longhand flow | ☑ round69 |
 | persist: scroll-padding-top · overflow-block flow 복사 | ☑ round70 |
-| clone: IB pitch-book 데모 카피가 한국어 brief에 남음 | ☑ 루프52 |
-| preview: #stage 1920px 스트립이 100vw로만 살짝 이동 | ☑ 루프52 |
+| persist: margin/inset longhand · outline/border-block flow | ☑ round71 |
+| persist: background/transform/transition/animation flow | ☑ round72 |
+| persist: border-radius · grid-column/row flow | ☑ round73 |
+| persist: cursor/scrollbar/text-edge flow | ☑ round74 |
+| persist: font-variant/text-orientation flow | ☑ round75 |
+| clone: IB pitch-book 데모 카피가 한국어 brief에 남음 | ☑ 루프57 |
+| preview: #stage 1920px 스트립이 100vw로만 살짝 이동 | ☑ 루프57 |
 | 16:9 inner clip · kit card bind | ☑ |
 | top-up 재진입 재호출 + 내부 프롬프트 노출 | ☑ 센티널+autoOpen; 루프9 reattach 차단 · leftover 숨김 |
 | first-fill 3장 강제 → 요청 1–6장 한 턴 | ☑ 루프9 |
@@ -117,12 +122,42 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | think 태그 / 내부 마크업 필터 | ☑ 기존 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프52)
+## 이번 루프 (루프57)
 
 1. clone — placeholder brief가 IB pitch-book DCF/Hartfield/WACC 데모 카피를 남기지 않음. `maxSlides` 패딩도 placeholder 본문에서는 끔
 2. preview — `#stage` 1920px 스트립은 sibling hide를 건너뛰고 slide width(px)로 이동. `#now`/`#total` 동기화
 
 **검증:** template-clone-fill · srcdoc-deck-bridge-transform-driven · compact-api-stacked-deck
+
+## 직전 루프 (루프56 / round75)
+
+1. persist — font-variant · text-orientation flow 복사
+
+**검증:** chat-leak-probe-round75 · round74 · deck-fixed-canvas
+
+## 직전 루프 (루프55 / round74)
+
+1. persist — cursor · scrollbar · text-edge/margin-trim flow 복사
+
+**검증:** chat-leak-probe-round74 · round73 · deck-fixed-canvas
+
+## 직전 루프 (루프54 / round73)
+
+1. persist — border-radius · grid-column/row flow 복사
+
+**검증:** chat-leak-probe-round73 · round72 · deck-fixed-canvas
+
+## 직전 루프 (루프53 / round72)
+
+1. persist — background/transform/transition/animation/offset flow 복사
+
+**검증:** chat-leak-probe-round72 · round71 · deck-fixed-canvas
+
+## 직전 루프 (루프52 / round71)
+
+1. persist — margin/inset longhand · outline/border-block · scroll-*-start flow
+
+**검증:** chat-leak-probe-round71 · round70 · deck-fixed-canvas
 
 ## 직전 루프 (루프51 / round70)
 

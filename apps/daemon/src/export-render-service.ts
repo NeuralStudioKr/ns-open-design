@@ -24,6 +24,11 @@ import {
   type ExportCacheOutcome,
 } from './export-cache-runtime.js';
 
+const DECK_LAYOUT_RENDER_CACHE_VERSION = 'deck-layout-preview-parity-v1';
+const DECK_IMAGE_RENDER_CACHE_VERSION = `${DECK_LAYOUT_RENDER_CACHE_VERSION}:image-v3`;
+const DECK_PPTX_EDITABLE_RENDER_CACHE_VERSION = `${DECK_LAYOUT_RENDER_CACHE_VERSION}:pptx-editable-dom-v4`;
+const DECK_PPTX_SCREEN_RENDER_CACHE_VERSION = `${DECK_LAYOUT_RENDER_CACHE_VERSION}:pptx-screen-ooxml-v5`;
+
 export type ExportRenderServiceContext = {
   daemonUrl: string;
   projectId: string;
@@ -90,6 +95,7 @@ export async function renderPdfExportOutcome(
       sourceMtimeMs: built.source.mtimeMs,
       format: 'pdf',
       deck: req.deck === true,
+      ...(req.deck === true ? { codeVersion: `${DECK_LAYOUT_RENDER_CACHE_VERSION}:pdf-v1` } : {}),
       filename: built.input.defaultFilename,
       mime: 'application/pdf',
     }),
@@ -139,7 +145,7 @@ export async function renderImageExportOutcome(
       format: cacheFormat,
       deck: req.deck === true,
       ...(typeof req.slideIndex === 'number' ? { slideIndex: req.slideIndex } : {}),
-      ...(req.deck === true ? { codeVersion: 'deck-screenshot-screen-v2' } : {}),
+      ...(req.deck === true ? { codeVersion: DECK_IMAGE_RENDER_CACHE_VERSION } : {}),
       filename: `${base}.${extension}`,
       mime,
     }),
@@ -177,7 +183,9 @@ export async function renderPptxExportOutcome(
       sourceMtimeMs: built.source.mtimeMs,
       format: 'pptx',
       deck: true,
-      codeVersion: editable ? 'pptx-editable-dom-v3' : 'pptx-screen-ooxml-v4',
+      codeVersion: editable
+        ? DECK_PPTX_EDITABLE_RENDER_CACHE_VERSION
+        : DECK_PPTX_SCREEN_RENDER_CACHE_VERSION,
       filename,
       mime,
     }),
@@ -217,6 +225,7 @@ export async function renderHtmlExportOutcome(
       sourceMtimeMs: built.source.mtimeMs,
       format: 'html',
       deck: req.deck === true,
+      ...(req.deck === true ? { codeVersion: `${DECK_LAYOUT_RENDER_CACHE_VERSION}:html-v1` } : {}),
       filename: `${base}.html`,
       mime: 'text/html; charset=utf-8',
     }),
@@ -259,6 +268,7 @@ export async function renderZipExportOutcome(
       sourceMtimeMs: built.source.mtimeMs,
       format: 'zip',
       deck: req.deck === true,
+      ...(req.deck === true ? { codeVersion: `${DECK_LAYOUT_RENDER_CACHE_VERSION}:zip-v1` } : {}),
       filename: `${base}.zip`,
       mime: 'application/zip',
     }),

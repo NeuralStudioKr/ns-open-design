@@ -158,7 +158,6 @@ import { useCoalescedCallback } from '../hooks/useCoalescedCallback';
 import {
   composeSystemPrompt,
   deriveDeckCoverTitleFromBrief,
-  isGenericDeckArtifactTitle,
   healInstructionCopyCoverHeading,
   htmlHasDeckSlideHost,
   htmlLooksLikeSlideDeliverableStream,
@@ -432,7 +431,7 @@ import {
 } from '../teamver/createProjectStreamHandoff';
 import { registerTeamverProjectIfNeeded } from '../teamver/projectRegistry';
 import {
-  refreshDesignAuthCookie,
+  ensureDesignAuthLadder,
   refreshTeamverEmbedAuthBeforeMutating,
   isDesignAuthRefreshDeclined,
 } from '../teamver/designBffClient';
@@ -465,6 +464,7 @@ import {
   formatProjectRunStalledErrorForUser,
   formatProjectForkConversationError,
 } from '../teamver/projectErrorMessages';
+import { resolvePersistDeckDisplayTitle } from '../teamver/persistDeckDisplayTitle';
 import { subscribeTeamverWorkspaceChanged } from '../teamver/teamverWorkspaceEvents';
 import { shouldSkipWorkspaceSwitchSideEffects } from '../teamver/workspaceSwitchGuards';
 import { readActiveTeamverWorkspaceId } from '../teamver/activeTeamverWorkspace';
@@ -3907,7 +3907,7 @@ export function ProjectView({
           ) {
             // Before sticky: one soft revive. Once soft/hard sticky owns the
             // tab, C1 / 「다시 시도」 own recovery — do not POST refresh here.
-            await refreshDesignAuthCookie();
+            await ensureDesignAuthLadder("project_view");
           }
           if (attempt < 2) {
             await new Promise((resolve) => window.setTimeout(resolve, 400 * (attempt + 1)));
@@ -4126,7 +4126,7 @@ export function ProjectView({
             ) {
               // Before sticky: one soft revive. Once soft/hard sticky owns the
               // tab, C1 / 「다시 시도」 own recovery — do not POST refresh here.
-              await refreshDesignAuthCookie();
+              await ensureDesignAuthLadder("project_view");
             }
             if (attempt < 2) {
               await new Promise((resolve) => window.setTimeout(resolve, 400 * (attempt + 1)));
@@ -5541,6 +5541,11 @@ export function ProjectView({
             reason: 'incomplete-html-document-shell',
           };
         }
+        const persistDisplayTitle = resolvePersistDeckDisplayTitle(
+          art,
+          persistHealBrief,
+          persistHealTitle,
+        );
         const motifSvgDump =
           normalizedArtifactType === 'deck'
           && deckArtifactStartsWithMotifSvgDump(artifactToPersist.html);
@@ -5575,7 +5580,7 @@ export function ProjectView({
         if (!validation.ok) {
           surfaceChatVisibleError(
             formatProjectArtifactRejectedError(
-              art.identifier || art.title || 'untitled',
+              persistDisplayTitle,
               validation.reason,
             ),
             'artifact_rejected',
@@ -5583,14 +5588,11 @@ export function ProjectView({
           return { kind: 'rejected', fileName, reason: validation.reason };
         }
       }
-      const rawTitle = art.title || art.identifier || fileName;
-      const derivedPersistTitle = deriveDeckCoverTitleFromBrief(
+      const title = resolvePersistDeckDisplayTitle(
+        art,
         runVisiblePromptRef.current || '',
         project.name || '슬라이드',
       );
-      const title = isGenericDeckArtifactTitle(rawTitle)
-        ? (derivedPersistTitle || '슬라이드')
-        : rawTitle;
       let htmlBody =
         ext === '.html'
           ? repairArtifactStyleSheets(
@@ -10308,7 +10310,7 @@ export function ProjectView({
                       )
                   : terminalPersistResult?.kind === 'rejected' && terminalPersistResult.reason
                     ? formatProjectArtifactRejectedError(
-                        terminalPersistResult.fileName || 'untitled',
+                        terminalPersistResult.fileName || '슬라이드',
                         terminalPersistResult.reason,
                       )
                   : encodePersistedRunErrorDetail(

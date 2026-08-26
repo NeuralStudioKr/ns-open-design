@@ -504,6 +504,54 @@ let authRefreshStickySurvivalProbeAt = 0;
 let authRefreshStickySurvivalLastOk = false;
 let authRefreshStickySurvivalAttempts = 0;
 
+type DesignAuthLadderTabStats = {
+  refreshAttempts: number;
+  refresh401: number;
+  probeAttempts: number;
+  definitiveDeadSkips: number;
+  haRecoveries: number;
+};
+
+const designAuthLadderTabStats: DesignAuthLadderTabStats = {
+  refreshAttempts: 0,
+  refresh401: 0,
+  probeAttempts: 0,
+  definitiveDeadSkips: 0,
+  haRecoveries: 0,
+};
+
+let activeDesignAuthLadderReason: DesignAuthLadderReason | null = null;
+
+/** FR-4 — who owns this auth ladder attempt (DevTools / stats). */
+export type DesignAuthLadderReason =
+  | "boot"
+  | "runtime_config"
+  | "daemon_401"
+  | "drive_recover"
+  | "c1_escalate"
+  | "passive"
+  | "project_view"
+  | "workspace"
+  | "soft_force"
+  | "other";
+
+export type DesignAuthLadderMode = "refresh" | "probe" | "ensure";
+
+/** @internal vitest / FR-5 */
+export function getDesignAuthLadderTabStats(): DesignAuthLadderTabStats {
+  return { ...designAuthLadderTabStats };
+}
+
+/** @internal vitest */
+export function resetDesignAuthLadderTabStatsForTests(): void {
+  designAuthLadderTabStats.refreshAttempts = 0;
+  designAuthLadderTabStats.refresh401 = 0;
+  designAuthLadderTabStats.probeAttempts = 0;
+  designAuthLadderTabStats.definitiveDeadSkips = 0;
+  designAuthLadderTabStats.haRecoveries = 0;
+  activeDesignAuthLadderReason = null;
+}
+
 /** @internal vitest */
 export function resetDesignAuthRefreshDeclinedForTests(): void {
   authRefreshDeclinedForSession = false;
@@ -521,6 +569,7 @@ export function resetDesignAuthRefreshDeclinedForTests(): void {
   sessionProbeKnownAliveUntil = 0;
   sessionProbeInflight = null;
   runtimeConfigAuthBlocked = false;
+  resetDesignAuthLadderTabStatsForTests();
 }
 
 function resolveAuthRecoveryLoad(options?: FetchDesignAuthSessionOptions): boolean {
@@ -880,6 +929,52 @@ export type RefreshDesignAuthCookieOptions = {
   allowSoftForcePost?: boolean;
 };
 
+/**
+ * FR-4/5 — single entry for external refresh/probe/ensure with reason logging.
+ * Does not replace internal ladders inside refreshDesignAuthCookie itself.
+ */
+export async function ensureDesignAuthLadder(
+  reason: DesignAuthLadderReason,
+  options?: {
+    mode?: DesignAuthLadderMode;
+    allowSoftForcePost?: boolean;
+    bypassNegativeCache?: boolean;
+    bypassDeclineGate?: boolean;
+  },
+): Promise<boolean> {
+  const mode: DesignAuthLadderMode = options?.mode ?? "refresh";
+  const prevReason = activeDesignAuthLadderReason;
+  activeDesignAuthLadderReason = reason;
+  devLog.info("[teamver] auth-ladder", { reason, mode, phase: "start" });
+  let ok = false;
+  try {
+    if (mode === "probe") {
+      designAuthLadderTabStats.probeAttempts += 1;
+      ok = await probeDesignBffSessionAuthenticated({
+        bypassNegativeCache: options?.bypassNegativeCache,
+        bypassDeclineGate: options?.bypassDeclineGate,
+      });
+    } else if (mode === "ensure") {
+      ok = await ensureDesignBffSessionAuthenticated();
+    } else {
+      designAuthLadderTabStats.refreshAttempts += 1;
+      ok = await refreshDesignAuthCookie({
+        allowSoftForcePost: options?.allowSoftForcePost,
+      });
+    }
+    return ok;
+  } finally {
+    devLog.info("[teamver] auth-ladder", {
+      reason,
+      mode,
+      phase: "done",
+      ok,
+      stats: getDesignAuthLadderTabStats(),
+    });
+    activeDesignAuthLadderReason = prevReason;
+  }
+}
+
 /** BFF silent refresh via design-api (Apps JWT stored server-side). */
 export async function refreshDesignAuthCookie(
   options?: RefreshDesignAuthCookieOptions,
@@ -946,9 +1041,18 @@ export async function refreshDesignAuthCookie(
       return true;
     }
     if (bffResult.status === 401) {
+      designAuthLadderTabStats.refresh401 += 1;
+      const errorCode = extractDesignAuthErrorCode(bffResult.bodyText);
       // HA sibling recovery only when nginx is not already known dead in this tab.
       if (sessionProbeKnownDeadUntil > Date.now()) {
+        designAuthLadderTabStats.definitiveDeadSkips += 1;
         markAuthRefreshDeclined("soft");
+        devLog.info("[teamver] auth-ladder", {
+          reason: activeDesignAuthLadderReason ?? "other",
+          phase: "refresh_401",
+          code: errorCode || "known_dead",
+          probeCount: 0,
+        });
         if (isOrphanTeamverJwtAuthFailure(bffResult.status, bffResult.bodyText)) {
           devLog.info(
             '[teamver] auth: orphan JWT detected on BFF refresh; clearing Main BE cookie',
@@ -960,7 +1064,14 @@ export async function refreshDesignAuthCookie(
       }
       // FR-1: definitive dead body → soft sticky without HA probe×2 / ensure.
       if (isDefinitiveAuthRefreshDead(bffResult.status, bffResult.bodyText)) {
+        designAuthLadderTabStats.definitiveDeadSkips += 1;
         markAuthRefreshDeclined("soft");
+        devLog.info("[teamver] auth-ladder", {
+          reason: activeDesignAuthLadderReason ?? "other",
+          phase: "refresh_401",
+          code: errorCode || "definitive_dead",
+          probeCount: 0,
+        });
         if (isOrphanTeamverJwtAuthFailure(bffResult.status, bffResult.bodyText)) {
           devLog.info(
             '[teamver] auth: orphan JWT detected on BFF refresh; clearing Main BE cookie',
@@ -974,20 +1085,52 @@ export async function refreshDesignAuthCookie(
       // HA rotation race: losing node returns 401 while access is still usable
       // and a sibling may already have Set-Cookie'd a fresh session. Probe /
       // ensure before sticky-declining.
+      let probeCount = 0;
       if (await probeDesignBffSessionAlive(haProbe)) {
+        probeCount = 1;
+        designAuthLadderTabStats.haRecoveries += 1;
         noteAuthRefreshPostSuppressed();
+        devLog.info("[teamver] auth-ladder", {
+          reason: activeDesignAuthLadderReason ?? "other",
+          phase: "ha_recover",
+          code: errorCode || "refresh_failed",
+          probeCount,
+        });
         return true;
       }
+      probeCount = 1;
       await new Promise((resolve) => setTimeout(resolve, DESIGN_BFF_COOKIE_RECOVERY_RETRY_DELAY_MS));
       if (await probeDesignBffSessionAlive(haProbe)) {
+        probeCount = 2;
+        designAuthLadderTabStats.haRecoveries += 1;
         noteAuthRefreshPostSuppressed();
+        devLog.info("[teamver] auth-ladder", {
+          reason: activeDesignAuthLadderReason ?? "other",
+          phase: "ha_recover",
+          code: errorCode || "refresh_failed",
+          probeCount,
+        });
         return true;
       }
+      probeCount = 2;
       if (await ensureDesignBffSessionAuthenticated()) {
+        designAuthLadderTabStats.haRecoveries += 1;
         noteAuthRefreshPostSuppressed();
+        devLog.info("[teamver] auth-ladder", {
+          reason: activeDesignAuthLadderReason ?? "other",
+          phase: "ha_recover_ensure",
+          code: errorCode || "refresh_failed",
+          probeCount,
+        });
         return true;
       }
       markAuthRefreshDeclined("soft");
+      devLog.info("[teamver] auth-ladder", {
+        reason: activeDesignAuthLadderReason ?? "other",
+        phase: "refresh_401_decline",
+        code: errorCode || "refresh_failed",
+        probeCount,
+      });
       if (isOrphanTeamverJwtAuthFailure(bffResult.status, bffResult.bodyText)) {
         devLog.info(
           '[teamver] auth: orphan JWT detected on BFF refresh; clearing Main BE cookie',

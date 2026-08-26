@@ -27,7 +27,7 @@ export function formatProjectMessagesLoadError(): string {
 }
 
 export function formatProjectArtifactRejectedError(name: string, reason: string): string {
-  const label = name.trim() || "untitled";
+  const label = name.trim() || (isTeamverEmbedMode() ? "슬라이드" : "untitled");
   return isTeamverEmbedMode()
     ? `슬라이드 파일 "${label}" 저장을 거부했습니다: ${reason}`
     : `Refused to save artifact "${label}": ${reason}`;

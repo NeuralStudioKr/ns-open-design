@@ -20,6 +20,13 @@
 - ✅ daemon headless deck export base는 contracts `healDeckHtmlForStandaloneExport`를 사용해 PDF/HTML/PPTX snapshot 준비 기준을 통일한다.
 - 배포 후 확인: 같은 deck 프로젝트에서 preview panel, 프로젝트 목록 썸네일, PDF, HTML/ZIP의 `index.html`, editable PPTX 첫 장 위치·비율을 비교한다.
 
+### 0.2 2026-08-26 다운로드 cache bust 보강
+
+- ✅ 전역 export cache 기본값을 `v50`으로 올리고, staging/production env pin도 `v50`으로 갱신했다.
+- ✅ deck PDF/HTML/ZIP/image/PPTX는 `deck-layout-preview-parity-v1:*` 포맷별 namespace를 명시해 renderer 수정 후 기존 broken cache가 hit되지 않게 했다.
+- 원인 후보: 2026-08-25 layout fix 후에도 운영 env가 `OD_EXPORT_CACHE_VERSION=v3`으로 고정되어 있으면 같은 source/mtime의 예전 PDF/HTML/PPTX cache가 계속 재사용될 수 있다.
+- 배포 직후 첫 다운로드 응답은 `cache=miss`가 정상이다. 이후 같은 파일 반복 다운로드는 새 namespace 기준 `hit-memo|hit-local`이면 정상이다.
+
 ---
 
 ## 1. 왜 Export만 문제인가

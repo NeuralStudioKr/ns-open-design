@@ -2,11 +2,9 @@ import { isBootstrapAuthMode, isTeamverEmbedMode } from "./designApiBase";
 import { hasTeamverEmbedActiveWork } from "./teamverEmbedActiveWork";
 import { hasTeamverEmbedBackgroundRuns } from "./teamverEmbedSessionRuns";
 import {
-  ensureDesignBffSessionAuthenticated,
+  ensureDesignAuthLadder,
   isDesignAuthRefreshDeclined,
   isTeamverRuntimeConfigAuthBlocked,
-  probeDesignBffSessionAuthenticated,
-  refreshDesignAuthCookie,
 } from "./designBffClient";
 import {
   isTeamverEmbedSessionAuthenticated,
@@ -108,22 +106,22 @@ function schedulePassiveAuthRequired(reason: "daemon" | "bff"): void {
         notePassiveRecoverySuccess();
         return;
       }
-      if (await probeDesignBffSessionAuthenticated()) {
+      if (await ensureDesignAuthLadder("passive", { mode: "probe" })) {
         notePassiveRecoverySuccess();
         return;
       }
       // ensure can revive expired access that session-probe rejects.
-      if (await ensureDesignBffSessionAuthenticated()) {
+      if (await ensureDesignAuthLadder("passive", { mode: "ensure" })) {
         notePassiveRecoverySuccess();
         return;
       }
       // One more delayed probe — cookie from a sibling tab/node may land late.
       await new Promise((resolve) => setTimeout(resolve, 500));
-      if (await probeDesignBffSessionAuthenticated()) {
+      if (await ensureDesignAuthLadder("passive", { mode: "probe" })) {
         notePassiveRecoverySuccess();
         return;
       }
-      if (await ensureDesignBffSessionAuthenticated()) {
+      if (await ensureDesignAuthLadder("passive", { mode: "ensure" })) {
         notePassiveRecoverySuccess();
         return;
       }
@@ -150,14 +148,14 @@ async function tryPassiveAuthRecovery(): Promise<boolean> {
     lastRecoveryFailureClaimed = false;
     passiveAuthRecoveryInflight = (async () => {
       try {
-        const refreshed = await refreshDesignAuthCookie();
+        const refreshed = await ensureDesignAuthLadder("passive");
         if (refreshed) return true;
         // Refresh just soft/hard-sticky declined — do not stack ensure/probe
         // (C1 owns backoff; banner already surfaces via required event).
         if (isDesignAuthRefreshDeclined()) return false;
         // POST /auth/refresh can 401 while ensure can still revive access.
-        if (await ensureDesignBffSessionAuthenticated()) return true;
-        return await probeDesignBffSessionAuthenticated();
+        if (await ensureDesignAuthLadder("passive", { mode: "ensure" })) return true;
+        return await ensureDesignAuthLadder("passive", { mode: "probe" });
       } finally {
         passiveAuthRecoveryInflight = null;
       }
