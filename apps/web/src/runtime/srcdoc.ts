@@ -44,6 +44,10 @@ import {
   scrubLeftoverCatalogExampleHtml,
   stripHostProtocolLeakFromDeckHtml,
   stripLeftoverMotifDemoCopy,
+  hoistCloneSlidesOutOfFlexTrack,
+  salvageMalformedMiniMaxSlideMarkup,
+  stripEmptyOfficialMotifInstances,
+  hoistDeckHostStylesToHead,
 } from '@open-design/contracts';
 import { stripConflictingSrcDocCspBaseUri } from './authenticatedHtmlSrcDoc';
 import {
@@ -193,9 +197,36 @@ function buildSrcdocUnsafe(
       } catch (_) {
         /* keep authored HTML */
       }
+      try {
+        html = salvageMalformedMiniMaxSlideMarkup(html);
+      } catch (_) {
+        /* keep authored HTML */
+      }
+      try {
+        html = stripEmptyOfficialMotifInstances(html);
+      } catch (_) {
+        /* keep authored HTML */
+      }
+    }
+    try {
+      html = hoistDeckHostStylesToHead(html);
+    } catch (_) {
+      /* keep authored HTML */
     }
     try {
       html = healOfficialMagazineLayoutDensity(html, options.userBrief);
+    } catch (_) {
+      /* keep authored HTML */
+    }
+    // Persisted Clone leftovers keep `<div class="stage">` after native
+    // scripts were stripped. Hoist those slides to `<body>` so preview
+    // classifies as compact-stacked and host next uses display toggle
+    // instead of translateX(-1920px) inside an ~800px iframe (0826-N01 F3).
+    // Author catalogs that still ship a swipe `<script>` are left intact.
+    try {
+      if (!/<script\b/i.test(html)) {
+        html = hoistCloneSlidesOutOfFlexTrack(html);
+      }
     } catch (_) {
       /* keep authored HTML */
     }
@@ -3744,6 +3775,32 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .stage > .slide {
     if (!track) return false;
     return track.id === 'stage' || !!(track.classList && track.classList.contains('stage'));
   }
+  function hasAuthorSwipeScript(){
+    try {
+      var scripts = document.getElementsByTagName('script');
+      for (var s = 0; s < scripts.length; s++) {
+        var el = scripts[s];
+        if (el.getAttribute('data-od-deck-bridge') != null) continue;
+        if (el.getAttribute('data-od-preview-escape') != null) continue;
+        if (el.getAttribute('data-od-sandbox-shim') != null) continue;
+        if (el.getAttribute('data-od-manual-edit-bridge') != null) continue;
+        if (String(el.getAttribute('src') || '').trim()) return true;
+        if (String(el.textContent || '').trim()) return true;
+      }
+    } catch (_) {}
+    return false;
+  }
+  function stageTranslateWouldNudge(track, list){
+    if (!isHorizontalStageTrack(track)) return false;
+    var vw = window.innerWidth || 0;
+    var step = transformSlideStepPx(list, track, 'x');
+    return step >= 1600 && vw > 0 && vw + 48 < step;
+  }
+  function preferStackedOverStageTranslate(track, list){
+    if (!stageTranslateWouldNudge(track, list)) return false;
+    if (hasAuthorSwipeScript()) return false;
+    return true;
+  }
   function authoredFixedCanvasPx(){
     try {
       var pins = document.querySelectorAll('style[data-od-deck-fixed-canvas-pin]');
@@ -4081,7 +4138,10 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .stage > .slide {
     // Horizontal translate strips keep every slide in document flow.
     // Collapsing siblings with display:none shortens the track so
     // translateX(-N00vw) paints empty canvas (community Grove templates).
-    if (!stacked && transformTrack(slides())) {
+    // Exception: dead #stage leftover (no author swipe script) in a
+    // narrower iframe — translateX(-1920px) only nudges page 1 (0826-N01 F3).
+    var liveTrack = !stacked ? transformTrack(slides()) : null;
+    if (liveTrack && !preferStackedOverStageTranslate(liveTrack, slides())) {
       clearInlineSlideHide(el);
       return;
     }
@@ -4236,6 +4296,7 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .stage > .slide {
     // #stage strips first — compact forceReveal + native 100vw only nudge page 1
     // when the canvas is pinned to 1920 and the iframe is ~800 wide.
     var pxTrack = transformTrack(list);
+    if (preferStackedOverStageTranslate(pxTrack, list) && forceRevealSlide(target)) return;
     if (isHorizontalStageTrack(pxTrack) && transformGo(target)) return;
     if (!isHorizontalStageTrack(pxTrack) && compactStackedDeckNavigationReady()) {
       if (forceRevealSlide(target)) return;
@@ -4265,6 +4326,7 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .stage > .slide {
     if (target !== prev) resetDeckPan();
     if (webComponentDeckGo(target)) return;
     var pxTrackGo = transformTrack(list);
+    if (preferStackedOverStageTranslate(pxTrackGo, list) && forceRevealSlide(target)) return;
     if (isHorizontalStageTrack(pxTrackGo) && transformGo(target)) return;
     if (!isHorizontalStageTrack(pxTrackGo) && compactStackedDeckNavigationReady()) {
       if (forceRevealSlide(target)) return;

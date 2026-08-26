@@ -59,6 +59,23 @@ describe('heal official magazine layout density', () => {
     expect(motif).not.toMatch(/class="[^"]*\bstamp\b[^"]*"[^>]*>\s*<div class="lab">/i);
   });
 
+  it('heals a stub cover when official look CSS is only a fragment sheet', () => {
+    const fragment = [
+      '<!doctype html><html><head></head><body>',
+      '<section class="slide slide-title" style="display:flex;justify-content:center">',
+      '<h1>영어 회화 표현 공부 팁, 예시에</h1>',
+      '</section>',
+      '<style data-od-official-look-css>.cover h1.display{font-size:96px}</style>',
+      '<section class="slide"><h2>문법으로 외운 회화는 왜 입에서 안 나올까</h2></section>',
+      '</body></html>',
+    ].join('');
+    const healed = healOfficialMagazineLayoutDensity(fragment, BRIEF);
+    expect(healed).toMatch(/<h1 class="display">/);
+    expect(healed).toMatch(/cover-meta/);
+    expect(healed).toMatch(/문법으로 외운 회화/);
+    expect(healed).not.toMatch(/English Speaking Tips|쉐도잉|In context/i);
+  });
+
   it('merge + heal turns the truncated cover into a magazine title', () => {
     const official = readFileSync(IB_EXAMPLE, 'utf8');
     const assets = extractOfficialDeckLookAssets(official);

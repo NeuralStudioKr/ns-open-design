@@ -40,9 +40,13 @@ function looksLikeOfficialMagazineLook(html: string): boolean {
   const dest = String(html ?? '');
   if (!/\bdata-od-official-look-css\b/i.test(dest)) return false;
   const css = officialLookCssText(dest) || dest;
+  // IB is the only official kit that authors `h1.display`. Streaming look-heal
+  // can park a fragment sheet with just that rule before `--accent` lands.
+  if (/h1\.display/i.test(css)) return true;
+  // Full magazine chrome without the display rule yet — still IB-only.
+  // Do not treat Daisy/Studio/weekly `.slide-inner` as magazine proof.
   return (
-    /h1\.display/i.test(css)
-    && /\.cover\s+\.ribbon/i.test(css)
+    /\.cover\s+\.ribbon/i.test(css)
     && /\.cover-meta/i.test(css)
     && /\.mast\s*\{/i.test(css)
   );

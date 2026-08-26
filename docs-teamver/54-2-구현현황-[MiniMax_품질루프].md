@@ -154,6 +154,9 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | heal: Daisy/weekly/Studio를 IB 매거진으로 오탐 | ☑ 루프137 |
 | heal: 커버에 회화/쉐도잉 토픽 카피를 발명 | ☑ 루프137 |
 | export: standalone가 성긴 IB 표지를 그대로 내보냄 | ☑ 루프137 |
+| persist/preview: look CSS가 1–2장 사이에 끼어 표지 밀집도가 깨짐 | ☑ follow-up |
+| persist/preview: MiniMax `<p="">` · 유출 `· Label` | ☑ follow-up |
+| preview: Motif `span.ribbon`이 relative stretch로 빨간 줄 | ☑ follow-up |
 | API-mode "save this as deck.html" 유출로 덱이 안 생김 | ☑ |
 | clone: demo-banner/TOC/stat-quote 잔여 · #total 불일치 | ☑ 루프58 |
 | preview: #slideCounter 고정 · hoist가 chrome 삭제 | ☑ 루프58 |
@@ -176,12 +179,21 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 이번 루프 (루프137)
 
-1. heal — IB 매거진은 `h1.display`+`.cover .ribbon`+`.cover-meta`+`.mast` 네 토큰이 있을 때만
+1. heal — IB 매거진은 official `h1.display`(조각 시트 포함) 또는 `.cover .ribbon`+`.cover-meta`+`.mast`. Daisy `.slide-inner`는 오탐 아님
 2. heal — 커버 카피는 brief/후속 장 제목. 회화·쉐도잉·In context 발명 금지
 3. export/preview — standalone heal과 preview look merge 뒤에도 동일 복구
 4. first-fill — 중복 bilingual `·` · 빈 demo-banner/pill · 커버 인라인 flex 제거
 
-**검증:** heal-official-magazine-layout Daisy/Studio/expo · srcdoc sparse cover · standalone export
+**검증:** heal-official-magazine-layout Daisy/Studio/expo/fragment · srcdoc sparse cover · standalone export
+
+## 직전 루프 (표지 밀도 follow-up: look CSS hoist · MiniMax 태그)
+
+1. persist/preview — 슬라이드 사이 official look CSS를 문서 끝으로 이동
+2. persist/preview — `<p="">` · 유출 `· Label` 복구 (카탈로그 목록은 유지)
+3. neutralize — Motif `span.ribbon`은 relative stretch 제외
+4. preview — srcdoc에서 heading-heal을 돌리지 않아 leftover IB 카탈로그 `#now`를 유지
+
+**검증:** template-clone-fill stub cover/salvage · look-css hoist · srcdoc stub cover
 
 ## 직전 루프 (루프136)
 

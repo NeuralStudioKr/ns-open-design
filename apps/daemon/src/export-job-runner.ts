@@ -28,6 +28,7 @@ export type ExportJobRunnerRequest = {
   deck: boolean;
   title?: string;
   inlineHtml?: string;
+  inlineHtmlPrepareMode?: 'standalone' | 'preview';
   fresh?: boolean;
   templateId?: string | null;
   image?: {
@@ -111,6 +112,7 @@ export async function runExportJobInBackground(input: {
       deck: request.deck,
       ...(request.title ? { title: request.title } : {}),
       ...(request.inlineHtml ? { inlineHtml: request.inlineHtml } : {}),
+      ...(request.inlineHtmlPrepareMode ? { inlineHtmlPrepareMode: request.inlineHtmlPrepareMode } : {}),
       ...(request.fresh ? { fresh: true } : {}),
       ...(request.templateId ? { templateId: request.templateId } : {}),
     };

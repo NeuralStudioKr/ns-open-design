@@ -24,7 +24,7 @@ import {
   type ExportCacheOutcome,
 } from './export-cache-runtime.js';
 
-const DECK_LAYOUT_RENDER_CACHE_VERSION = 'deck-layout-preview-parity-v4';
+const DECK_LAYOUT_RENDER_CACHE_VERSION = 'deck-layout-preview-parity-v5';
 const DECK_IMAGE_RENDER_CACHE_VERSION = `${DECK_LAYOUT_RENDER_CACHE_VERSION}:image-v3`;
 const DECK_PPTX_EDITABLE_RENDER_CACHE_VERSION = `${DECK_LAYOUT_RENDER_CACHE_VERSION}:pptx-editable-dom-v4`;
 const DECK_PPTX_SCREEN_RENDER_CACHE_VERSION = `${DECK_LAYOUT_RENDER_CACHE_VERSION}:pptx-screen-ooxml-v5`;
@@ -41,6 +41,7 @@ export type ExportRenderRequest = {
   title?: string;
   deck?: boolean;
   inlineHtml?: string | null;
+  inlineHtmlPrepareMode?: 'standalone' | 'preview';
   fresh?: boolean;
   templateId?: string | null;
 };
@@ -68,6 +69,7 @@ async function buildExportInput(
     projectsRoot: ctx.projectsRoot,
     ...(typeof req.title === 'string' ? { title: req.title } : {}),
     ...(req.inlineHtml ? { inlineHtml: req.inlineHtml } : {}),
+    ...(req.inlineHtmlPrepareMode ? { inlineHtmlPrepareMode: req.inlineHtmlPrepareMode } : {}),
   });
   await ctx.prepareBuilt?.(built, req);
   return built;

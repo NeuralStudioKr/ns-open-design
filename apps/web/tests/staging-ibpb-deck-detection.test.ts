@@ -15,7 +15,12 @@ import { resolve } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import { buildTemplateClonedDeckHtml } from '@open-design/contracts';
+import {
+  buildTemplateClonedDeckHtml,
+  hoistCloneSlidesOutOfFlexTrack,
+} from '@open-design/contracts';
+
+import { buildSrcdoc } from '../src/runtime/srcdoc';
 
 import {
   looksLikeCompactApiStackedDeck,
@@ -109,5 +114,15 @@ describe('staging ib-pitch-book Clone detection', () => {
     // translate-track / native-scroll modes and the reported "nudge"
     // symptom returns.
     expect(looksLikeCompactApiStackedDeck(cloned)).toBe(true);
+  });
+
+  it('preview-hoists a persisted Clone leftover (no author script) to compact-stacked', () => {
+    const hoisted = hoistCloneSlidesOutOfFlexTrack(CLONE_LOOK_SEED);
+    expect(/<div\b[^>]*\bid\s*=\s*["']stage["']/i.test(hoisted)).toBe(false);
+    expect(looksLikeCompactApiStackedDeck(hoisted)).toBe(true);
+
+    const srcdoc = buildSrcdoc(CLONE_LOOK_SEED, { deck: true });
+    expect(/<div\b[^>]*\bid\s*=\s*["']stage["']/i.test(srcdoc)).toBe(false);
+    expect(looksLikeCompactApiStackedDeck(srcdoc.replace(/<script\b[\s\S]*?<\/script>/gi, ''))).toBe(true);
   });
 });

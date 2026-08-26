@@ -733,13 +733,28 @@ describe('buildDeckPrintCss', () => {
       path.join(__dirname, '..', 'src', 'export-render-service.ts'),
       'utf8',
     );
-    expect(source).toContain("DECK_LAYOUT_RENDER_CACHE_VERSION = 'deck-layout-preview-parity-v4'");
+    expect(source).toContain("DECK_LAYOUT_RENDER_CACHE_VERSION = 'deck-layout-preview-parity-v5'");
     expect(source).toContain("`${DECK_LAYOUT_RENDER_CACHE_VERSION}:pdf-v1`");
     expect(source).toContain("`${DECK_LAYOUT_RENDER_CACHE_VERSION}:html-v1`");
     expect(source).toContain("`${DECK_LAYOUT_RENDER_CACHE_VERSION}:zip-v1`");
     expect(source).toContain('DECK_PPTX_EDITABLE_RENDER_CACHE_VERSION');
     expect(source).toContain('DECK_PPTX_SCREEN_RENDER_CACHE_VERSION');
     expect(source).not.toContain('pptx-editable-dom-v3');
+  });
+
+  it('keeps PDF inline snapshots on preview preparation while other exports stay standalone', () => {
+    const webExportSource = fs.readFileSync(
+      path.join(__dirname, '..', '..', 'web', 'src', 'runtime', 'exports.ts'),
+      'utf8',
+    );
+    const daemonPdfSource = fs.readFileSync(
+      path.join(__dirname, '..', 'src', 'pdf-export.ts'),
+      'utf8',
+    );
+    expect(webExportSource).toContain("inlineHtmlPrepareMode: 'preview'");
+    expect(webExportSource).toContain("opts.deck ? 'preview' : 'standalone'");
+    expect(daemonPdfSource).toContain("options.inlineHtmlPrepareMode === 'preview'");
+    expect(daemonPdfSource).toContain('healDeckHtmlForStandaloneExport(inline)');
   });
 
   it('keeps PPTX downloads editable by default and screenshot-based only when opted out', () => {

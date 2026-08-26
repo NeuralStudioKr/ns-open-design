@@ -236,6 +236,8 @@ describe('deck bridge - transform-driven decks', () => {
     const stacked = win.document.getElementById('od-stacked-deck-stage');
     if (stacked) {
       expect(stacked.querySelectorAll('.slide').length).toBeGreaterThanOrEqual(2);
+    } else if (slides[0]?.style.display === 'none') {
+      expect(slides[1]?.style.display).not.toBe('none');
     } else {
       expect(stage?.style.transform).toBe('translateX(-1920px)');
       expect(stage?.style.transform).not.toContain('100vw');
@@ -286,7 +288,11 @@ describe('deck bridge - transform-driven decks', () => {
     await new Promise<void>((resolve) => win.setTimeout(resolve, 80));
     const stage = win.document.getElementById('stage') as HTMLElement | null;
     const stacked = win.document.getElementById('od-stacked-deck-stage');
-    if (!stacked) {
+    if (stacked) {
+      expect(stacked.querySelectorAll('.slide').length).toBeGreaterThanOrEqual(2);
+    } else if (slides[0]?.style.display === 'none') {
+      expect(slides[1]?.style.display).not.toBe('none');
+    } else {
       expect(stage?.style.transform).toBe('translateX(-1920px)');
     }
   });
@@ -443,6 +449,29 @@ describe('deck bridge - transform-driven decks', () => {
     expect(visible).toContain('영어 회화');
   });
 
+  it('heals a stub cover and moves look CSS out from between slides', () => {
+    const brief = '영어 회화 표현 공부 팁, 예시에 대한 발표자료 만들어줘';
+    const html = [
+      '<!doctype html><html><head></head><body>',
+      '<section class="slide slide-title" style="display:flex;justify-content:center;padding:80px 88px">',
+      '<span data-od-official-motif-html class="ribbon"></span>',
+      '<h1>영어 회화 표현 공부 팁, 예시에</h1>',
+      '</section>',
+      '<style data-od-official-look-css>.cover h1.display{font-size:96px}</style>',
+      '<section class="slide"><div class="eyebrow">Why It Matters</div>',
+      '<h2>문법으로 외운 회화는 왜 입에서 안 나올까</h2></section>',
+      '</body></html>',
+    ].join('');
+    const srcdoc = buildSrcdoc(html, { deck: true, userBrief: brief });
+    const lookAt = srcdoc.indexOf('data-od-official-look-css');
+    const secondAt = srcdoc.indexOf('Why It Matters');
+    expect(lookAt).toBeGreaterThan(-1);
+    expect(lookAt).toBeGreaterThan(secondAt);
+    expect(srcdoc).toMatch(/h1 class="display"/);
+    expect(srcdoc).toMatch(/cover-meta/);
+    expect(srcdoc).not.toMatch(/<span[^>]*data-od-official-motif-html[^>]*>\s*<\/span>/);
+  });
+
   it('leaves a catalog example intact when no user brief is provided', async () => {
     const html = await readFile(
       new URL(
@@ -489,13 +518,14 @@ describe('deck bridge - transform-driven decks', () => {
       data: { type: 'od:slide', action: 'next' },
     }));
     await new Promise<void>((resolve) => win.setTimeout(resolve, 120));
-    const stage = win.document.getElementById('stage') as HTMLElement | null;
-    const stacked = win.document.getElementById('od-stacked-deck-stage');
-    if (!stacked) {
-      expect(stage?.style.transform).toBe('translateX(-1920px)');
-      expect(stage?.style.transform).not.toContain('100vw');
-    }
-    expect(win.document.getElementById('now')?.textContent).toBe('02');
+    // 0826-N01 F3: leftover Clone HTML (no author script) is hoisted out of
+    // `#stage`, so host next uses display toggle — not translateX(-1920px)
+    // which only nudged page 1 inside an 800px iframe.
+    expect(win.document.getElementById('stage')).toBeNull();
+    const after = Array.from(win.document.querySelectorAll<HTMLElement>('.slide'));
+    expect(after.length).toBeGreaterThanOrEqual(2);
+    expect(after[0]?.style.display === 'none' || after[0]?.classList.contains('active') === false).toBe(true);
+    expect(after[1]?.style.display !== 'none').toBe(true);
   });
 
   it('pages a pin-only IB #stage strip by 1920px when offsetWidth matches the iframe', async () => {

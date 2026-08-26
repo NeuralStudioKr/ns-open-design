@@ -1149,6 +1149,8 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
         return sendApiError(res, 422, 'NO_SLIDES', 'PPTX export requires a slide deck');
       }
       const inlineHtml = readInlineHtmlFromBody(req.body);
+      const inlineHtmlPrepareMode: 'preview' | undefined =
+        req.body?.inlineHtmlPrepareMode === 'preview' ? 'preview' : undefined;
       const templateId = typeof req.body?.templateId === 'string' ? req.body.templateId : null;
       const job = createExportJob({
         projectId: req.params.id,
@@ -1164,6 +1166,9 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
           deck: exportFormat === 'pptx' ? true : deck === true,
           ...(typeof title === 'string' ? { title } : {}),
           ...(inlineHtml ? { inlineHtml } : {}),
+          ...(inlineHtml && exportFormat === 'pdf' && deck === true && inlineHtmlPrepareMode === 'preview'
+            ? { inlineHtmlPrepareMode }
+            : {}),
           ...(wantsFreshExport(req) ? { fresh: true } : {}),
           ...(templateId ? { templateId } : {}),
           ...(exportFormat === 'image'
@@ -1245,12 +1250,17 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
       }
       const ticket = wantsTicketDelivery(req.body);
       const inlineHtml = readInlineHtmlFromBody(req.body);
+      const inlineHtmlPrepareMode: 'preview' | undefined =
+        req.body?.inlineHtmlPrepareMode === 'preview' ? 'preview' : undefined;
       const templateId = typeof req.body?.templateId === 'string' ? req.body.templateId : null;
       const exportRequest = {
         fileName,
         deck: deck === true,
         ...(typeof title === 'string' ? { title } : {}),
         ...(inlineHtml ? { inlineHtml } : {}),
+        ...(inlineHtml && deck === true && inlineHtmlPrepareMode === 'preview'
+          ? { inlineHtmlPrepareMode }
+          : {}),
         ...(wantsFreshExport(req) ? { fresh: true } : {}),
         ...(templateId ? { templateId } : {}),
       };

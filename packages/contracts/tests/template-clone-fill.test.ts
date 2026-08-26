@@ -24,8 +24,11 @@ import {
   healInstructionCopyCoverHeading,
   isGenericDeckArtifactTitle,
   sanitizePersistedDeckHostLeaks,
+  salvageMalformedMiniMaxSlideMarkup,
+  stripEmptyOfficialMotifInstances,
   stripHostProtocolLeakFromDeckHtml,
 } from '../src/template-clone-fill.js';
+import { hoistDeckHostStylesToHead } from '../src/html/deck-template-look-css.js';
 
 describe('buildTemplateClonedDeckHtml', () => {
   it('clones Daisy Days look and swaps Source headings', async () => {
@@ -440,6 +443,68 @@ describe('sanitizeTemplateCloneDeckTitle', () => {
     );
     expect(healed).not.toMatch(/<h1>슬라이드<\/h1>/);
     expect(healed).toMatch(/영어 회화/);
+  });
+
+  it('rebuilds a stub cover and salvages MiniMax card markup', () => {
+    const brief = '영어 회화 표현 공부 팁, 예시에 대한 발표자료 만들어줘';
+    expect(deriveDeckCoverTitleFromBrief(brief)).toMatch(/영어 회화 표현 공부 팁/);
+    expect(deriveDeckCoverTitleFromBrief(brief)).not.toMatch(/예시에$/);
+
+    const html = [
+      '<!doctype html><html><head></head><body>',
+      '<section class="slide slide-title" style="display:flex;justify-content:center;padding:80px 88px">',
+      '<span data-od-official-motif-html class="ribbon" style="position:absolute"></span>',
+      '<div data-od-slide-flow style="padding:80px 88px"><h1>영어 회화 표현 공부 팁, 예시에</h1></div>',
+      '</section>',
+      '<style data-od-official-look-css>.cover h1.display{font-size:96px}</style>',
+      '<section class="slide">',
+      '<div class="eyebrow">Why It Matters</div>',
+      '<h2>문법으로 외운 회화는 왜 입에서 안 나올까</h2>',
+      '<p="">알면서도 말하지 못하는 간극입니다.</p="">',
+      '<div style="grid-template-rows:auto auto 1fr;background:var(--paper-warm)">',
+      '<div>Situation · 01</div>',
+      '<div style="font-weight:700">첫 만남 · Small talk</div> · Small talk</div>',
+      '<div>Nice to finally meet you.</div>',
+      '</div>',
+      '</section>',
+      '</body></html>',
+    ].join('');
+
+    const salvaged = salvageMalformedMiniMaxSlideMarkup(html);
+    expect(salvaged).toContain('<p>알면서도 말하지 못하는 간극입니다.</p>');
+    expect(salvaged).not.toMatch(/<\/p="">/);
+    expect(salvaged).toContain('첫 만남 · Small talk');
+    expect(salvaged.match(/· Small talk/g)?.length).toBe(1);
+    expect(salvaged).toContain('Nice to finally meet you.');
+
+    const cleaned = sanitizePersistedDeckHostLeaks(salvaged);
+    expect(cleaned).not.toMatch(/<span[^>]*data-od-official-motif-html[^>]*>\s*<\/span>/);
+    const hoisted = hoistDeckHostStylesToHead(html);
+    const lookAt = hoisted.indexOf('data-od-official-look-css');
+    const firstSlide = hoisted.indexOf('slide-title');
+    const secondSlide = hoisted.indexOf('Why It Matters');
+    expect(lookAt).toBeGreaterThan(-1);
+    expect(lookAt < firstSlide || lookAt > secondSlide).toBe(true);
+    expect(cleaned).toContain('data-od-official-look-css');
+
+    const healed = healInstructionCopyCoverHeading(cleaned, brief);
+    expect(healed).toMatch(/h1 class="display"/);
+    expect(healed).toMatch(/class="ribbon"/);
+    expect(healed).toMatch(/cover-meta/);
+    expect(healed).toMatch(/문법으로 외운 회화/);
+    expect(healed).not.toMatch(/slide-title/);
+  });
+
+  it('drops empty official Motif ribbon and stamp shells', () => {
+    const html = [
+      '<section class="slide">',
+      '<span data-od-official-motif-html class="ribbon"></span>',
+      '<div data-od-official-motif-html class="stamp"><div class="lab"></div><div class="who"></div><div class="det"><br><br></div></div>',
+      '<h1>개요</h1></section>',
+    ].join('');
+    const cleaned = stripEmptyOfficialMotifInstances(html);
+    expect(cleaned).not.toMatch(/data-od-official-motif-html/);
+    expect(cleaned).toContain('<h1>개요</h1>');
   });
 
   it('does not synthesize marketing titles when the brief is only a template name', () => {
