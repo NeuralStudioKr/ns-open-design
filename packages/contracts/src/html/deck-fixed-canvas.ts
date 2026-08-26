@@ -690,6 +690,20 @@ const FLOW_COPIED_STYLE_PROPS = [
   'padding-right',
   'padding-bottom',
   'padding-left',
+  'padding-block',
+  'padding-inline',
+  'padding-block-start',
+  'padding-block-end',
+  'padding-inline-start',
+  'padding-inline-end',
+  'border-spacing',
+  'table-layout',
+  'caption-side',
+  'empty-cells',
+  'list-style',
+  'list-style-type',
+  'list-style-position',
+  'list-style-image',
 ] as const;
 
 function wrapFlowOpenTag(hostAttrs: string, inner = ''): string {
