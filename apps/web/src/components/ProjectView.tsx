@@ -160,6 +160,7 @@ import {
   composeSystemPrompt,
   deriveDeckCoverTitleFromBrief,
   healInstructionCopyCoverHeading,
+  scrubLeftoverCatalogExampleHtml,
   htmlHasDeckSlideHost,
   htmlLooksLikeSlideDeliverableStream,
   metadataForTeamverSlideOnlyPrompt,
@@ -5581,12 +5582,26 @@ export function ProjectView({
             persistHealBrief,
             persistHealTitle,
           );
-        const leftoverCatalogExample =
+        let leftoverCatalogExample =
           normalizedArtifactType === 'deck'
           && deckLooksLikeUnfilledCatalogExample(
             artifactToPersist.html,
             persistHealBrief,
           );
+        if (leftoverCatalogExample) {
+          const scrubbed = scrubLeftoverCatalogExampleHtml(
+            artifactToPersist.html,
+            persistHealBrief,
+          );
+          if (
+            scrubbed
+            && scrubbed !== artifactToPersist.html
+            && !deckLooksLikeUnfilledCatalogExample(scrubbed, persistHealBrief)
+          ) {
+            artifactToPersist = { ...artifactToPersist, html: scrubbed };
+            leftoverCatalogExample = false;
+          }
+        }
         if (
           motifSvgDump
           || failedGenerateHeadings

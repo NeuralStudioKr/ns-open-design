@@ -367,10 +367,11 @@ export function deckLooksLikeUnfilledCatalogExample(
     if (re.test(prompt)) namedInBrief += 1;
   }
   if (hits >= 2 && namedInBrief < 2) return true;
+  const hangulCount = (value: string) => (value.match(/[가-힣]/g) ?? []).length;
   const mixedFinanceHeading =
     /discounted-cash-flow|WACC|EBITDA|Implied EV/i.test(dest)
-    && /[가-힣]{4,}/.test(dest)
-    && /[가-힣]{4,}/.test(prompt)
+    && hangulCount(dest) >= 4
+    && hangulCount(prompt) >= 4
     && !/WACC|EBITDA|Hartfield|NorthPeak|DCF|피치/i.test(prompt);
   return mixedFinanceHeading;
 }
