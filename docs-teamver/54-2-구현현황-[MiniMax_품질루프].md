@@ -115,6 +115,8 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | persist: font-smooth · bdi/del/sub kit · SVG path · app-region | ☑ 루프89–93 / round106–110 |
 | persist: webkit text-stroke/clip/box-orient · fullwidth · | ☑ 루프94–98 / round111–115 |
 | persist: thin bdi keep · fill+path · starting-style · closure | ☑ 루프99–103 / round116–120 |
+| persist: webkit-mask/filter/transform · print-color · pre kit | ☑ 루프104–113 / round121–130 |
+| chat/persist: colon/pipe chrome · thin pre · combo/closure | ☑ 루프114–118 / round131–135 |
 | clone: IB pitch-book 데모 카피가 한국어 brief에 남음 | ☑ 루프57 |
 | preview: #stage 1920px 스트립이 100vw로만 살짝 이동 | ☑ 루프57 |
 | persist: 카탈로그 예제 leftover를 filled로 저장 | ☑ |
@@ -138,7 +140,18 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | think 태그 / 내부 마크업 필터 | ☑ 기존 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프89–103 / round106–120)
+## 이번 루프 (루프104–118 / round121–135)
+
+1. persist — `-webkit-mask*` · `-webkit-filter`/`backdrop-filter` · `-webkit-transform`/`transition*`
+2. persist — `-webkit-print-color-adjust` · `text-decoration-skip`
+3. kit — selective `pre` (`em`/`strong`/`picture` keep)
+4. persist — `-webkit-flex*` · `-webkit-columns*` · perspective/backface/overflow-scrolling/border-radius
+5. chat — ALLCAPS generic `:`/`|` separators · `@position-try` opacity dump
+6. kit/flow — thin pre keep · set10–11 combo · closure 회귀
+
+**검증:** chat-leak-probe-round121–135
+
+## 직전 루프 (루프89–103 / round106–120)
 
 1. persist — `font-smooth` / `-webkit-font-smoothing` / `-moz-osx-font-smoothing`
 2. kit — selective `bdi`/`bdo`/`del`/`ins` · `sub`/`sup`/`var`/`code` (`strong` keep)
