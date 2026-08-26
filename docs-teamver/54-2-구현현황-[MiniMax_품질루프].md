@@ -108,6 +108,10 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | persist: text-size-adjust · text-wrap-mode/style | ☑ 루프76 / round93 |
 | persist: initial-letter-* · math-shift · hyphenate-lines | ☑ 루프77 / round94 |
 | persist: rt/rp/rtc kit · ascent/size-adjust · forced-colors | ☑ 루프78 / round95 |
+| persist: scroll/view-timeline shorthand · line-clamp · palette | ☑ 루프79–82 / round96–99 |
+| persist: page/marks/shape-inside/calc-size | ☑ 루프83 / round100 |
+| persist: SVG fill/stroke · speak/user-modify · thin pad keep | ☑ 루프84–87 / round101–104 |
+| persist: set5 combo 회귀 | ☑ 루프88 / round105 |
 | clone: IB pitch-book 데모 카피가 한국어 brief에 남음 | ☑ 루프57 |
 | preview: #stage 1920px 스트립이 100vw로만 살짝 이동 | ☑ 루프57 |
 | persist: 카탈로그 예제 leftover를 filled로 저장 | ☑ |
@@ -131,7 +135,19 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | think 태그 / 내부 마크업 필터 | ☑ 기존 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프74–78 / round91–95)
+## 이번 루프 (루프79–88 / round96–105)
+
+1. persist — `scroll-timeline`/`view-timeline` shorthand
+2. persist — `-webkit-line-clamp` · `color-adjust`
+3. persist — `hyphenate-limit-before/after` · `base-palette`/`override-colors`
+4. persist — `page`/`marks` · `shape-inside` · `calc-size`
+5. persist — SVG `fill`/`stroke`(+opacity/geometry) · `speak*`/`user-modify`
+6. chat — `@scroll-state` framework cutter harden
+7. kit — thin `padding-block:0.5ic` accent keep · set5 combo 회귀
+
+**검증:** chat-leak-probe-round96–105
+
+## 직전 루프 (루프74–78 / round91–95)
 
 1. persist — `padding-block`/`padding-inline`(+start/end) ≥1ic/ric kit bind
 2. persist — `font-synthesis-weight/style/small-caps/position` flow

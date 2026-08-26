@@ -2366,6 +2366,7 @@ export function stripTrailingDeckFrameworkCssLeak(input: string): string {
     || /@custom-selector\b/i.test(tail)
     || /@stylistic\b/i.test(tail)
     || /@view-transition\b/i.test(tail)
+    || /@scroll-state\b/i.test(tail)
     || /(?:^|\n)(?:from|to|\d+%)\s*\{[\s\S]*(?:transform|opacity|translate|rotate)/i.test(tail)
     || looksLikeLeakedCssCustomPropertyBlock(tail);
   if (!looksLikeDeckFramework) return input;
