@@ -121,6 +121,7 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | preview: #stage 1920px 스트립이 100vw로만 살짝 이동 | ☑ 루프57 |
 | persist: 카탈로그 예제 leftover를 filled로 저장 | ☑ |
 | leftover가 persist skip 후에도 미리보기로 열림 · top-up append | ☑ |
+| API-mode "save this as deck.html" 유출로 덱이 안 생김 | ☑ |
 | clone: demo-banner/TOC/stat-quote 잔여 · #total 불일치 | ☑ 루프58 |
 | preview: #slideCounter 고정 · hoist가 chrome 삭제 | ☑ 루프58 |
 | daemon: leftover 데모 시드가 재클론을 막음 | ☑ 루프58 |
@@ -140,7 +141,15 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | think 태그 / 내부 마크업 필터 | ☑ 기존 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프104–118 / round121–135)
+## 이번 루프 (API-mode save-as-deck 유출)
+
+1. 프롬프트 — filesystem write / save-this-as-deck 문장 제거. 호스트 persist만 지시
+2. chat — 유출 문장 sanitize. fenced HTML은 말풍선에서 제거
+3. persist — standalone recover identifier=`deck`. HTML 없는 유출 문장은 미완료
+
+**검증:** system-prompt-api-mode · agent-prose-sanitize · recover/strip · deck-deliverable-prose
+
+## 직전 루프 (루프104–118 / round121–135)
 
 1. persist — `-webkit-mask*` · `-webkit-filter`/`backdrop-filter` · `-webkit-transform`/`transition*`
 2. persist — `-webkit-print-color-adjust` · `text-decoration-skip`

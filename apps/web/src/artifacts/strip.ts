@@ -1,4 +1,4 @@
-import { isGenericDeckArtifactTitle } from '@open-design/contracts';
+import { isGenericDeckArtifactTitle, stripLeakedApiModeFilesystemProse } from '@open-design/contracts';
 import { computeSkipRanges, isRealArtifactOpenAt, rangeContains, type Range } from './markdown-context';
 import {
   recoverHtmlArtifactFromPrecedingDocument,
@@ -156,20 +156,24 @@ function stripRecoverablePrecedingHtml(content: string, sourceText: string): str
  *
  * Some Grok runs emit a complete HTML document as a standalone response or as a
  * single ```html fenced block instead of using the `<artifact>` protocol. The
- * ProjectView recovery path persists those documents as `response.html`; this
+ * ProjectView recovery path persists those documents as `deck.html`; this
  * helper only removes the duplicate raw document from the rendered chat bubble.
  * It must never be used to rewrite `message.content`, because that content is
  * the canonical transcript for future agent turns and forked conversations.
  */
 export function stripRecoveredHtmlFallbackForDisplay(content: string, sourceText = content): string {
   const withoutPrecedingDocument = stripRecoverablePrecedingHtml(content, sourceText);
-  if (withoutPrecedingDocument !== null) return withoutPrecedingDocument;
+  if (withoutPrecedingDocument !== null) {
+    return stripLeakedApiModeFilesystemProse(withoutPrecedingDocument);
+  }
 
   if (recoverStandaloneHtmlDocument(content)) return '';
 
   const fence = findSingleRecoverableHtmlFence(content);
-  if (!fence) return content;
-  return `${content.slice(0, fence.start)}${content.slice(fence.end)}`.trim();
+  if (!fence) return stripLeakedApiModeFilesystemProse(content);
+  return stripLeakedApiModeFilesystemProse(
+    `${content.slice(0, fence.start)}${content.slice(fence.end)}`.trim(),
+  );
 }
 
 function parseArtifactAttrs(raw: string): Record<string, string> {

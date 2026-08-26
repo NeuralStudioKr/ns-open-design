@@ -309,4 +309,11 @@ describe('stripRecoveredHtmlFallbackForDisplay', () => {
     const input = ['```html', completeHtml, '```', '```html', completeHtml, '```'].join('\n');
     expect(stripRecoveredHtmlFallbackForDisplay(input)).toBe(input);
   });
+
+  it('hides leaked API-mode save-this-as-deck prose after recovering a fenced deck', () => {
+    const leak =
+      'Since this workspace is in API mode without filesystem write tools, here is the complete deck HTML. You can save this as deck.html and it will render as a self-contained slide deck.';
+    const input = [leak, '', '```html', completeHtml, '```'].join('\n');
+    expect(stripRecoveredHtmlFallbackForDisplay(input)).toBe('');
+  });
 });

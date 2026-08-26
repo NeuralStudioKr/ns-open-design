@@ -732,9 +732,35 @@ function deriveTitleFromBrief(brief: string, deckTitle?: string | null): string 
   return cleanCloneTitle(title).slice(0, 60) || '슬라이드';
 }
 
+/**
+ * Model-parroted host/API-mode instructions. The host persists
+ * `<artifact type="deck">` automatically — this prose must never become a
+ * cover title or stay visible in chat.
+ */
+const LEAKED_API_MODE_FILESYSTEM_FINGERPRINT_RE =
+  /(?:API\s+mode\s+without\s+filesystem\s+write\s+tools|without\s+filesystem\s+write\s+tools|save\s+this\s+as\s+deck\.html|here\s+is\s+the\s+complete\s+deck\s+HTML|this\s+workspace\s+is\s+in\s+API\s+mode|API\s*모드[^.!?\n]{0,80}파일\s*시스템|deck\.html(?:로|에)\s*저장)/i;
+
+export function looksLikeLeakedApiModeFilesystemProse(text: string): boolean {
+  return LEAKED_API_MODE_FILESYSTEM_FINGERPRINT_RE.test(String(text ?? '').trim());
+}
+
+/** Drop leaked "save this as deck.html" / API-mode filesystem sentences from prose. */
+export function stripLeakedApiModeFilesystemProse(text: string): string {
+  if (!text || !LEAKED_API_MODE_FILESYSTEM_FINGERPRINT_RE.test(text)) return text;
+  const lines = text.split('\n').map((line) => {
+    if (!LEAKED_API_MODE_FILESYSTEM_FINGERPRINT_RE.test(line)) return line;
+    const kept = line
+      .split(/(?<=[.!?])\s+/)
+      .filter((sentence) => !LEAKED_API_MODE_FILESYSTEM_FINGERPRINT_RE.test(sentence));
+    return kept.join(' ').trim();
+  });
+  return lines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
 export function looksLikeInstructionCopy(text: string): boolean {
   const t = text.trim();
   if (!t) return true;
+  if (looksLikeLeakedApiModeFilesystemProse(t)) return true;
   if (/\[(?:Deliverable instruction|Selected slide template|Source brief|Quick settings|User instruction)\]/i.test(t)) {
     return true;
   }

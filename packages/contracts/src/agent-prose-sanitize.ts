@@ -28,6 +28,7 @@ import {
   artifactCdnHostAlternation,
   artifactCdnHeuristicTokenAlternation,
 } from "./html/artifactCdnHosts.js";
+import { stripLeakedApiModeFilesystemProse } from "./template-clone-fill.js";
 
 /** Pseudo file-operation XML emitted when CLI tools (Read/Write/Edit) are unavailable. */
 const FILE_OPERATION_PSEUDO_TOOL_TAG_NAMES = [
@@ -1854,6 +1855,7 @@ export function sanitizeLeakedAgentProse(
   out = out.replace(FAKE_TOOL_NARRATION_RE, "");
   out = out.replace(FAKE_FILE_READ_NARRATION_RE, "");
   out = out.replace(AGENT_RUNTIME_STATUS_LINE_RE, "");
+  out = stripLeakedApiModeFilesystemProse(out);
   out = out.replace(LEAKED_DECK_NAV_SCRIPT_RE, "");
   out = out.replace(LEAKED_DECK_NAV_SCRIPT_BODY_RE, "");
   out = out.replace(LEAKED_DECK_NAV_SCRIPT_PREV_BODY_RE, "");

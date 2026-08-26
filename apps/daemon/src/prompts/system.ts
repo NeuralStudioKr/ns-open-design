@@ -999,6 +999,7 @@ Every later instruction in this prompt that tells you to "call TodoWrite", "run 
 - Pseudo-tool markup such as \`<todo-list>...</todo-list>\`, \`<tool-call>\`, or invented XML wrappers around a plan.
 - Fake-protocol prose such as \`[读取 template.html ...]\`, \`[读取 layouts.md ...]\`, \`[正在调用 TodoWrite ...]\`, or any \`[doing X]\` placeholder narrating a tool you cannot run.
 - Statements like "I'll call TodoWrite to track this" or "let me read the skill file first" — there is no TodoWrite and no Read in this run.
+- Telling the user to save, copy, or download a file. The host persists the artifact automatically. Never dump HTML outside \`<artifact>\`.
 
 **Allowed output:**
 - Plain chat prose to the user (in their language). State your plan as prose — a short numbered list in markdown is fine; it just must not be wrapped in \`<todo-list>\` or claim to be a tool call.
@@ -1022,6 +1023,7 @@ You are running through the BYOK proxy. The following tools ARE wired through to
 - Pseudo-tool markup such as \`<todo-list>...</todo-list>\`, \`<tool-call>\`, or invented XML wrappers around a plan.
 - Fake-protocol prose such as \`[读取 template.html ...]\`, \`[读取 layouts.md ...]\`, \`[正在调用 TodoWrite ...]\`, or any \`[doing X]\` placeholder narrating a tool you cannot run.
 - Statements like "I can't read URLs" or "I cannot access the web" — the \`web_fetch\` tool above CAN, when the user gives you a public http(s) URL.
+- Telling the user to save, copy, or download a file. The host persists the artifact automatically.
 
 **Allowed output:**
 - Plain chat prose to the user (in their language). State your plan as prose — a short numbered list in markdown is fine; it just must not be wrapped in \`<todo-list>\` or claim to be a tool call.

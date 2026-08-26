@@ -633,6 +633,7 @@ describe("ProjectView message loading", () => {
     expect(autoOpenBlock).toContain("isIncompleteParsedDeckForBestArtifactRestore(");
     expect(autoOpenBlock).toContain("rawFinalText,\n              artifactFromStandaloneHtml");
     expect(source).toContain("recoverBestHtmlDocumentFromText(sourceText,");
+    expect(source).toContain("identifier: 'deck',\n      artifactType: 'deck',\n      title: coverTitle || '슬라이드'");
     expect(source).toContain("deckTitle: project.name || '슬라이드'");
     expect(source).toContain("function artifactFromSalvagedHtml");
     expect(source).toContain("deriveDeckCoverTitleFromBrief(brief || '', deckTitle || '슬라이드')");

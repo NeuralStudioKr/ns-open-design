@@ -7,7 +7,9 @@ import {
   inferTemplateCloneContentRole,
   listTemplateCloneSlideShells,
   looksLikeInstructionCopy,
+  looksLikeLeakedApiModeFilesystemProse,
   looksLikeLeftoverTemplateDemoDeck,
+  stripLeakedApiModeFilesystemProse,
   looksLikeTemplateMarketingTitle,
   normalizeTemplateCssForFixedCanvas,
   pickTemplateShellsForContent,
@@ -294,6 +296,15 @@ describe('sanitizeTemplateCloneDeckTitle', () => {
     expect(sanitizeTemplateCloneDeckTitle('expo에 대해서 설명하는 피피티 만들어줘.')).toBeNull();
     expect(sanitizeTemplateCloneDeckTitle('Html Ppt Zhangzara Daisy Days')).toBeNull();
     expect(looksLikeInstructionCopy('[Deliverable instruction] Build a deck')).toBe(true);
+    expect(looksLikeLeakedApiModeFilesystemProse(
+      'Since this workspace is in API mode without filesystem write tools, here is the complete deck HTML. You can save this as deck.html and it will render as a self-contained slide deck.',
+    )).toBe(true);
+    expect(looksLikeInstructionCopy(
+      'Since this workspace is in API mode without filesystem write tools, here is the complete deck HTML. You can save this as deck.html and it will render as a self-contained slide deck.',
+    )).toBe(true);
+    expect(stripLeakedApiModeFilesystemProse(
+      '작성 중.\n\nSince this workspace is in API mode without filesystem write tools, here is the complete deck HTML. You can save this as deck.html and it will render as a self-contained slide deck.',
+    )).toBe('작성 중.');
     expect(looksLikeTemplateMarketingTitle('Html Ppt Zhangzara Daisy Days')).toBe(true);
     expect(looksLikeTemplateMarketingTitle('Presentation')).toBe(true);
     expect(looksLikeTemplateMarketingTitle('Slide')).toBe(true);

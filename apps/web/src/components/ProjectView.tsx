@@ -1440,7 +1440,7 @@ function slideAttachmentDeliverableInstruction(
     'Read them for TEXTUAL content — headings, body copy, callouts, section names, tables, image references — but do NOT treat any attachment as the final deliverable.',
     '**Do NOT preserve the source attachment\'s visual styling.** The attached HTML (Canvas / Drive) may have its own background colors, gradients, font-families, borders, decorative accents, and section chrome. Those belong to the source page, NOT to the generated deck. Palette, typography, borders, shadows, and motif language for the deck come exclusively from the Selected deck template kit / Visual summary in the system prompt (or from the active design system when no template is selected) — never from the attached source HTML.',
     'Do not copy, rename, or save any attachment HTML (including Canvas exports under `refs/...`) into the project root.',
-    'Emit ONE complete compact deck artifact (`<artifact type="deck" identifier="deck">`) that persists as `deck.html`, with one filled `<section class="slide">` per requested slide count '
+    'Emit ONE complete compact deck artifact (`<artifact type="deck" identifier="deck">`). The host persists it automatically — never tell the user to save a file. Include one filled `<section class="slide">` per requested slide count '
     + `(${COMPACT_DECK_SLIDE_COUNT_GUIDANCE}), body-first inline styles, and no \`<head>\`, nav, or print scaffolding.`,
     'Do not finish with prose only, do not stop after an outline, and do not stop before `</artifact>`.',
     fileList,
@@ -6194,7 +6194,7 @@ export function ProjectView({
     if (!html) return null;
     const coverTitle = deriveDeckCoverTitleFromBrief(brief, deckTitle);
     return {
-      identifier: 'response',
+      identifier: 'deck',
       artifactType: 'deck',
       title: coverTitle || '슬라이드',
       html,
@@ -14933,7 +14933,7 @@ export function resolveTerminalArtifactToPersist(
       healContext?.deckTitle || '슬라이드',
     );
     const base: Artifact = {
-      identifier: 'response',
+      identifier: 'deck',
       artifactType: 'deck',
       title: coverTitle || '슬라이드',
       html: doctypeTail,

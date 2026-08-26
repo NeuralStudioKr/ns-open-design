@@ -294,7 +294,7 @@ describe("resolveTerminalArtifactToPersist", () => {
           + sourceText.slice(sourceText.indexOf('<section class="slide"'))
           + '</body></html>'
         : null;
-      return html ? { identifier: 'response', artifactType: 'deck', title: 'Response', html } : null;
+      return html ? { identifier: 'deck', artifactType: 'deck', title: 'Response', html } : null;
     });
     expect(resolved?.html).toContain("<h1>신입사원 온보딩</h1>");
     expect(resolved?.html).toContain("</html>");

@@ -70,6 +70,11 @@ describe('deckDeliverableProse', () => {
         '이 슬라이드는 ROI와 비용 절감 메시지를 한 장에 함께 보여주는 구조입니다.',
       ),
     ).toBe(false);
+    expect(
+      looksLikeDeckDeliverablePromiseProse(
+        'Since this workspace is in API mode without filesystem write tools, here is the complete deck HTML. You can save this as deck.html and it will render as a self-contained slide deck.',
+      ),
+    ).toBe(true);
   });
 
   it('shouldHidePrematureDeckCompletionProse is scoped to streaming + live artifact', () => {
