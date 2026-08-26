@@ -35,7 +35,7 @@
 
 ## 결정
 
-- Phase 2 **Plan A**(session 서버 판정) 1순위 — **Main 변경 없음**.
+- Phase 2 **Plan A** — Design-only, **CTO 승인 불필요**, G~I 즉시 착수 가능.
 - epoch 쿠키(FR-16) — Plan A bake 후 재평가.
 - FR-4는 대형 리팩터 금지 — 외부 호출부만 ladder로 모음.
 

@@ -12,7 +12,7 @@
 
 ## 1. 한 줄 요약
 
-staging Design에서 **로그아웃·세션 만료·계정 전환** 시 DevTools에 `POST /auth/refresh 401` → `GET /auth/session-probe 401 ×2`가 반복 노출되며 “인증이 또 깨졌다”로 오인되는 문제를 해결 중이다. **Phase 1(Design FE ladder)은 코드 완료.** Phase 2는 **Main 변경 없이** Design BFF `GET /auth/session`에서 **서버가 Main SSO ↔ BFF pin을 판정**(`main_sso_status`)하고, FE가 그 결과로 선제 reconcile하는 **표준 BFF 패턴**을 1순위로 한다.
+staging Design에서 **로그아웃·세션 만료·계정 전환** 시 DevTools에 `POST /auth/refresh 401` → `GET /auth/session-probe 401 ×2`가 반복 노출되는 문제를 해결 중이다. **Phase 1(Design FE ladder)은 코드 완료.** Phase 2 **Plan A**는 Design BFF `/auth/session` **서버 `main_sso_status` 판정** — **Main 변경 없음 → CTO 승인 불필요**, Design 팀 자체 착수.
 
 ---
 
@@ -52,15 +52,15 @@ refresh 401 후 sibling 노드 Set-Cookie 가능성을 위해 **무조건 sessio
 | **Phase 1** | Design FE auth ladder (FR-1~5) | ☑ 코드·vitest |
 | **45-1** | BFF pin · reconcile · Main logout iframe bridge | ☑ 코드 |
 | **Phase 1 검증** | staging S1/S2 수동 | ☐ |
-| **Phase 2 Plan A** | `/auth/session` 서버 `main_sso_status` + FE reconcile | 설계 확정 · **Design-only** |
+| **Phase 2 Plan A** | `/auth/session` 서버 `main_sso_status` + FE reconcile | 설계 확정 · **Design 자체 착수 (승인 불필요)** |
 | **Phase 2 Plan B** | Main back-channel logout (M2M) | P2 · 선택 |
 | **Phase 2 Plan C** | readable epoch 쿠키 | P3 · session-first 후에도 레이스 남을 때만 |
 
 ---
 
-## 5. CTO 승인 요청
+## 5. 실행 · (선택) CTO 공유
 
-### 5.1 Phase 2 Plan A — Session 서버 판정 (권장 · P0 · **Main 변경 없음**)
+### 5.1 Plan A — Session 서버 판정 (**Design 자체 착수 · 승인 불필요**)
 
 **제안:** Design BFF `GET /auth/session` 응답 확장:
 
@@ -83,7 +83,7 @@ refresh 401 후 sibling 노드 Set-Cookie 가능성을 위해 **무조건 sessio
 
 **왜 epoch보다 낫나:** OIDC/OAuth 표준에 가까운 **서버 session 판정**. HttpOnly 환경에서 FE `document.cookie` probe 한계를 제거.
 
-### 5.2 Phase 2 Plan B — Back-channel logout (P2 · 선택)
+### 5.2 Plan B — Back-channel logout (P2 · **Main 변경 시 CTO/플랫폼 협의**)
 
 Main `POST /auth/logout` 시 Design BE에 M2M invalidate (OIDC back-channel과 동형). iframe bridge(45-1, ☑) 보강. **Main BE 변경 필요** — epoch보다 표준적.
 
@@ -91,7 +91,7 @@ Main `POST /auth/logout` 시 Design BE에 M2M invalidate (OIDC back-channel과 �
 
 session-first 후에도 **동기 pause**가 부족할 때만 readable `teamver_auth_epoch` 검토. **현재 승인 요청 대상 아님.**
 
-### 5.4 Stage 4 Dual-auth (Epic 밖 · 중기)
+### 5.4 Stage 4 Dual-auth (Epic 밖 · **CTO/플랫폼 승인 전제**)
 
 Main Drive Apps JWT 수용 → mismatch 원천 소거. [45 §Stage 4](./45_Main_SSO_Design_BFF_계정_불일치_예방_로드맵.md).
 
@@ -131,12 +131,16 @@ Main Drive Apps JWT 수용 → mismatch 원천 소거. [45 §Stage 4](./45_Main_
 
 ---
 
-## 9. 의사결정 체크리스트
+## 9. 의사결정 (갱신)
 
-- [ ] **Phase 2 Plan A 승인** — Design-only session 서버 판정 (G~I)
-- [ ] **Plan B back-channel** — 중기 Main M2M logout 편입 여부
-- [ ] **Stage 4 Dual-auth** — 별도 CTO 트랙
-- [ ] ~~epoch 쿠키~~ — Plan C 보류 (session-first bake 후 재평가)
+| 항목 | 승인 |
+|------|------|
+| **Plan A (G~I)** | **불필요** — Design-only, 즉시 착수 |
+| **Plan B back-channel** | Main M2M 시 플랫폼 협의 |
+| **Plan C epoch** | 보류 |
+| **Stage 4 Dual-auth** | CTO/플랫폼 (별도 트랙) |
+
+CTO 공유는 진행 상황·아키텍처 기록용. Plan A는 gate 없음.
 
 ---
 
@@ -156,5 +160,6 @@ Main Drive Apps JWT 수용 → mismatch 원천 소거. [45 §Stage 4](./45_Main_
 
 | 일시 (KST) | 내용 |
 |------------|------|
+| 2026-08-26 15:50 | Plan A — CTO 승인 불필요(Design 자체 착수) 명시 |
 | 2026-08-26 15:45 | **개정** — Plan A session 서버 판정 1순위 · epoch Plan C로 강등 |
 | 2026-08-26 15:30 | CTO 전달용 초안 — epoch 중심 (폐기) |

@@ -465,12 +465,12 @@ flowchart TD
 
 ---
 
-## 13. 의사결정 요청 (갱신)
+## 13. 의사결정 (갱신)
 
-1. **Plan A 승인:** FR-8~10 (Design-only session 서버 판정) — G~I 착수.
-2. **Plan B back-channel:** P2 — Main M2M logout 편입 여부.
-3. **Plan C epoch:** **보류** — Plan A bake 후 재평가.
-4. **Stage 4 Dual-auth:** Epic 밖 — [45](./45_Main_SSO_Design_BFF_계정_불일치_예방_로드맵.md).
+1. **Plan A (G~I):** Design-only — **승인 gate 없이** 즉시 착수.
+2. **Plan B back-channel:** Main M2M — 플랫폼 협의 시.
+3. **Plan C epoch:** Plan A bake 후 재평가.
+4. **Stage 4 Dual-auth:** Epic 밖 — CTO 트랙.
 
 ---
 
