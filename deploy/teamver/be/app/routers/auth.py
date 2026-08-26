@@ -28,6 +28,7 @@ from ..auth.bff_session import (
 )
 from ..auth.errors import raise_auth_http
 from ..auth.login_hint import teamver_main_login_url_for_design
+from ..auth.main_sso import resolve_main_sso_status
 from ..auth.metrics import snapshot as metrics_snapshot
 from ..config import settings
 from ..errors import UnauthorizedError
@@ -61,11 +62,22 @@ def _empty_session() -> dict[str, Any]:
     }
 
 
+def _attach_main_sso_status(
+    view: dict[str, Any],
+    request: Request,
+    session: BffSession | None,
+) -> dict[str, Any]:
+    if view.get("authenticated") and session is not None:
+        view["main_sso_status"] = resolve_main_sso_status(request, session)
+    return view
+
+
 def _session_from_bootstrap_payload(
     payload: dict[str, Any],
     *,
     auth_source: str | None,
     session: BffSession | None = None,
+    request: Request | None = None,
 ) -> dict[str, Any]:
     view: dict[str, Any] = {
         "authenticated": True,
@@ -79,6 +91,8 @@ def _session_from_bootstrap_payload(
         identity_hash = bff_session_public_view(session).get("main_sso_identity_hash")
         if identity_hash:
             view["main_sso_identity_hash"] = identity_hash
+    if request is not None:
+        _attach_main_sso_status(view, request, session)
     return view
 
 
@@ -113,10 +127,12 @@ async def _bff_auth_session_response(request: Request) -> dict[str, Any]:
                     # Serve the last-known-good bootstrap slice so the FE
                     # workspace switcher / user chip do not blank out during
                     # a Main hiccup while the BFF cookie is still usable.
-                    return _session_from_bootstrap_payload(stale, auth_source="bff", session=session)
+                    return _session_from_bootstrap_payload(
+                        stale, auth_source="bff", session=session, request=request
+                    )
                 view = bff_session_public_view(session)
                 view["user"] = {"user_id": session.user_id}
-                return view
+                return _attach_main_sso_status(view, request, session)
             refreshed = await force_refresh_bff_session(request)
             if refreshed is not None:
                 try:
@@ -125,7 +141,9 @@ async def _bff_auth_session_response(request: Request) -> dict[str, Any]:
                         user_id=refreshed.user_id,
                         workspace_id=refreshed.workspace_id,
                     )
-                    return _session_from_bootstrap_payload(bootstrap, auth_source="bff", session=refreshed)
+                    return _session_from_bootstrap_payload(
+                        bootstrap, auth_source="bff", session=refreshed, request=request
+                    )
                 except TeamverBootstrapError as retry_exc:
                     if retry_exc.status_code != 401:
                         logger.warning(
@@ -138,11 +156,11 @@ async def _bff_auth_session_response(request: Request) -> dict[str, Any]:
                         )
                         if stale is not None:
                             return _session_from_bootstrap_payload(
-                                stale, auth_source="bff", session=refreshed
+                                stale, auth_source="bff", session=refreshed, request=request
                             )
                         view = bff_session_public_view(refreshed)
                         view["user"] = {"user_id": refreshed.user_id}
-                        return view
+                        return _attach_main_sso_status(view, request, refreshed)
             # force_refresh None may still leave a not-expired retained cookie.
             remaining = load_bff_session(request)
             if remaining is not None and access_token_not_expired(remaining):
@@ -152,10 +170,12 @@ async def _bff_auth_session_response(request: Request) -> dict[str, Any]:
                     workspace_id=remaining.workspace_id,
                 )
                 if stale is not None:
-                    return _session_from_bootstrap_payload(stale, auth_source="bff", session=remaining)
+                    return _session_from_bootstrap_payload(
+                        stale, auth_source="bff", session=remaining, request=request
+                    )
                 view = bff_session_public_view(remaining)
                 view["user"] = {"user_id": remaining.user_id}
-                return view
+                return _attach_main_sso_status(view, request, remaining)
             # Truly dead on this node — drop memory but do not emit delete
             # Set-Cookie (HA loser must not wipe a sibling winner).
             abandon_bff_session_keep_browser_cookie(request)
@@ -170,12 +190,16 @@ async def _bff_auth_session_response(request: Request) -> dict[str, Any]:
             workspace_id=session.workspace_id,
         )
         if stale is not None:
-            return _session_from_bootstrap_payload(stale, auth_source="bff", session=session)
+            return _session_from_bootstrap_payload(
+                stale, auth_source="bff", session=session, request=request
+            )
         view = bff_session_public_view(session)
         view["user"] = {"user_id": session.user_id}
-        return view
+        return _attach_main_sso_status(view, request, session)
 
-    return _session_from_bootstrap_payload(bootstrap, auth_source="bff", session=session)
+    return _session_from_bootstrap_payload(
+        bootstrap, auth_source="bff", session=session, request=request
+    )
 
 
 async def _legacy_plan_b_session_response(request: Request) -> Any:

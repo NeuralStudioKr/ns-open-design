@@ -50,6 +50,8 @@ export type DesignAuthSessionUser = {
   profileImageUrl?: string | null;
 };
 
+export type MainSsoSessionStatus = "match" | "mismatch" | "unknown";
+
 export type DesignAuthSession = {
   authenticated: boolean;
   authSource?: string | null;
@@ -59,6 +61,8 @@ export type DesignAuthSession = {
   workspaces?: WorkspaceListItem[];
   /** SHA-256 hex(casefold user id) — Main SSO pin at exchange (Stage 1). */
   mainSsoIdentityHash?: string | null;
+  /** Server-computed Main SSO vs BFF pin (0825-N01 Plan A). */
+  mainSsoStatus?: MainSsoSessionStatus | null;
 };
 
 let cachedClient: TeamverClient | null = null;

@@ -61,6 +61,24 @@ describe("teamverMainSsoUserProbe", () => {
     };
     await expect(checkMainSsoUserMatchesSession(session)).resolves.toBe("mismatch");
   });
+
+  it("prefers server mainSsoStatus mismatch without cookie", async () => {
+    const session: DesignAuthSession = {
+      authenticated: true,
+      mainSsoStatus: "mismatch",
+      user: { userId: "user-a" },
+    };
+    await expect(checkMainSsoUserMatchesSession(session)).resolves.toBe("mismatch");
+  });
+
+  it("prefers server mainSsoStatus match without cookie", async () => {
+    const session: DesignAuthSession = {
+      authenticated: true,
+      mainSsoStatus: "match",
+      user: { userId: "user-a" },
+    };
+    await expect(checkMainSsoUserMatchesSession(session)).resolves.toBe("match");
+  });
 });
 
 describe("teamverMainSsoUserReconcile", () => {
@@ -74,6 +92,16 @@ describe("teamverMainSsoUserReconcile", () => {
     document.cookie = `teamver_access_token=${fakeJwt({ user_id: "user-b" })}; path=/`;
     const session: DesignAuthSession = {
       authenticated: true,
+      user: { userId: "user-a" },
+    };
+    await expect(maybeReconcileMainSsoWithDesignSession(session)).resolves.toBe(true);
+    expect(beginMainSsoMismatchRecovery).toHaveBeenCalledTimes(1);
+  });
+
+  it("starts recovery on server mainSsoStatus mismatch (no cookie)", async () => {
+    const session: DesignAuthSession = {
+      authenticated: true,
+      mainSsoStatus: "mismatch",
       user: { userId: "user-a" },
     };
     await expect(maybeReconcileMainSsoWithDesignSession(session)).resolves.toBe(true);

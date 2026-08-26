@@ -23,9 +23,9 @@
 | **E** | FR-5·7 | ☑ | auth-ladder 계측 · 36 절 · vitest |
 | **F** | FR-6 | ☐ | quiet probe — 후속(선택) |
 | **45-1** | FR-11·12 | ☑ | pin · reconcile · logout bridge |
-| **G** | FR-8 | ☐ | BE `/auth/session` `main_sso_status` |
-| **H** | FR-9 | ☐ | FE server-status reconcile |
-| **I** | FR-10 | ☐ | session-first focus ordering |
+| **G** | FR-8 | ☑ | BE `/auth/session` `main_sso_status` |
+| **H** | FR-9 | ☑ | FE server-status reconcile |
+| **I** | FR-10 | ☑ | reconcile pause · session-before-ladder (refresh path) |
 | **L** | FR-13 | ☐ | 크로스탭 broadcast |
 | **M** | FR-14 | ☐ | quiet probe (선택) |
 | **N** | FR-15 | ☐ | back-channel logout (선택) |
@@ -54,10 +54,8 @@
 
 ## 남은 일
 
-1. staging bake · S1/S2 수동 (Phase 1)
-2. **Plan A:** 슬라이스 G~I — [N01-2 §10~13](./0825-N01-2-구현설계-[BFF_session-probe_refresh_401_완전해결].md)
-3. (선택) L~N · FR-6 quiet probe
-4. (보류) O epoch — S8–S9 후
+1. staging bake · S1/S2 · S8–S9 수동 (Plan A)
+2. (선택) L~N · FR-6 quiet probe
 
 ---
 
@@ -65,6 +63,7 @@
 
 | 일시 (KST) | 내용 |
 |------------|------|
+| 2026-08-26 16:05 | Plan A 구현 — G~I 코드·테스트 · BE `main_sso_status` · FE reconcile |
 | 2026-08-26 15:45 | Plan A 개정 — G~I 재정의 · 45-1 ☑ · epoch 보류 |
 | 2026-08-26 11:35 | Phase 2 통합 설계 — epoch 중심 (폐기) |
 | 2026-08-26 10:45 | A–C 코드·테스트 완료 |

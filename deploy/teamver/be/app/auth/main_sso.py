@@ -6,7 +6,7 @@ from starlette.requests import Request
 
 from ..config import settings
 from ..teamver_sdk import extract_request_access_token
-from .bff_session import load_bff_session
+from .bff_session import BffSession, load_bff_session
 from .bff_tokens import user_id_from_access_token_unverified
 from .main_sso_identity import main_sso_user_identity_hash
 
@@ -16,6 +16,7 @@ __all__ = [
     "main_sso_user_mismatches_bff",
     "read_main_sso_cookie",
     "read_main_sso_user_id",
+    "resolve_main_sso_status",
 ]
 
 
@@ -71,3 +72,18 @@ def main_sso_user_mismatches_bff(request: Request, bff_user_id: str | None) -> b
     if not main_user:
         return False
     return main_user.casefold() != design_user.casefold()
+
+
+def resolve_main_sso_status(request: Request, session: BffSession | None) -> str:
+    """Server-side Main SSO vs BFF pin comparison for ``GET /auth/session``.
+
+    Returns ``match`` | ``mismatch`` | ``unknown``. Uses HttpOnly Main cookie
+    from the request — no readable client cookie required (0825-N01 Plan A).
+    """
+    if session is None or not (session.user_id or "").strip():
+        return "unknown"
+    if main_sso_user_mismatches_bff(request, session.user_id):
+        return "mismatch"
+    if not read_main_sso_user_id(request):
+        return "unknown"
+    return "match"

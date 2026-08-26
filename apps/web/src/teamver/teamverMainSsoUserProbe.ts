@@ -1,8 +1,9 @@
 /**
- * Best-effort compare: visible Main HS256 SSO cookie user vs Design BFF session.
+ * Best-effort compare: Main HS256 SSO user vs Design BFF session.
  *
- * Does not verify JWT signatures — same contract as BE `main_sso_user_mismatches_bff`
- * and Stage 0 recovery (redirect to Main login, no data exposure).
+ * Plan A (0825-N01): prefer server ``mainSsoStatus`` from GET /auth/session.
+ * Cookie JWT decode is fallback only when status is absent/unknown (legacy /
+ * non-embed). HttpOnly Plan B cookies are invisible to document.cookie.
  */
 
 import type { DesignAuthSession } from "./designBffClient";
@@ -82,6 +83,10 @@ export async function checkMainSsoUserMatchesSession(
   session: DesignAuthSession,
 ): Promise<MainSsoSessionMatch> {
   if (!session.authenticated) return "unknown";
+
+  const serverStatus = session.mainSsoStatus?.trim().toLowerCase();
+  if (serverStatus === "mismatch") return "mismatch";
+  if (serverStatus === "match") return "match";
 
   const liveMainUserId = readMainSsoUserIdFromDocumentCookie();
   if (!liveMainUserId) return "unknown";

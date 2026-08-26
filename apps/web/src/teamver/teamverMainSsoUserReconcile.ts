@@ -4,6 +4,7 @@
  */
 
 import type { DesignAuthSession } from "./designBffClient";
+import { pauseDesignBffAuthDuringTransition } from "./designBffClient";
 import { beginMainSsoMismatchRecovery, wasMainSsoMismatchRecoverAttemptedRecently } from "./mainSsoMismatchRecovery";
 import { checkMainSsoUserMatchesSession } from "./teamverMainSsoUserProbe";
 import { isTeamverEmbedMode } from "./designApiBase";
@@ -27,6 +28,7 @@ export async function maybeReconcileMainSsoWithDesignSession(
   reconcileInflight = (async (): Promise<boolean> => {
     const match = await checkMainSsoUserMatchesSession(session);
     if (match !== "mismatch") return false;
+    pauseDesignBffAuthDuringTransition();
     await beginMainSsoMismatchRecovery();
     return true;
   })().finally(() => {
