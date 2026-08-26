@@ -82,6 +82,8 @@ staging 배포 후 프로젝트 상세 페이지를 새로고침해, 일반 진�
 
 외부 호출은 `ensureDesignAuthLadder(reason)` — DevTools에서 `auth-ladder` 로그로 reason/code/probeCount 확인.
 
+**2026-08-26 Phase 2 (통합·Main 포함):** 크로스오리진 logout/계정전환·선제 mismatch는 Design ladder만으로 부족. `teamver_auth_epoch` 쿠키(Main BE) + logout bridge(Main FE) + epoch watcher(Design FE) + [45](./45_Main_SSO_Design_BFF_계정_불일치_예방_로드맵.md) Stage 1–3. SSOT: [0825-N01-1 §12](./0825-N01-1-상위기획-[BFF_session-probe_refresh_401_완전해결].md) · [0825-N01-2 §10~18](./0825-N01-2-구현설계-[BFF_session-probe_refresh_401_완전해결].md).
+
 ## 2026-07-16 — `GET /runtime-config` visibility 401 (본 문서와 구분)
 
 탭 focus마다 `GET /teamver-bff/runtime-config → 401 session_expired` 가 반복되는 현상은 **refresh POST가 아님**.  
@@ -91,6 +93,7 @@ staging 배포 후 프로젝트 상세 페이지를 새로고침해, 일반 진�
 
 | 일시 (KST) | 내용 |
 |------------|------|
+| 2026-08-26 11:35 | Phase 2 통합 링크 (Main epoch · 45 Stage 1–3) |
 | 2026-08-26 11:00 | FR-7 HA probe 금지 표 · ladder 계측 링크 |
 | 2026-08-26 10:45 | P0 A–C 반영 링크 (확정 dead → probe 0) |
 | 2026-08-25 17:40 | 08-05 폭풍 절에 잔여 G1(refresh→probe×2) 및 [0825-N01-1](./0825-N01-1-상위기획-[BFF_session-probe_refresh_401_완전해결].md) 링크 |

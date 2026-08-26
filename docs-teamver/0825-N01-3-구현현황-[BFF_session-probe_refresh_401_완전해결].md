@@ -21,6 +21,14 @@
 | **D** | FR-4 | ☑ | `ensureDesignAuthLadder` 래핑 |
 | **E** | FR-5·7 | ☑ | auth-ladder 계측 · 36 절 · vitest |
 | **F** | FR-6 | ☐ | quiet probe — 후속(선택) |
+| **G** | FR-8 | ☐ | Main BE auth epoch cookie |
+| **H** | FR-9 | ☐ | Main FE logout bridge |
+| **I** | FR-10 | ☐ | Design FE epoch watcher |
+| **J** | FR-11 | ☐ | Design BE pin (45 Stage 1) |
+| **K** | FR-12 | ☐ | Design FE reconcile (45 Stage 2) |
+| **L** | FR-13 | ☐ | 크로스탭 broadcast |
+| **M** | FR-14 | ☐ | quiet probe (선택) |
+| **N** | FR-15 | ☐ | Main M2M codes (선택) |
 
 ---
 
@@ -43,8 +51,9 @@
 
 ## 남은 일
 
-1. staging bake · S1/S2 수동
-2. (선택) FR-6 quiet probe
+1. staging bake · S1/S2 수동 (Phase 1)
+2. **Phase 2:** 슬라이스 G~K (Main epoch + bridge + pin/reconcile) — [N01-2 §10~18](./0825-N01-2-구현설계-[BFF_session-probe_refresh_401_완전해결].md)
+3. (선택) L~N · FR-6 quiet probe
 
 ---
 
@@ -52,6 +61,6 @@
 
 | 일시 (KST) | 내용 |
 |------------|------|
-| 2026-08-26 11:00 | D/E 완료 — ladder 래핑 · 계측 · FR-7 |
+| 2026-08-26 11:35 | Phase 2 통합 설계 반영 — 슬라이스 G~N 대기 |
 | 2026-08-26 10:45 | A–C 코드·테스트 완료 |
 | 2026-08-26 10:40 | 현황 골격 · A–C 착수 |
