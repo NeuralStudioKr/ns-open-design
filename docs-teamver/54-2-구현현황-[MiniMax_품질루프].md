@@ -138,7 +138,18 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | think 태그 / 내부 마크업 필터 | ☑ 기존 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프79–88 / round96–105)
+## 이번 루프 (루프89–103 / round106–120)
+
+1. persist — `font-smooth` / `-webkit-font-smoothing` / `-moz-osx-font-smoothing`
+2. kit — selective `bdi`/`bdo`/`del`/`ins` · `sub`/`sup`/`var`/`code` (`strong` keep)
+3. persist — SVG `x`/`y`/`d`/`points`/`pathLength` · `app-region` / tap / appearance / user-select
+4. persist — `-webkit-text-fill/stroke*` · `-webkit-background-clip` · `-webkit-box-orient/direction`
+5. chat — fullwidth `・`/`･` middle-dot chrome · `@starting-style` opacity dump
+6. kit/flow — thin bdi/code keep · fill+path · set7/8 combo·closure 회귀
+
+**검증:** chat-leak-probe-round106–120
+
+## 직전 루프 (루프79–88 / round96–105)
 
 1. persist — `scroll-timeline`/`view-timeline` shorthand
 2. persist — `-webkit-line-clamp` · `color-adjust`
