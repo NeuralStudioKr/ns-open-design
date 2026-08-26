@@ -14,20 +14,20 @@
 | 슬라이스 | FR | 상태 | 비고 |
 |----------|----|------|------|
 | N01-1 | — | ☑ | 상위 git |
-| N01-2 | — | ☑ | 구현설계 |
-| **A** | FR-1 | ☑ | `isDefinitiveAuthRefreshDead` · probe 0 |
-| **B** | FR-2 | ☑ | known-dead / embed cold → POST 0 |
-| **C** | FR-3 | ☑ | useTeamverEmbed logout · orphan clear pause |
-| D–F | FR-4~6 | ☐ | 후속 |
+| N01-2 | — | ☑ | 구현설계 (+D/E) |
+| **A** | FR-1 | ☑ | 확정 dead → probe 0 |
+| **B** | FR-2 | ☑ | known-dead / embed cold |
+| **C** | FR-3 | ☑ | transition pause |
+| **D** | FR-4 | ☑ | `ensureDesignAuthLadder` 래핑 |
+| **E** | FR-5·7 | ☑ | auth-ladder 계측 · 36 절 · vitest |
+| **F** | FR-6 | ☐ | quiet probe — 후속(선택) |
 
 ---
 
 ## 결정
 
-- HA 허용: `code=refresh_failed`(또는 unknown + 쿠키 힌트).
-- 확정 dead: `session_missing` / `session_cookie_invalid` / (cookie 없는 `session_expired`).
-- known-dead면 refresh POST 자체를 스킵하고 soft sticky latch (POST 후 probe 스킵보다 강함).
-- FR-6 quiet probe 제외.
+- FR-4는 대형 리팩터 금지 — 외부 호출부만 ladder로 모음.
+- FR-6은 Epic 비목표 유지.
 
 ---
 
@@ -35,18 +35,16 @@
 
 | 항목 | 결과 |
 |------|------|
-| vitest cookie-auth-recovery (+ session · runtime-config gate) | ☑ 51 pass |
-| S1 cold unauthenticated | ☐ staging |
-| S2 확정 dead focus | ☐ staging |
-| S4 HA 2노드 | ☐ staging |
+| vitest cookie-auth-recovery (+ session · runtime-config) | ☑ 52 pass |
+| S1/S2 staging 수동 | ☐ |
+| S4 HA 2노드 | ☐ |
 
 ---
 
 ## 남은 일
 
 1. staging bake · S1/S2 수동
-2. FR-4 ladder 단일 진입점 (후속)
-3. FR-5/7 계측·문서 고정 보강
+2. (선택) FR-6 quiet probe
 
 ---
 
@@ -54,5 +52,6 @@
 
 | 일시 (KST) | 내용 |
 |------------|------|
+| 2026-08-26 11:00 | D/E 완료 — ladder 래핑 · 계측 · FR-7 |
 | 2026-08-26 10:45 | A–C 코드·테스트 완료 |
 | 2026-08-26 10:40 | 현황 골격 · A–C 착수 |

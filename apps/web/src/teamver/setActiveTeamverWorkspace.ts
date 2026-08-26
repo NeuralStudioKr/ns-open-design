@@ -1,8 +1,7 @@
 import type { LocalStorageWorkspaceStore } from "@teamver/app-sdk";
 import {
   getDesignBffClient,
-  refreshDesignAuthCookie,
-  ensureDesignBffSessionAuthenticated,
+  ensureDesignAuthLadder,
   isDesignAuthRefreshDeclined,
   shouldSkipTeamverBffAuthCalls,
 } from "./designBffClient";
@@ -70,7 +69,7 @@ async function postDesignAuthWorkspaceWithRecovery(workspaceId: string): Promise
   } catch (err) {
     if (!isUnauthorizedWorkspaceError(err)) throw err;
   }
-  if (await refreshDesignAuthCookie()) {
+  if (await ensureDesignAuthLadder("workspace")) {
     try {
       await postDesignAuthWorkspace(workspaceId);
       return;
@@ -78,7 +77,7 @@ async function postDesignAuthWorkspaceWithRecovery(workspaceId: string): Promise
       if (!isUnauthorizedWorkspaceError(postRefreshErr)) throw postRefreshErr;
     }
   }
-  if (await ensureDesignBffSessionAuthenticated()) {
+  if (await ensureDesignAuthLadder("workspace", { mode: "ensure" })) {
     await postDesignAuthWorkspace(workspaceId);
     return;
   }

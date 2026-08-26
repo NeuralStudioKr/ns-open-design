@@ -2,11 +2,9 @@ import { isTeamverEmbedMode } from "./designApiBase";
 import { isTeamverEmbedSessionAuthenticated } from "./teamverEmbedSession";
 import {
   clearDesignAuthRefreshDecline,
-  ensureDesignBffSessionAuthenticated,
+  ensureDesignAuthLadder,
   isDesignAuthRefreshDeclined,
   isTeamverRuntimeConfigAuthBlocked,
-  probeDesignBffSessionAuthenticated,
-  refreshDesignAuthCookie,
 } from "./designBffClient";
 import { handleEmbedPassiveUnauthorized } from "./teamverEmbedPassiveAuth";
 import { readActiveTeamverWorkspaceId } from "./activeTeamverWorkspace";
@@ -249,7 +247,7 @@ async function fetchDaemonWithEmbedAuthRecovery(
 
   // Survival / first refresh only — never force-POST from every mutation 401
   // (15s soft force-POST cooldown used to re-open refresh storms with C1).
-  const refreshed = await refreshDesignAuthCookie();
+  const refreshed = await ensureDesignAuthLadder("daemon_401");
   if (refreshed) {
     resp = await fetch(input, init);
     if (!shouldRecoverEmbedDaemonUnauthorized(input, resp, init)) {
@@ -283,7 +281,7 @@ async function fetchDaemonWithEmbedAuthRecovery(
   // access on the main response so the next daemon fetch clears auth_request.
   // Clear sticky only after daemon fetch is non-401 (same as probe path) —
   // ensure-alive alone used to unlock soft sticky while nginx still blocked.
-  if (await ensureDesignBffSessionAuthenticated()) {
+  if (await ensureDesignAuthLadder("daemon_401", { mode: "ensure" })) {
     resp = await fetch(input, init);
     if (!shouldRecoverEmbedDaemonUnauthorized(input, resp, init)) {
       clearDesignAuthRefreshDecline();
@@ -292,7 +290,7 @@ async function fetchDaemonWithEmbedAuthRecovery(
   }
   // Ensure failed. Only clear sticky when the next daemon fetch would succeed;
   // probe-alive alone used to unlock soft sticky and re-open POST storms.
-  if (await probeDesignBffSessionAuthenticated()) {
+  if (await ensureDesignAuthLadder("daemon_401", { mode: "probe" })) {
     resp = await fetch(input, init);
     if (resp.status !== 401) {
       clearDesignAuthRefreshDecline();

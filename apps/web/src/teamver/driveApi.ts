@@ -1,9 +1,9 @@
 import { snakeToCamelDeep } from "@teamver/app-sdk";
 import { resolveTeamverDriveBffBase } from "./designApiBase";
 import {
+  ensureDesignAuthLadder,
   fetchDesignAuthSession,
   isDesignAuthRefreshDeclined,
-  refreshDesignAuthCookie,
 } from "./designBffClient";
 import { recoverStaleDriveWorkspace } from "./driveWorkspaceRecovery";
 import { isTeamverEmbedSessionAuthenticated } from "./teamverEmbedSession";
@@ -228,7 +228,7 @@ async function recoverDriveAuthSession(): Promise<boolean> {
   }
 
   // Pre-sticky HA session_expired: one coordinated refresh (may soft-decline).
-  const refreshed = await refreshDesignAuthCookie();
+  const refreshed = await ensureDesignAuthLadder("drive_recover");
   if (refreshed) return true;
 
   // Sibling Set-Cookie may land without sticky — one force session read.

@@ -2,14 +2,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { devLog } from '../lib/devLog';
 import type { WorkspaceListItem } from "@teamver/app-sdk";
 import {
-  ensureDesignBffSessionAuthenticated,
+  ensureDesignAuthLadder,
   fetchDesignAuthSession,
   isDesignAuthRefreshDeclineHard,
   isDesignAuthRefreshDeclined,
   isTeamverRuntimeConfigAuthBlocked,
   pauseDesignBffAuthDuringTransition,
-  probeDesignBffSessionAuthenticated,
-  refreshDesignAuthCookie,
   resetDesignAuthBareRefreshAttempt,
   resetDesignAuthRefreshState,
   type DesignAuthSession,
@@ -444,16 +442,22 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
         if (resetRefreshState) {
           // Explicit "다시 시도" — confirm session is gone before bouncing login.
           // Probe-confirmed dead allows re-login even if embed memory is stale.
-          let probeAlive = await probeDesignBffSessionAuthenticated({ bypassNegativeCache: true });
+          let probeAlive = await ensureDesignAuthLadder("c1_escalate", {
+            mode: "probe",
+            bypassNegativeCache: true,
+          });
           if (!probeAlive) {
             await new Promise((resolve) => setTimeout(resolve, 500));
-            probeAlive = await probeDesignBffSessionAuthenticated({ bypassNegativeCache: true });
+            probeAlive = await ensureDesignAuthLadder("c1_escalate", {
+              mode: "probe",
+              bypassNegativeCache: true,
+            });
           }
           // Probe cannot revive absolute-expired access; ensure /auth/session
           // runs ensure_bff_session which can Set-Cookie a fresh access token
           // on the main response and unlock nginx auth_request.
           if (!probeAlive) {
-            probeAlive = await ensureDesignBffSessionAuthenticated();
+            probeAlive = await ensureDesignAuthLadder("c1_escalate", { mode: "ensure" });
           }
           if (probeAlive) {
             resetDesignAuthRefreshState();
@@ -825,7 +829,7 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
             && !isDesignAuthRefreshDeclineHard()
           ) {
             sessionUnreachableSoftForceUsedRef.current = true;
-            await refreshDesignAuthCookie({ allowSoftForcePost: true });
+            await ensureDesignAuthLadder("soft_force", { allowSoftForcePost: true });
           }
           return refresh({
             force: true,

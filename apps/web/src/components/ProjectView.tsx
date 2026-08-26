@@ -432,7 +432,7 @@ import {
 } from '../teamver/createProjectStreamHandoff';
 import { registerTeamverProjectIfNeeded } from '../teamver/projectRegistry';
 import {
-  refreshDesignAuthCookie,
+  ensureDesignAuthLadder,
   refreshTeamverEmbedAuthBeforeMutating,
   isDesignAuthRefreshDeclined,
 } from '../teamver/designBffClient';
@@ -3907,7 +3907,7 @@ export function ProjectView({
           ) {
             // Before sticky: one soft revive. Once soft/hard sticky owns the
             // tab, C1 / 「다시 시도」 own recovery — do not POST refresh here.
-            await refreshDesignAuthCookie();
+            await ensureDesignAuthLadder("project_view");
           }
           if (attempt < 2) {
             await new Promise((resolve) => window.setTimeout(resolve, 400 * (attempt + 1)));
@@ -4126,7 +4126,7 @@ export function ProjectView({
             ) {
               // Before sticky: one soft revive. Once soft/hard sticky owns the
               // tab, C1 / 「다시 시도」 own recovery — do not POST refresh here.
-              await refreshDesignAuthCookie();
+              await ensureDesignAuthLadder("project_view");
             }
             if (attempt < 2) {
               await new Promise((resolve) => window.setTimeout(resolve, 400 * (attempt + 1)));

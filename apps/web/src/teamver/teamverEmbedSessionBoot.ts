@@ -1,14 +1,12 @@
 import type { Project } from "../types";
 import { devLog } from '../lib/devLog';
 import {
+  ensureDesignAuthLadder,
   fetchDesignAuthSession,
   type FetchDesignAuthSessionOptions,
   fetchTeamverRuntimeConfig,
   isDesignAuthRefreshDeclined,
   isTeamverRuntimeConfigAuthBlocked,
-  probeDesignBffSessionAuthenticated,
-  ensureDesignBffSessionAuthenticated,
-  refreshDesignAuthCookie,
 } from "./designBffClient";
 import { seedEmbedBootstrapSession } from "./embedBootstrapSession";
 import type { EmbedProjectDetailRoute } from "./embedProjectListRefresh";
@@ -94,14 +92,14 @@ export async function runTeamverEmbedSessionBoot(
         unlockBootIfNeeded(deps.isCancelled);
         return null;
       }
-      let nginxLive = await probeDesignBffSessionAuthenticated();
+      let nginxLive = await ensureDesignAuthLadder("boot", { mode: "probe" });
       if (!nginxLive && !isDesignAuthRefreshDeclined()) {
-        nginxLive = await ensureDesignBffSessionAuthenticated();
+        nginxLive = await ensureDesignAuthLadder("boot", { mode: "ensure" });
       }
       if (!nginxLive && !isDesignAuthRefreshDeclined()) {
-        nginxLive = await refreshDesignAuthCookie();
+        nginxLive = await ensureDesignAuthLadder("boot");
         if (!nginxLive) {
-          nginxLive = await probeDesignBffSessionAuthenticated();
+          nginxLive = await ensureDesignAuthLadder("boot", { mode: "probe" });
         }
       }
       if (deps.isCancelled()) return null;
