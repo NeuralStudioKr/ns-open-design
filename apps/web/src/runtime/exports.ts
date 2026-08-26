@@ -1391,10 +1391,17 @@ function isRetryableRenderedExportError(err: unknown): boolean {
 function inlineExportHtmlPayload(
   htmlSnapshot?: string | null,
   deck?: boolean,
+  mode: 'standalone' | 'preview' = 'standalone',
 ): Record<string, string> {
   if (typeof htmlSnapshot !== 'string') return {};
   const trimmed = htmlSnapshot.trim();
   if (trimmed.length === 0) return {};
+  if (deck === true && mode === 'preview') {
+    return {
+      html: repairArtifactDocumentHead(htmlSnapshot),
+      inlineHtmlPrepareMode: 'preview',
+    };
+  }
   // Same persist/preview heal chain (head → stylesheets → surface bleed)
   // so standalone HTML/PDF do not ship broken @import remnants or a
   // dark --shell letterbox the iframe srcdoc would have repaired.
@@ -1428,7 +1435,11 @@ async function performPdfExportRequest(opts: {
       fileName: opts.filePath,
       title: opts.title,
       ...(opts.fresh ? { fresh: true } : {}),
-      ...inlineExportHtmlPayload(opts.htmlSnapshot, opts.deck),
+      ...inlineExportHtmlPayload(
+        opts.htmlSnapshot,
+        opts.deck,
+        opts.deck ? 'preview' : 'standalone',
+      ),
     }),
     headers: { 'content-type': 'application/json' },
     method: 'POST',

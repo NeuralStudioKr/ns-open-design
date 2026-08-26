@@ -22,8 +22,8 @@
 
 ### 0.2 2026-08-26 다운로드 cache bust 보강
 
-- ✅ 전역 export cache 기본값을 `v53`로 올리고, staging/production env pin도 `v53`로 갱신했다.
-- ✅ deck PDF/HTML/ZIP/image/PPTX는 `deck-layout-preview-parity-v4:*` 포맷별 namespace를 명시해 renderer 수정 후 기존 broken cache가 hit되지 않게 했다.
+- ✅ 전역 export cache 기본값을 `v54`로 올리고, staging/production env pin도 `v54`로 갱신했다.
+- ✅ deck PDF/HTML/ZIP/image/PPTX는 `deck-layout-preview-parity-v5:*` 포맷별 namespace를 명시해 renderer 수정 후 기존 broken cache가 hit되지 않게 했다.
 - 원인 후보: 2026-08-25 layout fix 후에도 운영 env가 `OD_EXPORT_CACHE_VERSION=v3`으로 고정되어 있으면 같은 source/mtime의 예전 PDF/HTML/PPTX cache가 계속 재사용될 수 있다.
 - 배포 직후 첫 다운로드 응답은 `cache=miss`가 정상이다. 이후 같은 파일 반복 다운로드는 새 namespace 기준 `hit-memo|hit-local`이면 정상이다.
 
@@ -39,13 +39,20 @@
 - ✅ deck PDF 다운로드는 Chromium `page.pdf` print 경로 대신 preview screenshot 경로를 사용해 각 슬라이드를 1920×1080 JPEG로 캡처한 뒤 16:9 PDF 페이지로 조립한다.
 - 적용 이유: `page.pdf`는 `@media print`, CSS px→inch 변환, page box scaling을 거치므로 preview panel과 위치·비율이 어긋날 수 있다. screen screenshot 경로는 사용자가 보는 slide frame을 그대로 캡처해 PDF/preview parity가 높다.
 - 트레이드오프: PDF 텍스트 선택/검색성보다 visual fidelity를 우선한다. editable 산출물이 필요하면 기존 editable PPTX 다운로드 경로를 사용한다.
-- 부하 관리: 기존 export queue, browser pool, cache/offload 정책을 그대로 통과한다. 같은 파일 반복 요청은 `deck-layout-preview-parity-v4:pdf-v1` cache hit로 Chromium 재렌더를 피해야 한다.
+- 부하 관리: 기존 export queue, browser pool, cache/offload 정책을 그대로 통과한다. 같은 파일 반복 요청은 `deck-layout-preview-parity-v5:pdf-v1` cache hit로 Chromium 재렌더를 피해야 한다.
 
 ### 0.5 2026-08-26 deck PDF preview-input 분리
 
 - ✅ deck PDF screenshot은 `healDeckHtmlForStandaloneExport()`가 적용된 standalone HTML이 아니라, `repairArtifactDocumentHead(withBaseHref(rawHtml))` 수준의 preview HTML을 로드해 캡처한다.
 - 원인: standalone healing은 HTML/ZIP/PPTX 안정화를 위해 official look CSS, motif, fixed canvas 보정 등을 적용할 수 있다. 미리보기 패널은 원본 artifact DOM에 가까운 상태를 보여주므로, PDF에서만 상단 motif/색상 블록/위치 변화가 나타날 수 있었다.
 - 판단: PDF 다운로드의 1차 목표는 편집성이 아니라 preview visual fidelity다. 따라서 PDF는 preview DOM을 우선하고, standalone 보정은 HTML/ZIP/PPTX 경로에 남긴다.
+
+### 0.6 2026-08-26 deck PDF inline snapshot 이중-heal 차단
+
+- ✅ FE `/export/pdf` 요청은 deck일 때 `inlineHtmlPrepareMode: "preview"`를 함께 보내고, inline snapshot을 standalone export HTML로 미리 변환하지 않는다.
+- ✅ daemon `buildDesktopPdfExportInput()`도 `inlineHtmlPrepareMode: "preview"`이면 inline HTML에 `healDeckHtmlForStandaloneExport()`를 다시 적용하지 않는다.
+- 원인: §0.5에서 daemon PDF 준비 모드를 preview로 분리했지만, FE payload와 daemon input builder가 이미 inline HTML을 standalone healing해 버려 실제 PDF 캡처 입력은 여전히 preview panel과 달랐다.
+- 유지 범위: HTML/ZIP/PPTX/image export는 기존 standalone 안정화 경로를 유지한다. 이번 변경은 deck PDF visual fidelity 전용이다.
 
 ---
 

@@ -44,7 +44,9 @@ describe('buildDesktopPdfExportInput', () => {
     });
 
     expect(built.input.html).not.toMatch(/viewport=width=device-width/i);
-    expect(built.input.html).toContain('<section class="slide">One</section>');
+    expect(built.input.html).toContain('<section class="slide"');
+    expect(built.input.html).toContain('One');
+    expect(built.input.html).toContain('width:1920px');
   });
 
   it('reads the project file and derives a raw-route baseHref from the file directory', async () => {
@@ -57,13 +59,13 @@ describe('buildDesktopPdfExportInput', () => {
       title: 'Seed Deck',
     });
 
-    expect(built.input).toEqual({
-      baseHref: 'http://127.0.0.1:7456/api/projects/proj-pdf-test/raw/deck/',
-      deck: true,
-      defaultFilename: 'Seed Deck.pdf',
-      html: '<!doctype html><section class="slide">One</section>',
-      title: 'Seed Deck',
-    });
+    expect(built.input.baseHref).toBe('http://127.0.0.1:7456/api/projects/proj-pdf-test/raw/deck/');
+    expect(built.input.deck).toBe(true);
+    expect(built.input.defaultFilename).toBe('Seed Deck.pdf');
+    expect(built.input.title).toBe('Seed Deck');
+    expect(built.input.html).toContain('<section class="slide"');
+    expect(built.input.html).toContain('width:1920px');
+    expect(built.input.html).toContain('One');
     expect(built.source.relPath).toBe('deck/index.html');
     expect(built.source.mtimeMs).toBeGreaterThan(0);
   });
@@ -93,7 +95,9 @@ describe('buildDesktopPdfExportInput', () => {
       inlineHtml: '<!doctype html><section class="slide">Snapshot</section>',
     });
 
-    expect(built.input.html).toBe('<!doctype html><section class="slide">Snapshot</section>');
+    expect(built.input.html).toContain('<section class="slide"');
+    expect(built.input.html).toContain('Snapshot');
+    expect(built.input.html).toContain('width:1920px');
     expect(built.input.deck).toBe(true);
     expect(built.input.defaultFilename).toBe('Snapshot Deck.pdf');
     expect(built.source.relPath).toBe('deck/index.html');
@@ -121,6 +125,41 @@ describe('buildDesktopPdfExportInput', () => {
     expect(different.source.mtimeMs).not.toBe(built.source.mtimeMs);
   });
 
+  it('keeps deck PDF preview inline HTML unhealed when requested', async () => {
+    const previewHtml = '<!doctype html><style>.slide{width:100vw;height:100vh}</style><section class="slide">Snapshot</section>';
+    const built = await buildDesktopPdfExportInput({
+      daemonUrl: 'http://127.0.0.1:7456',
+      deck: true,
+      fileName: 'deck/index.html',
+      inlineHtml: previewHtml,
+      inlineHtmlPrepareMode: 'preview',
+      projectsRoot: '/dev/null/does-not-exist',
+      projectId: 'unknown-project',
+      title: 'Preview Deck',
+    });
+
+    expect(built.input.html).toContain('.slide{width:100vw;height:100vh}');
+    expect(built.input.html).not.toContain('width:1920px');
+    expect(built.input.html).not.toContain('data-od-deck-fixed-canvas-pin');
+    expect(built.input.deck).toBe(true);
+  });
+
+  it('still heals inline HTML for standalone export preparation by default', async () => {
+    const previewHtml = '<!doctype html><style>.slide{width:100vw;height:100vh}</style><section class="slide">Snapshot</section>';
+    const built = await buildDesktopPdfExportInput({
+      daemonUrl: 'http://127.0.0.1:7456',
+      deck: true,
+      fileName: 'deck/index.html',
+      inlineHtml: previewHtml,
+      projectsRoot: '/dev/null/does-not-exist',
+      projectId: 'unknown-project',
+      title: 'Standalone Deck',
+    });
+
+    expect(built.input.html).not.toBe(previewHtml);
+    expect(built.input.html).toContain('width: 1920px');
+  });
+
   it('treats an all-whitespace inlineHtml as absent and reads the file instead', async () => {
     const built = await buildDesktopPdfExportInput({
       daemonUrl: 'http://127.0.0.1:7456',
@@ -131,7 +170,9 @@ describe('buildDesktopPdfExportInput', () => {
       inlineHtml: '   \n\t  ',
     });
 
-    expect(built.input.html).toBe('<!doctype html><section class="slide">One</section>');
+    expect(built.input.html).toContain('<section class="slide"');
+    expect(built.input.html).toContain('One');
+    expect(built.input.html).toContain('width:1920px');
     expect(built.source.mtimeMs).toBeGreaterThan(0);
   });
 
@@ -321,15 +362,15 @@ describe('POST /api/projects/:id/export/pdf', () => {
 
       expect(response.status).toBe(200);
       expect(await response.json()).toEqual({ ok: true, path: '/tmp/seed.pdf' });
-      expect(calls).toEqual([
-        {
-          baseHref: `${started.url}/api/projects/${encodeURIComponent(projectId)}/raw/deck/`,
-          deck: true,
-          defaultFilename: 'Seed Deck.pdf',
-          html: '<!doctype html><section class="slide">One</section>',
-          title: 'Seed Deck',
-        },
-      ]);
+      expect(calls).toHaveLength(1);
+      expect(calls[0]).toMatchObject({
+        baseHref: `${started.url}/api/projects/${encodeURIComponent(projectId)}/raw/deck/`,
+        deck: true,
+        defaultFilename: 'Seed Deck.pdf',
+        title: 'Seed Deck',
+      });
+      expect(String((calls[0] as { html?: unknown }).html)).toContain('<section class="slide"');
+      expect(String((calls[0] as { html?: unknown }).html)).toContain('width:1920px');
     } finally {
       await new Promise<void>((resolve) => started.server.close(resolve));
     }

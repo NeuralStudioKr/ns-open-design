@@ -22,6 +22,11 @@ export interface BuildDesktopPdfExportInputOptions {
    * instead of file mtime so identical inline bodies still deduplicate.
    */
   inlineHtml?: string;
+  /**
+   * Deck PDF exports pass the same preview HTML the iframe renders. Standalone
+   * downloads still use the export healing path so HTML/ZIP/PPTX remain stable.
+   */
+  inlineHtmlPrepareMode?: 'standalone' | 'preview';
 }
 
 /**
@@ -47,7 +52,11 @@ export async function buildDesktopPdfExportInput(
 ): Promise<BuiltDesktopPdfExport> {
   const inline = typeof options.inlineHtml === 'string' ? options.inlineHtml : '';
   const useInline = inline.trim().length > 0;
-  const normalizedInline = useInline ? healDeckHtmlForStandaloneExport(inline) : '';
+  const normalizedInline = useInline
+    ? options.inlineHtmlPrepareMode === 'preview'
+      ? inline
+      : healDeckHtmlForStandaloneExport(inline)
+    : '';
   const source = useInline
     ? await resolveRenderableHtmlSource({
         html: normalizedInline,
@@ -56,6 +65,7 @@ export async function buildDesktopPdfExportInput(
         projectId: options.projectId,
         projectsRoot: options.projectsRoot,
         allowVersionedDistLookup: false,
+        prepareMode: options.inlineHtmlPrepareMode ?? 'standalone',
       })
     : await (async () => {
         const file = await readProjectFile(
@@ -71,6 +81,7 @@ export async function buildDesktopPdfExportInput(
           projectId: options.projectId,
           projectsRoot: options.projectsRoot,
           allowVersionedDistLookup: true,
+          prepareMode: 'standalone',
         });
       })();
   // Inline `<img src>` (+ CSS `url(...)`) images from local scratch so headless
@@ -363,11 +374,14 @@ async function resolveRenderableHtmlSource(options: {
    * meant to bypass. Only enable when reading from disk in the first place.
    */
   allowVersionedDistLookup: boolean;
+  prepareMode?: 'standalone' | 'preview';
 }): Promise<{ fileName: string; html: string; mtimeMs: number }> {
   if (!isViteDevHtmlEntry(options.html) || !options.allowVersionedDistLookup) {
     return {
       fileName: options.fileName,
-      html: healDeckHtmlForStandaloneExport(options.html),
+      html: options.prepareMode === 'preview'
+        ? options.html
+        : healDeckHtmlForStandaloneExport(options.html),
       mtimeMs: options.fileMtimeMs,
     };
   }
