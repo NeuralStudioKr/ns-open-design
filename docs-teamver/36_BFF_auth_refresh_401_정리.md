@@ -67,7 +67,15 @@ staging 배포 후 프로젝트 상세 페이지를 새로고침해, 일반 진�
 
 **기대:** 확정 dead에서 불필요 401 반복 없음. cold-cache 첫 refresh 401의 HA sibling probe는 유지.
 
+**2026-08-25 후속 (잔여):** refresh 401 **직후** `sessionProbeKnownDeadUntil` 미설정이면 HA probe×2가 여전히 나간다(사용자 보고: refresh→probe→probe). 완전 해결 기획: [0825-N01-1](./0825-N01-1-상위기획-[BFF_session-probe_refresh_401_완전해결].md).
+
 ## 2026-07-16 — `GET /runtime-config` visibility 401 (본 문서와 구분)
 
 탭 focus마다 `GET /teamver-bff/runtime-config → 401 session_expired` 가 반복되는 현상은 **refresh POST가 아님**.  
 원인·대안 비교·세션 가드+401 백오프 채택은 **[43](./43_runtime_config_visibility_401.md)**.
+
+## 변경 이력
+
+| 일시 (KST) | 내용 |
+|------------|------|
+| 2026-08-25 17:40 | 08-05 폭풍 절에 잔여 G1(refresh→probe×2) 및 [0825-N01-1](./0825-N01-1-상위기획-[BFF_session-probe_refresh_401_완전해결].md) 링크 |
