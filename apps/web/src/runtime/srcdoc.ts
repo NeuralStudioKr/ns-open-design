@@ -2726,6 +2726,12 @@ html[data-od-compact-stacked] body {
 html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
   display: none !important;
 }
+/* IB pitch-book / #stage transform strips: sibling hide leaves only slide 1
+   visible while host nav translates 100vw against a 1920px canvas. */
+html[data-od-compact-stacked]:not([data-od-stacked-deck]) #stage > .slide,
+html[data-od-compact-stacked]:not([data-od-stacked-deck]) .stage > .slide {
+  display: revert !important;
+}
 #od-stacked-deck-stage {
   position: absolute;
   top: 50%;
@@ -2881,7 +2887,14 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     var list = [];
     for (var d = 0; d < direct.length; d++) list.push(direct[d]);
     var track = transformTrack(list);
-    if (track && track.id !== 'deck') return false;
+    if (
+      track
+      && track.id !== 'deck'
+      && track.id !== 'stage'
+      && !(track.classList && track.classList.contains('stage'))
+    ) {
+      return false;
+    }
     var stackedViewport = false;
     function hasFixedCanvasSizingText(value) {
       var text = String(value || '');
@@ -3673,11 +3686,29 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
       // 8-Bit Orbit / vertical slides-container: native JS uses
       // translateY(-N00vh). Overwriting that with translateX paints an
       // empty body background while the counter still advances.
-      var unitY = /translateY\\(\\s*-?[0-9.]+\\s*%\\s*\\)/i.test(track.style.transform || '') ? '%' : 'vh';
-      track.style.transform = 'translateY(' + (-target * 100) + unitY + ')';
+      var stepY = 0;
+      try {
+        var h = list[0] && list[0].offsetHeight ? list[0].offsetHeight : 0;
+        if (h >= 600 && Math.abs(h - (window.innerHeight || 0)) > 48) stepY = h;
+      } catch (_) {}
+      if (stepY > 0) {
+        track.style.transform = 'translateY(' + (-target * stepY) + 'px)';
+      } else {
+        var unitY = /translateY\\(\\s*-?[0-9.]+\\s*%\\s*\\)/i.test(track.style.transform || '') ? '%' : 'vh';
+        track.style.transform = 'translateY(' + (-target * 100) + unitY + ')';
+      }
     } else {
-      var unit = /translateX\\(\\s*-?[0-9.]+\\s*%\\s*\\)/i.test(track.style.transform || '') ? '%' : 'vw';
-      track.style.transform = 'translateX(' + (-target * 100) + unit + ')';
+      var stepX = 0;
+      try {
+        var w = list[0] && list[0].offsetWidth ? list[0].offsetWidth : 0;
+        if (w >= 600 && Math.abs(w - (window.innerWidth || 0)) > 48) stepX = w;
+      } catch (_) {}
+      if (stepX > 0) {
+        track.style.transform = 'translateX(' + (-target * stepX) + 'px)';
+      } else {
+        var unit = /translateX\\(\\s*-?[0-9.]+\\s*%\\s*\\)/i.test(track.style.transform || '') ? '%' : 'vw';
+        track.style.transform = 'translateX(' + (-target * 100) + unit + ')';
+      }
     }
     syncTransformStripActive(list, target);
     updateDeckChrome(target, list.length);
@@ -3788,6 +3819,10 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     if (total) total.textContent = pad2(count);
     if (prev) prev.toggleAttribute('disabled', i <= 0);
     if (next) next.toggleAttribute('disabled', i >= count - 1);
+    var nowNodes = document.querySelectorAll('#now');
+    for (var n = 0; n < nowNodes.length; n++) nowNodes[n].textContent = pad2(i + 1);
+    var totalAlts = document.querySelectorAll('#total');
+    for (var t = 0; t < totalAlts.length; t++) totalAlts[t].textContent = pad2(count);
     var page = document.getElementById('current');
     if (page) page.textContent = pad2(i + 1);
     var dots = document.querySelectorAll('.nav-dot');

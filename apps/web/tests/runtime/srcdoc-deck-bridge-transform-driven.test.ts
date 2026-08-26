@@ -187,4 +187,58 @@ describe('deck bridge - transform-driven decks', () => {
       .filter((message) => message?.type === 'od:slide-state');
     expect(slideStates.at(-1)).toMatchObject({ active: 1, count: 3 });
   });
+
+  it('advances a #stage 1920px strip by slide width, not 100vw, and syncs #now', async () => {
+    const bodyHtml = `
+      <style>
+        html, body { margin: 0; }
+        #stage { display: flex; width: 5760px; transition: none; }
+        .slide { flex: 0 0 1920px; width: 1920px; height: 1080px; }
+      </style>
+      <div class="deck" id="deck">
+        <div class="chrome"><span id="now">01</span> / <span id="total">03</span></div>
+        <div id="stage">
+          <section class="slide" style="width:1920px;height:1080px">One</section>
+          <section class="slide" style="width:1920px;height:1080px">Two</section>
+          <section class="slide" style="width:1920px;height:1080px">Three</section>
+        </div>
+      </div>
+    `;
+    const srcdoc = buildSrcdoc(`<!doctype html><html><body>${bodyHtml}</body></html>`, {
+      deck: true,
+    });
+    expect(srcdoc).toContain('#stage > .slide');
+    const script = extractDeckBridgeScript(srcdoc);
+    const dom = new JSDOM(`<!doctype html><html><body>${bodyHtml}</body></html>`, {
+      runScripts: 'outside-only',
+      pretendToBeVisual: true,
+    });
+    const win = dom.window;
+    Object.defineProperty(win, 'parent', {
+      configurable: true,
+      value: { postMessage: vi.fn() },
+    });
+    Object.defineProperty(win, 'innerWidth', { configurable: true, value: 800 });
+    Object.defineProperty(win, 'innerHeight', { configurable: true, value: 600 });
+    const slides = Array.from(win.document.querySelectorAll<HTMLElement>('#stage > .slide'));
+    slides.forEach((slide) => {
+      Object.defineProperty(slide, 'offsetWidth', { configurable: true, value: 1920 });
+      Object.defineProperty(slide, 'offsetHeight', { configurable: true, value: 1080 });
+    });
+    const evaluate = new win.Function(script);
+    evaluate.call(win);
+    win.dispatchEvent(new win.MessageEvent('message', {
+      data: { type: 'od:slide', action: 'next' },
+    }));
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 80));
+    const stage = win.document.getElementById('stage') as HTMLElement | null;
+    const stacked = win.document.getElementById('od-stacked-deck-stage');
+    if (stacked) {
+      expect(stacked.querySelectorAll('.slide').length).toBeGreaterThanOrEqual(2);
+    } else {
+      expect(stage?.style.transform).toBe('translateX(-1920px)');
+      expect(stage?.style.transform).not.toContain('100vw');
+    }
+    expect(win.document.getElementById('now')?.textContent).toBe('02');
+  });
 });
