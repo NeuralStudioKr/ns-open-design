@@ -126,7 +126,37 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | think 태그 / 내부 마크업 필터 | ☑ 기존 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프63 / round80)
+## 이번 루프 (루프68 / round85)
+
+1. persist — bookmark/footnote flow
+
+**검증:** chat-leak-probe-round85
+
+## 직전 루프 (루프67 / round84)
+
+1. persist — nav/spatial-navigation flow
+
+**검증:** chat-leak-probe-round84
+
+## 직전 루프 (루프66 / round83)
+
+1. persist — flood/stop/lighting flow
+
+**검증:** chat-leak-probe-round83
+
+## 직전 루프 (루프65 / round82)
+
+1. persist — stroke/fill presentation flow
+
+**검증:** chat-leak-probe-round82
+
+## 직전 루프 (루프64 / round81)
+
+1. persist — mask/mask-border flow
+
+**검증:** chat-leak-probe-round81
+
+## 직전 루프 (루프63 / round80)
 
 1. persist — padding ≥1ic kit bind
 
