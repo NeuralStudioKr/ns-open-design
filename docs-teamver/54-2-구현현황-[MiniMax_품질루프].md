@@ -23,6 +23,7 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | chat leftover: GALLERY/MODAL/TAB/FORM/BUTTON/WIDGET … | ☑ round38 |
 | chat leftover: AVATAR/CHIP/DROPDOWN/DASHBOARD/CANVAS … | ☑ round39 |
 | chat leftover: TOOLTIP/CALLOUT/COMMENT/LOGO/SKELETON/PAGINATION … | ☑ round40 |
+| chat leftover: SPLIT/SURFACE/GRADIENT/GLASS/SHADOW … | ☑ round41 |
 | leftover APPEND가 producedFiles 있어도 말풍선에 남음 | ☑ 루프18 |
 | dump fallback이 `초안.`/`진행.`/한글 완료 문장을 지움 | ☑ 루프19 |
 | split-* 마감/체크리스트가 inner clip을 건너뛰어 16:9 overflow | ☑ 루프20 |
@@ -46,6 +47,7 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | persist: card-like rem/em padding (≥0.75rem) kit bind | ☑ round38 |
 | persist: card-like % (≥4%) · ch (≥2ch) padding kit bind | ☑ round39 |
 | persist: card-like vh/vw/vmin/vmax/dvh (≥2) padding kit bind | ☑ round40 |
+| persist: card-like cqw/cqh/cqi/cqb (≥2) · details/summary/label/output kit bind | ☑ round41 |
 | 16:9 inner clip · kit card bind | ☑ |
 | top-up 재진입 재호출 + 내부 프롬프트 노출 | ☑ 센티널+autoOpen; 루프9 reattach 차단 · leftover 숨김 |
 | first-fill 3장 강제 → 요청 1–6장 한 턴 | ☑ 루프9 |
@@ -62,7 +64,15 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | think 태그 / 내부 마크업 필터 | ☑ 기존 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프21)
+## 이번 루프 (루프22 / round41)
+
+1. chat — SPLIT/SURFACE/GRADIENT/GLASS/SHADOW 등 분할·서피스 트랙 숨김
+2. persist — card-like padding에 ≥2cqw/cqh/cqi/cqb (thin `1cqw` 유지)
+3. persist — details/summary/label/output는 card-like padding일 때만 kit bind
+
+**검증:** chat-leak-probe-round41 · round40 · round39 · round38
+
+## 직전 루프 (루프21)
 
 1. 호스트 `flex-direction` / `flex-wrap` / `flex-flow`를 flow wrap에 복사
 2. `col-left`+`col-right`는 row clip (split과 동일). persist-split 없음
