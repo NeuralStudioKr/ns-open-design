@@ -776,6 +776,11 @@ const FLOW_COPIED_STYLE_PROPS = [
   'alignment-baseline',
   'paint-order',
   'vector-effect',
+  'scroll-marker-group',
+  'interactivity',
+  'interest-delay',
+  'dynamic-range-limit',
+  'contrast-color',
 ] as const;
 
 function wrapFlowOpenTag(hostAttrs: string, inner = ''): string {
