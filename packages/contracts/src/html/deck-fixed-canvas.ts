@@ -579,12 +579,18 @@ const FLOW_COPIED_STYLE_PROPS = [
   'scroll-snap-type',
   'scroll-snap-align',
   'scroll-margin',
+  'scroll-margin-block',
+  'scroll-margin-inline',
   'scroll-padding',
+  'scroll-padding-block',
+  'scroll-padding-inline',
   'scrollbar-gutter',
   'overscroll-behavior',
   'overscroll-behavior-x',
   'overscroll-behavior-y',
   'overflow-anchor',
+  'overflow-clip-margin',
+  'contain-intrinsic-size',
   'user-select',
   'touch-action',
   'pointer-events',
@@ -990,9 +996,9 @@ function pickOfficialKitCardClass(html: string): string | null {
 }
 
 const KIT_CARD_OPEN_RE =
-  /<(div|aside|article|section|li|figure|main|header|footer|blockquote|nav|ul|ol|dl|dt|dd|p|span|h[1-6]|figcaption|caption|details|summary|label|output|fieldset|legend|dialog|menu|mark|time|cite|q|small|abbr|kbd|samp|dfn|table|thead|tbody|tfoot|tr|td|th|address|hgroup|search|data|meter|progress|ruby|form|optgroup|option|datalist)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
+  /<(div|aside|article|section|li|figure|main|header|footer|blockquote|nav|ul|ol|dl|dt|dd|p|span|h[1-6]|figcaption|caption|details|summary|label|output|fieldset|legend|dialog|menu|mark|time|cite|q|small|abbr|kbd|samp|dfn|table|thead|tbody|tfoot|tr|td|th|address|hgroup|search|data|meter|progress|ruby|form|optgroup|option|datalist|math|mrow|semantics)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
 const SELECTIVE_KIT_CARD_TAGS_RE =
-  /^(?:p|span|h[1-6]|figcaption|caption|details|summary|label|output|fieldset|legend|dialog|menu|mark|time|cite|q|small|abbr|kbd|samp|dfn|table|thead|tbody|tfoot|tr|td|th|data|meter|progress|ruby|optgroup|option|datalist)$/i;
+  /^(?:p|span|h[1-6]|figcaption|caption|details|summary|label|output|fieldset|legend|dialog|menu|mark|time|cite|q|small|abbr|kbd|samp|dfn|table|thead|tbody|tfoot|tr|td|th|data|meter|progress|ruby|optgroup|option|datalist|math|mrow|semantics)$/i;
 
 function bindFakeOutlineCardsInSpan(html: string, cardClass: string): string {
   return html.replace(KIT_CARD_OPEN_RE, (open, tag: string, attrs: string) => {
