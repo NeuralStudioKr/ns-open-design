@@ -92,7 +92,7 @@ Teamver sidecar 배포: `deploy/teamver/` (daemon + **be/** + nginx).
 
 | 일자 | 내용 |
 |------|------|
-| 2026-08-26 | [0825-N01-0 CTO전달](./0825-N01-0-CTO전달-[BFF_auth_완전해결].md) · Phase 2 통합 설계(N01-1 §12, N01-2 §10~18) |
+| 2026-08-26 | [0825-N01-0](./0825-N01-0-CTO전달-[BFF_auth_완전해결].md) · Plan A session 서버 판정 1순위 · N01-1 §12 · N01-2 §10~17 |
 | 2026-08-26 | N01-2/3 구현설계·현황 링크 (P0 A–C) |
 | 2026-08-25 | [0825-N01-1](./0825-N01-1-상위기획-[BFF_session-probe_refresh_401_완전해결].md) BFF probe/refresh 401 Epic 링크 |
 | 2026-08-04 | [40](./40_OD_upstream_main_반영_검토.md) 루프 25 링크 추가 — upstream/main `6ce4344fe` 대비 staging 반영 후보 |

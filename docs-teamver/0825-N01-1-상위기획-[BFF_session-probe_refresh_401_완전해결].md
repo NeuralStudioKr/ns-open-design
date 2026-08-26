@@ -75,10 +75,11 @@ GET  https://stg-design.teamver.com/teamver-bff/auth/session-probe    → 401
 | Phase | 범위 | 레포 | 상태 |
 |-------|------|------|------|
 | **1** | Design FE ladder (FR-1~5) | `ns-open-design` | ☑ 코드·vitest |
-| **2** | Platform Auth Epoch + Main logout bridge | `ns-teamver-be`, `ns-teamver-fe-v2`, Design FE | 설계 확정 |
-| **3** | BFF pin + 선제 reconcile (45 Stage 1·2) | Design BE/FE | [45-1](./45-1-구현설계-Main_SSO_Design_계정_정합_Stage1-2.md) 부분 진행 |
-| **4** | 크로스탭 `main-user-changed` (45 Stage 3) | Design FE | 대기 |
-| **5** | quiet probe · session-probe `code` (FR-6) | Design BE · nginx | 선택·후속 |
+| **2** | **Plan A:** `/auth/session` 서버 `main_sso_status` + FE reconcile | Design BE/FE | 설계 확정 · **Main 변경 없음** |
+| **2b** | 45-1 pin · reconcile · logout bridge | Design + Main FE | ☑ 코드 |
+| **3** | 크로스탭 `main-user-changed` (45 Stage 3) | Design FE | P1 |
+| **4** | quiet probe · session-probe `code` (FR-6) | Design BE · nginx | 선택 |
+| **5** | Plan B back-channel logout · Plan C epoch | Main + Design | P2~P3 · 선택 |
 | **6** | Stage 4 Dual-auth | Main + Design | Epic 밖 |
 
 ---
@@ -136,8 +137,8 @@ postAuthRefreshCoordinated → 401
 
 | 층 | 이름 | Phase 2 조치 |
 |----|------|----------------|
-| **L7** | 크로스오리진 auth 신호 공백 | Main `teamver_auth_epoch` 쿠키 · logout bridge · Design watcher |
-| **L6** | Main/Design 사용자 불일치 | [45](./45_Main_SSO_Design_BFF_계정_불일치_예방_로드맵.md) Stage 1–3 + epoch 연동 |
+| **L7** | 크로스오리진 auth 신호 · HttpOnly blind spot | **Plan A:** `/auth/session` 서버 `main_sso_status` · session-first ordering |
+| **L6** | Main/Design 사용자 불일치 | [45](./45_Main_SSO_Design_BFF_계정_불일치_예방_로드맵.md) Stage 1–3 · pin(☑) · server reconcile |
 | **L5** | HA Set-Cookie | [39_10](./39_10_HA_세션쿠키_경합_해결.md) — 회귀만 |
 
 ```mermaid
@@ -349,130 +350,127 @@ refresh 또는 probe 응답에서 **다음 중 하나면 HA_RECOVERING 진입 �
 
 ---
 
-## 12. Phase 2 — 통합 완전 해결 아키텍처 (Main 포함)
+## 12. Phase 2 — 통합 완전 해결 (Plan A 우선)
 
-### 12.1 왜 Main 변경이 필요한가
+### 12.1 설계 원칙 (2026-08-26 개정)
 
-Design FE ladder(Phase 1)는 **이미 죽은 BFF 세션**에서 probe×2를 막는다. 그러나 다음은 Design 단독으로 해결 불가:
+| 순위 | 접근 | Main 변경 | 표준성 |
+|------|------|-----------|--------|
+| **Plan A** | BFF `/auth/session` 서버 `main_sso_status` | **없음** | BFF session 판정 — **1순위** |
+| **Plan B** | Back-channel logout (Main M2M → Design) | BE M2M | OIDC back-channel 동형 — P2 |
+| **Plan C** | readable `teamver_auth_epoch` + watcher | BE cookie | ad-hoc — **session-first bake 후에만** |
 
-| 공백 | 증상 | Main 없이 한계 |
-|------|------|----------------|
-| **크로스오리진** | `stg.teamver.com` 로그아웃/계정전환 후 `stg-design` 탭 잔류 | BroadcastChannel 불가. cookie hint는 presence-only |
-| **선제 mismatch** | Drive 열기 전까지 이전 사용자 UI | BFF pin 없으면 비교 기준 없음 |
-| **logout bridge** | Main logout 후 Design BFF host-only 쿠키 잔존 | cross-origin `fetch`로 Design 쿠키 전송 불가 |
-| **전환 중 ladder** | epoch 변화 전 refresh 401 1회 | pause 트리거가 늦음 |
+**401 폭풍**은 Phase 1 ladder로 해결. Phase 2는 **mismatch 선제 감지** + **전환 중 refresh 억제**가 목표.
 
-### 12.2 핵심 계약 — Platform Auth Epoch
+### 12.2 Plan A — Session 서버 판정 (핵심)
 
-**신규 readable 쿠키** (parent domain SSO와 동일 패턴):
+브라우저는 Design 요청(`stg-design.teamver.com`)에 `.teamver.com` 쿠키를 **항상** 보낸다. Design BFF는 **HttpOnly Main JWT를 서버에서** 읽을 수 있다 (Drive gate와 동일).
 
-```text
-Name:   teamver_auth_epoch
-Domain: .teamver.com
-Flags:  Secure, SameSite=Lax, path=/, NOT HttpOnly
-Value:  {monotonic_rev}:{user_hash_16}
+**BE** `GET /auth/session` 응답 확장:
+
+```json
+{
+  "authenticated": true,
+  "main_sso_identity_hash": "abc…",
+  "main_sso_status": "match" | "mismatch" | "unknown"
+}
 ```
 
-| 이벤트 | Main BE 동작 |
-|--------|----------------|
-| login / OAuth callback / `POST /api/auth/refresh` 성공 | `rev++`, `user_hash = SHA256(user_id)[:16]` Set-Cookie |
-| `POST /api/auth/logout` | `rev++`, `user_hash` 빈값 또는 삭제 |
-| 계정 전환(동일 브라우저) | 새 user_id → hash 변경 + rev++ |
+| `main_sso_status` | 조건 |
+|-------------------|------|
+| `match` | pin(또는 bff user) == live Main cookie user |
+| `mismatch` | 둘 다 존재 · 불일치 |
+| `unknown` | Main 쿠키 없음 · pin 없음(legacy) · BFF 비인증 |
 
-**Design FE watcher** (`teamverMainAuthEpoch.ts`):
-
-1. `pageshow` / `visibilitychange` / 1s polling(전환 중만)으로 epoch 읽기.
-2. `rev` 또는 `user_hash`가 마지막 스냅샷과 다르면:
-   - `pauseDesignBffAuthDuringTransition()` **즉시**
-   - `maybeReconcileMainSsoWithDesignSession()` (45 Stage 2)
-   - mismatch → `beginMainSsoMismatchRecovery()` (기존 Stage 0)
-3. epoch cookie 없음 → `unknown` (Stage 0 reactive 유지).
-
-**왜 HttpOnly가 아닌가:** Design 서브도메인이 Main BE 라운드트립 없이 **동기 비교**해야 전환 직후 refresh 401을 막을 수 있음. raw `user_id`는 넣지 않고 16자 hash만.
-
-### 12.3 Main logout → Design BFF 폐기 (bridge)
-
-[45-1 §5](./45-1-구현설계-Main_SSO_Design_계정_정합_Stage1-2.md) 보조 경로를 Phase 2에 **공식 포함**:
+**FE** (`useTeamverEmbed` focus/visibility):
 
 ```text
-Main FE logout 성공
-  → epoch rev++ (BE가 이미 했어도 FE mirror는 no-op)
-  → hidden iframe: https://stg-design.teamver.com/auth/logout-bridge
-       (Design FE: postDesignAuthLogout best-effort, 3s cap)
-  → Design 탭: epoch watcher가 pause + reconcile
+1. fetchDesignAuthSession()          ← ladder보다 먼저
+2. main_sso_status === "mismatch"?
+     yes → pauseDesignBffAuthDuringTransition()
+         → beginMainSsoMismatchRecovery()
+3. else → 기존 cookie hint / Phase 1 ladder
 ```
 
-iframe 실패(ITP·CSP) 시 epoch watcher가 다음 focus에서 정렬 — **실패해도 안전**.
+**45-1 Stage 2 한계 보완:** `teamverMainSsoUserProbe`의 `document.cookie` 경로는 HttpOnly Plan B에서 `unknown`이 많음 → reconcile 입력을 **`session.mainSsoStatus` 우선**으로 전환.
 
-### 12.4 통합 상태기계 (탭 단위)
+### 12.3 Plan B — Back-channel logout (선택 · P2)
 
-Phase 1 `LIVE|UNKNOWN|HA_RECOVERING|DEAD_SOFT|TRANSITION`에 **크로스앱 입력** 추가:
+[45-1 §5](./45-1-구현설계-Main_SSO_Design_계정_정합_Stage1-2.md) iframe bridge는 **☑ 구현됨**. 보강:
+
+```text
+Main POST /auth/logout
+  → Main BE: M2M POST Design /internal/auth/main-logout { user_hash }
+  → Design BE: 해당 user BFF 세션 invalidate (best-effort)
+  → + 기존 iframe logout-bridge (탭 즉시)
+```
+
+### 12.4 Plan C — Epoch 쿠키 (보류 · P3)
+
+session-first(Plan A) 배포 후 S8–S9에서 **전환 직전 refresh 401**이 남을 때만 readable epoch 검토. **현재 Epic 착수 대상 아님.**
+
+### 12.5 통합 상태기계
 
 ```mermaid
 flowchart TD
+  subgraph Design["Design (stg-design)"]
+    F[focus / visibility] --> S[GET /auth/session]
+    S --> M{main_sso_status}
+    M -->|mismatch| P[pause + reconcile]
+    M -->|match/unknown| L[Phase 1 ladder]
+  end
   subgraph Main["Main (stg.teamver.com)"]
-    M1[login/logout/refresh] --> M2[Set teamver_auth_epoch]
-    M3[logout] --> M4[iframe logout-bridge]
+    ML[logout / account switch] --> MC[HttpOnly teamver_access_token]
   end
-  subgraph Design["Design (stg-design.teamver.com)"]
-    D1[epoch watcher] --> D2{rev/hash changed?}
-    D2 -->|yes| D3[TRANSITION pause]
-    D3 --> D4{pin vs live hash}
-    D4 -->|mismatch| D5[cold-start rebind]
-    D4 -->|match| D6[LIVE resume]
-    D2 -->|no| D7[Phase 1 ladder]
-  end
-  M2 -.->|cookie .teamver.com| D1
-  M4 -.->|bridge| D3
+  MC -.->|Cookie on every Design request| S
 ```
 
-### 12.5 Phase 2 기능 요구사항
+### 12.6 Phase 2 기능 요구사항
 
-| ID | 우선 | 요구 | 소유 |
-|----|------|------|------|
-| **FR-8** | P0 | Main BE: epoch cookie set/clear on auth lifecycle | `ns-teamver-be` |
-| **FR-9** | P0 | Main FE: logout bridge iframe + epoch read helper | `ns-teamver-fe-v2` |
-| **FR-10** | P0 | Design FE: epoch watcher → pause + reconcile 선행 | `ns-open-design` |
-| **FR-11** | P0 | Design BE: pin + `main_sso_identity_hash` (45 Stage 1) | `ns-open-design` |
-| **FR-12** | P1 | Design FE: 선제 reconcile hook (45 Stage 2) | `ns-open-design` |
-| **FR-13** | P1 | Design FE: `main-user-changed` broadcast (45 Stage 3) | `ns-open-design` |
-| **FR-14** | P2 | session-probe 401에 `code` 필드 · quiet mode (FR-6) | Design BE · nginx |
-| **FR-15** | P2 | Main M2M refresh 실패 body 표준화 → Design BFF `refresh_failed` 세분화 | `ns-teamver-be` · Design BE |
+| ID | 우선 | 요구 | 소유 | 상태 |
+|----|------|------|------|------|
+| **FR-8** | P0 | `/auth/session`에 `main_sso_status` (서버 판정) | Design BE | ☐ |
+| **FR-9** | P0 | FE reconcile — `mainSsoStatus` 우선 (cookie probe fallback) | Design FE | ☐ |
+| **FR-10** | P0 | focus 시 **session fetch → reconcile → ladder** 순서 고정 | Design FE | ☐ |
+| **FR-11** | — | BFF pin + `main_sso_identity_hash` (45 Stage 1) | Design BE | ☑ |
+| **FR-12** | — | reconcile hook (45 Stage 2) | Design FE | ☑ (FR-9로 강화) |
+| **FR-13** | P1 | `main-user-changed` broadcast (45 Stage 3) | Design FE | ☐ |
+| **FR-14** | P2 | session-probe `code` · quiet mode | Design BE | ☐ |
+| **FR-15** | P2 | back-channel logout M2M | Main BE · Design BE | ☐ |
+| **FR-16** | P3 | epoch 쿠키 (Plan C) | Main BE · Design FE | 보류 |
 
-### 12.6 Phase 2 성공 기준 (추가)
+### 12.7 Phase 2 성공 기준
 
 | # | 시나리오 | Pass |
 |---|----------|------|
-| S8 | Main logout → Design 탭 focus | refresh/probe **0**, BFF logout bridge 또는 epoch reconcile |
-| S9 | Main 계정 A→B 전환 → Design 복귀 | **Drive 열기 전** mismatch recovery 또는 B UI |
-| S10 | Main+Design 각 2탭 | 한 탭 전환 시 나머지 3탭 **45s 내** 정렬 (Stage 3) |
-| S11 | epoch iframe 차단 환경 | focus 시 reconcile — 무한 루프 없음 (45s cooldown) |
+| S8 | Main logout → Design focus | session → pause → reconcile · refresh/probe **0** |
+| S9 | Main A→B 전환 → Design 복귀 | **Drive 전** `main_sso_status=mismatch` → recovery |
+| S10 | 4탭 | broadcast(L) 또는 focus reconcile — 45s 내 정렬 |
+| S11 | HttpOnly only (Plan B) | cookie probe `unknown`여도 **서버 status로 mismatch 감지** |
 
-### 12.7 구현 슬라이스 (Phase 2)
+### 12.8 구현 슬라이스
 
 | 슬라이스 | FR | 레포 | 의존 |
 |----------|----|------|------|
-| **G** | FR-8 | Main BE | — |
-| **H** | FR-9 | Main FE | G 배포 후 |
-| **I** | FR-10 | Design FE | G (staging cookie) |
-| **J** | FR-11 | Design BE | — |
-| **K** | FR-12 | Design FE | J |
-| **L** | FR-13 | Design FE | K |
-| **M** | FR-14 | Design BE · nginx | 선택 |
-| **N** | FR-15 | Main BE · Design BE | 선택 |
+| **G** | FR-8 | Design BE | — |
+| **H** | FR-9 | Design FE | G |
+| **I** | FR-10 | Design FE | G |
+| **—** | FR-11·12 | Design | ☑ 45-1 |
+| **L** | FR-13 | Design FE | H·I |
+| **M** | FR-14 | Design BE | 선택 |
+| **N** | FR-15 | Main · Design BE | 선택 |
+| **O** | FR-16 | Main · Design | Plan A bake 후 |
 
-**배포 순서:** G+J 병렬 → H+I+K → L → staging S8–S11 → production.
-
-**절대 금지 (Phase 2에도):** OD upstream merge · Drive Apps JWT 재도입 · 매 navigation exchange 강제.
+**배포:** G → H+I → staging S8–S11. **Main 배포 불필요(Plan A).**
 
 ---
 
 ## 13. 의사결정 요청 (갱신)
 
-1. **Phase 2 승인:** FR-8~12 (Main epoch + bridge + Design pin/reconcile) — 슬라이스 G~K 착수.
-2. **FR-6 / FR-14 quiet probe:** Phase 2 필수 아님 — S1–S2 pass 후 선택(M).
-3. **FR-15 Main M2M 코드:** P2 ops 가시성 — HA 오탐 보조.
-4. **Stage 4 Dual-auth:** 본 Epic 밖 — [45](./45_Main_SSO_Design_BFF_계정_불일치_예방_로드맵.md) CTO 트랙.
+1. **Plan A 승인:** FR-8~10 (Design-only session 서버 판정) — G~I 착수.
+2. **Plan B back-channel:** P2 — Main M2M logout 편입 여부.
+3. **Plan C epoch:** **보류** — Plan A bake 후 재평가.
+4. **Stage 4 Dual-auth:** Epic 밖 — [45](./45_Main_SSO_Design_BFF_계정_불일치_예방_로드맵.md).
 
 ---
 
@@ -480,6 +478,7 @@ flowchart TD
 
 | 일시 (KST) | 내용 |
 |------------|------|
-| 2026-08-26 11:30 | **Phase 2 통합 설계** — Main epoch·logout bridge·45 Stage 1–3 편입 · FR-8~15 · S8–S11 |
+| 2026-08-26 15:45 | **Phase 2 개정** — Plan A session 서버 판정 1순위 · epoch Plan C |
+| 2026-08-26 11:30 | Phase 2 통합 설계 — epoch 중심 (폐기) |
 | 2026-08-26 10:38 | Epic 착수 — 상위 git 선행 · N01-2/슬라이스 A 진행 |
 | 2026-08-25 17:40 | 초안 — staging refresh→probe×2 보고 기반 상위기획 · FR/성공기준/레이어맵 |

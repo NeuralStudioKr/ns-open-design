@@ -62,19 +62,17 @@ Main Teamver에서 **로그아웃 → 다른 계정 로그인** 후 Design으로
 | `teamverMainSsoUserProbe.ts` | cookie JWT payload(unverified) → `user_id` · hash · `checkMainSsoUserMatchesSession` |
 | `teamverMainSsoUserReconcile.ts` | `maybeReconcileMainSsoWithDesignSession` → mismatch 시 recovery |
 
-### 4.2 호출 지점
+### 4.2 호출 지점 · Phase 2 보강 (0825-N01 Plan A)
 
-- `useTeamverEmbed` — `fetchDesignAuthSession` 성공 + `authenticated` 직후 (boot·focus refresh 공통).
-- `runTeamverEmbedSessionBoot` — authenticated probe 성공 직후.
+- `useTeamverEmbed` — session fetch 성공 + `authenticated` 직후 reconcile (**유지**).
+- **추가 (FR-10):** focus/visibility에서 **session fetch를 ladder보다 먼저** — `main_sso_status` 서버 판정 우선.
+- reconcile 입력: **`session.mainSsoStatus === "mismatch"`** (0825-N01 FR-9) → cookie probe는 fallback only.
 
-### 4.3 Apps 설계 정합
-
-- **auth-return navigation** 직후 exchange가 막 끝난 경우: pin/hash와 Main cookie는 일치 → reconcile no-op.
-- **routine focus refresh**: `force: false` 유지; mismatch일 때만 recovery.
+**HttpOnly 한계:** Plan B `teamver_access_token`은 `document.cookie`에 없음 → [0825-N01-2 §12](./0825-N01-2-구현설계-[BFF_session-probe_refresh_401_완전해결].md) Plan A가 Stage 2 probe 공백을 메움.
 
 ---
 
-## 5. Main logout → Design BFF 폐기 (보조)
+## 5. Main logout → Design BFF 폐기 (보조 · ☑)
 
 Main FE `teamver.com`에서 Design host-only 쿠키는 `fetch(credentials)`로 전송되지 않음.
 
