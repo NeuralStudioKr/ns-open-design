@@ -107,6 +107,9 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | clone: IB pitch-book 데모 카피가 한국어 brief에 남음 | ☑ 루프57 |
 | preview: #stage 1920px 스트립이 100vw로만 살짝 이동 | ☑ 루프57 |
 | persist: 카탈로그 예제 leftover를 filled로 저장 | ☑ |
+| clone: demo-banner/TOC/stat-quote 잔여 · #total 불일치 | ☑ 루프58 |
+| preview: #slideCounter 고정 · hoist가 chrome 삭제 | ☑ 루프58 |
+| daemon: leftover 데모 시드가 재클론을 막음 | ☑ 루프58 |
 | 16:9 inner clip · kit card bind | ☑ |
 | top-up 재진입 재호출 + 내부 프롬프트 노출 | ☑ 센티널+autoOpen; 루프9 reattach 차단 · leftover 숨김 |
 | first-fill 3장 강제 → 요청 1–6장 한 턴 | ☑ 루프9 |
@@ -123,7 +126,15 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | think 태그 / 내부 마크업 필터 | ☑ 기존 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (persist leftover catalog example)
+## 이번 루프 (루프58)
+
+1. clone — demo-banner/TOC/simple-deck 잔여 삭제. `#total` 동기화. persist heal도 demo chrome 제거
+2. preview — `#slideCounter`/`#counter` 동기화. authored 1920px translate. hoist prune이 chrome 유지
+3. daemon — leftover 데모 시드는 깨끗한 재클론으로 교체
+
+**검증:** template-clone-fill · srcdoc-deck-bridge-transform-driven · compact-api-stacked-deck · template-clone-deck
+
+## 직전 루프 (persist leftover catalog example)
 
 1. persist — 사용자 브리프와 다른 Hartfield/DCF 예제를 `unfilled-catalog-example`로 거절
 2. fill — 예제 고유명·표 REPLACE. leftover DCF 제목에 주제를 이어 붙이지 말 것
