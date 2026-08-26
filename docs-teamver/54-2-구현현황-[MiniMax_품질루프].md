@@ -99,6 +99,8 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | persist: caret-animation/text-spacing flow 복사 | ☑ round68 |
 | persist: math kit · scroll-padding/margin longhand flow | ☑ round69 |
 | persist: scroll-padding-top · overflow-block flow 복사 | ☑ round70 |
+| clone: IB pitch-book 데모 카피가 한국어 brief에 남음 | ☑ 루프52 |
+| preview: #stage 1920px 스트립이 100vw로만 살짝 이동 | ☑ 루프52 |
 | 16:9 inner clip · kit card bind | ☑ |
 | top-up 재진입 재호출 + 내부 프롬프트 노출 | ☑ 센티널+autoOpen; 루프9 reattach 차단 · leftover 숨김 |
 | first-fill 3장 강제 → 요청 1–6장 한 턴 | ☑ 루프9 |
@@ -115,7 +117,14 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | think 태그 / 내부 마크업 필터 | ☑ 기존 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프51 / round70)
+## 이번 루프 (루프52)
+
+1. clone — placeholder brief가 IB pitch-book DCF/Hartfield/WACC 데모 카피를 남기지 않음. `maxSlides` 패딩도 placeholder 본문에서는 끔
+2. preview — `#stage` 1920px 스트립은 sibling hide를 건너뛰고 slide width(px)로 이동. `#now`/`#total` 동기화
+
+**검증:** template-clone-fill · srcdoc-deck-bridge-transform-driven · compact-api-stacked-deck
+
+## 직전 루프 (루프51 / round70)
 
 1. persist — scroll-padding-top · overflow-block flow 복사
 
