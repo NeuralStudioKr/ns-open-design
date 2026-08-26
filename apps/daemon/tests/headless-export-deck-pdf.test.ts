@@ -392,6 +392,8 @@ describe('buildDeckPrintCss', () => {
     expect(css).not.toMatch(/\n\s*flex-direction:\s*column\s*!important/);
     expect(css).toContain('.nav-hint');
     expect(css).not.toMatch(/\.deck-stage[^}]*height:\s*auto/);
+    expect(css).toContain('body > .stage');
+    expect(css).not.toMatch(/,\s*\.stage\s*\{/);
     expect(css).toContain('page-break-before: avoid !important');
     expect(css).toContain('page-break-after: always !important');
   });
@@ -409,6 +411,8 @@ describe('buildDeckPrintCss', () => {
     expect(screenCss).toMatch(/background:\s*var\(--bg,[^)]*var\(--paper/);
     expect(screenCss).not.toContain('background: #fff !important');
     expect(screenCss).toContain('print-color-adjust: exact');
+    expect(screenCss).toContain('body > .stage');
+    expect(screenCss).not.toMatch(/,\s*\.stage\s*\{/);
   });
 
   it('buildDeckHtmlExportScreenCss uses viewport scaling instead of print flatten', () => {
@@ -422,6 +426,8 @@ describe('buildDeckPrintCss', () => {
     expect(css).not.toContain('box-shadow: 0 12px 48px');
     // Preserve flex Motif covers — do not force slide display:block.
     expect(css).not.toMatch(/\.slide[^{]*\{[^}]*display:\s*block\s*!important/);
+    expect(css).toContain('body > .stage');
+    expect(css).not.toMatch(/,\s*\.stage\s*\{/);
   });
 
   it('deck PDF page options use PPT inches + scale (not 1920px MediaBox)', async () => {
@@ -566,6 +572,7 @@ describe('buildDeckPrintCss', () => {
     expect(
       revealBlock.indexOf('promoteWrapperBackgroundDecorations(slides)'),
     ).toBeLessThan(revealBlock.indexOf("set(el, 'display', 'contents')"));
+    expect(revealBlock).toContain('if (el.closest(args.selector)) return');
   });
 
   it('renderHeadlessPdf auto-detects decks when callers pass deck=false', () => {
@@ -677,7 +684,7 @@ describe('buildDeckPrintCss', () => {
       path.join(__dirname, '..', 'src', 'export-render-service.ts'),
       'utf8',
     );
-    expect(source).toContain("DECK_LAYOUT_RENDER_CACHE_VERSION = 'deck-layout-preview-parity-v1'");
+    expect(source).toContain("DECK_LAYOUT_RENDER_CACHE_VERSION = 'deck-layout-preview-parity-v2'");
     expect(source).toContain("`${DECK_LAYOUT_RENDER_CACHE_VERSION}:pdf-v1`");
     expect(source).toContain("`${DECK_LAYOUT_RENDER_CACHE_VERSION}:html-v1`");
     expect(source).toContain("`${DECK_LAYOUT_RENDER_CACHE_VERSION}:zip-v1`");

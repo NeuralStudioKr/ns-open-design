@@ -195,6 +195,8 @@ describe('buildDeckPrintCss', () => {
     expect(css).toContain('.slide.hero.dark::before');
     expect(css).toContain('display: block !important');
     expect(css).not.toMatch(/\n\s*flex-direction:\s*column\s*!important/);
+    expect(css).toContain('body > .stage');
+    expect(css).not.toMatch(/,\s*\.stage\s*\{/);
     // PPT inches — not 1920px (@page px → ~20″ MediaBox at 96dpi).
     expect(css).toContain(`@page { size: ${DECK_PDF_PAGE_WIDTH_IN}in ${DECK_PDF_PAGE_HEIGHT_IN}in; margin: 0; }`);
     expect(css).not.toMatch(/@page\s*\{\s*size:\s*1920px/);
@@ -242,6 +244,8 @@ describe('buildDeckHtmlExportScreenCss', () => {
     expect(css).not.toContain('display: contents !important');
     expect(css).not.toContain('break-after: page !important');
     expect(css).not.toContain('@media print');
+    expect(css).toContain('body > .stage');
+    expect(css).not.toMatch(/,\s*\.stage\s*\{/);
     // Do not force display:block on slides — preserves Capsule flex centering.
     expect(css).not.toMatch(
       /\.slide[^{]*\{[^}]*display:\s*block\s*!important/,
@@ -389,6 +393,8 @@ describe('injectDeckFlattenScript', () => {
   it('promotes wrapper decorations and uses background-color (not shorthand)', () => {
     const tag = buildDeckFlattenScriptTag();
     expect(tag).toContain('promoteWrapperBackgroundDecorations(slides)');
+    expect(tag).toContain('function isDeckExportWrapper(el)');
+    expect(tag).toContain('if(!isDeckExportWrapper(el))return');
     expect(tag).toContain('applySlideExportSurface(el,resolveSlidePrintBackground(el))');
     expect(tag).toContain("set(document.documentElement,'background-color',pageBg)");
     expect(tag).not.toMatch(/set\(document\.documentElement,'background',pageBg\)/);

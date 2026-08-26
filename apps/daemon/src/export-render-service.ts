@@ -24,7 +24,7 @@ import {
   type ExportCacheOutcome,
 } from './export-cache-runtime.js';
 
-const DECK_LAYOUT_RENDER_CACHE_VERSION = 'deck-layout-preview-parity-v1';
+const DECK_LAYOUT_RENDER_CACHE_VERSION = 'deck-layout-preview-parity-v2';
 const DECK_IMAGE_RENDER_CACHE_VERSION = `${DECK_LAYOUT_RENDER_CACHE_VERSION}:image-v3`;
 const DECK_PPTX_EDITABLE_RENDER_CACHE_VERSION = `${DECK_LAYOUT_RENDER_CACHE_VERSION}:pptx-editable-dom-v4`;
 const DECK_PPTX_SCREEN_RENDER_CACHE_VERSION = `${DECK_LAYOUT_RENDER_CACHE_VERSION}:pptx-screen-ooxml-v5`;

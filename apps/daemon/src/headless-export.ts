@@ -1064,6 +1064,7 @@ export async function revealAllDeckSlides(page: Page): Promise<number> {
       promoteWrapperBackgroundDecorations(slides);
 
       document.querySelectorAll(args.wrapperSelector).forEach((el) => {
+        if (el.closest(args.selector)) return;
         set(el, 'display', 'contents');
         set(el, 'transform', 'none');
         set(el, 'box-shadow', 'none');
@@ -1211,6 +1212,7 @@ async function showAllDeckSlidesForEditablePptx(page: Page): Promise<number> {
       set(document.body, 'height', args.height + 'px');
       set(document.body, 'margin', '0');
       document.querySelectorAll(args.wrapperSelector).forEach((el) => {
+        if (el.closest(args.selector)) return;
         set(el, 'position', 'relative');
         set(el, 'display', 'block');
         set(el, 'overflow', 'hidden');
@@ -1639,6 +1641,7 @@ async function revealDeckSlideForScreenshot(page: Page, slideIndex?: number): Pr
     set(document.body, 'height', args.height + 'px');
 
     document.querySelectorAll(args.wrapperSelector).forEach((el) => {
+      if (el.closest(args.selector)) return;
       set(el, 'position', 'relative');
       set(el, 'display', 'block');
       set(el, 'inset', 'auto');
@@ -1847,6 +1850,7 @@ async function resetDeckScreenshotLayout(page: Page): Promise<void> {
     `
     const set = (el, prop, value) => el.style.setProperty(prop, value, 'important');
     document.querySelectorAll(args.wrapperSelector).forEach((el) => {
+      if (el.closest(args.selector)) return;
       set(el, 'transform', 'none');
       set(el, 'box-shadow', 'none');
     });
@@ -1857,7 +1861,7 @@ async function resetDeckScreenshotLayout(page: Page): Promise<void> {
     set(document.body, 'margin', '0');
     document.documentElement.style.setProperty('--deck-scale', '1');
   `,
-    { width: DECK_WIDTH, height: DECK_HEIGHT, wrapperSelector: DECK_WRAPPER_SELECTOR },
+    { width: DECK_WIDTH, height: DECK_HEIGHT, wrapperSelector: DECK_WRAPPER_SELECTOR, selector: DECK_SLIDE_SELECTOR },
   ).catch(() => {});
 }
 

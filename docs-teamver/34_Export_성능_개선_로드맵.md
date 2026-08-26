@@ -22,10 +22,17 @@
 
 ### 0.2 2026-08-26 다운로드 cache bust 보강
 
-- ✅ 전역 export cache 기본값을 `v50`으로 올리고, staging/production env pin도 `v50`으로 갱신했다.
-- ✅ deck PDF/HTML/ZIP/image/PPTX는 `deck-layout-preview-parity-v1:*` 포맷별 namespace를 명시해 renderer 수정 후 기존 broken cache가 hit되지 않게 했다.
+- ✅ 전역 export cache 기본값을 `v51`로 올리고, staging/production env pin도 `v51`로 갱신했다.
+- ✅ deck PDF/HTML/ZIP/image/PPTX는 `deck-layout-preview-parity-v2:*` 포맷별 namespace를 명시해 renderer 수정 후 기존 broken cache가 hit되지 않게 했다.
 - 원인 후보: 2026-08-25 layout fix 후에도 운영 env가 `OD_EXPORT_CACHE_VERSION=v3`으로 고정되어 있으면 같은 source/mtime의 예전 PDF/HTML/PPTX cache가 계속 재사용될 수 있다.
 - 배포 직후 첫 다운로드 응답은 `cache=miss`가 정상이다. 이후 같은 파일 반복 다운로드는 새 namespace 기준 `hit-memo|hit-local`이면 정상이다.
+
+### 0.3 2026-08-26 `.stage` wrapper 오인 보정
+
+- ✅ export print/HTML CSS는 bare `.stage` 전체가 아니라 `body > .stage`만 deck wrapper로 취급한다.
+- ✅ PDF/browser flatten, daemon PDF, editable PPTX, image screenshot 준비 경로는 `el.closest(slideSelector)`로 슬라이드 내부 `.stage`/wrapper를 보존한다.
+- 원인 후보: 생성 HTML에서 `.stage`가 슬라이드 내부 콘텐츠 정렬·여백 박스로 쓰이면, 기존 export가 이를 `display: contents` 또는 1920×1080 wrapper로 바꿔 preview panel보다 콘텐츠가 좌상단으로 밀릴 수 있었다.
+- 회귀 가드: contracts/daemon 테스트에서 `body > .stage` 사용과 내부 wrapper skip을 검증한다.
 
 ---
 

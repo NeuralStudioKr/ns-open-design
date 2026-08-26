@@ -87,6 +87,15 @@ function deckSlideSelectorList(): string[] {
   return DECK_SLIDE_SELECTOR.split(',').map((sel) => sel.trim());
 }
 
+function deckExportWrapperSelectorList(): string[] {
+  return DECK_WRAPPER_SELECTOR.split(',')
+    .map((sel) => sel.trim())
+    // `.stage` is a common inner slide layout class. Only the body-level
+    // presenter shell should be flattened; inner `.slide .stage` owns content
+    // offsets and must match preview.
+    .map((sel) => (sel === '.stage' ? 'body > .stage' : sel));
+}
+
 /**
  * Heal Motif-killing stylesheet remnants + truncated head before standalone
  * HTML/PDF export (daemon disk path and FE snapshot share this SSOT).
@@ -159,7 +168,7 @@ export function buildDeckFlattenCssRules(): string {
   const slides = deckSlideSelectorList().join(', ');
   const slidesNotActive = deckSlideSelectorList().map((sel) => `${sel}:not(.active)`).join(', ');
   const slidesLastChild = deckSlideSelectorList().map((sel) => `${sel}:last-child`).join(', ');
-  const wrappers = DECK_WRAPPER_SELECTOR.split(',').map((sel) => sel.trim()).join(',\n  ');
+  const wrappers = deckExportWrapperSelectorList().join(',\n  ');
   return `
   html, body {
     width: ${DECK_EXPORT_WIDTH}px !important;
@@ -228,7 +237,7 @@ export function buildDeckFlattenCssRules(): string {
 export function buildDeckHtmlExportScreenCss(): string {
   const slides = deckSlideSelectorList().join(', ');
   const slidesNotActive = deckSlideSelectorList().map((sel) => `${sel}:not(.active)`).join(', ');
-  const stageWrappers = '.deck, .deck-stage, #deck-stage, #deck, .stage';
+  const stageWrappers = deckExportWrapperSelectorList().join(',\n  ');
   return `
   html, body {
     width: 100% !important;
@@ -394,7 +403,7 @@ export function injectDeckHtmlExportViewportScript(doc: string): string {
 
 /** Clears print-flatten inline styles baked in by revealAllDeckSlides. */
 export function buildDeckHtmlExportFinalizeLayoutJs(): string {
-  const wrappers = DECK_WRAPPER_SELECTOR.split(',').map((sel) => sel.trim()).join(', ');
+  const wrappers = deckExportWrapperSelectorList().join(', ');
   const slides = deckSlideSelectorList().join(', ');
   return `
 (function () {
@@ -914,7 +923,7 @@ export function buildDeckFlattenScriptTag(): string {
   const wrap = DECK_WRAPPER_SELECTOR;
   const chrome = DECK_CHROME_HIDE_SELECTOR;
   const helper = buildDeckSlideExportLayoutHelperJs();
-  return `<script data-deck-print-flatten>(function(){var SEL=${JSON.stringify(selector)};var WRAP=${JSON.stringify(wrap)};var CHROME=${JSON.stringify(chrome)};function set(el,p,v){el.style.setProperty(p,v,'important')}${helper}function resolvePageSurfaceBackground(){var stageEl=document.querySelector('.deck-stage, #deck-stage, .stage');if(stageEl){var stageBg=getComputedStyle(stageEl).backgroundColor;if(stageBg&&stageBg!=='rgba(0, 0, 0, 0)'&&stageBg!=='transparent')return stageBg}var rs=getComputedStyle(document.documentElement);return rs.getPropertyValue('--bg').trim()||rs.getPropertyValue('--paper').trim()||rs.getPropertyValue('--shell').trim()||rs.getPropertyValue('background-color').trim()||'#ffffff'}function resolveShellBackground(){var rs=getComputedStyle(document.documentElement);return rs.getPropertyValue('--shell').trim()||rs.getPropertyValue('--bg').trim()||rs.getPropertyValue('--ink').trim()||rs.getPropertyValue('background-color').trim()||'#0a0c10'}function resolveShellBg(){return resolveShellBackground()}function stripDeckLoosePageFlow(root){if(!root||!root.childNodes)return;for(var i=root.childNodes.length-1;i>=0;i--){var node=root.childNodes[i];if(node.nodeType===Node.TEXT_NODE){if((node.textContent||'').trim().length>0)node.remove()}}}window.__odFlattenDeckForPrint=function(){var slides=Array.from(document.querySelectorAll(SEL));if(!slides.length)return;stripDeckLoosePageFlow(document.documentElement);stripDeckLoosePageFlow(document.body);document.querySelectorAll('canvas.bg').forEach(function(canvas){try{var dataUrl=canvas.toDataURL('image/png');if(!dataUrl||dataUrl==='data:,')return;var img=document.createElement('img');img.src=dataUrl;set(img,'position','fixed');set(img,'inset','0');set(img,'width','100%');set(img,'height','100%');set(img,'z-index','0');set(img,'pointer-events','none');set(img,'object-fit','cover');canvas.replaceWith(img)}catch(e){}});promoteWrapperBackgroundDecorations(slides);document.querySelectorAll(WRAP).forEach(function(el){set(el,'display','contents');set(el,'transform','none');set(el,'box-shadow','none')});var pageBg=resolvePageSurfaceBackground();set(document.documentElement,'overflow','visible');set(document.documentElement,'width','1920px');set(document.documentElement,'background-color',pageBg);set(document.body,'overflow','visible');set(document.body,'display','block');set(document.body,'scroll-snap-type','none');set(document.body,'transform','none');set(document.body,'width','1920px');set(document.body,'background-color',pageBg);document.documentElement.style.setProperty('--deck-scale','1');slides.forEach(function(el,i){el.classList.add('active');applySlideExportLayout(el);set(el,'flex','none');set(el,'position','relative');set(el,'inset','auto');set(el,'width','1920px');set(el,'height','1080px');set(el,'min-height','1080px');set(el,'max-height','1080px');applySlideExportSurface(el,resolveSlidePrintBackground(el));set(el,'transform','none');set(el,'overflow','hidden');set(el,'visibility','visible');set(el,'opacity','1');set(el,'page-break-after',i<slides.length-1?'always':'auto');set(el,'break-after',i<slides.length-1?'page':'auto');set(el,'break-inside','avoid');if(i===0){set(el,'page-break-before','avoid');set(el,'break-before','avoid')}});document.querySelectorAll(CHROME).forEach(function(el){set(el,'display','none')});ensureEmojiFontFallbacks(document)})})();</script>`;
+  return `<script data-deck-print-flatten>(function(){var SEL=${JSON.stringify(selector)};var WRAP=${JSON.stringify(wrap)};var CHROME=${JSON.stringify(chrome)};function set(el,p,v){el.style.setProperty(p,v,'important')}${helper}function isDeckExportWrapper(el){return !el.closest(SEL)}function resolvePageSurfaceBackground(){var stageEl=document.querySelector('.deck-stage, #deck-stage, body > .stage');if(!stageEl){stageEl=Array.from(document.querySelectorAll('.stage')).find(isDeckExportWrapper)}if(stageEl){var stageBg=getComputedStyle(stageEl).backgroundColor;if(stageBg&&stageBg!=='rgba(0, 0, 0, 0)'&&stageBg!=='transparent')return stageBg}var rs=getComputedStyle(document.documentElement);return rs.getPropertyValue('--bg').trim()||rs.getPropertyValue('--paper').trim()||rs.getPropertyValue('--shell').trim()||rs.getPropertyValue('background-color').trim()||'#ffffff'}function resolveShellBackground(){var rs=getComputedStyle(document.documentElement);return rs.getPropertyValue('--shell').trim()||rs.getPropertyValue('--bg').trim()||rs.getPropertyValue('--ink').trim()||rs.getPropertyValue('background-color').trim()||'#0a0c10'}function resolveShellBg(){return resolveShellBackground()}function stripDeckLoosePageFlow(root){if(!root||!root.childNodes)return;for(var i=root.childNodes.length-1;i>=0;i--){var node=root.childNodes[i];if(node.nodeType===Node.TEXT_NODE){if((node.textContent||'').trim().length>0)node.remove()}}}window.__odFlattenDeckForPrint=function(){var slides=Array.from(document.querySelectorAll(SEL));if(!slides.length)return;stripDeckLoosePageFlow(document.documentElement);stripDeckLoosePageFlow(document.body);document.querySelectorAll('canvas.bg').forEach(function(canvas){try{var dataUrl=canvas.toDataURL('image/png');if(!dataUrl||dataUrl==='data:,')return;var img=document.createElement('img');img.src=dataUrl;set(img,'position','fixed');set(img,'inset','0');set(img,'width','100%');set(img,'height','100%');set(img,'z-index','0');set(img,'pointer-events','none');set(img,'object-fit','cover');canvas.replaceWith(img)}catch(e){}});promoteWrapperBackgroundDecorations(slides);document.querySelectorAll(WRAP).forEach(function(el){if(!isDeckExportWrapper(el))return;set(el,'display','contents');set(el,'transform','none');set(el,'box-shadow','none')});var pageBg=resolvePageSurfaceBackground();set(document.documentElement,'overflow','visible');set(document.documentElement,'width','1920px');set(document.documentElement,'background-color',pageBg);set(document.body,'overflow','visible');set(document.body,'display','block');set(document.body,'scroll-snap-type','none');set(document.body,'transform','none');set(document.body,'width','1920px');set(document.body,'background-color',pageBg);document.documentElement.style.setProperty('--deck-scale','1');slides.forEach(function(el,i){el.classList.add('active');applySlideExportLayout(el);set(el,'flex','none');set(el,'position','relative');set(el,'inset','auto');set(el,'width','1920px');set(el,'height','1080px');set(el,'min-height','1080px');set(el,'max-height','1080px');applySlideExportSurface(el,resolveSlidePrintBackground(el));set(el,'transform','none');set(el,'overflow','hidden');set(el,'visibility','visible');set(el,'opacity','1');set(el,'page-break-after',i<slides.length-1?'always':'auto');set(el,'break-after',i<slides.length-1?'page':'auto');set(el,'break-inside','avoid');if(i===0){set(el,'page-break-before','avoid');set(el,'break-before','avoid')}});document.querySelectorAll(CHROME).forEach(function(el){set(el,'display','none')});ensureEmojiFontFallbacks(document)})})();</script>`;
 }
 
 export function injectDeckFlattenScript(doc: string): string {
