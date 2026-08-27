@@ -5010,7 +5010,7 @@ function ReactComponentViewer({
     return () => window.removeEventListener('message', onMessage);
   }, [shareMenuOpen]);
 
-  const exportTitle = file.name.replace(/\.(jsx|tsx)$/i, '') || file.name;
+  const exportTitle = resolveExportDownloadTitle(undefined, file.name);
   const sourceExtension = file.name.toLowerCase().endsWith('.tsx') ? '.tsx' : '.jsx';
 
   useEffect(() => {
@@ -19172,13 +19172,14 @@ function MarkdownViewer({
   const [reloadKey, setReloadKey] = useState(0);
   const [copied, setCopied] = useState(false);
   const [downloadMenuOpen, setDownloadMenuOpen] = useState(false);
+  const downloadMenuRef = useRef<HTMLDivElement | null>(null);
   const markdownArticleRef = useRef<HTMLElement | null>(null);
   const copyBlockTimerRef = useRef<number | null>(null);
   const copiedMarkdownBlockRef = useRef<HTMLElement | null>(null);
   const status = file.artifactManifest?.status ?? 'complete';
   const isStreaming = status === 'streaming';
   const isError = status === 'error';
-  const exportTitle = file.name.replace(/\.mdx?$/i, '') || file.name;
+  const exportTitle = resolveExportDownloadTitle(undefined, file.name);
 
   useEffect(() => {
     setText(null);
@@ -19195,6 +19196,23 @@ function MarkdownViewer({
       cancelled = true;
     };
   }, [projectId, file.name, file.mtime, reloadKey]);
+
+  useEffect(() => {
+    if (!downloadMenuOpen) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (!downloadMenuRef.current) return;
+      if (!downloadMenuRef.current.contains(e.target as Node)) setDownloadMenuOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setDownloadMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onDocClick);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDocClick);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [downloadMenuOpen]);
 
   useEffect(() => {
     return () => {
@@ -19284,7 +19302,7 @@ function MarkdownViewer({
             <span>{copied ? t('fileViewer.copied') : t('fileViewer.copy')}</span>
           </button>
           {text !== null ? (
-            <div className="share-menu chrome-share-menu">
+            <div className="share-menu chrome-share-menu" ref={downloadMenuRef}>
               <button
                 type="button"
                 className="viewer-action"
