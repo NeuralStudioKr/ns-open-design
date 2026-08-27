@@ -14501,7 +14501,7 @@ function HtmlViewer({
   function openSaveAsTemplateModal() {
     setDownloadMenuOpen(false);
     const defaultName =
-      file.name.replace(/\.html?$/i, '') || t('fileViewer.templateNameDefault');
+      exportTitle.trim() || t('fileViewer.templateNameDefault');
     setTemplateName(defaultName);
     setTemplateDescription('');
     setTemplateSaveError(null);
@@ -17084,7 +17084,7 @@ function HtmlViewer({
                     <div
                       className="share-menu-popover"
                       role="menu"
-                      aria-label={isTeamverEmbedMode() ? embedUiLabel('Export options', '보내기 옵션') : embedUiLabel('Download and export options', '다운로드 및보내기')}
+                      aria-label={isTeamverEmbedMode() ? embedUiLabel('Export options', '보내기 옵션') : embedUiLabel('Download and export options', '다운로드 및 내보내기')}
                     >
                   <TeamverExportMenu
                     t={t}

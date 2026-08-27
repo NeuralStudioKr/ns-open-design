@@ -15,4 +15,16 @@ describe('MarkdownViewer leftover pin', () => {
     expect(source).not.toContain('file.name.replace(/\\.mdx?$/i, \'\') || file.name');
     expect(source).not.toContain('file.name.replace(/\\.(jsx|tsx)$/i, \'\') || file.name');
   });
+
+  it('defaults save-as-template name from persist export title not deck.html slug', () => {
+    const source = readFileSync(
+      resolve(__dirname, '../../src/components/FileViewer.tsx'),
+      'utf8',
+    );
+    expect(source).toContain('function openSaveAsTemplateModal()');
+    expect(source).toContain('exportTitle.trim() || t(\'fileViewer.templateNameDefault\')');
+    expect(source).not.toContain('file.name.replace(/\\.html?$/i, \'\') || t(\'fileViewer.templateNameDefault\')');
+    expect(source).toContain('다운로드 및 내보내기');
+    expect(source).not.toContain('다운로드 및보내기');
+  });
 });
