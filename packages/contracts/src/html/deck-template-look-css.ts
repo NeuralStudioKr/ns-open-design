@@ -261,6 +261,17 @@ section[data-screen-label], main[data-screen-label], article[data-screen-label] 
 }
 /* od-magazine-lede-fill: title+lede only occupies the remaining 16:9 well. */
 /* od-magazine-body-fill: list/card inners occupy the stretched track. */
+/* od-magazine-cover-solo: title-only covers must not keep the empty 1fr TOC column. */
+.slide.cover .body:not(:has(.cover-meta)),
+.slide.cover.od-magazine-cover-solo .body {
+  grid-template-columns: 1fr !important;
+  justify-items: start !important;
+  align-items: center !important;
+}
+.slide.cover h1.display {
+  font-size: 96px !important;
+  line-height: 0.94 !important;
+}
 `
 
 const LOOK_NEUTRALIZE_TAIL_RE =
@@ -418,6 +429,7 @@ function officialLookCssLooksCurrent(css: string): boolean {
     && css.includes('od-magazine-body-spread')
     && css.includes('od-magazine-body-fill')
     && css.includes('od-magazine-lede-fill')
+    && css.includes('od-magazine-cover-solo')
   );
 }
 
@@ -463,6 +475,7 @@ export function hasOfficialLookStackedCanvasNeutralizeProof(html: string): boole
     && dest.includes('od-magazine-body-spread')
     && dest.includes('od-magazine-body-fill')
     && dest.includes('od-magazine-lede-fill')
+    && dest.includes('od-magazine-cover-solo')
   );
 }
 

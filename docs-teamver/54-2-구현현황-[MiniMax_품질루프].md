@@ -192,6 +192,7 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | kit/chat: set89–93 combo/closure | ☑ 루프530–544 / round531–545 |
 | persist/preview: leftover `·` 칩·발명 TOC가 brief 카피처럼 보임 | ☑ 루프144 |
 | preview: 레터박스 `#17181d`만 보이고 1/N만 동작 | ☑ 루프146 |
+| persist/preview: 표지 오른쪽 TOC 칸 공백 · 성긴 slide-inner 상단 고정 | ☑ 루프147 |
 | persist/preview: look CSS가 1–2장 사이에 끼어 표지 밀집도가 깨짐 | ☑ follow-up |
 | persist/preview: MiniMax `<p="">` · 유출 `· Label` | ☑ follow-up |
 | preview: Motif `span.ribbon`이 relative stretch로 빨간 줄 | ☑ follow-up |
@@ -218,7 +219,15 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | think 태그 / 내부 마크업 필터 | ☑ 기존 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프146)
+## 이번 루프 (루프147)
+
+1. 표지 — `cover-meta`가 없으면 1열(`od-magazine-cover-solo`). 후속 장 제목 없을 때만 후속 lede를 subhead
+2. 본문 — 성긴 MiniMax `slide-inner`를 fill-track/lede-fill로 재프레임. 2줄 리스트도 채움
+3. Hartfield 본문 · Daisy/Studio · on-brief 표지 유지
+
+**검증:** heal cover-solo · sparse inner · 2-item list · dense IB skip · look-css `od-magazine-cover-solo`
+
+## 직전 루프 (루프146)
 
 1. stacked stage — 기본 `translate(-50%, -50%)`로 호스트 viewport 전 빈 레터박스 방지
 2. 첫 장 — CSS로 브릿지/`display:none` 전에 페인트. 이후 인라인 hide 유지

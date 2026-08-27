@@ -36,10 +36,14 @@ function officialLookCssText(html: string): string {
  * IB pitch-book magazine kit only. `.slide-inner` + `--accent` is common
  * (weekly-update, Studio, Daisy) and must not rebuild those covers.
  */
+const LOOK_NEUTRALIZE_TAIL_RE = /\n?\/\*\s*stacked preview\/export:[\s\S]*$/i;
+
 function looksLikeOfficialMagazineLook(html: string): boolean {
   const dest = String(html ?? '');
   if (!/\bdata-od-official-look-css\b/i.test(dest)) return false;
-  const css = officialLookCssText(dest) || dest;
+  // Neutralize now mentions `h1.display` for cover type scale — that must
+  // not flip Daisy/Studio/weekly merges into IB magazine rebuilds.
+  const css = (officialLookCssText(dest) || dest).replace(LOOK_NEUTRALIZE_TAIL_RE, '');
   // IB is the only official kit that authors `h1.display`. Streaming look-heal
   // can park a fragment sheet with just that rule before `--accent` lands.
   if (/h1\.display/i.test(css)) return true;
@@ -193,6 +197,28 @@ function collectBodySlideTitles(html: string, skipFirst = true): string[] {
   return out;
 }
 
+/** First later-slide paragraphs — on-brief subheads, not invented TOC labels. */
+function collectBodySlideLedes(html: string, skipFirst = true): string[] {
+  const slides = listMagazineSlideSpans(html);
+  const out: string[] = [];
+  for (let i = skipFirst ? 1 : 0; i < slides.length; i += 1) {
+    const body = html.slice(slides[i]!.openEnd, slides[i]!.bodyEnd);
+    const prose = visibleText(/<p\b[^>]*>([\s\S]*?)<\/p>/i.exec(body)?.[1] ?? '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (
+      prose.length >= 12
+      && prose.length <= 160
+      && !looksLikeLeftoverOutlineChip(prose)
+      && !out.includes(prose)
+    ) {
+      out.push(prose);
+    }
+    if (out.length >= 2) break;
+  }
+  return out;
+}
+
 function isSparseMagazineCover(body: string): boolean {
   const text = visibleText(body);
   if (/\bslide-inner\b/i.test(body) && /<h1\b[^>]*\bdisplay\b/i.test(body) && text.length >= 80) {
@@ -325,7 +351,7 @@ function takeHeading(content: string): { heading: string; rest: string } {
 function looksLikeMagazineFillTrack(rest: string): boolean {
   const source = String(rest ?? '');
   if (/grid-template/i.test(source)) return true;
-  if ((source.match(/<li\b/gi)?.length ?? 0) >= 3) return true;
+  if ((source.match(/<li\b/gi)?.length ?? 0) >= 2) return true;
   if ((source.match(/<(?:article|section|aside)\b/gi)?.length ?? 0) >= 2) return true;
   return (source.match(/<div\b[^>]*>/gi)?.length ?? 0) >= 3;
 }
@@ -454,6 +480,42 @@ function buildMagazineBodyInner(
   </div>`;
 }
 
+function looksLikeCatalogIbPaperCopy(html: string): boolean {
+  return /Hartfield|NorthPeak|WACC|Project Atlas|Hartfield\s*&/i.test(html);
+}
+
+function isSparseFramedMagazineBody(body: string): boolean {
+  if (!/\bslide-inner\b/i.test(body)) return false;
+  if (/\bod-magazine-(?:fill-track|lede-fill|sparse-spread)\b/i.test(body)) return false;
+  if (looksLikeCatalogIbPaperCopy(body)) return false;
+  if (/<h1\b[^>]*\bdisplay\b/i.test(body) && visibleText(body).length >= 80) return false;
+  if (/<(?:table|svg)\b/i.test(body) && visibleText(body).length >= 200) return false;
+  const text = visibleText(body);
+  if (text.length >= 360) return false;
+  return true;
+}
+
+function peelSparseFramedInner(body: string): { chrome: string; heading: string; rest: string } | null {
+  const { chrome, content } = peelFlowAndMotif(body);
+  const start = content.search(/<(div|section)\b[^>]*\bslide-inner\b/i);
+  if (start < 0) return null;
+  const block = extractBalancedElement(content, start);
+  if (!block) return null;
+  const open = /^<[^>]+>/.exec(block)?.[0] ?? '';
+  const close = /<\/(?:div|section)\s*>$/i.exec(block)?.[0] ?? '';
+  let inner = block.slice(open.length, close ? block.length - close.length : undefined);
+  inner = inner
+    .replace(/<header\b[^>]*\bmast\b[^>]*>[\s\S]*?<\/header>/gi, '')
+    .replace(/<footer\b[^>]*\bfoot\b[^>]*>[\s\S]*?<\/footer>/gi, '')
+    .trim();
+  const bodyWrap = /^<div\b[^>]*\bclass\s*=\s*(['"])[^"'<>]*\bbody\b[^"'<>]*\1[^>]*>([\s\S]*)<\/div>\s*$/i.exec(inner);
+  if (bodyWrap) inner = (bodyWrap[2] ?? '').trim();
+  const cleaned = dropLeftoverOutlineChips(inner);
+  if (!cleaned.trim()) return null;
+  const { heading, rest } = takeHeading(cleaned);
+  return { chrome, heading, rest };
+}
+
 function healOfficialMagazineBodyFrames(html: string): string {
   const dest = String(html ?? '');
   if (!dest.trim() || !looksLikeOfficialMagazineLook(dest)) return dest;
@@ -463,13 +525,27 @@ function healOfficialMagazineBodyFrames(html: string): string {
   for (let i = slides.length - 1; i >= 1; i -= 1) {
     const slide = slides[i]!;
     const body = out.slice(slide.openEnd, slide.bodyEnd);
-    if (/\bslide-inner\b/i.test(body)) continue;
     if (/<(?:table|svg)\b/i.test(body) && visibleText(body).length >= 200) continue;
-    const { chrome, content } = peelFlowAndMotif(body);
-    const cleaned = dropLeftoverOutlineChips(content);
-    if (!cleaned.trim()) continue;
-    const { heading, rest } = takeHeading(cleaned);
-    const title = visibleText(heading) || visibleText(cleaned).slice(0, 40) || '슬라이드';
+    let chrome = '';
+    let heading = '';
+    let rest = '';
+    if (/\bslide-inner\b/i.test(body)) {
+      if (!isSparseFramedMagazineBody(body)) continue;
+      const peeled = peelSparseFramedInner(body);
+      if (!peeled) continue;
+      chrome = peeled.chrome;
+      heading = peeled.heading;
+      rest = peeled.rest;
+    } else {
+      const peeled = peelFlowAndMotif(body);
+      chrome = peeled.chrome;
+      const cleaned = dropLeftoverOutlineChips(peeled.content);
+      if (!cleaned.trim()) continue;
+      const taken = takeHeading(cleaned);
+      heading = taken.heading;
+      rest = taken.rest;
+    }
+    const title = visibleText(heading) || visibleText(rest).slice(0, 40) || '슬라이드';
     const nextInner = `${chrome}${buildMagazineBodyInner(heading, rest, i + 1, slides.length, title)}`;
     const nextAttrs = slimCoverHostStyle(slide.attrs);
     out = `${out.slice(0, slide.start)}<${slide.tag}${nextAttrs}>${nextInner}</${slide.tag}>${out.slice(slide.end)}`;
@@ -480,6 +556,7 @@ function healOfficialMagazineBodyFrames(html: string): string {
 function buildMagazineCoverInner(
   title: string,
   laterTitles: string[],
+  laterLedes: string[],
   slideCount: number,
 ): string {
   const hangul = /[가-힣]/.test(title);
@@ -487,7 +564,7 @@ function buildMagazineCoverInner(
   const notesLabel = hangul ? '학습 노트' : 'Notes';
   const slidesLabel = hangul ? '슬라이드' : 'slides';
   const metaRows = laterTitles.filter((label) => !looksLikeLeftoverOutlineChip(label)).slice(0, 4);
-  const subhead = metaRows[0] || '';
+  const subhead = metaRows[0] || laterLedes[0] || '';
   const { brand, accent } = brandFromTitle(title);
   const brandHtml = accent ? `${brand} <i>${accent}</i>` : brand;
   const rows = metaRows.map((label, index) => (
@@ -533,8 +610,12 @@ export function healSparseOfficialMagazineCover(
     deriveDeckCoverTitleFromBrief(brief ?? '', existing || null),
   ) || polishCoverTitle(existing) || '슬라이드';
   const laterTitles = collectBodySlideTitles(dest);
-  const nextInner = buildMagazineCoverInner(title, laterTitles, slides.length);
-  const nextAttrs = slimCoverHostStyle(addClassToAttrs(first.attrs, 'cover'));
+  const laterLedes = collectBodySlideLedes(dest);
+  const nextInner = buildMagazineCoverInner(title, laterTitles, laterLedes, slides.length);
+  const hasMeta = laterTitles.some((label) => !looksLikeLeftoverOutlineChip(label));
+  let coverAttrs = addClassToAttrs(first.attrs, 'cover');
+  if (!hasMeta) coverAttrs = addClassToAttrs(coverAttrs, 'od-magazine-cover-solo');
+  const nextAttrs = slimCoverHostStyle(coverAttrs);
   const nextSlide = `<${first.tag}${nextAttrs}>${nextInner}</${first.tag}>`;
   return `${dest.slice(0, first.start)}${nextSlide}${dest.slice(first.end)}`;
 }
