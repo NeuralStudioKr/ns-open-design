@@ -1624,7 +1624,7 @@ function looksLikeFakeOutlineStyle(style: string): boolean {
  * Logical `padding-block` / `padding-inline` (+ start/end) count the same (루프74).
  */
 
-/** Additive `calc` sums: same-unit · `%` · rem/em+px@16 · rem+em 1:1 (루프490). */
+/** Additive `calc` sums: same-unit · `%` · rem/em+px@16 · rem+em · vh/%+px (루프515). */
 function calcAdditiveSameUnitLooksCardLike(value: string): boolean {
   const calcRe = /calc\s*\(([^()]*)\)/gi;
   let match: RegExpExecArray | null;
@@ -1690,6 +1690,28 @@ function calcAdditiveSameUnitLooksCardLike(value: string): boolean {
         .filter((p) => p.unit === 'rem' || p.unit === 'em')
         .reduce((acc, p) => acc + p.sign * p.n, 0);
       if (remish >= 0.75) return true;
+    }
+    // Mixed viewport/% + px on the 1920×1080 canvas (루프515).
+    // 1vh/1% of 1080 ≈ 10.8px; 1vw of 1920 ≈ 19.2px.
+    if (units.size === 2 && units.has('px')) {
+      const px = parts.filter((p) => p.unit === 'px').reduce((acc, p) => acc + p.sign * p.n, 0);
+      const viewH = new Set([
+        'vh', 'vmin', 'vmax', 'dvh', 'svh', 'lvh',
+        'lvmin', 'lvmax', 'svmin', 'svmax', 'dvmin', 'dvmax',
+      ]);
+      const viewW = new Set(['vw', 'dvw', 'svw', 'lvw']);
+      const view = parts.filter((p) => viewH.has(p.unit) || viewW.has(p.unit));
+      if (view.length > 0) {
+        const viewPx = view.reduce(
+          (acc, p) => acc + p.sign * p.n * (viewW.has(p.unit) ? 19.2 : 10.8),
+          0,
+        );
+        if (viewPx + px >= 12) return true;
+      }
+      if (units.has('%')) {
+        const pct = parts.filter((p) => p.unit === '%').reduce((acc, p) => acc + p.sign * p.n, 0);
+        if (pct * 10.8 + px >= 12) return true;
+      }
     }
   }
   return false;

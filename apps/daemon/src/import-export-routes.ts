@@ -43,7 +43,7 @@ import {
 import { runExportJobInBackground } from './export-job-runner.js';
 import {
   isRemoteExportWorkerEnabled,
-  renderExportJobWithRemoteWorker,
+  renderExportJobWithRemoteWorkerFallback,
 } from './export-remote-worker.js';
 import {
   renderHtmlExportOutcome,
@@ -1156,6 +1156,7 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
       const inlineHtmlPrepareMode: 'preview' | undefined =
         req.body?.inlineHtmlPrepareMode === 'preview' ? 'preview' : undefined;
       const templateId = typeof req.body?.templateId === 'string' ? req.body.templateId : null;
+      const canUseRemoteExportWorker = isRemoteExportWorkerEnabled() && Boolean(inlineHtml);
       const job = createExportJob({
         projectId: req.params.id,
         format: exportFormat,
@@ -1187,8 +1188,8 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
             projectId: jobRequest.projectId,
             outcome,
           }),
-          ...(isRemoteExportWorkerEnabled()
-            ? { renderOutcome: renderExportJobWithRemoteWorker }
+          ...(canUseRemoteExportWorker
+            ? { renderOutcome: renderExportJobWithRemoteWorkerFallback }
             : {}),
         },
       });

@@ -586,6 +586,8 @@ staging 배포 후 같은 프로젝트·같은 파일·같은 export 옵션으�
 - 기본값은 `OD_EXPORT_WORKER_ENABLED=0`이며, 서비스가 떠 있어도 daemon은 flag가 켜졌을 때만 worker를 사용한다.
 - 켜려면 `OD_EXPORT_ASYNC_JOBS_ENABLED=1`, `VITE_TEAMVER_EXPORT_ASYNC_JOBS_ENABLED=1`, `OD_EXPORT_WORKER_ENABLED=1`을 함께 검증한다. FE가 sync export를 쓰면 worker 경로를 타지 않는다.
 - 문제 발생 시 `OD_EXPORT_WORKER_ENABLED=0`만 되돌리면 async job은 기존 daemon in-process runner로 fallback한다.
+- worker 장애·재시작·non-JSON 응답처럼 availability 문제는 daemon in-process render로 fail-open fallback한다. 다만 worker가 `EXPORT_DECK_TOO_LARGE` 등 실제 렌더 오류 코드를 반환하거나 인증 오류를 반환하면 fallback하지 않고 원래 오류를 보존한다.
+- 1차 적용 범위는 FE가 preview 기준 `inlineHtml` snapshot을 함께 보내는 async export job이다. `inlineHtml`이 없는 file-based job은 daemon의 `prepareBuilt`/official template 보정 훅을 유지해야 하므로 daemon in-process render 경로를 탄다.
 - worker 컨테이너는 render/cache 산출물만 daemon에 반환하고, download ticket 등록·S3 offload·job status update는 parent daemon이 계속 담당한다. 따라서 S3/IAM/offload 계약은 기존 route와 동일하게 유지된다.
 - 이번 단계는 **상주 remote renderer**다. job 상태 자체는 아직 daemon async job store가 담당하므로, worker가 DB queue를 직접 consume하는 완전 분리는 shared job store가 들어가는 Phase 3c에서 진행한다.
 
@@ -652,6 +654,9 @@ staging 배포 후 같은 프로젝트·같은 파일·같은 export 옵션으�
 | `OD_EXPORT_QUEUE_MAX` | **`32`** | **`64`** | 초과 시 503 + retry-after (OOM 방지) |
 | `OD_EXPORT_PPTX_MAX_SLIDES` | **`40`** | **`40`** | PPTX 변환 soft cap. `0`이면 해제, 초과 시 PDF 유도 |
 | `OD_EXPORT_ASYNC_JOBS_ENABLED` | `0` → 실험 시 `1` | `0` | Phase 3 async export job API flag (`/export/jobs`) |
+| `OD_EXPORT_WORKER_ENABLED` | `0` → worker 검증 시 `1` | `0` | async job render 단계를 별도 `export-worker` 컨테이너로 위임 |
+| `OD_EXPORT_WORKER_BASE_URL` | `http://export-worker:7460` | `http://export-worker:7460` | daemon → worker 내부 HTTP endpoint |
+| `OD_EXPORT_WORKER_FALLBACK_ENABLED` | unset/`1` | unset/`1` | worker availability 장애 시 daemon in-process render fallback 허용. 인증·렌더 오류 코드는 fallback하지 않음 |
 | `OD_EXPORT_JOB_TTL_SEC` | `900` | `900` | in-memory async job status TTL (60~86400 clamp) |
 | `OD_EXPORT_JOB_MAX_ENTRIES` | `128` | `128` | daemon process당 job status 상한 (8~1024 clamp) |
 | `VITE_TEAMVER_EXPORT_ASYNC_JOBS_ENABLED` | `0` → 실험 시 `1` | `0` | FE가 PDF/PPTX/HTML/ZIP 다운로드에서 async job API를 우선 사용 |
