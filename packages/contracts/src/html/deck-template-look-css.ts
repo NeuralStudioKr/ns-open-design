@@ -168,7 +168,21 @@ section[data-screen-label], main[data-screen-label], article[data-screen-label] 
   position: relative !important;
   z-index: 2 !important;
 }
-`;
+/* od-slide-inner-canvas-fill: IB presenter cards are 1320×820 / 92vw×86vh.
+ * Stacked 16:9 PPT pages must fill the 1920×1080 frame, not float a smaller card. */
+.slide .slide-inner,
+.slide > [data-od-slide-flow] > .slide-inner {
+  width: 100% !important;
+  max-width: none !important;
+  height: 100% !important;
+  max-height: none !important;
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  box-sizing: border-box !important;
+}
+`
 
 const LOOK_NEUTRALIZE_TAIL_RE =
   /\n?\/\*\s*stacked preview\/export:[\s\S]*$/i;
@@ -318,6 +332,8 @@ function officialLookCssLooksCurrent(css: string): boolean {
     && !/\[data-slide\],\s*\[data-screen-label\]/i.test(css)
     // Flow clip wrapper must stay absolute; relative + copied padding doubles inset.
     && /:not\(\[data-od-slide-flow\]\)/i.test(css)
+    // IB magazine inner must fill 16:9, not the 1320×820 presenter card.
+    && css.includes('od-slide-inner-canvas-fill')
   );
 }
 
@@ -357,6 +373,7 @@ export function hasOfficialLookStackedCanvasNeutralizeProof(html: string): boole
     && /\.slide\s*>\s*:is\(h1/i.test(dest)
     && /z-index\s*:\s*2\s*!important/i.test(dest)
     && /:not\(\[data-od-slide-flow\]\)/i.test(dest)
+    && dest.includes('od-slide-inner-canvas-fill')
   );
 }
 

@@ -154,6 +154,8 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | heal: Daisy/weekly/Studio를 IB 매거진으로 오탐 | ☑ 루프137 |
 | heal: 커버에 회화/쉐도잉 토픽 카피를 발명 | ☑ 루프137 |
 | export: standalone가 성긴 IB 표지를 그대로 내보냄 | ☑ 루프137 |
+| persist/preview: IB `.slide-inner` 1320×820 카드가 16:9를 안 채움 | ☑ 루프138 |
+| persist/preview: IB 본문이 매거진 프레임 없이 상단 정렬 | ☑ 루프138 |
 | persist/preview: look CSS가 1–2장 사이에 끼어 표지 밀집도가 깨짐 | ☑ follow-up |
 | persist/preview: MiniMax `<p="">` · 유출 `· Label` | ☑ follow-up |
 | preview: Motif `span.ribbon`이 relative stretch로 빨간 줄 | ☑ follow-up |
@@ -177,7 +179,15 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | think 태그 / 내부 마크업 필터 | ☑ 기존 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프137)
+## 이번 루프 (루프138)
+
+1. neutralize — stacked 16:9에서 `.slide-inner`를 1920×1080 페이지에 맞춤 (IB 1320×820 / 92vw 카드 해제)
+2. heal — 커버·본문 매거진 프레임이 페이지를 채움. 본문은 기존 제목/본문만 `h2.section`으로 배치
+3. 카탈로그 프레젠터·Hartfield 본문 `slide-inner`·Daisy/Studio는 유지
+
+**검증:** heal-official-magazine-layout fill/section · look-css neutralize `od-slide-inner-canvas-fill`
+
+## 직전 루프 (루프137)
 
 1. heal — IB 매거진은 official `h1.display`(조각 시트 포함) 또는 `.cover .ribbon`+`.cover-meta`+`.mast`. Daisy `.slide-inner`는 오탐 아님
 2. heal — 커버 카피는 brief/후속 장 제목. 회화·쉐도잉·In context 발명 금지

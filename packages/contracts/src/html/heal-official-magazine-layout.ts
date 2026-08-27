@@ -263,6 +263,105 @@ function genericMetaRows(slideCount: number): string[] {
   return pool.slice(0, needed);
 }
 
+/** Fill the 1920×1080 page — official IB `.slide-inner` is a 1320×820 card. */
+const MAGAZINE_INNER_FILL_STYLE =
+  'width:100%;height:100%;max-width:none;margin:0;box-sizing:border-box;display:grid;grid-template-rows:auto 1fr auto';
+
+function peelFlowAndMotif(body: string): { chrome: string; content: string } {
+  let chrome = '';
+  let content = String(body ?? '');
+  const openRe = /<(div|span)\b[^>]*>/gi;
+  const starts: number[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = openRe.exec(content)) !== null) {
+    const open = match[0] ?? '';
+    if (
+      !/\bdata-od-official-motif-html\b/i.test(open)
+      && !/\bdata-od-slide-flow\b/i.test(open)
+    ) {
+      continue;
+    }
+    starts.push(match.index);
+  }
+  for (let i = starts.length - 1; i >= 0; i -= 1) {
+    const start = starts[i]!;
+    const block = extractBalancedElement(content, start);
+    if (!block) continue;
+    if (/\bdata-od-official-motif-html\b/i.test(block)) {
+      chrome = `${block}${chrome}`;
+      content = `${content.slice(0, start)}${content.slice(start + block.length)}`;
+      continue;
+    }
+    const innerOpen = /^<div\b[^>]*>/i.exec(block)?.[0] ?? '';
+    const closeMatch = /<\/div\s*>$/i.exec(block);
+    const inner = closeMatch
+      ? block.slice(innerOpen.length, block.length - closeMatch[0].length)
+      : block.slice(innerOpen.length);
+    content = `${content.slice(0, start)}${inner}${content.slice(start + block.length)}`;
+  }
+  return { chrome, content: content.trim() };
+}
+
+function takeHeading(content: string): { heading: string; rest: string } {
+  const match = /<h([1-3])\b([^>]*)>([\s\S]*?)<\/h\1>/i.exec(content);
+  if (!match || match.index == null) return { heading: '', rest: content };
+  const inner = match[3] ?? '';
+  const heading = /<h2\b[^>]*\bsection\b/i.test(match[0] ?? '')
+    ? match[0]!
+    : `<h2 class="section">${inner}</h2>`;
+  return {
+    heading,
+    rest: `${content.slice(0, match.index)}${content.slice(match.index + match[0].length)}`.trim(),
+  };
+}
+
+function buildMagazineBodyInner(
+  heading: string,
+  rest: string,
+  index: number,
+  slideCount: number,
+  footLabel: string,
+): string {
+  const label = escapeHtml((footLabel || 'Notes').slice(0, 40));
+  return `
+  <div class="slide-inner" style="${MAGAZINE_INNER_FILL_STYLE}">
+    <header class="mast">
+      <div class="brand">${label}</div>
+      <div class="meta"><span>${String(index).padStart(2, '0')}</span><span>${String(slideCount).padStart(2, '0')}</span></div>
+    </header>
+    <div class="body">
+      ${heading}
+      ${rest}
+    </div>
+    <footer class="foot">
+      <span class="conf">${label}</span>
+      <span>${String(index).padStart(2, '0')} / ${String(slideCount).padStart(2, '0')}</span>
+    </footer>
+  </div>`;
+}
+
+function healOfficialMagazineBodyFrames(html: string): string {
+  const dest = String(html ?? '');
+  if (!dest.trim() || !looksLikeOfficialMagazineLook(dest)) return dest;
+  const slides = listMagazineSlideSpans(dest);
+  if (slides.length < 2) return dest;
+  let out = dest;
+  for (let i = slides.length - 1; i >= 1; i -= 1) {
+    const slide = slides[i]!;
+    const body = out.slice(slide.openEnd, slide.bodyEnd);
+    if (/\bslide-inner\b/i.test(body)) continue;
+    if (/<(?:table|svg)\b/i.test(body) && visibleText(body).length >= 200) continue;
+    const { chrome, content } = peelFlowAndMotif(body);
+    if (!content.trim()) continue;
+    const { heading, rest } = takeHeading(content);
+    const title = visibleText(heading) || visibleText(content).slice(0, 40) || '슬라이드';
+    const nextInner = `${chrome}${buildMagazineBodyInner(heading, rest, i + 1, slides.length, title)}`;
+    const nextAttrs = slimCoverHostStyle(slide.attrs);
+    out = `${out.slice(0, slide.start)}<${slide.tag}${nextAttrs}>${nextInner}</${slide.tag}>${out.slice(slide.end)}`;
+  }
+  return out;
+}
+
 function buildMagazineCoverInner(
   title: string,
   laterTitles: string[],
@@ -280,7 +379,7 @@ function buildMagazineCoverInner(
     `<div class="row"><span class="k">${escapeHtml(String(index + 1).padStart(2, '0'))}</span><span class="v">${escapeHtml(label)}</span></div>`
   )).join('\n        ');
   return `
-  <div class="slide-inner">
+  <div class="slide-inner" style="${MAGAZINE_INNER_FILL_STYLE}">
     <header class="mast">
       <div class="brand">${brandHtml}</div>
       <div class="meta"><span>${notesLabel}</span><span>${escapeHtml(String(slideCount).padStart(2, '0'))} ${slidesLabel}</span></div>
@@ -332,8 +431,10 @@ export function healOfficialMagazineLayoutDensity(
 ): string {
   const dest = String(html ?? '');
   if (!dest.trim()) return dest;
-  return healSparseOfficialMagazineCover(
-    stripEmptyOfficialTextChromeMotifs(repairCompactFirstFillMarkup(dest)),
-    brief,
+  return healOfficialMagazineBodyFrames(
+    healSparseOfficialMagazineCover(
+      stripEmptyOfficialTextChromeMotifs(repairCompactFirstFillMarkup(dest)),
+      brief,
+    ),
   );
 }

@@ -47,6 +47,10 @@ const SPARSE_COVER = `<!doctype html>
 describe('heal official magazine layout density', () => {
   it('LOOK_NEUTRALIZE does not restack the slide flow clip wrapper', () => {
     expect(LOOK_NEUTRALIZE_CSS).toMatch(/:not\(\[data-od-slide-flow\]\)/);
+    expect(LOOK_NEUTRALIZE_CSS).toContain('od-slide-inner-canvas-fill');
+    expect(LOOK_NEUTRALIZE_CSS).toMatch(
+      /\.slide\s+\.slide-inner[\s\S]*width:\s*100%\s*!important/,
+    );
   });
 
   it('does not extract empty IB ribbon/stamp as Motif', () => {
@@ -88,7 +92,9 @@ describe('heal official magazine layout density', () => {
     expect(healed).not.toMatch(/영어 회화 표현 공부 팁, 예시에<\/h1>/);
     expect(healed).toMatch(/<span class="ribbon">[^<]+<\/span>/);
     expect(healed).toMatch(/class="slide-inner"/);
+    expect(healed).toMatch(/style="[^"]*width:100%;height:100%/);
     expect(healed).toMatch(/class="cover-meta"/);
+    expect(healed).toMatch(/<h2 class="section">/);
     expect(healed).toMatch(/문법으로 외운 회화/);
     expect(healed).not.toMatch(/Hartfield|NorthPeak|WACC/i);
     expect(healed).not.toMatch(/English Speaking Tips|쉐도잉 루틴|In context/i);
@@ -164,6 +170,8 @@ describe('heal official magazine layout density', () => {
     );
     expect(healed).toMatch(/expo/i);
     expect(healed).toMatch(/설치/);
+    expect(healed).toMatch(/<h2 class="section">설치<\/h2>/);
+    expect(healed).toMatch(/style="[^"]*width:100%;height:100%/);
     expect(healed).not.toMatch(/쉐도잉|English Speaking Tips|회화 표현/i);
   });
 
@@ -188,6 +196,8 @@ describe('heal official magazine layout density', () => {
     expect(pinned).toMatch(/data-od-slide-flow/);
     expect(pinned).toMatch(/:not\(\[data-od-slide-flow\]\)/);
     expect(pinned).toMatch(/<h1 class="display">/);
+    expect(pinned).toContain('od-slide-inner-canvas-fill');
+    expect(pinned).toMatch(/style="[^"]*width:100%;height:100%/);
   });
 
   it('standalone export heals a sparse IB cover without inventing topic copy', () => {
