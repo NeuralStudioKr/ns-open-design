@@ -138,7 +138,8 @@ describe('pinDeckSlidesToFixedCanvas', () => {
     const pinned = pinDeckSlidesToFixedCanvas(html);
     expect(pinned).toMatch(/class="card"[^>]*position:relative/);
     expect(pinned).not.toContain('05 / CHECKLIST');
-    expect(pinned).toMatch(/<div data-od-slide-flow><div class="card"/);
+    // Host pin injects box-sizing; flow may copy it — allow optional style attr.
+    expect(pinned).toMatch(/<div data-od-slide-flow(?: style="[^"]*")?><div class="card"/);
     expect(pinned).toMatch(/<\/div><div class="deco-daisy"/);
     expect(pinned).toMatch(/class="deco-daisy"[^>]*position:absolute/);
     expect(pinned).toMatch(/contain:\s*layout size/);
@@ -183,7 +184,7 @@ describe('pinDeckSlidesToFixedCanvas', () => {
     ].join('');
     const pinned = pinDeckSlidesToFixedCanvas(html);
     expect(pinned).toMatch(
-      /<div data-od-slide-flow style="display:grid;grid-template-columns:1fr 1fr">/,
+      /<div data-od-slide-flow style="(?=[^"]*display:grid)(?=[^"]*grid-template-columns:1fr 1fr)[^"]*">/,
     );
     expect(pinned).toContain('<div class="card">Left</div>');
     expect(pinned).not.toMatch(/class="slide"[^>]*overflow:\s*hidden/);
@@ -201,7 +202,7 @@ describe('pinDeckSlidesToFixedCanvas', () => {
     ].join('');
     const pinned = pinDeckSlidesToFixedCanvas(html);
     expect(pinned).toMatch(
-      /<div data-od-slide-flow style="display:flex;gap:48px;padding:72px;flex-direction:row">/,
+      /<div data-od-slide-flow style="(?=[^"]*display:flex)(?=[^"]*gap:48px)(?=[^"]*padding:72px)(?=[^"]*flex-direction:row)[^"]*">/,
     );
     expect(pinned).toContain('class="split-left"');
     expect(pinned).toContain('class="split-right"');
@@ -223,7 +224,7 @@ describe('pinDeckSlidesToFixedCanvas', () => {
     ].join('');
     const pinned = pinDeckSlidesToFixedCanvas(html);
     expect(pinned).toMatch(
-      /<div data-od-slide-flow style="padding:64px;flex-direction:column">/,
+      /<div data-od-slide-flow style="(?=[^"]*padding:64px)(?=[^"]*flex-direction:column)[^"]*">/,
     );
     expect(pinned).toContain('class="split-top"');
     expect(pinned).toContain('class="split-bottom"');
@@ -238,7 +239,7 @@ describe('pinDeckSlidesToFixedCanvas', () => {
     ].join('');
     const pinned = pinDeckSlidesToFixedCanvas(html);
     expect(pinned).toMatch(
-      /<div data-od-slide-flow style="display:flex;flex-direction:row;gap:40px;padding:80px">/,
+      /<div data-od-slide-flow style="(?=[^"]*display:flex)(?=[^"]*flex-direction:row)(?=[^"]*gap:40px)(?=[^"]*padding:80px)[^"]*">/,
     );
     expect(pinned).toContain('Left pane');
     expect(pinned).toContain('Right pane');
@@ -254,7 +255,7 @@ describe('pinDeckSlidesToFixedCanvas', () => {
     ].join('');
     const pinned = pinDeckSlidesToFixedCanvas(html);
     expect(pinned).toMatch(
-      /<div data-od-slide-flow style="padding:64px;display:flex;flex-direction:row">/,
+      /<div data-od-slide-flow style="(?=[^"]*padding:64px)(?=[^"]*display:flex)(?=[^"]*flex-direction:row)[^"]*">/,
     );
     expect(pinned).toContain('class="col-left"');
     expect(pinned).toContain('class="col-right"');

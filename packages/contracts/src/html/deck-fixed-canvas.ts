@@ -297,6 +297,21 @@ type SlideInnerSpan = {
   hostAttrs: string;
 };
 
+function findMatchingCloseTagIndex(chunk: string, tag: string): number {
+  const tokenRe = new RegExp(`<(/)?${tag}\\b[^>]*>`, 'gi');
+  let depth = 1;
+  let match: RegExpExecArray | null;
+  while ((match = tokenRe.exec(chunk)) !== null) {
+    if (match[1]) {
+      depth -= 1;
+      if (depth === 0) return match.index;
+    } else {
+      depth += 1;
+    }
+  }
+  return -1;
+}
+
 function listPinnedSlideInnerSpans(html: string): SlideInnerSpan[] {
   const opens: { start: number; openEnd: number; tag: string; hostAttrs: string }[] = [];
   SLIDE_OPEN_RE.lastIndex = 0;
@@ -313,10 +328,12 @@ function listPinnedSlideInnerSpans(html: string): SlideInnerSpan[] {
   return opens.map((open, i) => {
     const limit = i + 1 < opens.length ? opens[i + 1]!.start : html.length;
     const chunk = html.slice(open.openEnd, limit);
-    const close = new RegExp(`</${open.tag}\\s*>`, 'i').exec(chunk);
+    // Nested same-tag hosts (MiniMax `<section class="slide">…<section>…`) must
+    // not truncate the slide inner at the first closer (루프345).
+    const closeIdx = findMatchingCloseTagIndex(chunk, open.tag);
     return {
       start: open.openEnd,
-      end: close ? open.openEnd + close.index : limit,
+      end: closeIdx >= 0 ? open.openEnd + closeIdx : limit,
       hostAttrs: open.hostAttrs,
     };
   });
@@ -1557,51 +1574,51 @@ function looksLikeCardLikePadding(style: string): boolean {
   let match: RegExpExecArray | null;
   while ((match = padRe.exec(source)) !== null) {
     const value = match[1] ?? '';
-    if (/(?:^|[\s/])(?:1[2-9]|[2-9]\d|\d{3,})(?:\.\d+)?px\b/i.test(value)) {
+    if (/(?:^|[\s/(,])(?:1[2-9]|[2-9]\d|\d{3,})(?:\.\d+)?px\b/i.test(value)) {
       return true;
     }
     // 0.75rem / 1rem / 12em-scale card padding MiniMax sometimes emits.
-    if (/(?:^|[\s/])(?:0\.(?:7[5-9]|[8-9]\d*)|[1-9]\d*(?:\.\d+)?)(?:rem|em)\b/i.test(value)) {
+    if (/(?:^|[\s/(,])(?:0\.(?:7[5-9]|[8-9]\d*)|[1-9]\d*(?:\.\d+)?)(?:rem|em)\b/i.test(value)) {
       return true;
     }
     // Percent / ch card padding (thin accents stay under 4% / 2ch).
     // No trailing `\b` after `%` — `%` is non-word so `\b` never matches EOS.
-    if (/(?:^|[\s/])(?:[4-9]|[1-9]\d+)(?:\.\d+)?%(?:\s|$|[;/])/i.test(value)) {
+    if (/(?:^|[\s/(,])(?:[4-9]|[1-9]\d+)(?:\.\d+)?%(?:\s|$|[;/])/i.test(value)) {
       return true;
     }
-    if (/(?:^|[\s/])(?:[2-9]|[1-9]\d+)(?:\.\d+)?ch\b/i.test(value)) {
+    if (/(?:^|[\s/(,])(?:[2-9]|[1-9]\d+)(?:\.\d+)?ch\b/i.test(value)) {
       return true;
     }
     // Viewport units — ≥2vh/vw reads as card padding; 1vh/1.5vw stay accents.
-    if (/(?:^|[\s/])(?:[2-9]|[1-9]\d+)(?:\.\d+)?(?:vh|vw|vmin|vmax|dvh|dvw|svh|svw)\b/i.test(value)) {
+    if (/(?:^|[\s/(,])(?:[2-9]|[1-9]\d+)(?:\.\d+)?(?:vh|vw|vmin|vmax|dvh|dvw|svh|svw|lvh|lvw)\b/i.test(value)) {
       return true;
     }
     // Container query units — ≥2cqw/cqh/cqi/cqb; 1cqw stays accent.
-    if (/(?:^|[\s/])(?:[2-9]|[1-9]\d+)(?:\.\d+)?(?:cqw|cqh|cqi|cqb|cqmin|cqmax)\b/i.test(value)) {
+    if (/(?:^|[\s/(,])(?:[2-9]|[1-9]\d+)(?:\.\d+)?(?:cqw|cqh|cqi|cqb|cqmin|cqmax)\b/i.test(value)) {
       return true;
     }
     // Font-relative / logical units — ≥2lh/rlh/cap/ex/vb/vi (루프23).
     // Thin 1lh / 1.5ex accents stay unbound. ≥1ic binds MiniMax ic cards (루프63).
-    if (/(?:^|[\s/])(?:[1-9]\d*(?:\.\d+)?)(?:ic|ric)\b/i.test(value)) {
+    if (/(?:^|[\s/(,])(?:[1-9]\d*(?:\.\d+)?)(?:ic|ric)\b/i.test(value)) {
       return true;
     }
-    if (/(?:^|[\s/])(?:[2-9]|[1-9]\d+)(?:\.\d+)?(?:lh|rlh|cap|rcap|ex|rex|vb|vi|svb|svi|lvb|lvi|dvb|dvi)\b/i.test(value)) {
+    if (/(?:^|[\s/(,])(?:[2-9]|[1-9]\d+)(?:\.\d+)?(?:lh|rlh|cap|rcap|ex|rex|vb|vi|svb|svi|lvb|lvi|dvb|dvi)\b/i.test(value)) {
       return true;
     }
     // Absolute print units — ~12px floor (루프24). Thin 2pt / 1mm stay accents.
-    if (/(?:^|[\s/])(?:[8-9]|[1-9]\d+)(?:\.\d+)?pt\b/i.test(value)) {
+    if (/(?:^|[\s/(,])(?:[8-9]|[1-9]\d+)(?:\.\d+)?pt\b/i.test(value)) {
       return true;
     }
-    if (/(?:^|[\s/])(?:[4-9]|[1-9]\d+)(?:\.\d+)?mm\b/i.test(value)) {
+    if (/(?:^|[\s/(,])(?:[4-9]|[1-9]\d+)(?:\.\d+)?mm\b/i.test(value)) {
       return true;
     }
-    if (/(?:^|[\s/])(?:0\.(?:[4-9]\d*|[1-9]\d+)|[1-9]\d*(?:\.\d+)?)cm\b/i.test(value)) {
+    if (/(?:^|[\s/(,])(?:0\.(?:[4-9]\d*|[1-9]\d+)|[1-9]\d*(?:\.\d+)?)cm\b/i.test(value)) {
       return true;
     }
-    if (/(?:^|[\s/])(?:0\.(?:1[5-9]\d*|[2-9]\d*)|[1-9]\d*(?:\.\d+)?)in\b/i.test(value)) {
+    if (/(?:^|[\s/(,])(?:0\.(?:1[5-9]\d*|[2-9]\d*)|[1-9]\d*(?:\.\d+)?)in\b/i.test(value)) {
       return true;
     }
-    if (/(?:^|[\s/])(?:[1-9]\d*(?:\.\d+)?)pc\b/i.test(value)) {
+    if (/(?:^|[\s/(,])(?:[1-9]\d*(?:\.\d+)?)pc\b/i.test(value)) {
       return true;
     }
   }
@@ -1642,7 +1659,7 @@ function pickOfficialKitCardClass(html: string): string | null {
 const KIT_CARD_OPEN_RE =
   /<(div|aside|article|section|li|figure|main|header|footer|blockquote|nav|ul|ol|dl|dt|dd|p|span|h[1-6]|figcaption|caption|details|summary|label|output|fieldset|legend|dialog|menu|mark|time|cite|q|small|abbr|kbd|samp|dfn|table|thead|tbody|tfoot|tr|td|th|address|hgroup|search|s|u|wbr|colgroup|col|data|meter|progress|ruby|rtc|rt|rp|bdi|bdo|del|ins|sub|sup|var|code|pre|form|optgroup|option|datalist|math|mrow|semantics)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
 const SELECTIVE_KIT_CARD_TAGS_RE =
-  /^(?:p|span|h[1-6]|figcaption|caption|details|summary|label|output|fieldset|legend|dialog|menu|mark|time|cite|q|small|abbr|kbd|samp|dfn|table|thead|tbody|tfoot|tr|td|th|data|meter|progress|ruby|rtc|rt|rp|bdi|bdo|del|ins|sub|sup|var|code|pre|optgroup|option|datalist|math|mrow|semantics|blockquote|address|hgroup|search|s|u|ul|ol|li|dl|dt|dd|figure|article|aside|header|footer|nav|main|wbr|colgroup|col)$/i;
+  /^(?:p|span|h[1-6]|figcaption|caption|details|summary|label|output|fieldset|legend|dialog|menu|mark|time|cite|q|small|abbr|kbd|samp|dfn|table|thead|tbody|tfoot|tr|td|th|data|meter|progress|ruby|rtc|rt|rp|bdi|bdo|del|ins|sub|sup|var|code|pre|optgroup|option|datalist|math|mrow|semantics|blockquote|address|hgroup|search|s|u|ul|ol|li|dl|dt|dd|figure|article|aside|header|footer|nav|main|section|wbr|colgroup|col)$/i;
 
 function bindFakeOutlineCardsInSpan(html: string, cardClass: string): string {
   return html.replace(KIT_CARD_OPEN_RE, (open, tag: string, attrs: string) => {

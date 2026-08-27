@@ -139,6 +139,10 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | kit/chat: blockquote kit · region/flow · @page/@scroll-* · closure | ☑ 루프295–314 / round296–315 |
 | persist: obscure moz/webkit vendor · moz-text-emphasis | ☑ 루프315–319 / round316–320 |
 | kit/chat: list/landmark selective · @font-face/@keyframes · closure | ☑ 루프320–344 / round321–345 |
+| kit: calc/min/max/clamp · lvh/lvw card padding | ☑ 루프345–349 / round346–350 |
+| kit: section selective · nested slide close · invent-frame off flow | ☑ 루프350–354 / round351–355 |
+| chat: FOO `=＝→⇒` separators · Step `:` keep | ☑ 루프355–359 / round356–360 |
+| kit/chat: set58–60 combo/closure · flow style order harden | ☑ 루프360–374 / round361–375 |
 | clone: IB pitch-book 데모 카피가 한국어 brief에 남음 | ☑ 루프57 |
 | preview: #stage 1920px 스트립이 100vw로만 살짝 이동 | ☑ 루프57 |
 | persist: 카탈로그 예제 leftover를 filled로 저장 | ☑ |
@@ -186,7 +190,16 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | think 태그 / 내부 마크업 필터 | ☑ 기존 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프315–344 / round316–345)
+## 이번 루프 (루프345–374 / round346–375)
+
+1. padding — `calc/min/max/clamp` 내부 · `lvh/lvw` 카드 인식
+2. kit — `section` 선택적 · nested same-tag close · `div` 비선택 유지
+3. chat — generic FOO 구분자 `=＝→⇒` · `Step 1: Setup` 유지
+4. tests — flow style `box-sizing` 순서 관대 매칭 (`box-shadow` 보류)
+
+**검증:** chat-leak-probe-round346–375 · deck-fixed-canvas
+
+## 직전 루프 (루프315–344 / round316–345)
 
 1. persist — `-moz-stack-sizing`/`-moz-binding` · `-webkit-box-flex-group` · `-webkit-mask-composite-source` · `-ms-content-zoom-snap-points-*` · `-moz-text-emphasis*`
 2. kit — `ul/ol/li/dl/dt/dd/figure/article/aside/header/footer/nav/main/s/u/wbr/colgroup/col` 선택적(얇은 테두리 미바인딩)
