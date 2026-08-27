@@ -315,6 +315,20 @@ function takeHeading(content: string): { heading: string; rest: string } {
   };
 }
 
+/**
+ * After the magazine inner fills 1920×1080, a block `.body` parks MiniMax
+ * copy at the top of a tall 1fr row. Sparse pages optically center; dense
+ * pages start at the top so lists/cards are not mid-clipped.
+ */
+function magazineFillBodyStyle(heading: string, rest: string): string {
+  const text = visibleText(`${heading} ${rest}`);
+  const justify = text.length < 360 ? 'center' : 'flex-start';
+  return (
+    `display:flex;flex-direction:column;justify-content:${justify};` +
+    'gap:28px;min-height:0;height:100%;box-sizing:border-box'
+  );
+}
+
 function buildMagazineBodyInner(
   heading: string,
   rest: string,
@@ -329,7 +343,7 @@ function buildMagazineBodyInner(
       <div class="brand">${label}</div>
       <div class="meta"><span>${String(index).padStart(2, '0')}</span><span>${String(slideCount).padStart(2, '0')}</span></div>
     </header>
-    <div class="body">
+    <div class="body" style="${magazineFillBodyStyle(heading, rest)}">
       ${heading}
       ${rest}
     </div>

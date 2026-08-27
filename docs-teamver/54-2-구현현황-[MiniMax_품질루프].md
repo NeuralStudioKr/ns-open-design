@@ -174,6 +174,7 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | persist/preview: IB `.slide-inner` 1320×820 카드가 16:9를 안 채움 | ☑ 루프139 |
 | persist/preview: IB 본문이 매거진 프레임 없이 상단 정렬 | ☑ 루프139 |
 | persist/preview: flow가 magazine padding/`justify-content:center`를 이중 적용 | ☑ 루프140 |
+| persist/preview: 16:9 채움 후 표지 제목이 하단, 본문은 위만 사용 | ☑ 루프141 |
 | persist/preview: look CSS가 1–2장 사이에 끼어 표지 밀집도가 깨짐 | ☑ follow-up |
 | persist/preview: MiniMax `<p="">` · 유출 `· Label` | ☑ follow-up |
 | preview: Motif `span.ribbon`이 relative stretch로 빨간 줄 | ☑ follow-up |
@@ -200,7 +201,15 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | think 태그 / 내부 마크업 필터 | ☑ 기존 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프140)
+## 이번 루프 (루프141)
+
+1. neutralize — 16:9에서 `.cover .body`는 `align-items:center` (카탈로그는 `end` 유지)
+2. heal — 성긴 본문 `.body`는 flex center, 밀집 본문은 flex-start + height 100%
+3. look current — `od-magazine-optical-place` 없으면 neutralize 재주입
+
+**검증:** heal-official-magazine-layout sparse/dense body · look-css optical-place
+
+## 직전 루프 (루프140)
 
 1. flow wrap — magazine `.slide-inner`가 있으면 padding/`justify-content`를 복사하지 않고, 이미 있는 flow에서도 걷어냄
 2. neutralize — flow `:has(.slide-inner)` padding 0. paper `box-shadow` 제거

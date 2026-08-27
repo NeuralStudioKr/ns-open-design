@@ -188,6 +188,14 @@ section[data-screen-label], main[data-screen-label], article[data-screen-label] 
   box-sizing: border-box !important;
   box-shadow: none !important;
 }
+/* od-magazine-optical-place: after 16:9 fill, IB cover must not pin type to the footer. */
+.slide.cover .body {
+  align-items: center !important;
+  min-height: 0 !important;
+}
+.slide .slide-inner > .body {
+  min-height: 0 !important;
+}
 `
 
 const LOOK_NEUTRALIZE_TAIL_RE =
@@ -340,6 +348,7 @@ function officialLookCssLooksCurrent(css: string): boolean {
     && /:not\(\[data-od-slide-flow\]\)/i.test(css)
     // IB magazine inner must fill 16:9, not the 1320×820 presenter card.
     && css.includes('od-slide-inner-canvas-fill')
+    && css.includes('od-magazine-optical-place')
   );
 }
 
@@ -380,6 +389,7 @@ export function hasOfficialLookStackedCanvasNeutralizeProof(html: string): boole
     && /z-index\s*:\s*2\s*!important/i.test(dest)
     && /:not\(\[data-od-slide-flow\]\)/i.test(dest)
     && dest.includes('od-slide-inner-canvas-fill')
+    && dest.includes('od-magazine-optical-place')
   );
 }
 

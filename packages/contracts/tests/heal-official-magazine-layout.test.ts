@@ -48,6 +48,10 @@ describe('heal official magazine layout density', () => {
   it('LOOK_NEUTRALIZE does not restack the slide flow clip wrapper', () => {
     expect(LOOK_NEUTRALIZE_CSS).toMatch(/:not\(\[data-od-slide-flow\]\)/);
     expect(LOOK_NEUTRALIZE_CSS).toContain('od-slide-inner-canvas-fill');
+    expect(LOOK_NEUTRALIZE_CSS).toContain('od-magazine-optical-place');
+    expect(LOOK_NEUTRALIZE_CSS).toMatch(
+      /\.slide\.cover\s+\.body[\s\S]*align-items:\s*center\s*!important/,
+    );
     expect(LOOK_NEUTRALIZE_CSS).toMatch(
       /\[data-od-slide-flow\]:has\(\.slide-inner\)[\s\S]*padding:\s*0\s*!important/,
     );
@@ -98,6 +102,8 @@ describe('heal official magazine layout density', () => {
     expect(healed).toMatch(/style="[^"]*width:100%;height:100%/);
     expect(healed).toMatch(/class="cover-meta"/);
     expect(healed).toMatch(/<h2 class="section">/);
+    expect(healed).toMatch(/class="body"[^>]*justify-content:center/);
+    expect(healed).toMatch(/class="body"[^>]*height:100%/);
     expect(healed).toMatch(/문법으로 외운 회화/);
     expect(healed).not.toMatch(/Hartfield|NorthPeak|WACC/i);
     expect(healed).not.toMatch(/English Speaking Tips|쉐도잉 루틴|In context/i);
@@ -178,6 +184,24 @@ describe('heal official magazine layout density', () => {
     expect(healed).not.toMatch(/쉐도잉|English Speaking Tips|회화 표현/i);
   });
 
+  it('starts dense magazine body copy at the top of the 16:9 page', () => {
+    const official = readFileSync(IB_EXAMPLE, 'utf8');
+    const assets = extractOfficialDeckLookAssets(official);
+    const dense = `<!doctype html><html lang="ko"><body>
+<section class="slide slide-title"><h1>영어 회화</h1></section>
+<section class="slide"><h2>단계별 연습</h2>
+<p>${'회화는 짧은 문장을 반복해서 입 근육에 익힙니다. '.repeat(16)}</p>
+<ul><li>듣기</li><li>따라 말하기</li><li>바꿔 말하기</li><li>실제 대화</li><li>복습</li></ul>
+</section>
+</body></html>`;
+    const healed = healOfficialMagazineLayoutDensity(
+      mergeOfficialDeckLookCss(dense, assets),
+      BRIEF,
+    );
+    expect(healed).toMatch(/class="body"[^>]*justify-content:flex-start/);
+    expect(healed).toMatch(/class="body"[^>]*height:100%/);
+  });
+
   it('does not rebuild a dense official IB cover', () => {
     const official = readFileSync(IB_EXAMPLE, 'utf8').replace(
       '<style>',
@@ -200,6 +224,7 @@ describe('heal official magazine layout density', () => {
     expect(pinned).toMatch(/:not\(\[data-od-slide-flow\]\)/);
     expect(pinned).toMatch(/<h1 class="display">/);
     expect(pinned).toContain('od-slide-inner-canvas-fill');
+    expect(pinned).toContain('od-magazine-optical-place');
     expect(pinned).toMatch(/style="[^"]*width:100%;height:100%/);
     expect(pinned).not.toMatch(/data-od-slide-flow[^>]*padding:80px/);
     expect(pinned).not.toMatch(/data-od-slide-flow[^>]*justify-content:center/);
