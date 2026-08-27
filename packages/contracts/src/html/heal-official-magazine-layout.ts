@@ -163,6 +163,8 @@ export function repairCompactFirstFillMarkup(html: string): string {
     .replace(/<\/(div|p|span)>\s*·\s*[^<>]{1,48}<\/\1>/gi, '</$1>')
     // "…</div> · Small talk" with no extra close tag
     .replace(/<\/(div|p|span)>\s*·\s*[^<>\n]{1,48}(?=<|$)/gi, '</$1>')
+    // "…</div> 첫 만남 - Small talk" bilingual crumb after a close tag
+    .replace(/<\/(div|p|span)>\s*[가-힣][^<>\n]{0,20}[·/–—-]\s*[A-Za-z][^<>\n]{0,24}(?=<|$)/gi, '</$1>')
     // "의견 표현 · Agree / Disagree · Agree / Disagree"
     .replace(/(\s*·\s*)([^·<\n]{2,40})\s*·\s*\2/gi, '$1$2')
     .replace(/([^·<\n]{2,40})\s*·\s*\1(?=\s*(?:·|<|$))/gi, '$1');
@@ -369,22 +371,60 @@ function looksLikeMagazineFillTrack(rest: string): boolean {
 /**
  * MiniMax compact leftovers (`첫 만남 · Small talk`) are outline debris,
  * not requested body copy. Featuring them as cover-meta invents a topic.
+ * Hangul `듣기 · 따라 말하기` is requested punctuation — do not drop it.
+ * Empty wrappers are structural, not leftover chips.
  */
 function looksLikeLeftoverOutlineChip(text: string): boolean {
   const value = String(text ?? '').replace(/\s+/g, ' ').trim();
-  if (!value) return true;
-  if (value.length > 64) return false;
-  return /·/.test(value) || /^\s*·/.test(value);
+  if (!value || value.length > 48) return false;
+  // MiniMax bilingual crumbs only. Latin `Volume IV · Edition 02` is IB chrome.
+  return /[가-힣].{0,24}[·/–—-]\s*[A-Za-z]/.test(value);
 }
 
 function dropLeftoverOutlineChips(html: string): string {
-  return String(html ?? '')
-    .replace(/<(div|span|p)\b[^>]*>[\s\S]*?<\/\1>/gi, (block) => (
-      looksLikeLeftoverOutlineChip(visibleText(block)) ? '' : block
-    ))
+  let out = String(html ?? '');
+  const openRe = /<(div|span|p|li|h[3-4])\b[^>]*>/gi;
+  const starts: number[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = openRe.exec(out)) !== null) starts.push(match.index);
+  for (let i = starts.length - 1; i >= 0; i -= 1) {
+    const start = starts[i]!;
+    const block = extractBalancedElement(out, start);
+    if (!block) continue;
+    if (!looksLikeLeftoverOutlineChip(visibleText(block))) continue;
+    out = `${out.slice(0, start)}${out.slice(start + block.length)}`;
+  }
+  return out
     .replace(/\s*·\s*[A-Za-z][^<>]{0,40}(?=<|$)/g, '')
     .replace(/\s{2,}/g, ' ')
     .trim();
+}
+
+function magazineRowFeaturedCopy(block: string): string {
+  const value = visibleText(/<span class="v">([\s\S]*?)<\/span>/i.exec(block)?.[1] ?? '');
+  return value || visibleText(block).replace(/^\d+\s*/, '');
+}
+
+/** Re-persist of 142–143 decks can already have leftover inside `.slide-inner`. */
+function scrubLeftoverMagazineCopy(html: string): string {
+  let out = dropLeftoverOutlineChips(String(html ?? ''));
+  const rowOpens = /<div class="row"[^>]*>/gi;
+  const starts: number[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = rowOpens.exec(out)) !== null) starts.push(match.index);
+  for (let i = starts.length - 1; i >= 0; i -= 1) {
+    const start = starts[i]!;
+    const block = extractBalancedElement(out, start);
+    if (!block) continue;
+    const copy = magazineRowFeaturedCopy(block);
+    if (copy && !looksLikeLeftoverOutlineChip(copy)) continue;
+    out = `${out.slice(0, start)}${out.slice(start + block.length)}`;
+  }
+  out = out.replace(
+    /<div class="subhead">\s*(?:핵심 내용을 한 장에 정리합니다|Key points for this discussion)\s*<\/div>/gi,
+    '',
+  );
+  return out.replace(/<div class="cover-meta">\s*<\/div>/gi, '');
 }
 
 function takeFirstLede(rest: string): { lede: string; remaining: string } {
@@ -468,7 +508,8 @@ function magazineFillBodyMarkup(heading: string, rest: string): string {
     </div>`;
   }
   const aside = coverMetaRowsFromBlocks(remaining);
-  if (lede && aside) {
+  const asideRows = aside.match(/class="row"/g)?.length ?? 0;
+  if (lede && aside && asideRows >= 2) {
     return `
     ${MAGAZINE_BODY_OPEN}
       ${heading}
@@ -478,6 +519,15 @@ function magazineFillBodyMarkup(heading: string, rest: string): string {
         ${aside}
         </div>
       </div>
+    </div>`;
+  }
+  const leftoverFreeRemaining = dropLeftoverOutlineChips(remaining);
+  if (lede && leftoverFreeRemaining) {
+    return `
+    <div class="body" style="display:flex;flex-direction:column;justify-content:flex-start;gap:28px;min-height:0;height:100%;box-sizing:border-box">
+      ${heading}
+      ${lede}
+      ${leftoverFreeRemaining}
     </div>`;
   }
   if (lede) {
@@ -500,7 +550,7 @@ function magazineFillBodyMarkup(heading: string, rest: string): string {
   return `
     ${MAGAZINE_BODY_OPEN}
       ${heading}
-      ${remaining}
+      ${leftoverFreeRemaining || remaining || rest}
     </div>`;
 }
 
@@ -652,9 +702,11 @@ export function healSparseOfficialMagazineCover(
   if (!isSparseMagazineCover(body)) return dest;
 
   const existing = visibleText(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i.exec(body)?.[1] ?? '');
-  const title = polishCoverTitle(
-    deriveDeckCoverTitleFromBrief(brief ?? '', existing || null),
-  ) || polishCoverTitle(existing) || '슬라이드';
+  const fromBrief = String(brief ?? '').trim()
+    ? polishCoverTitle(deriveDeckCoverTitleFromBrief(brief ?? '', existing || null))
+    : '';
+  const title = fromBrief || polishCoverTitle(existing);
+  if (!title) return dest;
   const laterTitles = collectBodySlideTitles(dest);
   const laterLedes = collectBodySlideLedes(dest);
   const nextInner = buildMagazineCoverInner(title, laterTitles, laterLedes, slides.length);
@@ -675,7 +727,9 @@ export function healOfficialMagazineLayoutDensity(
   if (!dest.trim()) return dest;
   return healOfficialMagazineBodyFrames(
     healSparseOfficialMagazineCover(
-      stripEmptyOfficialTextChromeMotifs(repairCompactFirstFillMarkup(dest)),
+      scrubLeftoverMagazineCopy(
+        stripEmptyOfficialTextChromeMotifs(repairCompactFirstFillMarkup(dest)),
+      ),
       brief,
     ),
   );

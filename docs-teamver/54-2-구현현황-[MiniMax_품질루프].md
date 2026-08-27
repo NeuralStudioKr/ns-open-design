@@ -194,6 +194,7 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | preview: 레터박스 `#17181d`만 보이고 1/N만 동작 | ☑ 루프146 |
 | persist/preview: 표지 오른쪽 TOC 칸 공백 · 성긴 slide-inner 상단 고정 | ☑ 루프147 |
 | persist/preview: 제목-only 본문 하단 공백 · lede가 목록 fill-track에 흡수 | ☑ 루프148 |
+| persist/preview: framed leftover · FileViewer no-brief · 한글 `·` 오삭 | ☑ 루프149 |
 | persist/preview: look CSS가 1–2장 사이에 끼어 표지 밀집도가 깨짐 | ☑ follow-up |
 | persist/preview: MiniMax `<p="">` · 유출 `· Label` | ☑ follow-up |
 | preview: Motif `span.ribbon`이 relative stretch로 빨간 줄 | ☑ follow-up |
@@ -220,7 +221,15 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | think 태그 / 내부 마크업 필터 | ☑ 기존 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프148)
+## 이번 루프 (루프149)
+
+1. heal — framed leftover 매 회 스크럽. 균형 태그 · 한/영 칩만 삭제. 한글 `·` 유지. 투팬 aside ≥2. 투팬 미달 요청 카피 유지
+2. 표지 — no-brief는 기존 제목 polish만. 빈 제목은 `슬라이드`를 발명하지 않음
+3. FileViewer accept/look-heal에 `userBrief`. srcdoc leftover 가드
+
+**검증:** framed leftover · hyphen/li · no-brief stub · Hangul · keep · FileViewer brief wire
+
+## 직전 루프 (루프148)
 
 1. 본문 — leftover 이후 `h2`만 남으면 `od-magazine-title-fill`로 16:9 well을 채움
 2. 본문 — 첫 문단/`div` 산문은 lede, 남은 리스트·카드만 fill-track. lede-fill은 제목+lede만

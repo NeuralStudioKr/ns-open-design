@@ -165,6 +165,9 @@ describe("FileViewer streaming slide preview", () => {
     expect(source).toContain("hasLiveHtml");
     expect(source).toContain("acceptPreviewHtmlCandidate");
     expect(source).toContain("healOfficialMagazineLayoutDensity");
+    expect(source).toContain(
+      "healOfficialMagazineLayoutDensity(sanitizePersistedDeckHostLeaks(candidate), brief)",
+    );
     expect(source).toContain("hoistDeckHostStylesToHead");
     expect(source).toContain("HTML_PREVIEW_DISK_FETCH_DEBOUNCE_MS");
     expect(source).toContain("HTML_PREVIEW_SOURCE_WALL_MS");
@@ -301,7 +304,7 @@ describe("FileViewer streaming slide preview", () => {
       "Intentionally leave previewSourceWallTimerRef armed across refresh churn",
     );
     expect(source).toContain(
-      "acceptPreviewHtmlCandidate(text, lastStablePreviewSourceRef)",
+      "acceptPreviewHtmlCandidate(text, lastStablePreviewSourceRef, userBrief)",
     );
     expect(source).not.toContain("structurallyComplete");
     expect(source).toContain("previewSourceWallIdentityRef.current = null");
