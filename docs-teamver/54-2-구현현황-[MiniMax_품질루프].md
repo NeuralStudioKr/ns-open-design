@@ -147,6 +147,9 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | kit: form selective · invent-frame off flow | ☑ 루프380–384 / round381–385 |
 | chat: FOO `：»›≫` · @when/@else harden | ☑ 루프385–389 / round386–390 |
 | kit/chat: set64–66 combo/closure | ☑ 루프390–404 / round391–405 |
+| kit: leading-dot rem/em · env/var px · .4cm/.15in | ☑ 루프405–409 / round406–410 |
+| chat: FOO `⇢⇝↦➤⟹` · form/section selective keep | ☑ 루프410–419 / round411–420 |
+| kit/chat: set70–72 combo/closure | ☑ 루프420–434 / round421–435 |
 | clone: IB pitch-book 데모 카피가 한국어 brief에 남음 | ☑ 루프57 |
 | preview: #stage 1920px 스트립이 100vw로만 살짝 이동 | ☑ 루프57 |
 | persist: 카탈로그 예제 leftover를 filled로 저장 | ☑ |
@@ -194,7 +197,14 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | think 태그 / 내부 마크업 필터 | ☑ 기존 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프375–404 / round376–405)
+## 이번 루프 (루프405–434 / round406–435)
+
+1. padding — leading-dot `.75rem`/`.8em` · `.4cm`/`.15in` · env/var 폴백 스펙
+2. chat — FOO `⇢⇝↦➤⟹` · invent-frame/`box-shadow` 보류
+
+**검증:** chat-leak-probe-round406–435
+
+## 직전 루프 (루프375–404 / round376–405)
 
 1. padding — `lvmin/lvmax/svmin/svmax/dvmin/dvmax` · CSS `Q`(≥8Q)
 2. kit — `form` 선택적 · `div` 비선택 유지

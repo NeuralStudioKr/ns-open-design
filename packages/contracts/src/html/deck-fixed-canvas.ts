@@ -1578,7 +1578,8 @@ function looksLikeCardLikePadding(style: string): boolean {
       return true;
     }
     // 0.75rem / 1rem / 12em-scale card padding MiniMax sometimes emits.
-    if (/(?:^|[\s/(,])(?:0\.(?:7[5-9]|[8-9]\d*)|[1-9]\d*(?:\.\d+)?)(?:rem|em)\b/i.test(value)) {
+    // Leading-dot `.75rem` / `.8em` (and `0.75rem`) — MiniMax/var fallbacks (루프405).
+    if (/(?:^|[\s/(,])(?:0?\.(?:7[5-9]|[8-9]\d*)|[1-9]\d*(?:\.\d+)?)(?:rem|em)\b/i.test(value)) {
       return true;
     }
     // Percent / ch card padding (thin accents stay under 4% / 2ch).
@@ -1612,10 +1613,10 @@ function looksLikeCardLikePadding(style: string): boolean {
     if (/(?:^|[\s/(,])(?:[4-9]|[1-9]\d+)(?:\.\d+)?mm\b/i.test(value)) {
       return true;
     }
-    if (/(?:^|[\s/(,])(?:0\.(?:[4-9]\d*|[1-9]\d+)|[1-9]\d*(?:\.\d+)?)cm\b/i.test(value)) {
+    if (/(?:^|[\s/(,])(?:0?\.(?:[4-9]\d*|[1-9]\d+)|[1-9]\d*(?:\.\d+)?)cm\b/i.test(value)) {
       return true;
     }
-    if (/(?:^|[\s/(,])(?:0\.(?:1[5-9]\d*|[2-9]\d*)|[1-9]\d*(?:\.\d+)?)in\b/i.test(value)) {
+    if (/(?:^|[\s/(,])(?:0?\.(?:1[5-9]\d*|[2-9]\d*)|[1-9]\d*(?:\.\d+)?)in\b/i.test(value)) {
       return true;
     }
     if (/(?:^|[\s/(,])(?:[1-9]\d*(?:\.\d+)?)pc\b/i.test(value)) {
