@@ -169,6 +169,10 @@ import {
   resolveFileViewerPreviewEscapeAction,
   runFileViewerPreviewMessageHandler,
 } from '../teamver/fileViewerPreviewEscape';
+import {
+  localizeOfficePreviewLine,
+  localizeOfficePreviewTitle,
+} from '../teamver/officePreviewLabels';
 import { repairArtifactDocumentHeadIfNeeded } from '../runtime/artifact-document-head';
 import {
   clearActiveRevisionSequence,
@@ -5245,12 +5249,12 @@ function DocumentPreviewViewer({
           <div className="viewer-empty">{t('fileViewer.loading')}</div>
         ) : preview ? (
           <div className="document-preview">
-            <h2>{preview.title}</h2>
+            <h2>{localizeOfficePreviewTitle(preview.title)}</h2>
             {preview.sections.map((section, idx) => (
               <section key={`${section.title}-${idx}`}>
-                <h3>{section.title}</h3>
+                <h3>{localizeOfficePreviewTitle(section.title)}</h3>
                 {section.lines.map((line, lineIdx) => (
-                  <p key={`${lineIdx}-${line}`}>{line}</p>
+                  <p key={`${lineIdx}-${line}`}>{localizeOfficePreviewLine(line)}</p>
                 ))}
               </section>
             ))}
