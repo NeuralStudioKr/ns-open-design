@@ -28,6 +28,14 @@ const DEMO_PROPER_NOUNS = [
   /ib-check-deck/i,
   /Maison Nocturne/i,
   /Maya Chen/i,
+  /Apex Group/i,
+  /Lorem ipsum/i,
+  /Mina Kovac/i,
+  /OPERATION HALCYON/i,
+  /Quartz\. Confluence/i,
+  /hermes-agent/i,
+  /Team Structure/i,
+  /pnpm vitest auth/i,
 ];
 
 function listDeckExamples(): string[] {

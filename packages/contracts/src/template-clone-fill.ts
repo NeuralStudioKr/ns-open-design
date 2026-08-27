@@ -429,6 +429,26 @@ function openHasExactClass(open: string, name: string): boolean {
   return raw.trim().split(/\s+/).some((token) => token.toLowerCase() === name.toLowerCase());
 }
 
+/** Display titles used instead of h1–h3 on official magazine / poster decks. */
+const TITLE_SLOT_CLASSES = [
+  'title',
+  'title-main',
+  'hero-title',
+  'display',
+  'font-display',
+  'headline',
+  'toc-title',
+  'summary-header',
+  'fin-header',
+] as const;
+
+function firstTitleSlotClass(html: string): string | null {
+  for (const name of TITLE_SLOT_CLASSES) {
+    if (firstExactClassRange(html, name)) return name;
+  }
+  return null;
+}
+
 function firstExactClassRange(html: string, className: string): HtmlSpan | null {
   const openRe = /<(div|span|p)\b[^>]*>/gi;
   let match: RegExpExecArray | null;
@@ -581,20 +601,23 @@ function collectProtectedSlots(html: string): HtmlSpan[] {
   const listRe = /<(ul|ol)\b[^>]*>[\s\S]*?<\/\1>/gi;
   let list: RegExpExecArray | null;
   while ((list = listRe.exec(html)) !== null) {
-    // Card lists sit under a later h3/h4 (IB Option A/B). Only the outline
-    // list that follows the first heading is a Clone fill slot.
+    // Card lists sit under a later h3/h4 (IB Option A/B). Only the first
+    // outline list after the heading is a Clone fill slot — a second
+    // column list is leftover demo copy (retro-windows agenda).
     const between = heading
       ? html.slice(heading.index + heading[0].length, list.index)
       : html.slice(0, list.index);
     if (/<h[3-6]\b/i.test(between)) continue;
     slots.push({ start: list.index, end: list.index + list[0].length });
+    break;
   }
   const subtitle = /<p\b[^>]*\bclass\s*=\s*["'][^"']*\bsubtitle\b[^"']*["'][^>]*>[\s\S]*?<\/p>/i.exec(html);
   if (subtitle && subtitle.index != null) {
     slots.push({ start: subtitle.index, end: subtitle.index + subtitle[0].length });
   }
   if (!heading) {
-    const titleClass = firstExactClassRange(html, 'title');
+    const titleName = firstTitleSlotClass(html);
+    const titleClass = titleName ? firstExactClassRange(html, titleName) : null;
     if (titleClass) slots.push(titleClass);
     const fallback = /<(div|span|p)\b[^>]*\bclass\s*=\s*["'][^"']*\b(?:quote-text|number|caption)\b[^"']*["'][^>]*>[\s\S]*?<\/\1>/i.exec(html);
     if (fallback && fallback.index != null) {
@@ -605,7 +628,7 @@ function collectProtectedSlots(html: string): HtmlSpan[] {
 }
 
 const NON_SLOT_WRAPPER_TAGS =
-  'div|span|p|header|footer|small|blockquote|figure|figcaption|aside|table|section|article';
+  'div|span|p|header|footer|small|blockquote|figure|figcaption|aside|table|section|article|dl|dt|dd|ul|ol|pre|code';
 
 /**
  * Drop block wrappers that do not own a fill slot. Slots and their
@@ -617,11 +640,6 @@ export function stripNonSlotWrappers(html: string): string {
   const source = String(html ?? '');
   if (!source) return source;
   const slots = collectProtectedSlots(source);
-  if (slots.length === 0) {
-    // No title/list/subtitle — still drop tables; leave the rest so
-    // quote/number fallback injection can find a host.
-    return source.replace(/<table\b[^>]*>[\s\S]*?<\/table>/gi, '');
-  }
   const wrappers = collectTaggedRanges(source, NON_SLOT_WRAPPER_TAGS);
   const drop: HtmlSpan[] = [];
   for (const wrap of wrappers) {
@@ -701,9 +719,11 @@ function fillSlideShell(
     body = replaceHeadingText(body, 'h2', title);
   } else if (/<h3\b/i.test(body)) {
     body = replaceHeadingText(body, 'h3', title);
-  } else if (firstExactClassRange(body, 'title')) {
-    // Pink-script / magazine covers use `<div class="title">` instead of h1.
-    body = replaceFirstExactClassText(body, 'title', title);
+  } else {
+    const titleName = firstTitleSlotClass(body);
+    if (titleName) {
+      body = replaceFirstExactClassText(body, titleName, title);
+    }
   }
 
   const placeholderBody = isPlaceholderCloneBody(bodyText);
@@ -1073,7 +1093,7 @@ function cleanCloneTitle(title: string): string {
 export function looksLikeLeftoverTemplateDemoDeck(html: string): boolean {
   const text = String(html ?? '');
   if (!text.trim()) return false;
-  return /Hartfield|NorthPeak Industries|WACC\s*\(|Revenue CAGR|Filebase|Northwind Studios|Daisy Days|The bandwidth bill is the bug|Project Atlas|pitch-agent|Margaret Eun|Maison Nocturne|Synthetic Open Design demo dataset|Continue as standalone public company|ib-check-deck\s*\(\s*pass\s*\)/i.test(
+  return /Hartfield|NorthPeak Industries|WACC\s*\(|Revenue CAGR|Filebase|Northwind Studios|Daisy Days|The bandwidth bill is the bug|Project Atlas|pitch-agent|Margaret Eun|Maison Nocturne|Synthetic Open Design demo dataset|Continue as standalone public company|ib-check-deck\s*\(\s*pass\s*\)|Apex Group|Lorem ipsum|Mina Kovac|OPERATION HALCYON|Quartz\. Confluence|hermes-agent|Team Structure\s*(?:&|&amp;)?\s*Resource Allocation/i.test(
     text,
   );
 }

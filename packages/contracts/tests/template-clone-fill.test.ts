@@ -324,6 +324,7 @@ describe('sanitizeTemplateCloneDeckTitle', () => {
     expect(looksLikeTemplateMarketingTitle('Filebase · Series B')).toBe(true);
     expect(looksLikeLeftoverTemplateDemoDeck('<p>Hartfield &amp; Co. WACC (base)</p>')).toBe(true);
     expect(looksLikeLeftoverTemplateDemoDeck('<p>open-design v0.18 · skill: pitch-agent</p>')).toBe(true);
+    expect(looksLikeLeftoverTemplateDemoDeck('<p>Apex Group · OPERATION HALCYON · hermes-agent</p>')).toBe(true);
     expect(looksLikeLeftoverTemplateDemoDeck('<section class="slide"><h1>개요</h1></section>')).toBe(false);
     expect(sanitizeTemplateCloneDeckTitle('Presentation')).toBeNull();
     expect(looksLikeTemplateMarketingTitle('Expo for Senior Engineers')).toBe(false);
@@ -733,6 +734,31 @@ describe('stripNonSlotWrappers (0826-N01 F4)', () => {
     expect(next).toContain('<h2>영어 회화</h2>');
     expect(next).toContain('<ul>');
     expect(next).not.toMatch(/weird-unknown-grid|weird-card|Option A/);
+  });
+
+  it('treats hero-title as a slot and drops poster leftover', () => {
+    const html = [
+      '<div class="hero-title">Apex</div>',
+      '<div class="hero-title">Group</div>',
+      '<div class="tag-body">Building scalable solutions for enterprise partners worldwide since 2019.</div>',
+    ].join('');
+    const next = stripNonSlotWrappers(html);
+    expect(next).toContain('hero-title');
+    expect(next).toContain('Apex');
+    expect(next).not.toMatch(/Building scalable|tag-body/);
+  });
+
+  it('keeps only the first outline list and drops a sibling pre', () => {
+    const html = [
+      '<h2>영어 회화</h2>',
+      '<ul class="outline"><li>포인트 1</li></ul>',
+      '<ul class="second"><li>Team Structure &amp; Resource Allocation</li></ul>',
+      '<pre class="hc-codebox">brew install hermes-agent</pre>',
+    ].join('');
+    const next = stripNonSlotWrappers(html);
+    expect(next).toContain('<h2>영어 회화</h2>');
+    expect(next).toContain('포인트 1');
+    expect(next).not.toMatch(/Team Structure|hermes-agent|hc-codebox|class="second"/);
   });
 
   it('keeps layout ancestors of the first heading', () => {

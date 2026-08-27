@@ -362,6 +362,12 @@ const CATALOG_EXAMPLE_FINGERPRINTS = [
   /skill:\s*pitch-agent\s*·\s*vertical:\s*investment-banking/i,
   /ib-check-deck\s*\(\s*pass\s*\)/i,
   /Maison\s+Nocturne/i,
+  /Apex\s+Group/i,
+  /Lorem\s+ipsum/i,
+  /Mina\s+Kovac/i,
+  /OPERATION\s+HALCYON/i,
+  /Quartz\.\s+Confluence/i,
+  /hermes-agent/i,
 ];
 
 /**
