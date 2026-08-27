@@ -86,7 +86,11 @@ export function resolveExportDownloadTitle(
   const fromProject = (projectDisplayName ?? '').trim();
   if (fromProject) return fromProject;
   if (fromFile && !isGenericExportLabel(fromFile)) return fromFile;
-  return TEAMVER_DEFAULT_EXPORT_BASENAME;
+  try {
+    return isTeamverEmbedMode() ? '슬라이드' : TEAMVER_DEFAULT_EXPORT_BASENAME;
+  } catch {
+    return TEAMVER_DEFAULT_EXPORT_BASENAME;
+  }
 }
 
 function safeFilename(name: string, fallback: string): string {

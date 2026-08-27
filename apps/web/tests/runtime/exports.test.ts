@@ -147,6 +147,7 @@ describe('Teamver embed export title leftovers', () => {
     expect(src).toContain("exportDisplayTitleFallback('Preview')");
     expect(src).toContain("exportDisplayTitleFallback('Document')");
     expect(src).toContain("exportDisplayTitleFallback('artifact')");
+    expect(src).toContain("isTeamverEmbedMode() ? '슬라이드' : TEAMVER_DEFAULT_EXPORT_BASENAME");
   });
 });
 
