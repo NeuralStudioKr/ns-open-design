@@ -61,8 +61,8 @@ if ! grep -q 'env_file:' "$ROOT/docker-compose.staging.yml"; then
   exit 1
 fi
 
-if ! grep -qF 'SERVICES=(open-design-daemon teamver-design-api litestream)' "$DEPLOY"; then
-  echo "❌ hosted deploy must always start Litestream with daemon and design-api"
+if ! grep -qF 'SERVICES=(open-design-daemon export-worker teamver-design-api litestream)' "$DEPLOY"; then
+  echo "❌ hosted deploy must always start export-worker and Litestream with daemon and design-api"
   exit 1
 fi
 

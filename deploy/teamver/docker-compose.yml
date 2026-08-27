@@ -93,8 +93,11 @@ services:
       OD_EXPORT_TICKET_TTL_SEC: ${OD_EXPORT_TICKET_TTL_SEC:-300}
       OD_EXPORT_PPTX_MAX_SLIDES: ${OD_EXPORT_PPTX_MAX_SLIDES:-40}
       OD_EXPORT_ASYNC_JOBS_ENABLED: ${OD_EXPORT_ASYNC_JOBS_ENABLED:-0}
-      OD_EXPORT_DEDICATED_WORKER_ENABLED: ${OD_EXPORT_DEDICATED_WORKER_ENABLED:-0}
-      OD_EXPORT_DEDICATED_WORKER_TIMEOUT_MS: ${OD_EXPORT_DEDICATED_WORKER_TIMEOUT_MS:-120000}
+      OD_EXPORT_WORKER_ENABLED: ${OD_EXPORT_WORKER_ENABLED:-0}
+      OD_EXPORT_WORKER_BASE_URL: ${OD_EXPORT_WORKER_BASE_URL:-http://export-worker:7460}
+      OD_EXPORT_WORKER_TOKEN: ${OD_EXPORT_WORKER_TOKEN:-}
+      OD_EXPORT_WORKER_TIMEOUT_MS: ${OD_EXPORT_WORKER_TIMEOUT_MS:-120000}
+      OD_EXPORT_WORKER_DAEMON_URL: ${OD_EXPORT_WORKER_DAEMON_URL:-http://open-design-daemon:7456}
       # Export artifact cache (Phase 1a — docs-teamver/34 §20). code default ON.
       # 0/false/off/no 로만 명시적 disable. memo (RAM LRU) + local (EBS
       # od-data/.od-export-cache) 2-tier. cache 키에 entryFile mtime 포함이라
@@ -189,6 +192,72 @@ services:
       timeout: 5s
       retries: 3
       start_period: 30s
+
+  export-worker:
+    container_name: teamver-open-design-export-worker
+    image: ${OPEN_DESIGN_IMAGE:-docker.io/vanjayak/open-design:latest}
+    restart: unless-stopped
+    command: ["node", "apps/daemon/dist/export-worker-service.js"]
+    environment:
+      NODE_ENV: production
+      NODE_OPTIONS: ${OD_EXPORT_WORKER_NODE_OPTIONS:---max-old-space-size=2048}
+      OD_DATA_DIR: /app/.od
+      OD_API_TOKEN: ${OD_API_TOKEN:?Set OD_API_TOKEN in .env (openssl rand -hex 32)}
+      OD_EXPORT_WORKER_TOKEN: ${OD_EXPORT_WORKER_TOKEN:-}
+      OD_EXPORT_WORKER_PORT: ${OD_EXPORT_WORKER_PORT:-7460}
+      OD_EXPORT_WORKER_MAX_BODY_BYTES: ${OD_EXPORT_WORKER_MAX_BODY_BYTES:-33554432}
+      OD_PROJECT_STORAGE: ${OD_PROJECT_STORAGE:-local}
+      OD_S3_BUCKET: ${OD_S3_BUCKET:-}
+      OD_S3_REGION: ${OD_S3_REGION:-}
+      OD_S3_PREFIX: ${OD_S3_PREFIX:-}
+      OD_S3_ENDPOINT: ${OD_S3_ENDPOINT:-}
+      OD_S3_ACCESS_KEY_ID: ${OD_S3_ACCESS_KEY_ID:-}
+      OD_S3_SECRET_ACCESS_KEY: ${OD_S3_SECRET_ACCESS_KEY:-}
+      OD_SCRATCH_DIR: ${OD_SCRATCH_DIR:-/app/.od/scratch}
+      HOME: /tmp
+      XDG_CONFIG_HOME: /tmp/.chromium
+      XDG_CACHE_HOME: /tmp/.chromium
+      PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
+      OD_EXPORT_MAX_CONCURRENT: ${OD_EXPORT_WORKER_MAX_CONCURRENT:-2}
+      OD_EXPORT_BROWSER_POOL_SIZE: ${OD_EXPORT_WORKER_BROWSER_POOL_SIZE:-2}
+      OD_EXPORT_BOOT_PREWARM_COUNT: ${OD_EXPORT_WORKER_BOOT_PREWARM_COUNT:-1}
+      OD_EXPORT_QUEUE_MAX: ${OD_EXPORT_WORKER_QUEUE_MAX:-16}
+      OD_EXPORT_PPTX_MAX_SLIDES: ${OD_EXPORT_PPTX_MAX_SLIDES:-40}
+      OD_EXPORT_CACHE_ENABLED: ${OD_EXPORT_CACHE_ENABLED:-1}
+      OD_EXPORT_CACHE_VERSION: ${OD_EXPORT_CACHE_VERSION:-}
+      OD_EXPORT_CACHE_MEMO_ENABLED: ${OD_EXPORT_CACHE_MEMO_ENABLED:-}
+      OD_EXPORT_CACHE_MEMO_TTL_SEC: ${OD_EXPORT_CACHE_MEMO_TTL_SEC:-}
+      OD_EXPORT_CACHE_MEMO_MAX_ENTRIES: ${OD_EXPORT_CACHE_MEMO_MAX_ENTRIES:-}
+      OD_EXPORT_CACHE_MEMO_MAX_ENTRY_BYTES: ${OD_EXPORT_CACHE_MEMO_MAX_ENTRY_BYTES:-}
+      OD_EXPORT_CACHE_MEMO_MAX_TOTAL_BYTES: ${OD_EXPORT_CACHE_MEMO_MAX_TOTAL_BYTES:-}
+      OD_EXPORT_CACHE_LOCAL_ENABLED: ${OD_EXPORT_CACHE_LOCAL_ENABLED:-}
+      OD_EXPORT_CACHE_LOCAL_MAX_TOTAL_BYTES: ${OD_EXPORT_CACHE_LOCAL_MAX_TOTAL_BYTES:-}
+      OD_EXPORT_CACHE_LOCAL_MAX_AGE_SEC: ${OD_EXPORT_CACHE_LOCAL_MAX_AGE_SEC:-}
+      OD_EXPORT_CACHE_LOCAL_SWEEP_INTERVAL_SEC: ${OD_EXPORT_CACHE_LOCAL_SWEEP_INTERVAL_SEC:-}
+      OD_EXPORT_CACHE_DIR: ${OD_EXPORT_CACHE_DIR:-}
+    expose:
+      - "7460"
+    volumes:
+      - ${OD_DATA_HOST_PATH:-./.od-data-local}:/app/.od
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: ${OD_EXPORT_WORKER_MEM_LIMIT:-2g}
+    pids_limit: 256
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:7460/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
 
   # Litestream sidecar — deploy.sh always targets this service on hosted environments.
   litestream:

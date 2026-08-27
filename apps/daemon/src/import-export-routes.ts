@@ -42,9 +42,9 @@ import {
 } from './export-job-store.js';
 import { runExportJobInBackground } from './export-job-runner.js';
 import {
-  isDedicatedExportWorkerEnabled,
-  renderExportJobWithDedicatedWorker,
-} from './export-dedicated-worker.js';
+  isRemoteExportWorkerEnabled,
+  renderExportJobWithRemoteWorker,
+} from './export-remote-worker.js';
 import {
   renderHtmlExportOutcome,
   renderImageExportOutcome,
@@ -1187,8 +1187,8 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
             projectId: jobRequest.projectId,
             outcome,
           }),
-          ...(isDedicatedExportWorkerEnabled()
-            ? { renderOutcome: renderExportJobWithDedicatedWorker }
+          ...(isRemoteExportWorkerEnabled()
+            ? { renderOutcome: renderExportJobWithRemoteWorker }
             : {}),
         },
       });
