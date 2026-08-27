@@ -661,6 +661,8 @@ const FLOW_COPIED_STYLE_PROPS = [  'display',
   '-ms-content-zoom-limit-max',
   '-ms-content-zoom-limit-min',
   '-ms-content-zoom-snap',
+  '-ms-content-zoom-snap-points-x',
+  '-ms-content-zoom-snap-points-y',
   '-ms-content-zoom-snap-points',
   '-ms-content-zoom-snap-type',
   '-ms-scroll-limit',
@@ -919,6 +921,7 @@ const FLOW_COPIED_STYLE_PROPS = [  'display',
   '-webkit-mask-clip',
   '-webkit-mask-origin',
   '-webkit-mask-composite',
+  '-webkit-mask-composite-source',
   '-webkit-mask-box-image',
   '-webkit-mask-box-image-source',
   '-webkit-mask-box-image-slice',
@@ -1191,6 +1194,8 @@ const FLOW_COPIED_STYLE_PROPS = [  'display',
   'hyphens',
   '-moz-hyphens',
   '-moz-text-blink',
+  '-moz-stack-sizing',
+  '-moz-binding',
   '-moz-force-broken-image-icon',
   '-moz-border-top-colors',
   '-moz-border-right-colors',
@@ -1235,6 +1240,7 @@ const FLOW_COPIED_STYLE_PROPS = [  'display',
   '-moz-image-region',
   '-webkit-box-flex',
   '-moz-box-flex-group',
+  '-webkit-box-flex-group',
   '-webkit-box-ordinal-group',
   '-webkit-box-lines',
   '-webkit-text-zoom',
@@ -1382,6 +1388,10 @@ const FLOW_COPIED_STYLE_PROPS = [  'display',
   '-webkit-text-emphasis-color',
   '-webkit-text-emphasis-position',
   '-webkit-text-emphasis-style',
+  '-moz-text-emphasis',
+  '-moz-text-emphasis-color',
+  '-moz-text-emphasis-position',
+  '-moz-text-emphasis-style',
   'text-underline-offset',
   'text-underline-position',
   'text-decoration-skip-ink',
@@ -1630,9 +1640,9 @@ function pickOfficialKitCardClass(html: string): string | null {
 }
 
 const KIT_CARD_OPEN_RE =
-  /<(div|aside|article|section|li|figure|main|header|footer|blockquote|nav|ul|ol|dl|dt|dd|p|span|h[1-6]|figcaption|caption|details|summary|label|output|fieldset|legend|dialog|menu|mark|time|cite|q|small|abbr|kbd|samp|dfn|table|thead|tbody|tfoot|tr|td|th|address|hgroup|search|data|meter|progress|ruby|rtc|rt|rp|bdi|bdo|del|ins|sub|sup|var|code|pre|form|optgroup|option|datalist|math|mrow|semantics)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
+  /<(div|aside|article|section|li|figure|main|header|footer|blockquote|nav|ul|ol|dl|dt|dd|p|span|h[1-6]|figcaption|caption|details|summary|label|output|fieldset|legend|dialog|menu|mark|time|cite|q|small|abbr|kbd|samp|dfn|table|thead|tbody|tfoot|tr|td|th|address|hgroup|search|s|u|wbr|colgroup|col|data|meter|progress|ruby|rtc|rt|rp|bdi|bdo|del|ins|sub|sup|var|code|pre|form|optgroup|option|datalist|math|mrow|semantics)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
 const SELECTIVE_KIT_CARD_TAGS_RE =
-  /^(?:p|span|h[1-6]|figcaption|caption|details|summary|label|output|fieldset|legend|dialog|menu|mark|time|cite|q|small|abbr|kbd|samp|dfn|table|thead|tbody|tfoot|tr|td|th|data|meter|progress|ruby|rtc|rt|rp|bdi|bdo|del|ins|sub|sup|var|code|pre|optgroup|option|datalist|math|mrow|semantics|blockquote|address|hgroup|search|s|u)$/i;
+  /^(?:p|span|h[1-6]|figcaption|caption|details|summary|label|output|fieldset|legend|dialog|menu|mark|time|cite|q|small|abbr|kbd|samp|dfn|table|thead|tbody|tfoot|tr|td|th|data|meter|progress|ruby|rtc|rt|rp|bdi|bdo|del|ins|sub|sup|var|code|pre|optgroup|option|datalist|math|mrow|semantics|blockquote|address|hgroup|search|s|u|ul|ol|li|dl|dt|dd|figure|article|aside|header|footer|nav|main|wbr|colgroup|col)$/i;
 
 function bindFakeOutlineCardsInSpan(html: string, cardClass: string): string {
   return html.replace(KIT_CARD_OPEN_RE, (open, tag: string, attrs: string) => {

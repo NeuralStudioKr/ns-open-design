@@ -137,6 +137,8 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | persist: border-image · ms-word · line-grid · epub · at-rule harden | ☑ 루프260–284 / round261–285 |
 | persist: blend · aspect-ratio · view-transition-class · shape/wrap | ☑ 루프285–294 / round286–295 |
 | kit/chat: blockquote kit · region/flow · @page/@scroll-* · closure | ☑ 루프295–314 / round296–315 |
+| persist: obscure moz/webkit vendor · moz-text-emphasis | ☑ 루프315–319 / round316–320 |
+| kit/chat: list/landmark selective · @font-face/@keyframes · closure | ☑ 루프320–344 / round321–345 |
 | clone: IB pitch-book 데모 카피가 한국어 brief에 남음 | ☑ 루프57 |
 | preview: #stage 1920px 스트립이 100vw로만 살짝 이동 | ☑ 루프57 |
 | persist: 카탈로그 예제 leftover를 filled로 저장 | ☑ |
@@ -184,7 +186,15 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | think 태그 / 내부 마크업 필터 | ☑ 기존 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프285–314 / round286–315)
+## 이번 루프 (루프315–344 / round316–345)
+
+1. persist — `-moz-stack-sizing`/`-moz-binding` · `-webkit-box-flex-group` · `-webkit-mask-composite-source` · `-ms-content-zoom-snap-points-*` · `-moz-text-emphasis*`
+2. kit — `ul/ol/li/dl/dt/dd/figure/article/aside/header/footer/nav/main/s/u/wbr/colgroup/col` 선택적(얇은 테두리 미바인딩)
+3. chat — `@font-face` · `@keyframes` · `@media` · `@font-palette-values` · `@annotation` · `@custom-media` · `@stylistic` · `@color-profile` · `@nest` · `@function` · `@position-try` · invent-frame · set49–54 closure (`box-shadow` 보류)
+
+**검증:** chat-leak-probe-round316–345
+
+## 직전 루프 (루프285–314 / round286–315)
 
 1. persist — background-blend · `-ms-color-scheme` · `-moz-text-orientation` · `-webkit-ruby-align` · `-webkit-aspect-ratio` · ime-mode · view-transition-class/group
 2. persist — dashboard/border-fit · `-webkit-shape-*` · `-webkit-wrap-*` · `-webkit-flow-*` · `-webkit-region-*` · mask-attachment
