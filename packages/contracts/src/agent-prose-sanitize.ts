@@ -2329,7 +2329,7 @@ function stripSlideCountTopUpLeftover(input: string): string {
 /** Drop truncated deck stylesheet/CSS leaked into chat prose (mid-artifact abort). */
 export function stripTrailingDeckFrameworkCssLeak(input: string): string {
   if (!input) return input;
-  const match = /(?:^|\n\n|\n)((?::root\s*\{|@(?:-webkit-)?(?:keyframes\s+[\w-]+|font-face|font-palette-values\b[^{]*|font-feature-values\b[^{]*)\s*\{|@(?:media|page|supports|layer|scope|container|property|counter-style|starting-style|scroll-timeline|view-timeline|position-try|function|namespace|color-profile|document|nest|annotation|custom-media|custom-selector|stylistic|view-transition|scroll-state|charset)\b[^{]*\{|@import\s+(?:url\(|["'])|<style\b[^>]*>|(?:from|to|\d+%)\s*\{|(?:\.slide|(?:(?:\.[A-Za-z_-][\w-]*)+|#[A-Za-z_-][\w-]*|h[1-6]|p|ul|li|body|section(?:\.[\w-]+)?)\s*\{))[\s\S]*)$/i.exec(input);
+  const match = /(?:^|\n\n|\n)((?::root\s*\{|@(?:-webkit-)?(?:keyframes\s+[\w-]+|font-face|font-palette-values\b[^{]*|font-feature-values\b[^{]*)\s*\{|@(?:media|page|supports|layer|scope|container|property|counter-style|starting-style|scroll-timeline|view-timeline|position-try|function|namespace|color-profile|document|nest|annotation|custom-media|custom-selector|stylistic|view-transition|scroll-state|charset|when|else)\b[^{]*\{|@import\s+(?:url\(|["'])|<style\b[^>]*>|(?:from|to|\d+%)\s*\{|(?:\.slide|(?:(?:\.[A-Za-z_-][\w-]*)+|#[A-Za-z_-][\w-]*|h[1-6]|p|ul|li|body|section(?:\.[\w-]+)?)\s*\{))[\s\S]*)$/i.exec(input);
   if (!match || match.index === undefined) return input;
   const tail = match[1] ?? "";
   const looksLikeDeckFramework =
@@ -2370,6 +2370,8 @@ export function stripTrailingDeckFrameworkCssLeak(input: string): string {
     || /@view-transition\b/i.test(tail)
     || /@scroll-state\b/i.test(tail)
     || /@charset\b/i.test(tail)
+    || /@when\b/i.test(tail)
+    || /@else\b/i.test(tail)
     || /(?:^|\n)(?:from|to|\d+%)\s*\{[\s\S]*(?:transform|opacity|translate|rotate)/i.test(tail)
     || looksLikeLeakedCssCustomPropertyBlock(tail);
   if (!looksLikeDeckFramework) return input;
@@ -2399,9 +2401,9 @@ const TAG_STRIPPED_LEFTOVER_SUFFIX_CHROME_RE =
  * prose never matches.
  */
 const SHORT_DECK_TRACK_GENERIC_CHROME_RE =
-  /^[A-Z][A-Z0-9_]{1,28}\s+(?:\d{1,2}|[A-Z])\s*[·•･・\-–—:|\/／]\s*[A-Z][A-Z0-9_-]{1,24}$/;
+  /^[A-Z][A-Z0-9_]{1,28}\s+(?:\d{1,2}|[A-Z])\s*[·•･・\-–—:|\/／=＝→⇒：»›≫⇢⇝↦➤⟹]\s*[A-Z][A-Z0-9_-]{1,24}$/;
 const TAG_STRIPPED_LEFTOVER_GENERIC_CHROME_RE =
-  /(?:^|[\n\uac00-\ud7af\u3000-\u9fff][.\u3002…]?\s*)[A-Z][A-Z0-9_]{1,28}\s+(?:\d{1,2}|[A-Z])\s*[·•･・\-–—:|\/／]\s*[A-Z][A-Z0-9_-]{1,24}\b/;
+  /(?:^|[\n\uac00-\ud7af\u3000-\u9fff][.\u3002…]?\s*)[A-Z][A-Z0-9_]{1,28}\s+(?:\d{1,2}|[A-Z])\s*[·•･・\-–—:|\/／=＝→⇒：»›≫⇢⇝↦➤⟹]\s*[A-Z][A-Z0-9_-]{1,24}\b/;
 const SHORT_DECK_INDEX_BADGE_RE =
   /^\d{1,2}\s*[\/·•･・]\s*[A-Za-z가-힣][A-Za-z가-힣\s-]{1,20}$/u;
 const TAG_STRIPPED_HANGUL_LATIN_GLUE_RE =
@@ -2794,7 +2796,7 @@ export function looksLikeDeckCodeDebrisLine(line: string): boolean {
   }
   if (looksLikeSoftCssDeclarationLine(trimmed)) return true;
   // At-rule dumps MiniMax leaves after Hangul status (`@font-palette-values --p {`).
-  if (/^@(?:font-palette-values|font-feature-values|font-face|property|scope|container|layer|supports|media|page|keyframes|counter-style|starting-style|scroll-timeline|view-timeline|position-try|function|namespace|color-profile|document|nest|annotation|custom-media|custom-selector|stylistic|view-transition|scroll-state|charset)\b/i.test(trimmed)) {
+  if (/^@(?:font-palette-values|font-feature-values|font-face|property|scope|container|layer|supports|media|page|keyframes|counter-style|starting-style|scroll-timeline|view-timeline|position-try|function|namespace|color-profile|document|nest|annotation|custom-media|custom-selector|stylistic|view-transition|scroll-state|charset|when|else)\b/i.test(trimmed)) {
     return true;
   }
   // Standalone `color: tomato;` / `margin: 0;` prop dumps (continuation RE

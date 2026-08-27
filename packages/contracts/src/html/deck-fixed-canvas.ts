@@ -297,6 +297,21 @@ type SlideInnerSpan = {
   hostAttrs: string;
 };
 
+function findMatchingCloseTagIndex(chunk: string, tag: string): number {
+  const tokenRe = new RegExp(`<(/)?${tag}\\b[^>]*>`, 'gi');
+  let depth = 1;
+  let match: RegExpExecArray | null;
+  while ((match = tokenRe.exec(chunk)) !== null) {
+    if (match[1]) {
+      depth -= 1;
+      if (depth === 0) return match.index;
+    } else {
+      depth += 1;
+    }
+  }
+  return -1;
+}
+
 function listPinnedSlideInnerSpans(html: string): SlideInnerSpan[] {
   const opens: { start: number; openEnd: number; tag: string; hostAttrs: string }[] = [];
   SLIDE_OPEN_RE.lastIndex = 0;
@@ -313,10 +328,12 @@ function listPinnedSlideInnerSpans(html: string): SlideInnerSpan[] {
   return opens.map((open, i) => {
     const limit = i + 1 < opens.length ? opens[i + 1]!.start : html.length;
     const chunk = html.slice(open.openEnd, limit);
-    const close = new RegExp(`</${open.tag}\\s*>`, 'i').exec(chunk);
+    // Nested same-tag hosts (MiniMax `<section class="slide">…<section>…`) must
+    // not truncate the slide inner at the first closer (루프345).
+    const closeIdx = findMatchingCloseTagIndex(chunk, open.tag);
     return {
       start: open.openEnd,
-      end: close ? open.openEnd + close.index : limit,
+      end: closeIdx >= 0 ? open.openEnd + closeIdx : limit,
       hostAttrs: open.hostAttrs,
     };
   });
@@ -601,6 +618,9 @@ const FLOW_COPIED_STYLE_PROPS = [  'display',
   '-moz-column-count',
   '-moz-column-gap',
   '-moz-column-rule',
+  '-moz-column-rule-color',
+  '-moz-column-rule-style',
+  '-moz-column-rule-width',
   '-moz-column-width',
   '-moz-columns',
   '-moz-column-fill',
@@ -617,6 +637,9 @@ const FLOW_COPIED_STYLE_PROPS = [  'display',
   '-webkit-column-count',
   '-webkit-column-gap',
   '-webkit-column-rule',
+  '-webkit-column-rule-color',
+  '-webkit-column-rule-style',
+  '-webkit-column-rule-width',
   '-webkit-column-span',
   '-webkit-column-width',
   '-webkit-column-fill',
@@ -650,6 +673,24 @@ const FLOW_COPIED_STYLE_PROPS = [  'display',
   '-ms-scroll-chaining',
   '-ms-scroll-rails',
   '-ms-content-zooming',
+  '-ms-content-zoom-chaining',
+  '-ms-content-zoom-limit',
+  '-ms-content-zoom-limit-max',
+  '-ms-content-zoom-limit-min',
+  '-ms-content-zoom-snap',
+  '-ms-content-zoom-snap-points-x',
+  '-ms-content-zoom-snap-points-y',
+  '-ms-content-zoom-snap-points',
+  '-ms-content-zoom-snap-type',
+  '-ms-scroll-limit',
+  '-ms-scroll-limit-x-max',
+  '-ms-scroll-limit-x-min',
+  '-ms-scroll-limit-y-max',
+  '-ms-scroll-limit-y-min',
+  '-ms-scroll-translation',
+  '-ms-scroll-snap-points-x',
+  '-ms-scroll-snap-points-y',
+  '-ms-touch-select',
   '-ms-interpolation-mode',
   '-ms-wrap-flow',
   '-ms-wrap-margin',
@@ -683,6 +724,14 @@ const FLOW_COPIED_STYLE_PROPS = [  'display',
   'scrollbar-gutter',
   'scrollbar-width',
   'scrollbar-color',
+  '-ms-scrollbar-base-color',
+  '-ms-scrollbar-face-color',
+  '-ms-scrollbar-3dlight-color',
+  '-ms-scrollbar-shadow-color',
+  '-ms-scrollbar-highlight-color',
+  '-ms-scrollbar-darkshadow-color',
+  '-ms-scrollbar-arrow-color',
+  '-ms-scrollbar-track-color',
   'overscroll-behavior',
   'overscroll-behavior-x',
   'overscroll-behavior-y',
@@ -710,6 +759,12 @@ const FLOW_COPIED_STYLE_PROPS = [  'display',
   '-webkit-border-image-width',
   '-webkit-border-image-outset',
   '-webkit-border-image-repeat',
+  '-moz-border-image',
+  '-moz-border-image-source',
+  '-moz-border-image-slice',
+  '-moz-border-image-width',
+  '-moz-border-image-outset',
+  '-moz-border-image-repeat',
   'border-collapse',
   'counter-reset',
   'counter-increment',
@@ -795,6 +850,7 @@ const FLOW_COPIED_STYLE_PROPS = [  'display',
   '-webkit-appearance',
   '-moz-appearance',
   'color-scheme',
+  '-ms-color-scheme',
   'accent-color',
   'forced-color-adjust',
   'print-color-adjust',
@@ -802,6 +858,9 @@ const FLOW_COPIED_STYLE_PROPS = [  'display',
   '-webkit-print-color-adjust',
   'app-region',
   '-webkit-app-region',
+  '-webkit-dashboard-region',
+  '-apple-dashboard-region',
+  '-webkit-border-fit',
   '-webkit-tap-highlight-color',
   'scale',
   'translate',
@@ -823,12 +882,16 @@ const FLOW_COPIED_STYLE_PROPS = [  'display',
   'opacity',
   '-webkit-opacity',
   '-moz-opacity',
+  '-moz-control-character-visibility',
+  '-moz-context-properties',
+  '-moz-inert',
   'filter',
   '-webkit-filter',
   'backdrop-filter',
   '-webkit-backdrop-filter',
   'mix-blend-mode',
   'aspect-ratio',
+  '-webkit-aspect-ratio',
   'object-fit',
   'object-position',
   'background',
@@ -846,6 +909,9 @@ const FLOW_COPIED_STYLE_PROPS = [  'display',
   'background-blend-mode',
   '-webkit-background-size',
   '-webkit-background-composite',
+  '-moz-background-inline-policy',
+  '-moz-background-blend-mode',
+  '-webkit-background-blend-mode',
   '-moz-background-clip',
   '-moz-background-origin',
   '-moz-background-size',
@@ -863,10 +929,16 @@ const FLOW_COPIED_STYLE_PROPS = [  'display',
   '-webkit-mask-image',
   '-webkit-mask-size',
   '-webkit-mask-position',
+  '-webkit-mask-position-x',
+  '-webkit-mask-position-y',
   '-webkit-mask-repeat',
+  '-webkit-mask-repeat-x',
+  '-webkit-mask-repeat-y',
+  '-webkit-mask-attachment',
   '-webkit-mask-clip',
   '-webkit-mask-origin',
   '-webkit-mask-composite',
+  '-webkit-mask-composite-source',
   '-webkit-mask-box-image',
   '-webkit-mask-box-image-source',
   '-webkit-mask-box-image-slice',
@@ -885,6 +957,8 @@ const FLOW_COPIED_STYLE_PROPS = [  'display',
   'position-visibility',
   'overlay',
   'view-transition-name',
+  'view-transition-class',
+  'view-transition-group',
   'view-timeline',
   'view-timeline-name',
   'view-timeline-axis',
@@ -1022,6 +1096,12 @@ const FLOW_COPIED_STYLE_PROPS = [  'display',
   'font-variation-settings',
   'font-feature-settings',
   '-webkit-font-feature-settings',
+  '-moz-font-feature-settings',
+  '-ms-font-feature-settings',
+  '-webkit-font-kerning',
+  '-moz-font-language-override',
+  '-webkit-font-language-override',
+  '-moz-font-smoothing',
   'font-palette',
   'base-palette',
   'override-colors',
@@ -1064,6 +1144,8 @@ const FLOW_COPIED_STYLE_PROPS = [  'display',
   '-ms-text-overflow',
   '-ms-high-contrast-adjust',
   '-ms-ime-align',
+  '-ms-ime-mode',
+  'ime-mode',
   '-ms-flow-from',
   '-ms-flow-into',
   '-ms-accelerator',
@@ -1088,9 +1170,16 @@ const FLOW_COPIED_STYLE_PROPS = [  'display',
   '-webkit-text-combine-upright',
   'text-orientation',
   '-webkit-text-orientation',
+  '-moz-text-orientation',
   '-epub-text-orientation',
   '-epub-writing-mode',
   '-epub-text-combine',
+  '-epub-caption-side',
+  '-epub-text-transform',
+  '-epub-word-break',
+  '-epub-text-emphasis',
+  '-epub-text-emphasis-color',
+  '-epub-text-emphasis-style',
   'text-rendering',
   'leading-trim',
   'margin-trim',
@@ -1121,15 +1210,34 @@ const FLOW_COPIED_STYLE_PROPS = [  'display',
   'white-space-collapse',
   'hyphens',
   '-moz-hyphens',
+  '-moz-text-blink',
+  '-moz-stack-sizing',
+  '-moz-binding',
+  '-moz-force-broken-image-icon',
+  '-moz-border-top-colors',
+  '-moz-border-right-colors',
+  '-moz-border-bottom-colors',
+  '-moz-border-left-colors',
   '-moz-text-align-last',
   '-moz-text-decoration-color',
   '-moz-text-decoration-line',
   '-moz-text-decoration-style',
   '-webkit-hyphens',
   'word-break',
+  '-ms-word-break',
+  '-ms-word-wrap',
+  '-ms-writing-mode',
+  '-ms-text-combine-horizontal',
+  '-ms-text-combine-mode',
   '-webkit-word-break',
   '-webkit-text-decorations-in-effect',
   '-webkit-line-box-contain',
+  '-webkit-line-align',
+  '-webkit-line-grid',
+  '-webkit-line-snap',
+  '-webkit-cursor-visibility',
+  '-webkit-trailing-word',
+  '-apple-trailing-word',
   'overflow-wrap',
   'line-clamp',
   '-webkit-line-clamp',
@@ -1148,10 +1256,14 @@ const FLOW_COPIED_STYLE_PROPS = [  'display',
   '-moz-orient',
   '-moz-image-region',
   '-webkit-box-flex',
+  '-moz-box-flex-group',
+  '-webkit-box-flex-group',
   '-webkit-box-ordinal-group',
   '-webkit-box-lines',
   '-webkit-text-zoom',
+  'text-zoom',
   '-webkit-marquee',
+  '-webkit-marquee-dir',
   '-webkit-marquee-style',
   '-webkit-marquee-direction',
   '-webkit-marquee-increment',
@@ -1195,9 +1307,21 @@ const FLOW_COPIED_STYLE_PROPS = [  'display',
   'border-inline-style',
   'border-inline-color',
   '-webkit-border-before',
+  '-webkit-border-before-color',
+  '-webkit-border-before-style',
+  '-webkit-border-before-width',
   '-webkit-border-after',
+  '-webkit-border-after-color',
+  '-webkit-border-after-style',
+  '-webkit-border-after-width',
   '-webkit-border-start',
+  '-webkit-border-start-color',
+  '-webkit-border-start-style',
+  '-webkit-border-start-width',
   '-webkit-border-end',
+  '-webkit-border-end-color',
+  '-webkit-border-end-style',
+  '-webkit-border-end-width',
   'outline',
   'outline-width',
   '-moz-outline',
@@ -1234,6 +1358,21 @@ const FLOW_COPIED_STYLE_PROPS = [  'display',
   '-webkit-box-decoration-break',
   'shape-outside',
   'shape-inside',
+  '-webkit-shape-outside',
+  '-webkit-shape-inside',
+  '-webkit-shape-margin',
+  '-webkit-shape-padding',
+  '-webkit-shape-image-threshold',
+  '-webkit-wrap-flow',
+  '-webkit-wrap-margin',
+  '-webkit-wrap-padding',
+  '-webkit-wrap-through',
+  '-webkit-flow-into',
+  '-webkit-flow-from',
+  '-webkit-region-fragment',
+  '-webkit-region-break-after',
+  '-webkit-region-break-before',
+  '-webkit-region-break-inside',
   'shape-margin',
   'shape-image-threshold',
   'object-view-box',
@@ -1255,6 +1394,7 @@ const FLOW_COPIED_STYLE_PROPS = [  'display',
   'reading-flow',
   'reading-order',
   'ruby-align',
+  '-webkit-ruby-align',
   'ruby-position',
   'ruby-overhang',
   'text-emphasis',
@@ -1265,6 +1405,10 @@ const FLOW_COPIED_STYLE_PROPS = [  'display',
   '-webkit-text-emphasis-color',
   '-webkit-text-emphasis-position',
   '-webkit-text-emphasis-style',
+  '-moz-text-emphasis',
+  '-moz-text-emphasis-color',
+  '-moz-text-emphasis-position',
+  '-moz-text-emphasis-style',
   'text-underline-offset',
   'text-underline-position',
   'text-decoration-skip-ink',
@@ -1419,7 +1563,7 @@ function looksLikeFakeOutlineStyle(style: string): boolean {
 /**
  * Body `p`/`span`/`h2–h4` often carry 1–2px accent borders. Only treat them as
  * MiniMax "card" frames when padding looks card-like (≥12px, ≥0.75rem/em,
- * ≥4%, ≥2ch, ≥2vh/vw/vmin/vmax/dvh, ≥2cqw/cqh/cqi/cqb, ≥1ic · ≥2lh/cap/ex/vb/vi,
+ * ≥4%, ≥2ch, ≥2vh/vw/vmin/vmax/dvh/lvh/svmin…, ≥2cqw/cqh/cqi/cqb, ≥1ic · ≥2lh/cap/ex/vb/vi,
  * or print-ish ≥8pt / ≥4mm / ≥0.4cm / ≥0.15in / ≥1pc).
  * Logical `padding-block` / `padding-inline` (+ start/end) count the same (루프74).
  */
@@ -1430,51 +1574,56 @@ function looksLikeCardLikePadding(style: string): boolean {
   let match: RegExpExecArray | null;
   while ((match = padRe.exec(source)) !== null) {
     const value = match[1] ?? '';
-    if (/(?:^|[\s/])(?:1[2-9]|[2-9]\d|\d{3,})(?:\.\d+)?px\b/i.test(value)) {
+    if (/(?:^|[\s/(,])(?:1[2-9]|[2-9]\d|\d{3,})(?:\.\d+)?px\b/i.test(value)) {
       return true;
     }
     // 0.75rem / 1rem / 12em-scale card padding MiniMax sometimes emits.
-    if (/(?:^|[\s/])(?:0\.(?:7[5-9]|[8-9]\d*)|[1-9]\d*(?:\.\d+)?)(?:rem|em)\b/i.test(value)) {
+    // Leading-dot `.75rem` / `.8em` (and `0.75rem`) — MiniMax/var fallbacks (루프405).
+    if (/(?:^|[\s/(,])(?:0?\.(?:7[5-9]|[8-9]\d*)|[1-9]\d*(?:\.\d+)?)(?:rem|em)\b/i.test(value)) {
       return true;
     }
     // Percent / ch card padding (thin accents stay under 4% / 2ch).
     // No trailing `\b` after `%` — `%` is non-word so `\b` never matches EOS.
-    if (/(?:^|[\s/])(?:[4-9]|[1-9]\d+)(?:\.\d+)?%(?:\s|$|[;/])/i.test(value)) {
+    if (/(?:^|[\s/(,])(?:[4-9]|[1-9]\d+)(?:\.\d+)?%(?:\s|$|[;/])/i.test(value)) {
       return true;
     }
-    if (/(?:^|[\s/])(?:[2-9]|[1-9]\d+)(?:\.\d+)?ch\b/i.test(value)) {
+    if (/(?:^|[\s/(,])(?:[2-9]|[1-9]\d+)(?:\.\d+)?ch\b/i.test(value)) {
       return true;
     }
     // Viewport units — ≥2vh/vw reads as card padding; 1vh/1.5vw stay accents.
-    if (/(?:^|[\s/])(?:[2-9]|[1-9]\d+)(?:\.\d+)?(?:vh|vw|vmin|vmax|dvh|dvw|svh|svw)\b/i.test(value)) {
+    if (/(?:^|[\s/(,])(?:[2-9]|[1-9]\d+)(?:\.\d+)?(?:vh|vw|vmin|vmax|dvh|dvw|svh|svw|lvh|lvw|lvmin|lvmax|svmin|svmax|dvmin|dvmax)\b/i.test(value)) {
       return true;
     }
     // Container query units — ≥2cqw/cqh/cqi/cqb; 1cqw stays accent.
-    if (/(?:^|[\s/])(?:[2-9]|[1-9]\d+)(?:\.\d+)?(?:cqw|cqh|cqi|cqb|cqmin|cqmax)\b/i.test(value)) {
+    if (/(?:^|[\s/(,])(?:[2-9]|[1-9]\d+)(?:\.\d+)?(?:cqw|cqh|cqi|cqb|cqmin|cqmax)\b/i.test(value)) {
       return true;
     }
     // Font-relative / logical units — ≥2lh/rlh/cap/ex/vb/vi (루프23).
     // Thin 1lh / 1.5ex accents stay unbound. ≥1ic binds MiniMax ic cards (루프63).
-    if (/(?:^|[\s/])(?:[1-9]\d*(?:\.\d+)?)(?:ic|ric)\b/i.test(value)) {
+    if (/(?:^|[\s/(,])(?:[1-9]\d*(?:\.\d+)?)(?:ic|ric)\b/i.test(value)) {
       return true;
     }
-    if (/(?:^|[\s/])(?:[2-9]|[1-9]\d+)(?:\.\d+)?(?:lh|rlh|cap|rcap|ex|rex|vb|vi|svb|svi|lvb|lvi|dvb|dvi)\b/i.test(value)) {
+    if (/(?:^|[\s/(,])(?:[2-9]|[1-9]\d+)(?:\.\d+)?(?:lh|rlh|cap|rcap|ex|rex|vb|vi|svb|svi|lvb|lvi|dvb|dvi)\b/i.test(value)) {
       return true;
     }
     // Absolute print units — ~12px floor (루프24). Thin 2pt / 1mm stay accents.
-    if (/(?:^|[\s/])(?:[8-9]|[1-9]\d+)(?:\.\d+)?pt\b/i.test(value)) {
+    if (/(?:^|[\s/(,])(?:[8-9]|[1-9]\d+)(?:\.\d+)?pt\b/i.test(value)) {
       return true;
     }
-    if (/(?:^|[\s/])(?:[4-9]|[1-9]\d+)(?:\.\d+)?mm\b/i.test(value)) {
+    if (/(?:^|[\s/(,])(?:[4-9]|[1-9]\d+)(?:\.\d+)?mm\b/i.test(value)) {
       return true;
     }
-    if (/(?:^|[\s/])(?:0\.(?:[4-9]\d*|[1-9]\d+)|[1-9]\d*(?:\.\d+)?)cm\b/i.test(value)) {
+    if (/(?:^|[\s/(,])(?:0?\.(?:[4-9]\d*|[1-9]\d+)|[1-9]\d*(?:\.\d+)?)cm\b/i.test(value)) {
       return true;
     }
-    if (/(?:^|[\s/])(?:0\.(?:1[5-9]\d*|[2-9]\d*)|[1-9]\d*(?:\.\d+)?)in\b/i.test(value)) {
+    if (/(?:^|[\s/(,])(?:0?\.(?:1[5-9]\d*|[2-9]\d*)|[1-9]\d*(?:\.\d+)?)in\b/i.test(value)) {
       return true;
     }
-    if (/(?:^|[\s/])(?:[1-9]\d*(?:\.\d+)?)pc\b/i.test(value)) {
+    if (/(?:^|[\s/(,])(?:[1-9]\d*(?:\.\d+)?)pc\b/i.test(value)) {
+      return true;
+    }
+    // CSS Q (quarter-mm) — ≥8Q ≈ 2mm card pad; thin 2Q stays accent (루프375).
+    if (/(?:^|[\s/(,])(?:[8-9]|[1-9]\d+)(?:\.\d+)?Q\b/.test(value)) {
       return true;
     }
   }
@@ -1513,9 +1662,9 @@ function pickOfficialKitCardClass(html: string): string | null {
 }
 
 const KIT_CARD_OPEN_RE =
-  /<(div|aside|article|section|li|figure|main|header|footer|blockquote|nav|ul|ol|dl|dt|dd|p|span|h[1-6]|figcaption|caption|details|summary|label|output|fieldset|legend|dialog|menu|mark|time|cite|q|small|abbr|kbd|samp|dfn|table|thead|tbody|tfoot|tr|td|th|address|hgroup|search|data|meter|progress|ruby|rtc|rt|rp|bdi|bdo|del|ins|sub|sup|var|code|pre|form|optgroup|option|datalist|math|mrow|semantics)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
+  /<(div|aside|article|section|li|figure|main|header|footer|blockquote|nav|ul|ol|dl|dt|dd|p|span|h[1-6]|figcaption|caption|details|summary|label|output|fieldset|legend|dialog|menu|mark|time|cite|q|small|abbr|kbd|samp|dfn|table|thead|tbody|tfoot|tr|td|th|address|hgroup|search|s|u|wbr|colgroup|col|data|meter|progress|ruby|rtc|rt|rp|bdi|bdo|del|ins|sub|sup|var|code|pre|form|optgroup|option|datalist|math|mrow|semantics)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
 const SELECTIVE_KIT_CARD_TAGS_RE =
-  /^(?:p|span|h[1-6]|figcaption|caption|details|summary|label|output|fieldset|legend|dialog|menu|mark|time|cite|q|small|abbr|kbd|samp|dfn|table|thead|tbody|tfoot|tr|td|th|data|meter|progress|ruby|rtc|rt|rp|bdi|bdo|del|ins|sub|sup|var|code|pre|optgroup|option|datalist|math|mrow|semantics)$/i;
+  /^(?:p|span|h[1-6]|figcaption|caption|details|summary|label|output|fieldset|legend|dialog|menu|mark|time|cite|q|small|abbr|kbd|samp|dfn|table|thead|tbody|tfoot|tr|td|th|data|meter|progress|ruby|rtc|rt|rp|bdi|bdo|del|ins|sub|sup|var|code|pre|optgroup|option|datalist|math|mrow|semantics|blockquote|address|hgroup|search|s|u|ul|ol|li|dl|dt|dd|figure|article|aside|header|footer|nav|main|section|form|wbr|colgroup|col)$/i;
 
 function bindFakeOutlineCardsInSpan(html: string, cardClass: string): string {
   return html.replace(KIT_CARD_OPEN_RE, (open, tag: string, attrs: string) => {

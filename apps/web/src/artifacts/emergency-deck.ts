@@ -179,7 +179,7 @@ function inferTopicFromHostRequest(text: string): string | null {
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(' ');
-  return /[가-힣]/.test(text) ? `${brand} 회사 소개` : `${brand} company overview`;
+  return `${brand} 소개`;
 }
 
 function inferTopicFromText(text: string): string | null {
@@ -233,7 +233,7 @@ function escapeHtml(value: string): string {
     .replace(/"/g, '&quot;');
 }
 
-function renderSlideBody(slide: EmergencySlide, lang: string): string {
+function renderSlideBody(slide: EmergencySlide): string {
   if (slide.body?.trim()) {
     const lines = slide.body.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
     if (lines.length > 1) {
@@ -241,9 +241,7 @@ function renderSlideBody(slide: EmergencySlide, lang: string): string {
     }
     return `<p>${escapeHtml(lines[0] ?? slide.body)}</p>`;
   }
-  return lang === 'ko'
-    ? `<p>${escapeHtml(slide.title)}에 대한 핵심 내용을 정리합니다.</p>`
-    : `<p>Key points for ${escapeHtml(slide.title)}.</p>`;
+  return `<p>${escapeHtml(slide.title)}에 대한 핵심 내용을 정리합니다.</p>`;
 }
 
 /**
@@ -272,7 +270,7 @@ export function buildEmergencySlideDeckFromOutline(
   const sections = slides
     .map((slide) => {
       const heading = escapeHtml(slide.title);
-      return `<section class="slide"><h1>${heading}</h1>${renderSlideBody(slide, lang)}</section>`;
+      return `<section class="slide"><h1>${heading}</h1>${renderSlideBody(slide)}</section>`;
     })
     .join('\n  ');
 

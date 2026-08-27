@@ -40,7 +40,9 @@ import {
   buildDeckBrowserPrintScaleCss,
   buildStandaloneDeckHtmlDocument,
   healDeckHtmlForStandaloneExport,
+  isGenericDeckArtifactTitle,
   relaxPersistedDeckSlideSurfaceBleed,
+  repairArtifactDocumentHead,
 } from '@open-design/contracts';
 import { repairDeckSlideSurfaceBleed } from '../artifacts/deck-slide-surface';
 import { normalizeCompactStackedDeckForExport } from './compact-api-stacked-deck';
@@ -49,9 +51,30 @@ const DESIGN_HANDOFF_FILENAME = 'DESIGN-HANDOFF.md';
 const DESIGN_MANIFEST_FILENAME = 'DESIGN-MANIFEST.json';
 export const TEAMVER_DEFAULT_EXPORT_BASENAME = 'teamver_design';
 
+function exportDisplayTitleFallback(standalone: string): string {
+  try {
+    return isTeamverEmbedMode() ? '슬라이드' : standalone;
+  } catch {
+    return standalone;
+  }
+}
+
+function exportPdfSplashHint(): string {
+  try {
+    if (isTeamverEmbedMode()) {
+      return 'PDF를 준비하고 있습니다. 브라우저 인쇄 창에서 PDF로 저장하세요.';
+    }
+  } catch {
+    // Unit tests stub `window.location` without hostname.
+  }
+  return "Preparing PDF… please use your browser's print dialog to save.";
+}
+
 function isGenericExportLabel(value: string): boolean {
-  const normalized = value.trim().toLowerCase();
-  return !normalized || normalized === 'design' || normalized === 'artifact';
+  const normalized = value.trim();
+  if (!normalized) return true;
+  if (normalized.toLowerCase() === 'design') return true;
+  return isGenericDeckArtifactTitle(normalized);
 }
 
 /** Prefer the user-visible project name over artifact/S3 slug filenames. */
@@ -63,7 +86,11 @@ export function resolveExportDownloadTitle(
   const fromProject = (projectDisplayName ?? '').trim();
   if (fromProject) return fromProject;
   if (fromFile && !isGenericExportLabel(fromFile)) return fromFile;
-  return TEAMVER_DEFAULT_EXPORT_BASENAME;
+  try {
+    return isTeamverEmbedMode() ? '슬라이드' : TEAMVER_DEFAULT_EXPORT_BASENAME;
+  } catch {
+    return TEAMVER_DEFAULT_EXPORT_BASENAME;
+  }
 }
 
 function safeFilename(name: string, fallback: string): string {
@@ -1212,6 +1239,129 @@ export async function imageDataUrlToBlob(
   return canvasToBlob(canvas, spec.mime, quality);
 }
 
+type PdfSnapshotImage = {
+  bytes: Uint8Array;
+  width: number;
+  height: number;
+};
+
+async function snapshotDataUrlToJpegImage(snapshot: PreviewSnapshot): Promise<PdfSnapshotImage> {
+  const img = await loadImageFromDataUrl(snapshot.dataUrl);
+  const width = Math.max(1, img.naturalWidth || img.width || snapshot.w || 1);
+  const height = Math.max(1, img.naturalHeight || img.height || snapshot.h || 1);
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Canvas is not available');
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, width, height);
+  ctx.drawImage(img, 0, 0, width, height);
+  const blob = await canvasToBlob(canvas, 'image/jpeg', 0.96);
+  return { bytes: new Uint8Array(await blob.arrayBuffer()), width, height };
+}
+
+function asciiBytes(value: string): Uint8Array {
+  const out = new Uint8Array(value.length);
+  for (let i = 0; i < value.length; i += 1) out[i] = value.charCodeAt(i) & 0xff;
+  return out;
+}
+
+function concatPdfChunks(chunks: Uint8Array[]): Uint8Array {
+  const total = chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    out.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return out;
+}
+
+function buildPdfFromJpegSnapshots(images: PdfSnapshotImage[]): Blob {
+  if (images.length <= 0) throw new Error('No preview snapshots to export');
+  const pageWidthPt = 13.333333333333334 * 72;
+  const pageHeightPt = 7.5 * 72;
+  const objects = new Map<number, Uint8Array>();
+  const pageObjects: number[] = [];
+  let nextObjectId = 1;
+  const reserveObject = () => nextObjectId++;
+  const writeObject = (id: number, body: Uint8Array | string) => {
+    objects.set(id, typeof body === 'string' ? asciiBytes(body) : body);
+  };
+  const catalogObject = reserveObject();
+  const pagesObject = reserveObject();
+
+  images.forEach((image, index) => {
+    const imageObject = reserveObject();
+    const contentObject = reserveObject();
+    const pageObject = reserveObject();
+    const imageName = `/Im${index + 1}`;
+    const scale = Math.min(pageWidthPt / image.width, pageHeightPt / image.height);
+    const drawWidthPt = image.width * scale;
+    const drawHeightPt = image.height * scale;
+    const offsetXPt = (pageWidthPt - drawWidthPt) / 2;
+    const offsetYPt = (pageHeightPt - drawHeightPt) / 2;
+    const content = `q\n${drawWidthPt} 0 0 ${drawHeightPt} ${offsetXPt} ${offsetYPt} cm\n${imageName} Do\nQ\n`;
+    writeObject(
+      imageObject,
+      concatPdfChunks([
+        asciiBytes(
+          `<< /Type /XObject /Subtype /Image /Width ${image.width} /Height ${image.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${image.bytes.byteLength} >>\nstream\n`,
+        ),
+        image.bytes,
+        asciiBytes('\nendstream'),
+      ]),
+    );
+    writeObject(contentObject, `<< /Length ${content.length} >>\nstream\n${content}endstream`);
+    writeObject(
+      pageObject,
+      `<< /Type /Page /Parent ${pagesObject} 0 R /MediaBox [0 0 ${pageWidthPt} ${pageHeightPt}] /Resources << /XObject << ${imageName} ${imageObject} 0 R >> >> /Contents ${contentObject} 0 R >>`,
+    );
+    pageObjects.push(pageObject);
+  });
+
+  writeObject(catalogObject, `<< /Type /Catalog /Pages ${pagesObject} 0 R >>`);
+  writeObject(
+    pagesObject,
+    `<< /Type /Pages /Count ${pageObjects.length} /Kids [${pageObjects.map((id) => `${id} 0 R`).join(' ')}] >>`,
+  );
+
+  const chunks: Uint8Array[] = [asciiBytes('%PDF-1.4\n%\xE2\xE3\xCF\xD3\n')];
+  const offsets = new Map<number, number>();
+  let byteOffset = chunks[0]?.byteLength ?? 0;
+  for (let id = 1; id < nextObjectId; id += 1) {
+    const body = objects.get(id);
+    if (!body) throw new Error(`missing PDF object ${id}`);
+    offsets.set(id, byteOffset);
+    const header = asciiBytes(`${id} 0 obj\n`);
+    const footer = asciiBytes('\nendobj\n');
+    chunks.push(header, body, footer);
+    byteOffset += header.byteLength + body.byteLength + footer.byteLength;
+  }
+  const xrefOffset = byteOffset;
+  const xrefLines = ['xref', `0 ${nextObjectId}`, '0000000000 65535 f '];
+  for (let id = 1; id < nextObjectId; id += 1) {
+    xrefLines.push(`${String(offsets.get(id) ?? 0).padStart(10, '0')} 00000 n `);
+  }
+  chunks.push(asciiBytes(
+    `${xrefLines.join('\n')}\ntrailer\n<< /Size ${nextObjectId} /Root ${catalogObject} 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`,
+  ));
+  return new Blob(chunks as BlobPart[], { type: 'application/pdf' });
+}
+
+export async function exportPreviewSnapshotsAsPdf(
+  snapshots: PreviewSnapshot[],
+  title: string,
+): Promise<void> {
+  if (snapshots.length <= 0) throw new Error('No preview snapshots to export');
+  const images: PdfSnapshotImage[] = [];
+  for (const snapshot of snapshots) {
+    images.push(await snapshotDataUrlToJpegImage(snapshot));
+  }
+  triggerDownload(buildPdfFromJpegSnapshots(images), `${safeFilename(title, 'artifact')}.pdf`);
+}
+
 export async function prepareImageExportTarget(
   title: string,
   format: ImageExportFormat,
@@ -2154,7 +2304,7 @@ export function buildSandboxedPreviewDocument(
   title: string,
   opts?: SandboxedPreviewDocumentOptions,
 ): string {
-  const safeTitle = escapeHtmlAttribute(title || 'Preview');
+  const safeTitle = escapeHtmlAttribute(title || exportDisplayTitleFallback('Preview'));
   const sandbox = opts?.allowModals ? 'allow-scripts allow-modals' : 'allow-scripts';
   const iframeSrc = typeof opts?.iframeSrc === 'string' ? opts.iframeSrc.trim() : '';
   const iframeTag = iframeSrc
@@ -2332,14 +2482,14 @@ export async function exportAsPdf(
   // sets a real title, matches the app background, and shows a small
   // "Preparing PDF…" line so the popup never appears empty.
   try {
-    const safeTitle = String(title || 'Document');
+    const safeTitle = String(title || exportDisplayTitleFallback('Document'));
     win.document.open();
     win.document.write(
       `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtmlText(safeTitle)}</title>` +
       `<style>html,body{margin:0;background:#f7f7f8;color:#374151;font:14px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}` +
       `.od-print-hint{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:16px;text-align:center}` +
       `.od-print-hint span{opacity:.75}</style></head>` +
-      `<body><div class="od-print-hint"><span>Preparing PDF… please use your browser's print dialog to save.</span></div></body></html>`,
+      `<body><div class="od-print-hint"><span>${exportPdfSplashHint()}</span></div></body></html>`,
     );
     win.document.close();
   } catch {
@@ -2425,7 +2575,7 @@ export function reportPrintSizeWhenStable(
 }
 
 function injectPrintScript(doc: string, title: string, opts?: { deck?: boolean }): string {
-  const safeTitle = JSON.stringify(title || 'artifact');
+  const safeTitle = JSON.stringify(title || exportDisplayTitleFallback('artifact'));
   const flattenCall = opts?.deck
     ? 'try{if(typeof window.__odFlattenDeckForPrint==="function")window.__odFlattenDeckForPrint()}catch(e){}'
     : '';

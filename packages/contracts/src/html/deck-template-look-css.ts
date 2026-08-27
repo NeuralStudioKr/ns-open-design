@@ -922,6 +922,10 @@ function cssMotifElementHasPaint(dest: string, primary: string): boolean {
     if (/\bstyle\s*=\s*(["'])[^"']*(?:width|height)\s*:/i.test(attrs)) return true;
     if (/<svg\b/i.test(block)) return true;
     const inner = block.replace(new RegExp(`^<${tag}\\b[^>]*>|</${tag}\\s*>$`, 'gi'), '').trim();
+    if (/^(?:ribbons?|rib|stamp)$/i.test(primary)) {
+      const text = inner.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      if (text.length < 2 && !/<svg\b/i.test(block)) continue;
+    }
     if (inner.length > 0 && !/^<!--/.test(inner)) return true;
     if (cssDiscHost) return true;
   }

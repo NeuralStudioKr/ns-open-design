@@ -15,6 +15,10 @@ import {
 import { collapseAdjacentDuplicateDeckSiblings } from './collapse-adjacent-duplicate-siblings.js';
 import { pinDeckSlidesToFixedCanvas } from './deck-fixed-canvas.js';
 import { healOfficialMagazineLayoutDensity } from './heal-official-magazine-layout.js';
+import {
+  salvageMalformedMiniMaxSlideMarkup,
+  stripEmptyOfficialMotifInstances,
+} from '../template-clone-fill.js';
 
 export const DECK_SLIDE_SELECTOR =
   '.slide, section.slide, .deck-slide, .ppt-slide, section[data-screen-label], main[data-screen-label], article[data-screen-label]';
@@ -108,9 +112,14 @@ function deckExportWrapperSelectorList(): string[] {
  * so catalog presenters keep device-width iframe fill.
  */
 export function healDeckHtmlForStandaloneExport(html: string): string {
+  const density = healOfficialMagazineLayoutDensity(
+    stripEmptyOfficialMotifInstances(
+      salvageMalformedMiniMaxSlideMarkup(String(html ?? '')),
+    ),
+  );
   const repaired = repairArtifactStyleSheets(
     repairArtifactDocumentHead(
-      relaxPersistedDeckSlideSurfaceBleed(String(html ?? '')),
+      relaxPersistedDeckSlideSurfaceBleed(density),
     ),
   );
   // Pin 100vh / missing-size slides to 1920×1080 before neutralize + viewport lock.

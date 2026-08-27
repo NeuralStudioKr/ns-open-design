@@ -10,6 +10,8 @@ import {
   OPEN_DESIGN_GITHUB_REPO_URL,
   isArtifactHtmlStableForPreview,
   sanitizePersistedDeckHostLeaks,
+  healOfficialMagazineLayoutDensity,
+  hoistDeckHostStylesToHead,
   type SocialShareRequest,
   type SocialShareResponse,
 } from '@open-design/contracts';
@@ -121,6 +123,7 @@ import {
   exportAsJsx,
   exportAsMd,
   exportAsPdf,
+  exportPreviewSnapshotsAsPdf,
   exportProjectImageBlob,
   resolveExportDownloadTitle,
   exportProjectAsHtml,
@@ -140,6 +143,7 @@ import {
   requestPreviewSnapshot,
   type AsyncExportProgressStatus,
   type ImageExportFormat,
+  type PreviewSnapshot,
 } from '../runtime/exports';
 import { copyToClipboard } from '../lib/copy-to-clipboard';
 import { isMacPlatform } from '../utils/platform';
@@ -165,6 +169,10 @@ import {
   resolveFileViewerPreviewEscapeAction,
   runFileViewerPreviewMessageHandler,
 } from '../teamver/fileViewerPreviewEscape';
+import {
+  localizeOfficePreviewLine,
+  localizeOfficePreviewTitle,
+} from '../teamver/officePreviewLabels';
 import { repairArtifactDocumentHeadIfNeeded } from '../runtime/artifact-document-head';
 import {
   clearActiveRevisionSequence,
@@ -4864,7 +4872,9 @@ function acceptPreviewHtmlCandidate(
 ): string | null {
   if (candidate == null) return null;
   try {
-    candidate = sanitizePersistedDeckHostLeaks(candidate);
+    candidate = hoistDeckHostStylesToHead(
+      healOfficialMagazineLayoutDensity(sanitizePersistedDeckHostLeaks(candidate)),
+    );
     const repaired = repairArtifactDocumentHeadIfNeeded(candidate);
     if (isArtifactHtmlStableForPreview(repaired)) {
       // Repair can theoretically close/strip into a slide-less shell that still
@@ -5000,7 +5010,7 @@ function ReactComponentViewer({
     return () => window.removeEventListener('message', onMessage);
   }, [shareMenuOpen]);
 
-  const exportTitle = file.name.replace(/\.(jsx|tsx)$/i, '') || file.name;
+  const exportTitle = resolveExportDownloadTitle(undefined, file.name);
   const sourceExtension = file.name.toLowerCase().endsWith('.tsx') ? '.tsx' : '.jsx';
 
   useEffect(() => {
@@ -5239,12 +5249,12 @@ function DocumentPreviewViewer({
           <div className="viewer-empty">{t('fileViewer.loading')}</div>
         ) : preview ? (
           <div className="document-preview">
-            <h2>{preview.title}</h2>
+            <h2>{localizeOfficePreviewTitle(preview.title)}</h2>
             {preview.sections.map((section, idx) => (
               <section key={`${section.title}-${idx}`}>
-                <h3>{section.title}</h3>
+                <h3>{localizeOfficePreviewTitle(section.title)}</h3>
                 {section.lines.map((line, lineIdx) => (
-                  <p key={`${lineIdx}-${line}`}>{line}</p>
+                  <p key={`${lineIdx}-${line}`}>{localizeOfficePreviewLine(line)}</p>
                 ))}
               </section>
             ))}
@@ -14491,7 +14501,7 @@ function HtmlViewer({
   function openSaveAsTemplateModal() {
     setDownloadMenuOpen(false);
     const defaultName =
-      file.name.replace(/\.html?$/i, '') || t('fileViewer.templateNameDefault');
+      exportTitle.trim() || t('fileViewer.templateNameDefault');
     setTemplateName(defaultName);
     setTemplateDescription('');
     setTemplateSaveError(null);
@@ -15370,6 +15380,54 @@ function HtmlViewer({
     srcDocShellReady,
     useLazySrcDocTransport,
     useUrlLoadPreview,
+  ]);
+
+  const exportDeckPreviewSnapshotsAsPdf = useCallback(async (): Promise<boolean> => {
+    if (!effectiveDeck) return false;
+    const iframe = resolveActiveDeckPreviewIframe();
+    const win = iframe?.contentWindow;
+    if (!iframe || !win) return false;
+    const cached = htmlPreviewSlideState.get(previewStateKey);
+    const count = slideState?.count ?? cached?.count ?? 0;
+    if (!Number.isFinite(count) || count <= 0) return false;
+    if (count > 80) return false;
+    const boundedCount = Math.floor(count);
+    const originalActive = Math.max(0, Math.min(
+      slideState?.active ?? cached?.active ?? 0,
+      boundedCount - 1,
+    ));
+    const snapshots: PreviewSnapshot[] = [];
+    const goToSlide = async (index: number) => {
+      const next = { active: index, count: boundedCount };
+      setSlideStateCached(previewStateKey, next);
+      setSlideState(next);
+      win.postMessage({ type: 'od:slide', action: 'go', index }, '*');
+      await waitForAnimationFrame();
+      await waitForAnimationFrame();
+      await ensureDeckSlideSyncedForSnapshot(iframe);
+      await waitForAnimationFrame();
+    };
+    try {
+      for (let index = 0; index < boundedCount; index += 1) {
+        await goToSlide(index);
+        const snapshot = await requestPreviewSnapshotWithRetry(iframe, [2000, 4000, 6000]);
+        if (!snapshot) throw new Error(`preview snapshot failed for slide ${index + 1}`);
+        snapshots.push(snapshot);
+      }
+      await exportPreviewSnapshotsAsPdf(snapshots, exportTitle);
+      return true;
+    } finally {
+      await goToSlide(originalActive).catch(() => {});
+      resetDeckPreviewPan(iframe);
+    }
+  }, [
+    effectiveDeck,
+    ensureDeckSlideSyncedForSnapshot,
+    exportTitle,
+    previewStateKey,
+    resolveActiveDeckPreviewIframe,
+    slideState?.active,
+    slideState?.count,
   ]);
 
   // TEMP: toolbar screenshot UI is commented out — keep handler for re-enable.
@@ -17026,7 +17084,7 @@ function HtmlViewer({
                     <div
                       className="share-menu-popover"
                       role="menu"
-                      aria-label={isTeamverEmbedMode() ? embedUiLabel('Export options', '보내기 옵션') : embedUiLabel('Download and export options', '다운로드 및보내기')}
+                      aria-label={isTeamverEmbedMode() ? embedUiLabel('Export options', '보내기 옵션') : embedUiLabel('Download and export options', '다운로드 및 내보내기')}
                     >
                   <TeamverExportMenu
                     t={t}
@@ -17044,21 +17102,30 @@ function HtmlViewer({
                     onOpenImageExport={openImageExportModal}
                     onOpenSaveAsTemplate={openSaveAsTemplateModal}
                     fireShareExport={fireShareExport}
-	                    exportPdf={(options) => exportProjectAsPdf({
-	                      deck: effectiveDeck,
-	                      fallbackPdf: () => exportAsPdf(
-                        livePreviewSource ?? source ?? lastStablePreviewSourceRef.current ?? '',
-                        exportTitle,
-                        { deck: effectiveDeck },
-                      ),
-	                      filePath: file.name,
-	                      fresh: options?.fresh,
-	                      htmlSnapshot: livePreviewSource ?? source ?? lastStablePreviewSourceRef.current ?? null,
-	                      onAsyncExportStatus: showAsyncExportProgress('pdf'),
-	                      projectId,
-	                      requireRenderedExport: isTeamverEmbedMode(),
-	                      title: exportTitle,
-	                    })}
+                    exportPdf={async (options) => {
+                      if (effectiveDeck && options?.fresh !== true) {
+                        try {
+                          if (await exportDeckPreviewSnapshotsAsPdf()) return 'desktop';
+                        } catch (err) {
+                          devLog.warn('[exportDeckPreviewSnapshotsAsPdf] falling back to daemon PDF:', err);
+                        }
+                      }
+                      return exportProjectAsPdf({
+                        deck: effectiveDeck,
+                        fallbackPdf: () => exportAsPdf(
+                          livePreviewSource ?? source ?? lastStablePreviewSourceRef.current ?? '',
+                          exportTitle,
+                          { deck: effectiveDeck },
+                        ),
+                        filePath: file.name,
+                        fresh: options?.fresh,
+                        htmlSnapshot: livePreviewSource ?? source ?? lastStablePreviewSourceRef.current ?? null,
+                        onAsyncExportStatus: showAsyncExportProgress('pdf'),
+                        projectId,
+                        requireRenderedExport: isTeamverEmbedMode(),
+                        title: exportTitle,
+                      });
+                    }}
                     exportPptx={() => exportProjectAsPptx({
                       deck: effectiveDeck,
                       projectId,
@@ -17708,7 +17775,7 @@ function HtmlViewer({
             aria-labelledby={imageExportTitleId}
           >
             <div className="modal-head">
-              <div className="kicker">IMAGE</div>
+              <div className="kicker">{embedUiLabel('IMAGE', '이미지')}</div>
               <h2 id={imageExportTitleId}>{t('fileViewer.exportImage')}</h2>
               <p className="subtitle">
                 {t('fileViewer.exportImageModalSubtitle')}
@@ -17835,7 +17902,7 @@ function HtmlViewer({
         <div className="modal-backdrop viewer-modal-backdrop" role="presentation">
           <div className="modal deploy-modal" role="dialog" aria-modal="true">
             <div className="modal-head">
-              <div className="kicker">TEMPLATE</div>
+              <div className="kicker">{embedUiLabel('TEMPLATE', '템플릿')}</div>
               <h2>{t('fileViewer.saveAsTemplate')}</h2>
               <p className="subtitle">{t('fileViewer.templateDescPrompt')}</p>
             </div>
@@ -19105,13 +19172,14 @@ function MarkdownViewer({
   const [reloadKey, setReloadKey] = useState(0);
   const [copied, setCopied] = useState(false);
   const [downloadMenuOpen, setDownloadMenuOpen] = useState(false);
+  const downloadMenuRef = useRef<HTMLDivElement | null>(null);
   const markdownArticleRef = useRef<HTMLElement | null>(null);
   const copyBlockTimerRef = useRef<number | null>(null);
   const copiedMarkdownBlockRef = useRef<HTMLElement | null>(null);
   const status = file.artifactManifest?.status ?? 'complete';
   const isStreaming = status === 'streaming';
   const isError = status === 'error';
-  const exportTitle = file.name.replace(/\.mdx?$/i, '') || file.name;
+  const exportTitle = resolveExportDownloadTitle(undefined, file.name);
 
   useEffect(() => {
     setText(null);
@@ -19128,6 +19196,23 @@ function MarkdownViewer({
       cancelled = true;
     };
   }, [projectId, file.name, file.mtime, reloadKey]);
+
+  useEffect(() => {
+    if (!downloadMenuOpen) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (!downloadMenuRef.current) return;
+      if (!downloadMenuRef.current.contains(e.target as Node)) setDownloadMenuOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setDownloadMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onDocClick);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDocClick);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [downloadMenuOpen]);
 
   useEffect(() => {
     return () => {
@@ -19217,7 +19302,7 @@ function MarkdownViewer({
             <span>{copied ? t('fileViewer.copied') : t('fileViewer.copy')}</span>
           </button>
           {text !== null ? (
-            <div className="share-menu chrome-share-menu">
+            <div className="share-menu chrome-share-menu" ref={downloadMenuRef}>
               <button
                 type="button"
                 className="viewer-action"

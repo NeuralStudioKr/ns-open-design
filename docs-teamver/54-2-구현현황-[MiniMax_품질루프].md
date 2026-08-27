@@ -133,6 +133,23 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | persist: moz-user · ms-scroll/wrap · @view-transition · closure | ☑ 루프230–239 / round231–240 |
 | persist: moz-border/box · transition/animation · invent-frame | ☑ 루프240–244 / round241–245 |
 | persist: moz-outline/text · ms-flow · @scope · closure | ☑ 루프245–254 / round246–255 |
+| persist: mask xy · moz-border-colors · ms-scrollbar · column-rule | ☑ 루프255–259 / round256–260 |
+| persist: border-image · ms-word · line-grid · epub · at-rule harden | ☑ 루프260–284 / round261–285 |
+| persist: blend · aspect-ratio · view-transition-class · shape/wrap | ☑ 루프285–294 / round286–295 |
+| kit/chat: blockquote kit · region/flow · @page/@scroll-* · closure | ☑ 루프295–314 / round296–315 |
+| persist: obscure moz/webkit vendor · moz-text-emphasis | ☑ 루프315–319 / round316–320 |
+| kit/chat: list/landmark selective · @font-face/@keyframes · closure | ☑ 루프320–344 / round321–345 |
+| kit: calc/min/max/clamp · lvh/lvw card padding | ☑ 루프345–349 / round346–350 |
+| kit: section selective · nested slide close · invent-frame off flow | ☑ 루프350–354 / round351–355 |
+| chat: FOO `=＝→⇒` separators · Step `:` keep | ☑ 루프355–359 / round356–360 |
+| kit/chat: set58–60 combo/closure · flow style order harden | ☑ 루프360–374 / round361–375 |
+| kit: lvmin/svmin/dv* · Q padding | ☑ 루프375–379 / round376–380 |
+| kit: form selective · invent-frame off flow | ☑ 루프380–384 / round381–385 |
+| chat: FOO `：»›≫` · @when/@else harden | ☑ 루프385–389 / round386–390 |
+| kit/chat: set64–66 combo/closure | ☑ 루프390–404 / round391–405 |
+| kit: leading-dot rem/em · env/var px · .4cm/.15in | ☑ 루프405–409 / round406–410 |
+| chat: FOO `⇢⇝↦➤⟹` · form/section selective keep | ☑ 루프410–419 / round411–420 |
+| kit/chat: set70–72 combo/closure | ☑ 루프420–434 / round421–435 |
 | clone: IB pitch-book 데모 카피가 한국어 brief에 남음 | ☑ 루프57 |
 | preview: #stage 1920px 스트립이 100vw로만 살짝 이동 | ☑ 루프57 |
 | persist: 카탈로그 예제 leftover를 filled로 저장 | ☑ |
@@ -154,11 +171,14 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | heal: Daisy/weekly/Studio를 IB 매거진으로 오탐 | ☑ 루프137 |
 | heal: 커버에 회화/쉐도잉 토픽 카피를 발명 | ☑ 루프137 |
 | export: standalone가 성긴 IB 표지를 그대로 내보냄 | ☑ 루프137 |
-| persist/preview: IB `.slide-inner` 1320×820 카드가 16:9를 안 채움 | ☑ 루프138 |
-| persist/preview: IB 본문이 매거진 프레임 없이 상단 정렬 | ☑ 루프138 |
+| persist/preview: IB `.slide-inner` 1320×820 카드가 16:9를 안 채움 | ☑ 루프139 |
+| persist/preview: IB 본문이 매거진 프레임 없이 상단 정렬 | ☑ 루프139 |
 | persist/preview: look CSS가 1–2장 사이에 끼어 표지 밀집도가 깨짐 | ☑ follow-up |
 | persist/preview: MiniMax `<p="">` · 유출 `· Label` | ☑ follow-up |
 | preview: Motif `span.ribbon`이 relative stretch로 빨간 줄 | ☑ follow-up |
+| persist/preview: MiniMax 카드 `</div>` 조기 마감 · 64px step `</ol>` | ☑ 루프138 |
+| persist/preview: 클래스만 있는 빈 `.ribbon` 빨간 칩 | ☑ 루프138 |
+| FileViewer/export: magazine/salvage 미적용 | ☑ 루프138 |
 | API-mode "save this as deck.html" 유출로 덱이 안 생김 | ☑ |
 | clone: demo-banner/TOC/stat-quote 잔여 · #total 불일치 | ☑ 루프58 |
 | preview: #slideCounter 고정 · hoist가 chrome 삭제 | ☑ 루프58 |
@@ -179,13 +199,72 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | think 태그 / 내부 마크업 필터 | ☑ 기존 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프138)
+## 이번 루프 (루프139)
 
 1. neutralize — stacked 16:9에서 `.slide-inner`를 1920×1080 페이지에 맞춤 (IB 1320×820 / 92vw 카드 해제)
 2. heal — 커버·본문 매거진 프레임이 페이지를 채움. 본문은 기존 제목/본문만 `h2.section`으로 배치
 3. 카탈로그 프레젠터·Hartfield 본문 `slide-inner`·Daisy/Studio는 유지
 
 **검증:** heal-official-magazine-layout fill/section · look-css neutralize `od-slide-inner-canvas-fill`
+
+## 직전 루프 (루프405–434 / round406–435)
+
+1. padding — leading-dot `.75rem`/`.8em` · `.4cm`/`.15in` · env/var 폴백 스펙
+2. chat — FOO `⇢⇝↦➤⟹` · invent-frame/`box-shadow` 보류
+
+**검증:** chat-leak-probe-round406–435
+
+## 직전 루프 (루프375–404 / round376–405)
+
+1. padding — `lvmin/lvmax/svmin/svmax/dvmin/dvmax` · CSS `Q`(≥8Q)
+2. kit — `form` 선택적 · `div` 비선택 유지
+3. chat — FOO `：»›≫` · `@when`/`@else` harden (`box-shadow` 보류)
+
+**검증:** chat-leak-probe-round376–405
+
+## 직전 루프 (루프345–374 / round346–375)
+
+1. padding — `calc/min/max/clamp` 내부 · `lvh/lvw` 카드 인식
+2. kit — `section` 선택적 · nested same-tag close · `div` 비선택 유지
+3. chat — generic FOO 구분자 `=＝→⇒` · `Step 1: Setup` 유지
+4. tests — flow style `box-sizing` 순서 관대 매칭 (`box-shadow` 보류)
+
+**검증:** chat-leak-probe-round346–375 · deck-fixed-canvas
+
+## 직전 루프 (루프315–344 / round316–345)
+
+1. persist — `-moz-stack-sizing`/`-moz-binding` · `-webkit-box-flex-group` · `-webkit-mask-composite-source` · `-ms-content-zoom-snap-points-*` · `-moz-text-emphasis*`
+2. kit — `ul/ol/li/dl/dt/dd/figure/article/aside/header/footer/nav/main/s/u/wbr/colgroup/col` 선택적(얇은 테두리 미바인딩)
+3. chat — `@font-face` · `@keyframes` · `@media` · `@font-palette-values` · `@annotation` · `@custom-media` · `@stylistic` · `@color-profile` · `@nest` · `@function` · `@position-try` · invent-frame · set49–54 closure (`box-shadow` 보류)
+
+**검증:** chat-leak-probe-round316–345
+
+## 직전 루프 (루프285–314 / round286–315)
+
+1. persist — background-blend · `-ms-color-scheme` · `-moz-text-orientation` · `-webkit-ruby-align` · `-webkit-aspect-ratio` · ime-mode · view-transition-class/group
+2. persist — dashboard/border-fit · `-webkit-shape-*` · `-webkit-wrap-*` · `-webkit-flow-*` · `-webkit-region-*` · mask-attachment
+3. kit — `blockquote`/`address`/`hgroup`/`search`/`s`/`u` 선택적
+4. chat — `@starting-style` · `@scroll-state` · `@counter-style` · `@page` · `@scroll-timeline` · invent-frame · set43–48 closure (`box-shadow` 보류)
+
+**검증:** chat-leak-probe-round286–315
+
+## 직전 루프 (루프255–284 / round256–285)
+
+1. persist — `-webkit-mask-*-x/y` · `-moz-border-*-colors` · `-moz-text-blink` · `-ms-scrollbar-*` · column-rule longhands · font-feature/kerning
+2. persist — `-moz-border-image*` · `-ms-word-*`/`-ms-writing-mode` · `text-zoom` · `-webkit-line-grid/align/snap` · border-before/after longhands
+3. persist — `-ms-content-zoom*`/`-ms-scroll-limit*` · `-epub-text-emphasis*` · `-moz-inert`/`-webkit-marquee-dir`
+4. chat — `@supports` · `@container` · `@layer` · `@property` harden · invent-frame · set37–42 combo/closure (`box-shadow` 보류)
+
+**검증:** chat-leak-probe-round256–285
+
+## 직전 루프 (루프138)
+
+1. persist/preview — MiniMax `auto auto 1fr` 카드 · 64px step `</ol>` · 유출 `· Label` 복구 (IB TOC 유지)
+2. persist/preview — 클래스만 있는 빈 `.ribbon`/`.stamp` 제거. srcdoc은 brief 없이도 salvage
+3. FileViewer accept · standalone export — salvage 후 magazine
+4. persist — salvage를 magazine 힐 앞에 두어 표지 메타가 뒤 장 제목을 읽게 함
+
+**검증:** template-clone-fill card/ol/IB leftover · srcdoc brief-less salvage · deck-pdf-export · FileViewer source
 
 ## 직전 루프 (루프137)
 

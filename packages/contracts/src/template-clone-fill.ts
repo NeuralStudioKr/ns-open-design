@@ -385,10 +385,16 @@ const BROKEN_EMPTY_ATTR_OPEN_RE = /<([a-zA-Z][\w-]*)=""(?=[\s>])/g;
 const BROKEN_EMPTY_ATTR_CLOSE_RE = /<\/([a-zA-Z][\w-]*)="">/g;
 const LEAKED_LABEL_AFTER_TITLE_RE =
   /(<div\b[^>]*>)([^<]*·\s*([^<]{1,48}))<\/div>\s*·\s*\3\s*<\/div>/gi;
+const LEAKED_LABEL_AFTER_CLOSE_RE =
+  /<\/(div|p|span)>\s*·\s*[^<>]{1,48}<\/\1>/gi;
+const PREMATURE_AUTO_AUTO_1FR_CARD_RE =
+  /(<div\b[^>]*grid-template-rows:\s*auto\s+auto\s+1fr[^>]*>)([\s\S]*?<\/div>\s*<div\b[^>]*>[\s\S]*?<\/div>)\s*<\/div>\s*(<div\b[^>]*>[\s\S]*?<\/div>)\s*<\/div>/gi;
+const EARLY_NUMBERED_OL_CLOSE_RE =
+  /<\/ol>(\s*<\/div>)((?:\s*<li\b[^>]*grid-template-columns:\s*64px[\s\S]*?<\/li>)+)/gi;
 /**
- * MiniMax often emits `<p="">` and leaked `· Label` twins after a title
- * already closed. Restore those tags only — do not rewrite copy or
- * reparent catalog lists.
+ * MiniMax often emits `<p="">`, leaked `· Label` twins, a card `</div>`
+ * before the body, or `</ol>` after step 01. Restore those tags only —
+ * do not rewrite copy or reparent catalog TOC lists.
  */
 export function salvageMalformedMiniMaxSlideMarkup(html: string): string {
   let next = String(html ?? '');
@@ -396,6 +402,9 @@ export function salvageMalformedMiniMaxSlideMarkup(html: string): string {
   next = next.replace(BROKEN_EMPTY_ATTR_OPEN_RE, '<$1');
   next = next.replace(BROKEN_EMPTY_ATTR_CLOSE_RE, '</$1>');
   next = next.replace(LEAKED_LABEL_AFTER_TITLE_RE, '$1$2</div>');
+  next = next.replace(LEAKED_LABEL_AFTER_CLOSE_RE, '</$1>');
+  next = next.replace(PREMATURE_AUTO_AUTO_1FR_CARD_RE, '$1$2$3</div>');
+  next = next.replace(EARLY_NUMBERED_OL_CLOSE_RE, '$2</ol>$1');
   return next;
 }
 
@@ -415,13 +424,53 @@ function officialMotifVisibleText(block: string): string {
  * Empty Motif ribbon/stamp shells still paint (accent bar / card) after
  * leftover wipe. Drop nodes that have no visible text or SVG.
  */
+function openHasExactClass(open: string, name: string): boolean {
+  const raw = /\bclass\s*=\s*(['"])([\s\S]*?)\1/i.exec(open)?.[2] ?? '';
+  return raw.trim().split(/\s+/).some((token) => token.toLowerCase() === name.toLowerCase());
+}
+
+function firstExactClassRange(html: string, className: string): HtmlSpan | null {
+  const openRe = /<(div|span|p)\b[^>]*>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = openRe.exec(html)) !== null) {
+    if (!openHasExactClass(match[0] ?? '', className)) continue;
+    const tag = (match[1] ?? 'div').toLowerCase();
+    const start = match.index;
+    const closeEnd = findMatchingClose(html, start + match[0]!.length, tag);
+    if (closeEnd < 0) return { start, end: start + match[0]!.length };
+    return { start, end: closeEnd };
+  }
+  return null;
+}
+
+function replaceFirstExactClassText(html: string, className: string, text: string): string {
+  const span = firstExactClassRange(html, className);
+  if (!span) return html;
+  const block = html.slice(span.start, span.end);
+  const open = /^<[^>]+>/.exec(block)?.[0];
+  if (!open) return html;
+  const inner = block.slice(open.length).replace(new RegExp(`</(?:div|span|p)\\s*>$`, 'i'), '');
+  const close = /<\/(?:div|span|p)\s*>$/i.exec(block)?.[0] ?? '';
+  return `${html.slice(0, span.start)}${open}${replaceFirstTextRun(inner, text)}${close}${html.slice(span.end)}`;
+}
+
 export function stripEmptyOfficialMotifInstances(html: string): string {
   let out = String(html ?? '');
-  if (!out || !/\bdata-od-official-motif-html\b/i.test(out)) return out;
-  const openRe = /<(div|span)\b[^>]*\bdata-od-official-motif-html\b[^>]*>/gi;
+  if (!out) return out;
+  if (
+    !/\bdata-od-official-motif-html\b/i.test(out)
+    && !/\bclass\s*=\s*["'][^"']*\b(?:ribbon|stamp)\b/i.test(out)
+  ) {
+    return out;
+  }
+  const openRe = /<(div|span)\b[^>]*>/gi;
   const spans: Array<{ start: number; end: number }> = [];
   let match: RegExpExecArray | null;
   while ((match = openRe.exec(out)) !== null) {
+    const open = match[0] ?? '';
+    const isMotif = /\bdata-od-official-motif-html\b/i.test(open);
+    const isTextChrome = openHasExactClass(open, 'ribbon') || openHasExactClass(open, 'stamp');
+    if (!isMotif && !isTextChrome) continue;
     const start = match.index;
     const tag = match[1] ?? 'div';
     const rest = out.slice(start);
@@ -456,56 +505,153 @@ export function stripEmptyOfficialMotifInstances(html: string): string {
   return out;
 }
 
-function stripLeftoverTemplateDemoCopy(html: string): string {
-  let next = String(html ?? '');
-  for (const className of [
-    // Small typographic chrome (short demo bylines / captions / brand tags).
-    'brand',
-    'eyebrow',
-    'body-text',
-    'subhead',
-    'lede',
-    'pull',
-    'who',
-    'ribbon',
-    'marque',
-    'row',
-    'meta',
-    'demo-pill',
-    'demo-banner',
-    'agent-stamp',
-    'quote-author',
-    'kicker',
-    'cover-meta',
-    'grid-3',
-    'criteria',
-    // ib-pitch-book (and other IB / finance decks) — card / timeline /
-    // stamp / chart wrappers that would otherwise render as visible
-    // "Options A/B/C/D" cards, 7-row demo timeline, and "engagement team"
-    // stamps even when the AI never filled a bullet in.
-    // Placeholder Clone bodies have no bullets to preserve, so removing
-    // the entire wrapper (depth-aware) is safe.
-    'alts-grid',
-    'alt',
-    'next',
-    'step',
-    'stamp',
-    'dcf-asm',
-    'kpi-grid',
-    'ff-chart',
-    'ff-track',
-    'ff-tick',
-    'ff-axis',
-    'ff-row',
-    'market-cols',
-  ]) {
-    next = stripClassBlocks(next, className);
+type HtmlSpan = { start: number; end: number };
+
+function findMatchingClose(html: string, openEnd: number, tag: string): number {
+  const nested = new RegExp(`<\\/?${tag}\\b[^>]*>`, 'gi');
+  nested.lastIndex = openEnd;
+  let depth = 1;
+  let inner: RegExpExecArray | null;
+  while ((inner = nested.exec(html)) !== null) {
+    if (inner[0]!.startsWith('</')) {
+      depth -= 1;
+      if (depth === 0) return inner.index + inner[0]!.length;
+    } else if (!inner[0]!.endsWith('/>')) {
+      depth += 1;
+    }
   }
+  return -1;
+}
+
+function collectTaggedRanges(html: string, tags: string): HtmlSpan[] {
+  const openRe = new RegExp(`<(${tags})\\b[^>]*>`, 'gi');
+  const ranges: HtmlSpan[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = openRe.exec(html)) !== null) {
+    const tag = (match[1] ?? '').toLowerCase();
+    const start = match.index;
+    if (/\/>\s*$/.test(match[0]!)) {
+      ranges.push({ start, end: start + match[0]!.length });
+      continue;
+    }
+    const closeEnd = findMatchingClose(html, start + match[0]!.length, tag);
+    if (closeEnd < 0) continue;
+    ranges.push({ start, end: closeEnd });
+  }
+  return ranges;
+}
+
+function spanRelation(outer: HtmlSpan, inner: HtmlSpan): 'same' | 'ancestor' | 'descendant' | 'disjoint' {
+  if (outer.start === inner.start && outer.end === inner.end) return 'same';
+  if (outer.start <= inner.start && outer.end >= inner.end) return 'ancestor';
+  if (outer.start >= inner.start && outer.end <= inner.end) return 'descendant';
+  return 'disjoint';
+}
+
+/**
+ * Placeholder Clone slots that `fillSlideShell` actually writes into.
+ * Everything else is leftover template chrome (cards / charts / stamps)
+ * and can be dropped without another growing class list (0826-N01 F4).
+ */
+function wrapperVisibleProse(html: string): string {
+  return String(html ?? '')
+    .replace(/<script\b[\s\S]*?<\/script>/gi, '')
+    .replace(/<style\b[\s\S]*?<\/style>/gi, '')
+    .replace(/<svg\b[\s\S]*?<\/svg>/gi, '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function wrapperLooksLikeLeftoverContent(html: string): boolean {
+  if (wrapperVisibleProse(html).length >= 2) return true;
+  if (/<table\b/i.test(html)) return true;
+  const kids = html.match(/<(div|section|article|aside|p|ul|ol|li|header|footer)\b/gi) ?? [];
+  // Outer open + 2 inner blocks → card/grid chrome, even when empty.
+  return kids.length >= 3;
+}
+
+function collectProtectedSlots(html: string): HtmlSpan[] {
+  const slots: HtmlSpan[] = [];
+  const heading = /<h([1-3])\b[^>]*>[\s\S]*?<\/h\1>/i.exec(html);
+  if (heading && heading.index != null) {
+    slots.push({ start: heading.index, end: heading.index + heading[0].length });
+  }
+  const listRe = /<(ul|ol)\b[^>]*>[\s\S]*?<\/\1>/gi;
+  let list: RegExpExecArray | null;
+  while ((list = listRe.exec(html)) !== null) {
+    // Card lists sit under a later h3/h4 (IB Option A/B). Only the outline
+    // list that follows the first heading is a Clone fill slot.
+    const between = heading
+      ? html.slice(heading.index + heading[0].length, list.index)
+      : html.slice(0, list.index);
+    if (/<h[3-6]\b/i.test(between)) continue;
+    slots.push({ start: list.index, end: list.index + list[0].length });
+  }
+  const subtitle = /<p\b[^>]*\bclass\s*=\s*["'][^"']*\bsubtitle\b[^"']*["'][^>]*>[\s\S]*?<\/p>/i.exec(html);
+  if (subtitle && subtitle.index != null) {
+    slots.push({ start: subtitle.index, end: subtitle.index + subtitle[0].length });
+  }
+  if (!heading) {
+    const titleClass = firstExactClassRange(html, 'title');
+    if (titleClass) slots.push(titleClass);
+    const fallback = /<(div|span|p)\b[^>]*\bclass\s*=\s*["'][^"']*\b(?:quote-text|number|caption)\b[^"']*["'][^>]*>[\s\S]*?<\/\1>/i.exec(html);
+    if (fallback && fallback.index != null) {
+      slots.push({ start: fallback.index, end: fallback.index + fallback[0].length });
+    }
+  }
+  return slots;
+}
+
+const NON_SLOT_WRAPPER_TAGS =
+  'div|span|p|header|footer|small|blockquote|figure|figcaption|aside|table|section|article';
+
+/**
+ * Drop block wrappers that do not own a fill slot. Slots and their
+ * ancestors stay so `.slide-inner` / `.body` layout around a title
+ * survives; sibling demo cards (`alts-grid`, unknown `.weird-grid`, …)
+ * do not.
+ */
+export function stripNonSlotWrappers(html: string): string {
+  const source = String(html ?? '');
+  if (!source) return source;
+  const slots = collectProtectedSlots(source);
+  if (slots.length === 0) {
+    // No title/list/subtitle — still drop tables; leave the rest so
+    // quote/number fallback injection can find a host.
+    return source.replace(/<table\b[^>]*>[\s\S]*?<\/table>/gi, '');
+  }
+  const wrappers = collectTaggedRanges(source, NON_SLOT_WRAPPER_TAGS);
+  const drop: HtmlSpan[] = [];
+  for (const wrap of wrappers) {
+    const keep = slots.some((slot) => {
+      const rel = spanRelation(wrap, slot);
+      return rel === 'same' || rel === 'ancestor' || rel === 'descendant';
+    });
+    if (!keep && wrapperLooksLikeLeftoverContent(source.slice(wrap.start, wrap.end))) {
+      drop.push(wrap);
+    }
+  }
+  // Strip only outermost disjoint wrappers so nested drop ranges do not
+  // invalidate later slice indices.
+  const outermost = drop.filter((span) => (
+    !drop.some((other) => other !== span && other.start <= span.start && other.end >= span.end)
+  ));
+  outermost.sort((a, b) => b.start - a.start);
+  let out = source;
+  for (const span of outermost) {
+    out = out.slice(0, span.start) + out.slice(span.end);
+  }
+  return out;
+}
+
+function stripLeftoverTemplateDemoCopy(html: string): string {
+  // F4: structural slot-vs-wrapper strip replaces the growing IB class list.
+  // Tables that somehow sit on a slot ancestor are still removed — they are
+  // never a Clone fill target.
+  let next = stripNonSlotWrappers(html);
   next = next.replace(/<table\b[^>]*>[\s\S]*?<\/table>/gi, '');
-  next = next.replace(
-    /<(footer)\b([^>]*\bclass\s*=\s*["'][^"']*\bfoot\b[^"']*["'][^>]*)>[\s\S]*?<\/\1>/gi,
-    '',
-  );
   return next;
 }
 
@@ -555,6 +701,9 @@ function fillSlideShell(
     body = replaceHeadingText(body, 'h2', title);
   } else if (/<h3\b/i.test(body)) {
     body = replaceHeadingText(body, 'h3', title);
+  } else if (firstExactClassRange(body, 'title')) {
+    // Pink-script / magazine covers use `<div class="title">` instead of h1.
+    body = replaceFirstExactClassText(body, 'title', title);
   }
 
   const placeholderBody = isPlaceholderCloneBody(bodyText);
@@ -924,7 +1073,7 @@ function cleanCloneTitle(title: string): string {
 export function looksLikeLeftoverTemplateDemoDeck(html: string): boolean {
   const text = String(html ?? '');
   if (!text.trim()) return false;
-  return /Hartfield|NorthPeak Industries|WACC\s*\(|Revenue CAGR|Filebase|Northwind Studios|Daisy Days|The bandwidth bill is the bug|Project Atlas/i.test(
+  return /Hartfield|NorthPeak Industries|WACC\s*\(|Revenue CAGR|Filebase|Northwind Studios|Daisy Days|The bandwidth bill is the bug|Project Atlas|pitch-agent|Margaret Eun|Maison Nocturne|Synthetic Open Design demo dataset|Continue as standalone public company|ib-check-deck\s*\(\s*pass\s*\)/i.test(
     text,
   );
 }

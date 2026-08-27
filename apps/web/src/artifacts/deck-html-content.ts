@@ -361,6 +361,7 @@ const CATALOG_EXAMPLE_FINGERPRINTS = [
   /open-design v[\d.]+\s*·\s*skill:\s*pitch-agent/i,
   /skill:\s*pitch-agent\s*·\s*vertical:\s*investment-banking/i,
   /ib-check-deck\s*\(\s*pass\s*\)/i,
+  /Maison\s+Nocturne/i,
 ];
 
 /**

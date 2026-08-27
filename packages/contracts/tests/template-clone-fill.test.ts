@@ -27,6 +27,7 @@ import {
   salvageMalformedMiniMaxSlideMarkup,
   stripEmptyOfficialMotifInstances,
   stripHostProtocolLeakFromDeckHtml,
+  stripNonSlotWrappers,
 } from '../src/template-clone-fill.js';
 import { hoistDeckHostStylesToHead } from '../src/html/deck-template-look-css.js';
 
@@ -322,6 +323,7 @@ describe('sanitizeTemplateCloneDeckTitle', () => {
     expect(looksLikeTemplateMarketingTitle('NorthPeak Industries')).toBe(true);
     expect(looksLikeTemplateMarketingTitle('Filebase · Series B')).toBe(true);
     expect(looksLikeLeftoverTemplateDemoDeck('<p>Hartfield &amp; Co. WACC (base)</p>')).toBe(true);
+    expect(looksLikeLeftoverTemplateDemoDeck('<p>open-design v0.18 · skill: pitch-agent</p>')).toBe(true);
     expect(looksLikeLeftoverTemplateDemoDeck('<section class="slide"><h1>개요</h1></section>')).toBe(false);
     expect(sanitizeTemplateCloneDeckTitle('Presentation')).toBeNull();
     expect(looksLikeTemplateMarketingTitle('Expo for Senior Engineers')).toBe(false);
@@ -495,6 +497,54 @@ describe('sanitizeTemplateCloneDeckTitle', () => {
     expect(healed).not.toMatch(/slide-title/);
   });
 
+  it('reparents MiniMax auto-auto-1fr cards and 64px step lists', () => {
+    const card = [
+      '<div style="grid-template-rows:auto auto 1fr;background:var(--paper-warm)">',
+      '<div>Step 01</div>',
+      '<div style="font-weight:700">상황 8개 선정</div>',
+      '</div>',
+      '<div>내가 자주 겪는 상황을 8개 적고</div>',
+      '</div>',
+    ].join('');
+    const salvagedCard = salvageMalformedMiniMaxSlideMarkup(card);
+    expect(salvagedCard).toContain('상황 8개 선정');
+    expect(salvagedCard).toContain('내가 자주 겪는 상황을 8개 적고');
+    expect(salvagedCard.match(/<\/div>/g)?.length).toBe(4);
+
+    const list = [
+      '<ol>',
+      '<li style="display:grid;grid-template-columns:64px 1fr"><div>01</div><div>청각 입력</div></li>',
+      '</ol></div>',
+      '<li style="display:grid;grid-template-columns:64px 1fr"><div>02</div><div>따라 말하기</div></li>',
+      '<li style="display:grid;grid-template-columns:64px 1fr"><div>03</div><div>혼잣말 변환</div></li>',
+    ].join('');
+    const salvagedList = salvageMalformedMiniMaxSlideMarkup(list);
+    expect(salvagedList).toMatch(/01[\s\S]*02[\s\S]*03[\s\S]*<\/ol>/);
+    expect(salvagedList).not.toMatch(/<\/ol><\/div><li/);
+  });
+
+  it('strips empty class-only ribbon shells without Motif attrs', () => {
+    const html = '<section class="slide"><span class="ribbon"></span><h1>개요</h1></section>';
+    const cleaned = stripEmptyOfficialMotifInstances(html);
+    expect(cleaned).not.toMatch(/class="ribbon"/);
+    expect(cleaned).toContain('<h1>개요</h1>');
+  });
+
+  it('does not reparent leftover IB catalog lists or drop Hartfield chrome', async () => {
+    const html = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/ib-pitch-book/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const salvaged = salvageMalformedMiniMaxSlideMarkup(html);
+    expect(salvaged).toMatch(/Hartfield/i);
+    expect(salvaged).toMatch(/id=["']now["']/);
+    expect(salvaged).toContain('WACC');
+    expect(salvaged).toMatch(/<ol[\s\S]*<\/ol>/);
+  });
+
   it('drops empty official Motif ribbon and stamp shells', () => {
     const html = [
       '<section class="slide">',
@@ -666,5 +716,37 @@ describe('sanitizeTemplateCloneDeckTitle', () => {
       '영어 회화 표현 공부 팁, 예시에 대한 발표자료 만들어줘',
     )).toBe(true);
     expect(looksLikeCatalogSwipeShell('<section class="slide"><h1>개요</h1></section>')).toBe(false);
+  });
+});
+
+describe('stripNonSlotWrappers (0826-N01 F4)', () => {
+  it('drops unknown card wrappers that are not on any class list', () => {
+    const html = [
+      '<h2>영어 회화</h2>',
+      '<div class="weird-unknown-grid">',
+      '<div class="weird-card">Option A leftover</div>',
+      '<div class="weird-card">Option B leftover</div>',
+      '</div>',
+      '<ul><li></li><li></li></ul>',
+    ].join('');
+    const next = stripNonSlotWrappers(html);
+    expect(next).toContain('<h2>영어 회화</h2>');
+    expect(next).toContain('<ul>');
+    expect(next).not.toMatch(/weird-unknown-grid|weird-card|Option A/);
+  });
+
+  it('keeps layout ancestors of the first heading', () => {
+    const html = [
+      '<div class="slide-inner">',
+      '<div class="body">',
+      '<div><h2>Title</h2></div>',
+      '<div class="kpi-grid"><div class="kpi">14.8x</div></div>',
+      '</div></div>',
+    ].join('');
+    const next = stripNonSlotWrappers(html);
+    expect(next).toContain('slide-inner');
+    expect(next).toContain('class="body"');
+    expect(next).toContain('<h2>Title</h2>');
+    expect(next).not.toMatch(/kpi-grid|14\.8/);
   });
 });
