@@ -133,6 +133,8 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | persist: moz-user · ms-scroll/wrap · @view-transition · closure | ☑ 루프230–239 / round231–240 |
 | persist: moz-border/box · transition/animation · invent-frame | ☑ 루프240–244 / round241–245 |
 | persist: moz-outline/text · ms-flow · @scope · closure | ☑ 루프245–254 / round246–255 |
+| persist: mask xy · moz-border-colors · ms-scrollbar · column-rule | ☑ 루프255–259 / round256–260 |
+| persist: border-image · ms-word · line-grid · epub · at-rule harden | ☑ 루프260–284 / round261–285 |
 | clone: IB pitch-book 데모 카피가 한국어 brief에 남음 | ☑ 루프57 |
 | preview: #stage 1920px 스트립이 100vw로만 살짝 이동 | ☑ 루프57 |
 | persist: 카탈로그 예제 leftover를 filled로 저장 | ☑ |
@@ -180,7 +182,16 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | think 태그 / 내부 마크업 필터 | ☑ 기존 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프138)
+## 이번 루프 (루프255–284 / round256–285)
+
+1. persist — `-webkit-mask-*-x/y` · `-moz-border-*-colors` · `-moz-text-blink` · `-ms-scrollbar-*` · column-rule longhands · font-feature/kerning
+2. persist — `-moz-border-image*` · `-ms-word-*`/`-ms-writing-mode` · `text-zoom` · `-webkit-line-grid/align/snap` · border-before/after longhands
+3. persist — `-ms-content-zoom*`/`-ms-scroll-limit*` · `-epub-text-emphasis*` · `-moz-inert`/`-webkit-marquee-dir`
+4. chat — `@supports` · `@container` · `@layer` · `@property` harden · invent-frame · set37–42 combo/closure (`box-shadow` 보류)
+
+**검증:** chat-leak-probe-round256–285
+
+## 직전 루프 (루프138)
 
 1. persist/preview — MiniMax `auto auto 1fr` 카드 · 64px step `</ol>` · 유출 `· Label` 복구 (IB TOC 유지)
 2. persist/preview — 클래스만 있는 빈 `.ribbon`/`.stamp` 제거. srcdoc은 brief 없이도 salvage
