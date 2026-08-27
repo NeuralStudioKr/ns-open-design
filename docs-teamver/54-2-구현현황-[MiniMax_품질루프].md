@@ -153,6 +153,9 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | kit: calc additive same-unit sum (px/rem/Q…) | ☑ 루프435–439 / round436–440 |
 | chat: FOO `⟶➜➡➔➢` · form/section calc | ☑ 루프440–449 / round441–450 |
 | kit/chat: set76–78 combo/closure | ☑ 루프450–464 / round451–465 |
+| kit: calc % sum · rem/em+px@16 mixed | ☑ 루프465–469 / round466–470 |
+| chat: FOO `↠↝➞➠◆♦▶▷▸▹` | ☑ 루프470–479 / round471–480 |
+| kit/chat: set82–83 combo/closure | ☑ 루프480–489 / round481–490 |
 | clone: IB pitch-book 데모 카피가 한국어 brief에 남음 | ☑ 루프57 |
 | preview: #stage 1920px 스트립이 100vw로만 살짝 이동 | ☑ 루프57 |
 | persist: 카탈로그 예제 leftover를 filled로 저장 | ☑ |
@@ -204,7 +207,14 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | think 태그 / 내부 마크업 필터 | ☑ 기존 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프435–464 / round436–465)
+## 이번 루프 (루프465–489 / round466–490)
+
+1. padding — calc `%` 토큰 경계 · rem/em+px@16px root 합산
+2. chat — FOO `↠↝➞➠◆♦▶▷▸▹` · invent-frame/`box-shadow` 보류
+
+**검증:** chat-leak-probe-round466–490
+
+## 직전 루프 (루프435–464 / round436–465)
 
 1. padding — additive `calc()` 동일 단위 합산 (`8px+4px`, `.5rem+.25rem`, `4Q+4Q`)
 2. chat — FOO `⟶➜➡➔➢` · invent-frame/`box-shadow` 보류

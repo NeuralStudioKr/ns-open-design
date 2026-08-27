@@ -1624,15 +1624,16 @@ function looksLikeFakeOutlineStyle(style: string): boolean {
  * Logical `padding-block` / `padding-inline` (+ start/end) count the same (루프74).
  */
 
-/** Sum additive `calc(8px + 4px)` / `calc(.5rem + .25rem)` same-unit terms (루프435). */
+/** Additive `calc` sums: same-unit (루프435) · `%` token fix · rem/em+px@16 (루프465). */
 function calcAdditiveSameUnitLooksCardLike(value: string): boolean {
   const calcRe = /calc\s*\(([^()]*)\)/gi;
   let match: RegExpExecArray | null;
   while ((match = calcRe.exec(value)) !== null) {
     const body = (match[1] ?? '').trim();
     if (!body || /[*\/]/.test(body)) continue;
+    // No `\b` after `%` — `%` is non-word so `\b` never matches EOS (루프465).
     const tokRe =
-      /([+-])?\s*(\d+(?:\.\d+)?|\.\d+)\s*(px|rem|em|pt|mm|cm|in|pc|Q|ch|%|vh|vw|vmin|vmax|dvh|dvw|svh|svw|lvh|lvw|lvmin|lvmax|svmin|svmax|dvmin|dvmax|cqw|cqh|cqi|cqb|cqmin|cqmax|ic|ric|lh|rlh|cap|rcap|ex|rex|vb|vi|svb|svi|lvb|lvi|dvb|dvi)\b/gi;
+      /([+-])?\s*(\d+(?:\.\d+)?|\.\d+)\s*(px|rem|em|pt|mm|cm|in|pc|Q|ch|%|vh|vw|vmin|vmax|dvh|dvw|svh|svw|lvh|lvw|lvmin|lvmax|svmin|svmax|dvmin|dvmax|cqw|cqh|cqi|cqb|cqmin|cqmax|ic|ric|lh|rlh|cap|rcap|ex|rex|vb|vi|svb|svi|lvb|lvi|dvb|dvi)(?=$|[\s+\-*/,)])/gi;
     const parts: { sign: number; n: number; unit: string }[] = [];
     let tm: RegExpExecArray | null;
     while ((tm = tokRe.exec(body)) !== null) {
@@ -1645,33 +1646,44 @@ function calcAdditiveSameUnitLooksCardLike(value: string): boolean {
     }
     if (parts.length < 2) continue;
     const unit0 = parts[0]!.unit;
-    if (!parts.every((p) => p.unit === unit0)) continue;
     const sum = parts.reduce((acc, p) => acc + p.sign * p.n, 0);
-    if (unit0 === 'px' && sum >= 12) return true;
-    if ((unit0 === 'rem' || unit0 === 'em') && sum >= 0.75) return true;
-    if (unit0 === '%' && sum >= 4) return true;
-    if (unit0 === 'ch' && sum >= 2) return true;
-    if (
-      /^(?:vh|vw|vmin|vmax|dvh|dvw|svh|svw|lvh|lvw|lvmin|lvmax|svmin|svmax|dvmin|dvmax|cqw|cqh|cqi|cqb|cqmin|cqmax)$/.test(
-        unit0,
-      )
-      && sum >= 2
-    ) {
-      return true;
+    if (parts.every((p) => p.unit === unit0)) {
+      if (unit0 === 'px' && sum >= 12) return true;
+      if ((unit0 === 'rem' || unit0 === 'em') && sum >= 0.75) return true;
+      if (unit0 === '%' && sum >= 4) return true;
+      if (unit0 === 'ch' && sum >= 2) return true;
+      if (
+        /^(?:vh|vw|vmin|vmax|dvh|dvw|svh|svw|lvh|lvw|lvmin|lvmax|svmin|svmax|dvmin|dvmax|cqw|cqh|cqi|cqb|cqmin|cqmax)$/.test(
+          unit0,
+        )
+        && sum >= 2
+      ) {
+        return true;
+      }
+      if ((unit0 === 'ic' || unit0 === 'ric') && sum >= 1) return true;
+      if (
+        /^(?:lh|rlh|cap|rcap|ex|rex|vb|vi|svb|svi|lvb|lvi|dvb|dvi)$/.test(unit0)
+        && sum >= 2
+      ) {
+        return true;
+      }
+      if (unit0 === 'pt' && sum >= 8) return true;
+      if (unit0 === 'mm' && sum >= 4) return true;
+      if (unit0 === 'cm' && sum >= 0.4) return true;
+      if (unit0 === 'in' && sum >= 0.15) return true;
+      if (unit0 === 'pc' && sum >= 1) return true;
+      if (unit0 === 'q' && sum >= 8) return true;
+      continue;
     }
-    if ((unit0 === 'ic' || unit0 === 'ric') && sum >= 1) return true;
-    if (
-      /^(?:lh|rlh|cap|rcap|ex|rex|vb|vi|svb|svi|lvb|lvi|dvb|dvi)$/.test(unit0)
-      && sum >= 2
-    ) {
-      return true;
+    // Mixed rem|em + px at 16px root ≈ card pad (루프465): 0.5rem+4px → 12px.
+    const units = new Set(parts.map((p) => p.unit));
+    if (units.size === 2 && units.has('px') && (units.has('rem') || units.has('em'))) {
+      const remish = parts
+        .filter((p) => p.unit === 'rem' || p.unit === 'em')
+        .reduce((acc, p) => acc + p.sign * p.n, 0);
+      const px = parts.filter((p) => p.unit === 'px').reduce((acc, p) => acc + p.sign * p.n, 0);
+      if (remish * 16 + px >= 12) return true;
     }
-    if (unit0 === 'pt' && sum >= 8) return true;
-    if (unit0 === 'mm' && sum >= 4) return true;
-    if (unit0 === 'cm' && sum >= 0.4) return true;
-    if (unit0 === 'in' && sum >= 0.15) return true;
-    if (unit0 === 'pc' && sum >= 1) return true;
-    if (unit0 === 'q' && sum >= 8) return true;
   }
   return false;
 }
