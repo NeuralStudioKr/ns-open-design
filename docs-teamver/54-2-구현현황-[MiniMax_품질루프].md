@@ -156,6 +156,9 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | kit: calc % sum · rem/em+px@16 mixed | ☑ 루프465–469 / round466–470 |
 | chat: FOO `↠↝➞➠◆♦▶▷▸▹` | ☑ 루프470–479 / round471–480 |
 | kit/chat: set82–83 combo/closure | ☑ 루프480–489 / round481–490 |
+| kit: calc rem+em 1:1 mixed | ☑ 루프490–494 / round491–495 |
+| chat: FOO `➙➛➝➟➣►◁◀◂◃◇○` | ☑ 루프495–504 / round496–505 |
+| kit/chat: set87–88 combo/closure | ☑ 루프505–514 / round506–515 |
 | clone: IB pitch-book 데모 카피가 한국어 brief에 남음 | ☑ 루프57 |
 | preview: #stage 1920px 스트립이 100vw로만 살짝 이동 | ☑ 루프57 |
 | persist: 카탈로그 예제 leftover를 filled로 저장 | ☑ |
@@ -208,7 +211,14 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | think 태그 / 내부 마크업 필터 | ☑ 기존 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프142)
+## 이번 루프 (루프490–514 / round491–515)
+
+1. padding — calc rem+em 1:1 합산(≥0.75)
+2. chat — FOO `➙➛➝➟➣►◁◀◂◃◇○` · invent-frame/`box-shadow` 보류
+
+**검증:** chat-leak-probe-round491–515
+
+## 직전 루프 (루프142)
 
 1. heal — 성긴 본문은 `1.3fr 1fr` 투팬(lede + 기존 칩 cover-meta). 카드/리스트는 fill-track으로 1fr 행을 채움
 2. neutralize — `h2.section` 56px, fill-track stretch, `od-magazine-body-spread` 없으면 재주입

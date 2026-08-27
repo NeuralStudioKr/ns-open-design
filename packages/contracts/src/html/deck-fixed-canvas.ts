@@ -1624,7 +1624,7 @@ function looksLikeFakeOutlineStyle(style: string): boolean {
  * Logical `padding-block` / `padding-inline` (+ start/end) count the same (루프74).
  */
 
-/** Additive `calc` sums: same-unit (루프435) · `%` token fix · rem/em+px@16 (루프465). */
+/** Additive `calc` sums: same-unit · `%` · rem/em+px@16 · rem+em 1:1 (루프490). */
 function calcAdditiveSameUnitLooksCardLike(value: string): boolean {
   const calcRe = /calc\s*\(([^()]*)\)/gi;
   let match: RegExpExecArray | null;
@@ -1683,6 +1683,13 @@ function calcAdditiveSameUnitLooksCardLike(value: string): boolean {
         .reduce((acc, p) => acc + p.sign * p.n, 0);
       const px = parts.filter((p) => p.unit === 'px').reduce((acc, p) => acc + p.sign * p.n, 0);
       if (remish * 16 + px >= 12) return true;
+    }
+    // Mixed rem+em treated 1:1 font-relative (루프490): 0.5rem+0.25em → 0.75.
+    if (units.size === 2 && units.has('rem') && units.has('em')) {
+      const remish = parts
+        .filter((p) => p.unit === 'rem' || p.unit === 'em')
+        .reduce((acc, p) => acc + p.sign * p.n, 0);
+      if (remish >= 0.75) return true;
     }
   }
   return false;
