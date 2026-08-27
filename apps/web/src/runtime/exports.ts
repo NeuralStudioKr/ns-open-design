@@ -40,6 +40,7 @@ import {
   buildDeckBrowserPrintScaleCss,
   buildStandaloneDeckHtmlDocument,
   healDeckHtmlForStandaloneExport,
+  isGenericDeckArtifactTitle,
   relaxPersistedDeckSlideSurfaceBleed,
   repairArtifactDocumentHead,
 } from '@open-design/contracts';
@@ -50,9 +51,30 @@ const DESIGN_HANDOFF_FILENAME = 'DESIGN-HANDOFF.md';
 const DESIGN_MANIFEST_FILENAME = 'DESIGN-MANIFEST.json';
 export const TEAMVER_DEFAULT_EXPORT_BASENAME = 'teamver_design';
 
+function exportDisplayTitleFallback(standalone: string): string {
+  try {
+    return isTeamverEmbedMode() ? '슬라이드' : standalone;
+  } catch {
+    return standalone;
+  }
+}
+
+function exportPdfSplashHint(): string {
+  try {
+    if (isTeamverEmbedMode()) {
+      return 'PDF를 준비하고 있습니다. 브라우저 인쇄 창에서 PDF로 저장하세요.';
+    }
+  } catch {
+    // Unit tests stub `window.location` without hostname.
+  }
+  return "Preparing PDF… please use your browser's print dialog to save.";
+}
+
 function isGenericExportLabel(value: string): boolean {
-  const normalized = value.trim().toLowerCase();
-  return !normalized || normalized === 'design' || normalized === 'artifact';
+  const normalized = value.trim();
+  if (!normalized) return true;
+  if (normalized.toLowerCase() === 'design') return true;
+  return isGenericDeckArtifactTitle(normalized);
 }
 
 /** Prefer the user-visible project name over artifact/S3 slug filenames. */
@@ -2278,7 +2300,7 @@ export function buildSandboxedPreviewDocument(
   title: string,
   opts?: SandboxedPreviewDocumentOptions,
 ): string {
-  const safeTitle = escapeHtmlAttribute(title || 'Preview');
+  const safeTitle = escapeHtmlAttribute(title || exportDisplayTitleFallback('Preview'));
   const sandbox = opts?.allowModals ? 'allow-scripts allow-modals' : 'allow-scripts';
   const iframeSrc = typeof opts?.iframeSrc === 'string' ? opts.iframeSrc.trim() : '';
   const iframeTag = iframeSrc
@@ -2456,14 +2478,14 @@ export async function exportAsPdf(
   // sets a real title, matches the app background, and shows a small
   // "Preparing PDF…" line so the popup never appears empty.
   try {
-    const safeTitle = String(title || 'Document');
+    const safeTitle = String(title || exportDisplayTitleFallback('Document'));
     win.document.open();
     win.document.write(
       `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtmlText(safeTitle)}</title>` +
       `<style>html,body{margin:0;background:#f7f7f8;color:#374151;font:14px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}` +
       `.od-print-hint{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:16px;text-align:center}` +
       `.od-print-hint span{opacity:.75}</style></head>` +
-      `<body><div class="od-print-hint"><span>Preparing PDF… please use your browser's print dialog to save.</span></div></body></html>`,
+      `<body><div class="od-print-hint"><span>${exportPdfSplashHint()}</span></div></body></html>`,
     );
     win.document.close();
   } catch {
@@ -2549,7 +2571,7 @@ export function reportPrintSizeWhenStable(
 }
 
 function injectPrintScript(doc: string, title: string, opts?: { deck?: boolean }): string {
-  const safeTitle = JSON.stringify(title || 'artifact');
+  const safeTitle = JSON.stringify(title || exportDisplayTitleFallback('artifact'));
   const flattenCall = opts?.deck
     ? 'try{if(typeof window.__odFlattenDeckForPrint==="function")window.__odFlattenDeckForPrint()}catch(e){}'
     : '';

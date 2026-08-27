@@ -127,6 +127,27 @@ describe('resolveExportDownloadTitle', () => {
     expect(resolveExportDownloadTitle(undefined, 'design.html')).toBe('teamver_design');
     expect(resolveExportDownloadTitle('Design', 'design.html')).toBe('Design');
   });
+
+  it('treats parser deck/slide/untitled slugs as generic download names', () => {
+    expect(resolveExportDownloadTitle(undefined, 'deck.html')).toBe('teamver_design');
+    expect(resolveExportDownloadTitle(undefined, 'slide.html')).toBe('teamver_design');
+    expect(resolveExportDownloadTitle(undefined, 'untitled.html')).toBe('teamver_design');
+    expect(resolveExportDownloadTitle(undefined, 'response.html')).toBe('teamver_design');
+  });
+});
+
+describe('Teamver embed export title leftovers', () => {
+  it('uses persist heal title and Korean print splash in embed', () => {
+    const src = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), '../../src/runtime/exports.ts'),
+      'utf8',
+    );
+    expect(src).toContain("isTeamverEmbedMode() ? '슬라이드'");
+    expect(src).toContain('PDF를 준비하고 있습니다');
+    expect(src).toContain("exportDisplayTitleFallback('Preview')");
+    expect(src).toContain("exportDisplayTitleFallback('Document')");
+    expect(src).toContain("exportDisplayTitleFallback('artifact')");
+  });
 });
 
 describe('isUsablePrintSize (#4458)', () => {

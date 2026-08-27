@@ -188,6 +188,28 @@ describe('outline last-resort title fallback', () => {
     expect(html).toContain('<title>Intro</title>');
     expect(html).not.toContain('Presentation');
     expect(html).not.toContain('발표 자료');
+    expect(html).not.toContain('Key points for');
+    expect(html).toContain('에 대한 핵심 내용을 정리합니다');
+  });
+
+  it('titles a host URL request in Korean instead of company overview', () => {
+    const messages = [
+      {
+        id: 'u1',
+        role: 'user',
+        content: 'https://neuralstudio.kr make a company presentation',
+        createdAt: 1,
+      },
+      {
+        id: 'a1',
+        role: 'assistant',
+        content: '1. Intro\n2. Body\n3. Close',
+        createdAt: 2,
+      },
+    ] as ChatMessage[];
+    const art = buildEmergencyArtifactFromMessages(messages);
+    expect(art?.title).toBe('Neuralstudio 소개');
+    expect(art?.title).not.toMatch(/company overview/i);
   });
 
   it('passes heal brief/title into outline last-resort persist', () => {
@@ -201,6 +223,8 @@ describe('outline last-resort title fallback', () => {
       'utf8',
     );
     expect(source).not.toContain("'Presentation'");
+    expect(source).not.toContain('company overview');
+    expect(source).not.toContain('Key points for');
     expect(source).toContain("|| '슬라이드'");
   });
 });
