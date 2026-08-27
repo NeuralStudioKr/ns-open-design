@@ -429,6 +429,31 @@ function openHasExactClass(open: string, name: string): boolean {
   return raw.trim().split(/\s+/).some((token) => token.toLowerCase() === name.toLowerCase());
 }
 
+function firstExactClassRange(html: string, className: string): HtmlSpan | null {
+  const openRe = /<(div|span|p)\b[^>]*>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = openRe.exec(html)) !== null) {
+    if (!openHasExactClass(match[0] ?? '', className)) continue;
+    const tag = (match[1] ?? 'div').toLowerCase();
+    const start = match.index;
+    const closeEnd = findMatchingClose(html, start + match[0]!.length, tag);
+    if (closeEnd < 0) return { start, end: start + match[0]!.length };
+    return { start, end: closeEnd };
+  }
+  return null;
+}
+
+function replaceFirstExactClassText(html: string, className: string, text: string): string {
+  const span = firstExactClassRange(html, className);
+  if (!span) return html;
+  const block = html.slice(span.start, span.end);
+  const open = /^<[^>]+>/.exec(block)?.[0];
+  if (!open) return html;
+  const inner = block.slice(open.length).replace(new RegExp(`</(?:div|span|p)\\s*>$`, 'i'), '');
+  const close = /<\/(?:div|span|p)\s*>$/i.exec(block)?.[0] ?? '';
+  return `${html.slice(0, span.start)}${open}${replaceFirstTextRun(inner, text)}${close}${html.slice(span.end)}`;
+}
+
 export function stripEmptyOfficialMotifInstances(html: string): string {
   let out = String(html ?? '');
   if (!out) return out;
@@ -569,6 +594,8 @@ function collectProtectedSlots(html: string): HtmlSpan[] {
     slots.push({ start: subtitle.index, end: subtitle.index + subtitle[0].length });
   }
   if (!heading) {
+    const titleClass = firstExactClassRange(html, 'title');
+    if (titleClass) slots.push(titleClass);
     const fallback = /<(div|span|p)\b[^>]*\bclass\s*=\s*["'][^"']*\b(?:quote-text|number|caption)\b[^"']*["'][^>]*>[\s\S]*?<\/\1>/i.exec(html);
     if (fallback && fallback.index != null) {
       slots.push({ start: fallback.index, end: fallback.index + fallback[0].length });
@@ -674,6 +701,9 @@ function fillSlideShell(
     body = replaceHeadingText(body, 'h2', title);
   } else if (/<h3\b/i.test(body)) {
     body = replaceHeadingText(body, 'h3', title);
+  } else if (firstExactClassRange(body, 'title')) {
+    // Pink-script / magazine covers use `<div class="title">` instead of h1.
+    body = replaceFirstExactClassText(body, 'title', title);
   }
 
   const placeholderBody = isPlaceholderCloneBody(bodyText);
@@ -1043,7 +1073,7 @@ function cleanCloneTitle(title: string): string {
 export function looksLikeLeftoverTemplateDemoDeck(html: string): boolean {
   const text = String(html ?? '');
   if (!text.trim()) return false;
-  return /Hartfield|NorthPeak Industries|WACC\s*\(|Revenue CAGR|Filebase|Northwind Studios|Daisy Days|The bandwidth bill is the bug|Project Atlas/i.test(
+  return /Hartfield|NorthPeak Industries|WACC\s*\(|Revenue CAGR|Filebase|Northwind Studios|Daisy Days|The bandwidth bill is the bug|Project Atlas|pitch-agent|Margaret Eun|Maison Nocturne|Synthetic Open Design demo dataset|Continue as standalone public company|ib-check-deck\s*\(\s*pass\s*\)/i.test(
     text,
   );
 }
