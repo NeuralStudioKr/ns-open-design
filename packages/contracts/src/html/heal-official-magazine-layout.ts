@@ -156,18 +156,208 @@ export function stripEmptyOfficialTextChromeMotifs(html: string): string {
  * Compact first-fill often emits `</p="">` and leaked `· Small talk</div>`
  * after a title already closed.
  */
+function salvageBareHeadingClose(html: string): string {
+  return String(html ?? '').replace(/<\/h\s*>/gi, (_m, offset: number, src: string) => {
+    const opens = [...String(src).slice(0, offset).matchAll(/<h([1-6])\b/gi)];
+    const last = opens[opens.length - 1];
+    return last ? `</h${last[1]}>` : '';
+  });
+}
+
+/** MiniMax nests lede/grids inside h1/h2, then emits a bare `</h>`. */
+function peelLayoutBlocksOutOfHeadings(html: string): string {
+  let out = salvageBareHeadingClose(String(html ?? ''));
+  const openRe = /<h([1-3])\b[^>]*>/gi;
+  const starts: number[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = openRe.exec(out)) !== null) starts.push(match.index);
+  for (let i = starts.length - 1; i >= 0; i -= 1) {
+    const start = starts[i]!;
+    const block = extractBalancedElement(out, start);
+    if (!block) continue;
+    const open = /^<h([1-3])\b[^>]*>/i.exec(block);
+    if (!open) continue;
+    const tag = open[1]!;
+    const close = `</h${tag}>`;
+    if (!block.toLowerCase().endsWith(close)) continue;
+    const inner = block.slice(open[0].length, block.length - close.length);
+    const firstBlock = /<(div|section|article|aside|ul|ol|table)\b/i.exec(inner);
+    if (!firstBlock || firstBlock.index == null) continue;
+    const before = inner.slice(0, firstBlock.index);
+    const after = inner.slice(firstBlock.index).trim();
+    if (!visibleText(before) || !after) continue;
+    if (/<(div|section|article|aside|ul|ol|table)\b/i.test(before)) continue;
+    const headingInner = before.replace(/\s+$/, '');
+    out = `${out.slice(0, start)}${open[0]}${headingInner}${close}\n${after}${out.slice(start + block.length)}`;
+  }
+  return out;
+}
+
+function collapseHeadingDoubleBreaks(html: string): string {
+  return String(html ?? '').replace(
+    /<(h[1-6])\b([^>]*)>([\s\S]*?)<\/\1>/gi,
+    (_m, tag: string, attrs: string, inner: string) => (
+      `<${tag}${attrs}>${String(inner).replace(/(?:<br\s*\/?>\s*){2,}/gi, '<br>')}</${tag}>`
+    ),
+  );
+}
+
+function polishTruncatedHeadingInner(inner: string): string {
+  return String(inner ?? '')
+    .replace(/(?:<br\s*\/?>\s*)?[,，]?\s*예시에?\s*대한\s*$/u, '')
+    .replace(/(?:<br\s*\/?>\s*)?\s*에\s*대한\s*$/u, '')
+    .replace(/(?:<br\s*\/?>\s*)+$/g, '')
+    .trim();
+}
+
+/** Truncated prompt tails belong in any official look, not only IB magazine rebuilds. */
+function polishTruncatedHeadingsInPlace(html: string): string {
+  return String(html ?? '').replace(
+    /<(h[1-3])\b([^>]*)>([\s\S]*?)<\/\1>/gi,
+    (full, tag: string, attrs: string, inner: string) => {
+      const text = visibleText(inner);
+      if (!/에\s*대한$|예시에?$/u.test(text)) return full;
+      const next = polishTruncatedHeadingInner(inner);
+      if (!next || next === inner) return full;
+      return `<${tag}${attrs}>${next}</${tag}>`;
+    },
+  );
+}
+
+function looksLikeTruncatedPromptChrome(text: string): boolean {
+  const value = String(text ?? '').replace(/\s+/g, ' ').trim();
+  if (!value) return true;
+  if (/에\s*대한$|예시에?$/u.test(value)) return true;
+  return /^(?:brief|prompt|요청|과제)$/i.test(value);
+}
+
+function dropEchoBriefCoverMeta(html: string): string {
+  let out = String(html ?? '');
+  const metaOpens = /<(aside|div) class="cover-meta"[^>]*>/gi;
+  const starts: number[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = metaOpens.exec(out)) !== null) starts.push(match.index);
+  for (let i = starts.length - 1; i >= 0; i -= 1) {
+    const start = starts[i]!;
+    const block = extractBalancedElement(out, start);
+    if (!block) continue;
+    const copy = magazineRowFeaturedCopy(block) || visibleText(block);
+    if (copy && !looksLikeTruncatedPromptChrome(copy) && !looksLikeLeftoverOutlineChip(copy)) {
+      continue;
+    }
+    out = `${out.slice(0, start)}${out.slice(start + block.length)}`;
+  }
+  return collapseCoverBodyWhenMetaGone(out);
+}
+
+function collapseCoverBodyWhenMetaGone(html: string): string {
+  let out = String(html ?? '');
+  const openRe = /<div class="body"[^>]*>/gi;
+  const starts: number[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = openRe.exec(out)) !== null) starts.push(match.index);
+  for (let i = starts.length - 1; i >= 0; i -= 1) {
+    const start = starts[i]!;
+    const block = extractBalancedElement(out, start);
+    if (!block) continue;
+    if (/class="cover-meta"/i.test(block)) continue;
+    const next = block.replace(
+      /grid-template-columns\s*:\s*1\.3fr\s+1fr/i,
+      'grid-template-columns:1fr',
+    );
+    if (next !== block) {
+      out = `${out.slice(0, start)}${next}${out.slice(start + block.length)}`;
+    }
+  }
+  return out;
+}
+
+function countTopLevelElements(inner: string): number {
+  const source = String(inner ?? '');
+  let i = 0;
+  let n = 0;
+  while (i < source.length) {
+    const rel = source.slice(i).search(/<[a-zA-Z]/);
+    if (rel < 0) break;
+    const abs = i + rel;
+    const block = extractBalancedElement(source, abs);
+    if (!block) break;
+    n += 1;
+    i = abs + block.length;
+  }
+  return n;
+}
+
+/** A 4-col ritual grid with one surviving card must not leave three empty tracks. */
+function collapseLonelyRepeatGrids(html: string): string {
+  let out = String(html ?? '');
+  const openRe = /<div\b[^>]*grid-template-columns:\s*repeat\(\s*[2-9]\s*,[^)]*\)[^>]*>/gi;
+  const starts: number[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = openRe.exec(out)) !== null) starts.push(match.index);
+  for (let i = starts.length - 1; i >= 0; i -= 1) {
+    const start = starts[i]!;
+    const block = extractBalancedElement(out, start);
+    if (!block) continue;
+    const open = /^<div\b[^>]*>/i.exec(block)?.[0] ?? '';
+    const inner = block.slice(open.length).replace(/<\/div>\s*$/i, '');
+    if (countTopLevelElements(inner) !== 1) continue;
+    const nextOpen = open.replace(
+      /grid-template-columns:\s*repeat\(\s*[2-9]\s*,[^)]*\)/i,
+      'grid-template-columns:minmax(0,1fr)',
+    );
+    out = `${out.slice(0, start)}${nextOpen}${block.slice(open.length)}${out.slice(start + block.length)}`;
+  }
+  return out;
+}
+
+function dropEmptyDeckSlides(html: string): string {
+  const dest = String(html ?? '');
+  const slides = listMagazineSlideSpans(dest);
+  if (slides.length < 2) return dest;
+  let out = dest;
+  for (let i = slides.length - 1; i >= 1; i -= 1) {
+    const slide = slides[i]!;
+    const body = out.slice(slide.openEnd, slide.bodyEnd);
+    if (/<(?:img|svg|video|canvas|iframe)\b/i.test(body)) continue;
+    if (visibleText(body).length > 0) continue;
+    out = `${out.slice(0, slide.start)}${out.slice(slide.end)}`;
+  }
+  return out;
+}
+
+/** Biennale Yellow chapter/data slides are cream paper — not inverted #0a0a0a. */
+function relaxBiennaleInvertedSlidePaint(html: string): string {
+  const dest = String(html ?? '');
+  const css = officialLookCssText(dest);
+  if (!/--sun\s*:\s*#F1EE2E/i.test(css) || !/--paper\s*:/i.test(css)) return dest;
+  return dest.replace(
+    /(<section\b[^>]*\b(?:s-chapter|s-data|s-cover|s-manifesto|s-programme|s-quote|s-cal|s-colophon)\b[^>]*style="[^"]*)background\s*:\s*#0a0a0a/gi,
+    '$1background:var(--paper)',
+  ).replace(
+    /(<div\b[^>]*data-od-slide-flow[^>]*style="[^"]*)background\s*:\s*#0a0a0a/gi,
+    '$1background:var(--paper)',
+  );
+}
+
 export function repairCompactFirstFillMarkup(html: string): string {
-  return String(html ?? '')
-    .replace(/<\/(p|div|span|h[1-6]|li|ul|ol)\s*=\s*["'][^"']*["']\s*>/gi, '</$1>')
-    .replace(/<(p|div|span|h[1-6]|li|ul|ol)\s*=\s*["'][^"']*["']\s*>/gi, '<$1>')
-    .replace(/<\/(div|p|span)>\s*·\s*[^<>]{1,48}<\/\1>/gi, '</$1>')
-    // "…</div> · Small talk" with no extra close tag
-    .replace(/<\/(div|p|span)>\s*·\s*[^<>\n]{1,48}(?=<|$)/gi, '</$1>')
-    // "…</div> 첫 만남 - Small talk" bilingual crumb after a close tag
-    .replace(/<\/(div|p|span)>\s*[가-힣][^<>\n]{0,20}[·/–—-]\s*[A-Za-z][^<>\n]{0,24}(?=<|$)/gi, '</$1>')
-    // "의견 표현 · Agree / Disagree · Agree / Disagree"
-    .replace(/(\s*·\s*)([^·<\n]{2,40})\s*·\s*\2/gi, '$1$2')
-    .replace(/([^·<\n]{2,40})\s*·\s*\1(?=\s*(?:·|<|$))/gi, '$1');
+  return collapseHeadingDoubleBreaks(
+    peelLayoutBlocksOutOfHeadings(
+      salvageBareHeadingClose(
+        String(html ?? '')
+          .replace(/<\/(p|div|span|h[1-6]|li|ul|ol)\s*=\s*["'][^"']*["']\s*>/gi, '</$1>')
+          .replace(/<(p|div|span|h[1-6]|li|ul|ol)\s*=\s*["'][^"']*["']\s*>/gi, '<$1>')
+          .replace(/<\/(div|p|span)>\s*·\s*[^<>]{1,48}<\/\1>/gi, '</$1>')
+          // "…</div> · Small talk" with no extra close tag
+          .replace(/<\/(div|p|span)>\s*·\s*[^<>\n]{1,48}(?=<|$)/gi, '</$1>')
+          // "…</div> 첫 만남 - Small talk" bilingual crumb after a close tag
+          .replace(/<\/(div|p|span)>\s*[가-힣][^<>\n]{0,20}[·/–—-]\s*[A-Za-z][^<>\n]{0,24}(?=<|$)/gi, '</$1>')
+          // "의견 표현 · Agree / Disagree · Agree / Disagree"
+          .replace(/(\s*·\s*)([^·<\n]{2,40})\s*·\s*\2/gi, '$1$2')
+          .replace(/([^·<\n]{2,40})\s*·\s*\1(?=\s*(?:·|<|$))/gi, '$1'),
+      ),
+    ),
+  );
 }
 
 function polishCoverTitle(raw: string): string {
@@ -401,8 +591,10 @@ function dropLeftoverOutlineChips(html: string): string {
 }
 
 function magazineRowFeaturedCopy(block: string): string {
-  const value = visibleText(/<span class="v">([\s\S]*?)<\/span>/i.exec(block)?.[1] ?? '');
-  return value || visibleText(block).replace(/^\d+\s*/, '');
+  const value = visibleText(
+    /<(?:span|div) class="v">([\s\S]*?)<\/(?:span|div)>/i.exec(block)?.[1] ?? '',
+  );
+  return value || visibleText(block).replace(/^\d+\s*$|^(?:brief|prompt|요청|과제)\s*/i, '');
 }
 
 /** Re-persist of 142–143 decks can already have leftover inside `.slide-inner`. */
@@ -417,7 +609,13 @@ function scrubLeftoverMagazineCopy(html: string): string {
     const block = extractBalancedElement(out, start);
     if (!block) continue;
     const copy = magazineRowFeaturedCopy(block);
-    if (copy && !looksLikeLeftoverOutlineChip(copy)) continue;
+    if (
+      copy
+      && !looksLikeLeftoverOutlineChip(copy)
+      && !looksLikeTruncatedPromptChrome(copy)
+    ) {
+      continue;
+    }
     out = `${out.slice(0, start)}${out.slice(start + block.length)}`;
   }
   out = out.replace(
@@ -727,8 +925,18 @@ export function healOfficialMagazineLayoutDensity(
   if (!dest.trim()) return dest;
   return healOfficialMagazineBodyFrames(
     healSparseOfficialMagazineCover(
-      scrubLeftoverMagazineCopy(
-        stripEmptyOfficialTextChromeMotifs(repairCompactFirstFillMarkup(dest)),
+      dropEmptyDeckSlides(
+        collapseLonelyRepeatGrids(
+          dropEchoBriefCoverMeta(
+            polishTruncatedHeadingsInPlace(
+              relaxBiennaleInvertedSlidePaint(
+                scrubLeftoverMagazineCopy(
+                  stripEmptyOfficialTextChromeMotifs(repairCompactFirstFillMarkup(dest)),
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
       brief,
     ),

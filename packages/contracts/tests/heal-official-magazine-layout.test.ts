@@ -584,4 +584,55 @@ describe('heal official magazine layout density', () => {
     expect(exported).not.toMatch(/<\/p="">/);
     expect(exported).toMatch(/:not\(\[data-od-slide-flow\]\)/);
   });
+
+  it('heals biennale compact fill without IB magazine chrome or leftover prompt tails', () => {
+    const brief = '영어 회화 공부, 연습 팁에 대한 발표자료';
+    const biennale = `<!doctype html><html lang="ko"><body>
+<section class="slide cover slide-title" style="width:1920px;height:1080px">
+<div class="body" style="display:grid;grid-template-columns:1.3fr 1fr;gap:48px">
+<div><span class="ribbon">Study Notes</span>
+<h1 class="display">영어 회화 공부<br>연습 팁에 대한</h1>
+<p class="subhead">하루 45분, 네 가지 리츄얼로 발화 회로 를 단련합니다</p></div>
+<aside class="cover-meta"><div class="row"><div class="k">Brief</div><div class="v">영어 회화 공부, 연습 팁에 대한</div></div></aside>
+</div></section>
+<section class="slide s-chapter" style="width:1920px;height:1080px;background:#0a0a0a"></section>
+<section class="slide s-chapter" style="width:1920px;height:1080px;background:#0a0a0a">
+<h1>왜 회화는<br><br>공부가 아니라<br><br><em>근육</em> 인가
+<div style="margin-top:48px">성인 학습자는 문법·단어를 입력해도 회화에서 자동으로 끌어오지 못합니다.</div>
+</h1>
+</section>
+<section class="slide s-data">
+<h2>하루 45분</h2>
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:28px">
+<div style="min-height:420px">Shadowing</div>
+</div>
+</section>
+<section class="slide s-data">
+<h2>일주일 회화 루틴 · <em>레시피 카드</em>
+<div style="display:grid;grid-template-columns:repeat(2,1fr)"><div>Shado</div></div></h>
+</section>
+<style data-od-official-look-css>
+:root { --paper:#E9E5DB; --sun:#F1EE2E; --ink:#1B2566; }
+.display { font-family:'Instrument Serif',serif; }
+.s-chapter { background: var(--paper); }
+</style>
+</body></html>`;
+    const healed = healOfficialMagazineLayoutDensity(biennale, brief);
+    expect(healed).toContain('영어 회화 공부');
+    expect(healed).toContain('하루 45분, 네 가지 리츄얼로');
+    expect(healed).toContain('성인 학습자는 문법');
+    expect(healed).toContain('Shadowing');
+    expect(healed).toContain('레시피 카드');
+    expect(healed).not.toMatch(/연습 팁에 대한/);
+    expect(healed).not.toMatch(/<\/h>/);
+    expect(healed).not.toMatch(/<h1[^>]*>[\s\S]*성인 학습자[\s\S]*<\/h1>/);
+    expect(healed).not.toMatch(/<br><br>/);
+    expect(healed).not.toMatch(/class="cover-meta"/);
+    expect(healed).toMatch(/grid-template-columns:1fr/);
+    expect(healed).toMatch(/grid-template-columns:minmax\(0,1fr\)/);
+    expect(healed).not.toMatch(/repeat\(4,1fr\)/);
+    expect((healed.match(/<section\b[^>]*\bslide\b/gi) ?? []).length).toBe(4);
+    expect(healed).not.toMatch(/학습 노트|핵심 내용을 한 장에|English Speaking Tips|쉐도잉/i);
+    expect(healed).toMatch(/s-chapter[^>]*background:var\(--paper\)/);
+  });
 });
