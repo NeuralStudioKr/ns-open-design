@@ -191,12 +191,16 @@ export async function runExportJobInBackground(input: {
     completeExportJob(request.projectId, request.jobId, result);
   } catch (err: unknown) {
     const reason = String((err as Error)?.message || err);
+    const errorCode = typeof (err as { code?: unknown })?.code === 'string'
+      ? (err as { code: string }).code
+      : null;
     failExportJob(request.projectId, request.jobId, {
-      code: err instanceof ExportQueueFullError
-        ? err.code
-        : err instanceof DeckSlideCountLimitError
+      code: errorCode
+        ?? (err instanceof ExportQueueFullError
           ? err.code
-          : 'EXPORT_FAILED',
+          : err instanceof DeckSlideCountLimitError
+            ? err.code
+            : 'EXPORT_FAILED'),
       message: reason,
     });
     logger.warn('[export/job] failed', {

@@ -105,6 +105,9 @@ async function handleRender(req: http.IncomingMessage, res: http.ServerResponse)
       ok: false,
       error: {
         message: String((err as Error)?.message || err),
+        ...((err as { code?: unknown })?.code && typeof (err as { code?: unknown }).code === 'string'
+          ? { code: (err as { code: string }).code }
+          : {}),
         ...((err as Error)?.name ? { name: (err as Error).name } : {}),
         ...((err as Error)?.stack ? { stack: (err as Error).stack } : {}),
       },
