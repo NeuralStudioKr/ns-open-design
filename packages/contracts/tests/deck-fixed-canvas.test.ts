@@ -538,6 +538,63 @@ describe('pinDeckSlidesToFixedCanvas', () => {
     expect(forced).toContain('top:80px');
     expect(forced).toContain(DECK_FIXED_CANVAS_PIN_ATTR);
   });
+
+  it('expands magazine .slide-inner on compact/stacked 16:9, not catalog paper', () => {
+    const pinned = pinDeckSlidesToFixedCanvas(
+      '<section class="slide slide-title"><h1>Hi</h1></section>',
+    );
+    const pinCss = pinned.match(
+      /<style data-od-deck-fixed-canvas-pin>[\s\S]*?<\/style>/i,
+    )?.[0];
+    expect(pinCss).toBeTruthy();
+    expect(pinCss).toMatch(/html:has\(body\s*>\s*\.slide\)[\s\S]*\.slide-inner/);
+    expect(pinCss).toMatch(/width:\s*100%\s*!important/);
+    expect(pinCss).toMatch(/height:\s*100%\s*!important/);
+    expect(pinCss).toMatch(/max-width:\s*none\s*!important/);
+    expect(pinCss).toMatch(/margin:\s*0\s*!important/);
+    expect(pinCss).not.toMatch(/^\s*\.slide\s*>\s*\.slide-inner\s*\{/m);
+  });
+
+  it('does not copy host padding or vertical centering onto flow when a magazine inner already owns inset', () => {
+    const html = [
+      '<section class="slide slide-title" style="display:flex;flex-direction:column;justify-content:center;padding:80px 88px">',
+      '<div class="slide-inner"><h1 class="display">Title</h1><p class="subhead">Lead</p></div>',
+      '</section>',
+    ].join('');
+    const pinned = pinDeckSlidesToFixedCanvas(html);
+    expect(pinned).toMatch(
+      /<div data-od-slide-flow style="display:flex;flex-direction:column/,
+    );
+    expect(pinned).not.toMatch(/data-od-slide-flow[^>]*padding:80px/);
+    expect(pinned).not.toMatch(/data-od-slide-flow[^>]*justify-content:center/);
+    expect(pinned).toContain('class="slide-inner"');
+  });
+
+  it('still copies padding onto flow when the slide has no magazine inner', () => {
+    const html = [
+      '<section class="slide" style="width:1920px;height:1080px;padding:80px">',
+      '<h2>Title</h2><p>Body</p>',
+      '</section>',
+    ].join('');
+    const pinned = pinDeckSlidesToFixedCanvas(html);
+    expect(pinned).toMatch(/<div data-od-slide-flow style="[^"]*padding:80px/);
+  });
+
+  it('slims leftover flow padding when magazine inner already owns inset', () => {
+    const html = [
+      '<section class="slide slide-title">',
+      '<div data-od-slide-flow style="display:flex;flex-direction:column;justify-content:center;padding:80px 88px">',
+      '<div class="slide-inner"><h1 class="display">Title</h1></div>',
+      '</div>',
+      '</section>',
+    ].join('');
+    const pinned = pinDeckSlidesToFixedCanvas(html);
+    expect(pinned).toMatch(
+      /<div data-od-slide-flow style="display:flex;flex-direction:column"/,
+    );
+    expect(pinned).not.toMatch(/data-od-slide-flow[^>]*padding:80px/);
+    expect(pinned).not.toMatch(/data-od-slide-flow[^>]*justify-content:center/);
+  });
 });
 
 describe('deck slide class tokens', () => {

@@ -173,6 +173,7 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | export: standalone가 성긴 IB 표지를 그대로 내보냄 | ☑ 루프137 |
 | persist/preview: IB `.slide-inner` 1320×820 카드가 16:9를 안 채움 | ☑ 루프139 |
 | persist/preview: IB 본문이 매거진 프레임 없이 상단 정렬 | ☑ 루프139 |
+| persist/preview: flow가 magazine padding/`justify-content:center`를 이중 적용 | ☑ 루프140 |
 | persist/preview: look CSS가 1–2장 사이에 끼어 표지 밀집도가 깨짐 | ☑ follow-up |
 | persist/preview: MiniMax `<p="">` · 유출 `· Label` | ☑ follow-up |
 | preview: Motif `span.ribbon`이 relative stretch로 빨간 줄 | ☑ follow-up |
@@ -199,7 +200,15 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | think 태그 / 내부 마크업 필터 | ☑ 기존 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프139)
+## 이번 루프 (루프140)
+
+1. flow wrap — magazine `.slide-inner`가 있으면 padding/`justify-content`를 복사하지 않고, 이미 있는 flow에서도 걷어냄
+2. neutralize — flow `:has(.slide-inner)` padding 0. paper `box-shadow` 제거
+3. pin CSS — paper stretch는 compact/stacked에만. 카탈로그 IB는 Hartfield paper 유지
+
+**검증:** deck-fixed-canvas magazine inner/flow slim · look-css neutralize · heal pin+neutralize · raw IB `min(1320px)`
+
+## 직전 루프 (루프139)
 
 1. neutralize — stacked 16:9에서 `.slide-inner`를 1920×1080 페이지에 맞춤 (IB 1320×820 / 92vw 카드 해제)
 2. heal — 커버·본문 매거진 프레임이 페이지를 채움. 본문은 기존 제목/본문만 `h2.section`으로 배치

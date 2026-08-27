@@ -959,6 +959,12 @@ html, body { overflow: visible !important; height: auto !important; }
     // Do not force display:flex on slide hosts — Cobalt/Neo-grid need display:grid (§0.83).
     // Deck shells (#deck) DO force flex-column to kill Studio horizontal strips (§0.90).
     expect(LOOK_NEUTRALIZE_CSS).toMatch(/#deck\b[^\{]*\{[^}]*flex-direction:\s*column\s*!important/i);
+    expect(LOOK_NEUTRALIZE_CSS).toMatch(
+      /\[data-od-slide-flow\]:has\(\.slide-inner\)[\s\S]*padding:\s*0\s*!important/,
+    );
+    expect(LOOK_NEUTRALIZE_CSS).toMatch(
+      /\.slide\s*>\s*\[data-od-slide-flow\]\s*>\s*\.slide-inner[\s\S]*height:\s*100%\s*!important/,
+    );
     expect(LOOK_NEUTRALIZE_CSS).not.toMatch(
       /\.slide[^{]*\{[^}]*overflow:\s*visible\s*!important;\s*display:\s*flex/i,
     );

@@ -85,6 +85,25 @@ article[data-screen-label] {
   left: auto !important;
   margin-top: auto !important;
 }
+/* Compact/stacked 16:9 only — keep catalog presenter paper untouched. */
+html:has(body > .slide) .slide > [data-od-slide-flow]:has(.slide-inner),
+html:has(#od-stacked-deck-stage) .slide > [data-od-slide-flow]:has(.slide-inner) {
+  padding: 0 !important;
+  justify-content: unset !important;
+}
+html:has(body > .slide) .slide > .slide-inner,
+html:has(body > .slide) .slide > [data-od-slide-flow] > .slide-inner,
+html:has(#od-stacked-deck-stage) .slide > .slide-inner,
+html:has(#od-stacked-deck-stage) .slide > [data-od-slide-flow] > .slide-inner {
+  width: 100% !important;
+  max-width: none !important;
+  height: 100% !important;
+  max-height: none !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  box-shadow: none !important;
+}
 `.trim();
 
 function extractClassAttr(attrs: string): string {
@@ -1477,10 +1496,47 @@ const FLOW_COPIED_STYLE_PROPS = [  'display',
   'image-resolution',
 ] as const;
 
+/**
+ * Magazine `.slide-inner` already owns inset (IB paper padding). Copying the
+ * 1920×1080 host padding / `justify-content:center` onto `[data-od-slide-flow]`
+ * stacks 80+56px and shrinks the visible page.
+ */
+function isMagazinePaperInsetProp(prop: string): boolean {
+  return /(?:^|-)padding(?:-|$)/i.test(prop) || /justify-content$/i.test(prop);
+}
+
+function slimMagazineFlowStyleAttr(attrs: string): string {
+  if (!/\bstyle\s*=/i.test(attrs)) return attrs;
+  return attrs.replace(
+    /\bstyle\s*=\s*(['"])([\s\S]*?)\1/i,
+    (_m, q: string, style: string) => {
+      const slimmed = String(style)
+        .replace(/(?:^|;)\s*(?:-webkit-)?padding(?:-[a-z]+)?\s*:[^;]*/gi, ';')
+        .replace(/(?:^|;)\s*-webkit-justify-content\s*:[^;]*/gi, ';')
+        .replace(/(?:^|;)\s*justify-content\s*:[^;]*/gi, ';')
+        .replace(/;;+/g, ';')
+        .replace(/^;|;$/g, '')
+        .trim();
+      return slimmed ? `style=${q}${slimmed}${q}` : '';
+    },
+  );
+}
+
+/** Drop leftover flow padding when a magazine inner already owns the inset. */
+function slimExistingMagazineSlideFlow(inner: string): string {
+  if (!/\bslide-inner\b/i.test(inner)) return inner;
+  return inner.replace(
+    /<(div|span)\b([^>]*\bdata-od-slide-flow\b[^>]*)>/gi,
+    (_open, tag: string, attrs: string) => `<${tag}${slimMagazineFlowStyleAttr(attrs)}>`,
+  );
+}
+
 function wrapFlowOpenTag(hostAttrs: string, inner = ''): string {
   const style = extractStyleAttr(hostAttrs);
+  const magazinePaper = /\bslide-inner\b/i.test(inner);
   const parts: string[] = [];
   for (const prop of FLOW_COPIED_STYLE_PROPS) {
+    if (magazinePaper && isMagazinePaperInsetProp(prop)) continue;
     const escaped = prop.replace(/-/g, '\\-');
     const value = new RegExp(`(?:^|;)\\s*${escaped}\\s*:\\s*([^;]+)`, 'i')
       .exec(style)?.[1]?.trim();
@@ -1503,7 +1559,7 @@ function wrapFlowOpenTag(hostAttrs: string, inner = ''): string {
 }
 
 function wrapNonMotifInSpan(inner: string, hostAttrs: string): string {
-  if (shouldSkipSlideFlowWrap(inner)) return inner;
+  if (shouldSkipSlideFlowWrap(inner)) return slimExistingMagazineSlideFlow(inner);
   const segs = listTopLevelSegments(inner);
   if (segs.length === 0) return inner;
   let out = '';

@@ -49,6 +49,9 @@ describe('heal official magazine layout density', () => {
     expect(LOOK_NEUTRALIZE_CSS).toMatch(/:not\(\[data-od-slide-flow\]\)/);
     expect(LOOK_NEUTRALIZE_CSS).toContain('od-slide-inner-canvas-fill');
     expect(LOOK_NEUTRALIZE_CSS).toMatch(
+      /\[data-od-slide-flow\]:has\(\.slide-inner\)[\s\S]*padding:\s*0\s*!important/,
+    );
+    expect(LOOK_NEUTRALIZE_CSS).toMatch(
       /\.slide\s+\.slide-inner[\s\S]*width:\s*100%\s*!important/,
     );
   });
@@ -198,6 +201,22 @@ describe('heal official magazine layout density', () => {
     expect(pinned).toMatch(/<h1 class="display">/);
     expect(pinned).toContain('od-slide-inner-canvas-fill');
     expect(pinned).toMatch(/style="[^"]*width:100%;height:100%/);
+    expect(pinned).not.toMatch(/data-od-slide-flow[^>]*padding:80px/);
+    expect(pinned).not.toMatch(/data-od-slide-flow[^>]*justify-content:center/);
+    expect(pinned).toMatch(
+      /\[data-od-slide-flow\]:has\(\.slide-inner\)[\s\S]*padding:\s*0\s*!important/,
+    );
+  });
+
+  it('leaves catalog IB presenter paper at 1320×820 even if pin CSS is injected', () => {
+    const official = readFileSync(IB_EXAMPLE, 'utf8');
+    expect(official).toMatch(/width:\s*min\(1320px/);
+    const pinned = pinDeckSlidesToFixedCanvas(official);
+    expect(pinned).toMatch(/width:\s*min\(1320px/);
+    const pinCss = pinned.match(
+      /<style data-od-deck-fixed-canvas-pin>[\s\S]*?<\/style>/i,
+    )?.[0] ?? '';
+    expect(pinCss).not.toMatch(/^\s*\.slide\s*>\s*\.slide-inner\s*\{/m);
   });
 
   it('standalone export heals a sparse IB cover without inventing topic copy', () => {

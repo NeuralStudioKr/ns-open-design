@@ -170,7 +170,12 @@ section[data-screen-label], main[data-screen-label], article[data-screen-label] 
 }
 /* od-slide-inner-canvas-fill: IB presenter cards are 1320×820 / 92vw×86vh.
  * Stacked 16:9 PPT pages must fill the 1920×1080 frame, not float a smaller card. */
+.slide > [data-od-slide-flow]:has(.slide-inner) {
+  padding: 0 !important;
+  justify-content: unset !important;
+}
 .slide .slide-inner,
+.slide > .slide-inner,
 .slide > [data-od-slide-flow] > .slide-inner {
   width: 100% !important;
   max-width: none !important;
@@ -181,6 +186,7 @@ section[data-screen-label], main[data-screen-label], article[data-screen-label] 
   min-height: 0 !important;
   margin: 0 !important;
   box-sizing: border-box !important;
+  box-shadow: none !important;
 }
 `
 
