@@ -733,7 +733,7 @@ describe('buildDeckPrintCss', () => {
       path.join(__dirname, '..', 'src', 'export-render-service.ts'),
       'utf8',
     );
-    expect(source).toContain("DECK_LAYOUT_RENDER_CACHE_VERSION = 'deck-layout-preview-parity-v5'");
+    expect(source).toContain("DECK_LAYOUT_RENDER_CACHE_VERSION = 'deck-layout-preview-parity-v6'");
     expect(source).toContain("`${DECK_LAYOUT_RENDER_CACHE_VERSION}:pdf-v1`");
     expect(source).toContain("`${DECK_LAYOUT_RENDER_CACHE_VERSION}:html-v1`");
     expect(source).toContain("`${DECK_LAYOUT_RENDER_CACHE_VERSION}:zip-v1`");

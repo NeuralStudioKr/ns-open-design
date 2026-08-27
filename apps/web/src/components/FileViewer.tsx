@@ -15284,6 +15284,43 @@ function HtmlViewer({
     await waitForAnimationFrame();
   }, [effectiveDeck, previewStateKey]);
 
+  const waitForDeckSlideState = useCallback(async (
+    iframe: HTMLIFrameElement,
+    expectedActive: number | null,
+    timeoutMs = 1200,
+  ): Promise<SlideState | null> => {
+    const win = iframe.contentWindow;
+    if (!win || !effectiveDeck) return null;
+    return new Promise((resolve) => {
+      let done = false;
+      const finish = (state: SlideState | null) => {
+        if (done) return;
+        done = true;
+        window.removeEventListener('message', onMessage);
+        clearTimeout(timer);
+        resolve(state);
+      };
+      const onMessage = (ev: MessageEvent) => {
+        if (ev.source !== win) return;
+        const data = ev?.data as
+          | { type?: string; active?: number; count?: number }
+          | null;
+        if (!data || data.type !== 'od:slide-state') return;
+        if (typeof data.active !== 'number' || typeof data.count !== 'number') return;
+        const next = {
+          active: Math.max(0, Math.floor(data.active)),
+          count: Math.max(0, Math.floor(data.count)),
+        };
+        setSlideStateCached(previewStateKey, next);
+        setSlideState(next);
+        if (expectedActive == null || next.active === expectedActive) finish(next);
+      };
+      const timer = window.setTimeout(() => finish(null), timeoutMs);
+      window.addEventListener('message', onMessage);
+      win.postMessage({ type: 'od:slide-state-request' }, '*');
+    });
+  }, [effectiveDeck, previewStateKey]);
+
   const captureExportImageSnapshot = useCallback(async () => {
     // The host compositor grabs on-screen pixels, so any transient hover chrome
     // over the preview leaks into the capture. The screenshot control's own
@@ -15391,12 +15428,13 @@ function HtmlViewer({
     const win = iframe?.contentWindow;
     if (!iframe || !win) return false;
     const cached = htmlPreviewSlideState.get(previewStateKey);
-    const count = slideState?.count ?? cached?.count ?? 0;
+    const authoritative = await waitForDeckSlideState(iframe, null, 1500);
+    const count = authoritative?.count ?? slideState?.count ?? cached?.count ?? 0;
     if (!Number.isFinite(count) || count <= 0) return false;
     if (count > 80) return false;
     const boundedCount = Math.floor(count);
     const originalActive = Math.max(0, Math.min(
-      slideState?.active ?? cached?.active ?? 0,
+      authoritative?.active ?? slideState?.active ?? cached?.active ?? 0,
       boundedCount - 1,
     ));
     const snapshots: PreviewSnapshot[] = [];
@@ -15408,6 +15446,10 @@ function HtmlViewer({
       await waitForAnimationFrame();
       await waitForAnimationFrame();
       await ensureDeckSlideSyncedForSnapshot(iframe);
+      const synced = await waitForDeckSlideState(iframe, index, 1500);
+      if (!synced || synced.active !== index || synced.count !== boundedCount) {
+        throw new Error(`preview slide sync failed for slide ${index + 1}/${boundedCount}`);
+      }
       await waitForAnimationFrame();
     };
     try {
@@ -15431,6 +15473,7 @@ function HtmlViewer({
     resolveActiveDeckPreviewIframe,
     slideState?.active,
     slideState?.count,
+    waitForDeckSlideState,
   ]);
 
   // TEMP: toolbar screenshot UI is commented out — keep handler for re-enable.

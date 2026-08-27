@@ -61,6 +61,12 @@
 - 적용 이유: daemon이 preview HTML을 다시 로드해도 FE `buildSrcdoc()`의 host viewport/fit/stacked deck bridge가 적용된 최종 픽셀과 달라질 수 있다. 현재 보이는 iframe을 직접 캡처하면 preview panel과 다운로드 PDF 사이에 별도 렌더러가 끼지 않는다.
 - 부하 관리: 일반 PDF 다운로드는 서버 Chromium queue/S3 offload를 사용하지 않으므로 서버 부하를 줄인다. 대형 deck·캡처 실패·강제 fresh 요청만 기존 서버 경로로 처리한다.
 
+### 0.8 2026-08-27 preview-pixel slide sync 가드
+
+- ✅ PDF preview-pixel 경로는 캡처 전 iframe bridge의 authoritative `od:slide-state`를 요청해 실제 slide count를 사용한다.
+- ✅ 각 슬라이드 캡처 직전 `go(index)` 후 bridge가 같은 active index/count를 보고했는지 확인한다. 동기화 실패 시 preview-pixel PDF를 중단하고 daemon rendered export로 fallback해 중복/누락 페이지를 막는다.
+- ✅ deck export renderer cache namespace를 `deck-layout-preview-parity-v6`로 올려 이전 broken PDF/HTML/ZIP/image/PPTX cache hit를 차단한다.
+
 ---
 
 ## 1. 왜 Export만 문제인가
