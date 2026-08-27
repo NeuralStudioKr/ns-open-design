@@ -259,7 +259,25 @@ section[data-screen-label], main[data-screen-label], article[data-screen-label] 
   line-height: 1.35 !important;
   max-width: 28ch !important;
 }
+.slide .body > .lede {
+  flex: 0 0 auto !important;
+  font-size: 28px !important;
+  line-height: 1.4 !important;
+  max-width: 42ch !important;
+}
+.slide .od-magazine-title-fill {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+}
+.slide .od-magazine-title-fill h2.section {
+  font-size: 72px !important;
+  line-height: 1.08 !important;
+  max-width: 16ch !important;
+}
 /* od-magazine-lede-fill: title+lede only occupies the remaining 16:9 well. */
+/* od-magazine-title-fill: heading-only bodies occupy the remaining 16:9 well. */
 /* od-magazine-body-fill: list/card inners occupy the stretched track. */
 /* od-magazine-cover-solo: title-only covers must not keep the empty 1fr TOC column. */
 .slide.cover .body:not(:has(.cover-meta)),
@@ -430,6 +448,7 @@ function officialLookCssLooksCurrent(css: string): boolean {
     && css.includes('od-magazine-body-fill')
     && css.includes('od-magazine-lede-fill')
     && css.includes('od-magazine-cover-solo')
+    && css.includes('od-magazine-title-fill')
   );
 }
 
@@ -476,6 +495,7 @@ export function hasOfficialLookStackedCanvasNeutralizeProof(html: string): boole
     && dest.includes('od-magazine-body-fill')
     && dest.includes('od-magazine-lede-fill')
     && dest.includes('od-magazine-cover-solo')
+    && dest.includes('od-magazine-title-fill')
   );
 }
 

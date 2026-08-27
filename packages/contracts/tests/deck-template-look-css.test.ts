@@ -998,6 +998,8 @@ ${staleFill}
     expect(LOOK_NEUTRALIZE_CSS).toContain('od-magazine-body-spread');
     expect(LOOK_NEUTRALIZE_CSS).toContain('od-magazine-body-fill');
     expect(LOOK_NEUTRALIZE_CSS).toContain('od-magazine-lede-fill');
+    expect(LOOK_NEUTRALIZE_CSS).toContain('od-magazine-cover-solo');
+    expect(LOOK_NEUTRALIZE_CSS).toContain('od-magazine-title-fill');
     expect(LOOK_NEUTRALIZE_CSS).toMatch(
       /\.slide\s+\.od-magazine-fill-track\s+>\s+:is\(ul, ol\)[\s\S]*font-size:\s*28px\s*!important/,
     );

@@ -197,15 +197,25 @@ function collectBodySlideTitles(html: string, skipFirst = true): string[] {
   return out;
 }
 
+function firstSlideProse(body: string): string {
+  const paragraph = visibleText(/<p\b[^>]*>([\s\S]*?)<\/p>/i.exec(body)?.[1] ?? '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (paragraph.length >= 12) return paragraph;
+  const block = /<div\b[^>]*>([\s\S]*?)<\/div>/i.exec(body);
+  if (!block) return '';
+  const inner = block[1] ?? '';
+  if (/<(?:ul|ol|table|svg|div|article|section|aside|h[1-6])\b/i.test(inner)) return '';
+  return visibleText(inner).replace(/\s+/g, ' ').trim();
+}
+
 /** First later-slide paragraphs — on-brief subheads, not invented TOC labels. */
 function collectBodySlideLedes(html: string, skipFirst = true): string[] {
   const slides = listMagazineSlideSpans(html);
   const out: string[] = [];
   for (let i = skipFirst ? 1 : 0; i < slides.length; i += 1) {
     const body = html.slice(slides[i]!.openEnd, slides[i]!.bodyEnd);
-    const prose = visibleText(/<p\b[^>]*>([\s\S]*?)<\/p>/i.exec(body)?.[1] ?? '')
-      .replace(/\s+/g, ' ')
-      .trim();
+    const prose = firstSlideProse(body);
     if (
       prose.length >= 12
       && prose.length <= 160
@@ -377,14 +387,41 @@ function dropLeftoverOutlineChips(html: string): string {
     .trim();
 }
 
-function takeFirstParagraph(rest: string): { lede: string; remaining: string } {
-  const match = /<p\b[^>]*>([\s\S]*?)<\/p>/i.exec(rest);
-  if (!match || match.index == null) return { lede: '', remaining: rest };
-  return {
-    lede: `<div class="lede">${match[1]}</div>`,
-    remaining: `${rest.slice(0, match.index)}${rest.slice(match.index + match[0].length)}`.trim(),
-  };
+function takeFirstLede(rest: string): { lede: string; remaining: string } {
+  const source = String(rest ?? '');
+  const paragraph = /<p\b[^>]*>([\s\S]*?)<\/p>/i.exec(source);
+  if (paragraph && paragraph.index != null) {
+    const text = visibleText(paragraph[1] ?? '');
+    if (text.length >= 12 && !looksLikeLeftoverOutlineChip(text)) {
+      return {
+        lede: `<div class="lede">${paragraph[1]}</div>`,
+        remaining: `${source.slice(0, paragraph.index)}${source.slice(paragraph.index + paragraph[0].length)}`.trim(),
+      };
+    }
+  }
+  // MiniMax often parks the lede in a bare div instead of <p>.
+  const block = /<div\b([^>]*)>([\s\S]*?)<\/div>/i.exec(source);
+  if (block && block.index != null) {
+    const attrs = block[1] ?? '';
+    const inner = block[2] ?? '';
+    if (
+      !/<(?:ul|ol|table|svg|div|article|section|aside|h[1-6])\b/i.test(inner)
+      && !/grid-template|od-magazine-/i.test(attrs)
+    ) {
+      const text = visibleText(inner);
+      if (text.length >= 12 && text.length <= 220 && !looksLikeLeftoverOutlineChip(text)) {
+        return {
+          lede: `<div class="lede">${inner}</div>`,
+          remaining: `${source.slice(0, block.index)}${source.slice(block.index + block[0].length)}`.trim(),
+        };
+      }
+    }
+  }
+  return { lede: '', remaining: source };
 }
+
+const MAGAZINE_BODY_OPEN =
+  '<div class="body" style="display:flex;flex-direction:column;justify-content:flex-start;gap:28px;min-height:0;height:100%;box-sizing:border-box">';
 
 function coverMetaRowsFromBlocks(html: string): string {
   const texts = [...String(html ?? '').matchAll(
@@ -421,18 +458,19 @@ function wrapFillTrackChildren(rest: string): string {
 
 function magazineFillBodyMarkup(heading: string, rest: string): string {
   rest = dropLeftoverOutlineChips(rest);
-  if (looksLikeMagazineFillTrack(rest)) {
+  const { lede, remaining } = takeFirstLede(rest);
+  if (looksLikeMagazineFillTrack(remaining)) {
     return `
-    <div class="body" style="display:flex;flex-direction:column;justify-content:flex-start;gap:28px;min-height:0;height:100%;box-sizing:border-box">
+    ${MAGAZINE_BODY_OPEN}
       ${heading}
-      ${wrapFillTrackChildren(rest)}
+      ${lede}
+      ${wrapFillTrackChildren(remaining)}
     </div>`;
   }
-  const { lede, remaining } = takeFirstParagraph(rest);
   const aside = coverMetaRowsFromBlocks(remaining);
   if (lede && aside) {
     return `
-    <div class="body" style="display:flex;flex-direction:column;justify-content:flex-start;gap:28px;min-height:0;height:100%;box-sizing:border-box">
+    ${MAGAZINE_BODY_OPEN}
       ${heading}
       <div class="od-magazine-sparse-spread" style="display:grid;grid-template-columns:1.3fr 1fr;gap:48px;align-items:start;flex:1 1 auto;min-height:0">
         ${lede}
@@ -444,17 +482,25 @@ function magazineFillBodyMarkup(heading: string, rest: string): string {
   }
   if (lede) {
     return `
-    <div class="body" style="display:flex;flex-direction:column;justify-content:flex-start;gap:28px;min-height:0;height:100%;box-sizing:border-box">
+    ${MAGAZINE_BODY_OPEN}
       ${heading}
       <div class="od-magazine-lede-fill" style="flex:1 1 auto;min-height:0;display:flex;align-items:center">
         ${lede}
       </div>
     </div>`;
   }
+  if (!visibleText(remaining)) {
+    return `
+    ${MAGAZINE_BODY_OPEN}
+      <div class="od-magazine-title-fill" style="flex:1 1 auto;min-height:0;display:flex;align-items:center">
+        ${heading}
+      </div>
+    </div>`;
+  }
   return `
-    <div class="body" style="display:flex;flex-direction:column;justify-content:flex-start;gap:28px;min-height:0;height:100%;box-sizing:border-box">
+    ${MAGAZINE_BODY_OPEN}
       ${heading}
-      ${rest}
+      ${remaining}
     </div>`;
 }
 
@@ -486,7 +532,7 @@ function looksLikeCatalogIbPaperCopy(html: string): boolean {
 
 function isSparseFramedMagazineBody(body: string): boolean {
   if (!/\bslide-inner\b/i.test(body)) return false;
-  if (/\bod-magazine-(?:fill-track|lede-fill|sparse-spread)\b/i.test(body)) return false;
+  if (/\bod-magazine-(?:fill-track|lede-fill|sparse-spread|title-fill)\b/i.test(body)) return false;
   if (looksLikeCatalogIbPaperCopy(body)) return false;
   if (/<h1\b[^>]*\bdisplay\b/i.test(body) && visibleText(body).length >= 80) return false;
   if (/<(?:table|svg)\b/i.test(body) && visibleText(body).length >= 200) return false;

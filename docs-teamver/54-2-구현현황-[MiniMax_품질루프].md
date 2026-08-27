@@ -193,6 +193,7 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | persist/preview: leftover `·` 칩·발명 TOC가 brief 카피처럼 보임 | ☑ 루프144 |
 | preview: 레터박스 `#17181d`만 보이고 1/N만 동작 | ☑ 루프146 |
 | persist/preview: 표지 오른쪽 TOC 칸 공백 · 성긴 slide-inner 상단 고정 | ☑ 루프147 |
+| persist/preview: 제목-only 본문 하단 공백 · lede가 목록 fill-track에 흡수 | ☑ 루프148 |
 | persist/preview: look CSS가 1–2장 사이에 끼어 표지 밀집도가 깨짐 | ☑ follow-up |
 | persist/preview: MiniMax `<p="">` · 유출 `· Label` | ☑ follow-up |
 | preview: Motif `span.ribbon`이 relative stretch로 빨간 줄 | ☑ follow-up |
@@ -219,7 +220,15 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | think 태그 / 내부 마크업 필터 | ☑ 기존 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프147)
+## 이번 루프 (루프148)
+
+1. 본문 — leftover 이후 `h2`만 남으면 `od-magazine-title-fill`로 16:9 well을 채움
+2. 본문 — 첫 문단/`div` 산문은 lede, 남은 리스트·카드만 fill-track. lede-fill은 제목+lede만
+3. Hartfield 본문 · Daisy/Studio · 발명 카피 금지 유지
+
+**검증:** heal title-fill · lede 위 fill-track · dense IB skip · look-css `od-magazine-title-fill`
+
+## 직전 루프 (루프147)
 
 1. 표지 — `cover-meta`가 없으면 1열(`od-magazine-cover-solo`). 후속 장 제목 없을 때만 후속 lede를 subhead
 2. 본문 — 성긴 MiniMax `slide-inner`를 fill-track/lede-fill로 재프레임. 2줄 리스트도 채움

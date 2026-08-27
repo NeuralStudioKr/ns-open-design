@@ -54,6 +54,10 @@ describe('heal official magazine layout density', () => {
     expect(LOOK_NEUTRALIZE_CSS).toContain('od-magazine-body-fill');
     expect(LOOK_NEUTRALIZE_CSS).toContain('od-magazine-lede-fill');
     expect(LOOK_NEUTRALIZE_CSS).toContain('od-magazine-cover-solo');
+    expect(LOOK_NEUTRALIZE_CSS).toContain('od-magazine-title-fill');
+    expect(LOOK_NEUTRALIZE_CSS).toMatch(
+      /\.slide\s+\.od-magazine-title-fill\s+h2\.section[\s\S]*font-size:\s*72px\s*!important/,
+    );
     expect(LOOK_NEUTRALIZE_CSS).toMatch(
       /\.slide\.cover\s+\.body:not\(:has\(\.cover-meta\)\)/,
     );
@@ -348,10 +352,59 @@ describe('heal official magazine layout density', () => {
       BRIEF,
     );
     expect(healed).toMatch(/class="od-magazine-fill-track"/);
+    expect(healed).toMatch(/class="lede"/);
     expect(healed).toMatch(/듣기 연습/);
     expect(healed).toMatch(/따라 말하기/);
     expect(healed).toMatch(/class="slide-inner"[^>]*width:100%;min-height:100%/);
     expect(healed).not.toMatch(/class="slide-inner"[^>]*min\(1320px/);
+    expect(healed).not.toMatch(
+      /class="od-magazine-fill-track"[^>]*>[\s\S]*class="lede"/,
+    );
+  });
+
+  it('grows a heading-only body into the remaining 16:9 well', () => {
+    const official = readFileSync(IB_EXAMPLE, 'utf8');
+    const assets = extractOfficialDeckLookAssets(official);
+    const headingOnly = `<!doctype html><html lang="ko"><body>
+<section class="slide slide-title"><h1>영어 회화</h1></section>
+<section class="slide"><h2>문법으로 외운 회화는 왜 입에서 안 나올까</h2>
+<div>첫 만남 · Small talk</div> · Small talk</div>
+</section>
+</body></html>`;
+    const healed = healOfficialMagazineLayoutDensity(
+      mergeOfficialDeckLookCss(headingOnly, assets),
+      BRIEF,
+    );
+    expect(healed).toMatch(/class="od-magazine-title-fill"/);
+    expect(healed).toMatch(/<h2 class="section">문법으로 외운 회화는 왜 입에서 안 나올까<\/h2>/);
+    expect(healed).not.toMatch(/첫 만남 · Small talk/);
+    expect(healed).not.toMatch(/class="od-magazine-lede-fill"/);
+    expect(healed).not.toMatch(/class="od-magazine-fill-track"/);
+    expect(healed).not.toMatch(/개요|핵심 포인트|쉐도잉|English Speaking Tips/i);
+  });
+
+  it('keeps the lede above a list instead of swallowing it into the fill track', () => {
+    const official = readFileSync(IB_EXAMPLE, 'utf8');
+    const assets = extractOfficialDeckLookAssets(official);
+    const mixed = `<!doctype html><html lang="ko"><body>
+<section class="slide slide-title"><h1>영어 회화</h1></section>
+<section class="slide"><h2>연습 순서</h2>
+<div>짧게 말해 본 뒤 바로 고쳐 씁니다.</div>
+<ul><li>듣기 연습</li><li>따라 말하기</li></ul>
+</section>
+</body></html>`;
+    const healed = healOfficialMagazineLayoutDensity(
+      mergeOfficialDeckLookCss(mixed, assets),
+      BRIEF,
+    );
+    expect(healed).toMatch(/class="lede">짧게 말해 본 뒤 바로 고쳐 씁니다\./);
+    expect(healed).toMatch(/class="od-magazine-fill-track"/);
+    expect(healed).toMatch(/듣기 연습/);
+    expect(healed).not.toMatch(
+      /class="od-magazine-fill-track"[^>]*>[\s\S]*class="lede"/,
+    );
+    expect(healed).not.toMatch(/class="od-magazine-lede-fill"/);
+    expect(healed).not.toMatch(/English Speaking Tips|쉐도잉|개요|핵심 포인트/i);
   });
 
   it('does not reframe a dense official IB body slide-inner', () => {
@@ -365,6 +418,7 @@ describe('heal official magazine layout density', () => {
     expect(healed).not.toMatch(/od-magazine-lede-fill/);
     expect(healed).not.toMatch(/od-magazine-fill-track/);
     expect(healed).not.toMatch(/od-magazine-cover-solo/);
+    expect(healed).not.toMatch(/od-magazine-title-fill/);
   });
 
   it('does not rebuild a dense official IB cover', () => {
@@ -395,6 +449,7 @@ describe('heal official magazine layout density', () => {
     expect(pinned).toContain('od-magazine-body-fill');
     expect(pinned).toContain('od-magazine-lede-fill');
     expect(pinned).toContain('od-magazine-cover-solo');
+    expect(pinned).toContain('od-magazine-title-fill');
     expect(pinned).toMatch(/style="[^"]*width:100%;min-height:100%/);
     expect(pinned).not.toMatch(/data-od-slide-flow[^>]*padding:80px/);
     expect(pinned).not.toMatch(/data-od-slide-flow[^>]*justify-content:center/);
