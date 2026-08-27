@@ -15,6 +15,7 @@ import {
 import { collapseAdjacentDuplicateDeckSiblings } from './collapse-adjacent-duplicate-siblings.js';
 import { pinDeckSlidesToFixedCanvas } from './deck-fixed-canvas.js';
 import { healOfficialMagazineLayoutDensity } from './heal-official-magazine-layout.js';
+import { healAiGeneratedDeckMarkup } from './heal-ai-generated-deck.js';
 import {
   salvageMalformedMiniMaxSlideMarkup,
   stripEmptyOfficialMotifInstances,
@@ -114,7 +115,12 @@ function deckExportWrapperSelectorList(): string[] {
 export function healDeckHtmlForStandaloneExport(html: string): string {
   const density = healOfficialMagazineLayoutDensity(
     stripEmptyOfficialMotifInstances(
-      salvageMalformedMiniMaxSlideMarkup(String(html ?? '')),
+      // 0826-N01 F7: AI-generated deck salvage (empty slide drop, h1/lede
+      // unnest, over-allocated grid shrink, tag-soup / brief-leak scrub) runs
+      // before magazine density so density can see the corrected structure.
+      healAiGeneratedDeckMarkup(
+        salvageMalformedMiniMaxSlideMarkup(String(html ?? '')),
+      ),
     ),
   );
   const repaired = repairArtifactStyleSheets(

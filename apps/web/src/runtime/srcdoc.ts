@@ -41,6 +41,7 @@ import {
   COLLAPSE_PREVIEW_MAX_STEPS,
   pinDeckSlidesToFixedCanvas,
   healOfficialMagazineLayoutDensity,
+  healAiGeneratedDeckMarkup,
   scrubLeftoverCatalogExampleHtml,
   stripHostProtocolLeakFromDeckHtml,
   stripLeftoverMotifDemoCopy,
@@ -215,6 +216,13 @@ function buildSrcdocUnsafe(
     }
     try {
       html = healOfficialMagazineLayoutDensity(html, options.userBrief);
+    } catch (_) {
+      /* keep authored HTML */
+    }
+    // 0826-N01 F7: AI-generated deck salvage — empty slides, h1/lede
+    // unnest, over-allocated grid shrink, tag-soup / brief-leak scrub.
+    try {
+      html = healAiGeneratedDeckMarkup(html, options.userBrief);
     } catch (_) {
       /* keep authored HTML */
     }

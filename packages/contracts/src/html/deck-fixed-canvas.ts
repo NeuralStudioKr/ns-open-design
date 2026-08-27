@@ -1676,13 +1676,17 @@ function calcAdditiveSameUnitLooksCardLike(value: string): boolean {
       continue;
     }
     // Mixed rem|em + px at 16px root ≈ card pad (루프465): 0.5rem+4px → 12px.
+    // Either side ≥ threshold, OR the physical sum crosses a card floor.
+    // Round 437 keeps `.5rem + 4px` (12px physical) as thin — use ≥ 13 px
+    // physical so borderline stays out but 1vh+4px / 2%+8px etc. bind.
     const units = new Set(parts.map((p) => p.unit));
     if (units.size === 2 && units.has('px') && (units.has('rem') || units.has('em'))) {
       const remish = parts
         .filter((p) => p.unit === 'rem' || p.unit === 'em')
         .reduce((acc, p) => acc + p.sign * p.n, 0);
       const px = parts.filter((p) => p.unit === 'px').reduce((acc, p) => acc + p.sign * p.n, 0);
-      if (remish * 16 + px >= 12) return true;
+      if (remish >= 0.75 || px >= 12) return true;
+      if (remish * 16 + px >= 13) return true;
     }
     // Mixed rem+em treated 1:1 font-relative (루프490): 0.5rem+0.25em → 0.75.
     if (units.size === 2 && units.has('rem') && units.has('em')) {
@@ -1691,7 +1695,9 @@ function calcAdditiveSameUnitLooksCardLike(value: string): boolean {
         .reduce((acc, p) => acc + p.sign * p.n, 0);
       if (remish >= 0.75) return true;
     }
-    // Mixed viewport/% + px on the 1920×1080 canvas (루프515).
+    // Mixed viewport/% + px on the 1920×1080 canvas (루프515). Either side
+    // above the card floor OR the converted physical sum ≥ 13 px (matches
+    // round 437 "thin" boundary while binding 1vh+8px = 18.8 px).
     // 1vh/1% of 1080 ≈ 10.8px; 1vw of 1920 ≈ 19.2px.
     if (units.size === 2 && units.has('px')) {
       const px = parts.filter((p) => p.unit === 'px').reduce((acc, p) => acc + p.sign * p.n, 0);
@@ -1702,15 +1708,18 @@ function calcAdditiveSameUnitLooksCardLike(value: string): boolean {
       const viewW = new Set(['vw', 'dvw', 'svw', 'lvw']);
       const view = parts.filter((p) => viewH.has(p.unit) || viewW.has(p.unit));
       if (view.length > 0) {
+        const viewSum = view.reduce((acc, p) => acc + p.sign * p.n, 0);
+        if (viewSum >= 2 || px >= 12) return true;
         const viewPx = view.reduce(
           (acc, p) => acc + p.sign * p.n * (viewW.has(p.unit) ? 19.2 : 10.8),
           0,
         );
-        if (viewPx + px >= 12) return true;
+        if (viewPx + px >= 13) return true;
       }
       if (units.has('%')) {
         const pct = parts.filter((p) => p.unit === '%').reduce((acc, p) => acc + p.sign * p.n, 0);
-        if (pct * 10.8 + px >= 12) return true;
+        if (pct >= 4 || px >= 12) return true;
+        if (pct * 10.8 + px >= 13) return true;
       }
     }
   }
@@ -1820,6 +1829,25 @@ const KIT_CARD_OPEN_RE =
 const SELECTIVE_KIT_CARD_TAGS_RE =
   /^(?:p|span|h[1-6]|figcaption|caption|details|summary|label|output|fieldset|legend|dialog|menu|mark|time|cite|q|small|abbr|kbd|samp|dfn|table|thead|tbody|tfoot|tr|td|th|data|meter|progress|ruby|rtc|rt|rp|bdi|bdo|del|ins|sub|sup|var|code|pre|optgroup|option|datalist|math|mrow|semantics|blockquote|address|hgroup|search|s|u|ul|ol|li|dl|dt|dd|figure|article|aside|header|footer|nav|main|section|form|wbr|colgroup|col)$/i;
 
+// List-item tags are semantically narrow "cards": ≥4px physical padding with
+// a colored border is enough (루프546 F7). `<li>`/`<dt>`/`<dd>` with padding
+// 0/1/2px still stays unbound so thin outline debris (round 321/345) is safe.
+const LIST_ITEM_CARD_TAGS_RE = /^(?:li|dt|dd)$/i;
+
+function looksLikeListItemCardPadding(style: string): boolean {
+  const source = String(style ?? '');
+  const padRe =
+    /(?:^|;)\s*padding(?:-(?:top|right|bottom|left|block|inline)(?:-(?:start|end))?)?\s*:\s*([^;]+)/gi;
+  let match: RegExpExecArray | null;
+  while ((match = padRe.exec(source)) !== null) {
+    const value = match[1] ?? '';
+    if (/(?:^|[\s/(,])(?:[4-9]|[1-9]\d+)(?:\.\d+)?px\b/i.test(value)) return true;
+    if (/(?:^|[\s/(,])(?:0?\.(?:[2-9]\d*)|[1-9]\d*(?:\.\d+)?)(?:rem|em)\b/i.test(value)) return true;
+    if (/(?:^|[\s/(,])(?:[1-9]\d*(?:\.\d+)?)%\b/i.test(value)) return true;
+  }
+  return false;
+}
+
 function bindFakeOutlineCardsInSpan(html: string, cardClass: string): string {
   return html.replace(KIT_CARD_OPEN_RE, (open, tag: string, attrs: string) => {
     if (isSlideHost(attrs) || isMotifOrDecoAttrs(attrs) || isContentFooterHost(attrs)) {
@@ -1827,7 +1855,9 @@ function bindFakeOutlineCardsInSpan(html: string, cardClass: string): string {
     }
     const style = extractStyleAttr(attrs);
     if (!looksLikeFakeOutlineStyle(style)) return open;
-    if (SELECTIVE_KIT_CARD_TAGS_RE.test(tag) && !looksLikeCardLikePadding(style)) {
+    if (LIST_ITEM_CARD_TAGS_RE.test(tag)) {
+      if (!looksLikeListItemCardPadding(style)) return open;
+    } else if (SELECTIVE_KIT_CARD_TAGS_RE.test(tag) && !looksLikeCardLikePadding(style)) {
       return open;
     }
     let nextAttrs = KIT_CARD_TOKEN_RE.test(extractClassAttr(attrs))

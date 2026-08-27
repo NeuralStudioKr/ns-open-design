@@ -18,7 +18,8 @@ describe("chat leak / persist probe round 515 (set84–88 closure)", () => {
     ].join("");
     const bound = bindFakeOutlineCardsToOfficialKit(kitHtml);
     expect(bound).toMatch(/0\.5rem \+ 0\.25em[^>]*\binfo-card\b|info-card[^>]*0\.5rem \+ 0\.25em/i);
-    expect(bound).toMatch(/0\.5rem \+ 4px[^>]*\binfo-card\b|info-card[^>]*0\.5rem \+ 4px/i);
+    // 루프546 F7: mixed rem+px == 12px physical is thin (round437 SSOT).
+    expect(bound).not.toMatch(/0\.5rem \+ 4px[^>]*\binfo-card\b/i);
     expect(bound).not.toMatch(/0\.4rem \+ 0\.2em[^>]*\binfo-card\b/i);
     expect(bound).not.toMatch(/padding:2px[^>]*\binfo-card\b/i);
     const flow = pinDeckSlidesToFixedCanvas(

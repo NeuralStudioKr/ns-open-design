@@ -13,7 +13,9 @@ describe("chat leak / persist probe round 495 (set84 combo)", () => {
     ].join("");
     const bound = bindFakeOutlineCardsToOfficialKit(html);
     expect(bound).toMatch(/0\.5rem \+ 0\.25em[^>]*\binfo-card\b|info-card[^>]*0\.5rem \+ 0\.25em/i);
-    expect(bound).toMatch(/0\.5rem \+ 4px[^>]*\binfo-card\b|info-card[^>]*0\.5rem \+ 4px/i);
+    // 루프546 F7: mixed rem+px == 12px physical is thin (round437 SSOT).
+    // Same-unit rem+em (0.5rem + 0.25em = 0.75rem-equiv) still binds above.
+    expect(bound).not.toMatch(/0\.5rem \+ 4px[^>]*\binfo-card\b/i);
     expect(bound).not.toMatch(/0\.4rem \+ 0\.2em[^>]*\binfo-card\b/i);
   });
 });

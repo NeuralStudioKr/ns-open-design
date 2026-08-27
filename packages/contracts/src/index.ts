@@ -63,6 +63,7 @@ export * from './html/isArtifactHtmlStableForPreview.js';
 export * from './html/deckPdfExport.js';
 export * from './html/deck-template-look-css.js';
 export * from './html/heal-official-magazine-layout.js';
+export * from './html/heal-ai-generated-deck.js';
 export * from './html/deck-fixed-canvas.js';
 export * from './html/collapse-adjacent-duplicate-siblings.js';
 export * from './html/deck-slide-class.js';

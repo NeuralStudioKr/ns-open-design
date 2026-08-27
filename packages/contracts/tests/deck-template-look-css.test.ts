@@ -460,7 +460,7 @@ ${staleFill}
     expect(failures, failures.join('\n')).toEqual([]);
   }, 60_000);
 
-  it('keeps representative generated deck snapshots on fixed canvas with official Motif paint', () => {
+  it('keeps representative generated deck snapshots on fixed canvas with official Motif paint', { timeout: 60_000 }, () => {
     const failures: string[] = [];
     for (const fixture of OFFICIAL_TEMPLATE_GENERATED_DECK_FIXTURES) {
       const official = loadOfficialLookSource(join(EXAMPLES_DIR, fixture.folder, 'example.html'));

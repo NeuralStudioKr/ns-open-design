@@ -10,7 +10,8 @@ describe("chat leak / persist probe round 475 (set80 combo)", () => {
       '<span style="padding:calc(0.5rem + 4px);border:1px solid navy">ok</span>',
       "</section>",
     ].join("");
-    expect(bindFakeOutlineCardsToOfficialKit(html)).toMatch(/0\.5rem \+ 4px[^>]*\binfo-card\b|info-card[^>]*0\.5rem \+ 4px/i);
+    // 루프546 F7: mixed rem+px physical sum 12px is thin (round437 SSOT).
+    expect(bindFakeOutlineCardsToOfficialKit(html)).not.toMatch(/0\.5rem \+ 4px[^>]*\binfo-card\b/i);
     expect(looksLikeDeckCodeDebrisLine("FOOXYZ 1 ▶ XYZ")).toBe(true);
     expect(looksLikeDeckCodeDebrisLine("Step 1: Setup")).toBe(false);
   });

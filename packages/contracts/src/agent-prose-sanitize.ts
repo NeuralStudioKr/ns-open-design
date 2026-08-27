@@ -2800,16 +2800,26 @@ export function looksLikeDeckCodeDebrisLine(line: string): boolean {
     return true;
   }
   // Standalone `color: tomato;` / `margin: 0;` prop dumps (continuation RE
-  // only fires inside an already-open debris block).
+  // only fires inside an already-open debris block). Require an all-lowercase
+  // CSS-shaped property token so Title-Case prose labels (`Note:`, `Ask:`,
+  // `Info: hi`) never trip.
   if (
-    /^[a-zA-Z-]+\s*:\s*[^;{]+;?\s*$/u.test(trimmed)
+    /^(?:-(?:webkit|moz|ms|o)-[a-z][a-z0-9-]*|[a-z][a-z0-9]*(?:-[a-z0-9]+)+|(?:color|background|margin|padding|border|font|transform|transition|opacity|display|position|top|right|bottom|left|width|height|flex|grid|gap|order|cursor|visibility|content|overflow|filter|animation|contain|isolation|resize|clip|zoom|src|fill|stroke|mask|inset|scale|rotate|translate|appearance|hyphens|orphans|widows|quotes|columns|hanging|zoom))\s*:\s*[^;{]+;?\s*$/u.test(
+      trimmed,
+    )
     && !/[\uac00-\ud7af]/.test(trimmed)
     && trimmed.length <= 96
   ) {
     return true;
   }
-  // Truncated `prop:` dumps with no value (`text-emphasis:`).
-  if (/^[a-zA-Z-]+\s*:\s*;?\s*$/u.test(trimmed) && !/[\uac00-\ud7af]/.test(trimmed)) {
+  // Truncated `prop:` dumps with no value (`text-emphasis:`). Same lowercase
+  // guard so `Note:` / `Ask:` prose labels survive.
+  if (
+    /^(?:-(?:webkit|moz|ms|o)-[a-z][a-z0-9-]*|[a-z][a-z0-9]*(?:-[a-z0-9]+)+|(?:color|background|margin|padding|border|font|transform|transition|opacity|display|position|top|right|bottom|left|width|height|flex|grid|gap|order|cursor|visibility|content|overflow|filter|animation|contain|isolation|resize|clip|zoom|src|fill|stroke|mask|inset|scale|rotate|translate|appearance|hyphens|orphans|widows|quotes|columns|hanging|zoom))\s*:\s*;?\s*$/u.test(
+      trimmed,
+    )
+    && !/[\uac00-\ud7af]/.test(trimmed)
+  ) {
     return true;
   }
   if (/^cubic-bezier\s*\(/i.test(trimmed)) return true;
