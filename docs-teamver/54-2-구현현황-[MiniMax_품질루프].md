@@ -135,6 +135,8 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | persist: moz-outline/text · ms-flow · @scope · closure | ☑ 루프245–254 / round246–255 |
 | persist: mask xy · moz-border-colors · ms-scrollbar · column-rule | ☑ 루프255–259 / round256–260 |
 | persist: border-image · ms-word · line-grid · epub · at-rule harden | ☑ 루프260–284 / round261–285 |
+| persist: blend · aspect-ratio · view-transition-class · shape/wrap | ☑ 루프285–294 / round286–295 |
+| kit/chat: blockquote kit · region/flow · @page/@scroll-* · closure | ☑ 루프295–314 / round296–315 |
 | clone: IB pitch-book 데모 카피가 한국어 brief에 남음 | ☑ 루프57 |
 | preview: #stage 1920px 스트립이 100vw로만 살짝 이동 | ☑ 루프57 |
 | persist: 카탈로그 예제 leftover를 filled로 저장 | ☑ |
@@ -182,7 +184,16 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | think 태그 / 내부 마크업 필터 | ☑ 기존 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프255–284 / round256–285)
+## 이번 루프 (루프285–314 / round286–315)
+
+1. persist — background-blend · `-ms-color-scheme` · `-moz-text-orientation` · `-webkit-ruby-align` · `-webkit-aspect-ratio` · ime-mode · view-transition-class/group
+2. persist — dashboard/border-fit · `-webkit-shape-*` · `-webkit-wrap-*` · `-webkit-flow-*` · `-webkit-region-*` · mask-attachment
+3. kit — `blockquote`/`address`/`hgroup`/`search`/`s`/`u` 선택적
+4. chat — `@starting-style` · `@scroll-state` · `@counter-style` · `@page` · `@scroll-timeline` · invent-frame · set43–48 closure (`box-shadow` 보류)
+
+**검증:** chat-leak-probe-round286–315
+
+## 직전 루프 (루프255–284 / round256–285)
 
 1. persist — `-webkit-mask-*-x/y` · `-moz-border-*-colors` · `-moz-text-blink` · `-ms-scrollbar-*` · column-rule longhands · font-feature/kerning
 2. persist — `-moz-border-image*` · `-ms-word-*`/`-ms-writing-mode` · `text-zoom` · `-webkit-line-grid/align/snap` · border-before/after longhands
