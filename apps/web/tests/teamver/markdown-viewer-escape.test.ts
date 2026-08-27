@@ -27,4 +27,15 @@ describe('MarkdownViewer leftover pin', () => {
     expect(source).toContain('다운로드 및 내보내기');
     expect(source).not.toContain('다운로드 및보내기');
   });
+
+  it('localizes image/template modal kickers in embed', () => {
+    const source = readFileSync(
+      resolve(__dirname, '../../src/components/FileViewer.tsx'),
+      'utf8',
+    );
+    expect(source).toContain("embedUiLabel('IMAGE', '이미지')");
+    expect(source).toContain("embedUiLabel('TEMPLATE', '템플릿')");
+    expect(source).not.toContain('<div className="kicker">IMAGE</div>');
+    expect(source).not.toContain('<div className="kicker">TEMPLATE</div>');
+  });
 });

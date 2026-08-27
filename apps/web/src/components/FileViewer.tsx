@@ -17775,7 +17775,7 @@ function HtmlViewer({
             aria-labelledby={imageExportTitleId}
           >
             <div className="modal-head">
-              <div className="kicker">IMAGE</div>
+              <div className="kicker">{embedUiLabel('IMAGE', '이미지')}</div>
               <h2 id={imageExportTitleId}>{t('fileViewer.exportImage')}</h2>
               <p className="subtitle">
                 {t('fileViewer.exportImageModalSubtitle')}
@@ -17902,7 +17902,7 @@ function HtmlViewer({
         <div className="modal-backdrop viewer-modal-backdrop" role="presentation">
           <div className="modal deploy-modal" role="dialog" aria-modal="true">
             <div className="modal-head">
-              <div className="kicker">TEMPLATE</div>
+              <div className="kicker">{embedUiLabel('TEMPLATE', '템플릿')}</div>
               <h2>{t('fileViewer.saveAsTemplate')}</h2>
               <p className="subtitle">{t('fileViewer.templateDescPrompt')}</p>
             </div>
