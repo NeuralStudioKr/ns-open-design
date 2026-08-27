@@ -1563,7 +1563,7 @@ function looksLikeFakeOutlineStyle(style: string): boolean {
 /**
  * Body `p`/`span`/`h2–h4` often carry 1–2px accent borders. Only treat them as
  * MiniMax "card" frames when padding looks card-like (≥12px, ≥0.75rem/em,
- * ≥4%, ≥2ch, ≥2vh/vw/vmin/vmax/dvh, ≥2cqw/cqh/cqi/cqb, ≥1ic · ≥2lh/cap/ex/vb/vi,
+ * ≥4%, ≥2ch, ≥2vh/vw/vmin/vmax/dvh/lvh/svmin…, ≥2cqw/cqh/cqi/cqb, ≥1ic · ≥2lh/cap/ex/vb/vi,
  * or print-ish ≥8pt / ≥4mm / ≥0.4cm / ≥0.15in / ≥1pc).
  * Logical `padding-block` / `padding-inline` (+ start/end) count the same (루프74).
  */
@@ -1590,7 +1590,7 @@ function looksLikeCardLikePadding(style: string): boolean {
       return true;
     }
     // Viewport units — ≥2vh/vw reads as card padding; 1vh/1.5vw stay accents.
-    if (/(?:^|[\s/(,])(?:[2-9]|[1-9]\d+)(?:\.\d+)?(?:vh|vw|vmin|vmax|dvh|dvw|svh|svw|lvh|lvw)\b/i.test(value)) {
+    if (/(?:^|[\s/(,])(?:[2-9]|[1-9]\d+)(?:\.\d+)?(?:vh|vw|vmin|vmax|dvh|dvw|svh|svw|lvh|lvw|lvmin|lvmax|svmin|svmax|dvmin|dvmax)\b/i.test(value)) {
       return true;
     }
     // Container query units — ≥2cqw/cqh/cqi/cqb; 1cqw stays accent.
@@ -1619,6 +1619,10 @@ function looksLikeCardLikePadding(style: string): boolean {
       return true;
     }
     if (/(?:^|[\s/(,])(?:[1-9]\d*(?:\.\d+)?)pc\b/i.test(value)) {
+      return true;
+    }
+    // CSS Q (quarter-mm) — ≥8Q ≈ 2mm card pad; thin 2Q stays accent (루프375).
+    if (/(?:^|[\s/(,])(?:[8-9]|[1-9]\d+)(?:\.\d+)?Q\b/.test(value)) {
       return true;
     }
   }
@@ -1659,7 +1663,7 @@ function pickOfficialKitCardClass(html: string): string | null {
 const KIT_CARD_OPEN_RE =
   /<(div|aside|article|section|li|figure|main|header|footer|blockquote|nav|ul|ol|dl|dt|dd|p|span|h[1-6]|figcaption|caption|details|summary|label|output|fieldset|legend|dialog|menu|mark|time|cite|q|small|abbr|kbd|samp|dfn|table|thead|tbody|tfoot|tr|td|th|address|hgroup|search|s|u|wbr|colgroup|col|data|meter|progress|ruby|rtc|rt|rp|bdi|bdo|del|ins|sub|sup|var|code|pre|form|optgroup|option|datalist|math|mrow|semantics)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
 const SELECTIVE_KIT_CARD_TAGS_RE =
-  /^(?:p|span|h[1-6]|figcaption|caption|details|summary|label|output|fieldset|legend|dialog|menu|mark|time|cite|q|small|abbr|kbd|samp|dfn|table|thead|tbody|tfoot|tr|td|th|data|meter|progress|ruby|rtc|rt|rp|bdi|bdo|del|ins|sub|sup|var|code|pre|optgroup|option|datalist|math|mrow|semantics|blockquote|address|hgroup|search|s|u|ul|ol|li|dl|dt|dd|figure|article|aside|header|footer|nav|main|section|wbr|colgroup|col)$/i;
+  /^(?:p|span|h[1-6]|figcaption|caption|details|summary|label|output|fieldset|legend|dialog|menu|mark|time|cite|q|small|abbr|kbd|samp|dfn|table|thead|tbody|tfoot|tr|td|th|data|meter|progress|ruby|rtc|rt|rp|bdi|bdo|del|ins|sub|sup|var|code|pre|optgroup|option|datalist|math|mrow|semantics|blockquote|address|hgroup|search|s|u|ul|ol|li|dl|dt|dd|figure|article|aside|header|footer|nav|main|section|form|wbr|colgroup|col)$/i;
 
 function bindFakeOutlineCardsInSpan(html: string, cardClass: string): string {
   return html.replace(KIT_CARD_OPEN_RE, (open, tag: string, attrs: string) => {
