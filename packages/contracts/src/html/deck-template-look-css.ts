@@ -220,7 +220,32 @@ section[data-screen-label], main[data-screen-label], article[data-screen-label] 
   display: flex !important;
   flex-direction: column !important;
   justify-content: space-between !important;
+  height: 100% !important;
+  font-size: 28px !important;
+  line-height: 1.4 !important;
+  max-width: none !important;
 }
+.slide .od-magazine-fill-track > :is(ul, ol) > li {
+  display: flex !important;
+  align-items: center !important;
+  flex: 1 1 auto !important;
+}
+.slide .od-magazine-fill-track > [style*="grid"] > * {
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: center !important;
+  box-sizing: border-box !important;
+  padding: 36px !important;
+}
+.slide .od-magazine-fill-track h3 {
+  font-size: 32px !important;
+  line-height: 1.2 !important;
+}
+.slide .od-magazine-sparse-spread .cover-meta .v {
+  font-size: 28px !important;
+  line-height: 1.3 !important;
+}
+/* od-magazine-body-fill: list/card inners occupy the stretched track. */
 `
 
 const LOOK_NEUTRALIZE_TAIL_RE =
@@ -375,6 +400,7 @@ function officialLookCssLooksCurrent(css: string): boolean {
     && css.includes('od-slide-inner-canvas-fill')
     && css.includes('od-magazine-optical-place')
     && css.includes('od-magazine-body-spread')
+    && css.includes('od-magazine-body-fill')
   );
 }
 
@@ -417,6 +443,7 @@ export function hasOfficialLookStackedCanvasNeutralizeProof(html: string): boole
     && dest.includes('od-slide-inner-canvas-fill')
     && dest.includes('od-magazine-optical-place')
     && dest.includes('od-magazine-body-spread')
+    && dest.includes('od-magazine-body-fill')
   );
 }
 

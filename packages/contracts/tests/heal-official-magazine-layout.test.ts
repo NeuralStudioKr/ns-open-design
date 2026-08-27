@@ -50,6 +50,7 @@ describe('heal official magazine layout density', () => {
     expect(LOOK_NEUTRALIZE_CSS).toContain('od-slide-inner-canvas-fill');
     expect(LOOK_NEUTRALIZE_CSS).toContain('od-magazine-optical-place');
     expect(LOOK_NEUTRALIZE_CSS).toContain('od-magazine-body-spread');
+    expect(LOOK_NEUTRALIZE_CSS).toContain('od-magazine-body-fill');
     expect(LOOK_NEUTRALIZE_CSS).toMatch(
       /\.slide\s+\.slide-inner\s+h2\.section[\s\S]*font-size:\s*56px\s*!important/,
     );
@@ -106,7 +107,8 @@ describe('heal official magazine layout density', () => {
     expect(healed).toMatch(/style="[^"]*width:100%;height:100%/);
     expect(healed).toMatch(/class="cover-meta"/);
     expect(healed).toMatch(/<h2 class="section">/);
-    expect(healed).toMatch(/class="body"[^>]*grid-template-columns:1\.3fr 1fr/);
+    expect(healed).toMatch(/class="od-magazine-sparse-spread"[^>]*grid-template-columns:1\.3fr 1fr/);
+    expect(healed).toMatch(/class="body"[^>]*justify-content:flex-start/);
     expect(healed).not.toMatch(/class="body"[^>]*justify-content:center/);
     expect(healed).toMatch(/class="lede"/);
     expect(healed).toMatch(/class="body"[^>]*height:100%/);
@@ -258,6 +260,7 @@ describe('heal official magazine layout density', () => {
     expect(pinned).toContain('od-slide-inner-canvas-fill');
     expect(pinned).toContain('od-magazine-optical-place');
     expect(pinned).toContain('od-magazine-body-spread');
+    expect(pinned).toContain('od-magazine-body-fill');
     expect(pinned).toMatch(/style="[^"]*width:100%;height:100%/);
     expect(pinned).not.toMatch(/data-od-slide-flow[^>]*padding:80px/);
     expect(pinned).not.toMatch(/data-od-slide-flow[^>]*justify-content:center/);

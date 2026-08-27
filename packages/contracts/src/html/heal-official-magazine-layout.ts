@@ -377,13 +377,13 @@ function magazineFillBodyMarkup(heading: string, rest: string): string {
   const aside = coverMetaRowsFromBlocks(remaining);
   if (lede && aside) {
     return `
-    <div class="body" style="display:grid;grid-template-columns:1.3fr 1fr;gap:48px;align-items:center;min-height:0;height:100%;box-sizing:border-box">
-      <div>
-        ${heading}
+    <div class="body" style="display:flex;flex-direction:column;justify-content:flex-start;gap:28px;min-height:0;height:100%;box-sizing:border-box">
+      ${heading}
+      <div class="od-magazine-sparse-spread" style="display:grid;grid-template-columns:1.3fr 1fr;gap:48px;align-items:start;flex:1 1 auto;min-height:0">
         ${lede}
-      </div>
-      <div class="cover-meta">
+        <div class="cover-meta">
         ${aside}
+        </div>
       </div>
     </div>`;
   }
