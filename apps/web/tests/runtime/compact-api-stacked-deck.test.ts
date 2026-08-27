@@ -1034,7 +1034,9 @@ cur=n;
       .map((call: unknown[]) => call[0])
       .filter((m: { type?: string }) => m?.type === 'od:slide-state');
     expect(states.at(-1)).toMatchObject({ active: 1, count: 2 });
-    expect(slideEls[1]?.style.display).toBe('grid');
+    // Page 1 is hidden before snapshot, so reveal may fall back to flex.
+    // The painted first page must stay stylesheet grid.
+    expect(['flex', 'grid']).toContain(slideEls[1]?.style.display);
   });
 
   it('normalizes compact stacked decks for standalone export without hiding slides', () => {

@@ -576,8 +576,18 @@ staging 배포 후 같은 프로젝트·같은 파일·같은 export 옵션으�
 - ✅ deck slide count soft cap — PPTX export는 `OD_EXPORT_PPTX_MAX_SLIDES`를 초과하면 `EXPORT_DECK_TOO_LARGE`로 차단하고 PDF 다운로드를 유도
 - ✅ large-deck PDF fallback action — `EXPORT_DECK_TOO_LARGE` 발생 시 FE 토스트에서 PDF 다운로드 액션을 제공
 - ✅ export job runner module split — async job 실행 상태 전환·render 선택·download ticket 등록을 route 밖 `export-job-runner.ts`로 분리해 별도 worker/sidecar가 재사용할 실행 계약 확보
-- dedicated export worker process (Chromium isolate)
+- ✅ dedicated export worker container 1차 — `export-worker` compose service가 상주 HTTP `/render` endpoint를 제공하고, daemon async job runner가 `OD_EXPORT_WORKER_ENABLED=1`일 때 render 단계만 원격 worker로 위임
+- dedicated export worker shared queue — RDS/Redis/SQS 등 shared job store를 둔 독립 consume 방식은 후속 Phase 3c
 - ✅ “대형 deck은 PDF만” 정책 문구 polish — PPTX 제한 초과를 “오래 걸릴 수 있음”이 아니라 “N장 제한 초과, PDF 다운로드 권장”으로 명확히 안내
+
+#### Phase 3b dedicated worker container 운영 메모
+
+- `docker compose ps`에 `teamver-open-design-export-worker`가 별도 컨테이너로 떠야 정상이다.
+- 기본값은 `OD_EXPORT_WORKER_ENABLED=0`이며, 서비스가 떠 있어도 daemon은 flag가 켜졌을 때만 worker를 사용한다.
+- 켜려면 `OD_EXPORT_ASYNC_JOBS_ENABLED=1`, `VITE_TEAMVER_EXPORT_ASYNC_JOBS_ENABLED=1`, `OD_EXPORT_WORKER_ENABLED=1`을 함께 검증한다. FE가 sync export를 쓰면 worker 경로를 타지 않는다.
+- 문제 발생 시 `OD_EXPORT_WORKER_ENABLED=0`만 되돌리면 async job은 기존 daemon in-process runner로 fallback한다.
+- worker 컨테이너는 render/cache 산출물만 daemon에 반환하고, download ticket 등록·S3 offload·job status update는 parent daemon이 계속 담당한다. 따라서 S3/IAM/offload 계약은 기존 route와 동일하게 유지된다.
+- 이번 단계는 **상주 remote renderer**다. job 상태 자체는 아직 daemon async job store가 담당하므로, worker가 DB queue를 직접 consume하는 완전 분리는 shared job store가 들어가는 Phase 3c에서 진행한다.
 
 ---
 

@@ -49,15 +49,26 @@ describe('heal official magazine layout density', () => {
     expect(LOOK_NEUTRALIZE_CSS).toMatch(/:not\(\[data-od-slide-flow\]\)/);
     expect(LOOK_NEUTRALIZE_CSS).toContain('od-slide-inner-canvas-fill');
     expect(LOOK_NEUTRALIZE_CSS).toContain('od-slide-inner-min-fill');
+    expect(LOOK_NEUTRALIZE_CSS).toContain('od-magazine-optical-place');
+    expect(LOOK_NEUTRALIZE_CSS).toContain('od-magazine-body-spread');
+    expect(LOOK_NEUTRALIZE_CSS).toContain('od-magazine-body-fill');
+    expect(LOOK_NEUTRALIZE_CSS).toMatch(
+      /\.slide\s+\.slide-inner\s+h2\.section[\s\S]*font-size:\s*56px\s*!important/,
+    );
+    expect(LOOK_NEUTRALIZE_CSS).toMatch(
+      /\.slide\.cover\s+\.body[\s\S]*align-items:\s*center\s*!important/,
+    );
+    expect(LOOK_NEUTRALIZE_CSS).toMatch(
+      /\[data-od-slide-flow\]:has\(\.slide-inner\)[\s\S]*padding:\s*0\s*!important/,
+    );
     expect(LOOK_NEUTRALIZE_CSS).toMatch(
       /\.slide\s+\.slide-inner[\s\S]*width:\s*100%\s*!important/,
     );
-    expect(LOOK_NEUTRALIZE_CSS).toMatch(
-      /od-slide-inner-min-fill[\s\S]*min-height:\s*100%\s*!important/,
-    );
-    expect(LOOK_NEUTRALIZE_CSS).not.toMatch(
-      /od-slide-inner-canvas-fill[\s\S]*min-height:\s*0\s*!important/,
-    );
+    const innerFillBlock = LOOK_NEUTRALIZE_CSS.match(
+      /od-slide-inner-canvas-fill:[\s\S]*?od-magazine-optical-place/,
+    )?.[0] ?? '';
+    expect(innerFillBlock).toMatch(/min-height:\s*100%\s*!important/);
+    expect(innerFillBlock).not.toMatch(/min-height:\s*0\s*!important/);
   });
 
   it('does not extract empty IB ribbon/stamp as Motif', () => {
@@ -102,6 +113,11 @@ describe('heal official magazine layout density', () => {
     expect(healed).toMatch(/style="[^"]*width:100%;min-height:100%/);
     expect(healed).toMatch(/class="cover-meta"/);
     expect(healed).toMatch(/<h2 class="section">/);
+    expect(healed).not.toMatch(/class="od-magazine-sparse-spread"/);
+    expect(healed).toMatch(/class="body"[^>]*justify-content:flex-start/);
+    expect(healed).not.toMatch(/class="body"[^>]*justify-content:center/);
+    expect(healed).toMatch(/class="lede"/);
+    expect(healed).toMatch(/class="body"[^>]*height:100%/);
     expect(healed).toMatch(/문법으로 외운 회화/);
     expect(healed).not.toMatch(/Hartfield|NorthPeak|WACC/i);
     expect(healed).not.toMatch(/English Speaking Tips|쉐도잉 루틴|In context/i);
@@ -109,7 +125,8 @@ describe('heal official magazine layout density', () => {
     expect(healed).toMatch(/학습 노트/);
     expect(healed).not.toMatch(/<\/p="">/);
     expect(healed).not.toMatch(/<\/div>\s*·\s*Small talk/);
-    expect(healed).toMatch(/첫 만남 · Small talk/);
+    expect(healed).not.toMatch(/첫 만남 · Small talk/);
+    expect(healed).not.toMatch(/개요|핵심 포인트|다음 단계|핵심 내용을 한 장에/);
     expect(healed).not.toMatch(
       /<section\b[^>]*\bcover\b[^>]*style="[^"]*\bdisplay\s*:\s*flex/i,
     );
@@ -180,6 +197,110 @@ describe('heal official magazine layout density', () => {
     expect(healed).toMatch(/<h2 class="section">설치<\/h2>/);
     expect(healed).toMatch(/style="[^"]*width:100%;min-height:100%/);
     expect(healed).not.toMatch(/쉐도잉|English Speaking Tips|회화 표현/i);
+    expect(healed).not.toMatch(/개요|핵심 포인트|다음 단계|핵심 내용을 한 장에/);
+  });
+
+  it('does not promote leftover outline chips or invent a cover TOC', () => {
+    const official = readFileSync(IB_EXAMPLE, 'utf8');
+    const assets = extractOfficialDeckLookAssets(official);
+    const leftoverOnly = `<!doctype html><html lang="ko"><body>
+<section class="slide slide-title"><h1>영어 회화 표현 공부 팁, 예시에</h1></section>
+<section class="slide"><p>예시를 중심으로 바로 쓸 문장을 정리합니다.</p>
+<div>첫 만남 · Small talk</div> · Small talk</div>
+</section>
+</body></html>`;
+    const healed = healOfficialMagazineLayoutDensity(
+      mergeOfficialDeckLookCss(leftoverOnly, assets),
+      BRIEF,
+    );
+    expect(healed).toMatch(/예시를 중심으로 바로 쓸 문장/);
+    expect(healed).not.toMatch(/첫 만남 · Small talk/);
+    expect(healed).not.toMatch(/class="od-magazine-sparse-spread"/);
+    expect(healed).not.toMatch(/개요|핵심 포인트|다음 단계|핵심 내용을 한 장에/);
+    expect(healed).not.toMatch(/English Speaking Tips|쉐도잉|In context/i);
+  });
+
+  it('two-panes only requested asides, not leftover · chips', () => {
+    const official = readFileSync(IB_EXAMPLE, 'utf8');
+    const assets = extractOfficialDeckLookAssets(official);
+    const requested = `<!doctype html><html lang="ko"><body>
+<section class="slide slide-title"><h1>영어 회화</h1></section>
+<section class="slide"><h2>연습 순서</h2>
+<p>짧게 말해 본 뒤 바로 고쳐 씁니다.</p>
+<div>듣기 연습</div>
+<div>따라 말하기</div>
+</section>
+</body></html>`;
+    const healed = healOfficialMagazineLayoutDensity(
+      mergeOfficialDeckLookCss(requested, assets),
+      BRIEF,
+    );
+    expect(healed).toMatch(/class="od-magazine-sparse-spread"/);
+    expect(healed).toMatch(/듣기 연습/);
+    expect(healed).toMatch(/따라 말하기/);
+    expect(healed).not.toMatch(/첫 만남 · Small talk/);
+  });
+
+  it('keeps an on-brief cover that already has title and prose', () => {
+    const official = readFileSync(IB_EXAMPLE, 'utf8');
+    const assets = extractOfficialDeckLookAssets(official);
+    const onBrief = `<!doctype html><html lang="ko"><body>
+<section class="slide"><h1>영어 회화 표현 공부 팁</h1>
+<p>예시를 중심으로 바로 쓸 문장을 정리합니다.</p></section>
+<section class="slide"><h2>바로 쓸 표현</h2><p>Nice to meet you.</p></section>
+</body></html>`;
+    const healed = healOfficialMagazineLayoutDensity(
+      mergeOfficialDeckLookCss(onBrief, assets),
+      BRIEF,
+    );
+    expect(healed).toContain('영어 회화 표현 공부 팁');
+    expect(healed).toContain('예시를 중심으로 바로 쓸 문장을 정리합니다.');
+    expect(healed).not.toMatch(/<h1 class="display">/);
+    expect(healed).not.toMatch(/학습 노트/);
+  });
+
+  it('starts dense magazine body copy at the top of the 16:9 page', () => {
+    const official = readFileSync(IB_EXAMPLE, 'utf8');
+    const assets = extractOfficialDeckLookAssets(official);
+    const dense = `<!doctype html><html lang="ko"><body>
+<section class="slide slide-title"><h1>영어 회화</h1></section>
+<section class="slide"><h2>단계별 연습</h2>
+<p>${'회화는 짧은 문장을 반복해서 입 근육에 익힙니다. '.repeat(16)}</p>
+<ul><li>듣기</li><li>따라 말하기</li><li>바꿔 말하기</li><li>실제 대화</li><li>복습</li></ul>
+</section>
+</body></html>`;
+    const healed = healOfficialMagazineLayoutDensity(
+      mergeOfficialDeckLookCss(dense, assets),
+      BRIEF,
+    );
+    expect(healed).toMatch(/class="body"[^>]*justify-content:flex-start/);
+    expect(healed).toMatch(/class="body"[^>]*height:100%/);
+    expect(healed).toMatch(/class="od-magazine-fill-track"/);
+  });
+
+  it('pins a 2×2 card grid into the magazine 1fr row instead of centering it', () => {
+    const official = readFileSync(IB_EXAMPLE, 'utf8');
+    const assets = extractOfficialDeckLookAssets(official);
+    const cards = `<!doctype html><html lang="ko"><body>
+<section class="slide slide-title"><h1>영어 회화</h1></section>
+<section class="slide"><h2>바로 쓸 수 있는 표현</h2>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:24px">
+<div><h3>첫 만남</h3><p>Nice to meet you.</p></div>
+<div><h3>동의</h3><p>That makes sense.</p></div>
+<div><h3>되묻기</h3><p>Could you say that again?</p></div>
+<div><h3>마무리</h3><p>Let’s pick this up next time.</p></div>
+</div>
+</section>
+</body></html>`;
+    const healed = healOfficialMagazineLayoutDensity(
+      mergeOfficialDeckLookCss(cards, assets),
+      BRIEF,
+    );
+    expect(healed).toMatch(/class="od-magazine-fill-track"/);
+    expect(healed).toMatch(/class="body"[^>]*justify-content:flex-start/);
+    expect(healed).not.toMatch(/class="body"[^>]*justify-content:center/);
+    expect(healed).toMatch(/바로 쓸 수 있는 표현/);
+    expect(healed).toMatch(/Nice to meet you/);
   });
 
   it('does not rebuild a dense official IB cover', () => {
@@ -205,7 +326,26 @@ describe('heal official magazine layout density', () => {
     expect(pinned).toMatch(/<h1 class="display">/);
     expect(pinned).toContain('od-slide-inner-canvas-fill');
     expect(pinned).toContain('od-slide-inner-min-fill');
+    expect(pinned).toContain('od-magazine-optical-place');
+    expect(pinned).toContain('od-magazine-body-spread');
+    expect(pinned).toContain('od-magazine-body-fill');
     expect(pinned).toMatch(/style="[^"]*width:100%;min-height:100%/);
+    expect(pinned).not.toMatch(/data-od-slide-flow[^>]*padding:80px/);
+    expect(pinned).not.toMatch(/data-od-slide-flow[^>]*justify-content:center/);
+    expect(pinned).toMatch(
+      /\[data-od-slide-flow\]:has\(\.slide-inner\)[\s\S]*padding:\s*0\s*!important/,
+    );
+  });
+
+  it('leaves catalog IB presenter paper at 1320×820 even if pin CSS is injected', () => {
+    const official = readFileSync(IB_EXAMPLE, 'utf8');
+    expect(official).toMatch(/width:\s*min\(1320px/);
+    const pinned = pinDeckSlidesToFixedCanvas(official);
+    expect(pinned).toMatch(/width:\s*min\(1320px/);
+    const pinCss = pinned.match(
+      /<style data-od-deck-fixed-canvas-pin>[\s\S]*?<\/style>/i,
+    )?.[0] ?? '';
+    expect(pinCss).not.toMatch(/^\s*\.slide\s*>\s*\.slide-inner\s*\{/m);
   });
 
   it('standalone export heals a sparse IB cover without inventing topic copy', () => {
@@ -217,6 +357,7 @@ describe('heal official magazine layout density', () => {
     expect(exported).toMatch(/영어 회화 표현/);
     expect(exported).toMatch(/문법으로 외운 회화/);
     expect(exported).not.toMatch(/English Speaking Tips|쉐도잉|In context/i);
+    expect(exported).not.toMatch(/첫 만남 · Small talk/);
     expect(exported).not.toMatch(/<\/p="">/);
     expect(exported).toMatch(/:not\(\[data-od-slide-flow\]\)/);
   });

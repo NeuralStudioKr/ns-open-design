@@ -275,9 +275,10 @@ function buildSrcdocUnsafe(
   );
   const healCompactLetterbox = (html: string) => {
     const locked = lockStackedDeckCanvasForPreview(pinForCompact(html));
-    return compactLetterboxOfficialPresenter
-      ? injectStackedCanvasNeutralizeForLetterbox(locked)
-      : locked;
+    // Compact letterbox always needs LOOK_NEUTRALIZE (16:9 + inner min-fill).
+    // Dual-classified `#deck` presenters used to be the only callers; Studio
+    // viewport strips then painted a pin without neutralize.
+    return injectStackedCanvasNeutralizeForLetterbox(locked);
   };
   // Deck preview/export: compact fills lock to a 1920×1080 canvas.
   // Official catalog presenters keep iframe-relative 100% fill — except the

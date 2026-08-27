@@ -85,6 +85,25 @@ article[data-screen-label] {
   left: auto !important;
   margin-top: auto !important;
 }
+/* Compact/stacked 16:9 only — keep catalog presenter paper untouched. */
+html:has(body > .slide) .slide > [data-od-slide-flow]:has(.slide-inner),
+html:has(#od-stacked-deck-stage) .slide > [data-od-slide-flow]:has(.slide-inner) {
+  padding: 0 !important;
+  justify-content: unset !important;
+}
+html:has(body > .slide) .slide > .slide-inner,
+html:has(body > .slide) .slide > [data-od-slide-flow] > .slide-inner,
+html:has(#od-stacked-deck-stage) .slide > .slide-inner,
+html:has(#od-stacked-deck-stage) .slide > [data-od-slide-flow] > .slide-inner {
+  width: 100% !important;
+  max-width: none !important;
+  height: 100% !important;
+  max-height: none !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  box-shadow: none !important;
+}
 `.trim();
 
 function extractClassAttr(attrs: string): string {
@@ -1477,10 +1496,47 @@ const FLOW_COPIED_STYLE_PROPS = [  'display',
   'image-resolution',
 ] as const;
 
+/**
+ * Magazine `.slide-inner` already owns inset (IB paper padding). Copying the
+ * 1920×1080 host padding / `justify-content:center` onto `[data-od-slide-flow]`
+ * stacks 80+56px and shrinks the visible page.
+ */
+function isMagazinePaperInsetProp(prop: string): boolean {
+  return /(?:^|-)padding(?:-|$)/i.test(prop) || /justify-content$/i.test(prop);
+}
+
+function slimMagazineFlowStyleAttr(attrs: string): string {
+  if (!/\bstyle\s*=/i.test(attrs)) return attrs;
+  return attrs.replace(
+    /\bstyle\s*=\s*(['"])([\s\S]*?)\1/i,
+    (_m, q: string, style: string) => {
+      const slimmed = String(style)
+        .replace(/(?:^|;)\s*(?:-webkit-)?padding(?:-[a-z]+)?\s*:[^;]*/gi, ';')
+        .replace(/(?:^|;)\s*-webkit-justify-content\s*:[^;]*/gi, ';')
+        .replace(/(?:^|;)\s*justify-content\s*:[^;]*/gi, ';')
+        .replace(/;;+/g, ';')
+        .replace(/^;|;$/g, '')
+        .trim();
+      return slimmed ? `style=${q}${slimmed}${q}` : '';
+    },
+  );
+}
+
+/** Drop leftover flow padding when a magazine inner already owns the inset. */
+function slimExistingMagazineSlideFlow(inner: string): string {
+  if (!/\bslide-inner\b/i.test(inner)) return inner;
+  return inner.replace(
+    /<(div|span)\b([^>]*\bdata-od-slide-flow\b[^>]*)>/gi,
+    (_open, tag: string, attrs: string) => `<${tag}${slimMagazineFlowStyleAttr(attrs)}>`,
+  );
+}
+
 function wrapFlowOpenTag(hostAttrs: string, inner = ''): string {
   const style = extractStyleAttr(hostAttrs);
+  const magazinePaper = /\bslide-inner\b/i.test(inner);
   const parts: string[] = [];
   for (const prop of FLOW_COPIED_STYLE_PROPS) {
+    if (magazinePaper && isMagazinePaperInsetProp(prop)) continue;
     const escaped = prop.replace(/-/g, '\\-');
     const value = new RegExp(`(?:^|;)\\s*${escaped}\\s*:\\s*([^;]+)`, 'i')
       .exec(style)?.[1]?.trim();
@@ -1503,7 +1559,7 @@ function wrapFlowOpenTag(hostAttrs: string, inner = ''): string {
 }
 
 function wrapNonMotifInSpan(inner: string, hostAttrs: string): string {
-  if (shouldSkipSlideFlowWrap(inner)) return inner;
+  if (shouldSkipSlideFlowWrap(inner)) return slimExistingMagazineSlideFlow(inner);
   const segs = listTopLevelSegments(inner);
   if (segs.length === 0) return inner;
   let out = '';
@@ -1564,9 +1620,81 @@ function looksLikeFakeOutlineStyle(style: string): boolean {
  * Body `p`/`span`/`h2–h4` often carry 1–2px accent borders. Only treat them as
  * MiniMax "card" frames when padding looks card-like (≥12px, ≥0.75rem/em,
  * ≥4%, ≥2ch, ≥2vh/vw/vmin/vmax/dvh/lvh/svmin…, ≥2cqw/cqh/cqi/cqb, ≥1ic · ≥2lh/cap/ex/vb/vi,
- * or print-ish ≥8pt / ≥4mm / ≥0.4cm / ≥0.15in / ≥1pc).
+ * or print-ish ≥8pt / ≥4mm / ≥0.4cm / ≥0.15in / ≥1pc; additive calc same-unit sums).
  * Logical `padding-block` / `padding-inline` (+ start/end) count the same (루프74).
  */
+
+/** Additive `calc` sums: same-unit · `%` · rem/em+px@16 · rem+em 1:1 (루프490). */
+function calcAdditiveSameUnitLooksCardLike(value: string): boolean {
+  const calcRe = /calc\s*\(([^()]*)\)/gi;
+  let match: RegExpExecArray | null;
+  while ((match = calcRe.exec(value)) !== null) {
+    const body = (match[1] ?? '').trim();
+    if (!body || /[*\/]/.test(body)) continue;
+    // No `\b` after `%` — `%` is non-word so `\b` never matches EOS (루프465).
+    const tokRe =
+      /([+-])?\s*(\d+(?:\.\d+)?|\.\d+)\s*(px|rem|em|pt|mm|cm|in|pc|Q|ch|%|vh|vw|vmin|vmax|dvh|dvw|svh|svw|lvh|lvw|lvmin|lvmax|svmin|svmax|dvmin|dvmax|cqw|cqh|cqi|cqb|cqmin|cqmax|ic|ric|lh|rlh|cap|rcap|ex|rex|vb|vi|svb|svi|lvb|lvi|dvb|dvi)(?=$|[\s+\-*/,)])/gi;
+    const parts: { sign: number; n: number; unit: string }[] = [];
+    let tm: RegExpExecArray | null;
+    while ((tm = tokRe.exec(body)) !== null) {
+      const op = tm[1] ?? '';
+      const n = Number.parseFloat(tm[2] ?? '0');
+      const unit = (tm[3] ?? '').toLowerCase();
+      if (!Number.isFinite(n) || !unit) continue;
+      const sign = op === '-' ? -1 : 1;
+      parts.push({ sign, n, unit });
+    }
+    if (parts.length < 2) continue;
+    const unit0 = parts[0]!.unit;
+    const sum = parts.reduce((acc, p) => acc + p.sign * p.n, 0);
+    if (parts.every((p) => p.unit === unit0)) {
+      if (unit0 === 'px' && sum >= 12) return true;
+      if ((unit0 === 'rem' || unit0 === 'em') && sum >= 0.75) return true;
+      if (unit0 === '%' && sum >= 4) return true;
+      if (unit0 === 'ch' && sum >= 2) return true;
+      if (
+        /^(?:vh|vw|vmin|vmax|dvh|dvw|svh|svw|lvh|lvw|lvmin|lvmax|svmin|svmax|dvmin|dvmax|cqw|cqh|cqi|cqb|cqmin|cqmax)$/.test(
+          unit0,
+        )
+        && sum >= 2
+      ) {
+        return true;
+      }
+      if ((unit0 === 'ic' || unit0 === 'ric') && sum >= 1) return true;
+      if (
+        /^(?:lh|rlh|cap|rcap|ex|rex|vb|vi|svb|svi|lvb|lvi|dvb|dvi)$/.test(unit0)
+        && sum >= 2
+      ) {
+        return true;
+      }
+      if (unit0 === 'pt' && sum >= 8) return true;
+      if (unit0 === 'mm' && sum >= 4) return true;
+      if (unit0 === 'cm' && sum >= 0.4) return true;
+      if (unit0 === 'in' && sum >= 0.15) return true;
+      if (unit0 === 'pc' && sum >= 1) return true;
+      if (unit0 === 'q' && sum >= 8) return true;
+      continue;
+    }
+    // Mixed rem|em + px at 16px root ≈ card pad (루프465): 0.5rem+4px → 12px.
+    const units = new Set(parts.map((p) => p.unit));
+    if (units.size === 2 && units.has('px') && (units.has('rem') || units.has('em'))) {
+      const remish = parts
+        .filter((p) => p.unit === 'rem' || p.unit === 'em')
+        .reduce((acc, p) => acc + p.sign * p.n, 0);
+      const px = parts.filter((p) => p.unit === 'px').reduce((acc, p) => acc + p.sign * p.n, 0);
+      if (remish * 16 + px >= 12) return true;
+    }
+    // Mixed rem+em treated 1:1 font-relative (루프490): 0.5rem+0.25em → 0.75.
+    if (units.size === 2 && units.has('rem') && units.has('em')) {
+      const remish = parts
+        .filter((p) => p.unit === 'rem' || p.unit === 'em')
+        .reduce((acc, p) => acc + p.sign * p.n, 0);
+      if (remish >= 0.75) return true;
+    }
+  }
+  return false;
+}
+
 function looksLikeCardLikePadding(style: string): boolean {
   const source = String(style ?? '');
   const padRe =
@@ -1624,6 +1752,10 @@ function looksLikeCardLikePadding(style: string): boolean {
     }
     // CSS Q (quarter-mm) — ≥8Q ≈ 2mm card pad; thin 2Q stays accent (루프375).
     if (/(?:^|[\s/(,])(?:[8-9]|[1-9]\d+)(?:\.\d+)?Q\b/.test(value)) {
+      return true;
+    }
+    // Additive calc same-unit sums — `calc(8px + 4px)` / `calc(.5rem + .25rem)` (루프435).
+    if (calcAdditiveSameUnitLooksCardLike(value)) {
       return true;
     }
   }

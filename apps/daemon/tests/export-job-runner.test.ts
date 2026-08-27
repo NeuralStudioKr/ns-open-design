@@ -126,6 +126,55 @@ describe('export job runner', () => {
     });
   });
 
+  it('can render through an injected dedicated worker boundary', async () => {
+    const job = createExportJob({ projectId: 'proj-1', format: 'html' });
+    let renderOutcomeCalls = 0;
+
+    await runExportJobInBackground({
+      request: {
+        jobId: job.id,
+        projectId: 'proj-1',
+        workspaceId: null,
+        format: 'html',
+        fileName: 'deck.html',
+        deck: true,
+      },
+      deps: {
+        renderContext: (projectId) => ({
+          daemonUrl: 'http://127.0.0.1:7456',
+          projectId,
+          projectsRoot: '/tmp/projects',
+        }),
+        prepareOffloadPayload: async () => ({}),
+        renderOutcome: async (request) => {
+          renderOutcomeCalls += 1;
+          expect(request.format).toBe('html');
+          return htmlOutcome();
+        },
+        renderers: testRenderers({
+          html: async () => {
+            throw new Error('in-process renderer should not be called');
+          },
+        }),
+        storeDownload: async (options) => ({
+          token: '0123456789abcdef0123456789abcdef',
+          url: '/api/projects/proj-1/export/downloads/0123456789abcdef0123456789abcdef',
+          deliveryMode: 'stream',
+          filename: options.filename,
+          mime: options.mime,
+          bytes: options.bytes ?? 0,
+          expiresAt: 1_800_000_000_000,
+          filePath: '/tmp/download.html',
+        }),
+      },
+    });
+
+    expect(renderOutcomeCalls).toBe(1);
+    const snapshot = resolveExportJob('proj-1', job.id);
+    expect(snapshot?.status).toBe('ready');
+    expect(snapshot?.result?.filename).toBe('Deck.html');
+  });
+
   it('does not render when the job cannot be marked running', async () => {
     let renderCalls = 0;
 

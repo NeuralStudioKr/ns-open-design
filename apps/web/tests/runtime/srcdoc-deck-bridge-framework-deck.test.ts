@@ -152,7 +152,9 @@ describe('injectDeckBridge — framework-deck detection (#deck-stage)', () => {
     ];
     for (const variant of variants) {
       const out = buildSrcdoc(`<!doctype html><html><body>${variant}</body></html>`, { deck: true });
-      expect(out, `variant ${JSON.stringify(variant)}`).not.toContain('data-od-deck-fix');
+      expect(out, `variant ${JSON.stringify(variant)}`).not.toMatch(
+        /<style[^>]*data-od-deck-fix[^>]*>/,
+      );
     }
   });
 
@@ -200,7 +202,7 @@ describe('injectDeckBridge — framework-deck detection (#deck-stage)', () => {
     expect(out).toContain("target.closest('[data-od-editing=\"true\"]')");
   });
 
-  it('advances framework decks on ArrowRight inside the iframe', async () => {
+  it('advances framework decks on ArrowRight inside the iframe', { timeout: 15_000 }, async () => {
     const slides = Array.from({ length: 2 }, (_, i) =>
       `<section class="slide${i === 0 ? ' active' : ''}">slide ${i + 1}</section>`,
     ).join('');

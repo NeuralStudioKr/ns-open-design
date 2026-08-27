@@ -172,7 +172,12 @@ section[data-screen-label], main[data-screen-label], article[data-screen-label] 
  * Stacked 16:9 PPT pages must fill the 1920×1080 frame, not float a smaller card.
  * od-slide-inner-min-fill: never height:100% + min-height:0 inside the flow clip —
  * flex shrink collapses the inner and the letterbox reads as a blank page. */
+.slide > [data-od-slide-flow]:has(.slide-inner) {
+  padding: 0 !important;
+  justify-content: unset !important;
+}
 .slide .slide-inner,
+.slide > .slide-inner,
 .slide > [data-od-slide-flow] > .slide-inner {
   width: 100% !important;
   max-width: none !important;
@@ -184,7 +189,66 @@ section[data-screen-label], main[data-screen-label], article[data-screen-label] 
   min-height: 100% !important;
   margin: 0 !important;
   box-sizing: border-box !important;
+  box-shadow: none !important;
 }
+/* od-magazine-optical-place: after 16:9 fill, IB cover must not pin type to the footer. */
+.slide.cover .body {
+  align-items: center !important;
+  min-height: 0 !important;
+}
+.slide .slide-inner > .body {
+  min-height: 0 !important;
+}
+/* od-magazine-body-spread: 16:9 body type + fill track for lists/cards. */
+.slide .slide-inner h2.section {
+  font-size: 56px !important;
+  line-height: 1.08 !important;
+}
+.slide .od-magazine-fill-track {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+.slide .od-magazine-fill-track > :is(ul, ol, div, article, section, aside) {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+}
+.slide .od-magazine-fill-track > [style*="grid"] {
+  height: 100% !important;
+  align-content: stretch !important;
+  grid-auto-rows: 1fr !important;
+}
+.slide .od-magazine-fill-track > :is(ul, ol) {
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: space-between !important;
+  height: 100% !important;
+  font-size: 28px !important;
+  line-height: 1.4 !important;
+  max-width: none !important;
+}
+.slide .od-magazine-fill-track > :is(ul, ol) > li {
+  display: flex !important;
+  align-items: center !important;
+  flex: 1 1 auto !important;
+}
+.slide .od-magazine-fill-track > [style*="grid"] > * {
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: center !important;
+  box-sizing: border-box !important;
+  padding: 36px !important;
+}
+.slide .od-magazine-fill-track h3 {
+  font-size: 32px !important;
+  line-height: 1.2 !important;
+}
+.slide .od-magazine-sparse-spread .cover-meta .v {
+  font-size: 28px !important;
+  line-height: 1.3 !important;
+}
+/* od-magazine-body-fill: list/card inners occupy the stretched track. */
 `
 
 const LOOK_NEUTRALIZE_TAIL_RE =
@@ -338,6 +402,9 @@ function officialLookCssLooksCurrent(css: string): boolean {
     // IB magazine inner must fill 16:9, not the 1320×820 presenter card.
     && css.includes('od-slide-inner-canvas-fill')
     && css.includes('od-slide-inner-min-fill')
+    && css.includes('od-magazine-optical-place')
+    && css.includes('od-magazine-body-spread')
+    && css.includes('od-magazine-body-fill')
   );
 }
 
@@ -379,6 +446,9 @@ export function hasOfficialLookStackedCanvasNeutralizeProof(html: string): boole
     && /:not\(\[data-od-slide-flow\]\)/i.test(dest)
     && dest.includes('od-slide-inner-canvas-fill')
     && dest.includes('od-slide-inner-min-fill')
+    && dest.includes('od-magazine-optical-place')
+    && dest.includes('od-magazine-body-spread')
+    && dest.includes('od-magazine-body-fill')
   );
 }
 

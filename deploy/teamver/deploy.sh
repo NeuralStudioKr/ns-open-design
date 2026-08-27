@@ -326,7 +326,7 @@ if [[ "$USE_MINIO" == true ]]; then
   COMPOSE_EXTRA_ARGS+=(--profile minio)
 fi
 
-SERVICES=(open-design-daemon teamver-design-api litestream)
+SERVICES=(open-design-daemon export-worker teamver-design-api litestream)
 if [[ "$USE_LOCAL_DB" == true ]]; then
   SERVICES=(design-db "${SERVICES[@]}")
 fi

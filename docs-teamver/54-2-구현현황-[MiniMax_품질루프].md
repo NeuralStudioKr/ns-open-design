@@ -150,6 +150,15 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | kit: leading-dot rem/em · env/var px · .4cm/.15in | ☑ 루프405–409 / round406–410 |
 | chat: FOO `⇢⇝↦➤⟹` · form/section selective keep | ☑ 루프410–419 / round411–420 |
 | kit/chat: set70–72 combo/closure | ☑ 루프420–434 / round421–435 |
+| kit: calc additive same-unit sum (px/rem/Q…) | ☑ 루프435–439 / round436–440 |
+| chat: FOO `⟶➜➡➔➢` · form/section calc | ☑ 루프440–449 / round441–450 |
+| kit/chat: set76–78 combo/closure | ☑ 루프450–464 / round451–465 |
+| kit: calc % sum · rem/em+px@16 mixed | ☑ 루프465–469 / round466–470 |
+| chat: FOO `↠↝➞➠◆♦▶▷▸▹` | ☑ 루프470–479 / round471–480 |
+| kit/chat: set82–83 combo/closure | ☑ 루프480–489 / round481–490 |
+| kit: calc rem+em 1:1 mixed | ☑ 루프490–494 / round491–495 |
+| chat: FOO `➙➛➝➟➣►◁◀◂◃◇○` | ☑ 루프495–504 / round496–505 |
+| kit/chat: set87–88 combo/closure | ☑ 루프505–514 / round506–515 |
 | clone: IB pitch-book 데모 카피가 한국어 brief에 남음 | ☑ 루프57 |
 | preview: #stage 1920px 스트립이 100vw로만 살짝 이동 | ☑ 루프57 |
 | persist: 카탈로그 예제 leftover를 filled로 저장 | ☑ |
@@ -173,7 +182,12 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | export: standalone가 성긴 IB 표지를 그대로 내보냄 | ☑ 루프137 |
 | persist/preview: IB `.slide-inner` 1320×820 카드가 16:9를 안 채움 | ☑ 루프139 |
 | persist/preview: IB 본문이 매거진 프레임 없이 상단 정렬 | ☑ 루프139 |
-| preview: 레터박스 `#17181d`만 보이고 1/N만 동작 | ☑ 루프140 |
+| persist/preview: flow가 magazine padding/`justify-content:center`를 이중 적용 | ☑ 루프140 |
+| persist/preview: 16:9 채움 후 표지 제목이 하단, 본문은 위만 사용 | ☑ 루프141 |
+| persist/preview: 성긴 본문 오른쪽 공백 · 카드 위 공백 · 44px h2 | ☑ 루프142 |
+| persist/preview: 성긴 칩 세로 중앙 · 카드/리스트 내부 공백 · 14px ol | ☑ 루프143 |
+| persist/preview: leftover `·` 칩·발명 TOC가 brief 카피처럼 보임 | ☑ 루프144 |
+| preview: 레터박스 `#17181d`만 보이고 1/N만 동작 | ☑ 루프145 |
 | persist/preview: look CSS가 1–2장 사이에 끼어 표지 밀집도가 깨짐 | ☑ follow-up |
 | persist/preview: MiniMax `<p="">` · 유출 `· Label` | ☑ follow-up |
 | preview: Motif `span.ribbon`이 relative stretch로 빨간 줄 | ☑ follow-up |
@@ -200,13 +214,74 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | think 태그 / 내부 마크업 필터 | ☑ 기존 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프140)
+## 이번 루프 (루프145)
 
 1. stacked stage — 기본 `translate(-50%, -50%)`로 호스트 viewport 전 빈 레터박스 방지
 2. 첫 장 — CSS로 브릿지/`display:none` 전에 페인트. 이후 인라인 hide 유지
-3. inner fill — `min-height:100%`(루프139 `min-height:0` 접힘 해제). Daisy/Hartfield 비개입
+3. inner fill — `min-height:100%`(이전 `min-height:0` 접힘 해제). Daisy/Hartfield 비개입
 
 **검증:** compact-api-stacked-deck letterbox center · heal-official-magazine-layout min-fill · look-css `od-slide-inner-min-fill`
+
+## 직전 루프 (루프144)
+
+1. heal — MiniMax `·` leftover 칩을 본문/cover-meta에서 삭제. 요청된 aside만 투팬
+2. 표지 — 후속 장 제목만 TOC. `개요/핵심 포인트`·발명 subhead 금지. on-brief 제목+본문 표지는 rebuild하지 않음
+3. Daisy/Studio/weekly · 카탈로그 IB paper 유지
+
+**검증:** heal leftover drop · requested aside two-pane · on-brief cover keep
+
+## 직전 루프 (루프143)
+
+1. heal — 성긴 본문은 제목 전폭 상단 + lede|칩 `od-magazine-sparse-spread` (`align-items:start`)
+2. neutralize — fill-track 리스트 28px·li stretch, 카드 내부 center, `od-magazine-body-fill` 없으면 재주입
+3. 카탈로그 IB paper · Daisy/Studio/weekly · 토픽 카피 발명 금지 유지
+
+**검증:** heal sparse-spread · look-css 28px list · Chrome persist 재측정
+
+## 직전 루프 (루프490–514 / round491–515)
+
+1. padding — calc rem+em 1:1 합산(≥0.75)
+2. chat — FOO `➙➛➝➟➣►◁◀◂◃◇○` · invent-frame/`box-shadow` 보류
+
+**검증:** chat-leak-probe-round491–515
+
+## 직전 루프 (루프142)
+
+1. heal — 성긴 본문은 `1.3fr 1fr` 투팬(lede + 기존 칩 cover-meta). 카드/리스트는 fill-track으로 1fr 행을 채움
+2. neutralize — `h2.section` 56px, fill-track stretch, `od-magazine-body-spread` 없으면 재주입
+3. 카탈로그 IB paper · Daisy/Studio/weekly 유지. 토픽 카피 발명 금지
+
+**검증:** heal two-pane / fill-track / 2×2 · look-css 56px · Chrome persist 재측정
+
+## 직전 루프 (루프465–489 / round466–490)
+
+1. padding — calc `%` 토큰 경계 · rem/em+px@16px root 합산
+2. chat — FOO `↠↝➞➠◆♦▶▷▸▹` · invent-frame/`box-shadow` 보류
+
+**검증:** chat-leak-probe-round466–490
+
+## 직전 루프 (루프435–464 / round436–465)
+
+1. padding — additive `calc()` 동일 단위 합산 (`8px+4px`, `.5rem+.25rem`, `4Q+4Q`)
+2. chat — FOO `⟶➜➡➔➢` · invent-frame/`box-shadow` 보류
+
+**검증:** chat-leak-probe-round436–465
+
+## 직전 루프 (루프141)
+
+1. neutralize — 16:9에서 `.cover .body`는 `align-items:center` (카탈로그는 `end` 유지)
+2. heal — 성긴 본문 `.body`는 flex center, 밀집 본문은 flex-start + height 100%
+3. look current — `od-magazine-optical-place` 없으면 neutralize 재주입
+
+**검증:** heal-official-magazine-layout sparse/dense body · look-css optical-place
+
+## 직전 루프 (루프140)
+
+1. flow wrap — magazine `.slide-inner`가 있으면 padding/`justify-content`를 복사하지 않고, 이미 있는 flow에서도 걷어냄
+2. neutralize — flow `:has(.slide-inner)` padding 0. paper `box-shadow` 제거
+3. pin CSS — paper stretch는 compact/stacked에만. 카탈로그 IB는 Hartfield paper 유지
+
+**검증:** deck-fixed-canvas magazine inner/flow slim · look-css neutralize · heal pin+neutralize · raw IB `min(1320px)`
 
 ## 직전 루프 (루프139)
 
