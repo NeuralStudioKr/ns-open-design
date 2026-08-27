@@ -51,6 +51,7 @@ describe('heal official magazine layout density', () => {
     expect(LOOK_NEUTRALIZE_CSS).toContain('od-magazine-optical-place');
     expect(LOOK_NEUTRALIZE_CSS).toContain('od-magazine-body-spread');
     expect(LOOK_NEUTRALIZE_CSS).toContain('od-magazine-body-fill');
+    expect(LOOK_NEUTRALIZE_CSS).toContain('od-magazine-lede-fill');
     expect(LOOK_NEUTRALIZE_CSS).toMatch(
       /\.slide\s+\.slide-inner\s+h2\.section[\s\S]*font-size:\s*56px\s*!important/,
     );
@@ -272,6 +273,25 @@ describe('heal official magazine layout density', () => {
     expect(healed).toMatch(/class="od-magazine-fill-track"/);
   });
 
+  it('grows a title+lede body into the remaining 16:9 well', () => {
+    const official = readFileSync(IB_EXAMPLE, 'utf8');
+    const assets = extractOfficialDeckLookAssets(official);
+    const ledeOnly = `<!doctype html><html lang="ko"><body>
+<section class="slide slide-title"><h1>영어 회화</h1></section>
+<section class="slide"><h2>문법으로 외운 회화는 왜 입에서 안 나올까</h2>
+<p>한국인 학습자가 가장 자주 만나는 벽은 알면서도 말하지 못하는 간극입니다.</p>
+</section>
+</body></html>`;
+    const healed = healOfficialMagazineLayoutDensity(
+      mergeOfficialDeckLookCss(ledeOnly, assets),
+      BRIEF,
+    );
+    expect(healed).toMatch(/class="od-magazine-lede-fill"/);
+    expect(healed).toMatch(/class="lede"/);
+    expect(healed).toMatch(/알면서도 말하지 못하는/);
+    expect(healed).not.toMatch(/class="od-magazine-sparse-spread"/);
+  });
+
   it('pins a 2×2 card grid into the magazine 1fr row instead of centering it', () => {
     const official = readFileSync(IB_EXAMPLE, 'utf8');
     const assets = extractOfficialDeckLookAssets(official);
@@ -322,6 +342,7 @@ describe('heal official magazine layout density', () => {
     expect(pinned).toContain('od-magazine-optical-place');
     expect(pinned).toContain('od-magazine-body-spread');
     expect(pinned).toContain('od-magazine-body-fill');
+    expect(pinned).toContain('od-magazine-lede-fill');
     expect(pinned).toMatch(/style="[^"]*width:100%;height:100%/);
     expect(pinned).not.toMatch(/data-od-slide-flow[^>]*padding:80px/);
     expect(pinned).not.toMatch(/data-od-slide-flow[^>]*justify-content:center/);

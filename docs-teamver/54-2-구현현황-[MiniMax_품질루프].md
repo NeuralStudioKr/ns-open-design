@@ -186,6 +186,10 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | persist/preview: 16:9 채움 후 표지 제목이 하단, 본문은 위만 사용 | ☑ 루프141 |
 | persist/preview: 성긴 본문 오른쪽 공백 · 카드 위 공백 · 44px h2 | ☑ 루프142 |
 | persist/preview: 성긴 칩 세로 중앙 · 카드/리스트 내부 공백 · 14px ol | ☑ 루프143 |
+| persist/preview: 제목+lede만 있는 본문이 16:9 하단을 비움 | ☑ 루프145 |
+| kit: calc vh/%/vw + px 혼합 | ☑ 루프515–519 / round516–520 |
+| chat: FOO `▲▼△▽★☆✦✧●◉` | ☑ 루프520–529 / round521–530 |
+| kit/chat: set89–93 combo/closure | ☑ 루프530–544 / round531–545 |
 | persist/preview: leftover `·` 칩·발명 TOC가 brief 카피처럼 보임 | ☑ 루프144 |
 | persist/preview: look CSS가 1–2장 사이에 끼어 표지 밀집도가 깨짐 | ☑ follow-up |
 | persist/preview: MiniMax `<p="">` · 유출 `· Label` | ☑ follow-up |
@@ -213,7 +217,16 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | think 태그 / 내부 마크업 필터 | ☑ 기존 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프144)
+## 이번 루프 (루프145 · 루프515–544 / round516–545)
+
+1. heal — 제목+lede만 있는 본문은 `od-magazine-lede-fill`로 남은 16:9 well을 채움 (칩 투팬·fill-track·leftover 칩 삭제는 유지)
+2. neutralize — lede 36px, `od-magazine-lede-fill` 없으면 재주입
+3. padding — calc `vh|vw|% + px`를 1920×1080 환산(≥12px). thin `0.4vh+2px` / `0.2%+2px` 유지
+4. chat — FOO `▲▼△▽★☆✦✧●◉` · invent-frame/`box-shadow` 보류
+
+**검증:** heal lede-fill · look-css · chat-leak-probe-round516–545
+
+## 직전 루프 (루프144)
 
 1. heal — MiniMax `·` leftover 칩을 본문/cover-meta에서 삭제. 요청된 aside만 투팬
 2. 표지 — 후속 장 제목만 TOC. `개요/핵심 포인트`·발명 subhead 금지. on-brief 제목+본문 표지는 rebuild하지 않음

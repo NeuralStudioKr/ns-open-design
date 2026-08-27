@@ -415,10 +415,19 @@ function magazineFillBodyMarkup(heading: string, rest: string): string {
       </div>
     </div>`;
   }
+  if (lede) {
+    return `
+    <div class="body" style="display:flex;flex-direction:column;justify-content:flex-start;gap:28px;min-height:0;height:100%;box-sizing:border-box">
+      ${heading}
+      <div class="od-magazine-lede-fill" style="flex:1 1 auto;min-height:0;display:flex;align-items:center">
+        ${lede}
+      </div>
+    </div>`;
+  }
   return `
     <div class="body" style="display:flex;flex-direction:column;justify-content:flex-start;gap:28px;min-height:0;height:100%;box-sizing:border-box">
       ${heading}
-      ${lede || rest}
+      ${rest}
     </div>`;
 }
 

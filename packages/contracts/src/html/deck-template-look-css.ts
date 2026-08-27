@@ -245,6 +245,18 @@ section[data-screen-label], main[data-screen-label], article[data-screen-label] 
   font-size: 28px !important;
   line-height: 1.3 !important;
 }
+.slide .od-magazine-lede-fill {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+}
+.slide .od-magazine-lede-fill .lede {
+  font-size: 36px !important;
+  line-height: 1.35 !important;
+  max-width: 28ch !important;
+}
+/* od-magazine-lede-fill: title+lede only occupies the remaining 16:9 well. */
 /* od-magazine-body-fill: list/card inners occupy the stretched track. */
 `
 
@@ -401,6 +413,7 @@ function officialLookCssLooksCurrent(css: string): boolean {
     && css.includes('od-magazine-optical-place')
     && css.includes('od-magazine-body-spread')
     && css.includes('od-magazine-body-fill')
+    && css.includes('od-magazine-lede-fill')
   );
 }
 
@@ -444,6 +457,7 @@ export function hasOfficialLookStackedCanvasNeutralizeProof(html: string): boole
     && dest.includes('od-magazine-optical-place')
     && dest.includes('od-magazine-body-spread')
     && dest.includes('od-magazine-body-fill')
+    && dest.includes('od-magazine-lede-fill')
   );
 }
 
