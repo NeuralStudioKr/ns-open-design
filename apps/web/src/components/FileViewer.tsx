@@ -4869,11 +4869,12 @@ function sourceHasDeckSlideMarkup(html: string): boolean {
 function acceptPreviewHtmlCandidate(
   candidate: string | null,
   lastStableRef: { current: string | null },
+  brief?: string | null,
 ): string | null {
   if (candidate == null) return null;
   try {
     candidate = hoistDeckHostStylesToHead(
-      healOfficialMagazineLayoutDensity(sanitizePersistedDeckHostLeaks(candidate)),
+      healOfficialMagazineLayoutDensity(sanitizePersistedDeckHostLeaks(candidate), brief),
     );
     const repaired = repairArtifactDocumentHeadIfNeeded(candidate);
     if (isArtifactHtmlStableForPreview(repaired)) {
@@ -6593,7 +6594,7 @@ function HtmlViewer({
 
     const sourceFileKey = `${artifactIdentity}\0live`;
     sourceFileKeyRef.current = sourceFileKey;
-    const accepted = acceptPreviewHtmlCandidate(liveHtml, lastStablePreviewSourceRef);
+    const accepted = acceptPreviewHtmlCandidate(liveHtml, lastStablePreviewSourceRef, userBrief);
     if (accepted != null) {
       // A lagging parent liveHtml token must not clobber a just-saved pin
       // (S3/lazy race + ProjectView still holding the pre-edit buffer).
@@ -6655,7 +6656,7 @@ function HtmlViewer({
     // Unstable live stream with no prior stable frame: fall through to disk
     // fetch so re-entry / auth-slow tabs are not stuck on "loading…".
     setLiveHtmlPaintsPreview(false);
-  }, [liveHtml, projectId, file.name]);
+  }, [liveHtml, projectId, file.name, userBrief]);
 
   // Streaming owns the empty-state veil — never leave a sticky "unavailable"
   // from a mid-stream incomplete disk read.
@@ -6883,6 +6884,7 @@ function HtmlViewer({
             const acceptedPaint = acceptPreviewHtmlCandidate(
               repairedTipOrPin,
               lastStablePreviewSourceRef,
+              userBrief,
             );
             if (acceptedKeepsEarlyPaintTipOrPin(repairedTipOrPin, acceptedPaint)) {
               const paintSource = acceptedPaint;
@@ -6943,7 +6945,7 @@ function HtmlViewer({
           armPreviewSourceWall();
           return;
         }
-        const accepted = acceptPreviewHtmlCandidate(text, lastStablePreviewSourceRef);
+        const accepted = acceptPreviewHtmlCandidate(text, lastStablePreviewSourceRef, userBrief);
         if (accepted == null) {
           // Incomplete/leaky disk with no stable frame. Retry briefly after
           // stream (turn-end scrub / S3 sync race), then wall escalates.
@@ -6991,6 +6993,7 @@ function HtmlViewer({
     reloadKey,
     filesRefreshKey,
     embedAuthRecoveryNonce,
+    userBrief,
   ]);
 
   useEffect(() => () => {
@@ -7100,7 +7103,7 @@ function HtmlViewer({
     }
     let cancelled = false;
     const run = () => {
-      void healOfficialLookForDeckPreview(livePreviewSource, projectId).then((healed) => {
+      void healOfficialLookForDeckPreview(livePreviewSource, projectId, userBrief).then((healed) => {
         if (cancelled) return;
         if (healed && healed !== livePreviewSource) {
           setOfficialLookHealedPreview(healed);
@@ -7122,7 +7125,7 @@ function HtmlViewer({
     return () => {
       cancelled = true;
     };
-  }, [effectiveDeck, livePreviewSource, manualEditMode, projectId, streaming, file.name]);
+  }, [effectiveDeck, livePreviewSource, manualEditMode, projectId, streaming, file.name, userBrief]);
   const attachmentImageSrcRewritten = Boolean(
     rawLivePreviewSource
     && livePreviewSource

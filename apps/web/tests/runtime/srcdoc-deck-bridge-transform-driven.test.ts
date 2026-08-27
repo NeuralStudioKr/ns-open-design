@@ -627,7 +627,8 @@ h1.display { font-size: 72px; }
 <span class="ribbon"></span>
 <h1>영어 회화 표현 공부 팁, 예시에</h1>
 </section>
-<section class="slide"><h2>문법으로 외운 회화는 왜 입에서 안 나올까</h2><p="">본문</p=""></section>
+<section class="slide"><h2>문법으로 외운 회화는 왜 입에서 안 나올까</h2><p="">본문</p="">
+<div>첫 만남 · Small talk</div></section>
 </body></html>`;
     const srcdoc = buildSrcdoc(html, {
       deck: true,
@@ -639,5 +640,6 @@ h1.display { font-size: 72px; }
     expect(srcdoc).toMatch(/학습 노트/);
     expect(srcdoc).not.toMatch(/English Speaking Tips|쉐도잉|In context/i);
     expect(srcdoc).not.toMatch(/<\/p="">/);
+    expect(srcdoc).not.toMatch(/첫 만남 · Small talk|개요|핵심 포인트/);
   });
 });

@@ -162,6 +162,7 @@ async function resolveProjectDeckTemplateId(projectId: string): Promise<string |
 export async function healOfficialLookForDeckPreview(
   html: string,
   projectId: string,
+  brief?: string | null,
 ): Promise<string> {
   const dest = String(html ?? '');
   const id = String(projectId ?? '').trim();
@@ -171,7 +172,7 @@ export async function healOfficialLookForDeckPreview(
     if (!templateId) return dest;
     const withLook = await mergeOfficialLookCssForTemplate(dest, templateId);
     try {
-      return healOfficialMagazineLayoutDensity(withLook);
+      return healOfficialMagazineLayoutDensity(withLook, brief);
     } catch {
       return withLook;
     }

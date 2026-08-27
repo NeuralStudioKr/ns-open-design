@@ -213,6 +213,9 @@ describe('FileViewer preview heal gate', () => {
     const source = readFileSync(resolve(import.meta.dirname, '../../src/components/FileViewer.tsx'), 'utf8');
     expect(source).toContain('shouldApplyOfficialLookPreviewHeal');
     expect(source).toContain('healOfficialLookForDeckPreview');
+    expect(source).toContain(
+      'healOfficialLookForDeckPreview(livePreviewSource, projectId, userBrief)',
+    );
     expect(source).toContain('pickOfficialLookHealedPreviewSource');
     expect(source).toContain('OFFICIAL_LOOK_STREAMING_HEAL_DEBOUNCE_MS');
     expect(source).not.toMatch(/if\s*\(\s*streaming\s*\|\|\s*manualEditMode/);

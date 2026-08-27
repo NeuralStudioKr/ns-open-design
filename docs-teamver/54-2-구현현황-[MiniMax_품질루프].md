@@ -194,7 +194,9 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | preview: 레터박스 `#17181d`만 보이고 1/N만 동작 | ☑ 루프146 |
 | persist/preview: 표지 오른쪽 TOC 칸 공백 · 성긴 slide-inner 상단 고정 | ☑ 루프147 |
 | persist/preview: 제목-only 본문 하단 공백 · lede가 목록 fill-track에 흡수 | ☑ 루프148 |
-| persist/preview: Biennale에 IB Study Notes 표지 · 빈 s-chapter · 깨진 h1/`</h>` | ☑ 루프149 |
+| persist/preview: framed leftover · FileViewer no-brief · 한글 `·` 오삭 | ☑ 루프149 |
+| persist/preview: Biennale `에 대한` 표지 · 빈 장 · 헤딩 삼킴 · 4열 1카드 | ☑ 루프150 |
+| persist/preview: Biennale에 IB Study Notes 표지가 남음 · relative radial | ☑ 루프151 |
 | persist/preview: look CSS가 1–2장 사이에 끼어 표지 밀집도가 깨짐 | ☑ follow-up |
 | persist/preview: MiniMax `<p="">` · 유출 `· Label` | ☑ follow-up |
 | preview: Motif `span.ribbon`이 relative stretch로 빨간 줄 | ☑ follow-up |
@@ -221,13 +223,29 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | think 태그 / 내부 마크업 필터 | ☑ 기존 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프149)
+## 이번 루프 (루프151)
 
-1. 표지 — IB magazine rebuild는 IB look만. Biennale/`s-chapter`에 찍힌 Study Notes 크롬은 `s-cover`+`titlewrap`으로 되돌림
-2. salvage — 빈 장 삭제, 제목 안 블록·`</h>`·`repeat(N)`·relative radial 복구. `에 대한` 제목 polish
-3. Hartfield · Daisy · IB stub rebuild · 발명 카피 금지 유지
+1. salvage — persist가 찍은 IB `mast/ribbon/Study Notes`를 Biennale `s-cover`+`titlewrap`으로 되돌림
+2. persist — poster `s-chapter`/`s-cover`·비IB look에는 IB stub rebuild 금지
+3. deco radial absolute. Hartfield/Daisy/IB stub 유지
 
-**검증:** clone-fill Biennale restyle · empty drop · heading unwrap · IB stub 유지
+**검증:** clone-fill Biennale restyle · no Study Notes · IB stub 유지
+
+## 직전 루프 (루프150)
+
+1. heal — 잘린 `에 대한` 제목·Brief echo cover-meta·빈 장·혼자 남은 repeat 그리드
+2. salvage — `</h>` · 헤딩이 삼킨 lede/grid 분리 · 제목 이중 `<br>`
+3. Biennale 인라인 `#0a0a0a` → `--paper`. IB 매거진/토픽 발명 금지
+
+**검증:** biennale compact fill · lede outside h1 · no Brief · lonely 1fr · 4 slides
+
+## 직전 루프 (루프149)
+
+1. heal — framed leftover 매 회 스크럽. 균형 태그 · 한/영 칩만 삭제. 한글 `·` 유지. 투팬 aside ≥2. 투팬 미달 요청 카피 유지
+2. 표지 — no-brief는 기존 제목 polish만. 빈 제목은 `슬라이드`를 발명하지 않음
+3. FileViewer accept/look-heal에 `userBrief`. srcdoc leftover 가드
+
+**검증:** framed leftover · hyphen/li · no-brief stub · Hangul · keep · FileViewer brief wire
 
 ## 직전 루프 (루프148)
 
