@@ -315,18 +315,83 @@ function takeHeading(content: string): { heading: string; rest: string } {
   };
 }
 
+function looksLikeMagazineFillTrack(rest: string): boolean {
+  const source = String(rest ?? '');
+  if (/grid-template/i.test(source)) return true;
+  if ((source.match(/<li\b/gi)?.length ?? 0) >= 3) return true;
+  if ((source.match(/<(?:article|section|aside)\b/gi)?.length ?? 0) >= 2) return true;
+  return (source.match(/<div\b[^>]*>/gi)?.length ?? 0) >= 3;
+}
+
+function takeFirstParagraph(rest: string): { lede: string; remaining: string } {
+  const match = /<p\b[^>]*>([\s\S]*?)<\/p>/i.exec(rest);
+  if (!match || match.index == null) return { lede: '', remaining: rest };
+  return {
+    lede: `<div class="lede">${match[1]}</div>`,
+    remaining: `${rest.slice(0, match.index)}${rest.slice(match.index + match[0].length)}`.trim(),
+  };
+}
+
+function coverMetaRowsFromBlocks(html: string): string {
+  const texts = [...String(html ?? '').matchAll(
+    /<(?:div|p|span|li)\b[^>]*>([\s\S]*?)<\/(?:div|p|span|li)>/gi,
+  )]
+    .map((match) => visibleText(match[1] ?? ''))
+    .filter((text) => text.length >= 2)
+    .slice(0, 4);
+  if (texts.length === 0) {
+    const fallback = visibleText(html);
+    if (fallback.length >= 2) texts.push(fallback);
+  }
+  return texts.map((text, index) => (
+    `<div class="row"><span class="k">${escapeHtml(String(index + 1).padStart(2, '0'))}</span><span class="v">${escapeHtml(text)}</span></div>`
+  )).join('\n        ');
+}
+
 /**
- * After the magazine inner fills 1920×1080, a block `.body` parks MiniMax
- * copy at the top of a tall 1fr row. Sparse pages optically center; dense
- * pages start at the top so lists/cards are not mid-clipped.
+ * Chrome-measured 16:9 pages: a centered column leaves a dead right half,
+ * and a centered heading+grid leaves a dead top. Sparse prose becomes a
+ * two-pane spread; lists/cards pin the heading and fill the remaining row.
  */
-function magazineFillBodyStyle(heading: string, rest: string): string {
-  const text = visibleText(`${heading} ${rest}`);
-  const justify = text.length < 360 ? 'center' : 'flex-start';
+function wrapFillTrackChildren(rest: string): string {
+  const inner = String(rest ?? '').trim();
+  if (!inner) return '';
+  if (/^<div class="od-magazine-fill-track"[\s>]/.test(inner) && /<\/div>\s*$/.test(inner)) {
+    return inner;
+  }
   return (
-    `display:flex;flex-direction:column;justify-content:${justify};` +
-    'gap:28px;min-height:0;height:100%;box-sizing:border-box'
+    `<div class="od-magazine-fill-track" style="flex:1 1 auto;min-height:0;display:flex;flex-direction:column">` +
+    `${inner}</div>`
   );
+}
+
+function magazineFillBodyMarkup(heading: string, rest: string): string {
+  if (looksLikeMagazineFillTrack(rest)) {
+    return `
+    <div class="body" style="display:flex;flex-direction:column;justify-content:flex-start;gap:28px;min-height:0;height:100%;box-sizing:border-box">
+      ${heading}
+      ${wrapFillTrackChildren(rest)}
+    </div>`;
+  }
+  const { lede, remaining } = takeFirstParagraph(rest);
+  const aside = coverMetaRowsFromBlocks(remaining);
+  if (lede && aside) {
+    return `
+    <div class="body" style="display:grid;grid-template-columns:1.3fr 1fr;gap:48px;align-items:center;min-height:0;height:100%;box-sizing:border-box">
+      <div>
+        ${heading}
+        ${lede}
+      </div>
+      <div class="cover-meta">
+        ${aside}
+      </div>
+    </div>`;
+  }
+  return `
+    <div class="body" style="display:flex;flex-direction:column;justify-content:flex-start;gap:28px;min-height:0;height:100%;box-sizing:border-box">
+      ${heading}
+      ${lede || rest}
+    </div>`;
 }
 
 function buildMagazineBodyInner(
@@ -343,10 +408,7 @@ function buildMagazineBodyInner(
       <div class="brand">${label}</div>
       <div class="meta"><span>${String(index).padStart(2, '0')}</span><span>${String(slideCount).padStart(2, '0')}</span></div>
     </header>
-    <div class="body" style="${magazineFillBodyStyle(heading, rest)}">
-      ${heading}
-      ${rest}
-    </div>
+    ${magazineFillBodyMarkup(heading, rest)}
     <footer class="foot">
       <span class="conf">${label}</span>
       <span>${String(index).padStart(2, '0')} / ${String(slideCount).padStart(2, '0')}</span>

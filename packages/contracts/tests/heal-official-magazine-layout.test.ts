@@ -49,6 +49,10 @@ describe('heal official magazine layout density', () => {
     expect(LOOK_NEUTRALIZE_CSS).toMatch(/:not\(\[data-od-slide-flow\]\)/);
     expect(LOOK_NEUTRALIZE_CSS).toContain('od-slide-inner-canvas-fill');
     expect(LOOK_NEUTRALIZE_CSS).toContain('od-magazine-optical-place');
+    expect(LOOK_NEUTRALIZE_CSS).toContain('od-magazine-body-spread');
+    expect(LOOK_NEUTRALIZE_CSS).toMatch(
+      /\.slide\s+\.slide-inner\s+h2\.section[\s\S]*font-size:\s*56px\s*!important/,
+    );
     expect(LOOK_NEUTRALIZE_CSS).toMatch(
       /\.slide\.cover\s+\.body[\s\S]*align-items:\s*center\s*!important/,
     );
@@ -102,7 +106,9 @@ describe('heal official magazine layout density', () => {
     expect(healed).toMatch(/style="[^"]*width:100%;height:100%/);
     expect(healed).toMatch(/class="cover-meta"/);
     expect(healed).toMatch(/<h2 class="section">/);
-    expect(healed).toMatch(/class="body"[^>]*justify-content:center/);
+    expect(healed).toMatch(/class="body"[^>]*grid-template-columns:1\.3fr 1fr/);
+    expect(healed).not.toMatch(/class="body"[^>]*justify-content:center/);
+    expect(healed).toMatch(/class="lede"/);
     expect(healed).toMatch(/class="body"[^>]*height:100%/);
     expect(healed).toMatch(/문법으로 외운 회화/);
     expect(healed).not.toMatch(/Hartfield|NorthPeak|WACC/i);
@@ -200,6 +206,32 @@ describe('heal official magazine layout density', () => {
     );
     expect(healed).toMatch(/class="body"[^>]*justify-content:flex-start/);
     expect(healed).toMatch(/class="body"[^>]*height:100%/);
+    expect(healed).toMatch(/class="od-magazine-fill-track"/);
+  });
+
+  it('pins a 2×2 card grid into the magazine 1fr row instead of centering it', () => {
+    const official = readFileSync(IB_EXAMPLE, 'utf8');
+    const assets = extractOfficialDeckLookAssets(official);
+    const cards = `<!doctype html><html lang="ko"><body>
+<section class="slide slide-title"><h1>영어 회화</h1></section>
+<section class="slide"><h2>바로 쓸 수 있는 표현</h2>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:24px">
+<div><h3>첫 만남</h3><p>Nice to meet you.</p></div>
+<div><h3>동의</h3><p>That makes sense.</p></div>
+<div><h3>되묻기</h3><p>Could you say that again?</p></div>
+<div><h3>마무리</h3><p>Let’s pick this up next time.</p></div>
+</div>
+</section>
+</body></html>`;
+    const healed = healOfficialMagazineLayoutDensity(
+      mergeOfficialDeckLookCss(cards, assets),
+      BRIEF,
+    );
+    expect(healed).toMatch(/class="od-magazine-fill-track"/);
+    expect(healed).toMatch(/class="body"[^>]*justify-content:flex-start/);
+    expect(healed).not.toMatch(/class="body"[^>]*justify-content:center/);
+    expect(healed).toMatch(/바로 쓸 수 있는 표현/);
+    expect(healed).toMatch(/Nice to meet you/);
   });
 
   it('does not rebuild a dense official IB cover', () => {
@@ -225,6 +257,7 @@ describe('heal official magazine layout density', () => {
     expect(pinned).toMatch(/<h1 class="display">/);
     expect(pinned).toContain('od-slide-inner-canvas-fill');
     expect(pinned).toContain('od-magazine-optical-place');
+    expect(pinned).toContain('od-magazine-body-spread');
     expect(pinned).toMatch(/style="[^"]*width:100%;height:100%/);
     expect(pinned).not.toMatch(/data-od-slide-flow[^>]*padding:80px/);
     expect(pinned).not.toMatch(/data-od-slide-flow[^>]*justify-content:center/);

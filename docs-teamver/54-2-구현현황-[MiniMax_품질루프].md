@@ -181,6 +181,7 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | persist/preview: IB 본문이 매거진 프레임 없이 상단 정렬 | ☑ 루프139 |
 | persist/preview: flow가 magazine padding/`justify-content:center`를 이중 적용 | ☑ 루프140 |
 | persist/preview: 16:9 채움 후 표지 제목이 하단, 본문은 위만 사용 | ☑ 루프141 |
+| persist/preview: 성긴 본문 오른쪽 공백 · 카드 위 공백 · 44px h2 | ☑ 루프142 |
 | persist/preview: look CSS가 1–2장 사이에 끼어 표지 밀집도가 깨짐 | ☑ follow-up |
 | persist/preview: MiniMax `<p="">` · 유출 `· Label` | ☑ follow-up |
 | preview: Motif `span.ribbon`이 relative stretch로 빨간 줄 | ☑ follow-up |
@@ -207,7 +208,15 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | think 태그 / 내부 마크업 필터 | ☑ 기존 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프465–489 / round466–490)
+## 이번 루프 (루프142)
+
+1. heal — 성긴 본문은 `1.3fr 1fr` 투팬(lede + 기존 칩 cover-meta). 카드/리스트는 fill-track으로 1fr 행을 채움
+2. neutralize — `h2.section` 56px, fill-track stretch, `od-magazine-body-spread` 없으면 재주입
+3. 카탈로그 IB paper · Daisy/Studio/weekly 유지. 토픽 카피 발명 금지
+
+**검증:** heal two-pane / fill-track / 2×2 · look-css 56px · Chrome persist 재측정
+
+## 직전 루프 (루프465–489 / round466–490)
 
 1. padding — calc `%` 토큰 경계 · rem/em+px@16px root 합산
 2. chat — FOO `↠↝➞➠◆♦▶▷▸▹` · invent-frame/`box-shadow` 보류

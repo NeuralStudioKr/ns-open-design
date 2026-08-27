@@ -966,6 +966,10 @@ html, body { overflow: visible !important; height: auto !important; }
       /\.slide\s*>\s*\[data-od-slide-flow\]\s*>\s*\.slide-inner[\s\S]*height:\s*100%\s*!important/,
     );
     expect(LOOK_NEUTRALIZE_CSS).toContain('od-magazine-optical-place');
+    expect(LOOK_NEUTRALIZE_CSS).toContain('od-magazine-body-spread');
+    expect(LOOK_NEUTRALIZE_CSS).toMatch(
+      /\.slide\s+\.slide-inner\s+h2\.section[\s\S]*font-size:\s*56px\s*!important/,
+    );
     expect(LOOK_NEUTRALIZE_CSS).toMatch(
       /\.slide\.cover\s+\.body[\s\S]*align-items:\s*center\s*!important/,
     );

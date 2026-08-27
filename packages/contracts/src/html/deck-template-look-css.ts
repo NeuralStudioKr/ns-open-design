@@ -196,6 +196,31 @@ section[data-screen-label], main[data-screen-label], article[data-screen-label] 
 .slide .slide-inner > .body {
   min-height: 0 !important;
 }
+/* od-magazine-body-spread: 16:9 body type + fill track for lists/cards. */
+.slide .slide-inner h2.section {
+  font-size: 56px !important;
+  line-height: 1.08 !important;
+}
+.slide .od-magazine-fill-track {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+.slide .od-magazine-fill-track > :is(ul, ol, div, article, section, aside) {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+}
+.slide .od-magazine-fill-track > [style*="grid"] {
+  height: 100% !important;
+  align-content: stretch !important;
+  grid-auto-rows: 1fr !important;
+}
+.slide .od-magazine-fill-track > :is(ul, ol) {
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: space-between !important;
+}
 `
 
 const LOOK_NEUTRALIZE_TAIL_RE =
@@ -349,6 +374,7 @@ function officialLookCssLooksCurrent(css: string): boolean {
     // IB magazine inner must fill 16:9, not the 1320×820 presenter card.
     && css.includes('od-slide-inner-canvas-fill')
     && css.includes('od-magazine-optical-place')
+    && css.includes('od-magazine-body-spread')
   );
 }
 
@@ -390,6 +416,7 @@ export function hasOfficialLookStackedCanvasNeutralizeProof(html: string): boole
     && /:not\(\[data-od-slide-flow\]\)/i.test(dest)
     && dest.includes('od-slide-inner-canvas-fill')
     && dest.includes('od-magazine-optical-place')
+    && dest.includes('od-magazine-body-spread')
   );
 }
 
