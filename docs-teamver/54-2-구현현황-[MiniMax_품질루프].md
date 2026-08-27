@@ -194,6 +194,7 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | preview: 레터박스 `#17181d`만 보이고 1/N만 동작 | ☑ 루프146 |
 | persist/preview: 표지 오른쪽 TOC 칸 공백 · 성긴 slide-inner 상단 고정 | ☑ 루프147 |
 | persist/preview: 제목-only 본문 하단 공백 · lede가 목록 fill-track에 흡수 | ☑ 루프148 |
+| persist/preview: Biennale에 IB Study Notes 표지 · 빈 s-chapter · 깨진 h1/`</h>` | ☑ 루프149 |
 | persist/preview: look CSS가 1–2장 사이에 끼어 표지 밀집도가 깨짐 | ☑ follow-up |
 | persist/preview: MiniMax `<p="">` · 유출 `· Label` | ☑ follow-up |
 | preview: Motif `span.ribbon`이 relative stretch로 빨간 줄 | ☑ follow-up |
@@ -220,7 +221,15 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | think 태그 / 내부 마크업 필터 | ☑ 기존 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프148)
+## 이번 루프 (루프149)
+
+1. 표지 — IB magazine rebuild는 IB look만. Biennale/`s-chapter`에 찍힌 Study Notes 크롬은 `s-cover`+`titlewrap`으로 되돌림
+2. salvage — 빈 장 삭제, 제목 안 블록·`</h>`·`repeat(N)`·relative radial 복구. `에 대한` 제목 polish
+3. Hartfield · Daisy · IB stub rebuild · 발명 카피 금지 유지
+
+**검증:** clone-fill Biennale restyle · empty drop · heading unwrap · IB stub 유지
+
+## 직전 루프 (루프148)
 
 1. 본문 — leftover 이후 `h2`만 남으면 `od-magazine-title-fill`로 16:9 well을 채움
 2. 본문 — 첫 문단/`div` 산문은 lede, 남은 리스트·카드만 fill-track. lede-fill은 제목+lede만

@@ -25,6 +25,8 @@ import {
   isGenericDeckArtifactTitle,
   sanitizePersistedDeckHostLeaks,
   salvageMalformedMiniMaxSlideMarkup,
+  restyleForeignIbMagazineCover,
+  polishInstructionCoverTitle,
   stripEmptyOfficialMotifInstances,
   stripHostProtocolLeakFromDeckHtml,
   stripNonSlotWrappers,
@@ -496,6 +498,86 @@ describe('sanitizeTemplateCloneDeckTitle', () => {
     expect(healed).toMatch(/cover-meta/);
     expect(healed).toMatch(/문법으로 외운 회화/);
     expect(healed).not.toMatch(/slide-title/);
+  });
+
+  it('does not stamp IB magazine chrome onto a Biennale poster deck', () => {
+    const brief = '영어 회화 공부, 연습 팁에 대한 발표자료 만들어줘';
+    expect(polishInstructionCoverTitle('영어 회화 공부, 연습 팁에 대한')).toBe('영어 회화 공부, 연습 팁');
+    expect(deriveDeckCoverTitleFromBrief(brief)).not.toMatch(/에 대한/);
+
+    const html = `<!doctype html><html lang="ko"><body>
+<section class="slide slide-title"><h1>영어 회화 공부, 연습 팁에 대한</h1></section>
+<section class="slide s-chapter" style="background:#0a0a0a"></section>
+<section class="slide s-chapter"><h2>왜 회화는 근육인가</h2><p>발화 근육이 따로 필요합니다.</p></section>
+</body></html>`;
+    const healed = healInstructionCopyCoverHeading(html, brief);
+    expect(healed).not.toMatch(/class="mast"|cover-meta|Study Notes/i);
+    expect(healed).not.toMatch(/<h1 class="display">/);
+    expect(healed).toMatch(/<h1>영어 회화 공부, 연습 팁<\/h1>/);
+    expect(healed).not.toMatch(/에 대한/);
+    expect(healed).toMatch(/s-chapter/);
+  });
+
+  it('restyles an IB-stamped cover on Biennale look and salvages broken body slides', () => {
+    const html = `<!doctype html><html lang="ko"><body>
+<section class="slide cover slide-title" style="display:grid">
+<header class="mast"><span class="brand">Study Notes</span></header>
+<div class="body"><div><span class="ribbon">Study Notes</span>
+<h1 class="display">영어 회화 공부<br>연습 팁에 대한</h1>
+<p class="subhead">하루 45분, 네 가지 리츄얼로 발화 회로를 단련합니다</p>
+</div><aside class="cover-meta"><div class="row"><div class="k">Brief</div>
+<div class="v">영어 회화 공부, 연습 팁에 대한</div></div></aside></div>
+</section>
+<section class="slide s-chapter" style="width:1920px;height:1080px;background:#0a0a0a"></section>
+<section class="slide s-chapter">
+<h1 style="font-size:124px">왜 회화는<br><br>공부가 아니라<br><br><em>근육</em> 인가
+<div>성인 학습자는 문법·단어를 입력해도 회화에서 자동으로 끌어오지 못합니다.</div>
+</h1>
+</section>
+<section class="slide s-data">
+<h2>하루 45분, 네 가지 리츄얼</h2>
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:28px">
+<div style="min-height:420px"><div>01 · 10 MIN</div><div>Shadowing</div></div>
+</div>
+</section>
+<section class="slide s-data">
+<div style="position:relative;width:520px;height:520px;background:radial-gradient(circle at 100% 0%,#F1EE2E 0%,rgba(241,238,46,0) 60%);pointer-events:none"></div>
+<h2>일주일 회화 루틴 · <em>레시피 카드</em>
+<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:32px">
+<div><div>MON · WED · FRI</div><div>Shado</div></div></div></h>
+</section>
+<style data-od-official-look-css>
+:root { --sun:#F1EE2E; --paper:#E9E5DB; }
+.s-cover { background: var(--paper); }
+.s-cover .sunglow { position:absolute; inset:0; }
+.s-cover .titlewrap { position:absolute; }
+</style>
+</body></html>`;
+
+    const salvaged = salvageMalformedMiniMaxSlideMarkup(html);
+    expect(salvaged).toMatch(/class="slide s-cover"/);
+    expect(salvaged).toMatch(/class="titlewrap"/);
+    expect(salvaged).toMatch(/<h1 class="title">/);
+    expect(salvaged).toMatch(/하루 45분, 네 가지 리츄얼/);
+    expect(salvaged).not.toMatch(/Study Notes|cover-meta|class="mast"|Brief/i);
+    expect(salvaged).not.toMatch(/연습 팁에 대한/);
+    expect(salvaged.match(/<section\b[^>]*\bslide\b/gi)?.length).toBe(4);
+    expect(salvaged).not.toMatch(/<section class="slide s-chapter"[^>]*>\s*<\/section>/);
+    expect(salvaged).toMatch(/<h1[^>]*>왜 회화는<br>공부가 아니라<br><em>근육<\/em> 인가<\/h1>/);
+    expect(salvaged).toMatch(/성인 학습자는 문법/);
+    expect(salvaged).not.toMatch(
+      /<h1[^>]*>왜 회화는[\s\S]*<div>성인 학습자[\s\S]*<\/h1>/,
+    );
+    expect(salvaged).toMatch(/grid-template-columns:repeat\(1,/);
+    expect(salvaged).toMatch(/position:absolute;top:0;right:0/);
+    expect(salvaged).toMatch(/<h2[^>]*>일주일 회화 루틴 · <em>레시피 카드<\/em><\/h2>/);
+    expect(salvaged).toContain('Shado');
+    expect(salvaged).not.toMatch(/<\/h>/);
+    expect(salvaged).not.toMatch(/English Speaking Tips|쉐도잉 루틴|개요|핵심 포인트/i);
+
+    const restyled = restyleForeignIbMagazineCover(html);
+    expect(restyled).toMatch(/class="titlewrap"/);
+    expect(restyled).not.toMatch(/Study Notes/i);
   });
 
   it('reparents MiniMax auto-auto-1fr cards and 64px step lists', () => {

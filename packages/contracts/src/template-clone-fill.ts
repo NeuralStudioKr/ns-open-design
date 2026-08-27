@@ -391,6 +391,267 @@ const PREMATURE_AUTO_AUTO_1FR_CARD_RE =
   /(<div\b[^>]*grid-template-rows:\s*auto\s+auto\s+1fr[^>]*>)([\s\S]*?<\/div>\s*<div\b[^>]*>[\s\S]*?<\/div>)\s*<\/div>\s*(<div\b[^>]*>[\s\S]*?<\/div>)\s*<\/div>/gi;
 const EARLY_NUMBERED_OL_CLOSE_RE =
   /<\/ol>(\s*<\/div>)((?:\s*<li\b[^>]*grid-template-columns:\s*64px[\s\S]*?<\/li>)+)/gi;
+const LOOK_NEUTRALIZE_TAIL_RE = /\n?\/\*\s*stacked preview\/export:[\s\S]*$/i;
+const POSTER_SLIDE_KIND_RE =
+  /\bs-(?:cover|chapter|data|manifesto|programme|quote|cal|colophon)\b/i;
+
+function officialLookCssBodiesFromDeck(html: string): string {
+  return [...String(html ?? '').matchAll(
+    /<style\b[^>]*\bdata-od-official-look-css\b[^>]*>([\s\S]*?)<\/style>/gi,
+  )].map((match) => match[1] ?? '').join('\n');
+}
+
+function lookCssWithoutNeutralize(html: string): string {
+  return officialLookCssBodiesFromDeck(html).replace(LOOK_NEUTRALIZE_TAIL_RE, '');
+}
+
+function officialLookIsIbMagazine(html: string): boolean {
+  const css = lookCssWithoutNeutralize(html);
+  if (!css.trim()) return false;
+  if (/h1\.display\s*\{/i.test(css)) return true;
+  return (
+    /\.cover\s+\.ribbon/i.test(css)
+    && /\.cover-meta/i.test(css)
+    && /\.mast\s*\{/i.test(css)
+  );
+}
+
+function destHasPosterSlideKinds(html: string): boolean {
+  return POSTER_SLIDE_KIND_RE.test(html);
+}
+
+function officialLookIsBiennaleYellow(html: string): boolean {
+  const css = lookCssWithoutNeutralize(html);
+  return /\.sunglow\b/i.test(css) && /\.s-cover\b/i.test(css);
+}
+
+/** Instruction leftovers MiniMax parks on cover titles (`연습 팁에 대한`). */
+export function polishInstructionCoverTitle(raw: string): string {
+  return String(raw ?? '')
+    .replace(/[,，]?\s*예시에?\s*대한$/u, '')
+    .replace(/[,，]\s*예시에?$/u, '')
+    .replace(/\s*에\s*대한$/u, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function extractBalancedFrom(html: string, start: number): string | null {
+  const openMatch = /^<([a-zA-Z][\w-]*)\b[^>]*>/.exec(html.slice(start));
+  if (!openMatch) return null;
+  const tag = openMatch[1] ?? 'div';
+  if (/\/\s*>$/.test(openMatch[0])) return openMatch[0];
+  const end = findMatchingClose(html, start + openMatch[0].length, tag);
+  return end > start ? html.slice(start, end) : null;
+}
+
+function countDirectChildOpens(inner: string): number {
+  const source = String(inner ?? '');
+  const openRe = /<([a-zA-Z][\w-]*)\b[^>]*>/g;
+  let count = 0;
+  let match: RegExpExecArray | null;
+  let i = 0;
+  while (i < source.length) {
+    openRe.lastIndex = i;
+    match = openRe.exec(source);
+    if (!match) break;
+    const tag = match[1] ?? '';
+    if (/^(?:br|img|hr|meta|input|source|path|use)$/i.test(tag)) {
+      i = match.index + match[0].length;
+      continue;
+    }
+    const block = extractBalancedFrom(source, match.index);
+    if (!block) break;
+    count += 1;
+    i = match.index + block.length;
+  }
+  return count;
+}
+
+function repairBareHeadingCloses(html: string): string {
+  return String(html ?? '').replace(/<\/h\s*>/gi, (_full, offset: number) => {
+    const before = html.slice(0, offset);
+    const opens = [...before.matchAll(/<h([1-3])\b/gi)];
+    const last = opens[opens.length - 1];
+    return last?.[1] ? `</h${last[1]}>` : '';
+  });
+}
+
+function collapseHeadingBreaks(inner: string): string {
+  return String(inner ?? '').replace(/(?:<br\s*\/?>\s*){2,}/gi, '<br>');
+}
+
+function unwrapBlocksFromHeadings(html: string): string {
+  return String(html ?? '').replace(
+    /<h([1-3])\b([^>]*)>([\s\S]*?)<\/h\1>/gi,
+    (_full, level: string, attrs: string, inner: string) => {
+      const block = /<(div|ul|ol|section|article|aside|table|header|footer)\b/i.exec(inner);
+      if (!block || block.index == null) {
+        return `<h${level}${attrs}>${collapseHeadingBreaks(inner)}</h${level}>`;
+      }
+      const head = collapseHeadingBreaks(inner.slice(0, block.index)).trim();
+      const rest = inner.slice(block.index);
+      return `<h${level}${attrs}>${head}</h${level}>${rest}`;
+    },
+  );
+}
+
+function collapseSparseRepeatGrids(html: string): string {
+  let out = String(html ?? '');
+  const openRe = /<div\b[^>]*grid-template-columns:\s*repeat\(\s*(\d+)\s*,[^)]*\)[^>]*>/gi;
+  const starts: Array<{ start: number; count: number }> = [];
+  let match: RegExpExecArray | null;
+  while ((match = openRe.exec(out)) !== null) {
+    starts.push({ start: match.index, count: Number(match[1] ?? 0) });
+  }
+  for (let i = starts.length - 1; i >= 0; i -= 1) {
+    const { start, count } = starts[i]!;
+    if (!(count >= 2)) continue;
+    const block = extractBalancedFrom(out, start);
+    if (!block) continue;
+    const open = /^<div\b[^>]*>/i.exec(block)?.[0] ?? '';
+    const inner = block.slice(open.length).replace(/<\/div\s*>$/i, '');
+    const children = countDirectChildOpens(inner);
+    if (children < 1 || children >= count) continue;
+    const nextOpen = open.replace(
+      /grid-template-columns:\s*repeat\(\s*\d+\s*,/i,
+      `grid-template-columns:repeat(${children},`,
+    );
+    out = `${out.slice(0, start)}${nextOpen}${block.slice(open.length)}${out.slice(start + block.length)}`;
+  }
+  return out;
+}
+
+function rewriteStyleAttr(open: string, rewrite: (style: string) => string): string {
+  if (/\bstyle\s*=/i.test(open)) {
+    return open.replace(
+      /\bstyle\s*=\s*(['"])([\s\S]*?)\1/i,
+      (_m, q: string, style: string) => `style=${q}${rewrite(String(style))}${q}`,
+    );
+  }
+  const next = rewrite('');
+  return open.replace(/>$/, ` style="${next}">`);
+}
+
+function pinDecorativeGradientOverlays(html: string): string {
+  return String(html ?? '').replace(
+    /<div\b([^>]*\bradial-gradient\b[^>]*)>/gi,
+    (open) => {
+      if (!/pointer-events\s*:\s*none/i.test(open)) return open;
+      if (!/width\s*:\s*(?:[3-9]\d{2}|[1-9]\d{3})px/i.test(open)) return open;
+      if (/position\s*:\s*absolute/i.test(open)) return open;
+      return rewriteStyleAttr(open, (style) => (
+        `${style.replace(/(?:^|;)\s*position\s*:[^;]*/i, '').replace(/^;|;$/g, '')}`
+        + `${style && !style.endsWith(';') ? ';' : ''}position:absolute;top:0;right:0`
+      ));
+    },
+  );
+}
+
+function healOrphanRadialCircles(html: string): string {
+  let out = String(html ?? '').replace(
+    /<div\b([^>]*border-radius\s*:\s*50%[^>]*)>/gi,
+    (open) => {
+      if (!/radial-gradient/i.test(open)) return open;
+      if (/width\s*:/i.test(open)) return open;
+      return rewriteStyleAttr(open, (style) => (
+        `${style}${style && !style.endsWith(';') ? ';' : ''}width:100%;height:100%`
+      ));
+    },
+  );
+  return out.replace(
+    /<div\b([^>]*translate\(\s*-50%\s*,\s*-50%[^>]*)>/gi,
+    (open) => {
+      if (/position\s*:\s*absolute/i.test(open)) return open;
+      return rewriteStyleAttr(open, (style) => (
+        `${style.replace(/(?:^|;)\s*position\s*:[^;]*/i, '').replace(/^;|;$/g, '')}`
+        + `${style && !style.endsWith(';') ? ';' : ''}position:absolute;top:50%;left:50%`
+      ));
+    },
+  );
+}
+
+function slideBodyLooksEmpty(body: string): boolean {
+  const content = String(body ?? '')
+    .replace(/<style\b[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<script\b[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<svg\b[\s\S]*?<\/svg>/gi, ' SVG ');
+  const text = content.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/gi, ' ').replace(/\s+/g, ' ').trim();
+  if (text.length >= 2) return false;
+  if (/<(?:img|video|canvas|iframe|table|svg)\b/i.test(body)) return false;
+  return true;
+}
+
+export function dropEmptyDeckSlides(html: string): string {
+  const dest = String(html ?? '');
+  const spans = listHealSlideHostSpans(dest);
+  if (spans.length < 2) return dest;
+  let out = dest;
+  for (let i = spans.length - 1; i >= 1; i -= 1) {
+    const span = spans[i]!;
+    const body = out.slice(span.bodyStart, span.bodyEnd);
+    if (!slideBodyLooksEmpty(body)) continue;
+    const close = out.slice(span.bodyEnd).match(new RegExp(`^</${span.tag}\\s*>`, 'i'));
+    const end = span.bodyEnd + (close?.[0].length ?? 0);
+    out = `${out.slice(0, span.start)}${out.slice(end)}`;
+  }
+  return out;
+}
+
+function formatBiennaleCoverTitle(title: string): string {
+  const parts = title.split(/\s+/).filter(Boolean);
+  if (parts.length >= 4) {
+    return `${escapeHtml(parts.slice(0, -2).join(' '))}<br><em>${escapeHtml(parts.slice(-2).join(' '))}</em>`;
+  }
+  if (parts.length >= 2) {
+    return `${escapeHtml(parts.slice(0, -1).join(' '))}<br><em>${escapeHtml(parts[parts.length - 1]!)}</em>`;
+  }
+  return escapeHtml(title);
+}
+
+/**
+ * Persist stamps IB magazine chrome onto Biennale/poster kits before look
+ * CSS lands. Restyle that cover with the official poster slots only.
+ */
+export function restyleForeignIbMagazineCover(html: string): string {
+  const dest = String(html ?? '');
+  if (!dest.trim() || officialLookIsIbMagazine(dest)) return dest;
+  if (!officialLookIsBiennaleYellow(dest) && !destHasPosterSlideKinds(dest)) return dest;
+  const spans = listHealSlideHostSpans(dest);
+  if (spans.length === 0) return dest;
+  const first = spans[0]!;
+  const body = dest.slice(first.bodyStart, first.bodyEnd);
+  if (!/\bmast\b/i.test(body) || !/<h1\b[^>]*\bdisplay\b/i.test(body)) return dest;
+  const title = polishInstructionCoverTitle(
+    (body.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i)?.[1] ?? '')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim(),
+  );
+  if (title.length < 2) return dest;
+  const subhead = polishInstructionCoverTitle(
+    (body.match(/<(?:p|div)\b[^>]*\bsubhead\b[^>]*>([\s\S]*?)<\/(?:p|div)>/i)?.[1] ?? '')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim(),
+  );
+  const biennale = officialLookIsBiennaleYellow(dest);
+  const inner = biennale
+    ? `<div class="sunglow" aria-hidden="true"></div><div class="titlewrap"><h1 class="title">${formatBiennaleCoverTitle(title)}</h1>${
+      subhead ? `<div class="subline">${escapeHtml(subhead)}</div>` : ''
+    }</div>`
+    : `<h1 class="title">${escapeHtml(title)}</h1>${
+      subhead ? `<p class="subhead">${escapeHtml(subhead)}</p>` : ''
+    }`;
+  const close = dest.slice(first.bodyEnd).match(new RegExp(`^</${first.tag}\\s*>`, 'i'));
+  const end = first.bodyEnd + (close?.[0].length ?? 0);
+  return (
+    `${dest.slice(0, first.start)}<${first.tag} class="slide s-cover" ` +
+    `style="width:1920px;height:1080px;box-sizing:border-box;overflow:visible;` +
+    `position:relative;background:var(--paper);color:var(--ink)">${inner}` +
+    `</${first.tag}>${dest.slice(end)}`
+  );
+}
+
 /**
  * MiniMax often emits `<p="">`, leaked `· Label` twins, a card `</div>`
  * before the body, or `</ol>` after step 01. Restore those tags only —
@@ -405,6 +666,13 @@ export function salvageMalformedMiniMaxSlideMarkup(html: string): string {
   next = next.replace(LEAKED_LABEL_AFTER_CLOSE_RE, '</$1>');
   next = next.replace(PREMATURE_AUTO_AUTO_1FR_CARD_RE, '$1$2$3</div>');
   next = next.replace(EARLY_NUMBERED_OL_CLOSE_RE, '$2</ol>$1');
+  next = repairBareHeadingCloses(next);
+  next = unwrapBlocksFromHeadings(next);
+  next = collapseSparseRepeatGrids(next);
+  next = pinDecorativeGradientOverlays(next);
+  next = healOrphanRadialCircles(next);
+  next = dropEmptyDeckSlides(next);
+  next = restyleForeignIbMagazineCover(next);
   return next;
 }
 
@@ -1268,7 +1536,7 @@ function deriveTitleFromBrief(brief: string, deckTitle?: string | null): string 
       ? aboutTopic
       : '슬라이드';
   }
-  return cleanCloneTitle(title).slice(0, 60) || '슬라이드';
+  return polishInstructionCoverTitle(cleanCloneTitle(title).slice(0, 60)) || '슬라이드';
 }
 
 /**
@@ -1462,8 +1730,10 @@ export function healInstructionCopyCoverHeading(
   deckTitle?: string | null,
 ): string {
   const dest = String(html ?? '');
-  const coverTitle = sanitizeTemplateCloneDeckTitle(
-    deriveDeckCoverTitleFromBrief(brief, deckTitle),
+  const coverTitle = polishInstructionCoverTitle(
+    sanitizeTemplateCloneDeckTitle(
+      deriveDeckCoverTitleFromBrief(brief, deckTitle),
+    ) ?? '',
   );
   if (!coverTitle || !dest.trim()) return dest;
 
@@ -1481,11 +1751,24 @@ export function healInstructionCopyCoverHeading(
       : screenLabelRoleTitle(span.attrs)
         || firstParagraphTitle(body)
         || roleFallbackTitle(span.attrs, body, coverTitle, i);
-    const rewritten = replaceFailedHeadings(body, title);
+    const rewritten = polishTrailingInstructionHeadings(replaceFailedHeadings(body, title));
     if (rewritten === body) continue;
     next = next.slice(0, span.bodyStart) + rewritten + next.slice(span.bodyEnd);
   }
   return healSparseDeckCoverLayout(stripDeckLevelDemoChrome(next), brief, deckTitle);
+}
+
+function polishTrailingInstructionHeadings(fragment: string): string {
+  return String(fragment ?? '').replace(
+    /<h([1-3])\b([^>]*)>([\s\S]*?)<\/h\1>/gi,
+    (full, level: string, attrs: string, inner: string) => {
+      if (/<(?:div|ul|ol)\b/i.test(inner)) return full;
+      const text = visibleHeadingText(inner);
+      const polished = polishInstructionCoverTitle(text);
+      if (!polished || polished === text) return full;
+      return `<h${level}${attrs}>${escapeHtml(polished)}</h${level}>`;
+    },
+  );
 }
 
 function stripTagsToText(html: string): string {
@@ -1511,7 +1794,10 @@ function looksLikeStubCoverSlide(attrs: string, body: string): boolean {
   const emptyMotif = /<(?:div|span)\b[^>]*\bdata-od-official-motif-html\b[^>]*>\s*<\/(?:div|span)>/i.test(body);
   const h1 = firstMatchText(content, /<h1\b[^>]*>([\s\S]*?)<\/h1>/i);
   const truncatedBrief = h1.length >= 2
-    && (/(?:에|이|를|은|는)$/.test(h1) || headingLooksLikeFailedGenerate(h1));
+    && (
+      /에\s*대한$|예시에?$|만들어줘$/u.test(h1)
+      || headingLooksLikeFailedGenerate(h1)
+    );
   // A real one-line cover title ("Expo SDK 개요") must stay. Rebuild only
   // host salvage chrome or a brief-truncated heading.
   return centered || emptyMotif || truncatedBrief;
@@ -1558,10 +1844,14 @@ export function healSparseDeckCoverLayout(
   deckTitle?: string | null,
 ): string {
   const dest = String(html ?? '');
-  const coverTitle = sanitizeTemplateCloneDeckTitle(
-    deriveDeckCoverTitleFromBrief(brief, deckTitle),
+  const coverTitle = polishInstructionCoverTitle(
+    sanitizeTemplateCloneDeckTitle(
+      deriveDeckCoverTitleFromBrief(brief, deckTitle),
+    ) ?? '',
   );
   if (!coverTitle || isGenericDeckArtifactTitle(coverTitle) || !dest.trim()) return dest;
+  if (destHasPosterSlideKinds(dest) && !officialLookIsIbMagazine(dest)) return dest;
+  if (lookCssWithoutNeutralize(dest).trim() && !officialLookIsIbMagazine(dest)) return dest;
 
   const spans = listHealSlideHostSpans(dest);
   if (spans.length === 0) return dest;
@@ -1580,17 +1870,14 @@ export function healSparseDeckCoverLayout(
       /<(?:header|div)\b[^>]*letter-spacing:\s*0\.2[12]em[^>]*>([\s\S]*?)<\/(?:header|div)>/i,
     ))
     .find((text) => text.length >= 2)
-    ?? 'Study Notes';
+    ?? (/[가-힣]/.test(coverTitle) ? '학습 노트' : 'Notes');
   const meta = collectCoverMetaRows(laterBodies);
   const metaHtml = meta.length > 0
     ? meta.map((row) => (
       `<div class="row"><div class="k">${escapeHtml(row.k)}</div>`
       + `<div class="v">${escapeHtml(row.v)}</div></div>`
     )).join('')
-    : (
-      `<div class="row"><div class="k">Brief</div>`
-      + `<div class="v">${escapeHtml(coverTitle)}</div></div>`
-    );
+    : '';
 
   const cover = [
     '<section class="slide cover" style="width:1920px;height:1080px;box-sizing:border-box;',
@@ -1610,7 +1897,7 @@ export function healSparseDeckCoverLayout(
       ? `<p class="subhead">${escapeHtml(subhead)}</p>`
       : '',
     '</div>',
-    `<aside class="cover-meta">${metaHtml}</aside>`,
+    metaHtml ? `<aside class="cover-meta">${metaHtml}</aside>` : '',
     '</div>',
     '<footer class="foot" style="display:flex;justify-content:space-between;align-items:center;',
     'padding-top:14px;border-top:1px solid var(--rule)">',
