@@ -180,7 +180,12 @@ function collectBodySlideTitles(html: string, skipFirst = true): string[] {
     const body = html.slice(slides[i]!.openEnd, slides[i]!.bodyEnd);
     const heading = /<h[1-3]\b[^>]*>([\s\S]*?)<\/h[1-3]>/i.exec(body)?.[1] ?? '';
     const title = visibleText(heading).replace(/\s+/g, ' ').trim();
-    if (title.length >= 4 && title.length <= 48 && !out.includes(title)) {
+    if (
+      title.length >= 4
+      && title.length <= 48
+      && !looksLikeLeftoverOutlineChip(title)
+      && !out.includes(title)
+    ) {
       out.push(title);
     }
     if (out.length >= 4) break;
@@ -193,10 +198,17 @@ function isSparseMagazineCover(body: string): boolean {
   if (/\bslide-inner\b/i.test(body) && /<h1\b[^>]*\bdisplay\b/i.test(body) && text.length >= 80) {
     return false;
   }
+  const heading = visibleText(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i.exec(body)?.[1] ?? '');
+  if (/에\s*대한$|예시에?$/u.test(heading)) return true;
+  const prose = visibleText(/<p\b[^>]*>([\s\S]*?)<\/p>/i.exec(body)?.[1] ?? '');
+  if (heading.length >= 4 && prose.length >= 12) return false;
+  if (/<(?:p|div|aside)\b/i.test(body) && /<h1\b/i.test(body) && text.length >= 80) {
+    return false;
+  }
   if (/<h2\b/i.test(body) && /<(?:p|aside|ul|ol)\b/i.test(body) && text.length >= 120) {
     return false;
   }
-  return text.length < 120 || (/<h1\b/i.test(body) && !/<h2\b/i.test(body) && text.length < 160);
+  return /<h1\b/i.test(body) && !/<h2\b/i.test(body) && text.length < 80;
 }
 
 function addClassToAttrs(attrs: string, token: string): string {
@@ -255,12 +267,6 @@ function brandFromTitle(title: string): { brand: string; accent: string } {
   }
   const raw = title.slice(0, 24) || 'Notes';
   return { brand: escapeHtml(raw), accent: '' };
-}
-
-function genericMetaRows(slideCount: number): string[] {
-  const pool = ['개요', '핵심 포인트', '다음 단계'];
-  const needed = Math.min(3, Math.max(1, slideCount - 1));
-  return pool.slice(0, needed);
 }
 
 /** Fill the 1920×1080 page — official IB `.slide-inner` is a 1320×820 card. */
@@ -323,6 +329,27 @@ function looksLikeMagazineFillTrack(rest: string): boolean {
   return (source.match(/<div\b[^>]*>/gi)?.length ?? 0) >= 3;
 }
 
+/**
+ * MiniMax compact leftovers (`첫 만남 · Small talk`) are outline debris,
+ * not requested body copy. Featuring them as cover-meta invents a topic.
+ */
+function looksLikeLeftoverOutlineChip(text: string): boolean {
+  const value = String(text ?? '').replace(/\s+/g, ' ').trim();
+  if (!value) return true;
+  if (value.length > 64) return false;
+  return /·/.test(value) || /^\s*·/.test(value);
+}
+
+function dropLeftoverOutlineChips(html: string): string {
+  return String(html ?? '')
+    .replace(/<(div|span|p)\b[^>]*>[\s\S]*?<\/\1>/gi, (block) => (
+      looksLikeLeftoverOutlineChip(visibleText(block)) ? '' : block
+    ))
+    .replace(/\s*·\s*[A-Za-z][^<>]{0,40}(?=<|$)/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
 function takeFirstParagraph(rest: string): { lede: string; remaining: string } {
   const match = /<p\b[^>]*>([\s\S]*?)<\/p>/i.exec(rest);
   if (!match || match.index == null) return { lede: '', remaining: rest };
@@ -337,11 +364,11 @@ function coverMetaRowsFromBlocks(html: string): string {
     /<(?:div|p|span|li)\b[^>]*>([\s\S]*?)<\/(?:div|p|span|li)>/gi,
   )]
     .map((match) => visibleText(match[1] ?? ''))
-    .filter((text) => text.length >= 2)
+    .filter((text) => text.length >= 2 && !looksLikeLeftoverOutlineChip(text))
     .slice(0, 4);
   if (texts.length === 0) {
     const fallback = visibleText(html);
-    if (fallback.length >= 2) texts.push(fallback);
+    if (fallback.length >= 2 && !looksLikeLeftoverOutlineChip(fallback)) texts.push(fallback);
   }
   return texts.map((text, index) => (
     `<div class="row"><span class="k">${escapeHtml(String(index + 1).padStart(2, '0'))}</span><span class="v">${escapeHtml(text)}</span></div>`
@@ -366,6 +393,7 @@ function wrapFillTrackChildren(rest: string): string {
 }
 
 function magazineFillBodyMarkup(heading: string, rest: string): string {
+  rest = dropLeftoverOutlineChips(rest);
   if (looksLikeMagazineFillTrack(rest)) {
     return `
     <div class="body" style="display:flex;flex-direction:column;justify-content:flex-start;gap:28px;min-height:0;height:100%;box-sizing:border-box">
@@ -428,9 +456,10 @@ function healOfficialMagazineBodyFrames(html: string): string {
     if (/\bslide-inner\b/i.test(body)) continue;
     if (/<(?:table|svg)\b/i.test(body) && visibleText(body).length >= 200) continue;
     const { chrome, content } = peelFlowAndMotif(body);
-    if (!content.trim()) continue;
-    const { heading, rest } = takeHeading(content);
-    const title = visibleText(heading) || visibleText(content).slice(0, 40) || '슬라이드';
+    const cleaned = dropLeftoverOutlineChips(content);
+    if (!cleaned.trim()) continue;
+    const { heading, rest } = takeHeading(cleaned);
+    const title = visibleText(heading) || visibleText(cleaned).slice(0, 40) || '슬라이드';
     const nextInner = `${chrome}${buildMagazineBodyInner(heading, rest, i + 1, slides.length, title)}`;
     const nextAttrs = slimCoverHostStyle(slide.attrs);
     out = `${out.slice(0, slide.start)}<${slide.tag}${nextAttrs}>${nextInner}</${slide.tag}>${out.slice(slide.end)}`;
@@ -447,8 +476,8 @@ function buildMagazineCoverInner(
   const ribbon = hangul ? '학습 노트' : 'Working notes';
   const notesLabel = hangul ? '학습 노트' : 'Notes';
   const slidesLabel = hangul ? '슬라이드' : 'slides';
-  const subhead = laterTitles[0] || (hangul ? '핵심 내용을 한 장에 정리합니다' : 'Key points for this discussion');
-  const metaRows = (laterTitles.length > 0 ? laterTitles : genericMetaRows(slideCount)).slice(0, 4);
+  const metaRows = laterTitles.filter((label) => !looksLikeLeftoverOutlineChip(label)).slice(0, 4);
+  const subhead = metaRows[0] || '';
   const { brand, accent } = brandFromTitle(title);
   const brandHtml = accent ? `${brand} <i>${accent}</i>` : brand;
   const rows = metaRows.map((label, index) => (
@@ -464,11 +493,11 @@ function buildMagazineCoverInner(
       <div>
         <span class="ribbon">${escapeHtml(ribbon)}</span>
         <h1 class="display">${formatDisplayTitle(title)}</h1>
-        <div class="subhead">${escapeHtml(subhead)}</div>
+        ${subhead ? `<div class="subhead">${escapeHtml(subhead)}</div>` : ''}
       </div>
-      <div class="cover-meta">
+      ${rows ? `<div class="cover-meta">
         ${rows}
-      </div>
+      </div>` : ''}
     </div>
     <footer class="foot">
       <span class="conf">${escapeHtml(title.slice(0, 40) || 'Notes')}</span>

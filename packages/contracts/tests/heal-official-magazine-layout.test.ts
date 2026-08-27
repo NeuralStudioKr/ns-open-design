@@ -107,7 +107,7 @@ describe('heal official magazine layout density', () => {
     expect(healed).toMatch(/style="[^"]*width:100%;height:100%/);
     expect(healed).toMatch(/class="cover-meta"/);
     expect(healed).toMatch(/<h2 class="section">/);
-    expect(healed).toMatch(/class="od-magazine-sparse-spread"[^>]*grid-template-columns:1\.3fr 1fr/);
+    expect(healed).not.toMatch(/class="od-magazine-sparse-spread"/);
     expect(healed).toMatch(/class="body"[^>]*justify-content:flex-start/);
     expect(healed).not.toMatch(/class="body"[^>]*justify-content:center/);
     expect(healed).toMatch(/class="lede"/);
@@ -119,7 +119,8 @@ describe('heal official magazine layout density', () => {
     expect(healed).toMatch(/학습 노트/);
     expect(healed).not.toMatch(/<\/p="">/);
     expect(healed).not.toMatch(/<\/div>\s*·\s*Small talk/);
-    expect(healed).toMatch(/첫 만남 · Small talk/);
+    expect(healed).not.toMatch(/첫 만남 · Small talk/);
+    expect(healed).not.toMatch(/개요|핵심 포인트|다음 단계|핵심 내용을 한 장에/);
     expect(healed).not.toMatch(
       /<section\b[^>]*\bcover\b[^>]*style="[^"]*\bdisplay\s*:\s*flex/i,
     );
@@ -190,6 +191,66 @@ describe('heal official magazine layout density', () => {
     expect(healed).toMatch(/<h2 class="section">설치<\/h2>/);
     expect(healed).toMatch(/style="[^"]*width:100%;height:100%/);
     expect(healed).not.toMatch(/쉐도잉|English Speaking Tips|회화 표현/i);
+    expect(healed).not.toMatch(/개요|핵심 포인트|다음 단계|핵심 내용을 한 장에/);
+  });
+
+  it('does not promote leftover outline chips or invent a cover TOC', () => {
+    const official = readFileSync(IB_EXAMPLE, 'utf8');
+    const assets = extractOfficialDeckLookAssets(official);
+    const leftoverOnly = `<!doctype html><html lang="ko"><body>
+<section class="slide slide-title"><h1>영어 회화 표현 공부 팁, 예시에</h1></section>
+<section class="slide"><p>예시를 중심으로 바로 쓸 문장을 정리합니다.</p>
+<div>첫 만남 · Small talk</div> · Small talk</div>
+</section>
+</body></html>`;
+    const healed = healOfficialMagazineLayoutDensity(
+      mergeOfficialDeckLookCss(leftoverOnly, assets),
+      BRIEF,
+    );
+    expect(healed).toMatch(/예시를 중심으로 바로 쓸 문장/);
+    expect(healed).not.toMatch(/첫 만남 · Small talk/);
+    expect(healed).not.toMatch(/class="od-magazine-sparse-spread"/);
+    expect(healed).not.toMatch(/개요|핵심 포인트|다음 단계|핵심 내용을 한 장에/);
+    expect(healed).not.toMatch(/English Speaking Tips|쉐도잉|In context/i);
+  });
+
+  it('two-panes only requested asides, not leftover · chips', () => {
+    const official = readFileSync(IB_EXAMPLE, 'utf8');
+    const assets = extractOfficialDeckLookAssets(official);
+    const requested = `<!doctype html><html lang="ko"><body>
+<section class="slide slide-title"><h1>영어 회화</h1></section>
+<section class="slide"><h2>연습 순서</h2>
+<p>짧게 말해 본 뒤 바로 고쳐 씁니다.</p>
+<div>듣기 연습</div>
+<div>따라 말하기</div>
+</section>
+</body></html>`;
+    const healed = healOfficialMagazineLayoutDensity(
+      mergeOfficialDeckLookCss(requested, assets),
+      BRIEF,
+    );
+    expect(healed).toMatch(/class="od-magazine-sparse-spread"/);
+    expect(healed).toMatch(/듣기 연습/);
+    expect(healed).toMatch(/따라 말하기/);
+    expect(healed).not.toMatch(/첫 만남 · Small talk/);
+  });
+
+  it('keeps an on-brief cover that already has title and prose', () => {
+    const official = readFileSync(IB_EXAMPLE, 'utf8');
+    const assets = extractOfficialDeckLookAssets(official);
+    const onBrief = `<!doctype html><html lang="ko"><body>
+<section class="slide"><h1>영어 회화 표현 공부 팁</h1>
+<p>예시를 중심으로 바로 쓸 문장을 정리합니다.</p></section>
+<section class="slide"><h2>바로 쓸 표현</h2><p>Nice to meet you.</p></section>
+</body></html>`;
+    const healed = healOfficialMagazineLayoutDensity(
+      mergeOfficialDeckLookCss(onBrief, assets),
+      BRIEF,
+    );
+    expect(healed).toContain('영어 회화 표현 공부 팁');
+    expect(healed).toContain('예시를 중심으로 바로 쓸 문장을 정리합니다.');
+    expect(healed).not.toMatch(/<h1 class="display">/);
+    expect(healed).not.toMatch(/학습 노트/);
   });
 
   it('starts dense magazine body copy at the top of the 16:9 page', () => {
@@ -289,6 +350,7 @@ describe('heal official magazine layout density', () => {
     expect(exported).toMatch(/영어 회화 표현/);
     expect(exported).toMatch(/문법으로 외운 회화/);
     expect(exported).not.toMatch(/English Speaking Tips|쉐도잉|In context/i);
+    expect(exported).not.toMatch(/첫 만남 · Small talk/);
     expect(exported).not.toMatch(/<\/p="">/);
     expect(exported).toMatch(/:not\(\[data-od-slide-flow\]\)/);
   });

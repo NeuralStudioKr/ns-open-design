@@ -186,6 +186,7 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | persist/preview: 16:9 채움 후 표지 제목이 하단, 본문은 위만 사용 | ☑ 루프141 |
 | persist/preview: 성긴 본문 오른쪽 공백 · 카드 위 공백 · 44px h2 | ☑ 루프142 |
 | persist/preview: 성긴 칩 세로 중앙 · 카드/리스트 내부 공백 · 14px ol | ☑ 루프143 |
+| persist/preview: leftover `·` 칩·발명 TOC가 brief 카피처럼 보임 | ☑ 루프144 |
 | persist/preview: look CSS가 1–2장 사이에 끼어 표지 밀집도가 깨짐 | ☑ follow-up |
 | persist/preview: MiniMax `<p="">` · 유출 `· Label` | ☑ follow-up |
 | preview: Motif `span.ribbon`이 relative stretch로 빨간 줄 | ☑ follow-up |
@@ -212,7 +213,15 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | think 태그 / 내부 마크업 필터 | ☑ 기존 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프143)
+## 이번 루프 (루프144)
+
+1. heal — MiniMax `·` leftover 칩을 본문/cover-meta에서 삭제. 요청된 aside만 투팬
+2. 표지 — 후속 장 제목만 TOC. `개요/핵심 포인트`·발명 subhead 금지. on-brief 제목+본문 표지는 rebuild하지 않음
+3. Daisy/Studio/weekly · 카탈로그 IB paper 유지
+
+**검증:** heal leftover drop · requested aside two-pane · on-brief cover keep
+
+## 직전 루프 (루프143)
 
 1. heal — 성긴 본문은 제목 전폭 상단 + lede|칩 `od-magazine-sparse-spread` (`align-items:start`)
 2. neutralize — fill-track 리스트 28px·li stretch, 카드 내부 center, `od-magazine-body-fill` 없으면 재주입
