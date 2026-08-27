@@ -71,10 +71,16 @@ describe("project conversation error messages", () => {
       formatProjectForkConversationError,
     } = await import("../src/teamver/projectErrorMessages");
     expect(formatProjectArtifactRejectedError("deck.html", "missing doctype")).toContain(
-      "저장을 거부",
+      '슬라이드 파일 "슬라이드"',
+    );
+    expect(formatProjectArtifactRejectedError("deck.html", "missing doctype")).not.toContain(
+      "deck.html",
     );
     expect(formatProjectArtifactRejectedError("   ", "missing doctype")).toContain(
       '슬라이드 파일 "슬라이드"',
+    );
+    expect(formatProjectArtifactRejectedError("분기 실적.html", "missing doctype")).toContain(
+      '슬라이드 파일 "분기 실적"',
     );
     expect(formatProjectArtifactCommentScopeRejectedError()).toContain("댓글 대상 밖");
     // With a detail arg the message must append the concrete
@@ -86,7 +92,10 @@ describe("project conversation error messages", () => {
     expect(withDetail).toContain("사유: deck_patch_merge_failed — Selected targets were unchanged.");
     // No detail → no parenthetical suffix (preserves the older UI copy).
     expect(formatProjectArtifactCommentScopeRejectedError()).not.toContain("사유:");
-    expect(formatProjectArtifactSaveFailedError("deck.html")).toContain("저장에 실패");
+    expect(formatProjectArtifactSaveFailedError("deck.html")).toContain(
+      '슬라이드 파일 "슬라이드" 저장에 실패',
+    );
+    expect(formatProjectArtifactSaveFailedError("deck.html")).not.toContain("deck.html");
     expect(formatProjectRunDeliverableMissingError()).toContain("슬라이드 결과물");
     expect(formatProjectRunDeliverableMissingError()).not.toContain("terminalPersistResultKind=");
     const encoded = encodePersistedRunErrorDetail(formatProjectRunDeliverableMissingError(), {
@@ -178,7 +187,10 @@ describe("project conversation error messages", () => {
         message: "Network error while saving the file",
       }),
     ).toContain("네트워크");
-    expect(formatProjectArtifactStubWarning("deck.html", "stub")).toContain("플레이스홀더");
+    expect(formatProjectArtifactStubWarning("deck.html", "stub")).toContain(
+      '"슬라이드"은(는) 저장됐지만 플레이스홀더',
+    );
+    expect(formatProjectArtifactStubWarning("deck.html", "stub")).not.toContain("deck.html");
     expect(
       extractProjectRunErrorCode(new Error("proxy 502: PROJECT_STORAGE_UNAVAILABLE sync-down failed")),
     ).toBe("PROJECT_STORAGE_UNAVAILABLE");
@@ -278,6 +290,20 @@ describe("project conversation error messages", () => {
       ),
     ).toContain("연결");
     expect(formatProjectForkConversationError()).toBe("대화를 복제하지 못했습니다.");
+  });
+
+  it("keeps standalone save banners on the raw filename", async () => {
+    mockedEmbedMode.mockReturnValue(false);
+    const {
+      formatProjectArtifactRejectedError,
+      formatProjectArtifactSaveFailedError,
+      formatProjectArtifactStubWarning,
+    } = await import("../src/teamver/projectErrorMessages");
+    expect(formatProjectArtifactRejectedError("deck.html", "missing doctype")).toContain(
+      '"deck.html"',
+    );
+    expect(formatProjectArtifactSaveFailedError("deck.html")).toContain('"deck.html"');
+    expect(formatProjectArtifactStubWarning("deck.html", "stub")).toContain('"deck.html"');
   });
 
   it("passes through raw conversation errors in standalone OD", async () => {

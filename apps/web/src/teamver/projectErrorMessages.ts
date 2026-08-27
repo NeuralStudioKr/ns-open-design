@@ -1,6 +1,18 @@
+import { isGenericDeckArtifactTitle } from "@open-design/contracts";
 import { isTeamverEmbedMode } from "./designApiBase";
 import { isTeamverEmbedSessionAuthenticated } from "./teamverEmbedSession";
 import { TeamverDaemonUnauthorizedError } from "./teamverDaemonHeaders";
+
+/** Persist/save banners: never show `deck.html` / `untitled` in Teamver embed. */
+function persistBannerFileLabel(fileName: string): string {
+  const raw = String(fileName ?? "").trim();
+  if (!isTeamverEmbedMode()) return raw || "untitled";
+  const stem = raw.replace(/\.(?:html?|mdx?|jsx|tsx)$/i, "").trim() || raw;
+  if (!stem || isGenericDeckArtifactTitle(stem) || isGenericDeckArtifactTitle(raw)) {
+    return "슬라이드";
+  }
+  return stem;
+}
 
 /**
  * Teamver-tone Korean fallbacks for ProjectView conversation lifecycle errors.
@@ -27,7 +39,7 @@ export function formatProjectMessagesLoadError(): string {
 }
 
 export function formatProjectArtifactRejectedError(name: string, reason: string): string {
-  const label = name.trim() || (isTeamverEmbedMode() ? "슬라이드" : "untitled");
+  const label = persistBannerFileLabel(name);
   return isTeamverEmbedMode()
     ? `슬라이드 파일 "${label}" 저장을 거부했습니다: ${reason}`
     : `Refused to save artifact "${label}": ${reason}`;
@@ -165,15 +177,17 @@ export function formatProjectArtifactSaveFailedError(
       : 'Network connection was lost while saving. Check your connection and retry.';
   }
 
+  const label = persistBannerFileLabel(fileName);
   return embed
-    ? `슬라이드 파일 "${fileName}" 저장에 실패했습니다. 잠시 후 다시 시도하세요.`
-    : `Failed to save "${fileName}". Please try again shortly.`;
+    ? `슬라이드 파일 "${label}" 저장에 실패했습니다. 잠시 후 다시 시도하세요.`
+    : `Failed to save "${label}". Please try again shortly.`;
 }
 
 export function formatProjectArtifactStubWarning(fileName: string, message: string): string {
+  const label = persistBannerFileLabel(fileName);
   return isTeamverEmbedMode()
-    ? `"${fileName}"은(는) 저장됐지만 플레이스홀더일 수 있습니다: ${message}`
-    : `Saved "${fileName}", but the model may have shipped a placeholder: ${message}`;
+    ? `"${label}"은(는) 저장됐지만 플레이스홀더일 수 있습니다: ${message}`
+    : `Saved "${label}", but the model may have shipped a placeholder: ${message}`;
 }
 
 const RUN_ERROR_DIAG_MARKER_START = '<!--od-run-error-diag:';
