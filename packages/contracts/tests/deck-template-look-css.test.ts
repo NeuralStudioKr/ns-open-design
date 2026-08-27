@@ -256,6 +256,35 @@ html, body { overflow: visible !important; height: auto !important; }
     expect(upgraded).toContain('width: 1920px !important');
     expect(upgraded).toMatch(/flex-direction:\s*unset/);
     expect(upgraded).toContain('.presentation > .slide');
+    expect(upgraded).toContain('od-slide-inner-min-fill');
+  });
+
+  it('upgrades 루프139 inner fill that still uses min-height:0', async () => {
+    const {
+      LOOK_NEUTRALIZE_CSS,
+      ensureOfficialLookStackedCanvasNeutralize,
+      hasOfficialLookStackedCanvasNeutralizeProof,
+      OFFICIAL_LOOK_STACKED_NEUTRALIZE_MARKER,
+    } = await import('../src/html/deck-template-look-css.js');
+    const staleFill = LOOK_NEUTRALIZE_CSS
+      .replaceAll('od-slide-inner-min-fill', 'legacy-inner-fill')
+      .replace(/min-height:\s*100%\s*!important/, 'min-height: 0 !important')
+      .replace(/height:\s*auto\s*!important/, 'height: 100% !important');
+    const stale = `<!doctype html><html><head>
+<style data-od-official-look-css>
+.slide { position:relative; width:1920px; height:1080px; }
+${staleFill}
+</style></head><body><section class="slide"><div class="slide-inner">Cover</div></section></body></html>`;
+    expect(stale).toContain(OFFICIAL_LOOK_STACKED_NEUTRALIZE_MARKER);
+    expect(stale).toContain('od-slide-inner-canvas-fill');
+    expect(stale).not.toContain('od-slide-inner-min-fill');
+    expect(hasOfficialLookStackedCanvasNeutralizeProof(stale)).toBe(false);
+    const upgraded = ensureOfficialLookStackedCanvasNeutralize(stale);
+    expect(hasOfficialLookStackedCanvasNeutralizeProof(upgraded)).toBe(true);
+    expect(upgraded).toContain('od-slide-inner-min-fill');
+    expect(upgraded).toMatch(
+      /od-slide-inner-min-fill[\s\S]*min-height:\s*100%\s*!important/,
+    );
   });
 
   it('locks design viewport when merging official look CSS for persist', () => {

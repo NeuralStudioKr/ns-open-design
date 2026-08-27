@@ -263,9 +263,10 @@ function genericMetaRows(slideCount: number): string[] {
   return pool.slice(0, needed);
 }
 
-/** Fill the 1920×1080 page — official IB `.slide-inner` is a 1320×820 card. */
+/** Fill the 1920×1080 page — official IB `.slide-inner` is a 1320×820 card.
+ * Use min-height:100% / height:auto so the flow clip cannot flex-shrink to 0. */
 const MAGAZINE_INNER_FILL_STYLE =
-  'width:100%;height:100%;max-width:none;margin:0;box-sizing:border-box;display:grid;grid-template-rows:auto 1fr auto';
+  'width:100%;min-height:100%;height:auto;max-width:none;margin:0;box-sizing:border-box;display:grid;grid-template-rows:auto 1fr auto';
 
 function peelFlowAndMotif(body: string): { chrome: string; content: string } {
   let chrome = '';

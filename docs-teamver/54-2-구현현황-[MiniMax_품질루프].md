@@ -173,6 +173,7 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | export: standalone가 성긴 IB 표지를 그대로 내보냄 | ☑ 루프137 |
 | persist/preview: IB `.slide-inner` 1320×820 카드가 16:9를 안 채움 | ☑ 루프139 |
 | persist/preview: IB 본문이 매거진 프레임 없이 상단 정렬 | ☑ 루프139 |
+| preview: 레터박스 `#17181d`만 보이고 1/N만 동작 | ☑ 루프140 |
 | persist/preview: look CSS가 1–2장 사이에 끼어 표지 밀집도가 깨짐 | ☑ follow-up |
 | persist/preview: MiniMax `<p="">` · 유출 `· Label` | ☑ follow-up |
 | preview: Motif `span.ribbon`이 relative stretch로 빨간 줄 | ☑ follow-up |
@@ -199,7 +200,15 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | think 태그 / 내부 마크업 필터 | ☑ 기존 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프139)
+## 이번 루프 (루프140)
+
+1. stacked stage — 기본 `translate(-50%, -50%)`로 호스트 viewport 전 빈 레터박스 방지
+2. 첫 장 — CSS로 브릿지/`display:none` 전에 페인트. 이후 인라인 hide 유지
+3. inner fill — `min-height:100%`(루프139 `min-height:0` 접힘 해제). Daisy/Hartfield 비개입
+
+**검증:** compact-api-stacked-deck letterbox center · heal-official-magazine-layout min-fill · look-css `od-slide-inner-min-fill`
+
+## 직전 루프 (루프139)
 
 1. neutralize — stacked 16:9에서 `.slide-inner`를 1920×1080 페이지에 맞춤 (IB 1320×820 / 92vw 카드 해제)
 2. heal — 커버·본문 매거진 프레임이 페이지를 채움. 본문은 기존 제목/본문만 `h2.section`으로 배치

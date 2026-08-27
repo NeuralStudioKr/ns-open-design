@@ -1117,6 +1117,50 @@ cur=n;
     expect(slides[0]?.style.display).toBe('none');
   });
 
+  it('centers the stacked stage and paints page 1 before host viewport JS', async () => {
+    const html = [
+      '<!doctype html><html lang="ko"><body>',
+      '<section class="slide" style="width:1920px;height:1080px"><h1>Cover</h1></section>',
+      '<section class="slide" style="width:1920px;height:1080px"><h2>Agenda</h2></section>',
+      '</body></html>',
+    ].join('');
+    const srcdoc = buildSrcdoc(html, { deck: true });
+    expect(srcdoc).toMatch(
+      /#od-stacked-deck-stage\s*\{[^}]*transform:\s*translate\(-50%,\s*-50%\)/,
+    );
+    expect(srcdoc).toMatch(
+      /#od-stacked-deck-stage\s*>\s*\.slide:first-child\s*\{[^}]*display:\s*block\s*!important/,
+    );
+    expect(srcdoc).toMatch(
+      /body\s*>\s*\.slide:first-child:not\(\.active\):not\(\.is-active\):not\(\.current\)\s*\{[^}]*display:\s*block\s*!important/,
+    );
+
+    const match = srcdoc.match(/<script data-od-deck-bridge>([\s\S]*?)<\/script>/);
+    expect(match?.[1]).toBeTruthy();
+    const slidesHtml = [
+      '<section class="slide" style="width:1920px;height:1080px"><h1>Cover</h1></section>',
+      '<section class="slide" style="width:1920px;height:1080px"><h2>Agenda</h2></section>',
+    ].join('');
+    const { JSDOM } = await import('jsdom');
+    const dom = new JSDOM(`<!doctype html><html><body>${slidesHtml}</body></html>`, {
+      runScripts: 'outside-only',
+      pretendToBeVisual: true,
+    });
+    const win = dom.window;
+    Object.defineProperty(win, 'parent', { configurable: true, value: { postMessage: () => {} } });
+    new win.Function(match![1]!).call(win);
+    const stage = win.document.getElementById('od-stacked-deck-stage') as HTMLElement | null;
+    const slideEls = Array.from(
+      win.document.querySelectorAll('#od-stacked-deck-stage > .slide'),
+    ) as HTMLElement[];
+    expect(stage).toBeTruthy();
+    expect(slideEls).toHaveLength(2);
+    // Fit must not run against the inflated 1920 document; keep CSS center.
+    expect(stage?.style.transform ?? '').toBe('');
+    expect(slideEls[0]?.style.display).not.toBe('none');
+    expect(slideEls[1]?.style.display).toBe('none');
+  });
+
   it('does not normalize framework or horizontal decks for standalone export', () => {
     const framework = '<!doctype html><html><body><div id="deck-stage"></div></body></html>';
     const horizontal = [

@@ -2764,6 +2764,13 @@ body > .slide:not(.active):not(.is-active):not(.current) {
   visibility: hidden !important;
   pointer-events: none !important;
 }
+/* Compact body-first decks have no .active until the bridge runs.
+ * Hiding every body > .slide paints the #17181d letterbox as a blank page. */
+body > .slide:first-child:not(.active):not(.is-active):not(.current) {
+  display: block !important;
+  visibility: visible !important;
+  pointer-events: auto !important;
+}
 </style>`;
   const compactStackedBoot = isCompactStackedDeck
     ? `<script data-od-stacked-boot>document.documentElement.setAttribute('data-od-compact-stacked','');document.documentElement.style.overflow='hidden';</script>`
@@ -2807,6 +2814,10 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .stage > .slide {
   width: 1920px;
   height: 1080px;
   margin: 0;
+  /* Default center before od:deck-host-viewport. top/left 50% without
+   * translate puts the stage top-left at the iframe center — a black
+   * canvas with a working 1/N counter. JS fit overwrites scale. */
+  transform: translate(-50%, -50%);
   transform-origin: center center;
   /* Soft edge so cream slides read as a card on the stage chrome. */
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06);
@@ -2825,6 +2836,13 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .stage > .slide {
   /* Motif-safe — overflow:hidden re-clips Daisy/Graphify hangs after pin heal (§0.76). */
   overflow: visible !important;
   display: none !important;
+}
+/* More specific than > .slide { display:none }. Inline display:none from
+ * forceReveal still hides page 1 after the host turns the page. */
+#od-stacked-deck-stage > .slide:first-child {
+  display: block !important;
+  visibility: visible !important;
+  pointer-events: auto !important;
 }
 </style>`
     : '';

@@ -169,16 +169,19 @@ section[data-screen-label], main[data-screen-label], article[data-screen-label] 
   z-index: 2 !important;
 }
 /* od-slide-inner-canvas-fill: IB presenter cards are 1320×820 / 92vw×86vh.
- * Stacked 16:9 PPT pages must fill the 1920×1080 frame, not float a smaller card. */
+ * Stacked 16:9 PPT pages must fill the 1920×1080 frame, not float a smaller card.
+ * od-slide-inner-min-fill: never height:100% + min-height:0 inside the flow clip —
+ * flex shrink collapses the inner and the letterbox reads as a blank page. */
 .slide .slide-inner,
 .slide > [data-od-slide-flow] > .slide-inner {
   width: 100% !important;
   max-width: none !important;
-  height: 100% !important;
+  height: auto !important;
   max-height: none !important;
   flex: 1 1 auto !important;
+  align-self: stretch !important;
   min-width: 0 !important;
-  min-height: 0 !important;
+  min-height: 100% !important;
   margin: 0 !important;
   box-sizing: border-box !important;
 }
@@ -334,6 +337,7 @@ function officialLookCssLooksCurrent(css: string): boolean {
     && /:not\(\[data-od-slide-flow\]\)/i.test(css)
     // IB magazine inner must fill 16:9, not the 1320×820 presenter card.
     && css.includes('od-slide-inner-canvas-fill')
+    && css.includes('od-slide-inner-min-fill')
   );
 }
 
@@ -374,6 +378,7 @@ export function hasOfficialLookStackedCanvasNeutralizeProof(html: string): boole
     && /z-index\s*:\s*2\s*!important/i.test(dest)
     && /:not\(\[data-od-slide-flow\]\)/i.test(dest)
     && dest.includes('od-slide-inner-canvas-fill')
+    && dest.includes('od-slide-inner-min-fill')
   );
 }
 
