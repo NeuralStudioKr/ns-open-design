@@ -42,6 +42,10 @@ import {
 } from './export-job-store.js';
 import { runExportJobInBackground } from './export-job-runner.js';
 import {
+  isDedicatedExportWorkerEnabled,
+  renderExportJobWithDedicatedWorker,
+} from './export-dedicated-worker.js';
+import {
   renderHtmlExportOutcome,
   renderImageExportOutcome,
   renderPdfExportOutcome,
@@ -1183,6 +1187,9 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
             projectId: jobRequest.projectId,
             outcome,
           }),
+          ...(isDedicatedExportWorkerEnabled()
+            ? { renderOutcome: renderExportJobWithDedicatedWorker }
+            : {}),
         },
       });
       res.status(202).json(serializeExportJob(req.params.id, job));

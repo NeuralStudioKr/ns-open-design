@@ -93,6 +93,8 @@ services:
       OD_EXPORT_TICKET_TTL_SEC: ${OD_EXPORT_TICKET_TTL_SEC:-300}
       OD_EXPORT_PPTX_MAX_SLIDES: ${OD_EXPORT_PPTX_MAX_SLIDES:-40}
       OD_EXPORT_ASYNC_JOBS_ENABLED: ${OD_EXPORT_ASYNC_JOBS_ENABLED:-0}
+      OD_EXPORT_DEDICATED_WORKER_ENABLED: ${OD_EXPORT_DEDICATED_WORKER_ENABLED:-0}
+      OD_EXPORT_DEDICATED_WORKER_TIMEOUT_MS: ${OD_EXPORT_DEDICATED_WORKER_TIMEOUT_MS:-120000}
       # Export artifact cache (Phase 1a — docs-teamver/34 §20). code default ON.
       # 0/false/off/no 로만 명시적 disable. memo (RAM LRU) + local (EBS
       # od-data/.od-export-cache) 2-tier. cache 키에 entryFile mtime 포함이라

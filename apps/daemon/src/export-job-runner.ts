@@ -60,6 +60,10 @@ export type ExportJobRunnerDeps = {
     request: ExportJobRunnerRequest,
     outcome: ExportCacheOutcome,
   ) => Promise<ExportJobOffloadPayload>;
+  renderOutcome?: (
+    request: ExportJobRunnerRequest,
+    deps: ExportJobRunnerDeps,
+  ) => Promise<ExportCacheOutcome>;
   renderers?: ExportJobRenderers;
   storeDownload?: typeof storeExportDownload;
   isOffloadRequired?: () => boolean;
@@ -73,6 +77,45 @@ export const DEFAULT_EXPORT_JOB_RENDERERS: ExportJobRenderers = {
   image: renderImageExportOutcome,
   pptx: renderPptxExportOutcome,
 };
+
+export async function renderExportJobOutcome(
+  request: ExportJobRunnerRequest,
+  deps: ExportJobRunnerDeps,
+): Promise<ExportCacheOutcome> {
+  const renderers = deps.renderers ?? DEFAULT_EXPORT_JOB_RENDERERS;
+  const baseRequest = {
+    fileName: request.fileName,
+    deck: request.deck,
+    ...(request.title ? { title: request.title } : {}),
+    ...(request.inlineHtml ? { inlineHtml: request.inlineHtml } : {}),
+    ...(request.inlineHtmlPrepareMode ? { inlineHtmlPrepareMode: request.inlineHtmlPrepareMode } : {}),
+    ...(request.fresh ? { fresh: true } : {}),
+    ...(request.templateId ? { templateId: request.templateId } : {}),
+  };
+  if (request.format === 'pdf') {
+    return (await renderers.pdf(deps.renderContext(request.projectId), baseRequest)).outcome;
+  }
+  if (request.format === 'html') {
+    return renderers.html(deps.renderContext(request.projectId), baseRequest);
+  }
+  if (request.format === 'zip') {
+    return renderers.zip(deps.renderContext(request.projectId), baseRequest);
+  }
+  if (request.format === 'image') {
+    return renderers.image(deps.renderContext(request.projectId), {
+      ...baseRequest,
+      format: request.image?.format,
+      slideIndex: request.image?.slideIndex,
+      width: request.image?.width,
+      height: request.image?.height,
+    });
+  }
+  return renderers.pptx(deps.renderContext(request.projectId), {
+    ...baseRequest,
+    deck: true,
+    editable: request.pptx?.editable,
+  });
+}
 
 function canRedirectToOffloadedObject(offloadPayload: ExportJobOffloadPayload): offloadPayload is {
   offloadEnabled: true;
@@ -92,7 +135,7 @@ export async function runExportJobInBackground(input: {
   deps: ExportJobRunnerDeps;
 }): Promise<void> {
   const { request, deps } = input;
-  const renderers = deps.renderers ?? DEFAULT_EXPORT_JOB_RENDERERS;
+  const renderOutcome = deps.renderOutcome ?? renderExportJobOutcome;
   const storeDownload = deps.storeDownload ?? storeExportDownload;
   const isOffloadRequired = deps.isOffloadRequired ?? isExportOffloadRequired;
   const logger = deps.logger ?? console;
@@ -106,37 +149,7 @@ export async function runExportJobInBackground(input: {
     return;
   }
   try {
-    let outcome: ExportCacheOutcome;
-    const baseRequest = {
-      fileName: request.fileName,
-      deck: request.deck,
-      ...(request.title ? { title: request.title } : {}),
-      ...(request.inlineHtml ? { inlineHtml: request.inlineHtml } : {}),
-      ...(request.inlineHtmlPrepareMode ? { inlineHtmlPrepareMode: request.inlineHtmlPrepareMode } : {}),
-      ...(request.fresh ? { fresh: true } : {}),
-      ...(request.templateId ? { templateId: request.templateId } : {}),
-    };
-    if (request.format === 'pdf') {
-      outcome = (await renderers.pdf(deps.renderContext(request.projectId), baseRequest)).outcome;
-    } else if (request.format === 'html') {
-      outcome = await renderers.html(deps.renderContext(request.projectId), baseRequest);
-    } else if (request.format === 'zip') {
-      outcome = await renderers.zip(deps.renderContext(request.projectId), baseRequest);
-    } else if (request.format === 'image') {
-      outcome = await renderers.image(deps.renderContext(request.projectId), {
-        ...baseRequest,
-        format: request.image?.format,
-        slideIndex: request.image?.slideIndex,
-        width: request.image?.width,
-        height: request.image?.height,
-      });
-    } else {
-      outcome = await renderers.pptx(deps.renderContext(request.projectId), {
-        ...baseRequest,
-        deck: true,
-        editable: request.pptx?.editable,
-      });
-    }
+    const outcome = await renderOutcome(request, deps);
     const offloadPayload = await deps.prepareOffloadPayload(request, outcome);
     const canRedirect = canRedirectToOffloadedObject(offloadPayload);
     if (isOffloadRequired() && !canRedirect) {

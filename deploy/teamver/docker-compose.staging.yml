@@ -21,6 +21,8 @@ services:
       OD_EXPORT_QUEUE_MAX: ${OD_EXPORT_QUEUE_MAX:-32}
       OD_EXPORT_TICKET_TTL_SEC: ${OD_EXPORT_TICKET_TTL_SEC:-300}
       OD_EXPORT_PPTX_MAX_SLIDES: ${OD_EXPORT_PPTX_MAX_SLIDES:-40}
+      OD_EXPORT_DEDICATED_WORKER_ENABLED: ${OD_EXPORT_DEDICATED_WORKER_ENABLED:-0}
+      OD_EXPORT_DEDICATED_WORKER_TIMEOUT_MS: ${OD_EXPORT_DEDICATED_WORKER_TIMEOUT_MS:-120000}
       # Staging is the offload verification environment. Keep this pinned in
       # compose so an older .env.staging cannot silently fall back to 200
       # daemon-stream tickets.
