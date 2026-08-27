@@ -1620,9 +1620,62 @@ function looksLikeFakeOutlineStyle(style: string): boolean {
  * Body `p`/`span`/`h2–h4` often carry 1–2px accent borders. Only treat them as
  * MiniMax "card" frames when padding looks card-like (≥12px, ≥0.75rem/em,
  * ≥4%, ≥2ch, ≥2vh/vw/vmin/vmax/dvh/lvh/svmin…, ≥2cqw/cqh/cqi/cqb, ≥1ic · ≥2lh/cap/ex/vb/vi,
- * or print-ish ≥8pt / ≥4mm / ≥0.4cm / ≥0.15in / ≥1pc).
+ * or print-ish ≥8pt / ≥4mm / ≥0.4cm / ≥0.15in / ≥1pc; additive calc same-unit sums).
  * Logical `padding-block` / `padding-inline` (+ start/end) count the same (루프74).
  */
+
+/** Sum additive `calc(8px + 4px)` / `calc(.5rem + .25rem)` same-unit terms (루프435). */
+function calcAdditiveSameUnitLooksCardLike(value: string): boolean {
+  const calcRe = /calc\s*\(([^()]*)\)/gi;
+  let match: RegExpExecArray | null;
+  while ((match = calcRe.exec(value)) !== null) {
+    const body = (match[1] ?? '').trim();
+    if (!body || /[*\/]/.test(body)) continue;
+    const tokRe =
+      /([+-])?\s*(\d+(?:\.\d+)?|\.\d+)\s*(px|rem|em|pt|mm|cm|in|pc|Q|ch|%|vh|vw|vmin|vmax|dvh|dvw|svh|svw|lvh|lvw|lvmin|lvmax|svmin|svmax|dvmin|dvmax|cqw|cqh|cqi|cqb|cqmin|cqmax|ic|ric|lh|rlh|cap|rcap|ex|rex|vb|vi|svb|svi|lvb|lvi|dvb|dvi)\b/gi;
+    const parts: { sign: number; n: number; unit: string }[] = [];
+    let tm: RegExpExecArray | null;
+    while ((tm = tokRe.exec(body)) !== null) {
+      const op = tm[1] ?? '';
+      const n = Number.parseFloat(tm[2] ?? '0');
+      const unit = (tm[3] ?? '').toLowerCase();
+      if (!Number.isFinite(n) || !unit) continue;
+      const sign = op === '-' ? -1 : 1;
+      parts.push({ sign, n, unit });
+    }
+    if (parts.length < 2) continue;
+    const unit0 = parts[0]!.unit;
+    if (!parts.every((p) => p.unit === unit0)) continue;
+    const sum = parts.reduce((acc, p) => acc + p.sign * p.n, 0);
+    if (unit0 === 'px' && sum >= 12) return true;
+    if ((unit0 === 'rem' || unit0 === 'em') && sum >= 0.75) return true;
+    if (unit0 === '%' && sum >= 4) return true;
+    if (unit0 === 'ch' && sum >= 2) return true;
+    if (
+      /^(?:vh|vw|vmin|vmax|dvh|dvw|svh|svw|lvh|lvw|lvmin|lvmax|svmin|svmax|dvmin|dvmax|cqw|cqh|cqi|cqb|cqmin|cqmax)$/.test(
+        unit0,
+      )
+      && sum >= 2
+    ) {
+      return true;
+    }
+    if ((unit0 === 'ic' || unit0 === 'ric') && sum >= 1) return true;
+    if (
+      /^(?:lh|rlh|cap|rcap|ex|rex|vb|vi|svb|svi|lvb|lvi|dvb|dvi)$/.test(unit0)
+      && sum >= 2
+    ) {
+      return true;
+    }
+    if (unit0 === 'pt' && sum >= 8) return true;
+    if (unit0 === 'mm' && sum >= 4) return true;
+    if (unit0 === 'cm' && sum >= 0.4) return true;
+    if (unit0 === 'in' && sum >= 0.15) return true;
+    if (unit0 === 'pc' && sum >= 1) return true;
+    if (unit0 === 'q' && sum >= 8) return true;
+  }
+  return false;
+}
+
 function looksLikeCardLikePadding(style: string): boolean {
   const source = String(style ?? '');
   const padRe =
@@ -1680,6 +1733,10 @@ function looksLikeCardLikePadding(style: string): boolean {
     }
     // CSS Q (quarter-mm) — ≥8Q ≈ 2mm card pad; thin 2Q stays accent (루프375).
     if (/(?:^|[\s/(,])(?:[8-9]|[1-9]\d+)(?:\.\d+)?Q\b/.test(value)) {
+      return true;
+    }
+    // Additive calc same-unit sums — `calc(8px + 4px)` / `calc(.5rem + .25rem)` (루프435).
+    if (calcAdditiveSameUnitLooksCardLike(value)) {
       return true;
     }
   }
