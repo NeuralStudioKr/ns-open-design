@@ -161,6 +161,7 @@ import {
   deriveDeckCoverTitleFromBrief,
   healInstructionCopyCoverHeading,
   healOfficialMagazineLayoutDensity,
+  healAiGeneratedDeckMarkup,
   scrubLeftoverCatalogExampleHtml,
   htmlHasDeckSlideHost,
   htmlLooksLikeSlideDeliverableStream,
@@ -5747,6 +5748,10 @@ export function ProjectView({
           htmlBody,
           runVisiblePromptRef.current || '',
         );
+        htmlBody = healAiGeneratedDeckMarkup(
+          htmlBody,
+          runVisiblePromptRef.current || '',
+        );
         htmlBody = repairDeckSlideSurfaceBleed(htmlBody);
         // MiniMax rewrite-echo: drop adjacent twin headings/paragraphs/badges
         // before the 16:9 pin so deck.html never stores stacked copy.
@@ -8232,7 +8237,11 @@ export function ProjectView({
                           withSalvage,
                           runVisiblePromptRef.current || '',
                         );
-                        const withSurface = repairDeckSlideSurfaceBleed(withMagazine);
+                        const withAi = healAiGeneratedDeckMarkup(
+                          withMagazine,
+                          runVisiblePromptRef.current || '',
+                        );
+                        const withSurface = repairDeckSlideSurfaceBleed(withAi);
                         const withCanvas = sanitizePersistedDeckHostLeaks(
                           pinDeckSlidesToFixedCanvas(
                             collapseAdjacentDuplicateDeckSiblings(withSurface),
@@ -10249,7 +10258,11 @@ export function ProjectView({
                       withSalvage,
                       runVisiblePromptRef.current || '',
                     );
-                    const withSurface = repairDeckSlideSurfaceBleed(withMagazine);
+                    const withAi = healAiGeneratedDeckMarkup(
+                      withMagazine,
+                      runVisiblePromptRef.current || '',
+                    );
+                    const withSurface = repairDeckSlideSurfaceBleed(withAi);
                     const withCanvas = sanitizePersistedDeckHostLeaks(
                       pinDeckSlidesToFixedCanvas(
                         collapseAdjacentDuplicateDeckSiblings(withSurface),

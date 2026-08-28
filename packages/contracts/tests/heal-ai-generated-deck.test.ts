@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   dropEmptyLikelyDeckSlides,
   healAiGeneratedDeckMarkup,
+  polishTruncatedInstructionTitles,
   normalizeHangulParticleGaps,
   scrubBriefLeakFromMetaSlots,
   scrubTruncatedAiTagSoup,
@@ -163,6 +164,22 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
       const html = '<span class="v">영어 회화 공부, 연습 팁에 대한</span>';
       expect(scrubBriefLeakFromMetaSlots(html, '')).toBe(html);
       expect(scrubBriefLeakFromMetaSlots(html, null)).toBe(html);
+    });
+  });
+
+  describe('Q6 polishTruncatedInstructionTitles', () => {
+    it('strips leftover 에 대한 tails without inventing copy', () => {
+      const html = '<h1 class="display">영어 회화 공부<br>연습 팁에 대한</h1>';
+      const out = polishTruncatedInstructionTitles(html);
+      expect(out).toContain('영어 회화 공부');
+      expect(out).toContain('연습 팁');
+      expect(out).not.toMatch(/에 대한/);
+      expect(out).not.toMatch(/학습 노트|쉐도잉|개요/);
+    });
+
+    it('leaves finished headings alone', () => {
+      const html = '<h2>문법으로 외운 회화는 왜 입에서 안 나올까</h2>';
+      expect(polishTruncatedInstructionTitles(html)).toBe(html);
     });
   });
 

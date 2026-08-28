@@ -165,6 +165,7 @@ describe("FileViewer streaming slide preview", () => {
     expect(source).toContain("hasLiveHtml");
     expect(source).toContain("acceptPreviewHtmlCandidate");
     expect(source).toContain("healOfficialMagazineLayoutDensity");
+    expect(source).toContain("healAiGeneratedDeckMarkup");
     expect(source).toContain(
       "healOfficialMagazineLayoutDensity(sanitizePersistedDeckHostLeaks(candidate), brief)",
     );

@@ -197,6 +197,7 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | persist/preview: framed leftover · FileViewer no-brief · 한글 `·` 오삭 | ☑ 루프149 |
 | persist/preview: Biennale `에 대한` 표지 · 빈 장 · 헤딩 삼킴 · 4열 1카드 | ☑ 루프150 |
 | persist/preview: Biennale에 IB Study Notes 표지가 남음 · relative radial | ☑ 루프151 |
+| persist/FileViewer: AI 덱 heal이 저장 경로에 없음 · `에 대한` 제목 | ☑ 루프153 |
 | persist/preview: look CSS가 1–2장 사이에 끼어 표지 밀집도가 깨짐 | ☑ follow-up |
 | persist/preview: MiniMax `<p="">` · 유출 `· Label` | ☑ follow-up |
 | preview: Motif `span.ribbon`이 relative stretch로 빨간 줄 | ☑ follow-up |
@@ -223,7 +224,15 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | think 태그 / 내부 마크업 필터 | ☑ 기존 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프151)
+## 이번 루프 (루프153)
+
+1. persist — magazine 뒤 `healAiGeneratedDeckMarkup` (저장·same-turn·recovered)
+2. FileViewer accept · preview look-heal도 동일
+3. Q6 — `에 대한`/`예시에` 제목 polish. 발명 금지
+
+**검증:** heal-ai Q6 · project-view 파이프 · FileViewer accept
+
+## 직전 루프 (루프151)
 
 1. salvage — persist가 찍은 IB `mast/ribbon/Study Notes`를 Biennale `s-cover`+`titlewrap`으로 되돌림
 2. persist — poster `s-chapter`/`s-cover`·비IB look에는 IB stub rebuild 금지

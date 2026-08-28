@@ -2,6 +2,7 @@ import {
   deckHtmlHasMotifOutsideCanvasHang,
   firstOfficialDeckTemplateId,
   healOfficialMagazineLayoutDensity,
+  healAiGeneratedDeckMarkup,
   isArtifactHtmlStableForPreview,
   looksLikeDeckSlideHostAttrs,
   OFFICIAL_DECK_LOOK_STYLE_ATTR,
@@ -172,7 +173,10 @@ export async function healOfficialLookForDeckPreview(
     if (!templateId) return dest;
     const withLook = await mergeOfficialLookCssForTemplate(dest, templateId);
     try {
-      return healOfficialMagazineLayoutDensity(withLook, brief);
+      return healAiGeneratedDeckMarkup(
+        healOfficialMagazineLayoutDensity(withLook, brief),
+        brief,
+      );
     } catch {
       return withLook;
     }

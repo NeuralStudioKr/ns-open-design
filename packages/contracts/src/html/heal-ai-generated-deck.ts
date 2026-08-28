@@ -279,11 +279,34 @@ export function scrubBriefLeakFromMetaSlots(html: string, brief?: string | null)
  * Combined heal for AI-generated deck HTML. Idempotent — every helper is
  * shape-based so a second pass is a no-op.
  */
+/**
+ * Q6 — Strip leftover instruction tails (`에 대한`, `예시에`) from headings
+ * and short slots. Do not invent replacement copy.
+ */
+export function polishTruncatedInstructionTitles(html: string): string {
+  return String(html ?? '').replace(
+    /<(h[1-3]|p|div|span)\b([^>]*)>([\s\S]*?)<\/\1>/gi,
+    (full, tag: string, attrs: string, inner: string) => {
+      if (/<(?:div|ul|ol|section|article|aside|table)\b/i.test(inner)) return full;
+      const text = visibleText(inner);
+      if (!/에\s*대한$|예시에?$/u.test(text)) return full;
+      const next = String(inner)
+        .replace(/(?:<br\s*\/?>\s*)?[,，]?\s*예시에?\s*대한\s*$/u, '')
+        .replace(/(?:<br\s*\/?>\s*)?\s*에\s*대한\s*$/u, '')
+        .replace(/(?:<br\s*\/?>\s*)+$/g, '')
+        .trim();
+      if (!next || next === inner) return full;
+      return `<${tag}${attrs}>${next}</${tag}>`;
+    },
+  );
+}
+
 export function healAiGeneratedDeckMarkup(html: string, brief?: string | null): string {
   let out = String(html ?? '');
   if (!out.trim()) return out;
   out = scrubTruncatedAiTagSoup(out);
   out = unnestHeadingBlockChildren(out);
+  out = polishTruncatedInstructionTitles(out);
   out = shrinkOverAllocatedRepeatGrid(out);
   out = normalizeHangulParticleGaps(out);
   out = scrubBriefLeakFromMetaSlots(out, brief);

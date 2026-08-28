@@ -11,6 +11,7 @@ import {
   isArtifactHtmlStableForPreview,
   sanitizePersistedDeckHostLeaks,
   healOfficialMagazineLayoutDensity,
+  healAiGeneratedDeckMarkup,
   hoistDeckHostStylesToHead,
   type SocialShareRequest,
   type SocialShareResponse,
@@ -4874,7 +4875,10 @@ function acceptPreviewHtmlCandidate(
   if (candidate == null) return null;
   try {
     candidate = hoistDeckHostStylesToHead(
-      healOfficialMagazineLayoutDensity(sanitizePersistedDeckHostLeaks(candidate), brief),
+      healAiGeneratedDeckMarkup(
+        healOfficialMagazineLayoutDensity(sanitizePersistedDeckHostLeaks(candidate), brief),
+        brief,
+      ),
     );
     const repaired = repairArtifactDocumentHeadIfNeeded(candidate);
     if (isArtifactHtmlStableForPreview(repaired)) {
