@@ -2027,6 +2027,57 @@ function calcAdditiveSameUnitLooksCardLike(value: string): boolean {
       // vb/vi ≈ height/inline viewport → treat like vh (10.8px).
       if (vp * 10.8 + print >= 13) return true;
     }
+    // Cross-family: px + ch — 1ch≈8px (루프696): 5px+1ch ≈ 13px.
+    if (units.size === 2 && units.has('px') && units.has('ch')) {
+      const px = parts.filter((p) => p.unit === 'px').reduce((acc, p) => acc + p.sign * p.n, 0);
+      const ch = parts.filter((p) => p.unit === 'ch').reduce((acc, p) => acc + p.sign * p.n, 0);
+      if (px >= 12 || ch >= 2) return true;
+      if (px + ch * 8 >= 13) return true;
+    }
+    // Cross-family: px + line-box — 1lh≈16px (루프696): 5px+0.5lh ≈ 13px.
+    if (
+      units.has('px')
+      && [...units].every((u) => u === 'px' || lineBox.has(u))
+      && [...units].some((u) => lineBox.has(u))
+    ) {
+      const px = parts.filter((p) => p.unit === 'px').reduce((acc, p) => acc + p.sign * p.n, 0);
+      const line = parts.filter((p) => lineBox.has(p.unit)).reduce((acc, p) => acc + p.sign * p.n, 0);
+      if (px >= 12 || line >= 2) return true;
+      if (px + line * 16 >= 13) return true;
+    }
+    // Cross-family: px + ic|ric — 1ic≈16px (루프701): 5px+0.5ic ≈ 13px.
+    if (
+      units.has('px')
+      && [...units].every((u) => u === 'px' || icBox.has(u))
+      && [...units].some((u) => icBox.has(u))
+    ) {
+      const px = parts.filter((p) => p.unit === 'px').reduce((acc, p) => acc + p.sign * p.n, 0);
+      const ic = parts.filter((p) => icBox.has(p.unit)).reduce((acc, p) => acc + p.sign * p.n, 0);
+      if (px >= 12 || ic >= 1) return true;
+      if (px + ic * 16 >= 13) return true;
+    }
+    // Cross-family: px + fontVp — vb≈10.8px (루프701): 3px+1vb ≈ 13.8px.
+    if (
+      units.has('px')
+      && [...units].every((u) => u === 'px' || fontVp.has(u))
+      && [...units].some((u) => fontVp.has(u))
+    ) {
+      const px = parts.filter((p) => p.unit === 'px').reduce((acc, p) => acc + p.sign * p.n, 0);
+      const vp = parts.filter((p) => fontVp.has(p.unit)).reduce((acc, p) => acc + p.sign * p.n, 0);
+      if (px >= 12 || vp >= 2) return true;
+      if (px + vp * 10.8 >= 13) return true;
+    }
+    // Cross-family: px + cq* — cq≈10.8px (루프701): 3px+1cqw ≈ 13.8px.
+    if (
+      units.has('px')
+      && [...units].every((u) => u === 'px' || cqBox.has(u))
+      && [...units].some((u) => cqBox.has(u))
+    ) {
+      const px = parts.filter((p) => p.unit === 'px').reduce((acc, p) => acc + p.sign * p.n, 0);
+      const cq = parts.filter((p) => cqBox.has(p.unit)).reduce((acc, p) => acc + p.sign * p.n, 0);
+      if (px >= 12 || cq >= 2) return true;
+      if (px + cq * 10.8 >= 13) return true;
+    }
   }
   return false;
 }
