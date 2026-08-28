@@ -1841,6 +1841,65 @@ function calcAdditiveSameUnitLooksCardLike(value: string): boolean {
       );
       if (weighted >= 2) return true;
     }
+    const viewW = new Set(['vw', 'dvw', 'svw', 'lvw']);
+    const toViewPx = (unit: string, n: number) => n * (viewW.has(unit) ? 19.2 : 10.8);
+    // Cross-family: print + classic viewport → px ≥13 (루프621): 4pt+1vh ≈ 16.1px.
+    if (
+      parts.every((p) => printPx[p.unit] != null || classicView.has(p.unit))
+      && [...units].some((u) => printPx[u] != null)
+      && [...units].some((u) => classicView.has(u))
+    ) {
+      const asPx = parts.reduce((acc, p) => {
+        if (printPx[p.unit] != null) return acc + p.sign * p.n * (printPx[p.unit] ?? 0);
+        return acc + p.sign * toViewPx(p.unit, p.n);
+      }, 0);
+      if (asPx >= 13) return true;
+    }
+    // Cross-family: print + cq* → cq ≈10.8px + print (루프626).
+    if (
+      parts.every((p) => printPx[p.unit] != null || cqBox.has(p.unit))
+      && [...units].some((u) => printPx[u] != null)
+      && [...units].some((u) => cqBox.has(u))
+    ) {
+      const asPx = parts.reduce((acc, p) => {
+        if (printPx[p.unit] != null) return acc + p.sign * p.n * (printPx[p.unit] ?? 0);
+        return acc + p.sign * p.n * 10.8;
+      }, 0);
+      if (asPx >= 13) return true;
+    }
+    // Cross-family: print + % → %*10.8 + print (루프626).
+    if (
+      parts.every((p) => printPx[p.unit] != null || p.unit === '%')
+      && [...units].some((u) => printPx[u] != null)
+      && units.has('%')
+    ) {
+      const asPx = parts.reduce((acc, p) => {
+        if (p.unit === '%') return acc + p.sign * p.n * 10.8;
+        return acc + p.sign * p.n * (printPx[p.unit] ?? 0);
+      }, 0);
+      if (asPx >= 13) return true;
+    }
+    // Cross-family: ch + classic viewport 1:1 (루프626): 1ch+1vh → 2.
+    if (
+      units.has('ch')
+      && [...units].every((u) => u === 'ch' || classicView.has(u))
+      && units.size >= 2
+    ) {
+      const cross = parts.reduce((acc, p) => acc + p.sign * p.n, 0);
+      if (cross >= 2) return true;
+    }
+    // Cross-family: ic|ric×2 + classic viewport (루프626): 0.5ic+1vh → 2.
+    if (
+      parts.every((p) => icBox.has(p.unit) || classicView.has(p.unit))
+      && [...units].some((u) => icBox.has(u))
+      && [...units].some((u) => classicView.has(u))
+    ) {
+      const weighted = parts.reduce(
+        (acc, p) => acc + p.sign * p.n * (icBox.has(p.unit) ? 2 : 1),
+        0,
+      );
+      if (weighted >= 2) return true;
+    }
   }
   return false;
 }
