@@ -251,6 +251,7 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | auto-continue: 슬라이드 카피 있는 truncated HTML 보존 · SLOT cover 거부 | ☑ 루프5 |
 | persist: heading type-lock · inline Quicksand strip · low-substance verify | ☑ 루프8 |
 | think 태그 / 내부 마크업 필터 | ☑ 기존 |
+| preview/export: 작성자 JS presenter를 MiniMax salvage로 오인해 페이지 누락 | ☑ 루프159 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
 ## 이번 루프 (루프721–745 / round722–746)
@@ -268,6 +269,14 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 3. neutralize — 공식 `.flow`/`.grid`/`.table`/`.step` 슬롯의 absolute/`top:380`/`height:420`를 flow 안에서 해제
 
 **검증:** cover 1 flow · deco scoped · od-look-slot-flow · Daisy/IB 유지
+
+## 직전 루프 (루프159)
+
+1. preview — 작성자 JS presenter(`showSlide/currentSlide/slideCounter` + 다중 slide)는 MiniMax salvage/heal 묶음에서 제외
+2. bridge — `.slide-counter` wrapper 안의 `#current/#total/#now` span 보존. wrapper `textContent` 덮어쓰기 금지
+3. export — daemon PDF/image/PPTX/HTML pagination에서 nested slide-like 후보 제거
+
+**검증:** capsule/retro slide count 보존 · compact stacked `#deck` 회귀 · daemon deck export pagination 회귀
 
 ## 직전 루프 (루프696–720 / round697–721)
 

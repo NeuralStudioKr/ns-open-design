@@ -67,6 +67,14 @@
 - ✅ 각 슬라이드 캡처 직전 `go(index)` 후 bridge가 같은 active index/count를 보고했는지 확인한다. 동기화 실패 시 preview-pixel PDF를 중단하고 daemon rendered export로 fallback해 중복/누락 페이지를 막는다.
 - ✅ deck export renderer cache namespace를 `deck-layout-preview-parity-v6`로 올려 이전 broken PDF/HTML/ZIP/image/PPTX cache hit를 차단한다.
 
+### 0.9 2026-08-28 slide count / preview parity guard
+
+- ✅ daemon PDF/image/PPTX/HTML pagination에서 nested slide 후보를 제거한다. `.slide` 내부의 `section[data-screen-label]`/`article[data-screen-label]` 같은 편집 타깃이 별도 페이지로 잡히면 다운로드 PDF 페이지가 중복·누락되거나 preview와 다른 영역을 캡처할 수 있다.
+- ✅ slide class host(`.slide`, `.deck-slide`, `.ppt-slide`, `.slide-1`)를 내부 `data-screen-label`보다 우선하고, 반대로 wrapper형 `data-screen-label` 안에 실제 slide class가 있으면 실제 slide를 우선한다.
+- ✅ FE preview 전처리에서 작성자 JS 기반 presenter는 MiniMax salvage/heal 묶음을 건너뛴다. `salvageMalformedMiniMaxSlideMarkup`가 정상 presenter sibling slide를 삭제하면 preview count 자체가 줄어 다운로드와 비교 기준이 무너진다.
+- ✅ OD bridge 카운터 동기화는 `#current/#total/#now` 자식 span이 있는 `.slide-counter` wrapper의 `textContent`를 통째로 덮어쓰지 않는다. native presenter 스크립트가 참조하는 DOM id를 보존한다.
+- 배포 후 확인: 내부 카드/섹션에도 `data-screen-label`이 붙은 deck에서 preview counter와 PDF 페이지 수가 일치하고, PDF/HTML/PPTX/image 다운로드가 같은 슬라이드 순서로 생성되는지 본다.
+
 ---
 
 ## 1. 왜 Export만 문제인가

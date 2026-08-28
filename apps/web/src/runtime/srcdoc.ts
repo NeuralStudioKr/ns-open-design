@@ -157,6 +157,17 @@ function shouldAnnotatePreviewEditTargets(html: string, sourcePaths: boolean): b
   return false;
 }
 
+function looksLikeAuthoredPresenterDeckHtml(html: string): boolean {
+  const source = String(html ?? '');
+  if (!source || !/<script\b/i.test(source)) return false;
+  const slideOpens = source.match(/<(?:section|div|main|article)\b[^>]*\bclass\s*=\s*(['"])[^'"]*\b(?:slide|deck-slide|ppt-slide)\b/gi) ?? [];
+  if (slideOpens.length < 2) return false;
+  const authorPresenterApi = /\b(?:showSlide|currentSlide|nextSlide|prevSlide|slideCounter)\b/i.test(source);
+  if (!authorPresenterApi) return false;
+  if (/\bclass\s*=\s*(['"])[^'"]*\b(?:presentation|deck-stage|slides-container)\b/i.test(source)) return true;
+  return /\bnav-dot\b/i.test(source);
+}
+
 export {
   artifactDocumentHeadLooksIntact,
   repairArtifactDocumentHeadIfNeeded,
@@ -186,6 +197,10 @@ function buildSrcdocUnsafe(
   html: string,
   options: SrcdocOptions = {},
 ): string {
+  const authoredHtmlForDeckDetection = String(html ?? '');
+  const authoredPresenterDeck = options.deck && !options.exportDocument
+    ? looksLikeAuthoredPresenterDeckHtml(authoredHtmlForDeckDetection)
+    : false;
   if (options.deck && !options.exportDocument) {
     try {
       html = stripHostProtocolLeakFromDeckHtml(html);
@@ -206,38 +221,40 @@ function buildSrcdocUnsafe(
         /* keep authored HTML */
       }
     }
-    try {
-      html = salvageMalformedMiniMaxSlideMarkup(html);
-    } catch (_) {
-      /* keep authored HTML */
-    }
-    try {
-      html = stripEmptyOfficialMotifInstances(html);
-    } catch (_) {
-      /* keep authored HTML */
-    }
-    try {
-      html = hoistDeckHostStylesToHead(html);
-    } catch (_) {
-      /* keep authored HTML */
-    }
-    try {
-      html = healOfficialMagazineLayoutDensity(html, options.userBrief);
-    } catch (_) {
-      /* keep authored HTML */
-    }
-    // 0826-N01 F7: AI-generated deck salvage — empty slides, h1/lede
-    // unnest, over-allocated grid shrink, tag-soup / brief-leak scrub.
-    try {
-      if (typeof healAiGeneratedDeckMarkup !== 'function') {
-        console.error(
-          '[buildSrcdoc] healAiGeneratedDeckMarkup is missing from @open-design/contracts — run pnpm --filter @open-design/contracts build',
-        );
-      } else {
-        html = healAiGeneratedDeckMarkup(html, options.userBrief);
+    if (!authoredPresenterDeck) {
+      try {
+        html = salvageMalformedMiniMaxSlideMarkup(html);
+      } catch (_) {
+        /* keep authored HTML */
       }
-    } catch (_) {
-      /* keep authored HTML */
+      try {
+        html = stripEmptyOfficialMotifInstances(html);
+      } catch (_) {
+        /* keep authored HTML */
+      }
+      try {
+        html = hoistDeckHostStylesToHead(html);
+      } catch (_) {
+        /* keep authored HTML */
+      }
+      try {
+        html = healOfficialMagazineLayoutDensity(html, options.userBrief);
+      } catch (_) {
+        /* keep authored HTML */
+      }
+      // 0826-N01 F7: AI-generated deck salvage — empty slides, h1/lede
+      // unnest, over-allocated grid shrink, tag-soup / brief-leak scrub.
+      try {
+        if (typeof healAiGeneratedDeckMarkup !== 'function') {
+          console.error(
+            '[buildSrcdoc] healAiGeneratedDeckMarkup is missing from @open-design/contracts — run pnpm --filter @open-design/contracts build',
+          );
+        } else {
+          html = healAiGeneratedDeckMarkup(html, options.userBrief);
+        }
+      } catch (_) {
+        /* keep authored HTML */
+      }
     }
     // Persisted Clone leftovers keep `<div class="stage">` after native
     // scripts were stripped. Hoist those slides to `<body>` so preview
@@ -264,6 +281,12 @@ function buildSrcdocUnsafe(
   // Detect compact stacked BEFORE canvas pin — pin rewrites 100vh → 1920×1080
   // and would flip authored scroll / root-scroll decks onto the letterbox path.
   const detectionBase = wrapPreviewHtmlShell(repairedHead, { alreadyRepaired: true });
+  const officialFullscreenPresenterDeck = options.deck
+    ? (looksLikeAuthoredPresenterDeckHtml(authoredHtmlForDeckDetection)
+      || looksLikeOfficialFullscreenPresenterDeck(authoredHtmlForDeckDetection)
+      || looksLikeOfficialFullscreenPresenterDeck(html)
+      || looksLikeOfficialFullscreenPresenterDeck(repairedHead))
+    : false;
   const compactStackedDeck = options.deck
     ? looksLikeCompactApiStackedDeck(detectionBase)
     : false;
@@ -271,13 +294,13 @@ function buildSrcdocUnsafe(
   // presenters" for merge semantics, but compact letterbox must force pin +
   // LOOK_NEUTRALIZE after lockStacked (which strips neutralize on presenters).
   const compactLetterboxOfficialPresenter = compactStackedDeck
-    && looksLikeOfficialFullscreenPresenterDeck(repairedHead);
+    && officialFullscreenPresenterDeck;
   // Compact MiniMax fills sometimes echo the last heading/paragraph/badge.
   // Collapse twins for preview only on stacked API decks — catalog presenters
   // keep authored decorative repeats. Never throw into the React tree —
   // a pathological deck must degrade to unrepaired HTML, not error.tsx.
   let previewSource = repairedHead;
-  if (compactStackedDeck) {
+  if (compactStackedDeck && !officialFullscreenPresenterDeck) {
     try {
       previewSource = collapseAdjacentDuplicateDeckSiblings(repairedHead, {
         maxInputChars: COLLAPSE_PREVIEW_MAX_INPUT_CHARS,
@@ -3807,6 +3830,7 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .stage > .slide {
       if (list[k].classList) {
         list[k].classList.remove('active', 'is-active', 'current');
         if (k === target) list[k].classList.add(activeClass);
+        if (compactStackedDeckEnabled && k === target) list[k].classList.add('active');
       }
     }
     syncPaginationControls(target, list.length);
@@ -4049,6 +4073,13 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .stage > .slide {
     var chromeLoose = String(i + 1) + ' / ' + String(count);
     var counters = document.querySelectorAll('#slideCounter, #counter, .slide-counter');
     for (var c = 0; c < counters.length; c++) {
+      if (counters[c].querySelector && (
+        counters[c].querySelector('#current')
+        || counters[c].querySelector('#total')
+        || counters[c].querySelector('#now')
+      )) {
+        continue;
+      }
       var prior = String(counters[c].textContent || '');
       counters[c].textContent = /0\\d/.test(prior) ? chromeLabel : chromeLoose;
     }
@@ -4223,6 +4254,7 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .stage > .slide {
       if (list[k].classList) {
         list[k].classList.remove('active', 'is-active', 'current');
         if (k === target) list[k].classList.add(activeClass);
+        if (compactStackedDeckEnabled && k === target) list[k].classList.add('active');
       }
       if (usesHidden) {
         if (k === target) list[k].removeAttribute('hidden');

@@ -138,6 +138,37 @@ function deckSlideSelectorList(): string[] {
   return DECK_SLIDE_SELECTOR.split(',').map((sel) => sel.trim());
 }
 
+const SELECT_DECK_EXPORT_SLIDES_JS = `
+function odExportSlideRank(el) {
+  var cls = String((el && el.className) || '');
+  if (/(^|\\s)(?:nav-dot|dot|dots|pagination|slide-counter|slide-chrome)(\\s|$)/i.test(cls)) return 0;
+  if (/(^|\\s)(?:slide|deck-slide|ppt-slide|slide-frame|slide-\\d+)(\\s|$)/i.test(cls)) return 3;
+  var tag = String((el && el.tagName) || '').toLowerCase();
+  if (el && /^(section|div|main|article|deck-slide)$/.test(tag) && (el.hasAttribute('data-slide') || el.hasAttribute('data-slide-index'))) return 2;
+  var label = el && el.getAttribute ? String(el.getAttribute('data-screen-label') || '') : '';
+  if (/^\\d{2}(?:\\s|$)/.test(label)) return 1;
+  return 0;
+}
+function odSelectDeckExportSlides(selector) {
+  var candidates = Array.from(document.querySelectorAll(selector + ', [class*="slide-"]'))
+    .filter(function(el) {
+      if (!el || !el.matches) return false;
+      if (el.closest('.mini-slide, .overview, .notes-overlay, .thumb')) return false;
+      return odExportSlideRank(el) > 0;
+    });
+  return candidates.filter(function(el) {
+    var rank = odExportSlideRank(el);
+    return !candidates.some(function(other) {
+      if (other === el) return false;
+      var otherRank = odExportSlideRank(other);
+      if (other.contains(el) && otherRank >= rank) return true;
+      if (el.contains(other) && otherRank > rank) return true;
+      return false;
+    });
+  });
+}
+`;
+
 /**
  * Print CSS shared by headless PDF and browser Save-as-PDF fallback.
  *
@@ -1136,7 +1167,8 @@ export async function revealAllDeckSlides(page: Page): Promise<number> {
   }>(
     page,
     `
-      const slides = Array.from(document.querySelectorAll(args.selector));
+      ${SELECT_DECK_EXPORT_SLIDES_JS}
+      const slides = odSelectDeckExportSlides(args.selector);
       if (slides.length === 0) {
         return { count: 0, canvasBgAttempted: 0, canvasBgRasterized: 0, canvasBgFailed: 0, canvasBgFailReasons: [] };
       }
@@ -1303,7 +1335,8 @@ async function countDeckSlides(page: Page): Promise<number> {
   return evaluateInPage<number>(
     page,
     `
-      const slides = Array.from(document.querySelectorAll(args.selector));
+      ${SELECT_DECK_EXPORT_SLIDES_JS}
+      const slides = odSelectDeckExportSlides(args.selector);
       return slides.length;
     `,
     { selector: DECK_SLIDE_SELECTOR },
@@ -1315,7 +1348,8 @@ async function pageLooksLikeDeckExport(page: Page): Promise<boolean> {
   return evaluateInPage<boolean>(
     page,
     `
-      const slides = Array.from(document.querySelectorAll(args.selector));
+      ${SELECT_DECK_EXPORT_SLIDES_JS}
+      const slides = odSelectDeckExportSlides(args.selector);
       if (slides.length >= 2) return true;
       if (slides.length < 1) return false;
       return Boolean(
@@ -1336,7 +1370,8 @@ async function revealDeckSlidesForHtmlExport(page: Page): Promise<number> {
     await page.evaluate(buildSharedDeckHtmlExportStaticRevealScript());
     return await page.evaluate(
       `(function () {
-        return document.querySelectorAll(${JSON.stringify(DECK_SLIDE_SELECTOR)}).length;
+        ${SELECT_DECK_EXPORT_SLIDES_JS}
+        return odSelectDeckExportSlides(${JSON.stringify(DECK_SLIDE_SELECTOR)}).length;
       })()`,
     );
   } catch {
@@ -1348,8 +1383,8 @@ async function showAllDeckSlidesForEditablePptx(page: Page): Promise<number> {
   return evaluateInPage<number>(
     page,
     `
-      const slides = Array.from(document.querySelectorAll(args.selector))
-        .filter((el) => !el.closest('.mini-slide, .overview, .notes-overlay, .thumb'));
+      ${SELECT_DECK_EXPORT_SLIDES_JS}
+      const slides = odSelectDeckExportSlides(args.selector);
       const set = (el, prop, value) => el.style.setProperty(prop, value, 'important');
       set(document.documentElement, 'width', args.width + 'px');
       set(document.documentElement, 'height', args.height + 'px');
@@ -1754,7 +1789,8 @@ async function applyScreenshotStyles(page: Page, deck: boolean, slideIndex?: num
     await evaluateInPage(
       page,
       `
-      const all = Array.from(document.querySelectorAll(args.selector));
+      ${SELECT_DECK_EXPORT_SLIDES_JS}
+      const all = odSelectDeckExportSlides(args.selector);
       const slides = all.length > 0 ? all : [document.body];
       const target = slides[Math.max(0, Math.min(args.index, slides.length - 1))];
       target?.scrollIntoView({ block: 'start', inline: 'start' });
@@ -1771,7 +1807,8 @@ async function revealDeckSlideForScreenshot(page: Page, slideIndex?: number): Pr
   await evaluateInPage(
     page,
     `
-    const all = Array.from(document.querySelectorAll(args.selector));
+    ${SELECT_DECK_EXPORT_SLIDES_JS}
+    const all = odSelectDeckExportSlides(args.selector);
     const slides = all.length > 0 ? all : [document.body];
     const index = Math.max(0, Math.min(args.index, slides.length - 1));
     const target = slides[index];

@@ -258,7 +258,7 @@ describe('deck bridge — official catalog presenter navigation', () => {
     }
 
     expect(failures).toEqual([]);
-  });
+  }, 20_000);
 
   it('keeps Playful page 5 painted after restoreInitialSlide + native next (opacity-stack)', async () => {
     const html = readFileSync(

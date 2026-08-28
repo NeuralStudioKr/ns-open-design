@@ -694,6 +694,31 @@ describe('buildDeckPrintCss', () => {
     expect(revealBlock).toContain("el.style.removeProperty('display')");
   });
 
+  it('filters nested slide-like nodes before deck screenshot/export pagination', () => {
+    const source = fs.readFileSync(
+      path.join(__dirname, '..', 'src', 'headless-export.ts'),
+      'utf8',
+    );
+    expect(source).toContain('function odSelectDeckExportSlides');
+    expect(source).toContain('other.contains(el) && otherRank >= rank');
+    expect(source).toContain('el.contains(other) && otherRank > rank');
+    const countBlock = source.slice(
+      source.indexOf('async function countDeckSlides'),
+      source.indexOf('/** True when the document is a slide deck'),
+    );
+    const screenshotBlock = source.slice(
+      source.indexOf('async function revealDeckSlideForScreenshot'),
+      source.indexOf('async function applySnapshotStyles'),
+    );
+    const pptxBlock = source.slice(
+      source.indexOf('async function showAllDeckSlidesForEditablePptx'),
+      source.indexOf('function runDomToPptxInPage'),
+    );
+    expect(countBlock).toContain('odSelectDeckExportSlides(args.selector)');
+    expect(screenshotBlock).toContain('odSelectDeckExportSlides(args.selector)');
+    expect(pptxBlock).toContain('odSelectDeckExportSlides(args.selector)');
+  });
+
   it('includes a daemon-side editable PPTX renderer backed by dom-to-pptx', () => {
     const source = fs.readFileSync(
       path.join(__dirname, '..', 'src', 'headless-export.ts'),
