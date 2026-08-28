@@ -368,6 +368,11 @@ const CATALOG_EXAMPLE_FINGERPRINTS = [
   /OPERATION\s+HALCYON/i,
   /Quartz\.\s+Confluence/i,
   /hermes-agent/i,
+  // kami-deck catalog leftover (Open Design studio demo). Require ≥2 hits;
+  // a brief that actually asks for this studio story still passes namedInBrief.
+  /open-source alternative to Anthropic's Claude Design/i,
+  /A local-first design studio for the agent you already trust/i,
+  /52\.5200°\s*N/i,
 ];
 
 /**

@@ -163,6 +163,7 @@ import {
   healOfficialMagazineLayoutDensity,
   healAiGeneratedDeckMarkup,
   scrubLeftoverCatalogExampleHtml,
+  catalogExampleShouldBeScrubbed,
   htmlHasDeckSlideHost,
   htmlLooksLikeSlideDeliverableStream,
   metadataForTeamverSlideOnlyPrompt,
@@ -5610,9 +5611,16 @@ export function ProjectView({
           );
         let leftoverCatalogExample =
           normalizedArtifactType === 'deck'
-          && deckLooksLikeUnfilledCatalogExample(
-            artifactToPersist.html,
-            persistHealBrief,
+          && (
+            deckLooksLikeUnfilledCatalogExample(
+              artifactToPersist.html,
+              persistHealBrief,
+            )
+            || catalogExampleShouldBeScrubbed(
+              artifactToPersist.html,
+              persistHealBrief,
+              { allowEmptyBrief: true },
+            )
           );
         if (leftoverCatalogExample) {
           const scrubbed = scrubLeftoverCatalogExampleHtml(
@@ -5624,6 +5632,11 @@ export function ProjectView({
             scrubbed
             && scrubbed !== artifactToPersist.html
             && !deckLooksLikeUnfilledCatalogExample(scrubbed, persistHealBrief)
+            && !catalogExampleShouldBeScrubbed(
+              scrubbed,
+              persistHealBrief,
+              { allowEmptyBrief: true },
+            )
           ) {
             artifactToPersist = { ...artifactToPersist, html: scrubbed };
             leftoverCatalogExample = false;

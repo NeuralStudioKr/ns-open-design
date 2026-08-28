@@ -36,6 +36,8 @@ import {
   stripNonSlotWrappers,
 } from '../src/template-clone-fill.js';
 import { hoistDeckHostStylesToHead } from '../src/html/deck-template-look-css.js';
+import { healAiGeneratedDeckMarkup } from '../src/html/heal-ai-generated-deck.js';
+import { pinDeckSlidesToFixedCanvas } from '../src/html/deck-fixed-canvas.js';
 
 describe('buildTemplateClonedDeckHtml', () => {
   it('clones Daisy Days look and swaps Source headings', async () => {
@@ -332,6 +334,15 @@ describe('sanitizeTemplateCloneDeckTitle', () => {
     expect(looksLikeLeftoverTemplateDemoDeck('<p>open-design v0.18 · skill: pitch-agent</p>')).toBe(true);
     expect(looksLikeLeftoverTemplateDemoDeck('<p>Apex Group · OPERATION HALCYON · hermes-agent</p>')).toBe(true);
     expect(looksLikeLeftoverTemplateDemoDeck('<section class="slide"><h1>개요</h1></section>')).toBe(false);
+    expect(looksLikeLeftoverTemplateDemoDeck(
+      '<p>Open Design is the open-source alternative to Anthropic\'s Claude Design.</p>',
+    )).toBe(true);
+    expect(looksLikeLeftoverTemplateDemoDeck(
+      '<p>A local-first design studio for the agent you already trust.</p>',
+    )).toBe(true);
+    expect(looksLikeLeftoverTemplateDemoDeck(
+      '<section class="slide"><h1>삼각함수</h1><p>정의와 활용</p></section>',
+    )).toBe(false);
     expect(sanitizeTemplateCloneDeckTitle('Presentation')).toBeNull();
     expect(looksLikeTemplateMarketingTitle('Expo for Senior Engineers')).toBe(false);
     expect(deriveDeckCoverTitleFromBrief('', 'Presentation')).toBe('슬라이드');
@@ -953,6 +964,105 @@ describe('sanitizeTemplateCloneDeckTitle', () => {
       '영어 회화 표현 공부 팁, 예시에 대한 발표자료 만들어줘',
     )).toBe(true);
     expect(looksLikeCatalogSwipeShell('<section class="slide"><h1>개요</h1></section>')).toBe(false);
+  });
+
+  it('scrubs leftover kami-deck studio copy on a Hangul trigonometry brief', async () => {
+    const html = await readFile(
+      new URL('../../../design-templates/kami-deck/example.html', import.meta.url),
+      'utf8',
+    );
+    const leftover = html
+      .replace(/Open Design · kami deck — Vol\. 01 \/ Issue Nº 26/i, '삼각함수')
+      .replace(
+        /<h1>[\s\S]*?<\/h1>/i,
+        '<h1>삼각함수</h1>',
+      )
+      .replace(
+        /<p class='tagline'>[\s\S]*?<\/p>/i,
+        "<p class='tagline'>삼각함수에 대해서 설명하는 피피티 만들어줘.</p>",
+      );
+    const brief = '삼각함수에 대해서 설명하는 피피티 만들어줘.';
+    expect(looksLikeLeftoverTemplateDemoDeck(leftover)).toBe(true);
+    expect(catalogExampleShouldBeScrubbed(leftover, brief)).toBe(true);
+    expect(catalogExampleShouldBeScrubbed(html, null)).toBe(false);
+    expect(catalogExampleShouldBeScrubbed(html, 'Hartfield & Co. WACC review')).toBe(false);
+    const daisy = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/html-ppt-zhangzara-daisy-days/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    expect(looksLikeLeftoverTemplateDemoDeck(daisy)).toBe(true);
+    expect(catalogExampleShouldBeScrubbed(daisy, 'Hartfield & Co. WACC review')).toBe(false);
+    const topical = [
+      '<!doctype html><html><body>',
+      '<section class="slide"><h1>삼각함수</h1><p>각과 비를 다루는 함수.</p></section>',
+      '<section class="slide"><h2>활용</h2><p>주기와 파동.</p></section>',
+      '</body></html>',
+    ].join('');
+    expect(looksLikeLeftoverTemplateDemoDeck(topical)).toBe(false);
+    expect(catalogExampleShouldBeScrubbed(topical, brief)).toBe(false);
+    const scrubbed = scrubLeftoverCatalogExampleHtml(leftover, brief);
+    expect(scrubbed).not.toMatch(/Claude Design/i);
+    expect(scrubbed).not.toMatch(/local-first design studio for the agent you already trust/i);
+    expect(scrubbed).not.toMatch(/SKILL\.md/i);
+    expect(scrubbed).toMatch(/삼각함수/);
+    expect(scrubbed).not.toMatch(/만들어줘/);
+    expect(scrubbed).not.toMatch(/sin\s*\(|cos\s*\(|tan\s*\(|삼각함수의 정의/i);
+    expect(looksLikeLeftoverTemplateDemoDeck(scrubbed)).toBe(false);
+    expect(catalogExampleShouldBeScrubbed(scrubbed, brief)).toBe(false);
+    expect(() => {
+      pinDeckSlidesToFixedCanvas(
+        healAiGeneratedDeckMarkup(leftover, brief),
+      );
+    }).not.toThrow();
+    expect(() => {
+      pinDeckSlidesToFixedCanvas(
+        healAiGeneratedDeckMarkup(scrubbed, brief),
+      );
+    }).not.toThrow();
+  });
+
+  it('scrubs a body-first kami leftover dump without inventing lecture copy', () => {
+    const brief = '삼각함수에 대해서 설명하는 피피티 만들어줘.';
+    const leftover = [
+      '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"/>',
+      '<title>삼각함수</title>',
+      '<style>#deck{position:fixed;display:flex}.slide{width:1920px;height:1080px}</style>',
+      '</head><body>',
+      '<section class="slide s-cover dark"><div class="slide-inner">',
+      '<span class="eyebrow">Open-source design studio</span>',
+      '<h1>삼각함수</h1>',
+      `<p class="tagline">${brief}</p>`,
+      '<div class="meta"><span>Berlin · 52.5200° N · 13.4050° E</span></div>',
+      '</div></section>',
+      '<section class="slide s-content"><div class="slide-inner">',
+      '<div class="head"><h2>삼각함수 2</h2>',
+      '<p class="lede">A local-first design studio for the agent you already trust.</p></div>',
+      '<div class="body"><p>Open Design is the <strong>open-source alternative to Anthropic\'s Claude Design</strong>.',
+      ' Your agent reads a folder of <code>SKILL.md</code> files.</p>',
+      `<ul class="dash"><li>${brief}</li></ul>`,
+      '</div></div></section>',
+      '<section class="slide s-chapter dark"><div class="slide-inner"><h2>삼각함수 · 3</h2></div></section>',
+      '<section class="slide s-content"><div class="slide-inner"><h2>삼각함수 · 4</h2>',
+      '<ul class="dash"><li></li><li></li><li></li></ul></div></section>',
+      '<div id="nav"></div><div id="hint">← / →</div>',
+      '</body></html>',
+    ].join('');
+    expect(looksLikeLeftoverTemplateDemoDeck(leftover)).toBe(true);
+    expect(catalogExampleShouldBeScrubbed(leftover, brief)).toBe(true);
+    const scrubbed = scrubLeftoverCatalogExampleHtml(leftover, brief);
+    expect(scrubbed).not.toMatch(/Claude Design/i);
+    expect(scrubbed).not.toMatch(/local-first design studio for the agent you already trust/i);
+    expect(scrubbed).not.toMatch(/SKILL\.md/i);
+    expect(scrubbed).toMatch(/삼각함수/);
+    expect(scrubbed).not.toMatch(/sin\s*\(|cos\s*\(|tan\s*\(/i);
+    expect(looksLikeLeftoverTemplateDemoDeck(scrubbed)).toBe(false);
+    expect(catalogExampleShouldBeScrubbed(scrubbed, brief)).toBe(false);
+    expect(() => {
+      pinDeckSlidesToFixedCanvas(healAiGeneratedDeckMarkup(leftover, brief));
+    }).not.toThrow();
   });
 });
 

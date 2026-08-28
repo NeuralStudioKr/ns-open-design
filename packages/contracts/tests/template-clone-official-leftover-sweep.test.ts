@@ -36,6 +36,9 @@ const DEMO_PROPER_NOUNS = [
   /hermes-agent/i,
   /Team Structure/i,
   /pnpm vitest auth/i,
+  /Claude Design/i,
+  /52\.5200/i,
+  /local-first design studio for the agent you already trust/i,
 ];
 
 function listDeckExamples(): string[] {

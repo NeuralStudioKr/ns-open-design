@@ -224,5 +224,18 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
       // Stray </h> gone
       expect(out).not.toMatch(/<\/?h(?![1-6])[\s>/]/);
     });
+
+    it('clears a tagline that only repeats the user brief', () => {
+      const brief = '삼각함수에 대해서 설명하는 피피티 만들어줘.';
+      const html = [
+        '<section class="slide s-cover">',
+        '<h1>삼각함수</h1>',
+        `<p class="tagline">${brief}</p>`,
+        '</section>',
+      ].join('');
+      const out = healAiGeneratedDeckMarkup(html, brief);
+      expect(out).toContain('삼각함수');
+      expect(out).not.toContain(brief);
+    });
   });
 });

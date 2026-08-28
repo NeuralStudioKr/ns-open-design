@@ -1099,6 +1099,7 @@ describe("ProjectView message loading", () => {
     expect(source).toContain("deckSlideHeadingsLookLikeFailedGenerate");
     expect(source).toContain("failedGenerateHeadings");
     expect(source).toContain("deckLooksLikeUnfilledCatalogExample");
+    expect(source).toContain("catalogExampleShouldBeScrubbed");
     expect(source).toContain("leftoverCatalogExample");
     expect(source).toContain("scrubLeftoverCatalogExampleHtml");
     expect(source).toContain("allowEmptyBrief: true");

@@ -538,6 +538,48 @@ describe("deck-html-content", () => {
       ),
     ).toBe(false);
   });
+
+  it("flags leftover kami-deck studio copy when the brief is a different topic", () => {
+    const leftover =
+      '<!doctype html><html><body>'
+      + '<section class="slide"><h1>삼각함수</h1>'
+      + '<p class="lede">A local-first design studio for the agent you already trust.</p>'
+      + '<p>Open Design is the open-source alternative to Anthropic\'s Claude Design.</p>'
+      + '<p>Berlin · 52.5200° N · 13.4050° E</p>'
+      + '</section></body></html>';
+    expect(
+      deckLooksLikeUnfilledCatalogExample(
+        leftover,
+        '삼각함수에 대해서 설명하는 피피티 만들어줘.',
+      ),
+    ).toBe(true);
+    expect(
+      deckLooksLikeUnfilledCatalogExample(
+        leftover,
+        "open-source alternative to Anthropic's Claude Design. A local-first design studio for the agent you already trust.",
+      ),
+    ).toBe(false);
+    const topical =
+      '<!doctype html><html><body>'
+      + '<section class="slide"><h1>삼각함수</h1><p>각과 비를 다루는 함수.</p></section>'
+      + '</body></html>';
+    expect(
+      deckLooksLikeUnfilledCatalogExample(
+        topical,
+        '삼각함수에 대해서 설명하는 피피티 만들어줘.',
+      ),
+    ).toBe(false);
+    const kamiExample = readFileSync(
+      resolve(import.meta.dirname, "../../../../design-templates/kami-deck/example.html"),
+      "utf8",
+    );
+    expect(
+      deckLooksLikeUnfilledCatalogExample(
+        kamiExample,
+        '삼각함수에 대해서 설명하는 피피티 만들어줘.',
+      ),
+    ).toBe(true);
+  });
 });
 
 describe("deck salvage with status prose", () => {
