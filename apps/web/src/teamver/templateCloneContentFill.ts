@@ -27,7 +27,7 @@ import { isSlideCountRangeHint, parseSlideCountTarget } from './slideCountTopUp'
 /** Keep local — contracts barrel can be undefined during web test init. */
 const FIRST_FILL_SLIDE_COUNT_THIS_TURN = 6;
 const FIRST_FILL_SLIDE_COUNT_GUIDANCE =
-  'Slide count THIS TURN: honor an explicit user count of 1–6. If the user asked for 7 or more, close 6 complete body-first slides this turn and hidden top-up appends the rest. If unspecified, close 6 this turn. Never close after a single cover.';
+  'Slide count THIS TURN: honor an explicit user count of 1–6. If the user asked for 7 or more, close 6 complete body-first slides this turn and hidden top-up appends the rest. If unspecified, close 6 this turn. Never close after a single cover or after 3 slides when the target is 6 — no 3+3+3 split.';
 
 /** Keep local — importing canvasSlideLaunch here caused circular init of expansion consts. */
 const SLIDE_DECK_QUALITY_BAR_INSTRUCTION =

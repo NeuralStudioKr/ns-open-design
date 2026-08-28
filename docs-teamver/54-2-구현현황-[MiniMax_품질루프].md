@@ -236,6 +236,7 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | persist/preview: 공식 PRESS PLAY Motif가 본문 `DAILY 30 MIN`과 겹침 | ☑ 루프161 |
 | persist/preview: MiniMax 2×2 `.grid`가 카드 1개만 품고 3장을 형제로 버림 | ☑ 루프162 |
 | persist/preview: flow 밖 SPEAKING pill이 clip 뒤에 숨고 비범위 deco remmerge 누락 | ☑ 루프163 |
+| first-fill이 3장에서 멈추고 top-up 3+3으로 기본 6장이 3턴 | ☑ 루프164 |
 | persist/preview: look CSS가 1–2장 사이에 끼어 표지 밀집도가 깨짐 | ☑ follow-up |
 | persist/preview: MiniMax `<p="">` · 유출 `· Label` | ☑ follow-up |
 | preview: Motif `span.ribbon`이 relative stretch로 빨간 줄 | ☑ follow-up |
@@ -263,7 +264,15 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | preview/export: 작성자 JS presenter를 MiniMax salvage로 오인해 페이지 누락 | ☑ 루프159 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프746–770 / round747–771)
+## 이번 루프 (루프164)
+
+1. compact 계약 — 3장 와이어프레임은 minimum shape. 목표 6/미지정에서 3장 마감 실패. 기본 덱은 hidden top-up 분할 금지
+2. first-fill 가이던스 — `3+3+3 top-up split` 금지. resume / clone-fill 로컬 카피 동기화
+3. top-up — batch 6. 숏 미스(1 또는 3장)는 remaining-all 한 턴으로 기본 6장 마감
+
+**검증:** contracts deck-framework-compact · web slideCountTopUp · templateCloneContentFill
+
+## 직전 루프 (루프746–770 / round747–771)
 
 1. padding — 삼중+ 단위 px 환산 합≥13
 2. chat — FOO `♟♜♝♞♛✂✈✉✎✏`

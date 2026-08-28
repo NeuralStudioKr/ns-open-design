@@ -201,9 +201,9 @@ export function isLowSubstanceSlideDeckArtifact(
     return true;
   }
 
-  // Compact API first-fill is 3 short Korean slides (title + lead). The
-  // salvage/minimum bar already rejected empty shells — do not add a second
-  // 90-char body-text floor that turns MiniMax 3-slide drafts into
+  // A 3-slide closed draft can still persist as a short miss (title + lead).
+  // The salvage/minimum bar already rejected empty shells — do not add a second
+  // 90-char body-text floor that turns MiniMax short drafts into
   // incomplete_output / low-substance.
 
   return false;

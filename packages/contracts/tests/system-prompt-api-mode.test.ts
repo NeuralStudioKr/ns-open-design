@@ -487,8 +487,8 @@ describe('composeSystemPrompt — API mode (#313)', () => {
         prompt.indexOf('Slide deck — API compact contract'),
       );
       expect(prompt).not.toContain('Do not paste this exact headline');
-      // Ceiling grew for content-expansion + existing-deck image/surgical-edit rules + fill.
-      expect(prompt.length).toBeLessThan(29_000);
+      // Ceiling grew for first-fill “close 6 / no 3+3+3 split” plus content-expansion rules.
+      expect(prompt.length).toBeLessThan(29_100);
     });
 
     it('keeps quick brief available when a selected template supplies style but not content brief', () => {
@@ -548,8 +548,8 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt.indexOf('Visual style reference — Html Ppt Hermes Cyber Terminal')).toBeLessThan(
         prompt.indexOf('Slide deck — API compact contract'),
       );
-      // Ceiling grew for content-expansion + existing-deck image/surgical-edit rules + fill.
-      expect(prompt.length).toBeLessThan(29_000);
+      // Ceiling grew for first-fill “close 6 / no 3+3+3 split” plus content-expansion rules.
+      expect(prompt.length).toBeLessThan(29_100);
     });
 
     it('keeps richer visual template rules while stripping unavailable copy workflows', () => {

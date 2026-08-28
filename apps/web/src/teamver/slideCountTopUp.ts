@@ -19,9 +19,9 @@ const SLIDE_COUNT_TOP_UP_PROMPT_FINGERPRINT_RE =
 /** Analytics `entry_from` for the append loop — not incomplete-output recovery. */
 export const SLIDE_COUNT_TOP_UP_ENTRY_FROM = "slide_count_top_up";
 
-/** First fill stays short; two batches of 3 reach a 6–9 slide default. */
+/** One remaining-all batch finishes a default-6 miss; two batches cover 15. */
 export const SLIDE_COUNT_TOP_UP_MAX_PER_CONVERSATION = 2;
-export const SLIDE_COUNT_TOP_UP_BATCH = 3;
+export const SLIDE_COUNT_TOP_UP_BATCH = 6;
 
 const USER_REQUESTED_SLIDE_COUNT_RE = /User requested slide count:\s*([^\n]+)/i;
 const SLIDE_COUNT_PLUGIN_INPUT_RE =

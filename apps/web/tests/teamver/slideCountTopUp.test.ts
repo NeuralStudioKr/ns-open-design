@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { ChatMessage } from "../../src/types";
 import {
   SLIDE_COUNT_REQUEST_MAX,
+  SLIDE_COUNT_TOP_UP_BATCH,
   SLIDE_COUNT_TOP_UP_PROMPT_SENTINEL,
   SLIDE_COUNT_TOP_UP_PROMPT_SENTINEL_LEGACY,
   buildSlideCountTopUpPrompt,
@@ -200,7 +201,7 @@ describe("slideCountTopUp", () => {
     const prompt = buildSlideCountTopUpPrompt({ produced: 6, requested: 15 });
     expect(prompt.startsWith(SLIDE_COUNT_TOP_UP_PROMPT_SENTINEL)).toBe(true);
     expect(prompt).toContain("Keep slides 1–6");
-    expect(prompt).toContain("APPEND only new slides 7 through 9");
+    expect(prompt).toContain("APPEND only new slides 7 through 12");
     expect(prompt).toContain("Do not start over");
     expect(prompt).toMatch(/emit ONLY the new `<section class="slide">`/i);
     expect(prompt).not.toContain("copies every existing slide verbatim");
@@ -218,5 +219,15 @@ describe("slideCountTopUp", () => {
     expect(looksLikeSlideCountExpansionRequest("나머지 슬라이드 채워줘")).toBe(true);
     expect(looksLikeSlideCountExpansionRequest("add more slides")).toBe(true);
     expect(looksLikeSlideCountExpansionRequest("표지 제목만 바꿔줘")).toBe(false);
+  });
+
+  it("appends the remaining default-6 pages in one top-up", () => {
+    expect(SLIDE_COUNT_TOP_UP_BATCH).toBe(6);
+    expect(buildSlideCountTopUpPrompt({ produced: 1, requested: 6 })).toContain(
+      "APPEND only new slides 2 through 6",
+    );
+    expect(buildSlideCountTopUpPrompt({ produced: 3, requested: 6 })).toContain(
+      "APPEND only new slides 4 through 6",
+    );
   });
 });

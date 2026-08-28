@@ -32,9 +32,12 @@ describe('DECK_FRAMEWORK_DIRECTIVE_COMPACT', () => {
     expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_SELECTED_TEMPLATE).toContain('Title-only sections');
   });
 
-  it('uses a three-slide wireframe so one-slide covers are not modeled as complete', () => {
-    expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT).toContain('three slides on purpose');
-    expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT).toContain('slide-count top-up can append');
+  it('uses a three-slide wireframe as a minimum shape, not the deliverable', () => {
+    expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT).toContain('minimum shape');
+    expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT).toContain('Stopping after 3 slides is a failure');
+    expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT).toContain('close 6 THIS TURN');
+    expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT).not.toContain('three slides on purpose');
+    expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT).not.toContain('slide-count top-up can append');
     expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT).toContain('justify-content:center');
     expect(
       DECK_FRAMEWORK_DIRECTIVE_COMPACT.match(/<section class="slide"/g)?.length,
@@ -145,9 +148,15 @@ describe('DECK_FRAMEWORK_DIRECTIVE_COMPACT', () => {
       'optional short style with kit @import',
     );
     expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_SELECTED_TEMPLATE).toContain(
-      'three slides on purpose',
+      'minimum shape',
     );
     expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_SELECTED_TEMPLATE).toContain(
+      'Stopping after 3 slides is a failure',
+    );
+    expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_SELECTED_TEMPLATE).not.toContain(
+      'three slides on purpose',
+    );
+    expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_SELECTED_TEMPLATE).not.toContain(
       'slide-count top-up can append',
     );
     expect(
@@ -160,6 +169,9 @@ describe('DECK_FRAMEWORK_DIRECTIVE_COMPACT', () => {
   it('template-fill compact contract asks for up to 6 slides this turn and defers Motif SVG', () => {
     expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_TEMPLATE_FILL).toMatch(
       /honor an explicit user count of 1–6/i,
+    );
+    expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_TEMPLATE_FILL).toContain(
+      'no 3+3+3 split',
     );
     expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_TEMPLATE_FILL).not.toContain(
       'produce **3** filled slides',

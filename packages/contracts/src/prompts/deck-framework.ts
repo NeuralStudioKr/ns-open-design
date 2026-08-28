@@ -582,7 +582,7 @@ export const COMPACT_DECK_SLIDE_COUNT_GUIDANCE =
 export const COMPACT_FIRST_FILL_SLIDE_COUNT_THIS_TURN = 6;
 
 export const COMPACT_FIRST_FILL_SLIDE_COUNT_GUIDANCE =
-  'Slide count THIS TURN: honor an explicit user count of 1–6. If the user asked for 7 or more, close 6 complete body-first slides this turn and hidden top-up appends the rest. If unspecified, close 6 this turn. Never close after a single cover.';
+  'Slide count THIS TURN: honor an explicit user count of 1–6. If the user asked for 7 or more, close 6 complete body-first slides this turn and hidden top-up appends the rest. If unspecified, close 6 this turn. Never close after a single cover or after 3 slides when the target is 6 — no 3+3+3 split.';
 
 /** MiniMax (and any rewrite-last-block model) must not echo a finished heading/paragraph/badge. */
 export const DECK_NO_ADJACENT_DUPLICATE_COPY_RULE =
@@ -594,7 +594,7 @@ You are in API mode. **Do NOT paste/recreate a large framework skeleton.** Do NO
 
 When the brief is ready and this is a deck-delivery turn, emit ONE \`<artifact type="deck" identifier="deck">\` whose body is a complete \`<!doctype html>…</html>\` document **in this same response**. The artifact type is always \`deck\` in this workspace; do not use \`text/html\`, \`html\`, \`prototype\`, or \`live-artifact\` as the artifact type. For API stability, prefer the no-head static shape below: start \`<body>\` immediately and write the visible slides first.
 
-Required wireframe only (structural — **do not** copy literally; use varied layouts below). This sample is **three slides on purpose** (cover + body + closing). Prefer at least this shape when the user did not ask for 1 page; a short closed draft still saves and slide-count top-up can append. Never close \`</html></artifact>\` after a single section:
+Required wireframe only (structural — **do not** copy literally; use varied layouts below). This sample is a **minimum shape**, not the deliverable. Stopping after 3 slides is a failure — close 6 THIS TURN. Never close \`</html></artifact>\` after a single section:
 
 \`<artifact type="deck" identifier="deck"><!doctype html><html lang="ko"><body style="margin:0"><section class="slide" data-screen-label="01 Cover" style="width:1920px;height:1080px;padding:80px 88px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:center"><h1 style="margin:0 0 20px">실제 제목</h1><p style="margin:0;max-width:48rem">실제 본문.</p></section><section class="slide" data-screen-label="02 Body" style="width:1920px;height:1080px;padding:80px 88px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:center"><h2 style="margin:0 0 16px">실제 제목</h2><ul style="margin:0"><li>실제 불릿</li></ul></section><section class="slide" data-screen-label="03 Close" style="width:1920px;height:1080px;padding:80px 88px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:center"><h2 style="margin:0 0 16px">실제 제목</h2><p style="margin:0">실제 마무리.</p></section></body></html></artifact>\`
 
@@ -628,7 +628,7 @@ Do **not** paste a full \`example.html\` dump into the artifact (input was alrea
 
 **Body-first output order:** the first 1200 characters after \`<artifact\` must include \`<body\` and the first complete \`<section class="slide">...</section>\` with real copy. Place any shared \`<style>\` after slide 1. Do not open a \`<head>\` block or long \`<head>\` chrome dump. Official look/Motif CSS is merged after save — do not stream \`example.html\` styles. Complete deck beats perfect motif fidelity — a shell whose first 1200 chars are all \`<head>\`/\`<style>\` before any visible slide is a failed deliverable.
 
-Fallback wireframe ONLY when neither kit nor scaffold map is usable (structure only — still use Selected template tokens). This sample is **three slides on purpose** (cover + body + closing). Prefer at least this shape when the user did not ask for 1 page; a short closed draft still saves and slide-count top-up can append. Never close \`</html></artifact>\` after a single section:
+Fallback wireframe ONLY when neither kit nor scaffold map is usable (structure only — still use Selected template tokens). This sample is a **minimum shape**, not the deliverable. Stopping after 3 slides is a failure — close 6 THIS TURN. Never close \`</html></artifact>\` after a single section:
 
 \`<artifact type="deck" identifier="deck"><!doctype html><html lang="ko"><body style="margin:0"><section class="slide" data-screen-label="01 Cover" style="width:1920px;height:1080px;padding:80px 88px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:center"><h1 style="margin:0 0 20px">실제 제목</h1><p style="margin:0;max-width:48rem">실제 본문.</p></section><section class="slide" data-screen-label="02 Body" style="width:1920px;height:1080px;padding:80px 88px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:center"><h2 style="margin:0 0 16px">실제 제목</h2><ul style="margin:0"><li>실제 불릿</li></ul></section><section class="slide" data-screen-label="03 Close" style="width:1920px;height:1080px;padding:80px 88px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:center"><h2 style="margin:0 0 16px">실제 제목</h2><p style="margin:0">실제 마무리.</p></section></body></html></artifact>\`
 

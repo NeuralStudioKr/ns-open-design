@@ -495,7 +495,7 @@ export function meetsMinimumDeckDeliverableQuality(html: string): boolean {
     return totalText >= MIN_TWO_SLIDE_TOTAL_TEXT;
   }
 
-  // Compact API first-fill is 3 titled slides this turn (top-up appends).
+  // A 3-slide closed draft can still persist as a short miss (top-up finishes).
   // Korean title+lead copy is often 36–80 chars — do not require the 64-char
   // 4+ slide bar or MiniMax closed drafts fail as low-substance.
   if (totalSlides === 3) {

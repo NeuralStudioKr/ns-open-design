@@ -81,6 +81,7 @@ describe('templateCloneContentFill', () => {
       'Slide count hint: 6 (default for first template fill; close 6 complete slides this turn.)',
     );
     expect(seed).toMatch(/honor an explicit user count of 1–6/i);
+    expect(seed).toContain('no 3+3+3 split');
     expect(seed).not.toMatch(/persist rejects 1–2/i);
     expect(seed).toMatch(/large SVG sprites|full Motif sprite dumps/i);
     expect(seed).toMatch(/compact template-identifying motif\/deco cues/i);
