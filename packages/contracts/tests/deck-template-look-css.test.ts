@@ -1086,6 +1086,10 @@ ${staleFill}
     expect(LOOK_NEUTRALIZE_CSS).toContain('od-look-slot-flow');
     expect(LOOK_NEUTRALIZE_CSS).toContain('od-look-slot-flow-ext');
     expect(LOOK_NEUTRALIZE_CSS).toContain('od-sibling-chrome-above-flow');
+    expect(LOOK_NEUTRALIZE_CSS).toContain('od-data-anim-visible');
+    expect(LOOK_NEUTRALIZE_CSS).toMatch(
+      /\[data-anim\]\s*\{[^}]*opacity:\s*1\s*!important/,
+    );
     expect(LOOK_NEUTRALIZE_CSS).toMatch(
       /\[data-od-slide-flow\][^{]*:is\(\.flow, \.grid, \.table/,
     );

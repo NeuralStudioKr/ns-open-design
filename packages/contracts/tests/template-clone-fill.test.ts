@@ -1070,6 +1070,34 @@ describe('sanitizeTemplateCloneDeckTitle', () => {
       pinDeckSlidesToFixedCanvas(healAiGeneratedDeckMarkup(leftover, brief));
     }).not.toThrow();
   });
+
+  it('scrubs unfilled Broadside leftover on a Hangul brief and keeps official catalog', async () => {
+    const brief = '삼각함수에 대해서 설명하는 피피티 만들어줘.';
+    const leftover = [
+      '<!doctype html><html><body>',
+      '<section class="slide slide--cover orange"><h1>삼각함수</h1>',
+      `<p class="lead">${brief}</p>`,
+      '<span>[[Author Name]]</span></section>',
+      '<section class="slide"><h2>삼각함수 2</h2><ul><li></li></ul></section>',
+      '</body></html>',
+    ].join('');
+    expect(looksLikeLeftoverTemplateDemoDeck(leftover)).toBe(true);
+    expect(catalogExampleShouldBeScrubbed(leftover, brief)).toBe(true);
+    const scrubbed = scrubLeftoverCatalogExampleHtml(leftover, brief);
+    expect(scrubbed).not.toMatch(/\[\[Author Name\]\]/);
+    expect(scrubbed).not.toMatch(/만들어줘/);
+    expect(scrubbed).toMatch(/삼각함수/);
+    const official = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/html-ppt-zhangzara-broadside/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    expect(looksLikeLeftoverTemplateDemoDeck(official)).toBe(true);
+    expect(catalogExampleShouldBeScrubbed(official, null)).toBe(false);
+    expect(catalogExampleShouldBeScrubbed(official, 'Hartfield & Co. WACC review')).toBe(false);
+  });
 });
 
 describe('stripNonSlotWrappers (0826-N01 F4)', () => {

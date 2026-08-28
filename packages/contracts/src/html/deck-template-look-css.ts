@@ -143,6 +143,15 @@ section[data-screen-label], main[data-screen-label], article[data-screen-label] 
   box-sizing: border-box !important;
   overflow: visible !important;
 }
+/* od-data-anim-visible: Broadside/Studio hide [data-anim] until JS adds
+ * .is-active. Stacked persist/preview has no presenter JS — copy stays
+ * opacity:0 and reads as an empty / unstyled deck. */
+[data-anim] {
+  opacity: 1 !important;
+  animation: none !important;
+  clip-path: none !important;
+  transform: none !important;
+}
 /* Split/row fills keep their inline axis — do not force a column. */
 .slide:has(.split-left), .slide:has(.split-right),
 .slide:has([class*="split-"]) {
@@ -504,6 +513,7 @@ function officialLookCssLooksCurrent(css: string): boolean {
     && css.includes('od-look-slot-flow')
     && css.includes('od-look-slot-flow-ext')
     && css.includes('od-sibling-chrome-above-flow')
+    && css.includes('od-data-anim-visible')
   );
 }
 

@@ -375,6 +375,13 @@ const CATALOG_EXAMPLE_FINGERPRINTS = [
   /52\.5200°\s*N/i,
   /Open-source design studio/i,
   /Composed in kami/i,
+  // Broadside / Zhangzara catalog leftover. [[Author Name]] is a seed
+  // placeholder; ZONE B is the example.html engine banner. Need ≥2 hits
+  // so a filled Broadside deck that kept tokens but dropped placeholders
+  // is not treated as unfilled.
+  /\[\[Author Name\]\]/,
+  /ZONE B · ENGINE/i,
+  /this is the broadside style/i,
 ];
 
 /**

@@ -592,6 +592,33 @@ describe("deck-html-content", () => {
       ),
     ).toBe(true);
   });
+
+  it("flags leftover Broadside catalog when the brief is a different topic", () => {
+    const leftover =
+      '<!doctype html><html><body>'
+      + '<section class="slide slide--cover orange"><h1>삼각함수</h1>'
+      + '<p class="lead">삼각함수에 대해서 설명하는 피피티 만들어줘.</p>'
+      + '<span class="broadside-num">[[Author Name]]</span>'
+      + '<style>/* ZONE B · ENGINE — DO NOT MODIFY */</style>'
+      + '</section></body></html>';
+    expect(
+      deckLooksLikeUnfilledCatalogExample(
+        leftover,
+        '삼각함수에 대해서 설명하는 피피티 만들어줘.',
+      ),
+    ).toBe(true);
+    const topical =
+      '<!doctype html><html><body>'
+      + '<section class="slide slide--cover orange"><h1>삼각함수</h1>'
+      + '<p class="lead">각과 비를 다루는 함수.</p></section>'
+      + '</body></html>';
+    expect(
+      deckLooksLikeUnfilledCatalogExample(
+        topical,
+        '삼각함수에 대해서 설명하는 피피티 만들어줘.',
+      ),
+    ).toBe(false);
+  });
 });
 
 describe("deck salvage with status prose", () => {

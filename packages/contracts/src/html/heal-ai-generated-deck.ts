@@ -318,7 +318,7 @@ export function scrubBriefLeakFromMetaSlots(html: string, brief?: string | null)
   const briefText = String(brief ?? '').replace(/\s+/g, ' ').trim();
   if (!source || briefText.length < 4) return source;
   const briefEscaped = briefText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const slotClasses = ['v', 'conf', 'kicker', 'brief', 'summary', 'note', 'lede', 'tagline'];
+  const slotClasses = ['v', 'conf', 'kicker', 'brief', 'summary', 'note', 'lede', 'tagline', 'lead'];
   let out = source;
   for (const cls of slotClasses) {
     const re = new RegExp(

@@ -200,3 +200,51 @@ describe('heal-ai-generated-deck · 루프172–174 leftover hardening', () => {
     expect(stripEmptyLeftoverPresenterChrome(officialish)).toContain('id="nav"');
   });
 });
+
+const USER_BROADSIDE_LEFTOVER_FIXTURE = [
+  '<!doctype html><html lang="en"><head><meta charset="UTF-8"/>',
+  '<title>삼각함수</title>',
+  '<style>',
+  '/* ZONE B · ENGINE — DO NOT MODIFY */',
+  '[data-anim]{opacity:0}',
+  '.slide.is-active [data-anim]{animation-name:kFadeUp}',
+  '</style></head><body>',
+  '<section class="slide slide--cover orange" style="width:1920px;height:1080px;box-sizing:border-box">',
+  '<div class="cover-body">',
+  '<h1 class="display" data-anim="fade-up">삼각함수</h1>',
+  '<p class="lead" data-anim="fade-up">삼각함수에 대해서 설명하는 피피티 만들어줘.</p>',
+  '</div>',
+  '<div class="cover-meta"><span class="broadside-num">[[Author Name]]</span>',
+  '<span class="broadside-num">[Year]</span></div>',
+  '</section>',
+  '<section class="slide slide--list dark" style="width:1920px;height:1080px;box-sizing:border-box">',
+  '<div class="slide-body"><div class="list-head">',
+  '<p class="kicker" data-anim="fade-in">Four rules</p>',
+  '<h2 class="h2" data-anim="fade-up">삼각함수 2</h2></div>',
+  '<ul class="bullet-list" data-anim="fade-up"><li></li></ul></div>',
+  '<footer class="slide-foot"><span class="label muted">Broadside</span>',
+  '<span class="label muted">[Author Name]</span></footer>',
+  '</section></body></html>',
+].join('');
+
+describe('heal-ai-generated-deck · 루프175 Broadside leftover', () => {
+  const brief = '삼각함수에 대해서 설명하는 피피티 만들어줘.';
+
+  it('scrubs unfilled Broadside example.html leftover on the heal path', () => {
+    const out = healAiGeneratedDeckMarkup(USER_BROADSIDE_LEFTOVER_FIXTURE, brief);
+    expect(out).not.toMatch(/\[\[Author Name\]\]/);
+    expect(out).not.toMatch(/만들어줘/);
+    expect(out).not.toMatch(/Four rules/);
+    expect(out).toMatch(/삼각함수/);
+  });
+
+  it('clears a Broadside .lead slot that is only the user brief', () => {
+    const html = [
+      '<section class="slide"><h1>삼각함수</h1>',
+      `<p class="lead">${brief}</p></section>`,
+    ].join('');
+    const out = scrubBriefLeakFromMetaSlots(html, brief);
+    expect(out).not.toMatch(/만들어줘/);
+    expect(out).toMatch(/<p class="lead"><\/p>/);
+  });
+});
