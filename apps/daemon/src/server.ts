@@ -531,6 +531,7 @@ import {
   listMessages,
   listMessagesAsync,
   listPreviewComments,
+  listPreviewCommentsAsync,
   listProjects,
   listRoutines,
   warmRoutinesSqliteFromPostgres,
@@ -6721,6 +6722,7 @@ export async function startServer({
     listMessagesAsync,
     upsertMessage,
     listPreviewComments,
+    listPreviewCommentsAsync,
     upsertPreviewComment,
     updatePreviewCommentStatus,
     deletePreviewComment,
@@ -7163,108 +7165,14 @@ export async function startServer({
     }
   });
 
-  // ---- Conversations --------------------------------------------------------
-
-  app.get('/api/projects/:id/conversations', async (req, res) => {
-    const conversationProject = getProjectAsync
-      ? await getProjectAsync(db, req.params.id)
-      : getProject(db, req.params.id);
-    if (!conversationProject) {
-      return res.status(404).json({ error: 'project not found' });
-    }
-    res.json({ conversations: await listConversationsAsync(db, req.params.id) });
-  });
-
-  app.post('/api/projects/:id/conversations', async (req, res) => {
-    const conversationProject = getProjectAsync
-      ? await getProjectAsync(db, req.params.id)
-      : getProject(db, req.params.id);
-    if (!conversationProject) {
-      return res.status(404).json({ error: 'project not found' });
-    }
-    const { title, seedFromConversationId, forkAfterMessageId } = req.body || {};
-    const now = Date.now();
-    const hasExplicitSessionMode = Boolean(
-      req.body && Object.prototype.hasOwnProperty.call(req.body, 'sessionMode'),
-    );
-    const requestedForkMessageId =
-      typeof forkAfterMessageId === 'string' && forkAfterMessageId
-        ? forkAfterMessageId
-        : null;
-    const sourceConversation =
-      typeof seedFromConversationId === 'string' && seedFromConversationId
-        ? getConversation(db, seedFromConversationId)
-        : null;
-    let seedMessages = [];
-    if (sourceConversation && sourceConversation.projectId === req.params.id) {
-      seedMessages = listMessages(db, seedFromConversationId);
-      if (requestedForkMessageId) {
-        const forkIndex = seedMessages.findIndex((message) => message.id === requestedForkMessageId);
-        if (forkIndex < 0) {
-          return res.status(404).json({ error: 'fork message not found' });
-        }
-        seedMessages = seedMessages.slice(0, forkIndex + 1);
-      }
-    } else if (requestedForkMessageId) {
-      return res.status(404).json({ error: 'fork source conversation not found' });
-    }
-    const sessionMode =
-      hasExplicitSessionMode
-        ? normalizeConversationSessionMode(req.body.sessionMode)
-        : sourceConversation && sourceConversation.projectId === req.params.id
-          ? normalizeConversationSessionMode(sourceConversation.sessionMode)
-          : 'design';
-    const conv = insertConversation(db, {
-      id: randomId(),
-      projectId: req.params.id,
-      title: typeof title === 'string' ? title.trim() || null : null,
-      sessionMode,
-      createdAt: now,
-      updatedAt: now,
-    });
-    if (conv && seedMessages.length > 0) {
-      for (const m of seedMessages) {
-        upsertMessage(db, conv.id, {
-          ...m,
-          id: randomId(),
-          runId: undefined,
-          runStatus: undefined,
-          lastRunEventId: undefined,
-        });
-      }
-    }
-    res.json({ conversation: conv });
-  });
-
-  app.patch('/api/projects/:id/conversations/:cid', (req, res) => {
-    const conv = getConversation(db, req.params.cid);
-    if (!conv || conv.projectId !== req.params.id) {
-      return res.status(404).json({ error: 'not found' });
-    }
-    const updated = updateConversation(db, req.params.cid, req.body || {});
-    res.json({ conversation: updated });
-  });
-
-  app.delete('/api/projects/:id/conversations/:cid', (req, res) => {
-    const conv = getConversation(db, req.params.cid);
-    if (!conv || conv.projectId !== req.params.id) {
-      return res.status(404).json({ error: 'not found' });
-    }
-    deleteConversation(db, req.params.cid);
-    res.json({ ok: true });
-  });
-
-  // ---- Conversations: messages / preview comments / tabs -------------------
-  // Authoritative copies of these handlers live in `project-routes.ts` and are
-  // registered via `registerProjectRoutes` above (earlier in the route chain).
-  // Express executes only the first matching handler that responds, so any
-  // verbatim copies that used to live here were silently dead. The BYOK
-  // billing/sync hook we attempt to attach on the terminal assistant-message
-  // PUT was suffering from exactly this: the inline copy that called
-  // `scheduleProjectStoragePersistAfterResponse` /
-  // `reportByokTeamverUsageAndBillingFromDaemon` never ran. The hooks are now
-  // wired into the `project-routes.ts` PUT handler via dependency injection
-  // (see `RegisterProjectRoutesDeps.projectStorageHooks` and `.reportedRuns`).
+  // ---- Conversations / messages / comments / tabs ---------------------------
+  // Authoritative handlers live in `project-routes.ts` via `registerProjectRoutes`
+  // (registered earlier). Do NOT re-register GET/POST/PATCH/DELETE conversations
+  // here — Express keeps the first matching responder, and a second copy without
+  // `ensureTeamverConversation` / BYOK hooks would silently regress HA recovery
+  // and billing if registration order ever flipped.
+  // Historical note: an inline messages PUT used to live here and never ran;
+  // that is why BYOK S3 sync / billing hooks must stay in project-routes.ts.
 
   // ---- Templates ----------------------------------------------------------
   // User-saved snapshots of a project's HTML files. Surfaced in the

@@ -972,7 +972,7 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
   const {
     insertConversation,
     insertConversationAsync,
-    getConversation, listConversations, listConversationsAsync, updateConversation, deleteConversation, listMessages, listMessagesAsync, upsertMessage, listPreviewComments, upsertPreviewComment, updatePreviewCommentStatus, deletePreviewComment } = ctx.conversations;
+    getConversation, listConversations, listConversationsAsync, updateConversation, deleteConversation, listMessages, listMessagesAsync, upsertMessage, listPreviewComments, listPreviewCommentsAsync, upsertPreviewComment, updatePreviewCommentStatus, deletePreviewComment } = ctx.conversations;
   const { getTemplate, listTemplates, deleteTemplate, insertTemplate, findTemplateByNameAndProject, updateTemplate } = ctx.templates;
   const {
     listLatestProjectRunStatusesAsync,
@@ -992,14 +992,19 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
     if (!project) return null;
     const now = Date.now();
     const sessionMode = normalizeChatSessionMode(patch?.sessionMode);
-    const conv = insertConversation(db, {
+    const payload = {
       id: conversationId,
       projectId,
       title: typeof patch?.title === 'string' ? patch.title.trim() || null : null,
       sessionMode,
       createdAt: now,
       updatedAt: now,
-    });
+    };
+    // Await durable PG insert when available so the next sticky hop sees the
+    // row; ON CONFLICT in pgInsertConversation covers recover races.
+    const conv = insertConversationAsync
+      ? await insertConversationAsync(db, payload)
+      : insertConversation(db, payload);
     console.warn(
       JSON.stringify({
         metric: 'teamver_conversation_recovered_for_write',
@@ -1009,6 +1014,31 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
         sessionMode,
       }),
     );
+    return conv;
+  }
+
+  /** Local row or Teamver HA/create-handoff stub. Never invents rows outside Teamver. */
+  async function ensureTeamverConversation(
+    projectId: string,
+    conversationId: string,
+    patch?: any,
+  ) {
+    let conv = getConversation(db, conversationId);
+    if (!conv && listConversationsAsync) {
+      // Postgres sync getConversation is cache-only. Warm the project list
+      // before inventing a stub so sticky-miss reopen keeps the durable row
+      // (title, messages) instead of racing a duplicate insert.
+      try {
+        await listConversationsAsync(db, projectId);
+        conv = getConversation(db, conversationId);
+      } catch {
+        /* fall through to recover */
+      }
+    }
+    if (!conv) {
+      conv = await recoverTeamverConversationForWrite(projectId, conversationId, patch);
+    }
+    if (!conv || conv.projectId !== projectId) return null;
     return conv;
   }
 
@@ -2086,11 +2116,8 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
   });
 
   app.patch('/api/projects/:id/conversations/:cid', async (req, res) => {
-    let conv = getConversation(db, req.params.cid);
+    const conv = await ensureTeamverConversation(req.params.id, req.params.cid, req.body || {});
     if (!conv) {
-      conv = await recoverTeamverConversationForWrite(req.params.id, req.params.cid, req.body || {});
-    }
-    if (!conv || conv.projectId !== req.params.id) {
       return res.status(404).json({ error: 'not found' });
     }
     const updated = updateConversation(db, req.params.cid, req.body || {});
@@ -2116,11 +2143,8 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
     // browser console and skip server merges forever; recovering a stub
     // (empty messages) matches PUT's recoverTeamverConversationForWrite
     // so subsequent saves attach to a real conversation.
-    let conv = getConversation(db, req.params.cid);
+    const conv = await ensureTeamverConversation(req.params.id, req.params.cid);
     if (!conv) {
-      conv = await recoverTeamverConversationForWrite(req.params.id, req.params.cid);
-    }
-    if (!conv || conv.projectId !== req.params.id) {
       return res.status(404).json({ error: 'conversation not found' });
     }
     // Postgres cold cache: sync listMessages returns [] and would make the
@@ -2133,11 +2157,12 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
   });
 
   app.put('/api/projects/:id/conversations/:cid/messages/:mid', async (req, res) => {
-    let conv = getConversation(db, req.params.cid);
+    const conv = await ensureTeamverConversation(
+      req.params.id,
+      req.params.cid,
+      req.body || {},
+    );
     if (!conv) {
-      conv = await recoverTeamverConversationForWrite(req.params.id, req.params.cid, req.body || {});
-    }
-    if (!conv || conv.projectId !== req.params.id) {
       return res.status(404).json({ error: 'conversation not found' });
     }
     const m = req.body || {};
@@ -2227,24 +2252,19 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
     // Returning 404 spams the browser console on every new generation; recover
     // a stub conversation so the client gets `{ comments: [] }` like an empty
     // brand-new chat.
-    let conv = getConversation(db, req.params.cid);
+    const conv = await ensureTeamverConversation(req.params.id, req.params.cid);
     if (!conv) {
-      conv = await recoverTeamverConversationForWrite(req.params.id, req.params.cid);
-    }
-    if (!conv || conv.projectId !== req.params.id) {
       return res.status(404).json({ error: 'conversation not found' });
     }
-    res.json({
-      comments: listPreviewComments(db, req.params.id, req.params.cid),
-    });
+    const comments = listPreviewCommentsAsync
+      ? await listPreviewCommentsAsync(db, req.params.id, req.params.cid)
+      : listPreviewComments(db, req.params.id, req.params.cid);
+    res.json({ comments });
   });
 
   app.post('/api/projects/:id/conversations/:cid/comments', async (req, res) => {
-    let conv = getConversation(db, req.params.cid);
+    const conv = await ensureTeamverConversation(req.params.id, req.params.cid);
     if (!conv) {
-      conv = await recoverTeamverConversationForWrite(req.params.id, req.params.cid);
-    }
-    if (!conv || conv.projectId !== req.params.id) {
       return res.status(404).json({ error: 'conversation not found' });
     }
     try {
@@ -2264,11 +2284,8 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
   app.patch(
     '/api/projects/:id/conversations/:cid/comments/:commentId',
     async (req, res) => {
-      let conv = getConversation(db, req.params.cid);
+      const conv = await ensureTeamverConversation(req.params.id, req.params.cid);
       if (!conv) {
-        conv = await recoverTeamverConversationForWrite(req.params.id, req.params.cid);
-      }
-      if (!conv || conv.projectId !== req.params.id) {
         return res.status(404).json({ error: 'conversation not found' });
       }
       try {
@@ -2292,11 +2309,8 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
   app.delete(
     '/api/projects/:id/conversations/:cid/comments/:commentId',
     async (req, res) => {
-      let conv = getConversation(db, req.params.cid);
+      const conv = await ensureTeamverConversation(req.params.id, req.params.cid);
       if (!conv) {
-        conv = await recoverTeamverConversationForWrite(req.params.id, req.params.cid);
-      }
-      if (!conv || conv.projectId !== req.params.id) {
         return res.status(404).json({ error: 'conversation not found' });
       }
       const ok = deletePreviewComment(

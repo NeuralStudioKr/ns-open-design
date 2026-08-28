@@ -24,6 +24,24 @@ describe("ProjectView message loading", () => {
     expect(block).not.toContain("listActiveChatRuns(project.id, activeConversationId)");
   });
 
+  it("skips comments and active-run HTTP on create auto-send so HA 404 never hits the console", () => {
+    // Create handoff races: conversation id is live in the client before this
+    // node has a local row. fetchPreviewComments soft-returns [] on 404, but
+    // the analytics fetch wrapper still logs the failed GET. Skip the HTTP
+    // entirely while autoSendFirstMessageKey is set; daemon
+    // ensureTeamverConversation covers reopen / sticky-miss paths.
+    const source = readSource("src/components/ProjectView.tsx");
+    const start = source.indexOf("let freshAutoSend = false;");
+    expect(start).toBeGreaterThan(0);
+    const block = source.slice(start, start + 1_400);
+    expect(block).toContain("autoSendFirstMessageKey(project.id)");
+    expect(block).toContain("const safeFetchPreviewComments = async () =>");
+    expect(block).toContain("if (freshAutoSend) return [];");
+    expect(block).toContain("const safeListActiveChatRuns = async () =>");
+    const skipCount = (block.match(/if \(freshAutoSend\) return \[\];/g) ?? []).length;
+    expect(skipCount).toBeGreaterThanOrEqual(2);
+  });
+
   it("keeps daemon reattach probes best-effort so transient run API failures do not kill recovery", () => {
     const source = readSource("src/components/ProjectView.tsx");
     const start = source.indexOf("const attachRecoverableRuns = async () =>");

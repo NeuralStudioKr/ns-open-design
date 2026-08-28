@@ -2395,6 +2395,18 @@ export function listPreviewComments(db: SqliteDb, projectId: string, conversatio
     .map(normalizePreviewComment);
 }
 
+/** Postgres: hydrate preview comments from durable store (cold cache / sticky miss). */
+export async function listPreviewCommentsAsync(
+  db: SqliteDb,
+  projectId: string,
+  conversationId: string,
+) {
+  if (!isDaemonDbPostgres()) return listPreviewComments(db, projectId, conversationId);
+  const rows = await pgCore.pgListPreviewComments(getPostgresPool(), projectId, conversationId);
+  setCachedPreviewComments(projectId, conversationId, rows);
+  return rows.map((row) => normalizePreviewComment(row as DbRow));
+}
+
 export function upsertPreviewComment(db: SqliteDb, projectId: string, conversationId: string, input: DbRow) {
   const target = input?.target ?? {};
   const note = typeof input?.note === 'string' ? input.note.trim() : '';

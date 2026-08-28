@@ -4114,7 +4114,18 @@ export function ProjectView({
       setFailedMessagesConversationId(null);
     }
     (async () => {
+      let freshAutoSend = false;
+      try {
+        freshAutoSend =
+          window.sessionStorage.getItem(autoSendFirstMessageKey(project.id)) === '1';
+      } catch {
+        freshAutoSend = false;
+      }
       const safeFetchPreviewComments = async () => {
+        // Brand-new create auto-send: comments are empty by definition. Hitting
+        // GET /comments before the conversation row is local causes a Teamver HA
+        // 404 in the browser console (analytics fetch wrapper → provider.tsx).
+        if (freshAutoSend) return [];
         try {
           return await fetchPreviewComments(project.id, activeConversationId);
         } catch (err) {
@@ -4124,6 +4135,8 @@ export function ProjectView({
       };
       const safeListActiveChatRuns = async () => {
         if (config.mode !== 'daemon') return [];
+        // Same create race: no active runs on a brand-new conversation.
+        if (freshAutoSend) return [];
         try {
           return await listActiveChatRuns(project.id, activeConversationId);
         } catch (err) {
@@ -4164,13 +4177,6 @@ export function ProjectView({
         }
         throw lastError;
       };
-      let freshAutoSend = false;
-      try {
-        freshAutoSend =
-          window.sessionStorage.getItem(autoSendFirstMessageKey(project.id)) === '1';
-      } catch {
-        freshAutoSend = false;
-      }
       if (freshAutoSend) {
         setMessages([]);
         setMessagesInitialized(true);

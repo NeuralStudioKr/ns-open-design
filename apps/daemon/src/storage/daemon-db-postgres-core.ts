@@ -259,10 +259,14 @@ export async function pgGetConversation(pool: Pool, id: string): Promise<DbRow |
 }
 
 export async function pgInsertConversation(pool: Pool, c: DbRow): Promise<DbRow | null> {
+  // HA / cold-cache recovery can race a durable row that already exists on
+  // another node. DO NOTHING keeps the write queue healthy and returns the
+  // authoritative row instead of unique_violation noise.
   await pool.query(
     `INSERT INTO conversations
        (id, project_id, title, session_mode, created_at, updated_at)
-     VALUES ($1,$2,$3,$4,$5,$6)`,
+     VALUES ($1,$2,$3,$4,$5,$6)
+     ON CONFLICT (id) DO NOTHING`,
     [
       c.id,
       c.projectId,
