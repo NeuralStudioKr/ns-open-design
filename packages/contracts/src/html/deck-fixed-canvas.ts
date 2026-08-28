@@ -1982,13 +1982,48 @@ function splitTopLevelMulDiv(body: string): { terms: string[]; ops: Array<'*' | 
 }
 
 /**
- * Resolve calc body to length parts, including left-associative top-level
- * `*` / `/` against unitless factors (루프796·821). Does not flatten
- * `(a+b)*k` into `a+b*k`.
+ * Split on top-level binary `+` / `-` (CSS calc precedence: * / before + -).
+ * Skips unary `-` after `*` / `/` (루프871).
  */
-function resolveCalcLengthParts(rawBody: string): CalcLengthPart[] | null {
-  const flattened = flattenNestedCalcCalls(rawBody.trim());
-  const body = flattened.trim();
+function splitTopLevelAddSub(
+  body: string,
+): { signedTerms: Array<{ sign: number; term: string }> } | null {
+  const items: Array<{ sign: number; term: string }> = [];
+  let depth = 0;
+  let sign = 1;
+  let i = 0;
+  while (i < body.length && /\s/.test(body[i]!)) i += 1;
+  if (body[i] === '+') {
+    i += 1;
+  } else if (body[i] === '-') {
+    sign = -1;
+    i += 1;
+  }
+  let start = i;
+  for (; i < body.length; i += 1) {
+    const ch = body[i]!;
+    if (ch === '(') depth += 1;
+    else if (ch === ')') depth -= 1;
+    else if (depth === 0 && (ch === '+' || ch === '-')) {
+      let j = i - 1;
+      while (j >= start && /\s/.test(body[j]!)) j -= 1;
+      if (j >= start && (body[j] === '*' || body[j] === '/')) continue;
+      const prev = body.slice(start, i).trim();
+      if (!prev) return null;
+      items.push({ sign, term: prev });
+      sign = ch === '-' ? -1 : 1;
+      start = i + 1;
+    }
+  }
+  const last = body.slice(start).trim();
+  if (!last) return null;
+  items.push({ sign, term: last });
+  return { signedTerms: items };
+}
+
+/** Resolve a mul/div-only (or bare) term to length parts (루프796·821). */
+function resolveMulDivOnlyTerm(rawTerm: string): CalcLengthPart[] | null {
+  const body = stripBalancedOuterParens(rawTerm.trim());
   if (!body) return null;
   if (!/[*\/]/.test(body)) return parseAdditiveLengthParts(body);
 
@@ -2004,14 +2039,15 @@ function resolveCalcLengthParts(rawBody: string): CalcLengthPart[] | null {
     parts.map((p) => ({ ...p, n: p.n * factor }));
   const parseTerm = (term: string): CalcLengthPart[] | null => {
     const stripped = stripBalancedOuterParens(term);
-    if (/[*\/]/.test(stripped)) return resolveCalcLengthParts(stripped);
+    if (/[*\/]/.test(stripped)) return resolveMulDivOnlyTerm(stripped);
+    const add = splitTopLevelAddSub(stripped);
+    if (add && add.signedTerms.length >= 2) return resolveCalcLengthParts(stripped);
     return parseAdditiveLengthParts(stripped);
   };
 
   let parts: CalcLengthPart[] | null = null;
   let termIdx = 0;
   let opIdx = 0;
-  // `factor * length [*/ factor]*` (루프796·821)
   if (asFactor(terms[0]!) != null) {
     if (ops[0] !== '*') return null;
     parts = parseTerm(terms[1]!);
@@ -2034,6 +2070,33 @@ function resolveCalcLengthParts(rawBody: string): CalcLengthPart[] | null {
     opIdx += 1;
   }
   return parts;
+}
+
+/**
+ * Resolve calc body to length parts with CSS precedence: `*`/`/` before
+ * `+`/`-`, left-associative factors (루프796·821·871).
+ */
+function resolveCalcLengthParts(rawBody: string): CalcLengthPart[] | null {
+  const flattened = flattenNestedCalcCalls(rawBody.trim());
+  const body = flattened.trim();
+  if (!body) return null;
+
+  // Top-level additive split first so `4px + 5px * 2` → 4 + (5*2), not (4+5)*2.
+  const addSplit = splitTopLevelAddSub(body);
+  if (addSplit && addSplit.signedTerms.length >= 2) {
+    const out: CalcLengthPart[] = [];
+    for (const { sign, term } of addSplit.signedTerms) {
+      const parts = resolveMulDivOnlyTerm(term);
+      if (!parts) return null;
+      for (const p of parts) {
+        out.push({ sign: sign * p.sign, n: p.n, unit: p.unit });
+      }
+    }
+    return out.length >= 1 ? out : null;
+  }
+
+  if (/[*\/]/.test(body)) return resolveMulDivOnlyTerm(body);
+  return parseAdditiveLengthParts(body);
 }
 
 /** Additive `calc` sums: same-unit · `%` · rem/em+px@16 · rem+em · vh/%+px (루프515). */
@@ -2535,6 +2598,30 @@ function splitTopLevelCommas(body: string): string[] {
 function resolvePaddingExprParts(expr: string): CalcLengthPart[] | null {
   const t = expr.trim();
   if (!t) return null;
+  // Nested min/max/clamp → synthetic length (루프876).
+  for (const kind of ['min', 'max', 'clamp'] as const) {
+    if (!new RegExp(`^${kind}\\s*\\(`, 'i').test(t)) continue;
+    const bodies = extractCssFnBodies(t, kind);
+    if (bodies.length !== 1) return null;
+    // Require the function to wrap the whole expression.
+    const m = new RegExp(`^${kind}\\s*\\(`, 'i').exec(t);
+    if (!m) return null;
+    let depth = 1;
+    let i = m[0].length;
+    while (i < t.length && depth > 0) {
+      const ch = t[i]!;
+      if (ch === '(') depth += 1;
+      else if (ch === ')') depth -= 1;
+      i += 1;
+    }
+    if (depth !== 0 || t.slice(i).trim() !== '') return null;
+    const evaluated = evaluateMinMaxClampBody(kind, bodies[0]!);
+    if (!evaluated) return null;
+    if (evaluated.unit != null) {
+      return [{ sign: 1, n: evaluated.n, unit: evaluated.unit }];
+    }
+    return [{ sign: 1, n: evaluated.n, unit: 'px' }];
+  }
   if (/^calc\s*\(/i.test(t)) {
     const bodies = extractCalcBodies(t);
     if (bodies.length === 0) return null;
@@ -2542,6 +2629,44 @@ function resolvePaddingExprParts(expr: string): CalcLengthPart[] | null {
   }
   if (/[*\/]/.test(t)) return resolveCalcLengthParts(t);
   return parseAdditiveLengthParts(t);
+}
+
+/**
+ * Evaluate min/max/clamp args to a magnitude (same-unit preferred, else px)
+ * (루프846·876).
+ */
+function evaluateMinMaxClampBody(
+  kind: 'min' | 'max' | 'clamp',
+  body: string,
+): { n: number; unit: string | null } | null {
+  const args = splitTopLevelCommas(body);
+  if (kind === 'clamp') {
+    if (args.length !== 3) return null;
+  } else if (args.length < 2) {
+    return null;
+  }
+  const resolved = args.map(resolvePaddingExprParts);
+  if (resolved.some((r) => r == null)) return null;
+  const mags = resolved.map((r) => partsSignedSameUnit(r!));
+  if (
+    mags.every((m) => m != null)
+    && mags.every((m) => m!.unit === mags[0]!.unit)
+  ) {
+    const nums = mags.map((m) => m!.n);
+    let result: number;
+    if (kind === 'min') result = Math.min(...nums);
+    else if (kind === 'max') result = Math.max(...nums);
+    else result = Math.max(nums[0]!, Math.min(nums[1]!, nums[2]!));
+    return { n: result, unit: mags[0]!.unit };
+  }
+  const pxs = resolved.map((r) => partsToApproxPx(r!));
+  if (pxs.some((p) => p == null)) return null;
+  const nums = pxs as number[];
+  let result: number;
+  if (kind === 'min') result = Math.min(...nums);
+  else if (kind === 'max') result = Math.max(...nums);
+  else result = Math.max(nums[0]!, Math.min(nums[1]!, nums[2]!));
+  return { n: result, unit: null };
 }
 
 function partsSignedSameUnit(parts: CalcLengthPart[]): { unit: string; n: number } | null {
@@ -2617,35 +2742,13 @@ function sameUnitMagnitudeLooksCardLike(n: number, unit: string): boolean {
 function minMaxClampLooksCardLike(value: string): boolean {
   for (const kind of ['min', 'max', 'clamp'] as const) {
     for (const body of extractCssFnBodies(value, kind)) {
-      const args = splitTopLevelCommas(body);
-      if (kind === 'clamp') {
-        if (args.length !== 3) continue;
-      } else if (args.length < 2) {
-        continue;
+      const evaluated = evaluateMinMaxClampBody(kind, body);
+      if (!evaluated) continue;
+      if (evaluated.unit != null) {
+        if (sameUnitMagnitudeLooksCardLike(evaluated.n, evaluated.unit)) return true;
+      } else if (evaluated.n >= 13) {
+        return true;
       }
-      const resolved = args.map(resolvePaddingExprParts);
-      if (resolved.some((r) => r == null)) continue;
-      const mags = resolved.map((r) => partsSignedSameUnit(r!));
-      if (
-        mags.every((m) => m != null)
-        && mags.every((m) => m!.unit === mags[0]!.unit)
-      ) {
-        const nums = mags.map((m) => m!.n);
-        let result: number;
-        if (kind === 'min') result = Math.min(...nums);
-        else if (kind === 'max') result = Math.max(...nums);
-        else result = Math.max(nums[0]!, Math.min(nums[1]!, nums[2]!));
-        if (sameUnitMagnitudeLooksCardLike(result, mags[0]!.unit)) return true;
-        continue;
-      }
-      const pxs = resolved.map((r) => partsToApproxPx(r!));
-      if (pxs.some((p) => p == null)) continue;
-      const nums = pxs as number[];
-      let result: number;
-      if (kind === 'min') result = Math.min(...nums);
-      else if (kind === 'max') result = Math.max(...nums);
-      else result = Math.max(nums[0]!, Math.min(nums[1]!, nums[2]!));
-      if (result >= 13) return true;
     }
   }
   return false;

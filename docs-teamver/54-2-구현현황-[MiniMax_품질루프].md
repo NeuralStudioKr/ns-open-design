@@ -225,6 +225,8 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | chat: FOO `✓✔✕✖✗✘✚✱✳` | ☑ 루프831–840 / round832–841 |
 | kit: min/max/clamp 패딩 해석 | ☑ 루프846–860 / round847–861 |
 | chat: FOO `☀☁☂☃☄☼♨⌀⌂` | ☑ 루프861–870 / round862–871 |
+| kit: calc +/* 우선순위 · nested min/max/clamp | ☑ 루프871–885 / round872–886 |
+| chat: FOO `◐◑◒◓◔◕◖◗◘` | ☑ 루프886–895 / round887–896 |
 | kit/chat: set139–143 combo/closure | ☑ 루프791–795 / round792–796 |
 | persist/preview: leftover `·` 칩·발명 TOC가 brief 카피처럼 보임 | ☑ 루프144 |
 | preview: 레터박스 `#17181d`만 보이고 1/N만 동작 | ☑ 루프146 |
@@ -281,7 +283,18 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | persist/preview: `삼각함수 · N` 제목-only 빈 장 · leftover `#nav`/`#hint` | ☑ 루프174 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프846–870 / round847–871)
+## 이번 루프 (루프871–895 / round872–896)
+
+- [x] **루프871–875**: calc `+`/`*`/`/` 우선순위 (px/rem/vh)
+- [x] **루프876–880**: nested min/max · min(우선순위) · clamp+min
+- [x] **루프881–885**: ch/pt/ic · rem+px* · max 우선순위
+- [x] **루프886–890**: nested min rem · FOO `◐◑◒◓◔`
+- [x] **루프891–895**: FOO `◕◖◗◘` · invent-frame≠slide-flow 마감
+- [x] `splitTopLevelAddSub` / nested `evaluateMinMaxClampBody` + FOO BMP
+- [x] `chat-leak-probe-round872`…`896` 25/25
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프846–870 / round847–871)
 
 - [x] **루프846–850**: `min(calc…)` — px/rem/vh · mixed · 3인자
 - [x] **루프851–855**: `max`/`clamp` — px/rem · mixed
