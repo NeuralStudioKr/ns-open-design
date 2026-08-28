@@ -1900,6 +1900,65 @@ function calcAdditiveSameUnitLooksCardLike(value: string): boolean {
       );
       if (weighted >= 2) return true;
     }
+    // Cross-family: rem|em + classic viewport → px ≥13 (루프646): 0.4rem+1vh ≈ 17.2px.
+    if (
+      parts.every((p) => p.unit === 'rem' || p.unit === 'em' || classicView.has(p.unit))
+      && [...units].some((u) => u === 'rem' || u === 'em')
+      && [...units].some((u) => classicView.has(u))
+    ) {
+      const remish = parts
+        .filter((p) => p.unit === 'rem' || p.unit === 'em')
+        .reduce((acc, p) => acc + p.sign * p.n, 0);
+      const viewParts = parts.filter((p) => classicView.has(p.unit));
+      const viewSum = viewParts.reduce((acc, p) => acc + p.sign * p.n, 0);
+      if (remish >= 0.75 || viewSum >= 2) return true;
+      const viewPx = viewParts.reduce((acc, p) => acc + p.sign * toViewPx(p.unit, p.n), 0);
+      if (remish * 16 + viewPx >= 13) return true;
+    }
+    // Cross-family: rem|em + cq* → rem*16 + cq*10.8 ≥13 (루프651).
+    if (
+      parts.every((p) => p.unit === 'rem' || p.unit === 'em' || cqBox.has(p.unit))
+      && [...units].some((u) => u === 'rem' || u === 'em')
+      && [...units].some((u) => cqBox.has(u))
+    ) {
+      const remish = parts
+        .filter((p) => p.unit === 'rem' || p.unit === 'em')
+        .reduce((acc, p) => acc + p.sign * p.n, 0);
+      const cq = parts.filter((p) => cqBox.has(p.unit)).reduce((acc, p) => acc + p.sign * p.n, 0);
+      if (remish >= 0.75 || cq >= 2) return true;
+      if (remish * 16 + cq * 10.8 >= 13) return true;
+    }
+    // Cross-family: rem|em + % → rem*16 + %*10.8 ≥13 (루프651).
+    if (
+      parts.every((p) => p.unit === 'rem' || p.unit === 'em' || p.unit === '%')
+      && [...units].some((u) => u === 'rem' || u === 'em')
+      && units.has('%')
+    ) {
+      const remish = parts
+        .filter((p) => p.unit === 'rem' || p.unit === 'em')
+        .reduce((acc, p) => acc + p.sign * p.n, 0);
+      const pct = parts.filter((p) => p.unit === '%').reduce((acc, p) => acc + p.sign * p.n, 0);
+      if (remish >= 0.75 || pct >= 4) return true;
+      if (remish * 16 + pct * 10.8 >= 13) return true;
+    }
+    // Cross-family: line-box + classic viewport 1:1 (루프651): 1lh+1vh → 2.
+    if (
+      parts.every((p) => lineBox.has(p.unit) || classicView.has(p.unit))
+      && [...units].some((u) => lineBox.has(u))
+      && [...units].some((u) => classicView.has(u))
+    ) {
+      const cross = parts.reduce((acc, p) => acc + p.sign * p.n, 0);
+      if (cross >= 2) return true;
+    }
+    // Cross-family: line-box + cq* 1:1 (루프651): 1ex+1cqw → 2.
+    if (
+      parts.every((p) => lineBox.has(p.unit) || cqBox.has(p.unit))
+      && [...units].some((u) => lineBox.has(u))
+      && [...units].some((u) => cqBox.has(u))
+    ) {
+      const cross = parts.reduce((acc, p) => acc + p.sign * p.n, 0);
+      if (cross >= 2) return true;
+    }
   }
   return false;
 }
