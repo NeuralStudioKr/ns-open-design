@@ -1781,6 +1781,66 @@ function calcAdditiveSameUnitLooksCardLike(value: string): boolean {
       );
       if (asPx >= 13) return true;
     }
+    // Cross-family: ch + cq* 1:1 (루프596): 1ch+1cqw → 2.
+    if (
+      units.has('ch')
+      && [...units].every((u) => u === 'ch' || cqBox.has(u))
+      && units.size >= 2
+    ) {
+      const cross = parts.reduce((acc, p) => acc + p.sign * p.n, 0);
+      if (cross >= 2) return true;
+    }
+    // Cross-family: line-box|ch + ic|ric — ic counts ×2 (루프596): 1lh+0.5ic → 2.
+    const lineOrCh = new Set(['lh', 'rlh', 'cap', 'rcap', 'ex', 'rex', 'ch']);
+    if (
+      parts.every((p) => lineOrCh.has(p.unit) || icBox.has(p.unit))
+      && [...units].some((u) => lineOrCh.has(u))
+      && [...units].some((u) => icBox.has(u))
+    ) {
+      const weighted = parts.reduce(
+        (acc, p) => acc + p.sign * p.n * (icBox.has(p.unit) ? 2 : 1),
+        0,
+      );
+      if (weighted >= 2) return true;
+    }
+    // Cross-family: cq* + classic viewport 1:1 (루프601): 1cqw+1vh → 2.
+    const classicView = new Set([
+      'vh', 'vw', 'vmin', 'vmax', 'dvh', 'dvw', 'svh', 'svw', 'lvh', 'lvw',
+      'lvmin', 'lvmax', 'svmin', 'svmax', 'dvmin', 'dvmax',
+    ]);
+    if (
+      parts.every((p) => cqBox.has(p.unit) || classicView.has(p.unit))
+      && [...units].some((u) => cqBox.has(u))
+      && [...units].some((u) => classicView.has(u))
+    ) {
+      const cross = parts.reduce((acc, p) => acc + p.sign * p.n, 0);
+      if (cross >= 2) return true;
+    }
+    // Cross-family: rem|em + ch (루프601): scale rem so 0.75rem ≡ 2ch.
+    if (
+      units.size === 2
+      && units.has('ch')
+      && (units.has('rem') || units.has('em'))
+    ) {
+      const remish = parts
+        .filter((p) => p.unit === 'rem' || p.unit === 'em')
+        .reduce((acc, p) => acc + p.sign * p.n, 0);
+      const ch = parts.filter((p) => p.unit === 'ch').reduce((acc, p) => acc + p.sign * p.n, 0);
+      if (remish >= 0.75 || ch >= 2) return true;
+      if (remish * (2 / 0.75) + ch >= 2) return true;
+    }
+    // Cross-family: % + cq* (루프601): scale % so 4% ≡ 2cq → %+0.5 weight.
+    if (
+      units.has('%')
+      && [...units].every((u) => u === '%' || cqBox.has(u))
+      && units.size >= 2
+    ) {
+      const weighted = parts.reduce(
+        (acc, p) => acc + p.sign * p.n * (p.unit === '%' ? 0.5 : 1),
+        0,
+      );
+      if (weighted >= 2) return true;
+    }
   }
   return false;
 }
