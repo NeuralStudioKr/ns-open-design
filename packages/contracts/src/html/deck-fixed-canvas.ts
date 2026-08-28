@@ -2495,6 +2495,162 @@ function calcAdditiveSameUnitLooksCardLike(value: string): boolean {
   return false;
 }
 
+/** Extract balanced `min|max|clamp(...)` bodies (루프846). */
+function extractCssFnBodies(value: string, fnName: string): string[] {
+  const bodies: string[] = [];
+  const re = new RegExp(`${fnName}\\s*\\(`, 'gi');
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(value)) !== null) {
+    let depth = 1;
+    let i = m.index + m[0].length;
+    const start = i;
+    while (i < value.length && depth > 0) {
+      const ch = value[i]!;
+      if (ch === '(') depth += 1;
+      else if (ch === ')') depth -= 1;
+      i += 1;
+    }
+    if (depth === 0) bodies.push(value.slice(start, i - 1).trim());
+  }
+  return bodies;
+}
+
+function splitTopLevelCommas(body: string): string[] {
+  const parts: string[] = [];
+  let depth = 0;
+  let start = 0;
+  for (let i = 0; i < body.length; i += 1) {
+    const ch = body[i]!;
+    if (ch === '(') depth += 1;
+    else if (ch === ')') depth -= 1;
+    else if (ch === ',' && depth === 0) {
+      parts.push(body.slice(start, i).trim());
+      start = i + 1;
+    }
+  }
+  parts.push(body.slice(start).trim());
+  return parts.filter(Boolean);
+}
+
+function resolvePaddingExprParts(expr: string): CalcLengthPart[] | null {
+  const t = expr.trim();
+  if (!t) return null;
+  if (/^calc\s*\(/i.test(t)) {
+    const bodies = extractCalcBodies(t);
+    if (bodies.length === 0) return null;
+    return resolveCalcLengthParts(bodies[0]!);
+  }
+  if (/[*\/]/.test(t)) return resolveCalcLengthParts(t);
+  return parseAdditiveLengthParts(t);
+}
+
+function partsSignedSameUnit(parts: CalcLengthPart[]): { unit: string; n: number } | null {
+  if (parts.length < 1) return null;
+  const unit0 = parts[0]!.unit;
+  if (!parts.every((p) => p.unit === unit0)) return null;
+  return { unit: unit0, n: parts.reduce((acc, p) => acc + p.sign * p.n, 0) };
+}
+
+function partsToApproxPx(parts: CalcLengthPart[]): number | null {
+  const viewW = new Set(['vw', 'dvw', 'svw', 'lvw']);
+  const classicView = new Set([
+    'vh', 'vw', 'vmin', 'vmax', 'dvh', 'dvw', 'svh', 'svw', 'lvh', 'lvw',
+    'lvmin', 'lvmax', 'svmin', 'svmax', 'dvmin', 'dvmax',
+  ]);
+  const cqBox = new Set(['cqw', 'cqh', 'cqi', 'cqb', 'cqmin', 'cqmax']);
+  const lineBox = new Set(['lh', 'rlh', 'cap', 'rcap', 'ex', 'rex']);
+  const fontVp = new Set(['vb', 'vi', 'svb', 'svi', 'lvb', 'lvi', 'dvb', 'dvi']);
+  const icBox = new Set(['ic', 'ric']);
+  const printPx: Record<string, number> = {
+    pt: 4 / 3, mm: 3.78, cm: 37.8, in: 96, pc: 16, q: 0.945,
+  };
+  let sum = 0;
+  for (const p of parts) {
+    const u = p.unit;
+    let px: number | null = null;
+    if (u === 'px') px = p.sign * p.n;
+    else if (u === 'rem' || u === 'em') px = p.sign * p.n * 16;
+    else if (u === 'ch') px = p.sign * p.n * 8;
+    else if (lineBox.has(u)) px = p.sign * p.n * 16;
+    else if (icBox.has(u)) px = p.sign * p.n * 16;
+    else if (classicView.has(u)) px = p.sign * p.n * (viewW.has(u) ? 19.2 : 10.8);
+    else if (cqBox.has(u)) px = p.sign * p.n * 10.8;
+    else if (fontVp.has(u)) px = p.sign * p.n * 10.8;
+    else if (u === '%') px = p.sign * p.n * 10.8;
+    else if (printPx[u] != null) px = p.sign * p.n * (printPx[u] ?? 0);
+    if (px == null) return null;
+    sum += px;
+  }
+  return sum;
+}
+
+function sameUnitMagnitudeLooksCardLike(n: number, unit: string): boolean {
+  if (unit === 'px' && n >= 12) return true;
+  if ((unit === 'rem' || unit === 'em') && n >= 0.75) return true;
+  if (unit === '%' && n >= 4) return true;
+  if (unit === 'ch' && n >= 2) return true;
+  if (
+    /^(?:vh|vw|vmin|vmax|dvh|dvw|svh|svw|lvh|lvw|lvmin|lvmax|svmin|svmax|dvmin|dvmax|cqw|cqh|cqi|cqb|cqmin|cqmax)$/.test(
+      unit,
+    )
+    && n >= 2
+  ) {
+    return true;
+  }
+  if ((unit === 'ic' || unit === 'ric') && n >= 1) return true;
+  if (/^(?:lh|rlh|cap|rcap|ex|rex|vb|vi|svb|svi|lvb|lvi|dvb|dvi)$/.test(unit) && n >= 2) {
+    return true;
+  }
+  if (unit === 'pt' && n >= 8) return true;
+  if (unit === 'mm' && n >= 4) return true;
+  if (unit === 'cm' && n >= 0.4) return true;
+  if (unit === 'in' && n >= 0.15) return true;
+  if (unit === 'pc' && n >= 1) return true;
+  if (unit === 'q' && n >= 8) return true;
+  return false;
+}
+
+/**
+ * min()/max()/clamp() padding — resolve args (incl. calc) then apply the
+ * CSS function; bind when the result crosses card floors (루프846).
+ */
+function minMaxClampLooksCardLike(value: string): boolean {
+  for (const kind of ['min', 'max', 'clamp'] as const) {
+    for (const body of extractCssFnBodies(value, kind)) {
+      const args = splitTopLevelCommas(body);
+      if (kind === 'clamp') {
+        if (args.length !== 3) continue;
+      } else if (args.length < 2) {
+        continue;
+      }
+      const resolved = args.map(resolvePaddingExprParts);
+      if (resolved.some((r) => r == null)) continue;
+      const mags = resolved.map((r) => partsSignedSameUnit(r!));
+      if (
+        mags.every((m) => m != null)
+        && mags.every((m) => m!.unit === mags[0]!.unit)
+      ) {
+        const nums = mags.map((m) => m!.n);
+        let result: number;
+        if (kind === 'min') result = Math.min(...nums);
+        else if (kind === 'max') result = Math.max(...nums);
+        else result = Math.max(nums[0]!, Math.min(nums[1]!, nums[2]!));
+        if (sameUnitMagnitudeLooksCardLike(result, mags[0]!.unit)) return true;
+        continue;
+      }
+      const pxs = resolved.map((r) => partsToApproxPx(r!));
+      if (pxs.some((p) => p == null)) continue;
+      const nums = pxs as number[];
+      let result: number;
+      if (kind === 'min') result = Math.min(...nums);
+      else if (kind === 'max') result = Math.max(...nums);
+      else result = Math.max(nums[0]!, Math.min(nums[1]!, nums[2]!));
+      if (result >= 13) return true;
+    }
+  }
+  return false;
+}
+
 function looksLikeCardLikePadding(style: string): boolean {
   const source = String(style ?? '');
   const padRe =
@@ -2553,6 +2709,12 @@ function looksLikeCardLikePadding(style: string): boolean {
     // CSS Q (quarter-mm) — ≥8Q ≈ 2mm card pad; thin 2Q stays accent (루프375).
     if (/(?:^|[\s/(,])(?:[8-9]|[1-9]\d+)(?:\.\d+)?Q\b/.test(value)) {
       return true;
+    }
+    // Top-level min()/max()/clamp() — resolve the function result; do not let
+    // nested calc bodies bind on their own (루프846).
+    if (/^\s*(?:min|max|clamp)\s*\(/i.test(value)) {
+      if (minMaxClampLooksCardLike(value)) return true;
+      continue;
     }
     // Additive calc same-unit sums — `calc(8px + 4px)` / `calc(.5rem + .25rem)` (루프435).
     if (calcAdditiveSameUnitLooksCardLike(value)) {
