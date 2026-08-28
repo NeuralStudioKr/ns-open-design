@@ -2147,6 +2147,19 @@ function calcAdditiveSameUnitLooksCardLike(value: string): boolean {
       if (px >= 12 || cq >= 2) return true;
       if (px + cq * 10.8 >= 13) return true;
     }
+    // Cross-family: px + print → px + printPx ≥13 (루프721): 5px+6pt ≈ 13px.
+    if (
+      units.has('px')
+      && [...units].every((u) => u === 'px' || printPx[u] != null)
+      && [...units].some((u) => printPx[u] != null)
+    ) {
+      const px = parts.filter((p) => p.unit === 'px').reduce((acc, p) => acc + p.sign * p.n, 0);
+      const print = parts
+        .filter((p) => printPx[p.unit] != null)
+        .reduce((acc, p) => acc + p.sign * p.n * (printPx[p.unit] ?? 0), 0);
+      if (px >= 12 || print >= 13) return true;
+      if (px + print >= 13) return true;
+    }
   }
   return false;
 }
