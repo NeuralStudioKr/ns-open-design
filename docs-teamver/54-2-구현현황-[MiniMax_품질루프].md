@@ -267,7 +267,18 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | preview/export: MiniMax `.slide .arrow{display:none}` scope-rewrite 부작용으로 body `.arrow` CSS-삼각형 chrome이 step 카드에 잔재 | ☑ 루프166 |
 | preview/export: MiniMax 인라인 uppercase-mono footer(PAGE·EDITION·CHAPTER)가 class 없이 flow 앞쪽에 몰려 하단 대공백 잔존 | ☑ 루프167 |
 | persist recover/reuse: `AGENT_EXECUTION_FAILED` 후 남은 kami-deck example.html leftover가 스크럽 없이 저장·렌더 (Claude Design·Apache-2.0·Berlin 잔재 + tagline/dash-list brief 유출) | ☑ 루프168 |
+| persist/preview: heal `allowEmptyBrief`가 공식 영문 kami LOOK/export를 지움 | ☑ 루프172 |
+| persist/preview: Claude Design 문장 없는 부분 leftover(eyebrow·Berlin) 미감지 | ☑ 루프173 |
+| persist/preview: `삼각함수 · N` 제목-only 빈 장 · leftover `#nav`/`#hint` | ☑ 루프174 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
+
+## 이번 루프 (루프172–174)
+
+1. heal leftover — Hangul dest/brief일 때만 scrub. 공식 영문 catalog는 무브리프 유지
+2. leftover/catalog 지문 — eyebrow · Berlin 좌표 · kami colophon · Apache/BYOK 태그 조합
+3. heal — 제목-only 번호 장 drop · 스크립트 없는 leftover presenter chrome 제거. 강의 문장 발명 없음
+
+**검증:** official kami 무브리프 · 부분 leftover · title-only drop · leftover sweep
 
 ## 직전 루프 (루프166–167 · MiniMax 시각 잔재 감사)
 
@@ -322,7 +333,7 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 **검증:** contracts 전체 (823 파일 / 2090 테스트) · deck-template-look-css 회귀 (81/81) · deck-fixed-canvas 계열 (167/167)
 
-## 이번 루프 (루프169)
+## 직전 루프 (루프169)
 
 1. top-up 프롬프트 — remaining > 3이면 3장 배치 금지. 이번 턴에 잔여 전부
 2. invariant — `countHonoredSlideCountTopUpTurns`: 기본 6 미스(1·3장) = top-up 1회. 15장 = 2회

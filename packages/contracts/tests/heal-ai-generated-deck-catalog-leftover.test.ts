@@ -15,10 +15,13 @@
  * 되었으므로 `scrubBriefLeakFromMetaSlots` 가 li 도 처리해야 한다.
  */
 
+import { readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 import {
+  dropTitleOnlyNumberedLeftoverSlides,
   healAiGeneratedDeckMarkup,
   scrubBriefLeakFromMetaSlots,
+  stripEmptyLeftoverPresenterChrome,
 } from '../src/html/heal-ai-generated-deck.js';
 
 const USER_KAMI_LEFTOVER_FIXTURE_ROUND168 = [
@@ -128,5 +131,72 @@ describe('heal-ai-generated-deck · 루프168 catalog leftover integration', () 
     const html = `<ul><li>${brief2}</li></ul>`;
     const out = scrubBriefLeakFromMetaSlots(html, brief2);
     expect(out).not.toContain(brief2);
+  });
+});
+
+describe('heal-ai-generated-deck · 루프172–174 leftover hardening', () => {
+  const brief = '삼각함수에 대해서 설명하는 피피티 만들어줘.';
+
+  it('does not wipe official English kami example when heal has no brief', async () => {
+    const official = await readFile(
+      new URL('../../../design-templates/kami-deck/example.html', import.meta.url),
+      'utf8',
+    );
+    const out = healAiGeneratedDeckMarkup(official, null);
+    expect(out).toMatch(/Claude Design/i);
+    expect(out).toMatch(/52\.5200/);
+    expect(out).toContain('id=\'nav\'');
+  });
+
+  it('scrubs a partial kami leftover that dropped the Claude Design paragraph', () => {
+    const leftover = [
+      '<!doctype html><html><body>',
+      '<section class="slide s-cover"><span class="eyebrow">Open-source design studio</span>',
+      '<h1>삼각함수</h1>',
+      '<div class="meta">Berlin · 52.5200° N · 13.4050° E</div></section>',
+      '<section class="slide s-chapter"><h2>삼각함수 · 3</h2></section>',
+      '<section class="slide s-content"><h2>삼각함수 · 4</h2>',
+      '<ul class="dash"><li></li><li></li><li></li></ul></section>',
+      '<div id="nav"></div><div id="hint">← / →</div>',
+      '</body></html>',
+    ].join('');
+    const out = healAiGeneratedDeckMarkup(leftover, brief);
+    expect(out).not.toMatch(/Open-source design studio/i);
+    expect(out).not.toMatch(/52\.5200/);
+    expect(out).toMatch(/삼각함수/);
+    expect(out).not.toMatch(/sin\s*\(|cos\s*\(|tan\s*\(/i);
+  });
+
+  it('drops title-only numbered leftover slides without inventing lecture copy', () => {
+    const html = [
+      '<section class="slide s-cover"><h1>삼각함수</h1><p>각과 비</p></section>',
+      '<section class="slide s-chapter"><h2>삼각함수 · 3</h2><p class="num"></p></section>',
+      '<section class="slide s-content"><h2>삼각함수 2</h2><p>직각삼각형의 변의 길이 비.</p></section>',
+      '<section class="slide s-content"><h2>삼각함수 · 4</h2><ul class="dash"><li></li><li></li></ul></section>',
+    ].join('');
+    const dropped = dropTitleOnlyNumberedLeftoverSlides(html, brief);
+    expect(dropped).toMatch(/삼각함수/);
+    expect(dropped).toMatch(/직각삼각형의 변의 길이 비/);
+    expect(dropped).not.toMatch(/삼각함수 · 3/);
+    expect(dropped).not.toMatch(/삼각함수 · 4/);
+    expect(dropped).toMatch(/삼각함수 2/);
+    const healed = healAiGeneratedDeckMarkup(html, brief);
+    expect(healed).toMatch(/직각삼각형의 변의 길이 비/);
+    expect(healed).not.toMatch(/삼각함수 · 3/);
+  });
+
+  it('strips empty leftover presenter chrome only when there is no presenter script', () => {
+    const leftover = [
+      '<section class="slide"><h1>삼각함수</h1></section>',
+      '<div id="nav"></div>',
+      '<div id="hint">← / →</div>',
+      '<div class="deck-progress"><div class="bar"></div></div>',
+    ].join('');
+    const stripped = stripEmptyLeftoverPresenterChrome(leftover);
+    expect(stripped).not.toMatch(/id="nav"/);
+    expect(stripped).not.toMatch(/id="hint"/);
+    expect(stripped).not.toMatch(/deck-progress/);
+    const officialish = `${leftover}<script>function go(){}</script>`;
+    expect(stripEmptyLeftoverPresenterChrome(officialish)).toContain('id="nav"');
   });
 });

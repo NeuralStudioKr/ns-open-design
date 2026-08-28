@@ -579,6 +579,18 @@ describe("deck-html-content", () => {
         '삼각함수에 대해서 설명하는 피피티 만들어줘.',
       ),
     ).toBe(true);
+    const partial =
+      '<!doctype html><html><body>'
+      + '<section class="slide"><h1>삼각함수</h1>'
+      + '<span class="eyebrow">Open-source design studio</span>'
+      + '<p>Berlin · 52.5200° N · 13.4050° E</p>'
+      + '</section></body></html>';
+    expect(
+      deckLooksLikeUnfilledCatalogExample(
+        partial,
+        '삼각함수에 대해서 설명하는 피피티 만들어줘.',
+      ),
+    ).toBe(true);
   });
 });
 

@@ -373,6 +373,8 @@ const CATALOG_EXAMPLE_FINGERPRINTS = [
   /open-source alternative to Anthropic's Claude Design/i,
   /A local-first design studio for the agent you already trust/i,
   /52\.5200°\s*N/i,
+  /Open-source design studio/i,
+  /Composed in kami/i,
 ];
 
 /**

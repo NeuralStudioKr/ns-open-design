@@ -97,6 +97,57 @@ export function dropEmptyLikelyDeckSlides(html: string): string {
   return out;
 }
 
+function topicFromBrief(brief?: string | null): string {
+  const first = String(brief ?? '').split(/\r?\n/).map((line) => line.trim()).find(Boolean) || '';
+  return first.match(
+    /^(.+?)\s*(?:에\s*대해(?:서)?|에\s*대한|에\s*관한)\s*(?:설명하는\s*)?(?:발표\s*자료|피피티|PPT|슬라이드|덱|프레젠테이션)/i,
+  )?.[1]?.trim() ?? '';
+}
+
+function topicFromCoverHeading(html: string): string {
+  const inner = /<h[1-3]\b[^>]*>([\s\S]*?)<\/h[1-3]>/i.exec(html)?.[1] ?? '';
+  return visibleText(inner);
+}
+
+function slideLooksTitleOnlyNumberedLeftover(body: string, topic: string): boolean {
+  const headingInner = /<h[1-3]\b[^>]*>([\s\S]*?)<\/h[1-3]>/i.exec(body)?.[1];
+  if (!headingInner || topic.length < 2) return false;
+  const heading = visibleText(headingInner);
+  const escaped = topic.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  if (!new RegExp(`^${escaped}\\s*(?:[·•]\\s*)?\\d{1,2}$`, 'u').test(heading)) return false;
+  const withoutHeading = body.replace(/<h[1-3]\b[^>]*>[\s\S]*?<\/h[1-3]>/i, '');
+  return visibleText(withoutHeading).length < 2;
+}
+
+/**
+ * Q1-b — Drop leftover numbered shells (`삼각함수 · 3`, `삼각함수 2`)
+ * whose only visible text is the cover topic plus an index.
+ *
+ * MiniMax restamps kami/IB chapter shells this way after wiping demo copy.
+ * `dropEmptyLikelyDeckSlides` keeps them because the heading has text.
+ * Never invent replacement lecture copy. Never drop the first slide.
+ */
+export function dropTitleOnlyNumberedLeftoverSlides(
+  html: string,
+  brief?: string | null,
+): string {
+  let out = String(html ?? '');
+  if (!out) return out;
+  const slides = listAiSlideSpans(out);
+  if (slides.length < 2) return out;
+  const firstBody = out.slice(slides[0]!.openEnd, slides[0]!.bodyEnd);
+  const topic = topicFromCoverHeading(firstBody) || topicFromBrief(brief);
+  if (topic.length < 2) return out;
+  for (let i = slides.length - 1; i >= 1; i -= 1) {
+    const slide = slides[i]!;
+    const body = out.slice(slide.openEnd, slide.bodyEnd);
+    if (/<(?:svg|img|video|canvas|iframe|picture|figure)\b/i.test(body)) continue;
+    if (!slideLooksTitleOnlyNumberedLeftover(body, topic)) continue;
+    out = `${out.slice(0, slide.start)}${out.slice(slide.end)}`;
+  }
+  return out;
+}
+
 /**
  * Q2 — Un-nest block children (div/section/aside/p) that got parsed inside
  * a heading.
@@ -314,6 +365,23 @@ export function polishTruncatedInstructionTitles(html: string): string {
   );
 }
 
+/**
+ * Body-first leftover dumps keep empty `#nav` / `#hint` / progress chrome
+ * after MiniMax restamp. Official presenters keep a `<script>` and must
+ * retain that chrome. Do not invent replacement nav.
+ */
+export function stripEmptyLeftoverPresenterChrome(html: string): string {
+  const source = String(html ?? '');
+  if (!source || /<script\b/i.test(source)) return source;
+  return source
+    .replace(/<div\b[^>]*\bid\s*=\s*["']nav["'][^>]*>\s*<\/div>/gi, '')
+    .replace(/<div\b[^>]*\bid\s*=\s*["']hint["'][^>]*>[\s\S]*?<\/div>/gi, '')
+    .replace(
+      /<div\b[^>]*\bclass\s*=\s*["'][^"']*\bdeck-progress\b[^"']*["'][^>]*>\s*<div\b[^>]*>\s*<\/div>\s*<\/div>/gi,
+      '',
+    );
+}
+
 export function healAiGeneratedDeckMarkup(html: string, brief?: string | null): string {
   let out = String(html ?? '');
   if (!out.trim()) return out;
@@ -326,8 +394,13 @@ export function healAiGeneratedDeckMarkup(html: string, brief?: string | null): 
   // scrubbed markup, so callers that already scrubbed (srcdoc / persist)
   // pass through untouched.
   try {
-    if (catalogExampleShouldBeScrubbed(out, brief, { allowEmptyBrief: true })) {
-      const scrubbed = scrubLeftoverCatalogExampleHtml(out, brief, { allowEmptyBrief: true });
+    // Do not pass allowEmptyBrief here. FileViewer / export / srcdoc heal
+    // official English catalog examples (kami LOOK seed, gallery export)
+    // with an empty brief — those must stay intact. Hangul-restamped
+    // leftover still scrubs because catalogExampleShouldBeScrubbed sees
+    // Hangul on the dest.
+    if (catalogExampleShouldBeScrubbed(out, brief)) {
+      const scrubbed = scrubLeftoverCatalogExampleHtml(out, brief);
       if (scrubbed && scrubbed !== out) {
         out = scrubbed;
       }
@@ -342,6 +415,8 @@ export function healAiGeneratedDeckMarkup(html: string, brief?: string | null): 
   out = normalizeHangulParticleGaps(out);
   out = scrubBriefLeakFromMetaSlots(out, brief);
   out = dropEmptyLikelyDeckSlides(out);
+  out = dropTitleOnlyNumberedLeftoverSlides(out, brief);
+  out = stripEmptyLeftoverPresenterChrome(out);
   return out;
 }
 

@@ -343,6 +343,12 @@ describe('sanitizeTemplateCloneDeckTitle', () => {
     expect(looksLikeLeftoverTemplateDemoDeck(
       '<section class="slide"><h1>삼각함수</h1><p>정의와 활용</p></section>',
     )).toBe(false);
+    expect(looksLikeLeftoverTemplateDemoDeck(
+      '<span class="eyebrow">Open-source design studio</span><p>Berlin · 52.5200° N</p>',
+    )).toBe(true);
+    expect(looksLikeLeftoverTemplateDemoDeck(
+      '<span class="tag">Apache-2.0</span><span class="tag">Local-first</span><span class="tag">BYOK</span>',
+    )).toBe(true);
     expect(sanitizeTemplateCloneDeckTitle('Presentation')).toBeNull();
     expect(looksLikeTemplateMarketingTitle('Expo for Senior Engineers')).toBe(false);
     expect(deriveDeckCoverTitleFromBrief('', 'Presentation')).toBe('슬라이드');
