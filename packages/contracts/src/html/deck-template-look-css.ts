@@ -328,6 +328,16 @@ section[data-screen-label], main[data-screen-label], article[data-screen-label] 
   content: none !important;
   display: none !important;
 }
+/* od-body-arrow-chrome-hide (루프166): MiniMax co-emits two rules —
+ *   .slide .arrow{position:absolute; ...; border-*}  (CSS triangle deco)
+ *   .slide .arrow{display:none}                      (universal hide)
+ * 루프158 scope-rewrites both onto [data-od-official-motif-html]. The
+ * body-content copy - a bare empty div.arrow CSS triangle inside a step card -
+ * then loses its display:none and renders as a floating black triangle.
+ * Only touch :empty chrome so .arrow with text ("Next") stays visible. */
+.slide [data-od-slide-flow] :is(.arrow, .arr):not([data-od-official-motif-html]):empty {
+  display: none !important;
+}
 /* od-sibling-chrome-above-flow: SPEAKING / stamp sit outside the clip wrapper. */
 .slide > :is(.pill, [class*="pill"], .stamp, [class*="stamp"]):not([data-od-official-motif-html]) {
   z-index: 3 !important;

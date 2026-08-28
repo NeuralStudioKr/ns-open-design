@@ -1693,6 +1693,135 @@ export function wrapNonMotifSlideFlow(html: string): string {
   return mapSlideInners(html, (inner, span) => wrapNonMotifInSpan(inner, span.hostAttrs));
 }
 
+/**
+ * MiniMax appends inline-styled uppercase monospace footer texts
+ * (EDITION 01 · PAGE 06 / 06 · CHAPTER 03 …) at the tail of a slide's
+ * content flow without any class. Look CSS pushes `.slide-footer` /
+ * `.slide-meta` / `.kicker-footer` / `.footer` to the bottom of the
+ * flex-column flow via `margin-top: auto`, but MiniMax's class-less footers
+ * miss all four hooks and cluster near the top, leaving a large empty band
+ * at the bottom of the slide (사용자 리포트 · staging MiniMax English
+ * conversation deck · 03/06 · 05/06 · 06/06 슬라이드).
+ *
+ * Post-pin heal: for each `[data-od-slide-flow]` wrapper, find the trailing
+ * consecutive run of children matching the MiniMax footer style pattern
+ * (inline `text-transform:uppercase` + monospace font-family), then add
+ * `class="slide-footer"` to the first element of that trailing run so the
+ * existing look CSS rule pushes the whole run to the bottom. Skip runs that
+ * would swallow the entire flow (idempotent + no-op safeguards).
+ */
+const MINIMAX_FOOTER_STYLE_MONOSPACE_RE =
+  /font-family\s*:[^;]*\b(?:mono(?:space)?|jetbrains\s*mono|fira\s*code|space\s*mono|source\s*code|ibm\s*plex\s*mono|roboto\s*mono|inconsolata|menlo|consolas|monaco|courier)\b/i;
+const MINIMAX_FOOTER_STYLE_UPPERCASE_RE =
+  /text-transform\s*:\s*uppercase\b/i;
+
+function segmentLooksLikeMiniMaxFooter(segment: string): boolean {
+  const open = openTagOf(segment);
+  if (!open) return false;
+  const tag = open.tag.toLowerCase();
+  if (!/^(?:div|span|p|footer|small|address)$/.test(tag)) return false;
+  const style = extractStyleAttr(open.attrs);
+  if (!style) return false;
+  if (!MINIMAX_FOOTER_STYLE_UPPERCASE_RE.test(style)) return false;
+  if (!MINIMAX_FOOTER_STYLE_MONOSPACE_RE.test(style)) return false;
+  // Do not scoop up empty CSS-triangle chrome or motif hosts.
+  if (/\bdata-od-official-motif-html\b/i.test(open.attrs)) return false;
+  return true;
+}
+
+function addSlideFooterClass(openTag: string): string {
+  // Extend an existing class attribute or add a new one to the open tag.
+  const classMatch = openTag.match(/\bclass\s*=\s*(['"])([\s\S]*?)\1/i);
+  if (classMatch) {
+    const [, quote, value] = classMatch as unknown as [string, string, string];
+    if (/\bslide-footer\b/.test(value)) return openTag;
+    const nextValue = `${value.trim()} slide-footer`.trim();
+    return openTag.replace(
+      /\bclass\s*=\s*(['"])[\s\S]*?\1/,
+      `class=${quote}${nextValue}${quote}`,
+    );
+  }
+  // Insert `class="slide-footer"` right after the tag name.
+  return openTag.replace(
+    /^<([a-zA-Z][\w-]*)/,
+    (_full, tagName: string) => `<${tagName} class="slide-footer"`,
+  );
+}
+
+function markTrailingMiniMaxFootersInFlowInner(inner: string): string {
+  const segs = listTopLevelSegments(inner);
+  if (segs.length === 0) return inner;
+  // Ignore leading/trailing whitespace / comment segments to find real
+  // element boundaries.
+  const elementSegs = segs
+    .map((s, idx) => ({ ...s, idx, raw: inner.slice(s.start, s.end) }))
+    .filter((s) => {
+      const trimmed = s.raw.trim();
+      if (!trimmed) return false;
+      if (trimmed.startsWith('<!--')) return false;
+      return true;
+    });
+  if (elementSegs.length < 2) return inner;
+
+  // Walk from the last element backwards while the segment matches footer.
+  let startOfRun = -1;
+  for (let i = elementSegs.length - 1; i >= 0; i -= 1) {
+    if (segmentLooksLikeMiniMaxFooter(elementSegs[i]!.raw)) {
+      startOfRun = i;
+    } else {
+      break;
+    }
+  }
+  if (startOfRun < 0) return inner;
+  // Refuse to swallow the ENTIRE flow (safety: e.g., 2-element flow with both
+  // uppercase-mono chrome would leave nothing above the footer anchor).
+  if (startOfRun === 0) return inner;
+
+  const firstFooter = elementSegs[startOfRun]!;
+  // Extract the open tag substring of that first-footer element and rewrite it.
+  const openMatch = /^<[a-zA-Z][\w-]*\b((?:[^>"']|"[^"]*"|'[^']*')*)>/.exec(firstFooter.raw);
+  if (!openMatch) return inner;
+  const originalOpen = openMatch[0];
+  const nextOpen = addSlideFooterClass(originalOpen);
+  if (nextOpen === originalOpen) return inner;
+  const openAbs = firstFooter.start + openMatch.index;
+  return `${inner.slice(0, openAbs)}${nextOpen}${inner.slice(openAbs + originalOpen.length)}`;
+}
+
+const FLOW_OPEN_TAG_RE = /<div\b[^>]*\bdata-od-slide-flow\b[^>]*>/gi;
+
+/**
+ * Post-pin heal: mark trailing MiniMax uppercase-monospace footer texts
+ * inside each `[data-od-slide-flow]` wrapper with `class="slide-footer"`.
+ * See `markTrailingMiniMaxFootersInFlowInner` for the detection rules.
+ */
+export function markTrailingMiniMaxFootersInPinnedFlow(html: string): string {
+  const source = String(html ?? '');
+  if (!source) return source;
+  const out: string[] = [];
+  let cursor = 0;
+  FLOW_OPEN_TAG_RE.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = FLOW_OPEN_TAG_RE.exec(source)) !== null) {
+    const openStart = match.index;
+    const openEnd = openStart + match[0].length;
+    const closeIndex = findMatchingClose(source, openEnd, 'div');
+    if (closeIndex < 0 || closeIndex <= openEnd) continue;
+    const innerStart = openEnd;
+    const closeTag = '</div>';
+    const innerEnd = closeIndex - closeTag.length;
+    if (innerEnd <= innerStart) continue;
+    const inner = source.slice(innerStart, innerEnd);
+    const nextInner = markTrailingMiniMaxFootersInFlowInner(inner);
+    out.push(source.slice(cursor, innerStart));
+    out.push(nextInner);
+    cursor = innerEnd;
+    FLOW_OPEN_TAG_RE.lastIndex = innerEnd; // resume search after this flow
+  }
+  out.push(source.slice(cursor));
+  return out.join('');
+}
+
 function collectFrameDeclarations(style: string): string {
   const source = String(style ?? "");
   const parts: string[] = [];
@@ -2549,6 +2678,7 @@ export function pinDeckSlidesToFixedCanvas(
     out = flowAbsoluteNonMotifSlideContent(out);
     out = bindFakeOutlineCardsToOfficialKit(out);
     out = wrapNonMotifSlideFlow(out);
+    out = markTrailingMiniMaxFootersInPinnedFlow(out);
   }
   out = injectFixedCanvasStyle(out);
   return dropCollidingOfficialMotifInstances(out);

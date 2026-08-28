@@ -263,9 +263,64 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | persist: heading type-lock · inline Quicksand strip · low-substance verify | ☑ 루프8 |
 | think 태그 / 내부 마크업 필터 | ☑ 기존 |
 | preview/export: 작성자 JS presenter를 MiniMax salvage로 오인해 페이지 누락 | ☑ 루프159 |
+| preview/export: MiniMax `.slide .arrow{display:none}` scope-rewrite 부작용으로 body `.arrow` CSS-삼각형 chrome이 step 카드에 잔재 | ☑ 루프166 |
+| preview/export: MiniMax 인라인 uppercase-mono footer(PAGE·EDITION·CHAPTER)가 class 없이 flow 앞쪽에 몰려 하단 대공백 잔존 | ☑ 루프167 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프165)
+## 이번 루프 (루프166–167 · MiniMax 시각 잔재 감사)
+
+사용자 리포트(2026-08-28 · staging MiniMax 영어 회화 덱) 시각 잔재 감사 및 후속 해결. 루프158-A로 flow wrapper invariant는 확보되었으나, 실제 파이프라인을 Chrome for Testing 헤드리스로 렌더링해 슬라이드별 잔여 결함을 육안 감사했다.
+
+### 감사 방법
+
+1. `pinDeckSlidesToFixedCanvas` + `buildStandaloneDeckHtmlDocument`로 사용자 fixture(6장) 파이프라인 통과 결과물 생성
+2. Chrome for Testing 헤드리스로 1920×1080 6장 스택 렌더링 → 슬라이드별 크롭
+3. 슬라이드 1(COVER) · 2(WHY) · 3(FOUR SKILLS) · 4(FOUR-STEP DRILL) · 5(THREE WAYS) · 6(CLOSING) 육안 감사
+
+### 발견 · 해결
+
+**루프166 · `.arrow` CSS-삼각형 body chrome 잔재 (해결)**
+
+- 증상: 슬라이드 4 FOUR-STEP DRILL의 4개 step 카드(01 LISTENING · 02 SHADOW · 03 REWRITE · 04 SPEAK LIVE) 하단에 작은 검은 삼각형(`<div class="arrow"></div>`) 잔재
+- 원인: MiniMax는 `<style data-od-official-motif-deco-css>`에 두 쌍 규칙을 함께 emit
+  ```
+  .slide .arrow{position:absolute; ...; border-*}   # CSS 삼각형 deco
+  .slide .arrow{display:none}                        # universal hide
+  ```
+  루프158의 `scopeMotifDecoCssToOfficialHosts`가 두 규칙 모두를 `.slide [data-od-official-motif-html].arrow`로 좁혀, body의 빈 `<div class="arrow">` (본문 카드 안 CSS 삼각형 chrome)가 `display:none` 규칙을 잃고 렌더링에 노출됨
+- 해결: `LOOK_NEUTRALIZE_CSS`에 `od-body-arrow-chrome-hide` 규칙 추가
+  ```
+  .slide [data-od-slide-flow] :is(.arrow, .arr):not([data-od-official-motif-html]):empty {
+    display: none !important;
+  }
+  ```
+  `:empty` 필터로 텍스트 있는 `.arrow`(예: "→ Next step")는 유지, chrome-only 빈 CSS-삼각형만 hide
+
+**루프167 · 후행 MiniMax footer 텍스트 하단 앵커 (해결)**
+
+- 증상: 슬라이드 3·5·6 등에서 flow의 후행 텍스트("ENGLISH", "PAGE 06 /", "EDITION 01" 등)가 컨텐츠 바로 아래 몰려 있고 슬라이드 하단에 큰 빈 영역이 남음
+- 원인: MiniMax는 이 후행 텍스트를 인라인 스타일(`font-family:'JetBrains Mono',monospace; text-transform:uppercase`)로 emit하지만 class를 붙이지 않음. 기존 look CSS `.slide > [data-od-slide-flow] > :is(.slide-footer, .slide-meta, .kicker-footer, .footer) { margin-top:auto }`가 잡아내지 못해 flex-column flow에서 자연 순서로 상단에 몰림
+- 해결: pin 단계(`pinDeckSlidesToFixedCanvas` → `wrapNonMotifSlideFlow` 이후) 새 post-heal `markTrailingMiniMaxFootersInPinnedFlow` 추가
+  - 각 `[data-od-slide-flow]` wrapper 안 top-level 자식들을 뒤에서부터 순회
+  - `text-transform:uppercase` + monospace 계열(mono/JetBrains Mono/Fira Code/Space Mono/IBM Plex Mono/Roboto Mono/Inconsolata/Menlo/Consolas/Monaco/Courier) 조건 모두 만족 시 후행 시퀀스로 판정
+  - 시퀀스 첫 요소에만 `class="slide-footer"` 부여 (기존 class 있으면 확장, 이미 있으면 no-op)
+  - 시퀀스가 flow 전체를 삼키면(startOfRun === 0) 안전 no-op
+  - motif host(`data-od-official-motif-html`)는 제외
+- 효과: 기존 `.slide-footer { margin-top:auto }` 규칙이 자동 발동 → 후행 footer 그룹이 flow 하단에 정렬. content bulk는 상단에 그대로, footer는 slide 바닥에 pinning
+
+### 방어 축
+
+**red-spec 파일 2개**
+- `tests/deck-fixed-canvas-arrow-chrome-hide.test.ts` (4/4) — `.arrow`/`.arr` hide 규칙 존재 · deco CSS 계약 · pin+export end-to-end · 텍스트 있는 `.arrow` 보존
+- `tests/deck-fixed-canvas-footer-anchor.test.ts` (5/5) — 2개 후행 · 단일 후행 · 기존 class 확장 · 상단 kicker 오탐 방지 · idempotency
+
+**소스 변경**
+- `packages/contracts/src/html/deck-template-look-css.ts` — `LOOK_NEUTRALIZE_CSS`에 `od-body-arrow-chrome-hide` 규칙 삽입
+- `packages/contracts/src/html/deck-fixed-canvas.ts` — `markTrailingMiniMaxFootersInPinnedFlow` export 추가, pin 파이프라인에 hook
+
+**검증:** contracts 전체 (823 파일 / 2090 테스트) · deck-template-look-css 회귀 (81/81) · deck-fixed-canvas 계열 (167/167)
+
+## 직전 루프 (루프165)
 
 1. leftover — kami 스튜디오 문장(`Claude Design` alternative · local-first studio) 감지
 2. persist — catalog fingerprint + `catalogExampleShouldBeScrubbed`. 갤러리 example은 무브리프에서 유지
