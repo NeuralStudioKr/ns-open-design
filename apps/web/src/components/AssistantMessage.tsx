@@ -740,7 +740,8 @@ function AssistantMessageImpl({
     !!isLast &&
     unfinishedTodos.length > 0 &&
     !!onContinueRemainingTasks;
-  const canFork = !streaming && !!onForkFromMessage;
+  const hideAssistantReactionControls = teamverEmbedEnabled;
+  const canFork = !hideAssistantReactionControls && !streaming && !!onForkFromMessage;
   const copyMarkdown = useMemo(() => {
     const raw = String(message.content ?? '').trim();
     if (!raw) return undefined;
@@ -756,6 +757,7 @@ function AssistantMessageImpl({
     }
   }, [hideAssistantThinkingDetails, message.content]);
   const showFeedback =
+    !hideAssistantReactionControls &&
     !!onFeedback &&
     isFeedbackEligible({
       streaming,
