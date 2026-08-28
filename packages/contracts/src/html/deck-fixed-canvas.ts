@@ -1851,12 +1851,41 @@ function looksLikeFakeOutlineStyle(style: string): boolean {
  * Logical `padding-block` / `padding-inline` (+ start/end) count the same (루프74).
  */
 
+/** Extract `calc(...)` bodies with balanced parentheses (루프771). */
+function extractCalcBodies(value: string): string[] {
+  const bodies: string[] = [];
+  const re = /calc\s*\(/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(value)) !== null) {
+    let depth = 1;
+    let i = m.index + m[0].length;
+    const start = i;
+    while (i < value.length && depth > 0) {
+      const ch = value[i]!;
+      if (ch === '(') depth += 1;
+      else if (ch === ')') depth -= 1;
+      i += 1;
+    }
+    if (depth === 0) bodies.push(value.slice(start, i - 1).trim());
+  }
+  return bodies;
+}
+
+/** Strip additive-only `(...)` layers inside a calc body (루프771). */
+function unwrapAdditiveCalcParens(body: string): string {
+  let cur = body;
+  let prev = '';
+  while (cur !== prev) {
+    prev = cur;
+    cur = cur.replace(/\(([^()*\/]+)\)/g, '$1');
+  }
+  return cur;
+}
+
 /** Additive `calc` sums: same-unit · `%` · rem/em+px@16 · rem+em · vh/%+px (루프515). */
 function calcAdditiveSameUnitLooksCardLike(value: string): boolean {
-  const calcRe = /calc\s*\(([^()]*)\)/gi;
-  let match: RegExpExecArray | null;
-  while ((match = calcRe.exec(value)) !== null) {
-    const body = (match[1] ?? '').trim();
+  for (const rawBody of extractCalcBodies(value)) {
+    const body = unwrapAdditiveCalcParens(rawBody).trim();
     if (!body || /[*\/]/.test(body)) continue;
     // No `\b` after `%` — `%` is non-word so `\b` never matches EOS (루프465).
     const tokRe =
