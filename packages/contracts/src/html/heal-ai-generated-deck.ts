@@ -16,6 +16,10 @@ import {
   scrubLeftoverCatalogExampleHtml,
 } from '../template-clone-fill.js';
 
+function destHasHangulTopic(html: string): boolean {
+  return ((String(html ?? '').match(/[가-힣]/g) ?? []).length >= 4);
+}
+
 function visibleText(html: string): string {
   return String(html ?? '')
     .replace(/<script\b[\s\S]*?<\/script>/gi, ' ')
@@ -370,6 +374,40 @@ export function polishTruncatedInstructionTitles(html: string): string {
  * after MiniMax restamp. Official presenters keep a `<script>` and must
  * retain that chrome. Do not invent replacement nav.
  */
+const ENTRANCE_ANIM_REVEAL_CSS = [
+  '[data-anim],[data-anim-target],[class*="anim-"]{',
+  'opacity:1!important;visibility:visible!important;',
+  'transform:none!important;filter:none!important;clip-path:none!important;',
+  'animation:none!important;animation-delay:0s!important;',
+  '}',
+].join('');
+
+/**
+ * Stacked persist/preview does not replay Broadside/Studio `.is-active`
+ * entrance animations. Without this, leftover and filled decks both look
+ * empty. Official catalog thumbs already neutralize this in cover srcdoc.
+ */
+export function revealEntranceAnimSlots(html: string): string {
+  const source = String(html ?? '');
+  if (!source) return source;
+  if (!/\bdata-anim\b/.test(source) && !/\[data-anim/.test(source)) return source;
+  if (/\bdata-od-data-anim-reveal\b/.test(source) || /od-data-anim-reveal/.test(source)) {
+    return source;
+  }
+  const tag = `<style data-od-data-anim-reveal>${ENTRANCE_ANIM_REVEAL_CSS}</style>`;
+  if (/<\/head>/i.test(source)) return source.replace(/<\/head>/i, `${tag}</head>`);
+  if (/<body\b/i.test(source)) return source.replace(/<body\b[^>]*>/i, (open) => `${open}${tag}`);
+  return `${tag}${source}`;
+}
+
+/** Clone leftovers keep `[[Author Name]]` / `[Year]` as entire slot text. */
+export function scrubTemplatePlaceholderSlots(html: string): string {
+  return String(html ?? '').replace(
+    /(<(div|span|p)\b[^>]*>)\s*(?:\[\[Author Name\]\]|\[Author Name\]|\[Year\])\s*(<\/\2>)/gi,
+    '$1$3',
+  );
+}
+
 export function stripEmptyLeftoverPresenterChrome(html: string): string {
   const source = String(html ?? '');
   if (!source || /<script\b/i.test(source)) return source;
@@ -417,6 +455,10 @@ export function healAiGeneratedDeckMarkup(html: string, brief?: string | null): 
   out = dropEmptyLikelyDeckSlides(out);
   out = dropTitleOnlyNumberedLeftoverSlides(out, brief);
   out = stripEmptyLeftoverPresenterChrome(out);
+  if (destHasHangulTopic(out)) {
+    out = scrubTemplatePlaceholderSlots(out);
+  }
+  out = revealEntranceAnimSlots(out);
   return out;
 }
 

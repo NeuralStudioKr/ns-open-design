@@ -591,6 +591,17 @@ describe("deck-html-content", () => {
         '삼각함수에 대해서 설명하는 피피티 만들어줘.',
       ),
     ).toBe(true);
+    const broadsideTokensOnly =
+      '<!doctype html><html><body>'
+      + '<section class="slide"><h1>삼각함수</h1>'
+      + '<style>:root{--c-bg-orange:#e85d26} /* ZONE A · TOKENS */</style>'
+      + '</section></body></html>';
+    expect(
+      deckLooksLikeUnfilledCatalogExample(
+        broadsideTokensOnly,
+        '삼각함수에 대해서 설명하는 피피티 만들어줘.',
+      ),
+    ).toBe(false);
   });
 
   it("flags leftover Broadside catalog when the brief is a different topic", () => {

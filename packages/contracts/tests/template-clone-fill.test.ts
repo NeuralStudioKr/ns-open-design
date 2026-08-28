@@ -349,6 +349,15 @@ describe('sanitizeTemplateCloneDeckTitle', () => {
     expect(looksLikeLeftoverTemplateDemoDeck(
       '<span class="tag">Apache-2.0</span><span class="tag">Local-first</span><span class="tag">BYOK</span>',
     )).toBe(true);
+    expect(looksLikeLeftoverTemplateDemoDeck(
+      '<span class="broadside-num">[[Author Name]]</span>',
+    )).toBe(true);
+    expect(looksLikeLeftoverTemplateDemoDeck(
+      '<p class="lead">this is the broadside style</p>',
+    )).toBe(true);
+    expect(looksLikeLeftoverTemplateDemoDeck(
+      ':root { --c-bg-orange: #e85d26; } /* ZONE A · TOKENS */',
+    )).toBe(false);
     expect(sanitizeTemplateCloneDeckTitle('Presentation')).toBeNull();
     expect(looksLikeTemplateMarketingTitle('Expo for Senior Engineers')).toBe(false);
     expect(deriveDeckCoverTitleFromBrief('', 'Presentation')).toBe('슬라이드');

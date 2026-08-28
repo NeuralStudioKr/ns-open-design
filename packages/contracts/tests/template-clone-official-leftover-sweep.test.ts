@@ -39,6 +39,7 @@ const DEMO_PROPER_NOUNS = [
   /Claude Design/i,
   /52\.5200/i,
   /local-first design studio for the agent you already trust/i,
+  /\[\[Author Name\]\]/,
 ];
 
 function listDeckExamples(): string[] {

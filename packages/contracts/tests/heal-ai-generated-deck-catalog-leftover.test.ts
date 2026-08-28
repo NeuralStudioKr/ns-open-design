@@ -20,9 +20,16 @@ import { describe, expect, it } from 'vitest';
 import {
   dropTitleOnlyNumberedLeftoverSlides,
   healAiGeneratedDeckMarkup,
+  revealEntranceAnimSlots,
   scrubBriefLeakFromMetaSlots,
+  scrubTemplatePlaceholderSlots,
   stripEmptyLeftoverPresenterChrome,
 } from '../src/html/heal-ai-generated-deck.js';
+import { LOOK_NEUTRALIZE_CSS } from '../src/html/deck-template-look-css.js';
+import {
+  catalogExampleShouldBeScrubbed,
+  looksLikeLeftoverTemplateDemoDeck,
+} from '../src/template-clone-fill.js';
 
 const USER_KAMI_LEFTOVER_FIXTURE_ROUND168 = [
   "<!DOCTYPE html>",
@@ -227,15 +234,18 @@ const USER_BROADSIDE_LEFTOVER_FIXTURE = [
   '</section></body></html>',
 ].join('');
 
-describe('heal-ai-generated-deck · 루프175 Broadside leftover', () => {
+describe('heal-ai-generated-deck · 루프175–177 Broadside leftover + data-anim', () => {
   const brief = '삼각함수에 대해서 설명하는 피피티 만들어줘.';
 
   it('scrubs unfilled Broadside example.html leftover on the heal path', () => {
+    expect(looksLikeLeftoverTemplateDemoDeck(USER_BROADSIDE_LEFTOVER_FIXTURE)).toBe(true);
+    expect(catalogExampleShouldBeScrubbed(USER_BROADSIDE_LEFTOVER_FIXTURE, brief)).toBe(true);
     const out = healAiGeneratedDeckMarkup(USER_BROADSIDE_LEFTOVER_FIXTURE, brief);
     expect(out).not.toMatch(/\[\[Author Name\]\]/);
     expect(out).not.toMatch(/만들어줘/);
     expect(out).not.toMatch(/Four rules/);
     expect(out).toMatch(/삼각함수/);
+    expect(out).not.toMatch(/sin\s*\(|cos\s*\(|tan\s*\(/i);
   });
 
   it('clears a Broadside .lead slot that is only the user brief', () => {
@@ -246,5 +256,36 @@ describe('heal-ai-generated-deck · 루프175 Broadside leftover', () => {
     const out = scrubBriefLeakFromMetaSlots(html, brief);
     expect(out).not.toMatch(/만들어줘/);
     expect(out).toMatch(/<p class="lead"><\/p>/);
+  });
+
+  it('reveals [data-anim] so stacked preview is not blank', () => {
+    const revealed = revealEntranceAnimSlots(USER_BROADSIDE_LEFTOVER_FIXTURE);
+    expect(revealed).toMatch(/data-od-data-anim-reveal/);
+    expect(revealed).toMatch(/opacity:1!important/);
+    const healed = healAiGeneratedDeckMarkup(USER_BROADSIDE_LEFTOVER_FIXTURE, brief);
+    expect(healed).toMatch(/od-data-anim-reveal|data-od-data-anim-reveal/);
+    expect(LOOK_NEUTRALIZE_CSS).toContain('od-data-anim-visible');
+    expect(LOOK_NEUTRALIZE_CSS).toContain('od-data-anim-reveal');
+  });
+
+  it('does not wipe official English Broadside when heal has no brief', async () => {
+    const official = await readFile(
+      new URL(
+        '../../../design-templates/html-ppt-zhangzara-broadside/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    expect(catalogExampleShouldBeScrubbed(official, null)).toBe(false);
+    const out = healAiGeneratedDeckMarkup(official, null);
+    expect(out).toMatch(/\[\[Author Name\]\]/);
+    expect(out).toMatch(/Four rules/);
+  });
+
+  it('clears placeholder author/year slots on Hangul leftover only', () => {
+    const hangul = '<span class="broadside-num">[[Author Name]]</span><p>삼각함수 표지</p>';
+    expect(scrubTemplatePlaceholderSlots(hangul)).not.toMatch(/\[\[Author Name\]\]/);
+    const english = '<span class="broadside-num">[[Author Name]]</span><p>Broadside</p>';
+    expect(healAiGeneratedDeckMarkup(english, null)).toMatch(/\[\[Author Name\]\]/);
   });
 });

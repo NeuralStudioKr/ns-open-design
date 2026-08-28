@@ -282,9 +282,18 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | persist/preview: Claude Design 문장 없는 부분 leftover(eyebrow·Berlin) 미감지 | ☑ 루프173 |
 | persist/preview: `삼각함수 · N` 제목-only 빈 장 · leftover `#nav`/`#hint` | ☑ 루프174 |
 | persist/preview: Broadside leftover(`[[Author Name]]`·빈 li·브리프 lead) + `[data-anim]` 비가시 | ☑ 루프175 |
+| persist/preview: look 부재 시 Broadside `[data-anim]` 비가시 · CSS 토큰 leftover 오탐 | ☑ 루프176–177 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프175)
+## 이번 루프 (루프176–177)
+
+1. heal — look neutralize 없어도 `data-od-data-anim-reveal` 주입. `[data-anim-target]`/`[class*="anim-"]` 포함
+2. remmerge — `od-data-anim-visible` + `od-data-anim-reveal` 둘 다 있어야 current
+3. leftover — Hangul dest placeholder 스크럽. persist는 `ZONE A`/`--c-bg-orange`를 지문으로 쓰지 않음
+
+**검증:** Broadside leftover heal · official catalog 무브리프 · look-css · leftover sweep · deck-html-content
+
+## 직전 루프 (루프175)
 
 1. leftover — Broadside `[[Author Name]]` / demo title. persist ≥2 hit (`ZONE B · ENGINE`)
 2. heal — `.lead` brief leak. Hangul leftover scrub. 공식 영문 catalog 유지

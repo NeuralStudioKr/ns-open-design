@@ -143,14 +143,19 @@ section[data-screen-label], main[data-screen-label], article[data-screen-label] 
   box-sizing: border-box !important;
   overflow: visible !important;
 }
-/* od-data-anim-visible: Broadside/Studio hide [data-anim] until JS adds
- * .is-active. Stacked persist/preview has no presenter JS — copy stays
- * opacity:0 and reads as an empty / unstyled deck. */
-[data-anim] {
+/* od-data-anim-visible / od-data-anim-reveal: Broadside/Studio hide
+ * [data-anim] until JS adds .is-active. Stacked persist/preview has no
+ * presenter JS — copy stays opacity:0 and reads as empty / unstyled. */
+[data-anim],
+[data-anim-target],
+[class*="anim-"] {
   opacity: 1 !important;
-  animation: none !important;
-  clip-path: none !important;
+  visibility: visible !important;
   transform: none !important;
+  filter: none !important;
+  clip-path: none !important;
+  animation: none !important;
+  animation-delay: 0s !important;
 }
 /* Split/row fills keep their inline axis — do not force a column. */
 .slide:has(.split-left), .slide:has(.split-right),
@@ -514,6 +519,7 @@ function officialLookCssLooksCurrent(css: string): boolean {
     && css.includes('od-look-slot-flow-ext')
     && css.includes('od-sibling-chrome-above-flow')
     && css.includes('od-data-anim-visible')
+    && css.includes('od-data-anim-reveal')
   );
 }
 
@@ -564,6 +570,8 @@ export function hasOfficialLookStackedCanvasNeutralizeProof(html: string): boole
     && dest.includes('od-look-slot-flow')
     && dest.includes('od-look-slot-flow-ext')
     && dest.includes('od-sibling-chrome-above-flow')
+    && dest.includes('od-data-anim-visible')
+    && dest.includes('od-data-anim-reveal')
   );
 }
 
