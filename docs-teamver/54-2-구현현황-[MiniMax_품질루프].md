@@ -208,6 +208,7 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | persist/preview: Biennale에 IB Study Notes 표지가 남음 · relative radial | ☑ 루프151 |
 | persist/FileViewer: AI 덱 heal이 저장 경로에 없음 · `에 대한` 제목 | ☑ 루프153 |
 | persist/preview: Biennale 크림 위 크림 · Study Notes · Shado · overlay flatten | ☑ 루프154 |
+| persist/preview: mast 없는 IB ribbon 표지가 Biennale에 남음 | ☑ 루프155 |
 | persist/preview: look CSS가 1–2장 사이에 끼어 표지 밀집도가 깨짐 | ☑ follow-up |
 | persist/preview: MiniMax `<p="">` · 유출 `· Label` | ☑ follow-up |
 | preview: Motif `span.ribbon`이 relative stretch로 빨간 줄 | ☑ follow-up |
@@ -234,7 +235,15 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | think 태그 / 내부 마크업 필터 | ☑ 기존 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프596–620 / round597–621)
+## 이번 루프 (루프155)
+
+1. restyle — mast 없는 IB ribbon/`h1.display`/cover-meta 표지를 Biennale `s-cover`+`titlewrap`
+2. restyle — mast 없는 경로는 Biennale look만. 이미 `s-cover`+sunglow면 no-op
+3. magazine heal에서도 동일 리스타일 (look-heal 미리보기)
+
+**검증:** no-mast restyle · idempotent · biennale heal → s-cover · Daisy skip · no 학습 노트
+
+## 직전 루프 (루프596–620 / round597–621)
 
 1. padding — 교차 가족 ch+cq · line|ch+ic(×2) · cq+viewport · rem|em+ch · %+cq
 2. chat — FOO `⬡⬢⬤⬥⬦◊◈⊕⊖⊗⊘⊙`
@@ -243,7 +252,6 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 **검증:** chat-leak-probe-round597–621 (25/25)
 
 ## 직전 루프 (루프154)
-
 
 1. heal — Biennale `--sun` 장에서 크림 글자(`#E9E5DB`/`#DCD6C4`)를 `--ink`로. footer `에 대한` polish
 2. heal — 한글 덱의 `Study Notes`/`Working notes`만 삭제(`학습 노트` 발명 금지). 같은 문서의 긴 단어로 `Shado` 복구

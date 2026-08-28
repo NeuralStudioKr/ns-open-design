@@ -7,7 +7,10 @@
  */
 
 import { attrsLookLikeDeckOrTemplateSlideHost } from './deck-slide-class.js';
-import { deriveDeckCoverTitleFromBrief } from '../template-clone-fill.js';
+import {
+  deriveDeckCoverTitleFromBrief,
+  restyleForeignIbMagazineCover,
+} from '../template-clone-fill.js';
 
 function escapeHtml(value: string): string {
   return String(value ?? '')
@@ -1016,14 +1019,16 @@ export function healOfficialMagazineLayoutDensity(
       dropEmptyDeckSlides(
         collapseLonelyRepeatGrids(
           dropEchoBriefCoverMeta(
-            completeTruncatedTokensFromDocument(
-              polishTruncatedPromptLeaves(
-                polishTruncatedHeadingsInPlace(
-                  restoreOverlayOrbPositioning(
-                    relaxBiennaleInvertedSlidePaint(
-                      scrubLeftoverMagazineCopy(
-                        stripEmptyOfficialTextChromeMotifs(
-                          dropGenericEnglishStudyChrome(repairCompactFirstFillMarkup(dest)),
+            restyleForeignIbMagazineCover(
+              completeTruncatedTokensFromDocument(
+                polishTruncatedPromptLeaves(
+                  polishTruncatedHeadingsInPlace(
+                    restoreOverlayOrbPositioning(
+                      relaxBiennaleInvertedSlidePaint(
+                        scrubLeftoverMagazineCopy(
+                          stripEmptyOfficialTextChromeMotifs(
+                            dropGenericEnglishStudyChrome(repairCompactFirstFillMarkup(dest)),
+                          ),
                         ),
                       ),
                     ),

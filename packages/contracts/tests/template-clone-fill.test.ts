@@ -580,6 +580,48 @@ describe('sanitizeTemplateCloneDeckTitle', () => {
     expect(restyled).not.toMatch(/Study Notes/i);
   });
 
+  it('restyles a no-mast IB ribbon cover onto Biennale s-cover', () => {
+    const html = `<!doctype html><html lang="ko"><body>
+<section class="slide cover slide-title" style="width:1920px;height:1080px">
+<div class="body"><span class="ribbon">Study Notes</span>
+<h1 class="display">영어 회화 공부<br>연습 팁에 대한</h1>
+<p class="subhead">하루 45분, 네 가지 리츄얼로 발화 회로를 단련합니다</p></div>
+<footer class="foot"><span class="conf">영어 회화 공부, 연습 팁에 대한</span></footer>
+</section>
+<section class="slide s-chapter"><h2>왜 회화는 근육인가</h2></section>
+<style data-od-official-look-css>
+:root { --sun:#F1EE2E; --paper:#E9E5DB; }
+.s-cover { background: var(--paper); }
+.s-cover .sunglow { position:absolute; inset:0; }
+.s-cover .titlewrap { position:absolute; }
+</style>
+</body></html>`;
+    const restyled = restyleForeignIbMagazineCover(html);
+    expect(restyled).toMatch(/class="slide s-cover"/);
+    expect(restyled).toMatch(/class="sunglow"/);
+    expect(restyled).toMatch(/class="titlewrap"/);
+    expect(restyled).toMatch(/<h1 class="title">/);
+    expect(restyled).toMatch(/영어 회화/);
+    expect(restyled).toMatch(/하루 45분, 네 가지 리츄얼로/);
+    expect(restyled).not.toMatch(/Study Notes|cover-meta|class="mast"|class="ribbon"|class="display"/i);
+    expect(restyled).not.toMatch(/연습 팁에 대한/);
+    expect(restyled).not.toMatch(/학습 노트|English Speaking Tips|Hartfield/i);
+
+    const salvaged = salvageMalformedMiniMaxSlideMarkup(html);
+    expect(salvaged).toMatch(/class="slide s-cover"/);
+    expect(salvaged).not.toMatch(/Study Notes/i);
+
+    const already = restyleForeignIbMagazineCover(restyled);
+    expect(already).toBe(restyled);
+
+    const daisy = html.replace(
+      /data-od-official-look-css>\s*:root[\s\S]*?<\/style>/,
+      'data-od-official-look-css>:root{--cream:#F5F0E6}.slide-inner{display:grid}.display{font-size:72px}</style>',
+    );
+    expect(restyleForeignIbMagazineCover(daisy)).toContain('class="display"');
+    expect(restyleForeignIbMagazineCover(daisy)).not.toMatch(/class="slide s-cover"/);
+  });
+
   it('reparents MiniMax auto-auto-1fr cards and 64px step lists', () => {
     const card = [
       '<div style="grid-template-rows:auto auto 1fr;background:var(--paper-warm)">',

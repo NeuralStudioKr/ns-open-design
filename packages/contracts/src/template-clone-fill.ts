@@ -422,7 +422,9 @@ function destHasPosterSlideKinds(html: string): boolean {
 
 function officialLookIsBiennaleYellow(html: string): boolean {
   const css = lookCssWithoutNeutralize(html);
-  return /\.sunglow\b/i.test(css) && /\.s-cover\b/i.test(css);
+  if (/\.sunglow\b/i.test(css) && /\.s-cover\b/i.test(css)) return true;
+  // MiniMax / reduced look sheets keep the sun token before `.sunglow` lands.
+  return /--sun\s*:\s*#F1EE2E/i.test(css) && /--paper\s*:/i.test(css);
 }
 
 /** Instruction leftovers MiniMax parks on cover titles (`연습 팁에 대한`). */
@@ -608,19 +610,40 @@ function formatBiennaleCoverTitle(title: string): string {
   return escapeHtml(title);
 }
 
+function coverHasIbDisplayHeading(body: string): boolean {
+  return /<h1\b[^>]*\bdisplay\b/i.test(body);
+}
+
+function coverHasIbMagazineChrome(attrs: string, body: string): boolean {
+  if (/\b(?:mast|ribbon|cover-meta)\b/i.test(body)) return true;
+  return /\bcover\b/i.test(attrs) && /\b(?:foot|subhead)\b/i.test(body);
+}
+
+function coverAlreadyBiennalePoster(attrs: string, body: string): boolean {
+  return /\bs-cover\b/i.test(attrs) && /\b(?:titlewrap|sunglow)\b/i.test(body);
+}
+
 /**
  * Persist stamps IB magazine chrome onto Biennale/poster kits before look
  * CSS lands. Restyle that cover with the official poster slots only.
+ * MiniMax often copies ribbon/`h1.display`/cover-meta without `.mast`.
  */
 export function restyleForeignIbMagazineCover(html: string): string {
   const dest = String(html ?? '');
   if (!dest.trim() || officialLookIsIbMagazine(dest)) return dest;
-  if (!officialLookIsBiennaleYellow(dest) && !destHasPosterSlideKinds(dest)) return dest;
+  const biennale = officialLookIsBiennaleYellow(dest);
+  if (!biennale && !destHasPosterSlideKinds(dest)) return dest;
   const spans = listHealSlideHostSpans(dest);
   if (spans.length === 0) return dest;
   const first = spans[0]!;
   const body = dest.slice(first.bodyStart, first.bodyEnd);
-  if (!/\bmast\b/i.test(body) || !/<h1\b[^>]*\bdisplay\b/i.test(body)) return dest;
+  if (coverAlreadyBiennalePoster(first.attrs, body)) return dest;
+  if (!coverHasIbDisplayHeading(body) || !coverHasIbMagazineChrome(first.attrs, body)) {
+    return dest;
+  }
+  // No-mast leftover chrome is Biennale-only. Poster-kind alone is too
+  // broad for Daisy/Studio decks that also happen to have s-chapter.
+  if (!/\bmast\b/i.test(body) && !biennale) return dest;
   const title = polishInstructionCoverTitle(
     (body.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i)?.[1] ?? '')
       .replace(/<[^>]+>/g, ' ')
@@ -634,7 +657,6 @@ export function restyleForeignIbMagazineCover(html: string): string {
       .replace(/\s+/g, ' ')
       .trim(),
   );
-  const biennale = officialLookIsBiennaleYellow(dest);
   const inner = biennale
     ? `<div class="sunglow" aria-hidden="true"></div><div class="titlewrap"><h1 class="title">${formatBiennaleCoverTitle(title)}</h1>${
       subhead ? `<div class="subline">${escapeHtml(subhead)}</div>` : ''

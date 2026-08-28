@@ -636,7 +636,11 @@ describe('heal official magazine layout density', () => {
     expect(healed).not.toMatch(/<h1[^>]*>[\s\S]*성인 학습자[\s\S]*<\/h1>/);
     expect(healed).not.toMatch(/<br><br>/);
     expect(healed).not.toMatch(/class="cover-meta"/);
-    expect(healed).toMatch(/grid-template-columns:1fr/);
+    expect(healed).toMatch(/class="slide s-cover"/);
+    expect(healed).toMatch(/class="titlewrap"/);
+    expect(healed).toMatch(/<h1 class="title">/);
+    expect(healed).toMatch(/class="subline"/);
+    expect(healed).not.toMatch(/class="(?:mast|ribbon|display|foot|conf)"/);
     expect(healed).toMatch(/grid-template-columns:minmax\(0,1fr\)/);
     expect(healed).not.toMatch(/repeat\(4,1fr\)/);
     expect((healed.match(/<section\b[^>]*\bslide\b/gi) ?? []).length).toBe(4);
