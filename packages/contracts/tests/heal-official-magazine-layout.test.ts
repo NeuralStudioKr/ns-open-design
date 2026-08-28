@@ -647,10 +647,16 @@ describe('heal official magazine layout density', () => {
     expect(healed).toMatch(/<h1 class="ttl">/);
     expect(healed).toMatch(/class="lede"/);
     expect(healed).toMatch(/class="glow"/);
+    expect(healed).toMatch(/class="frame"/);
+    expect(healed).toMatch(/class="head"/);
+    expect(healed).toMatch(/class="stat"/);
+    expect(healed).toMatch(/class="v">Shadowing/);
+    expect(healed).not.toMatch(/class="chart"/);
+    expect(healed).toMatch(/data-od-biennale-sparse-fill/);
+    expect(healed).toMatch(/:not\(:has\(\.footer-row\)\)/);
+    expect(healed).toMatch(/:not\(:has\(\.nm\)\)/);
     expect(healed).not.toMatch(/class="nm"|vrail/);
     expect(healed).not.toMatch(/class="(?:mast|ribbon|display|foot|conf)"/);
-    expect(healed).toMatch(/grid-template-columns:minmax\(0,1fr\)/);
-    expect(healed).not.toMatch(/repeat\(4,1fr\)/);
     expect((healed.match(/<section\b[^>]*\bslide\b/gi) ?? []).length).toBe(4);
     expect(healed).not.toMatch(/학습 노트|핵심 내용을 한 장에|English Speaking Tips|쉐도잉/i);
     expect(healed).toMatch(/s-chapter[^>]*background:var\(--paper\)/);
@@ -666,5 +672,23 @@ describe('heal official magazine layout density', () => {
     expect(pinned).toMatch(/width:560px;height:560px;position:absolute/);
     expect(pinned).toMatch(/position:absolute;transform:translate\(-50%,-50%\)/);
     expect(pinned).toMatch(/position:absolute;width:100%;height:100%;border-radius:50%;background:radial-gradient/);
+  });
+
+  it('does not invent Biennale chrome on the official example', () => {
+    const official = readFileSync(
+      join(
+        dirname(fileURLToPath(import.meta.url)),
+        '../../../plugins/_official/examples/html-ppt-zhangzara-biennale-yellow/example.html',
+      ),
+      'utf8',
+    );
+    const healed = healOfficialMagazineLayoutDensity(official);
+    expect(healed).toContain('Aurora');
+    expect(healed).toContain('date-rail');
+    expect(healed).toContain('footer-row');
+    expect(healed).toMatch(/class="nm"/);
+    expect(healed).toMatch(/class="chart"/);
+    expect(healed).toMatch(/class="qbody"/);
+    expect(healed).not.toMatch(/학습 노트|English Speaking Tips/i);
   });
 });

@@ -145,6 +145,21 @@ describe('pinDeckSlidesToFixedCanvas', () => {
     expect(pinned).toMatch(/class="card"[^>]*position:relative/);
   });
 
+  it('keeps Biennale yblock and haze paint absolute after compact flow flatten', () => {
+    const html = [
+      '<!doctype html><html><body>',
+      '<section class="slide" style="width:1920px;height:1080px">',
+      '<div class="yblock" style="position:absolute;right:0;top:0;bottom:0;width:32%"></div>',
+      '<div class="haze" style="position:absolute;inset:0"></div>',
+      '<h1>회화는 근육이다</h1>',
+      '</section>',
+      '</body></html>',
+    ].join('');
+    const pinned = pinDeckSlidesToFixedCanvas(html);
+    expect(pinned).toMatch(/class="yblock"[^>]*position:absolute/);
+    expect(pinned).toMatch(/class="haze"[^>]*position:absolute/);
+  });
+
   it('flows MiniMax absolute labels so they cannot sit inside another card', () => {
     const html = [
       '<!doctype html><html><body>',

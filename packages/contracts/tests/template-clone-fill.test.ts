@@ -27,6 +27,9 @@ import {
   salvageMalformedMiniMaxSlideMarkup,
   restyleForeignIbMagazineCover,
   restyleBiennaleSparseChapterBodies,
+  restyleBiennaleSparseDataBodies,
+  restyleBiennaleSparseQuoteBodies,
+  injectBiennaleSparseFillCss,
   polishInstructionCoverTitle,
   stripEmptyOfficialMotifInstances,
   stripHostProtocolLeakFromDeckHtml,
@@ -573,9 +576,14 @@ describe('sanitizeTemplateCloneDeckTitle', () => {
     expect(salvaged).not.toMatch(
       /<h1[^>]*>왜 회화는[\s\S]*<div>성인 학습자[\s\S]*<\/h1>/,
     );
-    expect(salvaged).toMatch(/grid-template-columns:repeat\(1,/);
+    expect(salvaged).toMatch(/class="frame"/);
+    expect(salvaged).toMatch(/class="head"/);
+    expect(salvaged).toMatch(/class="stat"/);
+    expect(salvaged).toContain('Shadowing');
+    expect(salvaged).toContain('01 · 10 MIN');
+    expect(salvaged).toMatch(/class="h">일주일 회화 루틴 · <em>레시피 카드<\/em>/);
+    expect(salvaged).toMatch(/data-od-biennale-sparse-fill/);
     expect(salvaged).toMatch(/position:absolute;top:0;right:0/);
-    expect(salvaged).toMatch(/<h2[^>]*>일주일 회화 루틴 · <em>레시피 카드<\/em><\/h2>/);
     expect(salvaged).toContain('Shado');
     expect(salvaged).not.toMatch(/<\/h>/);
     expect(salvaged).not.toMatch(/English Speaking Tips|쉐도잉 루틴|개요|핵심 포인트/i);
@@ -648,6 +656,50 @@ describe('sanitizeTemplateCloneDeckTitle', () => {
       look,
     ].join('');
     expect(restyleBiennaleSparseChapterBodies(stacked)).toBe(stacked);
+  });
+
+  it('binds sparse Biennale s-data and s-quote without inventing cards or kickers', () => {
+    const look = '<style data-od-official-look-css>:root{--sun:#F1EE2E;--paper:#E9E5DB}</style>';
+    const data = [
+      '<section class="slide s-data">',
+      '<h2>하루 45분</h2>',
+      '<div style="display:grid;grid-template-columns:repeat(1,1fr)">',
+      '<div><div>01 · 10 MIN</div><div>Shadowing</div></div>',
+      '</div></section>',
+      look,
+    ].join('');
+    const restyled = restyleBiennaleSparseDataBodies(data);
+    expect(restyled).toMatch(/class="frame"/);
+    expect(restyled).toMatch(/class="h">하루 45분/);
+    expect(restyled).toMatch(/class="caption lab2">01 · 10 MIN/);
+    expect(restyled).toMatch(/class="v">Shadowing/);
+    expect(restyled).not.toMatch(/class="chart"/);
+    expect(restyleBiennaleSparseDataBodies(restyled)).toBe(restyled);
+
+    const charted = [
+      '<section class="slide s-data">',
+      '<div class="frame"><div class="head"><div class="h">출석</div></div>',
+      '<div class="chart"><div class="row">2026</div></div></div>',
+      '</section>',
+      look,
+    ].join('');
+    expect(restyleBiennaleSparseDataBodies(charted)).toBe(charted);
+
+    const quote = [
+      '<section class="slide s-quote">',
+      '<p>회화는 공부가 아니라 근육이다.</p>',
+      '<div>수업 노트</div>',
+      '</section>',
+      look,
+    ].join('');
+    const quoted = restyleBiennaleSparseQuoteBodies(quote);
+    expect(quoted).toMatch(/class="yblock"/);
+    expect(quoted).toMatch(/class="qbody">회화는 공부가 아니라 근육이다/);
+    expect(quoted).toMatch(/class="caption role">수업 노트/);
+    expect(quoted).not.toMatch(/A note from the curator|Idun/i);
+    expect(injectBiennaleSparseFillCss(quoted)).toMatch(/data-od-biennale-sparse-fill/);
+    expect(injectBiennaleSparseFillCss(injectBiennaleSparseFillCss(quoted)))
+      .toBe(injectBiennaleSparseFillCss(quoted));
   });
 
   it('reparents MiniMax auto-auto-1fr cards and 64px step lists', () => {

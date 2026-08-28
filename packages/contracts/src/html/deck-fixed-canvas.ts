@@ -288,7 +288,7 @@ function flowAbsoluteSlideFooters(html: string): string {
 }
 
 const MOTIF_OR_DECO_CLASS_RE =
-  /deco|motif|petal|blob|pill|doodle|pin-|scanline|grain|sunglow|ribbon|pixel-|hc-|gd-orb|xp-blob|post-it|stamp|tape|corner-bracket|ts-stripe|zigzag|hero-shot|card-deco|title-accent|closing-accent|mini-note|floating-pills|cover-blob|geo-decoration|cover-decoration/i;
+  /deco|motif|petal|blob|pill|doodle|pin-|scanline|grain|sunglow|yblock|haze|ribbon|pixel-|hc-|gd-orb|xp-blob|post-it|stamp|tape|corner-bracket|ts-stripe|zigzag|hero-shot|card-deco|title-accent|closing-accent|mini-note|floating-pills|cover-blob|geo-decoration|cover-decoration/i;
 
 const ABS_FLOW_OPEN_RE =
   /<(div|span|p|h[1-6]|section|article|aside|header|footer|small|label)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;

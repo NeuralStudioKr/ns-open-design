@@ -715,6 +715,71 @@ function listTopLevelBlocks(inner: string): string[] {
   return blocks;
 }
 
+function splitOverlayAndContent(body: string): { overlays: string[]; content: string[] } {
+  const overlays: string[] = [];
+  const content: string[] = [];
+  for (const part of listTopLevelBlocks(body)) {
+    const open = /^<[a-zA-Z][\w-]*\b[^>]*>/.exec(part)?.[0] ?? '';
+    if (open && isOverlayOrbOpen(open)) overlays.push(part);
+    else if (part.trim()) content.push(part);
+  }
+  return { overlays, content };
+}
+
+function parseHeadingBlock(block: string): { level: string; inner: string } | null {
+  const open = /^<h([1-3])\b[^>]*>/i.exec(block);
+  if (!open) return null;
+  return {
+    level: open[1] ?? '2',
+    inner: block.replace(/^<h[1-3]\b[^>]*>/i, '').replace(/<\/h[1-3]\s*>$/i, ''),
+  };
+}
+
+function unwrapFlowShell(block: string): string {
+  const trimmed = String(block ?? '').trim();
+  const match = /^<(div|p)\b[^>]*>([\s\S]*)<\/\1\s*>$/i.exec(trimmed);
+  return match ? String(match[2] ?? '').trim() : trimmed;
+}
+
+function flattenSparseCardHosts(parts: string[]): string[] {
+  const out: string[] = [];
+  for (const part of parts) {
+    const open = /^<div\b[^>]*>/i.exec(part)?.[0] ?? '';
+    if (open && /grid-template-columns/i.test(open)) {
+      const inner = part.replace(/^<div\b[^>]*>/i, '').replace(/<\/div\s*>$/i, '');
+      const kids = listTopLevelBlocks(inner).filter((item) => item.trim());
+      if (kids.length >= 1 && kids.length <= 4) {
+        out.push(...kids);
+        continue;
+      }
+    }
+    out.push(part);
+  }
+  return out;
+}
+
+function looksLikeChartOrMedia(part: string): boolean {
+  return /<(?:svg|table|video|canvas|iframe)\b/i.test(part)
+    || /<(?:div|section)\b[^>]*\b(?:chart|ledger)\b/i.test(part);
+}
+
+function restyleBiennaleStatCard(card: string): string {
+  const inner = unwrapFlowShell(card);
+  const kids = listTopLevelBlocks(inner).filter((part) => part.trim());
+  if (kids.length >= 2) {
+    const label = attachHangulParticles(unwrapFlowShell(kids[0]!));
+    const value = attachHangulParticles(unwrapFlowShell(kids[1]!));
+    const extra = kids.slice(2).map((kid) => (
+      `<div class="desc">${attachHangulParticles(unwrapFlowShell(kid))}</div>`
+    )).join('');
+    return `<div class="stat"><div class="caption lab2">${label}</div><div class="v">${value}</div>${extra}</div>`;
+  }
+  const html = attachHangulParticles(inner);
+  const text = officialMotifVisibleText(html);
+  if (text.length <= 32) return `<div class="stat"><div class="v">${html}</div></div>`;
+  return `<div class="stat"><div class="desc">${html}</div></div>`;
+}
+
 /**
  * Sparse MiniMax s-chapter bodies stay default-sized on the 16:9 canvas.
  * Bind the existing heading + lede to official `.stack` / `.ttl` / `.lede`
@@ -730,32 +795,23 @@ export function restyleBiennaleSparseChapterBodies(html: string): string {
     if (!/\bs-chapter\b/i.test(span.attrs)) continue;
     const body = out.slice(span.bodyStart, span.bodyEnd);
     if (/\b(?:stack|ttl|vrail)\b/i.test(body)) continue;
-    const overlays: string[] = [];
-    const content: string[] = [];
-    for (const part of listTopLevelBlocks(body)) {
-      const open = /^<[a-zA-Z][\w-]*\b[^>]*>/.exec(part)?.[0] ?? '';
-      if (open && isOverlayOrbOpen(open)) overlays.push(part);
-      else if (part.trim()) content.push(part);
-    }
+    const { overlays, content } = splitOverlayAndContent(body);
     if (content.length === 0 || content.length > 2) continue;
     if (content.some((part) => /grid-template-columns/i.test(part))) continue;
     const heading = content.find((part) => /^<h[1-3]\b/i.test(part));
     if (!heading) continue;
-    const headingOpen = /^<h([1-3])\b[^>]*>/i.exec(heading);
-    if (!headingOpen) continue;
-    const headingInner = heading
-      .replace(/^<h[1-3]\b[^>]*>/i, '')
-      .replace(/<\/h[1-3]\s*>$/i, '');
+    const parsed = parseHeadingBlock(heading);
+    if (!parsed) continue;
     const lede = content.find((part) => part !== heading);
     let ledeInner = '';
     if (lede) {
       if (!/^<(?:p|div)\b/i.test(lede)) continue;
-      ledeInner = lede.replace(/^<(?:p|div)\b[^>]*>/i, '').replace(/<\/(?:p|div)\s*>$/i, '');
+      ledeInner = unwrapFlowShell(lede);
     }
     const stack = (
       `<div class="glow" aria-hidden="true"></div>`
       + `<div class="stack">`
-      + `<h${headingOpen[1]} class="ttl">${attachHangulParticles(headingInner)}</h${headingOpen[1]}>`
+      + `<h${parsed.level} class="ttl">${attachHangulParticles(parsed.inner)}</h${parsed.level}>`
       + (ledeInner ? `<div class="lede">${attachHangulParticles(ledeInner)}</div>` : '')
       + `</div>`
       + overlays.join('')
@@ -763,6 +819,124 @@ export function restyleBiennaleSparseChapterBodies(html: string): string {
     out = `${out.slice(0, span.bodyStart)}${stack}${out.slice(span.bodyEnd)}`;
   }
   return out;
+}
+
+/**
+ * After a 4-col ritual grid collapses to one card, s-data still sits in the
+ * corner of the 16:9. Bind the existing heading + cards to official
+ * `.frame` / `.head` / `.stat` slots. Do not invent a chart column or extra cards.
+ */
+export function restyleBiennaleSparseDataBodies(html: string): string {
+  const dest = String(html ?? '');
+  if (!dest.trim() || !officialLookIsBiennaleYellow(dest)) return dest;
+  const spans = listHealSlideHostSpans(dest);
+  let out = dest;
+  for (let i = spans.length - 1; i >= 0; i -= 1) {
+    const span = spans[i]!;
+    if (!/\bs-data\b/i.test(span.attrs)) continue;
+    const body = out.slice(span.bodyStart, span.bodyEnd);
+    if (/\b(?:frame|stat|chart)\b/i.test(body)) continue;
+    const { overlays, content } = splitOverlayAndContent(body);
+    if (content.length === 0) continue;
+    const heading = content.find((part) => /^<h[1-3]\b/i.test(part));
+    if (!heading) continue;
+    const parsed = parseHeadingBlock(heading);
+    if (!parsed) continue;
+    const cards = flattenSparseCardHosts(content.filter((part) => part !== heading));
+    if (cards.length > 4) continue;
+    if (cards.some((part) => looksLikeChartOrMedia(part))) continue;
+    if (cards.some((part) => !/^<(?:p|div)\b/i.test(part))) continue;
+    const stats = cards.map((card) => restyleBiennaleStatCard(card)).join('');
+    const frame = (
+      `<div class="glow" aria-hidden="true"></div>`
+      + `<div class="frame">`
+      + `<div class="head"><div class="h">${attachHangulParticles(parsed.inner)}</div></div>`
+      + (stats ? `<div class="col-a">${stats}</div>` : '')
+      + `</div>`
+      + overlays.join('')
+    );
+    out = `${out.slice(0, span.bodyStart)}${frame}${out.slice(span.bodyEnd)}`;
+  }
+  return out;
+}
+
+/**
+ * Sparse quote / manifesto slides keep default paragraph size. Bind existing
+ * copy to official `.qwrap` / `.quote` slots. Do not invent kickers or marks
+ * beyond the empty yellow `yblock` / `haze` paint.
+ */
+export function restyleBiennaleSparseQuoteBodies(html: string): string {
+  const dest = String(html ?? '');
+  if (!dest.trim() || !officialLookIsBiennaleYellow(dest)) return dest;
+  const spans = listHealSlideHostSpans(dest);
+  let out = dest;
+  for (let i = spans.length - 1; i >= 0; i -= 1) {
+    const span = spans[i]!;
+    const quoteSlide = /\bs-quote\b/i.test(span.attrs);
+    const manifesto = /\bs-manifesto\b/i.test(span.attrs);
+    if (!quoteSlide && !manifesto) continue;
+    const body = out.slice(span.bodyStart, span.bodyEnd);
+    if (quoteSlide && /\b(?:qwrap|qbody)\b/i.test(body)) continue;
+    if (manifesto && /<(?:p|div)\b[^>]*\bquote\b/i.test(body)) continue;
+    const { overlays, content } = splitOverlayAndContent(body);
+    if (content.length === 0 || content.length > 3) continue;
+    if (content.some((part) => /grid-template-columns/i.test(part))) continue;
+    const heading = content.find((part) => /^<h[1-3]\b/i.test(part));
+    const rest = content.filter((part) => part !== heading);
+    if (rest.length === 0) continue;
+    const quote = rest[0]!;
+    if (!/^<(?:p|div)\b/i.test(quote)) continue;
+    const quoteInner = attachHangulParticles(unwrapFlowShell(quote));
+    if (officialMotifVisibleText(quoteInner).length < 8) continue;
+    const attr = rest[1];
+    if (attr && !/^<(?:p|div)\b/i.test(attr)) continue;
+    const attrInner = attr ? attachHangulParticles(unwrapFlowShell(attr)) : '';
+    const kicker = heading ? attachHangulParticles(parseHeadingBlock(heading)?.inner ?? '') : '';
+    const next = quoteSlide
+      ? (
+        `<div class="yblock" aria-hidden="true"></div>`
+        + `<div class="glow" aria-hidden="true"></div>`
+        + `<div class="qwrap">`
+        + (kicker ? `<div class="caption qkicker">${kicker}</div>` : '')
+        + `<p class="qbody">${quoteInner}</p>`
+        + (attrInner ? `<div class="qattr"><div class="caption role">${attrInner}</div></div>` : '')
+        + `</div>`
+        + `<div class="y-mark" aria-hidden="true">¨</div>`
+        + overlays.join('')
+      )
+      : (
+        `<div class="haze" aria-hidden="true"></div>`
+        + `<p class="quote">${quoteInner}</p>`
+        + (attrInner ? `<div class="attr">${attrInner}</div>` : '')
+        + overlays.join('')
+      );
+    out = `${out.slice(0, span.bodyStart)}${next}${out.slice(span.bodyEnd)}`;
+  }
+  return out;
+}
+
+const BIENNALE_SPARSE_FILL_MARK = 'data-od-biennale-sparse-fill';
+const BIENNALE_SPARSE_FILL_CSS = [
+  '.s-cover:not(:has(.footer-row)) .titlewrap{bottom:clamp(48px,6vh,96px)}',
+  '.s-chapter .stack:not(:has(.nm)){left:clamp(40px,4vw,76px)}',
+  '.s-chapter .stack:not(:has(.nm)) .ttl{font-size:clamp(64px,min(8vw,14vh),160px);max-width:92%}',
+  '.s-data .frame:not(:has(.chart)){grid-template-columns:1fr}',
+  '.s-data .frame:not(:has(.chart)) .head,.s-data .frame:not(:has(.chart)) .col-a{grid-column:1/-1}',
+].join('');
+
+/**
+ * Official look CSS sizes chapter `.ttl` and cover `.titlewrap` around
+ * optional chrome (`.nm`, `.footer-row`, `.chart`). MiniMax often omits
+ * those slots — shift existing copy to fill the 16:9. No invented text.
+ */
+export function injectBiennaleSparseFillCss(html: string): string {
+  const dest = String(html ?? '');
+  if (!dest.trim() || !officialLookIsBiennaleYellow(dest)) return dest;
+  if (dest.includes(BIENNALE_SPARSE_FILL_MARK)) return dest;
+  const tag = `<style ${BIENNALE_SPARSE_FILL_MARK}>${BIENNALE_SPARSE_FILL_CSS}</style>`;
+  if (/<\/head>/i.test(dest)) return dest.replace(/<\/head>/i, `${tag}</head>`);
+  if (/<\/body>/i.test(dest)) return dest.replace(/<\/body>/i, `${tag}</body>`);
+  return `${dest}${tag}`;
 }
 
 /**
@@ -787,6 +961,9 @@ export function salvageMalformedMiniMaxSlideMarkup(html: string): string {
   next = dropEmptyDeckSlides(next);
   next = restyleForeignIbMagazineCover(next);
   next = restyleBiennaleSparseChapterBodies(next);
+  next = restyleBiennaleSparseDataBodies(next);
+  next = restyleBiennaleSparseQuoteBodies(next);
+  next = injectBiennaleSparseFillCss(next);
   return next;
 }
 

@@ -216,6 +216,7 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | persist/preview: Biennale 크림 위 크림 · Study Notes · Shado · overlay flatten | ☑ 루프154 |
 | persist/preview: mast 없는 IB ribbon 표지가 Biennale에 남음 | ☑ 루프155 |
 | persist/preview: Biennale 표지 blocks 없음 · chapter 16:9 공백 · 조사 공백 | ☑ 루프156 |
+| persist/preview: Biennale s-data 1카드 공백 · quote 기본 문단 · footer 없는 표지 | ☑ 루프157 |
 | persist/preview: look CSS가 1–2장 사이에 끼어 표지 밀집도가 깨짐 | ☑ follow-up |
 | persist/preview: MiniMax `<p="">` · 유출 `· Label` | ☑ follow-up |
 | preview: Motif `span.ribbon`이 relative stretch로 빨간 줄 | ☑ follow-up |
@@ -242,7 +243,16 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | think 태그 / 내부 마크업 필터 | ☑ 기존 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프156)
+## 이번 루프 (루프157)
+
+1. restyle — 성긴 `s-data`를 `.frame`/`.head`/`.stat`. chart·카드 발명 금지
+2. restyle — 성긴 `s-quote`/`s-manifesto`를 `.qwrap`/`.quote`. kicker 발명 금지
+3. CSS — footer 없는 표지 titlewrap 하향 · `.nm` 없는 chapter ttl 확대 · chart 없는 data 1열
+4. pin — `yblock`/`haze`는 overlay로 유지
+
+**검증:** frame/stat · qbody · sparse-fill CSS · official example 유지 · Daisy/IB 유지
+
+## 직전 루프 (루프156)
 
 1. restyle — Biennale 표지에 공식 `.blocks` b1–b4 (카피 발명 금지)
 2. restyle — 성긴 `s-chapter`를 `.stack`/`.ttl`/`.lede`. 숫자·vrail 발명 금지

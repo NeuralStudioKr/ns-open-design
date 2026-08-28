@@ -10,7 +10,10 @@ import { attrsLookLikeDeckOrTemplateSlideHost } from './deck-slide-class.js';
 import { normalizeHangulParticleGaps } from './heal-ai-generated-deck.js';
 import {
   deriveDeckCoverTitleFromBrief,
+  injectBiennaleSparseFillCss,
   restyleBiennaleSparseChapterBodies,
+  restyleBiennaleSparseDataBodies,
+  restyleBiennaleSparseQuoteBodies,
   restyleForeignIbMagazineCover,
 } from '../template-clone-fill.js';
 
@@ -1016,22 +1019,28 @@ export function healOfficialMagazineLayoutDensity(
 ): string {
   const dest = String(html ?? '');
   if (!dest.trim()) return dest;
-  return healOfficialMagazineBodyFrames(
-    healSparseOfficialMagazineCover(
-      dropEmptyDeckSlides(
-        collapseLonelyRepeatGrids(
-          dropEchoBriefCoverMeta(
-            normalizeHangulParticleGaps(
-              restyleBiennaleSparseChapterBodies(
-                restyleForeignIbMagazineCover(
-                  completeTruncatedTokensFromDocument(
-                    polishTruncatedPromptLeaves(
-                      polishTruncatedHeadingsInPlace(
-                        restoreOverlayOrbPositioning(
-                          relaxBiennaleInvertedSlidePaint(
-                            scrubLeftoverMagazineCopy(
-                              stripEmptyOfficialTextChromeMotifs(
-                                dropGenericEnglishStudyChrome(repairCompactFirstFillMarkup(dest)),
+  return injectBiennaleSparseFillCss(
+    healOfficialMagazineBodyFrames(
+      healSparseOfficialMagazineCover(
+        dropEmptyDeckSlides(
+          restyleBiennaleSparseQuoteBodies(
+            restyleBiennaleSparseDataBodies(
+              collapseLonelyRepeatGrids(
+                dropEchoBriefCoverMeta(
+                  normalizeHangulParticleGaps(
+                    restyleBiennaleSparseChapterBodies(
+                      restyleForeignIbMagazineCover(
+                        completeTruncatedTokensFromDocument(
+                          polishTruncatedPromptLeaves(
+                            polishTruncatedHeadingsInPlace(
+                              restoreOverlayOrbPositioning(
+                                relaxBiennaleInvertedSlidePaint(
+                                  scrubLeftoverMagazineCopy(
+                                    stripEmptyOfficialTextChromeMotifs(
+                                      dropGenericEnglishStudyChrome(repairCompactFirstFillMarkup(dest)),
+                                    ),
+                                  ),
+                                ),
                               ),
                             ),
                           ),
@@ -1044,8 +1053,8 @@ export function healOfficialMagazineLayoutDensity(
             ),
           ),
         ),
+        brief,
       ),
-      brief,
     ),
   );
 }
