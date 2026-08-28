@@ -223,6 +223,7 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | persist/preview: mast 없는 IB ribbon 표지가 Biennale에 남음 | ☑ 루프155 |
 | persist/preview: Biennale 표지 blocks 없음 · chapter 16:9 공백 · 조사 공백 | ☑ 루프156 |
 | persist/preview: Biennale s-data 1카드 공백 · quote 기본 문단 · footer 없는 표지 | ☑ 루프157 |
+| persist/preview: Motif `.marker`가 본문 배지를 제목에 겹침 · pill이 flow를 쪼갬 · `.s6 .flow` 하단 클립 | ☑ 루프158 |
 | persist/preview: look CSS가 1–2장 사이에 끼어 표지 밀집도가 깨짐 | ☑ follow-up |
 | persist/preview: MiniMax `<p="">` · 유출 `· Label` | ☑ follow-up |
 | preview: Motif `span.ribbon`이 relative stretch로 빨간 줄 | ☑ follow-up |
@@ -249,7 +250,15 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | think 태그 / 내부 마크업 필터 | ☑ 기존 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프696–720 / round697–721)
+## 이번 루프 (루프158)
+
+1. deco — `.slide .marker`/`.arrow`를 `[data-od-official-motif-html]`에만. 본문 `DAILY 30 MIN`은 `bottom:160px` 금지
+2. pin — pill/stamp가 flow를 쪼개지 않음. 이미 쪼갠 flow는 하나로 합침. flow에서 position/background 복사 금지
+3. neutralize — 공식 `.flow`/`.grid`/`.table`/`.step` 슬롯의 absolute/`top:380`/`height:420`를 flow 안에서 해제
+
+**검증:** cover 1 flow · deco scoped · od-look-slot-flow · Daisy/IB 유지
+
+## 직전 루프 (루프696–720 / round697–721)
 
 1. padding — px+ch|lh|ic|vb|cq → px≥13
 2. chat — FOO `❆☾☽☿♁☰☱☲☳☴⚙⚛⚜`
@@ -259,7 +268,6 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 직전 루프 (루프671–695 / round672–696)
 
-
 1. padding — rem|line|ch|ic|vb + print → px≥13
 2. chat — FOO `✣✤✥❇❈❁❂❃❄❅`
 3. invent-frame≠flow 회귀
@@ -267,7 +275,6 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 **검증:** chat-leak-probe-round672–696 (25/25)
 
 ## 직전 루프 (루프157)
-
 
 1. restyle — 성긴 `s-data`를 `.frame`/`.head`/`.stat`. chart·카드 발명 금지
 2. restyle — 성긴 `s-quote`/`s-manifesto`를 `.qwrap`/`.quote`. kicker 발명 금지

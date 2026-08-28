@@ -125,6 +125,53 @@ describe('pinDeckSlidesToFixedCanvas', () => {
     expect(pinned).toMatch(/contain:\s*layout size/);
   });
 
+  it('merges pill-split flows and scopes Motif marker geometry off content badges', () => {
+    const html = `<!doctype html><html><head>
+<style data-od-official-motif-deco-css>
+.slide .marker{position:absolute;left:96px;bottom:160px;width:560px;height:120px;background:var(--pink);}
+.slide > :is(h1,h2,h3,p){position:relative !important;z-index:2 !important;}
+</style>
+<style data-od-official-look-css>
+.s6 .flow{position:absolute;left:96px;right:96px;top:380px}
+.s6 .step{height:420px}
+</style>
+</head><body>
+<section class="slide slide-title" style="width:1920px;height:1080px;padding:56px 96px;position:relative;background:#EFE9D9">
+<div data-od-official-motif-html class="marker display" style="position:absolute;pointer-events:none;z-index:1">PRESS PLAY</div>
+<div data-od-slide-flow style="position:relative;background:#EFE9D9;padding:56px 96px">
+<div>LEARNING SERIES · 2025</div>
+</div>
+<div class="pill" style="position:absolute;right:96px;top:64px">SPEAKING</div>
+<div data-od-slide-flow style="position:relative;background:#EFE9D9;padding:56px 96px">
+<h1>SPOKEN<br>ENGLISH,<br>PRACTICED.</h1>
+<p>일주일 안에 입이 트이는 영어 회화 루틴</p>
+<div class="marker display" style="position:relative;width:520px;height:120px">DAILY 30 MIN</div>
+<div>PAGE 01 / 06</div>
+</div>
+</section>
+<section class="slide s6" style="width:1920px;height:1080px;padding:56px 96px">
+<h2>ONE CHUNK, FOUR PASSES.</h2>
+<p>오늘 배울 표현 하나를 4번 굴려야 입에 붙는다.</p>
+<div class="flow" style="display:grid;grid-template-columns:repeat(4,1fr);gap:28px">
+<div class="step">01 LISTENING</div>
+<div class="step">02 SHADOW</div>
+<div class="step">03 REWRITE</div>
+<div class="step">04 SPEAK LIVE</div>
+</div>
+<div>PAGE 04 / 06</div>
+</section>
+</body></html>`;
+    const pinned = pinDeckSlidesToFixedCanvas(html);
+    const cover = pinned.match(/<section class="slide slide-title"[\s\S]*?<\/section>/i)?.[0] ?? '';
+    expect(cover.match(/data-od-slide-flow/g)?.length).toBe(1);
+    expect(cover).toMatch(/LEARNING SERIES[\s\S]*SPOKEN[\s\S]*DAILY 30 MIN[\s\S]*PAGE 01/);
+    expect(cover).toMatch(/class="pill"[^>]*>SPEAKING/);
+    expect(cover).not.toMatch(/data-od-slide-flow[^>]*position:relative/);
+    expect(cover).not.toMatch(/data-od-slide-flow[^>]*background:#EFE9D9/);
+    expect(pinned).toMatch(/position:\s*absolute\s*!important/);
+    expect(pinned).toMatch(/\.slide\s*>\s*\.pill/);
+  });
+
   it('keeps overlay sun/orb paint absolute after compact flow flatten', () => {
     const html = [
       '<!doctype html><html><body>',

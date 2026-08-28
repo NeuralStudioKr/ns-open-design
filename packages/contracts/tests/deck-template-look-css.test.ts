@@ -259,6 +259,38 @@ html, body { overflow: visible !important; height: auto !important; }
     expect(upgraded).toContain('od-slide-inner-min-fill');
   });
 
+  it('scopes Motif marker deco to official hosts and upgrades look-slot-flow neutralize', async () => {
+    const {
+      ensureOfficialLookStackedCanvasNeutralize,
+      hasOfficialLookStackedCanvasNeutralizeProof,
+    } = await import('../src/html/deck-template-look-css.js');
+    const html = `<!doctype html><html><head>
+<style data-od-official-motif-deco-css>
+.slide .marker{position:absolute;left:96px;bottom:160px;width:560px;height:120px}
+.slide > :is(h1,h2,h3,p){position:relative !important;z-index:2 !important;}
+</style>
+<style data-od-official-look-css>
+.s6 .flow{position:absolute;top:380px}
+.s6 .step{height:420px}
+</style>
+</head><body>
+<section class="slide"><div data-od-official-motif-html class="marker">PRESS PLAY</div>
+<div class="marker">DAILY 30 MIN</div></section>
+</body></html>`;
+    expect(hasOfficialLookStackedCanvasNeutralizeProof(html)).toBe(false);
+    const upgraded = ensureOfficialLookStackedCanvasNeutralize(html);
+    expect(hasOfficialLookStackedCanvasNeutralizeProof(upgraded)).toBe(true);
+    expect(upgraded).toContain('od-look-slot-flow');
+    const deco = upgraded.match(
+      /<style data-od-official-motif-deco-css>[\s\S]*?<\/style>/i,
+    )?.[0] ?? '';
+    expect(deco).toMatch(/\[data-od-official-motif-html\]\.marker\{/);
+    expect(deco).not.toMatch(/\.slide\s+\.marker\{/);
+    expect(upgraded).toMatch(
+      /\[data-od-slide-flow\] :is\(\.flow, \.grid, \.table, \.step, \.marker\)/,
+    );
+  });
+
   it('upgrades 루프139 inner fill that still uses min-height:0', async () => {
     const {
       LOOK_NEUTRALIZE_CSS,
@@ -1000,6 +1032,7 @@ ${staleFill}
     expect(LOOK_NEUTRALIZE_CSS).toContain('od-magazine-lede-fill');
     expect(LOOK_NEUTRALIZE_CSS).toContain('od-magazine-cover-solo');
     expect(LOOK_NEUTRALIZE_CSS).toContain('od-magazine-title-fill');
+    expect(LOOK_NEUTRALIZE_CSS).toContain('od-look-slot-flow');
     expect(LOOK_NEUTRALIZE_CSS).toMatch(
       /\.slide\s+\.od-magazine-fill-track\s+>\s+:is\(ul, ol\)[\s\S]*font-size:\s*28px\s*!important/,
     );

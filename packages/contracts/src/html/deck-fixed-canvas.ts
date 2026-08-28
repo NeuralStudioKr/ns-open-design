@@ -53,7 +53,7 @@ article[data-screen-label] {
 }
 /* Clip MiniMax overflow inside the padded 16:9 box. Motif stays a sibling. */
 .slide > [data-od-slide-flow] {
-  position: absolute;
+  position: absolute !important;
   inset: 0;
   z-index: 2;
   overflow: hidden;
@@ -61,6 +61,11 @@ article[data-screen-label] {
   display: flex;
   flex-direction: column;
   min-height: 0;
+}
+/* Content pills/stamps stay siblings — keep them above the opaque flow. */
+.slide > .pill,
+.slide > .stamp {
+  z-index: 3;
 }
 /* Split panes stay on one axis inside the clip. Do not force a column. */
 .slide > [data-od-slide-flow]:has(.split-left),
@@ -577,8 +582,32 @@ export function stripFloatingDeckIndexBadges(html: string): string {
   return mapSlideInners(html, (inner) => stripFloatingIndexBadgesInSpan(inner));
 }
 
-function shouldSkipSlideFlowWrap(inner: string): boolean {
-  return new RegExp(`\\b${DECK_SLIDE_FLOW_ATTR}\\b`, 'i').test(inner);
+function isSlideFlowAttrs(attrs: string): boolean {
+  return new RegExp(`\\b${DECK_SLIDE_FLOW_ATTR}\\b`, 'i').test(attrs);
+}
+
+function unwrapSlideFlowSegment(raw: string): string {
+  const open = openTagOf(raw);
+  if (!open || !isSlideFlowAttrs(open.attrs)) return raw;
+  const openEnd = raw.indexOf('>');
+  const close = /<\/[a-zA-Z][\w-]*\s*>\s*$/.exec(raw);
+  if (openEnd < 0 || !close) return raw;
+  return raw.slice(openEnd + 1, close.index);
+}
+
+/**
+ * Motif paint and absolute chrome (pill/stamp) stay slide siblings so one
+ * flow can clip the rest. Content that reused `.marker` / `.pill` with
+ * in-flow text must not split the 16:9 wrap.
+ */
+function isFlowSplitChrome(raw: string): boolean {
+  const open = openTagOf(raw);
+  if (!open) return false;
+  if (/\bdata-od-official-motif-html\b/i.test(open.attrs)) return true;
+  if (!isMotifOrDecoAttrs(open.attrs)) return false;
+  const text = innerTextOf(raw).replace(/\s+/g, ' ').trim();
+  if (!text) return true;
+  return /position\s*:\s*absolute/i.test(extractStyleAttr(open.attrs));
 }
 
 const FLOW_COPIED_STYLE_PROPS = [  'display',
@@ -1550,11 +1579,35 @@ function slimExistingMagazineSlideFlow(inner: string): string {
   );
 }
 
+function slimFlowOverlayStyleAttr(attrs: string): string {
+  if (!/\bstyle\s*=/i.test(attrs)) return attrs;
+  return attrs.replace(
+    /\bstyle\s*=\s*(['"])([\s\S]*?)\1/i,
+    (_m, q: string, style: string) => {
+      const slimmed = String(style)
+        .replace(/(?:^|;)\s*position\s*:[^;]*/gi, ';')
+        .replace(/(?:^|;)\s*background(?:-color|-image)?\s*:[^;]*/gi, ';')
+        .replace(/;;+/g, ';')
+        .replace(/^;|;$/g, '')
+        .trim();
+      return slimmed ? `style=${q}${slimmed}${q}` : '';
+    },
+  );
+}
+
+function slimExistingFlowOverlay(inner: string): string {
+  return inner.replace(
+    /<(div|span)\b([^>]*\bdata-od-slide-flow\b[^>]*)>/gi,
+    (_open, tag: string, attrs: string) => `<${tag}${slimFlowOverlayStyleAttr(attrs)}>`,
+  );
+}
+
 function wrapFlowOpenTag(hostAttrs: string, inner = ''): string {
   const style = extractStyleAttr(hostAttrs);
   const magazinePaper = /\bslide-inner\b/i.test(inner);
   const parts: string[] = [];
   for (const prop of FLOW_COPIED_STYLE_PROPS) {
+    if (/^(?:position|background|background-color|background-image)$/i.test(prop)) continue;
     if (magazinePaper && isMagazinePaperInsetProp(prop)) continue;
     const escaped = prop.replace(/-/g, '\\-');
     const value = new RegExp(`(?:^|;)\\s*${escaped}\\s*:\\s*([^;]+)`, 'i')
@@ -1578,32 +1631,48 @@ function wrapFlowOpenTag(hostAttrs: string, inner = ''): string {
 }
 
 function wrapNonMotifInSpan(inner: string, hostAttrs: string): string {
-  if (shouldSkipSlideFlowWrap(inner)) return slimExistingMagazineSlideFlow(inner);
   const segs = listTopLevelSegments(inner);
-  if (segs.length === 0) return inner;
-  let out = '';
-  let pending = '';
-  const flushPending = () => {
-    if (!pending.trim()) {
-      out += pending;
-      pending = '';
-      return;
-    }
-    out += `${wrapFlowOpenTag(hostAttrs, inner)}${pending}</div>`;
-    pending = '';
-  };
+  if (segs.length === 0) return slimExistingMagazineSlideFlow(inner);
+  let flowCount = 0;
+  let siblingContent = 0;
   for (const seg of segs) {
     const raw = inner.slice(seg.start, seg.end);
     const open = openTagOf(raw);
-    if (open && isMotifOrDecoAttrs(open.attrs)) {
-      flushPending();
-      out += raw;
+    if (open && isSlideFlowAttrs(open.attrs)) {
+      flowCount += 1;
       continue;
     }
-    pending += raw;
+    if (isFlowSplitChrome(raw) || !raw.trim()) continue;
+    siblingContent += 1;
   }
-  flushPending();
-  return out;
+  if (flowCount === 1 && siblingContent === 0) {
+    return slimExistingMagazineSlideFlow(slimExistingFlowOverlay(inner));
+  }
+  const pieces: Array<{ kind: 'chrome' | 'content'; raw: string }> = [];
+  for (const seg of segs) {
+    const raw = inner.slice(seg.start, seg.end);
+    const open = openTagOf(raw);
+    if (open && isSlideFlowAttrs(open.attrs)) {
+      pieces.push({ kind: 'content', raw: unwrapSlideFlowSegment(raw) });
+      continue;
+    }
+    if (isFlowSplitChrome(raw)) {
+      pieces.push({ kind: 'chrome', raw });
+      continue;
+    }
+    pieces.push({ kind: 'content', raw });
+  }
+  const firstContent = pieces.findIndex((piece) => piece.kind === 'content');
+  const content = pieces.filter((piece) => piece.kind === 'content').map((piece) => piece.raw);
+  const joined = content.join('');
+  if (!joined.trim()) return inner;
+  const before = firstContent < 0
+    ? ''
+    : pieces.slice(0, firstContent).map((piece) => piece.raw).join('');
+  const after = firstContent < 0
+    ? ''
+    : pieces.slice(firstContent).filter((piece) => piece.kind === 'chrome').map((piece) => piece.raw).join('');
+  return `${before}${wrapFlowOpenTag(hostAttrs, joined)}${joined}</div>${after}`;
 }
 
 /**

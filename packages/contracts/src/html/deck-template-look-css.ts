@@ -290,6 +290,25 @@ section[data-screen-label], main[data-screen-label], article[data-screen-label] 
   font-size: 96px !important;
   line-height: 0.94 !important;
 }
+/* od-look-slot-flow: official look parks .flow/.grid/.table/.step/.marker as
+ * presentation slots. Compact fills reuse those class names in document flow. */
+.slide [data-od-slide-flow] :is(.flow, .grid, .table, .step, .marker):not([data-od-official-motif-html]) {
+  position: relative !important;
+  inset: auto !important;
+  top: auto !important;
+  right: auto !important;
+  bottom: auto !important;
+  left: auto !important;
+  transform: none !important;
+}
+.slide [data-od-slide-flow] .step {
+  height: auto !important;
+}
+.slide [data-od-slide-flow] :is(.flow, .grid, .table) {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  width: auto !important;
+}
 `
 
 const LOOK_NEUTRALIZE_TAIL_RE =
@@ -449,6 +468,7 @@ function officialLookCssLooksCurrent(css: string): boolean {
     && css.includes('od-magazine-lede-fill')
     && css.includes('od-magazine-cover-solo')
     && css.includes('od-magazine-title-fill')
+    && css.includes('od-look-slot-flow')
   );
 }
 
@@ -468,7 +488,7 @@ function sanitizeOfficialMotifDecoStyleBodies(html: string): string {
   return html.replace(
     /(<style\b[^>]*\bdata-od-official-motif-deco-css\b[^>]*>)([\s\S]*?)(<\/style>)/gi,
     (_m, open: string, css: string, close: string) => {
-      const next = sanitizeMotifOutsideCanvasOffsets(css);
+      const next = scopeMotifDecoCssToOfficialHosts(sanitizeMotifOutsideCanvasOffsets(css));
       return `${open}${next}${close}`;
     },
   );
@@ -496,6 +516,7 @@ export function hasOfficialLookStackedCanvasNeutralizeProof(html: string): boole
     && dest.includes('od-magazine-lede-fill')
     && dest.includes('od-magazine-cover-solo')
     && dest.includes('od-magazine-title-fill')
+    && dest.includes('od-look-slot-flow')
   );
 }
 
@@ -1500,7 +1521,10 @@ function motifFallbackCss(officialCss: string, instances: string[]): string {
       // Must sanitize declarations directly: wrapping as `.x{…}` skips the
       // Motif-selector gate inside sanitizeMotifOutsideCanvasOffsets (§0.72).
       body = sanitizeMotifOffsetDeclarations(body);
-      const rule = `.slide ${trailing}{${body}}`;
+      const scoped = /^\.|:/.test(trailing)
+        ? `.slide [data-od-official-motif-html]${trailing}`
+        : `.slide [data-od-official-motif-html] ${trailing}`;
+      const rule = `${scoped}{${body}}`;
       if (!rules.includes(rule)) rules.push(rule);
       kept += 1;
     }
@@ -1524,6 +1548,14 @@ function motifDecoCssHasContentStacking(css: string): boolean {
   return /\.slide\s*>\s*:is\(h1/i.test(css) && /z-index\s*:\s*2\s*!important/i.test(css);
 }
 
+/** Motif geometry must not land on MiniMax content that reused `.marker` / `.arrow`. */
+function scopeMotifDecoCssToOfficialHosts(css: string): string {
+  return String(css ?? '').replace(
+    /\.slide\s+(?!\[data-od-official-motif-html\])(\.[A-Za-z_][\w-]*(?::+[A-Za-z_-]+)?)/g,
+    '.slide [data-od-official-motif-html]$1',
+  );
+}
+
 function mergeMotifFallbackCss(dest: string, officialCss: string, instances: string[]): string {
   if (!dest || instances.length === 0) return dest;
   const css = motifFallbackCss(officialCss, instances);
@@ -1533,7 +1565,13 @@ function mergeMotifFallbackCss(dest: string, officialCss: string, instances: str
     const body = existing[2] ?? '';
     const hasHang =
       /(?:top|left|right|bottom)\s*:\s*-\d/i.test(body);
-    if (motifDecoCssHasContentStacking(body) && !hasHang) return dest;
+    if (
+      motifDecoCssHasContentStacking(body)
+      && !hasHang
+      && /\[data-od-official-motif-html\]/i.test(body)
+    ) {
+      return dest;
+    }
     // Upgrade pre-§0.62 deco sheets (missing stacking) or hang offsets (§0.72).
     return dest.replace(
       /<style\b[^>]*\bdata-od-official-motif-deco-css\b[^>]*>[\s\S]*?<\/style>/i,
@@ -2784,7 +2822,7 @@ export function ensureOfficialLookStackedCanvasNeutralize(html: string): string 
   }
 
   if (hasOfficialLookStyleAttr(dest)) {
-    return replaceOfficialLookNeutralizeBlock(dest);
+    return sanitizeOfficialMotifDecoStyleBodies(replaceOfficialLookNeutralizeBlock(dest));
   }
 
   // Persist-stripped compact fills may still host slides in the stacked
