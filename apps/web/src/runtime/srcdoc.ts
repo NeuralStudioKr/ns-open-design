@@ -107,9 +107,16 @@ export function nextRedirectGuardState(
   return { state: { hops, windowStart }, tripped: hops > maxHops };
 }
 
-export function buildRedirectLoopBlockedDoc(): string {
+export function buildRedirectLoopBlockedDoc(options?: { embed?: boolean }): string {
+  const embed = Boolean(options?.embed);
+  const title = embed
+    ? '미리보기를 멈췄습니다. 페이지가 반복해서 이동했습니다.'
+    : 'Preview stopped: redirect loop detected';
+  const detail = embed
+    ? '이 문서가 자신을 계속 이동시켜 미리보기가 멈췄습니다. 미리보기를 다시 불러오세요.'
+    : 'This document kept redirecting to itself, which would freeze the preview. Reload the preview to try again.';
   return `<!doctype html>
-<html lang="en">
+<html lang="${embed ? 'ko' : 'en'}">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -127,8 +134,8 @@ export function buildRedirectLoopBlockedDoc(): string {
   </head>
   <body>
     <div class="card">
-      <h1>Preview stopped: redirect loop detected</h1>
-      <p>This document kept redirecting to itself, which would freeze the preview. Reload the preview to try again.</p>
+      <h1>${title}</h1>
+      <p>${detail}</p>
     </div>
   </body>
 </html>`;

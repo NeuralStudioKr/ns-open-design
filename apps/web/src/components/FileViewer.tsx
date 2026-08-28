@@ -7571,7 +7571,7 @@ function HtmlViewer({
       if (teamverEmbedPreviewMode && (!embedPreviewPrefixSettled || !embedPreviewPrefix)) {
         return '';
       }
-      if (redirectLoopBlocked) return buildRedirectLoopBlockedDoc();
+      if (redirectLoopBlocked) return buildRedirectLoopBlockedDoc({ embed: isTeamverEmbedMode() });
       if (!previewSource) return '';
       try {
         return buildSrcdoc(previewSource, {

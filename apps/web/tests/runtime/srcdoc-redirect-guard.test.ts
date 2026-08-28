@@ -30,6 +30,14 @@ describe('srcdoc redirect-loop guard', () => {
     expect(doc).not.toMatch(/http-equiv\s*=\s*["']?\s*refresh/i);
   });
 
+  it('localizes the blocked document for Teamver embed', () => {
+    const doc = buildRedirectLoopBlockedDoc({ embed: true });
+    expect(doc).toContain('lang="ko"');
+    expect(doc).toContain('미리보기를 멈췄습니다');
+    expect(doc).toContain('미리보기를 다시 불러오세요');
+    expect(doc).not.toContain('redirect loop detected');
+  });
+
   it('counts redirect hops inside a window and resets after the window elapses', () => {
     let current = nextRedirectGuardState(null, 1000, { maxHops: 2, windowMs: 1000 });
     expect(current.state).toEqual({ hops: 1, windowStart: 1000 });

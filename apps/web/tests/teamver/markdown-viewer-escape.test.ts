@@ -38,4 +38,14 @@ describe('MarkdownViewer leftover pin', () => {
     expect(source).not.toContain('<div className="kicker">IMAGE</div>');
     expect(source).not.toContain('<div className="kicker">TEMPLATE</div>');
   });
+
+  it('passes embed locale into the redirect-loop blocked preview', () => {
+    const source = readFileSync(
+      resolve(__dirname, '../../src/components/FileViewer.tsx'),
+      'utf8',
+    );
+    expect(source).toContain(
+      'buildRedirectLoopBlockedDoc({ embed: isTeamverEmbedMode() })',
+    );
+  });
 });
