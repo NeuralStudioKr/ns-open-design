@@ -1929,57 +1929,111 @@ function stripBalancedOuterParens(value: string): string {
   return cur;
 }
 
-/**
- * Resolve calc body to length parts, including one top-level `*` / `/`
- * against a unitless factor (루프796). Does not flatten `(a+b)*k` into `a+b*k`.
- */
-function resolveCalcLengthParts(rawBody: string): CalcLengthPart[] | null {
-  const body = rawBody.trim();
-  if (!body) return null;
-  if (!/[*\/]/.test(body)) return parseAdditiveLengthParts(body);
+/** Replace nested `calc(...)` with their bodies (루프821). */
+function flattenNestedCalcCalls(value: string): string {
+  let cur = value;
+  let prev = '';
+  while (cur !== prev) {
+    prev = cur;
+    const bodies = extractCalcBodies(cur);
+    if (bodies.length === 0) break;
+    // Replace innermost-ish: last `calc(` occurrence first via balanced scan.
+    const re = /calc\s*\(/gi;
+    let m: RegExpExecArray | null;
+    let last: { start: number; end: number; body: string } | null = null;
+    while ((m = re.exec(cur)) !== null) {
+      let depth = 1;
+      let i = m.index + m[0].length;
+      const start = i;
+      while (i < cur.length && depth > 0) {
+        const ch = cur[i]!;
+        if (ch === '(') depth += 1;
+        else if (ch === ')') depth -= 1;
+        i += 1;
+      }
+      if (depth === 0) {
+        last = { start: m.index, end: i, body: cur.slice(start, i - 1).trim() };
+      }
+    }
+    if (!last) break;
+    cur = `${cur.slice(0, last.start)}(${last.body})${cur.slice(last.end)}`;
+  }
+  return cur;
+}
 
-  const ops: { idx: number; op: '*' | '/' }[] = [];
+function splitTopLevelMulDiv(body: string): { terms: string[]; ops: Array<'*' | '/'> } | null {
+  const terms: string[] = [];
+  const ops: Array<'*' | '/'> = [];
   let depth = 0;
+  let start = 0;
   for (let i = 0; i < body.length; i += 1) {
     const ch = body[i]!;
     if (ch === '(') depth += 1;
     else if (ch === ')') depth -= 1;
     else if (depth === 0 && (ch === '*' || ch === '/')) {
-      ops.push({ idx: i, op: ch });
+      terms.push(body.slice(start, i).trim());
+      ops.push(ch);
+      start = i + 1;
     }
   }
-  // Conservative: exactly one top-level mul/div (루프796).
-  if (ops.length !== 1) return null;
-  const { idx, op } = ops[0]!;
-  const leftRaw = body.slice(0, idx).trim();
-  const rightRaw = body.slice(idx + 1).trim();
+  terms.push(body.slice(start).trim());
+  if (terms.length !== ops.length + 1 || terms.some((t) => !t) || ops.length < 1) return null;
+  return { terms, ops };
+}
+
+/**
+ * Resolve calc body to length parts, including left-associative top-level
+ * `*` / `/` against unitless factors (루프796·821). Does not flatten
+ * `(a+b)*k` into `a+b*k`.
+ */
+function resolveCalcLengthParts(rawBody: string): CalcLengthPart[] | null {
+  const flattened = flattenNestedCalcCalls(rawBody.trim());
+  const body = flattened.trim();
+  if (!body) return null;
+  if (!/[*\/]/.test(body)) return parseAdditiveLengthParts(body);
+
+  const split = splitTopLevelMulDiv(body);
+  if (!split) return null;
+  const { terms, ops } = split;
   const asFactor = (s: string): number | null => {
     if (!/^(?:\d+(?:\.\d+)?|\.\d+)$/.test(s)) return null;
     const n = Number.parseFloat(s);
     return Number.isFinite(n) && n > 0 ? n : null;
   };
-  const leftFactor = asFactor(leftRaw);
-  const rightFactor = asFactor(rightRaw);
   const scale = (parts: CalcLengthPart[], factor: number): CalcLengthPart[] =>
     parts.map((p) => ({ ...p, n: p.n * factor }));
+  const parseTerm = (term: string): CalcLengthPart[] | null => {
+    const stripped = stripBalancedOuterParens(term);
+    if (/[*\/]/.test(stripped)) return resolveCalcLengthParts(stripped);
+    return parseAdditiveLengthParts(stripped);
+  };
 
-  if (op === '*') {
-    if (leftFactor != null && rightFactor == null) {
-      const parts = resolveCalcLengthParts(stripBalancedOuterParens(rightRaw));
-      return parts ? scale(parts, leftFactor) : null;
-    }
-    if (rightFactor != null && leftFactor == null) {
-      const parts = resolveCalcLengthParts(stripBalancedOuterParens(leftRaw));
-      return parts ? scale(parts, rightFactor) : null;
-    }
-    return null;
+  let parts: CalcLengthPart[] | null = null;
+  let termIdx = 0;
+  let opIdx = 0;
+  // `factor * length [*/ factor]*` (루프796·821)
+  if (asFactor(terms[0]!) != null) {
+    if (ops[0] !== '*') return null;
+    parts = parseTerm(terms[1]!);
+    if (!parts) return null;
+    parts = scale(parts, asFactor(terms[0]!)!);
+    termIdx = 2;
+    opIdx = 1;
+  } else {
+    parts = parseTerm(terms[0]!);
+    if (!parts) return null;
+    termIdx = 1;
+    opIdx = 0;
   }
-  // `/` — length / positive factor only (not factor / length).
-  if (rightFactor != null && leftFactor == null) {
-    const parts = resolveCalcLengthParts(stripBalancedOuterParens(leftRaw));
-    return parts ? scale(parts, 1 / rightFactor) : null;
+  while (termIdx < terms.length) {
+    const factor = asFactor(terms[termIdx]!);
+    if (factor == null || opIdx >= ops.length) return null;
+    const op = ops[opIdx]!;
+    parts = op === '*' ? scale(parts, factor) : scale(parts, 1 / factor);
+    termIdx += 1;
+    opIdx += 1;
   }
-  return null;
+  return parts;
 }
 
 /** Additive `calc` sums: same-unit · `%` · rem/em+px@16 · rem+em · vh/%+px (루프515). */

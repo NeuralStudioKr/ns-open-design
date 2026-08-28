@@ -221,6 +221,8 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | chat: FOO `☏☎✆ℹ‽♮♯♭♩♪` | ☑ 루프781–790 / round782–791 |
 | kit: calc 곱·나눗셈(단위×스칼라·괄호 additive) | ☑ 루프796–810 / round797–811 |
 | chat: FOO `♠♣♥♦♤♡♢♧⌘⌥` | ☑ 루프811–820 / round812–821 |
+| kit: calc 곱나눗셈 체인 · nested calc | ☑ 루프821–830 / round822–831 |
+| chat: FOO `✓✔✕✖✗✘✚✱✳` | ☑ 루프831–840 / round832–841 |
 | kit/chat: set139–143 combo/closure | ☑ 루프791–795 / round792–796 |
 | persist/preview: leftover `·` 칩·발명 TOC가 brief 카피처럼 보임 | ☑ 루프144 |
 | preview: 레터박스 `#17181d`만 보이고 1/N만 동작 | ☑ 루프146 |
@@ -277,7 +279,18 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | persist/preview: `삼각함수 · N` 제목-only 빈 장 · leftover `#nav`/`#hint` | ☑ 루프174 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프796–820 / round797–821)
+## 이번 루프 (루프821–845 / round822–846)
+
+- [x] **루프821–825**: left-associative `*`/`/` 체인 (px/rem)
+- [x] **루프826–830**: nested `calc(calc(...))` · 괄호 체인
+- [x] **루프831–835**: FOO `✓✔✕✖✗` + 체인 회귀
+- [x] **루프836–840**: FOO `✘✚✱✳` + vh/ch/ic/cqh
+- [x] **루프841–845**: 단위 체인·nested · invent-frame≠slide-flow 마감
+- [x] `flattenNestedCalcCalls` / left-fold mul·div + FOO BMP
+- [x] `chat-leak-probe-round822`…`846` 25/25
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프796–820 / round797–821)
 
 - [x] **루프796–800**: `calc` 곱·나눗셈 — px/rem ×÷ 스칼라 (thin 미바인드)
 - [x] **루프801–805**: vh/ch/pt × · `(a+b)*k` · `k*(rem+px)`
