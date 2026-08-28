@@ -219,6 +219,8 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | kit/chat: set134–138 combo/closure | ☑ 루프766–770 / round767–771 |
 | kit: calc 음수 항·괄호 additive | ☑ 루프771–780 / round772–781 |
 | chat: FOO `☏☎✆ℹ‽♮♯♭♩♪` | ☑ 루프781–790 / round782–791 |
+| kit: calc 곱·나눗셈(단위×스칼라·괄호 additive) | ☑ 루프796–810 / round797–811 |
+| chat: FOO `♠♣♥♦♤♡♢♧⌘⌥` | ☑ 루프811–820 / round812–821 |
 | kit/chat: set139–143 combo/closure | ☑ 루프791–795 / round792–796 |
 | persist/preview: leftover `·` 칩·발명 TOC가 brief 카피처럼 보임 | ☑ 루프144 |
 | preview: 레터박스 `#17181d`만 보이고 1/N만 동작 | ☑ 루프146 |
@@ -275,13 +277,25 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | persist/preview: `삼각함수 · N` 제목-only 빈 장 · leftover `#nav`/`#hint` | ☑ 루프174 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프172–174)
+## 이번 루프 (루프796–820 / round797–821)
+
+- [x] **루프796–800**: `calc` 곱·나눗셈 — px/rem ×÷ 스칼라 (thin 미바인드)
+- [x] **루프801–805**: vh/ch/pt × · `(a+b)*k` · `k*(rem+px)`
+- [x] **루프806–810**: 괄호 `/` · cqh/ic × · (rem|vh+px)×
+- [x] **루프811–815**: FOO `♠♣♥♦♤` + mul/div 회귀
+- [x] **루프816–820**: FOO `♡♢♧⌘`+⌥ · invent-frame≠slide-flow 마감
+- [x] `resolveCalcLengthParts` + FOO BMP 확장
+- [x] `chat-leak-probe-round797`…`821` 25/25
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프172–174)
 
 1. heal leftover — Hangul dest/brief일 때만 scrub. 공식 영문 catalog는 무브리프 유지
 2. leftover/catalog 지문 — eyebrow · Berlin 좌표 · kami colophon · Apache/BYOK 태그 조합
 3. heal — 제목-only 번호 장 drop · 스크립트 없는 leftover presenter chrome 제거. 강의 문장 발명 없음
 
 **검증:** official kami 무브리프 · 부분 leftover · title-only drop · leftover sweep
+
 
 ## 직전 루프 (루프771–795 / round772–796)
 

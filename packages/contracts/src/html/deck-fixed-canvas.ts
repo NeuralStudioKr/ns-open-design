@@ -1882,25 +1882,111 @@ function unwrapAdditiveCalcParens(body: string): string {
   return cur;
 }
 
+type CalcLengthPart = { sign: number; n: number; unit: string };
+
+const CALC_LENGTH_TOK_RE =
+  /([+-])?\s*(\d+(?:\.\d+)?|\.\d+)\s*(px|rem|em|pt|mm|cm|in|pc|Q|ch|%|vh|vw|vmin|vmax|dvh|dvw|svh|svw|lvh|lvw|lvmin|lvmax|svmin|svmax|dvmin|dvmax|cqw|cqh|cqi|cqb|cqmin|cqmax|ic|ric|lh|rlh|cap|rcap|ex|rex|vb|vi|svb|svi|lvb|lvi|dvb|dvi)(?=$|[\s+\-*/,)])/gi;
+
+/** Parse additive-only length tokens (루프771). */
+function parseAdditiveLengthParts(body: string): CalcLengthPart[] | null {
+  const unwrapped = unwrapAdditiveCalcParens(body).trim();
+  if (!unwrapped || /[*\/]/.test(unwrapped)) return null;
+  // No `\b` after `%` — `%` is non-word so `\b` never matches EOS (루프465).
+  const parts: CalcLengthPart[] = [];
+  const tokRe = new RegExp(CALC_LENGTH_TOK_RE.source, 'gi');
+  let tm: RegExpExecArray | null;
+  while ((tm = tokRe.exec(unwrapped)) !== null) {
+    const op = tm[1] ?? '';
+    const n = Number.parseFloat(tm[2] ?? '0');
+    const unit = (tm[3] ?? '').toLowerCase();
+    if (!Number.isFinite(n) || !unit) continue;
+    const sign = op === '-' ? -1 : 1;
+    parts.push({ sign, n, unit });
+  }
+  return parts.length >= 1 ? parts : null;
+}
+
+/** Strip one fully-wrapping paren layer when balanced (루프796). */
+function stripBalancedOuterParens(value: string): string {
+  let cur = value.trim();
+  while (cur.startsWith('(') && cur.endsWith(')')) {
+    let depth = 0;
+    let wrapsAll = true;
+    for (let i = 0; i < cur.length; i += 1) {
+      const ch = cur[i]!;
+      if (ch === '(') depth += 1;
+      else if (ch === ')') {
+        depth -= 1;
+        if (depth === 0 && i !== cur.length - 1) {
+          wrapsAll = false;
+          break;
+        }
+      }
+    }
+    if (!wrapsAll || depth !== 0) break;
+    cur = cur.slice(1, -1).trim();
+  }
+  return cur;
+}
+
+/**
+ * Resolve calc body to length parts, including one top-level `*` / `/`
+ * against a unitless factor (루프796). Does not flatten `(a+b)*k` into `a+b*k`.
+ */
+function resolveCalcLengthParts(rawBody: string): CalcLengthPart[] | null {
+  const body = rawBody.trim();
+  if (!body) return null;
+  if (!/[*\/]/.test(body)) return parseAdditiveLengthParts(body);
+
+  const ops: { idx: number; op: '*' | '/' }[] = [];
+  let depth = 0;
+  for (let i = 0; i < body.length; i += 1) {
+    const ch = body[i]!;
+    if (ch === '(') depth += 1;
+    else if (ch === ')') depth -= 1;
+    else if (depth === 0 && (ch === '*' || ch === '/')) {
+      ops.push({ idx: i, op: ch });
+    }
+  }
+  // Conservative: exactly one top-level mul/div (루프796).
+  if (ops.length !== 1) return null;
+  const { idx, op } = ops[0]!;
+  const leftRaw = body.slice(0, idx).trim();
+  const rightRaw = body.slice(idx + 1).trim();
+  const asFactor = (s: string): number | null => {
+    if (!/^(?:\d+(?:\.\d+)?|\.\d+)$/.test(s)) return null;
+    const n = Number.parseFloat(s);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  };
+  const leftFactor = asFactor(leftRaw);
+  const rightFactor = asFactor(rightRaw);
+  const scale = (parts: CalcLengthPart[], factor: number): CalcLengthPart[] =>
+    parts.map((p) => ({ ...p, n: p.n * factor }));
+
+  if (op === '*') {
+    if (leftFactor != null && rightFactor == null) {
+      const parts = resolveCalcLengthParts(stripBalancedOuterParens(rightRaw));
+      return parts ? scale(parts, leftFactor) : null;
+    }
+    if (rightFactor != null && leftFactor == null) {
+      const parts = resolveCalcLengthParts(stripBalancedOuterParens(leftRaw));
+      return parts ? scale(parts, rightFactor) : null;
+    }
+    return null;
+  }
+  // `/` — length / positive factor only (not factor / length).
+  if (rightFactor != null && leftFactor == null) {
+    const parts = resolveCalcLengthParts(stripBalancedOuterParens(leftRaw));
+    return parts ? scale(parts, 1 / rightFactor) : null;
+  }
+  return null;
+}
+
 /** Additive `calc` sums: same-unit · `%` · rem/em+px@16 · rem+em · vh/%+px (루프515). */
 function calcAdditiveSameUnitLooksCardLike(value: string): boolean {
   for (const rawBody of extractCalcBodies(value)) {
-    const body = unwrapAdditiveCalcParens(rawBody).trim();
-    if (!body || /[*\/]/.test(body)) continue;
-    // No `\b` after `%` — `%` is non-word so `\b` never matches EOS (루프465).
-    const tokRe =
-      /([+-])?\s*(\d+(?:\.\d+)?|\.\d+)\s*(px|rem|em|pt|mm|cm|in|pc|Q|ch|%|vh|vw|vmin|vmax|dvh|dvw|svh|svw|lvh|lvw|lvmin|lvmax|svmin|svmax|dvmin|dvmax|cqw|cqh|cqi|cqb|cqmin|cqmax|ic|ric|lh|rlh|cap|rcap|ex|rex|vb|vi|svb|svi|lvb|lvi|dvb|dvi)(?=$|[\s+\-*/,)])/gi;
-    const parts: { sign: number; n: number; unit: string }[] = [];
-    let tm: RegExpExecArray | null;
-    while ((tm = tokRe.exec(body)) !== null) {
-      const op = tm[1] ?? '';
-      const n = Number.parseFloat(tm[2] ?? '0');
-      const unit = (tm[3] ?? '').toLowerCase();
-      if (!Number.isFinite(n) || !unit) continue;
-      const sign = op === '-' ? -1 : 1;
-      parts.push({ sign, n, unit });
-    }
-    if (parts.length < 2) continue;
+    const parts = resolveCalcLengthParts(rawBody);
+    if (!parts || parts.length < 1) continue;
     const unit0 = parts[0]!.unit;
     const sum = parts.reduce((acc, p) => acc + p.sign * p.n, 0);
     if (parts.every((p) => p.unit === unit0)) {
