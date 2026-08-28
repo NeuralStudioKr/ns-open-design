@@ -227,6 +227,8 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | persist/preview: Biennale 표지 blocks 없음 · chapter 16:9 공백 · 조사 공백 | ☑ 루프156 |
 | persist/preview: Biennale s-data 1카드 공백 · quote 기본 문단 · footer 없는 표지 | ☑ 루프157 |
 | persist/preview: Motif `.marker`가 본문 배지를 제목에 겹침 · pill이 flow를 쪼갬 · `.s6 .flow` 하단 클립 | ☑ 루프158 |
+| pin: `<ul>/<li>/<figure>` 등 목록 컨테이너가 `position:absolute`로 park되면 평탄화 되지 않음 | ☑ 루프158-A |
+| pin: flow wrapper 개수 · idempotency · motif 보존 invariant 방어 부재 | ☑ 루프158-A |
 | persist/preview: look 슬롯 `.h/.arrow/.cell` absolute · content marker `::after` | ☑ 루프160 |
 | persist/preview: 공식 PRESS PLAY Motif가 본문 `DAILY 30 MIN`과 겹침 | ☑ 루프161 |
 | persist/preview: MiniMax 2×2 `.grid`가 카드 1개만 품고 3장을 형제로 버림 | ☑ 루프162 |
@@ -264,6 +266,17 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 2. deco remmerge — 비범위 `.slide .marker`/`.arrow`는 Motif 호스트로 재작성
 
 **검증:** creative-mode compact fixture · remmerge · look-css · magazine · pin
+
+## 직전 루프 (루프158-A · flow invariant 방어층)
+
+사용자 리포트(2026-08-28 · staging MiniMax 영어 회화 덱) 재발 방지. 루프158이 해결한 "표지 전체가 사라지는" 회귀에 대한 방어 layer.
+
+1. invariant 방어 — `pinDeckSlidesToFixedCanvas` 이후 슬라이드마다 `[data-od-slide-flow]` wrapper ≤ 1개 · 콘텐츠 텍스트 유실 없음 · chrome 지문(`.pill`/`.stamp`) 유실 없음 · idempotent(`pin(pin(x))===pin(x)`) invariant를 다양한 MiniMax 인터리브 시나리오(표지·마감·중간 · 이미 다중 flow된 상태 · footer 배지 뒤섞임)에 대해 강제
+2. 사용자 fixture 회귀 가드 — 사용자가 제출한 44KB 실제 HTML을 `tests/fixtures/`에 저장, 6장 슬라이드 모두 wrapper ≤ 1개 · 표지 시그니처 `SPOKEN·ENGLISH·PRACTICED` 유지 검증
+3. pin — `ABS_FLOW_OPEN_RE` whitelist 확장. MiniMax의 `<ul style="position:absolute">` / `<li>` / `<figure>` / `<blockquote>` / `<table>` 등 목록·블록 컨테이너 태그가 절대 위치로 park되어도 문서 흐름으로 평탄화 (기존은 `div/span/p/h1-6/section/article/aside/header/footer/small/label`만 대상)
+4. round54 정정 — 루프158 semantics에 맞춰 chat-leak-probe-round54의 "position/background copy" 기대치를 최신 flow open 계약(position/background 미복사, 나머지 layout/paint 복사)으로 갱신
+
+**검증:** deck-fixed-canvas-flow-invariants (28/28) · contracts 전체 (796 파일 / 2051 테스트) · chat-leak-probe-round54 · web pin 소비자 3파일 (38 테스트)
 
 ## 직전 루프 (루프160–162)
 

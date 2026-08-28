@@ -63,7 +63,14 @@ describe("chat leak / persist probe round 54 (HERO/KPI suffix · position)", () 
     expect(looksLikeDeckCodeDebrisLine("ZAPKPI 값을 줄임")).toBe(false);
   });
 
-  it("copies position/inset/aspect-ratio/background into slide flow", () => {
+  // 루프158 갱신 — MiniMax 표지가 통째로 사라지는 회귀 이후 pin은 flow open에
+  // `position` / `background*`을 **복사하지 않는다**. pin CSS가 flow의 절대
+  // 위치를 관리(`position:absolute; inset:0 !important`)하므로 인라인 position
+  // 은 불필요하며, background는 flow overlay가 motif marker를 덮어 사라지게
+  // 만드는 원인이었다. 나머지 layout/paint 프로퍼티(inset·z-index·opacity·
+  // aspect-ratio·background-size·clip-path·anchor-name·view-transition-name)는
+  // 계속 복사된다.
+  it("copies non-position/background layout props into slide flow (loop158)", () => {
     const html = [
       '<section class="slide" style="position:relative;inset:0;z-index:2;opacity:0.95;aspect-ratio:16/9;background:linear-gradient(#fff,#eee);background-size:cover;clip-path:inset(0);view-transition-name:slide;anchor-name:--s;width:1920px;height:1080px">',
       "<div>x</div>",
@@ -73,12 +80,18 @@ describe("chat leak / persist probe round 54 (HERO/KPI suffix · position)", () 
     const flowOpen = pinned.match(
       /<div\b[^>]*\bdata-od-slide-flow\b[^>]*>/i,
     )?.[0] ?? "";
-    expect(flowOpen).toMatch(/position:\s*relative/i);
+    // Flow open은 `position:*`을 담지 않는다 (pin CSS가 소유).
+    expect(flowOpen).not.toMatch(/position\s*:/i);
+    // Flow open은 `background`/`background-color`/`background-image`도 담지 않는다.
+    // 담기면 flow overlay가 motif marker를 가려 표지가 사라진다 (루프158 회귀).
+    expect(flowOpen).not.toMatch(/(?:^|;| |")background\s*:/i);
+    expect(flowOpen).not.toMatch(/background-color\s*:/i);
+    expect(flowOpen).not.toMatch(/background-image\s*:/i);
+    // 나머지 layout/paint 프로퍼티는 그대로 복사되어야 한다.
     expect(flowOpen).toMatch(/inset:\s*0/i);
     expect(flowOpen).toMatch(/z-index:\s*2/i);
     expect(flowOpen).toMatch(/opacity:\s*0\.95/i);
     expect(flowOpen).toMatch(/aspect-ratio:\s*16\/9/i);
-    expect(flowOpen).toMatch(/background:\s*linear-gradient\(#fff,#eee\)/i);
     expect(flowOpen).toMatch(/background-size:\s*cover/i);
     expect(flowOpen).toMatch(/clip-path:\s*inset\(0\)/i);
     expect(flowOpen).toMatch(/view-transition-name:\s*slide/i);

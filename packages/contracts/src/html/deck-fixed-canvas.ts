@@ -302,8 +302,11 @@ function flowAbsoluteSlideFooters(html: string): string {
 const MOTIF_OR_DECO_CLASS_RE =
   /deco|motif|petal|blob|pill|doodle|pin-|scanline|grain|sunglow|yblock|haze|ribbon|pixel-|hc-|gd-orb|xp-blob|post-it|stamp|tape|corner-bracket|ts-stripe|zigzag|hero-shot|card-deco|title-accent|closing-accent|mini-note|floating-pills|cover-blob|geo-decoration|cover-decoration/i;
 
+// 루프158-A — MiniMax는 `<ul style="position:absolute">` / `<li>` / `<figure>`
+// 형태로 리스트/카드 트랙을 오프페이지에 park한다. div/span/heading만 평탄화
+// 대상이면 목록 컨테이너가 절대 위치로 남아 카드 위에 겹치는 회귀가 발생한다.
 const ABS_FLOW_OPEN_RE =
-  /<(div|span|p|h[1-6]|section|article|aside|header|footer|small|label)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
+  /<(div|span|p|h[1-6]|section|article|aside|header|footer|small|label|ul|ol|li|dl|dt|dd|figure|figcaption|blockquote|nav|main|hgroup|address|pre|table|tr|td|th|thead|tbody|tfoot)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
 
 function isMotifOrDecoAttrs(attrs: string): boolean {
   if (/\bdata-od-official-motif-html\b/i.test(attrs)) return true;
