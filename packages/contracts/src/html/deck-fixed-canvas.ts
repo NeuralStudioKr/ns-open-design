@@ -2170,6 +2170,29 @@ function calcAdditiveSameUnitLooksCardLike(value: string): boolean {
       if (px >= 12 || print >= 13) return true;
       if (px + print >= 13) return true;
     }
+    // Triple+ additive mixes (루프746): convert known units → px, sum ≥13.
+    // e.g. 0.3rem+4px+0.5vh ≈ 14.2px; thin 0.1rem+2px+0.2vh stays out.
+    if (parts.length >= 3 && units.size >= 3) {
+      const toPx = (p: { sign: number; n: number; unit: string }): number | null => {
+        const u = p.unit;
+        if (u === 'px') return p.sign * p.n;
+        if (u === 'rem' || u === 'em') return p.sign * p.n * 16;
+        if (u === 'ch') return p.sign * p.n * 8;
+        if (lineBox.has(u)) return p.sign * p.n * 16;
+        if (icBox.has(u)) return p.sign * p.n * 16;
+        if (classicView.has(u)) return p.sign * toViewPx(u, p.n);
+        if (cqBox.has(u)) return p.sign * p.n * 10.8;
+        if (fontVp.has(u)) return p.sign * p.n * 10.8;
+        if (u === '%') return p.sign * p.n * 10.8;
+        if (printPx[u] != null) return p.sign * p.n * (printPx[u] ?? 0);
+        return null;
+      };
+      const converted = parts.map(toPx);
+      if (converted.every((x): x is number => x != null)) {
+        const asPx = converted.reduce((acc, n) => acc + n, 0);
+        if (asPx >= 13) return true;
+      }
+    }
   }
   return false;
 }

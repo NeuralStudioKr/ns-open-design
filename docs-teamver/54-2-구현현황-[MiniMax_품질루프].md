@@ -214,6 +214,9 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | kit: calc 교차 px+print(pt/mm/pc/Q/cm/in) | ☑ 루프721–730 / round722–731 |
 | chat: FOO `⚝⚡⚠⚽⚾⚀⚁⚂⚃⚄♔♕♖♗♘` | ☑ 루프731–740 / round732–741 |
 | kit/chat: set129–133 combo/closure | ☑ 루프741–745 / round742–746 |
+| kit: calc 삼중+ 단위 혼합(px 환산≥13) | ☑ 루프746–755 / round747–756 |
+| chat: FOO `♟♜♝♞♛✂✈✉✎✏` | ☑ 루프756–765 / round757–766 |
+| kit/chat: set134–138 combo/closure | ☑ 루프766–770 / round767–771 |
 | persist/preview: leftover `·` 칩·발명 TOC가 brief 카피처럼 보임 | ☑ 루프144 |
 | preview: 레터박스 `#17181d`만 보이고 1/N만 동작 | ☑ 루프146 |
 | persist/preview: 표지 오른쪽 TOC 칸 공백 · 성긴 slide-inner 상단 고정 | ☑ 루프147 |
@@ -260,7 +263,16 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | preview/export: 작성자 JS presenter를 MiniMax salvage로 오인해 페이지 누락 | ☑ 루프159 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프163)
+## 이번 루프 (루프746–770 / round747–771)
+
+1. padding — 삼중+ 단위 px 환산 합≥13
+2. chat — FOO `♟♜♝♞♛✂✈✉✎✏`
+3. invent-frame≠flow 회귀
+
+**검증:** chat-leak-probe-round747–771 (25/25)
+
+## 직전 루프 (루프163)
+
 
 1. neutralize/pin — `od-sibling-chrome-above-flow`로 본문 pill/stamp를 flow clip 위
 2. deco remmerge — 비범위 `.slide .marker`/`.arrow`는 Motif 호스트로 재작성
