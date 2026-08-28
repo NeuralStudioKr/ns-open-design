@@ -594,12 +594,18 @@ describe('heal official magazine layout density', () => {
 <h1 class="display">영어 회화 공부<br>연습 팁에 대한</h1>
 <p class="subhead">하루 45분, 네 가지 리츄얼로 발화 회로 를 단련합니다</p></div>
 <aside class="cover-meta"><div class="row"><div class="k">Brief</div><div class="v">영어 회화 공부, 연습 팁에 대한</div></div></aside>
-</div></section>
+</div>
+<footer class="foot"><span class="conf">영어 회화 공부, 연습 팁에 대한</span></footer>
+</section>
 <section class="slide s-chapter" style="width:1920px;height:1080px;background:#0a0a0a"></section>
-<section class="slide s-chapter" style="width:1920px;height:1080px;background:#0a0a0a">
-<h1>왜 회화는<br><br>공부가 아니라<br><br><em>근육</em> 인가
-<div style="margin-top:48px">성인 학습자는 문법·단어를 입력해도 회화에서 자동으로 끌어오지 못합니다.</div>
+<section class="slide s-chapter" style="width:1920px;height:1080px;background:#0a0a0a;color:#E9E5DB">
+<h1 style="color:#DCD6C4">왜 회화는<br><br>공부가 아니라<br><br><em>근육</em> 인가
+<div style="margin-top:48px;color:#E9E5DB">성인 학습자는 문법·단어를 입력해도 회화에서 자동으로 끌어오지 못합니다.</div>
 </h1>
+<div style="width:560px;height:560px;position:relative;pointer-events:none">
+<div style="position:relative;width:100%;height:100%;border-radius:50%;background:radial-gradient(circle,#F1EE2E,transparent)"></div>
+<div style="position:relative;transform:translate(-50%,-50%)">1%</div>
+</div>
 </section>
 <section class="slide s-data">
 <h2>하루 45분</h2>
@@ -623,7 +629,9 @@ describe('heal official magazine layout density', () => {
     expect(healed).toContain('성인 학습자는 문법');
     expect(healed).toContain('Shadowing');
     expect(healed).toContain('레시피 카드');
+    expect(healed).not.toMatch(/\bShado\b/);
     expect(healed).not.toMatch(/연습 팁에 대한/);
+    expect(healed).not.toMatch(/Study Notes|Working notes/i);
     expect(healed).not.toMatch(/<\/h>/);
     expect(healed).not.toMatch(/<h1[^>]*>[\s\S]*성인 학습자[\s\S]*<\/h1>/);
     expect(healed).not.toMatch(/<br><br>/);
@@ -634,5 +642,17 @@ describe('heal official magazine layout density', () => {
     expect((healed.match(/<section\b[^>]*\bslide\b/gi) ?? []).length).toBe(4);
     expect(healed).not.toMatch(/학습 노트|핵심 내용을 한 장에|English Speaking Tips|쉐도잉/i);
     expect(healed).toMatch(/s-chapter[^>]*background:var\(--paper\)/);
+    expect(healed).toMatch(/color:var\(--ink\)/);
+    expect(healed).not.toMatch(/(?<![\w-])color\s*:\s*#(?:E9E5DB|DCD6C4)\b/i);
+    expect(healed).toContain('--paper:#E9E5DB');
+    expect(healed).toContain('#F1EE2E');
+    expect(healed).toMatch(/width:560px;height:560px;position:absolute/);
+    expect(healed).toMatch(/position:absolute;width:100%;height:100%;border-radius:50%;background:radial-gradient/);
+    expect(healed).toMatch(/position:absolute;transform:translate\(-50%,-50%\)/);
+
+    const pinned = pinDeckSlidesToFixedCanvas(healed);
+    expect(pinned).toMatch(/width:560px;height:560px;position:absolute/);
+    expect(pinned).toMatch(/position:absolute;transform:translate\(-50%,-50%\)/);
+    expect(pinned).toMatch(/position:absolute;width:100%;height:100%;border-radius:50%;background:radial-gradient/);
   });
 });

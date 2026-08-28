@@ -224,6 +224,89 @@ function polishTruncatedHeadingsInPlace(html: string): string {
   );
 }
 
+/** Footer `.conf` / brand crumbs truncate the same prompt tail as headings. */
+function polishTruncatedPromptLeaves(html: string): string {
+  return String(html ?? '').replace(/>([^<]*[가-힣][^<]*)</g, (full, inner: string) => {
+    const text = String(inner).replace(/\s+/g, ' ').trim();
+    if (!/에\s*대한$|예시에?$/u.test(text)) return full;
+    const next = polishTruncatedHeadingInner(inner);
+    if (!next || next === inner) return full;
+    return `>${next}<`;
+  });
+}
+
+const GENERIC_EN_STUDY_CHROME_RE = /^(?:Study Notes|Working notes)$/i;
+
+/**
+ * MiniMax copies IB English ribbon chrome onto Hangul Biennale decks.
+ * Drop the exact leftover strings only — do not invent `학습 노트`.
+ */
+function dropGenericEnglishStudyChrome(html: string): string {
+  const dest = String(html ?? '');
+  if (!/[가-힣]/.test(visibleText(dest))) return dest;
+  return dest.replace(/>([^<]+)</g, (full, inner: string) => {
+    const text = String(inner).replace(/\s+/g, ' ').trim();
+    return GENERIC_EN_STUDY_CHROME_RE.test(text) ? '><' : full;
+  });
+}
+
+const COMPLETE_TOKEN_SKIP_RE =
+  /^(?:study|notes|working|cover|index|title|about|brief|volume|edition|english|speaking|ritual|daily|week|weeks|days|minutes|chapter|section|footer|header|paper|yellow|black|white|cards|card|recipe|routine)$/i;
+
+/**
+ * Restore a truncated Latin leaf from a unique longer word already in the
+ * same document. Never invent a topic that is not already present.
+ * Only whole-leaf tokens (`>Shado<`) are completed so `Board of Directors`
+ * cannot become `Board's of Directors`.
+ */
+function completeTruncatedTokensFromDocument(html: string): string {
+  const dest = String(html ?? '');
+  const words = visibleText(dest).match(/[A-Za-z]{6,}/g) ?? [];
+  const longer = [...new Set(words.map((word) => word))];
+  if (longer.length === 0) return dest;
+  return dest.replace(/>([^<]+)</g, (full, inner: string) => {
+    const token = String(inner).replace(/\s+/g, ' ').trim();
+    if (!/^[A-Za-z]{4,8}$/.test(token)) return full;
+    if (COMPLETE_TOKEN_SKIP_RE.test(token)) return full;
+    const key = token.toLowerCase();
+    const matches = longer.filter((word) => {
+      const lower = word.toLowerCase();
+      if (!lower.startsWith(key) || lower.length < key.length + 2) return false;
+      return /^[a-z]{2,}$/.test(lower.slice(key.length));
+    });
+    if (matches.length !== 1) return full;
+    return `>${matches[0]}<`;
+  });
+}
+
+/**
+ * Overlay sun/orb paint must stay out of document flow. MiniMax often emits
+ * the 560 box + radial circle + centered badge as `position:relative`.
+ */
+function restoreOverlayOrbPositioning(html: string): string {
+  return String(html ?? '').replace(
+    /\bstyle\s*=\s*(["'])([\s\S]*?)\1/gi,
+    (full, q: string, style: string) => {
+      if (!/\bposition\s*:\s*relative\b/i.test(style)) return full;
+      if (!isOverlayOrbStyle(style)) return full;
+      return `style=${q}${style.replace(/\bposition\s*:\s*relative\b/i, 'position:absolute')}${q}`;
+    },
+  );
+}
+
+function isOverlayOrbStyle(style: string): boolean {
+  const source = String(style ?? '');
+  if (/translate\(\s*-50%\s*,\s*-50%\s*\)/i.test(source)) return true;
+  if (/\bborder-radius\s*:\s*50%/i.test(source) && /radial-gradient/i.test(source)) {
+    return true;
+  }
+  const width = source.match(/\bwidth\s*:\s*(\d+)px/i);
+  const height = source.match(/\bheight\s*:\s*(\d+)px/i);
+  return Boolean(
+    width && height && width[1] === height[1] && Number(width[1]) >= 400,
+  );
+}
+
 function looksLikeTruncatedPromptChrome(text: string): boolean {
   const value = String(text ?? '').replace(/\s+/g, ' ').trim();
   if (!value) return true;
@@ -337,6 +420,11 @@ function relaxBiennaleInvertedSlidePaint(html: string): string {
   ).replace(
     /(<div\b[^>]*data-od-slide-flow[^>]*style="[^"]*)background\s*:\s*#0a0a0a/gi,
     '$1background:var(--paper)',
+  ).replace(
+    // Cream text on remapped cream paper is invisible. Keep #F1EE2E accents.
+    // `(?<![\w-])` so `border-color:#E9E5DB` and `--paper:#E9E5DB` stay.
+    /(?<![\w-])color\s*:\s*#(?:E9E5DB|DCD6C4)\b/gi,
+    'color:var(--ink)',
   );
 }
 
@@ -928,10 +1016,18 @@ export function healOfficialMagazineLayoutDensity(
       dropEmptyDeckSlides(
         collapseLonelyRepeatGrids(
           dropEchoBriefCoverMeta(
-            polishTruncatedHeadingsInPlace(
-              relaxBiennaleInvertedSlidePaint(
-                scrubLeftoverMagazineCopy(
-                  stripEmptyOfficialTextChromeMotifs(repairCompactFirstFillMarkup(dest)),
+            completeTruncatedTokensFromDocument(
+              polishTruncatedPromptLeaves(
+                polishTruncatedHeadingsInPlace(
+                  restoreOverlayOrbPositioning(
+                    relaxBiennaleInvertedSlidePaint(
+                      scrubLeftoverMagazineCopy(
+                        stripEmptyOfficialTextChromeMotifs(
+                          dropGenericEnglishStudyChrome(repairCompactFirstFillMarkup(dest)),
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ),

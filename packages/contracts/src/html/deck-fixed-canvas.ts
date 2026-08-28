@@ -298,9 +298,28 @@ function isMotifOrDecoAttrs(attrs: string): boolean {
   return MOTIF_OR_DECO_CLASS_RE.test(extractClassAttr(attrs));
 }
 
+/**
+ * Overlay sun/orb paint is not compact-fill card chrome. Pin must not flatten
+ * `translate(-50%,-50%)`, radial 50% circles, or the sized overlay box back
+ * into document flow after magazine heal restores `position:absolute`.
+ */
+function isOverlayPaintStyle(style: string): boolean {
+  const source = String(style ?? '');
+  if (/translate\(\s*-50%\s*,\s*-50%\s*\)/i.test(source)) return true;
+  if (/\bborder-radius\s*:\s*50%/i.test(source) && /radial-gradient/i.test(source)) {
+    return true;
+  }
+  const width = source.match(/\bwidth\s*:\s*(\d+)px/i);
+  const height = source.match(/\bheight\s*:\s*(\d+)px/i);
+  return Boolean(
+    width && height && width[1] === height[1] && Number(width[1]) >= 400,
+  );
+}
+
 function flowAbsoluteNonMotifStyle(style: string): string | null {
   const source = String(style ?? '');
   if (!/position\s*:\s*absolute/i.test(source)) return null;
+  if (isOverlayPaintStyle(source)) return null;
   const next = source
     .replace(/position\s*:\s*absolute/gi, 'position:relative')
     .replace(/(?:^|;)\s*(?:top|right|bottom|left|inset)\s*:[^;]*/gi, ';')

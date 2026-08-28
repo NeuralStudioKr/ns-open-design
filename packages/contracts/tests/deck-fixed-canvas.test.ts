@@ -125,6 +125,26 @@ describe('pinDeckSlidesToFixedCanvas', () => {
     expect(pinned).toMatch(/contain:\s*layout size/);
   });
 
+  it('keeps overlay sun/orb paint absolute after compact flow flatten', () => {
+    const html = [
+      '<!doctype html><html><body>',
+      '<section class="slide" style="width:1920px;height:1080px">',
+      '<h1>왜 회화는 근육인가</h1>',
+      '<div style="width:560px;height:560px;position:absolute;pointer-events:none">',
+      '<div style="position:absolute;width:100%;height:100%;border-radius:50%;background:radial-gradient(circle,#F1EE2E,transparent)"></div>',
+      '<div style="position:absolute;transform:translate(-50%,-50%)">1%</div>',
+      '</div>',
+      '<div class="card" style="position:absolute;top:80px;left:80px;width:800px">02 Viewport</div>',
+      '</section>',
+      '</body></html>',
+    ].join('');
+    const pinned = pinDeckSlidesToFixedCanvas(html);
+    expect(pinned).toMatch(/width:560px;height:560px;position:absolute/);
+    expect(pinned).toMatch(/position:absolute;width:100%;height:100%;border-radius:50%;background:radial-gradient/);
+    expect(pinned).toMatch(/position:absolute;transform:translate\(-50%,-50%\)/);
+    expect(pinned).toMatch(/class="card"[^>]*position:relative/);
+  });
+
   it('flows MiniMax absolute labels so they cannot sit inside another card', () => {
     const html = [
       '<!doctype html><html><body>',

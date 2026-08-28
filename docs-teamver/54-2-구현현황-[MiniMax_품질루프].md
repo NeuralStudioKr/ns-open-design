@@ -204,6 +204,7 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | persist/preview: Biennale `에 대한` 표지 · 빈 장 · 헤딩 삼킴 · 4열 1카드 | ☑ 루프150 |
 | persist/preview: Biennale에 IB Study Notes 표지가 남음 · relative radial | ☑ 루프151 |
 | persist/FileViewer: AI 덱 heal이 저장 경로에 없음 · `에 대한` 제목 | ☑ 루프153 |
+| persist/preview: Biennale 크림 위 크림 · Study Notes · Shado · overlay flatten | ☑ 루프154 |
 | persist/preview: look CSS가 1–2장 사이에 끼어 표지 밀집도가 깨짐 | ☑ follow-up |
 | persist/preview: MiniMax `<p="">` · 유출 `· Label` | ☑ follow-up |
 | preview: Motif `span.ribbon`이 relative stretch로 빨간 줄 | ☑ follow-up |
@@ -230,7 +231,15 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | think 태그 / 내부 마크업 필터 | ☑ 기존 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프571–595 / round572–596)
+## 이번 루프 (루프154)
+
+1. heal — Biennale `--sun` 장에서 크림 글자(`#E9E5DB`/`#DCD6C4`)를 `--ink`로. footer `에 대한` polish
+2. heal — 한글 덱의 `Study Notes`/`Working notes`만 삭제(`학습 노트` 발명 금지). 같은 문서의 긴 단어로 `Shado` 복구
+3. heal+pin — overlay sun/orb(`translate(-50%)` · 50% radial · ≥400 정사각)는 absolute 유지
+
+**검증:** biennale cream-on-cream · no Study Notes · Shado→Shadowing · pin overlay absolute
+
+## 직전 루프 (루프571–595 / round572–596)
 
 1. padding — cq 가족 합≥2 · ic|ric 합≥1 · print 혼합 px≥13
 2. chat — FOO `✶✸✹✺❋※†‡‣∙`
