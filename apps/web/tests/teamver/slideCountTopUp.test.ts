@@ -6,6 +6,8 @@ import {
   SLIDE_COUNT_TOP_UP_PROMPT_SENTINEL,
   SLIDE_COUNT_TOP_UP_PROMPT_SENTINEL_LEGACY,
   buildSlideCountTopUpPrompt,
+  countHonoredSlideCountTopUpTurns,
+  slideCountTopUpAppendUntil,
   isSlideCountTopUpPrompt,
   extractRequestedSlideCountSpecFromMessages,
   countSlideCountTopUpAttemptsInConversation,
@@ -202,6 +204,7 @@ describe("slideCountTopUp", () => {
     expect(prompt.startsWith(SLIDE_COUNT_TOP_UP_PROMPT_SENTINEL)).toBe(true);
     expect(prompt).toContain("Keep slides 1–6");
     expect(prompt).toContain("APPEND only new slides 7 through 12");
+    expect(prompt).toContain("Emit all 6 remaining slides this turn — not a 3-slide batch");
     expect(prompt).toContain("Do not start over");
     expect(prompt).toMatch(/emit ONLY the new `<section class="slide">`/i);
     expect(prompt).not.toContain("copies every existing slide verbatim");
@@ -223,11 +226,66 @@ describe("slideCountTopUp", () => {
 
   it("appends the remaining default-6 pages in one top-up", () => {
     expect(SLIDE_COUNT_TOP_UP_BATCH).toBe(6);
+    expect(slideCountTopUpAppendUntil(1, 6)).toBe(6);
     expect(buildSlideCountTopUpPrompt({ produced: 1, requested: 6 })).toContain(
       "APPEND only new slides 2 through 6",
     );
     expect(buildSlideCountTopUpPrompt({ produced: 3, requested: 6 })).toContain(
       "APPEND only new slides 4 through 6",
     );
+    expect(buildSlideCountTopUpPrompt({ produced: 1, requested: 6 })).toContain(
+      "Emit all 5 remaining slides this turn — not a 3-slide batch",
+    );
+    expect(buildSlideCountTopUpPrompt({ produced: 6, requested: 15 })).toContain(
+      "Stopping after 3 new slides is a failure",
+    );
+    expect(buildSlideCountTopUpPrompt({ produced: 3, requested: 6 })).toContain(
+      "Emit all 3 remaining slides this turn",
+    );
+    expect(buildSlideCountTopUpPrompt({ produced: 3, requested: 6 })).not.toContain(
+      "Stopping after 3 new slides is a failure",
+    );
+  });
+
+  it("finishes a default-6 miss in one honored top-up, not a 3+3 split", () => {
+    expect(countHonoredSlideCountTopUpTurns({
+      produced: 1,
+      requested: null,
+      defaultRequested: 6,
+    })).toBe(1);
+    expect(countHonoredSlideCountTopUpTurns({
+      produced: 3,
+      requested: null,
+      defaultRequested: 6,
+    })).toBe(1);
+    expect(countHonoredSlideCountTopUpTurns({
+      produced: 6,
+      requested: null,
+      defaultRequested: 6,
+    })).toBe(0);
+    expect(countHonoredSlideCountTopUpTurns({
+      produced: 6,
+      requested: 15,
+    })).toBe(2);
+
+    let produced = 1;
+    let topUpCount = 0;
+    while (shouldQueueSlideCountTopUp({
+      produced,
+      requested: null,
+      defaultRequested: 6,
+      topUpCount,
+    })) {
+      produced = slideCountTopUpAppendUntil(produced, 6);
+      topUpCount += 1;
+    }
+    expect(produced).toBe(6);
+    expect(topUpCount).toBe(1);
+    expect(shouldQueueSlideCountTopUp({
+      produced: 6,
+      requested: null,
+      defaultRequested: 6,
+      topUpCount: 1,
+    })).toBe(false);
   });
 });

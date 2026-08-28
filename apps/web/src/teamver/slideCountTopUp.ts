@@ -234,20 +234,55 @@ export function shouldQueueSlideCountTopUp(input: {
   return input.produced < targetMin;
 }
 
+export function slideCountTopUpAppendUntil(produced: number, requested: number): number {
+  return Math.min(produced + SLIDE_COUNT_TOP_UP_BATCH, requested);
+}
+
+/**
+ * Hidden top-up turns after a persistable first-fill, if each append honors
+ * remaining-all (up to {@link SLIDE_COUNT_TOP_UP_BATCH}). Default 6 from a
+ * 1–4 slide miss is one turn — a 3+3 split is a failed honor, not the plan.
+ */
+export function countHonoredSlideCountTopUpTurns(input: {
+  produced: number;
+  requested: number | null;
+  requestedMin?: number | null;
+  defaultRequested?: number;
+}): number {
+  let produced = input.produced;
+  let topUpCount = 0;
+  while (
+    shouldQueueSlideCountTopUp({
+      produced,
+      requested: input.requested,
+      requestedMin: input.requestedMin,
+      defaultRequested: input.defaultRequested,
+      topUpCount,
+    })
+  ) {
+    const target = input.requested ?? input.defaultRequested;
+    if (target == null) break;
+    produced = slideCountTopUpAppendUntil(produced, target);
+    topUpCount += 1;
+  }
+  return topUpCount;
+}
+
 export function buildSlideCountTopUpPrompt(input: {
   produced: number;
   requested: number;
 }): string {
-  const appendUntil = Math.min(
-    input.produced + SLIDE_COUNT_TOP_UP_BATCH,
-    input.requested,
-  );
+  const appendUntil = slideCountTopUpAppendUntil(input.produced, input.requested);
+  const remaining = appendUntil - input.produced;
   return [
     SLIDE_COUNT_TOP_UP_PROMPT_SENTINEL,
     `The current deck is a CLOSED ${input.produced}-slide deliverable.`,
     `The user requested ${input.requested} slides.`,
     `Keep slides 1–${input.produced} exactly as they are. Do not rewrite, restyle, delete, or collapse them.`,
     `APPEND only new slides ${input.produced + 1} through ${appendUntil} (inclusive).`,
+    remaining > 3
+      ? `Emit all ${remaining} remaining slides this turn — not a 3-slide batch. Stopping after 3 new slides is a failure.`
+      : `Emit all ${remaining} remaining slides this turn.`,
     "This is an explicit slide-count expansion — not a redesign and not an incomplete-output retry.",
     "Do NOT rewrite the saved deck. Do NOT emit `<head>`, Motif `<svg>`, or copy existing slides.",
     "Emit ONLY the new `<section class=\"slide\">` blocks (body-first). Persist appends them after the saved slides.",

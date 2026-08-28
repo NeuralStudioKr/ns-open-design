@@ -237,6 +237,7 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | persist/preview: MiniMax 2×2 `.grid`가 카드 1개만 품고 3장을 형제로 버림 | ☑ 루프162 |
 | persist/preview: flow 밖 SPEAKING pill이 clip 뒤에 숨고 비범위 deco remmerge 누락 | ☑ 루프163 |
 | first-fill이 3장에서 멈추고 top-up 3+3으로 기본 6장이 3턴 | ☑ 루프164 |
+| top-up이 remaining-all을 말해도 3장 배치 습관이면 기본 6장이 다시 3턴 | ☑ 루프169 |
 | persist/preview: kami-deck leftover(Berlin/Claude Design/SKILL.md)가 삼각함수 브리프에 남음 | ☑ 루프165 |
 | persist/preview: look CSS가 1–2장 사이에 끼어 표지 밀집도가 깨짐 | ☑ follow-up |
 | persist/preview: MiniMax `<p="">` · 유출 `· Label` | ☑ follow-up |
@@ -321,7 +322,14 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 **검증:** contracts 전체 (823 파일 / 2090 테스트) · deck-template-look-css 회귀 (81/81) · deck-fixed-canvas 계열 (167/167)
 
-## 이번 루프 (루프168 · kami-deck leftover recover/reuse persist 갭)
+## 이번 루프 (루프169)
+
+1. top-up 프롬프트 — remaining > 3이면 3장 배치 금지. 이번 턴에 잔여 전부
+2. invariant — `countHonoredSlideCountTopUpTurns`: 기본 6 미스(1·3장) = top-up 1회. 15장 = 2회
+
+**검증:** web slideCountTopUp · contracts deck-framework-compact
+
+## 직전 루프 (루프168 · kami-deck leftover recover/reuse persist 갭)
 
 사용자 리포트(2026-08-28 · staging MiniMax 한글 "삼각함수" 브리프) `AGENT_EXECUTION_FAILED` 후 남긴 kami-deck example.html leftover가 스크럽 없이 저장·렌더된 사건. 루프165에서 `catalogExampleShouldBeScrubbed` + `scrubLeftoverCatalogExampleHtml`을 만들었지만 **`ProjectView.tsx` persist 경로에만 wire되어 있었고**, `recover existing artifact` (line 8253) / `same-turn write short-circuit` (line 10274) 경로는 `healAiGeneratedDeckMarkup`만 호출하고 catalog scrub은 건너뛰었다.
 
