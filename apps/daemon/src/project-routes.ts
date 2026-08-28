@@ -2220,8 +2220,17 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
 
   // ---- Preview comments ----------------------------------------------------
 
-  app.get('/api/projects/:id/conversations/:cid/comments', (req, res) => {
-    const conv = getConversation(db, req.params.cid);
+  app.get('/api/projects/:id/conversations/:cid/comments', async (req, res) => {
+    // Same HA / create-handoff race as GET messages: ProjectView loads comments
+    // as soon as the create conversation id is handed off, before this node has
+    // a local row (sticky miss, fresh pod, or first write still in flight).
+    // Returning 404 spams the browser console on every new generation; recover
+    // a stub conversation so the client gets `{ comments: [] }` like an empty
+    // brand-new chat.
+    let conv = getConversation(db, req.params.cid);
+    if (!conv) {
+      conv = await recoverTeamverConversationForWrite(req.params.id, req.params.cid);
+    }
     if (!conv || conv.projectId !== req.params.id) {
       return res.status(404).json({ error: 'conversation not found' });
     }
@@ -2230,8 +2239,11 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
     });
   });
 
-  app.post('/api/projects/:id/conversations/:cid/comments', (req, res) => {
-    const conv = getConversation(db, req.params.cid);
+  app.post('/api/projects/:id/conversations/:cid/comments', async (req, res) => {
+    let conv = getConversation(db, req.params.cid);
+    if (!conv) {
+      conv = await recoverTeamverConversationForWrite(req.params.id, req.params.cid);
+    }
     if (!conv || conv.projectId !== req.params.id) {
       return res.status(404).json({ error: 'conversation not found' });
     }
@@ -2251,8 +2263,11 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
 
   app.patch(
     '/api/projects/:id/conversations/:cid/comments/:commentId',
-    (req, res) => {
-      const conv = getConversation(db, req.params.cid);
+    async (req, res) => {
+      let conv = getConversation(db, req.params.cid);
+      if (!conv) {
+        conv = await recoverTeamverConversationForWrite(req.params.id, req.params.cid);
+      }
       if (!conv || conv.projectId !== req.params.id) {
         return res.status(404).json({ error: 'conversation not found' });
       }
@@ -2276,8 +2291,11 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
 
   app.delete(
     '/api/projects/:id/conversations/:cid/comments/:commentId',
-    (req, res) => {
-      const conv = getConversation(db, req.params.cid);
+    async (req, res) => {
+      let conv = getConversation(db, req.params.cid);
+      if (!conv) {
+        conv = await recoverTeamverConversationForWrite(req.params.id, req.params.cid);
+      }
       if (!conv || conv.projectId !== req.params.id) {
         return res.status(404).json({ error: 'conversation not found' });
       }

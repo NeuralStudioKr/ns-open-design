@@ -48,6 +48,21 @@ describe('BYOK terminal message PUT hooks', () => {
     const handler = source.slice(getIndex, getIndex + 1_200);
     expect(handler).toContain('async (req, res)');
     expect(handler).toContain('recoverTeamverConversationForWrite');
-    expect(handler).toContain("res.json({ messages: listMessages(db, req.params.cid) })");
+    expect(handler).toMatch(/listMessagesAsync[\s\S]*listMessages\(db/);
+  });
+
+  it('recovers missing conversations on preview comments GET (create-handoff race)', () => {
+    const source = readFileSync(
+      new URL('../src/project-routes.ts', import.meta.url),
+      'utf8',
+    );
+    const getIndex = source.indexOf(
+      "app.get('/api/projects/:id/conversations/:cid/comments'",
+    );
+    expect(getIndex).toBeGreaterThanOrEqual(0);
+    const handler = source.slice(getIndex, getIndex + 1_200);
+    expect(handler).toContain('async (req, res)');
+    expect(handler).toContain('recoverTeamverConversationForWrite');
+    expect(handler).toContain('listPreviewComments');
   });
 });
