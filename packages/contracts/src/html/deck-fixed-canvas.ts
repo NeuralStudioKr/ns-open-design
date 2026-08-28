@@ -1959,6 +1959,74 @@ function calcAdditiveSameUnitLooksCardLike(value: string): boolean {
       const cross = parts.reduce((acc, p) => acc + p.sign * p.n, 0);
       if (cross >= 2) return true;
     }
+    // Cross-family: rem|em + print → rem*16 + printPx ≥13 (루프671): 0.5rem+4pt ≈ 13.3px.
+    if (
+      parts.every((p) => p.unit === 'rem' || p.unit === 'em' || printPx[p.unit] != null)
+      && [...units].some((u) => u === 'rem' || u === 'em')
+      && [...units].some((u) => printPx[u] != null)
+    ) {
+      const remish = parts
+        .filter((p) => p.unit === 'rem' || p.unit === 'em')
+        .reduce((acc, p) => acc + p.sign * p.n, 0);
+      const print = parts
+        .filter((p) => printPx[p.unit] != null)
+        .reduce((acc, p) => acc + p.sign * p.n * (printPx[p.unit] ?? 0), 0);
+      if (remish >= 0.75 || print >= 13) return true;
+      if (remish * 16 + print >= 13) return true;
+    }
+    // Cross-family: line-box + print — 1lh≈16px (루프676): 0.5lh+4pt ≈ 13.3px.
+    if (
+      parts.every((p) => lineBox.has(p.unit) || printPx[p.unit] != null)
+      && [...units].some((u) => lineBox.has(u))
+      && [...units].some((u) => printPx[u] != null)
+    ) {
+      const line = parts.filter((p) => lineBox.has(p.unit)).reduce((acc, p) => acc + p.sign * p.n, 0);
+      const print = parts
+        .filter((p) => printPx[p.unit] != null)
+        .reduce((acc, p) => acc + p.sign * p.n * (printPx[p.unit] ?? 0), 0);
+      if (line >= 2 || print >= 13) return true;
+      if (line * 16 + print >= 13) return true;
+    }
+    // Cross-family: ch + print — 1ch≈8px (루프676): 1ch+4pt ≈ 13.3px.
+    if (
+      units.has('ch')
+      && [...units].every((u) => u === 'ch' || printPx[u] != null)
+      && units.size >= 2
+    ) {
+      const ch = parts.filter((p) => p.unit === 'ch').reduce((acc, p) => acc + p.sign * p.n, 0);
+      const print = parts
+        .filter((p) => printPx[p.unit] != null)
+        .reduce((acc, p) => acc + p.sign * p.n * (printPx[p.unit] ?? 0), 0);
+      if (ch >= 2 || print >= 13) return true;
+      if (ch * 8 + print >= 13) return true;
+    }
+    // Cross-family: ic|ric + print — 1ic≈16px (루프676): 0.5ic+4pt ≈ 13.3px.
+    if (
+      parts.every((p) => icBox.has(p.unit) || printPx[p.unit] != null)
+      && [...units].some((u) => icBox.has(u))
+      && [...units].some((u) => printPx[u] != null)
+    ) {
+      const ic = parts.filter((p) => icBox.has(p.unit)).reduce((acc, p) => acc + p.sign * p.n, 0);
+      const print = parts
+        .filter((p) => printPx[p.unit] != null)
+        .reduce((acc, p) => acc + p.sign * p.n * (printPx[p.unit] ?? 0), 0);
+      if (ic >= 1 || print >= 13) return true;
+      if (ic * 16 + print >= 13) return true;
+    }
+    // Cross-family: fontVp + print → viewPx + print ≥13 (루프676).
+    if (
+      parts.every((p) => fontVp.has(p.unit) || printPx[p.unit] != null)
+      && [...units].some((u) => fontVp.has(u))
+      && [...units].some((u) => printPx[u] != null)
+    ) {
+      const vp = parts.filter((p) => fontVp.has(p.unit)).reduce((acc, p) => acc + p.sign * p.n, 0);
+      const print = parts
+        .filter((p) => printPx[p.unit] != null)
+        .reduce((acc, p) => acc + p.sign * p.n * (printPx[p.unit] ?? 0), 0);
+      if (vp >= 2 || print >= 13) return true;
+      // vb/vi ≈ height/inline viewport → treat like vh (10.8px).
+      if (vp * 10.8 + print >= 13) return true;
+    }
   }
   return false;
 }
