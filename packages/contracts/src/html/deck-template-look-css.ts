@@ -32,7 +32,9 @@ import { stripEmptyOfficialTextChromeMotifs } from './heal-official-magazine-lay
 
 export const OFFICIAL_DECK_LOOK_STYLE_ATTR = 'data-od-official-look-css';
 export const OFFICIAL_DECK_MOTIF_HTML_ATTR = 'data-od-official-motif-html';
-/** Unscoped Motif placement rules so compact slides without `.s-cover` still paint. */
+/** Motif placement rules scoped to `[data-od-official-motif-html]` so compact
+ * slides without `.s-cover` still paint — without leaking catalog insets onto
+ * in-flow content that reused `.marker` / `.arrow`. */
 export const OFFICIAL_DECK_MOTIF_DECO_CSS_ATTR = 'data-od-official-motif-deco-css';
 
 /** Marker comment inside official look CSS — heal upgrades older weak neutralize. */
@@ -324,6 +326,11 @@ section[data-screen-label], main[data-screen-label], article[data-screen-label] 
 .slide [data-od-slide-flow] .marker:not([data-od-official-motif-html])::before,
 .slide [data-od-slide-flow] .marker:not([data-od-official-motif-html])::after {
   content: none !important;
+  display: none !important;
+}
+/* od-sibling-chrome-above-flow: SPEAKING / stamp sit outside the clip wrapper. */
+.slide > :is(.pill, [class*="pill"], .stamp, [class*="stamp"]):not([data-od-official-motif-html]) {
+  z-index: 3 !important;
 }
 `
 
@@ -486,6 +493,7 @@ function officialLookCssLooksCurrent(css: string): boolean {
     && css.includes('od-magazine-title-fill')
     && css.includes('od-look-slot-flow')
     && css.includes('od-look-slot-flow-ext')
+    && css.includes('od-sibling-chrome-above-flow')
   );
 }
 
@@ -535,6 +543,7 @@ export function hasOfficialLookStackedCanvasNeutralizeProof(html: string): boole
     && dest.includes('od-magazine-title-fill')
     && dest.includes('od-look-slot-flow')
     && dest.includes('od-look-slot-flow-ext')
+    && dest.includes('od-sibling-chrome-above-flow')
   );
 }
 
@@ -1529,6 +1538,32 @@ function trailingMotifSelector(selector: string): string | null {
   return parts.slice(start).join(' ');
 }
 
+/** Keep Motif paint on compact slides without `.s2`, but never target content copies. */
+function scopeMotifFallbackSelector(trailing: string): string {
+  const t = String(trailing ?? '').trim();
+  if (!t) return '.slide [data-od-official-motif-html]';
+  if (/\[data-od-official-motif-html\]/i.test(t)) {
+    return /\.slide\b/i.test(t) ? t : `.slide ${t}`;
+  }
+  if (t.startsWith('.') || t.startsWith(':')) {
+    return `.slide [data-od-official-motif-html]${t}`;
+  }
+  return `.slide [data-od-official-motif-html] ${t}`;
+}
+
+function motifDecoCssLeaksPlacementIntoContent(css: string): boolean {
+  const re = /([^{}]+)\{/g;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(String(css ?? ''))) !== null) {
+    const sel = match[1] ?? '';
+    if (!/\.slide\b/i.test(sel)) continue;
+    if (!/\.(?:marker|arrows?|arr)\b/i.test(sel)) continue;
+    if (/\[data-od-official-motif-html\]/i.test(sel)) continue;
+    return true;
+  }
+  return false;
+}
+
 function motifFallbackCss(officialCss: string, instances: string[]): string {
   const names = new Set<string>();
   for (const block of instances) {
@@ -1553,10 +1588,7 @@ function motifFallbackCss(officialCss: string, instances: string[]): string {
       // Must sanitize declarations directly: wrapping as `.x{…}` skips the
       // Motif-selector gate inside sanitizeMotifOutsideCanvasOffsets (§0.72).
       body = sanitizeMotifOffsetDeclarations(body);
-      const scoped = /^\.|:/.test(trailing)
-        ? `.slide [data-od-official-motif-html]${trailing}`
-        : `.slide [data-od-official-motif-html] ${trailing}`;
-      const rule = `${scoped}{${body}}`;
+      const rule = `${scopeMotifFallbackSelector(trailing)}{${body}}`;
       if (!rules.includes(rule)) rules.push(rule);
       kept += 1;
     }
@@ -1601,6 +1633,7 @@ function mergeMotifFallbackCss(dest: string, officialCss: string, instances: str
       motifDecoCssHasContentStacking(body)
       && !hasHang
       && /\[data-od-official-motif-html\]/i.test(body)
+      && !motifDecoCssLeaksPlacementIntoContent(body)
     ) {
       return dest;
     }

@@ -112,6 +112,10 @@ html:has(#od-stacked-deck-stage) .slide > [data-od-slide-flow] > .slide-inner {
   margin: 0 !important;
   box-shadow: none !important;
 }
+/* od-sibling-chrome-above-flow: SPEAKING / stamp sit outside the clip wrapper. */
+.slide > :is(.pill, [class*="pill"], .stamp, [class*="stamp"]):not([data-od-official-motif-html]) {
+  z-index: 3;
+}
 `.trim();
 
 function extractClassAttr(attrs: string): string {
@@ -2340,6 +2344,7 @@ function injectFixedCanvasStyle(html: string): string {
       || !/data-od-slide-flow/i.test(body)
       || !/:has\(\.split-left\)/i.test(body)
       || !/:has\(\.col-left\)/i.test(body)
+      || !/od-sibling-chrome-above-flow/i.test(body)
     ) {
       return html.replace(pinRe, `$1\n${FIXED_CANVAS_CSS}\n$3`);
     }

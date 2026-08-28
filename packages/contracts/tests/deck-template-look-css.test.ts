@@ -10,6 +10,7 @@ import {
 import {
   LOOK_NEUTRALIZE_CSS,
   OFFICIAL_DECK_LOOK_STYLE_ATTR,
+  OFFICIAL_DECK_MOTIF_DECO_CSS_ATTR,
   OFFICIAL_DECK_MOTIF_HTML_ATTR,
   deckHtmlHasMotifOutsideCanvasHang,
   deckHtmlHasOfficialLookCss,
@@ -34,6 +35,7 @@ import {
   listLocalStylesheetHrefs,
   resolveSiblingAssetPath,
 } from '../src/template-visual-kit';
+import { pinDeckSlidesToFixedCanvas } from '../src/html/deck-fixed-canvas';
 import { OFFICIAL_TEMPLATE_GENERATED_DECK_FIXTURES } from './fixtures/official-template-generated-decks';
 
 const CAPSULE_EXAMPLE = `<!doctype html><html><head>
@@ -1083,6 +1085,10 @@ ${staleFill}
     expect(LOOK_NEUTRALIZE_CSS).toContain('od-magazine-title-fill');
     expect(LOOK_NEUTRALIZE_CSS).toContain('od-look-slot-flow');
     expect(LOOK_NEUTRALIZE_CSS).toContain('od-look-slot-flow-ext');
+    expect(LOOK_NEUTRALIZE_CSS).toContain('od-sibling-chrome-above-flow');
+    expect(LOOK_NEUTRALIZE_CSS).toMatch(
+      /\[data-od-slide-flow\][^{]*:is\(\.flow, \.grid, \.table/,
+    );
     expect(LOOK_NEUTRALIZE_CSS).toMatch(
       /\.slide\s+\.od-magazine-fill-track\s+>\s+:is\(ul, ol\)[\s\S]*font-size:\s*28px\s*!important/,
     );
@@ -1095,6 +1101,81 @@ ${staleFill}
     expect(LOOK_NEUTRALIZE_CSS).not.toMatch(
       /\.slide[^{]*\{[^}]*overflow:\s*visible\s*!important;\s*display:\s*flex/i,
     );
+  });
+
+  const BOLD_POSTER_COMPACT_FILL = `<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"></head>
+<body style="margin:0;background:#EFE9D9">
+<section class="slide slide-title" data-screen-label="01 COVER" style="width:1920px;height:1080px;box-sizing:border-box;position:relative;background:#EFE9D9;padding:56px 96px">
+  <div class="pill" style="position:absolute;right:96px;top:64px;border:2px solid #0F0F0F;padding:8px 18px;border-radius:999px;background:#F5C518">SPEAKING</div>
+  <h1 style="margin:0;font-family:'Archivo Black',sans-serif;font-size:184px;line-height:.92">SPOKEN<br>ENGLISH,<br><span style="color:#1F8A4C">PRACTICED.</span></h1>
+  <p style="margin:0;max-width:1080px;font-size:36px;line-height:1.35">일주일 안에 입이 트이는 영어 회화 루틴 — 입력(input) → 패턴(pattern) → 산출(output) 3단 구조로 매일 30분.</p>
+  <div class="marker display" style="position:relative;width:520px;height:120px;background:#F06CA8;border:4px solid #0F0F0F">DAILY 30 MIN</div>
+</section>
+<section class="slide s6" data-screen-label="04 FOUR-STEP PROCESS" style="width:1920px;height:1080px;box-sizing:border-box;position:relative;background:#EFE9D9;padding:56px 96px">
+  <h2 style="margin:0;font-family:'Archivo Black',sans-serif;font-size:108px;line-height:1">ONE CHUNK,<br>FOUR PASSES.</h2>
+  <p style="margin:0;font-size:28px;line-height:1.4">오늘 배울 표현 하나를 4번 굴려야 입에 붙는다.</p>
+  <div class="flow" style="position:relative;display:grid;grid-template-columns:repeat(4,1fr);gap:28px">
+    <div class="step" style="position:relative;border:4px solid #0F0F0F;background:#FFFFFF;padding:28px">01 LISTENING</div>
+    <div class="step" style="position:relative;border:4px solid #0F0F0F;background:#FFFFFF;padding:28px">02 SHADOW</div>
+    <div class="step" style="position:relative;border:4px solid #0F0F0F;background:#FFFFFF;padding:28px">03 REWRITE</div>
+    <div class="step" style="position:relative;border:4px solid #0F0F0F;background:#FFFFFF;padding:28px">04 SPEAK LIVE</div>
+  </div>
+</section>
+</body></html>`;
+
+  it('keeps Creative Mode compact chips in-flow and does not stamp PRESS PLAY', () => {
+    const official = loadOfficialLookSource(join(EXAMPLES_DIR, 'html-ppt-zhangzara-creative-mode/example.html'));
+    const assets = extractOfficialDeckLookAssets(official)!;
+    expect(assets.motifHtml.some((block) => /\bmarker\b/i.test(block))).toBe(false);
+    const merged = mergeOfficialDeckLookCss(BOLD_POSTER_COMPACT_FILL, assets);
+    const deco =
+      merged.match(
+        new RegExp(
+          `<style[^>]*${OFFICIAL_DECK_MOTIF_DECO_CSS_ATTR}[^>]*>([\\s\\S]*?)</style>`,
+          'i',
+        ),
+      )?.[1] ?? '';
+    expect(deco).not.toMatch(/\.slide\s+\.marker\s*\{/);
+    expect(merged).not.toMatch(/PRESS\s*(?:&nbsp;|\s)*PLAY/i);
+    expect(merged).toContain('DAILY 30 MIN');
+    expect(merged).toContain('SPEAKING');
+    expect(merged).toMatch(/\.s6\s+\.flow\s*\{[^}]*top:\s*380px/);
+    expect(merged).toContain('od-look-slot-flow');
+    expect(merged).toContain('od-sibling-chrome-above-flow');
+    const pinned = pinDeckSlidesToFixedCanvas(merged);
+    expect(pinned).toMatch(/data-od-slide-flow/);
+    expect(pinned).toMatch(/od-sibling-chrome-above-flow/);
+    expect(pinned).toMatch(
+      /\.slide\s*>\s*:is\(\.pill, \[class\*="pill"\], \.stamp, \[class\*="stamp"\]\):not\(\[data-od-official-motif-html\]\)/,
+    );
+  });
+
+  it('upgrades unscoped Motif deco .marker placement on remmerge', () => {
+    const official = loadOfficialLookSource(join(EXAMPLES_DIR, 'html-ppt-zhangzara-creative-mode/example.html'));
+    const assets = extractOfficialDeckLookAssets(official)!;
+    const merged = mergeOfficialDeckLookCss(BOLD_POSTER_COMPACT_FILL, assets);
+    const staleSheet = `<style ${OFFICIAL_DECK_MOTIF_DECO_CSS_ATTR}>
+.slide .marker{position:absolute;left:96px;bottom:160px;width:560px;height:120px;background:var(--pink)}
+.slide > :is(h1,h2,h3,p){position:relative !important;z-index:2 !important;}
+</style>`;
+    const stale = /<style\b[^>]*\bdata-od-official-motif-deco-css\b[^>]*>[\s\S]*?<\/style>/i.test(merged)
+      ? merged.replace(
+        /<style\b[^>]*\bdata-od-official-motif-deco-css\b[^>]*>[\s\S]*?<\/style>/i,
+        staleSheet,
+      )
+      : merged.replace('</head>', `${staleSheet}</head>`);
+    expect(stale).toMatch(/\.slide \.marker\{position:absolute;left:96px;bottom:160px/);
+    const upgraded = mergeOfficialDeckLookCss(stale, assets);
+    const deco =
+      upgraded.match(
+        new RegExp(
+          `<style[^>]*${OFFICIAL_DECK_MOTIF_DECO_CSS_ATTR}[^>]*>([\\s\\S]*?)</style>`,
+          'i',
+        ),
+      )?.[1] ?? '';
+    expect(deco).not.toMatch(/\.slide\s+\.marker\s*\{position:absolute;left:96px;bottom:160px/);
+    expect(upgraded).toContain('DAILY 30 MIN');
   });
 
   it('sanitizes Scatterbrain title-accent hangs during official look merge (§0.83)', () => {

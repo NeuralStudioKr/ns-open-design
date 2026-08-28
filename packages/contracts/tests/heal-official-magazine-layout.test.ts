@@ -57,6 +57,7 @@ describe('heal official magazine layout density', () => {
     expect(LOOK_NEUTRALIZE_CSS).toContain('od-magazine-title-fill');
     expect(LOOK_NEUTRALIZE_CSS).toContain('od-look-slot-flow');
     expect(LOOK_NEUTRALIZE_CSS).toContain('od-look-slot-flow-ext');
+    expect(LOOK_NEUTRALIZE_CSS).toContain('od-sibling-chrome-above-flow');
     expect(LOOK_NEUTRALIZE_CSS).toMatch(
       /\.slide\s+\.od-magazine-title-fill\s+h2\.section[\s\S]*font-size:\s*72px\s*!important/,
     );
