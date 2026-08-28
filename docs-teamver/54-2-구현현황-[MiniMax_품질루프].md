@@ -265,9 +265,10 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | preview/export: 작성자 JS presenter를 MiniMax salvage로 오인해 페이지 누락 | ☑ 루프159 |
 | preview/export: MiniMax `.slide .arrow{display:none}` scope-rewrite 부작용으로 body `.arrow` CSS-삼각형 chrome이 step 카드에 잔재 | ☑ 루프166 |
 | preview/export: MiniMax 인라인 uppercase-mono footer(PAGE·EDITION·CHAPTER)가 class 없이 flow 앞쪽에 몰려 하단 대공백 잔존 | ☑ 루프167 |
+| persist recover/reuse: `AGENT_EXECUTION_FAILED` 후 남은 kami-deck example.html leftover가 스크럽 없이 저장·렌더 (Claude Design·Apache-2.0·Berlin 잔재 + tagline/dash-list brief 유출) | ☑ 루프168 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프166–167 · MiniMax 시각 잔재 감사)
+## 직전 루프 (루프166–167 · MiniMax 시각 잔재 감사)
 
 사용자 리포트(2026-08-28 · staging MiniMax 영어 회화 덱) 시각 잔재 감사 및 후속 해결. 루프158-A로 flow wrapper invariant는 확보되었으나, 실제 파이프라인을 Chrome for Testing 헤드리스로 렌더링해 슬라이드별 잔여 결함을 육안 감사했다.
 
@@ -319,6 +320,64 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 - `packages/contracts/src/html/deck-fixed-canvas.ts` — `markTrailingMiniMaxFootersInPinnedFlow` export 추가, pin 파이프라인에 hook
 
 **검증:** contracts 전체 (823 파일 / 2090 테스트) · deck-template-look-css 회귀 (81/81) · deck-fixed-canvas 계열 (167/167)
+
+## 이번 루프 (루프168 · kami-deck leftover recover/reuse persist 갭)
+
+사용자 리포트(2026-08-28 · staging MiniMax 한글 "삼각함수" 브리프) `AGENT_EXECUTION_FAILED` 후 남긴 kami-deck example.html leftover가 스크럽 없이 저장·렌더된 사건. 루프165에서 `catalogExampleShouldBeScrubbed` + `scrubLeftoverCatalogExampleHtml`을 만들었지만 **`ProjectView.tsx` persist 경로에만 wire되어 있었고**, `recover existing artifact` (line 8253) / `same-turn write short-circuit` (line 10274) 경로는 `healAiGeneratedDeckMarkup`만 호출하고 catalog scrub은 건너뛰었다.
+
+### 증상 (사용자 fixture)
+
+- Cover: `<h1>삼각함수</h1>` + `<p class='tagline'>${brief}</p>` — 브리프가 tagline에 그대로 노출
+- Slide 2: kami 카탈로그 문장 잔재 ("Open Design is the open-source alternative to Anthropic's Claude Design", "A local-first design studio for the agent you already trust", `Apache-2.0` / `Local-first` / `BYOK` 태그, `Berlin · 52.5200° N · 13.4050° E`, `MMXXVI`)
+- Slide 2 body: `<ul class='dash'><li>${brief}</li></ul>` — 브리프가 dash-list item에 그대로 노출
+- Slides 3–6: "삼각함수 · 3/4/5/6" 제목만 반복, 실질 콘텐츠 없음 (`<li></li>` 3개 등 빈 shell)
+- `AGENT_EXECUTION_FAILED` 배너: "슬라이드 실행 중 오류가 발생했습니다"
+
+### 원인 감사
+
+1. **파이프라인 갭 (핵심)** — `apps/web/src/components/ProjectView.tsx`의 3개 heal 경로 중 `persistArtifact` (line 5626) 하나만 `scrubLeftoverCatalogExampleHtml`을 호출. `recover` (line 8253), `same-turn reuse` (line 10274) 두 경로는 `healAiGeneratedDeckMarkup`만 호출해서 leftover가 그대로 저장·렌더됨.
+2. **brief-leak 슬롯 협소** — `scrubBriefLeakFromMetaSlots`의 slotClasses는 `['v', 'conf', 'kicker', 'brief', 'summary', 'note', 'lede', 'tagline']`만 처리. dash-list `<li>` 안의 brief 유출은 미처리.
+3. **부분-실행 실패**의 결과물이 저장 skip 게이트(`isLowSubstanceSlideDeckArtifact`, `deckSlideHeadingsLookLikeFailedGenerate`)를 부분적으로 통과 — recover/reuse 경로는 이 게이트 자체가 없음.
+
+### 해결 (근본 fix — heal 함수 자체가 스크럽을 소유)
+
+**소스 변경 · `packages/contracts/src/html/heal-ai-generated-deck.ts`**
+
+1. `healAiGeneratedDeckMarkup` 진입점에 catalog leftover scrub 통합
+   - `catalogExampleShouldBeScrubbed(html, brief, {allowEmptyBrief: true})` 통과 시 `scrubLeftoverCatalogExampleHtml` 선행 실행
+   - Idempotent — 이미 스크럽된 markup은 `catalogExampleShouldBeScrubbed`가 false 리턴해서 no-op
+   - persist 경로 (이미 scrub 호출)에서 중복 호출되어도 안전
+   - **모든 heal 호출자 (persist / recover / reuse / preview / srcdoc) 를 한 곳에서 방어**
+2. `scrubBriefLeakFromMetaSlots`에 `<li>` 처리 추가
+   - `<li>` 안 텍스트가 정확히 brief와 일치하면 empty로 blank
+   - 인접한 정상 li는 보존 (`<li>내용</li>` 유지)
+   - dash-list 특화 아님 — 일반 `<ul><li>${brief}</li></ul>` 도 처리
+
+**red-spec 파일 1개**
+- `tests/heal-ai-generated-deck-catalog-leftover.test.ts` (5/5)
+  1. `healAiGeneratedDeckMarkup(kamiLeftover, brief)` 이 Claude Design/local-first studio/SKILL.md/Apache-2.0/BYOK/Berlin/MMXXVI/brief 완전 제거 + 삼각함수 topic 보존
+  2. 정상 AI 덱은 무손실 (false-positive 없음)
+  3. Idempotent — 두 번째 heal 패스는 첫 패스 결과와 정확히 동일
+  4. `scrubBriefLeakFromMetaSlots`가 dash-list `<li>` 안 brief 유출 blank
+  5. `scrubBriefLeakFromMetaSlots`가 plain `<ul><li>` 도 처리
+
+### 방어 흐름
+
+파이프라인 진입 순서 (변경 후):
+
+```
+recover/reuse 경로: readDiskHtml → healInstructionCopyCoverHeading →
+                     mergeOfficialLookCssForTemplate → sanitizePersistedDeckHostLeaks →
+                     healOfficialMagazineLayoutDensity →
+                     healAiGeneratedDeckMarkup ← 이 안에서 catalog scrub 자동 실행
+                     → repairDeckSlideSurfaceBleed → pin → write
+persist 경로: healAiGeneratedDeckMarkup (이미 scrub 호출됨) → ...
+srcdoc 경로: scrubLeftoverCatalogExampleHtml → healAiGeneratedDeckMarkup ← double-defense
+```
+
+**검증:** contracts 전체 (824 파일 / 2095 테스트) · heal-ai-generated-deck-catalog-leftover (5/5) · 사용자 fixture end-to-end 프로브 (heal-only 경로에서 kami 문장 · Apache-2.0 · Berlin · MMXXVI · brief leak 모두 제거, 슬라이드 6→4로 축소된 skeleton 대체)
+
+**남은 후속 (별도 루프)**: `AGENT_EXECUTION_FAILED` 시 부분-실행 결과물이 recover 경로에서 저장 자체를 skip하도록 하는 UX-layer 게이트 (`deckSlideHeadingsLookLikeFailedGenerate`에 "topic + counter" (`X`, `X 2`, `X · 3`) 반복 패턴 감지 추가 · recover/reuse 경로에도 `skipped-incomplete` return path 추가)
 
 ## 직전 루프 (루프165)
 

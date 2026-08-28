@@ -11,6 +11,10 @@
  */
 
 import { attrsLookLikeDeckOrTemplateSlideHost } from './deck-slide-class.js';
+import {
+  catalogExampleShouldBeScrubbed,
+  scrubLeftoverCatalogExampleHtml,
+} from '../template-clone-fill.js';
 
 function visibleText(html: string): string {
   return String(html ?? '')
@@ -272,6 +276,15 @@ export function scrubBriefLeakFromMetaSlots(html: string, brief?: string | null)
     );
     out = out.replace(re, '$1$3');
   }
+  // 루프168 — MiniMax kami leftover ships the raw brief in `<ul class="dash">
+  // <li>${brief}</li></ul>`. Dash lists are legitimate content, so we
+  // narrowly clear ONLY the list item whose entire text equals the brief.
+  // Preserves adjacent list items that happen to reuse a topic word.
+  const liRe = new RegExp(
+    `(<li\\b[^>]*>)\\s*(?:${briefEscaped})\\s*(</li>)`,
+    'gi',
+  );
+  out = out.replace(liRe, '$1$2');
   return out;
 }
 
@@ -304,6 +317,24 @@ export function polishTruncatedInstructionTitles(html: string): string {
 export function healAiGeneratedDeckMarkup(html: string, brief?: string | null): string {
   let out = String(html ?? '');
   if (!out.trim()) return out;
+  // 루프168 — MiniMax `AGENT_EXECUTION_FAILED` recovery / same-turn-write
+  // reuse persist paths in ProjectView call heal without a preceding
+  // scrubLeftoverCatalogExampleHtml. Own the leftover scrub here so any
+  // heal caller (recover / reuse / preview / persist) is safe.
+  //
+  // Idempotent: `catalogExampleShouldBeScrubbed` returns false on already-
+  // scrubbed markup, so callers that already scrubbed (srcdoc / persist)
+  // pass through untouched.
+  try {
+    if (catalogExampleShouldBeScrubbed(out, brief, { allowEmptyBrief: true })) {
+      const scrubbed = scrubLeftoverCatalogExampleHtml(out, brief, { allowEmptyBrief: true });
+      if (scrubbed && scrubbed !== out) {
+        out = scrubbed;
+      }
+    }
+  } catch (_) {
+    // Fall through — shape-based heals below are still worth running.
+  }
   out = scrubTruncatedAiTagSoup(out);
   out = unnestHeadingBlockChildren(out);
   out = polishTruncatedInstructionTitles(out);
