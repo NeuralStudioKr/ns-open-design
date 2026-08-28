@@ -345,10 +345,7 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 **검증:** contracts 전체 (823 파일 / 2090 테스트) · deck-template-look-css 회귀 (81/81) · deck-fixed-canvas 계열 (167/167)
 
-## 직전 루프 (루프169)
-=======
 ## 직전 루프 (루프169 / top-up remaining-all)
->>>>>>> origin/staging
 
 1. top-up 프롬프트 — remaining > 3이면 3장 배치 금지. 이번 턴에 잔여 전부
 2. invariant — `countHonoredSlideCountTopUpTurns`: 기본 6 미스(1·3장) = top-up 1회. 15장 = 2회
