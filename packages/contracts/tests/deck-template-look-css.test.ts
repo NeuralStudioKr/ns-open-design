@@ -24,6 +24,7 @@ import {
   lockStackedDeckCanvasForPreview,
   looksLikeOfficialFullscreenPresenterDeck,
   mergeOfficialDeckLookCss,
+  dropCollidingOfficialMotifInstances,
   needsStackedDesignViewportLock,
   sanitizeMotifOutsideCanvasOffsets,
   stripOfficialLookSlideHostCanvasClips,
@@ -281,6 +282,12 @@ html, body { overflow: visible !important; height: auto !important; }
     const upgraded = ensureOfficialLookStackedCanvasNeutralize(html);
     expect(hasOfficialLookStackedCanvasNeutralizeProof(upgraded)).toBe(true);
     expect(upgraded).toContain('od-look-slot-flow');
+    expect(upgraded).toContain('od-look-slot-flow-ext');
+    expect(upgraded).toMatch(
+      /\.marker:not\(\[data-od-official-motif-html\]\)::after/,
+    );
+    expect(upgraded).toContain('DAILY 30 MIN');
+    expect(upgraded).not.toContain('PRESS PLAY');
     const deco = upgraded.match(
       /<style data-od-official-motif-deco-css>[\s\S]*?<\/style>/i,
     )?.[0] ?? '';
@@ -289,6 +296,48 @@ html, body { overflow: visible !important; height: auto !important; }
     expect(upgraded).toMatch(
       /\[data-od-slide-flow\] :is\(\.flow, \.grid, \.table, \.step, \.marker\)/,
     );
+  });
+
+  it('does not stamp Creative Mode PRESS PLAY onto compact fills that already have a content marker', () => {
+    const official = loadOfficialLookSource(
+      join(EXAMPLES_DIR, 'html-ppt-zhangzara-creative-mode/example.html'),
+    );
+    const assets = extractOfficialDeckLookAssets(official);
+    expect(assets).toBeTruthy();
+    expect(assets!.motifHtml.join('\n')).not.toMatch(/PRESS\s*PLAY/i);
+    expect(assets!.motifHtml.some((block) => /\bmarker\b/i.test(block))).toBe(false);
+
+    const compact = `<!doctype html><html><body>
+<section class="slide slide-title"><h1>SPOKEN ENGLISH</h1>
+<div class="marker display">DAILY 30 MIN</div></section>
+<section class="slide"><h2>Four passes</h2><div class="pill">SPEAKING</div></section>
+</body></html>`;
+    const merged = mergeOfficialDeckLookCss(compact, assets);
+    const body = merged.replace(/<style\b[\s\S]*?<\/style>/gi, '');
+    expect(body).toContain('DAILY 30 MIN');
+    expect(body).not.toMatch(/PRESS\s*&nbsp;\s*PLAY|PRESS\s+PLAY/i);
+    expect(body).not.toMatch(/data-od-official-motif-html[^>]*\bmarker\b/i);
+    expect(merged).toContain('od-look-slot-flow-ext');
+
+    const daisy = loadOfficialLookSource(
+      join(EXAMPLES_DIR, 'html-ppt-zhangzara-daisy-days/example.html'),
+    );
+    const daisyAssets = extractOfficialDeckLookAssets(daisy);
+    const daisyMerged = mergeOfficialDeckLookCss(
+      '<section class="slide"><h1>Topic</h1><div class="pill">SPEAKING</div></section>',
+      daisyAssets,
+    );
+    expect(daisyMerged).toMatch(/deco-daisy[\s\S]{0,240}<svg\b/);
+    expect(dropCollidingOfficialMotifInstances(daisyMerged)).toMatch(/deco-daisy/);
+
+    const leftover = [
+      '<section class="slide">',
+      '<div data-od-official-motif-html class="marker">PRESS PLAY</div>',
+      '<h1>Four skills</h1>',
+      '</section>',
+    ].join('');
+    expect(dropCollidingOfficialMotifInstances(leftover)).not.toContain('PRESS PLAY');
+    expect(dropCollidingOfficialMotifInstances(leftover)).toContain('Four skills');
   });
 
   it('upgrades 루프139 inner fill that still uses min-height:0', async () => {
@@ -1033,6 +1082,7 @@ ${staleFill}
     expect(LOOK_NEUTRALIZE_CSS).toContain('od-magazine-cover-solo');
     expect(LOOK_NEUTRALIZE_CSS).toContain('od-magazine-title-fill');
     expect(LOOK_NEUTRALIZE_CSS).toContain('od-look-slot-flow');
+    expect(LOOK_NEUTRALIZE_CSS).toContain('od-look-slot-flow-ext');
     expect(LOOK_NEUTRALIZE_CSS).toMatch(
       /\.slide\s+\.od-magazine-fill-track\s+>\s+:is\(ul, ol\)[\s\S]*font-size:\s*28px\s*!important/,
     );

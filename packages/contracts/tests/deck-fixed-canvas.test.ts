@@ -165,6 +165,8 @@ describe('pinDeckSlidesToFixedCanvas', () => {
     const cover = pinned.match(/<section class="slide slide-title"[\s\S]*?<\/section>/i)?.[0] ?? '';
     expect(cover.match(/data-od-slide-flow/g)?.length).toBe(1);
     expect(cover).toMatch(/LEARNING SERIES[\s\S]*SPOKEN[\s\S]*DAILY 30 MIN[\s\S]*PAGE 01/);
+    expect(cover).toContain('DAILY 30 MIN');
+    expect(cover).not.toContain('PRESS PLAY');
     expect(cover).toMatch(/class="pill"[^>]*>SPEAKING/);
     expect(cover).not.toMatch(/data-od-slide-flow[^>]*position:relative/);
     expect(cover).not.toMatch(/data-od-slide-flow[^>]*background:#EFE9D9/);

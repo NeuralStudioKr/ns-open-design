@@ -964,7 +964,106 @@ export function salvageMalformedMiniMaxSlideMarkup(html: string): string {
   next = restyleBiennaleSparseDataBodies(next);
   next = restyleBiennaleSparseQuoteBodies(next);
   next = injectBiennaleSparseFillCss(next);
+  next = salvageOrphan2x2GridCards(next);
   return next;
+}
+
+function gridLooksLikeOfficial2x2(attrs: string): boolean {
+  return (
+    /grid-template-columns\s*:\s*(?:1fr\s+1fr(?!\s+1fr)|repeat\(\s*2\s*,\s*1fr\s*\))/i.test(attrs)
+    && /grid-template-rows\s*:\s*(?:1fr\s+1fr(?!\s+1fr)|repeat\(\s*2\s*,\s*1fr\s*\))/i.test(attrs)
+  );
+}
+
+function visibleCardText(html: string): string {
+  return String(html ?? '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function isSlideChromeFooterCard(html: string): boolean {
+  const open = /^<[^>]+>/.exec(html)?.[0] ?? '';
+  if (/\b(?:page|pagenum|footer|footer-row|date-rail|slide-meta)\b/i.test(open)) return true;
+  return /^(?:PAGE|P\.?)\s*\d+/i.test(visibleCardText(html));
+}
+
+function listDirectChildRanges(html: string, innerStart: number, innerEnd: number): HtmlSpan[] {
+  const ranges: HtmlSpan[] = [];
+  let i = innerStart;
+  while (i < innerEnd) {
+    const rel = html.slice(i, innerEnd).search(/<[a-zA-Z]/);
+    if (rel < 0) break;
+    const start = i + rel;
+    const open = /^<([a-zA-Z][\w:-]*)\b[^>]*>/.exec(html.slice(start, innerEnd));
+    if (!open) break;
+    const tag = open[1]!;
+    if (/\/\s*>$/.test(open[0])) {
+      ranges.push({ start, end: start + open[0].length });
+      i = start + open[0].length;
+      continue;
+    }
+    const closeEnd = findMatchingClose(html, start + open[0].length, tag);
+    if (closeEnd < 0 || closeEnd > innerEnd) break;
+    ranges.push({ start, end: closeEnd });
+    i = closeEnd;
+  }
+  return ranges;
+}
+
+/**
+ * MiniMax sometimes opens a 2×2 `.grid` for four method cards, writes only
+ * the first card inside it, then dumps the other three as slide-level
+ * siblings (`V VOCAB` / `G GRAMMAR` / `S SPEAKING` after `L LISTENING`).
+ * Reparent those siblings so the official 2×2 look can actually hold them.
+ * Do not swallow PAGE / footer chrome.
+ */
+function salvageOrphan2x2GridCards(html: string): string {
+  return String(html ?? '').replace(
+    /<section\b([^>]*)>([\s\S]*?)<\/section>/gi,
+    (block, attrs: string, inner: string) => {
+      if (!/\bslide\b/i.test(attrs) && !/\bs3\b/i.test(attrs)) return block;
+      const gridOpenRe = /<div\b([^>]*\bclass\s*=\s*(?:"[^"]*\bgrid\b[^"]*"|'[^']*\bgrid\b[^']*')[^>]*)>/gi;
+      let match: RegExpExecArray | null;
+      while ((match = gridOpenRe.exec(inner)) !== null) {
+        const gridAttrs = match[1] ?? '';
+        const wants2x2 = gridLooksLikeOfficial2x2(gridAttrs) || /\bs3\b/i.test(attrs);
+        if (!wants2x2) continue;
+        const gridStart = match.index;
+        const openEnd = gridStart + match[0].length;
+        const gridCloseEnd = findMatchingClose(inner, openEnd, 'div');
+        if (gridCloseEnd < 0) continue;
+        const closeTag = /<\/div\s*>$/i.exec(inner.slice(0, gridCloseEnd))?.[0] ?? '</div>';
+        const gridInnerEnd = gridCloseEnd - closeTag.length;
+        const children = listDirectChildRanges(inner, openEnd, gridInnerEnd);
+        if (children.length >= 4) continue;
+        const need = 4 - children.length;
+        const orphans: string[] = [];
+        let cursor = gridCloseEnd;
+        let rest = inner.slice(cursor);
+        while (orphans.length < need) {
+          const trimmed = rest.replace(/^\s+/, '');
+          const skipped = rest.length - trimmed.length;
+          if (!trimmed.startsWith('<div')) break;
+          const open = /^<div\b[^>]*>/i.exec(trimmed);
+          if (!open) break;
+          const closeEnd = findMatchingClose(trimmed, open[0].length, 'div');
+          if (closeEnd < 0) break;
+          const card = trimmed.slice(0, closeEnd);
+          if (isSlideChromeFooterCard(card)) break;
+          if (visibleCardText(card).length < 8) break;
+          orphans.push(card);
+          cursor += skipped + closeEnd;
+          rest = inner.slice(cursor);
+        }
+        if (orphans.length !== need) continue;
+        const before = inner.slice(0, gridInnerEnd);
+        const after = inner.slice(cursor);
+        return `<section${attrs}>${before}${orphans.join('')}${closeTag}${after}</section>`;
+      }
+      return block;
+    },
+  );
 }
 
 function officialMotifVisibleText(block: string): string {

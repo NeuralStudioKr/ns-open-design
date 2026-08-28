@@ -227,6 +227,9 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | persist/preview: Biennale 표지 blocks 없음 · chapter 16:9 공백 · 조사 공백 | ☑ 루프156 |
 | persist/preview: Biennale s-data 1카드 공백 · quote 기본 문단 · footer 없는 표지 | ☑ 루프157 |
 | persist/preview: Motif `.marker`가 본문 배지를 제목에 겹침 · pill이 flow를 쪼갬 · `.s6 .flow` 하단 클립 | ☑ 루프158 |
+| persist/preview: look 슬롯 `.h/.arrow/.cell` absolute · content marker `::after` | ☑ 루프160 |
+| persist/preview: 공식 PRESS PLAY Motif가 본문 `DAILY 30 MIN`과 겹침 | ☑ 루프161 |
+| persist/preview: MiniMax 2×2 `.grid`가 카드 1개만 품고 3장을 형제로 버림 | ☑ 루프162 |
 | persist/preview: look CSS가 1–2장 사이에 끼어 표지 밀집도가 깨짐 | ☑ follow-up |
 | persist/preview: MiniMax `<p="">` · 유출 `· Label` | ☑ follow-up |
 | preview: Motif `span.ribbon`이 relative stretch로 빨간 줄 | ☑ follow-up |
@@ -254,7 +257,23 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | preview/export: 작성자 JS presenter를 MiniMax salvage로 오인해 페이지 누락 | ☑ 루프159 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프721–745 / round722–746)
+## 이번 루프 (루프160–162)
+
+1. neutralize — `od-look-slot-flow-ext`로 `.h/.arrow/.cell/.pill` 등 잔여 슬롯 offset 해제. 본문 `.marker::after` 차단
+2. Motif — `.marker`/`.arrow`는 카탈로그 칩으로 추출하지 않음. 본문과 같은 paint 클래스면 official 인스턴스 drop
+3. salvage — 2×2 `.grid` 고아 카드 3장을 그리드로 재부모. PAGE 푸터는 밖에 유지
+
+**검증:** ext upgrade · PRESS PLAY 미스탬프 · 1+3 재부모 · Daisy/IB/official Creative Mode 유지
+
+## 직전 루프 (루프159)
+
+1. preview — 작성자 JS presenter(`showSlide/currentSlide/slideCounter` + 다중 slide)는 MiniMax salvage/heal 묶음에서 제외
+2. bridge — `.slide-counter` wrapper 안의 `#current/#total/#now` span 보존. wrapper `textContent` 덮어쓰기 금지
+3. export — daemon PDF/image/PPTX/HTML pagination에서 nested slide-like 후보 제거
+
+**검증:** capsule/retro slide count 보존 · compact stacked `#deck` 회귀 · daemon deck export pagination 회귀
+
+## 직전 루프 (루프721–745 / round722–746)
 
 1. padding — px+print(pt/mm/pc/Q/cm/in) → px≥13
 2. chat — FOO `⚝⚡⚠⚽⚾⚀⚁⚂⚃⚄♔♕♖♗♘`
@@ -269,14 +288,6 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 3. neutralize — 공식 `.flow`/`.grid`/`.table`/`.step` 슬롯의 absolute/`top:380`/`height:420`를 flow 안에서 해제
 
 **검증:** cover 1 flow · deco scoped · od-look-slot-flow · Daisy/IB 유지
-
-## 직전 루프 (루프159)
-
-1. preview — 작성자 JS presenter(`showSlide/currentSlide/slideCounter` + 다중 slide)는 MiniMax salvage/heal 묶음에서 제외
-2. bridge — `.slide-counter` wrapper 안의 `#current/#total/#now` span 보존. wrapper `textContent` 덮어쓰기 금지
-3. export — daemon PDF/image/PPTX/HTML pagination에서 nested slide-like 후보 제거
-
-**검증:** capsule/retro slide count 보존 · compact stacked `#deck` 회귀 · daemon deck export pagination 회귀
 
 ## 직전 루프 (루프696–720 / round697–721)
 

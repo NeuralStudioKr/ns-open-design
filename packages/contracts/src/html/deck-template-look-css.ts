@@ -301,13 +301,29 @@ section[data-screen-label], main[data-screen-label], article[data-screen-label] 
   left: auto !important;
   transform: none !important;
 }
-.slide [data-od-slide-flow] .step {
+.slide [data-od-slide-flow] :is(.step, .cell) {
   height: auto !important;
+  min-height: 0 !important;
 }
 .slide [data-od-slide-flow] :is(.flow, .grid, .table) {
   flex: 1 1 auto !important;
   min-height: 0 !important;
   width: auto !important;
+}
+/* od-look-slot-flow-ext: Creative Mode also parks arrows, titles,
+ * kickers, charts, stamps as presentation-absolute. MiniMax reuses the names. */
+.slide [data-od-slide-flow] :is(.arrow, .arr, .h, .kicker, .body-col, .ix, .cell, .poster, .tagline, .footnote, .legend, .iso, .chart, .header-line, .badge, .strap, .stamp, .title, .topbar, .slide-meta, .pill):not([data-od-official-motif-html]) {
+  position: relative !important;
+  inset: auto !important;
+  top: auto !important;
+  right: auto !important;
+  bottom: auto !important;
+  left: auto !important;
+  transform: none !important;
+}
+.slide [data-od-slide-flow] .marker:not([data-od-official-motif-html])::before,
+.slide [data-od-slide-flow] .marker:not([data-od-official-motif-html])::after {
+  content: none !important;
 }
 `
 
@@ -469,6 +485,7 @@ function officialLookCssLooksCurrent(css: string): boolean {
     && css.includes('od-magazine-cover-solo')
     && css.includes('od-magazine-title-fill')
     && css.includes('od-look-slot-flow')
+    && css.includes('od-look-slot-flow-ext')
   );
 }
 
@@ -517,6 +534,7 @@ export function hasOfficialLookStackedCanvasNeutralizeProof(html: string): boole
     && dest.includes('od-magazine-cover-solo')
     && dest.includes('od-magazine-title-fill')
     && dest.includes('od-look-slot-flow')
+    && dest.includes('od-look-slot-flow-ext')
   );
 }
 
@@ -923,6 +941,13 @@ function extractVisibleMotifInstances(html: string): string[] {
     if (!primary) continue;
     if (MOTIF_CONTENT_CHROME_RE.test(className)) continue;
     if (isIbMagazineTextChromeClass(className)) continue;
+    if (
+      hasExactClassToken(className, 'marker')
+      || hasExactClassToken(className, 'arrow')
+      || hasExactClassToken(className, 'arr')
+    ) {
+      continue;
+    }
     if (/^pixel-(?:btn|label|hero-text|chart|bar|hbar|avatar|landscape|face)/i.test(primary)) continue;
     if (/^win-(?:body|btn|buttons|icon|title-left)$/i.test(primary)) continue;
     if (/\bpill\b/i.test(className) && !/\bdeco-pill\b/i.test(className) && !CAPSULE_PILL_COLOR_RE.test(className)) {
@@ -1019,8 +1044,15 @@ function isVisibleMotifInstanceBlock(block: string): boolean {
 function isCatalogTextChipMotif(block: string): boolean {
   const open = /^<[^>]+>/.exec(block)?.[0] ?? block;
   const className = classAttrValue(open);
-  if (!/\b(?:ribbons?|rib|stamp)\b/i.test(className)) return false;
   if (/<svg\b/i.test(block)) return false;
+  // Creative Mode / Soft Editorial / Pin-and-paper `.marker` is a text badge
+  // (PRESS PLAY, Section II), not Daisy-like Motif paint. Stamping it onto
+  // every compact slide parks a pink leftover under the real badge.
+  if (hasExactClassToken(className, 'marker')) return true;
+  if (hasExactClassToken(className, 'arrow') || hasExactClassToken(className, 'arr')) {
+    return true;
+  }
+  if (!/\b(?:ribbons?|rib|stamp)\b/i.test(className)) return false;
   if (/\bstyle\s*=\s*["'][^"']*(?:width|height)\s*:\s*(?:[1-9]\d{1,}|[3-9]\d)/i.test(open)) {
     return false;
   }
@@ -1621,7 +1653,73 @@ function mergeVisibleMotifInstances(
     const slide = slides[i]!;
     out = `${out.slice(0, slide.start)}${nextSlides[i]}${out.slice(slide.end)}`;
   }
+  return dropCollidingOfficialMotifInstances(out);
+}
+
+/**
+ * Compact fill stamps the official Motif onto every slide (`instances[index % n]`).
+ * Creative Mode only paints one `.marker` (PRESS PLAY on slide 2). After 루프158
+ * the flow no longer copies that marker's background, so the leftover pink stamp
+ * sits under the content badge (`DAILY 30 MIN`) at `bottom:160px`. Drop the
+ * official instance when the same Motif-paint class already has visible text
+ * on that slide. Do not treat `.pill` as Motif-paint — Daisy petals stay.
+ */
+export function dropCollidingOfficialMotifInstances(html: string): string {
+  const dest = String(html ?? '');
+  if (!dest.includes(OFFICIAL_DECK_MOTIF_HTML_ATTR)) return dest;
+  const slides = listSlideBlocks(dest);
+  if (slides.length === 0) return dest;
+  let out = dest;
+  for (let i = slides.length - 1; i >= 0; i -= 1) {
+    const slide = slides[i]!;
+    const next = dropCollidingOfficialMotifInSlide(slide.html);
+    if (next === slide.html) continue;
+    out = `${out.slice(0, slide.start)}${next}${out.slice(slide.end)}`;
+  }
   return out;
+}
+
+function isCatalogTextChipClass(className: string): boolean {
+  return (
+    hasExactClassToken(className, 'marker')
+    || hasExactClassToken(className, 'arrow')
+    || hasExactClassToken(className, 'arr')
+  );
+}
+
+function dropCollidingOfficialMotifInSlide(slideHtml: string): string {
+  const contentPaint = new Set<string>();
+  for (const m of slideHtml.matchAll(/<([a-zA-Z][\w:-]*)\b([^>]*)>/g)) {
+    const attrs = m[2] ?? '';
+    if (new RegExp(`\\b${OFFICIAL_DECK_MOTIF_HTML_ATTR}\\b`, 'i').test(attrs)) continue;
+    const paints = classAttrValue(attrs).match(MOTIF_PAINT_CLASS_RE);
+    if (!paints) continue;
+    const block = extractBalancedElement(slideHtml, m.index ?? -1);
+    const text = block
+      ? block
+          .replace(/<[^>]+>/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim()
+      : '';
+    if (!text) continue;
+    for (const paint of paints) contentPaint.add(paint.toLowerCase());
+  }
+  let next = slideHtml;
+  const officialRe = new RegExp(
+    `<([a-zA-Z][\\w:-]*)\\b([^>]*\\b${OFFICIAL_DECK_MOTIF_HTML_ATTR}\\b[^>]*)>`,
+    'gi',
+  );
+  const drops: string[] = [];
+  for (const m of next.matchAll(officialRe)) {
+    const cls = classAttrValue(m[2] ?? '');
+    const paints = cls.match(MOTIF_PAINT_CLASS_RE);
+    const collides = paints?.some((paint) => contentPaint.has(paint.toLowerCase()));
+    if (!isCatalogTextChipClass(cls) && !collides) continue;
+    const block = extractBalancedElement(next, m.index ?? -1);
+    if (block) drops.push(block);
+  }
+  for (const block of drops) next = next.replace(block, '');
+  return next;
 }
 
 function isCssMotifSeedBlock(block: string): boolean {
@@ -2810,7 +2908,7 @@ export function ensureOfficialLookStackedCanvasNeutralize(html: string): string 
   const dest = String(html ?? '');
   if (!dest) return dest;
   if (looksLikeOfficialFullscreenPresenterDeck(dest)) {
-    return stripOfficialPresenterStackedCanvasLock(dest);
+    return dropCollidingOfficialMotifInstances(stripOfficialPresenterStackedCanvasLock(dest));
   }
   if (
     officialLookHasCurrentNeutralize(dest)
@@ -2818,11 +2916,15 @@ export function ensureOfficialLookStackedCanvasNeutralize(html: string): string 
   ) {
     // Even "current" neutralize sheets may still carry official Motif hangs
     // from pre-§0.72/§0.73 merges — strip look + deco without a full rewrite.
-    return sanitizeOfficialMotifDecoStyleBodies(sanitizeOfficialLookStyleBodies(dest));
+    return dropCollidingOfficialMotifInstances(
+      sanitizeOfficialMotifDecoStyleBodies(sanitizeOfficialLookStyleBodies(dest)),
+    );
   }
 
   if (hasOfficialLookStyleAttr(dest)) {
-    return sanitizeOfficialMotifDecoStyleBodies(replaceOfficialLookNeutralizeBlock(dest));
+    return dropCollidingOfficialMotifInstances(
+      sanitizeOfficialMotifDecoStyleBodies(replaceOfficialLookNeutralizeBlock(dest)),
+    );
   }
 
   // Persist-stripped compact fills may still host slides in the stacked
@@ -2837,11 +2939,14 @@ export function ensureOfficialLookStackedCanvasNeutralize(html: string): string 
     );
   if (needsStandaloneNeutralize) {
     const tag = `<style data-od-stacked-canvas-neutralize>\n${LOOK_NEUTRALIZE_CSS}\n</style>`;
-    if (/<\/head\s*>/i.test(dest)) return dest.replace(/<\/head\s*>/i, `${tag}</head>`);
-    if (/<body\b/i.test(dest)) return dest.replace(/<body\b[^>]*>/i, (open) => `${open}\n${tag}`);
-    return `${tag}\n${dest}`;
+    const next = /<\/head\s*>/i.test(dest)
+      ? dest.replace(/<\/head\s*>/i, `${tag}</head>`)
+      : /<body\b/i.test(dest)
+        ? dest.replace(/<body\b[^>]*>/i, (open) => `${open}\n${tag}`)
+        : `${tag}\n${dest}`;
+    return dropCollidingOfficialMotifInstances(next);
   }
-  return dest;
+  return dropCollidingOfficialMotifInstances(dest);
 }
 
 /** Lock deck vw/% math to the 1920 design canvas (not browser device-width). */

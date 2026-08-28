@@ -750,6 +750,38 @@ describe('sanitizeTemplateCloneDeckTitle', () => {
     expect(salvaged).toMatch(/<ol[\s\S]*<\/ol>/);
   });
 
+  it('reparents orphan 2x2 grid siblings and leaves PAGE chrome outside', async () => {
+    const html = [
+      '<section class="slide s3">',
+      '<h2>Four skills</h2>',
+      '<div class="grid" style="grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr">',
+      '<div>L LISTENING input first</div>',
+      '</div>',
+      '<div>V VOCAB in context</div>',
+      '<div>G GRAMMAR as repair</div>',
+      '<div>S SPEAKING last</div>',
+      '<div>PAGE 03 / 06</div>',
+      '</section>',
+    ].join('');
+    const salvaged = salvageMalformedMiniMaxSlideMarkup(html);
+    const grid = salvaged.match(/<div class="grid"[^>]*>[\s\S]*?<\/div>\s*<div>PAGE/i)?.[0] ?? '';
+    expect(grid).toMatch(/L LISTENING[\s\S]*V VOCAB[\s\S]*G GRAMMAR[\s\S]*S SPEAKING/);
+    expect(salvaged).toMatch(/<\/div>\s*<div>PAGE 03 \/ 06<\/div>/);
+    expect(salvaged.match(/<div class="grid"/g)?.length).toBe(1);
+
+    const official = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/html-ppt-zhangzara-creative-mode/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const officialSalvaged = salvageMalformedMiniMaxSlideMarkup(official);
+    expect((officialSalvaged.match(/class="cell"/g) ?? []).length)
+      .toBe((official.match(/class="cell"/g) ?? []).length);
+    expect(officialSalvaged).toMatch(/PRESS/);
+  });
+
   it('drops empty official Motif ribbon and stamp shells', () => {
     const html = [
       '<section class="slide">',

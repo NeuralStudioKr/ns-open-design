@@ -10,7 +10,10 @@ import {
   attrsLookLikeDeckOrTemplateSlideHost,
   classAttrHasDeckSlideToken,
 } from './deck-slide-class.js';
-import { looksLikeOfficialFullscreenPresenterDeck } from './deck-template-look-css.js';
+import {
+  dropCollidingOfficialMotifInstances,
+  looksLikeOfficialFullscreenPresenterDeck,
+} from './deck-template-look-css.js';
 
 export const DECK_FIXED_CANVAS_PIN_ATTR = 'data-od-deck-fixed-canvas-pin';
 export const DECK_SLIDE_FLOW_ATTR = 'data-od-slide-flow';
@@ -2517,5 +2520,5 @@ export function pinDeckSlidesToFixedCanvas(
     out = wrapNonMotifSlideFlow(out);
   }
   out = injectFixedCanvasStyle(out);
-  return out;
+  return dropCollidingOfficialMotifInstances(out);
 }
