@@ -626,6 +626,8 @@ describe('heal official magazine layout density', () => {
     const healed = healOfficialMagazineLayoutDensity(biennale, brief);
     expect(healed).toContain('영어 회화 공부');
     expect(healed).toContain('하루 45분, 네 가지 리츄얼로');
+    expect(healed).toContain('발화 회로를');
+    expect(healed).not.toMatch(/회로\s+를/);
     expect(healed).toContain('성인 학습자는 문법');
     expect(healed).toContain('Shadowing');
     expect(healed).toContain('레시피 카드');
@@ -637,9 +639,15 @@ describe('heal official magazine layout density', () => {
     expect(healed).not.toMatch(/<br><br>/);
     expect(healed).not.toMatch(/class="cover-meta"/);
     expect(healed).toMatch(/class="slide s-cover"/);
+    expect(healed).toMatch(/class="blocks"/);
     expect(healed).toMatch(/class="titlewrap"/);
     expect(healed).toMatch(/<h1 class="title">/);
     expect(healed).toMatch(/class="subline"/);
+    expect(healed).toMatch(/class="stack"/);
+    expect(healed).toMatch(/<h1 class="ttl">/);
+    expect(healed).toMatch(/class="lede"/);
+    expect(healed).toMatch(/class="glow"/);
+    expect(healed).not.toMatch(/class="nm"|vrail/);
     expect(healed).not.toMatch(/class="(?:mast|ribbon|display|foot|conf)"/);
     expect(healed).toMatch(/grid-template-columns:minmax\(0,1fr\)/);
     expect(healed).not.toMatch(/repeat\(4,1fr\)/);

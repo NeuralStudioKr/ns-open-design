@@ -7,8 +7,10 @@
  */
 
 import { attrsLookLikeDeckOrTemplateSlideHost } from './deck-slide-class.js';
+import { normalizeHangulParticleGaps } from './heal-ai-generated-deck.js';
 import {
   deriveDeckCoverTitleFromBrief,
+  restyleBiennaleSparseChapterBodies,
   restyleForeignIbMagazineCover,
 } from '../template-clone-fill.js';
 
@@ -1019,15 +1021,19 @@ export function healOfficialMagazineLayoutDensity(
       dropEmptyDeckSlides(
         collapseLonelyRepeatGrids(
           dropEchoBriefCoverMeta(
-            restyleForeignIbMagazineCover(
-              completeTruncatedTokensFromDocument(
-                polishTruncatedPromptLeaves(
-                  polishTruncatedHeadingsInPlace(
-                    restoreOverlayOrbPositioning(
-                      relaxBiennaleInvertedSlidePaint(
-                        scrubLeftoverMagazineCopy(
-                          stripEmptyOfficialTextChromeMotifs(
-                            dropGenericEnglishStudyChrome(repairCompactFirstFillMarkup(dest)),
+            normalizeHangulParticleGaps(
+              restyleBiennaleSparseChapterBodies(
+                restyleForeignIbMagazineCover(
+                  completeTruncatedTokensFromDocument(
+                    polishTruncatedPromptLeaves(
+                      polishTruncatedHeadingsInPlace(
+                        restoreOverlayOrbPositioning(
+                          relaxBiennaleInvertedSlidePaint(
+                            scrubLeftoverMagazineCopy(
+                              stripEmptyOfficialTextChromeMotifs(
+                                dropGenericEnglishStudyChrome(repairCompactFirstFillMarkup(dest)),
+                              ),
+                            ),
                           ),
                         ),
                       ),

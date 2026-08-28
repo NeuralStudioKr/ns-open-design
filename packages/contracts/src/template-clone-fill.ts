@@ -599,8 +599,15 @@ export function dropEmptyDeckSlides(html: string): string {
   return out;
 }
 
+function attachHangulParticles(text: string): string {
+  return String(text ?? '').replace(
+    /([\uac00-\ud7af])\s+(를|을|이|가|은|는|에|의|와|과|도|로|으로|께|께서|한테|에서|부터|까지|만|보다|처럼|같이|마다|뿐|씩|이나|나|든지|라도|이든|든|밖에)(?=[\s<.,!?'")\]}]|$)/g,
+    '$1$2',
+  );
+}
+
 function formatBiennaleCoverTitle(title: string): string {
-  const parts = title.split(/\s+/).filter(Boolean);
+  const parts = attachHangulParticles(title).split(/\s+/).filter(Boolean);
   if (parts.length >= 4) {
     return `${escapeHtml(parts.slice(0, -2).join(' '))}<br><em>${escapeHtml(parts.slice(-2).join(' '))}</em>`;
   }
@@ -657,12 +664,14 @@ export function restyleForeignIbMagazineCover(html: string): string {
       .replace(/\s+/g, ' ')
       .trim(),
   );
+  const subline = attachHangulParticles(subhead);
   const inner = biennale
-    ? `<div class="sunglow" aria-hidden="true"></div><div class="titlewrap"><h1 class="title">${formatBiennaleCoverTitle(title)}</h1>${
-      subhead ? `<div class="subline">${escapeHtml(subhead)}</div>` : ''
-    }</div>`
-    : `<h1 class="title">${escapeHtml(title)}</h1>${
-      subhead ? `<p class="subhead">${escapeHtml(subhead)}</p>` : ''
+    ? `<div class="blocks" aria-hidden="true"><div class="b1"></div><div class="b2"></div><div class="b3"></div><div class="b4"></div></div>`
+      + `<div class="sunglow" aria-hidden="true"></div><div class="titlewrap"><h1 class="title">${formatBiennaleCoverTitle(title)}</h1>${
+        subline ? `<div class="subline">${escapeHtml(subline)}</div>` : ''
+      }</div>`
+    : `<h1 class="title">${escapeHtml(attachHangulParticles(title))}</h1>${
+      subline ? `<p class="subhead">${escapeHtml(subline)}</p>` : ''
     }`;
   const close = dest.slice(first.bodyEnd).match(new RegExp(`^</${first.tag}\\s*>`, 'i'));
   const end = first.bodyEnd + (close?.[0].length ?? 0);
@@ -672,6 +681,88 @@ export function restyleForeignIbMagazineCover(html: string): string {
     `position:relative;background:var(--paper);color:var(--ink)">${inner}` +
     `</${first.tag}>${dest.slice(end)}`
   );
+}
+
+function isOverlayOrbOpen(open: string): boolean {
+  const style = /\bstyle\s*=\s*(['"])([\s\S]*?)\1/i.exec(open)?.[2] ?? '';
+  if (/translate\(\s*-50%\s*,\s*-50%\s*\)/i.test(style)) return true;
+  if (/\bborder-radius\s*:\s*50%/i.test(style) && /radial-gradient/i.test(style)) {
+    return true;
+  }
+  const width = style.match(/\bwidth\s*:\s*(\d+)px/i);
+  const height = style.match(/\bheight\s*:\s*(\d+)px/i);
+  return Boolean(
+    width && height && width[1] === height[1] && Number(width[1]) >= 400,
+  );
+}
+
+function listTopLevelBlocks(inner: string): string[] {
+  const source = String(inner ?? '');
+  const blocks: string[] = [];
+  let i = 0;
+  while (i < source.length) {
+    const rel = source.slice(i).search(/<[a-zA-Z]/);
+    if (rel < 0) break;
+    if (rel > 0 && source.slice(i, i + rel).trim()) {
+      blocks.push(source.slice(i, i + rel));
+    }
+    const abs = i + rel;
+    const block = extractBalancedFrom(source, abs);
+    if (!block) break;
+    blocks.push(block);
+    i = abs + block.length;
+  }
+  return blocks;
+}
+
+/**
+ * Sparse MiniMax s-chapter bodies stay default-sized on the 16:9 canvas.
+ * Bind the existing heading + lede to official `.stack` / `.ttl` / `.lede`
+ * so look CSS can scale them. Do not invent chapter numbers or vrail copy.
+ */
+export function restyleBiennaleSparseChapterBodies(html: string): string {
+  const dest = String(html ?? '');
+  if (!dest.trim() || !officialLookIsBiennaleYellow(dest)) return dest;
+  const spans = listHealSlideHostSpans(dest);
+  let out = dest;
+  for (let i = spans.length - 1; i >= 0; i -= 1) {
+    const span = spans[i]!;
+    if (!/\bs-chapter\b/i.test(span.attrs)) continue;
+    const body = out.slice(span.bodyStart, span.bodyEnd);
+    if (/\b(?:stack|ttl|vrail)\b/i.test(body)) continue;
+    const overlays: string[] = [];
+    const content: string[] = [];
+    for (const part of listTopLevelBlocks(body)) {
+      const open = /^<[a-zA-Z][\w-]*\b[^>]*>/.exec(part)?.[0] ?? '';
+      if (open && isOverlayOrbOpen(open)) overlays.push(part);
+      else if (part.trim()) content.push(part);
+    }
+    if (content.length === 0 || content.length > 2) continue;
+    if (content.some((part) => /grid-template-columns/i.test(part))) continue;
+    const heading = content.find((part) => /^<h[1-3]\b/i.test(part));
+    if (!heading) continue;
+    const headingOpen = /^<h([1-3])\b[^>]*>/i.exec(heading);
+    if (!headingOpen) continue;
+    const headingInner = heading
+      .replace(/^<h[1-3]\b[^>]*>/i, '')
+      .replace(/<\/h[1-3]\s*>$/i, '');
+    const lede = content.find((part) => part !== heading);
+    let ledeInner = '';
+    if (lede) {
+      if (!/^<(?:p|div)\b/i.test(lede)) continue;
+      ledeInner = lede.replace(/^<(?:p|div)\b[^>]*>/i, '').replace(/<\/(?:p|div)\s*>$/i, '');
+    }
+    const stack = (
+      `<div class="glow" aria-hidden="true"></div>`
+      + `<div class="stack">`
+      + `<h${headingOpen[1]} class="ttl">${attachHangulParticles(headingInner)}</h${headingOpen[1]}>`
+      + (ledeInner ? `<div class="lede">${attachHangulParticles(ledeInner)}</div>` : '')
+      + `</div>`
+      + overlays.join('')
+    );
+    out = `${out.slice(0, span.bodyStart)}${stack}${out.slice(span.bodyEnd)}`;
+  }
+  return out;
 }
 
 /**
@@ -695,6 +786,7 @@ export function salvageMalformedMiniMaxSlideMarkup(html: string): string {
   next = healOrphanRadialCircles(next);
   next = dropEmptyDeckSlides(next);
   next = restyleForeignIbMagazineCover(next);
+  next = restyleBiennaleSparseChapterBodies(next);
   return next;
 }
 

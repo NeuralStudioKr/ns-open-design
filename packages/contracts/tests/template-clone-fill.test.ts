@@ -26,6 +26,7 @@ import {
   sanitizePersistedDeckHostLeaks,
   salvageMalformedMiniMaxSlideMarkup,
   restyleForeignIbMagazineCover,
+  restyleBiennaleSparseChapterBodies,
   polishInstructionCoverTitle,
   stripEmptyOfficialMotifInstances,
   stripHostProtocolLeakFromDeckHtml,
@@ -563,8 +564,12 @@ describe('sanitizeTemplateCloneDeckTitle', () => {
     expect(salvaged).not.toMatch(/연습 팁에 대한/);
     expect(salvaged.match(/<section\b[^>]*\bslide\b/gi)?.length).toBe(4);
     expect(salvaged).not.toMatch(/<section class="slide s-chapter"[^>]*>\s*<\/section>/);
-    expect(salvaged).toMatch(/<h1[^>]*>왜 회화는<br>공부가 아니라<br><em>근육<\/em> 인가<\/h1>/);
+    expect(salvaged).toMatch(/class="blocks"/);
+    expect(salvaged).toMatch(/class="stack"/);
+    expect(salvaged).toMatch(/<h1 class="ttl">왜 회화는<br>공부가 아니라<br><em>근육<\/em> 인가<\/h1>/);
+    expect(salvaged).toMatch(/class="lede"/);
     expect(salvaged).toMatch(/성인 학습자는 문법/);
+    expect(salvaged).not.toMatch(/class="nm"|vrail|학습 노트/i);
     expect(salvaged).not.toMatch(
       /<h1[^>]*>왜 회화는[\s\S]*<div>성인 학습자[\s\S]*<\/h1>/,
     );
@@ -577,6 +582,7 @@ describe('sanitizeTemplateCloneDeckTitle', () => {
 
     const restyled = restyleForeignIbMagazineCover(html);
     expect(restyled).toMatch(/class="titlewrap"/);
+    expect(restyled).toMatch(/class="blocks"/);
     expect(restyled).not.toMatch(/Study Notes/i);
   });
 
@@ -598,6 +604,7 @@ describe('sanitizeTemplateCloneDeckTitle', () => {
 </body></html>`;
     const restyled = restyleForeignIbMagazineCover(html);
     expect(restyled).toMatch(/class="slide s-cover"/);
+    expect(restyled).toMatch(/class="blocks"/);
     expect(restyled).toMatch(/class="sunglow"/);
     expect(restyled).toMatch(/class="titlewrap"/);
     expect(restyled).toMatch(/<h1 class="title">/);
@@ -620,6 +627,27 @@ describe('sanitizeTemplateCloneDeckTitle', () => {
     );
     expect(restyleForeignIbMagazineCover(daisy)).toContain('class="display"');
     expect(restyleForeignIbMagazineCover(daisy)).not.toMatch(/class="slide s-cover"/);
+  });
+
+  it('does not wrap dense or already-stacked Biennale chapters', () => {
+    const look = '<style data-od-official-look-css>:root{--sun:#F1EE2E;--paper:#E9E5DB}</style>';
+    const dense = [
+      '<section class="slide s-chapter">',
+      '<h2>루틴</h2>',
+      '<div style="display:grid;grid-template-columns:repeat(4,1fr)">',
+      '<div>A</div><div>B</div><div>C</div><div>D</div>',
+      '</div></section>',
+      look,
+    ].join('');
+    expect(restyleBiennaleSparseChapterBodies(dense)).not.toMatch(/class="stack"/);
+
+    const stacked = [
+      '<section class="slide s-chapter">',
+      '<div class="stack"><div class="ttl">이미 공식 장</div></div>',
+      '</section>',
+      look,
+    ].join('');
+    expect(restyleBiennaleSparseChapterBodies(stacked)).toBe(stacked);
   });
 
   it('reparents MiniMax auto-auto-1fr cards and 64px step lists', () => {
