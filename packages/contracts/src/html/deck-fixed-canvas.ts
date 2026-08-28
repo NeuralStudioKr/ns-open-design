@@ -1722,6 +1722,18 @@ function calcAdditiveSameUnitLooksCardLike(value: string): boolean {
         if (pct * 10.8 + px >= 13) return true;
       }
     }
+    // Mixed line-box units 1:1 (루프546): 1lh+1ex → 2; thin 0.5+0.5 stays out.
+    const lineBox = new Set(['lh', 'rlh', 'cap', 'rcap', 'ex', 'rex']);
+    if (parts.every((p) => lineBox.has(p.unit)) && units.size >= 2) {
+      const lineSum = parts.reduce((acc, p) => acc + p.sign * p.n, 0);
+      if (lineSum >= 2) return true;
+    }
+    // Mixed block/inline viewport units 1:1 (루프551): 1vb+1vi → 2.
+    const fontVp = new Set(['vb', 'vi', 'svb', 'svi', 'lvb', 'lvi', 'dvb', 'dvi']);
+    if (parts.every((p) => fontVp.has(p.unit)) && units.size >= 2) {
+      const vpSum = parts.reduce((acc, p) => acc + p.sign * p.n, 0);
+      if (vpSum >= 2) return true;
+    }
   }
   return false;
 }

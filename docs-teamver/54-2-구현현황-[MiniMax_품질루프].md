@@ -190,6 +190,9 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | kit: calc vh/%/vw + px 혼합 | ☑ 루프515–519 / round516–520 |
 | chat: FOO `▲▼△▽★☆✦✧●◉` | ☑ 루프520–529 / round521–530 |
 | kit/chat: set89–93 combo/closure | ☑ 루프530–544 / round531–545 |
+| kit: calc lh|cap|ex · vb|vi 혼합 | ☑ 루프546–555 / round547–556 |
+| chat: FOO `❖✪✫◎▣▢■□` (+★☆✦✧●◉) | ☑ 루프556–565 / round557–566 |
+| kit/chat: set94–98 combo/closure | ☑ 루프566–570 / round567–571 |
 | persist/preview: leftover `·` 칩·발명 TOC가 brief 카피처럼 보임 | ☑ 루프144 |
 | preview: 레터박스 `#17181d`만 보이고 1/N만 동작 | ☑ 루프146 |
 | persist/preview: 표지 오른쪽 TOC 칸 공백 · 성긴 slide-inner 상단 고정 | ☑ 루프147 |
@@ -224,7 +227,16 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | think 태그 / 내부 마크업 필터 | ☑ 기존 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프153)
+## 이번 루프 (루프546–570 / round547–571)
+
+1. padding — calc line-box·fontVp 혼합 합≥2 card-like (`1lh+1ex`, `1vb+1vi`; thin 0.5+0.5 유지)
+2. chat — FOO `❖✪✫◎▣▢■□`
+3. invent-frame≠flow 물리 border/shadow/background 미카피
+
+**검증:** chat-leak-probe-round547–571 (25/25)
+
+## 직전 루프 (루프153)
+
 
 1. persist — magazine 뒤 `healAiGeneratedDeckMarkup` (저장·same-turn·recovered)
 2. FileViewer accept · preview look-heal도 동일
