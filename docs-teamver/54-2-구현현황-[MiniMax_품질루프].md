@@ -196,6 +196,9 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | kit: calc cq · ic|ric · print 혼합 | ☑ 루프571–580 / round572–581 |
 | chat: FOO `✶✸✹✺❋※†‡‣∙` | ☑ 루프581–590 / round582–591 |
 | kit/chat: set99–103 combo/closure | ☑ 루프591–595 / round592–596 |
+| kit: calc 교차 ch+cq · lh+ic · cq+vh · rem+ch · %+cq | ☑ 루프596–605 / round597–606 |
+| chat: FOO `⬡⬢⬤⬥⬦◊◈⊕⊖⊗⊘⊙` | ☑ 루프606–615 / round607–616 |
+| kit/chat: set104–108 combo/closure | ☑ 루프616–620 / round617–621 |
 | persist/preview: leftover `·` 칩·발명 TOC가 brief 카피처럼 보임 | ☑ 루프144 |
 | preview: 레터박스 `#17181d`만 보이고 1/N만 동작 | ☑ 루프146 |
 | persist/preview: 표지 오른쪽 TOC 칸 공백 · 성긴 slide-inner 상단 고정 | ☑ 루프147 |
@@ -231,7 +234,16 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | think 태그 / 내부 마크업 필터 | ☑ 기존 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프154)
+## 이번 루프 (루프596–620 / round597–621)
+
+1. padding — 교차 가족 ch+cq · line|ch+ic(×2) · cq+viewport · rem|em+ch · %+cq
+2. chat — FOO `⬡⬢⬤⬥⬦◊◈⊕⊖⊗⊘⊙`
+3. invent-frame≠flow 회귀
+
+**검증:** chat-leak-probe-round597–621 (25/25)
+
+## 직전 루프 (루프154)
+
 
 1. heal — Biennale `--sun` 장에서 크림 글자(`#E9E5DB`/`#DCD6C4`)를 `--ink`로. footer `에 대한` polish
 2. heal — 한글 덱의 `Study Notes`/`Working notes`만 삭제(`학습 노트` 발명 금지). 같은 문서의 긴 단어로 `Shado` 복구
