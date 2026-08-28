@@ -222,7 +222,13 @@ function buildSrcdocUnsafe(
     // 0826-N01 F7: AI-generated deck salvage — empty slides, h1/lede
     // unnest, over-allocated grid shrink, tag-soup / brief-leak scrub.
     try {
-      html = healAiGeneratedDeckMarkup(html, options.userBrief);
+      if (typeof healAiGeneratedDeckMarkup !== 'function') {
+        console.error(
+          '[buildSrcdoc] healAiGeneratedDeckMarkup is missing from @open-design/contracts — run pnpm --filter @open-design/contracts build',
+        );
+      } else {
+        html = healAiGeneratedDeckMarkup(html, options.userBrief);
+      }
     } catch (_) {
       /* keep authored HTML */
     }

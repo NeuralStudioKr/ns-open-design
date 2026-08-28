@@ -2400,7 +2400,7 @@ export async function exportAsPdf(
   const nonce = randomUUID();
   // Heal Motif remnant CSS / bleed / truncated head before print — matches
   // daemon/desktop SSOT so browser fallback PDF keeps Capsule look.
-  const healed = healDeckHtmlForStandaloneExport(html);
+  const healed = healDeckHtmlForStandaloneExport(html, opts?.userBrief);
   let doc = buildBlobSafeSrcdoc(patchArtifactDeckPrintCss(healed), {
     ...opts,
     exportDocument: true,

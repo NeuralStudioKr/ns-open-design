@@ -112,7 +112,10 @@ function deckExportWrapperSelectorList(): string[] {
  * Preview/cover/`/raw` use {@link lockStackedDeckCanvasForPreview} (opt-in)
  * so catalog presenters keep device-width iframe fill.
  */
-export function healDeckHtmlForStandaloneExport(html: string): string {
+export function healDeckHtmlForStandaloneExport(
+  html: string,
+  brief?: string | null,
+): string {
   const density = healOfficialMagazineLayoutDensity(
     stripEmptyOfficialMotifInstances(
       // 0826-N01 F7: AI-generated deck salvage (empty slide drop, h1/lede
@@ -120,8 +123,10 @@ export function healDeckHtmlForStandaloneExport(html: string): string {
       // before magazine density so density can see the corrected structure.
       healAiGeneratedDeckMarkup(
         salvageMalformedMiniMaxSlideMarkup(String(html ?? '')),
+        brief,
       ),
     ),
+    brief,
   );
   const repaired = repairArtifactStyleSheets(
     repairArtifactDocumentHead(

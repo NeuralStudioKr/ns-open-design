@@ -1,8 +1,8 @@
 import {
   deckHtmlHasMotifOutsideCanvasHang,
   firstOfficialDeckTemplateId,
-  healOfficialMagazineLayoutDensity,
   healAiGeneratedDeckMarkup,
+  healOfficialMagazineLayoutDensity,
   isArtifactHtmlStableForPreview,
   looksLikeDeckSlideHostAttrs,
   OFFICIAL_DECK_LOOK_STYLE_ATTR,
@@ -173,10 +173,8 @@ export async function healOfficialLookForDeckPreview(
     if (!templateId) return dest;
     const withLook = await mergeOfficialLookCssForTemplate(dest, templateId);
     try {
-      return healAiGeneratedDeckMarkup(
-        healOfficialMagazineLayoutDensity(withLook, brief),
-        brief,
-      );
+      const aiHealed = healAiGeneratedDeckMarkup(withLook, brief);
+      return healOfficialMagazineLayoutDensity(aiHealed, brief);
     } catch {
       return withLook;
     }
