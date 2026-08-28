@@ -1734,6 +1734,34 @@ function calcAdditiveSameUnitLooksCardLike(value: string): boolean {
       const vpSum = parts.reduce((acc, p) => acc + p.sign * p.n, 0);
       if (vpSum >= 2) return true;
     }
+    // Mixed container-query units 1:1 (루프571): 1cqw+1cqh → 2.
+    const cqBox = new Set(['cqw', 'cqh', 'cqi', 'cqb', 'cqmin', 'cqmax']);
+    if (parts.every((p) => cqBox.has(p.unit)) && units.size >= 2) {
+      const cqSum = parts.reduce((acc, p) => acc + p.sign * p.n, 0);
+      if (cqSum >= 2) return true;
+    }
+    // Mixed ic|ric 1:1 (루프576): 0.5ic+0.5ric → 1.
+    const icBox = new Set(['ic', 'ric']);
+    if (parts.every((p) => icBox.has(p.unit)) && units.size >= 2) {
+      const icSum = parts.reduce((acc, p) => acc + p.sign * p.n, 0);
+      if (icSum >= 1) return true;
+    }
+    // Mixed absolute print units → px floor ≥13 (루프576): 6pt+2mm ≈ 15.6px.
+    const printPx: Record<string, number> = {
+      pt: 4 / 3,
+      mm: 3.78,
+      cm: 37.8,
+      in: 96,
+      pc: 16,
+      q: 0.945,
+    };
+    if (parts.every((p) => printPx[p.unit] != null) && units.size >= 2) {
+      const asPx = parts.reduce(
+        (acc, p) => acc + p.sign * p.n * (printPx[p.unit] ?? 0),
+        0,
+      );
+      if (asPx >= 13) return true;
+    }
   }
   return false;
 }

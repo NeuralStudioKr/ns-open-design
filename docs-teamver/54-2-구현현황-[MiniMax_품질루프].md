@@ -193,6 +193,9 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | kit: calc lh|cap|ex · vb|vi 혼합 | ☑ 루프546–555 / round547–556 |
 | chat: FOO `❖✪✫◎▣▢■□` (+★☆✦✧●◉) | ☑ 루프556–565 / round557–566 |
 | kit/chat: set94–98 combo/closure | ☑ 루프566–570 / round567–571 |
+| kit: calc cq · ic|ric · print 혼합 | ☑ 루프571–580 / round572–581 |
+| chat: FOO `✶✸✹✺❋※†‡‣∙` | ☑ 루프581–590 / round582–591 |
+| kit/chat: set99–103 combo/closure | ☑ 루프591–595 / round592–596 |
 | persist/preview: leftover `·` 칩·발명 TOC가 brief 카피처럼 보임 | ☑ 루프144 |
 | preview: 레터박스 `#17181d`만 보이고 1/N만 동작 | ☑ 루프146 |
 | persist/preview: 표지 오른쪽 TOC 칸 공백 · 성긴 slide-inner 상단 고정 | ☑ 루프147 |
@@ -227,7 +230,16 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | think 태그 / 내부 마크업 필터 | ☑ 기존 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프546–570 / round547–571)
+## 이번 루프 (루프571–595 / round572–596)
+
+1. padding — cq 가족 합≥2 · ic|ric 합≥1 · print 혼합 px≥13
+2. chat — FOO `✶✸✹✺❋※†‡‣∙`
+3. invent-frame≠flow 회귀
+
+**검증:** chat-leak-probe-round572–596 (25/25)
+
+## 직전 루프 (루프546–570 / round547–571)
+
 
 1. padding — calc line-box·fontVp 혼합 합≥2 card-like (`1lh+1ex`, `1vb+1vi`; thin 0.5+0.5 유지)
 2. chat — FOO `❖✪✫◎▣▢■□`
