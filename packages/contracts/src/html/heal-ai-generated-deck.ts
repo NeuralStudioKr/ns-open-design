@@ -1195,6 +1195,12 @@ const LEFTOVER_PEER_PLACEHOLDER_TOKENS = [
   '등등',
   '기타',
   'etc',
+  // 루프258 — ok/done shells MiniMax leaves on the missing pillar.
+  // Keep `완료 적분` extra copy; a lone `완료`/`ok`/`done` is leftover.
+  'okay',
+  'done',
+  '완료',
+  'ok',
 ].sort((a, b) => b.length - a.length);
 
 const LEFTOVER_PEER_PLACEHOLDER_PUNCT_RE = /^(?:[.…·•\-–—]{1,3})/u;
