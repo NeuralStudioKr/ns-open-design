@@ -3564,8 +3564,30 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .stage > .slide {
     }
     return false;
   }
+  function slidesAreOverlappingStack(list){
+    // Sakura Chroma / Cobalt / Long Table / Biennale: .stage is a viewport
+    // for absolutely stacked opacity slides, not an IB translate strip.
+    // Translating that viewport moves every page off-canvas together.
+    if (!list || list.length < 2) return false;
+    var a = list[0];
+    var b = list[1];
+    if (!a || !b) return false;
+    var dx = Math.abs((b.offsetLeft || 0) - (a.offsetLeft || 0));
+    var dy = Math.abs((b.offsetTop || 0) - (a.offsetTop || 0));
+    if (dx >= 16 || dy >= 16) return false;
+    try {
+      var pa = String(window.getComputedStyle(a).position || '').toLowerCase();
+      var pb = String(window.getComputedStyle(b).position || '').toLowerCase();
+      if ((pa === 'absolute' || pa === 'fixed') && (pb === 'absolute' || pb === 'fixed')) return true;
+      var oa = parseFloat(window.getComputedStyle(a).opacity || '1');
+      var ob = parseFloat(window.getComputedStyle(b).opacity || '1');
+      if ((oa <= 0.01) !== (ob <= 0.01)) return true;
+    } catch (_) {}
+    return false;
+  }
   function transformTrack(list){
     if (!list || !list.length) return null;
+    if (slidesAreOverlappingStack(list)) return null;
     var first = list[0];
     var node = first && first.parentElement;
     while (node && node !== document.body && node !== document.documentElement) {
@@ -3594,7 +3616,16 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .stage > .slide {
         // IB #stage is a horizontal translate strip even when neutralize
         // reports flex-direction:column on #deck. Skipping it here leaves
         // host next on native translateX(-100vw) against a 1920 canvas.
-        if (isStageTrack && directSlides >= 2) return node;
+        // Opacity-stack .stage (absolute inset slides) must not take this path.
+        if (isStageTrack && directSlides >= 2) {
+          var stageKids = [];
+          for (var sk = 0; sk < node.children.length; sk++) {
+            if (node.children[sk].classList && node.children[sk].classList.contains('slide')) {
+              stageKids.push(node.children[sk]);
+            }
+          }
+          if (!slidesAreOverlappingStack(stageKids)) return node;
+        }
         // Stacked letterbox neutralize forces #deck to column — do not treat as
         // horizontal translate track (Studio/Grove/Signal fills).
         if (flexDir === 'column' || flexDir === 'column-reverse') {
@@ -3837,7 +3868,17 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .stage > .slide {
   }
   function isHorizontalStageTrack(track){
     if (!track) return false;
-    return track.id === 'stage' || !!(track.classList && track.classList.contains('stage'));
+    if (!(track.id === 'stage' || !!(track.classList && track.classList.contains('stage')))) return false;
+    var kids = [];
+    try {
+      for (var i = 0; i < track.children.length; i++) {
+        if (track.children[i].classList && track.children[i].classList.contains('slide')) {
+          kids.push(track.children[i]);
+        }
+      }
+    } catch (_) {}
+    if (slidesAreOverlappingStack(kids.length ? kids : slides())) return false;
+    return true;
   }
   function hasAuthorSwipeScript(){
     try {
@@ -3927,6 +3968,7 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .stage > .slide {
   }
   function transformGo(i){
     var list = slides();
+    if (slidesAreOverlappingStack(list)) return false;
     var track = transformTrack(list);
     if (!track || track.id === 'od-stacked-deck-stage') return false;
     var target = Math.max(0, Math.min(list.length - 1, i));

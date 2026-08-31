@@ -299,6 +299,57 @@ describe('deck bridge — official catalog presenter navigation', () => {
     expect(lastSlideState(parentPostMessage)).toMatchObject({ active: 4, count: 10 });
   });
 
+  it('keeps opacity-stack .stage catalogs painted after next (Sakura Chroma family)', async () => {
+    const family = [
+      'html-ppt-zhangzara-sakura-chroma',
+      'html-ppt-zhangzara-cobalt-grid',
+      'html-ppt-zhangzara-long-table',
+      'html-ppt-zhangzara-biennale-yellow',
+    ];
+    for (const dir of family) {
+      const official = readFileSync(
+        resolve(repoRoot, `plugins/_official/examples/${dir}/example.html`),
+        'utf8',
+      );
+      const srcdoc = buildSrcdoc(official, { deck: true });
+      const script = extractDeckBridgeScript(srcdoc);
+      const authorScripts = extractNonOdScripts(srcdoc);
+      const dom = new JSDOM(srcdoc.replace(/<script\b[\s\S]*?<\/script>/gi, ''), {
+        runScripts: 'outside-only',
+        pretendToBeVisual: true,
+      });
+      const win = dom.window;
+      const parentPostMessage = vi.fn();
+      Object.defineProperty(win, 'parent', {
+        configurable: true,
+        value: { postMessage: parentPostMessage },
+      });
+      for (const author of authorScripts) {
+        try { new win.Function(author).call(win); } catch { /* template chrome */ }
+      }
+      new win.Function(script).call(win);
+      win.dispatchEvent(new win.Event('load'));
+      win.dispatchEvent(new win.MessageEvent('message', {
+        data: { type: 'od:slide', action: 'go', index: 0 },
+      }));
+      await new Promise<void>((resolve) => win.setTimeout(resolve, 20));
+      postSlide(win, 'next');
+      await new Promise<void>((resolve) => win.setTimeout(resolve, 40));
+
+      const slides = [...win.document.querySelectorAll('.slide')] as HTMLElement[];
+      const stage = win.document.querySelector('.stage') as HTMLElement | null;
+      expect(slides.length, dir).toBeGreaterThanOrEqual(2);
+      expect(stage, dir).not.toBeNull();
+      expect(stage?.style.transform || '', dir).not.toMatch(/translate/i);
+      expect(slides[0]?.classList.contains('active'), dir).toBe(false);
+      expect(slides[1]?.classList.contains('active'), dir).toBe(true);
+      expect(slides[1]?.style.display, dir).not.toBe('none');
+      expect(paintedSlideCopy(slides[1]), dir).not.toBe('');
+      expect(lastSlideState(parentPostMessage), dir).toMatchObject({ active: 1 });
+      win.close();
+    }
+  });
+
   it('does not trap official html-ppt pages behind display:none after restore + next', async () => {
     const examplesDir = resolve(repoRoot, 'plugins/_official/examples');
     const dirs = readdirSync(examplesDir).filter((name) => name.startsWith('html-ppt-'));
@@ -373,6 +424,18 @@ describe('deck bridge — official catalog presenter navigation', () => {
         || el.classList.contains('current')
         || el.hasAttribute('data-deck-active'),
       );
+      const stage = win.document.querySelector('.stage, #stage') as HTMLElement | null;
+      if (stage && /translate(?:X|3d)\s*\(\s*-/.test(stage.style.transform || '')) {
+        const kids = [...stage.querySelectorAll(':scope > .slide')] as HTMLElement[];
+        if (kids.length >= 2) {
+          const dx = Math.abs((kids[1]!.offsetLeft || 0) - (kids[0]!.offsetLeft || 0));
+          const dy = Math.abs((kids[1]!.offsetTop || 0) - (kids[0]!.offsetTop || 0));
+          if (dx < 16 && dy < 16) {
+            failures.push(`${dir}: opacity-stack .stage translated off-canvas`);
+            continue;
+          }
+        }
+      }
       const trapped = marked.filter((el) =>
         el.style.display === 'none' || el.style.visibility === 'hidden',
       );

@@ -143,6 +143,17 @@ describe('catalog-wide PreviewModal paint', () => {
         || el.classList.contains('current')
         || el.hasAttribute('data-deck-active'),
       );
+      const stage = win.document.querySelector('.stage, #stage') as HTMLElement | null;
+      if (stage && /translate(?:X|3d)\s*\(\s*-/.test(stage.style.transform || '')) {
+        const kids = [...stage.querySelectorAll(':scope > .slide')] as HTMLElement[];
+        if (kids.length >= 2) {
+          const dx = Math.abs((kids[1]!.offsetLeft || 0) - (kids[0]!.offsetLeft || 0));
+          const dy = Math.abs((kids[1]!.offsetTop || 0) - (kids[0]!.offsetTop || 0));
+          if (dx < 16 && dy < 16) {
+            failures.push(`${dir}: opacity-stack .stage translated off-canvas`);
+          }
+        }
+      }
       const trapped = marked.filter((el) =>
         el.style.display === 'none' || el.style.visibility === 'hidden',
       );

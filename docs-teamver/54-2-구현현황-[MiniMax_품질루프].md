@@ -299,9 +299,18 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | QA/heal: 사용자 삼각함수 fixture pin + `AGENT_EXECUTION_STALLED` 전용 카피 회귀 + calc pure-mul px floor | ☑ 루프189 |
 | persist/preview: `1fr 1fr 1fr` 3열에 카드 2장만 남아 좌측 편중 · 빈 세 번째 트랙 (미적분 세 기둥) | ☑ 루프190 |
 | persist/preview: flex row에 grow 없이 카드 2–3장만 남아 좌측 편중 | ☑ 루프191 |
+| catalog PreviewModal: Sakura Chroma 등 `.stage` opacity-stack을 IB 가로 스트립으로 오역해 페이지 이동 시 본문 공백 | ☑ 루프192 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프191 · flex row card grow)
+## 이번 루프 (루프192 · opacity-stack .stage page nav)
+
+- [x] overlapping absolute/opacity `.stage`는 translate 트랙이 아님
+- [x] Sakura Chroma / Cobalt Grid / Long Table / Biennale Yellow next 후 `.active` + transform 없음
+- [x] IB `#stage` 가로 스트립 translate 유지
+- [x] srcdoc-deck-bridge-official-presenter · transform-driven IB
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프191 · flex row card grow)
 
 - [x] `balanceUnderfilledFlexCardRow` — peer card에 `flex:1 1 0` · 행 `width:100%`
 - [x] column / 기존 grow / 고정폭 sidebar / chrome 라벨 행 보존
