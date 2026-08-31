@@ -499,6 +499,31 @@ describe('shouldAutoContinueForIncompleteOutput', () => {
     ).toBe(true);
   });
 
+  it('does NOT fire for low-substance / catalog leftover skips (루프185)', () => {
+    expect(
+      shouldAutoContinueForIncompleteOutput({
+        ...base,
+        terminalPersistResultKind: 'skipped-incomplete',
+        terminalPersistResultReason: 'low-substance deck artifact',
+      }),
+    ).toBe(false);
+    expect(
+      shouldAutoContinueForIncompleteOutput({
+        ...base,
+        terminalPersistResultKind: 'skipped-incomplete',
+        terminalPersistResultReason: 'unfilled-catalog-example',
+      }),
+    ).toBe(false);
+    // Truncation shells still auto-continue.
+    expect(
+      shouldAutoContinueForIncompleteOutput({
+        ...base,
+        terminalPersistResultKind: 'skipped-incomplete',
+        terminalPersistResultReason: 'incomplete-html-document-shell',
+      }),
+    ).toBe(true);
+  });
+
   it('fires for skipped-duplicate scoped comment edits when disk unchanged', () => {
     expect(
       shouldAutoContinueForIncompleteOutput({

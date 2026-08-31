@@ -292,9 +292,17 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | heal: MiniMax body-fill 실패로 동일 title-only 슬라이드 연속 2장 (예: `<h1>삼각함수</h1>` × 2) — persist gate를 우회한 케이스에서 preview 축소 | ☑ 루프182 |
 | persist/UX: low-substance skip을 "응답 끊김" 배너로 오표기 | ☑ 루프183 |
 | first-fill: Home/Canvas `5-6` 숏 요청이 안정성 캡+later-append로 여러 턴 | ☑ 루프184 |
+| persist/UX: low-substance skip 후에도 auto-continue("이어쓰기") 발동 | ☑ 루프185 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프184 · 5–6페이지 숏 요청 한 턴 마감)
+## 이번 루프 (루프185 · low-substance auto-continue 거부)
+
+- [x] `shouldAutoContinueForIncompleteOutput` — low-substance/unfilled-catalog reason이면 false
+- [x] 잘림 shell(`incomplete-html-document-shell`) AC 유지
+- [x] resume.test 회귀
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프184 · 5–6페이지 숏 요청 한 턴 마감)
 
 - [x] `5-6` / `5~6`을 first-fill 안정성 캡으로 바꾸지 않음 — `close at least 5 this turn`
 - [x] override notice — 숏 5–6은 later-append 금지. 7+ 캡만 later-append

@@ -684,6 +684,7 @@ describe("ProjectView message loading", () => {
     expect(autoOpenBlock).toContain("updateConversationLatestRun('failed'");
     expect(autoOpenBlock).toContain("syncAutoContinueCountFromMessages(");
     expect(autoOpenBlock).toContain("shouldAutoContinueForIncompleteOutput({");
+    expect(autoOpenBlock).toContain("terminalPersistResultReason:");
     expect(autoOpenBlock).toContain("attemptEmergencySlideDeckRecovery(");
     expect(autoOpenBlock).toContain("formatAutoContinueIncompleteOutputNotice()");
     expect(autoOpenBlock).toContain("attachAutoContinueIncompleteOutputNotice(");

@@ -13,6 +13,7 @@ import {
   TEMPLATE_CLONE_CONTENT_FILL_TURN_MARKER,
   templateCloneContentFillHardRules,
 } from '../teamver/templateCloneContentFill';
+import { looksLikeLowSubstancePersistSkipReason } from '../teamver/projectErrorMessages';
 import { COMPACT_DECK_SLIDE_COUNT_GUIDANCE } from './deckGuidance';
 
 /** Local copies — contracts-barrel re-exports are undefined at resume module init. */
@@ -467,6 +468,13 @@ export function shouldAutoContinueForIncompleteOutput(options: {
       ? AUTO_CONTINUE_MAX_SCOPED_COMMENT_EDIT
       : AUTO_CONTINUE_MAX_PER_CONVERSATION);
   if (options.autoContinueCount >= max) return false;
+
+  // 루프185 — title-only / leftover catalog refuse is a quality reject, not a
+  // truncated stream. Auto-continue burns slots and contradicts the
+  // content-thin banner from loop183; surface Retry instead.
+  if (looksLikeLowSubstancePersistSkipReason(options.terminalPersistResultReason)) {
+    return false;
+  }
 
   const kind = options.terminalPersistResultKind;
   const contentIncomplete =
