@@ -7,15 +7,27 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-08-31 현재 판단 · 최신 루프
 
-### 루프226 — 동일 33vh/vmin 그리드·카드 폭 leftover
+### 루프228 — 동일 33vh/vmin 그리드·카드 폭 leftover
 
 루프213/215는 vw만 본다. MiniMax는 `33vh 33vh 33vh`나 `width:30vmin`을 남겨 2장이면 빈 띠, 3장이면 클립이 난다. 동일 22–48vh/vmin/cq*만 `minmax(0,1fr)`로 바꾸고 카드 폭을 벗긴다. `50vmin` split은 유지. 카피 발명 없음.
 
+검증: contracts heal-ai-generated-deck 루프228 · deck-framework-compact.
+
+### 루프227 — 알파벳/괄호/번 leftover 인덱스
+
+루프205–226는 숫자·로마·원문자·Phase만 leftover 인덱스로 본다. MiniMax는 `C`/`기둥 다`/`(3)`/`3번`만 남겨 3열이 유지된다. A–C·가나다라·괄호·번/번째만 leftover. 전-인덱스 스텝 행은 유지. 카피 발명 없음.
+
+검증: contracts heal-ai-generated-deck 루프227 · deck-framework-compact.
+
+### 루프226 — 전각/원문자 ０ leftover 인덱스
+
+루프219는 ①–⑨ / １–９만 leftover로 본다. MiniMax는 `０`/`⓪`/`기둥 ０`로 빠진 기둥을 채워 3열이 유지된다. 원문자·전각 0을 leftover mark에 추가. 전-인덱스 ⓪①② 스텝 행은 유지. 카피 발명 없음.
+
 검증: contracts heal-ai-generated-deck 루프226 · deck-framework-compact.
 
-### 루프225 — 알파벳/괄호/번 leftover 인덱스
+### 루프225 — 00/PILLAR 0 leftover 인덱스
 
-루프205–222는 숫자·로마·원문자·Phase만 leftover 인덱스로 본다. MiniMax는 `C`/`기둥 다`/`(3)`/`3번`만 남겨 3열이 유지된다. A–C·가나다라·괄호·번/번째만 leftover. 전-인덱스 스텝 행은 유지. 카피 발명 없음.
+루프205–222 leftover 인덱스는 `1–9`/`01–09`만 본다. MiniMax는 `00`/`PILLAR 0`로 빠진 기둥을 채워 3열이 유지된다. digit를 `0?[0-9]`로 확장. `0%` KPI는 유지. 카피 발명 없음.
 
 검증: contracts heal-ai-generated-deck 루프225 · deck-framework-compact.
 
@@ -222,7 +234,7 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 ### 다음 루프 후보 (2026-08-31 EOD 기준)
 
 - **인접 (루프206 밖):** `srcdoc-deck-bridge-nested-slides` native `#deck-next` 픽스처가 host next 후 `active:2`를 보고함 (transform/dot는 1). staging에서 이미 red — 이번 CSS 변경과 무관.
-- **후보 C (3열 residual):** `D` 이후 알파벳, `첫째/둘째/셋째` 한글 서수, 또는 카드마다 다른 max-width(400 vs 600, 비 1.35)로 균일 판정을 피하는 leftover. 루프225–226 이후.
+- **후보 C (3열 residual):** `D` 이후 알파벳, `첫째/둘째/셋째` 한글 서수, 또는 카드마다 다른 max-width(400 vs 600, 비 1.35)로 균일 판정을 피하는 leftover. 루프227–228 이후.
 - **후보 B (예약 · 규모 큼):** contracts 안 `var(--pad, calc(px * n))` / `env(safe-area-inset-top, calc(...))` fallback red-spec 39건. fallback 표현을 card threshold 로 승격하는 heuristic — 별도 루프 필요.
 - **후보 A 후속 (E2E):** 190b drop 이후 남은 슬라이드 수가 사용자 요청보다 부족할 때 top-up/retry 파이프라인과의 연동 검증. 루프194 auto-repair 커버리지 실증 (사용자 실 fixture 몇 % 를 drop 없이 살려내는가) — MiniMax 실키 없이 기록 fixture 기반 지표만이라도 남긴다.
 - **자원 아이템 (별도 루프):** `system-prompt-api-mode.test.ts` 의 prompt length ceiling (29114 / 29217 vs 29100) 은 upstream 에서 이미 red · 별도 루프. `deck-template-look-css > 인젝트 catalog Motif paint` 은 5s timeout 로 간헐 fail (flaky) — 재현 조건 정리 필요.
@@ -556,16 +568,32 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | persist/preview: Phase 3/축 3 leftover 카드가 3열을 붙잡아 빈 띠 | ☑ 루프222 |
 | persist/preview: tobefilled/filllater stub 카드가 3열을 붙잡아 빈 띠 | ☑ 루프223 |
 | persist/preview: 대기/soon/later stub 카드가 3열을 붙잡아 빈 띠 | ☑ 루프224 |
-| persist/preview: C/기둥 다/(3)/3번 leftover 인덱스가 3열을 붙잡아 빈 띠 | ☑ 루프225 |
-| persist/preview: 동일 33vh/vmin 트랙·카드 폭이 leftover 빈 띠·클립 | ☑ 루프226 |
+| persist/preview: 00/PILLAR 0 leftover 카드가 3열을 붙잡아 빈 띠 | ☑ 루프225 |
+| persist/preview: 전각 ０/원문자 ⓪ leftover 카드가 3열을 붙잡아 빈 띠 | ☑ 루프226 |
+| persist/preview: C/기둥 다/(3)/3번 leftover 인덱스가 3열을 붙잡아 빈 띠 | ☑ 루프227 |
+| persist/preview: 동일 33vh/vmin 트랙·카드 폭이 leftover 빈 띠·클립 | ☑ 루프228 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프225–226 · 알파벳/괄호/번 인덱스 · vh/vmin 트랙)
+## 이번 루프 (루프227–228 · 알파벳/괄호/번 인덱스 · vh/vmin 트랙)
 
 - [x] leftover index — A–C / 가나다라 / `(3)` / `3번`. 전-인덱스 스텝 행 유지
 - [x] equal track + card lock — 22–48 vh/vmin/cq* → minmax / strip. 50 split 유지
 - [x] compact vocabulary 33vh/vmin · C/3번/(3)
-- [x] heal-ai-generated-deck 루프225–226 · deck-framework-compact
+- [x] heal-ai-generated-deck 루프227–228 · deck-framework-compact
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프226 · 전각/원문자 ０ 인덱스)
+
+- [x] ⓪ / ⓿ / 전각 ０ leftover
+- [x] 전-인덱스 ⓪①② 스텝 행 유지
+- [x] heal-ai-generated-deck 루프226 · deck-framework-compact
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프225 · 00/PILLAR 0 인덱스)
+
+- [x] leftover digit `0?[0-9]` (0 / 00 / 01–09)
+- [x] `0%` KPI 유지
+- [x] heal-ai-generated-deck 루프225 · deck-framework-compact
 - [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
 
 ## 직전 루프 (루프224 · 대기/soon stub)

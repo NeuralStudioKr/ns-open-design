@@ -398,7 +398,7 @@ const GRID_BLOCK_CHILD_RE =
   /^(div|section|article|li|figure|aside|header|footer|main|nav|ul|ol|p|table)$/;
 const EQUAL_FR_TRACK_RE =
   /^(?:1(?:\.0+)?fr|minmax\(\s*(?:0|auto|min-content|max-content)\s*,\s*1(?:\.0+)?fr\s*\))$/i;
-/** 루프210/215/226 — identical 22–48% or viewport/container shares (skip 50 splits). */
+/** 루프210/215/228 — identical 22–48% or viewport/container shares (skip 50 splits). */
 const EQUAL_COLUMN_SHARE_TRACK_RE =
   /^(?:2[2-9]|3\d|4[0-8])(?:\.\d+)?(?:%|vw|vh|vmin|vmax|dvh|svh|lvh|cqw|cqi|cqh|cqb)$/i;
 
@@ -1090,16 +1090,21 @@ function textLooksLikeLeftoverPeerPlaceholder(html: string): boolean {
  * 루프217 — `KEY 3` / `테마 3` / `블록 3` index leftovers.
  * 루프219 — circled `③` / fullwidth `３` leftovers.
  * 루프222 — `Phase 3` / `축 3` / `레이어 3` index leftovers.
- * 루프225 — letter `C` / `기둥 다` / `(3)` / `3번` leftovers.
+ * 루프225 — `00` / `PILLAR 0` / `기둥 0` zero-index leftovers.
+ * Keep `0%` KPI copy — `%` is not leftover punctuation.
+ * 루프226 — circled / fullwidth zero leftovers (`⓪` / `０` / `⓿`).
+ * 루프227 — letter `C` / `기둥 다` / `(3)` / `3번` leftovers.
  */
 const LEFTOVER_INDEX_ROMAN =
   '(?:viii|vii|iii|xii|xi|ix|iv|vi|ii|[xv]|i|[Ⅰ-Ⅻⅰ-ⅻ])';
-/** 루프219 — circled / dingbat / fullwidth 1–9 leftover indexes. */
-const LEFTOVER_INDEX_MARK = '[①-⑨❶-❾１-９⑴-⑼㉠-㉥]';
-/** 루프225 — A–C / 가나다라 leftover letters (not roman V/X/I). */
+/** 루프219/226 — circled / dingbat / fullwidth 0–9 leftover indexes. */
+const LEFTOVER_INDEX_MARK = '[⓪①-⑨❶-❾⓿０-９⑴-⑼㉠-㉥]';
+/** 루프225 — include 0 / 00 leftover shells MiniMax leaves on the missing pillar. */
+const LEFTOVER_INDEX_DIGIT = '0?[0-9]';
+/** 루프227 — A–C / 가나다라 leftover letters (not roman V/X/I). */
 const LEFTOVER_INDEX_LETTER = '(?:[abc]|[가나다라])';
 const LEFTOVER_INDEX_CORE =
-  `(?:0?[1-9]|${LEFTOVER_INDEX_ROMAN}|${LEFTOVER_INDEX_MARK}|${LEFTOVER_INDEX_LETTER})`;
+  `(?:${LEFTOVER_INDEX_DIGIT}|${LEFTOVER_INDEX_ROMAN}|${LEFTOVER_INDEX_MARK}|${LEFTOVER_INDEX_LETTER})`;
 const LEFTOVER_INDEX_SUFFIX = '(?:\\s*(?:번|번째|st|nd|rd|th))?';
 const LEFTOVER_INDEX_PREFIX =
   '(?:pillar|column|col|card|item|step|part|key|theme|block|slot|phase|axis|layer|no\\.?|num(?:ber)?|#|기둥|열|카드|항목|단계|파트|번호|넘버|포인트|키|테마|블록|슬롯|페이즈|축|레이어)';
@@ -1214,7 +1219,7 @@ function cssLengthToPx(raw: string): number | null {
     }
     return (PEER_CANVAS_PX * value) / 100;
   }
-  // 루프213/226 — MiniMax locks cards with 30vw/30vh/30vmin as if the
+  // 루프213/228 — MiniMax locks cards with 30vw/30vh/30vmin as if the
   // canvas were the viewport. Same 22–48 band as % / vw; 50/100 stay.
   const viewport = /^(\d+(?:\.\d+)?)\s*(vw|vh|vmin|vmax|dvh|svh|lvh|cqw|cqi|cqh|cqb)$/i
     .exec(source);
@@ -1318,7 +1323,7 @@ function stripFixedMainSizeFromOpenTag(openTag: string): string {
  * 루프207 — uniform 22–48% column-share widths (and flex:0 0 32%) also lock
  * the row. 100% stretch and 50% splits stay.
  * 루프213 — same for 22–48vw leftovers (`width:30vw`, `flex:0 0 30vw`).
- * 루프226 — same for vh/vmin/cq* leftovers (`width:30vmin`, `33vh 33vh 33vh`).
+ * 루프228 — same for vh/vmin/cq* leftovers (`width:30vmin`, `33vh 33vh 33vh`).
  */
 export function relaxUniformPeerCardFixedMainSize(
   html: string,
