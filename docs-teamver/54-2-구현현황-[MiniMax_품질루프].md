@@ -7,6 +7,12 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-08-31 현재 판단 · 최신 루프
 
+### 루프219 — 원문자/전각 숫자 leftover 카드
+
+루프205/209는 아라비아·로마만 leftover 인덱스로 본다. MiniMax는 `③`/`기둥 ３`로 빠진 기둥을 채워 3열이 유지된다. 원문자·전각 1–9만 leftover. 전-인덱스 스텝 행은 유지. 카피 발명 없음.
+
+검증: contracts heal-ai-generated-deck 루프219 · deck-framework-compact.
+
 ### 루프218 — dummy/예시 leftover 카드
 
 루프200–216은 placeholder/stub만 leftover로 본다. MiniMax는 `dummy`/`예시`/`샘플`로 빠진 기둥을 채워 3열이 유지된다. 카드 전체가 stub일 때만 제거. `sample mean` 실카피는 유지. 카피 발명 없음.
@@ -502,9 +508,17 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | persist/preview: 작성예정/입력필요 stub 카드가 3열을 붙잡아 빈 띠 | ☑ 루프216 |
 | persist/preview: KEY 3/테마 3 인덱스 leftover 카드가 3열을 붙잡아 빈 띠 | ☑ 루프217 |
 | persist/preview: dummy/예시 stub 카드가 3열을 붙잡아 빈 띠 | ☑ 루프218 |
+| persist/preview: 원문자 ③/전각 ３ leftover 카드가 3열을 붙잡아 빈 띠 | ☑ 루프219 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프218 · dummy/예시 stub)
+## 이번 루프 (루프219 · 원문자/전각 인덱스)
+
+- [x] ①–⑨ / ❶–❾ / 전각 １–９
+- [x] 전-인덱스 스텝 행 유지
+- [x] heal-ai-generated-deck 루프219 · deck-framework-compact
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프218 · dummy/예시 stub)
 
 - [x] leftover 토큰 dummy/sample/예시/샘플 · `sample mean` 유지
 - [x] heal-ai-generated-deck 루프218 · deck-framework-compact

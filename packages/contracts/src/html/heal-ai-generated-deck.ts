@@ -1068,20 +1068,23 @@ function textLooksLikeLeftoverPeerPlaceholder(html: string): boolean {
  * 루프209 — same for `PILLAR III` / `기둥 Ⅲ` roman leftovers.
  * 루프212 — `No. 3` / `번호 3` / `포인트 3` index leftovers.
  * 루프217 — `KEY 3` / `테마 3` / `블록 3` index leftovers.
+ * 루프219 — circled `③` / fullwidth `３` leftovers.
  */
 const LEFTOVER_INDEX_ROMAN =
   '(?:viii|vii|iii|xii|xi|ix|iv|vi|ii|[xv]|i|[Ⅰ-Ⅻⅰ-ⅻ])';
+/** 루프219 — circled / dingbat / fullwidth 1–9 leftover indexes. */
+const LEFTOVER_INDEX_MARK = '[①-⑨❶-❾１-９]';
 
 function textLooksLikeLeftoverIndexLabel(html: string): boolean {
   const text = visibleText(html).replace(/\s+/g, ' ').trim();
   if (!text) return false;
   const latin = new RegExp(
-    `^(?:pillar|column|col|card|item|step|part|key|theme|block|slot|no\\.?|num(?:ber)?|#)?\\s*(?:0?[1-9]|${LEFTOVER_INDEX_ROMAN})[.\\u2026·•\\-–—]?$`,
-    'i',
+    `^(?:pillar|column|col|card|item|step|part|key|theme|block|slot|no\\.?|num(?:ber)?|#)?\\s*(?:0?[1-9]|${LEFTOVER_INDEX_ROMAN}|${LEFTOVER_INDEX_MARK})[.\\u2026·•\\-–—]?$`,
+    'iu',
   );
   if (latin.test(text)) return true;
   return new RegExp(
-    `^(?:기둥|열|카드|항목|단계|파트|번호|넘버|포인트|키|테마|블록|슬롯)\\s*(?:0?[1-9]|${LEFTOVER_INDEX_ROMAN})[.\\u2026·•\\-–—]?$`,
+    `^(?:기둥|열|카드|항목|단계|파트|번호|넘버|포인트|키|테마|블록|슬롯)\\s*(?:0?[1-9]|${LEFTOVER_INDEX_ROMAN}|${LEFTOVER_INDEX_MARK})[.\\u2026·•\\-–—]?$`,
     'u',
   ).test(text);
 }
