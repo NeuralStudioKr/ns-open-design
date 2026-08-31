@@ -514,6 +514,50 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
       expect(shrinkOverAllocatedRepeatGrid(html)).toBe(html);
     });
 
+    it('shrinks repeat(3, minmax(0, calc(100%/3))) with 2 cards (루프292)', () => {
+      const html = [
+        '<div style="display:grid;grid-template-columns:repeat(3, minmax(0, calc(100% / 3)));gap:24px">',
+        '<div class="card">극한</div>',
+        '<div class="card">도함수</div>',
+        '</div>',
+      ].join('');
+      const out = shrinkOverAllocatedRepeatGrid(html);
+      expect(out).toMatch(/repeat\(\s*2\s*,\s*minmax\(0,\s*calc\(100%\s*\/\s*3\)\)/);
+      expect(out).not.toMatch(/repeat\(\s*3\s*,/);
+    });
+
+    it('rewrites a filled minmax(0, calc(33%)) row to minmax(0,1fr) (루프292)', () => {
+      const html = [
+        '<div style="display:grid;grid-template-columns:minmax(0, calc(33%)) minmax(0, calc(33%)) minmax(0, calc(33%));gap:24px">',
+        '<div>a</div><div>b</div><div>c</div>',
+        '</div>',
+      ].join('');
+      const out = normalizeEqualFrTracksToMinmax(html);
+      expect(out).toMatch(/grid-template-columns:\s*(?:minmax\(0,1fr\) ){2}minmax\(0,1fr\)/);
+      expect(out).not.toMatch(/calc\(33%\)/);
+    });
+
+    it('rewrites a filled minmax(0, calc(100%/3)) row to minmax(0,1fr) (루프292)', () => {
+      const html = [
+        '<div style="display:grid;grid-template-columns:minmax(0,calc(100%/3)) minmax(0,calc(100%/3)) minmax(0,calc(100%/3));gap:24px">',
+        '<div>a</div><div>b</div><div>c</div>',
+        '</div>',
+      ].join('');
+      const out = normalizeEqualFrTracksToMinmax(html);
+      expect(out).toMatch(/grid-template-columns:\s*(?:minmax\(0,1fr\) ){2}minmax\(0,1fr\)/);
+      expect(out).not.toMatch(/calc\(100%\/3\)/);
+    });
+
+    it('leaves calc(50%) two-track splits alone (루프292)', () => {
+      const html = [
+        '<div style="display:grid;grid-template-columns:calc(50%) calc(50%);gap:24px">',
+        '<div>목차</div><div>본문</div>',
+        '</div>',
+      ].join('');
+      expect(normalizeEqualFrTracksToMinmax(html)).toBe(html);
+      expect(shrinkOverAllocatedRepeatGrid(html)).toBe(html);
+    });
+
     it('rewrites a filled 33vi 33vi 33vi row to minmax (루프251)', () => {
       const html = [
         '<div style="display:grid;grid-template-columns:33vi 33vi 33vi;gap:24px">',

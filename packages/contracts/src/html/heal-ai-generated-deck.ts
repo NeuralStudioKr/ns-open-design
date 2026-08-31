@@ -509,19 +509,50 @@ const EQUAL_COLUMN_SHARE_TRACK_RE =
   /^(?:2[2-9]|3\d|4[0-8])(?:\.\d+)?(?:%|vw|vh|vmin|vmax|dvh|svh|lvh|dvw|svw|lvw|dvmin|svmin|lvmin|dvmax|svmax|lvmax|vi|vb|svi|svb|lvi|lvb|dvi|dvb|cqw|cqi|cqh|cqb|cqmin|cqmax)$/i;
 
 /**
+ * 루프292 — `calc(33%)` / `calc(100%/3)` leftover shares. `50%` splits
+ * stay (not in the 22–48 band).
+ */
+function unwrapCalcShareInner(inner: string): string | null {
+  const compact = String(inner ?? '').replace(/\s+/g, '').toLowerCase();
+  const calc = /^calc\((.+)\)$/i.exec(compact);
+  if (!calc) return null;
+  const expr = calc[1] ?? '';
+  if (EQUAL_FR_SHARE_TRACK_RE.test(expr) || EQUAL_COLUMN_SHARE_TRACK_RE.test(expr)) {
+    return expr;
+  }
+  const third = /^100(%|vw|vh|vmin|vmax|dvh|svh|lvh|dvw|svw|lvw|dvmin|svmin|lvmin|dvmax|svmax|lvmax|vi|vb|svi|svb|lvi|lvb|dvi|dvb|cqw|cqi|cqh|cqb|cqmin|cqmax)\/3$/i
+    .exec(expr);
+  if (third) return `33${(third[1] ?? '%').toLowerCase()}`;
+  return null;
+}
+
+/**
  * 루프289 — MiniMax wraps leftover shares as `minmax(0,33%)` /
  * `minmax(0,30vw)` / `minmax(0,0.33fr)` so bare-share parsers miss them.
  * Only soft floors (0/auto/min-content/max-content) unwrap; `minmax(200px,1fr)`
  * sidebars stay.
+ * 루프292 — second arg may be `calc(33%)` / `calc(100%/3)`. `[^)]+` cannot
+ * parse nested parens, so the second arg is sliced by depth.
  */
 function unwrapEqualShareTrack(track: string): string | null {
   const compact = String(track ?? '').replace(/\s+/g, '');
-  const match = /^minmax\(\s*(?:0|auto|min-content|max-content)\s*,\s*([^)]+?)\s*\)$/i
-    .exec(compact);
-  if (!match) return null;
-  const inner = String(match[1] ?? '').replace(/\s+/g, '').toLowerCase();
-  if (EQUAL_FR_SHARE_TRACK_RE.test(inner) || EQUAL_COLUMN_SHARE_TRACK_RE.test(inner)) {
-    return inner;
+  const head = /^minmax\((?:0|auto|min-content|max-content),/i.exec(compact);
+  if (!head) return unwrapCalcShareInner(compact);
+  const innerStart = head[0].length;
+  let depth = 1;
+  for (let i = innerStart; i < compact.length; i += 1) {
+    const ch = compact[i]!;
+    if (ch === '(') depth += 1;
+    if (ch === ')') {
+      depth -= 1;
+      if (depth !== 0) continue;
+      if (i !== compact.length - 1) return null;
+      const inner = compact.slice(innerStart, i).toLowerCase();
+      if (EQUAL_FR_SHARE_TRACK_RE.test(inner) || EQUAL_COLUMN_SHARE_TRACK_RE.test(inner)) {
+        return inner;
+      }
+      return unwrapCalcShareInner(inner);
+    }
   }
   return null;
 }
@@ -531,7 +562,52 @@ function equalShareTrackKey(track: string): string | null {
   if (EQUAL_FR_SHARE_TRACK_RE.test(compact) || EQUAL_COLUMN_SHARE_TRACK_RE.test(compact)) {
     return compact;
   }
-  return unwrapEqualShareTrack(compact);
+  return unwrapEqualShareTrack(compact) ?? unwrapCalcShareInner(compact);
+}
+
+function splitCssGridTracks(value: string): string[] {
+  const tracks: string[] = [];
+  let buf = '';
+  let depth = 0;
+  for (const ch of value) {
+    if (ch === '(') depth += 1;
+    if (ch === ')') depth = Math.max(0, depth - 1);
+    if (depth === 0 && /\s/.test(ch)) {
+      if (buf.trim()) tracks.push(buf.trim());
+      buf = '';
+      continue;
+    }
+    buf += ch;
+  }
+  if (buf.trim()) tracks.push(buf.trim());
+  return tracks;
+}
+
+function parseRepeatEqualColumns(cleaned: string): { count: number; unit: string } | null {
+  if (!/^repeat\s*\(/i.test(cleaned)) return null;
+  const open = cleaned.indexOf('(');
+  if (open < 0) return null;
+  let depth = 1;
+  let close = -1;
+  for (let i = open + 1; i < cleaned.length; i += 1) {
+    const ch = cleaned[i]!;
+    if (ch === '(') depth += 1;
+    if (ch === ')') {
+      depth -= 1;
+      if (depth === 0) {
+        close = i;
+        break;
+      }
+    }
+  }
+  if (close < 0 || close !== cleaned.length - 1) return null;
+  const inner = cleaned.slice(open + 1, close);
+  const comma = inner.indexOf(',');
+  if (comma < 0) return null;
+  const count = Number.parseInt(inner.slice(0, comma).trim(), 10);
+  const unit = inner.slice(comma + 1).trim();
+  if (!Number.isFinite(count) || count < 2 || !unit) return null;
+  return { count, unit };
 }
 
 function countDirectBlockChildren(inner: string): number {
@@ -587,22 +663,17 @@ type EqualColumnDecl = {
  * `33vh 33vh 33vh`). 루프289 — same shares wrapped as
  * `minmax(0,33%)` / `minmax(0,30vw)` / `minmax(0,0.33fr)`. Mixed tracks
  * such as `1.3fr 1fr` or `220px 1fr` or `50% 50%` splits stay.
+ * 루프292 — `minmax(0,calc(100%/3))` / `repeat(3, minmax(0, calc(33%)))`.
  */
 function parseDeclaredEqualColumns(value: string): EqualColumnDecl | null {
   const important = /!important/i.test(value);
   const cleaned = value.replace(/!important/gi, '').trim();
   if (!cleaned) return null;
-  const repeat = cleaned.match(/^repeat\s*\(\s*(\d+)\s*,\s*([^)]+?)\s*\)$/i);
+  const repeat = parseRepeatEqualColumns(cleaned);
   if (repeat) {
-    const count = Number.parseInt(repeat[1] ?? '0', 10);
-    const unit = (repeat[2] ?? '').trim();
-    if (!Number.isFinite(count) || count < 2 || !unit) return null;
-    return { kind: 'repeat', count, unit, important };
+    return { kind: 'repeat', count: repeat.count, unit: repeat.unit, important };
   }
-  const tracks: string[] = [];
-  const trackRe = /minmax\s*\([^)]*\)|[^\s]+/gi;
-  let tm: RegExpExecArray | null;
-  while ((tm = trackRe.exec(cleaned)) !== null) tracks.push(tm[0]!);
+  const tracks = splitCssGridTracks(cleaned);
   if (tracks.length < 2) return null;
   if (tracks.every((t) => EQUAL_FR_TRACK_RE.test(t.replace(/\s+/g, '')))) {
     return {
@@ -708,6 +779,7 @@ function minmaxUnitForEqualFr(decl: EqualColumnDecl): EqualColumnDecl | null {
   if (unit === 'minmax(0,1fr)') return null;
   // 루프220 — `1.0fr` / `minmax(0,1.0fr)` are the same leftover as `1fr`.
   // 루프289 — `minmax(0,33%)` / `minmax(0,0.33fr)` share wrappers too.
+  // 루프292 — `minmax(0,calc(33%))` / `minmax(0,calc(100%/3))`.
   if (
     /^1(?:\.0+)?fr$/i.test(unit)
     || /^minmax\((?:0|auto|min-content|max-content),1(?:\.0+)?fr\)$/i.test(unit)

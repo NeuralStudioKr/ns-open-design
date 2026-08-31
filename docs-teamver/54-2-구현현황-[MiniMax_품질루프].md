@@ -19,6 +19,12 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-08-31 현재 판단 · 최신 루프
 
+### 루프292 — minmax(0, calc(share)) equal-track
+
+루프289는 `minmax(0,33%)`만 언랩. MiniMax `minmax(0, calc(33%))` / `repeat(3, minmax(0, calc(100%/3)))`는 `[^)]+`가 calc 첫 `)`에서 잘려 파서가 null. 괄호 depth로 repeat·track를 나누고 `calc(33%)`·`calc(100%/3)`만 share로 본다. `calc(50%)` 2열·`minmax(200px,1fr)` sidebar 유지. 카피 발명 없음.
+
+검증: contracts heal-ai-generated-deck 루프292.
+
 ### 루프291 — 칸 번호 O · 열여덟째 빈 카드
 
 루프288까지는 A–N / 가…하 / 열일곱째까지만 빈 칸 번호로 본다. 모델이 빠진 3열을 `기둥 O` / `열여덟째`만으로 채워 빈 띠가 남는다. 그 제목만 제거. `스무 번째` / `기둥 P`와 번호+본문은 유지. 카피 발명 없음.
@@ -678,10 +684,11 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 
 ### 다음 루프 후보 (2026-08-31 EOD 기준)
 
-- **후보 (루프292):** 모델이 빈 3열을 다음 칸 번호(`기둥 P`)로 채우면 그때 빈 칸 번호에 넣는다. `스무 번째`는 아직 번호로 보지 않는 서수 픽스처. extra-copy·stub는 주제 단어 목록이 아님(루프259·265).
+- **완료 (루프292):** `minmax(0, calc(share))` / `calc(100%/3)` equal-track. `calc(50%)` 2열은 유지.
+- **후보 (칸 번호 P):** 모델이 빈 3열을 다음 칸 번호(`기둥 P`)로 채우면 그때 빈 칸 번호에 넣는다. `스무 번째`는 아직 번호로 보지 않는 서수 픽스처. extra-copy·stub는 주제 단어 목록이 아님(루프259·265).
 - **완료 (루프289–290):** `minmax(0,share)` equal-track · logical `inline-size` peer lock. 3장 280 vs 900 sidebar는 의도적 유지.
 - **인접 (루프206 밖):** native `#deck-next` active off-by-one는 루프281–282로 닫힘.
-- **후보 C (3열 residual):** 칸 번호 `O` 이후, 또는 비율 >2.05 sidebar를 건드리지 않는 별도 layout residual.
+- **후보 C (3열 residual):** 칸 번호 `P` 이후, 또는 비율 >2.05 sidebar를 건드리지 않는 별도 layout residual.
 
 ## 진행
 
