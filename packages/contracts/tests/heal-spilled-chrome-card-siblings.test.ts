@@ -218,4 +218,28 @@ describe('루프293 · absorbSpilledChromeCardSiblings', () => {
     expect(out).toContain('③ 덧셈 공식');
     expect(out).not.toMatch(/기둥 P|열아홉째/);
   });
+
+  it('pulls formula + body back into a label-only chrome card in an inline-grid row (루프307)', () => {
+    const html = [
+      '<section class="slide" data-screen-label="04 공식">',
+      '<div style="display:inline-grid;grid-template-columns:repeat(3,1fr);gap:24px">',
+      `<div style="${chrome}"><div style="${label}">① 피타고라스 항등식</div></div>`,
+      `<div style="${formula}">sin²θ + cos²θ = 1</div>`,
+      `<div style="${body}">모든 각도에서 성립하는 가장 기본 항등식</div>`,
+      `<div style="${chrome}"><div style="${label}">② 배각 공식</div>`,
+      `<div style="${formula}">sin2θ = 2 sinθ cosθ</div></div>`,
+      `<div style="${chrome}"><div style="${label}">③ 덧셈 공식</div>`,
+      `<div style="${formula}">sin(A±B)</div></div>`,
+      '</div></section>',
+    ].join('');
+    const out = absorbSpilledChromeCardSiblings(html, brief);
+    const labelAt = out.indexOf('① 피타고라스 항등식');
+    const formulaAt = out.indexOf('sin²θ + cos²θ = 1');
+    const nextCardAt = out.indexOf('② 배각 공식');
+    expect(labelAt).toBeGreaterThan(-1);
+    expect(formulaAt).toBeGreaterThan(labelAt);
+    expect(formulaAt).toBeLessThan(nextCardAt);
+    expect(out).toContain('③ 덧셈 공식');
+    expect(out).not.toMatch(/기둥 P|열아홉째/);
+  });
 });

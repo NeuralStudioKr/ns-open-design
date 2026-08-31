@@ -562,15 +562,70 @@ function unwrapCalcShareInner(inner: string): string | null {
   const third = /^100(%|vw|vh|vmin|vmax|dvh|svh|lvh|dvw|svw|lvw|dvmin|svmin|lvmin|dvmax|svmax|lvmax|vi|vb|svi|svb|lvi|lvb|dvi|dvb|cqw|cqi|cqh|cqb|cqmin|cqmax)\/3$/i
     .exec(expr);
   if (third) return `33${(third[1] ?? '%').toLowerCase()}`;
+  return unwrapCalcGapAdjustedShare(expr);
+}
+
+const CALC_GAP_LENGTH_MAX_PX = 160;
+
+function calcGapLengthPx(value: string, unit: string): number | null {
+  const num = Number.parseFloat(value);
+  if (!Number.isFinite(num) || num < 0) return null;
+  const u = unit.toLowerCase();
+  const px = u === 'px' ? num : u === 'rem' || u === 'em' ? num * 16 : u === 'ch' ? num * 8 : null;
+  if (px == null || px > CALC_GAP_LENGTH_MAX_PX) return null;
+  return px;
+}
+
+/**
+ * 루프312 — MiniMax leftover often subtracts row gap from the share:
+ * `calc(33% - 16px)`, `calc(100%/3 - 8px)`, `calc((100% - 48px) / 3)`.
+ * Small subtract only. `calc(50% - 16px)` / large sidebar subtract 유지.
+ */
+function unwrapCalcGapAdjustedShare(expr: string): string | null {
+  const shareMinus = new RegExp(
+    `^(${EQUAL_FR_SHARE_TRACK_RE.source.slice(1, -1)}|${EQUAL_COLUMN_SHARE_TRACK_RE.source.slice(1, -1)})[-](\\d+(?:\\.\\d+)?)(px|rem|em|ch)$`,
+    'i',
+  ).exec(expr);
+  if (shareMinus && calcGapLengthPx(shareMinus[2] ?? '', shareMinus[3] ?? '')) {
+    return shareMinus[1] ?? null;
+  }
+  const thirdMinus = /^100(%|vw|vh|vmin|vmax|dvh|svh|lvh|dvw|svw|lvw|dvmin|svmin|lvmin|dvmax|svmax|lvmax|vi|vb|svi|svb|lvi|lvb|dvi|dvb|cqw|cqi|cqh|cqb|cqmin|cqmax)\/3[-](\d+(?:\.\d+)?)(px|rem|em|ch)$/i
+    .exec(expr);
+  if (thirdMinus && calcGapLengthPx(thirdMinus[2] ?? '', thirdMinus[3] ?? '')) {
+    return `33${(thirdMinus[1] ?? '%').toLowerCase()}`;
+  }
+  const grouped = /^\(100(%|vw|vh|vmin|vmax|dvh|svh|lvh|dvw|svw|lvw|dvmin|svmin|lvmin|dvmax|svmax|lvmax|vi|vb|svi|svb|lvi|lvb|dvi|dvb|cqw|cqi|cqh|cqb|cqmin|cqmax)[-](\d+(?:\.\d+)?)(px|rem|em|ch)\)\/3$/i
+    .exec(expr);
+  if (grouped && calcGapLengthPx(grouped[2] ?? '', grouped[3] ?? '')) {
+    return `33${(grouped[1] ?? '%').toLowerCase()}`;
+  }
+  const groupedMul = /^\(100(%|vw|vh|vmin|vmax|dvh|svh|lvh|dvw|svw|lvw|dvmin|svmin|lvmin|dvmax|svmax|lvmax|vi|vb|svi|svb|lvi|lvb|dvi|dvb|cqw|cqi|cqh|cqb|cqmin|cqmax)[-](\d+(?:\.\d+)?)\*(\d+(?:\.\d+)?)(px|rem|em|ch)\)\/3$/i
+    .exec(expr);
+  if (groupedMul) {
+    const times = Number.parseFloat(groupedMul[2] ?? '');
+    const gap = calcGapLengthPx(groupedMul[3] ?? '', groupedMul[4] ?? '');
+    if (Number.isFinite(times) && times >= 1 && times <= 6 && gap != null && times * gap <= CALC_GAP_LENGTH_MAX_PX) {
+      return `33${(groupedMul[1] ?? '%').toLowerCase()}`;
+    }
+  }
+  const groupedMulFlip = /^\(100(%|vw|vh|vmin|vmax|dvh|svh|lvh|dvw|svw|lvw|dvmin|svmin|lvmin|dvmax|svmax|lvmax|vi|vb|svi|svb|lvi|lvb|dvi|dvb|cqw|cqi|cqh|cqb|cqmin|cqmax)[-](\d+(?:\.\d+)?)(px|rem|em|ch)\*(\d+(?:\.\d+)?)\)\/3$/i
+    .exec(expr);
+  if (groupedMulFlip) {
+    const times = Number.parseFloat(groupedMulFlip[4] ?? '');
+    const gap = calcGapLengthPx(groupedMulFlip[2] ?? '', groupedMulFlip[3] ?? '');
+    if (Number.isFinite(times) && times >= 1 && times <= 6 && gap != null && times * gap <= CALC_GAP_LENGTH_MAX_PX) {
+      return `33${(groupedMulFlip[1] ?? '%').toLowerCase()}`;
+    }
+  }
   return null;
 }
 
 /**
- * 루프299 — `var(--col, 33%)` / `var(--col, calc(100%/3))` fallback만
- * share로 본다. 커스텀 프로퍼티 값은 읽지 않는다.
+ * 루프299 — `var(--col, 33%)` fallback만 share로 본다.
+ * 루프310 — `env(safe-area-inset-*, 33%)` fallback도 동일.
  */
-function cssVarFallbackInner(compact: string): string | null {
-  const head = /^var\(/i.exec(compact);
+function cssFnCommaFallbackInner(compact: string, fn: 'var' | 'env'): string | null {
+  const head = new RegExp(`^${fn}\\(`, 'i').exec(compact);
   if (!head) return null;
   const inner = compact.slice(head[0].length);
   let depth = 1;
@@ -646,7 +701,8 @@ function unwrapShareValue(raw: string): string | null {
   }
   const calc = unwrapCalcShareInner(compact);
   if (calc) return calc;
-  const fallback = cssVarFallbackInner(compact);
+  const fallback = cssFnCommaFallbackInner(compact, 'var')
+    ?? cssFnCommaFallbackInner(compact, 'env');
   if (fallback) return unwrapShareValue(fallback);
   const fit = unwrapFitContentShare(compact);
   if (fit) return fit;
@@ -738,6 +794,47 @@ function parseRepeatEqualColumns(cleaned: string): { count: number; unit: string
   const unit = inner.slice(comma + 1).trim();
   if (!Number.isFinite(count) || count < 2 || !unit) return null;
   return { count, unit };
+}
+
+function parseRepeatAutoShare(
+  cleaned: string,
+): { mode: 'auto-fill' | 'auto-fit'; unit: string } | null {
+  if (!/^repeat\s*\(\s*auto-(?:fill|fit)\s*,/i.test(cleaned)) return null;
+  const open = cleaned.indexOf('(');
+  if (open < 0) return null;
+  let depth = 1;
+  let close = -1;
+  for (let i = open + 1; i < cleaned.length; i += 1) {
+    const ch = cleaned[i]!;
+    if (ch === '(') depth += 1;
+    if (ch === ')') {
+      depth -= 1;
+      if (depth === 0) {
+        close = i;
+        break;
+      }
+    }
+  }
+  if (close < 0 || close !== cleaned.length - 1) return null;
+  const inner = cleaned.slice(open + 1, close);
+  const comma = inner.indexOf(',');
+  if (comma < 0) return null;
+  const mode = inner.slice(0, comma).trim().toLowerCase();
+  const unit = inner.slice(comma + 1).trim();
+  if ((mode !== 'auto-fill' && mode !== 'auto-fit') || !unit) return null;
+  return { mode: mode as 'auto-fill' | 'auto-fit', unit };
+}
+
+function unitLooksLikeLeftoverShare(unit: string): boolean {
+  const compact = String(unit ?? '').replace(/\s+/g, '');
+  if (!compact) return false;
+  if (unwrapShareValue(compact) != null) return true;
+  return minmaxUnitForEqualFr({
+    kind: 'list',
+    count: 3,
+    unit: compact,
+    important: false,
+  }) != null;
 }
 
 function countDirectBlockChildren(inner: string): number {
@@ -861,8 +958,10 @@ export function shrinkOverAllocatedRepeatGrid(html: string): string {
     const style = match[4] ?? '';
     const colsMatch = style.match(/grid-template-columns\s*:\s*([^;]+)/i);
     if (!colsMatch) continue;
-    const decl = parseDeclaredEqualColumns((colsMatch[1] ?? '').trim());
-    if (!decl) continue;
+    const rawCols = (colsMatch[1] ?? '').trim();
+    const decl = parseDeclaredEqualColumns(rawCols);
+    const autoShare = decl ? null : parseRepeatAutoShare(rawCols.replace(/!important/gi, '').trim());
+    if (!decl && (!autoShare || !unitLooksLikeLeftoverShare(autoShare.unit))) continue;
     const openTag = match[0] ?? '';
     const tag = (match[1] ?? '').toLowerCase();
     const start = match.index;
@@ -871,10 +970,18 @@ export function shrinkOverAllocatedRepeatGrid(html: string): string {
     if (!close) continue;
     const inner = out.slice(openEnd, close.closeStart);
     const directChildren = countDirectBlockChildren(inner);
-    if (directChildren === 0 || directChildren >= decl.count) continue;
+    if (directChildren === 0 || directChildren > 6) continue;
+    if (decl && directChildren >= decl.count) continue;
+    if (!decl && directChildren < 2) continue;
+    const nextDecl = decl ?? {
+      kind: 'repeat' as const,
+      count: directChildren,
+      unit: autoShare!.unit,
+      important: /!important/i.test(rawCols),
+    };
     const nextOpen = openTag.replace(
       /grid-template-columns\s*:\s*[^;"']+/i,
-      `grid-template-columns:${formatEqualColumns(decl, directChildren)}`,
+      `grid-template-columns:${formatEqualColumns(nextDecl, directChildren)}`,
     );
     patches.push({ start, end: openEnd, replacement: nextOpen });
   }
@@ -941,24 +1048,93 @@ export function normalizeEqualFrTracksToMinmax(html: string): string {
     const style = match[4] ?? '';
     const colsMatch = style.match(/grid-template-columns\s*:\s*([^;]+)/i);
     if (!colsMatch) continue;
-    const decl = parseDeclaredEqualColumns((colsMatch[1] ?? '').trim());
-    if (!decl) continue;
-    const next = minmaxUnitForEqualFr(decl);
-    if (!next) continue;
+    const rawCols = (colsMatch[1] ?? '').trim();
+    const decl = parseDeclaredEqualColumns(rawCols);
     const openTag = match[0] ?? '';
+    const tag = (match[1] ?? '').toLowerCase();
+    if (decl) {
+      const next = minmaxUnitForEqualFr(decl);
+      if (!next) continue;
+      patches.push({
+        start: match.index,
+        end: match.index + openTag.length,
+        replacement: replaceStyleDecl(
+          openTag,
+          'grid-template-columns',
+          formatEqualColumns(next, decl.count),
+        ),
+      });
+      continue;
+    }
+    const autoShare = parseRepeatAutoShare(rawCols.replace(/!important/gi, '').trim());
+    if (!autoShare || !unitLooksLikeLeftoverShare(autoShare.unit)) continue;
+    const openEnd = match.index + openTag.length;
+    const close = findSameTagClose(out, tag, openEnd);
+    if (!close) continue;
+    const directChildren = countDirectBlockChildren(out.slice(openEnd, close.closeStart));
+    if (directChildren < 2 || directChildren > 6) continue;
     patches.push({
       start: match.index,
       end: match.index + openTag.length,
       replacement: replaceStyleDecl(
         openTag,
         'grid-template-columns',
-        formatEqualColumns(next, decl.count),
+        formatEqualColumns({
+          kind: 'repeat',
+          count: directChildren,
+          unit: 'minmax(0,1fr)',
+          important: /!important/i.test(rawCols),
+        }, directChildren),
       ),
     });
   }
   for (let i = patches.length - 1; i >= 0; i -= 1) {
     const p = patches[i]!;
     out = `${out.slice(0, p.start)}${p.replacement}${out.slice(p.end)}`;
+  }
+  return out;
+}
+
+/**
+ * 루프309 — `grid-auto-columns:33%` implicit leftover tracks.
+ * No (or none/auto) template-columns, 2–6 children, leftover share only.
+ * Rewrite auto-columns to minmax(0,1fr). `50%` / px sidebar 유지.
+ */
+export function normalizeGridAutoColumnShares(
+  html: string,
+  brief?: string | null,
+): string {
+  let out = String(html ?? '');
+  if (!out) return out;
+  if (!sourceLooksLikeAiGeneratedDeck(out, brief)) return out;
+  const gridOpenRe =
+    /<(div|section|article|main|aside|ul|ol)\b([^>]*\bstyle\s*=\s*(["'])([^"']*)\3[^>]*)>/gi;
+  const patches: Array<{ start: number; end: number; replacement: string }> = [];
+  let match: RegExpExecArray | null;
+  while ((match = gridOpenRe.exec(out)) !== null) {
+    const style = match[4] ?? '';
+    const autoRaw = /grid-auto-columns\s*:\s*([^;]+)/i.exec(style)?.[1];
+    if (!autoRaw) continue;
+    const template = /grid-template-columns\s*:\s*([^;]+)/i.exec(style)?.[1]?.trim();
+    if (template && !/^(?:none|auto)$/i.test(template)) continue;
+    if (!unitLooksLikeLeftoverShare(autoRaw.replace(/!important/gi, '').trim())) continue;
+    const openTag = match[0] ?? '';
+    const tag = (match[1] ?? '').toLowerCase();
+    const openEnd = match.index + openTag.length;
+    const close = findSameTagClose(out, tag, openEnd);
+    if (!close) continue;
+    const directChildren = countDirectBlockChildren(out.slice(openEnd, close.closeStart));
+    if (directChildren < 2 || directChildren > 6) continue;
+    patches.push({
+      start: match.index,
+      end: match.index + openTag.length,
+      replacement: replaceStyleDecl(openTag, 'grid-auto-columns', 'minmax(0,1fr)'),
+    });
+  }
+  if (patches.length === 0) return out;
+  patches.sort((a, b) => b.start - a.start);
+  for (const patch of patches) {
+    out = `${out.slice(0, patch.start)}${patch.replacement}${out.slice(patch.end)}`;
   }
   return out;
 }
@@ -1702,7 +1878,8 @@ function cssLengthToPx(raw: string): number | null {
 }
 
 function flexShorthandLockedBasisPx(style: string): number | null {
-  const decl = /(?:^|;)\s*flex\s*:\s*([^;]+)/i.exec(style);
+  // 루프313 — MiniMax leftover often locks via `-webkit-flex` only.
+  const decl = /(?:^|;)\s*(?:-webkit-flex|-moz-flex|flex)\s*:\s*([^;]+)/i.exec(style);
   if (!decl) return null;
   const raw = String(decl[1] ?? '').trim();
   if (/^0\s+0\s+/i.test(raw) || /^none\b/i.test(raw)) {
@@ -1718,6 +1895,9 @@ function flexShorthandLockedBasisPx(style: string): number | null {
   // 루프304 — `flex:0 1 33%` / `flex:0 1 calc(33%)` leftover basis.
   const shrinkShare = /^0\s+(?:1(?:\.0+)?)\s+(.+)$/i.exec(raw);
   if (shrinkShare) return cssLengthToPx((shrinkShare[1] ?? '').trim());
+  // 루프308 — `flex:2 1 33%` / `flex:3 2 calc(33%)` leftover basis.
+  const anyShare = /^(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)\s+(.+)$/i.exec(raw);
+  if (anyShare) return cssLengthToPx((anyShare[3] ?? '').trim());
   // 루프305 — `flex:33%` / `flex:calc(33%)` one-value basis (= 1 1 <share>).
   const lone = splitCssGridTracks(raw);
   if (lone.length === 1) return cssLengthToPx(lone[0]!);
@@ -1730,6 +1910,7 @@ function peerFixedMainSizePx(style: string): number | null {
   for (const prop of [
     'width',
     'flex-basis',
+    '-webkit-flex-basis',
     'min-width',
     'max-width',
     'inline-size',
@@ -1781,11 +1962,12 @@ function stripFixedMainSizeFromOpenTag(openTag: string): string {
     .replace(/(?:^|;)\s*inline-size\s*:[^;]*/gi, '')
     .replace(/(?:^|;)\s*min-inline-size\s*:[^;]*/gi, '')
     .replace(/(?:^|;)\s*max-inline-size\s*:[^;]*/gi, '')
-    .replace(/(?:^|;)\s*flex-basis\s*:[^;]*/gi, '')
-    .replace(/(?:^|;)\s*flex\s*:\s*(?:0\s+0|none)\s+[^;]*/gi, '')
-    .replace(/(?:^|;)\s*flex\s*:\s*1(?:\.0+)?\s+(?:1(?:\.0+)?|0)\s+[^;]*/gi, ';flex:1 1 0')
-    .replace(/(?:^|;)\s*flex\s*:\s*0\s+1(?:\.0+)?\s+[^;]*/gi, ';flex:1 1 0')
-    .replace(/(?:^|;)\s*flex\s*:\s*([^;]+)/gi, (full, value) => {
+    .replace(/(?:^|;)\s*(?:-webkit-)?flex-basis\s*:[^;]*/gi, '')
+    .replace(/(?:^|;)\s*(?:-webkit-flex|-moz-flex|flex)\s*:\s*(?:0\s+0|none)\s+[^;]*/gi, '')
+    .replace(/(?:^|;)\s*(?:-webkit-flex|-moz-flex|flex)\s*:\s*1(?:\.0+)?\s+(?:1(?:\.0+)?|0)\s+[^;]*/gi, ';flex:1 1 0')
+    .replace(/(?:^|;)\s*(?:-webkit-flex|-moz-flex|flex)\s*:\s*0\s+1(?:\.0+)?\s+[^;]*/gi, ';flex:1 1 0')
+    .replace(/(?:^|;)\s*(?:-webkit-flex|-moz-flex|flex)\s*:\s*\d+(?:\.\d+)?\s+\d+(?:\.\d+)?\s+[^;]*/gi, ';flex:1 1 0')
+    .replace(/(?:^|;)\s*(?:-webkit-flex|-moz-flex|flex)\s*:\s*([^;]+)/gi, (full, value) => {
       const tokens = splitCssGridTracks(String(value ?? '').trim());
       if (tokens.length === 1 && cssLengthToPx(tokens[0]!) != null) return ';flex:1 1 0';
       return full;
@@ -1834,6 +2016,9 @@ function stripFixedMainSizeFromOpenTag(openTag: string): string {
  * 루프302 — same for `flex:1 1 33%` / `flex:1 1 calc(33%)` leftover basis.
  * 루프304 — same for `flex:0 1 33%` / `flex:0 1 calc(33%)`.
  * 루프305 — same for one-value `flex:33%` / `flex:calc(33%)`.
+ * 루프308 — same for `flex:2 1 33%` / `flex:3 2 calc(33%)`.
+ * 루프312 — same for gap-adjusted `calc(33% - 16px)` / `calc((100% - 48px)/3)`.
+ * 루프313 — same for `-webkit-flex` / `-moz-flex` leftover shorthand.
  */
 export function relaxUniformPeerCardFixedMainSize(
   html: string,
@@ -2404,7 +2589,7 @@ function looksLikeSpilledCardBody(child: DirectChildSpan): boolean {
   if (child.tag !== 'div') return false;
   if (exactCardishTokens(child.attrs).length > 0) return false;
   if (looksLikeChromeCardStyle(child.style)) return false;
-  if (/(?:^|;)\s*display\s*:\s*(?:grid|flex)\b/i.test(child.style)) return false;
+  if (/(?:^|;)\s*display\s*:\s*(?:inline-)?(?:grid|flex)\b/i.test(child.style)) return false;
   if (/(?:^|;)\s*position\s*:\s*absolute\b/i.test(child.style)) return false;
   if (/(?:^|;)\s*width\s*:\s*100%/i.test(child.style)) return false;
   const text = visibleText(child.inner);
@@ -2416,7 +2601,7 @@ function rowAllowsSpilledChromeAbsorb(
   children: DirectChildSpan[],
 ): boolean {
   const colsRaw = /grid-template-columns\s*:\s*([^;]+)/i.exec(style)?.[1];
-  if (/(?:^|;)\s*display\s*:\s*grid\b/i.test(style) && colsRaw) {
+  if (/(?:^|;)\s*display\s*:\s*(?:inline-)?grid\b/i.test(style) && colsRaw) {
     const decl = parseDeclaredEqualColumns(colsRaw.trim());
     return Boolean(decl && decl.count >= 2 && children.length > decl.count);
   }
@@ -2436,6 +2621,7 @@ function rowAllowsSpilledChromeAbsorb(
  * 카드가 2개 이상일 때만 (2열 스플릿·사이드바 유지).
  * 루프298 — inline display 없이 `.cards { display:flex }` /
  * `.grid { grid-template-columns:repeat(3,1fr) }` 클래스 바인딩도 동일.
+ * 루프307 — `display:inline-grid` 행도 동일 (`display:grid`만 보면 놓침).
  * 카피 발명 없음.
  */
 export function absorbSpilledChromeCardSiblings(
@@ -2542,7 +2728,7 @@ function childLooksLikeDedupPeerCard(child: DirectChildSpan): boolean {
 }
 
 function parentLooksLikeCardRow(style: string): boolean {
-  if (/(?:^|;)\s*display\s*:\s*grid\b/i.test(style)) return true;
+  if (/(?:^|;)\s*display\s*:\s*(?:inline-)?grid\b/i.test(style)) return true;
   return isFlexRowContainerStyle(style);
 }
 
@@ -2941,6 +3127,7 @@ export function healAiGeneratedDeckMarkup(html: string, brief?: string | null): 
   out = relaxUniformPeerCardFixedMainSize(out, brief);
   out = shrinkOverAllocatedRepeatGrid(out);
   out = normalizeEqualFrTracksToMinmax(out);
+  out = normalizeGridAutoColumnShares(out, brief);
   out = shrinkOverAllocatedEqualTrackRows(out);
   out = shrinkClassBoundEqualTrackGrids(out, brief);
   out = balanceUnderfilledFlexCardRow(out);

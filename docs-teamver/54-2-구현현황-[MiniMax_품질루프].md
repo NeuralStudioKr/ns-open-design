@@ -19,6 +19,48 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-08-31 현재 판단 · 최신 루프
 
+### 루프313 — -webkit-flex leftover peer-lock
+
+표준 `flex:`만 보면 MiniMax `-webkit-flex:2 1 33%` / `-webkit-flex-basis:33%` 잠금이 남는다. vendor shorthand도 22–48 share일 때 `flex:1 1 0`. `-webkit-flex:2 1 50%` 2열 유지. 카피 발명 없음.
+
+검증: contracts heal-ai-generated-deck 루프313.
+
+### 루프312 — gap-adjusted calc(share) equal-track
+
+`calc(33%)`는 언랩되지만 MiniMax `calc(33% - 16px)` / `calc((100% - 48px) / 3)` / `calc(100%/3 - 8px)`는 갭을 뺀 leftover. 작은 길이 차감만. `calc(50% - 16px)` 2열 유지. 카피 발명 없음.
+
+검증: contracts heal-ai-generated-deck 루프312.
+
+### 루프311 — repeat(auto-fill|auto-fit, share)
+
+숫자 `repeat(N, share)`만 보던 파서가 `repeat(auto-fill, 33%)` leftover를 놓침. 자식 2–6일 때 `repeat(N, minmax(0,1fr))`. `repeat(auto-fill, 50%)` / px 유지. 카피 발명 없음.
+
+검증: contracts heal-ai-generated-deck 루프311.
+
+### 루프310 — env(..., share) equal-track
+
+`var(--x, 33%)`만 언랩. MiniMax `env(safe-area-inset-left, 33%)` / `minmax(0, env(..., calc(100%/3)))` fallback도 동일. `env(..., 50%)` 2열 유지. 카피 발명 없음.
+
+검증: contracts heal-ai-generated-deck 루프310.
+
+### 루프309 — grid-auto-columns leftover share
+
+template-columns가 없거나 none/auto일 때 `grid-auto-columns:33%` implicit 트랙이 3열을 잠금. 자식 2–6 · leftover share만 `minmax(0,1fr)`. `grid-auto-columns:50%` 유지. 카피 발명 없음.
+
+검증: contracts heal-ai-generated-deck 루프309.
+
+### 루프308 — flex:G S leftover basis
+
+302–305는 `1 1` / `0 1` / one-value만. MiniMax `flex:2 1 33%` / `flex:3 2 calc(33%)`는 grow가 커도 basis가 leftover. 22–48 share만 `flex:1 1 0`. `flex:2 1 50%` 2열 유지. 카피 발명 없음.
+
+검증: contracts heal-ai-generated-deck 루프308.
+
+### 루프307 — inline-grid chrome-card spill
+
+293–298 absorb는 `display:grid`만. MiniMax `display:inline-grid` 행의 조기 close spill을 놓침. `(?:inline-)?grid`로 동일 absorb. 카피 발명 없음.
+
+검증: contracts heal-spilled-chrome-card-siblings 루프307.
+
 ### 루프306 — fit-content(share) equal-track
 
 `clamp`/`min`은 언랩되지만 MiniMax `fit-content(33%)` / `minmax(0,fit-content(calc(100%/3)))`는 파서가 null. 인자만 share로 본다. `fit-content(50%)` 2열 유지. 카피 발명 없음.
@@ -768,6 +810,7 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 
 ### 다음 루프 후보 (2026-08-31 EOD 기준)
 
+- **완료 (루프307–313):** inline-grid spill · `flex:G S` leftover · `grid-auto-columns` share · `env(..., share)` · `repeat(auto-fill|fit, share)` · gap-adjusted calc · `-webkit-flex`. `기둥 P`는 여전히 번호로 보지 않음.
 - **완료 (루프305–306):** `flex:33%` one-value · `fit-content(share)` 트랙. `기둥 P`는 여전히 번호로 보지 않음.
 - **완료 (루프303–304):** `clamp`/`min`/`max` share 트랙 · `flex:0 1 calc(share)` basis. `기둥 P`는 여전히 번호로 보지 않음.
 - **완료 (루프300–302):** `minmax(0px,…)` floor · class-bound 인접 동일 카드 · `flex:1 1 calc(share)` basis. `기둥 P`는 여전히 번호로 보지 않음.
