@@ -1101,6 +1101,8 @@ function textLooksLikeLeftoverPeerPlaceholder(html: string): boolean {
  * 루프225 — `00` / `PILLAR 0` / `기둥 0` zero-index leftovers.
  * Keep `0%` KPI copy — `%` is not leftover punctuation.
  * 루프226 — circled / fullwidth zero leftovers (`⓪` / `０` / `⓿`).
+ * 루프229 — `Module 3` / `트랙 3` / `섹션 3` index leftovers.
+ * `UNIT 3` stays because that prefix is not leftover vocabulary.
  */
 const LEFTOVER_INDEX_ROMAN =
   '(?:viii|vii|iii|xii|xi|ix|iv|vi|ii|[xv]|i|[Ⅰ-Ⅻⅰ-ⅻ])';
@@ -1114,12 +1116,12 @@ function textLooksLikeLeftoverIndexLabel(html: string): boolean {
   const text = visibleText(html).replace(/\s+/g, ' ').trim();
   if (!text) return false;
   const latin = new RegExp(
-    `^(?:pillar|column|col|card|item|step|part|key|theme|block|slot|phase|axis|layer|no\\.?|num(?:ber)?|#)?\\s*(?:${LEFTOVER_INDEX_DIGIT}|${LEFTOVER_INDEX_ROMAN}|${LEFTOVER_INDEX_MARK})[.\\u2026·•\\-–—]?$`,
+    `^(?:pillar|column|col|card|item|step|part|key|theme|block|slot|phase|axis|layer|module|track|section|no\\.?|num(?:ber)?|#)?\\s*(?:${LEFTOVER_INDEX_DIGIT}|${LEFTOVER_INDEX_ROMAN}|${LEFTOVER_INDEX_MARK})[.\\u2026·•\\-–—]?$`,
     'iu',
   );
   if (latin.test(text)) return true;
   return new RegExp(
-    `^(?:기둥|열|카드|항목|단계|파트|번호|넘버|포인트|키|테마|블록|슬롯|페이즈|축|레이어)\\s*(?:${LEFTOVER_INDEX_DIGIT}|${LEFTOVER_INDEX_ROMAN}|${LEFTOVER_INDEX_MARK})[.\\u2026·•\\-–—]?$`,
+    `^(?:기둥|열|카드|항목|단계|파트|번호|넘버|포인트|키|테마|블록|슬롯|페이즈|축|레이어|모듈|트랙|섹션)\\s*(?:${LEFTOVER_INDEX_DIGIT}|${LEFTOVER_INDEX_ROMAN}|${LEFTOVER_INDEX_MARK})[.\\u2026·•\\-–—]?$`,
     'u',
   ).test(text);
 }
