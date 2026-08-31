@@ -258,6 +258,32 @@ describe('validateHtmlArtifact', () => {
     expect(isLowSubstanceSlideDeckArtifact(repeated, brief, '슬라이드')).toBe(true);
   });
 
+  it('classifies closed 2-slide thin brief parrots as low-substance (루프233)', () => {
+    const brief = '첨부한 자료를 바탕으로 슬라이드 덱을 만들어줘';
+    const twoSlide =
+      '<!doctype html><html lang="ko"><head><meta charset="utf-8"></head><body>'
+      + `<section class="slide"><h1>${brief}</h1><p>${brief}</p></section>`
+      + `<section class="slide"><h2>${brief}</h2><p>${brief}</p></section>`
+      + '</body></html>';
+    expect(isLowSubstanceSlideDeckArtifact(twoSlide, brief, '슬라이드')).toBe(true);
+  });
+
+  it('does not clear low-substance for title + decorative SVG only (루프235)', () => {
+    const titleSvg =
+      '<!doctype html><html lang="ko"><head><meta charset="utf-8"></head><body>'
+      + '<section class="slide"><h1>삼각함수</h1>'
+      + '<svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="40"/><text x="10" y="20">motif</text></svg>'
+      + '</section>'
+      + '<section class="slide"><h2>정의</h2>'
+      + '<svg viewBox="0 0 10 10"><circle r="4"/></svg></section>'
+      + '<section class="slide"><h2>활용</h2>'
+      + '<svg viewBox="0 0 10 10"><rect width="4" height="4"/></svg></section>'
+      + '<section class="slide"><h2>정리</h2>'
+      + '<svg viewBox="0 0 10 10"><path d="M0 0"/></svg></section>'
+      + '</body></html>';
+    expect(isLowSubstanceSlideDeckArtifact(titleSvg)).toBe(true);
+  });
+
   it('classifies Motif-SVG-before-title hangs as low-substance', () => {
     const hung =
       '<!doctype html><html lang="ko"><body style="margin:0;background:#F5F0E6">'

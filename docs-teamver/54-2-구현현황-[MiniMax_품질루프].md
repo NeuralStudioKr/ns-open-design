@@ -7,6 +7,36 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-08-31 현재 판단 · 최신 루프
 
+### 루프236 — 비연속 duplicate title-only leftover
+
+루프182 연속 drop 이후에도 `title | 실본문 | 같은 title-only`가 남았다. 뒤쪽 non-cover title-only를 제거. chapter/cover/background motif는 유지. 카피 발명 없음.
+
+검증: contracts heal-duplicate-title-only-slide 루프236.
+
+### 루프235 — title+장식 media ≠ deliverable
+
+title+Motif SVG가 filled/low-substance 면제를 받던 구멍. heading·media 제거 후 body만 deliverable. media short-circuit는 minimum bar 통과 시에만. 카피 발명 없음.
+
+검증: web deck-html-content · validate 루프235.
+
+### 루프234 — leading intro without cover attrs
+
+bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + same-topic이면 cover attrs 없이도 splash drop. chapter 유지.
+
+검증: contracts heal-duplicate-title-only-slide 루프234.
+
+### 루프233 — 2장 brief parrot
+
+루프193은 3장+. 닫힌 2장 thin parrot도 low-substance. cover+실본문은 유지.
+
+검증: web deck-html-content · validate 루프233.
+
+### 루프232 — unanchored translate(-50%,-50%)
+
+`translateY`만 중화하던 구멍. `translate(-50%,-50%)` / `translate3d`도 앵커 없으면 제거. top/left 50% 앵커 유지.
+
+검증: contracts heal-duplicate-title-only-slide 루프232.
+
 ### 루프231 — 임시/fake leftover stub
 
 루프218–228은 dummy/자료없음 stub만 본다. MiniMax는 `임시`/`fake`로 빠진 기둥을 채워 3열이 유지된다. 카드 전체가 stub일 때만 제거. `임시 적분` 실카피는 유지. 카피 발명 없음.
@@ -593,9 +623,49 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | persist/preview: Module 3/섹션 3 leftover 카드가 3열을 붙잡아 빈 띠 | ☑ 루프229 |
 | persist/preview: 10/PILLAR 10 leftover 카드가 3열을 붙잡아 빈 띠 | ☑ 루프230 |
 | persist/preview: 임시/fake stub 카드가 3열을 붙잡아 빈 띠 | ☑ 루프231 |
+| heal: 앵커 없는 `translate(-50%,-50%)` / translate3d 클립 | ☑ 루프232 |
+| persist: 닫힌 2장 raw brief parrot low-substance | ☑ 루프233 |
+| heal: bare slide 실cover 앞 title splash 잔존 | ☑ 루프234 |
+| persist: title+장식 SVG가 deliverable/low-substance 면제 | ☑ 루프235 |
+| heal: 비연속 duplicate title-only leftover 잔존 | ☑ 루프236 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프231 · 임시/fake stub)
+## 이번 루프 (루프236 · non-adjacent title-only drop)
+
+- [x] 이전 title-only와 동일 텍스트인 뒤쪽 non-cover title-only 제거
+- [x] chapter/cover/background motif 유지
+- [x] heal-duplicate-title-only-slide 루프236
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프235 · title+decorative media gate)
+
+- [x] title-only / deliverable — media는 body 동반 시에만
+- [x] validate media short-circuit → minimum bar 필요
+- [x] deck-html-content · validate
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프234 · leading intro without cover attrs)
+
+- [x] substantive same-topic slide 2면 cover attrs 없이도 splash drop
+- [x] chapter host 유지
+- [x] heal-duplicate-title-only-slide
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프233 · 2-slide brief parrot)
+
+- [x] 2장 thin parrot ≥2 → failed generation
+- [x] cover parrot + 실본문 유지
+- [x] deck-html-content · validate
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프232 · translate(-50%,-50%) neutralize)
+
+- [x] unanchored translate / translate3d 제거
+- [x] anchored top/left 50% 유지
+- [x] heal-duplicate-title-only-slide
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프231 · 임시/fake stub)
 
 - [x] 임시/가짜/가데이터 · temp/fake leftover
 - [x] 임시 적분 실카피 유지

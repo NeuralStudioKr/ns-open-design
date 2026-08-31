@@ -128,8 +128,8 @@ describe('루프182 · dropDuplicateConsecutiveTitleOnlyLeftoverSlides', () => {
       expect(out).toContain('<svg');
     });
 
-    it('does not drop non-adjacent slides with the same title (chapter divider reuse)', () => {
-      // Same title appears again later after real body slides — keep both.
+    it('drops non-adjacent title-only leftovers after a filled slide (루프236)', () => {
+      // title | real body | same title-only → drop the later shell.
       const html = [
         '<body>',
         slide('', '<h1>삼각함수</h1>'),
@@ -139,7 +139,23 @@ describe('루프182 · dropDuplicateConsecutiveTitleOnlyLeftoverSlides', () => {
       ].join('');
       const out = dropDuplicateConsecutiveTitleOnlyLeftoverSlides(html);
       const count = (out.match(/<section\b[^>]*\bclass\s*=\s*["'][^"']*\bslide\b/gi) ?? []).length;
+      expect(count).toBe(2);
+      expect(out).toContain('정의');
+      expect(out).toContain('<h1>삼각함수</h1>');
+    });
+
+    it('keeps non-adjacent title-only when marked as a chapter host (루프236)', () => {
+      const html = [
+        '<body>',
+        slide('', '<h1>삼각함수</h1>'),
+        slide('', '<h2>정의</h2><p>각과 비를 다루는 함수입니다.</p>'),
+        slide('class="slide s-chapter"', '<h1>삼각함수</h1>'),
+        '</body>',
+      ].join('');
+      const out = dropDuplicateConsecutiveTitleOnlyLeftoverSlides(html);
+      const count = (out.match(/<section\b[^>]*\bclass\s*=\s*["'][^"']*\bslide\b/gi) ?? []).length;
       expect(count).toBe(3);
+      expect(out).toContain('s-chapter');
     });
 
     it('does not drop long-form bodies that happen to share their opening heading', () => {
@@ -261,6 +277,40 @@ describe('루프183 · leading intro shell / unanchored translateY heal', () => 
     expect(out).toContain('max-width:1100px');
   });
 
+  it('removes unanchored translate(-50%,-50%) / translate3d (루프232)', () => {
+    const html = [
+      '<body>',
+      slide(
+        '',
+        [
+          '<div data-od-slide-flow="" style="position:relative;transform:translate(-50%, -50%);max-width:1100px"><h1>삼각함수</h1></div>',
+          '<div style="transform:translate3d(-50%,-50%,0)"><p>본문</p></div>',
+        ].join(''),
+      ),
+      '</body>',
+    ].join('');
+
+    const out = neutralizeUnanchoredTranslateYInSlideContent(html);
+    expect(out).not.toMatch(/translate\s*\(\s*-50%\s*,\s*-50%\s*\)/i);
+    expect(out).not.toMatch(/translate3d\s*\(\s*-50%/i);
+    expect(out).toContain('max-width:1100px');
+    expect(out).toContain('본문');
+  });
+
+  it('preserves anchored translate(-50%,-50%) with top/left 50% (루프232)', () => {
+    const html = [
+      '<body>',
+      slide(
+        '',
+        '<div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%)"><h1>삼각함수</h1></div>',
+      ),
+      '</body>',
+    ].join('');
+
+    const out = neutralizeUnanchoredTranslateYInSlideContent(html);
+    expect(out).toContain('transform:translate(-50%,-50%)');
+  });
+
   it('preserves anchored vertical centering transforms', () => {
     const html = [
       '<body>',
@@ -270,6 +320,29 @@ describe('루프183 · leading intro shell / unanchored translateY heal', () => 
 
     const out = neutralizeUnanchoredTranslateYInSlideContent(html);
     expect(out).toContain('top:50%;transform:translateY(-50%)');
+  });
+
+  it('drops a bare title splash before a substantive same-topic cover without cover attrs (루프234)', () => {
+    const html = [
+      '<body>',
+      slide('', '<div data-od-slide-flow=""><h1>삼각함수</h1></div>'),
+      slide(
+        '',
+        [
+          '<div data-od-slide-flow="">',
+          '<h1>삼각함수의 언어와 형상</h1>',
+          '<p>직각삼각형의 변 길이 비에서 시작해 단위원 위의 회전과 파동으로 확장되는 삼각함수의 핵심 어휘와 쓰임을 한 번에 정리합니다.</p>',
+          '</div>',
+        ].join(''),
+      ),
+      '</body>',
+    ].join('');
+
+    const out = dropLeadingTitleOnlyIntroBeforeRealCover(html, brief);
+    const count = (out.match(/<section\b[^>]*\bclass\s*=\s*["'][^"']*\bslide\b/gi) ?? []).length;
+    expect(count).toBe(1);
+    expect(out).toContain('삼각함수의 언어와 형상');
+    expect(out).not.toMatch(/<h1>삼각함수<\/h1>\s*<\/div>\s*<\/section>/);
   });
 
   it('heals the user-reported shape end-to-end without touching the real cover', () => {
