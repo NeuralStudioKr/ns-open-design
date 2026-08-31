@@ -7,6 +7,12 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-08-31 현재 판단 · 최신 루프
 
+### 루프230 — 10/PILLAR 10 leftover 인덱스
+
+루프225 leftover digit는 `0–9`/`00–09`만 본다. MiniMax는 `10`/`PILLAR 10`으로 빠진 기둥을 채워 3열이 유지된다. digit에 `10`만 추가. `10%` KPI는 유지. 카피 발명 없음.
+
+검증: contracts heal-ai-generated-deck 루프230 · deck-framework-compact.
+
 ### 루프229 — Module/섹션 leftover 인덱스
 
 루프205–226 leftover 인덱스는 pillar/phase/축만 본다. MiniMax는 `Module 3`/`섹션 3`로 빠진 기둥을 채워 3열이 유지된다. module/track/section · 모듈/트랙/섹션만 leftover. 전-인덱스 Module 스텝 행은 유지. `UNIT 3`은 유지. 카피 발명 없음.
@@ -579,9 +585,17 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | persist/preview: lorem ipsum/placeholder stub 카드가 3열을 붙잡아 빈 띠 | ☑ 루프227 |
 | persist/preview: 자료없음/정보없음 stub 카드가 3열을 붙잡아 빈 띠 | ☑ 루프228 |
 | persist/preview: Module 3/섹션 3 leftover 카드가 3열을 붙잡아 빈 띠 | ☑ 루프229 |
+| persist/preview: 10/PILLAR 10 leftover 카드가 3열을 붙잡아 빈 띠 | ☑ 루프230 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프229 · Module/섹션 인덱스)
+## 이번 루프 (루프230 · 10/PILLAR 10 인덱스)
+
+- [x] leftover digit `10` 추가 (11–99 유지)
+- [x] `10%` KPI 유지
+- [x] heal-ai-generated-deck 루프230 · deck-framework-compact
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프229 · Module/섹션 인덱스)
 
 - [x] module/track/section · 모듈/트랙/섹션 leftover
 - [x] 전-인덱스 Module 스텝 행 · UNIT 3 유지

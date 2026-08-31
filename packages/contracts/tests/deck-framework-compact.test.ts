@@ -70,6 +70,7 @@ describe('DECK_FRAMEWORK_DIRECTIVE_COMPACT', () => {
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('lorem ipsum');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('자료없음');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('Module 3');
+    expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('PILLAR 10');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('Class flex rows');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('no px/%/vw width or min-width');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('max-width');

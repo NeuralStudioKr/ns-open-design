@@ -1103,6 +1103,7 @@ function textLooksLikeLeftoverPeerPlaceholder(html: string): boolean {
  * 루프226 — circled / fullwidth zero leftovers (`⓪` / `０` / `⓿`).
  * 루프229 — `Module 3` / `트랙 3` / `섹션 3` index leftovers.
  * `UNIT 3` stays because that prefix is not leftover vocabulary.
+ * 루프230 — `10` / `PILLAR 10` two-digit leftovers. Keep `10%` KPI copy.
  */
 const LEFTOVER_INDEX_ROMAN =
   '(?:viii|vii|iii|xii|xi|ix|iv|vi|ii|[xv]|i|[Ⅰ-Ⅻⅰ-ⅻ])';
@@ -1110,7 +1111,8 @@ const LEFTOVER_INDEX_ROMAN =
 /** 루프226 — include circled / dingbat / fullwidth 0 leftovers. */
 const LEFTOVER_INDEX_MARK = '[⓪①-⑨❶-❾⓿０-９]';
 /** 루프225 — include 0 / 00 leftover shells MiniMax leaves on the missing pillar. */
-const LEFTOVER_INDEX_DIGIT = '0?[0-9]';
+/** 루프230 — include `10` leftover shells (not 11–99 KPI-looking numbers). */
+const LEFTOVER_INDEX_DIGIT = '(?:0?[0-9]|10)';
 
 function textLooksLikeLeftoverIndexLabel(html: string): boolean {
   const text = visibleText(html).replace(/\s+/g, ' ').trim();

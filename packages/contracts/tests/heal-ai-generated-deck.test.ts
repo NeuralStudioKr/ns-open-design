@@ -517,6 +517,56 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
       expect(dropEmptyLeftoverPeerCardsInAllocatedRows(html)).toBe(html);
     });
 
+    it('drops a 10 leftover third card (루프230)', () => {
+      const html = [
+        '<div style="display:flex;gap:28px">',
+        '<div class="card" style="padding:24px"><h3>극한</h3><p>lim</p></div>',
+        '<div class="card" style="padding:24px"><h3>도함수</h3><p>d/dx</p></div>',
+        '<div class="card" style="padding:24px"><h3>10</h3></div>',
+        '</div>',
+      ].join('');
+      const out = dropEmptyLeftoverPeerCardsInAllocatedRows(html, '미적분');
+      expect((out.match(/class="card"/g) ?? []).length).toBe(2);
+      expect(out).not.toMatch(/>10</);
+      expect(out).toContain('극한');
+    });
+
+    it('keeps an 11 index-looking card because 11–99 are not leftover digits (루프230)', () => {
+      const html = [
+        '<div style="display:flex;gap:16px">',
+        '<div class="card"><h3>극한</h3><p>정의</p></div>',
+        '<div class="card"><h3>11</h3></div>',
+        '</div>',
+      ].join('');
+      expect(dropEmptyLeftoverPeerCardsInAllocatedRows(html, '미적분')).toBe(html);
+    });
+
+    it('keeps a 10% KPI card that is not an index leftover (루프230)', () => {
+      const html = [
+        '<div style="display:flex;gap:16px">',
+        '<div class="card"><h3>극한</h3><p>정의</p></div>',
+        '<div class="card"><h3>10%</h3><p>적분</p></div>',
+        '</div>',
+      ].join('');
+      expect(dropEmptyLeftoverPeerCardsInAllocatedRows(html, '미적분')).toBe(html);
+    });
+
+    it('pipeline heals a PILLAR 10 leftover without inventing 적분 copy (루프230)', () => {
+      const html = [
+        '<section class="slide"><h1>미적분의 세 기둥</h1>',
+        '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:24px">',
+        '<div class="card"><h3>극한</h3><p>lim</p></div>',
+        '<div class="card"><h3>도함수</h3><p>d/dx</p></div>',
+        '<div class="card"><h3>PILLAR 10</h3></div>',
+        '</div></section>',
+      ].join('');
+      const out = healAiGeneratedDeckMarkup(html, '미적분');
+      expect((out.match(/class="card"/g) ?? []).length).toBe(2);
+      expect(out).not.toContain('PILLAR 10');
+      expect(out).toContain('극한');
+      expect(out).toContain('도함수');
+    });
+
     it('drops a Module 3 leftover third card (루프229)', () => {
       const html = [
         '<div style="display:flex;gap:28px">',
