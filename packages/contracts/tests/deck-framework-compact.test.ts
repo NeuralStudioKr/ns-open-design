@@ -52,7 +52,7 @@ describe('DECK_FRAMEWORK_DIRECTIVE_COMPACT', () => {
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('33% tracks');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('empty card shell');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('placeholder card shell');
-    expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('TBD/N/A/준비중');
+    expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('TBD/N/A/n.a./준비중');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('PILLAR 03');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('해당없음');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('PILLAR III');

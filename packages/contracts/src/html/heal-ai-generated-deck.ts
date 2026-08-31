@@ -1001,7 +1001,9 @@ const LEFTOVER_PEER_PLACEHOLDER_PUNCT_RE = /^(?:[.…·•\-–—]{1,3})/u;
 function compactLeftoverPeerPlaceholder(text: string): string {
   return visibleText(text)
     .toLowerCase()
-    .replace(/[^\p{L}\p{N}.…·•\-–—]+/gu, '');
+    .replace(/[^\p{L}\p{N}.…·•\-–—]+/gu, '')
+    // 루프211 — `n.a.` / `t.b.d.` keep dots so they miss `na`/`tbd`.
+    .replace(/\./g, '');
 }
 
 function leftoverPlaceholderTokenLength(compact: string): number | null {
