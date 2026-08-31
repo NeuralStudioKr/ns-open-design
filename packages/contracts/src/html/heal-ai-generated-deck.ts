@@ -1108,9 +1108,23 @@ export function dropEmptyLeftoverPeerCardsInAllocatedRows(
 
 const PEER_FIXED_MAIN_SIZE_MIN_PX = 280;
 const PEER_FIXED_MAIN_SIZE_RATIO = 1.35;
+/** 루프207 — 3-col leftover `%` shares (skip 100% stretch and 50% splits). */
+const PEER_COLUMN_SHARE_PERCENT_MIN = 22;
+const PEER_COLUMN_SHARE_PERCENT_MAX = 48;
+const PEER_CANVAS_PX = 1920;
 
 function cssLengthToPx(raw: string): number | null {
-  const match = /^(\d+(?:\.\d+)?)\s*(px|rem|em|ch)\b/i.exec(String(raw ?? '').trim());
+  const source = String(raw ?? '').trim();
+  const percent = /^(\d+(?:\.\d+)?)\s*%$/i.exec(source);
+  if (percent) {
+    const value = Number.parseFloat(percent[1] ?? '');
+    if (!Number.isFinite(value)) return null;
+    if (value < PEER_COLUMN_SHARE_PERCENT_MIN || value > PEER_COLUMN_SHARE_PERCENT_MAX) {
+      return null;
+    }
+    return (PEER_CANVAS_PX * value) / 100;
+  }
+  const match = /^(\d+(?:\.\d+)?)\s*(px|rem|em|ch)\b/i.exec(source);
   if (!match) return null;
   const value = Number.parseFloat(match[1] ?? '');
   if (!Number.isFinite(value)) return null;
@@ -1126,7 +1140,8 @@ function flexShorthandLockedBasisPx(style: string): number | null {
   if (!decl) return null;
   const raw = String(decl[1] ?? '').trim();
   if (!/^0\s+0\s+/i.test(raw) && !/^none\b/i.test(raw)) return null;
-  const length = /(\d+(?:\.\d+)?)\s*(px|rem|em|ch)\b/i.exec(raw);
+  // `%` is not a word char, so `\b` after it fails at end-of-decl (`33%`).
+  const length = /(\d+(?:\.\d+)?)\s*(px|rem|em|ch|%)/i.exec(raw);
   if (!length) return null;
   return cssLengthToPx(`${length[1]}${length[2]}`);
 }
@@ -1197,6 +1212,8 @@ function stripFixedMainSizeFromOpenTag(openTag: string): string {
  * every peer has a similar large fixed main size. Mixed sidebar + fluid
  * (or 280 vs 900) stays. Hangul/brief-gated. Never invent missing cards.
  * 루프201 — max-width / flex:0 0 still cap the row after 198 width strip.
+ * 루프207 — uniform 22–48% column-share widths (and flex:0 0 32%) also lock
+ * the row. 100% stretch and 50% splits stay.
  */
 export function relaxUniformPeerCardFixedMainSize(
   html: string,

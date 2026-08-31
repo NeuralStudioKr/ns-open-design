@@ -714,6 +714,68 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
       expect(out).toContain('넓이');
     });
 
+    it('strips uniform 32% column-share widths so three cards can share (루프207)', () => {
+      const html = [
+        '<div style="display:flex;gap:24px">',
+        '<div class="card" style="width:32%;padding:24px"><h3>극한</h3></div>',
+        '<div class="card" style="width:32%;padding:24px"><h3>도함수</h3></div>',
+        '<div class="card" style="width:32%;padding:24px"><h3>적분</h3></div>',
+        '</div>',
+      ].join('');
+      const out = relaxUniformPeerCardFixedMainSize(html, '미적분');
+      expect(out).not.toMatch(/width:\s*32%/);
+      expect(out).toContain('극한');
+      expect(out).toContain('적분');
+    });
+
+    it('strips uniform flex:0 0 33% locked basis (루프207)', () => {
+      const html = [
+        '<div style="display:flex;gap:24px">',
+        '<div class="card" style="flex:0 0 33%;padding:24px"><h3>극한</h3></div>',
+        '<div class="card" style="flex:0 0 33%;padding:24px"><h3>도함수</h3></div>',
+        '<div class="card" style="flex:0 0 33%;padding:24px"><h3>적분</h3></div>',
+        '</div>',
+      ].join('');
+      const out = relaxUniformPeerCardFixedMainSize(html, '미적분');
+      expect(out).not.toMatch(/flex:\s*0 0 33%/);
+      expect(out).toContain('극한');
+    });
+
+    it('leaves 100% stretch and 50% split cards alone (루프207)', () => {
+      const stretch = [
+        '<div style="display:flex;gap:24px">',
+        '<div class="card" style="width:100%;padding:16px">극한</div>',
+        '<div class="card" style="width:100%;padding:16px">도함수</div>',
+        '</div>',
+      ].join('');
+      const split = [
+        '<div style="display:flex;gap:24px">',
+        '<div class="card" style="width:50%;padding:16px">목차</div>',
+        '<div class="card" style="width:50%;padding:16px">본문</div>',
+        '</div>',
+      ].join('');
+      expect(relaxUniformPeerCardFixedMainSize(stretch, '미적분')).toBe(stretch);
+      expect(relaxUniformPeerCardFixedMainSize(split, '미적분')).toBe(split);
+    });
+
+    it('pipeline heals 32% pillars so 191 can grow them (루프207)', () => {
+      const html = [
+        '<!doctype html><html><body>',
+        '<section class="slide"><h1>미적분의 세 기둥</h1>',
+        '<div style="display:flex;gap:24px">',
+        '<div class="card" style="width:32%;padding:24px"><h3>극한</h3><p>lim</p></div>',
+        '<div class="card" style="width:32%;padding:24px"><h3>도함수</h3><p>d/dx</p></div>',
+        '<div class="card" style="width:32%;padding:24px"><h3>적분</h3><p>넓이</p></div>',
+        '</div></section>',
+        '</body></html>',
+      ].join('');
+      const out = healAiGeneratedDeckMarkup(html, '미적분');
+      expect(out).not.toMatch(/width:\s*32%/);
+      expect(out.match(/flex:\s*1 1 0/gi)?.length).toBeGreaterThanOrEqual(3);
+      expect(out).toContain('극한');
+      expect(out).toContain('넓이');
+    });
+
     it('pipeline heals max-width pillars so 191 can grow them (루프201)', () => {
       const html = [
         '<!doctype html><html><body>',

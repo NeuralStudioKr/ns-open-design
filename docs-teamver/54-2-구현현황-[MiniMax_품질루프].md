@@ -7,6 +7,12 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-08-31 현재 판단 · 최신 루프
 
+### 루프207 — 동일 % 폭이 3열을 잠그는 문제
+
+루프198–201은 px/rem만 본다. MiniMax는 `width:32%`/`flex:0 0 33%`를 찍어 3열이 잘리거나 grow가 막힌다. 22–48% column-share만 벗긴다. 100% stretch·50% split·영문 카탈로그는 유지. 카피 발명 없음.
+
+검증: contracts heal-ai-generated-deck 루프207 · deck-framework-compact.
+
 ### 루프206 — stacked first-child가 페이지 2를 가리는 문제
 
 `#od-stacked-deck-stage > .slide:first-child { display:block }`는 부트용인데 전환 후에도 살아 있다. 인라인 hide가 빠지면 1장이 다시 그려진다. `.active`가 생기기 전에만 first-child를 켠다. 카피 발명 없음.
@@ -418,9 +424,17 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | persist/preview: 클래스 `.cards{display:flex}` 행이 grow 없이 좌측 편중 | ☑ 루프204 |
 | persist/preview: PILLAR/COLUMN/기둥 N 인덱스 leftover 카드가 3열을 붙잡아 빈 띠 | ☑ 루프205 |
 | catalog PreviewModal: stacked first-child CSS가 페이지 2에서 1장을 다시 그림 | ☑ 루프206 |
+| persist/preview: 동일 22–48% 카드 폭이 grow를 막아 3열 클립·빈 띠 | ☑ 루프207 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프206 · stacked first-child)
+## 이번 루프 (루프207 · % column-share)
+
+- [x] `cssLengthToPx` 22–48% · `flex:0 0 33%`
+- [x] 100% stretch · 50% split · 영문 카탈로그 유지
+- [x] heal-ai-generated-deck 루프207 · deck-framework-compact
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프206 · stacked first-child)
 
 - [x] `:has(.slide.active)` 부트 전용 first-child
 - [x] 인라인 hide 유실 후에도 1장 display:none
