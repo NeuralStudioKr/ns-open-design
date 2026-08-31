@@ -1086,6 +1086,11 @@ const LEFTOVER_PEER_PLACEHOLDER_TOKENS = [
   'asdf',
   'xxx',
   'xx',
+  // 루프243 — nullish shells MiniMax leaves on the missing pillar.
+  'undefined',
+  'null',
+  'nil',
+  '널',
 ].sort((a, b) => b.length - a.length);
 
 const LEFTOVER_PEER_PLACEHOLDER_PUNCT_RE = /^(?:[.…·•\-–—]{1,3})/u;

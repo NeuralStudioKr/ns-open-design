@@ -7,6 +7,12 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-08-31 현재 판단 · 최신 루프
 
+### 루프243 — null/undefined leftover stub
+
+루프208–241은 없음/xxx stub만 본다. MiniMax는 `null`/`undefined`로 빠진 기둥을 채워 3열이 유지된다. 카드 전체가 stub일 때만 제거. `null 적분` 실카피는 유지. 카피 발명 없음.
+
+검증: contracts heal-ai-generated-deck 루프243 · deck-framework-compact.
+
 ### 루프242 — Group/행 leftover 인덱스
 
 루프205–239 leftover 인덱스는 pillar/module/섹션만 본다. MiniMax는 `Group 3`/`행 3`로 빠진 기둥을 채워 3열이 유지된다. group/lane/row · 그룹/레인/행만 leftover. 전-인덱스 Group 스텝 행은 유지. `UNIT 3`은 유지. 카피 발명 없음.
@@ -670,9 +676,17 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | persist/preview: 400 vs 600 max-width가 leftover lock을 피해 3열 클립 | ☑ 루프240 |
 | persist/preview: xxx/asdf stub 카드가 3열을 붙잡아 빈 띠 | ☑ 루프241 |
 | persist/preview: Group 3/행 3 leftover 카드가 3열을 붙잡아 빈 띠 | ☑ 루프242 |
+| persist/preview: null/undefined stub 카드가 3열을 붙잡아 빈 띠 | ☑ 루프243 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프242 · Group/행 인덱스)
+## 이번 루프 (루프243 · null/undefined stub)
+
+- [x] undefined/null/nil/널 leftover
+- [x] null 적분 실카피 유지
+- [x] heal-ai-generated-deck 루프243 · deck-framework-compact
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프242 · Group/행 인덱스)
 
 - [x] group/lane/row · 그룹/레인/행 leftover
 - [x] 전-인덱스 Group 스텝 행 · UNIT 3 유지
