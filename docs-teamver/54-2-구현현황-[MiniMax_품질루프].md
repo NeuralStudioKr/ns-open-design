@@ -20,6 +20,12 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-08-31 현재 판단 · 최신 루프
 
+### 루프287 — 슬라이드 조각의 고아 `</div>` strip
+
+사용자 fixture(삼각함수 pitch-deck)는 nested card soup 뒤에 `</div>`가 남아 장 호스트/`data-od-slide-flow`를 닫았다. `repairUnbalancedCardDivsInFragment`는 매칭 open이 없어도 close를 그대로 통과시켰다. 조각 스택에 짝이 없는 close만 제거. 미종료 open은 기존처럼 닫는다. 카피 발명 없음.
+
+검증: contracts heal-ai-generated-deck 루프287.
+
 ### 루프286 — 칸 번호 M · 열 라벨 파 · 열여섯째 빈 카드
 
 루프285까지는 A–L / 가…타 / 열다섯째까지만 빈 칸 번호로 본다. 모델이 빠진 3열을 `기둥 M` / `기둥 파` / `열여섯째`만으로 채워 빈 띠가 남는다. 그 세 제목만 제거. `스무 번째` / `기둥 하` / `기둥 N`과 번호+본문은 유지. 카피 발명 없음.
@@ -1030,6 +1036,7 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | persist/preview: 칸 번호만 있는 3열 카드(K · 열 라벨 카 · 열네째) | ☑ 루프278 |
 | persist/preview: 칸 번호만 있는 3열 카드(L · 열 라벨 타 · 열다섯째) | ☑ 루프285 |
 | persist/preview: 칸 번호만 있는 3열 카드(M · 열 라벨 파 · 열여섯째) | ☑ 루프286 |
+| heal: nested card soup extra `</div>`가 장 호스트를 닫음 | ☑ 루프287 |
 | docs: leftover 용어를 「빈 칸 번호 카드」로 정리 | ☑ 루프284 |
 | preview: 공식 example-replit-deck GET이 helix를 주고 시드를 주지 않음 | ☑ 루프278 |
 | persist: substance-rich replacement가 artifact_regression 오탐 | ☑ 루프273 |
@@ -1052,7 +1059,13 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | contracts pretest: exactOptionalPropertyTypes TS2379 봉쇄 | ☑ 루프263 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프286 · 칸 번호 M/파/열여섯째)
+## 이번 루프 (루프287 · 고아 `</div>` strip)
+
+- [x] repairUnbalancedCardDivsInFragment — 짝 없는 close 제거
+- [x] 미종료 open close-append 유지
+- [x] heal-ai-generated-deck 루프287
+
+## 직전 루프 (루프286 · 칸 번호 M/파/열여섯째)
 
 - [x] 빈 칸 번호 — M · 열 라벨 파 · 열여섯째
 - [x] `스무 번째` / `기둥 하` / `기둥 N` · 번호+본문 유지

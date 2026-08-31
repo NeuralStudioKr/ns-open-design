@@ -1818,7 +1818,14 @@ export function repairUnbalancedCardDivsInFragment(inner: string): string {
       const tag = closeM[1]!.toLowerCase();
       let idx = stack.length - 1;
       while (idx >= 0 && stack[idx]!.tag !== tag) idx -= 1;
-      if (idx >= 0) stack.length = idx;
+      if (idx < 0) {
+        // 루프287 — orphan close with no matching open in this slide
+        // fragment. MiniMax nested-card soup often emits extra `</div>`
+        // that then close the slide flow / section host.
+        i += closeM[0]!.length;
+        continue;
+      }
+      stack.length = idx;
       out += closeM[0]!;
       i += closeM[0]!.length;
       continue;

@@ -3519,6 +3519,39 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
       expect(repairUnbalancedCardDivsInFragment(inner)).toBe(inner);
     });
 
+    it('strips orphan extra </div> that would close the slide host (루프287)', () => {
+      const inner = [
+        '<div class="card"><h3>SIN</h3><p>대/빗변</p></div>',
+        '<div class="card"><h3>COS</h3><p>밑/빗변</p></div>',
+        '</div></div>',
+      ].join('');
+      const out = repairUnbalancedCardDivsInFragment(inner);
+      expect(out).toBe(
+        '<div class="card"><h3>SIN</h3><p>대/빗변</p></div>'
+        + '<div class="card"><h3>COS</h3><p>밑/빗변</p></div>',
+      );
+      expect((out.match(/<\/div>/g) ?? []).length).toBe(2);
+    });
+
+    it('pipeline strips extra closes after nested card soup (루프287)', () => {
+      const html = [
+        '<section class="slide"><h2>정의</h2>',
+        '<div style="display:grid;grid-template-columns:1fr 1fr 1fr">',
+        '<div class="card"><h3>SIN</h3><p>대/빗변</p></div>',
+        '<div class="card"><h3>COS</h3><p>밑/빗변</p></div>',
+        '<div class="card"><h3>TAN</h3><p>대/밑</p></div>',
+        '</div></div></div>',
+        '</section>',
+      ].join('');
+      const out = healAiGeneratedDeckMarkup(html, '삼각함수');
+      const body = out.replace(/^[\s\S]*<section\b[^>]*>/i, '').replace(/<\/section>[\s\S]*$/i, '');
+      const opens = (body.match(/<div\b/gi) ?? []).length;
+      const closes = (body.match(/<\/div>/gi) ?? []).length;
+      expect(opens).toBe(closes);
+      expect(out).toContain('SIN');
+      expect(out).toContain('TAN');
+    });
+
     it('keeps a title plus a balanced inner card (루프203)', () => {
       const inner = [
         '<div class="card">',
