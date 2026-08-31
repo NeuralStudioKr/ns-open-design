@@ -286,6 +286,7 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | persist/preview: Broadside leftover(`[[Author Name]]`·빈 li·브리프 lead) + `[data-anim]` 비가시 | ☑ 루프175 |
 | persist/preview: look 부재 시 Broadside `[data-anim]` 비가시 · CSS 토큰 leftover 오탐 | ☑ 루프176–177 |
 | persist/preview: business-template placeholder 확장(`[Company]`·`[Client]`·`[Project]`·`[Version]` 등) leftover 미scrub | ☑ 루프178 |
+| preview: pitch-deck cover 그라디언트(`var(--grad)`)가 `.tpl-* .mega/.avatar/.cover-blob`로부터 슬라이드 paper로 오탐 → 모든 슬라이드 배경 그라디언트 (사용자 리포트 "결과물 내용 없음 + 템플릿 적용 안됨") | ☑ 루프180 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
 ## 이번 루프 (루프896–920 / round897–921)
@@ -298,6 +299,33 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 - [x] `normalizePaddingLengthValue` + FOO BMP
 - [x] `chat-leak-probe-round897`…`921` 25/25
 - [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프180 · pitch-deck cover 그라디언트 오탐)
+
+### 배경
+
+- 사용자 리포트 2026-08-31 · 삼각함수: pitch-deck 카탈로그로 생성한 슬라이드가 콘텐츠 부재 + 모든 슬라이드에 보라 그라디언트 배경. 스크린샷은 "결과물 내용 없음 + 템플릿 적용 안됨"으로 읽힘
+- HTML 검사 결과: `<style data-od-slide-surface-bleed>html, body, .slide, ... { background: var(--grad) !important; }` — 그라디언트가 슬라이드 paper로 승격됨
+
+### 근본 원인
+
+- `deck-slide-surface.ts::inferDeckSlidePaperSurface` 가 `identityHostBg` 추출 시 selector가 `.tpl-*` 로 시작하고 `.slide`를 포함하지 않으면 통과시킴
+- pitch-deck 카탈로그의 `.tpl-pitch-deck .mega`(mega 숫자 텍스트 fill), `.cover-blob`(blob 데코), `.avatar`(아바타 원), `.brand-dot`(브랜드 dot), `.ask-box`(강조 박스), `.metric .n`(지표 숫자), `.traction-bar .bar`(그래프 바) 등 하위 요소 규칙이 모두 매치되어 그라디언트가 슬라이드 paper로 오탐
+- 또한 `isDecorativeBackground` 는 리터럴 `gradient(`/`url(`/`image-set(`만 검사 → `var(--grad)` 는 non-decorative 로 취급되어 promotion 통과
+
+### 변경
+
+1. **`isIdentityHostSelector` 신규 헬퍼** — identity host = template body class **자체** 만 매치 (`.tpl-hermes-cyber-terminal`, `.theme-noir`). descendant/child combinator (`\s>+~`) 포함 시 거부. 하위 요소 규칙(`.tpl-pitch-deck .mega`, `.tpl-pitch-deck .cover-blob` 등) 필터됨
+2. **`isDecorativeBackground` 확장** — 리터럴 검사에 실패하면 var 이름 힌트로 fallback. `/\bvar\s*\(\s*--(?:grad|gradient)\b/i` 매치 시 decorative로 취급
+3. **`inferDeckSlidePaperSurface` 통합** — `identityHostBg` 추출을 `isIdentityHostSelector`로 좁힘
+
+### 회귀 방어
+
+- Hermes cyber terminal (`.tpl-hermes-cyber-terminal { background: var(--hc-bg); }`) exact host 매치 유지 → solid `#0a0c10` 정상 승격
+- Bold Poster / Biennale / 기타 identity host 카탈로그 unchanged
+- 기존 `deck-slide-surface.test.ts` 18/18 · `deck-slide-surface-catalog.test.ts` 미회귀
+
+**검증:** `deck-slide-surface-pitch-deck-gradient.test.ts` 5/5 · 기존 surface + catalog 24/24 (총 24 pass · 회귀 없음)
 
 ## 직전 루프 (루프178 · placeholder scrub whitelist 확장)
 

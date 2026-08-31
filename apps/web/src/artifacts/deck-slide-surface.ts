@@ -55,16 +55,27 @@ function htmlHasOfficialLookCss(html: string): boolean {
   return /\bdata-od-official-look-css\b/i.test(html);
 }
 
-/** Radial washes / images must not be flattened by paper-token !important. */
+/**
+ * Radial washes / images must not be flattened by paper-token !important.
+ *
+ * 루프180 — Also detect gradient references by var-name. `var(--grad)` and
+ * `var(--grad-soft)` look non-decorative at the literal level (no `gradient(`
+ * substring) but always resolve to a gradient in pitch-deck / studio /
+ * skyline catalogs. Promoting them as paper paints the whole letterbox
+ * with the cover gradient (user report 2026-08-31 · 삼각함수).
+ */
 function isDecorativeBackground(
   value: string | null | undefined,
   officialLook = false,
 ): boolean {
   const raw = String(value ?? '');
-  if (!/gradient\s*\(|\burl\s*\(|image-set\s*\(/i.test(raw)) return false;
-  // Official look + Neutral navy/cream gradient is MiniMax fallback, not Motif.
-  if (officialLook && isNeutralFallbackPaint(raw)) return false;
-  return true;
+  if (/gradient\s*\(|\burl\s*\(|image-set\s*\(/i.test(raw)) {
+    // Official look + Neutral navy/cream gradient is MiniMax fallback, not Motif.
+    if (officialLook && isNeutralFallbackPaint(raw)) return false;
+    return true;
+  }
+  if (/\bvar\s*\(\s*--(?:grad|gradient)\b/i.test(raw)) return true;
+  return false;
 }
 
 /**
@@ -126,6 +137,25 @@ function isSlideChromeClassName(className: string): boolean {
 
 function isGenericSlideOnlyLeaf(leaf: string): boolean {
   return /^(?:[a-z][\w-]*)?\.slide(?:\.(?:active|is-active|current))?(?:::?(?:before|after))?$/i.test(leaf);
+}
+
+/**
+ * 루프180 — Identity host selector = the template body class alone
+ * (`.tpl-hermes-cyber-terminal`, `.theme-noir`, optionally a pseudo like
+ * `:root` or hover). Sub-element rules (`.tpl-pitch-deck .mega`,
+ * `.tpl-pitch-deck .cover-blob`, `.tpl-pitch-deck .avatar`) MUST NOT
+ * match — those are text-fill / blob / dot styles, never slide paper.
+ *
+ * The old matcher (`.tpl-*` present && `.slide` absent) walked into
+ * `.tpl-pitch-deck .mega { background: var(--grad); }` and promoted the
+ * cover gradient onto every slide (user report 2026-08-31 · 삼각함수).
+ */
+function isIdentityHostSelector(selector: string): boolean {
+  const trimmed = stripCssSelectorComments(selector);
+  if (!trimmed) return false;
+  // Reject any compound / descendant selector — must be a single leaf.
+  if (/[\s>+~]/.test(trimmed)) return false;
+  return /^\.(?:tpl|theme)-[a-z0-9_-]+(?::[a-z-]+(?:\([^)]*\))?)?$/i.test(trimmed);
 }
 
 /**
@@ -428,10 +458,7 @@ export function inferDeckSlidePaperSurface(html: string): DeckSlidePaperSurface 
 
   const vars = extractCssVarMap(source);
   const identityHostBg = solidPaperFromBackground(
-    extractRuleBackground(
-      source,
-      (selector) => /\.(?:tpl|theme)-[a-z0-9_-]+/i.test(selector) && !/\.slide\b/i.test(selector),
-    ),
+    extractRuleBackground(source, isIdentityHostSelector),
   );
   const preferredVar = pickPreferredSurfaceFromVars(vars);
 
