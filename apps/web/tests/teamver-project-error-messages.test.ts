@@ -109,7 +109,7 @@ describe("project conversation error messages", () => {
     expect(formatProjectRunLowSubstanceDeliverableError()).toContain("내용이 충분하지");
     expect(formatProjectRunLowSubstanceDeliverableError()).not.toContain("중간에 끊겼");
     expect(formatProjectRunLowSubstanceDeliverableError()).not.toContain("이어서");
-    // 루프275 — thin-prior top-up miss matches Retry CTA tone (다시 시도), not cut-off 이어서.
+    // 루프276 — thin-prior top-up miss matches Retry CTA tone (다시 시도), not cut-off 이어서.
     expect(formatProjectRunLowSubstanceDeliverableError("thin-prior-top-up-no-append")).toContain(
       "슬라이드를 더 추가하지",
     );

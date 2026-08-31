@@ -963,7 +963,7 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | contracts pretest: exactOptionalPropertyTypes TS2379 봉쇄 | ☑ 루프263 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프275–276 · thin top-up host · Retry 톤 · section card flatten)
+## 이번 루프 (루프275–277 · thin top-up host · Retry 톤 · section card flatten)
 
 - [x] solo title-only / zero-body prior → thin top-up incomplete
 - [x] thin-prior 배너 = 다시 시도 톤 (이어서 금지)
@@ -975,7 +975,7 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 - [x] findClientArtifactRegression substance-rich bypass (4+ slides)
 - [x] project-view-substance-rich-replacement
 
-## 이번 루프 (루프274 · J/열세째 인덱스 + stale preview example.html)
+## 직전 루프 (루프274 · J/열세째 인덱스 + stale preview example.html)
 
 - [x] leftover index — J · 차 · 열세째
 - [x] `열네째` / `기둥 카` / `기둥 K` · index+추가 본문 유지
