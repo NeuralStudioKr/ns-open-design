@@ -7,6 +7,12 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-08-31 현재 판단 · 최신 루프
 
+### 루프241 — xxx/asdf leftover stub
+
+루프200–231은 TBD/lorem/임시 stub만 본다. MiniMax는 `xxx`/`asdf`로 빠진 기둥을 채워 3열이 유지된다. 카드 전체가 stub일 때만 제거. `xxx 적분` 실카피는 유지. 카피 발명 없음.
+
+검증: contracts heal-ai-generated-deck 루프241 · deck-framework-compact.
+
 ### 루프240 — 400 vs 600 max-width leftover lock
 
 루프201은 비율 ≤1.35만 균일로 본다. MiniMax는 `max-width:400` / `600`으로 판정을 피해 3열이 잠긴다. 비율 1.6까지 같은 leftover lock. 280 vs 900 · 400 vs 800 sidebar는 유지. 카피 발명 없음.
@@ -656,9 +662,17 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | persist/preview: 동일 33vh/vmin 트랙·카드 폭이 leftover 빈 띠·클립 | ☑ 루프238 |
 | persist/preview: D/기둥 마/첫째 leftover 인덱스가 3열을 붙잡아 빈 띠 | ☑ 루프239 |
 | persist/preview: 400 vs 600 max-width가 leftover lock을 피해 3열 클립 | ☑ 루프240 |
+| persist/preview: xxx/asdf stub 카드가 3열을 붙잡아 빈 띠 | ☑ 루프241 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프239–240 · D/서수 인덱스 · 비균일 max-width)
+## 이번 루프 (루프241 · xxx/asdf stub)
+
+- [x] xxx/xx/asdf/qwerty leftover
+- [x] xxx 적분 실카피 유지
+- [x] heal-ai-generated-deck 루프241 · deck-framework-compact
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프239–240 · D/서수 인덱스 · 비균일 max-width)
 
 - [x] leftover index — D / 마 / 첫째–다섯째. 전-인덱스 서수 스텝 행 · `여섯째`/`기둥 바` 유지
 - [x] peer 주축 비율 1.35 → 1.6. 400 vs 600 strip, 280 vs 900 · 400 vs 800 유지

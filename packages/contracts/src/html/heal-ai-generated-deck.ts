@@ -1081,6 +1081,11 @@ const LEFTOVER_PEER_PLACEHOLDER_TOKENS = [
   '가짜',
   'temp',
   'fake',
+  // 루프241 — keyboard-mash shells MiniMax leaves on the missing pillar.
+  'qwerty',
+  'asdf',
+  'xxx',
+  'xx',
 ].sort((a, b) => b.length - a.length);
 
 const LEFTOVER_PEER_PLACEHOLDER_PUNCT_RE = /^(?:[.…·•\-–—]{1,3})/u;

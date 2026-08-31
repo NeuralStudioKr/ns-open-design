@@ -74,6 +74,7 @@ describe('DECK_FRAMEWORK_DIRECTIVE_COMPACT', () => {
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('임시/fake');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('C/3번/(3)');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('D/첫째/셋째');
+    expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('xxx');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('33vh/vmin');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('Class flex rows');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('no px/%/vw width or min-width');
