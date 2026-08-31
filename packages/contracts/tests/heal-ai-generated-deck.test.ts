@@ -612,6 +612,36 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
       expect(out).not.toMatch(/repeat\(\s*3\s*,/);
     });
 
+    it('rewrites a filled clamp(0px,33%,1fr) row to minmax(0,1fr) (루프303)', () => {
+      const html = [
+        '<div style="display:grid;grid-template-columns:clamp(0px,33%,1fr) clamp(0px,33%,1fr) clamp(0px,33%,1fr);gap:24px">',
+        '<div>a</div><div>b</div><div>c</div>',
+        '</div>',
+      ].join('');
+      const out = normalizeEqualFrTracksToMinmax(html);
+      expect(out).toMatch(/grid-template-columns:\s*(?:minmax\(0,1fr\) ){2}minmax\(0,1fr\)/);
+      expect(out).not.toMatch(/clamp\(/);
+    });
+
+    it('rewrites minmax(0, min(33%,1fr)) leftover shares (루프303)', () => {
+      const html = [
+        '<div style="display:grid;grid-template-columns:minmax(0,min(33%,1fr)) minmax(0,min(33%,1fr)) minmax(0,min(33%,1fr));gap:24px">',
+        '<div>a</div><div>b</div><div>c</div>',
+        '</div>',
+      ].join('');
+      const out = normalizeEqualFrTracksToMinmax(html);
+      expect(out).toMatch(/grid-template-columns:\s*(?:minmax\(0,1fr\) ){2}minmax\(0,1fr\)/);
+    });
+
+    it('leaves clamp(...,50%,...) two-track splits alone (루프303)', () => {
+      const html = [
+        '<div style="display:grid;grid-template-columns:clamp(0px,50%,1fr) clamp(0px,50%,1fr);gap:24px">',
+        '<div>목차</div><div>본문</div>',
+        '</div>',
+      ].join('');
+      expect(normalizeEqualFrTracksToMinmax(html)).toBe(html);
+    });
+
     it('leaves var(--col, 50%) two-track splits alone (루프299)', () => {
       const html = [
         '<div style="display:grid;grid-template-columns:var(--col, 50%) var(--col, 50%);gap:24px">',
@@ -3507,6 +3537,30 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
         '<div style="display:flex;gap:24px">',
         '<div class="card" style="flex:1 1 50%;padding:24px"><h3>목차</h3></div>',
         '<div class="card" style="flex:1 1 50%;padding:24px"><h3>본문</h3></div>',
+        '</div>',
+      ].join('');
+      expect(relaxUniformPeerCardFixedMainSize(html, '미적분')).toBe(html);
+    });
+
+    it('rewrites uniform flex:0 1 calc(33%) leftover basis to flex:1 1 0 (루프304)', () => {
+      const html = [
+        '<div style="display:flex;gap:24px">',
+        '<div class="card" style="flex:0 1 calc(33%);padding:24px"><h3>극한</h3></div>',
+        '<div class="card" style="flex:0 1 calc(33%);padding:24px"><h3>도함수</h3></div>',
+        '<div class="card" style="flex:0 1 calc(33%);padding:24px"><h3>적분</h3></div>',
+        '</div>',
+      ].join('');
+      const out = relaxUniformPeerCardFixedMainSize(html, '미적분');
+      expect(out).toMatch(/flex:1 1 0/);
+      expect(out).not.toMatch(/flex:\s*0 1 calc\(33%\)/);
+      expect(out).toContain('적분');
+    });
+
+    it('leaves flex:0 1 50% two-card splits alone (루프304)', () => {
+      const html = [
+        '<div style="display:flex;gap:24px">',
+        '<div class="card" style="flex:0 1 50%;padding:24px"><h3>목차</h3></div>',
+        '<div class="card" style="flex:0 1 50%;padding:24px"><h3>본문</h3></div>',
         '</div>',
       ].join('');
       expect(relaxUniformPeerCardFixedMainSize(html, '미적분')).toBe(html);

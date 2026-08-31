@@ -591,7 +591,48 @@ function cssVarFallbackInner(compact: string): string | null {
   return null;
 }
 
-/** 루프292/296/299 — bare share · calc(share) · var(--x, share). */
+function splitCssFnArgs(compact: string): string[] {
+  const open = compact.indexOf('(');
+  if (open < 0 || !compact.endsWith(')')) return [];
+  const inner = compact.slice(open + 1, -1);
+  const args: string[] = [];
+  let buf = '';
+  let depth = 0;
+  for (const ch of inner) {
+    if (ch === '(') depth += 1;
+    if (ch === ')') depth = Math.max(0, depth - 1);
+    if (ch === ',' && depth === 0) {
+      if (buf) args.push(buf);
+      buf = '';
+      continue;
+    }
+    buf += ch;
+  }
+  if (buf) args.push(buf);
+  return args;
+}
+
+/**
+ * 루프303 — `clamp(0px,33%,1fr)` preferred(middle) · `min(33%,1fr)` /
+ * `max(0px,33%)`에서 22–48 share가 하나(또는 전부 동일)일 때만.
+ * `clamp(...,50%,...)` / `min(50%,1fr)` 스플릿은 유지.
+ */
+function unwrapClampOrMinMaxShare(compact: string): string | null {
+  if (/^clamp\(/i.test(compact)) {
+    const args = splitCssFnArgs(compact);
+    if (args.length !== 3) return null;
+    return unwrapShareValue(args[1] ?? '');
+  }
+  if (!/^(?:min|max)\(/i.test(compact)) return null;
+  const shares = splitCssFnArgs(compact)
+    .map((arg) => unwrapShareValue(arg))
+    .filter((share): share is string => share != null);
+  if (shares.length === 1) return shares[0]!;
+  if (shares.length >= 2 && shares.every((share) => share === shares[0])) return shares[0]!;
+  return null;
+}
+
+/** 루프292/296/299/303 — bare share · calc · var fallback · clamp/min/max. */
 function unwrapShareValue(raw: string): string | null {
   const compact = String(raw ?? '').replace(/\s+/g, '').toLowerCase();
   if (!compact) return null;
@@ -602,7 +643,7 @@ function unwrapShareValue(raw: string): string | null {
   if (calc) return calc;
   const fallback = cssVarFallbackInner(compact);
   if (fallback) return unwrapShareValue(fallback);
-  return null;
+  return unwrapClampOrMinMaxShare(compact);
 }
 
 /**
@@ -613,6 +654,7 @@ function unwrapShareValue(raw: string): string | null {
  * 루프292 — second arg may be `calc(33%)` / `calc(100%/3)`. `[^)]+` cannot
  * parse nested parens, so the second arg is sliced by depth.
  * 루프300 — floor may be `0px` / `0%` / `0em`, not only bare `0`.
+ * 루프303 — second arg may be `clamp(0px,33%,1fr)` / `min(33%,1fr)`.
  */
 function unwrapEqualShareTrack(track: string): string | null {
   const compact = String(track ?? '').replace(/\s+/g, '');
@@ -1664,8 +1706,11 @@ function flexShorthandLockedBasisPx(style: string): number | null {
   }
   // 루프302 — `flex:1 1 33%` / `flex:1 1 calc(33%)` leftover basis.
   const growShare = /^(?:1(?:\.0+)?)\s+(?:1(?:\.0+)?|0)\s+(.+)$/i.exec(raw);
-  if (!growShare) return null;
-  return cssLengthToPx((growShare[1] ?? '').trim());
+  if (growShare) return cssLengthToPx((growShare[1] ?? '').trim());
+  // 루프304 — `flex:0 1 33%` / `flex:0 1 calc(33%)` leftover basis.
+  const shrinkShare = /^0\s+(?:1(?:\.0+)?)\s+(.+)$/i.exec(raw);
+  if (!shrinkShare) return null;
+  return cssLengthToPx((shrinkShare[1] ?? '').trim());
 }
 
 function peerFixedMainSizePx(style: string): number | null {
@@ -1728,6 +1773,7 @@ function stripFixedMainSizeFromOpenTag(openTag: string): string {
     .replace(/(?:^|;)\s*flex-basis\s*:[^;]*/gi, '')
     .replace(/(?:^|;)\s*flex\s*:\s*(?:0\s+0|none)\s+[^;]*/gi, '')
     .replace(/(?:^|;)\s*flex\s*:\s*1(?:\.0+)?\s+(?:1(?:\.0+)?|0)\s+[^;]*/gi, ';flex:1 1 0')
+    .replace(/(?:^|;)\s*flex\s*:\s*0\s+1(?:\.0+)?\s+[^;]*/gi, ';flex:1 1 0')
     .replace(/^;+|;+$/g, '')
     .replace(/;;+/g, ';')
     .trim();
@@ -1770,6 +1816,7 @@ function stripFixedMainSizeFromOpenTag(openTag: string): string {
  * (`max-inline-size:560px`, `inline-size:30vw`).
  * 루프296 — same for `calc(33%)` / `calc(100%/3)` leftover shares.
  * 루프302 — same for `flex:1 1 33%` / `flex:1 1 calc(33%)` leftover basis.
+ * 루프304 — same for `flex:0 1 33%` / `flex:0 1 calc(33%)`.
  */
 export function relaxUniformPeerCardFixedMainSize(
   html: string,
