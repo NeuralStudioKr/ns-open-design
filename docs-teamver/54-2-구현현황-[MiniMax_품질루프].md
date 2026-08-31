@@ -27,13 +27,20 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 검증: `apps/web` artifact validate/deck-html-content 76/76.
 
-### 루프190b — 심한 container tag 불균형 slide drop
+### 루프190b — 심한 container tag 불균형 slide drop (루프194 auto-repair 실패 시 fallback)
 
-삼각함수 리포트 계열에서 카드형 slide 내부 `<div>` open이 close보다 3개 이상 많아 뒤 슬라이드가 카드/grid 컨텍스트에 말려 들어가거나 preview에서 세로 붕괴처럼 보였다. 누락 close를 추정 삽입하는 방식은 형제 컨테이너를 잘못 포섭할 위험이 커서, 현재 시점에서는 non-cover slide 단위 drop을 선택했다.
+삼각함수 리포트 계열에서 카드형 slide 내부 `<div>` open이 close보다 3개 이상 많아 뒤 슬라이드가 카드/grid 컨텍스트에 말려 들어가거나 preview에서 세로 붕괴처럼 보였다. 누락 close를 추정 삽입하는 방식은 형제 컨테이너를 잘못 포섭할 위험이 커서, 현재 시점에서는 non-cover slide 단위 drop을 선택했다. 루프194가 slide 단위 auto-repair (`closeUnclosedSiblingCardsInSlides`)를 severe drop 직전 실행하므로, 이 190b drop 은 auto-repair 후에도 여전히 diff ≥ 3 인 절망적 케이스만 처리하는 fallback 이다.
 
 규칙: `<script>/<style>/comment`를 제외하고 slide body 안 `<div>` open-close 차이가 3 이상인 경우만 제거한다. 첫 슬라이드는 절대 제거하지 않아 빈 덱으로 바뀌지 않게 했다. Full heal pipeline에서 idempotent하게 동작한다.
 
 검증: `packages/contracts` severe-unbalanced-card-slide + deck-template-look-css 89/89.
+
+### 다음 루프 후보 (2026-08-31 EOD 기준)
+
+- **후보 B (예약 · 규모 큼):** contracts 안 `var(--pad, calc(px * n))` / `env(safe-area-inset-top, calc(...))` fallback red-spec 39건. fallback 표현을 card threshold 로 승격하는 heuristic — 별도 루프 필요.
+- **후보 A 후속 (E2E):** 190b drop 이후 남은 슬라이드 수가 사용자 요청보다 부족할 때 top-up/retry 파이프라인과의 연동 검증. 루프194 auto-repair 커버리지 실증 (사용자 실 fixture 몇 % 를 drop 없이 살려내는가) — MiniMax 실키 없이 기록 fixture 기반 지표만이라도 남긴다.
+- **자원 아이템 (별도 루프):** `system-prompt-api-mode.test.ts` 의 prompt length ceiling (29114 / 29217 vs 29100) 은 upstream 에서 이미 red · 별도 루프. `deck-template-look-css > 인젝트 catalog Motif paint` 은 5s timeout 로 간헐 fail (flaky) — 재현 조건 정리 필요.
+- **완료 축 (재확인 불필요):** `AGENT_EXECUTION_STALLED` 는 루프189 (`c5cf50ef9c`, `471236e130`) 로 방어 완료 — 전용 한/영 카피 · retryable gate · api-proxy idle-timeout 회귀 · projectErrorMessages 회귀 · ProjectView 파샬 persist 방어가 모두 origin/staging 에 pin 됨.
 
 ## 진행
 
