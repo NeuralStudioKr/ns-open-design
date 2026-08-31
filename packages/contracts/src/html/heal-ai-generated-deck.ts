@@ -994,6 +994,14 @@ const LEFTOVER_PEER_PLACEHOLDER_TOKENS = [
   '비어있음',
   '미입력',
   '없음',
+  // 루프216 — planned-fill stubs MiniMax leaves on the missing pillar.
+  '작성예정',
+  '입력필요',
+  '추후입력',
+  '추가예정',
+  '기재예정',
+  '미작성',
+  '미기재',
   // 루프214 — English absence stubs on the missing pillar.
   'unknown',
   'pending',
