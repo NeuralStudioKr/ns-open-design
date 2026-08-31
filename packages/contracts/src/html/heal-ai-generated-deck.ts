@@ -502,6 +502,8 @@ const GRID_BLOCK_CHILD_RE =
   /^(div|section|article|li|figure|aside|header|footer|main|nav|ul|ol|p|table)$/;
 const EQUAL_FR_TRACK_RE =
   /^(?:1(?:\.0+)?fr|minmax\(\s*(?:0|auto|min-content|max-content)\s*,\s*1(?:\.0+)?fr\s*\))$/i;
+/** 루프255 — identical 0.22–0.48fr leftover shares (skip 0.5fr splits). */
+const EQUAL_FR_SHARE_TRACK_RE = /^0?\.(?:2[2-9]|3\d|4[0-8])\d*fr$/i;
 /** 루프210/215/238 — identical 22–48% or viewport/container shares (skip 50 splits). */
 const EQUAL_COLUMN_SHARE_TRACK_RE =
   /^(?:2[2-9]|3\d|4[0-8])(?:\.\d+)?(?:%|vw|vh|vmin|vmax|dvh|svh|lvh|dvw|svw|lvw|dvmin|svmin|lvmin|dvmax|svmax|lvmax|vi|vb|svi|svb|lvi|lvb|dvi|dvb|cqw|cqi|cqh|cqb|cqmin|cqmax)$/i;
@@ -585,7 +587,8 @@ function parseDeclaredEqualColumns(value: string): EqualColumnDecl | null {
   }
   const shares = tracks.map((t) => t.replace(/\s+/g, '').toLowerCase());
   if (
-    shares.every((t) => EQUAL_COLUMN_SHARE_TRACK_RE.test(t) && t === shares[0])
+    shares.every((t) => EQUAL_FR_SHARE_TRACK_RE.test(t) && t === shares[0])
+    || shares.every((t) => EQUAL_COLUMN_SHARE_TRACK_RE.test(t) && t === shares[0])
   ) {
     return {
       kind: 'list',
@@ -681,6 +684,7 @@ function minmaxUnitForEqualFr(decl: EqualColumnDecl): EqualColumnDecl | null {
   if (
     /^1(?:\.0+)?fr$/i.test(unit)
     || /^minmax\((?:0|auto|min-content|max-content),1(?:\.0+)?fr\)$/i.test(unit)
+    || EQUAL_FR_SHARE_TRACK_RE.test(unit)
     || EQUAL_COLUMN_SHARE_TRACK_RE.test(unit)
   ) {
     return { ...decl, unit: 'minmax(0,1fr)' };

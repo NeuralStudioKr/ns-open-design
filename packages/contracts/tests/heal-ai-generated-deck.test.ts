@@ -255,6 +255,27 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
       expect(out).not.toMatch(/grid-template-columns:\s*1\.0fr 1\.0fr 1\.0fr/);
     });
 
+    it('shrinks explicit 0.33fr 0.33fr 0.33fr with 2 cards (루프255)', () => {
+      const html = [
+        '<div style="display:grid;grid-template-columns:0.33fr 0.33fr 0.33fr;gap:24px">',
+        '<div>극한</div>',
+        '<div>도함수</div>',
+        '</div>',
+      ].join('');
+      const out = shrinkOverAllocatedRepeatGrid(html);
+      expect(out).toMatch(/grid-template-columns:\s*0\.33fr 0\.33fr/);
+      expect(out).not.toMatch(/grid-template-columns:\s*0\.33fr 0\.33fr 0\.33fr/);
+    });
+
+    it('leaves a 0.5fr 0.5fr split unchanged (루프255)', () => {
+      const html = [
+        '<div style="display:grid;grid-template-columns:0.5fr 0.5fr;gap:24px">',
+        '<div>목차</div>',
+        '</div>',
+      ].join('');
+      expect(shrinkOverAllocatedRepeatGrid(html)).toBe(html);
+    });
+
     it('shrinks explicit 33vi 33vi 33vi with 2 cards (루프251)', () => {
       const html = [
         '<div style="display:grid;grid-template-columns:33vi 33vi 33vi;gap:24px">',
@@ -425,6 +446,17 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
       const out = normalizeEqualFrTracksToMinmax(html);
       expect(out).toMatch(/grid-template-columns:\s*(?:minmax\(0,1fr\) ){2}minmax\(0,1fr\)/);
       expect(out).not.toMatch(/grid-template-columns:\s*33% 33% 33%/);
+    });
+
+    it('rewrites a filled 0.33fr 0.33fr 0.33fr row to minmax (루프255)', () => {
+      const html = [
+        '<div style="display:grid;grid-template-columns:0.33fr 0.33fr 0.33fr;gap:24px">',
+        '<div>a</div><div>b</div><div>c</div>',
+        '</div>',
+      ].join('');
+      const out = normalizeEqualFrTracksToMinmax(html);
+      expect(out).toMatch(/grid-template-columns:\s*(?:minmax\(0,1fr\) ){2}minmax\(0,1fr\)/);
+      expect(out).not.toMatch(/grid-template-columns:\s*0\.33fr 0\.33fr 0\.33fr/);
     });
 
     it('rewrites a filled 33vi 33vi 33vi row to minmax (루프251)', () => {

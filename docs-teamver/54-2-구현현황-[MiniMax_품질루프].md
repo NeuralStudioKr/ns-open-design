@@ -7,6 +7,12 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-08-31 현재 판단 · 최신 루프
 
+### 루프255 — 동일 0.33fr 그리드 leftover
+
+루프190/220는 `1fr`만 equal track으로 본다. MiniMax는 `0.33fr 0.33fr 0.33fr`를 남겨 2장이면 빈 띠, 3장이면 클립이 난다. 동일 0.22–0.48fr만 `minmax(0,1fr)`로 바꾼다. `0.5fr` split은 유지. 카피 발명 없음.
+
+검증: contracts heal-ai-generated-deck 루프255 · deck-framework-compact.
+
 ### 루프254 — listAiSlideSpans depth-match
 
 heal slide span이 nested/unclosed host에서 본문 범위를 오인했다. same-tag depth count + nested containment filter. 카피 발명 없음.
@@ -754,9 +760,17 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | heal: 영문 MiniMax class-bound grid/flex가 Hangul gate에 스킵 | ☑ 루프252 |
 | persist: 닫힌 title-only 골격 soft-salvage 면제 | ☑ 루프253 |
 | heal: nested/unclosed slide span 범위 오인 | ☑ 루프254 |
+| persist/preview: 동일 0.33fr 그리드 트랙이 2장 leftover · 3장 클립 | ☑ 루프255 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프254 · listAiSlideSpans depth-match)
+## 이번 루프 (루프255 · 0.33fr equal tracks)
+
+- [x] `0.22–0.48fr` equal column · minmax(0,1fr) 변환
+- [x] `0.5fr 0.5fr` split 유지
+- [x] heal-ai-generated-deck 루프255 · deck-framework-compact
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프254 · listAiSlideSpans depth-match)
 
 - [x] same-tag depth count · nested containment filter
 - [x] heal-ai-generated-deck 루프254
