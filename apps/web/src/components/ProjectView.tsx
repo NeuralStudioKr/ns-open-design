@@ -73,6 +73,7 @@ import {
   isClosedSoftSalvageDeckHtml,
   isPersistableShortDeckDraft,
   isPersistableShortDeckDraftAfterHeal,
+  meetsMinimumDeckDeliverableQuality,
   shouldAbortStreamForHeadOnlyKitDump,
   shouldAbortStreamForMotifSvgDump,
   stripAbandonedHeadKitDumpFromStreamedText,
@@ -2888,6 +2889,27 @@ export function findClientArtifactRegression(input: {
     : 0;
   if (priorSize < ARTIFACT_REGRESSION_MIN_PRIOR_BYTES) return null;
   const priorHtml = String(input.priorHtml ?? '').trim();
+  const incomingSlideCount = countDeckSlideSections(input.htmlBody);
+  // 루프273 — Substance-rich replacement bypass. A completed 4+ slide fill
+  // with real deliverable copy (meetsMinimum + not low-substance) is a full
+  // deck replacement, not a first-fill compact draft. Prior byte-shrink over
+  // a big MiniMax deliverable was firing `artifact_regression` because the
+  // short-draft signals (`isPersistableShortDeckDraft`,
+  // `isPersistableShortDeckDraftAfterHeal`, `isClosedSoftSalvageDeckHtml`) are
+  // permissive by design (≤6 slides + titled cover). Compact 1-3 slide title-
+  // only drafts, motif SVG dumps, and failed-generate skeletons stay caught
+  // by the underlying gates below.
+  if (
+    incomingSlideCount >= 4
+    && meetsMinimumDeckDeliverableQuality(input.htmlBody)
+    && !isLowSubstanceSlideDeckArtifact(
+      input.htmlBody,
+      input.healBrief,
+      input.healTitle,
+    )
+  ) {
+    return null;
+  }
   const incomingCompactDraft = isPersistableShortDeckDraft(input.htmlBody)
     || isPersistableShortDeckDraftAfterHeal(
       input.htmlBody,
@@ -2896,7 +2918,7 @@ export function findClientArtifactRegression(input: {
     )
     || (
       isClosedSoftSalvageDeckHtml(input.htmlBody)
-      && countDeckSlideSections(input.htmlBody) <= FIRST_FILL_SLIDE_COUNT_THIS_TURN
+      && incomingSlideCount <= FIRST_FILL_SLIDE_COUNT_THIS_TURN
     );
   if (incomingCompactDraft && priorHtml) {
     const priorCount = countDeckSlideSections(priorHtml);

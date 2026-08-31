@@ -7,6 +7,45 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-08-31 현재 판단 · 최신 루프
 
+### 루프273 — substance-rich replacement가 `artifact_regression` 오탐되던 회귀 해소
+
+사용자 리포트 2026-08-31: MiniMax가 5장 완성본을 반환했는데 client 배너 `AI가 이번 응답에서 완성된 슬라이드 대신 짧은 초안만 반환해 저장하지 않았습니다`가 노출되며 파일이 저장되지 않는다. 사용자 fixture(`/tmp/user-fixture-artifact-regression.html`): 5 slides · 각 100~320 chars 실체 콘텐츠 · `<h2>` + `<p>` + `<ul>`/`grid` cards · `meetsMinimumDeckDeliverableQuality = true` · `isLowSubstanceSlideDeckArtifact = false`.
+
+원인 진단 (프로브): heal 후 fixture는 substance 완전한데도 아래 3 signal이 모두 `true`이므로 `incomingCompactDraft = true`가 됨.
+
+- `isPersistableShortDeckDraft` — slide ≤ 6 + titled cover이면 true (top-up-safe 목적)
+- `isPersistableShortDeckDraftAfterHeal` — 위와 동일 heal 후 판정
+- `isClosedSoftSalvageDeckHtml && count ≤ 6`
+
+즉 `findClientArtifactRegression`이 5 slides의 완성본을 "1-6 slide 짧은 draft"로 취급. Prior on-disk deck이 8+ slide substance full이면 `priorCount ≤ 6` / `isPersistableShortDeckDraft(prior)` / `isPersistableShortDeckDraftAfterHeal(prior)` / `isLowSubstanceSlideDeckArtifact(prior)` 모두 false → byte-size guard로 fall-through → `newSize < priorSize * ARTIFACT_REGRESSION_MIN_RATIO` → **regression 판정 → 저장 거부**.
+
+Loop187 이후 (loop232-236 · loop251-254 · loop263-269 등) short-draft signal 범위가 넓어지면서 substance-rich multi-slide replacement까지 잡는 오탐 회귀 축적. 사용자 관점: 정상 응답을 client가 거부 → "결과물 품질 저하"로 인지.
+
+수정 (`apps/web/src/components/ProjectView.tsx#findClientArtifactRegression`):
+
+```ts
+// 루프273 — Substance-rich replacement bypass.
+if (
+  incomingSlideCount >= 4
+  && meetsMinimumDeckDeliverableQuality(input.htmlBody)
+  && !isLowSubstanceSlideDeckArtifact(input.htmlBody, input.healBrief, input.healTitle)
+) {
+  return null;
+}
+```
+
+- 4+ slides · `meetsMinimum` · not low-substance 세 조건 모두 만족하면 substance-rich replacement로 간주 → gate 통과 (early return null).
+- 1-3 slide title-only draft, motif SVG dump, failed-generate skeleton은 여전히 아래 compact-draft branch에서 잡힘.
+- byte-shrink만으로는 regression을 만들지 않지만, prior가 큰 완성본인데 새 output이 short/low-substance이면 여전히 byte-guard가 blocking.
+
+검증:
+
+- `apps/web/tests/project-view-substance-rich-replacement.test.ts` — 5 red-spec 전원 green (사용자 fixture round-trip · 8-slide prior 위 5-slide substance-rich replacement · 1-slide title-only draft still blocked · 3-slide thin compact still blocked · non-deck 무관).
+- `apps/web/tests/project-view-persist-result.test.ts` 11 pre-existing spec 회귀 없음 (6-slide first-fill over thin prior · 3-slide over full-eight blocked 등 모두 pass).
+- `apps/web/tests/artifacts/validate.test.ts` 47 · `deck-html-content.test.ts` 38 pre-existing 회귀 없음.
+
+리포트 2 (`59741f71dd` 이후 품질 회귀) 상관관계: loop187~loop270 사이 short-draft/soft-salvage/low-substance signal이 강화되며 permissive 가드가 반대로 substance-rich replacement까지 잡던 accumulation이 이 오탐의 축. loop273은 완성본 replacement 축만 열어 놓고 나머지 강화 gate는 그대로 유지 → "짧은 draft/실패 skeleton" 축과 분리.
+
 ### 생성 마법사 — Replit Deck 흰 썸네일
 
 `od.preview.entry`가 없는 `index.html`을 가리켜 시드 `assets/template.html`(`[REPLACE]` · helix `#fafafa`)이 카드에 올랐다. 헬릭스 `example.html`을 실어 카탈로그 커버를 보드 표지로 고정. 시드는 생성용 유지.
