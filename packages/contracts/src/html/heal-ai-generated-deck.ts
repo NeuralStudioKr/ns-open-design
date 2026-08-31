@@ -2252,15 +2252,34 @@ function looksLikeSpilledCardBody(child: DirectChildSpan): boolean {
   if (looksLikeChromeCardStyle(child.style)) return false;
   if (/(?:^|;)\s*display\s*:\s*(?:grid|flex)\b/i.test(child.style)) return false;
   if (/(?:^|;)\s*position\s*:\s*absolute\b/i.test(child.style)) return false;
+  if (/(?:^|;)\s*width\s*:\s*100%/i.test(child.style)) return false;
   const text = visibleText(child.inner);
   return text.length >= SPILLED_BODY_MIN && text.length <= SPILLED_BODY_MAX;
+}
+
+function rowAllowsSpilledChromeAbsorb(
+  style: string,
+  children: DirectChildSpan[],
+): boolean {
+  const colsRaw = /grid-template-columns\s*:\s*([^;]+)/i.exec(style)?.[1];
+  if (/(?:^|;)\s*display\s*:\s*grid\b/i.test(style) && colsRaw) {
+    const decl = parseDeclaredEqualColumns(colsRaw.trim());
+    return Boolean(decl && decl.count >= 2 && children.length > decl.count);
+  }
+  if (!isFlexRowContainerStyle(style)) return false;
+  if (children.some((child) => styleLooksLikeFixedSidebar(child.style))) return false;
+  const chromeCount = children.filter((child) => looksLikeChromeCardStyle(child.style)).length;
+  // 루프294 — 크롬 카드가 2개 미만이면 라벨+본문 2열 스플릿으로 본다.
+  return chromeCount >= 2 && children.length > chromeCount;
 }
 
 /**
  * 루프293 — class 없는 크롬 카드가 라벨만 닫히고 제목·본문이 그리드
  * 형제로 새면, shrink가 그 조각을 열로 승격한다. 선언 열보다 자식이
  * 많을 때만 라벨 카드(≤48자) 뒤에 오는 맨몸 조각(1–2개)을 카드 안으로
- * 되돌린다. 카피 발명 없음.
+ * 되돌린다.
+ * 루프294 — 같은 조기 close를 `display:flex` 카드 행에도 적용. 크롬
+ * 카드가 2개 이상일 때만 (2열 스플릿·사이드바 유지). 카피 발명 없음.
  */
 export function absorbSpilledChromeCardSiblings(
   html: string,
@@ -2275,18 +2294,13 @@ export function absorbSpilledChromeCardSiblings(
   let match: RegExpExecArray | null;
   while ((match = gridOpenRe.exec(out)) !== null) {
     const style = match[4] ?? '';
-    if (!/(?:^|;)\s*display\s*:\s*grid\b/i.test(style)) continue;
-    const colsRaw = /grid-template-columns\s*:\s*([^;]+)/i.exec(style)?.[1];
-    if (!colsRaw) continue;
-    const decl = parseDeclaredEqualColumns(colsRaw.trim());
-    if (!decl || decl.count < 2) continue;
     const openTag = match[0] ?? '';
     const tag = (match[1] ?? '').toLowerCase();
     const openEnd = match.index + openTag.length;
     const close = findSameTagClose(out, tag, openEnd);
     if (!close) continue;
     const children = listDirectBlockChildSpans(out, openEnd, close.closeStart);
-    if (children.length <= decl.count) continue;
+    if (!rowAllowsSpilledChromeAbsorb(style, children)) continue;
     const absorbed = new Set<DirectChildSpan>();
     const extras = new Map<DirectChildSpan, DirectChildSpan[]>();
     for (let i = 0; i < children.length; i += 1) {
