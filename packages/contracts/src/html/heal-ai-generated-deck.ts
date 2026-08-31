@@ -1019,14 +1019,23 @@ function textLooksLikeLeftoverPeerPlaceholder(html: string): boolean {
  * 루프205 — A third card that is only `PILLAR 03` / `COLUMN 3` / `03`
  * is a leftover index shell, not a pillar. Keep `PILLAR 01 lim` and
  * numbered step rows where every peer is an index.
+ * 루프209 — same for `PILLAR III` / `기둥 Ⅲ` roman leftovers.
  */
+const LEFTOVER_INDEX_ROMAN =
+  '(?:viii|vii|iii|xii|xi|ix|iv|vi|ii|[xv]|i|[Ⅰ-Ⅻⅰ-ⅻ])';
+
 function textLooksLikeLeftoverIndexLabel(html: string): boolean {
   const text = visibleText(html).replace(/\s+/g, ' ').trim();
   if (!text) return false;
-  if (/^(?:pillar|column|col|card|item|step|part|#)?\s*0?[1-9][.\u2026·•\-–—]?$/i.test(text)) {
-    return true;
-  }
-  return /^(?:기둥|열|카드|항목|단계|파트)\s*0?[1-9][.\u2026·•\-–—]?$/u.test(text);
+  const latin = new RegExp(
+    `^(?:pillar|column|col|card|item|step|part|#)?\\s*(?:0?[1-9]|${LEFTOVER_INDEX_ROMAN})[.\\u2026·•\\-–—]?$`,
+    'i',
+  );
+  if (latin.test(text)) return true;
+  return new RegExp(
+    `^(?:기둥|열|카드|항목|단계|파트)\\s*(?:0?[1-9]|${LEFTOVER_INDEX_ROMAN})[.\\u2026·•\\-–—]?$`,
+    'u',
+  ).test(text);
 }
 
 function childLooksEmptyLeftoverPeer(child: DirectChildSpan): boolean {
