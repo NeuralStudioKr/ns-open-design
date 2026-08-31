@@ -222,6 +222,27 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
       expect(out).not.toMatch(/grid-template-columns:\s*1\.0fr 1\.0fr 1\.0fr/);
     });
 
+    it('shrinks explicit 33vh 33vh 33vh with 2 cards (루프224)', () => {
+      const html = [
+        '<div style="display:grid;grid-template-columns:33vh 33vh 33vh;gap:24px">',
+        '<div>극한</div>',
+        '<div>도함수</div>',
+        '</div>',
+      ].join('');
+      const out = shrinkOverAllocatedRepeatGrid(html);
+      expect(out).toMatch(/grid-template-columns:\s*33vh 33vh/);
+      expect(out).not.toMatch(/grid-template-columns:\s*33vh 33vh 33vh/);
+    });
+
+    it('leaves a 50vmin 50vmin split unchanged (루프224)', () => {
+      const html = [
+        '<div style="display:grid;grid-template-columns:50vmin 50vmin;gap:24px">',
+        '<div>목차</div>',
+        '</div>',
+      ].join('');
+      expect(shrinkOverAllocatedRepeatGrid(html)).toBe(html);
+    });
+
     it('shrinks minmax(auto,1fr) x3 with 2 cards (루프221)', () => {
       const html = [
         '<div style="display:grid;grid-template-columns:minmax(auto,1fr) minmax(auto,1fr) minmax(auto,1fr);gap:24px">',
@@ -287,6 +308,17 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
       const out = normalizeEqualFrTracksToMinmax(html);
       expect(out).toMatch(/grid-template-columns:\s*(?:minmax\(0,1fr\) ){2}minmax\(0,1fr\)/);
       expect(out).not.toMatch(/grid-template-columns:\s*33% 33% 33%/);
+    });
+
+    it('rewrites a filled 33vh 33vh 33vh row to minmax (루프224)', () => {
+      const html = [
+        '<div style="display:grid;grid-template-columns:33vh 33vh 33vh;gap:24px">',
+        '<div>a</div><div>b</div><div>c</div>',
+        '</div>',
+      ].join('');
+      const out = normalizeEqualFrTracksToMinmax(html);
+      expect(out).toMatch(/grid-template-columns:\s*(?:minmax\(0,1fr\) ){2}minmax\(0,1fr\)/);
+      expect(out).not.toMatch(/grid-template-columns:\s*33vh 33vh 33vh/);
     });
 
     it('rewrites a filled 33vw 33vw 33vw row to minmax (루프215)', () => {
@@ -926,6 +958,68 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
       expect(dropEmptyLeftoverPeerCardsInAllocatedRows(html, '미적분')).toBe(html);
     });
 
+    it('drops a letter C leftover third card (루프225)', () => {
+      const html = [
+        '<div style="display:flex;gap:28px">',
+        '<div class="card" style="padding:24px"><h3>극한</h3><p>lim</p></div>',
+        '<div class="card" style="padding:24px"><h3>도함수</h3><p>d/dx</p></div>',
+        '<div class="card" style="padding:24px"><h3>C</h3></div>',
+        '</div>',
+      ].join('');
+      const out = dropEmptyLeftoverPeerCardsInAllocatedRows(html, '미적분');
+      expect((out.match(/class="card"/g) ?? []).length).toBe(2);
+      expect(out).not.toMatch(/>\s*C\s*</);
+      expect(out).toContain('극한');
+    });
+
+    it('drops a 3번 / (3) leftover third card (루프225)', () => {
+      const bun = [
+        '<div style="display:flex;gap:28px">',
+        '<div class="card"><h3>극한</h3></div>',
+        '<div class="card"><h3>도함수</h3></div>',
+        '<div class="card"><h3>3번</h3></div>',
+        '</div>',
+      ].join('');
+      const paren = [
+        '<div style="display:flex;gap:28px">',
+        '<div class="card"><h3>극한</h3></div>',
+        '<div class="card"><h3>도함수</h3></div>',
+        '<div class="card"><h3>(3)</h3></div>',
+        '</div>',
+      ].join('');
+      expect((dropEmptyLeftoverPeerCardsInAllocatedRows(bun, '미적분').match(/class="card"/g) ?? []).length).toBe(2);
+      expect(dropEmptyLeftoverPeerCardsInAllocatedRows(bun, '미적분')).not.toContain('3번');
+      expect((dropEmptyLeftoverPeerCardsInAllocatedRows(paren, '미적분').match(/class="card"/g) ?? []).length).toBe(2);
+      expect(dropEmptyLeftoverPeerCardsInAllocatedRows(paren, '미적분')).not.toContain('(3)');
+    });
+
+    it('keeps a letter step row where every peer is an index (루프225)', () => {
+      const html = [
+        '<div style="display:flex;gap:16px">',
+        '<div class="card">A</div>',
+        '<div class="card">B</div>',
+        '<div class="card">C</div>',
+        '</div>',
+      ].join('');
+      expect(dropEmptyLeftoverPeerCardsInAllocatedRows(html, '미적분')).toBe(html);
+    });
+
+    it('pipeline heals a 기둥 다 leftover without inventing 적분 copy (루프225)', () => {
+      const html = [
+        '<section class="slide"><h1>미적분의 세 기둥</h1>',
+        '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:24px">',
+        '<div class="card"><h3>극한</h3><p>lim</p></div>',
+        '<div class="card"><h3>도함수</h3><p>d/dx</p></div>',
+        '<div class="card"><h3>기둥 다</h3></div>',
+        '</div></section>',
+      ].join('');
+      const out = healAiGeneratedDeckMarkup(html, '미적분');
+      expect((out.match(/class="card"/g) ?? []).length).toBe(2);
+      expect(out).not.toContain('기둥 다');
+      expect(out).toContain('극한');
+      expect(out).toContain('도함수');
+    });
+
     it('pipeline heals a 기둥 ３ leftover without inventing 적분 copy (루프219)', () => {
       const html = [
         '<section class="slide"><h1>미적분의 세 기둥</h1>',
@@ -1393,6 +1487,33 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
       ].join('');
       const out = relaxUniformPeerCardFixedMainSize(html, '미적분');
       expect(out).not.toMatch(/flex:\s*0 0 33%/);
+      expect(out).toContain('극한');
+    });
+
+    it('strips uniform 30vmin column-share widths so three cards can share (루프224)', () => {
+      const html = [
+        '<div style="display:flex;gap:24px">',
+        '<div class="card" style="width:30vmin;padding:24px"><h3>극한</h3></div>',
+        '<div class="card" style="width:30vmin;padding:24px"><h3>도함수</h3></div>',
+        '<div class="card" style="width:30vmin;padding:24px"><h3>적분</h3></div>',
+        '</div>',
+      ].join('');
+      const out = relaxUniformPeerCardFixedMainSize(html, '미적분');
+      expect(out).not.toMatch(/width:\s*30vmin/);
+      expect(out).toContain('극한');
+      expect(out).toContain('적분');
+    });
+
+    it('strips uniform flex:0 0 30vh locked basis (루프224)', () => {
+      const html = [
+        '<div style="display:flex;gap:24px">',
+        '<div class="card" style="flex:0 0 30vh;padding:24px"><h3>극한</h3></div>',
+        '<div class="card" style="flex:0 0 30vh;padding:24px"><h3>도함수</h3></div>',
+        '<div class="card" style="flex:0 0 30vh;padding:24px"><h3>적분</h3></div>',
+        '</div>',
+      ].join('');
+      const out = relaxUniformPeerCardFixedMainSize(html, '미적분');
+      expect(out).not.toMatch(/flex:\s*0 0 30vh/);
       expect(out).toContain('극한');
     });
 

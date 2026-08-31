@@ -398,8 +398,9 @@ const GRID_BLOCK_CHILD_RE =
   /^(div|section|article|li|figure|aside|header|footer|main|nav|ul|ol|p|table)$/;
 const EQUAL_FR_TRACK_RE =
   /^(?:1(?:\.0+)?fr|minmax\(\s*(?:0|auto|min-content|max-content)\s*,\s*1(?:\.0+)?fr\s*\))$/i;
-/** 루프210/215 — identical 22–48% or vw/vmin shares (skip 50% / 50vw splits). */
-const EQUAL_COLUMN_SHARE_TRACK_RE = /^(?:2[2-9]|3\d|4[0-8])(?:\.\d+)?(?:%|vw|vmin)$/i;
+/** 루프210/215/224 — identical 22–48% or viewport/container shares (skip 50 splits). */
+const EQUAL_COLUMN_SHARE_TRACK_RE =
+  /^(?:2[2-9]|3\d|4[0-8])(?:\.\d+)?(?:%|vw|vh|vmin|vmax|dvh|svh|lvh|cqw|cqi|cqh|cqb)$/i;
 
 function countDirectBlockChildren(inner: string): number {
   const tokenRe = /<(\/?)([a-zA-Z][\w-]*)\b[^>]*(\/)?>/gi;
@@ -450,8 +451,9 @@ type EqualColumnDecl = {
 /**
  * Accept `repeat(N, 1fr)` and explicit equal tracks (`1fr 1fr 1fr`,
  * `1.0fr 1.0fr 1.0fr`, `minmax(0,1fr)…`). 루프210 — also identical
- * 22–48% / vw shares (`33% 33% 33%`, `33vw 33vw 33vw`). Mixed tracks
- * such as `1.3fr 1fr` or `220px 1fr` or `50% 50%` splits stay.
+ * 22–48% / vw / vh shares (`33% 33% 33%`, `33vw 33vw 33vw`,
+ * `33vh 33vh 33vh`). Mixed tracks such as `1.3fr 1fr` or `220px 1fr`
+ * or `50% 50%` splits stay.
  */
 function parseDeclaredEqualColumns(value: string): EqualColumnDecl | null {
   const important = /!important/i.test(value);
@@ -1082,23 +1084,26 @@ function textLooksLikeLeftoverPeerPlaceholder(html: string): boolean {
  * 루프217 — `KEY 3` / `테마 3` / `블록 3` index leftovers.
  * 루프219 — circled `③` / fullwidth `３` leftovers.
  * 루프222 — `Phase 3` / `축 3` / `레이어 3` index leftovers.
+ * 루프225 — letter `C` / `기둥 다` / `(3)` / `3번` leftovers.
  */
 const LEFTOVER_INDEX_ROMAN =
   '(?:viii|vii|iii|xii|xi|ix|iv|vi|ii|[xv]|i|[Ⅰ-Ⅻⅰ-ⅻ])';
 /** 루프219 — circled / dingbat / fullwidth 1–9 leftover indexes. */
-const LEFTOVER_INDEX_MARK = '[①-⑨❶-❾１-９]';
+const LEFTOVER_INDEX_MARK = '[①-⑨❶-❾１-９⑴-⑼㉠-㉥]';
+/** 루프225 — A–C / 가나다라 leftover letters (not roman V/X/I). */
+const LEFTOVER_INDEX_LETTER = '(?:[abc]|[가나다라])';
+const LEFTOVER_INDEX_CORE =
+  `(?:0?[1-9]|${LEFTOVER_INDEX_ROMAN}|${LEFTOVER_INDEX_MARK}|${LEFTOVER_INDEX_LETTER})`;
+const LEFTOVER_INDEX_SUFFIX = '(?:\\s*(?:번|번째|st|nd|rd|th))?';
+const LEFTOVER_INDEX_PREFIX =
+  '(?:pillar|column|col|card|item|step|part|key|theme|block|slot|phase|axis|layer|no\\.?|num(?:ber)?|#|기둥|열|카드|항목|단계|파트|번호|넘버|포인트|키|테마|블록|슬롯|페이즈|축|레이어)';
 
 function textLooksLikeLeftoverIndexLabel(html: string): boolean {
   const text = visibleText(html).replace(/\s+/g, ' ').trim();
   if (!text) return false;
-  const latin = new RegExp(
-    `^(?:pillar|column|col|card|item|step|part|key|theme|block|slot|phase|axis|layer|no\\.?|num(?:ber)?|#)?\\s*(?:0?[1-9]|${LEFTOVER_INDEX_ROMAN}|${LEFTOVER_INDEX_MARK})[.\\u2026·•\\-–—]?$`,
-    'iu',
-  );
-  if (latin.test(text)) return true;
   return new RegExp(
-    `^(?:기둥|열|카드|항목|단계|파트|번호|넘버|포인트|키|테마|블록|슬롯|페이즈|축|레이어)\\s*(?:0?[1-9]|${LEFTOVER_INDEX_ROMAN}|${LEFTOVER_INDEX_MARK})[.\\u2026·•\\-–—]?$`,
-    'u',
+    `^[\\[(\\s]*(?:${LEFTOVER_INDEX_PREFIX}\\s*)?${LEFTOVER_INDEX_CORE}${LEFTOVER_INDEX_SUFFIX}[\\])\\s]*[.\\u2026·•\\-–—]?$`,
+    'iu',
   ).test(text);
 }
 
@@ -1203,8 +1208,10 @@ function cssLengthToPx(raw: string): number | null {
     }
     return (PEER_CANVAS_PX * value) / 100;
   }
-  // 루프213 — MiniMax locks cards with 30vw as if the canvas were the viewport.
-  const viewport = /^(\d+(?:\.\d+)?)\s*vw$/i.exec(source);
+  // 루프213/224 — MiniMax locks cards with 30vw/30vh/30vmin as if the
+  // canvas were the viewport. Same 22–48 band as % / vw; 50/100 stay.
+  const viewport = /^(\d+(?:\.\d+)?)\s*(vw|vh|vmin|vmax|dvh|svh|lvh|cqw|cqi|cqh|cqb)$/i
+    .exec(source);
   if (viewport) {
     const value = Number.parseFloat(viewport[1] ?? '');
     if (!Number.isFinite(value)) return null;
@@ -1230,7 +1237,8 @@ function flexShorthandLockedBasisPx(style: string): number | null {
   const raw = String(decl[1] ?? '').trim();
   if (!/^0\s+0\s+/i.test(raw) && !/^none\b/i.test(raw)) return null;
   // `%` is not a word char, so `\b` after it fails at end-of-decl (`33%`).
-  const length = /(\d+(?:\.\d+)?)\s*(px|rem|em|ch|%|vw)/i.exec(raw);
+  const length = /(\d+(?:\.\d+)?)\s*(px|rem|em|ch|%|vw|vh|vmin|vmax|dvh|svh|lvh|cqw|cqi|cqh|cqb)/i
+    .exec(raw);
   if (!length) return null;
   return cssLengthToPx(`${length[1]}${length[2]}`);
 }
@@ -1304,6 +1312,7 @@ function stripFixedMainSizeFromOpenTag(openTag: string): string {
  * 루프207 — uniform 22–48% column-share widths (and flex:0 0 32%) also lock
  * the row. 100% stretch and 50% splits stay.
  * 루프213 — same for 22–48vw leftovers (`width:30vw`, `flex:0 0 30vw`).
+ * 루프224 — same for vh/vmin/cq* leftovers (`width:30vmin`, `33vh 33vh 33vh`).
  */
 export function relaxUniformPeerCardFixedMainSize(
   html: string,

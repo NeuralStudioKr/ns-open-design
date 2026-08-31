@@ -64,8 +64,11 @@ describe('DECK_FRAMEWORK_DIRECTIVE_COMPACT', () => {
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('③');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('Phase 3');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('tobefilled');
+    expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('C/3번/(3)');
+    expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('33vh/vmin');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('Class flex rows');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('no px/%/vw width or min-width');
+    expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('vh/vmin');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('max-width');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('flex: 0 0');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('Never wrap a card in another card');
@@ -77,6 +80,12 @@ describe('DECK_FRAMEWORK_DIRECTIVE_COMPACT', () => {
     );
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY_FOR_SELECTED_TEMPLATE).toContain(
       'PILLAR 03',
+    );
+    expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY_FOR_SELECTED_TEMPLATE).toContain(
+      'C/3번',
+    );
+    expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY_FOR_SELECTED_TEMPLATE).toContain(
+      'vh/vmin',
     );
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY_FOR_SELECTED_TEMPLATE).toContain(
       'no px/%/vw width or min-width',
