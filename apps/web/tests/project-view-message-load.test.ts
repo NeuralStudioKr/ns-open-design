@@ -652,7 +652,7 @@ describe("ProjectView message loading", () => {
     // null). Previously the fallback was a bare no-arg call and future
     // reports could not distinguish "model returned nothing" from
     // "persist returned skipped-incomplete" without browser console.
-    expect(autoOpenBlock).toContain("formatProjectRunDeliverableMissingError()");
+    expect(autoOpenBlock).toContain("formatProjectRunDeliverableMissingError({");
     expect(autoOpenBlock).toContain("kind: terminalPersistResult?.kind ?? null,");
     expect(autoOpenBlock).toContain("terminalPersistResult?.kind === 'rejected'");
     expect(autoOpenBlock).toContain("resolveTerminalArtifactToPersist(");

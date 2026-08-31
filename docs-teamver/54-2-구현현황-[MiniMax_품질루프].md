@@ -290,9 +290,24 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | preview: pitch-deck cover 그라디언트(`var(--grad)`)가 `.tpl-* .mega/.avatar/.cover-blob`로부터 슬라이드 paper로 오탐 → 모든 슬라이드 배경 그라디언트 (사용자 리포트 "결과물 내용 없음 + 템플릿 적용 안됨") | ☑ 루프180 |
 | persist/preview: 제목-only 아웃라인(≥4장·≥60% heading-only) · 긴 제목만으로 filled 오판 | ☑ 루프181 |
 | heal: MiniMax body-fill 실패로 동일 title-only 슬라이드 연속 2장 (예: `<h1>삼각함수</h1>` × 2) — persist gate를 우회한 케이스에서 preview 축소 | ☑ 루프182 |
+| persist/UX: low-substance skip을 "응답 끊김" 배너로 오표기 | ☑ 루프183 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프181 · title-only outline · heading-only deliverable)
+## 이번 루프 (루프183 · low-substance 배너 문구)
+
+- [x] `looksLikeLowSubstancePersistSkipReason` / `formatProjectRunLowSubstanceDeliverableError`
+- [x] `formatProjectRunDeliverableMissingError` reason-aware — cut-off와 분리
+- [x] ProjectView terminal·replay persist 실패 경로 reason 전달
+- [x] teamver-project-error-messages · ProjectView source 회귀
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프182 · duplicate title-only slide preview 축소)
+
+- [x] `dropDuplicateConsecutiveTitleOnlyLeftoverSlides` — 인접 동일 title-only 장 preview 축소
+- [x] heal 파이프라인 · fixture 2→1
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프181 · title-only outline · heading-only deliverable)
 
 - [x] `slideInnerIsTitleOnlyShell` — heading 외 본문 없음 → deliverable false (긴 제목만 filled 오판 차단)
 - [x] `deckLooksLikeTitleOnlyOutlineShell` — ≥4장·≥60% title-only → failed-generate

@@ -69,6 +69,8 @@ describe("project conversation error messages", () => {
       formatProjectRunErrorForUser,
       formatProjectConversationErrorForUser,
       formatProjectForkConversationError,
+      looksLikeLowSubstancePersistSkipReason,
+      formatProjectRunLowSubstanceDeliverableError,
     } = await import("../src/teamver/projectErrorMessages");
     expect(formatProjectArtifactRejectedError("deck.html", "missing doctype")).toContain(
       '슬라이드 파일 "슬라이드"',
@@ -98,6 +100,30 @@ describe("project conversation error messages", () => {
     expect(formatProjectArtifactSaveFailedError("deck.html")).not.toContain("deck.html");
     expect(formatProjectRunDeliverableMissingError()).toContain("슬라이드 결과물");
     expect(formatProjectRunDeliverableMissingError()).not.toContain("terminalPersistResultKind=");
+    expect(formatProjectRunDeliverableMissingError()).toContain("중간에 끊겼");
+    // 루프183 — low-substance / catalog leftover skips must not claim the stream was cut off.
+    expect(looksLikeLowSubstancePersistSkipReason("low-substance deck artifact")).toBe(true);
+    expect(looksLikeLowSubstancePersistSkipReason("unfilled-catalog-example")).toBe(true);
+    expect(looksLikeLowSubstancePersistSkipReason("incomplete-html-document-shell")).toBe(false);
+    expect(formatProjectRunLowSubstanceDeliverableError()).toContain("내용이 충분하지");
+    expect(formatProjectRunLowSubstanceDeliverableError()).not.toContain("중간에 끊겼");
+    expect(formatProjectRunDeliverableMissingError("low-substance deck artifact")).toBe(
+      formatProjectRunLowSubstanceDeliverableError(),
+    );
+    expect(formatProjectRunDeliverableMissingError({
+      kind: "skipped-incomplete",
+      reason: "unfilled-catalog-example",
+    })).toBe(formatProjectRunLowSubstanceDeliverableError());
+    expect(formatProjectRunDeliverableMissingError({
+      kind: "skipped-incomplete",
+      reason: "incomplete-html-document-shell",
+    })).toContain("중간에 끊겼");
+    const encodedLow = encodePersistedRunErrorDetail(
+      formatProjectRunDeliverableMissingError("low-substance deck artifact"),
+      { kind: "skipped-incomplete", reason: "low-substance deck artifact" },
+    );
+    expect(userFacingRunErrorDetail(encodedLow)).toBe(formatProjectRunLowSubstanceDeliverableError());
+    expect(userFacingRunErrorDetail(encodedLow)).not.toContain("중간에 끊겼");
     const encoded = encodePersistedRunErrorDetail(formatProjectRunDeliverableMissingError(), {
       kind: "skipped-incomplete",
       reason: "no <section class=\"slide\"> blocks in deck-patch body",

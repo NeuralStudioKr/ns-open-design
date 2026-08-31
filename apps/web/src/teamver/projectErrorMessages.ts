@@ -193,8 +193,47 @@ export function formatProjectArtifactStubWarning(fileName: string, message: stri
 const RUN_ERROR_DIAG_MARKER_START = '<!--od-run-error-diag:';
 const RUN_ERROR_DIAG_MARKER_END = '-->';
 
-/** User-facing copy when a slide run finished without a saved HTML deliverable. */
-export function formatProjectRunDeliverableMissingError(): string {
+/**
+ * Persist skipped a closed draft because it was title-only / thin / leftover
+ * catalog shell — not because the stream was cut off (루프183).
+ */
+export function looksLikeLowSubstancePersistSkipReason(
+  reason?: string | null,
+): boolean {
+  const r = String(reason ?? '').trim().toLowerCase();
+  if (!r) return false;
+  return (
+    r === 'low-substance deck artifact'
+    || r === 'unfilled-catalog-example'
+    || r.includes('low-substance')
+    || r.includes('unfilled-catalog')
+  );
+}
+
+/** User-facing copy when persist refused a thin / leftover leftover deck. */
+export function formatProjectRunLowSubstanceDeliverableError(): string {
+  return isTeamverEmbedMode()
+    ? '슬라이드 내용이 충분하지 않아 저장하지 않았습니다. 제목만 있거나 템플릿 잔여가 남은 초안입니다. 다시 시도해 주세요.'
+    : 'The slide draft was too incomplete to save — often title-only shells or leftover template copy. Please try again.';
+}
+
+/**
+ * User-facing copy when a slide run finished without a saved HTML deliverable.
+ * Pass persist `reason` so low-substance skips are not mislabeled as cut-off
+ * streams (루프183).
+ */
+export function formatProjectRunDeliverableMissingError(
+  reasonOrDetail?: string | null | {
+    kind?: string | null;
+    reason?: string | null;
+  },
+): string {
+  const reason = typeof reasonOrDetail === 'object' && reasonOrDetail !== null
+    ? reasonOrDetail.reason
+    : reasonOrDetail;
+  if (looksLikeLowSubstancePersistSkipReason(reason)) {
+    return formatProjectRunLowSubstanceDeliverableError();
+  }
   return isTeamverEmbedMode()
     ? '슬라이드 결과물이 생성되지 않았습니다. 응답이 중간에 끊겼거나 HTML 파일이 저장되지 않았습니다. 이어서 다시 시도하세요.'
     : 'The slide deliverable was not created. The response may have been cut off — please try again.';

@@ -8333,7 +8333,13 @@ export function ProjectView({
                     ) {
                       const endedAt = Date.now();
                       const detail = encodePersistedRunErrorDetail(
-                        formatProjectRunDeliverableMissingError(),
+                        formatProjectRunDeliverableMissingError({
+                          kind: replayPersistResult?.kind ?? null,
+                          reason:
+                            replayPersistResult && 'reason' in replayPersistResult
+                              ? replayPersistResult.reason ?? null
+                              : null,
+                        }),
                         {
                           kind: replayPersistResult?.kind ?? null,
                           reason:
@@ -10449,7 +10455,13 @@ export function ProjectView({
                         terminalPersistResult.reason,
                       )
                   : encodePersistedRunErrorDetail(
-                      formatProjectRunDeliverableMissingError(),
+                      formatProjectRunDeliverableMissingError({
+                        kind: terminalPersistResult?.kind ?? null,
+                        reason:
+                          terminalPersistResult && 'reason' in terminalPersistResult
+                            ? terminalPersistResult.reason ?? null
+                            : null,
+                      }),
                       {
                         kind: terminalPersistResult?.kind ?? null,
                         reason:
