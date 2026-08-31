@@ -936,6 +936,17 @@ const LEFTOVER_PEER_PLACEHOLDER_TOKENS = [
   '항목',
   '포인트',
   '카드',
+  // 루프202 — stub labels MiniMax leaves on the missing pillar.
+  'comingsoon',
+  '준비중',
+  '작성중',
+  '미정',
+  '추후',
+  'todo',
+  'tba',
+  'tbd',
+  'wip',
+  'na',
 ].sort((a, b) => b.length - a.length);
 
 const LEFTOVER_PEER_PLACEHOLDER_PUNCT_RE = /^(?:[.…·•\-–—]{1,3})/u;

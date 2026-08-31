@@ -7,6 +7,12 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-08-31 현재 판단 · 최신 루프
 
+### 루프202 — TBD/N/A/준비중 stub 카드가 3열을 붙잡는 문제
+
+루프200은 `제목`/`내용`/`...`만 leftover로 본다. MiniMax는 빠진 기둥을 `TBD`/`N/A`/`준비중`으로 채워 3열이 유지된다. 카드 전체가 stub 토큰일 때만 제거. `추후 적분 예정` 실카피는 유지. 카피 발명 없음.
+
+검증: contracts heal-ai-generated-deck 루프202 · deck-framework-compact.
+
 ### 루프201 — 동일 max-width / flex:0 0 이 3열을 잠그는 문제
 
 루프198은 `width`/`min-width`/`flex-basis`만 벗긴다. MiniMax는 카드마다 `max-width:560px` 또는 `flex: 0 0 36rem`을 찍어 191이 grow를 줘도 폭이 잠기고 우측이 빈 띠가 된다. peer 전부가 비슷한 큰 고정 주축일 때만 max-width와 `flex:0 0`/`none` 길이를 제거한다. `flex:1 1` grow와 혼합 sidebar, 영문 카탈로그는 유지. 카피 발명 없음.
@@ -382,9 +388,16 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | heal: 균형 잡힌 card-in-card 이중 래핑이 194에 빈 셸로 오분해됨 | ☑ 루프199 |
 | persist/preview: 제목/내용/... placeholder 카드가 3열을 붙잡아 빈 띠 | ☑ 루프200 |
 | persist/preview: 동일 max-width / flex:0 0 이 grow를 막아 3열 클립·빈 띠 | ☑ 루프201 |
+| persist/preview: TBD/N/A/준비중 stub 카드가 3열을 붙잡아 빈 띠 | ☑ 루프202 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프200–201 · placeholder peer · max-width/flex 0 0)
+## 이번 루프 (루프202 · TBD/N/A/준비중 stub)
+
+- [x] leftover 토큰 stub 확장 · 실카피 접두 유지
+- [x] heal-ai-generated-deck 루프202 · deck-framework-compact
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프200–201 · placeholder peer · max-width/flex 0 0)
 
 - [x] `textLooksLikeLeftoverPeerPlaceholder` — 제목/내용/.../`내용을 입력하세요` 1–4 토큰만 drop
 - [x] `극한`/`적분` 실카피 · SVG/모티프 · 영문 Title/Body(빈 brief) 유지
