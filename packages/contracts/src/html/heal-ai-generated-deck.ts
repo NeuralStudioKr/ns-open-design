@@ -987,6 +987,123 @@ export function dropEmptyLeftoverPeerCardsInAllocatedRows(
   return out;
 }
 
+const PEER_FIXED_MAIN_SIZE_MIN_PX = 280;
+const PEER_FIXED_MAIN_SIZE_RATIO = 1.35;
+
+function cssLengthToPx(raw: string): number | null {
+  const match = /^(\d+(?:\.\d+)?)\s*(px|rem|em|ch)\b/i.exec(String(raw ?? '').trim());
+  if (!match) return null;
+  const value = Number.parseFloat(match[1] ?? '');
+  if (!Number.isFinite(value)) return null;
+  const unit = (match[2] ?? 'px').toLowerCase();
+  if (unit === 'px') return value;
+  if (unit === 'rem' || unit === 'em') return value * 16;
+  if (unit === 'ch') return value * 8;
+  return null;
+}
+
+function peerFixedMainSizePx(style: string): number | null {
+  for (const prop of ['width', 'flex-basis', 'min-width']) {
+    const decl = new RegExp(`(?:^|;)\\s*${prop}\\s*:\\s*([^;]+)`, 'i').exec(style);
+    if (!decl) continue;
+    const px = cssLengthToPx(decl[1] ?? '');
+    if (px != null) return px;
+  }
+  return null;
+}
+
+function childLooksLikeSizedPeerCard(attrs: string, style: string): boolean {
+  if (CARDISH_CLASS_RE.test(classAttrValue(attrs))) return true;
+  if (/(?:^|;)\s*padding(?:-inline|-block|-left|-right)?\s*:/i.test(style)) return true;
+  if (
+    /(?:^|;)\s*background(?:-color)?\s*:/i.test(style)
+    && /(?:^|;)\s*(?:border|border-radius|gap)\s*:/i.test(style)
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function peersHaveUniformFixedMainSize(styles: string[]): boolean {
+  const sizes = styles.map((style) => peerFixedMainSizePx(style));
+  if (sizes.some((size) => size == null)) return false;
+  const nums = sizes as number[];
+  const min = Math.min(...nums);
+  const max = Math.max(...nums);
+  if (min < PEER_FIXED_MAIN_SIZE_MIN_PX) return false;
+  return max <= min * PEER_FIXED_MAIN_SIZE_RATIO;
+}
+
+function stripFixedMainSizeFromOpenTag(openTag: string): string {
+  const styleMatch = /\bstyle\s*=\s*(["'])([\s\S]*?)\1/i.exec(openTag);
+  if (!styleMatch) return openTag;
+  const quote = styleMatch[1] ?? '"';
+  let style = (styleMatch[2] ?? '').trim().replace(/;?\s*$/, '');
+  style = style
+    .replace(/(?:^|;)\s*width\s*:[^;]*/gi, '')
+    .replace(/(?:^|;)\s*min-width\s*:[^;]*/gi, '')
+    .replace(/(?:^|;)\s*flex-basis\s*:[^;]*/gi, '')
+    .replace(/^;+|;+$/g, '')
+    .replace(/;;+/g, ';')
+    .trim();
+  return (
+    openTag.slice(0, styleMatch.index)
+    + `style=${quote}${style}${quote}`
+    + openTag.slice(styleMatch.index! + styleMatch[0].length)
+  );
+}
+
+/**
+ * 루프198 — Relax uniform px/rem width on peer cards in a shared row.
+ *
+ * Loop 195 lets equal `1fr` tracks shrink via `minmax(0,1fr)`, but MiniMax
+ * still stamps `width:560px` / `min-width:580px` on every card. Three of
+ * those overflow the 1920 canvas. Loop 191 also skips the whole flex row
+ * when any child looks like a fixed sidebar — so a 3-card row with the
+ * same hardcoded width never gets `flex:1` and sits clipped or left-cramped.
+ *
+ * Strip width / min-width / flex-basis only when every peer has a similar
+ * large fixed main size. Mixed sidebar + fluid (or 280 vs 900) stays.
+ * Hangul/brief-gated. Never invent missing cards.
+ */
+export function relaxUniformPeerCardFixedMainSize(
+  html: string,
+  brief?: string | null,
+): string {
+  let out = String(html ?? '');
+  if (!out) return out;
+  if (!sourceHasHangulGate(out, brief)) return out;
+  const decls = collectClassEqualTrackDecls(out);
+  const openRe =
+    /<(div|section|article|main|aside|ul|ol)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
+  const patches: Array<{ start: number; end: number; replacement: string }> = [];
+  let match: RegExpExecArray | null;
+  while ((match = openRe.exec(out)) !== null) {
+    const attrs = match[2] ?? '';
+    const style = extractInlineStyle(attrs);
+    const tokens = classTokensFromAttrs(attrs);
+    if (!containerLooksLikeAllocatedCardRow(style, tokens, decls)) continue;
+    const tag = (match[1] ?? '').toLowerCase();
+    const openEnd = match.index + match[0].length;
+    const close = findSameTagClose(out, tag, openEnd);
+    if (!close) continue;
+    const children = listDirectBlockChildOpens(out, openEnd, close.closeStart);
+    const peers = children.filter((c) => childLooksLikeSizedPeerCard(c.attrs, c.style));
+    if (peers.length < 2 || peers.length > 6) continue;
+    if (!peersHaveUniformFixedMainSize(peers.map((c) => c.style))) continue;
+    for (const peer of peers) {
+      const next = stripFixedMainSizeFromOpenTag(peer.open);
+      if (next === peer.open) continue;
+      patches.push({ start: peer.absStart, end: peer.absEnd, replacement: next });
+    }
+  }
+  patches.sort((a, b) => b.start - a.start);
+  for (const patch of patches) {
+    out = `${out.slice(0, patch.start)}${patch.replacement}${out.slice(patch.end)}`;
+  }
+  return out;
+}
+
 /**
  * 루프191 — Equalize peer cards in a flex row that has no flex-grow.
  *
@@ -1448,6 +1565,9 @@ export function healAiGeneratedDeckMarkup(html: string, brief?: string | null): 
   // 루프197 — empty leftover card shells keep 3-track rows alive so
   // 190/195 cannot shrink and 191 grows the blank column. Drop first.
   out = dropEmptyLeftoverPeerCardsInAllocatedRows(out, brief);
+  // 루프198 — uniform px/rem card widths fight minmax/flex shrink and
+  // make 191 treat the whole row as a sidebar. Strip first.
+  out = relaxUniformPeerCardFixedMainSize(out, brief);
   out = shrinkOverAllocatedRepeatGrid(out);
   out = normalizeEqualFrTracksToMinmax(out);
   out = shrinkOverAllocatedEqualTrackRows(out);

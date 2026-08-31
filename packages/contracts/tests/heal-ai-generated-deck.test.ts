@@ -14,6 +14,7 @@ import {
   shrinkOverAllocatedEqualTrackRows,
   shrinkClassBoundEqualTrackGrids,
   dropEmptyLeftoverPeerCardsInAllocatedRows,
+  relaxUniformPeerCardFixedMainSize,
   unnestHeadingBlockChildren,
 } from '../src/html/heal-ai-generated-deck.js';
 
@@ -342,6 +343,88 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
       expect(out).not.toMatch(/grid-template-columns:\s*(?:1fr 1fr 1fr|minmax\(0,1fr\) minmax\(0,1fr\) minmax\(0,1fr\))/);
       expect(out).toContain('극한');
       expect(out).toContain('도함수');
+    });
+  });
+
+  describe('루프198 uniform peer card fixed main size', () => {
+    it('strips the same width from three flex cards so 191 can grow them', () => {
+      const html = [
+        '<div style="display:flex;gap:24px">',
+        '<div class="card" style="width:600px;padding:24px"><h3>극한</h3></div>',
+        '<div class="card" style="width:600px;padding:24px"><h3>도함수</h3></div>',
+        '<div class="card" style="width:600px;padding:24px"><h3>적분</h3></div>',
+        '</div>',
+      ].join('');
+      const out = relaxUniformPeerCardFixedMainSize(html, '미적분');
+      expect(out).not.toMatch(/width:\s*600px/);
+      expect(out).toContain('극한');
+      expect(out).toContain('도함수');
+      expect(out).toContain('적분');
+      expect((out.match(/class="card"/g) ?? []).length).toBe(3);
+    });
+
+    it('strips min-width on a filled 3-col grid so tracks can shrink', () => {
+      const html = [
+        '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:24px">',
+        '<div class="card" style="min-width:580px">극한</div>',
+        '<div class="card" style="min-width:580px">도함수</div>',
+        '<div class="card" style="min-width:580px">적분</div>',
+        '</div>',
+      ].join('');
+      const out = relaxUniformPeerCardFixedMainSize(html, '미적분');
+      expect(out).not.toMatch(/min-width:\s*580px/);
+      expect(out).toMatch(/grid-template-columns:\s*1fr 1fr 1fr/);
+    });
+
+    it('leaves a mixed sidebar plus fluid card alone', () => {
+      const html = [
+        '<div style="display:flex;gap:24px">',
+        '<div style="width:280px;padding:16px">side</div>',
+        '<div class="card" style="padding:16px">본문</div>',
+        '</div>',
+      ].join('');
+      expect(relaxUniformPeerCardFixedMainSize(html, '미적분')).toBe(html);
+    });
+
+    it('leaves unequal card widths alone (real sidebar split)', () => {
+      const html = [
+        '<div style="display:flex;gap:24px">',
+        '<div class="card" style="width:280px;padding:16px">목차</div>',
+        '<div class="card" style="width:900px;padding:16px">본문</div>',
+        '</div>',
+      ].join('');
+      expect(relaxUniformPeerCardFixedMainSize(html, '미적분')).toBe(html);
+    });
+
+    it('leaves official English catalog card widths alone without a brief', () => {
+      const html = [
+        '<div style="display:flex;gap:24px">',
+        '<div class="card" style="width:560px;padding:24px">One</div>',
+        '<div class="card" style="width:560px;padding:24px">Two</div>',
+        '<div class="card" style="width:560px;padding:24px">Three</div>',
+        '</div>',
+      ].join('');
+      expect(relaxUniformPeerCardFixedMainSize(html)).toBe(html);
+    });
+
+    it('pipeline heals 3 fixed-width pillars without inventing copy', () => {
+      const html = [
+        '<!doctype html><html><body>',
+        '<section class="slide"><h1>미적분의 세 기둥</h1>',
+        '<div style="display:flex;gap:24px">',
+        '<div class="card" style="width:560px;padding:24px"><h3>극한</h3><p>lim</p></div>',
+        '<div class="card" style="width:560px;padding:24px"><h3>도함수</h3><p>d/dx</p></div>',
+        '<div class="card" style="width:560px;padding:24px"><h3>적분</h3><p>넓이</p></div>',
+        '</div></section>',
+        '</body></html>',
+      ].join('');
+      const out = healAiGeneratedDeckMarkup(html, '미적분');
+      expect(out).not.toMatch(/width:\s*560px/);
+      expect(out.match(/flex:\s*1 1 0/gi)?.length).toBeGreaterThanOrEqual(3);
+      expect(out).toContain('극한');
+      expect(out).toContain('도함수');
+      expect(out).toContain('적분');
+      expect(out).toContain('넓이');
     });
   });
 

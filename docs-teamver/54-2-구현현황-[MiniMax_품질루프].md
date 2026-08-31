@@ -7,6 +7,12 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-08-31 현재 판단 · 최신 루프
 
+### 루프198 — 동일 고정폭 카드가 3열을 자르는 문제
+
+루프195는 트랙을 `minmax(0,1fr)`로 줄일 수 있게 했다. MiniMax는 카드마다 `width:560px`/`min-width:580px`를 남겨 3장이 1920 밖으로 잘리거나, 루프191이 sidebar로 오인해 `flex:1`을 안 준다. peer 전부가 비슷한 큰 고정 폭일 때만 그 제약을 제거한다. 혼합 sidebar와 영문 카탈로그는 유지. 카피 발명 없음.
+
+검증: contracts heal-ai-generated-deck 루프198 · deck-framework-compact.
+
 ### 루프197 — 빈 leftover 카드 셸이 3열을 붙잡는 문제
 
 루프190/195는 그리드 자식 *개수*로 열을 줄인다. MiniMax는 빠진 기둥을 `<div class="card"></div>`(또는 padding만 있는 빈 박스)로 남겨 자식이 3이라 축소가 안 되고, 루프191이 그 빈 셸에 `flex:1`을 줘 미적분 리포트와 같은 우측 빈 띠가 남는다. 채워진 peer가 1장 이상 있을 때만 빈 cardish peer를 제거한다 — 빠진 적분 카피는 만들지 않는다. Hangul/brief 게이트로 영문 카탈로그 빈 셀은 유지.
@@ -353,9 +359,18 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | persist/preview: 채워진 3열 `1fr` 클립 · 2×2 leftover 빈 아랫줄 · 클래스 그리드 미달 | ☑ 루프195 |
 | persist: `만들어 주세요`/`을를`만 다른 프롬프트 앵무 · residual 2겹 drop | ☑ 루프196 |
 | persist/preview: 빈 leftover 카드 셸이 3열/flex 행을 붙잡아 우측 빈 띠 | ☑ 루프197 |
+| persist/preview: 동일 px/rem 카드 폭이 minmax/flex shrink를 막아 3열 클립 | ☑ 루프198 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프197 · 빈 leftover 카드 셸)
+## 이번 루프 (루프198 · 동일 고정폭 카드 클립)
+
+- [x] `relaxUniformPeerCardFixedMainSize` — 균일 큰 고정 폭만 strip
+- [x] 혼합 sidebar / 영문 카탈로그 유지
+- [x] shrink·191 전에 파이프라인 연결 · compact vocabulary
+- [x] heal-ai-generated-deck 루프198
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프197 · 빈 leftover 카드 셸)
 
 - [x] `dropEmptyLeftoverPeerCardsInAllocatedRows` — flex/equal-grid 행에서 빈 cardish peer만 제거
 - [x] 채워진 peer 0장이면 행을 비우지 않음 · SVG/모티프 카드 유지
