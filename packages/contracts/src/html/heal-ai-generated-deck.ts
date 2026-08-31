@@ -1043,6 +1043,11 @@ const LEFTOVER_PEER_PLACEHOLDER_TOKENS = [
   'placeholder',
   'ipsum',
   'filler',
+  // 루프228 — "no data" compounds. `없음` alone does not match `자료없음`
+  // because the token must sit at the start of the compact string.
+  '자료없음',
+  '정보없음',
+  '데이터없음',
 ].sort((a, b) => b.length - a.length);
 
 const LEFTOVER_PEER_PLACEHOLDER_PUNCT_RE = /^(?:[.…·•\-–—]{1,3})/u;

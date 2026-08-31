@@ -7,6 +7,12 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-08-31 현재 판단 · 최신 루프
 
+### 루프228 — 자료없음/정보없음 leftover stub
+
+루프208의 `없음`은 compact 앞에 있을 때만 맞는다. MiniMax는 `자료없음`/`정보없음`으로 빠진 기둥을 채워 3열이 유지된다. 복합 stub만 leftover. `자료 적분` 실카피는 유지. 카피 발명 없음.
+
+검증: contracts heal-ai-generated-deck 루프228 · deck-framework-compact.
+
 ### 루프227 — lorem ipsum/placeholder leftover stub
 
 루프200은 `lorem`만 leftover로 본다. MiniMax는 `lorem ipsum`/`placeholder`로 빠진 기둥을 채워 3열이 유지된다. `ipsum`/`placeholder`/`filler` 추가. `lorem 적분` 실카피는 유지. 카피 발명 없음.
@@ -565,9 +571,17 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | persist/preview: 00/PILLAR 0 leftover 카드가 3열을 붙잡아 빈 띠 | ☑ 루프225 |
 | persist/preview: 전각 ０/원문자 ⓪ leftover 카드가 3열을 붙잡아 빈 띠 | ☑ 루프226 |
 | persist/preview: lorem ipsum/placeholder stub 카드가 3열을 붙잡아 빈 띠 | ☑ 루프227 |
+| persist/preview: 자료없음/정보없음 stub 카드가 3열을 붙잡아 빈 띠 | ☑ 루프228 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프227 · lorem ipsum/placeholder stub)
+## 이번 루프 (루프228 · 자료없음/정보없음 stub)
+
+- [x] 자료없음/정보없음/데이터없음 leftover
+- [x] 자료 적분 실카피 유지
+- [x] heal-ai-generated-deck 루프228 · deck-framework-compact
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프227 · lorem ipsum/placeholder stub)
 
 - [x] ipsum/placeholder/filler leftover
 - [x] lorem 적분 실카피 유지
