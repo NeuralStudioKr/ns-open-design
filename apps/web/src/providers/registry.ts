@@ -2029,6 +2029,7 @@ export async function writeProjectTextFileDetailed(
   options?: {
     artifactManifest?: ArtifactManifest;
     skipArtifactStubGuard?: boolean;
+    forceArtifactStubGuardReject?: boolean;
   },
 ): Promise<WriteProjectTextFileResult> {
   try {
@@ -2040,6 +2041,7 @@ export async function writeProjectTextFileDetailed(
         content,
         artifactManifest: options?.artifactManifest,
         ...(options?.skipArtifactStubGuard ? { skipArtifactStubGuard: true } : {}),
+        ...(options?.forceArtifactStubGuardReject ? { forceArtifactStubGuardReject: true } : {}),
       }),
     });
     if (!resp.ok) {

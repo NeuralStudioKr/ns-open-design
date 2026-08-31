@@ -20,6 +20,7 @@ import {
   STUB_GUARDED_MANIFEST_KINDS,
   evaluateArtifactStubGuard,
   readArtifactStubGuardConfigFromEnv,
+  applyArtifactStubGuardForceReject,
 } from './artifact-stub-guard.js';
 import {
   assertArtifactPublicationAllowed,
@@ -923,6 +924,7 @@ export async function writeProjectFile(
     artifactManifest = null,
     skipArtifactStubGuard = false,
     skipArtifactPublicationGuard = false,
+    forceArtifactStubGuardReject = false,
   } = {},
   metadata?,
 ) {
@@ -983,7 +985,10 @@ export async function writeProjectFile(
           scanDir: path.dirname(target),
           identifier,
           newSize: Buffer.byteLength(body),
-          config: readArtifactStubGuardConfigFromEnv(),
+          config: applyArtifactStubGuardForceReject(
+            readArtifactStubGuardConfigFromEnv(),
+            forceArtifactStubGuardReject === true,
+          ),
         });
         if ((guard.outcome === 'reject' || guard.outcome === 'warn') && guard.warning) {
           // Operator-visible signal regardless of mode, so on-call can see

@@ -205,8 +205,10 @@ export function looksLikeLowSubstancePersistSkipReason(
   return (
     r === 'low-substance deck artifact'
     || r === 'unfilled-catalog-example'
+    || r === 'thin-prior-top-up-no-append'
     || r.includes('low-substance')
     || r.includes('unfilled-catalog')
+    || r.includes('thin-prior-top-up')
   );
 }
 

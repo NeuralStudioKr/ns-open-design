@@ -9,6 +9,7 @@ interface FilePostBody {
   encoding?: 'utf8' | 'base64';
   artifactManifest?: unknown;
   skipArtifactStubGuard?: boolean;
+  forceArtifactStubGuardReject?: boolean;
 }
 
 function htmlBody(byteLength: number): string {
@@ -164,6 +165,31 @@ describe('artifact stub guard via /api/projects/:id/files', () => {
     expect(writeBody.file.name).toBe('overview-2.html');
     expect(writeBody.file.stubGuardWarning?.code).toBe('ARTIFACT_REGRESSION');
     expect(writeBody.file.stubGuardWarning?.identifier).toBe('overview');
+  });
+
+  it('rejects warn-mode stub overwrite when forceArtifactStubGuardReject is true (루프268)', async () => {
+    vi.stubEnv('OD_ARTIFACT_STUB_GUARD', 'warn');
+    const projectId = await createProject('force-reject');
+
+    const firstResp = await postFile(projectId, {
+      name: 'overview.html',
+      content: htmlBody(20_000),
+      artifactManifest: manifestFor('overview'),
+    });
+    expect(firstResp.status).toBe(200);
+
+    const stubResp = await postFile(projectId, {
+      name: 'overview-2.html',
+      content: '<html><body>placeholder</body></html>',
+      artifactManifest: manifestFor('overview'),
+      forceArtifactStubGuardReject: true,
+    });
+    expect(stubResp.status).toBe(422);
+    const body = (await stubResp.json()) as {
+      error: { code?: string; details?: { identifier?: string } };
+    };
+    expect(body.error.code).toBe('ARTIFACT_REGRESSION');
+    expect(body.error.details?.identifier).toBe('overview');
   });
 
   it('skips the guard entirely when mode is off', async () => {

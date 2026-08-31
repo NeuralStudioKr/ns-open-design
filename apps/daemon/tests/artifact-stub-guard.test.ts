@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   ArtifactRegressionError,
   DEFAULT_ARTIFACT_STUB_GUARD_CONFIG,
+  applyArtifactStubGuardForceReject,
   artifactIdentifiersMatch,
   classifyArtifactStubGuard,
   evaluateArtifactStubGuard,
@@ -432,6 +433,40 @@ describe('readArtifactStubGuardConfigFromEnv', () => {
     });
     expect(config.minRetainedRatio).toBe(DEFAULT_ARTIFACT_STUB_GUARD_CONFIG.minRetainedRatio);
     expect(config.minPriorBytes).toBe(DEFAULT_ARTIFACT_STUB_GUARD_CONFIG.minPriorBytes);
+  });
+});
+
+describe('applyArtifactStubGuardForceReject (루프268)', () => {
+  it('upgrades warn → reject when forceReject is true', () => {
+    const forced = applyArtifactStubGuardForceReject(
+      { mode: 'warn', minRetainedRatio: 0.35, minPriorBytes: 8192 },
+      true,
+    );
+    expect(forced.mode).toBe('reject');
+  });
+
+  it('leaves reject / off unchanged', () => {
+    expect(
+      applyArtifactStubGuardForceReject(
+        { mode: 'reject', minRetainedRatio: 0.35, minPriorBytes: 8192 },
+        true,
+      ).mode,
+    ).toBe('reject');
+    expect(
+      applyArtifactStubGuardForceReject(
+        { mode: 'off', minRetainedRatio: 0.35, minPriorBytes: 8192 },
+        true,
+      ).mode,
+    ).toBe('off');
+  });
+
+  it('is a no-op when forceReject is false', () => {
+    expect(
+      applyArtifactStubGuardForceReject(
+        { mode: 'warn', minRetainedRatio: 0.35, minPriorBytes: 8192 },
+        false,
+      ).mode,
+    ).toBe('warn');
   });
 });
 

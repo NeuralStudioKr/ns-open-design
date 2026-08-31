@@ -57,6 +57,12 @@ export interface FileRevisionPushRequest {
    * smaller fill as ARTIFACT_REGRESSION.
    */
   skipArtifactStubGuard?: boolean;
+  /**
+   * Teamver embed must not keep warn-mode overwrite (루프268). When true and
+   * env mode is `warn`, daemon upgrades the stub-guard outcome to `reject`
+   * so a placeholder cannot replace a real deck on disk.
+   */
+  forceArtifactStubGuardReject?: boolean;
 }
 
 export interface FileRevisionPushResponse {

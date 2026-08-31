@@ -104,6 +104,7 @@ describe("project conversation error messages", () => {
     // 루프183 — low-substance / catalog leftover skips must not claim the stream was cut off.
     expect(looksLikeLowSubstancePersistSkipReason("low-substance deck artifact")).toBe(true);
     expect(looksLikeLowSubstancePersistSkipReason("unfilled-catalog-example")).toBe(true);
+    expect(looksLikeLowSubstancePersistSkipReason("thin-prior-top-up-no-append")).toBe(true);
     expect(looksLikeLowSubstancePersistSkipReason("incomplete-html-document-shell")).toBe(false);
     expect(formatProjectRunLowSubstanceDeliverableError()).toContain("내용이 충분하지");
     expect(formatProjectRunLowSubstanceDeliverableError()).not.toContain("중간에 끊겼");

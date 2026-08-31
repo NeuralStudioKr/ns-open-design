@@ -3565,6 +3565,7 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
         assistantMessageId,
         truncateAfterSequence,
         skipArtifactStubGuard,
+        forceArtifactStubGuardReject,
       } = req.body || {};
       if (typeof content !== 'string') {
         return sendApiError(res, 400, 'BAD_REQUEST', 'content required');
@@ -3607,6 +3608,7 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
           ? { truncateAfterSequence: truncate }
           : {}),
         ...(skipArtifactStubGuard === true ? { skipArtifactStubGuard: true } : {}),
+        ...(forceArtifactStubGuardReject === true ? { forceArtifactStubGuardReject: true } : {}),
         metadata: project.metadata,
       });
       // Await S3 sync-up before 200 so a page refresh / sibling-node sync-down
@@ -3842,7 +3844,7 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
           const body = { file: meta };
           return res.json(body);
         }
-        const { name, content, encoding, artifactManifest, artifact, overwrite, skipArtifactStubGuard } = req.body || {};
+        const { name, content, encoding, artifactManifest, artifact, overwrite, skipArtifactStubGuard, forceArtifactStubGuardReject } = req.body || {};
         if (typeof name !== 'string' || typeof content !== 'string') {
           return sendApiError(
             res,
@@ -3886,6 +3888,7 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
                 artifactManifest,
                 ...(overwrite === false ? { overwrite: false } : {}),
                 ...(skipArtifactStubGuard === true ? { skipArtifactStubGuard: true } : {}),
+                ...(forceArtifactStubGuardReject === true ? { forceArtifactStubGuardReject: true } : {}),
               },
               uploadProject?.metadata,
             );

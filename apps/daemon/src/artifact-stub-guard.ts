@@ -266,6 +266,20 @@ export function readArtifactStubGuardConfigFromEnv(env: NodeJS.ProcessEnv = proc
   return { mode, minRetainedRatio, minPriorBytes };
 }
 
+/**
+ * 루프268 — Teamver embed callers pass `forceReject` so env `warn` cannot
+ * overwrite a real prior with a stub. Explicit `off` stays off (operator
+ * disable). Other modes unchanged.
+ */
+export function applyArtifactStubGuardForceReject(
+  config: ArtifactStubGuardConfig,
+  forceReject?: boolean,
+): ArtifactStubGuardConfig {
+  if (!forceReject) return config;
+  if (config.mode !== 'warn') return config;
+  return { ...config, mode: 'reject' };
+}
+
 function buildWarning(
   identifier: string,
   newSize: number,

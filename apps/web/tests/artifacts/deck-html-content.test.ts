@@ -12,6 +12,7 @@ import {
   isPersistableShortDeckDraft,
   isPersistableShortDeckDraftAfterHeal,
   deckArtifactStartsWithMotifSvgDump,
+  deckLooksLikeTitleOnlyCoverWithEmptyHosts,
   deckLooksLikeUnfilledCatalogExample,
   deckLooksLikeRepeatedUserBriefParrot,
   deckSlideHeadingsLookLikeFailedGenerate,
@@ -87,6 +88,23 @@ describe("deck-html-content", () => {
       + '</body></html>';
     expect(isPersistableShortDeckDraft(html)).toBe(true);
     expect(isIncompleteHtmlDocumentShell(html)).toBe(false);
+  });
+
+  it("does not treat title-only cover + ≥2 empty hosts as a persistable draft (루프267)", () => {
+    const html =
+      '<!doctype html><html lang="ko"><body>'
+      + '<section class="slide"><h1>시장 기회</h1></section>'
+      + '<section class="slide"></section>'
+      + '<section class="slide"></section>'
+      + '</body></html>';
+    expect(deckLooksLikeTitleOnlyCoverWithEmptyHosts(html)).toBe(true);
+    expect(isPersistableShortDeckDraft(html)).toBe(false);
+    // Solo title cover (no empty trailing hosts) still top-up-able.
+    expect(
+      isPersistableShortDeckDraft(
+        '<!doctype html><html><body><section class="slide"><h1>시장 기회</h1></section></body></html>',
+      ),
+    ).toBe(true);
   });
 
   it("does not treat a 3-slide outline/status shell as a persistable draft", () => {

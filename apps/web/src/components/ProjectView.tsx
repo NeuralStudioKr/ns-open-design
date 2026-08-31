@@ -67,6 +67,7 @@ import {
 } from '../artifacts/pendingWriteRecovery';
 import {
   deckArtifactStartsWithMotifSvgDump,
+  deckLooksLikeTitleOnlyCoverWithEmptyHosts,
   deckLooksLikeUnfilledCatalogExample,
   deckSlideHeadingsLookLikeFailedGenerate,
   isClosedSoftSalvageDeckHtml,
@@ -5505,6 +5506,23 @@ export function ProjectView({
               countDeckSlideSections(artifactToPersist.html)
               <= countDeckSlideSections(priorHtml)
             ) {
+              // 루프269 — Thin cover+empty prior + top-up noop is not a calm
+              // success. Route as incomplete + low-substance-style banner /
+              // AC refuse instead of skipped-noop (which hides the miss).
+              if (
+                deckLooksLikeTitleOnlyCoverWithEmptyHosts(priorHtml)
+                || isLowSubstanceSlideDeckArtifact(
+                  priorHtml,
+                  topUpBrief,
+                  project.name || '슬라이드',
+                )
+              ) {
+                return {
+                  kind: 'skipped-incomplete',
+                  fileName,
+                  reason: 'thin-prior-top-up-no-append',
+                };
+              }
               // Prior deck is already a valid deliverable. Do NOT route this
               // as skipped-incomplete → incomplete_output (or auto-continue
               // head rewrite). Keep disk as-is and treat as a calm no-op.
@@ -5973,6 +5991,10 @@ export function ProjectView({
             ...(allowReplaceSeedOrLeftover
               ? { skipArtifactStubGuard: true }
               : {}),
+            // 루프268 — Teamver embed: never allow warn-mode stub overwrite.
+            ...(!allowReplaceSeedOrLeftover && isTeamverEmbedMode()
+              ? { forceArtifactStubGuardReject: true }
+              : {}),
           },
         )
         : await writeProjectTextFileDetailed(
@@ -5983,6 +6005,9 @@ export function ProjectView({
             artifactManifest: manifest ?? undefined,
             ...(allowReplaceSeedOrLeftover
               ? { skipArtifactStubGuard: true }
+              : {}),
+            ...(!allowReplaceSeedOrLeftover && isTeamverEmbedMode()
+              ? { forceArtifactStubGuardReject: true }
               : {}),
           },
         );

@@ -739,6 +739,32 @@ function slideInnerHasPersistableDraftCopy(innerHtml: string): boolean {
   return true;
 }
 
+/**
+ * Empty slide host: no visible copy and no media. Trailing MiniMax shells often
+ * look like `<section class="slide"></section>`.
+ */
+function slideInnerLooksEmptyHost(innerHtml: string): boolean {
+  if (HAS_MEDIA_CONTENT_RE.test(innerHtml)) return false;
+  return visibleTextFromHtmlFragment(innerHtml).length < 2;
+}
+
+/**
+ * 루프267 — Title-only (or thinner) cover plus ≥2 empty hosts is not a
+ * persistable first-fill success. Cover with real body + empty placeholders
+ * still may persist so hidden top-up can append.
+ */
+export function deckLooksLikeTitleOnlyCoverWithEmptyHosts(html: string): boolean {
+  const withoutComments = html.replace(/<!--[\s\S]*?-->/g, "");
+  const inners = listSlideSectionInners(withoutComments);
+  if (inners.length < 3) return false;
+  let emptyHosts = 0;
+  for (const inner of inners) {
+    if (slideInnerLooksEmptyHost(inner)) emptyHosts += 1;
+  }
+  if (emptyHosts < 2) return false;
+  return !inners.some(slideInnerHasDeliverableCopy);
+}
+
 export function isPersistableShortDeckDraft(html: string): boolean {
   const withoutComments = html.replace(/<!--[\s\S]*?-->/g, "");
   if (!documentContainsSlideSection(withoutComments)) return false;
@@ -752,9 +778,13 @@ export function isPersistableShortDeckDraft(html: string): boolean {
   // Streaming "을 만들고 있어요" covers are not first-fill drafts even when a
   // later empty/`error` slide would satisfy titled>=1 under the 6-slide cap.
   if (firstText && slideSectionInnerLooksLikeStatusOnly(inners[0]!)) return false;
+  // Title-only cover + ≥2 empty shells used to pass titled>=1 and persist as
+  // "success" while the deck was still a hollow scaffold (루프267).
+  if (deckLooksLikeTitleOnlyCoverWithEmptyHosts(withoutComments)) return false;
   const titled = inners.filter(slideInnerHasPersistableDraftCopy);
   // MiniMax compact first-fill often lands cover + two empty placeholders.
-  // One persistable titled slide is enough — hidden top-up appends the rest.
+  // One persistable titled slide *with body* (or a solo cover) is enough —
+  // hidden top-up appends the rest.
   return titled.length >= 1;
 }
 

@@ -511,6 +511,13 @@ describe('shouldAutoContinueForIncompleteOutput', () => {
       shouldAutoContinueForIncompleteOutput({
         ...base,
         terminalPersistResultKind: 'skipped-incomplete',
+        terminalPersistResultReason: 'thin-prior-top-up-no-append',
+      }),
+    ).toBe(false);
+    expect(
+      shouldAutoContinueForIncompleteOutput({
+        ...base,
+        terminalPersistResultKind: 'skipped-incomplete',
         terminalPersistResultReason: 'unfilled-catalog-example',
       }),
     ).toBe(false);

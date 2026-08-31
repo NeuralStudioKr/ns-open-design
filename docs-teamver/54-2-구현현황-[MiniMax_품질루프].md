@@ -7,6 +7,24 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-08-31 현재 판단 · 최신 루프
 
+### 루프269 — thin prior top-up noop → incomplete
+
+top-up이 장을 못 붙였을 때 prior가 제목+빈 셸/low-substance면 `skipped-noop` 대신 `skipped-incomplete` + `thin-prior-top-up-no-append`. AC 거부·내용 부족 배너.
+
+검증: web resume · teamver-project-error-messages · teamver-canvas-slide-launch.
+
+### 루프268 — Teamver embed stub-warn → force reject
+
+`OD_ARTIFACT_STUB_GUARD=warn`이어도 embed persist는 `forceArtifactStubGuardReject`로 warn→reject. 디스크 stub 덮어쓰기 방지. `off`는 유지.
+
+검증: daemon artifact-stub-guard · projects-stub-guard · teamver-canvas-slide-launch.
+
+### 루프267 — title-only cover + empty hosts short-draft 거절
+
+제목만 커버 + 빈 slide host ≥2는 `isPersistableShortDeckDraft` false. 본문 있는 cover+empty · 1장 title cover는 top-up용 유지.
+
+검증: web deck-html-content 루프267.
+
 ### 루프264 — misc/기타사항 leftover stub
 
 `기타`만 leftover면 `기타사항`은 남은 `사항` 때문에 3열이 유지된다. misc/miscellaneous · 기타사항만 leftover. stub+추가 본문은 주제 무관 유지. 카피 발명 없음.
@@ -18,6 +36,7 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 사용자 brief의 `미분`/`적분`은 예시일 뿐 leftover 유지 어휘가 아니다. stub/index 토큰만 leftover. 남은 글자는 어떤 주제든 실카피. 제품 주석에서 주제 단어 하드코딩 제거. 카피 발명 없음.
 
 검증: contracts heal-ai-generated-deck 루프259.
+
 
 ### 루프263 — contracts pretest 언블록 (exactOptionalPropertyTypes)
 
@@ -815,12 +834,19 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | persist/preview: ok/done/완료 stub 카드가 3열을 붙잡아 빈 띠 | ☑ 루프258 |
 | persist/preview: E/기둥 바/여섯째 leftover 인덱스가 3열을 붙잡아 빈 띠 | ☑ 루프261 |
 | persist/preview: 3열 400 vs 800 max-width가 leftover lock을 피해 클립 | ☑ 루프262 |
-| leftover extra-copy를 주제 단어(미분/적분)로 하드코딩 | ☑ 루프259 |
-| persist/preview: misc/기타사항 stub 카드가 3열을 붙잡아 빈 띠 | ☑ 루프264 |
-| contracts pretest: exactOptionalPropertyTypes TS2379 봉쇄 | ☑ 루프263 |
+| persist: title-only cover + empty hosts가 short-draft 성공 | ☑ 루프267 |
+| persist: embed stub-warn overwrite | ☑ 루프268 |
+| persist: thin prior top-up noop가 calm success | ☑ 루프269 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프264 · misc/기타사항 stub)
+## 이번 루프 (루프267–269 · short-draft empty · stub force reject · thin top-up)
+
+- [x] title-only cover + ≥2 empty hosts → short-draft 거절 (본문 cover+empty 유지)
+- [x] Teamver embed `forceArtifactStubGuardReject` (warn→reject)
+- [x] thin prior top-up noop → incomplete + AC 거부
+- [x] deck-html-content · artifact-stub-guard · projects-stub-guard · resume · error-messages · canvas-slide-launch
+
+## 직전 루프 (루프264 · misc/기타사항 stub)
 
 - [x] misc/miscellaneous · 기타사항 leftover
 - [x] stub+추가 본문 유지 (주제 단어 아님)
