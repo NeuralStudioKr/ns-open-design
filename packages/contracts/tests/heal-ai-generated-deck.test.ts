@@ -10,6 +10,9 @@ import {
   scrubBriefLeakFromMetaSlots,
   scrubTruncatedAiTagSoup,
   shrinkOverAllocatedRepeatGrid,
+  normalizeEqualFrTracksToMinmax,
+  shrinkOverAllocatedEqualTrackRows,
+  shrinkClassBoundEqualTrackGrids,
   unnestHeadingBlockChildren,
 } from '../src/html/heal-ai-generated-deck.js';
 
@@ -159,6 +162,85 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
         '</div>',
       ].join('');
       expect(shrinkOverAllocatedRepeatGrid(html)).toBe(html);
+    });
+  });
+
+  describe('루프195 equal-track leftover / clip', () => {
+    it('rewrites a filled 1fr 1fr 1fr row to minmax so the last card can shrink', () => {
+      const html = [
+        '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:24px">',
+        '<div>a</div><div>b</div><div>c</div>',
+        '</div>',
+      ].join('');
+      const out = normalizeEqualFrTracksToMinmax(html);
+      expect(out).toMatch(/grid-template-columns:\s*(?:minmax\(0,1fr\) ){2}minmax\(0,1fr\)/);
+      expect(out).not.toMatch(/grid-template-columns:\s*1fr 1fr 1fr/);
+    });
+
+    it('collapses a 2x2 leftover row when only two cards were emitted', () => {
+      const html = [
+        '<div style="display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:24px">',
+        '<div>a</div><div>b</div>',
+        '</div>',
+      ].join('');
+      const out = shrinkOverAllocatedEqualTrackRows(html);
+      expect(out).toMatch(/grid-template-rows:\s*1fr(?:\s|;|")/);
+      expect(out).not.toMatch(/grid-template-rows:\s*1fr 1fr/);
+      expect(out).toMatch(/grid-template-columns:\s*1fr 1fr/);
+    });
+
+    it('does not collapse a 2x2 that actually has four cards', () => {
+      const html = [
+        '<div style="display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr">',
+        '<div>a</div><div>b</div><div>c</div><div>d</div>',
+        '</div>',
+      ].join('');
+      expect(shrinkOverAllocatedEqualTrackRows(html)).toBe(html);
+    });
+
+    it('shrinks a Hangul .cards-grid stylesheet 3-col with two cards', () => {
+      const html = [
+        '<style>.cards-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:24px}</style>',
+        '<section class="slide"><h2>미적분의 세 기둥</h2>',
+        '<div class="cards-grid">',
+        '<div class="card">극한</div>',
+        '<div class="card">도함수</div>',
+        '</div></section>',
+      ].join('');
+      const out = shrinkClassBoundEqualTrackGrids(html, '미적분');
+      expect(out).toMatch(
+        /<div\b[^>]*\bcards-grid\b[^>]*grid-template-columns:\s*(?:minmax\(0,1fr\) ){1}minmax\(0,1fr\)|<div\b[^>]*grid-template-columns:\s*(?:minmax\(0,1fr\) ){1}minmax\(0,1fr\)[^>]*\bcards-grid\b/,
+      );
+      expect(out).toContain('극한');
+      expect(out).toContain('도함수');
+    });
+
+    it('leaves official English catalog 2x2 class grids alone', () => {
+      const html = [
+        '<style>.grid{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr}</style>',
+        '<div class="grid"><div>One</div><div>Two</div></div>',
+      ].join('');
+      expect(shrinkClassBoundEqualTrackGrids(html)).toBe(html);
+    });
+
+    it('pipeline heals a class-bound 2x2 leftover on a Hangul slide', () => {
+      const html = [
+        '<style>.grid{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr}</style>',
+        '<section class="slide s-data"><h2>두 가지 핵심</h2>',
+        '<div class="grid">',
+        '<div class="card">첫째</div>',
+        '<div class="card">둘째</div>',
+        '</div></section>',
+      ].join('');
+      const out = healAiGeneratedDeckMarkup(html, '핵심');
+      expect(out).toMatch(
+        /<div\b[^>]*grid-template-rows:\s*(?:minmax\(0,1fr\)|1fr)(?:\s|;|")/,
+      );
+      expect(out).not.toMatch(
+        /<div\b[^>]*grid-template-rows:\s*1fr 1fr/,
+      );
+      expect(out).toContain('첫째');
+      expect(out).toContain('둘째');
     });
   });
 
@@ -421,7 +503,7 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
         '</section>',
       ].join('');
       const out = healAiGeneratedDeckMarkup(html, '미적분');
-      expect(out).toMatch(/grid-template-columns:\s*1fr 1fr(?:\s|;|")/);
+      expect(out).toMatch(/grid-template-columns:\s*(?:minmax\(0,1fr\) ){1}minmax\(0,1fr\)(?:\s|;|")/);
       expect(out).not.toMatch(/grid-template-columns:\s*1fr 1fr 1fr/);
       expect(out).toContain('PILLAR 01');
       expect(out).toContain('PILLAR 02');

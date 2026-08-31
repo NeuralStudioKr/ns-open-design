@@ -523,6 +523,232 @@ export function shrinkOverAllocatedRepeatGrid(html: string): string {
   return out;
 }
 
+function replaceStyleDecl(openTag: string, prop: string, value: string): string {
+  const styleMatch = /\bstyle\s*=\s*(["'])([\s\S]*?)\1/i.exec(openTag);
+  if (!styleMatch) {
+    return openTag.replace(/^<([a-zA-Z][\w-]*)\b/i, `<$1 style="${prop}:${value}"`);
+  }
+  const quote = styleMatch[1] ?? '"';
+  let style = styleMatch[2] ?? '';
+  const declRe = new RegExp(`${prop}\\s*:[^;]+`, 'i');
+  if (declRe.test(style)) {
+    style = style.replace(declRe, `${prop}:${value}`);
+  } else {
+    style = `${style.replace(/;?\s*$/, '')};${prop}:${value}`;
+  }
+  return (
+    openTag.slice(0, styleMatch.index)
+    + `style=${quote}${style}${quote}`
+    + openTag.slice((styleMatch.index ?? 0) + styleMatch[0].length)
+  );
+}
+
+function minmaxUnitForEqualFr(decl: EqualColumnDecl): EqualColumnDecl | null {
+  const unit = decl.unit.replace(/\s+/g, '').toLowerCase();
+  if (unit === 'minmax(0,1fr)') return null;
+  if (unit !== '1fr') return null;
+  return { ...decl, unit: 'minmax(0,1fr)' };
+}
+
+/**
+ * 루프194 — Equal `1fr` tracks size as minmax(auto, 1fr). A filled
+ * three-card row then overflows the 1920 canvas and the last card clips.
+ * Rewrite to `minmax(0,1fr)` so tracks can shrink. Mixed sidebar tracks
+ * stay untouched.
+ */
+export function normalizeEqualFrTracksToMinmax(html: string): string {
+  let out = String(html ?? '');
+  if (!out) return out;
+  const gridOpenRe =
+    /<(div|section|article|main|aside|ul|ol)\b([^>]*\bstyle\s*=\s*(["'])([^"']*)\3[^>]*)>/gi;
+  const patches: Array<{ start: number; end: number; replacement: string }> = [];
+  let match: RegExpExecArray | null;
+  while ((match = gridOpenRe.exec(out)) !== null) {
+    const style = match[4] ?? '';
+    const colsMatch = style.match(/grid-template-columns\s*:\s*([^;]+)/i);
+    if (!colsMatch) continue;
+    const decl = parseDeclaredEqualColumns((colsMatch[1] ?? '').trim());
+    if (!decl) continue;
+    const next = minmaxUnitForEqualFr(decl);
+    if (!next) continue;
+    const openTag = match[0] ?? '';
+    patches.push({
+      start: match.index,
+      end: match.index + openTag.length,
+      replacement: replaceStyleDecl(
+        openTag,
+        'grid-template-columns',
+        formatEqualColumns(next, decl.count),
+      ),
+    });
+  }
+  for (let i = patches.length - 1; i >= 0; i -= 1) {
+    const p = patches[i]!;
+    out = `${out.slice(0, p.start)}${p.replacement}${out.slice(p.end)}`;
+  }
+  return out;
+}
+
+/**
+ * 루프194 — 2×2 leftover: two cards in `1fr 1fr / 1fr 1fr` sit on the
+ * first row and leave an empty bottom band. Shrink equal rows to
+ * ceil(children / columns). Never invent missing cards.
+ */
+export function shrinkOverAllocatedEqualTrackRows(html: string): string {
+  let out = String(html ?? '');
+  if (!out) return out;
+  const gridOpenRe =
+    /<(div|section|article|main|aside|ul|ol)\b([^>]*\bstyle\s*=\s*(["'])([^"']*)\3[^>]*)>/gi;
+  const patches: Array<{ start: number; end: number; replacement: string }> = [];
+  let match: RegExpExecArray | null;
+  while ((match = gridOpenRe.exec(out)) !== null) {
+    const style = match[4] ?? '';
+    const rowsMatch = style.match(/grid-template-rows\s*:\s*([^;]+)/i);
+    if (!rowsMatch) continue;
+    const rowsDecl = parseDeclaredEqualColumns((rowsMatch[1] ?? '').trim());
+    if (!rowsDecl) continue;
+    const colsMatch = style.match(/grid-template-columns\s*:\s*([^;]+)/i);
+    const colsDecl = colsMatch
+      ? parseDeclaredEqualColumns((colsMatch[1] ?? '').trim())
+      : null;
+    if (colsMatch && !colsDecl) continue;
+    const colCount = colsDecl?.count ?? 1;
+    const openTag = match[0] ?? '';
+    const tag = (match[1] ?? '').toLowerCase();
+    const start = match.index;
+    const openEnd = start + openTag.length;
+    const close = findSameTagClose(out, tag, openEnd);
+    if (!close) continue;
+    const directChildren = countDirectBlockChildren(out.slice(openEnd, close.closeStart));
+    if (directChildren === 0) continue;
+    const usedRows = Math.max(1, Math.ceil(directChildren / colCount));
+    if (usedRows >= rowsDecl.count) continue;
+    patches.push({
+      start,
+      end: openEnd,
+      replacement: replaceStyleDecl(
+        openTag,
+        'grid-template-rows',
+        formatEqualColumns(rowsDecl, usedRows),
+      ),
+    });
+  }
+  for (let i = patches.length - 1; i >= 0; i -= 1) {
+    const p = patches[i]!;
+    out = `${out.slice(0, p.start)}${p.replacement}${out.slice(p.end)}`;
+  }
+  return out;
+}
+
+type ClassEqualTrackDecl = {
+  cols?: EqualColumnDecl;
+  rows?: EqualColumnDecl;
+};
+
+function collectClassEqualTrackDecls(html: string): Map<string, ClassEqualTrackDecl> {
+  const found = new Map<string, ClassEqualTrackDecl>();
+  const styleRe = /<style\b[^>]*>([\s\S]*?)<\/style>/gi;
+  let sm: RegExpExecArray | null;
+  while ((sm = styleRe.exec(html)) !== null) {
+    const css = sm[1] ?? '';
+    const ruleRe = /(?:^|})\s*((?:\.[\w-]+\s+)*)\.([a-zA-Z][\w-]*)\s*\{([^}]+)\}/g;
+    let rm: RegExpExecArray | null;
+    while ((rm = ruleRe.exec(css)) !== null) {
+      const className = (rm[2] ?? '').toLowerCase();
+      const body = rm[3] ?? '';
+      if (!className || /^(?:slide|deck|presentation|stage|cover|body|html)$/.test(className)) {
+        continue;
+      }
+      const colsRaw = /grid-template-columns\s*:\s*([^;]+)/i.exec(body)?.[1];
+      const rowsRaw = /grid-template-rows\s*:\s*([^;]+)/i.exec(body)?.[1];
+      const cols = colsRaw ? parseDeclaredEqualColumns(colsRaw.trim()) : undefined;
+      const rows = rowsRaw ? parseDeclaredEqualColumns(rowsRaw.trim()) : undefined;
+      if (!cols && !rows) continue;
+      found.set(className, { cols: cols ?? undefined, rows: rows ?? undefined });
+    }
+  }
+  return found;
+}
+
+function classTokensFromAttrs(attrs: string): string[] {
+  const raw = /\bclass\s*=\s*(["'])([\s\S]*?)\1/i.exec(attrs)?.[2] ?? '';
+  return raw.toLowerCase().split(/\s+/).filter(Boolean);
+}
+
+/**
+ * 루프194 — Compact fills reuse leftover `.grid` / `.cards-grid` rules
+ * (`1fr 1fr 1fr` or 2×2) without inline tracks. Heal only Hangul or
+ * brief-backed decks so official English catalogs stay designed 2×2.
+ */
+export function shrinkClassBoundEqualTrackGrids(
+  html: string,
+  brief?: string | null,
+): string {
+  let out = String(html ?? '');
+  if (!out) return out;
+  if (!destHasHangulTopic(out) && !String(brief ?? '').trim()) return out;
+  const decls = collectClassEqualTrackDecls(out);
+  if (decls.size === 0) return out;
+  const gridOpenRe =
+    /<(div|section|article|main|aside|ul|ol)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
+  const patches: Array<{ start: number; end: number; replacement: string }> = [];
+  let match: RegExpExecArray | null;
+  while ((match = gridOpenRe.exec(out)) !== null) {
+    const attrs = match[2] ?? '';
+    const style = extractInlineStyle(attrs);
+    if (/grid-template-columns\s*:/i.test(style) && /grid-template-rows\s*:/i.test(style)) {
+      continue;
+    }
+    const tokens = classTokensFromAttrs(attrs);
+    let bound: ClassEqualTrackDecl | undefined;
+    for (const token of tokens) {
+      const hit = decls.get(token);
+      if (hit) {
+        bound = hit;
+        break;
+      }
+    }
+    if (!bound) continue;
+    const openTag = match[0] ?? '';
+    const tag = (match[1] ?? '').toLowerCase();
+    const start = match.index;
+    const openEnd = start + openTag.length;
+    const close = findSameTagClose(out, tag, openEnd);
+    if (!close) continue;
+    const directChildren = countDirectBlockChildren(out.slice(openEnd, close.closeStart));
+    if (directChildren === 0) continue;
+    let nextOpen = openTag;
+    const cols = bound.cols;
+    if (cols && !/grid-template-columns\s*:/i.test(style) && directChildren < cols.count) {
+      const unit = minmaxUnitForEqualFr(cols) ?? cols;
+      nextOpen = replaceStyleDecl(
+        nextOpen,
+        'grid-template-columns',
+        formatEqualColumns(unit, directChildren),
+      );
+    }
+    const colCount = cols
+      ? Math.min(cols.count, Math.max(1, directChildren))
+      : 1;
+    const rows = bound.rows;
+    const usedRows = Math.max(1, Math.ceil(directChildren / colCount));
+    if (rows && !/grid-template-rows\s*:/i.test(style) && usedRows < rows.count) {
+      nextOpen = replaceStyleDecl(
+        nextOpen,
+        'grid-template-rows',
+        formatEqualColumns(minmaxUnitForEqualFr(rows) ?? rows, usedRows),
+      );
+    }
+    if (nextOpen === openTag) continue;
+    patches.push({ start, end: openEnd, replacement: nextOpen });
+  }
+  for (let i = patches.length - 1; i >= 0; i -= 1) {
+    const p = patches[i]!;
+    out = `${out.slice(0, p.start)}${p.replacement}${out.slice(p.end)}`;
+  }
+  return out;
+}
+
 const CARDISH_CLASS_RE =
   /\b(?:card|pillar|col(?:umn)?s?|tile|panel|cell|box|metric|stat|kpi)\b/i;
 
@@ -1093,6 +1319,9 @@ export function healAiGeneratedDeckMarkup(html: string, brief?: string | null): 
   out = unnestHeadingBlockChildren(out);
   out = polishTruncatedInstructionTitles(out);
   out = shrinkOverAllocatedRepeatGrid(out);
+  out = normalizeEqualFrTracksToMinmax(out);
+  out = shrinkOverAllocatedEqualTrackRows(out);
+  out = shrinkClassBoundEqualTrackGrids(out, brief);
   out = balanceUnderfilledFlexCardRow(out);
   out = normalizeHangulParticleGaps(out);
   out = neutralizeUnanchoredTranslateYInSlideContent(out);

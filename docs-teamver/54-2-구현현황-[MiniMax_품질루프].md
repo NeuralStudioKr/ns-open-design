@@ -327,9 +327,18 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | persist: raw user brief가 여러 장 heading/body에 반복되는 닫힌 덱 low-substance 차단 | ☑ 루프193 |
 | heal: 심한 `<div>` 불균형(open−close≥3) non-cover 장 drop (루프190b) | ☑ 루프190b |
 | heal: 슬라이드 4/5 nested unclosed `.card`로 뒤 본문 삼킴 (루프189 residual) | ☑ 루프194 |
+| persist/preview: 채워진 3열 `1fr` 클립 · 2×2 leftover 빈 아랫줄 · 클래스 그리드 미달 | ☑ 루프195 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프194 · nested unclosed .card sibling close)
+## 이번 루프 (루프195 · 3열 클립 · 2×2 leftover · class grid)
+
+- [x] `1fr` 동일 트랙 → `minmax(0,1fr)` (3-of-3 clip)
+- [x] underfilled equal rows 축소 (2×2 빈 아랫줄)
+- [x] Hangul/brief 클래스 그리드만 인라인 축소 · 영문 카탈로그 유지
+- [x] heal-ai-generated-deck 루프195
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프194 · nested unclosed .card sibling close)
 
 - [x] `repairUnbalancedCardDivsInFragment` — peer card 열기 전 이전 cardish 닫기 · leftover close
 - [x] `closeUnclosedSiblingCardsInSlides` — slide span 단위 · 카피 발명 없음 · severe drop 직전
