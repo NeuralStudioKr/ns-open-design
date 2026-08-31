@@ -799,6 +799,47 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
       expect(out).toContain('도함수');
     });
 
+    it('drops a Lesson 3 leftover third card (루프256)', () => {
+      const html = [
+        '<div style="display:flex;gap:28px">',
+        '<div class="card" style="padding:24px"><h3>극한</h3><p>lim</p></div>',
+        '<div class="card" style="padding:24px"><h3>도함수</h3><p>d/dx</p></div>',
+        '<div class="card" style="padding:24px"><h3>Lesson 3</h3></div>',
+        '</div>',
+      ].join('');
+      const out = dropEmptyLeftoverPeerCardsInAllocatedRows(html, '미적분');
+      expect((out.match(/class="card"/g) ?? []).length).toBe(2);
+      expect(out).not.toContain('Lesson 3');
+      expect(out).toContain('극한');
+    });
+
+    it('keeps a Lesson step row where every peer is an index (루프256)', () => {
+      const html = [
+        '<div style="display:flex;gap:16px">',
+        '<div class="card">Lesson 1</div>',
+        '<div class="card">Lesson 2</div>',
+        '<div class="card">Lesson 3</div>',
+        '</div>',
+      ].join('');
+      expect(dropEmptyLeftoverPeerCardsInAllocatedRows(html, '미적분')).toBe(html);
+    });
+
+    it('pipeline heals a 강 3 leftover without inventing 적분 copy (루프256)', () => {
+      const html = [
+        '<section class="slide"><h1>미적분의 세 기둥</h1>',
+        '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:24px">',
+        '<div class="card"><h3>극한</h3><p>lim</p></div>',
+        '<div class="card"><h3>도함수</h3><p>d/dx</p></div>',
+        '<div class="card"><h3>강 3</h3></div>',
+        '</div></section>',
+      ].join('');
+      const out = healAiGeneratedDeckMarkup(html, '미적분');
+      expect((out.match(/class="card"/g) ?? []).length).toBe(2);
+      expect(out).not.toContain('강 3');
+      expect(out).toContain('극한');
+      expect(out).toContain('도함수');
+    });
+
     it('drops a Chapter 3 leftover third card (루프248)', () => {
       const html = [
         '<div style="display:flex;gap:28px">',

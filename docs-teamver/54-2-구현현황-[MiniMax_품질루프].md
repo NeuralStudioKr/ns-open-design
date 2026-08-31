@@ -7,6 +7,12 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-08-31 현재 판단 · 최신 루프
 
+### 루프256 — Lesson/강 leftover 인덱스
+
+루프205–248 leftover 인덱스는 pillar/chapter/장만 본다. MiniMax는 `Lesson 3`/`강 3`로 빠진 기둥을 채워 3열이 유지된다. lesson/lecture · 강/회/레슨만 leftover. 전-인덱스 Lesson 스텝 행은 유지. `UNIT 3`은 유지. 카피 발명 없음.
+
+검증: contracts heal-ai-generated-deck 루프256 · deck-framework-compact.
+
 ### 루프255 — 동일 0.33fr 그리드 leftover
 
 루프190/220는 `1fr`만 equal track으로 본다. MiniMax는 `0.33fr 0.33fr 0.33fr`를 남겨 2장이면 빈 띠, 3장이면 클립이 난다. 동일 0.22–0.48fr만 `minmax(0,1fr)`로 바꾼다. `0.5fr` split은 유지. 카피 발명 없음.
@@ -761,9 +767,17 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | persist: 닫힌 title-only 골격 soft-salvage 면제 | ☑ 루프253 |
 | heal: nested/unclosed slide span 범위 오인 | ☑ 루프254 |
 | persist/preview: 동일 0.33fr 그리드 트랙이 2장 leftover · 3장 클립 | ☑ 루프255 |
+| persist/preview: Lesson 3/강 3 leftover 카드가 3열을 붙잡아 빈 띠 | ☑ 루프256 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프255 · 0.33fr equal tracks)
+## 이번 루프 (루프256 · Lesson/강 인덱스)
+
+- [x] lesson/lecture · 강/회/레슨 leftover
+- [x] 전-인덱스 Lesson 스텝 행 · UNIT 3 유지
+- [x] heal-ai-generated-deck 루프256 · deck-framework-compact
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프255 · 0.33fr equal tracks)
 
 - [x] `0.22–0.48fr` equal column · minmax(0,1fr) 변환
 - [x] `0.5fr 0.5fr` split 유지

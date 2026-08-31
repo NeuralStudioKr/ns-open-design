@@ -87,6 +87,7 @@ describe('DECK_FRAMEWORK_DIRECTIVE_COMPACT', () => {
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('33vh/vmin/dvw/cqmin/dvmin');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('33vh/vmin/dvw/cqmin/dvmin/vi');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('0.33fr');
+    expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('Lesson 3');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('Class flex rows');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('no px/%/vw width or min-width');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('vh/vmin');
