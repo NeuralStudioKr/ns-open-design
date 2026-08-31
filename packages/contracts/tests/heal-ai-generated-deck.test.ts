@@ -329,6 +329,74 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
       expect(out).not.toContain('PILLAR 03');
     });
 
+    it('drops a 제목/내용 placeholder third card (루프200)', () => {
+      const html = [
+        '<div style="display:flex;gap:28px">',
+        '<div class="card" style="padding:24px"><h3>극한</h3><p>lim</p></div>',
+        '<div class="card" style="padding:24px"><h3>도함수</h3><p>d/dx</p></div>',
+        '<div class="card" style="padding:24px"><h3>제목</h3><p>내용</p></div>',
+        '</div>',
+      ].join('');
+      const out = dropEmptyLeftoverPeerCardsInAllocatedRows(html, '미적분');
+      expect((out.match(/class="card"/g) ?? []).length).toBe(2);
+      expect(out).toContain('극한');
+      expect(out).toContain('도함수');
+      expect(out).not.toContain('<h3>제목</h3>');
+    });
+
+    it('drops an ellipsis-only third card (루프200)', () => {
+      const html = [
+        '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:24px">',
+        '<div class="card">극한</div>',
+        '<div class="card">도함수</div>',
+        '<div class="card">...</div>',
+        '</div>',
+      ].join('');
+      const out = dropEmptyLeftoverPeerCardsInAllocatedRows(html, '미적분');
+      expect((out.match(/class="card"/g) ?? []).length).toBe(2);
+      expect(out).not.toContain('...');
+    });
+
+    it('keeps a real short Hangul card that is not a placeholder', () => {
+      const html = [
+        '<div style="display:flex;gap:16px">',
+        '<div class="card"><h3>극한</h3><p>정의</p></div>',
+        '<div class="card"><h3>적분</h3><p>넓이</p></div>',
+        '</div>',
+      ].join('');
+      expect(dropEmptyLeftoverPeerCardsInAllocatedRows(html, '미적분')).toBe(html);
+    });
+
+    it('pipeline heals a placeholder third pillar without inventing 적분 copy (루프200)', () => {
+      const html = [
+        '<!doctype html><html><body>',
+        '<section class="slide"><h1>미적분의 세 기둥</h1>',
+        '<div style="display:flex;gap:28px">',
+        '<div class="card" style="padding:24px"><h3>PILLAR 01</h3><p>lim</p></div>',
+        '<div class="card" style="padding:24px"><h3>PILLAR 02</h3><p>d/dx</p></div>',
+        '<div class="card" style="padding:24px"><h3>제목</h3><p>내용을 입력하세요</p></div>',
+        '</div></section>',
+        '</body></html>',
+      ].join('');
+      const out = healAiGeneratedDeckMarkup(html, '미적분');
+      expect((out.match(/class="card"/g) ?? []).length).toBe(2);
+      expect(out).toContain('PILLAR 01');
+      expect(out).toContain('PILLAR 02');
+      expect(out).not.toContain('내용을 입력하세요');
+      expect(out).not.toContain('PILLAR 03');
+      expect(out.match(/flex:\s*1 1 0/gi)?.length).toBeGreaterThanOrEqual(2);
+    });
+
+    it('leaves official English Title/Body catalog cells alone without a brief (루프200)', () => {
+      const html = [
+        '<div style="display:flex;gap:16px">',
+        '<div class="card"><h3>One</h3><p>Alpha</p></div>',
+        '<div class="card"><h3>Title</h3><p>Body</p></div>',
+        '</div>',
+      ].join('');
+      expect(dropEmptyLeftoverPeerCardsInAllocatedRows(html)).toBe(html);
+    });
+
     it('pipeline shrinks a 3-col grid after dropping the empty shell', () => {
       const html = [
         '<section class="slide s-data"><h2>미적분의 세 기둥</h2>',
@@ -436,6 +504,43 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
       expect((out.match(/class="card"/g) ?? []).length).toBe(3);
     });
 
+    it('strips uniform max-width so three cards can share the row (루프201)', () => {
+      const html = [
+        '<div style="display:flex;gap:24px">',
+        '<div class="card" style="max-width:560px;padding:24px"><h3>극한</h3></div>',
+        '<div class="card" style="max-width:560px;padding:24px"><h3>도함수</h3></div>',
+        '<div class="card" style="max-width:560px;padding:24px"><h3>적분</h3></div>',
+        '</div>',
+      ].join('');
+      const out = relaxUniformPeerCardFixedMainSize(html, '미적분');
+      expect(out).not.toMatch(/max-width:\s*560px/);
+      expect(out).toContain('극한');
+      expect(out).toContain('적분');
+    });
+
+    it('strips uniform flex:0 0 locked basis (루프201)', () => {
+      const html = [
+        '<div style="display:flex;gap:24px">',
+        '<div class="card" style="flex:0 0 36rem;padding:24px"><h3>극한</h3></div>',
+        '<div class="card" style="flex:0 0 36rem;padding:24px"><h3>도함수</h3></div>',
+        '<div class="card" style="flex:0 0 36rem;padding:24px"><h3>적분</h3></div>',
+        '</div>',
+      ].join('');
+      const out = relaxUniformPeerCardFixedMainSize(html, '미적분');
+      expect(out).not.toMatch(/flex:\s*0 0 36rem/);
+      expect(out).toContain('극한');
+    });
+
+    it('leaves flex:1 1 grow shorthand alone (루프201)', () => {
+      const html = [
+        '<div style="display:flex;gap:24px">',
+        '<div class="card" style="flex:1 1 0;padding:24px">극한</div>',
+        '<div class="card" style="flex:1 1 560px;padding:24px">도함수</div>',
+        '</div>',
+      ].join('');
+      expect(relaxUniformPeerCardFixedMainSize(html, '미적분')).toBe(html);
+    });
+
     it('strips min-width on a filled 3-col grid so tracks can shrink', () => {
       const html = [
         '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:24px">',
@@ -496,6 +601,25 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
       expect(out.match(/flex:\s*1 1 0/gi)?.length).toBeGreaterThanOrEqual(3);
       expect(out).toContain('극한');
       expect(out).toContain('도함수');
+      expect(out).toContain('적분');
+      expect(out).toContain('넓이');
+    });
+
+    it('pipeline heals max-width pillars so 191 can grow them (루프201)', () => {
+      const html = [
+        '<!doctype html><html><body>',
+        '<section class="slide"><h1>미적분의 세 기둥</h1>',
+        '<div style="display:flex;gap:24px">',
+        '<div class="card" style="max-width:560px;padding:24px"><h3>극한</h3><p>lim</p></div>',
+        '<div class="card" style="max-width:560px;padding:24px"><h3>도함수</h3><p>d/dx</p></div>',
+        '<div class="card" style="max-width:560px;padding:24px"><h3>적분</h3><p>넓이</p></div>',
+        '</div></section>',
+        '</body></html>',
+      ].join('');
+      const out = healAiGeneratedDeckMarkup(html, '미적분');
+      expect(out).not.toMatch(/max-width:\s*560px/);
+      expect(out.match(/flex:\s*1 1 0/gi)?.length).toBeGreaterThanOrEqual(3);
+      expect(out).toContain('극한');
       expect(out).toContain('적분');
       expect(out).toContain('넓이');
     });

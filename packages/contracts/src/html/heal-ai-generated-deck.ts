@@ -907,6 +907,74 @@ function listDirectBlockChildSpans(
   return spans;
 }
 
+const LEFTOVER_PEER_PLACEHOLDER_TOKENS = [
+  '내용을입력하세요',
+  '설명을입력하세요',
+  '텍스트를입력하세요',
+  '내용입력하세요',
+  '설명입력하세요',
+  '텍스트입력하세요',
+  'yourtexthere',
+  'loremipsum',
+  'placeholder',
+  'texthere',
+  'subtitle',
+  'heading',
+  'caption',
+  'bodycopy',
+  '부제목',
+  '소제목',
+  '카드제목',
+  'title',
+  'lorem',
+  'body',
+  '제목',
+  '부제',
+  '내용',
+  '본문',
+  '설명',
+  '항목',
+  '포인트',
+  '카드',
+].sort((a, b) => b.length - a.length);
+
+const LEFTOVER_PEER_PLACEHOLDER_PUNCT_RE = /^(?:[.…·•\-–—]{1,3})/u;
+
+function compactLeftoverPeerPlaceholder(text: string): string {
+  return visibleText(text)
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}.…·•\-–—]+/gu, '');
+}
+
+function leftoverPlaceholderTokenLength(compact: string): number | null {
+  const punct = LEFTOVER_PEER_PLACEHOLDER_PUNCT_RE.exec(compact);
+  if (punct) return punct[0].length;
+  const hit = LEFTOVER_PEER_PLACEHOLDER_TOKENS.find((token) => compact.startsWith(token));
+  return hit ? hit.length : null;
+}
+
+function leftoverPlaceholderTokenCount(compact: string): number | null {
+  let rest = compact;
+  let count = 0;
+  while (rest && count < 4) {
+    const n = leftoverPlaceholderTokenLength(rest);
+    if (n == null) return null;
+    rest = rest.slice(n);
+    count += 1;
+  }
+  return rest === '' && count > 0 ? count : null;
+}
+
+function textLooksLikeLeftoverPeerPlaceholder(html: string): boolean {
+  const raw = visibleText(html);
+  if (raw.length < 2) return true;
+  const compact = compactLeftoverPeerPlaceholder(raw);
+  if (!compact) return true;
+  // 루프200 — MiniMax fills the missing pillar with 제목/내용/... so
+  // child count stays 3 and 190/195/197 cannot shrink the blank band.
+  return leftoverPlaceholderTokenCount(compact) != null;
+}
+
 function childLooksEmptyLeftoverPeer(child: DirectChildSpan): boolean {
   if (/<(?:svg|img|video|canvas|iframe|picture|figure)\b/i.test(child.inner)) return false;
   if (
@@ -915,7 +983,7 @@ function childLooksEmptyLeftoverPeer(child: DirectChildSpan): boolean {
   ) {
     return false;
   }
-  return visibleText(child.inner).length < 2;
+  return textLooksLikeLeftoverPeerPlaceholder(child.inner);
 }
 
 function containerLooksLikeAllocatedCardRow(
@@ -1002,14 +1070,24 @@ function cssLengthToPx(raw: string): number | null {
   return null;
 }
 
+function flexShorthandLockedBasisPx(style: string): number | null {
+  const decl = /(?:^|;)\s*flex\s*:\s*([^;]+)/i.exec(style);
+  if (!decl) return null;
+  const raw = String(decl[1] ?? '').trim();
+  if (!/^0\s+0\s+/i.test(raw) && !/^none\b/i.test(raw)) return null;
+  const length = /(\d+(?:\.\d+)?)\s*(px|rem|em|ch)\b/i.exec(raw);
+  if (!length) return null;
+  return cssLengthToPx(`${length[1]}${length[2]}`);
+}
+
 function peerFixedMainSizePx(style: string): number | null {
-  for (const prop of ['width', 'flex-basis', 'min-width']) {
+  for (const prop of ['width', 'flex-basis', 'min-width', 'max-width']) {
     const decl = new RegExp(`(?:^|;)\\s*${prop}\\s*:\\s*([^;]+)`, 'i').exec(style);
     if (!decl) continue;
     const px = cssLengthToPx(decl[1] ?? '');
     if (px != null) return px;
   }
-  return null;
+  return flexShorthandLockedBasisPx(style);
 }
 
 function childLooksLikeSizedPeerCard(attrs: string, style: string): boolean {
@@ -1042,7 +1120,9 @@ function stripFixedMainSizeFromOpenTag(openTag: string): string {
   style = style
     .replace(/(?:^|;)\s*width\s*:[^;]*/gi, '')
     .replace(/(?:^|;)\s*min-width\s*:[^;]*/gi, '')
+    .replace(/(?:^|;)\s*max-width\s*:[^;]*/gi, '')
     .replace(/(?:^|;)\s*flex-basis\s*:[^;]*/gi, '')
+    .replace(/(?:^|;)\s*flex\s*:\s*(?:0\s+0|none)\s+[^;]*/gi, '')
     .replace(/^;+|;+$/g, '')
     .replace(/;;+/g, ';')
     .trim();
@@ -1062,9 +1142,10 @@ function stripFixedMainSizeFromOpenTag(openTag: string): string {
  * when any child looks like a fixed sidebar — so a 3-card row with the
  * same hardcoded width never gets `flex:1` and sits clipped or left-cramped.
  *
- * Strip width / min-width / flex-basis only when every peer has a similar
- * large fixed main size. Mixed sidebar + fluid (or 280 vs 900) stays.
- * Hangul/brief-gated. Never invent missing cards.
+ * Strip width / min-width / max-width / flex-basis / `flex:0 0 N` only when
+ * every peer has a similar large fixed main size. Mixed sidebar + fluid
+ * (or 280 vs 900) stays. Hangul/brief-gated. Never invent missing cards.
+ * 루프201 — max-width / flex:0 0 still cap the row after 198 width strip.
  */
 export function relaxUniformPeerCardFixedMainSize(
   html: string,

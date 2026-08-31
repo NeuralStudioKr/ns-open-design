@@ -50,16 +50,25 @@ describe('DECK_FRAMEWORK_DIRECTIVE_COMPACT', () => {
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('**Three-column**');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('Column count = card count');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('empty card shell');
+    expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('placeholder card shell');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('no px width or min-width');
+    expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('max-width');
+    expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('flex: 0 0');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('Never wrap a card in another card');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY_FOR_SELECTED_TEMPLATE).toContain(
       'Column count = card count',
     );
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY_FOR_SELECTED_TEMPLATE).toContain(
-      'empty card shell',
+      'empty/placeholder card shell',
     );
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY_FOR_SELECTED_TEMPLATE).toContain(
       'no px width or min-width',
+    );
+    expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY_FOR_SELECTED_TEMPLATE).toContain(
+      'max-width',
+    );
+    expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY_FOR_SELECTED_TEMPLATE).toContain(
+      'flex: 0 0',
     );
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY_FOR_SELECTED_TEMPLATE).toContain(
       'Never wrap a card in another card',

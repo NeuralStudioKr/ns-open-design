@@ -7,6 +7,18 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-08-31 현재 판단 · 최신 루프
 
+### 루프201 — 동일 max-width / flex:0 0 이 3열을 잠그는 문제
+
+루프198은 `width`/`min-width`/`flex-basis`만 벗긴다. MiniMax는 카드마다 `max-width:560px` 또는 `flex: 0 0 36rem`을 찍어 191이 grow를 줘도 폭이 잠기고 우측이 빈 띠가 된다. peer 전부가 비슷한 큰 고정 주축일 때만 max-width와 `flex:0 0`/`none` 길이를 제거한다. `flex:1 1` grow와 혼합 sidebar, 영문 카탈로그는 유지. 카피 발명 없음.
+
+검증: contracts heal-ai-generated-deck 루프201 · deck-framework-compact.
+
+### 루프200 — placeholder leftover 카드가 3열을 붙잡는 문제
+
+루프197은 `visibleText.length < 2`만 빈 셸로 본다. MiniMax는 빠진 기둥을 `제목`/`내용`/`...`/`내용을 입력하세요`로 채워 자식이 3이라 190/195/197이 축소하지 못한다. 카드 전체가 placeholder 토큰 1–4개일 때만 제거한다. `극한`/`적분` 실카피와 영문 카탈로그 Title/Body는 유지. 적분 카피 발명 없음.
+
+검증: contracts heal-ai-generated-deck 루프200 · deck-framework-compact placeholder card shell.
+
 ### 루프199 — 균형 잡힌 card-in-card 이중 래핑
 
 루프194는 미닫힌 형제만 봉합한다. 이미 닫힌 `<div class="card"><div class="card">`는 형제로 오인해 빈 바깥 셸이 생기고 패딩이 겹친다. 같은 토큰·자식 1장·바깥 텍스트 없을 때만 안쪽을 남긴다. `card-body`와 두 장 호스트는 유지. 194보다 먼저 실행. 카피 발명 없음.
@@ -59,6 +71,7 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ### 다음 루프 후보 (2026-08-31 EOD 기준)
 
+- **후보 C (3열 residual):** placeholder가 아닌 짧은 실단어(`TBD`/`N/A`/`준비중`) 세 번째 카드, 또는 카드마다 다른 max-width(480 vs 560)로 균일 판정을 피하는 leftover. 루프200–201 이후.
 - **후보 B (예약 · 규모 큼):** contracts 안 `var(--pad, calc(px * n))` / `env(safe-area-inset-top, calc(...))` fallback red-spec 39건. fallback 표현을 card threshold 로 승격하는 heuristic — 별도 루프 필요.
 - **후보 A 후속 (E2E):** 190b drop 이후 남은 슬라이드 수가 사용자 요청보다 부족할 때 top-up/retry 파이프라인과의 연동 검증. 루프194 auto-repair 커버리지 실증 (사용자 실 fixture 몇 % 를 drop 없이 살려내는가) — MiniMax 실키 없이 기록 fixture 기반 지표만이라도 남긴다.
 - **자원 아이템 (별도 루프):** `system-prompt-api-mode.test.ts` 의 prompt length ceiling (29114 / 29217 vs 29100) 은 upstream 에서 이미 red · 별도 루프. `deck-template-look-css > 인젝트 catalog Motif paint` 은 5s timeout 로 간헐 fail (flaky) — 재현 조건 정리 필요.
@@ -367,9 +380,22 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | persist/preview: 빈 leftover 카드 셸이 3열/flex 행을 붙잡아 우측 빈 띠 | ☑ 루프197 |
 | persist/preview: 동일 px/rem 카드 폭이 minmax/flex shrink를 막아 3열 클립 | ☑ 루프198 |
 | heal: 균형 잡힌 card-in-card 이중 래핑이 194에 빈 셸로 오분해됨 | ☑ 루프199 |
+| persist/preview: 제목/내용/... placeholder 카드가 3열을 붙잡아 빈 띠 | ☑ 루프200 |
+| persist/preview: 동일 max-width / flex:0 0 이 grow를 막아 3열 클립·빈 띠 | ☑ 루프201 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프199 · card-in-card unwrap)
+## 이번 루프 (루프200–201 · placeholder peer · max-width/flex 0 0)
+
+- [x] `textLooksLikeLeftoverPeerPlaceholder` — 제목/내용/.../`내용을 입력하세요` 1–4 토큰만 drop
+- [x] `극한`/`적분` 실카피 · SVG/모티프 · 영문 Title/Body(빈 brief) 유지
+- [x] `peerFixedMainSizePx` — max-width + `flex:0 0`/`none` 길이 인식
+- [x] `stripFixedMainSizeFromOpenTag` — 균일 큰 주축일 때만 max-width/`flex:0 0` strip
+- [x] `flex:1 1` grow · 혼합 sidebar · 영문 카탈로그 유지
+- [x] compact vocabulary placeholder card shell · max-width · flex: 0 0
+- [x] heal-ai-generated-deck 루프200–201 · deck-framework-compact
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프199 · card-in-card unwrap)
 
 - [x] `unwrapRedundantNestedPeerCards` — 같은 토큰·1자식·바깥 텍스트 없음만 unwrap
 - [x] `card-body` / 두 장 호스트 / 제목+내부 카드 유지
