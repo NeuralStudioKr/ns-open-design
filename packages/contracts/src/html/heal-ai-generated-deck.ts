@@ -1096,6 +1096,11 @@ const LEFTOVER_PEER_PLACEHOLDER_TOKENS = [
   'pass',
   '스킵',
   '패스',
+  // 루프247 — foo/bar/baz shells MiniMax leaves on the missing pillar.
+  // Keep `bar 적분` / `bar chart` extra copy; a lone `bar` is leftover.
+  'foo',
+  'bar',
+  'baz',
 ].sort((a, b) => b.length - a.length);
 
 const LEFTOVER_PEER_PLACEHOLDER_PUNCT_RE = /^(?:[.…·•\-–—]{1,3})/u;

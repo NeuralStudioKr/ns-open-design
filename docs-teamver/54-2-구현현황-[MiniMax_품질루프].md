@@ -7,6 +7,12 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-08-31 현재 판단 · 최신 루프
 
+### 루프247 — foo/bar leftover stub
+
+루프241–244는 xxx/pass stub만 본다. MiniMax는 `foo`/`bar`/`baz`로 빠진 기둥을 채워 3열이 유지된다. 카드 전체가 stub일 때만 제거. `bar 적분` 실카피는 유지. 카피 발명 없음.
+
+검증: contracts heal-ai-generated-deck 루프247 · deck-framework-compact.
+
 ### 루프246 — 동일 33cqmin 그리드·카드 폭 leftover
 
 루프238/245는 cqw/cqi만 본다. MiniMax는 `33cqmin 33cqmin 33cqmin`나 `width:30cqmax`를 남겨 2장이면 빈 띠, 3장이면 클립이 난다. 동일 22–48cqmin/cqmax만 `minmax(0,1fr)`로 바꾸고 카드 폭을 벗긴다. `50cqmax` split은 유지. 카피 발명 없음.
@@ -698,9 +704,17 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | persist/preview: pass/skip stub 카드가 3열을 붙잡아 빈 띠 | ☑ 루프244 |
 | persist/preview: 동일 33dvw/lvw 트랙·카드 폭이 leftover 빈 띠·클립 | ☑ 루프245 |
 | persist/preview: 동일 33cqmin/cqmax 트랙·카드 폭이 leftover 빈 띠·클립 | ☑ 루프246 |
+| persist/preview: foo/bar/baz stub 카드가 3열을 붙잡아 빈 띠 | ☑ 루프247 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프246 · 33cqmin/cqmax 트랙)
+## 이번 루프 (루프247 · foo/bar stub)
+
+- [x] foo/bar/baz leftover
+- [x] bar 적분 실카피 유지
+- [x] heal-ai-generated-deck 루프247 · deck-framework-compact
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프246 · 33cqmin/cqmax 트랙)
 
 - [x] equal track + card lock — 22–48 cqmin/cqmax → minmax / strip
 - [x] `50cqmax` split 유지

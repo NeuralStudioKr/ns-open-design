@@ -78,6 +78,7 @@ describe('DECK_FRAMEWORK_DIRECTIVE_COMPACT', () => {
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('Group 3');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('xxx/null');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('null/pass');
+    expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('pass/foo');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('33vh/vmin');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('33vh/vmin/dvw');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('33vh/vmin/dvw/cqmin');
