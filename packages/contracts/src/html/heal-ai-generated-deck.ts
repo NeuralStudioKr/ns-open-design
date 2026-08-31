@@ -1032,6 +1032,12 @@ const LEFTOVER_PEER_PLACEHOLDER_TOKENS = [
   'inserthere',
   'typetext',
   'fillme',
+  // 루프224 — hold/defer stubs MiniMax leaves on the missing pillar.
+  'soon',
+  'later',
+  '대기',
+  '보류',
+  '생략',
 ].sort((a, b) => b.length - a.length);
 
 const LEFTOVER_PEER_PLACEHOLDER_PUNCT_RE = /^(?:[.…·•\-–—]{1,3})/u;

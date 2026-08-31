@@ -7,6 +7,12 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-08-31 현재 판단 · 최신 루프
 
+### 루프224 — 대기/soon leftover stub
+
+루프202–223은 TBD/tobefilled stub만 본다. MiniMax는 `대기`/`soon`/`later`로 빠진 기둥을 채워 3열이 유지된다. 카드 전체가 stub일 때만 제거. `나중에 적분` 실카피는 유지. 카피 발명 없음.
+
+검증: contracts heal-ai-generated-deck 루프224 · deck-framework-compact.
+
 ### 루프223 — tobefilled/filllater leftover stub
 
 루프200–218은 TBD/dummy/작성예정 stub만 본다. MiniMax는 `to be filled`/`fill later`로 빠진 기둥을 채워 3열이 유지된다. 카드 전체가 stub일 때만 제거. `to be filled 적분` 실카피는 유지. 카피 발명 없음.
@@ -537,9 +543,17 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | persist/preview: minmax(auto,1fr) 트랙이 3열 클립 · 2장 leftover | ☑ 루프221 |
 | persist/preview: Phase 3/축 3 leftover 카드가 3열을 붙잡아 빈 띠 | ☑ 루프222 |
 | persist/preview: tobefilled/filllater stub 카드가 3열을 붙잡아 빈 띠 | ☑ 루프223 |
+| persist/preview: 대기/soon/later stub 카드가 3열을 붙잡아 빈 띠 | ☑ 루프224 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프223 · tobefilled/filllater stub)
+## 이번 루프 (루프224 · 대기/soon stub)
+
+- [x] 대기/보류/생략 · soon/later leftover
+- [x] 나중에 적분 실카피 유지
+- [x] heal-ai-generated-deck 루프224 · deck-framework-compact
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프223 · tobefilled/filllater stub)
 
 - [x] tobefilled/filllater/inserthere/typetext/fillme leftover
 - [x] stub 뒤 실카피 유지
