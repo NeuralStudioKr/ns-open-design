@@ -7,6 +7,12 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-08-31 현재 판단 · 최신 루프
 
+### 루프248 — Chapter/장 leftover 인덱스
+
+루프205–242 leftover 인덱스는 pillar/group/행만 본다. MiniMax는 `Chapter 3`/`장 3`로 빠진 기둥을 채워 3열이 유지된다. chapter/cluster/panel · 장/클러스터/패널만 leftover. 전-인덱스 Chapter 스텝 행은 유지. `UNIT 3`은 유지. 카피 발명 없음.
+
+검증: contracts heal-ai-generated-deck 루프248 · deck-framework-compact.
+
 ### 루프247 — foo/bar leftover stub
 
 루프241–244는 xxx/pass stub만 본다. MiniMax는 `foo`/`bar`/`baz`로 빠진 기둥을 채워 3열이 유지된다. 카드 전체가 stub일 때만 제거. `bar 적분` 실카피는 유지. 카피 발명 없음.
@@ -705,9 +711,17 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | persist/preview: 동일 33dvw/lvw 트랙·카드 폭이 leftover 빈 띠·클립 | ☑ 루프245 |
 | persist/preview: 동일 33cqmin/cqmax 트랙·카드 폭이 leftover 빈 띠·클립 | ☑ 루프246 |
 | persist/preview: foo/bar/baz stub 카드가 3열을 붙잡아 빈 띠 | ☑ 루프247 |
+| persist/preview: Chapter 3/장 3 leftover 카드가 3열을 붙잡아 빈 띠 | ☑ 루프248 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프247 · foo/bar stub)
+## 이번 루프 (루프248 · Chapter/장 인덱스)
+
+- [x] chapter/cluster/panel · 장/클러스터/패널 leftover
+- [x] 전-인덱스 Chapter 스텝 행 · UNIT 3 유지
+- [x] heal-ai-generated-deck 루프248 · deck-framework-compact
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프247 · foo/bar stub)
 
 - [x] foo/bar/baz leftover
 - [x] bar 적분 실카피 유지
