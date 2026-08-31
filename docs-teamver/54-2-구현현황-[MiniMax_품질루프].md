@@ -297,9 +297,19 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | persist/preview: pitch-deck `.cover-bg` compact flatten으로 워시 소실 · 투명 장 letterbox 투시 | ☑ 루프187 |
 | heal/persist: bare leading title splash(`slide-title` 없음) · 3장 all-title outline short-draft | ☑ 루프188 |
 | QA/heal: 사용자 삼각함수 fixture pin + `AGENT_EXECUTION_STALLED` 전용 카피 회귀 + calc pure-mul px floor | ☑ 루프189 |
+| persist/preview: `1fr 1fr 1fr` 3열에 카드 2장만 남아 좌측 편중 · 빈 세 번째 트랙 (미적분 세 기둥) | ☑ 루프190 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프189 · fixture pin + stall copy + calc pure-mul)
+## 이번 루프 (루프190 · underfilled equal-track grid)
+
+- [x] `shrinkOverAllocatedRepeatGrid` — `repeat(N)`뿐 아니라 `1fr 1fr 1fr` / `minmax(0,1fr)` 동일 트랙도 자식 수에 맞게 축소
+- [x] mixed `1.3fr 1fr` 사이드바는 그대로
+- [x] look-slot-flow `.grid` `width:100%` — shrink-wrap 좌측 편중 제거
+- [x] compact vocabulary `Column count = card count`
+- [x] heal-ai-generated-deck · deck-template-look-css · deck-framework-compact
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프189 · fixture pin + stall copy + calc pure-mul)
 
 - [x] 사용자 삼각함수 HTML verbatim fixture pin (`heal-leading-outline-shell-user-report.test.ts`)
 - [x] `AGENT_EXECUTION_STALLED` 전용 카피·retryable gate 회귀 (api-proxy · projectErrorMessages)

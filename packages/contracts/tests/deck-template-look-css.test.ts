@@ -1095,6 +1095,9 @@ ${staleFill}
       /\[data-od-slide-flow\][^{]*:is\(\.flow, \.grid, \.table/,
     );
     expect(LOOK_NEUTRALIZE_CSS).toMatch(
+      /\[data-od-slide-flow\][^{]*:is\(\.flow, \.grid, \.table\)\s*\{[^}]*width:\s*100%\s*!important/,
+    );
+    expect(LOOK_NEUTRALIZE_CSS).toMatch(
       /\.slide\s+\.od-magazine-fill-track\s+>\s+:is\(ul, ol\)[\s\S]*font-size:\s*28px\s*!important/,
     );
     expect(LOOK_NEUTRALIZE_CSS).toMatch(

@@ -324,7 +324,9 @@ section[data-screen-label], main[data-screen-label], article[data-screen-label] 
 .slide [data-od-slide-flow] :is(.flow, .grid, .table) {
   flex: 1 1 auto !important;
   min-height: 0 !important;
-  width: auto !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
 }
 /* od-look-slot-flow-ext: Creative Mode also parks arrows, titles,
  * kickers, charts, stamps as presentation-absolute. MiniMax reuses the names. */

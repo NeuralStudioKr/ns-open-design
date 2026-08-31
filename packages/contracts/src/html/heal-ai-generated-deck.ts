@@ -336,76 +336,133 @@ export function unnestHeadingBlockChildren(html: string): string {
   return out;
 }
 
+const GRID_BLOCK_CHILD_RE =
+  /^(div|section|article|li|figure|aside|header|footer|main|nav|ul|ol|p|table)$/;
+const EQUAL_FR_TRACK_RE = /^(?:1fr|minmax\(\s*0\s*,\s*1fr\s*\))$/i;
+
+function countDirectBlockChildren(inner: string): number {
+  const tokenRe = /<(\/?)([a-zA-Z][\w-]*)\b[^>]*(\/)?>/gi;
+  let depth = 0;
+  let directChildren = 0;
+  let tok: RegExpExecArray | null;
+  while ((tok = tokenRe.exec(inner)) !== null) {
+    const closing = tok[1] === '/';
+    const tagName = (tok[2] ?? '').toLowerCase();
+    const selfClose = tok[3] === '/';
+    if (closing) {
+      depth = Math.max(0, depth - 1);
+      continue;
+    }
+    if (depth === 0 && GRID_BLOCK_CHILD_RE.test(tagName)) directChildren += 1;
+    if (!selfClose) depth += 1;
+  }
+  return directChildren;
+}
+
+function findSameTagClose(
+  html: string,
+  tag: string,
+  openEnd: number,
+): { closeStart: number } | null {
+  const scanRe = new RegExp(`<\\/?${tag}\\b[^>]*>`, 'gi');
+  scanRe.lastIndex = openEnd;
+  let depth = 1;
+  let tok: RegExpExecArray | null;
+  while ((tok = scanRe.exec(html)) !== null) {
+    if (tok[0]!.startsWith('</')) {
+      depth -= 1;
+      if (depth === 0) return { closeStart: tok.index };
+    } else if (!tok[0]!.endsWith('/>')) {
+      depth += 1;
+    }
+  }
+  return null;
+}
+
+type EqualColumnDecl = {
+  kind: 'repeat' | 'list';
+  count: number;
+  unit: string;
+  important: boolean;
+};
+
 /**
- * Q3 — Shrink `repeat(N, 1fr)` grids when far fewer children were emitted.
+ * Accept `repeat(N, 1fr)` and explicit equal tracks (`1fr 1fr 1fr`,
+ * `minmax(0,1fr) minmax(0,1fr) minmax(0,1fr)`). Mixed tracks such as
+ * `1.3fr 1fr` or `220px 1fr` are real two-pane layouts — leave them.
+ */
+function parseDeclaredEqualColumns(value: string): EqualColumnDecl | null {
+  const important = /!important/i.test(value);
+  const cleaned = value.replace(/!important/gi, '').trim();
+  if (!cleaned) return null;
+  const repeat = cleaned.match(/^repeat\s*\(\s*(\d+)\s*,\s*([^)]+?)\s*\)$/i);
+  if (repeat) {
+    const count = Number.parseInt(repeat[1] ?? '0', 10);
+    const unit = (repeat[2] ?? '').trim();
+    if (!Number.isFinite(count) || count < 2 || !unit) return null;
+    return { kind: 'repeat', count, unit, important };
+  }
+  const tracks: string[] = [];
+  const trackRe = /minmax\s*\([^)]*\)|[^\s]+/gi;
+  let tm: RegExpExecArray | null;
+  while ((tm = trackRe.exec(cleaned)) !== null) tracks.push(tm[0]!);
+  if (tracks.length < 2) return null;
+  if (!tracks.every((t) => EQUAL_FR_TRACK_RE.test(t))) return null;
+  return {
+    kind: 'list',
+    count: tracks.length,
+    unit: tracks[0]!.replace(/\s+/g, ''),
+    important,
+  };
+}
+
+function formatEqualColumns(decl: EqualColumnDecl, nextCount: number): string {
+  const suffix = decl.important ? ' !important' : '';
+  if (decl.kind === 'repeat') {
+    return `repeat(${nextCount}, ${decl.unit})${suffix}`;
+  }
+  if (nextCount <= 1) return `${decl.unit}${suffix}`;
+  return `${Array.from({ length: nextCount }, () => decl.unit).join(' ')}${suffix}`;
+}
+
+/**
+ * Q3 — Shrink equal-column grids when far fewer children were emitted.
  *
- * AI outlines "네 가지 리츄얼" and picks a 4-column grid, then only fills
- * the first card. The remaining 75% width becomes an empty band. Shrink
- * columns to match the actual child count so the visible cards fill the
- * row instead. Never grow — filling missing content is not our job.
+ * AI outlines "세 기둥" / "네 가지 리츄얼" and picks a 3- or 4-column
+ * grid (`repeat(N, 1fr)` **or** `1fr 1fr 1fr`), then only fills the first
+ * cards. The leftover tracks become an empty band and the visible cards
+ * sit left-cramped. Shrink columns to the direct child count so those
+ * cards fill the row. Never grow — inventing the missing card is not
+ * our job.
  *
- * Only shrinks when count of block children (`div`/`section`/`article`)
- * inside the grid is ≥1 and strictly less than the declared column count.
+ * Only shrinks when count of block children inside the grid is ≥1 and
+ * strictly less than the declared column count.
  */
 export function shrinkOverAllocatedRepeatGrid(html: string): string {
   let out = String(html ?? '');
   if (!out) return out;
   const gridOpenRe =
-    /<(div|section|article|main|aside|ul|ol)\b([^>]*\bstyle\s*=\s*["'][^"']*grid-template-columns\s*:\s*repeat\s*\(\s*(\d+)\s*,[^)]+\)[^"']*["'][^>]*)>/gi;
+    /<(div|section|article|main|aside|ul|ol)\b([^>]*\bstyle\s*=\s*(["'])([^"']*)\3[^>]*)>/gi;
   const patches: Array<{ start: number; end: number; replacement: string }> = [];
   let match: RegExpExecArray | null;
   while ((match = gridOpenRe.exec(out)) !== null) {
+    const style = match[4] ?? '';
+    const colsMatch = style.match(/grid-template-columns\s*:\s*([^;]+)/i);
+    if (!colsMatch) continue;
+    const decl = parseDeclaredEqualColumns((colsMatch[1] ?? '').trim());
+    if (!decl) continue;
     const openTag = match[0] ?? '';
     const tag = (match[1] ?? '').toLowerCase();
-    const declared = Number.parseInt(match[3] ?? '0', 10);
-    if (!Number.isFinite(declared) || declared < 2) continue;
     const start = match.index;
     const openEnd = start + openTag.length;
-    // Find matching close for this tag to bound the grid children.
-    const scanRe = new RegExp(`<\\/?${tag}\\b[^>]*>`, 'gi');
-    scanRe.lastIndex = openEnd;
-    let depth = 1;
-    let closeStart = -1;
-    let closeEnd = -1;
-    let tok: RegExpExecArray | null;
-    while ((tok = scanRe.exec(out)) !== null) {
-      if (tok[0]!.startsWith('</')) {
-        depth -= 1;
-        if (depth === 0) {
-          closeStart = tok.index;
-          closeEnd = tok.index + tok[0].length;
-          break;
-        }
-      } else if (!tok[0]!.endsWith('/>')) {
-        depth += 1;
-      }
-    }
-    if (closeStart < 0) continue;
-    const inner = out.slice(openEnd, closeStart);
-    // Count DIRECT (depth-1) block children only — a card whose body
-    // contains its own `<div>` rows must not inflate the child count.
-    const tokenRe = /<(\/?)([a-zA-Z][\w-]*)\b[^>]*(\/)?>/gi;
-    let d = 0;
-    let directChildren = 0;
-    let tokChild: RegExpExecArray | null;
-    while ((tokChild = tokenRe.exec(inner)) !== null) {
-      const closing = tokChild[1] === '/';
-      const tagName = (tokChild[2] ?? '').toLowerCase();
-      const selfClose = tokChild[3] === '/';
-      const isBlock = /^(div|section|article|li|figure|aside|header|footer|main|nav|ul|ol|p|table)$/.test(
-        tagName,
-      );
-      if (closing) {
-        d = Math.max(0, d - 1);
-        continue;
-      }
-      if (d === 0 && isBlock) directChildren += 1;
-      if (!selfClose) d += 1;
-    }
-    if (directChildren === 0 || directChildren >= declared) continue;
+    const close = findSameTagClose(out, tag, openEnd);
+    if (!close) continue;
+    const inner = out.slice(openEnd, close.closeStart);
+    const directChildren = countDirectBlockChildren(inner);
+    if (directChildren === 0 || directChildren >= decl.count) continue;
     const nextOpen = openTag.replace(
-      /(grid-template-columns\s*:\s*repeat\s*\(\s*)(\d+)(\s*,[^)]+\))/i,
-      (_m, head: string, _n: string, tail: string) => `${head}${directChildren}${tail}`,
+      /grid-template-columns\s*:\s*[^;"']+/i,
+      `grid-template-columns:${formatEqualColumns(decl, directChildren)}`,
     );
     patches.push({ start, end: openEnd, replacement: nextOpen });
   }

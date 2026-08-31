@@ -115,6 +115,48 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
       const html = '<div style="display:grid;grid-template-columns:repeat(1,1fr)"><div>a</div></div>';
       expect(shrinkOverAllocatedRepeatGrid(html)).toBe(html);
     });
+
+    it('shrinks explicit 1fr 1fr 1fr with 2 cards to two equal columns', () => {
+      const html = [
+        '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:24px;background:#1a1a1a">',
+        '<div>PILLAR 01 lim</div>',
+        '<div>PILLAR 02 d/dx</div>',
+        '</div>',
+      ].join('');
+      const out = shrinkOverAllocatedRepeatGrid(html);
+      expect(out).toMatch(/grid-template-columns:\s*1fr 1fr(?:\s|;|")/);
+      expect(out).not.toMatch(/grid-template-columns:\s*1fr 1fr 1fr/);
+      expect(out).toContain('PILLAR 01 lim');
+      expect(out).toContain('PILLAR 02 d/dx');
+    });
+
+    it('shrinks minmax(0,1fr) track lists the same way', () => {
+      const html = [
+        '<div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1fr)">',
+        '<div>a</div><div>b</div>',
+        '</div>',
+      ].join('');
+      const out = shrinkOverAllocatedRepeatGrid(html);
+      expect(out).toMatch(/grid-template-columns:\s*minmax\(0,1fr\) minmax\(0,1fr\)(?:\s|;|")/);
+    });
+
+    it('leaves a filled 1fr 1fr 1fr row unchanged', () => {
+      const html = [
+        '<div style="display:grid;grid-template-columns:1fr 1fr 1fr">',
+        '<div>a</div><div>b</div><div>c</div>',
+        '</div>',
+      ].join('');
+      expect(shrinkOverAllocatedRepeatGrid(html)).toBe(html);
+    });
+
+    it('does not smash mixed sidebar tracks', () => {
+      const html = [
+        '<div style="display:grid;grid-template-columns:1.3fr 1fr">',
+        '<div>main</div>',
+        '</div>',
+      ].join('');
+      expect(shrinkOverAllocatedRepeatGrid(html)).toBe(html);
+    });
   });
 
   describe('Q4 scrubTruncatedAiTagSoup', () => {
@@ -223,6 +265,24 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
       expect(out).toMatch(/repeat\(1\s*,\s*1fr\)/);
       // Stray </h> gone
       expect(out).not.toMatch(/<\/?h(?![1-6])[\s>/]/);
+    });
+
+    it('shrinks a three-pillar 1fr 1fr 1fr row that only emitted two cards', () => {
+      const html = [
+        '<section class="slide s-data" style="width:1920px;height:1080px">',
+        '<h2>미적분의 세 기둥: 극한 · 도함수 · 적분</h2>',
+        '<div class="grid" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:28px">',
+        '<div class="card"><h3>PILLAR 01</h3><p>극한</p></div>',
+        '<div class="card"><h3>PILLAR 02</h3><p>도함수</p></div>',
+        '</div>',
+        '</section>',
+      ].join('');
+      const out = healAiGeneratedDeckMarkup(html, '미적분');
+      expect(out).toMatch(/grid-template-columns:\s*1fr 1fr(?:\s|;|")/);
+      expect(out).not.toMatch(/grid-template-columns:\s*1fr 1fr 1fr/);
+      expect(out).toContain('PILLAR 01');
+      expect(out).toContain('PILLAR 02');
+      expect(out).toContain('미적분의 세 기둥');
     });
 
     it('clears a tagline that only repeats the user brief', () => {
