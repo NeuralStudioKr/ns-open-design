@@ -19,9 +19,10 @@
  *   - 첫 슬라이드는 절대 drop 안 함 (cover 만이라도 유지)
  *   - Idempotent · 다른 heal 룰 (title-only intro drop 등) 과 순서 무관
  *
- * 후속 (별도 루프):
- *   - 안전한 자동 재봉합이 가능해지면 dropSeverelyUnbalanced 를
- *     `repairSlideContainerBalance` 로 대체
+ * 후속 (루프194):
+ *   - 형제 `.card` / `.chart-card` 미닫힘은 `closeUnclosedSiblingCardsInSlides`
+ *     가 close 태그만 삽입해 살림 (카피 발명 없음). severe drop 은
+ *     cardish가 아닌 깊은 래퍼 불균형 안전망으로 남음.
  *   - persist-level short-draft gate 는 이 drop 이후 남은 슬라이드 수를
  *     본다 — 모든 non-first 슬라이드가 imbalanced 면 3 장 이하로 남고
  *     루프188 `deckLooksLikeTitleOnlyOutlineShell` 이후 short-draft 로
@@ -193,18 +194,52 @@ describe('루프190 · dropSlidesWithSeverelyUnbalancedContainerTags', () => {
 });
 
 describe('루프190 · healAiGeneratedDeckMarkup pipeline integration', () => {
-  it('drops imbalanced slides through the full pipeline', () => {
+  it('repairs cardish sibling imbalance before severe drop (루프194)', () => {
+    // 루프190b drop alone would remove slides 04/05 (diff ≥ 3).
+    // 루프194 closes nested unclosed .card / .chart-card siblings first,
+    // so the trigonometric identity/graph slides survive with their copy.
     const out = healAiGeneratedDeckMarkup(
       USER_DECK_WITH_IMBALANCED_CARDS,
       USER_BRIEF,
     );
-    expect(countSlides(out)).toBe(2);
+    expect(countSlides(out)).toBe(4);
     expect(out).toContain('data-screen-label="01 Cover"');
     expect(out).toContain('data-screen-label="03 정의"');
-    expect(out).not.toContain('data-screen-label="04 항등식"');
-    expect(out).not.toContain('data-screen-label="05 그래프"');
-    // Body-fill copy for the surviving slides must remain intact.
+    expect(out).toContain('data-screen-label="04 항등식"');
+    expect(out).toContain('data-screen-label="05 그래프"');
     expect(out).toContain('맞변 ÷ 빗변');
+    expect(out).toContain('피타고라스');
+    expect(out).toContain('sin θ');
+    // Sibling cards are closed before the next peer opens.
+    expect(out).toMatch(/피타고라스[\s\S]*?<\/div>\s*<div class="card"/);
+    expect(out).toMatch(/sin θ[\s\S]*?<\/div>\s*<div class="chart-card"/);
+  });
+
+  it('closes leftover non-cardish wrappers at slide end so 190b need not drop', () => {
+    // End-of-fragment close tags (루프194) balance plain nested <div>s inside
+    // the slide host. 190b drop stays as a residual safety net only.
+    const nested = [
+      '<!doctype html><html><body>',
+      balancedCoverSlide,
+      '<section class="slide" data-screen-label="bad-nest">',
+      '<div data-od-slide-flow="">',
+      '<h2>깨진 래퍼</h2>',
+      '<div><div><div><div><p>본문</p>',
+      '</div>',
+      '</section>',
+      balancedDefinitionSlide,
+      '</body></html>',
+    ].join('\n');
+    const out = healAiGeneratedDeckMarkup(nested, USER_BRIEF);
+    expect(out).toContain('data-screen-label="01 Cover"');
+    expect(out).toContain('data-screen-label="bad-nest"');
+    expect(out).toContain('깨진 래퍼');
+    expect(out).toContain('본문');
+    expect(out).toContain('data-screen-label="03 정의"');
+    const nest = /data-screen-label="bad-nest"[\s\S]*?<\/section>/.exec(out)?.[0] ?? '';
+    const opens = (nest.match(/<div\b/gi) ?? []).length;
+    const closes = (nest.match(/<\/div>/gi) ?? []).length;
+    expect(opens).toBe(closes);
   });
 
   it('does not remove any balanced slides that flow through the full pipeline', () => {

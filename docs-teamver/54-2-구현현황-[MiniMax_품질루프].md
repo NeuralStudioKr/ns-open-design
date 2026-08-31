@@ -7,6 +7,12 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-08-31 현재 판단 · 최신 루프
 
+### 루프194 — nested unclosed `.card` sibling 봉합
+
+루프189 residual: 슬라이드 4/5에서 MiniMax가 `<div class="card">`를 닫지 않고 다음 카드를 열어 뒤 본문이 삼켜졌다. 루프190b는 open-close 차이 ≥3인 non-cover 장만 drop한다. 루프194는 (1) 형제 cardish 열기 전 이전 card 닫기 (2) slide fragment 끝 leftover open 닫기로 장을 살려 severe drop 전에 균형을 맞춘다 — 카피 발명 없음. cardish 판정은 class 속성만 본다(`grid-template-columns` `columns` 오탐 방지).
+
+검증: contracts heal-ai-generated-deck · heal-severely-unbalanced-card-slide · outline/user-report.
+
 ### 루프193 — raw prompt 반복 덱 차단
 
 사용자 리포트에서 “템플릿을 골랐는데 내용 생성이 아니라 입력 프롬프트가 그대로 들어간 덱”이 반복됐다. 구조상 `<!doctype html>…</html>`로 닫혀 있고 일부 템플릿 장식도 있어 기존 HTML validator와 short-draft heal 허용을 통과할 수 있었다. 이번 루프에서는 3장 이상 덱에서 사용자 원문 brief가 여러 슬라이드 heading/body에 반복되는 경우를 `low-substance`로 분류한다.
@@ -318,9 +324,29 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | persist/preview: `1fr 1fr 1fr` 3열에 카드 2장만 남아 좌측 편중 · 빈 세 번째 트랙 (미적분 세 기둥) | ☑ 루프190 |
 | persist/preview: flex row에 grow 없이 카드 2–3장만 남아 좌측 편중 | ☑ 루프191 |
 | catalog PreviewModal: Sakura Chroma 등 `.stage` opacity-stack을 IB 가로 스트립으로 오역해 페이지 이동 시 본문 공백 | ☑ 루프192 |
+| persist: raw user brief가 여러 장 heading/body에 반복되는 닫힌 덱 low-substance 차단 | ☑ 루프193 |
+| heal: 심한 `<div>` 불균형(open−close≥3) non-cover 장 drop (루프190b) | ☑ 루프190b |
+| heal: 슬라이드 4/5 nested unclosed `.card`로 뒤 본문 삼킴 (루프189 residual) | ☑ 루프194 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프192 · opacity-stack .stage page nav)
+## 이번 루프 (루프194 · nested unclosed .card sibling close)
+
+- [x] `repairUnbalancedCardDivsInFragment` — peer card 열기 전 이전 cardish 닫기 · leftover close
+- [x] `closeUnclosedSiblingCardsInSlides` — slide span 단위 · 카피 발명 없음 · severe drop 직전
+- [x] cardish/`classAttrValue` — style 문자열 `columns` 오탐 방지 (3기둥 grid 회귀)
+- [x] 190b fixture 04/05·bad-nest는 봉합 후 생존 (drop 대신 repair)
+- [x] heal-ai-generated-deck · outline/user-report 회귀
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프193 · raw prompt parrot low-substance)
+
+- [x] `deckLooksLikeRepeatedUserBriefParrot` — 3장+ · brief 다수 장 반복 → failed generation
+- [x] `isLowSubstanceSlideDeckArtifact` — short-draft 허용보다 먼저 차단
+- [x] 단일 instruction-copy cover + 실본문 2장은 heal/top-up 유지
+- [x] web validate/deck-html-content 76/76
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프192 · opacity-stack .stage page nav)
 
 - [x] overlapping absolute/opacity `.stage`는 translate 트랙이 아님
 - [x] Sakura Chroma / Cobalt Grid / Long Table / Biennale Yellow next 후 `.active` + transform 없음

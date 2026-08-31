@@ -552,7 +552,7 @@ function isFlexRowContainerStyle(style: string): boolean {
 
 function childLooksLikePeerCard(attrs: string, style: string): boolean {
   if (styleLooksLikeFixedSidebar(style)) return false;
-  if (CARDISH_CLASS_RE.test(attrs)) return true;
+  if (CARDISH_CLASS_RE.test(classAttrValue(attrs))) return true;
   // MiniMax often emits padded/background boxes without a card class.
   if (/(?:^|;)\s*padding(?:-inline|-block|-left|-right)?\s*:/i.test(style)) return true;
   if (
@@ -686,6 +686,115 @@ export function balanceUnderfilledFlexCardRow(html: string): string {
   const patches = [...parentPatches, ...childPatches].sort((a, b) => b.start - a.start);
   for (const p of patches) {
     out = `${out.slice(0, p.start)}${p.replacement}${out.slice(p.end)}`;
+  }
+  return out;
+}
+
+const VOID_HTML_TAGS_RE =
+  /^(?:area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr)$/i;
+
+function classAttrValue(attrs: string): string {
+  const quoted = /\bclass\s*=\s*(["'])([\s\S]*?)\1/i.exec(attrs);
+  if (quoted) return quoted[2] ?? '';
+  const bare = /\bclass\s*=\s*([^\s>]+)/i.exec(attrs);
+  return bare?.[1] ?? '';
+}
+
+function attrsLookCardish(attrs: string): boolean {
+  // Only the class token list — never style values like grid-template-columns.
+  return CARDISH_CLASS_RE.test(classAttrValue(attrs));
+}
+
+/**
+ * Repair one slide body: un-nest accidental sibling cards and close leftover
+ * opens at the end of the slide. Never invents content — only inserts close
+ * tags (루프194).
+ */
+export function repairUnbalancedCardDivsInFragment(inner: string): string {
+  const source = String(inner ?? '');
+  if (!source) return source;
+  type Frame = { tag: string; cardish: boolean };
+  const stack: Frame[] = [];
+  let out = '';
+  let i = 0;
+  while (i < source.length) {
+    if (source.startsWith('<!--', i)) {
+      const end = source.indexOf('-->', i + 4);
+      const stop = end < 0 ? source.length : end + 3;
+      out += source.slice(i, stop);
+      i = stop;
+      continue;
+    }
+    const opaqueOpen = /^<(script|style)\b[^>]*>/i.exec(source.slice(i));
+    if (opaqueOpen) {
+      const tag = opaqueOpen[1]!;
+      const closeRe = new RegExp(`</${tag}\\s*>`, 'i');
+      const close = closeRe.exec(source.slice(i));
+      const stop = close ? i + close.index + close[0].length : source.length;
+      out += source.slice(i, stop);
+      i = stop;
+      continue;
+    }
+    const closeM = /^<\/([a-zA-Z][\w-]*)\s*>/i.exec(source.slice(i));
+    if (closeM) {
+      const tag = closeM[1]!.toLowerCase();
+      let idx = stack.length - 1;
+      while (idx >= 0 && stack[idx]!.tag !== tag) idx -= 1;
+      if (idx >= 0) stack.length = idx;
+      out += closeM[0]!;
+      i += closeM[0]!.length;
+      continue;
+    }
+    const openM = /^<([a-zA-Z][\w-]*)(\b[^>]*)>/i.exec(source.slice(i));
+    if (openM) {
+      const tag = openM[1]!.toLowerCase();
+      const attrs = openM[2] ?? '';
+      const full = openM[0]!;
+      const selfClose = /\/\s*>$/.test(full) || VOID_HTML_TAGS_RE.test(tag);
+      const cardish = tag === 'div' && attrsLookCardish(attrs);
+      if (cardish && !selfClose) {
+        // Peer cards must be siblings — MiniMax often opens the next card
+        // without closing the previous one (slides 4/5 nested `.card`).
+        while (stack.length > 0 && stack[stack.length - 1]!.cardish) {
+          out += '</div>';
+          stack.pop();
+        }
+      }
+      out += full;
+      i += full.length;
+      if (!selfClose) stack.push({ tag, cardish });
+      continue;
+    }
+    out += source[i]!;
+    i += 1;
+  }
+  // Truncation mid-card: close leftover opens before the slide ends.
+  while (stack.length > 0) {
+    const frame = stack.pop()!;
+    out += `</${frame.tag}>`;
+  }
+  return out;
+}
+
+/**
+ * 루프194 — Per-slide repair for unclosed / accidentally nested `.card` divs.
+ *
+ * Loop189 noted slides 4/5 where MiniMax opened nested `<div class="card">`
+ * without matching closes, so later content was swallowed. Scope to slide
+ * inners and only insert close tags — never rewrite copy.
+ */
+export function closeUnclosedSiblingCardsInSlides(html: string): string {
+  const source = String(html ?? '');
+  if (!source || !/<div\b/i.test(source)) return source;
+  const slides = listAiSlideSpans(source);
+  if (slides.length === 0) return source;
+  let out = source;
+  for (let i = slides.length - 1; i >= 0; i -= 1) {
+    const slide = slides[i]!;
+    const inner = out.slice(slide.openEnd, slide.bodyEnd);
+    const repaired = repairUnbalancedCardDivsInFragment(inner);
+    if (repaired === inner) continue;
+    out = `${out.slice(0, slide.openEnd)}${repaired}${out.slice(slide.bodyEnd)}`;
   }
   return out;
 }
@@ -980,6 +1089,7 @@ export function healAiGeneratedDeckMarkup(html: string, brief?: string | null): 
     // Fall through — shape-based heals below are still worth running.
   }
   out = scrubTruncatedAiTagSoup(out);
+  out = closeUnclosedSiblingCardsInSlides(out);
   out = unnestHeadingBlockChildren(out);
   out = polishTruncatedInstructionTitles(out);
   out = shrinkOverAllocatedRepeatGrid(out);

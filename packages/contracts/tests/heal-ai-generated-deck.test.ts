@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   balanceUnderfilledFlexCardRow,
+  closeUnclosedSiblingCardsInSlides,
   dropEmptyLikelyDeckSlides,
   healAiGeneratedDeckMarkup,
   polishTruncatedInstructionTitles,
   normalizeHangulParticleGaps,
+  repairUnbalancedCardDivsInFragment,
   scrubBriefLeakFromMetaSlots,
   scrubTruncatedAiTagSoup,
   shrinkOverAllocatedRepeatGrid,
@@ -242,6 +244,61 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
       expect(out.match(/flex:\s*1 1 0/gi)?.length).toBeGreaterThanOrEqual(2);
       expect(out).toContain('극한');
       expect(out).toContain('미분');
+    });
+  });
+
+  describe('루프194 closeUnclosedSiblingCardsInSlides', () => {
+    it('closes the previous card before the next sibling card opens', () => {
+      const inner = [
+        '<div class="card"><h3>극한</h3><p>정의</p>',
+        '<div class="card"><h3>미분</h3><p>도함수</p></div>',
+      ].join('');
+      const out = repairUnbalancedCardDivsInFragment(inner);
+      expect(out).toContain('</div><div class="card">');
+      expect(out.match(/<div class="card"/g)?.length).toBe(2);
+      expect((out.match(/<\/div>/g) ?? []).length).toBeGreaterThanOrEqual(2);
+      expect(out).toContain('극한');
+      expect(out).toContain('미분');
+    });
+
+    it('appends missing closes when a card is truncated mid-slide', () => {
+      const inner = '<div class="card"><h3>적분</h3><p>넓이';
+      const out = repairUnbalancedCardDivsInFragment(inner);
+      expect(out.endsWith('</p></div>') || out.endsWith('넓이</p></div>')).toBe(true);
+      expect(out).toContain('적분');
+    });
+
+    it('leaves well-formed sibling cards unchanged', () => {
+      const inner = [
+        '<div class="card"><h3>A</h3><p>a</p></div>',
+        '<div class="card"><h3>B</h3><p>b</p></div>',
+      ].join('');
+      expect(repairUnbalancedCardDivsInFragment(inner)).toBe(inner);
+    });
+
+    it('keeps non-card wrappers inside a card', () => {
+      const inner = '<div class="card"><div class="body"><p>본문</p></div></div>';
+      expect(repairUnbalancedCardDivsInFragment(inner)).toBe(inner);
+    });
+
+    it('repairs unclosed cards inside slide hosts via the pipeline', () => {
+      const html = [
+        '<!doctype html><html><body>',
+        '<section class="slide"><h2>세 기둥</h2>',
+        '<div class="card"><h3>극한</h3><p>정의</p>',
+        '<div class="card"><h3>미분</h3><p>도함수</p></div>',
+        '</section>',
+        '<section class="slide"><h2>다음</h2><p>정리</p></section>',
+        '</body></html>',
+      ].join('');
+      const out = closeUnclosedSiblingCardsInSlides(html);
+      expect(out).toMatch(/극한[\s\S]*?<\/div>\s*<div class="card"/);
+      expect(out).toContain('미분');
+      expect(out).toContain('<h2>다음</h2>');
+      const healed = healAiGeneratedDeckMarkup(html, '미적분');
+      expect(healed).toContain('극한');
+      expect(healed).toContain('미분');
+      expect(healed).toContain('다음');
     });
   });
 
