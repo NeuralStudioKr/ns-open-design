@@ -1090,11 +1090,13 @@ function textLooksLikeLeftoverPeerPlaceholder(html: string): boolean {
  * 루프222 — `Phase 3` / `축 3` / `레이어 3` index leftovers.
  * 루프225 — `00` / `PILLAR 0` / `기둥 0` zero-index leftovers.
  * Keep `0%` KPI copy — `%` is not leftover punctuation.
+ * 루프226 — circled / fullwidth zero leftovers (`⓪` / `０` / `⓿`).
  */
 const LEFTOVER_INDEX_ROMAN =
   '(?:viii|vii|iii|xii|xi|ix|iv|vi|ii|[xv]|i|[Ⅰ-Ⅻⅰ-ⅻ])';
 /** 루프219 — circled / dingbat / fullwidth 1–9 leftover indexes. */
-const LEFTOVER_INDEX_MARK = '[①-⑨❶-❾１-９]';
+/** 루프226 — include circled / dingbat / fullwidth 0 leftovers. */
+const LEFTOVER_INDEX_MARK = '[⓪①-⑨❶-❾⓿０-９]';
 /** 루프225 — include 0 / 00 leftover shells MiniMax leaves on the missing pillar. */
 const LEFTOVER_INDEX_DIGIT = '0?[0-9]';
 
