@@ -2133,23 +2133,23 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
       expect(dropEmptyLeftoverPeerCardsInAllocatedRows(html, '미적분')).toBe(html);
     });
 
-    it('keeps 열세째 / 기둥 차 because those indexes are out of leftover range (루프272)', () => {
-      const thirteenth = [
+    it('keeps 열네째 / 기둥 카 because those indexes are out of leftover range (루프274)', () => {
+      const fourteenth = [
         '<div style="display:flex;gap:28px">',
         '<div class="card"><h3>하나</h3></div>',
         '<div class="card"><h3>다음</h3></div>',
-        '<div class="card"><h3>열세째</h3></div>',
+        '<div class="card"><h3>열네째</h3></div>',
         '</div>',
       ].join('');
-      const cha = [
+      const ka = [
         '<div style="display:flex;gap:28px">',
         '<div class="card"><h3>하나</h3></div>',
         '<div class="card"><h3>다음</h3></div>',
-        '<div class="card"><h3>기둥 차</h3></div>',
+        '<div class="card"><h3>기둥 카</h3></div>',
         '</div>',
       ].join('');
-      expect(dropEmptyLeftoverPeerCardsInAllocatedRows(thirteenth, '발표')).toBe(thirteenth);
-      expect(dropEmptyLeftoverPeerCardsInAllocatedRows(cha, '발표')).toBe(cha);
+      expect(dropEmptyLeftoverPeerCardsInAllocatedRows(fourteenth, '발표')).toBe(fourteenth);
+      expect(dropEmptyLeftoverPeerCardsInAllocatedRows(ka, '발표')).toBe(ka);
     });
 
     it('keeps 첫째 적분 real copy that is not an index leftover (루프239)', () => {
@@ -2277,15 +2277,69 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
       expect(dropEmptyLeftoverPeerCardsInAllocatedRows(html, '발표')).toBe(html);
     });
 
-    it('keeps 기둥 J because that index is out of leftover range (루프272)', () => {
+    it('drops a 기둥 J leftover third card (루프274)', () => {
+      const html = [
+        '<div style="display:flex;gap:28px">',
+        '<div class="card" style="padding:24px"><h3>하나</h3><p>요지</p></div>',
+        '<div class="card" style="padding:24px"><h3>다음</h3><p>요지</p></div>',
+        '<div class="card" style="padding:24px"><h3>기둥 J</h3></div>',
+        '</div>',
+      ].join('');
+      const out = dropEmptyLeftoverPeerCardsInAllocatedRows(html, '발표');
+      expect((out.match(/class="card"/g) ?? []).length).toBe(2);
+      expect(out).not.toContain('기둥 J');
+      expect(out).toContain('하나');
+    });
+
+    it('drops a 열세째 leftover third card (루프274)', () => {
       const html = [
         '<div style="display:flex;gap:28px">',
         '<div class="card"><h3>하나</h3></div>',
         '<div class="card"><h3>다음</h3></div>',
-        '<div class="card"><h3>기둥 J</h3></div>',
+        '<div class="card"><h3>열세째</h3></div>',
+        '</div>',
+      ].join('');
+      const out = dropEmptyLeftoverPeerCardsInAllocatedRows(html, '발표');
+      expect((out.match(/class="card"/g) ?? []).length).toBe(2);
+      expect(out).not.toContain('열세째');
+    });
+
+    it('keeps leftover-index cards that still have extra visible text (루프274)', () => {
+      const html = [
+        '<div style="display:flex;gap:28px">',
+        '<div class="card"><h3>하나</h3></div>',
+        '<div class="card"><h3>다음</h3></div>',
+        '<div class="card"><h3>열세째 실카피</h3></div>',
         '</div>',
       ].join('');
       expect(dropEmptyLeftoverPeerCardsInAllocatedRows(html, '발표')).toBe(html);
+    });
+
+    it('keeps 기둥 K because that index is out of leftover range (루프274)', () => {
+      const html = [
+        '<div style="display:flex;gap:28px">',
+        '<div class="card"><h3>하나</h3></div>',
+        '<div class="card"><h3>다음</h3></div>',
+        '<div class="card"><h3>기둥 K</h3></div>',
+        '</div>',
+      ].join('');
+      expect(dropEmptyLeftoverPeerCardsInAllocatedRows(html, '발표')).toBe(html);
+    });
+
+    it('pipeline heals a 기둥 차 leftover without inventing topic copy (루프274)', () => {
+      const html = [
+        '<section class="slide"><h1>세 가지 포인트</h1>',
+        '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:24px">',
+        '<div class="card"><h3>하나</h3><p>요지</p></div>',
+        '<div class="card"><h3>다음</h3><p>요지</p></div>',
+        '<div class="card"><h3>기둥 차</h3></div>',
+        '</div></section>',
+      ].join('');
+      const out = healAiGeneratedDeckMarkup(html, '발표');
+      expect((out.match(/class="card"/g) ?? []).length).toBe(2);
+      expect(out).not.toContain('기둥 차');
+      expect(out).toContain('하나');
+      expect(out).toContain('다음');
     });
 
     it('pipeline heals a 기둥 자 leftover without inventing topic copy (루프272)', () => {

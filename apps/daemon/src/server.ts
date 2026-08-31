@@ -8995,6 +8995,9 @@ export async function startServer({
   // `assets/template.html`. Returning 404 in that case lit up white
   // tiles in the home gallery, so the candidates list always extends
   // past the declared entry to walk a curated fallback chain.
+  // Catalog `example.html` / exampleOutputs are tried before
+  // generation seeds in context.assets so a stale SQLite entry does
+  // not paint `[REPLACE]` template.html (Replit Deck wizard thumb).
   //
   // `assets/example-slides.html` is a special case: for guizang-ppt it
   // is intentionally only the slide fragment. The old skill preview
@@ -9019,13 +9022,11 @@ export async function startServer({
 
     push(preview.entry);
 
-    const ctx = (od.context ?? {}) as Record<string, unknown>;
-    const assets = Array.isArray(ctx.assets) ? ctx.assets : [];
-    for (const a of assets) {
-      const rel = typeof a === 'string' ? a : null;
-      if (rel && /\.html?$/i.test(rel)) push(rel);
-    }
-
+    // Catalog example.html / exampleOutputs before context.assets.
+    // A stale bundled SQLite manifest may still declare
+    // `preview.entry: ./index.html` and list `assets/template.html`.
+    // Walking assets first served that [REPLACE] seed and painted a
+    // white Replit Deck wizard thumb even after example.html shipped.
     const useCase = (od.useCase ?? {}) as Record<string, unknown>;
     const exampleOutputs = Array.isArray(useCase.exampleOutputs)
       ? useCase.exampleOutputs
@@ -9033,6 +9034,14 @@ export async function startServer({
     for (const ex of exampleOutputs) {
       const p = (ex as { path?: unknown })?.path;
       if (typeof p === 'string' && /\.html?$/i.test(p)) push(p);
+    }
+    push('example.html');
+
+    const ctx = (od.context ?? {}) as Record<string, unknown>;
+    const assets = Array.isArray(ctx.assets) ? ctx.assets : [];
+    for (const a of assets) {
+      const rel = typeof a === 'string' ? a : null;
+      if (rel && /\.html?$/i.test(rel)) push(rel);
     }
 
     push('preview/index.html');
