@@ -425,7 +425,7 @@ const EQUAL_FR_TRACK_RE =
   /^(?:1(?:\.0+)?fr|minmax\(\s*(?:0|auto|min-content|max-content)\s*,\s*1(?:\.0+)?fr\s*\))$/i;
 /** 루프210/215/238 — identical 22–48% or viewport/container shares (skip 50 splits). */
 const EQUAL_COLUMN_SHARE_TRACK_RE =
-  /^(?:2[2-9]|3\d|4[0-8])(?:\.\d+)?(?:%|vw|vh|vmin|vmax|dvh|svh|lvh|dvw|svw|lvw|cqw|cqi|cqh|cqb|cqmin|cqmax)$/i;
+  /^(?:2[2-9]|3\d|4[0-8])(?:\.\d+)?(?:%|vw|vh|vmin|vmax|dvh|svh|lvh|dvw|svw|lvw|dvmin|svmin|lvmin|dvmax|svmax|lvmax|cqw|cqi|cqh|cqb|cqmin|cqmax)$/i;
 
 function countDirectBlockChildren(inner: string): number {
   const tokenRe = /<(\/?)([a-zA-Z][\w-]*)\b[^>]*(\/)?>/gi;
@@ -1296,7 +1296,7 @@ function cssLengthToPx(raw: string): number | null {
   }
   // 루프213/238 — MiniMax locks cards with 30vw/30vh/30vmin as if the
   // canvas were the viewport. Same 22–48 band as % / vw; 50/100 stay.
-  const viewport = /^(\d+(?:\.\d+)?)\s*(vw|vh|vmin|vmax|dvh|svh|lvh|dvw|svw|lvw|cqw|cqi|cqh|cqb|cqmin|cqmax)$/i
+  const viewport = /^(\d+(?:\.\d+)?)\s*(vw|vh|vmin|vmax|dvh|svh|lvh|dvw|svw|lvw|dvmin|svmin|lvmin|dvmax|svmax|lvmax|cqw|cqi|cqh|cqb|cqmin|cqmax)$/i
     .exec(source);
   if (viewport) {
     const value = Number.parseFloat(viewport[1] ?? '');
@@ -1323,7 +1323,7 @@ function flexShorthandLockedBasisPx(style: string): number | null {
   const raw = String(decl[1] ?? '').trim();
   if (!/^0\s+0\s+/i.test(raw) && !/^none\b/i.test(raw)) return null;
   // `%` is not a word char, so `\b` after it fails at end-of-decl (`33%`).
-  const length = /(\d+(?:\.\d+)?)\s*(px|rem|em|ch|%|vw|vh|vmin|vmax|dvh|svh|lvh|dvw|svw|lvw|cqw|cqi|cqh|cqb|cqmin|cqmax)/i
+  const length = /(\d+(?:\.\d+)?)\s*(px|rem|em|ch|%|vw|vh|vmin|vmax|dvh|svh|lvh|dvw|svw|lvw|dvmin|svmin|lvmin|dvmax|svmax|lvmax|cqw|cqi|cqh|cqb|cqmin|cqmax)/i
     .exec(raw);
   if (!length) return null;
   return cssLengthToPx(`${length[1]}${length[2]}`);
@@ -1405,6 +1405,8 @@ function stripFixedMainSizeFromOpenTag(openTag: string): string {
  * (`width:30lvw`, `33dvw 33dvw 33dvw`).
  * 루프246 — same for container min/max leftovers
  * (`width:30cqmax`, `33cqmin 33cqmin 33cqmin`).
+ * 루프250 — same for dynamic viewport min/max leftovers
+ * (`width:30svmin`, `33dvmin 33dvmin 33dvmin`).
  */
 export function relaxUniformPeerCardFixedMainSize(
   html: string,
