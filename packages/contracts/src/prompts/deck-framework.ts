@@ -519,7 +519,7 @@ Do not invent one identical white box for every slide. Pick the closest layout b
 **Big stat** — one number + caption (centered):
 \`<section class="slide" data-screen-label="03 Stat" style="width:1920px;height:1080px;box-sizing:border-box;padding:80px 88px;background:#111827;color:#fff;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center"><div style="font:700 120px/1 sans-serif">38<span style="font-size:.45em">%</span></div><p style="margin:28px 0 0;max-width:36rem;font:26px/1.5 sans-serif;opacity:.85">수치가 의미하는 한 줄 설명.</p></section>\`
 
-**Three-column** — headline + 3 points (use flex, keep copy short). Column count = card count: a titled N-item row must emit N cards and `repeat(N,minmax(0,1fr))` or N flex children — never `1fr 1fr 1fr` with only two cards:
+**Three-column** — headline + 3 points (use flex, keep copy short). Column count = card count: a titled N-item row must emit N cards (flex children or equal 1fr tracks) — never a 3-track grid with only two cards:
 \`<section class="slide" data-screen-label="04 Columns" style="width:1920px;height:1080px;box-sizing:border-box;padding:72px 80px;background:#f8fafc;color:#0f172a;display:flex;flex-direction:column;justify-content:center"><h2 style="font:700 48px/1.15 sans-serif">세 가지 포인트</h2><div style="display:flex;gap:28px"><p>포인트 1</p><p>포인트 2</p><p>포인트 3</p></div></section>\`
 
 **Split thesis** — left headline, right evidence cards:
