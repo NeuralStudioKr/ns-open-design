@@ -24,6 +24,31 @@ function sourceHasHangulGate(html: string, brief?: string | null): boolean {
   return destHasHangulTopic(html) || Boolean(String(brief ?? '').trim());
 }
 
+/**
+ * 루프252 — Class-bound layout heals used to require Hangul (or a brief).
+ * English MiniMax fills with `data-od-slide-flow` / `tpl-*` / multi-slide
+ * card rows never entered shrink/balance. Keep empty-brief English catalog
+ * fragments (no AI markers) skipped.
+ */
+function sourceLooksLikeAiGeneratedDeck(html: string, brief?: string | null): boolean {
+  if (sourceHasHangulGate(html, brief)) return true;
+  const source = String(html ?? '');
+  if (!source) return false;
+  if (/\bdata-od-slide-flow\b/i.test(source)) return true;
+  if (/\btpl-[\w-]+\b/i.test(source)) return true;
+  if (/\bclass\s*=\s*["'][^"']*\b(?:s-cover|s-chapter|s-data|slide-cover)\b/i.test(source)) {
+    return true;
+  }
+  const slides = listAiSlideSpans(source);
+  if (
+    slides.length >= 2
+    && /\bclass\s*=\s*["'][^"']*\b(?:card|cards-grid|cards|pillar|grid)\b/i.test(source)
+  ) {
+    return true;
+  }
+  return false;
+}
+
 function visibleText(html: string): string {
   return String(html ?? '')
     .replace(/<script\b[\s\S]*?<\/script>/gi, ' ')
@@ -52,27 +77,81 @@ type SlideSpan = {
   end: number;
 };
 
-function listAiSlideSpans(html: string): SlideSpan[] {
+/**
+ * 루프254 — Depth-matched slide host spans (parity with web
+ * `extractSlideHostBlocks`). The previous first-close / next-open limit
+ * mis-sliced nested or unclosed `section.slide` hosts so card-close, empty
+ * drop, and translate heals applied to the wrong body.
+ */
+export function listAiSlideSpans(html: string): SlideSpan[] {
+  const source = String(html ?? '');
+  if (!source) return [];
+  const raw: SlideSpan[] = [];
   const openRe = /<(section|div|main|article)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
-  const opens: { tag: string; attrs: string; start: number; openEnd: number }[] = [];
-  let match: RegExpExecArray | null;
-  while ((match = openRe.exec(html)) !== null) {
-    if (!attrsLookLikeDeckOrTemplateSlideHost(match[2] ?? '')) continue;
-    opens.push({
-      tag: (match[1] ?? 'section').toLowerCase(),
-      attrs: match[2] ?? '',
-      start: match.index,
-      openEnd: match.index + match[0].length,
-    });
+  let searchFrom = 0;
+  while (searchFrom < source.length) {
+    openRe.lastIndex = searchFrom;
+    const openMatch = openRe.exec(source);
+    if (!openMatch) break;
+    const tag = (openMatch[1] ?? 'section').toLowerCase();
+    const attrs = openMatch[2] ?? '';
+    const start = openMatch.index;
+    const openEnd = start + openMatch[0].length;
+    if (!attrsLookLikeDeckOrTemplateSlideHost(attrs)) {
+      searchFrom = openEnd;
+      continue;
+    }
+    const closeRe = new RegExp(`</${tag}\\s*>`, 'gi');
+    const nestedOpenRe = new RegExp(
+      `<${tag}\\b(?:[^>"']|"[^"]*"|'[^']*')*>`,
+      'gi',
+    );
+    let depth = 1;
+    let cursor = openEnd;
+    let bodyEnd = -1;
+    let end = -1;
+    while (cursor < source.length && depth > 0) {
+      nestedOpenRe.lastIndex = cursor;
+      closeRe.lastIndex = cursor;
+      const nextOpen = nestedOpenRe.exec(source);
+      const nextClose = closeRe.exec(source);
+      if (!nextClose) break;
+      if (nextOpen && nextOpen.index < nextClose.index) {
+        depth += 1;
+        cursor = nextOpen.index + nextOpen[0].length;
+      } else {
+        depth -= 1;
+        cursor = nextClose.index + nextClose[0].length;
+        if (depth === 0) {
+          bodyEnd = nextClose.index;
+          end = cursor;
+        }
+      }
+    }
+    if (bodyEnd < 0 || end < 0) {
+      raw.push({
+        tag,
+        attrs,
+        start,
+        openEnd,
+        bodyEnd: source.length,
+        end: source.length,
+      });
+      break;
+    }
+    raw.push({ tag, attrs, start, openEnd, bodyEnd, end });
+    searchFrom = end;
   }
-  return opens.map((open, i) => {
-    const limit = i + 1 < opens.length ? opens[i + 1]!.start : html.length;
-    const chunk = html.slice(open.openEnd, limit);
-    const close = new RegExp(`</${open.tag}\\s*>`, 'i').exec(chunk);
-    const bodyEnd = close ? open.openEnd + close.index : limit;
-    const end = close ? bodyEnd + close[0].length : limit;
-    return { ...open, bodyEnd, end };
-  });
+  // Drop nested hosts fully contained by an outer slide (web parity).
+  return raw.filter(
+    (slide, index) =>
+      !raw.some(
+        (other, otherIndex) =>
+          otherIndex !== index
+          && other.start < slide.start
+          && other.end >= slide.end,
+      ),
+  );
 }
 
 /**
@@ -425,7 +504,7 @@ const EQUAL_FR_TRACK_RE =
   /^(?:1(?:\.0+)?fr|minmax\(\s*(?:0|auto|min-content|max-content)\s*,\s*1(?:\.0+)?fr\s*\))$/i;
 /** 루프210/215/238 — identical 22–48% or viewport/container shares (skip 50 splits). */
 const EQUAL_COLUMN_SHARE_TRACK_RE =
-  /^(?:2[2-9]|3\d|4[0-8])(?:\.\d+)?(?:%|vw|vh|vmin|vmax|dvh|svh|lvh|dvw|svw|lvw|cqw|cqi|cqh|cqb|cqmin|cqmax)$/i;
+  /^(?:2[2-9]|3\d|4[0-8])(?:\.\d+)?(?:%|vw|vh|vmin|vmax|dvh|svh|lvh|dvw|svw|lvw|dvmin|svmin|lvmin|dvmax|svmax|lvmax|cqw|cqi|cqh|cqb|cqmin|cqmax)$/i;
 
 function countDirectBlockChildren(inner: string): number {
   const tokenRe = /<(\/?)([a-zA-Z][\w-]*)\b[^>]*(\/)?>/gi;
@@ -758,9 +837,10 @@ function classTokensFromAttrs(attrs: string): string[] {
 }
 
 /**
- * 루프194 — Compact fills reuse leftover `.grid` / `.cards-grid` rules
- * (`1fr 1fr 1fr` or 2×2) without inline tracks. Heal only Hangul or
- * brief-backed decks so official English catalogs stay designed 2×2.
+ * 루프194 / 루프252 — Compact fills reuse leftover `.grid` / `.cards-grid` rules
+ * (`1fr 1fr 1fr` or 2×2) without inline tracks. Heal AI-shaped decks
+ * (Hangul/brief/`data-od-slide-flow`/multi-slide cards); keep empty-brief
+ * English catalog fragments untouched.
  */
 export function shrinkClassBoundEqualTrackGrids(
   html: string,
@@ -768,7 +848,7 @@ export function shrinkClassBoundEqualTrackGrids(
 ): string {
   let out = String(html ?? '');
   if (!out) return out;
-  if (!destHasHangulTopic(out) && !String(brief ?? '').trim()) return out;
+  if (!sourceLooksLikeAiGeneratedDeck(out, brief)) return out;
   const decls = collectClassEqualTrackDecls(out);
   if (decls.size === 0) return out;
   const gridOpenRe =
@@ -1166,7 +1246,7 @@ function textLooksLikeLeftoverPeerPlaceholder(html: string): boolean {
  * 루프242 — `Group 3` / `Lane 3` / `행 3` index leftovers.
  * `UNIT 3` stays because that prefix is not leftover vocabulary.
  * 루프248 — `Chapter 3` / `Panel 3` / `장 3` index leftovers.
- * 루프250 — letter `E` / `기둥 바` / `여섯째` leftovers. Keep `G`–`Z`,
+ * 루프255 — letter `E` / `기둥 바` / `여섯째` leftovers. Keep `G`–`Z`,
  * `열한째`, `기둥 아`, and `여섯째 적분` real copy.
  */
 const LEFTOVER_INDEX_ROMAN =
@@ -1175,9 +1255,9 @@ const LEFTOVER_INDEX_ROMAN =
 const LEFTOVER_INDEX_MARK = '[⓪①-⑨❶-❾⓿０-９⑴-⑼㉠-㉥]';
 /** 루프225/230 — 0 / 00 / 01–09 / 10 leftover shells. */
 const LEFTOVER_INDEX_DIGIT = '(?:0?[0-9]|10)';
-/** 루프237/239/250 — A–F / 가나다라마바사 leftover letters (not roman V/X/I, not G–Z). */
+/** 루프237/239/255 — A–F / 가나다라마바사 leftover letters (not roman V/X/I, not G–Z). */
 const LEFTOVER_INDEX_LETTER = '(?:[a-f]|[가나다라마바사])';
-/** 루프239/250 — Hangul ordinal leftover shells. Keep `첫째 적분` / `열한째`. */
+/** 루프239/255 — Hangul ordinal leftover shells. Keep `첫째 적분` / `열한째`. */
 const LEFTOVER_INDEX_ORDINAL = '(?:첫|둘|셋|넷|다섯|여섯|일곱|여덟|아홉|열)(?:째|번째)';
 const LEFTOVER_INDEX_CORE =
   `(?:${LEFTOVER_INDEX_DIGIT}|${LEFTOVER_INDEX_ROMAN}|${LEFTOVER_INDEX_MARK}|${LEFTOVER_INDEX_LETTER}|${LEFTOVER_INDEX_ORDINAL})`;
@@ -1242,7 +1322,7 @@ export function dropEmptyLeftoverPeerCardsInAllocatedRows(
 ): string {
   let out = String(html ?? '');
   if (!out) return out;
-  if (!sourceHasHangulGate(out, brief)) return out;
+  if (!sourceLooksLikeAiGeneratedDeck(out, brief)) return out;
   const decls = collectClassEqualTrackDecls(out);
   const openRe =
     /<(div|section|article|main|aside|ul|ol)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
@@ -1280,7 +1360,7 @@ export function dropEmptyLeftoverPeerCardsInAllocatedRows(
 const PEER_FIXED_MAIN_SIZE_MIN_PX = 280;
 /** 루프240 — 400 vs 600 (1.5) still shares the row; 280 vs 900 sidebar stays. */
 const PEER_FIXED_MAIN_SIZE_RATIO = 1.6;
-/** 루프251 — 3+ peers: 400 vs 800 (2.0) is leftover. 2-card 400/800 split stays. */
+/** 루프256 — 3+ peers: 400 vs 800 (2.0) is leftover. 2-card 400/800 split stays. */
 const PEER_FIXED_MAIN_SIZE_TRIPLE_RATIO = 2.05;
 /** 루프207 — 3-col leftover `%` shares (skip 100% stretch and 50% splits). */
 const PEER_COLUMN_SHARE_PERCENT_MIN = 22;
@@ -1300,7 +1380,7 @@ function cssLengthToPx(raw: string): number | null {
   }
   // 루프213/238 — MiniMax locks cards with 30vw/30vh/30vmin as if the
   // canvas were the viewport. Same 22–48 band as % / vw; 50/100 stay.
-  const viewport = /^(\d+(?:\.\d+)?)\s*(vw|vh|vmin|vmax|dvh|svh|lvh|dvw|svw|lvw|cqw|cqi|cqh|cqb|cqmin|cqmax)$/i
+  const viewport = /^(\d+(?:\.\d+)?)\s*(vw|vh|vmin|vmax|dvh|svh|lvh|dvw|svw|lvw|dvmin|svmin|lvmin|dvmax|svmax|lvmax|cqw|cqi|cqh|cqb|cqmin|cqmax)$/i
     .exec(source);
   if (viewport) {
     const value = Number.parseFloat(viewport[1] ?? '');
@@ -1327,7 +1407,7 @@ function flexShorthandLockedBasisPx(style: string): number | null {
   const raw = String(decl[1] ?? '').trim();
   if (!/^0\s+0\s+/i.test(raw) && !/^none\b/i.test(raw)) return null;
   // `%` is not a word char, so `\b` after it fails at end-of-decl (`33%`).
-  const length = /(\d+(?:\.\d+)?)\s*(px|rem|em|ch|%|vw|vh|vmin|vmax|dvh|svh|lvh|dvw|svw|lvw|cqw|cqi|cqh|cqb|cqmin|cqmax)/i
+  const length = /(\d+(?:\.\d+)?)\s*(px|rem|em|ch|%|vw|vh|vmin|vmax|dvh|svh|lvh|dvw|svw|lvw|dvmin|svmin|lvmin|dvmax|svmax|lvmax|cqw|cqi|cqh|cqb|cqmin|cqmax)/i
     .exec(raw);
   if (!length) return null;
   return cssLengthToPx(`${length[1]}${length[2]}`);
@@ -1363,7 +1443,7 @@ function peersHaveUniformFixedMainSize(styles: string[]): boolean {
   const max = Math.max(...nums);
   if (min < PEER_FIXED_MAIN_SIZE_MIN_PX) return false;
   if (max <= min * PEER_FIXED_MAIN_SIZE_RATIO) return true;
-  // 루프251 — MiniMax dodges 1.6 with 400 vs 800 on a 3-card leftover row.
+  // 루프256 — MiniMax dodges 1.6 with 400 vs 800 on a 3-card leftover row.
   // Two-card 400/800 sidebar stays.
   return styles.length >= 3 && max <= min * PEER_FIXED_MAIN_SIZE_TRIPLE_RATIO;
 }
@@ -1401,7 +1481,7 @@ function stripFixedMainSizeFromOpenTag(openTag: string): string {
  * Strip width / min-width / max-width / flex-basis / `flex:0 0 N` only when
  * every peer has a similar large fixed main size. Mixed sidebar + fluid
  * (or 280 vs 900) stays. 루프240 — MiniMax dodges 1.35 with 400 vs 600
- * max-width; treat ≤1.6 as the same leftover lock. 루프251 — 3+ peers
+ * max-width; treat ≤1.6 as the same leftover lock. 루프256 — 3+ peers
  * also treat ≤2.05 (400 vs 800) as leftover; 2-card splits stay.
  * Hangul/brief-gated. Never invent missing cards.
  * 루프201 — max-width / flex:0 0 still cap the row after 198 width strip.
@@ -1413,6 +1493,8 @@ function stripFixedMainSizeFromOpenTag(openTag: string): string {
  * (`width:30lvw`, `33dvw 33dvw 33dvw`).
  * 루프246 — same for container min/max leftovers
  * (`width:30cqmax`, `33cqmin 33cqmin 33cqmin`).
+ * 루프250 — same for dynamic viewport min/max leftovers
+ * (`width:30svmin`, `33dvmin 33dvmin 33dvmin`).
  */
 export function relaxUniformPeerCardFixedMainSize(
   html: string,
@@ -1420,7 +1502,7 @@ export function relaxUniformPeerCardFixedMainSize(
 ): string {
   let out = String(html ?? '');
   if (!out) return out;
-  if (!sourceHasHangulGate(out, brief)) return out;
+  if (!sourceLooksLikeAiGeneratedDeck(out, brief)) return out;
   const decls = collectClassEqualTrackDecls(out);
   const openRe =
     /<(div|section|article|main|aside|ul|ol)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
@@ -1509,9 +1591,10 @@ export function balanceUnderfilledFlexCardRow(html: string): string {
 }
 
 /**
- * 루프204 — Same leftover as 191, but the flex row lives on a class rule
- * (`.cards { display:flex }`) with no inline display. 191 never sees it.
- * Hangul/brief-gated. Skip inline-flex rows (191) and flex columns.
+ * 루프204 / 루프252 — Same leftover as 191, but the flex row lives on a class
+ * rule (`.cards { display:flex }`) with no inline display. 191 never sees it.
+ * AI-shaped decks only (Hangul/brief/markers). Skip inline-flex rows (191)
+ * and flex columns.
  */
 export function balanceClassBoundFlexCardRow(
   html: string,
@@ -1519,7 +1602,7 @@ export function balanceClassBoundFlexCardRow(
 ): string {
   let out = String(html ?? '');
   if (!out) return out;
-  if (!sourceHasHangulGate(out, brief)) return out;
+  if (!sourceLooksLikeAiGeneratedDeck(out, brief)) return out;
   const flexNames = collectClassFlexRowNames(out);
   if (flexNames.size === 0) return out;
   const openRe =
@@ -1802,7 +1885,7 @@ export function unwrapRedundantNestedPeerCards(
 ): string {
   let out = String(html ?? '');
   if (!out) return out;
-  if (!sourceHasHangulGate(out, brief)) return out;
+  if (!sourceLooksLikeAiGeneratedDeck(out, brief)) return out;
   if (!/<div\b/i.test(out)) return out;
   for (let pass = 0; pass < 4; pass += 1) {
     const next = unwrapRedundantNestedPeerCardsOnce(out);
