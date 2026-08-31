@@ -231,7 +231,15 @@ function slideBodyLooksSubstantive(body: string): boolean {
 }
 
 function attrsLookLikeGeneratedIntroShell(attrs: string): boolean {
-  return /\bclass\s*=\s*["'][^"']*\bslide-title\b/i.test(String(attrs ?? ''));
+  const source = String(attrs ?? '');
+  // A real cover/chapter host is never treated as the stray splash.
+  if (attrsLookLikeRealCoverSlide(source)) return false;
+  if (/\b(?:s-chapter|s-data|s-manifesto|s-programme|chapter)\b/i.test(source)) {
+    return false;
+  }
+  // Explicit `slide-title` splash OR bare title-only first slide before the
+  // selected-template cover (루프188 — MiniMax often omits `slide-title`).
+  return true;
 }
 
 function attrsLookLikeRealCoverSlide(attrs: string): boolean {
@@ -243,13 +251,14 @@ function attrsLookLikeRealCoverSlide(attrs: string): boolean {
 }
 
 /**
- * 루프183 — Drop a stray generated intro splash before the real cover.
+ * 루프186 / 루프188 — Drop a stray generated intro splash before the real cover.
  *
  * Recent template-fill failures sometimes prepend
- * `<section class="slide slide-title"><h1>{topic}</h1></section>` and then
- * append the actual selected-template cover as slide 2. The old duplicate
- * guard intentionally never removed slide 1, so users saw a blank/dark
- * title-only first page even though the next slide had the real deck.
+ * `<section class="slide slide-title"><h1>{topic}</h1></section>` (or a bare
+ * title-only `<section class="slide">`) and then append the actual
+ * selected-template cover as slide 2. The old duplicate guard intentionally
+ * never removed slide 1, so users saw a blank/dark title-only first page even
+ * though the next slide had the real deck.
  *
  * Remove slide 1 only when it is a short title-only shell and slide 2 is
  * substantive and clearly about the same topic. This keeps intentional

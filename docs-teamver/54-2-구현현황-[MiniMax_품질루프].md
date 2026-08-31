@@ -295,9 +295,18 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | persist/UX: low-substance skip 후에도 auto-continue("이어쓰기") 발동 | ☑ 루프185 |
 | heal: 첫 장 임시 `slide-title` title-only 셸 뒤에 실제 cover가 이어지는 덱 · 앵커 없는 `translateY(-50%)`로 제목이 상단 클립 | ☑ 루프186 |
 | persist/preview: pitch-deck `.cover-bg` compact flatten으로 워시 소실 · 투명 장 letterbox 투시 | ☑ 루프187 |
+| heal/persist: bare leading title splash(`slide-title` 없음) · 3장 all-title outline short-draft | ☑ 루프188 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프187 · pitch-deck cover-bg 복구)
+## 이번 루프 (루프188 · bare leading splash · 3장 all-title)
+
+- [x] bare title splash before real cover — `slide-title` 없이도 drop
+- [x] 실제 cover host는 splash로 취급하지 않음
+- [x] 3장 all-title outline → failed-generate / low-substance (`슬라이드 N` 제외)
+- [x] heal-duplicate-title-only-slide · deck-html-content · validate
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프187 · pitch-deck cover-bg 복구)
 
 - [x] `.cover-bg` Motif/deco — flatten 금지
 - [x] pin CSS로 이미 평탄화된 cover-bg full-bleed 복구

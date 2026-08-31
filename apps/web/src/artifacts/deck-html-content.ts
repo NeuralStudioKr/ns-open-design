@@ -533,12 +533,25 @@ function slideInnerIsTitleOnlyShell(innerHtml: string): boolean {
 
 /**
  * ≥4 slides where ≥60% are title-only shells — MiniMax leftover outline decks
- * that never received body copy (루프181).
+ * that never received body copy (루프181). Also refuse a closed 3-slide deck
+ * where every *real* slide is title-only (루프188). Generic `슬라이드 N` /
+ * `Slide N` placeholders stay out of the count so cover+empty first-fill
+ * drafts remain persistable.
  */
 export function deckLooksLikeTitleOnlyOutlineShell(html: string): boolean {
   const inners = listSlideSectionInners(html);
-  if (inners.length < 4) return false;
-  const titleOnly = inners.filter(slideInnerIsTitleOnlyShell).length;
+  if (inners.length < 3) return false;
+  const titleOnly = inners.filter((inner) => {
+    if (!slideInnerIsTitleOnlyShell(inner)) return false;
+    const heading = firstSlideHeading(inner);
+    if (!heading) return false;
+    const base = normalizeTopicHeadingBase(heading);
+    if (WEAK_GENERIC_SLIDE_LABEL_RE.test(base) || WEAK_GENERIC_SLIDE_LABEL_RE.test(heading)) {
+      return false;
+    }
+    return true;
+  }).length;
+  if (inners.length === 3) return titleOnly === 3;
   return titleOnly >= Math.ceil(inners.length * 0.6);
 }
 

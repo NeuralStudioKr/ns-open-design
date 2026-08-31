@@ -196,6 +196,44 @@ describe('루프183 · leading intro shell / unanchored translateY heal', () => 
     expect(out).toContain('삼각함수의 언어와 형상');
   });
 
+  it('drops a bare title-only splash without slide-title before the real cover (루프188)', () => {
+    const html = [
+      '<!doctype html><html lang="ko"><body class="tpl-pitch-deck">',
+      slide('style="width:1920px;height:1080px"', '<div data-od-slide-flow=""><h1>삼각함수</h1></div>'),
+      slide(
+        'data-screen-label="01 Cover" style="width:1920px;height:1080px"',
+        [
+          '<div data-od-slide-flow="">',
+          '<h1>삼각함수의 언어와 형상</h1>',
+          '<p>직각삼각형의 변 길이 비에서 시작해 단위원 위의 회전과 파동으로 확장되는 삼각함수의 핵심 어휘와 쓰임을 한 번에 정리합니다.</p>',
+          '</div>',
+        ].join(''),
+      ),
+      '</body></html>',
+    ].join('\n');
+
+    const out = dropLeadingTitleOnlyIntroBeforeRealCover(html, brief);
+    const count = (out.match(/<section\b[^>]*\bclass\s*=\s*["'][^"']*\bslide\b/gi) ?? []).length;
+    expect(count).toBe(1);
+    expect(out).toContain('data-screen-label="01 Cover"');
+    expect(out).toContain('삼각함수의 언어와 형상');
+    expect(out).not.toMatch(/<h1>삼각함수<\/h1>\s*<\/div>\s*<\/section>\s*<section/);
+  });
+
+  it('keeps a title-only real cover when it is already the selected cover host', () => {
+    const html = [
+      '<body>',
+      slide('class="slide cover slide-title" data-screen-label="01 Cover"', '<h1>삼각함수</h1>'),
+      slide('', '<h2>정의</h2><p>사인 코사인의 정의를 설명합니다.</p>'),
+      '</body>',
+    ].join('');
+    const out = dropLeadingTitleOnlyIntroBeforeRealCover(html, brief);
+    expect(out).toContain('data-screen-label="01 Cover"');
+    expect(out).toContain('<h1>삼각함수</h1>');
+    const count = (out.match(/<section\b[^>]*\bclass\s*=\s*["'][^"']*\bslide\b/gi) ?? []).length;
+    expect(count).toBe(2);
+  });
+
   it('keeps an intentional title-only first slide when the next slide is unrelated', () => {
     const html = [
       '<body>',

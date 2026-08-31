@@ -193,6 +193,15 @@ describe("deck-html-content", () => {
     expect(deckSlideHeadingsLookLikeFailedGenerate(outline)).toBe(true);
     expect(isPersistableShortDeckDraft(outline)).toBe(false);
     expect(hasFilledSlideSection(outline)).toBe(false);
+    const threeTitleOnly =
+      '<!doctype html><html lang="ko"><body>'
+      + '<section class="slide"><h1>영어 회화 로드맵</h1></section>'
+      + '<section class="slide"><h2>듣기 훈련</h2></section>'
+      + '<section class="slide"><h2>말하기 루틴</h2></section>'
+      + "</body></html>";
+    // 루프188 — closed 3-slide all-title outline (not cover+empty placeholders).
+    expect(deckSlideHeadingsLookLikeFailedGenerate(threeTitleOnly)).toBe(true);
+    expect(isPersistableShortDeckDraft(threeTitleOnly)).toBe(false);
     const longTitleOnly =
       '<!doctype html><html lang="ko"><body>'
       + '<section class="slide"><h1>삼각함수의 기본 개념과 단위원</h1></section>'
