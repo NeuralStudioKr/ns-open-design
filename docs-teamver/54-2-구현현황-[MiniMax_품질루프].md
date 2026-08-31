@@ -13,12 +13,18 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 |---|---|
 | 제거 | 카드 전체가 칸 번호뿐이면 그 칸을 지움. 예: `열네째`, `기둥 카`, `PILLAR 3` |
 | 유지 | 번호 뒤에 본문이 있으면 둠. 예: `열네째 실카피`. KPI `10%`, 단원 `UNIT 3`도 둠 |
-| 아직 번호로 안 봄 | heal이 아직 빈 칸으로 분류하지 않는 다음 라벨. 테스트 전용. 예: 열 라벨 `기둥 M` |
+| 아직 번호로 안 봄 | heal이 아직 빈 칸으로 분류하지 않는 다음 라벨. 테스트 전용. 예: 열 라벨 `기둥 N` |
 | 열 라벨 | 모델이 붙이는 접두(`기둥` / `PILLAR` / `Phase`) + 글자. `기둥`은 발표 용어가 아니라 칸 이름 |
 
 서수 유지 픽스처는 `스무 번째`. `열다섯째`는 `열`(칸) + `다섯째`와 겹쳐 이미 빈 칸 번호로 보입니다. extra-copy·stub는 주제 단어 목록이 아닙니다(루프259·265).
 
 ## 2026-08-31 현재 판단 · 최신 루프
+
+### 루프286 — 칸 번호 M · 열 라벨 파 · 열여섯째 빈 카드
+
+루프285까지는 A–L / 가…타 / 열다섯째까지만 빈 칸 번호로 본다. 모델이 빠진 3열을 `기둥 M` / `기둥 파` / `열여섯째`만으로 채워 빈 띠가 남는다. 그 세 제목만 제거. `스무 번째` / `기둥 하` / `기둥 N`과 번호+본문은 유지. 카피 발명 없음.
+
+검증: contracts heal-ai-generated-deck 루프286 · deck-framework-compact.
 
 ### 루프285 — 칸 번호 L · 열 라벨 타 · 열다섯째 빈 카드
 
@@ -643,7 +649,7 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 
 ### 다음 루프 후보 (2026-08-31 EOD 기준)
 
-- **후보 (루프286):** 모델이 빈 3열을 다음 열 라벨(`기둥 M`)로 채우면 그때 빈 칸 번호에 넣는다. `스무 번째`는 아직 번호로 보지 않는 서수 픽스처. equal-track residual도 후보. extra-copy·stub는 주제 단어 목록이 아님(루프259·265).
+- **후보 (루프287):** 모델이 빈 3열을 다음 열 라벨(`기둥 N`)로 채우면 그때 빈 칸 번호에 넣는다. `스무 번째`는 아직 번호로 보지 않는 서수 픽스처. 한글 열 라벨은 `하`가 마지막 유지. extra-copy·stub는 주제 단어 목록이 아님(루프259·265).
 - **인접 (루프206 밖):** `srcdoc-deck-bridge-nested-slides` native `#deck-next` 픽스처가 host next 후 `active:2`를 보고함 (transform/dot는 1). staging에서 이미 red — 이번 CSS 변경과 무관.
 - **후보 C (3열 residual):** `G` 이후 알파벳, `열한째` 이상 서수, 또는 3장 280 vs 900(비율 >2.05) leftover. 루프261–262이 E–F/바사/여섯째–열째와 3열 400 vs 800을 닫음.
 - **후보 B (예약 · 규모 큼):** contracts 안 `var(--pad, calc(px * n))` / `env(safe-area-inset-top, calc(...))` fallback red-spec 39건. fallback 표현을 card threshold 로 승격하는 heuristic — 별도 루프 필요.
@@ -1023,6 +1029,7 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | persist/preview: J/기둥 차/열세째 leftover 인덱스가 3열을 붙잡아 빈 띠 | ☑ 루프274 |
 | persist/preview: 칸 번호만 있는 3열 카드(K · 열 라벨 카 · 열네째) | ☑ 루프278 |
 | persist/preview: 칸 번호만 있는 3열 카드(L · 열 라벨 타 · 열다섯째) | ☑ 루프285 |
+| persist/preview: 칸 번호만 있는 3열 카드(M · 열 라벨 파 · 열여섯째) | ☑ 루프286 |
 | docs: leftover 용어를 「빈 칸 번호 카드」로 정리 | ☑ 루프284 |
 | preview: 공식 example-replit-deck GET이 helix를 주고 시드를 주지 않음 | ☑ 루프278 |
 | persist: substance-rich replacement가 artifact_regression 오탐 | ☑ 루프273 |
@@ -1045,7 +1052,14 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | contracts pretest: exactOptionalPropertyTypes TS2379 봉쇄 | ☑ 루프263 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프285 · 칸 번호 L/타/열다섯째)
+## 이번 루프 (루프286 · 칸 번호 M/파/열여섯째)
+
+- [x] 빈 칸 번호 — M · 열 라벨 파 · 열여섯째
+- [x] `스무 번째` / `기둥 하` / `기둥 N` · 번호+본문 유지
+- [x] heal-ai-generated-deck 루프286 · deck-framework-compact
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프285 · 칸 번호 L/타/열다섯째)
 
 - [x] 빈 칸 번호 — L · 열 라벨 타 · 열다섯째
 - [x] `스무 번째` / `기둥 파` / `기둥 M` · 번호+본문 유지

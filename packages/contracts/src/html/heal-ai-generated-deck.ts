@@ -1305,7 +1305,10 @@ function textLooksLikeLeftoverPeerPlaceholder(html: string): boolean {
  * column numbers: `기둥 L`, `기둥 타`, `스무 번째`.
  * 루프285 — drop empty column-number cards titled only `L` /
  * `기둥 타` / `열다섯째`. Keep `기둥 M`, `기둥 파`, `스무 번째`,
- * and number+body (`열다섯째 실카피`). These tokens are model-emitted
+ * and number+body (`열다섯째 실카피`).
+ * 루프286 — drop empty column-number cards titled only `M` /
+ * `기둥 파` / `열여섯째`. Keep `기둥 N`, `기둥 하`, `스무 번째`,
+ * and number+body (`열여섯째 실카피`). These tokens are model-emitted
  * column labels, not product copy.
  */
 const LEFTOVER_INDEX_ROMAN =
@@ -1314,10 +1317,10 @@ const LEFTOVER_INDEX_ROMAN =
 const LEFTOVER_INDEX_MARK = '[⓪①-⑨❶-❾⓿０-９⑴-⑼㉠-㉥]';
 /** 루프225/230 — 0 / 00 / 01–09 / 10 leftover shells. */
 const LEFTOVER_INDEX_DIGIT = '(?:0?[0-9]|10)';
-/** Latin A–L / 가…타 column letters. Not roman I/V/X. Not M–Z / 파… yet. */
-const LEFTOVER_INDEX_LETTER = '(?:[a-l]|[가나다라마바사아자차카타])';
-/** 첫째…열다섯째 empty ordinal titles. Keep number+body / `스무 번째`. */
-const LEFTOVER_INDEX_ORDINAL = '(?:열다섯|열네|열세|열두|열한|첫|둘|셋|넷|다섯|여섯|일곱|여덟|아홉|열)(?:째|번째)';
+/** Latin A–M / 가…파 column letters. Not roman I/V/X. Not N–Z / 하 yet. */
+const LEFTOVER_INDEX_LETTER = '(?:[a-m]|[가나다라마바사아자차카타파])';
+/** 첫째…열여섯째 empty ordinal titles. Keep number+body / `스무 번째`. */
+const LEFTOVER_INDEX_ORDINAL = '(?:열여섯|열다섯|열네|열세|열두|열한|첫|둘|셋|넷|다섯|여섯|일곱|여덟|아홉|열)(?:째|번째)';
 const LEFTOVER_INDEX_CORE =
   `(?:${LEFTOVER_INDEX_DIGIT}|${LEFTOVER_INDEX_ROMAN}|${LEFTOVER_INDEX_MARK}|${LEFTOVER_INDEX_LETTER}|${LEFTOVER_INDEX_ORDINAL})`;
 const LEFTOVER_INDEX_SUFFIX = '(?:\\s*(?:번|번째|st|nd|rd|th))?';
