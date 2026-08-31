@@ -1303,8 +1303,10 @@ function textLooksLikeLeftoverPeerPlaceholder(html: string): boolean {
  * `기둥 카` / `열네째`. Keep real copy after a number (`열네째 실카피`),
  * KPI/unit titles (`10%`, `UNIT 3`), and titles not yet treated as
  * column numbers: `기둥 L`, `기둥 타`, `스무 번째`.
- * `열다섯째` is already an empty column number (`열` = column + `다섯째`).
- * These tokens are model-emitted column labels, not product copy.
+ * 루프285 — drop empty column-number cards titled only `L` /
+ * `기둥 타` / `열다섯째`. Keep `기둥 M`, `기둥 파`, `스무 번째`,
+ * and number+body (`열다섯째 실카피`). These tokens are model-emitted
+ * column labels, not product copy.
  */
 const LEFTOVER_INDEX_ROMAN =
   '(?:viii|vii|iii|xii|xi|ix|iv|vi|ii|[xv]|i|[Ⅰ-Ⅻⅰ-ⅻ])';
@@ -1312,10 +1314,10 @@ const LEFTOVER_INDEX_ROMAN =
 const LEFTOVER_INDEX_MARK = '[⓪①-⑨❶-❾⓿０-９⑴-⑼㉠-㉥]';
 /** 루프225/230 — 0 / 00 / 01–09 / 10 leftover shells. */
 const LEFTOVER_INDEX_DIGIT = '(?:0?[0-9]|10)';
-/** Latin A–K / 가…카 column letters. Not roman I/V/X. Not L–Z / 타… yet. */
-const LEFTOVER_INDEX_LETTER = '(?:[a-k]|[가나다라마바사아자차카])';
-/** 첫째…열네째 empty ordinal titles. Keep number+body / `스무 번째`. */
-const LEFTOVER_INDEX_ORDINAL = '(?:열네|열세|열두|열한|첫|둘|셋|넷|다섯|여섯|일곱|여덟|아홉|열)(?:째|번째)';
+/** Latin A–L / 가…타 column letters. Not roman I/V/X. Not M–Z / 파… yet. */
+const LEFTOVER_INDEX_LETTER = '(?:[a-l]|[가나다라마바사아자차카타])';
+/** 첫째…열다섯째 empty ordinal titles. Keep number+body / `스무 번째`. */
+const LEFTOVER_INDEX_ORDINAL = '(?:열다섯|열네|열세|열두|열한|첫|둘|셋|넷|다섯|여섯|일곱|여덟|아홉|열)(?:째|번째)';
 const LEFTOVER_INDEX_CORE =
   `(?:${LEFTOVER_INDEX_DIGIT}|${LEFTOVER_INDEX_ROMAN}|${LEFTOVER_INDEX_MARK}|${LEFTOVER_INDEX_LETTER}|${LEFTOVER_INDEX_ORDINAL})`;
 const LEFTOVER_INDEX_SUFFIX = '(?:\\s*(?:번|번째|st|nd|rd|th))?';

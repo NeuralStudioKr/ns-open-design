@@ -2133,8 +2133,7 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
       expect(dropEmptyLeftoverPeerCardsInAllocatedRows(html, '미적분')).toBe(html);
     });
 
-    it('keeps 스무 번째 / 기둥 타 — not treated as empty column numbers yet (루프278/284)', () => {
-      // `열다섯째` already reads as column `열` + ordinal `다섯째`.
+    it('keeps 스무 번째 / 기둥 파 — not treated as empty column numbers yet (루프285)', () => {
       const twentieth = [
         '<div style="display:flex;gap:28px">',
         '<div class="card"><h3>하나</h3></div>',
@@ -2142,15 +2141,15 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
         '<div class="card"><h3>스무 번째</h3></div>',
         '</div>',
       ].join('');
-      const ta = [
+      const pa = [
         '<div style="display:flex;gap:28px">',
         '<div class="card"><h3>하나</h3></div>',
         '<div class="card"><h3>다음</h3></div>',
-        '<div class="card"><h3>기둥 타</h3></div>',
+        '<div class="card"><h3>기둥 파</h3></div>',
         '</div>',
       ].join('');
       expect(dropEmptyLeftoverPeerCardsInAllocatedRows(twentieth, '발표')).toBe(twentieth);
-      expect(dropEmptyLeftoverPeerCardsInAllocatedRows(ta, '발표')).toBe(ta);
+      expect(dropEmptyLeftoverPeerCardsInAllocatedRows(pa, '발표')).toBe(pa);
     });
 
     it('keeps 첫째 적분 real copy that is not an index leftover (루프239)', () => {
@@ -2367,15 +2366,82 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
       expect(dropEmptyLeftoverPeerCardsInAllocatedRows(html, '발표')).toBe(html);
     });
 
-    it('keeps 기둥 L — not treated as an empty column number yet (루프278/284)', () => {
+    it('drops a third card whose only text is the column label 기둥 L (루프285)', () => {
+      const html = [
+        '<div style="display:flex;gap:28px">',
+        '<div class="card" style="padding:24px"><h3>하나</h3><p>요지</p></div>',
+        '<div class="card" style="padding:24px"><h3>다음</h3><p>요지</p></div>',
+        '<div class="card" style="padding:24px"><h3>기둥 L</h3></div>',
+        '</div>',
+      ].join('');
+      const out = dropEmptyLeftoverPeerCardsInAllocatedRows(html, '발표');
+      expect((out.match(/class="card"/g) ?? []).length).toBe(2);
+      expect(out).not.toContain('기둥 L');
+      expect(out).toContain('하나');
+    });
+
+    it('drops a third card whose only text is the ordinal 열다섯째 (루프285)', () => {
       const html = [
         '<div style="display:flex;gap:28px">',
         '<div class="card"><h3>하나</h3></div>',
         '<div class="card"><h3>다음</h3></div>',
-        '<div class="card"><h3>기둥 L</h3></div>',
+        '<div class="card"><h3>열다섯째</h3></div>',
+        '</div>',
+      ].join('');
+      const out = dropEmptyLeftoverPeerCardsInAllocatedRows(html, '발표');
+      expect((out.match(/class="card"/g) ?? []).length).toBe(2);
+      expect(out).not.toContain('열다섯째');
+    });
+
+    it('drops a third card whose only text is the column label 기둥 타 (루프285)', () => {
+      const html = [
+        '<div style="display:flex;gap:28px">',
+        '<div class="card"><h3>하나</h3></div>',
+        '<div class="card"><h3>다음</h3></div>',
+        '<div class="card"><h3>기둥 타</h3></div>',
+        '</div>',
+      ].join('');
+      const out = dropEmptyLeftoverPeerCardsInAllocatedRows(html, '발표');
+      expect((out.match(/class="card"/g) ?? []).length).toBe(2);
+      expect(out).not.toContain('기둥 타');
+    });
+
+    it('keeps 열다섯째 실카피 — a column number plus real body copy (루프285)', () => {
+      const html = [
+        '<div style="display:flex;gap:28px">',
+        '<div class="card"><h3>하나</h3></div>',
+        '<div class="card"><h3>다음</h3></div>',
+        '<div class="card"><h3>열다섯째 실카피</h3></div>',
         '</div>',
       ].join('');
       expect(dropEmptyLeftoverPeerCardsInAllocatedRows(html, '발표')).toBe(html);
+    });
+
+    it('keeps 기둥 M — not treated as an empty column number yet (루프285)', () => {
+      const html = [
+        '<div style="display:flex;gap:28px">',
+        '<div class="card"><h3>하나</h3></div>',
+        '<div class="card"><h3>다음</h3></div>',
+        '<div class="card"><h3>기둥 M</h3></div>',
+        '</div>',
+      ].join('');
+      expect(dropEmptyLeftoverPeerCardsInAllocatedRows(html, '발표')).toBe(html);
+    });
+
+    it('pipeline removes a 기둥 타 column-number card without inventing copy (루프285)', () => {
+      const html = [
+        '<section class="slide"><h1>세 가지 포인트</h1>',
+        '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:24px">',
+        '<div class="card"><h3>하나</h3><p>요지</p></div>',
+        '<div class="card"><h3>다음</h3><p>요지</p></div>',
+        '<div class="card"><h3>기둥 타</h3></div>',
+        '</div></section>',
+      ].join('');
+      const out = healAiGeneratedDeckMarkup(html, '발표');
+      expect((out.match(/class="card"/g) ?? []).length).toBe(2);
+      expect(out).not.toContain('기둥 타');
+      expect(out).toContain('하나');
+      expect(out).toContain('다음');
     });
 
     it('pipeline removes a 기둥 카 column-number card without inventing copy (루프278)', () => {
