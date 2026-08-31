@@ -227,6 +227,8 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | chat: FOO `☀☁☂☃☄☼♨⌀⌂` | ☑ 루프861–870 / round862–871 |
 | kit: calc +/* 우선순위 · nested min/max/clamp | ☑ 루프871–885 / round872–886 |
 | chat: FOO `◐◑◒◓◔◕◖◗◘` | ☑ 루프886–895 / round887–896 |
+| kit: calc(min)+ · var/env 폴백 | ☑ 루프896–910 / round897–911 |
+| chat: FOO `①②③④⑤⑥⑦⑧⑨` | ☑ 루프911–920 / round912–921 |
 | kit/chat: set139–143 combo/closure | ☑ 루프791–795 / round792–796 |
 | persist/preview: leftover `·` 칩·발명 TOC가 brief 카피처럼 보임 | ☑ 루프144 |
 | preview: 레터박스 `#17181d`만 보이고 1/N만 동작 | ☑ 루프146 |
@@ -286,7 +288,18 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | persist/preview: business-template placeholder 확장(`[Company]`·`[Client]`·`[Project]`·`[Version]` 등) leftover 미scrub | ☑ 루프178 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프178 · placeholder scrub whitelist 확장)
+## 이번 루프 (루프896–920 / round897–921)
+
+- [x] **루프896–900**: `calc(min/max/clamp(…)+…)` 평탄화 혼합
+- [x] **루프901–905**: `var()`/`env()` 폴백 → calc/min/rem
+- [x] **루프906–910**: max+px · env+min · vh/ch · var+우선순위
+- [x] **루프911–915**: FOO `①②③④⑤` + 회귀
+- [x] **루프916–920**: FOO `⑥⑦⑧⑨` · invent-frame≠slide-flow 마감
+- [x] `normalizePaddingLengthValue` + FOO BMP
+- [x] `chat-leak-probe-round897`…`921` 25/25
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프178 · placeholder scrub whitelist 확장)
 
 ### 배경
 

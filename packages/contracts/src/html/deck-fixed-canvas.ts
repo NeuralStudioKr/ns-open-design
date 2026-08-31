@@ -2754,13 +2754,109 @@ function minMaxClampLooksCardLike(value: string): boolean {
   return false;
 }
 
+/** Format a finite magnitude for CSS length token injection (루프896). */
+function formatCssMagnitude(n: number): string {
+  if (!Number.isFinite(n)) return '0';
+  const rounded = Number(n.toFixed(6));
+  return String(rounded);
+}
+
+/**
+ * `var(--x, fallback)` / `env(name, fallback)` → fallback (루프901).
+ * No-fallback calls collapse to `0px` so scanning can continue.
+ */
+function substituteVarEnvFallbacks(value: string): string {
+  let cur = value;
+  let prev = '';
+  while (cur !== prev) {
+    prev = cur;
+    const re = /(?:var|env)\s*\(/gi;
+    let m: RegExpExecArray | null;
+    let last: { start: number; end: number; body: string } | null = null;
+    while ((m = re.exec(cur)) !== null) {
+      let depth = 1;
+      let i = m.index + m[0].length;
+      const bodyStart = i;
+      while (i < cur.length && depth > 0) {
+        const ch = cur[i]!;
+        if (ch === '(') depth += 1;
+        else if (ch === ')') depth -= 1;
+        i += 1;
+      }
+      if (depth === 0) {
+        last = { start: m.index, end: i, body: cur.slice(bodyStart, i - 1).trim() };
+      }
+    }
+    if (!last) break;
+    const args = splitTopLevelCommas(last.body);
+    const replacement =
+      args.length >= 2 ? args.slice(1).join(',').trim() : '0px';
+    cur = `${cur.slice(0, last.start)}${replacement || '0px'}${cur.slice(last.end)}`;
+  }
+  return cur;
+}
+
+/**
+ * Replace nested/top `min|max|clamp(...)` with a resolved length token so
+ * `calc(min(...) + 4px)` can use additive/precedence paths (루프896).
+ */
+function flattenMinMaxClampCalls(value: string): string {
+  let cur = value;
+  let prev = '';
+  while (cur !== prev) {
+    prev = cur;
+    const re = /(?:clamp|min|max)\s*\(/gi;
+    let m: RegExpExecArray | null;
+    let last: { start: number; end: number; kind: 'min' | 'max' | 'clamp'; body: string } | null =
+      null;
+    while ((m = re.exec(cur)) !== null) {
+      const kindRaw = m[0].replace(/\s*\($/, '').toLowerCase();
+      const kind = (kindRaw === 'clamp' || kindRaw === 'min' || kindRaw === 'max'
+        ? kindRaw
+        : null) as 'min' | 'max' | 'clamp' | null;
+      if (!kind) continue;
+      let depth = 1;
+      let i = m.index + m[0].length;
+      const bodyStart = i;
+      while (i < cur.length && depth > 0) {
+        const ch = cur[i]!;
+        if (ch === '(') depth += 1;
+        else if (ch === ')') depth -= 1;
+        i += 1;
+      }
+      if (depth === 0) {
+        last = {
+          start: m.index,
+          end: i,
+          kind,
+          body: cur.slice(bodyStart, i - 1).trim(),
+        };
+      }
+    }
+    if (!last) break;
+    const evaluated = evaluateMinMaxClampBody(last.kind, last.body);
+    const replacement = evaluated
+      ? evaluated.unit != null
+        ? `${formatCssMagnitude(evaluated.n)}${evaluated.unit}`
+        : `${formatCssMagnitude(evaluated.n)}px`
+      : '0px';
+    cur = `${cur.slice(0, last.start)}${replacement}${cur.slice(last.end)}`;
+  }
+  return cur;
+}
+
+/** var/env fallbacks then min/max/clamp flatten (루프896·901). */
+function normalizePaddingLengthValue(value: string): string {
+  return flattenMinMaxClampCalls(substituteVarEnvFallbacks(value));
+}
+
 function looksLikeCardLikePadding(style: string): boolean {
   const source = String(style ?? '');
   const padRe =
     /(?:^|;)\s*padding(?:-(?:top|right|bottom|left|block|inline)(?:-(?:start|end))?)?\s*:\s*([^;]+)/gi;
   let match: RegExpExecArray | null;
   while ((match = padRe.exec(source)) !== null) {
-    const value = match[1] ?? '';
+    const value = normalizePaddingLengthValue(match[1] ?? '');
     if (/(?:^|[\s/(,])(?:1[2-9]|[2-9]\d|\d{3,})(?:\.\d+)?px\b/i.test(value)) {
       return true;
     }
