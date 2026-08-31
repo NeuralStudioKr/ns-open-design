@@ -120,6 +120,22 @@ describe('루프298 · class-bound spilled chrome absorb', () => {
     expect(out.indexOf('sin²θ + cos²θ = 1')).toBeLessThan(out.indexOf('② 배각 공식'));
   });
 
+  it('drops adjacent identical cards in a class-bound flex row (루프301)', () => {
+    const card = `<div style="${chrome}"><div>① 피타고라스 항등식</div><div>sin²θ + cos²θ = 1</div></div>`;
+    const html = [
+      '<style>.cards{display:flex;gap:24px}</style>',
+      '<section class="slide">',
+      '<div class="cards">',
+      card,
+      card,
+      `<div style="${chrome}"><div>② 배각 공식</div><div>sin2θ = 2 sinθ cosθ</div></div>`,
+      '</div></section>',
+    ].join('');
+    const out = dropAdjacentDuplicatePeerCards(html, brief);
+    expect((out.match(/피타고라스 항등식/g) ?? []).length).toBe(1);
+    expect(out).toContain('② 배각 공식');
+  });
+
   it('pipeline does not invent leftover P copy (루프295–298)', () => {
     const html = [
       '<section class="slide" data-screen-label="06 마무리">',

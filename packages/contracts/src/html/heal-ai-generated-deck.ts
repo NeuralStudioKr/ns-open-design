@@ -535,8 +535,12 @@ export function unnestHeadingBlockChildren(html: string): string {
 
 const GRID_BLOCK_CHILD_RE =
   /^(div|section|article|li|figure|aside|header|footer|main|nav|ul|ol|p|table)$/;
-const EQUAL_FR_TRACK_RE =
-  /^(?:1(?:\.0+)?fr|minmax\(\s*(?:0|auto|min-content|max-content)\s*,\s*1(?:\.0+)?fr\s*\))$/i;
+/** 루프300 — MiniMax writes `minmax(0px,1fr)` / `minmax(0%,33%)`. */
+const SOFT_MINMAX_FLOOR = '(?:0(?:px|%|em|rem|pt|vw|vh|vmin|vmax)?|auto|min-content|max-content)';
+const EQUAL_FR_TRACK_RE = new RegExp(
+  `^(?:1(?:\\.0+)?fr|minmax\\(\\s*${SOFT_MINMAX_FLOOR}\\s*,\\s*1(?:\\.0+)?fr\\s*\\))$`,
+  'i',
+);
 /** 루프255 — identical 0.22–0.48fr leftover shares (skip 0.5fr splits). */
 const EQUAL_FR_SHARE_TRACK_RE = /^0?\.(?:2[2-9]|3\d|4[0-8])\d*fr$/i;
 /** 루프210/215/238 — identical 22–48% or viewport/container shares (skip 50 splits). */
@@ -608,10 +612,11 @@ function unwrapShareValue(raw: string): string | null {
  * sidebars stay.
  * 루프292 — second arg may be `calc(33%)` / `calc(100%/3)`. `[^)]+` cannot
  * parse nested parens, so the second arg is sliced by depth.
+ * 루프300 — floor may be `0px` / `0%` / `0em`, not only bare `0`.
  */
 function unwrapEqualShareTrack(track: string): string | null {
   const compact = String(track ?? '').replace(/\s+/g, '');
-  const head = /^minmax\((?:0|auto|min-content|max-content),/i.exec(compact);
+  const head = new RegExp(`^minmax\\(${SOFT_MINMAX_FLOOR},`, 'i').exec(compact);
   if (!head) return unwrapShareValue(compact);
   const innerStart = head[0].length;
   let depth = 1;
@@ -856,9 +861,10 @@ function minmaxUnitForEqualFr(decl: EqualColumnDecl): EqualColumnDecl | null {
   // 루프220 — `1.0fr` / `minmax(0,1.0fr)` are the same leftover as `1fr`.
   // 루프289 — `minmax(0,33%)` / `minmax(0,0.33fr)` share wrappers too.
   // 루프292 — `minmax(0,calc(33%))` / `minmax(0,calc(100%/3))`.
+  // 루프300 — `minmax(0px,1fr)` / `minmax(0%,33%)`.
   if (
     /^1(?:\.0+)?fr$/i.test(unit)
-    || /^minmax\((?:0|auto|min-content|max-content),1(?:\.0+)?fr\)$/i.test(unit)
+    || new RegExp(`^minmax\\(${SOFT_MINMAX_FLOOR},1(?:\\.0+)?fr\\)$`, 'i').test(unit)
     || EQUAL_FR_SHARE_TRACK_RE.test(unit)
     || EQUAL_COLUMN_SHARE_TRACK_RE.test(unit)
     || unwrapEqualShareTrack(unit) != null
@@ -1649,12 +1655,17 @@ function flexShorthandLockedBasisPx(style: string): number | null {
   const decl = /(?:^|;)\s*flex\s*:\s*([^;]+)/i.exec(style);
   if (!decl) return null;
   const raw = String(decl[1] ?? '').trim();
-  if (!/^0\s+0\s+/i.test(raw) && !/^none\b/i.test(raw)) return null;
-  // `%` is not a word char, so `\b` after it fails at end-of-decl (`33%`).
-  const length = /(\d+(?:\.\d+)?)\s*(px|rem|em|ch|%|vw|vh|vmin|vmax|dvh|svh|lvh|dvw|svw|lvw|dvmin|svmin|lvmin|dvmax|svmax|lvmax|vi|vb|svi|svb|lvi|lvb|dvi|dvb|cqw|cqi|cqh|cqb|cqmin|cqmax)/i
-    .exec(raw);
-  if (!length) return null;
-  return cssLengthToPx(`${length[1]}${length[2]}`);
+  if (/^0\s+0\s+/i.test(raw) || /^none\b/i.test(raw)) {
+    // `%` is not a word char, so `\b` after it fails at end-of-decl (`33%`).
+    const length = /(\d+(?:\.\d+)?)\s*(px|rem|em|ch|%|vw|vh|vmin|vmax|dvh|svh|lvh|dvw|svw|lvw|dvmin|svmin|lvmin|dvmax|svmax|lvmax|vi|vb|svi|svb|lvi|lvb|dvi|dvb|cqw|cqi|cqh|cqb|cqmin|cqmax)/i
+      .exec(raw);
+    if (!length) return null;
+    return cssLengthToPx(`${length[1]}${length[2]}`);
+  }
+  // 루프302 — `flex:1 1 33%` / `flex:1 1 calc(33%)` leftover basis.
+  const growShare = /^(?:1(?:\.0+)?)\s+(?:1(?:\.0+)?|0)\s+(.+)$/i.exec(raw);
+  if (!growShare) return null;
+  return cssLengthToPx((growShare[1] ?? '').trim());
 }
 
 function peerFixedMainSizePx(style: string): number | null {
@@ -1716,6 +1727,7 @@ function stripFixedMainSizeFromOpenTag(openTag: string): string {
     .replace(/(?:^|;)\s*max-inline-size\s*:[^;]*/gi, '')
     .replace(/(?:^|;)\s*flex-basis\s*:[^;]*/gi, '')
     .replace(/(?:^|;)\s*flex\s*:\s*(?:0\s+0|none)\s+[^;]*/gi, '')
+    .replace(/(?:^|;)\s*flex\s*:\s*1(?:\.0+)?\s+(?:1(?:\.0+)?|0)\s+[^;]*/gi, ';flex:1 1 0')
     .replace(/^;+|;+$/g, '')
     .replace(/;;+/g, ';')
     .trim();
@@ -1757,6 +1769,7 @@ function stripFixedMainSizeFromOpenTag(openTag: string): string {
  * 루프290 — same for logical size leftovers
  * (`max-inline-size:560px`, `inline-size:30vw`).
  * 루프296 — same for `calc(33%)` / `calc(100%/3)` leftover shares.
+ * 루프302 — same for `flex:1 1 33%` / `flex:1 1 calc(33%)` leftover basis.
  */
 export function relaxUniformPeerCardFixedMainSize(
   html: string,
@@ -2472,7 +2485,8 @@ function parentLooksLikeCardRow(style: string): boolean {
 /**
  * 루프297 — 같은 행에서 인접한 카드의 정규화 텍스트가 완전히 같으면
  * 뒤 카드를 제거. MiniMax가 같은 공식을 두 칸에 붙여 3열이 4열처럼
- * 보이는 잔여. 12자 미만·다른 본문·세로 스택은 유지. 카피 발명 없음.
+ * 보이는 잔여. 12자 미만·다른 본문·세로 스택은 유지.
+ * 루프301 — `.cards` / `.grid` class-bound 행도 동일. 카피 발명 없음.
  */
 export function dropAdjacentDuplicatePeerCards(
   html: string,
@@ -2481,13 +2495,18 @@ export function dropAdjacentDuplicatePeerCards(
   let out = String(html ?? '');
   if (!out) return out;
   if (!sourceLooksLikeAiGeneratedDeck(out, brief)) return out;
+  const flexNames = collectClassFlexRowNames(out);
+  const gridDecls = collectClassEqualTrackDecls(out);
   const openRe =
-    /<(div|section|article|main|aside|ul|ol)\b([^>]*\bstyle\s*=\s*(["'])([^"']*)\3[^>]*)>/gi;
+    /<(div|section|article|main|aside|ul|ol)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
   const patches: Array<{ start: number; end: number }> = [];
   let match: RegExpExecArray | null;
   while ((match = openRe.exec(out)) !== null) {
-    const style = match[4] ?? '';
-    if (!parentLooksLikeCardRow(style)) continue;
+    const attrs = match[2] ?? '';
+    const style = extractInlineStyle(attrs);
+    const tokens = classTokensFromAttrs(attrs);
+    const classBound = tokens.some((token) => flexNames.has(token) || gridDecls.get(token)?.cols);
+    if (!parentLooksLikeCardRow(style) && !classBound) continue;
     const tag = (match[1] ?? '').toLowerCase();
     const openEnd = match.index + match[0]!.length;
     const close = findSameTagClose(out, tag, openEnd);

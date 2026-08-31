@@ -19,6 +19,24 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-08-31 현재 판단 · 최신 루프
 
+### 루프302 — flex:1 1 calc(share) peer-lock
+
+`flex:0 0 33%`는 벗기지만 MiniMax `flex:1 1 calc(33%)` / `flex:1 1 33%`는 grow가 있어 잠금으로 안 봤다. 22–48 share basis만 `flex:1 1 0`으로 정규화. `flex:1 1 50%` 2열 유지. 카피 발명 없음.
+
+검증: contracts heal-ai-generated-deck 루프302.
+
+### 루프301 — class-bound 인접 동일 카드
+
+루프297은 inline `display:grid|flex`만. `.cards` / `.grid` 행의 완전 동일 인접 카드는 남음. 클래스 바인딩 행도 뒤 칸만 제거. 카피 발명 없음.
+
+검증: contracts heal-loop295-299-residuals 루프301.
+
+### 루프300 — minmax(0px, …) soft floor
+
+루프289/292는 floor가 bare `0`일 때만. MiniMax `minmax(0px,1fr)` / `minmax(0%,33%)`는 파서가 null. `0px`/`0%`/`0em`도 soft floor. `minmax(200px,1fr)` sidebar 유지. 카피 발명 없음.
+
+검증: contracts heal-ai-generated-deck 루프300.
+
 ### 루프299 — var(--x, share) equal-track
 
 루프292는 `calc(33%)`만. MiniMax `var(--col, 33%)` / `minmax(0, var(--col, calc(100%/3)))`는 커스텀 프로퍼티 fallback이 share인데 파서가 null. fallback만 unwrap. `var(--col, 50%)` 2열 유지. 카피 발명 없음.
@@ -726,6 +744,7 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 
 ### 다음 루프 후보 (2026-08-31 EOD 기준)
 
+- **완료 (루프300–302):** `minmax(0px,…)` floor · class-bound 인접 동일 카드 · `flex:1 1 calc(share)` basis. `기둥 P`는 여전히 번호로 보지 않음.
 - **완료 (루프295–299):** 연속 동일 substance 장 · calc() peer-lock · 인접 동일 카드 · class-bound spill · var(--x, share) 트랙. `기둥 P`는 여전히 번호로 보지 않음.
 - **완료 (루프294):** flex 행 크롬 카드 spill. 크롬 1개 스플릿·column·sidebar 유지.
 - **완료 (루프293):** class 없는 크롬 카드 spill absorb · 동일 style nest flatten. `SOH` footer·50/50·sidebar 유지.
