@@ -1144,6 +1144,8 @@ function textLooksLikeLeftoverPeerPlaceholder(html: string): boolean {
  * 루프230 — `10` / `PILLAR 10` two-digit leftovers. Keep `10%` KPI copy.
  * 루프237 — letter `C` / `기둥 다` / `(3)` / `3번` leftovers.
  * 루프239 — letter `D` / `기둥 마` / `첫째`/`둘째`/`셋째` leftovers.
+ * 루프242 — `Group 3` / `Lane 3` / `행 3` index leftovers.
+ * `UNIT 3` stays because that prefix is not leftover vocabulary.
  */
 const LEFTOVER_INDEX_ROMAN =
   '(?:viii|vii|iii|xii|xi|ix|iv|vi|ii|[xv]|i|[Ⅰ-Ⅻⅰ-ⅻ])';
@@ -1159,7 +1161,7 @@ const LEFTOVER_INDEX_CORE =
   `(?:${LEFTOVER_INDEX_DIGIT}|${LEFTOVER_INDEX_ROMAN}|${LEFTOVER_INDEX_MARK}|${LEFTOVER_INDEX_LETTER}|${LEFTOVER_INDEX_ORDINAL})`;
 const LEFTOVER_INDEX_SUFFIX = '(?:\\s*(?:번|번째|st|nd|rd|th))?';
 const LEFTOVER_INDEX_PREFIX =
-  '(?:pillar|column|col|card|item|step|part|key|theme|block|slot|phase|axis|layer|module|track|section|no\\.?|num(?:ber)?|#|기둥|열|카드|항목|단계|파트|번호|넘버|포인트|키|테마|블록|슬롯|페이즈|축|레이어|모듈|트랙|섹션)';
+  '(?:pillar|column|col|card|item|step|part|key|theme|block|slot|phase|axis|layer|module|track|section|group|lane|row|no\\.?|num(?:ber)?|#|기둥|열|카드|항목|단계|파트|번호|넘버|포인트|키|테마|블록|슬롯|페이즈|축|레이어|모듈|트랙|섹션|그룹|레인|행)';
 
 function textLooksLikeLeftoverIndexLabel(html: string): boolean {
   const text = visibleText(html).replace(/\s+/g, ' ').trim();
