@@ -1026,6 +1026,12 @@ const LEFTOVER_PEER_PLACEHOLDER_TOKENS = [
   '예시',
   '샘플',
   '더미',
+  // 루프223 — fill-instruction stubs MiniMax leaves on the missing pillar.
+  'tobefilled',
+  'filllater',
+  'inserthere',
+  'typetext',
+  'fillme',
 ].sort((a, b) => b.length - a.length);
 
 const LEFTOVER_PEER_PLACEHOLDER_PUNCT_RE = /^(?:[.…·•\-–—]{1,3})/u;
