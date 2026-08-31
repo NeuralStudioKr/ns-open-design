@@ -7,6 +7,12 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-08-31 현재 판단 · 최신 루프
 
+### 루프231 — 임시/fake leftover stub
+
+루프218–228은 dummy/자료없음 stub만 본다. MiniMax는 `임시`/`fake`로 빠진 기둥을 채워 3열이 유지된다. 카드 전체가 stub일 때만 제거. `임시 적분` 실카피는 유지. 카피 발명 없음.
+
+검증: contracts heal-ai-generated-deck 루프231 · deck-framework-compact.
+
 ### 루프230 — 10/PILLAR 10 leftover 인덱스
 
 루프225 leftover digit는 `0–9`/`00–09`만 본다. MiniMax는 `10`/`PILLAR 10`으로 빠진 기둥을 채워 3열이 유지된다. digit에 `10`만 추가. `10%` KPI는 유지. 카피 발명 없음.
@@ -586,9 +592,17 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | persist/preview: 자료없음/정보없음 stub 카드가 3열을 붙잡아 빈 띠 | ☑ 루프228 |
 | persist/preview: Module 3/섹션 3 leftover 카드가 3열을 붙잡아 빈 띠 | ☑ 루프229 |
 | persist/preview: 10/PILLAR 10 leftover 카드가 3열을 붙잡아 빈 띠 | ☑ 루프230 |
+| persist/preview: 임시/fake stub 카드가 3열을 붙잡아 빈 띠 | ☑ 루프231 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프230 · 10/PILLAR 10 인덱스)
+## 이번 루프 (루프231 · 임시/fake stub)
+
+- [x] 임시/가짜/가데이터 · temp/fake leftover
+- [x] 임시 적분 실카피 유지
+- [x] heal-ai-generated-deck 루프231 · deck-framework-compact
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프230 · 10/PILLAR 10 인덱스)
 
 - [x] leftover digit `10` 추가 (11–99 유지)
 - [x] `10%` KPI 유지

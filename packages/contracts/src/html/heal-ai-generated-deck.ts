@@ -1048,6 +1048,12 @@ const LEFTOVER_PEER_PLACEHOLDER_TOKENS = [
   '자료없음',
   '정보없음',
   '데이터없음',
+  // 루프231 — temp/fake shells MiniMax leaves on the missing pillar.
+  '가데이터',
+  '임시',
+  '가짜',
+  'temp',
+  'fake',
 ].sort((a, b) => b.length - a.length);
 
 const LEFTOVER_PEER_PLACEHOLDER_PUNCT_RE = /^(?:[.…·•\-–—]{1,3})/u;
