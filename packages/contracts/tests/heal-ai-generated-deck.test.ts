@@ -222,6 +222,27 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
       expect(out).not.toMatch(/grid-template-columns:\s*1\.0fr 1\.0fr 1\.0fr/);
     });
 
+    it('shrinks explicit 33dvw 33dvw 33dvw with 2 cards (루프245)', () => {
+      const html = [
+        '<div style="display:grid;grid-template-columns:33dvw 33dvw 33dvw;gap:24px">',
+        '<div>극한</div>',
+        '<div>도함수</div>',
+        '</div>',
+      ].join('');
+      const out = shrinkOverAllocatedRepeatGrid(html);
+      expect(out).toMatch(/grid-template-columns:\s*33dvw 33dvw/);
+      expect(out).not.toMatch(/grid-template-columns:\s*33dvw 33dvw 33dvw/);
+    });
+
+    it('leaves a 50svw 50svw split unchanged (루프245)', () => {
+      const html = [
+        '<div style="display:grid;grid-template-columns:50svw 50svw;gap:24px">',
+        '<div>목차</div>',
+        '</div>',
+      ].join('');
+      expect(shrinkOverAllocatedRepeatGrid(html)).toBe(html);
+    });
+
     it('shrinks explicit 33vh 33vh 33vh with 2 cards (루프238)', () => {
       const html = [
         '<div style="display:grid;grid-template-columns:33vh 33vh 33vh;gap:24px">',
@@ -308,6 +329,17 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
       const out = normalizeEqualFrTracksToMinmax(html);
       expect(out).toMatch(/grid-template-columns:\s*(?:minmax\(0,1fr\) ){2}minmax\(0,1fr\)/);
       expect(out).not.toMatch(/grid-template-columns:\s*33% 33% 33%/);
+    });
+
+    it('rewrites a filled 33dvw 33dvw 33dvw row to minmax (루프245)', () => {
+      const html = [
+        '<div style="display:grid;grid-template-columns:33dvw 33dvw 33dvw;gap:24px">',
+        '<div>a</div><div>b</div><div>c</div>',
+        '</div>',
+      ].join('');
+      const out = normalizeEqualFrTracksToMinmax(html);
+      expect(out).toMatch(/grid-template-columns:\s*(?:minmax\(0,1fr\) ){2}minmax\(0,1fr\)/);
+      expect(out).not.toMatch(/grid-template-columns:\s*33dvw 33dvw 33dvw/);
     });
 
     it('rewrites a filled 33vh 33vh 33vh row to minmax (루프238)', () => {
@@ -2090,6 +2122,21 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
       const out = relaxUniformPeerCardFixedMainSize(html, '미적분');
       expect(out).not.toMatch(/flex:\s*0 0 33%/);
       expect(out).toContain('극한');
+    });
+
+    it('strips uniform 30lvw column-share widths so three cards can share (루프245)', () => {
+      const html = [
+        '<div style="display:flex;gap:24px">',
+        '<div class="card" style="width:30lvw;padding:24px"><h3>극한</h3></div>',
+        '<div class="card" style="width:30lvw;padding:24px"><h3>도함수</h3></div>',
+        '<div class="card" style="width:30lvw;padding:24px"><h3>적분</h3></div>',
+        '</div>',
+      ].join('');
+      const out = relaxUniformPeerCardFixedMainSize(html, '미적분');
+      expect(out).not.toMatch(/width:\s*30lvw/);
+      expect(out).toContain('극한');
+      expect(out).toContain('도함수');
+      expect(out).toContain('적분');
     });
 
     it('strips uniform 30vmin column-share widths so three cards can share (루프238)', () => {

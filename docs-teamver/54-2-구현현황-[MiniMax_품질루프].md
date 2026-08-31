@@ -7,6 +7,12 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-08-31 현재 판단 · 최신 루프
 
+### 루프245 — 동일 33dvw 그리드·카드 폭 leftover
+
+루프238은 vh/vmin/dvh만 본다. MiniMax는 `33dvw 33dvw 33dvw`나 `width:30lvw`를 남겨 2장이면 빈 띠, 3장이면 클립이 난다. 동일 22–48dvw/svw/lvw만 `minmax(0,1fr)`로 바꾸고 카드 폭을 벗긴다. `50svw` split은 유지. 카피 발명 없음.
+
+검증: contracts heal-ai-generated-deck 루프245 · deck-framework-compact.
+
 ### 루프244 — pass/skip leftover stub
 
 루프224–243은 생략/null stub만 본다. MiniMax는 `pass`/`스킵`으로 빠진 기둥을 채워 3열이 유지된다. 카드 전체가 stub일 때만 제거. `pass 적분` 실카피는 유지. 카피 발명 없음.
@@ -684,9 +690,17 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | persist/preview: Group 3/행 3 leftover 카드가 3열을 붙잡아 빈 띠 | ☑ 루프242 |
 | persist/preview: null/undefined stub 카드가 3열을 붙잡아 빈 띠 | ☑ 루프243 |
 | persist/preview: pass/skip stub 카드가 3열을 붙잡아 빈 띠 | ☑ 루프244 |
+| persist/preview: 동일 33dvw/lvw 트랙·카드 폭이 leftover 빈 띠·클립 | ☑ 루프245 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프244 · pass/skip stub)
+## 이번 루프 (루프245 · 33dvw/lvw 트랙)
+
+- [x] equal track + card lock — 22–48 dvw/svw/lvw → minmax / strip
+- [x] `50svw` split 유지
+- [x] heal-ai-generated-deck 루프245 · deck-framework-compact
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프244 · pass/skip stub)
 
 - [x] pass/skip · 패스/스킵 leftover
 - [x] pass 적분 실카피 유지
