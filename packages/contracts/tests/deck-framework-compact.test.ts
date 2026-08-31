@@ -85,6 +85,7 @@ describe('DECK_FRAMEWORK_DIRECTIVE_COMPACT', () => {
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('FIXME/etc');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('etc/ok');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('ok/misc');
+    expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('misc/other');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('33vh/vmin');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('33vh/vmin/dvw');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('33vh/vmin/dvw/cqmin');

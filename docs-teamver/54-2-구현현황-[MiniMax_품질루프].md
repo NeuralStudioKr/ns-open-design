@@ -7,6 +7,12 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-08-31 현재 판단 · 최신 루프
 
+### 루프265 — leftover stub는 주제 단어가 아님 (그외/other)
+
+`미분`/`적분`만 빼면 `그외`/`나머지`/`other`/`rest` leftover가 3열을 붙잡는다. 그 계열만 leftover. stub+추가 본문은 주제 무관 유지. 카피 발명 없음.
+
+검증: contracts heal-ai-generated-deck 루프265 · deck-framework-compact.
+
 ### 루프269 — thin prior top-up noop → incomplete
 
 top-up이 장을 못 붙였을 때 prior가 제목+빈 셸/low-substance면 `skipped-noop` 대신 `skipped-incomplete` + `thin-prior-top-up-no-append`. AC 거부·내용 부족 배너.
@@ -462,7 +468,7 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 
 ### 다음 루프 후보 (2026-08-31 EOD 기준)
 
-- **후보 (루프265):** leftover stub `TBA` 변형 외는 닫힘. 다음 후보는 leftover 문자 `G`/`열한째`(의도적 제외) 또는 equal-track residual. leftover extra-copy는 주제 단어가 아님(루프259).
+- **후보 (루프266):** leftover 문자 `G`/`열한째`(의도적 제외) 또는 equal-track residual. leftover extra-copy·stub는 주제 단어 목록이 아님(루프259·265).
 - **인접 (루프206 밖):** `srcdoc-deck-bridge-nested-slides` native `#deck-next` 픽스처가 host next 후 `active:2`를 보고함 (transform/dot는 1). staging에서 이미 red — 이번 CSS 변경과 무관.
 - **후보 C (3열 residual):** `G` 이후 알파벳, `열한째` 이상 서수, 또는 3장 280 vs 900(비율 >2.05) leftover. 루프261–262이 E–F/바사/여섯째–열째와 3열 400 vs 800을 닫음.
 - **후보 B (예약 · 규모 큼):** contracts 안 `var(--pad, calc(px * n))` / `env(safe-area-inset-top, calc(...))` fallback red-spec 39건. fallback 표현을 card threshold 로 승격하는 heuristic — 별도 루프 필요.
@@ -834,17 +840,29 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | persist/preview: ok/done/완료 stub 카드가 3열을 붙잡아 빈 띠 | ☑ 루프258 |
 | persist/preview: E/기둥 바/여섯째 leftover 인덱스가 3열을 붙잡아 빈 띠 | ☑ 루프261 |
 | persist/preview: 3열 400 vs 800 max-width가 leftover lock을 피해 클립 | ☑ 루프262 |
+| leftover extra-copy를 주제 단어(미분/적분)로 하드코딩 | ☑ 루프259 |
+| persist/preview: misc/기타사항 stub 카드가 3열을 붙잡아 빈 띠 | ☑ 루프264 |
+| persist/preview: 그외/other/rest leftover stub가 3열을 붙잡아 빈 띠 | ☑ 루프265 |
 | persist: title-only cover + empty hosts가 short-draft 성공 | ☑ 루프267 |
 | persist: embed stub-warn overwrite | ☑ 루프268 |
 | persist: thin prior top-up noop가 calm success | ☑ 루프269 |
+| contracts pretest: exactOptionalPropertyTypes TS2379 봉쇄 | ☑ 루프263 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프267–269 · short-draft empty · stub force reject · thin top-up)
+## 이번 루프 (루프265 · 그외/other stub · 주제 단어 아님)
+
+- [x] other/others/another/rest · 그외/나머지/여타 leftover
+- [x] stub+추가 본문은 어떤 주제 단어든 유지
+- [x] heal-ai-generated-deck 루프265 · deck-framework-compact
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프267–269 · short-draft empty · stub force reject · thin top-up)
 
 - [x] title-only cover + ≥2 empty hosts → short-draft 거절 (본문 cover+empty 유지)
 - [x] Teamver embed `forceArtifactStubGuardReject` (warn→reject)
 - [x] thin prior top-up noop → incomplete + AC 거부
 - [x] deck-html-content · artifact-stub-guard · projects-stub-guard · resume · error-messages · canvas-slide-launch
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
 
 ## 직전 루프 (루프264 · misc/기타사항 stub)
 

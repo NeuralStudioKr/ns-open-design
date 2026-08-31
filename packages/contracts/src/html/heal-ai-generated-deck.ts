@@ -1207,6 +1207,15 @@ const LEFTOVER_PEER_PLACEHOLDER_TOKENS = [
   'miscellaneous',
   '기타사항',
   'misc',
+  // 루프265 — "the rest" leftover shells. Topic words are never leftover
+  // vocabulary; extra visible text of any topic still keeps the card.
+  'another',
+  'others',
+  'other',
+  '나머지',
+  '여타',
+  '그외',
+  'rest',
 ].sort((a, b) => b.length - a.length);
 
 const LEFTOVER_PEER_PLACEHOLDER_PUNCT_RE = /^(?:[.…·•\-–—]{1,3})/u;
@@ -1228,8 +1237,8 @@ function leftoverPlaceholderTokenLength(compact: string): number | null {
 
 /**
  * A leftover stub card is only leftover when compact text is entirely
- * leftover tokens. Any remaining text — any topic, never a word list —
- * means the card has real copy and must stay.
+ * leftover tokens. Any remaining text of any topic — never a brief-word
+ * list such as one lecture term — means the card has real copy and must stay.
  */
 function leftoverPlaceholderTokenCount(compact: string): number | null {
   let rest = compact;
@@ -1255,8 +1264,9 @@ function textLooksLikeLeftoverPeerPlaceholder(html: string): boolean {
 
 /**
  * 루프205 — A third card that is only `PILLAR 03` / `COLUMN 3` / `03`
- * is a leftover index shell, not a pillar. Keep `PILLAR 01 lim` and
- * numbered step rows where every peer is an index.
+ * is a leftover index shell, not a pillar. Keep leftover-index cards
+ * that still have extra visible text, and numbered step rows where
+ * every peer is an index.
  * 루프209 — same for `PILLAR III` / `기둥 Ⅲ` roman leftovers.
  * 루프212 — `No. 3` / `번호 3` / `포인트 3` index leftovers.
  * 루프217 — `KEY 3` / `테마 3` / `블록 3` index leftovers.

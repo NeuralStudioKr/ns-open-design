@@ -1007,6 +1007,49 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
       expect(out).toContain('다음');
     });
 
+    it('drops a 그외 leftover third card (루프265)', () => {
+      const html = [
+        '<div style="display:flex;gap:28px">',
+        '<div class="card" style="padding:24px"><h3>하나</h3><p>요지</p></div>',
+        '<div class="card" style="padding:24px"><h3>다음</h3><p>요지</p></div>',
+        '<div class="card" style="padding:24px"><h3>그외</h3></div>',
+        '</div>',
+      ].join('');
+      const out = dropEmptyLeftoverPeerCardsInAllocatedRows(html, '발표');
+      expect((out.match(/class="card"/g) ?? []).length).toBe(2);
+      expect(out).not.toContain('그외');
+      expect(out).toContain('하나');
+    });
+
+    it('keeps leftover stubs that still have extra visible text of any topic (루프265)', () => {
+      const extras = ['실카피', 'notes', '범위'];
+      for (const extra of extras) {
+        const html = [
+          '<div style="display:flex;gap:16px">',
+          '<div class="card"><h3>하나</h3><p>요지</p></div>',
+          `<div class="card"><h3>other</h3><p>${extra}</p></div>`,
+          '</div>',
+        ].join('');
+        expect(dropEmptyLeftoverPeerCardsInAllocatedRows(html, '발표')).toBe(html);
+      }
+    });
+
+    it('pipeline heals a rest leftover without inventing topic copy (루프265)', () => {
+      const html = [
+        '<section class="slide"><h1>세 가지 포인트</h1>',
+        '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:24px">',
+        '<div class="card"><h3>하나</h3><p>요지</p></div>',
+        '<div class="card"><h3>다음</h3><p>요지</p></div>',
+        '<div class="card"><h3>rest</h3></div>',
+        '</div></section>',
+      ].join('');
+      const out = healAiGeneratedDeckMarkup(html, '발표');
+      expect((out.match(/class="card"/g) ?? []).length).toBe(2);
+      expect(out).not.toMatch(/\brest\b/i);
+      expect(out).toContain('하나');
+      expect(out).toContain('다음');
+    });
+
     it('drops a Chapter 3 leftover third card (루프248)', () => {
       const html = [
         '<div style="display:flex;gap:28px">',
