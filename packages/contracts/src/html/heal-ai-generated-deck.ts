@@ -324,8 +324,9 @@ export function dropDuplicateConsecutiveTitleOnlyLeftoverSlides(html: string): s
  *
  * 루프182/236은 title-only(≤40자)만 접는다. MiniMax는 같은 마무리 장을
  * 실체 본문째 한 번 더 넣는다. 정규화 텍스트가 완전히 같고, 둘 다
- * title-only 한도(40자)를 넘으며 바로 옆일 때만 뒤 장을 제거. 커버·챕터·비인접
- * 재사용은 유지. 카피 발명 없음.
+ * title-only 한도(40자)를 넘으며 바로 옆일 때만 뒤 장을 제거. 루프319는
+ * 문장부호만 다른 연속 장도 접는다. 커버·챕터·비인접 재사용·추가 문장은 유지.
+ * 카피 발명 없음.
  */
 export function dropDuplicateConsecutiveSubstanceSlides(html: string): string {
   let out = String(html ?? '');
@@ -348,7 +349,15 @@ export function dropDuplicateConsecutiveSubstanceSlides(html: string): string {
     // emitted twice with real body copy (> 40).
     if (currText.length <= DUPLICATE_TITLE_ONLY_VISIBLE_TEXT_LIMIT) continue;
     if (prevText.length <= DUPLICATE_TITLE_ONLY_VISIBLE_TEXT_LIMIT) continue;
-    if (!currText || currText !== prevText) continue;
+    if (!currText || !prevText) continue;
+    // 루프319 — 문장부호·공백만 다른 연속 장 (`있다.` vs `있다`).
+    // 추가 문장이 있는 마무리는 유지.
+    if (
+      currText !== prevText
+      && normalizedTopicForComparison(currText) !== normalizedTopicForComparison(prevText)
+    ) {
+      continue;
+    }
     out = removeSlideSpan(out, curr);
   }
   return out;
@@ -536,7 +545,8 @@ export function unnestHeadingBlockChildren(html: string): string {
 const GRID_BLOCK_CHILD_RE =
   /^(div|section|article|li|figure|aside|header|footer|main|nav|ul|ol|p|table)$/;
 /** 루프300 — MiniMax writes `minmax(0px,1fr)` / `minmax(0%,33%)`. */
-const SOFT_MINMAX_FLOOR = '(?:0(?:px|%|em|rem|pt|vw|vh|vmin|vmax)?|auto|min-content|max-content)';
+/** 루프318 — same leftover with `0ch` / `0ex` / `0lh` / `0cqw` floors. */
+const SOFT_MINMAX_FLOOR = '(?:0(?:px|%|em|rem|pt|ch|ex|lh|rlh|cap|ic|vw|vh|vmin|vmax|dvh|svh|lvh|dvw|svw|lvw|dvmin|svmin|lvmin|dvmax|svmax|lvmax|vi|vb|svi|svb|lvi|lvb|dvi|dvb|cqw|cqi|cqh|cqb|cqmin|cqmax)?|auto|min-content|max-content)';
 const EQUAL_FR_TRACK_RE = new RegExp(
   `^(?:1(?:\\.0+)?fr|minmax\\(\\s*${SOFT_MINMAX_FLOOR}\\s*,\\s*1(?:\\.0+)?fr\\s*\\))$`,
   'i',
@@ -562,6 +572,13 @@ function unwrapCalcShareInner(inner: string): string | null {
   const third = /^100(%|vw|vh|vmin|vmax|dvh|svh|lvh|dvw|svw|lvw|dvmin|svmin|lvmin|dvmax|svmax|lvmax|vi|vb|svi|svb|lvi|lvb|dvi|dvb|cqw|cqi|cqh|cqb|cqmin|cqmax)\/3$/i
     .exec(expr);
   if (third) return `33${(third[1] ?? '%').toLowerCase()}`;
+  // 루프314 — `calc(100%/sibling-count())` is equal-fr leftover, not 50%.
+  if (/^100(?:%|vw|vh|vmin|vmax|dvh|svh|lvh|dvw|svw|lvw|dvmin|svmin|lvmin|dvmax|svmax|lvmax|vi|vb|svi|svb|lvi|lvb|dvi|dvb|cqw|cqi|cqh|cqb|cqmin|cqmax)\/sibling-count\(\)$/i.test(expr)) {
+    return '1fr';
+  }
+  if (/^\(100(?:%|vw|vh|vmin|vmax|dvh|svh|lvh|dvw|svw|lvw|dvmin|svmin|lvmin|dvmax|svmax|lvmax|vi|vb|svi|svb|lvi|lvb|dvi|dvb|cqw|cqi|cqh|cqb|cqmin|cqmax)[-](?:\d+(?:\.\d+)?)(?:px|rem|em|ch)\)\/sibling-count\(\)$/i.test(expr)) {
+    return '1fr';
+  }
   return unwrapCalcGapAdjustedShare(expr);
 }
 
@@ -623,8 +640,12 @@ function unwrapCalcGapAdjustedShare(expr: string): string | null {
 /**
  * 루프299 — `var(--col, 33%)` fallback만 share로 본다.
  * 루프310 — `env(safe-area-inset-*, 33%)` fallback도 동일.
+ * 루프317 — 구형 `constant(safe-area-inset-*, 33%)` alias도 동일.
  */
-function cssFnCommaFallbackInner(compact: string, fn: 'var' | 'env'): string | null {
+function cssFnCommaFallbackInner(
+  compact: string,
+  fn: 'var' | 'env' | 'constant',
+): string | null {
   const head = new RegExp(`^${fn}\\(`, 'i').exec(compact);
   if (!head) return null;
   const inner = compact.slice(head[0].length);
@@ -702,7 +723,8 @@ function unwrapShareValue(raw: string): string | null {
   const calc = unwrapCalcShareInner(compact);
   if (calc) return calc;
   const fallback = cssFnCommaFallbackInner(compact, 'var')
-    ?? cssFnCommaFallbackInner(compact, 'env');
+    ?? cssFnCommaFallbackInner(compact, 'env')
+    ?? cssFnCommaFallbackInner(compact, 'constant');
   if (fallback) return unwrapShareValue(fallback);
   const fit = unwrapFitContentShare(compact);
   if (fit) return fit;
@@ -749,6 +771,36 @@ function equalShareTrackKey(track: string): string | null {
     return compact;
   }
   return unwrapEqualShareTrack(compact) ?? unwrapShareValue(compact);
+}
+
+const NEAR_EQUAL_SHARE_DELTA = 2;
+const NEAR_EQUAL_FR_DELTA = 0.02;
+
+function leftoverShareMeasure(key: string): { value: number; unit: string } | null {
+  const compact = String(key ?? '').replace(/\s+/g, '').toLowerCase();
+  const frShare = /^(0?\.(?:2[2-9]|3\d|4[0-8])\d*)fr$/.exec(compact);
+  if (frShare) {
+    const value = Number.parseFloat(frShare[1] ?? '');
+    return Number.isFinite(value) ? { value, unit: 'fr' } : null;
+  }
+  const col = /^((?:2[2-9]|3\d|4[0-8])(?:\.\d+)?)(%|vw|vh|vmin|vmax|dvh|svh|lvh|dvw|svw|lvw|dvmin|svmin|lvmin|dvmax|svmax|lvmax|vi|vb|svi|svb|lvi|lvb|dvi|dvb|cqw|cqi|cqh|cqb|cqmin|cqmax)$/i
+    .exec(compact);
+  if (!col) return null;
+  const value = Number.parseFloat(col[1] ?? '');
+  const unit = (col[2] ?? '').toLowerCase();
+  if (!Number.isFinite(value) || !unit) return null;
+  return { value, unit };
+}
+
+function leftoverSharesLookNearEqual(keys: Array<string | null>): boolean {
+  if (keys.length < 2 || keys.length > 6) return false;
+  const measures = keys.map((key) => (key ? leftoverShareMeasure(key) : null));
+  if (measures.some((item) => item == null)) return false;
+  const unit = measures[0]!.unit;
+  if (!measures.every((item) => item!.unit === unit)) return false;
+  const values = measures.map((item) => item!.value);
+  const delta = unit === 'fr' ? NEAR_EQUAL_FR_DELTA : NEAR_EQUAL_SHARE_DELTA;
+  return Math.max(...values) - Math.min(...values) <= delta;
 }
 
 function splitCssGridTracks(value: string): string[] {
@@ -914,6 +966,7 @@ function parseDeclaredEqualColumns(value: string): EqualColumnDecl | null {
   const shareKeys = tracks.map((t) => equalShareTrackKey(t));
   if (
     shareKeys.every((key) => key != null && key === shareKeys[0])
+    || leftoverSharesLookNearEqual(shareKeys)
   ) {
     return {
       kind: 'list',
@@ -1129,6 +1182,50 @@ export function normalizeGridAutoColumnShares(
       start: match.index,
       end: match.index + openTag.length,
       replacement: replaceStyleDecl(openTag, 'grid-auto-columns', 'minmax(0,1fr)'),
+    });
+  }
+  if (patches.length === 0) return out;
+  patches.sort((a, b) => b.start - a.start);
+  for (const patch of patches) {
+    out = `${out.slice(0, patch.start)}${patch.replacement}${out.slice(patch.end)}`;
+  }
+  return out;
+}
+
+/**
+ * 루프316 — `grid-auto-rows:33%` implicit leftover bands.
+ * No (or none/auto) template-rows, 2–6 children, leftover share only.
+ * Rewrite auto-rows to minmax(0,1fr). `50%` / px 유지.
+ */
+export function normalizeGridAutoRowShares(
+  html: string,
+  brief?: string | null,
+): string {
+  let out = String(html ?? '');
+  if (!out) return out;
+  if (!sourceLooksLikeAiGeneratedDeck(out, brief)) return out;
+  const gridOpenRe =
+    /<(div|section|article|main|aside|ul|ol)\b([^>]*\bstyle\s*=\s*(["'])([^"']*)\3[^>]*)>/gi;
+  const patches: Array<{ start: number; end: number; replacement: string }> = [];
+  let match: RegExpExecArray | null;
+  while ((match = gridOpenRe.exec(out)) !== null) {
+    const style = match[4] ?? '';
+    const autoRaw = /grid-auto-rows\s*:\s*([^;]+)/i.exec(style)?.[1];
+    if (!autoRaw) continue;
+    const template = /grid-template-rows\s*:\s*([^;]+)/i.exec(style)?.[1]?.trim();
+    if (template && !/^(?:none|auto)$/i.test(template)) continue;
+    if (!unitLooksLikeLeftoverShare(autoRaw.replace(/!important/gi, '').trim())) continue;
+    const openTag = match[0] ?? '';
+    const tag = (match[1] ?? '').toLowerCase();
+    const openEnd = match.index + openTag.length;
+    const close = findSameTagClose(out, tag, openEnd);
+    if (!close) continue;
+    const directChildren = countDirectBlockChildren(out.slice(openEnd, close.closeStart));
+    if (directChildren < 2 || directChildren > 6) continue;
+    patches.push({
+      start: match.index,
+      end: match.index + openTag.length,
+      replacement: replaceStyleDecl(openTag, 'grid-auto-rows', 'minmax(0,1fr)'),
     });
   }
   if (patches.length === 0) return out;
@@ -3128,6 +3225,7 @@ export function healAiGeneratedDeckMarkup(html: string, brief?: string | null): 
   out = shrinkOverAllocatedRepeatGrid(out);
   out = normalizeEqualFrTracksToMinmax(out);
   out = normalizeGridAutoColumnShares(out, brief);
+  out = normalizeGridAutoRowShares(out, brief);
   out = shrinkOverAllocatedEqualTrackRows(out);
   out = shrinkClassBoundEqualTrackGrids(out, brief);
   out = balanceUnderfilledFlexCardRow(out);

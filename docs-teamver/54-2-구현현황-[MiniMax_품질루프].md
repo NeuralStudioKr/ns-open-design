@@ -19,6 +19,42 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-08-31 현재 판단 · 최신 루프
 
+### 루프319 — 문장부호만 다른 연속 substance 장
+
+루프295는 정규화 텍스트가 완전히 같을 때만 접는다. MiniMax는 같은 마무리를 `있다` / `있다.`로만 바꿔 한 장 더 넣는다. 글자·숫자만 같으면 뒤 장 제거. 추가 문장·커버·비인접 재사용 유지. 카피 발명 없음.
+
+검증: contracts heal-loop295-299-residuals 루프319.
+
+### 루프318 — minmax(0ch/0ex/0lh/0cqw, share) floor
+
+소프트 플로어가 `0`/`0px`/`0%`/`0em`만. MiniMax `minmax(0ch,33%)` / `minmax(0cqw,calc(100%/3))`는 언랩 실패. ch/ex/lh/cq* 0-floor 추가. `minmax(200px,1fr)` 유지. 카피 발명 없음.
+
+검증: contracts heal-ai-generated-deck 루프318.
+
+### 루프317 — constant(..., share) equal-track
+
+`env()`만 언랩. 구형 `constant(safe-area-inset-*, 33%)` leftover fallback도 동일. `constant(..., 50%)` 2열 유지. 카피 발명 없음.
+
+검증: contracts heal-ai-generated-deck 루프317.
+
+### 루프316 — grid-auto-rows leftover share
+
+309는 열만. MiniMax `grid-auto-rows:33%` implicit 행이 빈 띠를 남김. 자식 2–6 · leftover share만 `minmax(0,1fr)`. `grid-auto-rows:50%` 유지. 카피 발명 없음.
+
+검증: contracts heal-ai-generated-deck 루프316.
+
+### 루프315 — 33/34 leftover rounding
+
+동일 share만 equal-track으로 봤다. MiniMax `33% 33% 34%` 반올림 leftover는 파서가 null. 같은 단위 · 22–48 밴드 · 차이 ≤2(%/vw) 또는 ≤0.02fr. `30% 50%` 유지. 카피 발명 없음.
+
+검증: contracts heal-ai-generated-deck 루프315.
+
+### 루프314 — sibling-count() equal-track
+
+`calc(100%/sibling-count())` / `calc((100% - 48px)/sibling-count())`는 자식 수에 따른 균등 leftover. `1fr`로 보고 `minmax(0,1fr)`. 카피 발명 없음.
+
+검증: contracts heal-ai-generated-deck 루프314.
+
 ### 루프313 — -webkit-flex leftover peer-lock
 
 표준 `flex:`만 보면 MiniMax `-webkit-flex:2 1 33%` / `-webkit-flex-basis:33%` 잠금이 남는다. vendor shorthand도 22–48 share일 때 `flex:1 1 0`. `-webkit-flex:2 1 50%` 2열 유지. 카피 발명 없음.
@@ -810,6 +846,7 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 
 ### 다음 루프 후보 (2026-08-31 EOD 기준)
 
+- **완료 (루프314–319):** `sibling-count()` 균등 트랙 · 33/34 rounding · `grid-auto-rows` share · `constant(..., share)` · `0ch`/`0cqw` floor · 문장부호-only 연속 장. `기둥 P`는 여전히 번호로 보지 않음.
 - **완료 (루프307–313):** inline-grid spill · `flex:G S` leftover · `grid-auto-columns` share · `env(..., share)` · `repeat(auto-fill|fit, share)` · gap-adjusted calc · `-webkit-flex`. `기둥 P`는 여전히 번호로 보지 않음.
 - **완료 (루프305–306):** `flex:33%` one-value · `fit-content(share)` 트랙. `기둥 P`는 여전히 번호로 보지 않음.
 - **완료 (루프303–304):** `clamp`/`min`/`max` share 트랙 · `flex:0 1 calc(share)` basis. `기둥 P`는 여전히 번호로 보지 않음.

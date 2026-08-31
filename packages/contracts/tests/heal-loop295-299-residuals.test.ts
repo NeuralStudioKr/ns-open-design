@@ -30,6 +30,21 @@ describe('루프295 · dropDuplicateConsecutiveSubstanceSlides', () => {
     expect(out).toContain(longClose);
   });
 
+  it('drops consecutive substance slides that differ only by punctuation (루프319)', () => {
+    const html = [
+      '<section class="slide" data-screen-label="06 마무리">',
+      `<h2>각을 다루는 언어</h2><p>${longClose}</p>`,
+      '</section>',
+      '<section class="slide" data-screen-label="06 마무리">',
+      `<h2>각을 다루는 언어</h2><p>${longClose}.</p>`,
+      '</section>',
+    ].join('');
+    const out = dropDuplicateConsecutiveSubstanceSlides(html);
+    expect((out.match(/data-screen-label="06 마무리"/g) ?? []).length).toBe(1);
+    expect(out).toContain('각을 다루는 언어');
+    expect(out).toContain(longClose);
+  });
+
   it('keeps consecutive slides whose bodies differ', () => {
     const html = [
       '<section class="slide" data-screen-label="06 마무리">',

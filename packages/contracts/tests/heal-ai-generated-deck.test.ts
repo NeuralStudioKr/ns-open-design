@@ -14,6 +14,7 @@ import {
   shrinkOverAllocatedRepeatGrid,
   normalizeEqualFrTracksToMinmax,
   normalizeGridAutoColumnShares,
+  normalizeGridAutoRowShares,
   shrinkOverAllocatedEqualTrackRows,
   shrinkClassBoundEqualTrackGrids,
   dropEmptyLeftoverPeerCardsInAllocatedRows,
@@ -726,6 +727,108 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
         '</div>',
       ].join('');
       expect(normalizeGridAutoColumnShares(html, '미적분')).toBe(html);
+    });
+
+    it('rewrites calc(100%/sibling-count()) leftover tracks (루프314)', () => {
+      const html = [
+        '<div style="display:grid;grid-template-columns:calc(100% / sibling-count()) calc(100% / sibling-count()) calc(100% / sibling-count());gap:24px">',
+        '<div>a</div><div>b</div><div>c</div>',
+        '</div>',
+      ].join('');
+      const out = normalizeEqualFrTracksToMinmax(html);
+      expect(out).toMatch(/grid-template-columns:\s*(?:minmax\(0,1fr\) ){2}minmax\(0,1fr\)/);
+      expect(out).not.toMatch(/sibling-count/);
+    });
+
+    it('rewrites calc((100% - 48px) / sibling-count()) leftover tracks (루프314)', () => {
+      const html = [
+        '<div style="display:grid;grid-template-columns:calc((100% - 48px) / sibling-count()) calc((100% - 48px) / sibling-count());gap:24px">',
+        '<div>목차</div><div>본문</div>',
+        '</div>',
+      ].join('');
+      const out = normalizeEqualFrTracksToMinmax(html);
+      expect(out).toMatch(/grid-template-columns:\s*minmax\(0,1fr\) minmax\(0,1fr\)/);
+    });
+
+    it('rewrites 33% 33% 34% leftover rounding to minmax(0,1fr) (루프315)', () => {
+      const html = [
+        '<div style="display:grid;grid-template-columns:33% 33% 34%;gap:24px">',
+        '<div>a</div><div>b</div><div>c</div>',
+        '</div>',
+      ].join('');
+      const out = normalizeEqualFrTracksToMinmax(html);
+      expect(out).toMatch(/grid-template-columns:\s*(?:minmax\(0,1fr\) ){2}minmax\(0,1fr\)/);
+    });
+
+    it('leaves 30% 50% mixed splits alone (루프315)', () => {
+      const html = [
+        '<div style="display:grid;grid-template-columns:30% 50%;gap:24px">',
+        '<div>사이드</div><div>본문</div>',
+        '</div>',
+      ].join('');
+      expect(normalizeEqualFrTracksToMinmax(html)).toBe(html);
+    });
+
+    it('rewrites grid-auto-rows:33% implicit leftover bands (루프316)', () => {
+      const html = [
+        '<div style="display:grid;grid-auto-rows:33%;gap:24px">',
+        '<div class="card">극한</div>',
+        '<div class="card">도함수</div>',
+        '<div class="card">적분</div>',
+        '</div>',
+      ].join('');
+      const out = normalizeGridAutoRowShares(html, '미적분');
+      expect(out).toMatch(/grid-auto-rows:\s*minmax\(0,1fr\)/);
+      expect(out).not.toMatch(/grid-auto-rows:\s*33%/);
+    });
+
+    it('leaves grid-auto-rows:50% two-row splits alone (루프316)', () => {
+      const html = [
+        '<div style="display:grid;grid-auto-rows:50%;gap:24px">',
+        '<div>위</div><div>아래</div>',
+        '</div>',
+      ].join('');
+      expect(normalizeGridAutoRowShares(html, '미적분')).toBe(html);
+    });
+
+    it('rewrites constant(safe-area-inset-left, 33%) leftover shares (루프317)', () => {
+      const html = [
+        '<div style="display:grid;grid-template-columns:constant(safe-area-inset-left, 33%) constant(safe-area-inset-left, 33%) constant(safe-area-inset-left, 33%);gap:24px">',
+        '<div>a</div><div>b</div><div>c</div>',
+        '</div>',
+      ].join('');
+      const out = normalizeEqualFrTracksToMinmax(html);
+      expect(out).toMatch(/grid-template-columns:\s*(?:minmax\(0,1fr\) ){2}minmax\(0,1fr\)/);
+      expect(out).not.toMatch(/constant\(/);
+    });
+
+    it('leaves constant(..., 50%) two-track splits alone (루프317)', () => {
+      const html = [
+        '<div style="display:grid;grid-template-columns:constant(safe-area-inset-left, 50%) constant(safe-area-inset-left, 50%);gap:24px">',
+        '<div>목차</div><div>본문</div>',
+        '</div>',
+      ].join('');
+      expect(normalizeEqualFrTracksToMinmax(html)).toBe(html);
+    });
+
+    it('rewrites minmax(0ch, 33%) leftover shares (루프318)', () => {
+      const html = [
+        '<div style="display:grid;grid-template-columns:minmax(0ch, 33%) minmax(0ex, 33%) minmax(0lh, 33%);gap:24px">',
+        '<div>a</div><div>b</div><div>c</div>',
+        '</div>',
+      ].join('');
+      const out = normalizeEqualFrTracksToMinmax(html);
+      expect(out).toMatch(/grid-template-columns:\s*(?:minmax\(0,1fr\) ){2}minmax\(0,1fr\)/);
+    });
+
+    it('rewrites minmax(0cqw, calc(100%/3)) leftover shares (루프318)', () => {
+      const html = [
+        '<div style="display:grid;grid-template-columns:minmax(0cqw, calc(100%/3)) minmax(0cqw, calc(100%/3)) minmax(0cqw, calc(100%/3));gap:24px">',
+        '<div>a</div><div>b</div><div>c</div>',
+        '</div>',
+      ].join('');
+      const out = normalizeEqualFrTracksToMinmax(html);
+      expect(out).toMatch(/grid-template-columns:\s*(?:minmax\(0,1fr\) ){2}minmax\(0,1fr\)/);
     });
 
     it('rewrites calc(33% - 16px) leftover shares (루프312)', () => {
