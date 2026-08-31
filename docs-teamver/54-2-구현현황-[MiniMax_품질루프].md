@@ -25,6 +25,12 @@ heal slide span이 nested/unclosed host에서 본문 범위를 오인했다. sam
 
 검증: contracts heal-ai-generated-deck 루프252.
 
+### 루프251 — 동일 33vi 그리드·카드 폭 leftover
+
+루프245–250은 물리 뷰포트 단위만 본다. MiniMax는 `33vi 33vi 33vi`나 `width:30vb`를 남겨 2장이면 빈 띠, 3장이면 클립이 난다. 동일 22–48vi/vb만 `minmax(0,1fr)`로 바꾸고 카드 폭을 벗긴다. `50vb` split은 유지. 카피 발명 없음.
+
+검증: contracts heal-ai-generated-deck 루프251 · deck-framework-compact.
+
 ### 루프250 — 동일 33dvmin 그리드·카드 폭 leftover
 
 루프245/246은 dvw/cqmin만 본다. MiniMax는 `33dvmin 33dvmin 33dvmin`나 `width:30svmin`를 남겨 2장이면 빈 띠, 3장이면 클립이 난다. 동일 22–48dvmin/svmin/lvmin/dvmax만 `minmax(0,1fr)`로 바꾸고 카드 폭을 벗긴다. `50lvmax` split은 유지. 카피 발명 없음.
@@ -744,6 +750,7 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | persist/preview: Chapter 3/장 3 leftover 카드가 3열을 붙잡아 빈 띠 | ☑ 루프248 |
 | persist/preview: FIXME/hack stub 카드가 3열을 붙잡아 빈 띠 | ☑ 루프249 |
 | persist/preview: 동일 33dvmin/svmin 트랙·카드 폭이 leftover 빈 띠·클립 | ☑ 루프250 |
+| persist/preview: 동일 33vi/vb 트랙·카드 폭이 leftover 빈 띠·클립 | ☑ 루프251 |
 | heal: 영문 MiniMax class-bound grid/flex가 Hangul gate에 스킵 | ☑ 루프252 |
 | persist: 닫힌 title-only 골격 soft-salvage 면제 | ☑ 루프253 |
 | heal: nested/unclosed slide span 범위 오인 | ☑ 루프254 |
@@ -767,6 +774,13 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 - [x] `sourceLooksLikeAiGeneratedDeck` — flow/tpl/multi-slide card
 - [x] empty-brief 영문 카탈로그 skip 유지
 - [x] heal-ai-generated-deck 루프252
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프251 · 33vi/vb 트랙)
+
+- [x] equal track + card lock — 22–48 vi/vb/svi/dvi → minmax / strip
+- [x] `50vb` split 유지
+- [x] heal-ai-generated-deck 루프251 · deck-framework-compact
 - [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
 
 ## 직전 루프 (루프250 · 33dvmin/svmin 트랙)
