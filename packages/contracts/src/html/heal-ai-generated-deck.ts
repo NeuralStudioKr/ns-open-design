@@ -1011,6 +1011,15 @@ const LEFTOVER_PEER_PLACEHOLDER_TOKENS = [
   'blank',
   'none',
   'tbc',
+  // 루프218 — dummy/sample shells MiniMax leaves on the missing pillar.
+  'example',
+  'sample',
+  'dummy',
+  '예시문',
+  '예제',
+  '예시',
+  '샘플',
+  '더미',
 ].sort((a, b) => b.length - a.length);
 
 const LEFTOVER_PEER_PLACEHOLDER_PUNCT_RE = /^(?:[.…·•\-–—]{1,3})/u;

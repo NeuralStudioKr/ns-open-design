@@ -55,6 +55,7 @@ describe('DECK_FRAMEWORK_DIRECTIVE_COMPACT', () => {
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('TBD/N/A/n.a./준비중');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('empty/blank');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('작성예정');
+    expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('dummy/예시');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('PILLAR 03');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('해당없음');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('PILLAR III');
