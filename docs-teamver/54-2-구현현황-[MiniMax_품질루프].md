@@ -19,6 +19,36 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-08-31 현재 판단 · 최신 루프
 
+### 루프299 — var(--x, share) equal-track
+
+루프292는 `calc(33%)`만. MiniMax `var(--col, 33%)` / `minmax(0, var(--col, calc(100%/3)))`는 커스텀 프로퍼티 fallback이 share인데 파서가 null. fallback만 unwrap. `var(--col, 50%)` 2열 유지. 카피 발명 없음.
+
+검증: contracts heal-ai-generated-deck 루프299.
+
+### 루프298 — class-bound 행 크롬 카드 spill
+
+루프293–294는 inline `display:grid|flex`만. `.cards { display:flex }` / `.grid { repeat(3,1fr) }` 바인딩은 조기 close를 못 되돌림. 클래스 트랙/플렉스 맵으로 같은 absorb. 카피 발명 없음.
+
+검증: contracts heal-loop295-299-residuals 루프298.
+
+### 루프297 — 인접 동일 피어 카드 drop
+
+같은 그리드/플렉스 행에서 정규화 텍스트가 완전히 같은 카드가 붙어 있으면 뒤 칸만 제거. 12자 미만·다른 본문 유지. 카피 발명 없음.
+
+검증: contracts heal-loop295-299-residuals 루프297.
+
+### 루프296 — calc() peer-lock width strip
+
+`width:33%`는 벗기지만 `width:calc(33%)` / `inline-size:calc(100%/3)`는 cssLengthToPx가 null. share unwrap 후 3열 잠금 제거. `calc(50%)` 2열 유지. 카피 발명 없음.
+
+검증: contracts heal-ai-generated-deck 루프296.
+
+### 루프295 — 연속 동일 substance 슬라이드 drop
+
+루프182/236은 title-only(≤40자)만. MiniMax는 같은 마무리 장을 본문째 한 번 더 넣음. 정규화 텍스트가 완전히 같고 40자를 넘는 연속 쌍만 뒤 장 제거. 비인접 재사용·다른 본문·커버 유지. 카피 발명 없음.
+
+검증: contracts heal-loop295-299-residuals 루프295.
+
 ### 루프294 — flex 행 크롬 카드 spill absorb
 
 루프293은 `display:grid` + 선언 열 초과만 본다. MiniMax는 같은 조기 close를 `display:flex;gap` 카드 행에도 넣어 공식·본문이 형제로 남고 루프191이 맨몸 조각을 peer로 키운다. 크롬 카드가 2개 이상이고 자식이 그보다 많을 때만 라벨 카드 뒤 맨몸 1–2개를 되돌림. 크롬 1개인 라벨+본문 스플릿·`flex-direction:column`·px sidebar 유지. 카피 발명 없음.
@@ -696,6 +726,7 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 
 ### 다음 루프 후보 (2026-08-31 EOD 기준)
 
+- **완료 (루프295–299):** 연속 동일 substance 장 · calc() peer-lock · 인접 동일 카드 · class-bound spill · var(--x, share) 트랙. `기둥 P`는 여전히 번호로 보지 않음.
 - **완료 (루프294):** flex 행 크롬 카드 spill. 크롬 1개 스플릿·column·sidebar 유지.
 - **완료 (루프293):** class 없는 크롬 카드 spill absorb · 동일 style nest flatten. `SOH` footer·50/50·sidebar 유지.
 - **완료 (루프292):** `minmax(0, calc(share))` / `calc(100%/3)` equal-track. `calc(50%)` 2열은 유지.

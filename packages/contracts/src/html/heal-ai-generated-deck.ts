@@ -319,6 +319,41 @@ export function dropDuplicateConsecutiveTitleOnlyLeftoverSlides(html: string): s
   return out;
 }
 
+/**
+ * 루프295 — 본문이 있는 연속 중복 슬라이드.
+ *
+ * 루프182/236은 title-only(≤40자)만 접는다. MiniMax는 같은 마무리 장을
+ * 실체 본문째 한 번 더 넣는다. 정규화 텍스트가 완전히 같고, 둘 다
+ * title-only 한도(40자)를 넘으며 바로 옆일 때만 뒤 장을 제거. 커버·챕터·비인접
+ * 재사용은 유지. 카피 발명 없음.
+ */
+export function dropDuplicateConsecutiveSubstanceSlides(html: string): string {
+  let out = String(html ?? '');
+  if (!out) return out;
+  const slides = listAiSlideSpans(out);
+  if (slides.length < 2) return out;
+  for (let i = slides.length - 1; i >= 1; i -= 1) {
+    const curr = slides[i]!;
+    const prev = slides[i - 1]!;
+    if (attrsLookLikeRealCoverSlide(curr.attrs)) continue;
+    if (/\b(?:s-chapter|chapter)\b/i.test(curr.attrs)) continue;
+    if (/\bbackground(?:-image)?\s*:\s*(?:url|linear-gradient|radial-gradient|conic-gradient)/i.test(curr.attrs)) {
+      continue;
+    }
+    const currBody = out.slice(curr.openEnd, curr.bodyEnd);
+    const prevBody = out.slice(prev.openEnd, prev.bodyEnd);
+    const currText = normalizeVisibleTextForDedup(currBody);
+    const prevText = normalizeVisibleTextForDedup(prevBody);
+    // Title-only leftovers are 루프182/236. This pass is the same page
+    // emitted twice with real body copy (> 40).
+    if (currText.length <= DUPLICATE_TITLE_ONLY_VISIBLE_TEXT_LIMIT) continue;
+    if (prevText.length <= DUPLICATE_TITLE_ONLY_VISIBLE_TEXT_LIMIT) continue;
+    if (!currText || currText !== prevText) continue;
+    out = removeSlideSpan(out, curr);
+  }
+  return out;
+}
+
 const SEVERE_CONTAINER_IMBALANCE_THRESHOLD = 2;
 
 function stripInertTagsForBalanceCounting(body: string): string {
@@ -527,6 +562,46 @@ function unwrapCalcShareInner(inner: string): string | null {
 }
 
 /**
+ * 루프299 — `var(--col, 33%)` / `var(--col, calc(100%/3))` fallback만
+ * share로 본다. 커스텀 프로퍼티 값은 읽지 않는다.
+ */
+function cssVarFallbackInner(compact: string): string | null {
+  const head = /^var\(/i.exec(compact);
+  if (!head) return null;
+  const inner = compact.slice(head[0].length);
+  let depth = 1;
+  let comma = -1;
+  for (let i = 0; i < inner.length; i += 1) {
+    const ch = inner[i]!;
+    if (ch === '(') depth += 1;
+    if (ch === ')') {
+      depth -= 1;
+      if (depth === 0) {
+        if (i !== inner.length - 1) return null;
+        if (comma < 0) return null;
+        return inner.slice(comma + 1, i);
+      }
+    }
+    if (ch === ',' && depth === 1 && comma < 0) comma = i;
+  }
+  return null;
+}
+
+/** 루프292/296/299 — bare share · calc(share) · var(--x, share). */
+function unwrapShareValue(raw: string): string | null {
+  const compact = String(raw ?? '').replace(/\s+/g, '').toLowerCase();
+  if (!compact) return null;
+  if (EQUAL_FR_SHARE_TRACK_RE.test(compact) || EQUAL_COLUMN_SHARE_TRACK_RE.test(compact)) {
+    return compact;
+  }
+  const calc = unwrapCalcShareInner(compact);
+  if (calc) return calc;
+  const fallback = cssVarFallbackInner(compact);
+  if (fallback) return unwrapShareValue(fallback);
+  return null;
+}
+
+/**
  * 루프289 — MiniMax wraps leftover shares as `minmax(0,33%)` /
  * `minmax(0,30vw)` / `minmax(0,0.33fr)` so bare-share parsers miss them.
  * Only soft floors (0/auto/min-content/max-content) unwrap; `minmax(200px,1fr)`
@@ -537,7 +612,7 @@ function unwrapCalcShareInner(inner: string): string | null {
 function unwrapEqualShareTrack(track: string): string | null {
   const compact = String(track ?? '').replace(/\s+/g, '');
   const head = /^minmax\((?:0|auto|min-content|max-content),/i.exec(compact);
-  if (!head) return unwrapCalcShareInner(compact);
+  if (!head) return unwrapShareValue(compact);
   const innerStart = head[0].length;
   let depth = 1;
   for (let i = innerStart; i < compact.length; i += 1) {
@@ -551,7 +626,7 @@ function unwrapEqualShareTrack(track: string): string | null {
       if (EQUAL_FR_SHARE_TRACK_RE.test(inner) || EQUAL_COLUMN_SHARE_TRACK_RE.test(inner)) {
         return inner;
       }
-      return unwrapCalcShareInner(inner);
+      return unwrapShareValue(inner);
     }
   }
   return null;
@@ -562,7 +637,7 @@ function equalShareTrackKey(track: string): string | null {
   if (EQUAL_FR_SHARE_TRACK_RE.test(compact) || EQUAL_COLUMN_SHARE_TRACK_RE.test(compact)) {
     return compact;
   }
-  return unwrapEqualShareTrack(compact) ?? unwrapCalcShareInner(compact);
+  return unwrapEqualShareTrack(compact) ?? unwrapShareValue(compact);
 }
 
 function splitCssGridTracks(value: string): string[] {
@@ -664,6 +739,7 @@ type EqualColumnDecl = {
  * `minmax(0,33%)` / `minmax(0,30vw)` / `minmax(0,0.33fr)`. Mixed tracks
  * such as `1.3fr 1fr` or `220px 1fr` or `50% 50%` splits stay.
  * 루프292 — `minmax(0,calc(100%/3))` / `repeat(3, minmax(0, calc(33%)))`.
+ * 루프299 — `var(--col,33%)` / `minmax(0, var(--col, calc(100%/3)))`.
  */
 function parseDeclaredEqualColumns(value: string): EqualColumnDecl | null {
   const important = /!important/i.test(value);
@@ -1536,7 +1612,7 @@ const PEER_COLUMN_SHARE_PERCENT_MAX = 48;
 const PEER_CANVAS_PX = 1920;
 
 function cssLengthToPx(raw: string): number | null {
-  const source = String(raw ?? '').trim();
+  const source = unwrapShareValue(String(raw ?? '').trim()) ?? String(raw ?? '').trim();
   const percent = /^(\d+(?:\.\d+)?)\s*%$/i.exec(source);
   if (percent) {
     const value = Number.parseFloat(percent[1] ?? '');
@@ -1680,6 +1756,7 @@ function stripFixedMainSizeFromOpenTag(openTag: string): string {
  * (`width:30vb`, `33vi 33vi 33vi`).
  * 루프290 — same for logical size leftovers
  * (`max-inline-size:560px`, `inline-size:30vw`).
+ * 루프296 — same for `calc(33%)` / `calc(100%/3)` leftover shares.
  */
 export function relaxUniformPeerCardFixedMainSize(
   html: string,
@@ -2279,7 +2356,10 @@ function rowAllowsSpilledChromeAbsorb(
  * 많을 때만 라벨 카드(≤48자) 뒤에 오는 맨몸 조각(1–2개)을 카드 안으로
  * 되돌린다.
  * 루프294 — 같은 조기 close를 `display:flex` 카드 행에도 적용. 크롬
- * 카드가 2개 이상일 때만 (2열 스플릿·사이드바 유지). 카피 발명 없음.
+ * 카드가 2개 이상일 때만 (2열 스플릿·사이드바 유지).
+ * 루프298 — inline display 없이 `.cards { display:flex }` /
+ * `.grid { grid-template-columns:repeat(3,1fr) }` 클래스 바인딩도 동일.
+ * 카피 발명 없음.
  */
 export function absorbSpilledChromeCardSiblings(
   html: string,
@@ -2288,19 +2368,40 @@ export function absorbSpilledChromeCardSiblings(
   let out = String(html ?? '');
   if (!out) return out;
   if (!sourceLooksLikeAiGeneratedDeck(out, brief)) return out;
+  const flexNames = collectClassFlexRowNames(out);
+  const gridDecls = collectClassEqualTrackDecls(out);
   const gridOpenRe =
-    /<(div|section|article|main|aside|ul|ol)\b([^>]*\bstyle\s*=\s*(["'])([^"']*)\3[^>]*)>/gi;
+    /<(div|section|article|main|aside|ul|ol)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
   const patches: Array<{ start: number; end: number; replacement: string }> = [];
   let match: RegExpExecArray | null;
   while ((match = gridOpenRe.exec(out)) !== null) {
-    const style = match[4] ?? '';
+    const attrs = match[2] ?? '';
+    const style = extractInlineStyle(attrs);
+    const tokens = classTokensFromAttrs(attrs);
     const openTag = match[0] ?? '';
     const tag = (match[1] ?? '').toLowerCase();
     const openEnd = match.index + openTag.length;
     const close = findSameTagClose(out, tag, openEnd);
     if (!close) continue;
     const children = listDirectBlockChildSpans(out, openEnd, close.closeStart);
-    if (!rowAllowsSpilledChromeAbsorb(style, children)) continue;
+    let allow = rowAllowsSpilledChromeAbsorb(style, children);
+    if (!allow) {
+      const flexBound = tokens.some((token) => flexNames.has(token));
+      let gridCols: EqualColumnDecl | undefined;
+      for (const token of tokens) {
+        const hit = gridDecls.get(token)?.cols;
+        if (hit) {
+          gridCols = hit;
+          break;
+        }
+      }
+      if (flexBound) {
+        allow = rowAllowsSpilledChromeAbsorb('display:flex', children);
+      } else if (gridCols && children.length > gridCols.count) {
+        allow = true;
+      }
+    }
+    if (!allow) continue;
     const absorbed = new Set<DirectChildSpan>();
     const extras = new Map<DirectChildSpan, DirectChildSpan[]>();
     for (let i = 0; i < children.length; i += 1) {
@@ -2351,6 +2452,65 @@ export function absorbSpilledChromeCardSiblings(
   patches.sort((a, b) => b.start - a.start);
   for (const patch of patches) {
     out = `${out.slice(0, patch.start)}${patch.replacement}${out.slice(patch.end)}`;
+  }
+  return out;
+}
+
+const ADJACENT_DUPLICATE_CARD_MIN = 12;
+
+function childLooksLikeDedupPeerCard(child: DirectChildSpan): boolean {
+  if (child.tag !== 'div' && child.tag !== 'article' && child.tag !== 'li') return false;
+  if (exactCardishTokens(child.attrs).length > 0) return true;
+  return looksLikeChromeCardStyle(child.style);
+}
+
+function parentLooksLikeCardRow(style: string): boolean {
+  if (/(?:^|;)\s*display\s*:\s*grid\b/i.test(style)) return true;
+  return isFlexRowContainerStyle(style);
+}
+
+/**
+ * 루프297 — 같은 행에서 인접한 카드의 정규화 텍스트가 완전히 같으면
+ * 뒤 카드를 제거. MiniMax가 같은 공식을 두 칸에 붙여 3열이 4열처럼
+ * 보이는 잔여. 12자 미만·다른 본문·세로 스택은 유지. 카피 발명 없음.
+ */
+export function dropAdjacentDuplicatePeerCards(
+  html: string,
+  brief?: string | null,
+): string {
+  let out = String(html ?? '');
+  if (!out) return out;
+  if (!sourceLooksLikeAiGeneratedDeck(out, brief)) return out;
+  const openRe =
+    /<(div|section|article|main|aside|ul|ol)\b([^>]*\bstyle\s*=\s*(["'])([^"']*)\3[^>]*)>/gi;
+  const patches: Array<{ start: number; end: number }> = [];
+  let match: RegExpExecArray | null;
+  while ((match = openRe.exec(out)) !== null) {
+    const style = match[4] ?? '';
+    if (!parentLooksLikeCardRow(style)) continue;
+    const tag = (match[1] ?? '').toLowerCase();
+    const openEnd = match.index + match[0]!.length;
+    const close = findSameTagClose(out, tag, openEnd);
+    if (!close) continue;
+    const children = listDirectBlockChildSpans(out, openEnd, close.closeStart);
+    if (children.length < 2) continue;
+    for (let i = 1; i < children.length; i += 1) {
+      const prev = children[i - 1]!;
+      const curr = children[i]!;
+      if (!childLooksLikeDedupPeerCard(prev) || !childLooksLikeDedupPeerCard(curr)) continue;
+      const prevText = normalizeVisibleTextForDedup(prev.inner);
+      const currText = normalizeVisibleTextForDedup(curr.inner);
+      if (currText.length < ADJACENT_DUPLICATE_CARD_MIN || currText !== prevText) continue;
+      patches.push({ start: curr.absStart, end: curr.absCloseEnd });
+    }
+  }
+  if (patches.length === 0) return out;
+  patches.sort((a, b) => b.start - a.start);
+  let lastKept = Number.POSITIVE_INFINITY;
+  for (const patch of patches) {
+    if (patch.end > lastKept) continue;
+    out = `${out.slice(0, patch.start)}${out.slice(patch.end)}`;
+    lastKept = patch.start;
   }
   return out;
 }
@@ -2686,6 +2846,8 @@ export function healAiGeneratedDeckMarkup(html: string, brief?: string | null): 
   // 루프293 — class 없는 크롬 카드의 조기 close가 제목·본문을 그리드
   // 형제로 남기면 shrink가 열을 늘린다. shrink 전에 카드 안으로 되돌린다.
   out = absorbSpilledChromeCardSiblings(out, brief);
+  // 루프297 — 같은 행의 완전 동일 인접 카드 한 장만 남긴다.
+  out = dropAdjacentDuplicatePeerCards(out, brief);
   out = unnestHeadingBlockChildren(out);
   out = polishTruncatedInstructionTitles(out);
   // 루프197 — empty leftover card shells keep 3-track rows alive so
@@ -2711,6 +2873,8 @@ export function healAiGeneratedDeckMarkup(html: string, brief?: string | null): 
   // "content missing + template not applied" for artifacts that bypassed
   // the upstream 루프181 persist gate.
   out = dropDuplicateConsecutiveTitleOnlyLeftoverSlides(out);
+  // 루프295 — title-only가 아닌 연속 동일 본문 장.
+  out = dropDuplicateConsecutiveSubstanceSlides(out);
   // 루프190/196 residual — after 루프194 card close, leftover
   // article/aside/main or unclosed pairs (diff ≥ 2) still swallow the next
   // slide. Drop those shells only. Diff 1 stays.
