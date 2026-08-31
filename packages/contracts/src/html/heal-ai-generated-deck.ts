@@ -502,6 +502,8 @@ const GRID_BLOCK_CHILD_RE =
   /^(div|section|article|li|figure|aside|header|footer|main|nav|ul|ol|p|table)$/;
 const EQUAL_FR_TRACK_RE =
   /^(?:1(?:\.0+)?fr|minmax\(\s*(?:0|auto|min-content|max-content)\s*,\s*1(?:\.0+)?fr\s*\))$/i;
+/** 루프255 — identical 0.22–0.48fr leftover shares (skip 0.5fr splits). */
+const EQUAL_FR_SHARE_TRACK_RE = /^0?\.(?:2[2-9]|3\d|4[0-8])\d*fr$/i;
 /** 루프210/215/238 — identical 22–48% or viewport/container shares (skip 50 splits). */
 const EQUAL_COLUMN_SHARE_TRACK_RE =
   /^(?:2[2-9]|3\d|4[0-8])(?:\.\d+)?(?:%|vw|vh|vmin|vmax|dvh|svh|lvh|dvw|svw|lvw|dvmin|svmin|lvmin|dvmax|svmax|lvmax|vi|vb|svi|svb|lvi|lvb|dvi|dvb|cqw|cqi|cqh|cqb|cqmin|cqmax)$/i;
@@ -585,7 +587,8 @@ function parseDeclaredEqualColumns(value: string): EqualColumnDecl | null {
   }
   const shares = tracks.map((t) => t.replace(/\s+/g, '').toLowerCase());
   if (
-    shares.every((t) => EQUAL_COLUMN_SHARE_TRACK_RE.test(t) && t === shares[0])
+    shares.every((t) => EQUAL_FR_SHARE_TRACK_RE.test(t) && t === shares[0])
+    || shares.every((t) => EQUAL_COLUMN_SHARE_TRACK_RE.test(t) && t === shares[0])
   ) {
     return {
       kind: 'list',
@@ -681,6 +684,7 @@ function minmaxUnitForEqualFr(decl: EqualColumnDecl): EqualColumnDecl | null {
   if (
     /^1(?:\.0+)?fr$/i.test(unit)
     || /^minmax\((?:0|auto|min-content|max-content),1(?:\.0+)?fr\)$/i.test(unit)
+    || EQUAL_FR_SHARE_TRACK_RE.test(unit)
     || EQUAL_COLUMN_SHARE_TRACK_RE.test(unit)
   ) {
     return { ...decl, unit: 'minmax(0,1fr)' };
@@ -1246,7 +1250,7 @@ function textLooksLikeLeftoverPeerPlaceholder(html: string): boolean {
  * 루프242 — `Group 3` / `Lane 3` / `행 3` index leftovers.
  * `UNIT 3` stays because that prefix is not leftover vocabulary.
  * 루프248 — `Chapter 3` / `Panel 3` / `장 3` index leftovers.
- * 루프255 — letter `E` / `기둥 바` / `여섯째` leftovers. Keep `G`–`Z`,
+ * 루프257 — letter `E` / `기둥 바` / `여섯째` leftovers. Keep `G`–`Z`,
  * `열한째`, `기둥 아`, and `여섯째 적분` real copy.
  */
 const LEFTOVER_INDEX_ROMAN =
@@ -1255,9 +1259,9 @@ const LEFTOVER_INDEX_ROMAN =
 const LEFTOVER_INDEX_MARK = '[⓪①-⑨❶-❾⓿０-９⑴-⑼㉠-㉥]';
 /** 루프225/230 — 0 / 00 / 01–09 / 10 leftover shells. */
 const LEFTOVER_INDEX_DIGIT = '(?:0?[0-9]|10)';
-/** 루프237/239/255 — A–F / 가나다라마바사 leftover letters (not roman V/X/I, not G–Z). */
+/** 루프237/239/257 — A–F / 가나다라마바사 leftover letters (not roman V/X/I, not G–Z). */
 const LEFTOVER_INDEX_LETTER = '(?:[a-f]|[가나다라마바사])';
-/** 루프239/255 — Hangul ordinal leftover shells. Keep `첫째 적분` / `열한째`. */
+/** 루프239/257 — Hangul ordinal leftover shells. Keep `첫째 적분` / `열한째`. */
 const LEFTOVER_INDEX_ORDINAL = '(?:첫|둘|셋|넷|다섯|여섯|일곱|여덟|아홉|열)(?:째|번째)';
 const LEFTOVER_INDEX_CORE =
   `(?:${LEFTOVER_INDEX_DIGIT}|${LEFTOVER_INDEX_ROMAN}|${LEFTOVER_INDEX_MARK}|${LEFTOVER_INDEX_LETTER}|${LEFTOVER_INDEX_ORDINAL})`;
