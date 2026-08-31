@@ -632,7 +632,12 @@ function unwrapClampOrMinMaxShare(compact: string): string | null {
   return null;
 }
 
-/** 루프292/296/299/303 — bare share · calc · var fallback · clamp/min/max. */
+function unwrapFitContentShare(compact: string): string | null {
+  if (!/^fit-content\(/i.test(compact) || !compact.endsWith(')')) return null;
+  return unwrapShareValue(compact.slice('fit-content('.length, -1));
+}
+
+/** 루프292/296/299/303/306 — bare share · calc · var · clamp/min/max · fit-content. */
 function unwrapShareValue(raw: string): string | null {
   const compact = String(raw ?? '').replace(/\s+/g, '').toLowerCase();
   if (!compact) return null;
@@ -643,6 +648,8 @@ function unwrapShareValue(raw: string): string | null {
   if (calc) return calc;
   const fallback = cssVarFallbackInner(compact);
   if (fallback) return unwrapShareValue(fallback);
+  const fit = unwrapFitContentShare(compact);
+  if (fit) return fit;
   return unwrapClampOrMinMaxShare(compact);
 }
 
@@ -655,6 +662,7 @@ function unwrapShareValue(raw: string): string | null {
  * parse nested parens, so the second arg is sliced by depth.
  * 루프300 — floor may be `0px` / `0%` / `0em`, not only bare `0`.
  * 루프303 — second arg may be `clamp(0px,33%,1fr)` / `min(33%,1fr)`.
+ * 루프306 — `fit-content(33%)` / `fit-content(calc(100%/3))`.
  */
 function unwrapEqualShareTrack(track: string): string | null {
   const compact = String(track ?? '').replace(/\s+/g, '');
@@ -1709,8 +1717,11 @@ function flexShorthandLockedBasisPx(style: string): number | null {
   if (growShare) return cssLengthToPx((growShare[1] ?? '').trim());
   // 루프304 — `flex:0 1 33%` / `flex:0 1 calc(33%)` leftover basis.
   const shrinkShare = /^0\s+(?:1(?:\.0+)?)\s+(.+)$/i.exec(raw);
-  if (!shrinkShare) return null;
-  return cssLengthToPx((shrinkShare[1] ?? '').trim());
+  if (shrinkShare) return cssLengthToPx((shrinkShare[1] ?? '').trim());
+  // 루프305 — `flex:33%` / `flex:calc(33%)` one-value basis (= 1 1 <share>).
+  const lone = splitCssGridTracks(raw);
+  if (lone.length === 1) return cssLengthToPx(lone[0]!);
+  return null;
 }
 
 function peerFixedMainSizePx(style: string): number | null {
@@ -1774,6 +1785,11 @@ function stripFixedMainSizeFromOpenTag(openTag: string): string {
     .replace(/(?:^|;)\s*flex\s*:\s*(?:0\s+0|none)\s+[^;]*/gi, '')
     .replace(/(?:^|;)\s*flex\s*:\s*1(?:\.0+)?\s+(?:1(?:\.0+)?|0)\s+[^;]*/gi, ';flex:1 1 0')
     .replace(/(?:^|;)\s*flex\s*:\s*0\s+1(?:\.0+)?\s+[^;]*/gi, ';flex:1 1 0')
+    .replace(/(?:^|;)\s*flex\s*:\s*([^;]+)/gi, (full, value) => {
+      const tokens = splitCssGridTracks(String(value ?? '').trim());
+      if (tokens.length === 1 && cssLengthToPx(tokens[0]!) != null) return ';flex:1 1 0';
+      return full;
+    })
     .replace(/^;+|;+$/g, '')
     .replace(/;;+/g, ';')
     .trim();
@@ -1817,6 +1833,7 @@ function stripFixedMainSizeFromOpenTag(openTag: string): string {
  * 루프296 — same for `calc(33%)` / `calc(100%/3)` leftover shares.
  * 루프302 — same for `flex:1 1 33%` / `flex:1 1 calc(33%)` leftover basis.
  * 루프304 — same for `flex:0 1 33%` / `flex:0 1 calc(33%)`.
+ * 루프305 — same for one-value `flex:33%` / `flex:calc(33%)`.
  */
 export function relaxUniformPeerCardFixedMainSize(
   html: string,

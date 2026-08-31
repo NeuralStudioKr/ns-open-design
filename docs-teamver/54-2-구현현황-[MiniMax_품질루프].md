@@ -19,6 +19,18 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-08-31 현재 판단 · 최신 루프
 
+### 루프306 — fit-content(share) equal-track
+
+`clamp`/`min`은 언랩되지만 MiniMax `fit-content(33%)` / `minmax(0,fit-content(calc(100%/3)))`는 파서가 null. 인자만 share로 본다. `fit-content(50%)` 2열 유지. 카피 발명 없음.
+
+검증: contracts heal-ai-generated-deck 루프306.
+
+### 루프305 — flex:33% one-value peer-lock
+
+302–304는 `flex:G S basis` 세 값만. CSS `flex:33%` / `flex:calc(33%)`는 `1 1 33%`인데 파서가 null. 토큰이 하나이고 22–48 share일 때만 `flex:1 1 0`. `flex:50%` 2열 유지. 카피 발명 없음.
+
+검증: contracts heal-ai-generated-deck 루프305.
+
 ### 루프304 — flex:0 1 calc(share) peer-lock
 
 루프302는 `flex:1 1 …`만. MiniMax `flex:0 1 calc(33%)`는 shrink만 켜고 basis는 3열 잠금. 22–48 share만 `flex:1 1 0`. `flex:0 1 50%` 2열 유지. 카피 발명 없음.
@@ -756,6 +768,7 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 
 ### 다음 루프 후보 (2026-08-31 EOD 기준)
 
+- **완료 (루프305–306):** `flex:33%` one-value · `fit-content(share)` 트랙. `기둥 P`는 여전히 번호로 보지 않음.
 - **완료 (루프303–304):** `clamp`/`min`/`max` share 트랙 · `flex:0 1 calc(share)` basis. `기둥 P`는 여전히 번호로 보지 않음.
 - **완료 (루프300–302):** `minmax(0px,…)` floor · class-bound 인접 동일 카드 · `flex:1 1 calc(share)` basis. `기둥 P`는 여전히 번호로 보지 않음.
 - **완료 (루프295–299):** 연속 동일 substance 장 · calc() peer-lock · 인접 동일 카드 · class-bound spill · var(--x, share) 트랙. `기둥 P`는 여전히 번호로 보지 않음.
