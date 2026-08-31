@@ -22,7 +22,7 @@ od:
   scenario: product
   preview:
     type: html
-    entry: index.html
+    entry: example.html
   design_system:
     requires: false
   inputs:

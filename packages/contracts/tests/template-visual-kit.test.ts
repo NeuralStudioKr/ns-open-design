@@ -1,4 +1,6 @@
+import { existsSync, readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 import { pickPluginPreviewHtmlPath } from '../src/plugin-preview-path.js';
@@ -536,5 +538,24 @@ describe('pickPluginPreviewHtmlPath', () => {
         },
       }),
     ).toBe('example.html');
+  });
+
+  it('resolves Replit Deck to the shipped helix example, not the missing index/seed', () => {
+    const manifestUrl = new URL(
+      '../../../plugins/_official/examples/replit-deck/open-design.json',
+      import.meta.url,
+    );
+    const exampleUrl = new URL(
+      '../../../plugins/_official/examples/replit-deck/example.html',
+      import.meta.url,
+    );
+    const indexUrl = new URL(
+      '../../../plugins/_official/examples/replit-deck/index.html',
+      import.meta.url,
+    );
+    const manifest = JSON.parse(readFileSync(manifestUrl, 'utf8')) as unknown;
+    expect(pickPluginPreviewHtmlPath(manifest)).toBe('example.html');
+    expect(existsSync(fileURLToPath(exampleUrl))).toBe(true);
+    expect(existsSync(fileURLToPath(indexUrl))).toBe(false);
   });
 });

@@ -341,6 +341,34 @@ describe("ProjectCardHtmlCover srcDoc builders", () => {
     expect(extractCoverSlideSections(thumb)).toHaveLength(1);
   });
 
+  it("Replit Deck catalog thumb uses the helix cover, not the white seed (생성 마법사)", () => {
+    const pluginDir = resolve(repoRoot, "plugins/_official/examples/replit-deck");
+    const manifest = JSON.parse(readFileSync(resolve(pluginDir, "open-design.json"), "utf8")) as {
+      od?: { preview?: { entry?: string }; useCase?: { exampleOutputs?: Array<{ path?: string }> } };
+    };
+    expect(manifest.od?.preview?.entry).toBe("./example.html");
+    expect(manifest.od?.useCase?.exampleOutputs?.[0]?.path).toBe("./example.html");
+
+    const html = readFileSync(resolve(pluginDir, "example.html"), "utf8");
+    expect(html).toContain('data-theme="helix"');
+    expect(html).toContain("HELIX · Q1 '26 BOARD");
+    expect(html).toContain("Compounding on a market that finally moved.");
+    expect(html).not.toContain("[REPLACE]");
+
+    const seed = readFileSync(resolve(pluginDir, "assets/template.html"), "utf8");
+    expect(seed).toContain("[REPLACE]");
+
+    const thumb = pluginCatalogPreviewSrcDoc(html, "/api/plugins/example-replit-deck/preview");
+    expect(thumb).toContain('id="od-deck-card-preview"');
+    expect(thumb).toContain("HELIX · Q1 '26 BOARD");
+    expect(thumb).toContain("Compounding on a market that finally moved.");
+    expect(thumb).toContain("QUARTERLY UPDATE");
+    expect(thumb).not.toContain("[REPLACE]");
+    expect(thumb).not.toContain("Operating Metrics");
+    expect(thumb).not.toContain("$38M expansion");
+    expect(extractCoverSlideSections(thumb)).toHaveLength(1);
+  });
+
   it("isolates every official html-ppt catalog thumb to one stamped cover", () => {
     const examplesDir = resolve(repoRoot, "plugins/_official/examples");
     const dirs = readdirSync(examplesDir).filter((name) => name.startsWith("html-ppt-"));

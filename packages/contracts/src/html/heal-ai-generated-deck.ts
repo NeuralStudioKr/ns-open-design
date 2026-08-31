@@ -1288,6 +1288,9 @@ function textLooksLikeLeftoverPeerPlaceholder(html: string): boolean {
  * 루프261 — letter `E` / `기둥 바` / `여섯째` leftovers.
  * 루프266 — letter `G` / `기둥 아` / `열한째` leftovers. Keep `H`–`Z`,
  * `열두째`, `기둥 자`, and leftover-index cards that still have extra text.
+ * 루프272 — letter `H` / `기둥 자` / `열두째` leftovers. Keep `J`–`Z`
+ * (not roman `I`/`V`/`X`), `열세째`, `기둥 차`, and leftover-index cards
+ * that still have extra text.
  */
 const LEFTOVER_INDEX_ROMAN =
   '(?:viii|vii|iii|xii|xi|ix|iv|vi|ii|[xv]|i|[Ⅰ-Ⅻⅰ-ⅻ])';
@@ -1295,10 +1298,10 @@ const LEFTOVER_INDEX_ROMAN =
 const LEFTOVER_INDEX_MARK = '[⓪①-⑨❶-❾⓿０-９⑴-⑼㉠-㉥]';
 /** 루프225/230 — 0 / 00 / 01–09 / 10 leftover shells. */
 const LEFTOVER_INDEX_DIGIT = '(?:0?[0-9]|10)';
-/** 루프237/239/261/266 — A–G / 가나다라마바사아 leftover letters (not roman V/X/I, not H–Z). */
-const LEFTOVER_INDEX_LETTER = '(?:[a-g]|[가나다라마바사아])';
-/** 루프239/261/266 — Hangul ordinal leftover shells. Keep extra text / `열두째`. */
-const LEFTOVER_INDEX_ORDINAL = '(?:열한|첫|둘|셋|넷|다섯|여섯|일곱|여덟|아홉|열)(?:째|번째)';
+/** 루프237/239/261/266/272 — A–H / 가나다라마바사아자 leftover letters (not roman V/X/I, not J–Z). */
+const LEFTOVER_INDEX_LETTER = '(?:[a-h]|[가나다라마바사아자])';
+/** 루프239/261/266/272 — Hangul ordinal leftover shells. Keep extra text / `열세째`. */
+const LEFTOVER_INDEX_ORDINAL = '(?:열두|열한|첫|둘|셋|넷|다섯|여섯|일곱|여덟|아홉|열)(?:째|번째)';
 const LEFTOVER_INDEX_CORE =
   `(?:${LEFTOVER_INDEX_DIGIT}|${LEFTOVER_INDEX_ROMAN}|${LEFTOVER_INDEX_MARK}|${LEFTOVER_INDEX_LETTER}|${LEFTOVER_INDEX_ORDINAL})`;
 const LEFTOVER_INDEX_SUFFIX = '(?:\\s*(?:번|번째|st|nd|rd|th))?';

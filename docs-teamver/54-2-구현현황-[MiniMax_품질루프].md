@@ -7,6 +7,18 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-08-31 현재 판단 · 최신 루프
 
+### 생성 마법사 — Replit Deck 흰 썸네일
+
+`od.preview.entry`가 없는 `index.html`을 가리켜 시드 `assets/template.html`(`[REPLACE]` · helix `#fafafa`)이 카드에 올랐다. 헬릭스 `example.html`을 실어 카탈로그 커버를 보드 표지로 고정. 시드는 생성용 유지.
+
+검증: web project-card-html-cover · contracts pickPluginPreviewHtmlPath.
+
+### 루프272 — H/기둥 자/열두째 leftover 인덱스
+
+루프266은 A–G / 열한째까지 leftover로 본다. MiniMax는 `H`/`기둥 자`/`열두째`로 빠진 기둥을 채워 3열이 유지된다. H·자·열두째만 leftover. `열세째`/`기둥 차`/`J`–`Z`(로마 숫자 I/V/X 제외)와 index+추가 본문은 유지. 카피 발명 없음.
+
+검증: contracts heal-ai-generated-deck 루프272 · deck-framework-compact.
+
 ### 루프271 — 선택 템플릿 motif/색상/아이콘 실렌더 강제
 
 사용자 리포트 2026-08-31: 템플릿을 선택해도 대표 SVG/색상/아이콘/도형이 첫 결과물에 충분히 반영되지 않음. 특히 Daisy/Capsule/Studio류는 썸네일 identity와 실제 산출물이 다르게 보인다.
@@ -492,7 +504,7 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 
 ### 다음 루프 후보 (2026-08-31 EOD 기준)
 
-- **후보 (루프270):** leftover 문자 `H`/`열두째`(의도적 제외) 또는 equal-track residual. leftover extra-copy·stub는 주제 단어 목록이 아님(루프259·265).
+- **후보 (루프273):** leftover 문자 `J`/`열세째`(의도적 제외) 또는 equal-track residual. leftover extra-copy·stub는 주제 단어 목록이 아님(루프259·265).
 - **인접 (루프206 밖):** `srcdoc-deck-bridge-nested-slides` native `#deck-next` 픽스처가 host next 후 `active:2`를 보고함 (transform/dot는 1). staging에서 이미 red — 이번 CSS 변경과 무관.
 - **후보 C (3열 residual):** `G` 이후 알파벳, `열한째` 이상 서수, 또는 3장 280 vs 900(비율 >2.05) leftover. 루프261–262이 E–F/바사/여섯째–열째와 3열 400 vs 800을 닫음.
 - **후보 B (예약 · 규모 큼):** contracts 안 `var(--pad, calc(px * n))` / `env(safe-area-inset-top, calc(...))` fallback red-spec 39건. fallback 표현을 card threshold 로 승격하는 heuristic — 별도 루프 필요.
@@ -868,13 +880,38 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | persist/preview: misc/기타사항 stub 카드가 3열을 붙잡아 빈 띠 | ☑ 루프264 |
 | persist/preview: 그외/other/rest leftover stub가 3열을 붙잡아 빈 띠 | ☑ 루프265 |
 | persist/preview: G/기둥 아/열한째 leftover 인덱스가 3열을 붙잡아 빈 띠 | ☑ 루프266 |
+| persist/preview: H/기둥 자/열두째 leftover 인덱스가 3열을 붙잡아 빈 띠 | ☑ 루프272 |
+| 생성 마법사: Replit Deck 썸네일이 흰 시드/미존재 index | ☑ example.html |
+| heal: nested duplicate `.card` open flatten | ☑ 루프270 |
+| prompts: 선택 템플릿 motif/색상/아이콘 실렌더 | ☑ 루프271 |
 | persist: title-only cover + empty hosts가 short-draft 성공 | ☑ 루프267 |
 | persist: embed stub-warn overwrite | ☑ 루프268 |
 | persist: thin prior top-up noop가 calm success | ☑ 루프269 |
 | contracts pretest: exactOptionalPropertyTypes TS2379 봉쇄 | ☑ 루프263 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프266 · G/열한째 인덱스)
+## 이번 루프 (루프272 · H/열두째 인덱스 + Replit Deck 썸네일)
+
+- [x] leftover index — H · 자 · 열두째
+- [x] `열세째` / `기둥 차` / `J`–`Z`(로마 I/V/X 제외) · index+추가 본문 유지
+- [x] heal-ai-generated-deck 루프272 · deck-framework-compact
+- [x] Replit Deck `example.html`(helix) · preview.entry / exampleOutputs
+- [x] project-card-html-cover · pickPluginPreviewHtmlPath
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프271 · 선택 템플릿 motif 실렌더)
+
+- [x] visible kit Motif anchors · 빈 `.deco-*` shell 실패
+- [x] contracts template-visual-kit · selected-template prompt
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프270 · nested duplicate `.card` open flatten)
+
+- [x] flattenNestedDuplicateCardOpens · Motif-only shell 보호
+- [x] heal-nested-duplicate-card-flatten
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프266 · G/열한째 인덱스)
 
 - [x] leftover index — G · 아 · 열한째
 - [x] `열두째` / `기둥 자` / `H`–`Z` · index+추가 본문 유지
