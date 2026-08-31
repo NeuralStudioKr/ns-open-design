@@ -2077,12 +2077,54 @@ function findOpenedTagCloseEnd(
   return depth === 0 ? i : null;
 }
 
+function compactInlineStyle(style: string): string {
+  return String(style ?? '').replace(/\s+/g, '').toLowerCase();
+}
+
+/**
+ * 루프293 — class 없는 MiniMax 카드. padding + (background|border) 크롬.
+ * `position:absolute` 풋터·라벨은 카드가 아니다.
+ */
+function looksLikeChromeCardStyle(style: string): boolean {
+  const compact = compactInlineStyle(style);
+  if (!compact) return false;
+  if (/(?:^|;)position:absolute(?:;|$)/.test(compact)) return false;
+  const hasPad = /(?:^|;)padding(?:-?(?:block|inline|top|right|bottom|left))?:/.test(compact);
+  const hasBg = /(?:^|;)background(?:-color)?:(?!transparent|none|inherit|initial|unset)/.test(
+    compact,
+  );
+  const hasBorder = /(?:^|;)border(?:-?(?:width|color|style))?:(?!none|0(?:px|em|rem)?(?:;|$))/
+    .test(compact);
+  return hasPad && (hasBg || hasBorder);
+}
+
+function sameChromeCardStyle(a: string, b: string): boolean {
+  if (!looksLikeChromeCardStyle(a) || !looksLikeChromeCardStyle(b)) return false;
+  return compactInlineStyle(a) === compactInlineStyle(b);
+}
+
+function nestedCardOpensMatch(
+  outerAttrs: string,
+  innerAttrs: string,
+): boolean {
+  const outerTokens = exactCardishTokens(outerAttrs);
+  const innerTokens = exactCardishTokens(innerAttrs);
+  if (outerTokens.length > 0) {
+    return innerTokens.some((token) => outerTokens.includes(token));
+  }
+  return sameChromeCardStyle(
+    extractInlineStyle(outerAttrs),
+    extractInlineStyle(innerAttrs),
+  );
+}
+
 export function flattenNestedDuplicateCardOpens(html: string): string {
   const source = String(html ?? '');
   if (!source || !/<(?:div|section|article|aside)\b/i.test(source)) return source;
   // 루프277 — MiniMax also nests `<section|article|aside class="card">` the
   // same way as `<div class="card">`. Same-tag flatten only (cross-tag stays
   // for unwrapRedundantNestedPeerCards).
+  // 루프293 — class 없이 같은 inline 크롬을 한 번 더 연 TAN 카드도 동일.
   const openRe = /<(div|section|article|aside)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
   type Patch = { start: number; end: number };
   const patches: Patch[] = [];
@@ -2091,8 +2133,12 @@ export function flattenNestedDuplicateCardOpens(html: string): string {
     const tag = (match[1] ?? 'div').toLowerCase();
     const outerAttrs = match[2] ?? '';
     if (/\bdata-od-official-motif-html\b/i.test(outerAttrs)) continue;
-    const outerTokens = exactCardishTokens(outerAttrs);
-    if (outerTokens.length === 0) continue;
+    if (
+      exactCardishTokens(outerAttrs).length === 0
+      && !looksLikeChromeCardStyle(extractInlineStyle(outerAttrs))
+    ) {
+      continue;
+    }
     const outerOpenEnd = match.index + match[0].length;
     let i = outerOpenEnd;
     while (i < source.length && /\s/.test(source[i]!)) i += 1;
@@ -2103,9 +2149,7 @@ export function flattenNestedDuplicateCardOpens(html: string): string {
     if (!innerOpen) continue;
     const innerAttrs = innerOpen[1] ?? '';
     if (/\bdata-od-official-motif-html\b/i.test(innerAttrs)) continue;
-    const innerTokens = exactCardishTokens(innerAttrs);
-    if (innerTokens.length === 0) continue;
-    if (!outerTokens.some((t) => innerTokens.includes(t))) continue;
+    if (!nestedCardOpensMatch(outerAttrs, innerAttrs)) continue;
     const innerOpenStart = i;
     const innerOpenEnd = i + innerOpen[0].length;
     const innerCloseEnd = findOpenedTagCloseEnd(source, tag, innerOpenEnd);
@@ -2193,6 +2237,106 @@ export function unwrapRedundantNestedPeerCards(
     const next = unwrapRedundantNestedPeerCardsOnce(out);
     if (next === out) break;
     out = next;
+  }
+  return out;
+}
+
+const SPILLED_CHROME_LABEL_MAX = 48;
+const SPILLED_BODY_MIN = 4;
+const SPILLED_BODY_MAX = 320;
+const SPILLED_SIBLING_MAX = 2;
+
+function looksLikeSpilledCardBody(child: DirectChildSpan): boolean {
+  if (child.tag !== 'div') return false;
+  if (exactCardishTokens(child.attrs).length > 0) return false;
+  if (looksLikeChromeCardStyle(child.style)) return false;
+  if (/(?:^|;)\s*display\s*:\s*(?:grid|flex)\b/i.test(child.style)) return false;
+  if (/(?:^|;)\s*position\s*:\s*absolute\b/i.test(child.style)) return false;
+  const text = visibleText(child.inner);
+  return text.length >= SPILLED_BODY_MIN && text.length <= SPILLED_BODY_MAX;
+}
+
+/**
+ * 루프293 — class 없는 크롬 카드가 라벨만 닫히고 제목·본문이 그리드
+ * 형제로 새면, shrink가 그 조각을 열로 승격한다. 선언 열보다 자식이
+ * 많을 때만 라벨 카드(≤48자) 뒤에 오는 맨몸 조각(1–2개)을 카드 안으로
+ * 되돌린다. 카피 발명 없음.
+ */
+export function absorbSpilledChromeCardSiblings(
+  html: string,
+  brief?: string | null,
+): string {
+  let out = String(html ?? '');
+  if (!out) return out;
+  if (!sourceLooksLikeAiGeneratedDeck(out, brief)) return out;
+  const gridOpenRe =
+    /<(div|section|article|main|aside|ul|ol)\b([^>]*\bstyle\s*=\s*(["'])([^"']*)\3[^>]*)>/gi;
+  const patches: Array<{ start: number; end: number; replacement: string }> = [];
+  let match: RegExpExecArray | null;
+  while ((match = gridOpenRe.exec(out)) !== null) {
+    const style = match[4] ?? '';
+    if (!/(?:^|;)\s*display\s*:\s*grid\b/i.test(style)) continue;
+    const colsRaw = /grid-template-columns\s*:\s*([^;]+)/i.exec(style)?.[1];
+    if (!colsRaw) continue;
+    const decl = parseDeclaredEqualColumns(colsRaw.trim());
+    if (!decl || decl.count < 2) continue;
+    const openTag = match[0] ?? '';
+    const tag = (match[1] ?? '').toLowerCase();
+    const openEnd = match.index + openTag.length;
+    const close = findSameTagClose(out, tag, openEnd);
+    if (!close) continue;
+    const children = listDirectBlockChildSpans(out, openEnd, close.closeStart);
+    if (children.length <= decl.count) continue;
+    const absorbed = new Set<DirectChildSpan>();
+    const extras = new Map<DirectChildSpan, DirectChildSpan[]>();
+    for (let i = 0; i < children.length; i += 1) {
+      const host = children[i]!;
+      if (absorbed.has(host)) continue;
+      if (host.tag !== 'div') continue;
+      if (!looksLikeChromeCardStyle(host.style)) continue;
+      const hostText = visibleText(host.inner);
+      if (hostText.length === 0 || hostText.length > SPILLED_CHROME_LABEL_MAX) continue;
+      const spilled: DirectChildSpan[] = [];
+      for (let j = i + 1; j < children.length && spilled.length < SPILLED_SIBLING_MAX; j += 1) {
+        const next = children[j]!;
+        if (!looksLikeSpilledCardBody(next)) break;
+        spilled.push(next);
+      }
+      if (spilled.length === 0) continue;
+      extras.set(host, spilled);
+      for (const item of spilled) absorbed.add(item);
+      i += spilled.length;
+    }
+    if (extras.size === 0) continue;
+    const pieces: string[] = [];
+    let cursor = openEnd;
+    for (const child of children) {
+      pieces.push(out.slice(cursor, child.absStart));
+      if (absorbed.has(child)) {
+        cursor = child.absCloseEnd;
+        continue;
+      }
+      const extra = extras.get(child);
+      if (extra && extra.length > 0) {
+        const insert = extra.map((item) => out.slice(item.absStart, item.absCloseEnd)).join('');
+        const closeStart = child.absEnd + child.inner.length;
+        pieces.push(`${out.slice(child.absStart, closeStart)}${insert}${out.slice(closeStart, child.absCloseEnd)}`);
+      } else {
+        pieces.push(out.slice(child.absStart, child.absCloseEnd));
+      }
+      cursor = child.absCloseEnd;
+    }
+    pieces.push(out.slice(cursor, close.closeStart));
+    patches.push({
+      start: openEnd,
+      end: close.closeStart,
+      replacement: pieces.join(''),
+    });
+  }
+  if (patches.length === 0) return out;
+  patches.sort((a, b) => b.start - a.start);
+  for (const patch of patches) {
+    out = `${out.slice(0, patch.start)}${patch.replacement}${out.slice(patch.end)}`;
   }
   return out;
 }
@@ -2525,6 +2669,9 @@ export function healAiGeneratedDeckMarkup(html: string, brief?: string | null): 
   // an empty outer shell plus a leftover </div>.
   out = unwrapRedundantNestedPeerCards(out, brief);
   out = closeUnclosedSiblingCardsInSlides(out);
+  // 루프293 — class 없는 크롬 카드의 조기 close가 제목·본문을 그리드
+  // 형제로 남기면 shrink가 열을 늘린다. shrink 전에 카드 안으로 되돌린다.
+  out = absorbSpilledChromeCardSiblings(out, brief);
   out = unnestHeadingBlockChildren(out);
   out = polishTruncatedInstructionTitles(out);
   // 루프197 — empty leftover card shells keep 3-track rows alive so

@@ -19,6 +19,12 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-08-31 현재 판단 · 최신 루프
 
+### 루프293 — class 없는 크롬 카드 spill · 동일 스타일 nest
+
+사용자 fixture(삼각함수 pitch-deck)는 `class="card"` 없이 border/background/padding만 그린다. (1) TAN처럼 같은 style을 한 번 더 연 nest는 루프270 token 매칭 밖. (2) 「① 피타고라스」만 닫히고 공식·설명이 그리드 형제가 되면 shrink가 5열로 승격. 동일 inline 크롬 nest flatten + 선언 열보다 자식이 많을 때만 라벨 카드(≤48자) 뒤 맨몸 조각 1–2개를 카드 안으로 되돌림. `calc(50%)` 2열·px sidebar·3글자 absolute `SOH` 유지. 카피 발명 없음.
+
+검증: contracts heal-spilled-chrome-card-siblings 루프293.
+
 ### 루프292 — minmax(0, calc(share)) equal-track
 
 루프289는 `minmax(0,33%)`만 언랩. MiniMax `minmax(0, calc(33%))` / `repeat(3, minmax(0, calc(100%/3)))`는 `[^)]+`가 calc 첫 `)`에서 잘려 파서가 null. 괄호 depth로 repeat·track를 나누고 `calc(33%)`·`calc(100%/3)`만 share로 본다. `calc(50%)` 2열·`minmax(200px,1fr)` sidebar 유지. 카피 발명 없음.
@@ -684,6 +690,7 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 
 ### 다음 루프 후보 (2026-08-31 EOD 기준)
 
+- **완료 (루프293):** class 없는 크롬 카드 spill absorb · 동일 style nest flatten. `SOH` footer·50/50·sidebar 유지.
 - **완료 (루프292):** `minmax(0, calc(share))` / `calc(100%/3)` equal-track. `calc(50%)` 2열은 유지.
 - **후보 (칸 번호 P):** 모델이 빈 3열을 다음 칸 번호(`기둥 P`)로 채우면 그때 빈 칸 번호에 넣는다. `스무 번째`는 아직 번호로 보지 않는 서수 픽스처. extra-copy·stub는 주제 단어 목록이 아님(루프259·265).
 - **완료 (루프289–290):** `minmax(0,share)` equal-track · logical `inline-size` peer lock. 3장 280 vs 900 sidebar는 의도적 유지.
