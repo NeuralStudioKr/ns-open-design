@@ -392,6 +392,18 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
       expect(out).toMatch(/minmax\(\s*auto\s*,\s*1fr\s*\) minmax\(\s*auto\s*,\s*1fr\s*\)/);
       expect(out).not.toMatch(/minmax\(\s*auto\s*,\s*1fr\s*\) minmax\(\s*auto\s*,\s*1fr\s*\) minmax\(\s*auto\s*,\s*1fr\s*\)/);
     });
+
+    it('shrinks minmax(0,33%) x3 with 2 cards (루프289)', () => {
+      const html = [
+        '<div style="display:grid;grid-template-columns:minmax(0,33%) minmax(0,33%) minmax(0,33%);gap:24px">',
+        '<div class="card">극한</div>',
+        '<div class="card">도함수</div>',
+        '</div>',
+      ].join('');
+      const out = shrinkOverAllocatedRepeatGrid(html);
+      expect(out).toMatch(/minmax\(0,33%\) minmax\(0,33%\)/);
+      expect(out).not.toMatch(/minmax\(0,33%\) minmax\(0,33%\) minmax\(0,33%\)/);
+    });
   });
 
   describe('루프195 equal-track leftover / clip', () => {
@@ -457,6 +469,49 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
       const out = normalizeEqualFrTracksToMinmax(html);
       expect(out).toMatch(/grid-template-columns:\s*(?:minmax\(0,1fr\) ){2}minmax\(0,1fr\)/);
       expect(out).not.toMatch(/grid-template-columns:\s*0\.33fr 0\.33fr 0\.33fr/);
+    });
+
+    it('rewrites a filled minmax(0,33%) row to minmax(0,1fr) (루프289)', () => {
+      const html = [
+        '<div style="display:grid;grid-template-columns:minmax(0,33%) minmax(0,33%) minmax(0,33%);gap:24px">',
+        '<div>a</div><div>b</div><div>c</div>',
+        '</div>',
+      ].join('');
+      const out = normalizeEqualFrTracksToMinmax(html);
+      expect(out).toMatch(/grid-template-columns:\s*(?:minmax\(0,1fr\) ){2}minmax\(0,1fr\)/);
+      expect(out).not.toMatch(/minmax\(0,33%\)/);
+    });
+
+    it('rewrites a filled minmax(0,30vw) row to minmax(0,1fr) (루프289)', () => {
+      const html = [
+        '<div style="display:grid;grid-template-columns:minmax(0,30vw) minmax(0,30vw) minmax(0,30vw);gap:24px">',
+        '<div>a</div><div>b</div><div>c</div>',
+        '</div>',
+      ].join('');
+      const out = normalizeEqualFrTracksToMinmax(html);
+      expect(out).toMatch(/grid-template-columns:\s*(?:minmax\(0,1fr\) ){2}minmax\(0,1fr\)/);
+      expect(out).not.toMatch(/minmax\(0,30vw\)/);
+    });
+
+    it('rewrites a filled minmax(0,0.33fr) row to minmax(0,1fr) (루프289)', () => {
+      const html = [
+        '<div style="display:grid;grid-template-columns:minmax(0,0.33fr) minmax(0,0.33fr) minmax(0,0.33fr);gap:24px">',
+        '<div>a</div><div>b</div><div>c</div>',
+        '</div>',
+      ].join('');
+      const out = normalizeEqualFrTracksToMinmax(html);
+      expect(out).toMatch(/grid-template-columns:\s*(?:minmax\(0,1fr\) ){2}minmax\(0,1fr\)/);
+      expect(out).not.toMatch(/minmax\(0,0\.33fr\)/);
+    });
+
+    it('leaves minmax(200px,1fr) sidebar tracks alone even with share-looking peers (루프289)', () => {
+      const html = [
+        '<div style="display:grid;grid-template-columns:minmax(200px,1fr) minmax(0,33%);gap:24px">',
+        '<div>목차</div><div>본문</div>',
+        '</div>',
+      ].join('');
+      expect(normalizeEqualFrTracksToMinmax(html)).toBe(html);
+      expect(shrinkOverAllocatedRepeatGrid(html)).toBe(html);
     });
 
     it('rewrites a filled 33vi 33vi 33vi row to minmax (루프251)', () => {
@@ -3020,6 +3075,43 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
       expect(out).not.toMatch(/max-width:\s*560px/);
       expect(out).toContain('극한');
       expect(out).toContain('적분');
+    });
+
+    it('strips uniform max-inline-size so three cards can share the row (루프290)', () => {
+      const html = [
+        '<div style="display:flex;gap:24px">',
+        '<div class="card" style="max-inline-size:560px;padding:24px"><h3>극한</h3></div>',
+        '<div class="card" style="max-inline-size:560px;padding:24px"><h3>도함수</h3></div>',
+        '<div class="card" style="max-inline-size:560px;padding:24px"><h3>적분</h3></div>',
+        '</div>',
+      ].join('');
+      const out = relaxUniformPeerCardFixedMainSize(html, '미적분');
+      expect(out).not.toMatch(/max-inline-size:\s*560px/);
+      expect(out).toContain('극한');
+      expect(out).toContain('적분');
+    });
+
+    it('strips uniform inline-size leftover locks (루프290)', () => {
+      const html = [
+        '<div style="display:flex;gap:24px">',
+        '<div class="card" style="inline-size:30vw;padding:24px"><h3>극한</h3></div>',
+        '<div class="card" style="inline-size:30vw;padding:24px"><h3>도함수</h3></div>',
+        '<div class="card" style="inline-size:30vw;padding:24px"><h3>적분</h3></div>',
+        '</div>',
+      ].join('');
+      const out = relaxUniformPeerCardFixedMainSize(html, '미적분');
+      expect(out).not.toMatch(/inline-size:\s*30vw/);
+      expect(out).toContain('극한');
+    });
+
+    it('leaves mixed max-inline-size sidebar alone (루프290)', () => {
+      const html = [
+        '<div style="display:flex;gap:24px">',
+        '<div class="card" style="max-inline-size:280px;padding:16px">목차</div>',
+        '<div class="card" style="max-inline-size:900px;padding:16px">본문</div>',
+        '</div>',
+      ].join('');
+      expect(relaxUniformPeerCardFixedMainSize(html, '미적분')).toBe(html);
     });
 
     it('strips uniform flex:0 0 locked basis (루프201)', () => {

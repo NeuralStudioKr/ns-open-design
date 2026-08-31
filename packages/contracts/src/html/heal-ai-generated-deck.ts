@@ -508,6 +508,32 @@ const EQUAL_FR_SHARE_TRACK_RE = /^0?\.(?:2[2-9]|3\d|4[0-8])\d*fr$/i;
 const EQUAL_COLUMN_SHARE_TRACK_RE =
   /^(?:2[2-9]|3\d|4[0-8])(?:\.\d+)?(?:%|vw|vh|vmin|vmax|dvh|svh|lvh|dvw|svw|lvw|dvmin|svmin|lvmin|dvmax|svmax|lvmax|vi|vb|svi|svb|lvi|lvb|dvi|dvb|cqw|cqi|cqh|cqb|cqmin|cqmax)$/i;
 
+/**
+ * 루프289 — MiniMax wraps leftover shares as `minmax(0,33%)` /
+ * `minmax(0,30vw)` / `minmax(0,0.33fr)` so bare-share parsers miss them.
+ * Only soft floors (0/auto/min-content/max-content) unwrap; `minmax(200px,1fr)`
+ * sidebars stay.
+ */
+function unwrapEqualShareTrack(track: string): string | null {
+  const compact = String(track ?? '').replace(/\s+/g, '');
+  const match = /^minmax\(\s*(?:0|auto|min-content|max-content)\s*,\s*([^)]+?)\s*\)$/i
+    .exec(compact);
+  if (!match) return null;
+  const inner = String(match[1] ?? '').replace(/\s+/g, '').toLowerCase();
+  if (EQUAL_FR_SHARE_TRACK_RE.test(inner) || EQUAL_COLUMN_SHARE_TRACK_RE.test(inner)) {
+    return inner;
+  }
+  return null;
+}
+
+function equalShareTrackKey(track: string): string | null {
+  const compact = String(track ?? '').replace(/\s+/g, '').toLowerCase();
+  if (EQUAL_FR_SHARE_TRACK_RE.test(compact) || EQUAL_COLUMN_SHARE_TRACK_RE.test(compact)) {
+    return compact;
+  }
+  return unwrapEqualShareTrack(compact);
+}
+
 function countDirectBlockChildren(inner: string): number {
   const tokenRe = /<(\/?)([a-zA-Z][\w-]*)\b[^>]*(\/)?>/gi;
   let depth = 0;
@@ -558,8 +584,9 @@ type EqualColumnDecl = {
  * Accept `repeat(N, 1fr)` and explicit equal tracks (`1fr 1fr 1fr`,
  * `1.0fr 1.0fr 1.0fr`, `minmax(0,1fr)…`). 루프210 — also identical
  * 22–48% / vw / vh shares (`33% 33% 33%`, `33vw 33vw 33vw`,
- * `33vh 33vh 33vh`). Mixed tracks such as `1.3fr 1fr` or `220px 1fr`
- * or `50% 50%` splits stay.
+ * `33vh 33vh 33vh`). 루프289 — same shares wrapped as
+ * `minmax(0,33%)` / `minmax(0,30vw)` / `minmax(0,0.33fr)`. Mixed tracks
+ * such as `1.3fr 1fr` or `220px 1fr` or `50% 50%` splits stay.
  */
 function parseDeclaredEqualColumns(value: string): EqualColumnDecl | null {
   const important = /!important/i.test(value);
@@ -577,7 +604,7 @@ function parseDeclaredEqualColumns(value: string): EqualColumnDecl | null {
   let tm: RegExpExecArray | null;
   while ((tm = trackRe.exec(cleaned)) !== null) tracks.push(tm[0]!);
   if (tracks.length < 2) return null;
-  if (tracks.every((t) => EQUAL_FR_TRACK_RE.test(t))) {
+  if (tracks.every((t) => EQUAL_FR_TRACK_RE.test(t.replace(/\s+/g, '')))) {
     return {
       kind: 'list',
       count: tracks.length,
@@ -585,15 +612,14 @@ function parseDeclaredEqualColumns(value: string): EqualColumnDecl | null {
       important,
     };
   }
-  const shares = tracks.map((t) => t.replace(/\s+/g, '').toLowerCase());
+  const shareKeys = tracks.map((t) => equalShareTrackKey(t));
   if (
-    shares.every((t) => EQUAL_FR_SHARE_TRACK_RE.test(t) && t === shares[0])
-    || shares.every((t) => EQUAL_COLUMN_SHARE_TRACK_RE.test(t) && t === shares[0])
+    shareKeys.every((key) => key != null && key === shareKeys[0])
   ) {
     return {
       kind: 'list',
-      count: shares.length,
-      unit: shares[0]!,
+      count: tracks.length,
+      unit: tracks[0]!.replace(/\s+/g, ''),
       important,
     };
   }
@@ -681,11 +707,13 @@ function minmaxUnitForEqualFr(decl: EqualColumnDecl): EqualColumnDecl | null {
   const unit = decl.unit.replace(/\s+/g, '').toLowerCase();
   if (unit === 'minmax(0,1fr)') return null;
   // 루프220 — `1.0fr` / `minmax(0,1.0fr)` are the same leftover as `1fr`.
+  // 루프289 — `minmax(0,33%)` / `minmax(0,0.33fr)` share wrappers too.
   if (
     /^1(?:\.0+)?fr$/i.test(unit)
     || /^minmax\((?:0|auto|min-content|max-content),1(?:\.0+)?fr\)$/i.test(unit)
     || EQUAL_FR_SHARE_TRACK_RE.test(unit)
     || EQUAL_COLUMN_SHARE_TRACK_RE.test(unit)
+    || unwrapEqualShareTrack(unit) != null
   ) {
     return { ...decl, unit: 'minmax(0,1fr)' };
   }
@@ -1479,7 +1507,17 @@ function flexShorthandLockedBasisPx(style: string): number | null {
 }
 
 function peerFixedMainSizePx(style: string): number | null {
-  for (const prop of ['width', 'flex-basis', 'min-width', 'max-width']) {
+  // 루프290 — logical size locks (`inline-size` / `max-inline-size`) clip
+  // the same way as width/max-width leftover pillars.
+  for (const prop of [
+    'width',
+    'flex-basis',
+    'min-width',
+    'max-width',
+    'inline-size',
+    'min-inline-size',
+    'max-inline-size',
+  ]) {
     const decl = new RegExp(`(?:^|;)\\s*${prop}\\s*:\\s*([^;]+)`, 'i').exec(style);
     if (!decl) continue;
     const px = cssLengthToPx(decl[1] ?? '');
@@ -1522,6 +1560,9 @@ function stripFixedMainSizeFromOpenTag(openTag: string): string {
     .replace(/(?:^|;)\s*width\s*:[^;]*/gi, '')
     .replace(/(?:^|;)\s*min-width\s*:[^;]*/gi, '')
     .replace(/(?:^|;)\s*max-width\s*:[^;]*/gi, '')
+    .replace(/(?:^|;)\s*inline-size\s*:[^;]*/gi, '')
+    .replace(/(?:^|;)\s*min-inline-size\s*:[^;]*/gi, '')
+    .replace(/(?:^|;)\s*max-inline-size\s*:[^;]*/gi, '')
     .replace(/(?:^|;)\s*flex-basis\s*:[^;]*/gi, '')
     .replace(/(?:^|;)\s*flex\s*:\s*(?:0\s+0|none)\s+[^;]*/gi, '')
     .replace(/^;+|;+$/g, '')
@@ -1562,6 +1603,8 @@ function stripFixedMainSizeFromOpenTag(openTag: string): string {
  * (`width:30svmin`, `33dvmin 33dvmin 33dvmin`).
  * 루프251 — same for logical viewport leftovers
  * (`width:30vb`, `33vi 33vi 33vi`).
+ * 루프290 — same for logical size leftovers
+ * (`max-inline-size:560px`, `inline-size:30vw`).
  */
 export function relaxUniformPeerCardFixedMainSize(
   html: string,

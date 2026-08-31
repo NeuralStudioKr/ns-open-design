@@ -20,6 +20,18 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-08-31 현재 판단 · 최신 루프
 
+### 루프290 — logical inline-size peer lock strip
+
+`max-width`/`width`는 벗기지만 MiniMax가 `max-inline-size:560px` / `inline-size:30vw`로 같은 3열 잠금을 유지. `peerFixedMainSizePx` · strip에 logical size 추가. 280 vs 900 sidebar 유지. 카피 발명 없음.
+
+검증: contracts heal-ai-generated-deck 루프290.
+
+### 루프289 — minmax(0, share) equal-track
+
+bare `33%`/`30vw`/`0.33fr`은 이미 heal되지만 `minmax(0,33%)` 래퍼는 파서가 null. soft floor unwrap 후 underfilled shrink · filled → `minmax(0,1fr)`. `minmax(200px,1fr)` sidebar 유지. 카피 발명 없음.
+
+검증: contracts heal-ai-generated-deck 루프289.
+
 ### 루프288 — 칸 번호 N · 열 라벨 하 · 열일곱째 빈 카드
 
 루프286까지는 A–M / 가…파 / 열여섯째까지만 빈 칸 번호로 본다. 모델이 빠진 3열을 `기둥 N` / `기둥 하` / `열일곱째`만으로 채워 빈 띠가 남는다. 그 세 제목만 제거. `스무 번째` / `기둥 O`와 번호+본문은 유지. 한글 열 라벨은 `하`가 끝. 카피 발명 없음.
@@ -661,13 +673,10 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 
 ### 다음 루프 후보 (2026-08-31 EOD 기준)
 
-- **후보 (루프289):** 모델이 빈 3열을 다음 열 라벨(`기둥 O`)로 채우면 그때 빈 칸 번호에 넣는다. 한글 열 라벨은 `하`까지 닫힘. `스무 번째`는 아직 번호로 보지 않는 서수 픽스처. extra-copy·stub는 주제 단어 목록이 아님(루프259·265).
-- **인접 (루프206 밖):** `srcdoc-deck-bridge-nested-slides` native `#deck-next` 픽스처가 host next 후 `active:2`를 보고함 (transform/dot는 1). staging에서 이미 red — 이번 CSS 변경과 무관.
-- **후보 C (3열 residual):** `G` 이후 알파벳, `열한째` 이상 서수, 또는 3장 280 vs 900(비율 >2.05) leftover. 루프261–262이 E–F/바사/여섯째–열째와 3열 400 vs 800을 닫음.
-- **후보 B (예약 · 규모 큼):** contracts 안 `var(--pad, calc(px * n))` / `env(safe-area-inset-top, calc(...))` fallback red-spec 39건. fallback 표현을 card threshold 로 승격하는 heuristic — 별도 루프 필요.
-- **후보 A 후속 (E2E):** 190b drop 이후 남은 슬라이드 수가 사용자 요청보다 부족할 때 top-up/retry 파이프라인과의 연동 검증. 루프194 auto-repair 커버리지 실증 (사용자 실 fixture 몇 % 를 drop 없이 살려내는가) — MiniMax 실키 없이 기록 fixture 기반 지표만이라도 남긴다.
-- **자원 아이템 (별도 루프):** `system-prompt-api-mode.test.ts` 의 prompt length ceiling (29114 / 29217 vs 29100) 은 upstream 에서 이미 red · 별도 루프. `deck-template-look-css > 인젝트 catalog Motif paint` 은 5s timeout 로 간헐 fail (flaky) — 재현 조건 정리 필요.
-- **완료 축 (재확인 불필요):** `AGENT_EXECUTION_STALLED` 는 루프189 (`c5cf50ef9c`, `471236e130`) 로 방어 완료 — 전용 한/영 카피 · retryable gate · api-proxy idle-timeout 회귀 · projectErrorMessages 회귀 · ProjectView 파샬 persist 방어가 모두 origin/staging 에 pin 됨.
+- **후보 (루프291):** 모델이 빈 3열을 다음 열 라벨(`기둥 O`)로 채우면 그때 빈 칸 번호에 넣는다. 한글 열 라벨은 `하`까지 닫힘. `스무 번째`는 아직 번호로 보지 않는 서수 픽스처. extra-copy·stub는 주제 단어 목록이 아님(루프259·265).
+- **완료 (루프289–290):** `minmax(0,share)` equal-track · logical `inline-size` peer lock. 3장 280 vs 900 sidebar는 의도적 유지.
+- **인접 (루프206 밖):** native `#deck-next` active off-by-one는 루프281–282로 닫힘.
+- **후보 C (3열 residual):** 칸 번호 `O` 이후, 또는 비율 >2.05 sidebar를 건드리지 않는 별도 layout residual.
 
 ## 진행
 
@@ -1063,10 +1072,19 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | preview: native transform strip active off-by-one (letterbox clientWidth/n) | ☑ 루프281 |
 | preview: pagination soft is-active가 exact .active보다 앞섬 | ☑ 루프282 |
 | persist: substance-rich prior top-up noop가 incomplete_output | ☑ 루프283 |
+| heal: minmax(0,33%/30vw/0.33fr) equal-track dodge | ☑ 루프289 |
+| heal: max-inline-size / inline-size peer lock | ☑ 루프290 |
 | contracts pretest: exactOptionalPropertyTypes TS2379 봉쇄 | ☑ 루프263 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프288 · 칸 번호 N/하/열일곱째)
+## 이번 루프 (루프289–290 · minmax share track · logical inline-size lock)
+
+- [x] unwrapEqualShareTrack · shrink/normalize minmax(0,share)
+- [x] peerFixedMainSizePx · strip inline-size / max-inline-size
+- [x] minmax(200px,1fr) · 280 vs 900 sidebar 유지
+- [x] heal-ai-generated-deck 루프289–290
+
+## 직전 루프 (루프288 · 칸 번호 N/하/열일곱째)
 
 - [x] 빈 칸 번호 — N · 열 라벨 하 · 열일곱째
 - [x] `스무 번째` / `기둥 O` · 번호+본문 유지
