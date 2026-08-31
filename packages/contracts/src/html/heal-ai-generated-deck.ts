@@ -1101,6 +1101,10 @@ const LEFTOVER_PEER_PLACEHOLDER_TOKENS = [
   'foo',
   'bar',
   'baz',
+  // 루프249 — FIXME/HACK shells MiniMax leaves on the missing pillar.
+  'fixme',
+  'hack',
+  '고쳐야함',
 ].sort((a, b) => b.length - a.length);
 
 const LEFTOVER_PEER_PLACEHOLDER_PUNCT_RE = /^(?:[.…·•\-–—]{1,3})/u;
