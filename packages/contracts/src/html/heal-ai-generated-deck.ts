@@ -678,6 +678,29 @@ function collectClassEqualTrackDecls(html: string): Map<string, ClassEqualTrackD
   return found;
 }
 
+function collectClassFlexRowNames(html: string): Set<string> {
+  const found = new Set<string>();
+  const styleRe = /<style\b[^>]*>([\s\S]*?)<\/style>/gi;
+  let sm: RegExpExecArray | null;
+  while ((sm = styleRe.exec(html)) !== null) {
+    const css = sm[1] ?? '';
+    const ruleRe = /(?:^|})\s*((?:\.[\w-]+\s+)*)\.([a-zA-Z][\w-]*)\s*\{([^}]+)\}/g;
+    let rm: RegExpExecArray | null;
+    while ((rm = ruleRe.exec(css)) !== null) {
+      const className = (rm[2] ?? '').toLowerCase();
+      const body = rm[3] ?? '';
+      if (!className || /^(?:slide|deck|presentation|stage|cover|body|html)$/.test(className)) {
+        continue;
+      }
+      const style = `;${body}`;
+      if (!/(?:^|;)\s*display\s*:\s*(?:inline-)?flex\b/i.test(style)) continue;
+      if (/(?:^|;)\s*flex-direction\s*:\s*column(?:-reverse)?\b/i.test(style)) continue;
+      found.add(className);
+    }
+  }
+  return found;
+}
+
 function classTokensFromAttrs(attrs: string): string[] {
   const raw = /\bclass\s*=\s*(["'])([\s\S]*?)\1/i.exec(attrs)?.[2] ?? '';
   return raw.toLowerCase().split(/\s+/).filter(Boolean);
@@ -1252,6 +1275,64 @@ export function balanceUnderfilledFlexCardRow(html: string): string {
   return out;
 }
 
+/**
+ * 루프204 — Same leftover as 191, but the flex row lives on a class rule
+ * (`.cards { display:flex }`) with no inline display. 191 never sees it.
+ * Hangul/brief-gated. Skip inline-flex rows (191) and flex columns.
+ */
+export function balanceClassBoundFlexCardRow(
+  html: string,
+  brief?: string | null,
+): string {
+  let out = String(html ?? '');
+  if (!out) return out;
+  if (!sourceHasHangulGate(out, brief)) return out;
+  const flexNames = collectClassFlexRowNames(out);
+  if (flexNames.size === 0) return out;
+  const openRe =
+    /<(div|section|article|main|aside|ul|ol)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
+  const parentPatches: Array<{ start: number; end: number; replacement: string }> = [];
+  const childPatches: Array<{ start: number; end: number; replacement: string }> = [];
+  let match: RegExpExecArray | null;
+  while ((match = openRe.exec(out)) !== null) {
+    const attrs = match[2] ?? '';
+    const style = extractInlineStyle(attrs);
+    if (isFlexRowContainerStyle(style)) continue;
+    const tokens = classTokensFromAttrs(attrs);
+    if (!tokens.some((token) => flexNames.has(token))) continue;
+    const openTag = match[0] ?? '';
+    const tag = (match[1] ?? '').toLowerCase();
+    const start = match.index;
+    const openEnd = start + openTag.length;
+    const close = findSameTagClose(out, tag, openEnd);
+    if (!close) continue;
+    const children = listDirectBlockChildOpens(out, openEnd, close.closeStart);
+    if (children.length < 2 || children.length > 6) continue;
+    if (children.some((c) => styleHasFlexGrow(c.style))) continue;
+    if (children.some((c) => styleLooksLikeFixedSidebar(c.style))) continue;
+    if (!children.every((c) => childLooksLikePeerCard(c.attrs, c.style))) continue;
+    for (const child of children) {
+      childPatches.push({
+        start: child.absStart,
+        end: child.absEnd,
+        replacement: withFlexGrowOnOpenTag(child.open),
+      });
+    }
+    if (!/(?:^|;)\s*width\s*:/i.test(style)) {
+      parentPatches.push({
+        start,
+        end: openEnd,
+        replacement: replaceStyleDecl(openTag, 'width', '100%'),
+      });
+    }
+  }
+  const patches = [...parentPatches, ...childPatches].sort((a, b) => b.start - a.start);
+  for (const p of patches) {
+    out = `${out.slice(0, p.start)}${p.replacement}${out.slice(p.end)}`;
+  }
+  return out;
+}
+
 const VOID_HTML_TAGS_RE =
   /^(?:area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr)$/i;
 
@@ -1806,6 +1887,7 @@ export function healAiGeneratedDeckMarkup(html: string, brief?: string | null): 
   out = shrinkOverAllocatedEqualTrackRows(out);
   out = shrinkClassBoundEqualTrackGrids(out, brief);
   out = balanceUnderfilledFlexCardRow(out);
+  out = balanceClassBoundFlexCardRow(out, brief);
   out = normalizeHangulParticleGaps(out);
   out = neutralizeUnanchoredTranslateYInSlideContent(out);
   out = scrubBriefLeakFromMetaSlots(out, brief);

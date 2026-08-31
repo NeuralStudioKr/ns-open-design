@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   balanceUnderfilledFlexCardRow,
+  balanceClassBoundFlexCardRow,
   closeUnclosedSiblingCardsInSlides,
   dropEmptyLikelyDeckSlides,
   healAiGeneratedDeckMarkup,
@@ -749,6 +750,59 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
       expect(out.match(/flex:\s*1 1 0/gi)?.length).toBeGreaterThanOrEqual(2);
       expect(out).toContain('극한');
       expect(out).toContain('미분');
+    });
+  });
+
+  describe('루프204 class-bound flex card row', () => {
+    it('gives flex-grow to peer cards in a stylesheet flex row', () => {
+      const html = [
+        '<style>.cards{display:flex;gap:28px}</style>',
+        '<div class="cards">',
+        '<div class="card" style="padding:24px"><h3>극한</h3></div>',
+        '<div class="card" style="padding:24px"><h3>도함수</h3></div>',
+        '</div>',
+      ].join('');
+      const out = balanceClassBoundFlexCardRow(html, '미적분');
+      expect(out.match(/flex:\s*1 1 0/gi)?.length).toBe(2);
+      expect(out).toMatch(/class="cards"[^>]*width:\s*100%|width:\s*100%[^>]*class="cards"/);
+      expect(out).toContain('극한');
+    });
+
+    it('leaves a class flex column alone', () => {
+      const html = [
+        '<style>.stack{display:flex;flex-direction:column;gap:12px}</style>',
+        '<div class="stack">',
+        '<div class="card" style="padding:16px">a</div>',
+        '<div class="card" style="padding:16px">b</div>',
+        '</div>',
+      ].join('');
+      expect(balanceClassBoundFlexCardRow(html, '미적분')).toBe(html);
+    });
+
+    it('leaves official English class flex rows alone without a brief', () => {
+      const html = [
+        '<style>.cards{display:flex;gap:16px}</style>',
+        '<div class="cards">',
+        '<div class="card" style="padding:16px">One</div>',
+        '<div class="card" style="padding:16px">Two</div>',
+        '</div>',
+      ].join('');
+      expect(balanceClassBoundFlexCardRow(html)).toBe(html);
+    });
+
+    it('pipeline balances a Hangul class flex row without inventing copy', () => {
+      const html = [
+        '<style>.cards{display:flex;gap:28px}</style>',
+        '<section class="slide"><h1>미적분의 세 기둥</h1>',
+        '<div class="cards">',
+        '<div class="card" style="padding:24px"><h3>극한</h3><p>lim</p></div>',
+        '<div class="card" style="padding:24px"><h3>도함수</h3><p>d/dx</p></div>',
+        '</div></section>',
+      ].join('');
+      const out = healAiGeneratedDeckMarkup(html, '미적분');
+      expect(out.match(/flex:\s*1 1 0/gi)?.length).toBeGreaterThanOrEqual(2);
+      expect(out).toContain('극한');
+      expect(out).toContain('도함수');
     });
   });
 

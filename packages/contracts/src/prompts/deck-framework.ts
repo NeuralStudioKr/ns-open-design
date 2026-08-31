@@ -519,7 +519,7 @@ Do not invent one identical white box for every slide. Pick the closest layout b
 **Big stat** — one number + caption (centered):
 \`<section class="slide" data-screen-label="03 Stat" style="width:1920px;height:1080px;box-sizing:border-box;padding:80px 88px;background:#111827;color:#fff;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center"><div style="font:700 120px/1 sans-serif">38<span style="font-size:.45em">%</span></div><p style="margin:28px 0 0;max-width:36rem;font:26px/1.5 sans-serif;opacity:.85">수치가 의미하는 한 줄 설명.</p></section>\`
 
-**Three-column** — headline + 3 points (use flex, keep copy short). Column count = card count: a titled N-item row must emit N cards (flex children or equal 1fr tracks) — never a 3-track grid with only two cards, and never an empty card shell or placeholder card shell (제목/내용/.../TBD/N/A/준비중) to hold a leftover track. Peer cards share the row: no px width or min-width, max-width, or flex: 0 0 on each card. Never wrap a card in another card:
+**Three-column** — headline + 3 points (use flex, keep copy short). Column count = card count: a titled N-item row must emit N cards (flex children or equal 1fr tracks) — never a 3-track grid with only two cards, and never an empty card shell or placeholder card shell (제목/내용/.../TBD/N/A/준비중) to hold a leftover track. Peer cards share the row: no px width or min-width, max-width, or flex: 0 0 on each card. Class flex rows (.cards { display:flex }) must also share the canvas. Never wrap a card in another card:
 \`<section class="slide" data-screen-label="04 Columns" style="width:1920px;height:1080px;box-sizing:border-box;padding:72px 80px;background:#f8fafc;color:#0f172a;display:flex;flex-direction:column;justify-content:center"><h2 style="font:700 48px/1.15 sans-serif">세 가지 포인트</h2><div style="display:flex;gap:28px"><p>포인트 1</p><p>포인트 2</p><p>포인트 3</p></div></section>\`
 
 **Split thesis** — left headline, right evidence cards:
@@ -561,7 +561,7 @@ Do not invent one identical empty box for every slide. Pick the closest role bel
 **Cover** — big title + one lead line; kit background + kit display font; use compact kit-colored \`.deco\` wrappers / CSS shapes / chunky kit cards in corners — never emoji flower/star rows, and never start with a large SVG dump.
 **Body** — eyebrow + headline + paragraph or bullets on a kit surface (not plain white Inter).
 **Big stat** — one number + caption centered; kit accent for the numeral.
-**Three-column** — headline + 3 short points (flex/grid); kit card borders/shadows when the kit uses chunky cards. Column count = card count: never leave an empty third track or an empty/placeholder card shell (TBD/N/A/준비중). Peer cards share the row: no px width or min-width, max-width, or flex: 0 0 on each card. Never wrap a card in another card.
+**Three-column** — headline + 3 short points (flex/grid); kit card borders/shadows when the kit uses chunky cards. Column count = card count: never leave an empty third track or an empty/placeholder card shell (TBD/N/A/준비중). Peer cards share the row: no px width or min-width, max-width, or flex: 0 0 on each card. Class flex rows must also share the canvas. Never wrap a card in another card.
 **Split thesis** — left headline, right evidence cards (CSS grid ~.9fr/1.1fr).
 **Timeline / pipeline** — 4 numbered horizontal steps.
 **Quote / principle** — one strong 56–72px sentence with small attribution.
