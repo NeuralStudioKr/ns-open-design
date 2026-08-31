@@ -56,6 +56,7 @@ describe('DECK_FRAMEWORK_DIRECTIVE_COMPACT', () => {
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('PILLAR 03');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('해당없음');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('PILLAR III');
+    expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('No. 3');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('Class flex rows');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('no px/% width or min-width');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('max-width');

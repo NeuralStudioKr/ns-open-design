@@ -7,6 +7,12 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-08-31 현재 판단 · 최신 루프
 
+### 루프212 — No. 3 / 번호 3 인덱스 leftover
+
+루프205는 pillar/column/기둥만 본다. MiniMax는 `No. 3`/`번호 3`만 남겨 3열이 유지된다. 해당 접두+숫자만 leftover. 전-인덱스 스텝 행은 유지. 카피 발명 없음.
+
+검증: contracts heal-ai-generated-deck 루프212 · deck-framework-compact.
+
 ### 루프211 — n.a. / t.b.d. dotted stub 카드
 
 루프202는 `na`/`tbd`만 본다. MiniMax는 `n.a.`/`T.B.D.`처럼 점을 남겨 3열이 유지된다. compact에서 `.`를 지워 기존 stub 토큰에 맞춘다. `3.14` 실카피는 유지. 카피 발명 없음.
@@ -453,9 +459,17 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | persist/preview: PILLAR III/기둥 Ⅲ 로마 leftover 카드가 3열을 붙잡아 빈 띠 | ☑ 루프209 |
 | persist/preview: 동일 33% 그리드 트랙이 2장 leftover · 3장 클립 | ☑ 루프210 |
 | persist/preview: n.a./T.B.D. dotted stub 카드가 3열을 붙잡아 빈 띠 | ☑ 루프211 |
+| persist/preview: No. 3/번호 3 인덱스 leftover 카드가 3열을 붙잡아 빈 띠 | ☑ 루프212 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프211 · dotted stub)
+## 이번 루프 (루프212 · No./번호 인덱스)
+
+- [x] `no.`/`number`/`번호`/`포인트` 접두
+- [x] 전-인덱스 스텝 행 유지
+- [x] heal-ai-generated-deck 루프212 · deck-framework-compact
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프211 · dotted stub)
 
 - [x] leftover compact에서 `.` 제거 · `3.14` 유지
 - [x] heal-ai-generated-deck 루프211 · deck-framework-compact
