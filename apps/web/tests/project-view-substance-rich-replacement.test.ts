@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
   findClientArtifactRegression,
   findClientSlideCountRegression,
+  shouldSkipDaemonArtifactStubGuard,
 } from '../src/components/ProjectView';
 
 /**
@@ -203,5 +204,62 @@ describe('findClientSlideCountRegression · 루프279 substance-rich exemption',
       priorHtml: priorFullEightSlides,
     });
     expect(result).toMatchObject({ priorCount: 8, newCount: 3 });
+  });
+});
+
+describe('shouldSkipDaemonArtifactStubGuard · 루프280', () => {
+  it('skips daemon stub-guard for leftover/seed replacement', () => {
+    expect(
+      shouldSkipDaemonArtifactStubGuard({
+        allowReplaceSeedOrLeftover: true,
+        htmlBody: '<section class="slide"><h1>표지</h1></section>',
+      }),
+    ).toBe(true);
+  });
+
+  it('skips daemon stub-guard for substance-rich 5-slide rewrite', () => {
+    expect(
+      shouldSkipDaemonArtifactStubGuard({
+        htmlBody: substanceRichFive,
+      }),
+    ).toBe(true);
+  });
+
+  it('사용자 fixture (5 slides · substance) skips daemon stub-guard', () => {
+    const raw = readFileSync(
+      '/tmp/user-fixture-artifact-regression.html',
+      'utf8',
+    );
+    expect(
+      shouldSkipDaemonArtifactStubGuard({
+        htmlBody: raw,
+        healBrief: '삼각함수를 처음 배우는 학생을 위한 발표',
+        healTitle: '삼각함수 소개',
+      }),
+    ).toBe(true);
+  });
+
+  it('does not skip for a 1-slide title-only draft', () => {
+    expect(
+      shouldSkipDaemonArtifactStubGuard({
+        htmlBody:
+          '<!doctype html><html lang="ko"><body>'
+          + '<section class="slide"><h1>미분법 강의</h1></section>'
+          + '</body></html>',
+      }),
+    ).toBe(false);
+  });
+
+  it('does not skip for a 3-slide thin compact draft', () => {
+    expect(
+      shouldSkipDaemonArtifactStubGuard({
+        htmlBody:
+          '<!doctype html><html lang="ko"><body>'
+          + '<section class="slide"><h1>시장 개관</h1><p>짧은 요약</p></section>'
+          + '<section class="slide"><h2>문제</h2><p>병목이 있습니다.</p></section>'
+          + '<section class="slide"><h2>다음</h2><p>파일럿 검증.</p></section>'
+          + '</body></html>',
+      }),
+    ).toBe(false);
   });
 });

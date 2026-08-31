@@ -7,6 +7,14 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-08-31 현재 판단 · 최신 루프
 
+### 루프280 — substance-rich persist가 daemon stub-guard에 422 오탐
+
+루프273/279가 client byte·slide-count gate는 열었다. persist는 leftover/seed일 때만 `skipArtifactStubGuard`를 켠다. 데몬 가드는 바이트 비율만 본다(`minRetainedRatio` 0.35). 5장 완성본이 큰 8장 prior의 35% 미만이면 client는 통과해도 `422 ARTIFACT_REGRESSION` → 사용자는 다시 "짧은 초안" 배너를 본다. embed는 `forceArtifactStubGuardReject`까지 켜져 더 잘 막힌다.
+
+수정: `shouldSkipDaemonArtifactStubGuard` — leftover/seed **또는** substance-rich(4+ · meetsMinimum · not low-substance)면 skip. 1–3장 thin·title-only는 skip하지 않아 기존 stub 거절을 유지. embed force-reject도 같은 조건.
+
+검증: `project-view-substance-rich-replacement` 루프280 · teamver-canvas-slide-launch · project-view-message-load.
+
 ### 루프279 — substance-rich 8→5가 slide-count regression 오탐 · 배너 분리
 
 루프273은 `findClientArtifactRegression` byte-guard만 열었다. 같은 5장 완성본이 8장 prior 위에 오면 `findClientSlideCountRegression`이 `dropped >= 3`으로 저장을 다시 거부하고, 배너는 그대로 "짧은 초안"이라 사용자는 완성본이 초안으로 거절된 것처럼 본다.
@@ -975,6 +983,7 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | persist: substance-rich replacement가 artifact_regression 오탐 | ☑ 루프273 |
 | persist: substance-rich 8→5가 slide-count regression 오탐 | ☑ 루프279 |
 | persist: slide-count 거절 배너가 짧은 초안과 동일 | ☑ 루프279 |
+| persist: substance-rich rewrite가 daemon stub-guard 422 | ☑ 루프280 |
 | 생성 마법사: Replit Deck 썸네일이 흰 시드/미존재 index | ☑ example.html |
 | preview: stale 매니페스트가 assets/template.html 시드를 example.html보다 먼저 | ☑ 루프274 |
 | heal: nested duplicate `.card` open flatten | ☑ 루프270 |
@@ -988,7 +997,14 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | contracts pretest: exactOptionalPropertyTypes TS2379 봉쇄 | ☑ 루프263 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프279 · slide-count substance-rich 면제 · 배너 분리)
+## 이번 루프 (루프280 · daemon stub-guard substance-rich skip)
+
+- [x] shouldSkipDaemonArtifactStubGuard — leftover 또는 substance-rich
+- [x] persist revision/write 모두 skip · embed force-reject 동기화
+- [x] 1–3장 thin은 skip하지 않음
+- [x] project-view-substance-rich-replacement · canvas-slide-launch
+
+## 직전 루프 (루프279 · slide-count substance-rich 면제 · 배너 분리)
 
 - [x] findClientSlideCountRegression greenfield substance-rich 8→5 허용
 - [x] strict image-embed 8→5 · 8→2 hard collapse · 3-slide thin 계속 차단

@@ -1108,6 +1108,7 @@ describe("ProjectView message loading", () => {
     expect(source).toContain("healBrief: runVisiblePromptRef.current || ''");
     expect(source).toContain("healTitle: project.name || '슬라이드'");
     expect(source).toContain("isSubstanceRichDeckReplacement");
+    expect(source).toContain("shouldSkipDaemonArtifactStubGuard");
     expect(source).toContain("bannerKind: 'slide-count'");
     expect(source).toContain("const FIRST_FILL_SLIDE_COUNT_THIS_TURN = 6");
     expect(source).toContain("deckTitle: project.name || '슬라이드'");

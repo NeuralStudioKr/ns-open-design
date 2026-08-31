@@ -760,7 +760,10 @@ describe("canvasSlideLaunch", () => {
     expect(projectView).toContain("allowCompactReplacement: allowReplaceSeedOrLeftover");
     expect(projectView).toContain("allowSlideCountReduction: allowReplaceSeedOrLeftover");
     expect(projectView).toContain("skipArtifactStubGuard: true");
-    expect(projectView).toMatch(/allowReplaceSeedOrLeftover[\s\S]{0,200}skipArtifactStubGuard:\s*true/);
+    expect(projectView).toContain("shouldSkipDaemonArtifactStubGuard");
+    expect(projectView).toMatch(
+      /shouldSkipDaemonArtifactStubGuard[\s\S]{0,400}skipArtifactStubGuard:\s*true/,
+    );
     expect(projectView).toContain("templateCloneFillSlideCountOverrideNotice(");
     expect(projectView).toContain("slimTemplateVisualKitForFill(");
     expect(projectView).toContain("templateCloneContentFill: isCloneContentFillTurn");

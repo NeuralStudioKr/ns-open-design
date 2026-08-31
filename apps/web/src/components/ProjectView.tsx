@@ -2870,7 +2870,7 @@ function countDeckSlideSections(html: string): number {
 const SUBSTANCE_RICH_REPLACEMENT_MIN_SLIDES = 4;
 
 /** Completed 4+ slide fill with real copy — not a first-fill compact draft. */
-function isSubstanceRichDeckReplacement(
+export function isSubstanceRichDeckReplacement(
   html: string,
   brief?: string | null,
   title?: string | null,
@@ -2880,6 +2880,23 @@ function isSubstanceRichDeckReplacement(
     && meetsMinimumDeckDeliverableQuality(html)
     && !isLowSubstanceSlideDeckArtifact(html, brief, title)
   );
+}
+
+/**
+ * 루프280 — Client gates (loop273/279) already accept a substance-rich
+ * replacement. The daemon stub-guard is byte-only (minRetainedRatio 0.35),
+ * so a 5-slide topical deck under a large 8-slide prior still 422s as
+ * ARTIFACT_REGRESSION and the user sees the short-draft banner again.
+ * Leftover/seed writes already skipped; substance-rich must match.
+ */
+export function shouldSkipDaemonArtifactStubGuard(input: {
+  allowReplaceSeedOrLeftover?: boolean;
+  htmlBody: string;
+  healBrief?: string | null;
+  healTitle?: string | null;
+}): boolean {
+  return Boolean(input.allowReplaceSeedOrLeftover)
+    || isSubstanceRichDeckReplacement(input.htmlBody, input.healBrief, input.healTitle);
 }
 
 export function findClientArtifactRegression(input: {
@@ -6017,6 +6034,12 @@ export function ProjectView({
           // Soft-fail — missing prior HTML should not block otherwise-valid saves.
         }
       }
+      const skipDaemonStubGuard = shouldSkipDaemonArtifactStubGuard({
+        allowReplaceSeedOrLeftover,
+        htmlBody,
+        healBrief: runVisiblePromptRef.current || '',
+        healTitle: project.name || '슬라이드',
+      });
       const truncateAfterSequence = getActiveRevisionSequence(project.id, fileName);
       const assistantMessageId = [...messagesRef.current]
         .reverse()
@@ -6038,11 +6061,12 @@ export function ProjectView({
             // Clone LOOK seeds a large template; fill replaces it with a
             // compact content deck. Client already skips the local regression
             // check — daemon stub-guard must match or ARTIFACT_REGRESSION fires.
-            ...(allowReplaceSeedOrLeftover
+            // 루프280 — substance-rich topical rewrite uses the same skip.
+            ...(skipDaemonStubGuard
               ? { skipArtifactStubGuard: true }
               : {}),
             // 루프268 — Teamver embed: never allow warn-mode stub overwrite.
-            ...(!allowReplaceSeedOrLeftover && isTeamverEmbedMode()
+            ...(!skipDaemonStubGuard && isTeamverEmbedMode()
               ? { forceArtifactStubGuardReject: true }
               : {}),
           },
@@ -6053,10 +6077,10 @@ export function ProjectView({
           htmlBody,
           {
             artifactManifest: manifest ?? undefined,
-            ...(allowReplaceSeedOrLeftover
+            ...(skipDaemonStubGuard
               ? { skipArtifactStubGuard: true }
               : {}),
-            ...(!allowReplaceSeedOrLeftover && isTeamverEmbedMode()
+            ...(!skipDaemonStubGuard && isTeamverEmbedMode()
               ? { forceArtifactStubGuardReject: true }
               : {}),
           },
