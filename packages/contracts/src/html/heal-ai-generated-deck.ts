@@ -425,7 +425,7 @@ const EQUAL_FR_TRACK_RE =
   /^(?:1(?:\.0+)?fr|minmax\(\s*(?:0|auto|min-content|max-content)\s*,\s*1(?:\.0+)?fr\s*\))$/i;
 /** 루프210/215/238 — identical 22–48% or viewport/container shares (skip 50 splits). */
 const EQUAL_COLUMN_SHARE_TRACK_RE =
-  /^(?:2[2-9]|3\d|4[0-8])(?:\.\d+)?(?:%|vw|vh|vmin|vmax|dvh|svh|lvh|dvw|svw|lvw|cqw|cqi|cqh|cqb)$/i;
+  /^(?:2[2-9]|3\d|4[0-8])(?:\.\d+)?(?:%|vw|vh|vmin|vmax|dvh|svh|lvh|dvw|svw|lvw|cqw|cqi|cqh|cqb|cqmin|cqmax)$/i;
 
 function countDirectBlockChildren(inner: string): number {
   const tokenRe = /<(\/?)([a-zA-Z][\w-]*)\b[^>]*(\/)?>/gi;
@@ -1156,7 +1156,7 @@ function textLooksLikeLeftoverPeerPlaceholder(html: string): boolean {
  * 루프239 — letter `D` / `기둥 마` / `첫째`/`둘째`/`셋째` leftovers.
  * 루프242 — `Group 3` / `Lane 3` / `행 3` index leftovers.
  * `UNIT 3` stays because that prefix is not leftover vocabulary.
- * 루프246 — letter `E` / `기둥 바` / `여섯째` leftovers. Keep `G`–`Z`,
+ * 루프247 — letter `E` / `기둥 바` / `여섯째` leftovers. Keep `G`–`Z`,
  * `열한째`, `기둥 아`, and `여섯째 적분` real copy.
  */
 const LEFTOVER_INDEX_ROMAN =
@@ -1165,9 +1165,9 @@ const LEFTOVER_INDEX_ROMAN =
 const LEFTOVER_INDEX_MARK = '[⓪①-⑨❶-❾⓿０-９⑴-⑼㉠-㉥]';
 /** 루프225/230 — 0 / 00 / 01–09 / 10 leftover shells. */
 const LEFTOVER_INDEX_DIGIT = '(?:0?[0-9]|10)';
-/** 루프237/239/246 — A–F / 가나다라마바사 leftover letters (not roman V/X/I, not G–Z). */
+/** 루프237/239/247 — A–F / 가나다라마바사 leftover letters (not roman V/X/I, not G–Z). */
 const LEFTOVER_INDEX_LETTER = '(?:[a-f]|[가나다라마바사])';
-/** 루프239/246 — Hangul ordinal leftover shells. Keep `첫째 적분` / `열한째`. */
+/** 루프239/247 — Hangul ordinal leftover shells. Keep `첫째 적분` / `열한째`. */
 const LEFTOVER_INDEX_ORDINAL = '(?:첫|둘|셋|넷|다섯|여섯|일곱|여덟|아홉|열)(?:째|번째)';
 const LEFTOVER_INDEX_CORE =
   `(?:${LEFTOVER_INDEX_DIGIT}|${LEFTOVER_INDEX_ROMAN}|${LEFTOVER_INDEX_MARK}|${LEFTOVER_INDEX_LETTER}|${LEFTOVER_INDEX_ORDINAL})`;
@@ -1270,7 +1270,7 @@ export function dropEmptyLeftoverPeerCardsInAllocatedRows(
 const PEER_FIXED_MAIN_SIZE_MIN_PX = 280;
 /** 루프240 — 400 vs 600 (1.5) still shares the row; 280 vs 900 sidebar stays. */
 const PEER_FIXED_MAIN_SIZE_RATIO = 1.6;
-/** 루프247 — 3+ peers: 400 vs 800 (2.0) is leftover. 2-card 400/800 split stays. */
+/** 루프248 — 3+ peers: 400 vs 800 (2.0) is leftover. 2-card 400/800 split stays. */
 const PEER_FIXED_MAIN_SIZE_TRIPLE_RATIO = 2.05;
 /** 루프207 — 3-col leftover `%` shares (skip 100% stretch and 50% splits). */
 const PEER_COLUMN_SHARE_PERCENT_MIN = 22;
@@ -1290,7 +1290,7 @@ function cssLengthToPx(raw: string): number | null {
   }
   // 루프213/238 — MiniMax locks cards with 30vw/30vh/30vmin as if the
   // canvas were the viewport. Same 22–48 band as % / vw; 50/100 stay.
-  const viewport = /^(\d+(?:\.\d+)?)\s*(vw|vh|vmin|vmax|dvh|svh|lvh|dvw|svw|lvw|cqw|cqi|cqh|cqb)$/i
+  const viewport = /^(\d+(?:\.\d+)?)\s*(vw|vh|vmin|vmax|dvh|svh|lvh|dvw|svw|lvw|cqw|cqi|cqh|cqb|cqmin|cqmax)$/i
     .exec(source);
   if (viewport) {
     const value = Number.parseFloat(viewport[1] ?? '');
@@ -1317,7 +1317,7 @@ function flexShorthandLockedBasisPx(style: string): number | null {
   const raw = String(decl[1] ?? '').trim();
   if (!/^0\s+0\s+/i.test(raw) && !/^none\b/i.test(raw)) return null;
   // `%` is not a word char, so `\b` after it fails at end-of-decl (`33%`).
-  const length = /(\d+(?:\.\d+)?)\s*(px|rem|em|ch|%|vw|vh|vmin|vmax|dvh|svh|lvh|dvw|svw|lvw|cqw|cqi|cqh|cqb)/i
+  const length = /(\d+(?:\.\d+)?)\s*(px|rem|em|ch|%|vw|vh|vmin|vmax|dvh|svh|lvh|dvw|svw|lvw|cqw|cqi|cqh|cqb|cqmin|cqmax)/i
     .exec(raw);
   if (!length) return null;
   return cssLengthToPx(`${length[1]}${length[2]}`);
@@ -1353,7 +1353,7 @@ function peersHaveUniformFixedMainSize(styles: string[]): boolean {
   const max = Math.max(...nums);
   if (min < PEER_FIXED_MAIN_SIZE_MIN_PX) return false;
   if (max <= min * PEER_FIXED_MAIN_SIZE_RATIO) return true;
-  // 루프247 — MiniMax dodges 1.6 with 400 vs 800 on a 3-card leftover row.
+  // 루프248 — MiniMax dodges 1.6 with 400 vs 800 on a 3-card leftover row.
   // Two-card 400/800 sidebar stays.
   return styles.length >= 3 && max <= min * PEER_FIXED_MAIN_SIZE_TRIPLE_RATIO;
 }
@@ -1391,7 +1391,7 @@ function stripFixedMainSizeFromOpenTag(openTag: string): string {
  * Strip width / min-width / max-width / flex-basis / `flex:0 0 N` only when
  * every peer has a similar large fixed main size. Mixed sidebar + fluid
  * (or 280 vs 900) stays. 루프240 — MiniMax dodges 1.35 with 400 vs 600
- * max-width; treat ≤1.6 as the same leftover lock. 루프247 — 3+ peers
+ * max-width; treat ≤1.6 as the same leftover lock. 루프248 — 3+ peers
  * also treat ≤2.05 (400 vs 800) as leftover; 2-card splits stay.
  * Hangul/brief-gated. Never invent missing cards.
  * 루프201 — max-width / flex:0 0 still cap the row after 198 width strip.
@@ -1401,6 +1401,8 @@ function stripFixedMainSizeFromOpenTag(openTag: string): string {
  * 루프238 — same for vh/vmin/cq* leftovers (`width:30vmin`, `33vh 33vh 33vh`).
  * 루프245 — same for dynamic/large/small viewport width leftovers
  * (`width:30lvw`, `33dvw 33dvw 33dvw`).
+ * 루프246 — same for container min/max leftovers
+ * (`width:30cqmax`, `33cqmin 33cqmin 33cqmin`).
  */
 export function relaxUniformPeerCardFixedMainSize(
   html: string,
