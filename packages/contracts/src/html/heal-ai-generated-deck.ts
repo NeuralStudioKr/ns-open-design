@@ -1269,6 +1269,85 @@ export function closeUnclosedSiblingCardsInSlides(html: string): string {
   return out;
 }
 
+const EXACT_CARDISH_TOKEN_RE =
+  /^(?:card|pillar|tile|panel|cell|box|metric|stat|kpi)$/i;
+
+function exactCardishTokens(attrs: string): string[] {
+  return classTokensFromAttrs(attrs).filter((token) => EXACT_CARDISH_TOKEN_RE.test(token));
+}
+
+function sharesExactCardishToken(outerAttrs: string, innerAttrs: string): boolean {
+  const inner = exactCardishTokens(innerAttrs);
+  return exactCardishTokens(outerAttrs).some((token) => inner.includes(token));
+}
+
+function unwrapRedundantNestedPeerCardsOnce(html: string): string {
+  const openRe =
+    /<(div|section|article|aside)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
+  const patches: Array<{ start: number; end: number; replacement: string }> = [];
+  let match: RegExpExecArray | null;
+  while ((match = openRe.exec(html)) !== null) {
+    const attrs = match[2] ?? '';
+    if (exactCardishTokens(attrs).length === 0) continue;
+    const tag = (match[1] ?? '').toLowerCase();
+    const openEnd = match.index + match[0].length;
+    const close = findSameTagClose(html, tag, openEnd);
+    if (!close) continue;
+    const closeTok = html.slice(close.closeStart).match(new RegExp(`^</${tag}\\s*>`, 'i'));
+    if (!closeTok) continue;
+    const outerEnd = close.closeStart + closeTok[0].length;
+    const children = listDirectBlockChildSpans(html, openEnd, close.closeStart);
+    if (children.length !== 1) continue;
+    const child = children[0]!;
+    if (!sharesExactCardishToken(attrs, child.attrs)) continue;
+    const before = visibleText(html.slice(openEnd, child.absStart));
+    const after = visibleText(html.slice(child.absCloseEnd, close.closeStart));
+    if (before.length >= 2 || after.length >= 2) continue;
+    patches.push({
+      start: match.index,
+      end: outerEnd,
+      replacement: html.slice(child.absStart, child.absCloseEnd),
+    });
+  }
+  if (patches.length === 0) return html;
+  patches.sort((a, b) => b.start - a.start);
+  let out = html;
+  let lastKeptStart = Number.POSITIVE_INFINITY;
+  for (const patch of patches) {
+    if (patch.end > lastKeptStart) continue;
+    out = `${out.slice(0, patch.start)}${patch.replacement}${out.slice(patch.end)}`;
+    lastKeptStart = patch.start;
+  }
+  return out;
+}
+
+/**
+ * 루프199 — Unwrap a balanced card-in-card leftover.
+ *
+ * Loop 194 only inserts missing closes when MiniMax opens the next `.card`
+ * without closing the previous one. A already-balanced
+ * `<div class="card"><div class="card">…</div></div>` survives and paints
+ * double padding / nested chrome (the 삼각함수 4/5 residual after close).
+ * Keep the inner card; drop the outer only when it has no own text and
+ * exactly one same-token child. `card-body` / two-card hosts stay.
+ * Hangul/brief-gated. Never invent copy.
+ */
+export function unwrapRedundantNestedPeerCards(
+  html: string,
+  brief?: string | null,
+): string {
+  let out = String(html ?? '');
+  if (!out) return out;
+  if (!sourceHasHangulGate(out, brief)) return out;
+  if (!/<div\b/i.test(out)) return out;
+  for (let pass = 0; pass < 4; pass += 1) {
+    const next = unwrapRedundantNestedPeerCardsOnce(out);
+    if (next === out) break;
+    out = next;
+  }
+  return out;
+}
+
 /**
  * Q4 — Strip AI mid-stream tag soup left after the model was cut off.
  *
@@ -1559,6 +1638,10 @@ export function healAiGeneratedDeckMarkup(html: string, brief?: string | null): 
     // Fall through — shape-based heals below are still worth running.
   }
   out = scrubTruncatedAiTagSoup(out);
+  // 루프199 — unwrap balanced card-in-card BEFORE 194. 194 assumes
+  // cards are never nested and would insert a sibling close, leaving
+  // an empty outer shell plus a leftover </div>.
+  out = unwrapRedundantNestedPeerCards(out, brief);
   out = closeUnclosedSiblingCardsInSlides(out);
   out = unnestHeadingBlockChildren(out);
   out = polishTruncatedInstructionTitles(out);

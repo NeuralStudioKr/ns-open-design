@@ -15,6 +15,7 @@ import {
   shrinkClassBoundEqualTrackGrids,
   dropEmptyLeftoverPeerCardsInAllocatedRows,
   relaxUniformPeerCardFixedMainSize,
+  unwrapRedundantNestedPeerCards,
   unnestHeadingBlockChildren,
 } from '../src/html/heal-ai-generated-deck.js';
 
@@ -343,6 +344,78 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
       expect(out).not.toMatch(/grid-template-columns:\s*(?:1fr 1fr 1fr|minmax\(0,1fr\) minmax\(0,1fr\) minmax\(0,1fr\))/);
       expect(out).toContain('극한');
       expect(out).toContain('도함수');
+    });
+  });
+
+  describe('루프199 unwrap redundant nested peer cards', () => {
+    it('unwraps a balanced card-in-card leftover', () => {
+      const html = [
+        '<div class="card">',
+        '<div class="card"><h3>극한</h3><p>정의</p></div>',
+        '</div>',
+      ].join('');
+      const out = unwrapRedundantNestedPeerCards(html, '미적분');
+      expect(out).toBe('<div class="card"><h3>극한</h3><p>정의</p></div>');
+    });
+
+    it('collapses a triple wrap to one card', () => {
+      const html = [
+        '<div class="card"><div class="card"><div class="card">',
+        '<h3>도함수</h3>',
+        '</div></div></div>',
+      ].join('');
+      const out = unwrapRedundantNestedPeerCards(html, '미적분');
+      expect(out).toBe('<div class="card"><h3>도함수</h3></div>');
+    });
+
+    it('keeps card > card-body and a card that hosts two cards', () => {
+      const body = '<div class="card"><div class="card-body"><h3>sin</h3></div></div>';
+      expect(unwrapRedundantNestedPeerCards(body, '삼각함수')).toBe(body);
+
+      const host = [
+        '<div class="card">',
+        '<div class="card"><h3>A</h3></div>',
+        '<div class="card"><h3>B</h3></div>',
+        '</div>',
+      ].join('');
+      expect(unwrapRedundantNestedPeerCards(host, '삼각함수')).toBe(host);
+    });
+
+    it('keeps a card that has its own title plus an inner card', () => {
+      const html = [
+        '<div class="card">',
+        '<h3>PILLAR 01</h3>',
+        '<div class="card"><p>lim</p></div>',
+        '</div>',
+      ].join('');
+      expect(unwrapRedundantNestedPeerCards(html, '미적분')).toBe(html);
+    });
+
+    it('leaves official English catalog nested cards alone without a brief', () => {
+      const html = '<div class="card"><div class="card"><h3>One</h3></div></div>';
+      expect(unwrapRedundantNestedPeerCards(html)).toBe(html);
+    });
+
+    it('pipeline unwraps double-wrapped pillars without inventing copy', () => {
+      const html = [
+        '<section class="slide"><h1>미적분의 세 기둥</h1>',
+        '<div style="display:flex;gap:24px">',
+        '<div class="card"><div class="card" style="padding:24px"><h3>극한</h3><p>lim</p></div></div>',
+        '<div class="card"><div class="card" style="padding:24px"><h3>도함수</h3><p>d/dx</p></div></div>',
+        '<div class="card"><div class="card" style="padding:24px"><h3>적분</h3><p>넓이</p></div></div>',
+        '</div></section>',
+      ].join('');
+      const unwrapped = unwrapRedundantNestedPeerCards(html, '미적분');
+      expect((unwrapped.match(/class="card"/g) ?? []).length).toBe(3);
+      const out = healAiGeneratedDeckMarkup(html, '미적분');
+      expect(out).not.toMatch(/<div class="card">\s*<div class="card"/);
+      expect(out).not.toMatch(/<div class="card"><\/div>/);
+      expect((out.match(/class="card"/g) ?? []).length).toBe(3);
+      expect(out).toContain('극한');
+      expect(out).toContain('도함수');
+      expect(out).toContain('적분');
+      expect(out).toContain('넓이');
+      expect(out.match(/flex:\s*1 1 0/gi)?.length).toBeGreaterThanOrEqual(3);
     });
   });
 

@@ -7,6 +7,12 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-08-31 현재 판단 · 최신 루프
 
+### 루프199 — 균형 잡힌 card-in-card 이중 래핑
+
+루프194는 미닫힌 형제만 봉합한다. 이미 닫힌 `<div class="card"><div class="card">`는 형제로 오인해 빈 바깥 셸이 생기고 패딩이 겹친다. 같은 토큰·자식 1장·바깥 텍스트 없을 때만 안쪽을 남긴다. `card-body`와 두 장 호스트는 유지. 194보다 먼저 실행. 카피 발명 없음.
+
+검증: contracts heal-ai-generated-deck 루프199 · unbalanced-card-slide.
+
 ### 루프198 — 동일 고정폭 카드가 3열을 자르는 문제
 
 루프195는 트랙을 `minmax(0,1fr)`로 줄일 수 있게 했다. MiniMax는 카드마다 `width:560px`/`min-width:580px`를 남겨 3장이 1920 밖으로 잘리거나, 루프191이 sidebar로 오인해 `flex:1`을 안 준다. peer 전부가 비슷한 큰 고정 폭일 때만 그 제약을 제거한다. 혼합 sidebar와 영문 카탈로그는 유지. 카피 발명 없음.
@@ -360,9 +366,18 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | persist: `만들어 주세요`/`을를`만 다른 프롬프트 앵무 · residual 2겹 drop | ☑ 루프196 |
 | persist/preview: 빈 leftover 카드 셸이 3열/flex 행을 붙잡아 우측 빈 띠 | ☑ 루프197 |
 | persist/preview: 동일 px/rem 카드 폭이 minmax/flex shrink를 막아 3열 클립 | ☑ 루프198 |
+| heal: 균형 잡힌 card-in-card 이중 래핑이 194에 빈 셸로 오분해됨 | ☑ 루프199 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프198 · 동일 고정폭 카드 클립)
+## 이번 루프 (루프199 · card-in-card unwrap)
+
+- [x] `unwrapRedundantNestedPeerCards` — 같은 토큰·1자식·바깥 텍스트 없음만 unwrap
+- [x] `card-body` / 두 장 호스트 / 제목+내부 카드 유지
+- [x] 194보다 먼저 실행 · Hangul/brief 게이트 · compact vocabulary
+- [x] heal-ai-generated-deck 루프199 · 194 회귀
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프198 · 동일 고정폭 카드 클립)
 
 - [x] `relaxUniformPeerCardFixedMainSize` — 균일 큰 고정 폭만 strip
 - [x] 혼합 sidebar / 영문 카탈로그 유지
