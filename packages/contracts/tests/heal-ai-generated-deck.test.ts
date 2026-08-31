@@ -13,6 +13,7 @@ import {
   normalizeEqualFrTracksToMinmax,
   shrinkOverAllocatedEqualTrackRows,
   shrinkClassBoundEqualTrackGrids,
+  dropEmptyLeftoverPeerCardsInAllocatedRows,
   unnestHeadingBlockChildren,
 } from '../src/html/heal-ai-generated-deck.js';
 
@@ -241,6 +242,106 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
       );
       expect(out).toContain('첫째');
       expect(out).toContain('둘째');
+    });
+  });
+
+  describe('루프197 empty leftover peer cards', () => {
+    it('drops an empty third card so a flex row can fill two pillars', () => {
+      const html = [
+        '<div style="display:flex;gap:28px">',
+        '<div class="card" style="padding:24px"><h3>극한</h3><p>lim</p></div>',
+        '<div class="card" style="padding:24px"><h3>도함수</h3><p>d/dx</p></div>',
+        '<div class="card" style="padding:24px"></div>',
+        '</div>',
+      ].join('');
+      const out = dropEmptyLeftoverPeerCardsInAllocatedRows(html, '미적분');
+      expect(out).toContain('극한');
+      expect(out).toContain('도함수');
+      expect(out).not.toMatch(/<div class="card"[^>]*>\s*<\/div>/);
+      expect((out.match(/class="card"/g) ?? []).length).toBe(2);
+    });
+
+    it('drops an empty third grid card so 190/195 can shrink the row', () => {
+      const html = [
+        '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:24px">',
+        '<div class="card">극한</div>',
+        '<div class="card">도함수</div>',
+        '<div class="card"></div>',
+        '</div>',
+      ].join('');
+      const out = dropEmptyLeftoverPeerCardsInAllocatedRows(html, '미적분');
+      expect((out.match(/class="card"/g) ?? []).length).toBe(2);
+      expect(out).toContain('극한');
+      expect(out).toContain('도함수');
+    });
+
+    it('keeps a motif svg card and does not wipe an all-empty row', () => {
+      const svgRow = [
+        '<div style="display:flex;gap:16px">',
+        '<div class="card"><h3>극한</h3></div>',
+        '<div class="card"><svg viewBox="0 0 10 10"><circle cx="5" cy="5" r="4"/></svg></div>',
+        '</div>',
+      ].join('');
+      expect(dropEmptyLeftoverPeerCardsInAllocatedRows(svgRow, '미적분')).toContain('<svg');
+
+      const emptyRow = [
+        '<div style="display:flex;gap:16px">',
+        '<div class="card"></div>',
+        '<div class="card"></div>',
+        '</div>',
+      ].join('');
+      expect(dropEmptyLeftoverPeerCardsInAllocatedRows(emptyRow, '미적분')).toBe(emptyRow);
+    });
+
+    it('leaves official English catalog empty cells alone without a brief', () => {
+      const html = [
+        '<div style="display:grid;grid-template-columns:1fr 1fr 1fr">',
+        '<div class="card">One</div>',
+        '<div class="card">Two</div>',
+        '<div class="card"></div>',
+        '</div>',
+      ].join('');
+      expect(dropEmptyLeftoverPeerCardsInAllocatedRows(html)).toBe(html);
+    });
+
+    it('pipeline heals the 미적분 empty-third-card leftover without inventing 적분 copy', () => {
+      const html = [
+        '<!doctype html><html><body>',
+        '<section class="slide"><h1>미적분의 세 기둥: 극한 · 도함수 · 적분</h1>',
+        '<div style="display:flex;gap:28px">',
+        '<div class="card" style="padding:24px"><h3>PILLAR 01</h3><p>lim</p></div>',
+        '<div class="card" style="padding:24px"><h3>PILLAR 02</h3><p>d/dx</p></div>',
+        '<div class="card" style="padding:24px"></div>',
+        '</div></section>',
+        '</body></html>',
+      ].join('');
+      const out = healAiGeneratedDeckMarkup(html, '미적분');
+      expect(out).toContain('미적분의 세 기둥');
+      expect(out).toContain('PILLAR 01');
+      expect(out).toContain('PILLAR 02');
+      expect(out).toContain('lim');
+      expect(out).toContain('d/dx');
+      expect((out.match(/class="card"/g) ?? []).length).toBe(2);
+      expect(out.match(/flex:\s*1 1 0/gi)?.length).toBeGreaterThanOrEqual(2);
+      expect(out).not.toMatch(/<div class="card"[^>]*>\s*<\/div>/);
+      expect(out).not.toContain('PILLAR 03');
+    });
+
+    it('pipeline shrinks a 3-col grid after dropping the empty shell', () => {
+      const html = [
+        '<section class="slide s-data"><h2>미적분의 세 기둥</h2>',
+        '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:24px">',
+        '<div class="card"><h3>극한</h3><p>정의</p></div>',
+        '<div class="card"><h3>도함수</h3><p>기울기</p></div>',
+        '<div class="card"></div>',
+        '</div></section>',
+      ].join('');
+      const out = healAiGeneratedDeckMarkup(html, '미적분');
+      expect((out.match(/class="card"/g) ?? []).length).toBe(2);
+      expect(out).toMatch(/grid-template-columns:\s*(?:minmax\(0,1fr\) ){1}minmax\(0,1fr\)/);
+      expect(out).not.toMatch(/grid-template-columns:\s*(?:1fr 1fr 1fr|minmax\(0,1fr\) minmax\(0,1fr\) minmax\(0,1fr\))/);
+      expect(out).toContain('극한');
+      expect(out).toContain('도함수');
     });
   });
 

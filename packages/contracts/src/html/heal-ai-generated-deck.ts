@@ -20,6 +20,10 @@ function destHasHangulTopic(html: string): boolean {
   return ((String(html ?? '').match(/[가-힣]/g) ?? []).length >= 4);
 }
 
+function sourceHasHangulGate(html: string, brief?: string | null): boolean {
+  return destHasHangulTopic(html) || Boolean(String(brief ?? '').trim());
+}
+
 function visibleText(html: string): string {
   return String(html ?? '')
     .replace(/<script\b[\s\S]*?<\/script>/gi, ' ')
@@ -864,6 +868,125 @@ function listDirectBlockChildOpens(
   return opens;
 }
 
+type DirectChildSpan = DirectChildOpen & {
+  tag: string;
+  inner: string;
+  absCloseEnd: number;
+};
+
+function tagNameFromOpen(open: string): string {
+  return /^<([a-zA-Z][\w-]*)/i.exec(open)?.[1]?.toLowerCase() ?? '';
+}
+
+function listDirectBlockChildSpans(
+  html: string,
+  innerStart: number,
+  innerEnd: number,
+): DirectChildSpan[] {
+  const opens = listDirectBlockChildOpens(html, innerStart, innerEnd);
+  const spans: DirectChildSpan[] = [];
+  for (const open of opens) {
+    const tag = tagNameFromOpen(open.open);
+    if (!tag) continue;
+    const selfClose = /\/\s*>$/.test(open.open);
+    if (selfClose) {
+      spans.push({ ...open, tag, inner: '', absCloseEnd: open.absEnd });
+      continue;
+    }
+    const close = findSameTagClose(html, tag, open.absEnd);
+    if (!close || close.closeStart > innerEnd) continue;
+    const closeTok = html.slice(close.closeStart).match(new RegExp(`^</${tag}\\s*>`, 'i'));
+    if (!closeTok) continue;
+    spans.push({
+      ...open,
+      tag,
+      inner: html.slice(open.absEnd, close.closeStart),
+      absCloseEnd: close.closeStart + closeTok[0].length,
+    });
+  }
+  return spans;
+}
+
+function childLooksEmptyLeftoverPeer(child: DirectChildSpan): boolean {
+  if (/<(?:svg|img|video|canvas|iframe|picture|figure)\b/i.test(child.inner)) return false;
+  if (
+    /\bbackground(?:-image)?\s*:\s*(?:url|linear-gradient|radial-gradient|conic-gradient)/i
+      .test(child.style)
+  ) {
+    return false;
+  }
+  return visibleText(child.inner).length < 2;
+}
+
+function containerLooksLikeAllocatedCardRow(
+  style: string,
+  tokens: string[],
+  decls: Map<string, ClassEqualTrackDecl>,
+): boolean {
+  if (isFlexRowContainerStyle(style)) return true;
+  const colsRaw = /grid-template-columns\s*:\s*([^;]+)/i.exec(style)?.[1];
+  if (colsRaw) {
+    const decl = parseDeclaredEqualColumns(colsRaw.trim());
+    if (decl && decl.count >= 2) return true;
+  }
+  for (const token of tokens) {
+    const bound = decls.get(token);
+    if (bound?.cols && bound.cols.count >= 2) return true;
+  }
+  return false;
+}
+
+/**
+ * 루프197 — Drop empty leftover peer cards that keep a 3-track row alive.
+ *
+ * Loops 190/195 shrink equal tracks by *child count*. MiniMax often still
+ * emits the missing pillar as `<div class="card"></div>` (or a padded
+ * empty box) so the row stays 3-wide: two filled cards + a blank band.
+ * Loop 191 then gives that empty shell `flex:1`, which paints the same
+ * 미적분 leftover. Remove empty cardish peers only; never invent copy.
+ * Hangul/brief-gated so official English catalogs stay intact.
+ */
+export function dropEmptyLeftoverPeerCardsInAllocatedRows(
+  html: string,
+  brief?: string | null,
+): string {
+  let out = String(html ?? '');
+  if (!out) return out;
+  if (!sourceHasHangulGate(out, brief)) return out;
+  const decls = collectClassEqualTrackDecls(out);
+  const openRe =
+    /<(div|section|article|main|aside|ul|ol)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
+  const removals: Array<{ start: number; end: number }> = [];
+  let match: RegExpExecArray | null;
+  while ((match = openRe.exec(out)) !== null) {
+    const attrs = match[2] ?? '';
+    const style = extractInlineStyle(attrs);
+    const tokens = classTokensFromAttrs(attrs);
+    if (!containerLooksLikeAllocatedCardRow(style, tokens, decls)) continue;
+    const tag = (match[1] ?? '').toLowerCase();
+    const openEnd = match.index + match[0].length;
+    const close = findSameTagClose(out, tag, openEnd);
+    if (!close) continue;
+    const children = listDirectBlockChildSpans(out, openEnd, close.closeStart);
+    const peers = children.filter((c) => childLooksLikePeerCard(c.attrs, c.style));
+    if (peers.length < 2 || peers.length > 6) continue;
+    const emptyPeers = peers.filter((c) => childLooksEmptyLeftoverPeer(c));
+    const filledPeers = peers.filter((c) => !childLooksEmptyLeftoverPeer(c));
+    if (emptyPeers.length === 0 || filledPeers.length === 0) continue;
+    for (const empty of emptyPeers) {
+      removals.push({ start: empty.absStart, end: empty.absCloseEnd });
+    }
+  }
+  removals.sort((a, b) => b.start - a.start);
+  let lastKeptStart = Number.POSITIVE_INFINITY;
+  for (const removal of removals) {
+    if (removal.end > lastKeptStart) continue;
+    out = `${out.slice(0, removal.start)}${out.slice(removal.end)}`;
+    lastKeptStart = removal.start;
+  }
+  return out;
+}
+
 /**
  * 루프191 — Equalize peer cards in a flex row that has no flex-grow.
  *
@@ -1322,6 +1445,9 @@ export function healAiGeneratedDeckMarkup(html: string, brief?: string | null): 
   out = closeUnclosedSiblingCardsInSlides(out);
   out = unnestHeadingBlockChildren(out);
   out = polishTruncatedInstructionTitles(out);
+  // 루프197 — empty leftover card shells keep 3-track rows alive so
+  // 190/195 cannot shrink and 191 grows the blank column. Drop first.
+  out = dropEmptyLeftoverPeerCardsInAllocatedRows(out, brief);
   out = shrinkOverAllocatedRepeatGrid(out);
   out = normalizeEqualFrTracksToMinmax(out);
   out = shrinkOverAllocatedEqualTrackRows(out);

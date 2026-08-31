@@ -7,11 +7,21 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-08-31 현재 판단 · 최신 루프
 
+### 루프197 — 빈 leftover 카드 셸이 3열을 붙잡는 문제
+
+루프190/195는 그리드 자식 *개수*로 열을 줄인다. MiniMax는 빠진 기둥을 `<div class="card"></div>`(또는 padding만 있는 빈 박스)로 남겨 자식이 3이라 축소가 안 되고, 루프191이 그 빈 셸에 `flex:1`을 줘 미적분 리포트와 같은 우측 빈 띠가 남는다. 채워진 peer가 1장 이상 있을 때만 빈 cardish peer를 제거한다 — 빠진 적분 카피는 만들지 않는다. Hangul/brief 게이트로 영문 카탈로그 빈 셀은 유지.
+
+검증: contracts heal-ai-generated-deck 루프197 · deck-framework-compact empty card shell.
+
 ### 루프196 — 공손형 프롬프트 앵무 · residual 2겹 drop
 
 루프193은 `만들어줘`와 `피피티를 만들어 주세요`를 다른 문자열로 봐 공손형 복붙이 persist됐다. 루프194 봉합 뒤에도 `article`/`aside` 2겹과 봉합 실패 residual은 임계 3에 안 걸린다. parrot normalize + drop 임계 2.
 
 검증: web validate/deck-html-content · contracts unbalanced-card-slide.
+
+### 루프195 — 3열 클립 · 2×2 leftover · class grid
+
+루프190은 인라인 `1fr 1fr 1fr`만 줄였다. 카드가 3장이어도 `1fr` = `minmax(auto,1fr)`이라 마지막이 1920 밖으로 잘리고, 템플릿 `.grid` 2×2에 카드 2장만 있으면 아랫줄이 빈 띠다. `minmax(0,1fr)` 정규화 + equal row 축소 + Hangul/brief 클래스 그리드 인라인 축소.
 
 ### 루프194 — nested unclosed `.card` sibling 봉합
 
@@ -342,9 +352,19 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | heal: 슬라이드 4/5 nested unclosed `.card`로 뒤 본문 삼킴 (루프189 residual) | ☑ 루프194 |
 | persist/preview: 채워진 3열 `1fr` 클립 · 2×2 leftover 빈 아랫줄 · 클래스 그리드 미달 | ☑ 루프195 |
 | persist: `만들어 주세요`/`을를`만 다른 프롬프트 앵무 · residual 2겹 drop | ☑ 루프196 |
+| persist/preview: 빈 leftover 카드 셸이 3열/flex 행을 붙잡아 우측 빈 띠 | ☑ 루프197 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프196 · 공손형 앵무 · residual 2겹 drop)
+## 이번 루프 (루프197 · 빈 leftover 카드 셸)
+
+- [x] `dropEmptyLeftoverPeerCardsInAllocatedRows` — flex/equal-grid 행에서 빈 cardish peer만 제거
+- [x] 채워진 peer 0장이면 행을 비우지 않음 · SVG/모티프 카드 유지
+- [x] Hangul/brief 게이트 · 영문 카탈로그 빈 셀 유지
+- [x] shrink/flex-balance 전에 파이프라인 연결 · compact vocabulary empty card shell
+- [x] heal-ai-generated-deck 루프197
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프196 · 공손형 앵무 · residual 2겹 drop)
 
 - [x] parrot normalize `만들어 주세요` + `을/를`
 - [x] severe drop 임계 2 · `article`/`aside`/`main` · 194 봉합 후 residual
