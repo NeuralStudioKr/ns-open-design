@@ -7,6 +7,18 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-08-31 현재 판단 · 최신 루프
 
+### 루프240 — 400 vs 600 max-width leftover lock
+
+루프201은 비율 ≤1.35만 균일로 본다. MiniMax는 `max-width:400` / `600`으로 판정을 피해 3열이 잠긴다. 비율 1.6까지 같은 leftover lock. 280 vs 900 · 400 vs 800 sidebar는 유지. 카피 발명 없음.
+
+검증: contracts heal-ai-generated-deck 루프240 · deck-framework-compact.
+
+### 루프239 — D/기둥 마/첫째 leftover 인덱스
+
+루프237은 A–C / 가나다라만 leftover 문자로 본다. MiniMax는 `D`/`기둥 마`/`셋째`만 남겨 3열이 유지된다. D·마·첫째–다섯째만 leftover. 전-인덱스 서수 스텝 행과 `여섯째`/`기둥 바`/`첫째 적분`은 유지. 카피 발명 없음.
+
+검증: contracts heal-ai-generated-deck 루프239 · deck-framework-compact.
+
 ### 루프238 — 동일 33vh/vmin 그리드·카드 폭 leftover
 
 루프213/215는 vw만 본다. MiniMax는 `33vh 33vh 33vh`나 `width:30vmin`을 남겨 2장이면 빈 띠, 3장이면 클립이 난다. 동일 22–48vh/vmin/cq*만 `minmax(0,1fr)`로 바꾸고 카드 폭을 벗긴다. `50vmin` split은 유지. 카피 발명 없음.
@@ -294,7 +306,7 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 ### 다음 루프 후보 (2026-08-31 EOD 기준)
 
 - **인접 (루프206 밖):** `srcdoc-deck-bridge-nested-slides` native `#deck-next` 픽스처가 host next 후 `active:2`를 보고함 (transform/dot는 1). staging에서 이미 red — 이번 CSS 변경과 무관.
-- **후보 C (3열 residual):** `D` 이후 알파벳, `첫째/둘째/셋째` 한글 서수, 또는 카드마다 다른 max-width(400 vs 600, 비 1.35)로 균일 판정을 피하는 leftover. 루프227–228 이후.
+- **후보 C (3열 residual):** `E` 이후 알파벳, `여섯째` 이상 서수, 또는 400 vs 800(비율 >1.6) leftover. 루프239–240이 D/마/첫째–다섯째와 400 vs 600을 닫음.
 - **후보 B (예약 · 규모 큼):** contracts 안 `var(--pad, calc(px * n))` / `env(safe-area-inset-top, calc(...))` fallback red-spec 39건. fallback 표현을 card threshold 로 승격하는 heuristic — 별도 루프 필요.
 - **후보 A 후속 (E2E):** 190b drop 이후 남은 슬라이드 수가 사용자 요청보다 부족할 때 top-up/retry 파이프라인과의 연동 검증. 루프194 auto-repair 커버리지 실증 (사용자 실 fixture 몇 % 를 drop 없이 살려내는가) — MiniMax 실키 없이 기록 fixture 기반 지표만이라도 남긴다.
 - **자원 아이템 (별도 루프):** `system-prompt-api-mode.test.ts` 의 prompt length ceiling (29114 / 29217 vs 29100) 은 upstream 에서 이미 red · 별도 루프. `deck-template-look-css > 인젝트 catalog Motif paint` 은 5s timeout 로 간헐 fail (flaky) — 재현 조건 정리 필요.
@@ -642,9 +654,19 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | heal: 비연속 duplicate title-only leftover 잔존 | ☑ 루프236 |
 | persist/preview: C/기둥 다/(3)/3번 leftover 인덱스가 3열을 붙잡아 빈 띠 | ☑ 루프237 |
 | persist/preview: 동일 33vh/vmin 트랙·카드 폭이 leftover 빈 띠·클립 | ☑ 루프238 |
+| persist/preview: D/기둥 마/첫째 leftover 인덱스가 3열을 붙잡아 빈 띠 | ☑ 루프239 |
+| persist/preview: 400 vs 600 max-width가 leftover lock을 피해 3열 클립 | ☑ 루프240 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프237–238 · 알파벳/괄호/번 인덱스 · vh/vmin 트랙)
+## 이번 루프 (루프239–240 · D/서수 인덱스 · 비균일 max-width)
+
+- [x] leftover index — D / 마 / 첫째–다섯째. 전-인덱스 서수 스텝 행 · `여섯째`/`기둥 바` 유지
+- [x] peer 주축 비율 1.35 → 1.6. 400 vs 600 strip, 280 vs 900 · 400 vs 800 유지
+- [x] compact vocabulary D/첫째/셋째
+- [x] heal-ai-generated-deck 루프239–240 · deck-framework-compact
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프237–238 · 알파벳/괄호/번 인덱스 · vh/vmin 트랙)
 
 - [x] leftover index — A–C / 가나다라 / `(3)` / `3번`. 전-인덱스 스텝 행 유지
 - [x] equal track + card lock — 22–48 vh/vmin/cq* → minmax / strip. 50 split 유지
