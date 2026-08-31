@@ -7,6 +7,12 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-08-31 현재 판단 · 최신 루프
 
+### 루프266 — G/기둥 아/열한째 leftover 인덱스
+
+루프261은 A–F / 열째까지 leftover로 본다. MiniMax는 `G`/`기둥 아`/`열한째`로 빠진 기둥을 채워 3열이 유지된다. G·아·열한째만 leftover. `열두째`/`기둥 자`/`H`–`Z`와 index+추가 본문은 유지. 카피 발명 없음.
+
+검증: contracts heal-ai-generated-deck 루프266 · deck-framework-compact.
+
 ### 루프265 — leftover stub는 주제 단어가 아님 (그외/other)
 
 `미분`/`적분`만 빼면 `그외`/`나머지`/`other`/`rest` leftover가 3열을 붙잡는다. 그 계열만 leftover. stub+추가 본문은 주제 무관 유지. 카피 발명 없음.
@@ -468,7 +474,7 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 
 ### 다음 루프 후보 (2026-08-31 EOD 기준)
 
-- **후보 (루프266):** leftover 문자 `G`/`열한째`(의도적 제외) 또는 equal-track residual. leftover extra-copy·stub는 주제 단어 목록이 아님(루프259·265).
+- **후보 (루프270):** leftover 문자 `H`/`열두째`(의도적 제외) 또는 equal-track residual. leftover extra-copy·stub는 주제 단어 목록이 아님(루프259·265).
 - **인접 (루프206 밖):** `srcdoc-deck-bridge-nested-slides` native `#deck-next` 픽스처가 host next 후 `active:2`를 보고함 (transform/dot는 1). staging에서 이미 red — 이번 CSS 변경과 무관.
 - **후보 C (3열 residual):** `G` 이후 알파벳, `열한째` 이상 서수, 또는 3장 280 vs 900(비율 >2.05) leftover. 루프261–262이 E–F/바사/여섯째–열째와 3열 400 vs 800을 닫음.
 - **후보 B (예약 · 규모 큼):** contracts 안 `var(--pad, calc(px * n))` / `env(safe-area-inset-top, calc(...))` fallback red-spec 39건. fallback 표현을 card threshold 로 승격하는 heuristic — 별도 루프 필요.
@@ -843,13 +849,21 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | leftover extra-copy를 주제 단어(미분/적분)로 하드코딩 | ☑ 루프259 |
 | persist/preview: misc/기타사항 stub 카드가 3열을 붙잡아 빈 띠 | ☑ 루프264 |
 | persist/preview: 그외/other/rest leftover stub가 3열을 붙잡아 빈 띠 | ☑ 루프265 |
+| persist/preview: G/기둥 아/열한째 leftover 인덱스가 3열을 붙잡아 빈 띠 | ☑ 루프266 |
 | persist: title-only cover + empty hosts가 short-draft 성공 | ☑ 루프267 |
 | persist: embed stub-warn overwrite | ☑ 루프268 |
 | persist: thin prior top-up noop가 calm success | ☑ 루프269 |
 | contracts pretest: exactOptionalPropertyTypes TS2379 봉쇄 | ☑ 루프263 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프265 · 그외/other stub · 주제 단어 아님)
+## 이번 루프 (루프266 · G/열한째 인덱스)
+
+- [x] leftover index — G · 아 · 열한째
+- [x] `열두째` / `기둥 자` / `H`–`Z` · index+추가 본문 유지
+- [x] heal-ai-generated-deck 루프266 · deck-framework-compact
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프265 · 그외/other stub · 주제 단어 아님)
 
 - [x] other/others/another/rest · 그외/나머지/여타 leftover
 - [x] stub+추가 본문은 어떤 주제 단어든 유지

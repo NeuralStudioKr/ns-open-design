@@ -2133,23 +2133,23 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
       expect(dropEmptyLeftoverPeerCardsInAllocatedRows(html, '미적분')).toBe(html);
     });
 
-    it('keeps 열한째 / 기둥 아 because those indexes are out of leftover range (루프239)', () => {
-      const eleventh = [
+    it('keeps 열두째 / 기둥 자 because those indexes are out of leftover range (루프266)', () => {
+      const twelfth = [
         '<div style="display:flex;gap:28px">',
-        '<div class="card"><h3>극한</h3></div>',
-        '<div class="card"><h3>도함수</h3></div>',
-        '<div class="card"><h3>열한째</h3></div>',
+        '<div class="card"><h3>하나</h3></div>',
+        '<div class="card"><h3>다음</h3></div>',
+        '<div class="card"><h3>열두째</h3></div>',
         '</div>',
       ].join('');
-      const a = [
+      const ja = [
         '<div style="display:flex;gap:28px">',
-        '<div class="card"><h3>극한</h3></div>',
-        '<div class="card"><h3>도함수</h3></div>',
-        '<div class="card"><h3>기둥 아</h3></div>',
+        '<div class="card"><h3>하나</h3></div>',
+        '<div class="card"><h3>다음</h3></div>',
+        '<div class="card"><h3>기둥 자</h3></div>',
         '</div>',
       ].join('');
-      expect(dropEmptyLeftoverPeerCardsInAllocatedRows(eleventh, '미적분')).toBe(eleventh);
-      expect(dropEmptyLeftoverPeerCardsInAllocatedRows(a, '미적분')).toBe(a);
+      expect(dropEmptyLeftoverPeerCardsInAllocatedRows(twelfth, '발표')).toBe(twelfth);
+      expect(dropEmptyLeftoverPeerCardsInAllocatedRows(ja, '발표')).toBe(ja);
     });
 
     it('keeps 첫째 적분 real copy that is not an index leftover (루프239)', () => {
@@ -2199,6 +2199,60 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
         '</div>',
       ].join('');
       expect(dropEmptyLeftoverPeerCardsInAllocatedRows(html, '발표')).toBe(html);
+    });
+
+    it('drops a letter G leftover third card (루프266)', () => {
+      const html = [
+        '<div style="display:flex;gap:28px">',
+        '<div class="card" style="padding:24px"><h3>하나</h3><p>요지</p></div>',
+        '<div class="card" style="padding:24px"><h3>다음</h3><p>요지</p></div>',
+        '<div class="card" style="padding:24px"><h3>G</h3></div>',
+        '</div>',
+      ].join('');
+      const out = dropEmptyLeftoverPeerCardsInAllocatedRows(html, '발표');
+      expect((out.match(/class="card"/g) ?? []).length).toBe(2);
+      expect(out).not.toMatch(/>\s*G\s*</);
+      expect(out).toContain('하나');
+    });
+
+    it('drops a 열한째 leftover third card (루프266)', () => {
+      const html = [
+        '<div style="display:flex;gap:28px">',
+        '<div class="card"><h3>하나</h3></div>',
+        '<div class="card"><h3>다음</h3></div>',
+        '<div class="card"><h3>열한째</h3></div>',
+        '</div>',
+      ].join('');
+      const out = dropEmptyLeftoverPeerCardsInAllocatedRows(html, '발표');
+      expect((out.match(/class="card"/g) ?? []).length).toBe(2);
+      expect(out).not.toContain('열한째');
+    });
+
+    it('keeps leftover-index cards that still have extra visible text (루프266)', () => {
+      const html = [
+        '<div style="display:flex;gap:28px">',
+        '<div class="card"><h3>하나</h3></div>',
+        '<div class="card"><h3>다음</h3></div>',
+        '<div class="card"><h3>열한째 실카피</h3></div>',
+        '</div>',
+      ].join('');
+      expect(dropEmptyLeftoverPeerCardsInAllocatedRows(html, '발표')).toBe(html);
+    });
+
+    it('pipeline heals a 기둥 아 leftover without inventing topic copy (루프266)', () => {
+      const html = [
+        '<section class="slide"><h1>세 가지 포인트</h1>',
+        '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:24px">',
+        '<div class="card"><h3>하나</h3><p>요지</p></div>',
+        '<div class="card"><h3>다음</h3><p>요지</p></div>',
+        '<div class="card"><h3>기둥 아</h3></div>',
+        '</div></section>',
+      ].join('');
+      const out = healAiGeneratedDeckMarkup(html, '발표');
+      expect((out.match(/class="card"/g) ?? []).length).toBe(2);
+      expect(out).not.toContain('기둥 아');
+      expect(out).toContain('하나');
+      expect(out).toContain('다음');
     });
 
     it('pipeline heals a 기둥 바 leftover without inventing 적분 copy (루프261)', () => {
