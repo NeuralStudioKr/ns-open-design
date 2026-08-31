@@ -13,6 +13,7 @@ import {
   isPersistableShortDeckDraftAfterHeal,
   deckArtifactStartsWithMotifSvgDump,
   deckLooksLikeUnfilledCatalogExample,
+  deckLooksLikeRepeatedUserBriefParrot,
   deckSlideHeadingsLookLikeFailedGenerate,
   shouldAbortStreamForHeadOnlyKitDump,
   shouldAbortStreamForMotifSvgDump,
@@ -695,6 +696,25 @@ describe("deck-html-content", () => {
         '삼각함수에 대해서 설명하는 피피티 만들어줘.',
       ),
     ).toBe(false);
+  });
+
+  it("flags polite Korean prompt parrots that only change 을/를 and 주세요 (루프195)", () => {
+    const brief = '삼각함수에 대해서 설명하는 피피티 만들어줘.';
+    const polite = '삼각함수에 대해서 설명하는 피피티를 만들어 주세요.';
+    const repeated =
+      '<!doctype html><html><body>'
+      + `<section class="slide"><h1>${polite}</h1><p>${polite}</p></section>`
+      + `<section class="slide"><h2>${polite}</h2><p>발표 개요</p></section>`
+      + `<section class="slide"><h2>${polite}</h2><p>핵심 포인트</p></section>`
+      + '</body></html>';
+    expect(deckLooksLikeRepeatedUserBriefParrot(repeated, brief)).toBe(true);
+    const topical =
+      '<!doctype html><html><body>'
+      + '<section class="slide"><h1>삼각함수</h1><p>각과 비를 다루는 함수.</p></section>'
+      + '<section class="slide"><h2>정의</h2><p>직각삼각형의 변의 길이 비.</p></section>'
+      + '<section class="slide"><h2>활용</h2><p>주기와 파동.</p></section>'
+      + '</body></html>';
+    expect(deckLooksLikeRepeatedUserBriefParrot(topical, brief)).toBe(false);
   });
 });
 

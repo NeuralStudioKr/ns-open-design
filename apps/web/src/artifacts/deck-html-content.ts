@@ -342,7 +342,12 @@ export function deckSlideHeadingsLookLikeFailedGenerate(html: string): boolean {
 function normalizePromptParrotText(value: string): string {
   return visibleTextFromHtmlFragment(value)
     .toLowerCase()
-    .replace(/[^\p{L}\p{N}]+/gu, '');
+    .replace(/만들어\s*주세요/g, '만들어줘')
+    .replace(/작성\s*해\s*주세요/g, '작성해줘')
+    .replace(/생성\s*해\s*주세요/g, '생성해줘')
+    .replace(/설명\s*해\s*주세요/g, '설명해줘')
+    .replace(/[^\p{L}\p{N}]+/gu, '')
+    .replace(/[을를]/g, '');
 }
 
 function textContainsRawBrief(text: string, brief: string): boolean {

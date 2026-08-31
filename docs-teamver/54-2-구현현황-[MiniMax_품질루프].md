@@ -7,6 +7,12 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-08-31 현재 판단 · 최신 루프
 
+### 루프196 — 공손형 프롬프트 앵무 · residual 2겹 drop
+
+루프193은 `만들어줘`와 `피피티를 만들어 주세요`를 다른 문자열로 봐 공손형 복붙이 persist됐다. 루프194 봉합 뒤에도 `article`/`aside` 2겹과 봉합 실패 residual은 임계 3에 안 걸린다. parrot normalize + drop 임계 2.
+
+검증: web validate/deck-html-content · contracts unbalanced-card-slide.
+
 ### 루프194 — nested unclosed `.card` sibling 봉합
 
 루프189 residual: 슬라이드 4/5에서 MiniMax가 `<div class="card">`를 닫지 않고 다음 카드를 열어 뒤 본문이 삼켜졌다. 루프190b는 open-close 차이 ≥3인 non-cover 장만 drop한다. 루프194는 (1) 형제 cardish 열기 전 이전 card 닫기 (2) slide fragment 끝 leftover open 닫기로 장을 살려 severe drop 전에 균형을 맞춘다 — 카피 발명 없음. cardish 판정은 class 속성만 본다(`grid-template-columns` `columns` 오탐 방지).
@@ -328,9 +334,17 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | heal: 심한 `<div>` 불균형(open−close≥3) non-cover 장 drop (루프190b) | ☑ 루프190b |
 | heal: 슬라이드 4/5 nested unclosed `.card`로 뒤 본문 삼킴 (루프189 residual) | ☑ 루프194 |
 | persist/preview: 채워진 3열 `1fr` 클립 · 2×2 leftover 빈 아랫줄 · 클래스 그리드 미달 | ☑ 루프195 |
+| persist: `만들어 주세요`/`을를`만 다른 프롬프트 앵무 · residual 2겹 drop | ☑ 루프196 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프195 · 3열 클립 · 2×2 leftover · class grid)
+## 이번 루프 (루프196 · 공손형 앵무 · residual 2겹 drop)
+
+- [x] parrot normalize `만들어 주세요` + `을/를`
+- [x] severe drop 임계 2 · `article`/`aside`/`main` · 194 봉합 후 residual
+- [x] web validate/deck-html-content · unbalanced-card-slide
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프195 · 3열 클립 · 2×2 leftover · class grid)
 
 - [x] `1fr` 동일 트랙 → `minmax(0,1fr)` (3-of-3 clip)
 - [x] underfilled equal rows 축소 (2×2 빈 아랫줄)

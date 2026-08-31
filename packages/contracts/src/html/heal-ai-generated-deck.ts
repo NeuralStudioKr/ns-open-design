@@ -217,7 +217,7 @@ export function dropDuplicateConsecutiveTitleOnlyLeftoverSlides(html: string): s
   return out;
 }
 
-const SEVERE_DIV_IMBALANCE_THRESHOLD = 3;
+const SEVERE_CONTAINER_IMBALANCE_THRESHOLD = 2;
 
 function stripInertTagsForBalanceCounting(body: string): string {
   return String(body ?? '')
@@ -226,15 +226,15 @@ function stripInertTagsForBalanceCounting(body: string): string {
     .replace(/<!--[\s\S]*?-->/g, ' ');
 }
 
-function countDivImbalance(body: string): number {
+function countContainerImbalance(body: string): number {
   const source = stripInertTagsForBalanceCounting(body);
-  const opens = (source.match(/<div\b/gi) ?? []).length;
-  const closes = (source.match(/<\/div\s*>/gi) ?? []).length;
+  const opens = (source.match(/<(?:div|article|aside|main)\b/gi) ?? []).length;
+  const closes = (source.match(/<\/(?:div|article|aside|main)\s*>/gi) ?? []).length;
   return opens - closes;
 }
 
 /**
- * 루프190 — Drop slides whose container `<div>` tags are severely unbalanced.
+ * 루프190 / 196 — Drop slides whose container tags are severely unbalanced.
  *
  * 사용자 리포트 2026-08-31 · 삼각함수 (loop186–189 후속):
  *   MiniMax fill 이 슬라이드 4 (`04 항등식`) · 슬라이드 5 (`05 그래프`) 에서
@@ -242,13 +242,17 @@ function countDivImbalance(body: string): number {
  *   에서 강제로 남은 `<div>` 를 닫아 이후 슬라이드 콘텐츠가 이 슬라이드 안에
  *   삽입되거나, srcdoc 파서에 따라 카드 그리드가 세로로 무너져 렌더됨.
  *
+ * 루프196 residual: 루프194가 `.card` 형제를 봉합해도 `article`/`aside`
+ * 2겹이나 봉합 실패 leftover(diff 2)는 임계 3에 안 걸린다. 단일 미종료
+ * 래퍼(diff 1)는 유지한다.
+ *
  * 안전한 shape-based 자동 재봉합 (missing `</div>` 자동 삽입) 은 위험 —
  * 뒤에 오는 형제 컨테이너를 잘못 카드 안으로 편입시키거나, `<style>` 안 문자열
  * (`content:"</div>"`) 을 close 로 오인할 수 있음. 대신 슬라이드 단위 drop.
  *
  * Rules:
- *   - `stripInertTagsForBalanceCounting` 후 `<div\b` open 이 `</div>` close
- *     보다 `≥ 3` 초과인 슬라이드만 drop
+ *   - `stripInertTagsForBalanceCounting` 후 `div|article|aside|main`
+ *     open − close 가 `≥ 2` 인 슬라이드만 drop
  *   - 첫 슬라이드는 절대 drop 안 함 (cover 만이라도 유지)
  *   - Idempotent · 다른 heal 룰 순서와 무관
  */
@@ -260,8 +264,8 @@ export function dropSlidesWithSeverelyUnbalancedContainerTags(html: string): str
   for (let i = slides.length - 1; i >= 1; i -= 1) {
     const slide = slides[i]!;
     const body = out.slice(slide.openEnd, slide.bodyEnd);
-    const diff = countDivImbalance(body);
-    if (diff < SEVERE_DIV_IMBALANCE_THRESHOLD) continue;
+    const diff = countContainerImbalance(body);
+    if (diff < SEVERE_CONTAINER_IMBALANCE_THRESHOLD) continue;
     out = `${out.slice(0, slide.start)}${out.slice(slide.end)}`;
   }
   return out;
@@ -1334,11 +1338,9 @@ export function healAiGeneratedDeckMarkup(html: string, brief?: string | null): 
   // "content missing + template not applied" for artifacts that bypassed
   // the upstream 루프181 persist gate.
   out = dropDuplicateConsecutiveTitleOnlyLeftoverSlides(out);
-  // 루프190 — MiniMax card-fill sometimes leaves nested `<div class="card">`
-  // opens without matching closes. Browsers auto-close at `</section>` and
-  // the following slide's markup can end up inheriting card styling in
-  // srcdoc previews. Drop the malformed slides so preview never reads as
-  // "cards collapsed vertically" or "content bleeding into next slide".
+  // 루프190/196 residual — after 루프194 card close, leftover
+  // article/aside/main or unclosed pairs (diff ≥ 2) still swallow the next
+  // slide. Drop those shells only. Diff 1 stays.
   out = dropSlidesWithSeverelyUnbalancedContainerTags(out);
   out = stripEmptyLeftoverPresenterChrome(out);
   if (destHasHangulTopic(out)) {

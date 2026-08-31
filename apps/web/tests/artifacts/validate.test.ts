@@ -244,6 +244,20 @@ describe('validateHtmlArtifact', () => {
     expect(isLowSubstanceSlideDeckArtifact(repeated, brief, '슬라이드')).toBe(true);
   });
 
+  it('classifies polite Korean prompt parrots as low-substance (루프195)', () => {
+    const brief = '삼각함수에 대해서 설명하는 피피티 만들어줘.';
+    const polite =
+      '삼각함수에 대해서 설명하는 피피티를 만들어 주세요.';
+    const repeated =
+      '<!doctype html><html lang="ko"><head><meta charset="utf-8"></head><body>'
+      + `<section class="slide"><h1>${polite}</h1><p>${polite}</p></section>`
+      + `<section class="slide"><h2>${polite}</h2><p>발표 개요</p></section>`
+      + `<section class="slide"><h2>${polite}</h2><p>핵심 포인트</p></section>`
+      + '<section class="slide"><h2>다음 단계</h2><p>자료를 확인하고 발표를 준비합니다.</p></section>'
+      + '</body></html>';
+    expect(isLowSubstanceSlideDeckArtifact(repeated, brief, '슬라이드')).toBe(true);
+  });
+
   it('classifies Motif-SVG-before-title hangs as low-substance', () => {
     const hung =
       '<!doctype html><html lang="ko"><body style="margin:0;background:#F5F0E6">'

@@ -102,8 +102,8 @@ function countSlides(html: string): number {
   ).length;
 }
 
-describe('루프190 · dropSlidesWithSeverelyUnbalancedContainerTags', () => {
-  it('drops slides with (opens − closes) ≥ 3 while keeping balanced slides', () => {
+describe('루프190/194 · dropSlidesWithSeverelyUnbalancedContainerTags', () => {
+  it('drops slides with (opens − closes) ≥ 2 while keeping balanced slides', () => {
     const before = countSlides(USER_DECK_WITH_IMBALANCED_CARDS);
     expect(before).toBe(4);
 
@@ -116,6 +116,35 @@ describe('루프190 · dropSlidesWithSeverelyUnbalancedContainerTags', () => {
     expect(out).toContain('data-screen-label="03 정의"');
     expect(out).not.toContain('data-screen-label="04 항등식"');
     expect(out).not.toContain('data-screen-label="05 그래프"');
+  });
+
+  it('drops a card + card-body pair that never closed (diff 2)', () => {
+    const pair = [
+      '<!doctype html><html><body>',
+      balancedCoverSlide,
+      '<section class="slide" data-screen-label="pair">',
+      '<div class="card"><div class="card-body"><h3>피타고라스</h3><p>sin²θ + cos²θ = 1</p>',
+      '</section>',
+      '</body></html>',
+    ].join('\n');
+    const out = dropSlidesWithSeverelyUnbalancedContainerTags(pair);
+    expect(countSlides(out)).toBe(1);
+    expect(out).toContain('data-screen-label="01 Cover"');
+    expect(out).not.toContain('data-screen-label="pair"');
+  });
+
+  it('drops unclosed article/aside pairs the same way as div cards', () => {
+    const articles = [
+      '<!doctype html><html><body>',
+      balancedCoverSlide,
+      '<section class="slide" data-screen-label="articles">',
+      '<article><article><h2>그래프</h2><p>주기와 진폭.</p>',
+      '</section>',
+      '</body></html>',
+    ].join('\n');
+    const out = dropSlidesWithSeverelyUnbalancedContainerTags(articles);
+    expect(countSlides(out)).toBe(1);
+    expect(out).not.toContain('data-screen-label="articles"');
   });
 
   it('never drops the first slide even if it is severely unbalanced', () => {
@@ -133,7 +162,7 @@ describe('루프190 · dropSlidesWithSeverelyUnbalancedContainerTags', () => {
     expect(out).toContain('data-screen-label="01 Cover"');
   });
 
-  it('keeps mildly unbalanced slides (diff ≤ 2 stays)', () => {
+  it('keeps mildly unbalanced slides (diff 1 stays)', () => {
     const mild = [
       '<!doctype html><html><body>',
       balancedCoverSlide,
@@ -143,6 +172,7 @@ describe('루프190 · dropSlidesWithSeverelyUnbalancedContainerTags', () => {
       '<div data-od-slide-flow="">',
       '<div class="card"><h3>A</h3><p>a</p>',
       '<div class="card"><h3>B</h3><p>b</p></div>',
+      '</div>',
       '</section>',
       '</body></html>',
     ].join('\n');
@@ -193,7 +223,7 @@ describe('루프190 · dropSlidesWithSeverelyUnbalancedContainerTags', () => {
   });
 });
 
-describe('루프190 · healAiGeneratedDeckMarkup pipeline integration', () => {
+describe('루프190/194 · healAiGeneratedDeckMarkup pipeline integration', () => {
   it('repairs cardish sibling imbalance before severe drop (루프194)', () => {
     // 루프190b drop alone would remove slides 04/05 (diff ≥ 3).
     // 루프194 closes nested unclosed .card / .chart-card siblings first,
