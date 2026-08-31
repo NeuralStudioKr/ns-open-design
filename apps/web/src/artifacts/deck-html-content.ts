@@ -334,7 +334,9 @@ export function deckSlideHeadingsLookLikeFailedGenerate(html: string): boolean {
   const bad = headings.filter(failed).length;
   if (bad >= Math.ceil(headings.length / 2)) return true;
   // 루프179 — kami leftover shells: cover topic + empty `topic · N` body slides.
-  return deckSlideHeadingsLookLikeTopicCounterShell(html);
+  if (deckSlideHeadingsLookLikeTopicCounterShell(html)) return true;
+  // 루프181 — multi-slide title-only outline shells (no body copy).
+  return deckLooksLikeTitleOnlyOutlineShell(html);
 }
 
 /** Generic outline labels that share a counter but are not a failed topic shell. */
@@ -502,6 +504,44 @@ function slideInnerHasVisibleCopy(innerHtml: string): boolean {
   return visibleTextFromHtmlFragment(innerHtml).length >= 2;
 }
 
+function stripSlideHeadingBlocks(innerHtml: string): string {
+  return innerHtml.replace(/<h[1-6]\b[^>]*>[\s\S]*?<\/h[1-6]\s*>/gi, "");
+}
+
+/**
+ * Heading present but no meaningful body beyond it. Long titles alone must not
+ * count as deliverable copy (루프181).
+ */
+function slideInnerIsTitleOnlyShell(innerHtml: string): boolean {
+  if (!firstSlideHeading(innerHtml)) return false;
+  const withoutHeadings = stripSlideHeadingBlocks(innerHtml);
+  if (
+    HAS_MEDIA_CONTENT_RE.test(withoutHeadings)
+    && slideInnerHasVisibleCopy(withoutHeadings)
+  ) {
+    return false;
+  }
+  // Any real body block with visible text is not title-only (even short leads).
+  if (
+    /<(?:p|li|td|th|blockquote|figcaption)\b/i.test(withoutHeadings)
+    && HAS_VISIBLE_TEXT_IN_SLIDE_RE.test(withoutHeadings)
+  ) {
+    return false;
+  }
+  return visibleTextFromHtmlFragment(withoutHeadings).length < 8;
+}
+
+/**
+ * ≥4 slides where ≥60% are title-only shells — MiniMax leftover outline decks
+ * that never received body copy (루프181).
+ */
+export function deckLooksLikeTitleOnlyOutlineShell(html: string): boolean {
+  const inners = listSlideSectionInners(html);
+  if (inners.length < 4) return false;
+  const titleOnly = inners.filter(slideInnerIsTitleOnlyShell).length;
+  return titleOnly >= Math.ceil(inners.length * 0.6);
+}
+
 /** Kit CSS promoted out of an unclosed `<style>` is not slide copy. */
 function slideInnerLooksLikeStylesheetDump(innerHtml: string): boolean {
   const heading = visibleTextFromHtmlFragment(
@@ -523,6 +563,8 @@ function slideInnerHasDeliverableCopy(innerHtml: string): boolean {
   if (slideInnerLooksLikeStylesheetDump(innerHtml)) return false;
   if (slideSectionInnerLooksLikeStatusOnly(innerHtml)) return false;
   if (isGenericOutlineOnlySlide(innerHtml)) return false;
+  // Long heading-only slides are not deliverable (루프181).
+  if (slideInnerIsTitleOnlyShell(innerHtml)) return false;
   // Motif SVG / img without a title or lead is not deliverable copy — treating
   // any `<svg>` as filled made SVG-first hangs look "salvageable".
   if (HAS_MEDIA_CONTENT_RE.test(innerHtml) && slideInnerHasVisibleCopy(innerHtml)) {

@@ -178,6 +178,25 @@ describe('validateHtmlArtifact', () => {
     )).toBe(true);
   });
 
+  it('classifies title-only outline shells as low-substance (루프181)', () => {
+    const outline =
+      '<!doctype html><html lang="ko"><head><meta charset="utf-8"></head><body>'
+      + '<section class="slide"><h1>영어 회화 로드맵</h1></section>'
+      + '<section class="slide"><h2>듣기 훈련</h2></section>'
+      + '<section class="slide"><h2>말하기 루틴</h2></section>'
+      + '<section class="slide"><h2>복습 체크</h2></section>'
+      + '<section class="slide"><h2>주간 목표</h2></section>'
+      + '</body></html>';
+    expect(validateHtmlArtifact(outline).ok).toBe(true);
+    expect(isLowSubstanceSlideDeckArtifact(outline)).toBe(true);
+    const longTitleOnly =
+      '<!doctype html><html lang="ko"><body>'
+      + '<section class="slide"><h1>삼각함수의 기본 개념과 단위원</h1></section>'
+      + '</body></html>';
+    // Single titled cover remains a persistable short draft (top-up path).
+    expect(isLowSubstanceSlideDeckArtifact(longTitleOnly)).toBe(false);
+  });
+
   it('does not treat AfterHeal-able instruction/marketing covers as low-substance', () => {
     const parrot =
       '<!doctype html><html lang="ko"><head><meta charset="utf-8"></head><body>'

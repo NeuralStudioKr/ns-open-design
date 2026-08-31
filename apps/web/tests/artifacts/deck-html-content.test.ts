@@ -181,6 +181,35 @@ describe("deck-html-content", () => {
     expect(deckSlideHeadingsLookLikeFailedGenerate(genericSlideLabels)).toBe(false);
   });
 
+  it("flags title-only outline shells and heading-only long titles (루프181)", () => {
+    const outline =
+      '<!doctype html><html lang="ko"><body>'
+      + '<section class="slide"><h1>영어 회화 로드맵</h1></section>'
+      + '<section class="slide"><h2>듣기 훈련</h2></section>'
+      + '<section class="slide"><h2>말하기 루틴</h2></section>'
+      + '<section class="slide"><h2>복습 체크</h2></section>'
+      + '<section class="slide"><h2>주간 목표</h2></section>'
+      + "</body></html>";
+    expect(deckSlideHeadingsLookLikeFailedGenerate(outline)).toBe(true);
+    expect(isPersistableShortDeckDraft(outline)).toBe(false);
+    expect(hasFilledSlideSection(outline)).toBe(false);
+    const longTitleOnly =
+      '<!doctype html><html lang="ko"><body>'
+      + '<section class="slide"><h1>삼각함수의 기본 개념과 단위원</h1></section>'
+      + "</body></html>";
+    expect(hasFilledSlideSection(longTitleOnly)).toBe(false);
+    expect(isPersistableShortDeckDraft(longTitleOnly)).toBe(true);
+    const filledOutline =
+      '<!doctype html><html lang="ko"><body>'
+      + '<section class="slide"><h1>영어 회화 로드맵</h1><p>주 3회 쉐도잉으로 시작합니다.</p></section>'
+      + '<section class="slide"><h2>듣기 훈련</h2><p>짧은 클립을 반복 청취합니다.</p></section>'
+      + '<section class="slide"><h2>말하기 루틴</h2><p>녹음 후 자기 피드백.</p></section>'
+      + '<section class="slide"><h2>복습 체크</h2><p>주말 미니 퀴즈.</p></section>'
+      + "</body></html>";
+    expect(deckSlideHeadingsLookLikeFailedGenerate(filledOutline)).toBe(false);
+    expect(hasFilledSlideSection(filledOutline)).toBe(true);
+  });
+
   it("flags instruction-copy and template-marketing cover headings", () => {
     const parrot =
       "<!doctype html><html lang=\"ko\"><body>"

@@ -288,9 +288,19 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | persist/preview: business-template placeholder 확장(`[Company]`·`[Client]`·`[Project]`·`[Version]` 등) leftover 미scrub | ☑ 루프178 |
 | persist recover/reuse: topic+counter 빈 장(`X · N`)이 short-draft로 저장 · skipped-incomplete 미적용 | ☑ 루프179 |
 | preview: pitch-deck cover 그라디언트(`var(--grad)`)가 `.tpl-* .mega/.avatar/.cover-blob`로부터 슬라이드 paper로 오탐 → 모든 슬라이드 배경 그라디언트 (사용자 리포트 "결과물 내용 없음 + 템플릿 적용 안됨") | ☑ 루프180 |
+| persist/preview: 제목-only 아웃라인(≥4장·≥60% heading-only) · 긴 제목만으로 filled 오판 | ☑ 루프181 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프179 · topic+counter 빈 장 저장 게이트)
+## 이번 루프 (루프181 · title-only outline · heading-only deliverable)
+
+- [x] `slideInnerIsTitleOnlyShell` — heading 외 본문 없음 → deliverable false (긴 제목만 filled 오판 차단)
+- [x] `deckLooksLikeTitleOnlyOutlineShell` — ≥4장·≥60% title-only → failed-generate
+- [x] short-draft / low-substance 연동 — outline 해골 덱 persist·reuse skip
+- [x] 1장 제목 커버 short-draft · 짧은 `<p>` 본문 · filled outline 보존
+- [x] web deck-html-content · validate 회귀
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프179 · topic+counter 빈 장 저장 게이트)
 
 - [x] `deckSlideHeadingsLookLikeTopicCounterShell` — 커버 주제 + 빈 `topic · N` ≥2 → failed-generate
 - [x] short-draft / low-substance 연동 — kami 해골 덱 persist skip
