@@ -7,6 +7,16 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-08-31 현재 판단 · 최신 루프
 
+### 루프271 — 선택 템플릿 motif/색상/아이콘 실렌더 강제
+
+사용자 리포트 2026-08-31: 템플릿을 선택해도 대표 SVG/색상/아이콘/도형이 첫 결과물에 충분히 반영되지 않음. 특히 Daisy/Capsule/Studio류는 썸네일 identity와 실제 산출물이 다르게 보인다.
+
+원인: compact fill 안정화 과정에서 `official Motif merged after save`, `may stay empty`, `empty absolute shells` 문구가 남아 모델이 빈 `.deco-*` shell 또는 generic shape만 emit해도 된다고 해석할 수 있었다. 실제 서비스에서는 저장 후 별도 motif paint가 항상 사용자-visible 결과물을 보강한다고 가정하면 안 된다.
+
+수정: Template visual kit / selected-template final authority / slim fill 치환문을 “visible kit Motif anchors”로 통일. 긴 SVG dump와 Motif-before-title hang은 계속 막되, cover와 본문 2장 이상에 kit 색상·geometry 기반의 실제 보이는 CSS/HTML motif 또는 짧은 공식 sprite를 넣도록 요구한다. 빈 shell은 실패 조건으로 명시.
+
+검증: contracts `template-visual-kit` 회귀에서 Daisy/Capsule slim kit가 visible motif anchor를 요구하고 `may stay empty`/`empty absolute shells`/`official Motif merged after save`로 후퇴하지 않는지 확인.
+
 ### 루프270 — nested duplicate `.card` open flatten
 
 사용자 리포트 2026-08-31 · 삼각함수 pitch-deck (slide 4 항등식 · 5 그래프): MiniMax fill이 각 카드 시작 시 nested duplicate open을 emit — `<div class="card"><div class="card">제목</div>공식본문</div>`. Loop194는 두 open을 peer로 갈라내며 outer body를 카드 밖으로 밀어냄. Loop199는 outer가 완전 비어야만 unwrap. 실측: heal 후 slide 4 `div opens=29, closes=32, diff=-3` (닫힘 초과 · layout 파괴).

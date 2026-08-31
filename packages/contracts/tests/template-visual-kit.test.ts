@@ -84,6 +84,8 @@ describe('extractTemplateVisualKitFromHtml', () => {
     expect(kit!).not.toMatch(/…\s*$/);
     expect(kit!).toMatch(/LOOK LIKE THE TEMPLATE|TOKEN-SAFE CONTENT-SWAP/i);
     expect(kit!).toContain('### Must-match look');
+    expect(kit!).toMatch(/visible kit Motif anchors/i);
+    expect(kit!).toMatch(/Empty `?\.deco-\*`? shells are not enough|Empty `?\.deco-\*`? shells do not count/i);
     expect(kit!).not.toMatch(/treat `example\.html` as the base deck/i);
     // Scaffold-map deco slots must not ask for sun/cloud when those sprites
     // were not included in Motif sprites.
@@ -325,14 +327,15 @@ html,body{background:var(--cream);color:var(--text-dark)}
     expect(daisySlim).toMatch(/Motif sprites \(capped for first content-fill/i);
     expect(daisySlim).not.toMatch(/```html[\s\S]*?<svg\s/i);
     expect(daisySlim).not.toMatch(/<svg\s[^>]*viewBox/i);
-    expect(daisySlim).toMatch(/REQUIRE 1–2 kit Motif CSS\/deco|1–2 `\.deco-daisy-\*`/i);
-    expect(daisySlim).toMatch(/Motif `<svg>` is NOT required this turn|official Motif merged after save/i);
+    expect(daisySlim).toMatch(/REQUIRE 1–2 visible kit Motif|visible daisy\/star\/rainbow anchors/i);
+    expect(daisySlim).toMatch(/Empty `?\.deco-daisy-\*`? shells are forbidden|Empty `?\.deco-\*`? shells are not enough/i);
     expect(daisySlim).not.toMatch(/Optional tiny kit Motif CSS/i);
     expect(daisySlim).not.toMatch(/REQUIRED after cover title\/lead:\s*paste exactly ONE/i);
     expect(daisySlim).not.toMatch(/Motif sprites \(omitted for first content-fill/i);
     expect(daisySlim).not.toMatch(/ZERO Motif|Motif SVG paste is DISABLED/i);
+    expect(daisySlim).not.toMatch(/may stay empty|empty absolute shells|official Motif merged after save|deferred to persist/i);
     expect(daisySlim).toMatch(/deco-daisy/i);
-    expect(daisySlim).toMatch(/official Motif merge|NOT required this turn/i);
+    expect(daisySlim).toMatch(/visible kit Motif anchors|visible daisy\/star\/rainbow anchors/i);
     expect(daisySlim).toMatch(/Motif geometry:\s*\*\*kit Motif SVG sprites\*\*/i);
 
     const capsuleHtml = await readFile(
@@ -354,6 +357,8 @@ html,body{background:var(--cream);color:var(--text-dark)}
     expect(capsuleSlim).toMatch(/pill-coral|pill-lavender|pill-sky|pill-peach|pill-violet/i);
     expect(capsuleSlim).toMatch(/Motif HTML snippets|border-radius:\s*9999px/i);
     expect(capsuleSlim).toMatch(/REQUIRED Motif vocabulary|Do NOT invent generic CSS circles/i);
+    expect(capsuleSlim).toMatch(/visible Motif anchors|visible absolute-positioned shapes|visible kit Motif/i);
+    expect(capsuleSlim).not.toMatch(/may stay empty|empty absolute shells|official Motif merged after save|deferred to persist/i);
     expect(capsuleSlim).toMatch(/Motif geometry:\s*\*\*oblong capsules\*\*/i);
     // Prefer real capsule geometry in Motif snippets — not year-dot discs.
     const motifSnippets = /Motif HTML snippets[\s\S]*?```html\n([\s\S]*?)```/i.exec(capsuleSlim)?.[1] ?? '';

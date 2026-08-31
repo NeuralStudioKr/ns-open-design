@@ -841,10 +841,10 @@ function formatMotifGeometryGuidance(kind: MotifGeometryKind): string {
   }
 }
 
-/** First-fill Motif-defer: keep geometry identity, but do not require Motif SVG paste. */
+/** First-fill Motif guidance: keep geometry identity and require visible anchors without forcing long SVG dumps. */
 function formatMotifGeometryGuidanceForFill(kind: MotifGeometryKind): string {
   if (kind === 'svg-sprite') {
-    return 'Motif geometry: **kit Motif SVG sprites** — REQUIRE 1–2 kit Motif CSS/deco class shells AFTER title when listed. Motif `<svg>` is NOT required this turn (official Motif is merged after save). Never invent tiny corner flowers / emoji / generic circles.';
+    return 'Motif geometry: **kit Motif SVG sprites** — REQUIRE 1–2 visible kit Motif anchors AFTER title/lead. Empty `.deco-*` shells paint nothing. Use one short complete listed sprite when it fits; otherwise build a visible compact CSS/HTML anchor with kit classes, colors, and geometry. Never invent tiny corner flowers / emoji / generic circles.';
   }
   return formatMotifGeometryGuidance(kind);
 }
@@ -1221,7 +1221,7 @@ function renderMustMatchLookBlock(options: {
       : '3. **Layout/placement:** reuse the template\'s multi-region compositions (grids/flex/cards) as a vocabulary. Pick and reorder freely to match the user brief; do not flatten every slide into the same cover composition.',
   );
   lines.push(
-    '4. **Motif/density:** when Motif sprites / Decorations CSS / Motif HTML snippets are present, use that kit Motif vocabulary AFTER title/lead (prefer 1–2 Motif elements when scaffold lists `deco=`). Finish a closed deck this turn — light Motif beats a truncated Motif dump. Motif SVG only AFTER title/lead. Sparse title-only slides are a failure; Motif-before-title hangs are also a failure.',
+    '4. **Motif/density:** when Motif sprites / Decorations CSS / Motif HTML snippets are present, emit visible kit Motif anchors AFTER title/lead (cover + at least two body slides, 1–2 compact elements each). Empty `.deco-*` shells are not enough. Prefer compact CSS/HTML kit shapes; paste at most one short complete kit SVG after visible copy only if it fits. Sparse title-only slides, generic circles/emoji, or Motif-before-title hangs are failures.',
   );
   return lines.join('\n');
 }
@@ -1657,7 +1657,7 @@ const HARD_RULES = [
   '- **BODY-FIRST:** emit `<body>` / filled `<section class="slide">` (or the template\'s slide wrapper) BEFORE a large `<head>`/`<style>` dump. Put compact CSS/deco tokens (and optional Motif sprites only AFTER title/lead) in one short body `<style>` after slide 1 — never Motif SVG before cover copy. A CSS-only truncation is a failed deliverable.',
   '- **Background:** bind `### Slide surface` on BOTH `html`/`body` AND every `.slide` edge-to-edge (full 1920×1080). Dark-on-dark, light-on-light, paper-slides-on-wrong-shell, or white outer + inner cream panel (white top/bottom bands) are failed deliverables. Ink/border tokens are stroke/text, not backgrounds.',
   '- **Fonts:** use kit Font import + font-family names exactly; do not substitute Inter/Noto/system-ui alone when the kit lists display/body faces.',
-  '- Motif language comes from **Motif sprites** / **Decorations CSS** below when present. Prefer the kit Motif vocabulary (pills/petals/blobs/pins/geometric `.deco-*`/sprites) in kit hex first. Motif SVG paste is optional: at most one short complete sprite AFTER visible title/lead on a slide, never before cover copy, never a multi-KB `<svg><style>` dump, and skip entirely if paste risks a hang. Use only listed sprites — never invent SVG/emoji for a missing slot.',
+  '- Motif language comes from **Motif sprites** / **Decorations CSS** below when present. Emit visible kit Motif anchors (pills/petals/blobs/pins/geometric `.deco-*`/sprites) in kit hex on the cover and at least two body slides. Empty `.deco-*` shells do not count. Motif SVG paste is optional: at most one short complete sprite AFTER visible title/lead on a slide, never before cover copy and never a multi-KB `<svg><style>` dump. Use only listed sprites — never invent SVG/emoji for a missing slot.',
   '- **Forbidden motif substitutes:** unicode/emoji ornaments as decoration pretending to be the template identity. Do not invent ellipse "daisy" SVGs, generic flower geometry, or plain CSS circles when the kit lists Motif CSS/sprites. Match Motif geometry from kit snippets (aspect + border-radius); never substitute another template family\'s Motif shapes.',
   '- Preserve chunky cards/borders/offset shadows when Decorations CSS / `:root` tokens show them (`--border`, `--shadow`).',
   '- Do not substitute OD skeleton terracotta `#c96442` unless that hex is listed in this kit\'s palette cues.',
@@ -1806,9 +1806,9 @@ export function extractTemplateVisualKitFromHtml(
   const spriteBlock: string[] = [];
   if (sprites.length > 0) {
     spriteBlock.push(
-      '### Motif sprites (optional complete SVGs — AFTER title/lead only)',
+      '### Motif sprites (reference / optional complete SVGs — AFTER title/lead only)',
       '',
-      'Only use these Motif SVGs. Prefer kit `.deco`/CSS shapes; paste at most one complete sprite AFTER visible title/lead. Never open `<svg` before cover copy or dump sprites into `<head>`. No emoji/generic substitutes. BODY-FIRST.',
+      'Only use these Motif SVGs. The deck must still show visible kit Motif anchors this turn: use compact CSS/HTML kit shapes, or paste at most one complete sprite AFTER visible title/lead. Never open `<svg` before cover copy or dump sprites into `<head>`. Empty `.deco-*` shells, emoji, and generic substitutes are failures. BODY-FIRST.',
       '',
     );
     for (const sprite of sprites) {
@@ -1890,9 +1890,9 @@ export function extractTemplateVisualKitFromHtml(
         // If even sprites overflow, keep as many complete sprites as fit.
         const kept = [...lines];
         kept.push(
-          '### Motif sprites (optional — AFTER title/lead only)',
+          '### Motif sprites (reference / optional — AFTER title/lead only)',
           '',
-          'Prefer CSS/`.deco` density. At most one short complete sprite AFTER title/lead; skip Motif SVG if hang risk. BODY-FIRST.',
+          'Visible kit Motif anchors are required this turn. Prefer compact CSS/HTML kit shapes; at most one short complete sprite AFTER title/lead. Empty `.deco-*` shells and generic substitutes fail. BODY-FIRST.',
           '',
         );
         for (const sprite of sprites) {
@@ -1990,17 +1990,17 @@ function capMotifSpritesSectionForFill(section: string): string {
   const lines = [
     '### Motif sprites (capped for first content-fill — AFTER title/lead only)',
     '',
-    'Identity reference only — Motif `<svg>` is NOT required this turn (official Motif merged after save). Do NOT paste Motif sprites this turn. REQUIRE 1–2 kit Motif CSS/deco classes AFTER title. Never invent tiny corner flowers / emoji / generic circles.',
+    'Identity reference only — do not dump long Motif SVGs before content. REQUIRE 1–2 visible kit Motif anchors AFTER title/lead on the cover and at least two body slides. Empty `.deco-*` shells are not enough. Use one short complete listed sprite when it fits; otherwise build compact visible CSS/HTML kit shapes. Never invent tiny corner flowers / emoji / generic circles.',
     '',
   ];
   if (looksLikeDaisy) {
     lines.push(
-      'Daisy: use 1–2 `.deco-daisy-*` class shells AFTER title (may stay empty). Official Motif merge paints 4-corner flowers after save.',
+      'Daisy: show 1–2 visible daisy/star/rainbow anchors AFTER title/lead using listed kit sprites or compact kit-colored CSS/HTML shapes. Empty `.deco-daisy-*` shells are forbidden because they render as missing flowers.',
       '',
     );
   } else if (/deco-|pill-|petal|blob|pin-|doodle|post-it|xp-blob|gd-orb/i.test(section)) {
     lines.push(
-      `Motif class vocabulary: ${formatMotifVocabularyGuidance(section)}. Emit those classes as empty absolute shells — no SVG body this turn.`,
+      `Motif class vocabulary: ${formatMotifVocabularyGuidance(section)}. Emit visible absolute-positioned shapes with those classes, kit hexes, aspect, and border-radius; empty shells do not count.`,
       '',
     );
   } else {
@@ -2061,7 +2061,7 @@ function capDecorationsCssSectionForFill(section: string): string {
     '### Decorations CSS (capped for first content-fill — paste AFTER slide 1)',
     '',
     `REQUIRED Motif vocabulary from this kit: ${vocab}. Do NOT invent generic CSS circles / emoji ornaments as substitutes.`,
-    'Motif density: REQUIRE 1–2 Motif CSS/deco classes AFTER title when listed. Motif `<svg>` NOT required (merged after save).',
+    'Motif density: REQUIRE 1–2 visible Motif anchors AFTER title/lead when listed. Empty class shells do not count; render kit-colored CSS/HTML shapes or one short complete listed sprite.',
     ...(shouldAttachMotifGeometryGuidance(geometryKind)
       ? [formatMotifGeometryGuidanceForFill(geometryKind)]
       : []),
@@ -2077,12 +2077,12 @@ function capDecorationsCssSectionForFill(section: string): string {
     );
     if (geometryKind === 'svg-sprite') {
       lines.push(
-        'These wrappers may stay empty this turn — official Motif merge paints kit SVG after save. Do not nest invented tiny flower SVGs.',
+        'These wrappers must render visible kit Motif this turn. If a wrapper needs SVG paint, paste one short complete listed sprite after copy; otherwise use kit-colored CSS/HTML geometry. Empty wrappers are a failure.',
       );
     }
   } else if (geometryKind === 'svg-sprite') {
     lines.push(
-      'Daisy Motif this turn: title + lead + 1–2 `.deco-daisy-*` class shells (may stay empty). Official Motif merge paints 4-corner flowers after save. Tiny CSS dots / invented 12–48px flower SVGs are not Daisy Motif.',
+      'Daisy Motif this turn: title + lead + 1–2 visible daisy/star/rainbow anchors using listed kit sprites or kit-colored CSS/HTML shapes. Empty `.deco-daisy-*` shells, tiny CSS dots, and invented 12–48px flower SVGs are not Daisy Motif.',
     );
   } else if (geometryKind === 'oblong-capsule' || hasCapsuleMotifSignal(pickedCss) || hasCapsuleMotifSignal(section)) {
     lines.push(
@@ -2187,75 +2187,75 @@ export function slimTemplateVisualKitForFill(skillBody: string): string {
   }
   next = next.replace(
     /- Motif (?:MUST be copied from|language comes from)[\s\S]*?(?=\n- |\n### |\n## |$)/g,
-    '- Motif vocabulary REQUIRED: 1–2 Motif CSS/deco classes AFTER title (Motif `<svg>` NOT required — merged after save). No generic circles.\n',
+    '- Motif vocabulary REQUIRED: 1–2 visible Motif CSS/HTML/deco anchors AFTER title/lead. Empty shells do not count; no generic circles.\n',
   );
   next = next.replace(
     /4\.\s*\*\*Motif\/density:\*\*[^\n]*/gi,
-    '4. **Motif/density:** REQUIRE 1–2 kit Motif CSS/deco classes AFTER title when Decorations list Motif classes. Motif `<svg>` is NOT required this turn (official Motif is merged after save) — never generic circles.',
+    '4. **Motif/density:** REQUIRE 1–2 visible kit Motif CSS/HTML/deco anchors AFTER title/lead when Decorations list Motif classes. Empty shells do not count — never generic circles.',
   );
   next = next.replace(
     /treat its\s+CSS tokens, fonts, (?:Motif sprites|compact motif\/deco cues)[^\n]*/gi,
-    'treat its CSS tokens, fonts, Decorations CSS Motif vocabulary, and scaffold map as mandatory this fill turn (Motif SVG deferred to persist merge).',
+    'treat its CSS tokens, fonts, visible Decorations CSS/HTML Motif vocabulary, and scaffold map as mandatory this fill turn.',
   );
   next = next.replace(
     /The cover MUST (?:show the provided daisy SVG motif|use kit cream\/ink \+ CSS-shape decoration)[^\n]*/gi,
-    'The cover MUST use kit surface + titled copy + 1–2 kit Motif CSS/deco classes (Motif SVG deferred) — not generic circles.',
+    'The cover MUST use kit surface + titled copy + 1–2 visible kit Motif CSS/HTML/deco anchors — not generic circles or empty shells.',
   );
   next = next.replace(
     /when Motif sprites \/ Decorations CSS are present[^\n]*/gi,
-    'when Motif sprites / Decorations CSS are present, REQUIRE 1–2 Motif CSS/deco classes this turn (Motif SVG deferred to persist merge) — never plain circle substitutes.',
+    'when Motif sprites / Decorations CSS are present, REQUIRE 1–2 visible Motif CSS/HTML/deco anchors this turn — never plain circle substitutes or empty shells.',
   );
   next = next.replace(
     /<!-- (?:use Motif sprites SVG inside \.deco|optional Motif sprite AFTER title\/lead|kit Motif: sprite AFTER title[^>]*) -->/gi,
-    '<!-- kit Motif: official Motif merged after save — require 1–2 Motif CSS/deco classes; not a generic circle -->',
+    '<!-- kit Motif: require 1–2 visible Motif CSS/HTML/deco anchors; not a generic circle or empty shell -->',
   );
   next = next.replace(
     /<!-- paste capped Motif sprite here -->/gi,
-    '<!-- official Motif merged after save — Motif CSS/deco class required; SVG deferred -->',
+    '<!-- visible kit Motif CSS/HTML/deco anchor required here; paste at most one short listed SVG only after copy -->',
   );
   next = next.replace(
     /On first Clone content-fill:[^\n]*/gi,
-    'On first Clone content-fill: title-first; Motif `<svg>` is NOT required this turn (official Motif merged after save). Never invent generic circles.',
+    'On first Clone content-fill: title-first; visible kit Motif anchors are required after title/lead. Never invent generic circles.',
   );
   next = next.replace(
     /If Motif sprites are present[^\n]*/gi,
-    'If Motif sprites are present, treat them as identity reference only — Motif SVG is NOT required this turn; REQUIRE 1–2 kit Motif CSS/deco classes instead of generic circles.',
+    'If Motif sprites are present, treat them as identity reference and render 1–2 visible kit Motif CSS/HTML/deco anchors instead of generic circles.',
   );
   next = next.replace(
     /Motif SVG paste is DISABLED[^\n]*/gi,
-    'Motif `<svg>` is NOT required this turn (official Motif merged after save). REQUIRE 1–2 Decorations Motif CSS/deco classes — no generic circles.',
+    'Motif `<svg>` is not mandatory, but visible Decorations Motif CSS/HTML/deco anchors are required — no generic circles or empty shells.',
   );
   next = next.replace(
     /Do not (?:copy|paste) Motif SVGs on this fill turn[^\n]*/gi,
-    'Do not paste Motif SVGs this turn — official Motif is merged after save; REQUIRE 1–2 kit Motif CSS/deco classes from Decorations.',
+    'Avoid long Motif SVG dumps; REQUIRE 1–2 visible kit Motif CSS/HTML/deco anchors from Decorations.',
   );
   next = next.replace(
     /Do not paste sprites on this fill turn\.?/gi,
-    'Do not paste Motif sprites this turn — official Motif is merged after save.',
+    'Do not paste long Motif sprite dumps before content; render compact visible kit Motif anchors after title/lead.',
   );
   next = next.replace(
     /Motif SVG vocabulary is omitted this fill turn[^\n]*/gi,
-    'Motif `<svg>` is NOT required this turn — REQUIRE 1–2 kit Motif CSS/deco classes, not generic circles.',
+    'Motif `<svg>` is optional; REQUIRE 1–2 visible kit Motif CSS/HTML/deco anchors, not generic circles or empty shells.',
   );
   next = next.replace(
     /Prefer kit cream\/ink \+ CSS-shape daisy accents[^\n]*/gi,
-    'Prefer titled slides + 1–2 kit Motif CSS cues (Motif SVG deferred) — not generic circles.',
+    'Prefer titled slides + 1–2 visible kit Motif CSS/HTML cues — not generic circles or empty shells.',
   );
   next = next.replace(
     /Every slide should use kit palette \+ fonts; Motif SVGs are deferred[^\n]*/gi,
-    'Every slide should use kit palette + fonts; Motif SVG is deferred to persist merge.',
+    'Every slide should use kit palette + fonts; visible kit Motif anchors should appear when the kit has motif/deco cues.',
   );
   next = next.replace(
     /Motif sprites (?:are deferred this fill turn|below are optional AFTER title\/lead)\.?/gi,
-    'Motif sprites are identity reference only — Motif SVG is NOT required this turn.',
+    'Motif sprites are identity reference; render compact visible kit Motif anchors after title/lead.',
   );
   next = next.replace(
     /decorate with CSS\/`\.deco` only — Motif sprites are deferred this fill turn\.?/gi,
-    'decorate with 1–2 kit Motif CSS/deco classes — Motif SVG is deferred to persist merge.',
+    'decorate with 1–2 visible kit Motif CSS/HTML/deco anchors.',
   );
   next = next.replace(
     /use at most one short (?:complete )?(?:sprite|snippet)[^\n]*/gi,
-    'REQUIRE 1–2 kit Motif CSS/deco classes AFTER title/lead (Motif SVG deferred to persist merge).',
+    'REQUIRE 1–2 visible kit Motif CSS/HTML/deco anchors AFTER title/lead.',
   );
   return next;
 }

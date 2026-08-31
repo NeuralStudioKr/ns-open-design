@@ -1484,7 +1484,7 @@ Hard requirements for every slide:
 - **Kit-driven visual, brief-driven structure:** kit + scaffold map provide palette, fonts, borders, shadows, compact motif/deco cues, and layout roles. Slide count/order/composition come from the user brief, NOT the template shell. Preserve surface colors, wrappers, cards, and motif language; choose roles that fit the brief, reuse when useful, and do NOT dump/rewrite full example.html.
 - Bind kit palette colors and font-family names (and border/shadow tokens when listed) with inline styles or one short body \`<style>\`. Whatever the kit lists MUST appear — do not approximate with a different template's look.
 - Keep decorative density the kit shows via a **small subset** of compact kit motif/deco cues. Sparse title-only slides that ignore the kit are a failure, but full CSS/SVG pasted before content is also a failure.
-- **Motif budget:** never open \`<svg\` in the first 800 characters after \`<artifact\`. Title-first always. AFTER visible title/body copy starts, paste at most ONE capped kit Motif sprite when Motif sprites lists one (Daisy flowers etc. may be ~2KB — that single kit sprite is exempt from the ~800-char Motif-budget). Empty \`.deco\` shells without child SVG, tiny CSS dots, emoji ornaments, and invented drawings are forbidden substitutes.
+- **Motif budget:** never open \`<svg\` in the first 800 characters after \`<artifact\`. Title-first always. AFTER visible title/body copy starts, render visible kit Motif anchors: compact CSS/HTML kit shapes or at most ONE capped kit Motif sprite when it fits (Daisy flowers etc. may be ~2KB — that single kit sprite is exempt from the ~800-char Motif-budget). Empty \`.deco\` shells without visible paint, tiny CSS dots, emoji ornaments, and invented drawings are forbidden substitutes.
 - **Forbidden motif substitutes:** do **not** fake the template with unicode/emoji ornaments as decoration. Motif must be the kit's compact SVG/\`.deco\` patterns (or chunky borders when the kit has no sprites). Content emoji inside body copy is OK sparingly; decorative rows are not.
 - **Forbidden skeleton / Neutral substitutes:** slate \`#0f172a\`/\`#1e293b\`/\`#111827\`, OD terracotta \`#c96442\` unless listed in kit, Inter/Noto/system-ui-only typography that ignores kit fonts, empty corporate gradients, "no ornament" layouts.
 - **Forbidden:** carrying over the ATTACHED SOURCE FILE's own visual styling. Source contributes TEXT and structure only — palette/fonts/motif MUST come from the kit.
@@ -1506,14 +1506,14 @@ This is the first content fill after a LOOK seed (create with kit Motif vocabula
 **Close a compact deck THIS TURN** that still looks like the selected template.
 
 - Bind kit palette hex + fonts + Slide surface on \`html\`/\`body\` AND every \`.slide\` **edge-to-edge** (full 1920×1080). FORBIDDEN: white outer slide + inner cream paper panel that leaves white top/bottom bands. White title cards on cream paper are OK.
-- Cover order is mandatory: \`<section class="slide">\` → \`<h1>real topical title</h1>\` → lead \`<p>\` → 1–2 kit Motif CSS/deco classes when Decorations are listed.
+- Cover order is mandatory: \`<section class="slide">\` → \`<h1>real topical title</h1>\` → lead \`<p>\` → 1–2 visible kit Motif CSS/HTML/deco anchors when Decorations are listed.
 - **Layout (required when kit has Layout CSS / scaffold roles):** reuse capped Layout CSS + scaffold roles. Do NOT flatten every slide into one centered flex title column when the kit ships grids/splits/cards.
-- **Motif:** Motif \`<svg>\` is NOT required this turn — never open Motif \`<svg>\` before or after the cover title. Official Motif is merged after save. Do not paste Motif sprites. REQUIRE 1–2 kit Motif CSS/deco classes AFTER title when Decorations are listed.
-- **Named Motif fidelity:** do not invent a different motif family or tiny Daisy lookalikes. Persist paints official Daisy/Capsule/Terminal Motif after save.
+- **Motif:** never open Motif \`<svg>\` before the cover title. Render visible kit Motif anchors AFTER title/lead on the cover and at least two body slides when Decorations/Motif snippets exist. Use compact CSS/HTML kit shapes, or at most one short complete listed sprite after visible copy. Empty \`.deco-*\` shells are not enough.
+- **Named Motif fidelity:** do not invent a different motif family or tiny Daisy lookalikes. Daisy needs visible daisy/star/rainbow anchors; Capsule needs oblong pill/capsule geometry; Studio/Terminal needs its chrome/grid/scanline vocabulary.
 - **FORBIDDEN substitutes:** Motif shapes from another template family; generic CSS circles; inventing Capsule coral pills when the kit Motif is petals/blobs/pins/pixel/scanlines; emoji ornament rows; multi-KB \`<svg><style>\` dumps; Neutral \`#0f172a\`; terracotta \`#c96442\`.
 - ${COMPACT_FIRST_FILL_SLIDE_COUNT_GUIDANCE} Never close \`</html></artifact>\` after a single cover.
 - Stream: status → \`<artifact type="deck">\` → body-first sections with real topical copy → close \`</body></html></artifact>\` in this same response.
-- If any earlier rule said paste Motif sprites / Motif floor REQUIRED this turn, **IGNORE it** — finish the THIS TURN slide count. Official Motif is merged after save.
+- If any earlier rule asks for long Motif sprite dumps, **IGNORE the dump** — finish the THIS TURN slide count with compact visible kit Motif anchors after title/lead.
 `;
 
 function stripLeadingMarkdownH1(section: string): string {
@@ -1716,7 +1716,7 @@ export function composeTeamverSlideApiPrompt({
           'Hard requirements (first content-fill — kit Motif AFTER title):\n'
           + '- Bind kit palette hex + fonts + Slide surface on html/body AND every `.slide` edge-to-edge (no white outer + inner cream panel).\n'
           + '- Title-first body: cover title + lead BEFORE any decoration. Close `</artifact>` this turn with the requested count (up to 6).\n'
-          + '- REQUIRE 1–2 kit Motif CSS/deco classes AFTER title when Decorations are listed. Motif `<svg>` NOT required (merged after save). FORBIDDEN: Motif SVG dumps; foreign Motif geometry; generic circles; omitting all Motif CSS cues.\n'
+          + '- REQUIRE 1–2 visible kit Motif CSS/HTML/deco anchors AFTER title/lead when Decorations are listed. FORBIDDEN: Motif SVG dumps before content; foreign Motif geometry; generic circles; empty shells; omitting all Motif cues.\n'
           + '- Layout REQUIRED from capped Layout CSS + scaffold roles when present — do not flatten every slide into one centered flex title column.\n'
           + `- ${COMPACT_FIRST_FILL_SLIDE_COUNT_GUIDANCE} No Neutral \`#0f172a\` / terracotta \`#c96442\`.\n`
           + '- Do not dump or rewrite a full example.html. Never open Motif `<svg>` or a long `<head>` this turn.\n\n'
