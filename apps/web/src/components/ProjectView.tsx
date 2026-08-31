@@ -67,7 +67,7 @@ import {
 } from '../artifacts/pendingWriteRecovery';
 import {
   deckArtifactStartsWithMotifSvgDump,
-  deckLooksLikeTitleOnlyCoverWithEmptyHosts,
+  deckLooksLikeThinTopUpHostPrior,
   deckLooksLikeUnfilledCatalogExample,
   deckSlideHeadingsLookLikeFailedGenerate,
   isClosedSoftSalvageDeckHtml,
@@ -5528,11 +5528,11 @@ export function ProjectView({
               countDeckSlideSections(artifactToPersist.html)
               <= countDeckSlideSections(priorHtml)
             ) {
-              // 루프269 — Thin cover+empty prior + top-up noop is not a calm
-              // success. Route as incomplete + low-substance-style banner /
-              // AC refuse instead of skipped-noop (which hides the miss).
+              // 루프269/275 — Thin prior + top-up noop is not a calm success.
+              // Solo title-only covers and zero-body scaffolds also route here
+              // (루프269 only caught cover+≥2 empties / low-substance).
               if (
-                deckLooksLikeTitleOnlyCoverWithEmptyHosts(priorHtml)
+                deckLooksLikeThinTopUpHostPrior(priorHtml)
                 || isLowSubstanceSlideDeckArtifact(
                   priorHtml,
                   topUpBrief,

@@ -765,6 +765,25 @@ export function deckLooksLikeTitleOnlyCoverWithEmptyHosts(html: string): boolean
   return !inners.some(slideInnerHasDeliverableCopy);
 }
 
+/**
+ * 루프275 — Priors that should not hide a top-up miss as calm noop.
+ * Includes solo title-only covers (루프269 only caught cover+≥2 empties) and
+ * any multi-slide scaffold with zero deliverable body slides.
+ */
+export function deckLooksLikeThinTopUpHostPrior(html: string): boolean {
+  const withoutComments = html.replace(/<!--[\s\S]*?-->/g, "");
+  if (!documentContainsSlideSection(withoutComments)) return false;
+  if (deckLooksLikeTitleOnlyCoverWithEmptyHosts(withoutComments)) return true;
+  const inners = listSlideSectionInners(withoutComments);
+  if (inners.length === 0) return false;
+  if (inners.some(slideInnerHasDeliverableCopy)) return false;
+  // Solo title-only cover, or title+empty / all-title thin scaffolds.
+  if (inners.length === 1) {
+    return slideInnerIsTitleOnlyShell(inners[0]!) || slideInnerLooksEmptyHost(inners[0]!);
+  }
+  return true;
+}
+
 export function isPersistableShortDeckDraft(html: string): boolean {
   const withoutComments = html.replace(/<!--[\s\S]*?-->/g, "");
   if (!documentContainsSlideSection(withoutComments)) return false;

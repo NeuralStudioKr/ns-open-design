@@ -7,6 +7,24 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-08-31 현재 판단 · 최신 루프
 
+### 루프277 — nested section/article card flatten
+
+루프270은 `<div class="card">`만 flatten. MiniMax `<section|article class="card|panel">` 중첩도 same-tag flatten. Motif 보호 · idempotent. 카피 발명 없음.
+
+검증: contracts heal-nested-duplicate-card-flatten 루프277.
+
+### 루프276 — thin-prior top-up 배너 = Retry 톤
+
+`thin-prior-top-up-no-append` 전용 카피: 슬라이드 추가 실패 + 제목만 초안 + 다시 시도. cut-off "이어서"/"중간에 끊겼" 금지.
+
+검증: web teamver-project-error-messages 루프276.
+
+### 루프275 — solo title-only cover thin top-up host
+
+1장 제목-only prior + top-up noop → incomplete. `deckLooksLikeThinTopUpHostPrior`.
+
+검증: web deck-html-content · teamver-canvas-slide-launch 루프275.
+
 ### 루프274 — J/기둥 차/열세째 leftover · stale preview는 example.html
 
 루프272는 A–H / 열두째까지 leftover로 본다. MiniMax는 `J`/`기둥 차`/`열세째`로 빠진 기둥을 채워 3열이 유지된다. J·차·열세째만 leftover. `열네째`/`기둥 카`/`기둥 K`와 index+추가 본문은 유지. 카피 발명 없음.
@@ -14,6 +32,7 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 떠 있는 데몬의 옛 매니페스트는 없는 `index.html` 다음 `assets/template.html`을 고른다. `/preview`는 `exampleOutputs`·루트 `example.html`을 시드보다 먼저 시도한다.
 
 검증: contracts heal-ai-generated-deck 루프274 · deck-framework-compact · daemon plugins-preview-catalog-example · plugins-preview-fallback.
+
 
 ### 루프273 — substance-rich replacement가 `artifact_regression` 오탐되던 회귀 해소
 
@@ -53,6 +72,7 @@ if (
 - `apps/web/tests/artifacts/validate.test.ts` 47 · `deck-html-content.test.ts` 38 pre-existing 회귀 없음.
 
 리포트 2 (`59741f71dd` 이후 품질 회귀) 상관관계: loop187~loop270 사이 short-draft/soft-salvage/low-substance signal이 강화되며 permissive 가드가 반대로 substance-rich replacement까지 잡던 accumulation이 이 오탐의 축. loop273은 완성본 replacement 축만 열어 놓고 나머지 강화 gate는 그대로 유지 → "짧은 draft/실패 skeleton" 축과 분리.
+
 
 ### 생성 마법사 — Replit Deck 흰 썸네일
 
@@ -937,8 +957,23 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | persist: title-only cover + empty hosts가 short-draft 성공 | ☑ 루프267 |
 | persist: embed stub-warn overwrite | ☑ 루프268 |
 | persist: thin prior top-up noop가 calm success | ☑ 루프269 |
+| persist: solo title-only cover top-up noop가 calm success | ☑ 루프275 |
+| persist: thin-prior 배너가 cut-off "이어서" 톤 | ☑ 루프276 |
+| heal: nested section/article cardish open flatten | ☑ 루프277 |
 | contracts pretest: exactOptionalPropertyTypes TS2379 봉쇄 | ☑ 루프263 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
+
+## 이번 루프 (루프275–276 · thin top-up host · Retry 톤 · section card flatten)
+
+- [x] solo title-only / zero-body prior → thin top-up incomplete
+- [x] thin-prior 배너 = 다시 시도 톤 (이어서 금지)
+- [x] nested section/article/aside cardish flatten
+- [x] deck-html-content · project-error-messages · heal-nested-duplicate-card-flatten · canvas-slide-launch
+
+## 직전 루프 (루프273 · substance-rich replacement bypass)
+
+- [x] findClientArtifactRegression substance-rich bypass (4+ slides)
+- [x] project-view-substance-rich-replacement
 
 ## 이번 루프 (루프274 · J/열세째 인덱스 + stale preview example.html)
 
@@ -954,6 +989,7 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 - [x] 4+ slides · meetsMinimum · not low-substance → artifact_regression bypass
 - [x] project-view-substance-rich-replacement · persist-result
 - [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
 
 ## 직전 루프 (루프272 · H/열두째 인덱스 + Replit Deck 썸네일)
 

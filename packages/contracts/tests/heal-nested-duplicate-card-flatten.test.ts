@@ -79,9 +79,38 @@ describe('루프270 · flattenNestedDuplicateCardOpens', () => {
       const out = flattenNestedDuplicateCardOpens(html);
       expect((out.match(/\bclass\s*=\s*["'][^"']*\bpillar\b/gi) ?? []).length).toBe(1);
       expect((out.match(/\bclass\s*=\s*["'][^"']*\btile\b/gi) ?? []).length).toBe(1);
-      for (const marker of ['A', 'B', 'C', 'D']) {
-        expect(out).toContain(marker);
-      }
+      expect(out).toContain('A');
+      expect(out).toContain('B');
+      expect(out).toContain('C');
+      expect(out).toContain('D');
+    });
+
+    it('flattens nested `<section class="card">` duplicates (루프277)', () => {
+      const html = [
+        '<section class="slide"><div data-od-slide-flow>',
+        '<section class="card"><section class="card"><div>제목</div></section><div>본문</div></section>',
+        '</div></section>',
+      ].join('');
+      const out = flattenNestedDuplicateCardOpens(html);
+      const cardOpens = (out.match(/<section\b[^>]*\bclass\s*=\s*["'][^"']*\bcard\b/gi) ?? []).length;
+      expect(cardOpens).toBe(1);
+      expect(out).toContain('제목');
+      expect(out).toContain('본문');
+      const opens = (out.match(/<section\b/gi) ?? []).length;
+      const closes = (out.match(/<\/section>/gi) ?? []).length;
+      expect(opens).toBe(closes);
+    });
+
+    it('flattens nested `<article class="panel">` duplicates (루프277)', () => {
+      const html = [
+        '<section class="slide"><div data-od-slide-flow>',
+        '<article class="panel"><article class="panel"><h3>A</h3></article><p>B</p></article>',
+        '</div></section>',
+      ].join('');
+      const out = flattenNestedDuplicateCardOpens(html);
+      expect((out.match(/<article\b[^>]*\bclass\s*=\s*["'][^"']*\bpanel\b/gi) ?? []).length).toBe(1);
+      expect(out).toContain('A');
+      expect(out).toContain('B');
     });
 
     it('is idempotent — a second pass changes nothing', () => {

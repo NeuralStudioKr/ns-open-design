@@ -1935,20 +1935,27 @@ function findOpenedTagCloseEnd(
 
 export function flattenNestedDuplicateCardOpens(html: string): string {
   const source = String(html ?? '');
-  if (!source || !/<div\b/i.test(source)) return source;
-  const openRe = /<div\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
+  if (!source || !/<(?:div|section|article|aside)\b/i.test(source)) return source;
+  // 루프277 — MiniMax also nests `<section|article|aside class="card">` the
+  // same way as `<div class="card">`. Same-tag flatten only (cross-tag stays
+  // for unwrapRedundantNestedPeerCards).
+  const openRe = /<(div|section|article|aside)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
   type Patch = { start: number; end: number };
   const patches: Patch[] = [];
   let match: RegExpExecArray | null;
   while ((match = openRe.exec(source)) !== null) {
-    const outerAttrs = match[1] ?? '';
+    const tag = (match[1] ?? 'div').toLowerCase();
+    const outerAttrs = match[2] ?? '';
     if (/\bdata-od-official-motif-html\b/i.test(outerAttrs)) continue;
     const outerTokens = exactCardishTokens(outerAttrs);
     if (outerTokens.length === 0) continue;
     const outerOpenEnd = match.index + match[0].length;
     let i = outerOpenEnd;
     while (i < source.length && /\s/.test(source[i]!)) i += 1;
-    const innerOpen = /^<div\b((?:[^>"']|"[^"]*"|'[^']*')*)>/i.exec(source.slice(i));
+    const innerOpen = new RegExp(
+      `^<${tag}\\b((?:[^>"']|"[^"]*"|'[^']*')*)>`,
+      'i',
+    ).exec(source.slice(i));
     if (!innerOpen) continue;
     const innerAttrs = innerOpen[1] ?? '';
     if (/\bdata-od-official-motif-html\b/i.test(innerAttrs)) continue;
@@ -1957,11 +1964,11 @@ export function flattenNestedDuplicateCardOpens(html: string): string {
     if (!outerTokens.some((t) => innerTokens.includes(t))) continue;
     const innerOpenStart = i;
     const innerOpenEnd = i + innerOpen[0].length;
-    const innerCloseEnd = findOpenedTagCloseEnd(source, 'div', innerOpenEnd);
+    const innerCloseEnd = findOpenedTagCloseEnd(source, tag, innerOpenEnd);
     if (innerCloseEnd == null) continue;
-    const innerCloseTok = /^<\/div\s*>/i.exec(source.slice(innerCloseEnd - 6, innerCloseEnd + 4));
-    if (!innerCloseTok) continue;
-    const innerCloseStart = innerCloseEnd - innerCloseTok[0].length;
+    const closeMatch = source.slice(0, innerCloseEnd).match(new RegExp(`</${tag}\\s*>$`, 'i'));
+    if (!closeMatch) continue;
+    const innerCloseStart = innerCloseEnd - closeMatch[0].length;
     patches.push({ start: innerOpenStart, end: innerOpenEnd });
     patches.push({ start: innerCloseStart, end: innerCloseEnd });
   }

@@ -13,6 +13,7 @@ import {
   isPersistableShortDeckDraftAfterHeal,
   deckArtifactStartsWithMotifSvgDump,
   deckLooksLikeTitleOnlyCoverWithEmptyHosts,
+  deckLooksLikeThinTopUpHostPrior,
   deckLooksLikeUnfilledCatalogExample,
   deckLooksLikeRepeatedUserBriefParrot,
   deckSlideHeadingsLookLikeFailedGenerate,
@@ -98,13 +99,33 @@ describe("deck-html-content", () => {
       + '<section class="slide"></section>'
       + '</body></html>';
     expect(deckLooksLikeTitleOnlyCoverWithEmptyHosts(html)).toBe(true);
+    expect(deckLooksLikeThinTopUpHostPrior(html)).toBe(true);
     expect(isPersistableShortDeckDraft(html)).toBe(false);
-    // Solo title cover (no empty trailing hosts) still top-up-able.
-    expect(
-      isPersistableShortDeckDraft(
-        '<!doctype html><html><body><section class="slide"><h1>시장 기회</h1></section></body></html>',
-      ),
-    ).toBe(true);
+    // Solo title cover (no empty trailing hosts) still top-up-able as short draft,
+    // but is a thin top-up host if append later no-ops (루프275).
+    const solo =
+      '<!doctype html><html><body><section class="slide"><h1>시장 기회</h1></section></body></html>';
+    expect(isPersistableShortDeckDraft(solo)).toBe(true);
+    expect(deckLooksLikeThinTopUpHostPrior(solo)).toBe(true);
+    const withBody =
+      '<!doctype html><html><body>'
+      + '<section class="slide"><h1>시장 기회</h1><p>국내 SaaS 전환이 가속화되고 있습니다.</p></section>'
+      + '</body></html>';
+    expect(deckLooksLikeThinTopUpHostPrior(withBody)).toBe(false);
+  });
+
+  it("treats solo title-only cover as thin top-up host prior (루프275)", () => {
+    const soloTitle =
+      '<!doctype html><html lang="ko"><body>'
+      + '<section class="slide"><h1>삼각함수</h1></section>'
+      + '</body></html>';
+    expect(deckLooksLikeThinTopUpHostPrior(soloTitle)).toBe(true);
+    const titlePlusEmpty =
+      '<!doctype html><html lang="ko"><body>'
+      + '<section class="slide"><h1>삼각함수</h1></section>'
+      + '<section class="slide"></section>'
+      + '</body></html>';
+    expect(deckLooksLikeThinTopUpHostPrior(titlePlusEmpty)).toBe(true);
   });
 
   it("does not treat a 3-slide outline/status shell as a persistable draft", () => {

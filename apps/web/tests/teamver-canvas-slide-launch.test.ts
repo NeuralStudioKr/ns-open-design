@@ -865,10 +865,10 @@ describe("canvasSlideLaunch", () => {
     expect(projectView).not.toContain("templateClonedDeckSeeded === true");
   });
 
-  it("forces stub-reject and thin-prior top-up incomplete in Teamver persist (루프268–269)", () => {
+  it("forces stub-reject and thin-prior top-up incomplete in Teamver persist (루프268–269·275)", () => {
     const projectView = readWebSource("src/components/ProjectView.tsx");
     expect(projectView).toContain("forceArtifactStubGuardReject: true");
-    expect(projectView).toContain("deckLooksLikeTitleOnlyCoverWithEmptyHosts(");
+    expect(projectView).toContain("deckLooksLikeThinTopUpHostPrior(");
     expect(projectView).toContain("thin-prior-top-up-no-append");
     expect(projectView).toMatch(
       /thin-prior-top-up-no-append[\s\S]{0,120}skipped-incomplete|skipped-incomplete[\s\S]{0,200}thin-prior-top-up-no-append/,

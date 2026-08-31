@@ -213,7 +213,16 @@ export function looksLikeLowSubstancePersistSkipReason(
 }
 
 /** User-facing copy when persist refused a thin / leftover leftover deck. */
-export function formatProjectRunLowSubstanceDeliverableError(): string {
+export function formatProjectRunLowSubstanceDeliverableError(
+  reason?: string | null,
+): string {
+  // 루프276 — Thin prior + top-up miss must match Retry CTA tone ("다시 시도"),
+  // not cut-off "이어서" copy. Say the append failed and the on-disk draft is thin.
+  if (looksLikeLowSubstancePersistSkipReason(reason) && /thin-prior-top-up/i.test(String(reason ?? ''))) {
+    return isTeamverEmbedMode()
+      ? '슬라이드를 더 추가하지 못했고, 저장된 초안도 제목만 있어 완성되지 않았습니다. 다시 시도해 주세요.'
+      : 'Could not append more slides, and the saved draft is still title-only. Please try again.';
+  }
   return isTeamverEmbedMode()
     ? '슬라이드 내용이 충분하지 않아 저장하지 않았습니다. 제목만 있거나 템플릿 잔여가 남은 초안입니다. 다시 시도해 주세요.'
     : 'The slide draft was too incomplete to save — often title-only shells or leftover template copy. Please try again.';
@@ -234,7 +243,7 @@ export function formatProjectRunDeliverableMissingError(
     ? reasonOrDetail.reason
     : reasonOrDetail;
   if (looksLikeLowSubstancePersistSkipReason(reason)) {
-    return formatProjectRunLowSubstanceDeliverableError();
+    return formatProjectRunLowSubstanceDeliverableError(reason);
   }
   return isTeamverEmbedMode()
     ? '슬라이드 결과물이 생성되지 않았습니다. 응답이 중간에 끊겼거나 HTML 파일이 저장되지 않았습니다. 이어서 다시 시도하세요.'

@@ -108,6 +108,17 @@ describe("project conversation error messages", () => {
     expect(looksLikeLowSubstancePersistSkipReason("incomplete-html-document-shell")).toBe(false);
     expect(formatProjectRunLowSubstanceDeliverableError()).toContain("내용이 충분하지");
     expect(formatProjectRunLowSubstanceDeliverableError()).not.toContain("중간에 끊겼");
+    expect(formatProjectRunLowSubstanceDeliverableError()).not.toContain("이어서");
+    // 루프275 — thin-prior top-up miss matches Retry CTA tone (다시 시도), not cut-off 이어서.
+    expect(formatProjectRunLowSubstanceDeliverableError("thin-prior-top-up-no-append")).toContain(
+      "슬라이드를 더 추가하지",
+    );
+    expect(formatProjectRunLowSubstanceDeliverableError("thin-prior-top-up-no-append")).toContain(
+      "다시 시도",
+    );
+    expect(formatProjectRunLowSubstanceDeliverableError("thin-prior-top-up-no-append")).not.toContain(
+      "이어서",
+    );
     expect(formatProjectRunDeliverableMissingError("low-substance deck artifact")).toBe(
       formatProjectRunLowSubstanceDeliverableError(),
     );
@@ -115,6 +126,10 @@ describe("project conversation error messages", () => {
       kind: "skipped-incomplete",
       reason: "unfilled-catalog-example",
     })).toBe(formatProjectRunLowSubstanceDeliverableError());
+    expect(formatProjectRunDeliverableMissingError({
+      kind: "skipped-incomplete",
+      reason: "thin-prior-top-up-no-append",
+    })).toBe(formatProjectRunLowSubstanceDeliverableError("thin-prior-top-up-no-append"));
     expect(formatProjectRunDeliverableMissingError({
       kind: "skipped-incomplete",
       reason: "incomplete-html-document-shell",
@@ -125,6 +140,13 @@ describe("project conversation error messages", () => {
     );
     expect(userFacingRunErrorDetail(encodedLow)).toBe(formatProjectRunLowSubstanceDeliverableError());
     expect(userFacingRunErrorDetail(encodedLow)).not.toContain("중간에 끊겼");
+    const encodedThin = encodePersistedRunErrorDetail(
+      formatProjectRunDeliverableMissingError("thin-prior-top-up-no-append"),
+      { kind: "skipped-incomplete", reason: "thin-prior-top-up-no-append" },
+    );
+    expect(userFacingRunErrorDetail(encodedThin)).toContain("슬라이드를 더 추가하지");
+    expect(userFacingRunErrorDetail(encodedThin)).not.toContain("이어서");
+    expect(userFacingRunErrorDetail(encodedThin)).not.toContain("중간에 끊겼");
     const encoded = encodePersistedRunErrorDetail(formatProjectRunDeliverableMissingError(), {
       kind: "skipped-incomplete",
       reason: "no <section class=\"slide\"> blocks in deck-patch body",
