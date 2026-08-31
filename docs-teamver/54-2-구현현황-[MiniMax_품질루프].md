@@ -283,9 +283,33 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | persist/preview: `삼각함수 · N` 제목-only 빈 장 · leftover `#nav`/`#hint` | ☑ 루프174 |
 | persist/preview: Broadside leftover(`[[Author Name]]`·빈 li·브리프 lead) + `[data-anim]` 비가시 | ☑ 루프175 |
 | persist/preview: look 부재 시 Broadside `[data-anim]` 비가시 · CSS 토큰 leftover 오탐 | ☑ 루프176–177 |
+| persist/preview: business-template placeholder 확장(`[Company]`·`[Client]`·`[Project]`·`[Version]` 등) leftover 미scrub | ☑ 루프178 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프176–177)
+## 이번 루프 (루프178 · placeholder scrub whitelist 확장)
+
+### 배경
+
+- 루프175–176/177에서 upstream이 Broadside의 3-토큰(`[[Author Name]]`·`[Author Name]`·`[Year]`) placeholder를 wrapper-only + Hangul-gate로 scrub하도록 방어함
+- 사용자 fixture(2026-08-28 · 삼각함수)는 이미 완벽히 처리되지만, 다른 business-template 카탈로그는 `[Company Name]`·`[Client]`·`[Project]`·`[Version]`·`[Location]` 등 더 넓은 placeholder 세트를 씀
+- 부분 실패(catalog fingerprint 미hit) 시나리오에서도 leftover가 노출되지 않도록 defence-in-depth 확장
+
+### 변경
+
+1. **`scrubUnresolvedTemplatePlaceholders`** — heal-ai-generated-deck에 whitelist 23개 (`Author Name`·`Author`·`Year`·`Date`·`Title`·`Subtitle`·`Company`·`Company Name`·`Client`·`Client Name`·`Project`·`Project Name`·`Team`·`Team Name`·`Product`·`Product Name`·`Version`·`Location`·`Category`·`Section`·`Chapter`·`Speaker`·`Presenter`·`Organization`) 신규 함수
+2. **Wrapper-only 매칭** — `<div>/<span>/<p>/<h1..6>/<li>/<a>/<em>/<strong>/<small>/<td>/<th>` 안 텍스트가 100% placeholder인 경우만 클리어. 인라인 언급 (`<p>replace [Company] with...</p>`)은 보존
+2. **Hangul-gate** — `destHasHangulTopic` 안에서만 실행. upstream contract 준수 (영문 official catalog 손상 방지)
+3. **파이프라인 순서** — upstream 좁은 scrub(`scrubTemplatePlaceholderSlots`) 다음에 실행. 두 함수 모두 idempotent
+
+### 회귀 방어
+
+- 한글 대괄호 프로즈(`[참고]`·`[주1]`·`[1]`) 보존
+- Citation-style 참조(`[Smith 2024]`) 보존 — whitelist에 없는 토큰은 미매치
+- 영문 topic + null brief 시 `[[Author Name]]`·`[Year]` 유지 — upstream 계약 존중
+
+**검증:** heal-broadside-leftover.test.ts (6/6) — whitelist scrub · 프로즈 보존 · citation 보존 · idempotency · Hangul dest scrub · 영문 dest 보존
+
+## 직전 루프 (루프176–177)
 
 1. heal — look neutralize 없어도 `data-od-data-anim-reveal` 주입. `[data-anim-target]`/`[class*="anim-"]` 포함
 2. remmerge — `od-data-anim-visible` + `od-data-anim-reveal` 둘 다 있어야 current

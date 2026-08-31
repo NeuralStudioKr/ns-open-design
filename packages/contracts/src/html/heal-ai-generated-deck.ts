@@ -322,6 +322,9 @@ export function scrubBriefLeakFromMetaSlots(html: string, brief?: string | null)
   const briefText = String(brief ?? '').replace(/\s+/g, ' ').trim();
   if (!source || briefText.length < 4) return source;
   const briefEscaped = briefText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  // 루프178 — Broadside catalog uses `.lead` (not `.lede`). Keep both
+  // spellings so we do not regress older kits and cover the new
+  // Broadside/SPACE10 kits.
   const slotClasses = ['v', 'conf', 'kicker', 'brief', 'summary', 'note', 'lede', 'tagline', 'lead'];
   let out = source;
   for (const cls of slotClasses) {
@@ -340,6 +343,82 @@ export function scrubBriefLeakFromMetaSlots(html: string, brief?: string | null)
     'gi',
   );
   out = out.replace(liRe, '$1$2');
+  return out;
+}
+
+/**
+ * 루프178 — Strip unresolved template placeholders that MiniMax left in
+ * catalog examples. Broadside covers ship `[[Author Name]]` / `[Year]` /
+ * `[Author Name]` in `.broadside-num` and footer `.label` slots; other
+ * business templates commonly leave `[Company Name]` / `[Client]` /
+ * `[Project]` / `[Version]` etc.
+ *
+ * Defence-in-depth complement to upstream `scrubTemplatePlaceholderSlots`
+ * (loop175–176 · narrow 3-token whitelist). This wider whitelist covers
+ * business-template tokens BUT only clears elements whose ENTIRE inner
+ * text equals the placeholder — inline prose that legitimately mentions
+ * a placeholder (e.g. instructions saying "replace [Company]") is
+ * preserved. Citation-style refs (`[Smith 2024]`) and Korean bracketed
+ * prose (`[참고]`, `[주1]`, `[1]`) never match by construction.
+ *
+ * Gated on `destHasHangulTopic` at the heal call site (see pipeline
+ * below) so official English catalog demos stay intact.
+ *
+ * Idempotent — a second pass matches nothing.
+ */
+const UNRESOLVED_PLACEHOLDER_TOKENS = [
+  'Author Name',
+  'Author',
+  'Year',
+  'Date',
+  'Title',
+  'Subtitle',
+  'Company',
+  'Company Name',
+  'Client',
+  'Client Name',
+  'Project',
+  'Project Name',
+  'Team',
+  'Team Name',
+  'Product',
+  'Product Name',
+  'Version',
+  'Location',
+  'Category',
+  'Section',
+  'Chapter',
+  'Speaker',
+  'Presenter',
+  'Organization',
+];
+
+const PLACEHOLDER_WRAP_TAGS = 'div|span|p|h[1-6]|li|a|em|strong|small|td|th';
+
+export function scrubUnresolvedTemplatePlaceholders(html: string): string {
+  const source = String(html ?? '');
+  if (!source) return source;
+  let out = source;
+  for (const token of UNRESOLVED_PLACEHOLDER_TOKENS) {
+    const esc = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    // Only clear an element whose ENTIRE inner text equals the placeholder.
+    // <span>[[Author Name]]</span> → <span></span>
+    // <p>연구 [Company] 발표</p> is preserved (placeholder is inline prose).
+    out = out.replace(
+      new RegExp(
+        `(<(${PLACEHOLDER_WRAP_TAGS})\\b[^>]*>)\\s*\\[\\[\\s*${esc}\\s*\\]\\]\\s*(</\\2>)`,
+        'gi',
+      ),
+      '$1$3',
+    );
+    out = out.replace(
+      new RegExp(
+        `(<(${PLACEHOLDER_WRAP_TAGS})\\b[^>]*>)\\s*\\[\\s*${esc}\\s*\\]\\s*(</\\2>)`,
+        'gi',
+      ),
+      '$1$3',
+    );
+  }
   return out;
 }
 
@@ -456,7 +535,11 @@ export function healAiGeneratedDeckMarkup(html: string, brief?: string | null): 
   out = dropTitleOnlyNumberedLeftoverSlides(out, brief);
   out = stripEmptyLeftoverPresenterChrome(out);
   if (destHasHangulTopic(out)) {
+    // Upstream narrow scrub (3 tokens) first, then defence-in-depth
+    // wider whitelist (Company / Client / Project / Version etc.) —
+    // both are Hangul-gated so English official catalogs stay intact.
     out = scrubTemplatePlaceholderSlots(out);
+    out = scrubUnresolvedTemplatePlaceholders(out);
   }
   out = revealEntranceAnimSlots(out);
   return out;
