@@ -293,9 +293,19 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | persist/UX: low-substance skip을 "응답 끊김" 배너로 오표기 | ☑ 루프183 |
 | first-fill: Home/Canvas `5-6` 숏 요청이 안정성 캡+later-append로 여러 턴 | ☑ 루프184 |
 | persist/UX: low-substance skip 후에도 auto-continue("이어쓰기") 발동 | ☑ 루프185 |
+| heal: 첫 장 임시 `slide-title` title-only 셸 뒤에 실제 cover가 이어지는 덱 · 앵커 없는 `translateY(-50%)`로 제목이 상단 클립 | ☑ 루프186 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프185 · low-substance auto-continue 거부)
+## 이번 루프 (루프186 · leading title-only intro / translateY clip)
+
+- [x] `dropLeadingTitleOnlyIntroBeforeRealCover` — title-only intro + substantive cover 후속 시 intro drop
+- [x] `neutralizeUnanchoredTranslateYInSlideContent` — 앵커 없는 `translateY(-50%)` 제거
+- [x] `healAiGeneratedDeckMarkup` 파이프라인 통합
+- [x] `deck-fixed-canvas` calc/min card-padding heuristic 보강
+- [x] `heal-duplicate-title-only-slide` 15/15 · `deck-fixed-canvas*` 82/82
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프185 · low-substance auto-continue 거부)
 
 - [x] `shouldAutoContinueForIncompleteOutput` — low-substance/unfilled-catalog reason이면 false
 - [x] 잘림 shell(`incomplete-html-document-shell`) AC 유지
@@ -311,7 +321,7 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 - [x] web templateCloneContentFill · slideCountTopUp · contracts compact 회귀
 - [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
 
-## 직전 루프 (루프183 · low-substance 배너 문구)
+## 이전 루프 (루프183 · low-substance 배너 문구)
 
 - [x] `looksLikeLowSubstancePersistSkipReason` / `formatProjectRunLowSubstanceDeliverableError`
 - [x] `formatProjectRunDeliverableMissingError` reason-aware — cut-off와 분리

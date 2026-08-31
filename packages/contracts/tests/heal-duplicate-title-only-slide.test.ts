@@ -21,8 +21,10 @@
 
 import { describe, expect, it } from 'vitest';
 import {
+  dropLeadingTitleOnlyIntroBeforeRealCover,
   dropDuplicateConsecutiveTitleOnlyLeftoverSlides,
   healAiGeneratedDeckMarkup,
+  neutralizeUnanchoredTranslateYInSlideContent,
 } from '../src/html/heal-ai-generated-deck.js';
 
 const slide = (attrs: string, body: string): string =>
@@ -164,5 +166,91 @@ describe('루프182 · dropDuplicateConsecutiveTitleOnlyLeftoverSlides', () => {
       expect(count).toBe(1);
       expect(out).toContain('<h1>삼각함수</h1>');
     });
+  });
+});
+
+describe('루프183 · leading intro shell / unanchored translateY heal', () => {
+  it('drops a title-only first slide when the next slide is the real selected-template cover', () => {
+    const html = [
+      '<!doctype html><html lang="ko"><body class="tpl-pitch-deck">',
+      slide('style="width:1920px;height:1080px" class="slide slide-title"', '<div data-od-slide-flow=""><h1>삼각함수</h1></div>'),
+      slide(
+        'data-screen-label="01 Cover" style="width:1920px;height:1080px"',
+        [
+          '<div data-od-slide-flow="">',
+          '<p>EDUCATION · 2025</p>',
+          '<h1>삼각함수의 언어와 형상</h1>',
+          '<p>직각삼각형의 변 길이 비에서 시작해 단위원 위의 회전과 파동으로 확장되는 삼각함수의 핵심 어휘와 쓰임을 한 번에 정리합니다.</p>',
+          '</div>',
+        ].join(''),
+      ),
+      slide('data-screen-label="02 Definition"', '<h2>정의</h2><p>사인, 코사인, 탄젠트의 정의와 단위원 해석을 설명합니다.</p>'),
+      '</body></html>',
+    ].join('\n');
+
+    const out = dropLeadingTitleOnlyIntroBeforeRealCover(html, brief);
+    const count = (out.match(/<section\b[^>]*\bclass\s*=\s*["'][^"']*\bslide\b/gi) ?? []).length;
+    expect(count).toBe(2);
+    expect(out).not.toContain('slide-title');
+    expect(out).toContain('data-screen-label="01 Cover"');
+    expect(out).toContain('삼각함수의 언어와 형상');
+  });
+
+  it('keeps an intentional title-only first slide when the next slide is unrelated', () => {
+    const html = [
+      '<body>',
+      slide('', '<div data-od-slide-flow=""><h1>삼각함수</h1></div>'),
+      slide('', '<div data-od-slide-flow=""><h2>개발자 온보딩</h2><p>신규 입사자가 개발 환경과 협업 문화를 이해하도록 구성한 안내 자료입니다.</p></div>'),
+      '</body>',
+    ].join('');
+
+    const out = dropLeadingTitleOnlyIntroBeforeRealCover(html, brief);
+    const count = (out.match(/<section\b[^>]*\bclass\s*=\s*["'][^"']*\bslide\b/gi) ?? []).length;
+    expect(count).toBe(2);
+    expect(out).toContain('<h1>삼각함수</h1>');
+  });
+
+  it('removes unanchored translateY(-50%) inside slide content', () => {
+    const html = [
+      '<body>',
+      slide('', '<div data-od-slide-flow="" style="position:relative;transform:translateY(-50%);max-width:1100px"><h1>삼각함수</h1></div>'),
+      '</body>',
+    ].join('');
+
+    const out = neutralizeUnanchoredTranslateYInSlideContent(html);
+    expect(out).not.toContain('translateY(-50%)');
+    expect(out).toContain('position:relative');
+    expect(out).toContain('max-width:1100px');
+  });
+
+  it('preserves anchored vertical centering transforms', () => {
+    const html = [
+      '<body>',
+      slide('', '<div style="position:absolute;top:50%;transform:translateY(-50%);left:96px"><h1>삼각함수</h1></div>'),
+      '</body>',
+    ].join('');
+
+    const out = neutralizeUnanchoredTranslateYInSlideContent(html);
+    expect(out).toContain('top:50%;transform:translateY(-50%)');
+  });
+
+  it('heals the user-reported shape end-to-end without touching the real cover', () => {
+    const html = [
+      '<!doctype html><html lang="ko"><body>',
+      slide('class="slide slide-title"', '<div data-od-slide-flow=""><h1>삼각함수</h1></div>'),
+      slide(
+        'data-screen-label="01 Cover"',
+        '<div data-od-slide-flow="" style="position:relative;transform:translateY(-50%);max-width:1200px"><h1>삼각함수의 언어와 형상</h1><p>직각삼각형의 변 길이 비에서 시작해 단위원 위의 회전과 파동으로 확장되는 삼각함수의 핵심 어휘와 쓰임을 한 번에 정리합니다.</p></div>',
+      ),
+      slide('', '<h2>단위원</h2><p>각도를 좌표와 연결해 주기성과 그래프를 해석합니다.</p>'),
+      '</body></html>',
+    ].join('\n');
+
+    const out = healAiGeneratedDeckMarkup(html, brief);
+    const count = (out.match(/<section\b[^>]*\bclass\s*=\s*["'][^"']*\bslide\b/gi) ?? []).length;
+    expect(count).toBe(2);
+    expect(out).not.toContain('<h1>삼각함수</h1></div>');
+    expect(out).not.toContain('translateY(-50%)');
+    expect(out).toContain('삼각함수의 언어와 형상');
   });
 });

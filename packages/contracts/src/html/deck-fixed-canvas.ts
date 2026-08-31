@@ -2099,9 +2099,34 @@ function resolveCalcLengthParts(rawBody: string): CalcLengthPart[] | null {
   return parseAdditiveLengthParts(body);
 }
 
+/**
+ * True when the calc body contains a `*` or `/` at the OUTER (top) level,
+ * ignoring nested parens (루프183). Used by the additive-sum heuristic to
+ * skip multiplicative bodies.
+ */
+function bodyHasTopLevelMulDiv(body: string): boolean {
+  const source = String(body ?? '');
+  let depth = 0;
+  for (let i = 0; i < source.length; i += 1) {
+    const ch = source[i]!;
+    if (ch === '(') depth += 1;
+    else if (ch === ')') depth -= 1;
+    else if (depth === 0 && (ch === '*' || ch === '/')) return true;
+  }
+  return false;
+}
+
 /** Additive `calc` sums: same-unit · `%` · rem/em+px@16 · rem+em · vh/%+px (루프515). */
 function calcAdditiveSameUnitLooksCardLike(value: string): boolean {
   for (const rawBody of extractCalcBodies(value)) {
+    // 루프183 — additive-only policy. `calc(3px * 4)` and `calc(24px / 2)`
+    // arithmetically resolve to 12px, but per chat-leak-probe-round461/487
+    // the sum heuristic must NOT count multiplicative bodies (MiniMax rarely
+    // emits `3px * 4` for a card pad; that shape is almost always thin
+    // accent expressed via factor). Skip any body carrying top-level `*` or
+    // `/`. Nested `calc(8px + var(--k, 3px * 2))` still evaluates via the
+    // resolver because the top-level of the outer body has no mul/div.
+    if (bodyHasTopLevelMulDiv(rawBody)) continue;
     const parts = resolveCalcLengthParts(rawBody);
     if (!parts || parts.length < 1) continue;
     const unit0 = parts[0]!.unit;
@@ -2742,6 +2767,14 @@ function sameUnitMagnitudeLooksCardLike(n: number, unit: string): boolean {
 function minMaxClampLooksCardLike(value: string): boolean {
   for (const kind of ['min', 'max', 'clamp'] as const) {
     for (const body of extractCssFnBodies(value, kind)) {
+      if (kind === 'min') {
+        // 루프183 — MiniMax emits `min(.5rem, 12px)` when the intent is
+        // "≤ 12px cap for card padding". Browsers evaluate this to 8px so
+        // the result-based path below skips it, but the writer intent is
+        // clearly card. Promote when ANY argument on its own reaches the
+        // card threshold. `min(.5rem, 8px)` (both thin) stays unbound.
+        if (minArgsAnyCardLike(body)) return true;
+      }
       const evaluated = evaluateMinMaxClampBody(kind, body);
       if (!evaluated) continue;
       if (evaluated.unit != null) {
@@ -2750,6 +2783,22 @@ function minMaxClampLooksCardLike(value: string): boolean {
         return true;
       }
     }
+  }
+  return false;
+}
+
+/**
+ * True when any comma-separated argument in a `min()` body reaches card
+ * padding threshold on its own (루프183). Recurses through nested
+ * `calc(...)` / `min(...)` / `max(...)` / `clamp(...)` via the shared
+ * `looksLikeCardLikePadding` helper.
+ */
+function minArgsAnyCardLike(body: string): boolean {
+  const args = splitTopLevelCommas(body);
+  for (const arg of args) {
+    const trimmed = arg.trim();
+    if (!trimmed) continue;
+    if (looksLikeCardLikePadding(`padding:${trimmed}`)) return true;
   }
   return false;
 }
@@ -2856,6 +2905,16 @@ function looksLikeCardLikePadding(style: string): boolean {
     /(?:^|;)\s*padding(?:-(?:top|right|bottom|left|block|inline)(?:-(?:start|end))?)?\s*:\s*([^;]+)/gi;
   let match: RegExpExecArray | null;
   while ((match = padRe.exec(source)) !== null) {
+    const rawValue = String(match[1] ?? '').trim();
+    // 루프183 — MiniMax often emits `min(.5rem, 12px)` as an upper cap for
+    // card padding. `normalizePaddingLengthValue` collapses `min(...)` to
+    // the numeric result (8px here) and hides the writer intent. Detect
+    // args-any card-like against the RAW value before the min/max/clamp
+    // flatten so `min(.5rem, 12px)` binds and `min(.5rem, 8px)` stays
+    // unbound.
+    if (/^\s*(?:min|max|clamp)\s*\(/i.test(rawValue) && minMaxClampLooksCardLike(rawValue)) {
+      return true;
+    }
     const value = normalizePaddingLengthValue(match[1] ?? '');
     if (/(?:^|[\s/(,])(?:1[2-9]|[2-9]\d|\d{3,})(?:\.\d+)?px\b/i.test(value)) {
       return true;

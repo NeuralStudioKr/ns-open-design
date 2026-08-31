@@ -187,6 +187,10 @@ function slideBodyLooksTitleOnly(body: string): boolean {
   return true;
 }
 
+function removeSlideSpan(html: string, slide: SlideSpan): string {
+  return `${html.slice(0, slide.start)}${html.slice(slide.end)}`;
+}
+
 export function dropDuplicateConsecutiveTitleOnlyLeftoverSlides(html: string): string {
   let out = String(html ?? '');
   if (!out) return out;
@@ -211,6 +215,73 @@ export function dropDuplicateConsecutiveTitleOnlyLeftoverSlides(html: string): s
     out = `${out.slice(0, curr.start)}${out.slice(curr.end)}`;
   }
   return out;
+}
+
+function normalizedTopicForComparison(value: string): string {
+  return String(value ?? '')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, '')
+    .trim();
+}
+
+function slideBodyLooksSubstantive(body: string): boolean {
+  if (/<(?:svg|img|video|canvas|iframe|picture|figure|table|ul|ol)\b/i.test(body)) return true;
+  const text = normalizeVisibleTextForDedup(body);
+  return text.length >= 60;
+}
+
+function attrsLookLikeGeneratedIntroShell(attrs: string): boolean {
+  return /\bclass\s*=\s*["'][^"']*\bslide-title\b/i.test(String(attrs ?? ''));
+}
+
+function attrsLookLikeRealCoverSlide(attrs: string): boolean {
+  const source = String(attrs ?? '');
+  return (
+    /\bdata-screen-label\s*=\s*["'][^"']*\bcover\b/i.test(source)
+    || /\bclass\s*=\s*["'][^"']*\b(?:s-cover|cover|slide-cover)\b/i.test(source)
+  );
+}
+
+/**
+ * 루프183 — Drop a stray generated intro splash before the real cover.
+ *
+ * Recent template-fill failures sometimes prepend
+ * `<section class="slide slide-title"><h1>{topic}</h1></section>` and then
+ * append the actual selected-template cover as slide 2. The old duplicate
+ * guard intentionally never removed slide 1, so users saw a blank/dark
+ * title-only first page even though the next slide had the real deck.
+ *
+ * Remove slide 1 only when it is a short title-only shell and slide 2 is
+ * substantive and clearly about the same topic. This keeps intentional
+ * chapter/title covers and single-page title decks intact.
+ */
+export function dropLeadingTitleOnlyIntroBeforeRealCover(
+  html: string,
+  brief?: string | null,
+): string {
+  const source = String(html ?? '');
+  if (!source) return source;
+  const slides = listAiSlideSpans(source);
+  if (slides.length < 2) return source;
+  const first = slides[0]!;
+  const second = slides[1]!;
+  if (!attrsLookLikeGeneratedIntroShell(first.attrs)) return source;
+  if (!attrsLookLikeRealCoverSlide(second.attrs)) return source;
+  const firstBody = source.slice(first.openEnd, first.bodyEnd);
+  const secondBody = source.slice(second.openEnd, second.bodyEnd);
+  if (!slideBodyLooksTitleOnly(firstBody)) return source;
+  if (!slideBodyLooksSubstantive(secondBody)) return source;
+
+  const title = normalizedTopicForComparison(normalizeVisibleTextForDedup(firstBody));
+  if (title.length < 2) return source;
+  const briefTopic = normalizedTopicForComparison(topicFromBrief(brief));
+  const secondText = normalizedTopicForComparison(normalizeVisibleTextForDedup(secondBody));
+  const sameTopic =
+    secondText.includes(title)
+    || (briefTopic.length >= 2 && title.includes(briefTopic))
+    || (briefTopic.length >= 2 && secondText.includes(briefTopic));
+  if (!sameTopic) return source;
+  return removeSlideSpan(source, first);
 }
 
 /**
@@ -367,6 +438,45 @@ export function normalizeHangulParticleGaps(html: string): string {
     /([\uac00-\ud7af])\s+(를|을|이|가|은|는|에|의|와|과|도|로|으로|께|께서|한테|에서|부터|까지|만|보다|처럼|같이|마다|뿐|씩|이나|나|든지|라도|이든|든|밖에)(?=[\s<.,!?'")\]}]|$)/g,
     '$1$2',
   );
+}
+
+/**
+ * 루프183-b — Remove unanchored vertical centering transforms inside slides.
+ *
+ * `transform:translateY(-50%)` is valid only with an explicit positioning
+ * anchor (`position:absolute; top:50%`, etc.). Generated decks copied the
+ * transform without the anchor, so flow content moved upward and clipped at
+ * the 1920×1080 canvas edge. Scope to slide markup and inline styles only.
+ */
+export function neutralizeUnanchoredTranslateYInSlideContent(html: string): string {
+  const source = String(html ?? '');
+  if (!source || !/translateY\s*\(\s*-50%\s*\)/i.test(source)) return source;
+  let out = source;
+  const slides = listAiSlideSpans(source);
+  for (let i = slides.length - 1; i >= 0; i -= 1) {
+    const slide = slides[i]!;
+    const body = out.slice(slide.openEnd, slide.bodyEnd);
+    const nextBody = body.replace(
+      /<([a-zA-Z][\w-]*)\b((?:[^>"']|"[^"]*"|'[^']*')*\bstyle\s*=\s*(['"])([\s\S]*?)\3(?:[^>"']|"[^"]*"|'[^']*')*)>/g,
+      (open, _tag: string, _attrs: string, q: string, style: string) => {
+        if (!/translateY\s*\(\s*-50%\s*\)/i.test(style)) return open;
+        if (/position\s*:\s*(?:absolute|fixed)/i.test(style) && /\btop\s*:\s*50%/i.test(style)) {
+          return open;
+        }
+        if (/\btop\s*:\s*50%/i.test(style) || /\bbottom\s*:/i.test(style)) return open;
+        const nextStyle = style
+          .replace(/(?:^|;)\s*transform\s*:\s*translateY\s*\(\s*-50%\s*\)\s*(?=;|$)/gi, ';')
+          .replace(/translateY\s*\(\s*-50%\s*\)/gi, '')
+          .replace(/;;+/g, ';')
+          .replace(/^;|;$/g, '')
+          .trim();
+        return open.replace(`style=${q}${style}${q}`, `style=${q}${nextStyle}${q}`);
+      },
+    );
+    if (nextBody === body) continue;
+    out = `${out.slice(0, slide.openEnd)}${nextBody}${out.slice(slide.bodyEnd)}`;
+  }
+  return out;
 }
 
 /**
@@ -591,7 +701,9 @@ export function healAiGeneratedDeckMarkup(html: string, brief?: string | null): 
   out = polishTruncatedInstructionTitles(out);
   out = shrinkOverAllocatedRepeatGrid(out);
   out = normalizeHangulParticleGaps(out);
+  out = neutralizeUnanchoredTranslateYInSlideContent(out);
   out = scrubBriefLeakFromMetaSlots(out, brief);
+  out = dropLeadingTitleOnlyIntroBeforeRealCover(out, brief);
   out = dropEmptyLikelyDeckSlides(out);
   out = dropTitleOnlyNumberedLeftoverSlides(out, brief);
   // 루프182 — MiniMax body-fill failure ships the same title-only slide
