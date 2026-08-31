@@ -1156,6 +1156,8 @@ function textLooksLikeLeftoverPeerPlaceholder(html: string): boolean {
  * 루프239 — letter `D` / `기둥 마` / `첫째`/`둘째`/`셋째` leftovers.
  * 루프242 — `Group 3` / `Lane 3` / `행 3` index leftovers.
  * `UNIT 3` stays because that prefix is not leftover vocabulary.
+ * 루프246 — letter `E` / `기둥 바` / `여섯째` leftovers. Keep `G`–`Z`,
+ * `열한째`, `기둥 아`, and `여섯째 적분` real copy.
  */
 const LEFTOVER_INDEX_ROMAN =
   '(?:viii|vii|iii|xii|xi|ix|iv|vi|ii|[xv]|i|[Ⅰ-Ⅻⅰ-ⅻ])';
@@ -1163,10 +1165,10 @@ const LEFTOVER_INDEX_ROMAN =
 const LEFTOVER_INDEX_MARK = '[⓪①-⑨❶-❾⓿０-９⑴-⑼㉠-㉥]';
 /** 루프225/230 — 0 / 00 / 01–09 / 10 leftover shells. */
 const LEFTOVER_INDEX_DIGIT = '(?:0?[0-9]|10)';
-/** 루프237/239 — A–D / 가나다라마 leftover letters (not roman V/X/I, not E–Z). */
-const LEFTOVER_INDEX_LETTER = '(?:[a-d]|[가나다라마])';
-/** 루프239 — Hangul ordinal leftover shells. Keep `첫째 적분` real copy. */
-const LEFTOVER_INDEX_ORDINAL = '(?:첫|둘|셋|넷|다섯)(?:째|번째)';
+/** 루프237/239/246 — A–F / 가나다라마바사 leftover letters (not roman V/X/I, not G–Z). */
+const LEFTOVER_INDEX_LETTER = '(?:[a-f]|[가나다라마바사])';
+/** 루프239/246 — Hangul ordinal leftover shells. Keep `첫째 적분` / `열한째`. */
+const LEFTOVER_INDEX_ORDINAL = '(?:첫|둘|셋|넷|다섯|여섯|일곱|여덟|아홉|열)(?:째|번째)';
 const LEFTOVER_INDEX_CORE =
   `(?:${LEFTOVER_INDEX_DIGIT}|${LEFTOVER_INDEX_ROMAN}|${LEFTOVER_INDEX_MARK}|${LEFTOVER_INDEX_LETTER}|${LEFTOVER_INDEX_ORDINAL})`;
 const LEFTOVER_INDEX_SUFFIX = '(?:\\s*(?:번|번째|st|nd|rd|th))?';
@@ -1268,6 +1270,8 @@ export function dropEmptyLeftoverPeerCardsInAllocatedRows(
 const PEER_FIXED_MAIN_SIZE_MIN_PX = 280;
 /** 루프240 — 400 vs 600 (1.5) still shares the row; 280 vs 900 sidebar stays. */
 const PEER_FIXED_MAIN_SIZE_RATIO = 1.6;
+/** 루프247 — 3+ peers: 400 vs 800 (2.0) is leftover. 2-card 400/800 split stays. */
+const PEER_FIXED_MAIN_SIZE_TRIPLE_RATIO = 2.05;
 /** 루프207 — 3-col leftover `%` shares (skip 100% stretch and 50% splits). */
 const PEER_COLUMN_SHARE_PERCENT_MIN = 22;
 const PEER_COLUMN_SHARE_PERCENT_MAX = 48;
@@ -1348,7 +1352,10 @@ function peersHaveUniformFixedMainSize(styles: string[]): boolean {
   const min = Math.min(...nums);
   const max = Math.max(...nums);
   if (min < PEER_FIXED_MAIN_SIZE_MIN_PX) return false;
-  return max <= min * PEER_FIXED_MAIN_SIZE_RATIO;
+  if (max <= min * PEER_FIXED_MAIN_SIZE_RATIO) return true;
+  // 루프247 — MiniMax dodges 1.6 with 400 vs 800 on a 3-card leftover row.
+  // Two-card 400/800 sidebar stays.
+  return styles.length >= 3 && max <= min * PEER_FIXED_MAIN_SIZE_TRIPLE_RATIO;
 }
 
 function stripFixedMainSizeFromOpenTag(openTag: string): string {
@@ -1384,8 +1391,9 @@ function stripFixedMainSizeFromOpenTag(openTag: string): string {
  * Strip width / min-width / max-width / flex-basis / `flex:0 0 N` only when
  * every peer has a similar large fixed main size. Mixed sidebar + fluid
  * (or 280 vs 900) stays. 루프240 — MiniMax dodges 1.35 with 400 vs 600
- * max-width; treat ≤1.6 as the same leftover lock. Hangul/brief-gated.
- * Never invent missing cards.
+ * max-width; treat ≤1.6 as the same leftover lock. 루프247 — 3+ peers
+ * also treat ≤2.05 (400 vs 800) as leftover; 2-card splits stay.
+ * Hangul/brief-gated. Never invent missing cards.
  * 루프201 — max-width / flex:0 0 still cap the row after 198 width strip.
  * 루프207 — uniform 22–48% column-share widths (and flex:0 0 32%) also lock
  * the row. 100% stretch and 50% splits stay.
