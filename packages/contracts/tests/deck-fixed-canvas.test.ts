@@ -174,6 +174,29 @@ describe('pinDeckSlidesToFixedCanvas', () => {
     expect(pinned).toMatch(/\.slide\s*>\s*\.pill/);
   });
 
+  it('keeps pitch-deck cover-bg as a full-bleed wash and strips leftover translateY(-50%)', () => {
+    const html = [
+      '<!doctype html><html><body class="tpl-pitch-deck">',
+      '<section class="slide" style="width:1920px;height:1080px;background:#ffffff">',
+      '<div class="cover-bg" style="position:absolute;inset:0;background:linear-gradient(135deg,#eef1ff,#fbedff);z-index:-1"></div>',
+      '<div style="position:absolute;top:50%;transform:translateY(-50%);max-width:1100px">',
+      '<h1>삼각함수의 언어와 형상</h1>',
+      '<p>직각삼각형에서 단위원으로.</p>',
+      '</div>',
+      '<div class="cover-blob" style="position:absolute;right:0;top:0;width:560px;height:560px"></div>',
+      '</section>',
+      '</body></html>',
+    ].join('');
+    const pinned = pinDeckSlidesToFixedCanvas(html);
+    expect(pinned).toMatch(/class="cover-bg"[^>]*position:absolute/);
+    expect(pinned).toMatch(/class="cover-bg"[^>]*inset:0/);
+    expect(pinned).toMatch(/\.slide \.cover-bg[\s\S]*position:\s*absolute\s*!important/);
+    expect(pinned).toMatch(/background-color:\s*var\(--bg,\s*#ffffff\)/);
+    expect(pinned).not.toMatch(/translateY\(-50%\)/);
+    expect(pinned).toMatch(/class="cover-blob"[^>]*position:absolute/);
+    expect(pinned).toContain('삼각함수의 언어와 형상');
+  });
+
   it('keeps overlay sun/orb paint absolute after compact flow flatten', () => {
     const html = [
       '<!doctype html><html><body>',

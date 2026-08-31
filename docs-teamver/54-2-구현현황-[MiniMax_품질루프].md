@@ -294,9 +294,19 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | first-fill: Home/Canvas `5-6` 숏 요청이 안정성 캡+later-append로 여러 턴 | ☑ 루프184 |
 | persist/UX: low-substance skip 후에도 auto-continue("이어쓰기") 발동 | ☑ 루프185 |
 | heal: 첫 장 임시 `slide-title` title-only 셸 뒤에 실제 cover가 이어지는 덱 · 앵커 없는 `translateY(-50%)`로 제목이 상단 클립 | ☑ 루프186 |
+| persist/preview: pitch-deck `.cover-bg` compact flatten으로 워시 소실 · 투명 장 letterbox 투시 | ☑ 루프187 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프186 · leading title-only intro / translateY clip)
+## 이번 루프 (루프187 · pitch-deck cover-bg 복구)
+
+- [x] `.cover-bg` Motif/deco — flatten 금지
+- [x] pin CSS로 이미 평탄화된 cover-bg full-bleed 복구
+- [x] 투명 슬라이드 `var(--bg, #ffffff)` letterbox 투시 방지
+- [x] flatten leftover centering transform 이중 방어
+- [x] contracts deck-fixed-canvas 회귀
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프186 · leading title-only intro / translateY clip)
 
 - [x] `dropLeadingTitleOnlyIntroBeforeRealCover` — title-only intro + substantive cover 후속 시 intro drop
 - [x] `neutralizeUnanchoredTranslateYInSlideContent` — 앵커 없는 `translateY(-50%)` 제거

@@ -43,6 +43,24 @@ article[data-screen-label] {
   box-sizing: border-box !important;
   overflow: visible !important;
   contain: layout size;
+  /* Transparent slides show the dark Teamver letterbox. Kit --bg wins when set. */
+  background-color: var(--bg, #ffffff);
+}
+/* Pitch-deck / studio full-bleed wash. Compact flatten used to force
+   cover-bg to position:relative with no box — the gradient collapsed
+   and sat behind opaque slide paper at z-index:-1. */
+.slide .cover-bg,
+.slide [class*="cover-bg"] {
+  position: absolute !important;
+  inset: 0 !important;
+  top: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  left: 0 !important;
+  z-index: 0 !important;
+  width: auto !important;
+  height: auto !important;
+  pointer-events: none;
 }
 /* Absolute bottom footers collide with centered lead under flex justify. */
 .slide > :is(.slide-footer, .slide-meta, .kicker-footer, .footer):not([class*="deco"]):not([class*="motif"]) {
@@ -300,7 +318,7 @@ function flowAbsoluteSlideFooters(html: string): string {
 }
 
 const MOTIF_OR_DECO_CLASS_RE =
-  /deco|motif|petal|blob|pill|doodle|pin-|scanline|grain|sunglow|yblock|haze|ribbon|pixel-|hc-|gd-orb|xp-blob|post-it|stamp|tape|corner-bracket|ts-stripe|zigzag|hero-shot|card-deco|title-accent|closing-accent|mini-note|floating-pills|cover-blob|geo-decoration|cover-decoration/i;
+  /deco|motif|petal|blob|pill|doodle|pin-|scanline|grain|sunglow|yblock|haze|ribbon|pixel-|hc-|gd-orb|xp-blob|post-it|stamp|tape|corner-bracket|ts-stripe|zigzag|hero-shot|card-deco|title-accent|closing-accent|mini-note|floating-pills|cover-blob|cover-bg|geo-decoration|cover-decoration/i;
 
 // 루프158-A — MiniMax는 `<ul style="position:absolute">` / `<li>` / `<figure>`
 // 형태로 리스트/카드 트랙을 오프페이지에 park한다. div/span/heading만 평탄화
@@ -338,10 +356,43 @@ function flowAbsoluteNonMotifStyle(style: string): string | null {
   const next = source
     .replace(/position\s*:\s*absolute/gi, 'position:relative')
     .replace(/(?:^|;)\s*(?:top|right|bottom|left|inset)\s*:[^;]*/gi, ';')
+    // Absolute-center leftovers (`top:50%; transform:translateY(-50%)`)
+    // become in-flow overlap once position is relative.
+    .replace(
+      /(?:^|;)\s*transform\s*:\s*translate(?:X|Y)?\(\s*-50%(?:\s*,\s*-50%)?\s*\)[^;]*/gi,
+      ';',
+    )
     .replace(/;;+/g, ';')
     .replace(/^;|;$/g, '')
     .trim();
   return next;
+}
+
+const CENTERING_TRANSFORM_RE =
+  /transform\s*:\s*translate(?:X|Y)?\(\s*-50%(?:\s*,\s*-50%)?\s*\)/i;
+
+/** Persisted decks already flattened to relative but kept translateY(-50%). */
+function stripInFlowCenteringTransforms(html: string): string {
+  return html.replace(ABS_FLOW_OPEN_RE, (open, _tag: string, attrs: string) => {
+    if (isMotifOrDecoAttrs(attrs)) return open;
+    if (!CENTERING_TRANSFORM_RE.test(attrs)) return open;
+    if (/position\s*:\s*absolute/i.test(attrs)) return open;
+    const nextAttrs = attrs.replace(
+      /\bstyle\s*=\s*(['"])([\s\S]*?)\1/i,
+      (_m, q: string, style: string) => {
+        const next = String(style)
+          .replace(
+            /(?:^|;)\s*transform\s*:\s*translate(?:X|Y)?\(\s*-50%(?:\s*,\s*-50%)?\s*\)[^;]*/gi,
+            ';',
+          )
+          .replace(/;;+/g, ';')
+          .replace(/^;|;$/g, '')
+          .trim();
+        return next ? `style=${q}${next}${q}` : '';
+      },
+    );
+    return open.replace(attrs, nextAttrs);
+  });
 }
 
 type SlideInnerSpan = {
@@ -3265,6 +3316,7 @@ export function pinDeckSlidesToFixedCanvas(
     out = stripInlineSlideTypeOnOfficialLook(out);
     out = stripFloatingDeckIndexBadges(out);
     out = flowAbsoluteNonMotifSlideContent(out);
+    out = stripInFlowCenteringTransforms(out);
     out = bindFakeOutlineCardsToOfficialKit(out);
     out = wrapNonMotifSlideFlow(out);
     out = markTrailingMiniMaxFootersInPinnedFlow(out);
