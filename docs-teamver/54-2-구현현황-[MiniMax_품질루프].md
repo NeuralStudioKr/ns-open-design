@@ -7,6 +7,12 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-08-31 현재 판단 · 최신 루프
 
+### 루프222 — Phase/축/레이어 leftover 인덱스
+
+루프205–219는 pillar/key/번호 leftover만 본다. MiniMax는 `Phase 3`/`축 3`/`레이어 3`로 빠진 기둥을 채워 3열이 유지된다. phase/axis/layer · 페이즈/축/레이어만 leftover. 전-인덱스 Phase 스텝 행은 유지. `UNIT 3`은 유지. 카피 발명 없음.
+
+검증: contracts heal-ai-generated-deck 루프222 · deck-framework-compact.
+
 ### 루프221 — minmax(auto,1fr) 트랙 클립
 
 루프195는 `1fr`만 `minmax(0,1fr)`로 바꾼다. MiniMax는 `minmax(auto,1fr)`를 찍어 3장이 잘린다. auto/min-content/max-content 하한을 `minmax(0,1fr)`로 바꾼다. `minmax(200px,1fr)` sidebar는 유지. 카피 발명 없음.
@@ -523,9 +529,17 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | persist/preview: 원문자 ③/전각 ３ leftover 카드가 3열을 붙잡아 빈 띠 | ☑ 루프219 |
 | persist/preview: 동일 1.0fr 그리드 트랙이 2장 leftover · 3장 클립 | ☑ 루프220 |
 | persist/preview: minmax(auto,1fr) 트랙이 3열 클립 · 2장 leftover | ☑ 루프221 |
+| persist/preview: Phase 3/축 3 leftover 카드가 3열을 붙잡아 빈 띠 | ☑ 루프222 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프221 · minmax(auto,1fr))
+## 이번 루프 (루프222 · Phase/축/레이어 인덱스)
+
+- [x] phase/axis/layer · 페이즈/축/레이어 leftover
+- [x] 전-인덱스 Phase 스텝 행 · UNIT 3 유지
+- [x] heal-ai-generated-deck 루프222 · deck-framework-compact
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프221 · minmax(auto,1fr))
 
 - [x] `minmax(auto|min-content|max-content,1fr)` → `minmax(0,1fr)`
 - [x] `minmax(200px,1fr)` sidebar 유지

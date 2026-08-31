@@ -809,6 +809,58 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
       expect(out).not.toContain('PILLAR 03');
     });
 
+    it('drops a Phase 3 leftover third card (루프222)', () => {
+      const html = [
+        '<div style="display:flex;gap:28px">',
+        '<div class="card" style="padding:24px"><h3>극한</h3><p>lim</p></div>',
+        '<div class="card" style="padding:24px"><h3>도함수</h3><p>d/dx</p></div>',
+        '<div class="card" style="padding:24px"><h3>Phase 3</h3></div>',
+        '</div>',
+      ].join('');
+      const out = dropEmptyLeftoverPeerCardsInAllocatedRows(html, '미적분');
+      expect((out.match(/class="card"/g) ?? []).length).toBe(2);
+      expect(out).not.toContain('Phase 3');
+      expect(out).toContain('극한');
+    });
+
+    it('keeps a Phase step row where every peer is an index (루프222)', () => {
+      const html = [
+        '<div style="display:flex;gap:16px">',
+        '<div class="card">Phase 1</div>',
+        '<div class="card">Phase 2</div>',
+        '<div class="card">Phase 3</div>',
+        '</div>',
+      ].join('');
+      expect(dropEmptyLeftoverPeerCardsInAllocatedRows(html, '미적분')).toBe(html);
+    });
+
+    it('pipeline heals a 축 3 leftover without inventing 적분 copy (루프222)', () => {
+      const html = [
+        '<section class="slide"><h1>미적분의 세 기둥</h1>',
+        '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:24px">',
+        '<div class="card"><h3>극한</h3><p>lim</p></div>',
+        '<div class="card"><h3>도함수</h3><p>d/dx</p></div>',
+        '<div class="card"><h3>축 3</h3></div>',
+        '</div></section>',
+      ].join('');
+      const out = healAiGeneratedDeckMarkup(html, '미적분');
+      expect((out.match(/class="card"/g) ?? []).length).toBe(2);
+      expect(out).not.toContain('축 3');
+      expect(out).toContain('극한');
+      expect(out).toContain('도함수');
+    });
+
+    it('keeps UNIT 3 because that prefix is not leftover vocabulary (루프222)', () => {
+      const html = [
+        '<div style="display:flex;gap:28px">',
+        '<div class="card"><h3>극한</h3><p>lim</p></div>',
+        '<div class="card"><h3>도함수</h3><p>d/dx</p></div>',
+        '<div class="card"><h3>UNIT 3</h3></div>',
+        '</div>',
+      ].join('');
+      expect(dropEmptyLeftoverPeerCardsInAllocatedRows(html, '미적분')).toBe(html);
+    });
+
     it('drops a circled ③ leftover third card (루프219)', () => {
       const html = [
         '<div style="display:flex;gap:28px">',
