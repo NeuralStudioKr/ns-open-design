@@ -7,6 +7,12 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-08-31 현재 판단 · 최신 루프
 
+### 루프259 — leftover extra-copy는 토픽 단어가 아님
+
+사용자 brief의 `미분`/`적분`은 예시일 뿐 leftover 유지 어휘가 아니다. stub/index 토큰만 leftover. 남은 글자는 어떤 주제든 실카피. 제품 주석에서 주제 단어 하드코딩 제거. 카피 발명 없음.
+
+검증: contracts heal-ai-generated-deck 루프259.
+
 ### 루프263 — contracts pretest 언블록 (exactOptionalPropertyTypes)
 
 루프195 `collectClassEqualTrackDecls`가 optional `{cols, rows}`에 `undefined`를 명시 대입해 `exactOptionalPropertyTypes: true` 아래 TS2379로 `pnpm --filter @open-design/web test` pretest(contracts 빌드)를 통째로 봉쇄. Conditional assign으로 최소 diff 수정. 3-col clip · 2x2 leftover auto-repair 원 의도는 보존.
@@ -21,19 +27,19 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ### 루프261 — E/기둥 바/여섯째 leftover 인덱스
 
-루프239는 A–D / 가나다라마 / 첫째–다섯째만 leftover 문자로 본다. MiniMax는 `기둥 E`/`기둥 바`/`여섯째`만 남겨 3열이 유지된다. E–F·바사·여섯째–열째만 leftover. `열한째`/`기둥 아`/`여섯째 적분`은 유지. 카피 발명 없음.
+루프239는 A–D / 가나다라마 / 첫째–다섯째만 leftover 문자로 본다. MiniMax는 `기둥 E`/`기둥 바`/`여섯째`만 남겨 3열이 유지된다. E–F·바사·여섯째–열째만 leftover. `열한째`/`기둥 아`/index+추가 본문은 유지. 카피 발명 없음.
 
 검증: contracts heal-ai-generated-deck 루프261 · deck-framework-compact.
 
 ### 루프258 — ok/완료 leftover stub
 
-루프241–257 leftover stub는 etc/기타까지 본다. MiniMax는 `ok`/`done`/`완료`로 빠진 기둥을 채워 3열이 유지된다. ok/okay/done · 완료만 leftover. `완료 적분` 본문 카드는 유지. 카피 발명 없음.
+루프241–257 leftover stub는 etc/기타까지 본다. MiniMax는 `ok`/`done`/`완료`로 빠진 기둥을 채워 3열이 유지된다. ok/okay/done · 완료만 leftover. stub+추가 본문은 유지(주제 단어 아님). 카피 발명 없음.
 
 검증: contracts heal-ai-generated-deck 루프258 · deck-framework-compact.
 
 ### 루프257 — etc/기타 leftover stub
 
-루프241–249 leftover stub는 FIXME/hack/foo까지 본다. MiniMax는 `etc`/`기타`/`등등`로 빠진 기둥을 채워 3열이 유지된다. etc/etcetera · 기타/등등만 leftover. `기타 적분` 본문 카드는 유지. 카피 발명 없음.
+루프241–249 leftover stub는 FIXME/hack/foo까지 본다. MiniMax는 `etc`/`기타`/`등등`로 빠진 기둥을 채워 3열이 유지된다. etc/etcetera · 기타/등등만 leftover. stub+추가 본문은 유지(주제 단어 아님). 카피 발명 없음.
 
 검증: contracts heal-ai-generated-deck 루프257 · deck-framework-compact.
 
@@ -431,7 +437,7 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 
 ### 다음 루프 후보 (2026-08-31 EOD 기준)
 
-- **후보 (루프259):** leftover stub `n/a` 변형 외 `misc`/`기타사항`, 또는 leftover 문자 `E`는 의도적으로 제외(기둥 바 / 여섯째 유지).
+- **후보 (루프264):** leftover stub `misc`/`기타사항`. leftover extra-copy는 주제 단어가 아님(루프259).
 - **인접 (루프206 밖):** `srcdoc-deck-bridge-nested-slides` native `#deck-next` 픽스처가 host next 후 `active:2`를 보고함 (transform/dot는 1). staging에서 이미 red — 이번 CSS 변경과 무관.
 - **후보 C (3열 residual):** `G` 이후 알파벳, `열한째` 이상 서수, 또는 3장 280 vs 900(비율 >2.05) leftover. 루프261–262이 E–F/바사/여섯째–열째와 3열 400 vs 800을 닫음.
 - **후보 B (예약 · 규모 큼):** contracts 안 `var(--pad, calc(px * n))` / `env(safe-area-inset-top, calc(...))` fallback red-spec 39건. fallback 표현을 card threshold 로 승격하는 heuristic — 별도 루프 필요.
@@ -803,11 +809,26 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | persist/preview: ok/done/완료 stub 카드가 3열을 붙잡아 빈 띠 | ☑ 루프258 |
 | persist/preview: E/기둥 바/여섯째 leftover 인덱스가 3열을 붙잡아 빈 띠 | ☑ 루프261 |
 | persist/preview: 3열 400 vs 800 max-width가 leftover lock을 피해 클립 | ☑ 루프262 |
+| leftover extra-copy를 주제 단어(미분/적분)로 하드코딩 | ☑ 루프259 |
+| contracts pretest: exactOptionalPropertyTypes TS2379 봉쇄 | ☑ 루프263 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프261–262 · E/서수 인덱스 · 3열 400 vs 800)
+## 이번 루프 (루프259 · extra-copy 토픽 중립)
 
-- [x] leftover index — E–F / 바사 / 여섯째–열째. `열한째`/`기둥 아`/`여섯째 적분` 유지
+- [x] leftover 판정은 stub/index 토큰만. 남은 글자는 주제 무관 실카피
+- [x] 제품 주석에서 `미분`/`적분` 하드코딩 제거
+- [x] heal-ai-generated-deck 루프259
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프263 · contracts pretest 언블록)
+
+- [x] collectClassEqualTrackDecls conditional assign
+- [x] 3-col clip · 2x2 leftover 원 의도 유지
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프261–262 · E/서수 인덱스 · 3열 400 vs 800)
+
+- [x] leftover index — E–F / 바사 / 여섯째–열째. `열한째`/`기둥 아`/index+추가 본문 유지
 - [x] 3장 peer 주축 비율 2.05. 400 vs 800 strip, 2장 400 vs 800 · 3장 280 vs 900 유지
 - [x] compact vocabulary E/여섯째
 - [x] heal-ai-generated-deck 루프261–262 · deck-framework-compact
@@ -816,14 +837,14 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 ## 직전 루프 (루프258 · ok/완료 stub)
 
 - [x] ok/okay/done · 완료 leftover
-- [x] `완료 적분` 본문 카드 유지
+- [x] stub+추가 본문 유지 (주제 단어 아님)
 - [x] heal-ai-generated-deck 루프258 · deck-framework-compact
 - [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
 
 ## 직전 루프 (루프257 · etc/기타 stub)
 
 - [x] etc/etcetera · 기타/등등 leftover
-- [x] `기타 적분` 본문 카드 유지
+- [x] stub+추가 본문 유지 (주제 단어 아님)
 - [x] heal-ai-generated-deck 루프257 · deck-framework-compact
 - [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
 

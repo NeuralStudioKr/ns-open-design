@@ -207,7 +207,7 @@ function slideLooksTitleOnlyNumberedLeftover(body: string, topic: string): boole
 }
 
 /**
- * Q1-b — Drop leftover numbered shells (`삼각함수 · 3`, `삼각함수 2`)
+ * Q1-b — Drop leftover numbered shells (`{topic} · 3`, `{topic} 2`)
  * whose only visible text is the cover topic plus an index.
  *
  * MiniMax restamps kami/IB chapter shells this way after wiping demo copy.
@@ -241,9 +241,9 @@ export function dropTitleOnlyNumberedLeftoverSlides(
  * Complements upstream 루프181 persist gate (heading-only outline refuse):
  * when an old artifact bypasses persist gate (recover / reuse read paths),
  * MiniMax's body-fill failure still ships the same title-only slide
- * (`<section class="slide"><h1>삼각함수</h1></section>`) twice or more in
+ * (`<section class="slide"><h1>{topic}</h1></section>`) twice or more in
  * a row. `dropTitleOnlyNumberedLeftoverSlides` only handles the
- * `삼각함수 · 2` counter form; `dropEmptyLikelyDeckSlides` keeps the shell
+ * `{topic} · 2` counter form; `dropEmptyLikelyDeckSlides` keeps the shell
  * because the heading carries text.
  *
  * Rules:
@@ -338,11 +338,11 @@ function countContainerImbalance(body: string): number {
 /**
  * 루프190 / 196 — Drop slides whose container tags are severely unbalanced.
  *
- * 사용자 리포트 2026-08-31 · 삼각함수 (loop186–189 후속):
- *   MiniMax fill 이 슬라이드 4 (`04 항등식`) · 슬라이드 5 (`05 그래프`) 에서
- *   nested `<div class="card">` 를 열고 닫지 않았음. 브라우저는 `</section>`
- *   에서 강제로 남은 `<div>` 를 닫아 이후 슬라이드 콘텐츠가 이 슬라이드 안에
- *   삽입되거나, srcdoc 파서에 따라 카드 그리드가 세로로 무너져 렌더됨.
+ * 사용자 리포트 2026-08-31 (loop186–189 후속):
+ *   MiniMax fill 이 중간 슬라이드에서 nested `<div class="card">` 를 열고
+ *   닫지 않았음. 브라우저는 `</section>` 에서 강제로 남은 `<div>` 를 닫아
+ *   이후 슬라이드 콘텐츠가 이 슬라이드 안에 삽입되거나, srcdoc 파서에 따라
+ *   카드 그리드가 세로로 무너져 렌더됨.
  *
  * 루프196 residual: 루프194가 `.card` 형제를 봉합해도 `article`/`aside`
  * 2겹이나 봉합 실패 leftover(diff 2)는 임계 3에 안 걸린다. 단일 미종료
@@ -1184,7 +1184,7 @@ const LEFTOVER_PEER_PLACEHOLDER_TOKENS = [
   '스킵',
   '패스',
   // 루프247 — foo/bar/baz shells MiniMax leaves on the missing pillar.
-  // Keep `bar 적분` / `bar chart` extra copy; a lone `bar` is leftover.
+  // Extra visible text of any topic keeps the card; a lone token is leftover.
   'foo',
   'bar',
   'baz',
@@ -1193,13 +1193,11 @@ const LEFTOVER_PEER_PLACEHOLDER_TOKENS = [
   'hack',
   '고쳐야함',
   // 루프257 — etc/misc shells MiniMax leaves on the missing pillar.
-  // Keep `기타 적분` extra copy; a lone `기타`/`등등`/`etc` is leftover.
   'etcetera',
   '등등',
   '기타',
   'etc',
   // 루프258 — ok/done shells MiniMax leaves on the missing pillar.
-  // Keep `완료 적분` extra copy; a lone `완료`/`ok`/`done` is leftover.
   'okay',
   'done',
   '완료',
@@ -1223,6 +1221,11 @@ function leftoverPlaceholderTokenLength(compact: string): number | null {
   return hit ? hit.length : null;
 }
 
+/**
+ * A leftover stub card is only leftover when compact text is entirely
+ * leftover tokens. Any remaining text — any topic, never a word list —
+ * means the card has real copy and must stay.
+ */
 function leftoverPlaceholderTokenCount(compact: string): number | null {
   let rest = compact;
   let count = 0;
@@ -1268,7 +1271,7 @@ function textLooksLikeLeftoverPeerPlaceholder(html: string): boolean {
  * 루프256 — `Lesson 3` / `Lecture 3` / `강 3` index leftovers.
  * `UNIT 3` stays because that prefix is not leftover vocabulary.
  * 루프261 — letter `E` / `기둥 바` / `여섯째` leftovers. Keep `G`–`Z`,
- * `열한째`, `기둥 아`, and `여섯째 적분` real copy.
+ * `열한째`, `기둥 아`, and leftover-index cards that still have extra text.
  */
 const LEFTOVER_INDEX_ROMAN =
   '(?:viii|vii|iii|xii|xi|ix|iv|vi|ii|[xv]|i|[Ⅰ-Ⅻⅰ-ⅻ])';
@@ -1278,7 +1281,7 @@ const LEFTOVER_INDEX_MARK = '[⓪①-⑨❶-❾⓿０-９⑴-⑼㉠-㉥]';
 const LEFTOVER_INDEX_DIGIT = '(?:0?[0-9]|10)';
 /** 루프237/239/261 — A–F / 가나다라마바사 leftover letters (not roman V/X/I, not G–Z). */
 const LEFTOVER_INDEX_LETTER = '(?:[a-f]|[가나다라마바사])';
-/** 루프239/261 — Hangul ordinal leftover shells. Keep `첫째 적분` / `열한째`. */
+/** 루프239/261 — Hangul ordinal leftover shells. Keep extra text / `열한째`. */
 const LEFTOVER_INDEX_ORDINAL = '(?:첫|둘|셋|넷|다섯|여섯|일곱|여덟|아홉|열)(?:째|번째)';
 const LEFTOVER_INDEX_CORE =
   `(?:${LEFTOVER_INDEX_DIGIT}|${LEFTOVER_INDEX_ROMAN}|${LEFTOVER_INDEX_MARK}|${LEFTOVER_INDEX_LETTER}|${LEFTOVER_INDEX_ORDINAL})`;
@@ -1333,8 +1336,8 @@ function containerLooksLikeAllocatedCardRow(
  * Loops 190/195 shrink equal tracks by *child count*. MiniMax often still
  * emits the missing pillar as `<div class="card"></div>` (or a padded
  * empty box) so the row stays 3-wide: two filled cards + a blank band.
- * Loop 191 then gives that empty shell `flex:1`, which paints the same
- * 미적분 leftover. Remove empty cardish peers only; never invent copy.
+ * Loop 191 then gives that empty shell `flex:1`, which paints the leftover
+ * blank band. Remove empty cardish peers only; never invent topic copy.
  * Hangul/brief-gated so official English catalogs stay intact.
  */
 export function dropEmptyLeftoverPeerCardsInAllocatedRows(
@@ -1897,7 +1900,7 @@ function unwrapRedundantNestedPeerCardsOnce(html: string): string {
  * Loop 194 only inserts missing closes when MiniMax opens the next `.card`
  * without closing the previous one. A already-balanced
  * `<div class="card"><div class="card">…</div></div>` survives and paints
- * double padding / nested chrome (the 삼각함수 4/5 residual after close).
+ * double padding / nested chrome (the leftover 4/5 residual after close).
  * Keep the inner card; drop the outer only when it has no own text and
  * exactly one same-token child. `card-body` / two-card hosts stay.
  * Hangul/brief-gated. Never invent copy.

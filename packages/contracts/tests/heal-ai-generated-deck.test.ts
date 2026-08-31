@@ -854,14 +854,14 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
       expect(out).toContain('극한');
     });
 
-    it('keeps 기타 적분 copy that is not a stub card (루프257)', () => {
+    it('keeps leftover-token cards that still have extra visible text (루프257)', () => {
       const html = [
         '<div style="display:flex;gap:16px">',
-        '<div class="card"><h3>극한</h3><p>정의</p></div>',
-        '<div class="card"><h3>기타</h3><p>적분</p></div>',
+        '<div class="card"><h3>하나</h3><p>요지</p></div>',
+        '<div class="card"><h3>기타</h3><p>실카피</p></div>',
         '</div>',
       ].join('');
-      expect(dropEmptyLeftoverPeerCardsInAllocatedRows(html, '미적분')).toBe(html);
+      expect(dropEmptyLeftoverPeerCardsInAllocatedRows(html, '발표')).toBe(html);
     });
 
     it('pipeline heals an etc leftover without inventing 적분 copy (루프257)', () => {
@@ -894,14 +894,14 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
       expect(out).toContain('극한');
     });
 
-    it('keeps 완료 적분 copy that is not a stub card (루프258)', () => {
+    it('keeps leftover-token cards that still have extra visible text (루프258)', () => {
       const html = [
         '<div style="display:flex;gap:16px">',
-        '<div class="card"><h3>극한</h3><p>정의</p></div>',
-        '<div class="card"><h3>완료</h3><p>적분</p></div>',
+        '<div class="card"><h3>하나</h3><p>요지</p></div>',
+        '<div class="card"><h3>완료</h3><p>실카피</p></div>',
         '</div>',
       ].join('');
-      expect(dropEmptyLeftoverPeerCardsInAllocatedRows(html, '미적분')).toBe(html);
+      expect(dropEmptyLeftoverPeerCardsInAllocatedRows(html, '발표')).toBe(html);
     });
 
     it('pipeline heals an ok leftover without inventing 적분 copy (루프258)', () => {
@@ -918,6 +918,55 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
       expect(out).not.toMatch(/\bok\b/i);
       expect(out).toContain('극한');
       expect(out).toContain('도함수');
+    });
+
+    it('keeps leftover stubs that still have extra visible text of any topic (루프259)', () => {
+      const hangulExtra = [
+        '<div style="display:flex;gap:16px">',
+        '<div class="card"><h3>하나</h3><p>요지</p></div>',
+        '<div class="card"><h3>etc</h3><p>실카피</p></div>',
+        '</div>',
+      ].join('');
+      const latinExtra = [
+        '<div style="display:flex;gap:16px">',
+        '<div class="card"><h3>하나</h3><p>요지</p></div>',
+        '<div class="card"><h3>ok</h3><p>notes</p></div>',
+        '</div>',
+      ].join('');
+      expect(dropEmptyLeftoverPeerCardsInAllocatedRows(hangulExtra, '발표')).toBe(hangulExtra);
+      expect(dropEmptyLeftoverPeerCardsInAllocatedRows(latinExtra, '발표')).toBe(latinExtra);
+    });
+
+    it('still drops a lone leftover stub when there is no extra text (루프259)', () => {
+      const html = [
+        '<div style="display:flex;gap:28px">',
+        '<div class="card"><h3>하나</h3><p>요지</p></div>',
+        '<div class="card"><h3>다음</h3><p>요지</p></div>',
+        '<div class="card"><h3>etc</h3></div>',
+        '</div>',
+      ].join('');
+      const out = dropEmptyLeftoverPeerCardsInAllocatedRows(html, '발표');
+      expect((out.match(/class="card"/g) ?? []).length).toBe(2);
+      expect(out).not.toMatch(/\betc\b/i);
+      expect(out).toContain('하나');
+    });
+
+    it('pipeline heals a leftover stub without inventing topic copy (루프259)', () => {
+      const html = [
+        '<section class="slide"><h1>세 가지 포인트</h1>',
+        '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:24px">',
+        '<div class="card"><h3>하나</h3><p>요지</p></div>',
+        '<div class="card"><h3>다음</h3><p>요지</p></div>',
+        '<div class="card"><h3>완료</h3></div>',
+        '</div></section>',
+      ].join('');
+      const out = healAiGeneratedDeckMarkup(html, '발표');
+      expect((out.match(/class="card"/g) ?? []).length).toBe(2);
+      expect(out).not.toContain('완료');
+      expect(out).toContain('하나');
+      expect(out).toContain('다음');
+      expect(out).not.toContain('적분');
+      expect(out).not.toContain('미분');
     });
 
     it('drops a Chapter 3 leftover third card (루프248)', () => {
@@ -2060,15 +2109,15 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
       expect(out).not.toContain('여섯째');
     });
 
-    it('keeps a 여섯째 적분 real copy that is not an index leftover (루프261)', () => {
+    it('keeps leftover-index cards that still have extra visible text (루프261)', () => {
       const html = [
         '<div style="display:flex;gap:28px">',
-        '<div class="card"><h3>극한</h3></div>',
-        '<div class="card"><h3>도함수</h3></div>',
-        '<div class="card"><h3>여섯째 적분</h3></div>',
+        '<div class="card"><h3>하나</h3></div>',
+        '<div class="card"><h3>다음</h3></div>',
+        '<div class="card"><h3>여섯째 실카피</h3></div>',
         '</div>',
       ].join('');
-      expect(dropEmptyLeftoverPeerCardsInAllocatedRows(html, '미적분')).toBe(html);
+      expect(dropEmptyLeftoverPeerCardsInAllocatedRows(html, '발표')).toBe(html);
     });
 
     it('pipeline heals a 기둥 바 leftover without inventing 적분 copy (루프261)', () => {
