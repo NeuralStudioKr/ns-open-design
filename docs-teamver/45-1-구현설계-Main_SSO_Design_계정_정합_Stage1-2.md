@@ -72,22 +72,25 @@ Main Teamver에서 **로그아웃 → 다른 계정 로그인** 후 Design으로
 
 ---
 
-## 5. Main logout → Design BFF 폐기 (보조 · ☑)
+## 5. Main logout → App BFF 폐기 (보조 · Design 단건 ☑ · **멀티앱 Phase 2b**)
 
-Main FE `teamver.com`에서 Design host-only 쿠키는 `fetch(credentials)`로 전송되지 않음.
+Main FE `teamver.com`에서 앱 host-only 쿠키는 `fetch(credentials)`로 전송되지 않음.
 
-- Design `/auth/logout-bridge` — 마운트 시 `postDesignAuthLogout()` best-effort.
-- Main `/auth/logout` — Main `fetchLogout()` 후 hidden iframe으로 bridge URL 로드 (3s cap).
+- Design `/auth/logout-bridge` — 마운트 시 `postDesignAuthLogout()` best-effort. **☑**
+- Main `/auth/logout` — Main `fetchLogout()` 후 hidden iframe으로 Design bridge URL 로드 (3s cap). **☑ 단건**
 
-**한계:** iframe 차단·ITP 환경에서는 Stage 2가 다음 Design 진입 시 정합을 맞춘다.
+**한계 (단건):** Docs 등 다른 AI App BFF는 orphan. iframe 차단·ITP에서는 Stage 2/Plan A가 다음 앱 진입 시 정합.
+
+**후속:** orphan 기본 정리는 [0831-N01-1](./0831-N01-1-상위기획-[Apps_Main_auth_멀티앱_정합_구현후보].md) **FR-P0** (`unknown` → 앱 로컬 logout). Main 레지스트리 fan-out은 **가속(선택)** — [0825-N01-1 §12.0.3](./0825-N01-1-상위기획-[BFF_session-probe_refresh_401_완전해결].md).
 
 ---
 
-## 6. 비목표 (본 단계)
+## 6. 비목표 (본 단계 · 45-1)
 
-- Stage 3 BroadcastChannel `main-user-changed`
-- Stage 4 Main Drive dual-auth
-- 웹 Main→Design **매 클릭 auth code handoff** (Electron 전용 handoff 유지)
+- Stage 3 BroadcastChannel `main-user-changed` (**동일 origin만**)
+- Stage 4 Main Drive dual-auth (`aud` allowlist 전제)
+- 웹 Main→Design **매 클릭 auth code handoff**
+- Phase 2b FR-P0 / Docs 포트 / (선택) fan-out — 0825-N01 슬라이스 R·Q·P
 
 ---
 

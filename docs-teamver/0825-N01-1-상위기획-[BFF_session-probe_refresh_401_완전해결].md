@@ -5,9 +5,9 @@
 | **문서 ID** | `0825-N01-1` |
 | **역할** | 1 — 상위기획 / 기능요구 / 상위설계 |
 | **작성일** | 2026-08-25 |
-| **상태** | Phase 1 (Design FE P0 A–E) ☑ · **Phase 2 (통합·Main 포함) 설계 확정·구현 대기** |
-| **대상 환경** | staging `stg-design.teamver.com` + `stg.teamver.com` (ALB 2노드) · production 동일 계약 |
-| **성공 정의** | (1) DevTools **금지 패턴** `refresh 401 → probe 401 ×2` 부재. (2) Main logout/계정전환 후 Design **선제 정렬**(Drive 열기 전). (3) 크로스탭·크로스앱 auth 신호 일관. 정상 세션·HA 경합·「다시 시도」는 유지. |
+| **상태** | Phase 1 ☑ · Plan A G~I ☑ · **Phase 2b: FR-P0 기본 · fan-out 가속** ([0831-N01-1](./0831-N01-1-상위기획-[Apps_Main_auth_멀티앱_정합_구현후보].md)) |
+| **대상 환경** | staging `stg-design.teamver.com` + `stg.teamver.com` (ALB 2노드) · production 동일 계약 · **후속 Apps(Docs 등) 동일 계약** |
+| **성공 정의** | (1) DevTools **금지 패턴** `refresh 401 → probe 401 ×2` 부재. (2) Main logout/계정전환 후 **등록 AI App** 선제 정렬(Drive·자산 호출 전). (3) 크로스탭(동일 origin)·크로스앱(앱별 Plan A) auth 신호 일관. 정상 세션·HA 경합·「다시 시도」는 유지. |
 
 ---
 
@@ -68,19 +68,20 @@ GET  https://stg-design.teamver.com/teamver-bff/auth/session-probe    → 401
 - `provider.tsx` analytics 래퍼 제거 — initiator 표시만 바뀌고 근본과 무관.
 - 정상 세션에서 auth API를 altogether 없애기 — boot/재로그인/「다시 시도」는 유지.
 
-### 1.4 Phase 2 범위 확대 (2026-08-26)
+### 1.4 Phase 2 범위 확대 (2026-08-26 · 2026-08-31 멀티앱 개정)
 
-**사용자 결정:** Main Teamver 인증 코드 변경 **허용**. Design FE ladder만으로는 L4·L6·크로스오리진 신호 공백이 남는다.
+**사용자 결정:** (1) Main Teamver 인증 변경 **허용**. (2) **AI Apps ↔ Main 연동을 동일 방식으로** 개선 — 앱이 N개로 늘어도 복제 가능한 **플랫폼 계약**을 Phase 2 SSOT에 포함 (§12.0).
 
 | Phase | 범위 | 레포 | 상태 |
 |-------|------|------|------|
 | **1** | Design FE ladder (FR-1~5) | `ns-open-design` | ☑ 코드·vitest |
-| **2** | **Plan A:** `/auth/session` 서버 `main_sso_status` + FE reconcile | Design BE/FE | 설계 확정 · **Main 변경 없음** |
-| **2b** | 45-1 pin · reconcile · logout bridge | Design + Main FE | ☑ 코드 |
-| **3** | 크로스탭 `main-user-changed` (45 Stage 3) | Design FE | P1 |
-| **4** | quiet probe · session-probe `code` (FR-6) | Design BE · nginx | 선택 |
-| **5** | Plan B back-channel logout · Plan C epoch | Main + Design | P2~P3 · 선택 |
-| **6** | Stage 4 Dual-auth | Main + Design | Epic 밖 |
+| **2** | **Plan A:** `/auth/session` 서버 `main_sso_status` + FE reconcile | Design BE/FE | ☑ **Design 첫 구현체** |
+| **2a** | 45-1 pin · reconcile · logout bridge (Design 단건) | Design + Main FE | ☑ 코드 · **fan-out 미완** |
+| **2b** | **Apps↔Main:** FR-P0 unknown 정합(기본) · Docs 포트 · fan-out(가속) | Design FE · Docs · (선택) Main | [0831-N01-1](./0831-N01-1-상위기획-[Apps_Main_auth_멀티앱_정합_구현후보].md) · 구현 대기 |
+| **3** | 동일 origin 크로스탭 `main-user-changed` (45 Stage 3) | 각 App FE | P1 · **크로스앱 아님** |
+| **4** | quiet probe · session-probe `code` (FR-6) | 각 App BE · nginx | 선택 |
+| **5** | Plan B back-channel logout (**레지스트리 M2M**) · Plan C epoch | Main + 등록 Apps | P2~P3 · 선택 |
+| **6** | Stage 4 Dual-auth (`aud` allowlist) | Main + Apps | Epic 밖 |
 
 ---
 
@@ -350,23 +351,118 @@ refresh 또는 probe 응답에서 **다음 중 하나면 HA_RECOVERING 진입 �
 
 ---
 
-## 12. Phase 2 — 통합 완전 해결 (Plan A 우선)
+## 12. Phase 2 — 통합 완전 해결 (Plan A 우선 · 멀티앱 플랫폼)
 
-### 12.1 설계 원칙 (2026-08-26 개정)
+### 12.0 Apps ↔ Main 플랫폼 계약 (2026-08-31 · **재검토 반영**)
+
+**전제:** Featured AI Apps는 `docs` · `design` (`FeaturedExternalAppKey`)이며 Canvas 등 **N개**로 늘어난다.
+
+**구현 후보·재검토 SSOT:** [0831-N01-1](./0831-N01-1-상위기획-[Apps_Main_auth_멀티앱_정합_구현후보].md)  
+**채택:** Plan A(후보 A) + **unknown 정합(후보 B)** = 기본. Main 레지스트리 fan-out(후보 C) = **가속(선택)**.
+
+#### 12.0.1 계층 분리 (유지 · [41](./41_Design_Drive_인증_계약_권고.md))
+
+| 계층 | 쿠키 / 토큰 | Domain | 소유 |
+|------|-------------|--------|------|
+| Main SSO | `teamver_access_token` (HS256) | `.teamver.com` | Main — **앱 공통 1개** |
+| App BFF | `teamver_{app_key}_bff_session` (Apps RS256) | **앱 host-only** | 각 App BE |
+
+앱이 늘어도 **부모 SSO 1 + 앱별 host BFF N** 구조는 불변. parent-domain BFF 쿠키는 **금지**.
+
+#### 12.0.2 사건 분리 · 앱 BFF 공통 계약
+
+| 사건 | `main_sso_status` | 기본 조치 (채택) |
+|------|-------------------|------------------|
+| 계정 전환 | **`mismatch`** | pause + mismatch recovery |
+| Main 로그아웃 | **`unknown`** (BFF는 살아 있을 수 있음) | **`unknown` ∧ BFF authenticated → 앱 로컬 logout** (후보 B) |
+| 정상 | **`match`** | Phase 1-형 ladder |
+
+모든 AI App BFF가 **동일 스키마**를 제공한다. Design = **reference**.
+
+| 엔드포인트 | 계약 |
+|------------|------|
+| `GET /api/v1/auth/session` | `main_sso_status`: `match` \| `mismatch` \| `unknown` · `main_sso_identity_hash` (선택) |
+| `POST /api/v1/auth/refresh` | Apps JWT 회전 · 확정 dead `code` |
+| `GET /api/v1/auth/session-probe` | nginx auth_request · 204/401 |
+| `POST /api/v1/auth/logout` | 해당 앱 BFF 세션 폐기 |
+| `GET|페이지 /auth/logout-bridge` | Main iframe용 (가속 fan-out용 · 선택) |
+| `POST /internal/auth/main-logout` | M2M (가속 · 선택) |
+
+**앱 FE 공통 순서 (Plan A + unknown 정합):**
+
+```text
+focus / visibility (authenticated)
+  → GET /auth/session          # ladder보다 먼저 · force
+  → mismatch?  → pause + mismatch recovery
+  → unknown && hadLiveBff? → pause + POST /auth/logout(앱) + UI unauth
+  → match → Phase 1-형 ladder
+```
+
+#### 12.0.3 Main fan-out — **가속(선택)** · 필수 아님
+
+**현재:** Main `clearDesignBffSessionViaLogoutBridge`는 Design만. orphan은 **앱 focus + FR-P0(unknown 정합)** 으로 정리하는 것이 **기본**.
+
+| 요구 ID | 우선 | 내용 | 소유 |
+|---------|------|------|------|
+| **FR-P0** | **P0** | unknown ∧ authenticated → 로컬 BFF 폐기 (후보 B) | 각 App FE (Design 먼저) |
+| **FR-P4** | P1 | Docs(후속) Plan A + FR-P0 포트 | 각 App 팀 |
+| **FR-P1** | **P1 선택** | Main logout iframe **레지스트리 fan-out** (즉시성) | Main FE |
+| **FR-P2** | P1 선택 | 앱 레지스트리 SSOT (fan-out 시) | Main · 플랫폼 |
+| **FR-P3** | P2 선택 | M2M `main-logout` 레지스트리 | Main BE · Apps |
+| **FR-P5** | P2 선택 | mismatch recovery 시 형제 bridge | Main · Apps |
+
+```text
+# 기본 (필수): 앱 스스로
+focus → session → mismatch | unknown→local logout
+
+# 가속 (선택): Main이 밀어줌
+Main logout → for app in registry: iframe logout-bridge / M2M
+```
+
+**금지:** 앱마다 Main에 `clearXxxBffSessionOnLogout.ts` hardcode 복제.  
+**fan-out을 쓸 때만** 단일 레지스트리 표.
+
+#### 12.0.4 크로스탭 vs 크로스앱
+
+| 신호 | 범위 | 비범위 |
+|------|------|--------|
+| BroadcastChannel `main-user-changed` (FR-13) | **동일 앱 origin** 탭 | Design↔Docs |
+| Plan A + FR-P0 | **앱마다 독립** focus | Main push 불필요(기본) |
+| Main fan-out (선택) | 등록 앱 **즉시** BFF 폐기 | 기본 경로의 대체재 |
+
+크로스앱 정렬의 **기본 SSOT = 앱별 Plan A + FR-P0**. fan-out은 가속.
+
+#### 12.0.5 Stage 4 Dual-auth (Epic 밖)
+
+`aud` allowlist (`teamver-design` · `teamver-docs` · …). Drive 사용 앱 N개 ROI가 커지면 [41] 방안 B · [0831-N01-1 후보 E](./0831-N01-1-상위기획-[Apps_Main_auth_멀티앱_정합_구현후보].md).
+
+#### 12.0.6 구현 우선순위 (멀티앱 · 재검토)
+
+```text
+[완료] Design Plan A (G~I)
+[다음 P0] FR-P0 Design unknown 정합 → S12a
+[다음 P1] FR-P4 Docs Plan A+P0 → S13
+[선택]    FR-P1·P2 Main fan-out → S12b
+[선택]    FR-P3 M2M · FR-13 · Dual-auth 재평가
+```
+
+---
+
+### 12.1 설계 원칙 (2026-08-26 · 08-31 재검토)
 
 | 순위 | 접근 | Main 변경 | 표준성 |
 |------|------|-----------|--------|
-| **Plan A** | BFF `/auth/session` 서버 `main_sso_status` | **없음** | BFF session 판정 — **1순위** |
-| **Plan B** | Back-channel logout (Main M2M → Design) | BE M2M | OIDC back-channel 동형 — P2 |
-| **Plan C** | readable `teamver_auth_epoch` + watcher | BE cookie | ad-hoc — **session-first bake 후에만** |
+| **Plan A + P0** | `main_sso_status` + unknown 정합 | **앱만** (기본) | BFF session 판정 — **1순위** |
+| **Plan B fan-out** | iframe/M2M 레지스트리 | Main FE/BE | OIDC 동형 — **가속** |
+| **Plan C epoch** | readable epoch | BE cookie | **P0 bake 후에만** |
 
-**401 폭풍**은 Phase 1 ladder로 해결. Phase 2는 **mismatch 선제 감지** + **전환 중 refresh 억제**가 목표.
+**401 폭풍** = Phase 1형 ladder. Phase 2 = mismatch 선제 + **logout orphan 정합** + (선택) 즉시 fan-out.
 
-### 12.2 Plan A — Session 서버 판정 (핵심)
+### 12.2 Plan A — Session 서버 판정 (핵심 · Design reference)
 
-브라우저는 Design 요청(`stg-design.teamver.com`)에 `.teamver.com` 쿠키를 **항상** 보낸다. Design BFF는 **HttpOnly Main JWT를 서버에서** 읽을 수 있다 (Drive gate와 동일).
+브라우저는 앱 요청(예: `stg-design.teamver.com`)에 `.teamver.com` 쿠키를 **항상** 보낸다. 앱 BFF는 **HttpOnly Main JWT를 서버에서** 읽을 수 있다 (Drive gate와 동일).
 
-**BE** `GET /auth/session` 응답 확장:
+**BE** `GET /auth/session` 응답 확장 (§12.0.2 공통 계약):
 
 ```json
 {
@@ -382,95 +478,105 @@ refresh 또는 probe 응답에서 **다음 중 하나면 HA_RECOVERING 진입 �
 | `mismatch` | 둘 다 존재 · 불일치 |
 | `unknown` | Main 쿠키 없음 · pin 없음(legacy) · BFF 비인증 |
 
-**FE** (`useTeamverEmbed` focus/visibility):
+**FE** (Design: `fetchDesignAuthSession` 중앙 gate · focus `force` · **FR-P0 unknown 정합 추가 예정**):
 
 ```text
-1. fetchDesignAuthSession()          ← ladder보다 먼저
-2. main_sso_status === "mismatch"?
-     yes → pauseDesignBffAuthDuringTransition()
-         → beginMainSsoMismatchRecovery()
-3. else → 기존 cookie hint / Phase 1 ladder
+1. GET /auth/session
+2. mismatch → pause + mismatch recovery
+3. unknown && hadLiveBff → pause + app logout + UI unauth   # FR-P0
+4. else → Phase 1 ladder
 ```
 
-**45-1 Stage 2 한계 보완:** `teamverMainSsoUserProbe`의 `document.cookie` 경로는 HttpOnly Plan B에서 `unknown`이 많음 → reconcile 입력을 **`session.mainSsoStatus` 우선**으로 전환.
+**45-1 Stage 2 한계 보완:** `document.cookie` probe는 HttpOnly에서 `unknown` 다수 → reconcile 입력은 **`session.mainSsoStatus` 우선**.
 
-### 12.3 Plan B — Back-channel logout (선택 · P2)
+### 12.3 Plan B — iframe / M2M fan-out (**가속 · 선택**)
 
-[45-1 §5](./45-1-구현설계-Main_SSO_Design_계정_정합_Stage1-2.md) iframe bridge는 **☑ 구현됨**. 보강:
+[45-1 §5](./45-1-구현설계-Main_SSO_Design_계정_정합_Stage1-2.md) Design iframe은 **☑ 단건**. orphan 기본 정리는 **FR-P0**. 제품이 **즉시** N앱 폐기를 요구할 때만 레지스트리 fan-out ([0831-N01-1 후보 C](./0831-N01-1-상위기획-[Apps_Main_auth_멀티앱_정합_구현후보].md)).
 
 ```text
 Main POST /auth/logout
-  → Main BE: M2M POST Design /internal/auth/main-logout { user_hash }
-  → Design BE: 해당 user BFF 세션 invalidate (best-effort)
-  → + 기존 iframe logout-bridge (탭 즉시)
+  → for app in registry:   # 선택 경로만
+       iframe {app}/auth/logout-bridge
+       [P2] M2M {app}/internal/auth/main-logout
 ```
 
 ### 12.4 Plan C — Epoch 쿠키 (보류 · P3)
 
-session-first(Plan A) 배포 후 S8–S9에서 **전환 직전 refresh 401**이 남을 때만 readable epoch 검토. **현재 Epic 착수 대상 아님.**
+FR-P0 + Plan A bake 후에도 전환 직전 refresh 401이 남을 때만. N앱일수록 복잡도↑ — **최후 수단**.
 
 ### 12.5 통합 상태기계
 
 ```mermaid
 flowchart TD
-  subgraph Design["Design (stg-design)"]
-    F[focus / visibility] --> S[GET /auth/session]
+  subgraph Apps["등록 AI Apps"]
+    F[focus / visibility] --> S["GET /auth/session"]
     S --> M{main_sso_status}
-    M -->|mismatch| P[pause + reconcile]
-    M -->|match/unknown| L[Phase 1 ladder]
+    M -->|mismatch| P[pause + mismatch recovery]
+    M -->|unknown + live BFF| U[pause + local app logout]
+    M -->|match| L[Phase 1-형 ladder]
   end
-  subgraph Main["Main (stg.teamver.com)"]
-    ML[logout / account switch] --> MC[HttpOnly teamver_access_token]
+  subgraph Main["Main"]
+    ML[logout / account switch] --> MC[HttpOnly SSO cookie]
+    ML -.->|선택 가속| R[registry fan-out]
   end
-  MC -.->|Cookie on every Design request| S
+  MC -.->|Cookie on App request| S
+  R -.->|optional invalidate| Apps
 ```
 
 ### 12.6 Phase 2 기능 요구사항
 
 | ID | 우선 | 요구 | 소유 | 상태 |
 |----|------|------|------|------|
-| **FR-8** | P0 | `/auth/session`에 `main_sso_status` (서버 판정) | Design BE | ☐ |
-| **FR-9** | P0 | FE reconcile — `mainSsoStatus` 우선 (cookie probe fallback) | Design FE | ☐ |
-| **FR-10** | P0 | focus 시 **session fetch → reconcile → ladder** 순서 고정 | Design FE | ☐ |
-| **FR-11** | — | BFF pin + `main_sso_identity_hash` (45 Stage 1) | Design BE | ☑ |
-| **FR-12** | — | reconcile hook (45 Stage 2) | Design FE | ☑ (FR-9로 강화) |
-| **FR-13** | P1 | `main-user-changed` broadcast (45 Stage 3) | Design FE | ☐ |
-| **FR-14** | P2 | session-probe `code` · quiet mode | Design BE | ☐ |
-| **FR-15** | P2 | back-channel logout M2M | Main BE · Design BE | ☐ |
-| **FR-16** | P3 | epoch 쿠키 (Plan C) | Main BE · Design FE | 보류 |
+| **FR-8** | P0 | `/auth/session` `main_sso_status` | Design BE → 앱 공통 | ☑ Design |
+| **FR-9** | P0 | FE `mainSsoStatus` 우선 reconcile | Design FE → 앱 공통 | ☑ Design |
+| **FR-10** | P0 | session → reconcile → ladder · focus `force` | Design FE | ☑ Design |
+| **FR-P0** | **P0** | **unknown ∧ authenticated → 로컬 BFF 폐기** | Design FE → 앱 공통 | ☐ |
+| **FR-11·12** | — | pin · reconcile hook | Design | ☑ |
+| **FR-13** | P1 | same-origin `main-user-changed` only | 각 App FE | ☐ |
+| **FR-14** | P2 | quiet probe | 각 App BE | ☐ |
+| **FR-15·P3** | P2 선택 | M2M 레지스트리 fan-out | Main · Apps | ☐ |
+| **FR-16** | 보류 | epoch | Main · Apps | 보류 |
+| **FR-P4** | P1 | Docs Plan A + FR-P0 포트 | Docs/후속 | ☐ |
+| **FR-P1·P2** | **P1 선택** | Main logout 레지스트리 iframe | Main FE | ☐ |
+| **FR-P5** | P2 선택 | recovery 형제 bridge | Main · Apps | ☐ |
 
 ### 12.7 Phase 2 성공 기준
 
 | # | 시나리오 | Pass |
 |---|----------|------|
-| S8 | Main logout → Design focus | session → pause → reconcile · refresh/probe **0** |
-| S9 | Main A→B 전환 → Design 복귀 | **Drive 전** `main_sso_status=mismatch` → recovery |
-| S10 | 4탭 | broadcast(L) 또는 focus reconcile — 45s 내 정렬 |
-| S11 | HttpOnly only (Plan B) | cookie probe `unknown`여도 **서버 status로 mismatch 감지** |
+| S8 | Main logout → Design focus | session → pause · refresh/probe **0** |
+| S9 | Main A→B → Design | Drive 전 `mismatch` → recovery |
+| S10 | **동일 앱** 4탭 | broadcast 또는 focus — 45s 내 |
+| S11 | HttpOnly only | 서버 status로 mismatch |
+| **S12a** | Main logout → Design(+Docs) | **다음 focus**에서 BFF 미인증 (FR-P0) — **필수** |
+| **S12b** | (선택) Main logout | iframe/M2M으로 **즉시** BFF 폐기 |
+| **S13** | A→B · Design·Docs 동시 | 각 앱 Plan A mismatch (fan-out 불필요) |
 
 ### 12.8 구현 슬라이스
 
 | 슬라이스 | FR | 레포 | 의존 |
 |----------|----|------|------|
-| **G** | FR-8 | Design BE | — |
-| **H** | FR-9 | Design FE | G |
-| **I** | FR-10 | Design FE | G |
-| **—** | FR-11·12 | Design | ☑ 45-1 |
-| **L** | FR-13 | Design FE | H·I |
-| **M** | FR-14 | Design BE | 선택 |
-| **N** | FR-15 | Main · Design BE | 선택 |
-| **O** | FR-16 | Main · Design | Plan A bake 후 |
+| **G~I** | FR-8~10 | Design | ☑ |
+| **R** | **FR-P0** | Design FE | G~I |
+| **Q** | FR-P4 | Docs | R |
+| **P** | FR-P1·P2 | Main FE | 선택 · S12b |
+| **L** | FR-13 | 각 App FE | same-origin |
+| **N** | FR-15·P3·P5 | Main · Apps | 선택 |
+| **O** | FR-16 | — | 보류 |
 
-**배포:** G → H+I → staging S8–S11. **Main 배포 불필요(Plan A).**
+**배포:** Design G~I → **R(FR-P0)** → S12a → Q(Docs) → S13.  
+**선택:** P → S12b.
 
 ---
 
 ## 13. 의사결정 (갱신)
 
-1. **Plan A (G~I):** Design-only — **승인 gate 없이** 즉시 착수.
-2. **Plan B back-channel:** Main M2M — 플랫폼 협의 시.
-3. **Plan C epoch:** Plan A bake 후 재평가.
-4. **Stage 4 Dual-auth:** Epic 밖 — CTO 트랙.
+1. **Plan A (G~I):** Design reference ☑. N앱 계약 §12.0 · [0831-N01-1](./0831-N01-1-상위기획-[Apps_Main_auth_멀티앱_정합_구현후보].md).
+2. **기본 멀티앱 해:** Plan A + **FR-P0 unknown 정합** (fan-out 필수 아님).
+3. **Fan-out / M2M:** 즉시성 UX — **가속 선택**.
+4. **Plan C epoch:** FR-P0 bake 후 재평가.
+5. **Stage 3:** same-origin only.
+6. **Stage 4 Dual-auth:** Epic 밖 · aud allowlist.
 
 ---
 
@@ -478,7 +584,9 @@ flowchart TD
 
 | 일시 (KST) | 내용 |
 |------------|------|
-| 2026-08-26 15:45 | **Phase 2 개정** — Plan A session 서버 판정 1순위 · epoch Plan C |
-| 2026-08-26 11:30 | Phase 2 통합 설계 — epoch 중심 (폐기) |
-| 2026-08-26 10:38 | Epic 착수 — 상위 git 선행 · N01-2/슬라이스 A 진행 |
-| 2026-08-25 17:40 | 초안 — staging refresh→probe×2 보고 기반 상위기획 · FR/성공기준/레이어맵 |
+| 2026-08-31 15:20 | **재검토** — FR-P0 기본 · fan-out 가속 · [0831-N01-1](./0831-N01-1-상위기획-[Apps_Main_auth_멀티앱_정합_구현후보].md) · S12a/b |
+| 2026-08-31 15:05 | 멀티앱 플랫폼 계약 §12.0 · FR-P1~P5 (fan-out P0이었음 → 개정) |
+| 2026-08-26 15:45 | Phase 2 Plan A 1순위 · epoch Plan C |
+| 2026-08-26 11:30 | Phase 2 epoch 중심 (폐기) |
+| 2026-08-26 10:38 | Epic 착수 |
+| 2026-08-25 17:40 | 초안 |

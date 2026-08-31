@@ -4,7 +4,7 @@
 |------|-----|
 | **문서 ID** | `0825-N01-3` |
 | **역할** | 3 — 구현현황 |
-| **상위** | [0825-N01-1](./0825-N01-1-상위기획-[BFF_session-probe_refresh_401_완전해결].md) · [0825-N01-2](./0825-N01-2-구현설계-[BFF_session-probe_refresh_401_완전해결].md) |
+| **상위** | [0825-N01-1](./0825-N01-1-상위기획-[BFF_session-probe_refresh_401_완전해결].md) · [0825-N01-2](./0825-N01-2-구현설계-[BFF_session-probe_refresh_401_완전해결].md) · [0831-N01-1 구현후보](./0831-N01-1-상위기획-[Apps_Main_auth_멀티앱_정합_구현후보].md) |
 | **시작** | 2026-08-26 |
 
 ---
@@ -13,31 +13,23 @@
 
 | 슬라이스 | FR | 상태 | 비고 |
 |----------|----|------|------|
-| N01-1 | — | ☑ | 상위 git · Phase 2 Plan A 개정 |
-| N01-2 | — | ☑ | 구현설계 (+Plan A §10~17) |
-| N01-0 | — | ☑ | CTO 전달 (session 서버 판정 1순위) |
-| **A** | FR-1 | ☑ | 확정 dead → probe 0 |
-| **B** | FR-2 | ☑ | known-dead / embed cold |
-| **C** | FR-3 | ☑ | transition pause |
-| **D** | FR-4 | ☑ | `ensureDesignAuthLadder` 래핑 |
-| **E** | FR-5·7 | ☑ | auth-ladder 계측 · 36 절 · vitest |
-| **F** | FR-6 | ☐ | quiet probe — 후속(선택) |
-| **45-1** | FR-11·12 | ☑ | pin · reconcile · logout bridge |
-| **G** | FR-8 | ☑ | BE `/auth/session` `main_sso_status` |
-| **H** | FR-9 | ☑ | FE server-status reconcile |
-| **I** | FR-10 | ☑ | reconcile pause · session gate in `fetchDesignAuthSession` · focus `force` when authenticated |
-| **L** | FR-13 | ☐ | 크로스탭 broadcast |
-| **M** | FR-14 | ☐ | quiet probe (선택) |
-| **N** | FR-15 | ☐ | back-channel logout (선택) |
-| **O** | FR-16 | — | epoch Plan C · **보류** |
+| N01-1·2·0 | — | ☑ | §12.0 재검토 · FR-P0 기본 · fan-out 가속 |
+| **0831-N01-1** | — | ☑ | 구현 후보 A~G · 채택=A+B |
+| **A–E** | FR-1~5·7 | ☑ | Phase 1 ladder |
+| **G~I** | FR-8~10 | ☑ | Design Plan A |
+| **45-1** | FR-11·12 | ☑ | pin · Design bridge 단건 |
+| **R** | **FR-P0** | ☐ | unknown 정합 (다음) |
+| **Q** | FR-P4 | ☐ | Docs Plan A+P0 |
+| **P** | FR-P1·P2 | ☐ | fan-out **선택** |
+| **L·M·N·O** | — | ☐/보류 | same-origin BC · quiet · M2M · epoch |
 
 ---
 
 ## 결정
 
-- Phase 2 **Plan A** — Design-only, **CTO 승인 불필요**, G~I 즉시 착수 가능.
-- epoch 쿠키(FR-16) — Plan A bake 후 재평가.
-- FR-4는 대형 리팩터 금지 — 외부 호출부만 ladder로 모음.
+- 기본 멀티앱 = Plan A + **FR-P0** ([0831-N01-1](./0831-N01-1-상위기획-[Apps_Main_auth_멀티앱_정합_구현후보].md)).
+- Main fan-out = **가속** (S12b), 필수 아님 (S12a).
+- Stage 3 ≠ 크로스앱.
 
 ---
 
@@ -45,17 +37,20 @@
 
 | 항목 | 결과 |
 |------|------|
-| vitest cookie-auth-recovery (+ session · SSO · embed-auth-flow) | ☑ 54 pass |
-| S1/S2 staging 수동 | ☐ |
-| S8–S11 (Plan A) | ☐ |
-| S4 HA 2노드 | ☐ |
+| vitest auth 묶음 | ☑ 80 pass (08-26) |
+| S1/S2 · S8–S11 | ☐ staging |
+| **S12a** (FR-P0) | ☐ |
+| **S12b** (fan-out) | ☐ 선택 |
+| **S13** | ☐ Docs 후 |
 
 ---
 
 ## 남은 일
 
-1. staging bake · S1/S2 · S8–S9 수동 (Plan A)
-2. (선택) L~N · FR-6 quiet probe
+1. Design FR-P0 (슬라이스 R) → S12a  
+2. Docs FR-P4 → S13  
+3. (선택) Main fan-out → S12b  
+4. Design Plan A staging bake S8–S11  
 
 ---
 
@@ -63,9 +58,10 @@
 
 | 일시 (KST) | 내용 |
 |------------|------|
-| 2026-08-26 16:10 | Plan A 검토 2차 — session fetch 중앙 reconcile gate · focus fresh session · vitest |
-| 2026-08-26 16:05 | Plan A 구현 — G~I 코드·테스트 · BE `main_sso_status` · FE reconcile |
-| 2026-08-26 15:45 | Plan A 개정 — G~I 재정의 · 45-1 ☑ · epoch 보류 |
-| 2026-08-26 11:35 | Phase 2 통합 설계 — epoch 중심 (폐기) |
-| 2026-08-26 10:45 | A–C 코드·테스트 완료 |
-| 2026-08-26 10:40 | 현황 골격 · A–C 착수 |
+| 2026-08-31 15:20 | 재검토 반영 · 슬라이스 R · 0831-N01-1 |
+| 2026-08-31 15:05 | 멀티앱 P/Q · S12/S13 |
+| 2026-08-26 17:25 | Plan A 검토 3차 |
+| 2026-08-26 16:10 | Plan A 검토 2차 |
+| 2026-08-26 16:05 | Plan A G~I |
+| 2026-08-26 15:45 | Plan A 개정 |
+| 2026-08-26 10:40 | 현황 골격 |
