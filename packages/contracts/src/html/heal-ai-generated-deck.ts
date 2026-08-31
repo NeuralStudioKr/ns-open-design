@@ -473,6 +473,173 @@ export function shrinkOverAllocatedRepeatGrid(html: string): string {
   return out;
 }
 
+const CARDISH_CLASS_RE =
+  /\b(?:card|pillar|col(?:umn)?s?|tile|panel|cell|box|metric|stat|kpi)\b/i;
+
+function styleHasFlexGrow(style: string): boolean {
+  if (/(?:^|;)\s*flex-grow\s*:\s*(?!0(?:\s|;|!|$))/i.test(style)) return true;
+  const flex = /(?:^|;)\s*flex\s*:\s*([^;]+)/i.exec(style);
+  if (!flex) return false;
+  const head = (flex[1] ?? '').trim().split(/\s+/)[0] ?? '';
+  if (/^(?:auto|none|initial|inherit|unset)$/i.test(head)) {
+    return /^auto$/i.test(head);
+  }
+  const grow = Number.parseFloat(head);
+  return Number.isFinite(grow) && grow > 0;
+}
+
+function styleLooksLikeFixedSidebar(style: string): boolean {
+  return /(?:^|;)\s*(?:width|flex-basis|min-width)\s*:\s*\d+(?:\.\d+)?(?:px|rem|em|ch)\b/i.test(
+    style,
+  );
+}
+
+function isFlexRowContainerStyle(style: string): boolean {
+  if (!/(?:^|;)\s*display\s*:\s*(?:inline-)?flex\b/i.test(style)) return false;
+  if (/(?:^|;)\s*flex-direction\s*:\s*column(?:-reverse)?\b/i.test(style)) return false;
+  return true;
+}
+
+function childLooksLikePeerCard(attrs: string, style: string): boolean {
+  if (styleLooksLikeFixedSidebar(style)) return false;
+  if (CARDISH_CLASS_RE.test(attrs)) return true;
+  // MiniMax often emits padded/background boxes without a card class.
+  if (/(?:^|;)\s*padding(?:-inline|-block|-left|-right)?\s*:/i.test(style)) return true;
+  if (
+    /(?:^|;)\s*background(?:-color)?\s*:/i.test(style)
+    && /(?:^|;)\s*(?:border|border-radius|gap)\s*:/i.test(style)
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function extractInlineStyle(attrs: string): string {
+  const m = /\bstyle\s*=\s*(["'])([\s\S]*?)\1/i.exec(attrs);
+  return m?.[2] ?? '';
+}
+
+function withFlexGrowOnOpenTag(openTag: string): string {
+  const styleMatch = /\bstyle\s*=\s*(["'])([\s\S]*?)\1/i.exec(openTag);
+  const growDecl = 'flex:1 1 0;min-width:0';
+  if (!styleMatch) {
+    return openTag.replace(/^<([a-zA-Z][\w-]*)\b/i, `<$1 style="${growDecl}"`);
+  }
+  const quote = styleMatch[1] ?? '"';
+  let style = (styleMatch[2] ?? '').trim().replace(/;?\s*$/, '');
+  style = style
+    .replace(/(?:^|;)\s*flex\s*:[^;]*/gi, '')
+    .replace(/(?:^|;)\s*flex-grow\s*:[^;]*/gi, '')
+    .replace(/(?:^|;)\s*min-width\s*:[^;]*/gi, '')
+    .replace(/^;+|;+$/g, '')
+    .trim();
+  const next = style ? `${style};${growDecl}` : growDecl;
+  return (
+    openTag.slice(0, styleMatch.index)
+    + `style=${quote}${next}${quote}`
+    + openTag.slice(styleMatch.index! + styleMatch[0].length)
+  );
+}
+
+type DirectChildOpen = {
+  absStart: number;
+  absEnd: number;
+  open: string;
+  attrs: string;
+  style: string;
+};
+
+function listDirectBlockChildOpens(
+  html: string,
+  innerStart: number,
+  innerEnd: number,
+): DirectChildOpen[] {
+  const inner = html.slice(innerStart, innerEnd);
+  const tokenRe = /<(\/?)([a-zA-Z][\w-]*)\b[^>]*(\/)?>/gi;
+  let depth = 0;
+  const opens: DirectChildOpen[] = [];
+  let tok: RegExpExecArray | null;
+  while ((tok = tokenRe.exec(inner)) !== null) {
+    const closing = tok[1] === '/';
+    const tagName = (tok[2] ?? '').toLowerCase();
+    const selfClose = tok[3] === '/' || /\/>\s*$/.test(tok[0] ?? '');
+    if (closing) {
+      depth = Math.max(0, depth - 1);
+      continue;
+    }
+    if (depth === 0 && GRID_BLOCK_CHILD_RE.test(tagName)) {
+      const absStart = innerStart + tok.index;
+      const absEnd = absStart + tok[0]!.length;
+      const attrs = tok[0]!.replace(/^<[a-zA-Z][\w-]*/i, '').replace(/\/?>$/, '');
+      opens.push({
+        absStart,
+        absEnd,
+        open: tok[0]!,
+        attrs,
+        style: extractInlineStyle(attrs),
+      });
+    }
+    if (!selfClose) depth += 1;
+  }
+  return opens;
+}
+
+/**
+ * 루프191 — Equalize peer cards in a flex row that has no flex-grow.
+ *
+ * MiniMax often emits `display:flex;gap:…` with 2–3 padded cards and no
+ * `flex:1`, so the cards sit left-cramped with a large empty band on the
+ * right (same visual failure mode as underfilled `1fr 1fr 1fr` grids).
+ * Give each peer card `flex:1 1 0;min-width:0`. Never invent missing cards.
+ * Skip columns, fixed-width sidebars, and non-card chrome rows.
+ */
+export function balanceUnderfilledFlexCardRow(html: string): string {
+  let out = String(html ?? '');
+  if (!out || !/display\s*:\s*(?:inline-)?flex/i.test(out)) return out;
+  const flexOpenRe =
+    /<(div|section|article|main|aside|ul|ol)\b([^>]*\bstyle\s*=\s*(["'])([^"']*)\3[^>]*)>/gi;
+  const parentPatches: Array<{ start: number; end: number; replacement: string }> = [];
+  const childPatches: Array<{ start: number; end: number; replacement: string }> = [];
+  let match: RegExpExecArray | null;
+  while ((match = flexOpenRe.exec(out)) !== null) {
+    const style = match[4] ?? '';
+    if (!isFlexRowContainerStyle(style)) continue;
+    const openTag = match[0] ?? '';
+    const tag = (match[1] ?? '').toLowerCase();
+    const start = match.index;
+    const openEnd = start + openTag.length;
+    const close = findSameTagClose(out, tag, openEnd);
+    if (!close) continue;
+    const children = listDirectBlockChildOpens(out, openEnd, close.closeStart);
+    if (children.length < 2 || children.length > 6) continue;
+    if (children.some((c) => styleHasFlexGrow(c.style))) continue;
+    if (children.some((c) => styleLooksLikeFixedSidebar(c.style))) continue;
+    if (!children.every((c) => childLooksLikePeerCard(c.attrs, c.style))) continue;
+    for (const child of children) {
+      childPatches.push({
+        start: child.absStart,
+        end: child.absEnd,
+        replacement: withFlexGrowOnOpenTag(child.open),
+      });
+    }
+    // Avoid shrink-wrap left band when the row itself is width:auto.
+    if (!/(?:^|;)\s*width\s*:/i.test(style)) {
+      const quote = match[3] ?? '"';
+      const nextStyle = `${style.replace(/;?\s*$/, '')};width:100%;min-width:0`;
+      const nextOpen = openTag.replace(
+        /\bstyle\s*=\s*(["'])[\s\S]*?\1/i,
+        `style=${quote}${nextStyle}${quote}`,
+      );
+      parentPatches.push({ start, end: openEnd, replacement: nextOpen });
+    }
+  }
+  const patches = [...parentPatches, ...childPatches].sort((a, b) => b.start - a.start);
+  for (const p of patches) {
+    out = `${out.slice(0, p.start)}${p.replacement}${out.slice(p.end)}`;
+  }
+  return out;
+}
+
 /**
  * Q4 — Strip AI mid-stream tag soup left after the model was cut off.
  *
@@ -766,6 +933,7 @@ export function healAiGeneratedDeckMarkup(html: string, brief?: string | null): 
   out = unnestHeadingBlockChildren(out);
   out = polishTruncatedInstructionTitles(out);
   out = shrinkOverAllocatedRepeatGrid(out);
+  out = balanceUnderfilledFlexCardRow(out);
   out = normalizeHangulParticleGaps(out);
   out = neutralizeUnanchoredTranslateYInSlideContent(out);
   out = scrubBriefLeakFromMetaSlots(out, brief);

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  balanceUnderfilledFlexCardRow,
   dropEmptyLikelyDeckSlides,
   healAiGeneratedDeckMarkup,
   polishTruncatedInstructionTitles,
@@ -156,6 +157,91 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
         '</div>',
       ].join('');
       expect(shrinkOverAllocatedRepeatGrid(html)).toBe(html);
+    });
+  });
+
+  describe('루프191 balanceUnderfilledFlexCardRow', () => {
+    it('gives flex-grow to peer cards in a row with no grow', () => {
+      const html = [
+        '<div style="display:flex;gap:28px">',
+        '<div class="card" style="padding:24px;background:#1a1a1a"><h3>미분</h3></div>',
+        '<div class="card" style="padding:24px;background:#1a1a1a"><h3>적분</h3></div>',
+        '</div>',
+      ].join('');
+      const out = balanceUnderfilledFlexCardRow(html);
+      expect(out).toMatch(/class="card"[^>]*flex:\s*1 1 0/i);
+      expect(out.match(/flex:\s*1 1 0/gi)?.length).toBe(2);
+      expect(out).toMatch(/display:flex;gap:28px;width:100%;min-width:0/i);
+      expect(out).toContain('미분');
+      expect(out).toContain('적분');
+    });
+
+    it('balances padded boxes without a card class', () => {
+      const html = [
+        '<div style="display:flex;gap:20px">',
+        '<div style="padding:20px;background:#222">A</div>',
+        '<div style="padding:20px;background:#222">B</div>',
+        '<div style="padding:20px;background:#222">C</div>',
+        '</div>',
+      ].join('');
+      const out = balanceUnderfilledFlexCardRow(html);
+      expect(out.match(/flex:\s*1 1 0/gi)?.length).toBe(3);
+    });
+
+    it('leaves flex columns alone', () => {
+      const html = [
+        '<div style="display:flex;flex-direction:column;gap:12px">',
+        '<div class="card" style="padding:16px">a</div>',
+        '<div class="card" style="padding:16px">b</div>',
+        '</div>',
+      ].join('');
+      expect(balanceUnderfilledFlexCardRow(html)).toBe(html);
+    });
+
+    it('leaves rows that already grow', () => {
+      const html = [
+        '<div style="display:flex;gap:16px">',
+        '<div class="card" style="flex:1;padding:16px">a</div>',
+        '<div class="card" style="flex:1;padding:16px">b</div>',
+        '</div>',
+      ].join('');
+      expect(balanceUnderfilledFlexCardRow(html)).toBe(html);
+    });
+
+    it('leaves fixed-width sidebar flex rows alone', () => {
+      const html = [
+        '<div style="display:flex;gap:24px">',
+        '<div style="width:280px;padding:16px">side</div>',
+        '<div class="card" style="padding:16px">main</div>',
+        '</div>',
+      ].join('');
+      expect(balanceUnderfilledFlexCardRow(html)).toBe(html);
+    });
+
+    it('leaves chrome label rows without card-like children alone', () => {
+      const html = [
+        '<div style="display:flex;gap:32px;align-items:center">',
+        '<div>Education · 2025</div>',
+        '<div>High School</div>',
+        '</div>',
+      ].join('');
+      expect(balanceUnderfilledFlexCardRow(html)).toBe(html);
+    });
+
+    it('heal pipeline balances a two-pillar flex row', () => {
+      const html = [
+        '<!doctype html><html><body>',
+        '<section class="slide"><h1>미적분 세 기둥</h1>',
+        '<div style="display:flex;gap:28px">',
+        '<div class="card" style="padding:24px"><h3>극한</h3><p>정의</p></div>',
+        '<div class="card" style="padding:24px"><h3>미분</h3><p>도함수</p></div>',
+        '</div></section>',
+        '</body></html>',
+      ].join('');
+      const out = healAiGeneratedDeckMarkup(html, '미적분');
+      expect(out.match(/flex:\s*1 1 0/gi)?.length).toBeGreaterThanOrEqual(2);
+      expect(out).toContain('극한');
+      expect(out).toContain('미분');
     });
   });
 

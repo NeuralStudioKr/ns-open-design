@@ -298,9 +298,18 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | heal/persist: bare leading title splash(`slide-title` 없음) · 3장 all-title outline short-draft | ☑ 루프188 |
 | QA/heal: 사용자 삼각함수 fixture pin + `AGENT_EXECUTION_STALLED` 전용 카피 회귀 + calc pure-mul px floor | ☑ 루프189 |
 | persist/preview: `1fr 1fr 1fr` 3열에 카드 2장만 남아 좌측 편중 · 빈 세 번째 트랙 (미적분 세 기둥) | ☑ 루프190 |
+| persist/preview: flex row에 grow 없이 카드 2–3장만 남아 좌측 편중 | ☑ 루프191 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프190 · underfilled equal-track grid)
+## 이번 루프 (루프191 · flex row card grow)
+
+- [x] `balanceUnderfilledFlexCardRow` — peer card에 `flex:1 1 0` · 행 `width:100%`
+- [x] column / 기존 grow / 고정폭 sidebar / chrome 라벨 행 보존
+- [x] heal 파이프라인 — grid shrink 직후
+- [x] heal-ai-generated-deck 회귀
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프190 · underfilled equal-track grid)
 
 - [x] `shrinkOverAllocatedRepeatGrid` — `repeat(N)`뿐 아니라 `1fr 1fr 1fr` / `minmax(0,1fr)` 동일 트랙도 자식 수에 맞게 축소
 - [x] mixed `1.3fr 1fr` 사이드바는 그대로
