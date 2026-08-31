@@ -557,5 +557,12 @@ describe('pickPluginPreviewHtmlPath', () => {
     expect(pickPluginPreviewHtmlPath(manifest)).toBe('example.html');
     expect(existsSync(fileURLToPath(exampleUrl))).toBe(true);
     expect(existsSync(fileURLToPath(indexUrl))).toBe(false);
+    const helixUrl = new URL(
+      '../../../design-templates/replit-deck/examples/example-helix.html',
+      import.meta.url,
+    );
+    expect(readFileSync(fileURLToPath(exampleUrl), 'utf8')).toBe(
+      readFileSync(fileURLToPath(helixUrl), 'utf8'),
+    );
   });
 });

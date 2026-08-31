@@ -7,6 +7,14 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-08-31 현재 판단 · 최신 루프
 
+### 루프278 — K/기둥 카/열네째 leftover · 공식 Replit preview 실경로
+
+루프274는 A–J / 열세째까지 leftover로 본다. MiniMax는 `K`/`기둥 카`/`열네째`로 빠진 기둥을 채워 3열이 유지된다. K·카·열네째만 leftover. `스무째`/`기둥 타`/`기둥 L`과 index+추가 본문은 유지. `열다섯째`는 prefix `열` + leftover `다섯째`라 keep fixture가 아님. 카피 발명 없음.
+
+공식 `example-replit-deck` `/preview`가 helix 커버를 주고 `[REPLACE]` 시드를 주지 않는 실경로 스펙을 고정. catalog `example.html`은 `design-templates` helix와 byte-identical.
+
+검증: contracts heal-ai-generated-deck 루프278 · deck-framework-compact · template-visual-kit helix sync · daemon plugins-preview-replit-bundled.
+
 ### 루프277 — nested section/article card flatten
 
 루프270은 `<div class="card">`만 flatten. MiniMax `<section|article class="card|panel">` 중첩도 same-tag flatten. Motif 보호 · idempotent. 카피 발명 없음.
@@ -571,7 +579,7 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 
 ### 다음 루프 후보 (2026-08-31 EOD 기준)
 
-- **후보 (루프275):** leftover 문자 `K`/`열네째`(의도적 제외) 또는 equal-track residual. leftover extra-copy·stub는 주제 단어 목록이 아님(루프259·265).
+- **후보 (루프279):** leftover 문자 `L`/`스무째`(의도적 제외) 또는 equal-track residual. leftover extra-copy·stub는 주제 단어 목록이 아님(루프259·265). `열다섯째`는 prefix `열` + leftover `다섯째`라 별도 keep이 아님.
 - **인접 (루프206 밖):** `srcdoc-deck-bridge-nested-slides` native `#deck-next` 픽스처가 host next 후 `active:2`를 보고함 (transform/dot는 1). staging에서 이미 red — 이번 CSS 변경과 무관.
 - **후보 C (3열 residual):** `G` 이후 알파벳, `열한째` 이상 서수, 또는 3장 280 vs 900(비율 >2.05) leftover. 루프261–262이 E–F/바사/여섯째–열째와 3열 400 vs 800을 닫음.
 - **후보 B (예약 · 규모 큼):** contracts 안 `var(--pad, calc(px * n))` / `env(safe-area-inset-top, calc(...))` fallback red-spec 39건. fallback 표현을 card threshold 로 승격하는 heuristic — 별도 루프 필요.
@@ -949,6 +957,8 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | persist/preview: G/기둥 아/열한째 leftover 인덱스가 3열을 붙잡아 빈 띠 | ☑ 루프266 |
 | persist/preview: H/기둥 자/열두째 leftover 인덱스가 3열을 붙잡아 빈 띠 | ☑ 루프272 |
 | persist/preview: J/기둥 차/열세째 leftover 인덱스가 3열을 붙잡아 빈 띠 | ☑ 루프274 |
+| persist/preview: K/기둥 카/열네째 leftover 인덱스가 3열을 붙잡아 빈 띠 | ☑ 루프278 |
+| preview: 공식 example-replit-deck GET이 helix를 주고 시드를 주지 않음 | ☑ 루프278 |
 | persist: substance-rich replacement가 artifact_regression 오탐 | ☑ 루프273 |
 | 생성 마법사: Replit Deck 썸네일이 흰 시드/미존재 index | ☑ example.html |
 | preview: stale 매니페스트가 assets/template.html 시드를 example.html보다 먼저 | ☑ 루프274 |
@@ -963,17 +973,21 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | contracts pretest: exactOptionalPropertyTypes TS2379 봉쇄 | ☑ 루프263 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프275–277 · thin top-up host · Retry 톤 · section card flatten)
+## 이번 루프 (루프278 · K/열네째 인덱스 + 공식 Replit preview 실경로)
+
+- [x] leftover index — K · 카 · 열네째
+- [x] `스무째` / `기둥 타` / `기둥 L` · index+추가 본문 유지
+- [x] heal-ai-generated-deck 루프278 · deck-framework-compact
+- [x] 공식 example-replit-deck `/preview` helix · helix byte-sync
+- [x] daemon plugins-preview-replit-bundled · template-visual-kit
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프275–277 · thin top-up host · Retry 톤 · section card flatten)
 
 - [x] solo title-only / zero-body prior → thin top-up incomplete
 - [x] thin-prior 배너 = 다시 시도 톤 (이어서 금지)
 - [x] nested section/article/aside cardish flatten
 - [x] deck-html-content · project-error-messages · heal-nested-duplicate-card-flatten · canvas-slide-launch
-
-## 직전 루프 (루프273 · substance-rich replacement bypass)
-
-- [x] findClientArtifactRegression substance-rich bypass (4+ slides)
-- [x] project-view-substance-rich-replacement
 
 ## 직전 루프 (루프274 · J/열세째 인덱스 + stale preview example.html)
 
