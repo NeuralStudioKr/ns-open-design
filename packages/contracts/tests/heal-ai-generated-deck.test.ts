@@ -2133,14 +2133,13 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
       expect(dropEmptyLeftoverPeerCardsInAllocatedRows(html, '미적분')).toBe(html);
     });
 
-    it('keeps 스무째 / 기둥 타 because those indexes are out of leftover range (루프278)', () => {
-      // `열다섯째` is not a keep fixture: prefix `열` + leftover ordinal
-      // `다섯째` already matches the index leftover regex.
+    it('keeps 스무 번째 / 기둥 타 — not treated as empty column numbers yet (루프278/284)', () => {
+      // `열다섯째` already reads as column `열` + ordinal `다섯째`.
       const twentieth = [
         '<div style="display:flex;gap:28px">',
         '<div class="card"><h3>하나</h3></div>',
         '<div class="card"><h3>다음</h3></div>',
-        '<div class="card"><h3>스무째</h3></div>',
+        '<div class="card"><h3>스무 번째</h3></div>',
         '</div>',
       ].join('');
       const ta = [
@@ -2317,7 +2316,7 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
       expect(dropEmptyLeftoverPeerCardsInAllocatedRows(html, '발표')).toBe(html);
     });
 
-    it('drops a 기둥 K leftover third card (루프278)', () => {
+    it('drops a third card whose only text is the column label 기둥 K (루프278)', () => {
       const html = [
         '<div style="display:flex;gap:28px">',
         '<div class="card" style="padding:24px"><h3>하나</h3><p>요지</p></div>',
@@ -2331,7 +2330,7 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
       expect(out).toContain('하나');
     });
 
-    it('drops a 열네째 leftover third card (루프278)', () => {
+    it('drops a third card whose only text is the ordinal 열네째 (루프278)', () => {
       const html = [
         '<div style="display:flex;gap:28px">',
         '<div class="card"><h3>하나</h3></div>',
@@ -2344,7 +2343,7 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
       expect(out).not.toContain('열네째');
     });
 
-    it('drops a 기둥 카 leftover third card (루프278)', () => {
+    it('drops a third card whose only text is the column label 기둥 카 (루프278)', () => {
       const html = [
         '<div style="display:flex;gap:28px">',
         '<div class="card"><h3>하나</h3></div>',
@@ -2357,7 +2356,7 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
       expect(out).not.toContain('기둥 카');
     });
 
-    it('keeps leftover-index cards that still have extra visible text (루프278)', () => {
+    it('keeps 열네째 실카피 — a column number plus real body copy (루프278)', () => {
       const html = [
         '<div style="display:flex;gap:28px">',
         '<div class="card"><h3>하나</h3></div>',
@@ -2368,7 +2367,7 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
       expect(dropEmptyLeftoverPeerCardsInAllocatedRows(html, '발표')).toBe(html);
     });
 
-    it('keeps 기둥 L because that index is out of leftover range (루프278)', () => {
+    it('keeps 기둥 L — not treated as an empty column number yet (루프278/284)', () => {
       const html = [
         '<div style="display:flex;gap:28px">',
         '<div class="card"><h3>하나</h3></div>',
@@ -2379,7 +2378,7 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
       expect(dropEmptyLeftoverPeerCardsInAllocatedRows(html, '발표')).toBe(html);
     });
 
-    it('pipeline heals a 기둥 카 leftover without inventing topic copy (루프278)', () => {
+    it('pipeline removes a 기둥 카 column-number card without inventing copy (루프278)', () => {
       const html = [
         '<section class="slide"><h1>세 가지 포인트</h1>',
         '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:24px">',

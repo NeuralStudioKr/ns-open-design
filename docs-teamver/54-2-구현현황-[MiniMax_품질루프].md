@@ -5,7 +5,26 @@
 
 MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드에 가드가 있고 빨간 스펙이 초록으로 돌아간 경우만 표시합니다.
 
+### 빈 칸 번호 카드 (코드명 leftover)
+
+3열을 맞추려고 모델이 넣은, **칸 번호만 있는 카드**. 슬라이드에 쓸 제목·본문이 아닙니다.
+
+| 말 | 뜻 |
+|---|---|
+| 제거 | 카드 전체가 칸 번호뿐이면 그 칸을 지움. 예: `열네째`, `기둥 카`, `PILLAR 3` |
+| 유지 | 번호 뒤에 본문이 있으면 둠. 예: `열네째 실카피`. KPI `10%`, 단원 `UNIT 3`도 둠 |
+| 아직 번호로 안 봄 | heal이 아직 빈 칸으로 분류하지 않는 다음 라벨. 테스트 전용. 예: 열 라벨 `기둥 L` |
+| 열 라벨 | 모델이 붙이는 접두(`기둥` / `PILLAR` / `Phase`) + 글자. `기둥`은 발표 용어가 아니라 칸 이름 |
+
+서수 유지 픽스처는 `스무 번째`. `열다섯째`는 `열`(칸) + `다섯째`와 겹쳐 이미 빈 칸 번호로 보입니다. extra-copy·stub는 주제 단어 목록이 아닙니다(루프259·265).
+
 ## 2026-08-31 현재 판단 · 최신 루프
+
+### 루프284 — leftover 용어를 「빈 칸 번호 카드」로 정리
+
+문서·주석·테스트 제목이 `leftover 문자 L/스무째`처럼 읽혀 제품 카피로 오해됨. 검출 범위는 그대로(A–K · 가…카 · 첫째…열네째). 유지 픽스처만 어색한 `스무째` → `스무 번째`.
+
+검증: contracts heal-ai-generated-deck 루프278/284.
 
 ### 루프283 — substance-rich prior top-up noop = calm skipped-noop
 
@@ -46,9 +65,9 @@ letterbox `clientWidth/n` 추측 금지. authored/computed step 또는 `-1` → 
 
 검증: `project-view-substance-rich-replacement` 루프279 · persist-result · message-merge · teamver-project-error-messages · project-view-message-load.
 
-### 루프278 — K/기둥 카/열네째 leftover · 공식 Replit preview 실경로
+### 루프278 — 칸 번호 K · 열 라벨 카 · 열네째 빈 카드 · 공식 Replit preview 실경로
 
-루프274는 A–J / 열세째까지 leftover로 본다. MiniMax는 `K`/`기둥 카`/`열네째`로 빠진 기둥을 채워 3열이 유지된다. K·카·열네째만 leftover. `스무째`/`기둥 타`/`기둥 L`과 index+추가 본문은 유지. `열다섯째`는 prefix `열` + leftover `다섯째`라 keep fixture가 아님. 카피 발명 없음.
+루프274까지는 A–J / 열세째까지만 빈 칸 번호로 본다. 모델이 빠진 3열을 `K` / `기둥 카` / `열네째`만으로 채워 빈 띠가 남는다. 그 세 제목만 제거. `스무 번째` / `기둥 타` / `기둥 L`과 번호+본문은 유지. 카피 발명 없음.
 
 공식 `example-replit-deck` `/preview`가 helix 커버를 주고 `[REPLACE]` 시드를 주지 않는 실경로 스펙을 고정. catalog `example.html`은 `design-templates` helix와 byte-identical.
 
@@ -618,7 +637,7 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 
 ### 다음 루프 후보 (2026-08-31 EOD 기준)
 
-- **후보 (루프279):** leftover 문자 `L`/`스무째`(의도적 제외) 또는 equal-track residual. leftover extra-copy·stub는 주제 단어 목록이 아님(루프259·265). `열다섯째`는 prefix `열` + leftover `다섯째`라 별도 keep이 아님.
+- **후보 (루프285):** 모델이 빈 3열을 다음 열 라벨(`기둥 L`)로 채우면 그때 빈 칸 번호에 넣는다. `스무 번째`는 아직 번호로 보지 않는 서수 픽스처. equal-track residual도 후보. extra-copy·stub는 주제 단어 목록이 아님(루프259·265).
 - **인접 (루프206 밖):** `srcdoc-deck-bridge-nested-slides` native `#deck-next` 픽스처가 host next 후 `active:2`를 보고함 (transform/dot는 1). staging에서 이미 red — 이번 CSS 변경과 무관.
 - **후보 C (3열 residual):** `G` 이후 알파벳, `열한째` 이상 서수, 또는 3장 280 vs 900(비율 >2.05) leftover. 루프261–262이 E–F/바사/여섯째–열째와 3열 400 vs 800을 닫음.
 - **후보 B (예약 · 규모 큼):** contracts 안 `var(--pad, calc(px * n))` / `env(safe-area-inset-top, calc(...))` fallback red-spec 39건. fallback 표현을 card threshold 로 승격하는 heuristic — 별도 루프 필요.
@@ -996,7 +1015,8 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | persist/preview: G/기둥 아/열한째 leftover 인덱스가 3열을 붙잡아 빈 띠 | ☑ 루프266 |
 | persist/preview: H/기둥 자/열두째 leftover 인덱스가 3열을 붙잡아 빈 띠 | ☑ 루프272 |
 | persist/preview: J/기둥 차/열세째 leftover 인덱스가 3열을 붙잡아 빈 띠 | ☑ 루프274 |
-| persist/preview: K/기둥 카/열네째 leftover 인덱스가 3열을 붙잡아 빈 띠 | ☑ 루프278 |
+| persist/preview: 칸 번호만 있는 3열 카드(K · 열 라벨 카 · 열네째) | ☑ 루프278 |
+| docs: leftover 용어를 「빈 칸 번호 카드」로 정리 | ☑ 루프284 |
 | preview: 공식 example-replit-deck GET이 helix를 주고 시드를 주지 않음 | ☑ 루프278 |
 | persist: substance-rich replacement가 artifact_regression 오탐 | ☑ 루프273 |
 | persist: substance-rich 8→5가 slide-count regression 오탐 | ☑ 루프279 |
@@ -1018,7 +1038,14 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | contracts pretest: exactOptionalPropertyTypes TS2379 봉쇄 | ☑ 루프263 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프281–283 · transform active · pagination .active · substance-rich top-up noop)
+## 이번 루프 (루프284 · leftover 용어를 「빈 칸 번호 카드」로 정리)
+
+- [x] 54-2 용어표 · 주석 · 테스트 제목을 제품 카피가 아닌 칸 번호 말로 바꿈
+- [x] 유지 픽스처 `스무째` → `스무 번째`
+- [x] 검출 범위 유지 (A–K · 가…카 · 첫째…열네째)
+- [x] heal-ai-generated-deck 루프278/284
+
+## 직전 루프 (루프281–283 · transform active · pagination .active · substance-rich top-up noop)
 
 - [x] transformTrackFallbackStepPx · activeIndexFromTransform -1 (no clientWidth/n)
 - [x] activeIndexFromPagination exact .active 우선
@@ -1039,10 +1066,10 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 - [x] slide-count 배너 ≠ 짧은 초안
 - [x] project-view-substance-rich-replacement · persist-result · message-merge · error-messages
 
-## 직전 루프 (루프278 · K/열네째 인덱스 + 공식 Replit preview 실경로)
+## 직전 루프 (루프278 · 칸 번호 K/카/열네째 + 공식 Replit preview 실경로)
 
-- [x] leftover index — K · 카 · 열네째
-- [x] `스무째` / `기둥 타` / `기둥 L` · index+추가 본문 유지
+- [x] 빈 칸 번호 — K · 열 라벨 카 · 열네째
+- [x] `스무 번째` / `기둥 타` / `기둥 L` · 번호+본문 유지
 - [x] heal-ai-generated-deck 루프278 · deck-framework-compact
 - [x] 공식 example-replit-deck `/preview` helix · helix byte-sync
 - [x] daemon plugins-preview-replit-bundled · template-visual-kit
