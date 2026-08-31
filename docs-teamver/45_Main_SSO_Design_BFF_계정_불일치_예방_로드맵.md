@@ -289,9 +289,24 @@ Stage 0 코드베이스에서 **예방(“애초에 안 생기게”) 계층이 
 
 **관련 문서:**
 - [45-1 구현설계 — Stage 1·2](./45-1-구현설계-Main_SSO_Design_계정_정합_Stage1-2.md) · [45-1 구현현황](./45-1-구현현황-Main_SSO_Design_계정_정합_Stage1-2.md)
+- [0825-N01-1 §12.0 Apps↔Main 플랫폼 계약](./0825-N01-1-상위기획-[BFF_session-probe_refresh_401_완전해결].md) — **멀티앱 fan-out · Plan A 복제 · Stage 3≠크로스앱**
 - [41 §6.3](./41_Design_Drive_인증_계약_권고.md#63-main-sso--design-계정-불일치-main_sso_user_mismatch) — 계약 SSOT
 - [39_10 §1 F행](./39_10_HA_세션쿠키_경합_해결.md) — HA 원인 분해에서 F열
 - [00 2026-07-21](./00_구현_내역_누적.md#2026-07-21--drive-main-sso--design-계정-불일치--opaque-403-제거) — 구현 내역
+
+---
+
+## 10b. 멀티앱 확장 (2026-08-31 · 재검토)
+
+| 항목 | 규칙 |
+|------|------|
+| Plan A | 각 App BFF `main_sso_status` — Design reference |
+| **기본 logout 정합** | `unknown` ∧ BFF live → **앱 로컬 logout** (FR-P0) — Main fan-out 불필요 |
+| Main fan-out | **가속(선택)** — 즉시성 UX |
+| Stage 3 broadcast | **동일 origin만** |
+| Stage 4 Dual-auth | `aud` allowlist |
+
+후보 비교·채택: [0831-N01-1](./0831-N01-1-상위기획-[Apps_Main_auth_멀티앱_정합_구현후보].md) · Epic: [0825-N01-1 §12.0](./0825-N01-1-상위기획-[BFF_session-probe_refresh_401_완전해결].md).
 
 ---
 
@@ -308,4 +323,6 @@ Stage 0 코드베이스에서 **예방(“애초에 안 생기게”) 계층이 
 
 | 날짜 | 내용 |
 |---|---|
+| 2026-08-31 | **재검토** — FR-P0 기본 · fan-out 가속 · [0831-N01-1](./0831-N01-1-상위기획-[Apps_Main_auth_멀티앱_정합_구현후보].md) |
+| 2026-08-31 | 멀티앱 §10b 초안 (fan-out P0 → 개정) |
 | 2026-07-21 | 문서 신설. Stage 0 배포 완료 · Stage 1–4 로드맵 제안. |

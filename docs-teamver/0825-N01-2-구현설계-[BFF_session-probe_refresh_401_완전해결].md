@@ -6,7 +6,7 @@
 | **역할** | 2 — 구현설계 |
 | **상위** | [0825-N01-1](./0825-N01-1-상위기획-[BFF_session-probe_refresh_401_완전해결].md) |
 | **작성일** | 2026-08-26 |
-| **범위** | Phase 1: FR-1~7 (☑) · **Phase 2: FR-8~16 (Plan A 우선 · Design-only)** |
+| **범위** | Phase 1: FR-1~7 (☑) · **Phase 2: FR-8~16 · Phase 2b FR-P\*** (Plan A Design reference + 멀티앱 플랫폼) |
 
 ---
 
@@ -132,7 +132,10 @@ JSON에서 `code` 또는 `detail`(string) / `detail.code` 추출. 실패 시 `""
 
 ---
 
-## 10. Phase 2 — Plan A: Session 서버 판정 (FR-8~10)
+## 10. Phase 2 — Plan A: Session 서버 판정 (FR-8~10 · Design **reference**)
+
+**플랫폼 계약·N앱 복제·Main fan-out:** [N01-1 §12.0](./0825-N01-1-상위기획-[BFF_session-probe_refresh_401_완전해결].md) · 본 문서 **§15b**.  
+아래 파일 맵은 Design 첫 구현체. Docs/후속은 동형 포트(FR-P4).
 
 ### 10.1 레포·파일 맵
 
@@ -142,15 +145,16 @@ JSON에서 `code` 또는 `detail`(string) / `detail.code` 추출. 실패 시 `""
 | | `deploy/teamver/be/app/routers/auth.py` | FR-8 | `_bff_auth_session_response` · bootstrap view에 `main_sso_status` |
 | | `deploy/teamver/be/app/auth/bff_session.py` | FR-8 | `bff_session_public_view` 확장 (선택) |
 | | `deploy/teamver/be/tests/test_main_sso_session_status.py` (신규) | FR-8 | match/mismatch/unknown |
-| **ns-open-design FE** | `apps/web/src/teamver/designBffClient.ts` | FR-8·9 | `DesignAuthSession.mainSsoStatus` 타입 |
+| **ns-open-design FE** | `apps/web/src/teamver/designBffClient.ts` | FR-8·9 | `DesignAuthSession.mainSsoStatus` · **session fetch 중앙 gate** |
 | | `apps/web/src/teamver/teamverMainSsoUserReconcile.ts` | FR-9 | `mainSsoStatus === "mismatch"` 우선 |
 | | `apps/web/src/teamver/teamverMainSsoUserProbe.ts` | FR-9 | cookie probe → **fallback only** |
-| | `apps/web/src/teamver/useTeamverEmbed.ts` | FR-10 | focus: session → reconcile → ladder |
+| | `apps/web/src/teamver/useTeamverEmbed.ts` · `teamverEmbedAuthFlow.ts` | FR-10 | focus: session → reconcile · authenticated `force` |
 | | `apps/web/tests/teamver-main-sso-user-probe.test.ts` | FR-9 | server status 우선 케이스 |
 
-**이미 완료 (45-1 · 변경 없음):** pin · reconcile hook · `/auth/logout-bridge` · Main FE iframe bridge.
+**이미 완료 (45-1):** pin · reconcile hook · Design `/auth/logout-bridge` · Main FE Design-only iframe (**Phase 2b에서 레지스트리화**).
 
-**건드리지 않음 (Plan A):** Main BE epoch · readable cross-app cookie · Drive dual-auth.
+**건드리지 않음 (Plan A Design):** Main BE epoch · readable cross-app cookie · Drive dual-auth.  
+**Phase 2b에서 건드림:** Main FE logout fan-out · Docs Plan A.
 
 ---
 
@@ -241,7 +245,9 @@ visibilitychange / pageshow (authenticated embed)
 
 ## 14. 슬라이스 L — 크로스탭 broadcast (FR-13 · P1)
 
-[기존 §15 동일] `main-user-changed` in `teamverEmbedBroadcast.ts`. reconcile mismatch **전** post.
+`main-user-changed` in `teamverEmbedBroadcast.ts`. reconcile mismatch **전** post.
+
+**범위:** **동일 앱 origin 탭만.** Design↔Docs 등 크로스앱은 BroadcastChannel로 정렬하지 않는다 — [N01-1 §12.0.4](./0825-N01-1-상위기획-[BFF_session-probe_refresh_401_완전해결].md). 크로스앱 SSOT = Main fan-out + 앱별 Plan A.
 
 ---
 
@@ -249,22 +255,57 @@ visibilitychange / pageshow (authenticated embed)
 
 ### 15.1 quiet probe (FR-14 · M)
 
-session-probe 401에 `code` · `?quiet=1` → 204 (FE negative-cache 전용).
+session-probe 401에 `code` · `?quiet=1` → 204 (FE negative-cache 전용). **앱 공통 계약**으로 복제.
 
-### 15.2 back-channel logout (FR-15 · N)
+### 15.2 back-channel logout (FR-15 · N · **레지스트리**)
 
 ```text
 Main POST /auth/logout
-  → M2M POST Design /internal/auth/main-logout
-Design: invalidate BFF sessions for user_hash (best-effort)
-+ 기존 iframe bridge (45-1 ☑)
+  → for app in registry:
+       M2M POST {app}/internal/auth/main-logout { user_hash }
+       + iframe {app}/auth/logout-bridge
+  → 각 App: invalidate BFF for user_hash (best-effort)
 ```
 
-OIDC back-channel 동형. **Plan A보다 후순위.**
+**금지:** Design URL 단건 hardcode를 N개로 복제. fan-out은 **선택 가속**일 때만 레지스트리 단일 표 ([0831-N01-1](./0831-N01-1-상위기획-[Apps_Main_auth_멀티앱_정합_구현후보].md)).
+
+OIDC back-channel 동형. **기본 orphan 정리는 FR-P0 · fan-out/M2M은 후순위.**
 
 ### 15.3 epoch 쿠키 (FR-16 · O · Plan C · 보류)
 
-readable `teamver_auth_epoch` — **Plan A bake 후 S8–S9 잔여 레이스 있을 때만** 재개.
+readable `teamver_auth_epoch` — **FR-P0 bake 후** 잔여 레이스 있을 때만 재개.
+
+---
+
+## 15b. Phase 2b — 멀티앱 (슬라이스 R·Q · 선택 P)
+
+상위 SSOT: [N01-1 §12.0](./0825-N01-1-상위기획-[BFF_session-probe_refresh_401_완전해결].md) · 후보 비교: [0831-N01-1](./0831-N01-1-상위기획-[Apps_Main_auth_멀티앱_정합_구현후보].md).
+
+**채택:** Plan A + **FR-P0 unknown 정합** = 기본. Main fan-out = 가속.
+
+### 15b.1 슬라이스 R — FR-P0 unknown 정합 (P0 · Design 먼저)
+
+| 파일 (예상) | 변경 |
+|-------------|------|
+| `designBffClient` / reconcile / embed refresh | `mainSsoStatus === "unknown"` ∧ embed authenticated(또는 BFF cookie) → `pause` + `POST /auth/logout` + UI unauth · refresh/probe 0 |
+| vitest | logout 후 focus → session unknown → local logout · refresh 0 |
+
+**성공:** S12a.
+
+### 15b.2 슬라이스 Q — Docs Plan A + FR-P0 포트 (FR-P4)
+
+Design G~I·R을 Docs에 동형 포트. onboarding = §12.0.2 표 + FR-P0.
+
+### 15b.3 슬라이스 P — Main fan-out (FR-P1·P2 · **선택**)
+
+| 파일 (예상) | 변경 |
+|-------------|------|
+| `aiAppLaunchUrls` / registry | `{ origin, logoutBridgePath }[]` |
+| `clearDesignBffSessionOnLogout.ts` | 일반화 · Design+Docs 순회 — **S12b 요구 시에만** |
+
+### 15b.4 FR-P5 / M2M
+
+mismatch recovery 형제 bridge · M2M — **선택**. FR-P0로 대부분 대체.
 
 ---
 
@@ -274,9 +315,13 @@ readable `teamver_auth_epoch` — **Plan A bake 후 S8–S9 잔여 레이스 있
 |----------|--------|------|
 | G | `test_main_sso_session_status.py` | session JSON DevTools |
 | H·I | probe + embed focus vitest | S8·S9 |
-| L | broadcast echo-drop | S10 |
+| L | broadcast echo-drop | S10 (**동일 origin**) |
+| P | Main FE unit (registry) | **S12b (선택)** |
+| **R** | unknown 정합 vitest | **S12a** |
+| Q | Docs 동형 테스트 | **S13** |
 
-**배포:** Design BE(G) → Design FE(H·I) → staging S8–S11. **Main 배포 불필요.**
+**배포:** Design BE(G) → FE(H·I) → **R(FR-P0)** → S12a → Q → S13.  
+**선택:** P → S12b.
 
 ---
 
@@ -284,10 +329,12 @@ readable `teamver_auth_epoch` — **Plan A bake 후 S8–S9 잔여 레이스 있
 
 | 위험 | 완화 |
 |------|------|
-| session fetch 추가 latency | focus에만 · coalesce · authenticated embed |
-| `unknown` 과다 | Main cookie 없으면 Stage 0 유지 — 회귀 없음 |
-| mismatch 오탐 | Drive gate와 동일 `main_sso_user_mismatches_bff` SSOT |
-| session-first가 boot 깨뜨림 | boot ladder 경로는 별도 — 회귀 vitest |
+| session fetch latency | focus · coalesce · authenticated only |
+| `unknown` 과다 | Main cookie 없으면 Stage 0 · FR-P0는 **hadLiveBff**일 때만 |
+| mismatch 오탐 | Drive gate와 동일 SSOT |
+| **fan-out을 필수로 오해** | [0831-N01-1](./0831-N01-1-상위기획-[Apps_Main_auth_멀티앱_정합_구현후보].md) — 가속만 |
+| Stage 3을 크로스앱으로 오해 | §14 · N01-1 §12.0.4 |
+| Stage 4 aud 단일 | allowlist |
 
 ---
 
@@ -295,7 +342,9 @@ readable `teamver_auth_epoch` — **Plan A bake 후 S8–S9 잔여 레이스 있
 
 | 일시 (KST) | 내용 |
 |------------|------|
-| 2026-08-26 15:45 | **Phase 2 개정** — Plan A session 서버 판정 · §10~17 재작성 · epoch §15.3 보류 |
-| 2026-08-26 11:35 | Phase 2 통합 — epoch 중심 (폐기) |
-| 2026-08-26 11:00 | 슬라이스 D/E — ensureDesignAuthLadder · 계측 · FR-7 |
-| 2026-08-26 10:40 | 초안 — FR-1~3 |
+| 2026-08-31 15:20 | 재검토 — §15b 슬라이스 R(FR-P0) · P=가속 · [0831-N01-1](./0831-N01-1-상위기획-[Apps_Main_auth_멀티앱_정합_구현후보].md) |
+| 2026-08-31 15:05 | Phase 2b §15b · Plan B 레지스트리 · L same-origin |
+| 2026-08-26 15:45 | Phase 2 Plan A §10~17 · epoch 보류 |
+| 2026-08-26 11:35 | Phase 2 epoch 중심 (폐기) |
+| 2026-08-26 11:00 | 슬라이스 D/E |
+| 2026-08-26 10:40 | 초안 FR-1~3 |
