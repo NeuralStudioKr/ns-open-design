@@ -153,6 +153,34 @@ describe("deck-html-content", () => {
     expect(deckSlideHeadingsLookLikeFailedGenerate(html)).toBe(false);
   });
 
+  it("flags kami-style topic+counter empty shells as failed generate (루프179)", () => {
+    const kamiShell =
+      '<!doctype html><html lang="ko"><body>'
+      + '<section class="slide"><h1>삼각함수</h1>'
+      + '<p class="tagline">삼각함수에 대해서 설명하는 피피티 만들어줘.</p></section>'
+      + '<section class="slide"><h2>삼각함수 · 3</h2></section>'
+      + '<section class="slide"><h2>삼각함수 · 4</h2><ul><li></li></ul></section>'
+      + '<section class="slide"><h2>삼각함수 · 5</h2></section>'
+      + "</body></html>";
+    expect(deckSlideHeadingsLookLikeFailedGenerate(kamiShell)).toBe(true);
+    expect(isPersistableShortDeckDraft(kamiShell)).toBe(false);
+    const filledTopic =
+      '<!doctype html><html lang="ko"><body>'
+      + '<section class="slide"><h1>삼각함수</h1><p>각과 비를 다룹니다.</p></section>'
+      + '<section class="slide"><h2>삼각함수 · 2</h2><p>사인 코사인의 정의.</p></section>'
+      + '<section class="slide"><h2>삼각함수 · 3</h2><p>단위원과 각도.</p></section>'
+      + "</body></html>";
+    expect(deckSlideHeadingsLookLikeFailedGenerate(filledTopic)).toBe(false);
+    expect(isPersistableShortDeckDraft(filledTopic)).toBe(true);
+    const genericSlideLabels =
+      '<!doctype html><html lang="ko"><body>'
+      + '<section class="slide"><h1>시장 기회</h1></section>'
+      + '<section class="slide"><h2>슬라이드 2</h2></section>'
+      + '<section class="slide"><h2>슬라이드 3</h2></section>'
+      + "</body></html>";
+    expect(deckSlideHeadingsLookLikeFailedGenerate(genericSlideLabels)).toBe(false);
+  });
+
   it("flags instruction-copy and template-marketing cover headings", () => {
     const parrot =
       "<!doctype html><html lang=\"ko\"><body>"

@@ -640,6 +640,9 @@ describe("ProjectView message loading", () => {
     expect(autoOpenBlock).toContain("const persistResult = await persistArtifact(");
     expect(autoOpenBlock).toContain("terminalArtifactPersistFailed = shouldFailRunForArtifactPersistResult(");
     expect(autoOpenBlock).toContain("isReusableSameTurnDeckWrite(");
+    // 루프179 — recover/reuse refuse low-substance topic+counter shells
+    expect(source).toContain("isLowSubstanceSlideDeckArtifact(trimmed, brief, deckTitle || '슬라이드')");
+
     expect(autoOpenBlock).toContain("diskPeek");
     expect(autoOpenBlock).toContain("healBrief: runVisiblePromptRef.current || ''");
     expect(autoOpenBlock).toContain("healTitle: project.name || '슬라이드'");

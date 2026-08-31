@@ -332,7 +332,75 @@ export function deckSlideHeadingsLookLikeFailedGenerate(html: string): boolean {
     looksLikeInstructionCopy(title) || looksLikeTemplateMarketingTitle(title);
   if (failed(headings[0]!)) return true;
   const bad = headings.filter(failed).length;
-  return bad >= Math.ceil(headings.length / 2);
+  if (bad >= Math.ceil(headings.length / 2)) return true;
+  // 루프179 — kami leftover shells: cover topic + empty `topic · N` body slides.
+  return deckSlideHeadingsLookLikeTopicCounterShell(html);
+}
+
+/** Generic outline labels that share a counter but are not a failed topic shell. */
+const WEAK_GENERIC_SLIDE_LABEL_RE =
+  /^(?:slide|slides|page|pages|section|sec|챕터|chapter|섹션|슬라이드|페이지|장)$/i;
+
+const TOPIC_COUNTER_DOT_RE =
+  /^(.{1,48}?)\s*[·•･・\-–—:|／/]\s*(\d{1,2})$/u;
+const TOPIC_COUNTER_SPACE_RE =
+  /^(.{1,48}?)\s+(\d{1,2})$/u;
+
+function normalizeTopicHeadingBase(title: string): string {
+  let t = visibleTextFromHtmlFragment(title).replace(/\s+/g, ' ').trim();
+  t = t.replace(/\s*[·•･・\-–—:|／/]\s*\d{1,2}$/u, '');
+  t = t.replace(/\s+\d{1,2}$/u, '');
+  return t.trim().toLowerCase();
+}
+
+function parseTopicCounterHeading(
+  title: string,
+): { base: string; counter: string } | null {
+  const t = visibleTextFromHtmlFragment(title).replace(/\s+/g, ' ').trim();
+  if (!t) return null;
+  let m = TOPIC_COUNTER_DOT_RE.exec(t);
+  if (!m) m = TOPIC_COUNTER_SPACE_RE.exec(t);
+  if (!m) return null;
+  const base = String(m[1] ?? '').trim();
+  const counter = String(m[2] ?? '').trim();
+  if (!base || !counter) return null;
+  if (WEAK_GENERIC_SLIDE_LABEL_RE.test(base)) return null;
+  return { base, counter };
+}
+
+/**
+ * True when ≥2 non-cover slides are empty/thin shells whose headings are the
+ * cover topic plus a counter (`삼각함수 · 3`, `삼각함수 4`) — MiniMax partial
+ * failure leftover (루프179 / 루프168 follow-up).
+ */
+export function deckSlideHeadingsLookLikeTopicCounterShell(html: string): boolean {
+  const inners = listSlideSectionInners(html);
+  if (inners.length < 3) return false;
+  const coverHeading = firstSlideHeading(inners[0] ?? '');
+  if (!coverHeading) return false;
+  const coverBase = normalizeTopicHeadingBase(coverHeading);
+  if (!coverBase || WEAK_GENERIC_SLIDE_LABEL_RE.test(coverBase)) return false;
+
+  let thinTopicCounter = 0;
+  for (let i = 1; i < inners.length; i += 1) {
+    const inner = inners[i] ?? '';
+    const heading = firstSlideHeading(inner);
+    if (!heading) continue;
+    // Body already has deliverable copy — not an empty leftover shell.
+    if (slideInnerHasDeliverableCopy(inner)) continue;
+    const parsed = parseTopicCounterHeading(heading);
+    if (parsed) {
+      if (normalizeTopicHeadingBase(parsed.base) === coverBase) {
+        thinTopicCounter += 1;
+      }
+      continue;
+    }
+    // Bare topic echo on an empty body slide (`<h2>삼각함수</h2>`).
+    if (normalizeTopicHeadingBase(heading) === coverBase) {
+      thinTopicCounter += 1;
+    }
+  }
+  return thinTopicCounter >= 2;
 }
 
 const CATALOG_EXAMPLE_FINGERPRINTS = [
@@ -542,6 +610,10 @@ function slideInnerHasPersistableDraftCopy(innerHtml: string): boolean {
   if (text.length < 2) return false;
   // Reject outline labels ("발표 개요") but allow short real titles ("AI").
   if (GENERIC_OUTLINE_HEADING_RE.test(text)) return false;
+  // Title-only `topic · N` shells are not first-fill draft copy (루프179).
+  if (parseTopicCounterHeading(text) && !slideInnerHasDeliverableCopy(innerHtml)) {
+    return false;
+  }
   return true;
 }
 

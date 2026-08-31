@@ -286,10 +286,21 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | persist/preview: Broadside leftover(`[[Author Name]]`·빈 li·브리프 lead) + `[data-anim]` 비가시 | ☑ 루프175 |
 | persist/preview: look 부재 시 Broadside `[data-anim]` 비가시 · CSS 토큰 leftover 오탐 | ☑ 루프176–177 |
 | persist/preview: business-template placeholder 확장(`[Company]`·`[Client]`·`[Project]`·`[Version]` 등) leftover 미scrub | ☑ 루프178 |
+| persist recover/reuse: topic+counter 빈 장(`X · N`)이 short-draft로 저장 · skipped-incomplete 미적용 | ☑ 루프179 |
+
 | preview: pitch-deck cover 그라디언트(`var(--grad)`)가 `.tpl-* .mega/.avatar/.cover-blob`로부터 슬라이드 paper로 오탐 → 모든 슬라이드 배경 그라디언트 (사용자 리포트 "결과물 내용 없음 + 템플릿 적용 안됨") | ☑ 루프180 |
+
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프896–920 / round897–921)
+## 이번 루프 (루프179 · topic+counter 빈 장 저장 게이트)
+
+- [x] `deckSlideHeadingsLookLikeTopicCounterShell` — 커버 주제 + 빈 `topic · N` ≥2 → failed-generate
+- [x] short-draft / low-substance 연동 — kami 해골 덱 persist skip
+- [x] `isReusableSameTurnDeckWrite` — low-substance면 recover/reuse write 거부
+- [x] web deck-html-content · validate · ProjectView source 게이트
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프896–920 / round897–921)
 
 - [x] **루프896–900**: `calc(min/max/clamp(…)+…)` 평탄화 혼합
 - [x] **루프901–905**: `var()`/`env()` 폴백 → calc/min/rem
@@ -544,7 +555,7 @@ srcdoc 경로: scrubLeftoverCatalogExampleHtml → healAiGeneratedDeckMarkup ←
 
 **검증:** contracts 전체 (824 파일 / 2095 테스트) · heal-ai-generated-deck-catalog-leftover (5/5) · 사용자 fixture end-to-end 프로브 (heal-only 경로에서 kami 문장 · Apache-2.0 · Berlin · MMXXVI · brief leak 모두 제거, 슬라이드 6→4로 축소된 skeleton 대체)
 
-**남은 후속 (별도 루프)**: `AGENT_EXECUTION_FAILED` 시 부분-실행 결과물이 recover 경로에서 저장 자체를 skip하도록 하는 UX-layer 게이트 (`deckSlideHeadingsLookLikeFailedGenerate`에 "topic + counter" (`X`, `X 2`, `X · 3`) 반복 패턴 감지 추가 · recover/reuse 경로에도 `skipped-incomplete` return path 추가)
+**후속 (루프179에서 닫음)**: topic+counter failed-generate + recover/reuse low-substance refuse
 
 ## 직전 루프 (루프166–167 · MiniMax 시각 잔재 감사)
 

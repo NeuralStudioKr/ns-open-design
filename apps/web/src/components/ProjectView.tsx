@@ -14897,6 +14897,11 @@ function isReusableSameTurnDeckWrite(
 ): boolean {
   const trimmed = String(html ?? '').trim();
   if (!trimmed || !validateHtmlArtifact(trimmed).ok) return false;
+  // 루프179 — recover/reuse must not promote low-substance / topic+counter
+  // leftover shells that persistArtifact would skip as skipped-incomplete.
+  if (isLowSubstanceSlideDeckArtifact(trimmed, brief, deckTitle || '슬라이드')) {
+    return false;
+  }
   if (
     isPersistableShortDeckDraft(trimmed)
     || isPersistableShortDeckDraftAfterHeal(trimmed, brief, deckTitle || '슬라이드')

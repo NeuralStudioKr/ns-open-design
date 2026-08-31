@@ -161,6 +161,23 @@ describe('validateHtmlArtifact', () => {
     expect(isLowSubstanceSlideDeckArtifact(broken)).toBe(true);
   });
 
+  it('classifies kami topic+counter empty shells as low-substance (루프179)', () => {
+    const kamiShell =
+      '<!doctype html><html lang="ko"><head><meta charset="utf-8"></head><body>'
+      + '<section class="slide"><h1>삼각함수</h1>'
+      + '<p class="tagline">삼각함수에 대해서 설명하는 피피티 만들어줘.</p></section>'
+      + '<section class="slide"><h2>삼각함수 · 3</h2></section>'
+      + '<section class="slide"><h2>삼각함수 · 4</h2><ul><li></li></ul></section>'
+      + '<section class="slide"><h2>삼각함수 · 5</h2></section>'
+      + '</body></html>';
+    expect(validateHtmlArtifact(kamiShell).ok).toBe(true);
+    expect(isLowSubstanceSlideDeckArtifact(
+      kamiShell,
+      '삼각함수에 대해서 설명하는 피피티 만들어줘',
+      '슬라이드',
+    )).toBe(true);
+  });
+
   it('does not treat AfterHeal-able instruction/marketing covers as low-substance', () => {
     const parrot =
       '<!doctype html><html lang="ko"><head><meta charset="utf-8"></head><body>'
