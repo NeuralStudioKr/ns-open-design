@@ -7,6 +7,14 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-08-31 현재 판단 · 최신 루프
 
+### 루프270 — nested duplicate `.card` open flatten
+
+사용자 리포트 2026-08-31 · 삼각함수 pitch-deck (slide 4 항등식 · 5 그래프): MiniMax fill이 각 카드 시작 시 nested duplicate open을 emit — `<div class="card"><div class="card">제목</div>공식본문</div>`. Loop194는 두 open을 peer로 갈라내며 outer body를 카드 밖으로 밀어냄. Loop199는 outer가 완전 비어야만 unwrap. 실측: heal 후 slide 4 `div opens=29, closes=32, diff=-3` (닫힘 초과 · layout 파괴).
+
+`flattenNestedDuplicateCardOpens`: 인접 두 `<div>` open이 exact same cardish token(`card`/`pillar`/`tile`/`panel`/`cell`/`box`/`metric`/`stat`/`kpi`)이고 사이에 공백만 있으면, inner open + 대응 close 페어를 함께 strip. Outer body(공식/설명)는 그대로 보존, 태그 balance 완전 유지. Motif-only shell(`data-od-official-motif-html`) 보호. Idempotent. `unwrapRedundantNestedPeerCards` (loop199) 이전에 실행.
+
+검증: contracts `heal-nested-duplicate-card-flatten.test.ts` 10/10 · 사용자 fixture 실측 slide 4 diff=0 (opens=closes=27), 전체 46/46.
+
 ### 루프266 — G/기둥 아/열한째 leftover 인덱스
 
 루프261은 A–F / 열째까지 leftover로 본다. MiniMax는 `G`/`기둥 아`/`열한째`로 빠진 기둥을 채워 3열이 유지된다. G·아·열한째만 leftover. `열두째`/`기둥 자`/`H`–`Z`와 index+추가 본문은 유지. 카피 발명 없음.

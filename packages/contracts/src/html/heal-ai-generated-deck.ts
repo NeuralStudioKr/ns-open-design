@@ -1865,6 +1865,109 @@ function exactCardishTokens(attrs: string): string[] {
   return classTokensFromAttrs(attrs).filter((token) => EXACT_CARDISH_TOKEN_RE.test(token));
 }
 
+/**
+ * 루프270 — Flatten `<div class="card"><div class="card">…</div>…</div>`
+ * emitted by MiniMax fill.
+ *
+ * Loop194 splits the two opens into peer siblings, which pushes the outer
+ * card's own body (formula / caption / note) out of the card. Loop199 only
+ * unwraps a fully-empty outer with exactly one child. The wild case in
+ * slide 4 / 5 has: outer text = "" between the two opens, but the outer
+ * ALSO contains formula/caption divs AFTER the inner closes. Neither loop
+ * 194 nor 199 covers it.
+ *
+ * Rule: when two consecutive `<div>` opens share an exact cardish token
+ * (`card`, `pillar`, `tile`, `panel`, `cell`, `box`, `metric`, `stat`,
+ * `kpi`) and only whitespace sits between them, strip the INNER open and
+ * its matching close. Content between the inner close and the outer close
+ * (formula / caption / note) is preserved and now sits inside the outer
+ * flat card. Motif-only decorative shells are skipped.
+ */
+function findOpenedTagCloseEnd(
+  source: string,
+  tag: string,
+  afterOpen: number,
+): number | null {
+  const openRe = new RegExp(`^<${tag}\\b[^>]*>`, 'i');
+  const closeRe = new RegExp(`^</${tag}\\s*>`, 'i');
+  let i = afterOpen;
+  let depth = 1;
+  while (i < source.length && depth > 0) {
+    if (source.startsWith('<!--', i)) {
+      const end = source.indexOf('-->', i + 4);
+      i = end < 0 ? source.length : end + 3;
+      continue;
+    }
+    const opaque = /^<(script|style)\b[^>]*>/i.exec(source.slice(i));
+    if (opaque) {
+      const opaqueTag = opaque[1]!;
+      const close = new RegExp(`</${opaqueTag}\\s*>`, 'i').exec(source.slice(i));
+      i = close ? i + close.index + close[0].length : source.length;
+      continue;
+    }
+    const closeM = closeRe.exec(source.slice(i));
+    if (closeM) {
+      depth -= 1;
+      i += closeM[0].length;
+      continue;
+    }
+    const openM = openRe.exec(source.slice(i));
+    if (openM) {
+      if (!/\/\s*>$/.test(openM[0]!)) depth += 1;
+      i += openM[0]!.length;
+      continue;
+    }
+    const anyTag = /^<\/?[a-zA-Z][\w-]*\b[^>]*>/i.exec(source.slice(i));
+    if (anyTag) {
+      i += anyTag[0].length;
+      continue;
+    }
+    i += 1;
+  }
+  return depth === 0 ? i : null;
+}
+
+export function flattenNestedDuplicateCardOpens(html: string): string {
+  const source = String(html ?? '');
+  if (!source || !/<div\b/i.test(source)) return source;
+  const openRe = /<div\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
+  type Patch = { start: number; end: number };
+  const patches: Patch[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = openRe.exec(source)) !== null) {
+    const outerAttrs = match[1] ?? '';
+    if (/\bdata-od-official-motif-html\b/i.test(outerAttrs)) continue;
+    const outerTokens = exactCardishTokens(outerAttrs);
+    if (outerTokens.length === 0) continue;
+    const outerOpenEnd = match.index + match[0].length;
+    let i = outerOpenEnd;
+    while (i < source.length && /\s/.test(source[i]!)) i += 1;
+    const innerOpen = /^<div\b((?:[^>"']|"[^"]*"|'[^']*')*)>/i.exec(source.slice(i));
+    if (!innerOpen) continue;
+    const innerAttrs = innerOpen[1] ?? '';
+    if (/\bdata-od-official-motif-html\b/i.test(innerAttrs)) continue;
+    const innerTokens = exactCardishTokens(innerAttrs);
+    if (innerTokens.length === 0) continue;
+    if (!outerTokens.some((t) => innerTokens.includes(t))) continue;
+    const innerOpenStart = i;
+    const innerOpenEnd = i + innerOpen[0].length;
+    const innerCloseEnd = findOpenedTagCloseEnd(source, 'div', innerOpenEnd);
+    if (innerCloseEnd == null) continue;
+    const innerCloseTok = /^<\/div\s*>/i.exec(source.slice(innerCloseEnd - 6, innerCloseEnd + 4));
+    if (!innerCloseTok) continue;
+    const innerCloseStart = innerCloseEnd - innerCloseTok[0].length;
+    patches.push({ start: innerOpenStart, end: innerOpenEnd });
+    patches.push({ start: innerCloseStart, end: innerCloseEnd });
+  }
+  if (patches.length === 0) return source;
+  patches.sort((a, b) => b.start - a.start);
+  let out = source;
+  for (const patch of patches) {
+    out = `${out.slice(0, patch.start)}${out.slice(patch.end)}`;
+  }
+  return out;
+}
+
 function sharesExactCardishToken(outerAttrs: string, innerAttrs: string): boolean {
   const inner = exactCardishTokens(innerAttrs);
   return exactCardishTokens(outerAttrs).some((token) => inner.includes(token));
@@ -2254,6 +2357,12 @@ export function healAiGeneratedDeckMarkup(html: string, brief?: string | null): 
     // Fall through — shape-based heals below are still worth running.
   }
   out = scrubTruncatedAiTagSoup(out);
+  // 루프270 — Flatten the wild `<div class="card"><div class="card">…</div>…</div>`
+  // shape (slide 4 / 5 항등식·그래프). Loop194 peer-splits the two opens
+  // and pushes the outer body out of the card; loop199 only unwraps a
+  // fully-empty outer. Strip the inner open + its matching close so the
+  // outer flat card keeps every child in the right z-order.
+  out = flattenNestedDuplicateCardOpens(out);
   // 루프199 — unwrap balanced card-in-card BEFORE 194. 194 assumes
   // cards are never nested and would insert a sibling close, leaving
   // an empty outer shell plus a leftover </div>.
