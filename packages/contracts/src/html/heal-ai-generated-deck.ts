@@ -398,7 +398,7 @@ const GRID_BLOCK_CHILD_RE =
   /^(div|section|article|li|figure|aside|header|footer|main|nav|ul|ol|p|table)$/;
 const EQUAL_FR_TRACK_RE =
   /^(?:1(?:\.0+)?fr|minmax\(\s*(?:0|auto|min-content|max-content)\s*,\s*1(?:\.0+)?fr\s*\))$/i;
-/** 루프210/215/224 — identical 22–48% or viewport/container shares (skip 50 splits). */
+/** 루프210/215/226 — identical 22–48% or viewport/container shares (skip 50 splits). */
 const EQUAL_COLUMN_SHARE_TRACK_RE =
   /^(?:2[2-9]|3\d|4[0-8])(?:\.\d+)?(?:%|vw|vh|vmin|vmax|dvh|svh|lvh|cqw|cqi|cqh|cqb)$/i;
 
@@ -1034,6 +1034,12 @@ const LEFTOVER_PEER_PLACEHOLDER_TOKENS = [
   'inserthere',
   'typetext',
   'fillme',
+  // 루프224 — hold/defer stubs MiniMax leaves on the missing pillar.
+  'soon',
+  'later',
+  '대기',
+  '보류',
+  '생략',
 ].sort((a, b) => b.length - a.length);
 
 const LEFTOVER_PEER_PLACEHOLDER_PUNCT_RE = /^(?:[.…·•\-–—]{1,3})/u;
@@ -1208,7 +1214,7 @@ function cssLengthToPx(raw: string): number | null {
     }
     return (PEER_CANVAS_PX * value) / 100;
   }
-  // 루프213/224 — MiniMax locks cards with 30vw/30vh/30vmin as if the
+  // 루프213/226 — MiniMax locks cards with 30vw/30vh/30vmin as if the
   // canvas were the viewport. Same 22–48 band as % / vw; 50/100 stay.
   const viewport = /^(\d+(?:\.\d+)?)\s*(vw|vh|vmin|vmax|dvh|svh|lvh|cqw|cqi|cqh|cqb)$/i
     .exec(source);
@@ -1312,7 +1318,7 @@ function stripFixedMainSizeFromOpenTag(openTag: string): string {
  * 루프207 — uniform 22–48% column-share widths (and flex:0 0 32%) also lock
  * the row. 100% stretch and 50% splits stay.
  * 루프213 — same for 22–48vw leftovers (`width:30vw`, `flex:0 0 30vw`).
- * 루프224 — same for vh/vmin/cq* leftovers (`width:30vmin`, `33vh 33vh 33vh`).
+ * 루프226 — same for vh/vmin/cq* leftovers (`width:30vmin`, `33vh 33vh 33vh`).
  */
 export function relaxUniformPeerCardFixedMainSize(
   html: string,
