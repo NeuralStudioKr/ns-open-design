@@ -5585,9 +5585,9 @@ export function ProjectView({
                   reason: 'thin-prior-top-up-no-append',
                 };
               }
-              // Prior deck is already a valid deliverable. Do NOT route this
-              // as skipped-incomplete → incomplete_output (or auto-continue
-              // head rewrite). Keep disk as-is and treat as a calm no-op.
+              // 루프283 — Substance-rich prior (cover+body / filled multi-slide)
+              // keeps calm skipped-noop. Flashing incomplete_output over an
+              // already-deliverable deck is worse than a quiet no-append.
               return {
                 kind: 'skipped-noop',
                 fileName,

@@ -868,13 +868,22 @@ describe("canvasSlideLaunch", () => {
     expect(projectView).not.toContain("templateClonedDeckSeeded === true");
   });
 
-  it("forces stub-reject and thin-prior top-up incomplete in Teamver persist (루프268–269·275)", () => {
+  it("forces stub-reject and thin-prior top-up incomplete in Teamver persist (루프268–269·275·283)", () => {
     const projectView = readWebSource("src/components/ProjectView.tsx");
     expect(projectView).toContain("forceArtifactStubGuardReject: true");
     expect(projectView).toContain("deckLooksLikeThinTopUpHostPrior(");
     expect(projectView).toContain("thin-prior-top-up-no-append");
     expect(projectView).toMatch(
       /thin-prior-top-up-no-append[\s\S]{0,120}skipped-incomplete|skipped-incomplete[\s\S]{0,200}thin-prior-top-up-no-append/,
+    );
+    // 루프283 — cover+body / substance-rich prior top-up noop stays calm
+    // skipped-noop (thin hosts use thin-prior incomplete above).
+    expect(projectView).toContain("top-up-did-not-append-slides");
+    expect(projectView).toMatch(
+      /thin-prior-top-up-no-append[\s\S]{0,400}top-up-did-not-append-slides/,
+    );
+    expect(projectView).toMatch(
+      /top-up-did-not-append-slides[\s\S]{0,200}skipped-noop|skipped-noop[\s\S]{0,200}top-up-did-not-append-slides/,
     );
   });
 

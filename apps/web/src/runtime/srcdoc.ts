@@ -3668,6 +3668,81 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .stage > .slide {
     }
     return 'x';
   }
+  function transformTrackFallbackStepPx(list, track, axis){
+    // 루프281 — Prefer authored/computed strip width over viewport clientWidth.
+    // Letterboxed wide tracks report clientWidth≈iframe width; clientWidth/n
+    // (e.g. 341) makes translate3d(-800px) round to active:2. Never guess with
+    // clientWidth/n — return 0 so activeIndex falls through to pagination.
+    if (!list || list.length < 2 || !track) return 0;
+    try {
+      var first = list[0];
+      if (first && window.getComputedStyle) {
+        var cs = window.getComputedStyle(first);
+        var computedSlide = axis === 'y'
+          ? (parseFloat(cs.minHeight) || parseFloat(cs.height) || 0)
+          : (parseFloat(cs.minWidth) || parseFloat(cs.width) || 0);
+        if (computedSlide >= 200) return computedSlide;
+      }
+    } catch (_) {}
+    try {
+      var firstEl = list[0];
+      if (firstEl) {
+        var slidePx = axis === 'y'
+          ? (firstEl.offsetHeight || 0)
+          : (firstEl.offsetWidth || 0);
+        if (slidePx >= 200) return slidePx;
+        var slideStyle = String(firstEl.getAttribute && firstEl.getAttribute('style') || '');
+        var sm = slideStyle.match(
+          axis === 'y'
+            ? /(?:min-)?height\\s*:\\s*(\\d+(?:\\.\\d+)?)px/i
+            : /(?:min-)?width\\s*:\\s*(\\d+(?:\\.\\d+)?)px/i,
+        );
+        if (sm) {
+          var authored = parseFloat(sm[1]);
+          if (authored >= 200) return authored;
+        }
+      }
+    } catch (_) {}
+    try {
+      if (window.getComputedStyle) {
+        var trackCs = window.getComputedStyle(track);
+        var trackComputed = axis === 'y'
+          ? (parseFloat(trackCs.minHeight) || parseFloat(trackCs.height) || 0)
+          : (parseFloat(trackCs.minWidth) || parseFloat(trackCs.width) || 0);
+        if (trackComputed > 0) {
+          var perTrack = trackComputed / list.length;
+          if (perTrack >= 200) return perTrack;
+        }
+      }
+    } catch (_) {}
+    try {
+      var style = String(track.getAttribute && track.getAttribute('style') || '');
+      var m = style.match(
+        axis === 'y'
+          ? /(?:min-)?height\\s*:\\s*(\\d+(?:\\.\\d+)?)px/i
+          : /(?:min-)?width\\s*:\\s*(\\d+(?:\\.\\d+)?)px/i,
+      );
+      if (m) {
+        var perStyle = parseFloat(m[1]) / list.length;
+        if (perStyle >= 200) return perStyle;
+      }
+    } catch (_) {}
+    try {
+      var scroll = axis === 'y'
+        ? (track.scrollHeight || 0)
+        : (track.scrollWidth || 0);
+      var client = axis === 'y'
+        ? (track.clientHeight || 0)
+        : (track.clientWidth || 0);
+      // Only trust scrollWidth when it clearly exceeds the viewport
+      // (real overflow strip). Equal scroll≈client is letterbox noise.
+      if (scroll > 0 && scroll > client + 48) {
+        var perScroll = scroll / list.length;
+        if (perScroll >= 200) return perScroll;
+      }
+    } catch (_) {}
+    return 0;
+  }
   function activeIndexFromTransform(list){
     var track = transformTrack(list);
     if (!track) return -1;
@@ -3684,20 +3759,24 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .stage > .slide {
       var valueY = parseFloat(matchY[1]);
       if (!Number.isFinite(valueY)) return -1;
       var unitY = matchY[2] || 'px';
-      var stepY = unitY === 'px'
-        ? Math.max(1, transformSlideStepPx(list, track, 'y') || track.clientHeight / list.length)
-        : 100;
-      return Math.max(0, Math.min(list.length - 1, Math.round(Math.abs(valueY) / stepY)));
+      if (unitY === 'px') {
+        var stepY = transformSlideStepPx(list, track, 'y') || transformTrackFallbackStepPx(list, track, 'y');
+        if (!(stepY > 0)) return -1;
+        return Math.max(0, Math.min(list.length - 1, Math.round(Math.abs(valueY) / stepY)));
+      }
+      return Math.max(0, Math.min(list.length - 1, Math.round(Math.abs(valueY) / 100)));
     }
     var match = raw.match(/translate(?:3d|X)?\\(\\s*(-?[0-9.]+)\\s*(vw|%|px)?/i);
     if (axis !== 'y' && match) {
       var value = parseFloat(match[1]);
       if (!Number.isFinite(value)) return -1;
       var unit = match[2] || 'px';
-      var step = unit === 'px'
-        ? Math.max(1, transformSlideStepPx(list, track, 'x') || track.clientWidth / list.length)
-        : 100;
-      return Math.max(0, Math.min(list.length - 1, Math.round(Math.abs(value) / step)));
+      if (unit === 'px') {
+        var step = transformSlideStepPx(list, track, 'x') || transformTrackFallbackStepPx(list, track, 'x');
+        if (!(step > 0)) return -1;
+        return Math.max(0, Math.min(list.length - 1, Math.round(Math.abs(value) / step)));
+      }
+      return Math.max(0, Math.min(list.length - 1, Math.round(Math.abs(value) / 100)));
     }
     var matrix = raw.match(/matrix(?:3d)?\\(([^)]+)\\)/);
     if (matrix) {
@@ -3705,11 +3784,13 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .stage > .slide {
       var tx = parts.length === 16 ? parts[12] : parts.length >= 6 ? parts[4] : NaN;
       var ty = parts.length === 16 ? parts[13] : parts.length >= 6 ? parts[5] : NaN;
       if (axis === 'y' && Number.isFinite(ty)) {
-        var stepPy = Math.max(1, transformSlideStepPx(list, track, 'y') || track.clientHeight / list.length);
+        var stepPy = transformSlideStepPx(list, track, 'y') || transformTrackFallbackStepPx(list, track, 'y');
+        if (!(stepPy > 0)) return -1;
         return Math.max(0, Math.min(list.length - 1, Math.round(Math.abs(ty) / stepPy)));
       }
       if (axis !== 'y' && Number.isFinite(tx)) {
-        var stepPx = Math.max(1, transformSlideStepPx(list, track, 'x') || track.clientWidth / list.length);
+        var stepPx = transformSlideStepPx(list, track, 'x') || transformTrackFallbackStepPx(list, track, 'x');
+        if (!(stepPx > 0)) return -1;
         return Math.max(0, Math.min(list.length - 1, Math.round(Math.abs(tx) / stepPx)));
       }
     }
@@ -3725,15 +3806,23 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .stage > .slide {
     } catch (_) {
       return -1;
     }
+    // 루프282 — syncPaginationControls may leave is-active/current on an old
+    // dot while native paint only toggles .active. Prefer exact .active.
+    var exactActive = -1;
+    var softActive = -1;
     for (var i=0; i<nodes.length; i++) {
       var node = nodes[i];
       if (!node || (node.classList && node.classList.contains('slide'))) continue;
       if (!looksActiveControl(node)) continue;
       var direct = controlIndex(node, list.length);
-      if (direct >= 0) return direct;
-      var groupIndex = indexWithinControlGroup(node, list.length);
-      if (groupIndex >= 0) return groupIndex;
+      if (direct < 0) direct = indexWithinControlGroup(node, list.length);
+      if (direct < 0) continue;
+      var hasExact = !!(node.classList && node.classList.contains('active'));
+      if (hasExact && exactActive < 0) exactActive = direct;
+      else if (!hasExact && softActive < 0) softActive = direct;
     }
+    if (exactActive >= 0) return exactActive;
+    if (softActive >= 0) return softActive;
     return -1;
   }
   function looksActiveControl(node){

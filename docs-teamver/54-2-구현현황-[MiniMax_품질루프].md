@@ -7,6 +7,24 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-08-31 현재 판단 · 최신 루프
 
+### 루프283 — substance-rich prior top-up noop = calm skipped-noop
+
+thin host(루프269/275) incomplete와 달리 cover+body / 채워진 multi-slide prior는 top-up append 실패 시 `skipped-noop` 유지. incomplete_output 플래시 금지.
+
+검증: web teamver-canvas-slide-launch 루프283.
+
+### 루프282 — pagination `.active` 우선
+
+`syncPaginationControls` soft class(`is-active`/`current`)보다 exact `.active`를 우선해 native paint와 맞춤.
+
+검증: web srcdoc-deck-bridge-nested-slides.
+
+### 루프281 — native transform track active off-by-one
+
+letterbox `clientWidth/n` 추측 금지. authored/computed step 또는 `-1` → pagination fall-through. go 경로의 `transformSlideStepPx` 임계는 유지해 native `#deck-next`를 host `translateX`가 가로채지 않음.
+
+검증: web srcdoc-deck-bridge-nested-slides 루프281.
+
 ### 루프280 — substance-rich persist가 daemon stub-guard에 422 오탐
 
 루프273/279가 client byte·slide-count gate는 열었다. persist는 leftover/seed일 때만 `skipArtifactStubGuard`를 켠다. 데몬 가드는 바이트 비율만 본다(`minRetainedRatio` 0.35). 5장 완성본이 큰 8장 prior의 35% 미만이면 client는 통과해도 `422 ARTIFACT_REGRESSION` → 사용자는 다시 "짧은 초안" 배너를 본다. embed는 `forceArtifactStubGuardReject`까지 켜져 더 잘 막힌다.
@@ -994,10 +1012,20 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | persist: solo title-only cover top-up noop가 calm success | ☑ 루프275 |
 | persist: thin-prior 배너가 cut-off "이어서" 톤 | ☑ 루프276 |
 | heal: nested section/article cardish open flatten | ☑ 루프277 |
+| preview: native transform strip active off-by-one (letterbox clientWidth/n) | ☑ 루프281 |
+| preview: pagination soft is-active가 exact .active보다 앞섬 | ☑ 루프282 |
+| persist: substance-rich prior top-up noop가 incomplete_output | ☑ 루프283 |
 | contracts pretest: exactOptionalPropertyTypes TS2379 봉쇄 | ☑ 루프263 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프280 · daemon stub-guard substance-rich skip)
+## 이번 루프 (루프281–283 · transform active · pagination .active · substance-rich top-up noop)
+
+- [x] transformTrackFallbackStepPx · activeIndexFromTransform -1 (no clientWidth/n)
+- [x] activeIndexFromPagination exact .active 우선
+- [x] substance-rich top-up noop = skipped-noop 핀
+- [x] srcdoc-deck-bridge-nested-slides · teamver-canvas-slide-launch 루프283
+
+## 직전 루프 (루프280 · daemon stub-guard substance-rich skip)
 
 - [x] shouldSkipDaemonArtifactStubGuard — leftover 또는 substance-rich
 - [x] persist revision/write 모두 skip · embed force-reject 동기화
