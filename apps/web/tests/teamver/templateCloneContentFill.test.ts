@@ -214,8 +214,30 @@ describe('templateCloneContentFill', () => {
     expect(seed).not.toContain('[Selected slide template priority]');
   });
 
-  it('caps template-fill slide count hints unless the user explicitly requests an exact count', () => {
+  it('treats the 5-6 short preset as a this-turn close, not a later-append cap', () => {
     expect(normalizeTemplateCloneFillSlideCountHint('5-6')).toBe(
+      '5-6 (close at least 5 this turn)',
+    );
+    expect(normalizeTemplateCloneFillSlideCountHint('5~6')).toBe(
+      '5-6 (close at least 5 this turn)',
+    );
+    const seed = buildTemplateCloneContentFillSeed({
+      userInstruction: '온보딩 슬라이드 만들어줘.',
+      templateTitle: 'Html Ppt Zhangzara Pink Script',
+      slideCountHint: '5-6',
+    });
+    expect(seed).toContain('User requested slide count: 5-6.');
+    expect(seed).toContain('Slide count hint: 5-6 (close at least 5 this turn).');
+    expect(seed).not.toContain('stability cap for first template fill');
+    expect(seed).toMatch(/close ≥5 this turn|Never close after a single cover or after 3 slides when the target is 5\+/);
+    const notice = templateCloneFillSlideCountOverrideNotice('5-6');
+    expect(notice).toContain('5-6 (close at least 5 this turn)');
+    expect(notice).toContain('Close at least 5 slides this turn');
+    expect(notice).not.toContain('A later turn may append remaining slides');
+  });
+
+  it('caps template-fill slide count hints unless the user explicitly requests an exact count', () => {
+    expect(normalizeTemplateCloneFillSlideCountHint('6-8')).toBe(
       '6 (stability cap for first template fill)',
     );
     expect(normalizeTemplateCloneFillSlideCountHint('8-10')).toBe(
@@ -240,6 +262,12 @@ describe('templateCloneContentFill', () => {
     });
     expect(templateCloneFillSlideCountOverrideNotice('8-10')).toContain(
       '6 (stability cap for first template fill)',
+    );
+    expect(templateCloneFillSlideCountOverrideNotice('8-10')).toContain(
+      'A later turn may append remaining slides',
+    );
+    expect(templateCloneFillSlideCountOverrideNotice('5')).not.toContain(
+      'A later turn may append remaining slides',
     );
   });
 

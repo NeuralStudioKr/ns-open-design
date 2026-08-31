@@ -582,7 +582,7 @@ export const COMPACT_DECK_SLIDE_COUNT_GUIDANCE =
 export const COMPACT_FIRST_FILL_SLIDE_COUNT_THIS_TURN = 6;
 
 export const COMPACT_FIRST_FILL_SLIDE_COUNT_GUIDANCE =
-  'Slide count THIS TURN: honor an explicit user count of 1–6. If the user asked for 7 or more, close 6 complete body-first slides this turn and hidden top-up appends the rest. If unspecified, close 6 this turn. Never close after a single cover or after 3 slides when the target is 6 — no 3+3+3 split.';
+  'Slide count THIS TURN: honor an explicit user count of 1–6 (5-6/5~6 → close ≥5 this turn). If the user asked for 7 or more, close 6 complete body-first slides this turn and hidden top-up appends the rest. If unspecified, close 6 this turn. Never close after a single cover or after 3 slides when the target is 5+ — no 3+3+3 split.';
 
 /** MiniMax (and any rewrite-last-block model) must not echo a finished heading/paragraph/badge. */
 export const DECK_NO_ADJACENT_DUPLICATE_COPY_RULE =

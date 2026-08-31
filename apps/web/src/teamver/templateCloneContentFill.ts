@@ -27,7 +27,7 @@ import { isSlideCountRangeHint, parseSlideCountTarget } from './slideCountTopUp'
 /** Keep local — contracts barrel can be undefined during web test init. */
 const FIRST_FILL_SLIDE_COUNT_THIS_TURN = 6;
 const FIRST_FILL_SLIDE_COUNT_GUIDANCE =
-  'Slide count THIS TURN: honor an explicit user count of 1–6. If the user asked for 7 or more, close 6 complete body-first slides this turn and hidden top-up appends the rest. If unspecified, close 6 this turn. Never close after a single cover or after 3 slides when the target is 6 — no 3+3+3 split.';
+  'Slide count THIS TURN: honor an explicit user count of 1–6 (5-6/5~6 → close ≥5 this turn). If the user asked for 7 or more, close 6 complete body-first slides this turn and hidden top-up appends the rest. If unspecified, close 6 this turn. Never close after a single cover or after 3 slides when the target is 5+ — no 3+3+3 split.';
 
 /** Keep local — importing canvasSlideLaunch here caused circular init of expansion consts. */
 const SLIDE_DECK_QUALITY_BAR_INSTRUCTION =
@@ -268,6 +268,15 @@ export function templateCloneContentFillHardRules(): string[] {
 const FIRST_FILL_SLIDE_COUNT_STABILITY_CAP =
   `${FIRST_FILL_SLIDE_COUNT_THIS_TURN} (stability cap for first template fill)`;
 
+/** Short Home/Canvas preset — a complete compact job, not a first-fill cap. */
+const FIRST_FILL_SHORT_RANGE_CLOSE_HINT = '5-6 (close at least 5 this turn)';
+const FIRST_FILL_SHORT_RANGE_RE = /^5\s*[-~–—]\s*6$/;
+
+function isFirstFillShortRangeHint(text: string | number | null | undefined): boolean {
+  const raw = String(text ?? '').trim();
+  return FIRST_FILL_SHORT_RANGE_RE.test(raw) || raw === FIRST_FILL_SHORT_RANGE_CLOSE_HINT;
+}
+
 export function normalizeTemplateCloneFillSlideCountHint(input: string | number | null | undefined): string | null {
   const raw = String(input ?? '').trim();
   if (!raw) return null;
@@ -277,9 +286,13 @@ export function normalizeTemplateCloneFillSlideCountHint(input: string | number 
     const n = Number(explicit[1]);
     if (Number.isFinite(n) && n >= 1 && n <= 12) return String(n);
   }
+  // 5-6 / 5~6 is a complete short job. Do not rewrite it to the first-fill
+  // stability cap — that text plans a later append and splits the work.
+  if (isFirstFillShortRangeHint(raw)) {
+    return FIRST_FILL_SHORT_RANGE_CLOSE_HINT;
+  }
   if (
-    /^5\s*-\s*6$/.test(raw) || /^5\s*~\s*6$/.test(raw)
-    || /^6\s*-\s*8$/.test(raw) || /^6\s*~\s*8$/.test(raw)
+    /^6\s*-\s*8$/.test(raw) || /^6\s*~\s*8$/.test(raw)
     || /^8\s*-\s*10$/.test(raw) || /^8\s*~\s*10$/.test(raw)
     || /^12\s*-\s*15$/.test(raw) || /^12\s*~\s*15$/.test(raw)
   ) {
@@ -320,11 +333,25 @@ export function templateCloneFillSlideCountOverrideNotice(
 ): string | null {
   const capped = normalizeTemplateCloneFillSlideCountHint(slideCountHint);
   if (!capped) return null;
+  if (capped === FIRST_FILL_SHORT_RANGE_CLOSE_HINT || isFirstFillShortRangeHint(slideCountHint)) {
+    return [
+      '# Template clone fill slideCount override',
+      `For THIS first content-fill turn only, treat Plugin input slideCount as "${capped}".`,
+      'Close at least 5 slides this turn. Do not stop after 3 slides or leave remaining slides for a later turn.',
+    ].join('\n');
+  }
+  if (capped === FIRST_FILL_SLIDE_COUNT_STABILITY_CAP) {
+    return [
+      '# Template clone fill slideCount override',
+      `For THIS first content-fill turn only, treat Plugin input slideCount as "${capped}".`,
+      'Ignore any larger slideCount in the plugin block above (first-fill stability cap).',
+      'Finish a closed compact deck this turn. A later turn may append remaining slides if the user requested more.',
+    ].join('\n');
+  }
   return [
     '# Template clone fill slideCount override',
     `For THIS first content-fill turn only, treat Plugin input slideCount as "${capped}".`,
-    'Ignore any larger slideCount in the plugin block above (first-fill stability cap).',
-    'Finish a closed compact deck this turn. A later turn may append remaining slides if the user requested more.',
+    'Finish a closed compact deck this turn.',
   ].join('\n');
 }
 

@@ -247,6 +247,34 @@ describe("slideCountTopUp", () => {
     );
   });
 
+  it("finishes a 5-6 short miss in one honored top-up and does not add a 6th page at 5", () => {
+    expect(countHonoredSlideCountTopUpTurns({
+      produced: 1,
+      requested: 6,
+      requestedMin: 5,
+      defaultRequested: 6,
+    })).toBe(1);
+    expect(countHonoredSlideCountTopUpTurns({
+      produced: 3,
+      requested: 6,
+      requestedMin: 5,
+    })).toBe(1);
+    expect(countHonoredSlideCountTopUpTurns({
+      produced: 5,
+      requested: 6,
+      requestedMin: 5,
+    })).toBe(0);
+    expect(shouldQueueSlideCountTopUp({
+      produced: 5,
+      requested: 6,
+      requestedMin: 5,
+      topUpCount: 0,
+    })).toBe(false);
+    expect(buildSlideCountTopUpPrompt({ produced: 1, requested: 6 })).toContain(
+      "Emit all 5 remaining slides this turn — not a 3-slide batch",
+    );
+  });
+
   it("finishes a default-6 miss in one honored top-up, not a 3+3 split", () => {
     expect(countHonoredSlideCountTopUpTurns({
       produced: 1,

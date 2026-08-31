@@ -18,7 +18,7 @@ import { COMPACT_DECK_SLIDE_COUNT_GUIDANCE } from './deckGuidance';
 /** Local copies — contracts-barrel re-exports are undefined at resume module init. */
 const FIRST_FILL_SLIDE_COUNT_THIS_TURN = 6;
 const FIRST_FILL_SLIDE_COUNT_GUIDANCE =
-  'Slide count THIS TURN: honor an explicit user count of 1–6. If the user asked for 7 or more, close 6 complete body-first slides this turn and hidden top-up appends the rest. If unspecified, close 6 this turn. Never close after a single cover or after 3 slides when the target is 6 — no 3+3+3 split.';
+  'Slide count THIS TURN: honor an explicit user count of 1–6 (5-6/5~6 → close ≥5 this turn). If the user asked for 7 or more, close 6 complete body-first slides this turn and hidden top-up appends the rest. If unspecified, close 6 this turn. Never close after a single cover or after 3 slides when the target is 5+ — no 3+3+3 split.';
 
 // Canonical prompt sent by the "Continue the run" affordance on a resumable
 // failed run. The daemon resumes the persisted CLI session for this
