@@ -504,6 +504,19 @@ describe("deck-html-content", () => {
     expect(isClosedSoftSalvageDeckHtml(html)).toBe(true);
   });
 
+  it("refuses closed title-only skeletons via soft salvage (루프253)", () => {
+    const thinClosed =
+      "<!doctype html><html lang=\"ko\"><body>"
+      + "<section class=\"slide\"><h1>Cover Topic Alpha</h1></section>"
+      + "<section class=\"slide\"><h2>Next Steps Beta</h2></section>"
+      + "</body></html>";
+    // Mid-stream truncation salvage may still keep titled slides.
+    expect(meetsTruncationSalvageQuality(thinClosed)).toBe(true);
+    // Already-closed soft persist must require ≥1 deliverable body slide.
+    expect(isClosedSoftSalvageDeckHtml(thinClosed)).toBe(false);
+    expect(meetsMinimumDeckDeliverableQuality(thinClosed)).toBe(false);
+  });
+
   it("rejects outline-only heading slides without body copy", () => {
     const html =
       "<!doctype html><html lang=\"ko\"><body>"

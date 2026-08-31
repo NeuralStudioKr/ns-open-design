@@ -5,6 +5,7 @@ import {
   closeUnclosedSiblingCardsInSlides,
   dropEmptyLikelyDeckSlides,
   healAiGeneratedDeckMarkup,
+  listAiSlideSpans,
   polishTruncatedInstructionTitles,
   normalizeHangulParticleGaps,
   repairUnbalancedCardDivsInFragment,
@@ -21,6 +22,38 @@ import {
 } from '../src/html/heal-ai-generated-deck.js';
 
 describe('heal-ai-generated-deck (0826-N01 F7)', () => {
+  describe('루프254 listAiSlideSpans depth match', () => {
+    it('keeps sibling slides when an inner section is nested inside the first', () => {
+      const html = [
+        '<section class="slide"><h1>Cover</h1>',
+        '<section class="note">inner note</section>',
+        '<p>Lead copy for the cover.</p></section>',
+        '<section class="slide"><h2>Body</h2><p>Second slide copy.</p></section>',
+      ].join('');
+      const spans = listAiSlideSpans(html);
+      expect(spans).toHaveLength(2);
+      const firstBody = html.slice(spans[0]!.openEnd, spans[0]!.bodyEnd);
+      expect(firstBody).toContain('inner note');
+      expect(firstBody).toContain('Lead copy');
+      expect(firstBody).not.toContain('Second slide');
+      const secondBody = html.slice(spans[1]!.openEnd, spans[1]!.bodyEnd);
+      expect(secondBody).toContain('Second slide copy');
+    });
+
+    it('drops nested slide hosts contained by an outer slide', () => {
+      const html = [
+        '<section class="slide"><h1>Outer</h1>',
+        '<section class="slide"><h2>Nested</h2><p>Should not be a peer.</p></section>',
+        '<p>Outer lead.</p></section>',
+      ].join('');
+      const spans = listAiSlideSpans(html);
+      expect(spans).toHaveLength(1);
+      const body = html.slice(spans[0]!.openEnd, spans[0]!.bodyEnd);
+      expect(body).toContain('Nested');
+      expect(body).toContain('Outer lead');
+    });
+  });
+
   describe('Q1 dropEmptyLikelyDeckSlides', () => {
     it('drops an empty s-chapter slide between filled slides', () => {
       const html = [
@@ -474,6 +507,23 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
       expect(shrinkClassBoundEqualTrackGrids(html)).toBe(html);
     });
 
+    it('shrinks English multi-slide class grids with AI markers (루프252)', () => {
+      const html = [
+        '<style>.cards-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:24px}</style>',
+        '<section class="slide"><div data-od-slide-flow="">',
+        '<h2>Three pillars</h2>',
+        '<div class="cards-grid">',
+        '<div class="card">Limit</div>',
+        '<div class="card">Derivative</div>',
+        '</div></div></section>',
+        '<section class="slide"><h2>Summary</h2><p>Wrap up the lecture.</p></section>',
+      ].join('');
+      const out = shrinkClassBoundEqualTrackGrids(html);
+      expect(out).toMatch(/grid-template-columns:\s*(?:minmax\(0,1fr\) ){1}minmax\(0,1fr\)/);
+      expect(out).toContain('Limit');
+      expect(out).toContain('Derivative');
+    });
+
     it('pipeline heals a class-bound 2x2 leftover on a Hangul slide', () => {
       const html = [
         '<style>.grid{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr}</style>',
@@ -645,7 +695,7 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
       expect(dropEmptyLeftoverPeerCardsInAllocatedRows(html)).toBe(html);
     });
 
-    it('drops a FIXME leftover third card (루프249)', () => {
+    it('drops a FIXME leftover third card (루프252)', () => {
       const html = [
         '<div style="display:flex;gap:28px">',
         '<div class="card" style="padding:24px"><h3>극한</h3><p>lim</p></div>',
@@ -659,7 +709,7 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
       expect(out).toContain('극한');
     });
 
-    it('keeps FIXME 적분 copy that is not a stub card (루프249)', () => {
+    it('keeps FIXME 적분 copy that is not a stub card (루프252)', () => {
       const html = [
         '<div style="display:flex;gap:16px">',
         '<div class="card"><h3>극한</h3><p>정의</p></div>',
@@ -669,7 +719,7 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
       expect(dropEmptyLeftoverPeerCardsInAllocatedRows(html, '미적분')).toBe(html);
     });
 
-    it('pipeline heals a hack leftover without inventing 적분 copy (루프249)', () => {
+    it('pipeline heals a hack leftover without inventing 적분 copy (루프252)', () => {
       const html = [
         '<section class="slide"><h1>미적분의 세 기둥</h1>',
         '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:24px">',
@@ -2605,6 +2655,23 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
         '</div>',
       ].join('');
       expect(balanceClassBoundFlexCardRow(html)).toBe(html);
+    });
+
+    it('balances English class flex rows when AI slide markers are present (루프252)', () => {
+      const html = [
+        '<style>.cards{display:flex;gap:28px}</style>',
+        '<section class="slide tpl-pitch-deck"><div data-od-slide-flow="">',
+        '<h1>Calculus pillars</h1>',
+        '<div class="cards">',
+        '<div class="card" style="padding:24px"><h3>Limit</h3><p>lim</p></div>',
+        '<div class="card" style="padding:24px"><h3>Derivative</h3><p>d/dx</p></div>',
+        '</div></div></section>',
+        '<section class="slide"><h2>Next</h2><p>Practice problems.</p></section>',
+      ].join('');
+      const out = balanceClassBoundFlexCardRow(html);
+      expect(out.match(/flex:\s*1 1 0/gi)?.length).toBeGreaterThanOrEqual(2);
+      expect(out).toContain('Limit');
+      expect(out).toContain('Derivative');
     });
 
     it('pipeline balances a Hangul class flex row without inventing copy', () => {

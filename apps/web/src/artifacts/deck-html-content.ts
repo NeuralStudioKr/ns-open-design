@@ -805,13 +805,20 @@ export function hasSalvageableDeckSlideContent(html: string): boolean {
  * (strict incomplete/low-substance would still reject). Used so upstream
  * salvage → persist does not re-fail the same body after `salvageTruncated`
  * returns null on already-closed documents.
+ *
+ * 루프253 — Closed multi-slide soft salvage must include ≥1 deliverable body
+ * slide. Two titled shells (≥8 chars) alone used to persist as success after
+ * max_tokens cuts even though the deck was only an outline skeleton.
  */
 export function isClosedSoftSalvageDeckHtml(html: string): boolean {
   const trimmed = String(html ?? "").replace(/^﻿/, "").trim();
   if (trimmed.length < 128) return false;
   if (!/<\/html\s*>/i.test(trimmed) || !/<\/body\s*>/i.test(trimmed)) return false;
   if (!documentContainsSlideSection(trimmed)) return false;
-  return meetsTruncationSalvageQuality(trimmed);
+  if (!meetsTruncationSalvageQuality(trimmed)) return false;
+  const inners = listSlideSectionInners(trimmed);
+  if (inners.length <= 1) return true;
+  return inners.some(slideInnerHasDeliverableCopy);
 }
 
 /**

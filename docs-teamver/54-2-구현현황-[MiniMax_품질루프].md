@@ -7,6 +7,24 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-08-31 현재 판단 · 최신 루프
 
+### 루프254 — listAiSlideSpans depth-match
+
+heal slide span이 nested/unclosed host에서 본문 범위를 오인했다. same-tag depth count + nested containment filter. 카피 발명 없음.
+
+검증: contracts heal-ai-generated-deck 루프254.
+
+### 루프253 — closed soft-salvage body bar
+
+닫힌 title-only 골격이 soft salvage로 성공 persist되던 구멍. multi-slide는 deliverable body ≥1 필요. mid-stream truncation bar는 유지.
+
+검증: web deck-html-content 루프253.
+
+### 루프252 — class-bound heal AI marker gate
+
+영문 MiniMax fill이 Hangul gate에 막혀 class-bound shrink/balance가 스킵됐다. `data-od-slide-flow`/`tpl-*`/multi-slide card면 통과. empty-brief 영문 카탈로그는 유지.
+
+검증: contracts heal-ai-generated-deck 루프252.
+
 ### 루프250 — 동일 33dvmin 그리드·카드 폭 leftover
 
 루프245/246은 dvw/cqmin만 본다. MiniMax는 `33dvmin 33dvmin 33dvmin`나 `width:30svmin`를 남겨 2장이면 빈 띠, 3장이면 클립이 난다. 동일 22–48dvmin/svmin/lvmin/dvmax만 `minmax(0,1fr)`로 바꾸고 카드 폭을 벗긴다. `50lvmax` split은 유지. 카피 발명 없음.
@@ -15,7 +33,7 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ### 루프249 — FIXME/hack leftover stub
 
-루프202–247은 TBD/todo/foo stub만 본다. MiniMax는 `FIXME`/`hack`으로 빠진 기둥을 채워 3열이 유지된다. 카드 전체가 stub일 때만 제거. `FIXME 적분` 실카피는 유지. 카피 발명 없음.
+루프200–247 stub에 FIXME/hack이 없었다. MiniMax는 `FIXME`/`hack`으로 빠진 기둥을 채워 3열이 유지된다. 카드 전체가 stub일 때만 제거. `FIXME 적분` 실카피는 유지. 카피 발명 없음.
 
 검증: contracts heal-ai-generated-deck 루프249 · deck-framework-compact.
 
@@ -726,9 +744,32 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | persist/preview: Chapter 3/장 3 leftover 카드가 3열을 붙잡아 빈 띠 | ☑ 루프248 |
 | persist/preview: FIXME/hack stub 카드가 3열을 붙잡아 빈 띠 | ☑ 루프249 |
 | persist/preview: 동일 33dvmin/svmin 트랙·카드 폭이 leftover 빈 띠·클립 | ☑ 루프250 |
+| heal: 영문 MiniMax class-bound grid/flex가 Hangul gate에 스킵 | ☑ 루프252 |
+| persist: 닫힌 title-only 골격 soft-salvage 면제 | ☑ 루프253 |
+| heal: nested/unclosed slide span 범위 오인 | ☑ 루프254 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프250 · 33dvmin/svmin 트랙)
+## 이번 루프 (루프254 · listAiSlideSpans depth-match)
+
+- [x] same-tag depth count · nested containment filter
+- [x] heal-ai-generated-deck 루프254
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프253 · closed soft-salvage body bar)
+
+- [x] multi-slide soft → ≥1 deliverable body
+- [x] mid-stream truncation bar 유지
+- [x] deck-html-content 루프253
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프252 · class-bound AI marker gate)
+
+- [x] `sourceLooksLikeAiGeneratedDeck` — flow/tpl/multi-slide card
+- [x] empty-brief 영문 카탈로그 skip 유지
+- [x] heal-ai-generated-deck 루프252
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프250 · 33dvmin/svmin 트랙)
 
 - [x] equal track + card lock — 22–48 dvmin/svmin/lvmin/dvmax → minmax / strip
 - [x] `50lvmax` split 유지

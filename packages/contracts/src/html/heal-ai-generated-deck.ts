@@ -24,6 +24,31 @@ function sourceHasHangulGate(html: string, brief?: string | null): boolean {
   return destHasHangulTopic(html) || Boolean(String(brief ?? '').trim());
 }
 
+/**
+ * 루프252 — Class-bound layout heals used to require Hangul (or a brief).
+ * English MiniMax fills with `data-od-slide-flow` / `tpl-*` / multi-slide
+ * card rows never entered shrink/balance. Keep empty-brief English catalog
+ * fragments (no AI markers) skipped.
+ */
+function sourceLooksLikeAiGeneratedDeck(html: string, brief?: string | null): boolean {
+  if (sourceHasHangulGate(html, brief)) return true;
+  const source = String(html ?? '');
+  if (!source) return false;
+  if (/\bdata-od-slide-flow\b/i.test(source)) return true;
+  if (/\btpl-[\w-]+\b/i.test(source)) return true;
+  if (/\bclass\s*=\s*["'][^"']*\b(?:s-cover|s-chapter|s-data|slide-cover)\b/i.test(source)) {
+    return true;
+  }
+  const slides = listAiSlideSpans(source);
+  if (
+    slides.length >= 2
+    && /\bclass\s*=\s*["'][^"']*\b(?:card|cards-grid|cards|pillar|grid)\b/i.test(source)
+  ) {
+    return true;
+  }
+  return false;
+}
+
 function visibleText(html: string): string {
   return String(html ?? '')
     .replace(/<script\b[\s\S]*?<\/script>/gi, ' ')
@@ -52,27 +77,81 @@ type SlideSpan = {
   end: number;
 };
 
-function listAiSlideSpans(html: string): SlideSpan[] {
+/**
+ * 루프254 — Depth-matched slide host spans (parity with web
+ * `extractSlideHostBlocks`). The previous first-close / next-open limit
+ * mis-sliced nested or unclosed `section.slide` hosts so card-close, empty
+ * drop, and translate heals applied to the wrong body.
+ */
+export function listAiSlideSpans(html: string): SlideSpan[] {
+  const source = String(html ?? '');
+  if (!source) return [];
+  const raw: SlideSpan[] = [];
   const openRe = /<(section|div|main|article)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
-  const opens: { tag: string; attrs: string; start: number; openEnd: number }[] = [];
-  let match: RegExpExecArray | null;
-  while ((match = openRe.exec(html)) !== null) {
-    if (!attrsLookLikeDeckOrTemplateSlideHost(match[2] ?? '')) continue;
-    opens.push({
-      tag: (match[1] ?? 'section').toLowerCase(),
-      attrs: match[2] ?? '',
-      start: match.index,
-      openEnd: match.index + match[0].length,
-    });
+  let searchFrom = 0;
+  while (searchFrom < source.length) {
+    openRe.lastIndex = searchFrom;
+    const openMatch = openRe.exec(source);
+    if (!openMatch) break;
+    const tag = (openMatch[1] ?? 'section').toLowerCase();
+    const attrs = openMatch[2] ?? '';
+    const start = openMatch.index;
+    const openEnd = start + openMatch[0].length;
+    if (!attrsLookLikeDeckOrTemplateSlideHost(attrs)) {
+      searchFrom = openEnd;
+      continue;
+    }
+    const closeRe = new RegExp(`</${tag}\\s*>`, 'gi');
+    const nestedOpenRe = new RegExp(
+      `<${tag}\\b(?:[^>"']|"[^"]*"|'[^']*')*>`,
+      'gi',
+    );
+    let depth = 1;
+    let cursor = openEnd;
+    let bodyEnd = -1;
+    let end = -1;
+    while (cursor < source.length && depth > 0) {
+      nestedOpenRe.lastIndex = cursor;
+      closeRe.lastIndex = cursor;
+      const nextOpen = nestedOpenRe.exec(source);
+      const nextClose = closeRe.exec(source);
+      if (!nextClose) break;
+      if (nextOpen && nextOpen.index < nextClose.index) {
+        depth += 1;
+        cursor = nextOpen.index + nextOpen[0].length;
+      } else {
+        depth -= 1;
+        cursor = nextClose.index + nextClose[0].length;
+        if (depth === 0) {
+          bodyEnd = nextClose.index;
+          end = cursor;
+        }
+      }
+    }
+    if (bodyEnd < 0 || end < 0) {
+      raw.push({
+        tag,
+        attrs,
+        start,
+        openEnd,
+        bodyEnd: source.length,
+        end: source.length,
+      });
+      break;
+    }
+    raw.push({ tag, attrs, start, openEnd, bodyEnd, end });
+    searchFrom = end;
   }
-  return opens.map((open, i) => {
-    const limit = i + 1 < opens.length ? opens[i + 1]!.start : html.length;
-    const chunk = html.slice(open.openEnd, limit);
-    const close = new RegExp(`</${open.tag}\\s*>`, 'i').exec(chunk);
-    const bodyEnd = close ? open.openEnd + close.index : limit;
-    const end = close ? bodyEnd + close[0].length : limit;
-    return { ...open, bodyEnd, end };
-  });
+  // Drop nested hosts fully contained by an outer slide (web parity).
+  return raw.filter(
+    (slide, index) =>
+      !raw.some(
+        (other, otherIndex) =>
+          otherIndex !== index
+          && other.start < slide.start
+          && other.end >= slide.end,
+      ),
+  );
 }
 
 /**
@@ -758,9 +837,10 @@ function classTokensFromAttrs(attrs: string): string[] {
 }
 
 /**
- * 루프194 — Compact fills reuse leftover `.grid` / `.cards-grid` rules
- * (`1fr 1fr 1fr` or 2×2) without inline tracks. Heal only Hangul or
- * brief-backed decks so official English catalogs stay designed 2×2.
+ * 루프194 / 루프252 — Compact fills reuse leftover `.grid` / `.cards-grid` rules
+ * (`1fr 1fr 1fr` or 2×2) without inline tracks. Heal AI-shaped decks
+ * (Hangul/brief/`data-od-slide-flow`/multi-slide cards); keep empty-brief
+ * English catalog fragments untouched.
  */
 export function shrinkClassBoundEqualTrackGrids(
   html: string,
@@ -768,7 +848,7 @@ export function shrinkClassBoundEqualTrackGrids(
 ): string {
   let out = String(html ?? '');
   if (!out) return out;
-  if (!destHasHangulTopic(out) && !String(brief ?? '').trim()) return out;
+  if (!sourceLooksLikeAiGeneratedDeck(out, brief)) return out;
   const decls = collectClassEqualTrackDecls(out);
   if (decls.size === 0) return out;
   const gridOpenRe =
@@ -1240,7 +1320,7 @@ export function dropEmptyLeftoverPeerCardsInAllocatedRows(
 ): string {
   let out = String(html ?? '');
   if (!out) return out;
-  if (!sourceHasHangulGate(out, brief)) return out;
+  if (!sourceLooksLikeAiGeneratedDeck(out, brief)) return out;
   const decls = collectClassEqualTrackDecls(out);
   const openRe =
     /<(div|section|article|main|aside|ul|ol)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
@@ -1414,7 +1494,7 @@ export function relaxUniformPeerCardFixedMainSize(
 ): string {
   let out = String(html ?? '');
   if (!out) return out;
-  if (!sourceHasHangulGate(out, brief)) return out;
+  if (!sourceLooksLikeAiGeneratedDeck(out, brief)) return out;
   const decls = collectClassEqualTrackDecls(out);
   const openRe =
     /<(div|section|article|main|aside|ul|ol)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
@@ -1503,9 +1583,10 @@ export function balanceUnderfilledFlexCardRow(html: string): string {
 }
 
 /**
- * 루프204 — Same leftover as 191, but the flex row lives on a class rule
- * (`.cards { display:flex }`) with no inline display. 191 never sees it.
- * Hangul/brief-gated. Skip inline-flex rows (191) and flex columns.
+ * 루프204 / 루프252 — Same leftover as 191, but the flex row lives on a class
+ * rule (`.cards { display:flex }`) with no inline display. 191 never sees it.
+ * AI-shaped decks only (Hangul/brief/markers). Skip inline-flex rows (191)
+ * and flex columns.
  */
 export function balanceClassBoundFlexCardRow(
   html: string,
@@ -1513,7 +1594,7 @@ export function balanceClassBoundFlexCardRow(
 ): string {
   let out = String(html ?? '');
   if (!out) return out;
-  if (!sourceHasHangulGate(out, brief)) return out;
+  if (!sourceLooksLikeAiGeneratedDeck(out, brief)) return out;
   const flexNames = collectClassFlexRowNames(out);
   if (flexNames.size === 0) return out;
   const openRe =
@@ -1796,7 +1877,7 @@ export function unwrapRedundantNestedPeerCards(
 ): string {
   let out = String(html ?? '');
   if (!out) return out;
-  if (!sourceHasHangulGate(out, brief)) return out;
+  if (!sourceLooksLikeAiGeneratedDeck(out, brief)) return out;
   if (!/<div\b/i.test(out)) return out;
   for (let pass = 0; pass < 4; pass += 1) {
     const next = unwrapRedundantNestedPeerCardsOnce(out);
