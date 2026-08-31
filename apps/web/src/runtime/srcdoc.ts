@@ -2882,9 +2882,10 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .stage > .slide {
   overflow: visible !important;
   display: none !important;
 }
-/* More specific than > .slide { display:none }. Inline display:none from
- * forceReveal still hides page 1 after the host turns the page. */
-#od-stacked-deck-stage > .slide:first-child {
+/* Boot-only: paint page 1 before JS adds .active. After a host next,
+ * :has(.slide.active) turns this off so a lost inline hide cannot
+ * restack slide 1 over page 2 (루프206). */
+#od-stacked-deck-stage:not(:has(.slide.active)):not(:has(.slide.is-active)) > .slide:first-child {
   display: block !important;
   visibility: visible !important;
   pointer-events: auto !important;

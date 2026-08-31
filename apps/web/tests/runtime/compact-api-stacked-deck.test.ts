@@ -1131,7 +1131,7 @@ cur=n;
       /#od-stacked-deck-stage\s*\{[^}]*transform:\s*translate\(-50%,\s*-50%\)/,
     );
     expect(srcdoc).toMatch(
-      /#od-stacked-deck-stage\s*>\s*\.slide:first-child\s*\{[^}]*display:\s*block\s*!important/,
+      /#od-stacked-deck-stage:not\(:has\(\.slide\.active\)\):not\(:has\(\.slide\.is-active\)\)\s*>\s*\.slide:first-child\s*\{[^}]*display:\s*block\s*!important/,
     );
     expect(srcdoc).toMatch(
       /body\s*>\s*\.slide:first-child:not\(\.active\):not\(\.is-active\):not\(\.current\)\s*\{[^}]*display:\s*block\s*!important/,

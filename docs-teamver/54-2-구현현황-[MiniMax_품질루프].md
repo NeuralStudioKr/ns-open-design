@@ -7,6 +7,12 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-08-31 현재 판단 · 최신 루프
 
+### 루프206 — stacked first-child가 페이지 2를 가리는 문제
+
+`#od-stacked-deck-stage > .slide:first-child { display:block }`는 부트용인데 전환 후에도 살아 있다. 인라인 hide가 빠지면 1장이 다시 그려진다. `.active`가 생기기 전에만 first-child를 켠다. 카피 발명 없음.
+
+검증: web srcdoc-deck-bridge-nested-slides 루프206.
+
 ### 루프205 — PILLAR/COLUMN 인덱스만 leftover 카드
 
 루프197–202는 빈 셸·placeholder·TBD stub만 leftover로 본다. MiniMax는 빠진 기둥을 `PILLAR 03`/`기둥 3`으로 채워 3열이 유지된다. 카드 전체가 인덱스 라벨일 때만 제거. 전 peer가 숫자인 스텝 행과 `PILLAR 03`+실카피는 유지. 카피 발명 없음.
@@ -95,6 +101,7 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ### 다음 루프 후보 (2026-08-31 EOD 기준)
 
+- **인접 (루프206 밖):** `srcdoc-deck-bridge-nested-slides` native `#deck-next` 픽스처가 host next 후 `active:2`를 보고함 (transform/dot는 1). staging에서 이미 red — 이번 CSS 변경과 무관.
 - **후보 C (3열 residual):** placeholder가 아닌 짧은 실단어(`TBD`/`N/A`/`준비중`) 세 번째 카드, 또는 카드마다 다른 max-width(480 vs 560)로 균일 판정을 피하는 leftover. 루프200–201 이후.
 - **후보 B (예약 · 규모 큼):** contracts 안 `var(--pad, calc(px * n))` / `env(safe-area-inset-top, calc(...))` fallback red-spec 39건. fallback 표현을 card threshold 로 승격하는 heuristic — 별도 루프 필요.
 - **후보 A 후속 (E2E):** 190b drop 이후 남은 슬라이드 수가 사용자 요청보다 부족할 때 top-up/retry 파이프라인과의 연동 검증. 루프194 auto-repair 커버리지 실증 (사용자 실 fixture 몇 % 를 drop 없이 살려내는가) — MiniMax 실키 없이 기록 fixture 기반 지표만이라도 남긴다.
@@ -410,9 +417,17 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | heal: 제목+내부 `.card`를 194가 빈 셸로 쪼갬 | ☑ 루프203 |
 | persist/preview: 클래스 `.cards{display:flex}` 행이 grow 없이 좌측 편중 | ☑ 루프204 |
 | persist/preview: PILLAR/COLUMN/기둥 N 인덱스 leftover 카드가 3열을 붙잡아 빈 띠 | ☑ 루프205 |
+| catalog PreviewModal: stacked first-child CSS가 페이지 2에서 1장을 다시 그림 | ☑ 루프206 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프205 · 인덱스 leftover)
+## 이번 루프 (루프206 · stacked first-child)
+
+- [x] `:has(.slide.active)` 부트 전용 first-child
+- [x] 인라인 hide 유실 후에도 1장 display:none
+- [x] srcdoc-deck-bridge-nested-slides 루프206
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프205 · 인덱스 leftover)
 
 - [x] `textLooksLikeLeftoverIndexLabel` — PILLAR/COLUMN/기둥 N(+마침표)만 drop
 - [x] 전-인덱스 스텝 행 · 실카피 접두 유지

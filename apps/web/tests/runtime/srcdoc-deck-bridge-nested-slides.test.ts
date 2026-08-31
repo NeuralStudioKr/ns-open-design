@@ -68,6 +68,12 @@ function postSlide(win: ReturnType<typeof setupDeckBridge>['win'], action: 'next
   }));
 }
 
+function extractSrcdocStyleText(srcdoc: string): string {
+  return [...srcdoc.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style>/gi)]
+    .map((match) => match[1] ?? '')
+    .join('\n');
+}
+
 describe('deck bridge — nested slide markup (#1530)', () => {
   it('counts nested .slide elements through a fallback when no structured container matches', async () => {
     // 8 slides nested two levels deep — none of `.deck > .slide`,
@@ -555,6 +561,44 @@ describe('deck bridge — nested slide markup (#1530)', () => {
     expect(win.getComputedStyle(slideEls[0]!).display).not.toBe('none');
     expect(win.getComputedStyle(slideEls[1]!).display).toBe('none');
     expect(lastSlideState(parentPostMessage)).toMatchObject({ active: 0, count: 3 });
+  });
+
+  it('boot-only first-child CSS does not restack page 1 after next loses inline hide (루프206)', async () => {
+    const slides = Array.from({ length: 2 }, (_, i) =>
+      `<section class="slide" style="min-height:100vh;padding:40px">Slide ${i + 1}</section>`,
+    ).join('');
+    const srcdoc = buildSrcdoc(`<!doctype html><html><body>${slides}</body></html>`, {
+      deck: true,
+    });
+    expect(srcdoc).toMatch(
+      /#od-stacked-deck-stage:not\(:has\(\.slide\.active\)\):not\(:has\(\.slide\.is-active\)\)\s*>\s*\.slide:first-child/,
+    );
+    expect(srcdoc).not.toMatch(/#od-stacked-deck-stage\s*>\s*\.slide:first-child\s*\{/);
+
+    const { win } = setupDeckBridge(slides);
+    const style = win.document.createElement('style');
+    style.textContent = extractSrcdocStyleText(srcdoc);
+    win.document.head.appendChild(style);
+    win.dispatchEvent(new win.MessageEvent('message', {
+      data: { type: 'od:deck-host-viewport', width: 800, height: 600, scale: 1, layoutFit: false },
+    }));
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 450));
+
+    const slideEls = Array.from(
+      win.document.querySelectorAll('#od-stacked-deck-stage > .slide'),
+    ) as HTMLElement[];
+    expect(slideEls).toHaveLength(2);
+
+    postSlide(win, 'next');
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 350));
+    expect(slideEls[1]!.classList.contains('active')).toBe(true);
+
+    slideEls[0]!.style.removeProperty('display');
+    slideEls[0]!.style.removeProperty('visibility');
+    slideEls[0]!.style.removeProperty('pointer-events');
+
+    expect(win.getComputedStyle(slideEls[0]!).display).toBe('none');
+    expect(win.getComputedStyle(slideEls[1]!).display).not.toBe('none');
   });
 
   it('prevents wheel scrolling on compact stacked decks before navigation', async () => {
