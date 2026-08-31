@@ -1088,22 +1088,26 @@ function textLooksLikeLeftoverPeerPlaceholder(html: string): boolean {
  * 루프217 — `KEY 3` / `테마 3` / `블록 3` index leftovers.
  * 루프219 — circled `③` / fullwidth `３` leftovers.
  * 루프222 — `Phase 3` / `축 3` / `레이어 3` index leftovers.
+ * 루프225 — `00` / `PILLAR 0` / `기둥 0` zero-index leftovers.
+ * Keep `0%` KPI copy — `%` is not leftover punctuation.
  */
 const LEFTOVER_INDEX_ROMAN =
   '(?:viii|vii|iii|xii|xi|ix|iv|vi|ii|[xv]|i|[Ⅰ-Ⅻⅰ-ⅻ])';
 /** 루프219 — circled / dingbat / fullwidth 1–9 leftover indexes. */
 const LEFTOVER_INDEX_MARK = '[①-⑨❶-❾１-９]';
+/** 루프225 — include 0 / 00 leftover shells MiniMax leaves on the missing pillar. */
+const LEFTOVER_INDEX_DIGIT = '0?[0-9]';
 
 function textLooksLikeLeftoverIndexLabel(html: string): boolean {
   const text = visibleText(html).replace(/\s+/g, ' ').trim();
   if (!text) return false;
   const latin = new RegExp(
-    `^(?:pillar|column|col|card|item|step|part|key|theme|block|slot|phase|axis|layer|no\\.?|num(?:ber)?|#)?\\s*(?:0?[1-9]|${LEFTOVER_INDEX_ROMAN}|${LEFTOVER_INDEX_MARK})[.\\u2026·•\\-–—]?$`,
+    `^(?:pillar|column|col|card|item|step|part|key|theme|block|slot|phase|axis|layer|no\\.?|num(?:ber)?|#)?\\s*(?:${LEFTOVER_INDEX_DIGIT}|${LEFTOVER_INDEX_ROMAN}|${LEFTOVER_INDEX_MARK})[.\\u2026·•\\-–—]?$`,
     'iu',
   );
   if (latin.test(text)) return true;
   return new RegExp(
-    `^(?:기둥|열|카드|항목|단계|파트|번호|넘버|포인트|키|테마|블록|슬롯|페이즈|축|레이어)\\s*(?:0?[1-9]|${LEFTOVER_INDEX_ROMAN}|${LEFTOVER_INDEX_MARK})[.\\u2026·•\\-–—]?$`,
+    `^(?:기둥|열|카드|항목|단계|파트|번호|넘버|포인트|키|테마|블록|슬롯|페이즈|축|레이어)\\s*(?:${LEFTOVER_INDEX_DIGIT}|${LEFTOVER_INDEX_ROMAN}|${LEFTOVER_INDEX_MARK})[.\\u2026·•\\-–—]?$`,
     'u',
   ).test(text);
 }

@@ -65,6 +65,7 @@ describe('DECK_FRAMEWORK_DIRECTIVE_COMPACT', () => {
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('Phase 3');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('tobefilled');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('soon/later/대기');
+    expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('PILLAR 00');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('Class flex rows');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('no px/%/vw width or min-width');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('max-width');
