@@ -994,6 +994,15 @@ const LEFTOVER_PEER_PLACEHOLDER_TOKENS = [
   '비어있음',
   '미입력',
   '없음',
+  // 루프214 — English absence stubs on the missing pillar.
+  'unknown',
+  'pending',
+  'vacant',
+  'unset',
+  'empty',
+  'blank',
+  'none',
+  'tbc',
 ].sort((a, b) => b.length - a.length);
 
 const LEFTOVER_PEER_PLACEHOLDER_PUNCT_RE = /^(?:[.…·•\-–—]{1,3})/u;

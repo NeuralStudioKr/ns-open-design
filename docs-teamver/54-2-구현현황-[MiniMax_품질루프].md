@@ -7,6 +7,12 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-08-31 현재 판단 · 최신 루프
 
+### 루프214 — empty/blank/pending leftover 카드
+
+루프202–208은 TBD/해당없음만 stub로 본다. MiniMax는 `empty`/`blank`/`pending`으로 빠진 기둥을 채워 3열이 유지된다. 카드 전체가 stub일 때만 제거. `empty set` 실카피는 유지. 카피 발명 없음.
+
+검증: contracts heal-ai-generated-deck 루프214 · deck-framework-compact.
+
 ### 루프213 — 동일 vw 폭이 3열을 잠그는 문제
 
 루프207은 %만 column-share로 본다. MiniMax는 `width:30vw`를 찍어 3열이 잘리거나 grow가 막힌다. 22–48vw만 벗긴다. 100vw·50vw는 유지. 카피 발명 없음.
@@ -467,9 +473,16 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | persist/preview: n.a./T.B.D. dotted stub 카드가 3열을 붙잡아 빈 띠 | ☑ 루프211 |
 | persist/preview: No. 3/번호 3 인덱스 leftover 카드가 3열을 붙잡아 빈 띠 | ☑ 루프212 |
 | persist/preview: 동일 22–48vw 카드 폭이 grow를 막아 3열 클립·빈 띠 | ☑ 루프213 |
+| persist/preview: empty/blank/pending stub 카드가 3열을 붙잡아 빈 띠 | ☑ 루프214 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프213 · vw column-share)
+## 이번 루프 (루프214 · empty/blank stub)
+
+- [x] leftover 토큰 empty/blank/pending/none · `empty set` 유지
+- [x] heal-ai-generated-deck 루프214 · deck-framework-compact
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프213 · vw column-share)
 
 - [x] `cssLengthToPx` 22–48vw · 100vw/50vw 유지
 - [x] heal-ai-generated-deck 루프213 · deck-framework-compact
