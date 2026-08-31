@@ -221,6 +221,18 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
       expect(out).toMatch(/grid-template-columns:\s*1\.0fr 1\.0fr(?:\s|;|")/);
       expect(out).not.toMatch(/grid-template-columns:\s*1\.0fr 1\.0fr 1\.0fr/);
     });
+
+    it('shrinks minmax(auto,1fr) x3 with 2 cards (루프221)', () => {
+      const html = [
+        '<div style="display:grid;grid-template-columns:minmax(auto,1fr) minmax(auto,1fr) minmax(auto,1fr);gap:24px">',
+        '<div>극한</div>',
+        '<div>도함수</div>',
+        '</div>',
+      ].join('');
+      const out = shrinkOverAllocatedRepeatGrid(html);
+      expect(out).toMatch(/minmax\(\s*auto\s*,\s*1fr\s*\) minmax\(\s*auto\s*,\s*1fr\s*\)/);
+      expect(out).not.toMatch(/minmax\(\s*auto\s*,\s*1fr\s*\) minmax\(\s*auto\s*,\s*1fr\s*\) minmax\(\s*auto\s*,\s*1fr\s*\)/);
+    });
   });
 
   describe('루프195 equal-track leftover / clip', () => {
@@ -244,6 +256,26 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
       const out = normalizeEqualFrTracksToMinmax(html);
       expect(out).toMatch(/grid-template-columns:\s*(?:minmax\(0,1fr\) ){2}minmax\(0,1fr\)/);
       expect(out).not.toMatch(/grid-template-columns:\s*1\.0fr 1\.0fr 1\.0fr/);
+    });
+
+    it('rewrites a filled minmax(auto,1fr) row to minmax(0,1fr) (루프221)', () => {
+      const html = [
+        '<div style="display:grid;grid-template-columns:minmax(auto,1fr) minmax(auto,1fr) minmax(auto,1fr);gap:24px">',
+        '<div>a</div><div>b</div><div>c</div>',
+        '</div>',
+      ].join('');
+      const out = normalizeEqualFrTracksToMinmax(html);
+      expect(out).toMatch(/grid-template-columns:\s*(?:minmax\(0,1fr\) ){2}minmax\(0,1fr\)/);
+      expect(out).not.toMatch(/minmax\(\s*auto\s*,\s*1fr\s*\)/);
+    });
+
+    it('leaves mixed minmax(200px,1fr) sidebar tracks alone (루프221)', () => {
+      const html = [
+        '<div style="display:grid;grid-template-columns:minmax(200px,1fr) minmax(auto,1fr);gap:24px">',
+        '<div>목차</div><div>본문</div>',
+        '</div>',
+      ].join('');
+      expect(normalizeEqualFrTracksToMinmax(html)).toBe(html);
     });
 
     it('rewrites a filled 33% 33% 33% row to minmax (루프210)', () => {
@@ -965,6 +997,23 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
       const out = healAiGeneratedDeckMarkup(html, '미적분');
       expect((out.match(/class="card"/g) ?? []).length).toBe(2);
       expect(out).not.toContain('기둥 Ⅲ');
+      expect(out).toContain('극한');
+      expect(out).toContain('도함수');
+    });
+
+    it('pipeline shrinks a minmax(auto,1fr) leftover row after dropping the empty shell (루프221)', () => {
+      const html = [
+        '<section class="slide"><h1>미적분의 세 기둥</h1>',
+        '<div style="display:grid;grid-template-columns:minmax(auto,1fr) minmax(auto,1fr) minmax(auto,1fr);gap:24px">',
+        '<div class="card"><h3>극한</h3><p>lim</p></div>',
+        '<div class="card"><h3>도함수</h3><p>d/dx</p></div>',
+        '<div class="card"></div>',
+        '</div></section>',
+      ].join('');
+      const out = healAiGeneratedDeckMarkup(html, '미적분');
+      expect((out.match(/class="card"/g) ?? []).length).toBe(2);
+      expect(out).not.toMatch(/minmax\(\s*auto\s*,\s*1fr\s*\)/);
+      expect(out).toMatch(/grid-template-columns:\s*(?:minmax\(0,1fr\) ){1}minmax\(0,1fr\)/);
       expect(out).toContain('극한');
       expect(out).toContain('도함수');
     });

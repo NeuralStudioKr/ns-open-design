@@ -397,7 +397,7 @@ export function unnestHeadingBlockChildren(html: string): string {
 const GRID_BLOCK_CHILD_RE =
   /^(div|section|article|li|figure|aside|header|footer|main|nav|ul|ol|p|table)$/;
 const EQUAL_FR_TRACK_RE =
-  /^(?:1(?:\.0+)?fr|minmax\(\s*0\s*,\s*1(?:\.0+)?fr\s*\))$/i;
+  /^(?:1(?:\.0+)?fr|minmax\(\s*(?:0|auto|min-content|max-content)\s*,\s*1(?:\.0+)?fr\s*\))$/i;
 /** 루프210/215 — identical 22–48% or vw/vmin shares (skip 50% / 50vw splits). */
 const EQUAL_COLUMN_SHARE_TRACK_RE = /^(?:2[2-9]|3\d|4[0-8])(?:\.\d+)?(?:%|vw|vmin)$/i;
 
@@ -574,7 +574,7 @@ function minmaxUnitForEqualFr(decl: EqualColumnDecl): EqualColumnDecl | null {
   // 루프220 — `1.0fr` / `minmax(0,1.0fr)` are the same leftover as `1fr`.
   if (
     /^1(?:\.0+)?fr$/i.test(unit)
-    || /^minmax\(0,1(?:\.0+)?fr\)$/i.test(unit)
+    || /^minmax\((?:0|auto|min-content|max-content),1(?:\.0+)?fr\)$/i.test(unit)
     || EQUAL_COLUMN_SHARE_TRACK_RE.test(unit)
   ) {
     return { ...decl, unit: 'minmax(0,1fr)' };
