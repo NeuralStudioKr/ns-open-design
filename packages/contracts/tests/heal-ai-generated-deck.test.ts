@@ -188,6 +188,27 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
       ].join('');
       expect(shrinkOverAllocatedRepeatGrid(html)).toBe(html);
     });
+
+    it('shrinks explicit 33vw 33vw 33vw with 2 cards (루프215)', () => {
+      const html = [
+        '<div style="display:grid;grid-template-columns:33vw 33vw 33vw;gap:24px">',
+        '<div>극한</div>',
+        '<div>도함수</div>',
+        '</div>',
+      ].join('');
+      const out = shrinkOverAllocatedRepeatGrid(html);
+      expect(out).toMatch(/grid-template-columns:\s*33vw 33vw/);
+      expect(out).not.toMatch(/grid-template-columns:\s*33vw 33vw 33vw/);
+    });
+
+    it('leaves a 50vw 50vw split unchanged (루프215)', () => {
+      const html = [
+        '<div style="display:grid;grid-template-columns:50vw 50vw;gap:24px">',
+        '<div>목차</div>',
+        '</div>',
+      ].join('');
+      expect(shrinkOverAllocatedRepeatGrid(html)).toBe(html);
+    });
   });
 
   describe('루프195 equal-track leftover / clip', () => {
@@ -211,6 +232,17 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
       const out = normalizeEqualFrTracksToMinmax(html);
       expect(out).toMatch(/grid-template-columns:\s*(?:minmax\(0,1fr\) ){2}minmax\(0,1fr\)/);
       expect(out).not.toMatch(/grid-template-columns:\s*33% 33% 33%/);
+    });
+
+    it('rewrites a filled 33vw 33vw 33vw row to minmax (루프215)', () => {
+      const html = [
+        '<div style="display:grid;grid-template-columns:33vw 33vw 33vw;gap:24px">',
+        '<div>a</div><div>b</div><div>c</div>',
+        '</div>',
+      ].join('');
+      const out = normalizeEqualFrTracksToMinmax(html);
+      expect(out).toMatch(/grid-template-columns:\s*(?:minmax\(0,1fr\) ){2}minmax\(0,1fr\)/);
+      expect(out).not.toMatch(/grid-template-columns:\s*33vw 33vw 33vw/);
     });
 
     it('collapses a 2x2 leftover row when only two cards were emitted', () => {
@@ -748,6 +780,23 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
       const out = healAiGeneratedDeckMarkup(html, '미적분');
       expect((out.match(/class="card"/g) ?? []).length).toBe(2);
       expect(out).not.toContain('기둥 Ⅲ');
+      expect(out).toContain('극한');
+      expect(out).toContain('도함수');
+    });
+
+    it('pipeline shrinks a 33vw 33vw 33vw leftover row after dropping the empty shell (루프215)', () => {
+      const html = [
+        '<section class="slide"><h1>미적분의 세 기둥</h1>',
+        '<div style="display:grid;grid-template-columns:33vw 33vw 33vw;gap:24px">',
+        '<div class="card"><h3>극한</h3><p>lim</p></div>',
+        '<div class="card"><h3>도함수</h3><p>d/dx</p></div>',
+        '<div class="card"></div>',
+        '</div></section>',
+      ].join('');
+      const out = healAiGeneratedDeckMarkup(html, '미적분');
+      expect((out.match(/class="card"/g) ?? []).length).toBe(2);
+      expect(out).not.toMatch(/grid-template-columns:\s*33vw/);
+      expect(out).toMatch(/grid-template-columns:\s*(?:minmax\(0,1fr\) ){1}minmax\(0,1fr\)/);
       expect(out).toContain('극한');
       expect(out).toContain('도함수');
     });

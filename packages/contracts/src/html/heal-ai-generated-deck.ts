@@ -397,8 +397,8 @@ export function unnestHeadingBlockChildren(html: string): string {
 const GRID_BLOCK_CHILD_RE =
   /^(div|section|article|li|figure|aside|header|footer|main|nav|ul|ol|p|table)$/;
 const EQUAL_FR_TRACK_RE = /^(?:1fr|minmax\(\s*0\s*,\s*1fr\s*\))$/i;
-/** 루프210 — identical 22–48% column-share tracks (skip 50% splits). */
-const EQUAL_COLUMN_SHARE_PERCENT_RE = /^(?:2[2-9]|3\d|4[0-8])(?:\.\d+)?%$/i;
+/** 루프210/215 — identical 22–48% or vw/vmin shares (skip 50% / 50vw splits). */
+const EQUAL_COLUMN_SHARE_TRACK_RE = /^(?:2[2-9]|3\d|4[0-8])(?:\.\d+)?(?:%|vw|vmin)$/i;
 
 function countDirectBlockChildren(inner: string): number {
   const tokenRe = /<(\/?)([a-zA-Z][\w-]*)\b[^>]*(\/)?>/gi;
@@ -449,8 +449,8 @@ type EqualColumnDecl = {
 /**
  * Accept `repeat(N, 1fr)` and explicit equal tracks (`1fr 1fr 1fr`,
  * `minmax(0,1fr) minmax(0,1fr) minmax(0,1fr)`). 루프210 — also identical
- * 22–48% shares (`33% 33% 33%`). Mixed tracks such as `1.3fr 1fr` or
- * `220px 1fr` or `50% 50%` splits are real two-pane layouts — leave them.
+ * 22–48% / vw shares (`33% 33% 33%`, `33vw 33vw 33vw`). Mixed tracks
+ * such as `1.3fr 1fr` or `220px 1fr` or `50% 50%` splits stay.
  */
 function parseDeclaredEqualColumns(value: string): EqualColumnDecl | null {
   const important = /!important/i.test(value);
@@ -478,7 +478,7 @@ function parseDeclaredEqualColumns(value: string): EqualColumnDecl | null {
   }
   const shares = tracks.map((t) => t.replace(/\s+/g, '').toLowerCase());
   if (
-    shares.every((t) => EQUAL_COLUMN_SHARE_PERCENT_RE.test(t) && t === shares[0])
+    shares.every((t) => EQUAL_COLUMN_SHARE_TRACK_RE.test(t) && t === shares[0])
   ) {
     return {
       kind: 'list',
@@ -570,7 +570,7 @@ function replaceStyleDecl(openTag: string, prop: string, value: string): string 
 function minmaxUnitForEqualFr(decl: EqualColumnDecl): EqualColumnDecl | null {
   const unit = decl.unit.replace(/\s+/g, '').toLowerCase();
   if (unit === 'minmax(0,1fr)') return null;
-  if (unit === '1fr' || EQUAL_COLUMN_SHARE_PERCENT_RE.test(unit)) {
+  if (unit === '1fr' || EQUAL_COLUMN_SHARE_TRACK_RE.test(unit)) {
     return { ...decl, unit: 'minmax(0,1fr)' };
   }
   return null;
