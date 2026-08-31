@@ -806,7 +806,10 @@ function collectClassEqualTrackDecls(html: string): Map<string, ClassEqualTrackD
       const cols = colsRaw ? parseDeclaredEqualColumns(colsRaw.trim()) : undefined;
       const rows = rowsRaw ? parseDeclaredEqualColumns(rowsRaw.trim()) : undefined;
       if (!cols && !rows) continue;
-      found.set(className, { cols: cols ?? undefined, rows: rows ?? undefined });
+      const decl: ClassEqualTrackDecl = {};
+      if (cols) decl.cols = cols;
+      if (rows) decl.rows = rows;
+      found.set(className, decl);
     }
   }
   return found;

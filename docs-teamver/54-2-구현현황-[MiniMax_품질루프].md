@@ -7,6 +7,12 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-08-31 현재 판단 · 최신 루프
 
+### 루프263 — contracts pretest 언블록 (exactOptionalPropertyTypes)
+
+루프195 `collectClassEqualTrackDecls`가 optional `{cols, rows}`에 `undefined`를 명시 대입해 `exactOptionalPropertyTypes: true` 아래 TS2379로 `pnpm --filter @open-design/web test` pretest(contracts 빌드)를 통째로 봉쇄. Conditional assign으로 최소 diff 수정. 3-col clip · 2x2 leftover auto-repair 원 의도는 보존.
+
+검증: contracts vitest 전체 — heal-ai-generated-deck 계열 초록 유지, 신규 회귀 0. apps/web pretest 통과, vitest 실행 확인 (Test Files 86 failed | 626 passed | 1 skipped — 기존 A/B/C/D 실패는 이번 스코프 밖).
+
 ### 루프262 — 3열 400 vs 800 max-width leftover lock
 
 루프240은 비율 ≤1.6만 균일로 본다. MiniMax는 3카드에 `max-width:400` / `800`으로 판정을 피해 3열이 잠긴다. 3장 이상만 비율 2.05까지 leftover. 2장 400 vs 800 · 3장 280 vs 900 sidebar는 유지. 카피 발명 없음.
