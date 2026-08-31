@@ -1268,6 +1268,61 @@ function attrsLookCardish(attrs: string): boolean {
 }
 
 /**
+ * 루프203 — End index after the just-opened `<div>` closes, or null if it
+ * never does. Nested divs are counted. Unclosed sibling cards return null
+ * so 194 still inserts a close.
+ */
+function findOpenedDivCloseEnd(source: string, afterOpen: number): number | null {
+  let i = afterOpen;
+  let depth = 1;
+  while (i < source.length && depth > 0) {
+    if (source.startsWith('<!--', i)) {
+      const end = source.indexOf('-->', i + 4);
+      i = end < 0 ? source.length : end + 3;
+      continue;
+    }
+    const opaque = /^<(script|style)\b[^>]*>/i.exec(source.slice(i));
+    if (opaque) {
+      const tag = opaque[1]!;
+      const close = new RegExp(`</${tag}\\s*>`, 'i').exec(source.slice(i));
+      i = close ? i + close.index + close[0].length : source.length;
+      continue;
+    }
+    const closeDiv = /^<\/div\s*>/i.exec(source.slice(i));
+    if (closeDiv) {
+      depth -= 1;
+      i += closeDiv[0].length;
+      continue;
+    }
+    const openDiv = /^<div\b[^>]*>/i.exec(source.slice(i));
+    if (openDiv) {
+      if (!/\/\s*>$/.test(openDiv[0]!)) depth += 1;
+      i += openDiv[0]!.length;
+      continue;
+    }
+    const anyTag = /^<\/?[a-zA-Z][\w-]*\b[^>]*>/i.exec(source.slice(i));
+    if (anyTag) {
+      i += anyTag[0].length;
+      continue;
+    }
+    i += 1;
+  }
+  return depth === 0 ? i : null;
+}
+
+/**
+ * True when this card is a balanced inner wrap (title + inner `.card`)
+ * whose close is followed by the host `</div>`. A well-formed sibling
+ * card that follows unclosed host content ends at EOF or another peer
+ * — those still get the 194 sibling close.
+ */
+function openedCardLooksLikeNestedHostChild(source: string, afterOpen: number): boolean {
+  const closeEnd = findOpenedDivCloseEnd(source, afterOpen);
+  if (closeEnd == null) return false;
+  return /^<\/div\s*>/i.test(source.slice(closeEnd).replace(/^\s+/, ''));
+}
+
+/**
  * Repair one slide body: un-nest accidental sibling cards and close leftover
  * opens at the end of the slide. Never invents content — only inserts close
  * tags (루프194).
@@ -1317,7 +1372,10 @@ export function repairUnbalancedCardDivsInFragment(inner: string): string {
       if (cardish && !selfClose) {
         // Peer cards must be siblings — MiniMax often opens the next card
         // without closing the previous one (slides 4/5 nested `.card`).
+        // 루프203 — skip that close when this card already closes on its
+        // own (title + inner card host). Unclosed siblings still close.
         while (stack.length > 0 && stack[stack.length - 1]!.cardish) {
+          if (openedCardLooksLikeNestedHostChild(source, i + full.length)) break;
           out += '</div>';
           stack.pop();
         }

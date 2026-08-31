@@ -7,6 +7,12 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-08-31 현재 판단 · 최신 루프
 
+### 루프203 — 제목+내부 카드를 194가 빈 셸로 쪼개는 문제
+
+루프199는 바깥 텍스트 없는 이중 래핑만 푼다. `PILLAR 01` + 내부 `.card`는 호스트로 남겼는데 194가 안쪽을 형제로 닫아 빈 셸이 됐다. 안쪽이 스스로 닫힌 뒤 호스트 `</div>`가 이어지면 봉합하지 않는다. 미닫힌 형제는 그대로 닫는다. 카피 발명 없음.
+
+검증: contracts heal-ai-generated-deck 루프203 · 194 · unbalanced-card-slide.
+
 ### 루프202 — TBD/N/A/준비중 stub 카드가 3열을 붙잡는 문제
 
 루프200은 `제목`/`내용`/`...`만 leftover로 본다. MiniMax는 빠진 기둥을 `TBD`/`N/A`/`준비중`으로 채워 3열이 유지된다. 카드 전체가 stub 토큰일 때만 제거. `추후 적분 예정` 실카피는 유지. 카피 발명 없음.
@@ -389,9 +395,16 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | persist/preview: 제목/내용/... placeholder 카드가 3열을 붙잡아 빈 띠 | ☑ 루프200 |
 | persist/preview: 동일 max-width / flex:0 0 이 grow를 막아 3열 클립·빈 띠 | ☑ 루프201 |
 | persist/preview: TBD/N/A/준비중 stub 카드가 3열을 붙잡아 빈 띠 | ☑ 루프202 |
+| heal: 제목+내부 `.card`를 194가 빈 셸로 쪼갬 | ☑ 루프203 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프202 · TBD/N/A/준비중 stub)
+## 이번 루프 (루프203 · 제목+내부 카드 194 유지)
+
+- [x] peek-ahead: 안쪽 카드 닫힌 뒤 호스트 `</div>`면 봉합 skip
+- [x] 미닫힌 형제 194 회귀
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프202 · TBD/N/A/준비중 stub)
 
 - [x] leftover 토큰 stub 확장 · 실카피 접두 유지
 - [x] heal-ai-generated-deck 루프202 · deck-framework-compact

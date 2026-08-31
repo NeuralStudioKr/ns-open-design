@@ -786,6 +786,31 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
       expect(repairUnbalancedCardDivsInFragment(inner)).toBe(inner);
     });
 
+    it('keeps a title plus a balanced inner card (루프203)', () => {
+      const inner = [
+        '<div class="card">',
+        '<h3>PILLAR 01</h3>',
+        '<div class="card"><p>lim</p></div>',
+        '</div>',
+      ].join('');
+      expect(repairUnbalancedCardDivsInFragment(inner)).toBe(inner);
+    });
+
+    it('pipeline keeps title+inner card without inventing copy (루프203)', () => {
+      const html = [
+        '<section class="slide"><h1>미적분의 세 기둥</h1>',
+        '<div class="card" style="padding:24px">',
+        '<h3>PILLAR 01</h3>',
+        '<div class="card"><p>극한 정의</p></div>',
+        '</div></section>',
+      ].join('');
+      const out = healAiGeneratedDeckMarkup(html, '미적분');
+      expect(out).toContain('PILLAR 01');
+      expect(out).toContain('극한 정의');
+      expect(out).not.toMatch(/<div class="card"[^>]*>\s*<\/div>/);
+      expect(out).toMatch(/PILLAR 01[\s\S]*<div class="card"/);
+    });
+
     it('repairs unclosed cards inside slide hosts via the pipeline', () => {
       const html = [
         '<!doctype html><html><body>',
