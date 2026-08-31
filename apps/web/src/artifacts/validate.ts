@@ -199,7 +199,14 @@ export function isLowSubstanceSlideDeckArtifact(
   if (deckSlideHeadingsLookLikeFailedGenerate(trimmed)) {
     return true;
   }
-  if (MEDIA_OR_REPLACED_CONTENT_RE.test(withoutNoise)) return false;
+  // 루프235 — decorative media alone must not clear low-substance. Only a
+  // deck that already meets the minimum deliverable bar is exempt.
+  if (
+    MEDIA_OR_REPLACED_CONTENT_RE.test(withoutNoise)
+    && meetsMinimumDeckDeliverableQuality(trimmed)
+  ) {
+    return false;
+  }
 
   if (DELIVERABLE_PLACEHOLDER_TEXT_RE.test(bodyText) && bodyText.length < 320) {
     return true;
@@ -237,11 +244,12 @@ function isEffectivelyEmptyHtmlBody(
   const bodyMatch = /<body\b[^>]*>([\s\S]*)<\/body>/i.exec(withoutComments);
   const body = bodyMatch ? bodyMatch[1]! : withoutComments;
   const withoutNoise = stripHtmlNoise(body);
-  // Media / replaced elements count as deliverable content even without text.
-  // Empty containers (`<section class="slide"></section>`, SLOT-comment-only
-  // sections after comment strip) must NOT — those were the demo failure mode
-  // where persist succeeded and the iframe showed a blank white deck.
-  if (MEDIA_OR_REPLACED_CONTENT_RE.test(withoutNoise)) {
+  // Media / replaced elements count as deliverable only with real body copy
+  // (루프235). Empty containers and title+decorative SVG must stay empty.
+  if (
+    MEDIA_OR_REPLACED_CONTENT_RE.test(withoutNoise)
+    && meetsMinimumDeckDeliverableQuality(withoutComments)
+  ) {
     return false;
   }
   return visibleTextFromHtmlFragment(withoutNoise).length === 0;

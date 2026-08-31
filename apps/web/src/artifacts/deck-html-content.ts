@@ -362,6 +362,9 @@ function textContainsRawBrief(text: string, brief: string): boolean {
  * failed generations, not a short draft. A single instruction-like cover can
  * still be healed/top-upped; the failure is when the same prompt is copied into
  * several slides and treated as deliverable content.
+ *
+ * 루프193 covered 3+ slides. 루프233 also refuses closed 2-slide decks where
+ * both slides thinly parrot the brief.
  */
 export function deckLooksLikeRepeatedUserBriefParrot(
   html: string,
@@ -370,7 +373,7 @@ export function deckLooksLikeRepeatedUserBriefParrot(
   const rawBrief = String(brief ?? '').trim();
   if (!rawBrief) return false;
   const inners = listSlideSectionInners(html);
-  if (inners.length < 3) return false;
+  if (inners.length < 2) return false;
 
   let parrotSlides = 0;
   let thinParrotSlides = 0;
@@ -383,6 +386,11 @@ export function deckLooksLikeRepeatedUserBriefParrot(
     if (!slideInnerHasDeliverableCopy(inner) || text.length < rawBrief.length + 80) {
       thinParrotSlides += 1;
     }
+  }
+
+  if (inners.length === 2) {
+    // Both slides thinly parrot the brief → failed generation (루프233).
+    return thinParrotSlides >= 2;
   }
 
   if (parrotSlides >= Math.ceil(inners.length / 2)) return true;
@@ -560,25 +568,23 @@ function stripSlideHeadingBlocks(innerHtml: string): string {
 
 /**
  * Heading present but no meaningful body beyond it. Long titles alone must not
- * count as deliverable copy (루프181).
+ * count as deliverable copy (루프181). Decorative media (SVG/img) without a
+ * real body block also stays title-only (루프235).
  */
 function slideInnerIsTitleOnlyShell(innerHtml: string): boolean {
   if (!firstSlideHeading(innerHtml)) return false;
   const withoutHeadings = stripSlideHeadingBlocks(innerHtml);
-  if (
-    HAS_MEDIA_CONTENT_RE.test(withoutHeadings)
-    && slideInnerHasVisibleCopy(withoutHeadings)
-  ) {
-    return false;
-  }
+  const withoutMedia = withoutHeadings
+    .replace(/<svg\b[\s\S]*?<\/svg>/gi, " ")
+    .replace(/<(?:img|video|audio|canvas|iframe|picture|object|embed)\b[^>]*>/gi, " ");
   // Any real body block with visible text is not title-only (even short leads).
   if (
-    /<(?:p|li|td|th|blockquote|figcaption)\b/i.test(withoutHeadings)
-    && HAS_VISIBLE_TEXT_IN_SLIDE_RE.test(withoutHeadings)
+    /<(?:p|li|td|th|blockquote|figcaption)\b/i.test(withoutMedia)
+    && HAS_VISIBLE_TEXT_IN_SLIDE_RE.test(withoutMedia)
   ) {
     return false;
   }
-  return visibleTextFromHtmlFragment(withoutHeadings).length < 8;
+  return visibleTextFromHtmlFragment(withoutMedia).length < 8;
 }
 
 /**
@@ -628,10 +634,21 @@ function slideInnerHasDeliverableCopy(innerHtml: string): boolean {
   if (isGenericOutlineOnlySlide(innerHtml)) return false;
   // Long heading-only slides are not deliverable (루프181).
   if (slideInnerIsTitleOnlyShell(innerHtml)) return false;
-  // Motif SVG / img without a title or lead is not deliverable copy — treating
-  // any `<svg>` as filled made SVG-first hangs look "salvageable".
-  if (HAS_MEDIA_CONTENT_RE.test(innerHtml) && slideInnerHasVisibleCopy(innerHtml)) {
-    return true;
+  // Motif SVG / img only counts with non-heading body copy (루프235).
+  // Title + decorative media alone used to look "filled".
+  if (HAS_MEDIA_CONTENT_RE.test(innerHtml)) {
+    const withoutHeadings = stripSlideHeadingBlocks(innerHtml);
+    const withoutMedia = withoutHeadings
+      .replace(/<svg\b[\s\S]*?<\/svg>/gi, " ")
+      .replace(/<(?:img|video|audio|canvas|iframe|picture|object|embed)\b[^>]*>/gi, " ");
+    if (
+      /<(?:p|li|td|th|blockquote|figcaption)\b/i.test(withoutMedia)
+      && HAS_VISIBLE_TEXT_IN_SLIDE_RE.test(withoutMedia)
+    ) {
+      return true;
+    }
+    if (visibleTextFromHtmlFragment(withoutMedia).length >= 12) return true;
+    return false;
   }
   if (/<(?:p|li|td|th|blockquote)\b/i.test(innerHtml) && HAS_VISIBLE_TEXT_IN_SLIDE_RE.test(innerHtml)) {
     return true;

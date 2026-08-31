@@ -716,6 +716,44 @@ describe("deck-html-content", () => {
       + '</body></html>';
     expect(deckLooksLikeRepeatedUserBriefParrot(topical, brief)).toBe(false);
   });
+
+  it("flags closed 2-slide thin brief parrots (루프233)", () => {
+    const brief = '삼각함수에 대해서 설명하는 피피티 만들어줘.';
+    const twoSlide =
+      '<!doctype html><html><body>'
+      + `<section class="slide"><h1>${brief}</h1><p>${brief}</p></section>`
+      + `<section class="slide"><h2>${brief}</h2><p>${brief}</p></section>`
+      + '</body></html>';
+    expect(deckLooksLikeRepeatedUserBriefParrot(twoSlide, brief)).toBe(true);
+    const coverPlusBody =
+      '<!doctype html><html><body>'
+      + `<section class="slide"><h1>${brief}</h1></section>`
+      + '<section class="slide"><h2>정의</h2><p>직각삼각형의 변의 길이 비에서 사인을 정의합니다.</p></section>'
+      + '</body></html>';
+    expect(deckLooksLikeRepeatedUserBriefParrot(coverPlusBody, brief)).toBe(false);
+  });
+
+  it("does not treat title + decorative SVG as deliverable copy (루프235)", () => {
+    const titleSvg =
+      '<!doctype html><html><body>'
+      + '<section class="slide"><h1>삼각함수</h1>'
+      + '<svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="40"/><text x="10" y="20">motif</text></svg>'
+      + '</section>'
+      + '<section class="slide"><h2>정의</h2>'
+      + '<svg viewBox="0 0 10 10"><circle r="4"/></svg></section>'
+      + '<section class="slide"><h2>활용</h2>'
+      + '<svg viewBox="0 0 10 10"><rect width="4" height="4"/></svg></section>'
+      + '</body></html>';
+    expect(meetsMinimumDeckDeliverableQuality(titleSvg)).toBe(false);
+    const withBody =
+      '<!doctype html><html><body>'
+      + '<section class="slide"><h1>삼각함수</h1>'
+      + '<svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="40"/></svg>'
+      + '<p>각과 비를 다루는 함수의 기초를 정리합니다.</p></section>'
+      + '<section class="slide"><h2>정의</h2><p>사인은 맞변 나누기 빗변입니다.</p></section>'
+      + '</body></html>';
+    expect(meetsMinimumDeckDeliverableQuality(withBody)).toBe(true);
+  });
 });
 
 describe("deck salvage with status prose", () => {

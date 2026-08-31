@@ -195,6 +195,15 @@ function removeSlideSpan(html: string, slide: SlideSpan): string {
   return `${html.slice(0, slide.start)}${html.slice(slide.end)}`;
 }
 
+/**
+ * 루프182 / 루프236 — Drop duplicate title-only leftover slides.
+ *
+ * MiniMax body-fill failure often emits the same title-only shell more than
+ * once. Consecutive pairs were handled first (루프182). Non-adjacent leftovers
+ * (`title | real body | same title-only`) still left a content-missing page
+ * after a filled slide (루프236) — drop later non-cover title-only shells whose
+ * normalized text matches an earlier title-only slide.
+ */
 export function dropDuplicateConsecutiveTitleOnlyLeftoverSlides(html: string): string {
   let out = String(html ?? '');
   if (!out) return out;
@@ -203,19 +212,29 @@ export function dropDuplicateConsecutiveTitleOnlyLeftoverSlides(html: string): s
   // Walk from the tail so each removal keeps indexes valid for earlier slides.
   for (let i = slides.length - 1; i >= 1; i -= 1) {
     const curr = slides[i]!;
-    const prev = slides[i - 1]!;
     const currBody = out.slice(curr.openEnd, curr.bodyEnd);
-    const prevBody = out.slice(prev.openEnd, prev.bodyEnd);
     if (!slideBodyLooksTitleOnly(currBody)) continue;
-    if (!slideBodyLooksTitleOnly(prevBody)) continue;
+    // Never drop an explicit cover/chapter host.
+    if (attrsLookLikeRealCoverSlide(curr.attrs)) continue;
+    if (/\b(?:s-chapter|chapter)\b/i.test(curr.attrs)) continue;
     const currText = normalizeVisibleTextForDedup(currBody);
-    const prevText = normalizeVisibleTextForDedup(prevBody);
-    if (!currText || currText !== prevText) continue;
+    if (!currText) continue;
     // Preserve motif-only decorative shells — a background gradient host may
     // legitimately reuse the same heading text as a chapter marker.
     if (/\bbackground(?:-image)?\s*:\s*(?:url|linear-gradient|radial-gradient|conic-gradient)/i.test(curr.attrs)) {
       continue;
     }
+    let matchesEarlierTitleOnly = false;
+    for (let j = 0; j < i; j += 1) {
+      const earlier = slides[j]!;
+      const earlierBody = out.slice(earlier.openEnd, earlier.bodyEnd);
+      if (!slideBodyLooksTitleOnly(earlierBody)) continue;
+      if (normalizeVisibleTextForDedup(earlierBody) === currText) {
+        matchesEarlierTitleOnly = true;
+        break;
+      }
+    }
+    if (!matchesEarlierTitleOnly) continue;
     out = `${out.slice(0, curr.start)}${out.slice(curr.end)}`;
   }
   return out;
@@ -309,14 +328,15 @@ function attrsLookLikeRealCoverSlide(attrs: string): boolean {
 }
 
 /**
- * 루프186 / 루프188 — Drop a stray generated intro splash before the real cover.
+ * 루프186 / 루프188 / 루프234 — Drop a stray generated intro splash before the
+ * real cover (or a substantive same-topic opener).
  *
  * Recent template-fill failures sometimes prepend
  * `<section class="slide slide-title"><h1>{topic}</h1></section>` (or a bare
  * title-only `<section class="slide">`) and then append the actual
- * selected-template cover as slide 2. The old duplicate guard intentionally
- * never removed slide 1, so users saw a blank/dark title-only first page even
- * though the next slide had the real deck.
+ * selected-template cover as slide 2. MiniMax often omits `s-cover` /
+ * `data-screen-label=…Cover` on that second slide, so requiring cover attrs
+ * alone left the splash in place (루프234).
  *
  * Remove slide 1 only when it is a short title-only shell and slide 2 is
  * substantive and clearly about the same topic. This keeps intentional
@@ -333,11 +353,16 @@ export function dropLeadingTitleOnlyIntroBeforeRealCover(
   const first = slides[0]!;
   const second = slides[1]!;
   if (!attrsLookLikeGeneratedIntroShell(first.attrs)) return source;
-  if (!attrsLookLikeRealCoverSlide(second.attrs)) return source;
+  // Chapter hosts after a splash are intentional openers — do not drop.
+  if (/\b(?:s-chapter|s-data|s-manifesto|s-programme|chapter)\b/i.test(second.attrs)) {
+    return source;
+  }
   const firstBody = source.slice(first.openEnd, first.bodyEnd);
   const secondBody = source.slice(second.openEnd, second.bodyEnd);
   if (!slideBodyLooksTitleOnly(firstBody)) return source;
   if (!slideBodyLooksSubstantive(secondBody)) return source;
+  // Explicit cover attrs are preferred but not required — MiniMax often emits
+  // a bare `class="slide"` substantive cover as slide 2 (루프234).
 
   const title = normalizedTopicForComparison(normalizeVisibleTextForDedup(firstBody));
   if (title.length < 2) return source;
@@ -398,7 +423,7 @@ const GRID_BLOCK_CHILD_RE =
   /^(div|section|article|li|figure|aside|header|footer|main|nav|ul|ol|p|table)$/;
 const EQUAL_FR_TRACK_RE =
   /^(?:1(?:\.0+)?fr|minmax\(\s*(?:0|auto|min-content|max-content)\s*,\s*1(?:\.0+)?fr\s*\))$/i;
-/** 루프210/215/233 — identical 22–48% or viewport/container shares (skip 50 splits). */
+/** 루프210/215/238 — identical 22–48% or viewport/container shares (skip 50 splits). */
 const EQUAL_COLUMN_SHARE_TRACK_RE =
   /^(?:2[2-9]|3\d|4[0-8])(?:\.\d+)?(?:%|vw|vh|vmin|vmax|dvh|svh|lvh|cqw|cqi|cqh|cqb)$/i;
 
@@ -1112,7 +1137,7 @@ function textLooksLikeLeftoverPeerPlaceholder(html: string): boolean {
  * 루프229 — `Module 3` / `트랙 3` / `섹션 3` index leftovers.
  * `UNIT 3` stays because that prefix is not leftover vocabulary.
  * 루프230 — `10` / `PILLAR 10` two-digit leftovers. Keep `10%` KPI copy.
- * 루프232 — letter `C` / `기둥 다` / `(3)` / `3번` leftovers.
+ * 루프237 — letter `C` / `기둥 다` / `(3)` / `3번` leftovers.
  */
 const LEFTOVER_INDEX_ROMAN =
   '(?:viii|vii|iii|xii|xi|ix|iv|vi|ii|[xv]|i|[Ⅰ-Ⅻⅰ-ⅻ])';
@@ -1120,7 +1145,7 @@ const LEFTOVER_INDEX_ROMAN =
 const LEFTOVER_INDEX_MARK = '[⓪①-⑨❶-❾⓿０-９⑴-⑼㉠-㉥]';
 /** 루프225/230 — 0 / 00 / 01–09 / 10 leftover shells. */
 const LEFTOVER_INDEX_DIGIT = '(?:0?[0-9]|10)';
-/** 루프232 — A–C / 가나다라 leftover letters (not roman V/X/I). */
+/** 루프237 — A–C / 가나다라 leftover letters (not roman V/X/I). */
 const LEFTOVER_INDEX_LETTER = '(?:[abc]|[가나다라])';
 const LEFTOVER_INDEX_CORE =
   `(?:${LEFTOVER_INDEX_DIGIT}|${LEFTOVER_INDEX_ROMAN}|${LEFTOVER_INDEX_MARK}|${LEFTOVER_INDEX_LETTER})`;
@@ -1238,7 +1263,7 @@ function cssLengthToPx(raw: string): number | null {
     }
     return (PEER_CANVAS_PX * value) / 100;
   }
-  // 루프213/233 — MiniMax locks cards with 30vw/30vh/30vmin as if the
+  // 루프213/238 — MiniMax locks cards with 30vw/30vh/30vmin as if the
   // canvas were the viewport. Same 22–48 band as % / vw; 50/100 stay.
   const viewport = /^(\d+(?:\.\d+)?)\s*(vw|vh|vmin|vmax|dvh|svh|lvh|cqw|cqi|cqh|cqb)$/i
     .exec(source);
@@ -1342,7 +1367,7 @@ function stripFixedMainSizeFromOpenTag(openTag: string): string {
  * 루프207 — uniform 22–48% column-share widths (and flex:0 0 32%) also lock
  * the row. 100% stretch and 50% splits stay.
  * 루프213 — same for 22–48vw leftovers (`width:30vw`, `flex:0 0 30vw`).
- * 루프233 — same for vh/vmin/cq* leftovers (`width:30vmin`, `33vh 33vh 33vh`).
+ * 루프238 — same for vh/vmin/cq* leftovers (`width:30vmin`, `33vh 33vh 33vh`).
  */
 export function relaxUniformPeerCardFixedMainSize(
   html: string,
@@ -1775,17 +1800,42 @@ export function normalizeHangulParticleGaps(html: string): string {
   );
 }
 
+const UNANCHORED_CENTER_TRANSLATE_RE =
+  /translateY\s*\(\s*-50%\s*\)|translate\s*\(\s*-50%\s*,\s*-50%\s*\)|translate3d\s*\(\s*-50%\s*,\s*-50%\s*,\s*0(?:px|%)?\s*\)/i;
+
+function styleHasUnanchoredCenterTranslate(style: string): boolean {
+  return UNANCHORED_CENTER_TRANSLATE_RE.test(style);
+}
+
+function styleLooksAnchoredForCenterTranslate(style: string): boolean {
+  const positioned = /position\s*:\s*(?:absolute|fixed)/i.test(style);
+  if (!positioned) return false;
+  if (/\btop\s*:\s*50%/i.test(style) && /translateY\s*\(\s*-50%\s*\)/i.test(style)) {
+    return true;
+  }
+  // translate(-50%,-50%) / translate3d needs both axes anchored.
+  if (
+    /\btop\s*:\s*50%/i.test(style)
+    && /\bleft\s*:\s*50%/i.test(style)
+    && /translate(?:3d)?\s*\(\s*-50%\s*,\s*-50%/i.test(style)
+  ) {
+    return true;
+  }
+  if (/\btop\s*:\s*50%/i.test(style) || /\bbottom\s*:/i.test(style)) return true;
+  return false;
+}
+
 /**
- * 루프183-b — Remove unanchored vertical centering transforms inside slides.
+ * 루프183-b / 루프232 — Remove unanchored centering transforms inside slides.
  *
- * `transform:translateY(-50%)` is valid only with an explicit positioning
- * anchor (`position:absolute; top:50%`, etc.). Generated decks copied the
- * transform without the anchor, so flow content moved upward and clipped at
- * the 1920×1080 canvas edge. Scope to slide markup and inline styles only.
+ * `translateY(-50%)` and `translate(-50%,-50%)` / `translate3d(-50%,-50%,0)` are
+ * valid only with an explicit positioning anchor. Generated decks often copy
+ * the transform without the anchor, so flow content clips at the 1920×1080
+ * canvas edge. Scope to slide markup and inline styles only.
  */
 export function neutralizeUnanchoredTranslateYInSlideContent(html: string): string {
   const source = String(html ?? '');
-  if (!source || !/translateY\s*\(\s*-50%\s*\)/i.test(source)) return source;
+  if (!source || !UNANCHORED_CENTER_TRANSLATE_RE.test(source)) return source;
   let out = source;
   const slides = listAiSlideSpans(source);
   for (let i = slides.length - 1; i >= 0; i -= 1) {
@@ -1794,14 +1844,16 @@ export function neutralizeUnanchoredTranslateYInSlideContent(html: string): stri
     const nextBody = body.replace(
       /<([a-zA-Z][\w-]*)\b((?:[^>"']|"[^"]*"|'[^']*')*\bstyle\s*=\s*(['"])([\s\S]*?)\3(?:[^>"']|"[^"]*"|'[^']*')*)>/g,
       (open, _tag: string, _attrs: string, q: string, style: string) => {
-        if (!/translateY\s*\(\s*-50%\s*\)/i.test(style)) return open;
-        if (/position\s*:\s*(?:absolute|fixed)/i.test(style) && /\btop\s*:\s*50%/i.test(style)) {
-          return open;
-        }
-        if (/\btop\s*:\s*50%/i.test(style) || /\bbottom\s*:/i.test(style)) return open;
+        if (!styleHasUnanchoredCenterTranslate(style)) return open;
+        if (styleLooksAnchoredForCenterTranslate(style)) return open;
         const nextStyle = style
-          .replace(/(?:^|;)\s*transform\s*:\s*translateY\s*\(\s*-50%\s*\)\s*(?=;|$)/gi, ';')
+          .replace(
+            /(?:^|;)\s*transform\s*:\s*(?:translateY\s*\(\s*-50%\s*\)|translate\s*\(\s*-50%\s*,\s*-50%\s*\)|translate3d\s*\(\s*-50%\s*,\s*-50%\s*,\s*0(?:px|%)?\s*\))\s*(?=;|$)/gi,
+            ';',
+          )
           .replace(/translateY\s*\(\s*-50%\s*\)/gi, '')
+          .replace(/translate\s*\(\s*-50%\s*,\s*-50%\s*\)/gi, '')
+          .replace(/translate3d\s*\(\s*-50%\s*,\s*-50%\s*,\s*0(?:px|%)?\s*\)/gi, '')
           .replace(/;;+/g, ';')
           .replace(/^;|;$/g, '')
           .trim();
