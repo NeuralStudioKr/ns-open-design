@@ -67,6 +67,11 @@ describe('DECK_FRAMEWORK_DIRECTIVE_COMPACT', () => {
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('soon/later/대기');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('PILLAR 00');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('０');
+    expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('lorem ipsum');
+    expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('자료없음');
+    expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('Module 3');
+    expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('PILLAR 10');
+    expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('임시/fake');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('C/3번/(3)');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('33vh/vmin');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('Class flex rows');

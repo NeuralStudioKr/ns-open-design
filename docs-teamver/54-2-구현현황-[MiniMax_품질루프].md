@@ -7,15 +7,45 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-08-31 현재 판단 · 최신 루프
 
-### 루프228 — 동일 33vh/vmin 그리드·카드 폭 leftover
+### 루프233 — 동일 33vh/vmin 그리드·카드 폭 leftover
 
 루프213/215는 vw만 본다. MiniMax는 `33vh 33vh 33vh`나 `width:30vmin`을 남겨 2장이면 빈 띠, 3장이면 클립이 난다. 동일 22–48vh/vmin/cq*만 `minmax(0,1fr)`로 바꾸고 카드 폭을 벗긴다. `50vmin` split은 유지. 카피 발명 없음.
 
+검증: contracts heal-ai-generated-deck 루프233 · deck-framework-compact.
+
+### 루프232 — 알파벳/괄호/번 leftover 인덱스
+
+루프205–230는 숫자·로마·원문자·Phase·Module만 leftover 인덱스로 본다. MiniMax는 `C`/`기둥 다`/`(3)`/`3번`만 남겨 3열이 유지된다. A–C·가나다라·괄호·번/번째만 leftover. 전-인덱스 스텝 행은 유지. 카피 발명 없음.
+
+검증: contracts heal-ai-generated-deck 루프232 · deck-framework-compact.
+
+### 루프231 — 임시/fake leftover stub
+
+루프218–228은 dummy/자료없음 stub만 본다. MiniMax는 `임시`/`fake`로 빠진 기둥을 채워 3열이 유지된다. 카드 전체가 stub일 때만 제거. `임시 적분` 실카피는 유지. 카피 발명 없음.
+
+검증: contracts heal-ai-generated-deck 루프231 · deck-framework-compact.
+
+### 루프230 — 10/PILLAR 10 leftover 인덱스
+
+루프225 leftover digit는 `0–9`/`00–09`만 본다. MiniMax는 `10`/`PILLAR 10`으로 빠진 기둥을 채워 3열이 유지된다. digit에 `10`만 추가. `10%` KPI는 유지. 카피 발명 없음.
+
+검증: contracts heal-ai-generated-deck 루프230 · deck-framework-compact.
+
+### 루프229 — Module/섹션 leftover 인덱스
+
+루프205–226 leftover 인덱스는 pillar/phase/축만 본다. MiniMax는 `Module 3`/`섹션 3`로 빠진 기둥을 채워 3열이 유지된다. module/track/section · 모듈/트랙/섹션만 leftover. 전-인덱스 Module 스텝 행은 유지. `UNIT 3`은 유지. 카피 발명 없음.
+
+검증: contracts heal-ai-generated-deck 루프229 · deck-framework-compact.
+
+### 루프228 — 자료없음/정보없음 leftover stub
+
+루프208의 `없음`은 compact 앞에 있을 때만 맞는다. MiniMax는 `자료없음`/`정보없음`으로 빠진 기둥을 채워 3열이 유지된다. 복합 stub만 leftover. `자료 적분` 실카피는 유지. 카피 발명 없음.
+
 검증: contracts heal-ai-generated-deck 루프228 · deck-framework-compact.
 
-### 루프227 — 알파벳/괄호/번 leftover 인덱스
+### 루프227 — lorem ipsum/placeholder leftover stub
 
-루프205–226는 숫자·로마·원문자·Phase만 leftover 인덱스로 본다. MiniMax는 `C`/`기둥 다`/`(3)`/`3번`만 남겨 3열이 유지된다. A–C·가나다라·괄호·번/번째만 leftover. 전-인덱스 스텝 행은 유지. 카피 발명 없음.
+루프200은 `lorem`만 leftover로 본다. MiniMax는 `lorem ipsum`/`placeholder`로 빠진 기둥을 채워 3열이 유지된다. `ipsum`/`placeholder`/`filler` 추가. `lorem 적분` 실카피는 유지. 카피 발명 없음.
 
 검증: contracts heal-ai-generated-deck 루프227 · deck-framework-compact.
 
@@ -570,16 +600,56 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | persist/preview: 대기/soon/later stub 카드가 3열을 붙잡아 빈 띠 | ☑ 루프224 |
 | persist/preview: 00/PILLAR 0 leftover 카드가 3열을 붙잡아 빈 띠 | ☑ 루프225 |
 | persist/preview: 전각 ０/원문자 ⓪ leftover 카드가 3열을 붙잡아 빈 띠 | ☑ 루프226 |
-| persist/preview: C/기둥 다/(3)/3번 leftover 인덱스가 3열을 붙잡아 빈 띠 | ☑ 루프227 |
-| persist/preview: 동일 33vh/vmin 트랙·카드 폭이 leftover 빈 띠·클립 | ☑ 루프228 |
+| persist/preview: lorem ipsum/placeholder stub 카드가 3열을 붙잡아 빈 띠 | ☑ 루프227 |
+| persist/preview: 자료없음/정보없음 stub 카드가 3열을 붙잡아 빈 띠 | ☑ 루프228 |
+| persist/preview: Module 3/섹션 3 leftover 카드가 3열을 붙잡아 빈 띠 | ☑ 루프229 |
+| persist/preview: 10/PILLAR 10 leftover 카드가 3열을 붙잡아 빈 띠 | ☑ 루프230 |
+| persist/preview: 임시/fake stub 카드가 3열을 붙잡아 빈 띠 | ☑ 루프231 |
+| persist/preview: C/기둥 다/(3)/3번 leftover 인덱스가 3열을 붙잡아 빈 띠 | ☑ 루프232 |
+| persist/preview: 동일 33vh/vmin 트랙·카드 폭이 leftover 빈 띠·클립 | ☑ 루프233 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프227–228 · 알파벳/괄호/번 인덱스 · vh/vmin 트랙)
+## 이번 루프 (루프232–233 · 알파벳/괄호/번 인덱스 · vh/vmin 트랙)
 
 - [x] leftover index — A–C / 가나다라 / `(3)` / `3번`. 전-인덱스 스텝 행 유지
 - [x] equal track + card lock — 22–48 vh/vmin/cq* → minmax / strip. 50 split 유지
 - [x] compact vocabulary 33vh/vmin · C/3번/(3)
-- [x] heal-ai-generated-deck 루프227–228 · deck-framework-compact
+- [x] heal-ai-generated-deck 루프232–233 · deck-framework-compact
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프231 · 임시/fake stub)
+
+- [x] 임시/가짜/가데이터 · temp/fake leftover
+- [x] 임시 적분 실카피 유지
+- [x] heal-ai-generated-deck 루프231 · deck-framework-compact
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프230 · 10/PILLAR 10 인덱스)
+
+- [x] leftover digit `10` 추가 (11–99 유지)
+- [x] `10%` KPI 유지
+- [x] heal-ai-generated-deck 루프230 · deck-framework-compact
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프229 · Module/섹션 인덱스)
+
+- [x] module/track/section · 모듈/트랙/섹션 leftover
+- [x] 전-인덱스 Module 스텝 행 · UNIT 3 유지
+- [x] heal-ai-generated-deck 루프229 · deck-framework-compact
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프228 · 자료없음/정보없음 stub)
+
+- [x] 자료없음/정보없음/데이터없음 leftover
+- [x] 자료 적분 실카피 유지
+- [x] heal-ai-generated-deck 루프228 · deck-framework-compact
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프227 · lorem ipsum/placeholder stub)
+
+- [x] ipsum/placeholder/filler leftover
+- [x] lorem 적분 실카피 유지
+- [x] heal-ai-generated-deck 루프227 · deck-framework-compact
 - [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
 
 ## 직전 루프 (루프226 · 전각/원문자 ０ 인덱스)

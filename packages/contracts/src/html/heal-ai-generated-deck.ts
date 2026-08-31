@@ -398,7 +398,7 @@ const GRID_BLOCK_CHILD_RE =
   /^(div|section|article|li|figure|aside|header|footer|main|nav|ul|ol|p|table)$/;
 const EQUAL_FR_TRACK_RE =
   /^(?:1(?:\.0+)?fr|minmax\(\s*(?:0|auto|min-content|max-content)\s*,\s*1(?:\.0+)?fr\s*\))$/i;
-/** 루프210/215/228 — identical 22–48% or viewport/container shares (skip 50 splits). */
+/** 루프210/215/233 — identical 22–48% or viewport/container shares (skip 50 splits). */
 const EQUAL_COLUMN_SHARE_TRACK_RE =
   /^(?:2[2-9]|3\d|4[0-8])(?:\.\d+)?(?:%|vw|vh|vmin|vmax|dvh|svh|lvh|cqw|cqi|cqh|cqb)$/i;
 
@@ -1040,6 +1040,22 @@ const LEFTOVER_PEER_PLACEHOLDER_TOKENS = [
   '대기',
   '보류',
   '생략',
+  // 루프227 — lorem-ipsum / placeholder shells MiniMax leaves on the missing pillar.
+  // `lorem` alone already matches; `lorem ipsum` needs `ipsum` to consume the rest.
+  'placeholder',
+  'ipsum',
+  'filler',
+  // 루프228 — "no data" compounds. `없음` alone does not match `자료없음`
+  // because the token must sit at the start of the compact string.
+  '자료없음',
+  '정보없음',
+  '데이터없음',
+  // 루프231 — temp/fake shells MiniMax leaves on the missing pillar.
+  '가데이터',
+  '임시',
+  '가짜',
+  'temp',
+  'fake',
 ].sort((a, b) => b.length - a.length);
 
 const LEFTOVER_PEER_PLACEHOLDER_PUNCT_RE = /^(?:[.…·•\-–—]{1,3})/u;
@@ -1093,21 +1109,24 @@ function textLooksLikeLeftoverPeerPlaceholder(html: string): boolean {
  * 루프225 — `00` / `PILLAR 0` / `기둥 0` zero-index leftovers.
  * Keep `0%` KPI copy — `%` is not leftover punctuation.
  * 루프226 — circled / fullwidth zero leftovers (`⓪` / `０` / `⓿`).
- * 루프227 — letter `C` / `기둥 다` / `(3)` / `3번` leftovers.
+ * 루프229 — `Module 3` / `트랙 3` / `섹션 3` index leftovers.
+ * `UNIT 3` stays because that prefix is not leftover vocabulary.
+ * 루프230 — `10` / `PILLAR 10` two-digit leftovers. Keep `10%` KPI copy.
+ * 루프232 — letter `C` / `기둥 다` / `(3)` / `3번` leftovers.
  */
 const LEFTOVER_INDEX_ROMAN =
   '(?:viii|vii|iii|xii|xi|ix|iv|vi|ii|[xv]|i|[Ⅰ-Ⅻⅰ-ⅻ])';
 /** 루프219/226 — circled / dingbat / fullwidth 0–9 leftover indexes. */
 const LEFTOVER_INDEX_MARK = '[⓪①-⑨❶-❾⓿０-９⑴-⑼㉠-㉥]';
-/** 루프225 — include 0 / 00 leftover shells MiniMax leaves on the missing pillar. */
-const LEFTOVER_INDEX_DIGIT = '0?[0-9]';
-/** 루프227 — A–C / 가나다라 leftover letters (not roman V/X/I). */
+/** 루프225/230 — 0 / 00 / 01–09 / 10 leftover shells. */
+const LEFTOVER_INDEX_DIGIT = '(?:0?[0-9]|10)';
+/** 루프232 — A–C / 가나다라 leftover letters (not roman V/X/I). */
 const LEFTOVER_INDEX_LETTER = '(?:[abc]|[가나다라])';
 const LEFTOVER_INDEX_CORE =
   `(?:${LEFTOVER_INDEX_DIGIT}|${LEFTOVER_INDEX_ROMAN}|${LEFTOVER_INDEX_MARK}|${LEFTOVER_INDEX_LETTER})`;
 const LEFTOVER_INDEX_SUFFIX = '(?:\\s*(?:번|번째|st|nd|rd|th))?';
 const LEFTOVER_INDEX_PREFIX =
-  '(?:pillar|column|col|card|item|step|part|key|theme|block|slot|phase|axis|layer|no\\.?|num(?:ber)?|#|기둥|열|카드|항목|단계|파트|번호|넘버|포인트|키|테마|블록|슬롯|페이즈|축|레이어)';
+  '(?:pillar|column|col|card|item|step|part|key|theme|block|slot|phase|axis|layer|module|track|section|no\\.?|num(?:ber)?|#|기둥|열|카드|항목|단계|파트|번호|넘버|포인트|키|테마|블록|슬롯|페이즈|축|레이어|모듈|트랙|섹션)';
 
 function textLooksLikeLeftoverIndexLabel(html: string): boolean {
   const text = visibleText(html).replace(/\s+/g, ' ').trim();
@@ -1219,7 +1238,7 @@ function cssLengthToPx(raw: string): number | null {
     }
     return (PEER_CANVAS_PX * value) / 100;
   }
-  // 루프213/228 — MiniMax locks cards with 30vw/30vh/30vmin as if the
+  // 루프213/233 — MiniMax locks cards with 30vw/30vh/30vmin as if the
   // canvas were the viewport. Same 22–48 band as % / vw; 50/100 stay.
   const viewport = /^(\d+(?:\.\d+)?)\s*(vw|vh|vmin|vmax|dvh|svh|lvh|cqw|cqi|cqh|cqb)$/i
     .exec(source);
@@ -1323,7 +1342,7 @@ function stripFixedMainSizeFromOpenTag(openTag: string): string {
  * 루프207 — uniform 22–48% column-share widths (and flex:0 0 32%) also lock
  * the row. 100% stretch and 50% splits stay.
  * 루프213 — same for 22–48vw leftovers (`width:30vw`, `flex:0 0 30vw`).
- * 루프228 — same for vh/vmin/cq* leftovers (`width:30vmin`, `33vh 33vh 33vh`).
+ * 루프233 — same for vh/vmin/cq* leftovers (`width:30vmin`, `33vh 33vh 33vh`).
  */
 export function relaxUniformPeerCardFixedMainSize(
   html: string,
