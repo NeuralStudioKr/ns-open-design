@@ -1189,6 +1189,12 @@ const LEFTOVER_PEER_PLACEHOLDER_TOKENS = [
   'fixme',
   'hack',
   '고쳐야함',
+  // 루프257 — etc/misc shells MiniMax leaves on the missing pillar.
+  // Keep `기타 적분` extra copy; a lone `기타`/`등등`/`etc` is leftover.
+  'etcetera',
+  '등등',
+  '기타',
+  'etc',
 ].sort((a, b) => b.length - a.length);
 
 const LEFTOVER_PEER_PLACEHOLDER_PUNCT_RE = /^(?:[.…·•\-–—]{1,3})/u;

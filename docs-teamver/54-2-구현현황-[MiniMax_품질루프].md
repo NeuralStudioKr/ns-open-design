@@ -7,6 +7,12 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-08-31 현재 판단 · 최신 루프
 
+### 루프257 — etc/기타 leftover stub
+
+루프241–249 leftover stub는 FIXME/hack/foo까지 본다. MiniMax는 `etc`/`기타`/`등등`로 빠진 기둥을 채워 3열이 유지된다. etc/etcetera · 기타/등등만 leftover. `기타 적분` 본문 카드는 유지. 카피 발명 없음.
+
+검증: contracts heal-ai-generated-deck 루프257 · deck-framework-compact.
+
 ### 루프256 — Lesson/강 leftover 인덱스
 
 루프205–248 leftover 인덱스는 pillar/chapter/장만 본다. MiniMax는 `Lesson 3`/`강 3`로 빠진 기둥을 채워 3열이 유지된다. lesson/lecture · 강/회/레슨만 leftover. 전-인덱스 Lesson 스텝 행은 유지. `UNIT 3`은 유지. 카피 발명 없음.
@@ -401,6 +407,7 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 
 ### 다음 루프 후보 (2026-08-31 EOD 기준)
 
+- **후보 (루프258):** leftover stub `ok`/`done`/`완료`. `완료 적분` 본문은 유지.
 - **인접 (루프206 밖):** `srcdoc-deck-bridge-nested-slides` native `#deck-next` 픽스처가 host next 후 `active:2`를 보고함 (transform/dot는 1). staging에서 이미 red — 이번 CSS 변경과 무관.
 - **후보 C (3열 residual):** `E` 이후 알파벳, `여섯째` 이상 서수, 또는 400 vs 800(비율 >1.6) leftover. 루프239–240이 D/마/첫째–다섯째와 400 vs 600을 닫음.
 - **후보 B (예약 · 규모 큼):** contracts 안 `var(--pad, calc(px * n))` / `env(safe-area-inset-top, calc(...))` fallback red-spec 39건. fallback 표현을 card threshold 로 승격하는 heuristic — 별도 루프 필요.
@@ -768,9 +775,17 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | heal: nested/unclosed slide span 범위 오인 | ☑ 루프254 |
 | persist/preview: 동일 0.33fr 그리드 트랙이 2장 leftover · 3장 클립 | ☑ 루프255 |
 | persist/preview: Lesson 3/강 3 leftover 카드가 3열을 붙잡아 빈 띠 | ☑ 루프256 |
+| persist/preview: etc/기타/등등 stub 카드가 3열을 붙잡아 빈 띠 | ☑ 루프257 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프256 · Lesson/강 인덱스)
+## 이번 루프 (루프257 · etc/기타 stub)
+
+- [x] etc/etcetera · 기타/등등 leftover
+- [x] `기타 적분` 본문 카드 유지
+- [x] heal-ai-generated-deck 루프257 · deck-framework-compact
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프256 · Lesson/강 인덱스)
 
 - [x] lesson/lecture · 강/회/레슨 leftover
 - [x] 전-인덱스 Lesson 스텝 행 · UNIT 3 유지
