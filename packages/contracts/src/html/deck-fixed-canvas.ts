@@ -2151,39 +2151,56 @@ function resolveCalcLengthParts(rawBody: string): CalcLengthPart[] | null {
 }
 
 /**
- * True when the calc body contains a `*` or `/` at the OUTER (top) level,
- * ignoring nested parens (루프183). Used by the additive-sum heuristic to
- * skip multiplicative bodies.
+ * True when the calc body's TOP level is purely multiplicative: it carries
+ * at least one `*` or `/`, and NO `+` or `-` at the top level (루프183).
+ *
+ * Used by the additive-sum heuristic to skip bodies like `calc(3px * 4)`
+ * while still counting bodies like `calc(2pt + 3pt * 2)` (top-level `+`,
+ * so the resolver evaluates `2pt + (3pt * 2) = 8pt` per CSS precedence).
  */
 function bodyHasTopLevelMulDiv(body: string): boolean {
   const source = String(body ?? '');
   let depth = 0;
+  let hasMulDiv = false;
   for (let i = 0; i < source.length; i += 1) {
     const ch = source[i]!;
     if (ch === '(') depth += 1;
     else if (ch === ')') depth -= 1;
-    else if (depth === 0 && (ch === '*' || ch === '/')) return true;
+    else if (depth === 0) {
+      if (ch === '*' || ch === '/') {
+        hasMulDiv = true;
+      } else if (ch === '+' || ch === '-') {
+        // Skip unary +/- immediately after * or / (루프871).
+        let j = i - 1;
+        while (j >= 0 && /\s/.test(source[j]!)) j -= 1;
+        if (j >= 0 && (source[j] === '*' || source[j] === '/')) continue;
+        // Any real additive operator means the body is additive at top
+        // level — mul/div in this body is a sub-term. Do not skip.
+        return false;
+      }
+    }
   }
-  return false;
+  return hasMulDiv;
 }
 
 /** Additive `calc` sums: same-unit · `%` · rem/em+px@16 · rem+em · vh/%+px (루프515). */
 function calcAdditiveSameUnitLooksCardLike(value: string): boolean {
   for (const rawBody of extractCalcBodies(value)) {
-    // 루프183 — additive-only policy. `calc(3px * 4)` and `calc(24px / 2)`
-    // arithmetically resolve to 12px, but per chat-leak-probe-round461/487
-    // the sum heuristic must NOT count multiplicative bodies (MiniMax rarely
-    // emits `3px * 4` for a card pad; that shape is almost always thin
-    // accent expressed via factor). Skip any body carrying top-level `*` or
-    // `/`. Nested `calc(8px + var(--k, 3px * 2))` still evaluates via the
-    // resolver because the top-level of the outer body has no mul/div.
-    if (bodyHasTopLevelMulDiv(rawBody)) continue;
     const parts = resolveCalcLengthParts(rawBody);
     if (!parts || parts.length < 1) continue;
     const unit0 = parts[0]!.unit;
     const sum = parts.reduce((acc, p) => acc + p.sign * p.n, 0);
+    // 루프183 — pure top-level multiplicative bodies (`calc(3px * 4)` from
+    // chat-leak-probe-round461/487) tighten the px floor by +1. MiniMax
+    // rarely emits `3px * 4` when it truly means card padding; that shape
+    // is almost always a thin accent expressed as base × factor. Chain
+    // `calc(7px * 2 * 1) = 14px` (round 822) stays bound because it clears
+    // the tightened floor. Mixed `calc(2pt + 3pt * 2)` (round 882) keeps
+    // the normal threshold because the top-level `+` re-enters additive
+    // semantics.
+    const pureMul = bodyHasTopLevelMulDiv(rawBody);
     if (parts.every((p) => p.unit === unit0)) {
-      if (unit0 === 'px' && sum >= 12) return true;
+      if (unit0 === 'px' && sum >= (pureMul ? 13 : 12)) return true;
       if ((unit0 === 'rem' || unit0 === 'em') && sum >= 0.75) return true;
       if (unit0 === '%' && sum >= 4) return true;
       if (unit0 === 'ch' && sum >= 2) return true;

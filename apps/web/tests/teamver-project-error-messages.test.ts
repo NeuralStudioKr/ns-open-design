@@ -339,4 +339,64 @@ describe("project conversation error messages", () => {
       formatProjectConversationErrorForUser(new Error("custom"), "fallback"),
     ).toBe("custom");
   });
+
+  // loop184 (AGENT_EXECUTION_STALLED)
+  //
+  // BYOK/API 스트림이 5분 idle 후 timeout 되면 `api-proxy.ts` 가 던지는 에러는
+  // `code === "AGENT_EXECUTION_STALLED"` + `retryable` 정보를 그대로 갖는다.
+  // 이 축은 stall 이 `AGENT_EXECUTION_FAILED` 로 뭉뚱그려지지 않고 전용 카피로
+  // 사용자에게 보이도록 유지하는 회귀 잠금이다. `patchStaleApiAssistantFailure`
+  // (background recovery 경로) 도 같은 코드를 심으므로 스트림 stall / 폴링 stall
+  // 두 축이 모두 동일 사용자 카피를 재사용해야 한다.
+  it("preserves the AGENT_EXECUTION_STALLED code end-to-end", async () => {
+    mockedEmbedMode.mockReturnValue(true);
+    const {
+      extractProjectRunErrorCode,
+      formatPersistedProjectRunError,
+      formatProjectRunErrorForUser,
+      formatProjectRunStalledErrorForUser,
+    } = await import("../src/teamver/projectErrorMessages");
+
+    // Adapter-side stall: `readProxyStreamChunk` throws with `code` preset.
+    const stallErr = Object.assign(
+      new Error("BYOK proxy stream timed out due to inactivity"),
+      { code: "AGENT_EXECUTION_STALLED", retryable: true },
+    );
+    expect(extractProjectRunErrorCode(stallErr)).toBe("AGENT_EXECUTION_STALLED");
+
+    // Background recovery persists a `status:error` event whose code is the
+    // stall code — same `extractProjectRunErrorCode` path must map back.
+    const recoveryErr = new Error(
+      "proxy 500: AGENT_EXECUTION_STALLED background poll force-fail",
+    );
+    expect(extractProjectRunErrorCode(recoveryErr)).toBe("AGENT_EXECUTION_STALLED");
+
+    // Dedicated Korean copy — never falls back to the generic
+    // AGENT_EXECUTION_FAILED "슬라이드 실행 중 오류가 발생했습니다." wording.
+    const stalledCopy = formatProjectRunStalledErrorForUser();
+    expect(stalledCopy).toBe("생성이 응답하지 않아 중단했습니다. 잠시 후 다시 시도하세요.");
+    expect(formatProjectRunErrorForUser(stallErr)).toBe(stalledCopy);
+    expect(formatProjectRunErrorForUser(stallErr)).not.toContain("슬라이드 실행 중 오류");
+
+    // Persisted status event keeps the code + underlying raw message so
+    // ops copy-diagnostics can distinguish stall from a generic FAILED.
+    const persisted = formatPersistedProjectRunError(stallErr);
+    expect(persisted.code).toBe("AGENT_EXECUTION_STALLED");
+    expect(persisted.userMessage).toBe(stalledCopy);
+    // The raw adapter message survives into the hidden diagnostic tail —
+    // makes it possible to distinguish `readProxyStreamChunk` stalls from
+    // `patchStaleApiAssistantFailure` background force-fails later.
+    expect(persisted.detail).toContain("BYOK proxy stream timed out due to inactivity");
+    expect(persisted.detail).toContain("code=AGENT_EXECUTION_STALLED");
+  });
+
+  it("keeps English stalled copy in standalone OD", async () => {
+    mockedEmbedMode.mockReturnValue(false);
+    const {
+      formatProjectRunStalledErrorForUser,
+    } = await import("../src/teamver/projectErrorMessages");
+    expect(formatProjectRunStalledErrorForUser()).toBe(
+      "Generation stopped responding. Please try again.",
+    );
+  });
 });

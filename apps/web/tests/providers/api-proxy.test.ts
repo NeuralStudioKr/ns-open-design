@@ -1162,3 +1162,120 @@ describe('streamProxyEndpoint Motif-SVG dump abort', () => {
     expect(onError).not.toHaveBeenCalled();
   });
 });
+
+// loop184 (AGENT_EXECUTION_STALLED)
+//
+// `readProxyStreamChunk` rejects with `code === "AGENT_EXECUTION_STALLED"` when
+// the SSE body goes idle past `PROXY_STREAM_IDLE_TIMEOUT_MS` (5 min). That code
+// must survive the outer `catch` block un-remapped, and the "no tokens streamed
+// yet" gate must keep `retryable: true` (so the soft-retry loop covers a stall
+// on a still-empty connection) while the "tokens already streamed" gate flips
+// `retryable: false` (so a mid-stream stall doesn't duplicate the assistant
+// message UI across retries).
+describe('streamProxyEndpoint idle-timeout stall (AGENT_EXECUTION_STALLED)', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it('surfaces AGENT_EXECUTION_STALLED as non-retryable after a substantive delta', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        body: {
+          getReader() {
+            let step = 0;
+            let pendingReject: ((err: unknown) => void) | null = null;
+            return {
+              read() {
+                step += 1;
+                if (step === 1) {
+                  return Promise.resolve({
+                    done: false,
+                    value: new TextEncoder().encode(
+                      'event: delta\ndata: {"delta":"Answer"}\n\n',
+                    ),
+                  });
+                }
+                return new Promise((_resolve, reject) => {
+                  pendingReject = reject;
+                });
+              },
+              cancel() {
+                pendingReject?.(
+                  Object.assign(new Error('canceled'), { name: 'AbortError' }),
+                );
+              },
+              releaseLock() {},
+            };
+          },
+        },
+      }),
+    );
+
+    const onDelta = vi.fn();
+    const onError = vi.fn();
+    const onDone = vi.fn();
+    const runPromise = streamProxyEndpoint(
+      '/api/proxy/minimax/stream',
+      {
+        apiKey: 'test-api-key',
+        baseUrl: 'https://api.minimaxi.com',
+        model: 'MiniMax-M3',
+      } as any,
+      'System',
+      [{ id: 'm1', role: 'user', content: 'hi', createdAt: 1 }],
+      new AbortController().signal,
+      { onDelta, onDone, onError },
+    );
+
+    // Advance timers past PROXY_STREAM_IDLE_TIMEOUT_MS (5 min) plus a bit.
+    // Wait a microtask first so the first `read()` chunk lands and the idle
+    // timer arms on the second read.
+    await Promise.resolve();
+    await Promise.resolve();
+    await vi.advanceTimersByTimeAsync(5 * 60 * 1000 + 1000);
+    await runPromise;
+
+    expect(onDelta).toHaveBeenCalledWith('Answer');
+    expect(onDone).not.toHaveBeenCalled();
+    expect(onError).toHaveBeenCalledTimes(1);
+    const err = onError.mock.calls[0]?.[0] as Error & {
+      code?: string;
+      retryable?: boolean;
+    };
+    expect(err.code).toBe('AGENT_EXECUTION_STALLED');
+    // Substantive delta was already painted — soft-retry would duplicate the
+    // "Answer" tokens in the assistant card, so retryable must be forced off.
+    expect(err.retryable).toBe(false);
+    // Only one upstream attempt because retryable=false short-circuits the
+    // soft-retry loop.
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('surfaces AGENT_EXECUTION_STALLED as retryable when no delta streamed yet', async () => {
+    const { shouldSoftRetryProxyFailure } = await import(
+      '../../src/providers/api-proxy'
+    );
+    // Independent of the actual stream mock — the gate lives at the soft-retry
+    // decision layer: a pre-delta stall carries retryable: true from the
+    // adapter, and `shouldSoftRetryProxyFailure` must accept it (the explicit
+    // retryable=true branch wins even without a canonical retry code).
+    const preDeltaStall = Object.assign(
+      new Error('BYOK proxy stream timed out due to inactivity'),
+      { code: 'AGENT_EXECUTION_STALLED', retryable: true },
+    );
+    expect(shouldSoftRetryProxyFailure(preDeltaStall)).toBe(true);
+
+    // Confirm the tokens-streamed variant is treated as non-retryable at the
+    // same layer.
+    const postDeltaStall = Object.assign(
+      new Error('BYOK proxy stream timed out due to inactivity'),
+      { code: 'AGENT_EXECUTION_STALLED', retryable: false },
+    );
+    expect(shouldSoftRetryProxyFailure(postDeltaStall)).toBe(false);
+  });
+});
