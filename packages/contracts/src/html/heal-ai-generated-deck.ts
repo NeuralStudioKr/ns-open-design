@@ -970,6 +970,12 @@ const LEFTOVER_PEER_PLACEHOLDER_TOKENS = [
   'tbd',
   'wip',
   'na',
+  // 루프208 — Korean absence stubs on the missing pillar.
+  '해당없음',
+  '해당무',
+  '비어있음',
+  '미입력',
+  '없음',
 ].sort((a, b) => b.length - a.length);
 
 const LEFTOVER_PEER_PLACEHOLDER_PUNCT_RE = /^(?:[.…·•\-–—]{1,3})/u;

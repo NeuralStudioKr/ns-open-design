@@ -7,6 +7,12 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-08-31 현재 판단 · 최신 루프
 
+### 루프208 — 해당없음/미입력 leftover 카드가 3열을 붙잡는 문제
+
+루프202는 TBD/N/A/준비중만 stub로 본다. MiniMax는 빠진 기둥을 `해당없음`/`미입력`으로 채워 3열이 유지된다. 카드 전체가 stub일 때만 제거. `부작용 없음` 실카피는 유지. 카피 발명 없음.
+
+검증: contracts heal-ai-generated-deck 루프208 · deck-framework-compact.
+
 ### 루프207 — 동일 % 폭이 3열을 잠그는 문제
 
 루프198–201은 px/rem만 본다. MiniMax는 `width:32%`/`flex:0 0 33%`를 찍어 3열이 잘리거나 grow가 막힌다. 22–48% column-share만 벗긴다. 100% stretch·50% split·영문 카탈로그는 유지. 카피 발명 없음.
@@ -425,9 +431,16 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | persist/preview: PILLAR/COLUMN/기둥 N 인덱스 leftover 카드가 3열을 붙잡아 빈 띠 | ☑ 루프205 |
 | catalog PreviewModal: stacked first-child CSS가 페이지 2에서 1장을 다시 그림 | ☑ 루프206 |
 | persist/preview: 동일 22–48% 카드 폭이 grow를 막아 3열 클립·빈 띠 | ☑ 루프207 |
+| persist/preview: 해당없음/미입력 stub 카드가 3열을 붙잡아 빈 띠 | ☑ 루프208 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프207 · % column-share)
+## 이번 루프 (루프208 · 해당없음 stub)
+
+- [x] leftover 토큰 해당없음/미입력/없음 · 실카피 접두 유지
+- [x] heal-ai-generated-deck 루프208 · deck-framework-compact
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프207 · % column-share)
 
 - [x] `cssLengthToPx` 22–48% · `flex:0 0 33%`
 - [x] 100% stretch · 50% split · 영문 카탈로그 유지

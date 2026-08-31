@@ -413,6 +413,46 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
       expect(out).not.toMatch(/TBD|준비중/);
     });
 
+    it('drops a 해당없음 leftover third card (루프208)', () => {
+      const html = [
+        '<div style="display:flex;gap:28px">',
+        '<div class="card" style="padding:24px"><h3>극한</h3><p>lim</p></div>',
+        '<div class="card" style="padding:24px"><h3>도함수</h3><p>d/dx</p></div>',
+        '<div class="card" style="padding:24px"><h3>해당없음</h3></div>',
+        '</div>',
+      ].join('');
+      const out = dropEmptyLeftoverPeerCardsInAllocatedRows(html, '미적분');
+      expect((out.match(/class="card"/g) ?? []).length).toBe(2);
+      expect(out).not.toContain('해당없음');
+      expect(out).toContain('극한');
+    });
+
+    it('keeps 부작용 없음 copy that is not a stub card (루프208)', () => {
+      const html = [
+        '<div style="display:flex;gap:16px">',
+        '<div class="card"><h3>극한</h3><p>정의</p></div>',
+        '<div class="card"><h3>적분</h3><p>부작용 없음</p></div>',
+        '</div>',
+      ].join('');
+      expect(dropEmptyLeftoverPeerCardsInAllocatedRows(html, '미적분')).toBe(html);
+    });
+
+    it('pipeline heals a 미입력 third pillar without inventing 적분 copy (루프208)', () => {
+      const html = [
+        '<section class="slide"><h1>미적분의 세 기둥</h1>',
+        '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:24px">',
+        '<div class="card"><h3>극한</h3><p>lim</p></div>',
+        '<div class="card"><h3>도함수</h3><p>d/dx</p></div>',
+        '<div class="card"><h3>미입력</h3></div>',
+        '</div></section>',
+      ].join('');
+      const out = healAiGeneratedDeckMarkup(html, '미적분');
+      expect((out.match(/class="card"/g) ?? []).length).toBe(2);
+      expect(out).not.toContain('미입력');
+      expect(out).toContain('극한');
+      expect(out).toContain('도함수');
+    });
+
     it('keeps a real card that only starts with 추후 (루프202)', () => {
       const html = [
         '<div style="display:flex;gap:16px">',
