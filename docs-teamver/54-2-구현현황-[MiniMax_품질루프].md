@@ -7,6 +7,12 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-08-31 현재 판단 · 최신 루프
 
+### 루프210 — 동일 33% 그리드 트랙 leftover
+
+루프190/195는 `1fr`만 equal track으로 본다. MiniMax는 `33% 33% 33%`를 남겨 2장이면 빈 띠, 3장이면 클립이 난다. 동일 22–48% 트랙만 `minmax(0,1fr)`로 바꾼다. `50% 50%` split은 유지. 카피 발명 없음.
+
+검증: contracts heal-ai-generated-deck 루프210 · deck-framework-compact.
+
 ### 루프209 — PILLAR III 로마숫자 leftover 카드
 
 루프205는 아라비아 인덱스만 leftover로 본다. MiniMax는 `PILLAR III`/`기둥 Ⅲ`로 빠진 기둥을 채워 3열이 유지된다. 로마 I–XII / Ⅰ–Ⅻ만 있는 카드만 제거. 전-로마 스텝 행과 실카피는 유지. 카피 발명 없음.
@@ -439,9 +445,17 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | persist/preview: 동일 22–48% 카드 폭이 grow를 막아 3열 클립·빈 띠 | ☑ 루프207 |
 | persist/preview: 해당없음/미입력 stub 카드가 3열을 붙잡아 빈 띠 | ☑ 루프208 |
 | persist/preview: PILLAR III/기둥 Ⅲ 로마 leftover 카드가 3열을 붙잡아 빈 띠 | ☑ 루프209 |
+| persist/preview: 동일 33% 그리드 트랙이 2장 leftover · 3장 클립 | ☑ 루프210 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프209 · 로마 인덱스 leftover)
+## 이번 루프 (루프210 · 33% equal tracks)
+
+- [x] `parseDeclaredEqualColumns` 동일 22–48% · `50% 50%` 유지
+- [x] `minmaxUnitForEqualFr` % → minmax(0,1fr)
+- [x] heal-ai-generated-deck 루프210 · deck-framework-compact
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프209 · 로마 인덱스 leftover)
 
 - [x] `textLooksLikeLeftoverIndexLabel` — I–XII / Ⅰ–Ⅻ
 - [x] 전-로마 스텝 행 · 실카피 접두 유지

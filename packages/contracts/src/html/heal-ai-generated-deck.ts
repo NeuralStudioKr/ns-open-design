@@ -397,6 +397,8 @@ export function unnestHeadingBlockChildren(html: string): string {
 const GRID_BLOCK_CHILD_RE =
   /^(div|section|article|li|figure|aside|header|footer|main|nav|ul|ol|p|table)$/;
 const EQUAL_FR_TRACK_RE = /^(?:1fr|minmax\(\s*0\s*,\s*1fr\s*\))$/i;
+/** 루프210 — identical 22–48% column-share tracks (skip 50% splits). */
+const EQUAL_COLUMN_SHARE_PERCENT_RE = /^(?:2[2-9]|3\d|4[0-8])(?:\.\d+)?%$/i;
 
 function countDirectBlockChildren(inner: string): number {
   const tokenRe = /<(\/?)([a-zA-Z][\w-]*)\b[^>]*(\/)?>/gi;
@@ -446,8 +448,9 @@ type EqualColumnDecl = {
 
 /**
  * Accept `repeat(N, 1fr)` and explicit equal tracks (`1fr 1fr 1fr`,
- * `minmax(0,1fr) minmax(0,1fr) minmax(0,1fr)`). Mixed tracks such as
- * `1.3fr 1fr` or `220px 1fr` are real two-pane layouts — leave them.
+ * `minmax(0,1fr) minmax(0,1fr) minmax(0,1fr)`). 루프210 — also identical
+ * 22–48% shares (`33% 33% 33%`). Mixed tracks such as `1.3fr 1fr` or
+ * `220px 1fr` or `50% 50%` splits are real two-pane layouts — leave them.
  */
 function parseDeclaredEqualColumns(value: string): EqualColumnDecl | null {
   const important = /!important/i.test(value);
@@ -465,13 +468,26 @@ function parseDeclaredEqualColumns(value: string): EqualColumnDecl | null {
   let tm: RegExpExecArray | null;
   while ((tm = trackRe.exec(cleaned)) !== null) tracks.push(tm[0]!);
   if (tracks.length < 2) return null;
-  if (!tracks.every((t) => EQUAL_FR_TRACK_RE.test(t))) return null;
-  return {
-    kind: 'list',
-    count: tracks.length,
-    unit: tracks[0]!.replace(/\s+/g, ''),
-    important,
-  };
+  if (tracks.every((t) => EQUAL_FR_TRACK_RE.test(t))) {
+    return {
+      kind: 'list',
+      count: tracks.length,
+      unit: tracks[0]!.replace(/\s+/g, ''),
+      important,
+    };
+  }
+  const shares = tracks.map((t) => t.replace(/\s+/g, '').toLowerCase());
+  if (
+    shares.every((t) => EQUAL_COLUMN_SHARE_PERCENT_RE.test(t) && t === shares[0])
+  ) {
+    return {
+      kind: 'list',
+      count: shares.length,
+      unit: shares[0]!,
+      important,
+    };
+  }
+  return null;
 }
 
 function formatEqualColumns(decl: EqualColumnDecl, nextCount: number): string {
@@ -554,8 +570,10 @@ function replaceStyleDecl(openTag: string, prop: string, value: string): string 
 function minmaxUnitForEqualFr(decl: EqualColumnDecl): EqualColumnDecl | null {
   const unit = decl.unit.replace(/\s+/g, '').toLowerCase();
   if (unit === 'minmax(0,1fr)') return null;
-  if (unit !== '1fr') return null;
-  return { ...decl, unit: 'minmax(0,1fr)' };
+  if (unit === '1fr' || EQUAL_COLUMN_SHARE_PERCENT_RE.test(unit)) {
+    return { ...decl, unit: 'minmax(0,1fr)' };
+  }
+  return null;
 }
 
 /**
