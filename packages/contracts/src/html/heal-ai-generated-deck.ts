@@ -1091,6 +1091,11 @@ const LEFTOVER_PEER_PLACEHOLDER_TOKENS = [
   'null',
   'nil',
   '널',
+  // 루프244 — skip/pass shells MiniMax leaves on the missing pillar.
+  'skip',
+  'pass',
+  '스킵',
+  '패스',
 ].sort((a, b) => b.length - a.length);
 
 const LEFTOVER_PEER_PLACEHOLDER_PUNCT_RE = /^(?:[.…·•\-–—]{1,3})/u;
