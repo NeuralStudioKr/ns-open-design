@@ -7,6 +7,19 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-08-31 현재 판단 · 최신 루프
 
+### 루프279 — substance-rich 8→5가 slide-count regression 오탐 · 배너 분리
+
+루프273은 `findClientArtifactRegression` byte-guard만 열었다. 같은 5장 완성본이 8장 prior 위에 오면 `findClientSlideCountRegression`이 `dropped >= 3`으로 저장을 다시 거부하고, 배너는 그대로 "짧은 초안"이라 사용자는 완성본이 초안으로 거절된 것처럼 본다.
+
+수정:
+
+- `isSubstanceRichDeckReplacement` (4+ · meetsMinimum · not low-substance)를 두 persist gate가 공유.
+- greenfield(`!strict`)에서 substance-rich shrink는 slide-count 면제. image/comment/target persist(`strict`)는 1장이라도 줄면 계속 차단.
+- 8→2 / 1–3장 thin은 4장 바 아래로 계속 차단.
+- slide-count 거절 배너: "슬라이드 수가 크게 줄어든 초안" — 짧은 초안 카피와 분리.
+
+검증: `project-view-substance-rich-replacement` 루프279 · persist-result · message-merge · teamver-project-error-messages · project-view-message-load.
+
 ### 루프278 — K/기둥 카/열네째 leftover · 공식 Replit preview 실경로
 
 루프274는 A–J / 열세째까지 leftover로 본다. MiniMax는 `K`/`기둥 카`/`열네째`로 빠진 기둥을 채워 3열이 유지된다. K·카·열네째만 leftover. `스무째`/`기둥 타`/`기둥 L`과 index+추가 본문은 유지. `열다섯째`는 prefix `열` + leftover `다섯째`라 keep fixture가 아님. 카피 발명 없음.
@@ -960,6 +973,8 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | persist/preview: K/기둥 카/열네째 leftover 인덱스가 3열을 붙잡아 빈 띠 | ☑ 루프278 |
 | preview: 공식 example-replit-deck GET이 helix를 주고 시드를 주지 않음 | ☑ 루프278 |
 | persist: substance-rich replacement가 artifact_regression 오탐 | ☑ 루프273 |
+| persist: substance-rich 8→5가 slide-count regression 오탐 | ☑ 루프279 |
+| persist: slide-count 거절 배너가 짧은 초안과 동일 | ☑ 루프279 |
 | 생성 마법사: Replit Deck 썸네일이 흰 시드/미존재 index | ☑ example.html |
 | preview: stale 매니페스트가 assets/template.html 시드를 example.html보다 먼저 | ☑ 루프274 |
 | heal: nested duplicate `.card` open flatten | ☑ 루프270 |
@@ -973,7 +988,14 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | contracts pretest: exactOptionalPropertyTypes TS2379 봉쇄 | ☑ 루프263 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프278 · K/열네째 인덱스 + 공식 Replit preview 실경로)
+## 이번 루프 (루프279 · slide-count substance-rich 면제 · 배너 분리)
+
+- [x] findClientSlideCountRegression greenfield substance-rich 8→5 허용
+- [x] strict image-embed 8→5 · 8→2 hard collapse · 3-slide thin 계속 차단
+- [x] slide-count 배너 ≠ 짧은 초안
+- [x] project-view-substance-rich-replacement · persist-result · message-merge · error-messages
+
+## 직전 루프 (루프278 · K/열네째 인덱스 + 공식 Replit preview 실경로)
 
 - [x] leftover index — K · 카 · 열네째
 - [x] `스무째` / `기둥 타` / `기둥 L` · index+추가 본문 유지

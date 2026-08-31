@@ -1,7 +1,10 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
-import { findClientArtifactRegression } from '../src/components/ProjectView';
+import {
+  findClientArtifactRegression,
+  findClientSlideCountRegression,
+} from '../src/components/ProjectView';
 
 /**
  * 루프273 — Substance-rich multi-slide replacements must not fire
@@ -135,5 +138,70 @@ describe('findClientArtifactRegression · 루프273 substance-rich exemption', (
     // 3 slides < 4 → substance-rich exemption OFF → compact-draft branch
     // retained. Prior is big + full-substance, so byte-shrink triggers.
     expect(result).not.toBeNull();
+  });
+});
+
+describe('findClientSlideCountRegression · 루프279 substance-rich exemption', () => {
+  it('8→5 substance-rich greenfield rewrite does NOT fire slide-count regression', () => {
+    const result = findClientSlideCountRegression({
+      fileName: 'deck.html',
+      htmlBody: substanceRichFive,
+      priorHtml: priorFullEightSlides,
+    });
+    expect(result).toBeNull();
+  });
+
+  it('사용자 fixture (5 slides · substance) over 8-slide prior is allowed', () => {
+    const raw = readFileSync(
+      '/tmp/user-fixture-artifact-regression.html',
+      'utf8',
+    );
+    const result = findClientSlideCountRegression({
+      fileName: 'deck.html',
+      htmlBody: raw,
+      priorHtml: priorFullEightSlides,
+      healBrief: '삼각함수를 처음 배우는 학생을 위한 발표',
+      healTitle: '삼각함수 소개',
+    });
+    expect(result).toBeNull();
+  });
+
+  it('8→2 hard collapse is still blocked (below 4-slide bar)', () => {
+    const twoSlide =
+      '<!doctype html><html lang="ko"><body>'
+      + makeSubstanceSlide('표지', '아주 짧은 표지 문장만 있는 장')
+      + makeSubstanceSlide('끝', '마무리 문장만 있는 장')
+      + '</body></html>';
+    const result = findClientSlideCountRegression({
+      fileName: 'deck.html',
+      htmlBody: twoSlide,
+      priorHtml: priorFullEightSlides,
+    });
+    expect(result).toMatchObject({ priorCount: 8, newCount: 2 });
+  });
+
+  it('strict image-embed turn still blocks 8→5 even when substance-rich', () => {
+    const result = findClientSlideCountRegression({
+      fileName: 'deck.html',
+      htmlBody: substanceRichFive,
+      priorHtml: priorFullEightSlides,
+      strict: true,
+    });
+    expect(result).toMatchObject({ priorCount: 8, newCount: 5 });
+  });
+
+  it('3-slide thin rewrite over 8-slide prior is still blocked', () => {
+    const threeSlide =
+      '<!doctype html><html lang="ko"><body>'
+      + '<section class="slide"><h1>시장 개관</h1><p>짧은 요약</p></section>'
+      + '<section class="slide"><h2>문제</h2><p>병목이 있습니다.</p></section>'
+      + '<section class="slide"><h2>다음</h2><p>파일럿 검증.</p></section>'
+      + '</body></html>';
+    const result = findClientSlideCountRegression({
+      fileName: 'deck.html',
+      htmlBody: threeSlide,
+      priorHtml: priorFullEightSlides,
+    });
+    expect(result).toMatchObject({ priorCount: 8, newCount: 3 });
   });
 });

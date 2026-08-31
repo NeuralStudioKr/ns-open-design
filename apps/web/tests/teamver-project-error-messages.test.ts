@@ -230,6 +230,15 @@ describe("project conversation error messages", () => {
     // refactor that inlines one path cannot silently drift.
     const regressionShared = formatProjectArtifactRegressionRejectedError("deck.html");
     expect(regressionShared).toBe(regression);
+    // 루프279 — slide-count collapse must not reuse the short-draft sentence.
+    const slideCountBanner = formatProjectArtifactRegressionRejectedError(
+      "deck.html",
+      "slide-count",
+    );
+    expect(slideCountBanner).toContain("슬라이드 수가 크게 줄어든");
+    expect(slideCountBanner).toContain("기존 슬라이드는 그대로");
+    expect(slideCountBanner).not.toContain("짧은 초안");
+    expect(slideCountBanner).not.toBe(regressionShared);
     // Bare fetch/network failure (no status) → network guidance.
     expect(
       formatProjectArtifactSaveFailedError("deck.html", {

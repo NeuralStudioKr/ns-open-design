@@ -90,6 +90,13 @@ const UPSTREAM_ERROR_CODES = new Set([
 ]);
 
 /**
+ * `short-draft` — byte-shrink / stub-guard (default).
+ * `slide-count` — completed-looking HTML that still collapsed slide count
+ * (image-embed / comment-scoped persist, or a 1–3 slide hard collapse).
+ */
+export type ArtifactRegressionBannerKind = 'short-draft' | 'slide-count';
+
+/**
  * Reassurance banner used by both the client-side pre-write
  * regression guard (`findClientArtifactRegression` in ProjectView) and
  * the daemon-side stub-guard rejection reaching the client as
@@ -103,9 +110,21 @@ const UPSTREAM_ERROR_CODES = new Set([
  * Never mention internal env vars or daemon-side toggle names to the
  * end user — those belong in ops docs. A prior version leaked
  * `OD_ARTIFACT_STUB_GUARD=warn` into the visible banner.
+ *
+ * 루프279 — slide-count collapse used the same "짧은 초안" copy as a
+ * compact draft, so a 5-slide topical rewrite that still tripped the
+ * count guard looked like a short-draft reject. Split the banner.
  */
-export function formatProjectArtifactRegressionRejectedError(_fileName: string): string {
+export function formatProjectArtifactRegressionRejectedError(
+  _fileName: string,
+  kind: ArtifactRegressionBannerKind = 'short-draft',
+): string {
   const embed = isTeamverEmbedMode();
+  if (kind === 'slide-count') {
+    return embed
+      ? 'AI가 이번 응답에서 기존보다 슬라이드 수가 크게 줄어든 초안만 반환해 저장하지 않았습니다. 기존 슬라이드는 그대로 유지되어 있으니 다시 요청해 주세요.'
+      : 'The AI returned a deck with far fewer slides than the current one, so it was not saved. Your existing deck is preserved — please try again.';
+  }
   return embed
     ? 'AI가 이번 응답에서 완성된 슬라이드 대신 짧은 초안만 반환해 저장하지 않았습니다. 기존 슬라이드는 그대로 유지되어 있으니 다시 요청해 주세요.'
     : 'The AI returned a short draft instead of a full slide deck, so it was not saved. Your existing deck is preserved — please try again.';

@@ -461,6 +461,7 @@ import {
   formatProjectConversationErrorForUser,
   formatProjectMessagesLoadError,
   formatProjectArtifactRegressionRejectedError,
+  type ArtifactRegressionBannerKind,
   formatProjectArtifactRejectedError,
   formatProjectArtifactSaveFailedError,
   formatProjectArtifactStubWarning,
@@ -2809,7 +2810,12 @@ type ArtifactPersistResult =
   /** Benign no-op (post-sanitize equals disk) — must not arm auto-continue. */
   | { kind: 'skipped-noop'; fileName: string; reason?: string }
   | { kind: 'scope-rejected'; fileName: string; code: ScopedDeckPersistFailureCode; reason: string }
-  | { kind: 'artifact-regression'; fileName: string; reason: string }
+  | {
+    kind: 'artifact-regression';
+    fileName: string;
+    reason: string;
+    bannerKind?: ArtifactRegressionBannerKind;
+  }
   | { kind: 'rejected'; fileName: string; reason: string }
   | { kind: 'save-failed'; fileName: string; status?: number; code?: string; message?: string }
   | { kind: 'auth-replay-queued'; fileName: string }
@@ -2861,6 +2867,21 @@ function countDeckSlideSections(html: string): number {
   return countAppendableDeckSlides(html);
 }
 
+const SUBSTANCE_RICH_REPLACEMENT_MIN_SLIDES = 4;
+
+/** Completed 4+ slide fill with real copy — not a first-fill compact draft. */
+function isSubstanceRichDeckReplacement(
+  html: string,
+  brief?: string | null,
+  title?: string | null,
+): boolean {
+  return (
+    countDeckSlideSections(html) >= SUBSTANCE_RICH_REPLACEMENT_MIN_SLIDES
+    && meetsMinimumDeckDeliverableQuality(html)
+    && !isLowSubstanceSlideDeckArtifact(html, brief, title)
+  );
+}
+
 export function findClientArtifactRegression(input: {
   fileName: string;
   htmlBody: string;
@@ -2899,15 +2920,7 @@ export function findClientArtifactRegression(input: {
   // permissive by design (≤6 slides + titled cover). Compact 1-3 slide title-
   // only drafts, motif SVG dumps, and failed-generate skeletons stay caught
   // by the underlying gates below.
-  if (
-    incomingSlideCount >= 4
-    && meetsMinimumDeckDeliverableQuality(input.htmlBody)
-    && !isLowSubstanceSlideDeckArtifact(
-      input.htmlBody,
-      input.healBrief,
-      input.healTitle,
-    )
-  ) {
+  if (isSubstanceRichDeckReplacement(input.htmlBody, input.healBrief, input.healTitle)) {
     return null;
   }
   const incomingCompactDraft = isPersistableShortDeckDraft(input.htmlBody)
@@ -2963,6 +2976,7 @@ export function findClientSlideCountRegression(input: {
   allowSlideCountReduction?: boolean;
   /** Same brief leftover-catalog detection uses on persist. */
   healBrief?: string | null;
+  healTitle?: string | null;
 }): { fileName: string; priorCount: number; newCount: number; reason: string } | null {
   if (input.allowSlideCountReduction) return null;
   if (priorDeckAllowsCompactReplacement(input.priorHtml, input.healBrief)) return null;
@@ -2974,6 +2988,15 @@ export function findClientSlideCountRegression(input: {
   const newCount = countDeckSlideSections(input.htmlBody);
   if (priorCount < 3 || newCount <= 0) return null;
   if (newCount >= priorCount) return null;
+  // 루프279 — Greenfield regenerate may replace an 8-slide prior with a
+  // completed 4+ slide topical deck (same substance-rich bar as loop273).
+  // Image/comment/targeted persists stay strict and still reject any drop.
+  if (
+    !input.strict
+    && isSubstanceRichDeckReplacement(input.htmlBody, input.healBrief, input.healTitle)
+  ) {
+    return null;
+  }
   const dropped = priorCount - newCount;
   const collapsedHard = input.strict
     ? dropped >= 1
@@ -5966,6 +5989,7 @@ export function ProjectView({
             strict: strictSlideCount,
             allowSlideCountReduction: allowReplaceSeedOrLeftover,
             healBrief: runVisiblePromptRef.current || '',
+            healTitle: project.name || '슬라이드',
           });
           if (slideRegression) {
             devLog.warn('[teamver] blocked slide-count collapse before save', {
@@ -5976,13 +6000,17 @@ export function ProjectView({
               strict: strictSlideCount,
             });
             surfaceChatVisibleError(
-              formatProjectArtifactRegressionRejectedError(slideRegression.fileName),
+              formatProjectArtifactRegressionRejectedError(
+                slideRegression.fileName,
+                'slide-count',
+              ),
               'artifact_regression',
             );
             return {
               kind: 'artifact-regression',
               fileName: slideRegression.fileName,
               reason: slideRegression.reason,
+              bannerKind: 'slide-count',
             };
           }
         } catch {
@@ -10489,6 +10517,7 @@ export function ProjectView({
                   : terminalPersistResult?.kind === 'artifact-regression'
                     ? formatProjectArtifactRegressionRejectedError(
                         terminalPersistResult.fileName,
+                        terminalPersistResult.bannerKind,
                       )
                   : terminalPersistResult?.kind === 'scope-rejected'
                     ? formatProjectArtifactCommentScopeRejectedError(
