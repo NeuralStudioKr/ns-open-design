@@ -1009,6 +1009,20 @@ function textLooksLikeLeftoverPeerPlaceholder(html: string): boolean {
   return leftoverPlaceholderTokenCount(compact) != null;
 }
 
+/**
+ * 루프205 — A third card that is only `PILLAR 03` / `COLUMN 3` / `03`
+ * is a leftover index shell, not a pillar. Keep `PILLAR 01 lim` and
+ * numbered step rows where every peer is an index.
+ */
+function textLooksLikeLeftoverIndexLabel(html: string): boolean {
+  const text = visibleText(html).replace(/\s+/g, ' ').trim();
+  if (!text) return false;
+  if (/^(?:pillar|column|col|card|item|step|part|#)?\s*0?[1-9][.\u2026·•\-–—]?$/i.test(text)) {
+    return true;
+  }
+  return /^(?:기둥|열|카드|항목|단계|파트)\s*0?[1-9][.\u2026·•\-–—]?$/u.test(text);
+}
+
 function childLooksEmptyLeftoverPeer(child: DirectChildSpan): boolean {
   if (/<(?:svg|img|video|canvas|iframe|picture|figure)\b/i.test(child.inner)) return false;
   if (
@@ -1017,7 +1031,10 @@ function childLooksEmptyLeftoverPeer(child: DirectChildSpan): boolean {
   ) {
     return false;
   }
-  return textLooksLikeLeftoverPeerPlaceholder(child.inner);
+  return (
+    textLooksLikeLeftoverPeerPlaceholder(child.inner)
+    || textLooksLikeLeftoverIndexLabel(child.inner)
+  );
 }
 
 function containerLooksLikeAllocatedCardRow(

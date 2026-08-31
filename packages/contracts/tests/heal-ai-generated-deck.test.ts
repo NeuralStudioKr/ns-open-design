@@ -440,6 +440,72 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
       expect(out).toMatch(/grid-template-columns:\s*(?:minmax\(0,1fr\) ){1}minmax\(0,1fr\)/);
     });
 
+    it('drops a PILLAR 03 index-only third card (루프205)', () => {
+      const html = [
+        '<div style="display:flex;gap:28px">',
+        '<div class="card" style="padding:24px"><h3>PILLAR 01</h3><p>lim</p></div>',
+        '<div class="card" style="padding:24px"><h3>PILLAR 02</h3><p>d/dx</p></div>',
+        '<div class="card" style="padding:24px"><h3>PILLAR 03</h3></div>',
+        '</div>',
+      ].join('');
+      const out = dropEmptyLeftoverPeerCardsInAllocatedRows(html, '미적분');
+      expect((out.match(/class="card"/g) ?? []).length).toBe(2);
+      expect(out).toContain('PILLAR 01');
+      expect(out).toContain('PILLAR 02');
+      expect(out).not.toContain('PILLAR 03');
+    });
+
+    it('keeps a numbered step row where every peer is an index (루프205)', () => {
+      const html = [
+        '<div style="display:flex;gap:16px">',
+        '<div class="card">1</div>',
+        '<div class="card">2</div>',
+        '<div class="card">3</div>',
+        '</div>',
+      ].join('');
+      expect(dropEmptyLeftoverPeerCardsInAllocatedRows(html, '미적분')).toBe(html);
+    });
+
+    it('keeps a PILLAR label that still has pillar copy (루프205)', () => {
+      const html = [
+        '<div style="display:flex;gap:28px">',
+        '<div class="card"><h3>PILLAR 01</h3><p>lim</p></div>',
+        '<div class="card"><h3>PILLAR 02</h3><p>d/dx</p></div>',
+        '<div class="card"><h3>PILLAR 03</h3><p>적분</p></div>',
+        '</div>',
+      ].join('');
+      expect(dropEmptyLeftoverPeerCardsInAllocatedRows(html, '미적분')).toBe(html);
+    });
+
+    it('drops a PILLAR 03. leftover with trailing punct (루프205)', () => {
+      const html = [
+        '<div style="display:flex;gap:28px">',
+        '<div class="card"><h3>극한</h3><p>lim</p></div>',
+        '<div class="card"><h3>도함수</h3><p>d/dx</p></div>',
+        '<div class="card"><h3>PILLAR 03.</h3></div>',
+        '</div>',
+      ].join('');
+      const out = dropEmptyLeftoverPeerCardsInAllocatedRows(html, '미적분');
+      expect((out.match(/class="card"/g) ?? []).length).toBe(2);
+      expect(out).not.toContain('PILLAR 03');
+    });
+
+    it('pipeline heals a 기둥 3 leftover without inventing 적분 copy (루프205)', () => {
+      const html = [
+        '<section class="slide"><h1>미적분의 세 기둥</h1>',
+        '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:24px">',
+        '<div class="card"><h3>극한</h3><p>lim</p></div>',
+        '<div class="card"><h3>도함수</h3><p>d/dx</p></div>',
+        '<div class="card"><h3>기둥 3</h3></div>',
+        '</div></section>',
+      ].join('');
+      const out = healAiGeneratedDeckMarkup(html, '미적분');
+      expect((out.match(/class="card"/g) ?? []).length).toBe(2);
+      expect(out).not.toContain('기둥 3');
+      expect(out).toContain('극한');
+      expect(out).toContain('도함수');
+    });
+
     it('pipeline shrinks a 3-col grid after dropping the empty shell', () => {
       const html = [
         '<section class="slide s-data"><h2>미적분의 세 기둥</h2>',

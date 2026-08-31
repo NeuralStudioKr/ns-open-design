@@ -52,6 +52,7 @@ describe('DECK_FRAMEWORK_DIRECTIVE_COMPACT', () => {
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('empty card shell');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('placeholder card shell');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('TBD/N/A/준비중');
+    expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('PILLAR 03');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('Class flex rows');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('no px width or min-width');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('max-width');
@@ -62,6 +63,9 @@ describe('DECK_FRAMEWORK_DIRECTIVE_COMPACT', () => {
     );
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY_FOR_SELECTED_TEMPLATE).toContain(
       'empty/placeholder card shell',
+    );
+    expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY_FOR_SELECTED_TEMPLATE).toContain(
+      'PILLAR 03',
     );
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY_FOR_SELECTED_TEMPLATE).toContain(
       'no px width or min-width',

@@ -7,6 +7,12 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-08-31 현재 판단 · 최신 루프
 
+### 루프205 — PILLAR/COLUMN 인덱스만 leftover 카드
+
+루프197–202는 빈 셸·placeholder·TBD stub만 leftover로 본다. MiniMax는 빠진 기둥을 `PILLAR 03`/`기둥 3`으로 채워 3열이 유지된다. 카드 전체가 인덱스 라벨일 때만 제거. 전 peer가 숫자인 스텝 행과 `PILLAR 03`+실카피는 유지. 카피 발명 없음.
+
+검증: contracts heal-ai-generated-deck 루프205 · deck-framework-compact.
+
 ### 루프204 — 클래스 flex 행이 191을 건너뛰어 좌측 편중
 
 루프191은 인라인 `display:flex`만 본다. `.cards { display:flex }` 클래스 행은 grow가 없어 카드가 왼쪽에 몰린다. Hangul/brief 덱만 peer에 `flex:1 1 0`. 컬럼·영문 카탈로그·인라인 flex는 유지. 카피 발명 없음.
@@ -403,9 +409,17 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | persist/preview: TBD/N/A/준비중 stub 카드가 3열을 붙잡아 빈 띠 | ☑ 루프202 |
 | heal: 제목+내부 `.card`를 194가 빈 셸로 쪼갬 | ☑ 루프203 |
 | persist/preview: 클래스 `.cards{display:flex}` 행이 grow 없이 좌측 편중 | ☑ 루프204 |
+| persist/preview: PILLAR/COLUMN/기둥 N 인덱스 leftover 카드가 3열을 붙잡아 빈 띠 | ☑ 루프205 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프204 · 클래스 flex 행)
+## 이번 루프 (루프205 · 인덱스 leftover)
+
+- [x] `textLooksLikeLeftoverIndexLabel` — PILLAR/COLUMN/기둥 N(+마침표)만 drop
+- [x] 전-인덱스 스텝 행 · 실카피 접두 유지
+- [x] heal-ai-generated-deck 루프205 · deck-framework-compact
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프204 · 클래스 flex 행)
 
 - [x] `collectClassFlexRowNames` · `balanceClassBoundFlexCardRow`
 - [x] Hangul/brief 게이트 · column/영문/인라인 191 유지
