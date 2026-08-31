@@ -790,7 +790,8 @@ export function isPersistableShortDeckDraft(html: string): boolean {
   if (deckArtifactStartsWithMotifSvgDump(withoutComments)) return false;
   if (deckSlideHeadingsLookLikeFailedGenerate(withoutComments)) return false;
   const inners = listSlideSectionInners(withoutComments);
-  // Compact API first-fill is 1–6 titled slides (top-up only for 7+).
+  // Persist short-draft salvage stays ≤6 titled slides. First-fill prompt
+  // honors explicit 1–10; hidden top-up is only for 11+ or a short miss.
   // Sparse 7+ shells stay on the soft-salvage / incomplete trust path.
   if (inners.length === 0 || inners.length > FIRST_FILL_SLIDE_COUNT_THIS_TURN) return false;
   const firstText = inners[0] ? visibleTextFromHtmlFragment(inners[0]) : '';

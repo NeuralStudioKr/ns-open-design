@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  COMPACT_FIRST_FILL_HONOR_MAX,
+  COMPACT_FIRST_FILL_SLIDE_COUNT_GUIDANCE,
+  COMPACT_FIRST_FILL_SLIDE_COUNT_THIS_TURN,
+  COMPACT_FIRST_FILL_TOP_UP_FROM,
   DECK_COMPACT_INLINE_LAYOUT_VOCABULARY,
   DECK_COMPACT_INLINE_LAYOUT_VOCABULARY_FOR_SELECTED_TEMPLATE,
   DECK_FRAMEWORK_DIRECTIVE_COMPACT,
@@ -282,9 +286,30 @@ describe('DECK_FRAMEWORK_DIRECTIVE_COMPACT', () => {
     ).toBeGreaterThanOrEqual(3);
   });
 
+  it('honors explicit 1–10 this turn, keeps unspecified at 6, and tops up only 11+', () => {
+    expect(COMPACT_FIRST_FILL_SLIDE_COUNT_THIS_TURN).toBe(6);
+    expect(COMPACT_FIRST_FILL_HONOR_MAX).toBe(10);
+    expect(COMPACT_FIRST_FILL_TOP_UP_FROM).toBe(11);
+    expect(COMPACT_FIRST_FILL_SLIDE_COUNT_GUIDANCE).toMatch(
+      /honor an explicit user count of 1–10/i,
+    );
+    expect(COMPACT_FIRST_FILL_SLIDE_COUNT_GUIDANCE).toContain('8-10 → close this turn');
+    expect(COMPACT_FIRST_FILL_SLIDE_COUNT_GUIDANCE).toContain(
+      'If the user asked for 11 or more, close 6 complete body-first slides this turn',
+    );
+    expect(COMPACT_FIRST_FILL_SLIDE_COUNT_GUIDANCE).toContain('If unspecified, close 6 this turn');
+    expect(COMPACT_FIRST_FILL_SLIDE_COUNT_GUIDANCE).not.toMatch(
+      /honor an explicit user count of 1–6/i,
+    );
+    expect(COMPACT_FIRST_FILL_SLIDE_COUNT_GUIDANCE).not.toContain('7 or more');
+    expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_TEMPLATE_FILL).toContain(
+      COMPACT_FIRST_FILL_SLIDE_COUNT_GUIDANCE,
+    );
+  });
+
   it('template-fill compact contract asks for up to 6 slides this turn and defers Motif SVG', () => {
     expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_TEMPLATE_FILL).toMatch(
-      /honor an explicit user count of 1–6/i,
+      /honor an explicit user count of 1–10/i,
     );
     expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_TEMPLATE_FILL).toContain(
       'no 3+3+3 split',

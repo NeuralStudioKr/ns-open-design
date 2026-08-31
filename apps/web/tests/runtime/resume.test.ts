@@ -209,7 +209,8 @@ describe('runtime/resume shell/no-HTML recovery constants', () => {
     expect(prompt).toContain('BODY-FIRST');
     expect(prompt).toContain('NEVER "수정 반영 중"');
     expect(prompt).toContain('Do not restart from `<head>`');
-    expect(prompt).toContain('1–6 slide first-fill draft');
+    expect(prompt).toContain('honor 1–10');
+    expect(prompt).toContain('hidden top-up only for 11+');
     expect(prompt).toContain('cover: eyebrow + headline + lead');
     expect(prompt).toContain('one idea each');
     expect(prompt).toContain('Official look/Motif CSS is merged after save');
@@ -276,7 +277,8 @@ describe('runtime/resume shell/no-HTML recovery constants', () => {
         '<!doctype html><html><body><section class="slide"><h1>Cover only</h1><p>Lead.</p></section></body></html>',
     });
     expect(prompt).toContain('Do not restart from `<head>`');
-    expect(prompt).toContain('1–6 slide first-fill draft');
+    expect(prompt).toContain('honor 1–10');
+    expect(prompt).toContain('hidden top-up only for 11+');
     expect(prompt).toContain('<h1>Cover only</h1>');
   });
 

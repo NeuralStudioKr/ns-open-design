@@ -367,7 +367,9 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).toContain('question-form id="discovery"');
       expect(prompt).toContain('never an empty shell or long `<head>` chrome');
       expect(prompt).toContain('at least 6 filled');
-      expect(prompt).toContain('honor an explicit user count of 1–6');
+      expect(prompt).toContain('honor an explicit user count of 1–10');
+      expect(prompt).toContain('top-up only for 11+');
+      expect(prompt).not.toContain('top-up only for 7+');
       expect(prompt).not.toContain('prefer 3 this turn');
       expect(prompt).toContain('abandon that output');
       expect(prompt).toContain('API compact contract');
@@ -487,8 +489,8 @@ describe('composeSystemPrompt — API mode (#313)', () => {
         prompt.indexOf('Slide deck — API compact contract'),
       );
       expect(prompt).not.toContain('Do not paste this exact headline');
-      // Ceiling grew for first-fill “close 6 / no 3+3+3 split” plus content-expansion rules.
-      expect(prompt.length).toBeLessThan(29_100);
+      // Ceiling grew for first-fill honor 1–10 / top-up 11+.
+      expect(prompt.length).toBeLessThan(30_200);
     });
 
     it('keeps quick brief available when a selected template supplies style but not content brief', () => {
@@ -548,8 +550,8 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt.indexOf('Visual style reference — Html Ppt Hermes Cyber Terminal')).toBeLessThan(
         prompt.indexOf('Slide deck — API compact contract'),
       );
-      // Ceiling grew for first-fill “close 6 / no 3+3+3 split” plus content-expansion rules.
-      expect(prompt.length).toBeLessThan(29_100);
+      // Ceiling grew for first-fill honor 1–10 / top-up 11+.
+      expect(prompt.length).toBeLessThan(30_200);
     });
 
     it('keeps richer visual template rules while stripping unavailable copy workflows', () => {
@@ -577,8 +579,8 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       );
       expect(prompt).not.toContain('Read assets/template.html and copy the skeleton');
       expect(prompt).not.toContain('Use references/layouts.md for exact slots');
-      // Ceiling grew for existing-deck image/surgical-edit rules.
-      expect(prompt.length).toBeLessThan(29_000);
+      // Ceiling grew for first-fill honor 1–10 / top-up 11+.
+      expect(prompt.length).toBeLessThan(30_000);
     });
 
     it('appends a single Final authority READ LAST on template clone fill turns', () => {
@@ -823,10 +825,10 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(fill).not.toContain('Copy Motif sprites verbatim');
       expect(normal).not.toContain('Copy Motif sprites verbatim');
       expect(normal).toContain('Motif budget');
-      expect(normal).toContain('paste at most ONE capped kit Motif sprite');
+      expect(normal).toContain('at most ONE capped kit Motif sprite');
       expect(fill).toMatch(/Motif `<svg>` is NOT required this turn/i);
       expect(fill).toMatch(/REQUIRE 1–2 kit Motif CSS\/deco classes/i);
-      expect(fill).toMatch(/honor an explicit user count of 1–6/i);
+      expect(fill).toMatch(/honor an explicit user count of 1–10/i);
       expect(fill).not.toMatch(/produce 3 filled 1920×1080 slides/i);
       // Fill kits must not re-inject Motif SVG bodies (persist remmerge paints them).
       expect(fill).not.toMatch(/```html[\s\S]*?<svg\s/i);

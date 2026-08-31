@@ -275,6 +275,50 @@ describe("slideCountTopUp", () => {
     );
   });
 
+  it("does not queue top-up when an explicit 8–10 request already closed this turn", () => {
+    expect(shouldQueueSlideCountTopUp({
+      produced: 8,
+      requested: 8,
+      topUpCount: 0,
+    })).toBe(false);
+    expect(shouldQueueSlideCountTopUp({
+      produced: 10,
+      requested: 10,
+      topUpCount: 0,
+    })).toBe(false);
+    expect(shouldQueueSlideCountTopUp({
+      produced: 8,
+      requested: 10,
+      requestedMin: 8,
+      topUpCount: 0,
+    })).toBe(false);
+    expect(countHonoredSlideCountTopUpTurns({
+      produced: 10,
+      requested: 10,
+    })).toBe(0);
+  });
+
+  it("still tops up a short miss of an honored 8–10 count, and 11+ still batches", () => {
+    expect(shouldQueueSlideCountTopUp({
+      produced: 4,
+      requested: 10,
+      topUpCount: 0,
+    })).toBe(true);
+    expect(countHonoredSlideCountTopUpTurns({
+      produced: 4,
+      requested: 10,
+    })).toBe(1);
+    expect(shouldQueueSlideCountTopUp({
+      produced: 6,
+      requested: 12,
+      topUpCount: 0,
+    })).toBe(true);
+    expect(countHonoredSlideCountTopUpTurns({
+      produced: 6,
+      requested: 12,
+    })).toBe(1);
+  });
+
   it("finishes a default-6 miss in one honored top-up, not a 3+3 split", () => {
     expect(countHonoredSlideCountTopUpTurns({
       produced: 1,

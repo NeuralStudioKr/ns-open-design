@@ -18,8 +18,10 @@ import { COMPACT_DECK_SLIDE_COUNT_GUIDANCE } from './deckGuidance';
 
 /** Local copies — contracts-barrel re-exports are undefined at resume module init. */
 const FIRST_FILL_SLIDE_COUNT_THIS_TURN = 6;
+const FIRST_FILL_HONOR_MAX = 10;
+const FIRST_FILL_TOP_UP_FROM = 11;
 const FIRST_FILL_SLIDE_COUNT_GUIDANCE =
-  'Slide count THIS TURN: honor an explicit user count of 1–6 (5-6/5~6 → close ≥5 this turn). If the user asked for 7 or more, close 6 complete body-first slides this turn and hidden top-up appends the rest. If unspecified, close 6 this turn. Never close after a single cover or after 3 slides when the target is 5+ — no 3+3+3 split.';
+  `Slide count THIS TURN: honor an explicit user count of 1–${FIRST_FILL_HONOR_MAX} (5-6/5~6 → close ≥5 this turn; 8-10 → close this turn). If the user asked for ${FIRST_FILL_TOP_UP_FROM} or more, close ${FIRST_FILL_SLIDE_COUNT_THIS_TURN} complete body-first slides this turn and hidden top-up appends the rest. If unspecified, close ${FIRST_FILL_SLIDE_COUNT_THIS_TURN} this turn. Never close after a single cover or after 3 slides when the target is 5+ — no 3+3+3 split.`;
 
 // Canonical prompt sent by the "Continue the run" affordance on a resumable
 // failed run. The daemon resumes the persisted CLI session for this
@@ -63,7 +65,7 @@ export const AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT =
   '아티팩트는 `<body>` 또는 첫 `<section class="slide">`로 시작하세요. `<head>` / 긴 `<style>` / kit CSS를 먼저 쓰면 실패입니다. ' +
   `이번 턴은 정확히 ${FIRST_FILL_SLIDE_COUNT_THIS_TURN}장의 body-first 슬라이드를 닫고 \`</body></html></artifact>\`로 끝내세요. ` +
   `${FIRST_FILL_SLIDE_COUNT_GUIDANCE} ` +
-  '7장 이상은 hidden top-up이 이어 붙입니다. ' +
+  '11장 이상은 hidden top-up이 이어 붙입니다. ' +
   `외부 파일 참조, 프레임워크 스켈레톤 복사, SLOT 주석, 추가 툴 호출 없이 이 한 번의 응답에서 ${FIRST_FILL_SLIDE_COUNT_THIS_TURN}장을 완결지어야 합니다. ` +
   '커버는 eyebrow·제목·리드 한 줄만(통계 칸·메타 footer 금지). 본문 장은 제목과 2~4개 불릿(한 아이디어). ' +
   '한 장에 제목+부제+통계+footer를 같이 넣지 마세요. 빈 `<head>`나 빈 `<body>`로 끝내면 안 됩니다. ' +
@@ -94,7 +96,7 @@ const AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT_ESCALATED =
   // Token-budget escape hatch: previous full-scope attempts likely died at
   // max_tokens mid-head. Close the first-fill body-first count this turn so
   // persist can finish instead of another incomplete-html-document-shell.
-  `이번 턴은 정확히 ${FIRST_FILL_SLIDE_COUNT_THIS_TURN}장의 body-first 슬라이드를 닫으세요. 7장 이상 전체 재작성은 금지입니다. ` +
+  `이번 턴은 정확히 ${FIRST_FILL_SLIDE_COUNT_THIS_TURN}장의 body-first 슬라이드를 닫으세요. 11장 이상 전체 재작성은 금지입니다. ` +
   `${FIRST_FILL_SLIDE_COUNT_GUIDANCE} ` +
   '각 슬라이드에는 SLOT 주석이 아니라 실제 텍스트가 들어가야 합니다. ' +
   '커버는 eyebrow·제목·리드만, 본문은 제목+2~4불릿, 한 장에 통계+footer를 같이 넣지 마세요. ' +
@@ -129,7 +131,7 @@ export function excerptPartialHtmlForAutoContinue(html: string): string {
 
 const HAS_HTML_CLOSE_RE = /<\/html\s*>/i;
 
-/** Closed 1–6 slide first-fill persist already accepts — including healed "만들어줘". */
+/** Closed ≤6 slide first-fill persist already accepts — including healed "만들어줘". */
 export function isClosedPersistableCoverDraft(
   html: string,
   brief?: string | null,
@@ -151,12 +153,12 @@ const AUTO_CONTINUE_HEAD_ONLY_BODY_FIRST =
   + 'use only tiny inline style tokens. Cover = eyebrow + headline + one lead (no stats/footer). '
   + 'Body slides = title + 2–4 bullets. One idea per slide. '
   + 'Official look/Motif CSS is merged after save — do not stream `<head>` or example.html styles. '
-  + `Close exactly ${FIRST_FILL_SLIDE_COUNT_THIS_TURN} body-first slides this turn. Hidden top-up only for 7+. `
+  + `Close exactly ${FIRST_FILL_SLIDE_COUNT_THIS_TURN} body-first slides this turn unless the user asked for 1–${FIRST_FILL_HONOR_MAX}. Hidden top-up only for ${FIRST_FILL_TOP_UP_FROM}+. `
   + 'A compact static deck beats another CSS-only truncation.';
 
 const AUTO_CONTINUE_TEMPLATE_FILL_MIN_SLIDES =
   '\n\nCRITICAL: Do not restart from `<head>` / kit CSS. Persist keeps a '
-  + `1–${FIRST_FILL_SLIDE_COUNT_THIS_TURN} slide first-fill draft and hidden top-up only for 7+ — do not burn this turn `
+  + `closed first-fill draft (honor 1–${FIRST_FILL_HONOR_MAX}; unspecified ${FIRST_FILL_SLIDE_COUNT_THIS_TURN}; hidden top-up only for ${FIRST_FILL_TOP_UP_FROM}+) — do not burn this turn `
   + 'rewriting Daisy Days chrome. Emit BODY-FIRST slides '
   + '(cover: eyebrow + headline + lead; body: title + 2–4 bullets; one idea each). '
   + 'If you continue, APPEND more `<section class="slide">` (or `<div class="slide">`) '

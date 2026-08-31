@@ -42,6 +42,7 @@ import {
   COMPACT_DECK_SLIDE_COUNT_GUIDANCE,
   COMPACT_FIRST_FILL_SLIDE_COUNT_GUIDANCE,
   COMPACT_FIRST_FILL_SLIDE_COUNT_THIS_TURN,
+  COMPACT_FIRST_FILL_TOP_UP_FROM,
 } from './deck-framework.js';
 import {
   SLIDE_DECK_CONTENT_EXPANSION_EXAMPLE,
@@ -1365,7 +1366,7 @@ const TEAMVER_SLIDE_API_UNIFIED_STREAMING_RULE = `# Slide-only API — unified s
 - **First deck after discovery:** \`<artifact type="deck" identifier="deck">…</artifact>\` with status like "작성 중" / "making your deck".
 - **Follow-up edit of an existing deck** (user asks to change slides that already exist, with or without preview comments): prefer \`element-patch\` / \`deck-patch\` when scope is clear; if you must emit full \`type="deck"\`, status must be edit-toned ("수정 반영 중" / "Applying your edits") — never "초안이 생성", "creating the deck", or "draft is ready".
 
-\`<artifact type="deck" identifier="deck"><!doctype html><html lang="ko"><body>…at least ${COMPACT_FIRST_FILL_SLIDE_COUNT_THIS_TURN} filled <section class="slide"> blocks this turn (top-up only for 7+)…</body></html></artifact>\`
+\`<artifact type="deck" identifier="deck"><!doctype html><html lang="ko"><body>…at least ${COMPACT_FIRST_FILL_SLIDE_COUNT_THIS_TURN} filled <section class="slide"> blocks this turn (top-up only for ${COMPACT_FIRST_FILL_TOP_UP_FROM}+)…</body></html></artifact>\`
 
 **How to stream the deck (non-negotiable on turn 2+):**
 1. Emit the status sentence first, then open the artifact early. Never \`type="text/html"\`.
@@ -1440,7 +1441,7 @@ This project has \`skipDiscoveryBrief: true\` or an already-complete brief. Do N
 
 Your successful response is optional tiny UI-locale status sentence + **exactly one** streaming artifact in this same turn. Artifact-only is OK for speed/tokens:
 
-\`<artifact type="deck" identifier="deck"><!doctype html><html lang="ko"><body>…at least ${COMPACT_FIRST_FILL_SLIDE_COUNT_THIS_TURN} filled <section class="slide"> blocks this turn (top-up only for 7+)…</body></html></artifact>\`
+\`<artifact type="deck" identifier="deck"><!doctype html><html lang="ko"><body>…at least ${COMPACT_FIRST_FILL_SLIDE_COUNT_THIS_TURN} filled <section class="slide"> blocks this turn (top-up only for ${COMPACT_FIRST_FILL_TOP_UP_FROM}+)…</body></html></artifact>\`
 
 **How to stream the deck (non-negotiable):**
 1. Emit the status sentence first, then open \`<artifact type="deck">\` early. Never \`type="text/html"\`.

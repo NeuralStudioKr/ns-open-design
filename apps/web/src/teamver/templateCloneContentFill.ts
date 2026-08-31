@@ -26,8 +26,10 @@ import { isSlideCountRangeHint, parseSlideCountTarget } from './slideCountTopUp'
 
 /** Keep local — contracts barrel can be undefined during web test init. */
 const FIRST_FILL_SLIDE_COUNT_THIS_TURN = 6;
+const FIRST_FILL_HONOR_MAX = 10;
+const FIRST_FILL_TOP_UP_FROM = 11;
 const FIRST_FILL_SLIDE_COUNT_GUIDANCE =
-  'Slide count THIS TURN: honor an explicit user count of 1–6 (5-6/5~6 → close ≥5 this turn). If the user asked for 7 or more, close 6 complete body-first slides this turn and hidden top-up appends the rest. If unspecified, close 6 this turn. Never close after a single cover or after 3 slides when the target is 5+ — no 3+3+3 split.';
+  `Slide count THIS TURN: honor an explicit user count of 1–${FIRST_FILL_HONOR_MAX} (5-6/5~6 → close ≥5 this turn; 8-10 → close this turn). If the user asked for ${FIRST_FILL_TOP_UP_FROM} or more, close ${FIRST_FILL_SLIDE_COUNT_THIS_TURN} complete body-first slides this turn and hidden top-up appends the rest. If unspecified, close ${FIRST_FILL_SLIDE_COUNT_THIS_TURN} this turn. Never close after a single cover or after 3 slides when the target is 5+ — no 3+3+3 split.`;
 
 /** Keep local — importing canvasSlideLaunch here caused circular init of expansion consts. */
 const SLIDE_DECK_QUALITY_BAR_INSTRUCTION =
@@ -249,7 +251,7 @@ export function templateCloneContentFillHardRules(): string[] {
     '- Strict body-first contract: start the artifact body exactly like `<!doctype html><html lang="ko"><body><section class="slide" ...>`.',
     '- `<head>` is FORBIDDEN on this fill turn. Do not emit `<head>`, `<title>`, meta tags, or a style prelude before slide 1.',
     '- The first 800 characters after `<artifact` MUST include `<body` and one complete `<section class="slide">` with real topical copy (cover title + lead).',
-    `- ${FIRST_FILL_SLIDE_COUNT_GUIDANCE} Close \`</html></artifact>\` this turn. Hidden top-up appends only when the user asked for 7+. Never spend this turn on \`<head>\` or full Motif sprite dumps.`,
+    `- ${FIRST_FILL_SLIDE_COUNT_GUIDANCE} Close \`</html></artifact>\` this turn. Hidden top-up appends only when the user asked for ${FIRST_FILL_TOP_UP_FROM}+. Never spend this turn on \`<head>\` or full Motif sprite dumps.`,
     '- Official look/Motif CSS/SVG is merged after save. Do not stream `<head>`, a full example.html stylesheet, or large SVG sprites this turn. Still include 1–2 compact template-identifying motif/deco cues per slide when the visual kit provides them.',
     `- If the brief is only a topic, use a default ${FIRST_FILL_SLIDE_COUNT_THIS_TURN}-slide outline (cover, why it matters, key concepts, evidence, next steps, close). Adapt labels to the topic and audience.`,
     '- Motif vocabulary OVERRIDE: Title-first always. Use the selected kit motif family after cover `<h1>`/`<h2>` + lead: compact existing classes, small complete inline snippets, or deco HTML from the kit. Keep slide padding (~56–80px) and put titles in normal flow (not under absolute Motif corners). FORBIDDEN this turn: Motif `<svg>` before title copy, multi-KB sprite dumps, inventing generic CSS circles / tiny corner dots / fake 12–48px flower SVGs / emoji daisies, Capsule coral pills when the kit Motif is petals/flowers/blobs/pins/pixel/scanlines, empty `.deco` shells. If you already started an SVG-before-title dump, abandon it and restart with `<h1>`.',
@@ -257,9 +259,9 @@ export function templateCloneContentFillHardRules(): string[] {
     '- Layout OVERRIDE: reuse capped Layout CSS + scaffold roles when present. FORBIDDEN: flattening every slide into one centered flex title column when the kit ships grids/splits/cards.',
     '- Full-bleed surface: bind kit Slide surface hex on `html`/`body` AND every `<section class="slide" style="…background:<kit surface>…">` edge-to-edge for the full 1920×1080 canvas. Prefer the kit identity surface (e.g. `--hc-bg` / cream / paper) — never substitute Neutral white/`#0f172a` when the kit names a surface. FORBIDDEN: white/default outer slide with an inner cream "paper" panel that leaves white bands at top/bottom. White title cards ON cream paper are OK.',
     '- Keep `<style>` very short (kit tokens + fonts only, ideally under ~1KB) and place it after slide 1 or omit it in favor of inline styles. Never dump the whole template stylesheet.',
-    `- Fill REAL topical titles/body (no "…", no "만들어줘", no create-slides boilerplate). Brief/Quick settings are the eventual target — this turn still closes up to ${FIRST_FILL_SLIDE_COUNT_THIS_TURN}. Hidden top-up appends only 7+. Never copy the template demo page lineup.`,
+    `- Fill REAL topical titles/body (no "…", no "만들어줘", no create-slides boilerplate). Brief/Quick settings are the eventual target — honor an explicit 1–${FIRST_FILL_HONOR_MAX} this turn; unspecified still closes ${FIRST_FILL_SLIDE_COUNT_THIS_TURN}. Hidden top-up appends only ${FIRST_FILL_TOP_UP_FROM}+. Never copy the template demo page lineup.`,
     '- REPLACE every example.html proper noun, table, and metric. Hartfield / NorthPeak / Project Atlas / WACC / EBITDA / "Demo-data notice" are forbidden unless the user brief names them. Do not splice the user topic into a leftover DCF/finance heading.',
-    `- Prefer finishing a closed ${FIRST_FILL_SLIDE_COUNT_THIS_TURN}-slide \`</artifact>\` this turn over any Motif fidelity. A complete compact deck beats a truncated SVG/CSS shell.`,
+    '- Prefer finishing a closed THIS-TURN `</artifact>` this turn over any Motif fidelity. A complete compact deck beats a truncated SVG/CSS shell.',
     '- Honor stated audience/level (e.g. 시니어 개발자 = architecture/internals/trade-offs, not a beginner intro).',
     '- Each body slide needs a real title plus 2–4 concrete bullets or a real paragraph. No "핵심 메시지를 정리합니다" filler.',
   ];
@@ -271,6 +273,9 @@ const FIRST_FILL_SLIDE_COUNT_STABILITY_CAP =
 /** Short Home/Canvas preset — a complete compact job, not a first-fill cap. */
 const FIRST_FILL_SHORT_RANGE_CLOSE_HINT = '5-6 (close at least 5 this turn)';
 const FIRST_FILL_SHORT_RANGE_RE = /^5\s*[-~–—]\s*6$/;
+/** Home/Canvas "auto" 6-8 is the unspecified default — still close 6 this turn. */
+const FIRST_FILL_AUTO_DEFAULT_RANGE_RE = /^6\s*[-~–—]\s*8$/;
+const FIRST_FILL_HONOR_RANGE_CLOSE_RE = /^\d{1,2}-\d{1,2} \(close this turn\)$/;
 
 function isFirstFillShortRangeHint(text: string | number | null | undefined): boolean {
   const raw = String(text ?? '').trim();
@@ -284,24 +289,33 @@ export function normalizeTemplateCloneFillSlideCountHint(input: string | number 
     ?? raw.match(/(\d{1,2})\s*(?:장|slides?|pages?)\s*(?:요청|requested|명시|explicit)/i);
   if (explicit?.[1]) {
     const n = Number(explicit[1]);
-    if (Number.isFinite(n) && n >= 1 && n <= 12) return String(n);
+    if (Number.isFinite(n) && n >= 1 && n <= FIRST_FILL_HONOR_MAX) return String(n);
+    if (Number.isFinite(n) && n >= FIRST_FILL_TOP_UP_FROM) {
+      return FIRST_FILL_SLIDE_COUNT_STABILITY_CAP;
+    }
   }
   // 5-6 / 5~6 is a complete short job. Do not rewrite it to the first-fill
   // stability cap — that text plans a later append and splits the work.
   if (isFirstFillShortRangeHint(raw)) {
     return FIRST_FILL_SHORT_RANGE_CLOSE_HINT;
   }
-  if (
-    /^6\s*-\s*8$/.test(raw) || /^6\s*~\s*8$/.test(raw)
-    || /^8\s*-\s*10$/.test(raw) || /^8\s*~\s*10$/.test(raw)
-    || /^12\s*-\s*15$/.test(raw) || /^12\s*~\s*15$/.test(raw)
-  ) {
+  if (FIRST_FILL_HONOR_RANGE_CLOSE_RE.test(raw)) return raw;
+  if (FIRST_FILL_AUTO_DEFAULT_RANGE_RE.test(raw)) {
     return FIRST_FILL_SLIDE_COUNT_STABILITY_CAP;
+  }
+  const range = raw.match(/^(\d{1,2})\s*[-~–—]\s*(\d{1,2})$/);
+  if (range?.[1] && range[2]) {
+    const lo = Number(range[1]);
+    const hi = Number(range[2]);
+    if (Number.isFinite(lo) && Number.isFinite(hi) && lo >= 1 && hi >= lo) {
+      if (hi <= FIRST_FILL_HONOR_MAX) return `${lo}-${hi} (close this turn)`;
+      return FIRST_FILL_SLIDE_COUNT_STABILITY_CAP;
+    }
   }
   const single = raw.match(/^(\d{1,2})$/)?.[1];
   if (single) {
     const n = Number(single);
-    if (n <= FIRST_FILL_SLIDE_COUNT_THIS_TURN) return String(n);
+    if (n >= 1 && n <= FIRST_FILL_HONOR_MAX) return String(n);
     return FIRST_FILL_SLIDE_COUNT_STABILITY_CAP;
   }
   return raw;
@@ -338,6 +352,13 @@ export function templateCloneFillSlideCountOverrideNotice(
       '# Template clone fill slideCount override',
       `For THIS first content-fill turn only, treat Plugin input slideCount as "${capped}".`,
       'Close at least 5 slides this turn. Do not stop after 3 slides or leave remaining slides for a later turn.',
+    ].join('\n');
+  }
+  if (FIRST_FILL_HONOR_RANGE_CLOSE_RE.test(capped)) {
+    return [
+      '# Template clone fill slideCount override',
+      `For THIS first content-fill turn only, treat Plugin input slideCount as "${capped}".`,
+      'Close the requested range this turn. Do not leave remaining slides for a later turn.',
     ].join('\n');
   }
   if (capped === FIRST_FILL_SLIDE_COUNT_STABILITY_CAP) {

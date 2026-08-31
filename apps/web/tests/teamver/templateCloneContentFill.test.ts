@@ -80,7 +80,10 @@ describe('templateCloneContentFill', () => {
     expect(seed).toContain(
       'Slide count hint: 6 (default for first template fill; close 6 complete slides this turn.)',
     );
-    expect(seed).toMatch(/honor an explicit user count of 1–6/i);
+    expect(seed).toMatch(/honor an explicit user count of 1–10/i);
+    expect(seed).toContain('If unspecified, close 6 this turn');
+    expect(seed).toContain('11 or more');
+    expect(seed).not.toMatch(/honor an explicit user count of 1–6/i);
     expect(seed).toContain('no 3+3+3 split');
     expect(seed).not.toMatch(/persist rejects 1–2/i);
     expect(seed).toMatch(/large SVG sprites|full Motif sprite dumps/i);
@@ -104,13 +107,31 @@ describe('templateCloneContentFill', () => {
     expect(twoSlides).toContain('Slide count hint: 2.');
   });
 
-  it('keeps large natural-language slide requests capped for first fill but records the real target', () => {
+  it('honors an explicit 8-slide request this turn instead of cutting at 6', () => {
     const seed = buildTemplateCloneContentFillSeed({
       userInstruction: 'Expo 아키텍처를 설명하는 8장 발표자료 만들어줘.',
       templateTitle: 'Html Ppt Zhangzara Daisy Days',
     });
     expect(seed).toContain('User requested slide count: 8.');
-    expect(seed).toContain('Slide count hint: 6 (stability cap for first template fill).');
+    expect(seed).toContain('Slide count hint: 8.');
+    expect(seed).not.toContain('stability cap for first template fill');
+  });
+
+  it('honors an explicit 10-slide request this turn and still caps 12+ for top-up', () => {
+    const ten = buildTemplateCloneContentFillSeed({
+      userInstruction: '온보딩 슬라이드 10장 만들어줘.',
+      templateTitle: 'Html Ppt Zhangzara Pink Script',
+    });
+    expect(ten).toContain('User requested slide count: 10.');
+    expect(ten).toContain('Slide count hint: 10.');
+    expect(ten).not.toContain('stability cap for first template fill');
+
+    const twelve = buildTemplateCloneContentFillSeed({
+      userInstruction: '아키텍처 리뷰 12장 만들어줘.',
+      templateTitle: 'Html Ppt Zhangzara Daisy Days',
+    });
+    expect(twelve).toContain('User requested slide count: 12.');
+    expect(twelve).toContain('Slide count hint: 6 (stability cap for first template fill).');
   });
 
   it('records a typed 5-page brief instead of the auto 6-8 quick-length range', () => {
@@ -208,7 +229,8 @@ describe('templateCloneContentFill', () => {
       slideCountHint: '8-10',
     });
     expect(seed).toContain(TEMPLATE_CLONE_CONTENT_FILL_MARKER);
-    expect(seed).toContain('Slide count hint: 6 (stability cap for first template fill)');
+    expect(seed).toContain('Slide count hint: 8-10 (close this turn)');
+    expect(seed).not.toContain('stability cap for first template fill');
     expect(seed).toContain('시니어 개발자');
     expect(seed).not.toContain('[Deliverable instruction]');
     expect(seed).not.toContain('[Selected slide template priority]');
@@ -236,12 +258,15 @@ describe('templateCloneContentFill', () => {
     expect(notice).not.toContain('A later turn may append remaining slides');
   });
 
-  it('caps template-fill slide count hints unless the user explicitly requests an exact count', () => {
+  it('honors explicit 1–10 this turn, keeps 6-8 auto at 6, and caps 11+ for top-up', () => {
     expect(normalizeTemplateCloneFillSlideCountHint('6-8')).toBe(
       '6 (stability cap for first template fill)',
     );
     expect(normalizeTemplateCloneFillSlideCountHint('8-10')).toBe(
-      '6 (stability cap for first template fill)',
+      '8-10 (close this turn)',
+    );
+    expect(normalizeTemplateCloneFillSlideCountHint('8~10')).toBe(
+      '8-10 (close this turn)',
     );
     expect(normalizeTemplateCloneFillSlideCountHint('12-15')).toBe(
       '6 (stability cap for first template fill)',
@@ -249,8 +274,13 @@ describe('templateCloneContentFill', () => {
     expect(normalizeTemplateCloneFillSlideCountHint('4')).toBe('4');
     expect(normalizeTemplateCloneFillSlideCountHint('3')).toBe('3');
     expect(normalizeTemplateCloneFillSlideCountHint('5')).toBe('5');
+    expect(normalizeTemplateCloneFillSlideCountHint('8')).toBe('8');
+    expect(normalizeTemplateCloneFillSlideCountHint('10')).toBe('10');
     expect(normalizeTemplateCloneFillSlideCountHint('정확히 10')).toBe('10');
     expect(normalizeTemplateCloneFillSlideCountHint('정확히 1')).toBe('1');
+    expect(normalizeTemplateCloneFillSlideCountHint('정확히 12')).toBe(
+      '6 (stability cap for first template fill)',
+    );
   });
 
   it('caps Plugin-input slideCount for fill turns and emits an override notice', () => {
@@ -261,9 +291,18 @@ describe('templateCloneContentFill', () => {
       slideCount: '6 (stability cap for first template fill)',
     });
     expect(templateCloneFillSlideCountOverrideNotice('8-10')).toContain(
-      '6 (stability cap for first template fill)',
+      '8-10 (close this turn)',
     );
     expect(templateCloneFillSlideCountOverrideNotice('8-10')).toContain(
+      'Do not leave remaining slides for a later turn',
+    );
+    expect(templateCloneFillSlideCountOverrideNotice('8-10')).not.toContain(
+      'A later turn may append remaining slides',
+    );
+    expect(templateCloneFillSlideCountOverrideNotice('12-15')).toContain(
+      '6 (stability cap for first template fill)',
+    );
+    expect(templateCloneFillSlideCountOverrideNotice('12-15')).toContain(
       'A later turn may append remaining slides',
     );
     expect(templateCloneFillSlideCountOverrideNotice('5')).not.toContain(

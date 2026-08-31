@@ -575,14 +575,23 @@ export const COMPACT_DECK_SLIDE_COUNT_GUIDANCE =
   'Honor an explicit user slide count in the user message / [User instruction] first; then Plugin inputs slideCount / Project metadata / quick-brief `scale`; use 6–8 slides only when none is specified.';
 
 /**
- * MiniMax used to be told "close 3 this turn, hidden top-up appends".
- * Official look/Motif now merge after save, so a 5–6 page brief can finish
- * in one body-first turn like Claude. Top-up remains only for 7+ or a short miss.
+ * Unspecified / 11+ first-batch cap. Do not raise the unspecified default
+ * to 8–10 — "피피티 만들어줘" still closes 6 this turn.
  */
 export const COMPACT_FIRST_FILL_SLIDE_COUNT_THIS_TURN = 6;
 
+/** Explicit user/plugin counts in this window close entirely this turn. */
+export const COMPACT_FIRST_FILL_HONOR_MAX = 10;
+
+/** Hidden top-up starts here (or on a short miss of an honored count). */
+export const COMPACT_FIRST_FILL_TOP_UP_FROM = 11;
+
+/**
+ * Official look/Motif now merge after save, so an explicit 5–10 page brief
+ * can finish in one body-first turn. Top-up remains only for 11+ or a short miss.
+ */
 export const COMPACT_FIRST_FILL_SLIDE_COUNT_GUIDANCE =
-  'Slide count THIS TURN: honor an explicit user count of 1–6 (5-6/5~6 → close ≥5 this turn). If the user asked for 7 or more, close 6 complete body-first slides this turn and hidden top-up appends the rest. If unspecified, close 6 this turn. Never close after a single cover or after 3 slides when the target is 5+ — no 3+3+3 split.';
+  `Slide count THIS TURN: honor an explicit user count of 1–${COMPACT_FIRST_FILL_HONOR_MAX} (5-6/5~6 → close ≥5 this turn; 8-10 → close this turn). If the user asked for ${COMPACT_FIRST_FILL_TOP_UP_FROM} or more, close ${COMPACT_FIRST_FILL_SLIDE_COUNT_THIS_TURN} complete body-first slides this turn and hidden top-up appends the rest. If unspecified, close ${COMPACT_FIRST_FILL_SLIDE_COUNT_THIS_TURN} this turn. Never close after a single cover or after 3 slides when the target is 5+ — no 3+3+3 split.`;
 
 /** MiniMax (and any rewrite-last-block model) must not echo a finished heading/paragraph/badge. */
 export const DECK_NO_ADJACENT_DUPLICATE_COPY_RULE =

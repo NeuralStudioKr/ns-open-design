@@ -19,6 +19,12 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-08-31 현재 판단 · 최신 루프
 
+### 루프320 — first-fill 명시 1–10장 한 턴
+
+토큰이 병목이 아니면 명시 8–10장을 6장에서 자를 이유가 없다. 명시 1–10(및 8-10 프리셋)은 이번 턴에 전부 닫고, 미지정(「피피티 만들어줘」·Home/Canvas `6-8` auto)은 그대로 6장, 11+만 6장+숨김 top-up. 3+3+3 금지 유지. persist short-draft 게이트(≤6)는 건드리지 않음.
+
+검증: contracts deck-framework-compact · system-prompt-api-mode · web templateCloneContentFill · slideCountTopUp · resume.
+
 ### 루프319 — 문장부호만 다른 연속 substance 장
 
 루프295는 정규화 텍스트가 완전히 같을 때만 접는다. MiniMax는 같은 마무리를 `있다` / `있다.`로만 바꿔 한 장 더 넣는다. 글자·숫자만 같으면 뒤 장 제거. 추가 문장·커버·비인접 재사용 유지. 카피 발명 없음.
@@ -846,6 +852,7 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 
 ### 다음 루프 후보 (2026-08-31 EOD 기준)
 
+- **완료 (루프320):** first-fill 명시 1–10장 한 턴 · 미지정 6 · 11+ top-up. persist short-draft ≤6 유지. `기둥 P`는 여전히 번호로 보지 않음.
 - **완료 (루프314–319):** `sibling-count()` 균등 트랙 · 33/34 rounding · `grid-auto-rows` share · `constant(..., share)` · `0ch`/`0cqw` floor · 문장부호-only 연속 장. `기둥 P`는 여전히 번호로 보지 않음.
 - **완료 (루프307–313):** inline-grid spill · `flex:G S` leftover · `grid-auto-columns` share · `env(..., share)` · `repeat(auto-fill|fit, share)` · gap-adjusted calc · `-webkit-flex`. `기둥 P`는 여전히 번호로 보지 않음.
 - **완료 (루프305–306):** `flex:33%` one-value · `fit-content(share)` 트랙. `기둥 P`는 여전히 번호로 보지 않음.
@@ -1120,6 +1127,7 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | 16:9 inner clip · kit card bind | ☑ |
 | top-up 재진입 재호출 + 내부 프롬프트 노출 | ☑ 센티널+autoOpen; 루프9 reattach 차단 · leftover 숨김 |
 | first-fill 3장 강제 → 요청 1–6장 한 턴 | ☑ 루프9 |
+| first-fill: 명시 8–10장이 6장 캡+7+ top-up으로 잘림 | ☑ 루프320 |
 | auto-continue / streaming rule / short-draft 캡 3장 잔여 | ☑ 루프14 |
 | 스트리밍 official look — 첫 닫힌 슬라이드에서 heal | ☑ 루프14 |
 | PreviewModal/connector message 가드 | ☑ |
@@ -1260,7 +1268,15 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | contracts pretest: exactOptionalPropertyTypes TS2379 봉쇄 | ☑ 루프263 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프291 · 칸 번호 O/열여덟째)
+## 이번 루프 (루프320 · first-fill 명시 1–10장 한 턴)
+
+- [x] `COMPACT_FIRST_FILL` — honor 1–10 · unspecified 6 · top-up 11+
+- [x] clone-fill hint — `8장`/`10장`/`8-10` 이번 턴 닫기 · `6-8` auto는 6 · `12-15`는 캡
+- [x] resume / system.ts `7+` → `11+`
+- [x] persist short-draft ≤6 유지 (인접)
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프291 · 칸 번호 O/열여덟째)
 
 - [x] 빈 칸 번호 — O · 열여덟째
 - [x] `스무 번째` / `기둥 P` · 번호+본문 유지
