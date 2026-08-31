@@ -289,6 +289,7 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | persist recover/reuse: topic+counter 빈 장(`X · N`)이 short-draft로 저장 · skipped-incomplete 미적용 | ☑ 루프179 |
 | preview: pitch-deck cover 그라디언트(`var(--grad)`)가 `.tpl-* .mega/.avatar/.cover-blob`로부터 슬라이드 paper로 오탐 → 모든 슬라이드 배경 그라디언트 (사용자 리포트 "결과물 내용 없음 + 템플릿 적용 안됨") | ☑ 루프180 |
 | persist/preview: 제목-only 아웃라인(≥4장·≥60% heading-only) · 긴 제목만으로 filled 오판 | ☑ 루프181 |
+| heal: MiniMax body-fill 실패로 동일 title-only 슬라이드 연속 2장 (예: `<h1>삼각함수</h1>` × 2) — persist gate를 우회한 케이스에서 preview 축소 | ☑ 루프182 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
 ## 이번 루프 (루프181 · title-only outline · heading-only deliverable)
@@ -318,6 +319,42 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 - [x] `normalizePaddingLengthValue` + FOO BMP
 - [x] `chat-leak-probe-round897`…`921` 25/25
 - [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프182 · duplicate title-only slide preview 축소)
+
+### 배경
+
+- 루프180/181 후속 · 사용자 리포트 2026-08-31 · 삼각함수: pitch-deck 카탈로그 생성 결과가 `<section class="slide"><h1>삼각함수</h1></section>` × 2 만 존재. 콘텐츠 부재
+- 루프180이 배경 그라디언트 오탐(paper surface), 루프181이 persist/reuse gate로 아웃라인 해골 저장 차단 — 두 축이 함께 방어하지만 preview heal 사이드는 별도 방어 필요 (persist gate를 우회한 old artifact 재열람 · same-turn recover 등)
+- 기존 heal 파이프라인 gap:
+  - `dropEmptyLikelyDeckSlides`: heading에 텍스트가 있어 empty로 판정 안 됨
+  - `dropTitleOnlyNumberedLeftoverSlides`: `삼각함수 · 2` 처럼 counter 접미사가 있어야 매치 (fixture는 그냥 반복)
+
+### 근본 원인
+
+- MiniMax가 body 생성에 실패하면 outline의 첫 슬라이드 셸(title-only)이 다음 슬라이드 자리에도 그대로 emit됨. 완전히 동일한 innerHTML이 연속으로 반복
+- 프로브: heal 후 slide count가 2 그대로 유지 → 사용자 화면에 title 2장
+
+### 변경
+
+1. **`dropDuplicateConsecutiveTitleOnlyLeftoverSlides` 신규** (`heal-ai-generated-deck.ts`):
+   - `listAiSlideSpans`로 스팬 수집 → 인접 쌍 순회 (뒤에서 앞으로)
+   - 두 body 모두 title-only 조건 (visible text 길이 ≤ 40 · svg/img/video/canvas/iframe/picture/figure 없음) 통과
+   - 두 body의 정규화된 visible text 완전 일치
+   - motif-only 데코 shell (background gradient inline style) 보존
+   - 첫 슬라이드 절대 drop 안 함
+2. **파이프라인 통합** — `dropTitleOnlyNumberedLeftoverSlides` 직후 실행. counter 케이스와 non-counter 케이스 모두 방어
+3. **범위 제한** — CONSECUTIVE만 처리. 중간에 실체 슬라이드가 끼면 후속 chapter divider 재사용으로 간주하여 유지
+
+### 회귀 방어
+
+- 실체 body 있는 슬라이드는 절대 drop 안 함 (bullets/paragraphs)
+- 단일 title-only 슬라이드는 유지 (cover만이라도 필요)
+- svg/img 미디어 포함 슬라이드는 텍스트 동일해도 유지
+- 200+ 자 long-form body가 우연히 opening heading 동일해도 drop 안 함 (title-only 판정 실패)
+- Non-adjacent 반복 (실체 슬라이드가 사이에 있음)은 유지
+
+**검증:** `heal-duplicate-title-only-slide.test.ts` 10/10 · 사용자 fixture 라운드트립 slide count 2→1
 
 ## 직전 루프 (루프180 · pitch-deck cover 그라디언트 오탐)
 

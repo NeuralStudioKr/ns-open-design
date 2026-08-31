@@ -153,6 +153,67 @@ export function dropTitleOnlyNumberedLeftoverSlides(
 }
 
 /**
+ * 루프182 — Drop consecutive duplicate title-only leftover slides.
+ *
+ * Complements upstream 루프181 persist gate (heading-only outline refuse):
+ * when an old artifact bypasses persist gate (recover / reuse read paths),
+ * MiniMax's body-fill failure still ships the same title-only slide
+ * (`<section class="slide"><h1>삼각함수</h1></section>`) twice or more in
+ * a row. `dropTitleOnlyNumberedLeftoverSlides` only handles the
+ * `삼각함수 · 2` counter form; `dropEmptyLikelyDeckSlides` keeps the shell
+ * because the heading carries text.
+ *
+ * Rules:
+ *   - Two adjacent slides whose normalized visible text is identical
+ *   - Body is title-only (visible text length ≤ 40)
+ *   - No media / decorative background
+ *   - Never drop the first slide
+ *   - Only collapse CONSECUTIVE duplicates (chapter divider reuse stays intact)
+ *
+ * Idempotent — the removal is greedy from the tail, so a second pass sees
+ * no adjacent duplicates left.
+ */
+const DUPLICATE_TITLE_ONLY_VISIBLE_TEXT_LIMIT = 40;
+
+function normalizeVisibleTextForDedup(html: string): string {
+  return visibleText(html).replace(/\s+/g, ' ').trim();
+}
+
+function slideBodyLooksTitleOnly(body: string): boolean {
+  if (/<(?:svg|img|video|canvas|iframe|picture|figure)\b/i.test(body)) return false;
+  const text = normalizeVisibleTextForDedup(body);
+  if (text.length === 0) return false;
+  if (text.length > DUPLICATE_TITLE_ONLY_VISIBLE_TEXT_LIMIT) return false;
+  return true;
+}
+
+export function dropDuplicateConsecutiveTitleOnlyLeftoverSlides(html: string): string {
+  let out = String(html ?? '');
+  if (!out) return out;
+  const slides = listAiSlideSpans(out);
+  if (slides.length < 2) return out;
+  // Walk from the tail so each removal keeps indexes valid for earlier slides.
+  for (let i = slides.length - 1; i >= 1; i -= 1) {
+    const curr = slides[i]!;
+    const prev = slides[i - 1]!;
+    const currBody = out.slice(curr.openEnd, curr.bodyEnd);
+    const prevBody = out.slice(prev.openEnd, prev.bodyEnd);
+    if (!slideBodyLooksTitleOnly(currBody)) continue;
+    if (!slideBodyLooksTitleOnly(prevBody)) continue;
+    const currText = normalizeVisibleTextForDedup(currBody);
+    const prevText = normalizeVisibleTextForDedup(prevBody);
+    if (!currText || currText !== prevText) continue;
+    // Preserve motif-only decorative shells — a background gradient host may
+    // legitimately reuse the same heading text as a chapter marker.
+    if (/\bbackground(?:-image)?\s*:\s*(?:url|linear-gradient|radial-gradient|conic-gradient)/i.test(curr.attrs)) {
+      continue;
+    }
+    out = `${out.slice(0, curr.start)}${out.slice(curr.end)}`;
+  }
+  return out;
+}
+
+/**
  * Q2 — Un-nest block children (div/section/aside/p) that got parsed inside
  * a heading.
  *
@@ -533,6 +594,11 @@ export function healAiGeneratedDeckMarkup(html: string, brief?: string | null): 
   out = scrubBriefLeakFromMetaSlots(out, brief);
   out = dropEmptyLikelyDeckSlides(out);
   out = dropTitleOnlyNumberedLeftoverSlides(out, brief);
+  // 루프182 — MiniMax body-fill failure ships the same title-only slide
+  // twice. Collapse consecutive duplicates so preview does not read as
+  // "content missing + template not applied" for artifacts that bypassed
+  // the upstream 루프181 persist gate.
+  out = dropDuplicateConsecutiveTitleOnlyLeftoverSlides(out);
   out = stripEmptyLeftoverPresenterChrome(out);
   if (destHasHangulTopic(out)) {
     // Upstream narrow scrub (3 tokens) first, then defence-in-depth
