@@ -1038,6 +1038,11 @@ const LEFTOVER_PEER_PLACEHOLDER_TOKENS = [
   '대기',
   '보류',
   '생략',
+  // 루프227 — lorem-ipsum / placeholder shells MiniMax leaves on the missing pillar.
+  // `lorem` alone already matches; `lorem ipsum` needs `ipsum` to consume the rest.
+  'placeholder',
+  'ipsum',
+  'filler',
 ].sort((a, b) => b.length - a.length);
 
 const LEFTOVER_PEER_PLACEHOLDER_PUNCT_RE = /^(?:[.…·•\-–—]{1,3})/u;
