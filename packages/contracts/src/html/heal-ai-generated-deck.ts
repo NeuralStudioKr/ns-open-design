@@ -1160,6 +1160,16 @@ function cssLengthToPx(raw: string): number | null {
     }
     return (PEER_CANVAS_PX * value) / 100;
   }
+  // 루프213 — MiniMax locks cards with 30vw as if the canvas were the viewport.
+  const viewport = /^(\d+(?:\.\d+)?)\s*vw$/i.exec(source);
+  if (viewport) {
+    const value = Number.parseFloat(viewport[1] ?? '');
+    if (!Number.isFinite(value)) return null;
+    if (value < PEER_COLUMN_SHARE_PERCENT_MIN || value > PEER_COLUMN_SHARE_PERCENT_MAX) {
+      return null;
+    }
+    return (PEER_CANVAS_PX * value) / 100;
+  }
   const match = /^(\d+(?:\.\d+)?)\s*(px|rem|em|ch)\b/i.exec(source);
   if (!match) return null;
   const value = Number.parseFloat(match[1] ?? '');
@@ -1177,7 +1187,7 @@ function flexShorthandLockedBasisPx(style: string): number | null {
   const raw = String(decl[1] ?? '').trim();
   if (!/^0\s+0\s+/i.test(raw) && !/^none\b/i.test(raw)) return null;
   // `%` is not a word char, so `\b` after it fails at end-of-decl (`33%`).
-  const length = /(\d+(?:\.\d+)?)\s*(px|rem|em|ch|%)/i.exec(raw);
+  const length = /(\d+(?:\.\d+)?)\s*(px|rem|em|ch|%|vw)/i.exec(raw);
   if (!length) return null;
   return cssLengthToPx(`${length[1]}${length[2]}`);
 }
@@ -1250,6 +1260,7 @@ function stripFixedMainSizeFromOpenTag(openTag: string): string {
  * 루프201 — max-width / flex:0 0 still cap the row after 198 width strip.
  * 루프207 — uniform 22–48% column-share widths (and flex:0 0 32%) also lock
  * the row. 100% stretch and 50% splits stay.
+ * 루프213 — same for 22–48vw leftovers (`width:30vw`, `flex:0 0 30vw`).
  */
 export function relaxUniformPeerCardFixedMainSize(
   html: string,

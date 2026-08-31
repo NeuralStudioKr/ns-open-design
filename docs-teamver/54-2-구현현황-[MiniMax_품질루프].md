@@ -7,6 +7,12 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-08-31 현재 판단 · 최신 루프
 
+### 루프213 — 동일 vw 폭이 3열을 잠그는 문제
+
+루프207은 %만 column-share로 본다. MiniMax는 `width:30vw`를 찍어 3열이 잘리거나 grow가 막힌다. 22–48vw만 벗긴다. 100vw·50vw는 유지. 카피 발명 없음.
+
+검증: contracts heal-ai-generated-deck 루프213 · deck-framework-compact.
+
 ### 루프212 — No. 3 / 번호 3 인덱스 leftover
 
 루프205는 pillar/column/기둥만 본다. MiniMax는 `No. 3`/`번호 3`만 남겨 3열이 유지된다. 해당 접두+숫자만 leftover. 전-인덱스 스텝 행은 유지. 카피 발명 없음.
@@ -460,9 +466,16 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 | persist/preview: 동일 33% 그리드 트랙이 2장 leftover · 3장 클립 | ☑ 루프210 |
 | persist/preview: n.a./T.B.D. dotted stub 카드가 3열을 붙잡아 빈 띠 | ☑ 루프211 |
 | persist/preview: No. 3/번호 3 인덱스 leftover 카드가 3열을 붙잡아 빈 띠 | ☑ 루프212 |
+| persist/preview: 동일 22–48vw 카드 폭이 grow를 막아 3열 클립·빈 띠 | ☑ 루프213 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프212 · No./번호 인덱스)
+## 이번 루프 (루프213 · vw column-share)
+
+- [x] `cssLengthToPx` 22–48vw · 100vw/50vw 유지
+- [x] heal-ai-generated-deck 루프213 · deck-framework-compact
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프212 · No./번호 인덱스)
 
 - [x] `no.`/`number`/`번호`/`포인트` 접두
 - [x] 전-인덱스 스텝 행 유지
