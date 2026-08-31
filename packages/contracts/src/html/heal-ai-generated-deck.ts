@@ -396,7 +396,8 @@ export function unnestHeadingBlockChildren(html: string): string {
 
 const GRID_BLOCK_CHILD_RE =
   /^(div|section|article|li|figure|aside|header|footer|main|nav|ul|ol|p|table)$/;
-const EQUAL_FR_TRACK_RE = /^(?:1fr|minmax\(\s*0\s*,\s*1fr\s*\))$/i;
+const EQUAL_FR_TRACK_RE =
+  /^(?:1(?:\.0+)?fr|minmax\(\s*0\s*,\s*1(?:\.0+)?fr\s*\))$/i;
 /** 루프210/215 — identical 22–48% or vw/vmin shares (skip 50% / 50vw splits). */
 const EQUAL_COLUMN_SHARE_TRACK_RE = /^(?:2[2-9]|3\d|4[0-8])(?:\.\d+)?(?:%|vw|vmin)$/i;
 
@@ -448,7 +449,7 @@ type EqualColumnDecl = {
 
 /**
  * Accept `repeat(N, 1fr)` and explicit equal tracks (`1fr 1fr 1fr`,
- * `minmax(0,1fr) minmax(0,1fr) minmax(0,1fr)`). 루프210 — also identical
+ * `1.0fr 1.0fr 1.0fr`, `minmax(0,1fr)…`). 루프210 — also identical
  * 22–48% / vw shares (`33% 33% 33%`, `33vw 33vw 33vw`). Mixed tracks
  * such as `1.3fr 1fr` or `220px 1fr` or `50% 50%` splits stay.
  */
@@ -570,7 +571,12 @@ function replaceStyleDecl(openTag: string, prop: string, value: string): string 
 function minmaxUnitForEqualFr(decl: EqualColumnDecl): EqualColumnDecl | null {
   const unit = decl.unit.replace(/\s+/g, '').toLowerCase();
   if (unit === 'minmax(0,1fr)') return null;
-  if (unit === '1fr' || EQUAL_COLUMN_SHARE_TRACK_RE.test(unit)) {
+  // 루프220 — `1.0fr` / `minmax(0,1.0fr)` are the same leftover as `1fr`.
+  if (
+    /^1(?:\.0+)?fr$/i.test(unit)
+    || /^minmax\(0,1(?:\.0+)?fr\)$/i.test(unit)
+    || EQUAL_COLUMN_SHARE_TRACK_RE.test(unit)
+  ) {
     return { ...decl, unit: 'minmax(0,1fr)' };
   }
   return null;

@@ -49,7 +49,7 @@ describe('DECK_FRAMEWORK_DIRECTIVE_COMPACT', () => {
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('**Big stat**');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('**Three-column**');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('Column count = card count');
-    expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('33% / 33vw tracks');
+    expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('1.0fr / 33% / 33vw tracks');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('empty card shell');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('placeholder card shell');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('TBD/N/A/n.a./준비중');
