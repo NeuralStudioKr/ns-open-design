@@ -965,8 +965,46 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
       expect(out).not.toContain('완료');
       expect(out).toContain('하나');
       expect(out).toContain('다음');
-      expect(out).not.toContain('적분');
-      expect(out).not.toContain('미분');
+    });
+
+    it('drops a 기타사항 leftover third card (루프264)', () => {
+      const html = [
+        '<div style="display:flex;gap:28px">',
+        '<div class="card" style="padding:24px"><h3>하나</h3><p>요지</p></div>',
+        '<div class="card" style="padding:24px"><h3>다음</h3><p>요지</p></div>',
+        '<div class="card" style="padding:24px"><h3>기타사항</h3></div>',
+        '</div>',
+      ].join('');
+      const out = dropEmptyLeftoverPeerCardsInAllocatedRows(html, '발표');
+      expect((out.match(/class="card"/g) ?? []).length).toBe(2);
+      expect(out).not.toContain('기타사항');
+      expect(out).toContain('하나');
+    });
+
+    it('keeps leftover-token cards that still have extra visible text (루프264)', () => {
+      const html = [
+        '<div style="display:flex;gap:16px">',
+        '<div class="card"><h3>하나</h3><p>요지</p></div>',
+        '<div class="card"><h3>misc</h3><p>실카피</p></div>',
+        '</div>',
+      ].join('');
+      expect(dropEmptyLeftoverPeerCardsInAllocatedRows(html, '발표')).toBe(html);
+    });
+
+    it('pipeline heals a misc leftover without inventing topic copy (루프264)', () => {
+      const html = [
+        '<section class="slide"><h1>세 가지 포인트</h1>',
+        '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:24px">',
+        '<div class="card"><h3>하나</h3><p>요지</p></div>',
+        '<div class="card"><h3>다음</h3><p>요지</p></div>',
+        '<div class="card"><h3>misc</h3></div>',
+        '</div></section>',
+      ].join('');
+      const out = healAiGeneratedDeckMarkup(html, '발표');
+      expect((out.match(/class="card"/g) ?? []).length).toBe(2);
+      expect(out).not.toMatch(/\bmisc\b/i);
+      expect(out).toContain('하나');
+      expect(out).toContain('다음');
     });
 
     it('drops a Chapter 3 leftover third card (루프248)', () => {

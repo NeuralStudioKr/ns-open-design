@@ -7,6 +7,12 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-08-31 현재 판단 · 최신 루프
 
+### 루프264 — misc/기타사항 leftover stub
+
+`기타`만 leftover면 `기타사항`은 남은 `사항` 때문에 3열이 유지된다. misc/miscellaneous · 기타사항만 leftover. stub+추가 본문은 주제 무관 유지. 카피 발명 없음.
+
+검증: contracts heal-ai-generated-deck 루프264 · deck-framework-compact.
+
 ### 루프259 — leftover extra-copy는 토픽 단어가 아님
 
 사용자 brief의 `미분`/`적분`은 예시일 뿐 leftover 유지 어휘가 아니다. stub/index 토큰만 leftover. 남은 글자는 어떤 주제든 실카피. 제품 주석에서 주제 단어 하드코딩 제거. 카피 발명 없음.
@@ -437,7 +443,7 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 
 ### 다음 루프 후보 (2026-08-31 EOD 기준)
 
-- **후보 (루프264):** leftover stub `misc`/`기타사항`. leftover extra-copy는 주제 단어가 아님(루프259).
+- **후보 (루프265):** leftover stub `TBA` 변형 외는 닫힘. 다음 후보는 leftover 문자 `G`/`열한째`(의도적 제외) 또는 equal-track residual. leftover extra-copy는 주제 단어가 아님(루프259).
 - **인접 (루프206 밖):** `srcdoc-deck-bridge-nested-slides` native `#deck-next` 픽스처가 host next 후 `active:2`를 보고함 (transform/dot는 1). staging에서 이미 red — 이번 CSS 변경과 무관.
 - **후보 C (3열 residual):** `G` 이후 알파벳, `열한째` 이상 서수, 또는 3장 280 vs 900(비율 >2.05) leftover. 루프261–262이 E–F/바사/여섯째–열째와 3열 400 vs 800을 닫음.
 - **후보 B (예약 · 규모 큼):** contracts 안 `var(--pad, calc(px * n))` / `env(safe-area-inset-top, calc(...))` fallback red-spec 39건. fallback 표현을 card threshold 로 승격하는 heuristic — 별도 루프 필요.
@@ -810,10 +816,18 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | persist/preview: E/기둥 바/여섯째 leftover 인덱스가 3열을 붙잡아 빈 띠 | ☑ 루프261 |
 | persist/preview: 3열 400 vs 800 max-width가 leftover lock을 피해 클립 | ☑ 루프262 |
 | leftover extra-copy를 주제 단어(미분/적분)로 하드코딩 | ☑ 루프259 |
+| persist/preview: misc/기타사항 stub 카드가 3열을 붙잡아 빈 띠 | ☑ 루프264 |
 | contracts pretest: exactOptionalPropertyTypes TS2379 봉쇄 | ☑ 루프263 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프259 · extra-copy 토픽 중립)
+## 이번 루프 (루프264 · misc/기타사항 stub)
+
+- [x] misc/miscellaneous · 기타사항 leftover
+- [x] stub+추가 본문 유지 (주제 단어 아님)
+- [x] heal-ai-generated-deck 루프264 · deck-framework-compact
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프259 · extra-copy 토픽 중립)
 
 - [x] leftover 판정은 stub/index 토큰만. 남은 글자는 주제 무관 실카피
 - [x] 제품 주석에서 `미분`/`적분` 하드코딩 제거

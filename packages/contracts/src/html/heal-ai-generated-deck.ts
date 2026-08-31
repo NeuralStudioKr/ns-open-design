@@ -1202,6 +1202,11 @@ const LEFTOVER_PEER_PLACEHOLDER_TOKENS = [
   'done',
   '완료',
   'ok',
+  // 루프264 — misc compounds. `기타` alone does not match `기타사항`
+  // because the remainder is not a leftover token.
+  'miscellaneous',
+  '기타사항',
+  'misc',
 ].sort((a, b) => b.length - a.length);
 
 const LEFTOVER_PEER_PLACEHOLDER_PUNCT_RE = /^(?:[.…·•\-–—]{1,3})/u;
