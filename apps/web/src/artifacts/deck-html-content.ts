@@ -339,6 +339,51 @@ export function deckSlideHeadingsLookLikeFailedGenerate(html: string): boolean {
   return deckLooksLikeTitleOnlyOutlineShell(html);
 }
 
+function normalizePromptParrotText(value: string): string {
+  return visibleTextFromHtmlFragment(value)
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, '');
+}
+
+function textContainsRawBrief(text: string, brief: string): boolean {
+  const normalizedText = normalizePromptParrotText(text);
+  const normalizedBrief = normalizePromptParrotText(brief);
+  if (normalizedText.length < 8 || normalizedBrief.length < 8) return false;
+  return normalizedText.includes(normalizedBrief);
+}
+
+/**
+ * Multi-slide decks that repeat the raw user instruction as headings/body are
+ * failed generations, not a short draft. A single instruction-like cover can
+ * still be healed/top-upped; the failure is when the same prompt is copied into
+ * several slides and treated as deliverable content.
+ */
+export function deckLooksLikeRepeatedUserBriefParrot(
+  html: string,
+  brief?: string | null,
+): boolean {
+  const rawBrief = String(brief ?? '').trim();
+  if (!rawBrief) return false;
+  const inners = listSlideSectionInners(html);
+  if (inners.length < 3) return false;
+
+  let parrotSlides = 0;
+  let thinParrotSlides = 0;
+  for (const inner of inners) {
+    const heading = firstSlideHeading(inner);
+    const text = visibleTextFromHtmlFragment(inner);
+    const isParrot = textContainsRawBrief(heading, rawBrief) || textContainsRawBrief(text, rawBrief);
+    if (!isParrot) continue;
+    parrotSlides += 1;
+    if (!slideInnerHasDeliverableCopy(inner) || text.length < rawBrief.length + 80) {
+      thinParrotSlides += 1;
+    }
+  }
+
+  if (parrotSlides >= Math.ceil(inners.length / 2)) return true;
+  return thinParrotSlides >= 2;
+}
+
 /** Generic outline labels that share a counter but are not a failed topic shell. */
 const WEAK_GENERIC_SLIDE_LABEL_RE =
   /^(?:slide|slides|page|pages|section|sec|챕터|chapter|섹션|슬라이드|페이지|장)$/i;

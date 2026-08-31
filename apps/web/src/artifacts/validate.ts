@@ -41,6 +41,7 @@
 
 import {
   deckArtifactStartsWithMotifSvgDump,
+  deckLooksLikeRepeatedUserBriefParrot,
   deckSlideHeadingsLookLikeFailedGenerate,
   documentContainsSlideSection,
   eachSlideHostOpenIndex,
@@ -184,6 +185,9 @@ export function isLowSubstanceSlideDeckArtifact(
   if (slideCount === 0) return false;
   // Motif-first hangs stay low-substance even if a later heal would retitle.
   if (deckArtifactStartsWithMotifSvgDump(trimmed)) return true;
+  // Multi-slide prompt parrots are failed generations, even though the first
+  // instruction-copy cover alone would be healable/top-up-able.
+  if (deckLooksLikeRepeatedUserBriefParrot(trimmed, brief)) return true;
   // Persist heals instruction/marketing covers before this gate. Resume /
   // regression / terminal callers still see raw HTML — do not flag the same
   // 1–3 slide AfterHeal draft as low-substance (§1.33 leftover).

@@ -5,6 +5,24 @@
 
 MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드에 가드가 있고 빨간 스펙이 초록으로 돌아간 경우만 표시합니다.
 
+## 2026-08-31 현재 판단 · 최신 루프
+
+### 루프193 — raw prompt 반복 덱 차단
+
+사용자 리포트에서 “템플릿을 골랐는데 내용 생성이 아니라 입력 프롬프트가 그대로 들어간 덱”이 반복됐다. 구조상 `<!doctype html>…</html>`로 닫혀 있고 일부 템플릿 장식도 있어 기존 HTML validator와 short-draft heal 허용을 통과할 수 있었다. 이번 루프에서는 3장 이상 덱에서 사용자 원문 brief가 여러 슬라이드 heading/body에 반복되는 경우를 `low-substance`로 분류한다.
+
+보수적으로 적용했다. 단일 cover가 “피피티 만들어줘”류 instruction-copy인 케이스는 기존처럼 cover retitle/top-up 경로가 처리한다. 차단 대상은 같은 raw brief가 여러 장에 반복되어 실제 내용 생성 실패로 보는 경우다.
+
+검증: `apps/web` artifact validate/deck-html-content 76/76.
+
+### 루프190b — 심한 container tag 불균형 slide drop
+
+삼각함수 리포트 계열에서 카드형 slide 내부 `<div>` open이 close보다 3개 이상 많아 뒤 슬라이드가 카드/grid 컨텍스트에 말려 들어가거나 preview에서 세로 붕괴처럼 보였다. 누락 close를 추정 삽입하는 방식은 형제 컨테이너를 잘못 포섭할 위험이 커서, 현재 시점에서는 non-cover slide 단위 drop을 선택했다.
+
+규칙: `<script>/<style>/comment`를 제외하고 slide body 안 `<div>` open-close 차이가 3 이상인 경우만 제거한다. 첫 슬라이드는 절대 제거하지 않아 빈 덱으로 바뀌지 않게 했다. Full heal pipeline에서 idempotent하게 동작한다.
+
+검증: `packages/contracts` severe-unbalanced-card-slide + deck-template-look-css 89/89.
+
 ## 진행
 
 | 항목 | 상태 |

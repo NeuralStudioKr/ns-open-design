@@ -217,6 +217,56 @@ export function dropDuplicateConsecutiveTitleOnlyLeftoverSlides(html: string): s
   return out;
 }
 
+const SEVERE_DIV_IMBALANCE_THRESHOLD = 3;
+
+function stripInertTagsForBalanceCounting(body: string): string {
+  return String(body ?? '')
+    .replace(/<script\b[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style\b[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<!--[\s\S]*?-->/g, ' ');
+}
+
+function countDivImbalance(body: string): number {
+  const source = stripInertTagsForBalanceCounting(body);
+  const opens = (source.match(/<div\b/gi) ?? []).length;
+  const closes = (source.match(/<\/div\s*>/gi) ?? []).length;
+  return opens - closes;
+}
+
+/**
+ * 루프190 — Drop slides whose container `<div>` tags are severely unbalanced.
+ *
+ * 사용자 리포트 2026-08-31 · 삼각함수 (loop186–189 후속):
+ *   MiniMax fill 이 슬라이드 4 (`04 항등식`) · 슬라이드 5 (`05 그래프`) 에서
+ *   nested `<div class="card">` 를 열고 닫지 않았음. 브라우저는 `</section>`
+ *   에서 강제로 남은 `<div>` 를 닫아 이후 슬라이드 콘텐츠가 이 슬라이드 안에
+ *   삽입되거나, srcdoc 파서에 따라 카드 그리드가 세로로 무너져 렌더됨.
+ *
+ * 안전한 shape-based 자동 재봉합 (missing `</div>` 자동 삽입) 은 위험 —
+ * 뒤에 오는 형제 컨테이너를 잘못 카드 안으로 편입시키거나, `<style>` 안 문자열
+ * (`content:"</div>"`) 을 close 로 오인할 수 있음. 대신 슬라이드 단위 drop.
+ *
+ * Rules:
+ *   - `stripInertTagsForBalanceCounting` 후 `<div\b` open 이 `</div>` close
+ *     보다 `≥ 3` 초과인 슬라이드만 drop
+ *   - 첫 슬라이드는 절대 drop 안 함 (cover 만이라도 유지)
+ *   - Idempotent · 다른 heal 룰 순서와 무관
+ */
+export function dropSlidesWithSeverelyUnbalancedContainerTags(html: string): string {
+  let out = String(html ?? '');
+  if (!out) return out;
+  const slides = listAiSlideSpans(out);
+  if (slides.length < 2) return out;
+  for (let i = slides.length - 1; i >= 1; i -= 1) {
+    const slide = slides[i]!;
+    const body = out.slice(slide.openEnd, slide.bodyEnd);
+    const diff = countDivImbalance(body);
+    if (diff < SEVERE_DIV_IMBALANCE_THRESHOLD) continue;
+    out = `${out.slice(0, slide.start)}${out.slice(slide.end)}`;
+  }
+  return out;
+}
+
 function normalizedTopicForComparison(value: string): string {
   return String(value ?? '')
     .toLowerCase()
@@ -945,6 +995,12 @@ export function healAiGeneratedDeckMarkup(html: string, brief?: string | null): 
   // "content missing + template not applied" for artifacts that bypassed
   // the upstream 루프181 persist gate.
   out = dropDuplicateConsecutiveTitleOnlyLeftoverSlides(out);
+  // 루프190 — MiniMax card-fill sometimes leaves nested `<div class="card">`
+  // opens without matching closes. Browsers auto-close at `</section>` and
+  // the following slide's markup can end up inheriting card styling in
+  // srcdoc previews. Drop the malformed slides so preview never reads as
+  // "cards collapsed vertically" or "content bleeding into next slide".
+  out = dropSlidesWithSeverelyUnbalancedContainerTags(out);
   out = stripEmptyLeftoverPresenterChrome(out);
   if (destHasHangulTopic(out)) {
     // Upstream narrow scrub (3 tokens) first, then defence-in-depth

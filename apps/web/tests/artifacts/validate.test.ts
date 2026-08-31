@@ -230,6 +230,20 @@ describe('validateHtmlArtifact', () => {
     expect(isLowSubstanceSlideDeckArtifact(marketing)).toBe(false);
   });
 
+  it('classifies repeated raw prompt slides as low-substance while preserving single-cover heal', () => {
+    const brief = '첨부한 자료를 바탕으로 슬라이드 덱을 만들어줘';
+    const repeated =
+      '<!doctype html><html lang="ko"><head><meta charset="utf-8"></head><body>'
+      + `<section class="slide"><h1>${brief}</h1><p>${brief}</p></section>`
+      + `<section class="slide"><h2>${brief}</h2><p>발표 개요</p></section>`
+      + `<section class="slide"><h2>${brief}</h2><p>핵심 포인트</p></section>`
+      + '<section class="slide"><h2>다음 단계</h2><p>자료를 확인하고 발표를 준비합니다.</p></section>'
+      + '</body></html>';
+
+    expect(validateHtmlArtifact(repeated).ok).toBe(true);
+    expect(isLowSubstanceSlideDeckArtifact(repeated, brief, '슬라이드')).toBe(true);
+  });
+
   it('classifies Motif-SVG-before-title hangs as low-substance', () => {
     const hung =
       '<!doctype html><html lang="ko"><body style="margin:0;background:#F5F0E6">'
