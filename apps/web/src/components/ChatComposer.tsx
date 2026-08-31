@@ -156,12 +156,14 @@ import { VisualCommentAttachmentChip } from './VisualCommentAttachmentChip';
 import { ComposerPlusMenu } from './ComposerPlusMenu';
 import {
   DESIGN_TOOLBOX_ACTIONS,
+  attachPendingDesignToolboxInstruction,
   designToolboxActionBadge,
   designToolboxActionDescription,
   designToolboxActionMatchesQuery,
   designToolboxActionTitle,
   findDesignToolboxSkill,
   getDesignToolboxAction,
+  resolveDesignToolboxVisibleBody,
   skillMatchesQuery,
   type DesignToolboxAction,
   type DesignToolboxActionId,
@@ -390,9 +392,10 @@ export interface ChatComposerHandle {
   /**
    * Run a design-toolbox action by id from outside the composer (e.g. the
    * assistant "next step" card). Resolves the action, matches its preferred
-   * skill, and seeds the composer draft with the action prompt + `@skill`
-   * mention — identical to picking the action inside the toolbox panel, so the
-   * draft still waits for the user to send. No-op for an unknown id.
+   * skill, and seeds a short action title + `@skill` mention. The long
+   * workflow prompt is attached on send (hidden from the input). Same as
+   * picking the action inside the toolbox panel — the draft still waits for
+   * send. No-op for an unknown id.
    */
   applyDesignToolboxAction: (id: DesignToolboxActionId) => void;
   /**
@@ -727,6 +730,10 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
     const applyDesignToolboxActionRef = useRef<(action: DesignToolboxAction) => void>(() => {});
     // Same latest-closure trick for picking a skill by id from the next-step card.
     const applyDesignToolboxSkillByIdRef = useRef<(skillId: string) => void>(() => {});
+    const pendingDesignToolboxInstructionRef = useRef<{
+      instruction: string;
+      actionTitle: string;
+    } | null>(null);
     const petEnabled = Boolean(onAdoptPet && onTogglePet);
     const linkedDirs = projectMetadata?.linkedDirs ?? [];
     // The project's working directory: the local folder the agent can read
@@ -1353,6 +1360,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       setMention(null);
       setMentionTab('all');
       setSlash(null);
+      pendingDesignToolboxInstructionRef.current = null;
       editorRef.current?.clear();
     }
 
@@ -1547,7 +1555,13 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
           : hydratedFromMentions,
         flushedComments,
       );
-      onSend(prompt, nextAttachments, dedupeCommentAttachments(flushedComments), meta);
+      const outboundPrompt = attachPendingDesignToolboxInstruction({
+        prompt,
+        instruction: pendingDesignToolboxInstructionRef.current?.instruction,
+        actionTitle: pendingDesignToolboxInstructionRef.current?.actionTitle,
+      });
+      pendingDesignToolboxInstructionRef.current = null;
+      onSend(outboundPrompt, nextAttachments, dedupeCommentAttachments(flushedComments), meta);
       reset();
     }
 
@@ -1706,17 +1720,22 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
 
     function applyDesignToolboxAction(action: DesignToolboxAction) {
       const skill = findDesignToolboxSkill(action, skills);
-      applyDesignToolboxPrompt(
-        designToolboxActionPrompt({
-          action,
-          skill,
-          workspaceItem: visibleWorkspaceContext,
-          activeDraft: draft,
-          resourceIndex: designToolboxResourceIndex,
-          t,
-        }),
+      const instruction = designToolboxActionPrompt({
+        action,
         skill,
-      );
+        workspaceItem: visibleWorkspaceContext,
+        activeDraft: draft,
+        resourceIndex: designToolboxResourceIndex,
+        t,
+      });
+      const actionTitle = designToolboxActionTitle(action, t);
+      pendingDesignToolboxInstructionRef.current = { instruction, actionTitle };
+      const visibleBody = resolveDesignToolboxVisibleBody({
+        actionTitle,
+        activeDraft: draft,
+        actionTitles: DESIGN_TOOLBOX_ACTIONS.map((item) => designToolboxActionTitle(item, t)),
+      });
+      applyDesignToolboxPrompt(visibleBody, skill);
     }
     // Recreated each render, so this captures the latest draft/context closure
     // for the imperative handle (see applyDesignToolboxActionRef).

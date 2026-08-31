@@ -879,6 +879,20 @@ describe('preview comment attachment helpers', () => {
     expect(stripUserVisibleUserMessageText(prompt)).toBe("이 텍스트를 '안녕'으로 바꿔줘");
   });
 
+  it('strips hidden design-toolbox workflow copy from user-visible chat text', () => {
+    const prompt = [
+      '디자인 다듬기 / 출시 준비 완료',
+      '',
+      '[Design toolbox instruction]',
+      '현재 대상: 파일 · deck.html.',
+      '선택된 skill: creative-director.',
+      '전역 리소스 인덱스: skill(40), 플러그인(0).',
+      '이 디자인을 출시 준비가 될 때까지 다듬으세요.',
+    ].join('\n');
+
+    expect(stripUserVisibleUserMessageText(prompt)).toBe('디자인 다듬기 / 출시 준비 완료');
+  });
+
   it('strips active-workspace-context blocks from user-visible chat text', () => {
     const prompt = [
       '3번 슬라이드 제목만 짧게',

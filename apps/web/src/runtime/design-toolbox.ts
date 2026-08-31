@@ -150,6 +150,73 @@ export function skillMatchesQuery(
     .includes(q);
 }
 
+/** Model-only suffix. Chat/composer show the short action title above this. */
+export const DESIGN_TOOLBOX_INSTRUCTION_MARKER = '[Design toolbox instruction]';
+
+const LEADING_MENTION_LINE_RE = /^(?:@[^\n]+\n)+/;
+
+export function looksLikeDesignToolboxExpandedDraft(text: string | null | undefined): boolean {
+  const raw = String(text ?? '');
+  if (!raw.trim()) return false;
+  if (raw.includes(DESIGN_TOOLBOX_INSTRUCTION_MARKER)) return true;
+  return /resource index|리소스 인덱스|资源索引|リソース/i.test(raw)
+    && /workflow rule|워크플로 규칙|流程规则|フロー規則/i.test(raw);
+}
+
+export function stripLeadingMentionLines(text: string): string {
+  return String(text ?? '').replace(LEADING_MENTION_LINE_RE, '').trim();
+}
+
+/**
+ * Visible composer body for a toolbox action. Long resource-index / workflow
+ * copy stays off the input and rides as {@link DESIGN_TOOLBOX_INSTRUCTION_MARKER}.
+ * User notes that are not a previous dump are kept.
+ */
+export function resolveDesignToolboxVisibleBody(input: {
+  actionTitle: string;
+  activeDraft?: string | null;
+  actionTitles?: readonly string[];
+}): string {
+  const title = String(input.actionTitle ?? '').trim();
+  const existing = stripLeadingMentionLines(String(input.activeDraft ?? ''));
+  if (!existing) return title;
+  if (looksLikeDesignToolboxExpandedDraft(existing)) return title;
+  if ((input.actionTitles ?? []).some((candidate) => candidate.trim() === existing)) {
+    return title;
+  }
+  return existing;
+}
+
+export function withDesignToolboxInstruction(
+  visible: string,
+  instruction: string | null | undefined,
+): string {
+  const trimmedVisible = String(visible ?? '').trim();
+  const trimmedInstruction = String(instruction ?? '').trim();
+  if (!trimmedInstruction) return trimmedVisible;
+  if (trimmedVisible.includes(DESIGN_TOOLBOX_INSTRUCTION_MARKER)) return trimmedVisible;
+  if (!trimmedVisible) return `${DESIGN_TOOLBOX_INSTRUCTION_MARKER}\n${trimmedInstruction}`;
+  return `${trimmedVisible}\n\n${DESIGN_TOOLBOX_INSTRUCTION_MARKER}\n${trimmedInstruction}`;
+}
+
+export function attachPendingDesignToolboxInstruction(input: {
+  prompt: string;
+  instruction?: string | null;
+  actionTitle?: string | null;
+}): string {
+  const prompt = String(input.prompt ?? '');
+  const instruction = String(input.instruction ?? '').trim();
+  if (!instruction) return prompt.trim();
+  if (prompt.includes(DESIGN_TOOLBOX_INSTRUCTION_MARKER)) return prompt.trim();
+  const title = String(input.actionTitle ?? '').trim();
+  const stillBound =
+    !title
+    || prompt.includes(title)
+    || looksLikeDesignToolboxExpandedDraft(prompt);
+  if (!stillBound) return prompt.trim();
+  return withDesignToolboxInstruction(prompt, instruction);
+}
+
 export { isOpenDesignBrandedToolboxResource } from '../teamver/branding/toolboxCatalogDisplay';
 
 export function findDesignToolboxSkill(

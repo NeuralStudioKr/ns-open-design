@@ -248,8 +248,10 @@ describe('ChatComposer design toolbox', () => {
 
     await waitFor(() => {
       expect(composerText()).toContain('@design-taste-frontend');
-      expect(composerText()).toContain('anti-AI-feel polish');
+      expect(composerText()).toContain('Remove AI feel');
     });
+    expect(composerText()).not.toContain('anti-AI-feel polish');
+    expect(composerText()).not.toContain('Global resource index');
 
     fireEvent.click(screen.getByTestId('chat-send'));
 
@@ -258,6 +260,9 @@ describe('ChatComposer design toolbox', () => {
     });
 
     expect(onSend).toHaveBeenCalledTimes(1);
+    expect(onSend.mock.calls[0]?.[0]).toContain('Remove AI feel');
+    expect(onSend.mock.calls[0]?.[0]).toContain('[Design toolbox instruction]');
+    expect(onSend.mock.calls[0]?.[0]).toContain('anti-AI-feel polish');
     expect(onSend.mock.calls[0]?.[3]?.skillIds).toEqual(['design-taste-frontend']);
     expect(fetchMock).not.toHaveBeenCalledWith(
       '/api/projects/project-1',
@@ -298,13 +303,51 @@ describe('ChatComposer design toolbox', () => {
 
     await waitFor(() => {
       expect(composerText()).toContain('@creative-director');
-      expect(composerText()).toContain('Global resource index');
-      expect(composerText()).toContain('spreadsheet-ops');
-      expect(composerText()).toContain('Higgsfield Video MCP');
-      expect(composerText()).toContain('Figma');
-      expect(composerText()).toContain('data/proof.csv');
-      expect(composerText()).toContain('Do not only use design toolbox recommendations');
+      expect(composerText()).toContain('Match next step');
     });
+    expect(composerText()).not.toContain('Global resource index');
+    expect(composerText()).not.toContain('Do not only use design toolbox recommendations');
+    expect(composerText()).not.toContain('spreadsheet-ops');
+  });
+
+  it('keeps visual-polish workflow copy out of the input and attaches it on send', async () => {
+    const onSend = vi.fn();
+    const { ref } = renderComposer({
+      onSend,
+      skills: [DESIGN_TASTE_SKILL, CREATIVE_DIRECTOR_SKILL],
+      activeWorkspaceContext: {
+        id: 'file:deck.html',
+        kind: 'file',
+        label: 'deck.html',
+        path: 'deck.html',
+      },
+    });
+    await flushMounts();
+
+    openToolbox(ref);
+    await waitFor(() => expect(screen.getByText('Design polish / ready to ship')).toBeTruthy());
+    fireEvent.click(screen.getByText('Design polish / ready to ship'));
+
+    await waitFor(() => {
+      expect(composerText()).toContain('@creative-director');
+      expect(composerText()).toContain('Design polish / ready to ship');
+    });
+    expect(composerText()).not.toContain('Global resource index');
+    expect(composerText()).not.toContain('ready to ship: check hierarchy');
+    expect(composerText()).not.toContain('Workflow rule');
+
+    fireEvent.click(screen.getByTestId('chat-send'));
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(onSend).toHaveBeenCalledTimes(1);
+    const sent = String(onSend.mock.calls[0]?.[0] ?? '');
+    expect(sent).toContain('Design polish / ready to ship');
+    expect(sent).toContain('[Design toolbox instruction]');
+    expect(sent).toContain('Global resource index');
+    expect(sent).toContain('ready to ship: check hierarchy');
+    expect(onSend.mock.calls[0]?.[3]?.skillIds).toEqual(['creative-director']);
   });
 
   it('stages a design-file image as an attachment without dumping resource-index boilerplate', async () => {
