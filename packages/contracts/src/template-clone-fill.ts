@@ -293,10 +293,16 @@ function titleForSeedFallback(rawFinalText: string, seedHtml: string): string {
 }
 
 /**
- * Terminal decision for Clone first-fill (0901-N02 B5 + D).
- * Prefer LOOK seed slot-fill; one JSON repair for soft parse fails;
- * HTML dump → seed-fallback immediately (MiniMax rarely recovers to JSON);
- * then seed-fallback after repair (never model HTML).
+ * Terminal decision for Clone first-fill (0901-N02 B5 + D + 루프364).
+ * Prefer LOOK seed slot-fill. On any non-fill outcome with a LOOK seed
+ * (HTML dump OR soft-invalid JSON), return seed-fallback immediately —
+ * never queue-repair. A one-shot repair AC painted durable incomplete_output
+ * on the first turn (`reason=template-clone-slot-fill-json-repair`) and left
+ * users there even when AC later started (루프359–362 residual). N02-D
+ * forbids model HTML; LOOK seed is the only safe fallback.
+ *
+ * `repairAlreadyAttempted` is retained for call-site / test compat; with a
+ * seed present it no longer gates a repair turn.
  */
 export function decideTemplateCloneSlotFillTerminal(input: {
   rawFinalText: string;
@@ -311,26 +317,16 @@ export function decideTemplateCloneSlotFillTerminal(input: {
       ...(input.templateId !== undefined ? { templateId: input.templateId } : {}),
     });
     if (filled) return { kind: 'slot-fill', html: filled.html, title: filled.title };
-  }
-  // MiniMax often dumps a full deck instead of JSON. One repair turn almost
-  // never converts that into a valid outline and leaves incomplete_output when
-  // auto-continue cannot fire — keep LOOK seed immediately (N02-D).
-  if (seed && outlineLooksLikeHtmlDump(raw)) {
+    // Soft-invalid JSON or HTML dump — keep LOOK seed (no repair AC churn).
     return {
       kind: 'seed-fallback',
       html: seed,
       title: titleForSeedFallback(raw, seed),
     };
   }
-  if (!input.repairAlreadyAttempted) return { kind: 'queue-repair' };
-  // 0901-N02-D — keep LOOK seed motif; do not persist model HTML hybrid.
-  if (seed) {
-    return {
-      kind: 'seed-fallback',
-      html: seed,
-      title: titleForSeedFallback(raw, seed),
-    };
-  }
+  // No LOOK seed — cannot slot-fill or fall back. Repair without a seed cannot
+  // produce a deck either, so abort immediately (do not queue-repair).
+  void input.repairAlreadyAttempted;
   return { kind: 'abort' };
 }
 
@@ -353,6 +349,10 @@ export const CLONE_CONTENT_FILL_LOW_SUBSTANCE_PERSIST_REASONS: readonly string[]
   'incomplete-html-document-shell',
 ];
 
+/** Persist skip reason forced when Clone slot-fill armed a JSON repair AC. */
+export const TEMPLATE_CLONE_SLOT_FILL_JSON_REPAIR_REASON =
+  'template-clone-slot-fill-json-repair';
+
 export function isCloneContentFillLowSubstancePersistReason(
   reason: unknown,
 ): boolean {
@@ -361,6 +361,28 @@ export function isCloneContentFillLowSubstancePersistReason(
   if (!normalized) return false;
   return CLONE_CONTENT_FILL_LOW_SUBSTANCE_PERSIST_REASONS.some(
     (candidate) => candidate.toLowerCase() === normalized,
+  );
+}
+
+/** True when persist was forced for the (now-retired) slot-fill JSON repair AC. */
+export function isCloneContentFillJsonRepairPersistReason(
+  reason: unknown,
+): boolean {
+  if (typeof reason !== 'string') return false;
+  return reason.trim().toLowerCase() === TEMPLATE_CLONE_SLOT_FILL_JSON_REPAIR_REASON;
+}
+
+/**
+ * Clone first-fill persist skip reasons that should recover to the on-disk
+ * LOOK seed instead of leaving `incomplete_output` (low-substance + legacy
+ * json-repair AC path).
+ */
+export function isCloneContentFillLookSeedRecoverablePersistReason(
+  reason: unknown,
+): boolean {
+  return (
+    isCloneContentFillLowSubstancePersistReason(reason)
+    || isCloneContentFillJsonRepairPersistReason(reason)
   );
 }
 

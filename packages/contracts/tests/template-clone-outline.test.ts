@@ -3,9 +3,12 @@ import { describe, expect, it } from 'vitest';
 import {
   CLONE_CONTENT_FILL_LOW_SUBSTANCE_PERSIST_REASONS,
   TEMPLATE_CLONE_OUTLINE_MAX_SLIDES,
+  TEMPLATE_CLONE_SLOT_FILL_JSON_REPAIR_REASON,
   applyTemplateCloneSlotFill,
   decideTemplateCloneSlotFillTerminal,
   inferTemplateCloneContentRole,
+  isCloneContentFillJsonRepairPersistReason,
+  isCloneContentFillLookSeedRecoverablePersistReason,
   isCloneContentFillLowSubstancePersistReason,
   outlineLooksLikeHtmlDump,
   parseTemplateCloneDeckOutline,
@@ -208,17 +211,20 @@ describe('0901-N02 decideTemplateCloneSlotFillTerminal (B5)', () => {
     }
   });
 
-  it('queues repair once when outline is soft-invalid (not an HTML dump)', () => {
-    expect(
-      decideTemplateCloneSlotFillTerminal({
-        rawFinalText: '{"title":"덱","slides":[{"title":',
-        seedHtml: seed,
-        repairAlreadyAttempted: false,
-      }),
-    ).toEqual({ kind: 'queue-repair' });
+  it('keeps LOOK seed immediately on soft-invalid JSON (루프364 — no queue-repair)', () => {
+    const decision = decideTemplateCloneSlotFillTerminal({
+      rawFinalText: '{"title":"덱","slides":[{"title":',
+      seedHtml: seed,
+      repairAlreadyAttempted: false,
+    });
+    expect(decision.kind).toBe('seed-fallback');
+    if (decision.kind === 'seed-fallback') {
+      expect(decision.html).toBe(seed);
+      expect(decision.title).toBe('덱');
+    }
   });
 
-  it('falls back to LOOK seed after repair was attempted (0901-N02-D)', () => {
+  it('still seed-falls-back after a prior repair attempt flag (compat)', () => {
     const decision = decideTemplateCloneSlotFillTerminal({
       rawFinalText: '<!doctype html><section class="slide"><h1>Nope</h1></section>',
       seedHtml: seed,
@@ -232,10 +238,17 @@ describe('0901-N02 decideTemplateCloneSlotFillTerminal (B5)', () => {
     }
   });
 
-  it('aborts when repair failed and seed is missing', () => {
+  it('aborts when seed is missing (no deck to fall back to)', () => {
     expect(
       decideTemplateCloneSlotFillTerminal({
         rawFinalText: '<!doctype html><section class="slide"><h1>Nope</h1></section>',
+        seedHtml: '',
+        repairAlreadyAttempted: false,
+      }),
+    ).toEqual({ kind: 'abort' });
+    expect(
+      decideTemplateCloneSlotFillTerminal({
+        rawFinalText: '{"title":"덱","slides":[{"title":',
         seedHtml: '',
         repairAlreadyAttempted: true,
       }),
@@ -280,5 +293,26 @@ describe('루프362 isCloneContentFillLowSubstancePersistReason', () => {
     expect(isCloneContentFillLowSubstancePersistReason(undefined)).toBe(false);
     expect(isCloneContentFillLowSubstancePersistReason(42)).toBe(false);
     expect(isCloneContentFillLowSubstancePersistReason({ reason: 'low-substance deck artifact' })).toBe(false);
+  });
+});
+
+describe('루프364 isCloneContentFillLookSeedRecoverablePersistReason', () => {
+  it('covers low-substance reasons and legacy json-repair reason', () => {
+    for (const reason of CLONE_CONTENT_FILL_LOW_SUBSTANCE_PERSIST_REASONS) {
+      expect(isCloneContentFillLookSeedRecoverablePersistReason(reason)).toBe(true);
+    }
+    expect(isCloneContentFillJsonRepairPersistReason(TEMPLATE_CLONE_SLOT_FILL_JSON_REPAIR_REASON)).toBe(true);
+    expect(
+      isCloneContentFillLookSeedRecoverablePersistReason(TEMPLATE_CLONE_SLOT_FILL_JSON_REPAIR_REASON),
+    ).toBe(true);
+    expect(
+      isCloneContentFillLookSeedRecoverablePersistReason('  Template-Clone-Slot-Fill-Json-Repair  '),
+    ).toBe(true);
+  });
+
+  it('rejects unrelated reasons', () => {
+    expect(isCloneContentFillLookSeedRecoverablePersistReason('thin-prior-top-up-no-append')).toBe(false);
+    expect(isCloneContentFillLookSeedRecoverablePersistReason('artifact-regression')).toBe(false);
+    expect(isCloneContentFillLookSeedRecoverablePersistReason(null)).toBe(false);
   });
 });

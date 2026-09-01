@@ -411,15 +411,14 @@ export function formatOutlineDeckFallbackNotice(): string {
 }
 
 /**
- * 루프362 — Clone 첫 채우기 턴에서 모델 산출이 저품질(제목만/템플릿 잔여/빈 본문)로
- * persist가 거부됐을 때, 이미 디스크에 있는 LOOK seed를 열고 run을 succeeded로 마감했다는
- * 안내. `incomplete_output` 대신 이 배너를 노출하고 우측 "다시 시도" 버튼으로 완성본을
- * 재생성하도록 유도한다.
+ * 루프362/364 — Clone 첫 채우기 턴에서 slot-fill이 실패(저품질 HTML · soft-invalid JSON 등)해
+ * 이미 디스크에 있는 LOOK seed를 열고 run을 succeeded로 마감했다는 안내.
+ * `incomplete_output` 대신 이 배너를 노출하고 우측 "다시 시도"로 완성본 재생성을 유도한다.
  */
 export function formatCloneLookSeedFallbackNotice(): string {
   return isTeamverEmbedMode()
-    ? "생성된 슬라이드 내용이 충분하지 않아 템플릿 초안(LOOK seed)을 유지했습니다. 우측의 '다시 시도' 버튼으로 완성본을 다시 생성해 주세요."
-    : "The generated slide content was too thin to save — kept the template draft (LOOK seed). Use the retry button to regenerate the full deck.";
+    ? "슬라이드 채우기에 실패해 템플릿 초안(LOOK seed)을 유지했습니다. 우측의 '다시 시도' 버튼으로 완성본을 다시 생성해 주세요."
+    : "Slide fill did not complete — kept the template draft (LOOK seed). Use the retry button to regenerate the full deck.";
 }
 
 function mapHttpStatusToProjectRunErrorCode(status: number): string {

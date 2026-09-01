@@ -21,6 +21,7 @@
 | **루프359** HTML dump → seed-fallback 즉시 · repair AC abort시 seed 유지 | ☑ |
 | **루프360** repair 판단 messagesRef 레이스 · sendNow synchronous reject 회복 | ☑ |
 | **루프362** low-substance persist skip → LOOK seed 복구 (succeeded + warning) | ☑ |
+| **루프364** soft-invalid JSON도 queue-repair 없이 seed-fallback · pending+seed 복구 | ☑ |
 | MiniMax 실키 E2E | ☐ 키 없음 (`template-clone-minimax-live.e2e` skip 가드) |
 
 ## 검증
@@ -30,6 +31,7 @@
 - [x] cards overflow info-card (C) · Daisy day/timeline (C2)
 - [x] C3: product-launch price-card · team-grid · top-level pillar · capsule pillar-card · 맵 resolve
 - [x] C4: xp-card · hc-card · column-card/card-title · team-member (맵 없이)
+- [x] 루프364: soft-invalid → seed-fallback · `isCloneContentFillLookSeedRecoverablePersistReason`
 - [x] MiniMax live: 키 없으면 skip (가짜 live 금지)
 
 ## 메모
@@ -40,3 +42,10 @@
 - C4: `*-card`만 peer · `card-icon`/`card-title` 제외 · host는 `*-grid`/`grid-N`.
 - MiniMax 키(`MINIMAX_API_KEY` / `OD_MINIMAX_API_KEY`) 있으면 live smoke 슬롯 활성화.
 - 루프362: `isCloneContentFillLowSubstancePersistReason(reason)` (`low-substance deck artifact` / `unfilled-catalog-example` / `incomplete-html-document-shell`). Clone 첫 채우기 턴에서만 발동, LOOK seed 있으면 `skipped-duplicate`로 재작성 + `CLONE_LOOK_SEED_FALLBACK_STATUS_CODE` 경고. 비-Clone 실행은 그대로 low-substance gate 유지.
+- 루프364: LOOK seed가 있으면 soft-invalid JSON도 queue-repair/AC 없이 즉시 seed-fallback. `pendingSlotFillRepair` arm 상태에서도 seed가 있으면 incomplete_output을 강제하지 않고 LOOK seed로 succeeded. `reason=template-clone-slot-fill-json-repair`도 recoverable set에 포함.
+
+## 변경 이력
+
+| 일자 | 내용 |
+|------|------|
+| 2026-09-01 19:22 | 루프364 — soft-invalid → seed-fallback · pending+seed incomplete_output 복구 |

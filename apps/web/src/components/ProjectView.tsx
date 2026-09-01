@@ -180,7 +180,8 @@ import {
   looksLikeScrubbedCatalogExampleShell,
   sanitizePersistedDeckHostLeaks,
   decideTemplateCloneSlotFillTerminal,
-  isCloneContentFillLowSubstancePersistReason,
+  isCloneContentFillLookSeedRecoverablePersistReason,
+  TEMPLATE_CLONE_SLOT_FILL_JSON_REPAIR_REASON,
   type AudioVoiceOption,
   type MemorySystemPromptResponse,
   type ResearchOptions,
@@ -10605,31 +10606,31 @@ export function ProjectView({
               }
             }
 
-            // 루프362 — Clone content-fill LOOK seed recovery.
+            // 루프362/364 — Clone content-fill LOOK seed recovery.
             // If a Clone first-fill turn's persist was rejected as
-            // low-substance / unfilled-catalog / incomplete-shell AND the
-            // LOOK seed already lives on disk (Clone always persists it),
-            // rewrite the persist result to `skipped-duplicate` so the run
+            // low-substance / unfilled-catalog / incomplete-shell OR the
+            // legacy slot-fill JSON-repair skip AND the LOOK seed already
+            // lives on disk, rewrite to `skipped-duplicate` so the run
             // finalizes succeeded on the seed instead of leaking
-            // incomplete_output. AC does not fire for these reasons
-            // (looksLikeLowSubstancePersistSkipReason bails out), so without
-            // this recovery the user was left with an error banner and no
-            // way forward except manual Retry.
+            // incomplete_output. Non-Clone runs keep the substance guard.
             //
-            // Guarded strictly on `runTemplateCloneContentFillRef` so
-            // non-Clone runs keep the substance guard as the source of truth
-            // — this recovery only applies when a good seed exists.
-            // pendingSlotFillRepair path owns its own AC-abort recovery
-            // (루프359 / 360), so skip if repair is queued.
+            // 루프364: also recover when `pendingSlotFillRepairRef` is armed.
+            // The old path forced skipped-incomplete + AC repair, which left
+            // durable incomplete_output on the first turn even when AC later
+            // started. Prefer LOOK seed over repair churn.
             if (
               !cloneLookSeedFallbackRecovered
               && runTemplateCloneContentFillRef.current
-              && !pendingSlotFillRepairRef.current
-              && terminalPersistResult?.kind === 'skipped-incomplete'
-              && isCloneContentFillLowSubstancePersistReason(
-                'reason' in terminalPersistResult
-                  ? terminalPersistResult.reason ?? null
-                  : null,
+              && (
+                pendingSlotFillRepairRef.current
+                || (
+                  terminalPersistResult?.kind === 'skipped-incomplete'
+                  && isCloneContentFillLookSeedRecoverablePersistReason(
+                    'reason' in terminalPersistResult
+                      ? terminalPersistResult.reason ?? null
+                      : null,
+                  )
+                )
               )
             ) {
               try {
@@ -10643,6 +10644,7 @@ export function ProjectView({
                   terminalArtifactPersistFailed = false;
                   cloneLookSeedFallbackRecovered = true;
                   runTemplateCloneSlotFillFallbackRef.current = true;
+                  pendingSlotFillRepairRef.current = false;
                 }
               } catch (error) {
                 devLog.warn(
@@ -10652,14 +10654,16 @@ export function ProjectView({
               }
             }
 
-            // 0901-N02 B5 — force incomplete path so the one-shot JSON repair can auto-send.
+            // Legacy B5 path — only when LOOK seed is missing (recovery above
+            // cleared pending when seed existed). Without a seed, force the
+            // incomplete path so the user can Retry.
             if (pendingSlotFillRepairRef.current) {
               terminalArtifactPersistFailed = true;
               if (!terminalPersistResult) {
                 terminalPersistResult = {
                   kind: 'skipped-incomplete',
                   fileName: 'deck.html',
-                  reason: 'template-clone-slot-fill-json-repair',
+                  reason: TEMPLATE_CLONE_SLOT_FILL_JSON_REPAIR_REASON,
                 };
                 terminalPersistResultKind = 'skipped-incomplete';
               }
