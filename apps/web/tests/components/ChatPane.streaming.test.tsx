@@ -1268,7 +1268,16 @@ Expected output:
           { id: 'queued-2', prompt: 'Then adjust the title spacing' },
           { id: 'queued-3', prompt: 'Reduce the subtitle size' },
           { id: 'queued-4', prompt: 'Switch to a lighter font weight' },
-          { id: 'queued-5', prompt: 'Add hover polish' },
+          {
+            id: 'queued-5',
+            prompt: [
+              'Add hover polish',
+              '',
+              '[Design toolbox instruction]',
+              'Global resource index: skills(40).',
+              'Workflow rule: define the aesthetic goal first.',
+            ].join('\n'),
+          },
         ]}
         onRemoveQueuedSend={onRemoveQueuedSend}
         onSendQueuedNow={onSendQueuedNow}
@@ -1296,6 +1305,9 @@ Expected output:
     expect(strip?.textContent).toContain('Reduce the subtitle size');
     expect(strip?.textContent).toContain('Switch to a lighter font weight');
     expect(strip?.textContent).toContain('Add hover polish');
+    expect(strip?.textContent).not.toContain('Global resource index');
+    expect(strip?.textContent).not.toContain('Workflow rule');
+    expect(strip?.textContent).not.toContain('[Design toolbox instruction]');
     expect(container.querySelector('.chat-queued-send-list')?.className).toContain('is-scrollable');
     expect(container.querySelector('.chat-queued-send-overflow')?.textContent).toContain('+1 more queued');
     expect(screen.getAllByRole('button', { name: 'Drag to reorder' })).toHaveLength(5);

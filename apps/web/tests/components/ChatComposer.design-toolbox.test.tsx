@@ -411,6 +411,114 @@ describe('ChatComposer design toolbox', () => {
     expect(attachments.some((item) => item.path === 'msh9rso1-serving-goldfish.webp')).toBe(true);
   });
 
+  it('stages a skill pick as a short use-line and attaches the workflow on send', async () => {
+    const onSend = vi.fn();
+    const { ref } = renderComposer({
+      onSend,
+      skills: [DESIGN_TASTE_SKILL, GSAP_SKILL],
+    });
+    await flushMounts();
+
+    openToolbox(ref);
+    const search = screen.getByLabelText('Search design toolbox resources');
+    fireEvent.change(search, { target: { value: 'gsap-core' } });
+    await waitFor(() => expect(screen.getByText('gsap-core')).toBeTruthy());
+    fireEvent.click(screen.getByText('gsap-core'));
+
+    await waitFor(() => {
+      expect(composerText()).toContain('@gsap-core');
+      expect(composerText()).toContain('Use gsap-core on the current design.');
+    });
+    expect(composerText()).not.toContain('Global resource index');
+    expect(composerText()).not.toContain('Workflow rule');
+    expect(composerText()).not.toContain('Searchable skills');
+
+    fireEvent.click(screen.getByTestId('chat-send'));
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(onSend).toHaveBeenCalledTimes(1);
+    const sent = String(onSend.mock.calls[0]?.[0] ?? '');
+    expect(sent).toContain('Use gsap-core on the current design.');
+    expect(sent).toContain('[Design toolbox instruction]');
+    expect(sent).toContain('Global resource index');
+    expect(onSend.mock.calls[0]?.[3]?.skillIds).toEqual(['gsap-core']);
+  });
+
+  it('stages a connector pick without dumping the resource index into the input', async () => {
+    const onSend = vi.fn();
+    const { ref } = renderComposer({ onSend });
+    await flushMounts();
+
+    openToolbox(ref);
+    await waitFor(() => expect(screen.getByText('Figma')).toBeTruthy());
+    fireEvent.click(screen.getByText('Figma'));
+
+    await waitFor(() => {
+      expect(composerText()).toContain('@Figma');
+      expect(composerText()).toContain('Figma');
+    });
+    expect(composerText()).not.toContain('Global resource index');
+    expect(composerText()).not.toContain('Workflow rule');
+    expect(composerText()).not.toContain('Use this connector when real data');
+
+    fireEvent.click(screen.getByTestId('chat-send'));
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(onSend).toHaveBeenCalledTimes(1);
+    const sent = String(onSend.mock.calls[0]?.[0] ?? '');
+    expect(sent).toContain('Figma');
+    expect(sent).toContain('[Design toolbox instruction]');
+    expect(sent).toContain('Global resource index');
+    expect(sent).toContain('Use this connector when real data');
+  });
+
+  it('restores a queued toolbox send as the short title and re-attaches the instruction', async () => {
+    const onSend = vi.fn();
+    const { ref } = renderComposer({
+      onSend,
+      skills: [DESIGN_TASTE_SKILL, CREATIVE_DIRECTOR_SKILL],
+    });
+    await flushMounts();
+
+    const queued = [
+      '@creative-director',
+      'Design polish / ready to ship',
+      '',
+      '[Design toolbox instruction]',
+      'Global resource index: skills(2).',
+      'Workflow rule: define the aesthetic goal first.',
+      'Polish this design until it is ready to ship: check hierarchy.',
+    ].join('\n');
+
+    act(() => {
+      ref.current?.restoreDraft({ text: queued });
+    });
+
+    await waitFor(() => {
+      expect(composerText()).toContain('@creative-director');
+      expect(composerText()).toContain('Design polish / ready to ship');
+    });
+    expect(composerText()).not.toContain('Global resource index');
+    expect(composerText()).not.toContain('Workflow rule');
+    expect(composerText()).not.toContain('[Design toolbox instruction]');
+
+    fireEvent.click(screen.getByTestId('chat-send'));
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(onSend).toHaveBeenCalledTimes(1);
+    const sent = String(onSend.mock.calls[0]?.[0] ?? '');
+    expect(sent).toContain('Design polish / ready to ship');
+    expect(sent).toContain('[Design toolbox instruction]');
+    expect(sent).toContain('Global resource index');
+    expect(sent).toContain('ready to ship: check hierarchy');
+  });
+
   it('refreshes connected connectors when connector auth changes in another surface', async () => {
     const { ref } = renderComposer();
     await flushMounts();

@@ -5,6 +5,7 @@ import {
   attachPendingDesignToolboxInstruction,
   looksLikeDesignToolboxExpandedDraft,
   resolveDesignToolboxVisibleBody,
+  splitDesignToolboxInstruction,
   withDesignToolboxInstruction,
 } from '../../src/runtime/design-toolbox';
 
@@ -72,5 +73,20 @@ describe('design toolbox compact drafts', () => {
       instruction: 'full workflow',
       actionTitle: VISUAL_POLISH_TITLE,
     })).toBe('표지 제목만 바꿔줘');
+  });
+
+  it('splits a queued send back into the visible title and hidden instruction', () => {
+    const sent = withDesignToolboxInstruction(
+      `@creative-director\n${VISUAL_POLISH_TITLE}`,
+      'Global resource index: skills(40).\nWorkflow rule: define the aesthetic goal first.',
+    );
+    expect(splitDesignToolboxInstruction(sent)).toEqual({
+      visible: `@creative-director\n${VISUAL_POLISH_TITLE}`,
+      instruction: 'Global resource index: skills(40).\nWorkflow rule: define the aesthetic goal first.',
+    });
+    expect(splitDesignToolboxInstruction(VISUAL_POLISH_TITLE)).toEqual({
+      visible: VISUAL_POLISH_TITLE,
+      instruction: null,
+    });
   });
 });

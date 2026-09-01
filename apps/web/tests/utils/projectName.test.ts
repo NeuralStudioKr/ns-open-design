@@ -163,6 +163,22 @@ describe('extractUserPromptForNaming', () => {
     expect(extractUserPromptForNaming(full)).toBe(userLine);
   });
 
+  it('does not name a project from a design-toolbox workflow dump', () => {
+    const full = [
+      '@creative-director',
+      '디자인 다듬기 / 출시 준비 완료',
+      '',
+      '[Design toolbox instruction]',
+      'Global resource index: skills(40), plugins(0).',
+      'Workflow rule: define the aesthetic goal first.',
+      'Polish this design until it is ready to ship.',
+    ].join('\n');
+    const extracted = extractUserPromptForNaming(full);
+    expect(extracted).toContain('디자인 다듬기');
+    expect(extracted).not.toMatch(/Global resource index|Workflow rule|ready to ship/i);
+    expect(summarizeProjectNameFromUserTurn(full)).not.toMatch(/resource|workflow|index/i);
+  });
+
   it('prefers [User instruction] over attachment boilerplate lead', () => {
     const full = [
       '첨부한 자료를 바탕으로 슬라이드 덱을 만들어줘.',

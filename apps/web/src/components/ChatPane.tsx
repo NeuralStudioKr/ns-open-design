@@ -3385,7 +3385,7 @@ function reorderQueuedSendIds(
 }
 
 function summarizeQueuedPrompt(item: QueuedSendItem, t: TranslateFn): string {
-  const normalized = item.prompt.replace(/\s+/g, ' ').trim();
+  const normalized = stripUserVisibleUserMessageText(item.prompt).replace(/\s+/g, ' ').trim();
   const text = normalized || t('chat.queuedFollowUpFallback');
   return text.length > 58 ? `${text.slice(0, 57)}...` : text;
 }

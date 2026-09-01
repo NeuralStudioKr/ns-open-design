@@ -17,7 +17,13 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 `기둥` / `PILLAR` / `Phase`는 모델이 붙이는 접두일 뿐, 발표 용어가 아닙니다. 서수 유지 픽스처는 `스무 번째`. extra-copy·stub는 주제 단어 목록이 아닙니다(루프259·265).
 
-## 2026-08-31 현재 판단 · 최신 루프
+## 2026-09-01 현재 판단 · 최신 루프
+
+### 루프323 — toolbox skill/plugin/큐 제목 워크플로 숨김
+
+루프321은 액션(디자인 다듬기 등)만 짧게 두고 워크플로를 `[Design toolbox instruction]`으로 붙였다. skill 행·plugin/MCP/connector 픽은 여전히 리소스 인덱스를 input에 넣었고, 큐 제목·큐 수정 복원·첫 턴 프로젝트명이 그 덤프를 그대로 보여 줬다. 모든 toolbox 픽을 짧은 제목(+@mention)만 보이게 하고, 복원 시 visible/instruction을 다시 나누며, 큐 제목·프로젝트명은 strip 한다.
+
+검증: web design-toolbox · ChatComposer.design-toolbox · ChatPane.streaming · projectName · comments strip.
 
 ### 루프322 — 칸 번호 P · 열아홉째 빈 카드
 
@@ -864,6 +870,7 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 
 ### 다음 루프 후보 (2026-08-31 EOD 기준)
 
+- **완료 (루프323):** toolbox skill/plugin/MCP/connector 픽·큐 제목·restore·프로젝트명이 워크플로 덤프를 노출하지 않음. `기둥 Q`는 여전히 번호로 보지 않음.
 - **완료 (루프322):** 칸 번호 P · 열아홉째 빈 카드. `스무 번째` / `기둥 Q`와 번호+본문은 유지.
 - **완료 (루프321):** 디자인 다듬기 등 toolbox 액션이 input에 워크플로 덤프를 넣지 않음. `기둥 P`는 여전히 번호로 보지 않음.
 - **완료 (루프320):** first-fill 명시 1–10장 한 턴 · 미지정 6 · 11+ top-up. persist short-draft ≤6 유지. `기둥 P`는 여전히 번호로 보지 않음.
@@ -1143,6 +1150,7 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | first-fill 3장 강제 → 요청 1–6장 한 턴 | ☑ 루프9 |
 | first-fill: 명시 8–10장이 6장 캡+7+ top-up으로 잘림 | ☑ 루프320 |
 | next-step 「디자인 다듬기」가 input에 워크플로 덤프를 노출 | ☑ 루프321 |
+| toolbox skill/plugin/MCP 픽·큐 제목·restore가 워크플로 덤프를 노출 | ☑ 루프323 |
 | auto-continue / streaming rule / short-draft 캡 3장 잔여 | ☑ 루프14 |
 | 스트리밍 official look — 첫 닫힌 슬라이드에서 heal | ☑ 루프14 |
 | PreviewModal/connector message 가드 | ☑ |
@@ -1284,7 +1292,15 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | contracts pretest: exactOptionalPropertyTypes TS2379 봉쇄 | ☑ 루프263 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프322 · 칸 번호 P/열아홉째)
+## 이번 루프 (루프323 · toolbox skill/plugin/큐 제목 워크플로 숨김)
+
+- [x] skill/plugin/MCP/connector 픽 = 짧은 제목 + @mention
+- [x] restoreDraft가 visible/instruction을 다시 나눔
+- [x] 큐 제목·프로젝트명에서 toolbox instruction strip
+- [x] design-toolbox · ChatComposer.design-toolbox · ChatPane.streaming · projectName
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프322 · 칸 번호 P/열아홉째)
 
 - [x] 빈 칸 번호 — P · 열아홉째
 - [x] `스무 번째` / `기둥 Q` · 번호+본문 유지

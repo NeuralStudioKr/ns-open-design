@@ -187,6 +187,18 @@ export function resolveDesignToolboxVisibleBody(input: {
   return existing;
 }
 
+export function splitDesignToolboxInstruction(text: string | null | undefined): {
+  visible: string;
+  instruction: string | null;
+} {
+  const raw = String(text ?? '');
+  const match = /\n*\[Design toolbox instruction\]\s*/i.exec(raw);
+  if (!match || match.index == null) return { visible: raw, instruction: null };
+  const visible = raw.slice(0, match.index).trim();
+  const instruction = raw.slice(match.index + match[0].length).trim();
+  return { visible, instruction: instruction || null };
+}
+
 export function withDesignToolboxInstruction(
   visible: string,
   instruction: string | null | undefined,

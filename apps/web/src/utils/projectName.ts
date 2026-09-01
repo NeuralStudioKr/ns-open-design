@@ -210,6 +210,10 @@ export function extractUserPromptForNaming(fullPrompt: string): string {
   if (deliverableIdx > 0) {
     text = text.slice(0, deliverableIdx).trim();
   }
+  const toolboxIdx = text.search(/\n*\[Design toolbox instruction\]/i);
+  if (toolboxIdx >= 0) {
+    text = text.slice(0, toolboxIdx).trim();
+  }
   const sourceBriefIdx = text.indexOf('\n\n[Source brief]');
   if (sourceBriefIdx > 0) {
     text = text.slice(0, sourceBriefIdx).trim();

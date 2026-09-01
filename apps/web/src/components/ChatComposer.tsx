@@ -165,6 +165,8 @@ import {
   getDesignToolboxAction,
   resolveDesignToolboxVisibleBody,
   skillMatchesQuery,
+  splitDesignToolboxInstruction,
+  stripLeadingMentionLines,
   type DesignToolboxAction,
   type DesignToolboxActionId,
 } from '../runtime/design-toolbox';
@@ -400,8 +402,9 @@ export interface ChatComposerHandle {
   applyDesignToolboxAction: (id: DesignToolboxActionId) => void;
   /**
    * Seed the composer with a specific skill by id (same path as picking it in
-   * the toolbox panel). Used by the next-step card's full skill list. No-op for
-   * an unknown id.
+   * the toolbox panel). Used by the next-step card's full skill list. Visible
+   * draft is @skill + a short use-skill line; the resource-index / workflow
+   * copy attaches on send. No-op for an unknown id.
    */
   applyDesignToolboxSkill: (skillId: string) => void;
   /** Legacy: open the standalone toolbox popover. Currently unused by callers. */
@@ -1250,7 +1253,15 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
           seededRef.current = true;
         },
         restoreDraft: ({ text, attachments = [], commentAttachments = [], meta }) => {
-          setDraft(text);
+          const split = splitDesignToolboxInstruction(text);
+          const editorText = split.visible;
+          pendingDesignToolboxInstructionRef.current = split.instruction
+            ? {
+                instruction: split.instruction,
+                actionTitle: stripLeadingMentionLines(split.visible),
+              }
+            : null;
+          setDraft(editorText);
           const orderedAttachments = normalizeChatAttachmentOrders(attachments);
           setStaged(orderedAttachments);
           nextAttachmentOrderRef.current = nextChatAttachmentOrder(orderedAttachments);
@@ -1294,9 +1305,10 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
           setSlash(null);
           // Seed with attachment/file entities in the same tick — otherwise
           // setText runs before React applies `staged` and `@file.webp` stays
-          // plain text instead of a chip.
+          // plain text instead of a chip. Visible body only — the toolbox
+          // workflow block stays on pendingDesignToolboxInstructionRef.
           editorRef.current?.setText(
-            text,
+            editorText,
             buildComposerMentionEntities({
               connectors: restoredConnectors.length > 0 ? restoredConnectors : connectors,
               files: projectFiles,
@@ -1718,32 +1730,35 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       return { resource_kind: resource.kind, resource_id: resource.id };
     }
 
-    function applyDesignToolboxAction(action: DesignToolboxAction) {
-      const skill = findDesignToolboxSkill(action, skills);
-      const instruction = designToolboxActionPrompt({
-        action,
-        skill,
-        workspaceItem: visibleWorkspaceContext,
-        activeDraft: draft,
-        resourceIndex: designToolboxResourceIndex,
-        t,
-      });
-      const actionTitle = designToolboxActionTitle(action, t);
-      pendingDesignToolboxInstructionRef.current = { instruction, actionTitle };
+    function stageCompactToolboxDraft(input: {
+      visibleTitle: string;
+      instruction: string;
+      skill?: SkillSummary | null;
+      mention?: string | null;
+    }) {
       const visibleBody = resolveDesignToolboxVisibleBody({
-        actionTitle,
+        actionTitle: input.visibleTitle,
         activeDraft: draft,
         actionTitles: DESIGN_TOOLBOX_ACTIONS.map((item) => designToolboxActionTitle(item, t)),
       });
-      applyDesignToolboxPrompt(visibleBody, skill);
+      pendingDesignToolboxInstructionRef.current = {
+        instruction: input.instruction,
+        actionTitle: visibleBody,
+      };
+      if (input.skill) {
+        applyDesignToolboxPrompt(visibleBody, input.skill);
+        return;
+      }
+      const mention = String(input.mention ?? '').trim();
+      applyDesignToolboxDraft(mention ? `${mention}\n${visibleBody}` : visibleBody);
     }
-    // Recreated each render, so this captures the latest draft/context closure
-    // for the imperative handle (see applyDesignToolboxActionRef).
-    applyDesignToolboxActionRef.current = applyDesignToolboxAction;
 
-    function applyDesignToolboxSkill(skill: SkillSummary) {
-      applyDesignToolboxPrompt(
-        designToolboxSkillPrompt({
+    function applyDesignToolboxAction(action: DesignToolboxAction) {
+      const skill = findDesignToolboxSkill(action, skills);
+      stageCompactToolboxDraft({
+        visibleTitle: designToolboxActionTitle(action, t),
+        instruction: designToolboxActionPrompt({
+          action,
           skill,
           workspaceItem: visibleWorkspaceContext,
           activeDraft: draft,
@@ -1751,7 +1766,24 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
           t,
         }),
         skill,
-      );
+      });
+    }
+    // Recreated each render, so this captures the latest draft/context closure
+    // for the imperative handle (see applyDesignToolboxActionRef).
+    applyDesignToolboxActionRef.current = applyDesignToolboxAction;
+
+    function applyDesignToolboxSkill(skill: SkillSummary) {
+      stageCompactToolboxDraft({
+        visibleTitle: t('chat.designToolbox.prompt.useSkill', { skill: skill.name }),
+        instruction: designToolboxSkillPrompt({
+          skill,
+          workspaceItem: visibleWorkspaceContext,
+          activeDraft: draft,
+          resourceIndex: designToolboxResourceIndex,
+          t,
+        }),
+        skill,
+      });
     }
     // Latest-closure bridge for the imperative handle (see the ref declaration).
     applyDesignToolboxSkillByIdRef.current = (skillId: string) => {
@@ -1776,7 +1808,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
         return;
       }
 
-      const prompt = designToolboxResourcePrompt({
+      const instruction = designToolboxResourcePrompt({
         resource,
         workspaceItem: visibleWorkspaceContext,
         activeDraft: draft,
@@ -1791,7 +1823,11 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
             label: resource.plugin.title,
           };
           await pluginsSectionRef.current?.applyById(resource.plugin.id, resource.plugin);
-          applyDesignToolboxDraft(`${inlineMentionToken(resource.plugin.title)}\n${prompt}`);
+          stageCompactToolboxDraft({
+            visibleTitle: resource.title,
+            instruction,
+            mention: inlineMentionToken(resource.plugin.title),
+          });
         })();
         return;
       }
@@ -1803,7 +1839,11 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
             ? current
             : [...current, resource.server],
         );
-        applyDesignToolboxDraft(`${inlineMentionToken(label)}\n${prompt}`);
+        stageCompactToolboxDraft({
+          visibleTitle: resource.title,
+          instruction,
+          mention: inlineMentionToken(label),
+        });
         return;
       }
 
@@ -1813,11 +1853,19 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
             ? current
             : [...current, resource.connector],
         );
-        applyDesignToolboxDraft(`${inlineMentionToken(resource.connector.name)}\n${prompt}`);
+        stageCompactToolboxDraft({
+          visibleTitle: resource.title,
+          instruction,
+          mention: inlineMentionToken(resource.connector.name),
+        });
         return;
       }
 
-      applyDesignToolboxDraft(prompt);
+      stageCompactToolboxDraft({
+        visibleTitle: resource.title,
+        instruction,
+        mention: inlineMentionToken(resource.title),
+      });
     }
 
     function removeStagedSkill(id: string) {
