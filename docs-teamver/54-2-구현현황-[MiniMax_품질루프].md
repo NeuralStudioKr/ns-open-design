@@ -31,9 +31,15 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-09-01 현재 판단 · 최신 루프
 
-### 루프324 — 칸 번호 Q · 스무째 빈 카드
+### 루프325 — 칸 번호 스무째 빈 카드
 
-루프322까지는 A–P / 가…하 / 열아홉째까지만 빈 칸 번호로 본다. 모델이 빠진 3열을 `기둥 Q` / `스무째`만으로 채워 빈 띠가 남는다. 그 제목만 제거. `스무 번째` / `기둥 R`과 번호+본문은 유지. 한글 열 라벨은 `하`가 끝. 카피 발명 없음.
+루프324는 Q만 빈 칸 번호로 본다. 모델이 빠진 3열을 `스무째`만으로 채워 빈 띠가 남는다. 그 제목만 제거. 띄어쓴 `스무 번째` / `기둥 R`과 번호+본문은 유지. 한글 열 라벨은 `하`가 끝. 카피 발명 없음.
+
+검증: contracts heal-ai-generated-deck 루프325 · deck-framework-compact.
+
+### 루프324 — 칸 번호 Q 빈 카드
+
+루프322까지는 A–P / 가…하 / 열아홉째까지만 빈 칸 번호로 본다. 모델이 빠진 3열을 `기둥 Q`만으로 채워 빈 띠가 남는다. 그 제목만 제거. `스무 번째` / `기둥 R`과 번호+본문(`기둥 Q 실카피`)은 유지. 한글 열 라벨은 `하`가 끝. 카피 발명 없음. 공식 영문 카탈로그는 brief 없이 유지.
 
 검증: contracts heal-ai-generated-deck 루프324 · deck-framework-compact.
 
@@ -888,7 +894,8 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 
 ### 다음 루프 후보 (2026-08-31 EOD 기준)
 
-- **완료 (루프324):** 칸 번호 Q · 스무째 빈 카드. `스무 번째` / `기둥 R`과 번호+본문은 유지.
+- **완료 (루프325):** 칸 번호 스무째 빈 카드. 띄어쓴 `스무 번째` / `기둥 R`과 번호+본문은 유지.
+- **완료 (루프324):** 칸 번호 Q 빈 카드. `스무 번째` / `기둥 R`과 번호+본문은 유지.
 - **완료 (루프323):** toolbox skill/plugin/MCP/connector 픽·큐 제목·restore·프로젝트명이 워크플로 덤프를 노출하지 않음. `기둥 Q`는 여전히 번호로 보지 않음.
 - **완료 (루프322):** 칸 번호 P · 열아홉째 빈 카드. `스무 번째` / `기둥 Q`와 번호+본문은 유지.
 - **완료 (루프321):** 디자인 다듬기 등 toolbox 액션이 input에 워크플로 덤프를 넣지 않음. `기둥 P`는 여전히 번호로 보지 않음.
@@ -1286,7 +1293,8 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | persist/preview: 칸 번호만 있는 3열 카드(N · 하 · 열일곱째) | ☑ 루프288 |
 | persist/preview: 칸 번호만 있는 3열 카드(O · 열여덟째) | ☑ 루프291 |
 | persist/preview: 칸 번호만 있는 3열 카드(P · 열아홉째) | ☑ 루프322 |
-| persist/preview: 칸 번호만 있는 3열 카드(Q · 스무째) | ☑ 루프324 |
+| persist/preview: 칸 번호만 있는 3열 카드(Q) | ☑ 루프324 |
+| persist/preview: 칸 번호만 있는 3열 카드(스무째) | ☑ 루프325 |
 | heal: nested card soup extra `</div>`가 장 호스트를 닫음 | ☑ 루프287 |
 | docs: leftover 용어를 「빈 칸 번호 카드」로 정리 | ☑ 루프284 |
 | preview: 공식 example-replit-deck GET이 helix를 주고 시드를 주지 않음 | ☑ 루프278 |
@@ -1312,9 +1320,16 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | contracts pretest: exactOptionalPropertyTypes TS2379 봉쇄 | ☑ 루프263 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프324 · 칸 번호 Q/스무째)
+## 이번 루프 (루프325 · 칸 번호 스무째)
 
-- [x] 빈 칸 번호 — Q · 스무째
+- [x] 빈 칸 번호 — 스무째
+- [x] 띄어쓴 `스무 번째` / `기둥 R` · 번호+본문 유지
+- [x] heal-ai-generated-deck 루프325 · deck-framework-compact
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프324 · 칸 번호 Q)
+
+- [x] 빈 칸 번호 — Q
 - [x] `스무 번째` / `기둥 R` · 번호+본문 유지
 - [x] heal-ai-generated-deck 루프324 · deck-framework-compact
 - [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)

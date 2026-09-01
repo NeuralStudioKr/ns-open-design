@@ -1823,9 +1823,12 @@ function textLooksLikeLeftoverPeerPlaceholder(html: string): boolean {
  * 루프322 — drop empty column-number cards titled only `P` /
  * `열아홉째`. Keep `기둥 Q`, `스무 번째`, and number+body
  * (`열아홉째 실카피`).
- * 루프324 — drop empty column-number cards titled only `Q` /
- * `스무째`. Keep `기둥 R`, `스무 번째`, and number+body
- * (`스무째 실카피`). These tokens are model-emitted column
+ * 루프324 — drop empty column-number cards titled only `Q`.
+ * Keep `기둥 R`, `스무 번째`, and number+body (`기둥 Q 실카피`).
+ * Hangul column letters still end at `하`.
+ * 루프325 — drop empty column-number cards titled only `스무째`.
+ * Keep spaced `스무 번째`, `기둥 R`, and number+body (`스무째 실카피`).
+ * These tokens are model-emitted column
  * numbers, not product copy.
  */
 const LEFTOVER_INDEX_ROMAN =
