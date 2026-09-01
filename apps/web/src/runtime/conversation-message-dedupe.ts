@@ -2,6 +2,7 @@ import type { AgentEvent, ChatMessage } from "../types";
 import { assistantMessageTextBody } from "./chat-events";
 import {
   AUTO_CONTINUE_STATUS_CODE,
+  CLONE_LOOK_SEED_FALLBACK_STATUS_CODE,
   EMERGENCY_DECK_FALLBACK_STATUS_CODE,
   OUTLINE_DECK_FALLBACK_STATUS_CODE,
 } from "./deliverable-lifecycle-codes";
@@ -70,6 +71,7 @@ export const DELIVERABLE_LIFECYCLE_STATUS_CODES: ReadonlySet<string> = new Set([
   AUTO_CONTINUE_STATUS_CODE,
   EMERGENCY_DECK_FALLBACK_STATUS_CODE,
   OUTLINE_DECK_FALLBACK_STATUS_CODE,
+  CLONE_LOOK_SEED_FALLBACK_STATUS_CODE,
 ]);
 
 function isDeliverableLifecycleNoticeEvent(event: AgentEvent): boolean {

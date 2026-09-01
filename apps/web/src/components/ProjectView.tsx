@@ -180,6 +180,7 @@ import {
   looksLikeScrubbedCatalogExampleShell,
   sanitizePersistedDeckHostLeaks,
   decideTemplateCloneSlotFillTerminal,
+  isCloneContentFillLowSubstancePersistReason,
   type AudioVoiceOption,
   type MemorySystemPromptResponse,
   type ResearchOptions,
@@ -328,6 +329,7 @@ import {
   extractRequestedSlideCountHintFromMessages,
   findIncompleteSlideAssistantForRecovery,
   isEmergencyArtifactPersistSuccess,
+  CLONE_LOOK_SEED_FALLBACK_STATUS_CODE,
   OUTLINE_DECK_FALLBACK_STATUS_CODE,
   resolveSlideProducedHtmlToOpen,
   syncAutoContinueCountFromMessages,
@@ -474,6 +476,7 @@ import {
   formatProjectRunDeliverableMissingError,
   encodePersistedRunErrorDetail,
   formatAutoContinueIncompleteOutputNotice,
+  formatCloneLookSeedFallbackNotice,
   formatEmergencyDeckFallbackNotice,
   formatOutlineDeckFallbackNotice,
   formatPersistedProjectRunError,
@@ -10363,6 +10366,14 @@ export function ProjectView({
             // way — the retry belongs to the user in that case.
             let terminalPersistResultKind: ArtifactPersistResult['kind'] | null = null;
             let terminalPersistResult: ArtifactPersistResult | null = null;
+            // 루프362 — Clone content-fill turn only. When the model output
+            // trips a low-substance / catalog-leftover / incomplete-shell
+            // persist skip, we recover to the LOOK seed on disk (Clone had
+            // already persisted it via seedTemplateClonedDeck). This flag
+            // routes the succeeded card into the warning-notice branch below
+            // so the user sees the fallback banner + Retry instead of a
+            // blank incomplete_output. Non-Clone runs never set this flag.
+            let cloneLookSeedFallbackRecovered = false;
             const hadIncompleteParsedArtifact = Boolean(
               parsedArtifact?.html
               && isIncompleteParsedDeckForBestArtifactRestore(
@@ -10591,6 +10602,53 @@ export function ProjectView({
                 terminalPersistResultKind = persistResult?.kind ?? null;
                 terminalPersistResult = persistResult;
                 nextFiles = await refreshProjectFiles();
+              }
+            }
+
+            // 루프362 — Clone content-fill LOOK seed recovery.
+            // If a Clone first-fill turn's persist was rejected as
+            // low-substance / unfilled-catalog / incomplete-shell AND the
+            // LOOK seed already lives on disk (Clone always persists it),
+            // rewrite the persist result to `skipped-duplicate` so the run
+            // finalizes succeeded on the seed instead of leaking
+            // incomplete_output. AC does not fire for these reasons
+            // (looksLikeLowSubstancePersistSkipReason bails out), so without
+            // this recovery the user was left with an error banner and no
+            // way forward except manual Retry.
+            //
+            // Guarded strictly on `runTemplateCloneContentFillRef` so
+            // non-Clone runs keep the substance guard as the source of truth
+            // — this recovery only applies when a good seed exists.
+            // pendingSlotFillRepair path owns its own AC-abort recovery
+            // (루프359 / 360), so skip if repair is queued.
+            if (
+              !cloneLookSeedFallbackRecovered
+              && runTemplateCloneContentFillRef.current
+              && !pendingSlotFillRepairRef.current
+              && terminalPersistResult?.kind === 'skipped-incomplete'
+              && isCloneContentFillLowSubstancePersistReason(
+                'reason' in terminalPersistResult
+                  ? terminalPersistResult.reason ?? null
+                  : null,
+              )
+            ) {
+              try {
+                const seedOnDisk = String(await readProjectHtml('deck.html') ?? '').trim();
+                if (seedOnDisk) {
+                  terminalPersistResult = {
+                    kind: 'skipped-duplicate',
+                    fileName: 'deck.html',
+                  };
+                  terminalPersistResultKind = 'skipped-duplicate';
+                  terminalArtifactPersistFailed = false;
+                  cloneLookSeedFallbackRecovered = true;
+                  runTemplateCloneSlotFillFallbackRef.current = true;
+                }
+              } catch (error) {
+                devLog.warn(
+                  '[teamver] clone content-fill LOOK seed recovery failed',
+                  error,
+                );
               }
             }
 
@@ -11168,6 +11226,26 @@ export function ProjectView({
                 }, 600);
               }
               }
+            } else if (cloneLookSeedFallbackRecovered) {
+              // 루프362 — Clone content-fill low-substance recovery. The LOOK
+              // seed lives on disk, so we mark succeeded with a warning notice
+              // that mirrors the emergency / outline fallback pattern (Retry
+              // stays available via `resumable`). Persisting the succeeded
+              // state below prevents hard reload from resurfacing the durable
+              // deliverable-missing error.
+              const lookSeedNotice = formatCloneLookSeedFallbackNotice();
+              updateAssistant((prev) => ({
+                ...appendWarningStatusEvent(
+                  clearDurableDeliverableErrorsAfterRecovery(prev),
+                  lookSeedNotice,
+                  CLONE_LOOK_SEED_FALLBACK_STATUS_CODE,
+                ),
+                producedFiles: produced,
+                runStatus: resolveSucceededRunStatus(prev.runStatus),
+                resumable: true,
+                endedAt: prev.endedAt ?? endedAt,
+              }));
+              updateConversationLatestRun('succeeded', endedAt);
             } else {
               updateAssistant((prev) => ({
                 ...prev,

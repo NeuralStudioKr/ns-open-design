@@ -334,6 +334,36 @@ export function decideTemplateCloneSlotFillTerminal(input: {
   return { kind: 'abort' };
 }
 
+/**
+ * Clone first-fill persist skip reasons that mean "model output was too thin
+ * to persist" (title-only, template leftover, empty bodies, catalog scaffold).
+ *
+ * When the terminal Clone content-fill turn hits one of these reasons and the
+ * LOOK seed already lives on disk, the caller should recover to that seed
+ * instead of leaving `incomplete_output`. The seed is a safe fallback because
+ * `seedTemplateClonedDeck` persisted it before this turn started, and Clone
+ * contract (N02-D) forbids persisting model HTML on the fill path.
+ *
+ * Non-Clone runs must keep the strict guard — this helper is only intended for
+ * the Clone content-fill flow (guard the call site with the fill ref).
+ */
+export const CLONE_CONTENT_FILL_LOW_SUBSTANCE_PERSIST_REASONS: readonly string[] = [
+  'low-substance deck artifact',
+  'unfilled-catalog-example',
+  'incomplete-html-document-shell',
+];
+
+export function isCloneContentFillLowSubstancePersistReason(
+  reason: unknown,
+): boolean {
+  if (typeof reason !== 'string') return false;
+  const normalized = reason.trim().toLowerCase();
+  if (!normalized) return false;
+  return CLONE_CONTENT_FILL_LOW_SUBSTANCE_PERSIST_REASONS.some(
+    (candidate) => candidate.toLowerCase() === normalized,
+  );
+}
+
 export function classifyTemplateCloneShellRole(shell: {
   attrs: string;
   body: string;

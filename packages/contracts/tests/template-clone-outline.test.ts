@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  CLONE_CONTENT_FILL_LOW_SUBSTANCE_PERSIST_REASONS,
   TEMPLATE_CLONE_OUTLINE_MAX_SLIDES,
   applyTemplateCloneSlotFill,
   decideTemplateCloneSlotFillTerminal,
   inferTemplateCloneContentRole,
+  isCloneContentFillLowSubstancePersistReason,
   outlineLooksLikeHtmlDump,
   parseTemplateCloneDeckOutline,
 } from '../src/template-clone-fill.js';
@@ -252,5 +254,31 @@ describe('0901-N02 decideTemplateCloneSlotFillTerminal (B5)', () => {
       expect(decision.html).toBe(seed);
       expect(decision.html).not.toContain('<!doctype');
     }
+  });
+});
+
+describe('루프362 isCloneContentFillLowSubstancePersistReason', () => {
+  it('matches known Clone first-fill low-substance persist reasons', () => {
+    for (const reason of CLONE_CONTENT_FILL_LOW_SUBSTANCE_PERSIST_REASONS) {
+      expect(isCloneContentFillLowSubstancePersistReason(reason)).toBe(true);
+    }
+  });
+
+  it('is case-insensitive and trims whitespace', () => {
+    expect(isCloneContentFillLowSubstancePersistReason('  LOW-SUBSTANCE DECK ARTIFACT  ')).toBe(true);
+    expect(isCloneContentFillLowSubstancePersistReason('Unfilled-Catalog-Example')).toBe(true);
+    expect(isCloneContentFillLowSubstancePersistReason('INCOMPLETE-HTML-DOCUMENT-SHELL')).toBe(true);
+  });
+
+  it('rejects unrelated reasons and non-string input', () => {
+    expect(isCloneContentFillLowSubstancePersistReason('template-clone-slot-fill-json-repair')).toBe(false);
+    expect(isCloneContentFillLowSubstancePersistReason('thin-prior-top-up-no-append')).toBe(false);
+    expect(isCloneContentFillLowSubstancePersistReason('artifact-regression')).toBe(false);
+    expect(isCloneContentFillLowSubstancePersistReason('')).toBe(false);
+    expect(isCloneContentFillLowSubstancePersistReason('   ')).toBe(false);
+    expect(isCloneContentFillLowSubstancePersistReason(null)).toBe(false);
+    expect(isCloneContentFillLowSubstancePersistReason(undefined)).toBe(false);
+    expect(isCloneContentFillLowSubstancePersistReason(42)).toBe(false);
+    expect(isCloneContentFillLowSubstancePersistReason({ reason: 'low-substance deck artifact' })).toBe(false);
   });
 });

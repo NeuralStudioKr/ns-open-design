@@ -7,6 +7,7 @@ import { reconcileUserCommentAttachments } from '../comments';
 import { recoverChatAttachmentsFromMentions } from '../utils/recoverChatAttachmentsFromMentions';
 import {
   AUTO_CONTINUE_STATUS_CODE,
+  CLONE_LOOK_SEED_FALLBACK_STATUS_CODE,
   EMERGENCY_DECK_FALLBACK_STATUS_CODE,
   OUTLINE_DECK_FALLBACK_STATUS_CODE,
 } from './deliverable-lifecycle-codes';
@@ -152,10 +153,12 @@ function hasPersistedRunErrorEvent(events: AgentEvent[]): boolean {
       event.kind === 'status'
       && event.label === 'error'
       && event.code !== AUTO_CONTINUE_STATUS_CODE
-      // Emergency / outline salvage marks the run succeeded — do not flip it
-      // back to failed on reload just because the notice reused the status channel.
+      // Emergency / outline / clone-LOOK-seed salvage marks the run succeeded —
+      // do not flip it back to failed on reload just because the notice
+      // reused the status channel.
       && event.code !== EMERGENCY_DECK_FALLBACK_STATUS_CODE
       && event.code !== OUTLINE_DECK_FALLBACK_STATUS_CODE
+      && event.code !== CLONE_LOOK_SEED_FALLBACK_STATUS_CODE
       && Boolean(event.detail?.trim()),
   );
 }
@@ -217,6 +220,7 @@ function isTransientChatErrorCode(code: string | undefined): boolean {
     code === AUTO_CONTINUE_STATUS_CODE
     || code === EMERGENCY_DECK_FALLBACK_STATUS_CODE
     || code === OUTLINE_DECK_FALLBACK_STATUS_CODE
+    || code === CLONE_LOOK_SEED_FALLBACK_STATUS_CODE
   );
 }
 

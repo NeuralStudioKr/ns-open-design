@@ -18,6 +18,9 @@
 | **C3** 추가 템플릿 맵 + peer-driven host | ☑ 공통 peer/host 확장 · 9맵 · peer-driven/top-level |
 | **C4** prefixed `*-card` / `*-grid` heuristic | ☑ `xp/hc/column-card` · `team-member` · card-title/member-name |
 | **D** hybrid fallback 제거 | ☑ |
+| **루프359** HTML dump → seed-fallback 즉시 · repair AC abort시 seed 유지 | ☑ |
+| **루프360** repair 판단 messagesRef 레이스 · sendNow synchronous reject 회복 | ☑ |
+| **루프362** low-substance persist skip → LOOK seed 복구 (succeeded + warning) | ☑ |
 | MiniMax 실키 E2E | ☐ 키 없음 (`template-clone-minimax-live.e2e` skip 가드) |
 
 ## 검증
@@ -36,3 +39,4 @@
 - C3 peer-driven host: class host가 없어도 직접 자식 peer ≥ 2면 trim.
 - C4: `*-card`만 peer · `card-icon`/`card-title` 제외 · host는 `*-grid`/`grid-N`.
 - MiniMax 키(`MINIMAX_API_KEY` / `OD_MINIMAX_API_KEY`) 있으면 live smoke 슬롯 활성화.
+- 루프362: `isCloneContentFillLowSubstancePersistReason(reason)` (`low-substance deck artifact` / `unfilled-catalog-example` / `incomplete-html-document-shell`). Clone 첫 채우기 턴에서만 발동, LOOK seed 있으면 `skipped-duplicate`로 재작성 + `CLONE_LOOK_SEED_FALLBACK_STATUS_CODE` 경고. 비-Clone 실행은 그대로 low-substance gate 유지.
