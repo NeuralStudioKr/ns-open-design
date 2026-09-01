@@ -1828,6 +1828,8 @@ function textLooksLikeLeftoverPeerPlaceholder(html: string): boolean {
  * Hangul column letters still end at `하`.
  * 루프325 — drop empty column-number cards titled only `스무째`.
  * Keep spaced `스무 번째`, `기둥 R`, and number+body (`스무째 실카피`).
+ * 루프326 — drop empty column-number cards titled only `R`.
+ * Keep `기둥 S`, spaced `스무 번째`, and number+body (`기둥 R 실카피`).
  * These tokens are model-emitted column
  * numbers, not product copy.
  */
@@ -1837,8 +1839,8 @@ const LEFTOVER_INDEX_ROMAN =
 const LEFTOVER_INDEX_MARK = '[⓪①-⑨❶-❾⓿０-９⑴-⑼㉠-㉥]';
 /** 루프225/230 — 0 / 00 / 01–09 / 10 leftover shells. */
 const LEFTOVER_INDEX_DIGIT = '(?:0?[0-9]|10)';
-/** Latin A–Q / 가…하 column letters. Not roman I/V/X. Not R–Z. */
-const LEFTOVER_INDEX_LETTER = '(?:[a-q]|[가나다라마바사아자차카타파하])';
+/** Latin A–R / 가…하 column letters. Not roman I/V/X. Not S–Z. */
+const LEFTOVER_INDEX_LETTER = '(?:[a-r]|[가나다라마바사아자차카타파하])';
 /** 첫째…스무째 empty ordinal titles. Keep number+body / spaced `스무 번째`. */
 const LEFTOVER_INDEX_ORDINAL = '(?:스무|열아홉|열여덟|열일곱|열여섯|열다섯|열네|열세|열두|열한|첫|둘|셋|넷|다섯|여섯|일곱|여덟|아홉|열)(?:째|번째)';
 const LEFTOVER_INDEX_CORE =
