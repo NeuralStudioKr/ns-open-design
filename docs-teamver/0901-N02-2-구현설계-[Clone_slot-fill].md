@@ -86,13 +86,37 @@ slot-fill 입력 shell:
 
 P0: FE가 seed된 `deck.html`을 읽어 outline으로 재치환해도 됨(제목/본문만 덮어씀). motif 유지를 위해 **AI HTML로 덮지 않는 것**이 핵심.
 
-## Fallback (P0 안전망)
+## Fallback (P0 안전망) — B5 상세
 
-1. 응답이 JSON이 아니거나 schema fail → **한 번만** JSON 재요청 턴(짧은 repair prompt).
-2. 재요청도 fail 또는 HTML dump → 기존 hybrid content-fill(HTML artifact) 경로로 저장. 플래그 `templateCloneSlotFillFallback: true`(metadata, optional).
-3. P1에서 fallback 제거.
+### 불변식
 
-강제 전환·MiniMax 기본 경로 변경 없음.
+1. first-fill 턴에서 JSON outline 파싱·slot-fill 성공 → 그 HTML만 persist (motif 유지).
+2. 실패이고 **아직 repair 턴이 히스토리에 없으면** → HTML hybrid로 저장하지 **않는다**. 짧은 JSON repair user 턴을 **정확히 1회** 큐한다.
+3. repair 턴도 실패(또는 HTML dump만) → 기존 HTML artifact hybrid persist 허용. metadata `templateCloneSlotFillFallback: true`.
+4. repair 마커가 있으면 두 번째 repair를 큐하지 않는다 (루프 금지).
+
+### 결정표 (`decideTemplateCloneSlotFillTerminal`)
+
+| 조건 | 결과 |
+|------|------|
+| seed + valid outline → `applyTemplateCloneSlotFill` ok | `slot-fill` |
+| 위 실패 ∧ repair 미시도 | `queue-repair` |
+| 위 실패 ∧ repair 이미 있음 | `html-fallback` |
+
+### Repair prompt
+
+- 마커: `[Template clone slot-fill JSON repair]` (+ 기존 fill markers).
+- 본문: HTML dump/schema fail 명시, JSON shape 한 번만, `<!doctype`/`<section class="slide">` 금지.
+- 기존 incomplete-output 장문 AC 에세이 대신 **짧은** prompt.
+
+### ProjectView 배선
+
+1. terminal onDone, B4 직후 `decide…`.
+2. `queue-repair`: `artifactToPersist = null`, emergency HTML salvage 억제, incomplete AC 타이머로 repair prompt `handleSend` (fill meta 유지).
+3. `html-fallback`: resolve된 HTML 유지, persist metadata에 `templateCloneSlotFillFallback: true`.
+4. `slot-fill`: 기존 B4와 동일.
+
+강제 전환·MiniMax 기본 경로 변경 없음. P1에서 hybrid fallback 제거(D).
 
 ## overflow / leftover
 

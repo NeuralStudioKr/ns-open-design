@@ -3,13 +3,17 @@ import { describe, expect, it } from 'vitest';
 import {
   TEMPLATE_CLONE_CONTENT_FILL_MARKER,
   TEMPLATE_CLONE_CONTENT_FILL_TURN_MARKER,
+  TEMPLATE_CLONE_SLOT_FILL_REPAIR_MARKER,
   buildTemplateCloneContentFillSeed,
+  buildTemplateCloneSlotFillRepairPrompt,
   compactTemplateCloneFillSourceBrief,
   deriveTemplateCloneTopicLabel,
   ensureTemplateCloneContentFillContinuePrompt,
   extractTemplateCloneUserFacingRequest,
   historyHasTemplateCloneContentFill,
+  historyHasTemplateCloneSlotFillRepair,
   isTemplateCloneContentFillPrompt,
+  isTemplateCloneSlotFillRepairPrompt,
   looksLikeInstructionNotSlideCopy,
   normalizeTemplateCloneFillSlideCountHint,
   queueTemplateCloneContentFill,
@@ -401,6 +405,23 @@ describe('templateCloneContentFill', () => {
     expect(continued).toMatch(/이전 응답이 끊겼습니다/);
     // Idempotent when already stamped.
     expect(ensureTemplateCloneContentFillContinuePrompt(continued)).toBe(continued);
+  });
+
+  it('builds a one-shot JSON repair prompt (0901-N02 B5)', () => {
+    const repair = buildTemplateCloneSlotFillRepairPrompt();
+    expect(repair).toContain(TEMPLATE_CLONE_SLOT_FILL_REPAIR_MARKER);
+    expect(repair).toContain(TEMPLATE_CLONE_CONTENT_FILL_MARKER);
+    expect(isTemplateCloneSlotFillRepairPrompt(repair)).toBe(true);
+    expect(isTemplateCloneContentFillPrompt(repair)).toBe(true);
+    expect(repair).toMatch(/Emit ONE JSON outline only/i);
+    expect(repair).toMatch(/FORBIDDEN:.*section class="slide"/i);
+    expect(historyHasTemplateCloneSlotFillRepair([
+      { role: 'user', content: 'hello' },
+      { role: 'assistant', content: '<section class="slide">' },
+    ])).toBe(false);
+    expect(historyHasTemplateCloneSlotFillRepair([
+      { role: 'user', content: repair },
+    ])).toBe(true);
   });
 
   it('drops cloned deck.html from fill-queue attachments', () => {

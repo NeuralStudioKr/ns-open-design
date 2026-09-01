@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   TEMPLATE_CLONE_OUTLINE_MAX_SLIDES,
   applyTemplateCloneSlotFill,
+  decideTemplateCloneSlotFillTerminal,
   inferTemplateCloneContentRole,
   outlineLooksLikeHtmlDump,
   parseTemplateCloneDeckOutline,
@@ -135,5 +136,48 @@ describe('0901-N02 applyTemplateCloneSlotFill', () => {
         '<!doctype html><section class="slide"><h1>Nope</h1></section>',
       ),
     ).toBeNull();
+  });
+});
+
+describe('0901-N02 decideTemplateCloneSlotFillTerminal (B5)', () => {
+  const seed = [
+    '<section class="slide slide-title cover"><h1>Demo</h1></section>',
+    '<section class="slide"><h2>Body</h2><p>x</p></section>',
+  ].join('');
+
+  it('returns slot-fill when outline parses', () => {
+    const decision = decideTemplateCloneSlotFillTerminal({
+      rawFinalText: JSON.stringify({
+        title: '덱',
+        slides: [{ title: '표지', roleHint: 'cover' }, { title: '본문' }],
+      }),
+      seedHtml: seed,
+      repairAlreadyAttempted: false,
+    });
+    expect(decision.kind).toBe('slot-fill');
+    if (decision.kind === 'slot-fill') {
+      expect(decision.html).toContain('표지');
+      expect(decision.title).toBe('덱');
+    }
+  });
+
+  it('queues repair once when outline is invalid', () => {
+    expect(
+      decideTemplateCloneSlotFillTerminal({
+        rawFinalText: '<!doctype html><section class="slide"><h1>Nope</h1></section>',
+        seedHtml: seed,
+        repairAlreadyAttempted: false,
+      }),
+    ).toEqual({ kind: 'queue-repair' });
+  });
+
+  it('falls back to HTML hybrid after repair was attempted', () => {
+    expect(
+      decideTemplateCloneSlotFillTerminal({
+        rawFinalText: '<!doctype html><section class="slide"><h1>Nope</h1></section>',
+        seedHtml: seed,
+        repairAlreadyAttempted: true,
+      }),
+    ).toEqual({ kind: 'html-fallback' });
   });
 });

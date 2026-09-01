@@ -179,7 +179,7 @@ import {
   looksLikeLeftoverTemplateDemoDeck,
   looksLikeScrubbedCatalogExampleShell,
   sanitizePersistedDeckHostLeaks,
-  applyTemplateCloneSlotFill,
+  decideTemplateCloneSlotFillTerminal,
   type AudioVoiceOption,
   type MemorySystemPromptResponse,
   type ResearchOptions,
@@ -216,10 +216,12 @@ import {
 import {
   TEMPLATE_CLONE_CONTENT_FILL_MARKER,
   TEMPLATE_CLONE_CONTENT_FILL_TURN_MARKER,
+  buildTemplateCloneSlotFillRepairPrompt,
   clearTemplateCloneContentFillQueue,
   ensureTemplateCloneContentFillContinuePrompt,
   extractTemplateCloneFillSlideCountHintFromPrompt,
   historyHasTemplateCloneContentFill,
+  historyHasTemplateCloneSlotFillRepair,
   isTemplateCloneContentFillPrompt,
   isTemplateCloneContentFillQueued,
   queueTemplateCloneContentFill,
@@ -3457,6 +3459,10 @@ export function ProjectView({
    * large cloned CSS/SVG shell, and must not block intentional slide-count caps.
    */
   const runTemplateCloneContentFillRef = useRef(false);
+  /** 0901-N02 B5 — suppress HTML hybrid this turn and fire one JSON repair send. */
+  const pendingSlotFillRepairRef = useRef(false);
+  /** 0901-N02 B5 — persist metadata when HTML hybrid was used after repair. */
+  const runTemplateCloneSlotFillFallbackRef = useRef(false);
   /** Hidden / user slide-count append — persist merges new sections onto disk. */
   const runSlideCountTopUpRef = useRef(false);
   /**
@@ -5921,6 +5927,9 @@ export function ProjectView({
           ? {
               templateCloneContentFilled: true,
               templateClonedDeckSeeded: false,
+              ...(runTemplateCloneSlotFillFallbackRef.current
+                ? { templateCloneSlotFillFallback: true }
+                : {}),
             }
           : {}),
       };
@@ -9714,6 +9723,8 @@ export function ProjectView({
           && historyHasTemplateCloneContentFill(historyBase)
         );
       runTemplateCloneContentFillRef.current = isCloneContentFillTurn;
+      pendingSlotFillRepairRef.current = false;
+      runTemplateCloneSlotFillFallbackRef.current = false;
       const fillSlideCountHint =
         extractTemplateCloneFillSlideCountHintFromPrompt(
           retryTarget ? retryTarget.userMsg.content || prompt : prompt,
@@ -10387,23 +10398,39 @@ export function ProjectView({
                 deckTitle: project.name || '슬라이드',
               },
             );
-            // 0901-N02 B4 — JSON outline → slot-fill LOOK seed (prefer over HTML rewrite).
+            // 0901-N02 B4/B5 — JSON outline → LOOK seed slot-fill; else one repair; else HTML hybrid.
             if (runTemplateCloneContentFillRef.current) {
               try {
                 const seedHtml = await readProjectHtml('deck.html');
-                if (seedHtml?.trim()) {
-                  const slotFilled = applyTemplateCloneSlotFill(seedHtml, rawFinalText);
-                  if (slotFilled) {
-                    artifactToPersist = {
-                      identifier: 'deck',
-                      artifactType: 'deck',
-                      title: slotFilled.title,
-                      html: slotFilled.html,
-                    };
-                  }
+                const decision = decideTemplateCloneSlotFillTerminal({
+                  rawFinalText,
+                  seedHtml,
+                  repairAlreadyAttempted: historyHasTemplateCloneSlotFillRepair(
+                    messagesRef.current,
+                  ),
+                });
+                if (decision.kind === 'slot-fill') {
+                  pendingSlotFillRepairRef.current = false;
+                  runTemplateCloneSlotFillFallbackRef.current = false;
+                  artifactToPersist = {
+                    identifier: 'deck',
+                    artifactType: 'deck',
+                    title: decision.title,
+                    html: decision.html,
+                  };
+                } else if (decision.kind === 'queue-repair') {
+                  // Do not save HTML hybrid before the one-shot JSON repair.
+                  artifactToPersist = null;
+                  pendingSlotFillRepairRef.current = true;
+                  runTemplateCloneSlotFillFallbackRef.current = false;
+                } else {
+                  pendingSlotFillRepairRef.current = false;
+                  runTemplateCloneSlotFillFallbackRef.current = true;
                 }
               } catch (error) {
                 devLog.warn('[teamver] template clone slot-fill failed; keeping HTML fallback', error);
+                pendingSlotFillRepairRef.current = false;
+                runTemplateCloneSlotFillFallbackRef.current = true;
               }
             }
             if (artifactToPersist?.html) {
@@ -10528,6 +10555,19 @@ export function ProjectView({
                 terminalPersistResultKind = persistResult?.kind ?? null;
                 terminalPersistResult = persistResult;
                 nextFiles = await refreshProjectFiles();
+              }
+            }
+
+            // 0901-N02 B5 — force incomplete path so the one-shot JSON repair can auto-send.
+            if (pendingSlotFillRepairRef.current) {
+              terminalArtifactPersistFailed = true;
+              if (!terminalPersistResult) {
+                terminalPersistResult = {
+                  kind: 'skipped-incomplete',
+                  fileName: 'deck.html',
+                  reason: 'template-clone-slot-fill-json-repair',
+                };
+                terminalPersistResultKind = 'skipped-incomplete';
               }
             }
 
@@ -10664,7 +10704,9 @@ export function ProjectView({
               const terminalAutoContinueVisualFlags = visualAnnotationAutoContinueFlags(
                 terminalAutoContinueCommentAttachments,
               );
-              const canAutoContinue = shouldAutoContinueForIncompleteOutput({
+              const canAutoContinue =
+                pendingSlotFillRepairRef.current
+                || shouldAutoContinueForIncompleteOutput({
                 runIsVisible: runIsVisible(),
                 autoContinueCount,
                 scopedCommentAttachmentCount: terminalAutoContinueCommentAttachments.length,
@@ -10697,6 +10739,7 @@ export function ProjectView({
                 slideOnlyMvp
                 && !producedHtmlToOpen
                 && streamLooksLikeHtmlDeliverable
+                && !pendingSlotFillRepairRef.current
               ) {
                 const outlineMessages = retryTarget
                   ? [...historyBase, latestAssistantMsg]
@@ -10973,7 +11016,13 @@ export function ProjectView({
                   const autoContinueOriginIsFill = isTemplateCloneContentFillPrompt(
                     originatingUserMsg?.content,
                   );
-                  const autoContinuePromptRaw = resolveAutoContinuePrompt({
+                  const wantSlotFillRepair = pendingSlotFillRepairRef.current;
+                  if (wantSlotFillRepair) {
+                    pendingSlotFillRepairRef.current = false;
+                  }
+                  const autoContinuePromptRaw = wantSlotFillRepair
+                    ? buildTemplateCloneSlotFillRepairPrompt()
+                    : resolveAutoContinuePrompt({
                     commentAttachmentCount: autoContinueCommentAttachments.length,
                     visualMarkOnly: autoContinueVisualFlags.visualMarkOnly,
                     visualAnnotationEdit: autoContinueVisualFlags.visualAnnotationEdit,
@@ -11001,7 +11050,9 @@ export function ProjectView({
                       healTitle: project.name || '슬라이드',
                     },
                   });
-                  const autoContinuePrompt = autoContinueOriginIsFill
+                  const autoContinuePrompt = wantSlotFillRepair
+                    ? autoContinuePromptRaw
+                    : autoContinueOriginIsFill
                     ? ensureTemplateCloneContentFillContinuePrompt(autoContinuePromptRaw)
                     : autoContinuePromptRaw;
                   // Preserve comment scope + image/deck attachments on retry.
@@ -11014,7 +11065,9 @@ export function ProjectView({
                     autoContinueCommentAttachments,
                     {
                       entryFrom: AUTO_CONTINUE_ENTRY_FROM,
-                      ...(autoContinueOriginIsFill ? { templateCloneContentFill: true } : {}),
+                      ...((autoContinueOriginIsFill || wantSlotFillRepair)
+                        ? { templateCloneContentFill: true }
+                        : {}),
                     },
                   );
                   void Promise.resolve(started).then((ok) => {

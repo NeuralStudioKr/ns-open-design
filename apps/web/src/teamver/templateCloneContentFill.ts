@@ -42,6 +42,9 @@ export const TEMPLATE_CLONE_CONTENT_FILL_MARKER = '[Template clone content fill]
 /** Appended model-only contract after Clone seed (not an existing-deck edit). */
 export const TEMPLATE_CLONE_CONTENT_FILL_TURN_MARKER = '[Template clone content fill turn]';
 
+/** One-shot JSON repair after invalid outline (0901-N02 B5). */
+export const TEMPLATE_CLONE_SLOT_FILL_REPAIR_MARKER = '[Template clone slot-fill JSON repair]';
+
 export function templateCloneContentFillFlagKey(projectId: string): string {
   return `od:template-clone-content-fill:${projectId}`;
 }
@@ -55,7 +58,39 @@ export function isTemplateCloneContentFillPrompt(text: string | null | undefined
   return (
     value.includes(TEMPLATE_CLONE_CONTENT_FILL_MARKER)
     || value.includes(TEMPLATE_CLONE_CONTENT_FILL_TURN_MARKER)
+    || value.includes(TEMPLATE_CLONE_SLOT_FILL_REPAIR_MARKER)
   );
+}
+
+export function isTemplateCloneSlotFillRepairPrompt(text: string | null | undefined): boolean {
+  return String(text ?? '').includes(TEMPLATE_CLONE_SLOT_FILL_REPAIR_MARKER);
+}
+
+/** True when any user turn already requested the one-shot JSON repair. */
+export function historyHasTemplateCloneSlotFillRepair(
+  messages: readonly { role?: string; content?: string | null }[],
+): boolean {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const message = messages[i];
+    if (message?.role === 'user' && isTemplateCloneSlotFillRepairPrompt(message.content)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** Short repair user turn — not the long incomplete-output auto-continue essay. */
+export function buildTemplateCloneSlotFillRepairPrompt(): string {
+  return [
+    TEMPLATE_CLONE_CONTENT_FILL_MARKER,
+    TEMPLATE_CLONE_CONTENT_FILL_TURN_MARKER,
+    TEMPLATE_CLONE_SLOT_FILL_REPAIR_MARKER,
+    'Previous reply was not a valid JSON outline (HTML dump or schema fail).',
+    'Emit ONE JSON outline only this turn — plain or ```json fenced.',
+    'Shape: {"title":"...","slides":[{"title":"...","body":"line\\nline","roleHint":"cover|list|cards|timeline|stat|quote|team|process|closing|body"}]}',
+    'FORBIDDEN: <!doctype, <html, <head, <style, <section class="slide">, Motif <svg>.',
+    'Host slot-fills the LOOK seed. Do not regenerate deck HTML.',
+  ].join('\n');
 }
 
 /** True when the most recent user turn is still a Clone content-fill. */

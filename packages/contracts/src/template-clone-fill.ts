@@ -246,6 +246,29 @@ export function applyTemplateCloneSlotFill(
   return { html, title: outline.title };
 }
 
+export type TemplateCloneSlotFillTerminalDecision =
+  | { kind: 'slot-fill'; html: string; title: string }
+  | { kind: 'queue-repair' }
+  | { kind: 'html-fallback' };
+
+/**
+ * Terminal decision for Clone first-fill (0901-N02 B5).
+ * Prefer LOOK seed slot-fill; otherwise one JSON repair, then HTML hybrid.
+ */
+export function decideTemplateCloneSlotFillTerminal(input: {
+  rawFinalText: string;
+  seedHtml: string | null | undefined;
+  repairAlreadyAttempted: boolean;
+}): TemplateCloneSlotFillTerminalDecision {
+  const seed = String(input.seedHtml ?? '').trim();
+  if (seed) {
+    const filled = applyTemplateCloneSlotFill(seed, input.rawFinalText);
+    if (filled) return { kind: 'slot-fill', html: filled.html, title: filled.title };
+  }
+  if (!input.repairAlreadyAttempted) return { kind: 'queue-repair' };
+  return { kind: 'html-fallback' };
+}
+
 export function classifyTemplateCloneShellRole(shell: {
   attrs: string;
   body: string;
