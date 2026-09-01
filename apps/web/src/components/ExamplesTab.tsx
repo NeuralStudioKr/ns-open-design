@@ -698,7 +698,7 @@ function ExampleCard({
                   role="menuitem"
                   onClick={() => {
                     setShareOpen(false);
-                    exportAsPdf(html, exportTitle, { deck: isDeck });
+                    void exportAsPdf(html, exportTitle, { deck: isDeck }).catch(() => {});
                   }}
                 >
                   <span className="share-menu-icon">📄</span>

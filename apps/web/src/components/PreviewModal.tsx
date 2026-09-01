@@ -1167,7 +1167,7 @@ export function PreviewModal({
                               onSharePopoverItemClick?.('pdf');
                               setTemplateShareOpen(false);
                               if (activeHtml) {
-                                exportAsPdf(activeHtml, exportTitle, { deck: activeDeck });
+                                void exportAsPdf(activeHtml, exportTitle, { deck: activeDeck }).catch(() => {});
                               }
                             }}
                           >

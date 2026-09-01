@@ -15,6 +15,7 @@ import {
   FILE_SYSTEM_READ_ERROR_MESSAGE,
   isFileSystemReadError,
 } from '../utils/fileSystemErrors';
+import { formatProjectRenameErrorForUser } from '../teamver/projectUploadErrors';
 import { isVisualStabilityMode } from '../utils/visualStability';
 import { projectFileResolvedPath } from '../utils/projectFilePaths';
 import { selectInitialDesignPreviewFile } from './design-files/designArtifacts';
@@ -313,6 +314,7 @@ export function DesignFilesPanel({
   const [supportingExpanded, setSupportingExpanded] = useState(true);
   const [draggingFiles, setDraggingFiles] = useState(false);
   const [dropReadError, setDropReadError] = useState<string | null>(null);
+  const [renameError, setRenameError] = useState<string | null>(null);
   const dragDepthRef = useRef(0);
   const [hover, setHover] = useState<string | null>(null);
   const [menuPos, setMenuPos] = useState<{ name: string; top: number; left: number } | null>(null);
@@ -536,6 +538,7 @@ export function DesignFilesPanel({
 
   function startRename(name: string) {
     setMenuPos(null);
+    setRenameError(null);
     setPreview(name);
     const draft = currentDir === '' ? name : name.slice(currentDir.length + 1);
     setRenaming({ name, draft, saving: false });
@@ -566,7 +569,7 @@ export function DesignFilesPanel({
       });
       setRenaming(null);
     } catch (err) {
-      alert(err instanceof Error ? err.message : String(err));
+      setRenameError(formatProjectRenameErrorForUser(err));
       setRenaming({ name, draft, saving: false });
     }
   }
@@ -882,7 +885,7 @@ export function DesignFilesPanel({
     </nav>
   );
 
-  const visibleUploadError = uploadError ?? dropReadError;
+  const visibleUploadError = uploadError ?? dropReadError ?? renameError;
   const hasSelection = selected.size > 0;
 
   return (
@@ -925,12 +928,13 @@ export function DesignFilesPanel({
           {visibleUploadError && !preview ? (
             <div className="df-upload-banner" data-testid="upload-error-banner">
               <span>{visibleUploadError}</span>
-              {onClearUploadError || dropReadError ? (
+              {onClearUploadError || dropReadError || renameError ? (
                 <button
                   type="button"
                   data-testid="upload-error-dismiss"
                   onClick={() => {
                     setDropReadError(null);
+                    setRenameError(null);
                     onClearUploadError?.();
                   }}
                 >

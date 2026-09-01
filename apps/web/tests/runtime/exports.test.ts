@@ -12,6 +12,7 @@ import {
   buildSandboxedPreviewDocument,
   exportAsImage,
   exportAsMd,
+  BROWSER_PDF_POPUP_BLOCKED,
   exportAsPdf,
   ExportQueueFullError,
   isUsablePrintSize,
@@ -2270,7 +2271,7 @@ describe('sandboxed preview Blob exports', () => {
     expect(doc).toContain('<main>Trusted local document</main>');
   });
 
-  it('shows an alert and revokes the blob URL when the popup is blocked', async () => {
+  it('throws and revokes the blob URL when the popup is blocked', async () => {
     vi.stubGlobal('window', {
       open: () => null,
       addEventListener: () => {},
@@ -2279,9 +2280,7 @@ describe('sandboxed preview Blob exports', () => {
     const revokeSpy = URL.revokeObjectURL as ReturnType<typeof vi.fn>;
     revokeSpy.mockClear();
 
-    await exportAsPdf('<p>test</p>', 'Blocked');
-
-    expect(alert).toHaveBeenCalledWith('Popup blocked! Click the popup-blocked icon in your browser address bar (or browser menu), choose "Always allow pop-ups" for this site, then retry Export PDF.');
+    await expect(exportAsPdf('<p>test</p>', 'Blocked')).rejects.toThrow(BROWSER_PDF_POPUP_BLOCKED);
     expect(revokeSpy).toHaveBeenCalledWith('blob:test-1');
   });
 

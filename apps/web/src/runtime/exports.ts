@@ -1798,7 +1798,11 @@ export async function exportProjectAsPdf(opts: {
     });
   } catch (fallbackErr) {
     devLog.warn('[exportProjectAsPdf] inline browser print fallback unavailable:', fallbackErr);
-    opts.fallbackPdf();
+    try {
+      await Promise.resolve(opts.fallbackPdf());
+    } catch (second) {
+      throw second instanceof Error ? second : fallbackErr;
+    }
   }
   return 'fallback';
 }
@@ -2389,6 +2393,11 @@ export function openSandboxedPreviewInNewTab(
 // equivalent print rules; this is a safety net for older / partially
 // regenerated decks where the framework was stripped — without it,
 // horizontal-snap decks print only the visible slide.
+export const BROWSER_PDF_PRINT_FAILED =
+  'PDF를 만들지 못했습니다. 다시 시도하거나 브라우저에서 저장해 주세요.';
+export const BROWSER_PDF_POPUP_BLOCKED =
+  '팝업이 차단되었습니다. 주소창에서 팝업을 허용한 뒤 다시 시도해 주세요.';
+
 export async function exportAsPdf(
   html: string,
   title: string,
@@ -2430,15 +2439,11 @@ export async function exportAsPdf(
     try {
       const result = await printHostPdf(doc, nonce, opts?.deck ? { deck: true } : undefined);
       if (result.ok) return;
-      if (typeof alert !== 'undefined') {
-        alert('Print failed. Please try Export PDF again or use the browser version.');
-      }
-    } catch {
-      if (typeof alert !== 'undefined') {
-        alert('Print failed. Please try Export PDF again or use the browser version.');
-      }
+      throw new Error(BROWSER_PDF_PRINT_FAILED);
+    } catch (err) {
+      if (err instanceof Error && err.message === BROWSER_PDF_PRINT_FAILED) throw err;
+      throw new Error(BROWSER_PDF_PRINT_FAILED);
     }
-    return;
   }
 
   // Browser fallback: wrap with allow-modals so the injected script can
@@ -2460,11 +2465,8 @@ export async function exportAsPdf(
   const win = window.open('', '_blank');
 
   if (!win) {
-    if (typeof alert !== 'undefined') {
-      alert('Popup blocked! Click the popup-blocked icon in your browser address bar (or browser menu), choose "Always allow pop-ups" for this site, then retry Export PDF.');
-    }
     URL.revokeObjectURL(url);
-    return;
+    throw new Error(BROWSER_PDF_POPUP_BLOCKED);
   }
 
   if (sandboxedPreview) {
