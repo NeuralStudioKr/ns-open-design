@@ -223,6 +223,7 @@ import {
   historyHasTemplateCloneContentFill,
   historyHasTemplateCloneSlotFillRepair,
   isTemplateCloneContentFillPrompt,
+  isTemplateCloneSlotFillRepairPrompt,
   isTemplateCloneContentFillQueued,
   queueTemplateCloneContentFill,
   readQueuedAutoSendSeed,
@@ -10402,12 +10403,16 @@ export function ProjectView({
             if (runTemplateCloneContentFillRef.current) {
               try {
                 const seedHtml = await readProjectHtml('deck.html');
+                // 루프360 — messagesRef can lag behind the appended AC user
+                // msg on very fast streams; also check THIS turn's userMsg
+                // so the repair turn never re-fires queue-repair by mistake.
+                const repairAlreadyAttempted =
+                  historyHasTemplateCloneSlotFillRepair(messagesRef.current)
+                  || isTemplateCloneSlotFillRepairPrompt(userMsg.content);
                 const decision = decideTemplateCloneSlotFillTerminal({
                   rawFinalText,
                   seedHtml,
-                  repairAlreadyAttempted: historyHasTemplateCloneSlotFillRepair(
-                    messagesRef.current,
-                  ),
+                  repairAlreadyAttempted,
                   templateId:
                     (project.metadata as { selectedDeckTemplateId?: string } | undefined)
                       ?.selectedDeckTemplateId
@@ -11153,6 +11158,11 @@ export function ProjectView({
                         conversationAutoContinueCountRef.current,
                         scheduledConversationId,
                       );
+                      // 루프360 — sendNow can reject synchronously (activeConversationId
+                      // flip, retryTarget miss). Without this, the first-turn card
+                      // stays incomplete_output forever even though the LOOK seed
+                      // is already on disk.
+                      keepLookSeedAfterRepairAbort();
                     }
                   });
                 }, 600);
