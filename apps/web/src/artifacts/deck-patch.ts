@@ -442,18 +442,44 @@ export function buildBlankDeckSlideShell(referenceOuterHtml?: string): string {
     const attrs = openMatch[1] ?? '';
     const classMatch = /\bclass\s*=\s*(?:"([^"]*)"|'([^']*)')/i.exec(attrs);
     if (classMatch) {
-      const cls = (classMatch[1] ?? classMatch[2] ?? 'slide').trim() || 'slide';
+      const cls = sanitizeBlankSlideClassList(classMatch[1] ?? classMatch[2] ?? 'slide');
       sectionOpen = `<section class="${cls}">`;
     }
   }
   return `${sectionOpen}<div class="slide-inner"><h2></h2></div></section>`;
 }
 
+/**
+ * 0901-N01 — Blank pages must not inherit active/cover chrome from the
+ * neighbor. Keep theme tokens (`slide-dark`, `theme-a`).
+ */
+function sanitizeBlankSlideClassList(raw: string): string {
+  const tokens = String(raw ?? '')
+    .split(/\s+/)
+    .map((t) => t.trim())
+    .filter(Boolean)
+    .filter((t) => !/^(?:is-active|active|current|slide-cover)$/i.test(t));
+  if (!tokens.includes('slide')) tokens.unshift('slide');
+  return tokens.join(' ') || 'slide';
+}
+
 function cloneSlideOuterHtmlForDuplicate(outerHtml: string): string {
   return outerHtml
     .replace(/\s*\bdata-slide-index\s*=\s*(?:"[^"]*"|'[^']*'|\S+)/gi, '')
     .replace(/\s*\bdata-od-id\s*=\s*(?:"[^"]*"|'[^']*'|\S+)/gi, '')
-    .replace(/\s*\bdata-screen-label\s*=\s*(?:"[^"]*"|'[^']*'|\S+)/gi, '');
+    .replace(/\s*\bdata-screen-label\s*=\s*(?:"[^"]*"|'[^']*'|\S+)/gi, '')
+    // Drop host-active chrome so two slides are not both "current".
+    .replace(
+      /\bclass\s*=\s*(["'])([^"']*)\1/i,
+      (_full, quote: string, cls: string) => {
+        const next = String(cls)
+          .split(/\s+/)
+          .filter(Boolean)
+          .filter((t) => !/^(?:is-active|active|current)$/i.test(t))
+          .join(' ');
+        return `class=${quote}${next || 'slide'}${quote}`;
+      },
+    );
 }
 
 /**

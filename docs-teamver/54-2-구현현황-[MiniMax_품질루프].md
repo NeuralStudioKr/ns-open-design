@@ -31,6 +31,12 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-09-01 현재 판단 · 최신 루프
 
+### 루프340 — flex 행 empty `<br>`-body 크롬 카드 drop
+
+루프334는 `display:grid`만 본다. MiniMax Tech Stack 실패가 `display:flex;gap` 행에도 남아 라벨+`<br>` 껍데기가 유지된다. inline flex 행도 동일 조건으로 제거. `flex-direction:column` · 본문 있는 카드 1장 이상 · 혼합 비크롬은 유지. 카피 발명 없음.
+
+검증: contracts heal-loop331-335-residuals 루프340.
+
 ### 루프339 — 칸 번호 Y 빈 카드
 
 루프338까지는 A–U / W / 가…하 / 스무째까지만 빈 칸 번호로 본다. 모델이 빠진 3열을 `기둥 Y`만으로 채워 빈 띠가 남는다. 그 제목만 제거. 띄어쓴 `스무 번째` / `기둥 Z`(로마 `X`는 이미 번호)와 번호+본문(`기둥 Y 실카피`)은 유지. 한글 열 라벨은 `하`가 끝. 280 vs 900 sidebar는 건드리지 않음. 카피 발명 없음. 공식 영문 카탈로그는 brief 없이 유지.
@@ -956,6 +962,7 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 
 ### 다음 루프 후보 (2026-08-31 EOD 기준)
 
+- **완료 (루프340):** flex 행 empty `<br>`-body 크롬 카드 drop. column·본문 있는 행 유지.
 - **완료 (루프339):** 칸 번호 Y 빈 카드. 띄어쓴 `스무 번째` / `기둥 Z`와 번호+본문은 유지. 280 vs 900 sidebar는 유지.
 - **완료 (루프338):** 칸 번호 W 빈 카드. 띄어쓴 `스무 번째` / `기둥 Y`(로마 `X` 제외)와 번호+본문은 유지.
 - **완료 (루프337):** 칸 번호 U 빈 카드. 띄어쓴 `스무 번째` / `기둥 W`(로마 `V` 제외)와 번호+본문은 유지.
@@ -1372,6 +1379,7 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | heal: 그리드 밖 형제로 새어나간 STEP 03 본문 흡수 | ☑ 루프332 |
 | heal: orphan `<b>30%</b></div>` inline tail 조각 제거 | ☑ 루프333 |
 | heal: Tech Stack 크롬 카드 본문이 `<br>`뿐인 그리드 제거 | ☑ 루프334 |
+| heal: Tech Stack empty `<br>`-body flex 행 제거 | ☑ 루프340 |
 | heal: HTML void `<br>/<img>/<hr>` 등 depth 안정화 | ☑ 루프335 |
 | heal: nested card soup extra `</div>`가 장 호스트를 닫음 | ☑ 루프287 |
 | docs: leftover 용어를 「빈 칸 번호 카드」로 정리 | ☑ 루프284 |
@@ -1398,7 +1406,13 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | contracts pretest: exactOptionalPropertyTypes TS2379 봉쇄 | ☑ 루프263 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음. `minimax-live-e2e.gate.test.ts`가 키 부재를 고정 |
 
-## 이번 루프 (루프339 · 칸 번호 Y)
+## 이번 루프 (루프340 · flex empty `<br>`-body chrome)
+
+- [x] dropChromeCardGridsWithAllEmptyBodies — inline flex 행
+- [x] column flex · 본문 있는 행 유지
+- [x] heal-loop331-335-residuals 루프340
+
+## 직전 루프 (루프339 · 칸 번호 Y)
 
 - [x] 빈 칸 번호 — Y
 - [x] 띄어쓴 `스무 번째` / `기둥 Z` · 번호+본문 유지

@@ -159,4 +159,29 @@ describe('0901-N01 deck structure mutations', () => {
     expect(shell).toContain('class="slide slide-dark theme-a"');
     expect(shell).toContain('<h2></h2>');
   });
+
+  it('buildBlankDeckSlideShell drops cover/active chrome from the neighbor (0901-N01)', () => {
+    const shell = buildBlankDeckSlideShell(
+      '<section class="slide slide-cover is-active current theme-a">',
+    );
+    expect(shell).toContain('class="slide theme-a"');
+    expect(shell).not.toMatch(/\bslide-cover\b/);
+    expect(shell).not.toMatch(/\bis-active\b/);
+    expect(shell).not.toMatch(/\bcurrent\b/);
+  });
+
+  it('duplicate strips is-active/current but keeps slide-cover theme (0901-N01)', () => {
+    const html =
+      '<!doctype html><html><body>'
+      + '<section class="slide slide-cover is-active" data-slide-index="0" data-od-id="s0" data-screen-label="Cover"><h1>Cover</h1></section>'
+      + '<section class="slide" data-slide-index="1" data-screen-label="Body"><h1>Body</h1></section>'
+      + '</body></html>';
+    const out = duplicateDeckSlideAt(html, 0);
+    expect(out.ok).toBe(true);
+    if (!out.ok) return;
+    const slides = extractTopLevelSlideSections(out.html);
+    expect(slides[1]!.outerHtml).toContain('slide-cover');
+    expect(slides[1]!.outerHtml).not.toMatch(/\bis-active\b/);
+    expect(slides[0]!.outerHtml).toContain('is-active');
+  });
 });

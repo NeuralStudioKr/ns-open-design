@@ -145,6 +145,35 @@ describe('루프334 · dropChromeCardGridsWithAllEmptyBodies', () => {
     ].join('');
     expect(dropChromeCardGridsWithAllEmptyBodies(html, brief)).toBe(html);
   });
+
+  it('drops a flex row whose chrome cards each have only <br>-body slots (루프340)', () => {
+    const html = [
+      '<section class="slide" data-screen-label="06 Tech Stack">',
+      '<h2>기술 스택</h2>',
+      '<div style="display:flex;gap:20px">',
+      `<div style="${chrome}"><div>LLM / NLP</div><div style="font-family:VT323"><br><br><br></div></div>`,
+      `<div style="${chrome}"><div>DATA / MLOps</div><div style="font-family:VT323"><br><br><br></div></div>`,
+      `<div style="${chrome}"><div>APP / UX</div><div style="font-family:VT323"><br><br><br></div></div>`,
+      '</div>',
+      '<div style="font-family:VT323">C:\\&gt; vendor-lock 없이 채택합니다.</div>',
+      '</section>',
+    ].join('');
+    const out = dropChromeCardGridsWithAllEmptyBodies(html, brief);
+    expect(out).not.toContain('LLM / NLP');
+    expect(out).not.toContain('APP / UX');
+    expect(out).toContain('기술 스택');
+    expect(out).toContain('vendor-lock 없이 채택합니다.');
+  });
+
+  it('leaves a column flex stack of empty chrome cards alone (루프340)', () => {
+    const html = [
+      '<div style="display:flex;flex-direction:column;gap:20px">',
+      `<div style="${chrome}"><div>LLM / NLP</div><div style="font-family:VT323"><br><br><br></div></div>`,
+      `<div style="${chrome}"><div>DATA / MLOps</div><div style="font-family:VT323"><br><br><br></div></div>`,
+      '</div>',
+    ].join('');
+    expect(dropChromeCardGridsWithAllEmptyBodies(html, brief)).toBe(html);
+  });
 });
 
 describe('healAiGeneratedDeckMarkup · neuralstudio.kr 회사소개 잔여', () => {

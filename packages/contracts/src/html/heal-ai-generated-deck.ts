@@ -3091,6 +3091,8 @@ export function stripDuplicatedInlineTailAfterSiblingClose(html: string): string
  * 그리드의 모든 크롬 카드가 본문 슬롯이 완전히 비면 그 그리드만 제거
  * (슬라이드의 제목·꼬리 카피는 유지). 다른 카드가 하나라도 채워졌으면
  * 유지. 카피 발명 없음.
+ * 루프340 — 같은 실패가 `display:flex` 행에도 남음. inline flex 행도
+ * 동일 조건으로 제거. `flex-direction:column` · 혼합 비크롬 자식 유지.
  */
 export function dropChromeCardGridsWithAllEmptyBodies(
   html: string,
@@ -3106,7 +3108,9 @@ export function dropChromeCardGridsWithAllEmptyBodies(
   while ((match = openRe.exec(out)) !== null) {
     const attrs = match[2] ?? '';
     const style = extractInlineStyle(attrs);
-    if (!/(?:^|;)\s*display\s*:\s*(?:inline-)?grid\b/i.test(style)) continue;
+    const isGrid = /(?:^|;)\s*display\s*:\s*(?:inline-)?grid\b/i.test(style);
+    const isFlexRow = isFlexRowContainerStyle(style);
+    if (!isGrid && !isFlexRow) continue;
     const tag = (match[1] ?? '').toLowerCase();
     const openEnd = match.index + match[0].length;
     const close = findSameTagClose(out, tag, openEnd);
@@ -3537,7 +3541,7 @@ export function healAiGeneratedDeckMarkup(html: string, brief?: string | null): 
   out = dropAdjacentDuplicatePeerCards(out, brief);
   // 루프334 — 크롬 카드 그리드의 본문 슬롯이 전부 <br>만 남은 경우
   // (Tech Stack 등) 그 그리드만 제거. 슬라이드 제목·꼬리 카피는 유지.
-  // 루프335 — HTML void 요소 depth 안정화 후에 그리드 자식이 정확히 잡힌다.
+  // 루프340 — display:flex 행도 동일. 루프335 void depth 안정화 후 자식 정확.
   out = dropChromeCardGridsWithAllEmptyBodies(out, brief);
   out = unnestHeadingBlockChildren(out);
   out = polishTruncatedInstructionTitles(out);
