@@ -546,6 +546,7 @@ import {
   setTabs,
   updateConversation,
   updatePreviewCommentStatus,
+  applyPreviewCommentDeckSlideRemap,
   updateProject,
   updateRoutine,
   updateRoutineRun,
@@ -6725,6 +6726,7 @@ export async function startServer({
     listPreviewCommentsAsync,
     upsertPreviewComment,
     updatePreviewCommentStatus,
+    applyPreviewCommentDeckSlideRemap,
     deletePreviewComment,
   };
   const templateDeps = { getTemplate, listTemplates, deleteTemplate, insertTemplate, findTemplateByNameAndProject, updateTemplate };

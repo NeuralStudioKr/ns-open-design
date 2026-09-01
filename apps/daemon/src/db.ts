@@ -2606,6 +2606,104 @@ export function updatePreviewCommentStatus(db: SqliteDb, projectId: string, conv
   return getPreviewComment(db, projectId, conversationId, id);
 }
 
+/**
+ * After deck page delete/move: drop comments on removed slides and rewrite
+ * slide_index / slide_key by id. Two-phase slide_key update avoids uniqueness
+ * collisions when adjacent slides swap.
+ */
+export function applyPreviewCommentDeckSlideRemap(
+  db: SqliteDb,
+  projectId: string,
+  conversationId: string,
+  input: {
+    deleteIds?: readonly string[];
+    updates?: readonly { id: string; slideIndex: number }[];
+  },
+): { deleted: number; updated: number } {
+  const deleteIds = [...new Set(
+    (input.deleteIds ?? [])
+      .map((id) => String(id || '').trim())
+      .filter(Boolean),
+  )];
+  const updates = (input.updates ?? [])
+    .map((row) => ({
+      id: String(row?.id || '').trim(),
+      slideIndex: Math.floor(Number(row?.slideIndex)),
+    }))
+    .filter((row) => row.id && Number.isInteger(row.slideIndex) && row.slideIndex >= 0);
+  const now = Date.now();
+
+  if (isDaemonDbPostgres()) {
+    let deleted = 0;
+    let updated = 0;
+    for (const id of deleteIds) {
+      if (removeCachedPreviewComment(projectId, conversationId, id)) deleted += 1;
+    }
+    const cached = getCachedPreviewComments(projectId, conversationId) ?? [];
+    for (const update of updates) {
+      const existing = cached.find((row) => String((row as DbRow).id) === update.id) as DbRow | undefined;
+      if (!existing) continue;
+      const merged = {
+        ...existing,
+        slideIndex: update.slideIndex,
+        updatedAt: now,
+      };
+      upsertCachedPreviewComment(projectId, conversationId, merged);
+      updated += 1;
+    }
+    schedulePostgresWrite(async () => {
+      await pgCore.pgApplyPreviewCommentDeckSlideRemap(
+        getPostgresPool(),
+        projectId,
+        conversationId,
+        { deleteIds, updates, updatedAt: now },
+      );
+    });
+    return { deleted, updated };
+  }
+
+  const deleteStmt = db.prepare(
+    `DELETE FROM preview_comments
+      WHERE id = ? AND project_id = ? AND conversation_id = ?`,
+  );
+  const tempStmt = db.prepare(
+    `UPDATE preview_comments
+        SET slide_index = NULL, slide_key = ?, updated_at = ?
+      WHERE id = ? AND project_id = ? AND conversation_id = ?`,
+  );
+  const finalStmt = db.prepare(
+    `UPDATE preview_comments
+        SET slide_index = ?, slide_key = ?, updated_at = ?
+      WHERE id = ? AND project_id = ? AND conversation_id = ?`,
+  );
+
+  let deleted = 0;
+  let updated = 0;
+  const apply = db.transaction(() => {
+    for (const id of deleteIds) {
+      const result = deleteStmt.run(id, projectId, conversationId);
+      deleted += Number(result.changes || 0);
+    }
+    for (let i = 0; i < updates.length; i += 1) {
+      const update = updates[i]!;
+      tempStmt.run(-3_000_000 - i, now, update.id, projectId, conversationId);
+    }
+    for (const update of updates) {
+      const result = finalStmt.run(
+        update.slideIndex,
+        update.slideIndex,
+        now,
+        update.id,
+        projectId,
+        conversationId,
+      );
+      updated += Number(result.changes || 0);
+    }
+  });
+  apply();
+  return { deleted, updated };
+}
+
 export function deletePreviewComment(db: SqliteDb, projectId: string, conversationId: string, id: string) {
   if (isDaemonDbPostgres()) {
     const removed = removeCachedPreviewComment(projectId, conversationId, id);

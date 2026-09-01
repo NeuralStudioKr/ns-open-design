@@ -178,6 +178,10 @@ interface Props {
   previewComments?: PreviewComment[];
   onSavePreviewComment?: (target: PreviewCommentTarget, note: string, attachAfterSave: boolean, images?: File[]) => Promise<PreviewComment | null>;
   onRemovePreviewComment?: (commentId: string) => Promise<void>;
+  onRemapPreviewCommentsAfterDeckStructure?: (plan: {
+    deleteIds: string[];
+    updates: Array<{ id: string; slideIndex: number }>;
+  }) => Promise<void>;
   onSendBoardCommentAttachments?: (attachments: ChatCommentAttachment[], images?: File[]) => Promise<boolean | void> | boolean | void;
   onRequestBrowserUsePrompt?: (prompt: string) => void;
   onPluginFolderAgentAction?: (
@@ -449,6 +453,7 @@ export function FileWorkspace({
   previewComments = [],
   onSavePreviewComment,
   onRemovePreviewComment,
+  onRemapPreviewCommentsAfterDeckStructure,
   onSendBoardCommentAttachments,
   onRequestBrowserUsePrompt,
   onPluginFolderAgentAction,
@@ -2609,6 +2614,7 @@ export function FileWorkspace({
               previewComments={previewComments}
               onSavePreviewComment={onSavePreviewComment}
               onRemovePreviewComment={onRemovePreviewComment}
+              onRemapPreviewCommentsAfterDeckStructure={onRemapPreviewCommentsAfterDeckStructure}
               onSendBoardCommentAttachments={onSendBoardCommentAttachments}
               onRequestBrowserUsePrompt={onRequestBrowserUsePrompt}
               onRefreshFiles={onRefreshFiles}
@@ -2785,6 +2791,7 @@ export function FileWorkspace({
             previewComments={previewComments.filter((comment) => comment.filePath === resolvedPreviewFile.name)}
             onSavePreviewComment={onSavePreviewComment}
             onRemovePreviewComment={onRemovePreviewComment}
+            onRemapPreviewCommentsAfterDeckStructure={onRemapPreviewCommentsAfterDeckStructure}
             onSendBoardCommentAttachments={onSendBoardCommentAttachments}
             onFileSaved={onRefreshFiles}
             onOpenFileReplacing={openFileReplacing}

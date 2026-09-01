@@ -150,6 +150,7 @@ import {
   patchPreviewCommentStatus,
   projectRawUrl,
   pushProjectFileRevision,
+  remapPreviewCommentsDeckSlides,
   restoreProjectFileRevision,
   uploadProjectFiles,
   upsertPreviewComment,
@@ -7489,6 +7490,57 @@ export function ProjectView({
     ],
   );
 
+  const remapPreviewCommentsAfterDeckStructure = useCallback(
+    async (plan: {
+      deleteIds: string[];
+      updates: Array<{ id: string; slideIndex: number }>;
+    }) => {
+      if (!activeConversationId) return;
+      if (plan.deleteIds.length === 0 && plan.updates.length === 0) return;
+      const deleteSet = new Set(plan.deleteIds);
+      const updateMap = new Map(plan.updates.map((row) => [row.id, row.slideIndex]));
+      for (const id of plan.deleteIds) {
+        noteLocallyDeletedPreviewComment(id);
+      }
+      setPreviewComments((current) =>
+        current
+          .filter((comment) => !deleteSet.has(comment.id))
+          .map((comment) => {
+            const nextIndex = updateMap.get(comment.id);
+            return nextIndex === undefined
+              ? comment
+              : { ...comment, slideIndex: nextIndex };
+          }),
+      );
+      setAttachedComments((current) =>
+        current
+          .filter((comment) => !deleteSet.has(comment.id))
+          .map((comment) => {
+            const nextIndex = updateMap.get(comment.id);
+            return nextIndex === undefined
+              ? comment
+              : { ...comment, slideIndex: nextIndex };
+          }),
+      );
+      const result = await remapPreviewCommentsDeckSlides(
+        project.id,
+        activeConversationId,
+        plan,
+      );
+      if (!result.ok) {
+        setError(embedUiLabel(
+          'Slide order changed, but some comments could not be remapped. Refresh if markers look wrong.',
+          '슬라이드 순서는 바뀌었지만 일부 코멘트 위치를 맞추지 못했습니다. 마커가 이상하면 새로고침하세요.',
+        ));
+      }
+    },
+    [
+      project.id,
+      activeConversationId,
+      noteLocallyDeletedPreviewComment,
+    ],
+  );
+
   const attachPreviewComment = useCallback((comment: PreviewComment) => {
     setAttachedComments((current) => mergeAttachedComments(current, comment));
   }, []);
@@ -14417,6 +14469,7 @@ export function ProjectView({
           previewComments={previewComments}
           onSavePreviewComment={savePreviewComment}
           onRemovePreviewComment={removePreviewComment}
+          onRemapPreviewCommentsAfterDeckStructure={remapPreviewCommentsAfterDeckStructure}
           onSendBoardCommentAttachments={handleSendBoardCommentAttachments}
           onRequestBrowserUsePrompt={handleBrowserUsePrompt}
           onPluginFolderAgentAction={handlePluginFolderAgentAction}

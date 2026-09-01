@@ -40,6 +40,10 @@ import {
   extractTopLevelSlideSections,
   moveDeckSlideByDelta,
 } from '../artifacts/deck-patch';
+import {
+  planCommentRemapAfterSlideDelete,
+  planCommentRemapAfterSlideMove,
+} from '../artifacts/deck-structure-comment-remap';
 import { MarkdownRenderer, artifactRendererRegistry } from '../artifacts/renderer-registry';
 import { renderMarkdownToSafeHtml } from '../artifacts/markdown';
 import { useI18n } from '../i18n';
@@ -1601,6 +1605,10 @@ interface Props {
   previewComments?: PreviewComment[];
   onSavePreviewComment?: (target: PreviewCommentTarget, note: string, attachAfterSave: boolean, images?: File[]) => Promise<PreviewComment | null>;
   onRemovePreviewComment?: (commentId: string) => Promise<void>;
+  onRemapPreviewCommentsAfterDeckStructure?: (plan: {
+    deleteIds: string[];
+    updates: Array<{ id: string; slideIndex: number }>;
+  }) => Promise<void>;
   onSendBoardCommentAttachments?: (attachments: ChatCommentAttachment[], images?: File[]) => Promise<boolean | void> | boolean | void;
   onFileSaved?: () => Promise<void> | void;
   // Open `openName` as a tab (focusing it) and close `closeName` in one
@@ -1706,6 +1714,7 @@ export function FileViewer({
   previewComments = [],
   onSavePreviewComment,
   onRemovePreviewComment,
+  onRemapPreviewCommentsAfterDeckStructure,
   onSendBoardCommentAttachments,
   onFileSaved,
   onOpenFileReplacing,
@@ -1758,6 +1767,7 @@ export function FileViewer({
         previewComments={previewComments}
         onSavePreviewComment={onSavePreviewComment}
         onRemovePreviewComment={onRemovePreviewComment}
+        onRemapPreviewCommentsAfterDeckStructure={onRemapPreviewCommentsAfterDeckStructure}
         onSendBoardCommentAttachments={onSendBoardCommentAttachments}
         onFileSaved={onFileSaved}
         commentPortalId={commentPortalId}
@@ -5295,6 +5305,7 @@ function HtmlViewer({
   previewComments = [],
   onSavePreviewComment,
   onRemovePreviewComment,
+  onRemapPreviewCommentsAfterDeckStructure,
   onSendBoardCommentAttachments,
   onFileSaved,
   commentPortalId,
@@ -5320,6 +5331,10 @@ function HtmlViewer({
   previewComments?: PreviewComment[];
   onSavePreviewComment?: (target: PreviewCommentTarget, note: string, attachAfterSave: boolean, images?: File[]) => Promise<PreviewComment | null>;
   onRemovePreviewComment?: (commentId: string) => Promise<void>;
+  onRemapPreviewCommentsAfterDeckStructure?: (plan: {
+    deleteIds: string[];
+    updates: Array<{ id: string; slideIndex: number }>;
+  }) => Promise<void>;
   onSendBoardCommentAttachments?: (attachments: ChatCommentAttachment[], images?: File[]) => Promise<boolean | void> | boolean | void;
   onFileSaved?: () => Promise<void> | void;
   commentPortalId?: string;
@@ -14230,12 +14245,25 @@ function HtmlViewer({
     setDeckStructureBusy(true);
     setDeckStructureError(null);
     try {
-      await persistDeckStructureMutation(
+      const ok = await persistDeckStructureMutation(
         result.html,
         result.activeIndex,
         result.slideCount,
         embedUiLabel(`Delete slide ${active + 1}`, `슬라이드 ${active + 1} 삭제`),
       );
+      if (ok && onRemapPreviewCommentsAfterDeckStructure) {
+        const plan = planCommentRemapAfterSlideDelete(previewComments, file.name, active);
+        const deleteIds = plan.changes
+          .filter((change) => change.action === 'delete')
+          .map((change) => change.id);
+        const updates = plan.changes
+          .filter((change): change is { id: string; action: 'set'; slideIndex: number } =>
+            change.action === 'set')
+          .map((change) => ({ id: change.id, slideIndex: change.slideIndex }));
+        if (deleteIds.length > 0 || updates.length > 0) {
+          await onRemapPreviewCommentsAfterDeckStructure({ deleteIds, updates });
+        }
+      }
     } finally {
       setDeckStructureBusy(false);
     }
@@ -14259,7 +14287,7 @@ function HtmlViewer({
     setDeckStructureBusy(true);
     setDeckStructureError(null);
     try {
-      await persistDeckStructureMutation(
+      const ok = await persistDeckStructureMutation(
         result.html,
         result.activeIndex,
         result.slideCount,
@@ -14268,6 +14296,21 @@ function HtmlViewer({
           delta < 0 ? '슬라이드 앞으로 이동' : '슬라이드 뒤로 이동',
         ),
       );
+      if (ok && onRemapPreviewCommentsAfterDeckStructure) {
+        const plan = planCommentRemapAfterSlideMove(
+          previewComments,
+          file.name,
+          active,
+          result.activeIndex,
+        );
+        const updates = plan.changes
+          .filter((change): change is { id: string; action: 'set'; slideIndex: number } =>
+            change.action === 'set')
+          .map((change) => ({ id: change.id, slideIndex: change.slideIndex }));
+        if (updates.length > 0) {
+          await onRemapPreviewCommentsAfterDeckStructure({ deleteIds: [], updates });
+        }
+      }
     } finally {
       setDeckStructureBusy(false);
     }

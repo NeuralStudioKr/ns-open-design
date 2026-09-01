@@ -2006,6 +2006,38 @@ export async function deletePreviewComment(
   }
 }
 
+export async function remapPreviewCommentsDeckSlides(
+  projectId: string,
+  conversationId: string,
+  input: {
+    deleteIds?: readonly string[];
+    updates?: readonly { id: string; slideIndex: number }[];
+  },
+): Promise<{ ok: boolean; deleted: number; updated: number }> {
+  try {
+    const resp = await fetchTeamverDaemon(
+      `/api/projects/${encodeURIComponent(projectId)}/conversations/${encodeURIComponent(conversationId)}/comments/remap-deck-slides`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          deleteIds: input.deleteIds ?? [],
+          updates: input.updates ?? [],
+        }),
+      },
+    );
+    if (!resp.ok) return { ok: false, deleted: 0, updated: 0 };
+    const json = (await resp.json()) as { deleted?: number; updated?: number };
+    return {
+      ok: true,
+      deleted: Number(json.deleted) || 0,
+      updated: Number(json.updated) || 0,
+    };
+  } catch {
+    return { ok: false, deleted: 0, updated: 0 };
+  }
+}
+
 export async function writeProjectTextFile(
   projectId: string,
   name: string,

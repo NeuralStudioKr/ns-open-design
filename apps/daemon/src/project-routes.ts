@@ -972,7 +972,7 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
   const {
     insertConversation,
     insertConversationAsync,
-    getConversation, listConversations, listConversationsAsync, updateConversation, deleteConversation, listMessages, listMessagesAsync, upsertMessage, listPreviewComments, listPreviewCommentsAsync, upsertPreviewComment, updatePreviewCommentStatus, deletePreviewComment } = ctx.conversations;
+    getConversation, listConversations, listConversationsAsync, updateConversation, deleteConversation, listMessages, listMessagesAsync, upsertMessage, listPreviewComments, listPreviewCommentsAsync, upsertPreviewComment, updatePreviewCommentStatus, applyPreviewCommentDeckSlideRemap, deletePreviewComment } = ctx.conversations;
   const { getTemplate, listTemplates, deleteTemplate, insertTemplate, findTemplateByNameAndProject, updateTemplate } = ctx.templates;
   const {
     listLatestProjectRunStatusesAsync,
@@ -2300,6 +2300,35 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
           return res.status(404).json({ error: 'comment not found' });
         updateProject(db, req.params.id, { updatedAt: Date.now() });
         res.json({ comment });
+      } catch (err: any) {
+        res.status(400).json({ error: String(err?.message || err) });
+      }
+    },
+  );
+
+  /**
+   * After deck page delete/±1 move: drop comments on removed slides and
+   * rewrite slideIndex by id (two-phase uniqueness-safe).
+   */
+  app.post(
+    '/api/projects/:id/conversations/:cid/comments/remap-deck-slides',
+    async (req, res) => {
+      const conv = await ensureTeamverConversation(req.params.id, req.params.cid);
+      if (!conv) {
+        return res.status(404).json({ error: 'conversation not found' });
+      }
+      try {
+        const result = applyPreviewCommentDeckSlideRemap(
+          db,
+          req.params.id,
+          req.params.cid,
+          {
+            deleteIds: Array.isArray(req.body?.deleteIds) ? req.body.deleteIds : [],
+            updates: Array.isArray(req.body?.updates) ? req.body.updates : [],
+          },
+        );
+        updateProject(db, req.params.id, { updatedAt: Date.now() });
+        res.json({ ok: true, ...result });
       } catch (err: any) {
         res.status(400).json({ error: String(err?.message || err) });
       }

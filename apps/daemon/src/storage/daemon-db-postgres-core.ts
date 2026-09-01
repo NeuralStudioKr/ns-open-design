@@ -724,6 +724,54 @@ export async function pgUpdatePreviewCommentStatus(
   );
 }
 
+export async function pgApplyPreviewCommentDeckSlideRemap(
+  pool: Pool,
+  projectId: string,
+  conversationId: string,
+  input: {
+    deleteIds: string[];
+    updates: Array<{ id: string; slideIndex: number }>;
+    updatedAt: number;
+  },
+): Promise<void> {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    for (const id of input.deleteIds) {
+      await client.query(
+        `DELETE FROM preview_comments
+           WHERE id = $1 AND project_id = $2 AND conversation_id = $3`,
+        [id, projectId, conversationId],
+      );
+    }
+    // Two-phase slide_key rewrite avoids UNIQUE(file, element, slide_key) collisions
+    // when two comments on the same element swap adjacent slides.
+    for (let i = 0; i < input.updates.length; i += 1) {
+      const update = input.updates[i]!;
+      await client.query(
+        `UPDATE preview_comments
+            SET slide_index = NULL, slide_key = $4, updated_at = $5
+          WHERE id = $1 AND project_id = $2 AND conversation_id = $3`,
+        [update.id, projectId, conversationId, -3_000_000 - i, input.updatedAt],
+      );
+    }
+    for (const update of input.updates) {
+      await client.query(
+        `UPDATE preview_comments
+            SET slide_index = $4, slide_key = $4, updated_at = $5
+          WHERE id = $1 AND project_id = $2 AND conversation_id = $3`,
+        [update.id, projectId, conversationId, update.slideIndex, input.updatedAt],
+      );
+    }
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
 export async function pgDeletePreviewComment(
   pool: Pool,
   projectId: string,
