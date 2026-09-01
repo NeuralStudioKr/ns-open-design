@@ -367,6 +367,68 @@ describe('루프343 · empty div / &nbsp; body slots', () => {
   });
 });
 
+describe('루프344 · empty <p>/<span> wrapper body slots', () => {
+  it('drops mixed-row chrome cards whose body is an empty <p> wrapper', () => {
+    const html = [
+      '<section class="slide" data-screen-label="06 Tech Stack">',
+      '<h2>기술 스택</h2>',
+      '<div style="display:grid;grid-template-columns:repeat(3, minmax(0,1fr));gap:20px">',
+      `<div style="${chrome}"><div>LLM / NLP</div><div>Llama, vLLM, LangGraph</div></div>`,
+      `<div style="${chrome}"><div>DATA / MLOps</div><div><p></p></div></div>`,
+      `<div style="${chrome}"><div>APP / UX</div><div><p><br></p></div></div>`,
+      '</div>',
+      '</section>',
+    ].join('');
+    const out = dropUnfilledChromeCardPeersInAllocatedRows(html, brief);
+    expect(out).toContain('LLM / NLP');
+    expect(out).toContain('Llama, vLLM, LangGraph');
+    expect(out).not.toContain('DATA / MLOps');
+    expect(out).not.toContain('APP / UX');
+    expect(out).toContain('기술 스택');
+  });
+
+  it('drops empty <span> / nested empty wrappers in a mixed flex row', () => {
+    const html = [
+      '<div style="display:flex;gap:20px">',
+      `<div style="${chrome}"><div>LLM / NLP</div><div>Llama, vLLM</div></div>`,
+      `<div style="${chrome}"><div>DATA / MLOps</div><div><span></span></div></div>`,
+      `<div style="${chrome}"><div>APP / UX</div><div><p><span>&nbsp;</span></p></div></div>`,
+      '</div>',
+    ].join('');
+    const out = dropUnfilledChromeCardPeersInAllocatedRows(html, brief);
+    expect(out).toContain('Llama, vLLM');
+    expect(out).not.toContain('DATA / MLOps');
+    expect(out).not.toContain('APP / UX');
+  });
+
+  it('keeps a body slot that wraps real copy or media', () => {
+    const html = [
+      '<div style="display:flex;gap:20px">',
+      `<div style="${chrome}"><div>LLM / NLP</div><div><p>Llama, vLLM</p></div></div>`,
+      `<div style="${chrome}"><div>APP / UX</div><div><p><img src="mark.png" alt=""></p></div></div>`,
+      '</div>',
+    ].join('');
+    expect(dropUnfilledChromeCardPeersInAllocatedRows(html, brief)).toBe(html);
+  });
+
+  it('pipeline removes empty-p body chrome without inventing copy (루프344)', () => {
+    const html = [
+      '<section class="slide"><h2>기술 스택</h2>',
+      '<div style="display:flex;gap:20px">',
+      `<div style="${chrome}"><div>LLM / NLP</div><div>Llama, vLLM</div></div>`,
+      `<div style="${chrome}"><div>DATA / MLOps</div><div><p></p></div></div>`,
+      `<div style="${chrome}"><div>APP / UX</div><div><p><br></p></div></div>`,
+      '</div></section>',
+    ].join('');
+    const out = healAiGeneratedDeckMarkup(html, brief);
+    expect(out).toContain('기술 스택');
+    expect(out).toContain('Llama, vLLM');
+    expect(out).not.toContain('DATA / MLOps');
+    expect(out).not.toContain('APP / UX');
+    expect(out).not.toMatch(/기둥 Z|실카피/);
+  });
+});
+
 describe('healAiGeneratedDeckMarkup · neuralstudio.kr 회사소개 잔여', () => {
   it('applies 루프331 / 333 / 334 in a single heal pass', () => {
     const html = [

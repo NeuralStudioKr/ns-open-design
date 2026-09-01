@@ -1898,11 +1898,23 @@ function childLooksEmptyLeftoverPeer(child: DirectChildSpan): boolean {
  * inner is br/whitespace only — treat them as unfilled body slots.
  * 루프343 — empty `<div></div>` / `&nbsp;` body slots are the same
  * leftover. An empty source is empty (not "has no placeholders").
+ * 루프344 — empty wrapper tags (`<p></p>`, `<span></span>`,
+ * `<p><br></p>`, `<p><span>&nbsp;</span></p>`) collapse across passes.
+ * Media tags keep the slot filled so image cards survive.
  */
 function innerBlockContainsOnlyEmptyPlaceholders(html: string): boolean {
-  const source = String(html ?? '');
-  const compact = source.replace(/<br\s*\/?>/gi, '').replace(/&nbsp;|\s/g, '');
-  return compact === '';
+  let source = String(html ?? '');
+  if (/<(?:img|svg|video|audio|canvas|iframe|picture|source)\b/i.test(source)) return false;
+  let previous = '';
+  while (source !== previous) {
+    previous = source;
+    source = source
+      .replace(/<br\s*\/?>/gi, '')
+      .replace(/&nbsp;/gi, '')
+      .replace(/\s+/g, '')
+      .replace(/<([a-z][\w-]*)\b[^>]*><\/\1>/gi, '');
+  }
+  return source === '';
 }
 
 function chromeCardBodyLooksUnfilled(
@@ -3092,6 +3104,7 @@ export function stripDuplicatedInlineTailAfterSiblingClose(html: string): string
  * 루프342 — 한 장이라도 본문이 있으면 그리드 전체를 유지하던 잔여.
  * 채워진 크롬 카드는 두고, `<br>`-only 본문 슬롯인 형제만 제거.
  * 루프343 — 빈 `<div></div>` / `&nbsp;` 본문 슬롯도 동일.
+ * 루프344 — 빈 `<p>` / `<span>` 래퍼 본문 슬롯도 동일.
  * `flex-direction:column` · 혼합 비크롬 · 영문 empty-brief 카탈로그 유지.
  */
 export function dropChromeCardGridsWithAllEmptyBodies(
@@ -3142,7 +3155,8 @@ export function dropChromeCardGridsWithAllEmptyBodies(
  * body slots are only `<br>` / whitespace. Placement leftover of 334/340/341,
  * which only removed a row when every chrome card was empty.
  * 루프343 — empty `<div></div>` / `&nbsp;` body slots count as unfilled
- * too. Never invent copy. Column stacks and official English catalogs stay intact.
+ * too. 루프344 — empty `<p>` / `<span>` wrappers also count as unfilled.
+ * Never invent copy. Column stacks and official English catalogs stay intact.
  */
 export function dropUnfilledChromeCardPeersInAllocatedRows(
   html: string,
@@ -3602,8 +3616,9 @@ export function healAiGeneratedDeckMarkup(html: string, brief?: string | null): 
   // 루프340 — display:flex 행도 동일. 루프341 — class-bound flex/grid도 동일.
   // 루프335 void depth 안정화 후 자식 정확.
   out = dropChromeCardGridsWithAllEmptyBodies(out, brief);
-  // 루프342 — 본문 있는 행에서 `<br>`-only 크롬 카드만 제거. 전체 행
+  // 루프342 — 본문 있는 행에서 빈 본문 크롬 카드만 제거. 전체 행
   // drop(334) 다음, leftover shrink 이전에 실행해 빈 띠 트랙을 줄인다.
+  // 루프343 — 빈 div / `&nbsp;`. 루프344 — 빈 `<p>` / `<span>` 래퍼.
   out = dropUnfilledChromeCardPeersInAllocatedRows(out, brief);
   out = unnestHeadingBlockChildren(out);
   out = polishTruncatedInstructionTitles(out);
