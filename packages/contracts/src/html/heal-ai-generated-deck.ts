@@ -1896,10 +1896,11 @@ function childLooksEmptyLeftoverPeer(child: DirectChildSpan): boolean {
  * 루프335 — MiniMax often fills body copy blocks with `<br><br><br>` only.
  * Detect direct inner block children whose visible text is empty and whose
  * inner is br/whitespace only — treat them as unfilled body slots.
+ * 루프343 — empty `<div></div>` / `&nbsp;` body slots are the same
+ * leftover. An empty source is empty (not "has no placeholders").
  */
-function innerBlockContainsOnlyBrPlaceholders(html: string): boolean {
+function innerBlockContainsOnlyEmptyPlaceholders(html: string): boolean {
   const source = String(html ?? '');
-  if (!source) return false;
   const compact = source.replace(/<br\s*\/?>/gi, '').replace(/&nbsp;|\s/g, '');
   return compact === '';
 }
@@ -1909,7 +1910,6 @@ function chromeCardBodyLooksUnfilled(
   child: DirectChildSpan,
 ): boolean {
   const innerRaw = html.slice(child.absEnd, child.absEnd + child.inner.length);
-  if (!/<br\s*\/?>/i.test(innerRaw)) return false;
   // 루프335 — 스캐너가 `<br>` 을 open 으로 취급해 depth 가 흐려지지
   // 않도록 로컬에서 self-close 로 재작성해 자식 탐색을 안정화한다.
   const stripped = innerRaw.replace(/<br\b([^/>]*)>/gi, '<br$1/>');
@@ -1921,13 +1921,7 @@ function chromeCardBodyLooksUnfilled(
   for (const slot of slots) {
     if (slot.tag === 'br') continue;
     const text = visibleText(slot.inner);
-    if (text.length === 0 && innerBlockContainsOnlyBrPlaceholders(slot.inner)) {
-      emptyBodySlots += 1;
-      bodySlots += 1;
-    } else if (
-      /<br\s*\/?>/i.test(slot.inner)
-      && innerBlockContainsOnlyBrPlaceholders(slot.inner)
-    ) {
+    if (text.length === 0 && innerBlockContainsOnlyEmptyPlaceholders(slot.inner)) {
       emptyBodySlots += 1;
       bodySlots += 1;
     }
@@ -3097,6 +3091,7 @@ export function stripDuplicatedInlineTailAfterSiblingClose(html: string): string
  * 동일. 영문 empty-brief 카탈로그는 AI gate로 유지.
  * 루프342 — 한 장이라도 본문이 있으면 그리드 전체를 유지하던 잔여.
  * 채워진 크롬 카드는 두고, `<br>`-only 본문 슬롯인 형제만 제거.
+ * 루프343 — 빈 `<div></div>` / `&nbsp;` 본문 슬롯도 동일.
  * `flex-direction:column` · 혼합 비크롬 · 영문 empty-brief 카탈로그 유지.
  */
 export function dropChromeCardGridsWithAllEmptyBodies(
@@ -3145,8 +3140,9 @@ export function dropChromeCardGridsWithAllEmptyBodies(
 /**
  * 루프342 — Mixed chrome rows: keep filled cards, drop siblings whose
  * body slots are only `<br>` / whitespace. Placement leftover of 334/340/341,
- * which only removed a row when every chrome card was empty. Never invent
- * copy. Column stacks and official English catalogs stay intact.
+ * which only removed a row when every chrome card was empty.
+ * 루프343 — empty `<div></div>` / `&nbsp;` body slots count as unfilled
+ * too. Never invent copy. Column stacks and official English catalogs stay intact.
  */
 export function dropUnfilledChromeCardPeersInAllocatedRows(
   html: string,

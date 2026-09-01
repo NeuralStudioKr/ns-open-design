@@ -33,6 +33,12 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-09-01 현재 판단 · 최신 루프
 
+### 루프343 — 빈 div / `&nbsp;` 본문 슬롯
+
+루프342는 카드 안에 `<br>`가 있어야 빈 본문으로 본다. MiniMax는 본문 슬롯을 `<div></div>` / `&nbsp;`만으로 남기기도 해서 빈 띠가 유지됐다. 빈 소스도 빈 슬롯으로 보고, `<br>` 없이도 라벨+빈 본문이면 미채움. 라벨만 있는 칩·실본문·column·영문 카탈로그는 유지. 카피 발명 없음.
+
+검증: contracts heal-loop331-335-residuals 루프343.
+
 ### 루프342 — 혼합 행의 빈 본문 크롬 카드만 제거
 
 루프334–341은 행의 크롬 카드가 **전부** `<br>` 본문일 때만 그리드/플렉스를 지운다. 한 장만 채워지고 나머지가 라벨+`<br>`이면 빈 띠가 남는다. 채워진 카드는 두고 빈 본문 형제만 제거. column 스택·혼합 비크롬·영문 empty-brief 카탈로그는 유지. 카피 발명 없음.
@@ -976,6 +982,7 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 
 ### 다음 루프 후보 (2026-08-31 EOD 기준)
 
+- **완료 (루프343):** 빈 `<div></div>` / `&nbsp;` 본문 슬롯도 미채움. 라벨-only 칩·실본문 유지.
 - **완료 (루프342):** 혼합 행에서 `<br>`-only 본문 크롬 카드만 제거. 채워진 카드·column·영문 카탈로그 유지.
 - **완료 (루프340):** flex 행 empty `<br>`-body 크롬 카드 drop. column·본문 있는 행 유지.
 - **완료 (루프339):** 칸 번호 Y 빈 카드. 띄어쓴 `스무 번째` / `기둥 Z`와 번호+본문은 유지. 280 vs 900 sidebar는 유지.
@@ -1397,6 +1404,7 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | heal: Tech Stack empty `<br>`-body flex 행 제거 | ☑ 루프340 |
 | heal: class-bound flex/grid empty `<br>`-body 행 제거 | ☑ 루프341 |
 | heal: 혼합 행의 `<br>`-only 본문 크롬 카드만 제거 | ☑ 루프342 |
+| heal: 빈 div / `&nbsp;` 본문 슬롯도 미채움 | ☑ 루프343 |
 | heal: HTML void `<br>/<img>/<hr>` 등 depth 안정화 | ☑ 루프335 |
 | heal: nested card soup extra `</div>`가 장 호스트를 닫음 | ☑ 루프287 |
 | docs: leftover 용어를 「빈 칸 번호 카드」로 정리 | ☑ 루프284 |
@@ -1423,7 +1431,14 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | contracts pretest: exactOptionalPropertyTypes TS2379 봉쇄 | ☑ 루프263 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음. `minimax-live-e2e.gate.test.ts`가 키 부재를 고정 |
 
-## 이번 루프 (루프342 · 혼합 행 빈 본문 크롬 카드)
+## 이번 루프 (루프343 · 빈 div / `&nbsp;` 본문 슬롯)
+
+- [x] `innerBlockContainsOnlyEmptyPlaceholders` — 빈 소스 / `&nbsp;` / `<br>` 동일
+- [x] `<br>` 없이 라벨+빈 본문이면 미채움. 라벨-only 칩 유지
+- [x] heal-loop331-335-residuals 루프343
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프342 · 혼합 행 빈 본문 크롬 카드)
 
 - [x] `dropUnfilledChromeCardPeersInAllocatedRows` — 채워진 카드 유지, `<br>`-only 형제만 제거
 - [x] grid / flex / class-bound · column·영문 카탈로그 유지
