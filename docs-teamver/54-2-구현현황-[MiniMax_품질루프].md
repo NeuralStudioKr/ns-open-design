@@ -25,11 +25,17 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 |---|---|
 | 제거 | 카드 전체가 칸 번호뿐이면 그 칸을 지움. 예: `열네째`, `기둥 카`, `PILLAR 3` |
 | 유지 | 번호 뒤에 본문이 있으면 둠. 예: `열네째 실카피`. KPI `10%`, 단원 `UNIT 3`도 둠 |
-| 아직 번호로 안 봄 | heal이 아직 빈 칸으로 분류하지 않는 다음 제목. 테스트 전용. 예: `기둥 T` |
+| 아직 번호로 안 봄 | heal이 아직 빈 칸으로 분류하지 않는 다음 제목. 테스트 전용. 예: `기둥 U` |
 
 `기둥` / `PILLAR` / `Phase`는 모델이 붙이는 접두일 뿐, 발표 용어가 아닙니다. 서수 유지 픽스처는 `스무 번째`. extra-copy·stub는 주제 단어 목록이 아닙니다(루프259·265).
 
 ## 2026-09-01 현재 판단 · 최신 루프
+
+### 루프336 — 칸 번호 T 빈 카드
+
+루프327까지는 A–S / 가…하 / 스무째까지만 빈 칸 번호로 본다. 모델이 빠진 3열을 `기둥 T`만으로 채워 빈 띠가 남는다. 그 제목만 제거. 띄어쓴 `스무 번째` / `기둥 U`와 번호+본문(`기둥 T 실카피`)은 유지. 한글 열 라벨은 `하`가 끝. 카피 발명 없음. 공식 영문 카탈로그는 brief 없이 유지.
+
+검증: contracts heal-ai-generated-deck 루프336 · deck-framework-compact · heal-loop331-335-residuals.
 
 ### 루프335 — HTML void element depth 안정화
 
@@ -932,6 +938,7 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 
 ### 다음 루프 후보 (2026-08-31 EOD 기준)
 
+- **완료 (루프336):** 칸 번호 T 빈 카드. 띄어쓴 `스무 번째` / `기둥 U`와 번호+본문은 유지.
 - **완료 (루프331–335):** neuralstudio.kr 회사소개 잔여. h2 tail dup / cross-grid absorb / orphan `<b>` tail / empty `<br>`-body grid / void depth 안정화.
 - **완료 (루프327):** 칸 번호 S 빈 카드. 띄어쓴 `스무 번째` / `기둥 T`와 번호+본문은 유지.
 - **완료 (루프326):** 칸 번호 R 빈 카드. 띄어쓴 `스무 번째` / `기둥 S`와 번호+본문은 유지.
@@ -950,10 +957,10 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 - **완료 (루프294):** flex 행 크롬 카드 spill. 크롬 1개 스플릿·column·sidebar 유지.
 - **완료 (루프293):** class 없는 크롬 카드 spill absorb · 동일 style nest flatten. `SOH` footer·50/50·sidebar 유지.
 - **완료 (루프292):** `minmax(0, calc(share))` / `calc(100%/3)` equal-track. `calc(50%)` 2열은 유지.
-- **후보 (칸 번호 T):** 모델이 빈 3열을 다음 칸 번호(`기둥 T`)로 채우면 그때 빈 칸 번호에 넣는다. `스무 번째`는 아직 번호로 보지 않는 서수 픽스처. extra-copy·stub는 주제 단어 목록이 아님(루프259·265).
+- **후보 (칸 번호 U):** 모델이 빈 3열을 다음 칸 번호(`기둥 U`)로 채우면 그때 빈 칸 번호에 넣는다. `스무 번째`는 아직 번호로 보지 않는 서수 픽스처. extra-copy·stub는 주제 단어 목록이 아님(루프259·265).
 - **완료 (루프289–290):** `minmax(0,share)` equal-track · logical `inline-size` peer lock. 3장 280 vs 900 sidebar는 의도적 유지.
 - **인접 (루프206 밖):** native `#deck-next` active off-by-one는 루프281–282로 닫힘.
-- **후보 C (3열 residual):** 칸 번호 `T` 이후, 또는 비율 >2.05 sidebar를 건드리지 않는 별도 layout residual.
+- **후보 C (3열 residual):** 칸 번호 `U` 이후, 또는 비율 >2.05 sidebar를 건드리지 않는 별도 layout residual.
 
 ## 진행
 
@@ -1338,6 +1345,7 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | persist/preview: 칸 번호만 있는 3열 카드(스무째) | ☑ 루프325 |
 | persist/preview: 칸 번호만 있는 3열 카드(R) | ☑ 루프326 |
 | persist/preview: 칸 번호만 있는 3열 카드(S) | ☑ 루프327 |
+| persist/preview: 칸 번호만 있는 3열 카드(T) | ☑ 루프336 |
 | heal: `</hN>` heading 꼬리 텍스트 중복 (`AI 파트너,<br>domain`) | ☑ 루프331 |
 | heal: 그리드 밖 형제로 새어나간 STEP 03 본문 흡수 | ☑ 루프332 |
 | heal: orphan `<b>30%</b></div>` inline tail 조각 제거 | ☑ 루프333 |
@@ -1368,7 +1376,14 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | contracts pretest: exactOptionalPropertyTypes TS2379 봉쇄 | ☑ 루프263 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프331–335 · neuralstudio.kr 회사소개 잔여)
+## 이번 루프 (루프336 · 칸 번호 T)
+
+- [x] 빈 칸 번호 — T
+- [x] 띄어쓴 `스무 번째` / `기둥 U` · 번호+본문 유지
+- [x] heal-ai-generated-deck 루프336 · deck-framework-compact
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프331–335 · neuralstudio.kr 회사소개 잔여)
 
 - [x] 루프331 — `<h2>...파트너,<br>domain</h2> tail dup` heading 꼬리 텍스트 제거
 - [x] 루프332 — 그리드 밖으로 새어나간 STEP 03 본문을 마지막 크롬 카드로 되돌림
