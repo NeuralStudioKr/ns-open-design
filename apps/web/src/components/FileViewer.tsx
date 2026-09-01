@@ -17138,18 +17138,6 @@ function HtmlViewer({
               <button
                 type="button"
                 className="icon-only od-tooltip"
-                onClick={() => void handleInsertBlankSlideAfterCurrent()}
-                title={t('fileViewer.insertBlankSlide')}
-                data-tooltip={t('fileViewer.insertBlankSlide')}
-                data-tooltip-placement="bottom"
-                aria-label={t('fileViewer.insertBlankSlide')}
-                disabled={deckStructureBusy || slideState == null}
-              >
-                <Icon name="plus" size={14} />
-              </button>
-              <button
-                type="button"
-                className="icon-only od-tooltip"
                 onClick={() => void handleDuplicateCurrentSlide()}
                 title={t('fileViewer.duplicateSlide')}
                 data-tooltip={t('fileViewer.duplicateSlide')}

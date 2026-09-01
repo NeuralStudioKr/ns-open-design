@@ -1544,6 +1544,7 @@ describe('FileViewer SVG artifacts', () => {
     );
 
     expect(container.querySelector('.deck-nav')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Insert blank slide' })).toBeNull();
     expect(container.querySelector('[data-testid="deck-filmstrip"]')).toBeTruthy();
     expect(container.querySelectorAll('.deck-filmstrip__chip')).toHaveLength(2);
     expect(screen.queryByRole('button', { name: 'Manual' })).toBeNull();
