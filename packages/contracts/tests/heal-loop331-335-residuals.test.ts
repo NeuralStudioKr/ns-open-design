@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 import {
   absorbSpilledBodyAcrossGridBoundary,
   dropChromeCardGridsWithAllEmptyBodies,
+  dropTitleOnlyCardPeersInAllocatedRows,
   dropUnfilledChromeCardPeersInAllocatedRows,
   healAiGeneratedDeckMarkup,
   stripDuplicatedHeadingTailAfterClose,
@@ -463,16 +464,6 @@ describe('루프352 · mixed chrome + non-chrome empty peers', () => {
     expect(out).not.toContain('DATA / MLOps');
   });
 
-  it('leaves a mixed row of empty chrome and an empty spacer alone', () => {
-    const html = [
-      '<div style="display:flex;gap:20px">',
-      `<div style="${chrome}"><div>DATA / MLOps</div><div><p></p></div></div>`,
-      '<div></div>',
-      '</div>',
-    ].join('');
-    expect(dropUnfilledChromeCardPeersInAllocatedRows(html, brief)).toBe(html);
-  });
-
   it('leaves a column flex mixed chrome + .card row alone', () => {
     const html = [
       '<div style="display:flex;flex-direction:column;gap:20px">',
@@ -513,6 +504,164 @@ describe('루프352 · mixed chrome + non-chrome empty peers', () => {
       '<div class="card"><h3>LLM / NLP</h3><p>Llama, vLLM</p></div>',
       `<div style="${chrome}"><div>DATA / MLOps</div><div><p></p></div></div>`,
       `<div style="${chrome}"><div>APP / UX</div><div><p><br></p></div></div>`,
+      '</div></section>',
+    ].join('');
+    const out = healAiGeneratedDeckMarkup(html, brief);
+    expect(out).toContain('기술 스택');
+    expect(out).toContain('Llama, vLLM');
+    expect(out).not.toContain('DATA / MLOps');
+    expect(out).not.toContain('APP / UX');
+    expect(out).not.toMatch(/기둥 Z|실카피/);
+  });
+});
+
+describe('루프353 · empty spacer mixed rows', () => {
+  it('drops a row of empty chrome plus an empty spacer', () => {
+    const html = [
+      '<section class="slide"><h2>기술 스택</h2>',
+      '<div style="display:flex;gap:20px">',
+      `<div style="${chrome}"><div>DATA / MLOps</div><div><p></p></div></div>`,
+      '<div></div>',
+      '</div>',
+      '<div>vendor-lock 없이 채택합니다.</div>',
+      '</section>',
+    ].join('');
+    const out = dropUnfilledChromeCardPeersInAllocatedRows(html, brief);
+    expect(out).toContain('기술 스택');
+    expect(out).toContain('vendor-lock 없이 채택합니다.');
+    expect(out).not.toContain('DATA / MLOps');
+    expect(out).not.toMatch(/display:flex/);
+  });
+
+  it('drops empty spacers beside a filled card and empty chrome', () => {
+    const html = [
+      '<div style="display:flex;gap:20px">',
+      '<div class="card"><h3>LLM / NLP</h3><p>Llama, vLLM</p></div>',
+      '<div></div>',
+      `<div style="${chrome}"><div>APP / UX</div><div><br></div></div>`,
+      '</div>',
+    ].join('');
+    const out = dropUnfilledChromeCardPeersInAllocatedRows(html, brief);
+    expect(out).toContain('Llama, vLLM');
+    expect(out).not.toContain('APP / UX');
+    expect(out).not.toMatch(/<div><\/div>/);
+  });
+
+  it('leaves a column flex empty chrome + spacer stack alone', () => {
+    const html = [
+      '<div style="display:flex;flex-direction:column;gap:20px">',
+      `<div style="${chrome}"><div>DATA / MLOps</div><div><p></p></div></div>`,
+      '<div></div>',
+      '</div>',
+    ].join('');
+    expect(dropUnfilledChromeCardPeersInAllocatedRows(html, brief)).toBe(html);
+  });
+
+  it('leaves official English empty chrome + spacer alone without a brief', () => {
+    const html = [
+      '<div style="display:flex;gap:20px">',
+      `<div style="${chrome}"><div>DATA / MLOps</div><div><p></p></div></div>`,
+      '<div></div>',
+      '</div>',
+    ].join('');
+    expect(dropUnfilledChromeCardPeersInAllocatedRows(html)).toBe(html);
+  });
+
+  it('pipeline removes empty-spacer chrome rows without inventing copy (루프353)', () => {
+    const html = [
+      '<section class="slide"><h2>기술 스택</h2>',
+      '<div style="display:flex;gap:20px">',
+      `<div style="${chrome}"><div>DATA / MLOps</div><div><p></p></div></div>`,
+      '<div></div>',
+      '</div></section>',
+    ].join('');
+    const out = healAiGeneratedDeckMarkup(html, brief);
+    expect(out).toContain('기술 스택');
+    expect(out).not.toContain('DATA / MLOps');
+    expect(out).not.toMatch(/기둥 Z|실카피/);
+  });
+});
+
+describe('루프354 · title-only card peers', () => {
+  it('drops heading-only .card peers beside a body-filled card', () => {
+    const html = [
+      '<section class="slide" data-screen-label="06 Tech Stack">',
+      '<h2>기술 스택</h2>',
+      '<div style="display:grid;grid-template-columns:repeat(3, minmax(0,1fr));gap:20px">',
+      '<div class="card"><h3>LLM / NLP</h3><p>Llama, vLLM, LangGraph</p></div>',
+      '<div class="card"><h3>DATA / MLOps</h3></div>',
+      '<div class="card"><h3>APP / UX</h3><p></p></div>',
+      '</div>',
+      '</section>',
+    ].join('');
+    const out = dropTitleOnlyCardPeersInAllocatedRows(html, brief);
+    expect(out).toContain('LLM / NLP');
+    expect(out).toContain('Llama, vLLM, LangGraph');
+    expect(out).not.toContain('DATA / MLOps');
+    expect(out).not.toContain('APP / UX');
+    expect(out).toContain('기술 스택');
+  });
+
+  it('keeps a row of heading-only chips when no sibling has a body', () => {
+    const html = [
+      '<div style="display:flex;gap:20px">',
+      '<div class="card"><h3>Llama</h3></div>',
+      '<div class="card"><h3>Airflow</h3></div>',
+      '<div class="card"><h3>Figma</h3></div>',
+      '</div>',
+    ].join('');
+    expect(dropTitleOnlyCardPeersInAllocatedRows(html, brief)).toBe(html);
+  });
+
+  it('keeps a 2-col title + body pair', () => {
+    const html = [
+      '<div style="display:flex;gap:20px">',
+      '<div class="card"><h3>LLM / NLP</h3></div>',
+      '<div class="card"><h3>스택</h3><p>Llama, vLLM</p></div>',
+      '</div>',
+    ].join('');
+    expect(dropTitleOnlyCardPeersInAllocatedRows(html, brief)).toBe(html);
+  });
+
+  it('keeps chrome label-only chips beside a filled body card', () => {
+    const html = [
+      '<div style="display:flex;gap:20px">',
+      `<div style="${chrome}"><div>Llama</div></div>`,
+      `<div style="${chrome}"><div>LLM / NLP</div><div>vLLM, LangGraph</div></div>`,
+      `<div style="${chrome}"><div>Airflow</div></div>`,
+      '</div>',
+    ].join('');
+    expect(dropTitleOnlyCardPeersInAllocatedRows(html, brief)).toBe(html);
+  });
+
+  it('leaves a column flex title-only stack alone', () => {
+    const html = [
+      '<div style="display:flex;flex-direction:column;gap:20px">',
+      '<div class="card"><h3>LLM / NLP</h3><p>Llama, vLLM</p></div>',
+      '<div class="card"><h3>DATA / MLOps</h3></div>',
+      '</div>',
+    ].join('');
+    expect(dropTitleOnlyCardPeersInAllocatedRows(html, brief)).toBe(html);
+  });
+
+  it('leaves official English title-only peers alone without a brief', () => {
+    const html = [
+      '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px">',
+      '<div class="card"><h3>LLM / NLP</h3><p>Llama, vLLM</p></div>',
+      '<div class="card"><h3>DATA / MLOps</h3></div>',
+      '<div class="card"><h3>APP / UX</h3></div>',
+      '</div>',
+    ].join('');
+    expect(dropTitleOnlyCardPeersInAllocatedRows(html)).toBe(html);
+  });
+
+  it('pipeline removes title-only card peers without inventing copy (루프354)', () => {
+    const html = [
+      '<section class="slide"><h2>기술 스택</h2>',
+      '<div style="display:flex;gap:20px">',
+      '<div class="card"><h3>LLM / NLP</h3><p>Llama, vLLM</p></div>',
+      '<div class="card"><h3>DATA / MLOps</h3></div>',
+      '<div class="card"><h3>APP / UX</h3><p><br></p></div>',
       '</div></section>',
     ].join('');
     const out = healAiGeneratedDeckMarkup(html, brief);

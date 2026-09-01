@@ -25,13 +25,31 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 | 말 | 뜻 |
 |---|---|
-| 제거 | 카드 전체가 칸 번호뿐이면 그 칸을 지움. 예: `열네째`, `기둥 카`, `PILLAR 3` |
-| 유지 | 번호 뒤에 본문이 있으면 둠. 예: `열네째 실카피`. KPI `10%`, 단원 `UNIT 3`도 둠 |
-| 아직 번호로 안 봄 | heal이 아직 빈 칸으로 분류하지 않는 다음 제목. 테스트 전용. 예: `기둥 Z` |
+| 제거 | 카드 전체가 칸 번호뿐이면 그 칸을 지움. 예: `열네째`, `기둥 카`, `PILLAR 3`, `스무 번째` |
+| 유지 | 번호 뒤에 본문이 있으면 둠. 예: `열네째 실카피`, `스무 번째 실카피`. KPI `10%`, 단원 `UNIT 3`도 둠 |
+| 문자·서수 트랙 | A–Z / 가…하 / 첫째…스무 번째까지 닫힘(루프355). 다음 칸 번호를 새로 만들지 않음 |
 
-`기둥` / `PILLAR` / `Phase`는 모델이 붙이는 접두일 뿐, 발표 용어가 아닙니다. 서수 유지 픽스처는 `스무 번째`. extra-copy·stub는 주제 단어 목록이 아닙니다(루프259·265).
+`기둥` / `PILLAR` / `Phase`는 모델이 붙이는 접두일 뿐, 발표 용어가 아닙니다. extra-copy·stub는 주제 단어 목록이 아닙니다(루프259·265).
 
 ## 2026-09-01 현재 판단 · 최신 루프
+
+### 루프355 — 칸 번호 `스무 번째` 빈 카드
+
+루프351까지는 A–Z / 가…하 / 스무째까지만 빈 칸 번호로 본다. 띄어쓴 `스무 번째`만 있는 3열 카드가 빈 띠로 남았다. 그 제목만 제거. 번호+본문(`스무 번째 실카피`)은 유지. 문자·서수 leftover 트랙은 여기서 닫음. 카피 발명 없음. 공식 영문 카탈로그는 brief 없이 유지.
+
+검증: contracts heal-ai-generated-deck 루프355 · deck-framework-compact.
+
+### 루프354 — 제목만 있는 카드 형제 제거
+
+본문 있는 3열 이상 행에서 heading-only `.card`(`<h3>DATA / MLOps</h3>`, heading+빈 `<p>`)가 빈 띠를 만든다. 본문 있는 형제를 앵커로 두고 제목만 있는 카드만 제거. 제목-only 칩 행·2열 제목+본문·크롬 라벨 칩·column·영문 카탈로그는 유지. 카피 발명 없음.
+
+검증: contracts heal-loop331-335-residuals 루프354.
+
+### 루프353 — 빈 스페이서 혼합 행 제거
+
+루프352는 채워진 앵커가 없으면 빈 크롬+빈 `<div></div>` 행을 유지했다. MiniMax는 그 조합으로 빈 띠를 남긴다. 빈 스페이서도 같이 제거하고, 전부가 빈 크롬/스페이서면 행 전체를 제거. column·영문 카탈로그 유지. 카피 발명 없음.
+
+검증: contracts heal-loop331-335-residuals 루프353.
 
 ### 루프352 — 혼합 크롬+비크롬 행의 빈 크롬만 제거
 
@@ -1036,6 +1054,9 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 
 ### 다음 루프 후보 (2026-08-31 EOD 기준)
 
+- **완료 (루프355):** 칸 번호 `스무 번째` 빈 카드. 번호+본문 유지. 문자·서수 leftover 트랙 닫음.
+- **완료 (루프354):** 본문 있는 행에서 heading-only 카드만 제거. 칩 행·2열 제목+본문·크롬 라벨 칩 유지.
+- **완료 (루프353):** 빈 스페이서 혼합 행 제거. 전부 빈 크롬/스페이서면 행 전체 drop.
 - **완료 (루프352):** 혼합 크롬+비크롬 행에서 빈 크롬만 제거. `.card` / `<ul>` 앵커 · column·영문 카탈로그 유지.
 - **완료 (루프345–351):** Process/Pricing/Roadmap 구조 spill · title cover center · 칸 번호 Z. flex-column orphan grid / ul spill / cross-grid list / orphan chrome / inline cardish / flow text-align / `기둥 Z` drop.
 - **완료 (루프344):** 빈 `<p>` / `<span>` 래퍼 본문 슬롯도 미채움. 미디어·라벨-only 칩·실본문 유지.
@@ -1067,7 +1088,7 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 - **완료 (루프351 · 칸 번호 Z):** `기둥 Z` 빈 카드 drop. 띄어쓴 `스무 번째`·번호+본문 유지. 로마 `V`/`X` 유지.
 - **완료 (루프289–290):** `minmax(0,share)` equal-track · logical `inline-size` peer lock. 3장 280 vs 900 sidebar는 의도적 유지.
 - **인접 (루프206 밖):** native `#deck-next` active off-by-one는 루프281–282로 닫힘.
-- **후보 C (3열 residual):** 칸 번호 `Z` 이후, 또는 비율 >2.05 sidebar를 건드리지 않는 별도 layout residual. 280 vs 900은 의도적 유지.
+- **완료 (후보 C · leftover 문자/서수):** A–Z / 가…하 / 첫째…스무 번째 닫힘(루프355). 280 vs 900 sidebar는 의도적 유지.
 
 ## 진행
 
@@ -1468,6 +1489,9 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | heal: title-only cover flow text-align center | ☑ 루프350 |
 | persist/preview: 칸 번호만 있는 3열 카드(Z) | ☑ 루프351 |
 | heal: 혼합 크롬+비크롬 행의 빈 크롬만 제거 | ☑ 루프352 |
+| heal: 빈 스페이서 혼합 행 제거 | ☑ 루프353 |
+| heal: 제목만 있는 카드 형제 제거 | ☑ 루프354 |
+| persist/preview: 칸 번호만 있는 3열 카드(스무 번째) | ☑ 루프355 |
 | heal: 혼합 행의 `<br>`-only 본문 크롬 카드만 제거 | ☑ 루프342 |
 | heal: 빈 div / `&nbsp;` 본문 슬롯도 미채움 | ☑ 루프343 |
 | heal: 빈 `<p>` / `<span>` 래퍼 본문 슬롯도 미채움 | ☑ 루프344 |
@@ -1497,7 +1521,15 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | contracts pretest: exactOptionalPropertyTypes TS2379 봉쇄 | ☑ 루프263 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음. `minimax-live-e2e.gate.test.ts`가 키 부재를 고정 |
 
-## 이번 루프 (루프352 · 혼합 크롬+비크롬 빈 크롬)
+## 이번 루프 (루프353–355 · 스페이서 · 제목-only · 스무 번째)
+
+- [x] 루프353 — 빈 스페이서 혼합 행 · 전부 빈 행 drop
+- [x] 루프354 — heading-only 카드 형제 제거. 칩 행·2열·라벨 칩 유지
+- [x] 루프355 — `스무 번째` 칸 번호. 번호+본문 유지. leftover 문자/서수 트랙 닫음
+- [x] heal-loop331-335-residuals 루프353–354 · heal-ai-generated-deck 루프355 · deck-framework-compact
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프352 · 혼합 크롬+비크롬 빈 크롬)
 
 - [x] `dropUnfilledChromeCardPeersInAllocatedRows` — 비크롬 형제 있어도 빈 크롬만 제거
 - [x] 채워진 `.card` / `<ul>` / 크롬 앵커. 빈 스페이서·column·영문 카탈로그 유지

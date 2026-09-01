@@ -1852,6 +1852,9 @@ function textLooksLikeLeftoverPeerPlaceholder(html: string): boolean {
  * (`기둥 Y 실카피`).
  * 루프351 — drop empty column-number cards titled only `Z`.
  * Keep spaced `스무 번째` and number+body (`기둥 Z 실카피`).
+ * 루프355 — drop empty column-number cards titled only spaced
+ * `스무 번째`. Keep number+body (`스무 번째 실카피`). Letter/ordinal
+ * leftover titles A–Z / 가…하 / 첫째…스무 번째는 여기서 닫힘.
  * These tokens are model-emitted column
  * numbers, not product copy.
  */
@@ -1863,8 +1866,8 @@ const LEFTOVER_INDEX_MARK = '[⓪①-⑨❶-❾⓿０-９⑴-⑼㉠-㉥]';
 const LEFTOVER_INDEX_DIGIT = '(?:0?[0-9]|10)';
 /** Latin A–U + W + Y + Z / 가…하. Not roman I/V/X. */
 const LEFTOVER_INDEX_LETTER = '(?:[a-uwyz]|[가나다라마바사아자차카타파하])';
-/** 첫째…스무째 empty ordinal titles. Keep number+body / spaced `스무 번째`. */
-const LEFTOVER_INDEX_ORDINAL = '(?:스무|열아홉|열여덟|열일곱|열여섯|열다섯|열네|열세|열두|열한|첫|둘|셋|넷|다섯|여섯|일곱|여덟|아홉|열)(?:째|번째)';
+/** 첫째…스무째 / spaced `스무 번째` empty ordinal titles. Keep number+body. */
+const LEFTOVER_INDEX_ORDINAL = '(?:스무|열아홉|열여덟|열일곱|열여섯|열다섯|열네|열세|열두|열한|첫|둘|셋|넷|다섯|여섯|일곱|여덟|아홉|열)\\s*(?:째|번째)';
 const LEFTOVER_INDEX_CORE =
   `(?:${LEFTOVER_INDEX_DIGIT}|${LEFTOVER_INDEX_ROMAN}|${LEFTOVER_INDEX_MARK}|${LEFTOVER_INDEX_LETTER}|${LEFTOVER_INDEX_ORDINAL})`;
 const LEFTOVER_INDEX_SUFFIX = '(?:\\s*(?:번|번째|st|nd|rd|th))?';
@@ -3347,6 +3350,37 @@ function allocatedRowPeerLooksFilled(html: string, child: DirectChildSpan): bool
   return /<(?:img|svg|video|audio|canvas|iframe|picture|source)\b/i.test(child.inner);
 }
 
+function allocatedRowPeerLooksEmptySpacer(html: string, child: DirectChildSpan): boolean {
+  if (childLooksLikeChromeCard(child)) return false;
+  if (/<(?:img|svg|video|audio|canvas|iframe|picture|source)\b/i.test(child.inner)) return false;
+  return innerBlockContainsOnlyEmptyPlaceholders(child.inner);
+}
+
+/**
+ * Heading-only card leftover: `<h3>DATA / MLOps</h3>` or heading + empty
+ * `<p></p>`. Chrome label chips (no heading) stay filled. Media/lists stay
+ * filled (루프354).
+ */
+function allocatedRowPeerLooksTitleOnly(html: string, child: DirectChildSpan): boolean {
+  if (!childLooksLikeChromeCard(child) && !childLooksLikePeerCard(child.attrs, child.style)) {
+    return false;
+  }
+  if (childLooksLikeChromeCard(child) && chromeCardBodyLooksUnfilled(html, child)) {
+    return false;
+  }
+  if (!/<h[1-6]\b/i.test(child.inner)) return false;
+  const withoutHeadings = child.inner.replace(/<h[1-6]\b[\s\S]*?<\/h[1-6]>/gi, '');
+  if (/<(?:img|svg|video|audio|canvas|iframe|picture|source)\b/i.test(withoutHeadings)) return false;
+  if (visibleText(withoutHeadings).replace(/\s+/g, '').length >= 2) return false;
+  return innerBlockContainsOnlyEmptyPlaceholders(withoutHeadings);
+}
+
+function allocatedRowPeerLooksBodyFilled(html: string, child: DirectChildSpan): boolean {
+  if (allocatedRowPeerLooksEmptySpacer(html, child)) return false;
+  if (allocatedRowPeerLooksTitleOnly(html, child)) return false;
+  return allocatedRowPeerLooksFilled(html, child);
+}
+
 /**
  * 루프342 — Mixed chrome rows: keep filled cards, drop siblings whose
  * body slots are only `<br>` / whitespace. Placement leftover of 334/340/341,
@@ -3354,8 +3388,9 @@ function allocatedRowPeerLooksFilled(html: string, child: DirectChildSpan): bool
  * 루프343 — empty `<div></div>` / `&nbsp;` body slots count as unfilled
  * too. 루프344 — empty `<p>` / `<span>` wrappers also count as unfilled.
  * 루프352 — `.card` / `<ul>` 같은 비크롬 형제가 있어도 빈 크롬만 제거.
- * 채워진 앵커가 없으면 유지. Never invent copy. Column stacks and
- * official English catalogs stay intact.
+ * 루프353 — 빈 스페이서 형제도 같이 제거. 채워진 앵커가 없고 전부가
+ * 빈 크롬/스페이서면 행 전체를 제거. Never invent copy. Column stacks
+ * and official English catalogs stay intact.
  */
 export function dropUnfilledChromeCardPeersInAllocatedRows(
   html: string,
@@ -3386,10 +3421,75 @@ export function dropUnfilledChromeCardPeersInAllocatedRows(
     if (children.length < 2 || children.length > 6) continue;
     const chromeChildren = children.filter(childLooksLikeChromeCard);
     if (chromeChildren.length < 1) continue;
-    const emptyPeers = chromeChildren.filter((c) => chromeCardBodyLooksUnfilled(out, c));
+    const emptyChrome = chromeChildren.filter((c) => chromeCardBodyLooksUnfilled(out, c));
+    const emptySpacers = children.filter((c) => allocatedRowPeerLooksEmptySpacer(out, c));
+    const hasFilledAnchor = children.some((c) => allocatedRowPeerLooksFilled(out, c));
+    if (!hasFilledAnchor) {
+      if (
+        emptyChrome.length >= 1
+        && emptyChrome.length + emptySpacers.length === children.length
+      ) {
+        const closeTok = out.slice(close.closeStart).match(new RegExp(`^</${tag}\\s*>`, 'i'));
+        const removalEnd = close.closeStart + (closeTok?.[0].length ?? 0);
+        removals.push({ start: match.index, end: removalEnd });
+        openRe.lastIndex = removalEnd;
+      }
+      continue;
+    }
+    const emptyPeers = [...emptyChrome, ...emptySpacers];
     if (emptyPeers.length === 0) continue;
-    if (!children.some((c) => allocatedRowPeerLooksFilled(out, c))) continue;
     for (const empty of emptyPeers) {
+      removals.push({ start: empty.absStart, end: empty.absCloseEnd });
+    }
+  }
+  if (removals.length === 0) return out;
+  removals.sort((a, b) => b.start - a.start);
+  let lastKeptStart = Number.POSITIVE_INFINITY;
+  for (const removal of removals) {
+    if (removal.end > lastKeptStart) continue;
+    out = `${out.slice(0, removal.start)}${out.slice(removal.end)}`;
+    lastKeptStart = removal.start;
+  }
+  return out;
+}
+
+/**
+ * 루프354 — Heading-only `.card` peers pad a filled row (`<h3>DATA</h3>`
+ * next to a body card). Drop those title-only cards when a sibling has
+ * real body. Keep all-heading chip rows, 2-col title+body pairs, chrome
+ * label chips, column stacks, and official English catalogs. Never invent copy.
+ */
+export function dropTitleOnlyCardPeersInAllocatedRows(
+  html: string,
+  brief?: string | null,
+): string {
+  let out = String(html ?? '');
+  if (!out) return out;
+  if (!sourceLooksLikeAiGeneratedDeck(out, brief)) return out;
+  const flexNames = collectClassFlexRowNames(out);
+  const gridDecls = collectClassEqualTrackDecls(out);
+  const openRe =
+    /<(div|section|article|main|aside|ul|ol)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
+  const removals: Array<{ start: number; end: number }> = [];
+  let match: RegExpExecArray | null;
+  while ((match = openRe.exec(out)) !== null) {
+    const attrs = match[2] ?? '';
+    const style = extractInlineStyle(attrs);
+    const tokens = classTokensFromAttrs(attrs);
+    const classBound = tokens.some((token) => flexNames.has(token) || gridDecls.get(token)?.cols);
+    const isGrid = /(?:^|;)\s*display\s*:\s*(?:inline-)?grid\b/i.test(style);
+    const isFlexRow = isFlexRowContainerStyle(style);
+    if (!isGrid && !isFlexRow && !classBound) continue;
+    const tag = (match[1] ?? '').toLowerCase();
+    const openEnd = match.index + match[0].length;
+    const close = findSameTagClose(out, tag, openEnd);
+    if (!close) continue;
+    const children = listDirectBlockChildSpans(out, openEnd, close.closeStart);
+    if (children.length < 3 || children.length > 6) continue;
+    const titleOnly = children.filter((c) => allocatedRowPeerLooksTitleOnly(out, c));
+    const bodyFilled = children.filter((c) => allocatedRowPeerLooksBodyFilled(out, c));
+    if (titleOnly.length === 0 || bodyFilled.length === 0) continue;
+    for (const empty of titleOnly) {
       removals.push({ start: empty.absStart, end: empty.absCloseEnd });
     }
   }
@@ -3908,7 +4008,10 @@ export function healAiGeneratedDeckMarkup(html: string, brief?: string | null): 
   // drop(334) 다음, leftover shrink 이전에 실행해 빈 띠 트랙을 줄인다.
   // 루프343 — 빈 div / `&nbsp;`. 루프344 — 빈 `<p>` / `<span>` 래퍼.
   // 루프352 — `.card` / `<ul>` 혼합 행도 빈 크롬만 제거.
+  // 루프353 — 빈 스페이서 형제 · 전부 빈 혼합 행 제거.
   out = dropUnfilledChromeCardPeersInAllocatedRows(out, brief);
+  // 루프354 — 본문 있는 행에서 heading-only 카드만 제거.
+  out = dropTitleOnlyCardPeersInAllocatedRows(out, brief);
   out = unnestHeadingBlockChildren(out);
   out = polishTruncatedInstructionTitles(out);
   // 루프197 — empty leftover card shells keep 3-track rows alive so

@@ -111,6 +111,7 @@ describe('DECK_FRAMEWORK_DIRECTIVE_COMPACT', () => {
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('W/Y');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('W/Y/Z');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('Y/Z');
+    expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('스무 번째');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('xxx');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('Group 3');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('xxx/null');
